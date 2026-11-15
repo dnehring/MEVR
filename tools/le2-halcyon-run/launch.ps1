@@ -1,40 +1,103 @@
 # SPDX-License-Identifier: MIT
-# Starts ME2 through Steam (LEBinkProxy's -game 2) once SteamVR has been up 16 s and waits for Halcyon's XR session;
-# with -Kill first closes a running (or hung) ME2 and its launcher, then starts it again; -Stop only closes them. Run
-# prep.ps1 first.
-param([switch]$Kill, [switch]$Stop)
-if ($Stop) {
-    Get-Process MassEffect2 -ErrorAction SilentlyContinue | Stop-Process -Force -Confirm:$false
-    Start-Sleep 3
-    Get-Process MassEffectLauncher -ErrorAction SilentlyContinue | Stop-Process -Confirm:$false
-    'ME2 closed'
-    exit 0
+# Only a prepared, locked session may launch or stop its own recorded processes.
+param(
+    [Parameter(Mandatory)][string]$Holder,
+    [ValidateSet('LE2', 'LE3')][string]$Game = 'LE2',
+    [switch]$DesktopDump,
+    [switch]$Kill,
+    [switch]$Stop
+)
+$ErrorActionPreference = 'Stop'
+. "$PSScriptRoot\session-common.ps1"
+Assert-RunMode $Game ([bool]$DesktopDump)
+$open = Read-RunSession $Holder $Game ([bool]$DesktopDump)
+. "$PSScriptRoot\..\common.ps1"
+$names = Get-RunNames $Game
+$install = (Find-MELEInstall).Root
+if ($open.install -and $open.install -ne $install) { throw 'Install changed since backup' }
+$bin = Get-MELEBinDir $install $Game
+$exe = Join-Path $bin "$($names.process).exe"
+$launcherExe = Join-Path $install 'Game\Launcher\MassEffectLauncher.exe'
+function Stop-Owned {
+    $gameProcess = @(Get-Process -Name $names.process -ErrorAction SilentlyContinue)
+    $launcherProcess = @(Get-Process MassEffectLauncher -ErrorAction SilentlyContinue)
+    # Validate every target before stopping any. Old metadata without a PID is not ownership.
+    foreach ($p in $gameProcess) { Assert-RunProcess $p $open.gameProcess $exe }
+    foreach ($p in $launcherProcess) { Assert-RunProcess $p $open.launcherProcess $launcherExe }
+    foreach ($p in $gameProcess) {
+        $still = Get-Process -Id $p.Id -ErrorAction SilentlyContinue
+        if ($still) { Assert-RunProcess $still $open.gameProcess $exe; Stop-Process -Id $p.Id -Force -Confirm:$false }
+    }
+    foreach ($p in $launcherProcess) {
+        $still = Get-Process -Id $p.Id -ErrorAction SilentlyContinue
+        if ($still) { Assert-RunProcess $still $open.launcherProcess $launcherExe; Stop-Process -Id $p.Id -Confirm:$false }
+    }
 }
-$current = Join-Path $env:LOCALAPPDATA 'MEVR\sessions\le2-current.json'
-if (-not (Test-Path -LiteralPath $current)) { throw 'no ME2 stretch is open: run prep.ps1 first' }
-if ($Kill) {
-    Get-Process MassEffect2 -ErrorAction SilentlyContinue | Stop-Process -Force -Confirm:$false
-    Start-Sleep 3
-    Get-Process MassEffectLauncher -ErrorAction SilentlyContinue | Stop-Process -Confirm:$false
+$others = @(Get-Process MassEffect1, MassEffect2, MassEffect3 -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -ne $names.process })
+if ($others.Count) { throw 'Another game is running: refusing this operation' }
+if ($Stop -or $Kill) { Stop-Owned }
+if ($Stop) { "$Game owned processes closed"; exit 0 }
+if (Get-Process MassEffect1, MassEffect2, MassEffect3, MassEffectLauncher -ErrorAction SilentlyContinue) { throw 'A game or launcher is already running' }
+if ($DesktopDump) {
+    Assert-RunDumpHost "$bin\ASI\${Game}MEVR.asi"
+    $config = [IO.File]::ReadAllText("$bin\ASI\${Game}MEVR.ini")
+    # Prep writes this minimal file. Refuse modifications/duplicates that could select a different mode.
+    if ($config.Trim() -notmatch '^\[Debug\]\s+dumpOnly\s*=\s*1$') { throw 'Dump-only configuration changed since prep' }
 }
-if (Get-Process MassEffect2 -ErrorAction SilentlyContinue) { throw 'ME2 is running' }
-$vr = $null
-for ($i = 0; $i -lt 30 -and -not $vr; $i++) { $vr = Get-Process vrserver -ErrorAction SilentlyContinue; if (-not $vr) { Start-Sleep 1 } }
-if (-not $vr) { throw 'SteamVR is not running (prep.ps1 turns the fake headset on)' }
-$wait = 16 - ((Get-Date) - $vr.StartTime).TotalSeconds
-if ($wait -gt 0) { Start-Sleep -Seconds ([int][math]::Ceiling($wait)) }
-$log = Join-Path $env:LOCALAPPDATA 'MELE2VR\MELE2VR_Log.txt'
-$mark = (Get-Content $log -ErrorAction SilentlyContinue | Measure-Object).Count
-Start-Process -FilePath 'C:\Program Files (x86)\Steam\steam.exe' -ArgumentList '-applaunch', '1328670', '-game', '2', '-autoterminate'
-"asked Steam at $(Get-Date -Format HH:mm:ss)"
+if (-not $DesktopDump) {
+    $vr = $null
+    for ($i = 0; $i -lt 30 -and -not $vr; $i++) { $vr = Get-Process vrserver -ErrorAction SilentlyContinue; if (-not $vr) { Start-Sleep 1 } }
+    if (-not $vr) { throw 'SteamVR is not running (LE2 prep turns the fake headset on)' }
+    $wait = 16 - ((Get-Date) - $vr.StartTime).TotalSeconds
+    if ($wait -gt 0) { Start-Sleep -Seconds ([int][math]::Ceiling($wait)) }
+}
+$log = if ($DesktopDump) { Join-Path $bin "Logs\${Game}MEVR.log" } else { Join-Path $env:LOCALAPPDATA 'MELE2VR\MELE2VR_Log.txt' }
+$oldLog = if (Test-Path -LiteralPath $log) { [IO.File]::ReadAllText($log) } else { '' }
+$started = [DateTime]::UtcNow
+$open | Add-Member -NotePropertyName launchRequestedUtc -NotePropertyValue $started.ToString('o') -Force
+$open | Add-Member -NotePropertyName gameProcess -NotePropertyValue $null -Force
+$open | Add-Member -NotePropertyName launcherProcess -NotePropertyValue $null -Force
+Write-RunSession $open $names.current
+Start-Process -WindowStyle Hidden -FilePath 'C:\Program Files (x86)\Steam\steam.exe' -ArgumentList '-applaunch', '1328670', '-game', $names.number, '-autoterminate'
+"Asked Steam for $Game at $(Get-Date -Format HH:mm:ss)"
 $p = $null
-for ($i = 0; $i -lt 120 -and -not $p; $i++) { $p = Get-Process MassEffect2 -ErrorAction SilentlyContinue; if (-not $p) { Start-Sleep 2 } }
-if (-not $p) { 'no MassEffect2 within 240 s (the EA app can sit on its splash for minutes: run again)'; exit 1 }
-"MassEffect2 pid $($p.Id) started $($p.StartTime.ToString('HH:mm:ss'))"
-$new = @()
+for ($i = 0; $i -lt 120 -and -not $p; $i++) {
+    $launchers = @(Get-Process MassEffectLauncher -ErrorAction SilentlyContinue)
+    if ($launchers.Count -gt 1) { throw 'Multiple launchers appeared; refusing to adopt them' }
+    foreach ($launcher in $launchers) {
+        if ($launcher.Path -ne $launcherExe -or $launcher.StartTime.ToUniversalTime() -lt $started) { throw 'Unexpected launcher appeared; it was not adopted' }
+        $open.launcherProcess = Get-RunProcessIdentity $launcher
+        Write-RunSession $open $names.current
+    }
+    $found = @(Get-Process -Name $names.process -ErrorAction SilentlyContinue)
+    if ($found.Count -gt 1) { throw 'Multiple game processes appeared; refusing to adopt them' }
+    if ($found.Count) {
+        $p = $found[0]
+        if ($p.Path -ne $exe -or $p.StartTime.ToUniversalTime() -lt $started) { throw 'Unexpected game process appeared; it was not adopted' }
+        $open.gameProcess = Get-RunProcessIdentity $p
+        Write-RunSession $open $names.current
+    } else { Start-Sleep 2 }
+}
+if (-not $p) { throw "No $($names.process) within 240 seconds; keep the session locked and inspect it" }
+"$($names.process) pid $($p.Id) started $($p.StartTime.ToString('HH:mm:ss'))"
+$marker = if ($DesktopDump) { 'dump-only: code dump attempted; renderer and hooks disabled' } else { 'VR session ready' }
+$seen = $false
 for ($i = 0; $i -lt 40; $i++) {
-    $new = Get-Content $log -ErrorAction SilentlyContinue | Select-Object -Skip $mark
-    if ($new -match 'VR session ready') { break }
+    if (Test-Path -LiteralPath $log) {
+        $text = [IO.File]::ReadAllText($log)
+        $fresh = if ($oldLog -and $text.StartsWith($oldLog, [StringComparison]::Ordinal)) { $text.Substring($oldLog.Length) } else { $text }
+        if ((Get-Item -LiteralPath $log).LastWriteTimeUtc -ge $started -and $fresh.Contains($marker)) { $seen = $true; break }
+    }
+    if (-not (Get-Process -Id $p.Id -ErrorAction SilentlyContinue)) { throw 'The game exited before the expected host marker' }
     Start-Sleep 2
 }
-$new | Select-String 'MEVR-BASELINE|Rendering |VR session ready' | ForEach-Object { $_.Line }
+if (-not $seen) { throw "Expected marker was not observed: $marker (the session remains owned; use -Stop, then restore)" }
+$marker
+if ($DesktopDump) {
+    $dump = Confirm-RunDump $exe (Join-Path $env:LOCALAPPDATA 'MEVR\dump')
+    $receipt = [pscustomobject]@{ game = $Game; desktopDump = $true; holder = $Holder; launchRequestedUtc = $started.ToString('o');
+        process = $open.gameProcess; marker = $marker; dump = $dump; hostSha256 = (Get-FileHash -LiteralPath "$bin\ASI\${Game}MEVR.asi").Hash;
+        freshDump = ([DateTime]::Parse($dump.writtenUtc).ToUniversalTime() -ge $started); nativeAcceptance = $false }
+    $receipt | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $open.session 'desktop-dump.json') -Encoding utf8
+    "Dump headers, size and hashes checked; fresh dump this launch: $($receipt.freshDump). Receipt: $($open.session)\desktop-dump.json"
+}

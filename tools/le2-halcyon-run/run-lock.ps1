@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # One game run at a time on this machine, across parallel sessions and other agents: a lock file that names who runs
-# the game. prep.ps1 takes it for a stretch of ME2 runs and restore.ps1 gives it back; take it by hand around any other
+# the game. prep.ps1 takes it for a stretch of ME2/ME3 runs and restore.ps1 gives it back; take it by hand around any other
 # game run (an LE1 run with tools/fake-headset-session.ps1, a measurement), so two runners never start the game, deploy
 # into its folder or restore its saves under each other.
 # It is %LOCALAPPDATA%\MEVR\game-run.lock, the convention tools/qa-le2 and tools/qa-cafeteria already follow: their runners
@@ -53,8 +53,20 @@ if ($Take) {
         }
     }
     New-Item -ItemType Directory -Force $dir | Out-Null
-    [pscustomobject]@{ holder = $Holder; since = (Get-Date -Format 's'); note = $Note } |
-        ConvertTo-Json | Set-Content -LiteralPath $lock -Encoding utf8
+    if (-not $held) {
+        # The existence check above is advisory. CreateNew is the atomic ownership decision.
+        $stream = [IO.File]::Open($lock, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::Read)
+        try {
+            $json = [pscustomobject]@{ holder = $Holder; since = (Get-Date -Format 's'); note = $Note } | ConvertTo-Json
+            $bytes = [Text.Encoding]::UTF8.GetBytes($json)
+            $stream.Write($bytes, 0, $bytes.Length)
+            $stream.Flush()
+        } finally { $stream.Dispose() }
+    } else {
+        # Do not replace a lock which changed while we checked it, or reset its original timestamp.
+        $again = Read-Lock
+        if (-not $again -or $again.holder -ne $Holder -or $again.since -ne $held.since) { throw 'Run lock changed during acquisition' }
+    }
     "taken by '$Holder'"
     exit 0
 }
