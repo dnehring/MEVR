@@ -50,3 +50,7 @@ The game-thread request parser queues the option. The owning Present/frame threa
 Both snapshot JSON and `testloop.status` include `firstPerson.requested`, `result`, the actual enable flag, control support, fresh CalcSceneView hook installation state, raw and semantic game mode, the renderer's existing ownership report, and application time. The enable flag and ownership report are diagnostics, not proof that a particular native camera profile wrote the correct eye position. Visual acceptance still needs the captured first-person body/weapon view.
 
 Focused parser tests cover ordinary snapshots, on/off/status, case handling and malformed requests. All three renderer/TestLoop translation units compile with warnings-as-errors; the native entry getters use the existing atomic hook state. No native preview was launched by this lane.
+
+## Upstream HUD editor ownership correction
+
+The imported `HudProbe::Tick` attempted independent ProcessEvent and CallFunction hooks and enabled a baked per-element HUD layout. In the unified ASI build it now installs neither hook and reports its editor disabled, regardless of an old upstream ini. The standalone upstream build keeps its original behavior. The shared engine route is the only native event owner; `Le3Gui` performs read-only native HUD discovery on the game thread, and measured shared HUD composition owns any later presentation change. This does not enable native crosshair suppression or a default automatic HUD crop.

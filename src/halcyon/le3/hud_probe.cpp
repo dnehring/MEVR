@@ -660,10 +660,21 @@ bool Resolve() noexcept
 
 void SetEditorEnabled(bool enabled) noexcept
 {
+#if defined(MEVR_ASI)
+    (void)enabled; // [MEVR] Shared game-thread reflection owns native UI; no upstream layout writer.
+    g_editorEnabled.store(false, std::memory_order_release);
+#else
     g_editorEnabled.store(enabled, std::memory_order_release);
+#endif
 }
 
-bool GetEditorEnabled() noexcept { return g_editorEnabled.load(std::memory_order_acquire); }
+bool GetEditorEnabled() noexcept {
+#if defined(MEVR_ASI)
+    return false;
+#else
+    return g_editorEnabled.load(std::memory_order_acquire);
+#endif
+}
 int GroupCount() noexcept { return kGroupCount; }
 const char* GroupLabel(int group) noexcept
 {
@@ -702,6 +713,12 @@ void ResetAll() noexcept { for (int i = 0; i < kGroupCount; ++i) ResetGroup(i); 
 
 void Tick() noexcept
 {
+#if defined(MEVR_ASI)
+    // [MEVR] The unified host owns ProcessEvent/CallFunction. The upstream diagnostic
+    // must neither install a second owner nor apply its baked per-element HUD layout.
+    // Native HUD discovery goes through game/Le3Gui on the shared game-thread route.
+    return;
+#else
     static bool installed = false;
     static unsigned retry = 0;
     if (installed || (retry++ % 120) != 0 || !Resolve()) return;
@@ -720,5 +737,6 @@ void Tick() noexcept
     if (MH_EnableHook(reinterpret_cast<void*>(base + kCallFunctionRva)) != MH_OK) return;
     installed = true;
     ME2VR::Log::Line("[ME3HUDEDIT] baked per-element layout active; validated GFxMovie roots only");
+#endif
 }
 }  // namespace ME2VR::HudProbe
