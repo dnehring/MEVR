@@ -206,7 +206,7 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** out, unsigned cap
     panel.head = {{frame.headOrientation[0], frame.headOrientation[1], frame.headOrientation[2], frame.headOrientation[3]},
         {frame.headPosition[0], frame.headPosition[1], frame.headPosition[2]}};
     // This capture increment owns cinematic UI only. Gameplay HUD and native wrist routing have their own acceptance.
-    panel.enabled = !frame.menuOpen && !MainMenuOpen();
+    panel.enabled = !gameplay.menuOpen;
     mevr::host::sequel_cinema::FillUi(gScreen, frame.headPosition, panel);
     if (auto const* ui = mevr::host::hud_panel::Layer(panel); ui && count < capacity) out[count++] = ui;
     count = mevr::host::sequel_weapon_layers::Layers(gameplay, device, onFoot ? 0 : -1, out, count, capacity, true);
