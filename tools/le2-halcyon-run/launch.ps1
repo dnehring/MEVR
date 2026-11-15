@@ -50,7 +50,8 @@ if ($DesktopDump) {
     Assert-RunDesktopConfig $config ([bool]$EngineProbe) ([bool]$EngineRequests)
 }
 if ($RendererPreview) {
-    Assert-PreviewConfig $bin
+    $previewOptions = Get-PreviewOptions $open
+    Assert-PreviewConfig $bin $previewOptions.mode $previewOptions.diagnostics
     Assert-RunArtifacts $open.previewArtifacts
     Assert-PreviewEnvironment $open (Get-PreviewPaths)
     if (Test-Path -LiteralPath (Join-Path $env:LOCALAPPDATA 'MEVR\fake-headset\undo.json')) { throw 'Another fake-headset session appeared' }
@@ -79,6 +80,7 @@ $open | Add-Member -NotePropertyName launcherProcess -NotePropertyValue $null -F
 Write-RunSession $open $names.current
 $previewReceipt = if ($RendererPreview) { [ordered]@{ schemaVersion = 1; game = 'LE3'; rendererPreview = $true;
     holder = $Holder; session = $open.session; launchRequestedUtc = $started.ToString('o'); artifactsBefore = $open.previewArtifacts;
+    rendererOptions = $previewOptions;
     marker = '[ME3XR] VR session ready; starting frame submission.'; freshMarker = $false; stereoAccepted = $false;
     physicalHeadsetAccepted = $false; error = $null } } else { $null }
 try {

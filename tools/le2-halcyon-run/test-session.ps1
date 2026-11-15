@@ -328,6 +328,23 @@ try {
         Reject { Assert-PreviewConfig $bin }
         Check ((Get-RunRendererLog LE3).EndsWith('MELEVR\ME3PassiveDxgiProbe.log'))
     }
+    Case 'preview bisection options preserve explicit mono and reject malformed metadata' {
+        Check ((Get-PreviewOptions ([pscustomobject]@{})).mode -eq 4)
+        $options = Get-PreviewOptions ([pscustomobject]@{ previewRendererMode=0; previewDiagnostics=$true })
+        Check ($options.mode -eq 0 -and $options.diagnostics)
+        foreach ($bad in @('0', $false, 2, 3, 5, $null)) {
+            Reject { Get-PreviewOptions ([pscustomobject]@{ previewRendererMode=$bad }) }
+        }
+        Reject { Get-PreviewOptions ([pscustomobject]@{ previewDiagnostics='false' }) }
+        Reject { Get-PreviewRendererConfig 2 }
+        $bin=Join-Path $root 'preview-bisect'; New-Item -ItemType Directory (Join-Path $bin 'ASI') | Out-Null
+        [IO.File]::WriteAllText((Join-Path $bin 'ASI\LE3MEVR.ini'),(Get-PreviewModConfig))
+        [IO.File]::WriteAllText((Join-Path $bin 'MELE3VR.ini'),(Get-PreviewRendererConfig 0 $true))
+        Assert-PreviewConfig $bin 0 $true
+        Reject { Assert-PreviewConfig $bin }
+        Reject { Assert-PreviewConfig $bin 1 $true }
+        Reject { & "$PSScriptRoot\prep.ps1" -Holder synthetic -Game LE3 -DesktopDump -PreviewRendererMode 0 }
+    }
     Case 'renderer readiness marker must be fresh rather than replayed old log content' {
         $path=Join-Path $root 'preview.log'; $marker='[ME3XR] VR session ready; starting frame submission.'
         [IO.File]::WriteAllText($path,$marker); $started=[DateTime]::UtcNow.AddSeconds(-1)

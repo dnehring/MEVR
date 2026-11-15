@@ -1158,6 +1158,10 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
         if (g.submitted) {
             ++g.renders;
         }
+    } else if (testloop::SnapshotArmed()) {
+        // A quiet menu reuses its last image. Republish the existing canvas while a
+        // capture is armed so the shared release tap can include it in both eyes.
+        g.submitted = Submit();
     }
     if (timed) {
         g.context->End(g.gpuEnd.Get());

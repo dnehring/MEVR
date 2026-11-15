@@ -7,6 +7,7 @@ param(
     [switch]$EngineProbe,
     [switch]$EngineRequests,
     [switch]$RendererPreview,
+    [ValidateSet(0, 1, 4)][int]$PreviewRendererMode = 4,
     [ValidatePattern('^[A-Za-z0-9_-]+$')][string]$Tag = 'halcyon',
     [string]$BuildDir,
     [switch]$Diagnostics
@@ -14,7 +15,8 @@ param(
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\session-common.ps1"
 Assert-RunMode $Game ([bool]$DesktopDump) ([bool]$EngineProbe) ([bool]$EngineRequests) ([bool]$RendererPreview)
-if (($DesktopDump -or $RendererPreview) -and $Diagnostics) { throw '-Diagnostics is only for the LE2 renderer' }
+if ($DesktopDump -and $Diagnostics) { throw '-Diagnostics requires a renderer session' }
+if (-not $RendererPreview -and $PSBoundParameters.ContainsKey('PreviewRendererMode')) { throw '-PreviewRendererMode requires RendererPreview' }
 . "$PSScriptRoot\..\common.ps1"
 $W = (Resolve-Path "$PSScriptRoot\..\..").Path
 if (-not $BuildDir) { $BuildDir = Join-Path $W 'build-trilogy' }
@@ -65,6 +67,8 @@ if (-not $open) {
     $open = [pscustomobject]@{ holder = $Holder; game = $Game; desktopDump = [bool]$DesktopDump; engineProbe = [bool]$EngineProbe; engineRequests = [bool]$EngineRequests; rendererPreview = [bool]$RendererPreview; session = $S;
         since = (Get-Date -Format 's'); install = $install; profile = $docs }
     if ($RendererPreview) {
+        $open | Add-Member -NotePropertyName previewRendererMode -NotePropertyValue $PreviewRendererMode
+        $open | Add-Member -NotePropertyName previewDiagnostics -NotePropertyValue ([bool]$Diagnostics)
         $environment = @(Backup-PreviewEnvironment $S $previewPaths)
         $open | Add-Member -NotePropertyName previewEnvironment -NotePropertyValue $environment
     }
@@ -77,6 +81,10 @@ if (-not $open) {
 } else {
     $open = Read-RunSession $Holder $Game ([bool]$DesktopDump) ([bool]$EngineProbe) ([bool]$EngineRequests) ([bool]$RendererPreview)
     if (($open.install -and $open.install -ne $install) -or ($open.profile -and $open.profile -ne $docs)) { throw 'Install/profile changed since backup' }
+    if ($RendererPreview) {
+        $options = Get-PreviewOptions $open
+        if ($options.mode -ne $PreviewRendererMode -or $options.diagnostics -ne [bool]$Diagnostics) { throw 'Preview options changed; restore before starting a different experiment' }
+    }
     "The stretch in $($open.session) is open: redeploying only"
 }
 Assert-RunLock $Holder
@@ -97,7 +105,7 @@ if ($RendererPreview) {
     Backup-RunConsole $open $current $channel
     Backup-RunConsole $open $current $channel -Names (Get-PreviewChannels) -Metadata 'previewChannelsBefore' -Directory 'preview-channels-before'
     [IO.File]::WriteAllText("$b\ASI\LE3MEVR.ini", (Get-PreviewModConfig))
-    [IO.File]::WriteAllText((Join-Path $b 'MELE3VR.ini'), (Get-PreviewRendererConfig))
+    [IO.File]::WriteAllText((Join-Path $b 'MELE3VR.ini'), (Get-PreviewRendererConfig $PreviewRendererMode ([bool]$Diagnostics)))
     & powershell -NoProfile -ExecutionPolicy Bypass -File "$W\tools\vr-game-settings.ps1" -Game LE3 -GameRoot $install -ResX 3072 -ResY 1728 -Sdr
     if ($LASTEXITCODE -ne 0) { throw 'Preview graphics setup failed; restore the owned session' }
     if (-not $open.PSObject.Properties['previewStartedUtc']) {

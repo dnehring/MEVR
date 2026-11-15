@@ -414,17 +414,25 @@ function Get-PreviewVrProcesses($Open, [bool]$AllowNewHelpers = $false) {
     }
     return $seen
 }
-function Get-PreviewRendererConfig {
+function Get-PreviewRendererConfig([ValidateSet(0, 1, 4)][int]$Mode = 4, [bool]$Diagnostics = $false) {
     # me2_menu.cpp LoadValues + its lowest displayed render target (3072x1728);
     # d3d_capture.cpp reads RenderW/H beside MassEffect3.exe before rendering.
-    "[VR]`r`nEnabled=1`r`nMode=4`r`nRenderW=3072`r`nRenderH=1728`r`nHeadAim=0`r`nHeadLook=1`r`nMoveFollowsHead=1`r`nDecoupledPitch=1`r`nPosEnabled=1`r`nPosScale=2.0`r`nDiagnostics=0`r`nCineVrConvo=0`r`nCineVrCutscene=0`r`n[FirstPerson]`r`nConvoFirstPerson=0`r`n"
+    "[VR]`r`nEnabled=1`r`nMode=$Mode`r`nRenderW=3072`r`nRenderH=1728`r`nHeadAim=0`r`nHeadLook=1`r`nMoveFollowsHead=1`r`nDecoupledPitch=1`r`nPosEnabled=1`r`nPosScale=2.0`r`nDiagnostics=$([int]$Diagnostics)`r`nCineVrConvo=0`r`nCineVrCutscene=0`r`n[FirstPerson]`r`nConvoFirstPerson=0`r`n"
+}
+function Get-PreviewOptions($Open) {
+    $mode = if ($Open.PSObject.Properties['previewRendererMode']) { $Open.previewRendererMode } else { 4 }
+    $diagnostics = if ($Open.PSObject.Properties['previewDiagnostics']) { $Open.previewDiagnostics } else { $false }
+    if (($mode -isnot [int] -and $mode -isnot [long]) -or $mode -notin @(0, 1, 4) -or $diagnostics -isnot [bool]) {
+        throw 'Invalid preview renderer options'
+    }
+    [pscustomobject]@{ mode = $mode; diagnostics = $diagnostics }
 }
 function Get-PreviewModConfig {
     "[Debug]`r`nrequests = 1`r`nopenxrRuntime = C:\Program Files (x86)\Steam\steamapps\common\SteamVR\steamxr_win64.json`r`n[Pointer]`r`nsetCursor = 0`r`n"
 }
-function Assert-PreviewConfig([string]$Bin) {
+function Assert-PreviewConfig([string]$Bin, [ValidateSet(0, 1, 4)][int]$Mode = 4, [bool]$Diagnostics = $false) {
     if ([IO.File]::ReadAllText((Join-Path $Bin 'ASI\LE3MEVR.ini')) -cne (Get-PreviewModConfig) -or
-        [IO.File]::ReadAllText((Join-Path $Bin 'MELE3VR.ini')) -cne (Get-PreviewRendererConfig)) { throw 'Preview configuration changed since prep' }
+        [IO.File]::ReadAllText((Join-Path $Bin 'MELE3VR.ini')) -cne (Get-PreviewRendererConfig $Mode $Diagnostics)) { throw 'Preview configuration changed since prep' }
 }
 function Get-PreviewArtifacts([string]$Bin) {
     $paths = @((Join-Path $Bin 'MassEffect3.exe'), (Join-Path $Bin 'ASI\LE3MEVR.asi'),
