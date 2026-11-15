@@ -8,6 +8,33 @@ process identity and restoration receipts are recorded by the existing runner.
 
 ## Latest completed native checkpoint
 
+The newer protected session `20261115-155730-208-LE3-renderer-preview` used host
+`d0cf258a` with runner `9df78b18`. It passed the same 493 native comparisons, loaded
+the ordinary Normandy save, collected four snapshots, and restored with zero
+differences. Every sampled gameplay pair from 15:58:16 through 15:58:51 reports
+**one valid scene-family submission per pass**, one view each, no invalid families,
+and completed native calls. Both passes see world rendering enabled, a present GUI
+backend and a known-zero suppression predicate. Therefore the observed gameplay
+failure is downstream of native family admission, not a missing second Draw or a
+rejected replay at those gates. CPU submission still does not prove GPU completion.
+
+The same run retains `C C C C D` ordering, zero first-eye captures and `hasWorld=false`
+in both eyes. The third-person image is a visible flat Normandy panel; first person
+is nearly black. The next investigation follows native offscreen output and final
+GUI composition, comparing ME2 and ME3 with the existing Ghidra tooling. Do not
+relax the capture gate or call a duplicated mono source stereo.
+
+Two preceding attempts did not reach the fixture: an installer regression's fake
+launcher collided with the native runner's process check, then a transient startup
+settings writer blocked verification. Both were restored with zero differences.
+Installer process tests must finish before a native run. The settings reader now
+retries only sharing/lock violations for a bounded interval; all configuration and
+artifact checks remain. Its 35 runner cases pass. All 65 registered CTest tests and
+the development/player builds for the three games pass after the missing LE3
+shared panel source registration was corrected.
+
+## Earlier capture-boundary checkpoint
+
 Session `20261115-153113-544-LE3-renderer-preview` used compiled candidate `652c983e`
 with runner correction `6e6a8412`, SFR mode 4, diagnostics on and the imported default
 mirror cadence. Native reflection agreed on **493/493** comparisons, with no missing
@@ -60,9 +87,9 @@ compositor back pressure. `tools/perf-probe.ps1` currently needs LE1's producer 
 do not invoke it on LE3 and interpret a timeout as game performance evidence. Reuse
 that producer via an adapter if finer LE3 timing becomes necessary.
 
-## Next native proof
+## Native proof boundary
 
-The bounded `SFRNATIVE` observer records native world-render suppression and actual
+The bounded `SFRNATIVE` observer now records native world-render suppression and actual
 scene-family submission separately for each Draw. Its native entry signatures are
 checked before installation; it does not retry, change flags or copy on the game
 thread. Correlate its fresh records with `SFRORDER`, successful captures and actual

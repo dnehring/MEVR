@@ -11,11 +11,12 @@ Read the [reuse audit](le3-port-reuse-audit.md), [ME3 melee audit](../research/l
 ## Implementation ledger (2026-11-15)
 
 Latest native checkpoint: the protected renderer run passed **493/493** metadata comparisons and an ordinary
-Normandy load, then restored with zero differences. SFR still produced zero first-eye captures. See the
-[native preview and timing evidence](../research/le3-renderer-preview-evidence.md). The latest shared publication,
-galaxy and input-ownership changes are undergoing combined trilogy development/player builds. The earlier
-foundation built all three variants and passed its **60-test suite**; the expanded 64-test suite passed across
-the full run and a corrected bounded loader-test rerun, with newer ownership/HDR cases also passing focused checks.
+Normandy load, then restored with zero differences. Both eye passes submit valid native scene families,
+but SFR still produces zero first-eye captures and no stereo world layer. The current priority is the
+Halcyon/native rendering investigation; other parity implementation is paused at the owner's request.
+See the [native preview and timing evidence](../research/le3-renderer-preview-evidence.md). All three
+development/player variants build and the expanded **65-test suite** passes. The protected runner's
+35 safety cases also pass, including the bounded startup settings-lock retry.
 Two earlier protected desktop probes passed **355/355** and **361/361** native
 comparisons, with ordinary Normandy loading and zero-difference restoration. The latter supplies the native
 dialogue-text and HUD-matrix entry points for the remaining source audits. These counts prove only the
