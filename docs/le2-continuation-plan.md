@@ -212,3 +212,6 @@ main (`tools/land-on-main.py`) only after `build-trilogy`, `build`, `build-mono`
    same problems of our skeleton not matching our players position in space." ME1's cover system transfers (research/
    le2-vrik-audit.md "ME1's cover system on ME2"): no snap, physical crouch, the VR cover rule. The vault (the owner's
    double A, with weapons held) starts from where the player stands.
+8. **The menu on ME2**: ME1's rows ME2 doesn't have yet stay greyed ("Keep them greyed until I can see them"); `\`
+   stays the menu key, and holding both stick clicks always wins ("We'll maintain the same key, but always prioritize the
+   L3 + R3 stick click"): ME1's `gamepad::UpdateStickChord` rules on ME2's pad path, named first in the controller guide.
