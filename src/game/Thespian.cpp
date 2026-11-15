@@ -922,6 +922,14 @@ void TickTurn(double deltaSeconds, Link const& link) {
     if (!up) {
         gTurn.blocked = false;
     }
+#if defined(MEVR_GAME_LE2)
+    // A wheel with only submenu navigation (or unavailable persuasion) can have no speakable cards.
+    // Opening Investigate changes the slots while the wheel stays up: admit the newly offered topics.
+    if (up && gTurn.blocked && (conversation != gTurn.conversation || Signature(conversation) != gTurn.signature)) {
+        gTurn.blocked = false;
+        gSteady = {};
+    }
+#endif
     if (gMode.on && up && !ready && !gToldNoRecognizer) {
         gToldNoRecognizer = true;
         log::Info("thespian: the spoken mode is on but there is no recognizer ({}): the game's wheel alone",
