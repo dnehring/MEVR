@@ -8,6 +8,9 @@
 #include "plugin/Colour.hpp"
 #include "plugin/CineScreen.hpp"
 #include "plugin/SequelCinema.hpp"
+#include "plugin/SequelWeaponLayers.hpp"
+#include "plugin/Vignette.hpp"
+#include "plugin/PowerWheel.hpp"
 #include "plugin/TransitionFade.hpp"
 #include "plugin/HudPanel.hpp"
 #include "plugin/EyeCopy.hpp"
@@ -68,6 +71,7 @@ void OnSessionCreated(void* instance, void* session) noexcept {
 void OnSessionStopped() noexcept {
     gScreen = {};
     mevr::host::hud_panel::SetArmed(false);
+    mevr::host::vignette::Forget();
     mevr::host::menus_le2::OnSessionStopped();
     gNativePanelSeen = gNativePointerShown = false;
     mevr::host::world_panels::Recenter();
@@ -177,6 +181,18 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** out, unsigned cap
 #endif
     ID3D11Device* device = nullptr;
     frame.context->GetDevice(&device);
+    // One submit owner. Suppress gameplay presentation under either menu or guided calibration.
+    OverlayFrame gameplay = frame;
+    gameplay.menuOpen = frame.menuOpen || MainMenuOpen() || mevr::host::menus_le2::PadWanted();
+    bool const onFoot = mevr::engine::adapter::GameMode(frame.gameMode) == mevr::engine::adapter::Mode::OnFoot;
+    unsigned count = 0;
+    mevr::host::vignette::Frame comfort;
+    comfort.session = static_cast<XrSession>(frame.session);
+    comfort.context = frame.context; comfort.device = device;
+    comfort.worldFrame = frame.worldFrame; comfort.menuOpen = gameplay.menuOpen;
+    comfort.fovValid = frame.projectionValid;
+    std::memcpy(comfort.fov, frame.projectionFov, sizeof comfort.fov);
+    if (auto const* layer = mevr::host::vignette::Layer(comfort); layer && count < capacity) out[count++] = layer;
     mevr::host::hud_panel::Frame panel;
     panel.session = static_cast<XrSession>(frame.session);
     panel.appSpace = static_cast<XrSpace>(frame.appSpace);
@@ -189,8 +205,19 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** out, unsigned cap
     // This capture increment owns cinematic UI only. Gameplay HUD and native wrist routing have their own acceptance.
     panel.enabled = !frame.menuOpen && !MainMenuOpen();
     mevr::host::sequel_cinema::FillUi(gScreen, frame.headPosition, panel);
-    unsigned count = 0;
     if (auto const* ui = mevr::host::hud_panel::Layer(panel); ui && count < capacity) out[count++] = ui;
+    count = mevr::host::sequel_weapon_layers::Layers(gameplay, device, onFoot ? 0 : -1, out, count, capacity, true);
+    if (count < capacity) {
+        mevr::host::power_wheel::Frame wheel;
+        wheel.session = static_cast<XrSession>(frame.session); wheel.appSpace = static_cast<XrSpace>(frame.appSpace);
+        wheel.context = frame.context; wheel.device = device;
+        wheel.worldFrame = frame.worldFrame && onFoot; wheel.menuOpen = gameplay.menuOpen;
+        wheel.head = {frame.headPosition[0], frame.headPosition[1], frame.headPosition[2]}; wheel.headValid = frame.headValid;
+        XrCompositionLayerQuad const* quads[3]{};
+        unsigned const room = capacity - count < 3 ? capacity - count : 3;
+        int const n = mevr::host::power_wheel::Layers(wheel, quads, static_cast<int>(room));
+        for (int i = 0; i < n; ++i) out[count++] = quads[i];
+    }
     count = mevr::host::menus_le2::Layers(frame, device, out, count, capacity);
     gScreen = {};
     if (device) device->Release();

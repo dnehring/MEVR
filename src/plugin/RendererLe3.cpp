@@ -114,7 +114,11 @@ HWND GameWindow() noexcept {
 }
 
 HudSettings Hud() noexcept {
-    HudSettings settings; settings.hudPanel = false; settings.handReticle = false; return settings;
+    HudSettings settings;
+    // The shared ring now draws only while the mod owns live hand aim. Native crosshair suppression
+    // remains unavailable; the native HUD itself stays in the eyes until its LE3 layout is verified.
+    settings.hudPanel = false;
+    return settings;
 }
 
 PanelSettings Panels() noexcept {

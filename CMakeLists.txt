@@ -1039,6 +1039,7 @@ function(mevr_add_plugin game)
             # world-locked placement (research/52, research/le2-cinema.md): LE1's modules, shared.
             src/plugin/CineScreen.cpp src/plugin/CineScreen.hpp src/core/vr/CineScreen.cpp src/core/vr/CineScreen.hpp
             src/plugin/SequelCinema.cpp src/plugin/SequelCinema.hpp
+            src/plugin/SequelWeaponLayers.cpp src/plugin/SequelWeaponLayers.hpp
             src/core/vr/ConversationWorld.cpp src/core/vr/ConversationWorld.hpp
             src/plugin/CinemaBackdrop.cpp src/plugin/CinemaBackdrop.hpp src/plugin/CinemaBackdropDraw.cpp
             src/plugin/CinemaBackdropDraw.hpp src/plugin/TransitionFade.cpp src/plugin/TransitionFade.hpp
@@ -1075,10 +1076,16 @@ function(mevr_add_plugin game)
             src/core/vr/PoseRecording.cpp src/core/vr/Colour.cpp src/core/d3d11/Blit.cpp src/core/PngFile.cpp
             src/core/Hotkey.cpp src/core/vr/TestRequest.cpp
             src/plugin/MenusLe2.cpp src/plugin/MenusLe2.hpp src/plugin/WorldPanels.cpp src/plugin/WorldPanels.hpp
-            src/plugin/SequelCinema.cpp src/plugin/SequelCinema.hpp src/plugin/CineScreen.cpp src/core/vr/CineScreen.cpp
+            src/plugin/SequelCinema.cpp src/plugin/SequelCinema.hpp
+            src/plugin/SequelWeaponLayers.cpp src/plugin/SequelWeaponLayers.hpp src/plugin/CineScreen.cpp src/core/vr/CineScreen.cpp
             src/core/vr/ConversationWorld.cpp src/plugin/CinemaBackdrop.cpp src/plugin/CinemaBackdropDraw.cpp
             src/plugin/TransitionFade.cpp src/core/vr/TransitionFade.cpp
             src/plugin/HudPanel.cpp src/plugin/QuadSwapchain.cpp
+            src/plugin/Vignette.cpp src/plugin/HandReticle.cpp
+            src/core/vr/ScopeArt.cpp src/core/vr/ScopeCapture.cpp src/core/vr/Sights.cpp
+            src/plugin/ScopeCaptureSource.cpp src/plugin/SightLayers.cpp src/plugin/SightPictures.cpp
+            src/core/vr/PowerWheel.cpp src/core/vr/SquadPlace.cpp src/core/vr/InteractLabel.cpp
+            src/plugin/PowerWheel.cpp src/plugin/PowerWheelDraw.cpp src/plugin/PowerIcons.cpp src/plugin/Glow.cpp
             src/core/vr/OverlayPlacement.cpp src/core/vr/OverlayPlacement.hpp)
         if (MEVR_MAIN_MENU)
             set(with_main_menu ON)
