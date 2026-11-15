@@ -838,8 +838,12 @@ mevr::game::throwables::Link ThrowablesLink() {
 mevr::game::voice::Link VoiceLink() {
     using namespace mevr;
     game::voice::Link link;
+    link.menuOpen = game::body_calibration::Calibrating();
     if (!gHostOwnsVr) {
         return link;
+    }
+    if (MEVR_HOST_HAS(mainMenu) && gHost->mainMenu != nullptr) {
+        link.menuOpen = link.menuOpen || (gHost->mainMenu() & (kMainMenuOpen | kOmniRailOpen)) != 0;
     }
     if (gHost->version >= 9) {
         link.haptic = gHost->hapticPulse;

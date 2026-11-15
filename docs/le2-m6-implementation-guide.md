@@ -18,9 +18,9 @@ the native scene releases the player. Physical seated play in ordinary gameplay 
 | Owner | Scope | Worktree/branch | Native testing |
 | --- | --- | --- | --- |
 | `me2_squad_parity` | B and C, squad inventory/menu and native orders | `.claude/worktrees/me2-m6-squad`, `work/me2-m6-squad` | Coordinator schedules |
-| `me2_interaction_parity` | A, selection adapter and floating labels | `.claude/worktrees/me2-interaction-parity`, `work/me2-interaction-parity` | Coordinator schedules |
-| `me2_galaxy_parity` | G, native galaxy/table and scanning | Agent-owned isolated worktree from `b74989a4` | Coordinator schedules |
-| Coordinator | D/E voice and Thespian dependencies, shared integration, regression and native validation | Existing integration worktree | Exclusive protected runs |
+| `me2_interaction_parity` | A and E, floating labels and cinema Thespian adapter | `.claude/worktrees/me2-interaction-parity`, `work/me2-interaction-parity` | Coordinator schedules |
+| `me2_galaxy_parity` | G, native galaxy/table and scanning | `.claude/worktrees/me2-galaxy-parity`, `work/me2-galaxy-parity` | Coordinator schedules |
+| Coordinator | D voice, shared integration, regression and native validation | Existing integration worktree | Exclusive protected runs |
 
 These assignments indicate active work, not completed implementation. Agents commit their own scoped candidates.
 The coordinator reviews and integrates shared CMake, host services and renderer edits before landing on main.
@@ -28,8 +28,9 @@ Record resulting commits and acceptance evidence in the continuation plan as eac
 
 ## Scope and evidence
 
-M6 has nine areas excluding the Hammerhead. Five have gameplay implementations on main, with uneven runtime
-coverage. Four still need substantial implementation. Those four split into the seven packages below.
+At the start of this pass, M6 had nine areas excluding the Hammerhead. Five had gameplay implementations on main,
+with uneven runtime coverage. The other four split into the seven packages below. The integration record in the
+continuation plan supersedes this starting inventory as code lands; it does not replace native acceptance.
 The earlier **5/9** figure counts areas with gameplay code; it is neither a completion estimate by effort nor
 a claim that five areas passed final acceptance. Interaction target observation is useful partial work within
 one of the remaining four areas.

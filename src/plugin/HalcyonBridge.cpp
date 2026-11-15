@@ -34,6 +34,7 @@
 #include "plugin/Halcyon.hpp"
 #if defined(MEVR_WITH_MAIN_MENU)
 #include "plugin/MainMenu.hpp"
+#include "plugin/Thespian.hpp"
 #include "plugin/OmniPad.hpp"
 #include "plugin/OmniToolRail.hpp"
 #endif
@@ -150,6 +151,9 @@ void OnSessionCreated(void* instance, void* session) noexcept {
     gSession = static_cast<XrSession>(session);
     mevr::host::testloop::OnSessionCreated(gSession);
     mevr::host::swapchains::OnSessionCreated(gSession);  // our swapchains went with the old session
+#if defined(MEVR_WITH_MAIN_MENU)
+    mevr::host::thespian::ForgetSession();
+#endif
     mevr::host::spectator::OnSessionCreated();  // its swapchain copies went with the old session
     // Our actions on it, its own floor space, vibration from scratch (plugin/XrHost).
     mevr::host::xr_host::OnSessionCreated(static_cast<XrInstance>(instance), gSession);

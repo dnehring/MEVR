@@ -765,6 +765,7 @@ void OnRecentered() noexcept {
     mevr::host::calibration::Recentered();  // and the guided calibration's layout
 #if defined(MEVR_WITH_MAIN_MENU)
     mevr::host::main_menu::Recentered();  // and our open main menu
+    mevr::host::thespian::Recentered();
 #endif
     mevr::host::halcyon::NoteRecentered();  // the holsters take the standing eye height there
 }

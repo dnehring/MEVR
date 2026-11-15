@@ -173,13 +173,13 @@ acceptance checks for each. It also lists validation still owed for the five are
 | --- | --- | --- |
 | Comfort and vignette | The shared `game/Comfort`, pad merge and vignette layer now expose snap turning, head- or hand-relative walking and vignette strength in ME2's settings. [Comfort controls](../research/31-comfort.md) | Replay two separate right-stick flicks, sustained movement with the left hand yawed away from the head, and menu entry with sticks held. Check the actual heading, motion, vignette, and return to neutral. |
 | Wrist and gun HUD | Both use shared HUD panel crops and ME2's own HUD. The gun readout sits beside the native ammo effect. [Placement and replay evidence](../research/41-hud-pieces.md#me2s-ammo-display) | Check legibility in a headset across small and large guns, and after an ammo-power change. |
-| Interaction labels | ME2 now reports the native `BioPlayerSelection` target in the shared snapshot channel. ME2's `UpdateSelection` is native and takes no parameters. The head-gaze hook and the HUD crop for the floating label still need ME2-specific work. [ME1 selection and label design](../research/40-interaction.md) | Capture an unobstructed door and NPC prompt. Confirm the localized crop and the target A actually uses, including when head and body face different objects. |
+| Interaction labels | Native `BioPlayerSelection` observation now feeds a shared floating-label layer. An explicit measured `[Interact]` crop is required; its native HUD band is removed only after a successful copy. The ME2 head-gaze hook and measured default crop remain unfinished. [Selection and labels](../research/40-interaction.md) | Capture an unobstructed door and NPC prompt. Confirm the localized crop and the target A actually uses, including when head and body face different objects. |
 | Cover, crouch and sprint | The earlier ME2 adapter exercised physical crouch, cover protection and native Storm. The crouch toggle is now exposed in the shared menu. Sprint continues through ME2's native Storm and Halcyon's existing VR handling. [Native replay evidence](../research/23-cover.md#7-me1s-cover-system-on-me2-2026-11-14-lane-f) | Recheck crouch with stand/seated calibration, protection and traversal on the current build. Test sprint heading and release in a headset. |
 | Player powers | The ME1 wheel, gesture detectors and coach use ME2's native power roster, cooldown and activation. Freedom's Progress verified the chest and drawn-rifle gestures. [Power mappings and replay evidence](../research/55-hand-cast-powers.md#mass-effect-2) | Natural combat fixture for a successful left-hand push against a hostile, controller selection, evolved powers and other weapons. |
 | Squad roster and placement | The squad roster uses the native player squad. The existing right-hand wheel and arc use ME2's `HenchmanOrderHoldPosition` and `HenchmanOrderFollow`. Opt in with `[SquadOrders] place = 1` in the ME2 mod INI. [ME1 orders and placement](../research/54-voice-squad-commands.md) | Start with Miranda and Jacob on Freedom's Progress. Verify the selected living recipient walks to the marked floor, holds position, and returns on a double tap. Replay the invalid landing and loss of tracking cases. |
-| Squad weapons, orders and voice | The ME1 menu assumes ME1 quick slots and weapon types. Adapt native ME2 inventory and equip confirmation. Commands that use powers should queue through the verified ME2 tactical path. Reuse the speech recognizer, radio gesture, and parser after the game-side orders work. [ME1 orders and voice](../research/54-voice-squad-commands.md) | Verify weapon changes and attack/power orders for each recipient, including unavailable weapons, cooldowns, and combat-to-dialogue transitions. |
-| Thespian mode and conversations in the world | ME2 already has the cinema screen and native trigger routing. Reuse the reply matcher and panel with ME2's native conversation handler, then adapt the world camera and authored movement handoff independently. [Thespian](../research/70-thespian-mode.md) · [World conversations](../research/59-conversations-in-world.md) · [ME2 interrupt fixtures](../research/le2-interrupt-acquisition.md) | Prove normal and Investigate replies, both interrupts, and camera/controls returning after a dialogue choice and a scripted walk. |
-| Galaxy map and scanning | Reuse ME1's table and pointer. The ME2 diagnostic orbital observer and Trilogy Save Editor fixtures provide probe and discovery evidence. ME2 supplies continuous scanning and the native launch and reveal logic. [Probe fixtures and observer](../research/le2-scanning-readiness.md) · [Zanethu state transitions](../research/le2-galaxy-fixture-source.md) | Normal-load the Normandy fixture, enter the galaxy and orbit through the native UI, then measure a single probe launch and persistent discovery. Use the zero-probe fixture to verify refusal. |
+| Squad weapons, orders and voice | The parallel candidate adapts ME1's hand menu to native ME2 inventory, including SMGs, and observes the equipped weapon after dispatch. Attack/follow/hold and power orders use ME2 native commands. The host reuses ME1's microphone, recognizer, radio gesture, parser and optional model runtime. Scene changes invalidate delayed voice results. [Orders and voice](../research/54-voice-squad-commands.md) | Verify weapon changes and attack/power outcomes for each recipient, including unavailable weapons, cooldowns, menu ownership and combat-to-dialogue transitions. Test a real microphone after deploying the existing voice assets. |
+| Thespian mode and conversations in the world | The parallel Thespian candidate reuses the matcher and amber reply panel over the cinema screen with ME2's offered native reply slots. Investigate/Return navigation remains native; silent/skip playback is unavailable. First-person world conversations remain deferred. [Thespian](../research/70-thespian-mode.md) · [ME2 interrupt fixtures](../research/le2-interrupt-acquisition.md) | Prove normal and Investigate replies, both interrupts, native Shepard playback and return of controls. Future first-person seated scenes must prohibit traversal; they are not acceptance work for this pass. |
+| Galaxy map and scanning | Opt-in `[Galaxy] nativeTable = 1` presents the native whole image using ME1's fixed table and exact pointer quad. Orbital scanning keeps native LT/RT with a held-trigger entry latch. CIC surroundings and stereo map depth remain unfinished. [Galaxy candidate](../research/le2-galaxy-table.md) · [Probe fixtures](../research/le2-scanning-readiness.md) | Normal-load the Normandy fixture, navigate through native UI, then measure one probe launch and persistent discovery. Verify zero-probe refusal and held-trigger menu/recenter transitions. |
 
 The comfort/placement pass uses [the protected ME2 runner](../tools/le2-halcyon-run/README.md), `make-walk-recording.py`,
 `replay.ps1 -Inputs`, `snapshot.ps1` and Freedom's Progress Save 4. The comfort run timed out before ME2 started.
@@ -187,6 +187,31 @@ The runner verified zero differences after restoration. Current native behavior 
 Use `mevr place status` and the snapshot's `squad` and `squadPlace` records to check the roster, recipient and dispatch.
 The `mevr place aim` / `hand` / `release` diagnostics isolate native dispatch from physical input. A dispatched event alone
 does not prove the AI reached the marker or held position.
+
+The parallel integration uses [the reusable native checklist](le2-m6-native-checks.md); it adds no second runner or
+save editor. The coordinator's protected voice run also timed out before ME2 started (240 seconds), and restoration
+again verified zero differences and released the lock. Steam still tracked an earlier EA launcher, with no ME2
+process. This pass has no new native acceptance evidence. The first deployment also found no voice-model folder in
+the isolated checkout: reuse the already downloaded assets before a microphone run. Builds and offline tests do not
+establish AI outcomes, prompt crops, spoken reply selection, scanner resource changes or physical-headset comfort.
+
+#### Parallel integration evidence, 2026-11-15
+
+Three agent lanes were reviewed and integrated with the coordinator's shared voice services. Source candidates:
+`907dcc5d` (interaction), `30b138ba` plus `2b6fd177` (squad and pause ownership), `3805c694`, `3e69b02b` and
+`7ee57ace` (cinema Thespian and lifecycle), and `8e9df844`, `d429a426`, `90f177a2` (galaxy table and ownership).
+The coordinator added the shared voice port, scene/menu cancellation, LE2 diagnostic routes and matching LE1
+Thespian lifecycle hooks. Integration commits retain those source branches for auditing.
+
+Final combined Release verification passed: `build-trilogy` LE1/LE2/LE3 hosts and mods, `build` LE1 development,
+`build-mono` LE1 player, and all **54/54 CTest tests** (126.39 seconds). SPDX and whitespace checks passed.
+Tests include pause-owner restoration/retry, spoken-listen ownership, menu interruption, SMG parsing, input routing,
+save/control tooling and the existing renderer regressions. The amber Thespian preview was rendered offline and
+visually checked; it is synthetic UI evidence, not a screenshot from ME2. No successful native run was added.
+
+Still unfinished beyond runtime acceptance: interaction head-gaze hook and measured default crop; CIC surroundings
+and stereo map depth; ME2 silent/skip Shepard playback and menu key capture. Hammerhead and first-person world
+conversations remain excluded. Full parity is not declared by this implementation pass.
 
 ### M7. Ship it (M)
 

@@ -10,6 +10,7 @@
 #include "game/SquadContext.hpp"
 #include "game/SquadOrders.hpp"
 #include "game/SquadPlace.hpp"
+#include "game/SquadWeapons.hpp"
 #include "game/Voice.hpp"
 #include "game/VrCover.hpp"
 
@@ -1862,12 +1863,31 @@ std::optional<std::string> RunOursLe2(ue3::Object* pc, std::string const& line) 
     if (verb == "instances") {
         return InstancesLe2(words);  // a scene's Kismet start, for the cinema screen's checks (research/le2-cinema.md)
     }
+    if (verb == "squad") return squad_weapons::StatusJson();
+    if (verb == "say") {
+        std::string rest;
+        std::getline(words, rest);
+        return squad_orders::Say(rest);
+    }
+    if (verb == "order") {
+        std::string actionLine;
+        words >> actionLine;
+        auto const action = vr::squad_context::ParseLine(actionLine);
+        if (!action) return std::string("usage: mevr order WHO|WEAPON|POWER|ORDER|TARGET");
+        return squad_orders::Give(*action);
+    }
+    if (verb == "context") {
+        std::string word, ago;
+        words >> word >> ago;
+        if (word == "prefix") return squad_context::Prefix();
+        return squad_context::Block("", word, ini::Number(ago).value_or(0.5));
+    }
     if (verb == "activate") {
         return ActivateLe2(words);
     }
     return std::string("unknown on ME2: mevr load <career> <save name> <index> <type> | mevr savedesc | mevr state | "
                        "mevr camera trace <seconds> [label] | mevr omni <screen> | mevr guimouse | mevr guikey ... | mevr cover ... | "
-                       "mevr traversal ... | "
+                       "mevr traversal ... | mevr squad | mevr context | mevr order ... | mevr say ... | mevr voice ... | mevr thespian ... | "
                        "mevr instances <Package.Class> [text] | mevr activate <n> [input]");
 }
 

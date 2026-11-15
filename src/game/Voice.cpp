@@ -58,6 +58,10 @@ std::uint64_t gLastListenStart = 0;
 std::string gLastText, gLastOutcome;
 // The model tier: the request the rules couldn't settle, its answer when it comes.
 std::uint32_t gModelRequest = 0;
+std::uint64_t gModelGeneration = 0;
+std::optional<std::uint64_t> gSceneGeneration;
+std::uint64_t gListenNotBeforeMs = 0;
+bool gMenuWasOpen = false;
 std::string gModelText;
 double gModelAskedAt = 0.0;
 unsigned gModelAsked = 0, gModelAnswered = 0, gModelGiven = 0;
@@ -138,6 +142,7 @@ void AskModel(std::string const& text, double secondsAgo) {
     std::uint32_t const id = gLink.askModel(prefix.c_str(), mevr::voice::grammar::Prompt(block).c_str(), gbnf.c_str());
     if (id == 0) return;
     gModelRequest = id;
+    gModelGeneration = squad_context::Generation();
     gModelText = text;
     gModelAskedAt = gClock;
     ++gModelAsked;
@@ -156,6 +161,10 @@ void TakeModelAnswer() {
             continue;
         }
         gModelRequest = 0;
+        if (gModelGeneration != squad_context::Generation()) {
+            log::Info("voice: model answer #{} belongs to an earlier scene: dropped", id);
+            continue;
+        }
         // An answer that took longer than this is no longer what the player wants now (they have moved on or said it again).
         constexpr double kModelAnswerMaxS = 5.0;
         if (gClock - gModelAskedAt > kModelAnswerMaxS) {
@@ -189,6 +198,11 @@ void TakeModelAnswer() {
 
 void Dispatch(std::string const& text, double secondsAgo, char const* how) {
     gLastText = text;
+    if (gLink.menuOpen) {
+        gLastOutcome = "refused: another menu owns input";
+        ++gRefusals;
+        return;
+    }
     gLastOutcome = squad_orders::Say(text, secondsAgo);
     bool const unsure = gLastOutcome.starts_with("not sure");
     bool const refused = unsure || gLastOutcome.starts_with("nothing") || gLastOutcome.find("refused") != std::string::npos;
@@ -237,6 +251,7 @@ void TakeLines(hand_calibration::Voice const& s) {
     vr::voice::Line line;
     std::uint64_t const now = GetTickCount64();
     while (gLink.takeLine(&line)) {
+        if (line.listenStartMs < gListenNotBeforeMs) continue; // recognition can finish after a scene transition
         if (thespian::OwnsListen(line.listenStartMs)) {
             continue;  // the rest of a listen Thespian mode opened: Shepard's line, never a squad order
         }
@@ -329,6 +344,19 @@ void Tick(double deltaSeconds, Link const& link) {
     gClock += deltaSeconds;
     gLink = link;
     gClaimed = false;
+    auto const generation = squad_context::Generation();
+    if (!gSceneGeneration || *gSceneGeneration != generation || gMenuWasOpen != link.menuOpen) {
+        gSceneGeneration = generation;
+        gMenuWasOpen = link.menuOpen;
+        gListenNotBeforeMs = GetTickCount64();
+        gModelRequest = 0;
+        gCurrent.clear();
+        gPartial.clear();
+        gConsumed.clear();
+        if (gMachine.listening && link.setListen != nullptr) link.setListen(0);
+        gMachine.Reset();
+        EarCue(false, 0.0f, 0.0f, 0.0f);
+    }
     hand_calibration::Voice const s = hand_calibration::GetVoice();
     if (!link.has) {
         if (!gToldNoHost && s.gesture) {
@@ -338,6 +366,7 @@ void Tick(double deltaSeconds, Link const& link) {
         return;
     }
     if (link.state != nullptr) link.state(&gState);
+    if (link.menuOpen) return;
     if (thespian::OwnsMicrophone()) {
         // Thespian mode listens (a dialogue wheel is up): the lines and the key terms are its own (research/70).
         gKeyterms.clear();  // the roster's are sent again after
@@ -460,6 +489,10 @@ void Shutdown() {
     gCurrent.clear();
     gPartial.clear();
     gConsumed.clear();
+    gModelRequest = 0;
+    gSceneGeneration.reset();
+    gMenuWasOpen = false;
+    gListenNotBeforeMs = GetTickCount64();
 }
 
 }  // namespace mevr::game::voice

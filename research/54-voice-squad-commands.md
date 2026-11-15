@@ -8,6 +8,11 @@ the shared unload path. The microphone/device/recognizer menu and level meter us
 Radio gesture availability uses the LE2 reflection runtime's `Up()` contract. `mevr voice` and snapshot
 voice state are exposed through the existing LE2 diagnostics.
 
+The integration exposes the existing `mevr say`, `order` and `context` parsers on the LE2 console route,
+plus `mevr squad` for the shared squad status JSON. It does not introduce another input transport.
+Radio transcripts are discarded across scene or menu ownership changes, and model replies bind to the
+scene generation that requested them. Main menu, wrist rail and guided calibration suppress radio dispatch.
+
 The squad lane supplies ME2 vocabulary and native dispatch through `SquadContext` and `SquadOrders`.
 Successful spoken squad orders still need native verification. Keyboard key capture uses an LE1 renderer
 hook and stays disabled on LE2. Thespian's ME2 adapter is a separate candidate using cinema presentation.

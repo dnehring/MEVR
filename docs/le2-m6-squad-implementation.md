@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: MIT -->
 # ME2 squad parity: weapon menu and orders
 
 Implementation candidate for M6 B/C. This reuses ME1's squad menu machine, panel renderer, input suppression, context/parser/standing-order machinery and shared pause owner. Native acceptance is still required; a successful ProcessEvent dispatch is not proof that an AI changed weapon or cast a power.
