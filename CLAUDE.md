@@ -13,6 +13,12 @@ time across sessions:** `tools/le2-halcyon-run/run-lock.ps1` (its `prep.ps1`/`re
 dependencies and proof gates; [reuse map](docs/le2-port-reuse-map.md) names existing MEVR/native-game systems and pinned
 external code candidates. Read these before sequel work. The current scope is proving LE2 first, then extending to LE3.
 
+**LE3 port entry point:** [ME3 implementation plan](docs/le3-port-implementation-plan.md),
+[current reuse audit](docs/le3-port-reuse-audit.md) and [melee audit](research/le3-melee-audit.md) define the next port.
+Keep one shared implementation with three native adapters; audit existing ME1/ME2 systems before adding code.
+These are source-audited work packages, not completed ME3 support. First-person world conversations remain deferred;
+authored seated scenes (such as shuttles) must reject traversal while retaining head tracking.
+
 ## Git
 
 - **Commit freely.** The user gave standing permission (2026-10-07) to commit without asking.
