@@ -115,6 +115,7 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
 // Present thread, each frame a conversation (`conversation`) or cutscene is decided (me2_xr.cpp's VRCINE block): whether it
 // goes on the 3D screen ([Cinematics] conversations / cutscenes in ASI\LE2MEVR.ini, ME1's keys and defaults).
 bool CineScreenWanted(bool conversation) noexcept;
+bool CineScreenFullRate() noexcept;
 // Game thread, calcview_hook.cpp's SFR branch while the screen is up: half the two cameras' distance (game units) for a view
 // whose horizontal half angle is `halfH` (radians, 0 unknown), our plan for this frame (core/vr/CineScreen: the scene
 // [Cinematics] convergeM away on the screen plane once each eye is cropped by its depth).

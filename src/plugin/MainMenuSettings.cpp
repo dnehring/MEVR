@@ -288,11 +288,8 @@ void Settings::Read(menu::Values& v) {
     bool const cineConvo = c.cineVrConvo;
     bool const cineCut = c.cineVrCutscene;
 #else
-    // ME2: the stick walks where the head looks (its MoveFollowsHead, always on), and conversations and cutscenes are on
-    // Halcyon's flat cine panel (ApplyMevrBaseline: CineVrConvo and CineVrCutscene off until ME1's 3D cinema screen, M5).
+    // ME2's MoveFollowsHead stays on. The cinema screen is selected through our INI.
     bool const followsHead = true;
-    bool const cineConvo = false;
-    bool const cineCut = false;
     flag("le2", true);  // the document greys out what ME2 doesn't have yet (research/le2-menus.md)
 #endif
     // [Comfort] (research/31; the mod reads it: game/comfort). Smooth is the game's own turn ("turn = game"); the
@@ -317,6 +314,7 @@ void Settings::Read(menu::Values& v) {
     // Conversations and cutscenes (research/52), each on its own row: flat with Halcyon's VR conversations (cutscenes) off, on the
     // 3D cinema screen with [Cinematics] conversations (cutscenes) on, else in VR.
     mevr::vr::cine_screen::Settings const cineDefaults;
+#if defined(MEVR_MENU_LE1)
     auto const cineChoice = [&](bool inVr, char const* key, bool fallback) {
         return !inVr ? std::string("flat") : ini.Num("Cinematics", key, fallback ? 1.0f : 0.0f) != 0.0f ? std::string("screen")
                                                                                                        : std::string("vr");
@@ -328,6 +326,13 @@ void Settings::Read(menu::Values& v) {
         v.texts["cine_convo"] = "world";
     }
     v.texts["cine_cut"] = cineChoice(cineCut, "cutscenes", cineDefaults.cutscenes);
+#else
+    namespace cw = mevr::vr::conversation_world;
+    auto const convo = cw::ParseMode(ini.Text("Cinematics", "conversations", "").c_str(),
+        cineDefaults.conversations ? cw::Mode::Screen : cw::Mode::Vr);
+    v.texts["cine_convo"] = convo == cw::Mode::Vr ? "flat" : "screen";
+    v.texts["cine_cut"] = ini.Num("Cinematics", "cutscenes", cineDefaults.cutscenes ? 1.0f : 0.0f) != 0.0f ? "screen" : "flat";
+#endif
     v.numbers["cine_width"] = std::clamp(ini.Num("Cinematics", "widthM", 2.9f), 1.5f, 8.0f);
     v.numbers["cine_distance"] = std::clamp(ini.Num("Cinematics", "distanceM", 3.5f), 1.0f, 6.0f);
     v.numbers["cine_depth"] = std::clamp(std::round(ini.Num("Cinematics", "depth", kCineDepthFull) / kCineDepthFull * 100.0f), 0.0f, 150.0f);
@@ -843,14 +848,14 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
 #if defined(MEVR_MENU_LE1)
         (convo ? c.cineVrConvo : c.cineVrCutscene) = view != "flat";
         HalcyonChanged(false);
-#else
-        if (view != "flat") {
-            return;  // ME2: the flat cine panel only, until ME1's 3D cinema screen (M5); the row is greyed out
-        }
-#endif
         if (view != "flat") {
             Put("Cinematics", convo ? "conversations" : "cutscenes", view == "world" && convo ? "world" : view == "screen" ? "1" : "0", true);
         }
+#else
+        if (view == "screen" || view == "flat") {
+            Put("Cinematics", convo ? "conversations" : "cutscenes", view == "screen" ? "1" : "0", true);
+        }
+#endif
     } else if (key == "cine_width") {
         Put("Cinematics", "widthM", fixed(v.Number("cine_width"), 2), final);
     } else if (key == "cine_distance") {

@@ -8,6 +8,7 @@
 #include "halcyon/le2/mevr_bridge.h"
 
 #include "core/Breadcrumbs.hpp"
+#include "core/DevChannels.hpp"
 #include "core/Log.hpp"
 #include "core/vr/CineScreen.hpp"
 #include "core/vr/Colour.hpp"
@@ -45,6 +46,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <mutex>
 
 namespace ME2VR::MevrBridge {
@@ -614,6 +616,10 @@ bool CineScreenWanted(bool conversation) noexcept {
     return mevr::host::cine_screen::Wanted(conversation);
 }
 
+bool CineScreenFullRate() noexcept {
+    return mevr::host::cine_screen::FullRate();
+}
+
 float CineScreenHalfSeparationUU(float halfH) noexcept {
     namespace cs = mevr::vr::cine_screen;
     // The lens is THIS view's (calcview's SFR branch reads the projection it builds): no rescale for a cut, as LE1's render hook
@@ -840,6 +846,7 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
         return result;
     }
     bool const realPad = result == ERROR_SUCCESS;
+    bool const conversationTriggers = controllers.active && mevr::host::renderer::GameMode() == kConversationMode;
     std::lock_guard lock(gPadMutex);
     XINPUT_GAMEPAD pad = realPad ? state->Gamepad : XINPUT_GAMEPAD{};
     if (controllers.active) {
@@ -852,12 +859,20 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
         renderer.gateRightClick = true;
         // ME2's interrupts (M5.2, research/le2-cinema.md): in the conversation mode (game mode 5) the triggers are the game's
         // LT (Paragon) and RT (Renegade), as on a pad; nothing of ours keeps them (pad_merge::ConversationTriggers).
-        renderer.conversationTriggers = mevr::host::renderer::GameMode() == kConversationMode;
+        renderer.conversationTriggers = conversationTriggers;
         pad = mevr::host::pad_merge::Merge(pad, controllers, renderer, GetTickCount64());
     }
     // Neutral while our menu or the calibration has it; after, what was held then is kept from the game until let go.
     mevr::host::menus_le2::FilterPad(realPad ? &state->Gamepad : nullptr, pad);
     if (std::memcmp(&pad, &gLastPad, sizeof pad) != 0) {
+        if (conversationTriggers && !mevr::host::renderer::OwnMenuOpen()) {
+            auto const down = [](BYTE value) { return value > XINPUT_GAMEPAD_TRIGGER_THRESHOLD; };
+            if ((down(pad.bLeftTrigger) != down(gLastPad.bLeftTrigger) ||
+                    down(pad.bRightTrigger) != down(gLastPad.bRightTrigger)) &&
+                mevr::dev_channels::Allowed(std::filesystem::path(mevr::host::SettingsPath()))) {
+                mevr::log::Info("conversation pad 0: LT {}, RT {}", pad.bLeftTrigger, pad.bRightTrigger);
+            }
+        }
         gLastPad = pad;
         ++gPacket;  // the game only re-reads a pad whose packet number changed
     }

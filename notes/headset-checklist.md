@@ -629,6 +629,11 @@ Turn it on: the menu's Voice page > Thespian mode > Speak Shepard's lines (or `[
   inside stays still (no panning with the head), the planet scene with depth behind the screen. The load's movie on the flat
   panel, no flash of the world after the key, then the level in VR. (research/56 "The front end on the 3D screen",
   checked on the fake headset 2026-11-05)
+- [ ] ME2 cinema (M5, [replay and evidence](../research/le2-cinema.md)): play the Freedom's Progress shuttle conversation and
+  its cutscene. Turn and lean to check that the screen stays in the room and the director's framing stays inside it. Check
+  close-ups, reply text, floor and horizon, the 3D and flat choices under Comfort, and the fade back to gameplay. Check for
+  discomfort or stutter at the headset's own refresh rate. With a pre-Veetor checkpoint, verify the prompt stays readable
+  and that each controller trigger takes its matching native interrupt only while the prompt is available.
 
 ## 3. Aiming, sights and scopes (session: Weapon-specific scope models)
 - [ ] The sniper rifle pushed into the shoulder, then held out at arm's length: the picture stays both ways (the gun moves off

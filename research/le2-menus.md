@@ -86,7 +86,7 @@ also writes `le2-section-*.png` and `le2-advanced-*.png`, the pages as ME2 shows
 | Advanced > Tracking: Flat screen width | ME2 `[VR] MenuScreenSize` | |
 | Advanced > Graphics: Desktop mirror | ME2 `[VR] MirrorPresentEvery` (0 = every 8th) | |
 | Comfort: Turning group, Walk toward, Physical crouch | greyed | game/Comfort and game/Posture are ME1's only (M6) |
-| Conversations and cutscenes | greyed (flat) | ME2 shows them on Halcyon's flat cine panel until ME1's 3D screen is ported (M5; `ApplyMevrBaseline`) |
+| Comfort: Conversations and cutscenes | 3D screen or flat, with width, distance and depth controls for the 3D screen | `[Cinematics]` in `ASI\LE2MEVR.ini`; see [ME2 cinema](le2-cinema.md) |
 | Game screens (in the room, omni-tool screens, galaxy hologram) | greyed | M4.3 / M6 |
 | Controls: Weapons (holsters), Left trigger, grenades and melee, Vent, Steady view, Draw speed, Mako | greyed | holsters wait for lane B3's host side; ME2 has no grenades nor heat (research/le2-vrik-audit.md); the rest ME1's modules (M6) |
 | Voice, Sound pages | greyed | plugin/Voice, plugin/OpenAlSoft and their mod modules are ME1's (ME2 plays through Wwise) |

@@ -1524,7 +1524,15 @@ void RunFrame() noexcept
     // own pacing-enable toggle; SFR/Stereo share StereoFramePacing.
     const bool wantPace = (aerMode && ME2VR::CalcViewHook::GetAerFramePacing()) ||
                           ((stereoMode || sfrMode) && ME2VR::CalcViewHook::GetStereoFramePacing());
-    if (wantPace) PaceDisplayLockedAer(true);
+    if (wantPace) {
+#if defined(MEVR_ASI)
+        // The cinema screen can request half refresh through [Cinematics]. Retain the global pacing limit.
+        const bool allow1x = !ME2VR::CalcViewHook::GetMevrCineScreen() || ::ME2VR::MevrBridge::CineScreenFullRate();
+        PaceDisplayLockedAer(allow1x);
+#else
+        PaceDisplayLockedAer(true);
+#endif
+    }
 
     XrFrameWaitInfo fwi = {}; fwi.type = XR_TYPE_FRAME_WAIT_INFO_VALUE;
     XrFrameState fs = {}; fs.type = XR_TYPE_FRAME_STATE_VALUE;

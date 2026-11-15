@@ -140,7 +140,8 @@ its Squad entry opens ME2's squad screen.
 
 ### M5. Conversations and cutscenes on ME1's 3D cinema screen (M)
 
-Waits for M2. Can run beside M3.
+Builds on M2. The implementation and fake-headset cinema check are in [ME2 cinema](../research/le2-cinema.md).
+Timed interrupt acceptance at Veetor and the physical-headset check remain open.
 
 1. The cinema screen's seams in `me2_xr.cpp` (research/52: the decision, parked head look, projection, plan, submit, pace,
    the conversation movie at its authored size), `plugin/CineScreen`, the floor and horizon (`CinemaBackdrop`), the dip
