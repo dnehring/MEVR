@@ -7,6 +7,7 @@
 #include "core/vr/Controllers.hpp"
 #include "core/vr/PowerWheel.hpp"
 #include "core/vr/SquadContext.hpp"
+#include "core/vr/SquadMenu.hpp"
 #include "core/vr/TestRequest.hpp"
 #include "engine/XrToUnreal.hpp"
 #include "game/GamepadMapping.hpp"
@@ -21,6 +22,7 @@
 #include "ue3/Runtime.hpp"
 
 #include <algorithm>
+#include <array>
 #include <charconv>
 #include <cstdio>
 #include <cmath>
@@ -43,12 +45,55 @@ constexpr double kChestUnits = 50.0; // a squadmate's chest above their location
 constexpr int kDrawPoints = 24;
 constexpr double kPlausibleUnits = 10.0;
 
-ue3::FunctionRef gTraceFn{"Engine.Actor.Trace"};
+ue3::FunctionRef gTraceFn{"Engine.Actor.Trace", ue3::kEveryGame};
+#if defined(MEVR_GAME_LE2)
+ue3::FunctionRef gLe2Follow{"SFXGame.BioPlayerController.HenchmanOrderFollow", ue3::kEveryGame};
+ue3::FunctionRef gLe2Hold{"SFXGame.BioPlayerController.HenchmanOrderHoldPosition", ue3::kEveryGame};
+ue3::FunctionRef gLe2CanFight{"SFXGame.BioPlayerInput.IsCombatEnabled", ue3::kEveryGame};
+ue3::FunctionRef gLe2IsDead{"Engine.Pawn.IsDead", ue3::kEveryGame};
+ue3::FieldRef gLe2Input{"Engine.PlayerController", "PlayerInput", ue3::kEveryGame};
+std::array<ue3::Object*, vr::squad_menu::kMaxMembers> gLe2Recipients{};
+
+bool Le2CanOrder(ue3::Object* controller) {
+    auto* const input = gLe2Input.Read<ue3::Object*>(controller).value_or(nullptr);
+    auto* const canFight = gLe2CanFight.Get();
+    if (!ue3::runtime::IsAlive(input) || canFight == nullptr || gLe2Follow.Get() == nullptr || gLe2Hold.Get() == nullptr ||
+        gLe2IsDead.Get() == nullptr || gTraceFn.Get() == nullptr) return false;
+    ue3::Params args(ue3::runtime::Get(), canFight);
+    return ue3::runtime::Call(input, canFight, args) && args.ReturnBool().value_or(false);
+}
+
+bool Le2Living(squad_weapons::MemberView const& member) {
+    auto* const isDead = gLe2IsDead.Get();
+    if (isDead == nullptr || !ue3::runtime::IsAlive(member.pawn)) return false;
+    ue3::Params args(ue3::runtime::Get(), isDead);
+    return ue3::runtime::Call(member.pawn, isDead, args) && !args.ReturnBool().value_or(true);
+}
+
+std::string GiveLe2Order(ue3::Object* controller, std::vector<squad_weapons::MemberView> const& members, int selected,
+    std::optional<engine::UnrealVector> point) {
+    auto* const fn = point ? gLe2Hold.Get() : gLe2Follow.Get();
+    if (fn == nullptr) return "order unavailable";
+    unsigned called = 0;
+    for (int i = 0; i < static_cast<int>(members.size()); ++i) {
+        if (selected >= 0 && selected != i) continue;
+        auto const& member = members[static_cast<std::size_t>(i)];
+        if (!Le2Living(member)) continue;
+        ue3::Params args(ue3::runtime::Get(), fn);
+        if (!args.Set("oHenchman", member.pawn)) continue;
+        if (point && !args.Set("vLocation", ue3::Vector{static_cast<float>(point->x), static_cast<float>(point->y),
+                         static_cast<float>(point->z)})) continue;
+        if (ue3::runtime::Call(controller, fn, args)) ++called;
+    }
+    return std::format("{} called for {} squadmate(s)", point ? "HenchmanOrderHoldPosition" : "HenchmanOrderFollow", called);
+}
+#else
 // The squadmate's own AI walked to the point (2026-11-05): the HOLD formation's hold position keeps them where they stand and
 // QuickCommandMoveTo picks its point from the camera's view, so neither brings them to the ring.
 ue3::FieldRef gPawnController{"Engine.Pawn", "Controller"};
 ue3::FunctionRef gPushMoveFn{"SFXGame.BioAiController.PushMoveToPoint"};
 constexpr float kPointToleranceUnits = 60.0f;
+#endif
 
 sp::Machine gMachine;
 double gUpm = engine::kUnitsPerMeter;
@@ -161,6 +206,7 @@ Arc TraceArc(ue3::Object* pawn, sp::Vec3 const& originM, sp::Vec3 const& directi
 }
 
 // Each recipient's AI pushed toward the point; the outcome in words.
+#if !defined(MEVR_GAME_LE2)
 std::string WalkThere(int member, engine::UnrealVector const& point) {
     ue3::Function* const fn = gPushMoveFn.Get();
     if (fn == nullptr) return "no PushMoveToPoint";
@@ -185,6 +231,7 @@ std::string WalkThere(int member, engine::UnrealVector const& point) {
     }
     return out;
 }
+#endif
 
 // "ASHLEY" -> "Ashley": the selector's tiles in the game's own capitalisation of names.
 std::string TitleCase(std::string const& name) {
@@ -257,7 +304,11 @@ void Tick(double deltaSeconds, Link const& link) {
     hand_calibration::SquadOrders const s = hand_calibration::GetSquadOrders();
     sp::ArcSettings const arcSettings = ArcSettingsFrom(s);
     vr::controllers::State const controllers = vr::controllers::Latest();
+#if defined(MEVR_GAME_LE2)
+    ue3::Object* const controller = s.enabled && s.place && link.publish != nullptr && ue3::runtime::Up() ? player::Controller() : nullptr;
+#else
     ue3::Object* const controller = ue3::runtime::Ready() ? player::Controller() : nullptr;
+#endif
     std::optional<std::uint8_t> const mode = controller != nullptr ? player::GameMode(controller) : std::nullopt;
     ue3::Object* const pawn = controller != nullptr ? player::BioPawn(controller) : nullptr;
     std::optional<engine::TrackingFrame> const frame = view_anchor::Current();
@@ -280,8 +331,20 @@ void Tick(double deltaSeconds, Link const& link) {
     }
     // The right hand where the squad wheel reads it: the grip (the palm), else the aim pose; tracking space.
     XrVector3f const palm = controllers.right.gripValid ? controllers.right.grip.position : controllers.right.aim.position;
-    bool const usable = s.enabled && s.place && !melee && onFoot && frame.has_value() && (tracked || simulated) &&
-        !squad_weapons::Members().empty() && !squad_weapons::IsOpen() && !power_wheel::IsOpen();
+    auto members = squad_weapons::Members();
+    bool usable = s.enabled && s.place && !melee && !link.menuOpen && onFoot && frame.has_value() && (tracked || simulated) &&
+        !squad_weapons::IsOpen() && !power_wheel::IsOpen();
+#if defined(MEVR_GAME_LE2)
+    if (usable) {
+        usable = Le2CanOrder(controller);
+        if (usable) std::erase_if(members, [](auto const& member) { return !Le2Living(member); });
+        decltype(gLe2Recipients) recipients{};
+        for (std::size_t i = 0; i < members.size() && i < recipients.size(); ++i) recipients[i] = members[i].pawn;
+        if (gMachine.Holding() && recipients != gLe2Recipients) usable = false;
+        gLe2Recipients = std::move(recipients);
+    }
+#endif
+    usable = usable && !members.empty();
 
     gArc = {};
     if (usable && (button || gMachine.Holding())) {
@@ -323,8 +386,6 @@ void Tick(double deltaSeconds, Link const& link) {
             handValid = true;
         }
     }
-    std::vector<squad_weapons::MemberView> const members = squad_weapons::Members();
-
     sp::Settings settings;
     settings.enabled = s.enabled && s.place;
     settings.minHoldS = static_cast<float>(s.placeMinHoldS);
@@ -391,10 +452,14 @@ void Tick(double deltaSeconds, Link const& link) {
     }
     if (step.regroup) {
         ++gRegroups;
+#if defined(MEVR_GAME_LE2)
+        std::string const outcome = GiveLe2Order(controller, members, -1, std::nullopt);
+#else
         sc::Action action;
         action.who.kind = sc::Who::All;
         action.order = sc::Order::Follow;
         std::string const outcome = squad_orders::Give(action);
+#endif
         gLast = std::format("B double-tapped: the squad back to Shepard: {}", outcome);
         log::Info("squad place: {}", gLast);
         if (link.haptic != nullptr) link.haptic(kRight, 0.12f, 0.8f);
@@ -410,6 +475,10 @@ void Tick(double deltaSeconds, Link const& link) {
     }
     if (step.given) {
         ++gGiven;
+#if defined(MEVR_GAME_LE2)
+        auto const point = step.order == sp::Order::Follow ? std::nullopt : std::optional(gArc.point);
+        std::string const outcome = GiveLe2Order(controller, members, step.member, point);
+#else
         sc::Action action;
         action.who.kind = sc::Who::All;
         if (step.member >= 0 && step.member < static_cast<int>(members.size())) {
@@ -427,6 +496,7 @@ void Tick(double deltaSeconds, Link const& link) {
             outcome = squad_orders::GiveAt(action, gArc.point, true);
             outcome += "; " + WalkThere(step.member, gArc.point);
         }
+#endif
         gLast = std::format("{} for {}, {:.1f} m from Shepard at ({:.0f}, {:.0f}, {:.0f}): {}", sp::Name(step.order),
             whoName(step.member), gArc.fromPlayerM, gArc.point.x, gArc.point.y, gArc.point.z, outcome);
         log::Info("squad place: {}", gLast);
@@ -513,6 +583,9 @@ void LogStats() {
 void Shutdown() {
     gMachine.Reset();
     gSim = {};
+#if defined(MEVR_GAME_LE2)
+    gLe2Recipients = {};
+#endif
     gArc = {};
     gPublished = false;
 }

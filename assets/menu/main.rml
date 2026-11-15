@@ -155,9 +155,8 @@
 	<div data-if="section == 'comfort'">
 		<div class="stitle">Comfort</div>
 		<div class="sdesc">How you turn and move.</div>
-		<div class="group" data-class-disabled="le2">
+		<div class="group">
 			<div class="gtitle"><span>Turning</span><div class="gline"/></div>
-			<div class="hint" data-if="le2">Not on Mass Effect 2 yet.</div>
 			<div class="row"><div class="rl"><div class="rlab">Turn style</div><div class="rdesc">Snap jumps by an angle per flick of the right stick; smooth is the game's own turn while you hold it</div></div>
 				<div class="seg"><button class="segb" data-class-on="turn == 'snap'" data-event-click="pick('turn','snap')">Snap</button><button class="segb" data-class-on="turn == 'smooth'" data-event-click="pick('turn','smooth')">Smooth</button></div></div>
 			<div class="row" data-class-disabled="turn != 'snap'"><div class="rl"><div class="rlab">Snap angle</div><div class="rdesc">How far one flick turns you</div></div>
@@ -170,9 +169,9 @@
 		</div>
 		<div class="group">
 			<div class="gtitle"><span>Movement</span><div class="gline"/></div>
-			<div class="row" data-class-disabled="le2"><div class="rl"><div class="rlab">Walk toward</div><div class="rdesc">What the left stick's forward means: where you look, or where your left hand points.</div></div>
+			<div class="row"><div class="rl"><div class="rlab">Walk toward</div><div class="rdesc">What the left stick's forward means: where you look, or where your left hand points.</div></div>
 				<div class="seg"><button class="segb" data-class-on="walk == 'head'" data-event-click="pick('walk','head')">Where I look</button><button class="segb" data-class-on="walk == 'hand'" data-event-click="pick('walk','hand')">Left hand</button></div></div>
-			<div class="row" data-class-disabled="le2 || play_position == 'seated'"><div class="rl"><div class="rlab">Physical crouch</div><div class="rdesc">Crouch for real and Shepard crouches with you. Seated play turns this off; L3 still toggles crouch.</div></div>
+			<div class="row" data-class-disabled="play_position == 'seated'"><div class="rl"><div class="rlab">Physical crouch</div><div class="rdesc">Crouch for real and Shepard crouches with you. Seated play turns this off.</div><div class="note" data-if="!le2">L3 still toggles crouch.</div></div>
 				<button class="tog" data-class-on="crouch" data-event-click="toggle('crouch')"><div class="knob"/></button></div>
 			<div class="row"><div class="rl"><div class="rlab">Camera shake</div><div class="rdesc">The game shakes the view when you fire and when the Mako's jets or boost fire. Off holds the world still.</div></div>
 				<div class="seg"><button class="segb" data-class-on="screen_shake == 'off'" data-event-click="pick('screen_shake','off')">Off</button><button class="segb" data-class-on="screen_shake == 'low'" data-event-click="pick('screen_shake','low')">Low</button><button class="segb" data-class-on="screen_shake == 'full'" data-event-click="pick('screen_shake','full')">Full</button></div></div>

@@ -18,6 +18,7 @@
 #include "core/vr/HostView.hpp"
 #include "core/vr/HudPieces.hpp"
 #include "core/vr/PowerWheel.hpp"
+#include "core/vr/SquadPlace.hpp"
 #include "core/vr/Sights.hpp"
 #include "plugin/FloorLock.hpp"
 #include "plugin/PadMerge.hpp"
@@ -54,7 +55,6 @@
 #include "core/vr/WorldUi.hpp"
 #include "core/vr/Spectator.hpp"
 #include "core/vr/SquadMenu.hpp"
-#include "core/vr/SquadPlace.hpp"
 #include "core/vr/ConversationWorld.hpp"
 #include "plugin/Calibration.hpp"
 #include "plugin/FloorLock.hpp"
@@ -458,17 +458,11 @@ void HostSetConversationWorld(vr::conversation_world::State const* state) {
         vr::conversation_world::Reset();
     }
 }
-void HostSetSquadPlace(vr::squad_place::View const* view) {
-    vr::squad_place::View none;
-    vr::squad_place::Publish(view != nullptr && view->size == sizeof(vr::squad_place::View) ? *view : none);
-}
 HostServices WithLe1ExtraUi(HostServices services) {
     services.publishCameraOffset = [](double forward, double right, double up) {
         vr::camera_diagnostic::gCameraDiagnostic.Publish(forward, right, up, GetTickCount64());
     };
     services.takeGuiEvents = &HostTakeGuiEvents;  // v30: the game pointer's input as GuiKey events (research/57 section 6)
-    services.squadPlaceSize = static_cast<std::uint32_t>(sizeof(vr::squad_place::View));  // v32: squad placement's arc
-    services.setSquadPlace = &HostSetSquadPlace;
     services.conversationWorldSize = static_cast<std::uint32_t>(sizeof(vr::conversation_world::State));  // v33 (research/59)
     services.setConversationWorld = &HostSetConversationWorld;
     services.motionBlurProtected = &motion_blur_guard::ProtectsGameplay;
@@ -558,6 +552,10 @@ HostServices BuildServices() {
     services.setPowerLock = [](vr::power_wheel::LockView const* view) {
         vr::power_wheel::PublishLock(view != nullptr ? *view : vr::power_wheel::LockView{});
     };
+    services.squadPlaceSize = static_cast<std::uint32_t>(sizeof(vr::squad_place::View));
+    services.setSquadPlace = [](vr::squad_place::View const* view) {
+        vr::squad_place::Publish(view != nullptr && view->size == sizeof(vr::squad_place::View) ? *view : vr::squad_place::View{});
+    };
 #endif
 #if defined(MEVR_WITH_HALCYON_LE2)
     services = WithTraversal(services);
@@ -578,6 +576,7 @@ void ForgetModState() {
     ForgetRendererModState();
     vr::power_wheel::Publish({});
     vr::power_wheel::PublishLock({});
+    vr::squad_place::Publish({});
 #endif
 #if defined(MEVR_WITH_HALCYON)
     ForgetLe1ModState();

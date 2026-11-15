@@ -34,6 +34,7 @@
 #include "plugin/TraversalCue.hpp"
 #include "plugin/Vignette.hpp"
 #include "plugin/PowerWheel.hpp"
+#include "plugin/SquadPlaceDraw.hpp"
 #include "plugin/WorldPanels.hpp"
 #include "plugin/XrHost.hpp"
 
@@ -616,6 +617,26 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
         XrCompositionLayerQuad const* quads[3]{};
         int const n = mevr::host::power_wheel::Layers(wheel, quads, static_cast<int>(std::min(3u, capacity - count)));
         for (int i = 0; i < n; ++i) layersOut[count++] = quads[i];
+        if (count < capacity && wheel.worldFrame && !wheel.menuOpen && wheel.headValid && frame.projectionValid) {
+            mevr::host::squad_place_draw::Frame place;
+            place.session = wheel.session;
+            place.appSpace = wheel.appSpace;
+            place.context = wheel.context;
+            place.device = wheel.device;
+            place.headValid = true;
+            auto const& hq = frame.headOrientation;
+            place.head = {{hq[0], hq[1], hq[2], hq[3]}, wheel.head};
+            place.eyeWidth = frame.projectionRect[0][2];
+            place.eyeHeight = frame.projectionRect[0][3];
+            for (int e = 0; e < 2; ++e) {
+                auto const& q = frame.projectionOrientation[e];
+                auto const& p = frame.projectionPosition[e];
+                auto const& fov = frame.projectionFov[e];
+                place.eyes[e] = {{q[0], q[1], q[2], q[3]}, {p[0], p[1], p[2]}};
+                place.fov[e] = {fov[0], fov[1], fov[2], fov[3]};
+            }
+            if (auto const* arc = mevr::host::squad_place_draw::Layer(place)) layersOut[count++] = arc;
+        }
     }
     // Our main menu and the guided calibration (plugin/MenusLe2, M4): over the rest, alone while they're up.
     count = mevr::host::menus_le2::Layers(frame, device, layersOut, count, capacity);

@@ -169,6 +169,62 @@ int gOpenCount = 0;
 double gDetailsAge = 1e9;
 std::string gLoggedSquad;
 
+#if defined(MEVR_GAME_LE2)
+ue3::FieldRef gLe2World{"Engine.Actor", "WorldInfo", ue3::kEveryGame};
+ue3::FieldRef gLe2Squad{"SFXGame.BioWorldInfo", "m_playerSquad", ue3::kEveryGame};
+ue3::FieldRef gLe2Behavior{"SFXGame.BioPawn", "m_oBehavior", ue3::kEveryGame};
+ue3::FieldRef gLe2Name{"SFXGame.BioActorBehavior", "ActorGameName", ue3::kEveryGame};
+ue3::FieldRef gLe2Health{"Engine.Pawn", "Health", ue3::kEveryGame};
+ue3::FieldRef gLe2HealthMax{"Engine.Pawn", "HealthMax", ue3::kEveryGame};
+ue3::ClassRef gLe2Henchman{"SFXGame.SFXPawn_Henchman", ue3::kEveryGame};
+ue3::FunctionRef gLe2SquadSize{"SFXGame.BioBaseSquad.GetSquadSize", ue3::kEveryGame};
+ue3::FunctionRef gLe2Member{"SFXGame.BioBaseSquad.GetMember", ue3::kEveryGame};
+ue3::Object* gLe2LastSquad = nullptr;
+
+void ReadLe2Members(double deltaSeconds, std::optional<std::uint8_t> mode) {
+    auto* const playerPawn = mode == 0 ? player::BioPawn(player::Controller()) : nullptr;
+    auto* const world = gLe2World.Read<ue3::Object*>(playerPawn).value_or(nullptr);
+    auto* const squad = ue3::runtime::IsAlive(world) ? gLe2Squad.Read<ue3::Object*>(world).value_or(nullptr) : nullptr;
+    gDetailsAge += deltaSeconds;
+    bool const sameSquad = squad == gLe2LastSquad;
+    if (sameSquad && gDetailsAge < kDetailsSeconds) return;
+    gLe2LastSquad = squad;
+    gDetailsAge = 0.0;
+    gCount = 0;
+    gMembers = {};
+    if (!ue3::runtime::IsAlive(squad)) return;
+
+    auto* const sizeFn = gLe2SquadSize.Get();
+    auto* const memberFn = gLe2Member.Get();
+    if (sizeFn == nullptr || memberFn == nullptr) return;
+    auto& r = ue3::runtime::Get();
+    ue3::Params size(r, sizeFn);
+    if (!ue3::runtime::Call(squad, sizeFn, size)) return;
+    int const count = std::clamp(size.Return<std::int32_t>().value_or(0), 0, 16);
+    for (int i = 0; i < count && gCount < kMaxMembers; ++i) {
+        ue3::Params args(r, memberFn);
+        if (!args.Set("nIndex", static_cast<std::int32_t>(i)) || !ue3::runtime::Call(squad, memberFn, args)) continue;
+        auto* const pawn = args.Return<ue3::Object*>().value_or(nullptr);
+        if (pawn == playerPawn || !ue3::runtime::IsAlive(pawn) || !ue3::IsA(pawn, gLe2Henchman)) continue;
+        auto& member = gMembers[gCount++];
+        member.key = reinterpret_cast<std::uintptr_t>(pawn);
+        member.squadIndex = i;
+        auto* const behavior = gLe2Behavior.Read<ue3::Object*>(pawn).value_or(nullptr);
+        auto const* const label = ue3::runtime::IsAlive(behavior) ? gLe2Name.In<ue3::FString>(behavior) : nullptr;
+        member.name = label != nullptr ? ue3::memory::Narrow(*label) : std::string();
+        member.nameSource = member.name.empty() ? "pawn class" : "ActorGameName";
+        if (member.name.empty()) {
+            member.name = r.NameText(r.ClassOf(pawn));
+            constexpr std::string_view prefix = "SFXPawn_";
+            if (member.name.starts_with(prefix)) member.name.erase(0, prefix.size());
+        }
+        int const max = gLe2HealthMax.Read<std::int32_t>(pawn).value_or(0);
+        auto const health = gLe2Health.Read<std::int32_t>(pawn);
+        if (max > 0 && health) member.health = std::clamp(static_cast<float>(*health) / static_cast<float>(max), 0.0f, 1.0f);
+    }
+}
+#endif
+
 menu::Machine gMachine;
 std::uint32_t gSerial = 0;
 // The left trigger opens the wheel or menu (2026-10-22: never the left grip). Latched like the pad's;
@@ -1346,6 +1402,9 @@ void Tick(double deltaSeconds, Link const& link) {
     gTrigger = controllers.active && (gTrigger ? left.trigger > kTriggerOff : left.trigger >= kTriggerOn);
     hand_calibration::Controls const controls = hand_calibration::GetControls();
     auto const mode = head_tracking::GameMode();
+#if defined(MEVR_GAME_LE2)
+    ReadLe2Members(deltaSeconds, mode);
+#endif
     bool const modeTakesIt = mode && (*mode == 0 || *mode == 2 || *mode == 3);  // on foot, the power wheel, the weapon wheel
     bool const wanted = settings.enabled && link.supported && gStarted && controls.leftTriggerLB && modeTakesIt;
     if (settings.enabled && link.supported && !controls.leftTriggerLB && !gToldTriggerSetting) {
@@ -1686,6 +1745,9 @@ void Shutdown(bool processExiting) {
     gOpenKeys = {};
     gOpenCount = 0;
     gDetailsAge = 1e9;
+#if defined(MEVR_GAME_LE2)
+    gLe2LastSquad = nullptr;
+#endif
     gLoggedSquad.clear();
     gTrigger = false;
     gTriggerOwner = {};

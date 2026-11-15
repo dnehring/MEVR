@@ -159,19 +159,26 @@ one outside it doesn't, from a recording, not a pad pulse.
 
 ### M6. The rest of ME1, one module at a time (L)
 
-Each waits for M1 and M2 and follows its LE1 research note: comfort and the vignette, the HUD pieces (wrist status, gun
-panel: ME2's HUD crops), interaction labels, VR cover (ME2's damage rule, research/23 6.3), physical crouch and sprint
-(ME2's storm), the power wheel and self-cast gestures (ME2's powers), squad orders, placement and voice, Thespian mode
-(ME2's wheels and interrupts), conversations in the world, the galaxy map and scanning, **the Hammerhead with ME1's Mako
-controls and cockpit for now** (the owner, 2026-11-14: `game/MakoControls`' lever and stick, the cockpit models and
-`game/CockpitProbe`'s ride, the repair button and extraction lever, on ME2's hover tank; ME2's own driving only where the
-Mako's controls can't drive it). Order by what the owner plays first. M6 comes after the first ME2 release (M7).
+M6 follows the first ME2 release (M7). The current pass covers the items below. The Hammerhead has its own later pass.
 
-The gun and wrist HUD reuse ME1’s shared panel and replay tooling. ME2’s gun readout is mounted next to its native
-ammo-power effect. [Placement, settings and replay evidence](../research/41-hud-pieces.md#me2s-ammo-display).
+| Module | ME1 reuse and ME2 status | Next acceptance check |
+| --- | --- | --- |
+| Comfort and vignette | The shared `game/Comfort`, pad merge and vignette layer now expose snap turning, head- or hand-relative walking and vignette strength in ME2's settings. [Comfort controls](../research/31-comfort.md) | Replay two separate right-stick flicks, sustained movement with the left hand yawed away from the head, and menu entry with sticks held. Check the actual heading, motion, vignette, and return to neutral. |
+| Wrist and gun HUD | Both use shared HUD panel crops and ME2's own HUD. The gun readout sits beside the native ammo effect. [Placement and replay evidence](../research/41-hud-pieces.md#me2s-ammo-display) | Check legibility in a headset across small and large guns, and after an ammo-power change. |
+| Interaction labels | ME2 now reports the native `BioPlayerSelection` target in the shared snapshot channel. ME2's `UpdateSelection` is native and takes no parameters. The head-gaze hook and the HUD crop for the floating label still need ME2-specific work. [ME1 selection and label design](../research/40-interaction.md) | Capture an unobstructed door and NPC prompt. Confirm the localized crop and the target A actually uses, including when head and body face different objects. |
+| Cover, crouch and sprint | The earlier ME2 adapter exercised physical crouch, cover protection and native Storm. The crouch toggle is now exposed in the shared menu. Sprint continues through ME2's native Storm and Halcyon's existing VR handling. [Native replay evidence](../research/23-cover.md#7-me1s-cover-system-on-me2-2026-11-14-lane-f) | Recheck crouch with stand/seated calibration, protection and traversal on the current build. Test sprint heading and release in a headset. |
+| Player powers | The ME1 wheel, gesture detectors and coach use ME2's native power roster, cooldown and activation. Freedom's Progress verified the chest and drawn-rifle gestures. [Power mappings and replay evidence](../research/55-hand-cast-powers.md#mass-effect-2) | Natural combat fixture for a successful left-hand push against a hostile, controller selection, evolved powers and other weapons. |
+| Squad roster and placement | The squad roster uses the native player squad. The existing right-hand wheel and arc use ME2's `HenchmanOrderHoldPosition` and `HenchmanOrderFollow`. Opt in with `[SquadOrders] place = 1` in the ME2 mod INI. [ME1 orders and placement](../research/54-voice-squad-commands.md) | Start with Miranda and Jacob on Freedom's Progress. Verify the selected living recipient walks to the marked floor, holds position, and returns on a double tap. Replay the invalid landing and loss of tracking cases. |
+| Squad weapons, orders and voice | The ME1 menu assumes ME1 quick slots and weapon types. Adapt native ME2 inventory and equip confirmation. Commands that use powers should queue through the verified ME2 tactical path. Reuse the speech recognizer, radio gesture, and parser after the game-side orders work. [ME1 orders and voice](../research/54-voice-squad-commands.md) | Verify weapon changes and attack/power orders for each recipient, including unavailable weapons, cooldowns, and combat-to-dialogue transitions. |
+| Thespian mode and conversations in the world | ME2 already has the cinema screen and native trigger routing. Reuse the reply matcher and panel with ME2's native conversation handler, then adapt the world camera and authored movement handoff independently. [Thespian](../research/70-thespian-mode.md) · [World conversations](../research/59-conversations-in-world.md) · [ME2 interrupt fixtures](../research/le2-interrupt-acquisition.md) | Prove normal and Investigate replies, both interrupts, and camera/controls returning after a dialogue choice and a scripted walk. |
+| Galaxy map and scanning | Reuse ME1's table and pointer. The ME2 diagnostic orbital observer and Trilogy Save Editor fixtures provide probe and discovery evidence. ME2 supplies continuous scanning and the native launch and reveal logic. [Probe fixtures and observer](../research/le2-scanning-readiness.md) · [Zanethu state transitions](../research/le2-galaxy-fixture-source.md) | Normal-load the Normandy fixture, enter the galaxy and orbit through the native UI, then measure a single probe launch and persistent discovery. Use the zero-probe fixture to verify refusal. |
 
-Shepard’s left-hand power wheel and self-cast gestures use ME2’s native roster, cooldowns and effects. Freedom’s Progress
-verified the chest gesture and the gesture on the drawn rifle. [Power mappings and remaining checks](../research/55-hand-cast-powers.md#mass-effect-2).
+The comfort/placement pass uses [the protected ME2 runner](../tools/le2-halcyon-run/README.md), `make-walk-recording.py`,
+`replay.ps1 -Inputs`, `snapshot.ps1` and Freedom's Progress Save 4. The comfort run timed out before ME2 started.
+The runner verified zero differences after restoration. Current native behavior for the new comfort, target, and squad paths remains to be measured.
+Use `mevr place status` and the snapshot's `squad` and `squadPlace` records to check the roster, recipient and dispatch.
+The `mevr place aim` / `hand` / `release` diagnostics isolate native dispatch from physical input. A dispatched event alone
+does not prove the AI reached the marker or held position.
 
 ### M7. Ship it (M)
 

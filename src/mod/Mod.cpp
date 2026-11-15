@@ -901,6 +901,9 @@ mevr::game::squad_place::Link SquadPlaceLink() {
     if (MEVR_HOST_HAS(setSquadPlace) && gHost->setSquadPlace != nullptr && gHost->squadPlaceSize == sizeof(vr::squad_place::View)) {
         link.publish = gHost->setSquadPlace;
     }
+    if (MEVR_HOST_HAS(mainMenu) && gHost->mainMenu != nullptr) {
+        link.menuOpen = (gHost->mainMenu() & (kMainMenuOpen | kOmniRailOpen)) != 0;
+    }
     return link;
 }
 
@@ -1025,7 +1028,7 @@ mevr::game::comfort::Link ComfortLink() {
         link.headTrackedView = vr::host_view::Latest().valid;
     }
     if (MEVR_HOST_HAS(mainMenu) && gHost->mainMenu != nullptr) {
-        link.mainMenuOpen = (gHost->mainMenu() & kMainMenuOpen) != 0;
+        link.mainMenuOpen = (gHost->mainMenu() & (kMainMenuOpen | kOmniRailOpen)) != 0;
     }
     return link;
 }

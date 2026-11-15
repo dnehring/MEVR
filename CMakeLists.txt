@@ -972,6 +972,8 @@ function(mevr_add_plugin game)
             # ME1's left-hand power wheel, coach and target marker.
             src/core/vr/PowerWheel.cpp src/core/vr/SquadPlace.cpp
             src/plugin/PowerWheel.cpp src/plugin/PowerWheelDraw.cpp src/plugin/PowerIcons.cpp src/plugin/Glow.cpp
+            src/plugin/SquadPlaceDraw.cpp src/plugin/GalaxyHologramDraw.cpp
+            src/core/vr/GalaxyHologram.cpp src/core/vr/GalaxyHologram.hpp
             # ME1's 3D cinema screen for conversations and cutscenes, its floor and horizon, the dip from black and the
             # world-locked placement (research/52, research/le2-cinema.md): LE1's modules, shared.
             src/plugin/CineScreen.cpp src/plugin/CineScreen.hpp src/core/vr/CineScreen.cpp src/core/vr/CineScreen.hpp
@@ -999,8 +1001,7 @@ function(mevr_add_plugin game)
                 src/plugin/CalibrationDraw.hpp src/plugin/ArmSample.cpp src/plugin/ArmSample.hpp src/core/vr/MenuPointer.cpp src/core/vr/MenuPointer.hpp src/core/vr/GameMenuRequest.cpp
                 src/core/vr/GameMenuRequest.hpp src/core/vr/CineScreen.cpp src/core/vr/CineScreen.hpp
                 src/core/vr/ConversationWorld.cpp src/core/vr/ConversationWorld.hpp src/core/vr/WorldUi.cpp src/core/vr/WorldUi.hpp
-                src/core/vr/OverlayPlacement.cpp src/core/vr/OverlayPlacement.hpp src/core/vr/GalaxyHologram.cpp
-                src/core/vr/GalaxyHologram.hpp
+                src/core/vr/OverlayPlacement.cpp src/core/vr/OverlayPlacement.hpp
                 # The omni-tool's rail (M4.3, research/le2-menus.md "The rail on ME2"): LE1's module, drawn with ME1's art from
                 # the player's cache (plugin/RailArt, core/gfx), beside the game's screens (plugin/WorldUi's host side), its tap
                 # at the left wrist (core/vr/HudPieces' wrist point) and its pointer (core/vr/GamePointer).

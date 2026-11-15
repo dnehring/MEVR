@@ -23,6 +23,7 @@ namespace mevr::game::squad_place {
 struct Link {
     void (*haptic)(int hand, float seconds, float amplitude) = nullptr;
     void (*publish)(vr::squad_place::View const* view) = nullptr;  // null: no arc drawn (an older host)
+    bool menuOpen = false;
 };
 
 // Game thread, each tick after the squad orders'.

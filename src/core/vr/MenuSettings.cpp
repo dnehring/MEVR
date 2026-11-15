@@ -638,9 +638,14 @@ std::vector<std::pair<std::string, std::string>> GuideTexts(GuideInput const& in
             (grenadeLeft ? " At the left of your chest: take a grenade." : ""));
     std::string const toward = in.walk == "hand" ? "where your left hand points" : in.walk == "body" ? "where Shepard faces"
                                                                                                    : "where you look";
-    put("lstick", "Walk, click: crouch",
-        "Walk toward " + toward + ". Click to crouch or stand" + (in.seated ? ". Seated play: lowering your head never crouches Shepard."
-            : in.physicalCrouch ? "; or just crouch for real." : "."));
+    if (in.le2) {
+        put("lstick", "Walk", "Walk toward " + toward + "." +
+            (!in.seated && in.physicalCrouch ? " Lower your head to crouch." : ""));
+    } else {
+        put("lstick", "Walk, click: crouch",
+            "Walk toward " + toward + ". Click to crouch or stand" + (in.seated ? ". Seated play: lowering your head never crouches Shepard."
+                : in.physicalCrouch ? "; or just crouch for real." : "."));
+    }
     if (in.handWheel) {
         put("x", "Power wheel", std::string("Hold for your powers around your left hand: move the hand toward one and let go of X to "
                                             "equip it (a tap keeps the wheel open).") +

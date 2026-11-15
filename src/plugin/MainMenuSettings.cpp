@@ -1046,7 +1046,7 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
 #if !defined(MEVR_MENU_LE1)
     // ---- ME2's renderer (plugin/Renderer.hpp's MenuRows: Halcyon ME2's MELE2VR.ini, saved when the menu closes) ----
     else if (key == "walk") {
-        Put("Comfort", "walk", v.Text("walk") == "hand" ? "hand" : "head", true);  // ME2's stick always walks where you look
+        Put("Comfort", "walk", v.Text("walk") == "hand" ? "hand" : "head", true);
     } else if (key == "look_smooth" || key == "flat_size" || key == "mirror") {
         renderer::MenuRows rows = renderer::GetMenuRows();
         if (key == "look_smooth") {

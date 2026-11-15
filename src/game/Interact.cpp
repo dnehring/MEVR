@@ -23,12 +23,12 @@ namespace {
 namespace il = vr::interact;
 namespace json = vr::test_request;
 
-ue3::ClassRef gSelectionClass{"SFXGame.BioPlayerSelection"};
-ue3::FieldRef gPlayerSelection{"SFXGame.BioPlayerController", "m_oPlayerSelection"};
-ue3::FieldRef gCurrentTarget{"SFXGame.BioPlayerSelection", "m_oCurrentSelectionTarget"};
-ue3::FieldRef gIsCombatTarget{"SFXGame.BioPlayerSelection", "m_bCurrentSelectionIsCombatTarget"};
-ue3::FieldRef gCollision{"Engine.Actor", "CollisionComponent"};
-ue3::FieldRef gBounds{"Engine.PrimitiveComponent", "Bounds"};
+ue3::ClassRef gSelectionClass{"SFXGame.BioPlayerSelection", ue3::kEveryGame};
+ue3::FieldRef gPlayerSelection{"SFXGame.BioPlayerController", "m_oPlayerSelection", ue3::kEveryGame};
+ue3::FieldRef gCurrentTarget{"SFXGame.BioPlayerSelection", "m_oCurrentSelectionTarget", ue3::kEveryGame};
+ue3::FieldRef gIsCombatTarget{"SFXGame.BioPlayerSelection", "m_bCurrentSelectionIsCombatTarget", ue3::kEveryGame};
+ue3::FieldRef gCollision{"Engine.Actor", "CollisionComponent", ue3::kEveryGame};
+ue3::FieldRef gBounds{"Engine.PrimitiveComponent", "Bounds", ue3::kEveryGame};
 ue3::FieldRef gBoundsOrigin{gBounds, "Origin"};
 ue3::FieldRef gBoundsExtent{gBounds, "BoxExtent"};
 
@@ -63,6 +63,7 @@ std::uint32_t gSerial = 0;
 std::string gTargetName;
 double gTargetMeters = 0.0;
 bool gLabelVisible = false;
+bool gGazeHooked = false;
 il::Label gLastLabel;
 
 // Heartbeat counts.
@@ -142,6 +143,7 @@ bool WantsHook() {
 
 void Tick(float /*deltaSeconds*/, bool hooked, Link const& link) {
     gSettings = hand_calibration::GetInteract();
+    gGazeHooked = hooked;
     gGaze.valid = false;
     engine::selection_gaze::SetProvider(hooked ? &Provide : nullptr);
 
@@ -201,7 +203,8 @@ void Tick(float /*deltaSeconds*/, bool hooked, Link const& link) {
                 (position.z - head.z) * (position.z - head.z));
             label.position = position;
             label.combat = combat;
-            label.visible = gSettings.label && onFoot && (!combat || gSettings.combatLabel) && std::isfinite(meters);
+            label.visible = link.publish != nullptr && gSettings.label && onFoot && (!combat || gSettings.combatLabel) &&
+                std::isfinite(meters);
         }
     }
     NoteTarget(target, combat, meters);
@@ -222,9 +225,9 @@ ue3::Object const* Target(bool& combat) {
 
 std::string StatusJson() {
     il::Label const& l = gLastLabel;
-    return std::format("{{\"gaze\": {}, \"label\": {}, \"target\": {}, \"combat\": {}, \"meters\": {}, \"labelVisible\": {}, "
+    return std::format("{{\"gaze\": {}, \"gazeHooked\": {}, \"label\": {}, \"target\": {}, \"combat\": {}, \"meters\": {}, \"labelVisible\": {}, "
                        "\"position\": [{}, {}, {}], \"heightDeg\": {}, \"serial\": {}}}",
-        gSettings.gaze ? "true" : "false", gSettings.label ? "true" : "false",
+        gSettings.gaze ? "true" : "false", gGazeHooked ? "true" : "false", gSettings.label ? "true" : "false",
         gTarget != nullptr ? json::JsonString(gTargetName) : std::string("null"), gCombat ? "true" : "false", json::JsonNumber(gTargetMeters),
         gLabelVisible ? "true" : "false", json::JsonNumber(l.position.x), json::JsonNumber(l.position.y), json::JsonNumber(l.position.z),
         json::JsonNumber(l.heightDeg), l.serial);
@@ -245,6 +248,7 @@ void LogStats() {
 void Shutdown(Link const& link) {
     engine::selection_gaze::SetProvider(nullptr);
     gGaze = {};
+    gGazeHooked = false;
     if (gLabelSent && link.publish != nullptr) {
         il::Label const none;
         link.publish(&none);
