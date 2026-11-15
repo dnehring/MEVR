@@ -320,10 +320,16 @@ bool ScriptPackagesLoaded() {
 // registered before the ProcessEvent hook goes live so the table never changes under it.
 void TryInstallScriptHooks() {
     using namespace mevr;
-    // CalcSceneView is native and always there, but the handlers it serves need the scripts.
-    if (!gSceneViewHooked && !gHostOwnsVr) {
-        gSceneViewHooked = engine::scene_view::Install(*gInit, &game::head_tracking::OnBeforePrimaryView);
-    }
+    // The LE3 developer build must pass the SDK cross-check before installing even the
+    // standalone view hook. Other games and SDK-free players retain their existing order.
+    auto installSceneView = [&] {
+        if (!gSceneViewHooked && !gHostOwnsVr) {
+            gSceneViewHooked = engine::scene_view::Install(*gInit, &game::head_tracking::OnBeforePrimaryView);
+        }
+    };
+#if !defined(MEVR_GAME_LE3) || defined(MEVR_NO_LESDK)
+    installSceneView();
+#endif
     // Once the script packages are in (our reflection layer is up by then on LE1), before the modules
     // that use it start: the world's path, and the layer proven against LExSDKv2 (research/34).
     if (!gReflectChecked) {
@@ -333,8 +339,19 @@ void TryInstallScriptHooks() {
         gReflectChecked = true;
         ue3::runtime::Init();  // LE2/LE3: says once that there's no layout yet
         engine::ResolveWorld();
+#if defined(MEVR_GAME_LE3) && !defined(MEVR_NO_LESDK)
+        if (!engine::reflect_check::Run(*gInit)) {
+            log::Error("LE3 startup refused: SDK reflection cross-check failed; gameplay hooks remain disabled until the mod reloads");
+            gActive = false;
+            return;
+        }
+#else
         engine::reflect_check::Run(*gInit);
+#endif
     }
+#if defined(MEVR_GAME_LE3) && !defined(MEVR_NO_LESDK)
+    installSceneView();
+#endif
     // Without the scene view hook (or a head source) head tracking stays inert; it still reads
     // the game mode, which the probes and features use.
     if (!game::head_tracking::TryStartup(gSceneViewHooked)) {
@@ -1617,6 +1634,18 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
     engine::le2_diagnostic::Tick(deltaSeconds);
     return;
 #endif
+#if defined(MEVR_GAME_LE3) && !defined(MEVR_NO_LESDK)
+    // Several consumers below run before gHooked (requests, settings, hand aim and IK).
+    // Keep them idle until the SDK contract has passed, including the initial wait for scripts.
+    if (!gReflectChecked) {
+        gRetryTimer += deltaSeconds;
+        if (gRetryTimer >= kStartupRetrySeconds) {
+            gRetryTimer = 0.0;
+            TryInstallScriptHooks();
+        }
+        if (!gReflectChecked || !gActive) return;
+    }
+#endif
     gTickSeconds = deltaSeconds;
     if (gHostOwnsVr) {
         MirrorHostState();
@@ -1634,6 +1663,7 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
             gRetryTimer = 0.0;
             if (!gHooked) {
                 TryInstallScriptHooks();
+                if (!gActive) return; // a rejected startup must not continue this tick's feature work
             }
             if (!gGamepadHooked && gActive) {
                 gGamepadHooked = game::gamepad_bridge::TryInstall(*gInit);
