@@ -119,3 +119,35 @@ Offline checks: changed core/game/renderer translation units and traversal tests
 for LE1/LE2/LE3; SDK-only static assertions confirm the native parameter sizes/offsets above; executable traversal
 and melee intent tests pass. Lifecycle tests distinguish dispatch/start, duplicate requests, nested interruption,
 unclassified action disappearance, timeout and scene-generation reuse. No native acceptance is inferred from them.
+
+
+## Normal runtime input wiring (2026-11-15)
+
+`Mod.cpp` now constructs the LE3 traversal link on the game thread after the squad,
+radio, power-wheel, support-grip and hand ownership updates. The dispatcher invokes
+its ownership callback again immediately before native admission. Main menu, Omni
+rail, held wrist UI, squad/power menus, guided calibration, stale XR focus, authored
+non-gameplay modes and a current authored movement track reject gestures. The
+native adapter independently rejects movement-ignore, active actions, non-walking
+physics, cover/storm, reload and zoom. Physical seated calibration does not disable
+ordinary play.
+
+The game-thread `mod/GameplayActions.hpp` command entry points construct a fresh
+link. They refuse engine-probe and diagnostic-host modes, even if those modes allow
+console requests. An assisted desktop action requires the foreground window to
+belong to this game process, both controllers' action controls released, current
+ordinary gameplay and unclaimed hands. Desktop focus is not treated as XR focus.
+Native requests remain off after startup/hot reload: use `mevr traversal requests
+on` explicitly. Double A additionally requires `mevr traversal gestures on` and
+existing `[Traversal] enabled/commit` eligibility. `ladder`, `vault`, `climb` and
+`evade` use the adapter's explicit commands; evade has no newly invented controller
+binding. Scene/load/mode/focus and ownership transitions invalidate pending gesture
+history. Shutdown clears both the adapter and opt-in state.
+
+Validation: strict MSVC syntax checks for Mod, Melee and Le3Traversal on all three
+games; existing shared melee-intent and traversal lifecycle tests. These do not
+prove native request admission, action completion, controller ergonomics or camera
+comfort. The LE3 level/yaw camera presentation remains a separate pending change.
+The main ConsoleRequest router must call `gameplay_actions::TraversalCommand` on
+LE3 (the coordinator owns that router); using the old cached-link command route is
+not the new diagnostic entry point.

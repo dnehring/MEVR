@@ -21,6 +21,8 @@ void Tick(Link const&);
 // Assisted/native diagnostic path. Pass a fresh Link; no retained menu snapshot or queued command.
 // Reports "dispatched" separately from observing an action; never means impact or damage.
 std::string Request(ik::melee::Intent, int hand, Link const&);
+// A native request is awaiting admission or an admitted melee still owns the action slot.
+bool Busy();
 std::string Status();
 void Shutdown();
 } // namespace mevr::game::melee

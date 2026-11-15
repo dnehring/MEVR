@@ -243,3 +243,30 @@ Offline verification: strict syntax checks for changed modules/tests under LE1, 
 running the new intent tests and existing traversal suite; an ignored SDK-only static-assert check confirms the
 named parameter widths/offsets listed above. The traversal suite additionally checks authored-seat
 entry on the second tap and menu/seat interruption between taps. These are policy and compilation evidence only.
+
+
+### Normal runtime wiring checkpoint (2026-11-15)
+
+The native adapter now starts only in the normal module hook path. Its tick runs
+after competing power, squad, radio, holster and support-grip ownership updates;
+its final callback rechecks the current host menu, Omni rail and guided calibration
+state. Requests in engine-probe or diagnostic-host mode are rejected at the Mod
+entry point. Scene identity includes world, controller, pawn, native mode, shared
+squad generation, eligibility and XR focus, so interruption clears gesture history.
+The adapter still performs its separate native movement/combat/action/weapon checks.
+
+Both `mevr melee requests on` and `mevr melee gestures on` are explicit session-only
+opt-ins. The latter binds **light strokes only**, using the shared ME1 swing detector,
+head-relative corrected controller poses, body yaw and the controllers' sample time.
+Repeated pose samples do not create velocity. Trigger, grip, face-button and stick-click
+ownership blocks these strokes until release. There is no velocity-based conversion
+to heavy melee and no conflicting new heavy button chord. `mevr melee light [left/right]`
+and `mevr melee heavy [left/right]` are explicit assisted diagnostics through a fresh
+link; foreground desktop focus and released/unclaimed controls are required.
+A dedicated heavy modifier and intentional contextual/holstered routes remain open.
+
+`mod/GameplayActions.hpp` is the coordinator's ConsoleRequest routing seam. The
+snapshot's `melee` string reports the observed native-adapter status, separate from
+command dispatch. Strict syntax checks cover LE1/LE2/LE3; the shared core regression
+suite covers intent, ownership interruption and action lifecycle. No new game run or
+headset acceptance is claimed by this wiring checkpoint.

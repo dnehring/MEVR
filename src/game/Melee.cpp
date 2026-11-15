@@ -244,6 +244,13 @@ void Tick(Link const& link) {
     (void)link;
 #endif
 }
+bool Busy() {
+#if defined(MEVR_GAME_LE3)
+    return gAwaiting || gObserved != nullptr;
+#else
+    return false;
+#endif
+}
 std::string Status() { return gStatus; }
 void Shutdown() {
     gStarted = false;
