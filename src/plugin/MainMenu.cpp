@@ -288,6 +288,7 @@ void PollRequest(std::uint64_t now) {
         CloseHandle(h);
     }
     std::filesystem::remove(file, ec);
+    text = text.substr(0, text.find_first_of("\r\n"));  // the first line (PowerShell's Set-Content ends it with CR LF)
     std::string const line = ini::Lower(ini::Trim(text));
     std::string const word = line.substr(0, line.find(' '));
     std::string const section = line.find(' ') != std::string::npos ? ini::Trim(line.substr(line.find(' ') + 1)) : std::string();

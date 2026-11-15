@@ -410,9 +410,164 @@ void StepSwitch(Link const& link) {
     OpenScreen(action, origin, *modes, link);
 }
 
+#if defined(MEVR_GAME_LE2)
+// ---- ME2's screens (research/le2-menus.md "The omni-tool's entries on ME2") ----
+// ME2 has no Show<Screen>Gui: its squad, journal, codex and map screens are pages of its pause menu, the browser wheel
+// ("Mission Computer": SFXGameModeBase.ShowMenu -> MassEffectGuiManager.ShowBrowserWheel). The page is opened the way the
+// wheel's own buttons open it: BioSFHandler_BrowserWheel.ShowSelectedPanel(index into its lstPages). So: the pause menu
+// first (on foot or in a vehicle), then, once the game is in its GUI mode (7), the page whose Type is the screen's
+// (MEBrowserWheelSubPages: MBW_SP_Map 0, MBW_SP_CharacterRecord 2 (the squad), MBW_SP_Journal 4; the codex is found by its
+// tag). ME2 has no equipment screen outside its lockers: the entry stands down.
+ue3::FieldRef gGuiManager{"Engine.PlayerController", "m_oCachedScaleFormManager", ue3::kEveryGame};
+ue3::FieldRef gBrowserWheel{"SFXGame.MassEffectGuiManager", "m_oBWHandler", ue3::kEveryGame};
+ue3::FieldRef gPages{"SFXGame.BioSFHandler_BrowserWheel", "lstPages", ue3::kEveryGame};
+ue3::FieldRef gPageTag{gPages, "Tag"};
+ue3::FieldRef gPageType{gPages, "Type"};
+ue3::FunctionRef gShowSelectedPanel{"SFXGame.BioSFHandler_BrowserWheel.ShowSelectedPanel", ue3::kEveryGame};
+ue3::FunctionRef gGetBrowserHandler{"SFXGame.MassEffectGuiManager.GetBrowserHandler", ue3::kEveryGame};
+constexpr int kPageWaitTicks = 4;
+constexpr int kPageMaxTries = 30;  // ticks with the pause menu asked for and not up yet
+
+struct Page {
+    gm::Action action = gm::Action::None;
+    gm::Origin origin = gm::Origin::Menu;
+    bool asked = false;  // the pause menu was asked for
+    int wait = 0;
+    int tries = 0;
+};
+Page gPage;
+bool gLoggedPages = false;
+
+// The page for a screen: by its Type, or (the codex, which the sub-page enum doesn't name) by its tag.
+int FindPage(gm::Action action, ue3::Elements const& pages) {
+    int const type = action == gm::Action::Squad ? 2 : action == gm::Action::Journal ? 4 : action == gm::Action::Map ? 0 : -1;
+    for (int i = 0; i < pages.count; ++i) {
+        void* const page = pages.At(i);
+        if (type >= 0 && gPageType.Read<std::uint8_t>(page).value_or(0xFF) == type) {
+            return i;
+        }
+        if (action == gm::Action::Codex) {
+            if (auto const tag = gPageTag.Read<ue3::Name>(page)) {
+                std::string const text = ue3::runtime::Get().ToString(*tag);
+                if (text.find("Codex") != std::string::npos || text.find("codex") != std::string::npos) {
+                    return i;
+                }
+            }
+        }
+    }
+    return -1;
+}
+
+void StepPage(Link const& link) {
+    if (gPage.action == gm::Action::None) {
+        return;
+    }
+    if (gPage.wait > 0) {
+        --gPage.wait;
+        return;
+    }
+    gm::Action const action = gPage.action;
+    std::string why;
+    std::optional<Modes> const modes = ReadModes(why);
+    if (!modes || !modes->current) {
+        gLast = std::format("{}: not done ({})", gm::Name(action), modes ? "no game mode" : why);
+        log::Warn("omni-tool: {} not done: {}", gm::Name(action), modes ? "the game mode isn't known" : why);
+        gPage = {};
+        return;
+    }
+    std::uint8_t const current = *modes->current;
+    if (current != kModeGui) {
+        if (gPage.asked) {
+            if (++gPage.tries > kPageMaxTries) {
+                gLast = std::format("{}: the pause menu didn't come up", gm::Name(action));
+                log::Warn("omni-tool: {} not opened: ME2's pause menu didn't come up (game mode {})", gm::Name(action), current);
+                gPage = {};
+            }
+            return;
+        }
+        if (current != 0 && current != 1) {
+            gLast = std::format("{}: not here (game mode {})", gm::Name(action), current);
+            log::Info("omni-tool: {} not opened: the game's screens open on foot or in a vehicle (game mode {})", gm::Name(action), current);
+            gPage = {};
+            return;
+        }
+        OpenPauseMenu(link, gPage.origin);  // ME2's Mission Computer: its pages are the screens
+        gPage.asked = true;
+        gPage.wait = kPageWaitTicks;
+        return;
+    }
+    ue3::Object* const pc = player::Controller();
+    ue3::Object* const manager = pc != nullptr ? gGuiManager.Read<ue3::Object*>(pc).value_or(nullptr) : nullptr;
+    ue3::Object* wheel = manager != nullptr ? gBrowserWheel.Read<ue3::Object*>(manager).value_or(nullptr) : nullptr;
+    if (wheel == nullptr && manager != nullptr && gGetBrowserHandler.Get() != nullptr) {
+        // The PC's pause menu leaves m_oBWHandler empty (seen 2026-11-14): the manager's own native finds the handler of
+        // its 'MenuBrowser' panel.
+        ue3::Params parms(ue3::runtime::Get(), gGetBrowserHandler.Get());
+        if (ue3::runtime::Call(manager, gGetBrowserHandler.Get(), parms)) {
+            wheel = parms.Return<ue3::Object*>().value_or(nullptr);
+        }
+    }
+    std::optional<ue3::Elements> const pages = wheel != nullptr && ue3::runtime::Get().IsAlive(wheel) ? gPages.ElementsOf(wheel)
+                                                                                                    : std::nullopt;
+    if (!pages || gShowSelectedPanel.Get() == nullptr) {
+        if (++gPage.tries > kPageMaxTries) {
+            gLast = std::format("{}: no browser wheel", gm::Name(action));
+            log::Warn("omni-tool: {} not opened: ME2's pause menu has no browser wheel handler with pages (GUI manager {}, "
+                      "handler {}, pages {}{})", gm::Name(action), manager != nullptr ? "found" : "none",
+                wheel != nullptr ? ClassName(wheel) : std::string("none"), pages ? std::to_string(pages->count) : std::string("none"),
+                gShowSelectedPanel.Get() == nullptr ? "; BioSFHandler_BrowserWheel.ShowSelectedPanel not found" : "");
+            gPage = {};
+        }
+        return;
+    }
+    if (!gLoggedPages) {
+        gLoggedPages = true;
+        std::string list;
+        for (int i = 0; i < pages->count; ++i) {
+            auto const tag = gPageTag.Read<ue3::Name>(pages->At(i));
+            list += std::format("{}{}: {} (type {})", i == 0 ? "" : ", ", i, tag ? ue3::runtime::Get().ToString(*tag) : std::string("?"),
+                gPageType.Read<std::uint8_t>(pages->At(i)).value_or(0xFF));
+        }
+        log::Info("omni-tool: ME2's pause menu pages: {}", list);
+    }
+    int const index = FindPage(action, *pages);
+    if (index < 0) {
+        gLast = std::format("{}: no page for it", gm::Name(action));
+        log::Warn("omni-tool: {} not opened: ME2's pause menu has no page for it", gm::Name(action));
+        gPage = {};
+        return;
+    }
+    ue3::Reflection& r = ue3::runtime::Get();
+    ue3::Params parms(r, gShowSelectedPanel.Get());
+    parms.Set("nPanel", static_cast<std::int32_t>(index));
+    parms.Set("oManager", manager);
+    bool const called = ue3::runtime::Call(wheel, gShowSelectedPanel.Get(), parms);
+    gLast = std::format("{}: page {} {}", gm::Name(action), index, called ? "shown" : "call failed");
+    log::Info("omni-tool: opened {} (ME2's pause menu page {} through BioSFHandler_BrowserWheel.ShowSelectedPanel{})",
+        gm::Name(action), index, called ? "" : ": the call failed");
+    gPage = {};
+}
+#endif
+
 void Run(gm::Action action, gm::Origin origin) {
     switch (action) {
     case gm::Action::Holster: Holster(); return;
+#if defined(MEVR_GAME_LE2)
+    case gm::Action::Equipment:
+        gLast = "equipment: not on ME2";
+        log::Info("omni-tool: Equipment isn't a screen on Mass Effect 2 (its weapons and armour change at its lockers)");
+        return;
+    case gm::Action::Squad:
+    case gm::Action::Journal:
+    case gm::Action::Codex:
+    case gm::Action::Map:
+        gPage = {action, origin, false, 0, 0};  // StepPage does it, a tick at a time
+        return;
+    case gm::Action::PauseMenu:
+    case gm::Action::CloseScreens:
+        gSwitch = {action, 0, 0, origin};
+        return;
+#else
     case gm::Action::PauseMenu:  // the game opens none over its own screens (ShowMenuGui returns 0 in mode 7): back out first
     case gm::Action::Equipment:
     case gm::Action::Squad:
@@ -422,6 +577,7 @@ void Run(gm::Action action, gm::Origin origin) {
     case gm::Action::CloseScreens:
         gSwitch = {action, 0, 0, origin};  // StepSwitch does it, a tick at a time
         return;
+#endif
     case gm::Action::None: return;
     }
 }
@@ -450,6 +606,9 @@ void Tick(Link const& link) {
 #if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
         gSwitch = {};  // a replacement must not finish the older backout/opening path
 #endif
+#if defined(MEVR_GAME_LE2)
+        gPage = {};
+#endif
         gm::Take(gSchedule, taken, gm::DecodeOrigin(value));
     }
     gm::Step const step = gm::Advance(gSchedule, link.menuOpen, menu_pause::Paused());
@@ -463,6 +622,9 @@ void Tick(Link const& link) {
     }
 #if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
     StepSwitch(link);
+#endif
+#if defined(MEVR_GAME_LE2)
+    StepPage(link);
 #endif
 }
 
@@ -519,6 +681,10 @@ void Shutdown() {
     gToldOldHost = false;
 #if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
     gSwitch = {};
+#endif
+#if defined(MEVR_GAME_LE2)
+    gPage = {};
+    gLoggedPages = false;
 #endif
 }
 

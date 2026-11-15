@@ -125,6 +125,32 @@ Not yet (see "What is left").
 
 ## The checks
 
-(filled in below as they run)
+**ME2 on the fake headset, 2026-11-14 22:28** (stretch `%LOCALAPPDATA%\MEVR\sessions\20261114-222813-lane-d-menu`; `prep.ps1
+-Holder me2-lane-d`, `launch.ps1`, `load.ps1`: Freedom's Progress, Save 4; scripts in a scratch folder, recipe below):
+- The baseline: `[MEVR-BASELINE] 7 setting(s) in MELE2VR.ini set to the MEVR baseline: ..., the menu key \ (MenuKey;
+  upstream Insert)`. The mod: `reflect: 282 of 282 checks agree` (this lane's rows included).
+- `open controls` in `mainmenu.request`: `main menu: opened (the request file)`, `menu: RmlUi 6.3 ready, 1440x900, 4 font
+  faces`, `swapchains: main menu 1440x900 made`, `main menu: placed 1.30 m ahead`, the backdrop from the left eye
+  (`4096x2304, format 27`); `menu pause: the game paused (the main menu is open; WorldInfo.bPlayersOnly on, as ME2's weapon
+  wheel)`. The snapshot's `-mainmenu.png` is ME1's board over a frosted Freedom's Progress; the JSON's `mainMenu` block
+  `open: true`. Cost: 0.5-1.2 ms CPU, 0.01-0.05 ms GPU per frame while open.
+- A row saved: a replay (`make-menu-recording.py "point 1318 792; click; hold 3"`, `replay.ps1 -Inputs`) clicked Controls >
+  Fingers follow yours: `main menu: [Hands] fingers = 0`, and `ASI\LE2MEVR.ini` has `fingers=0` (it had none).
+- Game menu (`point 808 47; click`): `main menu: closed (Game menu)`, `menu pause: the game runs again (...
+  WorldInfo.bPlayersOnly off ...)`, `main menu: opened the game's pause menu (SFXGameModeDefault.ShowMenu (declared on
+  SFXGameModeBase) returned 1; game mode 0)`; the snapshot's flat panel shows ME2's Mission Computer.
+- Resume (`point 1296 47; click`) closed it. `restore.ps1`: `verification: 0 differences`.
+- Found: the first request line kept PowerShell's CR LF (`section "controls\r\n"`: an empty page): the request file now takes
+  its first line only.
+- Not by script: the `\` key itself (a scripted key press reaches the game only with its window in front, which a script must
+  not force; `OnMenuKey` is LE1's logic) and the both-sticks hold (counts only live controllers).
+- Seen in that log, not ours: a first-chance fault in Halcyon ME2's `PcHud::ReadFString` (pchud.cpp:253, under its own SEH)
+  at the session's start.
+
+**How to repeat it:** `tools\le2-halcyon-run\prep.ps1 -Holder <you> -BuildDir <worktree>\build-trilogy`, `launch.ps1`,
+`load.ps1`; `Set-Content $env:LOCALAPPDATA\MEVR\mainmenu.request 'open controls' -NoNewline`; `python
+tools\make-menu-recording.py rec.mevrrec "point 1318 792; click; hold 3"` and `tools\replay.ps1 -Path rec.mevrrec -Inputs`
+(document points: `mevr-menu-preview <out> --le2` draws ME2's pages, 1440x900); `tools\snapshot.ps1`; then `launch.ps1
+-Stop`, `restore.ps1`.
 
 ## What is left

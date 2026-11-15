@@ -2154,6 +2154,12 @@ void CheckFields() {
     CheckField("Engine.WorldInfo", "bPlayersOnly", SDK_BOOL(AWorldInfo, bPlayersOnly));
     CheckField("SFXGame.SFXGameModeBase", "bIsActive", SDK_BOOL(USFXGameModeBase, bIsActive));
     CheckField("SFXGame.SFXGameModeBase", "Priority", SDK_FIELD(USFXGameModeBase, Priority));
+    // ... and the omni-tool's entries: the pages of ME2's pause menu (its browser wheel)
+    CheckField("Engine.PlayerController", "m_oCachedScaleFormManager", SDK_FIELD(APlayerController, m_oCachedScaleFormManager));
+    CheckField("SFXGame.MassEffectGuiManager", "m_oBWHandler", SDK_FIELD(UMassEffectGuiManager, m_oBWHandler));
+    CheckField("SFXGame.BioSFHandler_BrowserWheel", "lstPages", SDK_FIELD(UBioSFHandler_BrowserWheel, lstPages));
+    CheckPath("SFXGame.BioSFHandler_BrowserWheel", {"lstPages", "Tag"}, SDK_AT(offsetof(FBWPageStruct, Tag), 8));
+    CheckPath("SFXGame.BioSFHandler_BrowserWheel", {"lstPages", "Type"}, SDK_AT(offsetof(FBWPageStruct, Type), 1));
     // the reflection fix (game/Reflections, our renderer only)
     CheckField("Engine.SceneCaptureComponent", "FrameRate", SDK_FIELD(USceneCaptureComponent, FrameRate));
     // the equipped weapon and its ammunition (research/le2-engine-access-discovery.md "P1a": lane C's first reads)
@@ -2310,6 +2316,8 @@ void CheckFunctions() {
         "SFXGame.BioPawn.GetWeaponStartTraceLocation",
         "SFXGame.SFXGameModeBase.ShowMenu",               // game/GameMenuRequest (M4): Start's pause menu on ME2
         "SFXGame.SFXGameModeDefault.TryHolster",          // ... and the holster
+        "SFXGame.BioSFHandler_BrowserWheel.ShowSelectedPanel",  // ... and the omni-tool's entries (its pages)
+        "SFXGame.MassEffectGuiManager.GetBrowserHandler",
     };
     for (char const* function : functions) {
         CheckFunction(function);
@@ -2362,6 +2370,9 @@ void CheckParams() {
     PARMS(USkeletalMeshComponent_execGetBoneLocation_Parms, "Engine.SkeletalMeshComponent.GetBoneLocation");
     PARAM(USkeletalMeshComponent_execGetBoneNames_Parms, "Engine.SkeletalMeshComponent.GetBoneNames", BoneNames);
     PARMS(USkeletalMeshComponent_execGetBoneNames_Parms, "Engine.SkeletalMeshComponent.GetBoneNames");
+    // game/GameMenuRequest (M4.3): ME2's pause menu pages
+    PARAM(UBioSFHandler_BrowserWheel_eventShowSelectedPanel_Parms, "SFXGame.BioSFHandler_BrowserWheel.ShowSelectedPanel", nPanel);
+    PARAM(UBioSFHandler_BrowserWheel_eventShowSelectedPanel_Parms, "SFXGame.BioSFHandler_BrowserWheel.ShowSelectedPanel", oManager);
 }
 
 #endif  // LE1 / LE2 tables
