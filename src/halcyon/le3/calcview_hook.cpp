@@ -1722,6 +1722,8 @@ bool RendererTargetsMatch() noexcept
     return true;
 }
 
+bool Installed() noexcept { return g_installed.load(std::memory_order_acquire); }
+
 void Tick() noexcept
 {
     if (g_installed.load(std::memory_order_acquire)) return;

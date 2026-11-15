@@ -57,6 +57,8 @@ void OnSessionCreated(XrSession session);
 // After xrBeginFrame and the live controller sync, before the sample is published: records the frame,
 // or replaces `state` with the replay's (poses; buttons and sticks too with inputs=1), and runs the
 // snapshot capture. `focused`: the session has input focus.
+// Applies queued developer renderer controls on the owning Present thread.
+void OnPresent();
 void OnFrameBegun(XrSession session, XrSpace appSpace, XrTime displayTime, bool focused,
                   vr::controllers::State& state);
 // Our own quads (HalcyonOverlays), right before a swapchain image is released: Halcyon's go through

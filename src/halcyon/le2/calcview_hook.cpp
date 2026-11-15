@@ -1847,6 +1847,8 @@ bool GetAerStamp(uint64_t* seq, int* eye) noexcept {
     return e >= 0 && e <= 1;
 }
 
+bool Installed() noexcept { return g_installed.load(std::memory_order_acquire); }
+
 void Tick() noexcept
 {
     if (g_installed.load(std::memory_order_acquire)) return;

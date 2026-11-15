@@ -11,6 +11,7 @@
 #include "plugin/TestLoop.hpp"
 #include "core/vr/CameraDiagnostic.hpp"
 #include "plugin/Renderer.hpp"
+#include "engine/GameAdapter.hpp"
 #include "plugin/SightLayers.hpp"
 #if defined(MEVR_WITH_HALCYON_LE3)
 #include "plugin/Colour.hpp"
@@ -255,6 +256,40 @@ struct Replay {
 };
 
 std::mutex gControlMutex;
+std::atomic<req::FirstPersonRequest> gFirstPersonPending{req::FirstPersonRequest::Unspecified};
+std::string gFirstPersonRequested = "none";
+std::string gFirstPersonResult = "none";
+std::uint64_t gFirstPersonAppliedMs = 0;
+std::uint64_t gFirstPersonCaptureDelayMs = 100;
+std::string FirstPersonJson() {
+    std::lock_guard lock(gControlMutex);
+    auto const state = renderer::FirstPersonControlState();
+    int const raw = renderer::GameMode();
+    using M = engine::adapter::Mode;
+    char const* mode = "unknown";
+    switch (engine::adapter::GameMode(raw)) {
+    case M::OnFoot: mode = "onFoot"; break;
+    case M::Vehicle: mode = "vehicle"; break;
+    case M::Atlas: mode = "atlas"; break;
+    case M::PowerWheel: mode = "powerWheel"; break;
+    case M::WeaponWheel: mode = "weaponWheel"; break;
+    case M::Command: mode = "command"; break;
+    case M::Injured: mode = "injured"; break;
+    case M::Conversation: mode = "conversation"; break;
+    case M::Cinematic: mode = "cinematic"; break;
+    case M::Gui: mode = "gui"; break;
+    case M::Movie: mode = "movie"; break;
+    case M::Galaxy: mode = "galaxy"; break;
+    case M::Orbital: mode = "orbital"; break;
+    case M::Minigame: mode = "minigame"; break;
+    case M::Unknown: break;
+    }
+    return std::format("{{\"requested\":{},\"result\":{},\"actualEnabled\":{},\"controlSupported\":{},"
+        "\"viewHookInstalled\":{},\"gameMode\":{},\"semanticMode\":{},\"rendererReportsOwned\":{},\"appliedMs\":{}}}",
+        req::JsonString(gFirstPersonRequested), req::JsonString(gFirstPersonResult), state.enabled ? "true" : "false",
+        state.supported ? "true" : "false", state.hookKnown ? (state.hookInstalled ? "true" : "false") : "null",
+        raw, req::JsonString(mode), renderer::FirstPersonOwned() ? "true" : "false", gFirstPersonAppliedMs);
+}
 int gSnapshotsPending = 0;  // snapshots still to take
 double gSnapshotInterval = 0.0;
 std::uint64_t gSnapshotDueMs = 0;
@@ -901,7 +936,8 @@ std::string MetaJson(std::vector<LayerShot> const& layers, XrTime displayTime, s
         J(view.valid), J(view.headLook), J(view.headAim), view.lookYaw, view.lookPitch, J(view.offsetForward),
         J(view.offsetRight), J(view.offsetUp), J(view.unitsPerMeter), m.recenter, m.sights, m.calibration, m.colour, m.stereo,
         m.floorLock, m.cineScreen, m.mainMenu, m.gamePointer, m.galaxyHologram, m.voice, m.spectator, m.figure, m.omniPad,
-        m.omniRail, m.swapchains, mod, cameraDiagnostic, m.questPacing, LayersJson(layers));
+        m.omniRail, m.swapchains, mod, cameraDiagnostic, m.questPacing, LayersJson(layers)) +
+        ",\n  \"firstPerson\": " + FirstPersonJson();
 }
 
 void LocateQuads(std::vector<LayerShot>& layers, XrSpace reference, XrTime displayTime);
@@ -1124,7 +1160,8 @@ void TickCapture() {
         std::string trigger;
         {
             std::lock_guard lock(gControlMutex);
-            if (gSnapshotsPending <= 0 || now < gSnapshotDueMs) {
+            if (gSnapshotsPending <= 0 || now < gSnapshotDueMs ||
+                gFirstPersonPending.load() != req::FirstPersonRequest::Unspecified) {
                 if (gSnapshotsPending <= 0 && !gCapture.staged.empty()) {
                     gCapture.staged.clear();  // nothing more to take: give the staging memory back
                     gCapture.context.Reset();
@@ -1534,6 +1571,15 @@ void PollRequests() {
     std::string text;
     if (TakeRequest(BaseDir() / L"snapshot.request", text)) {
         req::Request const r = req::Parse(text);
+        auto const firstPerson = req::ParseFirstPerson(r);
+        if (firstPerson != req::FirstPersonRequest::Unspecified) {
+            std::lock_guard lock(gControlMutex);
+            gFirstPersonRequested = r.Get("firstperson");
+            gFirstPersonCaptureDelayMs = static_cast<std::uint64_t>(std::clamp(r.Number("delay", 0.0), 0.1, 3600.0) * 1000.0);
+            gFirstPersonResult = firstPerson == req::FirstPersonRequest::Invalid ? "invalid: use on/off/status" : "queued";
+            gFirstPersonPending.store(firstPerson == req::FirstPersonRequest::Invalid ?
+                req::FirstPersonRequest::Unspecified : firstPerson);
+        }
         SnapshotRequest s;
         s.count = static_cast<int>(std::clamp(r.Number("count", 1.0), 1.0, 600.0));
         s.intervalSeconds = std::clamp(r.Number("interval", 1.0), 0.0, 3600.0);
@@ -1594,10 +1640,10 @@ std::string StatusJson(Status const& s) {
         "{{\n  \"recording\": {},\n  \"recordingSeconds\": {},\n  \"replaying\": {},\n  \"replayPath\": {},\n"
         "  \"replaySeconds\": {},\n  \"replayDuration\": {},\n  \"replayLoop\": {},\n  \"replayInputs\": {},\n"
         "  \"replayFovs\": {},\n"
-        "  \"lastRecording\": {},\n  \"lastSnapshot\": {},\n  \"snapshotsPending\": {},\n  \"framesRunning\": {}\n}}\n",
+        "  \"lastRecording\": {},\n  \"lastSnapshot\": {},\n  \"snapshotsPending\": {},\n  \"framesRunning\": {},\n  \"firstPerson\": {}\n}}\n",
         J(s.recording), J(s.recordingSeconds), J(s.replaying), req::JsonString(s.replayPath), J(s.replaySeconds),
         J(s.replayDuration), J(s.replayLoop), J(s.replayInputs), J(s.replayFovs), req::JsonString(s.lastRecording),
-        req::JsonString(s.lastSnapshot), s.snapshotsPending, J(s.framesRunning));
+        req::JsonString(s.lastSnapshot), s.snapshotsPending, J(s.framesRunning), FirstPersonJson());
 }
 
 Hotkey gSnapshotKey{VK_END};
@@ -1669,7 +1715,24 @@ void OnSessionCreated(XrSession session) {
     (void)session;
 }
 
+void OnPresent() {
+    {
+        std::lock_guard lock(gControlMutex);
+        auto const request = gFirstPersonPending.exchange(req::FirstPersonRequest::Unspecified);
+        if (request == req::FirstPersonRequest::Unspecified) return;
+        bool accepted = true;
+        if (request == req::FirstPersonRequest::On || request == req::FirstPersonRequest::Off)
+            accepted = renderer::SetFirstPersonEnabled(request == req::FirstPersonRequest::On);
+        gFirstPersonAppliedMs = GetTickCount64();
+        gFirstPersonResult = accepted ? (request == req::FirstPersonRequest::Status ? "status" : "applied") : "unsupported";
+        // Delay starts after the Present-thread application, not after the game-thread request read.
+        gSnapshotDueMs = std::max(gSnapshotDueMs, gFirstPersonAppliedMs + gFirstPersonCaptureDelayMs);
+    }
+    log::Info("test loop: renderer first person {}", FirstPersonJson());
+}
+
 void OnFrameBegun(XrSession session, XrSpace appSpace, XrTime displayTime, bool focused, vr::controllers::State& state) {
+    OnPresent(); // same owning frame thread, before any delayed snapshot capture
     gPresentThread.store(GetCurrentThreadId(), std::memory_order_relaxed);
     gSession = session;
     gAppSpace = appSpace;

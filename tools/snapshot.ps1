@@ -13,6 +13,8 @@
 #   tools/snapshot.ps1                         one snapshot now
 #   tools/snapshot.ps1 -Count 5 -Interval 0.5  five, half a second apart
 #   tools/snapshot.ps1 -Delay 3 -Tag aim       one in three seconds, "-aim" in the file names
+#   tools/snapshot.ps1 -FirstPerson on -Delay 2 -Tag firstperson  LE2/LE3 renderer control, then capture
+#   tools/snapshot.ps1 -FirstPerson status                      report current renderer/hook state
 #   tools/snapshot.ps1 -Spectator              the spectator's still too: turns the camera on through the console
 #                                              (mevr spectator on) if [Spectator] enabled = 0, and warns if it's missing
 param(
@@ -21,7 +23,9 @@ param(
     [double]$Delay = 0.0,
     [string]$Tag = '',
     [int]$TimeoutSeconds = 0,
-    [switch]$Spectator
+    [switch]$Spectator,
+    [ValidateSet('on', 'off', 'status')]
+    [string]$FirstPerson
 )
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\common.ps1"
@@ -37,6 +41,7 @@ $dir = Join-Path $MevrDataDir 'snapshots'
 $since = Get-Date
 $text = "count=$Count interval=$Interval delay=$Delay"
 if ($Tag) { $text += " tag=$Tag" }
+if ($FirstPerson) { $text += " firstperson=$FirstPerson" }
 $request = Write-MevrRequest 'snapshot.request' $text
 Write-Host "Requested: $text ($request)"
 
@@ -60,15 +65,30 @@ if ($found.Count -lt $Count) {
     }
     Write-Warning "Got $($found.Count) of $Count snapshots within $TimeoutSeconds s"
 }
+$controlFailures = 0
 foreach ($json in $found) {
     $meta = Get-Content -Raw -LiteralPath $json.FullName | ConvertFrom-Json
     Write-Host ''
     Write-Host $json.FullName
     foreach ($file in $meta.files) { Write-Host "  $(Join-Path $dir $file)" }
+    if ($FirstPerson) {
+        if (-not $meta.firstPerson) {
+            Write-Warning 'The snapshot host did not report first-person control (older host).'
+            $controlFailures++
+        } else {
+            Write-Host ($meta.firstPerson | ConvertTo-Json -Compress)
+            if ($FirstPerson -ne 'status' -and
+                (-not $meta.firstPerson.controlSupported -or $meta.firstPerson.result -ne 'applied' -or
+                 $meta.firstPerson.actualEnabled -ne ($FirstPerson -eq 'on'))) {
+                Write-Warning 'The requested first-person renderer flag was not applied.'
+                $controlFailures++
+            }
+        }
+    }
     foreach ($problem in $meta.errors) { Write-Warning "  $problem" }
     if ($Spectator -and -not ($meta.files | Where-Object { $_ -like '*-spectator.png' })) {
         $why = if ($meta.spectator) { $meta.spectator.state } else { 'the host has no spectator (older than HostServices v24?)' }
         Write-Warning "  No spectator picture: $why"
     }
 }
-if ($found.Count -lt $Count) { exit 1 }
+if ($found.Count -lt $Count -or $controlFailures -gt 0) { exit 1 }

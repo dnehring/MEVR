@@ -88,6 +88,14 @@ int MoveStickHeadLookYawUU() noexcept {
     return ME2VR::Menu::GetMoveFollowsHead() ? ME2VR::CalcViewHook::HeadLookYawUU() : 0;
 }
 
+FirstPersonControl FirstPersonControlState() noexcept {
+    return {true, ME2VR::EngineProbe::GetFirstPerson(), true, ME2VR::CalcViewHook::Installed()};
+}
+bool SetFirstPersonEnabled(bool enabled) noexcept {
+    ME2VR::EngineProbe::SetFirstPerson(enabled);
+    return ME2VR::EngineProbe::GetFirstPerson() == enabled;
+}
+
 bool FirstPersonOwned() noexcept {
     // ME3's first person is on ([FirstPerson] Enabled, K): engine_probe's ApplyFirstPerson then owns the on-foot camera
     // modes. Which mode it owns this frame is the mod's half of the floor lock (PawnSample::cameraOwned: the explore and

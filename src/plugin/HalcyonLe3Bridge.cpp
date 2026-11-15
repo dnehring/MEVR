@@ -225,6 +225,7 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
     return ERROR_SUCCESS;
 }
 void OnPresent() noexcept {
+    mevr::host::testloop::OnPresent();
 #if defined(MEVR_WITH_MAIN_MENU)
     mevr::host::voice::OnPresent();
 #endif

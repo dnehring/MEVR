@@ -82,6 +82,15 @@ int GameMode() noexcept;
 // The renderer's first person is on and owns the player's view this frame (LE1: fpEnabled and HeadAim::FirstPersonOwnsAny).
 // ME2: false until its first person is read through this (M3).
 bool FirstPersonOwned() noexcept;
+struct FirstPersonControl {
+    bool supported = false;
+    bool enabled = false; // the renderer's actual enable flag; not visual acceptance
+    bool hookKnown = false;
+    bool hookInstalled = false;
+};
+FirstPersonControl FirstPersonControlState() noexcept;
+// Owning Present thread only. False: no audited setter, leave the current configuration untouched.
+bool SetFirstPersonEnabled(bool enabled) noexcept;
 
 // The render-side head look's arm counter (LE1 RenderHook::GetHeadArmSeq: increments with every armed eye pair); 0 where
 // the renderer has none (ME2).

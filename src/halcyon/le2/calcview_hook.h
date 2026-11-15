@@ -8,6 +8,8 @@ namespace ME2VR::CalcViewHook
 // Proj/View/ViewOrigin to confirm identity + validate the LE1-identical offsets live.
 // Call once per Present; installs once, logs a few frames, then stays quiet. Pure observe+forward.
 void Tick() noexcept;
+// [MEVR] Fresh installation state for development snapshot diagnostics.
+bool Installed() noexcept;
 
 // Game's per-eye rendered half-FOV (radians), published from CalcSceneView's projection matrix.
 // The OpenXR bridge declares THESE (not the headset FOV) so the stereo image isn't stretched/zoomed.

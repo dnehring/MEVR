@@ -389,6 +389,7 @@ void OnSwapChainPresent(void* swapChain, void* capturedSwapChain) noexcept {
             if (res != nullptr) res->Release();
             bb->Release();
         }
+        mevr::host::testloop::OnPresent();
         mevr::host::voice::OnPresent();
         mevr::host::menus_le2::OnPresent();  // our menu closes itself when nobody can see it (M4)
     }
