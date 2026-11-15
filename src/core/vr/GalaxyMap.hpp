@@ -152,11 +152,12 @@ struct Screen {
     float width = 0.0f;
     float height = 0.0f;
 };
-// ME2's native galaxy (9) and orbital (10) screen share one table through that transition.
+// Native galaxy and orbital screens share one table through that transition. The game adapter classifies the mode;
+// this placement machine never interprets a game's raw mode numbers (LE3's 9/10 are GUI/movie, not a map).
 // Missing tracking/image suppresses submission; leaving the map, recenter or disable resets placement.
 class NativeTablePanel {
 public:
-    std::optional<Screen> Update(int mode, bool enabled, bool ready, XrPosef const& head, float aspect,
+    std::optional<Screen> Update(bool mapActive, bool enabled, bool ready, XrPosef const& head, float aspect,
         galaxy_holo::TableSettings const& settings);
     void Reset() { placed_ = false; }
 private:

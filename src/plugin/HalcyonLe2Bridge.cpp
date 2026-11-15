@@ -17,6 +17,7 @@
 #include "core/vr/Controllers.hpp"
 #include "core/vr/HostView.hpp"
 #include "game/GamepadMapping.hpp"
+#include "engine/GameAdapter.hpp"
 #include "plugin/CinemaBackdrop.hpp"
 #include "plugin/CineScreen.hpp"
 #include "plugin/Colour.hpp"
@@ -759,7 +760,7 @@ bool PlaceGalaxyPanel(OverlayFrame const& frame, bool imageReady, float aspect, 
     }
     XrPosef const head{{frame.headOrientation[0], frame.headOrientation[1], frame.headOrientation[2], frame.headOrientation[3]},
         {frame.headPosition[0], frame.headPosition[1], frame.headPosition[2]}};
-    gGalaxyPanel = gGalaxyTable.Update(frame.gameMode, gGalaxyTableEnabled && frame.appSpace != nullptr,
+    gGalaxyPanel = gGalaxyTable.Update(mevr::engine::adapter::IsMapMode(frame.gameMode), gGalaxyTableEnabled && frame.appSpace != nullptr,
         imageReady && frame.headValid, head, aspect, gGalaxySettings);
     if (!gGalaxyPanel) return false;
     auto const& p = gGalaxyPanel->pose;

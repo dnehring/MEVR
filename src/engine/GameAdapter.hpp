@@ -32,14 +32,49 @@ namespace mevr::engine::adapter {
 // cinematics, full-screen GUI, movies, the galaxy map and similar (the cameras cut, or there's no
 // world to look around in). On-foot play, vehicles and the power/weapon/command wheels stay
 // head-tracked. SFXGameModeManager.EGameModes differs per game.
-inline bool IsFlatScreenMode(unsigned char mode) {
+enum class Mode { Unknown, OnFoot, Vehicle, Atlas, PowerWheel, WeaponWheel, Command, Injured,
+    Conversation, Cinematic, Gui, Movie, Galaxy, Orbital, Minigame };
+
+// Translate only known native contexts. Invalid/loading values remain Unknown rather than wrapping to a byte.
+// Values are the original games' SFXGameModeManager.EGameModes (LE3 adds Atlas and InjuredShepard).
+inline constexpr Mode GameMode(int mode) {
+    if (mode == 0) return Mode::OnFoot;
 #if defined(MEVR_GAME_LE1)
-    return mode >= 5 && mode <= 10;  // Conversation, Cinematic, GUI, Movie, Galaxy, Minigame
+    switch (mode) {
+    case 1: return Mode::Vehicle; case 2: return Mode::PowerWheel; case 3: return Mode::WeaponWheel;
+    case 4: return Mode::Command; case 5: return Mode::Conversation; case 6: return Mode::Cinematic;
+    case 7: return Mode::Gui; case 8: return Mode::Movie; case 9: return Mode::Galaxy; case 10: return Mode::Minigame;
+    default: return Mode::Unknown;
+    }
 #elif defined(MEVR_GAME_LE2)
-    return mode >= 5 && mode <= 10;  // Conversation, Cinematic, GUI, Movie, Galaxy, Orbital
+    switch (mode) {
+    case 1: return Mode::PowerWheel; case 2: return Mode::WeaponWheel; case 3: return Mode::Command;
+    case 4: return Mode::Vehicle; case 5: return Mode::Conversation; case 6: return Mode::Cinematic;
+    case 7: return Mode::Gui; case 8: return Mode::Movie; case 9: return Mode::Galaxy; case 10: return Mode::Orbital;
+    default: return Mode::Unknown;
+    }
 #else
-    return mode >= 7 && mode <= 12;  // Conversation, Cinematic, GUI, Movie, Galaxy, Orbital
+    switch (mode) {
+    case 1: return Mode::Vehicle; case 2: return Mode::Atlas; case 3: return Mode::PowerWheel;
+    case 4: return Mode::WeaponWheel; case 5: return Mode::Command; case 6: return Mode::Injured;
+    case 7: return Mode::Conversation; case 8: return Mode::Cinematic; case 9: return Mode::Gui;
+    case 10: return Mode::Movie; case 11: return Mode::Galaxy; case 12: return Mode::Orbital;
+    default: return Mode::Unknown;
+    }
 #endif
+}
+inline constexpr bool IsFlatScreenMode(int mode) {
+    auto const context = GameMode(mode);
+    return context == Mode::Conversation || context == Mode::Cinematic || context == Mode::Gui ||
+        context == Mode::Movie || context == Mode::Galaxy || context == Mode::Orbital || context == Mode::Minigame;
+}
+inline constexpr bool IsConversationMode(int mode) { return GameMode(mode) == Mode::Conversation; }
+inline constexpr bool IsGalaxyMode(int mode) { return GameMode(mode) == Mode::Galaxy; }
+inline constexpr bool IsOrbitalMode(int mode) { return GameMode(mode) == Mode::Orbital; }
+inline constexpr bool IsMapMode(int mode) { return IsGalaxyMode(mode) || IsOrbitalMode(mode); }
+inline constexpr bool IsWristMenuMode(int mode) {
+    auto const context = GameMode(mode);
+    return context == Mode::OnFoot || context == Mode::Gui || context == Mode::Minigame;
 }
 
 // BioPlayerController's game-mode manager property (EGameModes: 0 = on-foot gameplay in all three

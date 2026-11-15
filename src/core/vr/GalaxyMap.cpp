@@ -10,9 +10,9 @@
 
 namespace mevr::vr::galaxy_map {
 
-std::optional<Screen> NativeTablePanel::Update(int mode, bool enabled, bool ready, XrPosef const& head, float aspect,
+std::optional<Screen> NativeTablePanel::Update(bool mapActive, bool enabled, bool ready, XrPosef const& head, float aspect,
     galaxy_holo::TableSettings const& settings) {
-    if (!enabled || (mode != 9 && mode != 10)) {
+    if (!enabled || !mapActive) {
         Reset();
         return std::nullopt;
     }
