@@ -93,7 +93,9 @@ ue3::FieldRef gSlotsUsed{"SFXGame.BioSFHandler_Conversation", "m_nSlotsUsed", kD
 ue3::FunctionRef gSelectEntry{"SFXGame.BioSFHandler_Conversation.SelectConversationEntry", kDialogueReach};  // (byte nWheelLocation) -> bool
 
 ue3::Object* LiveConversation() {
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE3)
+    return nullptr; // no verified LE3 native reply adapter; never fall through to LE1 world-camera state
+#elif defined(MEVR_GAME_LE2)
     static ue3::FieldRef current{"SFXGame.BioWorldInfo", "m_oCurrentConversation", ue3::kEveryGame};
     auto* const controller = player::Controller();
     if (controller == nullptr || !engine::adapter::IsConversationMode(player::GameMode(controller).value_or(255))) return nullptr;
@@ -106,7 +108,9 @@ ue3::Object* LiveConversation() {
 }
 
 ue3::Object* LiveWheelHandler() {
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE3)
+    return nullptr;
+#elif defined(MEVR_GAME_LE2)
     static ue3::FieldRef managerField{"Engine.PlayerController", "m_oCachedScaleFormManager", ue3::kEveryGame};
     static ue3::FunctionRef getHandler{"SFXGame.MassEffectGuiManager.GetConversationHandler", ue3::kEveryGame};
     auto* const controller = player::Controller();
@@ -1052,6 +1056,12 @@ bool OwnsListen(std::uint64_t listenStartMs) {
 }
 
 void Tick(double deltaSeconds, Link const& link) {
+#if defined(MEVR_GAME_LE3)
+    // Voice radio services are supported independently. Never let their availability activate
+    // the LE1 ISACT/muting/skip paths or world-conversation reader through an old Thespian ini.
+    (void)deltaSeconds; (void)link;
+    return;
+#endif
     gLink = link;
     if (gPending.active) {
         TickPending();
@@ -1072,6 +1082,10 @@ void Tick(double deltaSeconds, Link const& link) {
 }
 
 std::string Command(std::string const& rest) {
+#if defined(MEVR_GAME_LE3)
+    (void)rest;
+    return "thespian: unavailable on ME3 until native reply/ownership adapter is verified; native dialogue playback unchanged";
+#endif
     std::istringstream words(rest);
     std::string verb;
     words >> verb;
@@ -1173,6 +1187,9 @@ std::string Command(std::string const& rest) {
 }
 
 std::string StatusJson() {
+#if defined(MEVR_GAME_LE3)
+    return "{\"on\":false,\"available\":false,\"reason\":\"ME3 native reply adapter pending\"}";
+#endif
     return std::format("{{\"on\": {}, \"wheels\": {}, \"commits\": {}, \"skips\": {}, \"refused\": {}, \"pending\": {}, \"watch\": {}, \"turn\": {}, "
                        "\"phase\": {}, \"spokenTurns\": {}, \"spokenCommits\": {}, \"dropped\": {}, \"notSure\": {}, \"notForSpeaking\": {}}}",
         gMode.on ? "true" : "false", gWheels, gCommits, gSkips, gRefused, gPending.active ? "true" : "false", gWatch ? "true" : "false",
@@ -1180,6 +1197,9 @@ std::string StatusJson() {
 }
 
 void Shutdown() {
+#if defined(MEVR_GAME_LE3)
+    return; // this adapter never owned audio, native wheel state or host listening on LE3
+#endif
     EndTurn(gLink, "the mod is unloading");
     SendPanel(gLink, false);
     ClearMute();
