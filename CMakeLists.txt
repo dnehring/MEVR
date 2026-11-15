@@ -1099,6 +1099,7 @@ function(mevr_add_plugin game)
             set(with_main_menu ON)
             list(APPEND host_sources ${MEVR_SEQUEL_MENU_SOURCES}
                 src/plugin/HudPanel.cpp src/plugin/HudPanel.hpp src/plugin/QuadSwapchain.cpp src/plugin/QuadSwapchain.hpp
+                src/plugin/Thespian.cpp src/plugin/Thespian.hpp src/core/vr/Thespian.cpp src/core/vr/Thespian.hpp
                 # Shared microphone/device/recognizer and optional local model; native dialogue dispatch is a separate adapter.
                 src/plugin/Voice.cpp src/plugin/Voice.hpp src/plugin/VoiceModel.cpp src/plugin/VoiceModel.hpp)
         endif ()

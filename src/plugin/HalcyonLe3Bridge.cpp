@@ -35,6 +35,7 @@
 #include "plugin/XrHost.hpp"
 #if defined(MEVR_WITH_MAIN_MENU)
 #include "plugin/Voice.hpp"
+#include "plugin/Thespian.hpp"
 #endif
 #include <openxr/openxr.h>
 #include <atomic>
@@ -77,6 +78,9 @@ void WrapSessionFunctions(void** acquire, void** release, void** endFrame, void*
 void OnSessionCreated(void* instance, void* session) noexcept {
     InvalidateTraversalPresentation();
     mevr::host::sequel_squad_layers::ForgetSession();
+#if defined(MEVR_WITH_MAIN_MENU)
+    mevr::host::thespian::ForgetSession();
+#endif
     mevr::host::hud_piece_layers::ForgetSession();
     mevr::vr::interact::Reset();
     auto const xrInstance = static_cast<XrInstance>(instance);
@@ -106,6 +110,9 @@ void OnSessionCreated(void* instance, void* session) noexcept {
 void OnSessionStopped() noexcept {
     InvalidateTraversalPresentation();
     mevr::host::sequel_squad_layers::ForgetSession();
+#if defined(MEVR_WITH_MAIN_MENU)
+    mevr::host::thespian::ForgetSession();
+#endif
     mevr::host::hud_piece_layers::ForgetSession();
     mevr::vr::interact::Reset();
     gScreen = {};
@@ -140,6 +147,9 @@ void OnFrameBegun(void* session, void* space, std::int64_t time) noexcept {
 }
 void OnRecentered() noexcept {
     mevr::host::sequel_squad_layers::Recentered();
+#if defined(MEVR_WITH_MAIN_MENU)
+    mevr::host::thespian::Recentered();
+#endif
     mevr::vr::interact::Reset();
     InvalidateTraversalPresentation();
     gScreen = {};
@@ -311,6 +321,19 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** out, unsigned cap
     gameplay.worldFrame = frame.worldFrame && onFoot;
     count = mevr::host::sequel_squad_layers::Place(gameplay, device, out, count, capacity);
     count = mevr::host::sequel_squad_layers::Panel(gameplay, device, out, count, capacity);
+#if defined(MEVR_WITH_MAIN_MENU)
+    // The existing spoken-reply panel is a cinema overlay. Native adapter owns the publication;
+    // a menu/calibration, missing tracking, other mode or exhausted budget always hides it.
+    mevr::host::thespian::Frame spoken;
+    spoken.session = static_cast<XrSession>(frame.session);
+    spoken.appSpace = static_cast<XrSpace>(frame.appSpace);
+    spoken.context = frame.context; spoken.device = device;
+    spoken.head = {{frame.headOrientation[0], frame.headOrientation[1], frame.headOrientation[2], frame.headOrientation[3]},
+        {frame.headPosition[0], frame.headPosition[1], frame.headPosition[2]}};
+    spoken.othersOwnInput = !mevr::engine::adapter::IsConversationMode(frame.gameMode) ||
+        !frame.headValid || count >= capacity || gameplay.menuOpen;
+    if (auto const* layer = mevr::host::thespian::Layer(spoken)) out[count++] = layer;
+#endif
     count = mevr::host::menus_le2::Layers(frame, device, out, count, capacity);
     gScreen = {};
     if (device) device->Release();
