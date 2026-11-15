@@ -1265,6 +1265,13 @@ set_target_properties(MEVR-Loader PROPERTIES OUTPUT_NAME bink2w64)
 option(MEVR_BUILD_TESTS "Build the offline tests" ON)
 if (MEVR_BUILD_TESTS)
     enable_testing()
+    add_executable(mevr-le3-logger-tests tests/Le3LoggerTests.cpp src/halcyon/le3/logger.cpp)
+    target_include_directories(mevr-le3-logger-tests PRIVATE src)
+    target_compile_features(mevr-le3-logger-tests PRIVATE cxx_std_17)
+    target_compile_definitions(mevr-le3-logger-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_compile_options(mevr-le3-logger-tests PRIVATE /W4 /WX /utf-8 /EHsc)
+    target_link_libraries(mevr-le3-logger-tests PRIVATE shell32)
+    add_test(NAME mevr-le3-logger COMMAND mevr-le3-logger-tests ${CMAKE_CURRENT_BINARY_DIR}/logger-tests)
     add_test(NAME mevr-protected-session COMMAND powershell -NoProfile -ExecutionPolicy Bypass
         -File ${CMAKE_CURRENT_SOURCE_DIR}/tools/le2-halcyon-run/test-session.ps1)
     add_test(NAME mevr-protected-load COMMAND powershell -NoProfile -ExecutionPolicy Bypass

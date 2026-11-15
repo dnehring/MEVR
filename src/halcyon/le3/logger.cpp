@@ -4,6 +4,7 @@
 #include <ShlObj.h>
 
 #include <cstdio>
+#include <share.h>
 #include <atomic>
 #include <mutex>
 #include <string>
@@ -110,11 +111,11 @@ FILE* OpenOnce() noexcept
         FILE* file = nullptr;
         const std::wstring dir = BaseDir();
         if (EnsureDirTree(dir))
-            _wfopen_s(&file, ME2VR::Log::LogPath().c_str(), L"ab");
+            file = _wfsopen(ME2VR::Log::LogPath().c_str(), L"ab", _SH_DENYWR);
         if (file == nullptr)
         {
             const std::wstring fb = FallbackPath();
-            if (!fb.empty()) _wfopen_s(&file, fb.c_str(), L"ab");
+            if (!fb.empty()) file = _wfsopen(fb.c_str(), L"ab", _SH_DENYWR);
         }
         if (file != nullptr)
         {
