@@ -90,8 +90,10 @@ Waits for nothing. Runs beside M1 (files: `src/plugin`, `src/halcyon/le2`).
    ME2: the squad menu (v11), comfort's test (v17), the interaction label (v21), the power wheel (v28), voice (v31), the
    modules that haven't come over (listed there, "What is left of M2").
 
-**Check:** the LE2 mod's start says none of `older than services v..`, `no view to aim with`, `host state sizes differ`;
-a snapshot in ME2 shows both eyes and the HUD panel.
+**Implementation landed.** The wrist display and native pointer routing landed in `827cd3af` (M4.3). The scripted
+Save 4 run verified both eyes, the wrist panel and pointer input. Keep the floor-lock correction on the physical-headset
+checklist. The five startup notices above track work in M6. For the services that have landed, check startup for missing
+view data, ABI size mismatches and missing callbacks.
 
 ### M3. VRIK on ME2, fast-tracked (L)
 

@@ -1043,8 +1043,10 @@ GameThreadCalls (step 9). What remains, with the seams:
    the pad merge's `kFlagModTurns`/`kFlagHandWalk`), the interaction label (v21, HalcyonOverlays' label quad), the power
    wheel (v28) and voice (v31). The holsters, throwables, vent and squad orders say `LE1 only` now (their game side is lane
    C's), no longer `older than`.
-3. **ME2's UI during menus and conversations** stays on Halcyon's flat panel (the HUD panel is armed only for head-tracked
-   world frames), and ME2's wheels, labels and world screens aren't cut out of the panel (LE1's HalcyonOverlays does them).
+3. **ME2's wrist display** landed in `827cd3af` (M4.3). The shared HUD panel now supplies the supported game screens
+   on the wrist, with ray clicks, fingertip presses and scroll routed through the game's native GUI. The Save 4 replay
+   verified these inputs and the return to gameplay. The conversation presentation belongs to M5. Wheel and label
+   layers remain M6 work. [Wrist display and replay evidence](le2-menus.md#game-screens-and-pointer-on-the-wrist)
 
 ## Native verification after explicit handoff
 
