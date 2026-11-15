@@ -6,7 +6,9 @@
 #include "core/Log.hpp"
 #include "engine/GameAdapter.hpp"
 #include "plugin/CrashBreadcrumbs.hpp"
-#include "plugin/PerfProbe.hpp"
+#if defined(MEVR_WITH_HALCYON)
+#include "plugin/PerfProbe.hpp"  // the frame breakdown's queued-call timing (LE1's host only)
+#endif
 #include "ue3/Types.hpp"
 
 #include <Windows.h>
@@ -115,6 +117,16 @@ bool Queue(void* object, void* function, void const* parms) {
     return gQueue.Push(object, function, cls, parms, size);
 }
 
+bool Queue(void* object, void* function, void const* parms, std::uint32_t size) {
+    Engine const& e = Get();
+    std::uint16_t parmsSize = 0;
+    void const* cls = nullptr;
+    if (!e.ok || object == nullptr || function == nullptr || !Describe(e, object, function, parmsSize, cls)) {
+        return false;
+    }
+    return gQueue.Push(object, function, cls, parms, size);
+}
+
 void Drain() {
     if (gQueue.Pushed() == 0) {
         return;
@@ -132,14 +144,20 @@ void Drain() {
             log::Info("game thread calls: a ProcessEvent from another thread ({}) was queued and runs at the next engine tick "
                       "(script must run on the game thread only; research/36)", name.View());
         }
+#if defined(MEVR_WITH_HALCYON)
         auto const timing = perf::QueueCallBegin(c.object, c.function);
+#endif
         if (!StillAlive(e, c)) {
             ++gSkipped;
+#if defined(MEVR_WITH_HALCYON)
             perf::QueueCallEnd(timing, 0);
+#endif
             continue;
         }
         bool const ran = Run(e, c);
+#if defined(MEVR_WITH_HALCYON)
         perf::QueueCallEnd(timing, ran ? 1 : 2);
+#endif
         (ran ? gRun : gFailed) += 1;
     }
     ULONGLONG const now = GetTickCount64();

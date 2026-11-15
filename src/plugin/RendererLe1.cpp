@@ -59,6 +59,10 @@ int GameMode() noexcept {
     return MELEVR::HeadAim::ReadGameModeSEH();
 }
 
+int MoveStickHeadLookYawUU() noexcept {
+    return MELEVR::Config::Get().moveFollowsHead ? MELEVR::RenderHook::HeadLookYawUU() : 0;
+}
+
 bool FirstPersonOwned() noexcept {
     return MELEVR::Config::Get().fpEnabled && MELEVR::HeadAim::FirstPersonOwnsAny();
 }

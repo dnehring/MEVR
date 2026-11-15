@@ -2,8 +2,12 @@
 #include "plugin/FloorLock.hpp"
 
 #include "core/Log.hpp"
-#include "halcyon/le1/mevr_bridge.h"
+#if defined(MEVR_WITH_HALCYON)
+#include "halcyon/le1/mevr_bridge.h"  // LE1's render seams, implemented at the end
+#endif
+#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_MAIN_MENU)
 #include "plugin/Calibration.hpp"
+#endif
 #if defined(MEVR_WITH_MAIN_MENU)
 #include "plugin/MainMenu.hpp"
 #endif
@@ -74,11 +78,17 @@ void Queue(vr::host_view::State const& view, vr::floor::State const& floor, bool
     p.arm = mevr::host::renderer::HeadArmSequence();
     p.context.world = view.valid && ordinaryWorld;
     p.context.firstPerson = mevr::host::renderer::FirstPersonOwned();
-    bool menuBlocks = MELEVR::MevrBridge::MainMenuOpen();
+    // Our main menu (LE1's MevrBridge::MainMenuOpen: main_menu::IsOpen) blocks it, unless it's adjusting live; the
+    // renderer's own menu and the calibration always.
+    bool menuBlocks = false;
+    bool calibrating = false;
 #if defined(MEVR_WITH_MAIN_MENU)
-    menuBlocks = menuBlocks && !main_menu::LiveAdjusting();
+    menuBlocks = main_menu::IsOpen() && !main_menu::LiveAdjusting();
 #endif
-    p.context.menu = mevr::host::renderer::OwnMenuOpen() || menuBlocks || calibration::Active();
+#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_MAIN_MENU)
+    calibrating = calibration::Active();
+#endif
+    p.context.menu = mevr::host::renderer::OwnMenuOpen() || menuBlocks || calibrating;
     std::lock_guard lock(gMutex);
     p.context.enabled = gEnabled;
     p.context.heightOffsetM = gManualHeight;
@@ -179,6 +189,8 @@ std::string StatusJson() {
 }
 } // namespace mevr::host::floor_lock
 
+#if defined(MEVR_WITH_HALCYON)
+// LE1's render seams (render_hook.cpp); ME2's FloorViewTranslation is plugin/HalcyonLe2Bridge.cpp's, through Translate.
 namespace MELEVR::MevrBridge {
 bool FloorLockEnabled() noexcept { return mevr::host::floor_lock::Enabled(); }
 void FloorViewLook(bool* on, float* yaw, float* pitch, std::uint64_t* arm) noexcept {
@@ -198,3 +210,4 @@ void JournalFloorViewWrite(void const* origin, void const* preTranslation) noexc
     mevr::host::crash::RecordWrite("FloorLock.preViewTranslation", preTranslation, 12, mevr::breadcrumbs::FirstBytes(preTranslation, 12));
 }
 } // namespace MELEVR::MevrBridge
+#endif

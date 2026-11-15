@@ -90,6 +90,11 @@ std::uint64_t HeadArmSequence() noexcept;
 // The game's window (the swap chain's output window), nullptr until the renderer has seen it. Any thread.
 HWND GameWindow() noexcept;
 
+// The turn the renderer gives the game's move stick after the pad merge (Halcyon's "run where you look": LE1 moveFollowsHead
+// and RenderHook::HeadLookYawUU, ME2 [VR] MoveFollowsHead and CalcViewHook::HeadLookYawUU; + left, Unreal units), 0 if it
+// turns it by nothing. plugin/PadMerge takes it off first when the stick walks toward the left hand. Any thread.
+int MoveStickHeadLookYawUU() noexcept;
+
 // ---- Settings the renderer keeps for our quads -----------------------------------------------------------------------
 // LE1 keeps these in Halcyon's MELEVR.ini (its profiles, edited in our menu and its own); ME2's renderer has no such keys,
 // so ME2 gets ME1's code defaults (vr_config.h's [MEVR] fields), the plan's rule. The default member values here are those.

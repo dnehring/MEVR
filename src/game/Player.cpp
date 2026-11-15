@@ -33,16 +33,18 @@ ue3::FieldRef gLocation{"Engine.Actor", "Location", ue3::kEveryGame};
 ue3::FieldRef gRotation{"Engine.Actor", "Rotation", ue3::kEveryGame};
 ue3::FieldRef gMesh{"Engine.Pawn", "Mesh", ue3::kEveryGame};
 ue3::FieldRef gSkeletalMesh{"Engine.SkeletalMeshComponent", "SkeletalMesh", ue3::kEveryGame};
-ue3::FieldRef gCylinder{"Engine.Pawn", "CylinderComponent"};
-ue3::FieldRef gCollisionHeight{"Engine.CylinderComponent", "CollisionHeight"};
+// The floor lock's sample (FloorLockSample, HostServices v36) on every game: the pawn's floor, cover and camera mode
+// (research/le2-renderer-integration.md "Step 8: the floor lock on ME2").
+ue3::FieldRef gCylinder{"Engine.Pawn", "CylinderComponent", ue3::kEveryGame};
+ue3::FieldRef gCollisionHeight{"Engine.CylinderComponent", "CollisionHeight", ue3::kEveryGame};
 ue3::FieldRef gCrouched{"Engine.Pawn", "bIsCrouched"};
-ue3::FieldRef gCoverType{"SFXGame.BioPawn", "CoverType"};
-ue3::FieldRef gCoverAction{"SFXGame.BioPawn", "CoverAction"};
-ue3::ClassRef gCameraNative{"SFXGame.SFXCameraNativeBase"};
-ue3::ClassRef gInterpolate{"SFXGame.SFXCameraMode_Interpolate"};
-ue3::FieldRef gCameraMode{"SFXGame.SFXCameraNativeBase", "CurrentCameraMode"};
-ue3::FieldRef gTo{"SFXGame.SFXCameraMode_Interpolate", "To"};
-ue3::FunctionRef gUpdateCamera{"Engine.Camera.UpdateCamera"};
+ue3::FieldRef gCoverType{"SFXGame.BioPawn", "CoverType", ue3::kEveryGame};
+ue3::FieldRef gCoverAction{"SFXGame.BioPawn", "CoverAction", ue3::kEveryGame};
+ue3::ClassRef gCameraNative{"SFXGame.SFXCameraNativeBase", ue3::kEveryGame};
+ue3::ClassRef gInterpolate{"SFXGame.SFXCameraMode_Interpolate", ue3::kEveryGame};
+ue3::FieldRef gCameraMode{"SFXGame.SFXCameraNativeBase", "CurrentCameraMode", ue3::kEveryGame};
+ue3::FieldRef gTo{"SFXGame.SFXCameraMode_Interpolate", "To", ue3::kEveryGame};
+ue3::FunctionRef gUpdateCamera{"Engine.Camera.UpdateCamera", ue3::kEveryGame};
 void (*gPublishFloor)(vr::floor_lock::PawnSample const*) = nullptr;
 
 void OnFloorCamera(ue3::Object* camera, ue3::Function*, void*, void*) {

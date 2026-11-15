@@ -94,13 +94,16 @@ std::string Describe(Settings const& settings);
 // 152..34 at alpha > 40; the portraits' bars reach 444..832). The weapon panel: x 56..224, the bottom 145..10 (the
 // gun, heat strip and grenade count span 69..200 and the bottom 133..40; the panel's bracket reaches 64..220 and
 // the bottom 12). Invalid (width 0) for an empty frame.
-Rect DefaultWristCrop(std::uint32_t width, std::uint32_t height);
-Rect DefaultGunCrop(std::uint32_t width, std::uint32_t height);
+// Whose HUD: ME1's (the bands above) or ME2's (its 1280x720 stage across a 16:9 frame: the squad's block at the bottom
+// middle, x 540..740, the bottom 110..2; the weapon panel at the bottom left, x 8..184, the bottom 108..3).
+enum class Layout : std::uint8_t { Me1, Me2 };
+Rect DefaultWristCrop(std::uint32_t width, std::uint32_t height, Layout layout = Layout::Me1);
+Rect DefaultGunCrop(std::uint32_t width, std::uint32_t height, Layout layout = Layout::Me1);
 // The Mako's radar at the bottom right: x 1080..1222, the bottom 172..28 (stage pixels).
 Rect DefaultRadarCrop(std::uint32_t width, std::uint32_t height);
 // `crop` if it's valid, else the default for the frame.
-Rect WristCrop(Settings const& settings, std::uint32_t width, std::uint32_t height);
-Rect GunCrop(Settings const& settings, std::uint32_t width, std::uint32_t height);
+Rect WristCrop(Settings const& settings, std::uint32_t width, std::uint32_t height, Layout layout = Layout::Me1);
+Rect GunCrop(Settings const& settings, std::uint32_t width, std::uint32_t height, Layout layout = Layout::Me1);
 
 // A quad `widthM` wide (its height from the crop's `aspect`, width / height) centred at `position`, its front
 // facing `head`, upright (no roll; `up` leans it: zero or along the facing, the world's). False if degenerate.

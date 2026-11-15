@@ -155,9 +155,14 @@ struct Frame {
     float dropM = 0.0f;
     float followDeg = 0.0f;
     float widthM = 1.0f;
+    Masks masks;                 // cut out of the panel: the HUD pieces shown on the body (plugin/HudPieceLayers)
+    // Called after the panel was drawn (`shown`: its quad goes out) and before it's cleared for the next frame's UI: where
+    // windows of this frame's UI are blitted onto quads of their own (the HUD pieces). Null: nothing.
+    void (*beforeClear)(void* user, bool shown) = nullptr;
+    void* user = nullptr;
 };
 // Shows the panel for this frame (its quad, or nullptr), clears it and arms the next frame's UI redirect: exactly
-// LE1's HalcyonOverlays for a frame with no wheel, label, HUD piece, world screen or cinema screen.
+// LE1's HalcyonOverlays for a frame with no wheel, label, world screen or cinema screen (its HUD pieces' masks given).
 XrCompositionLayerQuad const* Layer(Frame const& frame) noexcept;
 
 } // namespace mevr::host::hud_panel

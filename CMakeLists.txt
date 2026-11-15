@@ -815,12 +815,16 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/plugin/OpenAlSoft.cpp
     src/plugin/OpenAlSoft.hpp
     src/plugin/HalcyonBridge.cpp
+    src/plugin/PadMerge.cpp
+    src/plugin/PadMerge.hpp
     src/plugin/FloorLock.cpp
     src/plugin/HalcyonOverlays.cpp
     src/plugin/HandReticle.cpp
     src/plugin/HandReticle.hpp
     src/plugin/HudPanel.cpp
     src/plugin/HudPanel.hpp
+    src/plugin/HudPieceLayers.cpp
+    src/plugin/HudPieceLayers.hpp
     src/plugin/QuadSwapchain.cpp
     src/plugin/QuadSwapchain.hpp
     src/plugin/MevrMenu.hpp
@@ -935,9 +939,15 @@ function(mevr_add_plugin game)
     if (MEVR_HALCYON AND game STREQUAL "LE2" AND NOT MEVR_LE2_DIAGNOSTIC)
         set(with_halcyon_le2 ON)
         list(APPEND host_sources src/plugin/HalcyonLe2.cpp src/plugin/HalcyonLe2.hpp src/plugin/HalcyonLe2Bridge.cpp
-            src/halcyon/le2/mevr_bridge.h src/core/CallQueue.hpp src/game/GamepadMapping.cpp src/game/GamepadMapping.hpp
+            src/halcyon/le2/mevr_bridge.h src/core/CallQueue.hpp src/plugin/GameThreadCalls.cpp src/plugin/GameThreadCalls.hpp
+            src/game/GamepadMapping.cpp src/game/GamepadMapping.hpp
             src/core/vr/Controllers.cpp src/core/vr/Controllers.hpp src/core/xr/Input.cpp src/core/xr/Input.hpp
             src/plugin/Renderer.hpp src/plugin/RendererLe2.cpp
+            # The motion controllers as the game's pad with the mod's flags (plugin/PadMerge, LE1's mapping).
+            src/plugin/PadMerge.cpp src/plugin/PadMerge.hpp
+            # The floor lock (plugin/FloorLock, LE1's): the view's centre at the player's eye height over the pawn's floor.
+            src/plugin/FloorLock.cpp src/plugin/FloorLock.hpp src/core/vr/FloorLock.cpp src/core/vr/FloorLock.hpp
+            src/core/vr/Calibration.cpp src/core/vr/Calibration.hpp
             # The game's float swap chain drawn into the eye images (plugin/EyeCopy over core/d3d11/Blit), and ME1's colour
             # correction in that copy (plugin/Colour, core/vr/Colour; research/le2-picture.md).
             src/plugin/EyeCopy.cpp src/plugin/EyeCopy.hpp src/core/d3d11/Blit.cpp src/core/d3d11/Blit.hpp
@@ -950,6 +960,9 @@ function(mevr_add_plugin game)
             src/plugin/HudPanel.cpp src/plugin/HudPanel.hpp src/plugin/QuadSwapchain.cpp src/plugin/QuadSwapchain.hpp
             src/plugin/HandReticle.cpp src/plugin/HandReticle.hpp
             src/core/vr/OverlayPlacement.cpp src/core/vr/OverlayPlacement.hpp
+            # The HUD pieces on the body (plugin/HudPieceLayers, LE1's): the status at the wrist, the weapon panel on the gun.
+            src/plugin/HudPieceLayers.cpp src/plugin/HudPieceLayers.hpp src/core/vr/HudPieces.cpp src/core/vr/HudPieces.hpp
+            src/core/vr/InteractLabel.cpp src/core/vr/InteractLabel.hpp
             # The gun's sights and the scope (plugin/SightLayers, LE1's).
             src/core/vr/ScopeArt.cpp src/core/vr/ScopeCapture.cpp src/core/vr/Sights.cpp
             src/plugin/ScopeCaptureSource.cpp src/plugin/SightLayers.cpp src/plugin/SightPictures.cpp
@@ -972,8 +985,7 @@ function(mevr_add_plugin game)
             set(with_main_menu ON)
             list(APPEND host_sources src/plugin/MainMenu.cpp src/plugin/MainMenu.hpp src/plugin/MainMenuSettings.cpp
                 src/plugin/MainMenuSettings.hpp src/plugin/Calibration.cpp src/plugin/Calibration.hpp src/plugin/CalibrationDraw.cpp
-                src/plugin/CalibrationDraw.hpp src/plugin/ArmSample.cpp src/plugin/ArmSample.hpp src/core/vr/Calibration.cpp
-                src/core/vr/Calibration.hpp src/core/vr/MenuPointer.cpp src/core/vr/MenuPointer.hpp src/core/vr/GameMenuRequest.cpp
+                src/plugin/CalibrationDraw.hpp src/plugin/ArmSample.cpp src/plugin/ArmSample.hpp src/core/vr/MenuPointer.cpp src/core/vr/MenuPointer.hpp src/core/vr/GameMenuRequest.cpp
                 src/core/vr/GameMenuRequest.hpp src/core/vr/CineScreen.cpp src/core/vr/CineScreen.hpp
                 src/core/vr/ConversationWorld.cpp src/core/vr/ConversationWorld.hpp src/core/vr/WorldUi.cpp src/core/vr/WorldUi.hpp
                 src/core/vr/OverlayPlacement.cpp src/core/vr/OverlayPlacement.hpp src/core/vr/GalaxyHologram.cpp
@@ -1360,6 +1372,15 @@ if (MEVR_BUILD_TESTS)
     target_compile_options(mevr-system-settings-tests PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
     add_dependencies(mevr-tests mevr-system-settings-tests)
     add_test(NAME mevr-system-settings COMMAND mevr-system-settings-tests)
+    # plugin/PadMerge (both hosts' pad mapping with the mod's flags) against LE1's merge before the move, and its rules.
+    add_executable(mevr-pad-merge-tests tests/PadMergeTests.cpp src/plugin/PadMerge.cpp src/game/GamepadMapping.cpp
+        src/core/vr/Controllers.cpp src/core/vr/Comfort.cpp src/core/Log.cpp)
+    target_include_directories(mevr-pad-merge-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(mevr-pad-merge-tests PRIVATE OpenXR::headers)
+    target_compile_definitions(mevr-pad-merge-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_compile_options(mevr-pad-merge-tests PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
+    add_dependencies(mevr-tests mevr-pad-merge-tests)
+    add_test(NAME mevr-pad-merge COMMAND mevr-pad-merge-tests)
     add_executable(mevr-quest-pacing-host-tests tests/QuestPacingHostTests.cpp
         src/plugin/QuestPacing.cpp src/core/vr/QuestPacing.cpp src/core/Ini.cpp src/core/vr/TestRequest.cpp)
     target_include_directories(mevr-quest-pacing-host-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR})

@@ -6,6 +6,9 @@
 #include "engine_probe.h"
 #include "logger.h"
 #include "me2_xr.h"
+#if defined(MEVR_ASI)
+#include "mevr_bridge.h"  // [MEVR] FloorViewTranslation (the floor lock)
+#endif
 
 #include <Windows.h>
 
@@ -749,13 +752,27 @@ void ApplyHeadPosition(std::uintptr_t sv) noexcept
         // fixes it instead of another build.
         const float fwdSign = g_leanInvertFwd.load(std::memory_order_relaxed) ? 1.0f : -1.0f;
         const float dR = hx, dU = hy, dF = fwdSign * hz * kFwdLeanEmphasis;
+        volatile float* pvt = reinterpret_cast<volatile float*>(sv + kFsvPreViewTranslation);
+        volatile float* vo = reinterpret_cast<volatile float*>(sv + kFsvViewOrigin);
+#if defined(MEVR_ASI)
+        // [MEVR] The floor lock (our plugin/FloorLock, LE1's ApplyViewOffsetSEH seam): the common centre anchored to the
+        // floor under the pawn at the player's real eye height. PVT is -camera position: its Z before any lean. The second
+        // pass reuses the first's answer. The lean in UE units may be replaced by the view the mod was told about.
+        float r = w2m * dR, u = w2m * dU, f = w2m * dF;
+        const float floorDz = ::ME2VR::MevrBridge::FloorViewTranslation(t_replay, -pvt[2], rZ, uZ, fZ, &r, &u, &f);
+        const float wx = r * rX + u * uX + f * fX;
+        const float wy = r * rY + u * uY + f * fY;
+        const float wz = r * rZ + u * uZ + f * fZ + floorDz;
+#else
         const float wx = w2m * (dR * rX + dU * uX + dF * fX);
         const float wy = w2m * (dR * rY + dU * uY + dF * fY);
         const float wz = w2m * (dR * rZ + dU * uZ + dF * fZ);
-        volatile float* pvt = reinterpret_cast<volatile float*>(sv + kFsvPreViewTranslation);
-        volatile float* vo = reinterpret_cast<volatile float*>(sv + kFsvViewOrigin);
+#endif
         pvt[0] -= wx; pvt[1] -= wy; pvt[2] -= wz;
         vo[0] += wx;  vo[1] += wy;  vo[2] += wz;
+#if defined(MEVR_ASI)
+        if (floorDz != 0.0f) ::ME2VR::MevrBridge::JournalFloorViewWrite(const_cast<float*>(vo), const_cast<float*>(pvt));  // [MEVR]
+#endif
         // [EYEVPM] bake the lean into ViewMatrix's translation row too (see ApplyEyeOffset) so the
         // sprite/VPM path tracks 6DOF; ApplyHeadRotation runs right after and rebuilds the VPMs.
         volatile float* vmw = reinterpret_cast<volatile float*>(sv + kFsvViewMatrix);

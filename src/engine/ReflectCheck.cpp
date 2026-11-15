@@ -2132,6 +2132,12 @@ void CheckClasses() {
     CheckClass<ASFXPlayerCamera>("SFXGame.SFXPlayerCamera");          // game/CameraShake: the camera's shake modifiers
     CheckClass<UCameraModifier>("Engine.CameraModifier");
     CheckClass<AWeapon>("Engine.Weapon");  // game/Weapon (M3.3): ME2's guns are SFXWeapon on Engine.Weapon
+    CheckClass<UCylinderComponent>("Engine.CylinderComponent");  // game/Player's floor-lock sample (M2)
+    // game/ScreenReticle (M2): the crosshair's movie hidden while the hand reticle stands in for it
+    CheckClass<UBioSFManager>("Engine.BioSFManager");
+    CheckClass<UBioSFPanel>("Engine.BioSFPanel");
+    CheckClass<UBioSFHandler>("Engine.BioSFHandler");
+    CheckClass<USFXSFHandler_Reticle>("SFXGame.SFXSFHandler_Reticle");
     // game/OmniTool (M4.3, research/le2-menus.md "ME2's omni-tool"): the tech powers' omni-tool on Shepard's arm, and its
     // read-only discovery of the effect's brightness parameters (as LE1's rows)
     CheckClass<UBioVFXTemplate>("SFXGame.BioVFXTemplate");
@@ -2262,6 +2268,17 @@ void CheckFields() {
     CheckField("Engine.Weapon", "Mesh", SDK_FIELD(AWeapon, Mesh));
     CheckField("SFXGame.SFXWeapon", "MuzzleSocketName", SDK_FIELD(ASFXWeapon, MuzzleSocketName));
     CheckField("Engine.SkeletalMesh", "Bounds", SDK_FIELD(USkeletalMesh, Bounds));
+    // game/Player's floor-lock sample (M2): the floor under the pawn
+    CheckField("Engine.Pawn", "CylinderComponent", SDK_FIELD(APawn, CylinderComponent));
+    CheckField("Engine.CylinderComponent", "CollisionHeight", SDK_FIELD(UCylinderComponent, CollisionHeight));
+    // game/ScreenReticle (M2): the GUI manager's panels, each panel's handlers and movie, ME2's crosshair handler
+    CheckField("Engine.BioSFManager", "m_lstPanels", SDK_FIELD(UBioSFManager, m_lstPanels));
+    CheckField("Engine.BioSFPanel", "ScriptHandlers", SDK_FIELD(UBioSFPanel, ScriptHandlers));
+    CheckField("Engine.BioSFPanel", "MovieRef", SDK_FIELD(UBioSFPanel, MovieRef));
+    CheckField("Engine.BioSFPanel", "IsVisible", SDK_BOOL(UBioSFPanel, IsVisible));
+    CheckField("Engine.BioSFHandler", "oPanel", SDK_FIELD(UBioSFHandler, oPanel));
+    CheckField("SFXGame.SFXSFHandler_Reticle", "m_eCurrentCrosshair", SDK_FIELD(USFXSFHandler_Reticle, m_eCurrentCrosshair));
+    CheckField("SFXGame.SFXSFHandler_Reticle", "m_bShowSniperDetails", SDK_BOOL(USFXSFHandler_Reticle, m_bShowSniperDetails));
     // game/OmniTool (M4.3): the effect's emitters onto Shepard's mesh, the display's place, the brightness discovery. ME2's
     // StaticMesh has no LODInfo property (tools/le2-name-audit.py): that handle stands down there, so no row. No rows either
     // for ParticleSystemComponent's Template, SMComponents, SMMaterialInterfaces, InstanceParameters (and its members) or
@@ -2436,6 +2453,9 @@ void CheckFunctions() {
         "SFXGame.SFXGameModeDefault.TryHolster",          // ... and the holster
         "SFXGame.BioSFHandler_BrowserWheel.ShowSelectedPanel",  // ... and the omni-tool's entries (its pages)
         "SFXGame.MassEffectGuiManager.GetBrowserHandler",
+        "Engine.BioSFPanel.GetVariableFloat",             // game/ScreenReticle (M2): the crosshair movie's alpha
+        "Engine.BioSFPanel.GetVariableBool",
+        "Engine.BioSFPanel.SetVariableFloat",
         "SFXGame.SFXGameModeBase.GuiKey",                 // ... the rail's back-out of ME2's screens (B, 13)
         "Engine.BioSFHandler.HandleInputEvent",
         // game/OmniTool (M4.3): ME2's omni-tool on Shepard's arm
@@ -2564,6 +2584,13 @@ void CheckParams() {
     // game/GameMenuRequest (M4.3): ME2's pause menu pages
     PARAM(UBioSFHandler_BrowserWheel_eventShowSelectedPanel_Parms, "SFXGame.BioSFHandler_BrowserWheel.ShowSelectedPanel", nPanel);
     PARAM(UBioSFHandler_BrowserWheel_eventShowSelectedPanel_Parms, "SFXGame.BioSFHandler_BrowserWheel.ShowSelectedPanel", oManager);
+    // game/ScreenReticle (M2)
+    PARAM(UBioSFPanel_execGetVariableFloat_Parms, "Engine.BioSFPanel.GetVariableFloat", sPath);
+    PARAM(UBioSFPanel_execGetVariableFloat_Parms, "Engine.BioSFPanel.GetVariableFloat", ReturnValue);
+    PARAM(UBioSFPanel_execGetVariableBool_Parms, "Engine.BioSFPanel.GetVariableBool", sPath);
+    PARAM(UBioSFPanel_execGetVariableBool_Parms, "Engine.BioSFPanel.GetVariableBool", ReturnValue);
+    PARAM(UBioSFPanel_execSetVariableFloat_Parms, "Engine.BioSFPanel.SetVariableFloat", sPath);
+    PARAM(UBioSFPanel_execSetVariableFloat_Parms, "Engine.BioSFPanel.SetVariableFloat", fVar);
 }
 
 // game/Traversal (research/le2-traversal.md): the cover list and its slots that vault or climb, the game's own admission

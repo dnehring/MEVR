@@ -1068,7 +1068,7 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) noexcept {
         NoteDrawsLastFrame(draws.draws);
         BlitOptions options;
         options.colourSeed = 2;  // the HUD panel's dither pattern, as LE1's
-        if (Render(frame.context, frame.device, frame.session, frame.whiteScale, Masks{}, options)) {
+        if (Render(frame.context, frame.device, frame.session, frame.whiteScale, frame.masks, options)) {
             float const width = std::clamp(frame.widthM, 0.3f, 4.0f);
             gQuad = {XR_TYPE_COMPOSITION_LAYER_QUAD};
             gQuad.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;  // premultiplied
@@ -1095,6 +1095,9 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) noexcept {
                 gNextPanelLogMs = now + 30000;
             }
         }
+    }
+    if (frame.beforeClear != nullptr) {
+        frame.beforeClear(frame.user, shown != nullptr);  // windows of this frame's UI (the HUD pieces), before the clear
     }
     EndFrame(frame.context, draws.draws, TakeTintDraws(), false);
     gEarlyThisFrame = false;

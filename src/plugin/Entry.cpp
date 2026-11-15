@@ -32,6 +32,7 @@
 #include "plugin/MotionBlurGuard.hpp"
 #endif
 #if defined(MEVR_WITH_HALCYON_LE2)
+#include "plugin/GameThreadCalls.hpp"
 #include "plugin/HalcyonLe2.hpp"
 #endif
 #if defined(MEVR_WITH_MAIN_MENU)
@@ -90,7 +91,7 @@ void GameEngineTickHook(void* self, float deltaSeconds) {
     mevr::host::game_thread::Drain();
 #endif
 #if defined(MEVR_WITH_HALCYON_LE2)
-    mevr::host::halcyon_le2::Tick();  // its Present-thread ProcessEvent calls, queued for here
+    mevr::host::game_thread::Drain();  // ME2's renderer's Present-thread ProcessEvent calls, queued for here (as LE1's)
 #endif
 #if defined(MEVR_WITH_HALCYON)
     mevr::host::perf::EngineTickBegin();

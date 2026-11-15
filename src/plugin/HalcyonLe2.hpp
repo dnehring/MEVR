@@ -14,9 +14,7 @@ namespace mevr::host::halcyon_le2 {
 // an OpenXR loader or a device.
 void Attach();
 
-// Game thread, at the start of each engine tick: runs the ProcessEvent calls its Present-thread code queued
-// (MevrBridge::QueueProcessEvent), on objects still in GObjects.
-void Tick();
+// Its Present-thread ProcessEvent calls are queued in plugin/GameThreadCalls (MevrBridge::QueueProcessEvent), as LE1's.
 
 // Game thread, after each engine tick: the test loop's keys and request files (plugin/TestLoop), as LE1's
 // halcyon::Tick.

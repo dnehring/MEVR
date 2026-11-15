@@ -52,6 +52,7 @@
 #include "plugin/Halcyon.hpp"
 #include "plugin/HandReticle.hpp"
 #include "plugin/HudPanel.hpp"
+#include "plugin/HudPieceLayers.hpp"
 #include "plugin/QuadSwapchain.hpp"
 #if defined(MEVR_WITH_MAIN_MENU)
 #include "plugin/MainMenu.hpp"
@@ -321,6 +322,12 @@ hud_panel::BlitOptions BlitOptionsFor(QuadSwapchain const& swapchain) {
     return options;
 }
 
+// A quad's own blit options (not the panel's): the HUD pieces' (plugin/HudPieceLayers).
+hud_panel::BlitOptions PieceBlitOptions() {
+    static QuadSwapchain const notThePanel;
+    return BlitOptionsFor(notThePanel);
+}
+
 ID3D11Texture2D* Blit(ID3D11DeviceContext* context, ID3D11Device* device, QuadSwapchain& swapchain, Window const& window,
     UINT factor, Masks const& masks, float whiteScale) {
     return hud_panel::Blit(context, device, swapchain, window, factor, masks, whiteScale, BlitOptionsFor(swapchain));
@@ -569,93 +576,19 @@ il::Label LabelWanted() {
 // the mod says, HostServices v22). [Hud] is read here from the settings file, once a second while it changes.
 namespace hp = mevr::vr::hud_pieces;
 
-QuadSwapchain gWristSwapchain;
-QuadSwapchain gGunSwapchain;
-XrCompositionLayerQuad gWristQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};
-XrCompositionLayerQuad gGunQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};
+// The wrist and gun pieces, the [Hud] settings and the mod's pieces: plugin/HudPieceLayers (shared with ME2's bridge).
+namespace hpl = mevr::host::hud_piece_layers;
 // The cockpit in the Mako (research/47): the radar on a display of its own (the vehicle's status uses the gun piece's).
 QuadSwapchain gRadarSwapchain;
 XrCompositionLayerQuad gRadarQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};
 bool gCockpitHudShown = false;
 
-struct PiecesState {
-    bool wristShown = false;          // the wrist piece went out last frame
-    bool gunShown = false;            // the gun piece went out last frame
-    std::uint32_t gunSerial = 0;      // the mod's weapon it was logged for
-    std::uint32_t lastPiecesSize = 0; // the mod's Pieces size last seen (to log a mismatch once)
-    std::uint64_t nextLogMs = 0;      // the wrist's place, now and then
-};
-PiecesState gPieces;
-
-hp::Settings gHudSettings;
-std::string gHudSettingsText;
-std::uint64_t gHudSettingsNextMs = 0;
-FILETIME gHudSettingsStamp{};
-bool gHudSettingsLoaded = false;
-
-// [Hud] from ASI\LE1MEVR.ini (the mod's file too): re-read within a second of a change.
-hp::Settings const& HudSettings(std::uint64_t now) {
-    if (now < gHudSettingsNextMs) {
-        return gHudSettings;
-    }
-    gHudSettingsNextMs = now + 1000;
-    std::wstring const& path = mevr::host::SettingsPath();
-    WIN32_FILE_ATTRIBUTE_DATA data{};
-    if (path.empty() || !GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &data)) {
-        return gHudSettings;
-    }
-    if (gHudSettingsLoaded && CompareFileTime(&data.ftLastWriteTime, &gHudSettingsStamp) == 0) {
-        return gHudSettings;
-    }
-    gHudSettingsStamp = data.ftLastWriteTime;
-    gHudSettingsLoaded = true;
-    mevr::ini::Loaded const loaded = mevr::ini::Read(std::filesystem::path(path));
-    std::string problems;
-    gHudSettings = hp::ReadSettings(loaded.file, &problems);
-    if (!problems.empty()) {
-        mevr::log::Warn("overlays: [Hud] {}", problems);
-    }
-    if (std::string const text = hp::Describe(gHudSettings); text != gHudSettingsText) {
-        gHudSettingsText = text;
-        LogBoth("[MEVR-HUD] pieces: " + text);
-    }
-    return gHudSettings;
-}
-
-// The mod's latest pieces, or none (a struct of another size: host and mod from different builds).
-hp::Pieces PiecesWanted() {
-    hp::Pieces latest = hp::Latest();
-    if (latest.size == sizeof(hp::Pieces)) {
-        return latest;
-    }
-    if (latest.size != 0 && latest.size != gPieces.lastPiecesSize) {
-        gPieces.lastPiecesSize = latest.size;
-        mevr::log::Warn("overlays: the mod's HUD pieces are {} bytes, the host's {}: the weapon panel stays on the HUD; rebuild both",
-            latest.size, sizeof(hp::Pieces));
-    }
-    return hp::Pieces{};
-}
-
 // One HUD piece's quad: its band blitted into its swapchain (1:1), the quad placed. False if anything failed.
 bool ShowPiece(ID3D11DeviceContext* context, ID3D11Device* device, QuadSwapchain& swapchain, XrCompositionLayerQuad& quad,
     char const* what, char const* name, hp::Pixels const& px, XrVector3f const& position, XrVector3f const& head, float widthM,
     XrVector3f const& up, void* appSpace, float whiteScale) {
-    hp::Quad placed;
-    float const aspect = static_cast<float>(px.width) / static_cast<float>(px.height);
-    if (px.width == 0 || px.height == 0 || !hp::Place(position, head, widthM, aspect, placed, up) ||
-        !EnsureSwapchain(swapchain, px.width, px.height, what, name) ||
-        Blit(context, device, swapchain, {px.x, px.y, px.width, px.height}, 1, Masks{}, whiteScale) == nullptr) {
-        return false;
-    }
-    quad = {XR_TYPE_COMPOSITION_LAYER_QUAD};
-    quad.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;  // premultiplied
-    quad.space = static_cast<XrSpace>(appSpace);
-    quad.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
-    quad.subImage.swapchain = swapchain.handle;
-    quad.subImage.imageRect = {{0, 0}, {static_cast<int32_t>(px.width), static_cast<int32_t>(px.height)}};
-    quad.pose = placed.pose;
-    quad.size = {placed.width, placed.height};
-    return true;
+    return hpl::Show(gSession, context, device, swapchain, quad, what, name, px, position, head, widthM, up,
+        static_cast<XrSpace>(appSpace), whiteScale, BlitOptionsFor(swapchain));
 }
 
 // ---- The Mako's lever and stick (research/46): two quads lying flat at the seat, drawn on the CPU when the picture changes ----
@@ -970,8 +903,7 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
         gPointerDotSwapchain.Forget();
         gWheelSwapchain.Forget();
         gLabelSwapchain.Forget();
-        gWristSwapchain.Forget();
-        gGunSwapchain.Forget();
+        hpl::ForgetSession();
         gRadarSwapchain.Forget();
         gLeverQuad.Forget();
         gStickQuad.Forget();
@@ -1116,8 +1048,8 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     }
     // The HUD pieces on the body (research/41): on foot only, with the HUD on the panel, never with a wheel up. The wrist
     // needs the left controller tracked; the gun needs the mod's anchor (a drawn gun aimed along its barrel).
-    hp::Settings const& hud = HudSettings(now);
-    hp::Pieces const pieces = PiecesWanted();
+    hp::Settings const& hud = hpl::Settings(now);
+    hp::Pieces const pieces = hpl::Wanted();
     mevr::vr::controllers::State const pieceControllers = mevr::vr::controllers::Latest();
     bool const piecesAllowed = !wheelWanted && engaged && gameplay && gLastGameMode == 0 && frame.worldFrame && !frame.menuOpen &&
         frame.headValid && hud_panel::Ready() && device != nullptr;
@@ -1130,9 +1062,9 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
         LogBoth(cockpitHud ? "[MEVR-HUD] the cockpit's HUD: the Mako's status and radar on its displays, the HUD panel at its anchor"
                            : "[MEVR-HUD] the cockpit's HUD is off: the HUD panel as before");
     }
-    bool const wristWanted = piecesAllowed && hud.wristStatus && !gWristSwapchain.Refused() && pieceControllers.active &&
+    bool const wristWanted = piecesAllowed && hud.wristStatus && !hpl::WristRefused() && pieceControllers.active &&
         pieceControllers.left.gripValid;
-    bool const gunWanted = ((piecesAllowed && hud.gunStatus && pieces.gunVisible) || cockpitHud) && !gGunSwapchain.Refused();
+    bool const gunWanted = ((piecesAllowed && hud.gunStatus && pieces.gunVisible) || cockpitHud) && !hpl::GunRefused();
     bool const radarWanted = cockpitHud && !gRadarSwapchain.Refused();
     hp::Pixels const wristPx = hp::ToPixels(hp::WristCrop(hud, hud_panel::Width(), hud_panel::Height()), hud_panel::Width(), hud_panel::Height());
     hp::Pixels const gunPx = hp::ToPixels(hp::GunCrop(hud, hud_panel::Width(), hud_panel::Height()), hud_panel::Width(), hud_panel::Height());
@@ -1383,50 +1315,42 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     // The player's status on the back of the left wrist: a small quad a fixed offset from the left grip pose, facing the
     // eyes, upright (research/41).
     XrVector3f const headPosition = ToVec(frame.headPosition);
-    if (wristWanted && panelShown && wristPx.width > 0 && count < capacity) {
-        XrVector3f const at = hp::WristPoint(pieceControllers.left.grip, hud.wristOffset);
-        if (ShowPiece(context, device.Get(), gWristSwapchain, gWristQuad, "wrist status", "wrist", wristPx, at, headPosition,
-                hud.wristWidthM, {0.0f, 0.0f, 0.0f}, frame.appSpace, frame.floatWhiteScale)) {
-            layersOut[count++] = &gWristQuad;
-            if (!gPieces.wristShown || now >= gPieces.nextLogMs) {
-                char line[320];
-                std::snprintf(line, sizeof line,
-                    "[MEVR-HUD] the player's status on the left wrist: (%.2f, %.2f, %.2f) m, %.3f x %.3f m; the UI's part (%u, %u) %ux%u "
-                    "of %ux%u (%s)", gWristQuad.pose.position.x, gWristQuad.pose.position.y, gWristQuad.pose.position.z,
-                    gWristQuad.size.width, gWristQuad.size.height, wristPx.x, wristPx.y, wristPx.width, wristPx.height, hud_panel::Width(),
-                    hud_panel::Height(), hud.wristCrop.Valid() ? "[Hud] wristCrop" : "the measured band");
-                LogBoth(line);
-                gPieces.nextLogMs = now + 60000;
-            }
-            gPieces.wristShown = true;
+    hpl::Common pieceCommon;
+    pieceCommon.session = gSession;
+    pieceCommon.appSpace = static_cast<XrSpace>(frame.appSpace);
+    pieceCommon.context = context;
+    pieceCommon.device = device.Get();
+    pieceCommon.head = headPosition;
+    pieceCommon.whiteScale = frame.floatWhiteScale;
+    pieceCommon.nowMs = now;
+    {
+        hpl::Piece wrist;
+        wrist.wanted = wristWanted && panelShown && wristPx.width > 0 && count < capacity;
+        wrist.px = wristPx;
+        if (wrist.wanted) {
+            wrist.position = hp::WristPoint(pieceControllers.left.grip, hud.wristOffset);
         }
-    } else if (gPieces.wristShown) {
-        gPieces.wristShown = false;
-        LogBoth(std::string("[MEVR-HUD] the player's status is back on the HUD panel") +
-            (!pieceControllers.active || !pieceControllers.left.gripValid ? " (the left controller isn't tracked)" : ""));
+        wrist.widthM = hud.wristWidthM;
+        wrist.cropByHand = hud.wristCrop.Valid();
+        wrist.leftTracked = pieceControllers.active && pieceControllers.left.gripValid;
+        pieceCommon.options = PieceBlitOptions();
+        if (XrCompositionLayerQuad const* layer = hpl::Wrist(pieceCommon, wrist)) {
+            layersOut[count++] = layer;
+        }
     }
-    // The weapon panel on the gun, where the mod says the held gun is (above the receiver, behind the sights), facing the
-    // eyes, leaning with the gun's top.
-    if (gunWanted && panelShown && gunPx.width > 0 && count < capacity) {
-        if (ShowPiece(context, device.Get(), gGunSwapchain, gGunQuad, "gun status", "gun", gunPx, cockpitHud ? pieces.statusAnchor : pieces.gunAnchor,
-                headPosition, cockpitHud ? pieces.statusWidthM : hud.gunWidthM, cockpitHud ? pieces.cockpitUp : pieces.gunUp, frame.appSpace,
-                frame.floatWhiteScale)) {
-            layersOut[count++] = &gGunQuad;
-            if (!gPieces.gunShown || gPieces.gunSerial != pieces.serial) {
-                char line[320];
-                std::snprintf(line, sizeof line,
-                    "[MEVR-HUD] the weapon panel on the gun: (%.2f, %.2f, %.2f) m, %.3f x %.3f m; the UI's part (%u, %u) %ux%u of %ux%u "
-                    "(%s)", gGunQuad.pose.position.x, gGunQuad.pose.position.y, gGunQuad.pose.position.z, gGunQuad.size.width,
-                    gGunQuad.size.height, gunPx.x, gunPx.y, gunPx.width, gunPx.height, hud_panel::Width(), hud_panel::Height(),
-                    hud.gunCrop.Valid() ? "[Hud] gunCrop" : "the measured band");
-                LogBoth(line);
-            }
-            gPieces.gunShown = true;
-            gPieces.gunSerial = pieces.serial;
+    {
+        hpl::Piece gun;
+        gun.wanted = gunWanted && panelShown && gunPx.width > 0 && count < capacity;
+        gun.px = gunPx;
+        gun.position = cockpitHud ? pieces.statusAnchor : pieces.gunAnchor;
+        gun.widthM = cockpitHud ? pieces.statusWidthM : hud.gunWidthM;
+        gun.up = cockpitHud ? pieces.cockpitUp : pieces.gunUp;
+        gun.cropByHand = hud.gunCrop.Valid();
+        gun.serial = pieces.serial;
+        pieceCommon.options = PieceBlitOptions();
+        if (XrCompositionLayerQuad const* layer = hpl::Gun(pieceCommon, gun)) {
+            layersOut[count++] = layer;
         }
-    } else if (gPieces.gunShown) {
-        gPieces.gunShown = false;
-        LogBoth("[MEVR-HUD] the weapon panel is back on the HUD panel");
     }
     // The Mako's radar on the cockpit's display (research/47).
     if (radarWanted && panelShown && radarPx.width > 0 && count < capacity) {
