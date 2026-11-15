@@ -1736,6 +1736,35 @@ std::string State(ue3::Object* pc) {
 }
 
 #if defined(MEVR_GAME_LE3)
+// L3-1 scalar cross-check on the actual loaded weapon. No pose/weapon modules or writes.
+std::string WeaponProbeLe3(ue3::Object* pc) {
+    static ue3::FieldRef held{"Engine.Pawn", "Weapon", ue3::kEveryGame};
+    static ue3::ClassRef weaponClass{"SFXGame.SFXWeapon", ue3::kEveryGame};
+    static ue3::FieldRef magazine{"SFXGame.SFXWeapon", "MagSize", ue3::kEveryGame};
+    static ue3::FieldRef magazineValue{magazine, "Value"};
+    static ue3::FieldRef spare{"SFXGame.SFXWeapon", "CurrentSpareAmmo", ue3::kEveryGame};
+    static ue3::FieldRef used{"SFXGame.SFXWeapon", "AmmoUsedCount", ue3::kEveryGame};
+    auto* pawn = player::Pawn(pc);
+    auto* gun = held.Read<ue3::Object*>(pawn).value_or(nullptr);
+    if (!ue3::runtime::IsAlive(gun) || !ue3::IsA(gun, weaponClass)) return "mevr weaponprobe: no live SFXWeapon";
+    auto& r = ue3::runtime::Get();
+    auto* magFn = r.FindFunction(r.ClassOf(gun), "GetMagazineSize");
+    auto* spareFn = r.FindFunction(r.ClassOf(gun), "GetCurrentSpareAmmo");
+    auto const magField = magazineValue.Read<float>(magazine.Address(gun));
+    auto const spareField = spare.Read<int>(gun);
+    auto const usedField = used.Read<int>(gun);
+    if (!magFn || !spareFn || !magField || !spareField || !usedField || !std::isfinite(*magField) ||
+        *magField < 0 || *magField > 1000000) return "mevr weaponprobe: unresolved or invalid fields/functions";
+    ue3::Params magArgs(r, magFn), spareArgs(r, spareFn);
+    if (!ue3::runtime::Call(gun, magFn, magArgs) || !ue3::runtime::Call(gun, spareFn, spareArgs))
+        return "mevr weaponprobe: getter call failed";
+    auto const magResult = magArgs.Return<int>(), spareResult = spareArgs.Return<int>();
+    if (!magResult || !spareResult) return "mevr weaponprobe: getter return unavailable";
+    return std::format("mevr weaponprobe: {}; weaponId 0x{:X}; magazine field {} getter {}; spare field {} getter {}; used {}; agree {}",
+        r.FullName(gun), reinterpret_cast<std::uintptr_t>(gun), *magField, *magResult, *spareField, *spareResult, *usedField,
+        static_cast<int>(*magField) == *magResult && *spareField == *spareResult);
+}
+
 std::optional<std::string> RunOursLe3(ue3::Object* pc, std::string const& line) {
     std::istringstream words(line);
     std::string head, verb;
@@ -1744,6 +1773,7 @@ std::optional<std::string> RunOursLe3(ue3::Object* pc, std::string const& line) 
     if (verb == "load") return LoadSave(ue3::runtime::GameEngine(), words);
     if (verb == "savedesc") return CurrentSave(ue3::runtime::GameEngine());
     if (verb == "state") return State(pc);
+    if (verb == "weaponprobe") return WeaponProbeLe3(pc);
     if (verb == "powerwheel") { std::string rest; std::getline(words, rest); return power_wheel::Console(rest); }
     if (verb == "omni") { std::string which; words >> which; return game_menu_request::Inject(which); }
     if (verb == "guimouse" || verb == "guikey") {

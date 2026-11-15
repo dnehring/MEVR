@@ -65,6 +65,12 @@ All tracked files restored with zero differences; the LE1 ini remained unchanged
 Twenty-four runner tests and ten load-acceptance tests pass. This is desktop load acceptance, not VR, combat or
 save-creation acceptance. Request processing is opt-in and runs only after the native reflection check passes.
 
+The existing chapter candidate was then tested without save edits: it entered `Biop_End001` and progressed from
+cinematic mode 8 to injured-Shepard mode 6 within the bounded 120-second observation, not ordinary mode-0 gameplay.
+It therefore failed combat-fixture acceptance; no weapon scalar comparison was claimed. Its source/runtime hashes
+were unchanged and full restoration again reported zero differences. Preserve this exception fixture separately
+from the ordinary combat, melee and traversal requirements.
+
 ## Outcome and boundaries
 
 Deliver ME1/ME2's tracked body, controller aim, comfort, omni-tool/wrist menus, gun HUD, per-weapon sights, left-hand

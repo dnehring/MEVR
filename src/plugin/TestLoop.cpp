@@ -11,11 +11,11 @@
 #include "plugin/TestLoop.hpp"
 #include "core/vr/CameraDiagnostic.hpp"
 #include "plugin/Renderer.hpp"
-#if !defined(MEVR_WITH_HALCYON_LE3)
 #include "plugin/SightLayers.hpp"
-#else
+#if defined(MEVR_WITH_HALCYON_LE3)
 #include "plugin/Colour.hpp"
 #include "plugin/FloorLock.hpp"
+#include "plugin/CineScreen.hpp"
 #endif
 #include "plugin/Swapchains.hpp"
 #if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2)
@@ -809,11 +809,11 @@ struct ModuleBlocks {
 };
 ModuleBlocks ModuleStatus() {
     ModuleBlocks m;
-#if !defined(MEVR_WITH_HALCYON_LE3)
     m.sights = sight_layers::StatusJson();
-#else
+#if defined(MEVR_WITH_HALCYON_LE3)
     m.colour = colour::StatusJson();
     m.floorLock = floor_lock::StatusJson();
+    m.cineScreen = cine_screen::StatusJson();
 #endif
 #if defined(MEVR_WITH_HALCYON)
     m.recenter = recenter_tilt::StatusJson();

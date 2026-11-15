@@ -13,6 +13,10 @@
 #include "engine/SettingsFile.hpp"
 
 #if defined(MEVR_WITH_HALCYON_LE3)
+#include "core/vr/PowerWheel.hpp"
+#include "core/vr/Sights.hpp"
+#include "core/vr/ScopeCapture.hpp"
+#include "plugin/Vignette.hpp"
 #include "core/vr/AimRay.hpp"
 #include "core/vr/Controllers.hpp"
 #include "core/vr/Floor.hpp"
@@ -204,7 +208,6 @@ HostServices WithRenderer(HostServices services) {
     services.hideScreenReticle = &mevr::host::renderer::ScreenReticleHidden;
     return services;
 }
-#if !defined(MEVR_WITH_HALCYON_LE3)
 // v17: the comfort vignette's darkness (plugin/Vignette, a quad of ours on either renderer).
 void HostSetVignette(float amount) {
     vignette::SetTarget(amount);
@@ -229,7 +232,6 @@ HostServices WithSights(HostServices services) {
     services.sightView = &HostSightView;
     return services;
 }
-#endif
 // The pad mapping with the mod's flags (plugin/PadMerge, both hosts): v7 the support grip and the flags it carries (the
 // holsters', the squad's, comfort's ...), v9 the right grip's report, v11 the left grip's.
 void HostSetSupportGrip(float distanceMeters, float acquireMeters, float releaseMeters, std::uint32_t flags) {
@@ -280,9 +282,9 @@ void ForgetRendererModState() {
 #if !defined(MEVR_WITH_HALCYON_LE3)
     vr::hud_pieces::Reset();  // the weapon panel back on the HUD (the wrist piece needs no mod)
     vr::interact::Reset();
+#endif
     vr::sights::Reset();
     vignette::Forget();
-#endif
     renderer::SetModHandAim(false);
     vr::aim_ray::Reset();
     xr_host::ForgetHaptics();
@@ -574,10 +576,18 @@ HostServices BuildServices() {
     HostServices services = WithCrashBreadcrumbs(BaseServices());
     if (engine::DevelopmentEngineProbe()) return services;
 #if defined(MEVR_WITH_HALCYON_LE3)
-    // Foundation only: no UI/weapon/voice capabilities until their native and renderer paths are connected.
-    services = WithFloorLock(WithPadMerge(WithRenderer(services)));
-    services.hideScreenReticle = nullptr; // no hand reticle is rendered by the LE3 bridge yet
-    services.setHandAim = nullptr; // no validated LE3 weapon adapter yet
+    // Shared layers now consume these publications. Native/headset acceptance remains separate.
+    services = WithFloorLock(WithPadMerge(WithSights(WithVignette(WithRenderer(services)))));
+    services.hideScreenReticle = nullptr; // native LE3 crosshair ownership has not been verified
+    services.powerWheelSize = static_cast<std::uint32_t>(sizeof(vr::power_wheel::View));
+    services.setPowerWheel = [](vr::power_wheel::View const* view) {
+        vr::power_wheel::Publish(view != nullptr ? *view : vr::power_wheel::View{});
+    };
+    services.powerLockSize = static_cast<std::uint32_t>(sizeof(vr::power_wheel::LockView));
+    services.setPowerLock = [](vr::power_wheel::LockView const* view) {
+        vr::power_wheel::PublishLock(view != nullptr ? *view : vr::power_wheel::LockView{});
+    };
+    // LE3 uses the shared eye-image scope tap. The native scene-capture producer remains unavailable.
 #endif
 #if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2)
     services = WithVoice(WithFloorLock(WithHudPieces(WithPadMerge(WithSights(WithVignette(WithRenderer(services)))))));  // both renderers' modules
@@ -624,6 +634,8 @@ HostServices const gServices = BuildServices();
 void ForgetModState() {
 #if defined(MEVR_WITH_HALCYON_LE3)
     ForgetRendererModState();
+    vr::power_wheel::Publish({});
+    vr::power_wheel::PublishLock({});
 #endif
 #if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2)
     ForgetRendererModState();

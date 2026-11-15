@@ -527,6 +527,7 @@ set(MEVR_MOD_SOURCES
     src/game/Thespian.hpp
     # Vaulting and climbing (research/le2-traversal.md): ME2's own move on the double A, measured and presented.
     src/game/Traversal.cpp
+    src/game/Le3Traversal.cpp
     src/game/Traversal.hpp
     src/core/vr/Traversal.cpp
     src/core/vr/Traversal.hpp
@@ -1260,6 +1261,8 @@ if (MEVR_BUILD_TESTS)
     enable_testing()
     add_test(NAME mevr-protected-session COMMAND powershell -NoProfile -ExecutionPolicy Bypass
         -File ${CMAKE_CURRENT_SOURCE_DIR}/tools/le2-halcyon-run/test-session.ps1)
+    add_test(NAME mevr-protected-load COMMAND powershell -NoProfile -ExecutionPolicy Bypass
+        -File ${CMAKE_CURRENT_SOURCE_DIR}/tools/le2-halcyon-run/test-load.ps1)
     foreach(game LE1 LE2 LE3)
         add_executable(mevr-context-${game}-tests tests/GameContextTests.cpp)
         target_include_directories(mevr-context-${game}-tests PRIVATE src)

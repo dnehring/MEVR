@@ -195,3 +195,17 @@ to report as queued, nor establish successful normal loading. No new call,
 binary patch, game launch or save mutation was performed for this inspection.
 Native addresses are research identifiers, not new hard-coded dispatch sites.
 Raw decompilation remains solely in the existing private Ghidra cache.
+
+### Native fixture observations (2026-11-15)
+
+The protected request-mode session loaded unchanged `Save_0031.pcsav` into `BioP_Nor` and reloaded the same save.
+Both loads reached stable mode-0 gameplay, matched the native descriptor exactly, and changed world/pawn identity.
+The source save and runtime artifacts were unchanged; restoration reported zero differences. This resolves normal
+manual load/reload for this checkpoint, but not native save creation or persistence of edited variants.
+
+The separate unchanged `ChapterSave.pcsav` test entered `Biop_End001` with a Vanguard pawn. Across 120 seconds it
+reported cinematic mode 8, then injured-Shepard mode 6; it never satisfied the stable ordinary-gameplay gate.
+Its save and runtime hashes remained unchanged, and restoration reported zero differences. It is **not an accepted
+ordinary combat fixture**. The presence of a combat class and weapon records in a save is insufficient. Do not
+relax mode checks or label a queued request successful to admit it. Native weapon getter comparison was not run
+because the prerequisite gameplay gate failed. Private session suffix: `20261115-132944-348-LE3-weapon-load`.
