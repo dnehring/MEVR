@@ -33,7 +33,7 @@ The existing schedule opens the native browser first, waits for its focus, and s
 
 `ShowSelectedPanel` removes the parent browser movie when replacing it. LE2's workaround that hides stacked browser panels must not be applied to LE3. A request made from another child first backs out to the browser through native B. Reopening our menu cancels an already-started page transition. Existing retry limits stop missing/refused pages from looping forever.
 
-`GuiCursor` polls the host native queue only when the real native mode, focused movie and `GuiKey` parameter contract are available. Polling itself claims native input ownership in `GamePointer`, so a missing consumer must preserve Win32 fallback. On focus changes it drops queued input belonging to the previous movie. Physical hover, held drag/release through focus loss, and SteamVR session recreation still require native acceptance.
+`GuiCursor` polls the host native queue only when the real native mode, focused movie and `GuiKey` parameter contract are available. Polling itself claims native input ownership in `GamePointer`, so a missing consumer must preserve Win32 fallback. On focus changes it drops queued input belonging to the previous movie. The game tick now passes main-menu and guided-calibration ownership explicitly, independently of pause settings. On takeover, it discards pending actions and developer input, sends only cleanup releases for successfully delivered presses, and drains the host queue once before resuming. It does not poll the native queue while the competing UI owns input. Physical hover, held drag/release through focus loss, and SteamVR session recreation still require native acceptance.
 
 ## Crop and art gates
 

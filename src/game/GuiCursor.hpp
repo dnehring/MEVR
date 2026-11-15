@@ -20,7 +20,8 @@ namespace mevr::game::gui_cursor {
 std::string Command(std::string const& args);
 std::string KeyCommand(std::string const& args);
 // `take`: HostServices::takeGuiEvents, or null (an older host: only the console's events).
-void Tick(std::uint32_t (*take)(std::uint8_t* events, std::uint32_t capacity));
+// otherUiOwns: main menu or guided calibration, including when the game keeps ticking unpaused.
+void Tick(std::uint32_t (*take)(std::uint8_t* events, std::uint32_t capacity), bool otherUiOwns = false);
 std::string StatusJson();
 
 } // namespace mevr::game::gui_cursor

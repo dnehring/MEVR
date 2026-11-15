@@ -1442,10 +1442,13 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         game::menu_pause::Tick(MenuPauseLink());  // the main menu's "pause while open"
         // Its Game menu and Holster buttons, after the unpause above (research/28, HostServices v19).
         if (gHostOwnsVr) {
-            game::game_menu_request::Tick(GameMenuRequestLink());
+            auto menuLink = GameMenuRequestLink();
+            menuLink.menuOpen = menuLink.menuOpen || game::body_calibration::Calibrating();
+            game::game_menu_request::Tick(menuLink);
             game::game_art::Tick();  // the game's UI art for the omni-tool's rail, cached once (research/57)
             // The game pointer's input as the game's own GUI events (research/57 section 6, HostServices v30), and mevr guikey's.
-            game::gui_cursor::Tick(MEVR_HOST_HAS(takeGuiEvents) ? gHost->takeGuiEvents : nullptr);
+            game::gui_cursor::Tick(MEVR_HOST_HAS(takeGuiEvents) ? gHost->takeGuiEvents : nullptr,
+                menuLink.menuOpen);
         }
     }
     if (gHostOwnsVr) {

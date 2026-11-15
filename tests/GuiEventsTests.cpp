@@ -138,6 +138,21 @@ int RunGuiEventsTests() {
     while (le3Schedule.Waiting())
         for (auto event : le3Schedule.Tick()) native.push_back(ge::Le3NativeEvent(event));
     CHECK((native == std::vector<std::uint8_t>{6, 31, 6, 52, 6, 9}));
+    // A hidden screen must never receive an unfinished queued press. Only actually sent presses
+    // get cleanup releases, once; controls that were already released are not released twice.
+    ge::Scheduler owner;
+    std::uint8_t hidden[] = {ge::kLeftDown, ge::kWheelUp};
+    owner.Add(hidden, 2);
+    owner.Clear();
+    CHECK(owner.Tick().empty() && owner.ReleaseSent().empty());
+    owner.NoteSent(ge::kLeftDown);
+    owner.NoteSent(ge::kControlLeft);
+    owner.NoteSent(ge::kControlRight);
+    owner.NoteSent(ge::kControlRightRelease);
+    owner.Add(hidden, 2);
+    owner.Clear();
+    CHECK((owner.ReleaseSent() == std::vector<std::uint8_t>{ge::kLeftUp, ge::kControlLeftRelease}));
+    CHECK(owner.ReleaseSent().empty() && owner.Tick().empty());
     TestQueue();
     TestScheduler();
     TestControls();

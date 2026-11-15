@@ -93,9 +93,14 @@ public:
     std::vector<std::uint8_t> Tick();
     std::size_t Waiting() const { return pending_.size(); }
     void Clear() { pending_.clear(); }
+    // Track only successfully dispatched presses. Owner changes discard pending actions
+    // and release these held buttons without a synthetic motion/press on a hidden screen.
+    void NoteSent(std::uint8_t event);
+    std::vector<std::uint8_t> ReleaseSent();
 
 private:
     std::deque<std::uint8_t> pending_;
+    std::uint8_t sentMask_ = 0;
 };
 
 } // namespace mevr::vr::gui_events

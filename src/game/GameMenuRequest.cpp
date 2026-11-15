@@ -733,7 +733,9 @@ bool GuiInputReady() {
 #if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     std::string why;
     auto const modes = ReadModes(why);
-    if (!modes || !modes->current || *modes->current != kModeGui) return false;
+    if (!modes || !modes->current) return false;
+    auto const context = engine::adapter::GameMode(*modes->current);
+    if (context != engine::adapter::Mode::Gui && context != engine::adapter::Mode::Minigame) return false;
     auto* mode = ActiveMode(*modes, why);
     auto* fn = mode && gGuiKey.Get() ? ue3::runtime::Get().FindFunction(ue3::runtime::Get().ClassOf(mode), "GuiKey") : nullptr;
     if (!fn) return false;

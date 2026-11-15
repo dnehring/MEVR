@@ -39,9 +39,20 @@ std::uint64_t gFailed = 0;
 std::uint64_t gDroppedForPuzzle = 0;  // the pointer's events while the bypass puzzle was played
 bool gLoggedFirst = false;
 bool gLoggedFailure = false;
+bool gOwnerDrain = false;
 #if defined(MEVR_GAME_LE3)
 ue3::Object* gInputMovie = nullptr;
 #endif
+
+std::uint8_t NativeEvent(std::uint8_t event) {
+#if defined(MEVR_GAME_LE3)
+    return vr::gui_events::Le3NativeEvent(event);
+#elif defined(MEVR_GAME_LE2)
+    return vr::gui_events::Le2NativeEvent(event);
+#else
+    return event;
+#endif
+}
 
 ue3::Object* FocusPanel() {
 #if defined(MEVR_GAME_LE3)
@@ -131,14 +142,41 @@ std::string KeyCommand(std::string const& args) {
     return std::format("guikey: {} events queued over {} ticks; the log says each (`gui cursor: GuiKey`)", count, gKeys.size());
 }
 
-void Tick(std::uint32_t (*take)(std::uint8_t* events, std::uint32_t capacity)) {
+void Tick(std::uint32_t (*take)(std::uint8_t* events, std::uint32_t capacity), bool otherUiOwns) {
+    if (otherUiOwns) {
+        gScheduler.Clear();
+        gKeys.clear();
+        gOwnerDrain = true;
+        // Do not call the host's take here: it advertises a live native consumer. Only releases
+        // of already-delivered presses may reach the native screen while another UI owns input.
+        auto const releases = gScheduler.ReleaseSent();
+        if (game_menu_request::GuiInputReady()) {
+            std::string why;
+            for (auto event : releases) (void)game_menu_request::GuiKey(NativeEvent(event), why);
+        }
+        return;
+    }
+    if (gOwnerDrain) {
+        gScheduler.Clear();
+        if (take != nullptr && game_menu_request::GuiInputReady()) {
+            std::uint8_t discard[vr::gui_events::Queue::kCapacity] = {};
+            gTaken += take(discard, static_cast<std::uint32_t>(vr::gui_events::Queue::kCapacity));
+            gOwnerDrain = false;
+        } else if (take == nullptr) {
+            gOwnerDrain = false;
+        }
+        return; // no old press, wheel or console command is replayed on resume
+    }
 #if defined(MEVR_GAME_LE3)
     // Polling TakeGuiEvents claims native input ownership in the host. Keep Win32 fallback
     // until the real consumer exists, and never replay a previous screen's queued click.
     auto* const movie = le3_gui::FocusMovie();
     bool const changedMovie = movie != gInputMovie;
     bool const ready = movie && game_menu_request::GuiInputReady();
-    if (!ready || changedMovie) gScheduler.Clear();
+    if (!ready || changedMovie) {
+        gScheduler.Clear();
+        (void)gScheduler.ReleaseSent(); // an old movie's held state must not belong to its replacement
+    }
     gInputMovie = movie;
     if (take != nullptr && ready) {
 #else
@@ -162,14 +200,9 @@ void Tick(std::uint32_t (*take)(std::uint8_t* events, std::uint32_t capacity)) {
             continue;
         }
         std::string why;
-#if defined(MEVR_GAME_LE3)
-        std::uint8_t const nativeEvent = vr::gui_events::Le3NativeEvent(event);
-#elif defined(MEVR_GAME_LE2)
-        std::uint8_t const nativeEvent = vr::gui_events::Le2NativeEvent(event);
-#else
-        std::uint8_t const nativeEvent = event;
-#endif
+        std::uint8_t const nativeEvent = NativeEvent(event);
         if (game_menu_request::GuiKey(nativeEvent, why)) {
+            gScheduler.NoteSent(event);
             ++gSent;
             if (!gLoggedFirst && event != vr::gui_events::kMouseMove) {
                 gLoggedFirst = true;
