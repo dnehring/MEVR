@@ -33,7 +33,7 @@ constexpr std::uintptr_t kFsvPreViewTranslation = 0x250;
 constexpr std::uintptr_t kFsvViewProjectionMatrix = 0x260;
 constexpr std::uintptr_t kFsvViewOrigin = 0x320;
 constexpr std::uintptr_t kFsvState = 0x8;        // FSceneView::State (FSceneViewStateInterface*)
-constexpr std::uintptr_t kFsvFloatRect = 0x64;   // FSceneView X/Y/SizeX/SizeY (4 floats)
+constexpr std::uintptr_t kFsvFloatRect = 0x5C;   // [MEVR] native ctor: X/Y at 5C/60, SizeX/SizeY at 64/68
 
 // B2b stereo separation. 50 uu = 1 m (LE1); ~1.6 uu half-eye ~ human IPD => ~1:1 scale.
 // Runtime-adjustable from the Insert menu.
@@ -960,6 +960,37 @@ void DrawPassNote(const LARGE_INTEGER& a, const LARGE_INTEGER& b, const LARGE_IN
     g_dpCount.fetch_add(1, std::memory_order_relaxed);
 }
 
+// [MEVR] LE2's <100us replay discriminator, observation only: a view can be built
+// even when the engine declines to render. Never retry Draw or infer image validity
+// from timing. Only actual replay pairs enter these averages (unlike FRAMEOWNER).
+void SfrTimingNote(const LARGE_INTEGER& a, const LARGE_INTEGER& b, const LARGE_INTEGER& c) noexcept
+{
+    static unsigned count = 0, short0 = 0, short1 = 0, max0 = 0, max1 = 0;
+    static uint64_t sum0 = 0, sum1 = 0, lastLogMs = 0, total = 0;
+    const double f = static_cast<double>(g_dpFreq.QuadPart);
+    if (f <= 0) return;
+    const unsigned p0 = static_cast<unsigned>(static_cast<double>(b.QuadPart - a.QuadPart) * 1e6 / f);
+    const unsigned p1 = static_cast<unsigned>(static_cast<double>(c.QuadPart - b.QuadPart) * 1e6 / f);
+    ++count; ++total;
+    sum0 += p0; sum1 += p1;
+    if (p0 < 100) ++short0;
+    if (p1 < 100) ++short1;
+    if (p0 > max0) max0 = p0;
+    if (p1 > max1) max1 = p1;
+    const uint64_t now = GetTickCount64();
+    if (total > 4 && now - lastLogMs < 5000) return;
+    char line[320] = {};
+    sprintf_s(line, "[SFRTIMING] pairs=%u total=%llu p0LastUs=%u p1LastUs=%u "
+        "p0AvgUs=%llu p1AvgUs=%llu p0MaxUs=%u p1MaxUs=%u p0Under100us=%u p1Under100us=%u "
+        "(CPU Draw timing; not render completion; no retry)", count,
+        static_cast<unsigned long long>(total), p0, p1,
+        static_cast<unsigned long long>(sum0 / count), static_cast<unsigned long long>(sum1 / count),
+        max0, max1, short0, short1);
+    ME2VR::Log::Line(line);
+    count = short0 = short1 = max0 = max1 = 0;
+    sum0 = sum1 = 0; lastLogMs = now;
+}
+
 // [SFR] POD-only SEH wrapper for the replay Draw (a function using __try may hold no C++ objects with
 // destructors - keep this frame POD). Returns false on fault.
 bool SfrReplayDrawSEH(void* self, void* viewport, void* canvas) noexcept
@@ -1010,6 +1041,7 @@ void __fastcall DrawDetour(void* self, void* viewport, void* canvas) noexcept
     t_replay = false;
     QueryPerformanceCounter(&q2);
     DrawPassNote(q0, q1, q2);
+    SfrTimingNote(q0, q1, q2);
 
     const uint64_t n = g_sfrReplays.fetch_add(1, std::memory_order_relaxed) + 1;
     if (!ok) g_sfrReplayFaults.fetch_add(1, std::memory_order_relaxed);

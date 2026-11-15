@@ -1339,10 +1339,63 @@ std::atomic<uint32_t> g_bbdCalls{0}, g_bbdPrefilterPass{0}, g_bbdConfirmed{0},
 // resource: if this is non-zero while prefilterPass is 0, the mod is holding a stale backbuffer pointer.
 std::atomic<uint32_t> g_bbdSizeMatchOther{0};
 std::atomic<std::uintptr_t> g_bbdOtherPtr{0};
+// [MEVR] Bounded CPU hook-order census. It does not identify GPU completion or
+// either eye. Keep observing AFTER the capture flag is armed, otherwise a second
+// composite is invisible. First four qualifying presents, then three per 300.
+std::atomic_bool g_sfrOrderActive{false};
+std::mutex g_sfrOrderMutex;
+struct SfrOrderEvent { char kind; unsigned long thread; int deferred; };
+SfrOrderEvent g_sfrOrderEvents[48]{};
+unsigned g_sfrOrderCount = 0, g_sfrOrderDraws = 0, g_sfrOrderCopies = 0, g_sfrOrderClears = 0;
+
+void SfrOrderNote(char kind, ID3D11DeviceContext* ctx) noexcept
+{
+    if (!g_sfrOrderActive.load(std::memory_order_relaxed)) return;
+    std::lock_guard<std::mutex> lock(g_sfrOrderMutex);
+    if (!g_sfrOrderActive.load(std::memory_order_relaxed)) return;
+    if (kind == 'D') ++g_sfrOrderDraws;
+    if (kind == 'P') ++g_sfrOrderCopies;
+    if (kind == 'C') ++g_sfrOrderClears;
+    if (g_sfrOrderCount < 48)
+        g_sfrOrderEvents[g_sfrOrderCount] = {kind, GetCurrentThreadId(),
+            ctx ? (ctx->GetType() == D3D11_DEVICE_CONTEXT_DEFERRED ? 1 : 0) : -1};
+    ++g_sfrOrderCount;
+}
+
+void SfrOrderEndPresent() noexcept
+{
+    static uint64_t qualifyingPresents = 0;
+    char line[1600] = {};
+    {
+        std::lock_guard<std::mutex> lock(g_sfrOrderMutex);
+        if (g_sfrOrderActive.load(std::memory_order_relaxed))
+        {
+            int off = sprintf_s(line, "[SFRORDER] present=%llu draws=%u copies=%u clears=%u events=%u truncated=%u "
+                "(C=sceneClear,D=nonUIbbDraw,U=UIbbDraw,P=bbCopy; event:thread:deferred) ",
+                static_cast<unsigned long long>(g_presentIndex.load(std::memory_order_relaxed)),
+                g_sfrOrderDraws, g_sfrOrderCopies, g_sfrOrderClears, g_sfrOrderCount,
+                g_sfrOrderCount > 48 ? g_sfrOrderCount - 48 : 0);
+            for (unsigned i = 0; i < g_sfrOrderCount && i < 48 && off > 0 && off < 1500; ++i)
+            {
+                const auto& e = g_sfrOrderEvents[i];
+                off += sprintf_s(line + off, sizeof(line) - off, "%c:%lu:%d ", e.kind, e.thread, e.deferred);
+            }
+        }
+        const bool eligible = ME2VR::CalcViewHook::GetVrEnabled() &&
+            ME2VR::CalcViewHook::GetVrMode() == 4 && !g_menuPresentation.load(std::memory_order_acquire);
+        if (eligible) ++qualifyingPresents;
+        g_sfrOrderCount = g_sfrOrderDraws = g_sfrOrderCopies = g_sfrOrderClears = 0;
+        g_sfrOrderActive.store(eligible && (qualifyingPresents <= 4 || qualifyingPresents % 300 < 3),
+            std::memory_order_relaxed);
+    }
+    if (line[0]) ME2VR::Log::Line(line); // no logger call while the hook-order mutex is held
+}
+
 void SfrNoteBackbufferDraw(ID3D11DeviceContext* ctx) noexcept
 {
     if (ctx == nullptr) return;
-    if (g_sfrBbDrawnThisPresent.load(std::memory_order_relaxed)) return;
+    const bool alreadyArmed = g_sfrBbDrawnThisPresent.load(std::memory_order_relaxed);
+    if (alreadyArmed && !g_sfrOrderActive.load(std::memory_order_relaxed)) return;
     if (g_backbufferResourcePtr == 0) return;
     g_bbdCalls.fetch_add(1, std::memory_order_relaxed);
     // [CTXRTV] ask what THIS context bound, not what some other thread bound last. The cross-thread
@@ -1381,9 +1434,12 @@ void SfrNoteBackbufferDraw(ID3D11DeviceContext* ctx) noexcept
     D3D11_VIEWPORT vp = {};
     if (IsUiPipelineStateNow(ctx, vp, false))                         // authoritative, THIS context
     {
+        SfrOrderNote('U', ctx);
         g_bbdUiRejected.fetch_add(1, std::memory_order_relaxed);
         return;
     }
+    SfrOrderNote('D', ctx);
+    if (alreadyArmed) return; // observation above never re-arms or changes the capture rule
     g_bbdArmedDraw.fetch_add(1, std::memory_order_relaxed);
     g_sfrBbDrawnThisPresent.store(true, std::memory_order_relaxed);
 }
@@ -1394,6 +1450,8 @@ void SfrNoteBackbufferDraw(ID3D11DeviceContext* ctx) noexcept
 // pass boundary is the backbuffer WRITE, whatever API performs it.
 void SfrNoteBackbufferCopyDst(ID3D11Resource* dst) noexcept
 {
+    if (g_backbufferResourcePtr != 0 && reinterpret_cast<std::uintptr_t>(dst) == g_backbufferResourcePtr)
+        SfrOrderNote('P', nullptr);
     if (!g_sfrBbDrawnThisPresent.load(std::memory_order_relaxed) &&
         g_backbufferResourcePtr != 0 &&
         reinterpret_cast<std::uintptr_t>(dst) == g_backbufferResourcePtr)
@@ -2400,6 +2458,7 @@ void SfrMaybeCapturePass0AtClear(ID3D11DeviceContext* ctx, ID3D11DepthStencilVie
     }
     dres->Release();
     if (!sceneSized) return;
+    SfrOrderNote('C', ctx);
     ++g_flkPassesThisPresent;   // [FLICKER2] a scene render started; SFR must see 2 of these per present
 
     ID3D11Texture2D* bb = nullptr;
@@ -3500,11 +3559,11 @@ void FrameTimeAccount(const LARGE_INTEGER& entry, const LARGE_INTEGER& hookEnd, 
     //                       the mod hooks hardcoded MassEffect3.exe RVAs, so a different build (EA App
     //                       vs Steam, a patch, a repacked exe) lands the hook on wrong bytes. Check
     //                       the [HOST] exe fingerprint at the top of the log.
-    //   replays>0, caps=0-> the second pass renders but the left-eye capture never arms, so the submit
+    //   replays>0, caps=0-> the second Draw runs but the left-eye capture never arms, so the submit
     //                       falls back to the live backbuffer for both eyes. A capture/clear-pattern
     //                       problem, not a hook problem.
-    //   both >0          -> geometry is genuinely stereo; if it still LOOKS flat the cause is
-    //                       presentation (check [PRESENTATION] submit=) or eye separation being ~0.
+    //   both >0          -> replay and capture executed; distinct-eye pixels still need validation.
+    //                      SFRTIMING and SFRORDER distinguish short Draw calls and missing boundaries.
     // Always on, gameplay-stereo only, one line per window.
     if (ME2VR::CalcViewHook::GetVrMode() == 4 && !g_menuPresentation.load(std::memory_order_acquire))
     {
@@ -3817,6 +3876,7 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDXGISwapChain* swapChain, UINT syncInterv
     g_flkUiScaleX = 0.0f;
     g_flkCapAtClear = 0;          // [CAPJITTER]
 
+    SfrOrderEndPresent(); // same present boundary as the unchanged capture-state reset
     g_sfrClearsThisPresent = 0;
     g_sfrCapturedThisPresent = false;   // [SFRCAP]
     g_sfrBbDrawnThisPresent.store(false, std::memory_order_relaxed);   // [SFRCAP2]
