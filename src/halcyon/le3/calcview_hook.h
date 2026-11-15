@@ -23,6 +23,9 @@ void SetFovFill(float hHalfRad, float vHalfRad, bool on) noexcept;
 
 // Conversation/cutscene = narrow cinematic FOV -> render mono. Detected XR-side off the RAW FOV.
 void SetCinematic(bool on) noexcept;
+// [MEVR] Director-camera stereo rendered onto the shared screen; never first-person world placement.
+bool GetMevrCineScreen() noexcept;
+void SetMevrCineScreen(bool on) noexcept;
 bool GetCineVrConvo() noexcept;         void SetCineVrConvo(bool on) noexcept;      // [VRCINE]
 bool GetCineVrCutscene() noexcept;      void SetCineVrCutscene(bool on) noexcept;
 bool GetCineVrHeadTracking() noexcept;  void SetCineVrHeadTracking(bool on) noexcept;

@@ -99,6 +99,8 @@ EyeRects Rects(int width, int height, float crop, float aspect = 0.0f);
 
 // The screen's height for a shown part `rects` (its aspect), at `widthM`.
 float HeightM(EyeRects const& rects, float widthM);
+// An identical-image fallback keeps the planned magnification without manufacturing stereo disparity.
+EyeRects MonoSourceRects(EyeRects const& stereo) noexcept;
 
 // The distance between the two cameras (game units) for a render whose horizontal half angle is `halfH` (radians) so that
 // the scene `convergeUU` away lands on the screen plane after a crop of `crop`: a point at that distance has a disparity of

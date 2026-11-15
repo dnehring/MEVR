@@ -59,6 +59,6 @@ struct Quads {
 };
 Quads QuadsNow(unsigned eyeWidth, unsigned eyeHeight) noexcept;
 // Each frame the two quads are submitted: the log (`cine screen: a conversation on the 3D screen ...`) and the snapshot.
-void NoteSubmit(bool conversation, float heightM) noexcept;
+void NoteSubmit(bool conversation, float heightM, bool stereoSource = true) noexcept;
 
 } // namespace mevr::host::cine_screen

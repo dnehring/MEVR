@@ -66,6 +66,7 @@ std::atomic<float> g_markerRawProjection[16] = {};
 std::atomic<unsigned> g_markerProjectionSeq{0};
 std::atomic_bool g_markerProjectionReady{false};
 // Conversation/cutscene = narrow cinematic FOV -> render MONO (flat panel) instead of stereo split.
+std::atomic_bool g_mevrCineScreen{false}; // [MEVR] shared stereo cinema presentation
 std::atomic_bool g_cinematic{false};
 
 // 6DOF free head-look (orientation): yaw/pitch in UE units (65536 = 360 deg), set from the XR side.
@@ -637,6 +638,7 @@ void ApplyHeadPosition(std::uintptr_t sv) noexcept
 
 void ApplyHeadLook(std::uintptr_t sv) noexcept
 {
+    if (g_mevrCineScreen.load(std::memory_order_acquire)) return; // [MEVR] preserve director position and rotation
     // Translation has its own PosEnabled master and must not depend on who currently owns ROTATION.
     // Head aim deliberately parks render-side yaw/pitch; the old ordering returned here first and
     // silently killed positional lean whenever aim was active (or rotational head look was disabled).
@@ -729,6 +731,7 @@ void ApplyFov(std::uintptr_t sv) noexcept
     // Default: rendered == raw game FOV (any early return below leaves it that way).
     g_renderHalfFovH.store(g_gameRawFovH.load(std::memory_order_relaxed), std::memory_order_relaxed);
     g_renderHalfFovV.store(g_gameRawFovV.load(std::memory_order_relaxed), std::memory_order_relaxed);
+    if (g_mevrCineScreen.load(std::memory_order_acquire)) return; // [MEVR] director lens, no headset FOV fill
     if (!g_fovFillOn.load(std::memory_order_acquire)) return;
     const float th = g_fovFillH.load(std::memory_order_relaxed);   // headset fill target (half-FOV, aspect-corr)
     const float tv = g_fovFillV.load(std::memory_order_relaxed);
@@ -1019,6 +1022,14 @@ void __fastcall DrawDetour(void* self, void* viewport, void* canvas) noexcept
     }
 }
 
+// [MEVR] Keep SEH outside CalcViewDetour's RAII guards (MSVC C2712).
+float MevrCinemaHalfFov(std::uintptr_t sv) noexcept {
+    float p0 = 0.0f;
+    __try { p0 = reinterpret_cast<volatile float const*>(sv + kFsvProjectionMatrix)[0]; }
+    __except (EXCEPTION_EXECUTE_HANDLER) { p0 = 0.0f; }
+    return p0 > 0.0001f ? atanf(1.0f / p0) : 0.0f;
+}
+
 void* __fastcall CalcViewDetour(void* lp, void* family, void* loc, void* rot, void* vp, void* drawer) noexcept
 {
     if (g_orig == nullptr) return nullptr;
@@ -1082,6 +1093,7 @@ void* __fastcall CalcViewDetour(void* lp, void* family, void* loc, void* rot, vo
         ~FovAtSourceGuard() { if (active) ME2VR::EngineProbe::SetCameraFovDeg(prevDeg, nullptr); }
     } fovSrc;
     if (g_vrEnabled.load(std::memory_order_acquire) && isP1 &&
+        !g_mevrCineScreen.load(std::memory_order_acquire) &&
         g_fovFillOn.load(std::memory_order_acquire) && ME2VR::EngineProbe::CamFovReady())
     {
         const float th = g_fovFillH.load(std::memory_order_relaxed);
@@ -1156,6 +1168,10 @@ void* __fastcall CalcViewDetour(void* lp, void* family, void* loc, void* rot, vo
             InvMatScanTick(svu);             // [INVMAT] pristine-view scan (one-shot; must precede any edit)
             float he = g_halfEyeUU.load(std::memory_order_relaxed);
             if (g_swapEyes.load(std::memory_order_relaxed)) he = -he;
+            // [MEVR] Same lens-dependent, parallel-camera baseline as LE1/LE2; pass 0 remains left.
+            if (g_mevrCineScreen.load(std::memory_order_acquire)) {
+                he = ::ME2VR::MevrBridge::CineScreenHalfSeparationUU(MevrCinemaHalfFov(svu));
+            }
             g_sfrCalcViews.fetch_add(1, std::memory_order_relaxed);   // [SFR2]
             const float signedUU = t_replay ? +he : -he;   // pass1 = right (+), pass0 = left (-)
             ApplyEyeOffset(svu, signedUU);   // IPD only (lean comes from ApplyHeadLook)
@@ -1384,6 +1400,8 @@ void SetFovFill(float hHalfRad, float vHalfRad, bool on) noexcept
     g_fovFillV.store(vHalfRad, std::memory_order_relaxed);
     g_fovFillOn.store(on, std::memory_order_release);
 }
+bool GetMevrCineScreen() noexcept { return g_mevrCineScreen.load(std::memory_order_acquire); }
+void SetMevrCineScreen(bool on) noexcept { g_mevrCineScreen.store(on, std::memory_order_release); }
 void SetCinematic(bool on) noexcept { g_cinematic.store(on, std::memory_order_release); }
 // [VRCINE] ME2's VR conversations/cutscenes, ported. Default OFF - opt-in, exactly as ME2 ships.
 std::atomic_bool g_cineVrConvo{false};

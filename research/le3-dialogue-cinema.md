@@ -28,3 +28,14 @@ LE3's existing SFR draw classifier and pass-zero capture provide reusable insert
 First-person conversations are not part of this work. True stereo cinema, its view transitions and native input must be accepted using separate-eye snapshots and a real headset before the port is called complete.
 
 The existing LE2 baseline, stereo quad submission and UI-plane placement now live in shared plugin/SequelCinema; LE2's bridge delegates to that module. LE3 renderer seams will use the same entry points. This extraction alone does not activate stereo cinema on LE3.
+
+
+## LE3 stereo cinema candidate
+
+LE3 now calls the shared cinema planner and compositor for corroborated conversation/cinematic sources in SFR. The director retains position, orientation and native lens; the parallel camera baseline comes from that view's projection, and gameplay convergence/swap-eyes settings do not alter the screen pair. The actual pass-zero capture and live pass-one backbuffer feed separate eye-visible quads. GUI/movie modes retain the native mono panel. The full-rate setting participates in the existing pacing policy; no second OpenXR session or renderer was added.
+
+Late Scaleform UI draws can enter the existing HudPanel redirect before Halcyon's mirror fallback. This preserves the native wheel, subtitle and interrupt layout on one plane ahead of the cinema surface, with the shared floor and transition fade. An old native UI overlay is suppressed while that cinema surface is submitted. This does not enable native wrist crops or gameplay HUD relocation.
+
+If pass zero is stale/missing, both screen eyes use the same centered crop at unchanged magnification; the stereo convergence crop must not manufacture disparity on identical images. `cineScreen.stereoSource` and `monoFallbackFrames` distinguish this source fallback from genuine separate-eye submissions. The shared planner's baseline remains the intended camera plan, not a claim that both native views rendered.
+
+Offline checks: the modified LE3 XR, camera and D3D capture translation units compile as the existing C++17 Halcyon target; the shared compositor, LE3 bridge and settings module compile with the host's strict C++20 warnings. A focused math regression covers centered fallback at multiple resolutions/depths; its permanent assertion is in TestCineScreen. Full linked builds remain the integration coordinator's check. Required native acceptance: separate-eye captures of a stationary conversation and moving cutscene, actual source counters, clean subtitle/wheel/interrupt separation and menu takeover, no movement in seated scenes, transition/session-recreation checks, and physical-headset comfort. First-person world conversations remain disabled.

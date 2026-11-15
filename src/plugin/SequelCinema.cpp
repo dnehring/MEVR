@@ -91,12 +91,20 @@ unsigned Layers(const Frame& frame, const void** layersOut, unsigned capacity, S
         bool const rectOk = q.rect[e][2] > 0 && q.rect[e][3] > 0;
         quad.subImage.imageRect = {{rectOk ? q.rect[e][0] : 0, rectOk ? q.rect[e][1] : 0},
             {rectOk ? q.rect[e][2] : static_cast<int32_t>(frame.eyeWidth), rectOk ? q.rect[e][3] : static_cast<int32_t>(frame.eyeHeight)}};
+        if (!frame.stereoSource && rectOk) {
+            // An identical stale-source fallback stays on the same screen at zero disparity.
+            mevr::vr::cine_screen::EyeRects const stereo{
+                {q.rect[0][0], q.rect[0][1], q.rect[0][2], q.rect[0][3]},
+                {q.rect[1][0], q.rect[1][1], q.rect[1][2], q.rect[1][3]}};
+            auto const mono = mevr::vr::cine_screen::MonoSourceRects(stereo).left;
+            quad.subImage.imageRect = {{mono.x, mono.y}, {mono.width, mono.height}};
+        }
         quad.pose.orientation = {placed.orientation[0], placed.orientation[1], placed.orientation[2], placed.orientation[3]};
         quad.pose.position = {placed.position[0], placed.position[1], placed.position[2]};
         quad.size = {q.widthM, heightM};
         layersOut[count++] = &quad;
     }
-    mevr::host::cine_screen::NoteSubmit(frame.conversation, heightM);
+    mevr::host::cine_screen::NoteSubmit(frame.conversation, heightM, frame.stereoSource);
     gScreen.active = true;
     gScreen.space = placed.space;
     gScreen.headLocked = placed.headLocked;

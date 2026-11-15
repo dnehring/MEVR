@@ -7,6 +7,12 @@
 #include <cstdint>
 namespace ME2VR::MevrBridge {
 // [MEVR] Shared menu/input/layer bridge. Native screen routing is independently gated.
+bool CineScreenWanted(bool conversation) noexcept;
+bool CineScreenFullRate() noexcept;
+float CineScreenHalfSeparationUU(float halfH) noexcept;
+unsigned CineScreenLayers(CineScreenFrame const& frame, void const** layers, unsigned capacity) noexcept;
+bool HudPanelDraw(ID3D11DeviceContext* context, void (*draw)(void*), void* user, bool afterLeftEye) noexcept;
+void const* TransitionFadeLayer(void* session, void* viewSpace, ID3D11DeviceContext* context, int view) noexcept;
 bool OnMenuKey(bool ownMenuOpen) noexcept;
 bool MainMenuOpen() noexcept;
 void OnPresent() noexcept;

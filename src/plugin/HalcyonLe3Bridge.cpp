@@ -6,6 +6,10 @@
 #include "core/vr/HostView.hpp"
 #include "engine/GameAdapter.hpp"
 #include "plugin/Colour.hpp"
+#include "plugin/CineScreen.hpp"
+#include "plugin/SequelCinema.hpp"
+#include "plugin/TransitionFade.hpp"
+#include "plugin/HudPanel.hpp"
 #include "plugin/EyeCopy.hpp"
 #include "plugin/FloorLock.hpp"
 #include "plugin/PadMerge.hpp"
@@ -28,6 +32,7 @@ std::atomic<std::uint64_t> gFloorTranslatedMs{0};
 std::mutex gPadMutex;
 XINPUT_GAMEPAD gLastPad{};
 DWORD gPacket = 0;
+mevr::host::sequel_cinema::State gScreen;
 bool gNativePanelSeen = false;
 bool gNativePointerShown = false;
 }
@@ -61,6 +66,8 @@ void OnSessionCreated(void* instance, void* session) noexcept {
     }
 }
 void OnSessionStopped() noexcept {
+    gScreen = {};
+    mevr::host::hud_panel::SetArmed(false);
     mevr::host::menus_le2::OnSessionStopped();
     gNativePanelSeen = gNativePointerShown = false;
     mevr::host::world_panels::Recenter();
@@ -73,6 +80,7 @@ void OnSessionStopped() noexcept {
 void OnFrameBegun(void* session, void* space, std::int64_t time) noexcept {
     if (!session) return;
     mevr::host::world_panels::NoteFrame();
+    gScreen = {};
     gNativePanelSeen = false; // renewed only by an actual submitted native panel
     mevr::vr::controllers::State state;
     auto const s = static_cast<XrSession>(session);
@@ -87,6 +95,7 @@ void OnFrameBegun(void* session, void* space, std::int64_t time) noexcept {
         mevr::vr::host_view::Reset(); // flat/menu paths do not call DriveHeadLook this frame
 }
 void OnRecentered() noexcept {
+    gScreen = {};
     mevr::host::menus_le2::OnRecentered();
     mevr::host::world_panels::Recenter();
     mevr::vr::controllers::Publish({}); // old app-space poses must not mix with the new head space
@@ -168,7 +177,22 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** out, unsigned cap
 #endif
     ID3D11Device* device = nullptr;
     frame.context->GetDevice(&device);
-    unsigned const count = mevr::host::menus_le2::Layers(frame, device, out, 0, capacity);
+    mevr::host::hud_panel::Frame panel;
+    panel.session = static_cast<XrSession>(frame.session);
+    panel.appSpace = static_cast<XrSpace>(frame.appSpace);
+    panel.context = frame.context;
+    panel.device = device;
+    panel.stereo = frame.stereo;
+    panel.headValid = frame.headValid;
+    panel.head = {{frame.headOrientation[0], frame.headOrientation[1], frame.headOrientation[2], frame.headOrientation[3]},
+        {frame.headPosition[0], frame.headPosition[1], frame.headPosition[2]}};
+    // This capture increment owns cinematic UI only. Gameplay HUD and native wrist routing have their own acceptance.
+    panel.enabled = !frame.menuOpen && !MainMenuOpen();
+    mevr::host::sequel_cinema::FillUi(gScreen, frame.headPosition, panel);
+    unsigned count = 0;
+    if (auto const* ui = mevr::host::hud_panel::Layer(panel); ui && count < capacity) out[count++] = ui;
+    count = mevr::host::menus_le2::Layers(frame, device, out, count, capacity);
+    gScreen = {};
     if (device) device->Release();
     return count;
 }
@@ -197,6 +221,19 @@ void PlaceNativePanel(OverlayFrame const& frame, float const viewPosition[3], fl
 #else
     (void)width; (void)height;
 #endif
+}
+
+bool CineScreenWanted(bool conversation) noexcept { return mevr::host::cine_screen::Wanted(conversation); }
+bool CineScreenFullRate() noexcept { return mevr::host::cine_screen::FullRate(); }
+float CineScreenHalfSeparationUU(float halfH) noexcept { return mevr::host::sequel_cinema::HalfSeparationUU(halfH); }
+unsigned CineScreenLayers(CineScreenFrame const& frame, void const** layers, unsigned capacity) noexcept {
+    return mevr::host::sequel_cinema::Layers(frame, layers, capacity, gScreen);
+}
+bool HudPanelDraw(ID3D11DeviceContext* context, void (*draw)(void*), void* user, bool afterLeftEye) noexcept {
+    return mevr::host::hud_panel::Redirect(context, draw, user, false, afterLeftEye);
+}
+void const* TransitionFadeLayer(void* session, void* viewSpace, ID3D11DeviceContext* context, int view) noexcept {
+    return mevr::host::transition_fade::Layer(session, viewSpace, context, view);
 }
 
 }

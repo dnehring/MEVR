@@ -7806,6 +7806,13 @@ void TestCineScreen() {
     int const drop = static_cast<int>(std::lround(c * 2344.0f));
     CHECK(r.left.x == drop && r.left.width == 2344 - drop && r.right.x == 0 && r.right.width == r.left.width && r.left.height == 2392 &&
           r.right.height == 2392 && r.left.y == 0);
+    { // An identical-image capture fallback must not acquire disparity from the convergence crop.
+        auto const mono = cs::MonoSourceRects(r);
+        CHECK(mono.left.x == mono.right.x && mono.left.x == drop / 2);
+        CHECK(mono.left.width == r.left.width && mono.right.width == r.right.width);
+        CHECK(mono.left.y == r.left.y && mono.right.height == r.right.height);
+        CHECK(NearD(cs::HeightM(mono, 3.0f), cs::HeightM(r, 3.0f), 1e-6));
+    }
     CHECK(cs::Rects(0, 100, c).left.width == 0 && cs::Rects(100, 100, 2.0f).left.x == 25);   // the crop is limited to a quarter
     CHECK(NearD(cs::HeightM(r, 3.0f), 3.0 * 2392.0 / (2344.0 - drop), 1e-5));
     {   // 16:9: the middle band of rows, the same in both eyes; the screen that shape; a wider image keeps all its rows.

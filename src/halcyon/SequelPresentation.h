@@ -36,6 +36,7 @@ struct CineScreenFrame
     void* viewSpace = nullptr;   // XrSpace: VIEW
     ID3D11DeviceContext* context = nullptr;
     bool conversation = false;   // semantic conversation (else cutscene)
+    bool stereoSource = true;   // false: identical fallback image, never manufacture disparity with opposite crops
     bool headValid = false;
     float eyeOrientation[2][4] = {{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
     float eyePosition[2][3] = {};

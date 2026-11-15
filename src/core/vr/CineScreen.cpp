@@ -68,6 +68,12 @@ EyeRects Rects(int width, int height, float crop, float aspect) {
     return r;
 }
 
+EyeRects MonoSourceRects(EyeRects const& stereo) noexcept {
+    Rect mono = stereo.left;
+    mono.x = (stereo.left.x + stereo.right.x) / 2;
+    return {mono, mono};
+}
+
 float HeightM(EyeRects const& rects, float widthM) {
     if (rects.left.width <= 0 || rects.left.height <= 0) {
         return 0.0f;

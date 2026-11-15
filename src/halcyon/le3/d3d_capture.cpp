@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
-#include "mevr_bridge.h" // [MEVR] shared host seam
+#include "mevr_bridge.h"
+#include <type_traits> // [MEVR] shared host seam
 #include "d3d_capture.h"
 
 #include "allocviewstate_finder.h"
@@ -1726,6 +1727,14 @@ void EmitUiDraw(ID3D11DeviceContext* ctx, const D3D11_VIEWPORT& vp, DrawThunk&& 
     // texture (= left eye). No half-viewport dup: each eye is a whole frame, not half of one.
     if (SfrModeActive())
     {
+        // [MEVR] Reuse the shared UI redirect before the fallback mirror. Redirect validates
+        // alpha/Scaleform state itself and takes only late draws after pass zero was captured.
+        if (ME2VR::CalcViewHook::GetMevrCineScreen()) {
+            auto& call = draw;
+            if (::ME2VR::MevrBridge::HudPanelDraw(ctx, [](void* user) noexcept {
+                (*static_cast<typename std::remove_reference<DrawThunk>::type*>(user))();
+            }, &call, SfrUiMirrorArmed())) return;
+        }
         // [UIALPHA 2026-08-17] IsUiDrawNow's broad "full viewport + blending" prefilter also
         // catches the club's fullscreen/world FX. The mirror already rejected those non-alpha
         // blend modes, but the mod still applied the HUD's [UIRATIO] viewport to the ORIGINAL draw first.
@@ -1890,7 +1899,7 @@ void STDMETHODCALLTYPE MhDrawIndexed(ID3D11DeviceContext* ctx, UINT a, UINT b, I
     SfrNoteBackbufferDraw(ctx);   // [SFRCAP2] scene draws only - a UI draw must not arm the capture
     if (isUiDraw) GuiSceneProbe(ctx);   // [GUISCENE]
 
-    if (isUiDraw && g_uiDupEnabled.load(std::memory_order_acquire))
+    if (isUiDraw && (g_uiDupEnabled.load(std::memory_order_acquire) || ME2VR::CalcViewHook::GetMevrCineScreen()))
     {
         // UI draws are few; their dup/mirror work is counted whole (it is the mod's).
         EmitUiDraw(ctx, vp, [&] { g_mhRealDrawIndexed(ctx, a, b, c); });
@@ -1912,7 +1921,7 @@ void STDMETHODCALLTYPE MhDrawIndexedInstanced(ID3D11DeviceContext* ctx, UINT ipc
     const bool isUiDraw = IsUiDrawNow(ctx, vp);
     SfrNoteBackbufferDraw(ctx);   // [SFRCAP2] scene draws only
     if (isUiDraw) GuiSceneProbe(ctx);   // [GUISCENE]
-    if (isUiDraw && g_uiDupEnabled.load(std::memory_order_acquire))
+    if (isUiDraw && (g_uiDupEnabled.load(std::memory_order_acquire) || ME2VR::CalcViewHook::GetMevrCineScreen()))
     {
         EmitUiDraw(ctx, vp, [&] { g_mhRealDrawIndexedInstanced(ctx, ipc, ic, sil, bvl, sii); });
         HookCostDraw(__rdtsc() - hc0);
@@ -1934,7 +1943,7 @@ void STDMETHODCALLTYPE MhDraw(ID3D11DeviceContext* ctx, UINT a, UINT b) noexcept
     const bool isUiDraw = IsUiDrawNow(ctx, vp);
     SfrNoteBackbufferDraw(ctx);   // [SFRCAP2] scene draws only
     if (isUiDraw) GuiSceneProbe(ctx);   // [GUISCENE]
-    if (isUiDraw && g_uiDupEnabled.load(std::memory_order_acquire))
+    if (isUiDraw && (g_uiDupEnabled.load(std::memory_order_acquire) || ME2VR::CalcViewHook::GetMevrCineScreen()))
     {
         EmitUiDraw(ctx, vp, [&] { g_mhRealDraw(ctx, a, b); });
         HookCostDraw(__rdtsc() - hc0);

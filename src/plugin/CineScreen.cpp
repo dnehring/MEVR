@@ -42,6 +42,8 @@ float gFrameIpdM = 0.0f;
 bool gPlanned = false;
 std::uint64_t gSubmitMs = 0;     // the last submit on the screen
 bool gSubmitConversation = false;
+bool gStereoSource = true;
+std::uint64_t gMonoFallbackFrames = 0;
 float gHeightM = 0.0f;
 std::uint64_t gSceneFrames = 0;  // submits since this scene started on the screen
 std::uint64_t gSummaryMs = 0;
@@ -146,11 +148,11 @@ std::string StatusJson() {
     std::uint64_t const now = GetTickCount64();
     bool const active = gSubmitMs != 0 && now - gSubmitMs < kActiveForMs;
     auto j = [](float v) { return std::isfinite(v) ? std::format("{:.5g}", v) : std::string("null"); };
-    return std::format("{{\"active\": {}, \"kind\": \"{}\", \"sceneFrames\": {}, \"settings\": {{\"conversations\": {}, \"cutscenes\": {}, "
+    return std::format("{{\"active\": {}, \"kind\": \"{}\", \"sceneFrames\": {}, \"stereoSource\": {}, \"monoFallbackFrames\": {}, \"settings\": {{\"conversations\": {}, \"cutscenes\": {}, "
                        "\"distanceM\": {}, \"widthM\": {}, \"depth\": {}, \"convergeM\": {}, \"aspect\": {}, \"fullRate\": {}, \"uiLayer\": {}, "
                        "\"uiForwardM\": {}}}, \"plan\": {{\"valid\": {}, \"depth\": {}, "
                        "\"crop\": {}, \"baselineUU\": {}, \"halfHDeg\": {}, \"ipdM\": {}, \"depthCapped\": {}}}, \"heightM\": {}}}",
-        active ? "true" : "false", gSubmitConversation ? "conversation" : "cutscene", gSceneFrames, gSettings.conversations ? "true" : "false",
+        active ? "true" : "false", gSubmitConversation ? "conversation" : "cutscene", gSceneFrames, gStereoSource ? "true" : "false", gMonoFallbackFrames, gSettings.conversations ? "true" : "false",
         gSettings.cutscenes ? "true" : "false", j(gSettings.distanceM), j(gSettings.widthM), j(gSettings.depth), j(gSettings.convergeM),
         j(gSettings.aspect), gSettings.fullRate ? "true" : "false", gSettings.uiLayer ? "true" : "false", j(gSettings.uiForwardM),
         gPlanned ? "true" : "false", j(gFrame.depth), j(gFrame.crop), j(gFrame.baselineUU), j(gFrameHalfH * 57.29578f), j(gFrameIpdM),
@@ -212,16 +214,18 @@ Quads QuadsNow(unsigned eyeWidth, unsigned eyeHeight) noexcept {
     return out;
 }
 
-void NoteSubmit(bool conversation, float heightM) noexcept {
+void NoteSubmit(bool conversation, float heightM, bool stereoSource) noexcept {
     std::lock_guard lock(gMutex);
     std::uint64_t const now = GetTickCount64();
     bool const starting = gSubmitMs == 0 || now - gSubmitMs >= kActiveForMs || conversation != gSubmitConversation;
     gSubmitMs = now;
     gSubmitConversation = conversation;
+    gStereoSource = stereoSource;
     gHeightM = heightM;
     float const b = gFrame.baselineUU;
     if (starting) {
         gSceneFrames = 0;
+        gMonoFallbackFrames = 0;
         gSummaryMs = now;
         gMinBaseline = gMaxBaseline = b;
         mevr::log::Info("cine screen: a {} on the 3D screen: {:.2f} x {:.2f} m at {:.2f} m, depth {:.2f}% (each eye drops {:.2f}% of its "
@@ -230,6 +234,7 @@ void NoteSubmit(bool conversation, float heightM) noexcept {
             gFrame.depth * 100.0f, gFrame.crop * 100.0f, b, gFrameHalfH * 2.0f * 57.29578f);
     }
     ++gSceneFrames;
+    if (!stereoSource) ++gMonoFallbackFrames;
     gMinBaseline = std::min(gMinBaseline, b);
     gMaxBaseline = std::max(gMaxBaseline, b);
     if (now - gSummaryMs >= kSummaryEveryMs) {

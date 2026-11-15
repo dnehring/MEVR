@@ -1075,6 +1075,10 @@ function(mevr_add_plugin game)
             src/core/vr/PoseRecording.cpp src/core/vr/Colour.cpp src/core/d3d11/Blit.cpp src/core/PngFile.cpp
             src/core/Hotkey.cpp src/core/vr/TestRequest.cpp
             src/plugin/MenusLe2.cpp src/plugin/MenusLe2.hpp src/plugin/WorldPanels.cpp src/plugin/WorldPanels.hpp
+            src/plugin/SequelCinema.cpp src/plugin/SequelCinema.hpp src/plugin/CineScreen.cpp src/core/vr/CineScreen.cpp
+            src/core/vr/ConversationWorld.cpp src/plugin/CinemaBackdrop.cpp src/plugin/CinemaBackdropDraw.cpp
+            src/plugin/TransitionFade.cpp src/core/vr/TransitionFade.cpp
+            src/plugin/HudPanel.cpp src/plugin/QuadSwapchain.cpp
             src/core/vr/OverlayPlacement.cpp src/core/vr/OverlayPlacement.hpp)
         if (MEVR_MAIN_MENU)
             set(with_main_menu ON)

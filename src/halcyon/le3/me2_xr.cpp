@@ -587,6 +587,7 @@ void PumpEvents() noexcept
             {
                 g_fn.endSession(g_session);
                 ::ME2VR::MevrBridge::OnSessionStopped(); // [MEVR] discard stale controller/view state
+                ME2VR::CalcViewHook::SetMevrCineScreen(false);
                 g_begun = false;
             }
         }
@@ -1356,7 +1357,8 @@ void RunFrame() noexcept
     // present at up to the display rate, so each eye refreshes at ~display/2 while the engine pays
     // for ONE view per frame - half of SFR's submission cost, which is the measured hub bottleneck.
     // FullRefreshPacing (the same knob Stereo uses) picks full vs half; the shipped ini already has it on.
-    if (wantPace) PaceDisplayLocked(true);
+    if (wantPace) PaceDisplayLocked(!ME2VR::CalcViewHook::GetMevrCineScreen() ||
+        ::ME2VR::MevrBridge::CineScreenFullRate());
 
     XrFrameWaitInfo fwi = {}; fwi.type = XR_TYPE_FRAME_WAIT_INFO_VALUE;
     XrFrameState fs = {}; fs.type = XR_TYPE_FRAME_STATE_VALUE;
@@ -1387,6 +1389,8 @@ void RunFrame() noexcept
     XrCompositionLayerProjectionView projViews[2] = {};
     XrCompositionLayerProjection layer = {};
     bool rendered = false;
+    const void* mevrScreenLayers[3] = {};
+    unsigned mevrScreenLayerCount = 0;
 
     // SBS this frame? The split bumps a counter each gameplay frame, but it can skip the odd present
     // (~7 of 8). Switching mono<->SBS on a single skipped frame caused the flashing. Use hysteresis:
@@ -1633,16 +1637,22 @@ void RunFrame() noexcept
         // The presentation controller is authoritative. Any latched menu state cancels inherited
         // VR-cine state as well, including pause-owned menus that do not expose a stable GUI object.
         const bool menuMono = ME2VR::D3DCapture::GetMenuMode();
-        const bool renderCineInVr = cine && vrEligible && (!menuMono || fpConvo) &&
+        // [MEVR] Only corroborated native conversation/cinematic sources enter the shared screen.
+        // Movie and GUI sources retain the complete native mono panel. No first-person relocation.
+        const bool mevrScreen = sfrMode && cine && vrEligible && !menuMono && (gm == 7 || gm == 8) &&
+            ::ME2VR::MevrBridge::CineScreenWanted(gm == 7);
+        ME2VR::CalcViewHook::SetMevrCineScreen(mevrScreen);
+        const bool renderCineInVr = mevrScreen || (cine && vrEligible && (!menuMono || fpConvo) &&
                                     (fpConvo || (convoLike ? ME2VR::CalcViewHook::GetCineVrConvo()
-                                                          : ME2VR::CalcViewHook::GetCineVrCutscene()));
+                                                          : ME2VR::CalcViewHook::GetCineVrCutscene())));
         ME2VR::CalcViewHook::SetVrCineActive(renderCineInVr);
         ME2VR::CalcViewHook::SetCinematic(cine && !renderCineInVr);
         // [CINEVR] one line per presentation flip: this is what verifies (or corrects) the LE3
         // convo/cutscene mapping from a single play session.
         static int s_prevCineState = -1;
-        const int cineState = !cine ? 0 : (renderCineInVr ? (convoLike ? 2 : 3) : 1);
-        static const char* kNames[4] = { "none", "FLAT panel", "VR conversation", "VR cutscene" };
+        const int cineState = !cine ? 0 : mevrScreen ? (convoLike ? 4 : 5) : (renderCineInVr ? (convoLike ? 2 : 3) : 1);
+        static const char* kNames[6] = { "none", "FLAT panel", "VR conversation", "VR cutscene",
+            "3D conversation screen", "3D cutscene screen" };
         if (cineState != s_prevCineState)
         {
             // [XSTATE] a banter-heavy scene (party, hub crowd) fires this edge once per NPC
@@ -2030,7 +2040,8 @@ void RunFrame() noexcept
             const float gv = ME2VR::CalcViewHook::GetGameHalfFovV();
 
             ID3D11Texture2D* pass0 = ME2VR::D3DCapture::GetSfrPass0Texture();   // left (-halfEye), mid-present
-            const bool swap = ME2VR::CalcViewHook::GetSwapEyes();
+            const bool mevrScreenNow = ME2VR::CalcViewHook::GetMevrCineScreen();
+            const bool swap = ME2VR::CalcViewHook::GetSwapEyes() && !mevrScreenNow;
             // [STALEEYE 2026-08-15] pass0 is a HELD texture: it only changes when a scene render is
             // captured. The right eye is the live backbuffer, so when the scene stops rendering while
             // the presentation is still stereo - a loading screen entered straight from gameplay, the
@@ -2063,7 +2074,7 @@ void RunFrame() noexcept
             // render instead would move the world in one pass but split the HUD by 2*conv, because the
             // HUD is composited identically into both passes. Sign is bolted to the PASS, so swap-eyes
             // inverts the convergence plane exactly as it should. conv=0 -> plain copy, nothing touched.
-            const float conv = ME2VR::CalcViewHook::GetSfrConvergence();
+            const float conv = mevrScreenNow ? 0.0f : ME2VR::CalcViewHook::GetSfrConvergence();
             // Identical images shifted apart would FAKE disparity on flat content, so a stale-capture
             // frame converges at 0 - the same choice mono gameplay makes.
             const int convPx = staleCapture
@@ -2071,6 +2082,31 @@ void RunFrame() noexcept
                 : static_cast<int>(lroundf(conv * 0.5f * static_cast<float>(g_aerSwapW)));
             CopyTextureToEyeFullFrame(swap ? 1 : 0, leftSrc,  +convPx);
             CopyTextureToEyeFullFrame(swap ? 0 : 1, rightSrc, -convPx);
+
+            // [MEVR] Actual pass-zero/pass-one images on the shared stereo cinema screen.
+            if (mevrScreenNow && g_aerSwap[0] && g_aerSwap[1]) {
+                ::ME2VR::MevrBridge::CineScreenFrame screen;
+                screen.session = g_session; screen.appSpace = g_localSpace; screen.viewSpace = g_viewSpace;
+                screen.context = g_ctx;
+                screen.conversation = ME2VR::EngineProbe::ReadGameMode() == 7;
+                screen.stereoSource = pass0 != nullptr && !staleCapture;
+                screen.headValid = (vs.viewStateFlags & XR_VIEW_STATE_ORIENTATION_VALID_BIT_VALUE) != 0 &&
+                    (vs.viewStateFlags & XR_VIEW_STATE_POSITION_VALID_BIT_VALUE) != 0;
+                screen.eyeWidth = g_aerSwapW; screen.eyeHeight = g_aerSwapH;
+                for (int e = 0; e != 2; ++e) {
+                    screen.eyeSwapchain[e] = g_aerSwap[e];
+                    screen.eyeOrientation[e][0] = views[e].pose.orientation.x;
+                    screen.eyeOrientation[e][1] = views[e].pose.orientation.y;
+                    screen.eyeOrientation[e][2] = views[e].pose.orientation.z;
+                    screen.eyeOrientation[e][3] = views[e].pose.orientation.w;
+                    screen.eyePosition[e][0] = views[e].pose.position.x;
+                    screen.eyePosition[e][1] = views[e].pose.position.y;
+                    screen.eyePosition[e][2] = views[e].pose.position.z;
+                    screen.eyeFov[e][0] = views[e].fov.angleLeft; screen.eyeFov[e][1] = views[e].fov.angleRight;
+                    screen.eyeFov[e][2] = views[e].fov.angleUp; screen.eyeFov[e][3] = views[e].fov.angleDown;
+                }
+                mevrScreenLayerCount = ::ME2VR::MevrBridge::CineScreenLayers(screen, mevrScreenLayers, 3);
+            }
 
             // [POSETAG] Tag the captured pair with the pose that RENDERED it - the smoothed head-look
             // armed ~poseTagDelayFrames presents ago - not the pose located this instant. The
@@ -2399,7 +2435,7 @@ void RunFrame() noexcept
     // FOV so HUD elements land where the game drew them; head-locked so it follows your view.
     XrCompositionLayerQuad gameUiQuad = {};
     bool haveGameUi = false;
-    if (ME2VR::D3DCapture::GetUiOverlayMode() && ME2VR::D3DCapture::GetUiOverlayActive())
+    if (mevrScreenLayerCount == 0 && ME2VR::D3DCapture::GetUiOverlayMode() && ME2VR::D3DCapture::GetUiOverlayActive())
     {
         ID3D11Texture2D* ov = ME2VR::D3DCapture::GetUiOverlayTexture();
         if (ov != nullptr)
@@ -2546,7 +2582,7 @@ void RunFrame() noexcept
     // [MEVR] One layer submission owner, shared menu/calibration/rail presentation.
     ::ME2VR::MevrBridge::OverlayFrame overlay;
     overlay.session = g_session; overlay.appSpace = g_localSpace; overlay.viewSpace = g_viewSpace;
-    overlay.context = g_ctx; overlay.worldFrame = rendered; overlay.menuOpen = ME2VR::Menu::IsOpen();
+    overlay.context = g_ctx; overlay.worldFrame = rendered && mevrScreenLayerCount == 0; overlay.menuOpen = ME2VR::Menu::IsOpen();
     overlay.gameMode = ME2VR::EngineProbe::ReadGameMode();
     overlay.stereo = ME2VR::CalcViewHook::GetVrMode() == 4;
     overlay.projectionValid = rendered;
@@ -2595,14 +2631,23 @@ void RunFrame() noexcept
     }
     const XrCompositionLayerBaseHeader* layers[16] = {};
     uint32_t layerCount = 0;
-    if (rendered)   layers[layerCount++] = reinterpret_cast<XrCompositionLayerBaseHeader*>(&layer);
+    for (unsigned i = 0; i < mevrScreenLayerCount; ++i)
+        layers[layerCount++] = static_cast<const XrCompositionLayerBaseHeader*>(mevrScreenLayers[i]);
+    if (rendered && mevrScreenLayerCount == 0) layers[layerCount++] = reinterpret_cast<XrCompositionLayerBaseHeader*>(&layer);
     if (haveMono)   layers[layerCount++] = reinterpret_cast<XrCompositionLayerBaseHeader*>(&monoQuad);
     if (haveGameUi) layers[layerCount++] = reinterpret_cast<XrCompositionLayerBaseHeader*>(&gameUiQuad);
     if (haveUi)     layers[layerCount++] = reinterpret_cast<XrCompositionLayerBaseHeader*>(&uiQuad);
     const void* hostLayers[12] = {};
-    const unsigned hostCount = ::ME2VR::MevrBridge::OverlayLayers(overlay, hostLayers, 12);
+    const unsigned hostCount = ::ME2VR::MevrBridge::OverlayLayers(overlay, hostLayers, (16u - layerCount < 12u ? 16u - layerCount : 12u));
     for (unsigned i = 0; i < hostCount && layerCount < 16; ++i)
         layers[layerCount++] = static_cast<const XrCompositionLayerBaseHeader*>(hostLayers[i]);
+
+    const bool nativeCinematic = overlay.gameMode == 7 || overlay.gameMode == 8;
+    const int view = mevrScreenLayerCount ? 1 : rendered ? 0 : haveMono ? (nativeCinematic ? 2 : 3) : -1;
+    if (layerCount < 16) {
+        if (const void* fade = ::ME2VR::MevrBridge::TransitionFadeLayer(g_session, g_viewSpace, g_ctx, view))
+            layers[layerCount++] = static_cast<const XrCompositionLayerBaseHeader*>(fade);
+    }
 
     XrFrameEndInfo fei = {};
     fei.type = XR_TYPE_FRAME_END_INFO_VALUE;
