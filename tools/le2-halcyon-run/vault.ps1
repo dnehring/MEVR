@@ -82,8 +82,9 @@ for ($run = 1; $run -le $Runs; $run++) {
     } else {
         & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $W 'tools\replay.ps1') -Path $recording -Inputs | Out-Null
         if ($Snapshots) {
-            # The double tap is 1.5 s into the replay: snapshots from just before it through the move and the blend-out.
-            & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $W 'tools\snapshot.ps1') -Count 10 -Interval 0.2 -Delay 1.2 -Tag "vault-run$run" | Out-Null
+            # The double tap is 1.5 s into the replay: the first snapshot just before it (the cue), then the move's end (a snapshot of
+            # both eyes takes about 4 s to write; for the middle of a move use -Mode go with `mevr traversal pause <s>`).
+            & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $W 'tools\snapshot.ps1') -Count 2 -Interval 0.2 -Delay 1.0 -Tag "vault-run$run" | Out-Null
             Start-Sleep -Seconds 2
         } else {
             Start-Sleep -Seconds 6

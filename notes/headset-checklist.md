@@ -657,6 +657,14 @@ Turn it on: the menu's Voice page > Thespian mode > Speak Shepard's lines (or `[
   right. (research/21 sections 9-10)
 
 ## 4. Moving and comfort (session: VR mod for Mass Effect Legendary Edition)
+- [ ] ME2's vault (lane E, research/le2-traversal.md; built 2026-11-14, checked on the fake headset): load the VR Shepard career's
+  Save 4 (Freedom's Progress), walk to the low wall of the spaceport (`CoverLink_10`, about 28 m from the start; or `mevr traversal
+  place CoverLink_10 0 0.25`), gun drawn and held, stand square to it and double-tap A: one vault, no cover snap. Judge: is the
+  standing distance the game asks for (within about 0.39 m of the slot, facing within 45 degrees) findable without the cue, and
+  with `[Traversal] cue = 1`? Is the view's rise over the wall (about 0.5 m, smooth, level) comfortable as the game moves it
+  (`view = game`, today's), against `view = level`, `mask = vignette` and `mask = blink` (each in `ASI\LE2MEVR.ini [Traversal]`,
+  read live)? Where are your hands and the gun during the move and the second after it (the body's landing crouch)? Does a single
+  A ever do anything near the wall? Seated and with the left hand on the gun too.
 - [ ] 2026-11-14 the idle sway (research/72; `[Hands] steadyIdle = 1` in ASI\LE1MEVR.ini, off by default until this
   check): stand still and look down at Shepard's feet for 30 s: they stay planted (without it they slide 2-3 cm, 16 cm in an
   idle fidget, while the hips stay under you); then walk off and stop: no jump or skating as it blends in and out. Compare

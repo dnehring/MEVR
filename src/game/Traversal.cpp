@@ -166,6 +166,7 @@ double gPendingStanceS = -1e9;
 constexpr double kHandsNearM = 0.15;  // a drawn wrist this close to its controller's grip is on it (first person: 0.07 at rest)
 // A test pause (mevr traversal pause <s>): the game paused this long into the next move, for eye snapshots of its middle.
 double gPauseAfterS = -1.0;
+std::uint32_t gToldCueSerial = 0;  // the slot the cue was last logged for
 std::string gLastSummary = "null";
 unsigned gMoves = 0;
 
@@ -315,7 +316,7 @@ std::optional<double> SlotYaw(ue3::Object* link, int index) {
     return r ? std::optional<double>(Degrees(r->yaw)) : std::nullopt;
 }
 
-// The cover's top under `at`: a downward trace from `above` units over the slot (level geometry only).
+// The cover's top under `at`: a downward trace from `above` units over the slot (the cover is often a mesh actor: actors traced too).
 std::optional<double> CoverTop(ue3::Object* pawn, tv::Vec3 at, double above, double below) {
     ue3::Function* const fn = gTraceRef.Get();
     if (fn == nullptr || pawn == nullptr) {
@@ -324,7 +325,7 @@ std::optional<double> CoverTop(ue3::Object* pawn, tv::Vec3 at, double above, dou
     ue3::Params parms(ue3::runtime::Get(), fn);
     parms.Set("TraceEnd", ue3::Vector{static_cast<float>(at.x), static_cast<float>(at.y), static_cast<float>(at.z - below)});
     parms.Set("TraceStart", ue3::Vector{static_cast<float>(at.x), static_cast<float>(at.y), static_cast<float>(at.z + above)});
-    parms.SetBool("bTraceActors", false);
+    parms.SetBool("bTraceActors", true);
     ue3::runtime::Call(pawn, fn, parms);
     if (parms.Return<ue3::Object*>().value_or(nullptr) == nullptr) {
         return std::nullopt;
@@ -824,9 +825,13 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
         s.running = gMove.active;
         gMove.record.Add(s);
         if (gSettings.trace) {
-            log::Info("traversal: trace {:.3f} s{}: pawn {} yaw {:.1f}, camera {} pitch {:+.1f} yaw {:.1f} roll {:+.1f}, blocks actors {}, physics {}",
+            std::optional<arm_ik::HandsPlaced> const hands = arm_ik::MeasureHands();
+            log::Info("traversal: trace {:.3f} s{}: pawn {} yaw {:.1f}, camera {} pitch {:+.1f} yaw {:.1f} roll {:+.1f}, blocks actors {}, physics {}, "
+                      "wrists from the grips {}",
                 s.t, s.running ? "" : " (blend-out)", Fmt(s.pawn), s.pawnYaw, Fmt(s.camera), s.pitch, s.yaw, s.roll, s.collision ? "yes" : "no",
-                s.physics);
+                s.physics,
+                hands && hands->valid[0] && hands->valid[1] ? std::format("L {:.2f} R {:.2f} m", hands->fromGripM[0], hands->fromGripM[1])
+                                                            : std::string("-"));
         }
     }
     if (gSettings.view != tv::View::Level || !gMove.view.Started()) {
@@ -1109,6 +1114,10 @@ void Tick(float /*deltaSeconds*/, Link const& link) {
             s.topTried = true;
             tv::Vec3 const mid = s.targetAt ? tv::Vec3{0.5 * (s.at.x + s.targetAt->x), 0.5 * (s.at.y + s.targetAt->y), s.at.z} : s.at;
             s.topZ = CoverTop(pawn, mid, 150.0, 40.0);
+            std::optional<ue3::Vector> const at = player::Location(pawn);
+            log::Info("traversal: {}'s cover top {} (the slot at z {:.0f}, the pawn at z {:.0f}): the cue goes {}", s.name,
+                s.topZ ? std::format("at z {:.0f}", *s.topZ) : std::string("not found by a trace"), s.at.z, at ? at->z : 0.0f,
+                Fmt(tv::CuePoint(s.at, s.targetAt, s.topZ)));
         }
         std::optional<engine::TrackingFrame> const frame = view_anchor::Current();
         if (frame) {
@@ -1135,6 +1144,13 @@ void Tick(float /*deltaSeconds*/, Link const& link) {
                 cue.exit = engine::ToTracking(*frame, {s.targetAt->x, s.targetAt->y, s.targetAt->z});
             }
             cue.serial = static_cast<std::uint32_t>(gNear.slot + 1);
+            if (cue.visible && cue.serial != gToldCueSerial) {
+                gToldCueSerial = cue.serial;
+                log::Info("traversal: the cue '{}' shows over {}: the world point {} is ({:+.2f}, {:+.2f}, {:+.2f}) m from the head in the room "
+                          "(x right, y up, -z ahead), {:.2f} m away{}",
+                    tv::Label(s.kind), s.name, Fmt(point), p.x - head.x, p.y - head.y, p.z - head.z, distance,
+                    link.setCue != nullptr ? "" : "; the host can't draw it (services before v40)");
+            }
         }
     }
     if (link.setCue != nullptr && (cue.visible || cue.blink > 0.0f)) {
@@ -1238,18 +1254,19 @@ std::string Command(std::string const& args) {
         UpdateNear(pc, pawn, Now());
         std::string face;
         if (gNear.slot >= 0) {
-            // The obstacle's face in front of the slot (a level trace along the slot's direction at the pawn's height).
+            // The obstacle's face in front of the slot (a level trace along the slot's direction at the slot point's height, which is
+            // below a low cover's top; the pawn's centre is above it).
             Slot const& s = gSlots[static_cast<std::size_t>(gNear.slot)];
             std::optional<ue3::Vector> const at = player::Location(pawn);
             ue3::Function* const fn = gTraceRef.Get();
             if (at && fn != nullptr) {
                 double const y = s.yaw * kPi / 180.0;
                 ue3::Params parms(ue3::runtime::Get(), fn);
-                ue3::Vector const start{static_cast<float>(s.at.x), static_cast<float>(s.at.y), at->z};
+                ue3::Vector const start{static_cast<float>(s.at.x), static_cast<float>(s.at.y), static_cast<float>(s.at.z)};
                 parms.Set("TraceStart", start);
                 parms.Set("TraceEnd", ue3::Vector{start.x + static_cast<float>(std::cos(y) * 200.0), start.y + static_cast<float>(std::sin(y) * 200.0),
                     start.z});
-                parms.SetBool("bTraceActors", false);
+                parms.SetBool("bTraceActors", true);
                 ue3::runtime::Call(pawn, fn, parms);
                 std::optional<ue3::Vector> const hit = parms.Get<ue3::Vector>("HitLocation");
                 if (parms.Return<ue3::Object*>().value_or(nullptr) != nullptr && hit) {
