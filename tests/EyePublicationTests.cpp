@@ -35,6 +35,16 @@ int main() {
     CHECK(images.Complete(1, true, true, true, &right)); // catch-up restores a complete current pair
     CHECK(images.CurrentPair());
 
+    // Cinema quads use the current room-placement pose, so unlike AER they must
+    // never consume an untouched old eye with that new placement frame.
+    images.BeginFrame();
+    CHECK(!images.CurrentPair());
+    CHECK(images.Complete(0, true, true, true, &left));
+    CHECK(!images.Complete(1, false, false, false, &right));
+    CHECK(images.TaggedPair() && !images.CurrentPair());
+    CHECK(images.Complete(1, true, true, true, &right));
+    CHECK(images.CurrentPair());
+
     images.Reset(); // new session/swapchain/history generation
     CHECK(!images.CurrentPair() && !images.TaggedPair() && !images.Get(0) && !images.Get(1));
     CHECK(images.Complete(0, true, true, true));

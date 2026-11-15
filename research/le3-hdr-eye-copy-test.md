@@ -131,3 +131,22 @@ sites in `me2_xr.cpp` are cross-family and need their own validated, alpha-prese
 conversion or a compatible swapchain format. EyeCopy/Blit's eye shaders force alpha to 1;
 applying them to those UI quads would break transparency. This patch deliberately does
 not route UI through the eye converter. Verify UI channel/alpha preservation separately.
+
+### Cinema publication follow-up
+
+Both sequel SFR cinema callers now require the same `CurrentPair()` receipt as
+projection before calling `CineScreenLayers`. A failed acquire, wait, copy or release
+cannot submit a new screen quad using an old eye. The shared receipt regression
+covers the important distinction: an untouched old tagged eye remains legal for
+AER with its old pose, but does not qualify for current cinema placement.
+
+Cinema frame eye poses remain the current located headset poses: `SequelCinema`
+uses them to place the screen and render its room backdrop, not to describe the
+director camera which rendered the movie. The cinema calcview path preserves the
+director's position/rotation and lens. Substituting the delayed world-projection
+pose would misplace that screen/backdrop. Native visual acceptance remains open.
+
+Audit of nonprojection consumers of the full-frame eye swapchains found only the
+shared cinema path. Flat mono uses its own swapchain and successful-copy/release
+gate; overlay/UI and scope images have separate owners. The legacy SBS projection
+path is separate from these full-frame eye swapchains and this receipt policy.

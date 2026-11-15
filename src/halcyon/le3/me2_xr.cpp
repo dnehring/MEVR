@@ -2077,7 +2077,7 @@ void RunFrame() noexcept
             CopyTextureToEyeFullFrame(swap ? 0 : 1, rightSrc, -convPx);
 
             // [MEVR] Actual pass-zero/pass-one images on the shared stereo cinema screen.
-            if (mevrScreenNow && g_aerSwap[0] && g_aerSwap[1]) {
+            if (mevrScreenNow && g_publishedEyes.CurrentPair() && g_aerSwap[0] && g_aerSwap[1]) {
                 ::ME2VR::MevrBridge::CineScreenFrame screen;
                 screen.session = g_session; screen.appSpace = g_localSpace; screen.viewSpace = g_viewSpace;
                 screen.context = g_ctx;

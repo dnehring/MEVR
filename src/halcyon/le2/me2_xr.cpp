@@ -2158,7 +2158,7 @@ void RunFrame() noexcept
                 // eye's render of the shot on one screen fixed in the room (two quads, eye visibility, each cropped on
                 // opposite sides), the floor and horizon under it; our plugin/CineScreen and CinemaBackdrop place and draw
                 // them (HalcyonLe2Bridge's CineScreenLayers).
-                if (mevrScreenNow && g_aerSwap[0] != nullptr && g_aerSwap[1] != nullptr)
+                if (mevrScreenNow && g_publishedEyes.CurrentPair() && g_aerSwap[0] != nullptr && g_aerSwap[1] != nullptr)
                 {
                     ::ME2VR::MevrBridge::CineScreenFrame sf;
                     sf.session = g_session;
