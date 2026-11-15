@@ -14,6 +14,7 @@
 #include "halcyon/le2/logger.h"
 #include "halcyon/le2/me2_menu.h"
 #include "halcyon/le2/me2_xr.h"
+#include "halcyon/le2/pchud.h"
 
 #include <dxgi.h>
 
@@ -125,8 +126,10 @@ bool ScreenReticleHidden() noexcept {
     return false;
 }
 
-void SetAuthoredHudLayout(bool) noexcept {
-    // Until the HUD panel (M2 step 4), ME2's renderer lays the HUD out for each eye itself (UiDupEnabled, PcHud).
+void SetAuthoredHudLayout(bool on) noexcept {
+    // On our HUD panel the HUD keeps the movie's own layout: Halcyon's per-element moves and scales for a head-locked HUD
+    // ([HUD] in MELE2VR.ini, PcHud) stand down, as LE1's Pchud::SetAuthoredLayout.
+    ME2VR::PcHud::SetAuthoredLayout(on);
 }
 
 void SetModHandAim(bool on) noexcept {

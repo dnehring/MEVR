@@ -8,11 +8,14 @@
 #include "halcyon/le2/mevr_bridge.h"
 
 #include "core/Log.hpp"
+#include "core/vr/Colour.hpp"
 #include "core/vr/Controllers.hpp"
 #include "core/vr/HostView.hpp"
 #include "game/GamepadMapping.hpp"
 #include "plugin/Colour.hpp"
 #include "plugin/EyeCopy.hpp"
+#include "plugin/HandReticle.hpp"
+#include "plugin/HudPanel.hpp"
 #include "plugin/MenusLe2.hpp"
 #include "plugin/Renderer.hpp"
 #include "plugin/Swapchains.hpp"
@@ -27,6 +30,7 @@
 #include <dxgi1_6.h>
 
 #include <atomic>
+#include <cstdio>
 #include <cstring>
 #include <mutex>
 
@@ -40,6 +44,31 @@ std::mutex gPadMutex;  // the latches and packet numbering below (XInput is poll
 mevr::game::gamepad::Latches gLatches;
 XINPUT_GAMEPAD gLastPad{};
 DWORD gPacket = 0;
+
+// The order of a present's UI draws, for the log (render thread = the Present thread on ME2): runs of "e" (before the
+// renderer captured its left eye) and "l" (after), upper case when the bound target is the swap chain's backbuffer.
+struct UiTrace {
+    char text[160] = {};
+    int length = 0;
+    char last = 0;
+    unsigned run = 0;
+    void Flush() {
+        if (run > 0 && length < static_cast<int>(sizeof text) - 12) {
+            length += std::snprintf(text + length, sizeof text - length, "%c%u ", last, run);
+        }
+        run = 0;
+    }
+    void Add(char c) {
+        if (c != last) {
+            Flush();
+            last = c;
+        }
+        ++run;
+    }
+};
+UiTrace gUiTrace;
+void* gBackbuffer = nullptr;   // identity only: this present's backbuffer
+unsigned gUiTracePresents = 0;
 
 } // namespace
 
@@ -137,12 +166,14 @@ void OnViewBuilt(bool worldView, bool headLook, bool headAim, int lookYawUU, int
 
 void OnRecentered() noexcept {
     mevr::host::xr_host::NoteRecentered();
+    mevr::host::hud_panel::Recentered();  // the HUD panel straight ahead again
     mevr::host::menus_le2::OnRecentered();  // our menu and the calibration placed again (M4)
     mevr::log::Info("halcyon le2 bridge: recentered");
 }
 
 void OnSessionStopped() noexcept {
     mevr::vr::host_view::Reset();
+    mevr::host::hud_panel::SetArmed(false);  // no OverlayLayers runs now to disarm it: the UI back to the frame
     mevr::host::eye_copy::Reset();
     mevr::log::Info("halcyon le2 bridge: the session stopped");
 }
@@ -242,7 +273,28 @@ void OnEyeCopied(int eye, void* image, std::uint32_t index, int acquired, int wa
 }
 
 void OnSwapChainPresent(void* swapChain, void* capturedSwapChain) noexcept {
+    // The last present's UI draws in order (HudPanelDraw), six presents with UI once the HUD panel is armed.
     if (swapChain != nullptr && swapChain == capturedSwapChain) {
+        static unsigned presentsWithUi = 0;
+        if (gUiTrace.run > 0 || gUiTrace.length > 0) {
+            gUiTrace.Flush();
+            ++presentsWithUi;
+            if (mevr::host::hud_panel::Armed() && gUiTracePresents < 12 && (presentsWithUi <= 3 || presentsWithUi % 600 == 0)) {
+                ++gUiTracePresents;
+                mevr::log::Info("halcyon le2 bridge: this present's UI draws in order (e before the left eye's capture, l after; "
+                                "upper case into the backbuffer): {}", gUiTrace.text);
+            }
+        }
+        gUiTrace = UiTrace{};
+        ID3D11Texture2D* bb = nullptr;
+        if (SUCCEEDED(static_cast<IDXGISwapChain*>(swapChain)->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&bb))) &&
+            bb != nullptr) {
+            ID3D11Resource* res = nullptr;
+            bb->QueryInterface(__uuidof(ID3D11Resource), reinterpret_cast<void**>(&res));
+            gBackbuffer = res;  // identity only
+            if (res != nullptr) res->Release();
+            bb->Release();
+        }
         mevr::host::menus_le2::OnPresent();  // our menu closes itself when nobody can see it (M4)
     }
     // Present thread only. The captured swap chain's buffers: each change of size or format logged (ME2's is R8G8B8A8 at
@@ -286,7 +338,8 @@ void OnSwapChainPresent(void* swapChain, void* capturedSwapChain) noexcept {
 }
 
 // ---- Our layers (LE1's HalcyonOverlays::OverlayLayers) ------------------------------------------------------------------
-// LE2 composes the shared comfort vignette and weapon sights over Halcyon's projection.
+// LE2 composes the shared comfort vignette, the HUD panel, the weapon sights and the hand reticle over Halcyon's projection,
+// each the same module LE1's host composes (no copies), in LE1's order.
 unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsigned capacity) noexcept {
     if (layersOut == nullptr || capacity == 0 || frame.session == nullptr || frame.context == nullptr) {
         return 0;
@@ -308,6 +361,44 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
             layersOut[count++] = layer;
         }
     }
+    // The body-locked HUD panel (plugin/HudPanel, LE1's way): the game's UI, which d3d_capture.cpp's draw hooks sent there
+    // instead of the eyes (MevrBridge::HudPanelDraw), on a quad in front of the body. Also clears the panel and arms the
+    // next frame's redirect.
+    {
+        mevr::host::renderer::HudSettings const cfg = mevr::host::renderer::Hud();
+        // The game's UI gets the eyes' colour correction (plugin/Colour, research/27, research/le2-picture.md), as LE1's
+        // HalcyonOverlays hands it to the panel's blit: set before the panel's first blit.
+        static bool const colourHooked = [] {
+            mevr::host::hud_panel::SetColour({mevr::vr::colour::ShaderPrelude(), &mevr::host::colour::BeginPanel,
+                &mevr::host::colour::EndPanel});
+            return true;
+        }();
+        (void)colourHooked;
+        mevr::host::hud_panel::Frame panel;
+        panel.session = static_cast<XrSession>(frame.session);
+        panel.appSpace = static_cast<XrSpace>(frame.appSpace);
+        panel.context = frame.context;
+        panel.device = device;
+        panel.worldFrame = frame.worldFrame && !frame.menuOpen;
+        panel.gameplay = frame.gameMode >= 0 && frame.gameMode <= 4;  // as LE1's: not conversations (5), cutscenes, menus
+        panel.stereo = frame.stereo;
+        panel.headValid = frame.headValid;
+        panel.head.orientation = {frame.headOrientation[0], frame.headOrientation[1], frame.headOrientation[2],
+            frame.headOrientation[3]};
+        panel.head.position = {frame.headPosition[0], frame.headPosition[1], frame.headPosition[2]};
+        panel.enabled = cfg.hudPanel;
+        panel.distanceM = cfg.hudPanelDistanceM;
+        panel.dropM = cfg.hudPanelDropM;
+        panel.followDeg = cfg.hudPanelFollowDeg;
+        panel.widthM = cfg.hudPanelWidthM;
+        // The HUD keeps the movie's own layout on the panel (Halcyon's per-element HUD moves stand down), as LE1's.
+        mevr::host::renderer::SetAuthoredHudLayout(panel.enabled && panel.stereo && mevr::host::hud_panel::Usable());
+        if (XrCompositionLayerQuad const* layer = mevr::host::hud_panel::Layer(panel); layer != nullptr && count < capacity) {
+            layersOut[count++] = layer;
+        }
+    }
+    // The gun's sights (plugin/SightLayers, LE1's): worked out before the ring, which hides while an eye looks through the
+    // sight (held 0.3 s, as LE1's HalcyonOverlays); their quads go on top of the ring's.
     mevr::host::sight_layers::Frame sights;
     sights.session = static_cast<XrSession>(frame.session);
     sights.appSpace = static_cast<XrSpace>(frame.appSpace);
@@ -334,6 +425,38 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
         }
     }
     auto const sightLayers = mevr::host::sight_layers::Layers(sights);
+    static std::uint64_t sightSeenMs = 0;  // Present thread
+    std::uint64_t const nowMs = GetTickCount64();
+    if (sightLayers.looking && sightLayers.replaceRing) {
+        sightSeenMs = nowMs;
+    }
+    // The hand reticle (plugin/HandReticle, LE1's): a ring on the mod's aim ray (game/HandAim's setAimRay) while the mod
+    // aims with the right controller, on foot (game mode 0; the last readable one).
+    {
+        mevr::host::renderer::HudSettings const cfg = mevr::host::renderer::Hud();
+        static int lastGameMode = -1;  // Present thread
+        if (frame.gameMode >= 0) {
+            lastGameMode = frame.gameMode;
+        }
+        mevr::host::hand_reticle::Frame reticle;
+        reticle.session = static_cast<XrSession>(frame.session);
+        reticle.appSpace = static_cast<XrSpace>(frame.appSpace);
+        reticle.context = frame.context;
+        reticle.device = device;
+        reticle.worldFrame = frame.worldFrame;
+        reticle.menuOpen = frame.menuOpen;
+        reticle.headValid = frame.headValid;
+        reticle.headPosition = {frame.headPosition[0], frame.headPosition[1], frame.headPosition[2]};
+        reticle.gameMode = lastGameMode;
+        reticle.handAim = mevr::host::renderer::ModHandAim();
+        reticle.sightHidesRing = sightSeenMs != 0 && nowMs - sightSeenMs < 300;
+        reticle.enabled = cfg.handReticle;
+        reticle.distanceM = cfg.handReticleDistanceM;
+        reticle.sizeDeg = cfg.handReticleSizeDeg;
+        if (XrCompositionLayerQuad const* ring = mevr::host::hand_reticle::Layer(reticle); ring != nullptr && count < capacity) {
+            layersOut[count++] = ring;
+        }
+    }
     for (unsigned i = 0; i < sightLayers.count && count < capacity; ++i) {
         layersOut[count++] = sightLayers.layers[i];
     }
@@ -343,6 +466,27 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
         device->Release();
     }
     return count;
+}
+
+bool HudPanelDraw(ID3D11DeviceContext* context, void (*draw)(void*), void* user, bool textBatch, bool afterLeftEye) noexcept {
+    if (gUiTracePresents < 12 && context != nullptr) {
+        ID3D11RenderTargetView* rtv = nullptr;
+        context->OMGetRenderTargets(1, &rtv, nullptr);
+        bool backbuffer = false;
+        if (rtv != nullptr) {
+            ID3D11Resource* res = nullptr;
+            rtv->GetResource(&res);
+            backbuffer = res != nullptr && res == gBackbuffer;
+            if (res != nullptr) res->Release();
+            rtv->Release();
+        }
+        char c = afterLeftEye ? (backbuffer ? 'L' : 'l') : (backbuffer ? 'E' : 'e');
+        if (context->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) {
+            c = afterLeftEye ? 'D' : 'd';  // a deferred context's
+        }
+        gUiTrace.Add(c);
+    }
+    return mevr::host::hud_panel::Redirect(context, draw, user, textBatch, afterLeftEye);
 }
 
 // ---- The display's HDR answer (IDXGIOutput6::GetDesc1) ---------------------------------------------------------------

@@ -149,8 +149,12 @@ external code candidates. Read these before sequel work. The current scope is pr
   `IDXGIOutput6::GetDesc1` SDR so it stays 8-bit (LE2's default, an interim stop gap the owner approved 2026-11-14 until
   native HDR works, research/le2-hdr.md; ME1 answers SDR by default too since the same evening; research "The black eyes",
   gotchas/me2-float-swap-chain). ME2 snapshots also save each eye's source and the eye right after the copy. Our quads
-  reach ME2's frame through `MevrBridge::OverlayLayers` (me2_xr.cpp before xrEndFrame; so far the vignette, with
-  `plugin/Swapchains` in both hosts); the HUD panel's plan: research "Step 4, the HUD panel: the plan".
+  reach ME2's frame through `MevrBridge::OverlayLayers` (me2_xr.cpp before xrEndFrame; the vignette, the HUD panel and the
+  hand reticle, with `plugin/Swapchains` in both hosts). **ME2's UI is on our body-locked HUD panel** (2026-11-14,
+  research "Step 4"): `[MEVR]` `MevrHudPanelDraw` in d3d_capture.cpp's three draw hooks sends each SFR UI draw to
+  `plugin/HudPanel` (the panel's core, shared with LE1's HalcyonOverlays; the reticle is `plugin/HandReticle`); ME2 draws
+  the HUD twice a frame (once per Draw), both batches go to the panel, the later replacing the earlier; PcHud's per-element
+  moves stand down while it does (`PcHud::SetAuthoredLayout`). What's left of M2: research "What is left of M2".
 - **Never call ProcessEvent (or anything that runs UnrealScript) off the game thread** (the engine tick's).
   The script VM keeps its state in process-wide globals (GPropAddr, GRuntimeUCFlags...), so a call from the
   Present/render thread races the game thread's script. That caused the 2026-10-23 crash (Halcyon's

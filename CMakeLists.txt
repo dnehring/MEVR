@@ -812,6 +812,12 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/plugin/HalcyonBridge.cpp
     src/plugin/FloorLock.cpp
     src/plugin/HalcyonOverlays.cpp
+    src/plugin/HandReticle.cpp
+    src/plugin/HandReticle.hpp
+    src/plugin/HudPanel.cpp
+    src/plugin/HudPanel.hpp
+    src/plugin/QuadSwapchain.cpp
+    src/plugin/QuadSwapchain.hpp
     src/plugin/MevrMenu.hpp
     src/plugin/MevrMenuPointer.cpp
     src/plugin/MevrMenuTab.cpp
@@ -935,7 +941,12 @@ function(mevr_add_plugin game)
             src/plugin/Swapchains.cpp src/plugin/Swapchains.hpp
             src/core/vr/SwapchainBudget.hpp src/plugin/Vignette.cpp src/plugin/Vignette.hpp src/core/vr/Comfort.cpp
             src/core/vr/Comfort.hpp
-            src/core/vr/OverlayPlacement.cpp src/core/vr/ScopeArt.cpp src/core/vr/ScopeCapture.cpp src/core/vr/Sights.cpp
+            # The body-locked HUD panel (plugin/HudPanel, LE1's core of HalcyonOverlays) and our quads' swapchains.
+            src/plugin/HudPanel.cpp src/plugin/HudPanel.hpp src/plugin/QuadSwapchain.cpp src/plugin/QuadSwapchain.hpp
+            src/plugin/HandReticle.cpp src/plugin/HandReticle.hpp
+            src/core/vr/OverlayPlacement.cpp src/core/vr/OverlayPlacement.hpp
+            # The gun's sights and the scope (plugin/SightLayers, LE1's).
+            src/core/vr/ScopeArt.cpp src/core/vr/ScopeCapture.cpp src/core/vr/Sights.cpp
             src/plugin/ScopeCaptureSource.cpp src/plugin/SightLayers.cpp src/plugin/SightPictures.cpp
             # Our actions, vibration and the floor on Halcyon's session (plugin/XrHost, as LE1's).
             src/plugin/XrHost.cpp src/plugin/XrHost.hpp src/core/vr/Haptics.cpp src/core/vr/Haptics.hpp src/core/xr/Floor.cpp
