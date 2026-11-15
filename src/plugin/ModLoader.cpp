@@ -599,6 +599,7 @@ HostServices BuildServices() {
     services.hideScreenReticle = nullptr; // native LE3 crosshair ownership has not been verified
     services.traversalPresentationSize = static_cast<std::uint32_t>(sizeof(vr::traversal::Presentation));
     services.setTraversalPresentation = &halcyon_le3::SetTraversalPresentation;
+    services.thespianInputBlocked = &halcyon_le3::ThespianInputBlocked;
     // LE3 uses the shared eye-image scope tap. The native scene-capture producer remains unavailable.
 #endif
 #if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2)

@@ -909,6 +909,9 @@ mevr::game::thespian::Link ThespianLink() {
     game::thespian::Link link;
     link.voice = VoiceLink();
     link.otherUiOwnsInput = [] {
+#if defined(MEVR_GAME_LE3)
+        if (!gHostOwnsVr || HostBlocksThespian(gHost)) return true;
+#endif
         return game::body_calibration::Calibrating() ||
             (gHostOwnsVr && MEVR_HOST_HAS(mainMenu) && gHost->mainMenu != nullptr &&
                 (gHost->mainMenu() & (kMainMenuOpen | kOmniRailOpen)) != 0);
@@ -1890,7 +1893,8 @@ MEVR_MOD_API bool MevrModPrepareUnload() {
     // current generation active so the host's existing reload poll can retry. Shutdown's
     // successful reset is tentative: an ordinary next menu tick can acquire pause again.
     mevr::game::menu_pause::Shutdown(false);
-    return !mevr::game::menu_pause::Paused();
+    bool const postureReady = mevr::game::posture::PrepareUnload();
+    return !mevr::game::menu_pause::Paused() && postureReady;
 #else
     return true;
 #endif

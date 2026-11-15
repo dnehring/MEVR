@@ -102,7 +102,7 @@ struct Presentation;
 // `controllers`. The controller-aim branch had {view, setHandAim}; the review-fix branch (commit
 // f95d01d) had {u32 controllerStateSize, setProcessEventCallback}. Version 4 is their merge. So a
 // mod reads nothing past `controllers` from a v3 host: `view` and `setHandAim` only from v4 on.
-inline constexpr int kHostServicesVersion = 41;
+inline constexpr int kHostServicesVersion = 42;
 
 // HostServices::mainMenu's bits (v16).
 inline constexpr std::uint32_t kMainMenuOpen = 1u;   // our main menu is open
@@ -453,7 +453,18 @@ struct HostServices {
     // callback or mismatched size leaves the native view unchanged; cue support alone is insufficient.
     std::uint32_t traversalPresentationSize = 0;
     bool (*setTraversalPresentation)(vr::traversal::Presentation const* presentation) = nullptr;
+
+    // v42: fresh spoken-reply input admission from the presentation owner. True also
+    // covers missing/stale tracking or context; it does not mean the main menu is open.
+    // Any thread. LE3 requires this capability before accepting a spoken selection.
+    bool (*thespianInputBlocked)() = nullptr;
 };
+
+inline bool HostBlocksThespian(HostServices const* host) {
+    return host == nullptr || host->version < 42 ||
+        host->servicesSize < offsetof(HostServices, thespianInputBlocked) + sizeof(HostServices::thespianInputBlocked) ||
+        host->thespianInputBlocked == nullptr || host->thespianInputBlocked();
+}
 
 inline auto CameraOffsetPublisher(HostServices const* host) -> void (*)(double, double, double) {
     return host != nullptr && host->version >= 38 &&
