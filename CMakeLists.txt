@@ -1356,6 +1356,7 @@ if (MEVR_BUILD_TESTS)
         tests/ThespianTests.cpp
         src/core/vr/Traversal.cpp
         tests/TraversalTests.cpp
+        tests/TraversalPresentationTests.cpp
         tests/MeleeTests.cpp
         src/core/vr/VoiceGesture.cpp
         tests/CockpitPanelTests.cpp

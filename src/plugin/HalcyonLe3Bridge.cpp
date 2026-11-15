@@ -12,6 +12,8 @@
 #include "plugin/Vignette.hpp"
 #include "plugin/PowerWheel.hpp"
 #include "plugin/TraversalCue.hpp"
+#include "plugin/TraversalPresentation.hpp"
+#include "plugin/HalcyonLe3.hpp"
 #include "plugin/TransitionFade.hpp"
 #include "plugin/HudPanel.hpp"
 #include "plugin/EyeCopy.hpp"
@@ -30,6 +32,26 @@
 #include <atomic>
 #include <cstring>
 #include <mutex>
+namespace {
+std::mutex gTraversalMutex;
+mevr::host::traversal_presentation::State gTraversalPresentation;
+void InvalidateTraversalPresentation() {
+    std::lock_guard lock(gTraversalMutex);
+    gTraversalPresentation.Invalidate();
+}
+bool TraversalPresentationActive() {
+    std::lock_guard lock(gTraversalMutex);
+    return gTraversalPresentation.Active();
+}
+}
+namespace mevr::host::halcyon_le3 {
+bool SetTraversalPresentation(vr::traversal::Presentation const* value) noexcept {
+    vr::floor::State floor;
+    xr_host::Floor(&floor);
+    std::lock_guard lock(gTraversalMutex);
+    return gTraversalPresentation.Set(value, GetTickCount64(), floor.recenters, floor.sessions);
+}
+}
 namespace ME2VR::MevrBridge {
 namespace {
 std::atomic<std::uint64_t> gFloorTranslatedMs{0};
@@ -45,6 +67,7 @@ void WrapSessionFunctions(void** acquire, void** release, void** endFrame, void*
     mevr::host::testloop::WrapSessionFunctions(acquire, release, endFrame, locateViews);
 }
 void OnSessionCreated(void* instance, void* session) noexcept {
+    InvalidateTraversalPresentation();
     auto const xrInstance = static_cast<XrInstance>(instance);
     auto const xrSession = static_cast<XrSession>(session);
     mevr::host::menus_le2::OnSessionCreated(xrInstance, xrSession);
@@ -70,6 +93,7 @@ void OnSessionCreated(void* instance, void* session) noexcept {
     }
 }
 void OnSessionStopped() noexcept {
+    InvalidateTraversalPresentation();
     gScreen = {};
     mevr::host::hud_panel::SetArmed(false);
     mevr::host::vignette::Forget();
@@ -101,6 +125,7 @@ void OnFrameBegun(void* session, void* space, std::int64_t time) noexcept {
         mevr::vr::host_view::Reset(); // flat/menu paths do not call DriveHeadLook this frame
 }
 void OnRecentered() noexcept {
+    InvalidateTraversalPresentation();
     gScreen = {};
     mevr::host::traversal_cue::Forget();
     mevr::host::menus_le2::OnRecentered();
@@ -150,7 +175,7 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
     if (index != 0 || !state) return result;
     auto const controllers = mevr::vr::controllers::Latest();
     if (!controllers.active) mevr::host::pad_merge::NoControllers();
-    if (!controllers.active && !mevr::host::menus_le2::PadWanted()) return result;
+    if (!controllers.active && !mevr::host::menus_le2::PadWanted() && !TraversalPresentationActive()) return result;
     std::lock_guard lock(gPadMutex);
     mevr::host::pad_merge::Renderer renderer;
     renderer.ownMenuOpen = mevr::host::renderer::OwnMenuOpen();
@@ -162,6 +187,16 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
     auto pad = result == ERROR_SUCCESS ? state->Gamepad : XINPUT_GAMEPAD{};
     if (controllers.active) pad = mevr::host::pad_merge::Merge(pad, controllers, renderer, GetTickCount64());
     mevr::host::menus_le2::FilterPad(result == ERROR_SUCCESS ? &state->Gamepad : nullptr, pad);
+    // Compensation follows both existing hand/head mapping and host input ownership. Never rotate
+    // a native dialogue wheel or an open menu. Keep the shared renderer head-look value untouched.
+    if (mevr::engine::adapter::GameMode(mode) == mevr::engine::adapter::Mode::OnFoot &&
+        !renderer.ownMenuOpen && !mevr::host::menus_le2::PadWanted()) {
+        mevr::vr::floor::State floor;
+        mevr::host::xr_host::Floor(&floor);
+        std::lock_guard traversalLock(gTraversalMutex);
+        gTraversalPresentation.Apply(pad.sThumbLX, pad.sThumbLY, GetTickCount64(), floor.recenters,
+            floor.sessions, mevr::host::xr_host::InputFocused());
+    }
     // Conversation mode's native Activated() calls IgnoreMoveInput(true): the authored scene owns
     // traversal. Preserve left-stick axes for its reply wheel (BioSFHandler_Conversation.vInput).
     // Cinematics have no reply wheel. First-person world conversations remain disabled.
