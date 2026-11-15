@@ -1083,6 +1083,7 @@ function(mevr_add_plugin game)
             src/plugin/TransitionFade.cpp src/core/vr/TransitionFade.cpp
             src/plugin/HudPanel.cpp src/plugin/QuadSwapchain.cpp
             src/plugin/Vignette.cpp src/plugin/HandReticle.cpp
+            src/plugin/TraversalCue.cpp src/core/vr/Traversal.cpp
             src/core/vr/ScopeArt.cpp src/core/vr/ScopeCapture.cpp src/core/vr/Sights.cpp
             src/plugin/ScopeCaptureSource.cpp src/plugin/SightLayers.cpp src/plugin/SightPictures.cpp
             src/core/vr/PowerWheel.cpp src/core/vr/SquadPlace.cpp src/core/vr/InteractLabel.cpp

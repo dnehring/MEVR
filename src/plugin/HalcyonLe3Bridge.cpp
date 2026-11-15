@@ -11,6 +11,7 @@
 #include "plugin/SequelWeaponLayers.hpp"
 #include "plugin/Vignette.hpp"
 #include "plugin/PowerWheel.hpp"
+#include "plugin/TraversalCue.hpp"
 #include "plugin/TransitionFade.hpp"
 #include "plugin/HudPanel.hpp"
 #include "plugin/EyeCopy.hpp"
@@ -72,6 +73,7 @@ void OnSessionStopped() noexcept {
     gScreen = {};
     mevr::host::hud_panel::SetArmed(false);
     mevr::host::vignette::Forget();
+    mevr::host::traversal_cue::Forget();
     mevr::host::menus_le2::OnSessionStopped();
     gNativePanelSeen = gNativePointerShown = false;
     mevr::host::world_panels::Recenter();
@@ -100,6 +102,7 @@ void OnFrameBegun(void* session, void* space, std::int64_t time) noexcept {
 }
 void OnRecentered() noexcept {
     gScreen = {};
+    mevr::host::traversal_cue::Forget();
     mevr::host::menus_le2::OnRecentered();
     mevr::host::world_panels::Recenter();
     mevr::vr::controllers::Publish({}); // old app-space poses must not mix with the new head space
@@ -207,6 +210,15 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** out, unsigned cap
     mevr::host::sequel_cinema::FillUi(gScreen, frame.headPosition, panel);
     if (auto const* ui = mevr::host::hud_panel::Layer(panel); ui && count < capacity) out[count++] = ui;
     count = mevr::host::sequel_weapon_layers::Layers(gameplay, device, onFoot ? 0 : -1, out, count, capacity, true);
+    // Existing traversal label/blink, above weapon overlays and below menus; authored scenes own traversal.
+    if (count < capacity) {
+        mevr::host::traversal_cue::Frame cue;
+        cue.session = static_cast<XrSession>(frame.session); cue.appSpace = static_cast<XrSpace>(frame.appSpace);
+        cue.context = frame.context; cue.device = device;
+        cue.worldFrame = frame.worldFrame && onFoot; cue.menuOpen = gameplay.menuOpen;
+        cue.headValid = frame.headValid; cue.head = {frame.headPosition[0], frame.headPosition[1], frame.headPosition[2]};
+        count += mevr::host::traversal_cue::Layers(cue, out + count, capacity - count);
+    }
     if (count < capacity) {
         mevr::host::power_wheel::Frame wheel;
         wheel.session = static_cast<XrSession>(frame.session); wheel.appSpace = static_cast<XrSpace>(frame.appSpace);
