@@ -369,7 +369,9 @@ void TryInstallScriptHooks() {
 #if !defined(MEVR_GAME_LE3)
     game::conversation_world::TryStartup();  // ... and the one that holds it through a conversation in the world (research/59)
 #endif
+#if !defined(MEVR_GAME_LE3)
     game::galaxy_map::TryStartup();  // the camera-update handler holding the view in the CIC while the map is open in-world
+#endif
     if (gHostOwnsVr && gHost->version >= 36 && gHost->floorLockSampleSize == sizeof(vr::floor_lock::PawnSample)) {
         game::player::PublishFloorLockOnCamera(gHost->setFloorLockSample);
     }
@@ -1760,7 +1762,9 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
                                   gHost->hideScreenReticle());
         // The spectator camera (research/49): after everything that moves the head, the pawn and the cockpit this tick.
         game::spectator::Tick(deltaSeconds, SpectatorLink());
+#if !defined(MEVR_GAME_LE3)
         game::galaxy_map::Tick(GalaxyMapLink());
+#endif
         game::world_ui::Tick(WorldUiLink());
         // Conversations (research/59): measured always; in the world, Shepard's view held (after world_ui: its Hold is ours in mode 5).
 #if !defined(MEVR_GAME_LE3)
