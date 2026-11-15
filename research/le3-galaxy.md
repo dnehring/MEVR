@@ -100,6 +100,51 @@ pad-merge test target. `ReflectCheck` adds classes, fields, binding element/memb
 zero-parameter action contracts and the native scan RVA probe. Compile checks are not native
 proof. The original LE1 pad comparison still passes 20,000 random steps with zero mismatches.
 
+## Host integration candidate (2026-11-15)
+
+`HalcyonLe3Bridge` now connects the shared placement and trigger policy. This is an offline
+candidate, not native galaxy acceptance. The existing coordinator already excluded the
+ME1 galaxy startup/tick from LE3 and wired the read-only `mevr galaxy state` command.
+
+- `PlaceNativePanel` keeps its normal `WorldPanels` fallback, then optionally replaces its
+  pose **and dimensions** with `NativeTablePanel`. It takes the ready native image's actual
+  height/width aspect and the renderer's predicted tracked head pose. `[Galaxy] nativeTable`
+  remains off by default. Distance/below/radius/tilt use LE2's existing defaults and limits;
+  there is no new map renderer or recreated galaxy scene. Table placement survives map/orbit,
+  is hidden through unavailable tracking/image, and resets on leaving map, session/app-space
+  replacement or recenter. No galaxy/orbital pointer surface is registered.
+- If the renderer's optional full-viewport UI extraction is enabled, its map/orbit UI quad
+  follows the exact native panel space/pose/size (including the flat fallback). Its texture,
+  subimage and source-alpha flags remain unchanged. Native visual alignment still needs proof.
+- The existing shared pad merge uses `orbitalTriggers` for **both** LE3 semantic map modes.
+  That policy preserves native LT/RT and removes stale gameplay hand-walk, turn, squad and
+  wheel remaps. Original ship/reticle stick axes remain intact. Native bindings still decide
+  which actions those inputs invoke; no `Le3Galaxy::Request` action is dispatched alongside
+  the pad.
+- `NativeMapInputLease` wraps the existing `NativeMapInput`/`CloseLatch`, under the bridge's
+  existing pad mutex. The XR/render owner renews a maximum 250 ms lease only with a ready
+  native map image, matching session/app-space, valid head tracking, live controller focus,
+  and no main/developer menu, calibration, wrist/omni pointer, world UI, Thespian, squad or
+  power-wheel owner. The input poll rechecks current owners and semantic mode. It performs
+  no XR query. Tracking loss, invalid frame, mode change or epoch reset requires a fresh
+  publication and independent trigger releases, including when no input poll occurred during
+  the interruption. The map gate runs after merge but **before** other owners' final pad
+  filters: their synthetic zeroes never count as a physical release. Existing menu close
+  latches remain authoritative.
+
+The existing pad-merge executable passes the new lease regressions: held entry, independent
+release, continuous valid frame renewal, expired/future publication, lost ownership between
+polls, same-poll owner takeover, map/orbit transitions, session/recenter generation and reset.
+Pursuit axes are retained under stale gameplay flags. The original 20,000-step LE1 comparison
+still reports zero mismatches. Shared affected code syntax-checks under all three game defines;
+the LE3 host bridge passes `/W4 /WX` and its renderer caller passes its existing `/W3` policy.
+No game, headset, settings, native resources or saves were changed for these checks.
+
+Native gates remain: actual loaded key bindings; usable native image/table aspect and UI;
+map/orbit navigation and pursuit steering; one deliberate scan/probe with native admission;
+held entry and menu/focus/recenter/session recovery; retrieval/alert/fuel and normal save/reload
+persistence. This host wiring does not prove any scan, reward, class method or save outcome.
+
 ## Staged proof using existing tools
 
 Use the owned protected session, full LE3 save codec and ordinary load runner. Acquire a

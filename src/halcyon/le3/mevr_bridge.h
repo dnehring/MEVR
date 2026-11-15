@@ -17,7 +17,11 @@ bool OnMenuKey(bool ownMenuOpen) noexcept;
 bool MainMenuOpen() noexcept;
 void OnPresent() noexcept;
 unsigned OverlayLayers(OverlayFrame const& frame, void const** out, unsigned capacity) noexcept;
-void PlaceNativePanel(OverlayFrame const& frame, float const viewPosition[3], float width, float height,
+// May replace native panel pose and size with the opt-in galaxy table. Caller supplies
+// a ready image and its actual aspect; failure leaves the ordinary panel intact.
+// True identifies a native map/orbit panel: any separately captured full-frame UI follows
+// this exact placement, keeping its own subimage/alpha. False for other native screens.
+bool PlaceNativePanel(OverlayFrame const& frame, float const viewPosition[3], float& width, float& height,
     void** space, float orientation[4], float position[3]) noexcept;
 void* StaticXrGetInstanceProcAddr() noexcept;
 void WrapSessionFunctions(void** acquire, void** release, void** endFrame, void** locateViews) noexcept;

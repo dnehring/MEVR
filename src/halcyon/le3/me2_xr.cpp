@@ -2624,9 +2624,17 @@ void RunFrame() noexcept
     if (haveMono) {
         const float at[3] = {monoQuad.pose.position.x, monoQuad.pose.position.y, monoQuad.pose.position.z};
         float q[4], p[3]; void* space = nullptr;
-        ::ME2VR::MevrBridge::PlaceNativePanel(overlay, at, monoQuad.size.width, monoQuad.size.height, &space, q, p);
+        const bool nativeMap = ::ME2VR::MevrBridge::PlaceNativePanel(overlay, at,
+            monoQuad.size.width, monoQuad.size.height, &space, q, p);
         monoQuad.space = static_cast<XrSpace>(space);
         monoQuad.pose.orientation = {q[0], q[1], q[2], q[3]}; monoQuad.pose.position = {p[0], p[1], p[2]};
+        if (nativeMap && haveGameUi) {
+            // [MEVR] Optional full-viewport UI extraction must follow its native map,
+            // including the flat fallback. Texture/subimage and source-alpha remain intact.
+            gameUiQuad.space = monoQuad.space;
+            gameUiQuad.pose = monoQuad.pose;
+            gameUiQuad.size = monoQuad.size;
+        }
     }
     const XrCompositionLayerBaseHeader* layers[16] = {};
     uint32_t layerCount = 0;

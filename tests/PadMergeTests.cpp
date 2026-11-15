@@ -541,7 +541,66 @@ void TestNativeMapTransitions() {
     CHECK(pad.sThumbLX == 24000 && pad.sThumbLY == -16000 && pad.sThumbRX == 11000); // pursuit steering intact
 }
 
+void TestNativeMapLease() {
+    gp::NativeMapInputLease lease;
+    pm::Reset();
+    pm::Renderer map;
+    map.orbitalTriggers = true;
+    // The host must keep native pursuit/reticle steering despite stale on-foot flags.
+    pm::SetSupportGrip(-1, 0.12f, 0.22f, gp::kFlagHandWalk | gp::kFlagSquadMenu |
+        gp::kFlagHandPowerWheel | gp::kFlagModTurns | gp::kFlagLeftTriggerShoulder);
+    State hands = Controllers(1000);
+    hands.left.trigger = hands.right.trigger = 1;
+    hands.left.stickX = .75f; hands.left.stickY = -.5f;
+    hands.right.stickX = .5f;
+    auto raw = [&] { return pm::Merge({}, hands, map, GetTickCount64()); };
+    auto pad = raw();
+    auto const steering = pad;
+    auto apply = [&](std::uint64_t now, bool allowed = true, bool orbital = false, std::uint64_t generation = 1) {
+        pad = raw(); lease.Apply(true, orbital, generation, allowed, now, pad);
+        CHECK(pad.sThumbLX == steering.sThumbLX && pad.sThumbLY == steering.sThumbLY && pad.sThumbRX == steering.sThumbRX);
+    };
+    auto blocked = [&] { CHECK(pad.bLeftTrigger == 0 && pad.bRightTrigger == 0); };
+    auto pass = [&] { CHECK(pad.bLeftTrigger == 255 && pad.bRightTrigger == 255); };
+    apply(1000); blocked(); // no owner publication
+    lease.Publish(true, false, 1, true, 1000);
+    apply(1001); blocked(); // entry while held
+    hands.left.trigger = hands.right.trigger = 0; apply(1002);
+    hands.left.trigger = hands.right.trigger = 1; apply(1003); pass();
+    // A valid frame renewal must not demand release every frame.
+    lease.Publish(true, false, 1, true, 1016); apply(1017); pass();
+    apply(1267); blocked(); // rendering stopped; held trigger cannot survive expiry
+    lease.Publish(true, false, 1, true, 1268); apply(1269); blocked();
+    hands.left.trigger = 0; apply(1270);
+    hands.left.trigger = 1; apply(1271);
+    CHECK(pad.bLeftTrigger == 255 && pad.bRightTrigger == 0);
+    hands.right.trigger = 0; apply(1272);
+    hands.right.trigger = 1; apply(1273); pass();
+    // A menu, tracking loss or image absence can begin and end with no XInput poll.
+    lease.Publish(true, false, 1, false, 1280);
+    lease.Publish(true, false, 1, true, 1290); apply(1291); blocked();
+    hands.left.trigger = hands.right.trigger = 0; apply(1292);
+    hands.left.trigger = hands.right.trigger = 1; apply(1293); pass();
+    // Same-poll ownership takes precedence over a still-fresh render publication.
+    apply(1294, false); blocked();
+    apply(1295); blocked(); // ownership alone cannot revive the expired lease
+    lease.Publish(true, false, 1, true, 1300); apply(1301); blocked();
+    hands.left.trigger = hands.right.trigger = 0; apply(1302);
+    hands.left.trigger = hands.right.trigger = 1; apply(1303); pass();
+    apply(1304, true, true); blocked(); // entering orbit before its first publication
+    lease.Publish(true, true, 1, true, 1305); apply(1306, true, true); blocked();
+    hands.left.trigger = hands.right.trigger = 0; apply(1307, true, true);
+    hands.left.trigger = hands.right.trigger = 1; apply(1308, true, true); pass();
+    lease.Publish(true, true, 2, true, 1310); apply(1311, true, true, 2); blocked(); // space/recenter/session
+    hands.left.trigger = hands.right.trigger = 0; apply(1312, true, true, 2);
+    hands.left.trigger = hands.right.trigger = 1; apply(1313, true, true, 2); pass();
+    apply(1309, true, true, 2); blocked(); // clock reversal fails closed
+    lease.Reset(); apply(1314, true, true, 2); blocked();
+    pad = raw(); lease.Apply(false, false, 2, false, 1315, pad); pass(); // no non-map takeover
+}
+
 int main() {
+    TestNativeMapLease();
     TestNativeMapTransitions();
     TestSameAsLe1Before();
     TestStaleInput();

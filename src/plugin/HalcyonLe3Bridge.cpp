@@ -2,6 +2,9 @@
 // LE3-specific composition only. Input, floor, mapping, HDR/colour and test machinery are shared with LE1/LE2.
 #include "halcyon/le3/mevr_bridge.h"
 #include "core/Log.hpp"
+#include "core/Ini.hpp"
+#include "core/vr/GalaxyMap.hpp"
+#include "game/NativeMapInput.hpp"
 #include "core/vr/Controllers.hpp"
 #include "core/vr/HostView.hpp"
 #include "engine/GameAdapter.hpp"
@@ -38,9 +41,13 @@
 #include "plugin/Thespian.hpp"
 #include "plugin/Calibration.hpp"
 #include "plugin/MainMenu.hpp"
+#include "plugin/OmniToolRail.hpp"
+#include "plugin/WorldUi.hpp"
 #endif
 #include <openxr/openxr.h>
+#include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <cstring>
 #include <mutex>
 namespace {
@@ -83,12 +90,62 @@ DWORD gPacket = 0;
 mevr::host::sequel_cinema::State gScreen;
 bool gNativePanelSeen = false;
 bool gNativePointerShown = false;
+mevr::game::gamepad::NativeMapInputLease gMapInput; // gPadMutex, including owner-thread publications
+std::uint64_t gMapGeneration = 0;
+bool gMapTracked = false;
+bool gMapSessionOwned = false; // gPadMutex; desktop/no-session input remains native
+// Placement and space identity belong to the render/XR owner, never the input polling thread.
+mevr::vr::galaxy_map::NativeTablePanel gGalaxyTable;
+void* gGalaxySession = nullptr;
+void* gGalaxySpace = nullptr;
+bool gMapImageReady = false; // owner thread; an input lease needs a visible native map this frame
+bool gGalaxyEnabled = false;
+mevr::vr::galaxy_holo::TableSettings gGalaxySettings;
+std::uint64_t gGalaxySettingsRead = 0;
+void ResetGalaxy() {
+    gGalaxyTable.Reset();
+    gGalaxySession = gGalaxySpace = nullptr;
+    gMapImageReady = false;
+    std::lock_guard lock(gPadMutex);
+    ++gMapGeneration;
+    gMapTracked = false;
+    gMapInput.Reset();
+}
+bool MapOwnersAllow() {
+    if (mevr::host::renderer::OwnMenuOpen() || mevr::host::menus_le2::PadWanted() ||
+        mevr::vr::power_wheel::Latest().open || mevr::vr::squad_menu::Latest().open) return false;
+#if defined(MEVR_WITH_MAIN_MENU)
+    if (mevr::host::calibration::Active() || mevr::host::main_menu::IsOpen() ||
+        mevr::host::omni_rail::Shown() || mevr::host::omni_rail::OwnsTriggers() ||
+        mevr::host::game_pointer::OwnsTriggers() || mevr::host::world_ui::Active() ||
+        mevr::host::thespian::Shown() || mevr::host::thespian::HidesGameWheel()) return false;
+#endif
+    return true;
+}
+void ReadGalaxySettings() {
+    auto const now = GetTickCount64();
+    if (gGalaxySettingsRead && now - gGalaxySettingsRead < 1000) return;
+    gGalaxySettingsRead = now;
+    auto const file = mevr::ini::Read(mevr::host::SettingsPath()).file;
+    // LE2's existing opt-in table settings, limits and defaults. No new map controls.
+    gGalaxyEnabled = mevr::ini::GetNumber(file, "Galaxy", "nativeTable").value_or(0) != 0;
+    auto number = [&](char const* key, float fallback, float lo, float hi) {
+        auto const value = static_cast<float>(mevr::ini::GetNumber(file, "Galaxy", key).value_or(fallback));
+        return std::isfinite(value) ? std::clamp(value, lo, hi) : fallback;
+    };
+    gGalaxySettings.distanceM = number("tableDistanceM", 0.70f, 0.3f, 3.0f);
+    gGalaxySettings.belowM = number("tableBelowM", 0.45f, 0.1f, 1.5f);
+    gGalaxySettings.radiusM = number("tableRadiusM", 0.48f, 0.2f, 1.5f);
+    gGalaxySettings.tiltDeg = number("worldTiltDeg", 35.0f, 0.0f, 80.0f);
+}
 }
 void* StaticXrGetInstanceProcAddr() noexcept { return reinterpret_cast<void*>(&xrGetInstanceProcAddr); }
 void WrapSessionFunctions(void** acquire, void** release, void** endFrame, void** locateViews) noexcept {
     mevr::host::testloop::WrapSessionFunctions(acquire, release, endFrame, locateViews);
 }
 void OnSessionCreated(void* instance, void* session) noexcept {
+    ResetGalaxy();
+    { std::lock_guard lock(gPadMutex); gMapSessionOwned = session != nullptr; }
     gThespianContextMs.store(0, std::memory_order_release);
     gThespianFocused.store(false, std::memory_order_release);
     InvalidateTraversalPresentation();
@@ -123,6 +180,8 @@ void OnSessionCreated(void* instance, void* session) noexcept {
     }
 }
 void OnSessionStopped() noexcept {
+    ResetGalaxy();
+    { std::lock_guard lock(gPadMutex); gMapSessionOwned = false; }
     gThespianContextMs.store(0, std::memory_order_release);
     gThespianFocused.store(false, std::memory_order_release);
     InvalidateTraversalPresentation();
@@ -147,6 +206,13 @@ void OnSessionStopped() noexcept {
 }
 void OnFrameBegun(void* session, void* space, std::int64_t time) noexcept {
     if (!session) return;
+    if (session != gGalaxySession || space != gGalaxySpace) {
+        ResetGalaxy();
+        gGalaxySession = session;
+        gGalaxySpace = space;
+    }
+    if (!mevr::engine::adapter::IsMapMode(mevr::host::renderer::GameMode())) gGalaxyTable.Reset();
+    gMapImageReady = false;
     mevr::host::world_panels::NoteFrame();
     gScreen = {};
     gNativePanelSeen = false; // renewed only by an actual submitted native panel
@@ -155,6 +221,11 @@ void OnFrameBegun(void* session, void* space, std::int64_t time) noexcept {
     auto const base = static_cast<XrSpace>(space);
     mevr::host::xr_host::OnFrameBegun(s, base, static_cast<XrTime>(time), state);
     const bool focused = mevr::host::xr_host::InputFocused(); // owner thread only
+    {
+        std::lock_guard lock(gPadMutex);
+        gMapTracked = focused && state.active;
+        if (!gMapTracked) gMapInput.Reset();
+    }
     gThespianFocused.store(focused, std::memory_order_release);
     if (!focused) gThespianContextMs.store(0, std::memory_order_release);
     auto const live = state;
@@ -166,6 +237,7 @@ void OnFrameBegun(void* session, void* space, std::int64_t time) noexcept {
         mevr::vr::host_view::Reset(); // flat/menu paths do not call DriveHeadLook this frame
 }
 void OnRecentered() noexcept {
+    ResetGalaxy();
     gThespianContextMs.store(0, std::memory_order_release);
     mevr::host::sequel_squad_layers::Recentered();
 #if defined(MEVR_WITH_MAIN_MENU)
@@ -225,17 +297,25 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
     if (index != 0 || !state) return result;
     auto const controllers = mevr::vr::controllers::Latest();
     if (!controllers.active) mevr::host::pad_merge::NoControllers();
-    if (!controllers.active && !mevr::host::menus_le2::PadWanted() && !TraversalPresentationActive()) return result;
     std::lock_guard lock(gPadMutex);
+    int const mode = mevr::host::renderer::GameMode();
+    bool const mapActive = gMapSessionOwned && mevr::engine::adapter::IsMapMode(mode);
+    if (!mapActive) gMapInput.Reset();
+    if (!controllers.active && !mapActive && !mevr::host::menus_le2::PadWanted() && !TraversalPresentationActive()) return result;
     mevr::host::pad_merge::Renderer renderer;
     renderer.ownMenuOpen = mevr::host::renderer::OwnMenuOpen();
     renderer.headLookYawUU = &mevr::host::renderer::MoveStickHeadLookYawUU;
     renderer.gateRightClick = true;
-    int const mode = mevr::host::renderer::GameMode();
     renderer.conversationTriggers = mevr::engine::adapter::IsConversationMode(mode);
-    // No orbital mapping claim until LE3 native scan controls are audited (L3-9).
+    // Both native map modes need their LT/RT pair; stale on-foot hand/squad flags must
+    // not remap scan to LB or rotate pursuit steering toward a hand.
+    renderer.orbitalTriggers = mapActive;
     auto pad = result == ERROR_SUCCESS ? state->Gamepad : XINPUT_GAMEPAD{};
     if (controllers.active) pad = mevr::host::pad_merge::Merge(pad, controllers, renderer, GetTickCount64());
+    // Before menu/pointer filters turn held triggers into synthetic zeroes. The lease
+    // checks real focus/tracking published by the XR owner, never XR on this thread.
+    gMapInput.Apply(mapActive, mevr::engine::adapter::IsOrbitalMode(mode), gMapGeneration,
+        controllers.active && gMapTracked && MapOwnersAllow(), GetTickCount64(), pad);
     mevr::host::menus_le2::FilterPad(result == ERROR_SUCCESS ? &state->Gamepad : nullptr, pad);
     // Compensation follows both existing hand/head mapping and host input ownership. Never rotate
     // a native dialogue wheel or an open menu. Keep the shared renderer head-look value untouched.
@@ -245,7 +325,7 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
         mevr::host::xr_host::Floor(&floor);
         std::lock_guard traversalLock(gTraversalMutex);
         gTraversalPresentation.Apply(pad.sThumbLX, pad.sThumbLY, GetTickCount64(), floor.recenters,
-            floor.sessions, mevr::host::xr_host::InputFocused());
+            floor.sessions, gThespianFocused.load(std::memory_order_acquire));
     }
     // Conversation mode's native Activated() calls IgnoreMoveInput(true): the authored scene owns
     // traversal. Preserve left-stick axes for its reply wheel (BioSFHandler_Conversation.vInput).
@@ -267,6 +347,7 @@ void OnPresent() noexcept {
 }
 unsigned OverlayLayers(OverlayFrame const& frame, void const** out, unsigned capacity) noexcept {
     if (!frame.context || !out || !capacity) {
+        { std::lock_guard lock(gPadMutex); gMapInput.Reset(); }
         gThespianContextMs.store(0, std::memory_order_release);
         return 0;
     }
@@ -367,15 +448,26 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** out, unsigned cap
     if (auto const* layer = mevr::host::thespian::Layer(spoken)) out[count++] = layer;
 #endif
     count = mevr::host::menus_le2::Layers(frame, device, out, count, capacity);
+    {
+        std::lock_guard lock(gPadMutex);
+        gMapInput.Publish(mevr::engine::adapter::IsMapMode(frame.gameMode),
+            mevr::engine::adapter::IsOrbitalMode(frame.gameMode), gMapGeneration,
+            gMapSessionOwned && frame.session && frame.appSpace &&
+                frame.session == gGalaxySession && frame.appSpace == gGalaxySpace &&
+                frame.headValid && gMapImageReady && !gameplay.menuOpen &&
+                gMapTracked && MapOwnersAllow(),
+            GetTickCount64());
+    }
     gScreen = {};
     if (device) device->Release();
     return count;
 }
-void PlaceNativePanel(OverlayFrame const& frame, float const viewPosition[3], float width, float height,
+bool PlaceNativePanel(OverlayFrame const& frame, float const viewPosition[3], float& width, float& height,
     void** space, float orientation[4], float position[3]) noexcept {
     namespace wp = mevr::host::world_panels;
     namespace ga = mevr::engine::adapter;
     auto const mode = ga::GameMode(frame.gameMode);
+    gMapImageReady = ga::IsMapMode(frame.gameMode) && std::isfinite(width) && std::isfinite(height) && width > 0 && height > 0;
     auto const kind = mode == ga::Mode::Conversation ? wp::Kind::Conversation :
         mode == ga::Mode::Cinematic ? wp::Kind::Cutscene :
         mode == ga::Mode::Galaxy || mode == ga::Mode::Orbital ? wp::Kind::GalaxyMap : wp::Kind::GameMenu;
@@ -384,6 +476,25 @@ void PlaceNativePanel(OverlayFrame const& frame, float const viewPosition[3], fl
     *space = placed.space;
     std::memcpy(orientation, placed.orientation, sizeof placed.orientation);
     std::memcpy(position, placed.position, sizeof placed.position);
+    ReadGalaxySettings();
+    XrPosef const head{{frame.headOrientation[0], frame.headOrientation[1], frame.headOrientation[2], frame.headOrientation[3]},
+        {frame.headPosition[0], frame.headPosition[1], frame.headPosition[2]}};
+    // The renderer calls only for its ready native image. Start with the original panel
+    // above and override only after successful placement; unavailable tracking/image keeps
+    // its established fallback. NativeTablePanel's aspect is height / width, like LE2.
+    auto const table = gGalaxyTable.Update(ga::IsMapMode(frame.gameMode),
+        gGalaxyEnabled && frame.session && frame.appSpace &&
+            frame.session == gGalaxySession && frame.appSpace == gGalaxySpace,
+        frame.headValid && gMapImageReady, head, width > 0 ? height / width : 0, gGalaxySettings);
+    if (table) {
+        *space = frame.appSpace;
+        auto const& q = table->pose.orientation;
+        auto const& p = table->pose.position;
+        orientation[0] = q.x; orientation[1] = q.y; orientation[2] = q.z; orientation[3] = q.w;
+        position[0] = p.x; position[1] = p.y; position[2] = p.z;
+        width = table->width;
+        height = table->height;
+    }
 #if defined(MEVR_WITH_MAIN_MENU)
     // A complete uncropped native GUI frame has a known UV-to-window map. Authored dialogue and galaxy
     // retain native pad input until their own LE3 pointer/interrupt/navigation contracts are accepted.
@@ -396,6 +507,7 @@ void PlaceNativePanel(OverlayFrame const& frame, float const viewPosition[3], fl
 #else
     (void)width; (void)height;
 #endif
+    return gMapImageReady;
 }
 
 bool CineScreenWanted(bool conversation) noexcept { return mevr::host::cine_screen::Wanted(conversation); }
