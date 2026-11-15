@@ -978,6 +978,9 @@ function(mevr_add_plugin game)
     set(with_halcyon OFF)
     set(with_main_menu OFF)
     set(mod_sources ${MEVR_MOD_SOURCES})
+    if (game STREQUAL "LE3")
+        list(APPEND mod_sources src/game/Le3Gui.cpp src/game/Le3Gui.hpp)
+    endif ()
     if (MEVR_LE2_DIAGNOSTIC AND game STREQUAL "LE2")
         list(APPEND mod_sources src/engine/Le2DiagnosticHost.cpp src/engine/Le2DiagnosticHost.hpp
             src/engine/Le2ControlHost.cpp src/engine/Le2ControlHost.hpp
@@ -1073,6 +1076,7 @@ function(mevr_add_plugin game)
         if (MEVR_MAIN_MENU)
             set(with_main_menu ON)
             list(APPEND host_sources ${MEVR_SEQUEL_MENU_SOURCES}
+                src/core/vr/GalaxyHologram.cpp src/core/vr/GalaxyHologram.hpp
                 src/plugin/HudPanel.cpp src/plugin/HudPanel.hpp src/plugin/QuadSwapchain.cpp src/plugin/QuadSwapchain.hpp
                 # MainMenuSettings uses the shared device/status API; native voice services remain unpublished on LE3.
                 src/plugin/Voice.cpp src/plugin/Voice.hpp src/plugin/VoiceModel.cpp src/plugin/VoiceModel.hpp)

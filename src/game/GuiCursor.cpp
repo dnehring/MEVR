@@ -6,6 +6,9 @@
 #include "core/vr/GuiEvents.hpp"
 #include "game/GameMenuRequest.hpp"
 #include "game/Player.hpp"
+#if defined(MEVR_GAME_LE3)
+#include "game/Le3Gui.hpp"
+#endif
 #include "game/WorldUi.hpp"
 #include "ue3/Handles.hpp"
 #include "ue3/Memory.hpp"
@@ -36,11 +39,18 @@ std::uint64_t gFailed = 0;
 std::uint64_t gDroppedForPuzzle = 0;  // the pointer's events while the bypass puzzle was played
 bool gLoggedFirst = false;
 bool gLoggedFailure = false;
+#if defined(MEVR_GAME_LE3)
+ue3::Object* gInputMovie = nullptr;
+#endif
 
 ue3::Object* FocusPanel() {
+#if defined(MEVR_GAME_LE3)
+    return le3_gui::FocusMovie();
+#else
     ue3::Object* const pc = player::Controller();
     ue3::Object* const manager = pc != nullptr ? gScaleFormManager.Read<ue3::Object*>(pc).value_or(nullptr) : nullptr;
     return manager != nullptr ? gFocusPanel.Read<ue3::Object*>(manager).value_or(nullptr) : nullptr;
+#endif
 }
 
 std::optional<float> VariableFloat(ue3::Object* panel, wchar_t const* path) {
@@ -77,6 +87,9 @@ std::string Command(std::string const& /*args*/) {
     auto const h = VariableFloat(panel, L"Stage.height");
     std::string out = std::format("guimouse: the movie's mouse ({:.1f}, {:.1f}) of a {:.0f} x {:.0f} stage", x.value_or(-1.0f),
         y.value_or(-1.0f), w.value_or(0.0f), h.value_or(0.0f));
+#if defined(MEVR_GAME_LE3)
+    out += std::format("; focused ME3 movie '{}' (native full-frame panel, crop not accepted)", le3_gui::Tag(panel));
+#endif
     // The Windows cursor as the game sees it (GetCursorPos, answered by the host's pointer while it steers), in the foreground
     // window's client area, and the movie's mouse that would make.
     HWND const front = GetForegroundWindow();
@@ -119,10 +132,26 @@ std::string KeyCommand(std::string const& args) {
 }
 
 void Tick(std::uint32_t (*take)(std::uint8_t* events, std::uint32_t capacity)) {
+#if defined(MEVR_GAME_LE3)
+    // Polling TakeGuiEvents claims native input ownership in the host. Keep Win32 fallback
+    // until the real consumer exists, and never replay a previous screen's queued click.
+    auto* const movie = le3_gui::FocusMovie();
+    bool const changedMovie = movie != gInputMovie;
+    bool const ready = movie && game_menu_request::GuiInputReady();
+    if (!ready || changedMovie) gScheduler.Clear();
+    gInputMovie = movie;
+    if (take != nullptr && ready) {
+#else
     if (take != nullptr) {
+#endif
         std::uint8_t events[vr::gui_events::Queue::kCapacity] = {};
         std::uint32_t const n = take(events, static_cast<std::uint32_t>(vr::gui_events::Queue::kCapacity));
+#if defined(MEVR_GAME_LE3)
+        // A new movie must not inherit the previous movie's unfinished click/scroll sequence.
+        if (!changedMovie) gScheduler.Add(events, n);
+#else
         gScheduler.Add(events, n);
+#endif
         gTaken += n;
     }
     bool const puzzle = world_ui::PuzzlePlaying();
@@ -133,7 +162,9 @@ void Tick(std::uint32_t (*take)(std::uint8_t* events, std::uint32_t capacity)) {
             continue;
         }
         std::string why;
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE3)
+        std::uint8_t const nativeEvent = vr::gui_events::Le3NativeEvent(event);
+#elif defined(MEVR_GAME_LE2)
         std::uint8_t const nativeEvent = vr::gui_events::Le2NativeEvent(event);
 #else
         std::uint8_t const nativeEvent = event;

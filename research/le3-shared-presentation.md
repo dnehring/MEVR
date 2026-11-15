@@ -32,3 +32,5 @@ No CMake, ModLoader, Entry or GameAdapter edits are included in this lane.
 - Native acceptance: open the shared menu by key and stick chord on world/flat frames, calibrate/recenter, verify manual pose correction, aim/touch the rail, click/drag/scroll the full native GUI panel, then close with held triggers and confirm no leaked click. Test focus loss, native menu transitions, stop/restart and load. Observe native dialog interrupts and seated position ownership. Quest 3/Virtual Desktop review must check readable scale, projection origin and lack of overlapping owners.
 
 No game, SteamVR, deployment or system runtime setting was touched for this increment.
+
+The next native input increment is documented in [ME3 native GUI adapter](le3-native-gui.md). Its manager and input contracts do not remove the capture/crop gates above.

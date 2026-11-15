@@ -48,6 +48,21 @@ inline constexpr std::uint8_t Le2NativeEvent(std::uint8_t event) {
     }
 }
 
+// LE3 BioDefine.BioGuiEvents (SDK + installed SFXGame.pcc). These are canonical
+// queue values only: developer guikey numeric input is already native and is not translated.
+inline constexpr std::uint8_t Le3NativeEvent(std::uint8_t event) {
+    switch (event) {
+    case kWheelUp: return 8;
+    case kWheelDown: return 9;
+    case kLeftDown: return 31;
+    case kLeftUp: return 52;
+    default:
+        if (event >= kControlDown && event <= kControlUp) return static_cast<std::uint8_t>(event + 3);
+        if (event >= kControlDownRelease && event <= kControlUpRelease) return static_cast<std::uint8_t>(event + 2);
+        return event;
+    }
+}
+
 // The host's side: what the pointer did, in order. Moves are coalesced (one in a row); at most kCapacity wait (the oldest
 // motion or wheel notches go first when full; a button is never dropped).
 class Queue {

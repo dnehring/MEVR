@@ -6,6 +6,9 @@
 #include "engine/GameAdapter.hpp"
 #include "game/MenuPause.hpp"
 #include "game/Player.hpp"
+#if defined(MEVR_GAME_LE3)
+#include "game/Le3Gui.hpp"
+#endif
 #include "ue3/Handles.hpp"
 #include "ue3/Runtime.hpp"
 
@@ -20,7 +23,7 @@ gm::Schedule gSchedule;
 bool gToldOldHost = false;
 std::string gLast = "none";
 
-#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 // Our reflection layer (research/34); engine/ReflectCheck has a row for each. The game modes, the pause menu and the
 // holster on every game (ME2 since M4: research/le2-menus.md); the omni-tool's screens ME1's only so far.
 ue3::FieldRef gGameModeManager{"SFXGame.BioPlayerController", engine::adapter::kGameModeManager, ue3::kEveryGame};
@@ -65,18 +68,23 @@ ue3::FieldRef gScaleFormManager{"Engine.PlayerController", "m_oCachedScaleFormMa
 ue3::FieldRef gFocusPanel{"Engine.BioSFManager", "m_FocusPanel", ue3::kEveryGame};
 ue3::FieldRef gPanelTag{"Engine.BioSFPanel", "nmTag", ue3::kEveryGame};
 ue3::FieldRef gPanelHandler{"Engine.BioSFPanel", "m_DefaultHandler", ue3::kEveryGame};
+#if defined(MEVR_GAME_LE3)
+constexpr std::uint8_t kGuiEventB = 16;
+#else
 constexpr std::uint8_t kGuiEventB = 13;  // BIOGUI_EVENT_BUTTON_B (Engine.EBioGuiEvent; ME2's BioSFSharedBase.BioGuiEvents too)
+#endif
 constexpr int kBackOutWaitTicks = 4;     // after a B, the ticks to let the screen go before looking again
 constexpr int kMaxBackOuts = 6;          // a screen over the main wheel takes two
 
 // EGameModes (research/13): the modes whose object is known by class. Others (conversation, GUI...) go by bIsActive.
 ue3::ClassRef* ClassForMode(std::uint8_t mode) {
-    switch (mode) {
-    case 0: return &gModeDefault;
-    case 1: return &gModeVehicle;
-    case 2: return &gModePowerWheel;
-    case 3: return &gModeWeaponWheel;
-    case 4: return &gModeCommand;
+    using engine::adapter::Mode;
+    switch (engine::adapter::GameMode(mode)) {
+    case Mode::OnFoot: return &gModeDefault;
+    case Mode::Vehicle: return &gModeVehicle;
+    case Mode::PowerWheel: return &gModePowerWheel;
+    case Mode::WeaponWheel: return &gModeWeaponWheel;
+    case Mode::Command: return &gModeCommand;
     default: return nullptr;
     }
 }
@@ -201,6 +209,7 @@ void OpenPauseMenu(Link const& link, gm::Origin origin) {
     }
 }
 
+#if !defined(MEVR_GAME_LE3)
 void Holster() {
     std::string why;
     std::optional<Modes> const modes = ReadModes(why);
@@ -244,12 +253,17 @@ void Holster() {
     gLast = "holster: TryHolster called";
     log::Info("main menu: holstered the weapon (SFXGameModeDefault.TryHolster)");
 }
+#endif
 
 // ---- The omni-tool's rail (research/57) ----
 // A screen is opened the way its key opens it, on the mode that has the input (on foot or the Mako); with a screen already up
 // (game mode 7) the rail backs out of it first, B on the focused panel as the player would, a few ticks apart, until the game
 // leaves mode 7, then opens the new one. CloseScreens is the backing out alone.
+#if defined(MEVR_GAME_LE3)
+constexpr std::uint8_t kModeGui = 9;
+#else
 constexpr std::uint8_t kModeGui = 7;
+#endif
 
 struct Switch {
     gm::Action action = gm::Action::None;  // what to do once no screen is up (CloseScreens: nothing more)
@@ -274,7 +288,11 @@ ue3::FunctionRef* ShowRef(gm::Action action) {
 char const* PanelTag(gm::Action action) {
     switch (action) {
     case gm::Action::Equipment: return "Inventory";
+    #if defined(MEVR_GAME_LE3)
+    case gm::Action::Squad: return "SquadRecord";
+#else
     case gm::Action::Squad: return "CharacterRecord";
+#endif
     case gm::Action::Journal: return "Journal";
     case gm::Action::Codex: return "Codex";
     case gm::Action::Map: return "Map";
@@ -290,6 +308,11 @@ struct Focus {
 
 Focus FocusedPanel() {
     Focus focus;
+#if defined(MEVR_GAME_LE3)
+    focus.panel = le3_gui::FocusMovie();
+    focus.handler = focus.panel;
+    focus.tag = le3_gui::Tag(focus.panel);
+#else
     ue3::Object* const pc = player::Controller();
     ue3::Object* const manager = pc != nullptr ? gScaleFormManager.Read<ue3::Object*>(pc).value_or(nullptr) : nullptr;
     focus.panel = manager != nullptr ? gFocusPanel.Read<ue3::Object*>(manager).value_or(nullptr) : nullptr;
@@ -301,6 +324,7 @@ Focus FocusedPanel() {
     } else {
         focus.panel = nullptr;
     }
+#endif
     return focus;
 }
 
@@ -367,6 +391,13 @@ void StepSwitch(Link const& link) {
         ue3::Object* const mode = ActiveMode(*modes, how);
         ue3::Reflection& r = ue3::runtime::Get();
         ue3::Function* const guiKey = mode != nullptr && gGuiKey.Get() != nullptr ? r.FindFunction(r.ClassOf(mode), "GuiKey") : nullptr;
+#if defined(MEVR_GAME_LE3)
+        if (guiKey == nullptr) {
+            gLast = "close: native GuiKey unavailable";
+            gSwitch = {};
+            return;
+        }
+#endif
         if (gSwitch.backOuts >= kMaxBackOuts || (guiKey == nullptr && (focus.handler == nullptr || gHandleInputEvent.Get() == nullptr))) {
             gLast = std::format("{}: the game's screen didn't close", gm::Name(gSwitch.action));
             log::Warn("omni-tool: {} not done: the game stayed in its GUI mode after {} backs out (the focused panel '{}'{})",
@@ -404,7 +435,8 @@ void StepSwitch(Link const& link) {
         OpenPauseMenu(link, origin);  // on the active mode, whichever it is (the Mako's and the wheels' overrides run)
         return;
     }
-    if (current != 0 && current != 1) {
+    if (engine::adapter::GameMode(current) != engine::adapter::Mode::OnFoot &&
+            engine::adapter::GameMode(current) != engine::adapter::Mode::Vehicle) {
         gLast = std::format("{}: not here (game mode {})", gm::Name(action), current);
         log::Info("omni-tool: {} not opened: the game's screens open on foot or in the Mako (game mode {})", gm::Name(action), current);
         return;
@@ -412,7 +444,7 @@ void StepSwitch(Link const& link) {
     OpenScreen(action, origin, *modes, link);
 }
 
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 // ---- ME2's screens (research/le2-menus.md "The omni-tool's entries on ME2") ----
 // ME2 has no Show<Screen>Gui: its squad, journal, codex and map screens are pages of its pause menu, the browser wheel
 // ("Mission Computer": SFXGameModeBase.ShowMenu -> MassEffectGuiManager.ShowBrowserWheel). The page is opened the way the
@@ -483,12 +515,13 @@ void StepPage(Link const& link) {
         if (gPage.asked) {
             if (++gPage.tries > kPageMaxTries) {
                 gLast = std::format("{}: the pause menu didn't come up", gm::Name(action));
-                log::Warn("omni-tool: {} not opened: ME2's pause menu didn't come up (game mode {})", gm::Name(action), current);
+                log::Warn("omni-tool: {} not opened: the native pause menu didn't come up (game mode {})", gm::Name(action), current);
                 gPage = {};
             }
             return;
         }
-        if (current != 0 && current != 1) {
+        if (engine::adapter::GameMode(current) != engine::adapter::Mode::OnFoot &&
+            engine::adapter::GameMode(current) != engine::adapter::Mode::Vehicle) {
             gLast = std::format("{}: not here (game mode {})", gm::Name(action), current);
             log::Info("omni-tool: {} not opened: the game's screens open on foot or in a vehicle (game mode {})", gm::Name(action), current);
             gPage = {};
@@ -519,6 +552,10 @@ void StepPage(Link const& link) {
         }
         return;
     }
+#if defined(MEVR_GAME_LE3)
+    ue3::Object* const manager = le3_gui::Manager();
+    ue3::Object* const wheel = le3_gui::Browser(manager);
+#else
     ue3::Object* const pc = player::Controller();
     ue3::Object* const manager = pc != nullptr ? gGuiManager.Read<ue3::Object*>(pc).value_or(nullptr) : nullptr;
     ue3::Object* wheel = manager != nullptr ? gBrowserWheel.Read<ue3::Object*>(manager).value_or(nullptr) : nullptr;
@@ -530,12 +567,13 @@ void StepPage(Link const& link) {
             wheel = parms.Return<ue3::Object*>().value_or(nullptr);
         }
     }
+#endif
     std::optional<ue3::Elements> const pages = wheel != nullptr && ue3::runtime::Get().IsAlive(wheel) ? gPages.ElementsOf(wheel)
                                                                                                     : std::nullopt;
     if (!pages || gShowSelectedPanel.Get() == nullptr) {
         if (++gPage.tries > kPageMaxTries) {
             gLast = std::format("{}: no browser wheel", gm::Name(action));
-            log::Warn("omni-tool: {} not opened: ME2's pause menu has no browser wheel handler with pages (GUI manager {}, "
+            log::Warn("omni-tool: {} not opened: the native pause menu has no browser wheel handler with pages (GUI manager {}, "
                       "handler {}, pages {}{})", gm::Name(action), manager != nullptr ? "found" : "none",
                 wheel != nullptr ? ClassName(wheel) : std::string("none"), pages ? std::to_string(pages->count) : std::string("none"),
                 gShowSelectedPanel.Get() == nullptr ? "; BioSFHandler_BrowserWheel.ShowSelectedPanel not found" : "");
@@ -551,22 +589,30 @@ void StepPage(Link const& link) {
             list += std::format("{}{}: {} (type {})", i == 0 ? "" : ", ", i, tag ? ue3::runtime::Get().ToString(*tag) : std::string("?"),
                 gPageType.Read<std::uint8_t>(pages->At(i)).value_or(0xFF));
         }
-        log::Info("omni-tool: ME2's pause menu pages: {}", list);
+        log::Info("omni-tool: the native pause menu pages: {}", list);
     }
     int const index = FindPage(action, *pages);
     if (index < 0) {
         gLast = std::format("{}: no page for it", gm::Name(action));
-        log::Warn("omni-tool: {} not opened: ME2's pause menu has no page for it", gm::Name(action));
+        log::Warn("omni-tool: {} not opened: the native pause menu has no page for it", gm::Name(action));
         gPage = {};
         return;
     }
+#if defined(MEVR_GAME_LE3)
+    auto const type = gPageType.Read<std::uint8_t>(pages->At(index)).value_or(255);
+    if (!le3_gui::PageAllowed(wheel, type)) {
+        gLast = std::format("{}: page disabled by the game or its state unavailable", gm::Name(action));
+        log::Info("omni-tool: {}", gLast);
+        gPage = {};
+        return;
+    }
+#endif
     ue3::Reflection& r = ue3::runtime::Get();
     ue3::Params parms(r, gShowSelectedPanel.Get());
-    parms.Set("nPanel", static_cast<std::int32_t>(index));
-    parms.Set("oManager", manager);
-    bool const called = ue3::runtime::Call(wheel, gShowSelectedPanel.Get(), parms);
+    bool const called = parms.Set("nPanel", static_cast<std::int32_t>(index)) && parms.Set("oManager", manager) &&
+        ue3::runtime::Call(wheel, gShowSelectedPanel.Get(), parms);
     gLast = std::format("{}: page {} {}", gm::Name(action), index, called ? "shown" : "call failed");
-    log::Info("omni-tool: opened {} (ME2's pause menu page {} through BioSFHandler_BrowserWheel.ShowSelectedPanel{})",
+    log::Info("omni-tool: opened {} (the native pause menu page {} through BioSFHandler_BrowserWheel.ShowSelectedPanel{})",
         gm::Name(action), index, called ? "" : ": the call failed");
     gPage = {};
 }
@@ -574,11 +620,17 @@ void StepPage(Link const& link) {
 
 void Run(gm::Action action, gm::Origin origin) {
     switch (action) {
-    case gm::Action::Holster: Holster(); return;
-#if defined(MEVR_GAME_LE2)
+    case gm::Action::Holster:
+#if defined(MEVR_GAME_LE3)
+        gLast = "holster: ME3 native contract not enabled";
+#else
+        Holster();
+#endif
+        return;
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     case gm::Action::Equipment:
-        gLast = "equipment: not on ME2";
-        log::Info("omni-tool: Equipment isn't a screen on Mass Effect 2 (its weapons and armour change at its lockers)");
+        gLast = "equipment: use the game's weapon/armour stations";
+        log::Info("omni-tool: {}", gLast);
         return;
     case gm::Action::Squad:
     case gm::Action::Journal:
@@ -626,10 +678,10 @@ void Tick(Link const& link) {
         log::Info("main menu request: {} taken; it runs once the main menu is closed and the game runs ({} ticks)",
             gm::Name(taken), gm::kSettleTicks);
         world_ui::CancelOpening(link.worldUi);
-#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
         gSwitch = {};  // a replacement must not finish the older backout/opening path
 #endif
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
         gPage = {};
 #endif
         gm::Take(gSchedule, taken, gm::DecodeOrigin(value));
@@ -643,10 +695,17 @@ void Tick(Link const& link) {
     if (step.run != gm::Action::None) {
         Run(step.run, step.origin);
     }
-#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+    if (link.menuOpen) {
+        gSwitch = {};
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+        gPage = {};
+#endif
+        return;
+    }
     StepSwitch(link);
 #endif
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     StepPage(link);
 #endif
 }
@@ -670,8 +729,26 @@ std::string Inject(std::string const& which) {
     return "usage: mevr omni <equipment|squad|map|journal|codex|computer|close|holster>";
 }
 
+bool GuiInputReady() {
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+    std::string why;
+    auto const modes = ReadModes(why);
+    if (!modes || !modes->current || *modes->current != kModeGui) return false;
+    auto* mode = ActiveMode(*modes, why);
+    auto* fn = mode && gGuiKey.Get() ? ue3::runtime::Get().FindFunction(ue3::runtime::Get().ClassOf(mode), "GuiKey") : nullptr;
+    if (!fn) return false;
+#if defined(MEVR_GAME_LE3)
+    if (!le3_gui::FocusMovie()) return false;
+#endif
+    ue3::Params p(ue3::runtime::Get(), fn);
+    return p.Set("Event", std::uint8_t{6});
+#else
+    return false;
+#endif
+}
+
 bool GuiKey(std::uint8_t event, std::string& why) {
-#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     std::optional<Modes> const modes = ReadModes(why);
     if (!modes) {
         return false;
@@ -685,8 +762,7 @@ bool GuiKey(std::uint8_t event, std::string& why) {
         return false;
     }
     ue3::Params parms(r, guiKey);
-    parms.Set("Event", event);
-    if (!ue3::runtime::Call(mode, guiKey, parms)) {
+    if (!parms.Set("Event", event) || !ue3::runtime::Call(mode, guiKey, parms)) {
         why = "the call failed";
         return false;
     }
@@ -702,10 +778,10 @@ bool GuiKey(std::uint8_t event, std::string& why) {
 void Shutdown() {
     gSchedule = {};
     gToldOldHost = false;
-#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     gSwitch = {};
 #endif
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     gPage = {};
     gLoggedPages = false;
 #endif

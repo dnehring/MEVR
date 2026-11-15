@@ -14,7 +14,7 @@
 //     Console_Menu binding calls;
 //   - holster: SFXGameModeDefault.TryHolster (Back's Console_Holster), only on foot and only while a weapon is drawn
 //     (it's a toggle: with the weapon away it would draw, which [Holsters] onlyHolstersDraw forbids anyway).
-// LE1; a no-op elsewhere. Game thread.
+// Shared request scheduler; per-game native entry points. LE3 contracts: research/le3-native-gui.md. Game thread.
 namespace mevr::game::game_menu_request {
 
 struct Link {
@@ -29,9 +29,11 @@ void Tick(Link const& link);
 // rail. Returns what it did, for console.result.
 std::string Inject(std::string const& which);
 // A GUI event as the player's input gives it to the game's screens: SFXGameModeBase.GuiKey(Event) on the active game mode (the
-// BIOGUI_EVENT numbers: 13 B, 50 the left mouse button, 52 its release, 28/29 the wheel, 6/7 the mouse's motion). False with
-// why when there is no mode or no GuiKey. LE1, game thread.
+// native BIOGUI_EVENT numbers, different per game; core/vr/GuiEvents translates only the canonical host queue. False with
+// why when there is no mode or no GuiKey. Game thread.
 bool GuiKey(std::uint8_t event, std::string& why);
+// Runtime mode, focus and parameter contract available before consuming host input.
+bool GuiInputReady();
 // Forgets a request not yet run.
 void Shutdown();
 std::string StatusJson();

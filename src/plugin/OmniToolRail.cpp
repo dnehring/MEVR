@@ -839,10 +839,11 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
     if (goingForPanel) {
         ++g.tapsHeld;
     }
-    bool const tapAllowed = g.settings.tap && !frame.gunDrawn && (frame.gameMode == 0 || frame.gameMode == 7) && !goingForPanel;
+    bool const tapAllowed = g.settings.tap && !frame.gunDrawn && (engine::adapter::GameMode(frame.gameMode) == engine::adapter::Mode::OnFoot ||
+        engine::adapter::GameMode(frame.gameMode) == engine::adapter::Mode::Gui) && !goingForPanel;
     char const* const refused = !g.settings.tap                                ? "[OmniTool] tap = 0"
                                 : frame.gunDrawn                               ? "a weapon is drawn (holster it first)"
-                                : frame.gameMode != 0 && frame.gameMode != 7   ? "not on foot"
+                                : !engine::adapter::IsWristMenuMode(frame.gameMode) ? "not on foot"
                                 : goingForPanel                                ? "the fingertip was going for a screen"
                                                                                : nullptr;
     // The tap aims at its target, a button just below the wrist readout (rail::TargetPoint).
