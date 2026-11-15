@@ -58,6 +58,7 @@ char const* TypeName(weapon::RangedType type) {
     case weapon::RangedType::Shotgun: return "shotgun";
     case weapon::RangedType::AssaultRifle: return "assault rifle";
     case weapon::RangedType::Sniper: return "sniper rifle";
+    case weapon::RangedType::Smg: return "SMG";
     default: return "gun";
     }
 }

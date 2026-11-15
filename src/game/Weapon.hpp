@@ -36,7 +36,8 @@ struct Object;
 //   - Following: each tick it compares the weapon's muzzle with where the written hand and the
 //     attachment put it, and logs once per weapon whether the weapon follows the written hand in
 //     the same frame (research/14 open risk).
-// Game thread only. LE2/LE3: nothing (layouts not verified there).
+// Game thread only. LE2 uses SFXWeapon.Mesh/MuzzleSocketName; LE3 reuses that reflected
+// route after its skeletal layout and pose hook are independently verified (research/le3-body-pose.md).
 namespace mevr::game::weapon {
 
 struct Muzzle {
@@ -79,10 +80,24 @@ std::uintptr_t Key();
 ue3::Object* HeldObject();
 // ME2's native ammo-power icon socket in the posed weapon, including visual kick.
 std::optional<engine::UnrealVector> AmmoSocketAsDrawn();
-// Its ranged type (BioWeaponRanged.GetRangedWeaponType, EBioItemWeaponRangedType), read once per
+// Its ranged family (LE1 GetRangedWeaponType; sequels' native classes), read once per
 // weapon.
-enum class RangedType { Pistol = 0, Shotgun = 1, AssaultRifle = 2, Sniper = 3, Unknown = -1 };
+enum class RangedType { Pistol = 0, Shotgun = 1, AssaultRifle = 2, Sniper = 3, Smg = 4, Unknown = -1 };
 RangedType Type();
+// Native family and presentation profile are separate: SMGs borrow the rifle's existing calibration
+// and default sight geometry. Model identity still selects per-weapon optic overrides; this is never
+// a native eligibility or holster-slot mapping. Unknown remains unsupported.
+constexpr int PresentationProfile(RangedType family) {
+    switch (family) {
+    case RangedType::Pistol: return 0;
+    case RangedType::Shotgun: return 1;
+    case RangedType::AssaultRifle: return 2;
+    case RangedType::Sniper: return 3;
+    case RangedType::Smg: return 2;
+    default: return -1;
+    }
+}
+inline int PresentationProfile() { return PresentationProfile(Type()); }
 // The player's ranged weapon's bIsZoomed (BioWeaponRanged +0x548 bit 0x4), live: the game's aimed
 // fire (research/18: it picks the smaller aim error and recoil, and the TightAim camera follows
 // it; set from BioPlayerInput.bWantsToZoom, i.e. LT). Nullopt without a ranged weapon.

@@ -53,6 +53,7 @@ char const* TypeName() {
     case weapon::RangedType::Shotgun: return "shotgun";
     case weapon::RangedType::AssaultRifle: return "assault rifle";
     case weapon::RangedType::Sniper: return "sniper rifle";
+    case weapon::RangedType::Smg: return "SMG";
     case weapon::RangedType::Unknown: break;
     }
     return "gun";

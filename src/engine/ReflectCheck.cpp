@@ -2795,6 +2795,14 @@ void CheckClasses() {
     CheckClass<ABioPlayerController>("SFXGame.BioPlayerController");
     CheckClass<USFXGameModeManager>("SFXGame.SFXGameModeManager");
     CheckClass<ASFXWeapon>("SFXGame.SFXWeapon");
+    CheckClass<AWeapon>("Engine.Weapon");
+    CheckClass<ASFXWeapon_NativeBase>("SFXGame.SFXWeapon_NativeBase");
+    CheckClass<ASFXWeapon_Pistol_Base>("SFXGame.SFXWeapon_Pistol_Base");
+    CheckClass<ASFXWeapon_SMG_Base>("SFXGame.SFXWeapon_SMG_Base");
+    CheckClass<ASFXWeapon_AssaultRifle_Base>("SFXGame.SFXWeapon_AssaultRifle_Base");
+    CheckClass<ASFXWeapon_Shotgun_Base>("SFXGame.SFXWeapon_Shotgun_Base");
+    CheckClass<ASFXWeapon_SniperRifle_Base>("SFXGame.SFXWeapon_SniperRifle_Base");
+    CheckClass<USkeletalMeshComponent>("Engine.SkeletalMeshComponent");
 }
 
 void CheckFields() {
@@ -2804,6 +2812,9 @@ void CheckFields() {
     CheckField("Engine.Actor", "WorldInfo", SDK_FIELD(AActor, WorldInfo));
     CheckField("Engine.Actor", "Location", SDK_FIELD(AActor, location));
     CheckField("Engine.Pawn", "Weapon", SDK_FIELD(APawn, Weapon));
+    CheckField("Engine.Weapon", "Mesh", SDK_FIELD(AWeapon, Mesh));
+    CheckField("SFXGame.SFXWeapon", "MuzzleSocketName", SDK_FIELD(ASFXWeapon, MuzzleSocketName));
+    CheckField("SFXGame.SFXWeapon_NativeBase", "bIsZoomed", SDK_BOOL(ASFXWeapon_NativeBase, bIsZoomed));
     CheckField("SFXGame.BioPlayerController", "GameModeManager2", SDK_FIELD(ABioPlayerController, GameModeManager2));
     CheckField("SFXGame.SFXGameModeManager", "CurrentMode", SDK_FIELD(USFXGameModeManager, CurrentMode));
     CheckField("SFXGame.SFXGameModeManager", "GameModes", SDK_FIELD(USFXGameModeManager, GameModes));
@@ -2821,12 +2832,38 @@ void CheckPaths() {
 void CheckSkeleton() {}  // L3-3 owns pose layout discovery; no skeletal write path enabled here.
 
 void CheckFunctions() {
+    // L3-3: exact script/native entry points used by the shared pose/aim adapter.
+    CheckFunction("SFXGame.BioPlayerController.GetAdjustedAimFor");
+    CheckFunction("SFXGame.SFXWeapon.GetAdjustedAim");
+    CheckFunction("SFXGame.BioPawn.GetWeaponStartTraceLocation");
+    CheckFunction("SFXGame.SFXWeapon.GetMuzzleLoc");
+    CheckFunction("Engine.SkeletalMeshComponent.GetSocketWorldLocationAndRotation");
+
     CheckFunction("SFXGame.SFXWeapon.GetMagazineSize");
     CheckFunction("SFXGame.SFXWeapon.GetCurrentSpareAmmo");
     CheckFunction("Engine.PlayerController.ConsoleCommand");
 }
 
 void CheckParams() {
+    PARAM(ABioPlayerController_execGetAdjustedAimFor_Parms, "SFXGame.BioPlayerController.GetAdjustedAimFor", W);
+    PARAM(ABioPlayerController_execGetAdjustedAimFor_Parms, "SFXGame.BioPlayerController.GetAdjustedAimFor", StartFireLoc);
+    PARAM(ABioPlayerController_execGetAdjustedAimFor_Parms, "SFXGame.BioPlayerController.GetAdjustedAimFor", ReturnValue);
+    PARMS(ABioPlayerController_execGetAdjustedAimFor_Parms, "SFXGame.BioPlayerController.GetAdjustedAimFor");
+    PARAM(ASFXWeapon_execGetAdjustedAim_Parms, "SFXGame.SFXWeapon.GetAdjustedAim", StartFireLoc);
+    PARAM(ASFXWeapon_execGetAdjustedAim_Parms, "SFXGame.SFXWeapon.GetAdjustedAim", ReturnValue);
+    PARMS(ASFXWeapon_execGetAdjustedAim_Parms, "SFXGame.SFXWeapon.GetAdjustedAim");
+    PARAM(ABioPawn_execGetWeaponStartTraceLocation_Parms, "SFXGame.BioPawn.GetWeaponStartTraceLocation", CurrentWeapon);
+    PARAM(ABioPawn_execGetWeaponStartTraceLocation_Parms, "SFXGame.BioPawn.GetWeaponStartTraceLocation", ReturnValue);
+    PARMS(ABioPawn_execGetWeaponStartTraceLocation_Parms, "SFXGame.BioPawn.GetWeaponStartTraceLocation");
+    PARAM(ASFXWeapon_execGetMuzzleLoc_Parms, "SFXGame.SFXWeapon.GetMuzzleLoc", ReturnValue);
+    PARMS(ASFXWeapon_execGetMuzzleLoc_Parms, "SFXGame.SFXWeapon.GetMuzzleLoc");
+    PARAM(USkeletalMeshComponent_execGetSocketWorldLocationAndRotation_Parms, "Engine.SkeletalMeshComponent.GetSocketWorldLocationAndRotation", InSocketName);
+    PARAM(USkeletalMeshComponent_execGetSocketWorldLocationAndRotation_Parms, "Engine.SkeletalMeshComponent.GetSocketWorldLocationAndRotation", OutLocation);
+    PARAM(USkeletalMeshComponent_execGetSocketWorldLocationAndRotation_Parms, "Engine.SkeletalMeshComponent.GetSocketWorldLocationAndRotation", OutRotation);
+    PARAM(USkeletalMeshComponent_execGetSocketWorldLocationAndRotation_Parms, "Engine.SkeletalMeshComponent.GetSocketWorldLocationAndRotation", Space);
+    PARAM(USkeletalMeshComponent_execGetSocketWorldLocationAndRotation_Parms, "Engine.SkeletalMeshComponent.GetSocketWorldLocationAndRotation", ReturnValue);
+    PARMS(USkeletalMeshComponent_execGetSocketWorldLocationAndRotation_Parms, "Engine.SkeletalMeshComponent.GetSocketWorldLocationAndRotation");
+
     PARAM(ASFXWeapon_execGetMagazineSize_Parms, "SFXGame.SFXWeapon.GetMagazineSize", ReturnValue);
     PARMS(ASFXWeapon_execGetMagazineSize_Parms, "SFXGame.SFXWeapon.GetMagazineSize");
     PARAM(ASFXWeapon_execGetCurrentSpareAmmo_Parms, "SFXGame.SFXWeapon.GetCurrentSpareAmmo", ReturnValue);

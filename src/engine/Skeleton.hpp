@@ -22,7 +22,7 @@
 // The two element layouts aren't in the reflection: they stay research/14's (LE1 only).
 // Names can't come from the GetBoneNames native: through ProcessEvent its out-array parameter is
 // never bound to the caller's parms (EX_NativeParm with a null result), so it returns nothing.
-// LE2/LE3: layouts not verified; everything here answers "unsupported" there.
+// LE2 uses the same verified layouts (research/le2-vrik.md). LE3 remains unsupported until native proof.
 //
 // Meshes are SkeletalMeshComponents as our reflection layer's pointers. The offsets are resolved once
 // (TryStartup, game thread) and then only read, so the pose reads (RefBoneCount, RefBoneKey,
@@ -33,7 +33,7 @@ struct Object;
 
 namespace mevr::engine::skeleton {
 
-// This game's layouts are known (LE1).
+// This game's layouts are known (LE1/LE2; LE3 awaits independent native proof).
 bool Supported();
 // Resolves the fields below through our reflection layer (once; what's missing is logged and stays
 // off), and finds the natives used for cross-checks (MatchRefBone, GetBoneLocation, GetBoneNames).

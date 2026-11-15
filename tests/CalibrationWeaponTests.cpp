@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "core/vr/CalibrationWeapon.hpp"
+#include "game/Weapon.hpp"
 
 #include <cstdio>
 #include <limits>
@@ -19,6 +20,16 @@ bool Near(float a, float b) { return std::abs(a - b) < 0.00001f; }
 int RunCalibrationWeaponTests() {
     namespace w = mevr::vr::calibration_weapon;
     namespace c = mevr::vr::calibration;
+    // Native family stays distinct from the four saved presentation/calibration profiles.
+    // The existing LE1 values cannot shift when a sequel adds a family.
+    namespace native = mevr::game::weapon;
+    for (int oldFamily = 0; oldFamily != 4; ++oldFamily) {
+        CHECK(native::PresentationProfile(static_cast<native::RangedType>(oldFamily)) == oldFamily);
+    }
+    CHECK(native::RangedType::Smg != native::RangedType::AssaultRifle);
+    CHECK(native::PresentationProfile(native::RangedType::Smg) == 2);
+    CHECK(native::PresentationProfile(native::RangedType::Unknown) == -1);
+    CHECK(native::PresentationProfile(static_cast<native::RangedType>(99)) == -1);
     w::Model model;
     auto const pistol = w::Build(model);
     CHECK(pistol.size() == 36);

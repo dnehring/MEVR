@@ -35,8 +35,7 @@ namespace {
 
 constexpr char const* kGetAdjustedAimFor = "SFXGame.BioPlayerController.GetAdjustedAimFor";
 
-// ---- engine access: our reflection layer on LE1 (research/34), LExSDKv2 on LE2/LE3 until stage 5
-// (engine/Legacy) -----------------------------------------------------------------------------------
+// ---- engine access: shared reflection, with the existing legacy fallback while a sequel's layer is off.
 
 #if defined(MEVR_GAME_LE1)
 // The weapon's own aim query (script, called natively), which gets the shot's start (StartFireLoc):
@@ -62,12 +61,12 @@ ue3::FieldRef gEnginePawnStartReturn{gEnginePawnStartTraceFn, "ReturnValue"};
 #endif
 
 // The aim query: our reflection layer on LE1 and LE2 (research/34; LE2 since M1, docs/le2-continuation-plan.md), LExSDKv2
-// (engine/Legacy) on LE3 and on LE2 while its layer is off.
-#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
+// (engine/Legacy) on a sequel while its layer is off. LE3 uses the same audited script signatures.
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 ue3::FunctionRef gAimForFn{kGetAdjustedAimFor, ue3::kEveryGame};
 ue3::FieldRef gAimForReturn{gAimForFn, "ReturnValue"};
 
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 #define MEVR_OR_LEGACY(call)     if (!ue3::runtime::Up()) {         return engine::legacy::call;     }
 #else
 #define MEVR_OR_LEGACY(call)
@@ -221,7 +220,7 @@ bool HandRotation(ue3::Rotator const& game, ue3::Rotator& out) {
     }
     XrPosef aim = controllers.right.aim;
     // Calibrated (research/25): the calibrated sight line from the grip, not the runtime's aim pose.
-    if (auto const stance = body_calibration::StanceFor(static_cast<int>(weapon::Type())); stance && controllers.right.gripValid) {
+    if (auto const stance = body_calibration::StanceFor(weapon::PresentationProfile()); stance && controllers.right.gripValid) {
         aim.position = vr::calibration::SightLine(controllers.right.grip, *stance).point;
         aim.orientation = vr::calibration::GunOrientation(controllers.right.grip.orientation, *stance);
     }
@@ -497,14 +496,15 @@ void OnWeaponAim(ue3::Object* context, ue3::Function* /*function*/, void* parms,
 }
 #endif
 
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 // ME2's weapons are SFXWeapon (on Engine.Weapon; ME1's BioWeaponRanged doesn't exist there, research/le2-vrik-audit.md).
 // Every instant-hit shot is Engine.Weapon.InstantFire, all script: the start from Instigator.GetWeaponStartTraceLocation(),
 // the direction from SFXWeapon.GetAdjustedAim(StartTrace), which asks Instigator.GetAdjustedAimFor -> the controller's
 // GetAdjustedAimFor (the post-handlers above rewrite its answer) and adds the weapon's aim error (GetPlayerAimError, in
 // degrees, spread at random over pitch and yaw). Called script to script, so the CallFunction hook's post-handler sees its
 // result, the shot's rotation (its parameters are gone by then); the ProcessEvent one is there for a native caller.
-// research/le2-vrik.md "Hand aim".
+// research/le2-vrik.md "Hand aim"; installed ME3 script route: research/le3-body-pose.md.
+// LE3 retains this route before CalcWeaponFire_Native handles penetration; do not replace its native hit rules.
 constexpr char const* kSfxWeaponGetAdjustedAim = "SFXGame.SFXWeapon.GetAdjustedAim";
 ue3::FunctionRef gSfxWeaponAimFn{kSfxWeaponGetAdjustedAim, ue3::kEveryGame};
 ue3::FieldRef gSfxWeaponAimReturn{gSfxWeaponAimFn, "ReturnValue"};
@@ -573,7 +573,7 @@ void OnSfxWeaponAimCall(ue3::Object* context, ue3::Function* /*function*/, void*
 // we return ends on that plane, so we return the point where the barrel's line (the muzzle M along the shot's direction D)
 // meets it, M + D * ((P - M) . F) / (D . F): the move is then nothing and the trace runs along the barrel through the muzzle.
 ue3::FunctionRef gBioPawnStartTraceFn{"SFXGame.BioPawn.GetWeaponStartTraceLocation", ue3::kEveryGame};
-bool gLoggedLe2Start = false;
+bool gLoggedSequelStart = false;
 
 void OnStartTraceCall(ue3::Object* context, ue3::Function* /*function*/, void* result) {
     ue3::Object* const controller = player::Controller();
@@ -603,8 +603,8 @@ void OnStartTraceCall(ue3::Object* context, ue3::Function* /*function*/, void* r
     out = {static_cast<float>(start.x), static_cast<float>(start.y), static_cast<float>(start.z)};
     write_journal::Wrote("HandAim.start trace (CF result)", &out);
     gStartsMoved.fetch_add(1, std::memory_order_relaxed);
-    if (!gLoggedLe2Start) {
-        gLoggedLe2Start = true;
+    if (!gLoggedSequelStart) {
+        gLoggedSequelStart = true;
         log::Info("hand aim: shot start on the barrel's line: the pawn said ({:.0f}, {:.0f}, {:.0f}); ({:.0f}, {:.0f}, {:.0f}) is "
                   "where the barrel meets the plane SFXWeapon.CalcWeaponFire moves the start onto, {:.0f} units from the muzzle",
             game.x, game.y, game.z, start.x, start.y, start.z, s);
@@ -654,7 +654,7 @@ bool TryStartup() {
         log::Warn("hand aim: Pawn.GetWeaponStartTraceLocation not found: shots along the gun barrel keep the game's start");
     }
 #endif
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     if (ue3::Function* const weaponAim = gSfxWeaponAimFn.Get()) {
         engine::call_function::AddPostHandler(weaponAim, &OnSfxWeaponAimCall);
         engine::process_event::AddPostHandler(weaponAim, &OnSfxWeaponAimEvent);
@@ -783,8 +783,8 @@ void Shutdown() {
     gLoggedBarrel = false;
     gLoggedShotStart = false;
     gLoggedStartMoved = false;
-#if defined(MEVR_GAME_LE2)
-    gLoggedLe2Start = false;
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+    gLoggedSequelStart = false;
 #endif
     gLoggedAtMuzzle = false;
     gLoggedElsewhere = false;

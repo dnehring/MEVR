@@ -1261,7 +1261,7 @@ void Drive(double deltaSeconds) {
                     LogGunHold(*grip, upInHand);
                     // Calibrated (research/25): the barrel along the sight line the player aimed the orb along, in the
                     // right grip's frame, level at calibration (its roll follows the grip); not the runtime's aim pose.
-                    auto const stance = body_calibration::StanceFor(static_cast<int>(weapon::Type()));
+                    auto const stance = body_calibration::StanceFor(weapon::PresentationProfile());
                     vr::controllers::Hand const& tracked = controllers.right;
                     bool const calibrated = stance.has_value() && controllers.active && tracked.gripValid;
                     ik::Quat const held = calibrated
@@ -1280,7 +1280,7 @@ void Drive(double deltaSeconds) {
                         heldUp = upInHand;
                         // A long gun on the pistol's stance (no rifle calibration) keeps its grip frame but not the
                         // pistol's sight line: a pistol at arm's length says nothing about a rifle at the cheek.
-                        if (calibrated && upInHand && !body_calibration::StanceBorrowed(static_cast<int>(weapon::Type()))) {
+                        if (calibrated && upInHand && !body_calibration::StanceBorrowed(weapon::PresentationProfile())) {
                             stanceShift = StanceShift(*grip, *upInHand, arm.wrist, *rotation, tracked.grip, *stance, targets, *worldToComponent);
                         }
                     }
