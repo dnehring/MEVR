@@ -1347,6 +1347,47 @@ std::mutex g_sfrOrderMutex;
 struct SfrOrderEvent { char kind; unsigned long thread; int deferred; };
 SfrOrderEvent g_sfrOrderEvents[48]{};
 unsigned g_sfrOrderCount = 0, g_sfrOrderDraws = 0, g_sfrOrderCopies = 0, g_sfrOrderClears = 0;
+std::atomic<unsigned> g_sfrCompositeSamples{0};
+
+// [MEVR] Observe the source of the final backbuffer composite, not just its
+// destination. Both native eye families can submit while their output remains
+// offscreen until one later GUI composite. No resource is copied or rebound.
+void SfrObserveComposite(ID3D11DeviceContext* ctx) noexcept
+{
+    if (!ctx || !g_sfrOrderActive.load(std::memory_order_relaxed) || !ME2VR::Log::DiagnosticsOn()) return;
+    if (g_sfrCompositeSamples.fetch_add(1, std::memory_order_relaxed) >= 4) return;
+    ID3D11ShaderResourceView* sources[8]{};
+    ctx->PSGetShaderResources(0, _countof(sources), sources);
+    ID3D11PixelShader* shader = nullptr;
+    ctx->PSGetShader(&shader, nullptr, nullptr);
+    char line[1800]{};
+    int off = sprintf_s(line, "[SFRCOMPOSITE] present=%llu thread=%lu context=%p deferred=%d ps=%p sources(first8)=",
+        static_cast<unsigned long long>(g_presentIndex.load(std::memory_order_relaxed)),
+        GetCurrentThreadId(), static_cast<void*>(ctx), ctx->GetType() == D3D11_DEVICE_CONTEXT_DEFERRED,
+        static_cast<void*>(shader));
+    if (shader) shader->Release();
+    for (unsigned i = 0; i < _countof(sources); ++i) {
+        if (!sources[i]) continue;
+        D3D11_SHADER_RESOURCE_VIEW_DESC view{};
+        sources[i]->GetDesc(&view);
+        ID3D11Resource* resource = nullptr;
+        sources[i]->GetResource(&resource);
+        ID3D11Texture2D* texture = nullptr;
+        D3D11_TEXTURE2D_DESC desc{};
+        if (resource && SUCCEEDED(resource->QueryInterface(__uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&texture)))) {
+            texture->GetDesc(&desc);
+            texture->Release();
+        }
+        if (off > 0 && off < 1500) off += sprintf_s(line + off, sizeof(line) - off,
+            " %u:%p/%ux%u/f%u/viewf%u/dim%u/ms%u", i, static_cast<void*>(resource),
+            desc.Width, desc.Height, static_cast<unsigned>(desc.Format), static_cast<unsigned>(view.Format),
+            static_cast<unsigned>(view.ViewDimension), desc.SampleDesc.Count);
+        if (resource) resource->Release();
+        sources[i]->Release();
+    }
+    ME2VR::Log::Line(line);
+    ME2VR::Log::Line("[SFRCOMPOSITESTACK] " + StackTag());
+}
 
 void SfrOrderNote(char kind, ID3D11DeviceContext* ctx) noexcept
 {
@@ -1385,6 +1426,7 @@ void SfrOrderEndPresent() noexcept
             ME2VR::CalcViewHook::GetVrMode() == 4 && !g_menuPresentation.load(std::memory_order_acquire);
         if (eligible) ++qualifyingPresents;
         g_sfrOrderCount = g_sfrOrderDraws = g_sfrOrderCopies = g_sfrOrderClears = 0;
+        g_sfrCompositeSamples.store(0, std::memory_order_relaxed);
         g_sfrOrderActive.store(eligible && (qualifyingPresents <= 4 || qualifyingPresents % 300 < 3),
             std::memory_order_relaxed);
     }
@@ -1439,6 +1481,7 @@ void SfrNoteBackbufferDraw(ID3D11DeviceContext* ctx) noexcept
         return;
     }
     SfrOrderNote('D', ctx);
+    SfrObserveComposite(ctx);
     if (alreadyArmed) return; // observation above never re-arms or changes the capture rule
     g_bbdArmedDraw.fetch_add(1, std::memory_order_relaxed);
     g_sfrBbDrawnThisPresent.store(true, std::memory_order_relaxed);
