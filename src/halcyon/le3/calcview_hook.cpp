@@ -15,6 +15,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <string>
 
 #include <MinHook.h>
@@ -1085,12 +1086,11 @@ void* __fastcall CalcViewDetour(void* lp, void* family, void* loc, void* rot, vo
     // what [UIRATIO]'s correction assumes. ApplyFov still runs after the build, recomputes the
     // same numbers (delta ~0) and stays the only writer of the published render/submit FOVs; its
     // zoom/rest/VRCINE logic is mirrored here on the SOURCE-read FOV so behaviour is unchanged -
-    // only WHO builds the projection moved. Offsets come from [CAMFOV] runtime discovery.
+    // only WHO builds the projection moved. [MEVR] The exact installed-script getter field is overridden.
     struct FovAtSourceGuard
     {
-        bool  active = false;
-        float prevDeg = 0.0f;
-        ~FovAtSourceGuard() { if (active) ME2VR::EngineProbe::SetCameraFovDeg(prevDeg, nullptr); }
+        ME2VR::EngineProbe::CameraFovEdit edit;
+        ~FovAtSourceGuard() { ME2VR::EngineProbe::RestoreCameraFovEdit(edit); }
     } fovSrc;
     if (g_vrEnabled.load(std::memory_order_acquire) && isP1 &&
         !g_mevrCineScreen.load(std::memory_order_acquire) &&
@@ -1130,9 +1130,8 @@ void* __fastcall CalcViewDetour(void* lp, void* family, void* loc, void* rot, vo
             {
                 float deg = 2.0f * renderH * (180.0f / 3.14159265358979f);
                 if (deg > 170.0f) deg = 170.0f; else if (deg < 10.0f) deg = 10.0f;
-                if (ME2VR::EngineProbe::SetCameraFovDeg(deg, &fovSrc.prevDeg))
+                if (ME2VR::EngineProbe::BeginCameraFovEdit(deg, fovSrc.edit))
                 {
-                    fovSrc.active = true;
                     g_srcRawFovH.store(gh, std::memory_order_relaxed);
                     g_srcWrittenFovH.store(renderH, std::memory_order_relaxed);
                     g_srcRawValid.store(true, std::memory_order_relaxed);
@@ -1698,6 +1697,31 @@ bool GetAerStamp(unsigned long long* seq, int* eye) noexcept
     return e >= 0 && e <= 1;
 }
 
+// [MEVR] Unique function-start patterns from the current decrypted 60AEF0C4 capture.
+// Check these exact ABI entry points before MinHook or a direct allocator call; executable identity alone
+// cannot detect an unexpected patch at one of the renderer targets.
+bool RendererBytesMatch(std::uintptr_t rva, const unsigned char* bytes, size_t size) noexcept
+{
+    __try { return std::memcmp(reinterpret_cast<const void*>(g_base + rva), bytes, size) == 0; }
+    __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+bool RendererTargetsMatch() noexcept
+{
+    static const unsigned char calc[] = {0x48,0x8B,0xC4,0x55,0x53,0x56,0x57,0x41,0x54,0x41,0x55,0x41,0x56,0x41,0x57,0x48,0x8D,0xA8,0x98,0xFD,0xFF,0xFF,0x48,0x81,0xEC,0x88,0x03,0x00};
+    static const unsigned char alloc[] = {0x40,0x53,0x48,0x83,0xEC,0x30,0x48,0xC7,0x44,0x24,0x20,0xFE,0xFF,0xFF,0xFF,0x8B,0xD9,0xB9,0x60,0x0D};
+    static const unsigned char draw[] = {0x48,0x8B,0xC4,0x55,0x56,0x57,0x41,0x54,0x41,0x55,0x41,0x56,0x41,0x57,0x48,0x8D,0xA8,0x58,0xFC,0xFF,0xFF,0x48,0x81,0xEC,0xD0,0x04,0x00,0x00};
+    bool const c = RendererBytesMatch(kCalcSceneViewRva, calc, sizeof(calc));
+    bool const a = RendererBytesMatch(kAllocateViewStateRva, alloc, sizeof(alloc));
+    bool const d = RendererBytesMatch(kDrawRva, draw, sizeof(draw));
+    if (!c || !a || !d) {
+        ME2VR::Log::Line("[MEVR-LE3-ABI] renderer target mismatch: calc=" + std::to_string(c) +
+            " alloc=" + std::to_string(a) + " draw=" + std::to_string(d));
+        return false;
+    }
+    ME2VR::Log::Line("[MEVR-LE3-ABI] CalcSceneView/AllocateViewState/Draw entry bytes verified (60AEF0C4)");
+    return true;
+}
+
 void Tick() noexcept
 {
     if (g_installed.load(std::memory_order_acquire)) return;
@@ -1709,7 +1733,7 @@ void Tick() noexcept
     if (!g_started.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) return;
 
     g_base = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
-    if (g_base == 0) return;
+    if (g_base == 0 || !RendererTargetsMatch()) return;
 
     g_allocViewState = reinterpret_cast<AllocViewStateFn>(g_base + kAllocateViewStateRva);
 
@@ -1720,7 +1744,7 @@ void Tick() noexcept
         MH_EnableHook(target) == MH_OK)
     {
         g_installed.store(true, std::memory_order_release);
-        ME2VR::Log::Line("[ME3DISC] CalcViewHook: installed at MassEffect2.exe+" + Hex(kCalcSceneViewRva));
+        ME2VR::Log::Line("[ME3DISC] CalcViewHook: installed at MassEffect3.exe+" + Hex(kCalcSceneViewRva));
     }
     else
     {

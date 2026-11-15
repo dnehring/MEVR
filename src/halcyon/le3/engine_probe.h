@@ -65,13 +65,18 @@ bool ConvoFpDisableDof() noexcept;
 bool ConvoFpReadStageDofActive(std::uintptr_t stage, bool* outActive) noexcept;
 bool ConvoFpSetStageDofActive(std::uintptr_t stage, bool active) noexcept;
 
-// [CAMFOV] LE3 camera FOV field(s), discovered at RUNTIME: the camera object is scanned during
-// stable wide gameplay for floats equal to the live FOV; offsets that hold across ~90 frames are
-// locked. Ported from ME2's FILLSRC (glass/refraction smear fix), where the offset was hardcoded
-// (cam+0x47C) - LE3's camera layout differs, so it is measured instead of assumed.
-bool CamFovReady() noexcept;                       // offsets locked, Set/Get usable
-bool GetCameraFovDeg(float* outDeg) noexcept;      // current camera FOV (degrees, horizontal)
-bool SetCameraFovDeg(float deg, float* outPrev) noexcept;   // write ALL locked offsets; prev of first
+// [MEVR] Exact installed-script getter source (Engine.PlayerController -> Camera), not value scanning.
+// One CalcSceneView-scoped edit; restore the same live camera field only if it still contains our value.
+struct CameraFovEdit {
+    std::uintptr_t camera = 0;
+    std::uintptr_t address = 0;
+    float previous = 0.0f;
+    float written = 0.0f;
+};
+bool CamFovReady() noexcept;
+bool GetCameraFovDeg(float* outDeg) noexcept;
+bool BeginCameraFovEdit(float deg, CameraFovEdit& edit) noexcept;
+void RestoreCameraFovEdit(CameraFovEdit& edit) noexcept;
 bool IsGameplayCamera() noexcept;      // camera is SFXCameraMode_* (gameplay incl. ADS)
 bool IsWeaponOut() noexcept;           // [HEADAIM] Combat-family camera mode (holds through blends)
 bool IsPhotoCamera() noexcept;         // [PHOTOVR] SFXCameraMode_PhotoFree: render it as gameplay stereo

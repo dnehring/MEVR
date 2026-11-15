@@ -2239,36 +2239,15 @@ bool IsRoamingArea() noexcept { return g_nonCombatPawn.load(std::memory_order_ac
 bool IsCombatContext() noexcept { return g_combatContext.load(std::memory_order_acquire); }
 bool IsWeaponOut() noexcept { return g_weaponOut.load(std::memory_order_acquire); }
 
-// [CAMFOV] Runtime discovery of the LE3 camera FOV field(s), for the FILLSRC glass-smear fix.
-// ME2 hardcodes the field (cam+0x47C); LE3's camera layout differs (PlayerCamera itself moved
-// 0x6A0 -> 0xE28), so it is MEASURED: scan the camera object for floats equal to the live raw
-// FOV during stable wide gameplay, and lock the offsets once the same set has held ~90
-// consecutive frames. Multiple hits are expected (FOVAngle plus its cache copies) - all are
-// written and all are restored, so equality between them is preserved by construction.
-// [CAMFOV WIDEN 2026-08-14] The window was 0x100..0xA00 and found only 2 copies, yet [FILLSRC]
-// reported "active" while the glass/refraction smear persisted - the signature of writing SOME of
-// the FOV copies but not all. UE3 mirrors the FOV across FOVAngle, CameraCache.POV.FOV,
-// LastFrameCameraCache.POV.FOV and the ViewTarget POVs, and LE3's PlayerCamera is a far larger actor
-// than ME2's (the pointer alone moved pc+0x6A0 -> pc+0xE28), so copies sit past the old ceiling.
-// Whatever the distortion pass samples has to be written too or its screen-space offsets stay
-// derived from the raw narrow FOV, which is exactly the smear.
-constexpr int kCamFovMaxOffs = 24;
-constexpr std::uintptr_t kCamFovScanLo = 0x100;
-constexpr std::uintptr_t kCamFovScanHi = 0x2000;
-std::uintptr_t g_camFovObj = 0;
-std::uintptr_t g_camFovOffs[kCamFovMaxOffs] = {};
-int  g_camFovCount = 0;
-int  g_camFovStable = 0;
-std::atomic_bool g_camFovLocked{false};
-// Widening the window also widens the false-positive risk: gameplay FOV is a CONSTANT 70.0, so any
-// unrelated float parked at 70.0 matches the scan. Real FOV copies track the value when it actually
-// moves (ADS, zoom); a coincidental constant does not. So after locking, whenever the live FOV has
-// moved well away from the lock value, re-read every locked offset and PRUNE the ones that did not
-// follow. Pruning only ever REMOVES writes, so it cannot introduce a new failure, and it needs 20
-// consecutive disagreements so a mid-write sample can never evict a real field.
-float g_camFovLockDeg = 0.0f;
-int   g_camFovMiss[kCamFovMaxOffs] = {};
-bool  g_camFovPruneLogged = false;
+// [MEVR] Installed Engine.pcc: PlayerController.GetFOVAngle uses Engine.PlayerCamera,
+// and Camera.GetFOVAngle selects LockedFOV or CameraCache.POV.FOV. LE3 SDK metadata agrees;
+// the native reflection audit checks these fields independently before headset acceptance.
+// MyCamera(+0xE28) remains the gameplay-mode camera elsewhere; it is NOT this getter contract.
+constexpr std::uintptr_t kPcEngineCamera = 0x684;
+constexpr std::uintptr_t kCameraFovFlags = 0x504;
+constexpr std::uint32_t kCameraLockedFov = 0x1;
+constexpr std::uintptr_t kCameraLockedFovValue = 0x4D4;
+constexpr std::uintptr_t kCameraCacheFov = 0x448 + 0x0 + 0x18;
 
 bool CamFovReadF(std::uintptr_t addr, float* out) noexcept
 {
@@ -2283,111 +2262,55 @@ bool CamFovWriteF(std::uintptr_t addr, float v) noexcept
 bool CamFovResolveCam(std::uintptr_t* outCam) noexcept
 {
     const std::uintptr_t lp = GetPrimaryLocalPlayer();
-    if (lp < 0x10000) return false;
     std::uintptr_t pc = 0, cam = 0;
-    if (!SafeReadPtr(lp + 0x68, &pc) || pc < 0x10000) return false;
-    if (!SafeReadPtr(pc + kPcPlayerCamera, &cam) || cam < 0x10000) return false;
+    if (lp < 0x10000 || !SafeReadPtr(lp + 0x68, &pc) || pc < 0x10000 || ActorIsDying(pc) ||
+        !SafeReadPtr(pc + kPcEngineCamera, &cam) || cam < 0x10000 || ActorIsDying(cam)) return false;
+    char name[96] = {};
+    if (!ClassNameOf(cam, name, sizeof(name)) || std::strstr(name, "Camera") == nullptr) return false;
     *outCam = cam;
     return true;
 }
-
-// Drop locked offsets that stop tracking the FOV once it genuinely moves. See the note above.
-void CamFovPruneTick(std::uintptr_t cam) noexcept
+bool CamFovTarget(std::uintptr_t* camera, std::uintptr_t* address) noexcept
 {
-    const float liveDeg = ME2VR::CalcViewHook::GetGameRawFovH() * 2.0f * 57.2957795f;
-    if (!(liveDeg > 10.0f && liveDeg < 170.0f)) return;
-    if (liveDeg > g_camFovLockDeg - 5.0f && liveDeg < g_camFovLockDeg + 5.0f) return;   // needs a real move
-    for (int i = 0; i < g_camFovCount; ++i)
-    {
-        float f = 0.0f;
-        if (!CamFovReadF(cam + g_camFovOffs[i], &f)) continue;
-        if (f > liveDeg - 0.5f && f < liveDeg + 0.5f) { g_camFovMiss[i] = 0; continue; }
-        if (++g_camFovMiss[i] < 20) continue;
-        char b[160] = {};
-        sprintf_s(b, "[CAMFOV] pruning +0x%llX - held %.1f while the camera moved to %.1f deg (not a FOV field)",
-                  static_cast<unsigned long long>(g_camFovOffs[i]),
-                  static_cast<double>(f), static_cast<double>(liveDeg));
-        ME2VR::Log::Line(b);
-        for (int j = i; j + 1 < g_camFovCount; ++j)
-        {
-            g_camFovOffs[j] = g_camFovOffs[j + 1];
-            g_camFovMiss[j] = g_camFovMiss[j + 1];
-        }
-        --g_camFovCount;
-        --i;
-        g_camFovPruneLogged = true;
-    }
+    if (!CamFovResolveCam(camera)) return false;
+    int flags = 0;
+    if (!SafeReadInt(*camera + kCameraFovFlags, &flags)) return false;
+    *address = *camera + ((static_cast<std::uint32_t>(flags) & kCameraLockedFov) ?
+        kCameraLockedFovValue : kCameraCacheFov);
+    return true;
 }
-
-void CamFovDiscoverTick(std::uintptr_t cam) noexcept
-{
-    if (cam < 0x10000) return;
-    if (g_camFovLocked.load(std::memory_order_relaxed)) { CamFovPruneTick(cam); return; }
-    // Live raw FOV from the view build (degrees, full horizontal). Only scan stable wide
-    // gameplay: ADS/cines narrow it and transitions blend it - those frames cannot hold a match.
-    const float liveDeg = ME2VR::CalcViewHook::GetGameRawFovH() * 2.0f * 57.2957795f;
-    if (!(liveDeg > 60.0f && liveDeg < 120.0f) || ReadGameMode() != 0) { g_camFovStable = 0; return; }
-
-    unsigned char buf[kCamFovScanHi - kCamFovScanLo];
-    if (!SafeReadBlock(cam + kCamFovScanLo, buf, sizeof(buf))) { g_camFovStable = 0; return; }
-    std::uintptr_t offs[kCamFovMaxOffs] = {};
-    int count = 0;
-    for (std::uintptr_t o = 0; o + 4 <= sizeof(buf) && count < kCamFovMaxOffs; o += 4)
-    {
-        float f = 0.0f;
-        std::memcpy(&f, buf + o, 4);
-        if (f > liveDeg - 0.02f && f < liveDeg + 0.02f) offs[count++] = kCamFovScanLo + o;
-    }
-    if (count == 0) { g_camFovStable = 0; return; }
-    const bool same = (cam == g_camFovObj) && (count == g_camFovCount) &&
-                      (std::memcmp(offs, g_camFovOffs, sizeof(offs)) == 0);
-    if (!same)
-    {
-        g_camFovObj = cam;
-        g_camFovCount = count;
-        std::memcpy(g_camFovOffs, offs, sizeof(offs));
-        g_camFovStable = 0;
-        return;
-    }
-    if (++g_camFovStable < 90) return;
-    g_camFovLockDeg = liveDeg;
-    for (int i = 0; i < kCamFovMaxOffs; ++i) g_camFovMiss[i] = 0;
-    g_camFovLocked.store(true, std::memory_order_release);
-    char b[240] = {};
-    int n = sprintf_s(b, "[CAMFOV] locked %d offset(s) at %.1f deg:", count, static_cast<double>(liveDeg));
-    for (int i = 0; i < count && n > 0 && n < 200; ++i)
-        n += sprintf_s(b + n, sizeof(b) - static_cast<size_t>(n), " +0x%llX",
-                       static_cast<unsigned long long>(g_camFovOffs[i]));
-    ME2VR::Log::Line(b);
-}
-
-bool CamFovReady() noexcept { return g_camFovLocked.load(std::memory_order_acquire); }
+bool CamFovReady() noexcept { float value = 0.0f; return GetCameraFovDeg(&value); }
 bool GetCameraFovDeg(float* outDeg) noexcept
 {
-    if (outDeg == nullptr || !CamFovReady()) return false;
-    std::uintptr_t cam = 0;
-    if (!CamFovResolveCam(&cam)) return false;
+    std::uintptr_t camera = 0, address = 0;
     float f = 0.0f;
-    if (!CamFovReadF(cam + g_camFovOffs[0], &f)) return false;
-    if (!(f > 1.0f && f < 179.0f)) return false;   // not a sane FOV -> wrong object, refuse
+    if (!outDeg || !CamFovTarget(&camera, &address) || !CamFovReadF(address, &f) || !(f > 1.0f && f < 179.0f)) return false;
     *outDeg = f;
     return true;
 }
-bool SetCameraFovDeg(float deg, float* outPrev) noexcept
+bool BeginCameraFovEdit(float deg, CameraFovEdit& edit) noexcept
 {
-    if (!(deg > 1.0f && deg < 179.0f) || !CamFovReady()) return false;
-    std::uintptr_t cam = 0;
-    if (!CamFovResolveCam(&cam)) return false;
-    bool any = false;
-    for (int i = 0; i < g_camFovCount; ++i)
-    {
-        float prev = 0.0f;
-        if (!CamFovReadF(cam + g_camFovOffs[i], &prev)) continue;
-        if (!(prev > 1.0f && prev < 179.0f)) continue;   // garbage/wrong object: do not write
-        if (!any && outPrev != nullptr) *outPrev = prev;
-        if (CamFovWriteF(cam + g_camFovOffs[i], deg)) any = true;
-    }
-    return any;
+    edit = {};
+    if (!(deg > 1.0f && deg < 179.0f)) return false;
+    std::uintptr_t camera = 0, address = 0, recheckCamera = 0, recheckAddress = 0;
+    float previous = 0.0f;
+    if (!CamFovTarget(&camera, &address) || !CamFovReadF(address, &previous) || !(previous > 1.0f && previous < 179.0f) ||
+        !CamFovTarget(&recheckCamera, &recheckAddress) || recheckCamera != camera || recheckAddress != address ||
+        !CamFovWriteF(address, deg)) return false;
+    edit = {camera, address, previous, deg};
+    return true;
+}
+void RestoreCameraFovEdit(CameraFovEdit& edit) noexcept
+{
+    // Never re-resolve to another field/another camera or overwrite a newer native value.
+    // A changed lock bit alone does not invalidate the original field on the same live camera.
+    std::uintptr_t camera = 0;
+    float current = 0.0f;
+    if (edit.camera && CamFovResolveCam(&camera) && camera == edit.camera &&
+        (edit.address == camera + kCameraCacheFov || edit.address == camera + kCameraLockedFovValue) &&
+        CamFovReadF(edit.address, &current) && current == edit.written)
+        CamFovWriteF(edit.address, edit.previous);
+    edit = {};
 }
 
 // Takes the VALIDATED pawn (caller has already checked its class name), not the PlayerController.
@@ -2430,7 +2353,6 @@ void ApplyFirstPerson() noexcept
     if (SafeReadPtr(pc + kPcPlayerCamera, &cam) && cam >= 0x10000 &&
         SafeReadPtr(cam + kCamCurrentMode, &mode) && mode >= 0x10000)
         ClassNameOf(mode, modeName, sizeof(modeName));
-    CamFovDiscoverTick(cam);   // [CAMFOV] find the camera FOV field(s) for the FILLSRC glass fix
 
     std::uintptr_t pawn = 0;
     char pawnName[96] = {};
