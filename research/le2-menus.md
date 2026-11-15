@@ -104,6 +104,34 @@ wheel does the same (`SFXGameModeWeaponWheel.Activated`: `Outer.WorldInfo.bPlaye
 `Engine.WorldInfo:bPlayersOnly` through the reflection layer (`ue3::kEveryGame`), journalled (`MenuPause.bPlayersOnly`), and
 puts back the value it found. Log `menu pause: the game paused (...; WorldInfo.bPlayersOnly on, as ME2's weapon wheel)`.
 
+### Opening the menu: the both-sticks hold first
+
+The owner, 2026-11-14: "Keep them greyed until I can see them" (the rows above stay greyed) and "We'll maintain the same key,
+but always prioritize the L3 + R3 stick click". So `\` stays ME2's menu key (as ME1's), and holding both stick clicks is the
+primary way and always wins:
+- **The chord** is ME1's, game-independent in `game/GamepadMapping` (host side, both hosts): `UpdateStickChord` on the
+  player's own sample (`live`, never a replay's) in `menus_le2::OnFrameBegun` (LE1: `HalcyonBridge`'s `OnFrameBegun`): both
+  held `kStickHoldMs` (400 ms) toggles our menu (or closes Halcyon's, or cancels the calibration); a quick tap of both
+  (`kStickJoinMs` 100 ms to join, `kStickTapMs` 300 ms to let go) is a snapshot.
+- **Neither click reaches the game while it might be the chord.** L3: `FromControllers` always gates it (`GateClick`,
+  `Latches::leftClick`): held back `kStickJoinMs`, never sent once the other click is down, a quick click alone sent as a
+  `kRbTapMs` press after it. R3: the same gate with `Options::gateRightClick` (`Latches::rightClick`, 2026-11-14), **set
+  by ME2's pad path only**: on LE1 R3 still reaches the game at once (Halcyon's double-click recenter reads it, and ME1's R3,
+  the scope's zoom step, does nothing in Halcyon's view), so ME1 is unchanged. The mod's uses of R3 (`RbFromStickClick`,
+  `PowerHoldFromStickClick`: the power wheel only after 300 ms alone) already refuse a press with the other click down.
+- **What ME2's pad path must call** (lane B3's `ME2VR::MevrBridge::MergeMotionControllers` in `plugin/HalcyonLe2Bridge.cpp`,
+  when ME1's merge comes over): `game::gamepad::FromControllers(controllers, latches, options)` with `options` from the mod's
+  flags as LE1's (`FromFlags`) **and `options.gateRightClick = true`**, on the `controllers::Latest()` sample (its `timeMs`
+  is the gate's clock), then `menus_le2::FilterPad` as today. Until then ME2's bridge calls `FromControllers(controllers,
+  gLatches)` (default options): L3 is gated, R3 is not.
+- **The controller guide** names the hold first and the key second ("press and hold both thumbsticks, or press `\` on the
+  keyboard"): `menu_key`, the key's name on the layout (`KeyName`: LE1 `menuKey`, ME2 `renderer::OwnMenuKey()`), in both
+  games' guide.
+- Checks: `TestStickChordFirst` (mevr-tests): R3 first or L3 first, held 0.5 s: one hold, neither click seen by the game; a
+  quick tap of both: one snapshot, neither click seen; R3 alone: seen 100 ms after the press, a tap as a short press after it;
+  R3 held alone past the join window then L3: R3 lets go, L3 never seen, the hold still fires. Live controllers in the
+  headset: notes/headset-checklist.md section 5.
+
 ### Opening the menu by script
 
 `%LOCALAPPDATA%\MEVR\mainmenu.request` (development builds, or `[Debug] requests = 1`; read once a second on the Present

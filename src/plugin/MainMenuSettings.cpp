@@ -530,6 +530,7 @@ void Settings::Read(menu::Values& v) {
                                                "double-click works either way)", KeyName(c.recenterKey));
     v.texts["classic_desc"] = std::format("The original MELE-VR settings menu, with expert settings these pages don't have (also: "
                                           "Ctrl + {})", KeyName(c.menuKey));
+    v.texts["menu_key"] = KeyName(c.menuKey);
     v.numbers["look_speed"] = c.lookSensitivity;
     v.numbers["look_smooth"] = c.headLookSmoothing;
     flag("flat_menus", c.menuFlat);
@@ -573,6 +574,7 @@ void Settings::Read(menu::Values& v) {
     v.texts["recenter_key_desc"] = "R is Mass Effect 2's reload, so the keyboard doesn't recenter: use Recenter at the top of this menu";
     v.texts["classic_desc"] = std::format("The original ME2 VR settings menu, with expert settings these pages don't have (also: "
                                           "Ctrl + {})", KeyName(renderer::OwnMenuKey()));
+    v.texts["menu_key"] = KeyName(renderer::OwnMenuKey());
     v.numbers["look_smooth"] = rows.lookSmoothing;
     v.numbers["flat_size"] = rows.flatScreenWidthM;
     v.texts["mirror"] = ms::MirrorChoice(rows.mirrorPresentEvery == 0 ? 8 : rows.mirrorPresentEvery);
