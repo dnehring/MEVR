@@ -115,6 +115,16 @@ double tap: 0 moves the rules wouldn't have committed, and the game's own `TryCl
 `traversal: double tap: MantleCover(CoverLink_10 slot 0) began the game's custom action 10`, `traversal: the vault began +0.000 s
 after press #2 went down: allowed`, `traversal: vault over: ...` (the table's numbers).
 
+**Again against the real block** (main 19d54a39, lane F's `[Hands] noCover = 1`; stretch `*-lane-e-hud`, 2026-11-15 00:02,
+`vault.ps1 -Runs 3 -Mode tap` with no build running on the machine): three double taps (0.20, 0.23, 0.22 s apart), three vaults
+allowed, each custom action 10 FromCombat for 0.90-0.91 s and the view at rest 0.77-0.81 s after it; the pawn 2.45 m on, 1.12 m up,
+ended level, out of cover throughout (no snap: the first A of each pair did nothing visible); the camera level (pitch and roll 0),
+its rise 0.54 m, at most 3.4-4.3 m/s (1.2-1.6 m/s vertically), its largest frame step 0.06-0.13 m; the heavy pistol before and
+after; the drawn wrists within 0.15 m of the grips in 73 of 87, 79 of 87 and 134 of 145 ticks (mean 0.10-0.13 m, the misses the
+root-motion steps below). A stretch run while three builds compiled on the same machine (`*-lane-e-vault4`) dropped the game to a
+few frames a second: the second press of one double tap fell between frames and nothing happened, and the next vault's numbers were
+nonsense; never measure the vault with a build running.
+
 **How close and square a standing player must be** (the game's own rule, `mevr traversal place ... [backM] [sideM] [yawDeg]` then
 `near`): within 0.50 m of the slot point in 3D, and the pawn's centre stands 0.31 m above it, so **within 0.39 m flat** (0.38 m back
 admitted at 0.49 m, 0.42 m back refused at 0.52 m; 0.3 m to the side admitted, 0.4 m refused), and **facing within 45 degrees**
@@ -170,6 +180,16 @@ trace), in the room's tracking space. The host draws a label ("Vault" with a che
 shows over CoverLink_10 slot 0: the world point (-4667, 20841, -12206) is (+0.08, -0.73, -0.91) m from the head`, the host's
 `traversal cue: first shown: 'Vault' ... 0.21 x 0.05 m`. Off by default (`[Traversal] cue = 0`).
 
+## LE1 unchanged
+
+The shared edits (`mod/Mod.cpp`'s tick and status block, `ModApi` v40, `ModLoader`, `ConsoleRequest`, `ReflectCheck`) leave LE1
+inert: `traversal::TryStartup` returns false there. Checked with lane B's same-pose script (20 s in the world, a standing replay
+with the hands in view, the console's `pause`, two snapshots; `tools/fake-headset-session.ps1 -Tag lanee-le1pose -BuildDir build`,
+session `2026-11-15_00-04-13-lanee-le1pose`, the build of main 9ed1ed91 with this work) against lane D's `laned-pose` run of
+23:09: the same six layers at the same places (the omni-tool target 1.1 mm apart), `hostView` identical (-43.3 / -4.1 / -18.1 uu,
+100 uu/m), the HUD panel identical pixel for pixel, the eyes 0.10% and 0.06% of pixels apart by more than 32/255 (what animates
+between launches); the snapshot's new `"traversal"` block says `started: false`, and the log has no `traversal:` line.
+
 ## What is left
 
 - **Arm IK across root-motion steps** (above): the goals should stay in the world when the mesh jumps; lane C's writer.
@@ -177,6 +197,11 @@ shows over CoverLink_10 slot 0: the world point (-4667, 20841, -12206) is (+0.08
   yet), and the left grip LB (the weapon wheel). A vault with the gun held by a grip waits for the holsters' and the support grip's
   host services on LE2; nothing in the vault needs a free hand (it is A and where the player stands).
 - **The owner's choices:** the pawn's facing vs the head's; the holstered vault; the cue's and the comfort mask's defaults.
-- **The game's take-cover prompt** (UpdateCover's `ShowCoverWidget`) still shows near cover with no snap: lane F's or B3's.
+- **The game's take-cover prompt** (UpdateCover's `ShowCoverWidget`): lane F hides it while the block applies. Checked at the
+  fixture (stretch `*-lane-e-hud`, Shepard 0.60 m in front of `CoverLink_10` slot 0 facing it, standing hands replayed): the HUD
+  panel (`-hud.png`) and both eyes show no take-cover prompt with the block on (`2026-11-15_00-01-40-971`) **and none with `mevr
+  cover snap on` either** (`00-01-52-028`): the weapon panel (12 / 60), the squad's portraits, the power bar and the crosshair only.
+  So this pair doesn't prove the hide: the prompt's own condition isn't met standing there (FindPlayerCover's distance or the
+  camera's angle), or it isn't drawn into the panel. Lane F's to settle (a pawn walking toward the cover, `mevr cover acquire`).
 - **Climb up** (`ClimbCover`, custom action 9): no slot climbs in this level; the code path is the same (`CanPerformClimb`), unseen.
 - **ME3:** ladders (`TryUseLadder`) and its vaults wait for Halcyon's ME3 renderer in our host; `core/vr/Traversal` is game-independent.
