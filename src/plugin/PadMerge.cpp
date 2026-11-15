@@ -133,6 +133,13 @@ gp::Options ConversationTriggers(gp::Options options) {
     options.makoLever = false;
     options.makoStick = false;
     options.powerWheel = false;           // the hand power wheel is on foot's
+    // Native UI directions and A/X must not inherit gameplay ownership from the last mod tick.
+    // In particular, walking toward the hand rotates ME3's reply wheel selection unless disabled.
+    options.handWalk = options.modTurns = false;
+    options.squadMenu = options.nativeWheel = options.wheelPressA = false;
+    options.handPowerWheel = options.squadPlace = false;
+    options.meleeButton = options.grenadeButton = true;
+    options.rbSource = gp::RbSource::None;
     return options;
 }
 

@@ -456,6 +456,18 @@ void TestConversationTriggers() {
     m.timeMs += 16;
     pad = pm::Merge({}, m, convo, GetTickCount64());
     CHECK(pad.bLeftTrigger == 255);
+    // LE3's conversation wheel reads unrotated left-stick axes and A; X remains native skip.
+    // A stale gameplay wheel/hand-walk setting must not steal or rotate this input.
+    pm::Reset();
+    pm::SetSupportGrip(-1, 0.12f, 0.22f, gp::kFlagHandWalk | gp::kFlagSquadMenu | gp::kFlagNativeWheel |
+        gp::kFlagHandPowerWheel | gp::kFlagPowerWheel | gp::kFlagWheelPressA);
+    State wheel = Controllers(7000);
+    wheel.left.stickX = 0.75f;
+    wheel.right.primary = true;
+    wheel.left.primary = true;
+    pad = pm::Merge({}, wheel, convo, GetTickCount64());
+    CHECK(pad.sThumbLX > 20000 && pad.sThumbLY == 0);
+    CHECK((pad.wButtons & XINPUT_GAMEPAD_A) != 0 && (pad.wButtons & XINPUT_GAMEPAD_X) != 0);
     // ConversationTriggers itself.
     gp::Options o;
     o.leftTrigger = false;

@@ -146,8 +146,10 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
     auto pad = result == ERROR_SUCCESS ? state->Gamepad : XINPUT_GAMEPAD{};
     if (controllers.active) pad = mevr::host::pad_merge::Merge(pad, controllers, renderer, GetTickCount64());
     mevr::host::menus_le2::FilterPad(result == ERROR_SUCCESS ? &state->Gamepad : nullptr, pad);
-    // Authored conversations/cinematics have native camera/position ownership. No artificial traversal.
-    if (renderer.conversationTriggers || mevr::engine::adapter::GameMode(mode) == mevr::engine::adapter::Mode::Cinematic) {
+    // Conversation mode's native Activated() calls IgnoreMoveInput(true): the authored scene owns
+    // traversal. Preserve left-stick axes for its reply wheel (BioSFHandler_Conversation.vInput).
+    // Cinematics have no reply wheel. First-person world conversations remain disabled.
+    if (mevr::engine::adapter::GameMode(mode) == mevr::engine::adapter::Mode::Cinematic) {
         pad.sThumbLX = pad.sThumbLY = 0;
     }
     if (std::memcmp(&pad, &gLastPad, sizeof pad) != 0) { gLastPad = pad; ++gPacket; }
