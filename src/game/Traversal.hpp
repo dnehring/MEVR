@@ -25,8 +25,9 @@
 //
 // Presentation ([Traversal] view, mask; defaults keep today's): the level view writes the camera's POV in the camera update's
 // post-handler while the move runs (the pawn's translation, no pitch, roll or bob), then hands back; the mask is the vignette
-// (HostServices v17) or a blink (v40). The cue at the interaction point goes to the host (v40 setTraversal). LE2 only; LE1 and LE3:
-// TryStartup returns false and nothing runs. Game thread.
+// (HostServices v17) or a blink (v40). The cue at the interaction point goes to the host (v40 setTraversal).
+// LE3 delegates to Le3Traversal: staged native reach/mantle/evade requests and lifecycle observation; see
+// research/le2-le3-vr-traversal.md. Its requests and gesture binding default off. Game thread.
 namespace mevr::game::traversal {
 
 // What the mod's tick knows from the host.
@@ -39,9 +40,14 @@ struct Link {
     void (*setCue)(vr::traversal::Cue const* cue) = nullptr;  // HostServices v40
     void (*haptic)(int hand, float seconds, float amplitude) = nullptr;
     bool authoredSeated = false; // authored shuttle/dialogue; not the player's physical play position
+    // LE3 staged controls: fresh host ownership/focus gate, not a cached menu snapshot.
+    bool (*allowNativeTraversal)() = nullptr;
+    std::uint64_t sceneGeneration = 0;
+    bool le3DoubleTap = false; // explicit opt-in after native fixture acceptance
+    bool evadeDown = false;    // a separate semantic binding; never shares the traverse/use press
 };
 
-// Finds the game's functions and fields and registers the handlers (before the hooks go in). False on LE1/LE3 or with the
+// Finds the game's functions and fields and registers the handlers (before the hooks go in). False on LE1 or with the
 // reflection layer off.
 bool TryStartup();
 void Tick(float deltaSeconds, Link const& link);

@@ -510,6 +510,37 @@ void TestCue() {
 int RunTraversalTests() {
     gFailures = 0;
     TestNames();
+    {
+        tv::ActionLifecycle a;
+        CHECK(a.Request(10, 1.0));
+        CHECK(!a.Request(10, 1.1)); // one pending request
+        a.Observe(10, 0, tv::Kind::None, 1.1);
+        CHECK(a.phase == tv::ActionPhase::Requested); // dispatch isn't a start
+        a.Observe(10, 42, tv::Kind::LadderUp, 1.2);
+        CHECK(a.phase == tv::ActionPhase::Started && a.kind == tv::Kind::LadderUp);
+        a.End(10, 43, false, 1.3);
+        CHECK(a.phase == tv::ActionPhase::Started); // another action can't finish ours
+        a.End(10, 42, false, 2.0);
+        CHECK(a.phase == tv::ActionPhase::Completed);
+        a.End(10, 42, true, 2.0); // native interrupt wraps common end
+        CHECK(a.phase == tv::ActionPhase::Interrupted);
+        a.End(10, 42, false, 2.0);
+        CHECK(a.phase == tv::ActionPhase::Interrupted); // a later common callback cannot hide interruption
+        CHECK(a.Request(10, 3.0) && a.serial == 2);
+        a.Observe(10, 0, tv::Kind::None, 3.6);
+        CHECK(a.phase == tv::ActionPhase::NoStartObserved);
+        CHECK(a.Request(10, 4.0));
+        a.Observe(10, 50, tv::Kind::Vault, 4.1);
+        a.Observe(10, 0, tv::Kind::None, 4.3);
+        CHECK(a.phase == tv::ActionPhase::EndedUnknown); // disappearing doesn't prove completion
+        CHECK(a.Request(10, 5.0));
+        a.Observe(10, 51, tv::Kind::Evade, 5.1);
+        a.Observe(11, 51, tv::Kind::Evade, 5.2); // same pointer after load is a different context
+        CHECK(a.phase == tv::ActionPhase::Cancelled && a.action == 0);
+        a.End(10, 51, false, 5.3);
+        CHECK(a.phase == tv::ActionPhase::Cancelled);
+        CHECK(std::string(tv::Label(tv::Kind::Ladder)) == "Use ladder");
+    }
     TestDoubleTap();
     // Scene entry on the second press cannot use the previous on-foot sample to authorize it.
     {

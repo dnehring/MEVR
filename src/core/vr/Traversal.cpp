@@ -42,6 +42,11 @@ char const* Label(Kind kind) {
     switch (kind) {
     case Kind::Vault: return "Vault";
     case Kind::ClimbUp: return "Climb up";
+    case Kind::LadderUp: return "Climb ladder";
+    case Kind::LadderDown: return "Descend ladder";
+    case Kind::JumpDown: return "Drop down";
+    case Kind::Evade: return "Evade";
+    case Kind::Ladder: return "Use ladder";
     case Kind::None: break;
     }
     return "";
@@ -51,6 +56,11 @@ char const* Name(Kind kind) {
     switch (kind) {
     case Kind::Vault: return "vault";
     case Kind::ClimbUp: return "climb up";
+    case Kind::LadderUp: return "ladder up";
+    case Kind::LadderDown: return "ladder down";
+    case Kind::JumpDown: return "jump down";
+    case Kind::Evade: return "evade";
+    case Kind::Ladder: return "ladder approach";
     case Kind::None: break;
     }
     return "none";
@@ -206,6 +216,57 @@ void PressTracker::NoteCommit() {
     if (last_.valid) {
         ++last_.commits;
     }
+}
+
+char const* Name(ActionPhase phase) {
+    switch (phase) {
+    case ActionPhase::Idle: return "idle";
+    case ActionPhase::Requested: return "requested";
+    case ActionPhase::Started: return "started";
+    case ActionPhase::Completed: return "native end observed";
+    case ActionPhase::Interrupted: return "native interrupt observed";
+    case ActionPhase::EndedUnknown: return "left action without classified end";
+    case ActionPhase::NoStartObserved: return "no start observed";
+    case ActionPhase::Cancelled: return "observation cancelled";
+    }
+    return "unknown";
+}
+bool ActionLifecycle::Request(std::uint64_t epoch, double now) {
+    if (Busy() || !std::isfinite(now)) return false;
+    auto const next = serial + 1;
+    *this = {};
+    serial = next;
+    generation = epoch;
+    requestedAt = now;
+    phase = ActionPhase::Requested;
+    return true;
+}
+void ActionLifecycle::Observe(std::uint64_t epoch, std::uintptr_t current, Kind type, double now) {
+    if (epoch != generation) { Cancel(); return; }
+    if (phase == ActionPhase::Requested) {
+        if (current != 0 && type != Kind::None) {
+            action = current;
+            kind = type;
+            startedAt = now;
+            phase = ActionPhase::Started;
+        } else if (now - requestedAt >= 0.5) {
+            phase = ActionPhase::NoStartObserved; // polling window, not proof of a native refusal
+        }
+    } else if (phase == ActionPhase::Started && current != action) {
+        endedAt = now;
+        phase = ActionPhase::EndedUnknown;
+    }
+}
+void ActionLifecycle::End(std::uint64_t epoch, std::uintptr_t ended, bool interrupted, double now) {
+    if (epoch != generation || ended == 0 || ended != action || phase == ActionPhase::Cancelled ||
+        phase == ActionPhase::Idle || phase == ActionPhase::Requested) return;
+    if (interrupted || phase != ActionPhase::Interrupted)
+        phase = interrupted ? ActionPhase::Interrupted : ActionPhase::Completed;
+    endedAt = now;
+}
+void ActionLifecycle::Cancel() {
+    if (Busy() || phase == ActionPhase::EndedUnknown) phase = ActionPhase::Cancelled;
+    action = 0;
 }
 
 Vec3 operator+(Vec3 a, Vec3 b) {

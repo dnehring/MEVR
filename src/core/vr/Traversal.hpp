@@ -28,6 +28,11 @@ enum class Kind : std::uint8_t {
     None = 0,
     Vault = 1,
     ClimbUp = 2,
+    LadderUp = 3,
+    LadderDown = 4,
+    JumpDown = 5,
+    Evade = 6,
+    Ladder = 7, // approach cue; the native action may select up, down or jump-down
 };
 char const* Label(Kind kind);  // the cue's word: "Vault", "Climb up" ("" for None)
 char const* Name(Kind kind);   // the logs': "vault", "climb up", "none"
@@ -155,6 +160,24 @@ struct Commit {
     double sincePressS = 0.0;
 };
 Commit Judge(PressTracker& presses, double nowS, double windowS = 0.25);
+
+// Native observation, separate from the press policy and native request return value.
+enum class ActionPhase { Idle, Requested, Started, Completed, Interrupted, EndedUnknown, NoStartObserved, Cancelled };
+char const* Name(ActionPhase phase);
+class ActionLifecycle {
+public:
+    bool Request(std::uint64_t generation, double now);
+    void Observe(std::uint64_t generation, std::uintptr_t action, Kind kind, double now);
+    // End/interrupt callbacks may be nested: an interrupt arriving after the common end overrides completion.
+    void End(std::uint64_t generation, std::uintptr_t action, bool interrupted, double now);
+    void Cancel();
+    bool Busy() const { return phase == ActionPhase::Requested || phase == ActionPhase::Started; }
+    ActionPhase phase = ActionPhase::Idle;
+    std::uint64_t serial = 0, generation = 0;
+    std::uintptr_t action = 0;
+    Kind kind = Kind::None;
+    double requestedAt = 0, startedAt = 0, endedAt = 0;
+};
 
 // ---- The record of one move ------------------------------------------------------------------------------------------------------
 struct Vec3 {

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "game/Traversal.hpp"
+#include "game/Le3Traversal.hpp"
 
 #include "core/Ini.hpp"
 #include "core/Log.hpp"
@@ -960,7 +961,9 @@ void RefreshSettings() {
 } // namespace
 
 bool TryStartup() {
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE3)
+    return le3::TryStartup();
+#elif defined(MEVR_GAME_LE2)
     if (!ue3::runtime::Up()) {
         log::Warn("traversal: our reflection layer is off ({}): no vault", ue3::runtime::Status());
         return false;
@@ -1001,7 +1004,10 @@ bool TryStartup() {
 
 void Tick(float /*deltaSeconds*/, Link const& link) {
     gLink = link;
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE3)
+    RefreshSettings();
+    le3::Tick(link, gSettings);
+#elif defined(MEVR_GAME_LE2)
     if (!gStarted) {
         return;
     }
@@ -1164,10 +1170,17 @@ void Tick(float /*deltaSeconds*/, Link const& link) {
 }
 
 bool Moving() {
+#if defined(MEVR_GAME_LE3)
+    return le3::Moving();
+#else
     return gMove.active || gMove.settling;
+#endif
 }
 
 std::string StatusJson() {
+#if defined(MEVR_GAME_LE3)
+    return le3::StatusJson();
+#else
     namespace json = vr::test_request;
     std::string nearText = "null";
     if (gNear.slot >= 0 && static_cast<std::size_t>(gNear.slot) < gSlots.size()) {
@@ -1180,9 +1193,14 @@ std::string StatusJson() {
                        "\"doubleTaps\": {}, \"commits\": {}, \"commitsRefused\": {}, \"violations\": {}, \"last\": {}}}",
         gStarted ? "true" : "false", json::JsonString(gSettingsText), gSlots.size(), nearText, Moving() ? "true" : "false", gMoves,
         gTotals.presses, gTotals.doubleTaps, gTotals.commits, gTotals.commitsRefused, gTotals.violations, gLastSummary);
+#endif
 }
 
 void LogStats() {
+#if defined(MEVR_GAME_LE3)
+    log::Info("    traversal: {}", le3::StatusJson());
+    return;
+#endif
     if (!gStarted) {
         return;
     }
@@ -1197,6 +1215,9 @@ void LogStats() {
 }
 
 std::string Command(std::string const& args) {
+#if defined(MEVR_GAME_LE3)
+    return le3::Command(args, gLink);
+#endif
     std::istringstream words(args);
     std::string verb;
     words >> verb;
@@ -1361,6 +1382,9 @@ std::string Command(std::string const& args) {
 }
 
 void Shutdown() {
+#if defined(MEVR_GAME_LE3)
+    le3::Shutdown();
+#endif
     gStarted = false;
     gLink = {};
     gSlots.clear();

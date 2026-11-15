@@ -173,7 +173,9 @@ taps across menu/focus/non-foot/seat interruption, and never manufactures a new 
 existing LE2 adapter also rechecks scene/menu/native ignored movement before mutations. Its `Link.authoredSeated`
 must be populated from authored scene restrictions; physically seated play remains normal gameplay.
 
-LE3 traversal mutation stays disabled in `game/Traversal`: the next bounded native work is to observe selected
+At this first audit checkpoint, LE3 traversal mutation stayed disabled in `game/Traversal`. The subsequent
+[native adapter checkpoint](le3-traversal-adapter.md) implements staged ladder/vault/climb/evade requests and
+observation, still awaiting native acceptance. The bounded native work is to observe selected
 ladder/reach identity and native `FindLadderNode` against normal input, then route a fresh intentional use through
 `TryUseLadder` and observe actions 46/47/**30** and recovery. Follow with out-of-cover mantle admission, retaining
 the native collision/destination result. Reuse the existing move recorder, cue, level view, mask and press policy
