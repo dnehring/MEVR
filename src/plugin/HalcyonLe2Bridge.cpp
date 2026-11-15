@@ -679,7 +679,8 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
         }
     }
     // Use the submitted image for picking. Orbit keeps its native scan and probe controls.
-    if (gGalaxyPanel && frame.gameMode == 9 && !frame.menuOpen && !mevr::host::renderer::OwnMenuOpen()) {
+    if (gGalaxyPanel && frame.gameMode == 9 && !frame.menuOpen && !mevr::host::renderer::OwnMenuOpen() &&
+        !mevr::host::menus_le2::PadWanted()) {
         mevr::host::game_pointer::NoteGameUiQuad(gGalaxyPanel->pose, gGalaxyPanel->width, gGalaxyPanel->height);
         gGalaxyPointerShown = true;
     } else if (gGalaxyPointerShown) {
