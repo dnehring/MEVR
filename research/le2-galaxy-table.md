@@ -29,7 +29,8 @@ subject to foreground-window and game input handling, which need a native run. I
 registered, leaving the native analog scanner controls available. The shared pad merge now accepts an
 orbital-native-trigger flag to retain LT/RT instead of the on-foot left-trigger squad remapping. The existing
 close latch requires a trigger held across galaxy-to-orbit entry to be released before reaching the scanner.
-The main menu retains its existing input filter. No new probe-launch command or resource write is introduced.
+The custom main menu/calibration and their close latch also withhold the galaxy pointer surface, so its
+mouse path cannot bypass the existing pad release gate. No new probe-launch command or resource write is introduced.
 
 ## Candidate configuration
 
