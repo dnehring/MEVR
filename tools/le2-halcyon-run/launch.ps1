@@ -131,7 +131,14 @@ for ($i = 0; $i -lt [math]::Ceiling($ReadyTimeoutSeconds / 2); $i++) {
 }
 if (-not $seen) { throw "Expected marker was not observed: $marker (the session remains owned; use -Stop, then restore)" }
 $marker
-if ($RendererPreview) { $previewReceipt.freshMarker = $true; $previewReceipt.log = $log }
+if ($RendererPreview) {
+    $previewReceipt.freshMarker = $true; $previewReceipt.log = $log
+    # The renderer can migrate an obsolete INI mode while starting. Never label
+    # that run with the requested mode or continue on changed runtime artifacts.
+    Assert-PreviewConfig $bin $previewOptions.mode $previewOptions.diagnostics
+    Assert-RunArtifacts $open.previewArtifacts
+    $previewReceipt.configurationUnchanged = $true
+}
 if ($DesktopDump) {
     if ($EngineProbe) {
         $reflection = Confirm-RunReflection (Join-Path $env:LOCALAPPDATA 'MEVR\reflect-check.json') $started

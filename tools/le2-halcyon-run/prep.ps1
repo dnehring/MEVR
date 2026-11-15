@@ -7,7 +7,7 @@ param(
     [switch]$EngineProbe,
     [switch]$EngineRequests,
     [switch]$RendererPreview,
-    [ValidateSet(0, 1, 4)][int]$PreviewRendererMode = 4,
+    [ValidateSet(0, 2, 4)][int]$PreviewRendererMode = 4,
     [ValidatePattern('^[A-Za-z0-9_-]+$')][string]$Tag = 'halcyon',
     [string]$BuildDir,
     [switch]$Diagnostics

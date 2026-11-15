@@ -201,10 +201,13 @@ ME3's menu (3072x1728), head look, head aim off, native positional scale 2.0 and
 first-person conversations off. `vr-game-settings.ps1` supplies matching dimensions,
 SDR and borderless/non-fullscreen settings. No nonexistent `[FirstPerson] Enabled`
 key is written: first-person activation is an independent existing renderer control.
-For a bounded renderer bisection, prep accepts `-PreviewRendererMode 0` (mono), `1`
-(side-by-side stereo) or the default `4` (same-frame stereo), and optional
+For a bounded renderer bisection, prep accepts `-PreviewRendererMode 0` (mono), `2`
+(alternate-eye stereo) or the default `4` (same-frame stereo), and optional
 `-Diagnostics`. The session records these typed options; launch verifies the exact
 corresponding config and artifact hashes. Restore before selecting another variant.
+Launch checks the config and artifact hashes again after XR readiness. Legacy mode
+`1` is refused: upstream unconditionally migrates it to `4`, so an INI requesting
+side-by-side mode does not establish which renderer actually ran.
 Mono is diagnostic evidence only and cannot satisfy stereo acceptance. Desktop dump
 mode rejects these renderer options.
 The preview also sets `[Pointer] setCursor=0`, as the fake-headset skill requires for
