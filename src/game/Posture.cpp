@@ -15,6 +15,7 @@
 #include "game/HandCalibration.hpp"
 #include "game/HeadTracking.hpp"
 #include "game/ViewAnchor.hpp"
+#include "game/Player.hpp"
 #include "ue3/Handles.hpp"
 
 #include <Windows.h>
@@ -29,8 +30,8 @@
 #include <utility>
 #include <vector>
 
-// ME1 and ME2 (research/23 section 7: ME2's names; ME3 has no layout yet).
-#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
+// Shared detector/arbiter; each sequel uses its own native admission (research/le3-locomotion-audit.md).
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 #define MEVR_POSTURE 1
 #endif
 
@@ -122,12 +123,27 @@ ue3::ClassRef gGameModeDefault{"SFXGame.SFXGameModeDefault", ue3::kEveryGame};
 ue3::FieldRef gPawnField{"Engine.Controller", "Pawn", ue3::kEveryGame};
 ue3::FieldRef gGameModeManager{"SFXGame.BioPlayerController", engine::adapter::kGameModeManager, ue3::kEveryGame};
 ue3::FieldRef gGameModes{"SFXGame.SFXGameModeManager", "GameModes", ue3::kEveryGame};
+#if defined(MEVR_GAME_LE3)
+ue3::FieldRef gStorming{"SFXGame.BioPawn", "bStorming", ue3::kEveryGame};
+#else
 ue3::FieldRef gStorming{"SFXGame.BioPlayerController", "bStorming", ue3::kEveryGame};
+#endif
 ue3::FieldRef gCoverType{"SFXGame.BioPawn", "CoverType", ue3::kEveryGame};
 ue3::FieldRef gCoverAction{"SFXGame.BioPawn", "CoverAction", ue3::kEveryGame};
 ue3::FieldRef gLocation{"Engine.Actor", "Location", ue3::kEveryGame};
 ue3::FieldRef gIsCrouched{"Engine.Pawn", "bIsCrouched", ue3::kEveryGame};
 ue3::FieldRef gWantsToCrouch{"Engine.Pawn", "bWantsToCrouch", ue3::kEveryGame};
+
+#if defined(MEVR_GAME_LE3)
+ue3::FunctionRef gDead{"Engine.Pawn.IsDead", ue3::kEveryGame};
+ue3::FunctionRef gMoveIgnored{"Engine.PlayerController.IsMoveInputIgnored", ue3::kEveryGame};
+ue3::FieldRef gCurrentAction{"SFXGame.BioPawn", "CurrentCustomAction", ue3::kEveryGame};
+ue3::FieldRef gPhysics{"Engine.Actor", "Physics", ue3::kEveryGame};
+ue3::FieldRef gWorldInfo{"Engine.Actor", "WorldInfo", ue3::kEveryGame};
+Link gLink;
+std::uint64_t gLinkTime = 0, gGeneration = 0;
+ue3::Object* gWorld = nullptr;
+#endif
 
 // The crouch: ME1's BioPawn.ShouldCrouch also resets the mount attempt and the movement animation state (research/23
 // section 3); ME2 has no override, so the engine's Pawn.ShouldCrouch (bWantsToCrouch, what ME2's BioPawn.SetShouldCrouch
@@ -235,14 +251,14 @@ std::optional<Game> ReadGame(std::string& why) {
         return std::nullopt;
     }
     ue3::Object* const pc = ue3::runtime::LocalPlayerController();
-    if (pc == nullptr || !ue3::IsA(pc, gBioPlayerController)) {
+    if (pc == nullptr || !ue3::runtime::IsAlive(pc) || !ue3::IsA(pc, gBioPlayerController)) {
         why = "no player controller";
         return std::nullopt;
     }
     Game game;
     game.controller = pc;
     ue3::Object* const pawn = gPawnField.Read<ue3::Object*>(pc).value_or(nullptr);
-    if (pawn == nullptr || !ue3::IsA(pawn, gBioPawn)) {
+    if (pawn == nullptr || !ue3::runtime::IsAlive(pawn) || !ue3::IsA(pawn, gBioPawn)) {
         why = "no player pawn (the Mako or a cutscene?)";
         return std::nullopt;
     }
@@ -260,6 +276,26 @@ std::optional<Game> ReadGame(std::string& why) {
     }
     return game;
 }
+
+#if defined(MEVR_GAME_LE3)
+// Native admission is re-read for every request. Mode 0 alone includes authored actions.
+bool NativeMovement(Game const& game) {
+    if (player::GameMode(game.controller) != 0 ||
+        gCurrentAction.Read<std::int32_t>(game.pawn).value_or(-1) != 0 ||
+        gPhysics.Read<std::uint8_t>(game.pawn).value_or(255) != 1) return false; // PHYS_Walking only
+    ue3::Params dead(ue3::runtime::Get(), gDead.Get());
+    if (!dead.Valid() || !ue3::runtime::Call(game.pawn, gDead.Get(), dead) || dead.ReturnBool() != false) return false;
+    ue3::Params params(ue3::runtime::Get(), gMoveIgnored.Get());
+    return params.Valid() && ue3::runtime::Call(game.controller, gMoveIgnored.Get(), params) &&
+        params.ReturnBool() == false;
+}
+bool HostMovement() {
+    auto const now = GetTickCount64();
+    return gLinkTime && now >= gLinkTime && now - gLinkTime <= 100 &&
+        gLink.runtimeOwned && gLink.focused && !gLink.menuOpen && !gLink.calibrating &&
+        gLink.sceneGeneration && gLink.controlsAllowed && gLink.controlsAllowed();
+}
+#endif
 
 // Through ProcessEvent with the function's own parameter block.
 bool CallBool(ue3::Object* object, ue3::Function* function) {
@@ -282,6 +318,14 @@ void CallVoid(ue3::Object* object, ue3::Function* function) {
 // ME1's BioPawn.ShouldCrouch: Pawn.ShouldCrouch sets bWantsToCrouch (the engine crouches or stands on its next move,
 // standing only where there's room), then BioPawn resets its movement animation state. ME2: Pawn.ShouldCrouch itself.
 void ShouldCrouch(ue3::Object* pawn, bool crouch) {
+#if defined(MEVR_GAME_LE3)
+    std::string why;
+    auto const game = ReadGame(why);
+    if (!game || game->pawn != pawn || gWorldInfo.Read<ue3::Object*>(game->controller).value_or(nullptr) != gWorld || !NativeMovement(*game) ||
+        gCoverType.Read<std::uint8_t>(pawn).value_or(255) != 0 ||
+        gStorming.ReadBool(pawn).value_or(true)) return;
+    if (crouch && !HostMovement()) return;
+#endif
     ue3::Params parms(ue3::runtime::Get(), gShouldCrouch);
     if (!parms.SetBool("bCrouch", crouch)) {
         if (!gToldNoCrouchParam) {
@@ -366,6 +410,12 @@ void OnShowCoverWidget(ue3::Object* context, ue3::Function* /*function*/, void* 
 
 // The cover side, each tick with a game.
 void TickCover(Game const& game, bool active, bool noCover, double deltaSeconds) {
+#if defined(MEVR_GAME_LE3)
+    (void)active; (void)noCover; (void)deltaSeconds;
+    gRefusingCover = false;
+    gInCover = InCover(game.pawn);
+    return; // LE3 cover protection/unsafe-slot semantics require its dedicated adapter; never force native cover exit.
+#endif
     gRefusingCover = active && noCover;  // kept out of cover either way: refused, or left at once without the hook
 #if defined(MEVR_GAME_LE2)
     // ME2: TryAcquireCover's FindPlayerCover answered false (a script call: the CallFunction hook, which Mod.cpp puts in while
@@ -577,7 +627,12 @@ void TickCrouch(Game const& game, Link const& link, vr::host_view::State const& 
     pz::ArbiterInput input;
     input.physical = event;
     input.gameWants = gGameWants;
-    input.canApply = !gStorming.ReadBool(game.controller).value_or(false);  // ToggleCrouch refuses while sprinting too
+#if defined(MEVR_GAME_LE3)
+    input.canApply = gStorming.ReadBool(game.pawn) == false;
+#else
+    input.canApply = !gStorming.ReadBool(game.controller).value_or(false);
+#endif
+    //  // ToggleCrouch refuses while sprinting too
     pz::ArbiterStep const step = gArbiter.Update(input);
     if (step.external) {
         ++gExternal;
@@ -638,6 +693,17 @@ bool TryStartup() {
         }
     }
     gStarted = gShouldCrouch != nullptr || gTryExitCover != nullptr || gIsInCover != nullptr;
+#if defined(MEVR_GAME_LE3)
+    ue3::Params crouch(ue3::runtime::Get(), gShouldCrouch);
+    auto const* value = crouch.Find("bCrouch");
+    ue3::Params ignored(ue3::runtime::Get(), gMoveIgnored.Get());
+    gStarted = crouch.Valid() && crouch.Size() == 4 && crouch.Specs().size() == 1 && value &&
+        value->kind == ue3::Kind::Bool && value->offset == 0 && value->size == 4 &&
+        ignored.Valid() && ignored.Size() == 4 && ignored.Specs().size() == 1 &&
+        gCurrentAction.Get() && gPhysics.Get() && gWorldInfo.Get() && gStorming.Get() && gDead.Get() &&
+        gIsCrouched.Get() && gWantsToCrouch.Get() && gCoverType.Get();
+    if (!gStarted) missing += " LE3 crouch/admission ABI unavailable";
+#endif
 #if defined(MEVR_GAME_LE2)
     // The refusal of ME2's cover acquisition (a CallFunction handler: registered before the hook goes in).
     ue3::Function* const findCover = gFindPlayerCoverRef.Get();
@@ -692,6 +758,10 @@ void Tick(double deltaSeconds, Link const& link) {
     gRefusingCover = false;  // until TickCover says so this tick
 #if defined(MEVR_POSTURE)
     bool const noCover = gNoCoverOverride.value_or(settings.noCover);
+#if defined(MEVR_GAME_LE3)
+    gLink = link;
+    gLinkTime = GetTickCount64();
+#endif
     if (!gStarted) {
         engine::cover_acquire::Refuse(nullptr);
 #if defined(MEVR_GAME_LE2)
@@ -712,6 +782,14 @@ void Tick(double deltaSeconds, Link const& link) {
         SetWhy(why);
         return;
     }
+#if defined(MEVR_GAME_LE3)
+    auto* const world = gWorldInfo.Read<ue3::Object*>(game->controller).value_or(nullptr);
+    if (world != gWorld || link.sceneGeneration != gGeneration) {
+        gWorld = world; gGeneration = link.sceneGeneration;
+        gPawn = 0; gArbiter.Forget(); gDetector.Reset(); gCrouchActive = false; gProbe = {};
+        gStanding.Reset(); gHeadRef.Reset(); gFloorSeen = false;
+    }
+#endif
     if (reinterpret_cast<std::uintptr_t>(game->pawn) != gPawn) {
         if (gPawn != 0) {
             log::Info("posture: a new player pawn ({}): nothing of the crouch is ours", ue3::runtime::Get().FullName(game->pawn));
@@ -728,6 +806,12 @@ void Tick(double deltaSeconds, Link const& link) {
     if (!mode || *mode != 0) {
         gActive = false;
         SetWhy(std::format("not on foot (game mode {})", mode ? std::to_string(*mode) : std::string("unknown")));
+#if defined(MEVR_GAME_LE3)
+    } else if (!HostMovement() || !NativeMovement(*game) || gInCover ||
+        gCoverType.Read<std::uint8_t>(game->pawn).value_or(255) != 0) {
+        gActive = false;
+        SetWhy("native action, cover, movement admission or host ownership excludes physical crouch");
+#endif
     } else if (!view.valid) {
         gActive = false;
         SetWhy("no head-tracked world view (menu, flat screen or VR off)");
@@ -815,6 +899,9 @@ void Shutdown(bool processExiting) {
     gToldNoCrouchParam = false;
 #else
     (void)processExiting;
+#endif
+#if defined(MEVR_GAME_LE3)
+    gLink = {}; gLinkTime = gGeneration = 0; gWorld = nullptr;
 #endif
     gStarted = false;
     gActive = false;

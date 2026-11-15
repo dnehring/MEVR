@@ -33,7 +33,7 @@
 // Logged: the standing height and its source, every crouch and stand with the head height, the crouch
 // changing without us, the view's height above Shepard before and after (the game's crouch camera is 45
 // units lower in combat: research/23); a heartbeat line; "posture" in the snapshot's mod status. Game
-// thread. LE1 and LE2.
+// thread. LE1/LE2; LE3 shares crouch with additional native/host admission (research/le3-locomotion-audit.md).
 //
 // ME2 (research/23 section 7): the same rules and settings, with ME2's names where the game forces them. Its crouch is
 // Engine.Pawn.ShouldCrouch (ME2 has no BioPawn override and no crouch button). It takes cover only on A
@@ -48,6 +48,10 @@ namespace mevr::game::posture {
 struct Link {
     // v10: the head's height above the floor (nullopt: an older host, or sizes differ).
     std::optional<vr::floor::State> floor;
+    // LE3: host ownership is explicit. The callback is checked again inside script hooks.
+    bool runtimeOwned = false, focused = false, menuOpen = true, calibrating = true;
+    std::uint64_t sceneGeneration = 0;
+    bool (*controlsAllowed)() = nullptr;
 };
 
 // Finds the script functions. False until the script packages have loaded (or not LE1).
