@@ -2,6 +2,7 @@
 #pragma once
 
 #include <openxr/openxr.h>
+#include "core/vr/GalaxyHologram.hpp"
 
 #include <cstdint>
 #include <optional>
@@ -150,6 +151,17 @@ struct Screen {
     XrPosef pose{};   // its centre; it faces +Z (toward the camera)
     float width = 0.0f;
     float height = 0.0f;
+};
+// ME2's native galaxy (9) and orbital (10) screen share one table through that transition.
+// Missing tracking/image suppresses submission; leaving the map, recenter or disable resets placement.
+class NativeTablePanel {
+public:
+    std::optional<Screen> Update(int mode, bool enabled, bool ready, XrPosef const& head, float aspect,
+        galaxy_holo::TableSettings const& settings);
+    void Reset() { placed_ = false; }
+private:
+    bool placed_ = false;
+    XrPosef pose_{};
 };
 std::optional<Screen> VirtualScreen(float distanceM, float belowM, float tanHalfX, float tanHalfY);
 

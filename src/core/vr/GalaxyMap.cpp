@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "core/vr/GalaxyMap.hpp"
+#include "core/vr/OverlayPlacement.hpp"
 
 #include <Windows.h>
 
@@ -8,6 +9,27 @@
 #include <mutex>
 
 namespace mevr::vr::galaxy_map {
+
+std::optional<Screen> NativeTablePanel::Update(int mode, bool enabled, bool ready, XrPosef const& head, float aspect,
+    galaxy_holo::TableSettings const& settings) {
+    if (!enabled || (mode != 9 && mode != 10)) {
+        Reset();
+        return std::nullopt;
+    }
+    float const norm = head.orientation.x * head.orientation.x + head.orientation.y * head.orientation.y +
+        head.orientation.z * head.orientation.z + head.orientation.w * head.orientation.w;
+    if (!ready || !std::isfinite(aspect) || aspect <= 0 || !std::isfinite(norm) || norm < 0.5f || norm > 1.5f ||
+        !std::isfinite(head.position.x) || !std::isfinite(head.position.y) || !std::isfinite(head.position.z) ||
+        !std::isfinite(settings.radiusM) || settings.radiusM <= 0 || !std::isfinite(settings.distanceM) ||
+        !std::isfinite(settings.belowM) || !std::isfinite(settings.tiltDeg)) return std::nullopt;
+    if (!placed_) {
+        auto const table = galaxy_holo::PlaceTable(head, settings);
+        auto const normal = overlay::Rotate(table.pose.orientation, {0, 1, 0});
+        pose_ = galaxy_holo::DiscPose(table.pose.position, normal, head.position);
+        placed_ = true;
+    }
+    return Screen{pose_, settings.radiusM * 2, settings.radiusM * 2 * aspect};
+}
 
 namespace {
 

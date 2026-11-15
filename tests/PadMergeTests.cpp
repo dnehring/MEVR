@@ -466,6 +466,34 @@ void TestConversationTriggers() {
     CHECK(c.leftTrigger && !c.leftTriggerShoulder && !c.supportAims && !c.makoDrive && !c.makoLever && !c.makoStick && !c.powerWheel);
 }
 
+void TestOrbitalTriggers() {
+    pm::Reset();
+    pm::Renderer orbital;
+    orbital.orbitalTriggers = true;
+    gOwnsBoth = true;
+    orbital.ownsTriggers = &OwnsBoth;
+    State s = Controllers(1000);
+    pm::SetSupportGrip(-1, 0.12f, 0.22f, gp::kFlagLeftTriggerShoulder | gp::kFlagSupportAims);
+    s.left.trigger = s.right.trigger = 1;
+    auto pad = pm::Merge({}, s, orbital, GetTickCount64());
+    CHECK(pad.bLeftTrigger == 255 && pad.bRightTrigger == 255);
+    CHECK((pad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) == 0);
+    // A planet-selection pull is held through orbit entry, then released independently.
+    gp::CloseLatch latch;
+    latch.leftTrigger = latch.rightTrigger = true;
+    CHECK(gp::ApplyCloseLatch(latch, pad));
+    CHECK(pad.bLeftTrigger == 0 && pad.bRightTrigger == 0);
+    pad.bLeftTrigger = 0;
+    pad.bRightTrigger = 255;
+    CHECK(gp::ApplyCloseLatch(latch, pad));
+    CHECK(!latch.leftTrigger && latch.rightTrigger);
+    pad.bLeftTrigger = 255;
+    pad.bRightTrigger = 0;
+    CHECK(!gp::ApplyCloseLatch(latch, pad));
+    CHECK(pad.bLeftTrigger == 255 && pad.bRightTrigger == 0);
+    gOwnsBoth = false;
+}
+
 } // namespace
 
 int main() {
@@ -478,6 +506,7 @@ int main() {
     TestWalkTowardHand();
     TestRightClickGate();
     TestConversationTriggers();
+    TestOrbitalTriggers();
     if (gFailures == 0) {
         std::printf("pad merge tests passed\n");
     }

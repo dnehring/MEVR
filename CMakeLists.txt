@@ -975,6 +975,7 @@ function(mevr_add_plugin game)
             src/plugin/PowerWheel.cpp src/plugin/PowerWheelDraw.cpp src/plugin/PowerIcons.cpp src/plugin/Glow.cpp
             src/plugin/SquadPlaceDraw.cpp src/plugin/GalaxyHologramDraw.cpp
             src/core/vr/GalaxyHologram.cpp src/core/vr/GalaxyHologram.hpp
+            src/core/vr/GalaxyMap.cpp src/core/vr/GalaxyMap.hpp
             # ME1's 3D cinema screen for conversations and cutscenes, its floor and horizon, the dip from black and the
             # world-locked placement (research/52, research/le2-cinema.md): LE1's modules, shared.
             src/plugin/CineScreen.cpp src/plugin/CineScreen.hpp src/core/vr/CineScreen.cpp src/core/vr/CineScreen.hpp
