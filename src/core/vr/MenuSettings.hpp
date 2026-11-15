@@ -177,6 +177,7 @@ struct GuideInput {
     bool handWheel = true;               // [PowerWheel] on: X opens the power wheel at the left hand (research/55)
     bool castLock = true;                // [PowerWheel] lock: raise the left hand at an enemy, push to cast
     bool selfGestures = true;            // [PowerWheel] selfGestures: powers on yourself by a gesture of the open left hand
+    bool le2 = false;
 };
 // The page's texts, as (key, text): "guide_<id>" (the short label on the controller drawing) and "guide_<id>_how" (the
 // line in the list under it) for the ids lt, lgrip, lstick, x, y, menu, rt, rgrip, rstick, a, b; "guide_grenade",

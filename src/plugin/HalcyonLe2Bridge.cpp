@@ -33,6 +33,7 @@
 #include "plugin/TransitionFade.hpp"
 #include "plugin/TraversalCue.hpp"
 #include "plugin/Vignette.hpp"
+#include "plugin/PowerWheel.hpp"
 #include "plugin/WorldPanels.hpp"
 #include "plugin/XrHost.hpp"
 
@@ -601,6 +602,20 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
         cue.headValid = frame.headValid;
         cue.head = {frame.headPosition[0], frame.headPosition[1], frame.headPosition[2]};
         count += mevr::host::traversal_cue::Layers(cue, layersOut + count, capacity - count);
+    }
+    if (count < capacity && frame.gameMode == 0) {
+        mevr::host::power_wheel::Frame wheel;
+        wheel.session = static_cast<XrSession>(frame.session);
+        wheel.appSpace = static_cast<XrSpace>(frame.appSpace);
+        wheel.context = frame.context;
+        wheel.device = device;
+        wheel.worldFrame = frame.worldFrame;
+        wheel.menuOpen = frame.menuOpen || mevr::host::renderer::OwnMenuOpen();
+        wheel.head = {frame.headPosition[0], frame.headPosition[1], frame.headPosition[2]};
+        wheel.headValid = frame.headValid;
+        XrCompositionLayerQuad const* quads[3]{};
+        int const n = mevr::host::power_wheel::Layers(wheel, quads, static_cast<int>(std::min(3u, capacity - count)));
+        for (int i = 0; i < n; ++i) layersOut[count++] = quads[i];
     }
     // Our main menu and the guided calibration (plugin/MenusLe2, M4): over the rest, alone while they're up.
     count = mevr::host::menus_le2::Layers(frame, device, layersOut, count, capacity);

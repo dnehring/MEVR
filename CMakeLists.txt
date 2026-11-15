@@ -969,6 +969,9 @@ function(mevr_add_plugin game)
             src/plugin/ScopeCaptureSource.cpp src/plugin/SightLayers.cpp src/plugin/SightPictures.cpp
             # Traversal's cue and blink (research/le2-traversal.md).
             src/plugin/TraversalCue.cpp src/plugin/TraversalCue.hpp src/core/vr/Traversal.cpp src/core/vr/Traversal.hpp
+            # ME1's left-hand power wheel, coach and target marker.
+            src/core/vr/PowerWheel.cpp src/core/vr/SquadPlace.cpp
+            src/plugin/PowerWheel.cpp src/plugin/PowerWheelDraw.cpp src/plugin/PowerIcons.cpp src/plugin/Glow.cpp
             # ME1's 3D cinema screen for conversations and cutscenes, its floor and horizon, the dip from black and the
             # world-locked placement (research/52, research/le2-cinema.md): LE1's modules, shared.
             src/plugin/CineScreen.cpp src/plugin/CineScreen.hpp src/core/vr/CineScreen.cpp src/core/vr/CineScreen.hpp

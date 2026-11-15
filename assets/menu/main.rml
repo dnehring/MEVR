@@ -78,7 +78,7 @@
 	<div data-if="section == 'guide'">
 		<div class="stitle">Controller guide</div>
 		<div class="sdesc">What each button and gesture does on foot. Open this menu any time: press and hold both thumbsticks, or press {{menu_key}} on the keyboard.</div>
-		<div class="info" data-if="le2"><div class="ico i-info"/><span>Mass Effect 2: aiming with your hands, Shepard's arms and fingers, this menu and the calibration work now. Holsters, melee, the wheels at your hands, voice orders and the vehicle's controls come later, and the settings pages grey out what isn't there yet.</span></div>
+		<div class="info" data-if="le2"><div class="ico i-info"/><span>Mass Effect 2: hold X to open the power wheel at your left hand. The Controller guide shows how to equip and cast powers.</span></div>
 		<div class="info welcome" data-if="first_run"><div class="ico i-info"/><span>Welcome to MEVR. This guide stays here, first in the list on the left. Resume when you're ready; Body &amp; calibration fits Shepard to your height and aim.</span></div>
 		<div class="guide">
 			<div class="gcard">

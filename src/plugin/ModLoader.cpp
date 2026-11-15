@@ -17,6 +17,7 @@
 #include "core/vr/Floor.hpp"
 #include "core/vr/HostView.hpp"
 #include "core/vr/HudPieces.hpp"
+#include "core/vr/PowerWheel.hpp"
 #include "core/vr/Sights.hpp"
 #include "plugin/FloorLock.hpp"
 #include "plugin/PadMerge.hpp"
@@ -50,7 +51,6 @@
 #include "core/vr/ScopeCapture.hpp"
 #include "core/vr/GalaxyHologram.hpp"
 #include "core/vr/GalaxyMap.hpp"
-#include "core/vr/PowerWheel.hpp"
 #include "core/vr/WorldUi.hpp"
 #include "core/vr/Spectator.hpp"
 #include "core/vr/SquadMenu.hpp"
@@ -415,15 +415,6 @@ HostServices WithGalaxyMap(HostServices services) {
     services.setGalaxyMap = &HostSetGalaxyMap;
     return services;
 }
-void HostSetPowerWheel(vr::power_wheel::View const* view) {
-    vr::power_wheel::View closed;
-    closed.open = 0;
-    vr::power_wheel::Publish(view != nullptr ? *view : closed);
-}
-void HostSetPowerLock(vr::power_wheel::LockView const* view) {
-    vr::power_wheel::LockView none;
-    vr::power_wheel::PublishLock(view != nullptr ? *view : none);
-}
 std::uint32_t HostTakeGuiEvents(std::uint8_t* events, std::uint32_t capacity) {
     return host::game_pointer::TakeGuiEvents(events, capacity);
 }
@@ -471,14 +462,10 @@ void HostSetSquadPlace(vr::squad_place::View const* view) {
     vr::squad_place::View none;
     vr::squad_place::Publish(view != nullptr && view->size == sizeof(vr::squad_place::View) ? *view : none);
 }
-HostServices WithPowerWheel(HostServices services) {
+HostServices WithLe1ExtraUi(HostServices services) {
     services.publishCameraOffset = [](double forward, double right, double up) {
         vr::camera_diagnostic::gCameraDiagnostic.Publish(forward, right, up, GetTickCount64());
     };
-    services.powerWheelSize = static_cast<std::uint32_t>(sizeof(vr::power_wheel::View));
-    services.setPowerWheel = &HostSetPowerWheel;
-    services.powerLockSize = static_cast<std::uint32_t>(sizeof(vr::power_wheel::LockView));  // v29
-    services.setPowerLock = &HostSetPowerLock;
     services.takeGuiEvents = &HostTakeGuiEvents;  // v30: the game pointer's input as GuiKey events (research/57 section 6)
     services.squadPlaceSize = static_cast<std::uint32_t>(sizeof(vr::squad_place::View));  // v32: squad placement's arc
     services.setSquadPlace = &HostSetSquadPlace;
@@ -563,12 +550,20 @@ HostServices BuildServices() {
     HostServices services = WithCrashBreadcrumbs(BaseServices());
 #if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2)
     services = WithFloorLock(WithHudPieces(WithPadMerge(WithSights(WithVignette(WithRenderer(services))))));  // both renderers' modules
+    services.powerWheelSize = static_cast<std::uint32_t>(sizeof(vr::power_wheel::View));
+    services.setPowerWheel = [](vr::power_wheel::View const* view) {
+        vr::power_wheel::Publish(view != nullptr ? *view : vr::power_wheel::View{});
+    };
+    services.powerLockSize = static_cast<std::uint32_t>(sizeof(vr::power_wheel::LockView));
+    services.setPowerLock = [](vr::power_wheel::LockView const* view) {
+        vr::power_wheel::PublishLock(view != nullptr ? *view : vr::power_wheel::LockView{});
+    };
 #endif
 #if defined(MEVR_WITH_HALCYON_LE2)
     services = WithTraversal(services);
 #endif
 #if defined(MEVR_WITH_HALCYON)
-    services = WithVoice(WithPowerWheel(WithWorldUi(WithGalaxyHologram(WithGalaxyMap(WithSpectator(WithMakoControls(
+    services = WithVoice(WithLe1ExtraUi(WithWorldUi(WithGalaxyHologram(WithGalaxyMap(WithSpectator(WithMakoControls(
         WithInteractLabel(WithScopeCapture(WithGameMenuRequest(WithLe1Modules(services)))))))))));
 #endif
 #if defined(MEVR_WITH_HALCYON_LE2) && defined(MEVR_WITH_MAIN_MENU)
@@ -581,6 +576,8 @@ HostServices const gServices = BuildServices();
 void ForgetModState() {
 #if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2)
     ForgetRendererModState();
+    vr::power_wheel::Publish({});
+    vr::power_wheel::PublishLock({});
 #endif
 #if defined(MEVR_WITH_HALCYON)
     ForgetLe1ModState();

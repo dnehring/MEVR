@@ -105,6 +105,8 @@ struct PowerInfo {
 };
 // Null: not one of the player's mappable powers (melee, healing, NPC powers...).
 PowerInfo const* FindPower(char const* label);
+// LE2's base power name. The game-side adapter keeps the actual evolved power's identity for dispatch.
+PowerInfo const* FindLe2Power(char const* label);
 // The wheel's last tile, "No power" (the user, 2026-11-09: "we don't have an option for it to return to neutral"): equipping
 // it puts the engine's None into the mapped power, so nothing is aimed, locked or gestured until a power is chosen again
 // (the game itself does nothing for an unmapped power, research/55 section 1). Its label is the engine's "None"; FindPower

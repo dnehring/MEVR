@@ -398,6 +398,9 @@ void Settings::Read(menu::Values& v) {
         g.handWheel = ini.Num("PowerWheel", "on", 1.0f) != 0.0f;  // the mod's defaults (game/PowerWheel)
         g.castLock = ini.Num("PowerWheel", "lock", 1.0f) != 0.0f;
         g.selfGestures = ini.Num("PowerWheel", "selfGestures", 1.0f) != 0.0f;
+#if defined(MEVR_MENU_LE2)
+        g.le2 = true;
+#endif
         for (auto const& [key, text] : ms::GuideTexts(g)) {
             v.texts[key] = text;
         }

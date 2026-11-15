@@ -1011,5 +1011,14 @@ int RunPowerWheelTests() {
     TestSelfNotReady();
     TestNoPowerAndGuns();
     TestSelfHolding();
+    auto const* ammo = pw::FindLe2Power("DisruptorAmmo");
+    CHECK(ammo != nullptr && ammo->aim == pw::Aim::None && pw::SelfGestureFor(ammo->label) == pw::SelfGesture::Gun);
+    CHECK(pw::RequiredWeapon("DisruptorAmmo") == -1);
+    auto const* adrenaline = pw::FindLe2Power("AdrenalineRush");
+    CHECK(adrenaline != nullptr && adrenaline->aim == pw::Aim::None &&
+        pw::SelfGestureFor(adrenaline->label) == pw::SelfGesture::Chest);
+    auto const* overload = pw::FindLe2Power("Overload");
+    CHECK(overload != nullptr && overload->aim == pw::Aim::Target && pw::SelfGestureFor(overload->label) == pw::SelfGesture::None);
+    CHECK(pw::FindLe2Power("LW_Marksman") == nullptr);
     return gFailures;
 }

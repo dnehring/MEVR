@@ -709,16 +709,18 @@ std::vector<std::pair<std::string, std::string>> GuideTexts(GuideInput const& in
                                                 : "The power wheel at your hand is off ([PowerWheel] on): " + gameWheel + ".");
     out.emplace_back("guide_cast", in.handWheel && in.castLock
                                        ? std::string("Raise your left hand at an enemy: orange brackets lock on (or on the one you face). "
-                                                     "Push your open hand toward it to cast what you equipped. Powers that land somewhere "
-                                                     "go where your hand points. Your right hand can keep the gun.")
+                                                     "Push your open hand toward it to cast what you equipped. ") +
+                                             (in.le2 ? "" : "Powers that land somewhere go where your hand points. ") +
+                                             "Your right hand can keep the gun."
                                        : "Cast from the game's power wheel: " + gameWheel + ".");
-    out.emplace_back("guide_self", !(in.handWheel && in.castLock) ? std::string("From the game's power wheel, like the others.")
-                                   : in.selfGestures ? std::string("Powers on yourself are gestures of the open left hand: flat on "
-                                                                   "your chest, held (Barrier, Shield Boost, Immunity, Adrenaline "
-                                                                   "Burst); slapped onto the gun (Marksman, Overkill, Carnage, "
-                                                                   "Assassination: each on its own gun); raised above your head, "
-                                                                   "held (Unity). The glowing target shows when it's ready.")
-                                                     : std::string("Pushed forward like the others."));
+    char const* const selfGestures = in.le2
+        ? "Hold your open left palm against your chest for powers like Adrenaline Rush. Slap your open left palm against the "
+          "drawn gun to apply an ammo power. The glowing target shows where to move your hand."
+        : "Powers on yourself are gestures of the open left hand: flat on your chest, held (Barrier, Shield Boost, Immunity, "
+          "Adrenaline Burst); slapped onto the gun (Marksman, Overkill, Carnage, Assassination: each on its own gun); raised "
+          "above your head, held (Unity). The glowing target shows when it's ready.";
+    out.emplace_back("guide_self", !(in.handWheel && in.castLock) ? "From the game's power wheel, like the others."
+                                   : in.selfGestures ? selfGestures : "Pushed forward like the others.");
     return out;
 }
 

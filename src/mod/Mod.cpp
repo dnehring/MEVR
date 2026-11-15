@@ -676,6 +676,11 @@ mevr::game::power_wheel::Link PowerWheelLink() {
             link.publishLock = gHost->setPowerLock;
         }
     }
+#if defined(MEVR_GAME_LE2)
+    if (MEVR_HOST_HAS(mainMenu) && gHost->mainMenu != nullptr) {
+        link.menuOpen = (gHost->mainMenu() & (kMainMenuOpen | kOmniRailOpen)) != 0;
+    }
+#endif
     return link;
 }
 

@@ -27,6 +27,7 @@ struct Link {
     void (*publish)(vr::power_wheel::View const* view) = nullptr;  // v28 setPowerWheel; null: an older host (no wheel)
     void (*publishLock)(vr::power_wheel::LockView const* view) = nullptr;  // v29 setPowerLock; null: no marker (the lock still works)
     void (*haptic)(int hand, float seconds, float amplitude) = nullptr;
+    bool menuOpen = false;
 };
 
 // Before the ProcessEvent hook goes in (Mod.cpp): the handler that times the game's release against the bolt (research/55

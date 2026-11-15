@@ -1839,6 +1839,11 @@ std::optional<std::string> RunOursLe2(ue3::Object* pc, std::string const& line) 
         std::getline(words, rest);
         return traversal::Command(rest);  // the vault's fixture and tests (research/le2-traversal.md)
     }
+    if (verb == "powerwheel") {
+        std::string rest;
+        std::getline(words, rest);
+        return power_wheel::Console(rest);
+    }
     if (verb == "instances") {
         return InstancesLe2(words);  // a scene's Kismet start, for the cinema screen's checks (research/le2-cinema.md)
     }

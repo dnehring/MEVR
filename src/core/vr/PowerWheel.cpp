@@ -283,6 +283,43 @@ PowerInfo const* FindPower(char const* label) {
     return nullptr;
 }
 
+PowerInfo const* FindLe2Power(char const* label) {
+    static constexpr PowerInfo kPowers[] = {
+        {"Throw", "Throw", 0, 1, Aim::Target},
+        {"Pull", "Pull", 0, 2, Aim::Target},
+        {"Warp", "Warp", 0, 3, Aim::Target},
+        {"Slam", "Slam", 0, 2, Aim::Target},
+        {"Reave", "Reave", 0, 3, Aim::Target},
+        {"Dominate", "Dominate", 0, 0, Aim::Target},
+        {"Stasis", "Stasis", 0, 5, Aim::Target},
+        {"Barrier", "Barrier", 0, 6, Aim::None},
+        {"Overload", "Overload", 1, 7, Aim::Target},
+        {"Incinerate", "Incinerate", 1, 9, Aim::Target},
+        {"CryoBlast", "Cryo Blast", 1, 11, Aim::Target},
+        {"EnergyDrain", "Energy Drain", 1, 7, Aim::Target},
+        {"AIHacking", "AI Hacking", 1, 10, Aim::Target},
+        {"NeuralShock", "Neural Shock", 1, 11, Aim::Target},
+        {"TechArmor", "Tech Armor", 1, 12, Aim::None},
+        {"TacticalCloak", "Tactical Cloak", 1, 14, Aim::None},
+        {"GethShieldBoost", "Geth Shield Boost", 1, 12, Aim::None},
+        {"Fortification", "Fortification", 2, 14, Aim::None},
+        {"AdrenalineRush", "Adrenaline Rush", 2, 13, Aim::None},
+        {"ConcussiveShot", "Concussive Shot", 2, 18, Aim::Target},
+        {"ArmorPiercingAmmo", "Armor-Piercing Ammo", 2, 19, Aim::None},
+        {"CryoAmmo", "Cryo Ammo", 2, 16, Aim::None},
+        {"DisruptorAmmo", "Disruptor Ammo", 2, 17, Aim::None},
+        {"IncendiaryAmmo", "Incendiary Ammo", 2, 18, Aim::None},
+        {"WarpAmmo", "Warp Ammo", 2, 19, Aim::None},
+        {"ShredderAmmo", "Shredder Ammo", 2, 17, Aim::None},
+    };
+    if (label != nullptr) {
+        for (auto const& power : kPowers) {
+            if (std::strcmp(power.label, label) == 0) return &power;
+        }
+    }
+    return nullptr;
+}
+
 PowerInfo const& NoPower() {
     static constexpr PowerInfo kNone{"None", "No power", 2, kNoPowerIcon, Aim::None};
     return kNone;
@@ -639,6 +676,10 @@ SelfGesture SelfGestureFor(char const* label) {
         {"KF_Barrier", SelfGesture::Chest},      {"AR_ShieldBoost", SelfGesture::Chest}, {"AT_Immunity", SelfGesture::Chest},
         {"FT_Adrenaline", SelfGesture::Chest},   {"LW_Marksman", SelfGesture::Gun},      {"AW_Suppression", SelfGesture::Gun},
         {"BW_CarnageSetup", SelfGesture::Gun},   {"SW_Critical", SelfGesture::Gun},      {"TC_TakeDown", SelfGesture::Raise},
+        {"AdrenalineRush", SelfGesture::Chest}, {"Barrier", SelfGesture::Chest}, {"TechArmor", SelfGesture::Chest},
+        {"TacticalCloak", SelfGesture::Chest}, {"GethShieldBoost", SelfGesture::Chest}, {"Fortification", SelfGesture::Chest},
+        {"ArmorPiercingAmmo", SelfGesture::Gun}, {"CryoAmmo", SelfGesture::Gun}, {"DisruptorAmmo", SelfGesture::Gun},
+        {"IncendiaryAmmo", SelfGesture::Gun}, {"WarpAmmo", SelfGesture::Gun}, {"ShredderAmmo", SelfGesture::Gun},
     };
     for (auto const& s : kSelf) {
         if (std::strcmp(s.label, label) == 0) {

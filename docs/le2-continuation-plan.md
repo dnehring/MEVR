@@ -170,6 +170,9 @@ Mako's controls can't drive it). Order by what the owner plays first. M6 comes a
 The gun and wrist HUD reuse ME1’s shared panel and replay tooling. ME2’s gun readout is mounted next to its native
 ammo-power effect. [Placement, settings and replay evidence](../research/41-hud-pieces.md#me2s-ammo-display).
 
+Shepard’s left-hand power wheel and self-cast gestures use ME2’s native roster, cooldowns and effects. Freedom’s Progress
+verified the chest gesture and the gesture on the drawn rifle. [Power mappings and remaining checks](../research/55-hand-cast-powers.md#mass-effect-2).
+
 ### M7. Ship it (M)
 
 **ME2 ships after M5** (the owner, 2026-11-14): the first ME2 release has M1 to M5 (engine access, the host's services,
