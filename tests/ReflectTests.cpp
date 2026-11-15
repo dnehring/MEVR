@@ -159,7 +159,8 @@ struct World {
         return p;
     }
 
-    World() {
+    explicit World(ue3::Layout layout = TestLayout()) {
+        f.layout = layout;
         ue3::Object* const package = f.Make("Package", nullptr, nullptr);  // class fixed up below
         ue3::Object* const core = f.Make("Core", package, nullptr);
         ue3::Object* const engine = f.Make("Engine", package, nullptr);
@@ -386,6 +387,35 @@ void TestParams() {
     CHECK(q.Set("Count", 7) && q.Get<int>("Count") == std::optional<int>(7));
     CHECK(q.SetBool("bPause", false) && static_cast<std::uint8_t*>(q.Data())[0] == 0);
     CHECK(!q.ReturnSpec());
+}
+
+// LE3 puts the native function pointer before the flags/index/parameter metadata. Keep this
+// synthetic layout distinct from every game's offsets: the shared reader must not assume the
+// LE1/LE2 ordering or overlay the pointer with metadata. No process event is executed here.
+void TestFunctionPointerBeforeFlags() {
+    ue3::Layout layout = TestLayout();
+    layout.functionFunc = 0x50;
+    layout.functionFlags = 0x58;
+    layout.functionNative = 0x5C;
+    layout.functionParmsSize = 0x5E;
+    layout.functionReturnOffset = 0x60;
+    World w(layout);
+    auto* const fn = static_cast<ue3::Function*>(w.setRotation);
+    void* const marker = w.actor;  // a data marker, never callable
+    w.f.Set(fn, layout.functionFunc, marker);
+    w.f.Set(fn, layout.functionFlags, std::uint32_t{ue3::function_flags::kNative});
+    w.f.Set(fn, layout.functionNative, std::uint16_t{0x123});
+    ue3::Reflection r(w.f.Universe());
+    CHECK(r.NativeFunc(fn) == marker);
+    CHECK(r.FunctionFlags(fn) == ue3::function_flags::kNative);
+    CHECK(r.NativeIndex(fn) == 0x123);
+    CHECK(r.ParmsSize(fn) == 16 && r.ReturnOffset(fn) == 12);
+    ue3::Params args(r, fn);
+    CHECK(args.Valid() && args.Size() == 16);
+    CHECK(args.Set("NewRotation", ue3::Rotator{12, 34, 56}));
+    CHECK(args.SetBool("ReturnValue", true));
+    CHECK(args.ReturnBool() == std::optional<bool>(true));
+    CHECK(r.NativeFunc(fn) == marker && r.NativeIndex(fn) == 0x123);
 }
 
 void TestPatterns() {
@@ -637,6 +667,7 @@ int RunReflectTests() {
     TestLookups();
     TestProperties();
     TestParams();
+    TestFunctionPointerBeforeFlags();
     TestPatterns();
     TestMemory();
     TestOuters();
