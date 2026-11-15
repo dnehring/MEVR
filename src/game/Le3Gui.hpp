@@ -12,4 +12,6 @@ ue3::Object* FocusMovie();
 ue3::Object* Browser(ue3::Object* manager);
 std::string Tag(ue3::Object* movie);
 bool PageAllowed(ue3::Object* browser, std::uint8_t type);
+// Read-only, on demand: verified HUD clips in native stage/local coordinates; never a crop/placement claim.
+std::string HudReport();
 }

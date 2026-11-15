@@ -87,7 +87,15 @@ std::optional<float> VariableFloat(ue3::Object* panel, wchar_t const* path) {
 
 } // namespace
 
-std::string Command(std::string const& /*args*/) {
+std::string Command(std::string const& args) {
+#if defined(MEVR_GAME_LE3)
+    std::istringstream words(args);
+    std::string option;
+    words >> option;
+    if (option == "hud") return le3_gui::HudReport();
+#else
+    (void)args;
+#endif
     ue3::Object* const panel = FocusPanel();
     if (panel == nullptr) {
         return "guimouse: no focused movie (open a screen)";

@@ -3,10 +3,18 @@
 #include "game/Player.hpp"
 #include "ue3/Handles.hpp"
 #include "ue3/Runtime.hpp"
+#include "ue3/Memory.hpp"
+#include "ue3/Params.hpp"
+#include <cmath>
+#include <format>
 #include <array>
 
 namespace mevr::game::le3_gui {
 namespace {
+ue3::FunctionRef gHud{"SFXGame.BioPlayerController.GetHUDMovie", ue3::kEveryGame};
+ue3::FunctionRef gNumber{"GFxUI.GFxValue.GetNumber", ue3::kEveryGame};
+ue3::FunctionRef gBool{"GFxUI.GFxValue.GetBool", ue3::kEveryGame};
+ue3::FunctionRef gPosition{"GFxUI.GFxValue.GetPosition", ue3::kEveryGame};
 ue3::FunctionRef gManager{"SFXGame.BioPlayerController.GetSFXUIController", ue3::kEveryGame};
 ue3::FunctionRef gFocus{"SFXGame.SFXGUIInteraction.GetFocusMovieForPlayerController", ue3::kEveryGame};
 ue3::FunctionRef gBrowser{"SFXGame.SFXGUIInteraction.GetBrowserHandler", ue3::kEveryGame};
@@ -55,4 +63,55 @@ bool PageAllowed(ue3::Object* browser, std::uint8_t type) {
     }
     return state <= 1; // BBS_Normal / BBS_Alert; disabled and unknown remain native-only
 }
+std::string HudReport() {
+    auto* hud = GetObject(player::Controller(), gHud, false);
+    if (!hud) return "ME3 HUD: no live GetHUDMovie result; no native UI changed";
+    auto& r = ue3::runtime::Get();
+    auto number = [&](ue3::Object* object, wchar_t const* member, bool stage = false) -> std::optional<float> {
+        auto* fn = stage ? r.FindFunction(r.ClassOf(object), "GetVariableFloat") : gNumber.Get();
+        if (!fn) return std::nullopt;
+        ue3::Params p(r, fn);
+        ue3::memory::OwnedString key(member);
+        if (!p.Valid() || !key.Valid() || !p.Set(stage ? "sPath" : "member", key.Get()) || !ue3::runtime::Call(object, fn, p))
+            return std::nullopt;
+        auto const v = p.Return<float>();
+        return v && std::isfinite(*v) ? v : std::nullopt;
+    };
+    auto text = [](std::optional<float> value) { return value ? std::format("{:.3f}", *value) : std::string("unavailable"); };
+    std::string out = std::format("ME3 HUD: {} tag={} stage={}x{}; local clip bounds only, crop NOT accepted; no native UI changed",
+        r.FullName(hud), Tag(hud), text(number(hud, L"Stage.width", true)), text(number(hud, L"Stage.height", true)));
+    // Exact fields assigned by installed SFXSFHandler_HUD.InitDisplay; no object enumeration or guessed movie paths.
+    static ue3::FieldRef clips[] = {
+        {"SFXGame.SFXSFHandler_HUD", "WeaponIcon", ue3::kEveryGame},
+        {"SFXGame.SFXSFHandler_HUD", "WeaponAmmo", ue3::kEveryGame},
+        {"SFXGame.SFXSFHandler_HUD", "WeaponClip", ue3::kEveryGame},
+        {"SFXGame.SFXSFHandler_HUD", "GrenadeAmmo", ue3::kEveryGame},
+        {"SFXGame.SFXSFHandler_HUD", "OverheatIndicator", ue3::kEveryGame},
+        {"SFXGame.SFXSFHandler_HUD", "PlayerPowerLeft", ue3::kEveryGame},
+        {"SFXGame.SFXSFHandler_HUD", "PlayerPowerRight", ue3::kEveryGame},
+        {"SFXGame.SFXSFHandler_HUD", "TargetStatus", ue3::kEveryGame},
+        {"SFXGame.SFXSFHandler_HUD", "TargetName", ue3::kEveryGame},
+        {"SFXGame.SFXSFHandler_HUD", "CenterStatus", ue3::kEveryGame},
+        {"SFXGame.SFXSFHandler_HUD", "ActionIcon", ue3::kEveryGame},
+        {"SFXGame.SFXSFHandler_HUD", "POI", ue3::kEveryGame}};
+    constexpr char const* names[] = {"WeaponIcon", "WeaponAmmo", "WeaponClip", "GrenadeAmmo", "OverheatIndicator",
+        "PlayerPowerLeft", "PlayerPowerRight", "TargetStatus", "TargetName", "CenterStatus", "ActionIcon", "POI"};
+    for (unsigned i = 0; i < std::size(clips); ++i) {
+        auto* clip = clips[i].Read<ue3::Object*>(hud).value_or(nullptr);
+        if (!ue3::runtime::IsAlive(clip)) { out += std::format("\n  {} unavailable", names[i]); continue; }
+        ue3::Params at(r, gPosition.Get());
+        bool const positioned = at.Valid() && ue3::runtime::Call(clip, gPosition.Get(), at) && at.ReturnBool().value_or(false);
+        ue3::Params visible(r, gBool.Get());
+        ue3::memory::OwnedString key(L"_visible");
+        bool const readVisible = visible.Valid() && key.Valid() && visible.Set("member", key.Get()) &&
+            ue3::runtime::Call(clip, gBool.Get(), visible);
+        auto const shown = readVisible ? visible.ReturnBool() : std::nullopt;
+        out += std::format("\n  {} x={} y={} width={} height={} alpha={} visible={}", names[i],
+            text(positioned ? at.Get<float>("X") : std::nullopt), text(positioned ? at.Get<float>("Y") : std::nullopt),
+            text(number(clip, L"_width")), text(number(clip, L"_height")), text(number(clip, L"_alpha")),
+            shown ? (*shown ? "true" : "false") : "unavailable");
+    }
+    return out;
+}
+
 }
