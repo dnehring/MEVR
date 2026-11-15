@@ -264,6 +264,9 @@ struct Resolved {
     std::string name;
     int rangedType = -1;  // RangedType
     std::optional<engine::skeleton::Socket> offHand;  // a socket for the off hand (support grip)
+#if defined(MEVR_GAME_LE2)
+    std::optional<engine::skeleton::Socket> ammoSocket;
+#endif
 };
 std::optional<Resolved> gResolved;
 
@@ -449,6 +452,9 @@ void DescribeForSupport(Live const& live, Resolved& r) {
     std::string chosen;
     for (auto const& named : engine::skeleton::Sockets(live.mesh)) {
         std::string const name = ue3::runtime::NameText(named.name);
+#if defined(MEVR_GAME_LE2)
+        if (name == "Ammo") r.ammoSocket = named.socket;  // SFXWeapon.EnableAmmoPowerHologram
+#endif
         list += std::format("{}{} on {} at {}", list.empty() ? "" : "; ", name,
             ue3::runtime::NameText(named.socket.boneKey), Text(named.socket.relative.translation));
         if (named.name == r.socketName || r.offHand) {
@@ -951,6 +957,17 @@ ue3::Object* HeldObject() {
 #else
     return nullptr;
 #endif
+}
+
+std::optional<engine::UnrealVector> AmmoSocketAsDrawn() {
+#if defined(MEVR_GAME_LE2)
+    if (gResolved && gResolved->ammoSocket) {
+        if (auto const held = ReadHeld()) {
+            if (auto const socket = MuzzleFrame(held->live.mesh, *gResolved->ammoSocket)) return U(socket->origin);
+        }
+    }
+#endif
+    return std::nullopt;
 }
 
 RangedType Type() {

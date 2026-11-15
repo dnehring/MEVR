@@ -166,6 +166,7 @@ Settings ReadSettings(ini::File const& file, std::string* problems) {
     }
     ReadFlag(file, "wristStatus", s.wristStatus);
     ReadFlag(file, "gunStatus", s.gunStatus);
+    ReadFlag(file, "gunSocketMount", s.gunSocketMount);
     ReadRange(file, "wristWidthM", 0.02f, 0.5f, s.wristWidthM, problems);
     ReadRange(file, "gunWidthM", 0.02f, 0.5f, s.gunWidthM, problems);
     ReadRange(file, "gunBackM", -0.5f, 1.0f, s.gunBackM, problems);

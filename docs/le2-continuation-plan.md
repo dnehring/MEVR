@@ -167,6 +167,9 @@ controls and cockpit for now** (the owner, 2026-11-14: `game/MakoControls`' leve
 `game/CockpitProbe`'s ride, the repair button and extraction lever, on ME2's hover tank; ME2's own driving only where the
 Mako's controls can't drive it). Order by what the owner plays first. M6 comes after the first ME2 release (M7).
 
+The gun and wrist HUD reuse ME1’s shared panel and replay tooling. ME2’s gun readout is mounted next to its native
+ammo-power effect. [Placement, settings and replay evidence](../research/41-hud-pieces.md#me2s-ammo-display).
+
 ### M7. Ship it (M)
 
 **ME2 ships after M5** (the owner, 2026-11-14): the first ME2 release has M1 to M5 (engine access, the host's services,

@@ -69,6 +69,7 @@ struct Settings {
     bool gunStatus = true;     // the weapon panel on the gun
     float wristWidthM = 0.08f;  // the wrist quad's width (meters)
     float gunWidthM = 0.06f;    // the gun quad's width (meters)
+    bool gunSocketMount = true;  // LE2: the native Ammo socket anchors the panel, with clearance for its ammo-power icon
     // Where the wrist quad's centre sits, in the LEFT grip pose's axes (meters): +X out of the palm (the back of the
     // left hand is -X), +Y toward the elbow for a handle held upright, +Z down the handle away from the thumb. The
     // default is 6 cm up the forearm, 5 cm down the handle and 3 cm out over the back of the wrist.

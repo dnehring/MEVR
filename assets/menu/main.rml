@@ -483,14 +483,13 @@
 			<div class="row"><div class="rl"><div class="rlab">Hand reticle</div><div class="rdesc">A marker where the gun points, instead of the screen crosshair</div></div>
 				<button class="tog" data-class-on="reticle" data-event-click="toggle('reticle')"><div class="knob"/></button></div>
 		</div>
-		<div class="group" data-class-disabled="le2">
+		<div class="group">
 			<div class="gtitle"><span>On you and in the world</span><div class="gline"/></div>
-			<div class="hint" data-if="le2">Not on Mass Effect 2 yet.</div>
-			<div class="row"><div class="rl"><div class="rlab">Status on your wrist</div><div class="rdesc">Health, shields, your squad and medi-gel on the back of your left wrist, out of the HUD</div></div>
+			<div class="row"><div class="rl"><div class="rlab">Status on your wrist</div><div class="rdesc" data-if="!le2">Health, shields, your squad and medi-gel on the back of your left wrist, out of the HUD</div><div class="rdesc" data-if="le2">The game’s squad status on the back of your left wrist</div></div>
 				<button class="tog" data-class-on="wrist_status" data-event-click="toggle('wrist_status')"><div class="knob"/></button></div>
-			<div class="row"><div class="rl"><div class="rlab">Weapon panel on the gun</div><div class="rdesc">The gun's heat and your grenades on top of the drawn gun, out of the HUD</div></div>
+			<div class="row"><div class="rl"><div class="rlab">Weapon panel on the gun</div><div class="rdesc" data-if="!le2">The gun's heat and your grenades on top of the drawn gun, out of the HUD</div><div class="rdesc" data-if="le2">Magazine and reserve ammo beside the weapon’s ammo-power hologram</div></div>
 				<button class="tog" data-class-on="gun_status" data-event-click="toggle('gun_status')"><div class="knob"/></button></div>
-			<div class="row"><div class="rl"><div class="rlab">Prompts at the object</div><div class="rdesc">What A will use (a door, a console, a person) is named where it is, big enough to read. Off: small on the HUD.</div></div>
+			<div class="row" data-class-disabled="le2"><div class="rl"><div class="rlab">Prompts at the object</div><div class="rdesc">What A will use (a door, a console, a person) is named where it is, big enough to read. Off: small on the HUD.</div></div>
 				<button class="tog" data-class-on="interact_label" data-event-click="toggle('interact_label')"><div class="knob"/></button></div>
 		</div>
 		<div class="group" data-class-disabled="le2">

@@ -77,6 +77,8 @@ std::uintptr_t Key();
 // The same weapon as an object (the SFXGame.BioWeaponRanged), checked alive this tick, for a feature that reads or
 // calls it (game/vent: its heat). Nullptr unless a verified ranged weapon hangs in the player's right hand.
 ue3::Object* HeldObject();
+// ME2's native ammo-power icon socket in the posed weapon, including visual kick.
+std::optional<engine::UnrealVector> AmmoSocketAsDrawn();
 // Its ranged type (BioWeaponRanged.GetRangedWeaponType, EBioItemWeaponRangedType), read once per
 // weapon.
 enum class RangedType { Pistol = 0, Shotgun = 1, AssaultRifle = 2, Sniper = 3, Unknown = -1 };
