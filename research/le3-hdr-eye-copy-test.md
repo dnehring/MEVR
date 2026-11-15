@@ -150,3 +150,27 @@ Audit of nonprojection consumers of the full-frame eye swapchains found only the
 shared cinema path. Flat mono uses its own swapchain and successful-copy/release
 gate; overlay/UI and scope images have separate owners. The legacy SBS projection
 path is separate from these full-frame eye swapchains and this receipt policy.
+
+### Failed wait/release ownership recovery
+
+LE2 and LE3 full-frame eyes and flat mono now share `SwapchainOwnership` in
+`EyePublication.hpp`. After acquiring, only an exact successful wait allows GPU
+access or release. Timeout/failure skips both. A failed wait or release quarantines
+that handle, invalidates eye publication, and logs a restart requirement once;
+subsequent frames cannot acquire another index and mistake release of the older
+outstanding image for release of a new copy. Successful release after a failed copy
+still permits a later retry, while rejecting that frame's content.
+
+Only actual successful swapchain creation clears ownership quarantine. Source
+history resets, recentering, and publication reset do not. This bounded recovery
+intentionally omits the affected layer until the handle is recreated; it does not
+attempt to repair an uncertain runtime image queue. The shared regression covers
+wait failure/timeout, release failure, no subsequent acquire/release, reset
+independence, real recreation, and copy-failure retry. Both sequel XR translation
+units and both TestLoop configurations compile. Native error injection/compositor
+acceptance remains untested.
+
+`TestLoop::WrappedRelease` still stages textures while owned, then discards the
+real swapchain's staged snapshot on failed release (the copied-eye synthetic key
+already has its separate completion rollback). It no longer retains that failed
+release as snapshot evidence. GPU staging/tap issuance itself is not release proof.

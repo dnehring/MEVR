@@ -106,6 +106,7 @@ bool g_aerHistValid[2] = { false, false };
 // acquire/copy when its content actually changes - see SubmitAerFrame.
 struct EyeContentTag { XrPosef pose{}; XrFovf fov{}; uint64_t sequence = 0; bool history = false; };
 mevr::vr::EyePublication<EyeContentTag> g_publishedEyes;
+mevr::vr::SwapchainOwnership g_eyeOwnership[2], g_monoOwnership;
 void ResetAerHistory() noexcept;
 D3D11_TEXTURE2D_DESC g_aerHistDesc = {};
 bool g_aerHistDescValid = false;
@@ -1045,6 +1046,7 @@ void EnsureMonoSwapchain() noexcept
     sc.format = g_swapFormat;
     sc.sampleCount = 1; sc.width = g_bbW; sc.height = g_swapH; sc.faceCount = 1; sc.arraySize = 1; sc.mipCount = 1;
     if (!XrSucceeded(g_fn.createSwapchain(g_session, &sc, &g_monoSwap)) || g_monoSwap == nullptr) { g_monoSwap = nullptr; return; }
+    g_monoOwnership.Recreated();
     uint32_t c = 0;
     g_fn.enumerateSwapchainImages(g_monoSwap, 0, &c, nullptr);
     std::vector<XrSwapchainImageD3D11KHR> imgs(c);
@@ -1074,6 +1076,7 @@ bool EnsureAerSwapchains() noexcept
         sc.faceCount = 1; sc.arraySize = 1; sc.mipCount = 1;
         if (!XrSucceeded(g_fn.createSwapchain(g_session, &sc, &g_aerSwap[eye])) || g_aerSwap[eye] == nullptr)
         { g_aerSwap[eye] = nullptr; return false; }
+        g_eyeOwnership[eye].Recreated();
         uint32_t c = 0;
         g_fn.enumerateSwapchainImages(g_aerSwap[eye], 0, &c, nullptr);
         std::vector<XrSwapchainImageD3D11KHR> imgs(c);
@@ -1126,14 +1129,15 @@ bool EnsureAerHistory(ID3D11Texture2D* src) noexcept
 // shiftPx == 0 takes the validated raw copy or required HDR conversion.
 bool CopyTextureToEyeFullFrame(int eye, ID3D11Texture2D* src, int shiftPx, EyeContentTag const* tag = nullptr) noexcept
 {
-    if (src == nullptr || g_aerSwap[eye] == nullptr) return false;
+    if (eye < 0 || eye > 1 || src == nullptr || g_aerSwap[eye] == nullptr || !g_eyeOwnership[eye].MayAcquire()) return false;
     ::ME2VR::MevrBridge::OnEyeSource(eye, src); // [MEVR]
     uint32_t idx = 0;
     XrSwapchainImageAcquireInfo ai = {}; ai.type = XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO_VALUE;
     if (!XrSucceeded(g_fn.acquireSwapchainImage(g_aerSwap[eye], &ai, &idx))) return false;
+    g_eyeOwnership[eye].Acquired();
     bool copied = false;   // [AERBLINK] the caller must know if the image really changed
     XrSwapchainImageWaitInfo wi = {}; wi.type = XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO_VALUE; wi.timeout = XR_INFINITE_DURATION_VALUE;
-    if (g_fn.waitSwapchainImage(g_aerSwap[eye], &wi) == XR_SUCCESS_VALUE && idx < g_aerImages[eye].size())
+    if (g_eyeOwnership[eye].WaitCompleted(g_fn.waitSwapchainImage(g_aerSwap[eye], &wi) == XR_SUCCESS_VALUE) && idx < g_aerImages[eye].size())
     {
         // [MEVR] HDR format conversion and the shared headset colour profile.
         // False means the image was not copied; no incompatible-copy fallback.
@@ -1141,8 +1145,14 @@ bool CopyTextureToEyeFullFrame(int eye, ID3D11Texture2D* src, int shiftPx, EyeCo
     }
     if (copied) ::ME2VR::MevrBridge::OnEyeCopied(eye, g_aerImages[eye][idx]); // [MEVR]
     XrSwapchainImageReleaseInfo ri = {}; ri.type = XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO_VALUE;
-    const XrResult released = g_fn.releaseSwapchainImage(g_aerSwap[eye], &ri);
-    bool const published = g_publishedEyes.Complete(eye, true, copied, released == XR_SUCCESS_VALUE, tag);
+    // A failed/timeout wait is not permission to release or sample the image.
+    // A failed release must not let the next copy get attributed to an older
+    // still-acquired index (OpenXR releases the oldest waited image).
+    bool const released = g_eyeOwnership[eye].MayRelease() &&
+        g_fn.releaseSwapchainImage(g_aerSwap[eye], &ri) == XR_SUCCESS_VALUE;
+    if (!g_eyeOwnership[eye].ReleaseCompleted(released))
+        XLog("[MEVR] eye swapchain quarantined after wait/release failure; restart required, eye=" + std::to_string(eye));
+    bool const published = g_publishedEyes.Complete(eye, true, copied, released, tag);
     ::ME2VR::MevrBridge::OnEyeReleased(eye, published);
     return published;
 }
@@ -1791,19 +1801,23 @@ void RunFrame() noexcept
         ID3D11Texture2D* backbuffer = nullptr;
         IDXGISwapChain* sc = ME2VR::D3DCapture::GetGameSwapChain();
         if (sc) sc->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&backbuffer));
-        if (g_monoSwap != nullptr && backbuffer != nullptr)
+        if (g_monoSwap != nullptr && backbuffer != nullptr && g_monoOwnership.MayAcquire())
         {
             uint32_t idx = 0;
             XrSwapchainImageAcquireInfo ai = {}; ai.type = XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO_VALUE;
             if (XrSucceeded(g_fn.acquireSwapchainImage(g_monoSwap, &ai, &idx)))
             {
+                g_monoOwnership.Acquired();
                 bool copied = false;
                 XrSwapchainImageWaitInfo wi = {}; wi.type = XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO_VALUE; wi.timeout = XR_INFINITE_DURATION_VALUE;
-                if (g_fn.waitSwapchainImage(g_monoSwap, &wi) == XR_SUCCESS_VALUE && idx < g_monoImages.size())
+                if (g_monoOwnership.WaitCompleted(g_fn.waitSwapchainImage(g_monoSwap, &wi) == XR_SUCCESS_VALUE) && idx < g_monoImages.size())
                     // [MEVR] Native flat cinema/menu also needs the HDR conversion.
                     copied = ::ME2VR::MevrBridge::CopyIntoImage(g_ctx, g_monoImages[idx], backbuffer, 0, -1);
                 XrSwapchainImageReleaseInfo ri = {}; ri.type = XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO_VALUE;
-                copied = (g_fn.releaseSwapchainImage(g_monoSwap, &ri) == XR_SUCCESS_VALUE) && copied;
+                bool const released = g_monoOwnership.MayRelease() &&
+                    g_fn.releaseSwapchainImage(g_monoSwap, &ri) == XR_SUCCESS_VALUE;
+                copied = g_monoOwnership.ReleaseCompleted(released) && copied;
+                if (!released) XLog("[MEVR] mono swapchain quarantined after wait/release failure; restart required");
 
                 // The quad shows BACKBUFFER content, so its shape must come from the backbuffer alone.
                 // This mixed g_swapH (the PER-EYE swapchain height) with g_bbW (the backbuffer width) -

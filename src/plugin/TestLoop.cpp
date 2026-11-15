@@ -1456,7 +1456,13 @@ XrResult XRAPI_CALL WrappedRelease(XrSwapchain swapchain, XrSwapchainImageReleas
             SpectatorImageReleased(swapchain, image);
         }
     }
-    return gRealRelease(swapchain, info);
+    XrResult const result = gRealRelease(swapchain, info);
+    if (result != XR_SUCCESS && armed && onPresent) {
+        // Stage while owned, but never retain a failed release as snapshot evidence.
+        gCapture.staged.erase(std::remove_if(gCapture.staged.begin(), gCapture.staged.end(),
+            [swapchain](Staged const& staged) { return staged.swapchain == swapchain; }), gCapture.staged.end());
+    }
+    return result;
 }
 
 XrResult XRAPI_CALL WrappedEndFrame(XrSession session, XrFrameEndInfo const* info) {

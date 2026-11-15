@@ -51,5 +51,31 @@ int main() {
     CHECK(images.Complete(1, true, true, true));
     CHECK(images.CurrentPair() && !images.TaggedPair()); // current SFR pair has no AER-reuse tag
     CHECK(!images.Complete(-1, true, true, true) && !images.Complete(2, true, true, true));
+    mevr::vr::SwapchainOwnership ownership;
+    CHECK(ownership.MayAcquire() && !ownership.MayRelease());
+    ownership.Acquired();
+    CHECK(!ownership.MayAcquire() && !ownership.MayRelease());
+    CHECK(!ownership.WaitCompleted(false)); // timeout/failure: no GPU access or release
+    CHECK(!ownership.MayAcquire() && !ownership.MayRelease());
+    images.Reset(); // recenter/history validity cannot recover the acquired queue
+    CHECK(!ownership.MayAcquire());
+    CHECK(!ownership.ReleaseCompleted(true)); // even a spurious success cannot repair missing wait
+    ownership.Recreated();
+    ownership.Acquired();
+    CHECK(ownership.WaitCompleted(true) && ownership.MayRelease());
+    CHECK(!ownership.ReleaseCompleted(false));
+    CHECK(!ownership.MayAcquire() && !ownership.MayRelease());
+    CHECK(!ownership.WaitCompleted(true)); // cannot treat next image as recovery
+    ownership.Recreated();
+    ownership.Acquired();
+    CHECK(ownership.WaitCompleted(true));
+    // Copy failure still permits releasing the successfully waited image. It
+    // invalidates content, but ownership is known and the next frame may retry.
+    CHECK(!images.Complete(0, true, false, true));
+    CHECK(ownership.ReleaseCompleted(true) && ownership.MayAcquire());
+    ownership.Acquired();
+    CHECK(ownership.WaitCompleted(true));
+    CHECK(images.Complete(0, true, true, true));
+    CHECK(ownership.ReleaseCompleted(true));
     return failures ? 1 : 0;
 }

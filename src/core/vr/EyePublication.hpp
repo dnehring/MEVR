@@ -38,4 +38,26 @@ private:
     std::array<Entry, 2> eyes_{};
     std::uint64_t frame_ = 1;
 };
+// Ownership is independent of content/history validity. A failed wait or release
+// leaves the acquired-image queue uncertain: never acquire another image from
+// that handle until its owner actually creates a new swapchain. Recenter and
+// source-history resets must not call Recreated().
+class SwapchainOwnership {
+public:
+    bool MayAcquire() const { return state_ == State::Idle; }
+    bool MayRelease() const { return state_ == State::Waited; }
+    void Acquired() { state_ = MayAcquire() ? State::Acquired : State::Quarantined; }
+    bool WaitCompleted(bool success) {
+        state_ = success && state_ == State::Acquired ? State::Waited : State::Quarantined;
+        return MayRelease();
+    }
+    bool ReleaseCompleted(bool success) {
+        state_ = success && MayRelease() ? State::Idle : State::Quarantined;
+        return MayAcquire();
+    }
+    void Recreated() { state_ = State::Idle; }
+private:
+    enum class State { Idle, Acquired, Waited, Quarantined };
+    State state_ = State::Idle;
+};
 } // namespace mevr::vr
