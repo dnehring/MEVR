@@ -3,6 +3,7 @@
 // runtime: `ctest -C Release --test-dir build`.
 
 #include "core/DevChannels.hpp"
+#include "core/vr/PauseOwner.hpp"
 #include "core/DiskBudget.hpp"
 #include "core/Ini.hpp"
 #include "core/PngFile.hpp"
@@ -12262,6 +12263,27 @@ void TestScreenReticle() {
     CHECK(!sr::AimCaptureActive(true));  // leave/disable: never follow the head on foot
 }
 
+// Saved pause state must never leak into the next world, including a failed restore followed by retry.
+void TestPauseOwner() {
+    mevr::vr::PauseOwner owner;
+    bool oldWorld = true, newWorld = true;
+    owner.Capture(1, false);
+    CHECK(owner.Release([&](std::uintptr_t world, bool previous) {
+        CHECK(world == 1); oldWorld = previous; return true;
+    }));
+    CHECK(!oldWorld && newWorld && owner.Owner() == 0);
+    owner.Capture(2, true); // an existing pause must survive our menu closing
+    CHECK(!owner.Release([](std::uintptr_t world, bool previous) { CHECK(world == 2 && previous); return false; }));
+    CHECK(owner.Owner() == 2);
+    CHECK(owner.Release([&](std::uintptr_t world, bool previous) {
+        CHECK(world == 2); newWorld = previous; return true;
+    }));
+    CHECK(newWorld && owner.Owner() == 0);
+    owner.Capture(1, false);
+    CHECK(owner.Release([](std::uintptr_t, bool) { return true; })); // destroyed owner: no write to its successor
+    CHECK(newWorld && owner.Owner() == 0);
+}
+
 int main() {
     TestScreenReticle();
     TestIni();
@@ -12373,6 +12395,7 @@ int main() {
     TestStickChord();
     TestStickChordFirst();
     TestGameMenuRequest();
+    TestPauseOwner();
     TestSquadContext();
     TestSquadGesture();
     TestSquadParser();
