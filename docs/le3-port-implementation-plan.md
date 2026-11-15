@@ -18,8 +18,9 @@ Implementation is now authorized. The audit baseline above remains historical; t
   See [save foundation](../research/le3-save-foundation.md).
 - **L3-1, native analysis implemented:** the protected capture and Ghidra analysis establish ME3's object/function/
   name layouts and native allocators. Twelve address patterns match uniquely. The shared engine adapter and
-  protected reflection probe are implemented. The live comparison passed 159/159, including native owned-string
-  allocation/free, with zero mismatches. Loaded-player/getter and world-invalidation gates remain open.
+  protected reflection probe are implemented. The initial live comparison passed 159/159; the extended save-descriptor
+  metadata comparison passed 177/177, including native owned-string allocation/free, with zero mismatches.
+  Loaded-player/getter execution and world-invalidation gates remain open.
   See [engine discovery](../research/le3-engine-access-discovery.md).
 - **L3-2, candidate integration:** the pinned original ME3 renderer and thin bridge reuse controller, floor, pad, colour,
   capture and replay modules. Unsupported UI/weapon/voice services remain unavailable. First-person world conversations
@@ -49,6 +50,10 @@ captured its runtime code; a second successful launch validated the corrected li
 Both restored with zero differences and released the run lock. Twenty runner safety tests pass. The launcher blocker
 is cleared. The subsequent engine probe passed 159/159 checks and restored with zero differences; the runner now has
 22 offline safety cases. The imported renderer has not been run or accepted in ME3.
+
+The engine/body/menu integration batch passed development and monolithic builds for all three games and the 59-test
+suite, with focused tests repeated after the native GUI mapping addition. Two retired clean, merged worktrees were
+removed using `clean-worktrees.py`; active lanes and worktrees holding unique private evidence remain preserved.
 
 ## Outcome and boundaries
 

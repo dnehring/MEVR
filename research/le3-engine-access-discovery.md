@@ -68,6 +68,18 @@ Private report, log and host/dump hashes remain in the protected session directo
 Next: native descriptor loading, same-tick getter/field agreement and world/actor invalidation,
 followed by the renderer and gameplay gates in the implementation plan.
 
+At 13:10 local, clean integration `05bad564` passed the extended **177/177** probe,
+including the descriptor queue/getter parameter blocks, all eight nested members, and
+their native target identities. The original native targets are queue `0xB4A270` and
+getter `0xB4A190`; pointer agreement is not yet a copy-lifetime proof. This second session
+also restored with zero differences and released the lock, without loading a save.
+
+Integration validation: all three development host/mod pairs and all three monolithic
+player builds passed. The existing 59-test suite passed, followed by five focused
+runner/context/shared-test passes after the last GUI mapping integration. SPDX and
+whitespace checks passed. Native gameplay, physical-headset review and campaign coverage
+remain open; no diagnostic candidate is left installed for the player.
+
 ## Historical foundation and capture record
 
 The following records the earlier discovery stages. Statements that the dump/layout were unavailable
