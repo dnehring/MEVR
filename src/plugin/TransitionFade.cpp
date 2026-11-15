@@ -5,11 +5,15 @@
 // everything. Nothing at all, not even a swapchain, until the first fade; freed for room like our other quads (plugin/Swapchains).
 // [Cinematics] fadeS (0.35; 0 off). Log `transition fade:`. Present thread.
 
+#include "plugin/TransitionFade.hpp"
+
 #include "core/Log.hpp"
 #include "core/vr/TransitionFade.hpp"
+#if defined(MEVR_WITH_HALCYON)
 #include "halcyon/le1/mevr_bridge.h"
-#include "plugin/CineScreen.hpp"
 #include "plugin/ConversationWorld.hpp"
+#endif
+#include "plugin/CineScreen.hpp"
 #include "plugin/Swapchains.hpp"
 #include "plugin/TestLoop.hpp"
 
@@ -110,9 +114,9 @@ bool Ensure(ID3D11Device* device, XrSession session) {
 
 } // namespace
 
-namespace MELEVR::MevrBridge {
+namespace mevr::host::transition_fade {
 
-const void* TransitionFadeLayer(void* session, void* viewSpace, ID3D11DeviceContext* context, int view) noexcept {
+const void* Layer(void* session, void* viewSpace, ID3D11DeviceContext* context, int view, bool cut) noexcept {
     tf::View const v = view == 0 ? tf::View::World
                      : view == 1 ? tf::View::Screen
                      : view == 2 ? tf::View::CinemaFlat
@@ -122,13 +126,8 @@ const void* TransitionFadeLayer(void* session, void* viewSpace, ID3D11DeviceCont
     unsigned const countBefore = gFade.Count();
     float const fadeS = mevr::host::cine_screen::FadeSeconds();
     double const nowS = static_cast<double>(GetTickCount64()) / 1000.0;
-    // A cut inside a world conversation (the player re-placed at Shepard's mark after the opening, research/59 "Part A").
-    static std::uint32_t lastCut = 0;
-    if (auto const convo = mevr::host::conversation_world::Current(); convo && convo->cut != lastCut) {
-        if (lastCut != 0 || convo->cut != 0) {
-            gFade.Cut(nowS, fadeS);
-        }
-        lastCut = convo->cut;
+    if (cut) {
+        gFade.Cut(nowS, fadeS);
     }
     float const alpha = gFade.Update(v, nowS, fadeS);
     if (gFade.Count() != countBefore && gLogs < kMaxLogs) {
@@ -169,4 +168,22 @@ const void* TransitionFadeLayer(void* session, void* viewSpace, ID3D11DeviceCont
     return &gQuad;
 }
 
+} // namespace mevr::host::transition_fade
+
+#if defined(MEVR_WITH_HALCYON)
+// LE1's seam (src/halcyon/le1/mevr_bridge.h, xr_session.cpp's last layer), forwarded to the shared Layer above, with LE1's
+// cut inside a world conversation (the player re-placed at Shepard's mark after the opening, research/59 "Part A").
+namespace MELEVR::MevrBridge {
+
+const void* TransitionFadeLayer(void* session, void* viewSpace, ID3D11DeviceContext* context, int view) noexcept {
+    static std::uint32_t lastCut = 0;
+    bool cut = false;
+    if (auto const convo = mevr::host::conversation_world::Current(); convo && convo->cut != lastCut) {
+        cut = lastCut != 0 || convo->cut != 0;
+        lastCut = convo->cut;
+    }
+    return mevr::host::transition_fade::Layer(session, viewSpace, context, view, cut);
+}
+
 } // namespace MELEVR::MevrBridge
+#endif

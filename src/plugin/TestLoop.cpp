@@ -15,6 +15,8 @@
 #include "plugin/Swapchains.hpp"
 #if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2)
 #include "plugin/Colour.hpp"  // both Halcyon hosts (LE2: the eye copy's correction)
+#include "plugin/CineScreen.hpp"  // both Halcyon hosts (ME1's 3D cinema screen)
+#include "plugin/CinemaBackdrop.hpp"
 #endif
 #if defined(MEVR_WITH_HALCYON)
 #include "plugin/Calibration.hpp"
@@ -823,6 +825,7 @@ ModuleBlocks ModuleStatus() {
 #endif
 #if defined(MEVR_WITH_HALCYON_LE2)
     m.colour = mevr::host::colour::StatusJson();
+    m.cineScreen = mevr::host::cine_screen::StatusJson();  // ME1's 3D cinema screen on LE2 (research/le2-cinema.md)
 #endif
 #if defined(MEVR_WITH_HALCYON_LE2) && defined(MEVR_WITH_MAIN_MENU)
     m.calibration = calibration::StatusJson();

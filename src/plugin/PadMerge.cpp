@@ -39,6 +39,7 @@ gp::Latches gLatches;
 bool gSquadMenuLogged = false;    // whether the mod's flag says the squad menu is open (logged when it changes)
 bool gNativeWheelLogged = false;  // the mod holds the game's weapon wheel (v12)
 bool gWheelPressALogged = false;
+bool gConversationTriggersLogged = false;  // the renderer said the conversation mode's triggers are the interrupts' (ME2)
 // Comfort (v17, game/comfort in the mod, research/31): whether the mod turns the player (logged when it changes), and
 // walking toward the left hand: whether it's on, and the left controller's last usable flat yaw (+ left, radians).
 bool gModTurnsLogged = false;
@@ -124,11 +125,31 @@ void NoControllers() {
     gSupportHeld.store(false, std::memory_order_relaxed);
 }
 
+gp::Options ConversationTriggers(gp::Options options) {
+    options.leftTrigger = true;           // LT (Paragon), not freed for the squad
+    options.leftTriggerShoulder = false;  // not LB ([Controls] leftTrigger = lb: the squad wheel's, on foot)
+    options.supportAims = false;          // a support grip still latched from gameplay pulls no LT
+    options.makoDrive = false;            // the Mako's lever and stick don't keep the left hand
+    options.makoLever = false;
+    options.makoStick = false;
+    options.powerWheel = false;           // the hand power wheel is on foot's
+    return options;
+}
+
 XINPUT_GAMEPAD Merge(XINPUT_GAMEPAD const& real, vr::controllers::State const& controllers, Renderer const& renderer,
     std::uint64_t nowMs) {
     std::lock_guard lock(gMutex);
     gp::Options options = Options(nowMs);
     options.gateRightClick = renderer.gateRightClick;  // host-only, never across the boundary (lane D2's gate; LE1 false)
+    if (renderer.conversationTriggers) {
+        options = ConversationTriggers(options);  // ME2's interrupts: LT and RT, as on a pad (LE1 never sets it)
+    }
+    if (renderer.conversationTriggers != gConversationTriggersLogged) {
+        gConversationTriggersLogged = renderer.conversationTriggers;
+        log::Info("halcyon bridge: {}", renderer.conversationTriggers
+            ? "the conversation mode: the triggers are the game's LT and RT (the interrupts: LT Paragon, RT Renegade)"
+            : "the conversation mode ended: the triggers are mapped as on foot again");
+    }
     if (renderer.ownMenuOpen) {
         // A squeeze in the menu never draws a weapon (the menu zeroes the game's pad). One that holds
         // the gun still isn't RB, so it doesn't reach the game as RB once the menu closes.
@@ -188,6 +209,9 @@ XINPUT_GAMEPAD Merge(XINPUT_GAMEPAD const& real, vr::controllers::State const& c
         // mapping, gamepad::GateClick, so a chord pressed left first isn't a crouch.)
         pad.wButtons &= ~(XINPUT_GAMEPAD_LEFT_THUMB | XINPUT_GAMEPAD_RIGHT_THUMB);
     }
+    if (renderer.conversationTriggers) {
+        return pad;  // the interrupts' triggers: no quad of the host's takes them in the conversation mode
+    }
     if (renderer.ownsLeftTrigger != nullptr && renderer.ownsLeftTrigger()) {
         pad.bLeftTrigger = 0;
     }
@@ -215,6 +239,7 @@ void Reset() {
     gModTurnsLogged = false;
     gModTurnsLogMs = 0;
     gHandWalkLogged = false;
+    gConversationTriggersLogged = false;
     gHandWalkLogMs = 0;
     gHandYaw.reset();
 }

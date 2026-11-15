@@ -61,7 +61,17 @@ struct Renderer {
     // R3 waits for L3 too, as L3 waits for R3 (game::gamepad::Options::gateRightClick, the stick chord's gate on both
     // clicks): ME2's (the owner's L3 + R3 priority); LE1 leaves it false (unchanged).
     bool gateRightClick = false;
+    // The game's conversation mode is up and its triggers are the interrupts' (ME2: LT Paragon, RT Renegade; M5.2,
+    // research/le2-cinema.md): ConversationTriggers below, and no trigger owner of the host's this poll. LE1 leaves it false.
+    bool conversationTriggers = false;
 };
+
+// ME2's interrupts on the triggers (the owner, 2026-11-14: "the triggers, as ME2 has them on a pad"): in the conversation
+// mode the left trigger reaches the game as LT and the right as RT whatever the mod's options would make of them on foot:
+// the left trigger is LT (not [Controls] leftTrigger = lb's squad-wheel LB, nor freed for the squad), no support grip still
+// latched from gameplay pulls LT, and neither the Mako's controls nor the hand power wheel keep the left hand. The game's own
+// route then takes the interrupt (SFXGameModeConversation.InterruptParagon / InterruptRenegade).
+game::gamepad::Options ConversationTriggers(game::gamepad::Options options);
 
 // The motion controllers (`controllers.active`) mapped with the mod's options at `nowMs` and merged over `real` (a real
 // pad's state, or a neutral one): what the game's pad 0 reads, before the bridge's own close latch and packet number.

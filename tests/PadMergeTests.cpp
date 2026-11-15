@@ -394,6 +394,78 @@ void TestRightClickGate() {
     CHECK((pad.wButtons & XINPUT_GAMEPAD_RIGHT_THUMB) != 0);
 }
 
+// ME2's interrupts on the triggers (Renderer::conversationTriggers, M5.2): in the conversation mode the left trigger is LT
+// and the right RT whatever the mod's flags say on foot ([Controls] leftTrigger = lb, the left trigger freed for the squad, a
+// support grip still latched, the Mako's lever) and whatever of the host's owns a trigger; out of it, the flags again.
+void TestConversationTriggers() {
+    pm::Reset();
+    pm::Renderer renderer;
+    State s = Controllers(1000);
+    // On foot with the squad wheel's LB ([Controls] leftTrigger = lb) and the trigger not LT.
+    std::uint32_t const onFoot = gp::kFlagLeftTriggerShoulder | gp::kFlagSupportAims;
+    pm::SetSupportGrip(-1.0f, 0.12f, 0.22f, onFoot);
+    s.left.trigger = s.right.trigger = 1.0f;
+    XINPUT_GAMEPAD pad = pm::Merge({}, s, renderer, GetTickCount64());
+    CHECK(pad.bLeftTrigger == 0 && (pad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) != 0 && pad.bRightTrigger == 255);
+    // The conversation mode: LT and RT, no LB.
+    renderer.conversationTriggers = true;
+    s.timeMs += 16;
+    pad = pm::Merge({}, s, renderer, GetTickCount64());
+    CHECK(pad.bLeftTrigger == 255 && pad.bRightTrigger == 255 && (pad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) == 0);
+    // Let go: nothing (no interrupt by itself).
+    s.left.trigger = s.right.trigger = 0.0f;
+    s.timeMs += 16;
+    pad = pm::Merge({}, s, renderer, GetTickCount64());
+    CHECK(pad.bLeftTrigger == 0 && pad.bRightTrigger == 0);
+    // The host's trigger owners don't take them there (a pointer on a quad of ours).
+    gOwnsLeft = true;
+    gOwnsBoth = true;
+    renderer.ownsLeftTrigger = &OwnsLeft;
+    renderer.ownsTriggers = &OwnsBoth;
+    s.left.trigger = 1.0f;
+    s.timeMs += 16;
+    pad = pm::Merge({}, s, renderer, GetTickCount64());
+    CHECK(pad.bLeftTrigger == 255 && pad.bRightTrigger == 0);
+    s.left.trigger = 0.0f;
+    s.right.trigger = 1.0f;
+    s.timeMs += 16;
+    pad = pm::Merge({}, s, renderer, GetTickCount64());
+    CHECK(pad.bLeftTrigger == 0 && pad.bRightTrigger == 255);
+    // A support grip latched from gameplay pulls no LT in the conversation (an accidental Paragon interrupt).
+    pm::Reset();
+    pm::Renderer foot;
+    State g = Controllers(1000);
+    std::uint32_t const grip = gp::kFlagLeftTrigger | gp::kFlagSupportAims;
+    pm::SetSupportGrip(0.05f, 0.12f, 0.22f, grip);
+    (void)pm::Merge({}, g, foot, GetTickCount64());  // the grip open: armed
+    g.left.squeeze = 1.0f;
+    g.timeMs += 16;
+    pad = pm::Merge({}, g, foot, GetTickCount64());
+    CHECK(pm::SupportGripHeld() && pad.bLeftTrigger == 255);  // on foot: aimed fire
+    pm::Renderer convo;
+    convo.conversationTriggers = true;
+    g.timeMs += 16;
+    pad = pm::Merge({}, g, convo, GetTickCount64());
+    CHECK(pad.bLeftTrigger == 0);
+    // The Mako's driving keeps the left trigger off its lever on foot... in the conversation mode it's LT.
+    pm::SetSupportGrip(-1.0f, 0.12f, 0.22f, gp::kFlagLeftTrigger | gp::kFlagMakoDrive);
+    State m = Controllers(5000);
+    m.left.trigger = 1.0f;
+    pad = pm::Merge({}, m, foot, GetTickCount64());
+    CHECK(pad.bLeftTrigger == 0);
+    m.timeMs += 16;
+    pad = pm::Merge({}, m, convo, GetTickCount64());
+    CHECK(pad.bLeftTrigger == 255);
+    // ConversationTriggers itself.
+    gp::Options o;
+    o.leftTrigger = false;
+    o.leftTriggerShoulder = true;
+    o.supportAims = true;
+    o.makoDrive = o.makoLever = o.makoStick = o.powerWheel = true;
+    gp::Options const c = pm::ConversationTriggers(o);
+    CHECK(c.leftTrigger && !c.leftTriggerShoulder && !c.supportAims && !c.makoDrive && !c.makoLever && !c.makoStick && !c.powerWheel);
+}
+
 } // namespace
 
 int main() {
@@ -405,6 +477,7 @@ int main() {
     TestLeftGripAway();
     TestWalkTowardHand();
     TestRightClickGate();
+    TestConversationTriggers();
     if (gFailures == 0) {
         std::printf("pad merge tests passed\n");
     }

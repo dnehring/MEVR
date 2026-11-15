@@ -5,10 +5,12 @@
 
 #include "core/Log.hpp"
 #include "core/vr/Floor.hpp"
+#if defined(MEVR_WITH_HALCYON)
 #include "halcyon/le1/mevr_bridge.h"
+#endif
 #include "plugin/CineScreen.hpp"
 #include "plugin/CinemaBackdropDraw.hpp"
-#include "plugin/Halcyon.hpp"
+#include "plugin/XrHost.hpp"
 #include "plugin/Swapchains.hpp"
 #include "plugin/TestLoop.hpp"
 #include "plugin/menu/StateGuard.hpp"
@@ -157,9 +159,9 @@ std::string StatusJson() {
 
 } // namespace mevr::host::cinema_backdrop
 
-namespace MELEVR::MevrBridge {
+namespace mevr::host::cinema_backdrop {
 
-const void* CinemaBackdropLayer(const BackdropFrame& frame) noexcept {
+const void* Layer(Frame const& frame) noexcept {
     namespace cb = mevr::host::cinema_backdrop;
     namespace draw = mevr::host::cinema_backdrop_draw;
     mevr::host::cine_screen::Backdrop const wanted = mevr::host::cine_screen::BackdropWanted();
@@ -191,7 +193,7 @@ const void* CinemaBackdropLayer(const BackdropFrame& frame) noexcept {
     cb::gLastDrawMs = now;
     float const headY = 0.5f * (frame.eyePosition[0][1] + frame.eyePosition[1][1]);
     mevr::vr::floor::State floor;
-    mevr::host::halcyon::Floor(&floor);
+    mevr::host::xr_host::Floor(&floor);
     bool const stage = floor.valid && floor.eyeHeight > 0.5f && floor.eyeHeight < 2.5f;
     if (fresh) {
         cb::gSequenceStartMs = now;
@@ -265,4 +267,38 @@ const void* CinemaBackdropLayer(const BackdropFrame& frame) noexcept {
     return &cb::gLayer;
 }
 
+} // namespace mevr::host::cinema_backdrop
+
+#if defined(MEVR_WITH_HALCYON)
+// LE1's seam (src/halcyon/le1/mevr_bridge.h, xr_session.cpp's screen branch), forwarded to the shared Layer above.
+namespace MELEVR::MevrBridge {
+
+const void* CinemaBackdropLayer(const BackdropFrame& frame) noexcept {
+    mevr::host::cinema_backdrop::Frame f;
+    f.session = frame.session;
+    f.appSpace = frame.appSpace;
+    f.context = frame.context;
+    f.headValid = frame.headValid;
+    for (int e = 0; e < 2; ++e) {
+        for (int i = 0; i < 4; ++i) {
+            f.eyeOrientation[e][i] = frame.eyeOrientation[e][i];
+            f.eyeFov[e][i] = frame.eyeFov[e][i];
+        }
+        for (int i = 0; i < 3; ++i) {
+            f.eyePosition[e][i] = frame.eyePosition[e][i];
+        }
+    }
+    for (int i = 0; i < 4; ++i) {
+        f.screenOrientation[i] = frame.screenOrientation[i];
+    }
+    for (int i = 0; i < 3; ++i) {
+        f.screenPosition[i] = frame.screenPosition[i];
+    }
+    f.screenWidthM = frame.screenWidthM;
+    f.eyeWidth = frame.eyeWidth;
+    f.eyeHeight = frame.eyeHeight;
+    return mevr::host::cinema_backdrop::Layer(f);
+}
+
 } // namespace MELEVR::MevrBridge
+#endif

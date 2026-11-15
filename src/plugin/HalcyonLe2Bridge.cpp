@@ -9,10 +9,13 @@
 
 #include "core/Breadcrumbs.hpp"
 #include "core/Log.hpp"
+#include "core/vr/CineScreen.hpp"
 #include "core/vr/Colour.hpp"
 #include "core/vr/Controllers.hpp"
 #include "core/vr/HostView.hpp"
 #include "game/GamepadMapping.hpp"
+#include "plugin/CinemaBackdrop.hpp"
+#include "plugin/CineScreen.hpp"
 #include "plugin/Colour.hpp"
 #include "plugin/CrashBreadcrumbs.hpp"
 #include "plugin/EyeCopy.hpp"
@@ -26,8 +29,10 @@
 #include "plugin/Swapchains.hpp"
 #include "plugin/TestLoop.hpp"
 #include "plugin/SightLayers.hpp"
+#include "plugin/TransitionFade.hpp"
 #include "plugin/TraversalCue.hpp"
 #include "plugin/Vignette.hpp"
+#include "plugin/WorldPanels.hpp"
 #include "plugin/XrHost.hpp"
 
 #include <openxr/openxr.h>
@@ -35,7 +40,9 @@
 #include <d3d11.h>
 #include <dxgi1_6.h>
 
+#include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <mutex>
@@ -50,6 +57,9 @@ std::atomic<std::uint64_t> gFloorTranslatedMs{0};
 constexpr std::uint64_t kFloorTranslateQuietMs = 100;
 
 std::mutex gPadMutex;  // the packet numbering below (XInput is polled from any thread; the latches are plugin/PadMerge's)
+// ME2's conversation game mode (SFXGameModeManager.CurrentMode, me2_xr.cpp's [VRCINE] 5 = Conversation): its triggers are the
+// interrupts' (BIOInput.ini's conversation bindings: LT InterruptParagon, RT InterruptRenegade; research/le2-interrupt-acquisition.md).
+constexpr int kConversationMode = 5;
 XINPUT_GAMEPAD gLastPad{};
 DWORD gPacket = 0;
 
@@ -77,6 +87,23 @@ struct UiTrace {
 UiTrace gUiTrace;
 void* gBackbuffer = nullptr;   // identity only: this present's backbuffer
 unsigned gUiTracePresents = 0;
+
+// ME1's 3D cinema screen (research/le2-cinema.md): this frame's screen as CineScreenLayers placed it, for OverlayLayers' UI
+// layer in front of it (Present thread; cleared once OverlayLayers used it), and the headset's eye distance for the plan.
+struct ScreenNow {
+    bool active = false;
+    void* space = nullptr;
+    bool headLocked = false;
+    float orientation[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+    float position[3] = {};
+    float widthM = 0.0f;
+    float heightM = 0.0f;
+    float crop = 0.0f;
+    float rows[2] = {0.0f, 1.0f};   // the shown band's rows, fractions of the eye image's height
+};
+ScreenNow gScreen;
+std::atomic<float> gIpdM{0.0f};
+XrCompositionLayerQuad gScreenQuads[2] = {{XR_TYPE_COMPOSITION_LAYER_QUAD}, {XR_TYPE_COMPOSITION_LAYER_QUAD}};
 
 } // namespace
 
@@ -123,6 +150,7 @@ void OnFrameBegun(void* session, void* space, std::int64_t predictedDisplayTime)
     if (session == nullptr) {
         return;
     }
+    mevr::host::world_panels::NoteFrame();  // every frame: a panel (the 3D cinema screen) knows whether it was shown before
     mevr::vr::controllers::State state;
     mevr::host::xr_host::OnFrameBegun(static_cast<XrSession>(session), static_cast<XrSpace>(space),
         static_cast<XrTime>(predictedDisplayTime), state);
@@ -196,6 +224,7 @@ void JournalFloorViewWrite(void const* origin, void const* preTranslation) noexc
 void OnRecentered() noexcept {
     mevr::host::xr_host::NoteRecentered();
     mevr::host::hud_panel::Recentered();  // the HUD panel straight ahead again
+    mevr::host::world_panels::Recenter();  // the 3D cinema screen placed afresh
     mevr::host::menus_le2::OnRecentered();  // our menu and the calibration placed again (M4)
     mevr::log::Info("halcyon le2 bridge: recentered");
 }
@@ -371,6 +400,7 @@ void OnSwapChainPresent(void* swapChain, void* capturedSwapChain) noexcept {
 // each the same module LE1's host composes (no copies), in LE1's order.
 unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsigned capacity) noexcept {
     if (layersOut == nullptr || capacity == 0 || frame.session == nullptr || frame.context == nullptr) {
+        gScreen = ScreenNow{};
         return 0;
     }
     unsigned count = 0;
@@ -429,6 +459,29 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
         panel.dropM = cfg.hudPanelDropM;
         panel.followDeg = cfg.hudPanelFollowDeg;
         panel.widthM = cfg.hudPanelWidthM;
+        // ME1's 3D cinema screen is up (CineScreenLayers, this frame): the game's UI (the dialogue wheel, subtitles, the
+        // interrupt prompt) on a layer of its own just in front of it ([Cinematics] uiLayer, uiForwardM; research/52
+        // "Cross-eyed"), the part of the window the screen shows, as large to the eye as on the screen.
+        if (mevr::host::cine_screen::UiLayer const uiLayer = mevr::host::cine_screen::UiLayerWanted();
+            gScreen.active && uiLayer.on && gScreen.widthM > 0.0f && gScreen.heightM > 0.0f) {
+            namespace cs = mevr::vr::cine_screen;
+            float const origin[3] = {0.0f, 0.0f, 0.0f};
+            cs::UiPlace const at = cs::PlaceUi(gScreen.position, gScreen.headLocked ? origin : frame.headPosition, uiLayer.forwardM);
+            cs::UiPart const part = cs::UiPartShown(gScreen.crop, gScreen.rows[0], gScreen.rows[1]);
+            float const scale = at.valid ? at.scale : 1.0f;
+            panel.screenUi = true;
+            panel.screenSpace = static_cast<XrSpace>(gScreen.space);
+            panel.screenPose.orientation = {gScreen.orientation[0], gScreen.orientation[1], gScreen.orientation[2],
+                gScreen.orientation[3]};
+            float const* const p = at.valid ? at.position : gScreen.position;
+            panel.screenPose.position = {p[0], p[1], p[2]};
+            panel.screenSize = {gScreen.widthM * scale, gScreen.heightM * scale};
+            panel.screenPart[0] = part.u0;
+            panel.screenPart[1] = part.v0;
+            panel.screenPart[2] = part.u1;
+            panel.screenPart[3] = part.v1;
+            panel.screenForwardM = at.valid ? uiLayer.forwardM : 0.0f;
+        }
         // The HUD keeps the movie's own layout on the panel (Halcyon's per-element HUD moves stand down), as LE1's.
         mevr::host::renderer::SetAuthoredHudLayout(panel.enabled && panel.stereo && mevr::host::hud_panel::Usable());
         // The HUD pieces on the body (plugin/HudPieceLayers, LE1's, research/41): on foot, the squad's block on the left
@@ -552,7 +605,121 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
     if (device != nullptr) {
         device->Release();
     }
+    gScreen = ScreenNow{};  // this frame's 3D screen used; the next submit places it again
     return count;
+}
+
+// ---- ME1's 3D cinema screen (plugin/CineScreen, CinemaBackdrop, WorldPanels; research/52, research/le2-cinema.md) ----------
+bool CineScreenWanted(bool conversation) noexcept {
+    return mevr::host::cine_screen::Wanted(conversation);
+}
+
+float CineScreenHalfSeparationUU(float halfH) noexcept {
+    namespace cs = mevr::vr::cine_screen;
+    // The lens is THIS view's (calcview's SFR branch reads the projection it builds): no rescale for a cut, as LE1's render hook
+    // needs. Unknown, it is planned at the widest lens a director uses (kMaxLensHalfH), as LE1's plan does.
+    float const planHalfH = halfH > 0.0f ? halfH : cs::kMaxLensHalfH;
+    cs::Frame const plan = mevr::host::cine_screen::PlanFrame(planHalfH, gIpdM.load(std::memory_order_relaxed),
+        cs::kSceneUnitsPerMeter);   // convergeM is a distance in the scene, at its own scale (ME2's skeleton is ME1's)
+    return 0.5f * plan.baselineUU;
+}
+
+unsigned CineScreenLayers(const CineScreenFrame& frame, const void** layersOut, unsigned capacity) noexcept {
+    gScreen = ScreenNow{};
+    if (layersOut == nullptr || capacity < 2 || frame.session == nullptr || frame.appSpace == nullptr ||
+        frame.eyeSwapchain[0] == nullptr || frame.eyeSwapchain[1] == nullptr || frame.eyeWidth == 0 || frame.eyeHeight == 0) {
+        return 0;
+    }
+    float headQ[4] = {frame.eyeOrientation[0][0], frame.eyeOrientation[0][1], frame.eyeOrientation[0][2],
+        frame.eyeOrientation[0][3]};
+    float headP[3] = {};
+    for (int i = 0; i < 3; ++i) {
+        headP[i] = 0.5f * (frame.eyePosition[0][i] + frame.eyePosition[1][i]);
+    }
+    if (frame.headValid) {
+        float const dx = frame.eyePosition[1][0] - frame.eyePosition[0][0];
+        float const dy = frame.eyePosition[1][1] - frame.eyePosition[0][1];
+        float const dz = frame.eyePosition[1][2] - frame.eyePosition[0][2];
+        gIpdM.store(std::sqrt(dx * dx + dy * dy + dz * dz), std::memory_order_relaxed);
+    }
+    mevr::host::cine_screen::Quads const q = mevr::host::cine_screen::QuadsNow(frame.eyeWidth, frame.eyeHeight);
+    float const viewPos[3] = {0.0f, 0.0f, -q.distanceM};
+    namespace wp = mevr::host::world_panels;
+    wp::Pose const placed = wp::Place(frame.conversation ? wp::Kind::Conversation : wp::Kind::Cutscene, viewPos, frame.viewSpace,
+        frame.appSpace, frame.headValid, headQ, headP);
+    float const heightM = q.heightM > 0.1f ? q.heightM : q.widthM * 9.0f / 16.0f;
+    unsigned count = 0;
+    if (capacity >= 3) {   // the floor and horizon under the screen's quads (LE1's order)
+        mevr::host::cinema_backdrop::Frame bf;
+        bf.session = frame.session;
+        bf.appSpace = frame.appSpace;
+        bf.context = frame.context;
+        bf.headValid = frame.headValid && !placed.headLocked;   // a head-locked screen isn't in the room: no floor under it
+        for (int e = 0; e < 2; ++e) {
+            for (int i = 0; i < 4; ++i) {
+                bf.eyeOrientation[e][i] = frame.eyeOrientation[e][i];
+                bf.eyeFov[e][i] = frame.eyeFov[e][i];
+            }
+            for (int i = 0; i < 3; ++i) {
+                bf.eyePosition[e][i] = frame.eyePosition[e][i];
+            }
+        }
+        for (int i = 0; i < 4; ++i) {
+            bf.screenOrientation[i] = placed.orientation[i];
+        }
+        for (int i = 0; i < 3; ++i) {
+            bf.screenPosition[i] = placed.position[i];
+        }
+        bf.screenWidthM = q.widthM;
+        // Its images in the shape of the eye's field of view (ME2's eye images are the game's 16:9 window, the headset's eyes
+        // nearly square; LE1's eye images are the headset's shape): the eye images' height across, as tall as the view is.
+        float const tanW = std::tan(frame.eyeFov[0][1]) - std::tan(frame.eyeFov[0][0]);
+        float const tanH = std::tan(frame.eyeFov[0][2]) - std::tan(frame.eyeFov[0][3]);
+        bf.eyeWidth = static_cast<int>(frame.eyeHeight);
+        bf.eyeHeight = tanW > 0.1f && tanH > 0.1f ? static_cast<int>(static_cast<float>(frame.eyeHeight) * tanH / tanW)
+                                                  : static_cast<int>(frame.eyeHeight);
+        if (const void* backdrop = mevr::host::cinema_backdrop::Layer(bf)) {
+            layersOut[count++] = backdrop;
+        }
+    }
+    for (int e = 0; e < 2; ++e) {
+        XrCompositionLayerQuad& quad = gScreenQuads[e];
+        quad = {XR_TYPE_COMPOSITION_LAYER_QUAD};
+        quad.layerFlags = 0;
+        quad.space = static_cast<XrSpace>(placed.space);
+        quad.eyeVisibility = e == 0 ? XR_EYE_VISIBILITY_LEFT : XR_EYE_VISIBILITY_RIGHT;
+        quad.subImage.swapchain = static_cast<XrSwapchain>(frame.eyeSwapchain[e]);
+        quad.subImage.imageArrayIndex = 0;
+        bool const rectOk = q.rect[e][2] > 0 && q.rect[e][3] > 0;
+        quad.subImage.imageRect = {{rectOk ? q.rect[e][0] : 0, rectOk ? q.rect[e][1] : 0},
+            {rectOk ? q.rect[e][2] : static_cast<int32_t>(frame.eyeWidth), rectOk ? q.rect[e][3] : static_cast<int32_t>(frame.eyeHeight)}};
+        quad.pose.orientation = {placed.orientation[0], placed.orientation[1], placed.orientation[2], placed.orientation[3]};
+        quad.pose.position = {placed.position[0], placed.position[1], placed.position[2]};
+        quad.size = {q.widthM, heightM};
+        layersOut[count++] = &quad;
+    }
+    mevr::host::cine_screen::NoteSubmit(frame.conversation, heightM);
+    gScreen.active = true;
+    gScreen.space = placed.space;
+    gScreen.headLocked = placed.headLocked;
+    for (int i = 0; i < 4; ++i) {
+        gScreen.orientation[i] = placed.orientation[i];
+    }
+    for (int i = 0; i < 3; ++i) {
+        gScreen.position[i] = placed.position[i];
+    }
+    gScreen.widthM = q.widthM;
+    gScreen.heightM = heightM;
+    gScreen.crop = q.crop > 0.0f && q.crop < 0.25f ? q.crop : 0.0f;
+    if (q.rect[0][3] > 0) {
+        gScreen.rows[0] = static_cast<float>(q.rect[0][1]) / static_cast<float>(frame.eyeHeight);
+        gScreen.rows[1] = static_cast<float>(q.rect[0][1] + q.rect[0][3]) / static_cast<float>(frame.eyeHeight);
+    }
+    return count;
+}
+
+const void* TransitionFadeLayer(void* session, void* viewSpace, ID3D11DeviceContext* context, int view) noexcept {
+    return mevr::host::transition_fade::Layer(session, viewSpace, context, view);
 }
 
 bool HudPanelDraw(ID3D11DeviceContext* context, void (*draw)(void*), void* user, bool textBatch, bool afterLeftEye) noexcept {
@@ -683,6 +850,9 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
         renderer.ownMenuOpen = mevr::host::renderer::OwnMenuOpen();  // Halcyon's ME2 menu
         renderer.headLookYawUU = &mevr::host::renderer::MoveStickHeadLookYawUU;  // its "run where you look", after the merge
         renderer.gateRightClick = true;
+        // ME2's interrupts (M5.2, research/le2-cinema.md): in the conversation mode (game mode 5) the triggers are the game's
+        // LT (Paragon) and RT (Renegade), as on a pad; nothing of ours keeps them (pad_merge::ConversationTriggers).
+        renderer.conversationTriggers = mevr::host::renderer::GameMode() == kConversationMode;
         pad = mevr::host::pad_merge::Merge(pad, controllers, renderer, GetTickCount64());
     }
     // Neutral while our menu or the calibration has it; after, what was held then is kept from the game until let go.

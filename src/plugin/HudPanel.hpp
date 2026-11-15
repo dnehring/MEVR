@@ -163,6 +163,16 @@ struct Frame {
     // windows of this frame's UI are blitted onto quads of their own (the HUD pieces). Null: nothing.
     void (*beforeClear)(void* user, bool shown) = nullptr;
     void* user = nullptr;
+    // The 3D cinema screen is up and its UI stands on a layer of its own (research/52 "Cross-eyed", [Cinematics] uiLayer;
+    // LE1's HalcyonOverlays screen branch): the game's UI (the dialogue wheel, subtitles, ME2's interrupt prompt) goes to the
+    // panel in any frame of it (not only gameplay's world frames) and its part `screenPart` (u0, v0, u1, v1 of the panel: the
+    // columns and rows the screen shows) is shown at `screenPose` in `screenSpace`, `screenSize` metres, unmasked.
+    bool screenUi = false;
+    XrSpace screenSpace = XR_NULL_HANDLE;
+    XrPosef screenPose{{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f}};
+    XrExtent2Df screenSize{0.0f, 0.0f};
+    float screenPart[4] = {0.0f, 0.0f, 1.0f, 1.0f};
+    float screenForwardM = 0.0f;  // for the log: how far in front of the screen
 };
 // Shows the panel for this frame (its quad, or nullptr), clears it and arms the next frame's UI redirect: exactly
 // LE1's HalcyonOverlays for a frame with no wheel, label, world screen or cinema screen (its HUD pieces' masks given).

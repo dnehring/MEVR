@@ -71,6 +71,7 @@ std::atomic_bool g_cineVrConvo{false};
 std::atomic_bool g_cineVrCutscene{false};
 std::atomic_bool g_cineVrHeadTracking{true};
 std::atomic_bool g_vrCineActive{false};   // runtime: a VR cine is being rendered this frame
+std::atomic_bool g_mevrCineScreen{false}; // [MEVR] runtime: ...on ME1's 3D cinema screen (research/le2-cinema.md)
 std::atomic<unsigned> g_p1CalcSeq{0};     // [ENGCINE] P1 CalcSceneView heartbeat (see bump site)
 std::atomic_bool g_engCineAlive{true};    // [ENGCINE] gm8+alive scene = in-engine cutscene (toggle for A/B)
 std::atomic<int> g_cineEnterFrames{8};    // [CINEDEBOUNCE] consecutive narrow frames before cine entry (0 = instant/old)
@@ -796,11 +797,10 @@ void ApplyHeadLook(std::uintptr_t sv) noexcept
     // Positional tracking is independent of camera-rotation ownership. Dialogue and
     // cutscene cameras may suppress rotation without suppressing physical lean.
     // CineVrHeadTracking=0 remains an explicit full cinematic tracking lock.
-    const bool cineTrackingLocked =
-        g_vrCineActive.load(std::memory_order_acquire) &&
-        !g_cineVrHeadTracking.load(std::memory_order_acquire);
+    const bool cineTrackingLocked = ME2VR::CalcViewHook::GetCineTrackingLocked();   // [MEVR] or the 3D cinema screen's
     if (!cineTrackingLocked)
         ApplyHeadPosition(sv);   // uses the director/game camera basis, pre-rotation
+    if (g_mevrCineScreen.load(std::memory_order_acquire)) return;   // [MEVR] the screen: head look parked too
 
     if (!g_headLookEnabled.load(std::memory_order_acquire)) return;
     constexpr float kUUToRad = 6.28318530718f / 65536.0f;
@@ -927,6 +927,8 @@ void ApplyFov(std::uintptr_t sv) noexcept
     g_renderHalfFovH.store(g_gameRawFovH.load(std::memory_order_relaxed), std::memory_order_relaxed);
     g_renderHalfFovV.store(g_gameRawFovV.load(std::memory_order_relaxed), std::memory_order_relaxed);
     if (!g_fovFillOn.load(std::memory_order_acquire)) { FovExit("fillOff"); return; }
+    // [MEVR] ME1's 3D cinema screen: the shot at the game's own projection, as the director framed it (research/52)
+    if (g_mevrCineScreen.load(std::memory_order_acquire)) { FovExit("mevrCineScreen"); return; }
     const float th = g_fovFillH.load(std::memory_order_relaxed);   // headset fill target (half-FOV, aspect-corr)
     const float tv = g_fovFillV.load(std::memory_order_relaxed);
     if (th < 0.01f || tv < 0.01f) { FovExit("targetZero"); return; }
@@ -1004,6 +1006,15 @@ void ApplyFov(std::uintptr_t sv) noexcept
     g_renderHalfFovV.store(renderV, std::memory_order_relaxed);
     g_gameHalfFovH.store(th, std::memory_order_relaxed);   // SUBMIT headset target; render is narrower => zoom-fill
     g_gameHalfFovV.store(tv, std::memory_order_relaxed);
+}
+
+// [MEVR] This view's horizontal half-FOV (radians) from its projection (proj[0] = 1/tan(halfH)); 0 if unreadable.
+float MevrViewHalfFovH(std::uintptr_t sv) noexcept
+{
+    float p0 = 0.0f;
+    __try { p0 = reinterpret_cast<const volatile float*>(sv + kFsvProjectionMatrix)[0]; }
+    __except (EXCEPTION_EXECUTE_HANDLER) { p0 = 0.0f; }
+    return p0 > 0.0001f ? atanf(1.0f / p0) : 0.0f;
 }
 
 bool ReadRect(std::uintptr_t sv, float* r4) noexcept
@@ -1300,6 +1311,7 @@ void* __fastcall CalcViewDetour(void* lp, void* family, void* loc, void* rot, vo
     } fovSrc;
     if (g_vrEnabled.load(std::memory_order_acquire) && isP1 &&
         !ME2VR::ConvoFp::IsArmed() &&                       // CONVOFP already owns the camera FOV
+        !g_mevrCineScreen.load(std::memory_order_acquire) &&   // [MEVR] the 3D cinema screen: the game's own FOV
         g_fovFillOn.load(std::memory_order_acquire))
     {
         const int m = g_vrMode.load(std::memory_order_acquire);
@@ -1441,6 +1453,13 @@ void* __fastcall CalcViewDetour(void* lp, void* family, void* loc, void* rot, vo
             InvMatScanTick(svu);             // [INVMAT] pristine-view scan (one-shot; must precede any edit)
             float he = g_halfEyeUU.load(std::memory_order_relaxed);
             if (g_swapEyes.load(std::memory_order_relaxed)) he = -he;
+#if defined(MEVR_ASI)
+            // [MEVR] ME1's 3D cinema screen (research/52): two parallel cameras on the director's camera, half our plan's
+            // separation each side, planned from THIS view's own lens (proj[0] = 1/tan(halfH)); pass 0 always the left eye
+            // (the submit routes it so: no swap), no convergence.
+            if (g_mevrCineScreen.load(std::memory_order_acquire))
+                he = ::ME2VR::MevrBridge::CineScreenHalfSeparationUU(MevrViewHalfFovH(svu));
+#endif
             const float signedUU = t_replay ? +he : -he;   // pass1 = right (+), pass0 = left (-)
             ApplyEyeOffset(svu, signedUU);   // IPD only (lean comes from ApplyHeadLook)
             ApplyHeadLook(svu);              // offset BEFORE head rotation (same order as stereo/AER)
@@ -1633,6 +1652,13 @@ void GetConvoFpCounts(unsigned long long* applies, unsigned long long* skips) no
 void SetCineVrHeadTracking(bool on) noexcept { g_cineVrHeadTracking.store(on, std::memory_order_release); }
 bool GetVrCineActive() noexcept { return g_vrCineActive.load(std::memory_order_acquire); }
 void SetVrCineActive(bool on) noexcept { g_vrCineActive.store(on, std::memory_order_release); }
+bool GetMevrCineScreen() noexcept { return g_mevrCineScreen.load(std::memory_order_acquire); }   // [MEVR]
+void SetMevrCineScreen(bool on) noexcept { g_mevrCineScreen.store(on, std::memory_order_release); }   // [MEVR]
+bool GetCineTrackingLocked() noexcept   // [MEVR]
+{
+    return (g_vrCineActive.load(std::memory_order_acquire) && !g_cineVrHeadTracking.load(std::memory_order_acquire)) ||
+           g_mevrCineScreen.load(std::memory_order_acquire);
+}
 unsigned GetP1CalcSeq() noexcept { return g_p1CalcSeq.load(std::memory_order_relaxed); }   // [ENGCINE]
 bool GetEngCineAlive() noexcept { return g_engCineAlive.load(std::memory_order_acquire); }
 void SetEngCineAlive(bool on) noexcept { g_engCineAlive.store(on, std::memory_order_release); }

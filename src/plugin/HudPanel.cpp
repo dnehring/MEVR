@@ -1064,12 +1064,15 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) noexcept {
     Place(frame.head.orientation, frame.headValid, settings, frame.followDeg, dt);
 
     XrCompositionLayerQuad const* shown = nullptr;
-    if (frame.worldFrame && engaged && frame.gameplay && gPanel.texture != nullptr && frame.device != nullptr) {
+    // Gameplay's world frames, or any frame of the 3D cinema screen with its UI layer (LE1's HalcyonOverlays `screenUi`).
+    bool const wanted = (frame.worldFrame && frame.gameplay) || frame.screenUi;
+    static bool screenUiShown = false;  // Present thread
+    if (wanted && engaged && gPanel.texture != nullptr && frame.device != nullptr) {
         NoteDrawsLastFrame(draws.draws);
         BlitOptions options;
         options.colourSeed = 2;  // the HUD panel's dither pattern, as LE1's
         options.backdrop = frame.backdrop;  // a game screen standing in the world (LE1's BlitOptionsFor)
-        if (Render(frame.context, frame.device, frame.session, frame.whiteScale, frame.masks, options)) {
+        if (Render(frame.context, frame.device, frame.session, frame.whiteScale, frame.screenUi ? Masks{} : frame.masks, options)) {
             float const width = std::clamp(frame.widthM, 0.3f, 4.0f);
             gQuad = {XR_TYPE_COMPOSITION_LAYER_QUAD};
             gQuad.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;  // premultiplied
@@ -1080,6 +1083,28 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) noexcept {
                 {static_cast<int32_t>(gPanelSwapchain.width), static_cast<int32_t>(gPanelSwapchain.height)}};
             gQuad.pose = gPlacement.Pose(settings);
             gQuad.size = {width, width * static_cast<float>(gPanel.height) / static_cast<float>(gPanel.width)};
+            if (frame.screenUi) {
+                // The part of the window the screen shows, on a quad in front of the screen toward the eyes, as large to the
+                // eye as on the screen: no disparity of its own, so it sits nearer than the scene behind it (LE1's).
+                auto const sw = static_cast<float>(gPanelSwapchain.width);
+                auto const sh = static_cast<float>(gPanelSwapchain.height);
+                float const* const part = frame.screenPart;
+                gQuad.subImage.imageRect = {{static_cast<int32_t>(part[0] * sw), static_cast<int32_t>(part[1] * sh)},
+                    {std::max<int32_t>(1, static_cast<int32_t>((part[2] - part[0]) * sw)),
+                        std::max<int32_t>(1, static_cast<int32_t>((part[3] - part[1]) * sh))}};
+                gQuad.space = frame.screenSpace != XR_NULL_HANDLE ? frame.screenSpace : frame.appSpace;
+                gQuad.pose = frame.screenPose;
+                gQuad.size = frame.screenSize;
+                if (!screenUiShown) {
+                    char line[320];
+                    std::snprintf(line, sizeof line,
+                        "[MEVR-HUD] the 3D screen's UI on its own layer %.2f m in front of the screen (%.2f x %.2f m); the UI's part "
+                        "u %.3f..%.3f v %.3f..%.3f of %ux%u", frame.screenForwardM, gQuad.size.width, gQuad.size.height, part[0],
+                        part[2], part[1], part[3], gPanel.width, gPanel.height);
+                    LogBoth(line);
+                }
+                screenUiShown = true;
+            }
             shown = &gQuad;
             if (!gLoggedPanel || now >= gNextPanelLogMs) {
                 char line[384];
@@ -1097,6 +1122,10 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) noexcept {
             }
         }
     }
+    if (screenUiShown && !(frame.screenUi && shown != nullptr)) {
+        screenUiShown = false;
+        LogBoth("[MEVR-HUD] the 3D screen's UI layer is gone");
+    }
     if (frame.beforeClear != nullptr) {
         frame.beforeClear(frame.user, shown != nullptr);  // windows of this frame's UI (the HUD pieces), before the clear
     }
@@ -1105,9 +1134,11 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) noexcept {
     gLateThisFrame = false;
     // Next frame's UI goes to the panel only if this one showed it (or nothing went there yet, so the texture can be
     // made), and the panel works.
-    bool const armNext = engaged && frame.gameplay && frame.worldFrame && (shown != nullptr || gPanel.texture == nullptr);
+    bool const armNext = engaged && wanted && (shown != nullptr || gPanel.texture == nullptr);
     if (armNext != Armed()) {
-        mevr::log::Info("overlays: game UI goes to {}", armNext ? "the body-locked HUD panel" : "the eye images");
+        mevr::log::Info("overlays: game UI goes to {}", !armNext ? "the eye images"
+                                                        : frame.screenUi ? "a layer in front of the 3D screen"
+                                                                         : "the body-locked HUD panel");
         NoteArmChange();
     }
     SetArmed(armNext);

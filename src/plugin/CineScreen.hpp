@@ -41,4 +41,24 @@ UiLayer UiLayerWanted() noexcept;
 // [Cinematics] fadeS, for plugin/TransitionFade (0: no fades).
 float FadeSeconds() noexcept;
 
+// ---- Both renderers (LE1's MevrBridge cine-screen seams forward here; LE2's bridge calls them itself) -------------------
+// Whether this conversation (or cutscene) goes on the 3D screen ([Cinematics] conversations / cutscenes; `world` counts as
+// the screen: what the mod doesn't show in the world comes here).
+bool Wanted(bool conversation) noexcept;
+// [Cinematics] fullRate: the screen at the headset's rate instead of a renderer's cinematic cap.
+bool FullRate() noexcept;
+// At submit: the screen's size and distance, the last plan's crop and each eye's shown part of an image `eyeWidth` x
+// `eyeHeight` (rect: x, y, width, height). `planned` false before any plan (nothing cropped then).
+struct Quads {
+    float distanceM = 3.5f;
+    float widthM = 2.9f;
+    float heightM = 0.0f;   // the shown part's aspect at widthM
+    float crop = 0.0f;      // each eye's dropped share of its image's width (the left eye its left edge)
+    int rect[2][4] = {};
+    bool planned = false;
+};
+Quads QuadsNow(unsigned eyeWidth, unsigned eyeHeight) noexcept;
+// Each frame the two quads are submitted: the log (`cine screen: a conversation on the 3D screen ...`) and the snapshot.
+void NoteSubmit(bool conversation, float heightM) noexcept;
+
 } // namespace mevr::host::cine_screen

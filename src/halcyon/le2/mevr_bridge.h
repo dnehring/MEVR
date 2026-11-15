@@ -111,6 +111,38 @@ bool HudPanelDraw(ID3D11DeviceContext* context, void (*draw)(void*), void* user,
 // Halcyon's. Returns how many. LE1's MevrBridge::OverlayLayers.
 unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsigned capacity) noexcept;
 
+// ---- ME1's 3D cinema screen (research/52; research/le2-cinema.md; plugin/CineScreen, CinemaBackdrop, TransitionFade) -------
+// Present thread, each frame a conversation (`conversation`) or cutscene is decided (me2_xr.cpp's VRCINE block): whether it
+// goes on the 3D screen ([Cinematics] conversations / cutscenes in ASI\LE2MEVR.ini, ME1's keys and defaults).
+bool CineScreenWanted(bool conversation) noexcept;
+// Game thread, calcview_hook.cpp's SFR branch while the screen is up: half the two cameras' distance (game units) for a view
+// whose horizontal half angle is `halfH` (radians, 0 unknown), our plan for this frame (core/vr/CineScreen: the scene
+// [Cinematics] convergeM away on the screen plane once each eye is cropped by its depth).
+float CineScreenHalfSeparationUU(float halfH) noexcept;
+// Present thread, at the SFR submit while the screen is up: the eyes as located (app space) and each eye's image.
+struct CineScreenFrame
+{
+    void* session = nullptr;     // XrSession
+    void* appSpace = nullptr;    // XrSpace: the LOCAL app space the views were located in
+    void* viewSpace = nullptr;   // XrSpace: VIEW
+    ID3D11DeviceContext* context = nullptr;
+    bool conversation = false;   // game mode 5 (else a cutscene, 6)
+    bool headValid = false;
+    float eyeOrientation[2][4] = {{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
+    float eyePosition[2][3] = {};
+    float eyeFov[2][4] = {};     // angleLeft, angleRight, angleUp, angleDown (radians)
+    void* eyeSwapchain[2] = {nullptr, nullptr};   // XrSwapchain: pass 0 (left) in [0], pass 1 (right) in [1]
+    unsigned eyeWidth = 0;
+    unsigned eyeHeight = 0;
+};
+// The screen's layers in submit order (the floor and horizon's projection layer, then the left and right eyes' quads), at
+// most `capacity` into `layersOut`; 0 if it can't be shown (the caller then submits its projection layer as before). The
+// screen's place is kept for this frame's OverlayLayers (the game's UI on its own layer in front of it).
+unsigned CineScreenLayers(const CineScreenFrame& frame, const void** layersOut, unsigned capacity) noexcept;
+// Present thread, the frame's last layer: this frame's view (0 the world, 1 the 3D screen, 2 a cinematic on the flat panel,
+// 3 another flat panel, -1 none submitted); a head-locked black quad (an XrCompositionLayerQuad*) to submit last, or null.
+const void* TransitionFadeLayer(void* session, void* viewSpace, ID3D11DeviceContext* context, int view) noexcept;
+
 // d3d_capture.cpp's TryInstallFactoryHooks, for each DXGI factory the game makes (an IDXGIFactory*): our hook on the
 // first output's IDXGIOutput6::GetDesc1, where the game asks whether the display is HDR (research/27 7c for LE1).
 void OnFactory(void* factory) noexcept;

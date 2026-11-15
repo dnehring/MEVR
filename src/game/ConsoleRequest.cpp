@@ -1726,6 +1726,72 @@ std::string State(ue3::Object* pc) {
         mode ? std::to_string(*mode) : std::string("none"));
 }
 
+// "mevr instances <Package.Class> [text]" and "mevr activate <n> [input]" on ME2 (LE1's lines, the same output): the live
+// objects of a class whose full name holds the text (up to 60 kept for `activate`), and a Kismet op's input fired
+// (Engine.SequenceOp.ForceActivateInput), as LE1's tools/conversation-launch.ps1 starts a scene: a level's conversations start
+// from its script (`mevr instances SFXGame.BioSeqAct_StartConversation`, `mevr activate n 0`; research/le2-cinema.md).
+std::vector<ue3::Object*> gFoundLe2;
+
+std::string InstancesLe2(std::istringstream& words) {
+    std::string path, filter;
+    words >> path >> filter;
+    ue3::Reflection& r = ue3::runtime::Get();
+    ue3::Class* const cls = path.empty() ? nullptr : r.FindClass(path);
+    if (cls == nullptr) {
+        return std::string("usage: mevr instances <Package.Class> [text] (no such class)");
+    }
+    ue3::Class* const actorClass = r.FindClass("Engine.Actor");
+    gFoundLe2.clear();
+    std::string out;
+    int total = 0;
+    for (std::int32_t i = 0, n = r.ObjectCount(); i < n; ++i) {
+        ue3::Object* const o = r.ObjectAt(i);
+        if (o == nullptr || !r.IsAlive(o) || !r.IsA(o, cls)) {
+            continue;
+        }
+        std::string const name = r.FullName(o);
+        if (name.find("Default__") != std::string::npos || (!filter.empty() && name.find(filter) == std::string::npos)) {
+            continue;
+        }
+        ++total;
+        if (gFoundLe2.size() >= 60) {
+            continue;
+        }
+        ue3::Object* owner = o;
+        for (int depth = 0; owner != nullptr && depth < 8 && !(actorClass != nullptr && r.IsA(owner, actorClass)); ++depth) {
+            owner = r.OuterOf(owner);
+        }
+        out += std::format("\n[{}] {}", gFoundLe2.size(), name);
+        if (owner != nullptr && owner != o) {
+            out += " (of " + r.NameText(owner) + ")";
+        }
+        if (auto const at = owner != nullptr ? player::Location(owner) : std::nullopt) {
+            out += std::format(" at {:.0f} {:.0f} {:.0f}", at->x, at->y, at->z);
+        }
+        gFoundLe2.push_back(o);
+    }
+    return std::format("{} instances{}", total, out);
+}
+
+std::string ActivateLe2(std::istringstream& words) {
+    std::size_t index = 0;
+    int input = 0;
+    words >> index >> input;
+    ue3::Reflection& r = ue3::runtime::Get();
+    if (index >= gFoundLe2.size() || !r.IsAlive(gFoundLe2[index])) {
+        return std::format("mevr activate: no object {} (mevr instances first)", index);
+    }
+    ue3::Object* const target = gFoundLe2[index];
+    ue3::Function* const f = r.FindFunction(r.ClassOf(target), "ForceActivateInput");
+    if (f == nullptr) {
+        return std::format("{} has no ForceActivateInput", r.FullName(target));
+    }
+    ue3::Params parms(r, f);
+    parms.Set("InputIdx", static_cast<std::int32_t>(input));
+    bool const called = ue3::runtime::Call(target, f, parms);
+    return std::format("{}.ForceActivateInput({}) called {}", r.FullName(target), input, called);
+}
+
 // Our own lines on ME2 (LE1's are RunOurs'): "mevr load", "mevr savedesc", "mevr state". Nullopt for anything else.
 std::optional<std::string> RunOursLe2(ue3::Object* pc, std::string const& line) {
     std::istringstream words(line);
@@ -1773,9 +1839,16 @@ std::optional<std::string> RunOursLe2(ue3::Object* pc, std::string const& line) 
         std::getline(words, rest);
         return traversal::Command(rest);  // the vault's fixture and tests (research/le2-traversal.md)
     }
+    if (verb == "instances") {
+        return InstancesLe2(words);  // a scene's Kismet start, for the cinema screen's checks (research/le2-cinema.md)
+    }
+    if (verb == "activate") {
+        return ActivateLe2(words);
+    }
     return std::string("unknown on ME2: mevr load <career> <save name> <index> <type> | mevr savedesc | mevr state | "
                        "mevr camera trace <seconds> [label] | mevr omni <screen> | mevr guimouse | mevr guikey ... | mevr cover ... | "
-                       "mevr traversal ...");
+                       "mevr traversal ... | "
+                       "mevr instances <Package.Class> [text] | mevr activate <n> [input]");
 }
 
 #endif

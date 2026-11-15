@@ -894,6 +894,7 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/plugin/CinemaBackdrop.cpp
     src/plugin/CinemaBackdrop.hpp
     src/plugin/TransitionFade.cpp
+    src/plugin/TransitionFade.hpp
     src/plugin/WristBeam.cpp
     src/plugin/WristBeam.hpp
 )
@@ -968,6 +969,13 @@ function(mevr_add_plugin game)
             src/plugin/ScopeCaptureSource.cpp src/plugin/SightLayers.cpp src/plugin/SightPictures.cpp
             # Traversal's cue and blink (research/le2-traversal.md).
             src/plugin/TraversalCue.cpp src/plugin/TraversalCue.hpp src/core/vr/Traversal.cpp src/core/vr/Traversal.hpp
+            # ME1's 3D cinema screen for conversations and cutscenes, its floor and horizon, the dip from black and the
+            # world-locked placement (research/52, research/le2-cinema.md): LE1's modules, shared.
+            src/plugin/CineScreen.cpp src/plugin/CineScreen.hpp src/core/vr/CineScreen.cpp src/core/vr/CineScreen.hpp
+            src/core/vr/ConversationWorld.cpp src/core/vr/ConversationWorld.hpp
+            src/plugin/CinemaBackdrop.cpp src/plugin/CinemaBackdrop.hpp src/plugin/CinemaBackdropDraw.cpp
+            src/plugin/CinemaBackdropDraw.hpp src/plugin/TransitionFade.cpp src/plugin/TransitionFade.hpp
+            src/core/vr/TransitionFade.cpp src/core/vr/TransitionFade.hpp src/plugin/WorldPanels.cpp src/plugin/WorldPanels.hpp
             # Our actions, vibration and the floor on Halcyon's session (plugin/XrHost, as LE1's).
             src/plugin/XrHost.cpp src/plugin/XrHost.hpp src/core/vr/Haptics.cpp src/core/vr/Haptics.hpp src/core/xr/Floor.cpp
             src/core/xr/Floor.hpp src/core/vr/Floor.hpp

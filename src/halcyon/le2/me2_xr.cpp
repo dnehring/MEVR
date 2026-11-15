@@ -742,7 +742,7 @@ void RecenterAppSpace(XrTime displayTime) noexcept
 // axes (the same formula: 50 uu/m times HeadPosScale, the forward 3x, clamped to 2 m; none while the cine locks tracking).
 void MevrPublishView(const XrView& view) noexcept
 {
-    const bool cineLocked = ME2VR::CalcViewHook::GetVrCineActive() && !ME2VR::CalcViewHook::GetCineVrHeadTracking();
+    const bool cineLocked = ME2VR::CalcViewHook::GetCineTrackingLocked();   // or the 3D cinema screen's
     const float w2m = 50.0f * ME2VR::CalcViewHook::GetHeadPosScale();
     float right = 0.0f, up = 0.0f, fwd = 0.0f;
     if (ME2VR::CalcViewHook::GetHeadPosEnabled() && !cineLocked)
@@ -793,7 +793,7 @@ void DriveHeadLook(const XrView& centerView) noexcept
 
     // [VRCINE] head-tracking-OFF during a VR cine: park render rotation so the head doesn't turn the
     // view; the submit anchors the stereo pair at the current head (head-locked 3D picture below).
-    if (ME2VR::CalcViewHook::GetVrCineActive() && !ME2VR::CalcViewHook::GetCineVrHeadTracking())
+    if (ME2VR::CalcViewHook::GetCineTrackingLocked())   // [MEVR] or ME1's 3D cinema screen (head look parked)
     {
         ME2VR::CalcViewHook::SetHeadLook(0, 0, false);
         return;
@@ -1549,6 +1549,8 @@ void RunFrame() noexcept
     XrCompositionLayerProjectionView projViews[2] = {};
     XrCompositionLayerProjection layer = {};
     bool rendered = false;
+    unsigned mevrScreenLayerCount = 0;    // [MEVR] ME1's 3D cinema screen's layers this frame (its floor, its two quads)
+    const void* mevrScreenLayers[3] = {};  // [MEVR]
 #if defined(MEVR_ASI)
     XrVector3f sightEyes[2] = {};
     bool sightEyesValid = false;
@@ -1736,9 +1738,23 @@ void RunFrame() noexcept
         // liveness is diagnostic only. It may stall at transitions and must never demote a real
         // conversation/cutscene to the flat panel. Unknown/transitional modes also fail open to VR.
         const bool recognizedCine = gm == 5 || gm == 6;
+#if defined(MEVR_ASI)
+        const bool renderCineInVrHalcyon = (gm == 5 && (ME2VR::CalcViewHook::GetCineVrConvo() ||
+                                                        s_convoVrLatch)) ||
+                                           (gm == 6 && ME2VR::CalcViewHook::GetCineVrCutscene());
+        // [MEVR] ME1's 3D cinema screen (research/52, research/le2-cinema.md): a conversation (5) or cutscene (6) that
+        // [Cinematics] sends to the screen renders as a VR cine (both SFR passes: the replay's gate refuses only menus and
+        // the flat cine) and is shown on a screen fixed in the room. Prerendered movies stay flat (they read as 8 here);
+        // Halcyon's own first-person conversation, when armed, keeps its conversation (one presentation owner).
+        const bool mevrScreen = sfrMode && recognizedCine && s_fovCine && !moviePlayback && !s_convoVrLatch &&
+                                ::ME2VR::MevrBridge::CineScreenWanted(gm == 5);
+        ME2VR::CalcViewHook::SetMevrCineScreen(mevrScreen);
+        const bool renderCineInVr = renderCineInVrHalcyon || mevrScreen;
+#else
         const bool renderCineInVr = (gm == 5 && (ME2VR::CalcViewHook::GetCineVrConvo() ||
                                                  s_convoVrLatch)) ||
                                     (gm == 6 && ME2VR::CalcViewHook::GetCineVrCutscene());
+#endif
         ME2VR::CalcViewHook::SetVrCineActive(renderCineInVr && s_fovCine);
         ME2VR::CalcViewHook::SetCinematic(s_fovCine && recognizedCine && !renderCineInVr);
 
@@ -1753,10 +1769,12 @@ void RunFrame() noexcept
             const bool cineNow = ME2VR::CalcViewHook::GetCinematic();
             const bool vrCine  = ME2VR::CalcViewHook::GetVrCineActive();
             const bool paused  = ME2VR::D3DCapture::GetAutoPaused();
+            const bool screen3d = ME2VR::CalcViewHook::GetMevrCineScreen();   // [MEVR] ME1's 3D cinema screen
             const unsigned key = (unsigned)(gmRaw & 0xFF) | ((unsigned)(gmEff & 0xFF) << 8) |
                                  (flatNow ? 1u<<16 : 0) | (cineNow ? 1u<<17 : 0) |
                                  (vrCine ? 1u<<18 : 0) | (paused ? 1u<<19 : 0) |
-                                 (sceneAlive ? 1u<<20 : 0) | (loadMoviePlaying ? 1u<<21 : 0) | (binkFullscreen ? 1u<<22 : 0);
+                                 (sceneAlive ? 1u<<20 : 0) | (loadMoviePlaying ? 1u<<21 : 0) | (binkFullscreen ? 1u<<22 : 0) |
+                                 (screen3d ? 1u<<23 : 0);   // [MEVR]
             if (key != s_lastKey)
             {
                 s_lastKey = key;
@@ -1767,6 +1785,7 @@ void RunFrame() noexcept
                     (binkFullscreen ? " BINK" : "") +
                     " -> " + (flatNow ? "FLAT menu panel" :
                               cineNow ? "FLAT cine panel" :
+                              screen3d ? "3D screen (MEVR)" :   // [MEVR] research/le2-cinema.md
                               vrCine  ? "VR cine" : "VR"));
             }
         }
@@ -2071,7 +2090,9 @@ void RunFrame() noexcept
             if (EnsureAerSwapchains())
             {
                 ID3D11Texture2D* pass0 = ME2VR::D3DCapture::GetSfrPass0Texture();   // left (-halfEye), mid-present
-                const bool swap = ME2VR::CalcViewHook::GetSwapEyes();
+                // [MEVR] ME1's 3D cinema screen: pass 0 is always the left eye's camera (calcview's screen branch), no swap
+                const bool mevrScreenNow = ME2VR::CalcViewHook::GetMevrCineScreen();
+                const bool swap = ME2VR::CalcViewHook::GetSwapEyes() && !mevrScreenNow;
                 // [STALEEYE] Only show pass 0 if it was captured THIS frame. During VR conversations the
                 // engine intermittently declines to render pass 1 ([STEREODEAD] NO-OP bursts); pass 1 then
                 // never starts, the anchor never fires, and the old code happily submitted a pass-0 texture
@@ -2090,7 +2111,7 @@ void RunFrame() noexcept
                 // right content shifts left (-). Swap-eyes flips the destination routing, so it inverts the
                 // convergence plane exactly as ME2's swap toggle does - no swap term here. conv=0 -> plain
                 // copy (no shift), so the UI stops doubling and gameplay is untouched when convergence is off.
-                const float conv = ME2VR::CalcViewHook::GetSfrConvergence();
+                const float conv = mevrScreenNow ? 0.0f : ME2VR::CalcViewHook::GetSfrConvergence();   // [MEVR] the screen: its crop sets the depth
                 const int convPx = static_cast<int>(lroundf(conv * 0.5f * static_cast<float>(g_aerSwapW)));
                 CopyTextureToEyeFullFrame(swap ? 1 : 0, leftSrc,  +convPx);
                 CopyTextureToEyeFullFrame(swap ? 0 : 1, rightSrc, -convPx);
@@ -2104,6 +2125,37 @@ void RunFrame() noexcept
                              ", leftEye content right, rightEye content left)");
                     }
                 }
+#if defined(MEVR_ASI)
+                // [MEVR] ME1's 3D cinema screen (research/52, research/le2-cinema.md): instead of the projection layer, each
+                // eye's render of the shot on one screen fixed in the room (two quads, eye visibility, each cropped on
+                // opposite sides), the floor and horizon under it; our plugin/CineScreen and CinemaBackdrop place and draw
+                // them (HalcyonLe2Bridge's CineScreenLayers).
+                if (mevrScreenNow && g_aerSwap[0] != nullptr && g_aerSwap[1] != nullptr)
+                {
+                    ::ME2VR::MevrBridge::CineScreenFrame sf;
+                    sf.session = g_session;
+                    sf.appSpace = g_localSpace;
+                    sf.viewSpace = g_viewSpace;
+                    sf.context = g_ctx;
+                    sf.conversation = ME2VR::D3DCapture::GetAutoGameMode() == 5;
+                    sf.headValid = (vs.viewStateFlags & XR_VIEW_STATE_ORIENTATION_VALID_BIT_VALUE) != 0 &&
+                                   (vs.viewStateFlags & XR_VIEW_STATE_POSITION_VALID_BIT_VALUE) != 0;
+                    for (int e = 0; e < 2; ++e)
+                    {
+                        const XrView& v = views[e];
+                        sf.eyeOrientation[e][0] = v.pose.orientation.x; sf.eyeOrientation[e][1] = v.pose.orientation.y;
+                        sf.eyeOrientation[e][2] = v.pose.orientation.z; sf.eyeOrientation[e][3] = v.pose.orientation.w;
+                        sf.eyePosition[e][0] = v.pose.position.x; sf.eyePosition[e][1] = v.pose.position.y;
+                        sf.eyePosition[e][2] = v.pose.position.z;
+                        sf.eyeFov[e][0] = v.fov.angleLeft; sf.eyeFov[e][1] = v.fov.angleRight;
+                        sf.eyeFov[e][2] = v.fov.angleUp; sf.eyeFov[e][3] = v.fov.angleDown;
+                        sf.eyeSwapchain[e] = g_aerSwap[e];
+                    }
+                    sf.eyeWidth = g_aerSwapW;
+                    sf.eyeHeight = g_aerSwapH;
+                    mevrScreenLayerCount = ::ME2VR::MevrBridge::CineScreenLayers(sf, mevrScreenLayers, 3);
+                }
+#endif
 
                 // [FREEZETAG] A projection layer only head-tracks if pose tag and PIXELS agree. During
                 // conversation shot changes the engine skips rendering for ~20-frame bursts ([STEREODEAD]
@@ -2132,7 +2184,7 @@ void RunFrame() noexcept
                     }
                 }
 
-                if (g_aerSwap[0] != nullptr && g_aerSwap[1] != nullptr)
+                if (g_aerSwap[0] != nullptr && g_aerSwap[1] != nullptr && mevrScreenLayerCount == 0)   // [MEVR] not on the 3D screen
                 {
                     for (int eye = 0; eye < 2; ++eye)
                     {
@@ -2665,9 +2717,12 @@ void RunFrame() noexcept
         }
     }
 
-    const XrCompositionLayerBaseHeader* layers[4 + 12] = {};   // [MEVR] + our quads
+    constexpr uint32_t kMevrMaxLayers = 4 + 12 + 4;   // [MEVR] + our quads, the 3D screen's floor and quads, the fade
+    const XrCompositionLayerBaseHeader* layers[kMevrMaxLayers] = {};
     uint32_t layerCount = 0;
     if (rendered)   layers[layerCount++] = reinterpret_cast<XrCompositionLayerBaseHeader*>(&layer);
+    for (unsigned i = 0; i < mevrScreenLayerCount; ++i)   // [MEVR] ME1's 3D cinema screen: its floor, then its two quads
+        layers[layerCount++] = static_cast<const XrCompositionLayerBaseHeader*>(mevrScreenLayers[i]);
     if (haveMono)   layers[layerCount++] = reinterpret_cast<XrCompositionLayerBaseHeader*>(&monoQuad);
     if (haveGameUi) layers[layerCount++] = reinterpret_cast<XrCompositionLayerBaseHeader*>(&gameUiQuad);
 #if defined(MEVR_ASI)
@@ -2726,11 +2781,22 @@ void RunFrame() noexcept
         }
         const void* mevrQuads[12] = {};
         const unsigned mevrQuadCount = ::ME2VR::MevrBridge::OverlayLayers(mevrFrame, mevrQuads, 12);
-        for (unsigned i = 0; i < mevrQuadCount && layerCount < 4 + 12 - 1; ++i)   // room for the menu
+        for (unsigned i = 0; i < mevrQuadCount && layerCount < kMevrMaxLayers - 2; ++i)   // room for the menu and the fade
             layers[layerCount++] = static_cast<const XrCompositionLayerBaseHeader*>(mevrQuads[i]);
     }
 #endif
     if (haveUi)     layers[layerCount++] = reinterpret_cast<XrCompositionLayerBaseHeader*>(&uiQuad);
+#if defined(MEVR_ASI)
+    {   // [MEVR] ME1's dip from black when the view changes between the world, the 3D cinema screen and a cinematic's flat
+        // movie (plugin/TransitionFade, research/52): the frame's last layer. 0 the world, 1 the screen, 2 a cinematic on the
+        // flat panel (Halcyon's flat cine, a movie inside a scene), 3 another flat panel (menus, loads), -1 none.
+        const int mevrView = rendered ? 0 : mevrScreenLayerCount > 0 ? 1
+                           : haveMono ? ((ME2VR::CalcViewHook::GetCinematic() || binkFullscreen) ? 2 : 3) : -1;
+        if (layerCount < kMevrMaxLayers)
+            if (const void* fade = ::ME2VR::MevrBridge::TransitionFadeLayer(g_session, g_viewSpace, g_ctx, mevrView))
+                layers[layerCount++] = static_cast<const XrCompositionLayerBaseHeader*>(fade);
+    }
+#endif
 
     XrFrameEndInfo fei = {};
     fei.type = XR_TYPE_FRAME_END_INFO_VALUE;

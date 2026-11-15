@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: MIT
 // Conversations and cutscenes on a 3D cinema screen (research/52): settings, each frame's plan, logs, snapshot status.
+// Both Halcyon hosts (LE1's MevrBridge seams at the end forward to the shared functions; research/le2-cinema.md for LE2).
 #include "plugin/CineScreen.hpp"
 
+#if defined(MEVR_WITH_HALCYON)
 #include "halcyon/le1/mevr_bridge.h"
+#endif
 #include "plugin/Renderer.hpp"
 
 #include "core/Ini.hpp"
@@ -178,75 +181,98 @@ Backdrop BackdropWanted() noexcept {
     return {gSettings.backdrop, gSettings.backdropBrightness};
 }
 
+bool Wanted(bool conversation) noexcept {
+    std::lock_guard lock(gMutex);
+    RefreshSettings(GetTickCount64());
+    return conversation ? gSettings.conversations : gSettings.cutscenes;
+}
+
+bool FullRate() noexcept {
+    std::lock_guard lock(gMutex);
+    RefreshSettings(GetTickCount64());
+    return gSettings.fullRate;
+}
+
+Quads QuadsNow(unsigned eyeWidth, unsigned eyeHeight) noexcept {
+    Quads out;
+    std::lock_guard lock(gMutex);
+    out.distanceM = gSettings.distanceM;
+    out.widthM = gSettings.widthM;
+    out.crop = gPlanned ? gFrame.crop : 0.0f;
+    cs::EyeRects const rects = cs::Rects(static_cast<int>(eyeWidth), static_cast<int>(eyeHeight), out.crop, gSettings.aspect);
+    cs::Rect const* const eyes[2] = {&rects.left, &rects.right};
+    for (int e = 0; e < 2; ++e) {
+        out.rect[e][0] = eyes[e]->x;
+        out.rect[e][1] = eyes[e]->y;
+        out.rect[e][2] = eyes[e]->width;
+        out.rect[e][3] = eyes[e]->height;
+    }
+    out.heightM = cs::HeightM(rects, out.widthM);
+    out.planned = gPlanned;
+    return out;
+}
+
+void NoteSubmit(bool conversation, float heightM) noexcept {
+    std::lock_guard lock(gMutex);
+    std::uint64_t const now = GetTickCount64();
+    bool const starting = gSubmitMs == 0 || now - gSubmitMs >= kActiveForMs || conversation != gSubmitConversation;
+    gSubmitMs = now;
+    gSubmitConversation = conversation;
+    gHeightM = heightM;
+    float const b = gFrame.baselineUU;
+    if (starting) {
+        gSceneFrames = 0;
+        gSummaryMs = now;
+        gMinBaseline = gMaxBaseline = b;
+        mevr::log::Info("cine screen: a {} on the 3D screen: {:.2f} x {:.2f} m at {:.2f} m, depth {:.2f}% (each eye drops {:.2f}% of its "
+                        "image), the cameras {:.2f} units apart for a {:.1f}-degree lens",
+            conversation ? "conversation" : "cutscene", gSettings.widthM, heightM, gSettings.distanceM,
+            gFrame.depth * 100.0f, gFrame.crop * 100.0f, b, gFrameHalfH * 2.0f * 57.29578f);
+    }
+    ++gSceneFrames;
+    gMinBaseline = std::min(gMinBaseline, b);
+    gMaxBaseline = std::max(gMaxBaseline, b);
+    if (now - gSummaryMs >= kSummaryEveryMs) {
+        mevr::log::Info("cine screen: {} frames of this {} on the screen; the cameras {:.2f}..{:.2f} units apart (the lens now {:.1f} degrees)",
+            gSceneFrames, conversation ? "conversation" : "cutscene", gMinBaseline, gMaxBaseline, gFrameHalfH * 2.0f * 57.29578f);
+        gSummaryMs = now;
+        gMinBaseline = gMaxBaseline = b;
+    }
+}
+
 } // namespace mevr::host::cine_screen
 
+#if defined(MEVR_WITH_HALCYON)
+// LE1's seams (src/halcyon/le1/mevr_bridge.h), forwarded to the shared functions above.
 namespace MELEVR::MevrBridge {
 
 bool CineScreenWanted(bool conversation) noexcept {
-    namespace host = mevr::host::cine_screen;
-    std::lock_guard lock(host::gMutex);
-    host::RefreshSettings(GetTickCount64());
-    return conversation ? host::gSettings.conversations : host::gSettings.cutscenes;
+    return mevr::host::cine_screen::Wanted(conversation);
 }
 
-
 bool CineScreenFullRate() noexcept {
-    namespace host = mevr::host::cine_screen;
-    std::lock_guard lock(host::gMutex);
-    host::RefreshSettings(GetTickCount64());
-    return host::gSettings.fullRate;
+    return mevr::host::cine_screen::FullRate();
 }
 
 bool CineScreenQuadsNow(unsigned eyeWidth, unsigned eyeHeight, CineScreenQuads* out) noexcept {
-    namespace host = mevr::host::cine_screen;
     if (out == nullptr) {
         return false;
     }
-    std::lock_guard lock(host::gMutex);
-    out->distanceM = host::gSettings.distanceM;
-    out->widthM = host::gSettings.widthM;
-    out->crop = host::gPlanned ? host::gFrame.crop : 0.0f;
-    host::cs::EyeRects const rects =
-        host::cs::Rects(static_cast<int>(eyeWidth), static_cast<int>(eyeHeight), out->crop, host::gSettings.aspect);
-    host::cs::Rect const* const eyes[2] = {&rects.left, &rects.right};
+    mevr::host::cine_screen::Quads const q = mevr::host::cine_screen::QuadsNow(eyeWidth, eyeHeight);
+    out->distanceM = q.distanceM;
+    out->widthM = q.widthM;
+    out->crop = q.crop;
     for (int e = 0; e < 2; ++e) {
-        out->rect[e][0] = eyes[e]->x;
-        out->rect[e][1] = eyes[e]->y;
-        out->rect[e][2] = eyes[e]->width;
-        out->rect[e][3] = eyes[e]->height;
+        for (int i = 0; i < 4; ++i) {
+            out->rect[e][i] = q.rect[e][i];
+        }
     }
-    out->heightM = host::cs::HeightM(rects, out->widthM);
-    return host::gPlanned;
+    out->heightM = q.heightM;
+    return q.planned;
 }
 
 void NoteCineScreenSubmit(bool conversation, float heightM) noexcept {
-    namespace host = mevr::host::cine_screen;
-    std::lock_guard lock(host::gMutex);
-    std::uint64_t const now = GetTickCount64();
-    bool const starting = host::gSubmitMs == 0 || now - host::gSubmitMs >= host::kActiveForMs || conversation != host::gSubmitConversation;
-    host::gSubmitMs = now;
-    host::gSubmitConversation = conversation;
-    host::gHeightM = heightM;
-    float const b = host::gFrame.baselineUU;
-    if (starting) {
-        host::gSceneFrames = 0;
-        host::gSummaryMs = now;
-        host::gMinBaseline = host::gMaxBaseline = b;
-        mevr::log::Info("cine screen: a {} on the 3D screen: {:.2f} x {:.2f} m at {:.2f} m, depth {:.2f}% (each eye drops {:.2f}% of its "
-                        "image), the cameras {:.2f} units apart for a {:.1f}-degree lens",
-            conversation ? "conversation" : "cutscene", host::gSettings.widthM, heightM, host::gSettings.distanceM,
-            host::gFrame.depth * 100.0f, host::gFrame.crop * 100.0f, b, host::gFrameHalfH * 2.0f * 57.29578f);
-    }
-    ++host::gSceneFrames;
-    host::gMinBaseline = std::min(host::gMinBaseline, b);
-    host::gMaxBaseline = std::max(host::gMaxBaseline, b);
-    if (now - host::gSummaryMs >= host::kSummaryEveryMs) {
-        mevr::log::Info("cine screen: {} frames of this {} on the screen; the cameras {:.2f}..{:.2f} units apart (the lens now {:.1f} degrees)",
-            host::gSceneFrames, conversation ? "conversation" : "cutscene", host::gMinBaseline, host::gMaxBaseline,
-            host::gFrameHalfH * 2.0f * 57.29578f);
-        host::gSummaryMs = now;
-        host::gMinBaseline = host::gMaxBaseline = b;
-    }
+    mevr::host::cine_screen::NoteSubmit(conversation, heightM);
 }
 
 void CineScreenPointerPlane(PanelPose* placed, float* width, float* height, float const headPosition[3]) noexcept {
@@ -271,3 +297,4 @@ void CineScreenPointerPlane(PanelPose* placed, float* width, float* height, floa
 }
 
 } // namespace MELEVR::MevrBridge
+#endif
