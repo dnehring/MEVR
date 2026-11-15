@@ -92,7 +92,11 @@ std::string Command(std::string const& args) {
     std::istringstream words(args);
     std::string option;
     words >> option;
-    if (option == "hud") return le3_gui::HudReport();
+    if (option == "hud") {
+        std::string detail;
+        words >> detail;
+        return le3_gui::HudReport(detail == "parents");
+    }
 #else
     (void)args;
 #endif

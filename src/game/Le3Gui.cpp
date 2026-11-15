@@ -15,6 +15,9 @@ ue3::FunctionRef gHud{"SFXGame.BioPlayerController.GetHUDMovie", ue3::kEveryGame
 ue3::FunctionRef gNumber{"GFxUI.GFxValue.GetNumber", ue3::kEveryGame};
 ue3::FunctionRef gBool{"GFxUI.GFxValue.GetBool", ue3::kEveryGame};
 ue3::FunctionRef gPosition{"GFxUI.GFxValue.GetPosition", ue3::kEveryGame};
+ue3::FunctionRef gObject{"GFxUI.GFxValue.GetObject", ue3::kEveryGame};
+ue3::FunctionRef gMatrix{"GFxUI.GFxValue.GetDisplayMatrix", ue3::kEveryGame};
+ue3::ClassRef gValue{"GFxUI.GFxValue", ue3::kEveryGame};
 ue3::FunctionRef gManager{"SFXGame.BioPlayerController.GetSFXUIController", ue3::kEveryGame};
 ue3::FunctionRef gFocus{"SFXGame.SFXGUIInteraction.GetFocusMovieForPlayerController", ue3::kEveryGame};
 ue3::FunctionRef gBrowser{"SFXGame.SFXGUIInteraction.GetBrowserHandler", ue3::kEveryGame};
@@ -63,7 +66,7 @@ bool PageAllowed(ue3::Object* browser, std::uint8_t type) {
     }
     return state <= 1; // BBS_Normal / BBS_Alert; disabled and unknown remain native-only
 }
-std::string HudReport() {
+std::string HudReport(bool parents) {
     auto* hud = GetObject(player::Controller(), gHud, false);
     if (!hud) return "ME3 HUD: no live GetHUDMovie result; no native UI changed";
     auto& r = ue3::runtime::Get();
@@ -80,6 +83,13 @@ std::string HudReport() {
     auto text = [](std::optional<float> value) { return value ? std::format("{:.3f}", *value) : std::string("unavailable"); };
     std::string out = std::format("ME3 HUD: {} tag={} stage={}x{}; local clip bounds only, crop NOT accepted; no native UI changed",
         r.FullName(hud), Tag(hud), text(number(hud, L"Stage.width", true)), text(number(hud, L"Stage.height", true)));
+    if (parents) {
+        out += std::format("\n  movieRoot x={} y={} width={} height={} xscale={} yscale={} rotation={}",
+            text(number(hud, L"_root._x", true)), text(number(hud, L"_root._y", true)),
+            text(number(hud, L"_root._width", true)), text(number(hud, L"_root._height", true)),
+            text(number(hud, L"_root._xscale", true)), text(number(hud, L"_root._yscale", true)),
+            text(number(hud, L"_root._rotation", true)));
+    }
     // Exact fields assigned by installed SFXSFHandler_HUD.InitDisplay; no object enumeration or guessed movie paths.
     static ue3::FieldRef clips[] = {
         {"SFXGame.SFXSFHandler_HUD", "WeaponIcon", ue3::kEveryGame},
@@ -110,6 +120,45 @@ std::string HudReport() {
             text(positioned ? at.Get<float>("X") : std::nullopt), text(positioned ? at.Get<float>("Y") : std::nullopt),
             text(number(clip, L"_width")), text(number(clip, L"_height")), text(number(clip, L"_alpha")),
             shown ? (*shown ? "true" : "false") : "unavailable");
+        if (parents) {
+            // On demand only: native GFx wrappers own these objects; no property writes, Invoke,
+            // object destruction or guessed flattening of Flash transforms. The bounded chain
+            // also terminates if the native API wraps the same underlying parent repeatedly.
+            std::array<ue3::Object*, 8> visited{};
+            auto* current = clip;
+            for (unsigned depth = 0; depth < visited.size(); ++depth) {
+                if (!ue3::runtime::IsAlive(current) || !gValue.Get() || !r.IsA(current, gValue.Get())) break;
+                bool repeated = false;
+                for (unsigned prior = 0; prior < depth; ++prior) repeated |= visited[prior] == current;
+                if (repeated) { out += "\n    parent chain repeated; stopped"; break; }
+                visited[depth] = current;
+                out += std::format("\n    depth={} x={} y={} xscale={} yscale={} rotation={} alpha={}", depth,
+                    text(number(current, L"_x")), text(number(current, L"_y")),
+                    text(number(current, L"_xscale")), text(number(current, L"_yscale")),
+                    text(number(current, L"_rotation")), text(number(current, L"_alpha")));
+                ue3::Params matrix(r, gMatrix.Get());
+                if (matrix.Valid() && ue3::runtime::Call(current, gMatrix.Get(), matrix)) {
+                    auto const values = matrix.Return<std::array<float, 16>>();
+                    bool finite = values.has_value();
+                    if (values) for (float v : *values) finite = finite && std::isfinite(v);
+                    if (finite) {
+                        out += " matrix=";
+                        for (unsigned j = 0; j < values->size(); ++j)
+                            out += std::format("{}{:.3f}", j == 0 ? "" : ",", (*values)[j]);
+                    } else out += " matrix=unavailable";
+                } else out += " matrix=unavailable";
+                ue3::Params parent(r, gObject.Get());
+                ue3::memory::OwnedString member(L"_parent");
+                auto const* type = gValue.Get(); // match the installed default Class'GFxValue', not an explicit null class
+                if (!parent.Valid() || !member.Valid() || !parent.Set("member", member.Get()) ||
+                    !parent.Set("Type", type) || !ue3::runtime::Call(current, gObject.Get(), parent)) {
+                    out += " parent=unavailable"; break;
+                }
+                current = parent.Return<ue3::Object*>().value_or(nullptr);
+                if (!current) { out += " parent=none"; break; }
+                if (depth + 1 == visited.size()) out += " parent depth limit reached";
+            }
+        }
     }
     return out;
 }
