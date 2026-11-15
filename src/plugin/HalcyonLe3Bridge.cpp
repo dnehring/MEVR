@@ -17,6 +17,10 @@
 #include "plugin/HalcyonLe3.hpp"
 #include "plugin/TransitionFade.hpp"
 #include "plugin/HudPanel.hpp"
+#include "plugin/HudPieceLayers.hpp"
+#include "core/vr/InteractLabel.hpp"
+#include "core/vr/PowerWheel.hpp"
+#include "core/vr/SquadMenu.hpp"
 #include "plugin/EyeCopy.hpp"
 #include "plugin/FloorLock.hpp"
 #include "plugin/PadMerge.hpp"
@@ -73,6 +77,8 @@ void WrapSessionFunctions(void** acquire, void** release, void** endFrame, void*
 void OnSessionCreated(void* instance, void* session) noexcept {
     InvalidateTraversalPresentation();
     mevr::host::sequel_squad_layers::ForgetSession();
+    mevr::host::hud_piece_layers::ForgetSession();
+    mevr::vr::interact::Reset();
     auto const xrInstance = static_cast<XrInstance>(instance);
     auto const xrSession = static_cast<XrSession>(session);
     mevr::host::menus_le2::OnSessionCreated(xrInstance, xrSession);
@@ -100,6 +106,8 @@ void OnSessionCreated(void* instance, void* session) noexcept {
 void OnSessionStopped() noexcept {
     InvalidateTraversalPresentation();
     mevr::host::sequel_squad_layers::ForgetSession();
+    mevr::host::hud_piece_layers::ForgetSession();
+    mevr::vr::interact::Reset();
     gScreen = {};
     mevr::host::hud_panel::SetArmed(false);
     mevr::host::vignette::Forget();
@@ -132,6 +140,7 @@ void OnFrameBegun(void* session, void* space, std::int64_t time) noexcept {
 }
 void OnRecentered() noexcept {
     mevr::host::sequel_squad_layers::Recentered();
+    mevr::vr::interact::Reset();
     InvalidateTraversalPresentation();
     gScreen = {};
     mevr::host::traversal_cue::Forget();
@@ -252,10 +261,31 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** out, unsigned cap
     panel.headValid = frame.headValid;
     panel.head = {{frame.headOrientation[0], frame.headOrientation[1], frame.headOrientation[2], frame.headOrientation[3]},
         {frame.headPosition[0], frame.headPosition[1], frame.headPosition[2]}};
-    // This capture increment owns cinematic UI only. Gameplay HUD and native wrist routing have their own acceptance.
+    // No LE1 crop is assumed. A measured explicit prompt crop opts into the shared HUD capture;
+    // otherwise the complete native gameplay HUD stays in the eye images.
+    namespace il = mevr::vr::interact;
+    namespace hpl = mevr::host::hud_piece_layers;
+    auto const label = il::Latest();
+    bool const labelWanted = onFoot && frame.worldFrame && frame.headValid && !gameplay.menuOpen &&
+        label.visible && il::ExplicitCrop(label).Valid() && capacity - count >= 2 &&
+        !mevr::vr::power_wheel::Latest().open && !mevr::vr::squad_menu::Latest().open;
+    panel.worldFrame = frame.worldFrame && !gameplay.menuOpen;
+    panel.gameplay = onFoot && labelWanted;
     panel.enabled = !gameplay.menuOpen;
+    auto const cfg = mevr::host::renderer::Hud();
+    panel.distanceM = cfg.hudPanelDistanceM; panel.widthM = cfg.hudPanelWidthM;
+    panel.dropM = cfg.hudPanelDropM; panel.followDeg = cfg.hudPanelFollowDeg;
     mevr::host::sequel_cinema::FillUi(gScreen, frame.headPosition, panel);
-    if (auto const* ui = mevr::host::hud_panel::Layer(panel); ui && count < capacity) out[count++] = ui;
+    hpl::Common common;
+    common.session = panel.session; common.appSpace = panel.appSpace;
+    common.context = frame.context; common.device = device; common.head = panel.head.position;
+    common.nowMs = GetTickCount64();
+    auto const* interaction = hpl::Interaction(common,
+        labelWanted && !panel.screenUi && panel.stereo && mevr::host::hud_panel::Ready(), panel.masks);
+    auto const* ui = mevr::host::hud_panel::Layer(panel);
+    if (ui && count < capacity) out[count++] = ui;
+    // A failed panel leaves the original native prompt unclaimed. Never submit a detached label alone.
+    if (interaction && ui && count < capacity) out[count++] = interaction;
     count = mevr::host::sequel_weapon_layers::Layers(gameplay, device, onFoot ? 0 : -1, out, count, capacity, true);
     // Existing traversal label/blink, above weapon overlays and below menus; authored scenes own traversal.
     if (count < capacity) {

@@ -1085,6 +1085,7 @@ function(mevr_add_plugin game)
             src/core/vr/ConversationWorld.cpp src/plugin/CinemaBackdrop.cpp src/plugin/CinemaBackdropDraw.cpp
             src/plugin/TransitionFade.cpp src/core/vr/TransitionFade.cpp
             src/plugin/HudPanel.cpp src/plugin/QuadSwapchain.cpp
+            src/plugin/HudPieceLayers.cpp src/core/vr/HudPieces.cpp
             src/plugin/Vignette.cpp src/plugin/HandReticle.cpp
             src/plugin/TraversalCue.cpp src/core/vr/Traversal.cpp
             src/core/vr/ScopeArt.cpp src/core/vr/ScopeCapture.cpp src/core/vr/Sights.cpp

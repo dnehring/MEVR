@@ -1729,7 +1729,7 @@ void EmitUiDraw(ID3D11DeviceContext* ctx, const D3D11_VIEWPORT& vp, DrawThunk&& 
     {
         // [MEVR] Reuse the shared UI redirect before the fallback mirror. Redirect validates
         // alpha/Scaleform state itself and takes only late draws after pass zero was captured.
-        if (ME2VR::CalcViewHook::GetMevrCineScreen()) {
+        { // Shared bridge arms only cinema UI or an explicit measured interaction crop.
             auto& call = draw;
             if (::ME2VR::MevrBridge::HudPanelDraw(ctx, [](void* user) noexcept {
                 (*static_cast<typename std::remove_reference<DrawThunk>::type*>(user))();

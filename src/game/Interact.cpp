@@ -205,8 +205,8 @@ void Tick(float /*deltaSeconds*/, bool hooked, Link const& link) {
             label.combat = combat;
             label.visible = link.publish != nullptr && gSettings.label && onFoot && (!combat || gSettings.combatLabel) &&
                 std::isfinite(meters);
-#if defined(MEVR_GAME_LE2)
-            // ME2's prompt band awaits a measured default. A configured crop enables the shared label renderer;
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+            // Each sequel's prompt band awaits a measured default. A configured crop enables the shared label renderer;
             // otherwise the game's own prompt stays on its HUD and the snapshot accurately reports no replacement.
             label.visible = label.visible && il::ExplicitCrop(label).Valid();
 #endif
