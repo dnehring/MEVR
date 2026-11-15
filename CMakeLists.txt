@@ -1041,6 +1041,7 @@ function(mevr_add_plugin game)
             src/plugin/CineScreen.cpp src/plugin/CineScreen.hpp src/core/vr/CineScreen.cpp src/core/vr/CineScreen.hpp
             src/plugin/SequelCinema.cpp src/plugin/SequelCinema.hpp
             src/plugin/SequelWeaponLayers.cpp src/plugin/SequelWeaponLayers.hpp
+            src/plugin/SequelSquadLayers.cpp src/plugin/SequelSquadLayers.hpp
             src/core/vr/ConversationWorld.cpp src/core/vr/ConversationWorld.hpp
             src/plugin/CinemaBackdrop.cpp src/plugin/CinemaBackdrop.hpp src/plugin/CinemaBackdropDraw.cpp
             src/plugin/CinemaBackdropDraw.hpp src/plugin/TransitionFade.cpp src/plugin/TransitionFade.hpp
@@ -1078,7 +1079,9 @@ function(mevr_add_plugin game)
             src/core/Hotkey.cpp src/core/vr/TestRequest.cpp
             src/plugin/MenusLe2.cpp src/plugin/MenusLe2.hpp src/plugin/WorldPanels.cpp src/plugin/WorldPanels.hpp
             src/plugin/SequelCinema.cpp src/plugin/SequelCinema.hpp
-            src/plugin/SequelWeaponLayers.cpp src/plugin/SequelWeaponLayers.hpp src/plugin/CineScreen.cpp src/core/vr/CineScreen.cpp
+            src/plugin/SequelWeaponLayers.cpp src/plugin/SequelWeaponLayers.hpp
+            src/plugin/SequelSquadLayers.cpp src/plugin/SequelSquadLayers.hpp
+            src/plugin/CineScreen.cpp src/core/vr/CineScreen.cpp
             src/core/vr/ConversationWorld.cpp src/plugin/CinemaBackdrop.cpp src/plugin/CinemaBackdropDraw.cpp
             src/plugin/TransitionFade.cpp src/core/vr/TransitionFade.cpp
             src/plugin/HudPanel.cpp src/plugin/QuadSwapchain.cpp
@@ -1087,12 +1090,13 @@ function(mevr_add_plugin game)
             src/core/vr/ScopeArt.cpp src/core/vr/ScopeCapture.cpp src/core/vr/Sights.cpp
             src/plugin/ScopeCaptureSource.cpp src/plugin/SightLayers.cpp src/plugin/SightPictures.cpp
             src/core/vr/PowerWheel.cpp src/core/vr/SquadPlace.cpp src/core/vr/InteractLabel.cpp
+            src/plugin/SquadPlaceDraw.cpp src/plugin/GalaxyHologramDraw.cpp src/core/vr/GalaxyHologram.cpp
+            src/core/vr/SquadMenu.cpp src/plugin/SquadPanel.cpp src/plugin/SquadPanelDraw.cpp
             src/plugin/PowerWheel.cpp src/plugin/PowerWheelDraw.cpp src/plugin/PowerIcons.cpp src/plugin/Glow.cpp
             src/core/vr/OverlayPlacement.cpp src/core/vr/OverlayPlacement.hpp)
         if (MEVR_MAIN_MENU)
             set(with_main_menu ON)
             list(APPEND host_sources ${MEVR_SEQUEL_MENU_SOURCES}
-                src/core/vr/GalaxyHologram.cpp src/core/vr/GalaxyHologram.hpp
                 src/plugin/HudPanel.cpp src/plugin/HudPanel.hpp src/plugin/QuadSwapchain.cpp src/plugin/QuadSwapchain.hpp
                 # MainMenuSettings uses the shared device/status API; native voice services remain unpublished on LE3.
                 src/plugin/Voice.cpp src/plugin/Voice.hpp src/plugin/VoiceModel.cpp src/plugin/VoiceModel.hpp)

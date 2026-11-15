@@ -22,6 +22,7 @@
 #include "plugin/CineScreen.hpp"
 #include "plugin/SequelCinema.hpp"
 #include "plugin/SequelWeaponLayers.hpp"
+#include "plugin/SequelSquadLayers.hpp"
 #include "plugin/Colour.hpp"
 #include "plugin/CrashBreadcrumbs.hpp"
 #include "plugin/EyeCopy.hpp"
@@ -136,6 +137,7 @@ void WrapSessionFunctions(void** acquireSwapchainImage, void** waitSwapchainImag
 }
 
 void OnSessionCreated(void* instance, void* session) noexcept {
+    mevr::host::sequel_squad_layers::ForgetSession();
     gGalaxyTable.Reset();
     gGalaxyPanel.reset();
     gGalaxySpace = nullptr;
@@ -252,7 +254,7 @@ void OnRecentered() noexcept {
     gGalaxyTable.Reset();
     gGalaxyPanel.reset();
     mevr::host::xr_host::NoteRecentered();
-    mevr::host::squad_panel::Recentered();
+    mevr::host::sequel_squad_layers::Recentered();
     mevr::host::hud_panel::Recentered();  // the HUD panel straight ahead again
     mevr::host::world_panels::Recenter();  // the 3D cinema screen placed afresh
     mevr::host::menus_le2::OnRecentered();  // our menu and the calibration placed again (M4)
@@ -263,6 +265,7 @@ void OnRecentered() noexcept {
 }
 
 void OnSessionStopped() noexcept {
+    mevr::host::sequel_squad_layers::ForgetSession();
     mevr::host::floor_lock::Reset();  // the queued and published views (host_view::Reset)
     mevr::host::hud_panel::SetArmed(false);  // no OverlayLayers runs now to disarm it: the UI back to the frame
     mevr::host::eye_copy::Reset();
@@ -580,27 +583,11 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
         XrCompositionLayerQuad const* quads[3]{};
         int const n = mevr::host::power_wheel::Layers(wheel, quads, static_cast<int>(std::min(3u, capacity - count)));
         for (int i = 0; i < n; ++i) layersOut[count++] = quads[i];
-        if (count < capacity && wheel.worldFrame && !wheel.menuOpen && wheel.headValid && frame.projectionValid) {
-            mevr::host::squad_place_draw::Frame place;
-            place.session = wheel.session;
-            place.appSpace = wheel.appSpace;
-            place.context = wheel.context;
-            place.device = wheel.device;
-            place.headValid = true;
-            auto const& hq = frame.headOrientation;
-            place.head = {{hq[0], hq[1], hq[2], hq[3]}, wheel.head};
-            place.eyeWidth = frame.projectionRect[0][2];
-            place.eyeHeight = frame.projectionRect[0][3];
-            for (int e = 0; e < 2; ++e) {
-                auto const& q = frame.projectionOrientation[e];
-                auto const& p = frame.projectionPosition[e];
-                auto const& fov = frame.projectionFov[e];
-                place.eyes[e] = {{q[0], q[1], q[2], q[3]}, {p[0], p[1], p[2]}};
-                place.fov[e] = {fov[0], fov[1], fov[2], fov[3]};
-            }
-            if (auto const* arc = mevr::host::squad_place_draw::Layer(place)) layersOut[count++] = arc;
-        }
     }
+    OverlayFrame squadFrame = frame;
+    squadFrame.worldFrame = frame.worldFrame && frame.gameMode == 0;
+    squadFrame.menuOpen = frame.menuOpen || mevr::host::renderer::OwnMenuOpen() || mevr::host::menus_le2::PadWanted();
+    count = mevr::host::sequel_squad_layers::Place(squadFrame, device, layersOut, count, capacity);
     // Use the submitted image for picking. Orbit keeps its native scan and probe controls.
     if (gGalaxyPanel && frame.gameMode == 9 && !frame.menuOpen && !mevr::host::renderer::OwnMenuOpen() &&
         !mevr::host::menus_le2::PadWanted()) {
@@ -610,18 +597,7 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
         mevr::host::game_pointer::ForgetGameUiQuad();
         gGalaxyPointerShown = false;
     }
-    if (count < capacity && frame.gameMode == 0) {
-        mevr::host::squad_panel::Frame squad;
-        squad.session = static_cast<XrSession>(frame.session);
-        squad.appSpace = static_cast<XrSpace>(frame.appSpace);
-        squad.context = frame.context; squad.device = device;
-        squad.worldFrame = frame.worldFrame;
-        squad.menuOpen = frame.menuOpen || mevr::host::renderer::OwnMenuOpen() || mevr::host::menus_le2::PadWanted();
-        squad.headValid = frame.headValid;
-        auto const& q = frame.headOrientation; auto const& p = frame.headPosition;
-        squad.head = {{q[0], q[1], q[2], q[3]}, {p[0], p[1], p[2]}};
-        if (auto const* layer = mevr::host::squad_panel::Layer(squad)) layersOut[count++] = layer;
-    }
+    count = mevr::host::sequel_squad_layers::Panel(squadFrame, device, layersOut, count, capacity);
     // Our main menu and the guided calibration (plugin/MenusLe2, M4): over the rest, alone while they're up.
 #if defined(MEVR_WITH_MAIN_MENU)
     {

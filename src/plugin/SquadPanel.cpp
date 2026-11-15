@@ -228,6 +228,14 @@ XrPosef Place(menu::View const& view, Frame const& frame, char const*& from) {
 
 } // namespace
 
+void ForgetSession() {
+    swapchains::Forget(gSwapchain.handle);
+    gSwapchain = {};
+    gSession = XR_NULL_HANDLE;
+    gPlaced = false;
+    gRecentered.store(false, std::memory_order_release);
+}
+
 void Recentered() {
     gRecentered.store(true, std::memory_order_release);
 }

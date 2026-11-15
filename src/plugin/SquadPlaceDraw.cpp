@@ -246,6 +246,13 @@ gh::DrawList Build(sp::View const& view, XrPosef const& headPose, float timeS) {
 
 } // namespace
 
+void ForgetSession() {
+    for (auto& chain : gChains) chain.Forget();
+    gSession = XR_NULL_HANDLE;
+    gStartMs = 0;
+    SetStatus("{\"shown\": false}");
+}
+
 XrCompositionLayerBaseHeader const* Layer(Frame const& frame) {
     if (frame.session == XR_NULL_HANDLE || frame.appSpace == XR_NULL_HANDLE || frame.context == nullptr || frame.device == nullptr ||
         !frame.headValid) {

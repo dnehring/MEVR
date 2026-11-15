@@ -9,6 +9,7 @@
 #include "plugin/CineScreen.hpp"
 #include "plugin/SequelCinema.hpp"
 #include "plugin/SequelWeaponLayers.hpp"
+#include "plugin/SequelSquadLayers.hpp"
 #include "plugin/Vignette.hpp"
 #include "plugin/PowerWheel.hpp"
 #include "plugin/TraversalCue.hpp"
@@ -68,6 +69,7 @@ void WrapSessionFunctions(void** acquire, void** release, void** endFrame, void*
 }
 void OnSessionCreated(void* instance, void* session) noexcept {
     InvalidateTraversalPresentation();
+    mevr::host::sequel_squad_layers::ForgetSession();
     auto const xrInstance = static_cast<XrInstance>(instance);
     auto const xrSession = static_cast<XrSession>(session);
     mevr::host::menus_le2::OnSessionCreated(xrInstance, xrSession);
@@ -94,6 +96,7 @@ void OnSessionCreated(void* instance, void* session) noexcept {
 }
 void OnSessionStopped() noexcept {
     InvalidateTraversalPresentation();
+    mevr::host::sequel_squad_layers::ForgetSession();
     gScreen = {};
     mevr::host::hud_panel::SetArmed(false);
     mevr::host::vignette::Forget();
@@ -125,6 +128,7 @@ void OnFrameBegun(void* session, void* space, std::int64_t time) noexcept {
         mevr::vr::host_view::Reset(); // flat/menu paths do not call DriveHeadLook this frame
 }
 void OnRecentered() noexcept {
+    mevr::host::sequel_squad_layers::Recentered();
     InvalidateTraversalPresentation();
     gScreen = {};
     mevr::host::traversal_cue::Forget();
@@ -265,6 +269,9 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** out, unsigned cap
         int const n = mevr::host::power_wheel::Layers(wheel, quads, static_cast<int>(room));
         for (int i = 0; i < n; ++i) out[count++] = quads[i];
     }
+    gameplay.worldFrame = frame.worldFrame && onFoot;
+    count = mevr::host::sequel_squad_layers::Place(gameplay, device, out, count, capacity);
+    count = mevr::host::sequel_squad_layers::Panel(gameplay, device, out, count, capacity);
     count = mevr::host::menus_le2::Layers(frame, device, out, count, capacity);
     gScreen = {};
     if (device) device->Release();

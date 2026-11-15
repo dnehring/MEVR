@@ -57,3 +57,11 @@ Use the existing request channel with `mevr guimouse hud` on LE3. The bounded re
 
 
 LE3 also composes shared TraversalCue label/blink layers between the weapon layers and menus, using the existing setTraversal producer contract. Only on-foot world frames are eligible; menus/calibration suppress them, and session stop/recenter forget stale cue positions. Cinematic/conversation modes cannot acquire traversal presentation. Native ladder/vault activation, blink timing and physical-headset comfort remain the traversal adapter's acceptance, not something proven by drawing the layer.
+
+## Shared squad presentation (L3-6 consumer)
+
+`SequelSquadLayers` now contains the existing LE2 placement-arc and squad-panel frame composition; both sequel bridges call it. LE3 links the existing `SquadPanel`, `SquadPanelDraw`, `SquadPlaceDraw`, `GalaxyHologramDraw`, and shared published-state modules. This supplies actual consumers for `setSquadMenu` and `setSquadPlace`; the latter also supplies the existing squad-selection wheel rendered by `PowerWheel`. The game adapter remains responsible for verified native squad commands.
+
+Only semantic on-foot world frames can show these layers. Main menu, renderer menu, guided calibration, missing head/projection state, and layer capacity retain ownership. The placement arc uses the renderer's actual submitted eye poses and FOVs, not raw tracked eyes. Recenter discards old tracking-space placement data and places the squad panel afresh. Session stop/start forgets both modules' swapchains explicitly, including runtime session-handle reuse, and clears old published views.
+
+Strict compilation passed for both sequel bridges and all linked squad draw translation units. Full host linking is coordinator-owned. Native orders/weapon choice, floor placement, menu suppression, repeated open/close, recenter/session restart, and physical-headset visual placement remain acceptance work; compilation does not establish them.
