@@ -828,7 +828,11 @@ HUD panel 1365x768 made`, `panel layer: 150 UI draws this frame, 1365x768 (1/3 o
 snapshot has a `hud` layer with the whole HUD at its authored layout (power bar top left, prompt, crosshair, weapon panel,
 squad portraits) and neither eye shows the HUD (the HUD's orange in each eye: 639 pixels in the right eye's power-bar band
 before, about 20 in the whole picture after, the lamps' own). PcHud logs `[MEVR] PcHud: the HUD is on the body-locked panel:
-its own layout`.
+its own layout`. **The reticle** (stretch `...-lane-b3-reticle`, 23:10, lane C's recording `make-walk-recording.py --plan
+stand:120 --hands view --hand-yaw 30 --fire 1.5` replayed with `-Inputs`): `overlays: reticle on the mod's aim ray`,
+`swapchains: reticle 128x128 made`, `[MEVR-HUD] first hand reticle: the mod's aim ray, 10.0 m along the ray`; the snapshot's
+`reticle` quad 10 m along `aimRay` (direction 0.50, 0.00, -0.87: the hand turned 30 degrees right), 0.28 m across, the cyan
+ring over the heavy pistol's barrel in the left eye; the shots 0.4 degrees from the barrel (lane C's hand aim).
 
 **The colour correction on the panel** (after the picture lane put `plugin/Colour` in the LE2 host, fc24c20d):
 `HalcyonLe2Bridge::OverlayLayers` hands `hud_panel::SetColour` the same prelude and `BeginPanel`/`EndPanel` LE1's
