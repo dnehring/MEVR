@@ -188,6 +188,16 @@ calls), no ME2 copy:
 - Seen in that log, not ours: a first-chance fault in Halcyon ME2's `PcHud::ReadFString` (pchud.cpp:253, under its own SEH)
   at the session's start.
 
+**LE1 unchanged** (2026-11-14 23:07, `tools/fake-headset-session.ps1 -Tag laned-pose -BuildDir build-mono`, lane B's
+same-pose script plus our menu opened by the request file; session `2026-11-14_23-06-45-laned-pose`), against lane B3's
+"before" run of 23:03 (`2026-11-14_23-03-25-laneb3-before`): the same six layers at the same places (the label 0.2 mm, the
+omni-tool target 0.9 mm apart), `hostView` identical (-43.3 / -4.1 / -18.1 uu, 100 uu/m), the HUD panel 0.11% of pixels apart
+by more than 32/255. The eyes differ (15% of pixels): B3's build predates main's fc24c20d, which answers LE1's HDR question SDR
+by default (its log: `[Colour] hdrDisplay = 0`, the float frame; ours: `answered SDR: the game keeps its 8-bit frame`), so the
+two frames are different pipelines, not a change of ours. Then `open comfort` (with PowerShell's CR LF) opened our menu on
+LE1 on the Comfort page (`mainMenu.open: true, section: comfort`). The menu's preview: the 91 PNGs pixel-identical (above).
+ctest: 53 of 53 in `build` and `build-trilogy`.
+
 **How to repeat it:** `tools\le2-halcyon-run\prep.ps1 -Holder <you> -BuildDir <worktree>\build-trilogy`, `launch.ps1`,
 `load.ps1`; `Set-Content $env:LOCALAPPDATA\MEVR\mainmenu.request 'open controls' -NoNewline`; `python
 tools\make-menu-recording.py rec.mevrrec "point 1318 792; click; hold 3"` and `tools\replay.ps1 -Path rec.mevrrec -Inputs`
