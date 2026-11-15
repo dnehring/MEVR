@@ -142,8 +142,20 @@ void Blit::Shutdown() {
 bool Blit::EnsureCopy(ID3D11Texture2D* source) {
     D3D11_TEXTURE2D_DESC desc{};
     source->GetDesc(&desc);
+    // The fullscreen sampler handles one colour image. Typeless/default SRVs, arrays and
+    // integer/depth sampling require a different view/shader contract; do not report a draw.
+    switch (desc.Format) {
+    case DXGI_FORMAT_R8G8B8A8_UNORM: case DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:
+    case DXGI_FORMAT_B8G8R8A8_UNORM: case DXGI_FORMAT_B8G8R8A8_UNORM_SRGB:
+    case DXGI_FORMAT_B8G8R8X8_UNORM: case DXGI_FORMAT_B8G8R8X8_UNORM_SRGB:
+    case DXGI_FORMAT_R10G10B10A2_UNORM: case DXGI_FORMAT_R16G16B16A16_FLOAT:
+    case DXGI_FORMAT_R16G16B16A16_UNORM: case DXGI_FORMAT_R32G32B32A32_FLOAT:
+        break;
+    default: return false;
+    }
+    if (desc.MipLevels != 1 || desc.ArraySize != 1) return false;
     if (copy_ && desc.Width == copyDesc_.Width && desc.Height == copyDesc_.Height &&
-        desc.Format == copyDesc_.Format) {
+        desc.Format == copyDesc_.Format && sourceIsMultisampled_ == (desc.SampleDesc.Count > 1)) {
         return true;
     }
     copySrv_.Reset();
@@ -171,27 +183,32 @@ bool Blit::EnsureCopy(ID3D11Texture2D* source) {
     return true;
 }
 
-void Blit::Draw(ID3D11DeviceContext* immediate, ID3D11Texture2D* source, ID3D11RenderTargetView* target,
+bool Blit::Draw(ID3D11DeviceContext* immediate, ID3D11Texture2D* source, ID3D11RenderTargetView* target,
     UINT targetWidth, UINT targetHeight, int shiftX) {
-    DrawWithShader(immediate, source, target, targetWidth, targetHeight, shiftX, nullptr, nullptr);
+    return DrawWithShader(immediate, source, target, targetWidth, targetHeight, shiftX, nullptr, nullptr);
 }
 
-void Blit::DrawWith(ID3D11DeviceContext* immediate, ID3D11Texture2D* source, ID3D11RenderTargetView* target,
+bool Blit::DrawWith(ID3D11DeviceContext* immediate, ID3D11Texture2D* source, ID3D11RenderTargetView* target,
     UINT targetWidth, UINT targetHeight, int shiftX, ID3D11PixelShader* pixelShader, ID3D11Buffer* constantsB1) {
     if (pixelShader == nullptr) {
-        return;
+        return false;
     }
-    DrawWithShader(immediate, source, target, targetWidth, targetHeight, shiftX, pixelShader, constantsB1);
+    return DrawWithShader(immediate, source, target, targetWidth, targetHeight, shiftX, pixelShader, constantsB1);
 }
 
-void Blit::DrawWithShader(ID3D11DeviceContext* immediate, ID3D11Texture2D* source, ID3D11RenderTargetView* target,
+bool Blit::DrawWithShader(ID3D11DeviceContext* immediate, ID3D11Texture2D* source, ID3D11RenderTargetView* target,
     UINT targetWidth, UINT targetHeight, int shiftX, ID3D11PixelShader* pixelShader, ID3D11Buffer* constantsB1) {
-    if (!state_ || !EnsureCopy(source)) {
-        return;
+    if (!state_ || !immediate || !source || !target || targetWidth == 0 || targetHeight == 0 ||
+        immediate->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return false;
+    ComPtr<ID3D11Device> contextDevice, sourceDevice, targetDevice;
+    immediate->GetDevice(&contextDevice); source->GetDevice(&sourceDevice); target->GetDevice(&targetDevice);
+    if (contextDevice.Get() != device_.Get() || sourceDevice.Get() != device_.Get() || targetDevice.Get() != device_.Get() ||
+        !EnsureCopy(source)) {
+        return false;
     }
     ComPtr<ID3D11DeviceContext1> ctx;
     if (FAILED(immediate->QueryInterface(IID_PPV_ARGS(&ctx)))) {
-        return;
+        return false;
     }
     // Copies don't touch pipeline state, so they can run in the game's state.
     if (sourceIsMultisampled_) {
@@ -241,6 +258,7 @@ void Blit::DrawWithShader(ID3D11DeviceContext* immediate, ID3D11Texture2D* sourc
     }
 
     ctx->SwapDeviceContextState(gameState.Get(), nullptr);
+    return SUCCEEDED(device_->GetDeviceRemovedReason());
 }
 
 } // namespace mevr::d3d11

@@ -1117,8 +1117,8 @@ bool EnsureAerHistory(ID3D11Texture2D* src) noexcept
 // Full-frame -> whole eye (the UN-SQUASH). src/history/g_aerSwap are all full-backbuffer size, so a straight
 // CopyResource works (no aspect crop = no squash of the game's ~square-FOV-rendered-into-16:9 backbuffer).
 // shiftPx != 0 shifts the copied image horizontally inside the eye texture ([SFRCONV] convergence).
-// The destination is cleared first so the vacated strip is black rather than stale. shiftPx == 0 takes
-// the plain whole-resource copy, so every non-SFR path is bit-identical to before.
+// [MEVR] Shared copy policy fills unshifted first, then shifts: the vacated strip is never stale.
+// shiftPx == 0 takes the validated raw copy or required HDR conversion.
 bool CopyTextureToEyeFullFrame(int eye, ID3D11Texture2D* src, int shiftPx) noexcept
 {
     if (src == nullptr || g_aerSwap[eye] == nullptr) return false;
@@ -1131,30 +1131,8 @@ bool CopyTextureToEyeFullFrame(int eye, ID3D11Texture2D* src, int shiftPx) noexc
     if (XrSucceeded(g_fn.waitSwapchainImage(g_aerSwap[eye], &wi)) && idx < g_aerImages[eye].size())
     {
         // [MEVR] HDR format conversion and the shared headset colour profile.
-        if (::ME2VR::MevrBridge::CopyIntoImage(g_ctx, g_aerImages[eye][idx], src, shiftPx, eye)) copied = true;
-        else if (shiftPx == 0)
-        {
-            g_ctx->CopyResource(g_aerImages[eye][idx], src);
-            copied = true;
-        }
-        else
-        {
-            const int w = static_cast<int>(g_aerSwapW), h = static_cast<int>(g_aerSwapH);
-            int sx0 = 0, dx0 = 0;
-            if (shiftPx > 0) { dx0 = shiftPx; }     // content moves right; left edge stays cleared
-            else             { sx0 = -shiftPx; }    // content moves left
-            const int copyW = w - ((shiftPx > 0) ? shiftPx : -shiftPx);
-            if (copyW > 0)
-            {
-                D3D11_BOX box = {};
-                box.left = static_cast<UINT>(sx0); box.right = static_cast<UINT>(sx0 + copyW);
-                box.top = 0; box.bottom = static_cast<UINT>(h);
-                box.front = 0; box.back = 1;
-                g_ctx->CopySubresourceRegion(g_aerImages[eye][idx], 0,
-                                             static_cast<UINT>(dx0), 0, 0, src, 0, &box);
-                copied = true;
-            }
-        }
+        // False means the image was not copied; no incompatible-copy fallback.
+        copied = ::ME2VR::MevrBridge::CopyIntoImage(g_ctx, g_aerImages[eye][idx], src, shiftPx, eye);
     }
     if (copied) ::ME2VR::MevrBridge::OnEyeCopied(eye, g_aerImages[eye][idx]); // [MEVR]
     XrSwapchainImageReleaseInfo ri = {}; ri.type = XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO_VALUE;
@@ -1804,11 +1782,11 @@ void RunFrame() noexcept
             XrSwapchainImageAcquireInfo ai = {}; ai.type = XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO_VALUE;
             if (XrSucceeded(g_fn.acquireSwapchainImage(g_monoSwap, &ai, &idx)))
             {
+                bool copied = false;
                 XrSwapchainImageWaitInfo wi = {}; wi.type = XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO_VALUE; wi.timeout = XR_INFINITE_DURATION_VALUE;
                 if (XrSucceeded(g_fn.waitSwapchainImage(g_monoSwap, &wi)) && idx < g_monoImages.size())
                     // [MEVR] Native flat cinema/menu also needs the HDR conversion.
-                    if (!::ME2VR::MevrBridge::CopyIntoImage(g_ctx, g_monoImages[idx], backbuffer, 0, -1))
-                        g_ctx->CopyResource(g_monoImages[idx], backbuffer);
+                    copied = ::ME2VR::MevrBridge::CopyIntoImage(g_ctx, g_monoImages[idx], backbuffer, 0, -1);
                 XrSwapchainImageReleaseInfo ri = {}; ri.type = XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO_VALUE;
                 g_fn.releaseSwapchainImage(g_monoSwap, &ri);
 
@@ -1840,7 +1818,7 @@ void RunFrame() noexcept
                     mw *= g_cineScreenZoom.load(std::memory_order_relaxed);
                 monoQuad.size.width = mw;
                 monoQuad.size.height = mw * aspect;
-                haveMono = true;
+                haveMono = copied;
             }
         }
         if (backbuffer) backbuffer->Release();

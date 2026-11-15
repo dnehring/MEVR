@@ -1060,12 +1060,12 @@ bool CopyTextureToEyeFullFrame(int eye, ID3D11Texture2D* src, int shiftPx = 0) n
     if (XrSucceeded(waited) && idx < g_aerImages[eye].size())
     {
         ID3D11Texture2D* dst = g_aerImages[eye][idx];
-        copied = true;
 #if defined(MEVR_ASI)
-        // [MEVR] a source CopyResource can't copy into the eye (ME2's float swap chain in gameplay) is drawn instead
-        if (::ME2VR::MevrBridge::CopyIntoImage(g_ctx, dst, src, shiftPx)) {}
-        else
-#endif
+        // [MEVR] The shared copy owns raw copies and HDR conversion. False is a failure,
+        // never permission to issue an incompatible raw copy or report a filled eye.
+        copied = ::ME2VR::MevrBridge::CopyIntoImage(g_ctx, dst, src, shiftPx);
+#else
+        copied = true;
         if (shiftPx == 0)
         {
             g_ctx->CopyResource(dst, src);
@@ -1092,10 +1092,11 @@ bool CopyTextureToEyeFullFrame(int eye, ID3D11Texture2D* src, int shiftPx = 0) n
             else        { box.left = static_cast<UINT>(-s); box.right = static_cast<UINT>(W); dstX = 0; }
             g_ctx->CopySubresourceRegion(dst, 0, dstX, 0, 0, src, 0, &box);   // shifted overwrite
         }
+#endif
     }
 #if defined(MEVR_ASI)
     // [MEVR] the copy counted (and a snapshot armed now saves the image right after it: plugin/TestLoop)
-    ::ME2VR::MevrBridge::OnEyeCopied(eye, idx < g_aerImages[eye].size() ? g_aerImages[eye][idx] : nullptr, idx, 0,
+    ::ME2VR::MevrBridge::OnEyeCopied(eye, copied && idx < g_aerImages[eye].size() ? g_aerImages[eye][idx] : nullptr, idx, 0,
                                      static_cast<int>(waited));
 #endif
     XrSwapchainImageReleaseInfo ri = {}; ri.type = XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO_VALUE;
@@ -1831,10 +1832,11 @@ void RunFrame() noexcept
                 if (XrSucceeded(g_fn.waitSwapchainImage(g_monoSwap, &wi)) && idx < g_monoImages.size())
                 {
 #if defined(MEVR_ASI)
-                    if (!::ME2VR::MevrBridge::CopyIntoImage(g_ctx, g_monoImages[idx], backbuffer, 0))  // [MEVR] as the eyes
-#endif
+                    mevrMonoImageReady = ::ME2VR::MevrBridge::CopyIntoImage(g_ctx, g_monoImages[idx], backbuffer, 0);
+#else
                     g_ctx->CopyResource(g_monoImages[idx], backbuffer);
                     mevrMonoImageReady = true;
+#endif
                 }
                 XrSwapchainImageReleaseInfo ri = {}; ri.type = XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO_VALUE;
                 g_fn.releaseSwapchainImage(g_monoSwap, &ri);
@@ -1863,7 +1865,7 @@ void RunFrame() noexcept
                 monoQuad.pose.position.z = -mdist;
                 monoQuad.size.width = mw;
                 monoQuad.size.height = mw * aspect;
-                haveMono = true;
+                haveMono = mevrMonoImageReady;
             }
         }
         if (backbuffer) backbuffer->Release();

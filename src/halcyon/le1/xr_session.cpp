@@ -1198,7 +1198,13 @@ void CopyTextureToEye(int eye, ID3D11Texture2D* src) noexcept
         if (monoFillV > 1.0f) monoFillV = 1.0f;
         if (monoFillV < 0.1f) monoFillV = 0.1f;
     }
-    if (sizeMismatch && BlitTextureToEyeWithFill(eye, src, cineSourceVScale, 1.0f, monoFillV, 0.0f)) return;
+    if (sizeMismatch)
+    {
+        // [MEVR] A failed required conversion is not permission for a raw size/format-
+        // incompatible copy. The full-frame helper already returns its blit result.
+        BlitTextureToEyeWithFill(eye, src, cineSourceVScale, 1.0f, monoFillV, 0.0f);
+        return;
+    }
 
     XrSwapchainImageAcquireInfo ai = {};
     ai.type = XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO_VALUE;
@@ -1207,8 +1213,8 @@ void CopyTextureToEye(int eye, ID3D11Texture2D* src) noexcept
     XrSwapchainImageWaitInfo wi = {};
     wi.type = XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO_VALUE;
     wi.timeout = XR_INFINITE_DURATION_VALUE;
-    g_fn.waitSwapchainImage(g_eyes[eye].swapchain, &wi);
-    if (rawCopyOk && index < g_eyes[eye].images.size() && g_eyes[eye].images[index] != nullptr)   // [MEVR] HDR
+    const XrResult waited = g_fn.waitSwapchainImage(g_eyes[eye].swapchain, &wi);
+    if (XrSucceeded(waited) && rawCopyOk && index < g_eyes[eye].images.size() && g_eyes[eye].images[index] != nullptr)   // [MEVR] HDR
     {
         g_context->CopyResource(g_eyes[eye].images[index], src);
     }

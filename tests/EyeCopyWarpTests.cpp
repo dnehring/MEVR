@@ -3,6 +3,7 @@
 #include "plugin/EyeCopy.hpp"
 #include "plugin/Colour.hpp"
 #include "core/Log.hpp"
+#include "core/d3d11/Blit.hpp"
 
 #include <d3d11sdklayers.h>
 #include <wrl/client.h>
@@ -145,13 +146,12 @@ void Run(ID3D11Device* device, ID3D11DeviceContext* context, ID3D11InfoQueue* qu
     CHECK(copy::Copy(context, srgbTarget.Get(), source.Get(), 0, -1));
     CheckPixels(Read(device, context, srgbTarget.Get()), expected, "typed sRGB target / mono");
 
-    // Neutral SDR in the same format family deliberately leaves the renderer's raw copy
-    // path intact (including alpha). No shader conversion or unintended gamma adjustment.
+    // Neutral SDR uses the complete operation's validated raw path (including alpha).
+    // No second caller copy is needed, and no unintended gamma adjustment occurs.
     std::vector<Pixel> sdr(kWidth * kHeight, Pixel{64,128,192,83});
     auto sdrSource = Texture(device, DXGI_FORMAT_R8G8B8A8_UNORM, D3D11_BIND_RENDER_TARGET, sdr.data(), kWidth * sizeof(Pixel));
     CHECK(copy::CopyCompatible(DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_R8G8B8A8_TYPELESS));
-    CHECK(!copy::Copy(context, target.Get(), sdrSource.Get()));
-    context->CopyResource(target.Get(), sdrSource.Get());
+    CHECK(copy::Copy(context, target.Get(), sdrSource.Get()));
     CheckPixels(Read(device, context, target.Get()), sdr, "SDR compatible raw copy", 0);
 
     // Cross-family SDR must draw; decode before the sRGB RTV re-encodes, preserving colour
@@ -160,6 +160,69 @@ void Run(ID3D11Device* device, ID3D11DeviceContext* context, ID3D11InfoQueue* qu
     auto bgraSource = Texture(device, DXGI_FORMAT_B8G8R8A8_UNORM, D3D11_BIND_RENDER_TARGET, bgra.data(), kWidth * sizeof(Pixel));
     CHECK(copy::Copy(context, target.Get(), bgraSource.Get()));
     CheckPixels(Read(device, context, target.Get()), std::vector<Pixel>(kWidth * kHeight, Pixel{64,128,192,255}), "SDR decoded conversion");
+
+    // Raw convergence follows the same fill/shift policy as HDR, including large offsets.
+    auto rawPattern = expected;
+    for (auto& pixel : rawPattern) pixel[3] = 83;
+    context->UpdateSubresource(sdrSource.Get(), 0, nullptr, rawPattern.data(), kWidth * sizeof(Pixel), 0);
+    for (int shift : {2, -2, 999, -999}) {
+        CHECK(copy::Copy(context, target.Get(), sdrSource.Get(), shift));
+        auto shifted = rawPattern;
+        int const bounded = shift > 7 ? 7 : shift < -7 ? -7 : shift;
+        for (UINT y = 0; y < kHeight; ++y) for (int x = 0; x < static_cast<int>(kWidth); ++x) {
+            int const from = x - bounded;
+            if (from >= 0 && from < static_cast<int>(kWidth)) shifted[y * kWidth + x] = rawPattern[y * kWidth + from];
+        }
+        CheckPixels(Read(device, context, target.Get()), shifted, "raw convergence", 0);
+    }
+
+    // A compatible format alone is not permission to CopyResource: sizes must match too.
+    D3D11_TEXTURE2D_DESC smallDesc{}; sdrSource->GetDesc(&smallDesc); smallDesc.Width = 4;
+    D3D11_SUBRESOURCE_DATA smallData{}; smallData.pSysMem = sdr.data(); smallData.SysMemPitch = 4 * sizeof(Pixel);
+    ComPtr<ID3D11Texture2D> smallSource;
+    Require(device->CreateTexture2D(&smallDesc, &smallData, &smallSource), "small SDR source");
+    CHECK(copy::Copy(context, target.Get(), smallSource.Get()));
+    CheckPixels(Read(device, context, target.Get()), std::vector<Pixel>(kWidth * kHeight, Pixel{64,128,192,255}), "same-family resize draws");
+
+    // Actual unsupported target/source failures must report false, preserve pixels and
+    // issue no invalid fallback. In particular, EnsureCopy's unsupported-source return
+    // used to be swallowed by void Blit::Draw while EyeCopy claimed success.
+    auto unsupportedTarget = Texture(device, DXGI_FORMAT_R8G8B8A8_UNORM, D3D11_BIND_RENDER_TARGET, sentinel.data(), kWidth * sizeof(Pixel));
+    CHECK(!copy::Copy(context, unsupportedTarget.Get(), source.Get()));
+    CheckPixels(Read(device, context, unsupportedTarget.Get()), sentinel, "no sRGB target view", 0);
+    auto noTargetView = Texture(device, DXGI_FORMAT_R8G8B8A8_TYPELESS, 0, sentinel.data(), kWidth * sizeof(Pixel));
+    CHECK(!copy::Copy(context, noTargetView.Get(), source.Get()));
+    CheckPixels(Read(device, context, noTargetView.Get()), sentinel, "no target bind", 0);
+    auto typelessSource = Texture(device, DXGI_FORMAT_R16G16B16A16_TYPELESS, D3D11_BIND_RENDER_TARGET, hdr.data(), kWidth * sizeof(HalfPixel));
+    context->UpdateSubresource(target.Get(), 0, nullptr, sentinel.data(), kWidth * sizeof(Pixel), 0);
+    CHECK(!copy::Copy(context, target.Get(), typelessSource.Get()));
+    CheckPixels(Read(device, context, target.Get()), sentinel, "EnsureCopy refused source", 0);
+    CHECK(!copy::Copy(nullptr, target.Get(), source.Get()));
+    CHECK(!copy::Copy(context, nullptr, source.Get()));
+    CHECK(!copy::Copy(context, target.Get(), nullptr));
+    CHECK(!copy::Copy(context, target.Get(), target.Get()));
+    mevr::d3d11::Blit uninitialized;
+    CHECK(!uninitialized.Draw(context, source.Get(), gameView.Get(), kWidth, kHeight));
+    CHECK(!uninitialized.DrawWith(context, source.Get(), gameView.Get(), kWidth, kHeight, 0, nullptr, nullptr));
+
+    D3D11_TEXTURE2D_DESC arrayDesc{}; sdrSource->GetDesc(&arrayDesc); arrayDesc.ArraySize = 2;
+    ComPtr<ID3D11Texture2D> arraySource;
+    Require(device->CreateTexture2D(&arrayDesc, nullptr, &arraySource), "array source");
+    CHECK(!copy::Copy(context, target.Get(), arraySource.Get()));
+    CheckPixels(Read(device, context, target.Get()), sentinel, "array source refused", 0);
+
+    // The cached single-sample intermediate must switch between CopyResource and resolve
+    // when only the source's sample count changes, then switch back without stale state.
+    D3D11_TEXTURE2D_DESC msaaDesc{}; source->GetDesc(&msaaDesc); msaaDesc.SampleDesc.Count = 4;
+    ComPtr<ID3D11Texture2D> msaaSource; ComPtr<ID3D11RenderTargetView> msaaView;
+    Require(device->CreateTexture2D(&msaaDesc, nullptr, &msaaSource), "MSAA source");
+    Require(device->CreateRenderTargetView(msaaSource.Get(), nullptr, &msaaView), "MSAA source view");
+    constexpr float colour[]{0.25f,0.5f,1.0f,1.0f}; context->ClearRenderTargetView(msaaView.Get(), colour);
+    CHECK(copy::Copy(context, target.Get(), source.Get()));
+    CHECK(copy::Copy(context, target.Get(), msaaSource.Get()));
+    CheckPixels(Read(device, context, target.Get()), std::vector<Pixel>(kWidth * kHeight, Pixel{137,188,255,255}), "single to MSAA resolve");
+    CHECK(copy::Copy(context, target.Get(), source.Get()));
+    CheckPixels(Read(device, context, target.Get()), expected, "MSAA back to single sample");
     CHECK(DebugErrors(queue) == 0);
     context->ClearState();
     copy::Reset();
@@ -183,6 +246,6 @@ int main() {
     } catch (std::exception const& error) {
         std::printf("ERROR: %s\n", error.what()); return 1;
     }
-    std::printf("EyeCopy/Blit WARP: %s (HDR, SDR, +/-shift, raw-copy refusal, pipeline restore)\n", failures == 0 ? "PASS" : "FAIL");
+    std::printf("EyeCopy/Blit WARP: %s (HDR, SDR, shift, failure refusal, resize, MSAA, pipeline restore)\n", failures == 0 ? "PASS" : "FAIL");
     return failures == 0 ? 0 : 1;
 }

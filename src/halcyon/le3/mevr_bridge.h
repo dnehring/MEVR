@@ -31,6 +31,7 @@ float FloorViewTranslation(bool replay, float rawCameraZ, float rightZ, float up
     float* right, float* up, float* forward) noexcept;
 void OnEyeSource(int eye, void* source) noexcept;
 void OnEyeCopied(int eye, void* image) noexcept;
+// Complete copy/convert operation: false is failure, not a raw-copy fallback request.
 bool CopyIntoImage(void* context, void* image, void* source, int shiftX, int eye) noexcept;
 DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noexcept;
 bool OnGameThread() noexcept;

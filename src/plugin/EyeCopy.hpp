@@ -12,11 +12,13 @@
 // neutral every copy into an eye or the flat panel is a corrected pass of core/vr/Colour's prelude (an 8-bit source through
 // the image's UNORM view, its encoded values as the raw copy leaves them; a float one through its sRGB view). Neutral leaves
 // the copies as they were.
+// This is an opaque eye/flat-frame operation (shader alpha = 1), not an alpha-preserving UI converter.
 namespace mevr::host::eye_copy {
 
-// Copies `source` into `image` when CopyResource can't, or with the colour correction: true if it did (drawn), false when
-// the caller's own copy is right (the same format family and nothing to correct, or an image this can't draw into; logged
-// once). `shiftX`: Halcyon's convergence shift in pixels (0 none). `eye`: 0 left, 1 right, -1 the flat panel (the
+// Owns the complete operation: true if a validated raw copy/shift or shader draw was issued,
+// false on failure. Callers MUST NOT fall back to another raw copy after false, or mark the
+// image ready. This is GPU command admission, not a fence/presentation proof.
+// `shiftX`: Halcyon's convergence shift in pixels (0 none). `eye`: 0 left, 1 right, -1 the flat panel (the
 // correction's dither pattern).
 bool Copy(ID3D11DeviceContext* context, ID3D11Texture2D* image, ID3D11Texture2D* source, int shiftX = 0, int eye = -1);
 

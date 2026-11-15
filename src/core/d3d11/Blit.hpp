@@ -20,15 +20,16 @@ public:
     // assumed to hold sRGB-encoded values (typical SDR backbuffer) and are decoded first.
     // `shiftX` != 0: drawn a second time over the first, moved that many pixels right (left if negative), as Halcyon's
     // ME2 renderer applies its convergence to an eye (the vacated strip keeps the unshifted picture).
-    void Draw(ID3D11DeviceContext* immediate, ID3D11Texture2D* source, ID3D11RenderTargetView* target,
+    // False when resources/context cannot support the draw; callers must not mark that image ready.
+    bool Draw(ID3D11DeviceContext* immediate, ID3D11Texture2D* source, ID3D11RenderTargetView* target,
         UINT targetWidth, UINT targetHeight, int shiftX = 0);
     // The same with a pixel shader of the caller's (made on this device; it reads t0 through s0, the vertex shader's
     // TEXCOORD0 uv and SV_Position) and its constant buffer at b1 (may be null): no sRGB decode of our own.
-    void DrawWith(ID3D11DeviceContext* immediate, ID3D11Texture2D* source, ID3D11RenderTargetView* target,
+    bool DrawWith(ID3D11DeviceContext* immediate, ID3D11Texture2D* source, ID3D11RenderTargetView* target,
         UINT targetWidth, UINT targetHeight, int shiftX, ID3D11PixelShader* pixelShader, ID3D11Buffer* constantsB1);
 
 private:
-    void DrawWithShader(ID3D11DeviceContext* immediate, ID3D11Texture2D* source, ID3D11RenderTargetView* target,
+    bool DrawWithShader(ID3D11DeviceContext* immediate, ID3D11Texture2D* source, ID3D11RenderTargetView* target,
         UINT targetWidth, UINT targetHeight, int shiftX, ID3D11PixelShader* pixelShader, ID3D11Buffer* constantsB1);
     bool EnsureCopy(ID3D11Texture2D* source);
 

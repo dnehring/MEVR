@@ -75,8 +75,8 @@ void OnEyeSource(int eye, void* source) noexcept;
 void OnEyeCopied(int eye, void* image, std::uint32_t index, int acquired, int waited) noexcept;
 
 // Present thread, in place of CopyResource(image, source) into an eye or the flat panel's image (ID3D11DeviceContext,
-// ID3D11Texture2D): true if it drew `source` into `image` because D3D11 can't copy between their formats (ME2's swap chain
-// is R16G16B16A16_FLOAT in gameplay, the images R8G8B8A8; plugin/EyeCopy), false when the caller's copy is right.
+// ID3D11Texture2D): owns the complete validated raw-copy or shader-conversion operation.
+// True means issued; false is failure, never permission for a raw-copy fallback.
 // `shiftX`: the SFR convergence shift in pixels.
 bool CopyIntoImage(void* context, void* image, void* source, int shiftX) noexcept;
 
