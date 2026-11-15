@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+#include "mevr_bridge.h" // [MEVR] script calls only on game thread
 #include "engine_probe.h"
 #include "calcview_hook.h"
 #include "convo_fp.h"
@@ -269,6 +271,22 @@ bool FpReleaseToGame(std::uintptr_t mode, const char* cls) noexcept
 
 // ProcessEvent (LE3 +0xF4F80) + GObjects (LE3 +0x1887E40) -> call native SetOwnerNoSee (marks proxy dirty).
 using tProcessEvent = void(__fastcall*)(void*, void*, void*, void*);
+// [MEVR] Script calls on the game thread only (research/36: UnrealScript's VM keeps its state in process-wide globals,
+// so a ProcessEvent from the Present thread races the game thread's script; LE1's 2026-10-23 crash). These calls come
+// from Present (ApplyFirstPerson, ConvoFp): off the game thread each is queued with a copy of its `size`-byte parameter
+// block for the next engine tick (MevrBridge::QueueProcessEvent). All are setters: nothing reads a result.
+bool MevrCallProcessEvent(void* object, void* fn, void* parms, std::uint32_t size) noexcept
+{
+#if defined(MEVR_ASI)
+    if (!::ME2VR::MevrBridge::OnGameThread())
+        return ::ME2VR::MevrBridge::QueueProcessEvent(object, fn, parms, size);
+#endif
+    (void)size;
+    const auto base = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
+    reinterpret_cast<tProcessEvent>(base + 0xF4F80)(object, fn, parms, nullptr);
+    return true;
+}
+
 void* g_setOwnerNoSeeFn = nullptr;
 bool g_fnSearched = false;
 // [MARKERVR] Exact native hook only -- never detour global ProcessEvent. The LE3 SDK identifies
@@ -584,9 +602,8 @@ void FpSetOwnerNoSee(std::uintptr_t comp, bool on) noexcept
     __try
     {
         const auto base = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
-        auto pe = reinterpret_cast<tProcessEvent>(base + 0xF4F80);
         unsigned long parm = on ? 1ul : 0ul;
-        pe(reinterpret_cast<void*>(comp), fn, &parm, nullptr);
+        MevrCallProcessEvent(reinterpret_cast<void*>(comp), fn, &parm, sizeof parm);
     }
     __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
@@ -629,9 +646,8 @@ void CallPrimSetHidden(std::uintptr_t comp, bool on) noexcept
     __try
     {
         const auto base = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
-        auto pe = reinterpret_cast<tProcessEvent>(base + 0xF4F80);
         unsigned long parm = on ? 1ul : 0ul;
-        pe(reinterpret_cast<void*>(comp), g_primSetHiddenFn, &parm, nullptr);
+        MevrCallProcessEvent(reinterpret_cast<void*>(comp), g_primSetHiddenFn, &parm, sizeof parm);
     }
     __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
@@ -671,7 +687,7 @@ int FpHideMeshes(std::uintptr_t pawn, bool hideHead, bool hideBody) noexcept
 // state to gate on - aim runs whenever the toggle is on and gameplay is live. Revisit when the
 // camera-mode discovery happens.
 constexpr std::uintptr_t kCtrlRotation = 0x114;   // [AIMPROBE] pitch +0x114, yaw +0x118, roll +0x11C
-std::atomic_bool g_headAimOn{true};
+std::atomic_bool g_headAimOn{false}; // [MEVR] head does not aim weapons
 std::atomic_bool g_headAimInvYaw{false};
 std::atomic_bool g_headAimInvPitch{false};
 // [AIMSCOPE] Whether head aim is restricted to weapon-drawn only. DEFAULT OFF, and the default is
@@ -1863,7 +1879,12 @@ void DriveHeadAim(float headYawDeg, float headPitchDeg, bool allowAim) noexcept
 // always sum to the full offset and the view never jumps during the glide.
 bool IsHeadAimActive() noexcept { return g_aimActive; }
 void GetAimSeedRem(int* yawUU, int* pitchUU) noexcept { *yawUU = g_seedRemYawUU; *pitchUU = g_seedRemPitchUU; }
-void SetHeadAimEnabled(bool on) noexcept { g_headAimOn.store(on, std::memory_order_release); }
+void SetHeadAimEnabled(bool on) noexcept {
+#if defined(MEVR_ASI)
+    on = false; // [MEVR] hand owns weapon aim; native stick/mouse pending body adapter.
+#endif
+    g_headAimOn.store(on, std::memory_order_release);
+}
 bool GetHeadAimEnabled() noexcept { return g_headAimOn.load(std::memory_order_acquire); }
 void SetHeadAimInvertYaw(bool on) noexcept { g_headAimInvYaw.store(on, std::memory_order_release); }
 bool GetHeadAimInvertYaw() noexcept { return g_headAimInvYaw.load(std::memory_order_acquire); }
@@ -2965,9 +2986,7 @@ bool ConvoFpDisableDof() noexcept
     __try
     {
         const auto base = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
-        auto pe = reinterpret_cast<tProcessEvent>(base + 0xF4F80);
-        pe(reinterpret_cast<void*>(pc), g_disableDofFn, nullptr, nullptr);
-        return true;
+        return MevrCallProcessEvent(reinterpret_cast<void*>(pc), g_disableDofFn, nullptr, 0);
     }
     __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }

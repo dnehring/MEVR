@@ -1,4 +1,5 @@
-﻿#pragma once
+// SPDX-License-Identifier: GPL-3.0-only
+#pragma once
 
 #include <Windows.h>
 

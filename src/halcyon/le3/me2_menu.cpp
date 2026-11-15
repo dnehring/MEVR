@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+#include "mevr_bridge.h" // [MEVR] shared host seam
 #include "me2_menu.h"
 
 #include "calcview_hook.h"
@@ -92,7 +94,7 @@ bool RebindWidget(const char* label, int* key, bool* arming) noexcept
     for (int vk = 0x08; vk <= 0xFE; ++vk)
     {
         if (vk == VK_LBUTTON || vk == VK_RBUTTON || vk == VK_MBUTTON || vk == g_menuKey) continue;
-        if ((GetAsyncKeyState(vk) & 0x8000) == 0) continue;
+        if (!::ME2VR::MevrBridge::KeyDown(vk)) continue;
         if (vk == VK_ESCAPE) { *arming = false; return false; }
         *key = vk;
         *arming = false;
@@ -219,7 +221,8 @@ inline void PostProcessPad(XINPUT_STATE* state) noexcept
 
 DWORD WINAPI HookedXInputGetState(DWORD idx, XINPUT_STATE* state) noexcept
 {
-    const DWORD r = g_origXInput ? g_origXInput(idx, state) : ERROR_DEVICE_NOT_CONNECTED;
+    DWORD r = g_origXInput ? g_origXInput(idx, state) : ERROR_DEVICE_NOT_CONNECTED;
+    r = ::ME2VR::MevrBridge::MergeMotionControllers(idx, state, r); // [MEVR]
     CaptureLeftStick(state, r, idx);
     CheckPadRecenter(state, r, idx);
     PostProcessPad(state);
@@ -228,8 +231,9 @@ DWORD WINAPI HookedXInputGetState(DWORD idx, XINPUT_STATE* state) noexcept
 
 DWORD WINAPI HookedXInputGetStateEx(DWORD idx, XINPUT_STATE* state) noexcept
 {
-    const DWORD r = g_origXInputEx ? g_origXInputEx(idx, state)
+    DWORD r = g_origXInputEx ? g_origXInputEx(idx, state)
                                    : (g_origXInput ? g_origXInput(idx, state) : ERROR_DEVICE_NOT_CONNECTED);
+    r = ::ME2VR::MevrBridge::MergeMotionControllers(idx, state, r); // [MEVR]
     CaptureLeftStick(state, r, idx);
     CheckPadRecenter(state, r, idx);
     PostProcessPad(state);
@@ -797,7 +801,7 @@ void PollInsert() noexcept
         const bool canSwitch = g_profileHotkeys && g_valuesLoaded && !AnyRebinding();
         for (int i = 0; i < kProfileCount; ++i)
         {
-            const bool d = (GetAsyncKeyState(g_profileKey[i]) & 0x8000) != 0;
+            const bool d = ::ME2VR::MevrBridge::KeyDown(g_profileKey[i]);
             if (canSwitch && d && !s_profDown[i] && g_activeProfile != i) LoadProfile(i);
             s_profDown[i] = d;
         }
@@ -810,7 +814,7 @@ void PollInsert() noexcept
     {
         static bool s_markDown = false;
         static int s_markSeq = 0;
-        const bool md = (GetAsyncKeyState(VK_F9) & 0x8000) != 0;
+        const bool md = ::ME2VR::MevrBridge::KeyDown(VK_F9);
         if (md && !s_markDown)
         {
             ++s_markSeq;
@@ -836,7 +840,7 @@ void PollInsert() noexcept
         }
         s_markDown = md;
     }
-    const bool down = (GetAsyncKeyState(g_menuKey) & 0x8000) != 0;
+    const bool down = ::ME2VR::MevrBridge::KeyDown(g_menuKey);
     if (!AnyRebinding() && down && !g_insertWasDown)
     {
         g_open = !g_open;
@@ -869,8 +873,8 @@ void FeedMouse() noexcept
         SetCursorPos(g_mouseAnchorScreen.x, g_mouseAnchorScreen.y);   // pin the real cursor
     }
     io.AddMousePosEvent(g_virtualMouseX, g_virtualMouseY);
-    io.AddMouseButtonEvent(0, (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0);
-    io.AddMouseButtonEvent(1, (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0);
+    io.AddMouseButtonEvent(0, ::ME2VR::MevrBridge::KeyDown(VK_LBUTTON));
+    io.AddMouseButtonEvent(1, ::ME2VR::MevrBridge::KeyDown(VK_RBUTTON));
     // [MENUWHEEL] Drain whatever the WndProc collected since the last frame. exchange(0) so a frame
     // can never replay or lose a notch, however the two threads interleave.
     const int wv = g_wheelAccumV.exchange(0, std::memory_order_relaxed);
@@ -1012,7 +1016,11 @@ void BuildUI() noexcept
             ImGui::TextDisabled("Depends on your PC - set it while wearing the headset. Start around 2.0.");
             ImGui::Separator();
             bool ha = ME2VR::EngineProbe::GetHeadAimEnabled();
+#if defined(MEVR_ASI)
+            ImGui::TextDisabled("Weapon aim uses the native controls until tracked weapon support is available.");
+#else // [MEVR] head aim is not part of the host port
             if (ImGui::Checkbox("Head drives aim (combat)", &ha)) ME2VR::EngineProbe::SetHeadAimEnabled(ha);
+#endif
             ImGui::TextDisabled("Where you look is where you shoot. The stick still works on top.");
             ImGui::TextDisabled("Also turns your CHARACTER, which is how the game decides what you are facing.");
             if (ha)
@@ -1094,6 +1102,10 @@ void BuildUI() noexcept
             // ---- [VRCINE] Conversations & Cutscenes - ME2's design, ported as-is ----
             if (ImGui::CollapsingHeader("Conversations & Cutscenes (experimental)", ImGuiTreeNodeFlags_DefaultOpen))
             {
+#if defined(MEVR_ASI)
+                ImGui::TextDisabled("Conversations and cutscenes use the native flat screen.");
+                ImGui::TextDisabled("World first-person conversations are not available in this port yet.");
+#else // [MEVR] leave upstream experimental controls in standalone builds
                 bool cvc = ME2VR::CalcViewHook::GetCineVrConvo();
                 if (ImGui::Checkbox("VR conversations", &cvc))
                 {
@@ -1108,12 +1120,14 @@ void BuildUI() noexcept
                 }
                 bool cht = ME2VR::CalcViewHook::GetCineVrHeadTracking();
                 if (ImGui::Checkbox("Head tracking during cinematics", &cht)) ME2VR::CalcViewHook::SetCineVrHeadTracking(cht);
+#endif
                 float cz = ME2VR::Me2Xr::GetCineScreenZoom();
                 ImGui::SetNextItemWidth(420.0f);
                 if (ImGui::SliderFloat("Cutscene zoom", &cz, 0.5f, 3.0f, "%.2f")) ME2VR::Me2Xr::SetCineScreenZoom(cz);
                 ImGui::TextDisabled("Size of the flat cutscene screen when a scene is NOT rendered in VR.");
 
                 ImGui::Separator();
+#if !defined(MEVR_ASI) // [MEVR] deferred, including seated authored scenes
                 bool cfp = ME2VR::ConvoFp::GetEnabled();
                 if (ImGui::Checkbox("First person conversations [EXPERIMENTAL]", &cfp))
                 {
@@ -1133,6 +1147,7 @@ void BuildUI() noexcept
                     bool inv=ME2VR::CalcViewHook::GetConvoFpInvertFacing(); if(ImGui::Checkbox("Invert facing",&inv))ME2VR::CalcViewHook::SetConvoFpInvertFacing(inv);
                     if(ME2VR::ConvoFp::IsArmed()){ME2VR::ConvoFp::Diag d{};ME2VR::ConvoFp::GetDiag(&d);ImGui::Text("ACTIVE  source=%d  speakers=%d  yaw=%.0f",d.source,d.speakerCount,d.baseYawDeg);}
                 }
+#endif
             }
 
             ImGui::Separator();
@@ -1369,7 +1384,7 @@ void BuildUI() noexcept
                 for (int vk = 0x08; vk <= 0xFE; ++vk)
                 {
                     if (vk == VK_LBUTTON || vk == VK_RBUTTON || vk == VK_MBUTTON) continue;
-                    if ((GetAsyncKeyState(vk) & 0x8000) == 0) continue;
+                    if (!::ME2VR::MevrBridge::KeyDown(vk)) continue;
                     if (vk == VK_ESCAPE) { g_rebindingMenuKey = false; break; }
                     g_menuKey = vk;
                     g_insertWasDown = true;  // consume the key that completed capture
@@ -1479,7 +1494,7 @@ void BuildUI() noexcept
                     for (int vk = 0x08; vk <= 0xFE; ++vk)
                     {
                         if (vk == VK_LBUTTON || vk == VK_RBUTTON || vk == VK_MBUTTON || vk == g_menuKey) continue;
-                        if ((GetAsyncKeyState(vk) & 0x8000) == 0) continue;
+                        if (!::ME2VR::MevrBridge::KeyDown(vk)) continue;
                         if (vk == VK_ESCAPE) { g_rebindingProfile = -1; break; }
                         g_profileKey[g_rebindingProfile] = vk;
                         g_rebindingProfile = -1;
@@ -1586,8 +1601,8 @@ void RenderToBackbuffer(IDXGISwapChain* swapChain) noexcept
             const float sy = (rc.bottom > 0) ? static_cast<float>(bd.Height) / rc.bottom : 1.0f;
             io.AddMousePosEvent(static_cast<float>(pt.x) * sx, static_cast<float>(pt.y) * sy);
         }
-        io.AddMouseButtonEvent(0, (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0);
-        io.AddMouseButtonEvent(1, (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0);
+        io.AddMouseButtonEvent(0, ::ME2VR::MevrBridge::KeyDown(VK_LBUTTON));
+        io.AddMouseButtonEvent(1, ::ME2VR::MevrBridge::KeyDown(VK_RBUTTON));
         ImGui::NewFrame();
         BuildUI();
         ImGui::Render();
@@ -1617,6 +1632,15 @@ bool GetDecoupledPitch() noexcept { return g_decoupledPitch.load(std::memory_ord
 void SetDecoupledPitch(bool on) noexcept { g_decoupledPitch.store(on, std::memory_order_relaxed); }
 bool GetDecoupledYaw() noexcept { return g_decoupledYaw.load(std::memory_order_relaxed); }
 void SetDecoupledYaw(bool on) noexcept { g_decoupledYaw.store(on, std::memory_order_relaxed); }
+// [MEVR] Renderer facade; the shared menu will take ownership in L3-4.
+void SetOpen(bool open) noexcept {
+    if (open == g_open) return;
+    g_open = open;
+    if (open) { if (!g_valuesLoaded) LoadValues(); SeedVirtualMouse(); }
+    else { g_mouseAnchorValid = false; if (g_valuesLoaded) SaveValues(); }
+}
+void SaveSettings() noexcept { if (g_valuesLoaded) SaveValues(); }
+int GetMenuKey() noexcept { return g_menuKey; }
 bool IsOpen() noexcept { return g_open; }
 bool IsSoleInputLockOwner() noexcept
 {

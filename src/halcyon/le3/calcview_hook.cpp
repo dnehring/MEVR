@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+#include "mevr_bridge.h" // [MEVR] shared floor/view contract
 #include "calcview_hook.h"
 
 #include "convo_fp.h"
@@ -607,11 +609,20 @@ void ApplyHeadPosition(std::uintptr_t sv) noexcept
         // headset, one click fixes it instead of another build.
         const float fwdSign = g_leanInvertFwd.load(std::memory_order_relaxed) ? 1.0f : -1.0f;
         const float dR = hx, dU = hy, dF = fwdSign * hz * kFwdLeanEmphasis;
+        volatile float* pvt = reinterpret_cast<volatile float*>(sv + kFsvPreViewTranslation);
+        volatile float* vo = reinterpret_cast<volatile float*>(sv + kFsvViewOrigin);
+#if defined(MEVR_ASI)
+        // [MEVR] One floor correction for both eye passes, matching the published controller space.
+        float r = w2m * dR, u = w2m * dU, f = w2m * dF;
+        const float floorDz = ::ME2VR::MevrBridge::FloorViewTranslation(t_replay, -pvt[2], rZ, uZ, fZ, &r, &u, &f);
+        const float wx = r * rX + u * uX + f * fX;
+        const float wy = r * rY + u * uY + f * fY;
+        const float wz = r * rZ + u * uZ + f * fZ + floorDz;
+#else
         const float wx = w2m * (dR * rX + dU * uX + dF * fX);
         const float wy = w2m * (dR * rY + dU * uY + dF * fY);
         const float wz = w2m * (dR * rZ + dU * uZ + dF * fZ);
-        volatile float* pvt = reinterpret_cast<volatile float*>(sv + kFsvPreViewTranslation);
-        volatile float* vo = reinterpret_cast<volatile float*>(sv + kFsvViewOrigin);
+#endif
         pvt[0] -= wx; pvt[1] -= wy; pvt[2] -= wz;
         vo[0] += wx;  vo[1] += wy;  vo[2] += wz;
         // [EYEVPM] bake the lean into ViewMatrix's translation row too (see ApplyEyeOffset) so the
@@ -1380,9 +1391,19 @@ std::atomic_bool g_cineVrCutscene{false};
 std::atomic_bool g_cineVrHeadTracking{true};
 std::atomic_bool g_vrCineActive{false};   // derived per frame: a cine is being RENDERED in VR now
 bool GetCineVrConvo() noexcept { return g_cineVrConvo.load(std::memory_order_acquire); }
-void SetCineVrConvo(bool on) noexcept { g_cineVrConvo.store(on, std::memory_order_release); }
+void SetCineVrConvo(bool on) noexcept {
+#if defined(MEVR_ASI)
+    on = false; // [MEVR] native flat cinema until shared cinema adapter is accepted.
+#endif
+    g_cineVrConvo.store(on, std::memory_order_release);
+}
 bool GetCineVrCutscene() noexcept { return g_cineVrCutscene.load(std::memory_order_acquire); }
-void SetCineVrCutscene(bool on) noexcept { g_cineVrCutscene.store(on, std::memory_order_release); }
+void SetCineVrCutscene(bool on) noexcept {
+#if defined(MEVR_ASI)
+    on = false; // [MEVR] native flat cinema until shared cinema adapter is accepted.
+#endif
+    g_cineVrCutscene.store(on, std::memory_order_release);
+}
 bool GetCineVrHeadTracking() noexcept { return g_cineVrHeadTracking.load(std::memory_order_acquire); }
 void SetCineVrHeadTracking(bool on) noexcept { g_cineVrHeadTracking.store(on, std::memory_order_release); }
 bool GetVrCineActive() noexcept { return g_vrCineActive.load(std::memory_order_acquire); }

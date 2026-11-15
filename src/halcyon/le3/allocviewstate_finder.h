@@ -1,4 +1,5 @@
-﻿#pragma once
+// SPDX-License-Identifier: GPL-3.0-only
+#pragma once
 
 namespace ME2VR::AllocViewStateFinder
 {

@@ -1,4 +1,5 @@
-﻿#include "convo_fp.h"
+// SPDX-License-Identifier: GPL-3.0-only
+#include "convo_fp.h"
 
 #include "calcview_hook.h"
 #include "engine_probe.h"
@@ -201,7 +202,12 @@ bool OwnsCamera() noexcept{return g_armed&&g_convoCameraActive;}
 bool OwnsHeadVisibility() noexcept{return OwnsCamera();}
 bool GetEyePose(EyePose* o) noexcept{if(!OwnsCamera()||!o)return false;*o={g_eye[0],g_eye[1],g_eye[2],g_yaw};return true;}
 void GetDiag(Diag* o) noexcept{if(!o)return;*o={g_ctl,g_staged,g_speaker,g_face,g_source,g_speakerCount,g_eye[0],g_eye[1],g_eye[2],g_yaw};}
-void SetEnabled(bool v) noexcept{g_enabled.store(v);}bool GetEnabled() noexcept{return g_enabled.load();}
+void SetEnabled(bool v) noexcept{
+#if defined(MEVR_ASI)
+    v = false; // [MEVR] world conversations deferred, including authored seated scenes.
+#endif
+    g_enabled.store(v);
+}bool GetEnabled() noexcept{return g_enabled.load();}
 void SetTurnRate(float v) noexcept{g_turnRate.store(v<0?0:v);}float GetTurnRate() noexcept{return g_turnRate.load();}
 void SetAnimFollow(float v) noexcept{g_animFollow.store(v<0?0:v>1?1:v);}float GetAnimFollow() noexcept{return g_animFollow.load();}
 void SetEyeUpUU(float v) noexcept{g_eyeUp.store(v);}float GetEyeUpUU() noexcept{return g_eyeUp.load();}

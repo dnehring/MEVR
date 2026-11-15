@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 #include "calcview_finder.h"
 
 #include "engine_probe.h"

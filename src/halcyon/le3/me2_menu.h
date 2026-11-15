@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 #pragma once
 
 struct IDXGISwapChain;
@@ -14,6 +15,10 @@ void OnPresent(IDXGISwapChain* swapChain) noexcept;   // poll Insert toggle
 ID3D11Texture2D* RenderFrame() noexcept;              // returns the menu texture while open, else null
 void RenderToBackbuffer(IDXGISwapChain* swapChain) noexcept;  // flat (VR-off) path: draw straight to backbuffer
 bool IsOpen() noexcept;
+// [MEVR] renderer facade
+void SetOpen(bool open) noexcept;
+void SaveSettings() noexcept;
+int GetMenuKey() noexcept;
 // True only when the Insert overlay itself introduced both PlayerController input locks.
 // False when it was opened over a native game menu that already owned those locks.
 bool IsSoleInputLockOwner() noexcept;

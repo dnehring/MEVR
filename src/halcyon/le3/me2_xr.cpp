@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+#include "mevr_bridge.h" // [MEVR] shared host on this session
 #include "me2_xr.h"
 
 #include "calcview_hook.h"
@@ -355,6 +357,10 @@ bool ResolveFunctions() noexcept
     PFN_xrVoidFunction p = nullptr;
     if (!Resolve("xrPollEvent", &p)) return false;
     g_pollEvent = reinterpret_cast<PFN_xrPollEvent>(p);
+    // [MEVR] Capture/replay wrappers keep and call these real session functions.
+    ::ME2VR::MevrBridge::WrapSessionFunctions(reinterpret_cast<void**>(&g_fn.acquireSwapchainImage),
+        reinterpret_cast<void**>(&g_fn.releaseSwapchainImage), reinterpret_cast<void**>(&g_fn.endFrame),
+        reinterpret_cast<void**>(&g_fn.locateViews));
     return true;
 }
 
@@ -428,9 +434,8 @@ bool BringUp(ID3D11Device* device) noexcept
     g_device = device;
     g_device->GetImmediateContext(&g_ctx);
 
-    g_loader = LoadLibraryW(L"openxr_loader.dll");
-    if (g_loader == nullptr) { XLog("openxr_loader.dll not found. Skipping VR."); return false; }
-    g_getProc = reinterpret_cast<PFN_xrGetInstanceProcAddr>(GetProcAddress(g_loader, "xrGetInstanceProcAddr"));
+    // [MEVR] Same statically linked loader as the shared controller/test-loop modules.
+    g_getProc = reinterpret_cast<PFN_xrGetInstanceProcAddr>(::ME2VR::MevrBridge::StaticXrGetInstanceProcAddr());
     if (g_getProc == nullptr) { XLog("xrGetInstanceProcAddr missing"); return false; }
 
     PFN_xrVoidFunction createInstanceRaw = nullptr;
@@ -551,6 +556,7 @@ bool BringUp(ID3D11Device* device) noexcept
     if (!ChooseSwapchainFormat()) { XLog("no swapchain format"); return false; }
     if (!CreateEyeSwapchains()) { XLog("eye swapchain creation failed"); return false; }
 
+    ::ME2VR::MevrBridge::OnSessionCreated(g_instance, g_session); // [MEVR] before beginSession
     g_initOk = true;
     XLog("VR session ready; starting frame submission.");
     return true;
@@ -580,6 +586,7 @@ void PumpEvents() noexcept
             else if ((g_state == XR_SESSION_STATE_STOPPING_VALUE) && g_begun)
             {
                 g_fn.endSession(g_session);
+                ::ME2VR::MevrBridge::OnSessionStopped(); // [MEVR] discard stale controller/view state
                 g_begun = false;
             }
         }
@@ -734,6 +741,7 @@ void RecenterAppSpace(XrTime displayTime) noexcept
     {
         if (g_localSpace != nullptr) g_fn.destroySpace(g_localSpace);
         g_localSpace = ns;
+        ::ME2VR::MevrBridge::OnRecentered(); // [MEVR]
         XLog("recenter - app space re-origined to head yaw=" + std::to_string(static_cast<int>(yawDeg)));
     }
 }
@@ -806,8 +814,40 @@ void PoseTagPush(const XrQuaternionf& smoothedRollFree, const XrVector3f& pos, d
     g_delayedTagPose.position.z = a.position.z + (b.position.z - a.position.z) * frac;
 }
 
+#if defined(MEVR_ASI)
+// [MEVR] The view the next game frame is built with, as LE1's xr_session.cpp publishes it (MevrBridge::OnViewBuilt):
+// the head DriveHeadLook drove (its position is what SetHeadPos got; the smoothed, roll-free orientation the render
+// turns by), the head look CalcViewHook now holds, and the 6DOF offset ApplyHeadPosition adds along the game camera's
+// axes (the same formula: 50 uu/m times HeadPosScale, the forward 3x, clamped to 2 m; none while the cine locks tracking).
+void MevrPublishView(const XrView& view) noexcept
+{
+    const bool cineLocked = ME2VR::CalcViewHook::GetCinematic();   // or the 3D cinema screen's
+    const float w2m = 50.0f * ME2VR::CalcViewHook::GetHeadPosScale();
+    float right = 0.0f, up = 0.0f, fwd = 0.0f;
+    if (ME2VR::CalcViewHook::GetHeadPosEnabled() && !cineLocked)
+    {
+        auto clamp2 = [](float v) { return v < -2.0f ? -2.0f : (v > 2.0f ? 2.0f : v); };
+        const float fwdSign = ME2VR::CalcViewHook::GetLeanInvertFwd() ? 1.0f : -1.0f;
+        right = w2m * clamp2(view.pose.position.x);
+        up = w2m * clamp2(view.pose.position.y);
+        fwd = w2m * fwdSign * clamp2(view.pose.position.z) * 3.0f;
+    }
+    const XrQuaternionf q = g_smoothQuatInit ? RemoveRoll(g_smoothQuat) : RemoveRoll(view.pose.orientation);
+    const float headQ[4] = {q.x, q.y, q.z, q.w};
+    const float headP[3] = {view.pose.position.x, view.pose.position.y, view.pose.position.z};
+    const bool headLook = ME2VR::CalcViewHook::GetHeadLookUserEnabled() && !cineLocked;
+    const int gameMode = ME2VR::EngineProbe::ReadGameMode();
+    ::ME2VR::MevrBridge::OnViewBuilt(!ME2VR::Menu::IsOpen() && !cineLocked && gameMode == 0, headLook, false, ME2VR::CalcViewHook::HeadLookYawUU(),
+                                     ME2VR::CalcViewHook::HeadLookPitchUU(), headQ, headP, right, up, fwd, w2m,
+                                     gameMode == 0 && !ME2VR::CalcViewHook::GetVrCineActive());
+}
+#endif
+
+
 void DriveHeadLook(const XrView& centerView) noexcept
 {
+    // [MEVR] Publish the final view even on an early return.
+    struct PublishOnReturn { const XrView& v; ~PublishOnReturn() { MevrPublishView(v); } } publish{centerView};
     float yawDeg = 0.0f, pitchDeg = 0.0f;
     // Positional 6DOF: pose.position is the head's translation from recenter, in meters (XR axes,
     // already relative to the recentered localSpace). The render side maps it through the camera
@@ -1081,6 +1121,7 @@ bool EnsureAerHistory(ID3D11Texture2D* src) noexcept
 bool CopyTextureToEyeFullFrame(int eye, ID3D11Texture2D* src, int shiftPx) noexcept
 {
     if (src == nullptr || g_aerSwap[eye] == nullptr) return false;
+    ::ME2VR::MevrBridge::OnEyeSource(eye, src); // [MEVR]
     uint32_t idx = 0;
     XrSwapchainImageAcquireInfo ai = {}; ai.type = XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO_VALUE;
     if (!XrSucceeded(g_fn.acquireSwapchainImage(g_aerSwap[eye], &ai, &idx))) return false;
@@ -1088,7 +1129,9 @@ bool CopyTextureToEyeFullFrame(int eye, ID3D11Texture2D* src, int shiftPx) noexc
     XrSwapchainImageWaitInfo wi = {}; wi.type = XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO_VALUE; wi.timeout = XR_INFINITE_DURATION_VALUE;
     if (XrSucceeded(g_fn.waitSwapchainImage(g_aerSwap[eye], &wi)) && idx < g_aerImages[eye].size())
     {
-        if (shiftPx == 0)
+        // [MEVR] HDR format conversion and the shared headset colour profile.
+        if (::ME2VR::MevrBridge::CopyIntoImage(g_ctx, g_aerImages[eye][idx], src, shiftPx, eye)) copied = true;
+        else if (shiftPx == 0)
         {
             g_ctx->CopyResource(g_aerImages[eye][idx], src);
             copied = true;
@@ -1112,6 +1155,7 @@ bool CopyTextureToEyeFullFrame(int eye, ID3D11Texture2D* src, int shiftPx) noexc
             }
         }
     }
+    if (copied) ::ME2VR::MevrBridge::OnEyeCopied(eye, g_aerImages[eye][idx]); // [MEVR]
     XrSwapchainImageReleaseInfo ri = {}; ri.type = XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO_VALUE;
     g_fn.releaseSwapchainImage(g_aerSwap[eye], &ri);
     return copied;
@@ -1335,7 +1379,8 @@ void RunFrame() noexcept
                                  : ME2VR::CalcViewHook::GetStereoFramePacingHz());
 
     XrFrameBeginInfo fbi = {}; fbi.type = XR_TYPE_FRAME_BEGIN_INFO_VALUE;
-    g_fn.beginFrame(g_session, &fbi);
+    if (!XrSucceeded(g_fn.beginFrame(g_session, &fbi))) return;
+    ::ME2VR::MevrBridge::OnFrameBegun(g_session, g_localSpace, fs.predictedDisplayTime); // [MEVR]
 
     // B2b stereo: project the two SBS halves to the two eyes. Each eye declares the GAME's rendered
     // FOV (not the headset FOV -> no zoom) and the runtime's located eye pose (head tracking).
@@ -1751,7 +1796,9 @@ void RunFrame() noexcept
             {
                 XrSwapchainImageWaitInfo wi = {}; wi.type = XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO_VALUE; wi.timeout = XR_INFINITE_DURATION_VALUE;
                 if (XrSucceeded(g_fn.waitSwapchainImage(g_monoSwap, &wi)) && idx < g_monoImages.size())
-                    g_ctx->CopyResource(g_monoImages[idx], backbuffer);
+                    // [MEVR] Native flat cinema/menu also needs the HDR conversion.
+                    if (!::ME2VR::MevrBridge::CopyIntoImage(g_ctx, g_monoImages[idx], backbuffer, 0, -1))
+                        g_ctx->CopyResource(g_monoImages[idx], backbuffer);
                 XrSwapchainImageReleaseInfo ri = {}; ri.type = XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO_VALUE;
                 g_fn.releaseSwapchainImage(g_monoSwap, &ri);
 
