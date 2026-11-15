@@ -83,6 +83,17 @@ Pixels ToPixels(Rect const& rect, std::uint32_t width, std::uint32_t height) {
     return px;
 }
 
+Rect ExplicitCrop(Label const& label) {
+    for (float value : label.crop) {
+        if (!std::isfinite(value)) return {};
+    }
+    Rect const rect{label.crop[0], label.crop[1], label.crop[2], label.crop[3]};
+    if (!rect.Valid() || rect.x < 0.0f || rect.y < 0.0f || rect.x + rect.width > 1.0f || rect.y + rect.height > 1.0f) {
+        return {};
+    }
+    return rect;
+}
+
 bool Place(XrVector3f const& position, XrVector3f const& head, float heightDeg, float aspect, Quad& out) {
     XrVector3f const toHead{head.x - position.x, head.y - position.y, head.z - position.z};
     float const distance = std::sqrt(toHead.x * toHead.x + toHead.y * toHead.y + toHead.z * toHead.z);

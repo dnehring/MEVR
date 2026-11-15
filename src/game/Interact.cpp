@@ -120,7 +120,7 @@ void NoteTarget(ue3::Object const* target, bool combat, double meters) {
     gTargetName = target != nullptr ? ue3::runtime::FullName(target) : std::string();
     if (target != nullptr) {
         log::Info("interact: A would use {}{}, {:.1f} m away{}", gTargetName, combat ? " (a combat target)" : "", meters,
-            gSettings.gaze ? " (chosen from where you look)" : "");
+            gSettings.gaze && gGazeHooked ? " (chosen from where you look)" : "");
     } else {
         log::Info("interact: nothing to use");
     }
@@ -205,6 +205,11 @@ void Tick(float /*deltaSeconds*/, bool hooked, Link const& link) {
             label.combat = combat;
             label.visible = link.publish != nullptr && gSettings.label && onFoot && (!combat || gSettings.combatLabel) &&
                 std::isfinite(meters);
+#if defined(MEVR_GAME_LE2)
+            // ME2's prompt band awaits a measured default. A configured crop enables the shared label renderer;
+            // otherwise the game's own prompt stays on its HUD and the snapshot accurately reports no replacement.
+            label.visible = label.visible && il::ExplicitCrop(label).Valid();
+#endif
         }
     }
     NoteTarget(target, combat, meters);

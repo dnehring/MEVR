@@ -17,6 +17,7 @@
 #include "core/vr/Floor.hpp"
 #include "core/vr/HostView.hpp"
 #include "core/vr/HudPieces.hpp"
+#include "core/vr/InteractLabel.hpp"
 #include "core/vr/PowerWheel.hpp"
 #include "core/vr/SquadPlace.hpp"
 #include "core/vr/Sights.hpp"
@@ -258,6 +259,7 @@ void ForgetRendererModState() {
     pad_merge::ForgetSupportGrip();
     floor_lock::SetPawn(nullptr);
     vr::hud_pieces::Reset();  // the weapon panel back on the HUD (the wrist piece needs no mod)
+    vr::interact::Reset();
     renderer::SetModHandAim(false);
     vr::aim_ray::Reset();
     vr::sights::Reset();
@@ -559,6 +561,11 @@ HostServices BuildServices() {
 #endif
 #if defined(MEVR_WITH_HALCYON_LE2)
     services = WithTraversal(services);
+    services.interactLabelSize = static_cast<std::uint32_t>(sizeof(vr::interact::Label));
+    services.setInteractLabel = [](vr::interact::Label const* label) {
+        if (label != nullptr && label->size == sizeof(vr::interact::Label)) vr::interact::Publish(*label);
+        else vr::interact::Reset();
+    };
 #endif
 #if defined(MEVR_WITH_HALCYON)
     services = WithVoice(WithLe1ExtraUi(WithWorldUi(WithGalaxyHologram(WithGalaxyMap(WithSpectator(WithMakoControls(

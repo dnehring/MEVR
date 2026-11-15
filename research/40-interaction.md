@@ -72,3 +72,29 @@ tall, and the widget is nowhere near the object.
 - The label's height over pawns: 8 units above the collision cylinder's top, capped under the eyes + 10.
 - A selection the camera's line of sight saw but the head doesn't (or the reverse), near corners.
 - Whether the band holds every widget: long names, the combat arc, other HUD movies (PC vs console layout).
+
+## 5. ME2 label renderer and native selection boundary (2026-11-15)
+
+ME2 now publishes the existing v21 interaction-label service and renders a selected object's prompt through
+`HudPieceLayers::Interaction`. It reuses `InteractLabel::Place` and `HudPieceLayers::Show`, including the shared
+HUD capture, colour treatment, quad allocation and snapshot layer naming. The source HUD rectangle is masked
+only after its replacement was copied successfully, with room reserved to submit it. The label clears with host
+mod state and its swapchain follows session cleanup. Menus, calibration, the power wheel and non-gameplay modes
+suppress the replacement.
+
+The ME2 crop still requires measurement in a protected native run. Until then the renderer requires an explicit
+`[Interact] crop = x y width height`, in fractions of the captured HUD frame. All four values must be finite,
+the dimensions positive, and the whole rectangle inside the frame. Without that rectangle the native HUD remains
+visible and `mod.interact` reports no replacement label. Do not copy LE1's top-centre default into this setting.
+The existing `label` and `labelHeightDeg` controls apply once a valid crop is supplied.
+
+Head-gaze selection is still pending. LE1 hooks `int UpdateSelection(this, float)` at its verified address.
+ME2's SDK and original native declaration specify `void UpdateSelection()` and a separate
+`FindCurrentSelectionTarget()`. LE2's address remains zero. A correctly typed entry, its camera reads and native
+callers must be verified before adding the hook. The interaction log now claims gaze selection only while the
+hook is actually installed. Native `BioPlayerSelection` remains authoritative for the target reported and used.
+
+Next native check uses a normal-loaded checkpoint with an unobstructed door or NPC prompt. Capture the HUD,
+measure its band, enable that crop, and compare the `label` layer with both eyes and the actor A actually uses.
+Include invalid/no target, range/occlusion, menu entry and a load transition. The render path is an offline-tested
+implementation candidate until that check. Default crop, head/body disagreement and headset legibility remain open.
