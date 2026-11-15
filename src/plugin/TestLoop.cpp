@@ -12,9 +12,11 @@
 #include "core/vr/CameraDiagnostic.hpp"
 #include "plugin/Renderer.hpp"
 #include "plugin/Swapchains.hpp"
+#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2)
+#include "plugin/Colour.hpp"  // both Halcyon hosts (LE2: the eye copy's correction)
+#endif
 #if defined(MEVR_WITH_HALCYON)
 #include "plugin/Calibration.hpp"
-#include "plugin/Colour.hpp"
 #include "plugin/DrawReplay.hpp"
 #include "plugin/GalaxyHologram.hpp"
 #include "plugin/GamePointer.hpp"
@@ -812,6 +814,9 @@ ModuleBlocks ModuleStatus() {
     m.spectator = spectator::StatusJson();
     m.figure = ui_world_figure::StatusJson();
     m.questPacing = quest_pacing::StatusJson();
+#endif
+#if defined(MEVR_WITH_HALCYON_LE2)
+    m.colour = mevr::host::colour::StatusJson();
 #endif
     m.swapchains = swapchains::StatusJson();  // both Halcyon hosts
     return m;

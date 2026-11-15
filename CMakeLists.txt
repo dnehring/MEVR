@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.27)
 # The one version number (docs/release-checklist.md section 5). Change it here only: the generated header below carries
 # it into the C++ and .rc files, tools/package-release.ps1 reads it from this line and refuses binaries that disagree,
 # and the release is tagged v<version>.
-project(MEVR VERSION 0.3.1 LANGUAGES C CXX)
+project(MEVR VERSION 0.3.2 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -933,8 +933,10 @@ function(mevr_add_plugin game)
             src/halcyon/le2/mevr_bridge.h src/core/CallQueue.hpp src/game/GamepadMapping.cpp src/game/GamepadMapping.hpp
             src/core/vr/Controllers.cpp src/core/vr/Controllers.hpp src/core/xr/Input.cpp src/core/xr/Input.hpp
             src/plugin/Renderer.hpp src/plugin/RendererLe2.cpp
-            # The game's float swap chain drawn into the eye images (plugin/EyeCopy over core/d3d11/Blit).
+            # The game's float swap chain drawn into the eye images (plugin/EyeCopy over core/d3d11/Blit), and ME1's colour
+            # correction in that copy (plugin/Colour, core/vr/Colour; research/le2-picture.md).
             src/plugin/EyeCopy.cpp src/plugin/EyeCopy.hpp src/core/d3d11/Blit.cpp src/core/d3d11/Blit.hpp
+            src/plugin/Colour.cpp src/plugin/Colour.hpp src/core/vr/Colour.cpp src/core/vr/Colour.hpp
             # Our layers at xrEndFrame (MevrBridge::OverlayLayers): the swapchain budget and the modules that run on LE2.
             src/plugin/Swapchains.cpp src/plugin/Swapchains.hpp
             src/core/vr/SwapchainBudget.hpp src/plugin/Vignette.cpp src/plugin/Vignette.hpp src/core/vr/Comfort.cpp

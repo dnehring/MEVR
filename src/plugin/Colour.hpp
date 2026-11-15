@@ -50,10 +50,16 @@ void EndPanel(ID3D11DeviceContext* context);
 bool BeginEye(ID3D11DeviceContext* context, int eye, bool linearSource);
 void EndEye(ID3D11DeviceContext* context);
 
+// LE2's eye copy (plugin/EyeCopy, in place of Halcyon ME2's CopyResource into its eye and flat-panel images), which draws
+// in a device context state of its own: the constants for its corrected pass (cbuffer MevrColour at b1, core/vr/Colour's
+// prelude), or false when nothing is to be corrected (neutral, comparing). `eye` 1 the right eye's dither pattern, else
+// the left's. `linearSource`: the pass reads linear light (a float source, or an 8-bit one it decoded). Present thread.
+bool EyeConstants(int eye, bool linearSource, vr::colour::Constants* out);
+
 // For snapshots (plugin/TestLoop): profile, values, headset, whether it corrects, the measured cost.
 std::string StatusJson();
 
-// Inside the VR hands tab (MevrMenuTab.cpp): the profile, live sliders, hold to compare.
+// Inside the VR hands tab (MevrMenuTab.cpp): the profile, live sliders, hold to compare. LE1's host only.
 void MenuSection();
 
 // For our main menu's Display page (plugin/MainMenuSettings).

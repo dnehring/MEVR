@@ -7,6 +7,17 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## Unreleased
 
+## 0.3.2 (2026-11-15)
+
+- **First-person conversations (experimental): no more floating at the Council.** With a body scale above 1, opening the
+  hearing could put your view about 0.7 m too high, as if you floated above the floor. Your place at a scene's start now
+  stands on the floor under Shepard's mark. Headset verification pending.
+- **First-person conversations (experimental): you go where the scene goes.** When a conversation opens under the game's
+  own fade to black, or the fade moves the person you are talking to, you now move with Shepard to his new place instead
+  of being left metres away or held at an invisible edge. Shorter steps are still walked. Headset verification pending.
+- **No flash of the 3D screen when the game stalls.** A long frame in a first-person conversation (Virmire, for one)
+  could show the cinema screen for a moment; the view now stays in the world through stalls of up to 10 seconds.
+
 ## 0.3.1 (2026-11-14)
 
 0.3.0 was tagged but never released: its build drew character shadows in the right eye where the left eye sees them.
