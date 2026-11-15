@@ -686,6 +686,9 @@ Turn it on: the menu's Voice page > Thespian mode > Speak Shepard's lines (or `[
 
 ## 5. Menus and the HUD (session: VR mod for Mass Effect Legendary Edition)
 - [ ] Our menu: the glass look, the text size at 1.3 m, the pointer's feel, the pause. (research/28 "Open")
+- [ ] ME2 (lane D, research/le2-menus.md, checked on the fake headset 2026-11-14): our menu opens with `\` and with both
+  sticks held, Ctrl + `\` opens Halcyon's own; the greyed-out rows read as "not yet"; the game stays paused while it's open;
+  Game menu opens the Mission Computer; the guided calibration runs through and the guns follow it.
 - [ ] Use with A by looking: crates, lockers, doors, squadmates without turning your body; the label floats above the
   object, readable but not in the way; too narrow at the edge of your view? (research/40 section 4)
 - [ ] The game's menus by pointer (inventory, pause menu, journal, map): the dot under the ray, the hover follows, the

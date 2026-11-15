@@ -121,7 +121,48 @@ also updates its VR hands tab). The mod's `game/BodyCalibration` is game-indepen
 
 ## M4.3: the omni-tool
 
-Not yet (see "What is left").
+### The entries open ME2's screens (built, checked)
+
+ME2 has no `Show<Screen>Gui` (`ShowSquadGui`, `ShowJournalGui` ... are ME1's). Its squad, journal, codex and map screens are
+pages of its pause menu, the browser wheel ("Mission Computer"). So `game/GameMenuRequest` on ME2 (`StepPage`, a tick at a
+time):
+1. Not in the GUI mode (7): the pause menu, `SFXGameModeBase.ShowMenu` on the mode that has the input (on foot or a vehicle),
+   as the Game menu button does; then wait.
+2. In mode 7: the browser wheel's handler: `MassEffectGuiManager.m_oBWHandler`, empty on the PC, so the manager's native
+   `GetBrowserHandler()` (the handler of its `MenuBrowser` panel). The GUI manager is `PlayerController.m_oCachedScaleFormManager`.
+3. Its `lstPages` (config): `0: Save (type 1), 1: AreaMap (type 0), 2: CharacterRecord (type 2), 3: Journal (type 4),
+   4: Codex (type 5), 5: None (type 7), 6: Options (type 6), 7: None (type 8), 8: Load (type 3)` (logged once:
+   `omni-tool: ME2's pause menu pages: ...`). The page by Type (`MEBrowserWheelSubPages`: Map 0, CharacterRecord 2 = the
+   squad, Journal 4) or, the codex, by its tag.
+4. `BioSFHandler_BrowserWheel.ShowSelectedPanel(nPanel, oManager)`: what the wheel's own buttons call (its `HandleEvent`
+   case 1). Log `omni-tool: opened the squad screen (ME2's pause menu page 2 through
+   BioSFHandler_BrowserWheel.ShowSelectedPanel)`.
+
+Equipment stands down on ME2 (no equipment screen outside its lockers: logged). `mevr omni <squad|map|journal|codex|computer|
+close|holster>` is on ME2's console now. Checked on the fake headset (stretch `20261114-223915-lane-d-squad`): `mevr omni
+squad` opened ME2's pause menu and then its squad page (the snapshot's flat panel: VR Shepard, Level 2 Soldier, the powers,
+Miranda and Jacob). `reflect: 291 of 291`. Not yet: `CloseScreens` on ME2 (ME1's B through `GuiKey`; ME2's `GuiKey` event
+numbers are [verify]).
+
+### What the rest of M4.3 needs (not built)
+
+In this order; each is LE1's module brought into the LE2 host as M4.1 brought the menu (CMake's LE2 block, `menus_le2`'s
+calls), no ME2 copy:
+1. **The rail's host** (`plugin/OmniToolRail`, `assets/menu/omnitool.rml`): its LE1 ties are `halcyon::RequestHaptic` (to
+   `xr_host::RequestHaptic`, as MainMenu and Calibration did), `plugin/RailArt` (+ `core/gfx`: ME1's art from the player's
+   game cache, `%LOCALAPPDATA%\MEVR\gameart`, written by the mod's `game/GameArt`; without it the rail draws its own look)
+   and `plugin/WorldUi`'s `Shown` (the screen the rail stands beside). Its quad goes into `menus_le2::Layers` before our
+   menu's, as in LE1's `HalcyonOverlays` (`omni_rail::Layer`, `TargetLayer`); `main_menu::ModFlags` then reports
+   `kOmniRailOpen` on LE2 too (now 0 there).
+2. **The tap** needs Shepard's drawn arm bones, which the mod sends in `hud_pieces::Pieces` (HostServices v22): lane B3's
+   HUD pieces on LE2. Until then `omni_rail::Tap` can use the controllers (`[OmniTool] tapOnBody = 0`, LE1's fallback).
+3. **ME2's screens on the wrist** (`plugin/WorldUi` + `game/WorldUi`): ME2's GUI panels are its own (`MenuBrowser`,
+   `CharacterRecord`, `Journal`, `Codex`, `AreaMap` above; `BioSFHandler_Loot`, `_Shop`, `BioSkillGame_Handler` don't exist on
+   ME2: `tools/le2-name-audit.py game/WorldUi`), and its renderer needs `[MEVR]` seams like LE1's `WorldUiActive` /
+   `WorldUiOwnership` (xr_session.cpp) in me2_xr.cpp's flat-panel decision.
+4. **ME2's omni-tool on Shepard's arm** (`game/OmniTool`): ME1's gauntlet is `BIOG_V_T_Omni_Tool_Z`'s crust effect; ME2's
+   omni-tool effect names are to be found in its packages (the deviation the owner named: "the model for the Omni tool will be
+   different in Mass Effect 2"). `tools/le2-name-audit.py game/OmniTool`: only `Engine.StaticMesh:LODInfo` is missing.
 
 ## The checks
 
@@ -154,3 +195,9 @@ tools\make-menu-recording.py rec.mevrrec "point 1318 792; click; hold 3"` and `t
 -Stop`, `restore.ps1`.
 
 ## What is left
+
+- M4.3's rail, tap, wrist screens and ME2's omni-tool model (above, "What the rest of M4.3 needs").
+- M4.2's own check: a guided calibration run through on ME2 and its `[Calibration.<key>]` read back by `game/BodyCalibration`
+  (built and wired; the fake headset has no interaction profile, so no controller key: `calibration: ... no controller type
+  known yet`; a replay of the calibration's poses, or the headset, is next).
+- The headset: the menu's legibility and place on ME2, the `\` key and the both-sticks hold (notes/headset-checklist.md).
