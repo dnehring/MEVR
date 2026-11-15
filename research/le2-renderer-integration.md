@@ -877,13 +877,10 @@ side of VRIK is on main and publishes `setAimRay` every tick):
    `RunDiscovery`, F11 with `[VR] Diagnostics`, lists every path the HUD handler exposes, and its sweep tries `Crosshair`,
    `mcCrosshair`, `Reticle`) and hide it on the game thread as LE1's `Pchud::SetCrosshairHidden` does (a `[MEVR]` setter in
    pchud.cpp; the write through `WriteVar` in its ProcessEvent hook, never from the Present thread).
-2. **Sights** (`setSight` + `sightSize`, HostServices v13/v39): `plugin/SightLayers` draws the dot, the holo and the scope's
-   picture; it needs the eye poses and the world layer as submitted (`OverlayFrame::projection*`, already filled on LE2,
-   plus `eyeOrientation`/`eyePosition`: add them in me2_xr.cpp's block from the views located there), and LE1's
-   `MevrBridge::NoteDrawArm`/`pairArm` for the scope capture (none on LE2: leave the capture off). Move it into the LE2
-   host's sources, call `sight_layers::Layers` from `HalcyonLe2Bridge::OverlayLayers` before the reticle (the ring hides while
-   `sight.looking && sight.replaceRing`, `HandReticle::Frame::sightHidesRing`), and move `WithSights` (ModLoader.cpp) out of
-   the LE1-only list. Lane C ports `game/Sights` once the service is there.
+2. **Sights** (`setSight` + `sightSize`): on LE2 since 6d11493b ("Prototype shared VR weapon optics in LE2", another
+   lane: `plugin/SightLayers` in the LE2 host, `OverlayFrame::eyesValid`/`eyePosition`). Merged with step 4 in LE1's order:
+   the sights are worked out before the ring, the ring hides while an eye looks through the sight (held 0.3 s,
+   `hand_reticle::Frame::sightHidesRing`), the sight's quads go on top of the ring's.
 3. **The pad merge with the mod's flags** (support grip v7, `rightGripFree` v9, `gripHolds` v10, grips v11;
    `setSupportGrip`/`supportGripHeld`): LE1's `MergeMotionControllers` (plugin/HalcyonBridge.cpp) is the plain mapping plus
    `PadOptions()` (the mod's flags from `gSupportFlags`, set by the services `WithLe1Modules` adds), the close latch, and the
