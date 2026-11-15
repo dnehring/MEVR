@@ -42,6 +42,9 @@ void EndScriptCall(std::uint64_t) {}
 }
 
 int main() {
+    // The deliberately invalid DLL must return an error without a Windows loader
+    // dialog blocking an unattended test. This changes only this test process.
+    SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
     using namespace mevr::host;
     auto const testDir = fs::temp_directory_path() / (L"mevr-mod-reload-test-" + std::to_wstring(GetCurrentProcessId()));
     if (fs::exists(testDir)) { std::puts("private test directory already exists"); return 1; }
