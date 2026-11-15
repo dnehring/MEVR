@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Included inside SquadWeapons' private namespace; reuses ME1's menu machine and host view.
-std::array<std::array<std::uintptr_t, kWeapons>, kMaxMembers> gLe2OpenWeapons{};
+std::array<std::vector<ue3::Object*>, kMaxMembers> gLe2OpenInventory;
 std::uintptr_t gLe2PendingWeapon = 0;
 std::uint64_t gLe2PendingGeneration = 0;
 void const* gLe2PendingWorld = nullptr;
@@ -36,7 +36,7 @@ void TickLe2(double dt, Link const& link, hand_calibration::Squad const& setting
     }
     bool same = !busy || gCount == gOpenCount;
     for (int i = 0; busy && same && i < gCount; ++i)
-        same = gMembers[i].key == gOpenKeys[i] && gMembers[i].weapons == gLe2OpenWeapons[i];
+        same = gMembers[i].key == gOpenKeys[i] && gMembers[i].inventory == gLe2OpenInventory[i];
     gUsable = gStarted && same && le2_squad::CanOrder() && frame.has_value() && vr::host_view::Latest().valid &&
         controllers.active && controllers.left.aimValid && !link.menuOpen && !power_wheel::OwnsLeftHand() && !support_grip::Held();
     int pointed = -1, preferred = 0;
@@ -66,7 +66,7 @@ void TickLe2(double dt, Link const& link, hand_calibration::Squad const& setting
     in.pointed = pointed;
     in.preferred = preferred;
     in.memberCount = gCount;
-    for (int i = 0; i < gCount; ++i) in.members[i] = {gMembers[i].carried, gMembers[i].current};
+    for (int i = 0; i < gCount; ++i) in.members[i] = {gMembers[i].carried, gMembers[i].current, gMembers[i].page.more};
     in.leftX = controllers.left.stickX; in.leftY = controllers.left.stickY;
     in.rightX = controllers.right.stickX; in.rightY = controllers.right.stickY;
     in.a = controllers.right.primary; in.b = controllers.right.secondary;
@@ -76,15 +76,21 @@ void TickLe2(double dt, Link const& link, hand_calibration::Squad const& setting
     menu_pause::SetSquadPause(gMachine.IsOpen() && settings.pause);
     if (step.opened) {
         ++gSerial; ++gOpens; gOpenCount = gCount;
-        for (int i = 0; i < gCount; ++i) { gOpenKeys[i] = gMembers[i].key; gLe2OpenWeapons[i] = gMembers[i].weapons; }
+        for (int i = 0; i < gCount; ++i) { gOpenKeys[i] = gMembers[i].key; gLe2OpenInventory[i] = gMembers[i].inventory; }
         gPointedCard = pointed;
+    }
+    if (step.pageChanged && step.member >= 0 && step.member < gCount) {
+        auto const& member = gMembers[step.member];
+        gLe2Pages[member.key] = (member.page.index + 1) % member.page.pages;
+        gDetailsAge = 1e9;
+        ReadLe2Members(0.0, head_tracking::GameMode());
     }
     if (step.refused || step.tileRefused) ++gRefusals;
     if (step.closed == menu::Close::Confirmed) {
         ++gConfirms;
         EquipLe2(step.member, step.weapon);
     } else if (step.closed != menu::Close::None) ++gCancels;
-    if (link.haptic != nullptr && (step.opened || step.cardChanged || step.tileChanged || step.closed != menu::Close::None || step.refused || step.tileRefused))
+    if (link.haptic != nullptr && (step.opened || step.cardChanged || step.tileChanged || step.pageChanged || step.closed != menu::Close::None || step.refused || step.tileRefused))
         link.haptic(step.tileChanged ? 1 : 0, step.refused || step.tileRefused ? 0.08f : 0.02f,
             static_cast<float>(settings.hapticAmplitude));
     if (gPending.key != 0 && (gLe2PendingWorld != engine::World() ||
@@ -105,6 +111,6 @@ void TickLe2(double dt, Link const& link, hand_calibration::Squad const& setting
             log::Warn("squad: {}", gLastResult); gPending = {};
         }
     }
-    SetWhy(gMachine.IsOpen() ? "ME2 custom menu open" : gUsable ? "ME2 custom menu ready" : "ME2 menu unavailable (mode, tracking, input owner or roster)");
+    SetWhy(gMachine.IsOpen() ? "native squad menu open" : gUsable ? "native squad menu ready" : "native squad menu unavailable (mode, tracking, input owner or roster)");
     Publish(link, gMachine.IsOpen());
 }

@@ -152,6 +152,8 @@ struct MemberInfo {
     std::uintptr_t key = 0;
     std::array<std::uintptr_t, kWeapons> weapons{};
     std::array<int, kWeapons> typeOfSlot{-1, -1, -1, -1};
+    std::vector<ue3::Object*> inventory; // complete native inventory, independent of visible page
+    menu::InventoryPage page;
     std::uint8_t carried = 0;
     int current = -1;
     int classId = -1;
@@ -185,6 +187,7 @@ ue3::ClassRef gLe2Henchman{"SFXGame.SFXPawn_Henchman", ue3::kEveryGame};
 ue3::FunctionRef gLe2SquadSize{"SFXGame.BioBaseSquad.GetSquadSize", ue3::kEveryGame};
 ue3::FunctionRef gLe2Member{"SFXGame.BioBaseSquad.GetMember", ue3::kEveryGame};
 ue3::Object* gLe2LastSquad = nullptr;
+std::map<std::uintptr_t, int> gLe2Pages;
 
 void ReadLe2Members(double deltaSeconds, std::optional<std::uint8_t> mode) {
     auto* const playerPawn = mode == 0 ? player::BioPawn(player::Controller()) : nullptr;
@@ -193,6 +196,7 @@ void ReadLe2Members(double deltaSeconds, std::optional<std::uint8_t> mode) {
     gDetailsAge += deltaSeconds;
     bool const sameSquad = squad == gLe2LastSquad;
     if (sameSquad && gDetailsAge < kDetailsSeconds) return;
+    if (!sameSquad) gLe2Pages.clear();
     gLe2LastSquad = squad;
     gDetailsAge = 0.0;
     gCount = 0;
@@ -260,15 +264,17 @@ void ReadLe2Members(double deltaSeconds, std::optional<std::uint8_t> mode) {
             member.initials.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
         auto weapons = le2_squad::Weapons(pawn);
         auto* held = le2_squad::equippedWeapon.Read<ue3::Object*>(pawn).value_or(nullptr);
-        // More than four carried guns requires a larger menu. Refuse the menu for that member rather than hiding choices.
-        if (weapons.size() <= kWeapons) {
-            for (int slot = 0; slot < static_cast<int>(weapons.size()); ++slot) {
-                member.weapons[slot] = reinterpret_cast<std::uintptr_t>(weapons[slot]);
-                member.typeOfSlot[slot] = le2_squad::WeaponType(weapons[slot]);
-                member.carried |= static_cast<std::uint8_t>(1u << slot);
-                if (weapons[slot] == held) member.current = slot;
-            }
+        member.inventory = weapons;
+        member.page = menu::PageInventory(static_cast<int>(weapons.size()), gLe2Pages[member.key]);
+        gLe2Pages[member.key] = member.page.index;
+        for (int slot = 0; slot < member.page.count; ++slot) {
+            auto* item = weapons[static_cast<std::size_t>(member.page.first + slot)];
+            member.weapons[slot] = reinterpret_cast<std::uintptr_t>(item);
+            member.typeOfSlot[slot] = le2_squad::WeaponType(item);
+            member.carried |= static_cast<std::uint8_t>(1u << slot);
+            if (item == held) member.current = slot;
         }
+        if (member.page.more >= 0) member.carried |= static_cast<std::uint8_t>(1u << member.page.more);
         int const max = gLe2HealthMax.Read<std::int32_t>(pawn).value_or(0);
         auto const health = gLe2Health.Read<std::int32_t>(pawn);
         if (max > 0 && health) member.health = std::clamp(static_cast<float>(*health) / static_cast<float>(max), 0.0f, 1.0f);
@@ -1352,6 +1358,10 @@ void Publish(Link const& link, bool open) {
         for (int slot = 0; slot < kWeapons; ++slot) {
             out.icons[slot] = static_cast<std::int8_t>(m.typeOfSlot[slot] == 4 ? 0 : m.typeOfSlot[slot]);
             std::snprintf(out.labels[slot], sizeof out.labels[slot], "%s", le2_squad::WeaponLabel(m.typeOfSlot[slot]));
+            if (slot == m.page.more) {
+                out.icons[slot] = -1;
+                std::snprintf(out.labels[slot], sizeof out.labels[slot], "MORE WEAPONS %d/%d", m.page.index + 1, m.page.pages);
+            }
         }
 #endif
     }
@@ -1723,8 +1733,11 @@ std::vector<MemberView> Members(bool refresh) {
         view.current = m.current;
 #if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
         view.carried = 0;
-        for (int slot = 0; slot < kWeapons; ++slot) if (m.typeOfSlot[slot] >= 0) view.carried |= static_cast<std::uint8_t>(1u << m.typeOfSlot[slot]);
-        view.current = m.current >= 0 ? m.typeOfSlot[m.current] : -1;
+        for (auto* item : m.inventory) {
+            int const type = le2_squad::WeaponType(item);
+            if (type >= 0) view.carried |= static_cast<std::uint8_t>(1u << type);
+        }
+        view.current = le2_squad::WeaponType(le2_squad::equippedWeapon.Read<ue3::Object*>(view.pawn).value_or(nullptr));
 #endif
         view.health = m.health;
         view.squadIndex = m.squadIndex;
@@ -1752,6 +1765,13 @@ std::string GiveWeapon(ue3::Object* pawn, int weapon) {
     gDetailsAge = 1e9; ReadLe2Members(0.0, head_tracking::GameMode());
     for (int i = 0; i < gCount; ++i) {
         if (gMembers[i].key != reinterpret_cast<std::uintptr_t>(pawn)) continue;
+        auto const& inventory = gMembers[i].inventory;
+        auto const found = std::find_if(inventory.begin(), inventory.end(), [&](auto* item) { return le2_squad::WeaponType(item) == weapon; });
+        if (found == inventory.end()) continue;
+        int const index = static_cast<int>(found - inventory.begin());
+        gLe2Pages[gMembers[i].key] = inventory.size() <= kWeapons ? 0 : index / (kWeapons - 1);
+        gDetailsAge = 1e9; ReadLe2Members(0.0, head_tracking::GameMode());
+        if (i >= gCount || gMembers[i].key != reinterpret_cast<std::uintptr_t>(pawn)) return "recipient changed while refreshing inventory";
         for (int slot = 0; slot < kWeapons; ++slot) if (gMembers[i].typeOfSlot[slot] == weapon) { EquipLe2(i, slot); return gLastResult; }
     }
     return "recipient does not carry that weapon";
@@ -1786,13 +1806,23 @@ std::string StatusJson() {
         std::string carried;
         for (int w = 0; w < kWeapons; ++w) {
             if ((m.carried & (1u << w)) != 0) {
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+                if (w == m.page.more) continue;
+                carried += std::format("{}{}", carried.empty() ? "" : ", ", json::JsonString(le2_squad::WeaponLabel(m.typeOfSlot[w])));
+#else
                 carried += std::format("{}{}", carried.empty() ? "" : ", ", json::JsonString(menu::WeaponName(w)));
+#endif
             }
         }
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+        auto const current = m.current >= 0 ? le2_squad::WeaponLabel(m.typeOfSlot[m.current]) : "not on this page";
+#else
+        auto const current = menu::WeaponName(m.current);
+#endif
         members += std::format("{}{{\"name\": {}, \"nameSource\": {}, \"class\": {}, \"role\": {}, \"health\": {}, \"current\": {}, "
                                "\"carried\": [{}], \"card\": {}, \"target\": {}, \"angleDeg\": {}, \"distance\": {}}}",
             i > 0 ? ", " : "", json::JsonString(m.name), json::JsonString(m.nameSource), m.classId, json::JsonString(m.role),
-            json::JsonNumber(m.health), json::JsonString(menu::WeaponName(m.current)), carried, CardOf(i),
+            json::JsonNumber(m.health), json::JsonString(current), carried, CardOf(i),
             m.target.valid ? std::format("[{}, {}, {}]", json::JsonNumber(m.target.position.x), json::JsonNumber(m.target.position.y),
                                  json::JsonNumber(m.target.position.z))
                            : std::string("null"),
@@ -1849,6 +1879,7 @@ void Shutdown(bool processExiting) {
     gDetailsAge = 1e9;
 #if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     gLe2LastSquad = nullptr;
+    gLe2Pages.clear();
 #endif
     gLoggedSquad.clear();
     gTrigger = false;

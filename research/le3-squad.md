@@ -12,16 +12,16 @@ Local reference: `external/LExSDKv2/Src/LESDK/LE3/{SFXGame_classes,SFXGame_f_str
 |---|---|
 | Current companions | `BioWorldInfo.m_playerSquad` -> `BioBaseSquad.Members`, excluding the player and requiring `SFXPawn_Henchman`. LE2's `GetSquadSize` / `GetMember` functions are not assumed. |
 | Dispatch admission | Re-read current squad membership, living pawn, `SFXAI_Henchman` controller and its actual `IsEnabled` method. Require gameplay mode 0 and native combat-input admission. |
-| Names | `BioPawn.GetActorGameName` FString return, freed through the proven engine allocator; class name fallback. LE3 has no LE2 behavior/name field. Native return ownership audit remains a focused acceptance check. |
-| Weapons | Actual inventory linked list plus equipped object, no invented loadout. LE3 pistol/SMG classes are `SFXWeapon_Pistol_Base` / `SFXWeapon_SMG_Base`. The four menu slots represent carried objects, not four permitted weapon types; a member with more than four carried objects fails closed pending menu expansion. |
+| Names | `BioPawn.GetActorGameName` FString return, freed through the proven engine allocator; class name fallback. LE3 has no LE2 behavior/name field. Returned string ownership was verified from the native exec after the 259-row probe; see the native audit below. |
+| Weapons | Actual inventory linked list plus equipped object, no invented loadout. LE3 pistol/SMG classes are `SFXWeapon_Pistol_Base` / `SFXWeapon_SMG_Base`. The four menu slots represent carried objects, not four permitted weapon types; inventories above four objects use three weapons plus a More weapons tile, preserving the existing four-tile host ABI. Voice sees the complete inventory independently of the visible page. |
 | Weapon command | `OrderWeaponSwitch(oOrderedPawn,Wpn,eInputMethod=0)`. Require the requested object still belongs to that member; report success only when the equipped object is observed. |
 | Follow / hold / attack | Existing native `HenchmanOrderFollow`, `HenchmanOrderHoldPosition`, `HenchmanOrderAttackTarget`. LE3 adds `eInputMethod`; installed script defaults use `CIM_Default=0`. Do not invoke Kinect-specific handling or LE1 formation/movement writes. |
 | Powers | Shared `Le3Powers.hpp` reads the member's actual `SFXPowerManager.Powers`. Native rank, visibility, enabled state, cooldown and grenade-count override remain authoritative. DLC/unknown identities enter the existing dynamic voice roster. |
 | Power command | `SquadOrderUsePower`: explicit name, recipient, queue=0, indicator=true, desired selection target, input method=0, desired target and desired location. Recheck actual power `CanUsePower`; inspect native bool return. A true return is acceptance of the request, not proof of a cast. |
 
-The installed power-wheel path calls `SFXGameModeDefault.UsePower`, which calls `SquadOrderUsePower`, using queue 1 only for permitted blocking-action cases, then `ApplyTacticalOrders`. Inspection of `ApplyTacticalOrders` shows it consumes the **player's** pending power/weapon and clears that player order. The LE3 companion-only adapter does not flush an unrelated player order. Native dispatch internals and outcome still need confirmation; requests during blocking actions are not claimed to have UI-equivalent queue behavior. LE1/LE2 dispatch paths remain unchanged.
+The installed power-wheel path calls `SFXGameModeDefault.UsePower`, which calls `SquadOrderUsePower`, using queue 1 only for permitted blocking-action cases, then `ApplyTacticalOrders`. Inspection of `ApplyTacticalOrders` shows it consumes the **player's** pending power/weapon and clears that player order. The LE3 companion-only adapter does not flush an unrelated player order. The native dispatch split is confirmed below; actual gameplay outcome still needs confirmation; requests during blocking actions are not claimed to have UI-equivalent queue behavior. LE1/LE2 dispatch paths remain unchanged.
 
-The LE3 reflection table now compares squad/member/inventory/power fields and exact parameter blocks against the SDK, including byte input-method fields and the power return bool. Read-only native target rows for `SquadOrderUsePower` and `GetActorGameName` support a focused native audit; metadata agreement alone does not prove their semantics.
+The LE3 reflection table now compares squad/member/inventory/power fields and exact parameter blocks against the SDK, including byte input-method fields and the power return bool. Read-only native target rows supplied the targets for the following audit. Metadata agreement alone did not establish their semantics.
 
 ## Offline evidence
 
@@ -34,7 +34,7 @@ The LE3 reflection table now compares squad/member/inventory/power fields and ex
 
 Use the existing owned session and request/replay tools. No new launcher, runner or fixture pipeline is required.
 
-1. Reflection probe must agree on the new metadata. Audit recorded `GetActorGameName` and `SquadOrderUsePower` native targets before relying on returned string ownership / internal queue semantics as proven.
+1. Coordinator reports expanded reflection probe 259/259 with zero mismatches. The native audit below establishes string ownership and the player/companion dispatch split. Further metadata additions, actual names and native AI outcomes still require acceptance in the corresponding build.
 2. On a normally loaded combat save with actual companions, record `mevr squad` and `mevr context`. Compare names, carried objects, health, learned powers, cooldown and grenade resources with native UI. Do not infer party presence from a save's map name.
 3. Open/point/confirm/cancel the existing hand menu via controller recordings. Observe the requested weapon object actually equipped. Check pause restoration, held-trigger entry/recenter, main-menu/power-wheel ownership and a level or companion change during selection.
 4. Use `mevr order` / `mevr say` with identities returned by the current context. Verify follow, hold and attack using subsequent positions/targets; a dispatch log is insufficient. Run existing `mevr place aim ...`, `release`, `status` checks and recorded right-hand gestures, including cancellation on transition.
@@ -45,5 +45,17 @@ Use the existing owned session and request/replay tools. No new launcher, runner
 
 - Healing/revive and contextual ally/location power orders need their own native policy. The shared voice validator currently requires a target group for `Use`; this increment does not claim self/ally/location voice power parity.
 - Specialized player weapon-buff gestures, DLC-specific visual treatment, unique power icons and physical headset acceptance remain tracked in `research/le3-powers.md` and the implementation plan.
-- Companion portraits/role artwork remain generic where the shared menu has no asset; more than four carried weapons needs explicit UI work.
+- Companion portraits/role artwork remain generic where the shared menu has no asset; overflow weapon page appearance and interaction still need native/headset review.
 - Existing standing-order observer must be tested against actual ME3 AI outcomes, including failed navigation and interrupted casts. No synthetic success or resource/cooldown writes were introduced.
+
+## Native ownership and dispatch audit
+
+Coordinator's protected probe supplied native exec RVAs from the installed LE3 executable; Ghidra reads used the existing original-code project. No game was launched by this lane and no raw decompiled code is committed.
+
+- `BioPawn.GetActorGameName` exec `0xB3F8B0` obtains a temporary FString through a virtual getter, resizes the caller's return block through `0x73440`, copies the UTF-16 payload, and frees the temporary through `0xBF0D0`. These are the same allocator helpers independently followed in the descriptor ownership audit. The return buffer is caller-owned; one `ue3::memory::FreeString` is correct.
+- `SquadOrderUsePower` exec `0xB64A20` forwards its exact parameter block to `0xAA38B0`. The implementation resolves the recipient's manager/power, requires learned rank and no remaining cooldown, and invokes reflected target selection. Player recipients write the player's pending order and camera data. Other recipients dispatch a reflected event with the exact `HenchmanOrderUsePower` argument layout, including queue and input method; its identification is supported by that ABI and the installed wrapper. The latter path does not populate the player's pending order. Return true follows event dispatch and does not prove AI execution.
+- Installed `HenchmanOrderUsePower` delegates through `GiveHenchmanOrder`, which checks the enabled companion AI before adding the order. The adapter separately checks live membership and the actual AI enablement override before dispatch. Native cast and resource outcomes remain to be tested.
+
+## Overflow inventory follow-up
+
+The shared menu machine now treats an optional More weapons tile as navigation, leaves the menu open and clears the highlight. A held confirm or stick cannot dispatch the replacement tile. Release-to-confirm navigation also stays open and has an idle timeout; the normal at-most-four layout remains unchanged. The game adapter compares the complete live inventory while open, cancels when that inventory changes, and observes the actual equipped object after a real selection. Voice weapon orders select from the complete inventory. Tests cover 0/4/5/7-object pagination, held confirm, release confirmation, real selection after navigation, and idle cancellation. No host view structure changed.

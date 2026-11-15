@@ -4,6 +4,7 @@
 // latest view.
 
 #include "core/vr/SquadPlace.hpp"
+#include "core/vr/SquadMenu.hpp"
 
 #include <cmath>
 #include <cstdio>
@@ -221,11 +222,55 @@ void TestLatest() {
     CHECK(sp::Latest(0).active == 0 || sp::Latest(0).active == 1);  // age 0 may or may not have passed: no crash
 }
 
+void TestInventoryPages() {
+    namespace sm = mevr::vr::squad_menu;
+    CHECK(sm::PageInventory(-1, 99).count == 0);
+    auto four = sm::PageInventory(4, 3);
+    CHECK(four.first == 0 && four.count == 4 && four.more == -1 && four.pages == 1);
+    auto five = sm::PageInventory(5, 1);
+    CHECK(five.first == 3 && five.count == 2 && five.more == 3 && five.pages == 2);
+    auto last = sm::PageInventory(7, 99);
+    CHECK(last.index == 2 && last.first == 6 && last.count == 1 && last.pages == 3);
+
+    sm::Machine machine;
+    sm::Input in;
+    in.usable = true; in.memberCount = 1; in.members[0] = {15, 0, 3};
+    in.triggerDown = in.newPull = true;
+    CHECK(machine.Update(in).opened);
+    in.newPull = false;
+    in.rightX = 1; // right = tile 3, the navigation entry
+    CHECK(machine.Update(in).tileChanged);
+    in.a = true;
+    auto page = machine.Update(in);
+    CHECK(page.pageChanged && page.member == 0 && page.weapon == -1 && page.closed == sm::Close::None);
+    CHECK(machine.IsOpen() && machine.Highlighted() == -1);
+    CHECK(!machine.Update(in).pageChanged); // held A/stick cannot navigate twice or equip the replacement tile
+    in.a = false; in.rightX = 0;
+    machine.Update(in);
+    in.rightY = 1; // up = actual tile 2
+    machine.Update(in);
+    in.triggerDown = false;
+    auto equip = machine.Update(in);
+    CHECK(equip.closed == sm::Close::Confirmed && equip.weapon == 2 && !equip.pageChanged);
+
+    machine.Reset(); in = {};
+    in.usable = true; in.memberCount = 1; in.members[0] = {15, 0, 3};
+    in.triggerDown = in.newPull = true;
+    machine.Update(in);
+    in.newPull = false; in.rightX = 1;
+    machine.Update(in);
+    in.triggerDown = false;
+    CHECK(machine.Update(in).pageChanged); // release-to-confirm navigation keeps the menu open
+    in.rightX = 0; in.dt = in.idleCloseSeconds + 1;
+    CHECK(machine.Update(in).closed == sm::Close::Idle);
+}
+
 }  // namespace
 
 int RunSquadPlaceTests() {
     TestArc();
     TestHold();
     TestLatest();
+    TestInventoryPages();
     return gFailures;
 }
