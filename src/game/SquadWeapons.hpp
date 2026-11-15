@@ -60,11 +60,12 @@ struct Panel;
 //     wheel's own steps for Shepard (UpdatePrimaryAndSecondaryWeapons, DrawPrimaryWeapon) are left out:
 //     his weapon isn't being changed. All through ProcessEvent, never the SDK's wrappers.
 // Logged once per change (`squad:` lines); a heartbeat line; the snapshot's mod status has a "squad"
-// object. Game thread. LE2/LE3: off.
+// object. Game thread. LE2 uses native inventory/order adapters with the custom panel; LE3 is off.
 namespace mevr::game::squad_weapons {
 
 // What the host offers this tick (Mod.cpp fills it from HostServices v11).
 struct Link {
+    bool menuOpen = false; // main menu or wrist rail owns inputs
     bool supported = false;  // a v11 host with a matching squad_menu::View (or the monolithic build)
     bool nativeSupported = false;  // ...and v12: the wheel panel and the pad's native wheel flags
     std::optional<std::uint32_t> leftGripAway;  // HostServices::leftGripAway (unused since the trigger opens it)
@@ -101,7 +102,7 @@ struct MemberView {
     int squadIndex = -1;  // the squad's own index (QuickCommand*'s iSquadMember)
     std::string name;
 };
-std::vector<MemberView> Members();
+std::vector<MemberView> Members(bool refresh = false);
 // A weapon object's quick-slot type (0 pistol .. 3 sniper rifle; -1 not a ranged weapon).
 int WeaponTypeOf(ue3::Object* weapon);
 // A squadmate's weapon switched by the menu's own path (the squad orders' "switch to your sniper"): the outcome in words.

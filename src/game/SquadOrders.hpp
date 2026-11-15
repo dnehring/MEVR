@@ -22,6 +22,7 @@
 namespace mevr::game::squad_orders {
 
 struct Link {
+    bool menuOpen = false; // main menu or wrist rail owns inputs
     // HostServices::leftGripAway (v11): nullopt with an older host (our own latch of the grip stands in).
     std::optional<std::uint32_t> leftGrip;
     void (*haptic)(int hand, float seconds, float amplitude) = nullptr;
@@ -29,6 +30,8 @@ struct Link {
 
 // Game thread, each tick after the squad context's.
 void Tick(double deltaSeconds, Link const& link);
+// Refresh before voice callbacks this tick; gestures still run after voice claims its squeeze.
+void SetMenuOpen(bool open);
 
 // Any order: validated against the squad context's scene, resolved, called. The outcome in words (the log's).
 std::string Give(vr::squad_context::Action const& action);

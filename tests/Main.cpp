@@ -5204,6 +5204,10 @@ void TestSquadParser() {
     Settings st;
     auto const parse = [&](char const* text) { return Parse(text, scene, groups, roster, st); };
     auto const line = [](Parsed const& p, std::size_t i) { return i < p.clauses.size() ? sc::Line(p.clauses[i].action) : std::string("(none)"); };
+    // ME2 adds SMGs to the shared vocabulary without reassigning ME1's four weapon codes.
+    CHECK(sc::WeaponFromCode("SMG") == 4 && std::string(sc::WeaponCode(4)) == "SMG");
+    CHECK(line(parse("Garrus, equip your submachine gun"), 0) == "G|SMG|-|-|-");
+    CHECK(line(parse("Garrus, equip your smg"), 0) == "G|SMG|-|-|-");
     // The example: two clauses, the deictic kept with its position, the description picking the bridge group.
     Parsed p = parse("Garrus, equip your sniper and take out those troops on the bridge");
     CHECK(!p.empty && p.clauses.size() == 2 && line(p, 0) == "G|SR|-|-|-" && line(p, 1) == "G|-|-|attack|E1");

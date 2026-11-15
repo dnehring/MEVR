@@ -30,6 +30,7 @@
 #include "plugin/Swapchains.hpp"
 #include "plugin/TestLoop.hpp"
 #include "plugin/SightLayers.hpp"
+#include "plugin/SquadPanel.hpp"
 #include "plugin/TransitionFade.hpp"
 #include "plugin/TraversalCue.hpp"
 #include "plugin/Vignette.hpp"
@@ -227,6 +228,7 @@ void JournalFloorViewWrite(void const* origin, void const* preTranslation) noexc
 
 void OnRecentered() noexcept {
     mevr::host::xr_host::NoteRecentered();
+    mevr::host::squad_panel::Recentered();
     mevr::host::hud_panel::Recentered();  // the HUD panel straight ahead again
     mevr::host::world_panels::Recenter();  // the 3D cinema screen placed afresh
     mevr::host::menus_le2::OnRecentered();  // our menu and the calibration placed again (M4)
@@ -637,6 +639,18 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
             }
             if (auto const* arc = mevr::host::squad_place_draw::Layer(place)) layersOut[count++] = arc;
         }
+    }
+    if (count < capacity && frame.gameMode == 0) {
+        mevr::host::squad_panel::Frame squad;
+        squad.session = static_cast<XrSession>(frame.session);
+        squad.appSpace = static_cast<XrSpace>(frame.appSpace);
+        squad.context = frame.context; squad.device = device;
+        squad.worldFrame = frame.worldFrame;
+        squad.menuOpen = frame.menuOpen || mevr::host::renderer::OwnMenuOpen();
+        squad.headValid = frame.headValid;
+        auto const& q = frame.headOrientation; auto const& p = frame.headPosition;
+        squad.head = {{q[0], q[1], q[2], q[3]}, {p[0], p[1], p[2]}};
+        if (auto const* layer = mevr::host::squad_panel::Layer(squad)) layersOut[count++] = layer;
     }
     // Our main menu and the guided calibration (plugin/MenusLe2, M4): over the rest, alone while they're up.
     count = mevr::host::menus_le2::Layers(frame, device, layersOut, count, capacity);

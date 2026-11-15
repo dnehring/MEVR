@@ -42,8 +42,8 @@ using PawnId = std::uint64_t;  // whatever identifies a pawn while it lives (its
 
 // ---- The scene the mod snapshots -----------------------------------------------------------------------------------
 
-inline constexpr int kWeapons = 4;  // squad_menu's types: 0 pistol, 1 shotgun, 2 assault rifle, 3 sniper rifle
-char const* WeaponCode(int weapon);  // "PI", "SG", "AR", "SR"; "-" for anything else
+inline constexpr int kWeapons = 5;  // squad_menu's types: 0 pistol, 1 shotgun, 2 assault rifle, 3 sniper rifle, 4 SMG
+char const* WeaponCode(int weapon);  // "PI", "SG", "AR", "SR", "SMG"; "-" for anything else
 std::optional<int> WeaponFromCode(std::string_view code);
 
 struct Power {

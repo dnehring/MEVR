@@ -24,6 +24,7 @@ bool gLookedUp = false;
 bool gPaused = false;     // we paused the game
 bool gWasOpen = false;
 std::string gLast = "never";
+std::uint32_t (*gStateReader)() = nullptr;
 
 #if defined(MEVR_GAME_LE1)
 bool Pause(bool pause, char const* why) {
@@ -105,9 +106,10 @@ bool Pause(bool, char const*) {
 } // namespace
 
 void Tick(Link const& link) {
+    gStateReader = link.state;
     std::uint32_t const state = link.state != nullptr ? link.state() : 0u;
     bool const open = (state & kMainMenuOpen) != 0;
-    bool const wanted = open && (state & kMainMenuPause) != 0;
+    bool const wanted = (open && (state & kMainMenuPause) != 0) || link.squadPause;
     if (gPaused && !wanted) {
         Pause(false, open ? "pause turned off" : "the main menu closed");
         gPaused = false;
@@ -128,11 +130,17 @@ void Tick(Link const& link) {
     gWasOpen = wanted;  // "wanted last tick": a new opening or the toggle turned on tries again
 }
 
+void SetSquadPause(bool pause) {
+    Link link; link.state = gStateReader; link.squadPause = pause;
+    Tick(link);
+}
+
 bool Paused() {
     return gPaused;
 }
 
 void Shutdown(bool exiting) {
+    gStateReader = nullptr;
     if (gPaused && !exiting) {
         Pause(false, "the mod unloads");
     }

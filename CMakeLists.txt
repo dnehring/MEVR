@@ -602,6 +602,8 @@ set(MEVR_MOD_SOURCES
     src/game/SkeletonProbe.hpp
     src/game/SquadWeapons.cpp
     src/game/SquadWeapons.hpp
+    src/game/Le2Squad.hpp
+    src/game/Le2SquadMenu.inc
     src/game/SupportGrip.cpp
     src/game/SupportGrip.hpp
     src/game/Throwables.cpp
@@ -973,6 +975,7 @@ function(mevr_add_plugin game)
             src/core/vr/PowerWheel.cpp src/core/vr/SquadPlace.cpp
             src/plugin/PowerWheel.cpp src/plugin/PowerWheelDraw.cpp src/plugin/PowerIcons.cpp src/plugin/Glow.cpp
             src/plugin/SquadPlaceDraw.cpp src/plugin/GalaxyHologramDraw.cpp
+            src/core/vr/SquadMenu.cpp src/plugin/SquadPanel.cpp src/plugin/SquadPanelDraw.cpp
             src/core/vr/GalaxyHologram.cpp src/core/vr/GalaxyHologram.hpp
             # ME1's 3D cinema screen for conversations and cutscenes, its floor and horizon, the dip from black and the
             # world-locked placement (research/52, research/le2-cinema.md): LE1's modules, shared.

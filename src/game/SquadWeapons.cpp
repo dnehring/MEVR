@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: MIT
 #include "game/SquadWeapons.hpp"
+#include "game/Le2Squad.hpp"
+#include "game/MenuPause.hpp"
+#include "game/SquadContext.hpp"
+#include "engine/Engine.hpp"
 
 #include "core/Log.hpp"
 #include "core/WriteJournal.hpp"
@@ -30,6 +34,7 @@
 #include <cstdio>
 #include <format>
 #include <limits>
+#include <map>
 #include <string>
 #include <string_view>
 
@@ -217,6 +222,35 @@ void ReadLe2Members(double deltaSeconds, std::optional<std::uint8_t> mode) {
             member.name = r.NameText(r.ClassOf(pawn));
             constexpr std::string_view prefix = "SFXPawn_";
             if (member.name.starts_with(prefix)) member.name.erase(0, prefix.size());
+        }
+        // A stable session identity comes from the member name, with collision-free letters in the roster.
+        static std::map<std::string, int> identities;
+        auto found = identities.find(member.name);
+        if (found == identities.end()) {
+            int letter = member.name.empty() ? 'A' : std::toupper(static_cast<unsigned char>(member.name.front()));
+            if (letter < 'A' || letter > 'Z') letter = 'A';
+            for (int attempt = 0; attempt < 26; ++attempt) {
+                bool used = false;
+                for (auto const& [name, id] : identities) used = used || id == 1000 + letter;
+                if (!used) break;
+                letter = letter == 'Z' ? 'A' : letter + 1;
+            }
+            found = identities.emplace(member.name, 1000 + letter).first;
+        }
+        member.classId = found->second;
+        member.initials.clear();
+        for (char c : member.name) if (std::isalpha(static_cast<unsigned char>(c)) && member.initials.size() < 2)
+            member.initials.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
+        auto weapons = le2_squad::Weapons(pawn);
+        auto* held = le2_squad::equippedWeapon.Read<ue3::Object*>(pawn).value_or(nullptr);
+        // More than four carried guns requires a larger menu. Refuse the menu for that member rather than hiding choices.
+        if (weapons.size() <= kWeapons) {
+            for (int slot = 0; slot < static_cast<int>(weapons.size()); ++slot) {
+                member.weapons[slot] = reinterpret_cast<std::uintptr_t>(weapons[slot]);
+                member.typeOfSlot[slot] = le2_squad::WeaponType(weapons[slot]);
+                member.carried |= static_cast<std::uint8_t>(1u << slot);
+                if (weapons[slot] == held) member.current = slot;
+            }
         }
         int const max = gLe2HealthMax.Read<std::int32_t>(pawn).value_or(0);
         auto const health = gLe2Health.Read<std::int32_t>(pawn);
@@ -1297,6 +1331,12 @@ void Publish(Link const& link, bool open) {
         out.carried = m.carried;
         out.pointed = c == gPointedCard ? 1 : 0;
         out.health = m.health;
+#if defined(MEVR_GAME_LE2)
+        for (int slot = 0; slot < kWeapons; ++slot) {
+            out.icons[slot] = static_cast<std::int8_t>(m.typeOfSlot[slot] == 4 ? 0 : m.typeOfSlot[slot]);
+            std::snprintf(out.labels[slot], sizeof out.labels[slot], "%s", le2_squad::WeaponLabel(m.typeOfSlot[slot]));
+        }
+#endif
     }
     link.setMenu(&view);
     gPublishedOpen = open;
@@ -1332,11 +1372,19 @@ void Inactive(std::string why, Link const& link) {
     ResumeIfPaused(why.c_str());
     ReleaseWheel(why.c_str());
 #endif
+#if defined(MEVR_GAME_LE2)
+    menu_pause::SetSquadPause(false);
+    gPending = {};
+#endif
     gMachine.Reset();
     gUsable = false;
     Publish(link, false);
     SetWhy(std::move(why));
 }
+
+#if defined(MEVR_GAME_LE2)
+#include "game/Le2SquadMenu.inc"
+#endif
 
 } // namespace
 
@@ -1381,6 +1429,9 @@ bool TryStartup() {
         missing.empty() ? std::string() : std::format(" (not found: {})", missing),
         gEnterWeaponWheel != nullptr && gExitWeaponWheel != nullptr ? "can be opened and closed" : "CAN'T be opened (custom menu instead)");
     return gStarted;
+#elif defined(MEVR_GAME_LE2)
+    gStarted = le2_squad::orderWeapon.Get() != nullptr && gLe2SquadSize.Get() != nullptr && gLe2Member.Get() != nullptr;
+    return gStarted;
 #else
     return false;
 #endif
@@ -1404,9 +1455,15 @@ void Tick(double deltaSeconds, Link const& link) {
     auto const mode = head_tracking::GameMode();
 #if defined(MEVR_GAME_LE2)
     ReadLe2Members(deltaSeconds, mode);
+    TryStartup();
 #endif
-    bool const modeTakesIt = mode && (*mode == 0 || *mode == 2 || *mode == 3);  // on foot, the power wheel, the weapon wheel
-    bool const wanted = settings.enabled && link.supported && gStarted && controls.leftTriggerLB && modeTakesIt;
+#if defined(MEVR_GAME_LE2)
+    bool const modeTakesIt = mode == 0;
+#else
+    bool const modeTakesIt = mode && (*mode == 0 || *mode == 2 || *mode == 3);
+#endif  // on foot, the power wheel, the weapon wheel
+    bool const wanted = settings.enabled && link.supported && gStarted && controls.leftTriggerLB && modeTakesIt &&
+        !link.menuOpen && !power_wheel::OwnsLeftHand() && !support_grip::Held();
     if (settings.enabled && link.supported && !controls.leftTriggerLB && !gToldTriggerSetting) {
         gToldTriggerSetting = true;
         log::Warn("squad: the left trigger opens the squad's weapon wheel only with [Controls] leftTrigger = lb (it is {} now): "
@@ -1589,7 +1646,11 @@ void Tick(double deltaSeconds, Link const& link) {
     (void)newPull;
     (void)wasDown;
     (void)mode;
+#if defined(MEVR_GAME_LE2)
+    TickLe2(deltaSeconds, link, settings, controllers, newPull);
+#else
     Inactive("LE1 only", link);
+#endif
 #endif
 }
 
@@ -1619,7 +1680,12 @@ bool IsOpen() {
     return gMachine.IsOpen() || gWheel.Holding();
 }
 
-std::vector<MemberView> Members() {
+std::vector<MemberView> Members(bool refresh) {
+#if defined(MEVR_GAME_LE2)
+    if (refresh) { gDetailsAge = 1e9; ReadLe2Members(0.0, head_tracking::GameMode()); }
+#else
+    (void)refresh;
+#endif
     std::vector<MemberView> out;
     for (int i = 0; i < gCount; ++i) {
         MemberInfo const& m = gMembers[i];
@@ -1634,6 +1700,11 @@ std::vector<MemberView> Members() {
         view.classId = m.classId;
         view.carried = m.carried;
         view.current = m.current;
+#if defined(MEVR_GAME_LE2)
+        view.carried = 0;
+        for (int slot = 0; slot < kWeapons; ++slot) if (m.typeOfSlot[slot] >= 0) view.carried |= static_cast<std::uint8_t>(1u << m.typeOfSlot[slot]);
+        view.current = m.current >= 0 ? m.typeOfSlot[m.current] : -1;
+#endif
         view.health = m.health;
         view.squadIndex = m.squadIndex;
         view.name = m.name;
@@ -1655,6 +1726,14 @@ std::string GiveWeapon(ue3::Object* pawn, int weapon) {
         return gLastResult.empty() ? std::string("switched") : gLastResult;
     }
     return "not a squadmate the menu knows";
+#elif defined(MEVR_GAME_LE2)
+    if (weapon < 0 || weapon > 4) return "no such weapon type";
+    gDetailsAge = 1e9; ReadLe2Members(0.0, head_tracking::GameMode());
+    for (int i = 0; i < gCount; ++i) {
+        if (gMembers[i].key != reinterpret_cast<std::uintptr_t>(pawn)) continue;
+        for (int slot = 0; slot < kWeapons; ++slot) if (gMembers[i].typeOfSlot[slot] == weapon) { EquipLe2(i, slot); return gLastResult; }
+    }
+    return "recipient does not carry that weapon";
 #else
     (void)pawn;
     (void)weapon;
@@ -1665,6 +1744,8 @@ std::string GiveWeapon(ue3::Object* pawn, int weapon) {
 int WeaponTypeOf(ue3::Object* weapon) {
 #if defined(MEVR_GAME_LE1)
     return RangedType(weapon);
+#elif defined(MEVR_GAME_LE2)
+    return le2_squad::WeaponType(weapon);
 #else
     (void)weapon;
     return -1;  // no weapon reading on LE2/LE3 yet

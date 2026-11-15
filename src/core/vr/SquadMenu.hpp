@@ -159,6 +159,8 @@ struct MemberView {
     std::uint8_t carried = 0;    // bit per weapon type
     std::uint8_t pointed = 0;    // the hand pointed at them when the menu opened
     float health = -1.0f;        // 0..1; negative: unknown
+    std::int8_t icons[kWeapons] = {0, 1, 2, 3};
+    char labels[kWeapons][32] = {}; // optional per-slot labels for native inventories
 };
 
 struct View {
