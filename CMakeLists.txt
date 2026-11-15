@@ -1092,6 +1092,7 @@ function(mevr_add_plugin game)
             src/plugin/ScopeCaptureSource.cpp src/plugin/SightLayers.cpp src/plugin/SightPictures.cpp
             src/core/vr/PowerWheel.cpp src/core/vr/SquadPlace.cpp src/core/vr/InteractLabel.cpp
             src/plugin/SquadPlaceDraw.cpp src/plugin/GalaxyHologramDraw.cpp src/core/vr/GalaxyHologram.cpp
+            src/core/vr/GalaxyMap.cpp src/core/vr/GalaxyMap.hpp
             src/core/vr/SquadMenu.cpp src/plugin/SquadPanel.cpp src/plugin/SquadPanelDraw.cpp
             src/plugin/PowerWheel.cpp src/plugin/PowerWheelDraw.cpp src/plugin/PowerIcons.cpp src/plugin/Glow.cpp
             src/core/vr/OverlayPlacement.cpp src/core/vr/OverlayPlacement.hpp)
