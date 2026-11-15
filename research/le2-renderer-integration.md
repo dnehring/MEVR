@@ -765,27 +765,142 @@ snapshots' PNGs and the JSON's layers and `hostView`.
 `OnViewBuilt` passes `floorWorld` but nothing uses it). The mod's comfort module (`game/Comfort`) is LE1 game code, so on
 LE2 nobody asks for the vignette yet: the service is there for lane C/D's comfort work.
 
-### Step 4, the HUD panel: the plan (not built)
+### Step 4: the HUD panel and the hand reticle on ME2 (lane B, third agent)
 
-What a next agent needs, in order. The 8-bit frame is a prerequisite (`[Colour] hdrDisplay = -1`, LE2's default): ME2's
-UI classifier `IsUiDrawNow` (d3d_capture.cpp) only sees UI drawn into a format-28 backbuffer.
-1. **Where ME2's UI goes today:** each of `MhDrawIndexed`, `MhDrawIndexedInstanced` and `MhDraw` (d3d_capture.cpp, the
-   MinHooked draws) asks `IsUiDrawNow` (full-width R8G8B8A8_UNORM target, alpha-blended) and in SFR (`GetVrMode() == 4`)
-   draws it with `SfrDrawUiBothEyes`: into the backbuffer, shrunk to the middle of the eye (the HUD seen in the SDR
-   snapshot of "The black eyes"). That is the seam: before the `uiMode == 4` branch, a `[MEVR]` call like LE1's
-   `MevrHudPanelDraw` (src/halcyon/le1/d3d_capture.cpp, around its `[MEVR]` HUD panel block: the bound target read live,
-   the panel's render target from `MevrBridge::HudPanelTarget`, the blend from `HudPanelBlend`, Scaleform's other blend
-   modes into the tint target, `NoteHudPanelDraw`) that returns true when the draw went to the panel.
-2. **The panel itself** lives in plugin/HalcyonOverlays.cpp (`HudPanelArmed`, `HudPanelTarget`, `HudPanelBlend`,
-   `HudPanelTintBlends`, `HudPanelTintTarget`, `HudPanelNoWrites`, `NoteHudPanelDraw`, `NoteHudPanelTint`, and in
-   `OverlayLayers` the copy of the panel texture into its swapchain and the body-locked quad's placement through
-   `core/vr/OverlayPlacement`). Move those into a module of their own (`plugin/HudPanel`, game-independent: it needs the
-   device, the frame's head and the settings `renderer::Hud()`), called by HalcyonOverlays on LE1 (no behaviour change:
-   the LE1 same-pose check) and by `HalcyonLe2Bridge`'s `OverlayLayers` and new `HudPanel*` seams on LE2.
-3. Arm it only for a head-tracked world frame (`OverlayFrame::worldFrame`), as LE1 does; ME2's flat panel (menus,
-   conversations) keeps the UI in the picture.
-4. **Check:** a snapshot in Freedom's Progress gameplay has both eyes without the HUD and a `hud` layer with it (the
-   panel's swapchain named "hud" through `testloop::NameSwapchain`).
+**What:** ME2's UI goes onto our body-locked HUD panel quad, ME1's way, instead of into each eye; the hand reticle (a ring
+on the mod's aim ray) is drawn on ME2 too. Both are the same code as LE1's, moved into game-independent modules.
+
+**How, file by file:**
+1. `src/plugin/QuadSwapchain.{hpp,cpp}` (new, both hosts): `mevr::host::QuadSwapchain` (images, a render target view per
+   image, the refused state) and `quad_swapchain::Create`, `Ensure` (also names it for snapshots), `Acquire`, `Release`, moved
+   unchanged out of HalcyonOverlays (they go through `plugin/Swapchains`).
+2. `src/plugin/HudPanel.{hpp,cpp}` (new, both hosts), namespace `mevr::host::hud_panel`: the panel texture and the UI draws'
+   states (render thread: `Armed`, `Target`, `Blend`, `TintBlends`, `TintTarget`, `NoWrites`, `NoteDraw`, `NoteTint`,
+   `IsFloat`), the blit pipeline and its shader (`Blit` of a window of the panel into any `QuadSwapchain`, with masks;
+   `DrawCoverageGrid` for the wheel's measurement), the panel's own swapchain (`Swapchain`, `Factor`, `Render`), its
+   placement (`Place`, `Placement`, `Recentered`, `RequestReplace`) and the end-of-frame clear (`EndFrame`, `NoteArmChange`,
+   `TakeClears`). LE1's colour correction is handed in (`SetColour`: plugin/Colour's prelude, `BeginPanel`, `EndPanel`), so
+   the module doesn't depend on plugin/Colour. Two entry points are for a renderer without LE1's own draw seam:
+   `Redirect(context, draw, user, textBatch, afterLeftEye)` (classifies one UI draw: "over" or a Scaleform blend mode go into
+   the panel, anything else is left alone) and `Layer(Frame)` (the plain body-locked panel for one frame: placement, render,
+   clear, arm the next frame's redirect; exactly LE1's path for a frame without wheels, labels, HUD pieces, world screens or
+   the cinema screen).
+3. `src/plugin/HandReticle.{hpp,cpp}` (new, both hosts): `hand_reticle::Layer(Frame)`, LE1's reticle block moved unchanged
+   (the mod's `aim_ray`, else the right controller's aim pose; on foot, or in the Mako on the mod's ray).
+4. `src/plugin/HalcyonOverlays.cpp` (LE1): its HUD panel and reticle code replaced by calls to the three modules. Every LE1
+   log line keeps its text. The `MevrBridge::HudPanel*` seams forward to `hud_panel`.
+5. **ME2's seam:** `src/halcyon/le2/d3d_capture.cpp`, `[MEVR] MevrHudPanelDraw` called in `MhDrawIndexed`,
+   `MhDrawIndexedInstanced` and `MhDraw` right before their `uiMode == 4` branch (SFR), inside Halcyon's own test (an
+   `IsUiDrawNow` draw, VR on, not a menu or cinematic frame): `MevrBridge::HudPanelDraw(ctx, draw thunk, user, textBatch,
+   SfrUiMirrorArmed())` -> `hud_panel::Redirect`. True: the draw went to the panel at the game's own viewport (the HUD's
+   authored layout) and Halcyon's shrunk draw into the eyes is skipped. Declared in `src/halcyon/le2/mevr_bridge.h`.
+6. `me2_xr.cpp`'s `[MEVR]` OverlayLayers block also fills `OverlayFrame::stereo` (`GetVrMode() == 4`) and the head
+   (`headValid`, `headOrientation`, `headPosition`: the views located once more through `g_fn.locateViews` at the frame's
+   display time in `g_localSpace`, so a replay's head is used in a replay; the left eye's orientation, the eyes' mean
+   position, as LE1's frame).
+7. `src/plugin/HalcyonLe2Bridge.cpp`: `OverlayLayers` calls `hud_panel::Layer` (after the vignette; gameplay = game modes
+   0-4, `worldFrame && !menuOpen`, the settings `renderer::Hud()`: ME1's defaults on LE2, 1.30 m wide, 1.5 m ahead, 0.25 m
+   down) and `hand_reticle::Layer` (handAim `renderer::ModHandAim()`, the last readable game mode); `OnRecentered` ->
+   `hud_panel::Recentered`; `OnSessionStopped` disarms it.
+8. **The HUD's own layout on the panel:** `renderer::SetAuthoredHudLayout(on)` on LE2 now calls
+   `ME2VR::PcHud::SetAuthoredLayout(on)` (`[MEVR]` in pchud.cpp/.h): while on, PcHud's per-element moves and scales for a
+   head-locked HUD (MELE2VR.ini `[HUD]`: upstream's ini moves the weapon block 232 px and scales it 1.62, the squad block
+   1.75) stand down, as LE1's `Pchud::SetAuthoredLayout`. The bridge sets it each frame to "the panel is enabled, SFR, and
+   usable". Elements moved before it came on would stay moved until the HUD movie is rebuilt; it comes on with the session,
+   before gameplay's first HUD.
+9. `CMakeLists.txt`: both hosts gain the three modules; the LE2 host also `core/vr/OverlayPlacement`.
+
+**Found: ME2's SFR draws the UI twice a frame.** Each of the two `FViewportClient::Draw` calls (pass 0, the game's; pass 1,
+Halcyon's replay) draws the whole HUD: 75 UI draws before the renderer's left-eye capture (`SfrUiMirrorArmed()` false) and 75
+after it, all into the backbuffer on the immediate context (a trace of one present's UI draws, logged as `halcyon le2
+bridge: this present's UI draws in order ...: E75 L75`). The first batch ends up in the right eye only (the backbuffer at
+Present), never in the left (the pass-0 capture): with only the later batch on the panel, the right eye still had the HUD,
+shrunk, and the left none. Upstream therefore draws the HUD twice into its right eye and once (the mirror) into its left.
+So both batches go to the panel, and the first draw after the capture clears the panel first: the later batch replaces the
+earlier one, and a frame whose capture never came (an anchor miss) still has its HUD. **Why the first batch doesn't reach
+the left-eye capture is not understood** ([verify]: Halcyon's `[CLEARMAP]` puts the capture after 76 backbuffer draws, which
+should include it); the panel doesn't depend on it.
+
+**Checked on the fake headset** (stretches `%LOCALAPPDATA%\MEVR\sessions\20261114-2152..2206-lane-b3-hud*`, Freedom's
+Progress by `load.ps1`, `[Colour] hdrDisplay` -1 by default): `[MEVR-HUD] HUD panel texture 4096x2304 fmt=28`, `swapchains:
+HUD panel 1365x768 made`, `panel layer: 150 UI draws this frame, 1365x768 (1/3 of 4096x2304), 1.30 x 0.73 m at (0.00, -0.25,
+-1.50) m`, every UI draw "over" blended (`UI draw to the HUD panel: blend=1 src=5 dst=6`, none left to the renderer); the
+snapshot has a `hud` layer with the whole HUD at its authored layout (power bar top left, prompt, crosshair, weapon panel,
+squad portraits) and neither eye shows the HUD (the HUD's orange in each eye: 639 pixels in the right eye's power-bar band
+before, about 20 in the whole picture after, the lamps' own). PcHud logs `[MEVR] PcHud: the HUD is on the body-locked panel:
+its own layout`.
+
+**The colour correction on the panel** (after the picture lane put `plugin/Colour` in the LE2 host, fc24c20d):
+`HalcyonLe2Bridge::OverlayLayers` hands `hud_panel::SetColour` the same prelude and `BeginPanel`/`EndPanel` LE1's
+HalcyonOverlays does, before the panel's first blit, so the game's UI gets the eyes' correction (neutral: the plain shader).
+
+**LE1 after step 4: unchanged.** The same pose run as the earlier steps' (the scratchpad's `le1-pose.ps1`: 20 s in the
+world, `make-walk-recording.py --plan stand:600 --hands view` looped, 8 s, the console's `pause`, two snapshots 1 s apart;
+`tools/fake-headset-session.ps1 -BuildDir build-mono`), before and after on one base (main 34d41fff): "before" built from
+this worktree with `HalcyonOverlays.cpp` and `CMakeLists.txt` checked out from 34d41fff (session
+`2026-11-14_23-03-25-laneb3-before`, snapshot `23-06-05-087`), "after" with this step (session
+`2026-11-14_22-35-47-laneb3-pose`, snapshot `22-38-33-671`; both sessions keep their snapshots: the snapshots folder is
+pruned). The same six layers (both eyes, `hud`, `label`, `wrist`, `omnitarget`) at the same places (the label 0.1 mm, the
+omni-tool target 0.4 mm apart), `hostView` identical, the HUD panel identical pixel for pixel, the eyes 0.47% / 0.44% of
+pixels apart by more than 32/255 (what animates between launches). The earlier steps' baseline snapshot (21:28) was gone,
+hence the fresh "before".
+
+**The first-chance access violations at XR start** (every LE2 run before, three lines `first-chance access violation
+0xC0000005 ... at LE2MEVR.asi+0x...` reading addresses like 0x1000002B7 or 0xFFFFFFFFFFFFFFFF; the offset moved with each
+build: +0xE45FB, +0xE930B, +0xE987B, +0xF2F1B, +0x10CF1B): `python tools/resolve-native-symbols.py <the session's
+added\ME2Win64\ASI\LE2MEVR.asi> 0xE987B` (each `tools/le2-halcyon-run` session keeps the ASI and its PDB) named
+`ME2VR::PcHud::ReadFString` (pchud.cpp): Halcyon's `CollectHandlers` reads the HUD handler's FString path offsets on every
+Scaleform handler class, so most reads take FNames and flags for string pointers and fault inside its own `__try`. Fixed
+with a `[MEVR]` check before the read (f4c5fe68): no pointer under 64 KB, above user space or not 8-byte aligned (an engine
+allocation is), no count past the FString's capacity. No first-chance line since.
+
+**Diagnostics kept:** `[MEVR-HUD] UI draw <where>: blend=... src= dst= ...` once per blend kind; the panel's line every 30 s
+counts the draws before the left-eye capture and the draws left to the renderer; `halcyon le2 bridge: this present's UI
+draws in order` (e/l before/after the capture, upper case into the backbuffer, `D` a deferred context's) for the first three
+presents with UI and every 600th, twelve lines.
+
+**Not yet on ME2:** the game's crosshair is still drawn in the panel's middle (LE1 hides it while the hand reticle stands
+in for it: `renderer::SetScreenReticleHidden`, a no-op on LE2 until PcHud or the HUD movie gives a switch for it); the
+wheels, interaction labels, HUD pieces, world screens and the cinema screen's UI layer stay LE1's (HalcyonOverlays); ME2's
+UI during menus and conversations stays on Halcyon's flat panel (the panel is armed only for head-tracked world frames).
+
+### What is left of M2 and the host side of M3, with the seams (for the next agent)
+
+In the order the coordinator set (2026-11-14 22:00: lane D took the main menu, calibration and the omni-tool; lane C's mod
+side of VRIK is on main and publishes `setAimRay` every tick):
+1. **The game's crosshair off on ME2** (finishes the reticle): `renderer::SetScreenReticleHidden` is a no-op in
+   `plugin/RendererLe2.cpp`. ME2's crosshair is in the HUD movie (the panel shows it in its middle); find its path (PcHud's
+   `RunDiscovery`, F11 with `[VR] Diagnostics`, lists every path the HUD handler exposes, and its sweep tries `Crosshair`,
+   `mcCrosshair`, `Reticle`) and hide it on the game thread as LE1's `Pchud::SetCrosshairHidden` does (a `[MEVR]` setter in
+   pchud.cpp; the write through `WriteVar` in its ProcessEvent hook, never from the Present thread).
+2. **Sights** (`setSight` + `sightSize`, HostServices v13/v39): `plugin/SightLayers` draws the dot, the holo and the scope's
+   picture; it needs the eye poses and the world layer as submitted (`OverlayFrame::projection*`, already filled on LE2,
+   plus `eyeOrientation`/`eyePosition`: add them in me2_xr.cpp's block from the views located there), and LE1's
+   `MevrBridge::NoteDrawArm`/`pairArm` for the scope capture (none on LE2: leave the capture off). Move it into the LE2
+   host's sources, call `sight_layers::Layers` from `HalcyonLe2Bridge::OverlayLayers` before the reticle (the ring hides while
+   `sight.looking && sight.replaceRing`, `HandReticle::Frame::sightHidesRing`), and move `WithSights` (ModLoader.cpp) out of
+   the LE1-only list. Lane C ports `game/Sights` once the service is there.
+3. **The pad merge with the mod's flags** (support grip v7, `rightGripFree` v9, `gripHolds` v10, grips v11;
+   `setSupportGrip`/`supportGripHeld`): LE1's `MergeMotionControllers` (plugin/HalcyonBridge.cpp) is the plain mapping plus
+   `PadOptions()` (the mod's flags from `gSupportFlags`, set by the services `WithLe1Modules` adds), the close latch, and the
+   trigger owners (main menu, calibration, omni-tool, game pointer, galaxy). Move the mapping core (`PadOptions`, the latches,
+   the support-grip report, `WalkTowardHand`) into a game-independent `plugin/PadMerge` that both bridges call, with the
+   LE1-only owners passed in as a callback; then move the grip services out of the LE1-only list.
+4. **The floor lock** (`setFloorLockSample`, v36): `plugin/FloorLock` needs (a) a render seam on ME2 where the view's origin
+   is moved, `calcview_hook.cpp ApplyHeadPosition` (LE1's is render_hook.cpp `ApplyViewOffsetSEH`: `FloorViewTranslation(
+   replay, -pvt[2], VM[8], VM[9], VM[10], &r, &u, &f)` returns the vertical correction added to the world offset), with
+   ME2's offsets in UE units (`w2m * (...)`, 50 uu/m x `HeadPosScale`, forward x3) and `t_replay` for the second pass;
+   (b) `renderer::FirstPersonOwned()` on LE2 (ME2's first person owning the camera: `ME2VR::EngineProbe` first-person state,
+   `[FirstPerson] Enabled`), else `vr::floor_lock::Applies` is never true; (c) FloorLock.cpp off LE1's headers (it asks
+   `MELEVR::MevrBridge::MainMenuOpen`: put that behind the renderer interface); (d) `OnViewBuilt` on LE2 calling
+   `floor_lock::Queue(view, floor, floorWorld)` instead of publishing the view itself (LE1's way); (e) the mod's sample
+   (lane C: `game/BodyScale`'s floor-lock sample on LE2).
+5. **HUD pieces** (v22, `setHudPieces`; lane D's omni-tool tap needs `hud_pieces::Pieces`' arm bones): the wrist and gun
+   quads are cut from the HUD panel (HalcyonOverlays' masks, `ShowPiece`); with `hud_panel::Blit` and its `Masks` shared
+   now, they can move into a module beside `hud_panel::Layer` the same way. ME2's HUD has its own crops (the squad block at
+   the bottom middle, the weapon block bottom left: measure them on the panel's snapshot, `-hud.png`).
+6. **`plugin/GameThreadCalls` for LE2** in place of `HalcyonLe2.cpp`'s own queue: GameThreadCalls checks a queued call's
+   object through `engine/GameAdapter` and `ue3` (LE1's layout so far); with M1's LE2 layout it can serve both.
 
 **What the mod on LE2 still says** (each line a module the LE2 host doesn't serve yet, all LE1 host modules that come over
 with steps 4-5): holsters (v9: `rightGripFree`, keeping the squeeze from the game; v10 `gripHolds`), throwables, vent, squad

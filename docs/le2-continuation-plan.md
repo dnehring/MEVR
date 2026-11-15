@@ -79,7 +79,8 @@ Waits for nothing. Runs beside M1 (files: `src/plugin`, `src/halcyon/le2`).
    STAGE floor, recenter (`OnRecentered`), the session's stop (`OnSessionStopped`).
 4. **The HUD panel (M):** the game's UI drawn onto our body-locked panel quad instead of into the eyes, LE1's way
    (`HudPanel*` seams, `plugin/HalcyonOverlays`). ME2's renderer duplicates the UI into each eye today (`UiDupEnabled`,
-   `PcHud`): the panel replaces that.
+   `PcHud`): the panel replaces that. **Done 2026-11-14** (lane B, third agent; `plugin/HudPanel`, `plugin/HandReticle`,
+   research/le2-renderer-integration.md "Step 4"); what is left of M2 is listed there ("What is left of M2").
 5. **`gServices` for LE2 from the same list as LE1's** (`plugin/ModLoader.cpp`): one builder, the renderer interface
    behind it, version 39.
 
