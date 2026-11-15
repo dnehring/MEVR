@@ -3,6 +3,7 @@
 
 #include <openxr/openxr.h>
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -18,6 +19,16 @@
 // 2. The panel the mod sends the host every tick (HostServices setThespian): the reply rows, which words are lit, the
 //    microphone's mark. It crosses the host/mod boundary: it only grows at the end and carries its size.
 namespace mevr::vr::thespian {
+
+// Recent listens actually owned by a spoken turn. Kept after the turn ends so late finals cannot become squad orders.
+class ListenOwnership {
+public:
+    void Observe(bool turnActive, bool open, std::uint64_t listenStartMs);
+    bool Owns(std::uint64_t listenStartMs) const;
+private:
+    std::array<std::uint64_t, 4> recent_{};
+    std::size_t next_ = 0;
+};
 
 // How much of a line must be said before it is taken.
 enum class Strictness : std::uint8_t {
@@ -61,6 +72,7 @@ struct Match {
 
 struct Input {
     bool wheelUp = false;
+    bool otherUiOwnsInput = false;  // menu/calibration: cancel the turn before considering any recognized words
     bool otherSpeaking = false;  // the other person's line has not ended
     std::uint32_t silentMs = 0;  // since the last sound at speech level
     Match now;                   // the matcher asked "while speaking" (final = false)

@@ -54,6 +54,8 @@ th::Panel gPanel;              // the mod's last
 std::uint64_t gPanelMs = 0;    // when it came
 std::atomic<bool> gShown{false};
 std::atomic<bool> gHidesWheel{false};
+std::atomic<bool> gForgetSession{false};
+std::atomic<bool> gRecentered{false};
 std::mutex gStatusMutex;
 std::string gStatus = "{\"shown\": false}";
 
@@ -77,6 +79,7 @@ struct State {
     Rml::String speaker, heard, prompt, footerClass = "footer", levelWidth = "0%";
     std::string rows;        // the rows' markup now in the document
     Swapchain swapchain;
+    XrSession session = XR_NULL_HANDLE;
     XrCompositionLayerQuad quad{XR_TYPE_COMPOSITION_LAYER_QUAD};
     bool needRender = true;
     bool shown = false;
@@ -267,7 +270,28 @@ void SetPanel(th::Panel const* panel) {
     gPanelMs = GetTickCount64();
 }
 
+void ForgetSession() {
+    gForgetSession.store(true, std::memory_order_release);
+    gShown.store(false, std::memory_order_relaxed);
+    gHidesWheel.store(false, std::memory_order_relaxed);
+    SetPanel(nullptr);
+}
+
+void Recentered() {
+    gRecentered.store(true, std::memory_order_release);
+}
+
 XrCompositionLayerQuad const* Layer(Frame const& frame) {
+    if (gForgetSession.exchange(false, std::memory_order_acq_rel) || frame.session != g.session) {
+        swapchains::Forget(g.swapchain.handle); // the old session destroyed its swapchain, never destroy its dead handle
+        g.swapchain = {};
+        g.session = frame.session;
+        g.needRender = true;
+        g.holdUntilMs = 0;
+        Hide("the XR session changed");
+    }
+    if (gRecentered.exchange(false, std::memory_order_acq_rel)) g.placed = false;
+
     th::Panel panel;
     std::uint64_t at = 0;
     {

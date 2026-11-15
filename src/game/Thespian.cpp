@@ -593,8 +593,7 @@ struct Turn {
 Turn gTurn;
 std::uint32_t gPanelSerial = 0;
 bool gPanelShown = false;
-std::uint64_t gOurListens[4] = {};
-unsigned gOurListenAt = 0;
+th::ListenOwnership gListenOwnership;
 unsigned gSpoken = 0, gSpokenCommits = 0, gUnsure = 0, gDoubts = 0, gStoodDown = 0;
 // The wheel as it stood the last ticks (TickTurn): a turn begins only on one that held still for kSteadyTicks.
 struct Steady {
@@ -608,18 +607,6 @@ constexpr int kSteadyTicks = 3;
 std::string gLastHeard;
 bool gToldNoRecognizer = false;
 vr::voice::State gVoice;
-
-void NoteOurListen(std::uint64_t startMs) {
-    if (startMs == 0) {
-        return;
-    }
-    for (std::uint64_t const known : gOurListens) {
-        if (known == startMs) {
-            return;
-        }
-    }
-    gOurListens[gOurListenAt++ % 4] = startMs;
-}
 
 std::uint64_t Signature(ue3::Object* conversation) {
     auto const* const current = gCurrentReplies.In<ue3::TArray<std::int32_t>>(conversation);
@@ -877,7 +864,7 @@ void TakeLines(Link const& link) {
             gTurn.baseLine = 0;
             gTurn.baseWords = 0;
         }
-        NoteOurListen(line.listenStartMs);
+        gListenOwnership.Observe(gTurn.active, true, line.listenStartMs);
         if (line.endOfListen != 0) {
             continue;
         }
@@ -912,9 +899,16 @@ void TickTurn(double deltaSeconds, Link const& link) {
     if (link.voice.has && link.voice.state != nullptr) {
         link.voice.state(&gVoice);
         ready = gVoice.status == static_cast<std::uint8_t>(vr::voice::Status::Ready);
-        if (gVoice.open != 0) {
-            NoteOurListen(gVoice.listenStartMs);
-        }
+        gListenOwnership.Observe(gTurn.active, gVoice.open != 0, gVoice.listenStartMs);
+    }
+    if (link.voice.menuOpen) {
+        // The host hides these cards for menus/calibration. Release ASR and discard this turn's partial before
+        // it can commit invisibly or resume after the menu closes; recent owned IDs still filter late finals.
+        EndTurn(link, "another menu owns input");
+        SendPanel(link, false);
+        gTurn = {};
+        gSteady = {};
+        return;
     }
     ue3::Object* const conversation = LiveConversation();
     ue3::Object* const handler = conversation != nullptr ? LiveWheelHandler() : nullptr;
@@ -987,6 +981,7 @@ void TickTurn(double deltaSeconds, Link const& link) {
         TakeLines(link);
         th::Input in;
         in.wheelUp = true;
+        in.otherUiOwnsInput = link.voice.menuOpen;
         in.otherSpeaking = gRemainingVo.Read<float>(conversation).value_or(0.0f) > 0.05f;
         in.silentMs = gVoice.open != 0 ? gVoice.silentMs : 0;
         // No commit before the open listen runs (the quiet clock is its own).
@@ -1052,15 +1047,7 @@ bool OwnsMicrophone() {
 }
 
 bool OwnsListen(std::uint64_t listenStartMs) {
-    if (listenStartMs == 0) {
-        return false;
-    }
-    for (std::uint64_t const known : gOurListens) {
-        if (known == listenStartMs) {
-            return true;
-        }
-    }
-    return false;
+    return gListenOwnership.Owns(listenStartMs);
 }
 
 void Tick(double deltaSeconds, Link const& link) {

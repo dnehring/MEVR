@@ -158,6 +158,9 @@ void OnSessionCreated(void* instance, void* session) noexcept {
     mevr::host::testloop::OnSessionCreated(static_cast<XrSession>(session));
     mevr::host::swapchains::OnSessionCreated(static_cast<XrSession>(session));  // ours went with the old session
     mevr::host::hud_piece_layers::ForgetSession();
+#if defined(MEVR_WITH_MAIN_MENU)
+    mevr::host::thespian::ForgetSession();
+#endif
     mevr::host::eye_copy::Reset();
     if (mevr::host::xr_host::OnSessionCreated(static_cast<XrInstance>(instance), static_cast<XrSession>(session))) {
         mevr::log::Info("halcyon le2 bridge: our controller actions are attached to Halcyon's session");
@@ -262,6 +265,9 @@ void OnRecentered() noexcept {
     mevr::host::hud_panel::Recentered();  // the HUD panel straight ahead again
     mevr::host::world_panels::Recenter();  // the 3D cinema screen placed afresh
     mevr::host::menus_le2::OnRecentered();  // our menu and the calibration placed again (M4)
+#if defined(MEVR_WITH_MAIN_MENU)
+    mevr::host::thespian::Recentered();
+#endif
     mevr::log::Info("halcyon le2 bridge: recentered");
 }
 
