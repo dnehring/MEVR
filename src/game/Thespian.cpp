@@ -13,6 +13,9 @@
 #include "engine/VoicePlace.hpp"
 #include "game/ConversationWorld.hpp"
 #include "game/Player.hpp"
+#if defined(MEVR_GAME_LE3)
+#include "game/Le3Gui.hpp"
+#endif
 #include "ue3/Handles.hpp"
 #include "ue3/Memory.hpp"
 #include "ue3/Runtime.hpp"
@@ -34,9 +37,9 @@ namespace {
 namespace sm = mevr::voice::script_match;
 namespace vp = engine::voice_place;
 namespace th = vr::thespian;
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 constexpr auto kDialogueReach = ue3::kEveryGame;
-constexpr bool kSkipSpokenReply = false; // ME2 Wwise mute/skip requires its own native proof.
+constexpr bool kSkipSpokenReply = false; // Sequel Wwise mute/skip requires its own native proof.
 #else
 constexpr auto kDialogueReach = ue3::Reach::Modules;
 constexpr bool kSkipSpokenReply = true;
@@ -50,28 +53,64 @@ constexpr int kMaxCards = 32;
 // The live conversation's replies. Every Get* function takes a position in m_lstCurrentReplyIndices.
 // TArray<int>: places in the current entry's ReplyListNew (seen in the game 2026-11-13: the hearing's wheel #10 lists 0, 1, 2
 // where its replies are 12, 11, 12), whose nIndex is the reply's index in m_ReplyList.
-ue3::FieldRef gCurrentReplies{"SFXGame.BioConversation", "m_lstCurrentReplyIndices", kDialogueReach};
+#if defined(MEVR_GAME_LE3)
+constexpr char kLiveClass[] = "SFXGame.BioConversationController";
+ue3::FieldRef gCurrentReplies{kLiveClass, "m_aCurrentReplyIndices", kDialogueReach};
+ue3::FieldRef gConversationData{kLiveClass, "m_pConvData", kDialogueReach};
+ue3::FieldRef gSubtitle{kLiveClass, "m_sCurrentSubTitle", kDialogueReach};
+#else
+constexpr char kLiveClass[] = "SFXGame.BioConversation";
+ue3::FieldRef gCurrentReplies{kLiveClass, "m_lstCurrentReplyIndices", kDialogueReach};
+#endif
 ue3::FieldRef gReplyList{"SFXGame.BioConversation", "m_ReplyList", kDialogueReach};
 ue3::FieldRef gEntryList{"SFXGame.BioConversation", "m_EntryList", kDialogueReach};
 ue3::FieldRef gEntryReplies{gEntryList, "ReplyListNew"};
 ue3::FieldRef gEntryReplyIndex{gEntryReplies, "nIndex"};
 ue3::FieldRef gReplyUnskippable{gReplyList, "bUnskippable"};
 ue3::FunctionRef gGetReplyText{"SFXGame.BioConversation.GetReplyText", kDialogueReach};                  // (int nIndex, bool bParse) -> string
+#if defined(MEVR_GAME_LE3)
+ue3::FunctionRef gGetReplyParaphrase{"SFXGame.BioConversationController.GetReplyParaphraseText", kDialogueReach};  // (int nIndex) -> string
+#else
 ue3::FunctionRef gGetReplyParaphrase{"SFXGame.BioConversation.GetReplyParaphraseText", kDialogueReach};  // (int nIndex) -> string
+#endif
+#if defined(MEVR_GAME_LE3)
+ue3::FunctionRef gGetReplyCategory{"SFXGame.BioConversationController.GetReplyCategory", kDialogueReach};          // (int nIndex) -> int
+#else
 ue3::FunctionRef gGetReplyCategory{"SFXGame.BioConversation.GetReplyCategory", kDialogueReach};          // (int nIndex) -> int
+#endif
+#if defined(MEVR_GAME_LE3)
+ue3::FunctionRef gGetReplyGuiStyle{"SFXGame.BioConversationController.GetReplyGUIStyle", kDialogueReach};          // (int nIndex) -> byte
+#else
 ue3::FunctionRef gGetReplyGuiStyle{"SFXGame.BioConversation.GetReplyGUIStyle", kDialogueReach};          // (int nIndex) -> byte
+#endif
+#if defined(MEVR_GAME_LE3)
+ue3::FunctionRef gQueueReply{"SFXGame.BioConversationController.QueueReply", kDialogueReach};                      // (int nReply) -> bool: what a wheel pick ends in
+#else
 ue3::FunctionRef gQueueReply{"SFXGame.BioConversation.QueueReply", kDialogueReach};                      // (int nReply) -> bool: what a wheel pick ends in
+#endif
+#if defined(MEVR_GAME_LE3)
+ue3::FunctionRef gSkipNode{"SFXGame.BioConversationController.SkipNode", kDialogueReach};                          // () -> bool: the player's skip of the current line
+#else
 ue3::FunctionRef gSkipNode{"SFXGame.BioConversation.SkipNode", kDialogueReach};                          // () -> bool: the player's skip of the current line
+#endif
 ue3::FunctionRef gEndCurrentConversation{"SFXGame.BioWorldInfo.EndCurrentConversation", kDialogueReach}; // what the handler calls when QueueReply fails
 ue3::FunctionRef gGetEntryText{"SFXGame.BioConversation.GetEntryText", kDialogueReach};                  // (optional bool bParse) -> string: the other person's line
 // The conversation's state, for the skip and the trace after a commit.
-ue3::FieldRef gSpeaker{"SFXGame.BioConversation", "m_pSpeaker", kDialogueReach};
-ue3::FieldRef gConvPlayer{"SFXGame.BioConversation", "m_pConversationPlayer", kDialogueReach};
-ue3::FieldRef gCurrentEntry{"SFXGame.BioConversation", "m_nCurrentEntry", kDialogueReach};
-ue3::FieldRef gSelectedReply{"SFXGame.BioConversation", "m_nSelectedReply", kDialogueReach};
-ue3::FieldRef gDelayedReply{"SFXGame.BioConversation", "m_nDelayedReplyChoice", kDialogueReach};
-ue3::FieldRef gRemainingVo{"SFXGame.BioConversation", "m_fRemainingVOLength", kDialogueReach};
-ue3::FieldRef gShowRepliesOffset{"SFXGame.BioConversation", "m_fShowRepliesOffset", kDialogueReach};
+ue3::FieldRef gSpeaker{kLiveClass, "m_pSpeaker", kDialogueReach};
+#if defined(MEVR_GAME_LE3)
+ue3::FieldRef gConvPlayer{kLiveClass, "m_pPlayer", kDialogueReach};
+#else
+ue3::FieldRef gConvPlayer{kLiveClass, "m_pConversationPlayer", kDialogueReach};
+#endif
+ue3::FieldRef gCurrentEntry{kLiveClass, "m_nCurrentEntry", kDialogueReach};
+ue3::FieldRef gSelectedReply{kLiveClass, "m_nSelectedReply", kDialogueReach};
+ue3::FieldRef gDelayedReply{kLiveClass, "m_nDelayedReplyChoice", kDialogueReach};
+#if defined(MEVR_GAME_LE3)
+ue3::FieldRef gRemainingVo{kLiveClass, "m_fRemainingVOAudioLength", kDialogueReach};
+#else
+ue3::FieldRef gRemainingVo{kLiveClass, "m_fRemainingVOLength", kDialogueReach};
+#endif
+ue3::FieldRef gShowRepliesOffset{kLiveClass, "m_fShowRepliesOffset", kDialogueReach};
 // The wheel's handler.
 ue3::FieldRef gDisplayingWheel{"SFXGame.BioSFHandler_Conversation", "m_bDisplayingWheel", kDialogueReach};
 ue3::FieldRef gInvestigateShown{"SFXGame.BioSFHandler_Conversation", "m_bDisplayInvestigateSubMenu", kDialogueReach};
@@ -84,7 +123,7 @@ ue3::FieldRef gHandlerPanel{"Engine.BioSFHandler", "oPanel", kDialogueReach};
 ue3::FunctionRef gInvokeMethod{"Engine.BioSFPanel.InvokeMethod", kDialogueReach};                                    // (string sMethodName)
 ue3::FunctionRef gUpdateOptions{"SFXGame.BioSFHandler_Conversation.UpdateConversationOptions", kDialogueReach};     // (BioConversation oConversation)
 // `mevr thespian stick`: the wheel's own pick of a card's slot, for the plot comparison (research/70 step 2, (j)).
-#if !defined(MEVR_GAME_LE2)
+#if !defined(MEVR_GAME_LE2) && !defined(MEVR_GAME_LE3)
 ue3::FieldRef gReplyLocations{"SFXGame.BioSFHandler_Conversation", "m_aReplyLocations", kDialogueReach};  // int[6]: the category at each wheel location
 ue3::FieldRef gSlotsUsed{"SFXGame.BioSFHandler_Conversation", "m_bSlotsUsed", kDialogueReach};            // byte[6]
 #else
@@ -94,7 +133,21 @@ ue3::FunctionRef gSelectEntry{"SFXGame.BioSFHandler_Conversation.SelectConversat
 
 ue3::Object* LiveConversation() {
 #if defined(MEVR_GAME_LE3)
-    return nullptr; // no verified LE3 native reply adapter; never fall through to LE1 world-camera state
+    static ue3::FieldRef managerField{"SFXGame.BioWorldInfo", "m_pConversationManager", kDialogueReach};
+    static ue3::FunctionRef getFull{"SFXGame.BioConversationManager.GetFullConversation", kDialogueReach};
+    static ue3::FieldRef ended{kLiveClass, "m_bConversationEnded", kDialogueReach};
+    static ue3::ClassRef liveClass{kLiveClass, kDialogueReach};
+    auto* const controller = player::Controller();
+    if (controller == nullptr || !engine::adapter::IsConversationMode(player::GameMode(controller).value_or(255))) return nullptr;
+    auto* const world = gActorWorldInfo.Read<ue3::Object*>(controller).value_or(nullptr);
+    auto* const manager = world && ue3::runtime::IsAlive(world) ? managerField.Read<ue3::Object*>(world).value_or(nullptr) : nullptr;
+    auto* const function = getFull.Get();
+    if (!manager || !ue3::runtime::IsAlive(manager) || !function) return nullptr;
+    ue3::Params params(ue3::runtime::Get(), function);
+    if (!params.Valid() || !ue3::runtime::Call(manager, function, params)) return nullptr;
+    auto* const conversation = params.Return<ue3::Object*>().value_or(nullptr);
+    return conversation && ue3::runtime::IsAlive(conversation) && ue3::IsA(conversation, liveClass) &&
+        !ended.ReadBool(conversation).value_or(true) ? conversation : nullptr;
 #elif defined(MEVR_GAME_LE2)
     static ue3::FieldRef current{"SFXGame.BioWorldInfo", "m_oCurrentConversation", ue3::kEveryGame};
     auto* const controller = player::Controller();
@@ -109,7 +162,16 @@ ue3::Object* LiveConversation() {
 
 ue3::Object* LiveWheelHandler() {
 #if defined(MEVR_GAME_LE3)
-    return nullptr;
+    static ue3::FunctionRef getHandler{"SFXGame.SFXGUIInteraction.GetConversationHandler", kDialogueReach};
+    static ue3::ClassRef handlerClass{"SFXGame.BioSFHandler_Conversation", kDialogueReach};
+    auto* const controller = player::Controller();
+    auto* const manager = le3_gui::Manager();
+    auto* const function = getHandler.Get();
+    if (!controller || !manager || !function || !LiveConversation()) return nullptr;
+    ue3::Params params(ue3::runtime::Get(), function);
+    if (!params.Valid() || !params.Set("oPlayerController", controller) || !ue3::runtime::Call(manager, function, params)) return nullptr;
+    auto* const handler = params.Return<ue3::Object*>().value_or(nullptr);
+    return handler && ue3::runtime::IsAlive(handler) && ue3::IsA(handler, handlerClass) ? handler : nullptr;
 #elif defined(MEVR_GAME_LE2)
     static ue3::FieldRef managerField{"Engine.PlayerController", "m_oCachedScaleFormManager", ue3::kEveryGame};
     static ue3::FunctionRef getHandler{"SFXGame.MassEffectGuiManager.GetConversationHandler", ue3::kEveryGame};
@@ -124,6 +186,17 @@ ue3::Object* LiveWheelHandler() {
     return handler != nullptr && ue3::runtime::IsAlive(handler) ? handler : nullptr;
 #else
     return conversation_world::LiveWheelHandler();
+#endif
+}
+
+// LE3 owns runtime state on a controller and immutable node arrays on its data object.
+ue3::Object* ConversationData(ue3::Object* conversation) {
+#if defined(MEVR_GAME_LE3)
+    static ue3::ClassRef dataClass{"SFXGame.BioConversation", kDialogueReach};
+    auto* const data = gConversationData.Read<ue3::Object*>(conversation).value_or(nullptr);
+    return data && ue3::runtime::IsAlive(data) && ue3::IsA(data, dataClass) ? data : nullptr;
+#else
+    return conversation;
 #endif
 }
 
@@ -176,7 +249,7 @@ std::string gLast = "nothing yet";
 // in m_ReplyList; -1 when the entry or the place isn't there.
 std::int32_t ReplyNode(ue3::Object* conversation, std::int32_t place) {
     std::int32_t const entry = gCurrentEntry.Read<std::int32_t>(conversation).value_or(-1);
-    auto const entries = gEntryList.ElementsOf(conversation, 4096);
+    auto const entries = gEntryList.ElementsOf(ConversationData(conversation), 4096);
     void* const node = entries && entry >= 0 ? entries->At(entry) : nullptr;
     auto const offered = node != nullptr ? gEntryReplies.ElementsOf(node, 64) : std::nullopt;
     void* const offer = offered ? offered->At(place) : nullptr;
@@ -235,8 +308,8 @@ std::optional<Live> ReadLive() {
     }
     static int told = 0;
     std::int32_t const entry = gCurrentEntry.Read<std::int32_t>(live.conversation).value_or(-1);
-    auto const replies = gReplyList.ElementsOf(live.conversation);
-    auto const entries = gEntryList.ElementsOf(live.conversation, 4096);
+    auto const replies = gReplyList.ElementsOf(ConversationData(live.conversation));
+    auto const entries = gEntryList.ElementsOf(ConversationData(live.conversation), 4096);
     void* const entryNode = entries && entry >= 0 ? entries->At(entry) : nullptr;
     auto const offered = entryNode != nullptr ? gEntryReplies.ElementsOf(entryNode, 64) : std::nullopt;
     // Each current place's reply: the entry's ReplyListNew[place].nIndex, which m_ReplyList must hold.
@@ -257,7 +330,7 @@ std::optional<Live> ReadLive() {
         live.wheelUp = false;
         return live;
     }
-#if !defined(MEVR_GAME_LE2)
+#if !defined(MEVR_GAME_LE2) && !defined(MEVR_GAME_LE3)
     bool categorySeen[16] = {};
 #endif
     for (std::int32_t i = 0; i < current->count; ++i) {
@@ -267,7 +340,9 @@ std::optional<Live> ReadLive() {
         card.category = CallNumber<std::int32_t>(live.conversation, gGetReplyCategory, i).value_or(0);
         card.style = CallNumber<std::uint8_t>(live.conversation, gGetReplyGuiStyle, i).value_or(0);
         card.label = CallText(live.conversation, gGetReplyParaphrase, i, false);
+#if !defined(MEVR_GAME_LE3)
         card.line = CallText(live.conversation, gGetReplyText, i, true);
+#endif // LE3 full reply requires the audited localized string-reference converter.
         if (replies) {
             if (void* const node = replies->At(card.reply)) {
                 card.unskippable = gReplyUnskippable.ReadBool(node).value_or(false);
@@ -277,7 +352,7 @@ std::optional<Live> ReadLive() {
             card.candidate = false;
             card.why = "unavailable (the game refuses it)";
         }
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
         // LE2 maps slots directly to reply positions. Respect the active native submenu and its capacity:
         // Investigate/Return sentinel slots are navigation, never QueueReply arguments.
         bool onNativeWheel = false;
@@ -324,6 +399,13 @@ std::string Describe(Live const& live) {
 
 // The conversation movie's Flash wheel hidden (the movie's own HideWheel).
 bool HideGameWheel(ue3::Object* handler) {
+#if defined(MEVR_GAME_LE3)
+    static ue3::FunctionRef hide{"SFXGame.BioSFHandler_Conversation.AS_HideWheel", kDialogueReach};
+    auto* const f = hide.Get();
+    if (!handler || !ue3::runtime::IsAlive(handler) || !f) return false;
+    ue3::Params params(ue3::runtime::Get(), f);
+    return params.Valid() && ue3::runtime::Call(handler, f, params);
+#else
     ue3::Object* const panel = handler != nullptr ? gHandlerPanel.Read<ue3::Object*>(handler).value_or(nullptr) : nullptr;
     ue3::Function* const f = gInvokeMethod.Get();
     if (panel == nullptr || f == nullptr) {
@@ -332,6 +414,7 @@ bool HideGameWheel(ue3::Object* handler) {
     ue3::Params p(ue3::runtime::Get(), f);
     ue3::memory::OwnedString name(std::wstring(L"HideWheel"));
     return p.Valid() && p.Set("sMethodName", name.Get()) && ue3::runtime::Call(panel, f, p);
+#endif
 }
 
 // ... and shown again as the handler shows it when a wheel comes up (its UpdateConversationOptions). Only while it is up.
@@ -365,6 +448,26 @@ std::string Commit(Live const& live, int position, std::string_view how) {
     if (!it->candidate) {
         return std::format("thespian: no commit: position {} is {}", position, it->why);
     }
+#if defined(MEVR_GAME_LE3)
+    // Use the movie's actual commit, including the game's submenu and refused-queue handling.
+    // SelectEntry additionally skips a node; this is deliberately SelectConversationEntry.
+    if (live.conversation != LiveConversation() || live.handler != LiveWheelHandler())
+        return "thespian: no commit: the native conversation changed";
+    auto* const select = gSelectEntry.Get();
+    int location = -1;
+    for (int i = 0; i < 6; ++i) {
+        auto const* slot = gSlotsUsed.At<std::int32_t>(live.handler, i);
+        if (slot && *slot == position) { location = i; break; }
+    }
+    if (!select || location < 0) return "thespian: no commit: reply is no longer on the native wheel";
+    ue3::Params params(ue3::runtime::Get(), select);
+    if (!params.Valid() || !params.Set("nWheelLocation", static_cast<std::uint8_t>(location)) ||
+        !ue3::runtime::Call(live.handler, select, params))
+        return "thespian: no commit: native movie selection unavailable";
+    ++gCommits;
+    // Hold the shared pending state until playback advances, preventing a second spoken dispatch
+    // while the movie's wheel hides asynchronously. The handler owns success/end handling.
+#else
     ue3::Function* const queue = gQueueReply.Get();
     if (queue == nullptr) {
         return "thespian: no commit: BioConversation.QueueReply wasn't found";
@@ -399,6 +502,7 @@ std::string Commit(Live const& live, int position, std::string_view how) {
         log::Warn("{}", gLast);
         return gLast;
     }
+#endif
     gPending = {};
     gPending.active = true;
     gPending.conversation = live.conversation;
@@ -406,8 +510,13 @@ std::string Commit(Live const& live, int position, std::string_view how) {
     gPending.reply = it->reply;
     gPending.unskippable = it->unskippable;
     gPending.atMs = GetTickCount64();
+#if defined(MEVR_GAME_LE3)
+    gLast = std::format("thespian: {} -> position {} (reply {}) \"{}\": native movie selection dispatched; Shepard playback retained",
+        how, position, it->reply, it->label);
+#else
     gLast = std::format("thespian: {} -> position {} (reply {}) \"{}\" queued{}", how, position, it->reply, it->label,
         !kSkipSpokenReply ? "; native Shepard voice and line playback retained" : it->unskippable ? "; its line is unskippable and plays" : "; its line is skipped when it starts");
+#endif
     log::Info("{}", gLast);
     return gLast;
 }
@@ -622,7 +731,7 @@ std::uint64_t Signature(ue3::Object* conversation) {
     for (std::int32_t i = 0; i < current->count; ++i) {
         h = (h ^ static_cast<std::uint64_t>(static_cast<std::uint32_t>(current->data[i]))) * 1099511628211ull;
     }
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     // A submenu changes the eligible cards without changing the conversation's reply list.
     auto* const handler = LiveWheelHandler();
     if (handler == nullptr) return 0;
@@ -818,6 +927,10 @@ void BeginTurn(Link const& link, Live const& live) {
     gTurn.startedMs = GetTickCount64();
     ++gSpoken;
     ++gPanelSerial;
+#if defined(MEVR_GAME_LE3)
+    // The live subtitle is borrowed engine storage. Native cinema owns camera and placement.
+    gTurn.heard = ue3::memory::Narrow(gSubtitle.Read<ue3::FString>(live.conversation).value_or(ue3::FString{}));
+#else
     // The other person: whoever spoke last (the wheel's line), for the panel's header and place.
     ue3::Object* const speaker = gSpeaker.Read<ue3::Object*>(live.conversation).value_or(nullptr);
     ue3::Object* const playerActor = gConvPlayer.Read<ue3::Object*>(live.conversation).value_or(nullptr);
@@ -833,6 +946,7 @@ void BeginTurn(Link const& link, Live const& live) {
             ue3::memory::FreeString(returned);
         }
     }
+#endif
     std::string terms;
     for (std::string const& t : gTurn.wheel->Keyterms(gMode.keyterms, gTurn.heard)) {
         terms += (terms.empty() ? "" : ",") + t;
@@ -921,7 +1035,7 @@ void TickTurn(double deltaSeconds, Link const& link) {
     if (!up) {
         gTurn.blocked = false;
     }
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     // A wheel with only submenu navigation (or unavailable persuasion) can have no speakable cards.
     // Opening Investigate changes the slots while the wheel stays up: admit the newly offered topics.
     if (up && gTurn.blocked && (conversation != gTurn.conversation || Signature(conversation) != gTurn.signature)) {
@@ -944,7 +1058,7 @@ void TickTurn(double deltaSeconds, Link const& link) {
             gPending.active = true;
             gPending.conversation = conversation;
             gPending.atMs = GetTickCount64();
-            auto const replies = gReplyList.ElementsOf(conversation);
+            auto const replies = gReplyList.ElementsOf(ConversationData(conversation));
             // m_nSelectedReply is a place in the current entry's reply list, like m_lstCurrentReplyIndices.
             std::int32_t const selected = ReplyNode(conversation, gSelectedReply.Read<std::int32_t>(conversation).value_or(-1));
             void* const node = replies && selected >= 0 ? replies->At(selected) : nullptr;
@@ -1154,14 +1268,14 @@ std::string Command(std::string const& rest) {
         auto const it = std::find_if(live->cards.begin(), live->cards.end(), [&](Card const& c) { return c.position == position; });
         ue3::Function* const select = gSelectEntry.Get();
         if (!live->wheelUp || it == live->cards.end() || !it->candidate ||
-#if !defined(MEVR_GAME_LE2)
+#if !defined(MEVR_GAME_LE2) && !defined(MEVR_GAME_LE3)
             it->category == kCategoryInvestigate ||
 #endif
             select == nullptr || live->handler == nullptr) {
             return "thespian: no native stick pick (no eligible card or native handler for this wheel)";
         }
         for (int location = 0; location < 6; ++location) {
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
             std::int32_t const* const slot = gSlotsUsed.At<std::int32_t>(live->handler, location);
             bool const matching = slot != nullptr && *slot == position;
 #else
