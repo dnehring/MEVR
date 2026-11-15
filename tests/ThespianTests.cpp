@@ -83,6 +83,42 @@ void TestMenuOwnership() {
     CHECK(empty.phase == th::Phase::Armed && empty.commit < 0);
 }
 
+void TestWheelIdentity() {
+    th::WheelIdentity const original{7, 1, 2, 3, 4, 5, 10, 123};
+    CHECK(th::SameWheel(original, original));
+    auto next = original;
+    next.entry = 11; // same [0,1,2] offers and visible slots on the next line
+    CHECK(!th::SameWheel(original, next));
+    next = original; ++next.sceneGeneration; // pointer reuse after load/travel
+    CHECK(!th::SameWheel(original, next));
+    next = original; ++next.data;
+    CHECK(!th::SameWheel(original, next));
+    next = original; ++next.handler;
+    CHECK(!th::SameWheel(original, next));
+    next = original; ++next.offers; // investigate/back without an entry change
+    CHECK(!th::SameWheel(original, next));
+    next = original; next.entry = -1;
+    CHECK(!th::SameWheel(next, next));
+    CHECK(!th::SameWheel({}, {}));
+}
+
+void TestTurnRestartBarrier() {
+    CHECK(!th::FreshTurnListen(100, 200, 100)); // late final from the prior wheel
+    CHECK(!th::FreshTurnListen(100, 200, 150)); // an earlier radio listen is not the new turn
+    CHECK(!th::FreshTurnListen(200, 200, 200)); // request coalesced with an already open stream
+    CHECK(!th::FreshTurnListen(100, 0, 300)); // stop is not yet observed; start not requested
+    CHECK(th::FreshTurnListen(100, 200, 200));
+    CHECK(th::FreshTurnListen(100, 200, 300));
+    th::State state; state.phase = th::Phase::Committed; state.committed = 1;
+    th::Output out; out.phase = th::Phase::Committed; out.commit = 1; out.leader = 1;
+    th::RejectSelection(state, out);
+    CHECK(state.phase == th::Phase::Off && state.committed == -1);
+    CHECK(out.phase == th::Phase::Off && out.commit == -1 && out.leader == -1);
+    auto const full = Heard(1, true, true, 1.0f);
+    auto const next = th::Step(state, {}, In(true, 2000, full, full));
+    CHECK(next.phase == th::Phase::Armed && next.restart && next.commit == -1);
+}
+
 void TestStrictness() {
     CHECK(th::ParseStrictness("Method") == th::Strictness::Method);
     CHECK(th::ParseStrictness(" relaxed ") == th::Strictness::Relaxed);
@@ -296,6 +332,8 @@ void TestPanel() {
 }
 
 int RunThespianTests() {
+    TestWheelIdentity();
+    TestTurnRestartBarrier();
     TestListenOwnership();
     TestMenuOwnership();
     TestPanel();

@@ -30,6 +30,23 @@ private:
     std::size_t next_ = 0;
 };
 
+// A transcript belongs to one native entry in one scene, not merely to slot numbers.
+// Identity is game-thread data only; it does not cross the host ABI.
+struct WheelIdentity {
+    std::uint64_t sceneGeneration = 0;
+    std::uintptr_t world = 0, controller = 0, conversation = 0, data = 0, handler = 0;
+    std::int32_t entry = -1;
+    std::uint64_t offers = 0;
+    bool operator==(WheelIdentity const&) const = default;
+    bool Valid() const { return world && controller && conversation && data && handler && entry >= 0 && offers != 0; }
+};
+inline bool SameWheel(WheelIdentity const& before, WheelIdentity const& now) {
+    return before.Valid() && now.Valid() && before == now;
+}
+inline bool FreshTurnListen(std::uint64_t priorListen, std::uint64_t requestedAt, std::uint64_t startedAt) {
+    return requestedAt != 0 && startedAt >= requestedAt && startedAt > priorListen;
+}
+
 // How much of a line must be said before it is taken.
 enum class Strictness : std::uint8_t {
     Relaxed = 0,    // the matcher's decision is enough
@@ -100,6 +117,7 @@ struct State {
 // Whether the strictness lets this match be taken.
 bool Allows(Strictness strictness, Match const& match);
 Output Step(State& state, Settings const& settings, Input const& in);
+inline void RejectSelection(State& state, Output& out) { state = {}; out = {}; }
 
 // ---- The panel (host and mod deploy together) ----------------------------------------------------------------------------
 

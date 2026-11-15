@@ -13,6 +13,7 @@
 #include "engine/VoicePlace.hpp"
 #include "game/ConversationWorld.hpp"
 #include "game/Player.hpp"
+#include "game/SquadContext.hpp"
 #if defined(MEVR_GAME_LE3)
 #include "game/Le3Gui.hpp"
 #endif
@@ -204,6 +205,18 @@ ue3::Object* ConversationData(ue3::Object* conversation) {
 #endif
 }
 
+std::uint64_t Signature(ue3::Object* conversation);
+th::WheelIdentity Identity(ue3::Object* conversation, ue3::Object* handler) {
+    auto* const controller = player::Controller();
+    auto* const world = controller ? gActorWorldInfo.Read<ue3::Object*>(controller).value_or(nullptr) : nullptr;
+    auto* const data = ConversationData(conversation);
+    if (!ue3::runtime::IsAlive(world) || !ue3::runtime::IsAlive(data) || !ue3::runtime::IsAlive(conversation) ||
+        !ue3::runtime::IsAlive(handler)) return {};
+    return {squad_context::Generation(), reinterpret_cast<std::uintptr_t>(world), reinterpret_cast<std::uintptr_t>(controller),
+        reinterpret_cast<std::uintptr_t>(conversation), reinterpret_cast<std::uintptr_t>(data), reinterpret_cast<std::uintptr_t>(handler),
+        gCurrentEntry.Read<std::int32_t>(conversation).value_or(-1), Signature(conversation)};
+}
+
 struct Card {
     int position = 0;   // in m_lstCurrentReplyIndices: what every reply function and QueueReply take
     int reply = -1;     // the reply's index in m_ReplyList (the entry's ReplyListNew[the element's value].nIndex)
@@ -212,11 +225,13 @@ struct Card {
     std::string label;
     std::string line;
     bool unskippable = false;
+    bool offered = true; // on the active native wheel, including disabled persuasion
     bool candidate = true;   // may be picked: not unavailable, not shadowed by an earlier reply of its category
     char const* why = "";    // why not a candidate
 };
 
 struct Live {
+    th::WheelIdentity identity;
     ue3::Object* conversation = nullptr;
     ue3::Object* handler = nullptr;
     bool wheelUp = false;
@@ -235,12 +250,17 @@ struct Pending {
     bool playerSpoke = false;       // the conversation's speaker was the player since the commit
     bool muted = false;
     std::uint64_t atMs = 0;
+    std::uint64_t sceneGeneration = 0;
+    std::uintptr_t world = 0;
     std::string trace;              // the last state logged (a line per change)
     int traceLines = 0;
 };
 
 Pending gPending;
 Link gLink;
+bool OtherUiOwnsInput() {
+    return gLink.voice.menuOpen || (gLink.otherUiOwnsInput && gLink.otherUiOwnsInput());
+}
 bool gWatch = false;
 bool gWheelWasUp = false;
 unsigned gWheels = 0;
@@ -266,10 +286,8 @@ std::string CallText(ue3::Object* conversation, ue3::FunctionRef& function, int 
         return {};
     }
     ue3::Params parms(ue3::runtime::Get(), f);
-    parms.Set("nIndex", static_cast<std::int32_t>(position));
-    if (withParse) {
-        parms.SetBool("bParse", true);  // tokens in the text resolved, as the subtitle shows it
-    }
+    if (!parms.Valid() || !parms.Set("nIndex", static_cast<std::int32_t>(position)) ||
+        (withParse && !parms.SetBool("bParse", true))) return {};
     if (!ue3::runtime::Call(conversation, f, parms)) {
         return {};
     }
@@ -303,7 +321,7 @@ std::optional<T> CallNumber(ue3::Object* conversation, ue3::FunctionRef& functio
         return std::nullopt;
     }
     ue3::Params parms(ue3::runtime::Get(), f);
-    parms.Set("nIndex", static_cast<std::int32_t>(position));
+    if (!parms.Valid() || !parms.Set("nIndex", static_cast<std::int32_t>(position))) return std::nullopt;
     if (!ue3::runtime::Call(conversation, f, parms)) {
         return std::nullopt;
     }
@@ -327,6 +345,8 @@ std::optional<Live> ReadLive() {
     if (!live.wheelUp || current == nullptr || current->data == nullptr || current->count <= 0 || current->count > kMaxCards) {
         return live;
     }
+    live.identity = Identity(live.conversation, live.handler);
+    if (!live.identity.Valid()) { live.wheelUp = false; return live; }
     static int told = 0;
     std::int32_t const entry = gCurrentEntry.Read<std::int32_t>(live.conversation).value_or(-1);
     auto const replies = gReplyList.ElementsOf(ConversationData(live.conversation));
@@ -358,8 +378,11 @@ std::optional<Live> ReadLive() {
         Card card;
         card.position = i;
         card.reply = nodes[i];
-        card.category = CallNumber<std::int32_t>(live.conversation, gGetReplyCategory, i).value_or(0);
-        card.style = CallNumber<std::uint8_t>(live.conversation, gGetReplyGuiStyle, i).value_or(0);
+        auto const category = CallNumber<std::int32_t>(live.conversation, gGetReplyCategory, i);
+        auto const style = CallNumber<std::uint8_t>(live.conversation, gGetReplyGuiStyle, i);
+        card.category = category.value_or(0);
+        card.style = style.value_or(0);
+        if (!category || !style) { card.candidate = false; card.why = "native eligibility unavailable"; }
         card.label = CallText(live.conversation, gGetReplyParaphrase, i, false);
 #if defined(MEVR_GAME_LE3)
         card.line = FullReplyText(live.handler, replies->At(card.reply));
@@ -383,6 +406,7 @@ std::optional<Live> ReadLive() {
             auto const* slot = gSlotsUsed.At<std::int32_t>(live.handler, location);
             onNativeWheel = onNativeWheel || (slot != nullptr && *slot == i);
         }
+        card.offered = onNativeWheel;
         if (!onNativeWheel) {
             card.candidate = false;
             card.why = "not offered on the active native wheel (open Investigate with the stick for topics)";
@@ -402,6 +426,9 @@ std::optional<Live> ReadLive() {
             card.why = "nothing to say (no label, no line)";
         }
         live.cards.push_back(std::move(card));
+    }
+    if (!th::SameWheel(live.identity, Identity(live.conversation, live.handler))) {
+        live.cards.clear(); live.wheelUp = false;
     }
     return live;
 }
@@ -443,7 +470,9 @@ bool HideGameWheel(ue3::Object* handler) {
 // ... and shown again as the handler shows it when a wheel comes up (its UpdateConversationOptions). Only while it is up.
 bool ShowGameWheel(ue3::Object* handler, ue3::Object* conversation) {
     ue3::Function* const f = gUpdateOptions.Get();
-    if (handler == nullptr || conversation == nullptr || f == nullptr || !gDisplayingWheel.ReadBool(handler).value_or(false)) {
+    if (!ue3::runtime::IsAlive(handler) || !ue3::runtime::IsAlive(conversation) ||
+        conversation != LiveConversation() || handler != LiveWheelHandler() ||
+        f == nullptr || !gDisplayingWheel.ReadBool(handler).value_or(false)) {
         return false;
     }
     ue3::Params p(ue3::runtime::Get(), f);
@@ -460,7 +489,14 @@ void ClearMute() {
 // Takes a reply as a wheel pick does (BioSFHandler_Conversation.SelectConversationEntry, read 2026-11-12): only while
 // the wheel is up, never an unavailable reply; QueueReply(position); the investigate sub-menu closed; the conversation
 // ended if the queue refuses, as the handler does.
-std::string Commit(Live const& live, int position, std::string_view how) {
+std::string Commit(Live const& observed, int position, std::string_view how, bool* accepted = nullptr) {
+    if (accepted) *accepted = false;
+    if (OtherUiOwnsInput()) return "thespian: no commit: another menu owns input";
+    if (gPending.active) return "thespian: no commit: an earlier selection is still pending";
+    auto const fresh = ReadLive();
+    if (!fresh || !th::SameWheel(observed.identity, fresh->identity))
+        return "thespian: no commit: scene, entry or native wheel changed";
+    Live const& live = *fresh;
     if (!live.wheelUp) {
         return "thespian: no commit: the wheel isn't up";
     }
@@ -471,6 +507,10 @@ std::string Commit(Live const& live, int position, std::string_view how) {
     if (!it->candidate) {
         return std::format("thespian: no commit: position {} is {}", position, it->why);
     }
+    auto const old = std::find_if(observed.cards.begin(), observed.cards.end(), [&](Card const& c) { return c.position == position; });
+    if (old == observed.cards.end() || !old->candidate || old->reply != it->reply || old->label != it->label ||
+        old->line != it->line || old->style != it->style || old->category != it->category)
+        return "thespian: no commit: the matched reply or eligibility changed";
 #if defined(MEVR_GAME_LE3)
     // Use the movie's actual commit, including the game's submenu and refused-queue handling.
     // SelectEntry additionally skips a node; this is deliberately SelectConversationEntry.
@@ -485,9 +525,9 @@ std::string Commit(Live const& live, int position, std::string_view how) {
     if (!select || location < 0) return "thespian: no commit: reply is no longer on the native wheel";
     ue3::Params params(ue3::runtime::Get(), select);
     if (!params.Valid() || !params.Set("nWheelLocation", static_cast<std::uint8_t>(location)) ||
-        !ue3::runtime::Call(live.handler, select, params))
-        return "thespian: no commit: native movie selection unavailable";
-    ++gCommits;
+        OtherUiOwnsInput() || !ue3::runtime::Call(live.handler, select, params))
+        return "thespian: no commit: native movie selection unavailable or another menu owns input";
+    if (!params.ReturnBool().value_or(false)) return "thespian: no commit: native movie refused the selection";
     // Hold the shared pending state until playback advances, preventing a second spoken dispatch
     // while the movie's wheel hides asynchronously. The handler owns success/end handling.
 #else
@@ -499,6 +539,7 @@ std::string Commit(Live const& live, int position, std::string_view how) {
     if (!parms.Valid() || !parms.Set("nReply", static_cast<std::int32_t>(position))) {
         return "thespian: no commit: QueueReply parameters unavailable; conversation unchanged";
     }
+    if (OtherUiOwnsInput()) return "thespian: no commit: another menu owns input";
     bool const called = ue3::runtime::Call(live.conversation, queue, parms);
     if (!called) {
         return "thespian: no commit: QueueReply could not be called; conversation unchanged";
@@ -509,7 +550,6 @@ std::string Commit(Live const& live, int position, std::string_view how) {
             write_journal::Wrote("Thespian.investigateSubMenu", reinterpret_cast<std::uint8_t*>(live.handler) + info->offset, 4);
         }
     }
-    ++gCommits;
     if (!queued) {
         // The handler's own answer to a refused queue.
         ue3::Object* const controller = player::Controller();
@@ -526,7 +566,11 @@ std::string Commit(Live const& live, int position, std::string_view how) {
         return gLast;
     }
 #endif
+    ++gCommits;
+    if (accepted) *accepted = true;
     gPending = {};
+    gPending.sceneGeneration = live.identity.sceneGeneration;
+    gPending.world = live.identity.world;
     gPending.active = true;
     gPending.conversation = live.conversation;
     gPending.position = position;
@@ -581,7 +625,10 @@ std::string Say(Live const& live, std::string const& words) {
 void TickPending() {
     ue3::Object* const conversation = LiveConversation();
     std::uint64_t const sinceMs = GetTickCount64() - gPending.atMs;
-    if (conversation == nullptr || conversation != gPending.conversation || sinceMs > 15000) {
+    auto* const controller = player::Controller();
+    auto* const world = controller ? gActorWorldInfo.Read<ue3::Object*>(controller).value_or(nullptr) : nullptr;
+    if (conversation == nullptr || conversation != gPending.conversation || sinceMs > 15000 ||
+        gPending.sceneGeneration != squad_context::Generation() || gPending.world != reinterpret_cast<std::uintptr_t>(world)) {
         log::Info("thespian: the commit of position {} is over ({}; {} ms)", gPending.position,
             conversation == nullptr ? "the conversation ended" : conversation != gPending.conversation ? "another conversation" : "timed out",
             sinceMs);
@@ -702,12 +749,14 @@ struct HeardLine {
 // One wheel's spoken turn.
 struct Turn {
     bool active = false;             // the wheel is up and the recognizer was asked to listen
+    bool listenRequested = false;
+    std::uint64_t priorListen = 0, listenRequestedAt = 0;
     bool blocked = false;            // this wheel is not for speaking (no cards, not English): the game's wheel alone
     ue3::Object* conversation = nullptr;
     std::vector<Card> all;           // every current reply
     std::vector<int> candidates;     // indices into `all`: the matcher's cards, in order
     std::optional<sm::Wheel> wheel;
-    std::uint64_t signature = 0;     // of the current reply list (a change is a new wheel)
+    th::WheelIdentity identity;     // of the current reply list (a change is a new wheel)
     std::vector<HeardLine> lines;    // the open listen's lines so far
     std::uint64_t listenStart = 0;
     std::size_t baseLine = 0;        // words before this line, and the first baseWords of it, were dropped (a restart)
@@ -734,9 +783,7 @@ th::ListenOwnership gListenOwnership;
 unsigned gSpoken = 0, gSpokenCommits = 0, gUnsure = 0, gDoubts = 0, gStoodDown = 0;
 // The wheel as it stood the last ticks (TickTurn): a turn begins only on one that held still for kSteadyTicks.
 struct Steady {
-    ue3::Object* conversation = nullptr;
-    std::int32_t entry = -1;
-    std::uint64_t signature = 0;
+    th::WheelIdentity identity;
     int ticks = 0;
 };
 Steady gSteady;
@@ -857,7 +904,7 @@ void SendPanel(Link const& link, bool shown) {
             for (std::size_t a = 0; a < gTurn.all.size() && panel.cardCount < th::kMaxCards; ++a) {
                 Card const& c = gTurn.all[a];
                 bool const investigate = c.category == kCategoryInvestigate;
-                if (investigate != (pass == 1) || (!c.candidate && c.style != kStyleIllegal)) {
+                if (!c.offered || investigate != (pass == 1) || (!c.candidate && c.style != kStyleIllegal)) {
                     continue;
                 }
                 auto const it = std::find(gTurn.candidates.begin(), gTurn.candidates.end(), static_cast<int>(a));
@@ -917,8 +964,10 @@ void EndTurn(Link const& link, char const* why) {
     }
     // A turn that ends with the wheel still up and nothing taken (the mode off, the recognizer gone, the mod unloading):
     // the game's wheel back, so the player is never left without one. After a commit the handler hides it itself.
+    auto* const current = LiveConversation();
+    auto* const currentHandler = current ? LiveWheelHandler() : nullptr;
     if (gTurn.wheelHidden && gTurn.state.phase != th::Phase::Committed &&
-        ShowGameWheel(gTurn.handler, LiveConversation())) {
+        th::SameWheel(gTurn.identity, Identity(current, currentHandler)) && ShowGameWheel(currentHandler, current)) {
         log::Info("thespian: the game's wheel is shown again ({})", why);
     }
     log::Info("thespian: the turn is over ({}; {:.1f} s, heard \"{}\")", why, static_cast<double>(GetTickCount64() - gTurn.startedMs) / 1000.0, gTurn.text);
@@ -930,7 +979,7 @@ void EndTurn(Link const& link, char const* why) {
 void BeginTurn(Link const& link, Live const& live) {
     gTurn = {};
     gTurn.conversation = live.conversation;
-    gTurn.signature = Signature(live.conversation);
+    gTurn.identity = live.identity;
     gTurn.all = live.cards;
     std::vector<sm::Card> cards;
     for (std::size_t i = 0; i < gTurn.all.size(); ++i) {
@@ -977,9 +1026,10 @@ void BeginTurn(Link const& link, Live const& live) {
     if (link.voice.setKeyterms != nullptr && !terms.empty()) {
         link.voice.setKeyterms(terms.c_str());
     }
-    if (link.voice.setListen != nullptr) {
-        link.voice.setListen(2);  // the open listen: no ducking, until we end it
-    }
+    // Do not coalesce stop/start across different wheels into the old open stream.
+    // The next tick requests a new listen only after the host reports the old one closed.
+    gTurn.priorListen = gVoice.listenStartMs;
+    if (link.voice.setListen != nullptr) link.voice.setListen(0);
     gTurn.handler = live.handler;
     if (gMode.hideWheel) {
         gTurn.wheelHidden = HideGameWheel(live.handler);
@@ -989,13 +1039,26 @@ void BeginTurn(Link const& link, Live const& live) {
         gRemainingVo.Read<float>(live.conversation).value_or(-1.0f));
 }
 
+void PrepareListen(Link const& link) {
+    if (gTurn.listenRequested || !link.voice.setListen) return;
+    if (gVoice.open != 0) { link.voice.setListen(0); return; }
+    gTurn.listenRequestedAt = GetTickCount64();
+    gTurn.listenRequested = true;
+    link.voice.setListen(2); // new open listen: no ducking, released by EndTurn
+}
+
+bool FreshListen(std::uint64_t startedAt) {
+    return gTurn.listenRequested && th::FreshTurnListen(gTurn.priorListen, gTurn.listenRequestedAt, startedAt);
+}
+
 void TakeLines(Link const& link) {
-    if (link.voice.takeLine == nullptr) {
+    if (link.voice.takeLine == nullptr || !gTurn.listenRequested) {
         return;
     }
     vr::voice::Line line;
     bool changed = false;
     while (link.voice.takeLine(&line)) {
+        if (!FreshListen(line.listenStartMs)) continue; // old-wheel/radio finals cannot become this entry's words
         if (line.listenStartMs != gTurn.listenStart) {
             // A listen that isn't this turn's (the radio's last words, an earlier wheel's): not ours to read.
             if (gVoice.open == 0 || line.listenStartMs != gVoice.listenStartMs) {
@@ -1041,9 +1104,9 @@ void TickTurn(double deltaSeconds, Link const& link) {
     if (link.voice.has && link.voice.state != nullptr) {
         link.voice.state(&gVoice);
         ready = gVoice.status == static_cast<std::uint8_t>(vr::voice::Status::Ready);
-        gListenOwnership.Observe(gTurn.active, gVoice.open != 0, gVoice.listenStartMs);
+        gListenOwnership.Observe(gTurn.active && FreshListen(gVoice.listenStartMs), gVoice.open != 0, gVoice.listenStartMs);
     }
-    if (link.voice.menuOpen) {
+    if (OtherUiOwnsInput()) {
         // The host hides these cards for menus/calibration. Release ASR and discard this turn's partial before
         // it can commit invisibly or resume after the menu closes; recent owned IDs still filter late finals.
         EndTurn(link, "another menu owns input");
@@ -1055,13 +1118,14 @@ void TickTurn(double deltaSeconds, Link const& link) {
     ue3::Object* const conversation = LiveConversation();
     ue3::Object* const handler = conversation != nullptr ? LiveWheelHandler() : nullptr;
     bool const up = handler != nullptr && gDisplayingWheel.ReadBool(handler).value_or(false);
+    auto const identity = up ? Identity(conversation, handler) : th::WheelIdentity{};
     if (!up) {
         gTurn.blocked = false;
     }
 #if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     // A wheel with only submenu navigation (or unavailable persuasion) can have no speakable cards.
     // Opening Investigate changes the slots while the wheel stays up: admit the newly offered topics.
-    if (up && gTurn.blocked && (conversation != gTurn.conversation || Signature(conversation) != gTurn.signature)) {
+    if (up && gTurn.blocked && !th::SameWheel(gTurn.identity, identity)) {
         gTurn.blocked = false;
         gSteady = {};
     }
@@ -1072,7 +1136,7 @@ void TickTurn(double deltaSeconds, Link const& link) {
             !link.voice.has ? "the host has no voice services" : gVoice.error[0] != '\0' ? gVoice.error : "not loaded");
     }
     bool const want = gMode.on && ready && up && link.setPanel != nullptr && !gPending.active;
-    if (gTurn.active && (!want || conversation != gTurn.conversation || Signature(conversation) != gTurn.signature)) {
+    if (gTurn.active && (!want || !th::SameWheel(gTurn.identity, identity))) {
         // The wheel went down without us: a pick by hand. With handPick = silent its line is skipped and silenced too.
         bool const byHand = !up && gMode.on && !gPending.active && conversation == gTurn.conversation;
         EndTurn(link, !up ? "the wheel went down: a pick by hand" : !gMode.on ? "the mode went off" : !ready ? "the recognizer went away" : "another wheel");
@@ -1080,6 +1144,9 @@ void TickTurn(double deltaSeconds, Link const& link) {
             gPending = {};
             gPending.active = true;
             gPending.conversation = conversation;
+            gPending.sceneGeneration = squad_context::Generation();
+            auto* const controller = player::Controller();
+            gPending.world = reinterpret_cast<std::uintptr_t>(controller ? gActorWorldInfo.Read<ue3::Object*>(controller).value_or(nullptr) : nullptr);
             gPending.atMs = GetTickCount64();
             auto const replies = gReplyList.ElementsOf(ConversationData(conversation));
             // m_nSelectedReply is a place in the current entry's reply list, like m_lstCurrentReplyIndices.
@@ -1094,17 +1161,12 @@ void TickTurn(double deltaSeconds, Link const& link) {
     // conversation (the console's `mevr convo end`, the runners' early ends) can show a wheel for a tick while it takes
     // its lists away.
     if (want && !gTurn.active && !gTurn.blocked) {
-        std::int32_t const entry = gCurrentEntry.Read<std::int32_t>(conversation).value_or(-1);
-        std::uint64_t const signature = Signature(conversation);
-        if (conversation == gSteady.conversation && entry == gSteady.entry && signature == gSteady.signature) {
-            ++gSteady.ticks;
-        } else {
-            gSteady = {conversation, entry, signature, 1};
-        }
+        if (th::SameWheel(gSteady.identity, identity)) ++gSteady.ticks;
+        else gSteady = {identity, 1};
     } else {
         gSteady = {};
     }
-    if (want && !gTurn.active && !gTurn.blocked && gSteady.entry >= 0 && gSteady.signature != 0 && gSteady.ticks >= kSteadyTicks) {
+    if (want && !gTurn.active && !gTurn.blocked && gSteady.identity.Valid() && gSteady.ticks >= kSteadyTicks) {
         if (auto const live = ReadLive(); live && live->wheelUp) {
             BeginTurn(link, *live);
         }
@@ -1120,12 +1182,13 @@ void TickTurn(double deltaSeconds, Link const& link) {
         }
     }
     if (gTurn.active) {
+        PrepareListen(link);
         TakeLines(link);
         th::Input in;
         in.wheelUp = true;
-        in.otherUiOwnsInput = link.voice.menuOpen;
+        in.otherUiOwnsInput = OtherUiOwnsInput();
         in.otherSpeaking = gRemainingVo.Read<float>(conversation).value_or(0.0f) > 0.05f;
-        in.silentMs = gVoice.open != 0 ? gVoice.silentMs : 0;
+        in.silentMs = gVoice.open != 0 && FreshListen(gVoice.listenStartMs) ? gVoice.silentMs : 0;
         // No commit before the open listen runs (the quiet clock is its own).
         // Words: something other than the commonest words alone (the recognizer writes "you" for a quiet room now and
         // then, seen in the game 2026-11-13), unless they are a reply themselves.
@@ -1165,16 +1228,22 @@ void TickTurn(double deltaSeconds, Link const& link) {
                 st.byLabel ? "label" : "line", st.coverage * 100.0f, st.reachedEnd ? ", read to its end" : "", in.silentMs,
                 gTurn.firstWordMs != 0 ? GetTickCount64() - gTurn.firstWordMs : 0);
             Live live;
+            live.identity = gTurn.identity;
             live.conversation = conversation;
             live.handler = handler;
             live.wheelUp = true;
             live.cards = gTurn.all;
-            ++gSpokenCommits;
-            if (!gTurn.wheelByHand) {
-                SendPanel(link, true);  // the committed row's flash
+            bool accepted = false;
+            auto const result = Commit(live, c.position, how, &accepted);
+            if (accepted) {
+                ++gSpokenCommits;
+                if (!gTurn.wheelByHand) SendPanel(link, true); // only an actual dispatch flashes as committed
+            } else {
+                ++gRefused;
+                log::Warn("{}", result);
+                th::RejectSelection(gTurn.state, gTurn.out); // restore the current wheel, never flash failed selection
             }
-            Commit(live, c.position, how);
-            EndTurn(link, "a reply was taken");
+            EndTurn(link, accepted ? "a reply was dispatched" : "selection refused; transcript discarded");
         }
     }
     // The panel folds away once the stick brought the game's wheel back (a pick by hand: one set of replies at a time, and the
@@ -1216,6 +1285,8 @@ std::string Command(std::string const& rest) {
     std::istringstream words(rest);
     std::string verb;
     words >> verb;
+    if ((verb == "wheel" || verb == "pick" || verb == "stick" || verb == "say") && OtherUiOwnsInput())
+        return "thespian: another menu owns input; no native selection or wheel change";
     if (verb == "watch") {
         std::string value;
         words >> value;
@@ -1238,7 +1309,7 @@ std::string Command(std::string const& rest) {
         // Tests without controllers: the game's wheel shown (as the stick does) or hidden again.
         std::string what;
         words >> what;
-        if (!gTurn.active) {
+        if (!gTurn.active || !th::SameWheel(gTurn.identity, Identity(LiveConversation(), LiveWheelHandler()))) {
             return "thespian: no spoken turn (the mode off, or no wheel up)";
         }
         if (what == "show") {
@@ -1298,8 +1369,8 @@ std::string Command(std::string const& rest) {
 #endif
             if (matching) {
                 ue3::Params parms(ue3::runtime::Get(), select);
-                parms.Set("nWheelLocation", static_cast<std::uint8_t>(location));
-                bool const called = ue3::runtime::Call(live->handler, select, parms);
+                bool const called = parms.Valid() && parms.Set("nWheelLocation", static_cast<std::uint8_t>(location)) &&
+                    !OtherUiOwnsInput() && !gPending.active && ue3::runtime::Call(live->handler, select, parms);
                 return std::format("thespian: the stick's pick of position {} \"{}\": SelectConversationEntry({}) called {}", position, it->label, location, called);
             }
         }
