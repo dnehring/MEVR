@@ -1082,6 +1082,7 @@ int main(int argc, char** argv) {
             std::fprintf(stderr, "the Thespian panel's document didn't load\n");
             return 1;
         }
+        thUi.Document()->SetClass("le2", le2);
         std::vector<std::uint32_t> const dark(static_cast<std::size_t>(tw) * thh, 0xFF30241Cu);
         auto card = [](th::Panel& p, char const* label, char const* line, th::Tone tone, th::Look look) -> th::PanelCard& {
             th::PanelCard& c = p.cards[p.cardCount++];

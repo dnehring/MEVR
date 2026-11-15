@@ -35,6 +35,7 @@
 #endif
 #if defined(MEVR_WITH_HALCYON_LE2) && defined(MEVR_WITH_MAIN_MENU)
 #include "core/vr/Calibration.hpp"
+#include "plugin/Thespian.hpp"
 #include "core/vr/WorldUi.hpp"
 #include "plugin/Calibration.hpp"
 #include "plugin/GamePointer.hpp"
@@ -578,6 +579,8 @@ HostServices BuildServices() {
 #endif
 #if defined(MEVR_WITH_HALCYON_LE2) && defined(MEVR_WITH_MAIN_MENU)
     services = WithMenus(services);  // our main menu and the calibration on LE2 (M4)
+    services.thespianPanelSize = static_cast<std::uint32_t>(sizeof(vr::thespian::Panel));
+    services.setThespian = &thespian::SetPanel;
 #endif
     return services;
 }
@@ -595,6 +598,7 @@ void ForgetModState() {
 #endif
 #if defined(MEVR_WITH_HALCYON_LE2) && defined(MEVR_WITH_MAIN_MENU)
     world_ui::Forget();  // ME2's screens and pending ownership go back to Halcyon's flat panel (M4.3)
+    thespian::SetPanel(nullptr);
 #endif
 }
 loader::spi::Interface* gSpi = nullptr;
