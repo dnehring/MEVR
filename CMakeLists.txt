@@ -948,6 +948,30 @@ mevr_embed_text(external/fsr1/ffx_a.h kFfxA MEVR_EMBEDDED_FFX_A)
 mevr_embed_text(external/fsr1/ffx_fsr1.h kFfxFsr1 MEVR_EMBEDDED_FFX_FSR1)
 set(MEVR_FSR_EMBEDDED ${MEVR_EMBEDDED_FFX_A} ${MEVR_EMBEDDED_FFX_FSR1})
 
+# Shared sequel menu, calibration and wrist presentation. Native capture/input are separate service gates.
+set(MEVR_SEQUEL_MENU_SOURCES
+src/plugin/MainMenu.cpp src/plugin/MainMenu.hpp src/plugin/MainMenuSettings.cpp
+                src/plugin/MainMenuSettings.hpp src/plugin/Calibration.cpp src/plugin/Calibration.hpp src/plugin/CalibrationDraw.cpp
+                src/plugin/CalibrationDraw.hpp src/plugin/ArmSample.cpp src/plugin/ArmSample.hpp src/core/vr/MenuPointer.cpp src/core/vr/MenuPointer.hpp src/core/vr/GameMenuRequest.cpp
+                src/core/vr/GameMenuRequest.hpp src/core/vr/CineScreen.cpp src/core/vr/CineScreen.hpp
+                src/core/vr/ConversationWorld.cpp src/core/vr/ConversationWorld.hpp src/core/vr/WorldUi.cpp src/core/vr/WorldUi.hpp
+                src/core/vr/OverlayPlacement.cpp src/core/vr/OverlayPlacement.hpp
+                # The omni-tool's rail (M4.3, research/le2-menus.md "The rail on ME2"): LE1's module, drawn with ME1's art from
+                # the player's cache (plugin/RailArt, core/gfx), beside the game's screens (plugin/WorldUi's host side), its tap
+                # at the left wrist (core/vr/HudPieces' wrist point) and its pointer (core/vr/GamePointer).
+                src/plugin/OmniToolRail.cpp src/plugin/OmniToolRail.hpp src/plugin/RailArt.cpp src/plugin/RailArt.hpp
+                src/core/vr/OmniRail.cpp src/core/vr/OmniRail.hpp src/core/vr/OmniPower.hpp src/core/vr/GamePointer.cpp
+                src/core/vr/GamePointer.hpp src/core/vr/HudPieces.cpp src/core/vr/HudPieces.hpp src/core/gfx/Raster.cpp
+                src/core/gfx/Raster.hpp src/core/gfx/Swf.cpp src/core/gfx/Swf.hpp src/core/gfx/SwfFont.cpp src/core/gfx/SwfFont.hpp
+                src/plugin/WorldUi.cpp src/plugin/WorldUi.hpp
+                src/plugin/Thespian.cpp src/plugin/Thespian.hpp src/core/vr/Thespian.cpp src/core/vr/Thespian.hpp
+                src/core/voice/ScriptMatch.cpp src/core/voice/ScriptMatch.hpp
+                src/plugin/GamePointer.cpp src/plugin/GamePointer.hpp src/plugin/WristBeam.cpp src/plugin/WristBeam.hpp
+                src/core/vr/GuiEvents.cpp src/core/vr/GuiEvents.hpp
+                # Entry.cpp's ExitProcess hook asks it with the menu; nothing writes its request on ME2 yet (MEVR Setup, M7.2).
+                src/plugin/SetupRequest.cpp src/plugin/SetupRequest.hpp src/core/Json.cpp src/core/Json.hpp
+)
+
 function(mevr_add_plugin game)
     set(host MEVR-${game})
     set(host_sources ${MEVR_HOST_SOURCES} ${MEVR_CORE_SOURCES})
@@ -1028,26 +1052,7 @@ function(mevr_add_plugin game)
             # Our main menu and the guided calibration on ME2 (docs/le2-continuation-plan.md M4.1, M4.2; research/le2-menus.md):
             # the same modules as LE1's, in the host (not hot-reloaded).
             set(with_main_menu ON)
-            list(APPEND host_sources src/plugin/MainMenu.cpp src/plugin/MainMenu.hpp src/plugin/MainMenuSettings.cpp
-                src/plugin/MainMenuSettings.hpp src/plugin/Calibration.cpp src/plugin/Calibration.hpp src/plugin/CalibrationDraw.cpp
-                src/plugin/CalibrationDraw.hpp src/plugin/ArmSample.cpp src/plugin/ArmSample.hpp src/core/vr/MenuPointer.cpp src/core/vr/MenuPointer.hpp src/core/vr/GameMenuRequest.cpp
-                src/core/vr/GameMenuRequest.hpp src/core/vr/CineScreen.cpp src/core/vr/CineScreen.hpp
-                src/core/vr/ConversationWorld.cpp src/core/vr/ConversationWorld.hpp src/core/vr/WorldUi.cpp src/core/vr/WorldUi.hpp
-                src/core/vr/OverlayPlacement.cpp src/core/vr/OverlayPlacement.hpp
-                # The omni-tool's rail (M4.3, research/le2-menus.md "The rail on ME2"): LE1's module, drawn with ME1's art from
-                # the player's cache (plugin/RailArt, core/gfx), beside the game's screens (plugin/WorldUi's host side), its tap
-                # at the left wrist (core/vr/HudPieces' wrist point) and its pointer (core/vr/GamePointer).
-                src/plugin/OmniToolRail.cpp src/plugin/OmniToolRail.hpp src/plugin/RailArt.cpp src/plugin/RailArt.hpp
-                src/core/vr/OmniRail.cpp src/core/vr/OmniRail.hpp src/core/vr/OmniPower.hpp src/core/vr/GamePointer.cpp
-                src/core/vr/GamePointer.hpp src/core/vr/HudPieces.cpp src/core/vr/HudPieces.hpp src/core/gfx/Raster.cpp
-                src/core/gfx/Raster.hpp src/core/gfx/Swf.cpp src/core/gfx/Swf.hpp src/core/gfx/SwfFont.cpp src/core/gfx/SwfFont.hpp
-                src/plugin/WorldUi.cpp src/plugin/WorldUi.hpp
-                src/plugin/Thespian.cpp src/plugin/Thespian.hpp src/core/vr/Thespian.cpp src/core/vr/Thespian.hpp
-                src/core/voice/ScriptMatch.cpp src/core/voice/ScriptMatch.hpp
-                src/plugin/GamePointer.cpp src/plugin/GamePointer.hpp src/plugin/WristBeam.cpp src/plugin/WristBeam.hpp
-                src/core/vr/GuiEvents.cpp src/core/vr/GuiEvents.hpp
-                # Entry.cpp's ExitProcess hook asks it with the menu; nothing writes its request on ME2 yet (MEVR Setup, M7.2).
-                src/plugin/SetupRequest.cpp src/plugin/SetupRequest.hpp src/core/Json.cpp src/core/Json.hpp)
+            list(APPEND host_sources ${MEVR_SEQUEL_MENU_SOURCES})
         endif ()
     endif ()
     set(with_halcyon_le3 OFF)
@@ -1062,7 +1067,16 @@ function(mevr_add_plugin game)
             src/core/vr/Haptics.cpp src/core/vr/FloorLock.cpp src/core/vr/Calibration.cpp src/core/vr/Comfort.cpp
             src/core/vr/AimRay.cpp src/core/vr/HostView.cpp src/core/vr/ImageConvert.cpp src/core/vr/LayerComposite.cpp
             src/core/vr/PoseRecording.cpp src/core/vr/Colour.cpp src/core/d3d11/Blit.cpp src/core/PngFile.cpp
-            src/core/Hotkey.cpp src/core/vr/TestRequest.cpp)
+            src/core/Hotkey.cpp src/core/vr/TestRequest.cpp
+            src/plugin/MenusLe2.cpp src/plugin/MenusLe2.hpp src/plugin/WorldPanels.cpp src/plugin/WorldPanels.hpp
+            src/core/vr/OverlayPlacement.cpp src/core/vr/OverlayPlacement.hpp)
+        if (MEVR_MAIN_MENU)
+            set(with_main_menu ON)
+            list(APPEND host_sources ${MEVR_SEQUEL_MENU_SOURCES}
+                src/plugin/HudPanel.cpp src/plugin/HudPanel.hpp src/plugin/QuadSwapchain.cpp src/plugin/QuadSwapchain.hpp
+                # MainMenuSettings uses the shared device/status API; native voice services remain unpublished on LE3.
+                src/plugin/Voice.cpp src/plugin/Voice.hpp src/plugin/VoiceModel.cpp src/plugin/VoiceModel.hpp)
+        endif ()
     endif ()
     if (MEVR_HALCYON AND game STREQUAL "LE1")
         set(with_halcyon ON)
