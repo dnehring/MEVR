@@ -167,3 +167,31 @@ assuming LE2's filename convention is sufficient. Existing ChapterSave has
 `Biop_End001` with display override `Biop_End002`, Vanguard combat class and three
 weapon records. Those fields do not establish a repeatable combat encounter.
 No save was changed or loaded during this ABI audit.
+
+### Native ownership gate resolved
+
+The coordinator's protected metadata probe passed 177/177 comparisons, including
+these descriptor rows, and identified native queue/getter thunks at LE3 RVAs
+`0xB4A270` and `0xB4A190`. Read-only inspection through the existing Ghidra project
+then established the following ownership chain on that validated executable:
+
+- Getter: copy the global descriptor to a temporary through `0xB76BB0`, deep
+  assign it to the caller's return block through `0xB78580`, then free the
+  temporary's strings. Both copy helpers allocate distinct UTF-16 buffers and
+  copy their contents; the returned Career and SaveName are caller-owned.
+- Queue: parse the descriptor into a temporary, pass it to `0xB99650`, then
+  destroy the temporary strings. The implementation makes an owned command and
+  passes it to queue insertion `0xC12AC0`; queue-record copy constructor
+  `0xC02CE0` invokes descriptor copy `0xB76BB0`. Local command cleanup follows
+  only after the persistent queue owns its copies.
+- String allocation uses array resize `0x73440` through engine realloc
+  `0xBF190`; cleanup uses engine free `0xBF0D0`. The independently passed engine
+  allocator cross-free probe therefore applies to these owned strings.
+
+This supports reusing `OwnedString` for input descriptors and freeing returned
+strings through `ue3::memory::FreeString` after a successful getter call and
+validated reflected field access. It does not make an unsuccessful call safe
+to report as queued, nor establish successful normal loading. No new call,
+binary patch, game launch or save mutation was performed for this inspection.
+Native addresses are research identifiers, not new hard-coded dispatch sites.
+Raw decompilation remains solely in the existing private Ghidra cache.
