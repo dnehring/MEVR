@@ -16,6 +16,7 @@
 #include "plugin/Renderer.hpp"
 #include "plugin/Swapchains.hpp"
 #include "plugin/TestLoop.hpp"
+#include "plugin/SightLayers.hpp"
 #include "plugin/Vignette.hpp"
 #include "plugin/XrHost.hpp"
 
@@ -275,9 +276,7 @@ void OnSwapChainPresent(void* swapChain, void* capturedSwapChain) noexcept {
 }
 
 // ---- Our layers (LE1's HalcyonOverlays::OverlayLayers) ------------------------------------------------------------------
-// The host modules that run on LE2 so far, each the same module LE1's host composes (no copies): the comfort vignette
-// (plugin/Vignette). The rest of LE1's list (the HUD panel, the reticle, the sights, the squad menu and wheel, labels, HUD
-// pieces, the calibration, our main menu, the omni-tool) comes over module by module (docs/le2-continuation-plan.md M2-M4).
+// LE2 composes the shared comfort vignette and weapon sights over Halcyon's projection.
 unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsigned capacity) noexcept {
     if (layersOut == nullptr || capacity == 0 || frame.session == nullptr || frame.context == nullptr) {
         return 0;
@@ -298,6 +297,35 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
         if (XrCompositionLayerQuad const* layer = mevr::host::vignette::Layer(vignette)) {
             layersOut[count++] = layer;
         }
+    }
+    mevr::host::sight_layers::Frame sights;
+    sights.session = static_cast<XrSession>(frame.session);
+    sights.appSpace = static_cast<XrSpace>(frame.appSpace);
+    sights.context = frame.context;
+    sights.device = device;
+    sights.worldFrame = frame.worldFrame;
+    sights.menuOpen = frame.menuOpen;
+    sights.onFoot = frame.gameMode == 0;
+    sights.eyesValid = frame.eyesValid;
+    sights.projectionValid = frame.projectionValid;
+    for (int e = 0; e < 2; ++e) {
+        auto const& eye = frame.eyePosition[e];
+        sights.eyes[e].position = {eye[0], eye[1], eye[2]};
+        if (frame.projectionValid) {
+            auto const& rect = frame.projectionRect[e];
+            auto const& orientation = frame.projectionOrientation[e];
+            auto const& position = frame.projectionPosition[e];
+            auto const& fov = frame.projectionFov[e];
+            sights.projectionSwapchain[e] = static_cast<XrSwapchain>(frame.projectionSwapchain[e]);
+            sights.projectionRect[e] = {{rect[0], rect[1]}, {rect[2], rect[3]}};
+            sights.projectionPose[e] = {{orientation[0], orientation[1], orientation[2], orientation[3]},
+                                       {position[0], position[1], position[2]}};
+            sights.projectionFov[e] = {fov[0], fov[1], fov[2], fov[3]};
+        }
+    }
+    auto const sightLayers = mevr::host::sight_layers::Layers(sights);
+    for (unsigned i = 0; i < sightLayers.count && count < capacity; ++i) {
+        layersOut[count++] = sightLayers.layers[i];
     }
     if (device != nullptr) {
         device->Release();

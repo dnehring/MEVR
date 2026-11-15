@@ -159,3 +159,33 @@ fall back to the calibrated unzoomed sight or aim aid and log the reason.
    Physical headset review should cover first acquisition, comfort for either
    dominant eye, seated reach, repeated scoped fire and readability in dark
    scenes. The package/source audit does not exercise the runtime feature.
+
+## LE2 implementation and first headset run
+
+The LE2 Halcyon host submits the shared MEVR sight layers. They use the held
+weapon's visible model and follow a recognized sight bone when available.
+Without a usable anchor, they estimate placement from the model and the
+weapon-family defaults. Pistols, shotguns and assault rifles use the default
+1× dot. Snipers use the magnified lens with the shared duplex reticle and the
+weapon's native `ZoomFOV` as the starting magnification when readable. The
+other eye's game image supplies the lens by default. Both the eye selection
+and the aperture test use tracked eye positions.
+
+This pass leaves the game's shot path and accuracy alone. The exact lens
+centers, aperture sizes and individual reticle profiles still need live
+measurement. An opaque lens, close cover or a distant target can expose
+limitations of the compositor and magnified eye copy. A dedicated zoomed
+scene capture remains a follow-up.
+
+1. Start with the Predator and Avenger in the Freedom's Progress Save 4
+   fixture. Use the existing snapshots and mod status to record the mesh,
+   inferred sight position and visible eye. Check the dot against the visible
+   sights during a weapon swap, when aiming beside cover and with the gun lowered.
+2. Equip a Mantis using a disposable fixture. In the logs, confirm the held
+   mesh, placement source and `ZoomFOV` or fallback. Inspect both eyes for the
+   scope picture, the model's own lens, and transitions when moving off-axis
+   or opening a menu. The snapshot's `sights` block exposes the aiming eye,
+   picture visibility and source.
+3. Compare the Mantis with a Viper in the same scene. Check the native zoom
+   values and what is actually readable through both lenses before authoring
+   their distinct profiles. Use a physical headset for eye relief and comfort.

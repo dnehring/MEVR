@@ -11,6 +11,7 @@
 #include "plugin/TestLoop.hpp"
 #include "core/vr/CameraDiagnostic.hpp"
 #include "plugin/Renderer.hpp"
+#include "plugin/SightLayers.hpp"
 #include "plugin/Swapchains.hpp"
 #if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2)
 #include "plugin/Colour.hpp"  // both Halcyon hosts (LE2: the eye copy's correction)
@@ -31,7 +32,6 @@
 #include "plugin/PerfProbe.hpp"
 #include "plugin/QuestPacing.hpp"
 #include "plugin/RecenterTilt.hpp"
-#include "plugin/SightLayers.hpp"
 #include "plugin/Spectator.hpp"
 #include "plugin/UiWorldFigure.hpp"
 #include "plugin/FloorLock.hpp"
@@ -795,9 +795,9 @@ struct ModuleBlocks {
 };
 ModuleBlocks ModuleStatus() {
     ModuleBlocks m;
+    m.sights = sight_layers::StatusJson();
 #if defined(MEVR_WITH_HALCYON)
     m.recenter = recenter_tilt::StatusJson();
-    m.sights = sight_layers::StatusJson();
     m.calibration = calibration::StatusJson();
     m.colour = mevr::host::colour::StatusJson();
     m.stereo = metric_stereo::StatusJson();

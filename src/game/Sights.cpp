@@ -55,6 +55,8 @@ ue3::ClassRef gTexture2D{"Engine.Texture2D"};
 ue3::FieldRef gTextureResource{"Engine.Texture", "Resource"};
 ue3::FieldRef gTextureSizeX{"Engine.Texture2D", "SizeX"};
 ue3::FieldRef gTextureSizeY{"Engine.Texture2D", "SizeY"};
+#elif defined(MEVR_GAME_LE2)
+ue3::FieldRef gZoomFov{"SFXGame.SFXWeapon", "ZoomFOV", ue3::kEveryGame};
 #endif
 constexpr float kDefaultNearUnits = 10.0f;  // UE3's default near plane, when the field can't be read
 // How far the sight line is traced for the shot's convergence point (game units: 300 m at the life-size view).
@@ -400,16 +402,18 @@ void MeasureModel(engine::UnrealVector const& topWorld, sv::Kind kind, float len
                 }
                 gModel.boneName = gModel.bone ? names[*gModel.bone] : std::string();
                 // Which of the game's models it is (research/21 section 16): the rifles' carry a measured optic.
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
                 ue3::Object* const component = weapon::HeldMesh();
-                ue3::Object* const asset = component != nullptr && ue3::runtime::Ready() ? player::SkeletalMesh(component) : nullptr;
+                ue3::Object* const asset = component != nullptr ? player::SkeletalMesh(component) : nullptr;
                 gModel.mesh = asset != nullptr ? ue3::runtime::Get().NameText(asset) : std::string();
 #endif
+#if defined(MEVR_GAME_LE1)
                 gModel.optic = sv::OpticFor(gModel.mesh);
+#endif
                 gModel.opticApplies = gModel.optic && gModel.bone && _stricmp(gModel.boneName.c_str(), gModel.optic->bone) == 0;
                 log::Info("sights: the {} model is {}{}", sv::WeaponName(static_cast<int>(weapon::Type())),
                     gModel.mesh.empty() ? std::string("unnamed") : gModel.mesh,
-                    !gModel.optic ? std::string(": no optic of the game's on it (the generic placement)")
+                    !gModel.optic ? std::string(": no calibrated optic profile (automatic placement)")
                     : gModel.opticApplies
                         ? std::format(": the game's {} sight: {:.1f} units behind its '{}' bone, {:.1f} {} it, radius {:.2f} units{} "
                                       "(research/21 section 16)",
@@ -832,6 +836,16 @@ void ReadGameZoom(int type) {
                                                                       "it", gZoom.game.zoom[1])
                                                         : std::string())
                              : std::string());
+#elif defined(MEVR_GAME_LE2)
+    ue3::Object* const held = weapon::HeldObject();
+    if (held != nullptr && type == static_cast<int>(weapon::RangedType::Sniper)) {
+        float const fov = gZoomFov.Read<float>(held).value_or(0.0f);
+        sv::AddAimMode(gZoom.game, fov, true);
+        if (gZoom.game.count != 0) {
+            gZoom.stats = ue3::runtime::FullName(held);
+            log::Info("sights: {} ZoomFOV {:.1f} degrees, {:.1f}x", gZoom.stats, fov, gZoom.game.zoom[0]);
+        }
+    }
 #else
     (void)type;
 #endif
@@ -985,7 +999,13 @@ bool TryStartup() {
 }
 
 sv::Sight Current(vr::aim_ray::Ray const& ray) {
-    sv::Settings const settings = hand_calibration::GetSights();
+    sv::Settings settings = hand_calibration::GetSights();
+#if defined(MEVR_GAME_LE2)
+    // Validate LE2's sight presentation before using the scope to move the gun or steer shots.
+    settings.assist.enabled = false;
+    settings.converge = false;
+    settings.aimedFire = false;
+#endif
     gAimedFire = settings.aimedFire;
     sv::Sight out{};
     out.kind = static_cast<std::int32_t>(sv::Kind::None);
