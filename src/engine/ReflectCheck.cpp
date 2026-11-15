@@ -2908,6 +2908,15 @@ void CheckFields() {
     CheckField("Engine.SkeletalMeshSocket", "RelativeLocation", SDK_FIELD(USkeletalMeshSocket, RelativeLocation));
     CheckField("Engine.SkeletalMeshSocket", "RelativeRotation", SDK_FIELD(USkeletalMeshSocket, RelativeRotation));
 
+    CheckField("Engine.Actor", "Physics", SDK_FIELD(AActor, Physics));
+    CheckField("Engine.Actor", "Velocity", SDK_FIELD(AActor, Velocity));
+    CheckField("Engine.Pawn", "bWantsToCrouch", SDK_BOOL(APawn, bWantsToCrouch));
+    CheckField("Engine.Pawn", "bIsCrouched", SDK_BOOL(APawn, bIsCrouched));
+    CheckField("Engine.Pawn", "GroundSpeed", SDK_FIELD(APawn, GroundSpeed));
+    CheckField("SFXGame.BioPawn", "CurrentCustomAction", SDK_FIELD(ABioPawn, CurrentCustomAction));
+    CheckField("SFXGame.BioPawn", "CoverType", SDK_FIELD(ABioPawn, CoverType));
+    CheckField("SFXGame.BioPawn", "StormSpeed", SDK_FIELD(ABioPawn, StormSpeed));
+    CheckField("SFXGame.BioPawn", "bStorming", SDK_BOOL(ABioPawn, bStorming));
     CheckField("SFXGame.BioPlayerController", "m_oPlayerSelection", SDK_FIELD(ABioPlayerController, m_oPlayerSelection));
     CheckField("SFXGame.BioPlayerSelection", "m_oCurrentSelectionTarget", SDK_FIELD(UBioPlayerSelection, m_oCurrentSelectionTarget));
     CheckField("Engine.PlayerController", "PlayerCamera", SDK_FIELD(APlayerController, PlayerCamera));
@@ -3041,6 +3050,11 @@ void CheckFunctions() {
     CheckFunction("SFXGame.SFXWeapon.GetMuzzleLoc");
     CheckFunction("Engine.SkeletalMeshComponent.GetSocketWorldLocationAndRotation");
 
+    CheckFunction("Engine.Pawn.ShouldCrouch");
+    CheckFunction("Engine.Pawn.IsDead");
+    CheckFunction("SFXGame.SFXGameModeDefault.StormOn");
+    CheckFunction("SFXGame.SFXGameModeDefault.StormOff");
+    CheckFunction("SFXGame.BioPlayerController.IsStormDisabled");
     CheckFunction("GFxUI.GFxValue.GetObject");
     CheckNativeTarget("GFxUI.GFxValue.GetDisplayMatrix");
     CheckNativeTarget("SFXGame.BioConversationController.GetReplyParaphraseText");
@@ -3096,6 +3110,15 @@ void CheckParams() {
     PARAM(USkeletalMeshComponent_execGetSocketWorldLocationAndRotation_Parms, "Engine.SkeletalMeshComponent.GetSocketWorldLocationAndRotation", ReturnValue);
     PARMS(USkeletalMeshComponent_execGetSocketWorldLocationAndRotation_Parms, "Engine.SkeletalMeshComponent.GetSocketWorldLocationAndRotation");
 
+    PARAM(APawn_execShouldCrouch_Parms, "Engine.Pawn.ShouldCrouch", bCrouch);
+    PARMS(APawn_execShouldCrouch_Parms, "Engine.Pawn.ShouldCrouch");
+    PARAM(APawn_execIsDead_Parms, "Engine.Pawn.IsDead", ReturnValue);
+    PARMS(APawn_execIsDead_Parms, "Engine.Pawn.IsDead");
+    PARAM(ABioPlayerController_execIsStormDisabled_Parms, "SFXGame.BioPlayerController.IsStormDisabled", ReturnValue);
+    PARMS(ABioPlayerController_execIsStormDisabled_Parms, "SFXGame.BioPlayerController.IsStormDisabled");
+    // Empty C++ parameter structs have sizeof 1; the reflected script ABI has zero parameters.
+    CheckParmsSize("SFXGame.SFXGameModeDefault.StormOn", 0);
+    CheckParmsSize("SFXGame.SFXGameModeDefault.StormOff", 0);
     PARAM(UGFxValue_execGetObject_Parms, "GFxUI.GFxValue.GetObject", member);
     PARAM(UGFxValue_execGetObject_Parms, "GFxUI.GFxValue.GetObject", Type);
     PARAM(UGFxValue_execGetObject_Parms, "GFxUI.GFxValue.GetObject", ReturnValue);
