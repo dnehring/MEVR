@@ -27,10 +27,10 @@ inline Result Check(bool positioned, float x, float y, std::array<float, 16> con
     constexpr float bound = 1.0e7f; // generous diagnostic bounds, not HUD coordinate normalization
     if (std::abs(x) > bound || std::abs(y) > bound) return Result::OutOfRange;
     for (float v : m) if (std::abs(v) > bound) return Result::OutOfRange;
-    auto near = [](float a, float b) { return std::abs(a - b) <= 0.0001f; };
-    if (!near(m[3], 0) || !near(m[7], 0) || !near(m[11], 0) || !near(m[15], 1)) return Result::NonAffine;
-    if (!near(m[2], 0) || !near(m[6], 0) || !near(m[8], 0) || !near(m[9], 0) ||
-        !near(m[10], 1) || !near(m[14], 0)) return Result::NonPlanar;
+    auto closeEnough = [](float a, float b) { return std::abs(a - b) <= 0.0001f; };
+    if (!closeEnough(m[3], 0) || !closeEnough(m[7], 0) || !closeEnough(m[11], 0) || !closeEnough(m[15], 1)) return Result::NonAffine;
+    if (!closeEnough(m[2], 0) || !closeEnough(m[6], 0) || !closeEnough(m[8], 0) || !closeEnough(m[9], 0) ||
+        !closeEnough(m[10], 1) || !closeEnough(m[14], 0)) return Result::NonPlanar;
     if (std::abs(m[0] * m[5] - m[1] * m[4]) < 1.0e-8f) return Result::Degenerate;
     // UE Object.Matrix row-vector translation. A different native convention is unverified,
     // not permission to repair/transplant elements and derive a crop.

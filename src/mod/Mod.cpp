@@ -908,6 +908,11 @@ mevr::game::thespian::Link ThespianLink() {
     using namespace mevr;
     game::thespian::Link link;
     link.voice = VoiceLink();
+    link.otherUiOwnsInput = [] {
+        return game::body_calibration::Calibrating() ||
+            (gHostOwnsVr && MEVR_HOST_HAS(mainMenu) && gHost->mainMenu != nullptr &&
+                (gHost->mainMenu() & (kMainMenuOpen | kOmniRailOpen)) != 0);
+    };
     if (MEVR_HOST_HAS(setThespian) && gHost->setThespian != nullptr && gHost->thespianPanelSize == sizeof(vr::thespian::Panel)) {
         link.setPanel = gHost->setThespian;
     }
@@ -1040,6 +1045,11 @@ bool ActionHandFree(int hand) {
     if (hand == 0) return !game::throwables::ClaimedLeft() && !game::vent::ClaimedLeft() && !game::voice::ClaimedLeft();
     return !game::throwables::RightHandBusy() && !game::throwables::ClaimedRight() &&
         !game::holsters::RightHandInSlot() && game::holsters::SecondsSinceDraw() >= 0.3;
+}
+bool PhysicalControlsAllowed() {
+    using namespace mevr;
+    return gHostOwnsVr && gHostDataOk && ActionSceneAllowed() &&
+        vr::host_view::Latest().valid && vr::controllers::Latest().active;
 }
 bool ActionControlsReleased(mevr::vr::controllers::Hand const& hand) {
     return hand.trigger < 0.15f && hand.squeeze < 0.15f && !hand.primary && !hand.secondary && !hand.menu && !hand.stickClick;
@@ -1763,7 +1773,15 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         game::vent::Tick(deltaSeconds, ventLink);
         // Physical cover and crouch (research/23): the cover test's hook goes in once noCover is wanted.
         EnsureCoverHook();
-        game::posture::Tick(deltaSeconds, game::posture::Link{HostFloor()});
+        game::posture::Link postureLink;
+        postureLink.floor = HostFloor();
+        postureLink.runtimeOwned = gHostOwnsVr && gHostDataOk && ActionRuntimeReady();
+        postureLink.focused = vr::host_view::Latest().valid && vr::controllers::Latest().active;
+        postureLink.menuOpen = ActionMenuOpen();
+        postureLink.calibrating = ActionCalibrating();
+        postureLink.sceneGeneration = ActionGeneration();
+        postureLink.controlsAllowed = PhysicalControlsAllowed;
+        game::posture::Tick(deltaSeconds, postureLink);
         game::vr_cover::Tick();  // after posture: whether the game's cover is refused this tick
         if (game::posture::RefusingCover()) {
             EnsureCallFunctionHook();  // VR cover answers the damage call's IsInCover in the script hook, controllers or not
@@ -1775,7 +1793,8 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         game::camera_shake::Tick();      // the game's camera shakes scaled or off in VR (research/71)
         // The weapon drawn, like exploring (research/38): the stance for the next pose, the speed ramp, draw rates.
         game::combat_stance::Tick(deltaSeconds, CombatStanceLink());
-        game::sprint::Tick(deltaSeconds, CombatStanceLink().headTrackedView);
+        game::sprint::Tick(deltaSeconds, CombatStanceLink().headTrackedView,
+            PhysicalControlsAllowed(), PhysicalControlsAllowed);
         game::hand_aim::Tick();
         game::view_level::Tick(ViewLevelLink());
         gTickAimRay = {};
@@ -1816,7 +1835,7 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         EnsureVoicePlaceHook();
         game::conversation_world::Tick(deltaSeconds, ConversationWorldLink());
 #endif
-        game::thespian::Tick(deltaSeconds, ThespianLink());  // separate native dialogue adapter, explicitly unavailable on LE3
+        game::thespian::Tick(deltaSeconds, ThespianLink());  // shared panel and selection policy, native game adapter
 #if !defined(MEVR_GAME_LE3)
         game::conversation_flow::Tick();  // the chain starts' lines flagged ambient before the level's script starts them (research/59)
         game::authored_moment::Tick();    // what the level's script does to the player: a track's walk, a teleport (research/69)
