@@ -147,3 +147,35 @@ mantle (`m_bCanMantleOutsideOfCover`, set only for the game's own admission call
 vault three times in a row from a script, one native action each; ME2's camera stays level and smooth through it,
 so the presentation option (`[Traversal] view = level`, `mask = vignette | blink`) is a guard and a comfort
 choice, off by default. Left: arm IK across the move's root-motion steps, the grips on ME2, the owner's choices.
+
+## ME3 action routing follow-up (2026-11-15)
+
+Read-only exact-export inspection reused the existing LegendaryExplorerCore scanner and private LE3 retarget,
+with the scanner/base `SFXGame.pcc` provenance recorded in [the melee audit](le3-melee-audit.md).
+Raw scripts remain ignored; no game or package was changed. These findings narrow the next adapter and do not
+constitute native traversal acceptance.
+
+| Original base `SFXGame.pcc` export | Consequence for the shared VR adapter |
+| --- | --- |
+| `SFXGameModeDefault.MantleCover`, `ClimbCover` | The mode requests native actions 31/33 and can cancel reload before admission. These are not LE2's controller `MantleCover(CovInfo)` and action 10/9 path. Do not widen the existing LE2 compile guard or write its structures into ME3. |
+| `SFXGameModeDefault.TryCoverAction` | The in-cover route combines current cover-slot data, stick intent and native checks; mantle also asks `BioPawn.CanPerformMantleSlow`. A direct call to the outer request is not proof of destination/collision eligibility. The no-cover-snap out-of-cover route needs its own verified native admission path. |
+| `SFXPlayerController.TryQuickMantle` | Quick mantle depends on native storm intent and forward input. It is not a generic safe request for an arbitrary obstacle or an eligibility query. |
+| `SFXGameModeDefault.PressAction`, `TapAction`, `HoldAction` | These combine cover acquisition, cover actions, rolls and exits. Replaying the whole action binding cannot stand in for an explicit vault/ladder commit while preserving the user's no-cover-snap rule. |
+| `BioPlayerController.TryUseLadder`, `CanUseLadder` | The public use route preserves use events/server handling. Its boolean can report that use was dispatched even if subsequent `OnUse` rejects the start. Its initial check does not establish player approach distance/facing. Preserve the native route and observe the actual action. |
+| `BioPlayerController.FindLadderNode` | Native query takes an out `SFXLadderReachSpec` and optional distance (declared default 75). Player reach/facing selection still needs native verification; merely having a placed ladder endpoint or a positive `CanUseLadder` is insufficient. |
+| `SFXNav_LadderNode.OnUse`, `StartLadderCustomAction` | The authored node checks blockage, approach and other pawns, then assigns the movement path to the native action. Downward travel can choose jump-down (30) instead of ladder-down (47), depending on authored geometry; upward ladder uses 46. Preserve that selection, path and collision ownership rather than force one action ID. |
+| `BioPawn.SpecialMoveTo_LadderClimb` | This inspected helper requires an AI controller. Its name alone does not make it a player traversal entry point. |
+| `SFXGameModeDefault.TryExitLadder` | Exit is not universally a gentle dismount: the upward route interrupts and begins falling; downward and jump-down routes also interrupt. Never bind generic release/tracking loss to this function. |
+| `SFXGameModeDefault.TryStandingJump` | Native jump-point discovery precedes assignment of the controller's path and action request. A true outer return alone does not prove that the action started or completed. |
+
+The shared `core/vr/Traversal::PressTracker` now rejects current or previous authored seating, invalidates pending
+taps across menu/focus/non-foot/seat interruption, and never manufactures a new press from a held button. The
+existing LE2 adapter also rechecks scene/menu/native ignored movement before mutations. Its `Link.authoredSeated`
+must be populated from authored scene restrictions; physically seated play remains normal gameplay.
+
+LE3 traversal mutation stays disabled in `game/Traversal`: the next bounded native work is to observe selected
+ladder/reach identity and native `FindLadderNode` against normal input, then route a fresh intentional use through
+`TryUseLadder` and observe actions 46/47/**30** and recovery. Follow with out-of-cover mantle admission, retaining
+the native collision/destination result. Reuse the existing move recorder, cue, level view, mask and press policy
+when adding that native adapter. Do not invoke lower-level action starts or treat a package endpoint as a legal
+teleport destination. Melee's new ordinary request adapter is documented separately and makes no traversal claim.

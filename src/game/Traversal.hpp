@@ -38,6 +38,7 @@ struct Link {
     void (*setVignette)(float amount) = nullptr;            // HostServices v17
     void (*setCue)(vr::traversal::Cue const* cue) = nullptr;  // HostServices v40
     void (*haptic)(int hand, float seconds, float amplitude) = nullptr;
+    bool authoredSeated = false; // authored shuttle/dialogue; not the player's physical play position
 };
 
 // Finds the game's functions and fields and registers the handlers (before the hooks go in). False on LE1/LE3 or with the

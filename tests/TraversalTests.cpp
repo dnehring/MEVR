@@ -511,6 +511,44 @@ int RunTraversalTests() {
     gFailures = 0;
     TestNames();
     TestDoubleTap();
+    // Scene entry on the second press cannot use the previous on-foot sample to authorize it.
+    {
+        tv::PressTracker p;
+        p.Step(At(0.0, false));
+        CHECK(p.Step(At(0.05, true)) == tv::Tap::First);
+        p.Step(At(0.1, false));
+        auto seated = At(0.15, true);
+        seated.authoredSeated = true;
+        CHECK(p.Step(seated) == tv::Tap::Other);
+        CHECK(p.Last().why == tv::PressWhy::AuthoredSeated);
+        CHECK(tv::Judge(p, 0.15).why == tv::CommitWhy::NotFresh);
+        p.Step(At(0.2, false));
+        CHECK(p.Step(At(0.25, true)) == tv::Tap::First);
+    }
+    // A menu/seat interruption between taps consumes the pending first tap even without a button edge.
+    for (bool seat : {false, true}) {
+        tv::PressTracker p;
+        p.Step(At(0.0, false));
+        p.Step(At(0.05, true));
+        p.Step(At(0.1, false));
+        auto interrupted = At(0.12, false);
+        interrupted.authoredSeated = seat;
+        interrupted.menuOpen = !seat;
+        p.Step(interrupted);
+        p.Step(At(0.14, false));
+        CHECK(p.Step(At(0.16, true)) == tv::Tap::First);
+    }
+    {
+        tv::PressTracker p;
+        p.Step(At(0.0, false));
+        p.Step(At(0.05, true));
+        p.Step(At(0.1, false));
+        CHECK(p.Step(At(0.15, true)) == tv::Tap::Double);
+        auto seated = At(0.16, true);
+        seated.authoredSeated = true;
+        p.Step(seated); // no new button edge, but the pending double cannot survive the scene
+        CHECK(tv::Judge(p, 0.16).why == tv::CommitWhy::NotFresh);
+    }
     TestJudge();
     TestMoveRecord();
     TestLevelView();

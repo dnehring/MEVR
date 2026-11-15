@@ -91,6 +91,7 @@ char const* Name(PressWhy why) {
     case PressWhy::UseFirst: return "A uses the selected object first";
     case PressWhy::FromMenu: return "pressed in a menu or without input focus";
     case PressWhy::DuringTraversal: return "pressed while a move ran";
+    case PressWhy::AuthoredSeated: return "authored seated scene blocks traversal";
     case PressWhy::NotOnFoot: break;
     }
     return "not on foot";
@@ -119,8 +120,11 @@ char const* Name(CommitWhy why) {
 
 Tap PressTracker::Step(PressInput const& in, double doubleTapS) {
     PressInput const before = haveBefore_ ? before_ : PressInput{in.nowS, false, in.focused, in.menuOpen, in.onFoot, in.eligible,
-        in.useFirst, in.traversing};
+        in.useFirst, in.traversing, in.authoredSeated};
     bool const edge = in.down && !down_;
+    // No first tap survives an interruption, including a menu that opens and closes between taps.
+    // Keep held-button history: restoring gameplay must not manufacture a fresh edge.
+    if (in.authoredSeated || in.menuOpen || !in.focused || !in.onFoot) last_.clean = false;
     if (!in.down && down_ && last_.valid && last_.upS < 0.0) {
         last_.upS = in.nowS;
     }
@@ -132,10 +136,13 @@ Tap PressTracker::Step(PressInput const& in, double doubleTapS) {
         p.atS = in.nowS;
         // The verdict from the state before this tick: the game may have acted on the press already (used something, begun a move).
         bool const menu = in.menuOpen || !in.focused || before.menuOpen || !before.focused;
-        p.clean = !menu && before.onFoot && !before.traversing && !before.useFirst;
-        if (menu) {
+        bool const seated = in.authoredSeated || before.authoredSeated;
+        p.clean = !seated && !menu && in.onFoot && before.onFoot && !before.traversing && !before.useFirst;
+        if (seated) {
+            p.why = PressWhy::AuthoredSeated;
+        } else if (menu) {
             p.why = PressWhy::FromMenu;
-        } else if (!before.onFoot) {
+        } else if (!in.onFoot || !before.onFoot) {
             p.why = PressWhy::NotOnFoot;
         } else if (before.traversing) {
             p.why = PressWhy::DuringTraversal;
@@ -182,7 +189,7 @@ Commit Judge(PressTracker& presses, double nowS, double windowS) {
     }
     c.press = last.serial;
     c.sincePressS = since;
-    if (last.why != PressWhy::Fresh) {
+    if (last.why != PressWhy::Fresh || !last.clean) {
         c.why = CommitWhy::NotFresh;
     } else if (last.commits > 0) {
         c.why = CommitWhy::Repeated;

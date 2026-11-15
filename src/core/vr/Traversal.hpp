@@ -81,6 +81,7 @@ struct PressInput {
     bool eligible = false;    // the game admits a vault or climb from where the pawn stands (its own CanPerformMantle/Climb)
     bool useFirst = false;    // something A would use is selected (the game's Use runs first)
     bool traversing = false;  // a native traversal runs
+    bool authoredSeated = false; // authored shuttle/dialogue restriction, not physically seated play
 };
 
 // Why a press is (or isn't) one that may commit a traversal.
@@ -91,6 +92,7 @@ enum class PressWhy : std::uint8_t {
     FromMenu,         // went down while a menu was open or the session unfocused
     DuringTraversal,  // went down while a move ran
     NotOnFoot,
+    AuthoredSeated,
 };
 char const* Name(PressWhy why);
 

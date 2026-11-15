@@ -182,3 +182,64 @@ Offline tests should cover observable invariants: deliberate arming, one request
 ownership changes, tracking loss, scene-generation rejection and denied native admission. Native tests add actual
 effects, bonuses, difficulty, action completion and save/reload. Headset tests add reach, accidental gestures, motion
 comfort, effect placement and hand/body alignment. Keep those three evidence categories separate.
+
+## Staged ordinary request adapter (2026-11-15)
+
+`src/core/ik/Melee.{hpp,cpp}` now wraps the existing `throwing::SwingDetector`; it does not replace its motion
+history or turn hand velocity into damage. Fast ordinary strokes remain light. Heavy uses a semantic modifier,
+requires release after interruption/startup and after each heavy strike, and shares a cooldown across hands.
+One update can produce at most one request even if both hands swing. Ownership, tracking and scene interruption
+discard motion history and require neutral controls again. This contract is exercised by `tests/MeleeTests.cpp`.
+
+`src/game/Melee.{hpp,cpp}` supplies an LE3-only native adapter. Both enable switches default off. It re-reads
+the local controller, compatible pawn, world and current mode, and requires a fresh host ownership callback
+at dispatch. It rejects authored seating, nondefault modes, ignored movement, death, disabled combat input,
+cover/peek/storm contexts, current actions, reload, zoom and weapon equip/put-away states. These are conservative
+preconditions, not a promise that the native action can start. They prevent calling the contextual `Try*` functions
+as probes that could cancel reload or select a cover grab. LE1 `Throwables` behavior is unchanged.
+
+The adapter calls the native default mode's normal light/heavy request, without writing an action number, target,
+damage or native animation state. It resolves the default mode through `BioPlayerController.GetGameModeDefault`,
+whose inspected base script reads the native manager's mode array. After dispatch it observes the pawn's
+`GetCurrentCustomAction(out pAction)` and the live action object's family and pawn owner. **Dispatched**, **requested
+family observed**, **different family observed**, **no start observed within the admission window**, and **action
+left current slot** are distinct outcomes. The bounded window is diagnostic bookkeeping, not a native cooldown or
+proof of refusal. Polling can miss a short action. Leaving the current slot does not establish completion rather
+than cancellation; no impact, damage or successful-hit haptic is claimed. World/actor/mode/generation changes
+discard observation without stopping the game's action. No module or engine gate was enabled by this increment.
+
+The ME3 action index is **`BioPawn.CurrentCustomAction`, an int**; LE2's controller byte is incompatible. `CustomActions`
+also belongs to the pawn in LE3. The code checks reflected field kind and width before enabling its diagnostic
+adapter. Base installed routing selects ordinary rifle/pistol light actions 75/78 and class heavy 58, but these
+numbers are findings, not runtime dispatch instructions: mounted live class defaults stay authoritative.
+
+### Coordinator integration and remaining gates
+
+- Add `src/core/ik/Melee.cpp` to the existing core source set, `src/game/Melee.cpp` to the shared game source set,
+  and `tests/MeleeTests.cpp` plus `RunMeleeTests()` to the existing offline test target/entry point.
+- Call `game::melee::TryStartup`, `Tick(freshLink)` and `Shutdown` from the existing lifecycle. Keep `enabled` and
+  `gestures` explicitly staged; first expose `Request(Light|Heavy, hand, freshLink)` through the existing diagnostic
+  command dispatcher. A successful startup means reflection availability, not native melee acceptance.
+- Supply controller motion relative to the tracked head, calibrated body forward and monotonic sample time using
+  the existing LE1 sampling pattern. Supply focus, all current host menus, authored scene restriction, scene
+  generation and per-hand ownership (powers, squad, support, reload object, holster/draw, firing). `neutral` means
+  competing controls released. `allowRequest(hand)` must read ownership **at call time**, including same-tick menu
+  changes. Do not populate it with a cached permissive boolean. Do not map the heavy modifier to a default chord
+  until the control/ownership matrix and physical input have been checked.
+- Extend LE3 ReflectCheck using the pinned SDK: `BioPawn.CurrentCustomAction` int; `CoverType/CoverAction` bytes;
+  `bStorming` bool; `BioCustomAction.m_oPawn`, `Pawn.Weapon`, `PlayerController.PlayerInput` and `Actor.WorldInfo`
+  object fields. Check the two action-family classes and native mode/input/weapon classes. Named parameters:
+  `GetCurrentCustomAction.pAction` object out at 0 and bool return at 8 (parameter size 12);
+  `GetGameModeDefault` object return (8); `Object.GetStateName` name return (8); no-argument bool queries
+  `Pawn.IsDead`, `PlayerController.IsMoveInputIgnored`, `BioPlayerController.IsReloading/IsZoomed`,
+  `BioPlayerInput.IsCombatEnabled` (4); `TryMelee/TryHeavyMelee` no parameters (0).
+- Native fixture work remains: mode/owner and action queries agree with ordinary input; rejected reload/zoom/cover
+  requests cause no side effects; legal light/heavy starts are observed once; exact impact, damage, recovery and
+  cancellation callbacks are instrumented. No native run occurred for this increment. Six-class effects, combos,
+  contextual attacks, interrupted animation ownership and headset comfort remain open. The initial conservative
+  adapter refuses any active custom action, so it does **not** yet implement native combo windows.
+
+Offline verification: strict syntax checks for changed modules/tests under LE1, LE2 and LE3; isolated executable
+running the new intent tests and existing traversal suite; an ignored SDK-only static-assert check confirms the
+named parameter widths/offsets listed above. The traversal suite additionally checks authored-seat
+entry on the second tap and menu/seat interruption between taps. These are policy and compilation evidence only.

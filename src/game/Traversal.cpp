@@ -526,6 +526,9 @@ std::optional<bool> GameAdmits(ue3::Object* pc, Slot const& slot) {
 
 // The game's own move from where the pawn stands: SFXPlayerController.MantleCover / ClimbCover(the slot).
 bool CallMove(ue3::Object* pc, Slot const& slot) {
+    // Recheck immediately before mutation; a press/near-slot result can predate a scene transition.
+    if (gLink.authoredSeated || gLink.menuOpen || player::GameMode(pc) != 0 ||
+        gIgnoreMove.Read<std::uint8_t>(pc).value_or(1) != 0) return false;
     bool const climb = slot.kind == tv::Kind::ClimbUp;
     ue3::Function* const fn = climb ? gClimbCoverRef.Get() : gMantleCoverRef.Get();
     if (fn == nullptr || !ue3::runtime::IsAlive(slot.link)) {
@@ -1036,9 +1039,9 @@ void Tick(float /*deltaSeconds*/, Link const& link) {
         log::Info("traversal: paused {:.2f} s into the {} (a test: `pause` again resumes)", now - gMove.startS, tv::Name(gMove.kind));
     }
     bool const traversing = gMove.active;
-    if (onFoot && !traversing) {
+    if (onFoot && !link.authoredSeated && !traversing) {
         UpdateNear(pc, pawn, now);
-    } else if (!onFoot) {
+    } else if (!onFoot || link.authoredSeated) {
         gNear.slot = -1;
         gNear.admitted = false;
     }
@@ -1052,6 +1055,7 @@ void Tick(float /*deltaSeconds*/, Link const& link) {
     in.eligible = gNear.slot >= 0 && gNear.admitted;
     in.useFirst = useFirst;
     in.traversing = traversing;
+    in.authoredSeated = link.authoredSeated;
     tv::Tap const tap = gPresses.Step(in, gSettings.doubleTapS);
     if (tap != tv::Tap::None) {
         ++gCounters.presses;
@@ -1235,6 +1239,11 @@ std::string Command(std::string const& args) {
     ue3::Object* const pawn = player::BioPawn(pc);
     if (pc == nullptr || pawn == nullptr) {
         return "traversal: no player pawn";
+    }
+    if ((verb == "place" || verb == "go" || verb == "try") &&
+        (gLink.authoredSeated || gLink.menuOpen || player::GameMode(pc) != 0 ||
+         gIgnoreMove.Read<std::uint8_t>(pc).value_or(1) != 0)) {
+        return "traversal: scene/menu/native movement guard blocks mutation";
     }
     if (verb == "slots") {
         RefreshSlots(pawn, Now());
