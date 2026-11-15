@@ -434,6 +434,37 @@ function Assert-PreviewConfig([string]$Bin, [ValidateSet(0, 2, 4)][int]$Mode = 4
     if ([IO.File]::ReadAllText((Join-Path $Bin 'ASI\LE3MEVR.ini')) -cne (Get-PreviewModConfig) -or
         [IO.File]::ReadAllText((Join-Path $Bin 'MELE3VR.ini')) -cne (Get-PreviewRendererConfig $Mode $Diagnostics)) { throw 'Preview configuration changed since prep' }
 }
+function Confirm-PreviewInitializedConfig([string]$Bin, $Artifacts, [ValidateSet(0, 2, 4)][int]$Mode = 4, [bool]$Diagnostics = $false) {
+    # HandCalibration and Colour append their compiled defaults on the first tick.
+    # Only that append is permitted; protected keys, renderer mode and all binaries
+    # retain their exact prep identity. Preserve the effective settings in the receipt.
+    $mod = Join-Path $Bin 'ASI\LE3MEVR.ini'
+    $text = [IO.File]::ReadAllText($mod)
+    $prefix = Get-PreviewModConfig
+    if (-not $text.StartsWith($prefix, [StringComparison]::Ordinal) -or
+        [IO.File]::ReadAllText((Join-Path $Bin 'MELE3VR.ini')) -cne (Get-PreviewRendererConfig $Mode $Diagnostics)) {
+        throw 'Protected preview configuration changed during startup'
+    }
+    $allowed = @('Colour','Controls','Holsters','Squad','Throwables','Comfort','Sights','Interact','Vent','Hud',
+        'Mako','Cockpit','Galaxy','WorldUi','Game','SquadContext','SquadOrders','Voice','PowerWheel','Cover')
+    $seen = @{}; $section = ''
+    foreach ($line in ($text.Substring($prefix.Length) -split '\r?\n')) {
+        $value = $line.Trim()
+        if (-not $value -or $value.StartsWith(';') -or $value.StartsWith('#')) { continue }
+        if ($value -match '^\[([^\]]+)\]$') {
+            $section = $Matches[1]
+            if ($section -notin $allowed -or $seen.ContainsKey($section)) { throw 'Unexpected appended preview section' }
+            $seen[$section] = @{}
+        } else {
+            if (-not $section -or $value -notmatch '^([^=]+)=(.*)$') { throw 'Malformed appended preview setting' }
+            $key = $Matches[1].Trim()
+            if (-not $key -or $seen[$section].ContainsKey($key)) { throw 'Duplicate appended preview setting' }
+            $seen[$section][$key] = $true
+        }
+    }
+    Assert-RunArtifacts @($Artifacts | Where-Object { $_.path -ine $mod })
+    [pscustomobject]@{ defaultsAppended = ($text.Length -ne $prefix.Length); text = $text }
+}
 function Get-PreviewArtifacts([string]$Bin) {
     $paths = @((Join-Path $Bin 'MassEffect3.exe'), (Join-Path $Bin 'ASI\LE3MEVR.asi'),
         (Join-Path $Bin 'ASI\LE3MEVR.ini'), (Join-Path $Bin 'MELE3VR.ini'))

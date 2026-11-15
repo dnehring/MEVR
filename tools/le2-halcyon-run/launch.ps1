@@ -135,9 +135,11 @@ if ($RendererPreview) {
     $previewReceipt.freshMarker = $true; $previewReceipt.log = $log
     # The renderer can migrate an obsolete INI mode while starting. Never label
     # that run with the requested mode or continue on changed runtime artifacts.
-    Assert-PreviewConfig $bin $previewOptions.mode $previewOptions.diagnostics
-    Assert-RunArtifacts $open.previewArtifacts
-    $previewReceipt.configurationUnchanged = $true
+    $initialized = Confirm-PreviewInitializedConfig $bin $open.previewArtifacts $previewOptions.mode $previewOptions.diagnostics
+    [IO.File]::WriteAllText((Join-Path $open.session 'effective-preview-mod.ini'), $initialized.text)
+    $previewReceipt.rendererConfigurationUnchanged = $true
+    $previewReceipt.modDefaultsAppended = $initialized.defaultsAppended
+    $previewReceipt.configurationUnchanged = -not $initialized.defaultsAppended
 }
 if ($DesktopDump) {
     if ($EngineProbe) {

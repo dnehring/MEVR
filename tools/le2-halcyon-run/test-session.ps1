@@ -328,6 +328,28 @@ try {
         Reject { Assert-PreviewConfig $bin }
         Check ((Get-RunRendererLog LE3).EndsWith('MELEVR\ME3PassiveDxgiProbe.log'))
     }
+    Case 'preview startup accepts recorded defaults but refuses protected overrides and binary drift' {
+        $bin=Join-Path $root 'preview-defaults'; New-Item -ItemType Directory (Join-Path $bin 'ASI') | Out-Null
+        $mod=Join-Path $bin 'ASI\LE3MEVR.ini'; $renderer=Join-Path $bin 'MELE3VR.ini'
+        $dll=Join-Path $bin 'module.dll'; [IO.File]::WriteAllText($dll,'synthetic module')
+        [IO.File]::WriteAllText($mod,(Get-PreviewModConfig)); [IO.File]::WriteAllText($renderer,(Get-PreviewRendererConfig))
+        $artifacts=@($mod,$renderer,$dll | ForEach-Object { [pscustomobject]@{path=$_;sha256=(Get-FileHash $_).Hash} })
+        Check (-not (Confirm-PreviewInitializedConfig $bin $artifacts).defaultsAppended)
+        $valid=(Get-PreviewModConfig)+"[Colour]`r`nprofile=auto`r`n[Controls]`r`nsupportGrip=1`r`n"
+        [IO.File]::WriteAllText($mod,$valid)
+        Check ((Confirm-PreviewInitializedConfig $bin $artifacts).defaultsAppended)
+        Reject { Assert-PreviewConfig $bin } # prelaunch remains exact
+        foreach ($bad in @("[Debug]`nrequests=0", "[Pointer]`nsetCursor=1", "[Unknown]`nx=1", "x=1", "[Colour]`nx=1`nx=2", "[Colour]`nx=1`n[Colour]`ny=2")) {
+            [IO.File]::WriteAllText($mod,((Get-PreviewModConfig)+$bad))
+            Reject { Confirm-PreviewInitializedConfig $bin $artifacts }
+        }
+        [IO.File]::WriteAllText($mod,$valid.Replace('requests = 1','requests = 0'))
+        Reject { Confirm-PreviewInitializedConfig $bin $artifacts }
+        [IO.File]::WriteAllText($mod,$valid); [IO.File]::WriteAllText($renderer,(Get-PreviewRendererConfig 2))
+        Reject { Confirm-PreviewInitializedConfig $bin $artifacts }
+        [IO.File]::WriteAllText($renderer,(Get-PreviewRendererConfig)); [IO.File]::WriteAllText($dll,'changed module')
+        Reject { Confirm-PreviewInitializedConfig $bin $artifacts }
+    }
     Case 'preview bisection options preserve explicit mono and reject malformed metadata' {
         Check ((Get-PreviewOptions ([pscustomobject]@{})).mode -eq 4)
         $options = Get-PreviewOptions ([pscustomobject]@{ previewRendererMode=0; previewDiagnostics=$true })

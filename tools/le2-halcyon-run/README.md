@@ -205,7 +205,10 @@ For a bounded renderer bisection, prep accepts `-PreviewRendererMode 0` (mono), 
 (alternate-eye stereo) or the default `4` (same-frame stereo), and optional
 `-Diagnostics`. The session records these typed options; launch verifies the exact
 corresponding config and artifact hashes. Restore before selecting another variant.
-Launch checks the config and artifact hashes again after XR readiness. Legacy mode
+Launch checks the renderer config and binary hashes again after XR readiness. The
+mod may append its known first-run settings sections; its original Debug/Pointer
+prefix cannot change, duplicate or unknown appended sections/keys are refused, and
+the effective mod ini is saved in the session receipt. Legacy mode
 `1` is refused: upstream unconditionally migrates it to `4`, so an INI requesting
 side-by-side mode does not establish which renderer actually ran.
 Mono is diagnostic evidence only and cannot satisfy stereo acceptance. Desktop dump
