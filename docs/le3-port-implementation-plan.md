@@ -20,7 +20,18 @@ The first protected renderer preview launched ME3 but stopped before XR readines
 log denied readers. Cleanup restored all tracked files, the fake-headset environment and the LE1 ini with
 zero differences. The renderer now allows live readers while refusing competing writers; a regression test
 uses its actual logger and passes. Both ME3 build variants pass with this correction. No eye capture or
-VR acceptance is claimed from that failed preview; a fresh bounded preview is next.
+VR acceptance is claimed from that failed preview. Subsequent protected previews reached XR readiness and loaded
+the normal Normandy fixture. Diagnostic mono shows the world and first-person hands; the shared menu captures
+without missing-layer errors. Same-frame stereo still reports zero first-eye captures and falls back to a flat
+panel, so stereo remains unaccepted. All these sessions restored tracked files with zero differences. A requested
+legacy side-by-side run actually migrated to same-frame mode; it is not side-by-side evidence. The runner now
+rejects that obsolete mode and checks configuration again after XR readiness (32 safety cases pass).
+
+**HDR reuse verified offline:** active ME3 full-frame eyes and mono presentation call the same `EyeCopy`/`Blit`
+converter as ME2. The registered `mevr-eye-copy-warp` regression passed on actual software D3D11 with float HDR
+input, sRGB output, brightness/channel checks, convergence shifts, SDR preservation and an invalid raw-copy
+negative control. See [HDR evidence and limits](../research/le3-hdr-eye-copy-test.md). This proves format conversion,
+not HDR highlight tone mapping or headset appearance. Native previews so far used SDR; native HDR remains open.
 
 Implementation is now authorized. The audit baseline above remains historical; these are the first foundation changes:
 
@@ -60,7 +71,7 @@ Implementation is now authorized. The audit baseline above remains historical; t
 
 The desktop engine probes and normal descriptor loads passed and restored with zero differences. The existing chapter
 candidate failed ordinary-combat admission (see below); a coherent combat fixture remains open. Next are the expanded
-renderer/power metadata probe and a protected renderer preview on the accepted Normandy fixture. Each run needs the
+native adapter metadata probe and a renderer capture-boundary diagnosis on the accepted Normandy fixture. Each run needs the
 shared game-run lock. Offline builds and tests never promote native/headset gates automatically.
 
 Integration checks: all three development host/mod pairs and all three monolithic player ASIs compile. The 59-test
@@ -72,7 +83,7 @@ The first two protected launch attempts failed upstream of ME3 and were restored
 captured its runtime code; a second successful launch validated the corrected live-log reader and dump receipt.
 Both restored with zero differences and released the run lock. Twenty runner safety tests pass. The launcher blocker
 is cleared. The subsequent engine probe passed 159/159 checks and restored with zero differences; the runner now has
-22 offline safety cases. The imported renderer has not been run or accepted in ME3.
+22 offline safety cases at that earlier checkpoint. Later renderer previews are summarized above; stereo is still unaccepted.
 
 The engine/body/menu integration batch passed development and monolithic builds for all three games and the 59-test
 suite, with focused tests repeated after the native GUI mapping addition. Two retired clean, merged worktrees were
