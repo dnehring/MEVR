@@ -1748,8 +1748,13 @@ std::optional<std::string> RunOursLe2(ue3::Object* pc, std::string const& line) 
         std::getline(words, rest);
         return camera_probe::Command(rest);  // `mevr camera trace <seconds> [label]` (M3: the skeleton audit on ME2)
     }
+    if (verb == "cover") {
+        std::string rest;
+        std::getline(words, rest);
+        return vr_cover::Console(rest);  // VR cover and the cover snapping's refusal on ME2 (research/23 section 7)
+    }
     return std::string("unknown on ME2: mevr load <career> <save name> <index> <type> | mevr savedesc | mevr state | "
-                       "mevr camera trace <seconds> [label]");
+                       "mevr camera trace <seconds> [label] | mevr cover ...");
 }
 
 #endif

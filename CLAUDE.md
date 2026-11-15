@@ -266,7 +266,13 @@ switching frameworks.
   raised over the cover is the game's "leaning out". Logs `vr cover:`; snapshot `"mod"."vrCover"`; `mevr cover [on|off | test | pawns | hit <damage> <n>]` (`hit`: the game's
   own `BioActorBehavior.TakeDamage` on Shepard from pawn n's place with a weapon's damage object, health and shields before and after;
   `probe <yawDeg>` finds a surface). Measured on the fake headset: covered, no damage; exposed or off, full damage.
-  LE2/LE3's damage rules and the plan: research/23 section 6.3.
+  **ME2 has all three** (research/23 section 7, 2026-11-14, ME1's keys and defaults): no snapping is one CallFunction frame
+  post-handler (`BioPlayerController.FindPlayerCover`'s answer inside `TryAcquireCover` made false for the player: A and the
+  sprint into cover never snap, A's use and lane E's out-of-cover mantle untouched; `MassEffectGuiManager.ShowCoverWidget` followed
+  by its `HideCoverWidget`); the crouch is `Engine.Pawn.ShouldCrouch`; VR cover answers `SFXGame.ModifyDamage`'s
+  `IsInCoverLeaning`/`IsInCover` and gives its cone's `CoverLink.GetSlotRotation` the surface's facing (`BioPawn.CurrentLink`
+  holds CoverLink's class default object for that call). `mevr cover snap on|off|auto | acquire | where | links | put`. LE3's
+  plan: research/23 section 6.3.
 - LE1 level camera (`game/view_level`, `core/vr/ViewLevel`, [research/24](research/24-view-level.md)):
   each shot's recoil goes into the player controller's rotation (ControlRotation) and the rifles' pitch
   kick never fades (`RecoilFadeSpeed=0`); with the stick's pitch off (`decoupledPitch`) the world tilted

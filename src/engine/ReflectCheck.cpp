@@ -2128,6 +2128,16 @@ void CheckClasses() {
     CheckClass<ASFXPlayerCamera>("SFXGame.SFXPlayerCamera");          // game/CameraShake: the camera's shake modifiers
     CheckClass<UCameraModifier>("Engine.CameraModifier");
     CheckClass<AWeapon>("Engine.Weapon");  // game/Weapon (M3.3): ME2's guns are SFXWeapon on Engine.Weapon
+    // game/Posture and game/VrCover (research/23 section 7): ME1's cover system on ME2
+    CheckClass<ACoverLink>("Engine.CoverLink");
+    CheckClass<ASFXGame>("SFXGame.SFXGame");
+    CheckClass<USFXDamageType>("SFXGame.SFXDamageType");
+    CheckClass<USFXModule_Damage>("SFXGame.SFXModule_Damage");
+    CheckClass<USFXModule_DamagePlayer>("SFXGame.SFXModule_DamagePlayer");
+    CheckClass<ASFXShield_Base>("SFXGame.SFXShield_Base");
+    CheckClass<AInventoryManager>("Engine.InventoryManager");
+    CheckClass<AInventory>("Engine.Inventory");
+    CheckClass<UMassEffectGuiManager>("SFXGame.MassEffectGuiManager");  // the HUD's cover prompt
 }
 
 void CheckFields() {
@@ -2213,6 +2223,26 @@ void CheckFields() {
     CheckField("Engine.Weapon", "Mesh", SDK_FIELD(AWeapon, Mesh));
     CheckField("SFXGame.SFXWeapon", "MuzzleSocketName", SDK_FIELD(ASFXWeapon, MuzzleSocketName));
     CheckField("Engine.SkeletalMesh", "Bounds", SDK_FIELD(USkeletalMesh, Bounds));
+    // game/Posture (research/23 section 7): the physical crouch, the cover state, the sprint
+    CheckField("Engine.Pawn", "bIsCrouched", SDK_BOOL(APawn, bIsCrouched));
+    CheckField("Engine.Pawn", "bWantsToCrouch", SDK_BOOL(APawn, bWantsToCrouch));
+    CheckField("SFXGame.BioPlayerController", "bStorming", SDK_BOOL(ABioPlayerController, bStorming));
+    CheckField("SFXGame.BioPlayerController", "m_bEnableStormToCover", SDK_BOOL(ABioPlayerController, m_bEnableStormToCover));
+    CheckField("SFXGame.BioPawn", "CurrentLink", SDK_FIELD(ABioPawn, CurrentLink));
+    CheckField("SFXGame.BioPawn", "CurrentSlotIdx", SDK_FIELD(ABioPawn, CurrentSlotIdx));
+    // game/VrCover: the shooter, the pawns, the damage type's defaults, Shepard's health and shields (`mevr cover hit`)
+    CheckField("Engine.Pawn", "EyeHeight", SDK_FIELD(APawn, EyeHeight));
+    CheckField("Engine.Pawn", "NextPawn", SDK_FIELD(APawn, NextPawn));
+    CheckField("Engine.Pawn", "Controller", SDK_FIELD(APawn, Controller));
+    CheckField("Engine.WorldInfo", "PawnList", SDK_FIELD(AWorldInfo, PawnList));
+    CheckField("Engine.Actor", "bHidden", SDK_BOOL(AActor, bHidden));
+    CheckField("SFXGame.SFXDamageType", "bIgnoresCoverDirection", SDK_BOOL(USFXDamageType, bIgnoresCoverDirection));
+    CheckField("SFXGame.SFXDamageType", "bDamagesFriends", SDK_BOOL(USFXDamageType, bDamagesFriends));
+    CheckField("SFXGame.SFXDamageType", "bHealthDamage", SDK_BOOL(USFXDamageType, bHealthDamage));
+    CheckField("SFXGame.SFXModule_Damage", "CurrentHealth", SDK_FIELD(USFXModule_Damage, CurrentHealth));
+    CheckField("SFXGame.SFXShield_Base", "CurrentShields", SDK_FIELD(ASFXShield_Base, CurrentShields));
+    CheckField("Engine.InventoryManager", "InventoryChain", SDK_FIELD(AInventoryManager, InventoryChain));
+    CheckField("Engine.Inventory", "Inventory", SDK_FIELD(AInventory, Inventory));
 }
 
 void CheckPaths() {
@@ -2299,6 +2329,26 @@ void CheckFunctions() {
         "SFXGame.SFXWeapon.GetMuzzleLoc",                 // game/Weapon (M3.3)
         "Engine.SkeletalMeshComponent.GetSocketWorldLocationAndRotation",
         "SFXGame.BioPawn.GetWeaponStartTraceLocation",
+        // game/Posture (research/23 section 7): the crouch, leaving a cover, refusing the cover snapping
+        "Engine.Pawn.ShouldCrouch",
+        "SFXGame.SFXGameModeDefault.TryExitCover",
+        "SFXGame.BioPawn.IsInCover",
+        "SFXGame.BioPawn.IsInCoverLeaning",
+        "SFXGame.BioPawn.LeaveCover",
+        "SFXGame.BioPawn.IsInAnimatedTransition",
+        "SFXGame.BioPlayerController.FindPlayerCover",
+        "SFXGame.BioPlayerController.TryAcquireCover",
+        "SFXGame.MassEffectGuiManager.ShowCoverWidget",
+        "SFXGame.MassEffectGuiManager.HideCoverWidget",
+        // game/VrCover: the damage rule, its cone's slot, the trace, the test tools
+        "SFXGame.SFXGame.ModifyDamage",
+        "Engine.CoverLink.GetSlotRotation",
+        "Engine.Actor.Trace",
+        "SFXGame.BioPawn.IsHostile",
+        "Engine.Pawn.IsDead",
+        "SFXGame.SFXModule_Damage.SFXTakeDamage",
+        "SFXGame.SFXModule_DamagePlayer.SFXTakeDamage",
+        "Engine.Actor.SetLocation",
     };
     for (char const* function : functions) {
         CheckFunction(function);
@@ -2351,6 +2401,47 @@ void CheckParams() {
     PARMS(USkeletalMeshComponent_execGetBoneLocation_Parms, "Engine.SkeletalMeshComponent.GetBoneLocation");
     PARAM(USkeletalMeshComponent_execGetBoneNames_Parms, "Engine.SkeletalMeshComponent.GetBoneNames", BoneNames);
     PARMS(USkeletalMeshComponent_execGetBoneNames_Parms, "Engine.SkeletalMeshComponent.GetBoneNames");
+    // game/Posture (research/23 section 7)
+    PARAM(APawn_execShouldCrouch_Parms, "Engine.Pawn.ShouldCrouch", bCrouch);
+    PARMS(APawn_execShouldCrouch_Parms, "Engine.Pawn.ShouldCrouch");
+    PARAM(USFXGameModeDefault_execTryExitCover_Parms, "SFXGame.SFXGameModeDefault.TryExitCover", bForceExit);
+    PARAM(USFXGameModeDefault_execTryExitCover_Parms, "SFXGame.SFXGameModeDefault.TryExitCover", ReturnValue);
+    PARAM(ABioPawn_execIsInCover_Parms, "SFXGame.BioPawn.IsInCover", ReturnValue);
+    PARMS(ABioPawn_execIsInCover_Parms, "SFXGame.BioPawn.IsInCover");
+    PARAM(ABioPawn_execIsInCoverLeaning_Parms, "SFXGame.BioPawn.IsInCoverLeaning", ReturnValue);
+    PARMS(ABioPawn_execIsInCoverLeaning_Parms, "SFXGame.BioPawn.IsInCoverLeaning");
+    PARAM(ABioPawn_execIsInAnimatedTransition_Parms, "SFXGame.BioPawn.IsInAnimatedTransition", ReturnValue);
+    PARAM(ABioPlayerController_execFindPlayerCover_Parms, "SFXGame.BioPlayerController.FindPlayerCover", ReturnValue);
+    PARMS(ABioPlayerController_execFindPlayerCover_Parms, "SFXGame.BioPlayerController.FindPlayerCover");
+    PARAM(ABioPlayerController_execTryAcquireCover_Parms, "SFXGame.BioPlayerController.TryAcquireCover", ReturnValue);
+    // game/VrCover: the damage call's arguments as its frame holds them, the cone's slot rotation, the trace
+    PARAM(ASFXGame_execModifyDamage_Parms, "SFXGame.SFXGame.ModifyDamage", HitLocation);
+    PARAM(ASFXGame_execModifyDamage_Parms, "SFXGame.SFXGame.ModifyDamage", DamageType);
+    PARAM(ASFXGame_execModifyDamage_Parms, "SFXGame.SFXGame.ModifyDamage", injured);
+    PARAM(ASFXGame_execModifyDamage_Parms, "SFXGame.SFXGame.ModifyDamage", InstigatedBy);
+    PARAM(ASFXGame_execModifyDamage_Parms, "SFXGame.SFXGame.ModifyDamage", DamageCauser);
+    PARAM(ACoverLink_execGetSlotRotation_Parms, "Engine.CoverLink.GetSlotRotation", SlotIdx);
+    PARAM(ACoverLink_execGetSlotRotation_Parms, "Engine.CoverLink.GetSlotRotation", ReturnValue);
+    PARMS(ACoverLink_execGetSlotRotation_Parms, "Engine.CoverLink.GetSlotRotation");
+    PARAM(AActor_execTrace_Parms, "Engine.Actor.Trace", HitLocation);
+    PARAM(AActor_execTrace_Parms, "Engine.Actor.Trace", HitNormal);
+    PARAM(AActor_execTrace_Parms, "Engine.Actor.Trace", TraceEnd);
+    PARAM(AActor_execTrace_Parms, "Engine.Actor.Trace", TraceStart);
+    PARAM(AActor_execTrace_Parms, "Engine.Actor.Trace", bTraceActors);
+    PARAM(AActor_execTrace_Parms, "Engine.Actor.Trace", ReturnValue);
+    PARMS(AActor_execTrace_Parms, "Engine.Actor.Trace");
+    PARAM(ABioPawn_execIsHostile_Parms, "SFXGame.BioPawn.IsHostile", Other);
+    PARAM(ABioPawn_execIsHostile_Parms, "SFXGame.BioPawn.IsHostile", ReturnValue);
+    PARAM(APawn_execIsDead_Parms, "Engine.Pawn.IsDead", ReturnValue);
+    PARAM(USFXModule_Damage_execSFXTakeDamage_Parms, "SFXGame.SFXModule_Damage.SFXTakeDamage", Damage);
+    PARAM(USFXModule_Damage_execSFXTakeDamage_Parms, "SFXGame.SFXModule_Damage.SFXTakeDamage", HitLocation);
+    PARAM(USFXModule_Damage_execSFXTakeDamage_Parms, "SFXGame.SFXModule_Damage.SFXTakeDamage", DamageType);
+    PARAM(USFXModule_Damage_execSFXTakeDamage_Parms, "SFXGame.SFXModule_Damage.SFXTakeDamage", InstigatedBy);
+    PARAM(USFXModule_Damage_execSFXTakeDamage_Parms, "SFXGame.SFXModule_Damage.SFXTakeDamage", DamageCauser);
+    PARAM(USFXModule_DamagePlayer_execSFXTakeDamage_Parms, "SFXGame.SFXModule_DamagePlayer.SFXTakeDamage", Damage);
+    PARAM(USFXModule_DamagePlayer_execSFXTakeDamage_Parms, "SFXGame.SFXModule_DamagePlayer.SFXTakeDamage", InstigatedBy);
+    PARAM(AActor_execSetLocation_Parms, "Engine.Actor.SetLocation", NewLocation);
+    PARAM(AActor_execSetLocation_Parms, "Engine.Actor.SetLocation", ReturnValue);
 }
 
 #endif  // LE1 / LE2 tables

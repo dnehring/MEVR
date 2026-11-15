@@ -5,7 +5,10 @@
 #include "core/ik/BodySlots.hpp"
 #include "core/ik/Posture.hpp"
 #include "core/vr/HostView.hpp"
+#include "core/WriteJournal.hpp"
 #include "core/vr/TestRequest.hpp"
+#include "engine/CallFunction.hpp"
+#include "engine/ProcessEvent.hpp"
 #include "engine/CoverAcquire.hpp"
 #include "engine/GameAdapter.hpp"
 #include "game/BodyCalibration.hpp"
@@ -21,7 +24,15 @@
 #include <cstdint>
 #include <format>
 #include <optional>
+#include <sstream>
 #include <string>
+#include <utility>
+#include <vector>
+
+// ME1 and ME2 (research/23 section 7: ME2's names; ME3 has no layout yet).
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
+#define MEVR_POSTURE 1
+#endif
 
 namespace mevr::game::posture {
 namespace {
@@ -42,6 +53,7 @@ constexpr double kStandingLogStep = 0.02;
 
 bool gStarted = false;
 bool gRefusingCover = false;  // VR on foot with noCover: the player is kept out of the game's cover (game/vr_cover)
+std::optional<bool> gNoCoverOverride;  // `mevr cover snap on|off|auto` (tests), until the mod reloads
 bool gActive = false;          // VR on foot with a player BioPawn, this tick
 std::string gWhy = "not started";
 std::string gLoggedWhy;
@@ -101,27 +113,107 @@ void SetWhy(std::string why) {
     }
 }
 
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_POSTURE)
 
-// Our reflection layer (ue3/, research/34): each found once, by name, in the running game.
-ue3::ClassRef gBioPlayerController{"SFXGame.BioPlayerController"};
-ue3::ClassRef gBioPawn{"SFXGame.BioPawn"};
-ue3::ClassRef gGameModeDefault{"SFXGame.SFXGameModeDefault"};
-ue3::FieldRef gPawnField{"Engine.Controller", "Pawn"};
-ue3::FieldRef gGameModeManager{"SFXGame.BioPlayerController", engine::adapter::kGameModeManager};
-ue3::FieldRef gGameModes{"SFXGame.SFXGameModeManager", "GameModes"};
-ue3::FieldRef gStorming{"SFXGame.BioPlayerController", "bStorming"};
-ue3::FieldRef gCoverType{"SFXGame.BioPawn", "CoverType"};
-ue3::FieldRef gCoverAction{"SFXGame.BioPawn", "CoverAction"};
-ue3::FieldRef gLocation{"Engine.Actor", "Location"};
-ue3::FieldRef gIsCrouched{"Engine.Pawn", "bIsCrouched"};
-ue3::FieldRef gWantsToCrouch{"Engine.Pawn", "bWantsToCrouch"};
+// Our reflection layer (ue3/, research/34): each found once, by name, in the running game (ME1 and ME2: kEveryGame).
+ue3::ClassRef gBioPlayerController{"SFXGame.BioPlayerController", ue3::kEveryGame};
+ue3::ClassRef gBioPawn{"SFXGame.BioPawn", ue3::kEveryGame};
+ue3::ClassRef gGameModeDefault{"SFXGame.SFXGameModeDefault", ue3::kEveryGame};
+ue3::FieldRef gPawnField{"Engine.Controller", "Pawn", ue3::kEveryGame};
+ue3::FieldRef gGameModeManager{"SFXGame.BioPlayerController", engine::adapter::kGameModeManager, ue3::kEveryGame};
+ue3::FieldRef gGameModes{"SFXGame.SFXGameModeManager", "GameModes", ue3::kEveryGame};
+ue3::FieldRef gStorming{"SFXGame.BioPlayerController", "bStorming", ue3::kEveryGame};
+ue3::FieldRef gCoverType{"SFXGame.BioPawn", "CoverType", ue3::kEveryGame};
+ue3::FieldRef gCoverAction{"SFXGame.BioPawn", "CoverAction", ue3::kEveryGame};
+ue3::FieldRef gLocation{"Engine.Actor", "Location", ue3::kEveryGame};
+ue3::FieldRef gIsCrouched{"Engine.Pawn", "bIsCrouched", ue3::kEveryGame};
+ue3::FieldRef gWantsToCrouch{"Engine.Pawn", "bWantsToCrouch", ue3::kEveryGame};
+
+// The crouch: ME1's BioPawn.ShouldCrouch also resets the mount attempt and the movement animation state (research/23
+// section 3); ME2 has no override, so the engine's Pawn.ShouldCrouch (bWantsToCrouch, what ME2's BioPawn.SetShouldCrouch
+// and its cover and AI call; research/23 section 7).
+#if defined(MEVR_GAME_LE1)
+constexpr char const* kShouldCrouchPath = "SFXGame.BioPawn.ShouldCrouch";
+#else
+constexpr char const* kShouldCrouchPath = "Engine.Pawn.ShouldCrouch";
+#endif
 
 ue3::Function* gShouldCrouch = nullptr;
 ue3::Function* gTryExitCover = nullptr;
 ue3::Function* gIsInCover = nullptr;
 ue3::Function* gLeaveCover = nullptr;
 bool gToldNoCrouchParam = false;
+
+#if defined(MEVR_GAME_LE2)
+// No cover snapping on ME2 (research/23 section 7; the owner, 2026-11-14: "We won't snap to cover for VR"). ME2 takes cover
+// only through BioPlayerController.TryAcquireCover (the A button's exec through ProcessEvent, and CheckStormToCover from a
+// sprint through CallFunction), which first asks the native FindPlayerCover; that native is called from script nowhere else.
+// Its answer inside TryAcquireCover is made false for the player's controller, so TryAcquireCover returns FALSE at once:
+// no snap, no CancelReload, no explore-to-combat switch, and the rest of A (use, lane E's out-of-cover mantle) untouched.
+// A native caller of FindPlayerCover's implementation (the HUD's cover prompt, BioPlayerController::UpdateCover) and any
+// call through ProcessEvent are not seen: only script calls pass through CallFunction.
+ue3::FunctionRef gFindPlayerCoverRef{"SFXGame.BioPlayerController.FindPlayerCover", ue3::kEveryGame};
+ue3::FunctionRef gTryAcquireCoverRef{"SFXGame.BioPlayerController.TryAcquireCover", ue3::kEveryGame};
+ue3::FunctionRef gInAnimatedTransitionRef{"SFXGame.BioPawn.IsInAnimatedTransition", ue3::kEveryGame};
+ue3::FieldRef gCurrentLink{"SFXGame.BioPawn", "CurrentLink", ue3::kEveryGame};
+ue3::FieldRef gCurrentSlotIdx{"SFXGame.BioPawn", "CurrentSlotIdx", ue3::kEveryGame};
+ue3::FieldRef gEnableStormToCover{"SFXGame.BioPlayerController", "m_bEnableStormToCover", ue3::kEveryGame};
+ue3::ClassRef gCoverLinkClass{"Engine.CoverLink", ue3::kEveryGame};
+// The HUD's "take cover" prompt: BioPlayerController::UpdateCover (0xACE2A0, the controller's native tick) finds cover through
+// FindPlayerCover's implementation (a C++ call the block above never sees) and ProcessEvents the GUI manager's
+// ShowCoverWidget or HideCoverWidget each tick. While the snapping is refused, a ShowCoverWidget is followed at once by the
+// game's own HideCoverWidget (a ProcessEvent post-handler: before anything is drawn), so no prompt offers what A won't do.
+// The climb/mantle prompt (ShowClimbMantleWidget, shown only in cover) is untouched.
+ue3::FunctionRef gHideCoverWidgetRef{"SFXGame.MassEffectGuiManager.HideCoverWidget", ue3::kEveryGame};
+unsigned gPromptsShown = 0;   // ShowCoverWidget calls seen (heartbeat)
+unsigned gPromptsHidden = 0;  // ... of which hidden again
+std::uint64_t gPromptsHiddenTotal = 0;
+bool gToldPrompt = false;
+bool gPromptHandlerAdded = false;
+ue3::Object* gRefusedController = nullptr;  // the player's controller while its cover acquisition is refused (game thread)
+bool gRefusalHandlerAdded = false;
+unsigned gAcquireLooked = 0;       // FindPlayerCover answers inside TryAcquireCover that had found nothing anyway (heartbeat)
+std::uint64_t gLastRefusalMs = 0;
+std::uint64_t gLastRefusalLogMs = 0;
+bool gToldRefusal = false;
+
+// BioPlayerController.FindPlayerCover returned (a script call): inside TryAcquireCover for the player's controller, its
+// "found" is made false. One TryAcquireCover asks twice (FindPlayerCover(FoundCover) || FindPlayerCover(FoundCover, TRUE)).
+void OnFindPlayerCover(ue3::Object* context, ue3::Function* /*function*/, ue3::Function* caller, std::uint8_t* /*callerLocals*/,
+    void* result) {
+    ue3::Object* const refused = gRefusedController;
+    if (refused == nullptr || context != refused || result == nullptr || caller == nullptr || caller != gTryAcquireCoverRef.Get()) {
+        return;
+    }
+    auto* const found = static_cast<std::uint32_t*>(result);
+    if (*found == 0) {
+        ++gAcquireLooked;
+        return;
+    }
+    *found = 0;
+    write_journal::Wrote("Posture.findPlayerCover", found, sizeof(*found));
+    ++gRefusedTests;
+    std::uint64_t const now = GetTickCount64();
+    if (now - gLastRefusalMs <= 250) {
+        return;  // the second ask of the same press
+    }
+    gLastRefusalMs = now;
+    ++gRefusedEntries;
+    ++gRefusedTotal;
+    // A sprint against cover asks every 0.3 s (CheckStormToCover): logged at most every 2 s, the heartbeat counts the rest.
+    if (now - gLastRefusalLogMs > 2000) {
+        gLastRefusalLogMs = now;
+        ue3::Object* const pawn = gPawnField.Read<ue3::Object*>(context).value_or(nullptr);
+        std::optional<ue3::Vector> const at = pawn != nullptr ? gLocation.Read<ue3::Vector>(pawn) : std::nullopt;
+        log::Info("posture: refused a cover entry: BioPlayerController.FindPlayerCover found cover for TryAcquireCover (the A "
+                  "button, or a sprint into cover), answered false ([Hands] noCover: no snapping in VR); Shepard stays at "
+                  "({:.0f}, {:.0f}, {:.0f}){}",
+            at ? at->x : 0.0f, at ? at->y : 0.0f, at ? at->z : 0.0f,
+            gToldRefusal ? "" : "; A's use and the out-of-cover mantle are untouched");
+        gToldRefusal = true;
+    }
+}
+#endif
 
 struct Game {
     ue3::Object* controller = nullptr;  // a BioPlayerController
@@ -138,7 +230,7 @@ bool WantsToCrouch(ue3::Object const* pawn) {
 }
 
 std::optional<Game> ReadGame(std::string& why) {
-    if (!ue3::runtime::Ready()) {
+    if (!ue3::runtime::Up()) {
         why = "our reflection layer is off (see the 'reflect:' log lines)";
         return std::nullopt;
     }
@@ -187,14 +279,14 @@ void CallVoid(ue3::Object* object, ue3::Function* function) {
     ue3::runtime::Call(object, function, parms);
 }
 
-// BioPawn.ShouldCrouch: Pawn.ShouldCrouch sets bWantsToCrouch (the engine crouches or stands on its
-// next move, standing only where there's room), then BioPawn resets its movement animation state.
+// ME1's BioPawn.ShouldCrouch: Pawn.ShouldCrouch sets bWantsToCrouch (the engine crouches or stands on its next move,
+// standing only where there's room), then BioPawn resets its movement animation state. ME2: Pawn.ShouldCrouch itself.
 void ShouldCrouch(ue3::Object* pawn, bool crouch) {
     ue3::Params parms(ue3::runtime::Get(), gShouldCrouch);
     if (!parms.SetBool("bCrouch", crouch)) {
         if (!gToldNoCrouchParam) {
             gToldNoCrouchParam = true;
-            log::Warn("posture: BioPawn.ShouldCrouch has no bool parameter bCrouch: not called");
+            log::Warn("posture: {} has no bool parameter bCrouch: not called", kShouldCrouchPath);
         }
         return;
     }
@@ -204,6 +296,16 @@ void ShouldCrouch(ue3::Object* pawn, bool crouch) {
 bool InCover(ue3::Object* pawn) {
     return gIsInCover != nullptr ? CallBool(pawn, gIsInCover)
                                  : CoverType(pawn) != 0 && gCoverAction.Read<std::uint8_t>(pawn).value_or(0) != 13;
+}
+
+// SFXGameModeDefault.TryExitCover, A's own exit. ME2's takes bForceExit (research/le2-movement-source.md): forced, or it
+// leaves only with the move stick pushed during a lean or peek.
+void ExitCover(ue3::Object* mode) {
+    ue3::Params parms(ue3::runtime::Get(), gTryExitCover);
+#if defined(MEVR_GAME_LE2)
+    parms.SetBool("bForceExit", true);
+#endif
+    ue3::runtime::Call(mode, gTryExitCover, parms);
 }
 
 char const* CoverName(int type) {
@@ -243,9 +345,39 @@ void FollowProbe(ue3::Object* pawn, double deltaSeconds) {
     }
 }
 
+#if defined(MEVR_GAME_LE2)
+// MassEffectGuiManager.ShowCoverWidget ran (ProcessEvent): hidden again while the snapping is refused.
+void OnShowCoverWidget(ue3::Object* context, ue3::Function* /*function*/, void* /*parms*/, void* /*result*/) {
+    ++gPromptsShown;
+    ue3::Function* const hide = gHideCoverWidgetRef.Get();
+    if (!gRefusingCover || context == nullptr || hide == nullptr) {
+        return;
+    }
+    CallVoid(context, hide);
+    ++gPromptsHidden;
+    ++gPromptsHiddenTotal;
+    if (!gToldPrompt) {
+        gToldPrompt = true;
+        log::Info("posture: the HUD's cover prompt (BioPlayerController::UpdateCover's ShowCoverWidget) is hidden again with "
+                  "MassEffectGuiManager.HideCoverWidget while the snapping is refused ({})", ue3::runtime::Get().FullName(context));
+    }
+}
+#endif
+
 // The cover side, each tick with a game.
 void TickCover(Game const& game, bool active, bool noCover, double deltaSeconds) {
     gRefusingCover = active && noCover;  // kept out of cover either way: refused, or left at once without the hook
+#if defined(MEVR_GAME_LE2)
+    // ME2: TryAcquireCover's FindPlayerCover answered false (a script call: the CallFunction hook, which Mod.cpp puts in while
+    // RefusingCover()).
+    bool const hooked = gRefusalHandlerAdded && engine::call_function::Installed();
+    gRefusedController = active && noCover && hooked ? game.controller : nullptr;
+    if (active && noCover && !gRefusalHandlerAdded && !gToldNoHook) {
+        gToldNoHook = true;
+        log::Warn("posture: BioPlayerController.FindPlayerCover or TryAcquireCover wasn't found: the game still takes cover on A, "
+                  "and Shepard leaves it at once");
+    }
+#else
     bool const refuse = active && noCover && engine::cover_acquire::Installed();
     engine::cover_acquire::Refuse(refuse ? game.pawn : nullptr);
     if (!refuse) {
@@ -266,6 +398,7 @@ void TickCover(Game const& game, bool active, bool noCover, double deltaSeconds)
                       "game would have snapped Shepard into it)", CoverName(stats.lastType), stats.lastAngle);
         }
     }
+#endif
 
     gInCover = InCover(game.pawn);
     if (!gInCover) {
@@ -278,6 +411,11 @@ void TickCover(Game const& game, bool active, bool noCover, double deltaSeconds)
     if (!(active && noCover)) {
         return;
     }
+#if defined(MEVR_GAME_LE2)
+    if (CallBool(game.pawn, gInAnimatedTransitionRef.Get())) {
+        return;  // a cover move under way: left once it has ended
+    }
+#endif
     if (!gCoverEpisode) {
         gCoverEpisode = true;
         gCoverSeconds = 0.0;
@@ -294,7 +432,7 @@ void TickCover(Game const& game, bool active, bool noCover, double deltaSeconds)
     gExitRetry = kExitRetrySeconds;
     ++gExits;
     if (gCoverSeconds < kExitFallbackSeconds && game.mode != nullptr && gTryExitCover != nullptr) {
-        CallVoid(game.mode, gTryExitCover);  // A's own exit: push off the wall, then LeaveCover
+        ExitCover(game.mode);  // A's own exit: push off the wall, then LeaveCover
     } else if (gLeaveCover != nullptr) {
         if (!gToldFallback) {
             gToldFallback = true;
@@ -394,7 +532,7 @@ void Ask(Game const& game, bool crouch, std::string const& why) {
     gGameWants = WantsToCrouch(game.pawn);
     gArbiter.Applied(gGameWants);
     gLastChange = std::format("{} ({})", crouch ? "crouch" : "stand", why);
-    log::Info("posture: Shepard {} ({}): BioPawn.ShouldCrouch({}){}", crouch ? "crouches" : "stands", why, crouch ? "true" : "false",
+    log::Info("posture: Shepard {} ({}): {}({}){}", crouch ? "crouches" : "stands", why, kShouldCrouchPath, crouch ? "true" : "false",
         gGameWants == crouch ? "" : " DIDN'T TAKE (bWantsToCrouch unchanged)");
 }
 
@@ -472,13 +610,13 @@ void TickCrouch(Game const& game, Link const& link, vr::host_view::State const& 
     }
 }
 
-#endif  // MEVR_GAME_LE1
+#endif  // MEVR_POSTURE
 
 } // namespace
 
 bool TryStartup() {
-#if defined(MEVR_GAME_LE1)
-    if (!ue3::runtime::Ready()) {
+#if defined(MEVR_POSTURE)
+    if (!ue3::runtime::Up()) {
         log::Warn("posture: our reflection layer is off ({}): physical cover and crouch stay off", ue3::runtime::Status());
         return false;
     }
@@ -487,7 +625,7 @@ bool TryStartup() {
         char const* path;
     };
     Want const wants[] = {
-        {&gShouldCrouch, "SFXGame.BioPawn.ShouldCrouch"},
+        {&gShouldCrouch, kShouldCrouchPath},
         {&gTryExitCover, "SFXGame.SFXGameModeDefault.TryExitCover"},
         {&gIsInCover, "SFXGame.BioPawn.IsInCover"},
         {&gLeaveCover, "SFXGame.BioPawn.LeaveCover"},
@@ -500,6 +638,29 @@ bool TryStartup() {
         }
     }
     gStarted = gShouldCrouch != nullptr || gTryExitCover != nullptr || gIsInCover != nullptr;
+#if defined(MEVR_GAME_LE2)
+    // The refusal of ME2's cover acquisition (a CallFunction handler: registered before the hook goes in).
+    ue3::Function* const findCover = gFindPlayerCoverRef.Get();
+    if (gStarted && findCover != nullptr && gTryAcquireCoverRef.Get() != nullptr) {
+        if (!gRefusalHandlerAdded) {
+            engine::call_function::AddFramePostHandler(findCover, &OnFindPlayerCover);
+            gRefusalHandlerAdded = true;
+        }
+    } else {
+        missing += std::format("{}BioPlayerController.FindPlayerCover or TryAcquireCover (no cover refusal)", missing.empty() ? "" : ", ");
+    }
+    // The cover prompt: every ShowCoverWidget (an override in a subclass included), a ProcessEvent post-handler (registered
+    // before the ProcessEvent hook goes in).
+    if (gStarted && !gPromptHandlerAdded && gHideCoverWidgetRef.Get() != nullptr) {
+        for (ue3::Function* const show : ue3::runtime::Get().FindFunctionsNamed("ShowCoverWidget")) {
+            engine::process_event::AddPostHandler(show, &OnShowCoverWidget);
+            gPromptHandlerAdded = true;
+        }
+    }
+    if (!gPromptHandlerAdded) {
+        missing += std::format("{}MassEffectGuiManager.ShowCoverWidget/HideCoverWidget (the cover prompt stays)", missing.empty() ? "" : ", ");
+    }
+#endif
     log::Info("posture: script functions {}{}", gStarted ? "found" : "MISSING: physical cover and crouch stay off",
         missing.empty() ? std::string() : std::format(" (not found: {}{})", missing,
                                               gShouldCrouch == nullptr ? "; no physical crouch" : ""));
@@ -518,24 +679,35 @@ bool RefusingCover() {
 }
 
 bool WantsCoverHook() {
+#if defined(MEVR_GAME_LE1)
     return gStarted && hand_calibration::GetPosture().noCover;
+#else
+    return false;  // ME2 has no automatic cover test: its refusal is a script handler (research/23 section 7)
+#endif
 }
 
 void Tick(double deltaSeconds, Link const& link) {
     hand_calibration::Refresh();  // at most once a second
     hand_calibration::Posture const settings = hand_calibration::GetPosture();
     gRefusingCover = false;  // until TickCover says so this tick
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_POSTURE)
+    bool const noCover = gNoCoverOverride.value_or(settings.noCover);
     if (!gStarted) {
         engine::cover_acquire::Refuse(nullptr);
-        SetWhy(ue3::runtime::Ready() ? std::string("waiting for the script functions")
-                                     : std::format("waiting for our reflection layer ({})", ue3::runtime::Status()));
+#if defined(MEVR_GAME_LE2)
+        gRefusedController = nullptr;
+#endif
+        SetWhy(ue3::runtime::Up() ? std::string("waiting for the script functions")
+                                  : std::format("waiting for our reflection layer ({})", ue3::runtime::Status()));
         return;
     }
     std::string why;
     auto const game = ReadGame(why);
     if (!game) {
         engine::cover_acquire::Refuse(nullptr);
+#if defined(MEVR_GAME_LE2)
+        gRefusedController = nullptr;
+#endif
         gActive = false;
         SetWhy(why);
         return;
@@ -566,14 +738,14 @@ void Tick(double deltaSeconds, Link const& link) {
         gActive = true;
         SetWhy("active");
     }
-    TickCover(*game, gActive, settings.noCover, deltaSeconds);
+    TickCover(*game, gActive, noCover, deltaSeconds);
     TickCrouch(*game, link, view, gActive,
         vr::calibration::PhysicalCrouch(body_calibration::Position(), settings.physicalCrouch), deltaSeconds);
 #else
     (void)deltaSeconds;
     (void)link;
     (void)settings;
-    SetWhy("LE1 only");
+    SetWhy("LE1 and LE2 only");
 #endif
 }
 
@@ -605,13 +777,31 @@ void LogStats() {
         gDetector.Crouched() ? "crouched" : "standing", gEye, gStandingHeight, gFraction.value_or(-1.0),
         gGameCrouched ? "crouched" : "standing", gGameWants ? "crouch" : "stand", gArbiter.Owns() ? ", ours" : "", gCrouches, gStands,
         gExternal);
+#if defined(MEVR_GAME_LE2)
+    if (gPromptsShown > 0 || gAcquireLooked > 0) {
+        log::Info("    posture: this period the HUD's cover prompt shown {} times, hidden again {} times; TryAcquireCover found nothing {} "
+                  "times", gPromptsShown, gPromptsHidden, gAcquireLooked);
+    }
+    gPromptsShown = gPromptsHidden = gAcquireLooked = 0;
+#endif
     gRefusedTests = gRefusedEntries = gExits = gCrouches = gStands = gExternal = 0;
 }
 
 void Shutdown(bool processExiting) {
     engine::cover_acquire::Refuse(nullptr);
-#if defined(MEVR_GAME_LE1)
-    if (!processExiting && gArbiter.Owns() && gShouldCrouch != nullptr && ue3::runtime::Ready()) {
+#if defined(MEVR_POSTURE)
+#if defined(MEVR_GAME_LE2)
+    gRefusedController = nullptr;
+    gRefusalHandlerAdded = false;  // the mod's CallFunction table goes with it (engine::call_function::ClearHandlers)
+    gAcquireLooked = 0;
+    gLastRefusalMs = gLastRefusalLogMs = 0;
+    gToldRefusal = false;
+    gPromptHandlerAdded = false;  // and its ProcessEvent table (engine::process_event::ClearHandlers)
+    gPromptsShown = gPromptsHidden = 0;
+    gPromptsHiddenTotal = 0;
+    gToldPrompt = false;
+#endif
+    if (!processExiting && gArbiter.Owns() && gShouldCrouch != nullptr && ue3::runtime::Up()) {
         ue3::Object* const pc = ue3::runtime::LocalPlayerController();
         ue3::Object* const pawn = pc != nullptr ? gPawnField.Read<ue3::Object*>(pc).value_or(nullptr) : nullptr;
         if (pawn != nullptr && reinterpret_cast<std::uintptr_t>(pawn) == gPawn && ue3::IsA(pawn, gBioPawn)) {
@@ -653,6 +843,109 @@ void Shutdown(bool processExiting) {
     gCrouches = gStands = gExternal = 0;
     gLastChange = "none";
     gProbe = {};
+}
+
+std::string CoverConsole(std::string_view args) {
+    std::istringstream words{std::string(args)};
+    std::string sub;
+    words >> sub;
+    if (sub == "snap") {
+        // `mevr cover snap on|off|auto`: the game's cover snapping allowed (on), refused (off) or as [Hands] noCover says, until
+        // the mod reloads (an A/B for the no-snapping check).
+        std::string mode;
+        words >> mode;
+        if (mode == "on" || mode == "off") {
+            gNoCoverOverride = mode == "off";
+        } else if (mode == "auto") {
+            gNoCoverOverride.reset();
+        } else {
+            return "usage: mevr cover snap on|off|auto";
+        }
+        return std::format("posture: the game's cover snapping {} until the mod reloads", gNoCoverOverride ? (*gNoCoverOverride ? "refused" : "allowed")
+                                                                                                         : "as [Hands] noCover says");
+    }
+#if defined(MEVR_POSTURE)
+    std::string why;
+    auto const game = ReadGame(why);
+    if (!game) {
+        return "mevr cover " + sub + ": " + why;
+    }
+    ue3::Object* const pawn = game->pawn;
+    auto where = [&] {
+        std::optional<ue3::Vector> const at = gLocation.Read<ue3::Vector>(pawn);
+        std::string text = std::format("Shepard at ({:.1f}, {:.1f}, {:.1f}), in cover {}, CoverType {}, CoverAction {}", at ? at->x : 0.0f,
+            at ? at->y : 0.0f, at ? at->z : 0.0f, InCover(pawn) ? "yes" : "no", CoverType(pawn),
+            gCoverAction.Read<std::uint8_t>(pawn).value_or(0));
+#if defined(MEVR_GAME_LE2)
+        ue3::Object* const link = gCurrentLink.Read<ue3::Object*>(pawn).value_or(nullptr);
+        text += std::format(", CurrentLink {}, CurrentSlotIdx {}; sprinting {} (storm to cover {}); cover prompts hidden {}",
+            link != nullptr ? ue3::runtime::Get().NameText(link) : std::string("None"), gCurrentSlotIdx.Read<std::int32_t>(pawn).value_or(-99),
+            gStorming.ReadBool(game->controller).value_or(false) ? "yes" : "no",
+            gEnableStormToCover.ReadBool(game->controller).value_or(false) ? "enabled" : "off", gPromptsHiddenTotal);
+#endif
+        text += std::format(", crouched {} (wants {}); cover snapping {}", gIsCrouched.ReadBool(pawn).value_or(false) ? "yes" : "no",
+            WantsToCrouch(pawn) ? "yes" : "no", gRefusingCover ? "refused" : "the game's");
+        return text;
+    };
+    if (sub == "where") {
+        return "mevr cover where: " + where();
+    }
+#if defined(MEVR_GAME_LE2)
+    if (sub == "links") {
+        // `mevr cover links [n]`: the nearest n (8) CoverLink actors to Shepard, for standing next to cover.
+        int count = 8;
+        words >> count;
+        std::optional<ue3::Vector> const at = gLocation.Read<ue3::Vector>(pawn);
+        ue3::Class* const cls = gCoverLinkClass.Get();
+        if (cls == nullptr || !at) {
+            return "mevr cover links: Engine.CoverLink or Shepard's place not found";
+        }
+        ue3::Reflection& r = ue3::runtime::Get();
+        std::vector<std::pair<double, ue3::Object*>> found;
+        for (std::int32_t i = 0, n = r.ObjectCount(); i < n; ++i) {
+            ue3::Object* const o = r.ObjectAt(i);
+            if (o == nullptr || !r.IsAlive(o) || !r.IsA(o, cls) || r.NameText(o).starts_with("Default__")) {
+                continue;
+            }
+            if (std::optional<ue3::Vector> const there = gLocation.Read<ue3::Vector>(o)) {
+                found.emplace_back(std::hypot(static_cast<double>(there->x - at->x), static_cast<double>(there->y - at->y),
+                                       static_cast<double>(there->z - at->z)), o);
+            }
+        }
+        std::sort(found.begin(), found.end(), [](auto const& a, auto const& b) { return a.first < b.first; });
+        std::string out = std::format("mevr cover links: {} CoverLinks; Shepard at ({:.0f}, {:.0f}, {:.0f})", found.size(), at->x, at->y, at->z);
+        for (std::size_t i = 0; i < found.size() && static_cast<int>(i) < count; ++i) {
+            std::optional<ue3::Vector> const there = gLocation.Read<ue3::Vector>(found[i].second);
+            out += std::format("\n    {} at ({:.0f}, {:.0f}, {:.0f}), {:.1f} m", r.NameText(found[i].second), there->x, there->y, there->z,
+                found[i].first / 100.0);
+        }
+        return out;
+    }
+#endif
+    if (sub == "acquire") {
+#if defined(MEVR_GAME_LE2)
+        // `mevr cover acquire`: BioPlayerController.TryAcquireCover through ProcessEvent, the exec the A button's alias runs (and
+        // CheckStormToCover from a sprint): what A does next to cover. Its answer, and Shepard before and after (the snap's move
+        // takes a moment: `mevr cover where` a second later).
+        ue3::Function* const tryAcquire = gTryAcquireCoverRef.Get();
+        if (tryAcquire == nullptr) {
+            return "mevr cover acquire: BioPlayerController.TryAcquireCover not found";
+        }
+        std::string const before = where();
+        unsigned const refusedBefore = gRefusedTests;
+        unsigned const lookedBefore = gAcquireLooked;
+        bool const took = CallBool(game->controller, tryAcquire);
+        return std::format("mevr cover acquire: TryAcquireCover returned {} (FindPlayerCover refused {} times, found nothing {} times); "
+                           "before: {}; after: {}",
+            took ? "TRUE" : "FALSE", gRefusedTests - refusedBefore, gAcquireLooked - lookedBefore, before, where());
+#else
+        return "mevr cover acquire: ME2 only (ME1 takes cover by itself: its test is engine/CoverAcquire's)";
+#endif
+    }
+    return "usage: mevr cover snap on|off|auto | where | acquire | links [n]";
+#else
+    return "mevr cover: LE1 and LE2 only";
+#endif
 }
 
 } // namespace mevr::game::posture

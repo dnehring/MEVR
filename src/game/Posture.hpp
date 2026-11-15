@@ -5,6 +5,7 @@
 
 #include <optional>
 #include <string>
+#include <string_view>
 
 // Physical cover and crouch (research/23). [Hands] noCover, physicalCrouch, crouchBelow, standAbove,
 // crouchDwellS in <GAME>MEVR.ini (game/hand_calibration). Both act only in VR on foot: the host's
@@ -32,7 +33,15 @@
 // Logged: the standing height and its source, every crouch and stand with the head height, the crouch
 // changing without us, the view's height above Shepard before and after (the game's crouch camera is 45
 // units lower in combat: research/23); a heartbeat line; "posture" in the snapshot's mod status. Game
-// thread. LE1 only.
+// thread. LE1 and LE2.
+//
+// ME2 (research/23 section 7): the same rules and settings, with ME2's names where the game forces them. Its crouch is
+// Engine.Pawn.ShouldCrouch (ME2 has no BioPawn override and no crouch button). It takes cover only on A
+// (BioPlayerController.TryAcquireCover, and CheckStormToCover from a sprint; no automatic test), so no cover snapping is one
+// CallFunction post-handler: BioPlayerController.FindPlayerCover's answer inside TryAcquireCover is made false for the
+// player's controller while VR on foot with noCover. A itself (use, the out-of-cover mantle) reaches the game unchanged.
+// A cover already taken is left with SFXGameModeDefault.TryExitCover(bForceExit = true), never during an animated
+// transition.
 namespace mevr::game::posture {
 
 // What the host offers this tick (Mod.cpp fills it from HostServices).
@@ -54,6 +63,9 @@ bool PhysicallyCrouched();
 bool RefusingCover();
 std::string StatusJson();
 void LogStats();
+// `mevr cover snap on|off|auto` (the game's cover snapping allowed or refused, an A/B until the mod reloads), `mevr cover where`
+// (Shepard's place, cover and crouch state), `mevr cover acquire` (ME2: TryAcquireCover, what A does next to cover). Game thread.
+std::string CoverConsole(std::string_view args);
 // Releases a crouch we made (unless the process is exiting) and stops refusing cover.
 void Shutdown(bool processExiting);
 

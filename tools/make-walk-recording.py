@@ -8,7 +8,7 @@ check of the body's place, research/69 "Seeing the body in the audit"). For the 
 keeping the run (research/29 "The legs keep the run"): replay it with its inputs on the fake headset,
 
     python tools/make-walk-recording.py out.mevrrec [segment] [hz] [--yaw DEG] [--pitch DEG] [--eye-height M] [--stick S] [--grip]
-        [--plan forward:14,stand:600] [--hands chest|view] [--hand-yaw DEG] [--fire EVERY[:HOLD]]
+        [--plan forward:14,stand:600] [--hands chest|view] [--hand-yaw DEG] [--fire EVERY[:HOLD]] [--crouch-drop M]
     tools/replay.ps1 -Path out.mevrrec -Loop -Inputs
 
 segment: seconds per stick direction (default 3). --yaw: the head (and the hands) turned DEG degrees right in the room.
@@ -24,7 +24,10 @@ sit on the controllers unscaled by the arm-length calibration; the wrists, 7 cm 
 the side). At 0.40 m ahead the hands were reach-scaled 0.16 m low, cut off at the snapshot's bottom edge (2026-11-13).
 --hand-yaw: the right controller (grip and aim) turned DEG degrees right of where the body faces, the head still ahead: hand
 aim's check (shots follow the controller, not the view; research/le2-vrik.md "Hand aim"). --fire: the right trigger pulled all
-the way for HOLD seconds (default 0.15) every EVERY seconds, from 2 s on (shots; replay with -Inputs)."""
+the way for HOLD seconds (default 0.15) every EVERY seconds, from 2 s on (shots; replay with -Inputs). A plan's `crouch`
+segment holds the stick still with the head (and the hands) --crouch-drop metres lower (default 0.6: below [Hands]
+crouchBelow's 0.75 of a 1.65 m standing eye height), the physical crouch's check (research/23 section 7):
+`--plan stand:8,crouch:4,stand:8`."""
 import math
 import struct
 import sys
@@ -38,6 +41,8 @@ FRAME = struct.Struct("<qI" + (POSE + "4f") * 2 + ("I4f" + POSE + POSE) * 2)
 # The left stick per segment (x right, y forward).
 SEGMENTS = [("forward", 0.0, 1.0), ("strafe right", 1.0, 0.0), ("back", 0.0, -1.0), ("strafe left", -1.0, 0.0),
             ("stand", 0.0, 0.0)]
+# Plan-only segments (not in the default loop): the head lowered, the stick still.
+EXTRA = [("crouch", 0.0, 0.0), ("a", 0.0, 0.0), ("sprint", 0.0, 1.0)]
 
 
 def head_orientation(yaw_deg, pitch_deg):
@@ -66,10 +71,12 @@ def main():
     fire_text = sys.argv[sys.argv.index("--fire") + 1] if "--fire" in sys.argv else ""
     fire_every = float(fire_text.split(":")[0]) if fire_text else 0.0
     fire_hold = float(fire_text.split(":")[1]) if ":" in fire_text else 0.15
+    crouch_drop = option("--crouch-drop", 0.6)
     if hands not in ("chest", "view"):
         print("--hands chest|view")
         return 2
-    taken = {i + 1 for i, a in enumerate(sys.argv) if a in ("--yaw", "--pitch", "--eye-height", "--stick", "--plan", "--hands", "--hand-yaw", "--fire")}
+    taken = {i + 1 for i, a in enumerate(sys.argv) if a in ("--yaw", "--pitch", "--eye-height", "--stick", "--plan", "--hands", "--hand-yaw", "--fire",
+                                                             "--crouch-drop")}
     args = [a for i, a in enumerate(sys.argv) if i > 0 and not a.startswith("--") and i not in taken]
     if not args:
         print(__doc__)
@@ -93,7 +100,7 @@ def main():
     left_hand = (*hand_q, *at(-side_m, -down, ahead_m))
     right_hand = (*head_orientation(yaw + hand_yaw, 0.0), *at(side_m, -down, ahead_m))
     valid = (1 << 4) | (1 << 5)  # gripValid, aimValid
-    by_name = {name: (name, sx, sy) for name, sx, sy in SEGMENTS}
+    by_name = {name: (name, sx, sy) for name, sx, sy in SEGMENTS + EXTRA}
     if "--plan" in sys.argv:
         plan_text = sys.argv[sys.argv.index("--plan") + 1]
         steps = [(by_name[name.strip()], float(seconds)) for name, seconds in (part.split(":") for part in plan_text.split(","))]
@@ -107,11 +114,17 @@ def main():
         f.write(HEADER.pack(MAGIC, 1, HEADER.size, FRAME.size, 0, int(time.time() * 1000)))
         for i in range(n):
             t = i / hz
-            _, sx, sy = frames[i]
+            name, sx, sy = frames[i]
             trigger = 1.0 if fire_every > 0 and t >= 2.0 and (t - 2.0) % fire_every < fire_hold else 0.0
-            f.write(FRAME.pack(int(t * 1e9), 3, *eyes[0], *fov, *eyes[1], *fov,
-                               valid, 0.0, 0.0, sx * stick, sy * stick, *left_hand, *left_hand,
-                               valid, trigger, grip, 0.0, 0.0, *right_hand, *right_hand))
+            dy = -crouch_drop if name == "crouch" else 0.0
+
+            def lowered(pose):  # xyzw then xyz: the position's y lowered by dy
+                return (*pose[:4], pose[4], pose[5] + dy, pose[6])
+
+            e0, e1, lh, rh = lowered(eyes[0]), lowered(eyes[1]), lowered(left_hand), lowered(right_hand)
+            f.write(FRAME.pack(int(t * 1e9), 3, *e0, *fov, *e1, *fov,
+                               valid, 0.0, 0.0, sx * stick, sy * stick, *lh, *lh,
+                               valid | (2 if name in ("a", "sprint") else 0), trigger, grip, 0.0, 0.0, *rh, *rh))
     starts = [sum(seconds for _, seconds in steps[:k]) for k in range(len(steps))]
     plan = ", ".join(f"{seg[0]} {start:g}-{start + seconds:g} s" for (seg, seconds), start in zip(steps, starts))
     print(f"{out}: {n} frames at {hz:g} Hz: {plan}; head yaw {yaw:g}, pitch {pitch:g}, stick {stick:g}, hands {hands}"
