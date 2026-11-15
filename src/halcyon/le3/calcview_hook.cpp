@@ -191,6 +191,110 @@ struct AerRingSlot { std::atomic<uint64_t> seq{0}; std::atomic<int> eye{0}; };
 AerRingSlot g_aerRing[kAerRingN];
 std::uintptr_t g_base = 0;
 
+// [MEVR] Read-only admission/submission census. These hooks live in the resident
+// renderer host, like Draw itself (not the hot-reloaded gameplay DLL). Sampled
+// state is thread-local and never used to admit a render or validate an eye.
+constexpr std::uintptr_t kSubmitFamilyRva = 0x35F090;
+constexpr std::uintptr_t kGuiBackendRva = 0x18B6BE0;
+using SubmitFamilyFn = void(__fastcall*)(void*, void*);
+SubmitFamilyFn g_origSubmitFamily = nullptr;
+std::atomic_bool g_nativeDrawDiagReady{false};
+struct DrawAdmission {
+    int disableWorld{-1}; // -1 = unreadable, otherwise native bit value
+    int backendPresent{-1};
+    int backendPredicate{0};
+    bool predicateKnown{false};
+};
+struct DrawNativeSample {
+    void* self{};
+    DrawAdmission before{}, after{};
+    unsigned calcCalls{}, submissions{}, sceneSubmissions{}, uiSubmissions{}, badFamilies{};
+    int lastViewCount{-1}, maxViewCount{-1};
+    DrawAdmission atLastSubmit{};
+};
+thread_local DrawNativeSample* t_nativeDrawSample = nullptr;
+
+DrawAdmission ReadDrawAdmission(void* self) noexcept
+{
+    DrawAdmission out;
+    // Native Draw receives FViewportClient at UObject+0x60; SDK's
+    // UGameViewportClient::bDisableWorldRendering is 0x194 bit 8.
+    __try { if (self) out.disableWorld =
+        (*reinterpret_cast<volatile unsigned char*>(static_cast<char*>(self) + 0x134) & 8) != 0; }
+    __except (EXCEPTION_EXECUTE_HANDLER) {}
+    __try {
+        const auto backend = *reinterpret_cast<volatile std::uintptr_t*>(g_base + kGuiBackendRva);
+        out.backendPresent = backend != 0;
+        if (backend) {
+            out.backendPredicate = *reinterpret_cast<volatile int*>(backend + 0x2BC);
+            out.predicateKnown = true;
+        }
+    } __except (EXCEPTION_EXECUTE_HANDLER) {}
+    return out;
+}
+
+// A family has a TArray of views at +0 and a scene pointer at +0x18.
+// Observe only its header during the native call; never retain/dereference views.
+bool ReadSubmitFamily(void* family, int* count, bool* hasScene) noexcept
+{
+    __try {
+        if (!family) return false;
+        auto const p = reinterpret_cast<std::uintptr_t>(family);
+        const auto data = *reinterpret_cast<volatile std::uintptr_t*>(p);
+        const int n = *reinterpret_cast<volatile int*>(p + 8);
+        const int capacity = *reinterpret_cast<volatile int*>(p + 12);
+        if (n < 0 || n > 64 || capacity < n || capacity > 4096 || (n && !data)) return false;
+        *hasScene = *reinterpret_cast<volatile std::uintptr_t*>(p + 0x18) != 0;
+        *count = n;
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+
+void __fastcall SubmitFamilyDetour(void* canvas, void* family) noexcept
+{
+    if (auto* sample = t_nativeDrawSample) {
+        ++sample->submissions;
+        sample->atLastSubmit = ReadDrawAdmission(sample->self);
+        int count = -1;
+        bool hasScene = false;
+        if (ReadSubmitFamily(family, &count, &hasScene)) {
+            if (hasScene) ++sample->sceneSubmissions;
+            else ++sample->uiSubmissions;
+            sample->lastViewCount = count;
+            if (count > sample->maxViewCount) sample->maxViewCount = count;
+        } else ++sample->badFamilies;
+    }
+    // No SEH around native work: preserve the original call's exception behavior.
+    g_origSubmitFamily(canvas, family);
+}
+
+bool SampleNativeDrawPair() noexcept
+{
+    if (!g_nativeDrawDiagReady.load(std::memory_order_acquire)) return false;
+    static uint64_t pairs = 0, lastMs = 0;
+    const auto now = GetTickCount64();
+    if (++pairs > 4 && now - lastMs < 5000) return false;
+    lastMs = now;
+    return true;
+}
+
+void LogNativeDrawSample(unsigned pass, const DrawNativeSample& s, bool completed) noexcept
+{
+    char line[800]{};
+    sprintf_s(line, "[SFRNATIVE] pass=%u thread=%lu complete=%d "
+        "preDisable=%d preBackend=%d prePredicateKnown=%d prePredicate=%d "
+        "postDisable=%d postBackend=%d postPredicateKnown=%d postPredicate=%d "
+        "calcCalls=%u submits=%u sceneSubmits=%u uiSubmits=%u badFamilies=%u "
+        "lastViews=%d maxViews=%d submitDisable=%d submitPredicateKnown=%d submitPredicate=%d "
+        "(CPU admission/submission only; no GPU completion)", pass, GetCurrentThreadId(), completed,
+        s.before.disableWorld, s.before.backendPresent, s.before.predicateKnown, s.before.backendPredicate,
+        s.after.disableWorld, s.after.backendPresent, s.after.predicateKnown, s.after.backendPredicate,
+        s.calcCalls, s.submissions, s.sceneSubmissions, s.uiSubmissions, s.badFamilies,
+        s.lastViewCount, s.maxViewCount, s.atLastSubmit.disableWorld,
+        s.atLastSubmit.predicateKnown, s.atLastSubmit.backendPredicate);
+    ME2VR::Log::Line(line);
+}
+
 // Write the ULocalPlayer viewport rect (Origin/Size) the engine reads in CalcSceneView. SEH-guarded.
 void WriteRect(std::uintptr_t lp, float ox, float oy, float sx, float sy) noexcept
 {
@@ -1028,18 +1132,36 @@ void __fastcall DrawDetour(void* self, void* viewport, void* canvas) noexcept
     // its CPU time, and time both passes as the game thread sees them (a pass that waits on the
     // render thread shows up here as wall time without CPU time).
     g_drawThreadId.store(GetCurrentThreadId(), std::memory_order_relaxed);
+    const bool sampleNative = sfrGameplay && !t_nativeDrawSample && SampleNativeDrawPair();
+    DrawNativeSample native0{}, native1{};
+    if (sampleNative) {
+        native0.self = native1.self = self;
+        native0.before = ReadDrawAdmission(self);
+        t_nativeDrawSample = &native0;
+    }
     LARGE_INTEGER q0, q1, q2;
     QueryPerformanceCounter(&q0);
 
     t_replay = false;
     g_origDraw(self, viewport, canvas);          // PASS 0 = the game's normal render (-halfEye)
     QueryPerformanceCounter(&q1);
+    if (sampleNative) {
+        native0.after = ReadDrawAdmission(self);
+        native1.before = ReadDrawAdmission(self);
+        t_nativeDrawSample = &native1;
+    }
     if (!sfrGameplay) { DrawPassNote(q0, q1, q1); return; }
 
     t_replay = true;
     const bool ok = SfrReplayDrawSEH(self, viewport, canvas);   // PASS 1 = replay (+halfEye)
     t_replay = false;
     QueryPerformanceCounter(&q2);
+    if (sampleNative) {
+        native1.after = ReadDrawAdmission(self);
+        t_nativeDrawSample = nullptr;
+        LogNativeDrawSample(0, native0, true);
+        LogNativeDrawSample(1, native1, ok);
+    }
     DrawPassNote(q0, q1, q2);
     SfrTimingNote(q0, q1, q2);
 
@@ -1066,6 +1188,7 @@ float MevrCinemaHalfFov(std::uintptr_t sv) noexcept {
 void* __fastcall CalcViewDetour(void* lp, void* family, void* loc, void* rot, void* vp, void* drawer) noexcept
 {
     if (g_orig == nullptr) return nullptr;
+    if (t_nativeDrawSample) ++t_nativeDrawSample->calcCalls;
 
     const std::uintptr_t lpu = reinterpret_cast<std::uintptr_t>(lp);
     const bool isP1 = (lpu == ME2VR::EngineProbe::GetPrimaryLocalPlayer());
@@ -1737,6 +1860,38 @@ bool RendererBytesMatch(std::uintptr_t rva, const unsigned char* bytes, size_t s
     __try { return std::memcmp(reinterpret_cast<const void*>(g_base + rva), bytes, size) == 0; }
     __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
+void InstallNativeDrawDiagnostic() noexcept
+{
+    // Exact function starts, each unique in the captured 60AEF0C4 .text.
+    // The getter's RIP-relative operand additionally verifies the backend global;
+    // the predicate verifies the +0x2BC field. Do not call either game getter.
+    static const unsigned char submit[] = {0x40,0x55,0x56,0x57,0x41,0x54,0x41,0x55,0x41,0x56,0x41,0x57,0x48,0x8D,0xAC,0x24,0x50,0xFF,0xFF,0xFF,0x48,0x81,0xEC,0xB0,0x01,0x00,0x00,0x48,0xC7,0x45,0xB8,0xFE,0xFF,0xFF,0xFF};
+    static const unsigned char getter[] = {0x48,0x8B,0x05,0x79,0x73,0xC9,0x00,0xC3};
+    static const unsigned char predicate[] = {0x48,0x83,0xEC,0x28,0xE8,0xB7,0x0A,0x06,0x00,0x48,0x85,0xC0,0x74,0x0B,0x8B,0x80,0xBC,0x02,0x00,0x00,0x48,0x83,0xC4,0x28,0xC3,0x48,0x83,0xC4,0x28,0xC3};
+    if (!RendererBytesMatch(kSubmitFamilyRva, submit, sizeof(submit)) ||
+        !RendererBytesMatch(0xC1F860, getter, sizeof(getter)) ||
+        !RendererBytesMatch(0xBBEDA0, predicate, sizeof(predicate))) {
+        ME2VR::Log::Line("[SFRNATIVE] unavailable: submission/backend entry identity mismatch; rendering unchanged");
+        return;
+    }
+    auto* target = reinterpret_cast<void*>(g_base + kSubmitFamilyRva);
+    const auto created = MH_CreateHook(target, reinterpret_cast<void*>(&SubmitFamilyDetour),
+        reinterpret_cast<void**>(&g_origSubmitFamily));
+    if (created != MH_OK) {
+        ME2VR::Log::Line("[SFRNATIVE] unavailable: diagnostic hook creation refused; rendering unchanged");
+        return;
+    }
+    if (MH_EnableHook(target) != MH_OK) {
+        MH_RemoveHook(target); // remove only the hook this observer created
+        g_origSubmitFamily = nullptr;
+        ME2VR::Log::Line("[SFRNATIVE] unavailable: diagnostic hook enable refused; rendering unchanged");
+        return;
+    }
+    // This host and native hooks remain resident for the game process lifetime;
+    // XR stop/restart and gameplay DLL reload do not remove or duplicate them.
+    g_nativeDrawDiagReady.store(true, std::memory_order_release);
+    ME2VR::Log::Line("[SFRNATIVE] checked observer installed; first four SFR pairs then one per 5s; no render changes");
+}
 bool RendererTargetsMatch() noexcept
 {
     static const unsigned char calc[] = {0x48,0x8B,0xC4,0x55,0x53,0x56,0x57,0x41,0x54,0x41,0x55,0x41,0x56,0x41,0x57,0x48,0x8D,0xA8,0x98,0xFD,0xFF,0xFF,0x48,0x81,0xEC,0x88,0x03,0x00};
@@ -1793,6 +1948,7 @@ void Tick() noexcept
         MH_EnableHook(drawTarget) == MH_OK)
     {
         ME2VR::Log::Line("[SFR] Draw hook installed at MassEffect3.exe+" + Hex(kDrawRva));
+        if (g_installed.load(std::memory_order_acquire)) InstallNativeDrawDiagnostic();
     }
     else
     {
