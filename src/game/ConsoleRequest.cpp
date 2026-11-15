@@ -79,7 +79,7 @@ std::filesystem::path Directory() {
     return std::filesystem::path(buffer) / L"MEVR";
 }
 
-#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 
 // Our reflection layer (research/34; LE2's since M1, docs/le2-continuation-plan.md): the function, found once in the
 // running game. On LE2, LExSDKv2 (engine/Legacy) while the layer is off.
@@ -1631,9 +1631,9 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
 
 #endif
 
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 
-// ME2's saves by script (M1.6 of docs/le2-continuation-plan.md; research/le2-engine-access-discovery.md "A save loaded
+// The sequels' saves by script (M1.6 of docs/le2-continuation-plan.md; research/le2-engine-access-discovery.md "A save loaded
 // by script"): SFXEngine.QueueSaveGameCommand(SaveGame_Load = 1, the save's descriptor, no callback), the call the Load
 // screen's Callback_ConfirmLoadGame and the console's QuickLoad (BioPlayerController.ResumeGame, SFXEngine.ResumeGame)
 // make. It reads a save; it never writes one. Game thread (the console request's tick).
@@ -1666,7 +1666,9 @@ std::string CurrentSave(ue3::Object* engine) {
         return "mevr savedesc: SFXEngine.GetCurrentSaveDescriptor isn't there (see the 'reflect:' lines)";
     }
     ue3::Params parms(ue3::runtime::Get(), function);
-    ue3::runtime::Call(engine, function, parms);
+    if (!ue3::runtime::Call(engine, function, parms)) {
+        return "mevr savedesc: native descriptor call failed";
+    }
     void* const descriptor = gCurrentReturn.Address(parms.Data());
     ue3::FString* const career = gCurrentCareer.In<ue3::FString>(descriptor);
     ue3::FString* const name = gCurrentSaveName.In<ue3::FString>(descriptor);
@@ -1711,7 +1713,9 @@ std::string LoadSave(ue3::Object* engine, std::istringstream& words) {
     *nameField = nameText.Get();
     *indexField = index;
     *typeField = static_cast<std::uint8_t>(type);
-    ue3::runtime::Call(engine, function, parms);  // the callback stays None
+    if (!ue3::runtime::Call(engine, function, parms)) {  // the callback stays None
+        return "mevr load: native queue call failed";
+    }
     return "mevr load: queued " + Describe(careerField, nameField, indexField, typeField);
 }
 
@@ -1721,11 +1725,37 @@ std::string State(ue3::Object* pc) {
     std::optional<ue3::Vector> const at = pawn != nullptr ? player::Location(pawn) : std::nullopt;
     std::optional<std::uint8_t> const mode = player::GameMode(pc);
     void const* const world = engine::World();
-    return std::format("mevr state: world {}; pawn {}{}; game mode {}",
+    std::string text = std::format("mevr state: world {}; pawn {}{}; game mode {}",
         world != nullptr ? ue3::runtime::FullName(static_cast<ue3::Object const*>(world)) : std::string("None"),
         ue3::runtime::FullName(pawn), at ? std::format(" at ({:.0f}, {:.0f}, {:.0f})", at->x, at->y, at->z) : std::string(),
         mode ? std::to_string(*mode) : std::string("none"));
+#if defined(MEVR_GAME_LE3)
+    text += std::format("; worldId 0x{:X}; pawnId 0x{:X}", reinterpret_cast<std::uintptr_t>(world), reinterpret_cast<std::uintptr_t>(pawn));
+#endif
+    return text;
 }
+
+#if defined(MEVR_GAME_LE3)
+std::optional<std::string> RunOursLe3(ue3::Object* pc, std::string const& line) {
+    std::istringstream words(line);
+    std::string head, verb;
+    words >> head >> verb;
+    if (head != "mevr" || !ue3::runtime::Up()) return std::nullopt;
+    if (verb == "load") return LoadSave(ue3::runtime::GameEngine(), words);
+    if (verb == "savedesc") return CurrentSave(ue3::runtime::GameEngine());
+    if (verb == "state") return State(pc);
+    if (verb == "powerwheel") { std::string rest; std::getline(words, rest); return power_wheel::Console(rest); }
+    if (verb == "omni") { std::string which; words >> which; return game_menu_request::Inject(which); }
+    if (verb == "guimouse" || verb == "guikey") {
+        std::string rest; std::getline(words, rest);
+        return verb == "guimouse" ? gui_cursor::Command(rest) : gui_cursor::KeyCommand(rest);
+    }
+    return std::string("unknown on ME3: mevr load <career> <save name> <index> <type> | mevr savedesc | mevr state | mevr powerwheel | mevr omni | mevr guimouse | mevr guikey");
+}
+#endif
+#endif // shared sequel save/state requests
+
+#if defined(MEVR_GAME_LE2)
 
 // "mevr instances <Package.Class> [text]" and "mevr activate <n> [input]" on ME2 (LE1's lines, the same output): the live
 // objects of a class whose full name holds the text (up to 60 kept for `activate`), and a Kismet op's input fired
@@ -1958,6 +1988,10 @@ void Tick(float deltaSeconds) {
         std::string output;
 #if defined(MEVR_GAME_LE1)
         if (std::optional<std::string> ours = RunOurs(pc, line)) {
+            output = *ours;
+        } else
+#elif defined(MEVR_GAME_LE3)
+        if (std::optional<std::string> ours = RunOursLe3(pc, line)) {
             output = *ours;
         } else
 #elif defined(MEVR_GAME_LE2)

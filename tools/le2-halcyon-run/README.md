@@ -129,6 +129,12 @@ For an already prepared and launched **LE3 engine-request session**:
 tools\le2-halcyon-run\load.ps1 -Game LE3 -Holder <owned holder> -Save <career>\Save_0031.pcsav
 ```
 
+Prepare that session with `-Game LE3 -DesktopDump -EngineProbe -EngineRequests` on prep, launch, stop and restore.
+`-EngineRequests` without `-EngineProbe` is refused. The native reflection check must pass before the mod consumes
+the existing console channel; gameplay modules and the VR renderer remain disabled. Prep preserves prior request
+and result files before clearing the channel; restore preserves this run's files and restores the originals.
+Always stop the owned process and restore in `finally`, including after a failed load.
+
 LE3 requires an explicit save and actual JSON `true` values for `desktopDump`, `engineProbe` and `engineRequests`
 in the session. These flags are established by the coordinator's `prep.ps1`/`launch.ps1` engine-request mode;
 this load helper does not enable them. Only normal manual/quick/auto/chapter descriptors (types 0..3) are accepted.

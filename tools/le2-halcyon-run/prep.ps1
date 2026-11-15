@@ -5,13 +5,14 @@ param(
     [ValidateSet('LE2', 'LE3')][string]$Game = 'LE2',
     [switch]$DesktopDump,
     [switch]$EngineProbe,
+    [switch]$EngineRequests,
     [ValidatePattern('^[A-Za-z0-9_-]+$')][string]$Tag = 'halcyon',
     [string]$BuildDir,
     [switch]$Diagnostics
 )
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\session-common.ps1"
-Assert-RunMode $Game ([bool]$DesktopDump) ([bool]$EngineProbe)
+Assert-RunMode $Game ([bool]$DesktopDump) ([bool]$EngineProbe) ([bool]$EngineRequests)
 if ($DesktopDump -and $Diagnostics) { throw '-Diagnostics is only for the LE2 renderer' }
 . "$PSScriptRoot\..\common.ps1"
 $W = (Resolve-Path "$PSScriptRoot\..\..").Path
@@ -31,7 +32,7 @@ if (Get-Process MassEffect1, MassEffect2, MassEffect3, MassEffectLauncher -Error
 $open = $null
 if (Test-Path -LiteralPath $current) {
     $open = Get-Content -LiteralPath $current -Raw | ConvertFrom-Json
-    Assert-RunSession $open $Holder $Game ([bool]$DesktopDump) ([bool]$EngineProbe)
+    Assert-RunSession $open $Holder $Game ([bool]$DesktopDump) ([bool]$EngineProbe) ([bool]$EngineRequests)
 }
 # A second game stretch by the same holder must not create overlapping profile backups.
 $other = Get-RunNames $(if ($Game -eq 'LE2') { 'LE3' } else { 'LE2' })
@@ -52,7 +53,7 @@ if (-not $open) {
     }
     New-Item -ItemType Directory "$S\backup\ME1ASI" | Out-Null
     Copy-Item "$G\ME1\Binaries\Win64\ASI\*.ini" "$S\backup\ME1ASI\" -ErrorAction SilentlyContinue
-    $open = [pscustomobject]@{ holder = $Holder; game = $Game; desktopDump = [bool]$DesktopDump; engineProbe = [bool]$EngineProbe; session = $S;
+    $open = [pscustomobject]@{ holder = $Holder; game = $Game; desktopDump = [bool]$DesktopDump; engineProbe = [bool]$EngineProbe; engineRequests = [bool]$EngineRequests; session = $S;
         since = (Get-Date -Format 's'); install = $install; profile = $docs }
     Assert-RunLock $Holder
     if (Get-Process MassEffect1, MassEffect2, MassEffect3, MassEffectLauncher -ErrorAction SilentlyContinue) { throw 'A game started during backup; deployment refused' }
@@ -61,7 +62,7 @@ if (-not $open) {
     Rename-Item -LiteralPath "$b\bink2w64.dll" -NewName 'bink2w64_original.dll'
     Copy-Item -LiteralPath $proxy.FullName -Destination "$b\bink2w64.dll"
 } else {
-    $open = Read-RunSession $Holder $Game ([bool]$DesktopDump) ([bool]$EngineProbe)
+    $open = Read-RunSession $Holder $Game ([bool]$DesktopDump) ([bool]$EngineProbe) ([bool]$EngineRequests)
     if (($open.install -and $open.install -ne $install) -or ($open.profile -and $open.profile -ne $docs)) { throw 'Install/profile changed since backup' }
     "The stretch in $($open.session) is open: redeploying only"
 }
@@ -71,7 +72,9 @@ if (Get-Process MassEffect1, MassEffect2, MassEffect3, MassEffectLauncher -Error
 if ($LASTEXITCODE -ne 0) { throw 'Deploy failed; restore the open stretch before releasing its lock' }
 if ($DesktopDump) {
     $modeKey = if ($EngineProbe) { 'engineProbe' } else { 'dumpOnly' }
-    [IO.File]::WriteAllText("$b\ASI\${Game}MEVR.ini", "[Debug]`r`n$modeKey = 1`r`n")
+    $requestLine = if ($EngineRequests) { "engineProbeRequests = 1`r`n" } else { '' }
+    if ($EngineRequests) { Backup-RunConsole $open $current (Join-Path $env:LOCALAPPDATA 'MEVR') }
+    [IO.File]::WriteAllText("$b\ASI\${Game}MEVR.ini", "[Debug]`r`n$modeKey = 1`r`n$requestLine")
     "Desktop $modeKey prepared: no fake headset or VR settings were invoked"
     exit 0
 }

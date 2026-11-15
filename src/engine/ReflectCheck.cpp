@@ -3139,7 +3139,7 @@ void Write(int agree, int mismatches, int notReflected) {
 
 } // namespace
 
-void Run(hook::Context& context) {
+bool Run(hook::Context& context) {
     // LExSDKv2's resolver for its BUILTIN_*_RVA (the reference side only; FromOffset never calls the interface).
     ::LESDK::Initializer init{reinterpret_cast<ISharedProxyInterface*>(context.Spi()), MEVR_GAME_NAME_A "MEVRreference"};
     // Its module snapshot can fail while another DLL loads and leave the base null (engine/Legacy's Init, 2026-11-14).
@@ -3149,13 +3149,13 @@ void Run(hook::Context& context) {
         log::Warn("reflect: self-check skipped: LExSDKv2's globals (the reference) didn't resolve");
         Add("global", "LExSDKv2", false, ue3::runtime::Status(), "its globals didn't resolve");
         Write(0, 1, 0);
-        return;
+        return false;
     }
     if (!ue3::runtime::Up()) {
         log::Warn("reflect: self-check skipped: {}", ue3::runtime::Status());
         Add("global", "layer", false, ue3::runtime::Status(), "");
         Write(0, 1, 0);
-        return;
+        return false;
     }
     LARGE_INTEGER start{};
     LARGE_INTEGER end{};
@@ -3209,18 +3209,20 @@ void Run(hook::Context& context) {
         }
     }
     Write(agree, mismatches, notReflected);
+    return agree > 0 && mismatches == 0;
 }
 
 #elif defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 
-void Run(hook::Context&) {
+bool Run(hook::Context&) {
     log::Info("reflect: no LExSDKv2 cross-check in this build (a players' build has no LExSDKv2 in it); our reflection layer "
               "requires a supported game layout and each feature stands down with a log line if a lookup fails");
+    return false;
 }
 
 #else
 
-void Run(hook::Context&) {}
+bool Run(hook::Context&) { return false; }
 
 #endif
 

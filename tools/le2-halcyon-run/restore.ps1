@@ -3,11 +3,11 @@
 # their manifests (changed files copied back, files the runs added moved aside into the session folder, never deleted),
 # every file checked hash for hash, the run lock released. Once per task, not after every run.
 param([Parameter(Mandatory)][string]$Holder,
-    [ValidateSet('LE2', 'LE3')][string]$Game = 'LE2', [switch]$DesktopDump, [switch]$EngineProbe)
+    [ValidateSet('LE2', 'LE3')][string]$Game = 'LE2', [switch]$DesktopDump, [switch]$EngineProbe, [switch]$EngineRequests)
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\session-common.ps1"
-Assert-RunMode $Game ([bool]$DesktopDump) ([bool]$EngineProbe)
-$open = Read-RunSession $Holder $Game ([bool]$DesktopDump) ([bool]$EngineProbe)
+Assert-RunMode $Game ([bool]$DesktopDump) ([bool]$EngineProbe) ([bool]$EngineRequests)
+$open = Read-RunSession $Holder $Game ([bool]$DesktopDump) ([bool]$EngineProbe) ([bool]$EngineRequests)
 . "$PSScriptRoot\..\common.ps1"
 $W = (Resolve-Path "$PSScriptRoot\..\..").Path
 $names = Get-RunNames $Game
@@ -89,5 +89,6 @@ if ((Test-Path $i) -and (Test-Path "$S\backup\ME1ASI\LE1MEVR.ini")) {
     "LE1MEVR.ini as before: $((Get-FileHash $i).Hash -eq (Get-FileHash "$S\backup\ME1ASI\LE1MEVR.ini").Hash)"
 }
 if ($bad -ne 0) { throw "the stretch is left open: $bad differences (the backup is in $S\backup)" }
+if ($EngineRequests -and $open.PSObject.Properties['consoleBefore']) { Restore-RunConsole $open (Join-Path $env:LOCALAPPDATA 'MEVR') }
 Remove-Item -LiteralPath $current -Confirm:$false
 & powershell -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot\run-lock.ps1" -Release -Holder $Holder

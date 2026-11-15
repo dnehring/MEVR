@@ -15,12 +15,13 @@ function Get-RunNames([string]$Game) {
     [pscustomobject]@{ game = $Game; number = $n; folder = "ME$n"; process = "MassEffect$n";
         current = (Join-Path $env:LOCALAPPDATA "MEVR\sessions\$($Game.ToLower())-current.json") }
 }
-function Assert-RunMode([string]$Game, [bool]$DesktopDump, [bool]$EngineProbe = $false) {
+function Assert-RunMode([string]$Game, [bool]$DesktopDump, [bool]$EngineProbe = $false, [bool]$EngineRequests = $false) {
     if (($Game -eq 'LE3') -ne $DesktopDump) { throw 'LE3 requires -DesktopDump; LE2 supports the existing VR mode only' }
+    if ($EngineRequests -and -not $EngineProbe) { throw 'EngineRequests requires EngineProbe' }
     if ($EngineProbe -and ($Game -ne 'LE3' -or -not $DesktopDump)) { throw 'EngineProbe requires LE3 DesktopDump protection' }
 }
-function Assert-RunSession($Open, [string]$Holder, [string]$Game, [bool]$DesktopDump, [bool]$EngineProbe = $false) {
-    Assert-RunMode $Game $DesktopDump $EngineProbe
+function Assert-RunSession($Open, [string]$Holder, [string]$Game, [bool]$DesktopDump, [bool]$EngineProbe = $false, [bool]$EngineRequests = $false) {
+    Assert-RunMode $Game $DesktopDump $EngineProbe $EngineRequests
     if (-not $Holder -or $Open.holder -ne $Holder) { throw 'Session holder does not match -Holder' }
     $recordedGame = if ($Open.PSObject.Properties['game']) { $Open.game } else { 'LE2' }
     $recordedDump = if ($Open.PSObject.Properties['desktopDump']) { $Open.desktopDump } else { $false }
@@ -28,6 +29,8 @@ function Assert-RunSession($Open, [string]$Holder, [string]$Game, [bool]$Desktop
     if ($recordedGame -ne $Game -or $recordedDump -ne $DesktopDump) { throw 'Session game/mode differs from the requested game/mode' }
     $recordedProbe = if ($Open.PSObject.Properties['engineProbe']) { $Open.engineProbe } else { $false }
     if ($recordedProbe -isnot [bool] -or $recordedProbe -ne $EngineProbe) { throw 'Session engine-probe mode differs from request' }
+    $recordedRequests = if ($Open.PSObject.Properties['engineRequests']) { $Open.engineRequests } else { $false }
+    if ($recordedRequests -isnot [bool] -or $recordedRequests -ne $EngineRequests) { throw 'Session request mode differs from request' }
 }
 function Assert-RunLock([string]$Holder) {
     $path = Join-Path $env:LOCALAPPDATA 'MEVR\game-run.lock'
@@ -44,11 +47,11 @@ function Resolve-RunChild([string]$Root, [string]$Relative) {
     if (-not $path.StartsWith($base + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Run path escapes its intended root' }
     return $path
 }
-function Read-RunSession([string]$Holder, [string]$Game, [bool]$DesktopDump, [bool]$EngineProbe = $false) {
+function Read-RunSession([string]$Holder, [string]$Game, [bool]$DesktopDump, [bool]$EngineProbe = $false, [bool]$EngineRequests = $false) {
     $names = Get-RunNames $Game
     if (-not (Test-Path -LiteralPath $names.current)) { throw "No $Game stretch is open" }
     $open = Get-Content -LiteralPath $names.current -Raw | ConvertFrom-Json
-    Assert-RunSession $open $Holder $Game $DesktopDump $EngineProbe
+    Assert-RunSession $open $Holder $Game $DesktopDump $EngineProbe $EngineRequests
     Assert-RunLock $Holder
     $sessions = Join-Path $env:LOCALAPPDATA 'MEVR\sessions'
     $safe = Resolve-RunChild $sessions $open.session
@@ -59,6 +62,54 @@ function Write-RunSession($Open, [string]$Current) {
     $temporary = "$Current.tmp"
     $Open | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $temporary -Encoding utf8
     Move-Item -LiteralPath $temporary -Destination $Current -Force
+}
+function Backup-RunConsole($Open, [string]$Current, [string]$ChannelRoot) {
+    $backup = Resolve-RunChild $Open.session 'console-before'
+    if (-not $Open.PSObject.Properties['consoleBefore']) {
+        New-Item -ItemType Directory -Force -Path $backup | Out-Null
+        $before = @{}
+        foreach ($name in @('console.request', 'console.result')) {
+            $path = Join-Path $ChannelRoot $name
+            $before[$name] = $null
+            if (Test-Path -LiteralPath $path) {
+                $hash = (Get-FileHash -LiteralPath $path).Hash
+                Copy-Item -LiteralPath $path -Destination (Join-Path $backup $name)
+                if ((Get-FileHash -LiteralPath (Join-Path $backup $name)).Hash -ne $hash) { throw 'Console backup mismatch' }
+                $before[$name] = $hash
+            }
+        }
+        $Open | Add-Member -NotePropertyName consoleBefore -NotePropertyValue ([pscustomobject]$before)
+        Write-RunSession $Open $Current
+    }
+    # Clear stale requests before the diagnostic consumer starts. Preserve every generation.
+    foreach ($name in @('console.request', 'console.result')) {
+        $path = Join-Path $ChannelRoot $name
+        if (Test-Path -LiteralPath $path) {
+            Move-Item -LiteralPath $path -Destination (Join-Path $backup ([Guid]::NewGuid().ToString('N') + '-' + $name))
+        }
+    }
+}
+function Restore-RunConsole($Open, [string]$ChannelRoot) {
+    if (-not $Open.PSObject.Properties['consoleBefore']) { throw 'Missing console channel backup metadata' }
+    $backup = Resolve-RunChild $Open.session 'console-before'
+    foreach ($name in @('console.request', 'console.result')) {
+        $property = $Open.consoleBefore.PSObject.Properties[$name]
+        if ($null -eq $property) { throw 'Incomplete console channel backup metadata' }
+        $hash = $property.Value
+        if ($null -ne $hash -and ($hash -notmatch '^[0-9A-Fa-f]{64}$' -or
+            (Get-FileHash -LiteralPath (Join-Path $backup $name)).Hash -ne $hash)) { throw 'Console backup changed' }
+    }
+    foreach ($name in @('console.request', 'console.result')) {
+        $path = Join-Path $ChannelRoot $name
+        if (Test-Path -LiteralPath $path) {
+            Move-Item -LiteralPath $path -Destination (Join-Path $backup ([Guid]::NewGuid().ToString('N') + '-after-' + $name))
+        }
+        $hash = $Open.consoleBefore.PSObject.Properties[$name].Value
+        if ($null -ne $hash) {
+            Copy-Item -LiteralPath (Join-Path $backup $name) -Destination $path
+            if ((Get-FileHash -LiteralPath $path).Hash -ne $hash) { throw 'Console restoration mismatch' }
+        }
+    }
 }
 function Get-RunManifest([string]$Root) {
     @(Get-ChildItem -LiteralPath $Root -Recurse -File -Force | ForEach-Object {
@@ -143,9 +194,10 @@ function Assert-RunDumpHost([string]$HostPath, [bool]$EngineProbe = $false) {
         throw 'Selected host lacks the requested development desktop gate; refusing a possible VR launch'
     }
 }
-function Assert-RunDesktopConfig([string]$Config, [bool]$EngineProbe) {
+function Assert-RunDesktopConfig([string]$Config, [bool]$EngineProbe, [bool]$EngineRequests = $false) {
     $key = if ($EngineProbe) { 'engineProbe' } else { 'dumpOnly' }
-    if ($Config.Trim() -notmatch ('^\[Debug\]\s+' + $key + '\s*=\s*1$')) {
+    $suffix = if ($EngineRequests -and $EngineProbe) { '\s+engineProbeRequests\s*=\s*1' } else { '' }
+    if (($EngineRequests -and -not $EngineProbe) -or $Config.Trim() -notmatch ('^\[Debug\]\s+' + $key + '\s*=\s*1' + $suffix + '$')) {
         throw 'Desktop diagnostic configuration changed since prep'
     }
 }

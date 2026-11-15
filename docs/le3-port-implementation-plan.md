@@ -14,13 +14,16 @@ Implementation is now authorized. The audit baseline above remains historical; t
 
 - **L3-0, partial:** semantic game-mode mapping is shared. The full ME3 v59 save codec now reconstructs
   all six existing saves exactly, with independent Trilogy Save Editor full-field comparisons. Bounded private
-  resource variants have offline receipts; native load/save/reload and fixture acceptance remain pending.
+  resource variants have offline receipts. Native loading and same-map reloading of the untouched Normandy
+  manual save now pass with exact descriptor, world/pawn identity changes and stable gameplay. Native save
+  creation, edited-variant persistence and combat fixture acceptance remain pending.
   See [save foundation](../research/le3-save-foundation.md).
 - **L3-1, native analysis implemented:** the protected capture and Ghidra analysis establish ME3's object/function/
   name layouts and native allocators. Twelve address patterns match uniquely. The shared engine adapter and
   protected reflection probe are implemented. The initial live comparison passed 159/159; the extended save-descriptor
   metadata comparison passed 177/177, including native owned-string allocation/free, with zero mismatches.
-  Loaded-player/getter execution and world-invalidation gates remain open.
+  Loaded-player and owned descriptor getter execution pass across a same-map reload. Weapon scalar getter
+  agreement and broader cached-object invalidation gates remain open.
   See [engine discovery](../research/le3-engine-access-discovery.md).
 - **L3-2, candidate integration:** the pinned original ME3 renderer and thin bridge reuse controller, floor, pad, colour,
   capture and replay modules. Unsupported UI/weapon/voice services remain unavailable. First-person world conversations
@@ -35,8 +38,8 @@ Implementation is now authorized. The audit baseline above remains historical; t
 - **L3-5 through L3-10:** no completion claimed. Melee/class mapping, native reload, body/weapon presentation, menus,
   powers, traversal, galaxy gameplay and campaign/release gates still require their adapters and evidence below.
 
-The desktop engine probe passed and restored with zero differences. The next native step is normal descriptor loading
-of an existing coherent save, then player/getter/invalidation checks. It needs the shared game-run lock and an available
+The desktop engine probe and two normal descriptor loads passed and restored with zero differences. The next native
+step is the existing combat candidate, then weapon getter/invalidation checks. It needs the shared game-run lock and an available
 coordinated window. The imported renderer still needs its native access review and first VR run. Offline builds and tests
 never promote these native/headset gates automatically.
 
@@ -54,6 +57,13 @@ is cleared. The subsequent engine probe passed 159/159 checks and restored with 
 The engine/body/menu integration batch passed development and monolithic builds for all three games and the 59-test
 suite, with focused tests repeated after the native GUI mapping addition. Two retired clean, merged worktrees were
 removed using `clean-worktrees.py`; active lanes and worktrees holding unique private evidence remain preserved.
+
+The subsequent explicit engine-request session reused the protected runner and `ConsoleRequest` channel. It loaded
+manual Save 31 from the title screen into `BioP_Nor`, then reloaded it into a distinct world/pawn instance. Both
+receipts prove the requested descriptor, stable mode-0 gameplay, unchanged source save and unchanged runtime artifacts.
+All tracked files restored with zero differences; the LE1 ini remained unchanged and the run lock was released.
+Twenty-four runner tests and ten load-acceptance tests pass. This is desktop load acceptance, not VR, combat or
+save-creation acceptance. Request processing is opt-in and runs only after the native reflection check passes.
 
 ## Outcome and boundaries
 

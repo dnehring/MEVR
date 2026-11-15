@@ -88,6 +88,37 @@ try {
         [IO.File]::WriteAllText($path, '{}')
         Reject { Confirm-RunReflection $path $began }
     }
+    Case 'request consumer needs explicit owned engine-request mode' {
+        Assert-RunMode LE3 $true $true $true
+        Reject { Assert-RunMode LE3 $true $false $true }
+        $session = [pscustomobject]@{ holder = 'owner'; game = 'LE3'; desktopDump = $true; engineProbe = $true; engineRequests = $true }
+        Assert-RunSession $session owner LE3 $true $true $true
+        Reject { Assert-RunSession $session owner LE3 $true $true $false }
+        $session.engineRequests = 'true'
+        Reject { Assert-RunSession $session owner LE3 $true $true $true }
+        Assert-RunDesktopConfig "[Debug]`nengineProbe = 1`nengineProbeRequests = 1" $true $true
+        Reject { Assert-RunDesktopConfig "[Debug]`nengineProbe = 1" $true $true }
+        Reject { Assert-RunDesktopConfig "[Debug]`nengineProbe = 1`nengineProbeRequests = 1" $true $false }
+    }
+    Case 'stale console requests are preserved and restored across redeploy' {
+        $channel = Join-Path $root 'channel'; $sessionDir = Join-Path $root 'session'
+        New-Item -ItemType Directory -Path $channel, $sessionDir | Out-Null
+        [IO.File]::WriteAllText((Join-Path $channel 'console.request'), 'original request')
+        $session = [pscustomobject]@{ session = $sessionDir }
+        $currentFile = Join-Path $root 'current.json'
+        Backup-RunConsole $session $currentFile $channel
+        Check (-not (Test-Path -LiteralPath (Join-Path $channel 'console.request')))
+        $session = Get-Content -LiteralPath $currentFile -Raw | ConvertFrom-Json
+        [IO.File]::WriteAllText((Join-Path $channel 'console.request'), 'later request')
+        [IO.File]::WriteAllText((Join-Path $channel 'console.result'), 'later result')
+        Backup-RunConsole $session $currentFile $channel
+        Restore-RunConsole $session $channel
+        Check ([IO.File]::ReadAllText((Join-Path $channel 'console.request')) -eq 'original request')
+        Check (-not (Test-Path -LiteralPath (Join-Path $channel 'console.result')))
+        [IO.File]::WriteAllText((Join-Path $sessionDir 'console-before\console.request'), 'corrupt backup')
+        Reject { Restore-RunConsole $session $channel }
+        Check ([IO.File]::ReadAllText((Join-Path $channel 'console.request')) -eq 'original request')
+    }
     Case 'explicit wrong game and malformed false strings rejected' {
         $session = [pscustomobject]@{ holder = 'owner'; game = 'LE3'; desktopDump = $true }
         Assert-RunSession $session owner LE3 $true

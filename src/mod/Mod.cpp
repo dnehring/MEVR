@@ -168,6 +168,8 @@ bool gHooked = false;  // ProcessEvent hook live (after the script packages load
 // Our reflection layer (ue3/, research/34) found and checked against LExSDKv2 (once per load).
 bool gReflectChecked = false;
 bool gEngineProbe = false;
+bool gEngineProbePassed = false;
+bool gEngineRequests = false;
 bool gToldLayerOff = false;  // the startup gate said it goes on without the layer
 bool gSceneViewHooked = false;
 bool gGamepadHooked = false;  // XInput hooks (once the game has loaded an XInput DLL)
@@ -1362,6 +1364,8 @@ MEVR_MOD_API bool MevrModStartup(mevr::loader::spi::Interface* spi, mevr::HostSe
     }
     gEngineProbe = engine::DevelopmentEngineProbe();
     if (gEngineProbe) {
+        gEngineRequests = GetPrivateProfileIntW(L"Debug", L"engineProbeRequests", 0, engine::SettingsFile().c_str()) != 0;
+        gEngineProbePassed = false;
         gActive = true;
         log::Info("engine-probe: renderer and gameplay disabled; waiting for reflection");
         return true;
@@ -1395,11 +1399,12 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
                 ue3::runtime::Get().FindClass("SFXGame.SFXWeapon") != nullptr &&
                 ue3::runtime::Get().FindFunction("Engine.Camera.UpdateCamera") != nullptr) {
                 engine::ResolveWorld();
-                engine::reflect_check::Run(*gInit);
+                gEngineProbePassed = engine::reflect_check::Run(*gInit);
                 gReflectChecked = true;
                 log::Info("engine-probe: reflection checks finished");
             }
         }
+        if (gEngineProbePassed && gEngineRequests) game::console_request::Tick(deltaSeconds);
         return;
     }
 #if defined(MEVR_LE2_DIAGNOSTIC)
@@ -1590,7 +1595,7 @@ MEVR_MOD_API void MevrModShutdown() {
         engine::ForgetWorld();
         ue3::runtime::Shutdown();
         gReflectChecked = false;
-        gEngineProbe = false;
+        gEngineProbe = gEngineProbePassed = gEngineRequests = false;
         gInit.reset();
         gHost = nullptr;
         log::Info("engine-probe: shut down");

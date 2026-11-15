@@ -5,13 +5,14 @@ param(
     [ValidateSet('LE2', 'LE3')][string]$Game = 'LE2',
     [switch]$DesktopDump,
     [switch]$EngineProbe,
+    [switch]$EngineRequests,
     [switch]$Kill,
     [switch]$Stop
 )
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\session-common.ps1"
-Assert-RunMode $Game ([bool]$DesktopDump) ([bool]$EngineProbe)
-$open = Read-RunSession $Holder $Game ([bool]$DesktopDump) ([bool]$EngineProbe)
+Assert-RunMode $Game ([bool]$DesktopDump) ([bool]$EngineProbe) ([bool]$EngineRequests)
+$open = Read-RunSession $Holder $Game ([bool]$DesktopDump) ([bool]$EngineProbe) ([bool]$EngineRequests)
 . "$PSScriptRoot\..\common.ps1"
 $names = Get-RunNames $Game
 $install = (Find-MELEInstall).Root
@@ -43,7 +44,7 @@ if ($DesktopDump) {
     Assert-RunDumpHost "$bin\ASI\${Game}MEVR.asi" ([bool]$EngineProbe)
     $config = [IO.File]::ReadAllText("$bin\ASI\${Game}MEVR.ini")
     # Prep writes this minimal file. Refuse modifications/duplicates that could select a different mode.
-    Assert-RunDesktopConfig $config ([bool]$EngineProbe)
+    Assert-RunDesktopConfig $config ([bool]$EngineProbe) ([bool]$EngineRequests)
 }
 if (-not $DesktopDump) {
     $vr = $null
@@ -107,7 +108,7 @@ if ($DesktopDump) {
     $receipt = [pscustomobject]@{ game = $Game; desktopDump = $true; holder = $Holder; launchRequestedUtc = $started.ToString('o');
         process = $open.gameProcess; marker = $marker; dump = $dump; hostSha256 = (Get-FileHash -LiteralPath "$bin\ASI\${Game}MEVR.asi").Hash;
         freshDump = ([DateTime]::Parse($dump.writtenUtc).ToUniversalTime() -ge $started); nativeAcceptance = $false;
-        engineProbe = [bool]$EngineProbe; reflection = $(if ($EngineProbe) { $reflection } else { $null }) }
+        engineProbe = [bool]$EngineProbe; engineRequests = [bool]$EngineRequests; reflection = $(if ($EngineProbe) { $reflection } else { $null }) }
     $receipt | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $open.session 'desktop-dump.json') -Encoding utf8
     "Dump headers, size and hashes checked; fresh dump this launch: $($receipt.freshDump). Receipt: $($open.session)\desktop-dump.json"
 }

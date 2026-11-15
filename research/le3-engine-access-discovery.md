@@ -1,4 +1,16 @@
 <!-- SPDX-License-Identifier: MIT -->
+
+## Normal-load execution evidence (2026-11-15)
+
+The existing protected runner's explicit engine-request mode passed the native reflection gate, then loaded the
+unchanged manual Save 31 from `EntryMenu` into `BioP_Nor` with a live VanguardNonCombat pawn and game mode 0.
+The engine's owned descriptor getter matched career/name/index/type exactly. Reloading the same save changed both
+world and pawn identities and again reached stable gameplay with the matching descriptor. Both private receipts
+verified unchanged source-save and host/module/config hashes. The shared runner restored every tracked file with
+zero differences, preserved the LE1 ini, and released ownership. Session suffix: `20261115-132535-586-LE3-normal-load`.
+
+This validates normal load and owned descriptor execution after world replacement. It does not establish weapon
+getter agreement, arbitrary stale-cache safety, native save creation, combat suitability or VR acceptance.
 # ME3 native engine access
 
 Original observations from the protected desktop capture of executable 2.0.0.48602,
