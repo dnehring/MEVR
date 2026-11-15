@@ -8,6 +8,7 @@
 #include "halcyon/le2/mevr_bridge.h"
 
 #include "core/Log.hpp"
+#include "core/vr/Colour.hpp"
 #include "core/vr/Controllers.hpp"
 #include "core/vr/HostView.hpp"
 #include "game/GamepadMapping.hpp"
@@ -357,6 +358,14 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
     // next frame's redirect.
     {
         mevr::host::renderer::HudSettings const cfg = mevr::host::renderer::Hud();
+        // The game's UI gets the eyes' colour correction (plugin/Colour, research/27, research/le2-picture.md), as LE1's
+        // HalcyonOverlays hands it to the panel's blit: set before the panel's first blit.
+        static bool const colourHooked = [] {
+            mevr::host::hud_panel::SetColour({mevr::vr::colour::ShaderPrelude(), &mevr::host::colour::BeginPanel,
+                &mevr::host::colour::EndPanel});
+            return true;
+        }();
+        (void)colourHooked;
         mevr::host::hud_panel::Frame panel;
         panel.session = static_cast<XrSession>(frame.session);
         panel.appSpace = static_cast<XrSpace>(frame.appSpace);
