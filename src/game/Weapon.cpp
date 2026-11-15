@@ -69,6 +69,12 @@ ue3::FunctionRef gPawnStartTraceFn{"SFXGame.BioPawn.GetWeaponStartTraceLocation"
 // SFXWeapon.MuzzleSocketName. ME2 has no ranged-type query (its types are classes), no bIsZoomed field and no TickFire:
 // those handles are ME1's only and never resolve here.
 ue3::ClassRef gBioWeaponRanged{"SFXGame.SFXWeapon", ue3::kEveryGame};
+#if defined(MEVR_GAME_LE2)
+ue3::ClassRef gSniperRifle{"SFXGame.SFXWeapon_SniperRifle_Base", ue3::kEveryGame};
+ue3::ClassRef gAssaultRifle{"SFXGame.SFXWeapon_AssaultRifle_Base", ue3::kEveryGame};
+ue3::ClassRef gHeavyPistol{"SFXGame.SFXWeapon_HeavyPistol_Base", ue3::kEveryGame};
+ue3::ClassRef gShotgun{"SFXGame.SFXWeapon_Shotgun_Base", ue3::kEveryGame};
+#endif
 ue3::FieldRef gPawnWeapon{"Engine.Pawn", "Weapon", ue3::kEveryGame};
 ue3::FieldRef gWeaponMesh{"Engine.Weapon", "Mesh", ue3::kEveryGame};
 ue3::FieldRef gSkelMeshComp{"Engine.Weapon", "Mesh", ue3::kEveryGame};
@@ -418,10 +424,19 @@ char const* TypeName(int type) {
     }
 }
 
-// Once per weapon, for the support grip (game/support_grip): its ranged type (the native
-// GetRangedWeaponType, a plain return value through ProcessEvent), every socket of its mesh, and
-// which one, if any, is named for the off hand.
+// Resolve the weapon family and the mesh sockets used by sights and the support grip.
 void DescribeForSupport(Live const& live, Resolved& r) {
+#if defined(MEVR_GAME_LE2)
+    if (ue3::IsA(live.weapon, gSniperRifle)) {
+        r.rangedType = static_cast<int>(RangedType::Sniper);
+    } else if (ue3::IsA(live.weapon, gAssaultRifle)) {
+        r.rangedType = static_cast<int>(RangedType::AssaultRifle);
+    } else if (ue3::IsA(live.weapon, gHeavyPistol)) {
+        r.rangedType = static_cast<int>(RangedType::Pistol);
+    } else if (ue3::IsA(live.weapon, gShotgun)) {
+        r.rangedType = static_cast<int>(RangedType::Shotgun);
+    }
+#else
     if (gGetRangedWeaponType != nullptr) {
         ue3::Params parms(ue3::runtime::Get(), gGetRangedWeaponType);
         parms.Set("ReturnValue", std::uint8_t{0xFF});
@@ -429,6 +444,7 @@ void DescribeForSupport(Live const& live, Resolved& r) {
         std::uint8_t const type = parms.Return<std::uint8_t>().value_or(0xFF);
         r.rangedType = type <= 3 ? type : -1;
     }
+#endif
     std::string list;
     std::string chosen;
     for (auto const& named : engine::skeleton::Sockets(live.mesh)) {

@@ -20,7 +20,8 @@ class ScenarioTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)
+        # Resolved: the tool resolves its paths, and a runner's %TEMP% can be an 8.3 short name (C:/Users/RUNNER~1).
+        self.root = Path(self.temp.name).resolve()
         self.path = self.root / 'scenario.json'
         self.evidence_path = self.root / 'evidence.json'
         self.recipe_path = self.root / 'recipe.json'

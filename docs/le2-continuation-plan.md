@@ -207,3 +207,10 @@ main (`tools/land-on-main.py`) only after `build-trilogy`, `build`, `build-mono`
    the game's display query as SDR by default too (`[Colour] hdrDisplay = -1`), so neither game's picture depends on HDR
    settings; HDR's later steps (research/le2-hdr.md) are dropped. ME1's colour pipeline (per-headset profiles, mid-tones,
    black level, dither: research/27) comes to ME2, measured in ME2's dark scenes (`research/le2-picture.md`).
+7. **No cover snapping on ME2 either**: "We won't snap to cover for VR, it's not a realistic experience. It risks the
+   same problems of our skeleton not matching our players position in space." ME1's cover system transfers (research/
+   le2-vrik-audit.md "ME1's cover system on ME2"): no snap, physical crouch, the VR cover rule. The vault (the owner's
+   double A, with weapons held) starts from where the player stands.
+8. **The menu on ME2**: ME1's rows ME2 doesn't have yet stay greyed ("Keep them greyed until I can see them"); `\`
+   stays the menu key, and holding both stick clicks always wins ("We'll maintain the same key, but always prioritize the
+   L3 + R3 stick click"): ME1's `gamepad::UpdateStickChord` rules on ME2's pad path, named first in the controller guide.

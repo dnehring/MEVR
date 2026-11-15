@@ -395,9 +395,10 @@ extern std::atomic<bool> g_oneDrawStereo;
 // Whether Stereo 2 renders the world in this game mode (its replay gates): the host records and replays only then
 // (never the title, menus or movies, whose Draws are not eye passes). Implemented in render_hook.cpp.
 bool StereoFrameActive();
-// [MEVR] research/27 7c: the game's HDR-capability query is IDXGIOutput6::GetDesc1's ColorSpace; with
-// [Colour] hdrDisplay = 1 the host rewrites an SDR answer to HDR10 so the game's HDR range makes the float backbuffer
-// without Windows HDR. Called from d3d_capture's GetDesc1 hook with the real description.
+// [MEVR] research/27 7c: the game's HDR-capability query is IDXGIOutput6::GetDesc1's ColorSpace; [Colour] hdrDisplay
+// -1 (the default) rewrites an HDR answer to SDR so the game keeps its 8-bit frame with Windows HDR on, 1 rewrites an SDR
+// answer to HDR10 (the float backbuffer without Windows HDR), 0 passes it through. Called from d3d_capture's GetDesc1
+// hook with the real description.
 void HdrDisplayDesc(::DXGI_OUTPUT_DESC1* desc);
 struct Pass1View
 {

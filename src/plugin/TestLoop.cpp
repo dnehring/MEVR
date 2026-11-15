@@ -11,10 +11,13 @@
 #include "plugin/TestLoop.hpp"
 #include "core/vr/CameraDiagnostic.hpp"
 #include "plugin/Renderer.hpp"
+#include "plugin/SightLayers.hpp"
 #include "plugin/Swapchains.hpp"
+#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2)
+#include "plugin/Colour.hpp"  // both Halcyon hosts (LE2: the eye copy's correction)
+#endif
 #if defined(MEVR_WITH_HALCYON)
 #include "plugin/Calibration.hpp"
-#include "plugin/Colour.hpp"
 #include "plugin/DrawReplay.hpp"
 #include "plugin/GalaxyHologram.hpp"
 #include "plugin/GamePointer.hpp"
@@ -29,10 +32,13 @@
 #include "plugin/PerfProbe.hpp"
 #include "plugin/QuestPacing.hpp"
 #include "plugin/RecenterTilt.hpp"
-#include "plugin/SightLayers.hpp"
 #include "plugin/Spectator.hpp"
 #include "plugin/UiWorldFigure.hpp"
 #include "plugin/FloorLock.hpp"
+#endif
+#if defined(MEVR_WITH_HALCYON_LE2) && defined(MEVR_WITH_MAIN_MENU)
+#include "plugin/Calibration.hpp"  // our menus on LE2 (plugin/MenusLe2, M4)
+#include "plugin/MainMenu.hpp"
 #endif
 
 #include "core/DevChannels.hpp"
@@ -793,9 +799,9 @@ struct ModuleBlocks {
 };
 ModuleBlocks ModuleStatus() {
     ModuleBlocks m;
+    m.sights = sight_layers::StatusJson();
 #if defined(MEVR_WITH_HALCYON)
     m.recenter = recenter_tilt::StatusJson();
-    m.sights = sight_layers::StatusJson();
     m.calibration = calibration::StatusJson();
     m.colour = mevr::host::colour::StatusJson();
     m.stereo = metric_stereo::StatusJson();
@@ -812,6 +818,13 @@ ModuleBlocks ModuleStatus() {
     m.spectator = spectator::StatusJson();
     m.figure = ui_world_figure::StatusJson();
     m.questPacing = quest_pacing::StatusJson();
+#endif
+#if defined(MEVR_WITH_HALCYON_LE2)
+    m.colour = mevr::host::colour::StatusJson();
+#endif
+#if defined(MEVR_WITH_HALCYON_LE2) && defined(MEVR_WITH_MAIN_MENU)
+    m.calibration = calibration::StatusJson();
+    m.mainMenu = main_menu::StatusJson();
 #endif
     m.swapchains = swapchains::StatusJson();  // both Halcyon hosts
     return m;

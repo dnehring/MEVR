@@ -1,16 +1,22 @@
 // SPDX-License-Identifier: MIT
 // Colour correction of the eyes and the game's UI (plugin/Colour.hpp, research/27): the settings, the headset,
-// the corrected variants of Halcyon's eye shaders and their constants, the cost, the menu section.
+// the corrected variants of Halcyon's eye shaders and their constants, the cost, the menu section. In both hosts: LE1's
+// (Halcyon's eye blit through the [MEVR] colour seams, the HUD panel, the VR hands tab's section) and LE2's (the eye copy,
+// plugin/EyeCopy, asks EyeConstants; research/le2-picture.md). The LE1-only parts are under MEVR_WITH_HALCYON.
 
 #include "plugin/Colour.hpp"
 
+#if defined(MEVR_WITH_HALCYON)
 #include "halcyon/le1/mevr_bridge.h"
+#endif
 #include "plugin/Renderer.hpp"
 
 #include "core/Log.hpp"
 #include "core/vr/TestRequest.hpp"
 
+#if defined(MEVR_WITH_HALCYON)
 #include "imgui.h"
+#endif
 
 #include <Windows.h>
 #include <d3d11.h>
@@ -521,6 +527,7 @@ void SetCustom(cv::Settings const& settings, bool save) {
     }
 }
 
+#if defined(MEVR_WITH_HALCYON)
 void MenuSection() {
     Tick();
     ImGui::SeparatorText("Colour (the game's picture and its HUD)");
@@ -592,6 +599,7 @@ void MenuSection() {
         ImGui::TextDisabled("No correction (neutral: the picture as the game makes it).");
     }
 }
+#endif
 
 bool gBoundForEye = false;
 
@@ -617,8 +625,19 @@ void EndEye(ID3D11DeviceContext* context) {
     gBoundForEye = false;
 }
 
+bool EyeConstants(int eye, bool linearSource, vr::colour::Constants* out) {
+    Tick();
+    if (out == nullptr || !Correcting()) {
+        return false;
+    }
+    std::lock_guard lock(gMutex);
+    *out = cv::MakeConstants(gResolved.settings, gResolved.dither, linearSource, eye == 1 ? 1u : 0u, gResolved.hdr);
+    return true;
+}
+
 } // namespace mevr::host::colour
 
+#if defined(MEVR_WITH_HALCYON)
 // ---- The [MEVR] colour seams in Halcyon's eye blit (src/halcyon/le1/mevr_bridge.h) ----------------------------
 namespace MELEVR::MevrBridge {
 
@@ -704,3 +723,4 @@ void EyeColourDone(ID3D11DeviceContext* context) noexcept {
 }
 
 } // namespace MELEVR::MevrBridge
+#endif

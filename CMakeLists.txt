@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.27)
 # The one version number (docs/release-checklist.md section 5). Change it here only: the generated header below carries
 # it into the C++ and .rc files, tools/package-release.ps1 reads it from this line and refuses binaries that disagree,
 # and the release is tagged v<version>.
-project(MEVR VERSION 0.3.1 LANGUAGES C CXX)
+project(MEVR VERSION 0.3.2 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -79,7 +79,7 @@ add_subdirectory(external/OpenXR-SDK EXCLUDE_FROM_ALL)
 
 # The main menu's UI library (research/28): RmlUi (MIT) with its FreeType font engine (FreeType: FTL), both
 # static, built only for what links them (the LE1 host and the menu preview). Their own warning levels.
-option(MEVR_MAIN_MENU "Build our VR main menu (RmlUi) into the LE1 host" ON)
+option(MEVR_MAIN_MENU "Build our VR main menu (RmlUi) into the LE1 and LE2 hosts" ON)
 if (MEVR_MAIN_MENU)
     set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
     set(FT_DISABLE_ZLIB ON CACHE BOOL "" FORCE)
@@ -927,12 +927,16 @@ function(mevr_add_plugin game)
             src/halcyon/le2/mevr_bridge.h src/core/CallQueue.hpp src/game/GamepadMapping.cpp src/game/GamepadMapping.hpp
             src/core/vr/Controllers.cpp src/core/vr/Controllers.hpp src/core/xr/Input.cpp src/core/xr/Input.hpp
             src/plugin/Renderer.hpp src/plugin/RendererLe2.cpp
-            # The game's float swap chain drawn into the eye images (plugin/EyeCopy over core/d3d11/Blit).
+            # The game's float swap chain drawn into the eye images (plugin/EyeCopy over core/d3d11/Blit), and ME1's colour
+            # correction in that copy (plugin/Colour, core/vr/Colour; research/le2-picture.md).
             src/plugin/EyeCopy.cpp src/plugin/EyeCopy.hpp src/core/d3d11/Blit.cpp src/core/d3d11/Blit.hpp
+            src/plugin/Colour.cpp src/plugin/Colour.hpp src/core/vr/Colour.cpp src/core/vr/Colour.hpp
             # Our layers at xrEndFrame (MevrBridge::OverlayLayers): the swapchain budget and the modules that run on LE2.
             src/plugin/Swapchains.cpp src/plugin/Swapchains.hpp
             src/core/vr/SwapchainBudget.hpp src/plugin/Vignette.cpp src/plugin/Vignette.hpp src/core/vr/Comfort.cpp
             src/core/vr/Comfort.hpp
+            src/core/vr/OverlayPlacement.cpp src/core/vr/ScopeArt.cpp src/core/vr/ScopeCapture.cpp src/core/vr/Sights.cpp
+            src/plugin/ScopeCaptureSource.cpp src/plugin/SightLayers.cpp src/plugin/SightPictures.cpp
             # Our actions, vibration and the floor on Halcyon's session (plugin/XrHost, as LE1's).
             src/plugin/XrHost.cpp src/plugin/XrHost.hpp src/core/vr/Haptics.cpp src/core/vr/Haptics.hpp src/core/xr/Floor.cpp
             src/core/xr/Floor.hpp src/core/vr/Floor.hpp
@@ -941,7 +945,24 @@ function(mevr_add_plugin game)
             src/core/vr/HostView.cpp src/core/vr/HostView.hpp src/core/vr/ImageConvert.cpp src/core/vr/ImageConvert.hpp
             src/core/vr/LayerComposite.cpp src/core/vr/LayerComposite.hpp src/core/vr/PoseRecording.cpp
             src/core/vr/PoseRecording.hpp src/core/vr/TestRequest.cpp src/core/vr/TestRequest.hpp src/core/Hotkey.cpp
-            src/core/Hotkey.hpp src/core/PngFile.cpp src/core/PngFile.hpp)
+            src/core/Hotkey.hpp src/core/PngFile.cpp src/core/PngFile.hpp
+            # Our menus' glue on ME2's renderer (plugin/MenusLe2: its OnMenuKey and MainMenuOpen seams, empty without the menu).
+            src/plugin/MenusLe2.cpp src/plugin/MenusLe2.hpp)
+        if (MEVR_MAIN_MENU)
+            # Our main menu and the guided calibration on ME2 (docs/le2-continuation-plan.md M4.1, M4.2; research/le2-menus.md):
+            # the same modules as LE1's, in the host (not hot-reloaded).
+            set(with_main_menu ON)
+            list(APPEND host_sources src/plugin/MainMenu.cpp src/plugin/MainMenu.hpp src/plugin/MainMenuSettings.cpp
+                src/plugin/MainMenuSettings.hpp src/plugin/Calibration.cpp src/plugin/Calibration.hpp src/plugin/CalibrationDraw.cpp
+                src/plugin/CalibrationDraw.hpp src/plugin/ArmSample.cpp src/plugin/ArmSample.hpp src/core/vr/Calibration.cpp
+                src/core/vr/Calibration.hpp src/core/vr/MenuPointer.cpp src/core/vr/MenuPointer.hpp src/core/vr/GameMenuRequest.cpp
+                src/core/vr/GameMenuRequest.hpp src/core/vr/CineScreen.cpp src/core/vr/CineScreen.hpp
+                src/core/vr/ConversationWorld.cpp src/core/vr/ConversationWorld.hpp src/core/vr/WorldUi.cpp src/core/vr/WorldUi.hpp
+                src/core/vr/OverlayPlacement.cpp src/core/vr/OverlayPlacement.hpp src/core/vr/GalaxyHologram.cpp
+                src/core/vr/GalaxyHologram.hpp
+                # Entry.cpp's ExitProcess hook asks it with the menu; nothing writes its request on ME2 yet (MEVR Setup, M7.2).
+                src/plugin/SetupRequest.cpp src/plugin/SetupRequest.hpp src/core/Json.cpp src/core/Json.hpp)
+        endif ()
     endif ()
     if (MEVR_HALCYON AND game STREQUAL "LE1")
         set(with_halcyon ON)

@@ -9,6 +9,11 @@ code base to see what we can and can't use and try to actually support HDR nativ
 lane B2) **as a stop gap** ("If it's cheap to do sdr, then we can do that as a stop gap while you figure out HDR"). Step 6
 of the plan below is the step that sets the default back, and what has to hold first.
 
+**Stopped later that evening (the owner: "We can take the HDR lane out of play. I'm just trying to figure out how we can
+get the best picture, when we know that me2 has a lot of dark scenes").** The plan below is kept as the study; none of its
+steps landed (Steps 1-2 were written and set aside). Both games answer the HDR question SDR by default now (section 7, the
+launch checks on this HDR desktop), and the picture work moved to [research/le2-picture.md](le2-picture.md).
+
 Where this note starts: [research/27](27-colour.md) sections 7b-7d (LE1's float path, `hdrDisplay = 1`, the tonemaps and
 their verdict) and [research/le2-renderer-integration.md](le2-renderer-integration.md) "The black eyes" (lane B2: why ME2's
 eyes were black, `plugin/EyeCopy`, `hdrDisplay = -1`). **[verify]** marks what a run or a headset still has to settle,
@@ -400,7 +405,38 @@ for format 10 (or another HDR extension appears):
 A replacement of the games' tonemap shaders for SDR headsets (section 4.3: a re-grade, no fidelity gain, and the only
 public implementation is decompiled game code).
 
-## 7. Open
+## 7. HDR desktops: launch checks (2026-11-14)
+
+The owner: "people with HDR monitors reported issues when launching me1 so we should at the least support those runtimes
+so they can launch without issue." The same evening the HDR plan above was stopped (the owner: "We can take the HDR lane
+out of play"; Steps 1-2 were written and set aside, nothing of them landed) and **LE1 now answers the game's HDR question
+SDR by default too** (`[Colour] hdrDisplay = -1`, as ME2's, `MevrBridge::HdrDisplayDesc`; an LE1 file's old `hdrDisplay =
+0`, the default before, moves to -1 once, marked `hdrDisplayMoved = 1`). Gotcha: [windows-hdr-desktop](../docs/knowledge/gotchas/windows-hdr-desktop.md).
+
+**This machine has Windows HDR on** (the display answers colour space 12, HDR10, 400 nits); every run below is an HDR
+desktop's. Runs by script on the fake headset (`tools/fake-headset-session.ps1` for LE1 under the run lock;
+`tools/le2-halcyon-run` for ME2), each resuming the profile's save (LE1: the career's last, a distant ship over Noveria;
+ME2: `load.ps1`'s Freedom's Progress). Saves, inis and `GamerSettings.ini` put back after each, byte for byte.
+
+| game, setting | reaches gameplay | the game's frame | eyes | UI | faults |
+|---|---|---|---|---|---|
+| LE1, `DesiredRange = SDR`, new default (-1) | yes | `hdr display: ... colour space 12 (HDR10) ...; answered SDR`; `[SCREQ] ... fmt=28`, `[HDRBLIT] backbuffer format 0 -> 28` | not blue or black (mean RGB 13/16/22 of a night sky); left and right differ 0.15 on average (the ship is far: 0 px disparity, as metric stereo puts infinity) | HUD panel and label quads in the snapshot | none (`crash-firstchance.txt`, `crash-breadcrumbs.txt` older than the runs) |
+| LE1, `DesiredRange = DynamicRange_HDR10_Float`, new default (-1) | yes | answered SDR; `[HDRCHK] ... DynamicRange_HDR10_Float` yet `[SCREQ] ... fmt=28`, backbuffer 28: **stays 8-bit** | the same picture as the SDR run (mean RGB identical) | as above | none |
+| LE1, `DesiredRange = SDR`, `hdrDisplay = 0` (the old default; the first run's start, before the move) | yes | format 28 (as every run of the day) | as above | as above | none |
+| ME2, current settings (`DesiredRange` from `vr-game-settings.ps1 -Game LE2`, `hdrDisplay = -1`) | yes (`load.ps1`) | `answered SDR ([Colour] hdrDisplay = -1)`; `the game's swap chain is 4096x2304 format 28` | mean RGB 51/55/62 (the HDR study's SDR frame); left and right differ 16.8 on average | in the eye images (ME2 has no HUD panel yet, lane B3) | none; restore: 0 differences |
+
+**Not run, by the owner's decision** (risky for a player's monitor, and moot with the SDR answer): `DesiredRange` HDR with
+`hdrDisplay = 0` or `1`, ME2 with `hdrDisplay = 0`, exclusive fullscreen, a fresh `GamerSettings.ini`. The owner's monitor
+needing a restart to show the game happened before our mods (the owner): not ours, not investigated.
+
+**MEVR Setup on an HDR desktop** (`src/install`, `tools/setup`; `tools/setup/test-fake-game.ps1` on this machine, every
+check ok): Setup writes `[HDR] DesiredRange = DynamicRange_SDR` into `GamerSettings.ini` when its HDR option is on (the
+default, `Choices::hdrOff`), records the player's value (`ini::Edit`), and Uninstall and "restore the game settings" put it
+back exactly (the test's fake file starts at `DynamicRange_HDR`: "GamerSettings.ini exactly as it was"); `BIOEngine.ini`'s
+`[HDR]` is left alone. Nothing in Setup asks the display about HDR, and its window is an ordinary 8-bit swap chain DWM
+composes on an HDR desktop. ME2's Setup (M7.2) waits.
+
+## 8. Open
 
 - **[verify]** SteamVR's 9 formats and its extensions (Step 5.1).
 - **[verify]** `HDRGamma` live on this install (Step 3; the model says 1.0).

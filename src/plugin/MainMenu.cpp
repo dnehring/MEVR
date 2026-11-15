@@ -11,8 +11,19 @@
 #include "plugin/menu/MenuStrip.hpp"
 #include "plugin/menu/MenuUi.hpp"
 
+// LE1's host also has the modules some of the menu's commands drive (the camera alignment of Halcyon's VR hands tab, the
+// colour, the voice, the frame probe, the omni-tool's rail); ME2's doesn't yet (research/le2-menus.md).
+#if defined(MEVR_WITH_HALCYON)
+#define MEVR_MENU_LE1 1
 #include "halcyon/le1/mevr_bridge.h"
+#include "plugin/Colour.hpp"
+#include "plugin/MevrMenu.hpp"
+#include "plugin/OmniToolRail.hpp"
+#include "plugin/PerfProbe.hpp"
+#include "plugin/Voice.hpp"
+#endif
 
+#include "core/DevChannels.hpp"
 #include "core/Ini.hpp"
 #include "core/Log.hpp"
 #include "core/vr/GameMenuRequest.hpp"
@@ -20,15 +31,10 @@
 #include "core/vr/LiveCalibration.hpp"
 #include "core/vr/TestRequest.hpp"
 #include "plugin/Calibration.hpp"
-#include "plugin/Colour.hpp"
-#include "plugin/Halcyon.hpp"
-#include "plugin/MevrMenu.hpp"
 #include "plugin/Renderer.hpp"
-#include "plugin/OmniToolRail.hpp"
-#include "plugin/PerfProbe.hpp"
 #include "plugin/TestLoop.hpp"
-#include "plugin/Voice.hpp"
 #include "plugin/Swapchains.hpp"
+#include "plugin/XrHost.hpp"
 #include "mod/ModApi.hpp"
 
 #include <RmlUi/Core.h>
@@ -246,6 +252,58 @@ struct FirstRun {
 };
 FirstRun gFirstRun;
 bool gOpenOnGuide = false;  // the opening lands on the controller guide (applied once the model exists)
+std::string gOpenSection;   // a request's section, applied with the next frame drawn (Present thread)
+
+// %LOCALAPPDATA%\MEVR\mainmenu.request (a development build's request file, core/DevChannels; read once a second on the
+// Present thread, then deleted): `open [section]`, `close` or `toggle`, so a script opens the menu without the player's
+// sticks or keyboard (a replay's stick clicks never open it). research/le2-menus.md "Opening the menu by script".
+std::filesystem::path RequestFile() {
+    wchar_t buffer[MAX_PATH]{};
+    DWORD const n = GetEnvironmentVariableW(L"LOCALAPPDATA", buffer, MAX_PATH);
+    return n > 0 && n < MAX_PATH ? std::filesystem::path(buffer) / L"MEVR" / L"mainmenu.request" : std::filesystem::path();
+}
+
+void PollRequest(std::uint64_t now) {
+    static std::uint64_t nextMs = 0;
+    if (now < nextMs) {
+        return;
+    }
+    nextMs = now + 1000;
+    if (!dev_channels::Allowed(std::filesystem::path(mevr::host::SettingsPath()))) {
+        return;
+    }
+    std::filesystem::path const file = RequestFile();
+    std::error_code ec;
+    if (file.empty() || !std::filesystem::exists(file, ec)) {
+        return;
+    }
+    std::string text;
+    if (HANDLE const h = CreateFileW(file.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, 0, nullptr);
+        h != INVALID_HANDLE_VALUE) {
+        char buffer[256]{};
+        DWORD read = 0;
+        if (ReadFile(h, buffer, sizeof buffer - 1, &read, nullptr)) {
+            text.assign(buffer, read);
+        }
+        CloseHandle(h);
+    }
+    std::filesystem::remove(file, ec);
+    text = text.substr(0, text.find_first_of("\r\n"));  // the first line (PowerShell's Set-Content ends it with CR LF)
+    std::string const line = ini::Lower(ini::Trim(text));
+    std::string const word = line.substr(0, line.find(' '));
+    std::string const section = line.find(' ') != std::string::npos ? ini::Trim(line.substr(line.find(' ') + 1)) : std::string();
+    log::Info("main menu: request file: '{}'", line);
+    if (word == "open") {
+        gOpenSection = section;
+        SetOpen(true, "the request file");
+    } else if (word == "close") {
+        SetOpen(false, "the request file");
+    } else if (word == "toggle") {
+        Toggle("the request file");
+    } else {
+        log::Warn("main menu: request file: '{}' isn't open [section], close or toggle", line);
+    }
+}
 
 void Say(menu::LogLevel level, std::string const& text) {
     switch (level) {
@@ -537,7 +595,7 @@ Rml::Element* Control(Rml::Element* e) {
 }
 
 void Haptic(int hand, float seconds, float amplitude) {
-    halcyon::RequestHaptic(hand, seconds, amplitude, 0.0f);
+    xr_host::RequestHaptic(hand, seconds, amplitude, 0.0f);  // LE1's halcyon::RequestHaptic forwards here too
 }
 
 bool Latch(bool& latched, float value) {
@@ -675,9 +733,11 @@ void Pad(Rml::Context* context, std::uint64_t now) {
     bool const b = (pad.wButtons & XINPUT_GAMEPAD_B) != 0 || (s.active && s.right.secondary);
     // On the Display page, holding A shows the uncorrected picture.
     bool const display = g.settings->OnDisplayPage(g.model->Get());
+#if defined(MEVR_MENU_LE1)
     if (a && display) {
         colour::HoldCompare();
     }
+#endif
     g.model->SetNumber("comparing", a && display ? 1.0f : 0.0f);
     if (a && !g.aHeld) {
         Rml::Element* const focus = context->GetFocusElement();
@@ -784,7 +844,9 @@ void AfterCommand(After after, Frame const& frame) {
         return;
     case After::Align:
         SetOpen(false, "Align");
+#if defined(MEVR_MENU_LE1)
         MELEVR::MevrBridge::StartCameraAlign("the main menu");
+#endif
         return;
     case After::Snapshot: {
         SetOpen(false, "Snapshot");
@@ -796,7 +858,9 @@ void AfterCommand(After after, Frame const& frame) {
     }
     case After::Perf:
         SetOpen(false, "Measure frame timing");
+#if defined(MEVR_MENU_LE1)
         perf::Request(20.0, "", "main menu", 1.0);
+#endif
         return;
     }
 }
@@ -867,7 +931,11 @@ void NoteLiveMarkers(bool submitted) {
 }
 
 std::uint32_t ModFlags() {
+#if defined(MEVR_MENU_LE1)
     std::uint32_t const rail = omni_rail::Shown() ? kOmniRailOpen : 0u;  // the omni-tool's rail: the game's omni-tool on the arm
+#else
+    std::uint32_t const rail = 0u;  // ME2: the omni-tool's rail isn't in its host yet (M4.3)
+#endif
     if (!gOpen.load(std::memory_order_relaxed)) {
         return rail;
     }
@@ -1011,6 +1079,10 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
             }
         }
     }
+    if (!gOpenSection.empty()) {
+        g.model->SetText("section", gOpenSection);  // the request file's section (`open <section>`)
+        gOpenSection.clear();
+    }
     std::uint64_t const now = GetTickCount64();
     gLastDrawnMs = now;
     float const dt = g.lastFrameMs == 0 ? 1.0f / 72.0f : static_cast<float>(now - g.lastFrameMs) / 1000.0f;
@@ -1029,6 +1101,7 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
         g.model->Refresh();
         gPauseWanted.store(!LiveAdjusting() && g.settings->PauseWanted());
     }
+#if defined(MEVR_MENU_LE1)
     if (now - g.lastLevelMs >= 33 && g.model->Get().Text("section") == "voice") {
         // The microphone's level (research/54 "The menu's Voice page"): a meter's quick rise and slow fall, in whole percents
         // so the page redraws only when the bar moves.
@@ -1041,6 +1114,7 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
         g.model->SetNumber("voice_level", std::round(g.levelShown));
         g.model->SetNumber("voice_heard", now < g.heardUntilMs ? 1.0f : 0.0f);
     }
+#endif
     g.settings->Tick(g.live, frame.headValid, frame.head.position);
     if (LiveAdjusting()) {
         TickLive(frame, dt);
@@ -1112,6 +1186,7 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
 void OnPresent() {
     FirstStartEyeSize();  // a new install's first VR start: the headset's own eye size, once
     std::uint64_t const now = GetTickCount64();
+    PollRequest(now);
     if (gOpen.load(std::memory_order_relaxed) && now - gLastDrawnMs > kNotDrawnMs) {
         SetOpen(false, gLastLayerMs != 0 && now - gLastLayerMs <= kNotDrawnMs
                 ? "not drawn for over 1 s (it couldn't be shown)"

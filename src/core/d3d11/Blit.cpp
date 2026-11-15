@@ -173,6 +173,19 @@ bool Blit::EnsureCopy(ID3D11Texture2D* source) {
 
 void Blit::Draw(ID3D11DeviceContext* immediate, ID3D11Texture2D* source, ID3D11RenderTargetView* target,
     UINT targetWidth, UINT targetHeight, int shiftX) {
+    DrawWithShader(immediate, source, target, targetWidth, targetHeight, shiftX, nullptr, nullptr);
+}
+
+void Blit::DrawWith(ID3D11DeviceContext* immediate, ID3D11Texture2D* source, ID3D11RenderTargetView* target,
+    UINT targetWidth, UINT targetHeight, int shiftX, ID3D11PixelShader* pixelShader, ID3D11Buffer* constantsB1) {
+    if (pixelShader == nullptr) {
+        return;
+    }
+    DrawWithShader(immediate, source, target, targetWidth, targetHeight, shiftX, pixelShader, constantsB1);
+}
+
+void Blit::DrawWithShader(ID3D11DeviceContext* immediate, ID3D11Texture2D* source, ID3D11RenderTargetView* target,
+    UINT targetWidth, UINT targetHeight, int shiftX, ID3D11PixelShader* pixelShader, ID3D11Buffer* constantsB1) {
     if (!state_ || !EnsureCopy(source)) {
         return;
     }
@@ -197,7 +210,12 @@ void Blit::Draw(ID3D11DeviceContext* immediate, ID3D11Texture2D* source, ID3D11R
     ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     ctx->IASetInputLayout(nullptr);
     ctx->VSSetShader(vs_.Get(), nullptr, 0);
-    ctx->PSSetShader(decodeSrgb_ ? psDecodeSrgb_.Get() : psPassthrough_.Get(), nullptr, 0);
+    if (pixelShader != nullptr) {
+        ctx->PSSetShader(pixelShader, nullptr, 0);
+        ctx->PSSetConstantBuffers(1, 1, &constantsB1);
+    } else {
+        ctx->PSSetShader(decodeSrgb_ ? psDecodeSrgb_.Get() : psPassthrough_.Get(), nullptr, 0);
+    }
     ctx->PSSetShaderResources(0, 1, &srv);
     ctx->PSSetSamplers(0, 1, &sampler);
     ctx->RSSetState(nullptr);
@@ -217,6 +235,10 @@ void Blit::Draw(ID3D11DeviceContext* immediate, ID3D11Texture2D* source, ID3D11R
     ID3D11ShaderResourceView* const nullSrv = nullptr;
     ctx->PSSetShaderResources(0, 1, &nullSrv);
     ctx->OMSetRenderTargets(0, nullptr, nullptr);
+    if (pixelShader != nullptr) {
+        ID3D11Buffer* const nullBuffer = nullptr;
+        ctx->PSSetConstantBuffers(1, 1, &nullBuffer);
+    }
 
     ctx->SwapDeviceContextState(gameState.Get(), nullptr);
 }

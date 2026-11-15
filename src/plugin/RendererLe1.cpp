@@ -35,6 +35,22 @@ void SetOwnMenuOpen(bool open) noexcept {
     MELEVR::Menu::SetOpen(open);
 }
 
+int OwnMenuKey() noexcept {
+    return MELEVR::Config::Get().menuKey;
+}
+
+void RequestRecenter() noexcept {
+    MELEVR::Menu::RequestRecenter();
+}
+
+MenuRows GetMenuRows() noexcept {
+    return {};  // LE1's menu edits Halcyon's VrConfig itself (MainMenuSettings' LE1 part)
+}
+
+void SetMenuRows(MenuRows const&) noexcept {}
+
+void SaveOwnSettings(char const*) noexcept {}
+
 void LogLine(std::string const& line) noexcept {
     MELEVR::Logger::LogLine(line);
 }

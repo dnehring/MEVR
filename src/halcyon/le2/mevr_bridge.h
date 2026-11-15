@@ -71,6 +71,9 @@ struct OverlayFrame
     bool worldFrame = false;    // this frame submits the head-tracked world (the projection layer), not a flat panel
     bool menuOpen = false;      // Halcyon's Insert menu is open
     int gameMode = -1;          // the engine's game mode (EngineProbe::ReadGameModeSEH), -1 unreadable
+    // Tracked eyes in app space. Projection poses can instead be centered or taken from frame history.
+    bool eyesValid = false;
+    float eyePosition[2][3] = {};
     // The world layer's views as submitted (each eye's swapchain, rect, pose and FOV), when projectionValid.
     bool projectionValid = false;
     void* projectionSwapchain[2] = {nullptr, nullptr};   // XrSwapchain
@@ -112,6 +115,13 @@ bool XrRuntimeIsSteamVr() noexcept;
 // The key is down and a window of the game is in front (LE1's MevrBridge::KeyDown): a hotkey typed in another program
 // (Discord, a browser) must not recenter, switch profiles or open the menu.
 bool KeyDown(int vk) noexcept;
+
+// The menu key went down (me2_menu.cpp's PollInsert; `ownMenuOpen`: Halcyon's menu is open). True if our main menu took it
+// (opened or closed; plugin/MenusLe2), false if Halcyon's menu toggles as upstream: with Ctrl or Shift held, or while its
+// menu is open, as LE1's MevrBridge::OnMenuKey.
+bool OnMenuKey(bool ownMenuOpen) noexcept;
+// Our main menu is open (plugin/MainMenu): Halcyon's window procedure swallows the desktop's input as for its own menu.
+bool MainMenuOpen() noexcept;
 
 // Halcyon's hotkey polls go through this: KeyDown in our ASI, the plain poll in an upstream build.
 inline bool HotkeyDown(int vk) noexcept

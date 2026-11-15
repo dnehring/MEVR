@@ -3,6 +3,7 @@
 
 All processes/modules are injected; no native inventory, launch, or commands.
 """
+import datetime as dt
 import importlib.util
 from pathlib import Path
 import unittest
@@ -31,7 +32,10 @@ class AttachTests(unittest.TestCase):
         self.quiet_prepare()
         s.request_load(self.run, processes=lambda: [])
         self.live = [dict(name="MassEffect2", pid=42, path=str(self.exe),
-                         started=s.utc().replace("+00:00", "Z"))]
+                         # A second after staging: two clock reads in a row can be the same instant on Windows,
+                         # and bind_process rightly refuses a process that did not start after the staging.
+                         started=(dt.datetime.now(dt.timezone.utc) + dt.timedelta(seconds=1))
+                         .isoformat().replace("+00:00", "Z"))]
         s.bind_process(self.run, 42, processes=lambda: self.live)
         self.host = self.asi / "LE2-diagnostic.asi"
         self.put(self.host, b"synthetic diagnostic module; never loaded")
