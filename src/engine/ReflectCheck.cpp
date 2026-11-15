@@ -2828,6 +2828,13 @@ void CheckFields() {
     CheckField("Engine.SkeletalMeshSocket", "RelativeLocation", SDK_FIELD(USkeletalMeshSocket, RelativeLocation));
     CheckField("Engine.SkeletalMeshSocket", "RelativeRotation", SDK_FIELD(USkeletalMeshSocket, RelativeRotation));
 
+    CheckField("SFXGame.SFXCameraNativeBase", "CurrentCameraMode", SDK_FIELD(ASFXCameraNativeBase, CurrentCameraMode));
+    CheckField("SFXGame.SFXCameraMode_Interpolate", "To", SDK_FIELD(USFXCameraMode_Interpolate, To));
+    CheckField("SFXGame.SFXCameraMode", "Input", SDK_FIELD(USFXCameraMode, Input));
+    CheckField("SFXGame.SFXCameraInput", "MaxCameraRotationSpeed", SDK_FIELD(USFXCameraInput, MaxCameraRotationSpeed));
+    CheckField("SFXGame.SFXCameraInput", "CameraSensitivity", SDK_FIELD(USFXCameraInput, CameraSensitivity));
+    CheckField("SFXGame.SFXCameraInput", "TimeToReachFullSpeed", SDK_FIELD(USFXCameraInput, TimeToReachFullSpeed));
+    CheckField("SFXGame.SFXCameraInput", "StickDeadZone", SDK_FIELD(USFXCameraInput, StickDeadZone));
     CheckField("Engine.Engine", "GamePlayers", SDK_FIELD(UEngine, GamePlayers));
     CheckField("Engine.Player", "Actor", SDK_FIELD(UPlayer, Actor));
     CheckField("Engine.Controller", "Pawn", SDK_FIELD(AController, Pawn));
@@ -2937,6 +2944,8 @@ void CheckFunctions() {
     CheckFunction("SFXGame.SFXWeapon.GetMuzzleLoc");
     CheckFunction("Engine.SkeletalMeshComponent.GetSocketWorldLocationAndRotation");
 
+    CheckFunction("Engine.Actor.SetRotation");
+    CheckFunction("Engine.PlayerController.IsMoveInputIgnored");
     CheckFunction("SFXGame.SFXWeapon.GetMagazineSize");
     CheckFunction("SFXGame.SFXWeapon.GetCurrentSpareAmmo");
     CheckFunction("Engine.PlayerController.ConsoleCommand");
@@ -2981,6 +2990,11 @@ void CheckParams() {
     PARAM(USkeletalMeshComponent_execGetSocketWorldLocationAndRotation_Parms, "Engine.SkeletalMeshComponent.GetSocketWorldLocationAndRotation", ReturnValue);
     PARMS(USkeletalMeshComponent_execGetSocketWorldLocationAndRotation_Parms, "Engine.SkeletalMeshComponent.GetSocketWorldLocationAndRotation");
 
+    PARAM(AActor_execSetRotation_Parms, "Engine.Actor.SetRotation", NewRotation);
+    PARAM(AActor_execSetRotation_Parms, "Engine.Actor.SetRotation", ReturnValue);
+    PARMS(AActor_execSetRotation_Parms, "Engine.Actor.SetRotation");
+    PARAM(APlayerController_eventIsMoveInputIgnored_Parms, "Engine.PlayerController.IsMoveInputIgnored", ReturnValue);
+    PARMS(APlayerController_eventIsMoveInputIgnored_Parms, "Engine.PlayerController.IsMoveInputIgnored");
     PARAM(ABioPlayerController_execOrderWeaponSwitch_Parms, "SFXGame.BioPlayerController.OrderWeaponSwitch", oOrderedPawn);
     PARAM(ABioPlayerController_execOrderWeaponSwitch_Parms, "SFXGame.BioPlayerController.OrderWeaponSwitch", Wpn);
     PARAM(ABioPlayerController_execOrderWeaponSwitch_Parms, "SFXGame.BioPlayerController.OrderWeaponSwitch", eInputMethod);
