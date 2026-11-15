@@ -10,6 +10,17 @@ $count = 0
 function Check([bool]$Value) { if (-not $Value) { throw 'Assertion failed' } }
 function Reject([scriptblock]$Action) { try { & $Action | Out-Null } catch { return }; throw 'Expected refusal' }
 function Case([string]$Name, [scriptblock]$Action) { & $Action; $script:count++; "PASS $Name" }
+function With-ProcessObservations([object[]]$Sequence, [scriptblock]$Action) {
+    $observations = New-Object Collections.Queue
+    foreach ($entry in $Sequence) { $observations.Enqueue($entry) }
+    function Get-Process {
+        param([int]$Id, $ErrorAction)
+        if ($Id -ne 42 -or -not $observations.Count) { throw 'Unexpected process lookup in synthetic test' }
+        $observations.Dequeue()
+    }
+    & $Action
+    Check ($observations.Count -eq 0)
+}
 $base = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\build-runner-tests'))
 $root = Join-Path $base ([Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory $root | Out-Null
@@ -61,6 +72,35 @@ try {
         Reject { Assert-RunProcess $p $record 'C:\test\MassEffect2.exe' }
         $p.Id = 43; Reject { Assert-RunProcess $p $record $p.Path }; $p.Id = 42
         $p.StartTime = $p.StartTime.AddSeconds(1); Reject { Assert-RunProcess $p $record $p.Path }
+    }
+    $requested = [DateTime]::UtcNow
+    $expected = 'C:\synthetic\MassEffectLauncher.exe'
+    $liveProcess = [pscustomobject]@{ Id = 42; Path = $expected; StartTime = $requested.AddSeconds(1); HasExited = $false }
+    $unreadableProcess = [pscustomobject]@{ Id = 42; Path = $null; StartTime = $null; HasExited = $false }
+    Case 'launcher disappearing before or during identity read is skipped' {
+        With-ProcessObservations @($null) { Check ($null -eq (Get-RunLaunchIdentity 42 $expected $requested)) }
+        With-ProcessObservations @($unreadableProcess, $null) { Check ($null -eq (Get-RunLaunchIdentity 42 $expected $requested)) }
+        $exited = [pscustomobject]@{ Id = 42; Path = $null; StartTime = $null; HasExited = $true }
+        With-ProcessObservations @($liveProcess, $exited) { Check ($null -eq (Get-RunLaunchIdentity 42 $expected $requested)) }
+    }
+    Case 'live launcher must have the expected path and launch creation time' {
+        With-ProcessObservations @($liveProcess, $liveProcess) {
+            $identity = Get-RunLaunchIdentity 42 $expected $requested
+            Check ($identity.pid -eq 42 -and $identity.path -eq $expected -and $identity.startedUtc -eq $liveProcess.StartTime.ToString('o'))
+        }
+        $wrong = [pscustomobject]@{ Id = 42; Path = 'C:\other\launcher.exe'; StartTime = $requested; HasExited = $false }
+        With-ProcessObservations @($wrong, $wrong) {
+            $message = ''
+            try { Get-RunLaunchIdentity 42 $expected $requested } catch { $message = $_.Exception.Message }
+            Check ($message -like '*Unexpected live process*pid=42*' -and $message.Contains($wrong.Path) -and $message.Contains('startedUtc='))
+        }
+        $older = [pscustomobject]@{ Id = 42; Path = $expected; StartTime = $requested.AddMinutes(-1); HasExited = $false }
+        With-ProcessObservations @($older, $older) { Reject { Get-RunLaunchIdentity 42 $expected $requested } }
+    }
+    Case 'unreadable live identity or PID replacement remains fail closed' {
+        With-ProcessObservations @($unreadableProcess, $unreadableProcess) { Reject { Get-RunLaunchIdentity 42 $expected $requested } }
+        $replacement = [pscustomobject]@{ Id = 42; Path = $expected; StartTime = $requested.AddSeconds(2); HasExited = $false }
+        With-ProcessObservations @($liveProcess, $replacement) { Reject { Get-RunLaunchIdentity 42 $expected $requested } }
     }
     $live = Join-Path $root 'live'; $backup = Join-Path $root 'backup'; $manifest = Join-Path $root 'before.json'
     New-Item -ItemType Directory $live | Out-Null
