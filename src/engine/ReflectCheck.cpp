@@ -2817,6 +2817,7 @@ void CheckClasses() {
 // The live controller and static conversation data split in LE3. Source: installed SFXGame.pcc.
 // This table supplies native evidence, not permission to inherit LE1's audio/camera paths.
 void CheckLe3Dialogue() {
+    CheckNativeTarget("GFxUI.GFxValue.GetDisplayMatrix");
     CheckNativeTarget("SFXGame.BioConversationController.GetReplyParaphraseText");
     CheckNativeTarget("SFXGame.SFXGUIMovie.GetUIString");
     CheckClass<UBioConversation>("SFXGame.BioConversation");
