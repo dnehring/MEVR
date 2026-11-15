@@ -84,7 +84,7 @@ no save, controller action, console request or reflection layout. A monolithic p
 deliberately does **not** dump code. The existing mod-tick fallback can retry later if code
 pages were not readable at attach.
 
-The session owner must acquire the shared game slot and use protected file manifests and
+The session owner must acquire the shared run lock (`le2-halcyon-run/run-lock.ps1`, not the game-slot rollback tool) and use protected file manifests and
 restoration. Observe the host log's `code dump: saved the decrypted .text` line and the local
 dump's paired `.txt` receipt (`timestamp`, `text_rva`, `text_size`, `patched_starts`). Expected
 name is `MassEffect-60AEF0C4.text.bin`, expected size `0x1065FC1`. A launch reaching ASI attach
@@ -102,3 +102,24 @@ the module rollout gate false. Native acceptance remains separate: matching refl
 rows, safe startup retries, valid world/player/weapon identity, a scalar getter matching
 the same-tick field, owned-string allocation/free on the native heap, and load/unload
 invalidation. A successful metadata check or ProcessEvent return is not gameplay success.
+
+## Protected launch attempts (2026-11-15)
+
+The user authorized the available game window. Two desktop dump-only attempts used the shared runner,
+verified backups and the development host. Neither produced an ME3 process or a host/dump receipt:
+
+- The first timed out after 240 seconds. Steam retained a pre-existing Running state despite no game process.
+  Steam Stop cleared that state and exposed Play.
+- The retry encountered a transient launcher whose identity could no longer be established. The runner refused
+  adoption and refused an unowned stop. Fresh process inspection found it had exited; restoration then passed.
+  The runner now rechecks PID/path/start time and skips vanished processes, while rejecting live unexpected,
+  unreadable or reused identities. Nineteen synthetic safety tests pass; the corrected path is not native-proven.
+- Both attempts restored the complete profile and selected-game manifests with **zero differences**, left the LE1
+  INI unchanged, and released the global run lock. No save was loaded and no VR runtime setting was changed.
+
+EA's Steam launch helper remained pending after the retry. The UI fallback could inspect Steam, but its Stop
+control was occluded by `EASteamLauncher.exe` and that helper exposed no targetable window; activation and one
+retry did not resolve it. No runtime dump, reflection acceptance or VR acceptance is claimed. Resolve the pending
+Steam/EA launch before the next protected run; do not merely repeat a launch against a stale Running state.
+Private attempt receipts remain under `%LOCALAPPDATA%/MEVR/sessions` with tags `LE3-engine-capture` and
+`LE3-engine-retry`. The installation is restored, not left deployed as dump-only or candidate VR.

@@ -11,6 +11,16 @@
 #include "plugin/PresentHook.hpp"
 #include "plugin/ProcessEventHook.hpp"
 
+#if defined(MEVR_WITH_HALCYON_LE3)
+#include "core/vr/AimRay.hpp"
+#include "core/vr/Controllers.hpp"
+#include "core/vr/Floor.hpp"
+#include "core/vr/HostView.hpp"
+#include "plugin/FloorLock.hpp"
+#include "plugin/PadMerge.hpp"
+#include "plugin/TestLoop.hpp"
+#include "plugin/XrHost.hpp"
+#endif
 #if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2)
 #include "core/vr/AimRay.hpp"
 #include "core/vr/Controllers.hpp"
@@ -140,8 +150,8 @@ HostServices BaseServices() {
     return services;
 }
 
-#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2)
-// What a host with Halcyon's renderer gives, either game's (docs/le2-continuation-plan.md M2.5): the controllers, the view
+#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
+// What a host with Halcyon's renderer gives (docs/le2-continuation-plan.md M2.5): the controllers, the view
 // each frame (core/vr/HostView, published by the renderer's bridge), hand aim and the aim ray, the snapshots' status, the
 // controllers' vibration and the floor (plugin/XrHost). The renderer owns VR: a mod given `controllers` stands its own down.
 void HostControllers(vr::controllers::State* out) {
@@ -193,6 +203,7 @@ HostServices WithRenderer(HostServices services) {
     services.hideScreenReticle = &mevr::host::renderer::ScreenReticleHidden;
     return services;
 }
+#if !defined(MEVR_WITH_HALCYON_LE3)
 // v17: the comfort vignette's darkness (plugin/Vignette, a quad of ours on either renderer).
 void HostSetVignette(float amount) {
     vignette::SetTarget(amount);
@@ -217,6 +228,7 @@ HostServices WithSights(HostServices services) {
     services.sightView = &HostSightView;
     return services;
 }
+#endif
 // The pad mapping with the mod's flags (plugin/PadMerge, both hosts): v7 the support grip and the flags it carries (the
 // holsters', the squad's, comfort's ...), v9 the right grip's report, v11 the left grip's.
 void HostSetSupportGrip(float distanceMeters, float acquireMeters, float releaseMeters, std::uint32_t flags) {
@@ -231,6 +243,7 @@ std::uint32_t HostRightGripFree() {
 std::uint32_t HostLeftGripAway() {
     return pad_merge::LeftGripAway();
 }
+#if !defined(MEVR_WITH_HALCYON_LE3)
 // v22: HUD pieces on the body (game/HudPieces; plugin/HudPieceLayers on both hosts, research/41).
 void HostSetHudPieces(vr::hud_pieces::Pieces const* pieces) {
     if (pieces != nullptr) {
@@ -244,6 +257,7 @@ HostServices WithHudPieces(HostServices services) {
     services.setHudPieces = &HostSetHudPieces;
     return services;
 }
+#endif
 // v36: the pawn's floor for the floor lock (game/Player's sample; plugin/FloorLock on both hosts, research/58).
 HostServices WithFloorLock(HostServices services) {
     services.floorLockSampleSize = static_cast<std::uint32_t>(sizeof(vr::floor_lock::PawnSample));
@@ -262,13 +276,15 @@ HostServices WithPadMerge(HostServices services) {
 void ForgetRendererModState() {
     pad_merge::ForgetSupportGrip();
     floor_lock::SetPawn(nullptr);
+#if !defined(MEVR_WITH_HALCYON_LE3)
     vr::hud_pieces::Reset();  // the weapon panel back on the HUD (the wrist piece needs no mod)
     vr::interact::Reset();
+    vr::sights::Reset();
+    vignette::Forget();
+#endif
     renderer::SetModHandAim(false);
     vr::aim_ray::Reset();
-    vr::sights::Reset();
     xr_host::ForgetHaptics();
-    vignette::Forget();
 #if defined(MEVR_WITH_HALCYON_LE2)
     traversal_cue::Forget();
 #endif
@@ -551,6 +567,12 @@ HostServices WithMenus(HostServices services) {
 // that comes over to LE2 moves its With* out of the LE1-only list.
 HostServices BuildServices() {
     HostServices services = WithCrashBreadcrumbs(BaseServices());
+#if defined(MEVR_WITH_HALCYON_LE3)
+    // Foundation only: no UI/weapon/voice capabilities until their native and renderer paths are connected.
+    services = WithFloorLock(WithPadMerge(WithRenderer(services)));
+    services.hideScreenReticle = nullptr; // no hand reticle is rendered by the LE3 bridge yet
+    services.setHandAim = nullptr; // no validated LE3 weapon adapter yet
+#endif
 #if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2)
     services = WithVoice(WithFloorLock(WithHudPieces(WithPadMerge(WithSights(WithVignette(WithRenderer(services)))))));  // both renderers' modules
     services.squadMenuSize = static_cast<std::uint32_t>(sizeof(vr::squad_menu::View));
@@ -592,6 +614,9 @@ HostServices BuildServices() {
 HostServices const gServices = BuildServices();
 
 void ForgetModState() {
+#if defined(MEVR_WITH_HALCYON_LE3)
+    ForgetRendererModState();
+#endif
 #if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2)
     ForgetRendererModState();
     vr::power_wheel::Publish({});

@@ -253,6 +253,33 @@ target_compile_options(halcyon-le2 PRIVATE /W3 /utf-8 /Zi)
 target_link_libraries(halcyon-le2 PUBLIC mevr-minhook d3d11 dxgi dxguid Shell32 Ole32)
 endif ()
 
+if (MEVR_BUILD_LE3 AND MEVR_HALCYON)
+    # Pinned original ME3 renderer. Its historical filenames/namespace still say ME2; no LE2 engine hooks are linked.
+    set(HALCYON_LE3_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/halcyon/le3)
+    add_library(halcyon-le3 STATIC
+        ${HALCYON_LE3_DIR}/allocviewstate_finder.cpp
+        ${HALCYON_LE3_DIR}/calcview_finder.cpp
+        ${HALCYON_LE3_DIR}/calcview_hook.cpp
+        ${HALCYON_LE3_DIR}/convo_fp.cpp
+        ${HALCYON_LE3_DIR}/d3d_capture.cpp
+        ${HALCYON_LE3_DIR}/dxgi_proxy.cpp
+        ${HALCYON_LE3_DIR}/engine_probe.cpp
+        ${HALCYON_LE3_DIR}/hud_probe.cpp
+        ${HALCYON_LE3_DIR}/logger.cpp
+        ${HALCYON_LE3_DIR}/me2_menu.cpp
+        ${HALCYON_LE3_DIR}/me2_xr.cpp
+        third_party/imgui/imgui.cpp third_party/imgui/imgui_draw.cpp
+        third_party/imgui/imgui_tables.cpp third_party/imgui/imgui_widgets.cpp
+        third_party/imgui/backends/imgui_impl_dx11.cpp)
+    target_include_directories(halcyon-le3 PUBLIC ${HALCYON_LE3_DIR} third_party/imgui third_party/imgui/backends)
+    target_include_directories(halcyon-le3 PRIVATE third_party/minhook/src/hde)
+    set_target_properties(halcyon-le3 PROPERTIES CXX_STANDARD 17)
+    target_compile_definitions(halcyon-le3 PRIVATE WIN32 _WINDOWS UNICODE _UNICODE _CRT_SECURE_NO_WARNINGS
+        NOMINMAX WIN32_LEAN_AND_MEAN MEVR_DISABLE_PDATA_PROBE MEVR_ASI)
+    target_compile_options(halcyon-le3 PRIVATE /W3 /utf-8 /Zi)
+    target_link_libraries(halcyon-le3 PUBLIC mevr-minhook d3d11 dxgi dxguid Shell32 Ole32)
+endif ()
+
 set(MEVR_CORE_SOURCES
     src/core/Exe.cpp
     src/core/Ini.cpp
@@ -1023,6 +1050,20 @@ function(mevr_add_plugin game)
                 src/plugin/SetupRequest.cpp src/plugin/SetupRequest.hpp src/core/Json.cpp src/core/Json.hpp)
         endif ()
     endif ()
+    set(with_halcyon_le3 OFF)
+    if (MEVR_HALCYON AND game STREQUAL "LE3")
+        set(with_halcyon_le3 ON)
+        # One shared controller/floor/input/capture implementation. Gameplay/UI service ports are separate gates.
+        list(APPEND host_sources src/plugin/HalcyonLe3.cpp src/plugin/HalcyonLe3.hpp
+            src/plugin/HalcyonLe3Bridge.cpp src/plugin/RendererLe3.cpp src/halcyon/le3/mevr_bridge.h
+            src/plugin/GameThreadCalls.cpp src/plugin/XrHost.cpp src/plugin/FloorLock.cpp src/plugin/PadMerge.cpp
+            src/plugin/TestLoop.cpp src/plugin/Swapchains.cpp src/plugin/EyeCopy.cpp src/plugin/Colour.cpp
+            src/game/GamepadMapping.cpp src/core/vr/Controllers.cpp src/core/xr/Input.cpp src/core/xr/Floor.cpp
+            src/core/vr/Haptics.cpp src/core/vr/FloorLock.cpp src/core/vr/Calibration.cpp src/core/vr/Comfort.cpp
+            src/core/vr/AimRay.cpp src/core/vr/HostView.cpp src/core/vr/ImageConvert.cpp src/core/vr/LayerComposite.cpp
+            src/core/vr/PoseRecording.cpp src/core/vr/Colour.cpp src/core/d3d11/Blit.cpp src/core/PngFile.cpp
+            src/core/Hotkey.cpp src/core/vr/TestRequest.cpp)
+    endif ()
     if (MEVR_HALCYON AND game STREQUAL "LE1")
         set(with_halcyon ON)
         list(APPEND host_sources ${MEVR_HALCYON_HOST_SOURCES} ${MEVR_FSR_EMBEDDED})
@@ -1070,6 +1111,10 @@ function(mevr_add_plugin game)
         # windowscodecs: WIC, the test loop's PNG snapshots (plugin/TestLoop).
         target_link_libraries(${host} PRIVATE halcyon-le2 OpenXR::openxr_loader windowscodecs d3dcompiler)
         target_compile_definitions(${host} PRIVATE MEVR_WITH_HALCYON_LE2)
+    endif ()
+    if (with_halcyon_le3)
+        target_link_libraries(${host} PRIVATE halcyon-le3 OpenXR::openxr_loader windowscodecs d3dcompiler)
+        target_compile_definitions(${host} PRIVATE MEVR_WITH_HALCYON_LE3)
     endif ()
     if (MEVR_LE2_DIAGNOSTIC AND game STREQUAL "LE2")
         target_link_libraries(${host} PRIVATE bcrypt shell32 ole32)
@@ -1181,6 +1226,8 @@ set_target_properties(MEVR-Loader PROPERTIES OUTPUT_NAME bink2w64)
 option(MEVR_BUILD_TESTS "Build the offline tests" ON)
 if (MEVR_BUILD_TESTS)
     enable_testing()
+    add_test(NAME mevr-protected-session COMMAND powershell -NoProfile -ExecutionPolicy Bypass
+        -File ${CMAKE_CURRENT_SOURCE_DIR}/tools/le2-halcyon-run/test-session.ps1)
     foreach(game LE1 LE2 LE3)
         add_executable(mevr-context-${game}-tests tests/GameContextTests.cpp)
         target_include_directories(mevr-context-${game}-tests PRIVATE src)
@@ -1432,6 +1479,7 @@ if (MEVR_BUILD_TESTS)
         add_test(NAME mevr-le1-save COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tests/Le1SaveTests.py)
         # LE2 save preparation, protected fake-install lifecycle and evidence integrity.
         add_test(NAME mevr-le2-save COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tests/Le2SaveTests.py)
+        add_test(NAME mevr-le3-save COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tests/Le3SaveTests.py)
         add_test(NAME mevr-le2-session COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tools/qa-le2/test-session.py)
         add_test(NAME mevr-le2-scenario COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tools/qa-le2/test-scenario.py)
         add_test(NAME mevr-le2-oracle COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tools/qa-le2/test-oracle.py)
@@ -1696,6 +1744,7 @@ if (MEVR_BUILD_TESTS)
     # Every program ctest runs, as one target: CI (.github/workflows) and tools/package-release.ps1 build it before ctest.
     # The loader too: mevr-tests installs the bink2w64.dll built next to it into its fake game.
     add_custom_target(mevr-test-programs)
+    add_dependencies(mevr-test-programs mevr-context-LE1-tests mevr-context-LE2-tests mevr-context-LE3-tests)
     add_dependencies(mevr-test-programs mevr-tests mevr-colour-preview mevr-upscale-preview MEVR-Loader mevr-fake-game mevr-fake-mem)
     # The LE2 tests' programs (above): CI and package-release build only this target, so a test whose program isn't
     # listed here is "Not Run" there, and the Python tests that call one fail.

@@ -96,7 +96,7 @@ ue3::Object* LiveConversation() {
 #if defined(MEVR_GAME_LE2)
     static ue3::FieldRef current{"SFXGame.BioWorldInfo", "m_oCurrentConversation", ue3::kEveryGame};
     auto* const controller = player::Controller();
-    if (controller == nullptr || !engine::adapter::IsConversationMode(player::GameMode(controller))) return nullptr;
+    if (controller == nullptr || !engine::adapter::IsConversationMode(player::GameMode(controller).value_or(255))) return nullptr;
     auto* const world = gActorWorldInfo.Read<ue3::Object*>(controller).value_or(nullptr);
     auto* const conversation = world != nullptr && ue3::runtime::IsAlive(world) ? current.Read<ue3::Object*>(world).value_or(nullptr) : nullptr;
     return conversation != nullptr && ue3::runtime::IsAlive(conversation) ? conversation : nullptr;

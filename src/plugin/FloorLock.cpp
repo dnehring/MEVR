@@ -2,6 +2,7 @@
 #include "plugin/FloorLock.hpp"
 
 #include "core/Log.hpp"
+#include "core/vr/Calibration.hpp" // seated motion is shared even when this host has no calibration UI
 #if defined(MEVR_WITH_HALCYON)
 #include "halcyon/le1/mevr_bridge.h"  // LE1's render seams, implemented at the end
 #endif

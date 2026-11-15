@@ -67,7 +67,7 @@ void Attach() {
     PinRuntime();  // before its device hook asks which runtime this is (the SteamVR device-flag fix)
 
     ME2VR::Log::Line("=====================================================");
-    ME2VR::Log::Line("ME2VR (Halcyon) inside ME VR Attempt's LE3MEVR.asi");
+    ME2VR::Log::Line("ME3VR (Halcyon) inside ME VR Attempt's LE3MEVR.asi");
     ME2VR::Log::Line(std::string("[BUILDSTAMP] compiled ") + __DATE__ + " " + __TIME__);
     ME2VR::Log::Line("=====================================================");
 
@@ -103,7 +103,7 @@ void AfterTick(float deltaSeconds) {
 
 namespace ME2VR::MevrBridge {
 
-// ProcessEvent on the game thread only (research/36): ME2's renderer's Present-thread calls go to plugin/GameThreadCalls, the
+// ProcessEvent on the game thread only (research/36): ME3's renderer's Present-thread calls go to plugin/GameThreadCalls, the
 // queue LE1's host runs, drained at the start of the next engine tick (plugin/Entry).
 bool OnGameThread() noexcept {
     return mevr::host::game_thread::OnGameThread();

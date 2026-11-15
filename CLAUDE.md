@@ -16,7 +16,7 @@ external code candidates. Read these before sequel work. The current scope is pr
 **LE3 port entry point:** [ME3 implementation plan](docs/le3-port-implementation-plan.md),
 [current reuse audit](docs/le3-port-reuse-audit.md) and [melee audit](research/le3-melee-audit.md) define the next port.
 Keep one shared implementation with three native adapters; audit existing ME1/ME2 systems before adding code.
-These are source-audited work packages, not completed ME3 support. First-person world conversations remain deferred;
+The plan's implementation ledger tracks foundation work separately from native acceptance. First-person world conversations remain deferred;
 authored seated scenes (such as shuttles) must reject traversal while retaining head tracking.
 
 ## Git
@@ -132,7 +132,11 @@ authored seated scenes (such as shuttles) must reject traversal while retaining 
 - **UObject::ProcessEvent is hooked by the host at attach and never removed** (all games); the
   mod's handlers run through `HostServices::setProcessEventCallback`. Halcyon hooks it too, with
   its own MinHook, on top of ours: never uninstall a hook another hooker may sit on.
-  LE3 still uses our own renderer until Halcyon's ME3 code is brought in. **LE2's host runs Halcyon's ME2 renderer**
+  **LE3's candidate host now integrates Halcyon's ME3 renderer** (`src/halcyon/le3`, `MEVR_WITH_HALCYON_LE3`;
+  [foundation and remaining gates](research/le3-renderer-integration.md)). It reuses controller/floor/pad/test-loop services;
+  native reflection, body/UI and runtime acceptance remain pending. Use the protected desktop dump-only route in
+  `tools/le2-halcyon-run/README.md` for initial discovery; do not deploy the candidate as accepted VR support.
+  **LE2's host runs Halcyon's ME2 renderer**
   since 2026-11-14 (`src/halcyon/le2`, library `halcyon-le2`, `MEVR_WITH_HALCYON_LE2`, not the diagnostic host; started by
   `plugin/HalcyonLe2`, seams in `src/halcyon/le2/mevr_bridge.h` implemented in `plugin/HalcyonLe2Bridge.cpp`: static loader,
   our actions on its session, Touch as pad 0, its Present-thread ProcessEvents queued for the game thread; its log

@@ -1,12 +1,44 @@
 <!-- SPDX-License-Identifier: MIT -->
 # ME3 implementation plan for the unified MEVR mod
 
-Date: 2026-11-15. Baseline: committed main `7a3a1158`. Status: **source audit and implementation plan; no ME3 runtime
-proof in this pass**. Scope: Legendary Edition single-player ME3, including its included DLC. This extends the same
-mod used in ME1 and ME2; it is not a separate VR product or a request to start implementation automatically.
+Date: 2026-11-15. Audit baseline: committed main `7a3a1158`. Status: **implementation underway; native ME3 acceptance
+pending** (see the ledger below). Scope: Legendary Edition single-player ME3, including its included DLC. This extends
+the same mod used in ME1 and ME2; it is not a separate VR product.
 
 Read the [reuse audit](le3-port-reuse-audit.md), [ME3 melee audit](../research/le3-melee-audit.md), current
 [ME2 continuation status](le2-continuation-plan.md) and repository instructions before taking a package.
+
+## Implementation ledger (2026-11-15)
+
+Implementation is now authorized. The audit baseline above remains historical; these are the first foundation changes:
+
+- **L3-0, partial:** the shared adapter classifies trilogy game modes; wrist/menu and native-table callers use semantic
+  predicates. A bounded read-only ME3 v59 save inspector reuses our binary reader and checksum tooling. All six existing
+  saves passed prefix/CRC inspection unchanged. Their remaining bytes stay opaque; mutation and native fixture
+  preparation remain disabled. See [save foundation](../research/le3-save-foundation.md).
+- **L3-1, diagnostic preparation only:** explicit ME3 reflection comparisons and a reordered-function-layout regression
+  are implemented. Verified live layout/allocator access is **not enabled**: the installed executable's code is encrypted
+  and no runtime ME3 dump was available. See [engine discovery](../research/le3-engine-access-discovery.md).
+- **L3-2, candidate integration:** the pinned original ME3 renderer and thin bridge reuse controller, floor, pad, colour,
+  capture and replay modules. Unsupported UI/weapon/voice services remain unavailable. First-person world conversations
+  stay off. The game-thread queue cannot execute native setters until L3-1 is established and the host restarts; head
+  hiding and camera/body behavior are not accepted. See [renderer integration](../research/le3-renderer-integration.md).
+- **L3-3 through L3-10:** no completion claimed. Melee/class mapping, native reload, body/weapon presentation, menus,
+  powers, traversal, galaxy gameplay and campaign/release gates still require their adapters and evidence below.
+
+The next native step is a protected development-host **desktop dump-only** launch, before renderer or gameplay hooks.
+It needs the shared game-run lock and an available coordinated window. The imported renderer must then pass native
+signature review before a VR run. Offline builds and tests never promote these native/headset gates automatically.
+
+Integration checks: all three development host/mod pairs and all three monolithic player ASIs compile. The 59-test
+offline suite passed across the full run and focused reruns (PowerShell module resolution was fixed; the three new
+context executables then built and passed). SPDX and whitespace checks passed. The shared pointer's internal `near`
+member was renamed `inReach` to avoid the Windows SDK macro in monolithic builds; behavior is unchanged.
+
+Two protected desktop launch attempts did not reach ME3. Both restored with zero manifest differences and released
+the run lock. The second identified a transient-launcher monitoring race, now covered by 19 runner safety tests.
+Steam/EA still has a pending launch-helper state to resolve; see the engine discovery log before retrying. L3-1
+therefore remains gated, and the imported renderer has not been run or accepted in ME3.
 
 ## Outcome and boundaries
 
@@ -87,8 +119,11 @@ native rules. Voice calls the same validated dispatcher; do not give it a less r
 
 **Melee.** Follow [the source audit and six-step proof](../research/le3-melee-audit.md). Reuse swing detection but add
 explicit light/heavy intent. Proposed heavy input is deliberate arming plus strike, not “swing faster.” Native class
-actions own effects, damage and combos. Only an Adept-specific heavy action is established by the inspected SDK;
-inventory the other class packages. Cover-synchronized attacks and Atlas melee are separate contexts, not automatic
+actions own effects, damage and combos. Installed base-game package inspection now establishes all six class heavy
+action mappings, their storm variants and Infiltrator's cloak variant (see the melee audit's provenance table).
+Live class-array assignment, DLC overrides and action admission remain unproved. Both native melee entry points
+can choose cover/storm actions first, so an ordinary swing must reject those contexts before dispatch.
+Cover-synchronized attacks and Atlas melee are separate contexts, not automatic
 extensions of ordinary swings. Do not directly call impact handlers to simulate success.
 
 **Movement.** Current `Traversal::Kind` covers None/Vault/ClimbUp; ladders need a real lifecycle extension. Use native
@@ -117,8 +152,10 @@ their own presentation gate if included in ME3.
 ## Reuse the save/editor and test flow
 
 The audit found **six `.pcsav` files in one existing ME3 career directory** at the standard Documents location. No
-file was modified or loaded; the directory name suggests Vanguard but class, level, plot and checkpoint legality
-still require decoding and native confirmation. Start with these files. There is no justification yet for making the
+file was modified or loaded. The read-only v59 prefix now confirms Vanguard/VanguardNonCombat identities and levels
+59/60. ChapterSave at `Biop_End001` is a combat-pawn candidate; the Normandy saves are noncombat and the ending
+NewGamePlusSave reports injured state. Full plot/checkpoint legality still needs decoding and native confirmation.
+Start with these files. There is no justification yet for making the
 user replay the campaign or starting a new game to acquire the first fixture.
 
 `tools/le2-save.py` is a strict independent LE2 v30 implementation based on Trilogy Save Editor's documented format;
@@ -138,9 +175,10 @@ Reuse `QueueSaveGameCommand` and the existing descriptor-load design after verif
 SDK `FSFXSaveDescriptor` supplies Career/SaveName/Index/Type; Load is a distinct action from Save. Do not use a scripted
 level jump as proof that the checkpoint can be reached and loaded normally. Never use `streamlevelin`.
 
-The common deploy script accepts LE3, but `tools/le2-halcyon-run` and `tools/qa-le2/session.py` currently bind ME2 paths,
-process identity and v30 receipts. Parameterize their game description and preserve wrong-game rejection, one global
-run lock, manifests, normal load and `finally` restoration. Extend `ConsoleRequest` and `TestLoop` in the host instead
+The common deploy script accepts LE3. `tools/le2-halcyon-run` now supports a protected LE3 desktop dump-only session
+with per-game process/backup identity and the shared run lock. Its LE2 renderer route remains the default;
+`tools/qa-le2/session.py` explicitly refuses LE3 native fixtures until full save/runner contracts exist. Preserve
+wrong-game rejection, manifests, normal load and `finally` restoration when extending this. Extend `ConsoleRequest` and `TestLoop` in the host instead
 of building another file channel. Reuse `console.ps1`, `snapshot.ps1`, `record.ps1`, `replay.ps1 -Inputs` and existing
 synthetic generators once that bridge exists. A tool filename or accepted `-Game LE3` flag is not native proof.
 

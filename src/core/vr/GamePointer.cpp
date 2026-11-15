@@ -42,7 +42,7 @@ Output Pointer::Release() {
 namespace {
 
 struct Touch {
-    bool near = false;    // in reach in front of (or just behind) the touchable part
+    bool inReach = false;    // in reach in front of (or just behind) the touchable part
     bool inArea = false;  // over the touchable part (with its margin), at any depth
     float u = 0.0f;
     float v = 0.0f;
@@ -63,7 +63,7 @@ Touch TouchOf(Quad const& quad, HandInput const& hand, Input const& input, Setti
     float const mu = s.touchMarginM / quad.width;
     float const mv = s.touchMarginM / quad.height;
     t.inArea = t.u >= input.touchU0 - mu && t.u <= input.touchU1 + mu && t.v >= input.touchV0 - mv && t.v <= input.touchV1 + mv;
-    t.near = t.inArea && t.d < s.touchHoverM && t.d > -s.touchBehindM;
+    t.inReach = t.inArea && t.d < s.touchHoverM && t.d > -s.touchBehindM;
     return t;
 }
 
@@ -89,13 +89,13 @@ Output Pointer::Step(Quad const& quad, Input const& input) {
         Touch const& t = touches[i] = TouchOf(quad, hand, input, settings_);
         if (touchLatched_[i]) {
             touchLatched_[i] = hand.tipValid && t.d <= settings_.touchReleaseM && t.d > -settings_.touchBehindM;
-        } else if (t.near && t.d > settings_.touchPressM) {
+        } else if (t.inReach && t.d > settings_.touchPressM) {
             touchArmed_[i] = true;
-        } else if (t.near && touchArmed_[i]) {
+        } else if (t.inReach && touchArmed_[i]) {
             touchLatched_[i] = true;  // reached the surface from the front
             touchArmed_[i] = false;
         }
-        if (!t.near) {
+        if (!t.inReach) {
             touchArmed_[i] = false;
         }
         if (!touchLatched_[i]) {
@@ -113,7 +113,7 @@ Output Pointer::Step(Quad const& quad, Input const& input) {
         }
         if (touchHand < 0) {
             for (int i = 0; i < 2; ++i) {
-                if (touches[i].near && (touchHand < 0 || touches[i].d < touches[touchHand].d)) {
+                if (touches[i].inReach && (touchHand < 0 || touches[i].d < touches[touchHand].d)) {
                     touchHand = i;
                 }
             }
