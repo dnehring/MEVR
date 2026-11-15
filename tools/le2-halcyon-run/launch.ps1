@@ -51,7 +51,7 @@ if ($DesktopDump) {
 }
 if ($RendererPreview) {
     $previewOptions = Get-PreviewOptions $open
-    Assert-PreviewConfig $bin $previewOptions.mode $previewOptions.diagnostics
+    Assert-PreviewConfig $bin $previewOptions.mode $previewOptions.diagnostics $previewOptions.mirrorEvery
     Assert-RunArtifacts $open.previewArtifacts
     Assert-PreviewEnvironment $open (Get-PreviewPaths)
     if (Test-Path -LiteralPath (Join-Path $env:LOCALAPPDATA 'MEVR\fake-headset\undo.json')) { throw 'Another fake-headset session appeared' }
@@ -135,7 +135,7 @@ if ($RendererPreview) {
     $previewReceipt.freshMarker = $true; $previewReceipt.log = $log
     # The renderer can migrate an obsolete INI mode while starting. Never label
     # that run with the requested mode or continue on changed runtime artifacts.
-    $initialized = Confirm-PreviewInitializedConfig $bin $open.previewArtifacts $previewOptions.mode $previewOptions.diagnostics
+    $initialized = Confirm-PreviewInitializedConfig $bin $open.previewArtifacts $previewOptions.mode $previewOptions.diagnostics $previewOptions.mirrorEvery
     [IO.File]::WriteAllText((Join-Path $open.session 'effective-preview-mod.ini'), $initialized.text)
     $previewReceipt.rendererConfigurationUnchanged = $true
     $previewReceipt.modDefaultsAppended = $initialized.defaultsAppended

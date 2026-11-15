@@ -10,8 +10,13 @@ Read the [reuse audit](le3-port-reuse-audit.md), [ME3 melee audit](../research/l
 
 ## Implementation ledger (2026-11-15)
 
-Latest checkpoint: development host/module pairs and player ASIs build for all three games; the full
-**60-test suite passed**. Two further protected desktop probes passed **355/355** and **361/361** native
+Latest native checkpoint: the protected renderer run passed **493/493** metadata comparisons and an ordinary
+Normandy load, then restored with zero differences. SFR still produced zero first-eye captures. See the
+[native preview and timing evidence](../research/le3-renderer-preview-evidence.md). The latest shared publication,
+galaxy and input-ownership changes are undergoing combined trilogy development/player builds. The earlier
+foundation built all three variants and passed its **60-test suite**; the expanded 64-test suite passed across
+the full run and a corrected bounded loader-test rerun, with newer ownership/HDR cases also passing focused checks.
+Two earlier protected desktop probes passed **355/355** and **361/361** native
 comparisons, with ordinary Normandy loading and zero-difference restoration. The latter supplies the native
 dialogue-text and HUD-matrix entry points for the remaining source audits. These counts prove only the
 listed comparisons, not gameplay or stereo acceptance.
@@ -25,7 +30,8 @@ the normal Normandy fixture. Diagnostic mono shows the world and first-person ha
 without missing-layer errors. Same-frame stereo still reports zero first-eye captures and falls back to a flat
 panel, so stereo remains unaccepted. All these sessions restored tracked files with zero differences. A requested
 legacy side-by-side run actually migrated to same-frame mode; it is not side-by-side evidence. The runner now
-rejects that obsolete mode and checks configuration again after XR readiness (32 safety cases pass).
+rejects that obsolete mode and checks configuration again after XR readiness (34 safety cases pass, including
+first-run defaults and explicit mirror cadence).
 
 **HDR reuse verified offline:** active ME3 full-frame eyes and mono presentation call the same `EyeCopy`/`Blit`
 converter as ME2. The registered `mevr-eye-copy-warp` regression passed on actual software D3D11 with float HDR
@@ -63,11 +69,14 @@ Implementation is now authorized. The audit baseline above remains historical; t
   the expanded native metadata comparison passed. Target policy, healing/revive, UI capacity and actual companion
   outcomes remain open. See [squad audit](../research/le3-squad.md).
 - **L3-7/8, staged adapters:** native light/heavy melee diagnostics and ladder/climb/vault/evade lifecycle observations
-  are wired through fresh ownership checks. Gestures remain opt-in pending native proof; heavy has no new physical
-  binding yet. Shared comfort turning/hand-walk rejects native movement-ignore/custom-action states. Stable traversal
+  are wired through fresh ownership checks. Gestures remain opt-in pending native proof; heavy uses a staged
+  chamber-and-strike gesture. Shared comfort turning/hand-walk rejects native movement-ignore/custom-action states. Stable traversal
   camera handback and native/headset acceptance remain open. See [traversal](../research/le3-traversal-adapter.md).
-- **L3-5, L3-9 and L3-10:** no completion claimed. Native reload, attachment-aware optics, galaxy gameplay and
-  campaign/release gates still require their adapters and evidence below.
+- **L3-5:** native ammo observation now distinguishes raw fields from effective getter results and rejects ambiguous
+  methods. Production reload and attachment-aware optics still require implementation and weapon fixtures.
+- **L3-9, candidate:** the native galaxy observer, opt-in shared table placement and native-trigger transition guard
+  are integrated. Actual scan/probe bindings, pursuit, rewards and persistence remain unaccepted.
+- **L3-10:** campaign, installer/release and physical-headset qualification remain open.
 
 The desktop engine probes and normal descriptor loads passed and restored with zero differences. The existing chapter
 candidate failed ordinary-combat admission (see below); a coherent combat fixture remains open. Next are the expanded

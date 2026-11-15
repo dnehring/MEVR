@@ -367,6 +367,20 @@ try {
         Reject { Assert-PreviewConfig $bin 2 $true }
         Reject { & "$PSScriptRoot\prep.ps1" -Holder synthetic -Game LE3 -DesktopDump -PreviewRendererMode 0 }
     }
+    Case 'preview mirror comparison binds actual cadence and rejects invalid or changed options' {
+        Check ((Get-PreviewOptions ([pscustomobject]@{})).mirrorEvery -eq 8)
+        Check ((Get-PreviewOptions ([pscustomobject]@{previewMirrorEvery=1})).mirrorEvery -eq 1)
+        foreach ($bad in @('1', $true, 0, 3, 16, $null)) {
+            Reject { Get-PreviewOptions ([pscustomobject]@{previewMirrorEvery=$bad}) }
+        }
+        Reject { & "$PSScriptRoot\prep.ps1" -Holder synthetic -Game LE3 -DesktopDump -PreviewMirrorEvery 1 }
+        $bin=Join-Path $root 'preview-mirror'; New-Item -ItemType Directory (Join-Path $bin 'ASI') | Out-Null
+        [IO.File]::WriteAllText((Join-Path $bin 'ASI\LE3MEVR.ini'),(Get-PreviewModConfig))
+        [IO.File]::WriteAllText((Join-Path $bin 'MELE3VR.ini'),(Get-PreviewRendererConfig 4 $true 1))
+        Assert-PreviewConfig $bin 4 $true 1
+        Reject { Assert-PreviewConfig $bin 4 $true 8 }
+        Check ((Get-PreviewRendererConfig 4 $true 1) -match 'MirrorPresentEvery=1\r?\n')
+    }
     Case 'renderer readiness marker must be fresh rather than replayed old log content' {
         $path=Join-Path $root 'preview.log'; $marker='[ME3XR] VR session ready; starting frame submission.'
         [IO.File]::WriteAllText($path,$marker); $started=[DateTime]::UtcNow.AddSeconds(-1)

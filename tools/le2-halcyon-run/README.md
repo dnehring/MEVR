@@ -213,6 +213,11 @@ the effective mod ini is saved in the session receipt. Legacy mode
 side-by-side mode does not establish which renderer actually ran.
 Mono is diagnostic evidence only and cannot satisfy stereo acceptance. Desktop dump
 mode rejects these renderer options.
+`-PreviewMirrorEvery 1` updates the desktop mirror every frame; the default `8`
+retains the imported renderer's throttle. Values `2` and `4` are also explicit
+comparisons. The option is recorded and checked before and after startup. Compare
+engine frame timings separately from visible monitor updates: full-rate mirroring
+can reintroduce desktop-compositor back pressure and does not prove headset pacing.
 The preview also sets `[Pointer] setCursor=0`, as the fake-headset skill requires for
 synthetic controller replays, so the recorded pointer cannot move the desktop cursor.
 Source: `src/halcyon/le3/me2_menu.cpp` `LoadValues`/resolution rows and
