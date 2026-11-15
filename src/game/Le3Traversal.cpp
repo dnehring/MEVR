@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 #include "game/Le3Traversal.hpp"
 #include "core/Log.hpp"
+#include "core/WriteJournal.hpp"
+#include "engine/GameAdapter.hpp"
 #include "core/vr/TestRequest.hpp"
 #include "engine/CallFunction.hpp"
 #include "engine/ProcessEvent.hpp"
@@ -32,6 +34,13 @@ double gRecoveredAt = 0;
 std::optional<double> gCameraYawStart;
 double gCameraYawDelta = 0;
 tv::Settings gSettings;
+tv::LevelView gLevel;
+tv::AuthoredYaw gYaw;
+std::optional<tv::Pose> gRawPose;
+double gViewCameraAt = 0, gViewEndedAt = 0;
+bool gViewWasOwned = false;
+std::uint64_t gViewGeneration = 0, gViewWrites = 0;
+bool gViewAccepted = false;
 #if defined(MEVR_GAME_LE3)
 ue3::ClassRef gModeClass{"SFXGame.SFXGameModeDefault", ue3::kEveryGame};
 ue3::ClassRef gInputClass{"SFXGame.BioPlayerInput", ue3::kEveryGame};
@@ -90,6 +99,16 @@ struct Context {
     bool operator==(Context const&) const = default;
 };
 Context gContext;
+// View lifetime differs from input lifetime: a GUI/focus pause must not throw away
+// the persistent basis correction. Only real scene/actor/space changes reset it.
+struct ViewContext {
+    ue3::Object* world = nullptr;
+    ue3::Object* pc = nullptr;
+    ue3::Object* pawn = nullptr;
+    std::uint32_t recenters = 0, sessions = 0;
+    bool operator==(ViewContext const&) const = default;
+};
+ViewContext gViewContext;
 double Now() { return static_cast<double>(GetTickCount64()) * .001; }
 struct ParamShape { char const* name; ue3::Kind kind; int offset, bytes; };
 bool Signature(ue3::FunctionRef& ref, int bytes, std::initializer_list<ParamShape> shapes) {
@@ -213,27 +232,105 @@ void OnEnd(ue3::Object* object, ue3::Function*, void*) { End(false, object); }
 void OnInterrupt(ue3::Object* object, ue3::Function*, void*) { End(true, object); }
 void OnEndPe(ue3::Object* object, ue3::Function* fn, void*, void* result) { OnEnd(object, fn, result); }
 void OnInterruptPe(ue3::Object* object, ue3::Function* fn, void*, void* result) { OnInterrupt(object, fn, result); }
+void ClearPresentation(bool resetBasis) {
+    if (gLink.setPresentation) gLink.setPresentation(nullptr);
+    gViewAccepted = false;
+    if (resetBasis) {
+        gYaw.Reset(); gLevel.Reset(); gRawPose.reset();
+        gViewCameraAt = gViewEndedAt = 0; gViewWasOwned = false;
+    }
+}
+bool RefreshPresentation() {
+    auto const c = ReadContext(gLink);
+    auto const mode = engine::adapter::GameMode(c.mode);
+    bool const transient = mode == engine::adapter::Mode::Gui || mode == engine::adapter::Mode::PowerWheel ||
+        mode == engine::adapter::Mode::WeaponWheel || mode == engine::adapter::Mode::Command;
+    if (!c.world || !c.pc || !c.pawn || !gLink.viewSpaceKnown ||
+        (mode != engine::adapter::Mode::OnFoot && !transient)) {
+        ClearPresentation(true); gViewContext = {}; return false;
+    }
+    ViewContext const next{c.world, c.pc, c.pawn, gLink.viewRecenters, gLink.viewSessions};
+    if (!(next == gViewContext)) { ClearPresentation(true); gViewContext = next; ++gViewGeneration; }
+    if (!gSettings.enabled || gSettings.view != tv::View::Level) {
+        ClearPresentation(true); return false;
+    }
+    if (transient || !gLink.headTrackedView || !gLink.setPresentation ||
+        !gLink.allowPresentation || !gLink.allowPresentation()) {
+        ClearPresentation(false); return false;
+    }
+    return true;
+}
+void Present(tv::Pose const& native, double now) {
+    if (!std::isfinite(native.location.x) || !std::isfinite(native.location.y) || !std::isfinite(native.location.z)) {
+        ClearPresentation(true); return;
+    }
+    if (!RefreshPresentation()) return;
+    auto const current = Current();
+    bool const owned = current && *current != nullptr &&
+        KindOf(gCurrent.Read<std::int32_t>(gContext.pawn).value_or(-1)) != tv::Kind::None;
+    // The prior native camera is captured before the first authored action update.
+    // If it isn't available (entering a scene mid-action), do not invent a heading.
+    if (owned && !gViewWasOwned && gRawPose) {
+        gYaw.Begin(gRawPose->yaw);
+        gLevel.Begin(*gRawPose);
+        gViewEndedAt = 0;
+    }
+    if (!owned && gViewWasOwned) { gLevel.End(); gViewEndedAt = now; }
+    double const dt = gViewCameraAt > 0 ? now - gViewCameraAt : 0;
+    auto yaw = gYaw; // a declined publication must not advance the correction transaction
+    tv::Pose result = native;
+    if (owned && gLevel.Started()) result = gLevel.During(native, dt, gSettings.levelTauS);
+    else if (gLevel.Started() && gViewEndedAt > 0) {
+        if (auto const pose = gLevel.After(native, now - gViewEndedAt, gSettings.settleS)) result = *pose;
+    }
+    // Recovery never drags the view behind native horizontal movement.
+    result.location.x = native.location.x; result.location.y = native.location.y;
+    result.yaw = yaw.Update(native.yaw, owned);
+    tv::Presentation message;
+    message.flags = tv::kPresentationActive | (owned ? tv::kPresentationActionOwned : 0u);
+    message.yawOffsetUU = static_cast<std::int32_t>(std::lround(yaw.Offset() * 65536 / 360));
+    message.recenters = gViewContext.recenters; message.sessions = gViewContext.sessions;
+    message.sceneGeneration = gViewGeneration; message.timeMs = GetTickCount64();
+    if (!gLink.setPresentation(&message)) { gViewAccepted = false; return; }
+    auto const pov = player::CameraPov(player::Camera(gViewContext.pc));
+    if (!pov || !pov->location || !pov->rotation) { ClearPresentation(false); return; }
+    auto units = [](double value) { return static_cast<std::int32_t>(std::lround(tv::SignedDegrees(value) * 65536 / 360)); };
+    // No pawn/controller writes. Horizontal/metric translation is the native camera's;
+    // LevelView only supplies its existing optional vertical filter and recovery blend.
+    *pov->location = {static_cast<float>(result.location.x), static_cast<float>(result.location.y), static_cast<float>(result.location.z)};
+    *pov->rotation = {units(result.pitch), units(result.yaw), units(result.roll)};
+    write_journal::Wrote("LE3 traversal presentation POV", pov->location, sizeof(ue3::Vector));
+    write_journal::Wrote("LE3 traversal presentation rotation", pov->rotation, sizeof(ue3::Rotator));
+    gYaw = yaw; gViewAccepted = true; ++gViewWrites;
+    gRawPose = native; gViewCameraAt = now; gViewWasOwned = owned;
+}
 void OnCamera(ue3::Object* camera, ue3::Function*, void*, void*) {
-    if (!SameScene() || player::CameraOwner(camera) != gContext.pc) return;
+    if (!gStarted || !ue3::runtime::Up()) return;
+    // Refresh input observation separately; presentation keeps its basis through transient UI/focus.
+    Refresh(gLink);
+    if (player::CameraOwner(camera) != gContext.pc) return;
     Observe();
-    if (gLife.action == 0 || (gLife.phase != tv::ActionPhase::Started && gRecovered)) return;
     auto const pawn = player::Location(gContext.pawn);
     auto const rotation = player::Rotation(gContext.pawn);
     auto const pov = player::CameraPov(camera);
-    if (!pawn || !rotation || !pov || !pov->location || !pov->rotation) return;
+    if (!pawn || !rotation || !pov || !pov->location || !pov->rotation) { ClearPresentation(false); return; }
     auto deg = [](std::int32_t value) { return tv::SignedDegrees(static_cast<double>(value) * 360 / 65536); };
-    tv::Sample sample;
-    sample.t = Now() - gLife.startedAt;
-    sample.pawn = {pawn->x, pawn->y, pawn->z};
-    sample.pawnYaw = deg(rotation->yaw);
-    sample.camera = {pov->location->x, pov->location->y, pov->location->z};
-    sample.pitch = deg(pov->rotation->pitch); sample.yaw = deg(pov->rotation->yaw); sample.roll = deg(pov->rotation->roll);
-    if (!gCameraYawStart) gCameraYawStart = sample.yaw;
-    gCameraYawDelta = tv::SignedDegrees(sample.yaw - *gCameraYawStart);
-    sample.collision = gCollision.ReadBool(gContext.pawn).value_or(false);
-    sample.physics = gPhysics.Read<std::uint8_t>(gContext.pawn).value_or(0);
-    sample.running = gLife.phase == tv::ActionPhase::Started;
-    gRecord.Add(sample);
+    tv::Pose const native{{pov->location->x, pov->location->y, pov->location->z},
+        deg(pov->rotation->pitch), deg(pov->rotation->yaw), deg(pov->rotation->roll)};
+    if (gLife.action != 0 && (gLife.phase == tv::ActionPhase::Started || !gRecovered)) {
+        tv::Sample sample;
+        sample.t = Now() - gLife.startedAt;
+        sample.pawn = {pawn->x, pawn->y, pawn->z}; sample.pawnYaw = deg(rotation->yaw);
+        sample.camera = native.location;
+        sample.pitch = native.pitch; sample.yaw = native.yaw; sample.roll = native.roll;
+        if (!gCameraYawStart) gCameraYawStart = sample.yaw;
+        gCameraYawDelta = tv::SignedDegrees(sample.yaw - *gCameraYawStart);
+        sample.collision = gCollision.ReadBool(gContext.pawn).value_or(false);
+        sample.physics = gPhysics.Read<std::uint8_t>(gContext.pawn).value_or(0);
+        sample.running = gLife.phase == tv::ActionPhase::Started;
+        gRecord.Add(sample); // always raw native values, before presentation writes
+    }
+    Present(native, Now());
 }
 char const* Guard(Link const& link) {
     if (!gStarted || !ue3::runtime::Up()) return "reflection adapter not ready";
@@ -409,6 +506,7 @@ void Tick(Link const& link, tv::Settings const& settings) {
 #if defined(MEVR_GAME_LE3)
     if (!gStarted || !ue3::runtime::Up()) return;
     Refresh(link);
+    RefreshPresentation();
     Observe();
     if (!gLife.Busy() && gLife.action != 0 && !gRecovered && gCurrent.Read<std::int32_t>(gContext.pawn) == 0 &&
         Bool(gContext.pc, gIgnored) == false && gPhysics.Read<std::uint8_t>(gContext.pawn) == 1) {
@@ -465,13 +563,15 @@ std::string StatusJson() {
     auto const sample = gRecord.Current();
     return std::format("{{\"adapter\":\"LE3\",\"started\":{},\"requests\":{},\"phase\":{},\"serial\":{},\"kind\":{},"
         "\"recovered\":{},\"target\":{},\"note\":{},\"samples\":{},\"horizontalM\":{},\"riseM\":{},\"collisionOffS\":{},"
-        "\"action\":{},\"actionId\":{},\"request\":{},\"recoveryAfterEndS\":{},\"cameraYawTurnDeg\":{},\"cameraPitchMin\":{},\"cameraPitchMax\":{}}}",
+        "\"action\":{},\"actionId\":{},\"request\":{},\"recoveryAfterEndS\":{},\"cameraYawTurnDeg\":{},\"cameraPitchMin\":{},\"cameraPitchMax\":{},"
+        "\"viewAccepted\":{},\"viewWrites\":{},\"yawOffsetDeg\":{}}}",
         gStarted ? "true" : "false", gRequests ? "true" : "false", json::JsonString(tv::Name(gLife.phase)), gLife.serial,
         json::JsonString(tv::Name(gLife.kind)), gRecovered ? "true" : "false", json::JsonString(gTarget), json::JsonString(gNote),
         sample.samples, json::JsonNumber(sample.horizontalM), json::JsonNumber(sample.riseM), json::JsonNumber(sample.collisionOffS),
         json::JsonString(gActionName), gActionId, json::JsonString(gRequested),
         json::JsonNumber(gRecovered && gLife.endedAt > 0 ? gRecoveredAt - gLife.endedAt : -1),
-        json::JsonNumber(gCameraYawDelta), json::JsonNumber(sample.pitchMinDeg), json::JsonNumber(sample.pitchMaxDeg));
+        json::JsonNumber(gCameraYawDelta), json::JsonNumber(sample.pitchMinDeg), json::JsonNumber(sample.pitchMaxDeg),
+        gViewAccepted ? "true" : "false", gViewWrites, json::JsonNumber(gYaw.Offset()));
 }
 std::string Command(std::string const& args, Link const& link) {
     std::istringstream words(args);
@@ -505,6 +605,11 @@ std::string Command(std::string const& args, Link const& link) {
     return "traversal LE3: status | requests on/off | probe | ladder | vault | climb | evade (uses native movement direction)";
 }
 void Shutdown() {
+#if defined(MEVR_GAME_LE3)
+    ClearPresentation(true);
+    gViewContext = {};
+#endif
+    gViewGeneration = gViewWrites = 0;
     gStarted = gRequests = false;
     if (gLink.setVignette) gLink.setVignette(0);
     tv::Cue cue;

@@ -147,7 +147,52 @@ history. Shutdown clears both the adapter and opt-in state.
 Validation: strict MSVC syntax checks for Mod, Melee and Le3Traversal on all three
 games; existing shared melee-intent and traversal lifecycle tests. These do not
 prove native request admission, action completion, controller ergonomics or camera
-comfort. The LE3 level/yaw camera presentation remains a separate pending change.
+comfort. The LE3 level/yaw camera presentation is implemented in the separate checkpoint below; native acceptance remains pending.
 The main ConsoleRequest router must call `gameplay_actions::TraversalCommand` on
 LE3 (the coordinator owns that router); using the old cached-link command route is
 not the new diagnostic entry point.
+
+
+## Staged level/yaw presentation (2026-11-15)
+
+`[Traversal] view = level` (or `mevr traversal view level`) now selects a camera
+presentation adapter. It reuses the shared `LevelView` pitch/roll and optional
+vertical filter. Horizontal camera translation always stays native, including
+recovery; no pawn, controller, collision, reach-node or root-motion transform is
+changed. Measurements are captured before the presentation writes.
+
+`AuthoredYaw` retains the heading from the camera sample before the native action.
+While an observed native traversal owns the action slot it accumulates an inverse
+of the authored camera yaw. After the action relinquishes the slot, that correction
+remains a view-basis offset: subsequent ordinary game yaw changes pass through
+one-for-one. Another traversal starts from the already corrected heading. Physical
+head movement remains the renderer's own tracking; this module never writes the
+tracked head or substitutes an animation pose for it.
+
+This only runs with the complete HostServices v41 endpoint. The fixed 40-byte,
+versioned `Presentation` publishes the applied UE/right-positive yaw offset and
+scene/reference-space identity; the host must accept it before the camera is
+written. Host movement uses the opposite sign in Halcyon's left-positive stick
+rotation convention. The movement endpoint must reject stale active state rather
+than silently replacing it with zero correction. A missing/declined endpoint leaves
+the native camera untouched. The publication is refreshed by the camera update,
+not fabricated from an old view on every mod tick. The payload carries no engine
+pointers and has explicit size/version/known-flags/range/time/space checks.
+
+Its lifetime is separate from gesture ownership: real world/controller/pawn changes,
+authored non-gameplay contexts, explicit recenter or XR session replacement clear
+the basis; same-world pause/GUI/weapon/power/command menus and temporary focus loss
+retain it. Those contexts suppress publication and input as appropriate; returning
+to ordinary gameplay republishes the correction with the new native camera.
+Disabling the level-view option deliberately returns to the game's original basis.
+
+Offline proof: all-game strict compilation, yaw wraparound, a 90-degree authored
+turn without an exit snap, repeated actions, later player turns, explicit reset,
+and publication schema/expiry/reference-space rejection tests. Still required:
+native camera-update ordering, the final authored camera blend after the action
+slot is released, interrupted ladder/mantle/evade recovery, correct left/right and
+lateral movement after the offset, head/hand alignment, menu/focus/recenter cycles,
+and physical-headset comfort. A post-action native blend may still change the view;
+the implementation deliberately does not cancel arbitrary later yaw (which could
+be the player's own turn) without evidence distinguishing those sources. This is
+an implemented opt-in camera policy, not complete L3-8 acceptance.

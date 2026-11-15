@@ -4,6 +4,7 @@
 #include <openxr/openxr.h>
 
 #include <cstdint>
+#include <cstddef>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -283,6 +284,48 @@ private:
 };
 // Degrees, signed, in (-180, 180].
 double SignedDegrees(double degrees);
+
+// LE3 authored yaw never becomes a permanent forced turn. Hold the pre-action heading
+// while native traversal owns the camera, then keep its accumulated correction as a view
+// basis offset. Ordinary player turns after recovery pass through one-for-one. This does
+// not rotate/move the pawn or the tracked head; the host must compensate movement too.
+class AuthoredYaw {
+public:
+    void Begin(double nativeYaw);
+    double Update(double nativeYaw, bool actionOwned);
+    double Offset() const { return offset_; }
+    bool Holding() const { return holding_; }
+    void Reset() { *this = AuthoredYaw{}; }
+private:
+    double offset_ = 0.0;
+    double held_ = 0.0;
+    bool holding_ = false;
+};
+
+// HostServices v41, separate from the cue. Fixed-width POD; accepted publication is required
+// before applying the POV yaw correction. Positive yawOffsetUU is UE/right-positive;
+// the Halcyon movement correction therefore uses -yawOffsetUU. No pointers cross this ABI.
+inline constexpr std::uint32_t kPresentationVersion = 1;
+inline constexpr std::uint32_t kPresentationActive = 1u;
+inline constexpr std::uint32_t kPresentationActionOwned = 2u;
+struct Presentation {
+    std::uint32_t size = sizeof(Presentation);
+    std::uint32_t version = kPresentationVersion;
+    std::uint32_t flags = 0;
+    std::int32_t yawOffsetUU = 0;
+    std::uint32_t recenters = 0;
+    std::uint32_t sessions = 0;
+    std::uint64_t sceneGeneration = 0;
+    std::uint64_t timeMs = 0;
+};
+static_assert(sizeof(Presentation) == 40);
+static_assert(offsetof(Presentation, yawOffsetUU) == 12);
+static_assert(offsetof(Presentation, sceneGeneration) == 24);
+static_assert(offsetof(Presentation, timeMs) == 32);
+// Invalid/old/future publications are not a zero-angle replacement for an active offset:
+// the host must refuse walking until a valid current sample, or an explicit clear, arrives.
+bool PresentationFresh(Presentation const&, std::uint64_t nowMs, std::uint32_t recenters,
+    std::uint32_t sessions);
 
 // ---- The comfort mask ----------------------------------------------------------------------------------------------------------------
 // How dark (0..1) for the mask at `sinceStartS` into a move still running (`running`) or ended `sinceEndS` ago. Vignette: the strength

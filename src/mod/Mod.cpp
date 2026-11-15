@@ -1112,6 +1112,16 @@ mevr::game::traversal::Link TraversalLink(bool diagnostic = false) {
     link.sceneGeneration = ActionGeneration();
     link.allowNativeTraversal = diagnostic ? AllowTraversalDiagnostic : AllowTraversalGesture;
     link.le3DoubleTap = gTraversalGestures && !diagnostic;
+    if (MEVR_HOST_HAS(setTraversalPresentation) && gHost->setTraversalPresentation != nullptr &&
+        gHost->traversalPresentationSize == sizeof(vr::traversal::Presentation)) {
+        link.setPresentation = gHost->setTraversalPresentation;
+        link.allowPresentation = ActionSceneAllowed;
+        if (auto const floor = HostFloor()) {
+            link.viewSpaceKnown = true;
+            link.viewRecenters = floor->recenters;
+            link.viewSessions = floor->sessions;
+        }
+    }
     if (!gHostOwnsVr) {
         return link;
     }
@@ -1501,7 +1511,7 @@ std::string TraversalCommand(std::string const& args) {
         game::traversal::Tick(0, link); // consume any held traverse press before rearming
         return "traversal: double-tap gestures " + value + "; evade remains an explicit diagnostic command";
     }
-    return game::traversal::le3::Command(args, TraversalLink(true));
+    return game::traversal::Command(args, TraversalLink(true));
 #else
     return game::traversal::Command(args);
 #endif

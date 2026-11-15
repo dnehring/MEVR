@@ -580,6 +580,48 @@ int RunTraversalTests() {
         p.Step(seated); // no new button edge, but the pending double cannot survive the scene
         CHECK(tv::Judge(p, 0.16).why == tv::CommitWhy::NotFresh);
     }
+    // A native 90-degree turn must not rotate the player's view at action end.
+    // The accumulated basis survives recovery; later player turns remain one-for-one.
+    {
+        tv::AuthoredYaw yaw;
+        yaw.Begin(20);
+        CHECK(Near(yaw.Update(110, true), 20));
+        CHECK(Near(yaw.Offset(), -90));
+        CHECK(Near(yaw.Update(110, false), 20));
+        CHECK(!yaw.Holding());
+        CHECK(Near(yaw.Update(140, false), 50));
+        yaw.Begin(140); // another authored action starts from the already corrected basis
+        CHECK(Near(yaw.Update(50, true), 50));
+        CHECK(Near(yaw.Update(50, false), 50));
+        yaw.Reset(); // explicit new scene/reference space
+        CHECK(Near(yaw.Update(75, false), 75));
+    }
+    {
+        tv::AuthoredYaw yaw;
+        yaw.Begin(170);
+        CHECK(Near(yaw.Update(-175, true), 170));
+        CHECK(Near(yaw.Offset(), -15));
+        CHECK(Near(yaw.Update(-175, false), 170));
+        CHECK(Near(yaw.Update(-165, false), 180));
+    }
+    {
+        tv::Presentation p;
+        p.flags = tv::kPresentationActive;
+        p.sceneGeneration = 5; p.timeMs = 1000; p.sessions = 2; p.recenters = 7; p.yawOffsetUU = -16384;
+        CHECK(tv::PresentationFresh(p, 1100, 7, 2));
+        CHECK(!tv::PresentationFresh(p, 1101, 7, 2));
+        CHECK(!tv::PresentationFresh(p, 999, 7, 2));
+        CHECK(!tv::PresentationFresh(p, 1000, 8, 2));
+        CHECK(!tv::PresentationFresh(p, 1000, 7, 3));
+        p.flags |= 4;
+        CHECK(!tv::PresentationFresh(p, 1000, 7, 2));
+        p.flags = tv::kPresentationActive; p.yawOffsetUU = 32769;
+        CHECK(!tv::PresentationFresh(p, 1000, 7, 2));
+        p.yawOffsetUU = 0; p.version = 0;
+        CHECK(!tv::PresentationFresh(p, 1000, 7, 2));
+        p.version = tv::kPresentationVersion; --p.size;
+        CHECK(!tv::PresentationFresh(p, 1000, 7, 2));
+    }
     TestJudge();
     TestMoveRecord();
     TestLevelView();

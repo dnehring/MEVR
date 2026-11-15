@@ -45,6 +45,12 @@ struct Link {
     std::uint64_t sceneGeneration = 0;
     bool le3DoubleTap = false; // explicit opt-in after native fixture acceptance
     bool evadeDown = false;    // a separate semantic binding; never shares the traverse/use press
+    // v41: yaw correction is allowed only with a host that accepts matching movement compensation.
+    bool (*setPresentation)(vr::traversal::Presentation const*) = nullptr;
+    bool (*allowPresentation)() = nullptr; // fresh scene/menu/calibration; native action itself may own movement
+    bool viewSpaceKnown = false;
+    std::uint32_t viewRecenters = 0;
+    std::uint32_t viewSessions = 0;
 };
 
 // Finds the game's functions and fields and registers the handlers (before the hooks go in). False on LE1 or with the
@@ -57,6 +63,8 @@ std::string StatusJson();
 void LogStats();
 // "mevr traversal ...": status, slots, near, place, commit, try, view, mask, cue, trace.
 std::string Command(std::string const& args);
+// Fresh diagnostic link while reusing the shared presentation/settings command parser.
+std::string Command(std::string const& args, Link const& freshLink);
 void Shutdown();
 
 } // namespace mevr::game::traversal

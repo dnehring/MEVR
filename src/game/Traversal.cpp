@@ -1214,10 +1214,11 @@ void LogStats() {
     gCounters = Counters{};
 }
 
+std::string Command(std::string const& args, Link const& freshLink) {
+    gLink = freshLink;
+    return Command(args);
+}
 std::string Command(std::string const& args) {
-#if defined(MEVR_GAME_LE3)
-    return le3::Command(args, gLink);
-#endif
     std::istringstream words(args);
     std::string verb;
     words >> verb;
@@ -1246,15 +1247,20 @@ std::string Command(std::string const& args) {
         gSettingsMs = 0;
         return std::format("traversal: mask {}", gMaskOverride ? tv::Name(*gMaskOverride) : "from the ini");
     }
+#if defined(MEVR_GAME_LE2)
     if (verb == "pause") {
         double seconds = 0.5;
         words >> seconds;
         gPauseAfterS = std::max(0.0, seconds);
         return std::format("traversal: the next move pauses the game {:.2f} s in (a test; the console's `pause` resumes)", gPauseAfterS);
     }
+#endif
     if (verb == "cue") return onOff(gCueOverride, "cue");
     if (verb == "trace") return onOff(gTraceOverride, "trace");
     if (verb == "commit") return onOff(gCommitOverride, "commit on the double A");
+#if defined(MEVR_GAME_LE3)
+    return le3::Command(args, gLink);
+#endif
 #if defined(MEVR_GAME_LE2)
     ue3::Object* const pc = player::Controller();
     ue3::Object* const pawn = player::BioPawn(pc);

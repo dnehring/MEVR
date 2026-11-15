@@ -506,6 +506,26 @@ std::optional<Pose> LevelView::After(Pose const& game, double sinceEndS, double 
     return p;
 }
 
+void AuthoredYaw::Begin(double nativeYaw) {
+    if (!Finite(nativeYaw)) return;
+    held_ = SignedDegrees(nativeYaw + offset_);
+    holding_ = true;
+}
+double AuthoredYaw::Update(double nativeYaw, bool actionOwned) {
+    if (!Finite(nativeYaw)) return held_;
+    if (holding_ && actionOwned) offset_ = SignedDegrees(held_ - nativeYaw);
+    else holding_ = false;
+    return SignedDegrees(nativeYaw + offset_);
+}
+bool PresentationFresh(Presentation const& p, std::uint64_t nowMs, std::uint32_t recenters,
+    std::uint32_t sessions) {
+    return p.size == sizeof(Presentation) && p.version == kPresentationVersion &&
+        (p.flags & ~(kPresentationActive | kPresentationActionOwned)) == 0 &&
+        p.timeMs != 0 && p.timeMs <= nowMs && nowMs - p.timeMs <= 100 &&
+        p.recenters == recenters && p.sessions == sessions && p.sceneGeneration != 0 &&
+        p.yawOffsetUU >= -32768 && p.yawOffsetUU <= 32768;
+}
+
 float MaskAmount(Mask mask, Settings const& s, bool running, double sinceStartS, double sinceEndS) {
     if (mask == Mask::None || !Finite(sinceStartS) || sinceStartS < 0.0) {
         return 0.0f;
