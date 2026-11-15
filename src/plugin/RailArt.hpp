@@ -21,6 +21,8 @@ class Renderer;
 // Render thread. Nothing here touches the game.
 namespace mevr::host::rail_art {
 
+enum class Palette { Original, MissionComputer };
+
 struct Status {
     bool fonts = false;  // all three faces registered
     bool tabs = false;   // the tab's four states made
@@ -40,7 +42,8 @@ struct Sizes {
 std::filesystem::path CacheFolder();
 // Loads what the cache holds (`folder`, empty: CacheFolder()) onto `renderer` (textures) and into RmlUi (fonts, once per
 // process). Safe to call again when the cache changed: textures are replaced, fonts already registered are kept.
-Status Load(ID3D11Device* device, menu::Renderer* renderer, Sizes const& sizes, std::filesystem::path const& folder = {});
+Status Load(ID3D11Device* device, menu::Renderer* renderer, Sizes const& sizes, std::filesystem::path const& folder = {},
+    Palette palette = Palette::Original);
 // The cache's movies changed since the last Load (looked at most once every 2 s).
 bool CacheChanged();
 

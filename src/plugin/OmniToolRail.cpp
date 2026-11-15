@@ -59,6 +59,11 @@ constexpr int kHeight = 640;
 constexpr std::int64_t kSwapchainFormat = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;  // our bytes are sRGB already
 constexpr std::uint64_t kSettingsEveryMs = 2000;
 constexpr float kTipAheadM = 0.035f;  // the index fingertip ahead of the aim pose (plugin/GamePointer's touchTipM)
+#if defined(MEVR_WITH_HALCYON_LE2)
+constexpr auto kPalette = rail_art::Palette::MissionComputer;
+#else
+constexpr auto kPalette = rail_art::Palette::Original;
+#endif
 
 // The rail's buttons by touch (2026-11-06, the owner's QA: only a perfectly aligned poke selected anything, and the hand went
 // through without a feel of the surface): a click the moment the fingertip reaches a button, where it touched (a poke that
@@ -259,6 +264,7 @@ bool Init(ID3D11Device* device, ID3D11DeviceContext* context) {
     if (!g.ui->Init(setup)) {
         return false;
     }
+    g.ui->Context()->ActivateTheme("mission-computer", kPalette == rail_art::Palette::MissionComputer);
     Rml::DataModelConstructor ctor = g.ui->Context()->CreateDataModel("omnitool");
     if (!ctor) {
         log::Error("omni-tool rail: its data model couldn't be made; no rail");
@@ -280,7 +286,7 @@ bool Init(ID3D11Device* device, ID3D11DeviceContext* context) {
     g.model = ctor.GetModelHandle();
     // The game's own art (research/57 section 5), before the document loads so its fonts resolve; without it the rail keeps
     // its own drawn look.
-    rail_art::Status const art = rail_art::Load(device, g.ui->GetRenderer(), {});
+    rail_art::Status const art = rail_art::Load(device, g.ui->GetRenderer(), {}, {}, kPalette);
     g.art = art.fonts && art.tabs && art.panel;
     log::Info("omni-tool rail: {}{}", art.summary, g.art ? "" : " (its own look until the game's art is cached)");
     if (!g.ui->LoadDocument()) {
@@ -897,7 +903,7 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
     }
     if (rail_art::CacheChanged()) {
         // The mod (game/GameArt) cached the movies, or they changed: the art again, and the document again so new fonts resolve.
-        rail_art::Status const art = rail_art::Load(g.device.Get(), g.ui->GetRenderer(), {});
+        rail_art::Status const art = rail_art::Load(g.device.Get(), g.ui->GetRenderer(), {}, {}, kPalette);
         g.art = art.fonts && art.tabs && art.panel;
         log::Info("omni-tool rail: the cache changed; {}", art.summary);
         g.ui->LoadDocument();

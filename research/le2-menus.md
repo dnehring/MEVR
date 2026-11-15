@@ -212,6 +212,11 @@ mod writes (`game/GameArt`, LE1 only: ME2 has none of ME1's GFx movies loaded). 
 MEVR): the rail draws its own look (`assets/menu/omnitool.rcss` without `art`: Titillium/Rajdhani, the drawn frame and tabs,
 `mevr-menu-preview`'s `rail-*.png` without `--gameart`), the same entries and behaviour. Game art is never committed or shipped.
 
+ME2 selects the Mission Computer palette automatically. `plugin/RailArt.cpp` maps the cached frame and tabs to warm
+shadows, amber edges and gold highlights while preserving their transparency. `assets/menu/omnitool.rcss` contains the
+matching text, touch ring and drawn fallback colors under the `mission-computer` theme. ME1 uses its original palette.
+Preview the ME2 rail offline with `mevr-menu-preview --le2`. Include `--gameart <folder>` to render the recolored cached art.
+
 ### ME2's omni-tool (built, checked 2026-11-14 23:57)
 
 The deviation the owner named ("the model for the Omni tool will be different in Mass Effect 2"). ME2 has no
