@@ -96,3 +96,12 @@ conversation conversion. Synthetic snapshots cannot establish physical-headset c
 Follow [the galaxy candidate's native checks](../research/le2-galaxy-table.md). Its first increment is a
 native image on the shared fixed table with native picking/scanning, pending acceptance. Keeping the CIC
 world around the table and giving the native map stereo depth remain separate unfinished work.
+
+While a map pointer press is held, recenter, then release it; separately repeat across an XR session
+replacement within the protected run. Require the old native mouse press to end, no extra selection
+from the new table placement, and normal response to a fresh press. Record the pointer's `pressed` and
+`clicks` state before/after and the actual native selection outcome. Pose reset alone does not prove this:
+`GamePointer::ForgetGameUiQuad` defers mouse-button release until `Step`, and `ForgetSession` only drops
+the dot swapchain. Republish-before-Step is an unverified lifecycle boundary. Also capture the native
+mode sequence when entering orbit with a held trigger: the candidate's release latch currently recognizes
+the direct 9-to-10 transition, so an intermediate mode must be investigated rather than counted as a pass.
