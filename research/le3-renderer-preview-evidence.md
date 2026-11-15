@@ -8,6 +8,46 @@ process identity and restoration receipts are recorded by the existing runner.
 
 ## Latest completed native checkpoint
 
+Session `20261115-160557-252-LE3-renderer-preview` adds the output-owner probes
+(compiled host `a511dac7`). The normal save load, 493 reflection comparisons, four
+snapshots and exact restoration all pass again; neither eye has a world layer.
+In gameplay the sampled final backbuffer draw reads a full-size float16 texture in
+pixel-shader slot zero. Its native caller chain runs through the end-viewport
+consumer at `0x4812D0` and the final output-transfer functions `0x54DDC0`/`0x54E5B0`.
+Both scene families target the same native viewport, with identical sampled output
+fields; the raw family field at `+0x48` is one in both passes.
+
+The private native decompilation now establishes the critical ordering: outer
+viewport routine `0x480C80` calls the viewport-client Draw at `0x48105D`. Both
+Halcyon scene passes execute inside that call. After it returns, the outer routine
+flushes the canvas and queues one end-viewport operation. The live final backbuffer
+transfer belongs to that later operation. Thus the observed final output transfer
+is outside the replayed Draw scope: replaying Draw does not replay that transfer.
+This accounts for why the current backbuffer-based first-eye capture lacks its
+expected intermediate image. Static shader registration identifies the ordinary
+transfer shader as `FReconstructHDRPixelShader<FALSE>` (`HDRReconstructPS`), with an
+alternate TRUE variant. This is native HDR reconstruction, not a proven GUI
+compositor, and it remains active in the observed SDR-backbuffer run. Generic
+float-to-sRGB conversion alone is not evidence of preserving this native output.
+The next step is to compare the corresponding ME2
+target-selection/output path and locate a valid first-eye source without losing
+native final processing. No new capture gate, output flag or render retry is enabled.
+
+Do not duplicate the whole end-viewport consumer: it also releases viewport
+resources and performs native end/present bookkeeping. A correction needs a
+render-thread source boundary before pass-zero output is overwritten, verified
+eye/view provenance, preserved native final processing/UI, one native end/present,
+and the existing completed-pair/publication failure rules.
+
+Evidence limits: `SFRORDER` covers three draw entry points plus copy/resolve and
+scene-clear hooks; it is not an exhaustive GPU command census. The source probe
+observes only the first eight PS slots, whose unused bindings can remain stale.
+Native family submission and shared target identity do not themselves prove that
+both GPU eye images completed. Proving ordered writes and distinct eye contents
+at the chosen source remains necessary before accepting a correction.
+
+## Native admission checkpoint
+
 The newer protected session `20261115-155730-208-LE3-renderer-preview` used host
 `d0cf258a` with runner `9df78b18`. It passed the same 493 native comparisons, loaded
 the ordinary Normandy save, collected four snapshots, and restored with zero
@@ -47,7 +87,7 @@ tracked files with zero differences and released the shared game lock.
 | Third-person snapshot at 15:32:07 | Visible Normandy image on a flat quad; both eyes report `hasWorld=false`. This is not stereo. |
 | First-person enabled at 15:32:12 | Request applied, view hook installed, native mode 0; image becomes nearly black. Host view remains invalid and arm IK stays off. No first-person/body acceptance. |
 | Shared menu at 15:32:17 | Menu captures without missing-image errors. Native pause reports acquired; closing it resumes the same world. Overlap, prior pause, world replacement and refused restoration still need separate tests. |
-| SFR ordering | Every complete sampled gameplay sequence is four scene clears followed by one non-UI backbuffer draw; no second write/copy. All sampled events use the immediate context. |
+| SFR ordering | Covered APIs report four scene clears followed by one non-UI backbuffer draw, with no observed copy. All sampled events use the immediate context; this is not an exhaustive GPU census. |
 | SFR capture | First-eye captures remain zero; no authoritative backbuffer write precedes a scene-sized clear. Do not weaken the gate to capture an arbitrary clear. |
 | Draw timing | First native Draw averages roughly 91–102 microseconds; replay averages 20–22 microseconds. Two camera views are built. Neither duration nor view count proves scene submission. |
 
