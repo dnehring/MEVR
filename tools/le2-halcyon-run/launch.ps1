@@ -65,21 +65,25 @@ for ($i = 0; $i -lt 120 -and -not $p; $i++) {
     $launchers = @(Get-Process MassEffectLauncher -ErrorAction SilentlyContinue)
     if ($launchers.Count -gt 1) { throw 'Multiple launchers appeared; refusing to adopt them' }
     foreach ($launcher in $launchers) {
-        if ($launcher.Path -ne $launcherExe -or $launcher.StartTime.ToUniversalTime() -lt $started) { throw 'Unexpected launcher appeared; it was not adopted' }
-        $open.launcherProcess = Get-RunProcessIdentity $launcher
-        Write-RunSession $open $names.current
+        $identity = Get-RunLaunchIdentity $launcher.Id $launcherExe $started
+        if ($identity) {
+            $open.launcherProcess = $identity
+            Write-RunSession $open $names.current
+        }
     }
     $found = @(Get-Process -Name $names.process -ErrorAction SilentlyContinue)
     if ($found.Count -gt 1) { throw 'Multiple game processes appeared; refusing to adopt them' }
     if ($found.Count) {
-        $p = $found[0]
-        if ($p.Path -ne $exe -or $p.StartTime.ToUniversalTime() -lt $started) { throw 'Unexpected game process appeared; it was not adopted' }
-        $open.gameProcess = Get-RunProcessIdentity $p
-        Write-RunSession $open $names.current
-    } else { Start-Sleep 2 }
+        $p = Get-RunLaunchIdentity $found[0].Id $exe $started
+        if ($p) {
+            $open.gameProcess = $p
+            Write-RunSession $open $names.current
+        }
+    }
+    if (-not $p) { Start-Sleep 2 }
 }
 if (-not $p) { throw "No $($names.process) within 240 seconds; keep the session locked and inspect it" }
-"$($names.process) pid $($p.Id) started $($p.StartTime.ToString('HH:mm:ss'))"
+"$($names.process) pid $($p.pid) startedUtc $($p.startedUtc)"
 $marker = if ($DesktopDump) { 'dump-only: code dump attempted; renderer and hooks disabled' } else { 'VR session ready' }
 $seen = $false
 for ($i = 0; $i -lt 40; $i++) {
@@ -88,7 +92,7 @@ for ($i = 0; $i -lt 40; $i++) {
         $fresh = if ($oldLog -and $text.StartsWith($oldLog, [StringComparison]::Ordinal)) { $text.Substring($oldLog.Length) } else { $text }
         if ((Get-Item -LiteralPath $log).LastWriteTimeUtc -ge $started -and $fresh.Contains($marker)) { $seen = $true; break }
     }
-    if (-not (Get-Process -Id $p.Id -ErrorAction SilentlyContinue)) { throw 'The game exited before the expected host marker' }
+    if (-not (Get-Process -Id $p.pid -ErrorAction SilentlyContinue)) { throw 'The game exited before the expected host marker' }
     Start-Sleep 2
 }
 if (-not $seen) { throw "Expected marker was not observed: $marker (the session remains owned; use -Stop, then restore)" }

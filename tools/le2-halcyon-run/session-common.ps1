@@ -98,6 +98,28 @@ function Assert-RunBackup([string]$Live, [string]$Backup, [string]$Manifest) {
 function Get-RunProcessIdentity($Process) {
     [pscustomobject]@{ pid = $Process.Id; path = $Process.Path; startedUtc = $Process.StartTime.ToUniversalTime().ToString('o') }
 }
+function Get-RunLaunchIdentity([int]$ProcessId, [string]$ExpectedPath, [DateTime]$RequestedUtc) {
+    # Name enumeration may outlive a short-lived launcher. Resolve its ID again before reading identity.
+    $process = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
+    if (-not $process) { return $null }
+    $path = $null; $started = $null
+    try { $path = $process.Path; $started = $process.StartTime.ToUniversalTime() } catch { }
+    # Null Path / unavailable StartTime is common after exit, but is not permission to adopt a live process.
+    $still = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
+    if (-not $still -or $still.HasExited) { return $null }
+    $stillPath = $null; $stillStarted = $null
+    try { $stillPath = $still.Path; $stillStarted = $still.StartTime.ToUniversalTime() } catch { }
+    if ($still.HasExited) { return $null }
+    $observed = "pid=$ProcessId path='$stillPath' startedUtc='$(if ($stillStarted) { $stillStarted.ToString('o') } else { 'unavailable' })'"
+    if (-not $path -or -not $started -or -not $stillPath -or -not $stillStarted -or
+        $path -ne $stillPath -or $started -ne $stillStarted) {
+        throw "Live process identity unavailable or changed; not adopted ($observed)"
+    }
+    if ($stillPath -ne $ExpectedPath -or $stillStarted -lt $RequestedUtc) {
+        throw "Unexpected live process; not adopted ($observed; expectedPath='$ExpectedPath' requestedUtc='$($RequestedUtc.ToString('o'))')"
+    }
+    [pscustomobject]@{ pid = $ProcessId; path = $stillPath; startedUtc = $stillStarted.ToString('o') }
+}
 function Assert-RunProcess($Process, $Recorded, [string]$ExpectedPath) {
     if (-not $Recorded -or $Process.Id -ne $Recorded.pid -or
         $Process.Path -ne $ExpectedPath -or $Process.Path -ne $Recorded.path -or
