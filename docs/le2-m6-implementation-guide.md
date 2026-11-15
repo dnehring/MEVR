@@ -13,7 +13,7 @@ The seated actor stays under the native scene's control. Head tracking and dialo
 available. Determine seated scene state explicitly before allowing movement and restore normal movement only when
 the native scene releases the player. Physical seated play in ordinary gameplay is a separate setting.
 
-### Active parallel assignments
+### Completed parallel assignments
 
 | Owner | Scope | Worktree/branch | Native testing |
 | --- | --- | --- | --- |
@@ -22,9 +22,11 @@ the native scene releases the player. Physical seated play in ordinary gameplay 
 | `me2_galaxy_parity` | G, native galaxy/table and scanning | `.claude/worktrees/me2-galaxy-parity`, `work/me2-galaxy-parity` | Coordinator schedules |
 | Coordinator | D voice, shared integration, regression and native validation | Existing integration worktree | Exclusive protected runs |
 
-These assignments indicate active work, not completed implementation. Agents commit their own scoped candidates.
-The coordinator reviews and integrates shared CMake, host services and renderer edits before landing on main.
-Record resulting commits and acceptance evidence in the continuation plan as each package is verified.
+The three lanes completed their implementation candidates, and the coordinator integrated them on local main.
+Their worktree paths and branch names above are historical: the repository cleanup script removed all three after
+integration. The merge retains their commit histories. The coordinator's integration checkout remains available for
+the next protected native run. See the continuation plan for build evidence and unfinished acceptance; lane completion
+does not declare full parity.
 
 ## Scope and evidence
 

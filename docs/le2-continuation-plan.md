@@ -201,7 +201,8 @@ Three agent lanes were reviewed and integrated with the coordinator's shared voi
 `907dcc5d` (interaction), `30b138ba` plus `2b6fd177` (squad and pause ownership), `3805c694`, `3e69b02b` and
 `7ee57ace` (cinema Thespian and lifecycle), and `8e9df844`, `d429a426`, `90f177a2` (galaxy table and ownership).
 The coordinator added the shared voice port, scene/menu cancellation, LE2 diagnostic routes and matching LE1
-Thespian lifecycle hooks. Integration commits retain those source branches for auditing.
+Thespian lifecycle hooks. Integration commits retain those source histories for auditing; the cleanup script removed
+the three completed lane worktrees and their branches after landing, reclaiming approximately 6.4 GB.
 
 Final combined Release verification passed: `build-trilogy` LE1/LE2/LE3 hosts and mods, `build` LE1 development,
 `build-mono` LE1 player, and all **54/54 CTest tests** (126.39 seconds). SPDX and whitespace checks passed.
