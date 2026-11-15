@@ -6,7 +6,25 @@ campaign acceptance. Private sessions and images remain under `%LOCALAPPDATA%/ME
 The source branch, exact installed binary hashes, settings, normal save descriptor,
 process identity and restoration receipts are recorded by the existing runner.
 
-## Latest completed native checkpoint
+## Per-eye correction follow-up
+
+The owner requested reuse of ME1's per-eye correction in both sequels. The source
+audit confirms both imported SFR paths assigned one head position to both
+projection views. The correction carries runtime eye positions through the same
+history slots and fractional delay as the existing rendered orientation; it does
+not derive IPD from the gameplay separation setting. Held stereo source tags keep
+both positions, orientation and FOV together. Copy/release receipts determine
+which tags may actually be submitted. Recenter, tracking loss and presentation
+context changes invalidate old history and require a new capture sequence before
+stereo resumes. Intentional mono fallback retains a shared pose.
+
+The existing protected runners, normal save descriptors, snapshot tool and pose
+replay are reused for validation. The previous four ME3 snapshots are a negative
+control: each has world images but a submitted eye baseline of zero, against the
+runtime's 64 mm baseline. New native results are recorded below when available;
+this source change alone does not establish headset fusion or comfort.
+
+## HDR-policy native checkpoint
 
 **Missing ME2 reuse fixed and tested:** `c483d55e` shares the existing ME2
 `IDXGIOutput6::GetDesc1` policy through `plugin/HdrDisplayPolicy` and connects the
