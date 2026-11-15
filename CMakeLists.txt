@@ -982,7 +982,7 @@ function(mevr_add_plugin game)
     set(with_main_menu OFF)
     set(mod_sources ${MEVR_MOD_SOURCES})
     if (game STREQUAL "LE3")
-        list(APPEND mod_sources src/game/Le3Gui.cpp src/game/Le3Gui.hpp)
+        list(APPEND mod_sources src/game/Le3Gui.cpp src/game/Le3Gui.hpp src/core/Json.cpp src/core/Json.hpp)
     endif ()
     if (MEVR_LE2_DIAGNOSTIC AND game STREQUAL "LE2")
         list(APPEND mod_sources src/engine/Le2DiagnosticHost.cpp src/engine/Le2DiagnosticHost.hpp

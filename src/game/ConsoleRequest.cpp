@@ -36,6 +36,7 @@
 #include "game/OmniTool.hpp"
 #include "game/Player.hpp"
 #include "game/Le3WeaponAmmo.hpp"
+#include "game/Le3Galaxy.hpp"
 #include "game/PowerWheel.hpp"
 #include "game/SoundPlace.hpp"
 #include "game/Spectator.hpp"
@@ -1752,6 +1753,13 @@ std::optional<std::string> RunOursLe3(ue3::Object* pc, std::string const& line) 
     if (verb == "savedesc") return CurrentSave(ue3::runtime::GameEngine());
     if (verb == "state") return State(pc);
     if (verb == "weaponprobe") return WeaponProbeLe3(pc);
+    if (verb == "galaxy") {
+        std::string action, extra;
+        words >> action;
+        if (action == "state" && !(words >> extra))
+            return "mevr galaxy: " + json::Write(le3_galaxy::Observe(pc), 0);
+        return "mevr galaxy: use state (read-only); native actions require an owned map input context";
+    }
     if (verb == "melee" || verb == "traversal") {
         std::string rest; std::getline(words, rest);
         return verb == "melee" ? mod::gameplay_actions::MeleeCommand(rest) : mod::gameplay_actions::TraversalCommand(rest);
