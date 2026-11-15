@@ -258,8 +258,7 @@
 	<!-- ===================================================================================== Voice -->
 	<!-- Voice orders (research/54 "The menu's Voice page"): the microphone, its level, the recognizer (the host's plugin/Voice,
 	     restarted on a change of microphone, model or the switch), and [Voice]'s other keys. -->
-	<div data-if="section == 'voice' &amp;&amp; le3"><div class="stitle">Voice</div><div class="info">Voice commands and spoken reply selection are not available in Mass Effect 3 yet. Native dialogue and interrupt controls remain active.</div></div>
-	<div data-if="section == 'voice' &amp;&amp; !le3">
+	<div data-if="section == 'voice'">
 		<div class="stitle">Voice</div>
 		<div class="sdesc">Talk to your squad: hold the left grip at your left ear like a radio, speak, let go.</div>
 		<div class="group">
@@ -300,7 +299,7 @@
 		<!-- Thespian mode (research/70): [Thespian] on, strictness, handPick; the mod's, live. -->
 		<div class="group">
 			<div class="gtitle"><span>Thespian mode (experimental)</span><div class="gline"/></div>
-			<div class="hint" data-if="le2">Conversations keep their cinema presentation. Shepard still speaks the selected line; silent playback is not available on Mass Effect 2. Use the stick to open Investigate or Return; speak a reply offered on that wheel.</div>
+			<div class="hint" data-if="le2">Conversations keep their cinema presentation. Shepard still speaks the selected line; silent playback is not available on Mass Effect 2 or 3. Use the stick to open Investigate or Return; speak a reply offered on that wheel.</div>
 			<div class="row" data-class-disabled="!voice_on"><div class="rl"><div class="rlab">Speak Shepard's lines</div><div class="rdesc">In a conversation the replies stand as a script: read one aloud, or say its short label, and it is taken. The microphone listens only while the replies are up. English game text only. <span data-if="!le2">Shepard's recorded voice is skipped.</span></div></div>
 				<button class="tog" data-class-on="thespian_on" data-event-click="toggle('thespian_on')"><div class="knob"/></button></div>
 			<div class="row" data-class-disabled="!voice_on || !thespian_on"><div class="rl"><div class="rlab">How much of the line</div><div class="rdesc">Relaxed: enough words to tell the replies apart. Performer: half the line, or its label. Method: the whole line.</div></div>

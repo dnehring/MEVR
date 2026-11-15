@@ -280,8 +280,8 @@ std::string CallText(ue3::Object* conversation, ue3::FunctionRef& function, int 
 }
 
 #if defined(MEVR_GAME_LE3)
-// Static native localization on the live movie (installed SFXGame contract). The public LE3
-// adapter gate stays closed until both this owned FString return and the reply mapping pass audit.
+// Static native localization on the live movie: 0xB68790 -> 0xBC3250 deep-copies the
+// caller-owned FString. Native metadata and reply mapping audit: research/le3-dialogue-cinema.md.
 std::string FullReplyText(ue3::Object* handler, void const* replyNode) {
     auto const ref = gReplyTextRef.Read<std::int32_t>(replyNode);
     auto* const f = gLocalizeReply.Get();
@@ -1193,12 +1193,6 @@ bool OwnsListen(std::uint64_t listenStartMs) {
 }
 
 void Tick(double deltaSeconds, Link const& link) {
-#if defined(MEVR_GAME_LE3)
-    // Voice radio services are supported independently. Never let their availability activate
-    // the LE1 ISACT/muting/skip paths or world-conversation reader through an old Thespian ini.
-    (void)deltaSeconds; (void)link;
-    return;
-#endif
     gLink = link;
     if (gPending.active) {
         TickPending();
@@ -1219,10 +1213,6 @@ void Tick(double deltaSeconds, Link const& link) {
 }
 
 std::string Command(std::string const& rest) {
-#if defined(MEVR_GAME_LE3)
-    (void)rest;
-    return "thespian: unavailable on ME3 until native reply/ownership adapter is verified; native dialogue playback unchanged";
-#endif
     std::istringstream words(rest);
     std::string verb;
     words >> verb;
@@ -1324,9 +1314,6 @@ std::string Command(std::string const& rest) {
 }
 
 std::string StatusJson() {
-#if defined(MEVR_GAME_LE3)
-    return "{\"on\":false,\"available\":false,\"reason\":\"ME3 native reply adapter pending\"}";
-#endif
     return std::format("{{\"on\": {}, \"wheels\": {}, \"commits\": {}, \"skips\": {}, \"refused\": {}, \"pending\": {}, \"watch\": {}, \"turn\": {}, "
                        "\"phase\": {}, \"spokenTurns\": {}, \"spokenCommits\": {}, \"dropped\": {}, \"notSure\": {}, \"notForSpeaking\": {}}}",
         gMode.on ? "true" : "false", gWheels, gCommits, gSkips, gRefused, gPending.active ? "true" : "false", gWatch ? "true" : "false",
@@ -1334,9 +1321,6 @@ std::string StatusJson() {
 }
 
 void Shutdown() {
-#if defined(MEVR_GAME_LE3)
-    return; // this adapter never owned audio, native wheel state or host listening on LE3
-#endif
     EndTurn(gLink, "the mod is unloading");
     SendPanel(gLink, false);
     ClearMute();
