@@ -1,6 +1,10 @@
 # SPDX-License-Identifier: MIT
 # Offline synthetic safety tests. Never launches, deploys, touches game saves, or changes VR settings.
 $ErrorActionPreference = 'Stop'
+# CTest may inherit PowerShell 7's PSModulePath while executing Windows PowerShell 5.
+# Import this process's built-in module explicitly; never change machine/user module paths.
+Import-Module "$PSHOME\Modules\Microsoft.PowerShell.Management\Microsoft.PowerShell.Management.psd1" -ErrorAction Stop
+Import-Module "$PSHOME\Modules\Microsoft.PowerShell.Utility\Microsoft.PowerShell.Utility.psd1" -ErrorAction Stop
 . "$PSScriptRoot\session-common.ps1"
 $count = 0
 function Check([bool]$Value) { if (-not $Value) { throw 'Assertion failed' } }
