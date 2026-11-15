@@ -7,6 +7,7 @@
 
 #include "core/vr/Comfort.hpp"
 #include "game/GamepadMapping.hpp"
+#include "game/NativeMapInput.hpp"
 
 #include <cmath>
 #include <cstdio>
@@ -508,7 +509,40 @@ void TestOrbitalTriggers() {
 
 } // namespace
 
+void TestNativeMapTransitions() {
+    gp::NativeMapInput gate;
+    XINPUT_GAMEPAD pad{};
+    auto held = [&] { pad.bLeftTrigger = 255; pad.bRightTrigger = 255; };
+    pad.sThumbLX = 24000; pad.sThumbLY = -16000; pad.sThumbRX = 11000;
+    held();
+    gate.Apply(true, false, 1, true, pad);
+    CHECK(pad.bLeftTrigger == 0 && pad.bRightTrigger == 0);
+    CHECK(pad.sThumbLX == 24000 && pad.sThumbLY == -16000 && pad.sThumbRX == 11000);
+    gate.Apply(true, false, 1, true, pad); // both physically released
+    held(); gate.Apply(true, false, 1, true, pad);
+    CHECK(pad.bLeftTrigger == 255 && pad.bRightTrigger == 255);
+    held(); gate.Apply(true, true, 1, true, pad); // selecting a planet must not launch on orbit entry
+    CHECK(pad.bLeftTrigger == 0 && pad.bRightTrigger == 0);
+    pad.bLeftTrigger = 0; pad.bRightTrigger = 255; gate.Apply(true, true, 1, true, pad);
+    held(); gate.Apply(true, true, 1, true, pad);
+    CHECK(pad.bLeftTrigger == 255 && pad.bRightTrigger == 0); // independent release
+    pad.bLeftTrigger = pad.bRightTrigger = 0;
+    gate.Apply(true, true, 1, false, pad); // neutral output while menu owns input is not release
+    held(); gate.Apply(true, true, 1, true, pad);
+    CHECK(pad.bLeftTrigger == 0 && pad.bRightTrigger == 0);
+    gate.Apply(true, true, 1, true, pad);
+    held(); gate.Apply(true, true, 2, true, pad); // session/recenter generation
+    CHECK(pad.bLeftTrigger == 0 && pad.bRightTrigger == 0);
+    gate.Apply(true, true, 2, true, pad);
+    held(); gate.Apply(false, false, 2, true, pad);
+    CHECK(pad.bLeftTrigger == 255 && pad.bRightTrigger == 255); // never alters non-map mapping
+    gate.Apply(true, false, 2, true, pad);
+    CHECK(pad.bLeftTrigger == 0 && pad.bRightTrigger == 0);
+    CHECK(pad.sThumbLX == 24000 && pad.sThumbLY == -16000 && pad.sThumbRX == 11000); // pursuit steering intact
+}
+
 int main() {
+    TestNativeMapTransitions();
     TestSameAsLe1Before();
     TestStaleInput();
     TestChordAndOwners();

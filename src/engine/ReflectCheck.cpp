@@ -2836,6 +2836,13 @@ void CheckLe3PhysicalCover() {
 // The common Run gate requires runtime::Up(); the default LE3 layout remains disabled until
 // native discovery is complete. These rows use the LE3 SDK as an independent comparison side.
 void CheckClasses() {
+    CheckClass<USFXGameModeBase>("SFXGame.SFXGameModeBase");
+    CheckClass<USFXGameModeGalaxy>("SFXGame.SFXGameModeGalaxy");
+    CheckClass<USFXGameModeOrbital>("SFXGame.SFXGameModeOrbital");
+    CheckClass<UBioCameraBehaviorGalaxy>("SFXGame.BioCameraBehaviorGalaxy");
+    CheckClass<USFXSystem>("SFXGame.SFXSystem");
+    CheckClass<UBioPlanet>("SFXGame.BioPlanet");
+    CheckClass<UBioSeqAct_OrbitalGame>("SFXGame.BioSeqAct_OrbitalGame");
     CheckClass<UObject>("Core.Object");
     CheckClass<UFunction>("Core.Function");
     CheckClass<UClass>("Core.Class");
@@ -2968,6 +2975,31 @@ void CheckFields() {
     CheckField("Engine.SkeletalMeshSocket", "RelativeLocation", SDK_FIELD(USkeletalMeshSocket, RelativeLocation));
     CheckField("Engine.SkeletalMeshSocket", "RelativeRotation", SDK_FIELD(USkeletalMeshSocket, RelativeRotation));
 
+    CheckField("SFXGame.SFXGameModeBase", "Bindings", SDK_FIELD(USFXGameModeBase, Bindings));
+    CheckField("SFXGame.SFXGameModeBase", "LocalizedBindings", SDK_FIELD(USFXGameModeBase, LocalizedBindings));
+    CheckField("SFXGame.SFXGameModeGalaxy", "GalaxyCam", SDK_FIELD(USFXGameModeGalaxy, GalaxyCam));
+    CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_nCurrentState", SDK_FIELD(UBioCameraBehaviorGalaxy, m_nCurrentState));
+    CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_nActiveWorld", SDK_FIELD(UBioCameraBehaviorGalaxy, m_nActiveWorld));
+    CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_pCurrentSystem", SDK_FIELD(UBioCameraBehaviorGalaxy, m_pCurrentSystem));
+    CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_pCurrentPlanet", SDK_FIELD(UBioCameraBehaviorGalaxy, m_pCurrentPlanet));
+    CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_fSystemScanCooldown", SDK_FIELD(UBioCameraBehaviorGalaxy, m_fSystemScanCooldown));
+    CheckField("SFXGame.SFXSystem", "m_fReaperAlertLevel", SDK_FIELD(USFXSystem, m_fReaperAlertLevel));
+    CheckField("SFXGame.SFXSystem", "m_fReaperGraceTime", SDK_FIELD(USFXSystem, m_fReaperGraceTime));
+    CheckField("SFXGame.SFXSystem", "m_nScannedPlanets", SDK_FIELD(USFXSystem, m_nScannedPlanets));
+    CheckField("Engine.Actor", "LatentActions", SDK_FIELD(AActor, LatentActions));
+    CheckField("SFXGame.BioSeqAct_OrbitalGame", "CurrentPlanet", SDK_FIELD(UBioSeqAct_OrbitalGame, CurrentPlanet));
+    CheckField("SFXGame.BioSeqAct_OrbitalGame", "Planet", SDK_FIELD(UBioSeqAct_OrbitalGame, Planet));
+    CheckField("SFXGame.SFXGameModeBase", "bIsActive", SDK_BOOL(USFXGameModeBase, bIsActive));
+    CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_bCanDoSystemScan", SDK_BOOL(UBioCameraBehaviorGalaxy, m_bCanDoSystemScan));
+    CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_bPaused", SDK_BOOL(UBioCameraBehaviorGalaxy, m_bPaused));
+    CheckField("SFXGame.SFXSystem", "m_bReapersChasePlayer", SDK_BOOL(USFXSystem, m_bReapersChasePlayer));
+    CheckField("SFXGame.SFXSystem", "m_bSystemReapersActive", SDK_BOOL(USFXSystem, m_bSystemReapersActive));
+    CheckField("SFXGame.SFXSystem", "m_bReapersHaveBeenDetected", SDK_BOOL(USFXSystem, m_bReapersHaveBeenDetected));
+    CheckField("SFXGame.SFXGameModeOrbital", "Scanning", SDK_BOOL(USFXGameModeOrbital, Scanning));
+    CheckField("SFXGame.SFXGameModeOrbital", "ProbeActive", SDK_BOOL(USFXGameModeOrbital, ProbeActive));
+    CheckField("SFXGame.SFXGameModeOrbital", "ImpactActive", SDK_BOOL(USFXGameModeOrbital, ImpactActive));
+    CheckField("SFXGame.SFXGameModeOrbital", "bRescaling", SDK_BOOL(USFXGameModeOrbital, bRescaling));
+    CheckField("SFXGame.SFXGameModeOrbital", "bExiting", SDK_BOOL(USFXGameModeOrbital, bExiting));
     CheckField("Engine.Actor", "Physics", SDK_FIELD(AActor, Physics));
     CheckField("Engine.Actor", "Velocity", SDK_FIELD(AActor, Velocity));
     CheckField("Engine.Pawn", "bWantsToCrouch", SDK_BOOL(APawn, bWantsToCrouch));
@@ -3030,6 +3062,12 @@ void CheckFields() {
 }
 
 void CheckPaths() {
+    CheckElement("SFXGame.SFXGameModeBase", "Bindings", sizeof(FKeyBind));
+    CheckPath("SFXGame.SFXGameModeBase", {"Bindings", "Command"}, SDK_AT(offsetof(FKeyBind, Command), sizeof(FKeyBind::Command)));
+    CheckPath("SFXGame.SFXGameModeBase", {"Bindings", "Name"}, SDK_AT(offsetof(FKeyBind, Name), sizeof(FKeyBind::Name)));
+    CheckElement("SFXGame.SFXGameModeBase", "LocalizedBindings", sizeof(FKeyBind));
+    CheckPath("SFXGame.SFXGameModeBase", {"LocalizedBindings", "Command"}, SDK_AT(offsetof(FKeyBind, Command), sizeof(FKeyBind::Command)));
+    CheckPath("SFXGame.SFXGameModeBase", {"LocalizedBindings", "Name"}, SDK_AT(offsetof(FKeyBind, Name), sizeof(FKeyBind::Name)));
     CheckPath("SFXGame.SFXPowerCustomActionBase", {"MinimumRange", "CurrentValue"},
         SDK_AT(offsetof(USFXPowerCustomActionBase, MinimumRange) + offsetof(FPowerData, CurrentValue), sizeof(FPowerData::CurrentValue)));
     CheckPath("SFXGame.SFXPowerCustomActionBase", {"MaximumRange", "CurrentValue"},
@@ -3113,6 +3151,11 @@ void CheckFunctions() {
     CheckFunction("SFXGame.SFXWeapon.GetMuzzleLoc");
     CheckFunction("Engine.SkeletalMeshComponent.GetSocketWorldLocationAndRotation");
 
+    CheckFunction("SFXGame.SFXGameModeGalaxy.ScanSystem");
+    CheckFunction("SFXGame.SFXGameModeOrbital.StartScanning");
+    CheckFunction("SFXGame.SFXGameModeOrbital.StopScanning");
+    CheckFunction("SFXGame.SFXGameModeOrbital.LaunchProbe");
+    CheckNativeTarget("SFXGame.BioCameraBehaviorGalaxy.ScanSystem");
     CheckFunction("Engine.Pawn.ShouldCrouch");
     CheckFunction("Engine.Pawn.IsDead");
     CheckFunction("SFXGame.SFXGameModeDefault.StormOn");
@@ -3173,6 +3216,11 @@ void CheckParams() {
     PARAM(USkeletalMeshComponent_execGetSocketWorldLocationAndRotation_Parms, "Engine.SkeletalMeshComponent.GetSocketWorldLocationAndRotation", ReturnValue);
     PARMS(USkeletalMeshComponent_execGetSocketWorldLocationAndRotation_Parms, "Engine.SkeletalMeshComponent.GetSocketWorldLocationAndRotation");
 
+    CheckParmsSize("SFXGame.SFXGameModeGalaxy.ScanSystem", 0);
+    CheckParmsSize("SFXGame.SFXGameModeOrbital.StartScanning", 0);
+    CheckParmsSize("SFXGame.SFXGameModeOrbital.StopScanning", 0);
+    CheckParmsSize("SFXGame.SFXGameModeOrbital.LaunchProbe", 0);
+    CheckParmsSize("SFXGame.BioCameraBehaviorGalaxy.ScanSystem", 0);
     PARAM(APawn_execShouldCrouch_Parms, "Engine.Pawn.ShouldCrouch", bCrouch);
     PARMS(APawn_execShouldCrouch_Parms, "Engine.Pawn.ShouldCrouch");
     PARAM(APawn_execIsDead_Parms, "Engine.Pawn.IsDead", ReturnValue);
