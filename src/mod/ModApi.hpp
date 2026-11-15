@@ -92,6 +92,7 @@ struct Panel;
 }
 namespace vr::traversal {
 struct Cue;
+struct Presentation;
 }
 
 // Fields are only ever appended: a mod reads the fields of every version up to the host's (and
@@ -101,7 +102,7 @@ struct Cue;
 // `controllers`. The controller-aim branch had {view, setHandAim}; the review-fix branch (commit
 // f95d01d) had {u32 controllerStateSize, setProcessEventCallback}. Version 4 is their merge. So a
 // mod reads nothing past `controllers` from a v3 host: `view` and `setHandAim` only from v4 on.
-inline constexpr int kHostServicesVersion = 40;
+inline constexpr int kHostServicesVersion = 41;
 
 // HostServices::mainMenu's bits (v16).
 inline constexpr std::uint32_t kMainMenuOpen = 1u;   // our main menu is open
@@ -446,6 +447,12 @@ struct HostServices {
     // traversalCueSize matches its sizeof(Cue). Any thread.
     std::uint32_t traversalCueSize = 0;
     void (*setTraversal)(vr::traversal::Cue const* cue) = nullptr;
+
+    // v41: native traversal's authored-yaw cancellation. The game may apply camera correction only
+    // after the matching host accepts this exact publication. Null explicitly clears it. A missing
+    // callback or mismatched size leaves the native view unchanged; cue support alone is insufficient.
+    std::uint32_t traversalPresentationSize = 0;
+    bool (*setTraversalPresentation)(vr::traversal::Presentation const* presentation) = nullptr;
 };
 
 inline auto CameraOffsetPublisher(HostServices const* host) -> void (*)(double, double, double) {
