@@ -2896,6 +2896,10 @@ void CheckLe3Dialogue() {
 
 void CheckFields() {
     CheckField("Engine.SkeletalMeshComponent", "SkeletalMesh", SDK_FIELD(USkeletalMeshComponent, SkeletalMesh));
+    // L3 menu pause: native override owns admission; this bit is observed, never forced.
+    CheckField("Engine.WorldInfo", "bPlayersOnly", SDK_BOOL(AWorldInfo, bPlayersOnly));
+    CheckField("Engine.WorldInfo", "GRI", SDK_FIELD(AWorldInfo, GRI));
+    CheckField("SFXGame.SFXGRI", "bPauseForCommand", SDK_BOOL(ASFXGRI, bPauseForCommand));
     CheckField("Engine.SkeletalMeshComponent", "SpaceBases", SDK_FIELD(USkeletalMeshComponent, SpaceBases));
     CheckField("Engine.SkeletalMeshComponent", "LocalAtoms", SDK_FIELD(USkeletalMeshComponent, LocalAtoms));
     CheckField("Engine.SkeletalMeshComponent", "ParentAnimComponent", SDK_FIELD(USkeletalMeshComponent, ParentAnimComponent));
@@ -3041,6 +3045,9 @@ void CheckSaveDescriptor(char const* function, char const* parameter) {
 
 void CheckFunctions() {
     CheckFunction("Engine.SkeletalMeshComponent.GetBoneLocation");
+    CheckFunction("SFXGame.BioWorldInfo.PauseGame");
+    PARAM(ABioWorldInfo_execPauseGame_Parms, "SFXGame.BioWorldInfo.PauseGame", bPause);
+    PARMS(ABioWorldInfo_execPauseGame_Parms, "SFXGame.BioWorldInfo.PauseGame");
     CheckFunction("Engine.SkeletalMeshComponent.MatchRefBone");
 
     // L3-3: exact script/native entry points used by the shared pose/aim adapter.

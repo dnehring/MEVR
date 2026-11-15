@@ -10,6 +10,14 @@ class PauseOwner {
 public:
     std::uintptr_t Owner() const { return owner_; }
     void Capture(std::uintptr_t owner, bool previous) { owner_ = owner; previous_ = previous; }
+    // Capture only after the adapter observes the requested state. A refused native pause
+    // owns nothing; an existing owner must be restored before another can replace it.
+    template<class Pause>
+    bool Acquire(std::uintptr_t owner, bool previous, Pause&& pause) {
+        if (owner == 0 || owner_ != 0 || !pause(owner)) return false;
+        Capture(owner, previous);
+        return true;
+    }
     void Forget() { owner_ = 0; }
     template<class Restore>
     bool Release(Restore&& restore) {

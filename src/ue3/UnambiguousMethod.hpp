@@ -4,7 +4,7 @@
 
 namespace mevr::ue3 {
 // ProcessEvent with a class UFunction does not establish which state override UnrealScript
-// would select. For read-only probes, refuse any same-named state method in the hierarchy.
+// would select. Callers refuse any same-named state method in the hierarchy.
 // This deliberately rejects some safe states instead of interpreting opaque StateFrame memory.
 inline Function* UnambiguousMethod(Reflection& r, Object* object, std::string_view name) {
     if (!r.IsAlive(object)) return nullptr;

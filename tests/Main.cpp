@@ -12310,6 +12310,19 @@ void TestScreenReticle() {
 // Saved pause state must never leak into the next world, including a failed restore followed by retry.
 void TestPauseOwner() {
     mevr::vr::PauseOwner owner;
+    unsigned calls = 0;
+    CHECK(!owner.Acquire(0, false, [&](std::uintptr_t) { ++calls; return true; }));
+    CHECK(calls == 0 && owner.Owner() == 0);
+    CHECK(!owner.Acquire(1, false, [&](std::uintptr_t) { ++calls; return false; }));
+    CHECK(calls == 1 && owner.Owner() == 0); // native pause refused: nothing to restore
+    CHECK(owner.Acquire(1, false, [&](std::uintptr_t world) { CHECK(world == 1); ++calls; return true; }));
+    CHECK(!owner.Acquire(2, true, [&](std::uintptr_t) { ++calls; return true; }));
+    CHECK(calls == 2 && owner.Owner() == 1); // never overwrite a pending original owner
+    CHECK(!owner.Release([](std::uintptr_t, bool) { return false; }));
+    CHECK(!owner.Acquire(2, true, [&](std::uintptr_t) { ++calls; return true; }));
+    CHECK(calls == 2 && owner.Owner() == 1); // failed native restore retains original value
+    CHECK(owner.Release([](std::uintptr_t world, bool previous) { CHECK(world == 1 && !previous); return true; }));
+    CHECK(owner.Owner() == 0);
     bool oldWorld = true, newWorld = true;
     owner.Capture(1, false);
     CHECK(owner.Release([&](std::uintptr_t world, bool previous) {
