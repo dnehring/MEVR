@@ -46,10 +46,10 @@ Implementation is now authorized. The audit baseline above remains historical; t
 - **L3-5, L3-9 and L3-10:** no completion claimed. Native reload, attachment-aware optics, galaxy gameplay and
   campaign/release gates still require their adapters and evidence below.
 
-The desktop engine probe and two normal descriptor loads passed and restored with zero differences. The next native
-step is the existing combat candidate, then weapon getter/invalidation checks. It needs the shared game-run lock and an available
-coordinated window. The imported renderer still needs its native access review and first VR run. Offline builds and tests
-never promote these native/headset gates automatically.
+The desktop engine probes and normal descriptor loads passed and restored with zero differences. The existing chapter
+candidate failed ordinary-combat admission (see below); a coherent combat fixture remains open. Next are the expanded
+renderer/power metadata probe and a protected renderer preview on the accepted Normandy fixture. Each run needs the
+shared game-run lock. Offline builds and tests never promote native/headset gates automatically.
 
 Integration checks: all three development host/mod pairs and all three monolithic player ASIs compile. The 59-test
 offline suite passed across the full run and focused reruns (PowerShell module resolution was fixed; the three new
@@ -87,8 +87,16 @@ released its lock. Native weapon scalar execution remains open because this fixt
 
 After the presentation/traversal integration, all three development host/module builds and the full 59-test suite
 passed. After the squad/comfort/ownership increment, all three development pairs passed again, followed by six
-focused shared/context/runner tests (including the newly registered load runner). The updated monolithic builds,
-renderer native-access corrections and first VR runtime acceptance remain pending for this integration batch.
+focused shared/context/runner tests (including the newly registered load runner). All three monolithic builds then passed
+at integration checkpoint `4c0e5daf`. Subsequent renderer native-access corrections and shared traversal/squad/voice/label
+consumers are being integrated and require their own build and native validation; first VR acceptance remains pending.
+
+The subsequent candidate adds a versioned traversal camera/input yaw contract with stale-state and unload cleanup,
+shared squad panel/placement consumers, native self/ally/location power intent and healing admission, and the audited
+Marksman gun gesture. The shared microphone/recognizer host is distinct from native spoken conversation handling:
+LE3 must not inherit ME1's conversation reader or mute/skip behavior. Interaction labels use only explicitly supplied
+valid crops until HUD parent transforms and a live target establish a measured default. Neither microphone availability
+nor a visible menu proves a native companion action or accepted HUD crop.
 
 ## Outcome and boundaries
 

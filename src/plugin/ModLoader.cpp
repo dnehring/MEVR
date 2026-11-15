@@ -13,6 +13,7 @@
 #include "engine/SettingsFile.hpp"
 
 #if defined(MEVR_WITH_HALCYON_LE3)
+#include "plugin/HalcyonLe3.hpp"
 #include "core/vr/PowerWheel.hpp"
 #include "core/vr/Sights.hpp"
 #include "core/vr/ScopeCapture.hpp"
@@ -26,7 +27,7 @@
 #include "plugin/TestLoop.hpp"
 #include "plugin/XrHost.hpp"
 #endif
-#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2)
+#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
 #include "core/vr/AimRay.hpp"
 #include "core/vr/Controllers.hpp"
 #include "core/vr/Floor.hpp"
@@ -292,7 +293,10 @@ void ForgetRendererModState() {
     floor_lock::SetPawn(nullptr);
 #if !defined(MEVR_WITH_HALCYON_LE3)
     vr::hud_pieces::Reset();  // the weapon panel back on the HUD (the wrist piece needs no mod)
+#endif
     vr::interact::Reset();
+#if defined(MEVR_WITH_HALCYON_LE3)
+    halcyon_le3::SetTraversalPresentation(nullptr);
 #endif
     vr::sights::Reset();
     vignette::Forget();
@@ -314,7 +318,7 @@ HostServices WithTraversal(HostServices services) {
 }
 #endif
 
-#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2)
+#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2) || (defined(MEVR_WITH_HALCYON_LE3) && defined(MEVR_WITH_MAIN_MENU))
 void HostSetVoiceListen(int on) {
     host::voice::SetListen(on);
 }
@@ -589,12 +593,18 @@ HostServices BuildServices() {
 #if defined(MEVR_WITH_HALCYON_LE3)
     // Shared layers now consume these publications. Native/headset acceptance remains separate.
     services = WithTraversal(WithFloorLock(WithPadMerge(WithSights(WithVignette(WithRenderer(services))))));
+#if defined(MEVR_WITH_MAIN_MENU)
+    services = WithVoice(services);
+#endif
     services.hideScreenReticle = nullptr; // native LE3 crosshair ownership has not been verified
-    services = WithPowerWheel(services);
+    services.traversalPresentationSize = static_cast<std::uint32_t>(sizeof(vr::traversal::Presentation));
+    services.setTraversalPresentation = &halcyon_le3::SetTraversalPresentation;
     // LE3 uses the shared eye-image scope tap. The native scene-capture producer remains unavailable.
 #endif
 #if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2)
     services = WithVoice(WithFloorLock(WithHudPieces(WithPadMerge(WithSights(WithVignette(WithRenderer(services)))))));  // both renderers' modules
+#endif
+#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
     services.squadMenuSize = static_cast<std::uint32_t>(sizeof(vr::squad_menu::View));
     services.setSquadMenu = [](vr::squad_menu::View const* view) {
         vr::squad_menu::Publish(view != nullptr && view->size == sizeof(vr::squad_menu::View) ? *view : vr::squad_menu::View{});
@@ -607,6 +617,8 @@ HostServices BuildServices() {
 #endif
 #if defined(MEVR_WITH_HALCYON_LE2)
     services = WithTraversal(services);
+#endif
+#if defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
     services.interactLabelSize = static_cast<std::uint32_t>(sizeof(vr::interact::Label));
     services.setInteractLabel = [](vr::interact::Label const* label) {
         if (label != nullptr && label->size == sizeof(vr::interact::Label)) vr::interact::Publish(*label);
@@ -629,12 +641,10 @@ HostServices BuildServices() {
 HostServices const gServices = BuildServices();
 
 void ForgetModState() {
-#if defined(MEVR_WITH_HALCYON_LE3)
-    ForgetRendererModState();
-    vr::power_wheel::Publish({});
-    vr::power_wheel::PublishLock({});
+#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2) || (defined(MEVR_WITH_HALCYON_LE3) && defined(MEVR_WITH_MAIN_MENU))
+    host::voice::SetListen(0); // also release a crashed/unloaded mod's microphone claim
 #endif
-#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2)
+#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
     ForgetRendererModState();
     vr::power_wheel::Publish({});
     vr::power_wheel::PublishLock({});
@@ -660,7 +670,7 @@ void SetProcessExiting() {
 }
 
 void StopWorkersForUnload() {
-#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2)
+#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2) || (defined(MEVR_WITH_HALCYON_LE3) && defined(MEVR_WITH_MAIN_MENU))
     host::voice::Shutdown();  // its capture and worker threads, before the DLLs unload
     host::voice_model::Shutdown();
 #endif

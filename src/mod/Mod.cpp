@@ -366,7 +366,9 @@ void TryInstallScriptHooks() {
     game::camera_shake::TryStartup();  // [Comfort] screenShake, viewShake (research/71: the view shaken by shots and the run)
     game::galaxy_dump::TryStartup();  // the galaxy map's Flash calls, traced on request (research/51 section 8)
     game::world_ui::TryStartup();  // the camera-update handler that holds Shepard's view while a game screen stands in the room
+#if !defined(MEVR_GAME_LE3)
     game::conversation_world::TryStartup();  // ... and the one that holds it through a conversation in the world (research/59)
+#endif
     game::galaxy_map::TryStartup();  // the camera-update handler holding the view in the CIC while the map is open in-world
     if (gHostOwnsVr && gHost->version >= 36 && gHost->floorLockSampleSize == sizeof(vr::floor_lock::PawnSample)) {
         game::player::PublishFloorLockOnCamera(gHost->setFloorLockSample);
@@ -1761,13 +1763,18 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         game::galaxy_map::Tick(GalaxyMapLink());
         game::world_ui::Tick(WorldUiLink());
         // Conversations (research/59): measured always; in the world, Shepard's view held (after world_ui: its Hold is ours in mode 5).
+#if !defined(MEVR_GAME_LE3)
+        // First-person world conversations and their LE1 audio/scene hooks are not LE3 adapters.
         EnsureConversationHooks();
         EnsureVoicePlaceHook();
         game::conversation_world::Tick(deltaSeconds, ConversationWorldLink());
-        game::thespian::Tick(deltaSeconds, ThespianLink());  // after the conversation's: the dialogue wheel spoken (research/70)
+#endif
+        game::thespian::Tick(deltaSeconds, ThespianLink());  // separate native dialogue adapter, explicitly unavailable on LE3
+#if !defined(MEVR_GAME_LE3)
         game::conversation_flow::Tick();  // the chain starts' lines flagged ambient before the level's script starts them (research/59)
         game::authored_moment::Tick();    // what the level's script does to the player: a track's walk, a teleport (research/69)
         game::sound_place::Tick(deltaSeconds);  // on foot: people near the player and the gun heard from where they are (research/69 A1, A2)
+#endif
         game::head_tracking::OnTickEnd();
     }
     PublishStatus();

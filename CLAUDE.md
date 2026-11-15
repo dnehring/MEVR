@@ -134,8 +134,10 @@ authored seated scenes (such as shuttles) must reject traversal while retaining 
   its own MinHook, on top of ours: never uninstall a hook another hooker may sit on.
   **LE3's candidate host now integrates Halcyon's ME3 renderer** (`src/halcyon/le3`, `MEVR_WITH_HALCYON_LE3`;
   [foundation and remaining gates](research/le3-renderer-integration.md)). It reuses controller/floor/pad/test-loop services;
-  native reflection, body/UI and runtime acceptance remain pending. Use the protected desktop dump-only route in
-  `tools/le2-halcyon-run/README.md` for initial discovery; do not deploy the candidate as accepted VR support.
+  native reflection now passes the protected 259-row probe and ordinary Normandy save loading/reloading is verified.
+  Body/UI outcomes and VR acceptance remain pending. Use the existing protected desktop/engine-request routes in
+  `tools/le2-halcyon-run/README.md` for discovery; do not deploy the candidate as accepted VR support. The chapter
+  save tested as a combat candidate enters cinematic/injured modes and is not an accepted ordinary combat fixture.
   **LE2's host runs Halcyon's ME2 renderer**
   since 2026-11-14 (`src/halcyon/le2`, library `halcyon-le2`, `MEVR_WITH_HALCYON_LE2`, not the diagnostic host; started by
   `plugin/HalcyonLe2`, seams in `src/halcyon/le2/mevr_bridge.h` implemented in `plugin/HalcyonLe2Bridge.cpp`: static loader,
