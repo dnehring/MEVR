@@ -30,6 +30,7 @@
 #include "plugin/GamePointer.hpp"
 #include "plugin/HandReticle.hpp"
 #include "plugin/HudPanel.hpp"
+#include "plugin/HdrDisplayPolicy.hpp"
 #include "plugin/HudPieceLayers.hpp"
 #include "plugin/MenusLe2.hpp"
 #include "plugin/PadMerge.hpp"
@@ -696,87 +697,8 @@ bool HudPanelDraw(ID3D11DeviceContext* context, void (*draw)(void*), void* user,
     return mevr::host::hud_panel::Redirect(context, draw, user, textBatch, afterLeftEye);
 }
 
-// ---- The display's HDR answer (IDXGIOutput6::GetDesc1) ---------------------------------------------------------------
-// As LE1's [Colour] hdrDisplay (plugin/HalcyonBridge's HdrDisplayDesc, research/27 7c): 1 answers HDR10 for an SDR display,
-// 0 (LE1's default) passes the display's own answer through, -1 (ME2's default) answers SDR for an HDR display. With
-// Windows HDR on, ME2 makes an R16G16B16A16_FLOAT swap chain in gameplay even with [HDR] DesiredRange = SDR (LE1 stays
-// 8-bit), and Halcyon's ME2 renderer is built for an 8-bit one (its SFR left eye and its UI treatment find nothing in a
-// float frame; plugin/EyeCopy keeps its eyes from going black). Answered SDR (-1), ME2 renders the 8-bit SDR frame ME1
-// does (research/le2-renderer-integration.md "The black eyes"). -1 is an interim default (the owner, 2026-11-14: "a stop
-// gap"): when ME2's renderer handles its native HDR frame (the HDR study, research/le2-hdr.md), it goes back to 0.
-constexpr int kHdrDisplayDefault = -1;  // the ME2 fact that forces it: the float swap chain, above
-namespace {
-using GetDesc1Fn = HRESULT(STDMETHODCALLTYPE*)(IDXGIOutput6*, DXGI_OUTPUT_DESC1*);
-GetDesc1Fn gRealGetDesc1 = nullptr;
-std::atomic<int> gHdrAnswerLogs{0};
-
-HRESULT STDMETHODCALLTYPE GetDesc1Hook(IDXGIOutput6* self, DXGI_OUTPUT_DESC1* desc) {
-    HRESULT const hr = gRealGetDesc1 != nullptr ? gRealGetDesc1(self, desc) : E_FAIL;
-    if (FAILED(hr) || desc == nullptr) {
-        return hr;
-    }
-    std::wstring const& path = mevr::host::SettingsPath();
-    int const want = path.empty() ? kHdrDisplayDefault
-                                  : static_cast<int>(GetPrivateProfileIntW(L"Colour", L"hdrDisplay", kHdrDisplayDefault,
-                                        path.c_str()));
-    int const was = static_cast<int>(desc->ColorSpace);
-    bool const hdr = desc->ColorSpace == DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020;
-    char const* answered = "its own";
-    if (want > 0 && !hdr) {
-        desc->ColorSpace = DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020;
-        desc->BitsPerColor = 10;
-        answered = "HDR10";
-    } else if (want < 0 && hdr) {
-        desc->ColorSpace = DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709;
-        desc->BitsPerColor = 8;
-        answered = "SDR";
-    }
-    if (gHdrAnswerLogs.fetch_add(1, std::memory_order_relaxed) < 3) {
-        mevr::log::Info("hdr display: the display reports colour space {} ({}), {} bits, {:.0f} nits; answered {} "
-                        "([Colour] hdrDisplay = {})",
-            was, hdr ? "HDR10" : "SDR", desc->BitsPerColor, desc->MaxLuminance, answered, want);
-    }
-    return hr;
-}
-} // namespace
-
 void OnFactory(void* factory) noexcept {
-    static bool hooked = false;  // under Halcyon's hook mutex
-    if (hooked || factory == nullptr) {
-        return;
-    }
-    IDXGIFactory1* f1 = nullptr;
-    if (FAILED(static_cast<IUnknown*>(factory)->QueryInterface(__uuidof(IDXGIFactory1), reinterpret_cast<void**>(&f1))) ||
-        f1 == nullptr) {
-        return;
-    }
-    IDXGIAdapter1* adapter = nullptr;
-    IDXGIOutput* output = nullptr;
-    IDXGIOutput6* output6 = nullptr;
-    if (SUCCEEDED(f1->EnumAdapters1(0, &adapter)) && adapter != nullptr && SUCCEEDED(adapter->EnumOutputs(0, &output)) &&
-        output != nullptr &&
-        SUCCEEDED(output->QueryInterface(__uuidof(IDXGIOutput6), reinterpret_cast<void**>(&output6))) && output6 != nullptr) {
-        void** const slot = *reinterpret_cast<void***>(output6) + 27;  // IDXGIOutput6::GetDesc1
-        DWORD old = 0;
-        if (*slot != reinterpret_cast<void*>(&GetDesc1Hook) &&
-            VirtualProtect(slot, sizeof(void*), PAGE_EXECUTE_READWRITE, &old)) {
-            gRealGetDesc1 = reinterpret_cast<GetDesc1Fn>(*slot);
-            *slot = reinterpret_cast<void*>(&GetDesc1Hook);
-            VirtualProtect(slot, sizeof(void*), old, &old);
-            hooked = true;
-            mevr::log::Info("hdr display: IDXGIOutput6::GetDesc1 hooked (the game's HDR question; [Colour] hdrDisplay)");
-        }
-    }
-    if (output6 != nullptr) {
-        output6->Release();
-    }
-    if (output != nullptr) {
-        output->Release();
-    }
-    if (adapter != nullptr) {
-        adapter->Release();
-    }
-    f1->Release();
+    mevr::host::hdr_display::OnFactory(factory);
 }
 
 

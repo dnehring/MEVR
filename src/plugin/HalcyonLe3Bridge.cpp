@@ -20,6 +20,7 @@
 #include "plugin/HalcyonLe3.hpp"
 #include "plugin/TransitionFade.hpp"
 #include "plugin/HudPanel.hpp"
+#include "plugin/HdrDisplayPolicy.hpp"
 #include "plugin/HudPieceLayers.hpp"
 #include "core/vr/InteractLabel.hpp"
 #include "core/vr/PowerWheel.hpp"
@@ -82,6 +83,10 @@ bool SetTraversalPresentation(vr::traversal::Presentation const* value) noexcept
 }
 }
 namespace ME2VR::MevrBridge {
+void OnFactory(void* factory) noexcept {
+    mevr::host::hdr_display::OnFactory(factory);
+}
+
 namespace {
 std::atomic<std::uint64_t> gFloorTranslatedMs{0};
 std::mutex gPadMutex;

@@ -6121,5 +6121,8 @@ void TryInstallFactoryHooks(void* factory, const IID&) noexcept
     {
         g_createSwapChainForCompositionSlot = &vtable[kCreateSwapChainForCompositionSlot];
     }
+#if defined(MEVR_ASI)
+    ::ME2VR::MevrBridge::OnFactory(factory);  // [MEVR] Same HDR display policy as LE2.
+#endif
 }
 }

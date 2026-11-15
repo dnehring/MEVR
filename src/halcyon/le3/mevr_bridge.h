@@ -6,6 +6,8 @@
 #include <Xinput.h>
 #include <cstdint>
 namespace ME2VR::MevrBridge {
+// [MEVR] Shared sequel HDR display answer, installed before the factory reaches the game.
+void OnFactory(void* factory) noexcept;
 // [MEVR] Shared menu/input/layer bridge. Native screen routing is independently gated.
 bool CineScreenWanted(bool conversation) noexcept;
 bool CineScreenFullRate() noexcept;
