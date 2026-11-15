@@ -12,6 +12,7 @@
 #include "core/vr/HostView.hpp"
 #include "game/GamepadMapping.hpp"
 #include "plugin/EyeCopy.hpp"
+#include "plugin/MenusLe2.hpp"
 #include "plugin/Renderer.hpp"
 #include "plugin/Swapchains.hpp"
 #include "plugin/TestLoop.hpp"
@@ -61,6 +62,7 @@ void OnSessionCreated(void* instance, void* session) noexcept {
     if (mevr::host::xr_host::OnSessionCreated(static_cast<XrInstance>(instance), static_cast<XrSession>(session))) {
         mevr::log::Info("halcyon le2 bridge: our controller actions are attached to Halcyon's session");
     }
+    mevr::host::menus_le2::OnSessionCreated(static_cast<XrInstance>(instance), static_cast<XrSession>(session));  // M4
     gToldFirstSync = false;
 }
 
@@ -72,13 +74,17 @@ void OnFrameBegun(void* session, void* space, std::int64_t predictedDisplayTime)
     mevr::host::xr_host::OnFrameBegun(static_cast<XrSession>(session), static_cast<XrSpace>(space),
         static_cast<XrTime>(predictedDisplayTime), state);
     bool const inputReady = mevr::host::xr_host::InputReady();
+    mevr::vr::controllers::State const live = state;  // the player's own, before a replay's takes its place
     // The test loop records the live sample, or replaces it with a recording's (plugin/TestLoop), as on LE1.
     mevr::host::testloop::OnFrameBegun(static_cast<XrSession>(session), static_cast<XrSpace>(space),
         static_cast<XrTime>(predictedDisplayTime), mevr::host::xr_host::InputFocused(), state);
     if (!inputReady && !state.active) {
         return;  // no controllers, and no replay standing in for them
     }
-    mevr::vr::controllers::Publish(state);
+    // Our main menu and the guided calibration take the controllers while they're up (plugin/MenusLe2, M4).
+    mevr::vr::controllers::Publish(mevr::host::menus_le2::OnFrameBegun(static_cast<XrSession>(session),
+        static_cast<XrSpace>(space), static_cast<XrTime>(predictedDisplayTime), live, state,
+        mevr::host::xr_host::InputFocused()));
     if (inputReady && !gToldFirstSync) {
         gToldFirstSync = true;
         mevr::log::Info("halcyon le2 bridge: first controller sync (session {}focused)",
@@ -116,6 +122,7 @@ void OnViewBuilt(bool worldView, bool headLook, bool headAim, int lookYawUU, int
 
 void OnRecentered() noexcept {
     mevr::host::xr_host::NoteRecentered();
+    mevr::host::menus_le2::OnRecentered();  // our menu and the calibration placed again (M4)
     mevr::log::Info("halcyon le2 bridge: recentered");
 }
 
@@ -212,6 +219,9 @@ void OnEyeCopied(int eye, void* image, std::uint32_t index, int acquired, int wa
 }
 
 void OnSwapChainPresent(void* swapChain, void* capturedSwapChain) noexcept {
+    if (swapChain != nullptr && swapChain == capturedSwapChain) {
+        mevr::host::menus_le2::OnPresent();  // our menu closes itself when nobody can see it (M4)
+    }
     // Present thread only. The captured swap chain's buffers: each change of size or format logged (ME2's is R8G8B8A8 at
     // the title and R16G16B16A16_FLOAT in gameplay with Windows HDR on: plugin/EyeCopy). Checked every 90th Present.
     static unsigned presents = 0;
@@ -277,6 +287,8 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
             layersOut[count++] = layer;
         }
     }
+    // Our main menu and the guided calibration (plugin/MenusLe2, M4): over the rest, alone while they're up.
+    count = mevr::host::menus_le2::Layers(frame, device, layersOut, count, capacity);
     if (device != nullptr) {
         device->Release();
     }
@@ -372,13 +384,17 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
         return result;
     }
     mevr::vr::controllers::State const controllers = mevr::vr::controllers::Latest();
-    if (!controllers.active) {
+    bool const menus = mevr::host::menus_le2::PadWanted();  // our menu or the calibration has the pad (M4)
+    if (!controllers.active && !menus) {
         return result;
     }
     bool const realPad = result == ERROR_SUCCESS;
     std::lock_guard lock(gPadMutex);
-    XINPUT_GAMEPAD const pad = mevr::game::gamepad::Merge(realPad ? state->Gamepad : XINPUT_GAMEPAD{},
-        mevr::game::gamepad::FromControllers(controllers, gLatches));
+    XINPUT_GAMEPAD pad = !controllers.active ? (realPad ? state->Gamepad : XINPUT_GAMEPAD{})
+                                             : mevr::game::gamepad::Merge(realPad ? state->Gamepad : XINPUT_GAMEPAD{},
+                                                   mevr::game::gamepad::FromControllers(controllers, gLatches));
+    // Neutral while our menu or the calibration has it; after, what was held then is kept from the game until let go.
+    mevr::host::menus_le2::FilterPad(realPad ? &state->Gamepad : nullptr, pad);
     if (std::memcmp(&pad, &gLastPad, sizeof pad) != 0) {
         gLastPad = pad;
         ++gPacket;  // the game only re-reads a pad whose packet number changed

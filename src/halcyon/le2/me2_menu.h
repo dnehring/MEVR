@@ -21,4 +21,10 @@ bool IsRebindingFpToggle() noexcept;   // true while capturing a new key for the
 int LeftStickMagnitude() noexcept;         // [FPSTORM] live left-stick deflection 0..32767 (real pad)
 bool GetMoveFollowsHead() noexcept;        // [MOVEFIX] "run where you look"
 void SetMoveFollowsHead(bool on) noexcept;
+// [MEVR] For our host (plugin/RendererLe2.cpp, lane D M4): the menu opened or closed as its key does (our main menu closes
+// it when it opens: one menu at a time); the live values our main menu edits; the settings saved as closing the menu
+// saves them (SaveValues, MELE2VR.ini).
+void SetOpen(bool open) noexcept;
+void SaveSettings() noexcept;
+int GetMenuKey() noexcept;
 }

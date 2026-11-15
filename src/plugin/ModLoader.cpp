@@ -20,6 +20,11 @@
 #include "plugin/Vignette.hpp"
 #include "plugin/XrHost.hpp"
 #endif
+#if defined(MEVR_WITH_HALCYON_LE2) && defined(MEVR_WITH_MAIN_MENU)
+#include "core/vr/Calibration.hpp"
+#include "plugin/Calibration.hpp"
+#include "plugin/MainMenu.hpp"
+#endif
 #if defined(MEVR_WITH_HALCYON)
 #include "core/vr/Calibration.hpp"
 #include "core/vr/Floor.hpp"
@@ -478,6 +483,27 @@ void ForgetLe1ModState() {
 }
 #endif
 
+#if defined(MEVR_WITH_HALCYON_LE2) && defined(MEVR_WITH_MAIN_MENU)
+// LE2 (M4, research/le2-menus.md): our main menu and the guided calibration, as LE1's WithLe1Modules and
+// WithGameMenuRequest give them: v15 the calibration's state, v16 the menu's state, v19 its Game menu and Holster buttons.
+void HostCalibration(vr::calibration::HostState* out) {
+    calibration::HostStateOut(out);
+}
+std::uint32_t HostMainMenu() {
+    return main_menu::ModFlags();
+}
+std::uint32_t HostTakeGameMenuRequest() {
+    return static_cast<std::uint32_t>(main_menu::TakeGameRequest());
+}
+HostServices WithMenus(HostServices services) {
+    services.calibrationStateSize = static_cast<std::uint32_t>(sizeof(vr::calibration::HostState));
+    services.calibration = &HostCalibration;
+    services.mainMenu = &HostMainMenu;
+    services.takeGameMenuRequest = &HostTakeGameMenuRequest;
+    return services;
+}
+#endif
+
 // One builder for every game's host (docs/le2-continuation-plan.md M2.5): the base, the crash breadcrumbs, the renderer's
 // services where Halcyon's renderer (either game's) is in the host, and LE1's host modules' where they are linked. A module
 // that comes over to LE2 moves its With* out of the LE1-only list.
@@ -489,6 +515,9 @@ HostServices BuildServices() {
 #if defined(MEVR_WITH_HALCYON)
     services = WithVoice(WithPowerWheel(WithWorldUi(WithGalaxyHologram(WithGalaxyMap(WithSpectator(WithMakoControls(
         WithHudPieces(WithInteractLabel(WithScopeCapture(WithGameMenuRequest(WithLe1Modules(services))))))))))));
+#endif
+#if defined(MEVR_WITH_HALCYON_LE2) && defined(MEVR_WITH_MAIN_MENU)
+    services = WithMenus(services);  // our main menu and the calibration on LE2 (M4)
 #endif
     return services;
 }

@@ -8,13 +8,16 @@
 
 #include "core/Log.hpp"
 #include "engine/SettingsFile.hpp"
+#include "halcyon/le2/calcview_hook.h"
 #include "halcyon/le2/d3d_capture.h"
 #include "halcyon/le2/engine_probe.h"
 #include "halcyon/le2/logger.h"
 #include "halcyon/le2/me2_menu.h"
+#include "halcyon/le2/me2_xr.h"
 
 #include <dxgi.h>
 
+#include <algorithm>
 #include <atomic>
 
 namespace mevr::host {
@@ -37,8 +40,39 @@ bool OwnMenuOpen() noexcept {
     return ME2VR::Menu::IsOpen();
 }
 
-void SetOwnMenuOpen(bool) noexcept {
-    // ME2's menu (me2_menu.cpp) has no setter; our main menu on ME2 (M4) adds the seam.
+void SetOwnMenuOpen(bool open) noexcept {
+    ME2VR::Menu::SetOpen(open);  // me2_menu.cpp's [MEVR] SetOpen: what its key does
+}
+
+int OwnMenuKey() noexcept {
+    return ME2VR::Menu::GetMenuKey();
+}
+
+void RequestRecenter() noexcept {
+    ME2VR::Me2Xr::Recenter();  // what double-tapping Back, its menu's button and opening its menu do
+}
+
+MenuRows GetMenuRows() noexcept {
+    MenuRows rows;
+    rows.hasLookSmoothing = true;
+    rows.lookSmoothing = ME2VR::CalcViewHook::GetHeadLookSmoothing();
+    rows.hasFlatScreenWidth = true;
+    rows.flatScreenWidthM = ME2VR::Me2Xr::GetMenuScreenSize();
+    rows.hasMirror = true;
+    rows.mirrorPresentEvery = ME2VR::D3DCapture::GetMirrorPresentEvery();
+    return rows;
+}
+
+void SetMenuRows(MenuRows const& rows) noexcept {
+    // The same clamps as its LoadValues.
+    if (rows.hasLookSmoothing) ME2VR::CalcViewHook::SetHeadLookSmoothing(std::clamp(rows.lookSmoothing, 0.0f, 0.95f));
+    if (rows.hasFlatScreenWidth) ME2VR::Me2Xr::SetMenuScreenSize(std::clamp(rows.flatScreenWidthM, 0.5f, 5.0f));
+    if (rows.hasMirror) ME2VR::D3DCapture::SetMirrorPresentEvery(std::max(rows.mirrorPresentEvery, 0));
+}
+
+void SaveOwnSettings(char const* why) noexcept {
+    ME2VR::Menu::SaveSettings();  // SaveValues: MELE2VR.ini, as closing its menu does
+    log::Info("main menu: the renderer's settings saved to MELE2VR.ini ({})", why != nullptr ? why : "?");
 }
 
 void LogLine(std::string const& line) noexcept {

@@ -34,6 +34,10 @@
 #include "plugin/UiWorldFigure.hpp"
 #include "plugin/FloorLock.hpp"
 #endif
+#if defined(MEVR_WITH_HALCYON_LE2) && defined(MEVR_WITH_MAIN_MENU)
+#include "plugin/Calibration.hpp"  // our menus on LE2 (plugin/MenusLe2, M4)
+#include "plugin/MainMenu.hpp"
+#endif
 
 #include "core/DevChannels.hpp"
 #include "core/DiskBudget.hpp"
@@ -812,6 +816,10 @@ ModuleBlocks ModuleStatus() {
     m.spectator = spectator::StatusJson();
     m.figure = ui_world_figure::StatusJson();
     m.questPacing = quest_pacing::StatusJson();
+#endif
+#if defined(MEVR_WITH_HALCYON_LE2) && defined(MEVR_WITH_MAIN_MENU)
+    m.calibration = calibration::StatusJson();
+    m.mainMenu = main_menu::StatusJson();
 #endif
     m.swapchains = swapchains::StatusJson();  // both Halcyon hosts
     return m;

@@ -2,11 +2,14 @@
 #include "game/MenuPause.hpp"
 
 #include "core/Log.hpp"
+#include "core/WriteJournal.hpp"
 #include "game/HeadTracking.hpp"
 #include "mod/ModApi.hpp"
 #include "ue3/Handles.hpp"
+#include "ue3/Runtime.hpp"
 
 #include <format>
+#include <optional>
 
 namespace mevr::game::menu_pause {
 namespace {
@@ -51,6 +54,46 @@ bool Pause(bool pause, char const* why) {
     ue3::runtime::Call(world, gPauseGame, parms);  // the script function through ProcessEvent
     gLast = std::format("{} ({})", pause ? "paused" : "resumed", why);
     log::Info("menu pause: the game {} ({}; WorldInfo.PauseGame, as ME1's weapon wheel)", pause ? "paused" : "runs again", why);
+    return true;
+}
+#elif defined(MEVR_GAME_LE2)
+// ME2 has no WorldInfo.PauseGame. ME1's is one line, `bPlayersOnly = bPause`, and ME2's own weapon wheel does the same
+// (SFXGameModeWeaponWheel.Activated sets Outer.WorldInfo.bPlayersOnly = TRUE, Deactivated FALSE; ShowBrowserWheel keeps
+// the value it found and sets it): the field is written directly, as ME2's script does (research/le2-menus.md).
+ue3::FieldRef gWorldInfo{"Engine.Actor", "WorldInfo", ue3::kEveryGame};
+ue3::FieldRef gPlayersOnly{"Engine.WorldInfo", "bPlayersOnly", ue3::kEveryGame};
+bool gToldDown = false;
+bool gWasPlayersOnly = false;  // bPlayersOnly as we found it when we paused
+
+bool Pause(bool pause, char const* why) {
+    if (!ue3::runtime::Up()) {
+        if (!gToldDown) {
+            gToldDown = true;
+            log::Warn("menu pause: our reflection layer is off ({}): the main menu won't pause the game", ue3::runtime::Status());
+        }
+        return false;
+    }
+    ue3::Object* const pc = ue3::runtime::LocalPlayerController();
+    ue3::Object* const world = pc != nullptr ? gWorldInfo.Read<ue3::Object*>(pc).value_or(nullptr) : nullptr;
+    std::optional<bool> const was = world != nullptr ? gPlayersOnly.ReadBool(world) : std::nullopt;
+    if (!was) {
+        return false;
+    }
+    if (pause) {
+        gWasPlayersOnly = *was;
+    }
+    bool const value = pause ? true : gWasPlayersOnly;  // what it was before: a wheel's or a screen's pause stays
+    if (*was != value) {
+        if (!gPlayersOnly.WriteBool(world, value)) {
+            return false;
+        }
+        if (void* const field = gPlayersOnly.Address(world)) {
+            write_journal::Wrote("MenuPause.bPlayersOnly", field, 4);
+        }
+    }
+    gLast = std::format("{} ({})", pause ? "paused" : "resumed", why);
+    log::Info("menu pause: the game {} ({}; WorldInfo.bPlayersOnly {}, as ME2's weapon wheel)", pause ? "paused" : "runs again",
+        why, value ? "on" : "off");
     return true;
 }
 #else

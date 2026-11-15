@@ -39,9 +39,34 @@ namespace mevr::host::renderer {
 // The renderer's own developer menu is open: Halcyon's ImGui menu (LE1: Ctrl or Shift + \; ME2: its menu key, Insert
 // upstream). Not our main menu (plugin/MainMenu). Any thread.
 bool OwnMenuOpen() noexcept;
-// Opens or closes it (our main menu closes it when it opens: one menu at a time). ME2: not yet (its menu has no setter;
-// M4, lane D), a no-op there.
+// Opens or closes it (our main menu closes it when it opens: one menu at a time). ME2: me2_menu.cpp's [MEVR] SetOpen, which
+// does what its key does (it loads its values, saves them on closing and recenters, as upstream).
 void SetOwnMenuOpen(bool open) noexcept;
+// The renderer's menu key (a VK code; LE1 menuKey, ME2 [VR] MenuKey: \ in our deploy and ME2's baseline), 0 if none.
+int OwnMenuKey() noexcept;
+
+// Recenter the view as the renderer's own recenter does (our main menu's Recenter button). Present thread.
+void RequestRecenter() noexcept;
+
+// ---- The renderer's own settings our main menu edits on ME2 (plugin/MainMenuSettings, research/le2-menus.md) ----------
+// LE1's rows edit Halcyon's VrConfig themselves (MainMenuSettings' LE1 part: its profiles, its render size, its HUD panel),
+// so these answer only ME2's: Halcyon ME2's live values, which its SaveValues writes to MELE2VR.ini. A `has*` false: the
+// renderer has no such setting and the row stands down (LE1: all false here). Present thread.
+struct MenuRows {
+    bool hasLookSmoothing = false;
+    float lookSmoothing = 0.0f;       // ME2 [VR] HeadLookSmoothing, 0..0.95 (LE1's headLookSmoothing)
+    bool hasFlatScreenWidth = false;
+    float flatScreenWidthM = 0.0f;    // ME2 [VR] MenuScreenSize: its flat screen's width (LE1's menuMonoQuadWidth)
+    // No depth of field row on ME2: its [VR] DisableDof is read and saved but drives nothing since upstream hid it (its
+    // GamerSettings write took the tonemapping off: me2_menu.cpp's [DOFWASH]).
+    bool hasMirror = false;
+    int mirrorPresentEvery = 0;       // ME2 [VR] MirrorPresentEvery (0: its default, every 8th; LE1's mirrorPresentEvery)
+};
+MenuRows GetMenuRows() noexcept;
+// Applies the rows that `has` (live), as the renderer's own menu would.
+void SetMenuRows(MenuRows const& rows) noexcept;
+// Saves the renderer's live settings to its file (ME2: SaveValues, MELE2VR.ini), as closing its own menu does.
+void SaveOwnSettings(char const* why) noexcept;
 
 // A line in the renderer's own log (LE1 %LOCALAPPDATA%\MELEVR\MELEVR_Log.txt, ME2 ...\MELE2VR\MELE2VR_Log.txt), for
 // lines the renderer's log should carry next to its own ([MEVR-COLOUR], [MEVR-HUD] ...). Any thread.

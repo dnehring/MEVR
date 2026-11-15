@@ -113,6 +113,13 @@ bool XrRuntimeIsSteamVr() noexcept;
 // (Discord, a browser) must not recenter, switch profiles or open the menu.
 bool KeyDown(int vk) noexcept;
 
+// The menu key went down (me2_menu.cpp's PollInsert; `ownMenuOpen`: Halcyon's menu is open). True if our main menu took it
+// (opened or closed; plugin/MenusLe2), false if Halcyon's menu toggles as upstream: with Ctrl or Shift held, or while its
+// menu is open, as LE1's MevrBridge::OnMenuKey.
+bool OnMenuKey(bool ownMenuOpen) noexcept;
+// Our main menu is open (plugin/MainMenu): Halcyon's window procedure swallows the desktop's input as for its own menu.
+bool MainMenuOpen() noexcept;
+
 // Halcyon's hotkey polls go through this: KeyDown in our ASI, the plain poll in an upstream build.
 inline bool HotkeyDown(int vk) noexcept
 {

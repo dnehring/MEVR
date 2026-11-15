@@ -3,11 +3,29 @@
 
 #include "plugin/MainMenuSettings.hpp"
 
+// One menu for both games (docs/le2-continuation-plan.md M4.1, research/le2-menus.md): LE1's host has Halcyon's LE1 renderer
+// (its VrConfig, profiles and render size) and the LE1 host's modules the rows drive (the colour, the voice, OpenAL Soft, the
+// frame probe, MEVR Setup's requests); ME2's host has Halcyon's ME2 renderer, whose rows go through plugin/Renderer.hpp's
+// MenuRows, and none of those modules yet: their rows stand down there (the document greys them out with `le2`).
+#if defined(MEVR_WITH_HALCYON)
+#define MEVR_MENU_LE1 1
 #include "halcyon/le1/d3d_capture.h"
 #include "halcyon/le1/mevr_bridge.h"
 #include "halcyon/le1/vr_config.h"
 #include "halcyon/le1/vr_menu.h"
 #include "halcyon/le1/xr_session.h"
+#include "plugin/Colour.hpp"
+#include "plugin/MevrMenu.hpp"
+#include "plugin/OpenAlSoft.hpp"
+#include "plugin/PerfProbe.hpp"
+#include "plugin/ReportRequest.hpp"
+#include "plugin/SetupRequest.hpp"
+#include "plugin/SteamVrSmoothingRequest.hpp"
+#include "plugin/Voice.hpp"
+#else
+#include "plugin/ArmSample.hpp"
+#include "plugin/MenusLe2.hpp"
+#endif
 
 #include "core/Ini.hpp"
 #include "core/Log.hpp"
@@ -16,16 +34,8 @@
 #include "core/vr/PerformanceModes.hpp"
 #include "core/vr/WorldUi.hpp"
 #include "plugin/Calibration.hpp"
-#include "plugin/Colour.hpp"
-#include "plugin/MevrMenu.hpp"
 #include "plugin/Renderer.hpp"
-#include "plugin/OpenAlSoft.hpp"
-#include "plugin/PerfProbe.hpp"
-#include "plugin/ReportRequest.hpp"
-#include "plugin/SetupRequest.hpp"
-#include "plugin/SteamVrSmoothingRequest.hpp"
 #include "plugin/TestLoop.hpp"
-#include "plugin/Voice.hpp"
 
 #include "mevr/BuildInfo.hpp"  // MEVR_GIT_COMMIT, About (generated: tools/cmake/BuildInfo.cmake)
 #include "mevr/Version.hpp"    // MEVR_VERSION, About (generated from CMake's project(VERSION))
@@ -157,6 +167,7 @@ struct Ini {
     }
 };
 
+#if defined(MEVR_MENU_LE1)
 char const* ModeChoice(MELEVR::Config::VrConfig const& c) {
     return c.sfr2Enabled ? "stereo" : c.dibrEnabled ? "dibr" : c.aerEnabled ? "aer" : "mono";
 }
@@ -205,6 +216,7 @@ void WriteSize(UiMovie const& m, float percent) {
     *m.scaleX = scaleX;
     *m.scaleY = scaleX * ratio;
 }
+#endif
 
 } // namespace
 
@@ -269,7 +281,19 @@ void Settings::Read(menu::Values& v) {
     auto flag = [&](char const* key, bool value) { v.numbers[key] = value ? 1.0f : 0.0f; };
 
     // Comfort.
+#if defined(MEVR_MENU_LE1)
     MELEVR::Config::VrConfig const& c = MELEVR::Config::Get();
+    bool const followsHead = c.moveFollowsHead;
+    bool const cineConvo = c.cineVrConvo;
+    bool const cineCut = c.cineVrCutscene;
+#else
+    // ME2: the stick walks where the head looks (its MoveFollowsHead, always on), and conversations and cutscenes are on
+    // Halcyon's flat cine panel (ApplyMevrBaseline: CineVrConvo and CineVrCutscene off until ME1's 3D cinema screen, M5).
+    bool const followsHead = true;
+    bool const cineConvo = false;
+    bool const cineCut = false;
+    flag("le2", true);  // the document greys out what ME2 doesn't have yet (research/le2-menus.md)
+#endif
     // [Comfort] (research/31; the mod reads it: game/comfort). Smooth is the game's own turn ("turn = game"); the
     // file-only "turn = smooth" (the mod's steady turn) shows as Smooth too.
     v.texts["turn"] = ms::TurnChoice(ini.Text("Comfort", "turn", "game"));
@@ -279,7 +303,7 @@ void Settings::Read(menu::Values& v) {
     v.texts["vignette_when"] = Lower(ini.Text("Comfort", "vignetteWhen", "turn")) == "move" ? "move" : "turn";
     // "body": Halcyon's moveFollowsHead off (the stick walks where Shepard faces). Not offered since 2026-11-04 (the owner: it
     // brings back Halcyon's "look left, move right" bug), so a file with it off shows no chip until Where I look is picked.
-    v.texts["walk"] = Lower(ini.Text("Comfort", "walk", "head")) == "hand" ? "hand" : c.moveFollowsHead ? "head" : "body";
+    v.texts["walk"] = Lower(ini.Text("Comfort", "walk", "head")) == "hand" ? "hand" : followsHead ? "head" : "body";
     flag("crouch", ini.Num("Hands", "physicalCrouch", 1.0f) != 0.0f);
     {
         float const shake = ini.Num("Comfort", "screenShake", 0.0f);  // game/CameraShake (research/71)
@@ -296,13 +320,13 @@ void Settings::Read(menu::Values& v) {
         return !inVr ? std::string("flat") : ini.Num("Cinematics", key, fallback ? 1.0f : 0.0f) != 0.0f ? std::string("screen")
                                                                                                        : std::string("vr");
     };
-    v.texts["cine_convo"] = cineChoice(c.cineVrConvo, "conversations", cineDefaults.conversations);
+    v.texts["cine_convo"] = cineChoice(cineConvo, "conversations", cineDefaults.conversations);
     // Conversations have a fourth way, first person in the world (research/59): `conversations = world`.
-    if (c.cineVrConvo && mevr::vr::conversation_world::ParseMode(ini.Text("Cinematics", "conversations", "").c_str(),
+    if (cineConvo && mevr::vr::conversation_world::ParseMode(ini.Text("Cinematics", "conversations", "").c_str(),
                              mevr::vr::conversation_world::Mode::Vr) == mevr::vr::conversation_world::Mode::World) {
         v.texts["cine_convo"] = "world";
     }
-    v.texts["cine_cut"] = cineChoice(c.cineVrCutscene, "cutscenes", cineDefaults.cutscenes);
+    v.texts["cine_cut"] = cineChoice(cineCut, "cutscenes", cineDefaults.cutscenes);
     v.numbers["cine_width"] = std::clamp(ini.Num("Cinematics", "widthM", 2.9f), 1.5f, 8.0f);
     v.numbers["cine_distance"] = std::clamp(ini.Num("Cinematics", "distanceM", 3.5f), 1.0f, 6.0f);
     v.numbers["cine_depth"] = std::clamp(std::round(ini.Num("Cinematics", "depth", kCineDepthFull) / kCineDepthFull * 100.0f), 0.0f, 150.0f);
@@ -403,8 +427,11 @@ void Settings::Read(menu::Values& v) {
     v.texts["t_pistol"] = Fixed(cal.pistolSpreadDeg, 1);
     v.texts["t_rifle"] = Fixed(cal.rifleSpreadDeg, 1);
     v.texts["measure_msg"] = measureMsg_;
+#if defined(MEVR_MENU_LE1)
     std::string const align = MELEVR::MevrBridge::CameraAlignResult();
     v.texts["align_msg"] = MELEVR::MevrBridge::CameraAlignBusy() ? std::string("Armed: stand naturally and pull the left trigger") : align;
+#endif
+#if defined(MEVR_MENU_LE1)
     // Display.
     colour::MenuState const colour = colour::GetMenuState();
     flag("steamvr_runtime", Lower(colour.runtime).find("steamvr") != std::string::npos);
@@ -475,6 +502,17 @@ void Settings::Read(menu::Values& v) {
     v.numbers["panel_below"] = c.hudPanelDropM;
     v.numbers["panel_follow"] = c.hudPanelFollowDeg;
     flag("reticle", c.handReticle);
+#else
+    // ME2: no colour correction, render size, upscale or performance levers of ours on its renderer yet; the HUD panel's
+    // values are ME1's defaults (renderer::Hud(); lane B's HUD panel on ME2). Their rows are greyed out.
+    std::string const headset = ms::HeadsetLabel(menus_le2::RuntimeName(), menus_le2::SystemName());
+    renderer::HudSettings const hud = renderer::Hud();
+    v.numbers["hud_distance"] = hud.hudPanelDistanceM;
+    v.numbers["hud_size"] = std::round(hud.hudPanelWidthM / 1.3f * 100.0f);
+    v.numbers["panel_below"] = hud.hudPanelDropM;
+    v.numbers["panel_follow"] = hud.hudPanelFollowDeg;
+    flag("reticle", hud.handReticle);
+#endif
     flag("wrist_status", ini.Num("Hud", "wristStatus", 1.0f) != 0.0f);
     flag("gun_status", ini.Num("Hud", "gunStatus", 1.0f) != 0.0f);
     flag("interact_label", ini.Num("Interact", "label", 1.0f) != 0.0f);
@@ -486,6 +524,7 @@ void Settings::Read(menu::Values& v) {
     flag("sight_converge", ini.Num("Sights", "converge", 1.0f) != 0.0f);
     flag("scope_grade", ini.Num("Sights", "scopeCapturePost", 1.0f) != 0.0f);
     // Advanced: Halcyon's.
+#if defined(MEVR_MENU_LE1)
     flag("recenter_key", c.recenterKeyEnabled);
     v.texts["recenter_key_desc"] = std::format("{} on the keyboard recenters, with the game window in front (the right stick's "
                                                "double-click works either way)", KeyName(c.recenterKey));
@@ -526,9 +565,22 @@ void Settings::Read(menu::Values& v) {
         v.texts[std::format("prof{}_name", i)] = MELEVR::Config::ProfileName(i);
     }
     v.texts["prof_msg"] = profMsg_;
+#else
+    // ME2 (Halcyon ME2's MELE2VR.ini, through plugin/Renderer.hpp's MenuRows): its head-look smoothing, its flat screen's
+    // width, depth of field and the desktop mirror. Its keyboard recenter is off (R is ME2's reload: ApplyMevrBaseline).
+    renderer::MenuRows const rows = renderer::GetMenuRows();
+    flag("recenter_key", false);
+    v.texts["recenter_key_desc"] = "R is Mass Effect 2's reload, so the keyboard doesn't recenter: use Recenter at the top of this menu";
+    v.texts["classic_desc"] = std::format("The original ME2 VR settings menu, with expert settings these pages don't have (also: "
+                                          "Ctrl + {})", KeyName(renderer::OwnMenuKey()));
+    v.numbers["look_smooth"] = rows.lookSmoothing;
+    v.numbers["flat_size"] = rows.flatScreenWidthM;
+    v.texts["mirror"] = ms::MirrorChoice(rows.mirrorPresentEvery == 0 ? 8 : rows.mirrorPresentEvery);
+#endif
     flag("recording", testloop::GetStatus().recording);
     flag("reset_armed", resetArmedMs_ != 0);
     v.texts["diag_msg"] = diagMsg_;
+#if defined(MEVR_MENU_LE1)
     perf::Status const p = perf::GetStatus();
     v.texts["perf_msg"] = p.pending ? std::format("Measuring: {:.0f} s of 20", p.seconds) : perfMsg_;
     v.texts["content_installed"] = setup_request::InstalledPacksText();
@@ -537,6 +589,7 @@ void Settings::Read(menu::Values& v) {
     std::string const reportStatus = report_request::StatusText();
     v.texts["report_msg"] = reportStatus.empty() ? reportMsg_ : reportStatus;
     flag("crash_offer", report_request::CrashOffer());
+#endif
     // The top bar.
     v.texts["chip_headset"] = headset.empty() ? std::string("Headset not started") : headset;
     v.texts["chip_controllers"] = controllers.empty() ? std::string("No controllers yet") : controllers;
@@ -548,7 +601,9 @@ void Settings::Read(menu::Values& v) {
 #else
     v.texts["about_build"] = ms::AboutBuild(MEVR_VERSION, MEVR_GIT_COMMIT, true);
 #endif
+#if defined(MEVR_MENU_LE1)
     ReadVoice(v, ini.Num("Voice", "enabled", 1.0f) != 0.0f, ini.Text("Voice", "model", "tiny"), ini.Num("Voice", "earCueStrength", 0.4f));
+#endif
     // Thespian mode (research/70): the mod reads [Thespian] every second.
     v.numbers["thespian_on"] = ini.Num("Thespian", "on", 0.0f) != 0.0f ? 1.0f : 0.0f;
     {
@@ -563,8 +618,12 @@ void Settings::Read(menu::Values& v) {
         float const gain = ini.Num("Audio", "gainDb", ms::kAudioGainDefaultDb);
         v.texts["audio_spatial"] = spatial;
         v.numbers["audio_gain"] = std::clamp(std::round(gain), ms::kAudioGainMinDb, ms::kAudioGainMaxDb);
+#if defined(MEVR_MENU_LE1)
         v.texts["audio_now"] = openal_soft::Describe();
         v.texts["audio_note"] = ms::AudioNote(spatial, gain, openal_soft::Running(), openal_soft::RunningGainDb(), openal_soft::Installed());
+#else
+        v.texts["audio_now"] = "Mass Effect 2's own audio (ME2 plays through Wwise; OpenAL Soft is ME1's)";
+#endif
         auto const on = [&](char const* key) {
             std::string const text = Lower(ini.Text("Audio", key, "1"));
             return !(text == "0" || text == "off" || text == "false" || text == "no" || text == "game");
@@ -576,6 +635,7 @@ void Settings::Read(menu::Values& v) {
 
 // The Voice page (research/54 "The menu's Voice page"): the recognizer's state from the host (plugin/Voice), the microphones it
 // lists, and [Voice]'s keys. The level bar is MainMenu's (every frame while the page is open).
+#if defined(MEVR_MENU_LE1)
 void Settings::ReadVoice(menu::Values& v, bool enabled, std::string const& model, float earCue) {
     std::uint64_t const now = Now();
     bool const onPage = v.Text("section") == "voice";
@@ -634,6 +694,7 @@ void Settings::WriteVoiceDevice(std::string const& name) {
     micPicked_ = name;
     micPickedMs_ = Now();
 }
+#endif
 
 void Settings::Wrote(bool ok, std::string_view what) {
     DWORD const error = ok ? 0 : GetLastError();
@@ -668,10 +729,12 @@ void Settings::Flush(bool all) {
         Wrote(ok, std::format("[{}] {}", edit.section, edit.key));
         log::Info("main menu: [{}] {} = {}{}", edit.section, edit.key, edit.value, ok ? "" : " (NOT saved)");
     }
+#if defined(MEVR_MENU_LE1)
     if (colourDirty_ && (all || now - colourChangedMs_ >= kColourRestMs)) {
         colourDirty_ = false;
         colour::SetCustom(colour_, true);
     }
+#endif
     if (halcyonDirty_ && (all || now - halcyonChangedMs_ >= kHalcyonRestMs)) {
         SaveHalcyon(all ? "the menu closed" : "settled");
     }
@@ -691,11 +754,21 @@ void Settings::SaveHalcyon(char const* why) {
         log::Info("main menu: renderer settings not saved ({}): they were reset this session", why);
         return;
     }
+#if defined(MEVR_MENU_LE1)
     int const active = MELEVR::Config::ActiveProfileIndex();
     MELEVR::Config::SaveProfile(active);  // Halcyon's own profile save: the live config into the active slot
     log::Info("main menu: renderer settings saved to profile {} ({})", MELEVR::Config::ProfileName(active), why);
+#else
+    renderer::SaveOwnSettings(why);  // ME2: SaveValues, MELE2VR.ini (its menu saves the same way when it closes)
+#endif
 }
 
+#if !defined(MEVR_MENU_LE1)
+bool Settings::SetResolution(std::string const& choice) {
+    log::Info("main menu: render resolution {}: not on Mass Effect 2 yet (its renderer takes the game window's size)", choice);
+    return false;
+}
+#else
 bool Settings::SetResolution(std::string const& choice) {
     // A headset chip (the runtime's recommended eye size, or 0.85 / 0.75 of it) or a ladder tier (Halcyon's near-square
     // height). Either way written as tools/vr-game-settings.ps1 writes a target: sfr2ResX/Y and the watchdog's
@@ -731,6 +804,7 @@ bool Settings::SetResolution(std::string const& choice) {
         wx > 0 ? std::format("set to {}x{}", wx, wy) : std::string("unchanged (auto-set per mode is off)"));
     return true;
 }
+#endif
 
 void Settings::ClearCullTenths() {
     // plugin/RenderLevers reads minScreenRadiusTenths before minScreenRadiusPx: a file that has it would keep its cull whatever
@@ -757,15 +831,23 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
     }
     auto onOff = [&](char const* k) { return std::string(v.Flag(k) ? "1" : "0"); };
     auto fixed = [&](float value, int decimals) { return std::format("{:.{}f}", value, decimals); };
+#if defined(MEVR_MENU_LE1)
     MELEVR::Config::VrConfig& c = MELEVR::Config::Get();
+#endif
     // ---- Our settings file ----
     if (key == "cine_convo" || key == "cine_cut") {
         // One context each: Halcyon's VR conversations (cutscenes) off for the flat screen, else [Cinematics] picks the 3D
         // screen or the director's camera in VR.
         bool const convo = key == "cine_convo";
         std::string const view = v.Text(key);
+#if defined(MEVR_MENU_LE1)
         (convo ? c.cineVrConvo : c.cineVrCutscene) = view != "flat";
         HalcyonChanged(false);
+#else
+        if (view != "flat") {
+            return;  // ME2: the flat cine panel only, until ME1's 3D cinema screen (M5); the row is greyed out
+        }
+#endif
         if (view != "flat") {
             Put("Cinematics", convo ? "conversations" : "cutscenes", view == "world" && convo ? "world" : view == "screen" ? "1" : "0", true);
         }
@@ -784,6 +866,7 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
         Put("WorldUi", "on", onOff("world_ui"), true);
     } else if (key == "galaxy_holo") {
         Put("Galaxy", "hologram", onOff("galaxy_holo"), true);
+#if defined(MEVR_MENU_LE1)
     } else if (key == "voice_on") {
         // Voice (research/54 "The menu's Voice page"): the recognizer restarts with the file's [Voice] (plugin/Voice).
         Put("Voice", "enabled", onOff("voice_on"), true);
@@ -810,6 +893,7 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
                                          : "the menu: microphone " + view.devices[static_cast<std::size_t>(std::atoi(pick.c_str()))]);
     } else if (key == "ear_cue") {
         Put("Voice", "earCueStrength", fixed(v.Number("ear_cue") / 100.0f, 2), final);  // the mod re-reads it
+#endif
     } else if (key == "thespian_on") {
         Put("Thespian", "on", onOff("thespian_on"), true);  // the mod re-reads [Thespian] every second
     } else if (key == "thespian_strictness") {
@@ -910,11 +994,13 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
         wchar_t previous[64]{};
         GetPrivateProfileStringW(L"Sights", L"sniperRifle", L"scope auto", previous, 64, path.c_str());
         Put("Sights", "sniperRifle", ms::SightValue(v.Text(key), Narrow(previous), 0.0f), true);
+#if defined(MEVR_MENU_LE1)
     } else if (key == "steamvr_smoothing") {
         if (Lower(colour::GetMenuState().runtime).find("steamvr") == std::string::npos) return;
         bool const off = v.Text(key) == "off";
         Put("Display", "steamvrSmoothing", off ? "off" : "steamvr", true);
         steamvr_smoothing::Request(off);
+#endif
     } else if (key == "upscale") {
         Put("Upscale", "method", v.Text("upscale") == "fsr" ? "fsr" : "off", true);  // plugin/Upscale re-reads it within a second
     } else if (key == "fsr_sharpness") {
@@ -934,6 +1020,25 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
     } else if (key == "sight_converge") {
         Put("Sights", "converge", onOff("sight_converge"), true);
     }
+#if !defined(MEVR_MENU_LE1)
+    // ---- ME2's renderer (plugin/Renderer.hpp's MenuRows: Halcyon ME2's MELE2VR.ini, saved when the menu closes) ----
+    else if (key == "walk") {
+        Put("Comfort", "walk", v.Text("walk") == "hand" ? "hand" : "head", true);  // ME2's stick always walks where you look
+    } else if (key == "look_smooth" || key == "flat_size" || key == "mirror") {
+        renderer::MenuRows rows = renderer::GetMenuRows();
+        if (key == "look_smooth") {
+            rows.lookSmoothing = v.Number(key);
+        } else if (key == "flat_size") {
+            rows.flatScreenWidthM = v.Number(key);
+        } else {
+            rows.mirrorPresentEvery = ms::MirrorPresentEvery(v.Text(key));
+        }
+        renderer::SetMenuRows(rows);
+        HalcyonChanged(false);  // saved 2 s after the last change, and when the menu closes
+    } else {
+        log::Warn("main menu: no Mass Effect 2 setting behind '{}' yet (its row is greyed out)", key);
+    }
+#else
     // ---- Colour ----
     else if (key == "profile") {
         cv::Profile const p = cv::ParseProfile(v.Text("profile")).value_or(cv::Profile::Auto);
@@ -1103,6 +1208,7 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
     } else {
         log::Warn("main menu: no setting behind '{}'", key);
     }
+#endif
 }
 
 void Settings::Command(std::string const& name, std::string const& argument, menu::Values& v) {
@@ -1131,6 +1237,7 @@ void Settings::Command(std::string const& name, std::string const& argument, men
         }
     } else if (name == "manual_live") {
         if (v.Flag("manual_ready")) after_ = After::LiveAdjust;
+#if defined(MEVR_MENU_LE1)
     } else if (name == "steamvr_smoothing") {
         // Clicking a selected chip retries a failed request or restores a choice changed in SteamVR's dashboard.
         if ((argument == "steamvr" || argument == "off") &&
@@ -1149,6 +1256,7 @@ void Settings::Command(std::string const& name, std::string const& argument, men
         voice::SetKey(0);
     } else if (name == "voice_restart") {
         voice::Restart("the menu's Restart");
+#endif
     } else if (name == "resume") {
         after_ = After::Close;
     } else if (name == "game_menu") {
@@ -1158,13 +1266,20 @@ void Settings::Command(std::string const& name, std::string const& argument, men
     } else if (name == "calibrate") {
         after_ = After::Calibrate;
     } else if (name == "recenter") {
-        MELEVR::Menu::RequestRecenter();
+        renderer::RequestRecenter();
     } else if (name == "align") {
         after_ = After::Align;
     } else if (name == "measure") {
         measure_ = Measure::WaitRelease;  // the click itself may be a trigger pull
         measureSinceMs_ = Now();
         measureMsg_ = "Hold both arms straight out to the sides (a T) and pull either trigger.";
+    } else if (name == "classic") {
+        after_ = After::Classic;
+    } else if (name == "snapshot") {
+        after_ = After::Snapshot;
+    } else if (name == "record") {
+        testloop::RequestRecording(testloop::GetStatus().recording ? 0 : 1);
+#if defined(MEVR_MENU_LE1)
     } else if (name == "place_hud") {
         MELEVR::MevrBridge::RequestHudPanelReplace();
         profMsg_.clear();
@@ -1177,8 +1292,6 @@ void Settings::Command(std::string const& name, std::string const& argument, men
         *m.offsetY = m.defOffsetY;
         HalcyonChanged(false);
         log::Info("main menu: the {} back to its standard size and place", argument == "designer" ? "mission overlays" : "conversation wheel");
-    } else if (name == "classic") {
-        after_ = After::Classic;
     } else if (name == "prof_load" || name == "prof_save") {
         int const slot = std::atoi(argument.c_str());
         if (slot >= 0 && slot < MELEVR::Config::ProfileCount()) {
@@ -1200,10 +1313,6 @@ void Settings::Command(std::string const& name, std::string const& argument, men
             }
             log::Info("main menu: {}", profMsg_);
         }
-    } else if (name == "snapshot") {
-        after_ = After::Snapshot;
-    } else if (name == "record") {
-        testloop::RequestRecording(testloop::GetStatus().recording ? 0 : 1);
     } else if (name == "perf") {
         after_ = After::Perf;
     } else if (name == "content_request") {
@@ -1247,6 +1356,10 @@ void Settings::Command(std::string const& name, std::string const& argument, men
             diagMsg_ = "Reset for this session. Not saved: Profiles > Save keeps it; otherwise your profile comes back next launch.";
             log::Info("main menu: renderer settings reset to Halcyon's defaults for this session (menu key, head aim, resolution kept)");
         }
+#else
+    } else {
+        log::Info("main menu: '{}' isn't on Mass Effect 2 yet (its row is greyed out)", name);
+#endif
     }
     (void)v;
 }
@@ -1270,8 +1383,12 @@ void Settings::Tick(vr::controllers::State const& live, bool headValid, XrVector
         } else if (measure_ == Measure::WaitRelease && noTrigger) {
             measure_ = Measure::WaitPull;
         } else if (measure_ == Measure::WaitPull && anyTrigger && live.active && live.left.gripValid && live.right.gripValid) {
+#if defined(MEVR_MENU_LE1)
             MELEVR::MevrBridge::TakeArmSample(live.left.grip.position, live.right.grip.position, headValid ? &head : nullptr,
                 "the main menu");
+#else
+            arm_sample::Write(live.left.grip.position, live.right.grip.position, headValid ? &head : nullptr, "the main menu");
+#endif
             XrVector3f const d{live.right.grip.position.x - live.left.grip.position.x, live.right.grip.position.y - live.left.grip.position.y,
                 live.right.grip.position.z - live.left.grip.position.z};
             measureMsg_ = std::format("Measured: {:.2f} m between the controllers. The arm length updates in a few seconds.",
@@ -1279,6 +1396,7 @@ void Settings::Tick(vr::controllers::State const& live, bool headValid, XrVector
             measure_ = Measure::Idle;
         }
     }
+#if defined(MEVR_MENU_LE1)
     if (keyWaitMs_ != 0) {
         if (now - keyWaitMs_ > 10000) {
             keyWaitMs_ = 0;
@@ -1298,6 +1416,7 @@ void Settings::Tick(vr::controllers::State const& live, bool headValid, XrVector
     if (!p.pending && !p.lastCapture.empty()) {
         perfMsg_ = "Saved in AppData\\Local\\MEVR\\perf. Switch on \"With the latest frame timing\" to put it in a report.";
     }
+#endif
 }
 
 bool Settings::CancelPending() {
@@ -1314,7 +1433,9 @@ bool Settings::CancelPending() {
     }
     if (keyWaitMs_ != 0) {
         keyWaitMs_ = 0;
+#if defined(MEVR_MENU_LE1)
         MELEVR::Menu::CancelKeyCapture();
+#endif
         cancelled = true;
     }
     return cancelled;
@@ -1323,7 +1444,9 @@ bool Settings::CancelPending() {
 void Settings::Closed() {
     measure_ = Measure::Idle;
     keyWaitMs_ = 0;
+#if defined(MEVR_MENU_LE1)
     MELEVR::Menu::CancelKeyCapture();
+#endif
     resetArmedMs_ = 0;
     diagMsg_.clear();
     Flush(true);
@@ -1335,6 +1458,11 @@ After Settings::TakeAfter() {
     return a;
 }
 
+#if !defined(MEVR_MENU_LE1)
+void FirstStartEyeSize() {
+    // ME2: MEVR Setup doesn't install Mass Effect 2 yet (M7.2), so nothing asks for the headset's eye size at a first start.
+}
+#else
 void FirstStartEyeSize() {
     static bool done = false;
     if (done) {
@@ -1379,5 +1507,6 @@ void FirstStartEyeSize() {
         log::Warn("first VR start: couldn't write [Display] eyeSizeSet to {}: the next VR start checks again", ini::Utf8(std::filesystem::path(path)));
     }
 }
+#endif
 
 } // namespace mevr::host::main_menu

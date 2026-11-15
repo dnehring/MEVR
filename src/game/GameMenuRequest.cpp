@@ -20,25 +20,33 @@ gm::Schedule gSchedule;
 bool gToldOldHost = false;
 std::string gLast = "none";
 
-#if defined(MEVR_GAME_LE1)
-// Our reflection layer (research/34); engine/ReflectCheck has a row for each.
-ue3::FieldRef gGameModeManager{"SFXGame.BioPlayerController", engine::adapter::kGameModeManager};
-ue3::FieldRef gGameModes{"SFXGame.SFXGameModeManager", "GameModes"};
-ue3::FieldRef gCurrentMode{"SFXGame.SFXGameModeManager", "CurrentMode"};
-ue3::FieldRef gIsActive{"SFXGame.SFXGameModeBase", "bIsActive"};
-ue3::FieldRef gPriority{"SFXGame.SFXGameModeBase", "Priority"};
-ue3::ClassRef gModeBase{"SFXGame.SFXGameModeBase"};
-ue3::ClassRef gModeDefault{"SFXGame.SFXGameModeDefault"};
-ue3::ClassRef gModeVehicle{"SFXGame.SFXGameModeVehicle"};
-ue3::ClassRef gModePowerWheel{"SFXGame.SFXGameModePowerWheel"};
-ue3::ClassRef gModeWeaponWheel{"SFXGame.SFXGameModeWeaponWheel"};
-ue3::ClassRef gModeCommand{"SFXGame.SFXGameModeCommand"};
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
+// Our reflection layer (research/34); engine/ReflectCheck has a row for each. The game modes, the pause menu and the
+// holster on every game (ME2 since M4: research/le2-menus.md); the omni-tool's screens ME1's only so far.
+ue3::FieldRef gGameModeManager{"SFXGame.BioPlayerController", engine::adapter::kGameModeManager, ue3::kEveryGame};
+ue3::FieldRef gGameModes{"SFXGame.SFXGameModeManager", "GameModes", ue3::kEveryGame};
+ue3::FieldRef gCurrentMode{"SFXGame.SFXGameModeManager", "CurrentMode", ue3::kEveryGame};
+ue3::FieldRef gIsActive{"SFXGame.SFXGameModeBase", "bIsActive", ue3::kEveryGame};
+ue3::FieldRef gPriority{"SFXGame.SFXGameModeBase", "Priority", ue3::kEveryGame};
+ue3::ClassRef gModeBase{"SFXGame.SFXGameModeBase", ue3::kEveryGame};
+ue3::ClassRef gModeDefault{"SFXGame.SFXGameModeDefault", ue3::kEveryGame};
+ue3::ClassRef gModeVehicle{"SFXGame.SFXGameModeVehicle", ue3::kEveryGame};
+ue3::ClassRef gModePowerWheel{"SFXGame.SFXGameModePowerWheel", ue3::kEveryGame};
+ue3::ClassRef gModeWeaponWheel{"SFXGame.SFXGameModeWeaponWheel", ue3::kEveryGame};
+ue3::ClassRef gModeCommand{"SFXGame.SFXGameModeCommand", ue3::kEveryGame};
 // Start (Console_Menu) calls it on the mode that has the input; looked up on the mode object's own class for the
 // overrides (SFXGameModeVehicle, -PowerWheel, -WeaponWheel, -Command, -Photo). This one is the declaration, resolved
-// first so a missing function says so once.
+// first so a missing function says so once. ME2's Start is SFXGameModeBase.ShowMenu (its pause menu, the browser wheel:
+// MassEffectGuiManager.ShowBrowserWheel), which returns nothing.
+#if defined(MEVR_GAME_LE1)
 ue3::FunctionRef gShowMenuGuiBase{"SFXGame.SFXGameModeBase.ShowMenuGui"};
-ue3::FunctionRef gTryHolster{"SFXGame.SFXGameModeDefault.TryHolster"};
-ue3::FunctionRef gIsInCombatActionState{"SFXGame.BioPawn.IsInCombatActionState"};
+constexpr char const* kFunctionName = "ShowMenuGui";
+#else
+ue3::FunctionRef gShowMenuGuiBase{"SFXGame.SFXGameModeBase.ShowMenu", ue3::kEveryGame};
+constexpr char const* kFunctionName = "ShowMenu";
+#endif
+ue3::FunctionRef gTryHolster{"SFXGame.SFXGameModeDefault.TryHolster", ue3::kEveryGame};
+ue3::FunctionRef gIsInCombatActionState{"SFXGame.BioPawn.IsInCombatActionState"};  // ME1's (ME2's TryHolster never draws)
 // The omni-tool's rail (research/57): the screens' own functions (declared on SFXGameModeBase only: no mode overrides them, so
 // in game mode 7 the screens open only from the game's Flash wheel), and the player's B as the game hears it: GuiKey on the
 // active mode, which hands it to the GUI manager (BioSFManager.HandleInputEvent), which offers it to every handler on the
@@ -59,8 +67,6 @@ constexpr std::uint8_t kGuiEventB = 13;  // BIOGUI_EVENT_BUTTON_B (Engine.EBioGu
 constexpr int kBackOutWaitTicks = 4;     // after a B, the ticks to let the screen go before looking again
 constexpr int kMaxBackOuts = 6;          // a screen over the main wheel takes two
 
-constexpr char const* kFunctionName = "ShowMenuGui";
-
 // EGameModes (research/13): the modes whose object is known by class. Others (conversation, GUI...) go by bIsActive.
 ue3::ClassRef* ClassForMode(std::uint8_t mode) {
     switch (mode) {
@@ -80,7 +86,7 @@ struct Modes {
 };
 
 std::optional<Modes> ReadModes(std::string& why) {
-    if (!ue3::runtime::Ready()) {
+    if (!ue3::runtime::Up()) {
         why = "our reflection layer is off (see the 'reflect:' log lines)";
         return std::nullopt;
     }
@@ -162,24 +168,28 @@ void OpenPauseMenu(Link const& link, gm::Origin origin) {
         return;
     }
     if (gShowMenuGuiBase.Get() == nullptr) {
-        gLast = "pause menu: SFXGameModeBase.ShowMenuGui not found";
-        log::Warn("main menu: the game's pause menu not opened: SFXGame.SFXGameModeBase.ShowMenuGui not found");
+        gLast = std::format("pause menu: SFXGameModeBase.{} not found", kFunctionName);
+        log::Warn("main menu: the game's pause menu not opened: SFXGame.SFXGameModeBase.{} not found", kFunctionName);
         return;
     }
     ue3::Reflection& r = ue3::runtime::Get();
     ue3::Function* const show = r.FindFunction(r.ClassOf(mode), kFunctionName);
     if (show == nullptr) {
-        gLast = std::format("pause menu: {} has no ShowMenuGui", ClassName(mode));
-        log::Warn("main menu: the game's pause menu not opened: {} has no ShowMenuGui", ClassName(mode));
+        gLast = std::format("pause menu: {} has no {}", ClassName(mode), kFunctionName);
+        log::Warn("main menu: the game's pause menu not opened: {} has no {}", ClassName(mode), kFunctionName);
         return;
     }
     ue3::Params parms(r, show);
     std::uint32_t const request = world_ui::BeginOpening(link.worldUi, gm::Action::PauseMenu, origin);
     bool const called = ue3::runtime::Call(mode, show, parms);  // game thread: permission precedes the mode change inside the call
+#if defined(MEVR_GAME_LE1)
     bool const opened = called && parms.ReturnBool().value_or(false);
+#else
+    bool const opened = called;  // ME2's ShowMenu returns nothing (it shows nothing where bAllowPauseMenu is off)
+#endif
     if (!opened && request != 0) world_ui::CancelOpening(link.worldUi, request);
     std::string const declared = r.NameText(r.OuterOf(show));
-    std::string const where = std::format("{}.ShowMenuGui{}", ClassName(mode),
+    std::string const where = std::format("{}.{}{}", ClassName(mode), kFunctionName,
         declared != ClassName(mode) ? std::format(" (declared on {})", declared) : std::string());
     gLast = std::format("pause menu: {} returned {}", where, opened ? 1 : 0);
     if (opened) {
@@ -199,8 +209,13 @@ void Holster() {
             why = std::format("not on foot (game mode {})", modes->current ? static_cast<int>(*modes->current) : -1);
         } else if (pawn == nullptr) {
             why = "no player pawn";
+#if defined(MEVR_GAME_LE1)
         } else if (gTryHolster.Get() == nullptr || gIsInCombatActionState.Get() == nullptr) {
             why = "SFXGameModeDefault.TryHolster or BioPawn.IsInCombatActionState not found";
+#else
+        } else if (gTryHolster.Get() == nullptr) {
+            why = "SFXGameModeDefault.TryHolster not found";
+#endif
         } else if (mode == nullptr) {
             why = "no SFXGameModeDefault in the player controller's game modes";
         }
@@ -210,6 +225,7 @@ void Holster() {
         log::Info("main menu: holster not done: {}", why);
         return;
     }
+#if defined(MEVR_GAME_LE1)
     ue3::Params drawn(ue3::runtime::Get(), gIsInCombatActionState.Get());
     ue3::runtime::Call(pawn, gIsInCombatActionState.Get(), drawn);
     if (!drawn.ReturnBool().value_or(false)) {
@@ -218,6 +234,9 @@ void Holster() {
         log::Info("main menu: holster: no weapon drawn, nothing to put away (TryHolster not called: it would draw)");
         return;
     }
+#endif
+    // ME2's TryHolster only ever puts the weapon away (SetActionState(0)), and refuses in combat, mid-reload, while a power
+    // or an animated transition runs: no toggle to guard against.
     ue3::Params parms(ue3::runtime::Get(), gTryHolster.Get());
     ue3::runtime::Call(mode, gTryHolster.Get(), parms);  // directly: never a generated wrapper
     gLast = "holster: TryHolster called";
@@ -428,7 +447,7 @@ void Tick(Link const& link) {
         log::Info("main menu request: {} taken; it runs once the main menu is closed and the game runs ({} ticks)",
             gm::Name(taken), gm::kSettleTicks);
         world_ui::CancelOpening(link.worldUi);
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
         gSwitch = {};  // a replacement must not finish the older backout/opening path
 #endif
         gm::Take(gSchedule, taken, gm::DecodeOrigin(value));
@@ -442,7 +461,7 @@ void Tick(Link const& link) {
     if (step.run != gm::Action::None) {
         Run(step.run, step.origin);
     }
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
     StepSwitch(link);
 #endif
 }
@@ -467,7 +486,7 @@ std::string Inject(std::string const& which) {
 }
 
 bool GuiKey(std::uint8_t event, std::string& why) {
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
     std::optional<Modes> const modes = ReadModes(why);
     if (!modes) {
         return false;
@@ -498,7 +517,7 @@ bool GuiKey(std::uint8_t event, std::string& why) {
 void Shutdown() {
     gSchedule = {};
     gToldOldHost = false;
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
     gSwitch = {};
 #endif
 }
