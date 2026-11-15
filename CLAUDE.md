@@ -143,6 +143,13 @@ external code candidates. Read these before sequel work. The current scope is pr
   **On LE2 `game/SystemSettings` waits until a level has been in gameplay for 3 s**: a `scale set` during the load with the
   game's depth of field on faulted the rendering thread in the first gameplay frame, the game hung (9 of 9 runs;
   "Defaults from ME1" there, gotchas/me2-scale-set-during-load).
+  **ME2's vault** (lane E, research/le2-traversal.md; `game/Traversal`, rules `core/vr/Traversal`, host `plugin/TraversalCue`,
+  HostServices v40 `setTraversal`; `[Traversal]` in `ASI\LE2MEVR.ini`): no cover snap in VR, so a double A standing at an
+  obstacle the game can vault (within 0.39 m of the slot, facing within 45 degrees, gun drawn) calls ME2's own `MantleCover`
+  after its own `CanPerformMantle` admitted it with `m_bCanMantleOutsideOfCover` and the stick's push set for that one call
+  (journalled, put back in a `__finally`). ME2's camera stays level and smooth through it; `view = level`, `mask = vignette |
+  blink` and the cue (`cue = 1`) are options, off by default. Fixture: Save 4's spaceport, `tools/le2-halcyon-run/vault.ps1`;
+  `mevr traversal slots | near | place | go | pause | trace ...`; logs `traversal:`, `traversal cue:`.
   **On an HDR display (this machine's) ME2's swap chain is R16G16B16A16_FLOAT in gameplay**, whatever `DesiredRange` says;
   Halcyon's ME2 renderer assumes 8 bits (its eye copies did nothing: black or stale eyes; no SFR left eye, no UI treatment):
   `plugin/EyeCopy` draws such a frame into the eyes, and `[Colour] hdrDisplay = -1` in `ASI\LE2MEVR.ini` answers the game's

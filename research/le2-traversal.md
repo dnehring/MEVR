@@ -89,4 +89,93 @@ view | mask | cue | trace | commit`.
 
 ## Measured (fake headset, 2026-11-14)
 
-(filled in below)
+Three stretches (`%LOCALAPPDATA%\MEVR\sessions\*-lane-e-vault`, `-vault2`, `-vault3`; each restored with `verification: 0
+differences`), the build of this branch, the heavy pistol drawn by the save.
+
+**The gate: the same vault three times in a row from a script, one native action each** (`vault.ps1 -Runs 3 -Mode tap`, stretch 2):
+
+| | run 1 | run 2 | run 3 |
+|---|---|---|---|
+| presses (the double tap) | #1, #2 0.23 s apart | #3, #4 0.26 s | #5, #6 0.23 s |
+| the rules' verdict | allowed | allowed | allowed |
+| custom action, body stance | 10, FromCombat | 10, FromCombat | 10, FromCombat |
+| the custom action / the view at rest after it | 0.92 s / 0.78 s | 0.92 / 0.78 | 0.92 / 0.79 |
+| the pawn: flat, rise, end | 2.45 m, 1.12 m, +0.00 | 2.45, 1.12, +0.00 | 2.44, 1.12, +0.00 |
+| it blocked no actors | 0.39 s | 0.39 s | 0.39 s |
+| the game's camera: travel, rise, peak speed (vertical) | 2.45 m, 0.54 m, 3.27 m/s (1.19) | 2.45, 0.54, 3.30 (1.21) | 2.44, 0.54, 3.32 (1.20) |
+| its pitch and roll | 0..0, 0..0 deg | 0, 0 | 0, 0 |
+| movement and aim back | at the custom action's end | the same | the same |
+| the weapon before / after | HeavyPistol / HeavyPistol | the same | the same |
+| the drawn wrists within 0.15 m of the grips | 41 of 59 ticks (mean 0.16 m) | 41 of 59 | 42 of 59 |
+
+The pawn didn't move before the vault began (it began at the placed `(-4783, 20876, -12209)` each time). No move began without a
+double tap: 0 moves the rules wouldn't have committed, and the game's own `TryClimbOrMantleCover` ran on every A and began nothing
+(no cover link). A single A (`-Mode single`) is a "first tap" and nothing happens. Lines: `traversal: A pressed (#2): double tap`,
+`traversal: double tap: MantleCover(CoverLink_10 slot 0) began the game's custom action 10`, `traversal: the vault began +0.000 s
+after press #2 went down: allowed`, `traversal: vault over: ...` (the table's numbers).
+
+**How close and square a standing player must be** (the game's own rule, `mevr traversal place ... [backM] [sideM] [yawDeg]` then
+`near`): within 0.50 m of the slot point in 3D, and the pawn's centre stands 0.31 m above it, so **within 0.39 m flat** (0.38 m back
+admitted at 0.49 m, 0.42 m back refused at 0.52 m; 0.3 m to the side admitted, 0.4 m refused), and **facing within 45 degrees**
+of the slot's direction (dot 0.70: 44 degrees admitted, 46 refused). The cover's top here is 0.75 m over the floor (a trace: z
+-12224, the slot point -12240, the pawn's centre -12209, the eyes -12134). The facing that counts is the **pawn's** (the stick's
+turn), not the head's: a player who turns toward the wall in the room but not with the stick is refused. Widening the distance or
+turning the pawn to the slot at the commit is the owner's choice (a player-facing change).
+
+**With the weapon away the game refuses** (`TryHolster` by the console, then `near`): `CanPerformMantle` needs the combat action
+state. Natively the A into cover switched explore to combat first; with no snap nothing does. Firing the gun (combat) admits it
+again. A holstered vault (draw on the double tap, or an admission with the state supplied) is the owner's choice.
+
+**The view through the move.** ME2's camera (the POV Halcyon renders from) stays level: pitch 0 and roll 0 in every camera update
+of every vault. It follows the body smoothly: 2.45 m on, rising 0.54 m over the wall and back, at most 3.3 m/s (1.2 m/s vertically),
+and at rest 1.7 s after the start. The pawn itself moves in **root-motion steps** (still, then 1.12 m up in one or two frames at 0.38
+s, 2 m on at 0.58 s, down at 0.8 s: steps of 1.1-1.5 m), which the camera doesn't follow step by step; its largest single-frame move
+is 0.12 m. Eye snapshots: mid-vault (`mevr traversal pause 0.45` then `go`, paused 0.61 s in) the view stands over the wall, level,
+the far side ahead; after it, the pistol in the right hand and the left hand low in view. **Nothing to take out:** the animation
+pitches, rolls and bobs the body, not the camera.
+
+**The hands.** Traced (`[Traversal] trace = 1`, a line per camera update with the drawn wrists' distance from the grips): 0.01-0.18
+m through the move and the blend-out (0.07 at rest), **except two frames at each root-motion step**: 0.38-0.43 m at the rise,
+0.87-1.07 m at the 2 m step, 0.21-0.56 m at the drop. Cause: arm IK computes its goals in the mesh's component space in the mod's
+tick, and the next `UpdateSkelPose` writes them; when the actor jumps in between (the step), the goals ride the actor's jump for
+that frame while the body (the root bone counter-moved by the engine) stays put. The arms and the gun flash forward 0.4-1 m for
+about 30 ms, three times a vault. **The fix is arm IK's** (engine/BonePose, lane C's writer): keep the goals where the request put
+them in the world when the mesh's component moved since (or skip the write for that frame, the animated arms then hold). Not built
+here; it touches LE1's writer.
+
+**Presentation options** (`[Traversal] view`, `mask`; all measured on the same fixture):
+- `view = game` (default, today's): the camera as above.
+- `view = level`: the game's camera written back with the start's pitch (0) and no roll, its height optionally filtered
+  (`levelTauS`, default 0: off). 36 writes through the move and the hand-back, the same numbers as `game` (the camera was already
+  level). It is the guard for a move or stance whose camera pitches; `levelTauS = 0.03` would smooth the 0.12 m frame step at a
+  lag of 2 tauS times the vertical speed (7 cm at 1.2 m/s).
+- `mask = vignette`: the comfort vignette (HostServices v17) at `vignetteStrength` (0.85) while the custom action runs (peak 0.85).
+- `mask = blink`: black after 0.06 s, held 0.35 s at most, back over 0.15 s (peak 1.0; `traversal cue: first blink`: a head-locked
+  quad 4.0 m wide at 0.5 m).
+
+**Recommendation for the default:** keep `view = game` and `mask = none` (today's). ME2's own camera already gives the level,
+tracked, smooth view the design asks for, and the move is short (0.9 s, the view at rest 0.8 s later) at walking speeds. Offer the
+vignette as the comfort choice, as ME1's comfort page does for turning, and keep the blink for players who want the rise masked.
+The cue (`[Traversal] cue = 1`) is worth turning on by default once the owner has seen it: without it the 0.39 m and 45-degree
+window is hard to find. All of these wait for the owner's headset (notes/headset-checklist.md, section 4).
+
+## The cue
+
+`plugin/TraversalCue` (LE2's host, HostServices v40 `setTraversal`): the mod sends, each tick the game admits a vault or climb, the
+point over the cover's top halfway to the target slot, 18 units up (`core/vr/Traversal` `CuePoint`; the top from a downward
+trace), in the room's tracking space. The host draws a label ("Vault" with a chevron, "Climb up" with an arrow; GDI text into one
+512x256 swapchain, the dark glass plate and orange rim of our menus) there, upright and turned to the head, 2.6 degrees tall
+(between 4 and 20 cm); not while a move runs, a menu is open, or A would use a selected object. Measured: `traversal: the cue 'Vault'
+shows over CoverLink_10 slot 0: the world point (-4667, 20841, -12206) is (+0.08, -0.73, -0.91) m from the head`, the host's
+`traversal cue: first shown: 'Vault' ... 0.21 x 0.05 m`. Off by default (`[Traversal] cue = 0`).
+
+## What is left
+
+- **Arm IK across root-motion steps** (above): the goals should stay in the world when the mesh jumps; lane C's writer.
+- **The grips on ME2:** a held right grip is the pad's RB on ME2 today (the power wheel after 0.3 s; the LE2 host has no `gripHolds`
+  yet), and the left grip LB (the weapon wheel). A vault with the gun held by a grip waits for the holsters' and the support grip's
+  host services on LE2; nothing in the vault needs a free hand (it is A and where the player stands).
+- **The owner's choices:** the pawn's facing vs the head's; the holstered vault; the cue's and the comfort mask's defaults.
+- **The game's take-cover prompt** (UpdateCover's `ShowCoverWidget`) still shows near cover with no snap: lane F's or B3's.
+- **Climb up** (`ClimbCover`, custom action 9): no slot climbs in this level; the code path is the same (`CanPerformClimb`), unseen.
+- **ME3:** ladders (`TryUseLadder`) and its vaults wait for Halcyon's ME3 renderer in our host; `core/vr/Traversal` is game-independent.

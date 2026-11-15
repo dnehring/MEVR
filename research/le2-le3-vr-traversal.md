@@ -138,3 +138,12 @@ The first implementation gate is a native LE2 vault with scripted repeatability
 and a comfortable tracked presentation. Prove one LE3 ladder up/down and quick
 vault next. Add physical climbing after the corresponding action offers a
 verified incremental movement path.
+
+## ME2: the first gate
+
+Built and checked on the fake headset 2026-11-14 (lane E): [research/le2-traversal.md](le2-traversal.md). In
+short: with no cover snap in VR (the owner), the double A standing at the obstacle commits ME2's own out-of-cover
+mantle (`m_bCanMantleOutsideOfCover`, set only for the game's own admission call; then `MantleCover`), the same
+vault three times in a row from a script, one native action each; ME2's camera stays level and smooth through it,
+so the presentation option (`[Traversal] view = level`, `mask = vignette | blink`) is a guard and a comfort
+choice, off by default. Left: arm IK across the move's root-motion steps, the grips on ME2, the owner's choices.

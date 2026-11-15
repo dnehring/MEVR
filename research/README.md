@@ -8,6 +8,7 @@ and what is still unverified. The [docs/](../docs) folder holds the conclusions.
 | [01-feasibility.md](01-feasibility.md) | Can ME LE get VR at all? Why "build in UDK and port it" fails, and what exists today | 2026-10-07 |
 | [02-titanfall2-vr.md](02-titanfall2-vr.md) | CircuitLord's Titanfall 2 VR mod | 2026-10-07 |
 | [le2-le3-vr-traversal.md](le2-le3-vr-traversal.md) | Titanfall 2 VR source and shipped VR precedents for ladders, vaulting and mantling, with native LE2/LE3 routes and headset tests | 2026-11-14 |
+| [le2-traversal.md](le2-traversal.md) | ME2's first traversal gate: the double-A vault through the game's own out-of-cover mantle, no cover snap; the fixture, measurements, the cue and the presentation options | 2026-11-14 |
 | [le2-le3-vr-optics.md](le2-le3-vr-optics.md) | Per-weapon iron, reflex and magnified optics using ME1's renderer, with native LE2/LE3 aim-state findings and an in-game proof order | 2026-11-14 |
 | [03-overlord-mw2cr-vr.md](03-overlord-mw2cr-vr.md) | Aeka0's Overlord (MW2 Campaign Remastered VR): features and architecture | 2026-10-07 |
 | [04-me-le-modding-ecosystem.md](04-me-le-modding-ecosystem.md) | ME3Tweaks, LEBinkProxy, LExASIs, LExSDKv2, Legendary Explorer, the UDK workflow | 2026-10-07 |
