@@ -215,7 +215,9 @@ switching frameworks.
   closed and a redeploy. Release builds use `-DMEVR_HOT_RELOAD=OFF` (one ASI; e.g. `build-mono/`).
 - Script-level hooks must wait for the script packages to load (they aren't there at attach).
   `Mod.cpp` retries every second before installing the ProcessEvent hook (LE1: `ue3::runtime::Init`, then
-  `Engine.Camera.UpdateCamera` through our reflection layer, research/34 stage 3; LE2/LE3: `engine/Legacy`).
+  `Engine.Camera.UpdateCamera` through our reflection layer, research/34 stage 3; LE2 the same since 2026-11-14, M1:
+  ME2's layout in `engine/GameAdapter.hpp`, research/le2-engine-access-discovery.md "M1: what ME2's code showed", with
+  `engine/Legacy` as LE2's fallback only; LE3: `engine/Legacy`).
   Engine reads go through `src/ue3/` (handles, `Params`); new LExSDKv2 use belongs only in `engine/Legacy`,
   ReflectCheck's reference side until stage 6 removes it (the hooks and RVAs are ours since stage 4: `core/Hook`'s
   `hook::Context`, every raw address in `engine/Addresses.hpp`, research/34).
@@ -1809,8 +1811,9 @@ Use it to check VR changes yourself instead of asking the user what they see
   `%LOCALAPPDATA%\MEVR\reflect-check.json` (our layer against LExSDKv2, while both exist).
   Since stage 2 no `src/game` file includes LExSDKv2: the player's shared handles are in `game/Player`,
   hook blocks are read through parameter handles (`FieldRef{functionRef, "ReturnValue"}`), engine
-  strings through `ue3::memory` (`OwnedString`, `FreeString`), and LE2/LE3's few all-game reads through
-  `engine/Legacy` until their layouts exist. Every class, field, function or parameter you resolve
+  strings through `ue3::memory` (`OwnedString`, `FreeString`), and LE3's few all-game reads through `engine/Legacy`
+  until its layout exists (LE2's go through `ue3` since 2026-11-14; a module comes to ME2 by `Ready()` to `Up()` and
+  `ue3::kEveryGame` handles, research/le2-engine-access-discovery.md). Every class, field, function or parameter you resolve
   needs a row in `engine/ReflectCheck`; a failed lookup stands the feature down with a log line. `IsAlive` is safe on a
   pointer whose memory the engine gave back (a guarded read of the header, 2026-11-10: a hot reload eight levels after the
   flow module kept its conversations ended the game); a kept object pointer is still checked with it before every use. A level torn down under a scene (a save's load) leaves
