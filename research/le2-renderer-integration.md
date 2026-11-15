@@ -886,7 +886,12 @@ side of VRIK is on main and publishes `setAimRay` every tick):
    `PadOptions()` (the mod's flags from `gSupportFlags`, set by the services `WithLe1Modules` adds), the close latch, and the
    trigger owners (main menu, calibration, omni-tool, game pointer, galaxy). Move the mapping core (`PadOptions`, the latches,
    the support-grip report, `WalkTowardHand`) into a game-independent `plugin/PadMerge` that both bridges call, with the
-   LE1-only owners passed in as a callback; then move the grip services out of the LE1-only list.
+   LE1-only owners passed in as a callback; then move the grip services out of the LE1-only list. **The owner (2026-11-14):
+   holding both stick clicks (L3 + R3) always opens our menu on ME2, ahead of any game or mod use of L3/R3** (ME1's
+   `gamepad::UpdateStickChord` in HalcyonBridge: L3 held back 100 ms, R3's power wheel only after 300 ms alone, a quick tap
+   of both a snapshot). Lane D2 (menus) puts the chord's rules where both hosts use them and says what the LE2 pad path must
+   call (through the coordinator); lane D's `menus_le2::PadWanted`/`FilterPad` already sit in LE2's
+   `MergeMotionControllers`.
 4. **The floor lock** (`setFloorLockSample`, v36): `plugin/FloorLock` needs (a) a render seam on ME2 where the view's origin
    is moved, `calcview_hook.cpp ApplyHeadPosition` (LE1's is render_hook.cpp `ApplyViewOffsetSEH`: `FloorViewTranslation(
    replay, -pvt[2], VM[8], VM[9], VM[10], &r, &u, &f)` returns the vertical correction added to the world offset), with
