@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "game/ConsoleRequest.hpp"
+#include "game/ArmIk.hpp"
 #include "game/CameraProbe.hpp"
 #include "game/CameraShake.hpp"
 #include "game/BodyProbe.hpp"
@@ -1605,6 +1606,11 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         std::getline(words, rest);
         return camera_probe::Command(rest);  // `mevr camera trace <seconds>`: the view against the pawn, tick by tick
     }
+    if (verb == "armik") {
+        std::string rest;
+        std::getline(words, rest);
+        return arm_ik::Command(rest);  // `mevr armik step [off|camera|world] [units]` (research/le2-vrik.md, root-motion steps)
+    }
     if (verb == "shake") {
         std::string rest;
         std::getline(words, rest);
@@ -1749,6 +1755,11 @@ std::optional<std::string> RunOursLe2(ue3::Object* pc, std::string const& line) 
         std::getline(words, rest);
         return camera_probe::Command(rest);  // `mevr camera trace <seconds> [label]` (M3: the skeleton audit on ME2)
     }
+    if (verb == "armik") {
+        std::string rest;
+        std::getline(words, rest);
+        return arm_ik::Command(rest);  // `mevr armik step [off|camera|world] [units]` (research/le2-vrik.md, root-motion steps)
+    }
     if (verb == "cover") {
         std::string rest;
         std::getline(words, rest);
@@ -1767,7 +1778,7 @@ std::optional<std::string> RunOursLe2(ue3::Object* pc, std::string const& line) 
         return traversal::Command(rest);  // the vault's fixture and tests (research/le2-traversal.md)
     }
     return std::string("unknown on ME2: mevr load <career> <save name> <index> <type> | mevr savedesc | mevr state | "
-                       "mevr camera trace <seconds> [label] | mevr omni <screen> | mevr cover ... | mevr traversal ...");
+                       "mevr camera trace <seconds> [label] | mevr armik step ... | mevr omni <screen> | mevr cover ... | mevr traversal ...");
 }
 
 #endif

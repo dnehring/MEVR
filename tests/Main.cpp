@@ -12007,6 +12007,7 @@ int RunScriptMatchTests();
 int RunThespianTests();
 // tests/TraversalTests.cpp: the vault's double A, its record, view and cue (core/vr/Traversal, research/le2-traversal.md).
 int RunTraversalTests();
+int RunGoalStepTests();
 int RunScreenMatrixTests();
 // tests/ConversationWorldTests.cpp: conversations in the world (research/59).
 int RunConversationWorldTests();
@@ -12192,6 +12193,7 @@ int main() {
     gFailures += RunScriptMatchTests();
     gFailures += RunThespianTests();
     gFailures += RunTraversalTests();
+    gFailures += RunGoalStepTests();
     gFailures += RunScreenMatrixTests();
     gFailures += RunConversationWorldTests();
     gFailures += RunSoundPlaceTests();
