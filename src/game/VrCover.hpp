@@ -26,6 +26,8 @@ namespace mevr::game::vr_cover {
 // Finds the script functions and registers the answer handlers (before the CallFunction hook goes in). False until the
 // script packages have loaded (or not LE1).
 bool TryStartup();
+// LE3 scoped adapter metadata is ready; this is not native gameplay acceptance.
+bool CandidateReady();
 // Each mod tick: the settings, whether the player can be judged (VR on foot, the game's cover refused), the pawn.
 void Tick();
 std::string StatusJson();

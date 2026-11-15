@@ -2,6 +2,7 @@
 #pragma once
 
 #include <optional>
+#include <cstdint>
 
 // VR cover (research/23 section 6): the protection all three games give a player in cover, for a VR player who takes
 // cover with their body. In each game the damage code cuts a hit on the player while they're in cover and not leaning out,
@@ -49,6 +50,37 @@ struct Verdict {
     double coverM = 0.0; // when blocked: the eyes' distance to the surface
     bool Covered() const {
         return why == Why::Covered;
+    }
+};
+
+// A temporary native slot borrow for one exact damage invocation. The native adapter verifies
+// object/world/name identity before Release; another native write to either field takes ownership.
+struct SlotState {
+    std::uintptr_t link = 0;
+    std::int32_t index = -1;
+    bool operator==(SlotState const&) const = default;
+};
+struct SlotLease {
+    SlotState original{}, written{};
+    bool active = false, suspended = false;
+    bool Acquire(SlotState& state, SlotState candidate) {
+        if (active || suspended || !candidate.link || candidate.index < 0) return false;
+        original = state; written = candidate; state = candidate; active = true; return true;
+    }
+    bool Release(SlotState& state, bool sameObject) {
+        bool const restore = active && sameObject && state == written;
+        active = suspended = false;
+        if (restore) state = original;
+        return restore;
+    }
+    bool Suspend(SlotState& state, bool sameObject) {
+        suspended = Release(state, sameObject);
+        return suspended;
+    }
+    bool Resume(SlotState& state, bool sameObject) {
+        bool const restore = suspended && !active && sameObject && state == original;
+        suspended = false;
+        return restore && Acquire(state, written);
     }
 };
 

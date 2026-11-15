@@ -16,6 +16,7 @@
 #include "game/HeadTracking.hpp"
 #include "game/ViewAnchor.hpp"
 #include "game/Player.hpp"
+#include "game/VrCover.hpp"
 #include "ue3/Handles.hpp"
 
 #include <Windows.h>
@@ -135,6 +136,9 @@ ue3::FieldRef gIsCrouched{"Engine.Pawn", "bIsCrouched", ue3::kEveryGame};
 ue3::FieldRef gWantsToCrouch{"Engine.Pawn", "bWantsToCrouch", ue3::kEveryGame};
 
 #if defined(MEVR_GAME_LE3)
+ue3::FunctionRef gLe3FindCover{"SFXGame.SFXGameModeDefault.FindCover", ue3::kEveryGame};
+ue3::FunctionRef gLe3AcquireCover{"SFXGame.SFXGameModeDefault.TryAcquireCover", ue3::kEveryGame};
+bool gLe3NoSnapReady = false;
 ue3::FunctionRef gDead{"Engine.Pawn.IsDead", ue3::kEveryGame};
 ue3::FunctionRef gMoveIgnored{"Engine.PlayerController.IsMoveInputIgnored", ue3::kEveryGame};
 ue3::FieldRef gCurrentAction{"SFXGame.BioPawn", "CurrentCustomAction", ue3::kEveryGame};
@@ -295,6 +299,15 @@ bool HostMovement() {
         gLink.runtimeOwned && gLink.focused && !gLink.menuOpen && !gLink.calibrating &&
         gLink.sceneGeneration && gLink.controlsAllowed && gLink.controlsAllowed();
 }
+void OnLe3FindCover(ue3::Object* context, ue3::Function*, ue3::Function* caller, std::uint8_t*, void* result) {
+    if (!gNoCoverOverride.value_or(false) || !gLe3NoSnapReady || !vr_cover::CandidateReady() || !HostMovement() ||
+        caller != gLe3AcquireCover.Get() || !result) return;
+    std::string why;
+    auto const game = ReadGame(why);
+    if (!game || context != game->mode || !NativeMovement(*game)) return;
+    auto* const found = static_cast<std::uint32_t*>(result);
+    if (*found) { *found = 0; ++gRefusedEntries; ++gRefusedTotal; write_journal::Wrote("Posture.LE3.FindCover", found); }
+}
 #endif
 
 // Through ProcessEvent with the function's own parameter block.
@@ -411,10 +424,11 @@ void OnShowCoverWidget(ue3::Object* context, ue3::Function* /*function*/, void* 
 // The cover side, each tick with a game.
 void TickCover(Game const& game, bool active, bool noCover, double deltaSeconds) {
 #if defined(MEVR_GAME_LE3)
-    (void)active; (void)noCover; (void)deltaSeconds;
-    gRefusingCover = false;
+    (void)noCover; (void)deltaSeconds;
+    // Explicit diagnostic opt-in only until native protection/slot/collision acceptance.
+    gRefusingCover = active && gNoCoverOverride.value_or(false) && gLe3NoSnapReady && vr_cover::CandidateReady() && engine::call_function::Installed();
     gInCover = InCover(game.pawn);
-    return; // LE3 cover protection/unsafe-slot semantics require its dedicated adapter; never force native cover exit.
+    return; // Existing native cover is never forcibly exited; acquire refusal acts before new entry.
 #endif
     gRefusingCover = active && noCover;  // kept out of cover either way: refused, or left at once without the hook
 #if defined(MEVR_GAME_LE2)
@@ -703,6 +717,14 @@ bool TryStartup() {
         gCurrentAction.Get() && gPhysics.Get() && gWorldInfo.Get() && gStorming.Get() && gDead.Get() &&
         gIsCrouched.Get() && gWantsToCrouch.Get() && gCoverType.Get();
     if (!gStarted) missing += " LE3 crouch/admission ABI unavailable";
+    if (gStarted && !gLe3NoSnapReady && gLe3FindCover.Get() && gLe3AcquireCover.Get()) {
+        ue3::Params find(ue3::runtime::Get(), gLe3FindCover.Get());
+        auto const* result = find.ReturnSpec();
+        if (find.Valid() && result && result->kind == ue3::Kind::Bool && result->size == 4) {
+            engine::call_function::AddFramePostHandler(gLe3FindCover.Get(), &OnLe3FindCover);
+            gLe3NoSnapReady = true;
+        }
+    }
 #endif
 #if defined(MEVR_GAME_LE2)
     // The refusal of ME2's cover acquisition (a CallFunction handler: registered before the hook goes in).
@@ -742,6 +764,17 @@ bool PhysicallyCrouched() {
 
 bool RefusingCover() {
     return gRefusingCover;
+}
+
+bool PhysicalMovementAllowed() {
+#if defined(MEVR_GAME_LE3)
+    if (!gStarted || !HostMovement()) return false;
+    std::string why;
+    auto const game = ReadGame(why);
+    return game && gWorldInfo.Read<ue3::Object*>(game->controller).value_or(nullptr) == gWorld && NativeMovement(*game);
+#else
+    return false;
+#endif
 }
 
 bool WantsCoverHook() {
@@ -901,7 +934,7 @@ void Shutdown(bool processExiting) {
     (void)processExiting;
 #endif
 #if defined(MEVR_GAME_LE3)
-    gLink = {}; gLinkTime = gGeneration = 0; gWorld = nullptr;
+    gLink = {}; gLinkTime = gGeneration = 0; gWorld = nullptr; gLe3NoSnapReady = false;
 #endif
     gStarted = false;
     gActive = false;
@@ -948,6 +981,10 @@ std::string CoverConsole(std::string_view args) {
         } else {
             return "usage: mevr cover snap on|off|auto";
         }
+#if defined(MEVR_GAME_LE3)
+        return std::format("posture LE3: real-slot cover candidate {}; no native cover exit; runtime acceptance pending",
+            gNoCoverOverride.value_or(false) ? "requested (requires fresh ownership and complete adapter metadata)" : "disabled");
+#endif
         return std::format("posture: the game's cover snapping {} until the mod reloads", gNoCoverOverride ? (*gNoCoverOverride ? "refused" : "allowed")
                                                                                                          : "as [Hands] noCover says");
     }

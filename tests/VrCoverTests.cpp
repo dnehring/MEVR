@@ -31,6 +31,42 @@ bool Near(double a, double b, double tolerance = 1e-6) {
 vc::Vec3 const kEyes{0.0, 0.0, 100.0};
 vc::Vec3 const kShooter{1500.0, 0.0, 160.0};
 
+void TestSlotLease() {
+    vc::SlotState native{0, -1};
+    vc::SlotLease outer, inner;
+    CHECK(outer.Acquire(native, {100, 2}) && native == vc::SlotState(100, 2));
+    CHECK(!outer.Acquire(native, {300, 4}));
+    // A rejected/early-return nested hit owns no fields and cannot restore the outer invocation.
+    CHECK(!inner.Release(native, true) && native == vc::SlotState(100, 2));
+    CHECK(inner.Acquire(native, {200, 3}));
+    CHECK(inner.Release(native, true) && native == vc::SlotState(100, 2));
+    CHECK(outer.Release(native, true) && native == vc::SlotState(0, -1));
+    CHECK(!outer.Release(native, true));
+    CHECK(outer.Acquire(native, {100, 2}));
+    native.index = 7; // native overwrite of only one member transfers ownership of the pair
+    CHECK(!outer.Release(native, true) && native == vc::SlotState(100, 7));
+    CHECK(outer.Acquire(native, {200, 3}));
+    native.link = 300;
+    CHECK(!outer.Release(native, true) && native == vc::SlotState(300, 3));
+    CHECK(outer.Acquire(native, {100, 2}));
+    CHECK(!outer.Release(native, false) && native == vc::SlotState(100, 2)); // replaced pawn/world
+    CHECK(!outer.Acquire(native, {0, 1}) && !outer.Acquire(native, {100, -1}));
+    native = {0, -1};
+    CHECK(outer.Acquire(native, {100, 2}));
+    CHECK(outer.Suspend(native, true) && native == vc::SlotState(0, -1));
+    CHECK(!outer.Acquire(native, {400, 8}));
+    CHECK(inner.Acquire(native, {200, 3}));
+    CHECK(inner.Release(native, true) && native == vc::SlotState(0, -1));
+    CHECK(outer.Resume(native, true) && native == vc::SlotState(100, 2));
+    CHECK(outer.Suspend(native, true));
+    native = {300, 9}; // native mutation during nested call: do not resume an older borrowed slot
+    CHECK(!outer.Resume(native, true) && native == vc::SlotState(300, 9));
+    CHECK(!outer.Release(native, true));
+    CHECK(outer.Acquire(native, {100, 2}) && outer.Suspend(native, true));
+    CHECK(!outer.Resume(native, false)); // destroyed/replaced owner during the nested invocation
+
+}
+
 void TestVerdicts() {
     vc::Settings const s;
     // Nothing between the eyes and the shooter: in the open, whatever stands farther along.
@@ -105,6 +141,7 @@ void TestGameCone() {
 
 int RunVrCoverTests() {
     gFailures = 0;
+    TestSlotLease();
     TestVerdicts();
     TestGameCone();
     std::printf("vr cover: %s\n", gFailures == 0 ? "ok" : "FAILED");

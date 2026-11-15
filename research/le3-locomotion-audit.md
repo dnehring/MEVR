@@ -46,23 +46,63 @@ the native route. Actual input routing, measured speed and animation remain nati
 | `BioPawn.ModifyDamage`, `SFXPawn_Player.ModifyDamage`, `SFXGRI.ModifyDamage` | Other layers retain invulnerability, friendly-fire, authored scene and popup modifiers. Do not replace the entire damage pipeline with a generic VR multiplier. |
 
 ME2's temporary empty `CoverLink` default object is **not a valid ME3 adapter**: the ME3 damage path indexes
-its slot array before the direction query. This checkpoint therefore leaves ME3 native cover/protection
-unchanged and does not claim no-snap or physical-cover parity. The next adapter must qualify a real slot
-or establish a different narrowly scoped native seam, preserve unsafe-cover and projectile semantics,
-and keep all temporary state within the exact damage call. No synthetic slot, arbitrary damage replay,
-forced cover exit or direct transform movement is justified by this audit.
+its slot array before the direction query. The subsequent opt-in adapter qualifies a real slot and keeps temporary state inside the exact damage
+invocation. No synthetic slot, arbitrary damage replay, forced cover exit or transform movement is used.
+
+## Opt-in native slot candidate
+
+`mevr cover snap off` requests this staged candidate; `snap on` or `snap auto` disables it on LE3. The
+ordinary `[Hands] noCover` default does not activate the candidate. Refusal requires both posture and
+cover adapters' metadata, the existing script hook, and fresh native/host movement ownership. Only
+`FindCover`'s result inside this player's mode's `TryAcquireCover` is changed. Already acquired native
+cover remains native; the adapter never forces its exit. The old native cover prompt may still appear.
+
+`FindCover` and its inspected `FindPlayerCover_Internal` delegate the query to the controller's native
+finder using current view/input direction and authored acquisition parameters. Querying through
+ProcessEvent does not enter TryAcquireCover or cancel reload. For an actual damage invocation, the
+shared head-to-shooter trace first establishes physical concealment. The candidate then requires a
+live CoverLink in the same world, valid enabled/non-unsafe left and right endpoint slots, and a slot
+location within the configured metric reach of the pawn. The nearer qualified endpoint is borrowed;
+no interpolation rule or native slot index selection is invented. Native query direction can exclude
+otherwise nearby physical cover. Unknowns and arbitrary props without authored slots retain native
+out-of-cover behavior; physical judgment alone never grants immunity.
+
+Only while the exact `SFXPawn_PlayerParty.ModifyDamage` invocation is running, a previously null native
+link and its existing index are borrowed through a validated real slot. Scoped answers provide the
+head-concealment state and surface facing. Native difficulty, out-of-cover bonus, distance, cone setting,
+damage-type exception, projectile rejection and protection callbacks remain in the game's own code.
+Actual modifier/outcome parity is unproven until controlled native comparisons. Direct ProcessEvent
+calls without a surrounding registered script invocation remain untouched.
+
+The existing CallFunction hook has a bounded enter/leave seam, with `__finally` cleanup. Every nested
+damage call has a distinct identity, including early returns before a cover query. An outer temporary
+slot is suspended while nested damage runs, then resumed only if the original baseline remains unchanged.
+Cleanup checks player/world/object name/class/outer identity and both written field values. Replacement,
+unload or a native overwrite of either field prevents stale restoration or resumption. Only a null
+original link may be borrowed, so cleanup never restores a discarded non-null native pointer. No
+per-tick cleanup guesses which invocation owns a field. The lease and scope tests cover nesting,
+suspension, early returns, native overwrite, owner replacement, C++ throws and SEH unwinding.
+
+This is a candidate implementation, not full physical-cover acceptance. First native probes must
+establish slot results/identity, script-call scope coverage, exact before/after fields, safe/unsafe and
+no-slot outcomes, incoming bullet/projectile/directional exceptions, native cover untouched, and no
+late writes after menus, load, interruption or mode change. No-snap control and comfort must be tested
+with actual controller input; a console toggle is not that acceptance.
 
 ## Offline evidence and remaining acceptance
 
 The existing `TestCrouchFraction`, `TestCrouchDetector`, `TestCrouchArbiter`, and `TestSprint` tests ran in a
 small private driver linked to the unchanged shared core, with zero failures. The touched native adapters
 passed MSVC C++ syntax/type checks for LE3; cross-game checks are recorded with the checkpoint handoff.
-Metadata checks are coordinated through the existing LE3 ReflectCheck table, not a new native harness.
+Metadata checks extend the existing LE3 ReflectCheck table, including real slot stride/flags, query parameter
+shapes and the damage call parameters. These are declarations until the protected native probe reads them.
+The expanded existing VR cover tests also pass for scoped slot ownership, suspension/resumption, overwrite
+and replaced-owner refusals; native adapter syntax/type checks pass for all three games with /W4 /WX.
 No game, deployment, VR runtime, package or save was changed for this work.
 
 The coordinator must supply the new fail-closed Posture Link fields/callback and Sprint Tick ownership
 arguments. Native checks must prove physical crouch collision and obstructed stand behavior, tracked eye
 height without double lowering, native/script crouch arbitration, menu/focus/world recovery, sprint
 press/release/stamina and restoration without clobbering a game-authored speed change. Cover acquisition,
-unsafe slots, physical protection, out-of-cover bonuses and projectile behavior remain separate required
-work; these modules must not be described as completed L3-8 acceptance.
+unsafe slots, physical protection, out-of-cover bonuses and projectile behavior remain required native
+acceptance; these modules must not be described as completed L3-8 acceptance.

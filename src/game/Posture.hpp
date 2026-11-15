@@ -65,6 +65,8 @@ bool PhysicallyCrouched();
 // The game's cover is refused for the player this tick (VR on foot with [Hands] noCover): game/vr_cover then judges the
 // player's cover itself. Game thread.
 bool RefusingCover();
+// Fresh LE3 native + host admission for scoped locomotion adapters (false on other games).
+bool PhysicalMovementAllowed();
 std::string StatusJson();
 void LogStats();
 // `mevr cover snap on|off|auto` (the game's cover snapping allowed or refused, an A/B until the mod reloads), `mevr cover where`

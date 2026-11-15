@@ -17,6 +17,7 @@
 #include <Windows.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
@@ -31,8 +32,8 @@
 #include <utility>
 #include <vector>
 
-// ME1 and ME2 (research/23 sections 6.2 and 7); ME3 has no layout yet.
-#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
+// Shared geometric judgment, with native damage adapters per game.
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 #define MEVR_VR_COVER 1
 #endif
 
@@ -48,6 +49,11 @@ namespace vc = vr::cover;
 ue3::FunctionRef gDamageFn{"SFXGame.BioPawnBehavior.ProxyTakeDamage", ue3::kEveryGame};
 ue3::FieldRef gCauser{gDamageFn, "pDamageCausingActor"};
 ue3::FunctionRef gIsDeadFn{"SFXGame.BioPawn.IsDead", ue3::kEveryGame};
+#elif defined(MEVR_GAME_LE3)
+ue3::FunctionRef gDamageFn{"SFXGame.SFXPawn_PlayerParty.ModifyDamage", ue3::kEveryGame};
+ue3::FieldRef gCauser{gDamageFn, "DamageCauser"};
+ue3::FieldRef gDamageType{gDamageFn, "DamageType"};
+ue3::FunctionRef gIsDeadFn{"Engine.Pawn.IsDead", ue3::kEveryGame};
 #else
 ue3::FunctionRef gDamageFn{"SFXGame.SFXGame.ModifyDamage", ue3::kEveryGame};
 ue3::FieldRef gCauser{gDamageFn, "DamageCauser"};
@@ -129,6 +135,12 @@ constexpr char kBlock[] =
     "protect = 1\n"
     "reachM = 1.2\n"
     "log = 0\n";
+#elif defined(MEVR_GAME_LE3)
+constexpr char kBlock[] =
+    "\n[Cover]\n"
+    "; LE3 real-slot candidate: explicit mevr cover snap off is additionally required.\n"
+    "; Shared head-cover judgment; qualified native slots retain the game's damage rules.\n"
+    "protect = 1\nreachM = 1.2\nlog = 0\n";
 #else
 constexpr char kBlock[] =
     "\n"
@@ -309,7 +321,7 @@ struct Shooter {
 };
 Shooter FromPawn(ue3::Object* pawn) {
     Shooter s;
-    if (pawn == nullptr) {
+    if (pawn == nullptr || !ue3::runtime::IsAlive(pawn)) {
         return s;
     }
     s.name = NameOf(pawn);
@@ -323,12 +335,12 @@ Shooter FromPawn(ue3::Object* pawn) {
 }
 Shooter FromCall(std::uint8_t const* locals) {
     ue3::Object* const instigatedBy = gInstigatedBy.Read<ue3::Object*>(locals).value_or(nullptr);
-    if (instigatedBy != nullptr) {
+    if (instigatedBy != nullptr && ue3::runtime::IsAlive(instigatedBy)) {
         return FromPawn(gControllerPawn.Read<ue3::Object*>(instigatedBy).value_or(nullptr));
     }
     Shooter s;
-#if defined(MEVR_GAME_LE1)
-    if (ue3::Object* const causer = gCauser.Read<ue3::Object*>(locals).value_or(nullptr)) {
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE3)
+    if (ue3::Object* const causer = gCauser.Read<ue3::Object*>(locals).value_or(nullptr); causer && ue3::runtime::IsAlive(causer)) {
         s.name = NameOf(causer);
         if (auto const at = gLocation.Read<ue3::Vector>(causer)) {
             s.eyes = s.gameLocation = ToVec(*at);
@@ -337,7 +349,7 @@ Shooter FromCall(std::uint8_t const* locals) {
 #else
     // ME2's cone takes `InstigatedBy.Pawn.Location`, None without an instigator: no shooter, nothing answered (the hit is
     // the game's for a player out of cover).
-    if (ue3::Object* const causer = gCauser.Read<ue3::Object*>(locals).value_or(nullptr)) {
+    if (ue3::Object* const causer = gCauser.Read<ue3::Object*>(locals).value_or(nullptr); causer && ue3::runtime::IsAlive(causer)) {
         s.name = NameOf(causer) + " (no instigator)";
     }
 #endif
@@ -608,7 +620,11 @@ void OnGetSlotRotation(ue3::Object* /*context*/, ue3::Function* /*function*/, ue
 }
 #endif
 
-#if defined(MEVR_VR_COVER)
+#if defined(MEVR_GAME_LE3)
+#include "game/Le3Cover.inc"
+#endif
+
+#if defined(MEVR_VR_COVER) && !defined(MEVR_GAME_LE3)
 // The damage call returned: everything held, back.
 void OnDamageDone(ue3::Object* /*context*/, ue3::Function* /*function*/, void* /*result*/) {
     PutBack();
@@ -618,7 +634,9 @@ void OnDamageDone(ue3::Object* /*context*/, ue3::Function* /*function*/, void* /
 } // namespace
 
 bool TryStartup() {
-#if defined(MEVR_VR_COVER)
+#if defined(MEVR_GAME_LE3)
+    return Le3Startup();
+#elif defined(MEVR_VR_COVER)
     if (gStarted) {
         return true;
     }
@@ -669,6 +687,14 @@ bool TryStartup() {
     log::Info("vr cover: the damage call's IsInCover and IsInCoverLeaning are answered for the player in VR (research/23 section 6)");
 #endif
     return true;
+#else
+    return false;
+#endif
+}
+
+bool CandidateReady() {
+#if defined(MEVR_GAME_LE3)
+    return gHandlersReady;
 #else
     return false;
 #endif
@@ -797,7 +823,7 @@ std::pair<float, float> HealthAndShields(ue3::Object* pawn) {
     return {attributes != nullptr ? gHealthCurrent.Read<float>(attributes).value_or(-1.0f) : -1.0f,
         shieldAttributes != nullptr ? gShieldCapacity.Read<float>(shieldAttributes).value_or(-1.0f) : -1.0f};
 }
-#else
+#elif defined(MEVR_GAME_LE2)
 // Shepard's damage module (Actor.Modules: SFXModule_DamagePlayer on the player).
 ue3::Object* DamageModule(ue3::Object* pawn) {
     ue3::TArray<ue3::Object*> const* const modules = gModules.In<ue3::TArray<ue3::Object*>>(pawn);
@@ -967,6 +993,9 @@ std::string Console(std::string_view args) {
         return out;
     }
     if (sub == "hit") {
+#if defined(MEVR_GAME_LE3)
+        return "mevr cover hit: LE3 candidate observes real native damage; synthetic damage replay is not implemented";
+#else
         float damage = 0.0f;
         std::size_t index = 0;
         words >> damage >> index;
@@ -1000,7 +1029,7 @@ std::string Console(std::string_view args) {
             damage, index, NameOf(pawns[index]), NameOf(kind), before.first, after.first, before.second, after.second,
             gCounts.judged - countsBefore.judged, gCounts.covered - countsBefore.covered, gCounts.coneCut - countsBefore.coneCut,
             gCounts.judged > countsBefore.judged ? gLast : std::string("VR cover wasn't asked (") + gWhyNot + ")");
-#else
+#elif defined(MEVR_GAME_LE2)
         // The game's own damage path on ME2: the player's damage module's SFXTakeDamage (SFXModule_DamagePlayer, which calls
         // SFXGame.ModifyDamage and then the health), from pawn n's place: its controller the instigator (ME2's cone is taken
         // from InstigatedBy.Pawn.Location), the pawn the causer. A hostile's hit takes the default damage type; a friend's a
@@ -1039,6 +1068,7 @@ std::string Console(std::string_view args) {
             before.first, after.first, before.second, after.second, gCounts.judged - countsBefore.judged,
             gCounts.covered - countsBefore.covered, gCounts.coneCut - countsBefore.coneCut, gSlotAnswers - slotsBefore,
             gCounts.judged > countsBefore.judged ? gLast : std::string("VR cover wasn't asked (") + gWhyNot + ")");
+#endif
 #endif
     }
     if (sub == "put") {
