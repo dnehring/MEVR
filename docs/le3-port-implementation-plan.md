@@ -13,8 +13,10 @@ Read the [reuse audit](le3-port-reuse-audit.md), [ME3 melee audit](../research/l
 Latest native checkpoint: the protected renderer run passed **493/493** metadata comparisons and an ordinary
 Normandy load, then restored with zero differences. Reusing ME2's omitted HDR display-capability hook now
 produces the actual 8-bit backbuffer, 304 first-eye captures for 304 presents, and visible left/right world
-images. Head-look publication and arm IK now run. Metric/headset stereo remains open: the imported shared
-eye-position tag still needs the existing ME1 per-eye pose-history correction. The current priority remains
+images. Head-look publication and arm IK now run. ME1's per-eye pose-history correction is now reused in
+both sequels: five native snapshots per game show distinct 64 mm eye positions while stationary and turning,
+including menu/resume, with both world images and no capture errors. Both runs restored with zero differences.
+See [shared per-eye implementation and evidence](../research/sequel-eye-pose-tags.md). Physical-headset stereo remains open. The current priority remains
 the Halcyon/native rendering investigation; other parity implementation is paused at the owner's request.
 See the [native preview and timing evidence](../research/le3-renderer-preview-evidence.md). All three
 development/player variants build and the expanded **65-test suite** passes. The protected runner's
@@ -30,8 +32,8 @@ zero differences. The renderer now allows live readers while refusing competing 
 uses its actual logger and passes. Both ME3 build variants pass with this correction. No eye capture or
 VR acceptance is claimed from that failed preview. Subsequent protected previews reached XR readiness and loaded
 the normal Normandy fixture. Diagnostic mono shows the world and first-person hands; the shared menu captures
-without missing-layer errors. Same-frame stereo still reports zero first-eye captures and falls back to a flat
-panel, so stereo remains unaccepted. All these sessions restored tracked files with zero differences. A requested
+without missing-layer errors. Before the HDR-policy correction, same-frame stereo reported zero first-eye captures and fell back to a flat
+panel; those earlier runs did not establish stereo. All these sessions restored tracked files with zero differences. A requested
 legacy side-by-side run actually migrated to same-frame mode; it is not side-by-side evidence. The runner now
 rejects that obsolete mode and checks configuration again after XR readiness (34 safety cases pass, including
 first-run defaults and explicit mirror cadence).

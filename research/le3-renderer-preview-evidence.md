@@ -21,8 +21,16 @@ stereo resumes. Intentional mono fallback retains a shared pose.
 The existing protected runners, normal save descriptors, snapshot tool and pose
 replay are reused for validation. The previous four ME3 snapshots are a negative
 control: each has world images but a submitted eye baseline of zero, against the
-runtime's 64 mm baseline. New native results are recorded below when available;
-this source change alone does not establish headset fusion or comfort.
+runtime's 64 mm baseline. The corrected build `86fd9e72` passed five snapshots in
+each sequel: stationary, first person, menu, resume and a scripted 30-degree head
+turn. ME3 session `20261115-165123-287-LE3-renderer-preview` reports positions
+`(-0.032,0,0)` and `(+0.032,0,0)` while stationary; the turning sample reports
+`(-0.027717,0,+0.0159928)` and `(+0.027717,0,-0.0159928)`, retaining approximately
+64 mm separation with shared rendered orientation. Both world layers are present
+in all five captures with no errors. The world-image pair was visually inspected.
+The normal save loaded and the session restored with zero differences. See the
+[combined ME2/ME3 evidence](sequel-eye-pose-tags.md). Headset fusion and comfort,
+runtime recenter transitions and induced stale/copy-failure runs remain unaccepted.
 
 ## HDR-policy native checkpoint
 
@@ -49,14 +57,14 @@ before a game launch and also restored exactly; the successful retry used unchan
 source/settings. ME2/ME3 development and player builds pass, and the extracted real
 descriptor hook passed ten offline cases plus independent review.
 
-**Stereo acceptance remains incomplete:** snapshot metadata shows both submitted
+**Remaining defect identified at that checkpoint, corrected above:** snapshot metadata showed both submitted
 eye positions at `(-0.032,0,0)`, while located eyes are at minus/plus 0.032 m. This
 is the imported SFR shared-position policy, not a TestLoop duplication or an
 EyePublication regression. Current ME1 already has `[EYETAG fix]` in
 `src/halcyon/le1/xr_session.cpp`: per-eye positions from the same rendered pose-history
-sample, with shared rendered orientation. Audit/reuse that correction with capture
-sequence, stale-pair and recenter/session lifetime handling before claiming metric
-stereo or physical-headset/head-turn acceptance. Do not substitute current-eye
+sample, with shared rendered orientation. The follow-up reuses that correction with capture
+sequence, stale-pair and recenter/session lifetime handling. Physical-headset
+stereo and head-turn acceptance remain separate. Do not substitute current-eye
 positions for stale pixels. Native HDR opt-in still follows the unaccepted output
 path described below; this checkpoint restores the existing ME2 default policy.
 

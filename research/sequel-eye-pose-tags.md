@@ -65,4 +65,41 @@ Native acceptance must verify both actual projection-layer positions and the sou
 images, then stationary and turning motion, same-map/menu/recenter transitions and
 physical headset fusion. A static fake headset's 64 mm pair is a useful controlled
 check, not general proof of metric stereo, physical comfort or stale-frame behavior.
-No game was launched for this implementation.
+The implementation-only review launched no game. Integration subsequently built
+both development and player variants of both sequels, passed the registered
+`mevr-stereo-pose-tag`, `mevr-eye-publication` and software-D3D `mevr-eye-copy-warp`
+tests, and passed the SPDX check. Independent source review found no blockers.
+
+## Protected native checks
+
+Compiled source `86fd9e72`, using the existing protected runner, normal save loader,
+snapshot tool and pose replay (no button/stick inputs):
+
+| Game | Private session | Fixture | Result |
+| --- | --- | --- | --- |
+| ME3 | `20261115-165123-287-LE3-renderer-preview` | Normal Normandy Save 31 | Five captures passed; zero-difference restoration |
+| ME2 | `20261115-165553-786-LE2-renderer-preview` | Freedom's Progress Save 4 | Five captures passed; zero-difference restoration |
+
+Each run captured third person, first person with hands, menu, resume and a scripted
+30-degree head turn. All ten snapshots contain both world layers and no capture
+errors. Stationary projection positions are minus/plus 0.032 m, rather than the
+previous shared left-eye position. Turning positions rotate the baseline while
+preserving approximately 64 mm separation and shared rendered orientation:
+ME3 `(-0.027717,0,+0.0159928)` / `(+0.027717,0,-0.0159928)`;
+ME2 `(-0.027713,0,+0.0159996)` / `(+0.027713,0,-0.0159996)`.
+The source eye images were visually inspected and show the world from different
+viewpoints. These validate native submission, not a physical compositor's fusion.
+
+The first ME2 attempt (`20261115-165331-878-LE2-renderer-preview`) loaded the correct
+save but correctly failed the artifact hash gate because the mod appended its
+first-run settings during loading. The executable, host, mod path/module and save
+were unchanged; only the ini changed. It restored with zero differences. The retry
+seeded the same build's complete, hash-pinned generated defaults before launch;
+no load/artifact guard was relaxed. Both successful runs verified the unchanged
+source save and restored game/profile files, with the LE1 ini unchanged and the
+run lock released. ME3 also verified its exact VR-environment restoration.
+
+Still open: physical Quest 3/Virtual Desktop fusion, real head-motion comfort,
+native recenter/mode-transition scenarios, and deliberately induced stale capture
+or failed GPU-copy scenarios. Those lifecycle failures have offline policy coverage,
+not native fault-injection acceptance. HDR opt-in remains outside this correction.
