@@ -289,7 +289,11 @@ std::map<std::string, Le3Label> gLe3Labels;
 
 std::optional<Power> Le3Power(ue3::Object* object, bool includeUnlearned) {
     auto& r = ue3::runtime::Get();
-    if (!r.IsAlive(object) || !le3_powers::visible.ReadBool(object).value_or(false)) return std::nullopt;
+    if (!r.IsAlive(object)) return std::nullopt;
+    bool const revive = ue3::IsA(object, le3_powers::reviveClass);
+    // Native Unity may use the flat game's dedicated healing control instead of its wheel.
+    // Only a real learned Unity instance is admitted here; we never add a synthetic heal entry.
+    if (!revive && !le3_powers::visible.ReadBool(object).value_or(false)) return std::nullopt;
     auto state = le3_powers::State(object);
     auto const type = le3_powers::type.Read<std::uint8_t>(object);
     auto const name = le3_powers::name.Read<ue3::Name>(object);
@@ -305,7 +309,7 @@ std::optional<Power> Le3Power(ue3::Object* object, bool includeUnlearned) {
         text.name = known != nullptr ? known->name : label;
     }
     bool const ammo = ue3::IsA(object, le3_powers::ammoClass);
-    auto const gesture = pw::NativeSelfGesture(ammo, ue3::IsA(object, le3_powers::reviveClass), *type == 3);
+    auto const gesture = pw::NativeSelfGesture(ammo, revive, *type == 3);
     bool const self = gesture != pw::SelfGesture::None;  // installed EPowerType: Buff = 3
     text.info = {text.label.c_str(), text.name.c_str(), known != nullptr ? known->discipline : std::uint8_t{2},
         known != nullptr ? known->icon : 0, self ? pw::Aim::None : pw::Aim::Place};
@@ -316,7 +320,8 @@ std::optional<Power> Le3Power(ue3::Object* object, bool includeUnlearned) {
     power.info = &text.info;
     power.enabledCount = availability.learned ? 1 : 0;
     power.gameEnabled = state->enabled;
-    power.enabled = availability.enabled;
+    // The actual self-power override owns medi-gel/health, weapon and other contextual admission.
+    power.enabled = availability.enabled && (!self || le3_powers::CanUse(object, nullptr));
     power.cooldown = availability.cooldown;
     power.nativeGesture = gesture;
     return power;
@@ -727,7 +732,10 @@ float AngleTo(engine::UnrealVector const& from, engine::UnrealVector const& dire
 // The living hostiles near the hand's ray (within keepDeg) or, with the automatic resolver, within its cones of the hand's
 // ray or the eyes' forward, and in range; each with its line of sight from the hand.
 void Scan(ue3::Object* pawn, engine::UnrealVector const& origin, engine::UnrealVector const& direction, engine::UnrealVector const& eye,
-    engine::UnrealVector const& gaze, double upm, pw::LockSettings const& s) {
+    engine::UnrealVector const& gaze, double upm, pw::LockSettings const& s, ue3::Object* power) {
+#if !defined(MEVR_GAME_LE3)
+    (void)power;
+#endif
     float const handLimit = std::max(s.keepDeg, s.autoLock ? s.autoHandDeg + pw::kAutoKeepMarginDeg : 0.0f);
     float const gazeLimit = s.autoLock ? s.autoGazeDeg + pw::kAutoKeepMarginDeg : -1.0f;
     gSeen.clear();
@@ -743,7 +751,11 @@ void Scan(ue3::Object* pawn, engine::UnrealVector const& origin, engine::UnrealV
     for (ue3::Object* p = gPawnList.Read<ue3::Object*>(world).value_or(nullptr); p != nullptr && guard < 512;
          p = gNextPawn.Read<ue3::Object*>(p).value_or(nullptr), ++guard) {
         ++gScanPawns;
+#if defined(MEVR_GAME_LE3)
+        ue3::Object* const behavior = nullptr; // LE3 has no LE1/LE2 m_oBehavior field.
+#else
         ue3::Object* const behavior = player::IsBioPawn(p) ? gBehavior.Read<ue3::Object*>(p).value_or(nullptr) : nullptr;
+#endif
         if (p == pawn || !player::IsBioPawn(p) || gHidden.ReadBool(p).value_or(false) ||
             (behavior != nullptr && !gBehaviorActive.ReadBool(behavior).value_or(true)) || CallBool(p, gIsDeadFn)) {
             // Dead, or dormant: hidden, or its behaviour switched off (bActive false: a base's crew before its encounter's
@@ -773,12 +785,17 @@ void Scan(ue3::Object* pawn, engine::UnrealVector const& origin, engine::UnrealV
             continue;  // the cheap tests first
         }
         ++gScanNear;
+#if defined(MEVR_GAME_LE3)
+        // Base powers accept hostiles; actual support/DLC overrides may admit a living ally.
+        if (!le3_powers::ValidTarget(power, p)) continue;
+#else
         ue3::Params hostile(ue3::runtime::Get(), gIsHostileFn.Get());
         hostile.Set("Other", p);
         ue3::runtime::Call(pawn, gIsHostileFn.Get(), hostile);
         if (!hostile.ReturnBool().value_or(false)) {
             continue;
         }
+#endif
         ++gScanHostile;
         Seen seen{p, {at->x, at->y, at->z}, angle, gazeAngle, distanceM, true};
         if (ue3::Function* const trace = gFastTraceFn.Get()) {
@@ -838,6 +855,18 @@ bool Cast(ue3::Object* controller, Power const& power, ue3::Object* target, std:
         !frame || !CallBool(input, gIsCombatEnabledFn) || !le3_powers::CanUse(power.object, target)) {
         gLastCast = std::string(power.info->name) + ": native power/loadout/target/resource guard refused";
         return false;
+    }
+    if (target != nullptr && !le3_powers::ValidTarget(power.object, target)) {
+        gLastCast = "Native power does not accept this target";
+        return false;
+    }
+    if (target == nullptr && power.info->aim != pw::Aim::None) {
+        auto const origin = player::Location(pawn);
+        auto const delta = origin && at ? Minus(*at, {origin->x, origin->y, origin->z}) : engine::UnrealVector{};
+        if (!origin || !at || !le3_powers::LocationInRange(power.object, std::sqrt(Dot3(delta, delta)))) {
+            gLastCast = "Power location is outside its native range";
+            return false;
+        }
     }
     auto const rotation = engine::ToRotation(engine::OrientationToWorld(*frame, frame->head.orientation).forward);
     if (!parms.Set("nmPower", power.name) || !parms.Set("oTarget", target) ||
@@ -1326,7 +1355,7 @@ void TickLock(Link const& link, vr::host_view::State const& view, vr::controller
     engine::UnrealVector const eye = engine::ToWorld(*frame, view.head.position);
     engine::UnrealVector const gaze = engine::OrientationToWorld(*frame, view.head.orientation).forward;
     if (ready->info->aim != pw::Aim::None && raised) {
-        Scan(pawn, origin, direction, eye, gaze, upm, s);
+        Scan(pawn, origin, direction, eye, gaze, upm, s, ready->object);
     }
     std::vector<pw::LockCandidate> candidates;
     for (Seen const& seen : gSeen) {

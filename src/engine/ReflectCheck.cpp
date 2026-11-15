@@ -2874,6 +2874,10 @@ void CheckFields() {
 }
 
 void CheckPaths() {
+    CheckPath("SFXGame.SFXPowerCustomActionBase", {"MinimumRange", "CurrentValue"},
+        SDK_AT(offsetof(USFXPowerCustomActionBase, MinimumRange) + offsetof(FPowerData, CurrentValue), sizeof(FPowerData::CurrentValue)));
+    CheckPath("SFXGame.SFXPowerCustomActionBase", {"MaximumRange", "CurrentValue"},
+        SDK_AT(offsetof(USFXPowerCustomActionBase, MaximumRange) + offsetof(FPowerData, CurrentValue), sizeof(FPowerData::CurrentValue)));
     CheckPath("Engine.Camera", {"CameraCache", "POV", "FOV"},
         SDK_AT(offsetof(ACamera, CameraCache) + offsetof(FTCameraCache, POV) + offsetof(FTPOV, FOV), sizeof(FTPOV::FOV)));
     CheckPath("SFXGame.SFXWeapon", {"MagSize", "Value"},
@@ -2950,6 +2954,7 @@ void CheckFunctions() {
     CheckFunction("SFXGame.SFXWeapon.GetMuzzleLoc");
     CheckFunction("Engine.SkeletalMeshComponent.GetSocketWorldLocationAndRotation");
 
+    CheckFunction("SFXGame.SFXPowerCustomActionBase.IsValidTarget");
     CheckFunction("Engine.Actor.SetRotation");
     CheckFunction("Engine.PlayerController.IsMoveInputIgnored");
     CheckFunction("SFXGame.SFXWeapon.GetMagazineSize");
@@ -2996,6 +3001,9 @@ void CheckParams() {
     PARAM(USkeletalMeshComponent_execGetSocketWorldLocationAndRotation_Parms, "Engine.SkeletalMeshComponent.GetSocketWorldLocationAndRotation", ReturnValue);
     PARMS(USkeletalMeshComponent_execGetSocketWorldLocationAndRotation_Parms, "Engine.SkeletalMeshComponent.GetSocketWorldLocationAndRotation");
 
+    PARAM(USFXPowerCustomActionBase_execIsValidTarget_Parms, "SFXGame.SFXPowerCustomActionBase.IsValidTarget", oTarget);
+    PARAM(USFXPowerCustomActionBase_execIsValidTarget_Parms, "SFXGame.SFXPowerCustomActionBase.IsValidTarget", ReturnValue);
+    PARMS(USFXPowerCustomActionBase_execIsValidTarget_Parms, "SFXGame.SFXPowerCustomActionBase.IsValidTarget");
     PARAM(AActor_execSetRotation_Parms, "Engine.Actor.SetRotation", NewRotation);
     PARAM(AActor_execSetRotation_Parms, "Engine.Actor.SetRotation", ReturnValue);
     PARMS(AActor_execSetRotation_Parms, "Engine.Actor.SetRotation");

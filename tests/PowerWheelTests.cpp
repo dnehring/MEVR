@@ -1055,6 +1055,13 @@ void TestRosterPages() {
 
 int RunPowerWheelTests() {
     TestRosterPages();
+    CHECK(pw::NativeLocationInRange(100, 100, 200));
+    CHECK(pw::NativeLocationInRange(200, 100, 200));
+    CHECK(!pw::NativeLocationInRange(99, 100, 200));
+    CHECK(!pw::NativeLocationInRange(201, 100, 200));
+    CHECK(!pw::NativeLocationInRange(100, 200, 100));
+    CHECK(!pw::NativeLocationInRange(0, 0, 0));
+    CHECK(!pw::NativeLocationInRange(std::numeric_limits<double>::infinity(), 0, 200));
     // Native values may change with weapon weight, resource pickups and class
     // transitions. Presentation must neither invent availability nor reset them.
     pw::NativePowerState native{1, true, 5, 10, false, std::nullopt};

@@ -12,6 +12,11 @@ namespace mevr::vr::power_wheel {
 inline SelfGesture NativeSelfGesture(bool ammo, bool revive, bool buff) {
     return ammo ? SelfGesture::Gun : revive ? SelfGesture::Raise : buff ? SelfGesture::Chest : SelfGesture::None;
 }
+
+inline bool NativeLocationInRange(double distance, double minimum, double maximum) {
+    return std::isfinite(distance) && std::isfinite(minimum) && std::isfinite(maximum) &&
+        minimum >= 0 && maximum >= minimum && maximum > 0 && distance >= minimum && distance <= maximum;
+}
 // Read-only presentation of the game's current values. Missing/invalid observations
 // never turn into a ready power; the native CanUsePower override still decides casts.
 struct NativePowerState {

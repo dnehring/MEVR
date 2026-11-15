@@ -116,3 +116,16 @@ Use normal-load validated private fixtures, never fabricated progression.
 
 Host-service activation, global LE3 gates and command wiring belong to the
 coordinator's integration. This increment edits none of those shared boundaries.
+
+
+## Native self, ally and location admission follow-up
+
+2026-11-15 candidate: the existing left-hand gesture scanner now calls the actual LE3 power object's `IsValidTarget` override. The base method admits hostile BioPawns; an actual support/DLC override can admit a living ally. This does not invent an ally-compatible power or claim the installed base roster has one. Dispatch rechecks the same target predicate. The shared scan still excludes dead/dormant pawns; Unity uses the native squad-wide self route instead of targeting a corpse. Combat-placeable/non-pawn lock selection remains an explicit further target-scan case.
+
+Location casts use the same hand-ray trace and existing push gesture, with an added check against the power's live `MinimumRange.CurrentValue` / `MaximumRange.CurrentValue`. The stock `CanUsePower` range branch only checks a non-null actor; the explicit null-actor range guard prevents a location request bypassing that limit. Native parameters, target/resource override and action execution remain authoritative. Unknown/nonfinite/inverted range observations fail closed. Reflection metadata compares both nested paths and the target-method parameter block with the SDK.
+
+For self powers, the roster and gesture ready state consult the actual `CanUsePower(nullptr)` override as well as native learned/enabled/cooldown values. This supplies current weapon restrictions and Unity's native medi-gel/squad-health refusal before showing a ready gesture. A real learned `SFXPowerCustomAction_Unity` instance can use the existing raised-hand gesture even if omitted from the flat HUD power list; no instance or resource is created. Hidden non-Unity powers remain excluded.
+
+Installed `BioP_Char.pcc` Unity scripts were read using the existing private scanner. `CanUsePower` first invokes `ShouldUsePower`, which checks native medi-gel count and whether player or squad health/shields need recovery. `StartPower` consumes medi-gel through the native resource method, subject to the game's upgrade exception. `OnImpact` owns companion resurrection, temporary immunity and health/shield recovery. The mod calls none of those effects directly and writes no health, inventory, plot or cooldown field. Actual native recovery/consumption remains pending a suitable normally loaded fixture.
+
+Offline tests add native location minimum/maximum boundary and invalid-value cases; all existing power gesture/readiness/paging tests still run. Native acceptance must include a real injured/downed companion, full-health refusal, zero-resource refusal, one successful Unity cast and its resource outcome, plus any genuinely ally-compatible power if the fixture has one. This increment improves player gestures; the separate squad voice validator still needs explicit self/ally/location intent rather than forcing every Use action to an enemy group.

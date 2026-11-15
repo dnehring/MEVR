@@ -20,6 +20,10 @@ inline ue3::FieldRef visible{"SFXGame.SFXPowerCustomActionBase", "DisplayInHUD",
 inline ue3::FieldRef remaining{"SFXGame.SFXPowerCustomActionBase", "CurrentCooldownTime", ue3::kEveryGame};
 inline ue3::FieldRef total{"SFXGame.SFXPowerCustomActionBase", "TotalCooldownTime", ue3::kEveryGame};
 inline ue3::FieldRef type{"SFXGame.SFXPowerCustomActionBase", "PowerType", ue3::kEveryGame};
+inline ue3::FieldRef minimumRange{"SFXGame.SFXPowerCustomActionBase", "MinimumRange", ue3::kEveryGame};
+inline ue3::FieldRef maximumRange{"SFXGame.SFXPowerCustomActionBase", "MaximumRange", ue3::kEveryGame};
+inline ue3::FieldRef minimumValue{minimumRange, "CurrentValue"};
+inline ue3::FieldRef maximumValue{maximumRange, "CurrentValue"};
 
 inline ue3::Function* Method(ue3::Object* object, char const* method) {
     auto& r = ue3::runtime::Get();
@@ -49,6 +53,16 @@ inline bool CanUse(ue3::Object* object, ue3::Object* target) {
     if (fn == nullptr || (target != nullptr && !ue3::runtime::IsAlive(target))) return false;
     ue3::Params args(ue3::runtime::Get(), fn);
     return args.Set("oTarget", target) && ue3::runtime::Call(object, fn, args) && args.ReturnBool().value_or(false);
+}
+inline bool ValidTarget(ue3::Object* object, ue3::Object* target) {
+    auto* fn = Method(object, "IsValidTarget");
+    if (!fn || !ue3::runtime::IsAlive(target)) return false;
+    ue3::Params args(ue3::runtime::Get(), fn);
+    return args.Set("oTarget", target) && ue3::runtime::Call(object, fn, args) && args.ReturnBool().value_or(false);
+}
+inline bool LocationInRange(ue3::Object* object, double distance) {
+    auto minimum = minimumValue.Read<float>(object), maximum = maximumValue.Read<float>(object);
+    return minimum && maximum && vr::power_wheel::NativeLocationInRange(distance, *minimum, *maximum);
 }
 }  // namespace mevr::game::le3_powers
 #endif
