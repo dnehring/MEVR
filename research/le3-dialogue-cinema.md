@@ -26,3 +26,5 @@ Shared `CineScreen`, `CinemaBackdrop`, `TransitionFade`, `HudPanel` and `WorldPa
 LE3's existing SFR draw classifier and pass-zero capture provide reusable insertion points. Its current overlay RT path is skipped by the SFR branch, so merely enabling `uiOverlay` does not separate dialogue UI. The shared `HudPanel::Redirect` must receive the source-verified late UI draws, with the existing classification/fallback intact. Stereo submission must use actual separate captured eyes, preserve the director lens, and put the wheel/subtitles/interrupt prompts on one readable UI plane. No inferred per-page crop should be used.
 
 First-person conversations are not part of this work. True stereo cinema, its view transitions and native input must be accepted using separate-eye snapshots and a real headset before the port is called complete.
+
+The existing LE2 baseline, stereo quad submission and UI-plane placement now live in shared plugin/SequelCinema; LE2's bridge delegates to that module. LE3 renderer seams will use the same entry points. This extraction alone does not activate stereo cinema on LE3.

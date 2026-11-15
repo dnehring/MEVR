@@ -342,6 +342,7 @@ set(MEVR_MOD_SOURCES
     src/core/ik/CameraHook.hpp
     src/core/ik/Fingers.cpp
     src/core/ik/Fingers.hpp
+    src/core/ik/Melee.cpp
     src/core/ik/GunKick.cpp
     src/core/ik/GunKick.hpp
     src/core/ik/Ik.cpp
@@ -540,6 +541,7 @@ set(MEVR_MOD_SOURCES
     src/core/vr/Voice.hpp
     src/game/Fingers.cpp
     src/game/Fingers.hpp
+    src/game/Melee.cpp
     src/game/GunKick.cpp
     src/game/GunKick.hpp
     src/game/HandAim.cpp
@@ -1036,6 +1038,7 @@ function(mevr_add_plugin game)
             # ME1's 3D cinema screen for conversations and cutscenes, its floor and horizon, the dip from black and the
             # world-locked placement (research/52, research/le2-cinema.md): LE1's modules, shared.
             src/plugin/CineScreen.cpp src/plugin/CineScreen.hpp src/core/vr/CineScreen.cpp src/core/vr/CineScreen.hpp
+            src/plugin/SequelCinema.cpp src/plugin/SequelCinema.hpp
             src/core/vr/ConversationWorld.cpp src/core/vr/ConversationWorld.hpp
             src/plugin/CinemaBackdrop.cpp src/plugin/CinemaBackdrop.hpp src/plugin/CinemaBackdropDraw.cpp
             src/plugin/CinemaBackdropDraw.hpp src/plugin/TransitionFade.cpp src/plugin/TransitionFade.hpp
@@ -1338,6 +1341,7 @@ if (MEVR_BUILD_TESTS)
         tests/ThespianTests.cpp
         src/core/vr/Traversal.cpp
         tests/TraversalTests.cpp
+        tests/MeleeTests.cpp
         src/core/vr/VoiceGesture.cpp
         tests/CockpitPanelTests.cpp
         src/core/Exe.cpp
@@ -1360,7 +1364,8 @@ if (MEVR_BUILD_TESTS)
         src/core/ik/BoneNames.cpp
         src/core/ik/CameraHook.cpp
         src/core/ik/Fingers.cpp
-        src/core/ik/GunKick.cpp
+        src/core/ik/Melee.cpp
+    src/core/ik/GunKick.cpp
         src/core/ik/Ik.cpp
         src/core/ik/Posture.cpp
         src/core/ik/PoseGraft.cpp

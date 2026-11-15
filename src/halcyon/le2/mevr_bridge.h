@@ -106,21 +106,6 @@ bool CineScreenFullRate() noexcept;
 // [Cinematics] convergeM away on the screen plane once each eye is cropped by its depth).
 float CineScreenHalfSeparationUU(float halfH) noexcept;
 // Present thread, at the SFR submit while the screen is up: the eyes as located (app space) and each eye's image.
-struct CineScreenFrame
-{
-    void* session = nullptr;     // XrSession
-    void* appSpace = nullptr;    // XrSpace: the LOCAL app space the views were located in
-    void* viewSpace = nullptr;   // XrSpace: VIEW
-    ID3D11DeviceContext* context = nullptr;
-    bool conversation = false;   // game mode 5 (else a cutscene, 6)
-    bool headValid = false;
-    float eyeOrientation[2][4] = {{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
-    float eyePosition[2][3] = {};
-    float eyeFov[2][4] = {};     // angleLeft, angleRight, angleUp, angleDown (radians)
-    void* eyeSwapchain[2] = {nullptr, nullptr};   // XrSwapchain: pass 0 (left) in [0], pass 1 (right) in [1]
-    unsigned eyeWidth = 0;
-    unsigned eyeHeight = 0;
-};
 // The screen's layers in submit order (the floor and horizon's projection layer, then the left and right eyes' quads), at
 // most `capacity` into `layersOut`; 0 if it can't be shown (the caller then submits its projection layer as before). The
 // screen's place is kept for this frame's OverlayLayers (the game's UI on its own layer in front of it).

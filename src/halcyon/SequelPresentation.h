@@ -29,4 +29,19 @@ struct OverlayFrame
     float headOrientation[4] = {0.0f, 0.0f, 0.0f, 1.0f};   // xyzw
     float headPosition[3] = {};
 };
+struct CineScreenFrame
+{
+    void* session = nullptr;     // XrSession
+    void* appSpace = nullptr;    // XrSpace: the LOCAL app space the views were located in
+    void* viewSpace = nullptr;   // XrSpace: VIEW
+    ID3D11DeviceContext* context = nullptr;
+    bool conversation = false;   // semantic conversation (else cutscene)
+    bool headValid = false;
+    float eyeOrientation[2][4] = {{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
+    float eyePosition[2][3] = {};
+    float eyeFov[2][4] = {};     // angleLeft, angleRight, angleUp, angleDown (radians)
+    void* eyeSwapchain[2] = {nullptr, nullptr};   // XrSwapchain: pass 0 (left) in [0], pass 1 (right) in [1]
+    unsigned eyeWidth = 0;
+    unsigned eyeHeight = 0;
+};
 }
