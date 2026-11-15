@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <intrin.h>
 #include <string>
 
 #include <MinHook.h>
@@ -207,10 +208,16 @@ struct DrawAdmission {
 };
 struct DrawNativeSample {
     void* self{};
+    void* viewport{};
+    void* canvas{};
+    std::uintptr_t entryCaller{};
     DrawAdmission before{}, after{};
     unsigned calcCalls{}, submissions{}, sceneSubmissions{}, uiSubmissions{}, badFamilies{};
     int lastViewCount{-1}, maxViewCount{-1};
     DrawAdmission atLastSubmit{};
+    bool outputKnown{};
+    std::uintptr_t lastFamily{}, lastCanvas{}, lastTarget{};
+    uint32_t outputFlags[8]{}; // raw +38,+3C,+40,+44,+48,+4C,+50,+54, not inferred names
 };
 thread_local DrawNativeSample* t_nativeDrawSample = nullptr;
 
@@ -250,6 +257,23 @@ bool ReadSubmitFamily(void* family, int* count, bool* hasScene) noexcept
     } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 
+bool ReadFamilyOutput(void* family, std::uintptr_t* target, uint32_t* flags) noexcept
+{
+    // Both native family constructors store target at +10; constructors copy
+    // these eight fields into renderer +40..5C. Keep unknown meanings raw.
+    __try {
+        if (!family) return false;
+        const auto p = reinterpret_cast<std::uintptr_t>(family);
+        const auto readTarget = *reinterpret_cast<volatile std::uintptr_t*>(p + 0x10);
+        uint32_t readFlags[8]{};
+        for (unsigned i = 0; i < 8; ++i)
+            readFlags[i] = *reinterpret_cast<volatile uint32_t*>(p + 0x38 + i * 4);
+        *target = readTarget;
+        for (unsigned i = 0; i < 8; ++i) flags[i] = readFlags[i];
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+
 void __fastcall SubmitFamilyDetour(void* canvas, void* family) noexcept
 {
     if (auto* sample = t_nativeDrawSample) {
@@ -263,6 +287,11 @@ void __fastcall SubmitFamilyDetour(void* canvas, void* family) noexcept
             sample->lastViewCount = count;
             if (count > sample->maxViewCount) sample->maxViewCount = count;
         } else ++sample->badFamilies;
+        sample->lastFamily = reinterpret_cast<std::uintptr_t>(family);
+        sample->lastCanvas = reinterpret_cast<std::uintptr_t>(canvas);
+        sample->lastTarget = 0;
+        for (auto& flag : sample->outputFlags) flag = 0;
+        sample->outputKnown = count >= 0 && ReadFamilyOutput(family, &sample->lastTarget, sample->outputFlags);
     }
     // No SEH around native work: preserve the original call's exception behavior.
     g_origSubmitFamily(canvas, family);
@@ -292,6 +321,21 @@ void LogNativeDrawSample(unsigned pass, const DrawNativeSample& s, bool complete
         s.calcCalls, s.submissions, s.sceneSubmissions, s.uiSubmissions, s.badFamilies,
         s.lastViewCount, s.maxViewCount, s.atLastSubmit.disableWorld,
         s.atLastSubmit.predicateKnown, s.atLastSubmit.backendPredicate);
+    ME2VR::Log::Line(line);
+    // The entry caller is the native caller of the detoured Draw, shared by the
+    // original and its replay. It is NOT the replay trampoline's return address.
+    const auto callerRva = s.entryCaller >= g_base && s.entryCaller - g_base < 0x1066FC1
+        ? s.entryCaller - g_base : 0;
+    sprintf_s(line, "[SFROUTPUT] pass=%u thread=%lu entryCaller=%llX exeCallerRva=%llX "
+        "self=%p viewport=%p drawCanvas=%p lastSubmit=%u family=%llX submitCanvas=%llX "
+        "outputKnown=%d target=%llX raw38to54=%08X,%08X,%08X,%08X,%08X,%08X,%08X,%08X "
+        "(last submission only; raw fields; no target calls or writes)", pass, GetCurrentThreadId(),
+        static_cast<unsigned long long>(s.entryCaller), static_cast<unsigned long long>(callerRva),
+        s.self, s.viewport, s.canvas, s.submissions,
+        static_cast<unsigned long long>(s.lastFamily), static_cast<unsigned long long>(s.lastCanvas),
+        s.outputKnown, static_cast<unsigned long long>(s.lastTarget),
+        s.outputFlags[0], s.outputFlags[1], s.outputFlags[2], s.outputFlags[3],
+        s.outputFlags[4], s.outputFlags[5], s.outputFlags[6], s.outputFlags[7]);
     ME2VR::Log::Line(line);
 }
 
@@ -1136,6 +1180,9 @@ void __fastcall DrawDetour(void* self, void* viewport, void* canvas) noexcept
     DrawNativeSample native0{}, native1{};
     if (sampleNative) {
         native0.self = native1.self = self;
+        native0.viewport = native1.viewport = viewport;
+        native0.canvas = native1.canvas = canvas;
+        native0.entryCaller = native1.entryCaller = reinterpret_cast<std::uintptr_t>(_ReturnAddress());
         native0.before = ReadDrawAdmission(self);
         t_nativeDrawSample = &native0;
     }
