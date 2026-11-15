@@ -119,6 +119,7 @@ struct Settings {
 };
 
 struct State {
+    XrSession session = XR_NULL_HANDLE;
     bool initTried = false;
     bool ready = false;
     ComPtr<ID3D11Device> device;
@@ -762,7 +763,24 @@ std::optional<rail::Rail> Place(Frame const& frame, float dt) {
 
 } // namespace
 
+void HideForSessionStop() {
+    Hide("VR session stopped");
+    gOpen.store(false, std::memory_order_relaxed);
+    g.targetShown = false;
+}
+
 XrCompositionLayerQuad const* Layer(Frame const& frame) {
+    if (frame.session != g.session) {
+        Hide("VR session changed");
+        swapchains::Forget(g.swapchain.handle);
+        swapchains::Forget(g.target.handle);
+        g.swapchain = {}; g.target = {};
+        g.targetShown = false; g.targetDrawn = -1;
+        g.needRender = true;
+        g.pointer = gp::Pointer{RailPointerSettings()};
+        g.session = frame.session;
+        g.lastCounter = {};
+    }
     ReadSettings();
     LARGE_INTEGER counter{};
     QueryPerformanceCounter(&counter);

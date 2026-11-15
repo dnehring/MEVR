@@ -5,7 +5,8 @@
 
 #include "plugin/MenusLe2.hpp"
 
-#include "halcyon/le2/mevr_bridge.h"
+#include "halcyon/SequelPresentation.h"
+#include "engine/GameAdapter.hpp"
 
 #include "core/Log.hpp"
 #include "game/GamepadMapping.hpp"
@@ -124,6 +125,7 @@ void OnSessionCreated(XrInstance instance, XrSession session) {
 #endif
     }
 #if defined(MEVR_WITH_MAIN_MENU)
+    OnSessionStopped();
     gSession = session;
     gProfileFrames = 0;
     gProfile.clear();
@@ -363,7 +365,7 @@ unsigned Layers(ME2VR::MevrBridge::OverlayFrame const& frame, ID3D11Device* devi
         rail.screen = gWorldShown;
         // A game screen of ME2's on Halcyon's flat panel (not one of ours: [WorldUi] screens, a screen we don't know): the GUI
         // mode (7) shows flat (ME2 also reports 7 in play under some HUD pop-ups, which stay in the world). Close closes it too.
-        rail.gameScreenUp = frame.gameMode == 7 && !frame.worldFrame;
+        rail.gameScreenUp = engine::adapter::GameMode(frame.gameMode) == engine::adapter::Mode::Gui && !frame.worldFrame;
         rail.othersOwnInput = frame.menuOpen || main_menu::IsOpen() || calibration::Active();
         XrCompositionLayerQuad const* const railLayer = omni_rail::Layer(rail);
         if (railLayer != nullptr && count < capacity) {
@@ -444,6 +446,30 @@ unsigned Layers(ME2VR::MevrBridge::OverlayFrame const& frame, ID3D11Device* devi
 #else
     (void)frame, (void)device, (void)layersOut, (void)capacity;
     return count;
+#endif
+}
+
+void OnSessionStopped() {
+#if defined(MEVR_WITH_MAIN_MENU)
+    main_menu::SetOpen(false, "VR session stopped");
+    calibration::Cancel("VR session stopped");
+    calibration::NoteFocused(false);
+    main_menu::NoteControllers({});
+    calibration::NoteControllers({});
+    game_pointer::ForgetGameUiQuad();
+    game_pointer::Dot released;
+    game_pointer::Step({}, released); // release a native mouse-down even if no more XR frames arrive
+    omni_rail::HideForSessionStop();
+    world_ui::Forget();
+    gWorldShown.reset();
+    gWorldUiOwns = gWorldPointerShown = gWorldShownLogged = false;
+    gLastGameMode = -1;
+    gTime = 0;
+    // STOPPING may resume the same session without OnSessionCreated; retain its identity.
+    gChord = {};
+    std::lock_guard lock(gPadMutex);
+    gLatch = {};
+    gLatchKept = false;
 #endif
 }
 

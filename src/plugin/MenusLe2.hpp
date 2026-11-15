@@ -56,6 +56,8 @@ unsigned PanelLayers(ME2VR::MevrBridge::OverlayFrame const& frame, ID3D11Device*
 
 // The app space was re-origined: our menu and the calibration's layout placed again.
 void OnRecentered();
+// Reset visibility, reservations and queued input when the renderer stops/replaces its session.
+void OnSessionStopped();
 // Every Present: our menu closes itself when it hasn't been drawn for a second (and a running calibration is cancelled).
 void OnPresent();
 

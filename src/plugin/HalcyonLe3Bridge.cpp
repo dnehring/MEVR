@@ -10,6 +10,11 @@
 #include "plugin/FloorLock.hpp"
 #include "plugin/PadMerge.hpp"
 #include "plugin/Renderer.hpp"
+#include "plugin/MenusLe2.hpp"
+#include "plugin/WorldPanels.hpp"
+#if defined(MEVR_WITH_MAIN_MENU)
+#include "plugin/GamePointer.hpp"
+#endif
 #include "plugin/Swapchains.hpp"
 #include "plugin/TestLoop.hpp"
 #include "plugin/XrHost.hpp"
@@ -23,6 +28,8 @@ std::atomic<std::uint64_t> gFloorTranslatedMs{0};
 std::mutex gPadMutex;
 XINPUT_GAMEPAD gLastPad{};
 DWORD gPacket = 0;
+bool gNativePanelSeen = false;
+bool gNativePointerShown = false;
 }
 void* StaticXrGetInstanceProcAddr() noexcept { return reinterpret_cast<void*>(&xrGetInstanceProcAddr); }
 void WrapSessionFunctions(void** acquire, void** release, void** endFrame, void** locateViews) noexcept {
@@ -31,6 +38,8 @@ void WrapSessionFunctions(void** acquire, void** release, void** endFrame, void*
 void OnSessionCreated(void* instance, void* session) noexcept {
     auto const xrInstance = static_cast<XrInstance>(instance);
     auto const xrSession = static_cast<XrSession>(session);
+    mevr::host::menus_le2::OnSessionCreated(xrInstance, xrSession);
+    mevr::host::world_panels::Recenter();
     mevr::host::testloop::OnSessionCreated(xrSession);
     mevr::host::swapchains::OnSessionCreated(xrSession);
     mevr::host::eye_copy::Reset();
@@ -52,6 +61,9 @@ void OnSessionCreated(void* instance, void* session) noexcept {
     }
 }
 void OnSessionStopped() noexcept {
+    mevr::host::menus_le2::OnSessionStopped();
+    gNativePanelSeen = gNativePointerShown = false;
+    mevr::host::world_panels::Recenter();
     mevr::host::floor_lock::Reset();
     mevr::host::eye_copy::Reset();
     mevr::host::xr_host::ForgetHaptics();
@@ -60,17 +72,23 @@ void OnSessionStopped() noexcept {
 }
 void OnFrameBegun(void* session, void* space, std::int64_t time) noexcept {
     if (!session) return;
+    mevr::host::world_panels::NoteFrame();
+    gNativePanelSeen = false; // renewed only by an actual submitted native panel
     mevr::vr::controllers::State state;
     auto const s = static_cast<XrSession>(session);
     auto const base = static_cast<XrSpace>(space);
     mevr::host::xr_host::OnFrameBegun(s, base, static_cast<XrTime>(time), state);
+    auto const live = state;
     mevr::host::testloop::OnFrameBegun(s, base, static_cast<XrTime>(time), mevr::host::xr_host::InputFocused(), state);
     // Inactive samples must replace the previous live sample too (focus loss/unplug).
-    mevr::vr::controllers::Publish(state);
+    mevr::vr::controllers::Publish(mevr::host::menus_le2::OnFrameBegun(s, base, static_cast<XrTime>(time), live, state,
+        mevr::host::xr_host::InputFocused()));
     if (mevr::host::renderer::GameMode() != 0 || mevr::host::renderer::OwnMenuOpen())
         mevr::vr::host_view::Reset(); // flat/menu paths do not call DriveHeadLook this frame
 }
 void OnRecentered() noexcept {
+    mevr::host::menus_le2::OnRecentered();
+    mevr::host::world_panels::Recenter();
     mevr::vr::controllers::Publish({}); // old app-space poses must not mix with the new head space
     mevr::host::xr_host::NoteRecentered();
     mevr::host::floor_lock::Reset();
@@ -115,7 +133,8 @@ bool CopyIntoImage(void* context, void* image, void* source, int shiftX, int eye
 DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noexcept {
     if (index != 0 || !state) return result;
     auto const controllers = mevr::vr::controllers::Latest();
-    if (!controllers.active) { mevr::host::pad_merge::NoControllers(); return result; }
+    if (!controllers.active) mevr::host::pad_merge::NoControllers();
+    if (!controllers.active && !mevr::host::menus_le2::PadWanted()) return result;
     std::lock_guard lock(gPadMutex);
     mevr::host::pad_merge::Renderer renderer;
     renderer.ownMenuOpen = mevr::host::renderer::OwnMenuOpen();
@@ -124,8 +143,9 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
     int const mode = mevr::host::renderer::GameMode();
     renderer.conversationTriggers = mevr::engine::adapter::IsConversationMode(mode);
     // No orbital mapping claim until LE3 native scan controls are audited (L3-9).
-    auto pad = mevr::host::pad_merge::Merge(result == ERROR_SUCCESS ? state->Gamepad : XINPUT_GAMEPAD{},
-        controllers, renderer, GetTickCount64());
+    auto pad = result == ERROR_SUCCESS ? state->Gamepad : XINPUT_GAMEPAD{};
+    if (controllers.active) pad = mevr::host::pad_merge::Merge(pad, controllers, renderer, GetTickCount64());
+    mevr::host::menus_le2::FilterPad(result == ERROR_SUCCESS ? &state->Gamepad : nullptr, pad);
     // Authored conversations/cinematics have native camera/position ownership. No artificial traversal.
     if (renderer.conversationTriggers || mevr::engine::adapter::GameMode(mode) == mevr::engine::adapter::Mode::Cinematic) {
         pad.sThumbLX = pad.sThumbLY = 0;
@@ -135,4 +155,46 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
     state->Gamepad = pad;
     return ERROR_SUCCESS;
 }
+void OnPresent() noexcept { mevr::host::menus_le2::OnPresent(); }
+unsigned OverlayLayers(OverlayFrame const& frame, void const** out, unsigned capacity) noexcept {
+    if (!frame.context || !out || !capacity) return 0;
+#if defined(MEVR_WITH_MAIN_MENU)
+    if (!gNativePanelSeen && gNativePointerShown) {
+        mevr::host::game_pointer::ForgetGameUiQuad();
+        gNativePointerShown = false;
+    }
+#endif
+    ID3D11Device* device = nullptr;
+    frame.context->GetDevice(&device);
+    unsigned const count = mevr::host::menus_le2::Layers(frame, device, out, 0, capacity);
+    if (device) device->Release();
+    return count;
+}
+void PlaceNativePanel(OverlayFrame const& frame, float const viewPosition[3], float width, float height,
+    void** space, float orientation[4], float position[3]) noexcept {
+    namespace wp = mevr::host::world_panels;
+    namespace ga = mevr::engine::adapter;
+    auto const mode = ga::GameMode(frame.gameMode);
+    auto const kind = mode == ga::Mode::Conversation ? wp::Kind::Conversation :
+        mode == ga::Mode::Cinematic ? wp::Kind::Cutscene :
+        mode == ga::Mode::Galaxy || mode == ga::Mode::Orbital ? wp::Kind::GalaxyMap : wp::Kind::GameMenu;
+    auto const placed = wp::Place(kind, viewPosition, frame.viewSpace, frame.appSpace, frame.headValid,
+        frame.headOrientation, frame.headPosition);
+    *space = placed.space;
+    std::memcpy(orientation, placed.orientation, sizeof placed.orientation);
+    std::memcpy(position, placed.position, sizeof placed.position);
+#if defined(MEVR_WITH_MAIN_MENU)
+    // A complete uncropped native GUI frame has a known UV-to-window map. Authored dialogue and galaxy
+    // retain native pad input until their own LE3 pointer/interrupt/navigation contracts are accepted.
+    if (mode == ga::Mode::Gui && !placed.headLocked && !frame.menuOpen && !MainMenuOpen()) {
+        XrPosef pose{{orientation[0], orientation[1], orientation[2], orientation[3]},
+            {position[0], position[1], position[2]}};
+        mevr::host::game_pointer::NoteGameUiQuad(pose, width, height, mevr::host::game_pointer::PanelKind::GameMenu);
+        gNativePanelSeen = gNativePointerShown = true;
+    }
+#else
+    (void)width; (void)height;
+#endif
+}
+
 }

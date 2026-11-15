@@ -1,10 +1,18 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #pragma once
+#include "../SequelPresentation.h"
 // [MEVR] Narrow ABI boundary: upstream xr_types.h stays separate from official OpenXR headers.
 #include <Windows.h>
 #include <Xinput.h>
 #include <cstdint>
 namespace ME2VR::MevrBridge {
+// [MEVR] Shared menu/input/layer bridge. Native screen routing is independently gated.
+bool OnMenuKey(bool ownMenuOpen) noexcept;
+bool MainMenuOpen() noexcept;
+void OnPresent() noexcept;
+unsigned OverlayLayers(OverlayFrame const& frame, void const** out, unsigned capacity) noexcept;
+void PlaceNativePanel(OverlayFrame const& frame, float const viewPosition[3], float width, float height,
+    void** space, float orientation[4], float position[3]) noexcept;
 void* StaticXrGetInstanceProcAddr() noexcept;
 void WrapSessionFunctions(void** acquire, void** release, void** endFrame, void** locateViews) noexcept;
 void OnSessionCreated(void* instance, void* session) noexcept;

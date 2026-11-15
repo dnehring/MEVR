@@ -763,7 +763,7 @@ void SeedVirtualMouse() noexcept
 
 LRESULT CALLBACK MenuWndProc(HWND h, UINT msg, WPARAM w, LPARAM l)
 {
-    if (g_open)
+    if (g_open || ::ME2VR::MevrBridge::MainMenuOpen()) // [MEVR] one input owner
     {
         // [MENUWHEEL] Capture the wheel BEFORE the swallow below so the menu can scroll. The game
         // still never sees it. Taken before the g_menuKey comparison too: for wheel messages wparam
@@ -841,6 +841,7 @@ void PollInsert() noexcept
         s_markDown = md;
     }
     const bool down = ::ME2VR::MevrBridge::KeyDown(g_menuKey);
+    if (!AnyRebinding() && down && !g_insertWasDown && ::ME2VR::MevrBridge::OnMenuKey(g_open)) { g_insertWasDown = down; return; } // [MEVR]
     if (!AnyRebinding() && down && !g_insertWasDown)
     {
         g_open = !g_open;

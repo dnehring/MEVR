@@ -45,6 +45,8 @@ XrCompositionLayerQuad const* Layer(Frame const& frame);
 XrCompositionLayerQuad const* TargetLayer();
 // The rail opened or closed from elsewhere (the main menu's button, a test). Any thread.
 void Toggle(char const* why);
+// Present thread: release UI presses and close visibility; session swapchains remain usable after STOPPING/READY.
+void HideForSessionStop();
 // A controller's ray is on the rail or a press on it is held: its trigger is ours, kept from the game. Any thread.
 bool OwnsTriggers();
 // The rail is shown (alone on the wrist or beside a screen): the mod puts the game's omni-tool on Shepard's arm for it

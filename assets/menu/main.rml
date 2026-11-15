@@ -75,10 +75,11 @@
 	<!-- What each control does (research/28 "The controller guide"). The labels and the list come from the settings
 	     (core/vr/MenuSettings GuideTexts); the drawing is RCSS boxes (.gdraw), no artwork. The first opening for a new
 	     player lands here (MainMenu's first run, [Menu] controlsShown). -->
-	<div data-if="section == 'guide'">
+	<div data-if="section == 'guide' &amp;&amp; le3"><div class="stitle">Mass Effect 3</div><div class="info">Hold both stick clicks to open this menu. Use Body &amp; calibration to adjust tracking. Native game controls remain available; tracked weapon, power and squad controls require their game adapters.</div></div>
+	<div data-if="section == 'guide' &amp;&amp; !le3">
 		<div class="stitle">Controller guide</div>
 		<div class="sdesc">What each button and gesture does on foot. Open this menu any time: press and hold both thumbsticks, or press {{menu_key}} on the keyboard.</div>
-		<div class="info" data-if="le2"><div class="ico i-info"/><span>Mass Effect 2: hold X to open the power wheel at your left hand. The Controller guide shows how to equip and cast powers.</span></div>
+		<div class="info" data-if="le2 &amp;&amp; !le3"><div class="ico i-info"/><span>Mass Effect 2: hold X to open the power wheel at your left hand. The Controller guide shows how to equip and cast powers.</span></div>
 		<div class="info welcome" data-if="first_run"><div class="ico i-info"/><span>Welcome to MEVR. This guide stays here, first in the list on the left. Resume when you're ready; Body &amp; calibration fits Shepard to your height and aim.</span></div>
 		<div class="guide">
 			<div class="gcard">
@@ -180,17 +181,17 @@
 		</div>
 		<div class="group">
 			<div class="gtitle"><span>Conversations and cutscenes</span><div class="gline"/></div>
-			<div class="row"><div class="rl"><div class="rlab">Conversations</div><div class="rdesc" data-if="!le2">First person (experimental): you stand where Shepard stands and can walk. In VR: the director's camera moves you. 3D screen: its shots on a big screen with depth. Flat screen: without depth.</div><div class="rdesc" data-if="le2">Watch the scene on a 3D screen in the room or on a flat screen.</div></div>
-				<div class="seg"><button class="segb" data-if="!le2" data-class-on="cine_convo == 'world'" data-event-click="pick('cine_convo','world')">First person</button><button class="segb" data-if="!le2" data-class-on="cine_convo == 'vr'" data-event-click="pick('cine_convo','vr')">In VR</button><button class="segb" data-class-on="cine_convo == 'screen'" data-event-click="pick('cine_convo','screen')">3D screen</button><button class="segb" data-class-on="cine_convo == 'flat'" data-event-click="pick('cine_convo','flat')">Flat screen</button></div></div>
+			<div class="row"><div class="rl"><div class="rlab">Conversations</div><div class="rdesc" data-if="!le2">First person (experimental): you stand where Shepard stands and can walk. In VR: the director's camera moves you. 3D screen: its shots on a big screen with depth. Flat screen: without depth.</div><div class="rdesc" data-if="le3">Native conversations play on a flat screen in the room. Seated scenes do not allow traversal. 3D cinema and first-person conversations are not available yet.</div><div class="rdesc" data-if="le2 &amp;&amp; !le3">Watch the scene on a 3D screen in the room or on a flat screen.</div></div>
+				<div class="seg"><button class="segb" data-if="!le2" data-class-on="cine_convo == 'world'" data-event-click="pick('cine_convo','world')">First person</button><button class="segb" data-if="!le2" data-class-on="cine_convo == 'vr'" data-event-click="pick('cine_convo','vr')">In VR</button><button class="segb" data-if="!le3" data-class-on="cine_convo == 'screen'" data-event-click="pick('cine_convo','screen')">3D screen</button><button class="segb" data-class-on="cine_convo == 'flat'" data-event-click="pick('cine_convo','flat')">Flat screen</button></div></div>
 			<div class="row"><div class="rl"><div class="rlab">Cutscenes</div><div class="rdesc">The same choice for cutscenes.</div></div>
-				<div class="seg"><button class="segb" data-if="!le2" data-class-on="cine_cut == 'vr'" data-event-click="pick('cine_cut','vr')">In VR</button><button class="segb" data-class-on="cine_cut == 'screen'" data-event-click="pick('cine_cut','screen')">3D screen</button><button class="segb" data-class-on="cine_cut == 'flat'" data-event-click="pick('cine_cut','flat')">Flat screen</button></div></div>
+				<div class="seg"><button class="segb" data-if="!le2" data-class-on="cine_cut == 'vr'" data-event-click="pick('cine_cut','vr')">In VR</button><button class="segb" data-if="!le3" data-class-on="cine_cut == 'screen'" data-event-click="pick('cine_cut','screen')">3D screen</button><button class="segb" data-class-on="cine_cut == 'flat'" data-event-click="pick('cine_cut','flat')">Flat screen</button></div></div>
 			<div class="srow" data-class-disabled="!(cine_convo == 'screen' || cine_cut == 'screen')"><div class="slab">Screen width</div><input type="range" min="1.5" max="8" step="0.1" data-value="cine_width"/><div class="sval">{{cine_width_text}}</div></div>
 			<div class="srow" data-class-disabled="!(cine_convo == 'screen' || cine_cut == 'screen')"><div class="slab">Screen distance</div><input type="range" min="1" max="6" step="0.1" data-value="cine_distance"/><div class="sval">{{cine_distance_text}}</div></div>
 			<div class="srow" data-class-disabled="!(cine_convo == 'screen' || cine_cut == 'screen')"><div class="slab">3D depth</div><input type="range" min="0" max="150" step="5" data-value="cine_depth"/><div class="sval">{{cine_depth_text}}</div></div>
 		</div>
 		<div class="group" data-class-disabled="le2">
 			<div class="gtitle"><span>Game screens</span><div class="gline"/></div>
-			<div class="hint" data-if="le2">Not on Mass Effect 2 yet.</div>
+			<div class="hint" data-if="le2">Not available in {{game_title}} yet.</div>
 			<div class="row"><div class="rl"><div class="rlab">Game screens in the room</div><div class="rdesc">Shops, loot, the journal, the map and the game's other full-screen menus stand in the room where they open; point at them to use them. Off: on a flat screen with the world gone.</div></div>
 				<button class="tog" data-class-on="world_ui" data-event-click="toggle('world_ui')"><div class="knob"/></button></div>
 			<div class="row" data-class-disabled="!world_ui"><div class="rl"><div class="rlab">Omni-tool screens</div><div class="rdesc">Your equipment, squad, journal, codex, map, the game menu and the hacking screen: projected from your left wrist, with a menu beside them to switch (tap your left wrist to open it), or standing in the room</div></div>
@@ -212,7 +213,7 @@
 		<div class="sdesc">Your hands are Shepard's hands.</div>
 		<div class="group" data-class-disabled="le2">
 			<div class="gtitle"><span>Weapons</span><div class="gline"/></div>
-			<div class="hint" data-if="le2">Not on Mass Effect 2 yet.</div>
+			<div class="hint" data-if="le2">Not available in {{game_title}} yet.</div>
 			<div class="row"><div class="rl"><div class="rlab">Grip holds the gun</div><div class="rdesc">Squeeze to carry it; let go at its holster to put it away</div></div>
 				<button class="tog" data-class-on="grip_holds" data-event-click="toggle('grip_holds')"><div class="knob"/></button></div>
 			<div class="row"><div class="rl"><div class="rlab">Body holsters</div><div class="rdesc">Pistol at the right hip, assault rifle over the right shoulder, shotgun at the left hip, sniper rifle over the left shoulder</div></div>
@@ -246,7 +247,7 @@
 		</div>
 		<div class="group" data-class-disabled="le2">
 			<div class="gtitle"><span>Mako</span><div class="gline"/></div>
-			<div class="hint" data-if="le2">Not on Mass Effect 2 yet.</div>
+			<div class="hint" data-if="le2">Not available in {{game_title}} yet.</div>
 			<div class="row"><div class="rl"><div class="rlab">Throttle lever and drive stick</div><div class="rdesc">Drive with a lever by your left side and a stick by your right: grab them with the grips (the Controller guide has the details). Off: the game's own Mako controls.</div></div>
 				<button class="tog" data-class-on="mako_controls" data-event-click="toggle('mako_controls')"><div class="knob"/></button></div>
 			<div class="row"><div class="rl"><div class="rlab">Sit in the cockpit</div><div class="rdesc">In the Mako you sit in its cockpit, the outside view on the screen ahead. Off: the game's camera behind the Mako.</div></div>
@@ -257,7 +258,8 @@
 	<!-- ===================================================================================== Voice -->
 	<!-- Voice orders (research/54 "The menu's Voice page"): the microphone, its level, the recognizer (the host's plugin/Voice,
 	     restarted on a change of microphone, model or the switch), and [Voice]'s other keys. -->
-	<div data-if="section == 'voice'">
+	<div data-if="section == 'voice' &amp;&amp; le3"><div class="stitle">Voice</div><div class="info">Voice commands and spoken reply selection are not available in Mass Effect 3 yet. Native dialogue and interrupt controls remain active.</div></div>
+	<div data-if="section == 'voice' &amp;&amp; !le3">
 		<div class="stitle">Voice</div>
 		<div class="sdesc">Talk to your squad: hold the left grip at your left ear like a radio, speak, let go.</div>
 		<div class="group">
@@ -315,7 +317,7 @@
 		<div class="sdesc">How the game's sound reaches your ears.</div>
 		<div class="group" data-class-disabled="le2">
 			<div class="gtitle"><span>3D sound</span><div class="gline"/></div>
-			<div class="hint" data-if="le2">Not on Mass Effect 2 yet.</div>
+			<div class="hint" data-if="le2">Not available in {{game_title}} yet.</div>
 			<div class="row"><div class="rl"><div class="rlab">Sound for</div><div class="rdesc">Headphones 3D: every sound the game places reaches each ear as it would in the room, above and behind you too. Speakers: the same sounds panned between two speakers. The game's own: its original sound, left and right only.</div><div class="note">{{audio_note}}</div></div>
 				<div class="seg"><button class="segb" data-class-on="audio_spatial == 'hrtf'" data-event-click="pick('audio_spatial','hrtf')">Headphones 3D</button><button class="segb" data-class-on="audio_spatial == 'soft'" data-event-click="pick('audio_spatial','soft')">Speakers</button><button class="segb" data-class-on="audio_spatial == 'game'" data-event-click="pick('audio_spatial','game')">The game's own</button></div></div>
 			<div class="srow d" data-class-disabled="audio_spatial == 'game'"><div class="sl"><div class="slab">Loudness</div><div class="rdesc">Brings the 3D mix up to the game's own level. Applies when the game next starts.</div></div><input type="range" min="0" max="9" step="1" data-value="audio_gain"/><div class="sval">{{audio_gain_text}}</div></div>
@@ -323,7 +325,7 @@
 		</div>
 		<div class="group" data-class-disabled="le2">
 			<div class="gtitle"><span>Where sounds come from</span><div class="gline"/></div>
-			<div class="hint" data-if="le2">Not on Mass Effect 2 yet.</div>
+			<div class="hint" data-if="le2">Not available in {{game_title}} yet.</div>
 			<div class="row"><div class="rl"><div class="rlab">People around you</div><div class="rdesc">People talking within a few steps of you are heard from where they stand, not inside your head. Off: as the game mixes them.</div></div>
 				<button class="tog" data-class-on="audio_overheard" data-event-click="toggle('audio_overheard')"><div class="knob"/></button></div>
 			<div class="row"><div class="rl"><div class="rlab">Your gun</div><div class="rdesc">Your own weapon's sounds come from the gun in your hand.</div></div>
@@ -440,7 +442,7 @@
 		</div>
 		<div class="group" data-class-disabled="le2">
 			<div class="gtitle"><span>Image quality</span><div class="gline"/></div>
-			<div class="hint" data-if="le2">Not on Mass Effect 2 yet.</div>
+			<div class="hint" data-if="le2">Not available in {{game_title}} yet.</div>
 			<!-- One choice for the frame rate (research/60): each mode sets the render resolution and the levers in Advanced >
 			     Performance; any of them changed by hand shows Custom. -->
 			<div class="row"><div class="rl"><div class="rlab">Performance</div><div class="rdesc">{{perf_desc}}</div><div class="note">{{perf_note}}</div></div>
@@ -456,7 +458,7 @@
 		</div>
 		<div class="group" data-class-disabled="le2">
 			<div class="gtitle"><span>Optional content</span><div class="gline"/></div>
-			<div class="hint" data-if="le2">Not on Mass Effect 2 yet.</div>
+			<div class="hint" data-if="le2">Not available in {{game_title}} yet.</div>
 			<div class="row"><div class="rl"><div class="rlab">Voice orders and texture packs</div><div class="rdesc">Installed: {{content_installed}}</div><div class="note" data-if="content_msg != ''">{{content_msg}}</div></div>
 				<button class="btn" data-event-click="cmd('content_request')"><div class="sweep"/><span>Install after I quit</span><div class="tick"/></button></div>
 			<div class="hint">They go in the game's folder, so MEVR Setup adds them while the game is closed.</div>
@@ -469,7 +471,7 @@
 		<div class="sdesc">What's drawn over the world.</div>
 		<div class="group" data-class-disabled="le2">
 			<div class="gtitle"><span>HUD</span><div class="gline"/></div>
-			<div class="hint" data-if="le2">Not on Mass Effect 2 yet.</div>
+			<div class="hint" data-if="le2">Not available in {{game_title}} yet.</div>
 			<div class="srow d"><div class="sl"><div class="slab">Distance</div><div class="rdesc">How far in front of you the HUD floats</div></div><input type="range" min="1" max="3" step="0.1" data-value="hud_distance"/><div class="sval">{{hud_distance_text}}</div></div>
 			<div class="srow d"><div class="sl"><div class="slab">Size</div><div class="rdesc">How wide it is: 100% is 1.3 m</div></div><input type="range" min="45" max="155" step="5" data-value="hud_size"/><div class="sval">{{hud_size_text}}</div></div>
 			<div class="srow d"><div class="sl"><div class="slab">Below your eyes</div><div class="rdesc">How far below eye height its middle sits</div></div><input type="range" min="-0.3" max="0.6" step="0.01" data-value="panel_below"/><div class="sval">{{panel_below_text}}</div></div>
@@ -490,7 +492,7 @@
 		</div>
 		<div class="group" data-class-disabled="le2">
 			<div class="gtitle"><span>Sights</span><div class="gline"/></div>
-			<div class="hint" data-if="le2">Not on Mass Effect 2 yet.</div>
+			<div class="hint" data-if="le2">Not available in {{game_title}} yet.</div>
 			<div class="row"><div class="rl"><div class="rlab">Pistol</div><div class="rdesc">Seen by the eye you aim with: a red dot, or a holo ring around a dot</div></div>
 				<div class="seg"><button class="segb" data-class-on="sight_pistol == 'dot'" data-event-click="pick('sight_pistol','dot')">Red dot</button><button class="segb" data-class-on="sight_pistol == 'holo'" data-event-click="pick('sight_pistol','holo')">Holo</button><button class="segb" data-class-on="sight_pistol == 'none'" data-event-click="pick('sight_pistol','none')">None</button></div></div>
 			<div class="row"><div class="rl"><div class="rlab">Shotgun</div><div class="rdesc">The same choice for the shotgun</div></div>
@@ -551,7 +553,7 @@
 		<div data-if="advtab == 'perf'">
 			<div class="group" data-class-disabled="le2">
 				<div class="gtitle"><span>Performance levers</span><div class="gline"/></div>
-				<div class="hint" data-if="le2">Not on Mass Effect 2 yet.</div>
+				<div class="hint" data-if="le2">Not available in {{game_title}} yet.</div>
 				<div class="hint">Display's Performance modes set these. Changing one makes the mode Custom. All of them apply at once.</div>
 				<div class="row"><div class="rl"><div class="rlab">Small-object culling</div><div class="rdesc">Skips objects smaller than this many pixels on screen. Up to 8 can't be seen; from 24 far details pop in.</div></div>
 					<div class="seg"><button class="segb" data-class-on="cull_px == '0'" data-event-click="pick('cull_px','0')">Off</button><button class="segb" data-class-on="cull_px == '4'" data-event-click="pick('cull_px','4')">4</button><button class="segb" data-class-on="cull_px == '8'" data-event-click="pick('cull_px','8')">8</button><button class="segb" data-class-on="cull_px == '16'" data-event-click="pick('cull_px','16')">16</button><button class="segb" data-class-on="cull_px == '24'" data-event-click="pick('cull_px','24')">24</button><button class="segb" data-class-on="cull_px == '32'" data-event-click="pick('cull_px','32')">32</button></div></div>
@@ -569,7 +571,7 @@
 		<div data-if="advtab == 'hud'">
 			<div class="group" data-class-disabled="le2">
 				<div class="gtitle"><span>Conversation wheel</span><div class="gline"/></div>
-				<div class="hint" data-if="le2">Not on Mass Effect 2 yet.</div>
+				<div class="hint" data-if="le2">Not available in {{game_title}} yet.</div>
 				<div class="row"><div class="rl"><div class="rlab">Fit it to your view</div><div class="rdesc">The dialogue wheel and conversation captions at the size and place below. Off: the game's own size and place.</div></div>
 					<button class="tog" data-class-on="g_convo" data-event-click="toggle('g_convo')"><div class="knob"/></button></div>
 				<div class="srow" data-class-disabled="!g_convo"><div class="slab">Size</div><input type="range" min="40" max="250" step="5" data-value="convo_size"/><div class="sval">{{convo_size_text}}</div></div>
@@ -580,7 +582,7 @@
 			</div>
 			<div class="group" data-class-disabled="le2">
 				<div class="gtitle"><span>Mission overlays</span><div class="gline"/></div>
-				<div class="hint" data-if="le2">Not on Mass Effect 2 yet.</div>
+				<div class="hint" data-if="le2">Not available in {{game_title}} yet.</div>
 				<div class="row"><div class="rl"><div class="rlab">Fit them to your view</div><div class="rdesc">Timers, charge counters and boss bars at the size and place below. Off: the game's own size and place.</div></div>
 					<button class="tog" data-class-on="g_designer" data-event-click="toggle('g_designer')"><div class="knob"/></button></div>
 				<div class="srow" data-class-disabled="!g_designer"><div class="slab">Size</div><input type="range" min="40" max="250" step="5" data-value="designer_size"/><div class="sval">{{designer_size_text}}</div></div>
@@ -594,7 +596,7 @@
 		<div data-if="advtab == 'profiles'">
 			<div class="group" data-class-disabled="le2">
 				<div class="gtitle"><span>Profiles</span><div class="gline"/></div>
-				<div class="hint" data-if="le2">Not on Mass Effect 2 yet.</div>
+				<div class="hint" data-if="le2">Not available in {{game_title}} yet.</div>
 				<div class="tiles">
 					<div class="tile" data-class-active="prof_active == '0'"><div class="tl"><span data-if="prof_active == '0'">Active</span><span data-if="prof_active != '0'">Saved</span></div><div class="tv">{{prof0_name}}</div>
 						<div class="tbtns"><button class="btn small" data-event-click="cmd('prof_load','0')"><div class="sweep"/><span>Load</span></button><button class="btn small" data-event-click="cmd('prof_save','0')"><div class="sweep"/><span>Save</span></button></div></div>

@@ -2543,12 +2543,66 @@ void RunFrame() noexcept
                              "Switching render mode and back usually restarts it.");
         }
     }
-    const XrCompositionLayerBaseHeader* layers[4] = {};
+    // [MEVR] One layer submission owner, shared menu/calibration/rail presentation.
+    ::ME2VR::MevrBridge::OverlayFrame overlay;
+    overlay.session = g_session; overlay.appSpace = g_localSpace; overlay.viewSpace = g_viewSpace;
+    overlay.context = g_ctx; overlay.worldFrame = rendered; overlay.menuOpen = ME2VR::Menu::IsOpen();
+    overlay.gameMode = ME2VR::EngineProbe::ReadGameMode();
+    overlay.stereo = ME2VR::CalcViewHook::GetVrMode() == 4;
+    overlay.projectionValid = rendered;
+    for (int e = 0; rendered && e < 2; ++e) {
+        const auto& v = projViews[e];
+        overlay.projectionSwapchain[e] = v.subImage.swapchain;
+        overlay.projectionRect[e][0] = v.subImage.imageRect.offset.x;
+        overlay.projectionRect[e][1] = v.subImage.imageRect.offset.y;
+        overlay.projectionRect[e][2] = v.subImage.imageRect.extent.width;
+        overlay.projectionRect[e][3] = v.subImage.imageRect.extent.height;
+        overlay.projectionOrientation[e][0] = v.pose.orientation.x;
+        overlay.projectionOrientation[e][1] = v.pose.orientation.y;
+        overlay.projectionOrientation[e][2] = v.pose.orientation.z;
+        overlay.projectionOrientation[e][3] = v.pose.orientation.w;
+        overlay.projectionPosition[e][0] = v.pose.position.x;
+        overlay.projectionPosition[e][1] = v.pose.position.y;
+        overlay.projectionPosition[e][2] = v.pose.position.z;
+        overlay.projectionFov[e][0] = v.fov.angleLeft; overlay.projectionFov[e][1] = v.fov.angleRight;
+        overlay.projectionFov[e][2] = v.fov.angleUp; overlay.projectionFov[e][3] = v.fov.angleDown;
+    }
+    XrViewLocateInfo headInfo = {};
+    headInfo.type = XR_TYPE_VIEW_LOCATE_INFO_VALUE;
+    headInfo.viewConfigurationType = kStereo; headInfo.displayTime = fs.predictedDisplayTime; headInfo.space = g_localSpace;
+    XrViewState headState = {}; headState.type = XR_TYPE_VIEW_STATE_VALUE;
+    XrView headViews[2] = {}; headViews[0].type = headViews[1].type = XR_TYPE_VIEW_VALUE;
+    uint32_t headCount = 0;
+    if (XrSucceeded(g_fn.locateViews(g_session, &headInfo, &headState, 2, &headCount, headViews)) && headCount == 2 &&
+        (headState.viewStateFlags & XR_VIEW_STATE_ORIENTATION_VALID_BIT_VALUE) != 0 &&
+        (headState.viewStateFlags & XR_VIEW_STATE_POSITION_VALID_BIT_VALUE) != 0) {
+        overlay.headValid = overlay.eyesValid = true;
+        overlay.headOrientation[0] = headViews[0].pose.orientation.x; overlay.headOrientation[1] = headViews[0].pose.orientation.y;
+        overlay.headOrientation[2] = headViews[0].pose.orientation.z; overlay.headOrientation[3] = headViews[0].pose.orientation.w;
+        for (int e = 0; e < 2; ++e) {
+            overlay.eyePosition[e][0] = headViews[e].pose.position.x;
+            overlay.eyePosition[e][1] = headViews[e].pose.position.y;
+            overlay.eyePosition[e][2] = headViews[e].pose.position.z;
+        }
+        for (int i = 0; i < 3; ++i) overlay.headPosition[i] = (overlay.eyePosition[0][i] + overlay.eyePosition[1][i]) * 0.5f;
+    }
+    if (haveMono) {
+        const float at[3] = {monoQuad.pose.position.x, monoQuad.pose.position.y, monoQuad.pose.position.z};
+        float q[4], p[3]; void* space = nullptr;
+        ::ME2VR::MevrBridge::PlaceNativePanel(overlay, at, monoQuad.size.width, monoQuad.size.height, &space, q, p);
+        monoQuad.space = static_cast<XrSpace>(space);
+        monoQuad.pose.orientation = {q[0], q[1], q[2], q[3]}; monoQuad.pose.position = {p[0], p[1], p[2]};
+    }
+    const XrCompositionLayerBaseHeader* layers[16] = {};
     uint32_t layerCount = 0;
     if (rendered)   layers[layerCount++] = reinterpret_cast<XrCompositionLayerBaseHeader*>(&layer);
     if (haveMono)   layers[layerCount++] = reinterpret_cast<XrCompositionLayerBaseHeader*>(&monoQuad);
     if (haveGameUi) layers[layerCount++] = reinterpret_cast<XrCompositionLayerBaseHeader*>(&gameUiQuad);
     if (haveUi)     layers[layerCount++] = reinterpret_cast<XrCompositionLayerBaseHeader*>(&uiQuad);
+    const void* hostLayers[12] = {};
+    const unsigned hostCount = ::ME2VR::MevrBridge::OverlayLayers(overlay, hostLayers, 12);
+    for (unsigned i = 0; i < hostCount && layerCount < 16; ++i)
+        layers[layerCount++] = static_cast<const XrCompositionLayerBaseHeader*>(hostLayers[i]);
 
     XrFrameEndInfo fei = {};
     fei.type = XR_TYPE_FRAME_END_INFO_VALUE;
@@ -2607,6 +2661,7 @@ void  SetCineScreenZoom(float z) noexcept { g_cineScreenZoom.store((z < 0.5f) ? 
 
 void Tick() noexcept
 {
+    ::ME2VR::MevrBridge::OnPresent(); // [MEVR] close invisible host menu even if XR frames stopped
     // [SFR2] discriminator for the flat-stereo bug: calcViews should be ~2x replays (both passes
     // build a view). calcViews == replays means the replay pass never re-enters CalcSceneView, so
     // both eyes render pass 0's camera - identical images, separation just shifts the world.

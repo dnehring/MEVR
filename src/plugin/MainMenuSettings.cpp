@@ -291,7 +291,13 @@ void Settings::Read(menu::Values& v) {
 #else
     // ME2's MoveFollowsHead stays on. The cinema screen is selected through our INI.
     bool const followsHead = true;
-    flag("le2", true);  // the document greys out what ME2 doesn't have yet (research/le2-menus.md)
+    flag("le2", true); // shared sequel limitations; le3 below distinguishes native capabilities
+#if defined(MEVR_WITH_HALCYON_LE3)
+    flag("le3", true);
+    v.texts["game_title"] = "Mass Effect 3";
+#else
+    v.texts["game_title"] = "Mass Effect 2";
+#endif
 #endif
     // [Comfort] (research/31; the mod reads it: game/comfort). Smooth is the game's own turn ("turn = game"); the
     // file-only "turn = smooth" (the mod's steady turn) shows as Smooth too.
@@ -333,6 +339,9 @@ void Settings::Read(menu::Values& v) {
         cineDefaults.conversations ? cw::Mode::Screen : cw::Mode::Vr);
     v.texts["cine_convo"] = convo == cw::Mode::Vr ? "flat" : "screen";
     v.texts["cine_cut"] = ini.Num("Cinematics", "cutscenes", cineDefaults.cutscenes ? 1.0f : 0.0f) != 0.0f ? "screen" : "flat";
+#endif
+#if defined(MEVR_WITH_HALCYON_LE3)
+    v.texts["cine_convo"] = v.texts["cine_cut"] = "flat";
 #endif
     v.numbers["cine_width"] = std::clamp(ini.Num("Cinematics", "widthM", 2.9f), 1.5f, 8.0f);
     v.numbers["cine_distance"] = std::clamp(ini.Num("Cinematics", "distanceM", 3.5f), 1.0f, 6.0f);
@@ -580,8 +589,8 @@ void Settings::Read(menu::Values& v) {
     // width, depth of field and the desktop mirror. Its keyboard recenter is off (R is ME2's reload: ApplyMevrBaseline).
     renderer::MenuRows const rows = renderer::GetMenuRows();
     flag("recenter_key", false);
-    v.texts["recenter_key_desc"] = "R is Mass Effect 2's reload, so the keyboard doesn't recenter: use Recenter at the top of this menu";
-    v.texts["classic_desc"] = std::format("The original ME2 VR settings menu, with expert settings these pages don't have (also: "
+    v.texts["recenter_key_desc"] = "Use Recenter at the top of this menu or the controller recenter shortcut.";
+    v.texts["classic_desc"] = std::format("The renderer settings menu, with expert settings these pages don't have (also: "
                                           "Ctrl + {})", KeyName(renderer::OwnMenuKey()));
     v.texts["menu_key"] = KeyName(renderer::OwnMenuKey());
     v.numbers["look_smooth"] = rows.lookSmoothing;
@@ -635,7 +644,7 @@ void Settings::Read(menu::Values& v) {
         v.texts["audio_now"] = openal_soft::Describe();
         v.texts["audio_note"] = ms::AudioNote(spatial, gain, openal_soft::Running(), openal_soft::RunningGainDb(), openal_soft::Installed());
 #else
-        v.texts["audio_now"] = "Mass Effect 2's own audio (ME2 plays through Wwise; OpenAL Soft is ME1's)";
+        v.texts["audio_now"] = v.texts["game_title"] + " native audio (Wwise)";
 #endif
         auto const on = [&](char const* key) {
             std::string const text = Lower(ini.Text("Audio", key, "1"));
@@ -830,6 +839,9 @@ void Settings::ClearCullTenths() {
 }
 
 void Settings::Write(std::string const& key, menu::Values const& v, bool final) {
+#if defined(MEVR_WITH_HALCYON_LE3)
+    if (ms::UnavailableInLe3Presentation(key)) return;
+#endif
     for (auto const& f : vr::manual_calibration::kFields) {
         if (key != f.menu) continue;
         auto const cal = calibration::GetSummary();

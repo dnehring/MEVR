@@ -97,6 +97,8 @@ std::vector<Field> const& Schema() {
         {"first_run", Type::Flag, 0, "", 0, 1, F::None, true},  // opened by itself on the controller guide (MainMenu's first run)
         // Mass Effect 2's host (research/le2-menus.md): the document greys out the rows ME2 doesn't have yet. 0 on LE1.
         {"le2", Type::Flag, 0, "", 0, 1, F::None, true},
+        {"le3", Type::Flag, 0, "", 0, 1, F::None, true},
+        {"game_title", Type::Text, 0, "Mass Effect 1", 0, 0, F::None, true},
         // The top bar.
         {"chip_headset", Type::Text, 0, "Headset not started"},
         {"chip_controllers", Type::Text, 0, "No controllers"},
@@ -883,6 +885,12 @@ std::map<std::string, std::string> ParseSection(std::string_view lines) {
     // core/Ini's reader (the mod's too): lower-cased keys, the first occurrence wins as in Win32's profile API.
     ini::Section const section = ini::ParseKeys(lines);
     return std::map<std::string, std::string>(section.begin(), section.end());
+}
+
+// LE3 presentation foundation: reject unsupported writes even if an old document or queued event requests one.
+bool UnavailableInLe3Presentation(std::string_view key) {
+    return key.starts_with("cine_") || key.starts_with("thespian_") || key.starts_with("voice_") ||
+        key.starts_with("mic") || key == "world_ui" || key == "wrist_screen" || key == "wrist_width" || key == "galaxy_holo";
 }
 
 } // namespace mevr::vr::menu_settings
