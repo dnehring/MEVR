@@ -846,7 +846,7 @@ std::vector<IniDefault> const& ModIniDefaults() {
         {"Sights", "pistol", "dot"}, {"Sights", "assaultRifle", "dot"}, {"Sights", "sniperRifle", "scope auto"}, {"Sights", "assist", "1"},
         {"Sights", "converge", "1"},
         {"Squad", "style", "native"},
-        {"Colour", "profile", "auto"}, {"Colour", "compare", "0"}, {"Colour", "dither", "0.5"},
+        {"Colour", "profile", "auto"}, {"Colour", "compare", "0"}, {"Colour", "dither", "0.5"}, {"Colour", "hdrDisplay", "-1"},
         {"Calibration", "use", "1"},
         {"Upscale", "method", "off"},
         {"Menu", "pause", "1"}, {"Menu", "distanceM", "1.3"}, {"Menu", "widthM", "1.45"}, {"Menu", "assets", ""},

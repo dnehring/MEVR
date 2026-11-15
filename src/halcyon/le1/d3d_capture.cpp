@@ -2686,7 +2686,8 @@ bool IsPrimaryRect(const RECT& r) noexcept
 
 // [MEVR] research/27 7c: IDXGIOutput6::GetDesc1 (vtable slot 27). The game reads its HDR capability from
 // DXGI_OUTPUT_DESC1::ColorSpace == HDR10 (0x1409a0050; windowed, an HDR range falls back to SDR without it). The
-// host answers it for an SDR desktop when [Colour] hdrDisplay = 1, so the float backbuffer comes without Windows HDR.
+// host answers it: SDR for an HDR display by default ([Colour] hdrDisplay = -1, the 8-bit frame with Windows HDR on),
+// HDR10 for an SDR one with hdrDisplay = 1 (the float backbuffer without Windows HDR).
 using GetDesc1Fn = HRESULT(STDMETHODCALLTYPE*)(IDXGIOutput6*, DXGI_OUTPUT_DESC1*);
 GetDesc1Fn g_origOutputGetDesc1 = nullptr;
 void** g_outputGetDesc1Slot = nullptr;

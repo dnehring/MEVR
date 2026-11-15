@@ -26,6 +26,7 @@
 
 # Launching and measuring
 
+* [With Windows HDR on, the Legendary Edition renders a float scRGB frame that Halcyon's renderers were never built for](windows-hdr-desktop.md) - A blue headset image (LE1, 2026-10-08), black or identical eyes and the UI off its panel (ME2), launch trouble reported by players with HDR monitors; both games answer the game's HDR question SDR by default (`[Colour] hdrDisplay = -1`) and stay 8-bit; the owner's monitor restart happened before our mods; bitten 2026-10-08 and 2026-11-14.
 * [SteamVR's room setup kills the game at the title on the fake headset](steamvr-room-setup-kills-the-game.md) - An unregistered null-driver chaperone universe makes vrmonitor launch room setup and vrserver kill the running scene app 5 s later.
 * [EA's launcher refuses to start the game from inside a job object](ea-launcher-in-a-job-object.md) - EASteamLauncher's breakaway CreateProcess is denied when our shell or the EA app itself sits in a job; Steam's own launch works (`tools/launch-game.ps1 -Steam`).
 * [A test run in the game overwrites the player's saves](test-runs-overwrite-saves.md) - A map from the command line, the Mako drop, a resumed save or a conversation's end autosaves into the player's career and rewrites the profile; back up `Save` and the inis before every run; bitten 2026-11-05 and three times 2026-11-06.

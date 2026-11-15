@@ -16,6 +16,7 @@
 #include "core/vr/Controllers.hpp"
 #include "core/vr/Floor.hpp"
 #include "core/vr/HostView.hpp"
+#include "core/vr/Sights.hpp"
 #include "plugin/TestLoop.hpp"
 #include "plugin/Vignette.hpp"
 #include "plugin/XrHost.hpp"
@@ -36,7 +37,6 @@
 #include "plugin/Thespian.hpp"
 #endif
 #include "core/vr/ScopeCapture.hpp"
-#include "core/vr/Sights.hpp"
 #include "core/vr/GalaxyHologram.hpp"
 #include "core/vr/GalaxyMap.hpp"
 #include "core/vr/PowerWheel.hpp"
@@ -183,11 +183,28 @@ HostServices WithVignette(HostServices services) {
     services.setVignette = &HostSetVignette;
     return services;
 }
+void HostSetSight(vr::sights::Sight const* sight) {
+    if (sight != nullptr) {
+        vr::sights::Publish(*sight);
+    } else {
+        vr::sights::Reset();
+    }
+}
+std::uint32_t HostSightView() {
+    return vr::sights::LatestView();
+}
+HostServices WithSights(HostServices services) {
+    services.sightSize = static_cast<std::uint32_t>(sizeof(vr::sights::Sight));
+    services.setSight = &HostSetSight;
+    services.sightView = &HostSightView;
+    return services;
+}
 // Forgetting what the mod set in the renderer's services: hand aim off (the renderer's own aim back), no aim ray, no
 // vibration, the vignette faded out.
 void ForgetRendererModState() {
     renderer::SetModHandAim(false);
     vr::aim_ray::Reset();
+    vr::sights::Reset();
     xr_host::ForgetHaptics();
     vignette::Forget();
 #if defined(MEVR_WITH_HALCYON_LE2)
@@ -227,16 +244,6 @@ void HostSetWheelPanel(vr::squad_menu::wheel::Panel const* panel) {
     } else {
         vr::squad_menu::wheel::ResetPanel();
     }
-}
-void HostSetSight(vr::sights::Sight const* sight) {
-    if (sight != nullptr) {
-        vr::sights::Publish(*sight);
-    } else {
-        vr::sights::Reset();
-    }
-}
-std::uint32_t HostSightView() {
-    return vr::sights::LatestView();
 }
 void HostCalibration(vr::calibration::HostState* out) {
     calibration::HostStateOut(out);
@@ -467,9 +474,6 @@ HostServices WithLe1Modules(HostServices services) {
     services.leftGripAway = &HostLeftGripAway;
     services.wheelPanelSize = static_cast<std::uint32_t>(sizeof(vr::squad_menu::wheel::Panel));
     services.setWheelPanel = &HostSetWheelPanel;
-    services.sightSize = static_cast<std::uint32_t>(sizeof(vr::sights::Sight));
-    services.setSight = &HostSetSight;
-    services.sightView = &HostSightView;
     services.calibrationStateSize = static_cast<std::uint32_t>(sizeof(vr::calibration::HostState));
     services.calibration = &HostCalibration;
     services.mainMenu = &HostMainMenu;
@@ -483,7 +487,6 @@ void ForgetLe1ModState() {
     floor_lock::SetPawn(nullptr);
     vr::squad_menu::Reset();
     vr::squad_menu::wheel::ResetPanel();
-    vr::sights::Reset();
     vr::scope_capture::Reset();  // the scope's picture goes back to the eye copy
     vr::interact::Reset();  // no prompt at the object without the mod
     vr::hud_pieces::Reset();  // the weapon panel back on the HUD (the wrist piece needs no mod)
@@ -500,7 +503,7 @@ void ForgetLe1ModState() {
 HostServices BuildServices() {
     HostServices services = WithCrashBreadcrumbs(BaseServices());
 #if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2)
-    services = WithVignette(WithRenderer(services));  // the host modules both renderers have
+    services = WithSights(WithVignette(WithRenderer(services)));  // the host modules both renderers have
 #endif
 #if defined(MEVR_WITH_HALCYON_LE2)
     services = WithTraversal(services);
