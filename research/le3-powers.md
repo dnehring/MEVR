@@ -65,9 +65,14 @@ No LE1 synthetic projectile or manual unarmed-release workaround runs on LE3.
 Native resources, rank, evolution, inventory, quick slots and loadout are never
 written. Pawn/manager changes clear the mod's selection; it must be reselected.
 
-The wheel's fixed view supports eleven powers plus No power. Larger custom
-rosters fail closed instead of hiding powers; disable `[PowerWheel] on` to return
-to native controls. Paging and full DLC-specific gestures/icons are open work.
+The host view still holds twelve tiles, with no ABI change. Up to eleven powers
+keep the original LE1/LE2 layout. Larger rosters use shared pages of up to ten
+real powers, No power and a visible `More powers N/M` navigation tile. Selecting
+More keeps the wheel open, clears the highlight and requires a fresh confirmation;
+it never equips or casts a synthetic power. Every page retains No power; the last
+page wraps to the first. A native roster identity change cancels an open selection
+instead of reinterpreting its old index. Full DLC-specific gestures/icons remain
+open work; paging compilation/tests do not prove headset usability.
 
 ## Proof gates
 
@@ -78,6 +83,12 @@ powers, invalid float values and native gesture roles. Compile the game source
 for all three game defines with warnings as errors. These tests do not simulate
 UE3 reflection or prove native release.
 
+Shared paging tests cover every power exactly once across rosters of 0 through
+128 sampled sizes, original single-page layouts, partial last pages, wraparound,
+all four existing confirmation routes, held-confirm suppression and cancellation.
+The existing renderer consumes the refreshed tiles every frame, so it needs no
+page cache, new input binding or separate UI implementation.
+
 For a protected native session, reuse the existing `tools/console.ps1`,
 `record.ps1`/`replay.ps1 -Inputs`, `snapshot.ps1` and protected session runner.
 Use normal-load validated private fixtures, never fabricated progression.
@@ -85,6 +96,8 @@ Use normal-load validated private fixtures, never fabricated progression.
 1. For each of six classes, compare `mevr powerwheel roster` with the native wheel
    and actual learned powers; capture ranks, cooldowns and disabled entries.
    Exercise an unknown/DLC power if a genuine fixture supplies one.
+   For an overflow roster, visit every page, confirm No power on each, wrap once,
+   and verify a held pinch/grip/X never dispatches a power after navigation.
 2. Select and push a targeted power at a valid target and invalid/occluded target.
    Prove native action/release and world effect separately from request logs.
 3. Replay gun-contact ammo activation with a drawn compatible weapon, stowed gun

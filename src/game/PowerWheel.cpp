@@ -404,11 +404,6 @@ std::vector<Power> ReadRoster(ue3::Object* pawn, bool includeUnlearned) {
                 out.push_back(std::move(*power));
         }
     }
-    // A larger custom roster needs paging. Do not silently hide native powers.
-    if (out.size() >= static_cast<std::size_t>(pw::kMaxEntries)) {
-        log::Warn("power wheel: LE3 native roster exceeds wheel capacity; disable PowerWheel to use native controls");
-        return {};
-    }
 #elif defined(MEVR_GAME_LE2)
     auto* const manager = gPowerManager.Read<ue3::Object*>(pawn).value_or(nullptr);
     auto const list = ue3::runtime::IsAlive(manager) ? gManagedPowers.ElementsOf(manager) : std::nullopt;
@@ -462,15 +457,9 @@ std::vector<Power> ReadRoster(ue3::Object* pawn, bool includeUnlearned) {
         }
         ReadEnabled(p, power);
         out.push_back(std::move(p));
-        if (out.size() >= static_cast<std::size_t>(pw::kMaxEntries) * 2) {
-            break;
-        }
     }
 #endif
     std::stable_sort(out.begin(), out.end(), [](Power const& a, Power const& b) { return a.info->discipline < b.info->discipline; });
-    if (out.size() > static_cast<std::size_t>(pw::kMaxEntries) - 1) {
-        out.resize(static_cast<std::size_t>(pw::kMaxEntries) - 1);
-    }
     // The last tile: No power (the engine's None in the mapped power), back to neutral.
     if (!out.empty()) {
         Power none;
@@ -500,6 +489,40 @@ std::string MappedPower(ue3::Object* controller) {
 pw::Machine gMachine;
 double gClock = 0.0;
 std::vector<Power> gRoster;
+std::vector<Power> gFullRoster;
+pw::Page gPage;
+bool gRosterChanged = false;
+char gMoreLabel[pw::kLabelBytes] = {};
+pw::PowerInfo gMoreInfo{"__MEVR_MORE_POWERS__", gMoreLabel, 2, 0, pw::Aim::None};
+
+void RefreshRoster(ue3::Object* pawn, bool includeUnlearned, bool resetPage) {
+    auto full = ReadRoster(pawn, includeUnlearned);
+    bool const changed = full.size() != gFullRoster.size() || !std::equal(full.begin(), full.end(), gFullRoster.begin(),
+        [](Power const& a, Power const& b) { return a.name == b.name && a.object == b.object && a.label == b.label; });
+    gRosterChanged = changed && gMachine.open;
+    if (gRosterChanged) {
+        // A native roster change must not reinterpret an old highlighted index.
+        gMachine.selected = -1;
+        gMachine.equipped = -1;
+        gMachine.selectedAt = gClock;
+        gMachine.triggerArmed = false;
+        gMachine.gripArmed = false;
+    }
+    gFullRoster = std::move(full);
+    gPage = pw::PowerPage(gFullRoster.empty() ? 0 : static_cast<int>(gFullRoster.size()) - 1,
+        resetPage || changed ? 0 : gPage.index);
+    gRoster.clear();
+    if (gFullRoster.empty()) return;
+    for (int i = 0; i < gPage.count; ++i) gRoster.push_back(gFullRoster[static_cast<std::size_t>(gPage.first + i)]);
+    gRoster.push_back(gFullRoster.back());  // No power remains reachable on every page.
+    if (gPage.more >= 0) {
+        std::snprintf(gMoreLabel, sizeof(gMoreLabel), "More powers %d/%d", gPage.index + 1, gPage.pages);
+        Power more;
+        more.info = &gMoreInfo;
+        more.label = gMoreInfo.label;
+        gRoster.push_back(std::move(more));  // navigation only; Machine never emits Equipped for it
+    }
+}
 pw::View gView;
 bool gPadOn = false;          // on foot with the wheel on: X is the wheel's
 bool gHeldAfter = false;      // a left trigger, grip or X used in it is still held after it closed
@@ -1714,14 +1737,15 @@ void Tick(double deltaSeconds, Link const& link) {
 
     bool const xHeld = (controllers.active && left.primary) || gConsoleHold;
     if (allowed && (gMachine.open || (xHeld && !gMachine.buttonWas))) {
-        gRoster = ReadRoster(pawn, gShowUnlearned);
+        RefreshRoster(pawn, gShowUnlearned, !gMachine.open);
     }
     std::vector<float> const angles = pw::Angles(static_cast<int>(gRoster.size()));
 
     pw::MachineInput in;
     in.time = gClock;
-    in.allowed = allowed && !gRoster.empty();
+    in.allowed = allowed && !gRoster.empty() && !gRosterChanged;
     in.button = xHeld;
+    in.moreIndex = gPage.more;
     if (controllers.active) {
         in.stickX = left.stickX;
         in.stickY = left.stickY;
@@ -1747,6 +1771,13 @@ void Tick(double deltaSeconds, Link const& link) {
     }
 
     switch (event) {
+    case pw::Event::PageChanged:
+        ++gPage.index;
+        RefreshRoster(pawn, gShowUnlearned, false);
+        gConsolePick.reset();
+        gLastEvent = std::format("page {}/{}", gPage.index + 1, gPage.pages);
+        if (link.haptic != nullptr && s.haptic > 0) link.haptic(0, 0.035f, s.haptic);
+        break;
     case pw::Event::Opened: {
         ++gOpened;
         gConsolePick.reset();
@@ -2122,6 +2153,10 @@ void Shutdown(Link const& link) {
         link.publish(&closed);
     }
     gMachine = {};
+    gRoster.clear();
+    gFullRoster.clear();
+    gPage = {};
+    gRosterChanged = false;
 }
 
 }  // namespace mevr::game::power_wheel

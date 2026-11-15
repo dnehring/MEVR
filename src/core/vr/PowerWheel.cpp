@@ -567,12 +567,23 @@ Vec2 SeenInPlane(XrPosef const& wheel, XrVector3f eye, XrVector3f source) {
     return InPlane(wheel, source);
 }
 
+Page PowerPage(int powerCount, int requestedPage) {
+    powerCount = std::max(powerCount, 0);
+    if (powerCount <= kMaxEntries - 1) return {0, 1, 0, powerCount, -1};
+    int constexpr capacity = kMaxEntries - 2;
+    int const pages = 1 + (powerCount - 1) / capacity;
+    int const page = std::max(requestedPage, 0) % pages;
+    int const count = std::min(capacity, powerCount - page * capacity);
+    return {page, pages, page * capacity, count, count + 1};
+}
+
 char const* Name(Event event) {
     switch (event) {
     case Event::None: return "none";
     case Event::Opened: return "opened";
     case Event::Equipped: return "equipped";
     case Event::Cancelled: return "cancelled";
+    case Event::PageChanged: return "page changed";
     }
     return "?";
 }
@@ -644,6 +655,19 @@ Event Step(Machine& m, MachineInput const& in, std::vector<float> const& angles,
 
     auto equip = [&]() {
         if (m.selected >= 0) {
+            if (m.selected == in.moreIndex) {
+                // Continue in tap mode after X release or pinch/squeeze, without
+                // letting a held confirmation equip a tile on the new page.
+                m.toggled = true;
+                m.selected = -1;
+                m.equipped = -1;
+                m.selectedAt = in.time;
+                m.stickPicked = true;
+                m.stickHand = in.hand;
+                m.triggerArmed = false;
+                m.gripArmed = false;
+                return Event::PageChanged;
+            }
             m.equipped = m.selected;
             return close(Event::Equipped);
         }
