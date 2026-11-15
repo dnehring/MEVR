@@ -2814,6 +2814,81 @@ void CheckClasses() {
     CheckClass<USFXPowerCustomActionBase>("SFXGame.SFXPowerCustomActionBase");
 }
 
+// The live controller and static conversation data split in LE3. Source: installed SFXGame.pcc.
+// This table supplies native evidence, not permission to inherit LE1's audio/camera paths.
+void CheckLe3Dialogue() {
+    CheckClass<UBioConversation>("SFXGame.BioConversation");
+    CheckClass<UBioConversationController>("SFXGame.BioConversationController");
+    CheckClass<UBioConversationManager>("SFXGame.BioConversationManager");
+    CheckClass<UBioSFHandler_Conversation>("SFXGame.BioSFHandler_Conversation");
+    CheckField("SFXGame.BioWorldInfo", "m_pConversationManager", SDK_FIELD(ABioWorldInfo, m_pConversationManager));
+    CheckField("SFXGame.BioConversationController", "m_pConvData", SDK_FIELD(UBioConversationController, m_pConvData));
+    CheckField("SFXGame.BioConversationController", "m_aCurrentReplyIndices", SDK_FIELD(UBioConversationController, m_aCurrentReplyIndices));
+    CheckField("SFXGame.BioConversationController", "m_pSpeaker", SDK_FIELD(UBioConversationController, m_pSpeaker));
+    CheckField("SFXGame.BioConversationController", "m_pPlayer", SDK_FIELD(UBioConversationController, m_pPlayer));
+    CheckField("SFXGame.BioConversationController", "m_nCurrentEntry", SDK_FIELD(UBioConversationController, m_nCurrentEntry));
+    CheckField("SFXGame.BioConversationController", "m_nSelectedReply", SDK_FIELD(UBioConversationController, m_nSelectedReply));
+    CheckField("SFXGame.BioConversationController", "m_nDelayedReplyChoice", SDK_FIELD(UBioConversationController, m_nDelayedReplyChoice));
+    CheckField("SFXGame.BioConversationController", "m_fRemainingVOAudioLength", SDK_FIELD(UBioConversationController, m_fRemainingVOAudioLength));
+    CheckField("SFXGame.BioConversationController", "m_fShowRepliesOffset", SDK_FIELD(UBioConversationController, m_fShowRepliesOffset));
+    CheckField("SFXGame.BioConversationController", "m_sCurrentSubTitle", SDK_FIELD(UBioConversationController, m_sCurrentSubTitle));
+    CheckField("SFXGame.BioConversation", "m_EntryList", SDK_FIELD(UBioConversation, m_EntryList));
+    CheckField("SFXGame.BioConversation", "m_ReplyList", SDK_FIELD(UBioConversation, m_ReplyList));
+    CheckField("SFXGame.BioSFHandler_Conversation", "m_nSlotsUsed", SDK_FIELD(UBioSFHandler_Conversation, m_nSlotsUsed));
+    CheckField("SFXGame.BioConversationController", "m_bConversationEnded", SDK_BOOL(UBioConversationController, m_bConversationEnded));
+    CheckField("SFXGame.BioSFHandler_Conversation", "m_bDisplayingWheel", SDK_BOOL(UBioSFHandler_Conversation, m_bDisplayingWheel));
+    CheckField("SFXGame.BioSFHandler_Conversation", "m_bDisplayInvestigateSubMenu", SDK_BOOL(UBioSFHandler_Conversation, m_bDisplayInvestigateSubMenu));
+    CheckPath("SFXGame.BioConversation", {"m_EntryList", "ReplyListNew"}, SDK_AT(offsetof(FBioDialogEntryNode, ReplyListNew), 16));
+    CheckPath("SFXGame.BioConversation", {"m_EntryList", "ReplyListNew", "nIndex"}, SDK_AT(offsetof(FBioDialogReplyListDetails, nIndex), 4));
+    CheckPath("SFXGame.BioConversation", {"m_ReplyList", "bUnskippable"}, SDK_BOOL(FBioDialogReplyNode, bUnskippable));
+    CheckPath("SFXGame.BioConversation", {"m_ReplyList", "sText"}, SDK_AT(offsetof(FBioDialogReplyNode, sText), 16));
+    CheckPath("SFXGame.BioConversation", {"m_ReplyList", "srText"}, SDK_AT(offsetof(FBioDialogReplyNode, srText), 4));
+    CheckFunction("SFXGame.BioWorldInfo.GetConversationManager");
+    PARAM(ABioWorldInfo_execGetConversationManager_Parms, "SFXGame.BioWorldInfo.GetConversationManager", ReturnValue);
+    PARMS(ABioWorldInfo_execGetConversationManager_Parms, "SFXGame.BioWorldInfo.GetConversationManager");
+    CheckFunction("SFXGame.BioConversationManager.GetFullConversation");
+    PARAM(UBioConversationManager_execGetFullConversation_Parms, "SFXGame.BioConversationManager.GetFullConversation", ReturnValue);
+    PARMS(UBioConversationManager_execGetFullConversation_Parms, "SFXGame.BioConversationManager.GetFullConversation");
+    CheckFunction("SFXGame.BioConversationController.GetReplyParaphraseText");
+    PARAM(UBioConversationController_execGetReplyParaphraseText_Parms, "SFXGame.BioConversationController.GetReplyParaphraseText", nIndex);
+    PARAM(UBioConversationController_execGetReplyParaphraseText_Parms, "SFXGame.BioConversationController.GetReplyParaphraseText", ReturnValue);
+    PARMS(UBioConversationController_execGetReplyParaphraseText_Parms, "SFXGame.BioConversationController.GetReplyParaphraseText");
+    CheckFunction("SFXGame.BioConversationController.GetReplyCategory");
+    PARAM(UBioConversationController_execGetReplyCategory_Parms, "SFXGame.BioConversationController.GetReplyCategory", nIndex);
+    PARAM(UBioConversationController_execGetReplyCategory_Parms, "SFXGame.BioConversationController.GetReplyCategory", ReturnValue);
+    PARMS(UBioConversationController_execGetReplyCategory_Parms, "SFXGame.BioConversationController.GetReplyCategory");
+    CheckFunction("SFXGame.BioConversationController.GetReplyGUIStyle");
+    PARAM(UBioConversationController_execGetReplyGUIStyle_Parms, "SFXGame.BioConversationController.GetReplyGUIStyle", nIndex);
+    PARAM(UBioConversationController_execGetReplyGUIStyle_Parms, "SFXGame.BioConversationController.GetReplyGUIStyle", ReturnValue);
+    PARMS(UBioConversationController_execGetReplyGUIStyle_Parms, "SFXGame.BioConversationController.GetReplyGUIStyle");
+    CheckFunction("SFXGame.BioConversationController.QueueReply");
+    PARAM(UBioConversationController_execQueueReply_Parms, "SFXGame.BioConversationController.QueueReply", nReply);
+    PARAM(UBioConversationController_execQueueReply_Parms, "SFXGame.BioConversationController.QueueReply", ReturnValue);
+    PARMS(UBioConversationController_execQueueReply_Parms, "SFXGame.BioConversationController.QueueReply");
+    CheckFunction("SFXGame.SFXGUIInteraction.GetConversationHandler");
+    PARAM(USFXGUIInteraction_execGetConversationHandler_Parms, "SFXGame.SFXGUIInteraction.GetConversationHandler", oPlayerController);
+    PARAM(USFXGUIInteraction_execGetConversationHandler_Parms, "SFXGame.SFXGUIInteraction.GetConversationHandler", ReturnValue);
+    PARMS(USFXGUIInteraction_execGetConversationHandler_Parms, "SFXGame.SFXGUIInteraction.GetConversationHandler");
+    CheckFunction("SFXGame.BioSFHandler_Conversation.SelectConversationEntry");
+    PARAM(UBioSFHandler_Conversation_execSelectConversationEntry_Parms, "SFXGame.BioSFHandler_Conversation.SelectConversationEntry", nWheelLocation);
+    PARAM(UBioSFHandler_Conversation_execSelectConversationEntry_Parms, "SFXGame.BioSFHandler_Conversation.SelectConversationEntry", ReturnValue);
+    PARMS(UBioSFHandler_Conversation_execSelectConversationEntry_Parms, "SFXGame.BioSFHandler_Conversation.SelectConversationEntry");
+    CheckFunction("SFXGame.BioSFHandler_Conversation.UpdateConversationOptions");
+    PARAM(UBioSFHandler_Conversation_eventUpdateConversationOptions_Parms, "SFXGame.BioSFHandler_Conversation.UpdateConversationOptions", oConversation);
+    PARMS(UBioSFHandler_Conversation_eventUpdateConversationOptions_Parms, "SFXGame.BioSFHandler_Conversation.UpdateConversationOptions");
+    CheckFunction("SFXGame.BioSFHandler_Conversation.SelectInterrupt");
+    PARAM(UBioSFHandler_Conversation_eventSelectInterrupt_Parms, "SFXGame.BioSFHandler_Conversation.SelectInterrupt", bParagon);
+    PARMS(UBioSFHandler_Conversation_eventSelectInterrupt_Parms, "SFXGame.BioSFHandler_Conversation.SelectInterrupt");
+    CheckFunction("SFXGame.SFXPowerCustomActionBase.GetStringFromStringRef");
+    PARAM(USFXPowerCustomActionBase_execGetStringFromStringRef_Parms, "SFXGame.SFXPowerCustomActionBase.GetStringFromStringRef", TheStringRef);
+    PARAM(USFXPowerCustomActionBase_execGetStringFromStringRef_Parms, "SFXGame.SFXPowerCustomActionBase.GetStringFromStringRef", TheString);
+    PARAM(USFXPowerCustomActionBase_execGetStringFromStringRef_Parms, "SFXGame.SFXPowerCustomActionBase.GetStringFromStringRef", bParse);
+    PARAM(USFXPowerCustomActionBase_execGetStringFromStringRef_Parms, "SFXGame.SFXPowerCustomActionBase.GetStringFromStringRef", nParseIndex);
+    PARMS(USFXPowerCustomActionBase_execGetStringFromStringRef_Parms, "SFXGame.SFXPowerCustomActionBase.GetStringFromStringRef");
+    CheckFunction("SFXGame.BioSFHandler_Conversation.AS_HideWheel");
+    CheckParmsSize("SFXGame.BioSFHandler_Conversation.AS_HideWheel", 0);
+}
+
 void CheckFields() {
     CheckField("Engine.SkeletalMeshComponent", "SkeletalMesh", SDK_FIELD(USkeletalMeshComponent, SkeletalMesh));
     CheckField("Engine.SkeletalMeshComponent", "SpaceBases", SDK_FIELD(USkeletalMeshComponent, SpaceBases));
@@ -2841,6 +2916,7 @@ void CheckFields() {
     CheckField("SFXGame.SFXCameraInput", "CameraSensitivity", SDK_FIELD(USFXCameraInput, CameraSensitivity));
     CheckField("SFXGame.SFXCameraInput", "TimeToReachFullSpeed", SDK_FIELD(USFXCameraInput, TimeToReachFullSpeed));
     CheckField("SFXGame.SFXCameraInput", "StickDeadZone", SDK_FIELD(USFXCameraInput, StickDeadZone));
+    CheckLe3Dialogue();
     CheckField("Engine.Engine", "GamePlayers", SDK_FIELD(UEngine, GamePlayers));
     CheckField("Engine.Player", "Actor", SDK_FIELD(UPlayer, Actor));
     CheckField("Engine.Controller", "Pawn", SDK_FIELD(AController, Pawn));
