@@ -258,6 +258,12 @@ When a child page is already open, the mod sends the game's Back event
 and waits for the browser. This keeps the outgoing page from receiving
 events intended for the newly opened page.
 
+On the wrist, the native child page owns the projection. ME2 can leave one or more Mission Computer movies in the
+native stack after opening a page or returning from it. `WorldUi` hides those background movies with
+`BioSFPanel.SetMovieVisibility` and keeps them in the stack for native Back. The fake-headset run
+`20261115-043419-wrist-visual` captured Mission Computer, Squad and Codex in sequence and verified the underlying menu
+stayed out of both child pages. The tagged eye captures show the native omni-tool gauntlet and its projection together.
+
 **Freedom's Progress Save 4, fake headset, 2026-11-15.** The right ray's
 trigger activated Squad's Back and returned focus to the Mission
 Computer (snapshot `03-42-38-941`). A pose-only replay registered
