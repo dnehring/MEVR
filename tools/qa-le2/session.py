@@ -30,6 +30,10 @@ import uuid
 
 SCHEMA = 1
 
+_contract_spec = importlib.util.spec_from_file_location("mevr_qa_game_contract", Path(__file__).with_name("game_contract.py"))
+game_contract = importlib.util.module_from_spec(_contract_spec)
+_contract_spec.loader.exec_module(game_contract)
+
 
 class SessionError(ValueError):
     pass
@@ -351,6 +355,12 @@ def validate_fixture_selection_text(plan):
 def validate_plan(plan, run, scenario_loader=load_scenario):
     if plan.get("schemaVersion") != SCHEMA:
         raise SessionError("Unknown session plan version")
+    try:
+        # Legacy plans predate the game field and are LE2 only. An explicit LE3
+        # identity must fail before paths, locks, fixture writes or deployment.
+        contract = game_contract.require_session_game(plan.get("game", "LE2"))
+    except ValueError as exc:
+        raise SessionError(str(exc)) from exc
     if not isinstance(plan.get("coordinatedOwner"), str) or not plan["coordinatedOwner"].strip():
         raise SessionError("coordinatedOwner must identify the explicitly coordinated session owner")
     validate_fixture_selection_text(plan)
@@ -361,14 +371,14 @@ def validate_plan(plan, run, scenario_loader=load_scenario):
         raise SessionError("Use a new run directory")
     if not profile.is_dir():
         raise SessionError("Complete MELE profile root must exist")
-    exe = safe_path(game / "Game/ME2/Binaries/Win64/MassEffect2.exe")
+    exe = safe_path(game / contract["exe"])
     if not exe.is_file() or digest(exe) != plan.get("exeSha256", "").lower():
         raise SessionError("Reviewed LE2 executable hash mismatch")
     frozen = safe_path(plan["fixture"]["path"])
     if not frozen.is_file() or digest(frozen) != plan["fixture"].get("sha256", "").lower():
         raise SessionError("Prepared fixture hash mismatch")
     target = relative_file(profile, plan["fixture"]["targetRelativePath"])
-    if target.suffix.lower() != ".pcsav" or not inside(target, profile / "Save/ME2"):
+    if target.suffix.lower() != ".pcsav" or not inside(target, profile / contract["save_root"]):
         raise SessionError("Fixture target must be a .pcsav beneath profileRoot/Save/ME2")
     if target.exists():
         raise SessionError("Fixture target must be a new dedicated save slot")
@@ -376,17 +386,20 @@ def validate_plan(plan, run, scenario_loader=load_scenario):
     if digest(scenario_path) != plan["scenario"].get("sha256", "").lower():
         raise SessionError("Scenario hash mismatch")
     scenario = scenario_loader(scenario_path)
+    if scenario.get("game", "LE2") != contract["game"]:
+        raise SessionError("Scenario game does not match the session game")
     recipe = safe_path(plan["recipePath"])
     receipt_path = safe_path(plan["fixture"]["receiptPath"])
     receipt = read_json(receipt_path)
-    if (receipt.get("schema_version") != 1 or receipt.get("operation") != "prepare" or
-            receipt.get("game") != "LE2" or receipt.get("save_version") != 30 or
-            receipt.get("input_sha256") != scenario["fixture"]["baseSaveSha256"] or
-            receipt.get("output_sha256") != digest(frozen) or
-            receipt.get("recipe_sha256") != digest(recipe) or
-            digest(recipe) != scenario["recipe"]["sha256"]):
-        raise SessionError("Preparation receipt does not bind the scenario base, recipe and prepared fixture")
-    protected = [profile, game / "Game/ME2/BioGame/Config", game / "Game/ME2/Binaries/Win64"]
+    try:
+        game_contract.validate_preparation_receipt(receipt, contract["game"],
+            input_sha256=scenario["fixture"]["baseSaveSha256"], output_sha256=digest(frozen),
+            recipe_sha256=digest(recipe))
+        if digest(recipe) != scenario["recipe"]["sha256"]:
+            raise ValueError("Scenario recipe hash differs")
+    except ValueError as exc:
+        raise SessionError(f"Preparation receipt does not bind the scenario base, recipe and prepared fixture: {exc}") from exc
+    protected = [profile, game / contract["config"], game / contract["bin"]]
     protected.extend(safe_path(p) for p in plan.get("additionalProtectedPaths", []))
     protected = [safe_path(p) for p in protected]
     for i, path in enumerate(protected):
