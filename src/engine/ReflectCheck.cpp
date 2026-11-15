@@ -15,7 +15,8 @@
 // The reference side (LExSDKv2): development builds only. A players' build (MEVR_NO_LESDK, the release ASI) has no
 // LExSDKv2 in it at all (research/34 stage 6 for LE1): the cross-check is skipped, our layer runs on its own. LE2 since
 // its layout (docs/le2-continuation-plan.md M1): the same check, over the classes, fields and functions LE2 reads.
-#if (defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)) && !defined(MEVR_NO_LESDK)
+// LE3 has its own foundation table (L3-1), inert until its reflection layout passes the runtime gate.
+#if (defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)) && !defined(MEVR_NO_LESDK)
 #define MEVR_REFLECT_CHECK 1
 #include <LESDK/Headers.hpp>
 #include <LESDK/Init.hpp>
@@ -2075,7 +2076,7 @@ void CheckParams() {
     PARMS(USFXGameModeWeaponWheel_execExitWeaponWheel_Parms, "SFXGame.SFXGameModeWeaponWheel.ExitWeaponWheel");
 }
 
-#else  // LE2 (M1, docs/le2-continuation-plan.md): what LE2 reads through our layer today
+#elif defined(MEVR_GAME_LE2)  // M1: what LE2 reads through our layer today
 
 // The classes behind the reads engine/Legacy made until M1 (the player controller, its pawn, the game mode, the camera, the
 // world), the console, the reflection fix's capture class, and the equipped weapon of the LE2 observers (lane C's first
@@ -2773,7 +2774,70 @@ void CheckTraversal() {
     PARAM(AActor_execSetLocation_Parms, "Engine.Actor.SetLocation", NewLocation);
 }
 
-#endif  // LE1 / LE2 tables
+#elif defined(MEVR_GAME_LE3)
+
+// L3-1: metadata comparisons only, not an assertion that any gameplay adapter is ready.
+// The common Run gate requires runtime::Up(); the default LE3 layout remains disabled until
+// native discovery is complete. These rows use the LE3 SDK as an independent comparison side.
+void CheckClasses() {
+    CheckClass<UObject>("Core.Object");
+    CheckClass<UFunction>("Core.Function");
+    CheckClass<UClass>("Core.Class");
+    CheckClass<UProperty>("Core.Property");
+    CheckClass<UBoolProperty>("Core.BoolProperty");
+    CheckClass<UStructProperty>("Core.StructProperty");
+    CheckClass<UObjectProperty>("Core.ObjectProperty");
+    CheckClass<UArrayProperty>("Core.ArrayProperty");
+    CheckClass<AActor>("Engine.Actor");
+    CheckClass<APawn>("Engine.Pawn");
+    CheckClass<UEngine>("Engine.Engine");
+    CheckClass<UWorld>("Engine.World");
+    CheckClass<ABioPlayerController>("SFXGame.BioPlayerController");
+    CheckClass<USFXGameModeManager>("SFXGame.SFXGameModeManager");
+    CheckClass<ASFXWeapon>("SFXGame.SFXWeapon");
+}
+
+void CheckFields() {
+    CheckField("Engine.Engine", "GamePlayers", SDK_FIELD(UEngine, GamePlayers));
+    CheckField("Engine.Player", "Actor", SDK_FIELD(UPlayer, Actor));
+    CheckField("Engine.Controller", "Pawn", SDK_FIELD(AController, Pawn));
+    CheckField("Engine.Actor", "WorldInfo", SDK_FIELD(AActor, WorldInfo));
+    CheckField("Engine.Actor", "Location", SDK_FIELD(AActor, location));
+    CheckField("Engine.Pawn", "Weapon", SDK_FIELD(APawn, Weapon));
+    CheckField("SFXGame.BioPlayerController", "GameModeManager2", SDK_FIELD(ABioPlayerController, GameModeManager2));
+    CheckField("SFXGame.SFXGameModeManager", "CurrentMode", SDK_FIELD(USFXGameModeManager, CurrentMode));
+    CheckField("SFXGame.SFXGameModeManager", "GameModes", SDK_FIELD(USFXGameModeManager, GameModes));
+    CheckField("SFXGame.SFXWeapon", "MagSize", SDK_FIELD(ASFXWeapon, MagSize));
+    CheckField("SFXGame.SFXWeapon", "AmmoUsedCount", SDK_FIELD(ASFXWeapon, AmmoUsedCount));
+    CheckField("SFXGame.SFXWeapon", "CurrentSpareAmmo", SDK_FIELD(ASFXWeapon, CurrentSpareAmmo));
+    CheckField("SFXGame.SFXWeapon", "bWeaponCanBeReloaded", SDK_BOOL(ASFXWeapon, bWeaponCanBeReloaded));
+}
+
+void CheckPaths() {
+    CheckPath("SFXGame.SFXWeapon", {"MagSize", "Value"},
+        SDK_AT(offsetof(ASFXWeapon, MagSize) + offsetof(FScaledFloat, Value), sizeof(FScaledFloat::Value)));
+}
+
+void CheckSkeleton() {}  // L3-3 owns pose layout discovery; no skeletal write path enabled here.
+
+void CheckFunctions() {
+    CheckFunction("SFXGame.SFXWeapon.GetMagazineSize");
+    CheckFunction("SFXGame.SFXWeapon.GetCurrentSpareAmmo");
+    CheckFunction("Engine.PlayerController.ConsoleCommand");
+}
+
+void CheckParams() {
+    PARAM(ASFXWeapon_execGetMagazineSize_Parms, "SFXGame.SFXWeapon.GetMagazineSize", ReturnValue);
+    PARMS(ASFXWeapon_execGetMagazineSize_Parms, "SFXGame.SFXWeapon.GetMagazineSize");
+    PARAM(ASFXWeapon_execGetCurrentSpareAmmo_Parms, "SFXGame.SFXWeapon.GetCurrentSpareAmmo", ReturnValue);
+    PARMS(ASFXWeapon_execGetCurrentSpareAmmo_Parms, "SFXGame.SFXWeapon.GetCurrentSpareAmmo");
+    PARAM(APlayerController_execConsoleCommand_Parms, "Engine.PlayerController.ConsoleCommand", Command);
+    PARAM(APlayerController_execConsoleCommand_Parms, "Engine.PlayerController.ConsoleCommand", bWriteToLog);
+    PARAM(APlayerController_execConsoleCommand_Parms, "Engine.PlayerController.ConsoleCommand", ReturnValue);
+    PARMS(APlayerController_execConsoleCommand_Parms, "Engine.PlayerController.ConsoleCommand");
+}
+
+#endif  // per-game metadata tables
 
 // Names, full names, IsA and IsAlive over a spread of GObjects, both ways.
 void CheckSamples() {
@@ -3017,11 +3081,11 @@ void Run(hook::Context& context) {
     Write(agree, mismatches, notReflected);
 }
 
-#elif defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
+#elif defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 
 void Run(hook::Context&) {
     log::Info("reflect: no LExSDKv2 cross-check in this build (a players' build has no LExSDKv2 in it); our reflection layer "
-              "runs on its own and each feature stands down with a log line if a lookup fails");
+              "requires a supported game layout and each feature stands down with a log line if a lookup fails");
 }
 
 #else
