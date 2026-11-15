@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "game/Le3Gui.hpp"
 #include "game/Player.hpp"
+#include "core/vr/GfxTransformProbe.hpp"
 #include "ue3/Handles.hpp"
 #include "ue3/Runtime.hpp"
 #include "ue3/Memory.hpp"
@@ -80,6 +81,15 @@ std::string HudReport(bool parents) {
         auto const v = p.Return<float>();
         return v && std::isfinite(*v) ? v : std::nullopt;
     };
+    auto position = [&](ue3::Object* object) -> std::optional<std::array<float, 2>> {
+        if (!ue3::runtime::IsAlive(object) || !gValue.Get() || !r.IsA(object, gValue.Get())) return std::nullopt;
+        auto* fn = gPosition.Get();
+        ue3::Params p(r, fn);
+        if (!p.Valid() || !ue3::runtime::Call(object, fn, p) || !p.ReturnBool().value_or(false)) return std::nullopt;
+        auto const x = p.Get<float>("X"), y = p.Get<float>("Y");
+        if (!x || !y || !std::isfinite(*x) || !std::isfinite(*y)) return std::nullopt;
+        return std::array<float, 2>{*x, *y};
+    };
     auto text = [](std::optional<float> value) { return value ? std::format("{:.3f}", *value) : std::string("unavailable"); };
     std::string out = std::format("ME3 HUD: {} tag={} stage={}x{}; local clip bounds only, crop NOT accepted; no native UI changed",
         r.FullName(hud), Tag(hud), text(number(hud, L"Stage.width", true)), text(number(hud, L"Stage.height", true)));
@@ -109,15 +119,15 @@ std::string HudReport(bool parents) {
     for (unsigned i = 0; i < std::size(clips); ++i) {
         auto* clip = clips[i].Read<ue3::Object*>(hud).value_or(nullptr);
         if (!ue3::runtime::IsAlive(clip)) { out += std::format("\n  {} unavailable", names[i]); continue; }
-        ue3::Params at(r, gPosition.Get());
-        bool const positioned = at.Valid() && ue3::runtime::Call(clip, gPosition.Get(), at) && at.ReturnBool().value_or(false);
+        auto const at = position(clip);
+        if (!at) { out += std::format("\n  {} not a proven display object (GetPosition failed); skipped", names[i]); continue; }
         ue3::Params visible(r, gBool.Get());
         ue3::memory::OwnedString key(L"_visible");
         bool const readVisible = visible.Valid() && key.Valid() && visible.Set("member", key.Get()) &&
             ue3::runtime::Call(clip, gBool.Get(), visible);
         auto const shown = readVisible ? visible.ReturnBool() : std::nullopt;
         out += std::format("\n  {} x={} y={} width={} height={} alpha={} visible={}", names[i],
-            text(positioned ? at.Get<float>("X") : std::nullopt), text(positioned ? at.Get<float>("Y") : std::nullopt),
+            text((*at)[0]), text((*at)[1]),
             text(number(clip, L"_width")), text(number(clip, L"_height")), text(number(clip, L"_alpha")),
             shown ? (*shown ? "true" : "false") : "unavailable");
         if (parents) {
@@ -132,19 +142,32 @@ std::string HudReport(bool parents) {
                 for (unsigned prior = 0; prior < depth; ++prior) repeated |= visited[prior] == current;
                 if (repeated) { out += "\n    parent chain repeated; stopped"; break; }
                 visited[depth] = current;
-                out += std::format("\n    depth={} x={} y={} xscale={} yscale={} rotation={} alpha={}", depth,
-                    text(number(current, L"_x")), text(number(current, L"_y")),
+                // GetObject may return a live UObject wrapper for a non-display ActionScript
+                // object. GetDisplayMatrix has no success bit and produced finite garbage there.
+                auto const currentAt = position(current);
+                if (!currentAt) {
+                    out += std::format("\n    depth={} GetPosition=failed; non-display/invalid parent; stopped before matrix/member getters", depth);
+                    break;
+                }
+                out += std::format("\n    depth={} GetPosition=ok x={} y={} xscale={} yscale={} rotation={} alpha={}", depth,
+                    text((*currentAt)[0]), text((*currentAt)[1]),
                     text(number(current, L"_xscale")), text(number(current, L"_yscale")),
                     text(number(current, L"_rotation")), text(number(current, L"_alpha")));
                 ue3::Params matrix(r, gMatrix.Get());
                 if (matrix.Valid() && ue3::runtime::Call(current, gMatrix.Get(), matrix)) {
                     auto const values = matrix.Return<std::array<float, 16>>();
-                    bool finite = values.has_value();
-                    if (values) for (float v : *values) finite = finite && std::isfinite(v);
-                    if (finite) {
-                        out += " matrix=";
-                        for (unsigned j = 0; j < values->size(); ++j)
-                            out += std::format("{}{:.3f}", j == 0 ? "" : ",", (*values)[j]);
+                    if (values) {
+                        namespace probe = vr::gfx_transform_probe;
+                        auto const checked = probe::Check(true, (*currentAt)[0], (*currentAt)[1], *values);
+                        out += std::format(" matrix={}", probe::Name(checked));
+                        if (checked == probe::Result::Consistent) {
+                            out += " raw=";
+                            for (unsigned j = 0; j < values->size(); ++j)
+                                out += std::format("{}{:.3f}", j == 0 ? "" : ",", (*values)[j]);
+                        } else {
+                            out += std::format(" rejected tx={:.5g} ty={:.5g} w={:.5g}; no transform derived",
+                                (*values)[12], (*values)[13], (*values)[15]);
+                        }
                     } else out += " matrix=unavailable";
                 } else out += " matrix=unavailable";
                 ue3::Params parent(r, gObject.Get());

@@ -12144,6 +12144,7 @@ int RunThespianTests();
 int RunTraversalTests();
 int RunTraversalPresentationTests();
 int RunRendererRequestTests();
+int RunGfxTransformProbeTests();
 int RunMeleeTests();
 int RunScreenMatrixTests();
 // tests/ConversationWorldTests.cpp: conversations in the world (research/59).
@@ -12366,6 +12367,7 @@ int main() {
     gFailures += RunTraversalTests();
     gFailures += RunTraversalPresentationTests();
     gFailures += RunRendererRequestTests();
+    gFailures += RunGfxTransformProbeTests();
     gFailures += RunMeleeTests();
     gFailures += RunScreenMatrixTests();
     gFailures += RunConversationWorldTests();

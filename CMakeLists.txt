@@ -1381,6 +1381,7 @@ if (MEVR_BUILD_TESTS)
         tests/TraversalTests.cpp
         tests/TraversalPresentationTests.cpp
         tests/RendererRequestTests.cpp
+        tests/GfxTransformProbeTests.cpp
         tests/MeleeTests.cpp
         src/core/vr/VoiceGesture.cpp
         tests/CockpitPanelTests.cpp
