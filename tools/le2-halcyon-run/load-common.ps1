@@ -45,7 +45,17 @@ function Test-LoadTransition($Before, $Current, [string]$Game) {
     }
     return $Game -eq 'LE2' -and $Before.world -ne $Current.world
 }
-function Assert-LoadMode($Session, [string]$Game) {
+function Assert-LoadMode($Session, [string]$Game, [bool]$RendererPreview = $false) {
+    if ($RendererPreview) {
+        if ($Game -ne 'LE3') { throw 'RendererPreview loading is LE3 only' }
+        foreach ($flag in @('desktopDump', 'engineProbe', 'engineRequests', 'rendererPreview')) {
+            if (-not $Session.PSObject.Properties[$flag] -or $Session.$flag -isnot [bool] -or
+                $Session.$flag -ne ($flag -eq 'rendererPreview')) { throw 'Preview load mode metadata mismatch' }
+        }
+        return
+    }
+    if ($Session.PSObject.Properties['rendererPreview'] -and
+        ($Session.rendererPreview -isnot [bool] -or $Session.rendererPreview)) { throw 'Preview session requires explicit RendererPreview load flag' }
     if ($Game -eq 'LE3') {
         foreach ($flag in @('desktopDump', 'engineProbe', 'engineRequests')) {
             if (-not $Session.PSObject.Properties[$flag] -or $Session.$flag -isnot [bool] -or -not $Session.$flag) {

@@ -8,7 +8,7 @@ Import-Module "$PSHOME\Modules\Microsoft.PowerShell.Utility\Microsoft.PowerShell
 . "$PSScriptRoot\session-common.ps1"
 $count = 0
 function Check([bool]$Value) { if (-not $Value) { throw 'Assertion failed' } }
-function Reject([scriptblock]$Action) { try { & $Action | Out-Null } catch { return }; throw 'Expected refusal' }
+function Reject([scriptblock]$Action) { try { & $Action | Out-Null } catch { return }; throw "Expected refusal: $Action" }
 function Case([string]$Name, [scriptblock]$Action) { & $Action; $script:count++; "PASS $Name" }
 function With-ProcessObservations([object[]]$Sequence, [scriptblock]$Action) {
     $observations = New-Object Collections.Queue
@@ -36,7 +36,7 @@ try {
         } finally { $writer.Dispose() }
     }
     Case 'scripts parse in Windows PowerShell' {
-        foreach ($name in @('session-common', 'run-lock', 'prep', 'launch', 'restore')) {
+        foreach ($name in @('session-common', 'run-lock', 'prep', 'launch', 'restore', 'load', 'load-common', '..\vr-game-settings')) {
             $tokens = $null; $errors = $null
             [Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot "$name.ps1"), [ref]$tokens, [ref]$errors) | Out-Null
             Check (-not $errors)
@@ -239,6 +239,126 @@ try {
         [IO.File]::WriteAllText("$root\host.asi", 'engine-probe: host renderer disabled')
         Assert-RunDumpHost "$root\host.asi" $true
         Reject { Assert-RunDumpHost "$root\host.asi" $false }
+    }
+    Case 'preview is explicit LE3-only mode and rejects mixed or false metadata' {
+        Assert-RunMode LE3 $false $false $false $true
+        foreach ($flags in @(@($true,$false,$false), @($false,$true,$false), @($false,$false,$true))) {
+            Reject { Assert-RunMode LE3 $flags[0] $flags[1] $flags[2] $true }
+        }
+        Reject { Assert-RunMode LE2 $false $false $false $true }
+        $session = [pscustomobject]@{holder='owner';game='LE3';desktopDump=$false;engineProbe=$false;engineRequests=$false;rendererPreview=$true}
+        Assert-RunSession $session owner LE3 $false $false $false $true
+        Reject { Assert-RunSession $session intruder LE3 $false $false $false $true }
+        Reject { Assert-RunSession $session owner LE3 $true $true $true }
+        foreach ($field in @('desktopDump','engineProbe','engineRequests','rendererPreview')) {
+            $saved = $session.$field; $session.$field = 'false'
+            Reject { Assert-RunSession $session owner LE3 $false $false $false $true }
+            $session.$field = $saved
+        }
+        $session.PSObject.Properties.Remove('engineRequests')
+        Reject { Assert-RunSession $session owner LE3 $false $false $false $true }
+        foreach ($script in @('prep','launch','restore')) {
+            Reject { & "$PSScriptRoot\$script.ps1" -Holder synthetic -Game LE3 -RendererPreview -DesktopDump }
+        }
+    }
+    Case 'preview request quarantine preserves replay input bytes and original absence' {
+        $channel = Join-Path $root 'preview-channel'; $sessionDir = Join-Path $root 'preview-channel-session'
+        New-Item -ItemType Directory $channel,$sessionDir | Out-Null
+        $request = Join-Path $channel 'replay.request'; $snapshot = Join-Path $channel 'snapshot.request'
+        [IO.File]::WriteAllBytes($request, [byte[]]@(239,187,191,105,110,112,117,116,115,61,49,13,10))
+        $hash = (Get-FileHash -LiteralPath $request).Hash
+        [IO.File]::WriteAllText((Join-Path $channel 'unknown.request'), 'not ours')
+        $session = [pscustomobject]@{session=$sessionDir}; $currentFile=Join-Path $root 'preview-channel-current.json'
+        Backup-RunConsole $session $currentFile $channel -Names (Get-PreviewChannels) -Metadata previewChannelsBefore -Directory preview-channels-before
+        Check (-not (Test-Path -LiteralPath $request))
+        [IO.File]::WriteAllText($request,'a different replay with inputs'); [IO.File]::WriteAllText($snapshot,'capture')
+        Backup-RunConsole $session $currentFile $channel -Names (Get-PreviewChannels) -Metadata previewChannelsBefore -Directory preview-channels-before
+        Check (-not (Test-Path -LiteralPath $request))
+        Restore-RunConsole $session $channel -Names (Get-PreviewChannels) -Metadata previewChannelsBefore -Directory preview-channels-before
+        Check ((Get-FileHash -LiteralPath $request).Hash -eq $hash)
+        Check (-not (Test-Path -LiteralPath $snapshot))
+        Check ([IO.File]::ReadAllText((Join-Path $channel 'unknown.request')) -eq 'not ours')
+    }
+    Case 'preview exact environment restores bytes absence and rejects corrupt backup before mutation' {
+        $envRoot=Join-Path $root 'environment'; $sessionDir=Join-Path $root 'env-session'
+        New-Item -ItemType Directory $envRoot,$sessionDir | Out-Null
+        $paths=[ordered]@{null=(Join-Path $envRoot 'null.json');steam=(Join-Path $envRoot 'steam.json');chaperone=(Join-Path $envRoot 'chap.json');le1=(Join-Path $envRoot 'le1.ini')}
+        [IO.File]::WriteAllText($paths.null,'{"driver_null":{"enable":false}}')
+        [IO.File]::WriteAllText($paths.steam,' { "custom" : 12 } ')
+        [IO.File]::WriteAllText($paths.le1,"[Debug]`r`nopenxrRuntime = OriginalXR`r`n")
+        $rows=@(Backup-PreviewEnvironment $sessionDir $paths)
+        $session=[pscustomobject]@{session=$sessionDir;previewEnvironment=$rows}
+        foreach ($path in $paths.Values) { [IO.File]::WriteAllText($path,'changed by fake session') }
+        Restore-PreviewEnvironment $session $paths
+        Check (-not (Test-Path -LiteralPath $paths.chaperone))
+        Check ([IO.File]::ReadAllText($paths.steam) -ceq ' { "custom" : 12 } ')
+        Check ([IO.File]::ReadAllText($paths.le1).Contains('OriginalXR'))
+        $before=(Get-FileHash -LiteralPath $paths.null).Hash
+        [IO.File]::WriteAllText((Join-Path $sessionDir 'preview-environment\steam'),'corrupt')
+        Reject { Restore-PreviewEnvironment $session $paths }
+        Check ((Get-FileHash -LiteralPath $paths.null).Hash -eq $before)
+    }
+    Case 'preview refuses an existing fake owner and running VR without changing files' {
+        $envRoot=Join-Path $root 'idle-environment'; New-Item -ItemType Directory $envRoot | Out-Null
+        $paths=[ordered]@{null=(Join-Path $envRoot 'null.json');steam=(Join-Path $envRoot 'steam.json')}
+        [IO.File]::WriteAllText($paths.null,'{"driver_null":{"enable":false}}')
+        [IO.File]::WriteAllText($paths.steam,'{"steamvr":{}}')
+        $undo=Join-Path $envRoot 'undo.json'
+        function Get-Process { param($Name,$ErrorAction); return $null }
+        Assert-PreviewIdle $paths $undo
+        [IO.File]::WriteAllText($undo,'{}'); Reject { Assert-PreviewIdle $paths $undo }; Remove-Item -LiteralPath $undo
+        [IO.File]::WriteAllText($paths.steam,'{"steamvr":{"forcedDriver":"null"}}'); Reject { Assert-PreviewIdle $paths $undo }
+        [IO.File]::WriteAllText($paths.steam,'{"steamvr":{}}')
+        function Get-Process { param($Name,$ErrorAction); return [pscustomobject]@{Id=99} }
+        Reject { Assert-PreviewIdle $paths $undo }
+    }
+    Case 'preview configuration and artifact hashes bind actual host and module' {
+        $bin=Join-Path $root 'preview-bin'; New-Item -ItemType Directory (Join-Path $bin 'ASI') | Out-Null
+        [IO.File]::WriteAllText((Join-Path $bin 'ASI\LE3MEVR.ini'),(Get-PreviewModConfig))
+        [IO.File]::WriteAllText((Join-Path $bin 'MELE3VR.ini'),(Get-PreviewRendererConfig))
+        [IO.File]::WriteAllText((Join-Path $bin 'MassEffect3.exe'),'synthetic exe')
+        [IO.File]::WriteAllText((Join-Path $bin 'ASI\LE3MEVR.asi'),'synthetic host')
+        $module=Join-Path $bin 'module.dll'; [IO.File]::WriteAllText($module,'synthetic module')
+        [IO.File]::WriteAllText((Join-Path $bin 'ASI\LE3MEVR.modpath'),$module)
+        Assert-PreviewConfig $bin
+        $artifacts=@(Get-PreviewArtifacts $bin); Check ($artifacts.Count -eq 6); Assert-RunArtifacts $artifacts
+        [IO.File]::WriteAllText($module,'new module'); Reject { Assert-RunArtifacts $artifacts }
+        [IO.File]::AppendAllText((Join-Path $bin 'ASI\LE3MEVR.ini'),"`r`nengineProbe=1")
+        Reject { Assert-PreviewConfig $bin }
+        Check ((Get-RunRendererLog LE3).EndsWith('MELEVR\ME3PassiveDxgiProbe.log'))
+    }
+    Case 'renderer readiness marker must be fresh rather than replayed old log content' {
+        $path=Join-Path $root 'preview.log'; $marker='[ME3XR] VR session ready; starting frame submission.'
+        [IO.File]::WriteAllText($path,$marker); $started=[DateTime]::UtcNow.AddSeconds(-1)
+        Check (-not (Test-RunFreshMarker $path $marker $started $marker))
+        [IO.File]::AppendAllText($path,"`nnew unrelated line")
+        Check (-not (Test-RunFreshMarker $path $marker $started $marker))
+        [IO.File]::AppendAllText($path,"`n$marker")
+        Check (Test-RunFreshMarker $path $marker $started $marker)
+        Check (-not (Test-RunFreshMarker $path '' ([DateTime]::UtcNow.AddMinutes(1)) $marker))
+    }
+    Case 'preview VR adoption rejects replaced PID time path and unowned helpers' {
+        $when=[DateTime]::UtcNow
+        $server=[pscustomobject]@{Id=100;ProcessName='vrserver';Path='C:\Program Files (x86)\Steam\steamapps\common\SteamVR\bin\win64\vrserver.exe';StartTime=$when;HasExited=$false}
+        $processSet=@($server)
+        function Get-Process {
+            param($Name,[int]$Id,$ErrorAction)
+            if ($PSBoundParameters.ContainsKey('Id')) { return @($processSet | Where-Object { $_.Id -eq $Id }) }
+            return $processSet
+        }
+        $session=[pscustomobject]@{previewStartedUtc=$when.AddSeconds(-1).ToString('o')}
+        $recorded=@(Get-PreviewVrProcesses $session $true); Check ($recorded.Count -eq 1)
+        $session | Add-Member -NotePropertyName previewProcesses -NotePropertyValue $recorded
+        Check (@(Get-PreviewVrProcesses $session).Count -eq 1)
+        $server.Id=101; Reject { Get-PreviewVrProcesses $session $true }; $server.Id=100
+        $server.StartTime=$when.AddSeconds(1); Reject { Get-PreviewVrProcesses $session $true }; $server.StartTime=$when
+        $oldPath=$server.Path; $server.Path='C:\other\vrserver.exe'; Reject { Get-PreviewVrProcesses $session $true }; $server.Path=$oldPath
+        $helper=[pscustomobject]@{Id=102;ProcessName='vrcompositor';Path='C:\Program Files (x86)\Steam\steamapps\common\SteamVR\bin\win64\vrcompositor.exe';StartTime=$when;HasExited=$false}
+        $processSet=@($server,$helper)
+        Reject { Get-PreviewVrProcesses $session }
+        Check (@(Get-PreviewVrProcesses $session $true).Count -eq 2)
+        $processSet=@($helper); Reject { Get-PreviewVrProcesses $session $true }
+        $processSet=@($server,$server); Reject { Get-PreviewVrProcesses $session $true }
     }
     "$count offline runner tests passed"
 } finally {

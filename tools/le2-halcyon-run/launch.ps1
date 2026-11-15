@@ -6,13 +6,16 @@ param(
     [switch]$DesktopDump,
     [switch]$EngineProbe,
     [switch]$EngineRequests,
+    [switch]$RendererPreview,
+    [ValidateRange(10, 600)][int]$LaunchTimeoutSeconds = 240,
+    [ValidateRange(10, 300)][int]$ReadyTimeoutSeconds = 80,
     [switch]$Kill,
     [switch]$Stop
 )
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\session-common.ps1"
-Assert-RunMode $Game ([bool]$DesktopDump) ([bool]$EngineProbe) ([bool]$EngineRequests)
-$open = Read-RunSession $Holder $Game ([bool]$DesktopDump) ([bool]$EngineProbe) ([bool]$EngineRequests)
+Assert-RunMode $Game ([bool]$DesktopDump) ([bool]$EngineProbe) ([bool]$EngineRequests) ([bool]$RendererPreview)
+$open = Read-RunSession $Holder $Game ([bool]$DesktopDump) ([bool]$EngineProbe) ([bool]$EngineRequests) ([bool]$RendererPreview)
 . "$PSScriptRoot\..\common.ps1"
 $names = Get-RunNames $Game
 $install = (Find-MELEInstall).Root
@@ -46,24 +49,49 @@ if ($DesktopDump) {
     # Prep writes this minimal file. Refuse modifications/duplicates that could select a different mode.
     Assert-RunDesktopConfig $config ([bool]$EngineProbe) ([bool]$EngineRequests)
 }
+if ($RendererPreview) {
+    Assert-PreviewConfig $bin
+    Assert-RunArtifacts $open.previewArtifacts
+    Assert-PreviewEnvironment $open (Get-PreviewPaths)
+    if (Test-Path -LiteralPath (Join-Path $env:LOCALAPPDATA 'MEVR\fake-headset\undo.json')) { throw 'Another fake-headset session appeared' }
+    $open | Add-Member -NotePropertyName previewProcesses -NotePropertyValue @(Get-PreviewVrProcesses $open $true) -Force
+    if (-not @($open.previewProcesses | Where-Object { $_.name -eq 'vrserver' }).Count) { throw 'No owned preview VR server' }
+    Write-RunSession $open $names.current
+    Backup-RunConsole $open $names.current (Join-Path $env:LOCALAPPDATA 'MEVR')
+    Backup-RunConsole $open $names.current (Join-Path $env:LOCALAPPDATA 'MEVR') -Names (Get-PreviewChannels) -Metadata 'previewChannelsBefore' -Directory 'preview-channels-before'
+}
 if (-not $DesktopDump) {
     $vr = $null
     for ($i = 0; $i -lt 30 -and -not $vr; $i++) { $vr = Get-Process vrserver -ErrorAction SilentlyContinue; if (-not $vr) { Start-Sleep 1 } }
-    if (-not $vr) { throw 'SteamVR is not running (LE2 prep turns the fake headset on)' }
+    if (-not $vr) { throw 'SteamVR is not running (VR prep turns the owned fake headset on)' }
     $wait = 16 - ((Get-Date) - $vr.StartTime).TotalSeconds
     if ($wait -gt 0) { Start-Sleep -Seconds ([int][math]::Ceiling($wait)) }
 }
-$log = if ($DesktopDump) { Join-Path $bin "Logs\${Game}MEVR.log" } else { Join-Path $env:LOCALAPPDATA 'MELE2VR\MELE2VR_Log.txt' }
-$oldLog = if (Test-Path -LiteralPath $log) { Read-RunLog $log } else { '' }
+$log = if ($DesktopDump) { Join-Path $bin "Logs\${Game}MEVR.log" } else { Get-RunRendererLog $Game }
+$logs = @($log)
+if ($RendererPreview) { $logs += Join-Path $bin 'ME3PassiveDxgiProbe.log' } # actual logger fallback
+$oldLogs = @{}
+foreach ($path in $logs) { $oldLogs[$path] = if (Test-Path -LiteralPath $path) { Read-RunLog $path } else { '' } }
 $started = [DateTime]::UtcNow
 $open | Add-Member -NotePropertyName launchRequestedUtc -NotePropertyValue $started.ToString('o') -Force
 $open | Add-Member -NotePropertyName gameProcess -NotePropertyValue $null -Force
 $open | Add-Member -NotePropertyName launcherProcess -NotePropertyValue $null -Force
 Write-RunSession $open $names.current
+$previewReceipt = if ($RendererPreview) { [ordered]@{ schemaVersion = 1; game = 'LE3'; rendererPreview = $true;
+    holder = $Holder; session = $open.session; launchRequestedUtc = $started.ToString('o'); artifactsBefore = $open.previewArtifacts;
+    marker = '[ME3XR] VR session ready; starting frame submission.'; freshMarker = $false; stereoAccepted = $false;
+    physicalHeadsetAccepted = $false; error = $null } } else { $null }
+try {
+Assert-RunLock $Holder
+if ($RendererPreview) {
+    $open.previewProcesses = @(Get-PreviewVrProcesses $open $true)
+    if (-not @($open.previewProcesses | Where-Object { $_.name -eq 'vrserver' }).Count) { throw 'Owned preview VR server exited before launch' }
+    Write-RunSession $open $names.current
+}
 Start-Process -WindowStyle Hidden -FilePath 'C:\Program Files (x86)\Steam\steam.exe' -ArgumentList '-applaunch', '1328670', '-game', $names.number, '-autoterminate'
 "Asked Steam for $Game at $(Get-Date -Format HH:mm:ss)"
 $p = $null
-for ($i = 0; $i -lt 120 -and -not $p; $i++) {
+for ($i = 0; $i -lt [math]::Ceiling($LaunchTimeoutSeconds / 2) -and -not $p; $i++) {
     $launchers = @(Get-Process MassEffectLauncher -ErrorAction SilentlyContinue)
     if ($launchers.Count -gt 1) { throw 'Multiple launchers appeared; refusing to adopt them' }
     foreach ($launcher in $launchers) {
@@ -84,21 +112,24 @@ for ($i = 0; $i -lt 120 -and -not $p; $i++) {
     }
     if (-not $p) { Start-Sleep 2 }
 }
-if (-not $p) { throw "No $($names.process) within 240 seconds; keep the session locked and inspect it" }
+if (-not $p) { throw "No $($names.process) within $LaunchTimeoutSeconds seconds; keep the session locked and inspect it" }
 "$($names.process) pid $($p.pid) startedUtc $($p.startedUtc)"
-$marker = if ($EngineProbe) { 'engine-probe: reflection checks finished' } elseif ($DesktopDump) { 'dump-only: code dump attempted; renderer and hooks disabled' } else { 'VR session ready' }
+$marker = if ($EngineProbe) { 'engine-probe: reflection checks finished' } elseif ($DesktopDump) { 'dump-only: code dump attempted; renderer and hooks disabled' } elseif ($RendererPreview) { '[ME3XR] VR session ready; starting frame submission.' } else { 'VR session ready' }
 $seen = $false
-for ($i = 0; $i -lt 40; $i++) {
-    if (Test-Path -LiteralPath $log) {
-        $text = Read-RunLog $log
-        $fresh = if ($oldLog -and $text.StartsWith($oldLog, [StringComparison]::Ordinal)) { $text.Substring($oldLog.Length) } else { $text }
-        if ((Get-Item -LiteralPath $log).LastWriteTimeUtc -ge $started -and $fresh.Contains($marker)) { $seen = $true; break }
+for ($i = 0; $i -lt [math]::Ceiling($ReadyTimeoutSeconds / 2); $i++) {
+    Assert-RunLock $Holder
+    $live = Get-Process -Id $p.pid -ErrorAction SilentlyContinue
+    if (-not $live) { throw 'The game exited before the expected host marker' }
+    Assert-RunProcess $live $open.gameProcess $exe
+    foreach ($path in $logs) {
+        if (Test-RunFreshMarker $path $oldLogs[$path] $started $marker) { $seen = $true; $log = $path; break }
     }
-    if (-not (Get-Process -Id $p.pid -ErrorAction SilentlyContinue)) { throw 'The game exited before the expected host marker' }
+    if ($seen) { break }
     Start-Sleep 2
 }
 if (-not $seen) { throw "Expected marker was not observed: $marker (the session remains owned; use -Stop, then restore)" }
 $marker
+if ($RendererPreview) { $previewReceipt.freshMarker = $true; $previewReceipt.log = $log }
 if ($DesktopDump) {
     if ($EngineProbe) {
         $reflection = Confirm-RunReflection (Join-Path $env:LOCALAPPDATA 'MEVR\reflect-check.json') $started
@@ -111,4 +142,25 @@ if ($DesktopDump) {
         engineProbe = [bool]$EngineProbe; engineRequests = [bool]$EngineRequests; reflection = $(if ($EngineProbe) { $reflection } else { $null }) }
     $receipt | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $open.session 'desktop-dump.json') -Encoding utf8
     "Dump headers, size and hashes checked; fresh dump this launch: $($receipt.freshDump). Receipt: $($open.session)\desktop-dump.json"
+}
+
+} catch {
+    if ($previewReceipt) { $previewReceipt.error = $_.Exception.Message }
+    throw
+} finally {
+    if ($previewReceipt) {
+        $previewReceipt.finishedUtc = [DateTime]::UtcNow.ToString('o')
+        $previewReceipt.process = $open.gameProcess
+        $previewReceipt.launcherProcess = $open.launcherProcess
+        try {
+            $owned = Get-Process -Id $open.gameProcess.pid -ErrorAction Stop
+            Assert-RunProcess $owned $open.gameProcess $exe
+            $previewReceipt.loadedModules = @($owned.Modules | Where-Object { $_.ModuleName -match '^LE3MEVR(?:_mod)?\.(asi|dll)$' } |
+                ForEach-Object { [pscustomobject]@{ path = $_.FileName; sha256 = (Get-FileHash -LiteralPath $_.FileName).Hash } })
+        } catch { $previewReceipt.loadedModuleReadError = $_.Exception.Message }
+        try { $previewReceipt.artifactsAfter = @(Get-PreviewArtifacts $bin) }
+        catch { $previewReceipt.artifactReadError = $_.Exception.Message }
+        $previewReceipt | ConvertTo-Json -Depth 9 | Set-Content -LiteralPath (Join-Path $open.session 'renderer-preview-launch.json') -Encoding utf8
+        'Renderer-preview receipt saved; an XR readiness marker is not stereo, gameplay, or headset acceptance'
+    }
 }

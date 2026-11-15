@@ -1,5 +1,5 @@
 <!-- SPDX-License-Identifier: MIT -->
-# Protected ME2 runs and ME3 desktop dumps
+# Protected ME2 runs and ME3 candidate runs
 
 Until `tools/qa-le2`'s responder and Halcyon's renderer share one LE2 host (docs/le2-from-le1.md section 3.3), these
 scripts run ME2 as the players' host does: our `halcyon-le2` host from `build-trilogy`, loaded by LEBinkProxy, on
@@ -82,7 +82,7 @@ tools\le2-halcyon-run\restore.ps1 -Holder <session name> -Game LE3 -DesktopDump
   gameplay or VR acceptance. No save is loaded by this route. Keep dumps and receipts private.
 - Restore validates original backup hashes before writes, restores changed/missing files, moves additions aside,
   checks every original hash/count and only then releases the lock. A second restoration attempt preserves any
-  prior aside file under a unique suffix. LE3 restoration does not invoke fake-headset cleanup.
+  prior aside file under a unique suffix. LE3 desktop/probe restoration does not invoke fake-headset cleanup.
 
 ### ME3 engine cross-check
 
@@ -158,3 +158,93 @@ Session restore still owns any autosave/settings changes caused by the game.
 Offline checks: `powershell -NoProfile -File tools/le2-halcyon-run/test-load.ps1`. They cover types, state parsing,
 identity transitions, gameplay refusals, exact descriptor/response matching, strict mode booleans and process
 ownership. They do not call the request channel or touch a game/profile.
+
+
+## Explicit ME3 renderer preview
+
+`-RendererPreview` is a separate, opt-in candidate mode. LE3 without an explicit mode
+still refuses; it cannot be combined with `-DesktopDump`, `-EngineProbe` or
+`-EngineRequests`. LE2 defaults and the LE3 desktop/probe route are unchanged.
+Every prep/launch/stop/restore and preview load must supply the same flag and holder;
+metadata uses actual JSON booleans, not truthy strings. Default LE3 `load.ps1` still
+requires the engine-request session.
+
+Start only in an assigned exclusive game window, with all games, launchers and
+SteamVR processes stopped and no existing fake-headset undo record or enabled null
+driver. The runner refuses to stop/reconfigure someone else's existing VR session.
+This is one extension of the existing runner, using its global lock, verified
+profile/config/Win64 backups, PID/path/start-time ownership, console, and save-load
+proof flow. It does not use computer automation.
+
+```powershell
+$holder = 'owned-me3-preview'
+# The finally block attempts recovery even if prep or launch fails after publishing a session.
+try {
+    tools\le2-halcyon-run\prep.ps1 -Holder $holder -Game LE3 -RendererPreview -BuildDir <candidate build>
+    tools\le2-halcyon-run\launch.ps1 -Holder $holder -Game LE3 -RendererPreview
+    tools\le2-halcyon-run\load.ps1 -Holder $holder -Game LE3 -RendererPreview -Save <career>\Save_0031.pcsav
+    # Existing tools: console.ps1, snapshot.ps1, record.ps1, replay.ps1, perf-probe.ps1.
+    # Only issue a replay with Inputs intentionally after inspecting its source.
+} finally {
+    # If prep failed before opening a session, inspect the lock/backup state instead.
+    # Do not release an unresolved lock or stop a process that ownership checks reject.
+    tools\le2-halcyon-run\launch.ps1 -Holder $holder -Game LE3 -RendererPreview -Stop
+    tools\le2-halcyon-run\restore.ps1 -Holder $holder -Game LE3 -RendererPreview
+}
+```
+
+Prep writes a small `ASI/LE3MEVR.ini` with `[Debug] requests=1` and a process-only
+SteamVR OpenXR manifest override. It writes the actual renderer file,
+`Binaries/Win64/MELE3VR.ini`; the current deploy script only installs a renderer INI
+for LE2. The candidate selects source mode 4 (SFR2), the lowest resolution shown by
+ME3's menu (3072x1728), head look, head aim off, native positional scale 2.0 and
+first-person conversations off. `vr-game-settings.ps1` supplies matching dimensions,
+SDR and borderless/non-fullscreen settings. No nonexistent `[FirstPerson] Enabled`
+key is written: first-person activation is an independent existing renderer control.
+Source: `src/halcyon/le3/me2_menu.cpp` `LoadValues`/resolution rows and
+`d3d_capture.cpp` `RenderW`/`RenderH` startup handling. These are candidate settings,
+not a measured optimal resolution or accepted metric calibration.
+
+Before fake-headset setup, preview preserves the exact current bytes or absence of
+all four files that `fake-headset.ps1` changes: null-driver defaults, SteamVR settings,
+chaperone data and the helper's LE1MEVR.ini. It uses a fresh per-session
+`-BackupDirectory`, preserving the global helper's unrelated backups. Restore first
+validates the owned SteamVR processes and backup hashes, invokes the existing helper's
+`-Off`, then restores the exact saved files/absence. This retains an original null
+universe and original LE1 runtime key, which the standalone helper's cleanup would
+otherwise remove. `preview-environment-restored.json` records the final hash result.
+No registry OpenXR runtime is changed. An unexpected/replaced VR server or helper
+keeps the session owned for inspection; it is not permission to kill that process.
+
+The console backup primitive also preserves and quarantines recognized pending
+`snapshot`, `record`, `replay`, `perf`, `eyediff`, `mainmenu`, `voice` and `setup`
+`.request` files before prep/each launch. The initial request/result bytes and missing
+files are restored after the game is stopped; newer files are retained in the
+session's aside directory. In particular, an old replay-with-inputs cannot silently
+start with this preview. These original pending requests become eligible again in
+a future session after restoration; do not launch an unrelated test over them.
+
+The real LE3 renderer log is `%LOCALAPPDATA%/MELEVR/ME3PassiveDxgiProbe.log`, with an
+exe-directory fallback of the same name (`src/halcyon/le3/logger.cpp`). Readiness
+requires a newly appended/fresh `[ME3XR] VR session ready; starting frame submission.`
+line from this launch (`me2_xr.cpp`); an existing line is not accepted. Launch defaults
+remain bounded to 240 seconds for the process and 80 seconds for readiness; the
+optional `-LaunchTimeoutSeconds`/`-ReadyTimeoutSeconds` can shorten them. A failure
+retains ownership and a receipt for stop/restore.
+
+`renderer-preview-launch.json` records launch/process identity, expected and current
+exe/host/module/config hashes (including the actual `.modpath` target), readable
+loaded-module paths/hashes or an explicit read error, readiness source/freshness,
+and errors. `stereoAccepted` and `physicalHeadsetAccepted` remain false: XR startup
+proves neither correct two-eye rendering nor a playable VR view. Preserve this
+receipt and the existing snapshots/replays privately. The first protected preview
+still needs native evidence of hook/frame progression, valid separate eye captures,
+loaded-save world/controllers, first-person body/weapon alignment, stable projection,
+menu ownership, and a zero-difference restoration. Physical headset comfort is a
+later gate; the null headset cannot establish it or judge real headset stutter.
+
+Offline: `test-session.ps1` now covers preview flag/type refusals, stale-channel
+quarantine, exact environment restoration/corrupt backups, fake-owner/VR-process
+refusal, PID reuse and helper ownership, candidate config/artifact identity and fresh
+log detection. `test-load.ps1` covers explicit preview load mode. Both run under
+Windows PowerShell 5 using synthetic files; no native launch is part of those tests.

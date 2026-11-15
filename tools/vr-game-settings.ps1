@@ -108,12 +108,15 @@ if ($ResX -gt 0) {
     $wanted['SystemSettings']['ResX'] = "$ResX"
     $wanted['SystemSettings']['ResY'] = "$ResY"
 }
-if ($Game -eq 'LE1' -or $Game -eq 'LE2') {
+if ($Game -in @('LE1', 'LE2', 'LE3')) {
     # LE2 too since 2026-11-14, as Halcyon's ME2 installer (MELE2-VR.bat) sets them: its renderer writes ResX/ResY from
     # MELE2VR.ini's RenderW/RenderH (4096x2304) at attach, and in a fullscreen window on a 1440p monitor the game got
     # 4096x1460; borderless it rendered 4096x2304, 2048x2304 an eye (research/le2-renderer-integration.md "Defaults from ME1").
+    # LE3 uses the same renderer resolution path; its explicit candidate runner supplies ResX/ResY.
     $wanted['SystemSettings']['BorderlessWindow'] = 'True'
     $wanted['SystemSettings']['Fullscreen'] = 'False'
+}
+if ($Game -in @('LE1', 'LE2')) {
     $wanted['SystemSettings']['DynamicShadows'] = 'False'
     $wanted['SystemSettings']['FoliageDrawRadiusMultiplier'] = '0.5'
 }

@@ -6,14 +6,15 @@ param(
     [switch]$DesktopDump,
     [switch]$EngineProbe,
     [switch]$EngineRequests,
+    [switch]$RendererPreview,
     [ValidatePattern('^[A-Za-z0-9_-]+$')][string]$Tag = 'halcyon',
     [string]$BuildDir,
     [switch]$Diagnostics
 )
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\session-common.ps1"
-Assert-RunMode $Game ([bool]$DesktopDump) ([bool]$EngineProbe) ([bool]$EngineRequests)
-if ($DesktopDump -and $Diagnostics) { throw '-Diagnostics is only for the LE2 renderer' }
+Assert-RunMode $Game ([bool]$DesktopDump) ([bool]$EngineProbe) ([bool]$EngineRequests) ([bool]$RendererPreview)
+if (($DesktopDump -or $RendererPreview) -and $Diagnostics) { throw '-Diagnostics is only for the LE2 renderer' }
 . "$PSScriptRoot\..\common.ps1"
 $W = (Resolve-Path "$PSScriptRoot\..\..").Path
 if (-not $BuildDir) { $BuildDir = Join-Path $W 'build-trilogy' }
@@ -32,7 +33,15 @@ if (Get-Process MassEffect1, MassEffect2, MassEffect3, MassEffectLauncher -Error
 $open = $null
 if (Test-Path -LiteralPath $current) {
     $open = Get-Content -LiteralPath $current -Raw | ConvertFrom-Json
-    Assert-RunSession $open $Holder $Game ([bool]$DesktopDump) ([bool]$EngineProbe) ([bool]$EngineRequests)
+    Assert-RunSession $open $Holder $Game ([bool]$DesktopDump) ([bool]$EngineProbe) ([bool]$EngineRequests) ([bool]$RendererPreview)
+}
+$previewPaths = if ($RendererPreview) { Get-PreviewPaths } else { $null }
+$globalUndo = Join-Path $env:LOCALAPPDATA 'MEVR\fake-headset\undo.json'
+if ($RendererPreview -and -not $open) { Assert-PreviewIdle $previewPaths $globalUndo }
+if ($RendererPreview -and $open) {
+    Assert-PreviewEnvironment $open $previewPaths
+    if (Test-Path -LiteralPath $globalUndo) { throw 'Another fake-headset session appeared before redeploy' }
+    $null = @(Get-PreviewVrProcesses $open $true)
 }
 # A second game stretch by the same holder must not create overlapping profile backups.
 $other = Get-RunNames $(if ($Game -eq 'LE2') { 'LE3' } else { 'LE2' })
@@ -53,8 +62,12 @@ if (-not $open) {
     }
     New-Item -ItemType Directory "$S\backup\ME1ASI" | Out-Null
     Copy-Item "$G\ME1\Binaries\Win64\ASI\*.ini" "$S\backup\ME1ASI\" -ErrorAction SilentlyContinue
-    $open = [pscustomobject]@{ holder = $Holder; game = $Game; desktopDump = [bool]$DesktopDump; engineProbe = [bool]$EngineProbe; engineRequests = [bool]$EngineRequests; session = $S;
+    $open = [pscustomobject]@{ holder = $Holder; game = $Game; desktopDump = [bool]$DesktopDump; engineProbe = [bool]$EngineProbe; engineRequests = [bool]$EngineRequests; rendererPreview = [bool]$RendererPreview; session = $S;
         since = (Get-Date -Format 's'); install = $install; profile = $docs }
+    if ($RendererPreview) {
+        $environment = @(Backup-PreviewEnvironment $S $previewPaths)
+        $open | Add-Member -NotePropertyName previewEnvironment -NotePropertyValue $environment
+    }
     Assert-RunLock $Holder
     if (Get-Process MassEffect1, MassEffect2, MassEffect3, MassEffectLauncher -ErrorAction SilentlyContinue) { throw 'A game started during backup; deployment refused' }
     Write-RunSession $open $current
@@ -62,7 +75,7 @@ if (-not $open) {
     Rename-Item -LiteralPath "$b\bink2w64.dll" -NewName 'bink2w64_original.dll'
     Copy-Item -LiteralPath $proxy.FullName -Destination "$b\bink2w64.dll"
 } else {
-    $open = Read-RunSession $Holder $Game ([bool]$DesktopDump) ([bool]$EngineProbe) ([bool]$EngineRequests)
+    $open = Read-RunSession $Holder $Game ([bool]$DesktopDump) ([bool]$EngineProbe) ([bool]$EngineRequests) ([bool]$RendererPreview)
     if (($open.install -and $open.install -ne $install) -or ($open.profile -and $open.profile -ne $docs)) { throw 'Install/profile changed since backup' }
     "The stretch in $($open.session) is open: redeploying only"
 }
@@ -76,6 +89,32 @@ if ($DesktopDump) {
     if ($EngineRequests) { Backup-RunConsole $open $current (Join-Path $env:LOCALAPPDATA 'MEVR') }
     [IO.File]::WriteAllText("$b\ASI\${Game}MEVR.ini", "[Debug]`r`n$modeKey = 1`r`n$requestLine")
     "Desktop $modeKey prepared: no fake headset or VR settings were invoked"
+    exit 0
+}
+if ($RendererPreview) {
+    Assert-PreviewEnvironment $open $previewPaths
+    $channel = Join-Path $env:LOCALAPPDATA 'MEVR'
+    Backup-RunConsole $open $current $channel
+    Backup-RunConsole $open $current $channel -Names (Get-PreviewChannels) -Metadata 'previewChannelsBefore' -Directory 'preview-channels-before'
+    [IO.File]::WriteAllText("$b\ASI\LE3MEVR.ini", (Get-PreviewModConfig))
+    [IO.File]::WriteAllText((Join-Path $b 'MELE3VR.ini'), (Get-PreviewRendererConfig))
+    & powershell -NoProfile -ExecutionPolicy Bypass -File "$W\tools\vr-game-settings.ps1" -Game LE3 -GameRoot $install -ResX 3072 -ResY 1728 -Sdr
+    if ($LASTEXITCODE -ne 0) { throw 'Preview graphics setup failed; restore the owned session' }
+    if (-not $open.PSObject.Properties['previewStartedUtc']) {
+        Assert-RunLock $Holder
+        Assert-PreviewIdle $previewPaths $globalUndo
+        if (Get-Process MassEffect1, MassEffect2, MassEffect3, MassEffectLauncher -ErrorAction SilentlyContinue) { throw 'A game started before fake setup' }
+        $open | Add-Member -NotePropertyName previewStartedUtc -NotePropertyValue ([DateTime]::UtcNow.ToString('o'))
+        Write-RunSession $open $current # recovery metadata exists even if the helper fails halfway
+        & powershell -NoProfile -ExecutionPolicy Bypass -File "$W\tools\fake-headset.ps1" -On -BackupDirectory (Join-Path $open.session 'fake-headset') *> (Join-Path $open.session 'fake-on.log')
+        if ($LASTEXITCODE -ne 0) { throw 'Preview fake headset setup failed; session remains owned for restore' }
+        for ($wait = 0; $wait -lt 30 -and -not (Get-Process vrserver -ErrorAction SilentlyContinue); $wait++) { Start-Sleep -Seconds 1 }
+        if (-not (Get-Process vrserver -ErrorAction SilentlyContinue)) { throw 'Owned fake headset server did not start' }
+    }
+    $open | Add-Member -NotePropertyName previewProcesses -NotePropertyValue @(Get-PreviewVrProcesses $open $true) -Force
+    $open | Add-Member -NotePropertyName previewArtifacts -NotePropertyValue @(Get-PreviewArtifacts $b) -Force
+    Write-RunSession $open $current
+    'LE3 renderer candidate prepared; game not launched and stereo acceptance not established'
     exit 0
 }
 & powershell -NoProfile -ExecutionPolicy Bypass -File "$W\tools\vr-game-settings.ps1" -Game $Game | Select-String 'Borderless|Fullscreen|Applied'

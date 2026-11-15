@@ -91,4 +91,16 @@ Case 'single request echo rejects stale or unrelated reply' {
     Reject { ConvertFrom-LoadReply "> mevr state`n$legacy`n> quit`nOK" 'mevr state' }
     Reject { ConvertFrom-LoadReply $legacy 'mevr state' }
 }
+
+Case 'preview load requires explicit mode and matching JSON booleans' {
+    $s=[pscustomobject]@{desktopDump=$false;engineProbe=$false;engineRequests=$false;rendererPreview=$true}
+    Assert-LoadMode $s LE3 $true
+    Reject { Assert-LoadMode $s LE3 }
+    Reject { Assert-LoadMode $s LE2 $true }
+    foreach ($flag in @('desktopDump','engineProbe','engineRequests','rendererPreview')) {
+        $old=$s.$flag; $s.$flag='false'; Reject { Assert-LoadMode $s LE3 $true }; $s.$flag=$old
+    }
+    $s.engineRequests=$true; Reject { Assert-LoadMode $s LE3 $true }
+}
+
 "$count load tests passed"

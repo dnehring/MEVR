@@ -5,6 +5,7 @@ param(
     [Parameter(Mandatory)][string]$Holder,
     [ValidateSet('LE2', 'LE3')][string]$Game = 'LE2',
     [string]$Save,
+    [switch]$RendererPreview,
     [ValidateRange(5, 1800)][int]$TimeoutSeconds = 180
 )
 $ErrorActionPreference = 'Stop'
@@ -13,9 +14,9 @@ $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\..\common.ps1"
 if ($Game -eq 'LE3' -and -not $Save) { throw 'LE3 loading requires explicit -Save; no default or newest-save inference' }
 $names = Get-RunNames $Game
-$desktop = $Game -eq 'LE3'
-$open = Read-RunSession $Holder $Game $desktop $desktop $desktop
-Assert-LoadMode $open $Game
+$desktop = $Game -eq 'LE3' -and -not $RendererPreview
+$open = Read-RunSession $Holder $Game $desktop $desktop $desktop ([bool]$RendererPreview)
+Assert-LoadMode $open $Game ([bool]$RendererPreview)
 $install = (Find-MELEInstall).Root
 if (-not $open.install -or $open.install -ne $install) { throw 'Install identity differs from the protected session' }
 $bin = Get-MELEBinDir $install $Game
@@ -24,8 +25,8 @@ $sessionHash = (Get-FileHash -LiteralPath $names.current).Hash
 $sessionPath = $open.session
 $processIdentity = $open.gameProcess
 function Assert-LoadOwner {
-    $current = Read-RunSession $Holder $Game $desktop $desktop $desktop
-    Assert-LoadMode $current $Game
+    $current = Read-RunSession $Holder $Game $desktop $desktop $desktop ([bool]$RendererPreview)
+    Assert-LoadMode $current $Game ([bool]$RendererPreview)
     if ($current.session -ne $sessionPath -or (Get-FileHash -LiteralPath $names.current).Hash -ne $sessionHash) {
         throw 'Session identity changed during load; no further requests allowed'
     }
@@ -63,9 +64,10 @@ if (Test-Path -LiteralPath $modpath) {
     if (-not [IO.Path]::IsPathRooted($module) -or -not (Test-Path -LiteralPath $module -PathType Leaf)) { throw 'Deployed modpath does not identify an existing module' }
     $artifacts += $module
 }
+if ($RendererPreview) { $artifacts += Join-Path $bin 'MELE3VR.ini' }
 $artifactIdentity = @($artifacts | ForEach-Object { [pscustomobject]@{ path = $_; sha256 = (Get-FileHash -LiteralPath $_).Hash } })
 $receipt = [ordered]@{ schemaVersion = 1; operation = 'normal-save-load'; game = $Game; holder = $Holder;
-    startedUtc = [DateTime]::UtcNow.ToString('o'); session = $sessionPath; sessionMetadataSha256 = $sessionHash;
+    rendererPreview = [bool]$RendererPreview; startedUtc = [DateTime]::UtcNow.ToString('o'); session = $sessionPath; sessionMetadataSha256 = $sessionHash;
     process = $processIdentity; artifacts = $artifactIdentity; save = $Save; saveSha256Before = $hash; expected = $expected;
     passed = $false; transitionObserved = $false; gameplayObserved = $false; descriptorMatched = $false;
     saveUnchanged = $false; artifactsUnchanged = $false; error = $null }
