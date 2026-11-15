@@ -27,6 +27,7 @@
 #include "plugin/MenusLe2.hpp"
 #include "plugin/PadMerge.hpp"
 #include "plugin/Renderer.hpp"
+#include "plugin/Voice.hpp"
 #include "plugin/Swapchains.hpp"
 #include "plugin/TestLoop.hpp"
 #include "plugin/SightLayers.hpp"
@@ -357,6 +358,7 @@ void OnSwapChainPresent(void* swapChain, void* capturedSwapChain) noexcept {
             if (res != nullptr) res->Release();
             bb->Release();
         }
+        mevr::host::voice::OnPresent();
         mevr::host::menus_le2::OnPresent();  // our menu closes itself when nobody can see it (M4)
     }
     // Present thread only. The captured swap chain's buffers: each change of size or format logged (ME2's is R8G8B8A8 at

@@ -1844,6 +1844,11 @@ std::optional<std::string> RunOursLe2(ue3::Object* pc, std::string const& line) 
         std::getline(words, rest);
         return power_wheel::Console(rest);
     }
+    if (verb == "voice") {
+        std::string rest;
+        std::getline(words, rest);
+        return voice::Console(rest);
+    }
     if (verb == "place") {
         std::string rest;
         std::getline(words, rest);

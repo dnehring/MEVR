@@ -940,6 +940,7 @@ function(mevr_add_plugin game)
     if (MEVR_HALCYON AND game STREQUAL "LE2" AND NOT MEVR_LE2_DIAGNOSTIC)
         set(with_halcyon_le2 ON)
         list(APPEND host_sources src/plugin/HalcyonLe2.cpp src/plugin/HalcyonLe2.hpp src/plugin/HalcyonLe2Bridge.cpp
+            src/plugin/Voice.cpp src/plugin/Voice.hpp src/plugin/VoiceModel.cpp src/plugin/VoiceModel.hpp
             src/halcyon/le2/mevr_bridge.h src/core/CallQueue.hpp src/plugin/GameThreadCalls.cpp src/plugin/GameThreadCalls.hpp
             src/game/GamepadMapping.cpp src/game/GamepadMapping.hpp
             src/core/vr/Controllers.cpp src/core/vr/Controllers.hpp src/core/xr/Input.cpp src/core/xr/Input.hpp
@@ -1086,11 +1087,15 @@ foreach (game LE1 LE2 LE3)
     endif ()
 endforeach ()
 # The model tier's runtime (research/54; core/voice/Llm) needs llama.cpp's header (external/llama-cpp, tools/fetch-voice.ps1
-# -Llm; gitignored): with it the LE1 host carries the runtime, without it plugin/VoiceModel says the model tier is off.
-if (MEVR_BUILD_LE1 AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/llama-cpp/include/llama.h")
-    target_sources(MEVR-LE1 PRIVATE src/core/voice/Llm.cpp src/core/voice/Llm.hpp)
-    target_include_directories(MEVR-LE1 PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/external/llama-cpp/include)
-    target_compile_definitions(MEVR-LE1 PRIVATE MEVR_HAVE_LLAMA)
+# -Llm; gitignored): the LE1 and Halcyon LE2 voice hosts share it; without it VoiceModel reports the tier off.
+if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/llama-cpp/include/llama.h")
+    foreach (game LE1 LE2)
+        if (TARGET MEVR-${game} AND (game STREQUAL "LE1" OR TARGET halcyon-le2))
+            target_sources(MEVR-${game} PRIVATE src/core/voice/Llm.cpp src/core/voice/Llm.hpp)
+            target_include_directories(MEVR-${game} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/external/llama-cpp/include)
+            target_compile_definitions(MEVR-${game} PRIVATE MEVR_HAVE_LLAMA)
+        endif ()
+    endforeach ()
 endif ()
 
 # The installer's logic (research/33): game and VR detection, the manifest with backups, INI edits that never reset a

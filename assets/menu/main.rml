@@ -260,9 +260,8 @@
 	<div data-if="section == 'voice'">
 		<div class="stitle">Voice</div>
 		<div class="sdesc">Talk to your squad: hold the left grip at your left ear like a radio, speak, let go.</div>
-		<div class="group" data-class-disabled="le2">
+		<div class="group">
 			<div class="gtitle"><span>Microphone</span><div class="gline"/></div>
-			<div class="hint" data-if="le2">Not on Mass Effect 2 yet.</div>
 			<div class="srow meterrow"><div class="sl"><div class="slab">Input level</div><div class="rdesc" data-if="!voice_heard">Speak to test</div><div class="rdesc heard" data-if="voice_heard">Hearing you</div></div>
 				<div class="meter"><div class="fill" data-class-hot="voice_heard" data-style-width="voice_level + '%'"/><div class="mark"/></div></div>
 			<div class="info" data-class-warn="!voice_ready"><div class="ico i-info"/><span>{{voice_status}}</span></div>
@@ -278,9 +277,8 @@
 			<div class="row mic on" data-if="mic == 'missing'"><div class="radio"/><div class="rl"><div class="rlab">{{mic_missing}}</div><div class="rdesc">Set in the file but not connected now: the default is used until it is.</div></div></div>
 			<div class="note" data-if="mic_note != ''">{{mic_note}}</div>
 		</div>
-		<div class="group" data-class-disabled="le2">
+		<div class="group">
 			<div class="gtitle"><span>Recognizer</span><div class="gline"/></div>
-			<div class="hint" data-if="le2">Not on Mass Effect 2 yet.</div>
 			<div class="row"><div class="rl"><div class="rlab">Voice orders</div><div class="rdesc">Off: the microphone stays closed and the radio gesture does nothing</div></div>
 				<button class="tog" data-class-on="voice_on" data-event-click="toggle('voice_on')"><div class="knob"/></button></div>
 			<div class="row" data-class-disabled="!voice_on"><div class="rl"><div class="rlab">Recognizer size</div><div class="rdesc">Tiny is the default: it answers fastest beside the running game. Small and medium understand more but each update takes three times as long or more.</div></div>
@@ -288,11 +286,10 @@
 			<div class="row" data-class-disabled="!voice_on"><div class="rl"><div class="rlab">Restart the recognizer</div><div class="rdesc">Opens the microphone again: after plugging in a headset</div></div>
 				<button class="btn" data-event-click="cmd('voice_restart')"><div class="sweep"/><span>Restart</span><div class="tick"/></button></div>
 		</div>
-		<div class="group" data-class-disabled="le2">
+		<div class="group">
 			<div class="gtitle"><span>Talking</span><div class="gline"/></div>
-			<div class="hint" data-if="le2">Not on Mass Effect 2 yet.</div>
 			<div class="srow d" data-class-disabled="!voice_on"><div class="sl"><div class="slab">Radio hum</div><div class="rdesc">The left controller hums when your hand is at the ear, stronger nearer it. 0%: none.</div></div><input type="range" min="0" max="100" step="5" data-value="ear_cue"/><div class="sval">{{ear_cue_text}}</div></div>
-			<div class="row" data-class-disabled="!voice_on"><div class="rl"><div class="rlab">Hold-to-talk key</div><div class="rdesc">A keyboard key held to speak, besides the radio gesture: {{voice_key}}</div></div>
+			<div class="row" data-class-disabled="!voice_on || le2"><div class="rl"><div class="rlab">Hold-to-talk key</div><div class="rdesc">A keyboard key held to speak, besides the radio gesture: {{voice_key}}</div></div>
 				<div class="actions">
 					<button class="btn" data-class-armed="voice_key_wait" data-event-click="cmd('voice_key_set')"><div class="sweep"/><span>Set key</span><div class="tick"/></button>
 					<button class="btn" data-event-click="cmd('voice_key_clear')"><div class="sweep"/><span>None</span><div class="tick"/></button>

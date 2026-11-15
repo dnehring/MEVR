@@ -373,7 +373,7 @@ void Tick(double deltaSeconds, Link const& link) {
         double const dx = hand.x - ear.x, dy = hand.y - ear.y, dz = hand.z - ear.z;
         gHandToEarM = static_cast<float>(std::sqrt(dx * dx + dy * dy + dz * dz) / upm);
     }
-    ue3::Object* const controller = ue3::runtime::Ready() ? player::Controller() : nullptr;
+    ue3::Object* const controller = ue3::runtime::Up() ? player::Controller() : nullptr;
     std::optional<std::uint8_t> const mode = controller != nullptr ? player::GameMode(controller) : std::nullopt;
     bool const ready = gState.status == static_cast<std::uint8_t>(vr::voice::Status::Ready);
     vg::Settings gs;

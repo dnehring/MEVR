@@ -1,5 +1,26 @@
 # 54: Voice squad commands on the device: a streaming cascade under 500 ms (2026-11-04)
 
+## ME2 host integration, 2026-11-15
+
+The M6 coordinator reuses `plugin/Voice` and `VoiceModel` services in the LE2 Halcyon host. The renderer
+initializes the workers, polls the existing request/key/listen channel on Present and stops workers through
+the shared unload path. The microphone/device/recognizer menu and level meter use ME1's implementation.
+Radio gesture availability uses the LE2 reflection runtime's `Up()` contract. `mevr voice` and snapshot
+voice state are exposed through the existing LE2 diagnostics.
+
+The squad lane supplies ME2 vocabulary and native dispatch through `SquadContext` and `SquadOrders`.
+Successful spoken squad orders still need native verification. Keyboard key capture uses an LE1 renderer
+hook and stays disabled on LE2. Thespian's ME2 adapter is a separate candidate using cinema presentation.
+
+LE1/LE2/LE3 trilogy builds, LE1 development/player builds, and existing `mevr-tests` and `mevr-pad-merge`
+cases passed. The protected native check timed out before ME2 started after 240 seconds.
+Restoration verified zero differences and released the run lock. No new native voice evidence was produced.
+The first protected deployment found the
+recognizer DLL but no model directory in this isolated checkout. Check missing-model feedback and provision
+the existing model assets before claiming microphone recognition acceptance.
+
+## Original research
+
 The user: research how speech could become a squad order with low latency ("Garrus, equip your sniper and take out those troops on the bridge" into its action), on the device, under 1 s and ideally 500 ms, with very small or fine-tuned open models; the naive speech-to-text, LLM, action cascade assumed too slow. Seven research passes (recognizers and endpointing, speech-native models, small-model parsing, context and deixis, precedents, inference beside the VR frame, LE1's squad orders in our code), every number cited inline. Nothing here was measured on our machine yet: the plan at the end says what to measure first.
 
 A spoken order such as "Garrus, equip your sniper and take out those troops on the bridge" can reach LE1's squad AI entirely on-device in an estimated **180-400 ms after the end of speech** (about 180-290 ms when deterministic rules parse it), and the speed comes from removing waits, not from a new kind of model. The naive cascade is slow because it waits for silence, transcribes the finished clip with a non-streaming recognizer and has an uncached language model write verbose JSON; each of those waits is avoidable. The evidence favours a **streaming cascade on the CPU**: releasing a held "radio" gesture ends the utterance, a streaming recognizer such as Moonshine v2 (MIT) returns the transcript about 50-260 ms later, the mod's own code turns the scene into a few id-tagged lines and resolves "those" from where the player pointed and looked while saying it, and a deterministic parser fills the slots in about a millisecond, with a fine-tuned 0.3-1B Apache-2.0 model (Qwen3-0.6B or Granite 4.0 Nano in llama.cpp, grammar-constrained to a ten-token answer) only for what the rules leave open. Audio-native LLMs are no faster once the recognizer streams, lose more accuracy in noise and on names, and need the GPU, which LE1's D3D11 stereo frame already fills: NVIDIA's in-game inference scheduling requires a D3D12 or Vulkan game, so any GPU burst would cost late frames and spacewarp. Every timing here is extrapolated from Apple M3, laptop Zen 5 and phone measurements; none was taken on a desktop beside the running game. The larger gap is on the game side: only the weapon order is built, the attack, move, follow and power orders have known signatures but untested behaviour, and VR players cannot give the move, attack or regroup orders at all today because the d-pad that carries them is unmapped. The first prototype should trace and call those orders, then race two recognizers on the dev machine under VR load.

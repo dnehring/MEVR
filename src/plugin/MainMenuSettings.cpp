@@ -2,6 +2,7 @@
 // What each row of our main menu drives (plugin/MainMenuSettings.hpp, research/28 section 4).
 
 #include "plugin/MainMenuSettings.hpp"
+#include "plugin/Voice.hpp"
 
 // One menu for both games (docs/le2-continuation-plan.md M4.1, research/le2-menus.md): LE1's host has Halcyon's LE1 renderer
 // (its VrConfig, profiles and render size) and the LE1 host's modules the rows drive (the colour, the voice, OpenAL Soft, the
@@ -611,9 +612,7 @@ void Settings::Read(menu::Values& v) {
 #else
     v.texts["about_build"] = ms::AboutBuild(MEVR_VERSION, MEVR_GIT_COMMIT, true);
 #endif
-#if defined(MEVR_MENU_LE1)
     ReadVoice(v, ini.Num("Voice", "enabled", 1.0f) != 0.0f, ini.Text("Voice", "model", "tiny"), ini.Num("Voice", "earCueStrength", 0.4f));
-#endif
     // Thespian mode (research/70): the mod reads [Thespian] every second.
     v.numbers["thespian_on"] = ini.Num("Thespian", "on", 0.0f) != 0.0f ? 1.0f : 0.0f;
     {
@@ -645,7 +644,6 @@ void Settings::Read(menu::Values& v) {
 
 // The Voice page (research/54 "The menu's Voice page"): the recognizer's state from the host (plugin/Voice), the microphones it
 // lists, and [Voice]'s keys. The level bar is MainMenu's (every frame while the page is open).
-#if defined(MEVR_MENU_LE1)
 void Settings::ReadVoice(menu::Values& v, bool enabled, std::string const& model, float earCue) {
     std::uint64_t const now = Now();
     bool const onPage = v.Text("section") == "voice";
@@ -704,7 +702,7 @@ void Settings::WriteVoiceDevice(std::string const& name) {
     micPicked_ = name;
     micPickedMs_ = Now();
 }
-#endif
+
 
 void Settings::Wrote(bool ok, std::string_view what) {
     DWORD const error = ok ? 0 : GetLastError();
@@ -874,7 +872,6 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
         Put("WorldUi", "on", onOff("world_ui"), true);
     } else if (key == "galaxy_holo") {
         Put("Galaxy", "hologram", onOff("galaxy_holo"), true);
-#if defined(MEVR_MENU_LE1)
     } else if (key == "voice_on") {
         // Voice (research/54 "The menu's Voice page"): the recognizer restarts with the file's [Voice] (plugin/Voice).
         Put("Voice", "enabled", onOff("voice_on"), true);
@@ -901,7 +898,7 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
                                          : "the menu: microphone " + view.devices[static_cast<std::size_t>(std::atoi(pick.c_str()))]);
     } else if (key == "ear_cue") {
         Put("Voice", "earCueStrength", fixed(v.Number("ear_cue") / 100.0f, 2), final);  // the mod re-reads it
-#endif
+
     } else if (key == "thespian_on") {
         Put("Thespian", "on", onOff("thespian_on"), true);  // the mod re-reads [Thespian] every second
     } else if (key == "thespian_strictness") {
@@ -1262,9 +1259,9 @@ void Settings::Command(std::string const& name, std::string const& argument, men
         MELEVR::Menu::CancelKeyCapture();
         Put("Voice", "key", "0", true);
         voice::SetKey(0);
+#endif
     } else if (name == "voice_restart") {
         voice::Restart("the menu's Restart");
-#endif
     } else if (name == "resume") {
         after_ = After::Close;
     } else if (name == "game_menu") {

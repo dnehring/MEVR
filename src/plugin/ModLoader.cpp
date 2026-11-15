@@ -25,6 +25,8 @@
 #include "plugin/TestLoop.hpp"
 #include "plugin/Vignette.hpp"
 #include "plugin/XrHost.hpp"
+#include "plugin/Voice.hpp"
+#include "plugin/VoiceModel.hpp"
 #endif
 #if defined(MEVR_WITH_HALCYON_LE2)
 #include "core/vr/Traversal.hpp"
@@ -278,6 +280,42 @@ HostServices WithTraversal(HostServices services) {
 }
 #endif
 
+#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2)
+void HostSetVoiceListen(int on) {
+    host::voice::SetListen(on);
+}
+bool HostTakeVoiceLine(vr::voice::Line* out) {
+    return host::voice::TakeLine(out);
+}
+void HostVoiceState(vr::voice::State* out) {
+    host::voice::GetState(out);
+}
+void HostSetVoiceKeyterms(char const* terms) {
+    host::voice::SetKeyterms(terms);
+}
+void HostVoiceCommand(char const* line) {
+    host::voice::Command(line);
+}
+std::uint32_t HostAskVoiceModel(char const* prefix, char const* rest, char const* gbnf) {
+    return host::voice_model::Ask(prefix, rest, gbnf);
+}
+bool HostTakeVoiceModelAnswer(std::uint32_t* id, char* text, std::uint32_t capacity, std::uint32_t* ms) {
+    return host::voice_model::TakeAnswer(id, text, capacity, ms);
+}
+HostServices WithVoice(HostServices services) {
+    services.voiceLineSize = static_cast<std::uint32_t>(sizeof(vr::voice::Line));  // v31: voice orders (research/54)
+    services.voiceStateSize = static_cast<std::uint32_t>(sizeof(vr::voice::State));
+    services.setVoiceListen = &HostSetVoiceListen;
+    services.takeVoiceLine = &HostTakeVoiceLine;
+    services.voiceState = &HostVoiceState;
+    services.setVoiceKeyterms = &HostSetVoiceKeyterms;
+    services.voiceCommand = &HostVoiceCommand;
+    services.askVoiceModel = &HostAskVoiceModel;
+    services.takeVoiceModelAnswer = &HostTakeVoiceModelAnswer;
+    return services;
+}
+#endif
+
 #if defined(MEVR_WITH_HALCYON)
 void HostSetSquadMenu(vr::squad_menu::View const* view) {
     vr::squad_menu::Publish(view != nullptr ? *view : vr::squad_menu::View{});
@@ -418,39 +456,6 @@ HostServices WithGalaxyMap(HostServices services) {
 std::uint32_t HostTakeGuiEvents(std::uint8_t* events, std::uint32_t capacity) {
     return host::game_pointer::TakeGuiEvents(events, capacity);
 }
-void HostSetVoiceListen(int on) {
-    host::voice::SetListen(on);
-}
-bool HostTakeVoiceLine(vr::voice::Line* out) {
-    return host::voice::TakeLine(out);
-}
-void HostVoiceState(vr::voice::State* out) {
-    host::voice::GetState(out);
-}
-void HostSetVoiceKeyterms(char const* terms) {
-    host::voice::SetKeyterms(terms);
-}
-void HostVoiceCommand(char const* line) {
-    host::voice::Command(line);
-}
-std::uint32_t HostAskVoiceModel(char const* prefix, char const* rest, char const* gbnf) {
-    return host::voice_model::Ask(prefix, rest, gbnf);
-}
-bool HostTakeVoiceModelAnswer(std::uint32_t* id, char* text, std::uint32_t capacity, std::uint32_t* ms) {
-    return host::voice_model::TakeAnswer(id, text, capacity, ms);
-}
-HostServices WithVoice(HostServices services) {
-    services.voiceLineSize = static_cast<std::uint32_t>(sizeof(vr::voice::Line));  // v31: voice orders (research/54)
-    services.voiceStateSize = static_cast<std::uint32_t>(sizeof(vr::voice::State));
-    services.setVoiceListen = &HostSetVoiceListen;
-    services.takeVoiceLine = &HostTakeVoiceLine;
-    services.voiceState = &HostVoiceState;
-    services.setVoiceKeyterms = &HostSetVoiceKeyterms;
-    services.voiceCommand = &HostVoiceCommand;
-    services.askVoiceModel = &HostAskVoiceModel;
-    services.takeVoiceModelAnswer = &HostTakeVoiceModelAnswer;
-    return services;
-}
 void HostSetConversationWorld(vr::conversation_world::State const* state) {
     if (state != nullptr && state->size == sizeof(vr::conversation_world::State)) {
         vr::conversation_world::Publish(*state);
@@ -543,7 +548,7 @@ HostServices WithMenus(HostServices services) {
 HostServices BuildServices() {
     HostServices services = WithCrashBreadcrumbs(BaseServices());
 #if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2)
-    services = WithFloorLock(WithHudPieces(WithPadMerge(WithSights(WithVignette(WithRenderer(services))))));  // both renderers' modules
+    services = WithVoice(WithFloorLock(WithHudPieces(WithPadMerge(WithSights(WithVignette(WithRenderer(services)))))));  // both renderers' modules
     services.powerWheelSize = static_cast<std::uint32_t>(sizeof(vr::power_wheel::View));
     services.setPowerWheel = [](vr::power_wheel::View const* view) {
         vr::power_wheel::Publish(view != nullptr ? *view : vr::power_wheel::View{});
@@ -561,8 +566,8 @@ HostServices BuildServices() {
     services = WithTraversal(services);
 #endif
 #if defined(MEVR_WITH_HALCYON)
-    services = WithVoice(WithLe1ExtraUi(WithWorldUi(WithGalaxyHologram(WithGalaxyMap(WithSpectator(WithMakoControls(
-        WithInteractLabel(WithScopeCapture(WithGameMenuRequest(WithLe1Modules(services)))))))))));
+    services = WithLe1ExtraUi(WithWorldUi(WithGalaxyHologram(WithGalaxyMap(WithSpectator(WithMakoControls(
+        WithInteractLabel(WithScopeCapture(WithGameMenuRequest(WithLe1Modules(services))))))))));
 #endif
 #if defined(MEVR_WITH_HALCYON_LE2) && defined(MEVR_WITH_MAIN_MENU)
     services = WithMenus(services);  // our main menu and the calibration on LE2 (M4)
@@ -594,7 +599,7 @@ void SetProcessExiting() {
 }
 
 void StopWorkersForUnload() {
-#if defined(MEVR_WITH_HALCYON)  // LE1's host only (LE2/LE3 have no voice)
+#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2)
     host::voice::Shutdown();  // its capture and worker threads, before the DLLs unload
     host::voice_model::Shutdown();
 #endif

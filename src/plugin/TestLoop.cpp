@@ -17,6 +17,7 @@
 #include "plugin/Colour.hpp"  // both Halcyon hosts (LE2: the eye copy's correction)
 #include "plugin/CineScreen.hpp"  // both Halcyon hosts (ME1's 3D cinema screen)
 #include "plugin/CinemaBackdrop.hpp"
+#include "plugin/Voice.hpp"
 #endif
 #if defined(MEVR_WITH_HALCYON)
 #include "plugin/Calibration.hpp"
@@ -807,6 +808,7 @@ ModuleBlocks ModuleStatus() {
 #if defined(MEVR_WITH_HALCYON)
     m.recenter = recenter_tilt::StatusJson();
     m.calibration = calibration::StatusJson();
+    m.voice = voice::StatusJson();
     m.colour = mevr::host::colour::StatusJson();
     m.stereo = metric_stereo::StatusJson();
     m.floorLock = floor_lock::StatusJson();
@@ -824,6 +826,7 @@ ModuleBlocks ModuleStatus() {
     m.questPacing = quest_pacing::StatusJson();
 #endif
 #if defined(MEVR_WITH_HALCYON_LE2)
+    m.voice = voice::StatusJson();
     m.colour = mevr::host::colour::StatusJson();
     m.cineScreen = mevr::host::cine_screen::StatusJson();  // ME1's 3D cinema screen on LE2 (research/le2-cinema.md)
 #endif
