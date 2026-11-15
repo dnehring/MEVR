@@ -85,13 +85,43 @@ and all three Halcyon XR translation units compiled with their existing warning 
 
 ### Remaining native presentation gate
 
-This is command-admission evidence, not GPU completion or full presentation proof. Some
-upper-level LE2/LE3 SFR/mono/DIBR builders still ignore the full-frame copy result when
-setting `rendered` and caching poses. AER also has intentional old-eye retention and
-bootstrap behavior. Those policies need a separate pair-validity review: only publish/cache
-a fresh pose after the corresponding images succeeded, distinguish reuse of a known valid
-old pair, and avoid claiming a failed new image as fresh. Do not call native HDR accepted
-until that gate and source-to-eye capture evidence pass.
+This is command-admission evidence, not GPU completion or full presentation proof. The
+following publication policy addresses the source-level pair-validity gap; native runtime
+fault/recovery and source-to-eye capture evidence still must pass before HDR acceptance.
+
+### Copy and release publication policy
+
+Both sequel renderers now consume `core/vr/EyePublication`, rather than treating a newer
+source-history pose as proof of the image most recently released to OpenXR. Each eye
+becomes valid only when its copy and release both succeed. An acquired failed attempt
+invalidates that eye; a failed acquire leaves the untouched previous publication intact.
+Current-pair readiness requires successful publications for both eyes in this frame.
+
+SFR, mono projection and DIBR guard their projection/cache blocks with that current-pair
+test. Flat mono also requires successful release before its readiness flag. AER retains
+its existing source history and sequence IDs, with submitted pose/FOV/sequence copied into
+the receipt only after successful publication. Unchanged old eyes keep their submitted
+tags. A new history capture without successful upload cannot advance the projected pose.
+Unpublished history sequences and invalid eyes retry through the existing catch-up path.
+Bootstrap reports success only for a completed current pair. History reset, session stop,
+swapchain creation and reference-space recenter invalidate previous receipts/history.
+
+`OnEyeCopied` still stages GPU samples **before** release, while image ownership is valid.
+The separate `OnEyeReleased` completion hook performs no image access: failed publication
+discards the staged copied-eye diagnostic. Pre-release copy-command counts are labeled as
+such; they are not release/presentation proof. The wrapped XR layer and actual end-frame
+submission remain responsible for runtime presentation.
+
+`tests/EyePublicationTests.cpp` exercises the exact header used by both renderers: partial
+left/right failure, failed release, source-history advance without upload, untouched-eye
+reuse, catch-up, reset and untagged current-pair versus tagged AER reuse. The executable
+passed `/W4 /WX`; both modified XR translation units, both bridge hooks and TestLoop
+compiled. Register it as a standalone CTest target with `src` as its include directory;
+it needs no game or graphics libraries. The WARP converter test remains separate.
+
+This does not prove that the existing render-pose acquisition itself matches a native
+engine frame, or that a compositor displayed accepted commands. Native SFR/AER/mono/DIBR
+captures, reference-space reset and induced-copy/release-failure recovery remain required.
 
 ### Separate BGRA UI fallback gap
 

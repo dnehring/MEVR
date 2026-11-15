@@ -1777,6 +1777,14 @@ void OnEyeCopied(int eye, ID3D11Texture2D* image) {
     }
 }
 
+void OnEyeReleased(int eye, bool published) {
+    if (!published && (eye == 0 || eye == 1) && gArmed.load(std::memory_order_relaxed) && OnPresentThread()) {
+        auto const key = kEyeCopySwapchain[2 + eye];
+        gCapture.staged.erase(std::remove_if(gCapture.staged.begin(), gCapture.staged.end(),
+            [key](Staged const& staged) { return staged.swapchain == key; }), gCapture.staged.end());
+    }
+}
+
 bool CopyStaticImage(XrSwapchain swapchain, std::uint32_t& width, std::uint32_t& height, std::vector<std::uint32_t>& pixels) {
     std::lock_guard lock(gSwapchainMutex);
     auto const it = gSwapchains.find(swapchain);

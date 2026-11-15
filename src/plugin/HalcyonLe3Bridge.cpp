@@ -214,6 +214,9 @@ void OnEyeSource(int eye, void* source) noexcept {
 void OnEyeCopied(int eye, void* image) noexcept {
     mevr::host::testloop::OnEyeCopied(eye, static_cast<ID3D11Texture2D*>(image));
 }
+void OnEyeReleased(int eye, bool published) noexcept {
+    mevr::host::testloop::OnEyeReleased(eye, published);
+}
 bool CopyIntoImage(void* context, void* image, void* source, int shiftX, int eye) noexcept {
     return mevr::host::eye_copy::Copy(static_cast<ID3D11DeviceContext*>(context), static_cast<ID3D11Texture2D*>(image),
         static_cast<ID3D11Texture2D*>(source), shiftX, eye);

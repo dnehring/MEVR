@@ -73,6 +73,7 @@ void OnEyeSource(int eye, void* source) noexcept;
 // Right after the copy into eye `eye`'s image `image` (index `index`), before its release; `acquired`/`waited` the
 // XrResults of its acquire and wait (a failed one means no copy): counted, and logged when one fails.
 void OnEyeCopied(int eye, void* image, std::uint32_t index, int acquired, int waited) noexcept;
+void OnEyeReleased(int eye, bool published) noexcept; // receipt only, no released-image access
 
 // Present thread, in place of CopyResource(image, source) into an eye or the flat panel's image (ID3D11DeviceContext,
 // ID3D11Texture2D): owns the complete validated raw-copy or shader-conversion operation.

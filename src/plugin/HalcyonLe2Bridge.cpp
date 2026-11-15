@@ -354,7 +354,7 @@ void OnEyeCopied(int eye, void* image, std::uint32_t index, int acquired, int wa
         bool const first = nextLogMs == 0;
         nextLogMs = now + 60000;
         if (!first) {
-            mevr::log::Info("halcyon le2 bridge: eye copies in 60 s: left {} (indices {:#x}; acquire failed {} last {}, wait "
+            mevr::log::Info("halcyon le2 bridge: eye copy commands before release in 60 s: left {} (indices {:#x}; acquire failed {} last {}, wait "
                             "failed {} last {}, no image {}), right {} (indices {:#x}; acquire failed {} last {}, wait failed {} "
                             "last {}, no image {})",
                 counts[0].copies, counts[0].indices, counts[0].acquireFailed, counts[0].lastAcquire, counts[0].waitFailed,
@@ -364,6 +364,10 @@ void OnEyeCopied(int eye, void* image, std::uint32_t index, int acquired, int wa
         counts[0] = {};
         counts[1] = {};
     }
+}
+
+void OnEyeReleased(int eye, bool published) noexcept {
+    mevr::host::testloop::OnEyeReleased(eye, published);
 }
 
 void OnSwapChainPresent(void* swapChain, void* capturedSwapChain) noexcept {
