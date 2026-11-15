@@ -2885,6 +2885,11 @@ void CheckLe3Dialogue() {
     PARAM(USFXPowerCustomActionBase_execGetStringFromStringRef_Parms, "SFXGame.SFXPowerCustomActionBase.GetStringFromStringRef", bParse);
     PARAM(USFXPowerCustomActionBase_execGetStringFromStringRef_Parms, "SFXGame.SFXPowerCustomActionBase.GetStringFromStringRef", nParseIndex);
     PARMS(USFXPowerCustomActionBase_execGetStringFromStringRef_Parms, "SFXGame.SFXPowerCustomActionBase.GetStringFromStringRef");
+    CheckFunction("SFXGame.SFXGUIMovie.GetUIString");
+    PARAM(USFXGUIMovie_execGetUIString_Parms, "SFXGame.SFXGUIMovie.GetUIString", sr);
+    PARAM(USFXGUIMovie_execGetUIString_Parms, "SFXGame.SFXGUIMovie.GetUIString", bParse);
+    PARAM(USFXGUIMovie_execGetUIString_Parms, "SFXGame.SFXGUIMovie.GetUIString", ReturnValue);
+    PARMS(USFXGUIMovie_execGetUIString_Parms, "SFXGame.SFXGUIMovie.GetUIString");
     CheckFunction("SFXGame.BioSFHandler_Conversation.AS_HideWheel");
     CheckParmsSize("SFXGame.BioSFHandler_Conversation.AS_HideWheel", 0);
 }
