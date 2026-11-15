@@ -2938,6 +2938,10 @@ void CheckFields() {
     CheckField("SFXGame.SFXWeapon", "AmmoUsedCount", SDK_FIELD(ASFXWeapon, AmmoUsedCount));
     CheckField("SFXGame.SFXWeapon", "CurrentSpareAmmo", SDK_FIELD(ASFXWeapon, CurrentSpareAmmo));
     CheckField("SFXGame.SFXWeapon", "bWeaponCanBeReloaded", SDK_BOOL(ASFXWeapon, bWeaponCanBeReloaded));
+    CheckField("SFXGame.SFXWeapon", "bInfiniteAmmo", SDK_BOOL(ASFXWeapon, bInfiniteAmmo));
+    CheckField("Engine.Inventory", "InvManager", SDK_FIELD(AInventory, InvManager));
+    CheckField("Engine.InventoryManager", "PendingWeapon", SDK_FIELD(AInventoryManager, PendingWeapon));
+    CheckField("Engine.Actor", "Instigator", SDK_FIELD(AActor, Instigator));
     CheckField("Engine.Pawn", "Controller", SDK_FIELD(APawn, Controller));
     CheckField("Engine.Pawn", "InvManager", SDK_FIELD(APawn, InvManager));
     CheckField("Engine.Pawn", "Health", SDK_FIELD(APawn, Health));
@@ -3046,6 +3050,9 @@ void CheckFunctions() {
     CheckFunction("Engine.Actor.SetRotation");
     CheckFunction("Engine.PlayerController.IsMoveInputIgnored");
     CheckFunction("SFXGame.SFXWeapon.GetMagazineSize");
+    CheckFunction("SFXGame.SFXWeapon.GetAmmoCountInMagazine");
+    CheckFunction("SFXGame.SFXWeapon.CanReload");
+    CheckFunction("SFXGame.BioPlayerController.IsReloading");
     CheckFunction("SFXGame.SFXWeapon.GetCurrentSpareAmmo");
     CheckFunction("Engine.PlayerController.ConsoleCommand");
     CheckNativeTarget("SFXGame.SFXEngine.QueueSaveGameCommand");
@@ -3139,6 +3146,12 @@ void CheckParams() {
     PARMS(ASFXAI_NativeBase_eventIsEnabled_Parms, "SFXGame.SFXAI_NativeBase.IsEnabled");
     PARAM(ASFXWeapon_execGetMagazineSize_Parms, "SFXGame.SFXWeapon.GetMagazineSize", ReturnValue);
     PARMS(ASFXWeapon_execGetMagazineSize_Parms, "SFXGame.SFXWeapon.GetMagazineSize");
+    PARAM(ASFXWeapon_execGetAmmoCountInMagazine_Parms, "SFXGame.SFXWeapon.GetAmmoCountInMagazine", ReturnValue);
+    PARMS(ASFXWeapon_execGetAmmoCountInMagazine_Parms, "SFXGame.SFXWeapon.GetAmmoCountInMagazine");
+    PARAM(ASFXWeapon_execCanReload_Parms, "SFXGame.SFXWeapon.CanReload", ReturnValue);
+    PARMS(ASFXWeapon_execCanReload_Parms, "SFXGame.SFXWeapon.CanReload");
+    PARAM(ABioPlayerController_execIsReloading_Parms, "SFXGame.BioPlayerController.IsReloading", ReturnValue);
+    PARMS(ABioPlayerController_execIsReloading_Parms, "SFXGame.BioPlayerController.IsReloading");
     PARAM(ASFXWeapon_execGetCurrentSpareAmmo_Parms, "SFXGame.SFXWeapon.GetCurrentSpareAmmo", ReturnValue);
     PARMS(ASFXWeapon_execGetCurrentSpareAmmo_Parms, "SFXGame.SFXWeapon.GetCurrentSpareAmmo");
     PARAM(USFXEngine_execQueueSaveGameCommand_Parms, "SFXGame.SFXEngine.QueueSaveGameCommand", Action);

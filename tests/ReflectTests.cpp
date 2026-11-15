@@ -9,6 +9,7 @@
 #include "ue3/Pattern.hpp"
 #include "ue3/Reflect.hpp"
 #include "ue3/SafeNames.hpp"
+#include "ue3/UnambiguousMethod.hpp"
 
 #include <cstdint>
 #include <cstdio>
@@ -661,7 +662,53 @@ void TestSafeNames() {
     CHECK(ue3::safe::FindFrames(blind, fl, lo, lo + sizeof(stack), frames, 8) == 0);
 }
 
+void TestUnambiguousMethods() {
+    World w;
+    ue3::Reflection initial(w.f.Universe());
+    auto* structure = initial.FindClass("Core.Struct");
+    auto* function = initial.FunctionClass();
+    auto* core = initial.OuterOf(structure);
+    auto* stateClass = w.f.Make("State", w.classClass, core);
+    w.f.Set(stateClass, w.f.layout.fieldSuper, structure);
+    auto* state = w.f.Make("Reloading", stateClass, w.bioPawn);
+    auto* stateParent = w.f.Make("Busy", stateClass, w.pawn);
+    auto* overrideMethod = w.f.Make("SetRotation", function, w.bioPawn);
+    auto* duplicate = w.f.Make("SetRotation", function, w.bioPawn);
+    auto* stateMethod = w.f.Make("SetRotation", function, stateParent);
+    w.f.Link(w.bioPawn, {overrideMethod, state});
+    w.f.Link(state, {});
+    w.f.Link(stateParent, {});
+    w.f.Set(state, w.f.layout.fieldSuper, stateParent);
+    ue3::Reflection r(w.f.Universe());
+    CHECK(ue3::UnambiguousMethod(r, w.shepard, "SetRotation") == overrideMethod);
+    CHECK(ue3::UnambiguousMethod(r, w.shepard, "Jump") == w.jump);
+    CHECK(ue3::UnambiguousMethod(r, w.shepard, "Missing") == nullptr);
+    CHECK(ue3::UnambiguousMethod(r, w.dying, "Jump") == nullptr);
+    // Even a state inherited from another class can override a class method. No active
+    // StateFrame offsets are guessed; that ambiguous query must stay unavailable.
+    w.f.Link(stateParent, {stateMethod});
+    CHECK(ue3::UnambiguousMethod(r, w.shepard, "SetRotation") == nullptr);
+    CHECK(ue3::UnambiguousMethod(r, w.shepard, "Jump") == w.jump);
+    w.f.Link(stateParent, {});
+    w.f.Set(stateParent, w.f.layout.fieldSuper, state);
+    CHECK(ue3::UnambiguousMethod(r, w.shepard, "Jump") == nullptr); // cyclic state inheritance
+    w.f.Set(stateParent, w.f.layout.fieldSuper, static_cast<ue3::Object*>(nullptr));
+    w.f.Set(state, w.f.layout.fieldNext, state);
+    CHECK(ue3::UnambiguousMethod(r, w.shepard, "Jump") == nullptr); // cyclic child chain
+    w.f.Set(state, w.f.layout.fieldNext, static_cast<ue3::Object*>(nullptr));
+    w.f.Set(state, w.f.layout.objectOuter, w.pawn);
+    CHECK(ue3::UnambiguousMethod(r, w.shepard, "Jump") == nullptr); // foreign declaration
+    w.f.Set(state, w.f.layout.objectOuter, w.bioPawn);
+    w.f.Link(w.bioPawn, {overrideMethod, duplicate});
+    CHECK(ue3::UnambiguousMethod(r, w.shepard, "SetRotation") == nullptr);
+    w.f.Link(w.bioPawn, {overrideMethod});
+    w.f.Set(overrideMethod, w.f.layout.fieldNext, static_cast<ue3::Object*>(nullptr));
+    w.f.Set(w.bioPawn, w.f.layout.fieldSuper, w.bioPawn);
+    CHECK(ue3::UnambiguousMethod(r, w.shepard, "SetRotation") == nullptr); // cyclic class chain
+}
+
 int RunReflectTests() {
+    TestUnambiguousMethods();
     TestNames();
     TestSafeNames();
     TestLookups();
