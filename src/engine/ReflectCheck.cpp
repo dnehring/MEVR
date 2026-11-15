@@ -2956,6 +2956,8 @@ void CheckFunctions() {
     CheckFunction("SFXGame.SFXWeapon.GetMuzzleLoc");
     CheckFunction("Engine.SkeletalMeshComponent.GetSocketWorldLocationAndRotation");
 
+    CheckFunction("GFxUI.GFxValue.GetObject");
+    CheckFunction("GFxUI.GFxValue.GetDisplayMatrix");
     CheckFunction("SFXGame.SFXPowerCustomActionBase.IsValidTarget");
     CheckFunction("Engine.Actor.SetRotation");
     CheckFunction("Engine.PlayerController.IsMoveInputIgnored");
@@ -3003,6 +3005,12 @@ void CheckParams() {
     PARAM(USkeletalMeshComponent_execGetSocketWorldLocationAndRotation_Parms, "Engine.SkeletalMeshComponent.GetSocketWorldLocationAndRotation", ReturnValue);
     PARMS(USkeletalMeshComponent_execGetSocketWorldLocationAndRotation_Parms, "Engine.SkeletalMeshComponent.GetSocketWorldLocationAndRotation");
 
+    PARAM(UGFxValue_execGetObject_Parms, "GFxUI.GFxValue.GetObject", member);
+    PARAM(UGFxValue_execGetObject_Parms, "GFxUI.GFxValue.GetObject", Type);
+    PARAM(UGFxValue_execGetObject_Parms, "GFxUI.GFxValue.GetObject", ReturnValue);
+    PARMS(UGFxValue_execGetObject_Parms, "GFxUI.GFxValue.GetObject");
+    PARAM(UGFxValue_execGetDisplayMatrix_Parms, "GFxUI.GFxValue.GetDisplayMatrix", ReturnValue);
+    PARMS(UGFxValue_execGetDisplayMatrix_Parms, "GFxUI.GFxValue.GetDisplayMatrix");
     PARAM(USFXPowerCustomActionBase_execIsValidTarget_Parms, "SFXGame.SFXPowerCustomActionBase.IsValidTarget", oTarget);
     PARAM(USFXPowerCustomActionBase_execIsValidTarget_Parms, "SFXGame.SFXPowerCustomActionBase.IsValidTarget", ReturnValue);
     PARMS(USFXPowerCustomActionBase_execIsValidTarget_Parms, "SFXGame.SFXPowerCustomActionBase.IsValidTarget");
