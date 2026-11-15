@@ -19,10 +19,10 @@
 //                                            bytes each: rotation (x, y, z, w), translation, scale
 //                                            (UpdateSkelPose, GetBoneMatrix)
 //   UPrimitiveComponent::LocalToWorld  +0xC0  FMatrix
-// The two element layouts aren't in the reflection: they stay research/14's (LE1 only).
+// The two element layouts are not in reflection; each game's original native code establishes them.
 // Names can't come from the GetBoneNames native: through ProcessEvent its out-array parameter is
 // never bound to the caller's parms (EX_NativeParm with a null result), so it returns nothing.
-// LE2 uses the same verified layouts (research/le2-vrik.md). LE3 remains unsupported until native proof.
+// LE2 and LE3 use the same native-proven element layouts (research/le2-vrik.md, research/le3-body-pose.md).
 //
 // Meshes are SkeletalMeshComponents as our reflection layer's pointers. The offsets are resolved once
 // (TryStartup, game thread) and then only read, so the pose reads (RefBoneCount, RefBoneKey,
@@ -33,7 +33,7 @@ struct Object;
 
 namespace mevr::engine::skeleton {
 
-// This game's layouts are known (LE1/LE2; LE3 awaits independent native proof).
+// This game's skeletal element layouts are known; this is not live-pose or headset acceptance.
 bool Supported();
 // Resolves the fields below through our reflection layer (once; what's missing is logged and stays
 // off), and finds the natives used for cross-checks (MatchRefBone, GetBoneLocation, GetBoneNames).

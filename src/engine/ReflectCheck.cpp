@@ -2803,9 +2803,24 @@ void CheckClasses() {
     CheckClass<ASFXWeapon_Shotgun_Base>("SFXGame.SFXWeapon_Shotgun_Base");
     CheckClass<ASFXWeapon_SniperRifle_Base>("SFXGame.SFXWeapon_SniperRifle_Base");
     CheckClass<USkeletalMeshComponent>("Engine.SkeletalMeshComponent");
+    CheckClass<USkeletalMesh>("Engine.SkeletalMesh");
+    CheckClass<USkeletalMeshSocket>("Engine.SkeletalMeshSocket");
 }
 
 void CheckFields() {
+    CheckField("Engine.SkeletalMeshComponent", "SkeletalMesh", SDK_FIELD(USkeletalMeshComponent, SkeletalMesh));
+    CheckField("Engine.SkeletalMeshComponent", "SpaceBases", SDK_FIELD(USkeletalMeshComponent, SpaceBases));
+    CheckField("Engine.SkeletalMeshComponent", "LocalAtoms", SDK_FIELD(USkeletalMeshComponent, LocalAtoms));
+    CheckField("Engine.SkeletalMeshComponent", "ParentAnimComponent", SDK_FIELD(USkeletalMeshComponent, ParentAnimComponent));
+    CheckField("Engine.SkeletalMeshComponent", "Attachments", SDK_FIELD(USkeletalMeshComponent, Attachments));
+    CheckField("Engine.SkeletalMeshComponent", "LocalToWorld", SDK_FIELD(USkeletalMeshComponent, LocalToWorld));
+    CheckField("Engine.SkeletalMesh", "RefSkeleton", SDK_FIELD(USkeletalMesh, RefSkeleton));
+    CheckField("Engine.SkeletalMesh", "Sockets", SDK_FIELD(USkeletalMesh, Sockets));
+    CheckField("Engine.SkeletalMeshSocket", "SocketName", SDK_FIELD(USkeletalMeshSocket, SocketName));
+    CheckField("Engine.SkeletalMeshSocket", "BoneName", SDK_FIELD(USkeletalMeshSocket, BoneName));
+    CheckField("Engine.SkeletalMeshSocket", "RelativeLocation", SDK_FIELD(USkeletalMeshSocket, RelativeLocation));
+    CheckField("Engine.SkeletalMeshSocket", "RelativeRotation", SDK_FIELD(USkeletalMeshSocket, RelativeRotation));
+
     CheckField("Engine.Engine", "GamePlayers", SDK_FIELD(UEngine, GamePlayers));
     CheckField("Engine.Player", "Actor", SDK_FIELD(UPlayer, Actor));
     CheckField("Engine.Controller", "Pawn", SDK_FIELD(AController, Pawn));
@@ -2829,9 +2844,25 @@ void CheckPaths() {
         SDK_AT(offsetof(ASFXWeapon, MagSize) + offsetof(FScaledFloat, Value), sizeof(FScaledFloat::Value)));
 }
 
-void CheckSkeleton() {}  // L3-3 owns pose layout discovery; no skeletal write path enabled here.
+void CheckSkeleton() {
+    skeleton::TryStartup();
+    skeleton::Fields const f = skeleton::ResolvedFields();
+    struct Item { char const* what; long long ours; long long native; };
+    // Original 60AEF0C4 code, not SDK-derived constants: research/le3-body-pose.md.
+    Item const items[] = {
+        {"SkeletalMeshComponent.SkeletalMesh", f.skeletalMesh, 0x258},
+        {"SkeletalMesh.RefSkeleton", f.refSkeleton, 0xB4},
+        {"SkeletalMeshComponent.SpaceBases", f.spaceBases, 0x2B4},
+    };
+    for (Item const& item : items) {
+        Add("skeleton", item.what, item.ours == item.native, Hex(item.ours), std::format("ME3's natives {}", Hex(item.native)));
+    }
+}
 
 void CheckFunctions() {
+    CheckFunction("Engine.SkeletalMeshComponent.GetBoneLocation");
+    CheckFunction("Engine.SkeletalMeshComponent.MatchRefBone");
+
     // L3-3: exact script/native entry points used by the shared pose/aim adapter.
     CheckFunction("SFXGame.BioPlayerController.GetAdjustedAimFor");
     CheckFunction("SFXGame.SFXWeapon.GetAdjustedAim");
@@ -2845,6 +2876,14 @@ void CheckFunctions() {
 }
 
 void CheckParams() {
+    PARAM(USkeletalMeshComponent_execGetBoneLocation_Parms, "Engine.SkeletalMeshComponent.GetBoneLocation", BoneName);
+    PARAM(USkeletalMeshComponent_execGetBoneLocation_Parms, "Engine.SkeletalMeshComponent.GetBoneLocation", Space);
+    PARAM(USkeletalMeshComponent_execGetBoneLocation_Parms, "Engine.SkeletalMeshComponent.GetBoneLocation", ReturnValue);
+    PARMS(USkeletalMeshComponent_execGetBoneLocation_Parms, "Engine.SkeletalMeshComponent.GetBoneLocation");
+    PARAM(USkeletalMeshComponent_execMatchRefBone_Parms, "Engine.SkeletalMeshComponent.MatchRefBone", BoneName);
+    PARAM(USkeletalMeshComponent_execMatchRefBone_Parms, "Engine.SkeletalMeshComponent.MatchRefBone", ReturnValue);
+    PARMS(USkeletalMeshComponent_execMatchRefBone_Parms, "Engine.SkeletalMeshComponent.MatchRefBone");
+
     PARAM(ABioPlayerController_execGetAdjustedAimFor_Parms, "SFXGame.BioPlayerController.GetAdjustedAimFor", W);
     PARAM(ABioPlayerController_execGetAdjustedAimFor_Parms, "SFXGame.BioPlayerController.GetAdjustedAimFor", StartFireLoc);
     PARAM(ABioPlayerController_execGetAdjustedAimFor_Parms, "SFXGame.BioPlayerController.GetAdjustedAimFor", ReturnValue);

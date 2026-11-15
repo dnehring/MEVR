@@ -64,9 +64,10 @@ block; the production adapter resolves fields by reflection instead of calling g
 
 ## Native gates still required
 
-`Skeleton::Supported()` remains false on LE3 and `Addresses::le3::kUpdateSkelPose` remains
-zero in this candidate. `Weapon::TryStartup()` now explicitly refuses unknown skeletal element
-layouts. The coordinator owns native discovery and module enabling; this lane changes neither.
+The native follow-up below establishes the element layout and enables LE3's shared skeletal
+reader. `Addresses::le3::kUpdateSkelPose` remains zero in this lane's candidate; the coordinator
+owns the hook address and module enabling. `Weapon::TryStartup()` refuses unknown layouts.
+Native layout evidence does not replace the live checks before pose writes.
 
 1. Establish `FMeshBone` stride/name/parent and the actual `SpaceBases`/`LocalAtoms` element
    representation from the original runtime image. Reflected array declarations alone are
@@ -102,3 +103,38 @@ preincludes. No running-game comparison result is claimed.
 No CMake change is required: the existing source list and calibration test entry cover these files.
 The coordinator must add `RangedType::Smg` to `Mod.cpp`'s weapon-name diagnostic switch. The global
 module gate stays closed until the plan's foundation and feature acceptance gates are satisfied.
+
+## Original runtime-image skeletal follow-up
+
+The coordinator acquired the fresh `60AEF0C4` original ME3 text image through the protected
+dump-only route. Text RVA `0x1000`, size `0x1065FC1`, SHA-256
+`50c79c1c3e64ceca9af90ce87af919f01361cc9f5adb7efa2de8166e58bcd95d`.
+The dump receipt identifies one patched start, `0xCA830`, outside the functions below.
+This lane reused `tools/ghidra/decompile.ps1 -Game LE3` and `tools/rva-patterns.py` read-only;
+private output remains ignored. Original executable data-section values were not used to
+infer runtime constants.
+
+| Original function RVA | Direct code evidence |
+| --- | --- |
+| `0x796EB0` | Pose-update routine reads component mesh at `+0x258`, the asset reference-bone count at `+0xBC`, and resizes `SpaceBases +0x2B4` and `LocalAtoms +0x2C4` using 32-byte entries. It blends animation before invoking composition. Its entry is a `.pdata` function start and the existing pattern tool finds a unique signature. |
+| `0x791B80` | Component tick path passes float delta time plus `1, 0` to the pose update, matching the existing four-register pass-through hook ABI. Another caller at `0x78ECF0` invokes it with zero time and `1` when refreshing the pose. |
+| `0x785950` → `0x77FBA0` | Composition reads local entries and writes component entries. Quaternion arithmetic uses the four floats at `+0/+4/+8/+C`; translation occupies `+0x10/+0x14/+0x18`, scalar scale `+0x1C`. Parent traversal uses reference-bone stride `0x50` and parent index `+0x40`. This establishes the shared `BoneAtom` representation, not merely its size. |
+| `0x7993F0` | Bone-name reader copies each 64-bit name at entry offset zero from the reference skeleton (`asset +0xB4`), advancing by `0x50`. |
+| `0x799910` | Bounds-checks an input bone index against that reference count, then reads the parent at entry `+0x40` with stride `0x50`. |
+
+The two reader labels describe their inspected behavior; native-registration name assignment
+has not been independently captured. An initial prologue-based force-update candidate at
+`0x778C00` calls a different routine and is **not** used as proof of `UpdateSkelPose`.
+
+The shared `Skeleton` adapter can therefore admit LE3's element representation without adding
+SDK offsets to production reads. The LE3 reflection table compares the three observed object
+field offsets above, the skeletal/socket metadata, and the native bone-location query's named
+parameters. `ArmIk::CheckLayout` still checks head/hand positions against the game's own
+`GetBoneLocation` in component and world space and rejects implausible arm lengths before writing.
+No body/armor mesh, attachment timing or headset alignment has yet passed that live gate.
+
+`0x793850` is also a `.pdata`-aligned, uniquely matched bounds-update candidate with bounds
+calculation behavior. Its runtime hook/restoration remains separate coordinator work; this
+lane does not change the bounds address. The new skeleton/pose translation units pass syntax
+checks for all three games using the project's existing `/wd4127` constant-condition setting;
+the expanded LE3 SDK comparison also compiles.

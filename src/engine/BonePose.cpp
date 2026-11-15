@@ -39,7 +39,8 @@ constexpr char const* kHookName = "USkeletalMeshComponent::UpdateSkelPose";
 // LocalAtoms to the RefSkeleton with 0x20-byte elements, blends the AnimTree into LocalAtoms and
 // calls ComposeSkeleton (0x580A60). USkeletalMeshComponent::Tick calls it at 0x58D709 with the
 // frame's DeltaTime; Attach and the various force-update paths call it with 0. LE1 and LE2 (ME2: 0x79B8A0, the same
-// function; research/le2-vrik.md "UpdateSkelPose"); engine/Addresses.hpp.
+// function; research/le2-vrik.md "UpdateSkelPose"); LE3 0x796EB0 has the same call ABI and atom layout
+// (research/le3-body-pose.md). The game-specific hook address remains owned by engine/Addresses.hpp.
 constexpr std::uint32_t kUpdateSkelPoseRva = addresses::kUpdateSkelPose;
 
 // (this, DeltaTime, bTickFaceFX); callers also set r9, which the function never reads. All four
