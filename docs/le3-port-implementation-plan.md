@@ -10,6 +10,18 @@ Read the [reuse audit](le3-port-reuse-audit.md), [ME3 melee audit](../research/l
 
 ## Implementation ledger (2026-11-15)
 
+Latest checkpoint: development host/module pairs and player ASIs build for all three games; the full
+**60-test suite passed**. Two further protected desktop probes passed **355/355** and **361/361** native
+comparisons, with ordinary Normandy loading and zero-difference restoration. The latter supplies the native
+dialogue-text and HUD-matrix entry points for the remaining source audits. These counts prove only the
+listed comparisons, not gameplay or stereo acceptance.
+
+The first protected renderer preview launched ME3 but stopped before XR readiness: the persistent renderer
+log denied readers. Cleanup restored all tracked files, the fake-headset environment and the LE1 ini with
+zero differences. The renderer now allows live readers while refusing competing writers; a regression test
+uses its actual logger and passes. Both ME3 build variants pass with this correction. No eye capture or
+VR acceptance is claimed from that failed preview; a fresh bounded preview is next.
+
 Implementation is now authorized. The audit baseline above remains historical; these are the first foundation changes:
 
 - **L3-0, partial:** semantic game-mode mapping is shared. The full ME3 v59 save codec now reconstructs
