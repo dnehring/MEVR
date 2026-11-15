@@ -619,7 +619,11 @@ void Settings::Read(menu::Values& v) {
     {
         std::string const strictness = mevr::ini::Lower(mevr::ini::Trim(ini.Text("Thespian", "strictness", "performer")));
         v.texts["thespian_strictness"] = strictness == "relaxed" || strictness == "method" ? strictness : std::string("performer");
+#if defined(MEVR_MENU_LE2)
+        v.texts["thespian_hand"] = "voice";  // LE2 keeps native Shepard playback until a verified Wwise adapter exists.
+#else
         v.texts["thespian_hand"] = mevr::ini::Lower(mevr::ini::Trim(ini.Text("Thespian", "handPick", "voice"))) == "silent" ? "silent" : "voice";
+#endif
     }
     // Sound (research/69 A3): [Audio] spatial and gainDb are read once when the game starts (plugin/OpenAlSoft), so the note says
     // whether the file's choice is what plays now; overheard and gun are the mod's and live (game/SoundPlace).
@@ -907,7 +911,9 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
     } else if (key == "thespian_strictness") {
         Put("Thespian", "strictness", v.Text("thespian_strictness"), true);
     } else if (key == "thespian_hand") {
+#if !defined(MEVR_MENU_LE2)
         Put("Thespian", "handPick", v.Text("thespian_hand"), true);
+#endif
     } else if (key == "audio_spatial") {
         // The host reads it once when the game starts (plugin/OpenAlSoft): the row's note says so.
         Put("Audio", "spatial", ms::AudioSpatialChoice(v.Text("audio_spatial")), true);

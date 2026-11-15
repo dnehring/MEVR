@@ -37,6 +37,9 @@
 #include "core/vr/PowerWheel.hpp"
 #include "plugin/SquadPlaceDraw.hpp"
 #include "plugin/WorldPanels.hpp"
+#if defined(MEVR_WITH_MAIN_MENU)
+#include "plugin/Thespian.hpp"
+#endif
 #include "plugin/XrHost.hpp"
 
 #include <openxr/openxr.h>
@@ -648,6 +651,19 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
         }
     }
     // Our main menu and the guided calibration (plugin/MenusLe2, M4): over the rest, alone while they're up.
+#if defined(MEVR_WITH_MAIN_MENU)
+    {
+        mevr::host::thespian::Frame spoken;
+        spoken.session = static_cast<XrSession>(frame.session);
+        spoken.appSpace = static_cast<XrSpace>(frame.appSpace);
+        spoken.context = frame.context;
+        spoken.device = device;
+        spoken.head = {{frame.headOrientation[0], frame.headOrientation[1], frame.headOrientation[2], frame.headOrientation[3]},
+            {frame.headPosition[0], frame.headPosition[1], frame.headPosition[2]}};
+        spoken.othersOwnInput = frame.gameMode != kConversationMode || !frame.headValid || count >= capacity || frame.menuOpen || mevr::host::renderer::OwnMenuOpen() || mevr::host::menus_le2::PadWanted();
+        if (auto const* layer = mevr::host::thespian::Layer(spoken)) layersOut[count++] = layer;
+    }
+#endif
     count = mevr::host::menus_le2::Layers(frame, device, layersOut, count, capacity);
     if (device != nullptr) {
         device->Release();

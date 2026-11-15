@@ -740,3 +740,58 @@ reading each line with the names spelled to sound off, fed with `mevr thespian f
   (notes/headset-checklist.md, Thespian mode).
 - Which pick felt Renegade; what int 47 counts.
 - (4) and (5) above, only if misheard names still decide or block picks in play.
+
+
+## ME2 cinema adapter — 2026-11-15 (M6 E)
+
+This is a source implementation pending native acceptance, not a claim that ME2 dialogue has passed in-game.
+It reuses the ME1 matcher, word highlighting, microphone ownership, panel, native-stick fallback and dev commands.
+Conversations retain the existing ME2 cinema camera. First-person conversations and seated camera placement are
+outside this slice; authored seated scenes such as the shuttle must not admit traversal.
+
+### What was audited and implemented
+
+- The installed LE2 `SFXGame.pcc` scripts for `BioSFHandler_Conversation.SelectConversationEntry`,
+  `UpdateConversationOptions`, `HandleEvent`, `Update`, `GetReplyLocation` and `GetInvestigateReplyLocation`
+  were read using the existing conversation scanner. Raw extracted game scripts stay in ignored local tools output.
+- `game/Thespian.cpp` now resolves LE2 fields/functions through the existing reflection layer. Its small live
+  reader finds `BioWorldInfo.m_oCurrentConversation` only in conversation mode and obtains the wheel with
+  `MassEffectGuiManager.GetConversationHandler`. It does not enable or depend on the world-camera port.
+- Reply text, paraphrases, category and GUI style come from the current native conversation. Existing entry/reply
+  bounds and the steady-wheel delay remain. LE2's **int `m_nSlotsUsed[6]`** contains reply positions, unlike
+  LE1's category/used arrays. Only positions actually offered by the active native wheel may be selected.
+  `-2` Return and `-3` Investigate are navigation sentinels, never reply indices. The native stick opens those
+  submenus; a slot change invalidates and rebuilds the spoken turn. Off-wheel topics remain unavailable until
+  their native submenu is opened. This is deliberately narrower than ME1's flattened Investigate cards.
+- Both `pick` and speech use the existing `QueueReply(position)` path, close the Investigate flag after selection,
+  and follow the handler's EndCurrentConversation response to a successful call that returns false. A failed
+  reflected call now leaves the conversation untouched. `stick` uses the actual LE2 native slot for comparison.
+- The host links the existing panel and matcher-render support, provides the v39 panel callback, renders its quad
+  only during cinema conversations, and clears copied panel state on mod reset. Missing panel service or voice
+  recognizer prevents the spoken turn. Menu ownership hides the panel. The native conversation movie remains
+  alive: only its `HideWheel` method is used, preserving Paragon/Renegade interrupt UI and native LT/RT handling.
+- LE2 uses amber panel chrome; persuasion/category colours retain their meaning. The existing offline menu preview
+  applies this theme with `--le2`. The experimental menu is enabled and states the native playback limitation.
+- LE2 reflection diagnostics cover the reader, current reply structures, six slots and function parameters;
+  compile-time SDK checks are not a substitute for running those reflection diagnostics in the game.
+
+### Explicit limits
+
+ME2 retains Shepard's recorded voice and line playback after spoken or hand selection. LE1's ISACT mute hook
+is not a verified ME2 Wwise route, so LE2 does not publish that mute and does not call `SkipNode` for a spoken
+selection. The Silent hand-pick control is hidden on LE2 and stale `handPick=silent` settings are ignored.
+The recognizer still needs English dialogue and the shared host voice integration. No new recognizer or save tools
+were introduced. This branch does not launch the game, deploy or modify game saves/settings.
+
+### Native acceptance still required
+
+Use the existing serialized session/console/snapshot/replay tools and backed-up dialogue fixture. Start with
+`mevr thespian off`, `mevr thespian cards` and `mevr thespian watch on`; compare each card's reply position,
+text, style and eligibility with the visible wheel. Compare `mevr thespian stick N` against `pick N` from the
+same restored fixture, including plot/quest results. Cover normal, unavailable persuasion, Investigate/Return,
+duplicate labels, a timed interrupt, forced conversation end, reload, death and a seated/shuttle scene.
+Then enable experimental spoken mode and test label/full-line selection, ambiguous speech/no commit, microphone
+ownership, native-stick fallback, menu overlap and stale-card rejection. Capture `thespianPanel`, native UI and
+state before/after each selection. Verify Shepard's audio continues exactly once and interrupt inputs still work.
+Physical Quest 3/Virtual Desktop testing must judge readability and voice ergonomics separately from fake-headset
+capture; no first-person seated traversal is enabled by this adapter.

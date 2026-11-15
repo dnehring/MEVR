@@ -99,6 +99,12 @@ void Say(menu::LogLevel level, std::string const& text) {
     }
 }
 
+void ApplyTheme() {
+#if defined(MEVR_GAME_LE2)
+    if (auto* const document = g.ui->Document()) document->SetClass("le2", true);
+#endif
+}
+
 bool Init(ID3D11Device* device, ID3D11DeviceContext* context) {
     if (g.initTried) {
         return g.ready;
@@ -147,6 +153,7 @@ bool Init(ID3D11Device* device, ID3D11DeviceContext* context) {
         log::Error("thespian panel: thespian.rml didn't load from {} (deployed? see the rmlui: lines); no panel", ini::Utf8(main_menu::AssetsFolder()));
         return false;
     }
+    ApplyTheme();
     g.ready = true;
     log::Info("thespian panel: ready ({}x{} canvas, {})", kWidth, kHeight, ini::Utf8(main_menu::AssetsFolder() / L"thespian.rml"));
     return true;
@@ -252,11 +259,11 @@ bool Fill(th::Panel const& panel) {
 }  // namespace
 
 void SetPanel(th::Panel const* panel) {
-    if (panel == nullptr || panel->size != sizeof(th::Panel)) {
+    if (panel != nullptr && panel->size != sizeof(th::Panel)) {
         return;
     }
     std::lock_guard lock(gPanelMutex);
-    gPanel = *panel;
+    gPanel = panel != nullptr ? *panel : th::Panel{};
     gPanelMs = GetTickCount64();
 }
 
@@ -289,6 +296,7 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
         return nullptr;
     }
     if (g.ui->ReloadIfChanged()) {
+        ApplyTheme();
         g.rows.clear();  // the new document's rows are empty
         g.needRender = true;
     }

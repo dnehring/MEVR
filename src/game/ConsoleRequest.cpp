@@ -1801,6 +1801,11 @@ std::optional<std::string> RunOursLe2(ue3::Object* pc, std::string const& line) 
     if (head != "mevr" || !ue3::runtime::Up()) {
         return std::nullopt;
     }
+    if (verb == "thespian") {
+        std::string rest;
+        std::getline(words, rest);
+        return thespian::Command(rest);
+    }
     if (verb == "load") {
         return LoadSave(ue3::runtime::GameEngine(), words);
     }

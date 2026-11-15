@@ -2596,6 +2596,60 @@ void CheckParams() {
     PARAM(UBioSFPanel_execSetVariableFloat_Parms, "Engine.BioSFPanel.SetVariableFloat", fVar);
 }
 
+// ME2 native dialogue adapter (research/70): reply lists, wheel slots and reflected calls.
+void CheckThespian() {
+    CheckField("Engine.Actor", "WorldInfo", SDK_FIELD(AActor, WorldInfo));
+    CheckField("SFXGame.BioWorldInfo", "m_oCurrentConversation", SDK_FIELD(ABioWorldInfo, m_oCurrentConversation));
+    CheckField("SFXGame.BioConversation", "m_pSpeaker", SDK_FIELD(UBioConversation, m_pSpeaker));
+    CheckField("SFXGame.BioConversation", "m_pConversationPlayer", SDK_FIELD(UBioConversation, m_pConversationPlayer));
+    CheckField("SFXGame.BioConversation", "m_nCurrentEntry", SDK_FIELD(UBioConversation, m_nCurrentEntry));
+    CheckField("SFXGame.BioConversation", "m_EntryList", SDK_FIELD(UBioConversation, m_EntryList));
+    CheckField("SFXGame.BioConversation", "m_ReplyList", SDK_FIELD(UBioConversation, m_ReplyList));
+    CheckField("SFXGame.BioSFHandler_Conversation", "m_bDisplayingWheel", SDK_BOOL(UBioSFHandler_Conversation, m_bDisplayingWheel));
+    CheckField("SFXGame.BioSFHandler_Conversation", "m_bDisplayInvestigateSubMenu", SDK_BOOL(UBioSFHandler_Conversation, m_bDisplayInvestigateSubMenu));
+    CheckField("SFXGame.BioConversation", "m_lstCurrentReplyIndices", SDK_FIELD(UBioConversation, m_lstCurrentReplyIndices));
+    CheckField("SFXGame.BioConversation", "m_nSelectedReply", SDK_FIELD(UBioConversation, m_nSelectedReply));
+    CheckField("SFXGame.BioConversation", "m_nDelayedReplyChoice", SDK_FIELD(UBioConversation, m_nDelayedReplyChoice));
+    CheckField("SFXGame.BioConversation", "m_fRemainingVOLength", SDK_FIELD(UBioConversation, m_fRemainingVOLength));
+    CheckField("SFXGame.BioConversation", "m_fShowRepliesOffset", SDK_FIELD(UBioConversation, m_fShowRepliesOffset));
+    CheckField("Engine.PlayerController", "m_oCachedScaleFormManager", SDK_FIELD(APlayerController, m_oCachedScaleFormManager));
+    CheckField("Engine.BioSFHandler", "oPanel", SDK_FIELD(UBioSFHandler, oPanel));
+    CheckField("SFXGame.BioSFHandler_Conversation", "m_nSlotsUsed", SDK_FIELD(UBioSFHandler_Conversation, m_nSlotsUsed));
+    CheckPath("SFXGame.BioConversation", {"m_EntryList", "ReplyListNew"}, SDK_AT(offsetof(FBioDialogEntryNode, ReplyListNew), 16));
+    CheckPath("SFXGame.BioConversation", {"m_EntryList", "ReplyListNew", "nIndex"}, SDK_AT(offsetof(FBioDialogReplyListDetails, nIndex), 4));
+    CheckPath("SFXGame.BioConversation", {"m_ReplyList", "bUnskippable"}, SDK_BOOL(FBioDialogReplyNode, bUnskippable));  // game/Thespian
+    CheckFunction("Engine.BioSFPanel.InvokeMethod");
+    CheckFunction("SFXGame.BioConversation.GetEntryText");
+    CheckFunction("SFXGame.BioConversation.GetReplyCategory");
+    CheckFunction("SFXGame.BioConversation.GetReplyGUIStyle");
+    CheckFunction("SFXGame.BioConversation.GetReplyParaphraseText");
+    CheckFunction("SFXGame.BioConversation.GetReplyText");
+    CheckFunction("SFXGame.BioConversation.QueueReply");
+    CheckFunction("SFXGame.BioConversation.SkipNode");
+    CheckFunction("SFXGame.BioSFHandler_Conversation.SelectConversationEntry");
+    CheckFunction("SFXGame.BioSFHandler_Conversation.UpdateConversationOptions");
+    CheckFunction("SFXGame.BioWorldInfo.EndCurrentConversation");
+    CheckFunction("SFXGame.MassEffectGuiManager.GetConversationHandler");
+    PARAM(UBioSFPanel_execInvokeMethod_Parms, "Engine.BioSFPanel.InvokeMethod", sMethodName);
+    PARAM(UBioSFHandler_Conversation_execSelectConversationEntry_Parms, "SFXGame.BioSFHandler_Conversation.SelectConversationEntry", nWheelLocation);
+    PARAM(UBioConversation_execGetReplyText_Parms, "SFXGame.BioConversation.GetReplyText", nIndex);
+    PARAM(UBioConversation_execGetReplyText_Parms, "SFXGame.BioConversation.GetReplyText", bParse);
+    PARAM(UBioConversation_execGetReplyText_Parms, "SFXGame.BioConversation.GetReplyText", ReturnValue);
+    PARAM(UBioConversation_execGetReplyParaphraseText_Parms, "SFXGame.BioConversation.GetReplyParaphraseText", nIndex);
+    PARAM(UBioConversation_execGetReplyParaphraseText_Parms, "SFXGame.BioConversation.GetReplyParaphraseText", ReturnValue);
+    PARAM(UBioConversation_execGetReplyCategory_Parms, "SFXGame.BioConversation.GetReplyCategory", nIndex);
+    PARAM(UBioConversation_execGetReplyCategory_Parms, "SFXGame.BioConversation.GetReplyCategory", ReturnValue);
+    PARAM(UBioConversation_execGetReplyGUIStyle_Parms, "SFXGame.BioConversation.GetReplyGUIStyle", nIndex);
+    PARAM(UBioConversation_execGetReplyGUIStyle_Parms, "SFXGame.BioConversation.GetReplyGUIStyle", ReturnValue);
+    PARAM(UBioConversation_execQueueReply_Parms, "SFXGame.BioConversation.QueueReply", nReply);
+    PARAM(UBioConversation_execQueueReply_Parms, "SFXGame.BioConversation.QueueReply", ReturnValue);
+    PARAM(UBioConversation_execSkipNode_Parms, "SFXGame.BioConversation.SkipNode", ReturnValue);
+    PARAM(UBioConversation_execGetEntryText_Parms, "SFXGame.BioConversation.GetEntryText", bParse);
+    PARAM(UBioConversation_execGetEntryText_Parms, "SFXGame.BioConversation.GetEntryText", ReturnValue);
+    PARAM(UBioSFHandler_Conversation_execUpdateConversationOptions_Parms, "SFXGame.BioSFHandler_Conversation.UpdateConversationOptions", oConversation);
+    PARAM(UMassEffectGuiManager_execGetConversationHandler_Parms, "SFXGame.MassEffectGuiManager.GetConversationHandler", ReturnValue);
+}
+
 // game/Traversal (research/le2-traversal.md): the cover list and its slots that vault or climb, the game's own admission
 // (CanPerformMantle/Climb with m_bCanMantleOutsideOfCover and the remapped stick for one call), its MantleCover/ClimbCover and the
 // custom action they start.
@@ -2886,6 +2940,7 @@ void Run(hook::Context& context) {
     CheckParams();
 #if defined(MEVR_GAME_LE2)
     CheckTraversal();
+    CheckThespian();
 #endif
     CheckSamples();
     CheckMemory();
