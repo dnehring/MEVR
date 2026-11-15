@@ -978,6 +978,14 @@ function(mevr_add_plugin game)
                 src/core/vr/ConversationWorld.cpp src/core/vr/ConversationWorld.hpp src/core/vr/WorldUi.cpp src/core/vr/WorldUi.hpp
                 src/core/vr/OverlayPlacement.cpp src/core/vr/OverlayPlacement.hpp src/core/vr/GalaxyHologram.cpp
                 src/core/vr/GalaxyHologram.hpp
+                # The omni-tool's rail (M4.3, research/le2-menus.md "The rail on ME2"): LE1's module, drawn with ME1's art from
+                # the player's cache (plugin/RailArt, core/gfx), beside the game's screens (plugin/WorldUi's host side), its tap
+                # at the left wrist (core/vr/HudPieces' wrist point) and its pointer (core/vr/GamePointer).
+                src/plugin/OmniToolRail.cpp src/plugin/OmniToolRail.hpp src/plugin/RailArt.cpp src/plugin/RailArt.hpp
+                src/core/vr/OmniRail.cpp src/core/vr/OmniRail.hpp src/core/vr/OmniPower.hpp src/core/vr/GamePointer.cpp
+                src/core/vr/GamePointer.hpp src/core/vr/HudPieces.cpp src/core/vr/HudPieces.hpp src/core/gfx/Raster.cpp
+                src/core/gfx/Raster.hpp src/core/gfx/Swf.cpp src/core/gfx/Swf.hpp src/core/gfx/SwfFont.cpp src/core/gfx/SwfFont.hpp
+                src/plugin/WorldUi.cpp src/plugin/WorldUi.hpp
                 # Entry.cpp's ExitProcess hook asks it with the menu; nothing writes its request on ME2 yet (MEVR Setup, M7.2).
                 src/plugin/SetupRequest.cpp src/plugin/SetupRequest.hpp src/core/Json.cpp src/core/Json.hpp)
         endif ()

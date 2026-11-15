@@ -12,16 +12,16 @@
 #include "plugin/menu/MenuUi.hpp"
 
 // LE1's host also has the modules some of the menu's commands drive (the camera alignment of Halcyon's VR hands tab, the
-// colour, the voice, the frame probe, the omni-tool's rail); ME2's doesn't yet (research/le2-menus.md).
+// colour, the voice, the frame probe); ME2's doesn't yet (research/le2-menus.md). The omni-tool's rail is in both.
 #if defined(MEVR_WITH_HALCYON)
 #define MEVR_MENU_LE1 1
 #include "halcyon/le1/mevr_bridge.h"
-#include "plugin/Colour.hpp"
 #include "plugin/MevrMenu.hpp"
-#include "plugin/OmniToolRail.hpp"
 #include "plugin/PerfProbe.hpp"
 #include "plugin/Voice.hpp"
 #endif
+#include "plugin/Colour.hpp"
+#include "plugin/OmniToolRail.hpp"
 
 #include "core/DevChannels.hpp"
 #include "core/Ini.hpp"
@@ -256,7 +256,8 @@ std::string gOpenSection;   // a request's section, applied with the next frame 
 
 // %LOCALAPPDATA%\MEVR\mainmenu.request (a development build's request file, core/DevChannels; read once a second on the
 // Present thread, then deleted): `open [section]`, `close` or `toggle`, so a script opens the menu without the player's
-// sticks or keyboard (a replay's stick clicks never open it). research/le2-menus.md "Opening the menu by script".
+// sticks or keyboard (a replay's stick clicks never open it); `rail` opens or closes the omni-tool's rail as a wrist tap does.
+// research/le2-menus.md "Opening the menu by script".
 std::filesystem::path RequestFile() {
     wchar_t buffer[MAX_PATH]{};
     DWORD const n = GetEnvironmentVariableW(L"LOCALAPPDATA", buffer, MAX_PATH);
@@ -300,8 +301,10 @@ void PollRequest(std::uint64_t now) {
         SetOpen(false, "the request file");
     } else if (word == "toggle") {
         Toggle("the request file");
+    } else if (word == "rail") {
+        omni_rail::Toggle("the request file");  // the omni-tool's rail alone on the wrist, as a tap opens it
     } else {
-        log::Warn("main menu: request file: '{}' isn't open [section], close or toggle", line);
+        log::Warn("main menu: request file: '{}' isn't open [section], close, toggle or rail", line);
     }
 }
 
@@ -733,11 +736,9 @@ void Pad(Rml::Context* context, std::uint64_t now) {
     bool const b = (pad.wButtons & XINPUT_GAMEPAD_B) != 0 || (s.active && s.right.secondary);
     // On the Display page, holding A shows the uncorrected picture.
     bool const display = g.settings->OnDisplayPage(g.model->Get());
-#if defined(MEVR_MENU_LE1)
     if (a && display) {
-        colour::HoldCompare();
+        colour::HoldCompare();  // both games' eye copies (plugin/Colour)
     }
-#endif
     g.model->SetNumber("comparing", a && display ? 1.0f : 0.0f);
     if (a && !g.aHeld) {
         Rml::Element* const focus = context->GetFocusElement();
@@ -931,11 +932,7 @@ void NoteLiveMarkers(bool submitted) {
 }
 
 std::uint32_t ModFlags() {
-#if defined(MEVR_MENU_LE1)
     std::uint32_t const rail = omni_rail::Shown() ? kOmniRailOpen : 0u;  // the omni-tool's rail: the game's omni-tool on the arm
-#else
-    std::uint32_t const rail = 0u;  // ME2: the omni-tool's rail isn't in its host yet (M4.3)
-#endif
     if (!gOpen.load(std::memory_order_relaxed)) {
         return rail;
     }

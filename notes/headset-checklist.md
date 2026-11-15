@@ -697,6 +697,10 @@ Turn it on: the menu's Voice page > Thespian mode > Speak Shepard's lines (or `[
 - [ ] ME2 (lane D, research/le2-menus.md, checked on the fake headset 2026-11-14): our menu opens with `\` and with both
   sticks held, Ctrl + `\` opens Halcyon's own; the greyed-out rows read as "not yet"; the game stays paused while it's open;
   Game menu opens the Mission Computer; the guided calibration runs through and the guns follow it.
+- [ ] ME2's omni-tool (lane D2, research/le2-menus.md "The rail on ME2", "ME2's omni-tool"; checked on the fake headset
+  2026-11-15): the rail at the left wrist with ME1's art, its entries by fingertip, Close closing ME2's pause-menu pages; ME2's
+  orange gauntlet on the forearm while the rail is open: does its 1.8 s restart (ME2's effect is a 2 s one) show as a pulse or
+  a flicker? The tap is at the controllers until ME2 serves the HUD pieces (then on the drawn forearm).
 - [ ] ME2, the both-sticks hold first (the owner, 2026-11-14: "always prioritize the L3 + R3 stick click"; research/le2-menus.md
   "Opening the menu"; unit-tested in `TestStickChordFirst`, replays never count as the hold): with live controllers, L3 + R3
   held 0.4 s opens and closes our menu in play, in cover, sprinting and in the Mission Computer, whichever click goes down

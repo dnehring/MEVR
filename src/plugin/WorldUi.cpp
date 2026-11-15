@@ -4,7 +4,9 @@
 
 #include "core/Log.hpp"
 #include "core/vr/OverlayPlacement.hpp"
+#if defined(MEVR_WITH_HALCYON)
 #include "halcyon/le1/mevr_bridge.h"
+#endif
 
 #include <Windows.h>
 
@@ -299,6 +301,8 @@ std::optional<Shown> Current(XrVector3f const& eyes, XrQuaternionf const& head, 
 
 } // namespace mevr::host::world_ui
 
+#if defined(MEVR_WITH_HALCYON)
+// LE1's seams (xr_session.cpp's decision). ME2's are in plugin/MenusLe2.cpp.
 namespace MELEVR::MevrBridge {
 
 bool WorldUiActive() noexcept {
@@ -310,3 +314,4 @@ bool WorldUiHoldFrame(int mode) noexcept { return mevr::host::world_ui::HoldFram
 void WorldUiPresent(bool reserved, bool flatPanel, bool held) noexcept { mevr::host::world_ui::NotePresent(reserved, flatPanel, held); }
 
 } // namespace MELEVR::MevrBridge
+#endif

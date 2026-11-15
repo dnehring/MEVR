@@ -13,10 +13,16 @@
 #include "plugin/TestLoop.hpp"
 #include "plugin/XrHost.hpp"
 #if defined(MEVR_WITH_MAIN_MENU)
+#include "core/Ini.hpp"
+#include "core/vr/HudPieces.hpp"
 #include "core/vr/LiveCalibration.hpp"
 #include "core/vr/ManualCalibration.hpp"
+#include "core/vr/OmniRail.hpp"
+#include "core/vr/WorldUi.hpp"
 #include "plugin/Calibration.hpp"
 #include "plugin/MainMenu.hpp"
+#include "plugin/OmniToolRail.hpp"
+#include "plugin/WorldUi.hpp"
 #endif
 
 #include <openxr/openxr.h>
@@ -25,6 +31,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <filesystem>
 #include <mutex>
 
 namespace mevr::host::menus_le2 {
@@ -54,6 +61,36 @@ XrQuaternionf Quat(float const q[4]) {
 }
 XrVector3f Vec(float const p[3]) {
     return {p[0], p[1], p[2]};
+}
+
+// [Hud] in ASI\LE2MEVR.ini, re-read within a second of a change (LE1's HalcyonOverlays::HudSettings): the rail's wrist point is
+// the HUD's wrist piece's (wristOffset in the left grip's axes), ME1's default unless the player moved it. Present thread.
+vr::hud_pieces::Settings const& HudSettings() {
+    static vr::hud_pieces::Settings settings;
+    static std::uint64_t nextMs = 0;
+    static FILETIME stamp{};
+    static bool loaded = false;
+    std::uint64_t const now = GetTickCount64();
+    if (now < nextMs) {
+        return settings;
+    }
+    nextMs = now + 1000;
+    std::wstring const& path = SettingsPath();
+    WIN32_FILE_ATTRIBUTE_DATA data{};
+    if (path.empty() || !GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &data)) {
+        return settings;
+    }
+    if (loaded && CompareFileTime(&data.ftLastWriteTime, &stamp) == 0) {
+        return settings;
+    }
+    stamp = data.ftLastWriteTime;
+    loaded = true;
+    std::string problems;
+    settings = vr::hud_pieces::ReadSettings(ini::Read(std::filesystem::path(path)).file, &problems);
+    if (!problems.empty()) {
+        log::Warn("menus le2: [Hud] {}", problems);
+    }
+    return settings;
 }
 #endif
 
@@ -186,6 +223,41 @@ unsigned Layers(ME2VR::MevrBridge::OverlayFrame const& frame, ID3D11Device* devi
             layersOut[count++] = layers[i];
         }
     }
+    // ---- The omni-tool's rail (plugin/OmniToolRail, research/57; M4.3): beside the game's screen on the wrist, or alone on
+    // the wrist when the player taps it open; then the tap's target. As LE1's HalcyonOverlays, after the calibration's ----
+    {
+        vr::controllers::State const controllers = vr::controllers::Latest();
+        vr::hud_pieces::Pieces const pieces = vr::hud_pieces::Latest();
+        bool const piecesValid = pieces.size == sizeof(vr::hud_pieces::Pieces);
+        omni_rail::Frame rail;
+        rail.session = session;
+        rail.appSpace = appSpace;
+        rail.device = device;
+        rail.context = frame.context;
+        rail.headValid = headValid;
+        rail.eyes = head.pose.position;
+        if (controllers.active && controllers.left.gripValid) {
+            rail.wristValid = true;
+            rail.wrist = vr::hud_pieces::WristPoint(controllers.left.grip, HudSettings().wristOffset);
+        }
+        rail.display = vr::world_ui::LatestEmitter(400);  // the mod sends it every tick while the rail stands alone
+        if (piecesValid && pieces.bodyValid) {
+            // Shepard's drawn arms (the mod's HUD pieces, HostServices v22): the tap's target on his forearm, his fingertip.
+            rail.body = vr::omni_rail::Body{pieces.leftWrist, pieces.leftElbow, pieces.rightIndex1, pieces.rightIndex2};
+        }
+        rail.gunDrawn = piecesValid && pieces.gunVisible;
+        rail.gameMode = frame.gameMode;
+        // ME2's screens stand on Halcyon's flat panel until its world UI (M4.3 step 3): one is up when the GUI mode (7) shows
+        // flat (ME2 also reports 7 in play under some HUD pop-ups, which stay in the world). The rail's Close closes it.
+        rail.gameScreenUp = frame.gameMode == 7 && !frame.worldFrame;
+        rail.othersOwnInput = frame.menuOpen || main_menu::IsOpen() || calibration::Active();
+        if (XrCompositionLayerQuad const* const railLayer = omni_rail::Layer(rail); railLayer != nullptr && count < capacity) {
+            layersOut[count++] = railLayer;
+        }
+        if (XrCompositionLayerQuad const* const target = omni_rail::TargetLayer(); target != nullptr && count < capacity) {
+            layersOut[count++] = target;  // the wrist tap's target
+        }
+    }
     // ---- Our main menu (plugin/MainMenu): while it's open, its quad is the only one of ours. Closed, it returns at once ----
     {
         main_menu::Frame menu;
@@ -272,6 +344,10 @@ void FilterPad(XINPUT_GAMEPAD const* real, XINPUT_GAMEPAD& pad) {
     bool const menu = main_menu::IsOpen();
     if (menu && real != nullptr) {
         main_menu::NotePad(*real);  // a real pad navigates our menu
+    }
+    if (omni_rail::OwnsTriggers()) {
+        pad.bLeftTrigger = 0;  // the omni-tool's rail is pointed at: the trigger is its click there (as LE1's pad merge)
+        pad.bRightTrigger = 0;
     }
     std::lock_guard lock(gPadMutex);
     if (menu || calibration::Active()) {

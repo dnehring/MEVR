@@ -14,7 +14,6 @@
 #include "halcyon/le1/vr_config.h"
 #include "halcyon/le1/vr_menu.h"
 #include "halcyon/le1/xr_session.h"
-#include "plugin/Colour.hpp"
 #include "plugin/MevrMenu.hpp"
 #include "plugin/OpenAlSoft.hpp"
 #include "plugin/PerfProbe.hpp"
@@ -26,6 +25,8 @@
 #include "plugin/ArmSample.hpp"
 #include "plugin/MenusLe2.hpp"
 #endif
+// The colour correction (plugin/Colour, research/27): in both hosts (ME2's eye copy since fc24c20d, research/le2-picture.md).
+#include "plugin/Colour.hpp"
 
 #include "core/Ini.hpp"
 #include "core/Log.hpp"
@@ -431,12 +432,8 @@ void Settings::Read(menu::Values& v) {
     std::string const align = MELEVR::MevrBridge::CameraAlignResult();
     v.texts["align_msg"] = MELEVR::MevrBridge::CameraAlignBusy() ? std::string("Armed: stand naturally and pull the left trigger") : align;
 #endif
-#if defined(MEVR_MENU_LE1)
-    // Display.
+    // Display: the colour correction, both games (ME2's [Colour] keys in ASI\LE2MEVR.ini, the same profiles and defaults).
     colour::MenuState const colour = colour::GetMenuState();
-    flag("steamvr_runtime", Lower(colour.runtime).find("steamvr") != std::string::npos);
-    v.texts["steamvr_smoothing"] = Lower(ini.Text("Display", "steamvrSmoothing", "steamvr")) == "off" ? "off" : "steamvr";
-    v.texts["steamvr_smoothing_note"] = steamvr_smoothing::StatusText();
     v.texts["profile"] = cv::Name(colour.chosen);
     std::string const headset = ms::HeadsetLabel(colour.runtime, colour.system);
     switch (colour.chosen) {
@@ -464,6 +461,10 @@ void Settings::Read(menu::Values& v) {
     v.numbers["c_saturation"] = ms::ColourPercent(shown.saturation);
     v.numbers["c_midtones"] = shown.gamma;
     v.numbers["c_black"] = shown.black;
+#if defined(MEVR_MENU_LE1)
+    flag("steamvr_runtime", Lower(colour.runtime).find("steamvr") != std::string::npos);
+    v.texts["steamvr_smoothing"] = Lower(ini.Text("Display", "steamvrSmoothing", "steamvr")) == "off" ? "off" : "steamvr";
+    v.texts["steamvr_smoothing_note"] = steamvr_smoothing::StatusText();
     // The render target: the headset's own eye size (and 0.85 / 0.75 of it) once VR has started, or Halcyon's ladder.
     MELEVR::XrSession::ResolutionStats resolution{};
     MELEVR::XrSession::GetResolutionStats(&resolution);
@@ -503,9 +504,8 @@ void Settings::Read(menu::Values& v) {
     v.numbers["panel_follow"] = c.hudPanelFollowDeg;
     flag("reticle", c.handReticle);
 #else
-    // ME2: no colour correction, render size, upscale or performance levers of ours on its renderer yet; the HUD panel's
-    // values are ME1's defaults (renderer::Hud(); lane B's HUD panel on ME2). Their rows are greyed out.
-    std::string const headset = ms::HeadsetLabel(menus_le2::RuntimeName(), menus_le2::SystemName());
+    // ME2: no render size, upscale or performance levers of ours on its renderer yet (their rows are greyed out); the HUD
+    // panel's values are ME1's defaults (renderer::Hud(); lane B's HUD panel on ME2).
     renderer::HudSettings const hud = renderer::Hud();
     v.numbers["hud_distance"] = hud.hudPanelDistanceM;
     v.numbers["hud_size"] = std::round(hud.hudPanelWidthM / 1.3f * 100.0f);
@@ -731,12 +731,10 @@ void Settings::Flush(bool all) {
         Wrote(ok, std::format("[{}] {}", edit.section, edit.key));
         log::Info("main menu: [{}] {} = {}{}", edit.section, edit.key, edit.value, ok ? "" : " (NOT saved)");
     }
-#if defined(MEVR_MENU_LE1)
     if (colourDirty_ && (all || now - colourChangedMs_ >= kColourRestMs)) {
         colourDirty_ = false;
         colour::SetCustom(colour_, true);
     }
-#endif
     if (halcyonDirty_ && (all || now - halcyonChangedMs_ >= kHalcyonRestMs)) {
         SaveHalcyon(all ? "the menu closed" : "settled");
     }
@@ -1022,6 +1020,21 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
     } else if (key == "sight_converge") {
         Put("Sights", "converge", onOff("sight_converge"), true);
     }
+    // ---- Colour (both games) ----
+    else if (key == "profile") {
+        cv::Profile const p = cv::ParseProfile(v.Text("profile")).value_or(cv::Profile::Auto);
+        colourDirty_ = false;
+        colour::SelectProfile(p);
+    } else if (key == "c_brightness" || key == "c_contrast" || key == "c_saturation" || key == "c_midtones" || key == "c_black") {
+        colour_.brightness = ms::ColourFromPercent(v.Number("c_brightness"));
+        colour_.contrast = ms::ColourFromPercent(v.Number("c_contrast"));
+        colour_.saturation = ms::ColourFromPercent(v.Number("c_saturation"));
+        colour_.gamma = v.Number("c_midtones");
+        colour_.black = v.Number("c_black");
+        colour::SetCustom(colour_, false);  // live; written once the slider rests
+        colourDirty_ = true;
+        colourChangedMs_ = Now();
+    }
 #if !defined(MEVR_MENU_LE1)
     // ---- ME2's renderer (plugin/Renderer.hpp's MenuRows: Halcyon ME2's MELE2VR.ini, saved when the menu closes) ----
     else if (key == "walk") {
@@ -1041,21 +1054,6 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
         log::Warn("main menu: no Mass Effect 2 setting behind '{}' yet (its row is greyed out)", key);
     }
 #else
-    // ---- Colour ----
-    else if (key == "profile") {
-        cv::Profile const p = cv::ParseProfile(v.Text("profile")).value_or(cv::Profile::Auto);
-        colourDirty_ = false;
-        colour::SelectProfile(p);
-    } else if (key == "c_brightness" || key == "c_contrast" || key == "c_saturation" || key == "c_midtones" || key == "c_black") {
-        colour_.brightness = ms::ColourFromPercent(v.Number("c_brightness"));
-        colour_.contrast = ms::ColourFromPercent(v.Number("c_contrast"));
-        colour_.saturation = ms::ColourFromPercent(v.Number("c_saturation"));
-        colour_.gamma = v.Number("c_midtones");
-        colour_.black = v.Number("c_black");
-        colour::SetCustom(colour_, false);  // live; written once the slider rests
-        colourDirty_ = true;
-        colourChangedMs_ = Now();
-    }
     // ---- Halcyon's config ----
     else if (key == "walk") {
         // Where I look: Halcyon's moveFollowsHead (as before). Left hand: [Comfort] walk = hand, the mod's flag and the

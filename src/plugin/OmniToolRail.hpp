@@ -34,6 +34,8 @@ struct Frame {
     std::optional<vr::omni_rail::Body> body;    // Shepard's drawn arms (the mod's, HudPieces): the tap's target and fingertip
     bool gunDrawn = false;                      // the mod's gun panel shows: no tap
     int gameMode = -1;                          // the game mode Halcyon last read (0 on foot, 7 the game's screens)
+    bool gameScreenUp = false;                  // a game screen is up that isn't `screen` (ME2's on Halcyon's flat panel until
+                                                // its world UI): Close and the closing tap close it too
     bool othersOwnInput = false;                // our main menu, Halcyon's menu or the calibration is up
 };
 

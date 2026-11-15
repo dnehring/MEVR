@@ -57,13 +57,15 @@ ue3::FunctionRef gShowSquadGui{"SFXGame.SFXGameModeBase.ShowSquadGui"};
 ue3::FunctionRef gShowJournalGui{"SFXGame.SFXGameModeBase.ShowJournalGui"};
 ue3::FunctionRef gShowCodexGui{"SFXGame.SFXGameModeBase.ShowCodexGui"};
 ue3::FunctionRef gShowMapGui{"SFXGame.SFXGameModeBase.ShowMapGui"};
-ue3::FunctionRef gHandleInputEvent{"Engine.BioSFHandler.HandleInputEvent"};
-ue3::FunctionRef gGuiKey{"SFXGame.SFXGameModeBase.GuiKey"};
-ue3::FieldRef gScaleFormManager{"Engine.PlayerController", "m_oCachedScaleFormManager"};
-ue3::FieldRef gFocusPanel{"Engine.BioSFManager", "m_FocusPanel"};
-ue3::FieldRef gPanelTag{"Engine.BioSFPanel", "nmTag"};
-ue3::FieldRef gPanelHandler{"Engine.BioSFPanel", "m_DefaultHandler"};
-constexpr std::uint8_t kGuiEventB = 13;  // BIOGUI_EVENT_BUTTON_B (Engine.EBioGuiEvent)
+// The back-out (CloseScreens, a screen switch) is the same on ME2 (its GuiKey hands the event to the GUI manager the same way,
+// SFXGameModeBase.GuiKey -> GetScaleFormManager().HandleInputEvent; its BioGuiEvents enum is ME1's, B = 13): every game.
+ue3::FunctionRef gHandleInputEvent{"Engine.BioSFHandler.HandleInputEvent", ue3::kEveryGame};
+ue3::FunctionRef gGuiKey{"SFXGame.SFXGameModeBase.GuiKey", ue3::kEveryGame};
+ue3::FieldRef gScaleFormManager{"Engine.PlayerController", "m_oCachedScaleFormManager", ue3::kEveryGame};
+ue3::FieldRef gFocusPanel{"Engine.BioSFManager", "m_FocusPanel", ue3::kEveryGame};
+ue3::FieldRef gPanelTag{"Engine.BioSFPanel", "nmTag", ue3::kEveryGame};
+ue3::FieldRef gPanelHandler{"Engine.BioSFPanel", "m_DefaultHandler", ue3::kEveryGame};
+constexpr std::uint8_t kGuiEventB = 13;  // BIOGUI_EVENT_BUTTON_B (Engine.EBioGuiEvent; ME2's BioSFSharedBase.BioGuiEvents too)
 constexpr int kBackOutWaitTicks = 4;     // after a B, the ticks to let the screen go before looking again
 constexpr int kMaxBackOuts = 6;          // a screen over the main wheel takes two
 

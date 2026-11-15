@@ -90,7 +90,8 @@ also writes `le2-section-*.png` and `le2-advanced-*.png`, the pages as ME2 shows
 | Game screens (in the room, omni-tool screens, galaxy hologram) | greyed | M4.3 / M6 |
 | Controls: Weapons (holsters), Left trigger, grenades and melee, Vent, Steady view, Draw speed, Mako | greyed | holsters wait for lane B3's host side; ME2 has no grenades nor heat (research/le2-vrik-audit.md); the rest ME1's modules (M6) |
 | Voice, Sound pages | greyed | plugin/Voice, plugin/OpenAlSoft and their mod modules are ME1's (ME2 plays through Wwise) |
-| Display: Colour, Image quality, Optional content | greyed | plugin/Colour, the render size, FSR and the levers are LE1's renderer's; MEVR Setup for ME2 is M7.2 |
+| Display: Colour (profile, the five sliders, hold A to compare) | as ME1 (since 2026-11-14, lane D2) | `[Colour]` / `[Colour.<headset>]` in `ASI\LE2MEVR.ini` through `plugin/Colour`, which is in the LE2 host since fc24c20d (ME2's eye copy and HUD panel); the same profiles and Auto's choice per headset |
+| Display: Image quality, Optional content | greyed | the render size, FSR and the levers are LE1's renderer's; MEVR Setup for ME2 is M7.2 |
 | HUD & sights | greyed | lane B3's HUD panel, reticle, HUD pieces and sights |
 | Advanced: Recenter key | greyed | R is ME2's reload: `ApplyMevrBaseline` turns the key off (the row says so) |
 | Advanced: Depth of field | greyed | ME2's `[VR] DisableDof` drives nothing since upstream hid it (its GamerSettings write took the tonemapping off: me2_menu.cpp `[DOFWASH]`) |
@@ -135,7 +136,8 @@ primary way and always wins:
 ### Opening the menu by script
 
 `%LOCALAPPDATA%\MEVR\mainmenu.request` (development builds, or `[Debug] requests = 1`; read once a second on the Present
-thread, then deleted): `open [section]`, `close` or `toggle`. Log `main menu: request file: '<line>'`. A replay's stick
+thread, then deleted): `open [section]`, `close`, `toggle`, or `rail` (the omni-tool's rail opened or closed as a wrist tap
+does; it stands only on a tracked left controller). Log `main menu: request file: '<line>'`. A replay's stick
 clicks never open the menu (the stick chord counts the player's own), so scripts use this; the menu's rows are then worked
 with `tools/make-menu-recording.py` and `tools/replay.ps1 -Inputs` as on ME1.
 
@@ -169,28 +171,100 @@ time):
 Equipment stands down on ME2 (no equipment screen outside its lockers: logged). `mevr omni <squad|map|journal|codex|computer|
 close|holster>` is on ME2's console now. Checked on the fake headset (stretch `20261114-223915-lane-d-squad`): `mevr omni
 squad` opened ME2's pause menu and then its squad page (the snapshot's flat panel: VR Shepard, Level 2 Soldier, the powers,
-Miranda and Jacob). `reflect: 291 of 291`. Not yet: `CloseScreens` on ME2 (ME1's B through `GuiKey`; ME2's `GuiKey` event
-numbers are [verify]).
+Miranda and Jacob). `reflect: 291 of 291`.
 
-### What the rest of M4.3 needs (not built)
+**Closing them** (lane D2, 2026-11-15): `CloseScreens` (the rail's Close, a closing tap) is ME1's back-out, the player's B
+through `SFXGameModeBase.GuiKey` on the active mode, a few ticks apart, until the game leaves mode 7. ME2's `GuiKey` is ME1's
+(`Outer.GetScaleFormManager().HandleInputEvent(Event)`) and its `BioSFSharedBase.BioGuiEvents` enum is ME1's order
+(`BIOGUI_EVENT_BUTTON_B` = 13), read with `conversation-scan --script SFXGameModeBase.GuiKey` and `--script
+BioSFSharedBase.BioGuiEvents`. Its handles (`GuiKey`, `BioSFHandler.HandleInputEvent`, `BioSFManager.m_FocusPanel`,
+`BioSFPanel.nmTag`, `m_DefaultHandler`) reach every game now (`ue3::kEveryGame`), with LE2 rows in `engine/ReflectCheck`.
+In the game: `omni-tool: backing out of 'CharacterRecord' (B through SFXGameModeGUI.GuiKey, 1 of at most 6)`, then
+`'MenuBrowser'` twice, `the game's screens are closed (game mode 0)`.
 
-In this order; each is LE1's module brought into the LE2 host as M4.1 brought the menu (CMake's LE2 block, `menus_le2`'s
-calls), no ME2 copy:
-1. **The rail's host** (`plugin/OmniToolRail`, `assets/menu/omnitool.rml`): its LE1 ties are `halcyon::RequestHaptic` (to
-   `xr_host::RequestHaptic`, as MainMenu and Calibration did), `plugin/RailArt` (+ `core/gfx`: ME1's art from the player's
-   game cache, `%LOCALAPPDATA%\MEVR\gameart`, written by the mod's `game/GameArt`; without it the rail draws its own look)
-   and `plugin/WorldUi`'s `Shown` (the screen the rail stands beside). Its quad goes into `menus_le2::Layers` before our
-   menu's, as in LE1's `HalcyonOverlays` (`omni_rail::Layer`, `TargetLayer`); `main_menu::ModFlags` then reports
-   `kOmniRailOpen` on LE2 too (now 0 there).
-2. **The tap** needs Shepard's drawn arm bones, which the mod sends in `hud_pieces::Pieces` (HostServices v22): lane B3's
-   HUD pieces on LE2. Until then `omni_rail::Tap` can use the controllers (`[OmniTool] tapOnBody = 0`, LE1's fallback).
-3. **ME2's screens on the wrist** (`plugin/WorldUi` + `game/WorldUi`): ME2's GUI panels are its own (`MenuBrowser`,
-   `CharacterRecord`, `Journal`, `Codex`, `AreaMap` above; `BioSFHandler_Loot`, `_Shop`, `BioSkillGame_Handler` don't exist on
-   ME2: `tools/le2-name-audit.py game/WorldUi`), and its renderer needs `[MEVR]` seams like LE1's `WorldUiActive` /
-   `WorldUiOwnership` (xr_session.cpp) in me2_xr.cpp's flat-panel decision.
-4. **ME2's omni-tool on Shepard's arm** (`game/OmniTool`): ME1's gauntlet is `BIOG_V_T_Omni_Tool_Z`'s crust effect; ME2's
-   omni-tool effect names are to be found in its packages (the deviation the owner named: "the model for the Omni tool will be
-   different in Mass Effect 2"). `tools/le2-name-audit.py game/OmniTool`: only `Engine.StaticMesh:LODInfo` is missing.
+### The rail on ME2 (built, checked 2026-11-14/15)
+
+ME1's module, no copy (`plugin/OmniToolRail`, `assets/menu/omnitool.rml`/`.rcss`), in the LE2 host's `MEVR_MAIN_MENU` block
+of `CMakeLists.txt` with what it needs: `plugin/RailArt` and `core/gfx` (ME1's art), `core/vr/OmniRail`, `core/vr/GamePointer`
+(its pointer), `core/vr/HudPieces` (the wrist point and the mod's arm bones) and `plugin/WorldUi`'s host side (the screen it
+stands beside; its `MELEVR::MevrBridge` seams are LE1's only, `#if defined(MEVR_WITH_HALCYON)`). Changes to shared code:
+- `OmniToolRail.cpp`: `halcyon::RequestHaptic` became `xr_host::RequestHaptic` (LE1's forwarded there already: the same
+  pulses), no LE1 header.
+- `plugin/MenusLe2.cpp` `Layers`: the rail's quad and the tap's target after the calibration's and before our menu's, as LE1's
+  `HalcyonOverlays`: the eyes are the head located in the app space; the wrist is `hud_pieces::WristPoint(left grip, [Hud]
+  wristOffset)` (`[Hud]` read from `ASI\LE2MEVR.ini` within a second of a change, ME1's default `-0.03 0.06 0.05`); the display
+  is the mod's world-UI emitter (`vr::world_ui::LatestEmitter`, none on ME2 until the mod's `setWorldUi` is served: the rail
+  then stands at the controller's wrist); Shepard's arms and the drawn gun from `hud_pieces::Latest()` when the mod's HUD pieces
+  reach the host (HostServices v22; not served on LE2 yet: the tap and the rail's touch use the controllers, logged `omni-tool
+  rail: touch from the controller (no body)`).
+- `FilterPad`: the triggers are kept from the game while the rail owns them (`omni_rail::OwnsTriggers`), as LE1's pad merge.
+- `main_menu::ModFlags` reports `kOmniRailOpen` on both games: the mod's `world_ui` puts the game's omni-tool on Shepard's arm
+  while the rail is open on foot.
+- `Frame::gameScreenUp` (new): a game screen is up that isn't a world-UI screen. ME2's screens stand on Halcyon's flat panel
+  until their wrist placement (step 3 below), so `MenusLe2` sets it for `gameMode == 7 && !worldFrame` (ME2 also reports 7 in
+  play under some HUD pop-ups; those stay in the world, so the flat panel is the sign), and the rail's Close and a closing tap
+  ask for `CloseScreens` then. LE1 never sets it: ME1 unchanged.
+- `mainmenu.request` takes `rail` too: opens or closes the rail as a tap does (needs a tracked left controller to stand on).
+
+**ME1's art on ME2.** The rail reads ME1's movies from the player's own cache, `%LOCALAPPDATA%\MEVR\gameart`, which only ME1's
+mod writes (`game/GameArt`, LE1 only: ME2 has none of ME1's GFx movies loaded). With the cache there (any ME1 run with MEVR):
+`omni-tool rail: the game's art from ...\gameart: fonts yes, tab yes, frame yes`. Without it (a player who never ran ME1 with
+MEVR): the rail draws its own look (`assets/menu/omnitool.rcss` without `art`: Titillium/Rajdhani, the drawn frame and tabs,
+`mevr-menu-preview`'s `rail-*.png` without `--gameart`), the same entries and behaviour. Game art is never committed or shipped.
+
+### ME2's omni-tool (built, checked 2026-11-14 23:57)
+
+The deviation the owner named ("the model for the Omni tool will be different in Mass Effect 2"). ME2 has no
+`BIOG_V_T_Omni_Tool_Z` package. Its omni-tool is the tech powers' crust effect in `SFXGame.pcc` (always loaded), found with
+`conversation-scan <ME2 CookedPCConsole> out.txt --game LE2 --class-dump BioVFXTemplate --only SFXGame` (then `--class-dump
+Prefab`, `Emitter`, `ParticleSystemComponent` the same way):
+- `BioVFX_T_TechPowers._OmniTool.VFX.OmniTool_2Piece_2second`: `bIsCrustEffect`, `fLifeTime` 3, its sound
+  `Wwise_VFX_Tech.Play_vfx_techpowers_omni_hand`, prefab `..._OmniTool.Prefabs.OmniTool_2Piece_2Sec_Prefab`;
+- its two emitters are ME1's layout: `OmniTool_2Piece_Prefab_Arc1` at `LeftElbowTwist2` (relative (1.08, 2.99, 0.60), the
+  gauntlet, `Particles.OmniArm_2sec`, mesh `Meshes.OmniArm`) and `..._Arc0` at `LeftWrist` ((-0.32, -4.75, -0.89), the display,
+  `Particles.OmniHand_2sec`);
+- `BioVisualEffect.CreateCrustEffect(a_pTemplate, Target, fLifeTime, bUseVFXPool)` is ME1's (`--script
+  BioVisualEffect.CreateCrustEffect`).
+So `game/OmniTool` runs on ME2 as on ME1 (every handle `ue3::kEveryGame`, LE2 rows in `engine/ReflectCheck`, `runtime::Up()`
+instead of `Ready()`), with the template and package per game (`kTemplate`, `kPackage`). Its particle systems complete after
+2 s where ME1's loop, so on ME2 `Rewake` starts each again every 1.8 s while it's wanted (log `omni tool: ME2's 2 s particle
+systems started again every 1.8 s`). Its brightness power-up finds nothing to drive on ME2 (`power-up through nothing found:
+full at once`; its material `OmnitoolMain_Inst` has `OmniOn` and `Intensity` scalars, shared, not effect-owned: [verify]
+whether driving them is worth it). **LExSDKv2's LE2 headers are wrong for the particle classes:** `ParticleSystemComponent`'s
+`Template`, `SMComponents`, `SMMaterialInterfaces`, `InstanceParameters` and `ParticleSystem.Emitters` 8 bytes early, its
+`InstanceParameters` element 48 bytes against the engine's 64; our layer's (the engine's) are right (they read the effect's
+particle systems and modules in the game), so those have no LE2 rows (`reflect: 377 of 377 checks agree`).
+
+In the game (fake headset, Freedom's Progress): `omni tool: the game's omni-tool is BioVFXTemplate
+BioVFX_T_TechPowers._OmniTool.VFX.OmniTool_2Piece_2second`, `OmniHand_2sec on Shepard's mesh at bone LeftWrist`, `OmniArm_2sec
+... LeftElbowTwist2`, `on Shepard's arm`; the snapshot 3 s after the tap shows ME2's orange holographic gauntlet on Shepard's
+left forearm, the rail with ME1's art above it.
+
+### What M4.3 still needs
+
+1. **ME2's screens on the wrist** (`plugin/WorldUi` + `game/WorldUi`), not built. Today they stand on Halcyon's flat panel
+   (head-locked, no world), the rail at the wrist beside them, Close closing them. What it takes, in order:
+   1. The mod (`game/WorldUi`): its handles (`gCachedManager`, `gPanels`, `gFocusPanel`, `gPanelTag`, `gPanelFullScreen`,
+      `gPanelHandler`, `gPanelVisible`, `gWorldInfo`, `gPlayerSelection`, `gCurrentTarget`) with `ue3::kEveryGame` and LE2 rows;
+      the loot, shop and skill-game handles stay ME1's (`tools/le2-name-audit.py game/WorldUi`: ME2 has none of
+      `BioSFHandler_Loot`, `_Shop`, `BioSkillGame_Handler`). ME2's panel tags in `vr::world_ui::FromTag`: its pause menu's
+      pages are `AreaMap`, `CharacterRecord`, `Journal`, `Codex` (the pages list above) under the browser wheel's panel
+      (`MenuBrowser`: [verify] the tags `world ui: the game's open panels:` logs on ME2 before mapping them).
+   2. The host's service: `setWorldUi`, `reserveWorldUi`, `logWorldUiStats`, `takeGameUiRequest` in `ModLoader`'s LE2
+      `WithMenus` (LE1's `WithWorldUi` gives the same functions; lane B4 owns `ModLoader`).
+   3. Two `[MEVR]` seams in Halcyon ME2 (lane B owns `src/halcyon/le2`): in `me2_xr.cpp`'s `flatPresentation`, a GUI mode the
+      world UI owns is not flat (LE1's `MevrBridge::WorldUiActive` / `WorldUiOwnership` in xr_session.cpp's decision: the world
+      renders in stereo behind the screen), and in `d3d_capture.cpp`'s UI-draw path the GUI's draws go to our HUD panel in mode
+      7 too while the world UI owns it (`hud_panel::Frame::gameplay` is 0-4 only today).
+   4. The quad: `MenusLe2` (or the bridge) blits the panel texture's shown part (`world_ui::Current`'s `part`) into a quad at
+      `Shown::panel` with `hud_panel::Blit` and its `backdrop` (LE1's `HalcyonOverlays` `RenderPanel` with `worldShown`), the
+      fan of light (`plugin/WristBeam`), and passes `rail.screen = Shown` so the rail slides out beside it (LE1's order).
+2. **The tap on Shepard's arm**: `MenusLe2` already reads `hud_pieces::Latest()`'s `bodyValid`, `leftWrist`, `leftElbow`,
+   `rightIndex1`, `rightIndex2` and `gunVisible`; once lane B4 serves the mod's HUD pieces on LE2 (`setHudPieces`, HostServices
+   v22, as LE1's `WithHudPieces`; the mod already finds the bones: `hud pieces: the omni-tool tap's bones: LeftWrist 59,
+   LeftElbow 58, RightIndexFinger1 90, RightIndexFinger2 91`), the target moves onto the drawn forearm and the touch to the drawn
+   fingertip with no change here (check: `omni-tool rail: the tap's target is on Shepard's drawn forearm`, `touch from Shepard's
+   drawn fingertip`; replay `make-wrist-recording.py`'s tap). Until then the tap is at the controllers (ME1's fallback).
 
 ## The checks
 
@@ -226,6 +300,32 @@ two frames are different pipelines, not a change of ours. Then `open comfort` (w
 LE1 on the Comfort page (`mainMenu.open: true, section: comfort`). The menu's preview: the 91 PNGs pixel-identical (above).
 ctest: 53 of 53 in `build` and `build-trilogy`.
 
+**The rail, ME2's omni-tool and Close, 2026-11-14 23:45 to 2026-11-15 00:00** (lane D2; stretches
+`20261114-234544-lane-d2-rail` and `-lane-d2-rail2`; Freedom's Progress, Save 4):
+1. `python tools\make-wrist-recording.py tap.mevrrec 60 4 0 wrist`, `tools\replay.ps1 -Path tap.mevrrec` (poses only):
+   `omni-tool rail: the wrist tapped: open`, `the game's art from ...\gameart: fonts yes, tab yes, frame yes`, `shown on the
+   wrist (0.18 x 0.32 m)`, `world ui: the omni-tool's rail is open on foot: Shepard's arm wears the omni-tool`, `omni tool: on
+   Shepard's arm`. The snapshot's `omnirail` layer: centre (-0.13, 0, -0.29) m, yaw 24.15 degrees (quaternion (0, 0.209, 0,
+   0.978)), 0.18 x 0.32 m: the numbers for step 2.
+2. `python tools\make-rail-press-recording.py full.mevrrec 34 "4:tap,12:0.53:0.15,22:0.53:0.84" -0.13 0 -0.29 24.15 0.18 0.32`
+   and replay it, snapshots at 3 s, 13 s, 21 s after the tap: the omni-tool on the forearm at 3 s (after one rewake);
+   `omni-tool rail: Squad picked: the squad screen asked of the mod`, `omni-tool: opened the squad screen (ME2's pause menu page
+   2 ...)` (the snapshot: ME2's squad page on Halcyon's flat panel, the rail at the wrist beside it); then `Close: the game's
+   screens close`, the back-out above, `the game's screens are closed (game mode 0)`.
+3. `reflect: 377 of 377 checks agree`; `restore.ps1`: `verification: 0 differences` both times.
+An earlier press at the rail's centre picked Journal (the centre is Journal's row with the art): the document point matters.
+
+**LE1 after lane D2** (2026-11-15 00:24, `tools/fake-headset-session.ps1 -Tag laned2-pose -BuildDir build-mono`, lane B's
+`le1-pose.ps1`: 20 s in the world, `make-walk-recording.py --plan stand:600 --hands view` looped, 8 s, `pause`, two
+snapshots 1 s apart; session `2026-11-15_00-24-34-laned2-pose`, snapshot `00-27-11-229`) against lane D's run
+(`23-09-26-446`): the same six layers at the same places (the omni-tool target 0.4 mm apart), `hostView` identical, the HUD
+panel identical pixel for pixel, the eyes 0.07% / 0.04% of pixels apart by more than 32/255 (what animates between
+launches). The menu's preview (one binary, the documents A/B, `--assets`): with this lane's `main.rml` but the guide's
+sentence put back, all 91 PNGs pixel-identical with 8e3ab889's document (the Colour group's `le2` attribute changes nothing
+on LE1); with the sentence, the seven guide pages change (the owner's wording: "..., or press \ on the keyboard", which
+reflows them) and three others by 8-9 pixels (the font atlas gains its glyphs first). ctest: 53 of 53 in `build`; in
+`build-trilogy` `mevr-le2-control-client` failed once under load (a game running) and passed alone, the rest passed.
+
 **How to repeat it:** `tools\le2-halcyon-run\prep.ps1 -Holder <you> -BuildDir <worktree>\build-trilogy`, `launch.ps1`,
 `load.ps1`; `Set-Content $env:LOCALAPPDATA\MEVR\mainmenu.request 'open controls' -NoNewline`; `python
 tools\make-menu-recording.py rec.mevrrec "point 1318 792; click; hold 3"` and `tools\replay.ps1 -Path rec.mevrrec -Inputs`
@@ -234,7 +334,7 @@ tools\make-menu-recording.py rec.mevrrec "point 1318 792; click; hold 3"` and `t
 
 ## What is left
 
-- M4.3's rail, tap, wrist screens and ME2's omni-tool model (above, "What the rest of M4.3 needs").
+- M4.3's screens on the wrist and the tap on Shepard's arm (above, "What M4.3 still needs").
 - M4.2's own check: a guided calibration run through on ME2 and its `[Calibration.<key>]` read back by `game/BodyCalibration`
   (built and wired; the fake headset has no interaction profile, so no controller key: `calibration: ... no controller type
   known yet`; a replay of the calibration's poses, or the headset, is next).

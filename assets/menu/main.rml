@@ -420,9 +420,8 @@
 	<div data-if="section == 'display'">
 		<div class="stitle">Display</div>
 		<div class="sdesc">How the game looks in your headset.</div>
-		<div class="group" data-class-disabled="le2">
+		<div class="group">
 			<div class="gtitle"><span>Colour</span><div class="gline"/></div>
-			<div class="hint" data-if="le2">Not on Mass Effect 2 yet.</div>
 			<div class="row"><div class="rl"><div class="rlab">Colour profile</div><div class="rdesc">Matched to your headset's display and its video link</div></div>
 				<div class="seg"><button class="segb" data-class-on="profile == 'auto'" data-event-click="pick('profile','auto')">Auto</button><button class="segb" data-class-on="profile == 'neutral'" data-event-click="pick('profile','neutral')">Neutral</button><button class="segb" data-class-on="profile == 'vivid'" data-event-click="pick('profile','vivid')">Vivid</button><button class="segb" data-class-on="profile == 'custom'" data-event-click="pick('profile','custom')">Custom</button></div></div>
 			<div class="info"><div class="ico i-info"/><span>{{profile_info}}</span></div>

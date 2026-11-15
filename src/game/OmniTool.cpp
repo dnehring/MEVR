@@ -26,90 +26,90 @@ namespace mevr::game::omni_tool {
 bool gRequested = false;  // Request since the last Tick
 namespace {
 
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
 
 // Our reflection layer (research/34); each has a row in engine/ReflectCheck.
-ue3::ClassRef gTemplateClass{"SFXGame.BioVFXTemplate"};
-ue3::ClassRef gEffectClass{"SFXGame.BioVisualEffect"};
-ue3::FunctionRef gCreateCrust{"SFXGame.BioVisualEffect.CreateCrustEffect"};
-ue3::FunctionRef gSetLifeTime{"SFXGame.BioVisualEffect.SetLifeTime"};
-ue3::FunctionRef gSetState{"SFXGame.BioVisualEffect.SetState"};
-ue3::ClassRef gEmitterClass{"Engine.Emitter"};
-ue3::FunctionRef gActorDetach{"Engine.Actor.DetachComponent"};
-ue3::FunctionRef gMeshAttach{"Engine.SkeletalMeshComponent.AttachComponent"};
-ue3::FunctionRef gMeshDetach{"Engine.SkeletalMeshComponent.DetachComponent"};
-ue3::FunctionRef gActivate{"Engine.ParticleSystemComponent.ActivateSystem"};
-ue3::FunctionRef gDeactivate{"Engine.ParticleSystemComponent.DeactivateSystem"};
-ue3::FieldRef gBaseBoneName{"Engine.Actor", "BaseBoneName"};
-ue3::FieldRef gRelativeLocation{"Engine.Actor", "RelativeLocation"};
-ue3::FieldRef gRelativeRotation{"Engine.Actor", "RelativeRotation"};
-ue3::FieldRef gLocalToWorld{"Engine.PrimitiveComponent", "LocalToWorld"};
+ue3::ClassRef gTemplateClass{"SFXGame.BioVFXTemplate", ue3::kEveryGame};
+ue3::ClassRef gEffectClass{"SFXGame.BioVisualEffect", ue3::kEveryGame};
+ue3::FunctionRef gCreateCrust{"SFXGame.BioVisualEffect.CreateCrustEffect", ue3::kEveryGame};
+ue3::FunctionRef gSetLifeTime{"SFXGame.BioVisualEffect.SetLifeTime", ue3::kEveryGame};
+ue3::FunctionRef gSetState{"SFXGame.BioVisualEffect.SetState", ue3::kEveryGame};
+ue3::ClassRef gEmitterClass{"Engine.Emitter", ue3::kEveryGame};
+ue3::FunctionRef gActorDetach{"Engine.Actor.DetachComponent", ue3::kEveryGame};
+ue3::FunctionRef gMeshAttach{"Engine.SkeletalMeshComponent.AttachComponent", ue3::kEveryGame};
+ue3::FunctionRef gMeshDetach{"Engine.SkeletalMeshComponent.DetachComponent", ue3::kEveryGame};
+ue3::FunctionRef gActivate{"Engine.ParticleSystemComponent.ActivateSystem", ue3::kEveryGame};
+ue3::FunctionRef gDeactivate{"Engine.ParticleSystemComponent.DeactivateSystem", ue3::kEveryGame};
+ue3::FieldRef gBaseBoneName{"Engine.Actor", "BaseBoneName", ue3::kEveryGame};
+ue3::FieldRef gRelativeLocation{"Engine.Actor", "RelativeLocation", ue3::kEveryGame};
+ue3::FieldRef gRelativeRotation{"Engine.Actor", "RelativeRotation", ue3::kEveryGame};
+ue3::FieldRef gLocalToWorld{"Engine.PrimitiveComponent", "LocalToWorld", ue3::kEveryGame};
 
 struct Matrix {
     float m[16];  // FMatrix, row-major; the translation is the last row
 };
-ue3::FieldRef gBase{"Engine.Actor", "Base"};
-ue3::FieldRef gEmitterComponent{"Engine.Emitter", "ParticleSystemComponent"};
-ue3::FieldRef gParticleTemplate{"Engine.ParticleSystemComponent", "Template"};
-ue3::FunctionRef gSetScalar{"SFXGame.BioVisualEffect.SetScalarParameter"};
-ue3::FieldRef gCachedParameters{"SFXGame.BioVisualEffect", "m_CachedInstanceParameters"};
+ue3::FieldRef gBase{"Engine.Actor", "Base", ue3::kEveryGame};
+ue3::FieldRef gEmitterComponent{"Engine.Emitter", "ParticleSystemComponent", ue3::kEveryGame};
+ue3::FieldRef gParticleTemplate{"Engine.ParticleSystemComponent", "Template", ue3::kEveryGame};
+ue3::FunctionRef gSetScalar{"SFXGame.BioVisualEffect.SetScalarParameter", ue3::kEveryGame};
+ue3::FieldRef gCachedParameters{"SFXGame.BioVisualEffect", "m_CachedInstanceParameters", ue3::kEveryGame};
 ue3::FieldRef gParameterName{gCachedParameters, "ParameterName"};
 ue3::FieldRef gParameterValue{gCachedParameters, "fCurrentValue"};
 ue3::FieldRef gParameterInited{gCachedParameters, "bInited"};
 ue3::FieldRef gParameterTargets{gCachedParameters, "OffsetInfo"};
 
 // Discovery reads template data only. The selected writes go through the live component's script API.
-ue3::ClassRef gFloatParticle{"Engine.DistributionFloatParticleParameter"};
-ue3::ClassRef gVectorParticle{"Engine.DistributionVectorParticleParameter"};
-ue3::ClassRef gMicClass{"Engine.MaterialInstanceConstant"};
-ue3::ClassRef gMeshComponentClass{"Engine.MeshComponent"};
-ue3::ClassRef gMeshTypeClass{"Engine.ParticleModuleTypeDataMesh"};
-ue3::FieldRef gEmitters{"Engine.ParticleSystem", "Emitters"};
-ue3::FieldRef gLods{"Engine.ParticleEmitter", "LODLevels"};
-ue3::FieldRef gModules{"Engine.ParticleLODLevel", "Modules"};
-ue3::FieldRef gRequired{"Engine.ParticleLODLevel", "RequiredModule"};
-ue3::FieldRef gSpawn{"Engine.ParticleLODLevel", "SpawnModule"};
-ue3::FieldRef gTypeData{"Engine.ParticleLODLevel", "TypeDataModule"};
-ue3::FieldRef gRequiredMaterial{"Engine.ParticleModuleRequired", "Material"};
-ue3::FieldRef gTypeMesh{"Engine.ParticleModuleTypeDataMesh", "Mesh"};
-ue3::FieldRef gStaticLods{"Engine.StaticMesh", "LODInfo"};
+ue3::ClassRef gFloatParticle{"Engine.DistributionFloatParticleParameter", ue3::kEveryGame};
+ue3::ClassRef gVectorParticle{"Engine.DistributionVectorParticleParameter", ue3::kEveryGame};
+ue3::ClassRef gMicClass{"Engine.MaterialInstanceConstant", ue3::kEveryGame};
+ue3::ClassRef gMeshComponentClass{"Engine.MeshComponent", ue3::kEveryGame};
+ue3::ClassRef gMeshTypeClass{"Engine.ParticleModuleTypeDataMesh", ue3::kEveryGame};
+ue3::FieldRef gEmitters{"Engine.ParticleSystem", "Emitters", ue3::kEveryGame};
+ue3::FieldRef gLods{"Engine.ParticleEmitter", "LODLevels", ue3::kEveryGame};
+ue3::FieldRef gModules{"Engine.ParticleLODLevel", "Modules", ue3::kEveryGame};
+ue3::FieldRef gRequired{"Engine.ParticleLODLevel", "RequiredModule", ue3::kEveryGame};
+ue3::FieldRef gSpawn{"Engine.ParticleLODLevel", "SpawnModule", ue3::kEveryGame};
+ue3::FieldRef gTypeData{"Engine.ParticleLODLevel", "TypeDataModule", ue3::kEveryGame};
+ue3::FieldRef gRequiredMaterial{"Engine.ParticleModuleRequired", "Material", ue3::kEveryGame};
+ue3::FieldRef gTypeMesh{"Engine.ParticleModuleTypeDataMesh", "Mesh", ue3::kEveryGame};
+ue3::FieldRef gStaticLods{"Engine.StaticMesh", "LODInfo", ue3::kEveryGame};
 ue3::FieldRef gStaticElements{gStaticLods, "Elements"};
 ue3::FieldRef gStaticMaterial{gStaticElements, "Material"};
-ue3::FieldRef gSMComponents{"Engine.ParticleSystemComponent", "SMComponents"};
-ue3::FieldRef gSMMaterials{"Engine.ParticleSystemComponent", "SMMaterialInterfaces"};
-ue3::ClassRef gMeshMaterialModule{"Engine.ParticleModuleMeshMaterial"};
-ue3::FieldRef gModuleMeshMaterials{"Engine.ParticleModuleMeshMaterial", "MeshMaterials"};
-ue3::ClassRef gMaterialByParameter{"Engine.ParticleModuleMaterialByParameter"};
-ue3::FieldRef gDefaultMaterials{"Engine.ParticleModuleMaterialByParameter", "DefaultMaterials"};
-ue3::FieldRef gMeshMaterials{"Engine.MeshComponent", "Materials"};
-ue3::FieldRef gCrustMesh{"Engine.StaticMeshComponent", "StaticMesh"};
-ue3::ClassRef gStaticComponentClass{"Engine.StaticMeshComponent"};
-ue3::FieldRef gActorOwner{"Engine.Actor", "Owner"};
-ue3::ClassRef gActorClass{"Engine.Actor"};
-ue3::FieldRef gFloatName{"Engine.DistributionFloatParameterBase", "ParameterName"};
-ue3::FieldRef gVectorName{"Engine.DistributionVectorParameterBase", "ParameterName"};
-ue3::FieldRef gFloatConstant{"Engine.DistributionFloatConstant", "Constant"};
-ue3::FieldRef gVectorConstant{"Engine.DistributionVectorConstant", "Constant"};
-ue3::FieldRef gFloatMode{"Engine.DistributionFloatParameterBase", "ParamMode"};
-ue3::FieldRef gVectorModes{"Engine.DistributionVectorParameterBase", "ParamModes"};
-ue3::FieldRef gInstance{"Engine.ParticleSystemComponent", "InstanceParameters"};
+ue3::FieldRef gSMComponents{"Engine.ParticleSystemComponent", "SMComponents", ue3::kEveryGame};
+ue3::FieldRef gSMMaterials{"Engine.ParticleSystemComponent", "SMMaterialInterfaces", ue3::kEveryGame};
+ue3::ClassRef gMeshMaterialModule{"Engine.ParticleModuleMeshMaterial", ue3::kEveryGame};
+ue3::FieldRef gModuleMeshMaterials{"Engine.ParticleModuleMeshMaterial", "MeshMaterials", ue3::kEveryGame};
+ue3::ClassRef gMaterialByParameter{"Engine.ParticleModuleMaterialByParameter", ue3::kEveryGame};
+ue3::FieldRef gDefaultMaterials{"Engine.ParticleModuleMaterialByParameter", "DefaultMaterials", ue3::kEveryGame};
+ue3::FieldRef gMeshMaterials{"Engine.MeshComponent", "Materials", ue3::kEveryGame};
+ue3::FieldRef gCrustMesh{"Engine.StaticMeshComponent", "StaticMesh", ue3::kEveryGame};
+ue3::ClassRef gStaticComponentClass{"Engine.StaticMeshComponent", ue3::kEveryGame};
+ue3::FieldRef gActorOwner{"Engine.Actor", "Owner", ue3::kEveryGame};
+ue3::ClassRef gActorClass{"Engine.Actor", ue3::kEveryGame};
+ue3::FieldRef gFloatName{"Engine.DistributionFloatParameterBase", "ParameterName", ue3::kEveryGame};
+ue3::FieldRef gVectorName{"Engine.DistributionVectorParameterBase", "ParameterName", ue3::kEveryGame};
+ue3::FieldRef gFloatConstant{"Engine.DistributionFloatConstant", "Constant", ue3::kEveryGame};
+ue3::FieldRef gVectorConstant{"Engine.DistributionVectorConstant", "Constant", ue3::kEveryGame};
+ue3::FieldRef gFloatMode{"Engine.DistributionFloatParameterBase", "ParamMode", ue3::kEveryGame};
+ue3::FieldRef gVectorModes{"Engine.DistributionVectorParameterBase", "ParamModes", ue3::kEveryGame};
+ue3::FieldRef gInstance{"Engine.ParticleSystemComponent", "InstanceParameters", ue3::kEveryGame};
 ue3::FieldRef gInstanceName{gInstance, "Name"};
 ue3::FieldRef gInstanceType{gInstance, "ParamType"};
 ue3::FieldRef gInstanceScalar{gInstance, "Scalar"};
 ue3::FieldRef gInstanceVector{gInstance, "Vector"};
 ue3::FieldRef gInstanceColor{gInstance, "Color"};
 ue3::FieldRef gInstanceMaterial{gInstance, "Material"};
-ue3::FieldRef gScalarValues{"Engine.MaterialInstanceConstant", "ScalarParameterValues"};
+ue3::FieldRef gScalarValues{"Engine.MaterialInstanceConstant", "ScalarParameterValues", ue3::kEveryGame};
 ue3::FieldRef gScalarName{gScalarValues, "ParameterName"};
 ue3::FieldRef gScalarValue{gScalarValues, "ParameterValue"};
-ue3::FieldRef gVectorValues{"Engine.MaterialInstanceConstant", "VectorParameterValues"};
+ue3::FieldRef gVectorValues{"Engine.MaterialInstanceConstant", "VectorParameterValues", ue3::kEveryGame};
 ue3::FieldRef gMatVectorName{gVectorValues, "ParameterName"};
 ue3::FieldRef gMatVectorValue{gVectorValues, "ParameterValue"};
-ue3::FieldRef gMaterialParent{"Engine.MaterialInstance", "Parent"};
-ue3::FunctionRef gSetFloat{"Engine.ParticleSystemComponent.SetFloatParameter"};
-ue3::FunctionRef gSetVector{"Engine.ParticleSystemComponent.SetVectorParameter"};
-ue3::FunctionRef gSetColor{"Engine.ParticleSystemComponent.SetColorParameter"};
-ue3::FunctionRef gSetMaterialScalar{"Engine.MaterialInstanceConstant.SetScalarParameterValue"};
+ue3::FieldRef gMaterialParent{"Engine.MaterialInstance", "Parent", ue3::kEveryGame};
+ue3::FunctionRef gSetFloat{"Engine.ParticleSystemComponent.SetFloatParameter", ue3::kEveryGame};
+ue3::FunctionRef gSetVector{"Engine.ParticleSystemComponent.SetVectorParameter", ue3::kEveryGame};
+ue3::FunctionRef gSetColor{"Engine.ParticleSystemComponent.SetColorParameter", ue3::kEveryGame};
+ue3::FunctionRef gSetMaterialScalar{"Engine.MaterialInstanceConstant.SetScalarParameterValue", ue3::kEveryGame};
 bool gDiscoveryLogged = false; // once per session, survives a world/effect change
 bool gCrustRoute = false;      // the first discovery's route was an owned material: later wakes look for the crust meshes again
 struct RwVector { float x, y, z, w; };
@@ -124,7 +124,17 @@ struct PowerBinding {
     Color color{};
 };
 
+// The game's omni-tool: ME1's is BIOG_V_T_Omni_Tool_Z's looping two-piece crust (research/53 section 6.1). ME2 has no such
+// package: its omni-tool is the tech powers' two-piece crust in SFXGame.pcc (always loaded), the same prefab layout (the
+// gauntlet's particle system at LeftElbowTwist2, the display's, OmniHand_2sec, at LeftWrist), a 3 s effect whose particle
+// systems run 2 s (research/le2-menus.md "ME2's omni-tool": the deviation the owner named).
+#if defined(MEVR_GAME_LE2)
+constexpr std::string_view kTemplate = "BioVFX_T_TechPowers._OmniTool.VFX.OmniTool_2Piece_2second";
+constexpr std::string_view kPackage = "BioVFX_T_TechPowers._OmniTool.";  // its particle systems' path
+#else
 constexpr std::string_view kTemplate = "BIOG_V_T_Omni_Tool_Z.Prefab.OmniTool_2PieceLoop";
+constexpr std::string_view kPackage = "BIOG_V_T_Omni_Tool_Z.";
+#endif
 constexpr std::uint64_t kClassDefaultFlag = 0x200;  // EObjectFlags: RF_ClassDefaultObject
 constexpr float kLifeS = 3600.0f;     // as long as the screen is up; ended by SetLifeTime
 constexpr float kFadeS = 0.3f;        // when it closes: the effect's particles finish (bAllowParticlesToFinish)
@@ -577,7 +587,7 @@ int AdoptComponents(ue3::Object* pawn, ue3::Object* mesh) {
         }
         ue3::Object* const component = gEmitterComponent.Read<ue3::Object*>(o).value_or(nullptr);
         ue3::Object* const system = component != nullptr ? gParticleTemplate.Read<ue3::Object*>(component).value_or(nullptr) : nullptr;
-        if (system == nullptr || r.FullName(system).find("BIOG_V_T_Omni_Tool_Z.") == std::string::npos ||
+        if (system == nullptr || r.FullName(system).find(kPackage) == std::string::npos ||
             std::find(gS.adopted.begin(), gS.adopted.end(), component) != gS.adopted.end()) {
             continue;
         }
@@ -632,6 +642,30 @@ bool SetState(ue3::Object* effect, std::uint8_t state) {
     return p.Set("eState", state) && p.SetBool("bForceSetState", true) && p.SetBool("bPlayAudio", true) && p.SetBool("bForceKill", false) &&
            ue3::runtime::Call(effect, gSetState.Get(), p);
 }
+
+#if defined(MEVR_GAME_LE2)
+// ME2's omni-tool is the tech powers' 2-second effect (OmniArm_2sec, OmniHand_2sec): its particle systems complete after 2 s,
+// where ME1's loop. While it's wanted (the rail, a wrist screen) each is started again every kRewakeMs, before its particles
+// run out (research/le2-menus.md "ME2's omni-tool": the ME2 fact that forces it).
+constexpr std::uint64_t kRewakeMs = 1800;
+std::uint64_t gRewokenMs = 0;
+int gRewakes = 0;
+void Rewake() {
+    std::uint64_t const now = GetTickCount64();
+    if (gS.adopted.empty() || gS.adoptedMs == 0 || now - std::max(gS.adoptedMs, gRewokenMs) < kRewakeMs) {
+        return;
+    }
+    gRewokenMs = now;
+    for (ue3::Object* const component : gS.adopted) {
+        if (ue3::runtime::IsAlive(component)) {
+            CallOn(component, gActivate, [](ue3::Params& p) { return p.SetBool("bFlagAsJustAttached", false); });
+        }
+    }
+    if (gRewakes++ == 0) {
+        log::Info("omni tool: ME2's 2 s particle systems started again every {:.1f} s while the omni-tool is up", kRewakeMs / 1000.0);
+    }
+}
+#endif
 
 // The effect's two particle systems onto Shepard's mesh, started.
 void Wake() {
@@ -724,8 +758,8 @@ void Request() {
 void Tick(bool wanted) {
     wanted = wanted || gRequested;  // the power wheel's request (research/55)
     gRequested = false;
-#if defined(MEVR_GAME_LE1)
-    if (!ue3::runtime::Ready()) {
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
+    if (!ue3::runtime::Up()) {
         return;
     }
     if (engine::World() != gS.world && gS.world != nullptr) {
@@ -735,6 +769,9 @@ void Tick(bool wanted) {
     if (wanted) {
         gS.byHand = false;
         Show(kLifeS);
+#if defined(MEVR_GAME_LE2)
+        Rewake();
+#endif
     } else if (gS.effect != nullptr && !gS.byHand) {
         End("the screen closed", kFadeS);
     }
@@ -745,7 +782,7 @@ void Tick(bool wanted) {
 }
 
 std::string Console(std::string_view args) {
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
     std::istringstream words{std::string(args)};
     std::string sub;
     std::string number;
@@ -788,12 +825,12 @@ std::string Console(std::string_view args) {
     return StatusJson();
 #else
     (void)args;
-    return "omni tool: LE1 only";
+    return "omni tool: LE1 and LE2 only";
 #endif
 }
 
 std::uint64_t OnMs() {
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
     return Alive(gS.effect) ? gS.adoptedMs : 0;
 #else
     return 0;
@@ -801,7 +838,7 @@ std::uint64_t OnMs() {
 }
 
 std::optional<ue3::Vector> DisplayWorld() {
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
     // Its first transforms are the animation's arm (arm IK takes the arms the tick a wrist screen opens, the attached component
     // updates with the mesh after it): the screen's opening place came out 0.9 m off (2026-11-04).
     constexpr std::uint64_t kSettleMs = 150;
@@ -819,7 +856,7 @@ std::optional<ue3::Vector> DisplayWorld() {
 }
 
 std::string StatusJson() {
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
     std::lock_guard<std::mutex> const lock(gStatusMutex);
     return gStatusJson;
 #else
@@ -828,7 +865,7 @@ std::string StatusJson() {
 }
 
 void Shutdown() {
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
     if (gS.effect != nullptr && engine::World() == gS.world) {
         End("the mod unloads", kFadeS);
     }
