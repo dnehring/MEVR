@@ -15,6 +15,7 @@
 #include "plugin/Renderer.hpp"
 #include "plugin/Swapchains.hpp"
 #include "plugin/TestLoop.hpp"
+#include "plugin/TraversalCue.hpp"
 #include "plugin/Vignette.hpp"
 #include "plugin/XrHost.hpp"
 
@@ -276,6 +277,21 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
         if (XrCompositionLayerQuad const* layer = mevr::host::vignette::Layer(vignette)) {
             layersOut[count++] = layer;
         }
+    }
+    // Traversal's cue at the obstacle and its blink (plugin/TraversalCue, research/le2-traversal.md): the blink last of ours.
+    if (count < capacity) {
+        mevr::host::traversal_cue::Frame cue;
+        cue.session = static_cast<XrSession>(frame.session);
+        cue.appSpace = static_cast<XrSpace>(frame.appSpace);
+        cue.context = frame.context;
+        cue.device = device;
+        cue.worldFrame = frame.worldFrame;
+        cue.menuOpen = frame.menuOpen;
+        cue.headValid = frame.projectionValid;
+        cue.head = {0.5f * (frame.projectionPosition[0][0] + frame.projectionPosition[1][0]),
+            0.5f * (frame.projectionPosition[0][1] + frame.projectionPosition[1][1]),
+            0.5f * (frame.projectionPosition[0][2] + frame.projectionPosition[1][2])};
+        count += mevr::host::traversal_cue::Layers(cue, layersOut + count, capacity - count);
     }
     if (device != nullptr) {
         device->Release();

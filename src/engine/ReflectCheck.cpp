@@ -2353,6 +2353,90 @@ void CheckParams() {
     PARMS(USkeletalMeshComponent_execGetBoneNames_Parms, "Engine.SkeletalMeshComponent.GetBoneNames");
 }
 
+// game/Traversal (research/le2-traversal.md): the cover list and its slots that vault or climb, the game's own admission
+// (CanPerformMantle/Climb with m_bCanMantleOutsideOfCover and the remapped stick for one call), its MantleCover/ClimbCover and the
+// custom action they start.
+void CheckTraversal() {
+    CheckClass<ACoverLink>("Engine.CoverLink");
+    CheckClass<ASFXPlayerController>("SFXGame.SFXPlayerController");
+    CheckClass<UBioPlayerSelection>("SFXGame.BioPlayerSelection");
+    CheckClass<UBioCustomAction_CoverClimbMantleBase>("SFXGame.BioCustomAction_CoverClimbMantleBase");
+    CheckField("Engine.WorldInfo", "CoverList", SDK_FIELD(AWorldInfo, CoverList));
+    CheckField("Engine.Actor", "WorldInfo", SDK_FIELD(AActor, WorldInfo));
+    CheckField("Engine.Actor", "bBlockActors", SDK_BOOL(AActor, bBlockActors));
+    CheckField("Engine.CoverLink", "NextCoverLink", SDK_FIELD(ACoverLink, NextCoverLink));
+    CheckField("Engine.CoverLink", "Slots", SDK_FIELD(ACoverLink, Slots));
+    CheckElement("Engine.CoverLink", "Slots", static_cast<long long>(sizeof(FCoverSlot)));
+    CheckPath("Engine.CoverLink", {"Slots", "bCanMantle"}, SDK_BOOL(FCoverSlot, bCanMantle));
+    CheckPath("Engine.CoverLink", {"Slots", "bCanClimbUp"}, SDK_BOOL(FCoverSlot, bCanClimbUp));
+    CheckPath("Engine.CoverLink", {"Slots", "bEnabled"}, SDK_BOOL(FCoverSlot, bEnabled));
+    CheckPath("Engine.CoverLink", {"Slots", "MantleTarget"}, SDK_FIELD(FCoverSlot, MantleTarget));
+    CheckPath("Engine.CoverLink", {"Slots", "MantleTarget", "Actor"},
+        SDK_AT(offsetof(FCoverSlot, MantleTarget) + offsetof(FCoverReference, Actor), 8));
+    CheckPath("Engine.CoverLink", {"Slots", "MantleTarget", "SlotIdx"},
+        SDK_AT(offsetof(FCoverSlot, MantleTarget) + offsetof(FCoverReference, SlotIdx), 4));
+    CheckField("SFXGame.BioPlayerController", "m_bCanMantleOutsideOfCover", SDK_BOOL(ABioPlayerController, m_bCanMantleOutsideOfCover));
+    CheckField("SFXGame.BioPlayerController", "RemappedJoyUp", SDK_FIELD(ABioPlayerController, RemappedJoyUp));
+    CheckField("SFXGame.BioPlayerController", "RemappedJoyRight", SDK_FIELD(ABioPlayerController, RemappedJoyRight));
+    CheckField("SFXGame.BioPlayerController", "m_fClimbMantleDistanceThreshold", SDK_FIELD(ABioPlayerController, m_fClimbMantleDistanceThreshold));
+    CheckField("SFXGame.BioPlayerController", "m_fClimbMantleFaceAngleThreshold", SDK_FIELD(ABioPlayerController, m_fClimbMantleFaceAngleThreshold));
+    CheckField("SFXGame.BioPlayerController", "m_oPlayerSelection", SDK_FIELD(ABioPlayerController, m_oPlayerSelection));
+    CheckField("SFXGame.BioPlayerController", "CustomActions", SDK_FIELD(ABioPlayerController, CustomActions));
+    CheckField("SFXGame.SFXPlayerController", "CurrentCustomAction", SDK_FIELD(ASFXPlayerController, CurrentCustomAction));
+    CheckField("SFXGame.BioPlayerSelection", "m_oCurrentSelectionTarget", SDK_FIELD(UBioPlayerSelection, m_oCurrentSelectionTarget));
+    CheckField("SFXGame.BioPlayerSelection", "m_bCurrentSelectionIsCombatTarget", SDK_BOOL(UBioPlayerSelection, m_bCurrentSelectionIsCombatTarget));
+    CheckField("Engine.PlayerController", "bIgnoreMoveInput", SDK_FIELD(APlayerController, bIgnoreMoveInput));
+    CheckField("Engine.PlayerController", "bIgnoreLookInput", SDK_FIELD(APlayerController, bIgnoreLookInput));
+    CheckField("SFXGame.BioPawn", "CurrentLink", SDK_FIELD(ABioPawn, CurrentLink));
+    CheckField("Engine.Pawn", "Weapon", SDK_FIELD(APawn, Weapon));
+    // LExSDKv2 compiles these two 8 bytes early (its FBodyStance packs to 9 bytes, the game's to 12); its header's own comments say 0xFC
+    // and 0xF0, which is where our layer finds them (the run of 2026-11-14 read the played stance there).
+    CheckField("SFXGame.BioCustomAction_CoverClimbMantleBase", "m_CurrentBodyStance", SDK_AT(0xFC, 1));
+    CheckField("SFXGame.BioCustomAction_CoverClimbMantleBase", "m_fCollisionOffPerioud", SDK_AT(0xF0, 4));
+    // The CovPosInfo the functions take (the same struct as the custom action's cached one).
+    long long const info = static_cast<long long>(offsetof(UBioCustomAction_CoverClimbMantleBase, m_CurrentCoverInfo));
+    CheckPath("SFXGame.BioCustomAction_CoverClimbMantleBase", {"m_CurrentCoverInfo", "Location"}, SDK_AT(info + offsetof(FCovPosInfo, Location), 12));
+    CheckPath("SFXGame.BioCustomAction_CoverClimbMantleBase", {"m_CurrentCoverInfo", "Normal"}, SDK_AT(info + offsetof(FCovPosInfo, Normal), 12));
+    CheckPath("SFXGame.BioCustomAction_CoverClimbMantleBase", {"m_CurrentCoverInfo", "Tangent"}, SDK_AT(info + offsetof(FCovPosInfo, Tangent), 12));
+    CheckPath("SFXGame.BioCustomAction_CoverClimbMantleBase", {"m_CurrentCoverInfo", "Link"}, SDK_AT(info + offsetof(FCovPosInfo, Link), 8));
+    CheckPath("SFXGame.BioCustomAction_CoverClimbMantleBase", {"m_CurrentCoverInfo", "LtSlotIdx"}, SDK_AT(info + offsetof(FCovPosInfo, LtSlotIdx), 4));
+    CheckPath("SFXGame.BioCustomAction_CoverClimbMantleBase", {"m_CurrentCoverInfo", "RtSlotIdx"}, SDK_AT(info + offsetof(FCovPosInfo, RtSlotIdx), 4));
+    CheckPath("SFXGame.BioCustomAction_CoverClimbMantleBase", {"m_CurrentCoverInfo", "LtToRtPct"}, SDK_AT(info + offsetof(FCovPosInfo, LtToRtPct), 4));
+    char const* const functions[] = {
+        "Engine.CoverLink.GetSlotLocation",
+        "Engine.CoverLink.GetSlotRotation",
+        "Engine.Actor.Trace",
+        "Engine.Actor.SetLocation",
+        "SFXGame.BioPlayerController.CanPerformMantle",
+        "SFXGame.BioPlayerController.CanPerformClimb",
+        "SFXGame.SFXPlayerController.MantleCover",
+        "SFXGame.SFXPlayerController.ClimbCover",
+        "SFXGame.SFXPlayerController.TryClimbOrMantleCover",
+        "SFXGame.SFXPlayerController.DoCustomAction",
+        "SFXGame.BioCustomAction_CoverClimbMantleBase.StartCustomAction",
+        "SFXGame.BioCustomAction_CoverClimbMantleBase.StopCustomAction",
+        "SFXGame.BioCustomAction_CoverClimbMantleBase.BodyStanceAnimEndNotification",
+    };
+    for (char const* function : functions) {
+        CheckFunction(function);
+    }
+    PARAM(ABioPlayerController_execCanPerformMantle_Parms, "SFXGame.BioPlayerController.CanPerformMantle", CoverInfo);
+    PARAM(ABioPlayerController_execCanPerformMantle_Parms, "SFXGame.BioPlayerController.CanPerformMantle", ReturnValue);
+    PARAM(ABioPlayerController_execCanPerformClimb_Parms, "SFXGame.BioPlayerController.CanPerformClimb", CoverInfo);
+    PARAM(ABioPlayerController_execCanPerformClimb_Parms, "SFXGame.BioPlayerController.CanPerformClimb", ReturnValue);
+    PARAM(ASFXPlayerController_execMantleCover_Parms, "SFXGame.SFXPlayerController.MantleCover", CovInfo);
+    PARAM(ASFXPlayerController_execClimbCover_Parms, "SFXGame.SFXPlayerController.ClimbCover", CovInfo);
+    PARAM(ACoverLink_execGetSlotLocation_Parms, "Engine.CoverLink.GetSlotLocation", SlotIdx);
+    PARAM(ACoverLink_execGetSlotLocation_Parms, "Engine.CoverLink.GetSlotLocation", ReturnValue);
+    PARAM(ACoverLink_execGetSlotRotation_Parms, "Engine.CoverLink.GetSlotRotation", SlotIdx);
+    PARAM(ACoverLink_execGetSlotRotation_Parms, "Engine.CoverLink.GetSlotRotation", ReturnValue);
+    PARAM(AActor_execTrace_Parms, "Engine.Actor.Trace", TraceEnd);
+    PARAM(AActor_execTrace_Parms, "Engine.Actor.Trace", TraceStart);
+    PARAM(AActor_execTrace_Parms, "Engine.Actor.Trace", HitLocation);
+    PARAM(AActor_execTrace_Parms, "Engine.Actor.Trace", ReturnValue);
+    PARAM(AActor_execSetLocation_Parms, "Engine.Actor.SetLocation", NewLocation);
+}
+
 #endif  // LE1 / LE2 tables
 
 // Names, full names, IsA and IsAlive over a spread of GObjects, both ways.
@@ -2557,6 +2641,9 @@ void Run(hook::Context& context) {
     CheckSkeleton();
     CheckFunctions();
     CheckParams();
+#if defined(MEVR_GAME_LE2)
+    CheckTraversal();
+#endif
     CheckSamples();
     CheckMemory();
     ue3::runtime::FlushNotes();

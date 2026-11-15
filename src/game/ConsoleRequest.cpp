@@ -39,6 +39,7 @@
 #include "game/Spectator.hpp"
 #include "game/Thespian.hpp"
 #include "game/Throwables.hpp"
+#include "game/Traversal.hpp"
 #include "game/Vent.hpp"
 #include "core/WriteJournal.hpp"
 
@@ -1748,8 +1749,13 @@ std::optional<std::string> RunOursLe2(ue3::Object* pc, std::string const& line) 
         std::getline(words, rest);
         return camera_probe::Command(rest);  // `mevr camera trace <seconds> [label]` (M3: the skeleton audit on ME2)
     }
+    if (verb == "traversal") {
+        std::string rest;
+        std::getline(words, rest);
+        return traversal::Command(rest);  // the vault's fixture and tests (research/le2-traversal.md)
+    }
     return std::string("unknown on ME2: mevr load <career> <save name> <index> <type> | mevr savedesc | mevr state | "
-                       "mevr camera trace <seconds> [label]");
+                       "mevr camera trace <seconds> [label] | mevr traversal ...");
 }
 
 #endif

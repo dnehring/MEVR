@@ -90,6 +90,9 @@ struct State;
 namespace vr::thespian {
 struct Panel;
 }
+namespace vr::traversal {
+struct Cue;
+}
 
 // Fields are only ever appended: a mod reads the fields of every version up to the host's (and
 // its own), so a newer mod still runs on an older host, without what the older host lacks.
@@ -98,7 +101,7 @@ struct Panel;
 // `controllers`. The controller-aim branch had {view, setHandAim}; the review-fix branch (commit
 // f95d01d) had {u32 controllerStateSize, setProcessEventCallback}. Version 4 is their merge. So a
 // mod reads nothing past `controllers` from a v3 host: `view` and `setHandAim` only from v4 on.
-inline constexpr int kHostServicesVersion = 39;
+inline constexpr int kHostServicesVersion = 40;
 
 // HostServices::mainMenu's bits (v16).
 inline constexpr std::uint32_t kMainMenuOpen = 1u;   // our main menu is open
@@ -437,6 +440,12 @@ struct HostServices {
     // mark, each game tick while a dialogue wheel is spoken (shown = 0 once after). Host and mod deploy together (the size).
     std::uint32_t thespianPanelSize = 0;
     void (*setThespian)(vr::thespian::Panel const* panel) = nullptr;
+    // Version 40: traversal's cue and blink (core/vr/Traversal's Cue, research/le2-traversal.md; 2026-11-14): while the game admits a vault
+    // or climb from where the player stands the mod sends each tick where its label goes (tracking space), and while a move runs the
+    // blink's darkness; the host draws them (plugin/TraversalCue; LE2's host only so far). Stale after 300 ms. The mod sends only if
+    // traversalCueSize matches its sizeof(Cue). Any thread.
+    std::uint32_t traversalCueSize = 0;
+    void (*setTraversal)(vr::traversal::Cue const* cue) = nullptr;
 };
 
 inline auto CameraOffsetPublisher(HostServices const* host) -> void (*)(double, double, double) {

@@ -497,6 +497,11 @@ set(MEVR_MOD_SOURCES
     src/game/Voice.hpp
     src/game/Thespian.cpp
     src/game/Thespian.hpp
+    # Vaulting and climbing (research/le2-traversal.md): ME2's own move on the double A, measured and presented.
+    src/game/Traversal.cpp
+    src/game/Traversal.hpp
+    src/core/vr/Traversal.cpp
+    src/core/vr/Traversal.hpp
     src/core/voice/Grammar.cpp
     src/core/voice/Grammar.hpp
     src/core/voice/ScriptMatch.cpp
@@ -933,6 +938,8 @@ function(mevr_add_plugin game)
             src/plugin/Swapchains.cpp src/plugin/Swapchains.hpp
             src/core/vr/SwapchainBudget.hpp src/plugin/Vignette.cpp src/plugin/Vignette.hpp src/core/vr/Comfort.cpp
             src/core/vr/Comfort.hpp
+            # Traversal's cue and blink (research/le2-traversal.md).
+            src/plugin/TraversalCue.cpp src/plugin/TraversalCue.hpp src/core/vr/Traversal.cpp src/core/vr/Traversal.hpp
             # Our actions, vibration and the floor on Halcyon's session (plugin/XrHost, as LE1's).
             src/plugin/XrHost.cpp src/plugin/XrHost.hpp src/core/vr/Haptics.cpp src/core/vr/Haptics.hpp src/core/xr/Floor.cpp
             src/core/xr/Floor.hpp src/core/vr/Floor.hpp
@@ -1179,6 +1186,8 @@ if (MEVR_BUILD_TESTS)
         tests/ScriptMatchTests.cpp
         src/core/vr/Thespian.cpp
         tests/ThespianTests.cpp
+        src/core/vr/Traversal.cpp
+        tests/TraversalTests.cpp
         src/core/vr/VoiceGesture.cpp
         tests/CockpitPanelTests.cpp
         src/core/Exe.cpp

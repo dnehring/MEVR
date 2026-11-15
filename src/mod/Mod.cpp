@@ -103,6 +103,7 @@
 #include "game/SquadWeapons.hpp"
 #include "game/SupportGrip.hpp"
 #include "game/Throwables.hpp"
+#include "game/Traversal.hpp"
 #include "game/Vent.hpp"
 #include "game/ViewAnchor.hpp"
 #include "game/ViewLevel.hpp"
@@ -171,6 +172,7 @@ bool gSceneViewHooked = false;
 bool gGamepadHooked = false;  // XInput hooks (once the game has loaded an XInput DLL)
 bool gCallFunctionHooked = false;  // installed the first time hand aim is turned on
 bool gHandAimAvailable = false;
+bool gTraversalOn = false;  // game/traversal started (LE2): its custom action handlers want the CallFunction hook
 bool gBonePoseTried = false;  // the arm writeback hook goes in the first time arm IK is turned on
 bool gBonePoseHooked = false;
 bool gBodyBoundsHooked = false;  // the player's body bounds padded (engine/BodyBounds): goes in with the arm writeback
@@ -360,6 +362,7 @@ void TryInstallScriptHooks() {
     }
     game::sights::TryStartup();  // the scoped shots' aimed fire (a CallFunction handler, registered before the hook)
     game::view_level::TryStartup();  // the level camera (PlayerTick and SetWeaponRecoil handlers, before the hooks)
+    gTraversalOn = game::traversal::TryStartup();  // ME2's vault on the double A (research/le2-traversal.md; LE2 only)
     game::power_wheel::TryStartup();  // the bolt from the hand: BioPawn.ReleasePower's timing (research/55 section 9)
     if (!gHandAimAvailable) {
         log::Warn("hand aim: BioPlayerController.GetAdjustedAimFor not found; hand aim unavailable");
@@ -936,6 +939,34 @@ mevr::game::view_level::Link ViewLevelLink() {
     return link;
 }
 
+// Vaulting and climbing (game/traversal, research/le2-traversal.md): the right A, the menu, the vignette and the cue's service.
+mevr::game::traversal::Link TraversalLink() {
+    using namespace mevr;
+    game::traversal::Link link;
+    if (!gHostOwnsVr) {
+        return link;
+    }
+    if (gHostView && gHostDataOk) {
+        link.headTrackedView = vr::host_view::Latest().valid;
+    }
+    vr::controllers::State const controllers = vr::controllers::Latest();
+    link.controllers = controllers.active;
+    link.rightA = controllers.right.primary;
+    if (MEVR_HOST_HAS(mainMenu) && gHost->mainMenu != nullptr) {
+        link.menuOpen = (gHost->mainMenu() & kMainMenuOpen) != 0;
+    }
+    if (MEVR_HOST_HAS(setVignette)) {
+        link.setVignette = gHost->setVignette;
+    }
+    if (MEVR_HOST_HAS(setTraversal) && gHost->traversalCueSize == sizeof(vr::traversal::Cue)) {
+        link.setCue = gHost->setTraversal;
+    }
+    if (gHost->version >= 9) {
+        link.haptic = gHost->hapticPulse;
+    }
+    return link;
+}
+
 // Host renderer (HostServices v15): the guided calibration's state (research/25): whether it runs (the mod stands
 // down) and which controllers' [Calibration.<key>] applies.
 mevr::game::body_calibration::Link BodyCalibrationLink() {
@@ -1076,7 +1107,13 @@ void PublishStatus() {
         game::interact::StatusJson(), game::fingers::StatusJson(), game::hud_pieces::StatusJson(), game::mako::StatusJson(), game::mako_gunner::StatusJson(), game::cockpit_probe::StatusJson(), game::mako_controls::StatusJson(),
         game::spectator::StatusJson(), game::galaxy_map::StatusJson(), game::world_ui::StatusJson(), game::squad_context::StatusJson(), game::squad_orders::StatusJson(), game::squad_ack::StatusJson(), game::voice::StatusJson(), game::power_wheel::StatusJson(), game::gui_cursor::StatusJson(), game::vr_cover::StatusJson(), game::squad_place::StatusJson(), game::body_scale::StatusJson(),
         game::conversation_world::StatusJson(), game::sprint::StatusJson(), game::sound_place::StatusJson(), game::camera_collision::StatusJson(), game::camera_shake::StatusJson());
-    gHost->setStatus(status.c_str());
+    // Blocks of modules added since (appended before the closing brace, so the long list above stays as it is).
+    std::string full = status;
+    if (!full.empty() && full.back() == '}') {
+        full.pop_back();
+        full += ", \"traversal\": " + game::traversal::StatusJson() + "}";
+    }
+    gHost->setStatus(full.c_str());
 }
 
 // Host renderer: copies the host's latest controllers and view into the mod (first thing each
@@ -1217,6 +1254,7 @@ void Heartbeat() {
         game::posture::LogStats();
         game::vr_cover::LogStats();
         game::view_level::LogStats();
+        game::traversal::LogStats();
         game::gun_kick::LogStats();
         game::combat_stance::LogStats();
         game::sprint::LogStats();
@@ -1438,6 +1476,10 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         game::sprint::Tick(deltaSeconds, CombatStanceLink().headTrackedView);
         game::hand_aim::Tick();
         game::view_level::Tick(ViewLevelLink());
+        if (gTraversalOn) {
+            EnsureCallFunctionHook();  // the climb/mantle custom action's script calls (game/traversal)
+            game::traversal::Tick(deltaSeconds, TraversalLink());
+        }
         gTickAimRay = {};
         PublishAimRay();
         // The weapon panel on the gun (research/41): from this tick's ray.
@@ -1640,6 +1682,8 @@ MEVR_MOD_API void MevrModShutdown() {
     game::fingers::Shutdown();
     game::call_trace::Shutdown();
     game::view_level::Shutdown();
+    game::traversal::Shutdown();
+    gTraversalOn = false;
     game::gun_kick::Shutdown();
     if (gHost != nullptr && MEVR_HOST_HAS(setVignette) && gHost->setVignette != nullptr) {
         gHost->setVignette(0.0f);  // no vignette without the mod (the host also forgets on unload)

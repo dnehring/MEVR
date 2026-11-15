@@ -20,6 +20,10 @@
 #include "plugin/Vignette.hpp"
 #include "plugin/XrHost.hpp"
 #endif
+#if defined(MEVR_WITH_HALCYON_LE2)
+#include "core/vr/Traversal.hpp"
+#include "plugin/TraversalCue.hpp"
+#endif
 #if defined(MEVR_WITH_HALCYON)
 #include "core/vr/Calibration.hpp"
 #include "core/vr/Floor.hpp"
@@ -186,6 +190,18 @@ void ForgetRendererModState() {
     vr::aim_ray::Reset();
     xr_host::ForgetHaptics();
     vignette::Forget();
+#if defined(MEVR_WITH_HALCYON_LE2)
+    traversal_cue::Forget();
+#endif
+}
+#endif
+
+#if defined(MEVR_WITH_HALCYON_LE2)
+// v40: traversal's cue and blink (plugin/TraversalCue, research/le2-traversal.md; LE2's host so far).
+HostServices WithTraversal(HostServices services) {
+    services.traversalCueSize = static_cast<std::uint32_t>(sizeof(vr::traversal::Cue));
+    services.setTraversal = &traversal_cue::Set;
+    return services;
 }
 #endif
 
@@ -485,6 +501,9 @@ HostServices BuildServices() {
     HostServices services = WithCrashBreadcrumbs(BaseServices());
 #if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2)
     services = WithVignette(WithRenderer(services));  // the host modules both renderers have
+#endif
+#if defined(MEVR_WITH_HALCYON_LE2)
+    services = WithTraversal(services);
 #endif
 #if defined(MEVR_WITH_HALCYON)
     services = WithVoice(WithPowerWheel(WithWorldUi(WithGalaxyHologram(WithGalaxyMap(WithSpectator(WithMakoControls(

@@ -12005,6 +12005,8 @@ int RunLandmarkTests();
 int RunScriptMatchTests();
 // tests/ThespianTests.cpp: Thespian mode's turn rules (core/vr/Thespian, research/70).
 int RunThespianTests();
+// tests/TraversalTests.cpp: the vault's double A, its record, view and cue (core/vr/Traversal, research/le2-traversal.md).
+int RunTraversalTests();
 int RunScreenMatrixTests();
 // tests/ConversationWorldTests.cpp: conversations in the world (research/59).
 int RunConversationWorldTests();
@@ -12189,6 +12191,7 @@ int main() {
     gFailures += RunLandmarkTests();
     gFailures += RunScriptMatchTests();
     gFailures += RunThespianTests();
+    gFailures += RunTraversalTests();
     gFailures += RunScreenMatrixTests();
     gFailures += RunConversationWorldTests();
     gFailures += RunSoundPlaceTests();
