@@ -249,6 +249,15 @@ bool ReadFString(std::uintptr_t addr, char* out, size_t cap) noexcept
         const wchar_t* data = *reinterpret_cast<wchar_t* volatile*>(addr);
         const int count = *reinterpret_cast<int volatile*>(addr + 8);
         if (data == nullptr || count <= 0 || count > 512) return false;
+        // [MEVR] CollectHandlers reads the HUD handler's path offsets on every SFHandler class, so most of these
+        // land on other fields (FNames, flags). A pointer no engine allocation can be (under 64 KB, outside user
+        // space, not 8-byte aligned) or a count past the string's capacity is refused before it is read: each was
+        // a first-chance access violation at every XR start (the host logged three per address).
+        {
+            const auto raw = reinterpret_cast<std::uintptr_t>(data);
+            const int max = *reinterpret_cast<int volatile*>(addr + 12);
+            if (raw < 0x10000 || raw > 0x00007FFFFFFFFFFFull || (raw & 7) != 0 || max < count) return false;
+        }
         size_t i = 0;
         for (; i + 1 < cap && i < static_cast<size_t>(count) && data[i] != L'\0'; ++i)
             out[i] = (data[i] > 0 && data[i] < 127) ? static_cast<char>(data[i]) : '?';
