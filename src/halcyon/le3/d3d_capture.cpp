@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only
+#include "mevr_bridge.h" // [MEVR] shared host seam
 #include "d3d_capture.h"
 
 #include "allocviewstate_finder.h"
@@ -3868,7 +3870,7 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDXGISwapChain* swapChain, UINT syncInterv
     // F2 = manual flat/mono override (for journal/squad etc. that the mod doesn't auto-detect yet).
     {
         static bool s_f2Down = false;
-        const bool f2 = (GetAsyncKeyState(VK_F2) & 0x8000) != 0;
+        const bool f2 = ::ME2VR::MevrBridge::KeyDown(VK_F2);
         if (f2 && !s_f2Down)
         {
             const bool nm = !g_manualFlat.load(std::memory_order_acquire);
@@ -3893,7 +3895,7 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDXGISwapChain* swapChain, UINT syncInterv
     // in the galaxy map / journal, and compare to find which object/field marks a full-screen screen.
     {
         static bool s_f3Down = false;
-        const bool f3 = (GetAsyncKeyState(VK_F3) & 0x8000) != 0;
+        const bool f3 = ::ME2VR::MevrBridge::KeyDown(VK_F3);
         if (f3 && !s_f3Down) ME2VR::EngineProbe::DumpGfxState();
         s_f3Down = f3;
     }
@@ -3901,7 +3903,7 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDXGISwapChain* swapChain, UINT syncInterv
     // F4 = master VR on/off (OFF = vanilla flat, for first-person tuning).
     {
         static bool s_f4Down = false;
-        const bool f4 = (GetAsyncKeyState(VK_F4) & 0x8000) != 0;
+        const bool f4 = ::ME2VR::MevrBridge::KeyDown(VK_F4);
         if (f4 && !s_f4Down)
         {
             const bool on = !ME2VR::CalcViewHook::GetVrEnabled();
@@ -3916,7 +3918,7 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDXGISwapChain* swapChain, UINT syncInterv
         static bool s_fpKeyDown = false;
         const int fpVk = ME2VR::Menu::GetFpToggleKey();
         const bool fpKey = !ME2VR::Menu::IsRebindingFpToggle() && fpVk != 0 &&
-                        (GetAsyncKeyState(fpVk) & 0x8000) != 0;
+                        ::ME2VR::MevrBridge::KeyDown(fpVk);
         if (fpKey && !s_fpKeyDown)
         {
             const bool on = !ME2VR::EngineProbe::GetFirstPerson();
@@ -3926,11 +3928,11 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDXGISwapChain* swapChain, UINT syncInterv
         s_fpKeyDown = fpKey;
         static bool s_rcDown = false;
         const int rcKey = ME2VR::Menu::GetRecenterKey();
-        const bool rc = rcKey != 0 && (GetAsyncKeyState(rcKey) & 0x8000) != 0;
+        const bool rc = rcKey != 0 && ::ME2VR::MevrBridge::KeyDown(rcKey);
         if (rc && !s_rcDown) ME2VR::Me2Xr::Recenter();
         s_rcDown = rc;
         static bool s_f7Down = false;
-        const bool f7 = (GetAsyncKeyState(VK_F7) & 0x8000) != 0;
+        const bool f7 = ::ME2VR::MevrBridge::KeyDown(VK_F7);
         if (f7 && !s_f7Down)
         {
             const bool on = !ME2VR::EngineProbe::GetMeshHide();
@@ -5718,6 +5720,9 @@ D3D11CreateDeviceAndSwapChainFn g_origD3D11CreateDeviceAndSwapChain = nullptr;
 // Cached: the hook fires several times and the registry value does not change mid-run.
 bool SvrIsSteamVrActiveRuntime() noexcept
 {
+#if defined(MEVR_ASI)
+    return ::ME2VR::MevrBridge::XrRuntimeIsSteamVr(); // [MEVR] process-local runtime
+#else
     static int cached = -1;
     if (cached >= 0) return cached != 0;
     cached = 0;
@@ -5738,6 +5743,7 @@ bool SvrIsSteamVrActiveRuntime() noexcept
     }
     ME2VR::Log::Line(std::string("[SVRFIX2] active OpenXR runtime is SteamVR: ") + (cached ? "yes" : "no"));
     return cached != 0;
+#endif
 }
 
 UINT SvrStripSingleThreadedFlag(UINT flags, const char* which) noexcept

@@ -1,4 +1,6 @@
-﻿#include "dxgi_proxy.h"
+// SPDX-License-Identifier: GPL-3.0-only
+#include "dxgi_proxy.h"
+#include <MinHook.h> // [MEVR] ASI factory hooks
 
 #include "d3d_capture.h"
 #include "logger.h"
@@ -82,6 +84,91 @@ HRESULT MissingExport(const char* name) noexcept
 }
 }
 
+#if defined(MEVR_ASI)
+// [MEVR] Inside our ASI (not a dxgi.dll proxy): the system dxgi.dll's factory functions are hooked, so the game's factory
+// still reaches D3DCapture::TryInstallFactoryHooks. After LE1's upstream InstallRealFactoryHooks (MassEffect1-VR).
+namespace
+{
+using CreateFactoryFn = HRESULT(WINAPI*)(REFIID, void**);
+using CreateFactory2Fn = HRESULT(WINAPI*)(UINT, REFIID, void**);
+CreateFactoryFn g_realCreate = nullptr;
+CreateFactoryFn g_realCreate1 = nullptr;
+CreateFactory2Fn g_realCreate2 = nullptr;
+std::once_flag g_factoryHookOnce;
+
+void Captured(const char* name, HRESULT hr, REFIID riid, void** factory) noexcept
+{
+    if (SUCCEEDED(hr) && factory != nullptr && *factory != nullptr)
+    {
+        ME2VR::Log::Line(std::string("[ME2DISC] ") + name + " captured factory [MEVR].");
+        ME2VR::D3DCapture::TryInstallFactoryHooks(*factory, riid);
+    }
+}
+HRESULT WINAPI CreateHook(REFIID riid, void** factory)
+{
+    const HRESULT hr = g_realCreate != nullptr ? g_realCreate(riid, factory) : E_FAIL;
+    Captured("CreateDXGIFactory", hr, riid, factory);
+    return hr;
+}
+HRESULT WINAPI Create1Hook(REFIID riid, void** factory)
+{
+    const HRESULT hr = g_realCreate1 != nullptr ? g_realCreate1(riid, factory) : E_FAIL;
+    Captured("CreateDXGIFactory1", hr, riid, factory);
+    return hr;
+}
+HRESULT WINAPI Create2Hook(UINT flags, REFIID riid, void** factory)
+{
+    const HRESULT hr = g_realCreate2 != nullptr ? g_realCreate2(flags, riid, factory) : E_FAIL;
+    Captured("CreateDXGIFactory2", hr, riid, factory);
+    return hr;
+}
+void HookExport(const char* name, void* hook, void** original) noexcept
+{
+    FARPROC const target = ME2VR::Dxgi::Resolve(name);
+    if (target == nullptr) return;
+    MH_STATUS status = MH_CreateHook(reinterpret_cast<void*>(target), hook, original);
+    if (status != MH_OK && status != MH_ERROR_ALREADY_CREATED)
+    {
+        ME2VR::Log::Line(std::string("[DXGIHOOK] MH_CreateHook failed for ") + name + " status=" + std::to_string(static_cast<int>(status)));
+        return;
+    }
+    status = MH_EnableHook(reinterpret_cast<void*>(target));
+    if (status != MH_OK && status != MH_ERROR_ENABLED)
+    {
+        ME2VR::Log::Line(std::string("[DXGIHOOK] MH_EnableHook failed for ") + name + " status=" + std::to_string(static_cast<int>(status)));
+        return;
+    }
+    ME2VR::Log::Line(std::string("[DXGIHOOK] real dxgi ") + name + " hook installed [MEVR].");
+}
+}
+
+namespace ME2VR::Dxgi
+{
+void InstallRealFactoryHooks() noexcept
+{
+    try
+    {
+        std::call_once(g_factoryHookOnce, []()
+        {
+            if (!EnsureLoaded()) { Log::Line("[DXGIHOOK] skipped: real dxgi.dll is not loaded."); return; }
+            const MH_STATUS init = MH_Initialize();
+            if (init != MH_OK && init != MH_ERROR_ALREADY_INITIALIZED)
+            {
+                Log::Line("[DXGIHOOK] MH_Initialize failed status=" + std::to_string(static_cast<int>(init)));
+                return;
+            }
+            HookExport("CreateDXGIFactory", reinterpret_cast<void*>(&CreateHook), reinterpret_cast<void**>(&g_realCreate));
+            HookExport("CreateDXGIFactory1", reinterpret_cast<void*>(&Create1Hook), reinterpret_cast<void**>(&g_realCreate1));
+            HookExport("CreateDXGIFactory2", reinterpret_cast<void*>(&Create2Hook), reinterpret_cast<void**>(&g_realCreate2));
+        });
+    }
+    catch (...)
+    {
+        OutputDebugStringA("[ME2VR] Unexpected exception while installing real DXGI hooks.\r\n");
+    }
+}
+}
+#else // [MEVR] upstream proxy build
 extern "C" __declspec(dllexport) HRESULT WINAPI CreateDXGIFactory(REFIID riid, void** factory)
 {
     using Fn = HRESULT(WINAPI*)(REFIID, void**);
@@ -147,3 +234,5 @@ extern "C" __declspec(dllexport) HRESULT WINAPI DXGIGetDebugInterface1(UINT flag
     if (fn == nullptr) return ME2VR::Dxgi::MissingExport("DXGIGetDebugInterface1");
     return fn(flags, riid, debugInterface);
 }
+
+#endif

@@ -42,7 +42,7 @@ MEVR Setup loads the user's installed SteamVR API. The implementation surroundin
 
 | Code | Where | License |
 |------|-------|---------|
-| Halcyon's [MassEffect1-VR](https://github.com/jrush64/MassEffect1-VR) and [MassEffect2-VR](https://github.com/jrush64/MassEffect2-VR) (Copyright (C) 2026 Halcyon), and later its ME3 sibling | `src/halcyon/le1`, `src/halcyon/le2` (imported verbatim, then modified; see the README there) | GPL-3.0 |
+| Halcyon's [MassEffect1-VR](https://github.com/jrush64/MassEffect1-VR) and [MassEffect2-VR](https://github.com/jrush64/MassEffect2-VR) (Copyright (C) 2026 Halcyon), [MassEffect3-VR](https://github.com/jrush64/MassEffect3-VR) (`cfd40019450d3469b44a9b155f03e0263a61f787`) | `src/halcyon/le1`, `src/halcyon/le2`, `src/halcyon/le3` (imported verbatim, then modified; see the README there) | GPL-3.0 |
 | [Overlord](https://github.com/Aeka0/Overlord) (Aeka0): the arm orientation, elbow pole, subtree transfer and 1.25x arm stretch of `hands/pose_solver.hpp`, adapted | `src/core/ik/ArmPose.cpp`, `src/core/ik/ArmPose.hpp` (marked in the files) | GPL-3.0 |
 | [Overlord](https://github.com/Aeka0/Overlord) (Aeka0): the canonical Touch controller frame of `touch_controller_reference.hpp` (offset and 20.6 degree pitch from the OpenXR grip), adapted | `src/core/ik/TouchReference.cpp`, `src/core/ik/TouchReference.hpp` (marked in the files) | GPL-3.0 |
 | [Overlord](https://github.com/Aeka0/Overlord) (Aeka0): the support grip's acquire/release lease of `gameplay/support_grip.hpp` and its default distances, adapted | `src/game/GamepadMapping.cpp` (`UpdateSupportGrip`), `src/game/GamepadMapping.hpp` (marked at its declaration) | GPL-3.0 |
