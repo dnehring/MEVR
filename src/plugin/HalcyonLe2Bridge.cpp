@@ -10,6 +10,8 @@
 #include "core/Breadcrumbs.hpp"
 #include "core/DevChannels.hpp"
 #include "core/Log.hpp"
+#include "core/Ini.hpp"
+#include "core/vr/GalaxyMap.hpp"
 #include "core/vr/CineScreen.hpp"
 #include "core/vr/Colour.hpp"
 #include "core/vr/Controllers.hpp"
@@ -21,6 +23,7 @@
 #include "plugin/CrashBreadcrumbs.hpp"
 #include "plugin/EyeCopy.hpp"
 #include "plugin/FloorLock.hpp"
+#include "plugin/GamePointer.hpp"
 #include "plugin/HandReticle.hpp"
 #include "plugin/HudPanel.hpp"
 #include "plugin/HudPieceLayers.hpp"
@@ -56,6 +59,13 @@ namespace {
 
 bool gToldFirstSync = false;  // Present thread
 bool gLoggedView = false;     // Present thread
+mevr::vr::galaxy_map::NativeTablePanel gGalaxyTable;
+void* gGalaxySpace = nullptr;
+std::optional<mevr::vr::galaxy_map::Screen> gGalaxyPanel;
+bool gGalaxyPointerShown = false;
+bool gGalaxyTableEnabled = false;
+mevr::vr::galaxy_holo::TableSettings gGalaxySettings;
+std::uint64_t gGalaxySettingsRead = 0;
 // The floor lock's last pass (FloorViewTranslation, game thread): the view is published there while it runs.
 std::atomic<std::uint64_t> gFloorTranslatedMs{0};
 constexpr std::uint64_t kFloorTranslateQuietMs = 100;
@@ -66,6 +76,8 @@ std::mutex gPadMutex;  // the packet numbering below (XInput is polled from any 
 constexpr int kConversationMode = 5;
 XINPUT_GAMEPAD gLastPad{};
 DWORD gPacket = 0;
+int gGalaxyInputMode = -1; // guarded by gPadMutex, like gLastPad
+mevr::game::gamepad::CloseLatch gGalaxyTriggerLatch;
 
 // The order of a present's UI draws, for the log (render thread = the Present thread on ME2): runs of "e" (before the
 // renderer captured its left eye) and "l" (after), upper case when the bound target is the swap chain's backbuffer.
@@ -126,6 +138,16 @@ void WrapSessionFunctions(void** acquireSwapchainImage, void** waitSwapchainImag
 }
 
 void OnSessionCreated(void* instance, void* session) noexcept {
+    gGalaxyTable.Reset();
+    gGalaxyPanel.reset();
+    gGalaxySpace = nullptr;
+    if (gGalaxyPointerShown) mevr::host::game_pointer::ForgetGameUiQuad();
+    gGalaxyPointerShown = false;
+    {
+        std::lock_guard lock(gPadMutex);
+        gGalaxyInputMode = -1;
+        gGalaxyTriggerLatch = {};
+    }
     mevr::host::testloop::OnSessionCreated(static_cast<XrSession>(session));
     mevr::host::swapchains::OnSessionCreated(static_cast<XrSession>(session));  // ours went with the old session
     mevr::host::hud_piece_layers::ForgetSession();
@@ -226,6 +248,8 @@ void JournalFloorViewWrite(void const* origin, void const* preTranslation) noexc
 }
 
 void OnRecentered() noexcept {
+    gGalaxyTable.Reset();
+    gGalaxyPanel.reset();
     mevr::host::xr_host::NoteRecentered();
     mevr::host::hud_panel::Recentered();  // the HUD panel straight ahead again
     mevr::host::world_panels::Recenter();  // the 3D cinema screen placed afresh
@@ -403,6 +427,11 @@ void OnSwapChainPresent(void* swapChain, void* capturedSwapChain) noexcept {
 // LE2 composes the shared comfort vignette, the HUD panel, the weapon sights and the hand reticle over Halcyon's projection,
 // each the same module LE1's host composes (no copies), in LE1's order.
 unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsigned capacity) noexcept {
+    // Release the old table before another screen publishes its pointer surface this frame.
+    if (gGalaxyPointerShown && (!gGalaxyPanel || frame.gameMode != 9)) {
+        mevr::host::game_pointer::ForgetGameUiQuad();
+        gGalaxyPointerShown = false;
+    }
     if (layersOut == nullptr || capacity == 0 || frame.session == nullptr || frame.context == nullptr) {
         gScreen = ScreenNow{};
         return 0;
@@ -638,6 +667,14 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
             if (auto const* arc = mevr::host::squad_place_draw::Layer(place)) layersOut[count++] = arc;
         }
     }
+    // Use the submitted image for picking. Orbit keeps its native scan and probe controls.
+    if (gGalaxyPanel && frame.gameMode == 9 && !frame.menuOpen && !mevr::host::renderer::OwnMenuOpen()) {
+        mevr::host::game_pointer::NoteGameUiQuad(gGalaxyPanel->pose, gGalaxyPanel->width, gGalaxyPanel->height);
+        gGalaxyPointerShown = true;
+    } else if (gGalaxyPointerShown) {
+        mevr::host::game_pointer::ForgetGameUiQuad();
+        gGalaxyPointerShown = false;
+    }
     // Our main menu and the guided calibration (plugin/MenusLe2, M4): over the rest, alone while they're up.
     count = mevr::host::menus_le2::Layers(frame, device, layersOut, count, capacity);
     if (device != nullptr) {
@@ -650,6 +687,36 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
 // ---- ME1's 3D cinema screen (plugin/CineScreen, CinemaBackdrop, WorldPanels; research/52, research/le2-cinema.md) ----------
 bool CineScreenWanted(bool conversation) noexcept {
     return mevr::host::cine_screen::Wanted(conversation);
+}
+
+bool PlaceGalaxyPanel(OverlayFrame const& frame, bool imageReady, float aspect, GalaxyPanel& out) noexcept {
+    std::uint64_t const now = GetTickCount64();
+    if (now - gGalaxySettingsRead >= 1000) {
+        gGalaxySettingsRead = now;
+        auto const file = mevr::ini::Read(mevr::host::SettingsPath()).file;
+        // Opt in until the Normandy/orbit presentation and native input are checked in the game.
+        gGalaxyTableEnabled = mevr::ini::GetNumber(file, "Galaxy", "nativeTable").value_or(0) != 0;
+        auto number = [&](char const* key, float fallback, float lo, float hi) {
+            return std::clamp(static_cast<float>(mevr::ini::GetNumber(file, "Galaxy", key).value_or(fallback)), lo, hi);
+        };
+        gGalaxySettings.distanceM = number("tableDistanceM", 0.70f, 0.3f, 3.0f);
+        gGalaxySettings.belowM = number("tableBelowM", 0.45f, 0.1f, 1.5f);
+        gGalaxySettings.radiusM = number("tableRadiusM", 0.48f, 0.2f, 1.5f);
+        gGalaxySettings.tiltDeg = number("worldTiltDeg", 35.0f, 0.0f, 80.0f);
+    }
+    if (frame.appSpace != gGalaxySpace) {
+        gGalaxySpace = frame.appSpace;
+        gGalaxyTable.Reset();
+    }
+    XrPosef const head{{frame.headOrientation[0], frame.headOrientation[1], frame.headOrientation[2], frame.headOrientation[3]},
+        {frame.headPosition[0], frame.headPosition[1], frame.headPosition[2]}};
+    gGalaxyPanel = gGalaxyTable.Update(frame.gameMode, gGalaxyTableEnabled && frame.appSpace != nullptr,
+        imageReady && frame.headValid, head, aspect, gGalaxySettings);
+    if (!gGalaxyPanel) return false;
+    auto const& p = gGalaxyPanel->pose;
+    out = {{p.orientation.x, p.orientation.y, p.orientation.z, p.orientation.w},
+        {p.position.x, p.position.y, p.position.z}, gGalaxyPanel->width, gGalaxyPanel->height};
+    return true;
 }
 
 bool CineScreenFullRate() noexcept {
@@ -896,9 +963,17 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
         // ME2's interrupts (M5.2, research/le2-cinema.md): in the conversation mode (game mode 5) the triggers are the game's
         // LT (Paragon) and RT (Renegade), as on a pad; nothing of ours keeps them (pad_merge::ConversationTriggers).
         renderer.conversationTriggers = conversationTriggers;
+        renderer.orbitalTriggers = mevr::host::renderer::GameMode() == 10;
         pad = mevr::host::pad_merge::Merge(pad, controllers, renderer, GetTickCount64());
     }
     // Neutral while our menu or the calibration has it; after, what was held then is kept from the game until let go.
+    int const inputMode = mevr::host::renderer::GameMode();
+    if (gGalaxyInputMode == 9 && inputMode == 10) {
+        // The pull selecting a planet must end before it can operate the orbital scanner.
+        gGalaxyTriggerLatch.leftTrigger = gGalaxyTriggerLatch.rightTrigger = true;
+    }
+    gGalaxyInputMode = inputMode;
+    mevr::game::gamepad::ApplyCloseLatch(gGalaxyTriggerLatch, pad);
     mevr::host::menus_le2::FilterPad(realPad ? &state->Gamepad : nullptr, pad);
     if (std::memcmp(&pad, &gLastPad, sizeof pad) != 0) {
         if (conversationTriggers && !mevr::host::renderer::OwnMenuOpen()) {

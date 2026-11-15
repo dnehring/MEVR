@@ -14,6 +14,15 @@ struct ID3D11DeviceContext;
 
 namespace ME2VR::MevrBridge
 {
+struct OverlayFrame;
+// [MEVR] The native galaxy/orbital image on ME1's table geometry. Updated before OverlayLayers.
+struct GalaxyPanel {
+    float orientation[4] = {0, 0, 0, 1};
+    float position[3] = {};
+    float widthM = 0;
+    float heightM = 0;
+};
+bool PlaceGalaxyPanel(OverlayFrame const& frame, bool imageReady, float aspect, GalaxyPanel& out) noexcept;
 // The statically linked OpenXR loader's xrGetInstanceProcAddr (upstream loads openxr_loader.dll, which our ASI doesn't
 // ship). Our controller actions must come from the same loader instance.
 void* StaticXrGetInstanceProcAddr() noexcept;

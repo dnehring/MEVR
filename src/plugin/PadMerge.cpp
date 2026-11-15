@@ -141,8 +141,8 @@ XINPUT_GAMEPAD Merge(XINPUT_GAMEPAD const& real, vr::controllers::State const& c
     std::lock_guard lock(gMutex);
     gp::Options options = Options(nowMs);
     options.gateRightClick = renderer.gateRightClick;  // host-only, never across the boundary (lane D2's gate; LE1 false)
-    if (renderer.conversationTriggers) {
-        options = ConversationTriggers(options);  // ME2's interrupts: LT and RT, as on a pad (LE1 never sets it)
+    if (renderer.conversationTriggers || renderer.orbitalTriggers) {
+        options = ConversationTriggers(options);  // ME2's native LT/RT pair for interrupts and orbital scanning
     }
     if (renderer.conversationTriggers != gConversationTriggersLogged) {
         gConversationTriggersLogged = renderer.conversationTriggers;
@@ -209,8 +209,8 @@ XINPUT_GAMEPAD Merge(XINPUT_GAMEPAD const& real, vr::controllers::State const& c
         // mapping, gamepad::GateClick, so a chord pressed left first isn't a crouch.)
         pad.wButtons &= ~(XINPUT_GAMEPAD_LEFT_THUMB | XINPUT_GAMEPAD_RIGHT_THUMB);
     }
-    if (renderer.conversationTriggers) {
-        return pad;  // the interrupts' triggers: no quad of the host's takes them in the conversation mode
+    if (renderer.conversationTriggers || renderer.orbitalTriggers) {
+        return pad;  // native interrupts/scanning retain their trigger pair
     }
     if (renderer.ownsLeftTrigger != nullptr && renderer.ownsLeftTrigger()) {
         pad.bLeftTrigger = 0;

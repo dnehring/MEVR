@@ -48,6 +48,8 @@ std::uint32_t LeftGripAway();
 
 // What the renderer's bridge tells the merge.
 struct Renderer {
+    // ME2 orbital scanning uses the native analog LT/RT pair, with no gameplay trigger remapping.
+    bool orbitalTriggers = false;
     // The renderer's own menu is open (it zeroes the game's pad): a squeeze there never draws a weapon nor reaches the game as
     // RB once it closes, and isn't counted for the mod (Options::rightGripFree, countKept).
     bool ownMenuOpen = false;

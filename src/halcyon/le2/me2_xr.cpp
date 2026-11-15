@@ -1812,6 +1812,7 @@ void RunFrame() noexcept
 
     XrCompositionLayerQuad monoQuad = {};
     bool haveMono = false;
+    bool mevrMonoImageReady = false; // [MEVR] a freshly copied image is required for table presentation
 
     if (fs.shouldRender && flatPresentation)
     {
@@ -1828,10 +1829,13 @@ void RunFrame() noexcept
             {
                 XrSwapchainImageWaitInfo wi = {}; wi.type = XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO_VALUE; wi.timeout = XR_INFINITE_DURATION_VALUE;
                 if (XrSucceeded(g_fn.waitSwapchainImage(g_monoSwap, &wi)) && idx < g_monoImages.size())
+                {
 #if defined(MEVR_ASI)
                     if (!::ME2VR::MevrBridge::CopyIntoImage(g_ctx, g_monoImages[idx], backbuffer, 0))  // [MEVR] as the eyes
 #endif
                     g_ctx->CopyResource(g_monoImages[idx], backbuffer);
+                    mevrMonoImageReady = true;
+                }
                 XrSwapchainImageReleaseInfo ri = {}; ri.type = XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO_VALUE;
                 g_fn.releaseSwapchainImage(g_monoSwap, &ri);
 
@@ -2786,6 +2790,16 @@ void RunFrame() noexcept
                 mevrFrame.headPosition[1] = 0.5f * (hv[0].pose.position.y + hv[1].pose.position.y);
                 mevrFrame.headPosition[2] = 0.5f * (hv[0].pose.position.z + hv[1].pose.position.z);
             }
+        }
+        // [MEVR] The game's whole galaxy/orbit image on a fixed table, including native UI.
+        ::ME2VR::MevrBridge::GalaxyPanel table;
+        if (::ME2VR::MevrBridge::PlaceGalaxyPanel(mevrFrame, haveMono && mevrMonoImageReady,
+                monoQuad.size.width > 0 ? monoQuad.size.height / monoQuad.size.width : 0, table))
+        {
+            monoQuad.space = g_localSpace;
+            monoQuad.pose.orientation = {table.orientation[0], table.orientation[1], table.orientation[2], table.orientation[3]};
+            monoQuad.pose.position = {table.position[0], table.position[1], table.position[2]};
+            monoQuad.size = {table.widthM, table.heightM};
         }
         const void* mevrQuads[12] = {};
         const unsigned mevrQuadCount = ::ME2VR::MevrBridge::OverlayLayers(mevrFrame, mevrQuads, 12);
