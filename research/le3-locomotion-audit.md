@@ -106,3 +106,11 @@ height without double lowering, native/script crouch arbitration, menu/focus/wor
 press/release/stamina and restoration without clobbering a game-authored speed change. Cover acquisition,
 unsafe slots, physical protection, out-of-cover bonuses and projectile behavior remain required native
 acceptance; these modules must not be described as completed L3-8 acceptance.
+
+## Ownership and unload follow-up (2026-11-15)
+
+The mod's action generation changes for menus, calibration, focus and tracking-space epochs as well as native scenes. Posture must not treat every such change as destruction of its native crouch owner. The adapter now resets tracking samples and pending physical gestures through `CrouchArbiter::ResetTracking`, retaining an owned crouch on the same world/pawn. A known external stand ends ownership; a missing native sample does not. Actual world/pawn replacement still forgets ownership without writing the replacement. The resumed physical detector starts from the owned native crouch so a player who stood while the menu was open can produce the release edge.
+
+LE3 `posture::PrepareUnload()` attempts the owned native stand under the existing movement/action admission and returns false while the native desire bit remains true or cannot be read. `restorePending` reports this in posture status. Success means the desire bit was observed false, not that the standing animation/physics has finished. Rejected calls no longer log that Shepard stood up. Shutdown retains state on refusal; the host must invoke the preflight before detaching callbacks and keep the generation ticking when it refuses. Coordinator wiring calls menu pause restoration first, then posture restoration without short-circuiting either attempt, and requires both before unloading.
+
+Offline regressions cover repeated menu/recenter resets, standing after reopening, unknown samples, refused native restoration followed by success, external stand and actual pawn replacement. Native validation remains required: crouch/open/close/recenter, stand after reopening, and a hot reload first refused during a native action then accepted afterward. No gameplay or headset acceptance is implied by compilation or these policy tests.

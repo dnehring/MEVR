@@ -36,12 +36,16 @@
 #if defined(MEVR_WITH_MAIN_MENU)
 #include "plugin/Voice.hpp"
 #include "plugin/Thespian.hpp"
+#include "plugin/Calibration.hpp"
+#include "plugin/MainMenu.hpp"
 #endif
 #include <openxr/openxr.h>
 #include <atomic>
 #include <cstring>
 #include <mutex>
 namespace {
+std::atomic<std::uint64_t> gThespianContextMs{0};
+std::atomic_bool gThespianFocused{false};
 std::mutex gTraversalMutex;
 mevr::host::traversal_presentation::State gTraversalPresentation;
 void InvalidateTraversalPresentation() {
@@ -54,6 +58,15 @@ bool TraversalPresentationActive() {
 }
 }
 namespace mevr::host::halcyon_le3 {
+bool ThespianInputBlocked() noexcept {
+#if defined(MEVR_WITH_MAIN_MENU)
+    return !gThespianFocused.load(std::memory_order_acquire) ||
+        !vr::thespian::InputContextFresh(gThespianContextMs.load(std::memory_order_acquire), GetTickCount64()) ||
+        renderer::OwnMenuOpen() || calibration::Running() || main_menu::IsOpen() || menus_le2::PadWanted();
+#else
+    return true;
+#endif
+}
 bool SetTraversalPresentation(vr::traversal::Presentation const* value) noexcept {
     vr::floor::State floor;
     xr_host::Floor(&floor);
@@ -76,6 +89,8 @@ void WrapSessionFunctions(void** acquire, void** release, void** endFrame, void*
     mevr::host::testloop::WrapSessionFunctions(acquire, release, endFrame, locateViews);
 }
 void OnSessionCreated(void* instance, void* session) noexcept {
+    gThespianContextMs.store(0, std::memory_order_release);
+    gThespianFocused.store(false, std::memory_order_release);
     InvalidateTraversalPresentation();
     mevr::host::sequel_squad_layers::ForgetSession();
 #if defined(MEVR_WITH_MAIN_MENU)
@@ -108,6 +123,8 @@ void OnSessionCreated(void* instance, void* session) noexcept {
     }
 }
 void OnSessionStopped() noexcept {
+    gThespianContextMs.store(0, std::memory_order_release);
+    gThespianFocused.store(false, std::memory_order_release);
     InvalidateTraversalPresentation();
     mevr::host::sequel_squad_layers::ForgetSession();
 #if defined(MEVR_WITH_MAIN_MENU)
@@ -137,6 +154,9 @@ void OnFrameBegun(void* session, void* space, std::int64_t time) noexcept {
     auto const s = static_cast<XrSession>(session);
     auto const base = static_cast<XrSpace>(space);
     mevr::host::xr_host::OnFrameBegun(s, base, static_cast<XrTime>(time), state);
+    const bool focused = mevr::host::xr_host::InputFocused(); // owner thread only
+    gThespianFocused.store(focused, std::memory_order_release);
+    if (!focused) gThespianContextMs.store(0, std::memory_order_release);
     auto const live = state;
     mevr::host::testloop::OnFrameBegun(s, base, static_cast<XrTime>(time), mevr::host::xr_host::InputFocused(), state);
     // Inactive samples must replace the previous live sample too (focus loss/unplug).
@@ -146,6 +166,7 @@ void OnFrameBegun(void* session, void* space, std::int64_t time) noexcept {
         mevr::vr::host_view::Reset(); // flat/menu paths do not call DriveHeadLook this frame
 }
 void OnRecentered() noexcept {
+    gThespianContextMs.store(0, std::memory_order_release);
     mevr::host::sequel_squad_layers::Recentered();
 #if defined(MEVR_WITH_MAIN_MENU)
     mevr::host::thespian::Recentered();
@@ -242,7 +263,10 @@ void OnPresent() noexcept {
     mevr::host::menus_le2::OnPresent();
 }
 unsigned OverlayLayers(OverlayFrame const& frame, void const** out, unsigned capacity) noexcept {
-    if (!frame.context || !out || !capacity) return 0;
+    if (!frame.context || !out || !capacity) {
+        gThespianContextMs.store(0, std::memory_order_release);
+        return 0;
+    }
 #if defined(MEVR_WITH_MAIN_MENU)
     if (!gNativePanelSeen && gNativePointerShown) {
         mevr::host::game_pointer::ForgetGameUiQuad();
@@ -331,7 +355,12 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** out, unsigned cap
     spoken.head = {{frame.headOrientation[0], frame.headOrientation[1], frame.headOrientation[2], frame.headOrientation[3]},
         {frame.headPosition[0], frame.headPosition[1], frame.headPosition[2]}};
     spoken.othersOwnInput = !mevr::engine::adapter::IsConversationMode(frame.gameMode) ||
-        !frame.headValid || count >= capacity || gameplay.menuOpen;
+        !frame.headValid || count >= capacity || gameplay.menuOpen ||
+        mevr::host::renderer::OwnMenuOpen() || mevr::host::calibration::Running() ||
+        !gThespianFocused.load(std::memory_order_acquire);
+    // Context eligibility, not Layer() success/panel visibility: a turn must be able
+    // to start. Any hidden context revokes its lease; stopped rendering expires it.
+    gThespianContextMs.store(spoken.othersOwnInput ? 0 : GetTickCount64(), std::memory_order_release);
     if (auto const* layer = mevr::host::thespian::Layer(spoken)) out[count++] = layer;
 #endif
     count = mevr::host::menus_le2::Layers(frame, device, out, count, capacity);

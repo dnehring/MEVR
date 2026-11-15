@@ -78,6 +78,7 @@ unsigned gExits = 0;
 pz::CrouchDetector gDetector;
 pz::CrouchArbiter gArbiter;
 bool gCrouchActive = false;
+bool gRestorePending = false;
 bool gGameWants = false;
 bool gGameCrouched = false;
 slots::StandingHeight gStanding;  // from the floor
@@ -330,14 +331,14 @@ void CallVoid(ue3::Object* object, ue3::Function* function) {
 
 // ME1's BioPawn.ShouldCrouch: Pawn.ShouldCrouch sets bWantsToCrouch (the engine crouches or stands on its next move,
 // standing only where there's room), then BioPawn resets its movement animation state. ME2: Pawn.ShouldCrouch itself.
-void ShouldCrouch(ue3::Object* pawn, bool crouch) {
+bool ShouldCrouch(ue3::Object* pawn, bool crouch) {
 #if defined(MEVR_GAME_LE3)
     std::string why;
     auto const game = ReadGame(why);
     if (!game || game->pawn != pawn || gWorldInfo.Read<ue3::Object*>(game->controller).value_or(nullptr) != gWorld || !NativeMovement(*game) ||
         gCoverType.Read<std::uint8_t>(pawn).value_or(255) != 0 ||
-        gStorming.ReadBool(pawn).value_or(true)) return;
-    if (crouch && !HostMovement()) return;
+        gStorming.ReadBool(pawn).value_or(true)) return false;
+    if (crouch && !HostMovement()) return false;
 #endif
     ue3::Params parms(ue3::runtime::Get(), gShouldCrouch);
     if (!parms.SetBool("bCrouch", crouch)) {
@@ -345,9 +346,10 @@ void ShouldCrouch(ue3::Object* pawn, bool crouch) {
             gToldNoCrouchParam = true;
             log::Warn("posture: {} has no bool parameter bCrouch: not called", kShouldCrouchPath);
         }
-        return;
+        return false;
     }
-    ue3::runtime::Call(pawn, gShouldCrouch, parms);
+    if (!ue3::runtime::Call(pawn, gShouldCrouch, parms)) return false;
+    return gWantsToCrouch.ReadBool(pawn) == crouch;
 }
 
 bool InCover(ue3::Object* pawn) {
@@ -592,12 +594,13 @@ std::optional<double> Measure(Link const& link, vr::host_view::State const& view
 
 void Ask(Game const& game, bool crouch, std::string const& why) {
     StartProbe(game.pawn, crouch ? "crouch" : "stand");
-    ShouldCrouch(game.pawn, crouch);
+    bool const accepted = ShouldCrouch(game.pawn, crouch);
     gGameWants = WantsToCrouch(game.pawn);
     gArbiter.Applied(gGameWants);
-    gLastChange = std::format("{} ({})", crouch ? "crouch" : "stand", why);
-    log::Info("posture: Shepard {} ({}): {}({}){}", crouch ? "crouches" : "stands", why, kShouldCrouchPath, crouch ? "true" : "false",
-        gGameWants == crouch ? "" : " DIDN'T TAKE (bWantsToCrouch unchanged)");
+    gRestorePending = !crouch && !accepted && gArbiter.Owns();
+    gLastChange = std::format("{} {} ({})", crouch ? "crouch" : "stand", accepted ? "accepted" : "refused", why);
+    log::Info("posture: {} request {} ({}): {}({}); bWantsToCrouch={}", crouch ? "crouch" : "stand",
+        accepted ? "accepted" : "refused", why, kShouldCrouchPath, crouch ? "true" : "false", gGameWants);
 }
 
 // The crouch side, each tick with a game.
@@ -817,9 +820,18 @@ void Tick(double deltaSeconds, Link const& link) {
     }
 #if defined(MEVR_GAME_LE3)
     auto* const world = gWorldInfo.Read<ue3::Object*>(game->controller).value_or(nullptr);
-    if (world != gWorld || link.sceneGeneration != gGeneration) {
-        gWorld = world; gGeneration = link.sceneGeneration;
+    if (world != gWorld) {
+        gWorld = world;
         gPawn = 0; gArbiter.Forget(); gDetector.Reset(); gCrouchActive = false; gProbe = {};
+        gRestorePending = false;
+        gStanding.Reset(); gHeadRef.Reset(); gFloorSeen = false;
+    }
+    if (link.sceneGeneration != gGeneration) {
+        gGeneration = link.sceneGeneration;
+        // Admission, menus, focus and recenter are NOT a new native pawn. Cancel
+        // pending gestures and tracking samples while retaining a crouch we own.
+        gArbiter.ResetTracking(gDetector, gWantsToCrouch.ReadBool(game->pawn));
+        gCrouchActive = false; gProbe = {};
         gStanding.Reset(); gHeadRef.Reset(); gFloorSeen = false;
     }
 #endif
@@ -829,6 +841,7 @@ void Tick(double deltaSeconds, Link const& link) {
         }
         gPawn = reinterpret_cast<std::uintptr_t>(game->pawn);
         gArbiter.Forget();
+        gRestorePending = false;
         gDetector.Reset();
         gCrouchActive = false;
         gCoverEpisode = false;
@@ -873,7 +886,7 @@ std::string StatusJson() {
     return std::format("{{\"noCover\": {}, \"physicalCrouch\": {}, \"active\": {}, \"why\": {}, \"coverHook\": {}, \"inCover\": {}, "
                        "\"refusedEntries\": {}, \"eyeHeight\": {}, \"standingEyeHeight\": {}, \"fraction\": {}, \"source\": {}, "
                        "\"physical\": {}, \"dwell\": {}, \"gameWantsCrouch\": {}, \"gameCrouched\": {}, \"ours\": {}, \"pending\": {}, "
-                       "\"lastChange\": {}}}",
+                       "\"restorePending\": {}, \"lastChange\": {}}}",
         settings.noCover ? "true" : "false",
         vr::calibration::PhysicalCrouch(body_calibration::Position(), settings.physicalCrouch) ? "true" : "false",
         gActive ? "true" : "false", json::JsonString(gWhy),
@@ -881,7 +894,8 @@ std::string StatusJson() {
         json::JsonNumber(gStandingHeight), json::JsonNumber(gFraction.value_or(-1.0)), json::JsonString(gSource),
         json::JsonString(gDetector.Crouched() ? "crouched" : "standing"), json::JsonNumber(gDetector.Dwell()),
         gGameWants ? "true" : "false", gGameCrouched ? "true" : "false", gArbiter.Owns() ? "true" : "false",
-        pending ? json::JsonString(*pending ? "crouch" : "stand") : std::string("null"), json::JsonString(gLastChange));
+        pending ? json::JsonString(*pending ? "crouch" : "stand") : std::string("null"),
+        gRestorePending ? "true" : "false", json::JsonString(gLastChange));
 }
 
 void LogStats() {
@@ -904,7 +918,45 @@ void LogStats() {
     gRefusedTests = gRefusedEntries = gExits = gCrouches = gStands = gExternal = 0;
 }
 
+bool PrepareUnload() {
+#if defined(MEVR_GAME_LE3)
+    if (!gArbiter.Owns()) { gRestorePending = false; return true; }
+    if (!ue3::runtime::Up()) { gRestorePending = true; return false; }
+    auto* const owner = reinterpret_cast<ue3::Object*>(gPawn);
+    if (!ue3::runtime::IsAlive(owner) || !ue3::IsA(owner, gBioPawn)) {
+        gArbiter.Forget(); gRestorePending = false; return true; // owner is gone, never write a replacement
+    }
+    auto const ownerWorld = gWorldInfo.Read<ue3::Object*>(owner);
+    if (!ownerWorld) { gRestorePending = true; return false; } // unavailable is not destroyed
+    if (*ownerWorld != gWorld) {
+        gArbiter.Forget(); gRestorePending = false; return true;
+    }
+    auto const wants = gWantsToCrouch.ReadBool(owner);
+    if (gArbiter.FinishRelease(wants)) {
+        gRestorePending = false; return true;
+    }
+    bool const accepted = wants && gShouldCrouch && ShouldCrouch(owner, false);
+    if (accepted && gArbiter.FinishRelease(gWantsToCrouch.ReadBool(owner))) {
+        gRestorePending = false;
+        gLastChange = "owned crouch restore accepted before unload";
+        log::Info("posture: unload restore accepted; bWantsToCrouch is false");
+        return true;
+    }
+    if (!gRestorePending) log::Warn("posture: unload deferred; native owned-crouch restore refused or unavailable");
+    gRestorePending = true;
+    gLastChange = "owned crouch restore pending before unload";
+    return false;
+#else
+    return true;
+#endif
+}
+
 void Shutdown(bool processExiting) {
+#if defined(MEVR_GAME_LE3)
+    // The host preflight must call PrepareUnload before it removes callbacks. Keep
+    // ownership intact even if a caller misses that contract; never claim a stand.
+    if (!processExiting && !PrepareUnload()) return;
+#endif
     engine::cover_acquire::Refuse(nullptr);
 #if defined(MEVR_POSTURE)
 #if defined(MEVR_GAME_LE2)
@@ -918,6 +970,7 @@ void Shutdown(bool processExiting) {
     gPromptsHiddenTotal = 0;
     gToldPrompt = false;
 #endif
+#if !defined(MEVR_GAME_LE3)
     if (!processExiting && gArbiter.Owns() && gShouldCrouch != nullptr && ue3::runtime::Up()) {
         ue3::Object* const pc = ue3::runtime::LocalPlayerController();
         ue3::Object* const pawn = pc != nullptr ? gPawnField.Read<ue3::Object*>(pc).value_or(nullptr) : nullptr;
@@ -928,6 +981,7 @@ void Shutdown(bool processExiting) {
             }
         }
     }
+#endif
     gShouldCrouch = gTryExitCover = gIsInCover = gLeaveCover = nullptr;
     gToldNoCrouchParam = false;
 #else
@@ -950,6 +1004,7 @@ void Shutdown(bool processExiting) {
     gDetector.Reset();
     gArbiter.Forget();
     gCrouchActive = false;
+    gRestorePending = false;
     gGameWants = gGameCrouched = false;
     gStanding.Reset();
     gHeadRef.Reset();

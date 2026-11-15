@@ -74,5 +74,8 @@ void LogStats();
 std::string CoverConsole(std::string_view args);
 // Releases a crouch we made (unless the process is exiting) and stops refusing cover.
 void Shutdown(bool processExiting);
+// LE3 hot reload: true only when no owned native crouch needs restoration. Refusal
+// retains ownership and must keep this mod generation ticking; other games return true.
+bool PrepareUnload();
 
 } // namespace mevr::game::posture

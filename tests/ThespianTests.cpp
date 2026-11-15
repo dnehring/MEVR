@@ -332,6 +332,13 @@ void TestPanel() {
 }
 
 int RunThespianTests() {
+    // Missing/revoked, old and future render contexts cannot dispatch invisible cards.
+    CHECK(!th::InputContextFresh(0, 100));
+    CHECK(th::InputContextFresh(100, 100));
+    CHECK(th::InputContextFresh(100, 133)); // the null headset's normal frame interval
+    CHECK(th::InputContextFresh(100, 200));
+    CHECK(!th::InputContextFresh(100, 201));
+    CHECK(!th::InputContextFresh(101, 100));
     TestWheelIdentity();
     TestTurnRestartBarrier();
     TestListenOwnership();

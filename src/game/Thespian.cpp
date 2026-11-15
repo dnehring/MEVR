@@ -259,6 +259,11 @@ struct Pending {
 Pending gPending;
 Link gLink;
 bool OtherUiOwnsInput() {
+#if defined(MEVR_GAME_LE3)
+    // Commands can run before the first Thespian tick. An absent v42 host
+    // capability is unknown ownership, never permission to dispatch invisibly.
+    if (!gLink.otherUiOwnsInput) return true;
+#endif
     return gLink.voice.menuOpen || (gLink.otherUiOwnsInput && gLink.otherUiOwnsInput());
 }
 bool gWatch = false;

@@ -20,6 +20,12 @@
 //    microphone's mark. It crosses the host/mod boundary: it only grows at the end and carries its size.
 namespace mevr::vr::thespian {
 
+// The renderer publishes an eligible context even before a panel exists (otherwise
+// turn startup deadlocks). Zero revokes it. No stale/future lease permits a selection.
+inline bool InputContextFresh(std::uint64_t eligibleMs, std::uint64_t nowMs) {
+    return eligibleMs != 0 && nowMs >= eligibleMs && nowMs - eligibleMs <= 100;
+}
+
 // Recent listens actually owned by a spoken turn. Kept after the turn ends so late finals cannot become squad orders.
 class ListenOwnership {
 public:

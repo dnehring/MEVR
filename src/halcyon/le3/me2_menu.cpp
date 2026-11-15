@@ -50,7 +50,7 @@ ID3D11RenderTargetView* g_rtv = nullptr;
 int g_w = 900;
 int g_h = 720;
 bool g_ready = false;
-bool g_open = false;
+std::atomic_bool g_open{false}; // [MEVR] fresh host ownership queries also run on the game thread
 bool g_disableDof = false;  // applied to GamerSettings.ini on next launch by d3d_capture
 // Rebindable hotkeys (ME2 parity). ME3 shipped with these hard-wired and no way to change them.
 int  g_recenterKey = 'R';        // VK code
