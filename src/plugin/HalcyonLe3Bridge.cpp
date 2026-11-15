@@ -29,6 +29,9 @@
 #include "plugin/Swapchains.hpp"
 #include "plugin/TestLoop.hpp"
 #include "plugin/XrHost.hpp"
+#if defined(MEVR_WITH_MAIN_MENU)
+#include "plugin/Voice.hpp"
+#endif
 #include <openxr/openxr.h>
 #include <atomic>
 #include <cstring>
@@ -212,7 +215,12 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
     state->Gamepad = pad;
     return ERROR_SUCCESS;
 }
-void OnPresent() noexcept { mevr::host::menus_le2::OnPresent(); }
+void OnPresent() noexcept {
+#if defined(MEVR_WITH_MAIN_MENU)
+    mevr::host::voice::OnPresent();
+#endif
+    mevr::host::menus_le2::OnPresent();
+}
 unsigned OverlayLayers(OverlayFrame const& frame, void const** out, unsigned capacity) noexcept {
     if (!frame.context || !out || !capacity) return 0;
 #if defined(MEVR_WITH_MAIN_MENU)

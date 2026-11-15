@@ -1098,7 +1098,7 @@ function(mevr_add_plugin game)
             set(with_main_menu ON)
             list(APPEND host_sources ${MEVR_SEQUEL_MENU_SOURCES}
                 src/plugin/HudPanel.cpp src/plugin/HudPanel.hpp src/plugin/QuadSwapchain.cpp src/plugin/QuadSwapchain.hpp
-                # MainMenuSettings uses the shared device/status API; native voice services remain unpublished on LE3.
+                # Shared microphone/device/recognizer and optional local model; native dialogue dispatch is a separate adapter.
                 src/plugin/Voice.cpp src/plugin/Voice.hpp src/plugin/VoiceModel.cpp src/plugin/VoiceModel.hpp)
         endif ()
     endif ()
@@ -1176,9 +1176,9 @@ foreach (game LE1 LE2 LE3)
     endif ()
 endforeach ()
 # The model tier's runtime (research/54; core/voice/Llm) needs llama.cpp's header (external/llama-cpp, tools/fetch-voice.ps1
-# -Llm; gitignored): the LE1 and Halcyon LE2 voice hosts share it; without it VoiceModel reports the tier off.
+# -Llm; gitignored): all three voice hosts share it; without it VoiceModel reports the tier off.
 if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/llama-cpp/include/llama.h")
-    foreach (game LE1 LE2)
+    foreach (game LE1 LE2 LE3)
         if (TARGET MEVR-${game} AND (game STREQUAL "LE1" OR TARGET halcyon-le2))
             target_sources(MEVR-${game} PRIVATE src/core/voice/Llm.cpp src/core/voice/Llm.hpp)
             target_include_directories(MEVR-${game} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/external/llama-cpp/include)
