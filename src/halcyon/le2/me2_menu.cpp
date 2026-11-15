@@ -515,6 +515,9 @@ void ApplyMevrBaseline() noexcept
         ME2VR::CalcViewHook::SetCineVrCutscene(false);
     if (note(g_profileHotkeys, "profile hotkeys (ProfileHotkeys)")) g_profileHotkeys = false;
     if (note(g_recenterKey == 'R', "the recenter key R (RecenterKey)")) g_recenterKey = 0;  // rk > 0 gates it
+    // The menu key is ME1's \ (our deploy's on ME1: it opens our main menu, Ctrl or Shift + \ this one), not upstream's
+    // Insert; a key the player bound in this menu stays (lane D, M4).
+    if (note(g_menuKey == VK_INSERT, "the menu key \\ (MenuKey; upstream Insert)")) g_menuKey = VK_OEM_5;
     if (changed == 0) { ME2VR::Log::Line("[MEVR-BASELINE] MELE2VR.ini already matches the MEVR baseline"); return; }
     ME2VR::Log::Line("[MEVR-BASELINE] " + std::to_string(changed) + " setting(s) in MELE2VR.ini set to the MEVR baseline: " +
                      names);
@@ -885,7 +888,11 @@ void SeedVirtualMouse() noexcept
 
 LRESULT CALLBACK MenuWndProc(HWND h, UINT msg, WPARAM w, LPARAM l)
 {
+#if defined(MEVR_ASI)
+    if (g_open || ::ME2VR::MevrBridge::MainMenuOpen())  // [MEVR] our main menu blocks the desktop's input too, as on ME1
+#else
     if (g_open)
+#endif
     {
         switch (msg)
         {
@@ -912,6 +919,10 @@ void SetGameWindow(HWND hwnd) noexcept
 void PollInsert() noexcept
 {
     const bool down = ::ME2VR::MevrBridge::HotkeyDown(g_menuKey);  // [MEVR] game window only
+#if defined(MEVR_ASI)
+    // [MEVR] The key opens our main menu (plugin/MainMenu); with Ctrl or Shift held, or while this menu is open, this one.
+    if (down && !g_insertWasDown && ::ME2VR::MevrBridge::OnMenuKey(g_open)) { g_insertWasDown = down; return; }
+#endif
     if (down && !g_insertWasDown)
     {
         g_open = !g_open;
@@ -1864,4 +1875,16 @@ void SetMoveFollowsHead(bool on) noexcept { g_moveFollowsHead.store(on, std::mem
 int GetRecenterKey() noexcept { return g_recenterKey; }
 int GetFpToggleKey() noexcept { return g_fpToggleKey; }
 bool IsRebindingFpToggle() noexcept { return g_rebindingFpToggle; }
+// [MEVR] For our host (lane D, M4): what PollInsert's toggle does, from our main menu (it closes this one when it opens).
+void SetOpen(bool open) noexcept
+{
+    if (open == g_open) return;
+    g_open = open;
+    if (g_open) { if (!g_valuesLoaded) LoadValues(); SeedVirtualMouse(); }
+    else { g_mouseAnchorValid = false; SaveValues(); }
+    ME2VR::Me2Xr::Recenter();
+    ME2VR::Log::Line(std::string("[ME2MENU] Insert menu ") + (g_open ? "opened" : "closed") + " (+recenter; by our host)");
+}
+void SaveSettings() noexcept { if (g_valuesLoaded) SaveValues(); }
+int GetMenuKey() noexcept { return g_menuKey; }
 }  // namespace ME2VR::Menu

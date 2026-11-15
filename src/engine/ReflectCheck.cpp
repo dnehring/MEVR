@@ -2107,6 +2107,10 @@ void CheckClasses() {
     CheckClass<USFXGameModeManager>("SFXGame.SFXGameModeManager");
     CheckClass<USFXGameModeBase>("SFXGame.SFXGameModeBase");
     CheckClass<USFXGameModeDefault>("SFXGame.SFXGameModeDefault");
+    CheckClass<USFXGameModeVehicle>("SFXGame.SFXGameModeVehicle");          // game/GameMenuRequest (M4): the modes by class
+    CheckClass<USFXGameModePowerWheel>("SFXGame.SFXGameModePowerWheel");
+    CheckClass<USFXGameModeWeaponWheel>("SFXGame.SFXGameModeWeaponWheel");
+    CheckClass<USFXGameModeCommand>("SFXGame.SFXGameModeCommand");
     CheckClass<ABioPawn>("SFXGame.BioPawn");
     CheckClass<ASFXPawn_Player>("SFXGame.SFXPawn_Player");
     CheckClass<ABioWorldInfo>("SFXGame.BioWorldInfo");
@@ -2145,6 +2149,17 @@ void CheckFields() {
     CheckField("SFXGame.BioPlayerController", "GameModeManager2", SDK_FIELD(ABioPlayerController, GameModeManager2));
     CheckField("SFXGame.SFXGameModeManager", "CurrentMode", SDK_FIELD(USFXGameModeManager, CurrentMode));
     CheckField("SFXGame.SFXGameModeManager", "GameModes", SDK_FIELD(USFXGameModeManager, GameModes));
+    // M4 (research/le2-menus.md): the main menu's pause (game/MenuPause: ME2's weapon wheel pauses with bPlayersOnly) and its
+    // Game menu and Holster buttons (game/GameMenuRequest: the mode that has the input)
+    CheckField("Engine.WorldInfo", "bPlayersOnly", SDK_BOOL(AWorldInfo, bPlayersOnly));
+    CheckField("SFXGame.SFXGameModeBase", "bIsActive", SDK_BOOL(USFXGameModeBase, bIsActive));
+    CheckField("SFXGame.SFXGameModeBase", "Priority", SDK_FIELD(USFXGameModeBase, Priority));
+    // ... and the omni-tool's entries: the pages of ME2's pause menu (its browser wheel)
+    CheckField("Engine.PlayerController", "m_oCachedScaleFormManager", SDK_FIELD(APlayerController, m_oCachedScaleFormManager));
+    CheckField("SFXGame.MassEffectGuiManager", "m_oBWHandler", SDK_FIELD(UMassEffectGuiManager, m_oBWHandler));
+    CheckField("SFXGame.BioSFHandler_BrowserWheel", "lstPages", SDK_FIELD(UBioSFHandler_BrowserWheel, lstPages));
+    CheckPath("SFXGame.BioSFHandler_BrowserWheel", {"lstPages", "Tag"}, SDK_AT(offsetof(FBWPageStruct, Tag), 8));
+    CheckPath("SFXGame.BioSFHandler_BrowserWheel", {"lstPages", "Type"}, SDK_AT(offsetof(FBWPageStruct, Type), 1));
     // the reflection fix (game/Reflections, our renderer only)
     CheckField("Engine.SceneCaptureComponent", "FrameRate", SDK_FIELD(USceneCaptureComponent, FrameRate));
     // the equipped weapon and its ammunition (research/le2-engine-access-discovery.md "P1a": lane C's first reads)
@@ -2299,6 +2314,10 @@ void CheckFunctions() {
         "SFXGame.SFXWeapon.GetMuzzleLoc",                 // game/Weapon (M3.3)
         "Engine.SkeletalMeshComponent.GetSocketWorldLocationAndRotation",
         "SFXGame.BioPawn.GetWeaponStartTraceLocation",
+        "SFXGame.SFXGameModeBase.ShowMenu",               // game/GameMenuRequest (M4): Start's pause menu on ME2
+        "SFXGame.SFXGameModeDefault.TryHolster",          // ... and the holster
+        "SFXGame.BioSFHandler_BrowserWheel.ShowSelectedPanel",  // ... and the omni-tool's entries (its pages)
+        "SFXGame.MassEffectGuiManager.GetBrowserHandler",
     };
     for (char const* function : functions) {
         CheckFunction(function);
@@ -2351,6 +2370,9 @@ void CheckParams() {
     PARMS(USkeletalMeshComponent_execGetBoneLocation_Parms, "Engine.SkeletalMeshComponent.GetBoneLocation");
     PARAM(USkeletalMeshComponent_execGetBoneNames_Parms, "Engine.SkeletalMeshComponent.GetBoneNames", BoneNames);
     PARMS(USkeletalMeshComponent_execGetBoneNames_Parms, "Engine.SkeletalMeshComponent.GetBoneNames");
+    // game/GameMenuRequest (M4.3): ME2's pause menu pages
+    PARAM(UBioSFHandler_BrowserWheel_eventShowSelectedPanel_Parms, "SFXGame.BioSFHandler_BrowserWheel.ShowSelectedPanel", nPanel);
+    PARAM(UBioSFHandler_BrowserWheel_eventShowSelectedPanel_Parms, "SFXGame.BioSFHandler_BrowserWheel.ShowSelectedPanel", oManager);
 }
 
 #endif  // LE1 / LE2 tables

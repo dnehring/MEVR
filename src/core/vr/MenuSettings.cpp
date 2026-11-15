@@ -95,6 +95,8 @@ std::vector<Field> const& Schema() {
         {"reset_armed", Type::Flag, 0, "", 0, 1, F::None, true},
         {"comparing", Type::Flag, 0, "", 0, 1, F::None, true},
         {"first_run", Type::Flag, 0, "", 0, 1, F::None, true},  // opened by itself on the controller guide (MainMenu's first run)
+        // Mass Effect 2's host (research/le2-menus.md): the document greys out the rows ME2 doesn't have yet. 0 on LE1.
+        {"le2", Type::Flag, 0, "", 0, 1, F::None, true},
         // The top bar.
         {"chip_headset", Type::Text, 0, "Headset not started"},
         {"chip_controllers", Type::Text, 0, "No controllers"},

@@ -79,7 +79,7 @@ add_subdirectory(external/OpenXR-SDK EXCLUDE_FROM_ALL)
 
 # The main menu's UI library (research/28): RmlUi (MIT) with its FreeType font engine (FreeType: FTL), both
 # static, built only for what links them (the LE1 host and the menu preview). Their own warning levels.
-option(MEVR_MAIN_MENU "Build our VR main menu (RmlUi) into the LE1 host" ON)
+option(MEVR_MAIN_MENU "Build our VR main menu (RmlUi) into the LE1 and LE2 hosts" ON)
 if (MEVR_MAIN_MENU)
     set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
     set(FT_DISABLE_ZLIB ON CACHE BOOL "" FORCE)
@@ -956,7 +956,24 @@ function(mevr_add_plugin game)
             src/core/vr/HostView.cpp src/core/vr/HostView.hpp src/core/vr/ImageConvert.cpp src/core/vr/ImageConvert.hpp
             src/core/vr/LayerComposite.cpp src/core/vr/LayerComposite.hpp src/core/vr/PoseRecording.cpp
             src/core/vr/PoseRecording.hpp src/core/vr/TestRequest.cpp src/core/vr/TestRequest.hpp src/core/Hotkey.cpp
-            src/core/Hotkey.hpp src/core/PngFile.cpp src/core/PngFile.hpp)
+            src/core/Hotkey.hpp src/core/PngFile.cpp src/core/PngFile.hpp
+            # Our menus' glue on ME2's renderer (plugin/MenusLe2: its OnMenuKey and MainMenuOpen seams, empty without the menu).
+            src/plugin/MenusLe2.cpp src/plugin/MenusLe2.hpp)
+        if (MEVR_MAIN_MENU)
+            # Our main menu and the guided calibration on ME2 (docs/le2-continuation-plan.md M4.1, M4.2; research/le2-menus.md):
+            # the same modules as LE1's, in the host (not hot-reloaded).
+            set(with_main_menu ON)
+            list(APPEND host_sources src/plugin/MainMenu.cpp src/plugin/MainMenu.hpp src/plugin/MainMenuSettings.cpp
+                src/plugin/MainMenuSettings.hpp src/plugin/Calibration.cpp src/plugin/Calibration.hpp src/plugin/CalibrationDraw.cpp
+                src/plugin/CalibrationDraw.hpp src/plugin/ArmSample.cpp src/plugin/ArmSample.hpp src/core/vr/Calibration.cpp
+                src/core/vr/Calibration.hpp src/core/vr/MenuPointer.cpp src/core/vr/MenuPointer.hpp src/core/vr/GameMenuRequest.cpp
+                src/core/vr/GameMenuRequest.hpp src/core/vr/CineScreen.cpp src/core/vr/CineScreen.hpp
+                src/core/vr/ConversationWorld.cpp src/core/vr/ConversationWorld.hpp src/core/vr/WorldUi.cpp src/core/vr/WorldUi.hpp
+                src/core/vr/OverlayPlacement.cpp src/core/vr/OverlayPlacement.hpp src/core/vr/GalaxyHologram.cpp
+                src/core/vr/GalaxyHologram.hpp
+                # Entry.cpp's ExitProcess hook asks it with the menu; nothing writes its request on ME2 yet (MEVR Setup, M7.2).
+                src/plugin/SetupRequest.cpp src/plugin/SetupRequest.hpp src/core/Json.cpp src/core/Json.hpp)
+        endif ()
     endif ()
     if (MEVR_HALCYON AND game STREQUAL "LE1")
         set(with_halcyon ON)

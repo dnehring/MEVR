@@ -9,9 +9,13 @@
 #include "core/vr/MenuPointer.hpp"
 #include "core/vr/TestRequest.hpp"
 #include "plugin/CalibrationDraw.hpp"
-#include "plugin/Halcyon.hpp"
-#include "plugin/MevrMenu.hpp"
+#if defined(MEVR_WITH_HALCYON)
+#include "plugin/MevrMenu.hpp"  // LE1: the arm-length sample through Halcyon's VR hands tab
+#else
+#include "plugin/ArmSample.hpp"  // ME2 (no such tab): the same [Arms] measure* keys
+#endif
 #include "plugin/Renderer.hpp"
+#include "plugin/XrHost.hpp"
 #include "plugin/TestLoop.hpp"
 #include "plugin/Swapchains.hpp"
 
@@ -574,7 +578,7 @@ std::uint64_t Now() {
 }
 
 void Tick(int hand) {
-    halcyon::RequestHaptic(hand, kTickSeconds, kTickAmplitude);
+    xr_host::RequestHaptic(hand, kTickSeconds, kTickAmplitude);  // LE1's halcyon:: forwards here
 }
 
 void Say(std::string text, bool warn = false, std::uint64_t ms = kMessageMs) {
@@ -1100,7 +1104,7 @@ void StepGrab(bool rifle, XrPosef const& head) {
 
 void StepBody(XrPosef const& head, float dt) {
     vr::floor::State floor;
-    halcyon::Floor(&floor);
+    xr_host::Floor(&floor);  // LE1's halcyon::Floor forwards here
     vr::controllers::Hand const& right = gControllers.right;
     vr::controllers::Hand const& left = gControllers.left;
     bool const hands = gControllers.active && right.gripValid && left.gripValid;
@@ -1354,7 +1358,11 @@ void Save() {
     }
     // The T pose as the VR hands tab's arm-length sample ([Arms] measure*): the mod measures armLengthM from it.
     if (gRun.haveT) {
+#if defined(MEVR_WITH_HALCYON)
         MELEVR::MevrBridge::TakeArmSample(gRun.tLeft, gRun.tRight, &gRun.tHead, "calibration");
+#else
+        arm_sample::Write(gRun.tLeft, gRun.tRight, &gRun.tHead, "calibration");
+#endif
     }
     RecordPrompted();
     gKeyCalibrated = true;
@@ -1498,7 +1506,7 @@ Pointer Point(XrPosef const& panelPose, float width, float height, draw::PanelVi
             p.hovered = draw::ButtonAt(view, p.x, p.y);
             if (pressedNow && p.hovered != draw::kNoButton) {
                 click = p.hovered;
-                halcyon::RequestHaptic(hand, 0.02f, 0.4f);
+                xr_host::RequestHaptic(hand, 0.02f, 0.4f);
             }
         }
     }
