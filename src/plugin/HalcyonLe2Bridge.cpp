@@ -34,11 +34,13 @@
 #include "plugin/Swapchains.hpp"
 #include "plugin/TestLoop.hpp"
 #include "plugin/SightLayers.hpp"
+#include "plugin/SquadPanel.hpp"
 #include "plugin/TransitionFade.hpp"
 #include "plugin/TraversalCue.hpp"
 #include "plugin/Vignette.hpp"
 #include "plugin/PowerWheel.hpp"
 #include "core/vr/PowerWheel.hpp"
+#include "core/vr/SquadMenu.hpp"
 #include "plugin/SquadPlaceDraw.hpp"
 #include "plugin/WorldPanels.hpp"
 #if defined(MEVR_WITH_MAIN_MENU)
@@ -256,6 +258,7 @@ void OnRecentered() noexcept {
     gGalaxyTable.Reset();
     gGalaxyPanel.reset();
     mevr::host::xr_host::NoteRecentered();
+    mevr::host::squad_panel::Recentered();
     mevr::host::hud_panel::Recentered();  // the HUD panel straight ahead again
     mevr::host::world_panels::Recenter();  // the 3D cinema screen placed afresh
     mevr::host::menus_le2::OnRecentered();  // our menu and the calibration placed again (M4)
@@ -555,7 +558,7 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
         bool const interactionWanted = pieceFrame.panelReady && pieceFrame.worldFrame && frame.gameMode == 0 &&
             frame.headValid && !worldUi.owns && !frame.menuOpen && !mevr::host::renderer::OwnMenuOpen() &&
             !mevr::host::menus_le2::PadWanted() &&
-            capacity - count >= 4 && !mevr::vr::power_wheel::Latest().open;
+            capacity - count >= 4 && !mevr::vr::power_wheel::Latest().open && !mevr::vr::squad_menu::Latest().open;
         XrCompositionLayerQuad const* const interactionLayer = hpl::Interaction(pass.common, interactionWanted, panel.masks);
         panel.user = &pass;
         panel.beforeClear = [](void* user, bool shown) {
@@ -689,6 +692,18 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
     } else if (gGalaxyPointerShown) {
         mevr::host::game_pointer::ForgetGameUiQuad();
         gGalaxyPointerShown = false;
+    }
+    if (count < capacity && frame.gameMode == 0) {
+        mevr::host::squad_panel::Frame squad;
+        squad.session = static_cast<XrSession>(frame.session);
+        squad.appSpace = static_cast<XrSpace>(frame.appSpace);
+        squad.context = frame.context; squad.device = device;
+        squad.worldFrame = frame.worldFrame;
+        squad.menuOpen = frame.menuOpen || mevr::host::renderer::OwnMenuOpen() || mevr::host::menus_le2::PadWanted();
+        squad.headValid = frame.headValid;
+        auto const& q = frame.headOrientation; auto const& p = frame.headPosition;
+        squad.head = {{q[0], q[1], q[2], q[3]}, {p[0], p[1], p[2]}};
+        if (auto const* layer = mevr::host::squad_panel::Layer(squad)) layersOut[count++] = layer;
     }
     // Our main menu and the guided calibration (plugin/MenusLe2, M4): over the rest, alone while they're up.
 #if defined(MEVR_WITH_MAIN_MENU)

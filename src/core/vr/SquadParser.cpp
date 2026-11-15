@@ -148,6 +148,7 @@ std::vector<Phrase> const& Vocabulary() {
             Tag::Order, static_cast<int>(sc::Order::Use));
         Add(p, {"equip", "switch to", "pull out", "draw", "use your", "get your", "grab your", "take your", "bring out", "ready your", "out with"},
             Tag::Equip);
+        Add(p, {"smg", "submachine gun", "sub machine gun", "machine pistol"}, Tag::Weapon, 4);
         Add(p, {"pistol", "handgun", "sidearm"}, Tag::Weapon, 0);
         Add(p, {"shotgun", "scattergun", "scatter gun"}, Tag::Weapon, 1);
         Add(p, {"assault rifle", "rifle", "ar", "assault"}, Tag::Weapon, 2);

@@ -20,6 +20,7 @@
 #include "core/vr/InteractLabel.hpp"
 #include "core/vr/PowerWheel.hpp"
 #include "core/vr/SquadPlace.hpp"
+#include "core/vr/SquadMenu.hpp"
 #include "core/vr/Sights.hpp"
 #include "plugin/FloorLock.hpp"
 #include "plugin/PadMerge.hpp"
@@ -552,6 +553,10 @@ HostServices BuildServices() {
     HostServices services = WithCrashBreadcrumbs(BaseServices());
 #if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2)
     services = WithVoice(WithFloorLock(WithHudPieces(WithPadMerge(WithSights(WithVignette(WithRenderer(services)))))));  // both renderers' modules
+    services.squadMenuSize = static_cast<std::uint32_t>(sizeof(vr::squad_menu::View));
+    services.setSquadMenu = [](vr::squad_menu::View const* view) {
+        vr::squad_menu::Publish(view != nullptr && view->size == sizeof(vr::squad_menu::View) ? *view : vr::squad_menu::View{});
+    };
     services.powerWheelSize = static_cast<std::uint32_t>(sizeof(vr::power_wheel::View));
     services.setPowerWheel = [](vr::power_wheel::View const* view) {
         vr::power_wheel::Publish(view != nullptr ? *view : vr::power_wheel::View{});
@@ -592,6 +597,7 @@ void ForgetModState() {
     vr::power_wheel::Publish({});
     vr::power_wheel::PublishLock({});
     vr::squad_place::Publish({});
+    vr::squad_menu::Reset();
 #endif
 #if defined(MEVR_WITH_HALCYON)
     ForgetLe1ModState();

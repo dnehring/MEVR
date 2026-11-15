@@ -800,6 +800,9 @@ mevr::game::squad_weapons::Link SquadLink() {
     if (MEVR_HOST_HAS(hapticPulseHz)) {
         link.hapticHz = gHost->hapticPulseHz;
     }
+    if (MEVR_HOST_HAS(mainMenu) && gHost->mainMenu != nullptr) {
+        link.menuOpen = (gHost->mainMenu() & (kMainMenuOpen | kOmniRailOpen)) != 0;
+    }
     return link;
 }
 
@@ -884,6 +887,9 @@ mevr::game::squad_orders::Link SquadOrdersLink() {
     }
     if (MEVR_HOST_HAS(leftGripAway) && gHost->leftGripAway != nullptr) {
         link.leftGrip = gHost->leftGripAway();
+    }
+    if (MEVR_HOST_HAS(mainMenu) && gHost->mainMenu != nullptr) {
+        link.menuOpen = (gHost->mainMenu() & (kMainMenuOpen | kOmniRailOpen)) != 0;
     }
     return link;
 }
@@ -990,6 +996,9 @@ mevr::game::body_calibration::Link BodyCalibrationLink() {
 // Host renderer (HostServices v16): our VR main menu's state, for its "pause while open" (research/28).
 mevr::game::menu_pause::Link MenuPauseLink() {
     mevr::game::menu_pause::Link link;
+#if defined(MEVR_GAME_LE2)
+    link.squadPause = mevr::game::squad_weapons::IsOpen() && mevr::game::hand_calibration::GetSquad().pause;
+#endif
     if (gHostOwnsVr && MEVR_HOST_HAS(mainMenu)) {
         link.state = gHost->mainMenu;
     }
@@ -1498,6 +1507,7 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         // The squad's world for squad orders (research/54): the scene every refreshS, a pose sample every tick.
         game::squad_context::Tick(deltaSeconds);
         // The flat squad orders by gesture (research/54), on this tick's scene: after the grenades' and the vent's claims.
+        game::squad_orders::SetMenuOpen(SquadOrdersLink().menuOpen);
         game::voice::Tick(deltaSeconds, VoiceLink());  // before the flat orders: the radio claims its squeeze
         game::squad_orders::Tick(deltaSeconds, SquadOrdersLink());
         game::squad_place::Tick(deltaSeconds, SquadPlaceLink());  // the right B's arc: a move through the same dispatcher

@@ -2653,6 +2653,45 @@ void CheckThespian() {
 // game/Traversal (research/le2-traversal.md): the cover list and its slots that vault or climb, the game's own admission
 // (CanPerformMantle/Climb with m_bCanMantleOutsideOfCover and the remapped stick for one call), its MantleCover/ClimbCover and the
 // custom action they start.
+// M6 B/C: live inventory and explicit-target native squad order parameter layouts.
+void CheckLe2Squad() {
+    CheckField("Engine.Pawn", "InvManager", SDK_FIELD(APawn, InvManager));
+    CheckField("Engine.InventoryManager", "InventoryChain", SDK_FIELD(AInventoryManager, InventoryChain));
+    CheckField("Engine.Inventory", "Inventory", SDK_FIELD(AInventory, Inventory));
+    CheckField("Engine.Pawn", "Weapon", SDK_FIELD(APawn, Weapon));
+    CheckField("SFXGame.BioPawn", "PowerManager", SDK_FIELD(ABioPawn, PowerManager));
+    CheckField("SFXGame.SFXPowerManager", "Powers", SDK_FIELD(USFXPowerManager, Powers));
+    CheckField("SFXGame.SFXPower", "PowerName", SDK_FIELD(USFXPower, PowerName));
+    CheckField("SFXGame.SFXPower", "Rank", SDK_FIELD(USFXPower, Rank));
+    CheckField("SFXGame.SFXPower", "DisplayInHUD", SDK_BOOL(USFXPower, DisplayInHUD));
+    CheckFunction("SFXGame.BioPlayerController.OrderWeaponSwitch");
+    PARAM(ABioPlayerController_execOrderWeaponSwitch_Parms, "SFXGame.BioPlayerController.OrderWeaponSwitch", oOrderedPawn);
+    PARAM(ABioPlayerController_execOrderWeaponSwitch_Parms, "SFXGame.BioPlayerController.OrderWeaponSwitch", Wpn);
+    PARMS(ABioPlayerController_execOrderWeaponSwitch_Parms, "SFXGame.BioPlayerController.OrderWeaponSwitch");
+    CheckFunction("SFXGame.BioPlayerController.HenchmanOrderAttackTarget");
+    PARAM(ABioPlayerController_eventHenchmanOrderAttackTarget_Parms, "SFXGame.BioPlayerController.HenchmanOrderAttackTarget", oHenchman);
+    PARAM(ABioPlayerController_eventHenchmanOrderAttackTarget_Parms, "SFXGame.BioPlayerController.HenchmanOrderAttackTarget", oTargetActor);
+    PARMS(ABioPlayerController_eventHenchmanOrderAttackTarget_Parms, "SFXGame.BioPlayerController.HenchmanOrderAttackTarget");
+    CheckFunction("SFXGame.BioPlayerController.HenchmanOrderFollow");
+    PARAM(ABioPlayerController_eventHenchmanOrderFollow_Parms, "SFXGame.BioPlayerController.HenchmanOrderFollow", oHenchman);
+    PARMS(ABioPlayerController_eventHenchmanOrderFollow_Parms, "SFXGame.BioPlayerController.HenchmanOrderFollow");
+    CheckFunction("SFXGame.BioPlayerController.HenchmanOrderHoldPosition");
+    PARAM(ABioPlayerController_eventHenchmanOrderHoldPosition_Parms, "SFXGame.BioPlayerController.HenchmanOrderHoldPosition", oHenchman);
+    PARAM(ABioPlayerController_eventHenchmanOrderHoldPosition_Parms, "SFXGame.BioPlayerController.HenchmanOrderHoldPosition", vLocation);
+    PARMS(ABioPlayerController_eventHenchmanOrderHoldPosition_Parms, "SFXGame.BioPlayerController.HenchmanOrderHoldPosition");
+    CheckFunction("SFXGame.BioPlayerController.SquadOrderUsePower");
+    PARAM(ABioPlayerController_execSquadOrderUsePower_Parms, "SFXGame.BioPlayerController.SquadOrderUsePower", nmPower);
+    PARAM(ABioPlayerController_execSquadOrderUsePower_Parms, "SFXGame.BioPlayerController.SquadOrderUsePower", pPawn);
+    PARAM(ABioPlayerController_execSquadOrderUsePower_Parms, "SFXGame.BioPlayerController.SquadOrderUsePower", nQueue);
+    PARAM(ABioPlayerController_execSquadOrderUsePower_Parms, "SFXGame.BioPlayerController.SquadOrderUsePower", bShowIndicator);
+    PARAM(ABioPlayerController_execSquadOrderUsePower_Parms, "SFXGame.BioPlayerController.SquadOrderUsePower", pDesiredTarget);
+    PARMS(ABioPlayerController_execSquadOrderUsePower_Parms, "SFXGame.BioPlayerController.SquadOrderUsePower");
+    CheckFunction("SFXGame.BioPlayerController.ApplyTacticalOrders");
+    CheckFunction("SFXGame.SFXPower.IsEnabled");
+    CheckFunction("SFXGame.SFXPower.GetCooldownRemaining");
+    CheckFunction("SFXGame.SFXPowerManager.HasPowerBeenEvolved");
+}
+
 void CheckTraversal() {
     CheckClass<ACoverLink>("Engine.CoverLink");
     CheckClass<ASFXPlayerController>("SFXGame.SFXPlayerController");
@@ -2941,6 +2980,7 @@ void Run(hook::Context& context) {
 #if defined(MEVR_GAME_LE2)
     CheckTraversal();
     CheckThespian();
+    CheckLe2Squad();
 #endif
     CheckSamples();
     CheckMemory();

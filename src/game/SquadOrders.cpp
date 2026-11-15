@@ -12,6 +12,9 @@
 #include "engine/XrToUnreal.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/Player.hpp"
+#include "game/Le2Squad.hpp"
+#include "game/PowerWheel.hpp"
+#include "game/SupportGrip.hpp"
 #include "game/SquadAck.hpp"
 #include "game/SquadContext.hpp"
 #include "game/SquadWeapons.hpp"
@@ -37,6 +40,14 @@ namespace json = vr::test_request;
 
 namespace {
 
+bool LayerReady() {
+#if defined(MEVR_GAME_LE2)
+    return ue3::runtime::Up();
+#else
+    return ue3::runtime::Ready();
+#endif
+}
+
 constexpr float kGripOn = 0.6f;
 constexpr float kGripOff = 0.4f;
 constexpr double kTraceRangeM = 100.0;
@@ -47,7 +58,7 @@ ue3::FieldRef gRotation{"Engine.Actor", "Rotation"};
 ue3::FunctionRef gMoveToFn{"SFXGame.BioPlayerController.QuickCommandMoveTo"};
 ue3::FunctionRef gAttackFn{"SFXGame.BioPlayerController.QuickCommandAttackTarget"};
 ue3::FunctionRef gFollowFn{"SFXGame.BioPlayerController.QuickCommandFollowPlayer"};
-ue3::FunctionRef gTraceFn{"Engine.Actor.Trace"};
+ue3::FunctionRef gTraceFn{"Engine.Actor.Trace", ue3::kEveryGame};
 // The game's own hold (research/54 "A real hold"): the member's hold position and its formation on the player's squad.
 ue3::FieldRef gBehavior{"SFXGame.BioPawn", "m_oBehavior"};
 ue3::FieldRef gSquadOf{"SFXGame.BioEpicPawnBehavior", "Squad"};
@@ -64,10 +75,10 @@ ue3::FieldRef gPawnController{"Engine.Pawn", "Controller"};
 constexpr float kPointToleranceUnits = 60.0f;
 // The level's cover for a retreat (research/54 "Retreat to cover"): CoverLink slots, each at the link's place plus its offset
 // in the link's axes.
-ue3::ClassRef gCoverLink{"Engine.CoverLink"};
-ue3::FieldRef gCoverSlots{"Engine.CoverLink", "Slots"};
+ue3::ClassRef gCoverLink{"Engine.CoverLink", ue3::kEveryGame};
+ue3::FieldRef gCoverSlots{"Engine.CoverLink", "Slots", ue3::kEveryGame};
 ue3::FieldRef gCoverSlotOffset{gCoverSlots, "LocationOffset"};
-ue3::FieldRef gCoverDisabled{"Engine.CoverLink", "bDisabled"};
+ue3::FieldRef gCoverDisabled{"Engine.CoverLink", "bDisabled", ue3::kEveryGame};
 constexpr std::uint8_t kFormationFollow = 1;  // BioBaseSquad.EFollowFormation
 constexpr std::uint8_t kFormationHold = 2;
 
@@ -76,6 +87,7 @@ std::vector<sc::Command> gHistory;
 std::vector<ss::Standing> gStandings;  // at most one per squadmate
 void const* gWorld = nullptr;  // the world the standings and the history were given in
 bool gOwnGrip = false;
+bool gMenuOpen = false;
 std::uint32_t gLastCount = 0;
 bool gHaveCount = false;
 bool gToldOldGrip = false;
@@ -214,7 +226,7 @@ struct Recipient {
 // Everyone present, or the one with the letter.
 std::vector<Recipient> Recipients(bool all, char who) {
     std::vector<Recipient> out;
-    for (squad_weapons::MemberView const& m : squad_weapons::Members()) {
+    for (squad_weapons::MemberView const& m : squad_weapons::Members(true)) {
         char const letter = squad_context::LetterOf(m.classId);
         if (all || letter == who) out.push_back({m.squadIndex, letter, m.name, m.pawn});
     }
@@ -241,7 +253,33 @@ ue3::Object* NearestOfGroup(int groupId) {
     return best;
 }
 
+#if defined(MEVR_GAME_LE2)
+ue3::Object* Le2Member(int index) {
+    for (auto const& m : squad_weapons::Members(true)) if (m.squadIndex == index && le2_squad::Living(m.pawn)) return m.pawn;
+    return nullptr;
+}
+std::string Le2Order(ue3::Object* controller, int index, ue3::FunctionRef& ref,
+    ue3::Object* target = nullptr, std::optional<engine::UnrealVector> point = std::nullopt) {
+    auto* pawn = Le2Member(index); auto* fn = ref.Get();
+    if (!le2_squad::CanOrder() || pawn == nullptr || fn == nullptr) return "refused: mode or native recipient unavailable";
+    ue3::Params args(ue3::runtime::Get(), fn);
+    if (!args.Set("oHenchman", pawn)) return "refused: recipient parameter unavailable";
+    if (&ref == &le2_squad::orderAttack) {
+        if (!le2_squad::Hostile(target) || !args.Set("oTargetActor", target)) return "refused: target unavailable";
+    }
+    if (point && !args.Set("vLocation", ue3::Vector{static_cast<float>(point->x), static_cast<float>(point->y), static_cast<float>(point->z)}))
+        return "refused: position parameter unavailable";
+    return ue3::runtime::Call(controller, fn, args) ? "native order dispatched (AI outcome pending)" : "native order not called";
+}
+#endif
+
 bool Functions(ue3::Object*& controller) {
+#if defined(MEVR_GAME_LE2)
+    controller = player::Controller();
+    return !gMenuOpen && !squad_weapons::IsOpen() && le2_squad::CanOrder() && le2_squad::orderAttack.Get() != nullptr &&
+        le2_squad::orderFollow.Get() != nullptr && le2_squad::orderHold.Get() != nullptr;
+#else
+
     controller = player::Controller();
     if (controller == nullptr || !player::IsBioPlayerController(controller)) return false;
     if (gMoveToFn.Get() == nullptr || gAttackFn.Get() == nullptr || gFollowFn.Get() == nullptr) {
@@ -252,6 +290,7 @@ bool Functions(ue3::Object*& controller) {
         return false;
     }
     return true;
+#endif
 }
 
 std::string CallResult(ue3::Params const& parms, bool called) {
@@ -259,21 +298,35 @@ std::string CallResult(ue3::Params const& parms, bool called) {
 }
 
 std::string CallFollow(ue3::Object* controller, int index) {
+#if defined(MEVR_GAME_LE2)
+    return Le2Order(controller, index, le2_squad::orderFollow);
+#else
+
     ue3::Params parms(ue3::runtime::Get(), gFollowFn.Get());
     parms.Set("iSquadMember", static_cast<std::int32_t>(index));
     return CallResult(parms, ue3::runtime::Call(controller, gFollowFn.Get(), parms));
+#endif
 }
 
 std::string CallAttack(ue3::Object* controller, int index, ue3::Object* target) {
+#if defined(MEVR_GAME_LE2)
+    return Le2Order(controller, index, le2_squad::orderAttack, target);
+#else
+
     ue3::Params parms(ue3::runtime::Get(), gAttackFn.Get());
     parms.Set("iSquadMember", static_cast<std::int32_t>(index));
     parms.Set("pTarget", target);
     return CallResult(parms, ue3::runtime::Call(controller, gAttackFn.Get(), parms));
+#endif
 }
 
 // The move: the controller's Rotation turned toward the point for the call (the native drops the point along the controller's
 // facing: research/54's trace), and put back.
 std::string CallMove(ue3::Object* controller, int index, engine::UnrealVector const& point) {
+#if defined(MEVR_GAME_LE2)
+    return Le2Order(controller, index, le2_squad::orderHold, nullptr, point);
+#else
+
     ue3::Rotator* const rotation = gRotation.In<ue3::Rotator>(controller);
     if (rotation == nullptr) return "no Rotation to turn";
     std::optional<ue3::Vector> const from = player::Location(controller);
@@ -288,6 +341,7 @@ std::string CallMove(ue3::Object* controller, int index, engine::UnrealVector co
     *rotation = saved;
     write_journal::Wrote("SquadOrders.Rotation (restored)", rotation);
     return CallResult(parms, called);
+#endif
 }
 
 // The walk to a point: the squadmate's own AI pushed toward it (BioAiController.PushMoveToPoint), the way game/SquadPlace found
@@ -295,6 +349,11 @@ std::string CallMove(ue3::Object* controller, int index, engine::UnrealVector co
 // the controller's Rotation says; the HOLD formation keeps them where they stand). With the HOLD formation set at the point
 // first, they walk there and hold it (0.6 m from the ring in the placement's check).
 std::string PushMove(ue3::Object* pawn, engine::UnrealVector const& point) {
+#if defined(MEVR_GAME_LE2)
+    (void)pawn; (void)point;
+    return "ME2 hold order supplies native movement";
+#else
+
     ue3::Function* const fn = gPushMoveFn.Get();
     if (fn == nullptr) return "no PushMoveToPoint";
     auto const ai = gPawnController.Read<ue3::Object*>(pawn);
@@ -306,6 +365,7 @@ std::string PushMove(ue3::Object* pawn, engine::UnrealVector const& point) {
     parms.Set("PointTolerance", kPointToleranceUnits);
     bool const called = ue3::runtime::Call(*ai, fn, parms);
     return std::format("PushMoveToPoint {}", called ? "called" : "not called");
+#endif
 }
 
 // A squad power order. tactical: SquadOrderUsePower(nmPower, pPawn) records it on the player controller and ApplyTacticalOrders
@@ -313,6 +373,23 @@ std::string PushMove(ue3::Object* pawn, engine::UnrealVector const& point) {
 // bOrderedByPlayer, fTimeOut, vTarget). The target: the group's nearest living member, or none (a self-buff, a place power
 // at the target's feet).
 std::string CallUsePower(ue3::Object* controller, Recipient const& rc, ue3::Name power, ue3::Object* target, std::string const& route) {
+#if defined(MEVR_GAME_LE2)
+    (void)route; // ME2 always uses its native tactical queue, not ME1 BioAiController.AddUsePower.
+    if (!le2_squad::CanOrder() || !le2_squad::Living(rc.pawn)) return "refused: mode or recipient unavailable";
+    auto powers = le2_squad::Powers(rc.pawn);
+    auto found = std::find_if(powers.begin(), powers.end(), [&](auto const& p) { return p.name.Key() == power.Key(); });
+    if (found == powers.end() || !found->enabled || found->cooldown > 0.0f) return "refused: power absent, disabled or cooling down";
+    if (target != nullptr && !le2_squad::Hostile(target)) return "refused: target unavailable";
+    auto* order = le2_squad::orderPower.Get(); auto* apply = le2_squad::applyOrders.Get();
+    if (order == nullptr || apply == nullptr) return "refused: native power order functions unavailable";
+    ue3::Params args(ue3::runtime::Get(), order);
+    bool const valid = args.Set("nmPower", power) && args.Set("pPawn", rc.pawn) && args.Set("nQueue", std::int32_t{0}) &&
+        args.SetBool("bShowIndicator", true) && args.Set("pDesiredTarget", target);
+    if (!valid || !ue3::runtime::Call(controller, order, args)) return "native power order not called";
+    ue3::Params none(ue3::runtime::Get(), apply);
+    return ue3::runtime::Call(controller, apply, none) ? "native power order applied (cast outcome pending)" : "native power order queued, application failed";
+#else
+
     if (route == "ai") {
         ue3::Function* const fn = gAiUsePowerFn.Get();
         if (fn == nullptr) return "BioAiController.AddUsePower wasn't found";
@@ -339,6 +416,7 @@ std::string CallUsePower(ue3::Object* controller, Recipient const& rc, ue3::Name
     ue3::Params none(ue3::runtime::Get(), apply);
     bool const applied = ordered && ue3::runtime::Call(controller, apply, none);
     return std::format("SquadOrderUsePower {}, ApplyTacticalOrders {}", ordered ? "called" : "not called", applied ? "called" : "not called");
+#endif
 }
 
 // The player's BioBaseSquad (through Shepard's behaviour), or null.
@@ -354,6 +432,10 @@ ue3::Object* Squad() {
 // The game's own hold: the member's hold position, then the HOLD formation for that member (the route the Follow native
 // takes for FOLLOW, which fires the squad's acknowledgement). The formation read back says whether the game took it.
 std::string CallHold(int index, engine::UnrealVector const& point) {
+#if defined(MEVR_GAME_LE2)
+    return Le2Order(player::Controller(), index, le2_squad::orderHold, nullptr, point);
+#else
+
     ue3::Object* const squad = Squad();
     if (squad == nullptr) return "no squad";
     ue3::Function* const setPosition = gSetHoldPositionFn.Get();
@@ -381,6 +463,7 @@ std::string CallHold(int index, engine::UnrealVector const& point) {
         }
     }
     return std::format("hold position {}, formation {} (now {})", placed ? "set" : "not set", formed ? "set" : "not set", now);
+#endif
 }
 
 // The cover slots within radiusM of a point (metres): a walk over the live objects, so only when a retreat is possible.
@@ -600,7 +683,7 @@ std::string Dispatch(sc::Resolved const& given, sc::Action const& action, std::o
             note(CallFollow(controller, rc.index));
             expect(rc, sc::Order::Follow);
         }
-        what = std::format("follow: QuickCommandFollowPlayer for {} -> {}", names, returns);
+        what = std::format("follow: native follow order for {} -> {}", names, returns);
         break;
     case sc::Order::Hold: {
         // Hold a place: move there and keep it; hold here: keep where they stand (the standing brings them back when they drift).
@@ -660,7 +743,7 @@ std::string Dispatch(sc::Resolved const& given, sc::Action const& action, std::o
                 KeepStanding(intent);
             }
         }
-        what = std::format("attack E{} ({}): QuickCommandAttackTarget for {} -> {}", r.group, ue3::runtime::FullName(target), names, returns);
+        what = std::format("attack E{} ({}): native attack order for {} -> {}", r.group, ue3::runtime::FullName(target), names, returns);
         break;
     }
     case sc::Order::Move: {
@@ -731,6 +814,9 @@ std::string Dispatch(sc::Resolved const& given, sc::Action const& action, std::o
 }
 
 std::string GiveResolved(sc::Action const& action, std::optional<engine::UnrealVector> point, sp::StandingHint const& hint) {
+#if defined(MEVR_GAME_LE2)
+    if (gMenuOpen || squad_weapons::IsOpen() || engine::World() != gWorld || !le2_squad::CanOrder()) return "refused: squad orders unavailable in this mode or menu";
+#endif
     sc::Resolved const r = sc::Validate(action, squad_context::Scene(), squad_context::Groups(), squad_context::Landmarks(), {}, gHistory);
     std::string outcome;
     if (!r.ok) {
@@ -747,7 +833,10 @@ std::string GiveResolved(sc::Action const& action, std::optional<engine::UnrealV
 
 }  // namespace
 
+void SetMenuOpen(bool open) { gMenuOpen = open; }
+
 void Tick(double deltaSeconds, Link const& link) {
+    gMenuOpen = link.menuOpen;
     gClock += deltaSeconds;
     hand_calibration::SquadOrders const s = hand_calibration::GetSquadOrders();
     vr::controllers::State const controllers = vr::controllers::Latest();
@@ -770,14 +859,14 @@ void Tick(double deltaSeconds, Link const& link) {
                       "reading of the grip; close the game and redeploy the host");
         }
     }
-    bool const unclaimed = fresh && !throwables::ClaimedLeft() && !vent::ClaimedLeft() && !voice::ClaimedLeft();
-    ue3::Object* const controller = ue3::runtime::Ready() ? player::Controller() : nullptr;
+    bool const unclaimed = fresh && !link.menuOpen && !power_wheel::OwnsLeftHand() && !support_grip::Held() && !squad_weapons::IsOpen() && !throwables::ClaimedLeft() && !vent::ClaimedLeft() && !voice::ClaimedLeft();
+    ue3::Object* const controller = LayerReady() ? player::Controller() : nullptr;
     std::optional<std::uint8_t> const mode = controller != nullptr ? player::GameMode(controller) : std::nullopt;
     ue3::Object* const pawn = controller != nullptr ? player::BioPawn(controller) : nullptr;
     std::optional<engine::TrackingFrame> const frame = view_anchor::Current();
     bool const onFoot = mode && *mode == 0 && pawn != nullptr;
     if (frame && frame->unitsPerMeter > 0.0) gUpm = frame->unitsPerMeter;
-    bool const usable = s.enabled && s.gesture && onFoot && frame.has_value() && controllers.active && controllers.left.aimValid &&
+    bool const usable = s.enabled && s.gesture && !link.menuOpen && !power_wheel::OwnsLeftHand() && !support_grip::Held() && !squad_weapons::IsOpen() && onFoot && frame.has_value() && controllers.active && controllers.left.aimValid &&
         !squad_weapons::Members().empty();
     if (frame && onFoot) {
         ReadPointer(*frame, controllers, s, gMachine.holding, pawn);
@@ -842,7 +931,7 @@ void Tick(double deltaSeconds, Link const& link) {
         gHistory.clear();
         gWorld = world;
     }
-    if (s.enabled && onFoot) {
+    if (s.enabled && onFoot && !link.menuOpen && !squad_weapons::IsOpen()) {
         TickStandings(deltaSeconds, s);
     }
     if (ue3::runtime::Ready()) {

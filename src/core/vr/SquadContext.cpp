@@ -70,6 +70,7 @@ char const* WeaponCode(int weapon) {
     case 1: return "SG";
     case 2: return "AR";
     case 3: return "SR";
+    case 4: return "SMG";
     default: return "-";
     }
 }
