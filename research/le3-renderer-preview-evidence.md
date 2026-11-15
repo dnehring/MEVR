@@ -8,6 +8,15 @@ process identity and restoration receipts are recorded by the existing runner.
 
 ## Latest completed native checkpoint
 
+**Correction to the earlier SDR characterization:** these runs requested
+`DesiredRange=DynamicRange_SDR`, but actual texture descriptors and `EyeCopy` logs
+show `R16G16B16A16_FLOAT` backbuffers, including the 15:31, 15:58 and 16:07 runs.
+LE3 reused ME2's eye conversion but omitted its factory/display-capability hook
+(`IDXGIOutput6::GetDesc1`, `[Colour] hdrDisplay=-1`). Thus the requested SDR setting
+did not establish the same runtime output policy as ME2. Reusing that missing hook
+and measuring the actual resulting backbuffer/capture ordering is the next bounded
+test, before changing the native stereo capture architecture.
+
 Session `20261115-160557-252-LE3-renderer-preview` adds the output-owner probes
 (compiled host `a511dac7`). The normal save load, 493 reflection comparisons, four
 snapshots and exact restoration all pass again; neither eye has a world layer.
@@ -27,7 +36,7 @@ This accounts for why the current backbuffer-based first-eye capture lacks its
 expected intermediate image. Static shader registration identifies the ordinary
 transfer shader as `FReconstructHDRPixelShader<FALSE>` (`HDRReconstructPS`), with an
 alternate TRUE variant. This is native HDR reconstruction, not a proven GUI
-compositor, and it remains active in the observed SDR-backbuffer run. Generic
+compositor, and it remains active in the observed float-backbuffer run. Generic
 float-to-sRGB conversion alone is not evidence of preserving this native output.
 The next step is to compare the corresponding ME2
 target-selection/output path and locate a valid first-eye source without losing
@@ -96,7 +105,7 @@ tracked files with zero differences and released the shared game lock.
 | Draw timing | First native Draw averages roughly 91–102 microseconds; replay averages 20–22 microseconds. Two camera views are built. Neither duration nor view count proves scene submission. |
 
 The black first-person image is not sufficient evidence of an HDR conversion failure:
-the same SDR run has a visible third-person source. In the current fallback path,
+the same float-backbuffer run has a visible third-person source. In the current fallback path,
 LE3 skips `DriveHeadLook`, which owns host-view publication, while native first-person
 camera offsets still apply. This explains the missing IK admission; the exact visual
 occluder remains unproved. The guarded menu-torso candidate cannot be accepted from

@@ -38,7 +38,9 @@ first-run defaults and explicit mirror cadence).
 converter as ME2. The registered `mevr-eye-copy-warp` regression passed on actual software D3D11 with float HDR
 input, sRGB output, brightness/channel checks, convergence shifts, SDR preservation and an invalid raw-copy
 negative control. See [HDR evidence and limits](../research/le3-hdr-eye-copy-test.md). This proves format conversion,
-not HDR highlight tone mapping or headset appearance. Native previews so far used SDR; native HDR remains open.
+not HDR highlight tone mapping or headset appearance. Native previews requested SDR but actually used float HDR
+backbuffers. LE3 omitted ME2's display-capability hook; reusing and testing that missing hook is now the first
+stereo investigation step. Format conversion alone did not establish HDR/render-path parity.
 
 Implementation is now authorized. The audit baseline above remains historical; these are the first foundation changes:
 
