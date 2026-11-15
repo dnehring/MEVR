@@ -6,6 +6,26 @@ Source audit dated 2026-11-15, against local `main` at `87ebe0f4`. This is the d
 It describes remaining implementation and acceptance work, not additional completed features.
 The Hammerhead is excluded from this pass at the owner's request.
 
+**Current scope, 2026-11-15.** The owner authorized parallel implementation of ME2 parity and deferred package F,
+first-person conversations in the world. Thespian reply selection may proceed using the existing cinema presentation.
+For a future world-conversation port, authored seated scenes such as shuttle rides must disable player traversal.
+The seated actor stays under the native scene's control. Head tracking and dialogue/interrupt controls must remain
+available. Determine seated scene state explicitly before allowing movement and restore normal movement only when
+the native scene releases the player. Physical seated play in ordinary gameplay is a separate setting.
+
+### Active parallel assignments
+
+| Owner | Scope | Worktree/branch | Native testing |
+| --- | --- | --- | --- |
+| `me2_squad_parity` | B and C, squad inventory/menu and native orders | `.claude/worktrees/me2-m6-squad`, `work/me2-m6-squad` | Coordinator schedules |
+| `me2_interaction_parity` | A, selection adapter and floating labels | `.claude/worktrees/me2-interaction-parity`, `work/me2-interaction-parity` | Coordinator schedules |
+| `me2_galaxy_parity` | G, native galaxy/table and scanning | Agent-owned isolated worktree from `b74989a4` | Coordinator schedules |
+| Coordinator | D/E voice and Thespian dependencies, shared integration, regression and native validation | Existing integration worktree | Exclusive protected runs |
+
+These assignments indicate active work, not completed implementation. Agents commit their own scoped candidates.
+The coordinator reviews and integrates shared CMake, host services and renderer edits before landing on main.
+Record resulting commits and acceptance evidence in the continuation plan as each package is verified.
+
 ## Scope and evidence
 
 M6 has nine areas excluding the Hammerhead. Five have gameplay implementations on main, with uneven runtime
@@ -21,12 +41,12 @@ one of the remaining four areas.
 | C | Squad attack and power orders | Roster; share B's recipient identity | One recipient attacks or casts on a legal target through native commands |
 | D | Squad voice | C; B for spoken weapon requests | Existing radio gesture and recognizer dispatch the same verified commands |
 | E | Thespian mode | Shared voice service from D; can audit replies earlier | Native reply cards and safe selection, then spoken selection |
-| F | First-person conversations in the world | Native conversation observation shared with E | One ordinary dialogue in world space with clean camera return |
+| F (deferred) | First-person conversations in the world | Explicit seated-scene traversal policy and native observation | Later pass, with traversal disabled during authored seated scenes |
 | G | Galaxy map and planet scanning | Existing wrist pointer/render services; separate Normandy fixture | Native map navigation on a table, then native scanning and discovery |
 
 B, C and D are one continuation-plan row; E and F are another. A and G each have their own row.
 Work can be prepared independently, but native runs are serialized. Suggested landing order is A, B, C, D,
-E, F, G, with G's source/fixture investigation and E/F's read-only dialogue adapter prepared earlier when useful.
+E, G, with G's source/fixture investigation and E's read-only dialogue adapter prepared earlier when useful. F is deferred.
 Finish a small observable behavior before widening it to the rest of a package.
 
 ## Common implementation rules

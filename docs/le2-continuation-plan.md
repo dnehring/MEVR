@@ -161,6 +161,10 @@ one outside it doesn't, from a recording, not a pad pulse.
 
 M6 follows the first ME2 release (M7). The current pass covers the items below. The Hammerhead has its own later pass.
 
+The owner authorized parallel parity implementation on 2026-11-15 and deferred first-person world conversations.
+Thespian can use the existing cinema screen. Future authored seated scenes, including shuttle rides, must disable
+player traversal while preserving head tracking and dialogue controls. The implementation guide records lane ownership.
+
 The [detailed M6 implementation guide](le2-m6-implementation-guide.md) audits the remaining work against ME1,
 splits it into seven implementation packages, and specifies the existing code, ME2 adapters, dependencies and
 acceptance checks for each. It also lists validation still owed for the five areas with gameplay code on main.
