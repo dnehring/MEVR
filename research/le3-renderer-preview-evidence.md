@@ -32,6 +32,10 @@ float-to-sRGB conversion alone is not evidence of preserving this native output.
 The next step is to compare the corresponding ME2
 target-selection/output path and locate a valid first-eye source without losing
 native final processing. No new capture gate, output flag or render retry is enabled.
+The ME2 native comparison already shows the same outer begin/Draw/end architecture
+and an HDR reconstruction shader registration. This is not proof of an ME3-only
+engine design: the runtime target-selection difference from an accepted ME2 run
+still needs direct evidence.
 
 Do not duplicate the whole end-viewport consumer: it also releases viewport
 resources and performs native end/present bookkeeping. A correction needs a
