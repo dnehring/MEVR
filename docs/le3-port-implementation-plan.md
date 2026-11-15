@@ -11,9 +11,11 @@ Read the [reuse audit](le3-port-reuse-audit.md), [ME3 melee audit](../research/l
 ## Implementation ledger (2026-11-15)
 
 Latest native checkpoint: the protected renderer run passed **493/493** metadata comparisons and an ordinary
-Normandy load, then restored with zero differences. Both eye passes submit valid native scene families,
-but SFR still produces zero first-eye captures and no stereo world layer. The current priority is the
-Halcyon/native rendering investigation; other parity implementation is paused at the owner's request.
+Normandy load, then restored with zero differences. Reusing ME2's omitted HDR display-capability hook now
+produces the actual 8-bit backbuffer, 304 first-eye captures for 304 presents, and visible left/right world
+images. Head-look publication and arm IK now run. Metric/headset stereo remains open: the imported shared
+eye-position tag still needs the existing ME1 per-eye pose-history correction. The current priority remains
+the Halcyon/native rendering investigation; other parity implementation is paused at the owner's request.
 See the [native preview and timing evidence](../research/le3-renderer-preview-evidence.md). All three
 development/player variants build and the expanded **65-test suite** passes. The protected runner's
 35 safety cases also pass, including the bounded startup settings-lock retry.
@@ -39,8 +41,9 @@ converter as ME2. The registered `mevr-eye-copy-warp` regression passed on actua
 input, sRGB output, brightness/channel checks, convergence shifts, SDR preservation and an invalid raw-copy
 negative control. See [HDR evidence and limits](../research/le3-hdr-eye-copy-test.md). This proves format conversion,
 not HDR highlight tone mapping or headset appearance. Native previews requested SDR but actually used float HDR
-backbuffers. LE3 omitted ME2's display-capability hook; reusing and testing that missing hook is now the first
-stereo investigation step. Format conversion alone did not establish HDR/render-path parity.
+backbuffers. LE3 omitted ME2's display-capability hook; the shared policy is now connected and the controlled
+run confirms its SDR backbuffer and restored capture boundary. Native HDR opt-in and headset appearance remain
+unaccepted. Format conversion alone did not establish HDR/render-path parity.
 
 Implementation is now authorized. The audit baseline above remains historical; these are the first foundation changes:
 

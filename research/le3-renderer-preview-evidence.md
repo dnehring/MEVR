@@ -8,14 +8,50 @@ process identity and restoration receipts are recorded by the existing runner.
 
 ## Latest completed native checkpoint
 
+**Missing ME2 reuse fixed and tested:** `c483d55e` shares the existing ME2
+`IDXGIOutput6::GetDesc1` policy through `plugin/HdrDisplayPolicy` and connects the
+previously absent LE3 factory seam. No capture rule, native draw retry or viewport
+end operation changed. The protected session `20261115-162209-606-LE3-renderer-preview`
+loads the same ordinary Normandy save with the same mode, resolution and mirror
+cadence. The hook answers SDR (`hdrDisplay=-1`), and actual backbuffer bindings now
+show `R8G8B8A8_UNORM` (format 28), including the refreshed backbuffer identity used
+by the gameplay segment. Ordering changes from the observed `C C C C D` to
+`C C D C C D`. A steady window reports 304 replays, 608 view builds, **304 captures
+for 304 presents**, with no first-eye misses. This controlled change identifies
+the omitted display-capability policy as the cause of the prior capture failure.
+
+All four snapshots now contain both world layers, a valid head-look view and no
+capture errors. The first-person world-image pair was visually inspected: the
+Normandy and hands are visible, with differing left/right viewpoints. Arm IK is
+active; the ordinary menu pauses, retains the stationary torso and suppresses
+hand targets, then resumes. These are observations from this fixture only.
+The session restored tracked files/VR state with zero differences and released the
+game lock. The first attempt at this candidate stopped in VR-helper preparation
+before a game launch and also restored exactly; the successful retry used unchanged
+source/settings. ME2/ME3 development and player builds pass, and the extracted real
+descriptor hook passed ten offline cases plus independent review.
+
+**Stereo acceptance remains incomplete:** snapshot metadata shows both submitted
+eye positions at `(-0.032,0,0)`, while located eyes are at minus/plus 0.032 m. This
+is the imported SFR shared-position policy, not a TestLoop duplication or an
+EyePublication regression. Current ME1 already has `[EYETAG fix]` in
+`src/halcyon/le1/xr_session.cpp`: per-eye positions from the same rendered pose-history
+sample, with shared rendered orientation. Audit/reuse that correction with capture
+sequence, stale-pair and recenter/session lifetime handling before claiming metric
+stereo or physical-headset/head-turn acceptance. Do not substitute current-eye
+positions for stale pixels. Native HDR opt-in still follows the unaccepted output
+path described below; this checkpoint restores the existing ME2 default policy.
+
+## Diagnosis before the display-policy correction
+
 **Correction to the earlier SDR characterization:** these runs requested
 `DesiredRange=DynamicRange_SDR`, but actual texture descriptors and `EyeCopy` logs
 show `R16G16B16A16_FLOAT` backbuffers, including the 15:31, 15:58 and 16:07 runs.
 LE3 reused ME2's eye conversion but omitted its factory/display-capability hook
 (`IDXGIOutput6::GetDesc1`, `[Colour] hdrDisplay=-1`). Thus the requested SDR setting
 did not establish the same runtime output policy as ME2. Reusing that missing hook
-and measuring the actual resulting backbuffer/capture ordering is the next bounded
-test, before changing the native stereo capture architecture.
+and measuring the actual resulting backbuffer/capture ordering was the bounded
+test above, before changing the native stereo capture architecture.
 
 Session `20261115-160557-252-LE3-renderer-preview` adds the output-owner probes
 (compiled host `a511dac7`). The normal save load, 493 reflection comparisons, four
