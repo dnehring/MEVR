@@ -2817,9 +2817,6 @@ void CheckClasses() {
 // The live controller and static conversation data split in LE3. Source: installed SFXGame.pcc.
 // This table supplies native evidence, not permission to inherit LE1's audio/camera paths.
 void CheckLe3Dialogue() {
-    CheckNativeTarget("GFxUI.GFxValue.GetDisplayMatrix");
-    CheckNativeTarget("SFXGame.BioConversationController.GetReplyParaphraseText");
-    CheckNativeTarget("SFXGame.SFXGUIMovie.GetUIString");
     CheckClass<UBioConversation>("SFXGame.BioConversation");
     CheckClass<UBioConversationController>("SFXGame.BioConversationController");
     CheckClass<UBioConversationManager>("SFXGame.BioConversationManager");
@@ -3041,6 +3038,9 @@ void CheckFunctions() {
     CheckFunction("Engine.SkeletalMeshComponent.GetSocketWorldLocationAndRotation");
 
     CheckFunction("GFxUI.GFxValue.GetObject");
+    CheckNativeTarget("GFxUI.GFxValue.GetDisplayMatrix");
+    CheckNativeTarget("SFXGame.BioConversationController.GetReplyParaphraseText");
+    CheckNativeTarget("SFXGame.SFXGUIMovie.GetUIString");
     CheckFunction("GFxUI.GFxValue.GetDisplayMatrix");
     CheckFunction("SFXGame.SFXPowerCustomActionBase.IsValidTarget");
     CheckFunction("Engine.Actor.SetRotation");
