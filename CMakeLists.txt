@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.27)
 # The one version number (docs/release-checklist.md section 5). Change it here only: the generated header below carries
 # it into the C++ and .rc files, tools/package-release.ps1 reads it from this line and refuses binaries that disagree,
 # and the release is tagged v<version>.
-project(MEVR VERSION 0.3.1 LANGUAGES C CXX)
+project(MEVR VERSION 0.3.2 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -935,6 +935,8 @@ function(mevr_add_plugin game)
             src/plugin/Swapchains.cpp src/plugin/Swapchains.hpp
             src/core/vr/SwapchainBudget.hpp src/plugin/Vignette.cpp src/plugin/Vignette.hpp src/core/vr/Comfort.cpp
             src/core/vr/Comfort.hpp
+            src/core/vr/OverlayPlacement.cpp src/core/vr/ScopeArt.cpp src/core/vr/ScopeCapture.cpp src/core/vr/Sights.cpp
+            src/plugin/ScopeCaptureSource.cpp src/plugin/SightLayers.cpp src/plugin/SightPictures.cpp
             # Our actions, vibration and the floor on Halcyon's session (plugin/XrHost, as LE1's).
             src/plugin/XrHost.cpp src/plugin/XrHost.hpp src/core/vr/Haptics.cpp src/core/vr/Haptics.hpp src/core/xr/Floor.cpp
             src/core/xr/Floor.hpp src/core/vr/Floor.hpp
