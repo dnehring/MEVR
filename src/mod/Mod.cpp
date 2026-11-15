@@ -1833,6 +1833,18 @@ MEVR_MOD_API void MevrModOnPresent(IDXGISwapChain* swapChain) {
 #endif
 }
 
+MEVR_MOD_API bool MevrModPrepareUnload() {
+#if defined(MEVR_GAME_LE3)
+    // Restore before shutdown clears hooks/runtime. Native admission may refuse; keep the
+    // current generation active so the host's existing reload poll can retry. Shutdown's
+    // successful reset is tentative: an ordinary next menu tick can acquire pause again.
+    mevr::game::menu_pause::Shutdown(false);
+    return !mevr::game::menu_pause::Paused();
+#else
+    return true;
+#endif
+}
+
 MEVR_MOD_API void MevrModShutdown() {
     using namespace mevr;
     gActive = false;

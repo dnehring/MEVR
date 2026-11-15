@@ -723,6 +723,7 @@ struct LoadedMod {
     fs::path shadowPath;
     MevrModTickFn tick = nullptr;
     MevrModShutdownFn shutdown = nullptr;
+    MevrModPrepareUnloadFn prepareUnload = nullptr; // optional: old generations have no preflight
 };
 
 LoadedMod gMod;
@@ -733,6 +734,7 @@ FILETIME gPendingStamp{};
 bool gHavePending = false;
 double gPollTimer = 0.0;
 unsigned gGeneration = 0;
+bool gUnloadDeferred = false;
 
 fs::path HostDirectory() {
     HMODULE self = nullptr;
@@ -781,10 +783,18 @@ void Pin(HMODULE module) {
     }
 }
 
-void Unload() {
+bool Unload() {
     if (gMod.module == nullptr) {
-        return;
+        return true;
     }
+    // A refusal leaves all callbacks, state and ticks intact. Pinning after shutdown is
+    // different: it keeps code mapped but cannot retry an owned game-state restoration.
+    if (!gProcessExiting.load() && gMod.prepareUnload != nullptr && !gMod.prepareUnload()) {
+        if (!gUnloadDeferred) log::Warn("mod reload deferred: current generation has pending native restoration");
+        gUnloadDeferred = true;
+        return false;
+    }
+    gUnloadDeferred = false;
     // Waits for the render thread to leave the mod's present callback.
     present::SetCallback(nullptr);
     if (gMod.shutdown != nullptr) {
@@ -810,6 +820,7 @@ void Unload() {
     }
     gKeepReason.clear();
     gMod = {};
+    return true;
 }
 
 enum class LoadResult { Loaded, CopyFailed, Failed };
@@ -831,6 +842,7 @@ LoadResult Load() {
     auto const tick = reinterpret_cast<MevrModTickFn>(GetProcAddress(module, "MevrModTick"));
     auto const shutdown = reinterpret_cast<MevrModShutdownFn>(GetProcAddress(module, "MevrModShutdown"));
     auto const onPresent = reinterpret_cast<MevrModOnPresentFn>(GetProcAddress(module, "MevrModOnPresent"));
+    auto const prepareUnload = reinterpret_cast<MevrModPrepareUnloadFn>(GetProcAddress(module, "MevrModPrepareUnload"));
     if (startup == nullptr || tick == nullptr || shutdown == nullptr || onPresent == nullptr) {
         log::Error("mod DLL is missing its entry points");
         FreeLibrary(module);
@@ -841,7 +853,7 @@ LoadResult Load() {
         FreeLibrary(module);
         return LoadResult::Failed;
     }
-    gMod = {module, shadow, tick, shutdown};
+    gMod = {module, shadow, tick, shutdown, prepareUnload};
     present::SetCallback(onPresent);
     log::Info("mod generation {} loaded from {}", gGeneration, ini::Utf8(gSourcePath));
     return LoadResult::Loaded;
@@ -867,8 +879,8 @@ void CheckForNewBuild() {
         gHavePending = true;
         return;
     }
+    if (!Unload()) return; // keep the source stamp pending; the existing poll retries
     log::Info("new mod build detected; reloading");
-    Unload();
     LoadResult const result = Load();
     if (result == LoadResult::CopyFailed) {
         return;  // stamp not recorded, so the next poll retries

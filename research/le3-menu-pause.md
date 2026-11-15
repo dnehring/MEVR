@@ -61,5 +61,25 @@ Check a native-menu transition and module unload while paused. If policy changes
 acquisition and refuses restoration, the adapter deliberately does not bypass it. A pending
 restore is not successful cleanup: the coordinator must resolve it in the owned session
 before unload/restore acceptance. This rare transition needs native evidence rather than
-an unconditional field-write fallback. The existing shutdown API retains a failed owner,
-but does not itself prevent the host unloading the module.
+an unconditional field-write fallback.
+
+## Hot-reload restoration gate
+
+`MevrModPrepareUnload` is an optional exported preflight. LE3 attempts the same captured
+pause restoration before teardown. If it fails, `ModLoader::Unload` returns before touching
+callbacks, renderer state, the DLL or its pending source stamp. The normal half-second poll
+retries, and the current module keeps ticking. The host does not load a replacement beside
+an unresolved owner. This is distinct from `keepLoaded`, which only pins code after teardown.
+
+Success is tentative: no permanent shutdown flag is set. `MenuPause::Shutdown(false)` resets
+the pause request latch on success, so if normal ticks continue without teardown, an open
+main/squad menu can acquire again from its live request. A failed attempt retains the owner.
+Process exit bypasses preflight and keeps the existing no-wait shutdown path. Older modules
+without the optional export keep their prior behavior. An older host cannot honor this new
+gate: native hot-reload acceptance requires deploying both the updated host and module.
+
+`tests/ModReloadTests.cpp` includes the real loader implementation with callback/log stand-ins,
+a private invalid-image candidate and an explicit Windows system-library reference. It
+checks refusal without callback detach, continued ticks and retained pending stamp; repeated
+refusal with a bounded log; later success with one shutdown/load attempt; missing-export
+compatibility; and process-exit bypass. It never loads a game or changes installed runtime files.

@@ -483,6 +483,11 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds);
 // Render thread, before each IDXGISwapChain::Present. The host guarantees this isn't running
 // when MevrModShutdown is called.
 MEVR_MOD_API void MevrModOnPresent(IDXGISwapChain* swapChain);
+// Optional export for newer hot-reload hosts. Game-thread preflight, before callbacks or
+// runtime are detached: false defers teardown while the current generation keeps ticking.
+// Success is tentative: if teardown does not follow, normal ticks must remain usable.
+// Process exit bypasses this preflight. Older modules without the export retain their ABI.
+MEVR_MOD_API bool MevrModPrepareUnload();
 // Removes every hook the mod installed and releases its XR/D3D resources. The host calls this
 // before unloading the DLL; whatever couldn't be made safe to unload is reported through
 // HostServices::keepLoaded, and the host then keeps the DLL loaded.
@@ -492,3 +497,4 @@ using MevrModStartupFn = decltype(&MevrModStartup);
 using MevrModTickFn = decltype(&MevrModTick);
 using MevrModOnPresentFn = decltype(&MevrModOnPresent);
 using MevrModShutdownFn = decltype(&MevrModShutdown);
+using MevrModPrepareUnloadFn = decltype(&MevrModPrepareUnload);
