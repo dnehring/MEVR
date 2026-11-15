@@ -45,3 +45,5 @@ Remaining runtime boundaries: ME2 native attack/power outcome, actual inventory 
 - Isolated Release `MEVR-LE2` host and `MEVR-LE2-mod` compiled and linked successfully after the final ownership/generation review.
 - Existing `mevr-tests.exe`: exit 0, all tests passed, including the added SMG codes and spoken aliases. The existing squad phrasing set reports 177/177 orders and 18/18 non-orders; its five previously documented language gaps remain open.
 - `git diff --check`: clean. No deployment or game launch by this lane. The combined integration needs the LE1 build/regression check and the native acceptance above.
+
+Pause-owner follow-up: the saved ME2 `bPlayersOnly` value is now tied to its original WorldInfo. A world transition restores that owner (or discards a dead/replaced owner) without writing the new world. Failed restores retain ownership and retry while running; unload failure is reported explicitly. The focused original-world, pre-existing-pause, destroyed-owner and failed-restore/retry cases passed in the existing offline suite; the ME2 mod rebuilt successfully. Native load/close acceptance remains pending.

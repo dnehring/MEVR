@@ -2,6 +2,7 @@
 #include "game/MenuPause.hpp"
 
 #include "core/Log.hpp"
+#include "core/vr/PauseOwner.hpp"
 #include "core/WriteJournal.hpp"
 #include "game/HeadTracking.hpp"
 #include "mod/ModApi.hpp"
@@ -52,7 +53,7 @@ bool Pause(bool pause, char const* why) {
         log::Warn("menu pause: WorldInfo.PauseGame has no bool parameter bPause: not called");
         return false;
     }
-    ue3::runtime::Call(world, gPauseGame, parms);  // the script function through ProcessEvent
+    if (!ue3::runtime::Call(world, gPauseGame, parms)) return false;  // keep ownership when the restore failed
     gLast = std::format("{} ({})", pause ? "paused" : "resumed", why);
     log::Info("menu pause: the game {} ({}; WorldInfo.PauseGame, as ME1's weapon wheel)", pause ? "paused" : "runs again", why);
     return true;
@@ -64,7 +65,14 @@ bool Pause(bool pause, char const* why) {
 ue3::FieldRef gWorldInfo{"Engine.Actor", "WorldInfo", ue3::kEveryGame};
 ue3::FieldRef gPlayersOnly{"Engine.WorldInfo", "bPlayersOnly", ue3::kEveryGame};
 bool gToldDown = false;
-bool gWasPlayersOnly = false;  // bPlayersOnly as we found it when we paused
+vr::PauseOwner gOwner;
+std::string gOwnerName; // helps reject a recycled object address
+
+ue3::Object* CurrentWorld() {
+    if (!ue3::runtime::Up()) return nullptr;
+    auto* pc = ue3::runtime::LocalPlayerController();
+    return pc != nullptr ? gWorldInfo.Read<ue3::Object*>(pc).value_or(nullptr) : nullptr;
+}
 
 bool Pause(bool pause, char const* why) {
     if (!ue3::runtime::Up()) {
@@ -74,27 +82,36 @@ bool Pause(bool pause, char const* why) {
         }
         return false;
     }
-    ue3::Object* const pc = ue3::runtime::LocalPlayerController();
-    ue3::Object* const world = pc != nullptr ? gWorldInfo.Read<ue3::Object*>(pc).value_or(nullptr) : nullptr;
-    std::optional<bool> const was = world != nullptr ? gPlayersOnly.ReadBool(world) : std::nullopt;
-    if (!was) {
+    auto write = [&](ue3::Object* world, bool value) {
+        auto const was = gPlayersOnly.ReadBool(world);
+        if (!was) return false;
+        if (*was != value) {
+            if (!gPlayersOnly.WriteBool(world, value)) return false;
+            if (void* const field = gPlayersOnly.Address(world)) write_journal::Wrote("MenuPause.bPlayersOnly", field, 4);
+        }
+        return true;
+    };
+    if (pause) {
+        auto* world = CurrentWorld();
+        if (!ue3::runtime::IsAlive(world)) return false;
+        auto const previous = gPlayersOnly.ReadBool(world);
+        if (!previous || !write(world, true)) return false;
+        gOwner.Capture(reinterpret_cast<std::uintptr_t>(world), *previous);
+        gOwnerName = ue3::runtime::FullName(world);
+    } else if (!gOwner.Release([&](std::uintptr_t owner, bool previous) {
+        auto* world = reinterpret_cast<ue3::Object*>(owner);
+        if (!ue3::runtime::IsAlive(world) || ue3::runtime::FullName(world) != gOwnerName) {
+            log::Info("menu pause: original world is gone; discarded its saved pause state without changing the new world");
+            return true;
+        }
+        return write(world, previous); // always the captured owner, never CurrentWorld()
+    })) {
+        gLast = "restore pending: original world's pause bit could not be restored";
         return false;
     }
-    if (pause) {
-        gWasPlayersOnly = *was;
-    }
-    bool const value = pause ? true : gWasPlayersOnly;  // what it was before: a wheel's or a screen's pause stays
-    if (*was != value) {
-        if (!gPlayersOnly.WriteBool(world, value)) {
-            return false;
-        }
-        if (void* const field = gPlayersOnly.Address(world)) {
-            write_journal::Wrote("MenuPause.bPlayersOnly", field, 4);
-        }
-    }
+
     gLast = std::format("{} ({})", pause ? "paused" : "resumed", why);
-    log::Info("menu pause: the game {} ({}; WorldInfo.bPlayersOnly {}, as ME2's weapon wheel)", pause ? "paused" : "runs again",
-        why, value ? "on" : "off");
+    log::Info("menu pause: original world pause {} ({}; ME2 WorldInfo.bPlayersOnly)", pause ? "captured" : "restored or released", why);
     return true;
 }
 #else
@@ -110,9 +127,15 @@ void Tick(Link const& link) {
     std::uint32_t const state = link.state != nullptr ? link.state() : 0u;
     bool const open = (state & kMainMenuOpen) != 0;
     bool const wanted = (open && (state & kMainMenuPause) != 0) || link.squadPause;
-    if (gPaused && !wanted) {
-        Pause(false, open ? "pause turned off" : "the main menu closed");
-        gPaused = false;
+    bool worldChanged = false;
+#if defined(MEVR_GAME_LE2)
+    worldChanged = gPaused && ue3::runtime::Up() && gOwner.Owner() != reinterpret_cast<std::uintptr_t>(CurrentWorld());
+#endif
+    if (gPaused && (!wanted || worldChanged)) {
+        if (Pause(false, worldChanged ? "world changed" : open ? "pause turned off" : "all requesting menus closed")) {
+            gPaused = false;
+            if (worldChanged) { gWasOpen = false; return; } // a still-open menu may acquire the new world next tick
+        }
     } else if (wanted && !gPaused && !gWasOpen) {
         // Once each time it's wanted (the menu opens, or the toggle goes on), and only where the player is in control.
         // In any other mode it waits for one: the menu opened over a weapon or power wheel closes the wheel (the
@@ -141,9 +164,13 @@ bool Paused() {
 
 void Shutdown(bool exiting) {
     gStateReader = nullptr;
-    if (gPaused && !exiting) {
-        Pause(false, "the mod unloads");
+    if (gPaused && !exiting && !Pause(false, "the mod unloads")) {
+        log::Warn("menu pause: unload could not restore the original world's pause state; restoration remains pending");
+        return;
     }
+#if defined(MEVR_GAME_LE2)
+    gOwner.Forget(); gOwnerName.clear();
+#endif
     gPaused = false;
     gWasOpen = false;
 }
