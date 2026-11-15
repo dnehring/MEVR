@@ -1,83 +1,141 @@
 # SPDX-License-Identifier: MIT
-# Loads an ME2 save by script, no menus: the mod's `mevr load` (game/ConsoleRequest) asks the engine to load the save's
-# descriptor through SFXEngine.QueueSaveGameCommand(SaveGame_Load), the call ME2's own Load screen and its QuickLoad make
-# (research/le2-engine-access-discovery.md "A save loaded by script"). Reads the save, never writes one; the file's hash
-# is checked before and after. Then waits for gameplay (`mevr state`: a world that isn't the title's, a pawn, game mode 0).
-#
-#   tools\le2-halcyon-run\load.ps1                                   # the VR Shepard career's Save 4 (Freedom's Progress)
-#   tools\le2-halcyon-run\load.ps1 -Save VR_31_Soldier_141126_336072f\Save_0004.pcsav
-#   tools\le2-halcyon-run\load.ps1 -Save <full path to a .pcsav>
-#
-# Needs an open stretch (prep.ps1, launch.ps1) and a development build of the mod (the console request). From the title
-# screen or in game; the game's own autosave after a load is put back by restore.ps1 like every other change of the run.
+# The existing protected normal-load flow for LE2/LE3. No launch, deployment or save editing.
+# LE2 keeps its default Freedom's Progress Save 4. LE3 requires an explicit existing Save.
 param(
+    [Parameter(Mandatory)][string]$Holder,
+    [ValidateSet('LE2', 'LE3')][string]$Game = 'LE2',
     [string]$Save,
-    [int]$TimeoutSeconds = 180
+    [ValidateRange(5, 1800)][int]$TimeoutSeconds = 180
 )
 $ErrorActionPreference = 'Stop'
-$console = Join-Path $PSScriptRoot '..\console.ps1'
-$current = Join-Path $env:LOCALAPPDATA 'MEVR\sessions\le2-current.json'
-if (-not (Test-Path -LiteralPath $current)) { throw 'no ME2 stretch is open: run prep.ps1 and launch.ps1 first' }
-if (-not (Get-Process MassEffect2 -ErrorAction SilentlyContinue)) { throw 'ME2 is not running: launch.ps1 first' }
-
-# The save: a full path, a path under ME2's save folder, or the VR Shepard career's Save 4.
-$saves = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'BioWare\Mass Effect Legendary Edition\Save\ME2'
-if (-not $Save) {
-    $found = @(Get-ChildItem $saves -Directory -Filter 'VR_*' | Where-Object { Test-Path (Join-Path $_.FullName 'Save_0004.pcsav') })
-    if ($found.Count -ne 1) { throw "the VR Shepard career's Save 4: $($found.Count) careers VR_* with a Save_0004.pcsav in $saves (name one with -Save)" }
-    $Save = Join-Path $found[0].FullName 'Save_0004.pcsav'
-} elseif (-not [IO.Path]::IsPathRooted($Save)) {
-    $Save = Join-Path $saves $Save
-}
-if (-not (Test-Path -LiteralPath $Save)) { throw "no save at $Save" }
-$file = Get-Item -LiteralPath $Save
-$career = $file.Directory.Name
-$name = [IO.Path]::GetFileNameWithoutExtension($file.Name)
-# The descriptor as ME2's Load screen lists it (research/le2-validation-evidence.md: Save_0099 index 99 manual, AutoSave and
-# ChapterSave index -1): Save_NNNN manual (0) with its number, QuickSave 1, AutoSave 2, ChapterSave 3, each -1.
-switch -Regex ($name) {
-    '^Save_(\d+)$' { $index = [int]$Matches[1]; $type = 0 }
-    '^QuickSave$' { $index = -1; $type = 1 }
-    '^AutoSave$' { $index = -1; $type = 2 }
-    '^ChapterSave$' { $index = -1; $type = 3 }
-    default { throw "$($file.Name): not a save name ME2 lists (Save_NNNN, QuickSave, AutoSave, ChapterSave)" }
-}
-$hash = (Get-FileHash -LiteralPath $Save).Hash
-
-function Ask([string]$command, [int]$timeout = 10) {
-    $out = & powershell -NoProfile -ExecutionPolicy Bypass -File $console $command -TimeoutSeconds $timeout 2>$null
-    if ($LASTEXITCODE -ne 0) { return $null }
-    return ($out | Where-Object { $_ -and $_ -notmatch '^> ' }) -join "`n"
-}
-
-# The mod's console must answer first (the title screen has a player controller once the menus are up).
-$deadline = (Get-Date).AddSeconds($TimeoutSeconds)
-$state = $null
-while ((Get-Date) -lt $deadline -and -not $state) {
-    $state = Ask 'mevr state'
-    if (-not $state -or $state -notmatch '^mevr state:') { $state = $null; Start-Sleep 2 }
-}
-if (-not $state) { throw "the mod's console didn't answer within $TimeoutSeconds s (a development build? the title screen up?)" }
-"before: $state"
-$before = $state
-
-$queued = Ask "mevr load $career $name $index $type"
-"load: $queued"
-if ($queued -notmatch 'queued') { throw "the load wasn't queued: $queued" }
-
-# Gameplay: another world than before, a pawn, on foot.
-$done = $false
-while ((Get-Date) -lt $deadline -and -not $done) {
-    Start-Sleep 2
-    $state = Ask 'mevr state'
-    if ($state -and $state -match 'world (\S+ \S+);' -and $before -match 'world (\S+ \S+);') {
-        $world = ($state | Select-String 'world ([^;]+);').Matches[0].Groups[1].Value
-        $was = ($before | Select-String 'world ([^;]+);').Matches[0].Groups[1].Value
-        $done = $world -ne $was -and $state -notmatch 'pawn None' -and $state -match 'game mode 0$'
+. "$PSScriptRoot\session-common.ps1"
+. "$PSScriptRoot\load-common.ps1"
+. "$PSScriptRoot\..\common.ps1"
+if ($Game -eq 'LE3' -and -not $Save) { throw 'LE3 loading requires explicit -Save; no default or newest-save inference' }
+$names = Get-RunNames $Game
+$desktop = $Game -eq 'LE3'
+$open = Read-RunSession $Holder $Game $desktop $desktop $desktop
+Assert-LoadMode $open $Game
+$install = (Find-MELEInstall).Root
+if (-not $open.install -or $open.install -ne $install) { throw 'Install identity differs from the protected session' }
+$bin = Get-MELEBinDir $install $Game
+$exe = Join-Path $bin "$($names.process).exe"
+$sessionHash = (Get-FileHash -LiteralPath $names.current).Hash
+$sessionPath = $open.session
+$processIdentity = $open.gameProcess
+function Assert-LoadOwner {
+    $current = Read-RunSession $Holder $Game $desktop $desktop $desktop
+    Assert-LoadMode $current $Game
+    if ($current.session -ne $sessionPath -or (Get-FileHash -LiteralPath $names.current).Hash -ne $sessionHash) {
+        throw 'Session identity changed during load; no further requests allowed'
     }
+    $processes = @(Get-Process MassEffect1, MassEffect2, MassEffect3 -ErrorAction SilentlyContinue)
+    Assert-LoadProcessSet $processes $processIdentity $exe
+    $still = Get-Process -Id $processIdentity.pid -ErrorAction SilentlyContinue
+    if (-not $still) { throw 'Owned game process exited' }
+    Assert-RunProcess $still $processIdentity $exe
 }
-"after: $state"
-if ((Get-FileHash -LiteralPath $Save).Hash -ne $hash) { throw "the save file changed: $Save" }
-"the save file is unchanged ($($file.Name), SHA-256 $($hash.Substring(0, 12))...)"
-if (-not $done) { throw "no gameplay within $TimeoutSeconds s" }
-"gameplay: $career\$($file.Name) loaded"
+Assert-LoadOwner
+$profile = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'BioWare\Mass Effect Legendary Edition'
+if (-not $open.profile -or [IO.Path]::GetFullPath($open.profile) -ine [IO.Path]::GetFullPath($profile)) { throw 'Save profile differs from the protected backup' }
+$saves = Join-Path $profile "Save\$($names.folder)"
+if (-not $Save) {
+    $found = @(Get-ChildItem -LiteralPath $saves -Directory -Filter 'VR_*' | Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'Save_0004.pcsav') })
+    if ($found.Count -ne 1) { throw 'Expected one LE2 VR career with Save_0004.pcsav; supply -Save explicitly' }
+    $Save = Join-Path $found[0].FullName 'Save_0004.pcsav'
+} elseif (-not [IO.Path]::IsPathRooted($Save)) { $Save = Join-Path $saves $Save }
+$Save = Resolve-RunChild $saves $Save
+$file = Get-Item -LiteralPath $Save
+if ($file.PSIsContainer -or $file.Directory.Parent.FullName -ine [IO.Path]::GetFullPath($saves)) { throw 'Save must be a file immediately under a career in the selected game save root' }
+foreach ($path in @($saves, $file.Directory.FullName, $Save)) {
+    if ((Get-Item -LiteralPath $path).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Linked save paths are refused' }
+}
+$expected = Get-LoadDescriptor $file.Directory.Name $file.Name
+$hash = (Get-FileHash -LiteralPath $Save).Hash
+$receiptDir = Resolve-RunChild $sessionPath ('load-' + [DateTime]::UtcNow.ToString('yyyyMMdd-HHmmss-fff') + '-' + [Guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $receiptDir | Out-Null
+$requests = New-Object Collections.Generic.List[object]
+$artifacts = @($exe, (Join-Path $bin "ASI\${Game}MEVR.asi"), (Join-Path $bin "ASI\${Game}MEVR.ini"))
+$modpath = Join-Path $bin "ASI\${Game}MEVR.modpath"
+if (Test-Path -LiteralPath $modpath) {
+    $artifacts += $modpath
+    $module = [IO.File]::ReadAllText($modpath).Trim()
+    if (-not [IO.Path]::IsPathRooted($module) -or -not (Test-Path -LiteralPath $module -PathType Leaf)) { throw 'Deployed modpath does not identify an existing module' }
+    $artifacts += $module
+}
+$artifactIdentity = @($artifacts | ForEach-Object { [pscustomobject]@{ path = $_; sha256 = (Get-FileHash -LiteralPath $_).Hash } })
+$receipt = [ordered]@{ schemaVersion = 1; operation = 'normal-save-load'; game = $Game; holder = $Holder;
+    startedUtc = [DateTime]::UtcNow.ToString('o'); session = $sessionPath; sessionMetadataSha256 = $sessionHash;
+    process = $processIdentity; artifacts = $artifactIdentity; save = $Save; saveSha256Before = $hash; expected = $expected;
+    passed = $false; transitionObserved = $false; gameplayObserved = $false; descriptorMatched = $false;
+    saveUnchanged = $false; artifactsUnchanged = $false; error = $null }
+$console = Join-Path $PSScriptRoot '..\console.ps1'
+function Ask([string]$Command) {
+    Assert-LoadOwner  # immediately before every request, including polling
+    if (Test-Path -LiteralPath (Join-Path $MevrDataDir 'console.request')) { throw 'A console request is already pending; refusing overlap' }
+    $sent = [DateTime]::UtcNow
+    $raw = (& powershell -NoProfile -ExecutionPolicy Bypass -File $console $Command -TimeoutSeconds 10 2>&1 | Out-String)
+    $code = $LASTEXITCODE
+    Assert-LoadOwner
+    $requests.Add([pscustomobject]@{ sentUtc = $sent.ToString('o'); command = $Command; exitCode = $code; raw = $raw })
+    if ($code -ne 0) { return $null }
+    $result = Get-Item -LiteralPath (Join-Path $MevrDataDir 'console.result')
+    if ($result.LastWriteTimeUtc -lt $sent) { throw 'Stale console reply timestamp' }
+    return ConvertFrom-LoadReply $raw $Command
+}
+try {
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    $before = $null
+    while ([DateTime]::UtcNow -lt $deadline -and -not $before) {
+        $before = ConvertFrom-LoadState (Ask 'mevr state') $Game
+        if (-not $before) { Start-Sleep -Seconds 1 }
+    }
+    if (-not $before) { throw 'No valid state response before load' }
+    $receipt.before = $before
+    $receipt.descriptorBefore = ConvertFrom-LoadDescriptor (Ask 'mevr savedesc')
+    if ((Get-FileHash -LiteralPath $Save).Hash -ne $hash) { throw 'Save changed before queuing' }
+    $command = "mevr load $($expected.career) $($expected.name) $($expected.index) $($expected.type)"
+    $queued = Ask $command
+    $receipt.queued = $queued
+    if ($queued -notmatch '^mevr load: queued ') { throw 'Native load request was not acknowledged' }
+    $transition = $false; $done = $false
+    while ([DateTime]::UtcNow -lt $deadline -and -not $done) {
+        Start-Sleep -Seconds 1
+        $state = ConvertFrom-LoadState (Ask 'mevr state') $Game
+        if (-not $state) { continue }
+        $transition = $transition -or (Test-LoadTransition $before $state $Game)
+        $receipt.after = $state
+        $receipt.transitionObserved = $transition
+        $receipt.gameplayObserved = Test-LoadGameplay $state
+        if (-not $transition -or -not $receipt.gameplayObserved) { continue }
+        $observed = ConvertFrom-LoadDescriptor (Ask 'mevr savedesc')
+        $receipt.descriptorAfter = $observed
+        $receipt.descriptorMatched = Test-LoadDescriptor $expected $observed
+        if (-not $receipt.descriptorMatched) { continue }
+        # Recheck gameplay after the descriptor request, not an earlier title/loading sample.
+        $stable = ConvertFrom-LoadState (Ask 'mevr state') $Game
+        $done = (Test-LoadGameplay $stable) -and -not (Test-LoadTransition $state $stable $Game)
+        if ($stable) { $receipt.after = $stable }
+    }
+    if (-not $done) { throw 'No observed identity transition plus matching descriptor and stable gameplay within timeout' }
+    Assert-LoadOwner
+    $receipt.passed = $true
+} catch {
+    $receipt.error = $_.Exception.Message
+} finally {
+    $receipt.finishedUtc = [DateTime]::UtcNow.ToString('o')
+    try {
+        $receipt.saveSha256After = (Get-FileHash -LiteralPath $Save).Hash
+        $receipt.saveUnchanged = $receipt.saveSha256After -eq $hash
+        $receipt.artifactsUnchanged = @($artifactIdentity | Where-Object { (Get-FileHash -LiteralPath $_.path).Hash -ne $_.sha256 }).Count -eq 0
+    } catch { $receipt.error = "Final hash verification failed: $($_.Exception.Message)" }
+    if (-not $receipt.saveUnchanged -or -not $receipt.artifactsUnchanged) {
+        $receipt.passed = $false
+        if (-not $receipt.error) { $receipt.error = 'Save or runtime artifact changed during load' }
+    }
+    $receipt.requests = @($requests.ToArray())
+    $receipt | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath (Join-Path $receiptDir 'receipt.json') -Encoding utf8
+}
+"Private load receipt: $receiptDir\receipt.json"
+if (-not $receipt.passed) { throw $receipt.error }
+"$Game normal save loaded: $($file.Name); observed transition, exact descriptor, gameplay and unchanged source hash"

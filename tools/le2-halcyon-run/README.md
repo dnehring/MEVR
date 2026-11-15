@@ -16,7 +16,7 @@ driving ME2 by hand): leave it alone and wait.
 tools\le2-halcyon-run\run-lock.ps1 -Status
 tools\le2-halcyon-run\prep.ps1 -Holder <session name> [-Tag what] [-Diagnostics]   # once per stretch: backups, loader, deploy, fake headset
 tools\le2-halcyon-run\launch.ps1 -Holder <session name> [-Kill]                                           # each run: Steam's -game 2, waits for the XR session
-tools\le2-halcyon-run\load.ps1 [-Save <career>\<file>.pcsav]                         # a save's gameplay by script (default: Freedom's Progress)
+tools\le2-halcyon-run\load.ps1 -Holder <session name> [-Save <career>\<file>.pcsav]   # default LE2: Freedom's Progress
 # ... the run: logs in ME2\Binaries\Win64\Logs\LE2MEVR.log and %LOCALAPPDATA%\MELE2VR\MELE2VR_Log.txt
 tools\le2-halcyon-run\launch.ps1 -Holder <session name> -Kill                                             # the next run: closes ME2 and starts it again
 tools\le2-halcyon-run\launch.ps1 -Holder <session name> -Stop                                             # only closes ME2 (to rebuild, then prep.ps1 again to redeploy)
@@ -45,7 +45,8 @@ tools\le2-halcyon-run\restore.ps1 -Holder <session name>                        
 
 The same runner accepts `-Game LE3 -DesktopDump` on **all three commands**. LE2 is still the default;
 LE3 without `-DesktopDump` (including `-DesktopDump:$false`) and LE2 with it are refused. This is a protected
-native data capture, not ME3 VR support or a save-loading/fixture test. `load.ps1` remains ME2-only.
+native data capture, not ME3 VR support or a save-loading/fixture test. LE3 normal loading requires the separately
+enabled engine-probe/request mode described below; a dump-only session cannot issue load requests.
 
 ```powershell
 tools\le2-halcyon-run\prep.ps1 -Holder <session name> -Game LE3 -DesktopDump -Tag le3-dump -BuildDir <development build>
@@ -111,3 +112,43 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\le2-halcyon-run\test-s
 These cover mode/holder/game refusals, legacy metadata, path boundaries, PID reuse, failed/altered/empty backups,
 wrong-build and truncated dump metadata, and rejecting hosts without the dump-only gate. They do not replace the
 first protected native launch and hash-verified restoration acceptance.
+
+## Owned normal-save loading
+
+`load.ps1` reuses `console.ps1`; it never launches a game, deploys a build, changes VR settings or edits a save.
+Every request (including polling) rereads the protected session and global lock, requires the explicit holder,
+compares the session metadata hash, and checks the only running game's PID, exact executable path and start time.
+The selected install and backed-up profile must also match. A pending request, unrelated reply echo, stale reply,
+changed process, changed session or another game causes refusal. `-Holder` is now required for LE2 too; the
+repository call-site audit found no executable PS/Python callers to migrate, only these invocation examples.
+LE2 remains the default game and retains its existing Save 4 discovery.
+
+For an already prepared and launched **LE3 engine-request session**:
+
+```powershell
+tools\le2-halcyon-run\load.ps1 -Game LE3 -Holder <owned holder> -Save <career>\Save_0031.pcsav
+```
+
+LE3 requires an explicit save and actual JSON `true` values for `desktopDump`, `engineProbe` and `engineRequests`
+in the session. These flags are established by the coordinator's `prep.ps1`/`launch.ps1` engine-request mode;
+this load helper does not enable them. Only normal manual/quick/auto/chapter descriptors (types 0..3) are accepted.
+The file must be directly under a career in that game's save root. Reparse points, other-game files, malformed
+names, import/export/NG+ saves and command-unsafe career tokens are refused.
+
+A queued acknowledgement is not completion. LE3 must report world/pawn identities, an observed transition
+(including a transient absence then recovery), the exact requested current descriptor and on-foot gameplay
+which remains stable through a second state query. This permits a same-map reload with changed object identity.
+If all observed identities remain unchanged, acceptance times out even if the descriptor already matches.
+LE2's old state format remains accepted and requires a changed world name; a future identity-bearing LE2 state
+would enable the same stricter same-map check without changing the parser.
+
+Each attempt writes a private `load-<stamp>-<id>/receipt.json` below the protected session. It records session
+metadata hash, game/process, executable/host/config and optional hot-reload module hashes, selected save hash,
+expected/observed descriptors, before/after states and timestamped request replies. Save and runtime artifact
+hashes must still match at the end. The receipt proves only normal-load acceptance for that exact artifact;
+combat suitability, resource-variant persistence, VR rendering and physical gestures remain separate gates.
+Session restore still owns any autosave/settings changes caused by the game.
+
+Offline checks: `powershell -NoProfile -File tools/le2-halcyon-run/test-load.ps1`. They cover types, state parsing,
+identity transitions, gameplay refusals, exact descriptor/response matching, strict mode booleans and process
+ownership. They do not call the request channel or touch a game/profile.
