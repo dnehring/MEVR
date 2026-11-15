@@ -167,6 +167,7 @@ bool gToldNoSupportGrip = false;
 bool gHooked = false;  // ProcessEvent hook live (after the script packages loaded)
 // Our reflection layer (ue3/, research/34) found and checked against LExSDKv2 (once per load).
 bool gReflectChecked = false;
+bool gEngineProbe = false;
 bool gToldLayerOff = false;  // the startup gate said it goes on without the layer
 bool gSceneViewHooked = false;
 bool gGamepadHooked = false;  // XInput hooks (once the game has loaded an XInput DLL)
@@ -277,7 +278,7 @@ void WaitForThisFrameToPresent() {
 // does LE2 if its layer is off.
 bool ScriptPackagesLoaded() {
     using namespace mevr;
-#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     if (!ue3::runtime::Init()) {
         if (ue3::runtime::Pending()) {
             return false;  // the game is still starting: the next try is in a second
@@ -1101,6 +1102,7 @@ void PublishStatus() {
     auto const mode = gHooked ? game::head_tracking::GameMode() : std::nullopt;
     char const* type = "none";
     switch (game::weapon::Type()) {
+    case game::weapon::RangedType::Smg: type = "SMG"; break;
     case game::weapon::RangedType::Pistol: type = "pistol"; break;
     case game::weapon::RangedType::Shotgun: type = "shotgun"; break;
     case game::weapon::RangedType::AssaultRifle: type = "assault rifle"; break;
@@ -1358,6 +1360,12 @@ MEVR_MOD_API bool MevrModStartup(mevr::loader::spi::Interface* spi, mevr::HostSe
     if (spi == nullptr) {
         log::Warn("no SPI interface from the host: the mod hooks with its own MinHook");
     }
+    gEngineProbe = engine::DevelopmentEngineProbe();
+    if (gEngineProbe) {
+        gActive = true;
+        log::Info("engine-probe: renderer and gameplay disabled; waiting for reflection");
+        return true;
+    }
 #if !defined(MEVR_GAME_LE1)
     // LE2/LE3 read the engine through LExSDKv2 until they have a reflection layout (research/34 stage 5).
     if (!engine::legacy::Init(*gInit)) {
@@ -1377,6 +1385,21 @@ MEVR_MOD_API bool MevrModStartup(mevr::loader::spi::Interface* spi, mevr::HostSe
 MEVR_MOD_API void MevrModTick(float deltaSeconds) {
     using namespace mevr;
     if (!gActive) {
+        return;
+    }
+    if (gEngineProbe) {
+        gRetryTimer += deltaSeconds;
+        if (!gReflectChecked && gRetryTimer >= kStartupRetrySeconds) {
+            gRetryTimer = 0.0;
+            if (ue3::runtime::Init() &&
+                ue3::runtime::Get().FindClass("SFXGame.SFXWeapon") != nullptr &&
+                ue3::runtime::Get().FindFunction("Engine.Camera.UpdateCamera") != nullptr) {
+                engine::ResolveWorld();
+                engine::reflect_check::Run(*gInit);
+                gReflectChecked = true;
+                log::Info("engine-probe: reflection checks finished");
+            }
+        }
         return;
     }
 #if defined(MEVR_LE2_DIAGNOSTIC)
@@ -1560,6 +1583,17 @@ MEVR_MOD_API void MevrModOnPresent(IDXGISwapChain* swapChain) {
 MEVR_MOD_API void MevrModShutdown() {
     using namespace mevr;
     gActive = false;
+    if (gEngineProbe) {
+        engine::ForgetWorld();
+        ue3::runtime::Shutdown();
+        gReflectChecked = false;
+        gEngineProbe = false;
+        gInit.reset();
+        gHost = nullptr;
+        log::Info("engine-probe: shut down");
+        log::SetSink(nullptr);
+        return;
+    }
 #if defined(MEVR_LE2_DIAGNOSTIC)
     engine::le2_diagnostic::Shutdown();
     engine::le2_control::Shutdown();

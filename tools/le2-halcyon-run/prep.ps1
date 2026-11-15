@@ -4,13 +4,14 @@ param(
     [Parameter(Mandatory)][string]$Holder,
     [ValidateSet('LE2', 'LE3')][string]$Game = 'LE2',
     [switch]$DesktopDump,
+    [switch]$EngineProbe,
     [ValidatePattern('^[A-Za-z0-9_-]+$')][string]$Tag = 'halcyon',
     [string]$BuildDir,
     [switch]$Diagnostics
 )
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\session-common.ps1"
-Assert-RunMode $Game ([bool]$DesktopDump)
+Assert-RunMode $Game ([bool]$DesktopDump) ([bool]$EngineProbe)
 if ($DesktopDump -and $Diagnostics) { throw '-Diagnostics is only for the LE2 renderer' }
 . "$PSScriptRoot\..\common.ps1"
 $W = (Resolve-Path "$PSScriptRoot\..\..").Path
@@ -19,7 +20,7 @@ if ($DesktopDump -and -not (Select-String -LiteralPath (Join-Path $BuildDir 'CMa
     throw 'DesktopDump requires a development hot-reload build; players builds do not have the dump-only gate'
 }
 if (-not (Test-Path -LiteralPath (Join-Path $BuildDir "Release\${Game}MEVR.asi"))) { throw 'Selected game host has not been built' }
-if ($DesktopDump) { Assert-RunDumpHost (Join-Path $BuildDir "Release\${Game}MEVR.asi") }
+if ($DesktopDump) { Assert-RunDumpHost (Join-Path $BuildDir "Release\${Game}MEVR.asi") ([bool]$EngineProbe) }
 $names = Get-RunNames $Game
 $install = (Find-MELEInstall).Root
 $G = Join-Path $install 'Game'
@@ -30,7 +31,7 @@ if (Get-Process MassEffect1, MassEffect2, MassEffect3, MassEffectLauncher -Error
 $open = $null
 if (Test-Path -LiteralPath $current) {
     $open = Get-Content -LiteralPath $current -Raw | ConvertFrom-Json
-    Assert-RunSession $open $Holder $Game ([bool]$DesktopDump)
+    Assert-RunSession $open $Holder $Game ([bool]$DesktopDump) ([bool]$EngineProbe)
 }
 # A second game stretch by the same holder must not create overlapping profile backups.
 $other = Get-RunNames $(if ($Game -eq 'LE2') { 'LE3' } else { 'LE2' })
@@ -51,7 +52,7 @@ if (-not $open) {
     }
     New-Item -ItemType Directory "$S\backup\ME1ASI" | Out-Null
     Copy-Item "$G\ME1\Binaries\Win64\ASI\*.ini" "$S\backup\ME1ASI\" -ErrorAction SilentlyContinue
-    $open = [pscustomobject]@{ holder = $Holder; game = $Game; desktopDump = [bool]$DesktopDump; session = $S;
+    $open = [pscustomobject]@{ holder = $Holder; game = $Game; desktopDump = [bool]$DesktopDump; engineProbe = [bool]$EngineProbe; session = $S;
         since = (Get-Date -Format 's'); install = $install; profile = $docs }
     Assert-RunLock $Holder
     if (Get-Process MassEffect1, MassEffect2, MassEffect3, MassEffectLauncher -ErrorAction SilentlyContinue) { throw 'A game started during backup; deployment refused' }
@@ -60,7 +61,7 @@ if (-not $open) {
     Rename-Item -LiteralPath "$b\bink2w64.dll" -NewName 'bink2w64_original.dll'
     Copy-Item -LiteralPath $proxy.FullName -Destination "$b\bink2w64.dll"
 } else {
-    $open = Read-RunSession $Holder $Game ([bool]$DesktopDump)
+    $open = Read-RunSession $Holder $Game ([bool]$DesktopDump) ([bool]$EngineProbe)
     if (($open.install -and $open.install -ne $install) -or ($open.profile -and $open.profile -ne $docs)) { throw 'Install/profile changed since backup' }
     "The stretch in $($open.session) is open: redeploying only"
 }
@@ -69,8 +70,9 @@ if (Get-Process MassEffect1, MassEffect2, MassEffect3, MassEffectLauncher -Error
 & powershell -NoProfile -ExecutionPolicy Bypass -File "$W\tools\deploy-asi.ps1" -Game $Game -BuildDir $BuildDir -GameRoot $install
 if ($LASTEXITCODE -ne 0) { throw 'Deploy failed; restore the open stretch before releasing its lock' }
 if ($DesktopDump) {
-    [IO.File]::WriteAllText("$b\ASI\${Game}MEVR.ini", "[Debug]`r`ndumpOnly = 1`r`n")
-    'Desktop dump-only prepared: no fake headset or VR settings were invoked'
+    $modeKey = if ($EngineProbe) { 'engineProbe' } else { 'dumpOnly' }
+    [IO.File]::WriteAllText("$b\ASI\${Game}MEVR.ini", "[Debug]`r`n$modeKey = 1`r`n")
+    "Desktop $modeKey prepared: no fake headset or VR settings were invoked"
     exit 0
 }
 & powershell -NoProfile -ExecutionPolicy Bypass -File "$W\tools\vr-game-settings.ps1" -Game $Game | Select-String 'Borderless|Fullscreen|Applied'

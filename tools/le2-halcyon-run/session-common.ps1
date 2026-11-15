@@ -15,16 +15,19 @@ function Get-RunNames([string]$Game) {
     [pscustomobject]@{ game = $Game; number = $n; folder = "ME$n"; process = "MassEffect$n";
         current = (Join-Path $env:LOCALAPPDATA "MEVR\sessions\$($Game.ToLower())-current.json") }
 }
-function Assert-RunMode([string]$Game, [bool]$DesktopDump) {
+function Assert-RunMode([string]$Game, [bool]$DesktopDump, [bool]$EngineProbe = $false) {
     if (($Game -eq 'LE3') -ne $DesktopDump) { throw 'LE3 requires -DesktopDump; LE2 supports the existing VR mode only' }
+    if ($EngineProbe -and ($Game -ne 'LE3' -or -not $DesktopDump)) { throw 'EngineProbe requires LE3 DesktopDump protection' }
 }
-function Assert-RunSession($Open, [string]$Holder, [string]$Game, [bool]$DesktopDump) {
-    Assert-RunMode $Game $DesktopDump
+function Assert-RunSession($Open, [string]$Holder, [string]$Game, [bool]$DesktopDump, [bool]$EngineProbe = $false) {
+    Assert-RunMode $Game $DesktopDump $EngineProbe
     if (-not $Holder -or $Open.holder -ne $Holder) { throw 'Session holder does not match -Holder' }
     $recordedGame = if ($Open.PSObject.Properties['game']) { $Open.game } else { 'LE2' }
     $recordedDump = if ($Open.PSObject.Properties['desktopDump']) { $Open.desktopDump } else { $false }
     if ($recordedDump -isnot [bool]) { throw 'desktopDump metadata must be a JSON boolean' }
     if ($recordedGame -ne $Game -or $recordedDump -ne $DesktopDump) { throw 'Session game/mode differs from the requested game/mode' }
+    $recordedProbe = if ($Open.PSObject.Properties['engineProbe']) { $Open.engineProbe } else { $false }
+    if ($recordedProbe -isnot [bool] -or $recordedProbe -ne $EngineProbe) { throw 'Session engine-probe mode differs from request' }
 }
 function Assert-RunLock([string]$Holder) {
     $path = Join-Path $env:LOCALAPPDATA 'MEVR\game-run.lock'
@@ -41,11 +44,11 @@ function Resolve-RunChild([string]$Root, [string]$Relative) {
     if (-not $path.StartsWith($base + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Run path escapes its intended root' }
     return $path
 }
-function Read-RunSession([string]$Holder, [string]$Game, [bool]$DesktopDump) {
+function Read-RunSession([string]$Holder, [string]$Game, [bool]$DesktopDump, [bool]$EngineProbe = $false) {
     $names = Get-RunNames $Game
     if (-not (Test-Path -LiteralPath $names.current)) { throw "No $Game stretch is open" }
     $open = Get-Content -LiteralPath $names.current -Raw | ConvertFrom-Json
-    Assert-RunSession $open $Holder $Game $DesktopDump
+    Assert-RunSession $open $Holder $Game $DesktopDump $EngineProbe
     Assert-RunLock $Holder
     $sessions = Join-Path $env:LOCALAPPDATA 'MEVR\sessions'
     $safe = Resolve-RunChild $sessions $open.session
@@ -134,11 +137,40 @@ function Assert-RunProcess($Process, $Recorded, [string]$ExpectedPath) {
         $Process.Path -ne $ExpectedPath -or $Process.Path -ne $Recorded.path -or
         $Process.StartTime.ToUniversalTime().ToString('o') -ne $Recorded.startedUtc) { throw 'Unowned or changed process: refusing to stop it' }
 }
-function Assert-RunDumpHost([string]$HostPath) {
-    $marker = 'dump-only: code dump attempted; renderer and hooks disabled'
+function Assert-RunDumpHost([string]$HostPath, [bool]$EngineProbe = $false) {
+    $marker = if ($EngineProbe) { 'engine-probe: host renderer disabled' } else { 'dump-only: code dump attempted; renderer and hooks disabled' }
     if (-not [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($HostPath)).Contains($marker)) {
-        throw 'Selected host lacks the development dump-only gate; refusing a possible VR launch'
+        throw 'Selected host lacks the requested development desktop gate; refusing a possible VR launch'
     }
+}
+function Assert-RunDesktopConfig([string]$Config, [bool]$EngineProbe) {
+    $key = if ($EngineProbe) { 'engineProbe' } else { 'dumpOnly' }
+    if ($Config.Trim() -notmatch ('^\[Debug\]\s+' + $key + '\s*=\s*1$')) {
+        throw 'Desktop diagnostic configuration changed since prep'
+    }
+}
+function Confirm-RunReflection([string]$Path, [DateTime]$Started) {
+    if ((Get-Item -LiteralPath $Path).LastWriteTimeUtc -lt $Started) { throw 'Stale reflection report' }
+    $report = Read-RunLog $Path | ConvertFrom-Json
+    foreach ($key in @('checks', 'agree', 'mismatches', 'notReflected')) {
+        if ($null -eq $report.$key -or $report.$key -is [string] -or $report.$key -is [bool] -or
+            $report.$key -lt 0 -or [math]::Floor($report.$key) -ne $report.$key) { throw 'Invalid reflection counts' }
+    }
+    $rows = @($report.rows)
+    if ($report.checks -lt 1 -or $report.agree -lt 1 -or $rows.Count -ne $report.checks -or
+        $report.agree + $report.mismatches + $report.notReflected -ne $report.checks) { throw 'Incomplete reflection report' }
+    foreach ($row in $rows) {
+        if ($row.agree -isnot [bool] -or $row.notReflected -isnot [bool]) { throw 'Invalid reflection row' }
+    }
+    if (@($rows | Where-Object { $_.agree }).Count -ne $report.agree -or
+        @($rows | Where-Object { -not $_.agree -and $_.notReflected }).Count -ne $report.notReflected -or
+        @($rows | Where-Object { -not $_.agree -and -not $_.notReflected }).Count -ne $report.mismatches) {
+        throw 'Reflection rows disagree with totals'
+    }
+    if ($report.mismatches -ne 0) { throw "Reflection probe found $($report.mismatches) mismatches; inspect the report" }
+    [pscustomobject]@{ path = $Path; sha256 = (Get-FileHash -LiteralPath $Path).Hash;
+        checks = $report.checks; agree = $report.agree; notReflected = $report.notReflected;
+        note = 'Reflection cross-check only; not gameplay or VR acceptance' }
 }
 function Get-RunTextIdentity([string]$Exe) {
     # Only the bounded PE header fields that CodeDump writes; no code disassembly.

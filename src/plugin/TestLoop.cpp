@@ -44,7 +44,7 @@
 #include "plugin/UiWorldFigure.hpp"
 #include "plugin/FloorLock.hpp"
 #endif
-#if defined(MEVR_WITH_HALCYON_LE2) && defined(MEVR_WITH_MAIN_MENU)
+#if (defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)) && defined(MEVR_WITH_MAIN_MENU)
 #include "plugin/Calibration.hpp"  // our menus on LE2 (plugin/MenusLe2, M4)
 #include "plugin/GamePointer.hpp"
 #include "plugin/MainMenu.hpp"
@@ -840,7 +840,7 @@ ModuleBlocks ModuleStatus() {
     m.colour = mevr::host::colour::StatusJson();
     m.cineScreen = mevr::host::cine_screen::StatusJson();  // ME1's 3D cinema screen on LE2 (research/le2-cinema.md)
 #endif
-#if defined(MEVR_WITH_HALCYON_LE2) && defined(MEVR_WITH_MAIN_MENU)
+#if (defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)) && defined(MEVR_WITH_MAIN_MENU)
     m.calibration = calibration::StatusJson();
     m.mainMenu = main_menu::StatusJson();
     m.omniRail = omni_rail::StatusJson();  // the omni-tool's rail on LE2 (M4.3)

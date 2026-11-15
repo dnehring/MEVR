@@ -12,23 +12,32 @@ Read the [reuse audit](le3-port-reuse-audit.md), [ME3 melee audit](../research/l
 
 Implementation is now authorized. The audit baseline above remains historical; these are the first foundation changes:
 
-- **L3-0, partial:** the shared adapter classifies trilogy game modes; wrist/menu and native-table callers use semantic
-  predicates. A bounded read-only ME3 v59 save inspector reuses our binary reader and checksum tooling. All six existing
-  saves passed prefix/CRC inspection unchanged. Their remaining bytes stay opaque; mutation and native fixture
-  preparation remain disabled. See [save foundation](../research/le3-save-foundation.md).
-- **L3-1, diagnostic preparation only:** explicit ME3 reflection comparisons and a reordered-function-layout regression
-  are implemented. Verified live layout/allocator access is **not enabled**: the installed executable's code is encrypted
-  and no runtime ME3 dump was available. See [engine discovery](../research/le3-engine-access-discovery.md).
+- **L3-0, partial:** semantic game-mode mapping is shared. The full ME3 v59 save codec now reconstructs
+  all six existing saves exactly, with independent Trilogy Save Editor full-field comparisons. Bounded private
+  resource variants have offline receipts; native load/save/reload and fixture acceptance remain pending.
+  See [save foundation](../research/le3-save-foundation.md).
+- **L3-1, native analysis implemented:** the protected capture and Ghidra analysis establish ME3's object/function/
+  name layouts and native allocators. Twelve address patterns match uniquely. The shared engine adapter and
+  protected reflection probe are implemented. The live comparison passed 159/159, including native owned-string
+  allocation/free, with zero mismatches. Loaded-player/getter and world-invalidation gates remain open.
+  See [engine discovery](../research/le3-engine-access-discovery.md).
 - **L3-2, candidate integration:** the pinned original ME3 renderer and thin bridge reuse controller, floor, pad, colour,
   capture and replay modules. Unsupported UI/weapon/voice services remain unavailable. First-person world conversations
   stay off. The game-thread queue cannot execute native setters until L3-1 is established and the host restarts; head
   hiding and camera/body behavior are not accepted. See [renderer integration](../research/le3-renderer-integration.md).
-- **L3-3 through L3-10:** no completion claimed. Melee/class mapping, native reload, body/weapon presentation, menus,
+- **L3-3, candidate adapter:** shared hand aim, weapon pose and skeleton representation now have explicit ME3
+  adapters. SMGs retain their native category with a rifle presentation fallback. Native pose and headset review
+  remain pending. See [body pose](../research/le3-body-pose.md).
+- **L3-4, candidate presentation:** shared main menu, calibration, rail and native flat-panel pointer composition
+  are integrated. Native wrist-screen capture and 3D cinema remain separate work; no overlapping screen owner
+  is enabled. See [presentation](../research/le3-shared-presentation.md).
+- **L3-5 through L3-10:** no completion claimed. Melee/class mapping, native reload, body/weapon presentation, menus,
   powers, traversal, galaxy gameplay and campaign/release gates still require their adapters and evidence below.
 
-The next native step is a protected development-host **desktop dump-only** launch, before renderer or gameplay hooks.
-It needs the shared game-run lock and an available coordinated window. The imported renderer must then pass native
-signature review before a VR run. Offline builds and tests never promote these native/headset gates automatically.
+The desktop engine probe passed and restored with zero differences. The next native step is normal descriptor loading
+of an existing coherent save, then player/getter/invalidation checks. It needs the shared game-run lock and an available
+coordinated window. The imported renderer still needs its native access review and first VR run. Offline builds and tests
+never promote these native/headset gates automatically.
 
 Integration checks: all three development host/mod pairs and all three monolithic player ASIs compile. The 59-test
 offline suite passed across the full run and focused reruns (PowerShell module resolution was fixed; the three new
@@ -38,7 +47,8 @@ member was renamed `inReach` to avoid the Windows SDK macro in monolithic builds
 The first two protected launch attempts failed upstream of ME3 and were restored. On resumption, ME3 launched and
 captured its runtime code; a second successful launch validated the corrected live-log reader and dump receipt.
 Both restored with zero differences and released the run lock. Twenty runner safety tests pass. The launcher blocker
-is cleared; L3-1 is now in native code analysis. The imported renderer has not been run or accepted in ME3.
+is cleared. The subsequent engine probe passed 159/159 checks and restored with zero differences; the runner now has
+22 offline safety cases. The imported renderer has not been run or accepted in ME3.
 
 ## Outcome and boundaries
 

@@ -83,7 +83,26 @@ tools\le2-halcyon-run\restore.ps1 -Holder <session name> -Game LE3 -DesktopDump
   checks every original hash/count and only then releases the lock. A second restoration attempt preserves any
   prior aside file under a unique suffix. LE3 restoration does not invoke fake-headset cleanup.
 
-Offline safety checks (synthetic files only):
+### ME3 engine cross-check
+
+Add `-EngineProbe` to **each** LE3 desktop command (prep, launch, stop and restore) to
+run the development reflection cross-check instead of stopping after code capture.
+Prep writes only `[Debug] engineProbe = 1`. The host skips the renderer; the mod runs
+the shared reflection checks on the game thread with gameplay modules disabled.
+The runner requires a fresh `reflect-check.json` with consistent counts and no
+mismatches, and copies the report into the protected session. This mode does not load
+a save or establish gameplay/VR acceptance. Its report and dump receipts remain private.
+
+```powershell
+tools\le2-halcyon-run\prep.ps1 -Holder <session name> -Game LE3 -DesktopDump -EngineProbe -BuildDir <development build>
+tools\le2-halcyon-run\launch.ps1 -Holder <session name> -Game LE3 -DesktopDump -EngineProbe
+tools\le2-halcyon-run\launch.ps1 -Holder <session name> -Game LE3 -DesktopDump -EngineProbe -Stop
+tools\le2-halcyon-run\restore.ps1 -Holder <session name> -Game LE3 -DesktopDump -EngineProbe
+```
+
+### Offline checks
+
+Synthetic files only; these checks never launch or deploy the game.
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File tools\le2-halcyon-run\test-session.ps1

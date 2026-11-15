@@ -21,7 +21,7 @@
 #include "plugin/PresentHook.hpp"
 #include "plugin/ProcessEventHook.hpp"
 
-#if defined(MEVR_WITH_HALCYON) || (defined(MEVR_WITH_HALCYON_LE2) && defined(MEVR_WITH_MAIN_MENU))
+#if defined(MEVR_WITH_HALCYON) || ((defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)) && defined(MEVR_WITH_MAIN_MENU))
 #include "plugin/GamePointer.hpp"
 #endif
 #if defined(MEVR_WITH_HALCYON)
@@ -86,8 +86,15 @@ namespace {
 // hook goes live (core/Hook), so a detour entered at once never calls through null.
 using tGameEngineTick = void(void* self, float deltaSeconds);  // UGameEngine::Tick
 tGameEngineTick* gGameEngineTickOrig = nullptr;
+bool gEngineProbe = false;
 
 void GameEngineTickHook(void* self, float deltaSeconds) {
+    if (gEngineProbe) {
+        mevr::host::crash::NoteGameThread();
+        gGameEngineTickOrig(self, deltaSeconds);
+        mevr::host::Tick(deltaSeconds);
+        return;
+    }
 #if defined(MEVR_WITH_HALCYON)
     mevr::host::perf::GameTickBegin();
 #endif
@@ -247,7 +254,9 @@ extern "C" __declspec(dllexport) bool SpiOnAttach(spi::Interface* InterfacePtr) 
     mevr::host::halcyon_le2::Attach();
 #endif
 #if defined(MEVR_WITH_HALCYON_LE3)
-    mevr::host::halcyon_le3::Attach();
+    gEngineProbe = mevr::engine::DevelopmentEngineProbe();
+    if (!gEngineProbe) mevr::host::halcyon_le3::Attach();
+    else mevr::log::Info("engine-probe: host renderer disabled");
 #endif
     if (InterfacePtr == nullptr) {
         mevr::log::Warn("no SPI interface from the loader: hooking with our own MinHook");
@@ -279,8 +288,8 @@ extern "C" __declspec(dllexport) bool SpiOnAttach(spi::Interface* InterfacePtr) 
     }
 #endif
     HookExitProcess(init);
-#if defined(MEVR_WITH_HALCYON) || (defined(MEVR_WITH_HALCYON_LE2) && defined(MEVR_WITH_MAIN_MENU))
-    mevr::host::game_pointer::InstallCursorHook(init);  // present the tracked pointer's position to the game's GUI
+#if defined(MEVR_WITH_HALCYON) || ((defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)) && defined(MEVR_WITH_MAIN_MENU))
+    if (!gEngineProbe) mevr::host::game_pointer::InstallCursorHook(init);  // present the tracked pointer's position to the game's GUI
 #endif
 #if defined(MEVR_WITH_HALCYON) && defined(MEVR_GAME_LE1)
     mevr::host::kept_locks::Install(init);  // research/36 "The fault at quit": the game's teardown deletes a lock in use

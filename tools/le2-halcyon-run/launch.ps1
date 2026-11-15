@@ -4,13 +4,14 @@ param(
     [Parameter(Mandatory)][string]$Holder,
     [ValidateSet('LE2', 'LE3')][string]$Game = 'LE2',
     [switch]$DesktopDump,
+    [switch]$EngineProbe,
     [switch]$Kill,
     [switch]$Stop
 )
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\session-common.ps1"
-Assert-RunMode $Game ([bool]$DesktopDump)
-$open = Read-RunSession $Holder $Game ([bool]$DesktopDump)
+Assert-RunMode $Game ([bool]$DesktopDump) ([bool]$EngineProbe)
+$open = Read-RunSession $Holder $Game ([bool]$DesktopDump) ([bool]$EngineProbe)
 . "$PSScriptRoot\..\common.ps1"
 $names = Get-RunNames $Game
 $install = (Find-MELEInstall).Root
@@ -39,10 +40,10 @@ if ($Stop -or $Kill) { Stop-Owned }
 if ($Stop) { "$Game owned processes closed"; exit 0 }
 if (Get-Process MassEffect1, MassEffect2, MassEffect3, MassEffectLauncher -ErrorAction SilentlyContinue) { throw 'A game or launcher is already running' }
 if ($DesktopDump) {
-    Assert-RunDumpHost "$bin\ASI\${Game}MEVR.asi"
+    Assert-RunDumpHost "$bin\ASI\${Game}MEVR.asi" ([bool]$EngineProbe)
     $config = [IO.File]::ReadAllText("$bin\ASI\${Game}MEVR.ini")
     # Prep writes this minimal file. Refuse modifications/duplicates that could select a different mode.
-    if ($config.Trim() -notmatch '^\[Debug\]\s+dumpOnly\s*=\s*1$') { throw 'Dump-only configuration changed since prep' }
+    Assert-RunDesktopConfig $config ([bool]$EngineProbe)
 }
 if (-not $DesktopDump) {
     $vr = $null
@@ -84,7 +85,7 @@ for ($i = 0; $i -lt 120 -and -not $p; $i++) {
 }
 if (-not $p) { throw "No $($names.process) within 240 seconds; keep the session locked and inspect it" }
 "$($names.process) pid $($p.pid) startedUtc $($p.startedUtc)"
-$marker = if ($DesktopDump) { 'dump-only: code dump attempted; renderer and hooks disabled' } else { 'VR session ready' }
+$marker = if ($EngineProbe) { 'engine-probe: reflection checks finished' } elseif ($DesktopDump) { 'dump-only: code dump attempted; renderer and hooks disabled' } else { 'VR session ready' }
 $seen = $false
 for ($i = 0; $i -lt 40; $i++) {
     if (Test-Path -LiteralPath $log) {
@@ -98,10 +99,15 @@ for ($i = 0; $i -lt 40; $i++) {
 if (-not $seen) { throw "Expected marker was not observed: $marker (the session remains owned; use -Stop, then restore)" }
 $marker
 if ($DesktopDump) {
+    if ($EngineProbe) {
+        $reflection = Confirm-RunReflection (Join-Path $env:LOCALAPPDATA 'MEVR\reflect-check.json') $started
+        Copy-Item -LiteralPath $reflection.path -Destination (Join-Path $open.session 'reflect-check.json')
+    }
     $dump = Confirm-RunDump $exe (Join-Path $env:LOCALAPPDATA 'MEVR\dump')
     $receipt = [pscustomobject]@{ game = $Game; desktopDump = $true; holder = $Holder; launchRequestedUtc = $started.ToString('o');
         process = $open.gameProcess; marker = $marker; dump = $dump; hostSha256 = (Get-FileHash -LiteralPath "$bin\ASI\${Game}MEVR.asi").Hash;
-        freshDump = ([DateTime]::Parse($dump.writtenUtc).ToUniversalTime() -ge $started); nativeAcceptance = $false }
+        freshDump = ([DateTime]::Parse($dump.writtenUtc).ToUniversalTime() -ge $started); nativeAcceptance = $false;
+        engineProbe = [bool]$EngineProbe; reflection = $(if ($EngineProbe) { $reflection } else { $null }) }
     $receipt | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $open.session 'desktop-dump.json') -Encoding utf8
     "Dump headers, size and hashes checked; fresh dump this launch: $($receipt.freshDump). Receipt: $($open.session)\desktop-dump.json"
 }

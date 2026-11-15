@@ -10,6 +10,7 @@
 #include "plugin/CrashBreadcrumbs.hpp"
 #include "plugin/PresentHook.hpp"
 #include "plugin/ProcessEventHook.hpp"
+#include "engine/SettingsFile.hpp"
 
 #if defined(MEVR_WITH_HALCYON_LE3)
 #include "core/vr/AimRay.hpp"
@@ -44,7 +45,7 @@
 #include "core/vr/Traversal.hpp"
 #include "plugin/TraversalCue.hpp"
 #endif
-#if defined(MEVR_WITH_HALCYON_LE2) && defined(MEVR_WITH_MAIN_MENU)
+#if (defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)) && defined(MEVR_WITH_MAIN_MENU)
 #include "core/vr/Calibration.hpp"
 #include "plugin/Thespian.hpp"
 #include "core/vr/WorldUi.hpp"
@@ -524,7 +525,7 @@ void ForgetLe1ModState() {
 }
 #endif
 
-#if defined(MEVR_WITH_HALCYON_LE2) && defined(MEVR_WITH_MAIN_MENU)
+#if (defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)) && defined(MEVR_WITH_MAIN_MENU)
 // LE2 (M4, research/le2-menus.md): our main menu and the guided calibration, as LE1's WithLe1Modules and
 // WithGameMenuRequest give them: v15 the calibration's state, v16 the menu's state, v19 its Game menu and Holster buttons.
 void HostCalibration(vr::calibration::HostState* out) {
@@ -536,6 +537,7 @@ std::uint32_t HostMainMenu() {
 std::uint32_t HostTakeGameMenuRequest() {
     return static_cast<std::uint32_t>(main_menu::TakeGameRequest());
 }
+#if defined(MEVR_WITH_HALCYON_LE2)
 // M4.3 (research/le2-menus.md "ME2's screens on the wrist"): the game's screens on the wrist, as LE1's WithWorldUi gives them
 // (v27 setWorldUi, v34 reserveWorldUi, the rail's requests with their origin), and the game pointer's GUI events (v30).
 void HostSetWorldUi(vr::world_ui::State const* state) {
@@ -547,17 +549,20 @@ std::uint32_t HostTakeGameUiRequest() {
 std::uint32_t HostTakeGuiEvents(std::uint8_t* events, std::uint32_t capacity) {
     return game_pointer::TakeGuiEvents(events, capacity);
 }
+#endif
 HostServices WithMenus(HostServices services) {
     services.calibrationStateSize = static_cast<std::uint32_t>(sizeof(vr::calibration::HostState));
     services.calibration = &HostCalibration;
     services.mainMenu = &HostMainMenu;
     services.takeGameMenuRequest = &HostTakeGameMenuRequest;
+#if defined(MEVR_WITH_HALCYON_LE2)
     services.worldUiSize = static_cast<std::uint32_t>(sizeof(vr::world_ui::State));
     services.setWorldUi = &HostSetWorldUi;
     services.takeGameUiRequest = &HostTakeGameUiRequest;
     services.reserveWorldUi = &world_ui::Reserve;
     services.logWorldUiStats = &world_ui::LogStats;
     services.takeGuiEvents = &HostTakeGuiEvents;
+#endif
     return services;
 }
 #endif
@@ -567,6 +572,7 @@ HostServices WithMenus(HostServices services) {
 // that comes over to LE2 moves its With* out of the LE1-only list.
 HostServices BuildServices() {
     HostServices services = WithCrashBreadcrumbs(BaseServices());
+    if (engine::DevelopmentEngineProbe()) return services;
 #if defined(MEVR_WITH_HALCYON_LE3)
     // Foundation only: no UI/weapon/voice capabilities until their native and renderer paths are connected.
     services = WithFloorLock(WithPadMerge(WithRenderer(services)));
@@ -604,10 +610,12 @@ HostServices BuildServices() {
     services = WithLe1ExtraUi(WithWorldUi(WithGalaxyHologram(WithGalaxyMap(WithSpectator(WithMakoControls(
         WithInteractLabel(WithScopeCapture(WithGameMenuRequest(WithLe1Modules(services))))))))));
 #endif
-#if defined(MEVR_WITH_HALCYON_LE2) && defined(MEVR_WITH_MAIN_MENU)
+#if (defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)) && defined(MEVR_WITH_MAIN_MENU)
     services = WithMenus(services);  // our main menu and the calibration on LE2 (M4)
+#if defined(MEVR_WITH_HALCYON_LE2)
     services.thespianPanelSize = static_cast<std::uint32_t>(sizeof(vr::thespian::Panel));
     services.setThespian = &thespian::SetPanel;
+#endif
 #endif
     return services;
 }
@@ -627,9 +635,11 @@ void ForgetModState() {
 #if defined(MEVR_WITH_HALCYON)
     ForgetLe1ModState();
 #endif
-#if defined(MEVR_WITH_HALCYON_LE2) && defined(MEVR_WITH_MAIN_MENU)
+#if (defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)) && defined(MEVR_WITH_MAIN_MENU)
     world_ui::Forget();  // ME2's screens and pending ownership go back to Halcyon's flat panel (M4.3)
+#if defined(MEVR_WITH_HALCYON_LE2)
     thespian::SetPanel(nullptr);
+#endif
 #endif
 }
 loader::spi::Interface* gSpi = nullptr;

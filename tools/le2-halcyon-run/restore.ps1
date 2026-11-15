@@ -3,11 +3,11 @@
 # their manifests (changed files copied back, files the runs added moved aside into the session folder, never deleted),
 # every file checked hash for hash, the run lock released. Once per task, not after every run.
 param([Parameter(Mandatory)][string]$Holder,
-    [ValidateSet('LE2', 'LE3')][string]$Game = 'LE2', [switch]$DesktopDump)
+    [ValidateSet('LE2', 'LE3')][string]$Game = 'LE2', [switch]$DesktopDump, [switch]$EngineProbe)
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\session-common.ps1"
-Assert-RunMode $Game ([bool]$DesktopDump)
-$open = Read-RunSession $Holder $Game ([bool]$DesktopDump)
+Assert-RunMode $Game ([bool]$DesktopDump) ([bool]$EngineProbe)
+$open = Read-RunSession $Holder $Game ([bool]$DesktopDump) ([bool]$EngineProbe)
 . "$PSScriptRoot\..\common.ps1"
 $W = (Resolve-Path "$PSScriptRoot\..\..").Path
 $names = Get-RunNames $Game
@@ -23,6 +23,14 @@ New-Item -ItemType Directory -Force "$S\logs" | Out-Null
 Copy-Item "$G\$($names.folder)\Binaries\Win64\Logs\${Game}MEVR.log" "$S\logs\" -ErrorAction SilentlyContinue
 if (-not $DesktopDump) { Copy-Item "$env:LOCALAPPDATA\MELE2VR\MELE2VR_Log.txt" "$S\logs\" -ErrorAction SilentlyContinue }
 Copy-Item "$env:LOCALAPPDATA\MEVR\crash-breadcrumbs.txt" "$S\logs\" -ErrorAction SilentlyContinue
+if ($EngineProbe -and $open.launchRequestedUtc) {
+    $reportPath = Join-Path $env:LOCALAPPDATA 'MEVR\reflect-check.json'
+    if ((Test-Path -LiteralPath $reportPath) -and
+        (Get-Item -LiteralPath $reportPath).LastWriteTimeUtc -ge [DateTime]::Parse($open.launchRequestedUtc).ToUniversalTime()) {
+        # Preserve failing reports too. This copy is evidence, never an acceptance flag.
+        Copy-Item -LiteralPath $reportPath -Destination (Join-Path $S 'reflect-check.json')
+    }
+}
 "logs kept in $S\logs"
 
 if (-not $DesktopDump) {

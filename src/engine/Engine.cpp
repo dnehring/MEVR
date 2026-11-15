@@ -3,7 +3,7 @@
 
 // LE1 and LE2: through our reflection layer (research/34; LE2's layout since M1, docs/le2-continuation-plan.md). On LE2 the
 // world and the object count fall back to LExSDKv2's GWorld (engine/Legacy) while the layer is off.
-#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 
 #include "core/Log.hpp"
 #include "ue3/Runtime.hpp"

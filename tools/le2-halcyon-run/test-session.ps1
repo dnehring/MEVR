@@ -60,6 +60,34 @@ try {
         Reject { Assert-RunSession $legacy intruder LE2 $false }
         Reject { Assert-RunSession $legacy owner LE3 $true }
     }
+    Case 'engine probe is explicit and cannot change an open mode' {
+        Assert-RunMode LE3 $true $true
+        Reject { Assert-RunMode LE2 $false $true }
+        $session = [pscustomobject]@{ holder = 'owner'; game = 'LE3'; desktopDump = $true; engineProbe = $true }
+        Assert-RunSession $session owner LE3 $true $true
+        Reject { Assert-RunSession $session owner LE3 $true $false }
+        $session.engineProbe = 'true'
+        Reject { Assert-RunSession $session owner LE3 $true $true }
+        Assert-RunDesktopConfig "[Debug]`nengineProbe = 1" $true
+        Assert-RunDesktopConfig "[Debug]`ndumpOnly = 1" $false
+        Reject { Assert-RunDesktopConfig "[Debug]`ndumpOnly = 1" $true }
+        Reject { Assert-RunDesktopConfig "[Debug]`nengineProbe = 1`ndumpOnly = 1" $true }
+    }
+    Case 'reflection acceptance needs fresh consistent rows and no mismatches' {
+        $path = Join-Path $root 'reflect.json'
+        $began = [DateTime]::UtcNow.AddSeconds(-5)
+        $validReport = '{"checks":2,"agree":1,"mismatches":0,"notReflected":1,"rows":[{"agree":true,"notReflected":false},{"agree":false,"notReflected":true}]}'
+        [IO.File]::WriteAllText($path, $validReport)
+        $receipt = Confirm-RunReflection $path $began
+        Check ($receipt.agree -eq 1 -and $receipt.notReflected -eq 1)
+        Reject { Confirm-RunReflection $path ([DateTime]::UtcNow.AddMinutes(1)) }
+        [IO.File]::WriteAllText($path, $validReport.Replace('"agree":1', '"agree":2'))
+        Reject { Confirm-RunReflection $path $began }
+        [IO.File]::WriteAllText($path, $validReport.Replace('"mismatches":0', '"mismatches":1').Replace('"notReflected":1', '"notReflected":0').Replace('"notReflected":true', '"notReflected":false'))
+        Reject { Confirm-RunReflection $path $began }
+        [IO.File]::WriteAllText($path, '{}')
+        Reject { Confirm-RunReflection $path $began }
+    }
     Case 'explicit wrong game and malformed false strings rejected' {
         $session = [pscustomobject]@{ holder = 'owner'; game = 'LE3'; desktopDump = $true }
         Assert-RunSession $session owner LE3 $true
@@ -176,6 +204,10 @@ try {
         [IO.File]::WriteAllText("$root\host.asi", 'old host'); Reject { Assert-RunDumpHost "$root\host.asi" }
         [IO.File]::WriteAllText("$root\host.asi", 'dump-only: code dump attempted; renderer and hooks disabled')
         Assert-RunDumpHost "$root\host.asi"
+        Reject { Assert-RunDumpHost "$root\host.asi" $true }
+        [IO.File]::WriteAllText("$root\host.asi", 'engine-probe: host renderer disabled')
+        Assert-RunDumpHost "$root\host.asi" $true
+        Reject { Assert-RunDumpHost "$root\host.asi" $false }
     }
     "$count offline runner tests passed"
 } finally {

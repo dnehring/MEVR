@@ -1,5 +1,78 @@
 <!-- SPDX-License-Identifier: MIT -->
-# LE3 engine access: foundation discovery receipt
+# ME3 native engine access
+
+Original observations from the protected desktop capture of executable 2.0.0.48602,
+timestamp `0x60AEF0C4`, on 2026-11-15. No game code or dump is distributed here.
+This extends the shared `ue3` implementation through `GameAdapter`; it does not enable
+all ME1 gameplay modules. Runtime cross-check and gameplay acceptance are separate gates.
+
+## Layout evidence
+
+| Native reader (RVA) | Observed layout |
+|---|---|
+| UObject destructor `0x121250`, execIsA `0xE2BA0` | Object index `08`, class `50`, superclass `60` |
+| IsPendingKill `0x879D0` | 64-bit flags at `0C`, pending-kill bit 61 |
+| GetPathName `0x127F60` | Outer `40`, name `48` |
+| ProcessEvent `0xF4F80`, CallFunction `0xF2C30` | Function flags `E0`, native index `E4`, parameter size `E6`, return offset `E8`, function pointer `D8` |
+| ProcessEvent parameter loops | Struct children `70`, size `78`; next field `68`; property array count `70`, element size `74`, flags `78`, offset `94` |
+| execLetBool `0xE98A0` | Typed property payload `D0` |
+| AppendString `0x90580`, entry text `0x904E0` | Pool shift 29/mask 7, offset mask `1FFFFFFF`, characters `0C`, wide flag `40000000` |
+| UObject vtable at `0x10774F8` | ProcessEvent slot `230` |
+| CallFunction | Frame object `20`, code `28`; existing LE3 frame layout retained |
+
+The function pointer precedes the flags on ME3. Copying the ME1/ME2 function layout
+would therefore call the wrong address even though much of UObject is shared.
+
+Globals: GObjects `0x1887E40`, name pools `0x17B33D0`, GMalloc `0x17CD588`,
+GNatives `0x17F4BB0`. Allocators `0xBF110` and `0xBF0D0` use the same arguments as
+ME2, with allocation/free virtual slots `08`/`18`. Both load the same GMalloc.
+All twelve function/data patterns in the ME3 address table matched exactly once in
+the captured text; all four RIP-relative data targets matched the declared globals.
+The complete allocator patterns also match, not merely their prologues.
+The Draw end is checked structurally against unwind data, without an invented pattern.
+
+Skeleton evidence and remaining live pose gates are in [body pose](le3-body-pose.md).
+
+## Protected engine probe
+
+`tools/le2-halcyon-run` extends its existing LE3 desktop route with `-EngineProbe`.
+It retains the session lock, save/install backups, Steam launch, process identity checks,
+and hash-verified restoration. Both host and mod read the development-only option.
+The host skips Halcyon and render/input initialization; the mod only initializes the
+reflection layer and runs the existing independent LExSDKv2 cross-check on the game thread.
+No gameplay module starts, and no save is loaded. The check exercises native owned-string
+allocation/free in addition to reflected fields and functions.
+
+The runner requires a fresh completed report, consistent per-row totals, and zero
+mismatches. Native-only fields explicitly absent from reflection remain separately
+counted, not silently treated as passing. A passing probe does not prove a player,
+weapon pose, VR renderer, menus or combat.
+
+### Native probe result, 2026-11-15 13:00 local
+
+The protected `LE3-reflection` session launched through Steam with host/mod built from
+integration `a202e37f` plus the engine adapter/probe changes. Host and mod address gates
+accepted all 13 entries (12 unique byte patterns plus Draw-end structure; the mod recognized
+the host's already-installed ProcessEvent hook). The renderer remained disabled.
+
+The live cross-check passed **159/159**, with zero mismatches and zero unreflected rows.
+It observed 107,531 objects; sampled names (20,057), full names (1,892), and IsA/liveness
+comparisons (28,656) all agreed. Native owned strings were built, read and freed through
+both allocator paths. The report completed in 73 ms. This proves the measured reflection
+and heap contracts, not a live weapon getter, loaded-player identity or pose writes.
+
+The owned process stopped, all three backup trees restored with zero differences, the
+LE1 INI remained unchanged, and the global lock was released. No save was loaded; the
+profile had zero changed or added files. No SteamVR/runtime settings were changed.
+Private report, log and host/dump hashes remain in the protected session directory.
+Next: native descriptor loading, same-tick getter/field agreement and world/actor invalidation,
+followed by the renderer and gameplay gates in the implementation plan.
+
+## Historical foundation and capture record
+
+The following records the earlier discovery stages. Statements that the dump/layout were unavailable
+are historical and superseded by the native-code evidence above.
+
 
 2026-11-15, starting from `83539790`. This is L3-1 of the
 [unified ME3 plan](../docs/le3-port-implementation-plan.md). No game was launched,
