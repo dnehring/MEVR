@@ -35,6 +35,24 @@ try {
             Check ((Read-RunLog $logPath) -eq [Text.Encoding]::UTF8.GetString($bytes))
         } finally { $writer.Dispose() }
     }
+    Case 'startup settings wait for writer but reject persistent locks and missing files' {
+        $iniPath = Join-Path $root 'startup.ini'
+        [IO.File]::WriteAllText($iniPath, 'complete settings')
+        $script:startupWriter = [IO.File]::Open($iniPath, [IO.FileMode]::Open, [IO.FileAccess]::Write, [IO.FileShare]::None)
+        try {
+            Reject { Read-RunStartupText $iniPath 1 }
+            $script:startupRetries = 0
+            function Start-Sleep([int]$Milliseconds) {
+                Check ($Milliseconds -eq 100)
+                $script:startupRetries++
+                $script:startupWriter.Dispose()
+            }
+            Check ((Read-RunStartupText $iniPath 2) -ceq 'complete settings')
+            Check ($script:startupRetries -eq 1)
+            Reject { Read-RunStartupText (Join-Path $root 'missing.ini') 2 }
+            Check ($script:startupRetries -eq 1)
+        } finally { $script:startupWriter.Dispose() }
+    }
     Case 'scripts parse in Windows PowerShell' {
         foreach ($name in @('session-common', 'run-lock', 'prep', 'launch', 'restore', 'load', 'load-common', '..\vr-game-settings')) {
             $tokens = $null; $errors = $null

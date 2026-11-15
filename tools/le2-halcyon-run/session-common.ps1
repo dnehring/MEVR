@@ -438,13 +438,27 @@ function Assert-PreviewConfig([string]$Bin, [ValidateSet(0, 2, 4)][int]$Mode = 4
     if ([IO.File]::ReadAllText((Join-Path $Bin 'ASI\LE3MEVR.ini')) -cne (Get-PreviewModConfig) -or
         [IO.File]::ReadAllText((Join-Path $Bin 'MELE3VR.ini')) -cne (Get-PreviewRendererConfig $Mode $Diagnostics $MirrorEvery)) { throw 'Preview configuration changed since prep' }
 }
+function Read-RunStartupText([string]$Path, [ValidateRange(1,50)][int]$Attempts = 50) {
+    # The mod can still be appending defaults when XR becomes ready. Keep normal
+    # read sharing: wait for the writer, rather than accepting a partial write.
+    for ($attempt = 0; $attempt -lt $Attempts; $attempt++) {
+        try { return [IO.File]::ReadAllText($Path) }
+        catch [IO.IOException] {
+            $fault = $_.Exception
+            while ($fault.InnerException) { $fault = $fault.InnerException }
+            $code = $fault.HResult -band 0xffff
+            if ($code -notin @(32,33) -or $attempt + 1 -eq $Attempts) { throw }
+            Start-Sleep -Milliseconds 100
+        }
+    }
+}
 function Confirm-PreviewInitializedConfig([string]$Bin, $Artifacts, [ValidateSet(0, 2, 4)][int]$Mode = 4, [bool]$Diagnostics = $false,
     [ValidateSet(1, 2, 4, 8)][int]$MirrorEvery = 8) {
     # HandCalibration and Colour append their compiled defaults on the first tick.
     # Only that append is permitted; protected keys, renderer mode and all binaries
     # retain their exact prep identity. Preserve the effective settings in the receipt.
     $mod = Join-Path $Bin 'ASI\LE3MEVR.ini'
-    $text = [IO.File]::ReadAllText($mod)
+    $text = Read-RunStartupText $mod
     $prefix = Get-PreviewModConfig
     if (-not $text.StartsWith($prefix, [StringComparison]::Ordinal) -or
         [IO.File]::ReadAllText((Join-Path $Bin 'MELE3VR.ini')) -cne (Get-PreviewRendererConfig $Mode $Diagnostics $MirrorEvery)) {
