@@ -14,6 +14,7 @@
 #include "engine/ProcessEvent.hpp"
 #include "engine/SettingsFile.hpp"
 #include "game/HeadTracking.hpp"
+#include "game/Le3Powers.hpp"
 #include "game/OmniTool.hpp"
 #include "game/Player.hpp"
 #include "game/SquadWeapons.hpp"
@@ -89,6 +90,14 @@ bool Le2AmmoWeaponHeld() {
 }
 #endif
 
+#if defined(MEVR_GAME_LE3)
+ue3::FieldRef& gPowerManager = le3_powers::manager;
+ue3::FieldRef& gManagedPowers = le3_powers::powers;
+ue3::Name gLe2Selected;  // shared sequel selection state; never writes native quick slots
+ue3::Object* gLe2SelectionPawn = nullptr;
+ue3::Object* gLe2SelectionManager = nullptr;
+#endif
+
 // ---- Settings: [PowerWheel] in the mod's settings file, read once a second, its defaults appended when it's missing --
 constexpr char kBlock[] =
     "\n"
@@ -97,7 +106,7 @@ constexpr char kBlock[] =
     "; move your left hand toward one (or push the left stick toward it: you don't walk while it's open) and let go of X to\n"
     "; equip it. Tap X instead and it stays open: a pinch of the left trigger, a squeeze of the left grip or X again equips.\n"
     "; Push your left hand to cast a targeted power (lock, below).\n"
-#if !defined(MEVR_GAME_LE2)
+#if !defined(MEVR_GAME_LE2) && !defined(MEVR_GAME_LE3)
     "; While on = 1, X never throws a grenade on foot (the physical throw stays).\n"
 #endif
     "; widthM the wheel's width; towardM its centre from your palm toward your eyes; deadZoneM how far\n"
@@ -140,7 +149,10 @@ constexpr char kBlock[] =
     "autoLockHandDeg = 30\n"
     "autoLockGazeDeg = 20\n"
     "; selfGestures 1: the powers that aim at nothing are cast by a gesture of the open left hand, not the push: the palm on\n"
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE3)
+    "; your chest (native buffs), slapped onto your drawn gun (ammo powers), or raised above your head (Unity).\n"
+    "; 0: the push casts them too. The game's own availability, cooldown and resources still apply.\n"
+#elif defined(MEVR_GAME_LE2)
     "; your chest (Adrenaline Rush, Barrier) or slapped onto your drawn gun (ammo powers). 0: the push casts them too.\n"
 #else
     "; your chest (Barrier, Shield Boost, Immunity, Adrenaline Burst), slapped onto the gun (Marksman, Overkill, Carnage,\n"
@@ -258,7 +270,58 @@ struct Power {
     std::optional<bool> requiredWeapon;
     std::int32_t enabledCount = 0;  // m_nEnabled
     std::int32_t suppressed = 0;    // m_nSuppressedCount
+    std::optional<pw::SelfGesture> nativeGesture;
 };
+
+pw::SelfGesture GestureFor(Power const& power) {
+    return power.nativeGesture.value_or(pw::SelfGestureFor(power.label.c_str()));
+}
+
+#if defined(MEVR_GAME_LE3)
+// Metadata is attached to actual native instances, never a synthetic roster. Unknown/DLC
+// names keep their identity and a generic icon; the native PowerType chooses self vs aimed.
+struct Le3Label {
+    std::string label;
+    std::string name;
+    pw::PowerInfo info{};
+};
+std::map<std::string, Le3Label> gLe3Labels;
+
+std::optional<Power> Le3Power(ue3::Object* object, bool includeUnlearned) {
+    auto& r = ue3::runtime::Get();
+    if (!r.IsAlive(object) || !le3_powers::visible.ReadBool(object).value_or(false)) return std::nullopt;
+    auto state = le3_powers::State(object);
+    auto const type = le3_powers::type.Read<std::uint8_t>(object);
+    auto const name = le3_powers::name.Read<ue3::Name>(object);
+    if (!state || !type || *type >= 4 || !name || name->Key() == 0) return std::nullopt;
+    auto const availability = pw::EvaluateNativePower(*state);
+    if (!availability.valid || (!availability.learned && !includeUnlearned)) return std::nullopt;
+    auto const label = r.ToString(*name);
+    auto const* known = pw::FindLe2Power(label.c_str());  // display text/icons only, not availability or membership
+    auto [entry, added] = gLe3Labels.try_emplace(label);
+    auto& text = entry->second;
+    if (added) {
+        text.label = label;
+        text.name = known != nullptr ? known->name : label;
+    }
+    bool const ammo = ue3::IsA(object, le3_powers::ammoClass);
+    auto const gesture = pw::NativeSelfGesture(ammo, ue3::IsA(object, le3_powers::reviveClass), *type == 3);
+    bool const self = gesture != pw::SelfGesture::None;  // installed EPowerType: Buff = 3
+    text.info = {text.label.c_str(), text.name.c_str(), known != nullptr ? known->discipline : std::uint8_t{2},
+        known != nullptr ? known->icon : 0, self ? pw::Aim::None : pw::Aim::Place};
+    Power power;
+    power.object = object;
+    power.name = *name;
+    power.label = label;
+    power.info = &text.info;
+    power.enabledCount = availability.learned ? 1 : 0;
+    power.gameEnabled = state->enabled;
+    power.enabled = availability.enabled;
+    power.cooldown = availability.cooldown;
+    power.nativeGesture = gesture;
+    return power;
+}
+#endif
 
 bool CallBool(ue3::Object* object, ue3::FunctionRef& ref) {
     ue3::Function* const function = ref.Get();
@@ -305,7 +368,7 @@ std::optional<Power> Le2Power(ue3::Object* object, bool includeUnlearned) {
 }
 #endif
 
-#if !defined(MEVR_GAME_LE2)
+#if !defined(MEVR_GAME_LE2) && !defined(MEVR_GAME_LE3)
 void ReadEnabled(Power& power, ue3::Object* object) {
     power.gameEnabled = gIsEnabledFn.Get() != nullptr ? std::optional<bool>(CallBool(object, gIsEnabledFn)) : std::nullopt;
     power.requiredWeapon = gIsRequiredWeaponFn.Get() != nullptr ? std::optional<bool>(CallBool(object, gIsRequiredWeaponFn)) : std::nullopt;
@@ -315,7 +378,7 @@ void ReadEnabled(Power& power, ue3::Object* object) {
 
 std::string EnabledChecks(Power const& power) {
     auto const flag = [](std::optional<bool> value) { return value ? (*value ? "true" : "false") : "function missing"; };
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     return std::format("learned {}, IsEnabled {}{}", power.enabledCount > 0, flag(power.gameEnabled),
         power.requiredWeapon ? std::format(", compatible weapon drawn {}", *power.requiredWeapon) : "");
 #else
@@ -329,7 +392,24 @@ std::string EnabledChecks(Power const& power) {
 // cast it now (IsEnabled false: suppressed; or its weapon isn't the one held).
 std::vector<Power> ReadRoster(ue3::Object* pawn, bool includeUnlearned) {
     std::vector<Power> out;
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE3)
+    auto* const manager = gPowerManager.Read<ue3::Object*>(pawn).value_or(nullptr);
+    auto const list = ue3::runtime::IsAlive(manager) ? gManagedPowers.ElementsOf(manager) : std::nullopt;
+    if (!list || list->count > 128) return out;
+    for (int i = 0; i < list->count; ++i) {
+        auto** slot = static_cast<ue3::Object**>(list->At(i));
+        if (slot == nullptr) continue;
+        if (auto power = Le3Power(*slot, includeUnlearned)) {
+            if (std::none_of(out.begin(), out.end(), [&](Power const& p) { return p.name == power->name; }))
+                out.push_back(std::move(*power));
+        }
+    }
+    // A larger custom roster needs paging. Do not silently hide native powers.
+    if (out.size() >= static_cast<std::size_t>(pw::kMaxEntries)) {
+        log::Warn("power wheel: LE3 native roster exceeds wheel capacity; disable PowerWheel to use native controls");
+        return {};
+    }
+#elif defined(MEVR_GAME_LE2)
     auto* const manager = gPowerManager.Read<ue3::Object*>(pawn).value_or(nullptr);
     auto const list = ue3::runtime::IsAlive(manager) ? gManagedPowers.ElementsOf(manager) : std::nullopt;
     if (!list) return out;
@@ -406,7 +486,7 @@ ue3::Object* PlayerInput(ue3::Object* controller) {
 }
 
 std::string MappedPower(ue3::Object* controller) {
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     (void)controller;
     return ue3::runtime::NameText(gLe2Selected);
 #else
@@ -453,7 +533,7 @@ XrVector3f HeadForwardFlat(XrQuaternionf const& q) {
 }
 
 void Equip(ue3::Object* controller, Power const& power) {
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     (void)controller;
     std::string const before = MappedPower(controller);
     gLe2Selected = power.name;
@@ -474,7 +554,7 @@ void Equip(ue3::Object* controller, Power const& power) {
                   "until a power is chosen", before.empty() ? "none" : before, MappedPower(controller));
         return;
     }
-    pw::SelfGesture const gesture = gSelfGestures ? pw::SelfGestureFor(power.label.c_str()) : pw::SelfGesture::None;
+    pw::SelfGesture const gesture = gSelfGestures ? GestureFor(power) : pw::SelfGesture::None;
     log::Info("power wheel: equipped {} ({}): the game's mapped power was {}; {} casts it", power.info->name, power.label,
         before.empty() ? "none" : before, gesture != pw::SelfGesture::None ? pw::Name(gesture) : "a push of the left hand");
 }
@@ -486,7 +566,7 @@ ue3::FieldRef gNextPawn{"Engine.Pawn", "NextPawn", ue3::kEveryGame};
 ue3::FieldRef gHidden{"Engine.Actor", "bHidden", ue3::kEveryGame};
 ue3::FieldRef gBehaviorActive{"SFXGame.BioActorBehavior", "bActive", ue3::kEveryGame};  // the encounter's switch (dormant: false)
 ue3::FunctionRef gIsHostileFn{"SFXGame.BioPawn.IsHostile", ue3::kEveryGame};
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 ue3::FunctionRef gIsDeadFn{"Engine.Pawn.IsDead", ue3::kEveryGame};
 #else
 ue3::FunctionRef gIsDeadFn{"SFXGame.BioPawn.IsDead"};
@@ -552,7 +632,14 @@ XrVector3f RotateXr(XrQuaternionf q, XrVector3f v) {
 
 // The power the game has mapped (the wheel's equip, or the game's own wheel), if it's one of the player's.
 std::optional<Power> ReadyPower(ue3::Object* controller, ue3::Object* pawn) {
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE3)
+    (void)controller;
+    if (gLe2Selected.Key() == 0 || pawn != gLe2SelectionPawn ||
+        gPowerManager.Read<ue3::Object*>(pawn).value_or(nullptr) != gLe2SelectionManager) return std::nullopt;
+    auto const roster = ReadRoster(pawn, false);
+    for (auto const& power : roster) if (power.name == gLe2Selected) return power;
+    return std::nullopt;
+#elif defined(MEVR_GAME_LE2)
     (void)controller;
     if (gLe2Selected.Key() == 0 || pawn != gLe2SelectionPawn) return std::nullopt;
     auto const list = ue3::runtime::IsAlive(gLe2SelectionManager) ? gManagedPowers.ElementsOf(gLe2SelectionManager) : std::nullopt;
@@ -720,7 +807,24 @@ bool Cast(ue3::Object* controller, Power const& power, ue3::Object* target, std:
         return false;
     }
     ue3::Params parms(ue3::runtime::Get(), fn);
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE3)
+    auto* const pawn = player::BioPawn(controller);
+    auto const current = ReadyPower(controller, pawn);
+    auto const frame = view_anchor::Current();
+    if (!current || current->object != power.object || !current->enabled || current->cooldown > 0.0f ||
+        !frame || !CallBool(input, gIsCombatEnabledFn) || !le3_powers::CanUse(power.object, target)) {
+        gLastCast = std::string(power.info->name) + ": native power/loadout/target/resource guard refused";
+        return false;
+    }
+    auto const rotation = engine::ToRotation(engine::OrientationToWorld(*frame, frame->head.orientation).forward);
+    if (!parms.Set("nmPower", power.name) || !parms.Set("oTarget", target) ||
+        !parms.Set("vTargetLocation", at ? ToVector(*at) : ue3::Vector{}) ||
+        !parms.Set("vOriginalCameraLocation", ToVector(frame->headWorld)) ||
+        !parms.Set("rOriginalCameraRotation", ue3::Rotator{rotation.pitch, rotation.yaw, 0})) {
+        gLastCast = "LE3 ActivatePower parameter contract unavailable";
+        return false;
+    }
+#elif defined(MEVR_GAME_LE2)
     auto* const pawn = player::BioPawn(controller);
     if (pawn == nullptr || !CallBool(input, gIsCombatEnabledFn) || CallBool(pawn, gLe2BlockingAction) ||
         (target != nullptr && !ue3::runtime::IsAlive(target)) || !parms.Set("nmPower", power.name)) {
@@ -741,10 +845,14 @@ bool Cast(ue3::Object* controller, Power const& power, ue3::Object* target, std:
     if (at) {
         parms.Set("vTargetLocation", ToVector(*at));
     }
-    ue3::runtime::Call(input, fn, parms);
-    bool const ok = parms.ReturnBool().value_or(false);
+    bool const ok = ue3::runtime::Call(input, fn, parms) && parms.ReturnBool().value_or(false);
     gLastCast = std::format("{} at {}{}: {}", power.info->name, target != nullptr ? NameOf(target) : std::string("no actor"),
-        at ? std::format(" ({:.0f}, {:.0f}, {:.0f})", at->x, at->y, at->z) : std::string(), ok ? "started" : "the game refused it");
+        at ? std::format(" ({:.0f}, {:.0f}, {:.0f})", at->x, at->y, at->z) : std::string(),
+#if defined(MEVR_GAME_LE3)
+        ok ? "native request accepted (execution/release not yet observed)" : "the game refused it");
+#else
+        ok ? "started" : "the game refused it");
+#endif
     return ok;
 }
 
@@ -790,8 +898,8 @@ struct Bolt {
     std::string template_;
 };
 std::optional<Bolt> gBolt;
-#if defined(MEVR_GAME_LE2)
-bool gBoltOn = false;          // ME2 uses its native projectiles and effects
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+bool gBoltOn = false;          // sequels use their native projectiles and effects
 #else
 bool gBoltOn = true;           // `mevr powerwheel bolt on|off` (a prototype)
 #endif
@@ -985,7 +1093,7 @@ double gUnarmedReleaseAt = -1.0;
 ue3::Object* gUnarmedPawn = nullptr;
 
 bool WeaponOut(ue3::Object* pawn) {
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     return pawn != nullptr && weapon::HeldObject() != nullptr;
 #else
     ue3::Function* const fn = gInCombatStateFn.Get();
@@ -1021,6 +1129,7 @@ pw::SelfView gSelfView;
 pw::ConfirmationState gConfirmation;
 pw::SelfView gConfirmed;
 std::string gSelfPower;
+pw::SelfGesture gSelfPowerGesture = pw::SelfGesture::None;
 float gSelfProgress = 0.0f;         // the gesture's dwell, 0..1 (the hand is in place)
 std::string gSelfReadyWhy;          // the gesture target shown or why hidden, as last logged
 bool gConsoleSelfCast = false;      // `mevr powerwheel selfcast` (tests)
@@ -1060,7 +1169,7 @@ void AfterCast(Power const& power, ue3::Object* pawn) {
     gPushCastPower = power.label;
     gLastCastPower = power.label;
     gLastCastUsesOmniTool = UsesOmniTool(power);
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     (void)pawn;  // the native cast owns release and animation
 #else
     if (gUnarmedRelease && !WeaponOut(pawn)) {
@@ -1151,7 +1260,7 @@ void TickLock(Link const& link, vr::host_view::State const& view, vr::controller
         why = "the left controller isn't tracked";
     } else if (gMachine.open || gHeldAfter) {
         why = "the wheel has the left hand";
-    } else if (support_grip::Held() && (!gSelfGestures || pw::SelfGestureFor(ready->label.c_str()) == pw::SelfGesture::None)) {
+    } else if (support_grip::Held() && (!gSelfGestures || GestureFor(*ready) == pw::SelfGesture::None)) {
         why = "the left hand holds the gun";
     } else if (squad_weapons::IsOpen()) {
         why = "the squad's weapon wheel is open";
@@ -1159,7 +1268,7 @@ void TickLock(Link const& link, vr::host_view::State const& view, vr::controller
     if (why != nullptr) {
         gConsoleSelfCast = false;
         if (gSelfCast.reaching && !gSelfCast.reported) {
-            LogGesture(gSelfCast.attempt, gSelfPower, pw::SelfGestureFor(gSelfPower.c_str()), std::format("missed ({})", why));
+            LogGesture(gSelfCast.attempt, gSelfPower, gSelfPowerGesture, std::format("missed ({})", why));
         }
         gSelfCast = {};
         if (!onFoot || !view.valid || !s.on || gMachine.open) {
@@ -1172,14 +1281,15 @@ void TickLock(Link const& link, vr::host_view::State const& view, vr::controller
         return;
     }
     gLockWhy = "ready";
-    pw::SelfGesture const gesture = gSelfGestures ? pw::SelfGestureFor(ready->label.c_str()) : pw::SelfGesture::None;
+    pw::SelfGesture const gesture = gSelfGestures ? GestureFor(*ready) : pw::SelfGesture::None;
     if (gSelfPower != ready->label) {
         if (gSelfCast.reaching && !gSelfCast.reported) {
-            LogGesture(gSelfCast.attempt, gSelfPower, pw::SelfGestureFor(gSelfPower.c_str()), "missed (power changed)");
+            LogGesture(gSelfCast.attempt, gSelfPower, gSelfPowerGesture, "missed (power changed)");
         }
         gSelfCast = {};
         gConfirmation = {};
         gSelfPower = ready->label;
+        gSelfPowerGesture = gesture;
         gSelfReadyWhy.clear();
     }
     XrPosef const aim = hand ? controllers.left.aim : view.head;
@@ -1279,10 +1389,10 @@ void TickLock(Link const& link, vr::host_view::State const& view, vr::controller
                 }
                 break;
             case pw::Aim::None:
-                if (gSelfGestures && pw::SelfGestureFor(ready->label.c_str()) != pw::SelfGesture::None) {
+                if (gSelfGestures && GestureFor(*ready) != pw::SelfGesture::None) {
                     tried = false;
                     Refuse(link, std::format("{} isn't pushed: {} casts it", ready->info->name,
-                        pw::Name(pw::SelfGestureFor(ready->label.c_str()))));
+                        pw::Name(GestureFor(*ready))));
                 } else {
                     ok = Cast(controller, *ready, nullptr, std::nullopt);
                 }
@@ -1534,7 +1644,9 @@ std::string VfxMap(bool all) {
 }  // namespace
 
 bool TryStartup() {
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE3)
+    return le3_powers::powerClass.Get() != nullptr && gActivatePowerFn.Get() != nullptr;
+#elif defined(MEVR_GAME_LE2)
     return gLe2IsEnabled.Get() != nullptr && gActivatePowerFn.Get() != nullptr;
 #else
     ue3::Function* const release = gReleasePowerFn.Get();
@@ -1556,7 +1668,7 @@ void Tick(double deltaSeconds, Link const& link) {
 
     ue3::Object* const controller = ue3::runtime::Up() ? player::Controller() : nullptr;
     ue3::Object* const pawn = controller != nullptr ? player::BioPawn(controller) : nullptr;
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     auto* const manager = pawn != nullptr ? gPowerManager.Read<ue3::Object*>(pawn).value_or(nullptr) : nullptr;
     if (pawn != gLe2SelectionPawn || manager != gLe2SelectionManager) {
         gLe2Selected = {};
@@ -1681,7 +1793,7 @@ void Tick(double deltaSeconds, Link const& link) {
             // How to cast it, on a card where the wheel was: the first coachTimes equips of each power this session (not No power).
             pw::Coach const kind = pw::IsNoPower(equipped.info->label)
                 ? pw::Coach::None
-                : pw::CoachFor(equipped.info->aim, gSelfGestures ? pw::SelfGestureFor(equipped.info->label) : pw::SelfGesture::None);
+                : pw::CoachFor(equipped.info->aim, gSelfGestures ? GestureFor(equipped) : pw::SelfGesture::None);
             int& shown = gCoachShown[equipped.info->label];
             if (s.coachTimes > 0 && shown < s.coachTimes && kind != pw::Coach::None) {
                 ++shown;
@@ -1745,7 +1857,7 @@ void Tick(double deltaSeconds, Link const& link) {
             }
         }
     }
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     bool const canCast = onFoot && !link.menuOpen && s.on && link.publish != nullptr && CallBool(PlayerInput(controller), gIsCombatEnabledFn);
 #else
     bool const canCast = onFoot;
@@ -1884,14 +1996,18 @@ std::string Console(std::string_view args) {
         return "power wheel: the equipped self-cast power's gesture on the next tick (tests)";
     }
     if (verb == "unarmed") {
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+        return "power wheel: this sequel leaves unarmed release and animation to the game";
+#else
         std::string state;
         words >> state;
         gUnarmedRelease = state != "off";
         return std::format("power wheel: a cast with the weapon away {}", gUnarmedRelease ? "gets the release from the mod" : "is left to the game");
+#endif
     }
     if (verb == "bolt") {
-#if defined(MEVR_GAME_LE2)
-        return "power wheel: ME2 uses its native projectiles and effects";
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+        return "power wheel: this sequel uses its native projectiles and effects";
 #else
         std::string state;
         words >> state;
@@ -1927,7 +2043,7 @@ std::string Console(std::string_view args) {
         return std::format("power wheel: untrained powers {} the wheel (tests)", gShowUnlearned ? "on" : "off");
     }
     if (verb == "cast") {
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
         return "power wheel: use selfcast or push for the equipped power";
 #else
         ue3::Object* const controller = ue3::runtime::Ready() ? player::Controller() : nullptr;

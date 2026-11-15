@@ -6,6 +6,7 @@
 
 #include "core/vr/Controllers.hpp"
 #include "core/vr/PowerWheel.hpp"
+#include "core/vr/NativePower.hpp"
 #include "core/vr/FootControls.hpp"
 #include "game/GamepadMapping.hpp"
 
@@ -13,6 +14,7 @@
 #include <cstdio>
 #include <string>
 #include <vector>
+#include <limits>
 
 namespace {
 
@@ -994,6 +996,40 @@ void TestXOwnership() {
 }
 
 int RunPowerWheelTests() {
+    // Native values may change with weapon weight, resource pickups and class
+    // transitions. Presentation must neither invent availability nor reset them.
+    pw::NativePowerState native{1, true, 5, 10, false, std::nullopt};
+    CHECK(pw::EvaluateNativePower(native).valid);
+    CHECK(pw::EvaluateNativePower(native).enabled);
+    CHECK(Close(pw::EvaluateNativePower(native).cooldown, 0.5f));
+    native.total = 20;
+    CHECK(Close(pw::EvaluateNativePower(native).cooldown, 0.25f));
+    native.total = 0;
+    CHECK(pw::EvaluateNativePower(native).cooldown == 1);
+    native.remaining = -0.01f;
+    CHECK(pw::EvaluateNativePower(native).cooldown == 0);
+    native.grenade = true;
+    CHECK(!pw::EvaluateNativePower(native).valid);
+    native.grenades = -1;
+    CHECK(!pw::EvaluateNativePower(native).valid);
+    native.grenades = 0;
+    CHECK(pw::EvaluateNativePower(native).valid && !pw::EvaluateNativePower(native).enabled);
+    native.grenades = 2;
+    CHECK(pw::EvaluateNativePower(native).enabled);
+    native.enabled = false;
+    CHECK(!pw::EvaluateNativePower(native).enabled);
+    native.enabled = true;
+    native.rank = 0;
+    CHECK(!pw::EvaluateNativePower(native).learned && !pw::EvaluateNativePower(native).enabled);
+    native.rank = std::numeric_limits<float>::quiet_NaN();
+    CHECK(!pw::EvaluateNativePower(native).valid);
+    native.rank = 1;
+    native.remaining = std::numeric_limits<float>::infinity();
+    CHECK(!pw::EvaluateNativePower(native).valid);
+    CHECK(pw::NativeSelfGesture(true, false, true) == pw::SelfGesture::Gun);
+    CHECK(pw::NativeSelfGesture(false, true, true) == pw::SelfGesture::Raise);
+    CHECK(pw::NativeSelfGesture(false, false, true) == pw::SelfGesture::Chest);
+    CHECK(pw::NativeSelfGesture(false, false, false) == pw::SelfGesture::None);
     TestXOwnership();
     TestMachine();
     TestPlacement();
