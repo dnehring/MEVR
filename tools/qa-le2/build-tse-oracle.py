@@ -72,9 +72,18 @@ fn main() -> Result<()> {
     let stored_crc = u32::from_le_bytes(input[body_len..].try_into()?);
     let crc = Crc::<u32>::new(&CRC_32_BZIP2);
     if crc.checksum(&input[..body_len]) != stored_crc { bail!("invalid checksum"); }
-    let save: save_data::mass_effect_2::Me2LeSaveGame =
-        unreal::Deserializer::from_bytes(&input[..body_len])?;
-    let mut serialized = unreal::Serializer::to_vec(&save)?;
+    let version = i32::from_le_bytes(input[..4].try_into()?);
+    let (data, mut serialized, game) = match version {
+        30 => {
+            let save: save_data::mass_effect_2::Me2LeSaveGame = unreal::Deserializer::from_bytes(&input[..body_len])?;
+            (serde_json::to_value(&save)?, unreal::Serializer::to_vec(&save)?, "LE2")
+        },
+        59 => {
+            let save: save_data::mass_effect_3::Me3SaveGame = unreal::Deserializer::from_bytes(&input[..body_len])?;
+            (serde_json::to_value(&save)?, unreal::Serializer::to_vec(&save)?, "LE3")
+        },
+        _ => bail!("only little-endian LE2 v30 and LE3 v59 are supported"),
+    };
     serialized.extend(crc.checksum(&serialized).to_le_bytes());
     if input != serialized { bail!("TSE independent reserialization differs from input"); }
     let report = serde_json::json!({
@@ -82,8 +91,10 @@ fn main() -> Result<()> {
         "upstream_revision": "6451f23d1fba62358328dce4e87733970f36ebf1",
         "method": "TSE source decoder and serializer; UI derives omitted",
         "crc_valid": true,
+        "game": game,
+        "save_version": version,
         "reserialized_identically": true,
-        "data": save
+        "data": data
     });
     let mut output = fs::OpenOptions::new().write(true).create_new(true)
         .open(&args[2]).context("output must not already exist")?;

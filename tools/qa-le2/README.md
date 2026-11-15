@@ -181,6 +181,13 @@ codec, independently of our Python implementation. It stages source from Git
 blobs, omits only UI derives, retains upstream licenses and records file hashes.
 Its Rust dependencies are locked. Source and built artifacts remain private.
 
+The staged oracle now recognizes LE2 v30 and ME3/LE3 v59. For LE3 pass
+`--adapter tools/le3-save.py` to the existing checker. It requires independent
+byte-identical baseline reconstruction and full-field agreement before creating
+private resource probes, then checks their complete semantic differences. This
+does not enable LE3 native QA sessions. See [LE3 save foundation](../../research/le3-save-foundation.md)
+for the bounded fields, source provenance, command sequence and remaining native gates.
+
 ```powershell
 python tools/qa-le2/build-tse-oracle.py reference/trilogy-save-editor <new-private-project>
 cargo build --manifest-path <new-private-project>/Cargo.toml --release --locked

@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: MIT
 """Game identity for the existing QA workflow; descriptions do not enable a runner.
 
-LE3 has read-only prefix inspection, not prepared fixtures or native sessions.
-Never promote an inspection/no-op copy receipt into preparation evidence.
+LE3 has full offline decoding and bounded resource clones, not native fixtures.
+Never promote offline serialization or preparation into native readiness.
 """
 import re
 
@@ -14,7 +14,8 @@ GAMES = {
     "LE3": {"save_version": 59, "exe": "Game/ME3/Binaries/Win64/MassEffect3.exe",
             "save_root": "Save/ME3", "config": "Game/ME3/BioGame/Config",
             "bin": "Game/ME3/Binaries/Win64", "native_session_supported": False,
-            "save_tool": "tools/le3-save.py", "save_scope": "prefix-and-whole-file-crc", "mutations": False},
+            "save_tool": "tools/le3-save.py", "save_scope": "full-decode", "mutations": True,
+            "mutation_scope": "private-resource-variants", "fixture_ready": False},
 }
 
 
@@ -27,7 +28,7 @@ def describe(game):
 def require_session_game(game):
     contract = describe(game)
     if not contract["native_session_supported"]:
-        raise ValueError(f"{game} native sessions are disabled; read-only save inspection is not fixture readiness")
+        raise ValueError(f"{game} native sessions are disabled; offline save validation is not fixture readiness")
     return contract
 
 

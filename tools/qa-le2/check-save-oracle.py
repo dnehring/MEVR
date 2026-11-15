@@ -12,7 +12,9 @@ import importlib.util
 import json
 from pathlib import Path
 import subprocess
+import struct
 import sys
+import uuid
 
 
 def digest(path):
@@ -36,6 +38,51 @@ def normalized(report):
         words = data[group]["booleans"]
         data[group]["booleans"] = [bool(word & (1 << bit)) for word in words for bit in range(32)]
     return flattened(data)
+
+
+def normalized_le3(data, module, *, oracle):
+    """Compare every field, bridging only documented JSON representations, never game meanings."""
+    enums = {"difficulty": ["Narrative", "Casual", "Normal", "Hardcore", "Insanity"],
+             "origin": ["None", "Spacer", "Colonist", "Earthborn"],
+             "notoriety": ["None", "Survivor", "Warhero", "Ruthless"],
+             "combat_appearance": ["Parts", "Full"], "is_destroyed": ["No", "Yes"],
+             "is_deactivated": ["No", "Yes"], "conversation_mode": ["AllDecisions", "MajorDecisions", "NoDecisions"],
+             "marker_icon_type": ["None", "Attack", "Supply", "Alert"]}
+
+    def convert(schema, value, path=""):
+        if isinstance(schema, dict):
+            if oracle and not path:
+                value = dict(value)
+                value["save_version"] = value.pop("_version")["version"]
+                value["me1_plot"] = value.pop("_me1_plot")
+            if oracle and isinstance(value, list) and list(schema) == ["r", "g", "b", "a"]:
+                if len(value) != 4:
+                    raise AssertionError("Invalid oracle color")
+                value = dict(zip(schema, value))
+            if not isinstance(value, dict) or set(value) != set(schema):
+                raise AssertionError(f"Independent structure mismatch: {path}")
+            return {k: convert(s, value[k], f"{path}.{k}" if path else k) for k, s in schema.items()}
+        if isinstance(schema, list):
+            return [convert(schema[0], item, f"{path}.{n}") for n, item in enumerate(value)]
+        if isinstance(schema, tuple):
+            kind, child = schema
+            if kind == "map":
+                rows = [{"key": int(k) if child["key"] == "i" else k, "value": v} for k, v in value.items()] if oracle else value
+                return {str(row["key"]): convert(child["value"], row["value"], path + ".value") for row in rows}
+            if kind == "option":
+                return None if value is None else convert(child, value, path)
+            if oracle and isinstance(value, str):
+                return enums[path.rsplit(".", 1)[-1]].index(value)
+            return value
+        if schema == "bits" and oracle:
+            return [bool(word & (1 << bit)) for word in value for bit in range(32)]
+        if schema == "guid" and oracle:
+            return str(uuid.UUID(bytes_le=struct.pack("<IHH", *value[:3]) + bytes(value[3])))
+        if schema == "f":
+            return struct.unpack("<f", struct.pack("<f", value))[0]
+        return value
+
+    return flattened(convert(module.SCHEMA, data))
 
 
 def verify(save_path, oracle, output, adapter, *, prepared=None, recipe=None, receipt=None):
@@ -65,6 +112,9 @@ def verify(save_path, oracle, output, adapter, *, prepared=None, recipe=None, re
             raise ValueError("Prepared save or receipt differs from the exact recipe output")
     output.mkdir(parents=True, exist_ok=False)
     base = output / "base.pcsav"
+    if save.info().get("game") == "LE3":
+        # Establish independent base equivalence BEFORE generating even a private resource clone.
+        check_le3_base(save, oracle, output / "base-preflight-tse.json", module, input_path=save_path)
     base.write_bytes(save.raw)
     if prepared:
         (output / "prepared.pcsav").write_bytes(edited.raw)
@@ -72,12 +122,53 @@ def verify(save_path, oracle, output, adapter, *, prepared=None, recipe=None, re
         (output / "receipt.json").write_bytes(receipt_raw)
     else:
         prepare_format_probe(save, initial_hash, adapter, output, module)
-    return compare_oracle(save_path, initial_hash, oracle, source_manifest, adapter, module.UPSTREAM_PIN, output)
+    return compare_oracle(save_path, initial_hash, oracle, source_manifest, adapter, module.UPSTREAM_PIN, output, module=module)
+
+
+def check_le3_base(save, oracle, report_path, module, *, input_path):
+    save.roundtrip()
+    result = subprocess.run([str(oracle), str(input_path), str(report_path)], capture_output=True, text=True)
+    if result.returncode:
+        raise RuntimeError(f"Independent LE3 baseline rejected: {result.stderr}")
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    if (report.get("game") != "LE3" or report.get("save_version") != 59 or
+            report.get("crc_valid") is not True or report.get("reserialized_identically") is not True or
+            report.get("upstream_revision") != module.UPSTREAM_PIN):
+        raise AssertionError("Independent LE3 baseline identity/roundtrip not confirmed")
+    if normalized_le3(report["data"], module, oracle=True) != normalized_le3(save.data, module, oracle=False):
+        raise AssertionError("Independent LE3 baseline fields differ")
 
 
 def prepare_format_probe(save, initial_hash, adapter, output, adapter_module):
     base = output / "base.pcsav"
     values = {}
+    if save.info().get("game") == "LE3":
+        for name in ("credits", "medigel", "grenades", "current_fuel", "health"):
+            path = f"player.{name}"
+            values[path] = 2 if save.value(path) != 2 else 3
+        identities = {}
+        for owner in ("player", "squad.0"):
+            for resource in ("weapons.0.ammo_total", "weapons.0.ammo_used_count", "grenades"):
+                path = owner + "." + resource
+                try:
+                    value = save.value(path)
+                except adapter_module.SaveError:
+                    continue
+                values[path] = 2 if value != 2 else 3
+                if resource.startswith("weapons."):
+                    key = owner + ".weapons.0.class_name"
+                    identities[key] = save.value(key)
+                if owner.startswith("squad."):
+                    identities[owner + ".tag"] = save.value(owner + ".tag")
+        recipe = {"schema_version": 1, "game": "LE3", "save_version": 59,
+                  "id": "offline-le3-resource-format-probe", "expected_input_sha256": initial_hash,
+                  "expect": dict({p: save.value(p) for p in values}, **identities), "set": values}
+        recipe_raw = (json.dumps(recipe, indent=2) + "\n").encode()
+        edited, changes = save.prepare(recipe)
+        receipt = adapter_module.make_receipt("prepare", save, edited, changes, recipe=recipe, recipe_raw=recipe_raw)
+        (output / "recipe.json").write_bytes(recipe_raw)
+        adapter_module.reader.write_outputs(output / "prepared.pcsav", edited.raw, output / "receipt.json", receipt)
+        return
     for name in ("credits", "medigel", "eezo", "iridium", "palladium", "platinum", "probes"):
         values[f"player.{name}"] = 2 if save.value(f"player.{name}") != 2 else 3
     values["player.current_fuel"] = 42.5
@@ -116,7 +207,7 @@ def prepare_format_probe(save, initial_hash, adapter, output, adapter_module):
         raise RuntimeError(invocation.stderr)
 
 
-def compare_oracle(save_path, initial_hash, oracle, source_manifest, adapter, upstream_pin, output):
+def compare_oracle(save_path, initial_hash, oracle, source_manifest, adapter, upstream_pin, output, *, module=None):
     base, edited = output / "base.pcsav", output / "prepared.pcsav"
     recipe_path, receipt = output / "recipe.json", output / "receipt.json"
     oracle_reports = []
@@ -130,7 +221,15 @@ def compare_oracle(save_path, initial_hash, oracle, source_manifest, adapter, up
         if (report.get("crc_valid") is not True or report.get("reserialized_identically") is not True
                 or report.get("upstream_revision") != upstream_pin):
             raise AssertionError("Oracle did not confirm checksum and independent roundtrip")
-        oracle_reports.append(normalized(report))
+        if module is not None and module.Save.load(path).info().get("game") == "LE3":
+            if report.get("game") != "LE3" or report.get("save_version") != 59:
+                raise AssertionError("Independent oracle returned wrong game")
+            compared = normalized_le3(report["data"], module, oracle=True)
+            if compared != normalized_le3(module.Save.load(path).data, module, oracle=False):
+                raise AssertionError(f"Independent full field comparison failed: {name}")
+            oracle_reports.append(compared)
+        else:
+            oracle_reports.append(normalized(report))
     before, after = oracle_reports
     actual_changes = {path for path in before.keys() | after.keys() if before.get(path) != after.get(path)}
     receipt_data = json.loads(receipt.read_text(encoding="utf-8"))

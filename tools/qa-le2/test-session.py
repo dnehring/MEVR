@@ -354,7 +354,9 @@ class SessionTests(unittest.TestCase):
         contract = s.game_contract.describe("LE3")
         self.assertEqual(contract["save_version"], 59)
         self.assertFalse(contract["native_session_supported"])
-        self.assertFalse(contract["mutations"])
+        self.assertTrue(contract["mutations"])
+        self.assertEqual(contract["mutation_scope"], "private-resource-variants")
+        self.assertFalse(contract["fixture_ready"])
         self.plan["game"] = "LE3"
         with mock.patch.object(s, "safe_path", side_effect=AssertionError("must refuse before paths")):
             with self.assertRaisesRegex(s.SessionError, "LE3 native sessions are disabled"):
