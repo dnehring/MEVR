@@ -33,7 +33,7 @@ namespace json = vr::test_request;
 namespace {
 
 bool LayerReady() {
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     return ue3::runtime::Up();
 #else
     return ue3::runtime::Ready();
@@ -54,7 +54,7 @@ ue3::FieldRef gLastRenderTime{"Engine.Actor", "LastRenderTime", ue3::kEveryGame}
 ue3::FieldRef gTimeSeconds{"Engine.WorldInfo", "TimeSeconds", ue3::kEveryGame};
 
 ue3::FunctionRef gIsHostileFn{"SFXGame.BioPawn.IsHostile", ue3::kEveryGame};
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 ue3::FunctionRef gIsDeadFn{"Engine.Pawn.IsDead", ue3::kEveryGame};
 #else
 ue3::FunctionRef gIsDeadFn{"SFXGame.BioPawn.IsDead"};
@@ -119,7 +119,7 @@ bool CallBool(ue3::Object* object, ue3::Function* fn) {
 }
 
 char LetterOfClass(int classId) {
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     if (classId >= 1000 + 'A' && classId <= 1000 + 'Z') return static_cast<char>(classId - 1000);
 #endif
     switch (classId) {
@@ -143,7 +143,7 @@ std::string Lower(std::string s) {
 // "emp"). Until 2026-11-09 the letters went in whole ("Ar Shield Boost", "Kro Pistol Whip"): 20 of the recognizer's key
 // terms were words nobody says, and the parser's power words with them.
 std::string Spoken(std::string const& internal) {
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     if (auto const* info = vr::power_wheel::FindLe2Power(internal.c_str()); info != nullptr) return Lower(info->name);
 #endif
     if (vr::power_wheel::PowerInfo const* const info = vr::power_wheel::FindPower(internal.c_str()); info != nullptr && info->name != nullptr) {
@@ -199,7 +199,7 @@ std::string CodeOf(std::string const& internal) {
 
 // The powers on a pawn's behaviour: the game's own list, with the cooldown left.
 void ReadPowers(ue3::Object* behavior, sc::Member& member, Known& known) {
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     member.powers.clear();
     for (auto const& native : le2_squad::Powers(behavior)) {
         if (!native.enabled && native.cooldown <= 0.0f) continue;
@@ -289,8 +289,13 @@ void ReadScene(ue3::Object* controller, ue3::Object* pawn, engine::TrackingFrame
     scene.head = Metres(frame.headWorld, upm);
     engine::UnrealVector const forward = engine::OrientationToWorld(frame, frame.head.orientation).forward;
     scene.headYawDeg = static_cast<float>(std::atan2(forward.y, forward.x) * 180.0 / 3.14159265358979);
-    scene.combat = CallBool(pawn, gIsInCombatActionStateFn.Get());
     ue3::Object* const held = weapon::HeldObject();
+#if defined(MEVR_GAME_LE3)
+    // LE3 has no BioPawn.IsInCombatActionState; use its native combat-input admission.
+    scene.combat = held != nullptr && le2_squad::CanOrder();
+#else
+    scene.combat = CallBool(pawn, gIsInCombatActionStateFn.Get());
+#endif
     scene.shepardWeapon = held != nullptr ? squad_weapons::WeaponTypeOf(held) : -1;
     // The party, as the squad menu read it (names, classes, quick slots, health).
     for (squad_weapons::MemberView const& view : squad_weapons::Members()) {
@@ -306,7 +311,7 @@ void ReadScene(ue3::Object* controller, ue3::Object* pawn, engine::TrackingFrame
         known.letter = m.letter;
         known.name = view.name;
         known.weapons = static_cast<std::uint8_t>(known.weapons | view.carried);
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
         m.alive = le2_squad::Living(view.pawn);
         ReadPowers(view.pawn, m, known);
 #else
@@ -319,7 +324,9 @@ void ReadScene(ue3::Object* controller, ue3::Object* pawn, engine::TrackingFrame
     float const now = world != nullptr ? gTimeSeconds.Read<float>(world).value_or(0.0f) : 0.0f;
     ue3::Function* const isHostile = gIsHostileFn.Get();
     ue3::Function* const isDead = gIsDeadFn.Get();
+#if !defined(MEVR_GAME_LE3)
     ue3::Function* const percentHealth = gGetPercentHealthFn.Get();
+#endif
     int guard = 0;
     for (ue3::Object* p = ObjectOf(gPawnList, world); p != nullptr && guard < kMaxPawns && isHostile != nullptr;
          p = ObjectOf(gNextPawn, p), ++guard) {
@@ -331,13 +338,24 @@ void ReadScene(ue3::Object* controller, ue3::Object* pawn, engine::TrackingFrame
         sc::Hostile h;
         h.id = reinterpret_cast<sc::PawnId>(p);
         h.position = Metres(player::Location(p).value_or(ue3::Vector{}), upm);
+#if defined(MEVR_GAME_LE3)
+        std::string type = le2_squad::ActorName(p);
+#else
         ue3::Object* const behavior = ObjectOf(gBehavior, p);
         std::string type = StringOf(gTypeGameName, ObjectOf(gActorType, behavior));
         if (type.empty()) type = StringOf(gActorGameName, behavior);
+#endif
         h.type = Lower(type);
         if (!h.type.empty() && gLoggedTypes[h.type]++ == 0) {
             log::Info("squad context: a hostile of type \"{}\" ({})", h.type, ue3::runtime::FullName(p));
         }
+#if defined(MEVR_GAME_LE3)
+        static ue3::FieldRef healthField{"Engine.Pawn", "Health", ue3::kEveryGame};
+        static ue3::FieldRef healthMax{"Engine.Pawn", "HealthMax", ue3::kEveryGame};
+        auto const health = healthField.Read<std::int32_t>(p);
+        auto const maximum = healthMax.Read<std::int32_t>(p);
+        if (health && maximum && *maximum > 0) h.health = std::clamp(static_cast<float>(*health) / *maximum, 0.01f, 1.0f);
+#else
         if (behavior != nullptr && percentHealth != nullptr) {
             ue3::Params parms(ue3::runtime::Get(), percentHealth);
             ue3::runtime::Call(behavior, percentHealth, parms);
@@ -346,6 +364,7 @@ void ReadScene(ue3::Object* controller, ue3::Object* pawn, engine::TrackingFrame
             h.health = std::clamp(health, 0.0f, 1.0f);
             if (h.health <= 0.0f) h.health = 0.01f;  // alive (IsDead said so), however low
         }
+#endif
         float const rendered = gLastRenderTime.Read<float>(p).value_or(-1e9f);
         h.visible = now - rendered < 1.0f;
         scene.hostiles.push_back(h);

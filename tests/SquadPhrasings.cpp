@@ -254,6 +254,46 @@ std::string Lines(sp::Parsed const& p) {
     return out;
 }
 
+// Sequel adapters provide a live roster, including DLC names and SMGs. The shared parser must not
+// require an ME1 class ID, and an old spoken alias must not authorize a power absent from the current scene.
+int DynamicRoster() {
+    sc::Scene scene;
+    scene.combat = true;
+    sc::Member member;
+    member.letter = 'J'; member.present = true; member.carried = 1u << 4;
+    member.powers = {{"DCH", 0.0f}};
+    scene.party = {member};
+    sc::RosterEntry entry;
+    entry.letter = 'J'; entry.name = "Javik"; entry.aliases = {"Javik"};
+    entry.powers = {{"DCH", "dark channel"}};
+    std::vector<sc::RosterEntry> roster{entry};
+    int failures = 0;
+    auto check = [&](bool ok, char const* what) {
+        if (!ok) { ++failures; std::printf("FAIL dynamic squad roster: %s\n", what); }
+    };
+    auto power = sp::Parse("Javik use dark channel", scene, {}, roster, {});
+    check(!power.empty && power.confidence >= 0.6f && Lines(power) == "J|-|DCH|use|-", "DLC power from live roster");
+    auto weapon = sp::Parse("Javik equip smg", scene, {}, roster, {});
+    check(!weapon.empty && weapon.confidence >= 0.6f && Lines(weapon) == "J|SMG|-|-|-", "fifth weapon type");
+    if (!power.clauses.empty()) {
+        auto action = power.clauses.front().action;
+        action.target = {sc::Target::Group, 1};
+        sc::Group group;
+        group.id = 1; group.members = {42};
+        std::vector<sc::Group> groups{group};
+        check(sc::Validate(action, scene, groups, {}, {}).ok, "present learned power admitted");
+        scene.party[0].powers[0].readyInS = 4.0f;
+        auto cooling = sc::Validate(action, scene, groups, {}, {});
+        check(cooling.ok && cooling.notReady && cooling.readyInS == 4.0f, "native cooldown retained for dispatcher refusal/wait");
+        scene.party[0].powers.clear();
+        check(!sc::Validate(action, scene, groups, {}, {}).ok, "remembered alias cannot authorize unavailable power");
+        scene.party[0].powers = {{"DCH", 0.0f}};
+        scene.party[0].present = false;
+        check(!sc::Validate(action, scene, groups, {}, {}).ok, "removed companion refused");
+    }
+    return failures;
+}
+
 }  // namespace
 
 int RunSquadPhrasingTests() {
@@ -346,5 +386,5 @@ int RunSquadPhrasingTests() {
     }
     std::printf("squad phrasings: %d of %d orders parsed as said, %d of %d non-orders refused, %d known gaps open (%d closed)\n", passes,
         wanted, refusals, talk, gapsOpen, gapsClosed);
-    return failures;
+    return failures + DynamicRoster();
 }

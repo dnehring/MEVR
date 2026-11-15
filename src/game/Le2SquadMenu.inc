@@ -13,9 +13,9 @@ void EquipLe2(int member, int slot) {
     auto* weapon = reinterpret_cast<ue3::Object*>(m.weapons[slot]);
     auto inventory = le2_squad::Weapons(pawn);
     auto* fn = le2_squad::orderWeapon.Get();
-    if (!le2_squad::Living(pawn) || fn == nullptr || std::find(inventory.begin(), inventory.end(), weapon) == inventory.end()) return;
+    if (!le2_squad::RecipientReady(pawn) || fn == nullptr || std::find(inventory.begin(), inventory.end(), weapon) == inventory.end()) return;
     ue3::Params args(ue3::runtime::Get(), fn);
-    if (!args.Set("oOrderedPawn", pawn) || !args.Set("Wpn", weapon) || !ue3::runtime::Call(player::Controller(), fn, args)) return;
+    if (!args.Set("oOrderedPawn", pawn) || !args.Set("Wpn", weapon) || !le2_squad::BindInputMethod(args) || !ue3::runtime::Call(player::Controller(), fn, args)) return;
     gLastUsed = m.key;
     gPending = {m.key, slot, 0.0, m.name};
     gLe2PendingWeapon = m.weapons[slot];
@@ -27,7 +27,7 @@ void EquipLe2(int member, int slot) {
 
 void TickLe2(double dt, Link const& link, hand_calibration::Squad const& settings,
     vr::controllers::State const& controllers, bool newPull) {
-    gStyleNative = false; // ME2's native wheel is a different UI; reuse our custom hand menu.
+    gStyleNative = false; // The sequels' native wheels are different UIs; reuse our custom hand menu.
     auto const frame = view_anchor::Current();
     bool const busy = gMachine.IsOpen();
     if (busy || newPull || gPending.key != 0) {

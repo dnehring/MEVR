@@ -2805,6 +2805,13 @@ void CheckClasses() {
     CheckClass<USkeletalMeshComponent>("Engine.SkeletalMeshComponent");
     CheckClass<USkeletalMesh>("Engine.SkeletalMesh");
     CheckClass<USkeletalMeshSocket>("Engine.SkeletalMeshSocket");
+    CheckClass<ABioWorldInfo>("SFXGame.BioWorldInfo");
+    CheckClass<ABioBaseSquad>("SFXGame.BioBaseSquad");
+    CheckClass<ABioPawn>("SFXGame.BioPawn");
+    CheckClass<ASFXPawn_Henchman>("SFXGame.SFXPawn_Henchman");
+    CheckClass<ASFXAI_Henchman>("SFXGame.SFXAI_Henchman");
+    CheckClass<USFXPowerManager>("SFXGame.SFXPowerManager");
+    CheckClass<USFXPowerCustomActionBase>("SFXGame.SFXPowerCustomActionBase");
 }
 
 void CheckFields() {
@@ -2837,6 +2844,22 @@ void CheckFields() {
     CheckField("SFXGame.SFXWeapon", "AmmoUsedCount", SDK_FIELD(ASFXWeapon, AmmoUsedCount));
     CheckField("SFXGame.SFXWeapon", "CurrentSpareAmmo", SDK_FIELD(ASFXWeapon, CurrentSpareAmmo));
     CheckField("SFXGame.SFXWeapon", "bWeaponCanBeReloaded", SDK_BOOL(ASFXWeapon, bWeaponCanBeReloaded));
+    CheckField("Engine.Pawn", "Controller", SDK_FIELD(APawn, Controller));
+    CheckField("Engine.Pawn", "InvManager", SDK_FIELD(APawn, InvManager));
+    CheckField("Engine.Pawn", "Health", SDK_FIELD(APawn, Health));
+    CheckField("Engine.Pawn", "HealthMax", SDK_FIELD(APawn, HealthMax));
+    CheckField("Engine.InventoryManager", "InventoryChain", SDK_FIELD(AInventoryManager, InventoryChain));
+    CheckField("Engine.Inventory", "Inventory", SDK_FIELD(AInventory, Inventory));
+    CheckField("SFXGame.BioWorldInfo", "m_playerSquad", SDK_FIELD(ABioWorldInfo, m_playerSquad));
+    CheckField("SFXGame.BioBaseSquad", "Members", SDK_FIELD(ABioBaseSquad, Members));
+    CheckField("SFXGame.BioPawn", "PowerManager", SDK_FIELD(ABioPawn, PowerManager));
+    CheckField("SFXGame.SFXPowerManager", "Powers", SDK_FIELD(USFXPowerManager, Powers));
+    CheckField("SFXGame.SFXPowerCustomActionBase", "PowerName", SDK_FIELD(USFXPowerCustomActionBase, PowerName));
+    CheckField("SFXGame.SFXPowerCustomActionBase", "Rank", SDK_FIELD(USFXPowerCustomActionBase, Rank));
+    CheckField("SFXGame.SFXPowerCustomActionBase", "CurrentCooldownTime", SDK_FIELD(USFXPowerCustomActionBase, CurrentCooldownTime));
+    CheckField("SFXGame.SFXPowerCustomActionBase", "TotalCooldownTime", SDK_FIELD(USFXPowerCustomActionBase, TotalCooldownTime));
+    CheckField("SFXGame.SFXPowerCustomActionBase", "PowerType", SDK_FIELD(USFXPowerCustomActionBase, PowerType));
+    CheckField("SFXGame.SFXPowerCustomActionBase", "DisplayInHUD", SDK_BOOL(USFXPowerCustomActionBase, DisplayInHUD));
 }
 
 void CheckPaths() {
@@ -2859,9 +2882,9 @@ void CheckSkeleton() {
     }
 }
 
-// Metadata only: collect private native targets for the descriptor ownership audit.
+// Metadata only: collect private native targets for ownership and squad dispatch audits.
 // Allocator cross-free success is not proof that these natives return/copy owned strings.
-void CheckSaveNative(char const* path) {
+void CheckNativeTarget(char const* path) {
     CheckFunction(path);
     Guard("native", path, [path] {
         auto* const function = R().FindFunction(path);
@@ -2917,8 +2940,17 @@ void CheckFunctions() {
     CheckFunction("SFXGame.SFXWeapon.GetMagazineSize");
     CheckFunction("SFXGame.SFXWeapon.GetCurrentSpareAmmo");
     CheckFunction("Engine.PlayerController.ConsoleCommand");
-    CheckSaveNative("SFXGame.SFXEngine.QueueSaveGameCommand");
-    CheckSaveNative("SFXGame.SFXEngine.GetCurrentSaveDescriptor");
+    CheckNativeTarget("SFXGame.SFXEngine.QueueSaveGameCommand");
+    CheckNativeTarget("SFXGame.SFXEngine.GetCurrentSaveDescriptor");
+    CheckFunction("SFXGame.BioPlayerController.OrderWeaponSwitch");
+    CheckFunction("SFXGame.BioPlayerController.HenchmanOrderFollow");
+    CheckFunction("SFXGame.BioPlayerController.HenchmanOrderHoldPosition");
+    CheckFunction("SFXGame.BioPlayerController.HenchmanOrderAttackTarget");
+    CheckFunction("SFXGame.SFXPowerCustomActionBase.IsEnabled");
+    CheckFunction("SFXGame.SFXPowerCustomActionBase.CanUsePower");
+    CheckFunction("SFXGame.SFXAI_NativeBase.IsEnabled");
+    CheckNativeTarget("SFXGame.BioPlayerController.SquadOrderUsePower");
+    CheckNativeTarget("SFXGame.BioPawn.GetActorGameName");
 }
 
 void CheckParams() {
@@ -2949,6 +2981,40 @@ void CheckParams() {
     PARAM(USkeletalMeshComponent_execGetSocketWorldLocationAndRotation_Parms, "Engine.SkeletalMeshComponent.GetSocketWorldLocationAndRotation", ReturnValue);
     PARMS(USkeletalMeshComponent_execGetSocketWorldLocationAndRotation_Parms, "Engine.SkeletalMeshComponent.GetSocketWorldLocationAndRotation");
 
+    PARAM(ABioPlayerController_execOrderWeaponSwitch_Parms, "SFXGame.BioPlayerController.OrderWeaponSwitch", oOrderedPawn);
+    PARAM(ABioPlayerController_execOrderWeaponSwitch_Parms, "SFXGame.BioPlayerController.OrderWeaponSwitch", Wpn);
+    PARAM(ABioPlayerController_execOrderWeaponSwitch_Parms, "SFXGame.BioPlayerController.OrderWeaponSwitch", eInputMethod);
+    PARMS(ABioPlayerController_execOrderWeaponSwitch_Parms, "SFXGame.BioPlayerController.OrderWeaponSwitch");
+    PARAM(ABioPlayerController_eventHenchmanOrderFollow_Parms, "SFXGame.BioPlayerController.HenchmanOrderFollow", oHenchman);
+    PARAM(ABioPlayerController_eventHenchmanOrderFollow_Parms, "SFXGame.BioPlayerController.HenchmanOrderFollow", eInputMethod);
+    PARMS(ABioPlayerController_eventHenchmanOrderFollow_Parms, "SFXGame.BioPlayerController.HenchmanOrderFollow");
+    PARAM(ABioPlayerController_eventHenchmanOrderHoldPosition_Parms, "SFXGame.BioPlayerController.HenchmanOrderHoldPosition", oHenchman);
+    PARAM(ABioPlayerController_eventHenchmanOrderHoldPosition_Parms, "SFXGame.BioPlayerController.HenchmanOrderHoldPosition", vLocation);
+    PARAM(ABioPlayerController_eventHenchmanOrderHoldPosition_Parms, "SFXGame.BioPlayerController.HenchmanOrderHoldPosition", eInputMethod);
+    PARMS(ABioPlayerController_eventHenchmanOrderHoldPosition_Parms, "SFXGame.BioPlayerController.HenchmanOrderHoldPosition");
+    PARAM(ABioPlayerController_eventHenchmanOrderAttackTarget_Parms, "SFXGame.BioPlayerController.HenchmanOrderAttackTarget", oHenchman);
+    PARAM(ABioPlayerController_eventHenchmanOrderAttackTarget_Parms, "SFXGame.BioPlayerController.HenchmanOrderAttackTarget", oTargetActor);
+    PARAM(ABioPlayerController_eventHenchmanOrderAttackTarget_Parms, "SFXGame.BioPlayerController.HenchmanOrderAttackTarget", eInputMethod);
+    PARMS(ABioPlayerController_eventHenchmanOrderAttackTarget_Parms, "SFXGame.BioPlayerController.HenchmanOrderAttackTarget");
+    PARAM(ABioPlayerController_execSquadOrderUsePower_Parms, "SFXGame.BioPlayerController.SquadOrderUsePower", nmPower);
+    PARAM(ABioPlayerController_execSquadOrderUsePower_Parms, "SFXGame.BioPlayerController.SquadOrderUsePower", pPawn);
+    PARAM(ABioPlayerController_execSquadOrderUsePower_Parms, "SFXGame.BioPlayerController.SquadOrderUsePower", nQueue);
+    PARAM(ABioPlayerController_execSquadOrderUsePower_Parms, "SFXGame.BioPlayerController.SquadOrderUsePower", bShowIndicator);
+    PARAM(ABioPlayerController_execSquadOrderUsePower_Parms, "SFXGame.BioPlayerController.SquadOrderUsePower", pDesiredSelectionTarget);
+    PARAM(ABioPlayerController_execSquadOrderUsePower_Parms, "SFXGame.BioPlayerController.SquadOrderUsePower", eInputMethod);
+    PARAM(ABioPlayerController_execSquadOrderUsePower_Parms, "SFXGame.BioPlayerController.SquadOrderUsePower", pDesiredTarget);
+    PARAM(ABioPlayerController_execSquadOrderUsePower_Parms, "SFXGame.BioPlayerController.SquadOrderUsePower", vDesiredTargetLocation);
+    PARAM(ABioPlayerController_execSquadOrderUsePower_Parms, "SFXGame.BioPlayerController.SquadOrderUsePower", ReturnValue);
+    PARMS(ABioPlayerController_execSquadOrderUsePower_Parms, "SFXGame.BioPlayerController.SquadOrderUsePower");
+    PARAM(ABioPawn_execGetActorGameName_Parms, "SFXGame.BioPawn.GetActorGameName", ReturnValue);
+    PARMS(ABioPawn_execGetActorGameName_Parms, "SFXGame.BioPawn.GetActorGameName");
+    PARAM(USFXPowerCustomActionBase_execIsEnabled_Parms, "SFXGame.SFXPowerCustomActionBase.IsEnabled", ReturnValue);
+    PARMS(USFXPowerCustomActionBase_execIsEnabled_Parms, "SFXGame.SFXPowerCustomActionBase.IsEnabled");
+    PARAM(USFXPowerCustomActionBase_eventCanUsePower_Parms, "SFXGame.SFXPowerCustomActionBase.CanUsePower", oTarget);
+    PARAM(USFXPowerCustomActionBase_eventCanUsePower_Parms, "SFXGame.SFXPowerCustomActionBase.CanUsePower", ReturnValue);
+    PARMS(USFXPowerCustomActionBase_eventCanUsePower_Parms, "SFXGame.SFXPowerCustomActionBase.CanUsePower");
+    PARAM(ASFXAI_NativeBase_eventIsEnabled_Parms, "SFXGame.SFXAI_NativeBase.IsEnabled", ReturnValue);
+    PARMS(ASFXAI_NativeBase_eventIsEnabled_Parms, "SFXGame.SFXAI_NativeBase.IsEnabled");
     PARAM(ASFXWeapon_execGetMagazineSize_Parms, "SFXGame.SFXWeapon.GetMagazineSize", ReturnValue);
     PARMS(ASFXWeapon_execGetMagazineSize_Parms, "SFXGame.SFXWeapon.GetMagazineSize");
     PARAM(ASFXWeapon_execGetCurrentSpareAmmo_Parms, "SFXGame.SFXWeapon.GetCurrentSpareAmmo", ReturnValue);

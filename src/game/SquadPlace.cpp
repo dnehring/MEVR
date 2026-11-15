@@ -13,6 +13,7 @@
 #include "game/GamepadMapping.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/Player.hpp"
+#include "game/Le2Squad.hpp"
 #include "game/PowerWheel.hpp"
 #include "game/SquadContext.hpp"
 #include "game/SquadOrders.hpp"
@@ -46,7 +47,7 @@ constexpr int kDrawPoints = 24;
 constexpr double kPlausibleUnits = 10.0;
 
 ue3::FunctionRef gTraceFn{"Engine.Actor.Trace", ue3::kEveryGame};
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 ue3::FunctionRef gLe2Follow{"SFXGame.BioPlayerController.HenchmanOrderFollow", ue3::kEveryGame};
 ue3::FunctionRef gLe2Hold{"SFXGame.BioPlayerController.HenchmanOrderHoldPosition", ue3::kEveryGame};
 ue3::FunctionRef gLe2CanFight{"SFXGame.BioPlayerInput.IsCombatEnabled", ue3::kEveryGame};
@@ -64,23 +65,27 @@ bool Le2CanOrder(ue3::Object* controller) {
 }
 
 bool Le2Living(squad_weapons::MemberView const& member) {
+#if defined(MEVR_GAME_LE3)
+    return le2_squad::RecipientReady(member.pawn);
+#else
     auto* const isDead = gLe2IsDead.Get();
     if (isDead == nullptr || !ue3::runtime::IsAlive(member.pawn)) return false;
     ue3::Params args(ue3::runtime::Get(), isDead);
     return ue3::runtime::Call(member.pawn, isDead, args) && !args.ReturnBool().value_or(true);
+#endif
 }
 
 std::string GiveLe2Order(ue3::Object* controller, std::vector<squad_weapons::MemberView> const& members, int selected,
     std::optional<engine::UnrealVector> point) {
     auto* const fn = point ? gLe2Hold.Get() : gLe2Follow.Get();
-    if (fn == nullptr) return "order unavailable";
+    if (fn == nullptr || !le2_squad::CanOrder()) return "order unavailable";
     unsigned called = 0;
     for (int i = 0; i < static_cast<int>(members.size()); ++i) {
         if (selected >= 0 && selected != i) continue;
         auto const& member = members[static_cast<std::size_t>(i)];
         if (!Le2Living(member)) continue;
         ue3::Params args(ue3::runtime::Get(), fn);
-        if (!args.Set("oHenchman", member.pawn)) continue;
+        if (!args.Set("oHenchman", member.pawn) || !le2_squad::BindInputMethod(args)) continue;
         if (point && !args.Set("vLocation", ue3::Vector{static_cast<float>(point->x), static_cast<float>(point->y),
                          static_cast<float>(point->z)})) continue;
         if (ue3::runtime::Call(controller, fn, args)) ++called;
@@ -206,7 +211,7 @@ Arc TraceArc(ue3::Object* pawn, sp::Vec3 const& originM, sp::Vec3 const& directi
 }
 
 // Each recipient's AI pushed toward the point; the outcome in words.
-#if !defined(MEVR_GAME_LE2)
+#if !defined(MEVR_GAME_LE2) && !defined(MEVR_GAME_LE3)
 std::string WalkThere(int member, engine::UnrealVector const& point) {
     ue3::Function* const fn = gPushMoveFn.Get();
     if (fn == nullptr) return "no PushMoveToPoint";
@@ -304,7 +309,7 @@ void Tick(double deltaSeconds, Link const& link) {
     hand_calibration::SquadOrders const s = hand_calibration::GetSquadOrders();
     sp::ArcSettings const arcSettings = ArcSettingsFrom(s);
     vr::controllers::State const controllers = vr::controllers::Latest();
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     ue3::Object* const controller = s.enabled && s.place && link.publish != nullptr && ue3::runtime::Up() ? player::Controller() : nullptr;
 #else
     ue3::Object* const controller = ue3::runtime::Ready() ? player::Controller() : nullptr;
@@ -334,7 +339,7 @@ void Tick(double deltaSeconds, Link const& link) {
     auto members = squad_weapons::Members();
     bool usable = s.enabled && s.place && !melee && !link.menuOpen && onFoot && frame.has_value() && (tracked || simulated) &&
         !squad_weapons::IsOpen() && !power_wheel::IsOpen();
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     if (usable) {
         usable = Le2CanOrder(controller);
         if (usable) std::erase_if(members, [](auto const& member) { return !Le2Living(member); });
@@ -452,7 +457,7 @@ void Tick(double deltaSeconds, Link const& link) {
     }
     if (step.regroup) {
         ++gRegroups;
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
         std::string const outcome = GiveLe2Order(controller, members, -1, std::nullopt);
 #else
         sc::Action action;
@@ -475,7 +480,7 @@ void Tick(double deltaSeconds, Link const& link) {
     }
     if (step.given) {
         ++gGiven;
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
         auto const point = step.order == sp::Order::Follow ? std::nullopt : std::optional(gArc.point);
         std::string const outcome = GiveLe2Order(controller, members, step.member, point);
 #else
@@ -583,7 +588,7 @@ void LogStats() {
 void Shutdown() {
     gMachine.Reset();
     gSim = {};
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     gLe2Recipients = {};
 #endif
     gArc = {};

@@ -1,16 +1,18 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 #include "game/Player.hpp"
+#include "game/Le3Powers.hpp"
 #include "ue3/Handles.hpp"
+#include "ue3/Memory.hpp"
 #include "ue3/Runtime.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <vector>
 
-// ME2's live inventory and order prerequisites, shared by the menu and command dispatcher.
+// Shared sequel inventory and order prerequisites; LE3's distinct contracts are explicit below.
 // Calls stay on the game thread. Object lists are rebuilt before dispatch.
 namespace mevr::game::le2_squad {
 inline ue3::FieldRef inventoryManager{"Engine.Pawn", "InvManager", ue3::kEveryGame};
@@ -20,11 +22,19 @@ inline ue3::FieldRef equippedWeapon{"Engine.Pawn", "Weapon", ue3::kEveryGame};
 inline ue3::FieldRef inputField{"Engine.PlayerController", "PlayerInput", ue3::kEveryGame};
 inline ue3::ClassRef weaponClass{"SFXGame.SFXWeapon", ue3::kEveryGame};
 inline ue3::ClassRef weaponTypes[] = {
+#if defined(MEVR_GAME_LE3)
+    ue3::ClassRef{"SFXGame.SFXWeapon_Pistol_Base", ue3::kEveryGame},
+#else
     ue3::ClassRef{"SFXGame.SFXWeapon_HeavyPistol_Base", ue3::kEveryGame},
+#endif
     ue3::ClassRef{"SFXGame.SFXWeapon_Shotgun_Base", ue3::kEveryGame},
     ue3::ClassRef{"SFXGame.SFXWeapon_AssaultRifle_Base", ue3::kEveryGame},
     ue3::ClassRef{"SFXGame.SFXWeapon_SniperRifle_Base", ue3::kEveryGame},
+#if defined(MEVR_GAME_LE3)
+    ue3::ClassRef{"SFXGame.SFXWeapon_SMG_Base", ue3::kEveryGame},
+#else
     ue3::ClassRef{"SFXGame.SFXWeapon_AutoPistol_Base", ue3::kEveryGame},
+#endif
 };
 inline ue3::FunctionRef isHostile{"SFXGame.BioPawn.IsHostile", ue3::kEveryGame};
 inline ue3::FunctionRef isDead{"Engine.Pawn.IsDead", ue3::kEveryGame};
@@ -44,7 +54,7 @@ inline ue3::FunctionRef powerEnabled{"SFXGame.SFXPower.IsEnabled", ue3::kEveryGa
 inline ue3::FunctionRef powerCooldown{"SFXGame.SFXPower.GetCooldownRemaining", ue3::kEveryGame};
 inline ue3::FunctionRef powerEvolved{"SFXGame.SFXPowerManager.HasPowerBeenEvolved", ue3::kEveryGame};
 
-struct Power { ue3::Name name; float cooldown; bool enabled; };
+struct Power { ue3::Name name; float cooldown; bool enabled; ue3::Object* object = nullptr; };
 // Same native source and evolution resolution as game/PowerWheel.cpp; includes cooling powers in context,
 // but dispatch re-reads both enabled state and cooldown rather than trusting an earlier voice snapshot.
 inline std::vector<Power> Powers(ue3::Object* pawn) {
@@ -52,6 +62,20 @@ inline std::vector<Power> Powers(ue3::Object* pawn) {
     auto* manager = powerManager.Read<ue3::Object*>(pawn).value_or(nullptr);
     auto list = ue3::runtime::IsAlive(manager) ? powers.ElementsOf(manager) : std::nullopt;
     if (!list) return out;
+#if defined(MEVR_GAME_LE3)
+    if (list->count > 128) return out;
+    for (int i = 0; i < list->count; ++i) {
+        auto** slot = static_cast<ue3::Object**>(list->At(i));
+        auto* object = slot != nullptr ? *slot : nullptr;
+        if (!ue3::runtime::IsAlive(object) || !le3_powers::visible.ReadBool(object).value_or(false)) continue;
+        auto const state = le3_powers::State(object);
+        auto const name = le3_powers::name.Read<ue3::Name>(object);
+        if (!state || !name || name->Key() == 0) continue;
+        auto const view = vr::power_wheel::EvaluateNativePower(*state);
+        if (!view.valid || !view.learned || std::any_of(out.begin(), out.end(), [&](auto const& p) { return p.name == *name; })) continue;
+        out.push_back({*name, std::max(state->remaining, 0.0f), view.enabled, object});
+    }
+#else
     for (int i = 0; i < list->count && i < 64; ++i) {
         auto** slot = static_cast<ue3::Object**>(list->At(i));
         auto* power = slot != nullptr ? *slot : nullptr;
@@ -73,6 +97,7 @@ inline std::vector<Power> Powers(ue3::Object* pawn) {
         if (!seconds || !std::isfinite(*seconds)) continue;
         out.push_back({name, std::max(0.0f, *seconds), e.ReturnBool().value_or(false)});
     }
+#endif
     return out;
 }
 
@@ -99,6 +124,61 @@ inline bool CanOrder() {
     if (!ue3::runtime::IsAlive(input) || fn == nullptr) return false;
     ue3::Params args(ue3::runtime::Get(), fn);
     return ue3::runtime::Call(input, fn, args) && args.ReturnBool().value_or(false);
+}
+
+// LE3 adds an explicit input-method parameter to all henchman order wrappers.
+// Installed scripts default to CIM_Default=0; custom voice uses the same route,
+// never CIM_Kinect or a less restrictive native admission path.
+inline bool BindInputMethod(ue3::Params& args) {
+#if defined(MEVR_GAME_LE3)
+    return args.Set("eInputMethod", std::uint8_t{0});
+#else
+    (void)args;
+    return true;
+#endif
+}
+
+#if defined(MEVR_GAME_LE3)
+inline ue3::FieldRef worldInfo{"Engine.Actor", "WorldInfo", ue3::kEveryGame};
+inline ue3::FieldRef playerSquad{"SFXGame.BioWorldInfo", "m_playerSquad", ue3::kEveryGame};
+inline ue3::FieldRef squadMembers{"SFXGame.BioBaseSquad", "Members", ue3::kEveryGame};
+inline ue3::FieldRef pawnController{"Engine.Pawn", "Controller", ue3::kEveryGame};
+inline ue3::ClassRef henchmanAI{"SFXGame.SFXAI_Henchman", ue3::kEveryGame};
+inline ue3::FunctionRef actorName{"SFXGame.BioPawn.GetActorGameName", ue3::kEveryGame};
+inline std::string ActorName(ue3::Object* pawn) {
+    auto* fn = actorName.Get();
+    if (!ue3::runtime::IsAlive(pawn) || !fn || !ue3::memory::Ready()) return {};
+    ue3::Params args(ue3::runtime::Get(), fn);
+    if (!ue3::runtime::Call(pawn, fn, args)) return {};
+    auto text = args.Return<ue3::FString>();
+    if (!text) return {};
+    auto result = ue3::memory::Narrow(*text);
+    ue3::memory::FreeString(*text);  // native/script FString return belongs to caller
+    return result;
+}
+#endif
+
+inline bool RecipientReady(ue3::Object* pawn) {
+    if (!Living(pawn)) return false;
+#if defined(MEVR_GAME_LE3)
+    auto* world = worldInfo.Read<ue3::Object*>(player::BioPawn(player::Controller())).value_or(nullptr);
+    auto* squad = ue3::runtime::IsAlive(world) ? playerSquad.Read<ue3::Object*>(world).value_or(nullptr) : nullptr;
+    auto members = ue3::runtime::IsAlive(squad) ? squadMembers.ElementsOf(squad) : std::nullopt;
+    if (!members || members->count > 16) return false;
+    bool found = false;
+    for (int i = 0; i < members->count; ++i) {
+        auto** slot = static_cast<ue3::Object**>(members->At(i));
+        found = found || (slot != nullptr && *slot == pawn);
+    }
+    auto* ai = pawnController.Read<ue3::Object*>(pawn).value_or(nullptr);
+    if (!found || !ue3::runtime::IsAlive(ai) || !ue3::IsA(ai, henchmanAI)) return false;
+    auto* fn = ue3::runtime::Get().FindFunction(ue3::runtime::Get().ClassOf(ai), "IsEnabled");
+    if (!fn) return false;
+    ue3::Params args(ue3::runtime::Get(), fn);
+    return ue3::runtime::Call(ai, fn, args) && args.ReturnBool().value_or(false);
+#else
+    return true;
+#endif
 }
 
 inline int WeaponType(ue3::Object* weapon) {

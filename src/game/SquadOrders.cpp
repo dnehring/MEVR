@@ -41,7 +41,7 @@ namespace json = vr::test_request;
 namespace {
 
 bool LayerReady() {
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     return ue3::runtime::Up();
 #else
     return ue3::runtime::Ready();
@@ -253,9 +253,9 @@ ue3::Object* NearestOfGroup(int groupId) {
     return best;
 }
 
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 ue3::Object* Le2Member(int index) {
-    for (auto const& m : squad_weapons::Members(true)) if (m.squadIndex == index && le2_squad::Living(m.pawn)) return m.pawn;
+    for (auto const& m : squad_weapons::Members(true)) if (m.squadIndex == index && le2_squad::RecipientReady(m.pawn)) return m.pawn;
     return nullptr;
 }
 std::string Le2Order(ue3::Object* controller, int index, ue3::FunctionRef& ref,
@@ -263,7 +263,7 @@ std::string Le2Order(ue3::Object* controller, int index, ue3::FunctionRef& ref,
     auto* pawn = Le2Member(index); auto* fn = ref.Get();
     if (!le2_squad::CanOrder() || pawn == nullptr || fn == nullptr) return "refused: mode or native recipient unavailable";
     ue3::Params args(ue3::runtime::Get(), fn);
-    if (!args.Set("oHenchman", pawn)) return "refused: recipient parameter unavailable";
+    if (!args.Set("oHenchman", pawn) || !le2_squad::BindInputMethod(args)) return "refused: recipient parameter unavailable";
     if (&ref == &le2_squad::orderAttack) {
         if (!le2_squad::Hostile(target) || !args.Set("oTargetActor", target)) return "refused: target unavailable";
     }
@@ -274,7 +274,7 @@ std::string Le2Order(ue3::Object* controller, int index, ue3::FunctionRef& ref,
 #endif
 
 bool Functions(ue3::Object*& controller) {
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     controller = player::Controller();
     return !gMenuOpen && !squad_weapons::IsOpen() && le2_squad::CanOrder() && le2_squad::orderAttack.Get() != nullptr &&
         le2_squad::orderFollow.Get() != nullptr && le2_squad::orderHold.Get() != nullptr;
@@ -298,7 +298,7 @@ std::string CallResult(ue3::Params const& parms, bool called) {
 }
 
 std::string CallFollow(ue3::Object* controller, int index) {
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     return Le2Order(controller, index, le2_squad::orderFollow);
 #else
 
@@ -309,7 +309,7 @@ std::string CallFollow(ue3::Object* controller, int index) {
 }
 
 std::string CallAttack(ue3::Object* controller, int index, ue3::Object* target) {
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     return Le2Order(controller, index, le2_squad::orderAttack, target);
 #else
 
@@ -323,7 +323,7 @@ std::string CallAttack(ue3::Object* controller, int index, ue3::Object* target) 
 // The move: the controller's Rotation turned toward the point for the call (the native drops the point along the controller's
 // facing: research/54's trace), and put back.
 std::string CallMove(ue3::Object* controller, int index, engine::UnrealVector const& point) {
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     return Le2Order(controller, index, le2_squad::orderHold, nullptr, point);
 #else
 
@@ -349,9 +349,9 @@ std::string CallMove(ue3::Object* controller, int index, engine::UnrealVector co
 // the controller's Rotation says; the HOLD formation keeps them where they stand). With the HOLD formation set at the point
 // first, they walk there and hold it (0.6 m from the ring in the placement's check).
 std::string PushMove(ue3::Object* pawn, engine::UnrealVector const& point) {
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     (void)pawn; (void)point;
-    return "ME2 hold order supplies native movement";
+    return "native henchman hold order supplies movement";
 #else
 
     ue3::Function* const fn = gPushMoveFn.Get();
@@ -373,21 +373,38 @@ std::string PushMove(ue3::Object* pawn, engine::UnrealVector const& point) {
 // bOrderedByPlayer, fTimeOut, vTarget). The target: the group's nearest living member, or none (a self-buff, a place power
 // at the target's feet).
 std::string CallUsePower(ue3::Object* controller, Recipient const& rc, ue3::Name power, ue3::Object* target, std::string const& route) {
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     (void)route; // ME2 always uses its native tactical queue, not ME1 BioAiController.AddUsePower.
-    if (!le2_squad::CanOrder() || !le2_squad::Living(rc.pawn)) return "refused: mode or recipient unavailable";
+    if (!le2_squad::CanOrder() || !le2_squad::RecipientReady(rc.pawn)) return "refused: mode or recipient unavailable";
     auto powers = le2_squad::Powers(rc.pawn);
     auto found = std::find_if(powers.begin(), powers.end(), [&](auto const& p) { return p.name.Key() == power.Key(); });
     if (found == powers.end() || !found->enabled || found->cooldown > 0.0f) return "refused: power absent, disabled or cooling down";
     if (target != nullptr && !le2_squad::Hostile(target)) return "refused: target unavailable";
-    auto* order = le2_squad::orderPower.Get(); auto* apply = le2_squad::applyOrders.Get();
-    if (order == nullptr || apply == nullptr) return "refused: native power order functions unavailable";
+    auto* order = le2_squad::orderPower.Get();
+    if (order == nullptr) return "refused: native power order function unavailable";
+#if defined(MEVR_GAME_LE2)
+    auto* apply = le2_squad::applyOrders.Get();
+    if (apply == nullptr) return "refused: native power application function unavailable";
+#endif
     ue3::Params args(ue3::runtime::Get(), order);
+#if defined(MEVR_GAME_LE3)
+    if (!le3_powers::CanUse(found->object, target)) return "refused: native power target/resource guard";
+    auto const location = target != nullptr ? player::Location(target) : std::optional<ue3::Vector>{};
+    bool const valid = args.Set("nmPower", power) && args.Set("pPawn", rc.pawn) && args.Set("nQueue", std::int32_t{0}) &&
+        args.SetBool("bShowIndicator", true) && args.Set("pDesiredSelectionTarget", target) && le2_squad::BindInputMethod(args) &&
+        args.Set("pDesiredTarget", target) && args.Set("vDesiredTargetLocation", location.value_or(ue3::Vector{}));
+#else
     bool const valid = args.Set("nmPower", power) && args.Set("pPawn", rc.pawn) && args.Set("nQueue", std::int32_t{0}) &&
         args.SetBool("bShowIndicator", true) && args.Set("pDesiredTarget", target);
+#endif
     if (!valid || !ue3::runtime::Call(controller, order, args)) return "native power order not called";
+#if defined(MEVR_GAME_LE3)
+    // LE3 ApplyTacticalOrders consumes the PLAYER's pending order, not this henchman's.
+    return args.ReturnBool().value_or(false) ? "native power order accepted (cast outcome pending)" : "native power order refused";
+#else
     ue3::Params none(ue3::runtime::Get(), apply);
     return ue3::runtime::Call(controller, apply, none) ? "native power order applied (cast outcome pending)" : "native power order queued, application failed";
+#endif
 #else
 
     if (route == "ai") {
@@ -432,7 +449,7 @@ ue3::Object* Squad() {
 // The game's own hold: the member's hold position, then the HOLD formation for that member (the route the Follow native
 // takes for FOLLOW, which fires the squad's acknowledgement). The formation read back says whether the game took it.
 std::string CallHold(int index, engine::UnrealVector const& point) {
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     return Le2Order(player::Controller(), index, le2_squad::orderHold, nullptr, point);
 #else
 
@@ -814,7 +831,7 @@ std::string Dispatch(sc::Resolved const& given, sc::Action const& action, std::o
 }
 
 std::string GiveResolved(sc::Action const& action, std::optional<engine::UnrealVector> point, sp::StandingHint const& hint) {
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     if (gMenuOpen || squad_weapons::IsOpen() || engine::World() != gWorld || !le2_squad::CanOrder()) return "refused: squad orders unavailable in this mode or menu";
 #endif
     sc::Resolved const r = sc::Validate(action, squad_context::Scene(), squad_context::Groups(), squad_context::Landmarks(), {}, gHistory);
