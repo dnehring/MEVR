@@ -290,6 +290,39 @@ int DynamicRoster() {
         scene.party[0].powers = {{"DCH", 0.0f}};
         scene.party[0].present = false;
         check(!sc::Validate(action, scene, groups, {}, {}).ok, "removed companion refused");
+
+        scene.party[0].present = true;
+        scene.party[0].powers = {{"DCH", 0, sc::PowerSelf}};
+        action.target = {};
+        auto self = sc::Validate(action, scene, {}, {}, {});
+        check(self.ok && self.selfPower && self.group == 0, "native self intent needs no invented enemy");
+        action.target = {sc::Target::Group, 1};
+        check(!sc::Validate(action, scene, groups, {}, {}).ok, "self buff rejects external target");
+        scene.party[0].powers = {{"DCH", 0, sc::PowerHostile | sc::PowerAlly | sc::PowerLocation}};
+        sc::Member ally;
+        ally.letter = 'L'; ally.present = true;
+        scene.party.push_back(ally);
+        sc::RosterEntry allyEntry;
+        allyEntry.letter = 'L'; allyEntry.name = "Liara"; allyEntry.aliases = {"Liara"};
+        roster.push_back(allyEntry);
+        auto named = sp::Parse("Javik use dark channel on Liara", scene, {}, roster, {});
+        // Test intent transport only: the actual game's IsValidTarget still rejects Dark Channel on an ally.
+        check(!named.empty && named.confidence >= 0.6f && Lines(named) == "J|-|DCH|use|ALLY:L", "ally name is a target, not a second order recipient");
+        action.target = {sc::Target::Ally, 'L'};
+        auto support = sc::Validate(action, scene, {}, {}, {});
+        check(support.ok && support.ally == 'L', "current living ally intent");
+        auto encoded = sc::ParseLine(sc::Line(action));
+        check(encoded && encoded->target.kind == sc::Target::Ally && encoded->target.index == 'L', "ally protocol roundtrip");
+        scene.party[1].alive = false;
+        check(!sc::Validate(action, scene, {}, {}, {}).ok, "downed ally rejected by ordinary support intent");
+        scene.party[1].alive = true;
+        scene.party[0].powers[0].targets = sc::PowerHostile;
+        check(!sc::Validate(action, scene, {}, {}, {}).ok, "legacy hostile-only power cannot target ally");
+        action.target = {sc::Target::Pointed, 1};
+        check(!sc::Validate(action, scene, {}, {}, {}).ok, "legacy hostile-only power cannot target empty ground");
+        scene.party[0].powers[0].targets = sc::PowerHostile | sc::PowerLocation;
+        auto ground = sc::Validate(action, scene, {}, {}, {});
+        check(ground.ok && ground.locationPower && ground.group == 0, "location intent proceeds to required observed-point check");
     }
     return failures;
 }

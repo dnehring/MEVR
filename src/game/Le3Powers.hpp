@@ -24,6 +24,8 @@ inline ue3::FieldRef minimumRange{"SFXGame.SFXPowerCustomActionBase", "MinimumRa
 inline ue3::FieldRef maximumRange{"SFXGame.SFXPowerCustomActionBase", "MaximumRange", ue3::kEveryGame};
 inline ue3::FieldRef minimumValue{minimumRange, "CurrentValue"};
 inline ue3::FieldRef maximumValue{maximumRange, "CurrentValue"};
+inline ue3::FieldRef selection{"SFXGame.BioPlayerController", "m_oPlayerSelection", ue3::kEveryGame};
+inline ue3::FieldRef selectionTarget{"SFXGame.BioPlayerSelection", "m_oCurrentSelectionTarget", ue3::kEveryGame};
 
 inline ue3::Function* Method(ue3::Object* object, char const* method) {
     auto& r = ue3::runtime::Get();
@@ -63,6 +65,14 @@ inline bool ValidTarget(ue3::Object* object, ue3::Object* target) {
 inline bool LocationInRange(ue3::Object* object, double distance) {
     auto minimum = minimumValue.Read<float>(object), maximum = maximumValue.Read<float>(object);
     return minimum && maximum && vr::power_wheel::NativeLocationInRange(distance, *minimum, *maximum);
+}
+inline bool LocationSelectionAllows(ue3::Object* controller, ue3::Object* power) {
+    // ChooseTargetForPlayer prefers an existing valid selection over an explicit location.
+    // Refuse that ambiguity instead of changing the native selection or casting at the wrong actor.
+    auto* selected = selection.Read<ue3::Object*>(controller).value_or(nullptr);
+    if (!ue3::runtime::IsAlive(selected)) return false;
+    auto target = selectionTarget.Read<ue3::Object*>(selected);
+    return target && (*target == nullptr || (ue3::runtime::IsAlive(*target) && !ValidTarget(power, *target)));
 }
 }  // namespace mevr::game::le3_powers
 #endif

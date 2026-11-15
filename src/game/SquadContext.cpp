@@ -206,7 +206,13 @@ void ReadPowers(ue3::Object* behavior, sc::Member& member, Known& known) {
         auto const internal = ue3::runtime::NameText(native.name);
         auto const code = CodeOf(internal);
         gPowerNames[code] = native.name;
+#if defined(MEVR_GAME_LE3)
+        bool const self = le3_powers::type.Read<std::uint8_t>(native.object) == 3 || ue3::IsA(native.object, le3_powers::reviveClass);
+        auto const targets = static_cast<std::uint8_t>(self ? sc::PowerSelf : sc::PowerHostile | sc::PowerAlly | sc::PowerLocation);
+        member.powers.push_back({code, native.cooldown, targets});
+#else
         member.powers.push_back({code, native.cooldown});
+#endif
         if (std::none_of(known.powers.begin(), known.powers.end(), [&](auto const& p) { return p.first == code; }))
             known.powers.emplace_back(code, Spoken(internal));
     }

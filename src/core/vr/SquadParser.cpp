@@ -577,7 +577,10 @@ Parsed Parse(std::string_view transcript, sc::Scene const& scene, std::vector<sc
             std::size_t j = i;
             while (j > from && (tokens[j - 1].tag == Tag::Stop || !tokens[j - 1].head)) --j;
             // ...or the actor named after "you too" / "same" ("you too, Wrex").
-            bool const object = j > from && (tokens[j - 1].tag == Tag::Support || tokens[j - 1].tag == Tag::Repeat);
+            bool const powerObject = i > from && (tokens[i - 1].text == "on" || tokens[i - 1].text == "for") &&
+                std::any_of(tokens.begin() + static_cast<std::ptrdiff_t>(from), tokens.begin() + static_cast<std::ptrdiff_t>(i),
+                    [](auto const& token) { return token.tag == Tag::Power; });
+            bool const object = powerObject || (j > from && (tokens[j - 1].tag == Tag::Support || tokens[j - 1].tag == Tag::Repeat));
             if (!object) {
                 clauses.emplace_back(from, i);
                 from = i;
@@ -622,6 +625,7 @@ Parsed Parse(std::string_view transcript, sc::Scene const& scene, std::vector<sc
         std::vector<std::string> surfaces, types, landmarkWords;
         bool coverBehind = false;  // "behind that crate": the cover's far side, not the Behind sector
         std::optional<sc::Target::Kind> explicitTarget;
+        char allyTarget = 0;
         std::vector<std::string> unknown;
         bool afterDeictic = false;
         auto const nextHeadIn = [&](std::size_t i) {
@@ -641,7 +645,9 @@ Parsed Parse(std::string_view transcript, sc::Scene const& scene, std::vector<sc
             if (nounOfDeictic) continue;
             switch (t.tag) {
             case Tag::Name:
-                if (support && clause.supportOf == 0) {
+                if (!act.power.empty() && i > a && (tokens[i - 1].text == "on" || tokens[i - 1].text == "for")) {
+                    allyTarget = static_cast<char>(t.value);
+                } else if (support && clause.supportOf == 0) {
                     clause.supportOf = static_cast<char>(t.value);
                 } else if (act.who.kind == sc::Who::Member && act.who.letter != static_cast<char>(t.value)) {
                     act.who = {sc::Who::All};  // "Garrus, Wrex, on me": both (LE1 fields two)
@@ -852,6 +858,8 @@ Parsed Parse(std::string_view transcript, sc::Scene const& scene, std::vector<sc
         }
         if (act.order == sc::Order::Follow || act.order == sc::Order::Regroup) {
             act.target = {};  // "get back here": to the player, wherever "here" was
+        } else if (allyTarget != 0) {
+            act.target = {sc::Target::Ally, allyTarget};
         } else if (wantsCover && placeOrder) {
             // One piece fits: it; else the one pointed at; else the nearest of several; else nothing by that name.
             if (coverFit.size() == 1) {

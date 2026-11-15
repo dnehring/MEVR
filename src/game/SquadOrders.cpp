@@ -372,14 +372,22 @@ std::string PushMove(ue3::Object* pawn, engine::UnrealVector const& point) {
 // applies it (the weapon order's path, research/19); ai: the member's own controller takes AddUsePower(nmPower, oTarget,
 // bOrderedByPlayer, fTimeOut, vTarget). The target: the group's nearest living member, or none (a self-buff, a place power
 // at the target's feet).
-std::string CallUsePower(ue3::Object* controller, Recipient const& rc, ue3::Name power, ue3::Object* target, std::string const& route) {
+std::string CallUsePower(ue3::Object* controller, Recipient const& rc, ue3::Name power, ue3::Object* target, std::string const& route,
+    std::optional<engine::UnrealVector> point) {
+#if !defined(MEVR_GAME_LE3)
+    (void)point;
+#endif
 #if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     (void)route; // ME2 always uses its native tactical queue, not ME1 BioAiController.AddUsePower.
     if (!le2_squad::CanOrder() || !le2_squad::RecipientReady(rc.pawn)) return "refused: mode or recipient unavailable";
     auto powers = le2_squad::Powers(rc.pawn);
     auto found = std::find_if(powers.begin(), powers.end(), [&](auto const& p) { return p.name.Key() == power.Key(); });
     if (found == powers.end() || !found->enabled || found->cooldown > 0.0f) return "refused: power absent, disabled or cooling down";
+#if defined(MEVR_GAME_LE3)
+    if (target != nullptr && (!le2_squad::Living(target) || !le3_powers::ValidTarget(found->object, target))) return "refused: native power target unavailable";
+#else
     if (target != nullptr && !le2_squad::Hostile(target)) return "refused: target unavailable";
+#endif
     auto* order = le2_squad::orderPower.Get();
     if (order == nullptr) return "refused: native power order function unavailable";
 #if defined(MEVR_GAME_LE2)
@@ -388,11 +396,19 @@ std::string CallUsePower(ue3::Object* controller, Recipient const& rc, ue3::Name
 #endif
     ue3::Params args(ue3::runtime::Get(), order);
 #if defined(MEVR_GAME_LE3)
-    if (!le3_powers::CanUse(found->object, target)) return "refused: native power target/resource guard";
+    // Native target selection establishes m_bPlayerOrderedPowerUse before the AI evaluates
+    // CanUsePower. Calling that override early can incorrectly reject ordered ammo buffs.
+    if (point && target == nullptr) {
+        auto const origin = player::Location(rc.pawn);
+        double const dx = origin ? point->x - origin->x : 0, dy = origin ? point->y - origin->y : 0, dz = origin ? point->z - origin->z : 0;
+        if (!origin || !le3_powers::LocationInRange(found->object, std::sqrt(dx * dx + dy * dy + dz * dz))) return "refused: location outside native power range";
+        if (!le3_powers::LocationSelectionAllows(controller, found->object)) return "refused: native selected target would override the requested location";
+    }
     auto const location = target != nullptr ? player::Location(target) : std::optional<ue3::Vector>{};
+    auto const at = location.value_or(point ? ue3::Vector{static_cast<float>(point->x), static_cast<float>(point->y), static_cast<float>(point->z)} : ue3::Vector{});
     bool const valid = args.Set("nmPower", power) && args.Set("pPawn", rc.pawn) && args.Set("nQueue", std::int32_t{0}) &&
         args.SetBool("bShowIndicator", true) && args.Set("pDesiredSelectionTarget", target) && le2_squad::BindInputMethod(args) &&
-        args.Set("pDesiredTarget", target) && args.Set("vDesiredTargetLocation", location.value_or(ue3::Vector{}));
+        args.Set("pDesiredTarget", target) && args.Set("vDesiredTargetLocation", at);
 #else
     bool const valid = args.Set("nmPower", power) && args.Set("pPawn", rc.pawn) && args.Set("nQueue", std::int32_t{0}) &&
         args.SetBool("bShowIndicator", true) && args.Set("pDesiredTarget", target);
@@ -801,10 +817,18 @@ std::string Dispatch(sc::Resolved const& given, sc::Action const& action, std::o
     case sc::Order::Use: {
         std::optional<ue3::Name> const power = squad_context::PowerName(r.power);
         if (!power) return std::format("use {}: the game's name for the power isn't known yet", r.power);
-        ue3::Object* const target = r.group != 0 ? NearestOfGroup(r.group) : nullptr;
+        ue3::Object* target = r.group != 0 ? NearestOfGroup(r.group) : nullptr;
         if (r.group != 0 && target == nullptr) return std::format("use {}: no living member of E{} to target", r.power, r.group);
+        if (r.ally != 0) {
+            for (auto const& member : squad_weapons::Members(true)) {
+                if (squad_context::LetterOf(member.classId) == r.ally) target = member.pawn;
+            }
+            if (!target) return "refused: ally left the current squad";
+        }
+        if (r.locationPower && target == nullptr && !point) return "refused: power location was not observed";
+        if (!r.locationPower || r.selfPower || target != nullptr) point.reset();
         for (Recipient const& rc : to) {
-            note(CallUsePower(controller, rc, *power, target, s.powerRoute));
+            note(CallUsePower(controller, rc, *power, target, s.powerRoute, point));
             expect(rc, sc::Order::Use);
         }
         what = std::format("use {} ({}){}: the {} route for {} -> {}", r.power, ue3::runtime::NameText(*power),
@@ -1054,7 +1078,7 @@ std::string Say(std::string_view transcript, double secondsAgo) {
                 if (supporting.empty()) supporting = std::format("{} isn't here: the gun's target", c.supportOf);
             }
             sc::Resolved const r = sc::Validate(action, scene, groups, landmarks, deictics, gHistory);
-            if (r.ok && (r.order == sc::Order::Move || r.order == sc::Order::Hold) && action.target.kind == sc::Target::Pointed && r.landmark == 0) {
+            if (r.ok && (r.order == sc::Order::Move || r.order == sc::Order::Hold || r.locationPower) && action.target.kind == sc::Target::Pointed && r.landmark == 0) {
                 point = place;  // "over there": the floor the left hand's ray hits (a pointed group's or cover's place comes from the resolution)
             }
             outcome = !r.ok ? std::format("refused: {}", r.problem)

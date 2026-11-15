@@ -17,7 +17,7 @@ Local reference: `external/LExSDKv2/Src/LESDK/LE3/{SFXGame_classes,SFXGame_f_str
 | Weapon command | `OrderWeaponSwitch(oOrderedPawn,Wpn,eInputMethod=0)`. Require the requested object still belongs to that member; report success only when the equipped object is observed. |
 | Follow / hold / attack | Existing native `HenchmanOrderFollow`, `HenchmanOrderHoldPosition`, `HenchmanOrderAttackTarget`. LE3 adds `eInputMethod`; installed script defaults use `CIM_Default=0`. Do not invoke Kinect-specific handling or LE1 formation/movement writes. |
 | Powers | Shared `Le3Powers.hpp` reads the member's actual `SFXPowerManager.Powers`. Native rank, visibility, enabled state, cooldown and grenade-count override remain authoritative. DLC/unknown identities enter the existing dynamic voice roster. |
-| Power command | `SquadOrderUsePower`: explicit name, recipient, queue=0, indicator=true, desired selection target, input method=0, desired target and desired location. Recheck actual power `CanUsePower`; inspect native bool return. A true return is acceptance of the request, not proof of a cast. |
+| Power command | `SquadOrderUsePower`: explicit name, recipient, queue=0, indicator=true, desired selection target, input method=0, desired target and desired location. Recheck current inventory/learned state, cooldown and grenade observations, plus the actual target predicate; preserve the native player-ordered setup before its `CanUsePower` evaluation. Inspect native bool return. A true return is acceptance of the request, not proof of a cast. |
 
 The installed power-wheel path calls `SFXGameModeDefault.UsePower`, which calls `SquadOrderUsePower`, using queue 1 only for permitted blocking-action cases, then `ApplyTacticalOrders`. Inspection of `ApplyTacticalOrders` shows it consumes the **player's** pending power/weapon and clears that player order. The LE3 companion-only adapter does not flush an unrelated player order. The native dispatch split is confirmed below; actual gameplay outcome still needs confirmation; requests during blocking actions are not claimed to have UI-equivalent queue behavior. LE1/LE2 dispatch paths remain unchanged.
 
@@ -43,7 +43,7 @@ Use the existing owned session and request/replay tools. No new launcher, runner
 
 ## Remaining parity gaps
 
-- Healing/revive and contextual ally/location power orders need their own native policy. The shared voice validator currently requires a target group for `Use`; this increment does not claim self/ally/location voice power parity.
+- Healing/revive uses the player Unity raised-hand gesture, audited in `research/le3-powers.md`; native effect acceptance remains open. Explicit squad self/ally/location intent is implemented below but not yet validated in native gameplay.
 - Specialized player weapon-buff gestures, DLC-specific visual treatment, unique power icons and physical headset acceptance remain tracked in `research/le3-powers.md` and the implementation plan.
 - Companion portraits/role artwork remain generic where the shared menu has no asset; overflow weapon page appearance and interaction still need native/headset review.
 - Existing standing-order observer must be tested against actual ME3 AI outcomes, including failed navigation and interrupted casts. No synthetic success or resource/cooldown writes were introduced.
@@ -59,3 +59,17 @@ Coordinator's protected probe supplied native exec RVAs from the installed LE3 e
 ## Overflow inventory follow-up
 
 The shared menu machine now treats an optional More weapons tile as navigation, leaves the menu open and clears the highlight. A held confirm or stick cannot dispatch the replacement tile. Release-to-confirm navigation also stays open and has an idle timeout; the normal at-most-four layout remains unchanged. The game adapter compares the complete live inventory while open, cancels when that inventory changes, and observes the actual equipped object after a real selection. Voice weapon orders select from the complete inventory. Tests cover 0/4/5/7-object pagination, held confirm, release confirmation, real selection after navigation, and idle cancellation. No host view structure changed.
+
+
+## Explicit squad power intent follow-up
+
+The existing core `Power` observation now carries intent capabilities, defaulting to hostile-only for compatibility. LE3 derives self intent from the real native buff/Unity class/type; other native powers allow an actor/location request, with actual `IsValidTarget` and native execution deciding compatibility. This is not a fabricated roster or a promise that a hostile power can buff an ally.
+
+- A self buff no longer requires an invented enemy group. A named external target on that self buff is refused. `SELF` remains available in the existing `mevr order` format.
+- `ALLY:L` explicitly names a current living party member. The shared parser preserves the recipient in phrases like “Javik use dark channel on Liara” and carries Liara as the requested target; actual Dark Channel still fails its native hostile-only target predicate. This example distinguishes parsing intent from approving a cast. An absent/downed ally is refused by ordinary support intent; Unity's native squad-wide recovery is a separate player gesture.
+- A location-capable `Use` may resolve a spoken pointing sample or known landmark. Dispatch requires an actually observed finite point, checks the recipient power's live native range, and rejects missing points. It does not substitute the origin or a guessed enemy.
+- Installed `ChooseTargetForPlayer` prefers a valid native selection even when a desired location was supplied. Therefore a location order refuses while such a selection would override it; the mod neither rewrites selection nor silently casts at a different actor. Existing reflection checks now cover the two selection pointers. The selected actor path still uses normal native targeting/LOS.
+
+The pre-dispatch `CanUsePower` call was removed for **squad** orders: the installed ammo-power override examines `m_bPlayerOrderedPowerUse`, and native target selection establishes that state before native AI admission. Calling the override early can wrongly reject an explicitly ordered ammo buff. We keep read-only rank/enabled/cooldown/grenade guards, current squad/AI membership and actual target validation; the normal native queue owns subsequent `CanUsePower` and effects. Player gesture dispatch still checks its actual `CanUsePower` as described in the power research.
+
+Offline regression cases cover self/no-enemy admission, refusal of an external target for a self buff, named-ally parsing and protocol roundtrip, absent/downed ally refusal, unchanged hostile-only defaults, and location intent versus missing-enemy refusal. The existing 177-order/18-refusal corpus remains green. These are intent and safety checks, not gameplay acceptance. Repeat tests in a real combat fixture must prove the intended companion, actor/location, resource changes and actual effect, including native selected-target ambiguity and cooldown/reload/action interruption.
