@@ -11,6 +11,13 @@ zero differences, preserved the LE1 ini, and released ownership. Session suffix:
 
 This validates normal load and owned descriptor execution after world replacement. It does not establish weapon
 getter agreement, arbitrary stale-cache safety, native save creation, combat suitability or VR acceptance.
+
+The subsequent squad/comfort adapter probe passed **259/259** comparisons with zero mismatches or unreflected rows.
+Native target comparison identified `BioPlayerController.SquadOrderUsePower` at RVA `0xB64A20` and
+`BioPawn.GetActorGameName` at RVA `0xB3F8B0` for follow-up queue/ownership analysis. It loaded the Normandy save again,
+read the real HUD's local clip bounds, and verified that melee/traversal diagnostics reject engine-probe mode.
+The noncombat pawn had no live weapon, so no weapon-getter agreement is claimed. Restoration verified zero
+differences and released the run lock. Private session suffix: `20261115-134558-519-LE3-adapter-probe`.
 # ME3 native engine access
 
 Original observations from the protected desktop capture of executable 2.0.0.48602,

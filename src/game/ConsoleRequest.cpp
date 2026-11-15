@@ -43,6 +43,7 @@
 #include "game/Traversal.hpp"
 #include "game/Vent.hpp"
 #include "core/WriteJournal.hpp"
+#include "mod/GameplayActions.hpp"
 
 #include <Windows.h>
 
@@ -1774,13 +1775,17 @@ std::optional<std::string> RunOursLe3(ue3::Object* pc, std::string const& line) 
     if (verb == "savedesc") return CurrentSave(ue3::runtime::GameEngine());
     if (verb == "state") return State(pc);
     if (verb == "weaponprobe") return WeaponProbeLe3(pc);
+    if (verb == "melee" || verb == "traversal") {
+        std::string rest; std::getline(words, rest);
+        return verb == "melee" ? mod::gameplay_actions::MeleeCommand(rest) : mod::gameplay_actions::TraversalCommand(rest);
+    }
     if (verb == "powerwheel") { std::string rest; std::getline(words, rest); return power_wheel::Console(rest); }
     if (verb == "omni") { std::string which; words >> which; return game_menu_request::Inject(which); }
     if (verb == "guimouse" || verb == "guikey") {
         std::string rest; std::getline(words, rest);
         return verb == "guimouse" ? gui_cursor::Command(rest) : gui_cursor::KeyCommand(rest);
     }
-    return std::string("unknown on ME3: mevr load <career> <save name> <index> <type> | mevr savedesc | mevr state | mevr powerwheel | mevr omni | mevr guimouse | mevr guikey");
+    return std::string("unknown on ME3: mevr load <career> <save name> <index> <type> | mevr savedesc | mevr state | mevr weaponprobe | mevr melee | mevr traversal | mevr powerwheel | mevr omni | mevr guimouse | mevr guikey");
 }
 #endif
 #endif // shared sequel save/state requests

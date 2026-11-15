@@ -32,11 +32,19 @@ Implementation is now authorized. The audit baseline above remains historical; t
 - **L3-3, candidate adapter:** shared hand aim, weapon pose and skeleton representation now have explicit ME3
   adapters. SMGs retain their native category with a rifle presentation fallback. Native pose and headset review
   remain pending. See [body pose](../research/le3-body-pose.md).
-- **L3-4, candidate presentation:** shared main menu, calibration, rail and native flat-panel pointer composition
-  are integrated. Native wrist-screen capture and 3D cinema remain separate work; no overlapping screen owner
-  is enabled. See [presentation](../research/le3-shared-presentation.md).
-- **L3-5 through L3-10:** no completion claimed. Melee/class mapping, native reload, body/weapon presentation, menus,
-  powers, traversal, galaxy gameplay and campaign/release gates still require their adapters and evidence below.
+- **L3-4, candidate presentation:** shared main menu, calibration, rail, flat-panel pointer, stereo cinema and
+  weapon/power/comfort layers are integrated. Native HUD clip geometry was observed read-only; its local bounds
+  are not accepted screen crops. Wrist capture, native outcomes and separate-eye/headset acceptance remain open.
+  See [presentation](../research/le3-shared-presentation.md).
+- **L3-6, candidate native adapter:** shared power paging and live LE3 squad members/inventory/orders are implemented;
+  the expanded native metadata comparison passed. Target policy, healing/revive, UI capacity and actual companion
+  outcomes remain open. See [squad audit](../research/le3-squad.md).
+- **L3-7/8, staged adapters:** native light/heavy melee diagnostics and ladder/climb/vault/evade lifecycle observations
+  are wired through fresh ownership checks. Gestures remain opt-in pending native proof; heavy has no new physical
+  binding yet. Shared comfort turning/hand-walk rejects native movement-ignore/custom-action states. Stable traversal
+  camera handback and native/headset acceptance remain open. See [traversal](../research/le3-traversal-adapter.md).
+- **L3-5, L3-9 and L3-10:** no completion claimed. Native reload, attachment-aware optics, galaxy gameplay and
+  campaign/release gates still require their adapters and evidence below.
 
 The desktop engine probe and two normal descriptor loads passed and restored with zero differences. The next native
 step is the existing combat candidate, then weapon getter/invalidation checks. It needs the shared game-run lock and an available
@@ -70,6 +78,17 @@ cinematic mode 8 to injured-Shepard mode 6 within the bounded 120-second observa
 It therefore failed combat-fixture acceptance; no weapon scalar comparison was claimed. Its source/runtime hashes
 were unchanged and full restoration again reported zero differences. Preserve this exception fixture separately
 from the ordinary combat, melee and traversal requirements.
+
+The next adapter probe passed **259/259** comparisons, zero mismatches/not-reflected rows, including squad and comfort
+metadata. Normal Normandy loading passed again. The read-only HUD query resolved the PCHUD stage and all twelve
+named clips, but their negative local coordinates require parent transforms before any crop is accepted. Melee and
+traversal commands explicitly refused engine-probe mode. The protected run restored with zero differences and
+released its lock. Native weapon scalar execution remains open because this fixture has no live weapon.
+
+After the presentation/traversal integration, all three development host/module builds and the full 59-test suite
+passed. After the squad/comfort/ownership increment, all three development pairs passed again, followed by six
+focused shared/context/runner tests (including the newly registered load runner). The updated monolithic builds,
+renderer native-access corrections and first VR runtime acceptance remain pending for this integration batch.
 
 ## Outcome and boundaries
 

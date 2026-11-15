@@ -45,7 +45,7 @@
 #include "plugin/Voice.hpp"
 #include "plugin/VoiceModel.hpp"
 #endif
-#if defined(MEVR_WITH_HALCYON_LE2)
+#if defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
 #include "core/vr/Traversal.hpp"
 #include "plugin/TraversalCue.hpp"
 #endif
@@ -232,6 +232,17 @@ HostServices WithSights(HostServices services) {
     services.sightView = &HostSightView;
     return services;
 }
+HostServices WithPowerWheel(HostServices services) {
+    services.powerWheelSize = static_cast<std::uint32_t>(sizeof(vr::power_wheel::View));
+    services.setPowerWheel = [](vr::power_wheel::View const* view) {
+        vr::power_wheel::Publish(view != nullptr ? *view : vr::power_wheel::View{});
+    };
+    services.powerLockSize = static_cast<std::uint32_t>(sizeof(vr::power_wheel::LockView));
+    services.setPowerLock = [](vr::power_wheel::LockView const* view) {
+        vr::power_wheel::PublishLock(view != nullptr ? *view : vr::power_wheel::LockView{});
+    };
+    return services;
+}
 // The pad mapping with the mod's flags (plugin/PadMerge, both hosts): v7 the support grip and the flags it carries (the
 // holsters', the squad's, comfort's ...), v9 the right grip's report, v11 the left grip's.
 void HostSetSupportGrip(float distanceMeters, float acquireMeters, float releaseMeters, std::uint32_t flags) {
@@ -288,14 +299,14 @@ void ForgetRendererModState() {
     renderer::SetModHandAim(false);
     vr::aim_ray::Reset();
     xr_host::ForgetHaptics();
-#if defined(MEVR_WITH_HALCYON_LE2)
+#if defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
     traversal_cue::Forget();
 #endif
 }
 #endif
 
-#if defined(MEVR_WITH_HALCYON_LE2)
-// v40: traversal's cue and blink (plugin/TraversalCue, research/le2-traversal.md; LE2's host so far).
+#if defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
+// v40: the shared traversal cue and blink on the sequel hosts.
 HostServices WithTraversal(HostServices services) {
     services.traversalCueSize = static_cast<std::uint32_t>(sizeof(vr::traversal::Cue));
     services.setTraversal = &traversal_cue::Set;
@@ -577,16 +588,9 @@ HostServices BuildServices() {
     if (engine::DevelopmentEngineProbe()) return services;
 #if defined(MEVR_WITH_HALCYON_LE3)
     // Shared layers now consume these publications. Native/headset acceptance remains separate.
-    services = WithFloorLock(WithPadMerge(WithSights(WithVignette(WithRenderer(services)))));
+    services = WithTraversal(WithFloorLock(WithPadMerge(WithSights(WithVignette(WithRenderer(services))))));
     services.hideScreenReticle = nullptr; // native LE3 crosshair ownership has not been verified
-    services.powerWheelSize = static_cast<std::uint32_t>(sizeof(vr::power_wheel::View));
-    services.setPowerWheel = [](vr::power_wheel::View const* view) {
-        vr::power_wheel::Publish(view != nullptr ? *view : vr::power_wheel::View{});
-    };
-    services.powerLockSize = static_cast<std::uint32_t>(sizeof(vr::power_wheel::LockView));
-    services.setPowerLock = [](vr::power_wheel::LockView const* view) {
-        vr::power_wheel::PublishLock(view != nullptr ? *view : vr::power_wheel::LockView{});
-    };
+    services = WithPowerWheel(services);
     // LE3 uses the shared eye-image scope tap. The native scene-capture producer remains unavailable.
 #endif
 #if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2)
@@ -595,14 +599,7 @@ HostServices BuildServices() {
     services.setSquadMenu = [](vr::squad_menu::View const* view) {
         vr::squad_menu::Publish(view != nullptr && view->size == sizeof(vr::squad_menu::View) ? *view : vr::squad_menu::View{});
     };
-    services.powerWheelSize = static_cast<std::uint32_t>(sizeof(vr::power_wheel::View));
-    services.setPowerWheel = [](vr::power_wheel::View const* view) {
-        vr::power_wheel::Publish(view != nullptr ? *view : vr::power_wheel::View{});
-    };
-    services.powerLockSize = static_cast<std::uint32_t>(sizeof(vr::power_wheel::LockView));
-    services.setPowerLock = [](vr::power_wheel::LockView const* view) {
-        vr::power_wheel::PublishLock(view != nullptr ? *view : vr::power_wheel::LockView{});
-    };
+    services = WithPowerWheel(services);
     services.squadPlaceSize = static_cast<std::uint32_t>(sizeof(vr::squad_place::View));
     services.setSquadPlace = [](vr::squad_place::View const* view) {
         vr::squad_place::Publish(view != nullptr && view->size == sizeof(vr::squad_place::View) ? *view : vr::squad_place::View{});
