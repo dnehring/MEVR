@@ -2859,6 +2859,50 @@ void CheckSkeleton() {
     }
 }
 
+// Metadata only: collect private native targets for the descriptor ownership audit.
+// Allocator cross-free success is not proof that these natives return/copy owned strings.
+void CheckSaveNative(char const* path) {
+    CheckFunction(path);
+    Guard("native", path, [path] {
+        auto* const function = R().FindFunction(path);
+        std::string_view const full(path);
+        auto const name = Widen(full.substr(full.rfind('.') + 1));
+        auto* const sdk = SdkFunction(name.c_str(), std::format("Function {}", path));
+        auto const base = exe::Base();
+        auto const image = exe::LiveImage();
+        auto const describe = [&](void* address) {
+            auto const value = reinterpret_cast<std::uintptr_t>(address);
+            if (address == nullptr || base == 0 || value < base || value - base < image.textRva ||
+                value - base - image.textRva >= image.text.size()) return std::string("outside executable text");
+            return std::format("RVA 0x{:X}", value - base);
+        };
+        void* const ours = function != nullptr ? R().NativeFunc(function) : nullptr;
+        void* const theirs = sdk != nullptr ? sdk->Func : nullptr;
+        auto const where = describe(ours);
+        Add("native", path, ours != nullptr && ours == theirs && where.starts_with("RVA "), where, describe(theirs));
+    });
+}
+
+void CheckSaveDescriptor(char const* function, char const* parameter) {
+    struct Member { char const* name; Sdk layout; ue3::Kind kind; };
+    Member const members[] = {
+        {"Career", SDK_FIELD(FSFXSaveDescriptor, Career), ue3::Kind::Str},
+        {"SaveName", SDK_FIELD(FSFXSaveDescriptor, SaveName), ue3::Kind::Str},
+        {"Index", SDK_FIELD(FSFXSaveDescriptor, Index), ue3::Kind::Int},
+        {"Type", SDK_FIELD(FSFXSaveDescriptor, Type), ue3::Kind::Byte},
+    };
+    for (auto const& member : members) {
+        auto const what = std::format("{}({}.{})", function, parameter, member.name);
+        Guard("param-path", what, [&] {
+            auto const descriptor = R().PropertyOf(R().FindFunction(function), parameter);
+            auto* const owner = descriptor && descriptor->kind == ue3::Kind::Struct ? R().StructOf(*descriptor) : nullptr;
+            auto const field = owner != nullptr ? R().PropertyOf(owner, member.name) : std::nullopt;
+            Add("param-path", what, field && field->kind == member.kind && Matches(*field, field->offset, member.layout),
+                Ours(field), SdkText(member.layout));
+        });
+    }
+}
+
 void CheckFunctions() {
     CheckFunction("Engine.SkeletalMeshComponent.GetBoneLocation");
     CheckFunction("Engine.SkeletalMeshComponent.MatchRefBone");
@@ -2873,6 +2917,8 @@ void CheckFunctions() {
     CheckFunction("SFXGame.SFXWeapon.GetMagazineSize");
     CheckFunction("SFXGame.SFXWeapon.GetCurrentSpareAmmo");
     CheckFunction("Engine.PlayerController.ConsoleCommand");
+    CheckSaveNative("SFXGame.SFXEngine.QueueSaveGameCommand");
+    CheckSaveNative("SFXGame.SFXEngine.GetCurrentSaveDescriptor");
 }
 
 void CheckParams() {
@@ -2907,6 +2953,14 @@ void CheckParams() {
     PARMS(ASFXWeapon_execGetMagazineSize_Parms, "SFXGame.SFXWeapon.GetMagazineSize");
     PARAM(ASFXWeapon_execGetCurrentSpareAmmo_Parms, "SFXGame.SFXWeapon.GetCurrentSpareAmmo", ReturnValue);
     PARMS(ASFXWeapon_execGetCurrentSpareAmmo_Parms, "SFXGame.SFXWeapon.GetCurrentSpareAmmo");
+    PARAM(USFXEngine_execQueueSaveGameCommand_Parms, "SFXGame.SFXEngine.QueueSaveGameCommand", Action);
+    PARAM(USFXEngine_execQueueSaveGameCommand_Parms, "SFXGame.SFXEngine.QueueSaveGameCommand", SaveDescriptor);
+    PARAM(USFXEngine_execQueueSaveGameCommand_Parms, "SFXGame.SFXEngine.QueueSaveGameCommand", Callback);
+    PARMS(USFXEngine_execQueueSaveGameCommand_Parms, "SFXGame.SFXEngine.QueueSaveGameCommand");
+    PARAM(USFXEngine_execGetCurrentSaveDescriptor_Parms, "SFXGame.SFXEngine.GetCurrentSaveDescriptor", ReturnValue);
+    PARMS(USFXEngine_execGetCurrentSaveDescriptor_Parms, "SFXGame.SFXEngine.GetCurrentSaveDescriptor");
+    CheckSaveDescriptor("SFXGame.SFXEngine.QueueSaveGameCommand", "SaveDescriptor");
+    CheckSaveDescriptor("SFXGame.SFXEngine.GetCurrentSaveDescriptor", "ReturnValue");
     PARAM(APlayerController_execConsoleCommand_Parms, "Engine.PlayerController.ConsoleCommand", Command);
     PARAM(APlayerController_execConsoleCommand_Parms, "Engine.PlayerController.ConsoleCommand", bWriteToLog);
     PARAM(APlayerController_execConsoleCommand_Parms, "Engine.PlayerController.ConsoleCommand", ReturnValue);

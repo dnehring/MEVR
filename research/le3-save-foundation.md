@@ -124,3 +124,46 @@ receipt; load normally in ME3 under the protected session; verify observed resou
 save/reload and confirm persistence; restore profile hashes. Combat availability, story coherence, galaxy
 alerts, six-class behavior and physical VR acceptance must be proven separately. Never treat a successful
 codec or an offline report as a passed gameplay fixture.
+
+## Normal-load descriptor audit (2026-11-15)
+
+Reuse `tools/le2-halcyon-run/load.ps1` and `game/ConsoleRequest.cpp`; the script is
+still LE2-specific at this checkpoint (session, process, save root and default
+fixture). Its world-name-change condition also cannot prove a reload of the same
+map. Generalizing it needs selected-game/session ownership and explicit fixture
+identity, not another runner.
+
+Installed LE3 `SFXGame.pcc` confirms `SFXSFHandler_Load.Callback_ConfirmLoadGame`
+uses `QueueSaveGameCommand` with action 1 for an ordinary load. NG+ and legacy
+import use different routes. `SFXEngine.ResumeGame` obtains a descriptor into a
+script-local value and queues it. Both queue and current-descriptor getter are
+native functions: script call sites support value semantics but do not alone
+prove their internal copy/free implementation.
+
+SDK references under `external/LExSDKv2/Src/LESDK/LE3/`:
+
+| Reference | ABI |
+| --- | --- |
+| `SFXGame_structs.hpp:1443` | Descriptor: Career FString at 0; SaveName FString at 0x10; Index int at 0x20; Type byte at 0x24; padded size 0x28 |
+| `SFXGame_f_structs.hpp:4163` | Queue: Action byte at 0; optional const descriptor at 4, size 0x28; optional callback delegate at 0x2C, size 0x10 |
+| `SFXGame_f_structs.hpp:4184` | Getter: descriptor ReturnValue at 0, size 0x28, return/out/NeedCtorLink flags |
+| `SFXGame_classes.hpp:1735` | Manual/quick/auto/chapter types 0/1/2/3; export/legend 4/5 are not ordinary fixture routes |
+| `SFXGame_classes.hpp:1756` | Save action Load = 1 |
+
+The LE3 reflection table now compares queue/getter parameters, parameter-block
+sizes and all eight nested descriptor members with the SDK. Two metadata-only
+rows compare reflection and SDK native function pointers and report their RVAs
+only when inside the executable's text section. They invoke neither native.
+The next protected probe must pass these rows, then identify the queue's owned
+copy and getter result ownership through the existing Ghidra workflow before
+freeing queued input strings or returned strings. The engine allocator test is
+a separate prerequisite, not proof that a returned string is owned.
+
+Sanitized first-load candidate: existing manual `Save_0031.pcsav`, SHA-256
+`8cecdeaf1678cd2470d623fc6459a22443b8ff226891b7548856322a628325c7`,
+fully decoded as `BioP_Nor`, level 60 VanguardNonCombat, no player weapon records.
+The filename suggests index 31/type 0; verify its native descriptor rather than
+assuming LE2's filename convention is sufficient. Existing ChapterSave has
+`Biop_End001` with display override `Biop_End002`, Vanguard combat class and three
+weapon records. Those fields do not establish a repeatable combat encounter.
+No save was changed or loaded during this ABI audit.
