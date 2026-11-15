@@ -24,6 +24,7 @@
 #include "engine/Engine.hpp"
 #include "engine/Skeleton.hpp"
 #include "game/HandTargets.hpp"
+#include "game/MenuBodyHold.hpp"
 #include "game/Player.hpp"
 #include "core/vr/HostView.hpp"
 #include "game/Sights.hpp"
@@ -62,6 +63,8 @@ constexpr double kMaxSegment = 150.0;
 constexpr double kMaxSegmentRatio = 2.5;
 
 bool gEnabled = false;
+OverlayMenu gOverlayMenu;
+menu_body::Hold gMenuBody;
 std::string gStatus = "off";
 std::string gLastLoggedStatus;
 hand_targets::Source gSource = hand_targets::Source::None;
@@ -286,6 +289,56 @@ std::optional<Body> PlayerBody() {
 bool OnFoot() {
     std::optional<std::uint8_t> const mode = player::GameMode(player::Controller());
     return mode && (*mode == kGameModeOnFoot || world_ui::WristScreenUp() || conversation_world::InWorld());
+}
+
+bool MenuBodyEligible(Body const& body) {
+#if defined(MEVR_GAME_LE3)
+    if (!gOverlayMenu.eligible || !vr::host_view::Latest().valid || view_anchor::Held() ||
+        world_ui::WristScreenUp() || player::GameMode(player::Controller()) != 0) return false;
+    auto const floor = player::FloorLockSample();
+    if (!floor.onFoot || !floor.pawn || floor.cover || !floor.cameraOwned) return false;
+    // Audited LE3 fields/functions; a mode-0 authored custom action is not ordinary standing.
+    static ue3::FieldRef action{"SFXGame.BioPawn", "CurrentCustomAction", ue3::kEveryGame};
+    static ue3::FunctionRef ignored{"Engine.PlayerController.IsMoveInputIgnored", ue3::kEveryGame};
+    static ue3::FunctionRef dead{"Engine.Pawn.IsDead", ue3::kEveryGame};
+    if (action.Read<std::int32_t>(body.pawn) != 0) return false;
+    auto falseResult = [](ue3::Object* owner, ue3::FunctionRef& ref) {
+        ue3::Params params(ue3::runtime::Get(), ref.Get());
+        return params.Valid() && params.Size() == 4 && ue3::runtime::Call(owner, ref.Get(), params) &&
+            params.ReturnBool() == false;
+    };
+    return falseResult(player::Controller(), ignored) && falseResult(body.pawn, dead);
+#else
+    (void)body;
+    return false; // LE1/LE2 presentation behavior is unchanged by the LE3 candidate.
+#endif
+}
+
+menu_body::Identity MenuBodyIdentity(Body const& body, ik::Affine const& transform) {
+    menu_body::Identity identity;
+    auto* pc = player::Controller();
+    auto* asset = player::SkeletalMesh(body.mesh);
+    auto& runtime = ue3::runtime::Get();
+    for (auto* object : {pc, body.pawn, body.mesh, asset})
+        if (!ue3::runtime::IsAlive(object)) return identity;
+    auto const pov = player::CameraPov(player::Camera(pc));
+    if (!pov) return identity;
+    identity.objects = {reinterpret_cast<std::uintptr_t>(engine::World()), reinterpret_cast<std::uintptr_t>(pc),
+        reinterpret_cast<std::uintptr_t>(body.pawn), reinterpret_cast<std::uintptr_t>(body.mesh),
+        reinterpret_cast<std::uintptr_t>(asset), reinterpret_cast<std::uintptr_t>(runtime.ClassOf(pc)),
+        reinterpret_cast<std::uintptr_t>(runtime.ClassOf(body.pawn)), reinterpret_cast<std::uintptr_t>(runtime.ClassOf(body.mesh))};
+    identity.names = {runtime.NameOf(pc).Key(), runtime.NameOf(body.pawn).Key(),
+        runtime.NameOf(body.mesh).Key(), runtime.NameOf(asset).Key()};
+    identity.camera = {pov->location->x, pov->location->y, pov->location->z,
+        static_cast<double>(pov->rotation->pitch), static_cast<double>(pov->rotation->yaw), static_cast<double>(pov->rotation->roll)};
+    for (int row = 0; row < 4; ++row)
+        for (int column = 0; column < 4; ++column)
+            identity.componentToWorld[static_cast<std::size_t>(row * 4 + column)] = transform.m[row][column];
+    identity.epochKnown = gOverlayMenu.epochKnown;
+    identity.floorLocked = vr::host_view::Latest().floorLocked;
+    identity.sessions = gOverlayMenu.sessions;
+    identity.recenters = gOverlayMenu.recenters;
+    return identity;
 }
 
 std::string Format(engine::UnrealVector const& v) {
@@ -523,6 +576,7 @@ std::optional<ik::BodyFrame> BodyAxes(ue3::Object const* pawn, ik::Affine const&
 }
 
 void Stop(std::string status) {
+    gMenuBody.Clear();
     engine::bone_pose::Clear();
     body_follow::Reset();
     fingers::Stop("arm IK isn't driving");
@@ -1073,6 +1127,24 @@ void Drive(double deltaSeconds) {
         return Stop("component transform unusable");
     }
 
+    // Main-menu input remains hidden. Keep only the last stationary first-person body placement,
+    // never controller targets or gun ownership, instead of dropping the torso into the eye.
+    bool const menuEligible = MenuBodyEligible(*body);
+    auto const menuIdentity = menuEligible ? MenuBodyIdentity(*body, componentToWorld) : menu_body::Identity{};
+    if (gOverlayMenu.open) {
+        auto const* held = gMenuBody.Get(menuIdentity, menuEligible, GetTickCount64());
+        if (!held) return Stop("shared menu: no eligible stationary body placement");
+        engine::bone_pose::Publish(*held);
+        gLastBodyScale = held->bodyScale;
+        gFirstPersonMs = 0;
+        gSource = hand_targets::Source::None;
+        gGunAimed = gSupportRequested = false;
+        fingers::Stop("shared menu: presentation-only torso, controls hidden");
+        gStatus = "shared menu: stationary torso retained; hand targets and gun control off";
+        return;
+    }
+    gMenuBody.Close();
+
     // The head bone as the animation left it: our spine writes move it, and the hands' anchor
     // mustn't chase them (engine::bone_pose::AnimatedHead). Before the first write, the pose is
     // the animation's anyway.
@@ -1411,6 +1483,8 @@ void Drive(double deltaSeconds) {
         }
     }
     gLegsPlanted = planted;
+    gMenuBody.Capture(request, menuIdentity, menuEligible && targets.anchor == hand_targets::Anchor::View,
+        GetTickCount64());
     engine::bone_pose::Publish(std::move(request));
     gStatus = "driving: " + driven;
     gGunAimed = gunAimed;
@@ -1419,7 +1493,8 @@ void Drive(double deltaSeconds) {
 
 } // namespace
 
-void Tick(float deltaSeconds) {
+void Tick(float deltaSeconds, OverlayMenu const& menu) {
+    gOverlayMenu = menu;
     if (!view_anchor::Held()) gHoldScaleLogged = false;
     // The writer wrote the player's pose since the last tick: what was published is being shown.
     std::uint64_t const writes = engine::bone_pose::TotalWrites();
@@ -1563,6 +1638,8 @@ void LogStats() {
 }
 
 void Shutdown() {
+    gMenuBody.Clear();
+    gOverlayMenu = {};
     engine::bone_pose::Clear();
     RestoreBodyBounds();
     gHoldScaleLogged = false;

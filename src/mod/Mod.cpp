@@ -1145,6 +1145,25 @@ mevr::game::melee::Link MeleeLink(bool diagnostic = false) {
     return link;
 }
 
+mevr::game::arm_ik::OverlayMenu BodyOverlayMenu() {
+    using namespace mevr;
+    game::arm_ik::OverlayMenu menu;
+#if defined(MEVR_GAME_LE3)
+    menu.eligible = ActionRuntimeReady() && gHostOwnsVr && gHostDataOk && gHostView &&
+        vr::host_view::Latest().valid && !ActionCalibrating();
+    // The existing live-adjustment mode publishes poses-only active controllers deliberately:
+    // preserve that live body preview. Normal shared menu publishes Hidden, never unmask it here.
+    menu.open = MEVR_HOST_HAS(mainMenu) && gHost->mainMenu &&
+        (gHost->mainMenu() & kMainMenuOpen) != 0 && !vr::controllers::Latest().active;
+    if (auto const floor = HostFloor()) {
+        menu.epochKnown = true;
+        menu.sessions = floor->sessions;
+        menu.recenters = floor->recenters;
+    }
+#endif
+    return menu;
+}
+
 // Vaulting and climbing (game/traversal, research/le2-traversal.md): the right A, the menu, the vignette and the cue's service.
 mevr::game::traversal::Link TraversalLink(bool diagnostic = false) {
     using namespace mevr;
@@ -1755,7 +1774,7 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         game::comfort::Tick(deltaSeconds, ComfortLink());
         // A shot's kick of the gun model (research/24 section 8): this tick's, for arm IK's request.
         game::gun_kick::Tick(deltaSeconds);
-        game::arm_ik::Tick(deltaSeconds);
+        game::arm_ik::Tick(deltaSeconds, BodyOverlayMenu());
         // Holsters, the squad menu and the grenades before the support grip: it publishes the pad flags,
         // theirs among them. A squeeze at the grenade slot is claimed first, so neither holsters nor the
         // squad menu take it.
