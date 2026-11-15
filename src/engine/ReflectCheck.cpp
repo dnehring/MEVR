@@ -2317,6 +2317,9 @@ void CheckFields() {
     CheckField("Engine.BioSFManager", "m_FocusPanel", SDK_FIELD(UBioSFManager, m_FocusPanel));
     CheckField("Engine.BioSFPanel", "nmTag", SDK_FIELD(UBioSFPanel, nmTag));
     CheckField("Engine.BioSFPanel", "m_DefaultHandler", SDK_FIELD(UBioSFPanel, m_DefaultHandler));
+    // game/WorldUi (M4.3, research/le2-menus.md "ME2's screens on the wrist"): its panels' full-screen flag (the rest: above, and
+    // Actor.WorldInfo, the player selection and Camera.UpdateCamera in the checks of traversal and the script packages)
+    CheckField("Engine.BioSFPanel", "bFullScreen", SDK_BOOL(UBioSFPanel, bFullScreen));
     // game/Posture (research/23 section 7): the physical crouch, the cover state, the sprint
     CheckField("Engine.Pawn", "bIsCrouched", SDK_BOOL(APawn, bIsCrouched));
     CheckField("Engine.Pawn", "bWantsToCrouch", SDK_BOOL(APawn, bWantsToCrouch));

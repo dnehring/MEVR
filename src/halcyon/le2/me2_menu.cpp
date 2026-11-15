@@ -189,6 +189,11 @@ bool MenuOwnsLook() noexcept
     {
         s_lastMs = now;
         s_cached = (ME2VR::D3DCapture::GetMenuMode());
+#if defined(MEVR_ASI)
+        // [MEVR] a game screen of ours on the wrist leaves the GUI mode unflat (GetMenuMode false): its stick is still the menu's
+        const int gm = ME2VR::D3DCapture::GetAutoGameMode();
+        s_cached = s_cached || (gm == 7 && ::ME2VR::MevrBridge::WorldUiOwnsGui(gm));
+#endif
     }
     return s_cached;
 }

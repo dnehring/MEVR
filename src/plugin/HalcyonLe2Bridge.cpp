@@ -414,6 +414,11 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
         panel.device = device;
         panel.worldFrame = frame.worldFrame && !frame.menuOpen;
         panel.gameplay = frame.gameMode >= 0 && frame.gameMode <= 4;  // as LE1's: not conversations (5), cutscenes, menus
+        // ...but the game's screens of ours (plugin/MenusLe2, M4.3): their UI on the panel, shown at the screen's place.
+        mevr::host::menus_le2::WorldUiPanel const worldUi = mevr::host::menus_le2::BeforePanel(frame, mevr::host::hud_panel::Width(),
+            mevr::host::hud_panel::Height());
+        panel.gameplay = panel.gameplay || worldUi.owns;
+        panel.backdrop = worldUi.backdrop;
         panel.stereo = frame.stereo;
         panel.headValid = frame.headValid;
         panel.head.orientation = {frame.headOrientation[0], frame.headOrientation[1], frame.headOrientation[2],
@@ -459,9 +464,7 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
             p.count = hpl::Layers(p.common, p.plan, shown, p.layers, 0, 2);
         };
         XrCompositionLayerQuad const* const panelLayer = mevr::host::hud_panel::Layer(panel);
-        if (panelLayer != nullptr && count < capacity) {
-            layersOut[count++] = panelLayer;
-        }
+        count = mevr::host::menus_le2::PanelLayers(frame, device, panelLayer, layersOut, count, capacity);  // or a screen's place
         for (unsigned i = 0; i < pass.count && count < capacity; ++i) {
             layersOut[count++] = pass.layers[i];
         }

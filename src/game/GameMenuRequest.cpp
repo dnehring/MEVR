@@ -436,6 +436,7 @@ struct Page {
     bool asked = false;  // the pause menu was asked for
     int wait = 0;
     int tries = 0;
+    int backOuts = 0;
 };
 Page gPage;
 bool gLoggedPages = false;
@@ -496,6 +497,26 @@ void StepPage(Link const& link) {
         OpenPauseMenu(link, gPage.origin);  // ME2's Mission Computer: its pages are the screens
         gPage.asked = true;
         gPage.wait = kPageWaitTicks;
+        return;
+    }
+    Focus const focus = FocusedPanel();
+    if (focus.tag == PanelTag(action) || (action == gm::Action::Map && focus.tag == "AreaMap")) {
+        gLast = std::format("{}: already up", gm::Name(action));
+        gPage = {};
+        return;
+    }
+    if (focus.tag != "MenuBrowser") {
+        // Opening from a different child page stacks two movies and leaves the old one accepting clicks.
+        // Let the game return to its browser before asking the browser to open the next page.
+        if (++gPage.tries > kPageMaxTries || gPage.backOuts >= kMaxBackOuts) {
+            gLast = std::format("{}: the browser did not take focus", gm::Name(action));
+            log::Warn("omni-tool: {} not opened: the focused page is '{}'", gm::Name(action), focus.tag);
+            gPage = {};
+        } else if (!gPage.asked && !focus.tag.empty() && GuiKey(kGuiEventB, why)) {
+            ++gPage.backOuts;
+            gPage.wait = kBackOutWaitTicks;
+            log::Info("omni-tool: returning from '{}' to the browser before opening {}", focus.tag, gm::Name(action));
+        }
         return;
     }
     ue3::Object* const pc = player::Controller();

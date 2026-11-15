@@ -92,6 +92,7 @@ struct TargetStatus {
     float acrossM = 0.0f;
     XrVector3f target{};
     XrVector3f eyes{};
+    XrVector3f tip{};
 };
 TargetStatus gTargetStatus;
 
@@ -514,7 +515,7 @@ void StepTarget(Frame const& frame, bool handsTracked, XrVector3f const& tip, Xr
         std::lock_guard lock(gStatusMutex);
         gTargetStatus = {true, frame.wristValid, frame.headValid, handsTracked, allowed, refused, static_cast<int>(look), false,
             handsTracked ? d : -1.0f, frame.eyes.y - target.y, std::hypot(target.x - frame.eyes.x, target.z - frame.eyes.z), target,
-            frame.eyes};
+            frame.eyes, tip};
     }
     rail::TargetLook const shown = g.pressedS > 0.0f ? rail::TargetLook::Armed : look;  // the pressed picture below
     if (shown == rail::TargetLook::Hidden && g.pressedS <= 0.0f) {
@@ -968,10 +969,12 @@ std::string StatusJson() {
     return std::format("{{\"rail\": {}, \"target\": {{\"stepped\": {}, \"wristValid\": {}, \"headValid\": {}, \"handsTracked\": {}, "
                        "\"allowed\": {}, \"refused\": \"{}\", \"look\": \"{}\", \"shown\": {}, \"fingertipM\": {:.3f}, "
                        "\"belowEyesM\": {:.3f}, \"acrossM\": {:.3f}, \"at\": [{:.3f}, {:.3f}, {:.3f}], \"eyes\": [{:.3f}, {:.3f}, {:.3f}], "
-                       "\"layerCalls\": {}, \"layerGiven\": {}, \"swapchain\": \"{:#x}\", \"onBody\": {}}}}}",
+                       "\"tip\": {}, \"layerCalls\": {}, \"layerGiven\": {}, \"swapchain\": \"{:#x}\", \"onBody\": {}}}}}",
         gStatus, t.stepped, t.wristValid, t.headValid, t.handsTracked, t.allowed, t.refused != nullptr ? t.refused : "",
         LookName(static_cast<rail::TargetLook>(t.look)), t.shown, t.distanceM, t.belowEyesM, t.acrossM, t.target.x, t.target.y,
-        t.target.z, t.eyes.x, t.eyes.y, t.eyes.z, gTargetCalls.load(std::memory_order_relaxed),
+        t.target.z, t.eyes.x, t.eyes.y, t.eyes.z,
+        t.handsTracked ? std::format("[{:.4f}, {:.4f}, {:.4f}]", t.tip.x, t.tip.y, t.tip.z) : std::string("null"),
+        gTargetCalls.load(std::memory_order_relaxed),
         gTargetGiven.load(std::memory_order_relaxed), reinterpret_cast<std::uintptr_t>(g.targetQuad.subImage.swapchain), g.onBody);
 }
 

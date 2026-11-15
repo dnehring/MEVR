@@ -156,6 +156,9 @@ struct Frame {
     float followDeg = 0.0f;
     float widthM = 1.0f;
     Masks masks;                 // cut out of the panel: the HUD pieces shown on the body (plugin/HudPieceLayers)
+    // A game screen of ours owns the panel (ME2's screens on the wrist, plugin/MenusLe2; LE1's HalcyonOverlays passes it to
+    // Render itself): the panel's dark parts at this opacity (BlitOptions::backdrop). 0: the HUD as it is.
+    float backdrop = 0.0f;
     // Called after the panel was drawn (`shown`: its quad goes out) and before it's cleared for the next frame's UI: where
     // windows of this frame's UI are blitted onto quads of their own (the HUD pieces). Null: nothing.
     void (*beforeClear)(void* user, bool shown) = nullptr;

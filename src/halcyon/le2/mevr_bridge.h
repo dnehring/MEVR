@@ -146,6 +146,12 @@ bool OnMenuKey(bool ownMenuOpen) noexcept;
 // Our main menu is open (plugin/MainMenu): Halcyon's window procedure swallows the desktop's input as for its own menu.
 bool MainMenuOpen() noexcept;
 
+// One of the game's screens stands on the wrist or in the room (plugin/WorldUi, the mod's game/WorldUi; plugin/MenusLe2,
+// research/le2-menus.md "ME2's screens on the wrist"), or is being opened (the mod reserved it): the GUI mode `mode` (7) is then
+// not flat (d3d_capture.cpp's GetMenuMode answers false: the world in stereo behind the screen, its UI on our HUD panel), as
+// LE1's MevrBridge::WorldUiOwnership in xr_session.cpp's decision. Any thread.
+bool WorldUiOwnsGui(int mode) noexcept;
+
 // Halcyon's hotkey polls go through this: KeyDown in our ASI, the plain poll in an upstream build.
 inline bool HotkeyDown(int vk) noexcept
 {

@@ -20,8 +20,10 @@
 #include "plugin/PresentHook.hpp"
 #include "plugin/ProcessEventHook.hpp"
 
-#if defined(MEVR_WITH_HALCYON)
+#if defined(MEVR_WITH_HALCYON) || (defined(MEVR_WITH_HALCYON_LE2) && defined(MEVR_WITH_MAIN_MENU))
 #include "plugin/GamePointer.hpp"
+#endif
+#if defined(MEVR_WITH_HALCYON)
 #include "plugin/OpenAlSoft.hpp"
 #include "plugin/UiWorldFigure.hpp"
 #include "plugin/GameThreadCalls.hpp"
@@ -259,11 +261,13 @@ extern "C" __declspec(dllexport) bool SpiOnAttach(spi::Interface* InterfacePtr) 
     }
 #endif
     HookExitProcess(init);
+#if defined(MEVR_WITH_HALCYON) || (defined(MEVR_WITH_HALCYON_LE2) && defined(MEVR_WITH_MAIN_MENU))
+    mevr::host::game_pointer::InstallCursorHook(init);  // present the tracked pointer's position to the game's GUI
+#endif
 #if defined(MEVR_WITH_HALCYON) && defined(MEVR_GAME_LE1)
     mevr::host::kept_locks::Install(init);  // research/36 "The fault at quit": the game's teardown deletes a lock in use
     mevr::host::render_levers::Install(init);  // research/22: the render thread's levers and accounting
     mevr::host::motion_blur_guard::Install(init);
-    mevr::host::game_pointer::InstallCursorHook(init);  // research/57 section 6: the game's cursor onto the pointer
     mevr::host::ui_world_figure::Install(init);  // research/57 section 7: no Umbra query for the UI world's capture
 #endif
     mevr::log::Info("host attached");

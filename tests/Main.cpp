@@ -8068,6 +8068,7 @@ void TestWorldUi() {
     // The tags (the game's GUI library), either case.
     CHECK(wu::FromTag("shop") == wu::Screen::Shop && wu::FromTag("SHOP") == wu::Screen::Shop);
     CHECK(wu::FromTag("Inventory") == wu::Screen::Inventory && wu::FromTag("MainMenu") == wu::Screen::None);
+    CHECK(wu::FromTag("AreaMap") == wu::Screen::Map && std::string(wu::Name(wu::Screen::Map)) == "Map");  // ME2's map page
     CHECK(std::string(wu::Name(wu::Screen::Loot)) == "Loot" && std::string(wu::Name(wu::Screen::None)) == "None");
     // The stage in the shop's window (2344 x 2392, measured: rows 537..1855): letterboxed 16:9.
     wu::Rect const stage = wu::Stage(2344.0f, 2392.0f);

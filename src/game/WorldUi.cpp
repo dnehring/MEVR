@@ -36,13 +36,15 @@ namespace wu = vr::world_ui;
 
 // The GUI manager (the player controller's cached one) and its panels: each open screen is a BioSFPanel tagged with its library
 // tag (the shop's: nmTag "shop", bFullScreen, m_DefaultHandler its BioSFHandler_Shop; measured 2026-11-04).
-ue3::FieldRef gCachedManager{"Engine.PlayerController", "m_oCachedScaleFormManager"};
-ue3::FieldRef gPanels{"Engine.BioSFManager", "m_lstPanels"};
-ue3::FieldRef gFocusPanel{"Engine.BioSFManager", "m_FocusPanel"};
-ue3::FieldRef gPanelTag{"Engine.BioSFPanel", "nmTag"};
-ue3::FieldRef gPanelFullScreen{"Engine.BioSFPanel", "bFullScreen"};
-ue3::FieldRef gPanelHandler{"Engine.BioSFPanel", "m_DefaultHandler"};
-ue3::FieldRef gPanelVisible{"Engine.BioSFPanel", "IsVisible"};
+// Every game (ME2: its pause menu's pages, research/le2-menus.md "ME2's screens on the wrist"); the loot, shop and minigame
+// handles below stay ME1's (ME2 has no BioSFHandler_Loot, _Shop or BioSkillGame_Handler: tools/le2-name-audit.py game/WorldUi).
+ue3::FieldRef gCachedManager{"Engine.PlayerController", "m_oCachedScaleFormManager", ue3::kEveryGame};
+ue3::FieldRef gPanels{"Engine.BioSFManager", "m_lstPanels", ue3::kEveryGame};
+ue3::FieldRef gFocusPanel{"Engine.BioSFManager", "m_FocusPanel", ue3::kEveryGame};
+ue3::FieldRef gPanelTag{"Engine.BioSFPanel", "nmTag", ue3::kEveryGame};
+ue3::FieldRef gPanelFullScreen{"Engine.BioSFPanel", "bFullScreen", ue3::kEveryGame};
+ue3::FieldRef gPanelHandler{"Engine.BioSFPanel", "m_DefaultHandler", ue3::kEveryGame};
+ue3::FieldRef gPanelVisible{"Engine.BioSFPanel", "IsVisible", ue3::kEveryGame};
 // The loot screen's inventory belongs to the container (or the body) it came from: its outer chain reaches that actor.
 ue3::ClassRef gLootHandlerClass{"SFXGame.BioSFHandler_Loot"};
 ue3::FieldRef gLootInventory{"SFXGame.BioSFHandler_Loot", "m_oLootInventory"};
@@ -54,12 +56,12 @@ ue3::FieldRef gSkillGameDependent{"SFXGame.BioSkillGame_Handler", "m_oDependent"
 ue3::FieldRef gSkillGameActive{"SFXGame.BioSkillGame_Handler", "m_bGameActive"};
 bool gPuzzleLogged = false;
 // What A would use (research/40's BioPlayerSelection): the thing a screen opened by a use belongs to.
-ue3::FieldRef gPlayerSelection{"SFXGame.BioPlayerController", "m_oPlayerSelection"};
-ue3::FieldRef gCurrentTarget{"SFXGame.BioPlayerSelection", "m_oCurrentSelectionTarget"};
+ue3::FieldRef gPlayerSelection{"SFXGame.BioPlayerController", "m_oPlayerSelection", ue3::kEveryGame};
+ue3::FieldRef gCurrentTarget{"SFXGame.BioPlayerSelection", "m_oCurrentSelectionTarget", ue3::kEveryGame};
 ue3::ClassRef gShopHandlerClass{"SFXGame.BioSFHandler_Shop"};
 ue3::FieldRef gShopActor{"SFXGame.BioSFHandler_Shop", "m_shop"};
-ue3::FunctionRef gUpdateCamera{"Engine.Camera.UpdateCamera"};
-ue3::FieldRef gWorldInfo{"Engine.Actor", "WorldInfo"}; // existing ReflectCheck row
+ue3::FunctionRef gUpdateCamera{"Engine.Camera.UpdateCamera", ue3::kEveryGame};
+ue3::FieldRef gWorldInfo{"Engine.Actor", "WorldInfo", ue3::kEveryGame}; // existing ReflectCheck row
 
 // Shepard's view on foot (the last camera update in mode 0), and the player camera's POV fields while a screen is up: the host
 // puts the former into the latter for the main view's render only (the shop's own camera looks at a backdrop stage elsewhere).
@@ -398,7 +400,7 @@ void Down(Link const& link, char const* why) {
 } // namespace
 
 void TryStartup() {
-    ue3::Function* const update = ue3::runtime::Ready() ? gUpdateCamera.Get() : nullptr;
+    ue3::Function* const update = ue3::runtime::Up() ? gUpdateCamera.Get() : nullptr;  // every game (LE1: Up() is Ready())
     if (update == nullptr) {
         log::Warn("world ui: Engine.Camera.UpdateCamera not found: the game's screens can't hold Shepard's view (they stay on Halcyon's panel)");
         return;

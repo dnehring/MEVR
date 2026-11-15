@@ -1761,13 +1761,21 @@ std::optional<std::string> RunOursLe2(ue3::Object* pc, std::string const& line) 
         words >> which;
         return game_menu_request::Inject(which);
     }
+    if (verb == "guimouse" || verb == "guikey") {
+        // `mevr guimouse` (where the game's Flash cursor is) and `mevr guikey <event|w> ...` (GUI events through GuiKey, one
+        // per tick): the game pointer's path into ME2's screens (research/57 section 6, research/le2-menus.md M4.3).
+        std::string rest;
+        std::getline(words, rest);
+        return verb == "guimouse" ? gui_cursor::Command(rest) : gui_cursor::KeyCommand(rest);
+    }
     if (verb == "traversal") {
         std::string rest;
         std::getline(words, rest);
         return traversal::Command(rest);  // the vault's fixture and tests (research/le2-traversal.md)
     }
     return std::string("unknown on ME2: mevr load <career> <save name> <index> <type> | mevr savedesc | mevr state | "
-                       "mevr camera trace <seconds> [label] | mevr omni <screen> | mevr cover ... | mevr traversal ...");
+                       "mevr camera trace <seconds> [label] | mevr omni <screen> | mevr guimouse | mevr guikey ... | mevr cover ... | "
+                       "mevr traversal ...");
 }
 
 #endif

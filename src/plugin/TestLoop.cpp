@@ -38,6 +38,7 @@
 #endif
 #if defined(MEVR_WITH_HALCYON_LE2) && defined(MEVR_WITH_MAIN_MENU)
 #include "plugin/Calibration.hpp"  // our menus on LE2 (plugin/MenusLe2, M4)
+#include "plugin/GamePointer.hpp"
 #include "plugin/MainMenu.hpp"
 #include "plugin/OmniToolRail.hpp"
 #endif
@@ -827,6 +828,7 @@ ModuleBlocks ModuleStatus() {
     m.calibration = calibration::StatusJson();
     m.mainMenu = main_menu::StatusJson();
     m.omniRail = omni_rail::StatusJson();  // the omni-tool's rail on LE2 (M4.3)
+    m.gamePointer = game_pointer::StatusJson();
 #endif
     m.swapchains = swapchains::StatusJson();  // both Halcyon hosts
     return m;

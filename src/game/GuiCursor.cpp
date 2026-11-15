@@ -25,8 +25,8 @@ namespace {
 
 namespace mem = ue3::memory;
 
-ue3::FieldRef gScaleFormManager{"Engine.PlayerController", "m_oCachedScaleFormManager"};
-ue3::FieldRef gFocusPanel{"Engine.BioSFManager", "m_FocusPanel"};
+ue3::FieldRef gScaleFormManager{"Engine.PlayerController", "m_oCachedScaleFormManager", ue3::kEveryGame};
+ue3::FieldRef gFocusPanel{"Engine.BioSFManager", "m_FocusPanel", ue3::kEveryGame};
 
 std::deque<int> gKeys;  // mevr guikey's events still to send, one per tick (-1: a tick without one)
 vr::gui_events::Scheduler gScheduler;  // the game pointer's events (HostServices v30)
@@ -133,7 +133,12 @@ void Tick(std::uint32_t (*take)(std::uint8_t* events, std::uint32_t capacity)) {
             continue;
         }
         std::string why;
-        if (game_menu_request::GuiKey(event, why)) {
+#if defined(MEVR_GAME_LE2)
+        std::uint8_t const nativeEvent = vr::gui_events::Le2NativeEvent(event);
+#else
+        std::uint8_t const nativeEvent = event;
+#endif
+        if (game_menu_request::GuiKey(nativeEvent, why)) {
             ++gSent;
             if (!gLoggedFirst && event != vr::gui_events::kMouseMove) {
                 gLoggedFirst = true;
@@ -144,7 +149,7 @@ void Tick(std::uint32_t (*take)(std::uint8_t* events, std::uint32_t capacity)) {
             ++gFailed;
             if (!gLoggedFailure) {
                 gLoggedFailure = true;
-                log::Warn("gui cursor: GuiKey {} not sent: {}", event, why);
+                log::Warn("gui cursor: GuiKey {} not sent: {}", nativeEvent, why);
             }
         }
     }

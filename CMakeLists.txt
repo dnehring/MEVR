@@ -998,6 +998,8 @@ function(mevr_add_plugin game)
                 src/core/vr/GamePointer.hpp src/core/vr/HudPieces.cpp src/core/vr/HudPieces.hpp src/core/gfx/Raster.cpp
                 src/core/gfx/Raster.hpp src/core/gfx/Swf.cpp src/core/gfx/Swf.hpp src/core/gfx/SwfFont.cpp src/core/gfx/SwfFont.hpp
                 src/plugin/WorldUi.cpp src/plugin/WorldUi.hpp
+                src/plugin/GamePointer.cpp src/plugin/GamePointer.hpp src/plugin/WristBeam.cpp src/plugin/WristBeam.hpp
+                src/core/vr/GuiEvents.cpp src/core/vr/GuiEvents.hpp
                 # Entry.cpp's ExitProcess hook asks it with the menu; nothing writes its request on ME2 yet (MEVR Setup, M7.2).
                 src/plugin/SetupRequest.cpp src/plugin/SetupRequest.hpp src/core/Json.cpp src/core/Json.hpp)
         endif ()

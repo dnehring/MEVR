@@ -117,6 +117,10 @@ void TestControls() {
 
 int RunGuiEventsTests() {
     gFailures = 0;
+    CHECK(ge::Le2NativeEvent(ge::kMouseMove) == 6);
+    CHECK(ge::Le2NativeEvent(ge::kLeftDown) == 48 && ge::Le2NativeEvent(ge::kLeftUp) == 50);
+    CHECK(ge::Le2NativeEvent(ge::kWheelUp) == 27 && ge::Le2NativeEvent(ge::kWheelDown) == 28);
+    CHECK(ge::Le2NativeEvent(ge::kControlDown) == 8 && ge::Le2NativeEvent(ge::kControlUpRelease) == 32);
     TestQueue();
     TestScheduler();
     TestControls();

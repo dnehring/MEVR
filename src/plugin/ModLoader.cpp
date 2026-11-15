@@ -30,8 +30,11 @@
 #endif
 #if defined(MEVR_WITH_HALCYON_LE2) && defined(MEVR_WITH_MAIN_MENU)
 #include "core/vr/Calibration.hpp"
+#include "core/vr/WorldUi.hpp"
 #include "plugin/Calibration.hpp"
+#include "plugin/GamePointer.hpp"
 #include "plugin/MainMenu.hpp"
+#include "plugin/WorldUi.hpp"
 #endif
 #if defined(MEVR_WITH_HALCYON)
 #include "core/vr/Calibration.hpp"
@@ -527,11 +530,28 @@ std::uint32_t HostMainMenu() {
 std::uint32_t HostTakeGameMenuRequest() {
     return static_cast<std::uint32_t>(main_menu::TakeGameRequest());
 }
+// M4.3 (research/le2-menus.md "ME2's screens on the wrist"): the game's screens on the wrist, as LE1's WithWorldUi gives them
+// (v27 setWorldUi, v34 reserveWorldUi, the rail's requests with their origin), and the game pointer's GUI events (v30).
+void HostSetWorldUi(vr::world_ui::State const* state) {
+    world_ui::Publish(state);
+}
+std::uint32_t HostTakeGameUiRequest() {
+    return main_menu::TakeGameRequestValue();
+}
+std::uint32_t HostTakeGuiEvents(std::uint8_t* events, std::uint32_t capacity) {
+    return game_pointer::TakeGuiEvents(events, capacity);
+}
 HostServices WithMenus(HostServices services) {
     services.calibrationStateSize = static_cast<std::uint32_t>(sizeof(vr::calibration::HostState));
     services.calibration = &HostCalibration;
     services.mainMenu = &HostMainMenu;
     services.takeGameMenuRequest = &HostTakeGameMenuRequest;
+    services.worldUiSize = static_cast<std::uint32_t>(sizeof(vr::world_ui::State));
+    services.setWorldUi = &HostSetWorldUi;
+    services.takeGameUiRequest = &HostTakeGameUiRequest;
+    services.reserveWorldUi = &world_ui::Reserve;
+    services.logWorldUiStats = &world_ui::LogStats;
+    services.takeGuiEvents = &HostTakeGuiEvents;
     return services;
 }
 #endif
@@ -564,6 +584,9 @@ void ForgetModState() {
 #endif
 #if defined(MEVR_WITH_HALCYON)
     ForgetLe1ModState();
+#endif
+#if defined(MEVR_WITH_HALCYON_LE2) && defined(MEVR_WITH_MAIN_MENU)
+    world_ui::Forget();  // ME2's screens and pending ownership go back to Halcyon's flat panel (M4.3)
 #endif
 }
 loader::spi::Interface* gSpi = nullptr;

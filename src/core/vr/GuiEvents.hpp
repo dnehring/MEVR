@@ -35,6 +35,19 @@ inline constexpr bool IsControl(std::uint8_t event) {
     return (event >= kControlDown && event <= kControlUp) || (event >= kControlDownRelease && event <= kControlUpRelease);
 }
 
+// The queue uses LE1's numbers on both hosts. Translate at the call to ME2's
+// SFXGameModeGUI.GuiKey, whose BIOGUI_EVENT enum moved the wheel and mouse buttons.
+inline constexpr std::uint8_t Le2NativeEvent(std::uint8_t event) {
+    switch (event) {
+    case kWheelUp: return 27;
+    case kWheelDown: return 28;
+    case kLeftDown: return 48;
+    case kLeftUp: return 50;
+    default:
+        return event >= kControlDownRelease && event <= kControlUpRelease ? static_cast<std::uint8_t>(event - 1) : event;
+    }
+}
+
 // The host's side: what the pointer did, in order. Moves are coalesced (one in a row); at most kCapacity wait (the oldest
 // motion or wheel notches go first when full; a button is never dropped).
 class Queue {
