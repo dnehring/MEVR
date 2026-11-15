@@ -161,6 +161,10 @@ one outside it doesn't, from a recording, not a pad pulse.
 
 M6 follows the first ME2 release (M7). The current pass covers the items below. The Hammerhead has its own later pass.
 
+The [detailed M6 implementation guide](le2-m6-implementation-guide.md) audits the remaining work against ME1,
+splits it into seven implementation packages, and specifies the existing code, ME2 adapters, dependencies and
+acceptance checks for each. It also lists validation still owed for the five areas with gameplay code on main.
+
 | Module | ME1 reuse and ME2 status | Next acceptance check |
 | --- | --- | --- |
 | Comfort and vignette | The shared `game/Comfort`, pad merge and vignette layer now expose snap turning, head- or hand-relative walking and vignette strength in ME2's settings. [Comfort controls](../research/31-comfort.md) | Replay two separate right-stick flicks, sustained movement with the left hand yawed away from the head, and menu entry with sticks held. Check the actual heading, motion, vignette, and return to neutral. |
