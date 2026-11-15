@@ -1487,6 +1487,17 @@ void SfrDrawUiBothEyes(ID3D11DeviceContext* ctx, const D3D11_VIEWPORT& vp, DrawT
     if (custom) g_originalRSSetViewports(ctx, 1, &vp);
 }
 
+// [MEVR] The body-locked HUD panel (src/plugin/HudPanel.cpp, LE1's MevrHudPanelDraw): while it is armed, an SFR UI draw
+// of the end of the frame (pass 0 already captured, as the left-eye mirror needs) goes into the panel texture INSTEAD
+// of both eyes, at the game's own viewport (the HUD's authored layout), and our quad shows it in front of the body.
+// False: the draw wasn't taken (not armed, not "over" or a Scaleform blend mode): the caller draws it as before.
+template <typename DrawThunk>
+bool MevrHudPanelDraw(ID3D11DeviceContext* ctx, DrawThunk& draw, bool textBatch) noexcept
+{
+    return ::ME2VR::MevrBridge::HudPanelDraw(ctx, [](void* d) noexcept { (*static_cast<DrawThunk*>(d))(); }, &draw, textBatch,
+                                             SfrUiMirrorArmed());
+}
+
 // AER/DIBR: ONE full-frame render is copied to both eyes, so the UI draws ONCE - no per-eye mirror.
 // Just apply the [UIRATIO] scale so the HUD isn't stretched vertically like SFR/stereo were.
 template <typename DrawThunk>
@@ -1517,6 +1528,8 @@ void STDMETHODCALLTYPE MhDrawIndexed(ID3D11DeviceContext* ctx, UINT a, UINT b, I
     {
         const int uiMode = ME2VR::CalcViewHook::GetVrMode();
         if (uiMode == 1) { DupUiDraw(ctx, vp, [&] { g_mhRealDrawIndexed(ctx, a, b, c); }); return; }   // SBS: per-eye halves
+        auto mevrDraw = [&] { g_mhRealDrawIndexed(ctx, a, b, c); };
+        if (uiMode == 4 && MevrHudPanelDraw(ctx, mevrDraw, false)) return;   // [MEVR] the HUD panel instead of the eyes
         if (uiMode == 4) { SfrDrawUiBothEyes(ctx, vp, [&] { g_mhRealDrawIndexed(ctx, a, b, c); }); return; }   // SFR: mirror into BOTH eyes
         if (uiMode == 2 || uiMode == 3) { DrawUiRatioOnce(ctx, vp, [&] { g_mhRealDrawIndexed(ctx, a, b, c); }); return; }   // AER/DIBR: un-stretch
     }
@@ -1534,6 +1547,8 @@ void STDMETHODCALLTYPE MhDrawIndexedInstanced(ID3D11DeviceContext* ctx, UINT ipc
     {
         const int uiMode = ME2VR::CalcViewHook::GetVrMode();
         if (uiMode == 1) { DupUiDraw(ctx, vp, [&] { g_mhRealDrawIndexedInstanced(ctx, ipc, ic, sil, bvl, sii); }); return; }   // SBS
+        auto mevrDraw = [&] { g_mhRealDrawIndexedInstanced(ctx, ipc, ic, sil, bvl, sii); };
+        if (uiMode == 4 && MevrHudPanelDraw(ctx, mevrDraw, true)) return;   // [MEVR] the HUD panel instead of the eyes
         if (uiMode == 4) { SfrDrawUiBothEyes(ctx, vp, [&] { g_mhRealDrawIndexedInstanced(ctx, ipc, ic, sil, bvl, sii); }); return; }   // SFR: both eyes
         if (uiMode == 2 || uiMode == 3) { DrawUiRatioOnce(ctx, vp, [&] { g_mhRealDrawIndexedInstanced(ctx, ipc, ic, sil, bvl, sii); }); return; }   // AER/DIBR
     }
@@ -1552,6 +1567,8 @@ void STDMETHODCALLTYPE MhDraw(ID3D11DeviceContext* ctx, UINT a, UINT b) noexcept
     {
         const int uiMode = ME2VR::CalcViewHook::GetVrMode();
         if (uiMode == 1) { DupUiDraw(ctx, vp, [&] { g_mhRealDraw(ctx, a, b); }); return; }   // SBS: per-eye halves
+        auto mevrDraw = [&] { g_mhRealDraw(ctx, a, b); };
+        if (uiMode == 4 && MevrHudPanelDraw(ctx, mevrDraw, true)) return;   // [MEVR] the HUD panel instead of the eyes
         if (uiMode == 4) { SfrDrawUiBothEyes(ctx, vp, [&] { g_mhRealDraw(ctx, a, b); }); return; }   // SFR: mirror into BOTH eyes
         if (uiMode == 2 || uiMode == 3) { DrawUiRatioOnce(ctx, vp, [&] { g_mhRealDraw(ctx, a, b); }); return; }   // AER/DIBR: un-stretch
     }

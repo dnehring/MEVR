@@ -1048,6 +1048,13 @@ void RunDiscovery() noexcept
 
 void SetEnabled(bool on) noexcept { g_hudEnabled.store(on, std::memory_order_release); }
 bool GetEnabled() noexcept { return g_hudEnabled.load(std::memory_order_acquire); }
+namespace { std::atomic_bool g_mevrAuthored{false}; }   // [MEVR] the HUD on our body-locked panel
+void SetAuthoredLayout(bool on) noexcept   // [MEVR]
+{
+    if (g_mevrAuthored.exchange(on, std::memory_order_acq_rel) != on)
+        ME2VR::Log::Line(on ? "[MEVR] PcHud: the HUD is on the body-locked panel: its own layout, no per-element moves"
+                            : "[MEVR] PcHud: the HUD is in the eyes again: per-element moves as set");
+}
 int  GroupCount() noexcept { return kGroupCount; }
 const char* GroupLabel(int i) noexcept
 {
@@ -1068,6 +1075,7 @@ void Tick() noexcept
     for (int g = 0; g < kGroupCount && !any; ++g)
         any = (g_groups[g].offX != 0.0f || g_groups[g].offY != 0.0f ||
                g_groups[g].scaleX != 1.0f || g_groups[g].scaleY != 1.0f);
+    if (g_mevrAuthored.load(std::memory_order_acquire)) any = false;   // [MEVR] the HUD panel: the movie's own layout
     g_anyActive = any;
     if (!any || !g_hudEnabled.load(std::memory_order_acquire)) return;
 

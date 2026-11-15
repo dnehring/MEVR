@@ -2668,6 +2668,29 @@ void RunFrame() noexcept
             mevrFrame.projectionFov[e][0] = pv.fov.angleLeft; mevrFrame.projectionFov[e][1] = pv.fov.angleRight;
             mevrFrame.projectionFov[e][2] = pv.fov.angleUp; mevrFrame.projectionFov[e][3] = pv.fov.angleDown;
         }
+        mevrFrame.stereo = ME2VR::CalcViewHook::GetVrMode() == 4;   // SFR
+        {   // the head at this frame's display time, as LE1's frame carries it (through g_fn: a replay's head in a replay)
+            XrView hv[2] = {};
+            hv[0].type = hv[1].type = XR_TYPE_VIEW_VALUE;
+            XrViewState hs = {}; hs.type = XR_TYPE_VIEW_STATE_VALUE;
+            XrViewLocateInfo hl = {};
+            hl.type = XR_TYPE_VIEW_LOCATE_INFO_VALUE;
+            hl.viewConfigurationType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO_VALUE;
+            hl.displayTime = fs.predictedDisplayTime;
+            hl.space = g_localSpace;
+            uint32_t hc = 0;
+            if (XrSucceeded(g_fn.locateViews(g_session, &hl, &hs, 2, &hc, hv)) && hc >= 2 &&
+                (hs.viewStateFlags & XR_VIEW_STATE_ORIENTATION_VALID_BIT_VALUE) != 0 &&
+                (hs.viewStateFlags & XR_VIEW_STATE_POSITION_VALID_BIT_VALUE) != 0)
+            {
+                mevrFrame.headValid = true;
+                mevrFrame.headOrientation[0] = hv[0].pose.orientation.x; mevrFrame.headOrientation[1] = hv[0].pose.orientation.y;
+                mevrFrame.headOrientation[2] = hv[0].pose.orientation.z; mevrFrame.headOrientation[3] = hv[0].pose.orientation.w;
+                mevrFrame.headPosition[0] = 0.5f * (hv[0].pose.position.x + hv[1].pose.position.x);
+                mevrFrame.headPosition[1] = 0.5f * (hv[0].pose.position.y + hv[1].pose.position.y);
+                mevrFrame.headPosition[2] = 0.5f * (hv[0].pose.position.z + hv[1].pose.position.z);
+            }
+        }
         const void* mevrQuads[12] = {};
         const unsigned mevrQuadCount = ::ME2VR::MevrBridge::OverlayLayers(mevrFrame, mevrQuads, 12);
         for (unsigned i = 0; i < mevrQuadCount && layerCount < 4 + 12 - 1; ++i)   // room for the menu

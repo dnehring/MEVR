@@ -23,6 +23,11 @@ struct GroupCfg { float offX; float offY; float scaleX; float scaleY; };
 void SetEnabled(bool on) noexcept;
 bool GetEnabled() noexcept;
 
+// [MEVR] The HUD is on our body-locked panel (src/plugin/HudPanel.cpp): the movie keeps its own layout, so no group is
+// applied while this is on (as LE1's Pchud::SetAuthoredLayout). Elements moved before it came on stay where they are
+// until the HUD movie is rebuilt (a level load); our panel engages with the session, before gameplay's first HUD.
+void SetAuthoredLayout(bool on) noexcept;
+
 int         GroupCount() noexcept;
 const char* GroupLabel(int index) noexcept;
 GroupCfg*   GetGroup(int index) noexcept;    // mutable; nullptr if out of range
