@@ -25,6 +25,16 @@ $base = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\build-runner-test
 $root = Join-Path $base ([Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory $root | Out-Null
 try {
+    Case 'live host log permits shared reader without closing writer' {
+        $logPath = Join-Path $root 'live-host.log'
+        $writer = [IO.File]::Open($logPath, [IO.FileMode]::Create, [IO.FileAccess]::Write, [IO.FileShare]::Read)
+        try {
+            $bytes = [Text.Encoding]::UTF8.GetBytes('dump-only: code dump attempted; renderer and hooks disabled')
+            $writer.Write($bytes, 0, $bytes.Length); $writer.Flush()
+            Reject { [IO.File]::ReadAllText($logPath) }
+            Check ((Read-RunLog $logPath) -eq [Text.Encoding]::UTF8.GetString($bytes))
+        } finally { $writer.Dispose() }
+    }
     Case 'scripts parse in Windows PowerShell' {
         foreach ($name in @('session-common', 'run-lock', 'prep', 'launch', 'restore')) {
             $tokens = $null; $errors = $null

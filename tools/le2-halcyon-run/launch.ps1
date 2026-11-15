@@ -52,7 +52,7 @@ if (-not $DesktopDump) {
     if ($wait -gt 0) { Start-Sleep -Seconds ([int][math]::Ceiling($wait)) }
 }
 $log = if ($DesktopDump) { Join-Path $bin "Logs\${Game}MEVR.log" } else { Join-Path $env:LOCALAPPDATA 'MELE2VR\MELE2VR_Log.txt' }
-$oldLog = if (Test-Path -LiteralPath $log) { [IO.File]::ReadAllText($log) } else { '' }
+$oldLog = if (Test-Path -LiteralPath $log) { Read-RunLog $log } else { '' }
 $started = [DateTime]::UtcNow
 $open | Add-Member -NotePropertyName launchRequestedUtc -NotePropertyValue $started.ToString('o') -Force
 $open | Add-Member -NotePropertyName gameProcess -NotePropertyValue $null -Force
@@ -88,7 +88,7 @@ $marker = if ($DesktopDump) { 'dump-only: code dump attempted; renderer and hook
 $seen = $false
 for ($i = 0; $i -lt 40; $i++) {
     if (Test-Path -LiteralPath $log) {
-        $text = [IO.File]::ReadAllText($log)
+        $text = Read-RunLog $log
         $fresh = if ($oldLog -and $text.StartsWith($oldLog, [StringComparison]::Ordinal)) { $text.Substring($oldLog.Length) } else { $text }
         if ((Get-Item -LiteralPath $log).LastWriteTimeUtc -ge $started -and $fresh.Contains($marker)) { $seen = $true; break }
     }

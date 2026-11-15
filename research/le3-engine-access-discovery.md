@@ -105,6 +105,17 @@ invalidation. A successful metadata check or ProcessEvent return is not gameplay
 
 ## Protected launch attempts (2026-11-15)
 
+**Update, 12:33/12:37 local:** the launch blocker cleared. ME3 started through Steam, attached the development host,
+and captured `.text` with the expected timestamp/size. The host log records dump-only completion before any renderer
+or gameplay hooks. The capture has one pre-existing patched start (`0xCA830`); no other start was recorded patched.
+SHA-256: `50c79c1c3e64ceca9af90ce87af919f01361cc9f5adb7efa2de8166e58bcd95d`.
+The first successful launch exposed a live-log sharing error in the runner: `File.ReadAllText` did not share the host's
+open writer. `Read-RunLog` now uses read access with read/write sharing, tested against a still-open synthetic writer.
+The second launch passed the complete marker/dump receipt path and deliberately retained the previous cleaner/equal
+capture (`freshDump=false`). Both sessions restored with zero differences and released the lock. Private tags:
+`LE3-parity-engine`, `LE3-parity-logproof`. The local Ghidra import is in progress; layout/allocator and VR acceptance
+remain pending. The failed attempts below are historical, not the current blocker.
+
 The user authorized the available game window. Two desktop dump-only attempts used the shared runner,
 verified backups and the development host. Neither produced an ME3 process or a host/dump receipt:
 

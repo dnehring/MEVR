@@ -1,5 +1,14 @@
 # SPDX-License-Identifier: MIT
 # Shared validation for this existing runner. No action is performed when dot-sourced.
+function Read-RunLog([string]$Path) {
+    # The live host keeps a writer open (_SH_DENYWR). Readers must share that writer;
+    # File.ReadAllText's default sharing conflicts even though the host permits reads.
+    $stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+    try {
+        $reader = New-Object IO.StreamReader($stream)
+        try { return $reader.ReadToEnd() } finally { $reader.Dispose() }
+    } finally { $stream.Dispose() }
+}
 function Get-RunNames([string]$Game) {
     if ($Game -notin @('LE2', 'LE3')) { throw 'Game must be LE2 or LE3' }
     $n = $Game.Substring(2)

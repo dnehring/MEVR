@@ -35,10 +35,10 @@ offline suite passed across the full run and focused reruns (PowerShell module r
 context executables then built and passed). SPDX and whitespace checks passed. The shared pointer's internal `near`
 member was renamed `inReach` to avoid the Windows SDK macro in monolithic builds; behavior is unchanged.
 
-Two protected desktop launch attempts did not reach ME3. Both restored with zero manifest differences and released
-the run lock. The second identified a transient-launcher monitoring race, now covered by 19 runner safety tests.
-Steam/EA still has a pending launch-helper state to resolve; see the engine discovery log before retrying. L3-1
-therefore remains gated, and the imported renderer has not been run or accepted in ME3.
+The first two protected launch attempts failed upstream of ME3 and were restored. On resumption, ME3 launched and
+captured its runtime code; a second successful launch validated the corrected live-log reader and dump receipt.
+Both restored with zero differences and released the run lock. Twenty runner safety tests pass. The launcher blocker
+is cleared; L3-1 is now in native code analysis. The imported renderer has not been run or accepted in ME3.
 
 ## Outcome and boundaries
 
