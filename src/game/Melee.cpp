@@ -42,6 +42,7 @@ struct Context {
     ue3::Object* world = nullptr;
     ue3::Object* pc = nullptr;
     ue3::Object* pawn = nullptr;
+    ue3::Object* weapon = nullptr;
     std::uint64_t generation = 0;
     std::uint8_t mode = 255;
     bool operator==(Context const&) const = default;
@@ -79,6 +80,7 @@ Context ReadContext(Link const& link) {
     if (!ue3::runtime::IsAlive(out.pc)) { out.pc = nullptr; return out; }
     out.pawn = player::BioPawn(out.pc);
     if (!ue3::runtime::IsAlive(out.pawn)) out.pawn = nullptr;
+    if (out.pawn) out.weapon = Object(gWeapon, out.pawn);
     out.world = Object(gWorld, out.pc);
     out.mode = player::GameMode(out.pc).value_or(255);
     return out;
@@ -236,7 +238,10 @@ void Tick(Link const& link) {
     if (!input.allowed) { gGestures.Step(input); return; }
     for (int hand = 0; hand < 2; ++hand)
         input.hands[static_cast<std::size_t>(hand)].available &= Refusal(link, hand) == nullptr;
-    if (auto const request = gGestures.Step(input)) {
+    auto const request = gGestures.Step(input);
+    if (gGestures.HeavyArmedNow() && link.haptic && link.allowRequest && link.allowRequest(1))
+        link.haptic(1, 0.045f, 0.35f); // readiness only; native admission/impact are separate observations
+    if (request) {
         // No asynchronous queue. The native adapter rechecks all eligibility, without calling Try* as a probe.
         log::Info("melee: stroke {} hand {}: {}", request->stroke, request->hand, Request(request->intent, request->hand, link));
     }
@@ -251,7 +256,16 @@ bool Busy() {
     return false;
 #endif
 }
-std::string Status() { return gStatus; }
+std::string Status() {
+    char const* phase = "release";
+    switch (gGestures.HeavyState()) {
+    case ik::melee::HeavyChamber::Phase::Release: break;
+    case ik::melee::HeavyChamber::Phase::Idle: phase = "idle"; break;
+    case ik::melee::HeavyChamber::Phase::Holding: phase = "holding"; break;
+    case ik::melee::HeavyChamber::Phase::Armed: phase = "armed"; break;
+    }
+    return gStatus + "; heavy chamber " + phase;
+}
 void Shutdown() {
     gStarted = false;
     gGestures.Reset();

@@ -182,6 +182,7 @@ bool gHandAimAvailable = false;
 bool gMeleeOn = false;
 bool gMeleeRequests = false;
 bool gMeleeGestures = false;
+bool gMeleeHeavyGestures = false;
 bool gTraversalGestures = false;
 bool gTraversalOn = false;  // native custom-action observers require the CallFunction hook
 bool gBonePoseTried = false;  // the arm writeback hook goes in the first time arm IK is turned on
@@ -1076,6 +1077,9 @@ struct ActionContext {
     bool allowed = false;
     bool focused = false;
     std::uint64_t squadGeneration = 0;
+    bool trackingEpochKnown = false;
+    std::uint32_t recenters = 0;
+    std::uint32_t sessions = 0;
     bool operator==(ActionContext const&) const = default;
 };
 ActionContext gActionContext;
@@ -1084,9 +1088,14 @@ std::uint64_t ActionGeneration() {
     using namespace mevr;
     auto* pc = ActionRuntimeReady() ? game::player::Controller() : nullptr;
     if (!ue3::runtime::IsAlive(pc)) pc = nullptr;
+    auto const floor = HostFloor();
+    // Epoch counters also change on a small recenter that doesn't trip the pose-jump detector.
+    // Ignore measured height/validity/sequence: seated calibration and per-frame floor jitter
+    // must not reset gestures or traversal. Host availability itself remains a transition.
     ActionContext const current{engine::World(), pc, pc ? game::player::BioPawn(pc) : nullptr,
         pc ? static_cast<int>(game::player::GameMode(pc).value_or(255)) : -1,
-        ActionSceneAllowed(), vr::controllers::Latest().active, game::squad_context::Generation()};
+        ActionSceneAllowed(), vr::controllers::Latest().active, game::squad_context::Generation(),
+        floor.has_value(), floor ? floor->recenters : 0, floor ? floor->sessions : 0};
     if (!(current == gActionContext)) { gActionContext = current; ++gActionGeneration; }
     return gActionGeneration;
 }
@@ -1101,8 +1110,10 @@ mevr::game::melee::Link MeleeLink(bool diagnostic = false) {
     link.menuOpen = ActionMenuOpen() || ActionCalibrating();
     link.authoredSeated = !ActionSceneAllowed();
     link.allowRequest = diagnostic ? AllowMeleeDiagnostic : AllowMeleeGesture;
+    if (MEVR_HOST_HAS(hapticPulse)) link.haptic = gHost->hapticPulse;
     link.input.allowed = ActionSceneAllowed() && (diagnostic || (view.valid && state.active));
     link.input.generation = ActionGeneration();
+    link.input.chamberHeavy = gMeleeHeavyGestures && !diagnostic;
     auto const yaw = game::arm_ik::TorsoYaw().value_or(ik::YawOf(
         view.head.orientation.x, view.head.orientation.y, view.head.orientation.z, view.head.orientation.w));
     vr::controllers::Hand const* hands[] = {&state.left, &state.right};
@@ -1111,8 +1122,8 @@ mevr::game::melee::Link MeleeLink(bool diagnostic = false) {
         auto const& source = *hands[hand];
         out.available = link.allowRequest(hand);
         out.neutral = ActionControlsReleased(source);
-        // Light strokes only until a dedicated heavy modifier has a proven non-overlapping binding.
-        // Heavy remains an explicit diagnostic request; attack speed never selects it.
+        // The shared optional chamber hold supplies heavy intent after fresh native admission.
+        // Controls remain released: no fire, grip, squad, power or menu binding is stolen.
         out.heavy = false;
         out.motion.now = static_cast<double>(state.timeMs) * 0.001;
         out.motion.tracked = state.active && source.gripValid && view.valid;
@@ -1502,11 +1513,13 @@ std::string MeleeCommand(std::string const& args) {
     std::istringstream words(args);
     std::string verb, value, extra;
     words >> verb >> value >> extra;
-    if (verb.empty() || verb == "status") return std::format("melee: requests {}; light gestures {}; {}",
-        gMeleeRequests, gMeleeGestures, game::melee::Status());
-    if ((verb == "requests" || verb == "gestures") && (value == "on" || value == "off") && extra.empty()) {
+    if (verb.empty() || verb == "status") return std::format("melee: requests {}; gestures {}; heavy chamber gestures {}; {}",
+        gMeleeRequests, gMeleeGestures, gMeleeHeavyGestures, game::melee::Status());
+    if ((verb == "requests" || verb == "gestures" || verb == "heavy-gestures") &&
+        (value == "on" || value == "off") && extra.empty()) {
         if (verb == "requests") gMeleeRequests = value == "on";
-        else gMeleeGestures = value == "on";
+        else if (verb == "gestures") gMeleeGestures = value == "on";
+        else gMeleeHeavyGestures = value == "on";
         // Reset the release latch even if the setting is toggled twice between ticks.
         auto link = MeleeLink(); link.input.allowed = false; game::melee::Tick(link);
         return "melee: " + verb + " " + value + "; native/physical acceptance still pending";
@@ -1514,7 +1527,7 @@ std::string MeleeCommand(std::string const& args) {
     if ((verb == "light" || verb == "heavy") && (value.empty() || value == "left" || value == "right") && extra.empty())
         return game::melee::Request(verb == "heavy" ? ik::melee::Intent::Heavy : ik::melee::Intent::Light,
             value == "left" ? 0 : 1, MeleeLink(true));
-    return "melee: status | requests on/off | gestures on/off (light only) | light [left/right] | heavy [left/right]";
+    return "melee: status | requests on/off | gestures on/off | heavy-gestures on/off (right chamber hold then strike) | light [left/right] | heavy [left/right]";
 #else
     (void)args;
     return "melee: use this game's existing native adapter";
@@ -2006,7 +2019,7 @@ MEVR_MOD_API void MevrModShutdown() {
     game::traversal::Shutdown();
     gTraversalOn = false;
     game::melee::Shutdown();
-    gMeleeOn = gMeleeRequests = gMeleeGestures = gTraversalGestures = false;
+    gMeleeOn = gMeleeRequests = gMeleeGestures = gMeleeHeavyGestures = gTraversalGestures = false;
     gActionContext = {};
     ++gActionGeneration;
     game::gun_kick::Shutdown();

@@ -13,6 +13,7 @@ struct Link {
     // Must re-read the host's CURRENT menu/hand ownership at the instant of dispatch.
     // A missing callback refuses dispatch, including diagnostic requests.
     bool (*allowRequest)(int hand) = nullptr;
+    void (*haptic)(int hand, float seconds, float amplitude) = nullptr;
     ik::melee::Input input;
 };
 // Game thread only. LE3 native adapter; LE1 Throwables remains the production LE1 route.

@@ -270,3 +270,82 @@ snapshot's `melee` string reports the observed native-adapter status, separate f
 command dispatch. Strict syntax checks cover LE1/LE2/LE3; the shared core regression
 suite covers intent, ownership interruption and action lifecycle. No new game run or
 headset acceptance is claimed by this wiring checkpoint.
+
+### Opt-in physical heavy intent checkpoint (2026-11-15)
+
+The previous checkpoint's missing physical heavy binding now has an **offline-tested
+candidate**, extending `core/ik/Melee` and its existing ME1 `SwingDetector`. It does not
+add another pad mapper, native damage hook, or class-specific impact implementation.
+`mod/Mod.cpp` still builds poses from the shared corrected controller/head samples and
+body yaw, after the existing power, squad, support and reload ownership updates.
+
+The binding deliberately uses **no new button chord**. Source audit found right-grip
+squeezes already route through `plugin/PadMerge` and `game/Holsters` to weapon/RB
+ownership, while left grip/trigger, face buttons and stick clicks already have squad,
+power, menu and traversal uses. Those mappings and the existing all-controls-released
+melee gate remain unchanged.
+
+Enable all three session-only switches in normal module context:
+
+```text
+mevr melee requests on
+mevr melee gestures on
+mevr melee heavy-gestures on
+```
+
+`heavy-gestures` defaults off and cannot bypass either of the first two gates. With
+it off, the existing light stroke path is unchanged. Explicit `mevr melee heavy
+[left/right]` remains a separately guarded diagnostic, not a physical acceptance test.
+
+The candidate physical interaction is:
+
+1. Release competing controls and briefly rest the right hand outside the ready zone.
+   Starting with the hand already held in the zone cannot arm it.
+2. Bring the right controller into the box **in front of the right shoulder**: 18–42 cm
+   right of the head in body yaw, 12–34 cm forward, and 22 cm below to 2 cm above eye
+   height. Hold for 350 ms, below 0.25 m/s with at most 3.5 cm drift from the hold anchor.
+   Raising the hand into this zone cannot itself produce a light strike.
+3. A 45 ms readiness pulse marks armed intent. Within 1.25 s, strike forward within
+   45 degrees of body forward. The existing swing speed/travel thresholds and shared
+   cooldown still apply. The stroke history starts after the readiness cue.
+4. One deliberate stroke makes at most one `TryHeavyMelee` request. A simultaneous
+   ordinary light stroke from the other hand cannot take its shared request slot.
+   To rearm, leave the box, rest with controls released, then enter and hold again.
+
+These are provisional comfort/reach bounds, not native collision data or an established
+VR standard. They are head-relative metres, so no standing-height assumption blocks
+physically seated play. The shoulder holster's default zone is behind the eye; the new
+box is forward. Actual slot/hand claims continue to take precedence. This candidate
+does **not** enable holstered/unarmed attacks: the native adapter still requires a
+supported drawn, ready weapon. Future grip-to-hold weapon modes must explicitly resolve
+the all-controls-released requirement before claiming this binding works with them.
+
+Arming clears on ownership loss, pressed trigger/grip/face/stick-click controls,
+tracking loss or discontinuity, expired timeout, settings toggle, scene/actor/weapon
+replacement, recenter and XR-session replacement. Native cover, storm, ignored movement,
+death, reload, zoom, pending admission and existing custom actions remain refusals.
+The right hand must return to a stationary released pose outside the box after a
+consumed or cancelled intent; an expired heavy attempt cannot silently become a late
+light attack. Other ordinary light swings remain available outside this ready zone.
+
+The native adapter now includes the current weapon object in its context identity.
+`ActionGeneration` also includes the host's recenter/session counters and availability,
+without using floor height, floor-validity, per-frame sequence or a physical seated
+setting as reset triggers. Status adds `heavy chamber release/idle/holding/armed`.
+The readiness pulse means **armed intent only**. The existing separate native action
+observation still determines whether dispatch became an action; no code calls the
+impact path, edits a class, grants a power, or assigns the heavy-action array.
+
+Validation: existing melee intent and traversal tests pass, with additional permanent
+tests for startup-in-zone refusal, timed dwell at 31/72/90 Hz, one cue/one stroke,
+timeout without light fallback, mandatory rearm, simultaneous-hand arbitration,
+ordinary light strokes, sideways refusal, body-yaw geometry, repeated pose samples,
+invalid data and ownership/context/tracking interruptions. `game/Melee.cpp` and the
+scoped `mod/Mod.cpp` wiring pass `/W4 /WX` syntax checks for LE1, LE2 and LE3. No game
+or VR session was launched for this checkpoint.
+
+Remaining acceptance: physical comfort and false-positive rates around aiming/reload/
+weapon handling, fresh native admission/denial/recovery, and all six legal class fixtures
+including their real effects. Cover/storm contextual attacks, Atlas and holstered
+melee remain separate unimplemented intentional bindings. Class defaults and installed
+script evidence above do not substitute for those runtime checks.
