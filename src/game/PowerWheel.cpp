@@ -309,7 +309,7 @@ std::optional<Power> Le3Power(ue3::Object* object, bool includeUnlearned) {
         text.name = known != nullptr ? known->name : label;
     }
     bool const ammo = ue3::IsA(object, le3_powers::ammoClass);
-    auto const gesture = pw::NativeSelfGesture(ammo, revive, *type == 3);
+    auto const gesture = pw::NativeSelfGesture(ammo, revive, *type == 3, ue3::IsA(object, le3_powers::weaponBuffClass));
     bool const self = gesture != pw::SelfGesture::None;  // installed EPowerType: Buff = 3
     text.info = {text.label.c_str(), text.name.c_str(), known != nullptr ? known->discipline : std::uint8_t{2},
         known != nullptr ? known->icon : 0, self ? pw::Aim::None : pw::Aim::Place};

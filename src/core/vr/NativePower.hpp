@@ -9,8 +9,8 @@
 namespace mevr::vr::power_wheel {
 // Class-derived roles, not a fixed power-name roster. Native revive keeps LE1's
 // raised-hand gesture; weapon buffs remain tied to the held gun.
-inline SelfGesture NativeSelfGesture(bool ammo, bool revive, bool buff) {
-    return ammo ? SelfGesture::Gun : revive ? SelfGesture::Raise : buff ? SelfGesture::Chest : SelfGesture::None;
+inline SelfGesture NativeSelfGesture(bool ammo, bool revive, bool buff, bool weaponBuff = false) {
+    return ammo || weaponBuff ? SelfGesture::Gun : revive ? SelfGesture::Raise : buff ? SelfGesture::Chest : SelfGesture::None;
 }
 
 inline bool NativeLocationInRange(double distance, double minimum, double maximum) {

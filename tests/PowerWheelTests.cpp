@@ -1096,6 +1096,7 @@ int RunPowerWheelTests() {
     CHECK(pw::NativeSelfGesture(false, true, true) == pw::SelfGesture::Raise);
     CHECK(pw::NativeSelfGesture(false, false, true) == pw::SelfGesture::Chest);
     CHECK(pw::NativeSelfGesture(false, false, false) == pw::SelfGesture::None);
+    CHECK(pw::NativeSelfGesture(false, false, true, true) == pw::SelfGesture::Gun);
     TestXOwnership();
     TestMachine();
     TestPlacement();

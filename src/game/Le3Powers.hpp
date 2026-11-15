@@ -14,6 +14,7 @@ inline ue3::ClassRef powerClass{"SFXGame.SFXPowerCustomActionBase", ue3::kEveryG
 inline ue3::ClassRef ammoClass{"SFXGameContent.SFXPowerCustomAction_AmmoPower", ue3::kEveryGame};
 inline ue3::ClassRef grenadeClass{"SFXGameContent.SFXPowerCustomAction_GrenadeBase", ue3::kEveryGame};
 inline ue3::ClassRef reviveClass{"SFXGameContent.SFXPowerCustomAction_Unity", ue3::kEveryGame};
+inline ue3::ClassRef weaponBuffClass{"SFXGameContent.SFXPowerCustomAction_Marksman", ue3::kEveryGame};
 inline ue3::FieldRef name{"SFXGame.SFXPowerCustomActionBase", "PowerName", ue3::kEveryGame};
 inline ue3::FieldRef rank{"SFXGame.SFXPowerCustomActionBase", "Rank", ue3::kEveryGame};
 inline ue3::FieldRef visible{"SFXGame.SFXPowerCustomActionBase", "DisplayInHUD", ue3::kEveryGame};
@@ -54,7 +55,10 @@ inline bool CanUse(ue3::Object* object, ue3::Object* target) {
     auto* fn = Method(object, "CanUsePower");
     if (fn == nullptr || (target != nullptr && !ue3::runtime::IsAlive(target))) return false;
     ue3::Params args(ue3::runtime::Get(), fn);
-    return args.Set("oTarget", target) && ue3::runtime::Call(object, fn, args) && args.ReturnBool().value_or(false);
+    // Installed Marksman overrides this argument as Target; binding the base spelling alone
+    // silently disables the real override. Both are object parameters checked by Params::Set.
+    char const* field = ue3::runtime::Get().PropertyOf(fn, "oTarget") ? "oTarget" : "Target";
+    return args.Set(field, target) && ue3::runtime::Call(object, fn, args) && args.ReturnBool().value_or(false);
 }
 inline bool ValidTarget(ue3::Object* object, ue3::Object* target) {
     auto* fn = Method(object, "IsValidTarget");

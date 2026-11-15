@@ -46,8 +46,7 @@ Ammo subclasses use the shared gun-contact gesture, buffs the chest gesture,
 and Unity the raised-hand gesture. Other native powers use the shared aimed push
 with an actor lock or world location. These are class/type-derived roles, not
 invented powers. Native targeting still decides whether a request is valid.
-Weapon-specific buffs beyond ammo use the chest role until separately audited;
-their specialized coaching/art remains a follow-up, not a claim of full parity.
+The separately audited native Marksman class also uses gun contact (details below). Other buff classes retain the chest role until their particular behavior is audited; specialized coaching/art remains a follow-up, not a claim of full parity.
 
 The adapter rereads the selected power and manager at dispatch. It calls the
 actual object's `CanUsePower` override, checks combat availability and cooldown,
@@ -128,4 +127,13 @@ For self powers, the roster and gesture ready state consult the actual `CanUsePo
 
 Installed `BioP_Char.pcc` Unity scripts were read using the existing private scanner. `CanUsePower` first invokes `ShouldUsePower`, which checks native medi-gel count and whether player or squad health/shields need recovery. `StartPower` consumes medi-gel through the native resource method, subject to the game's upgrade exception. `OnImpact` owns companion resurrection, temporary immunity and health/shield recovery. The mod calls none of those effects directly and writes no health, inventory, plot or cooldown field. Actual native recovery/consumption remains pending a suitable normally loaded fixture.
 
-Offline tests add native location minimum/maximum boundary and invalid-value cases; all existing power gesture/readiness/paging tests still run. Native acceptance must include a real injured/downed companion, full-health refusal, zero-resource refusal, one successful Unity cast and its resource outcome, plus any genuinely ally-compatible power if the fixture has one. This increment improves player gestures; the separate squad voice validator still needs explicit self/ally/location intent rather than forcing every Use action to an enemy group.
+Offline tests add native location minimum/maximum boundary and invalid-value cases; all existing power gesture/readiness/paging tests still run. Native acceptance must include a real injured/downed companion, full-health refusal, zero-resource refusal, one successful Unity cast and its resource outcome, plus any genuinely ally-compatible power if the fixture has one. The corresponding squad voice intent extension is described in `research/le3-squad.md`: it carries explicit self/ally/location intent while preserving native target and execution admission.
+
+
+## Specialized weapon buff: Marksman
+
+Installed `SFXPower_Marksman.pcc` exports the real `SFXGameContent.SFXPowerCustomAction_Marksman` class. Its `OnImpact` applies accuracy/rate-of-fire and evolved headshot effects to eligible non-heavy carried weapons, with native duration and squad effectiveness. Therefore the adapter selects the existing gun-contact gesture by actual class identity, without importing ME1's pistol-only restriction or editing weapon stats. This is separate from ammo-power handling; other unknown buffs retain the conservative chest fallback.
+
+Its actual `CanUsePower` override calls its object argument `Target`, while the base uses `oTarget`. The reflected call now binds whichever audited spelling exists on the actual method, preserving parameter kind/size checks and failure when neither exists. This matters for real overrides: resolving the correct function but binding only a base parameter name disabled Marksman. The native companion override also examines player-ordered state, reinforcing why squad orders must let native target selection establish that state before native AI admission.
+
+Three game power objects compile with warnings as errors; existing power/placement/parser tests and the specialized gesture-role regression pass. Native Marksman activation, duration/evolution behavior, weapon changes, active-effect refusal and physical gun-contact feel remain acceptance gates. This is one audited specialized buff, not complete DLC art/gesture coverage.
