@@ -84,10 +84,7 @@ Facts const& Get() noexcept {
     static Facts const facts{
         "halcyon le2 bridge",
         false,  // invalidViewAtOnce: an invalid view waits for the floor lock's quiet like any other
-        false,  // menusHideGameplay: the gameplay layers stay under our menu, as on LE1
         true,   // panelColour
-        false,  // weaponsNeedPublishedAim: the ring shows by the game mode, as LE1's
-        false,  // cueOnFootOnly
         static_cast<int>(vr::hud_pieces::Layout::Me2),  // ME2's own HUD: its bands (core/vr/HudPieces)
     };
     return facts;
