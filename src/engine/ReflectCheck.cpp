@@ -2100,6 +2100,7 @@ void CheckClasses() {
     CheckClass<UGameEngine>("Engine.GameEngine");
     CheckClass<UPlayer>("Engine.Player");
     CheckClass<ULocalPlayer>("Engine.LocalPlayer");
+    CheckClass<ASFXWeapon_NativeBase>("SFXGame.SFXWeapon_NativeBase");  // game/Weapon, game/Sights: the zoom flag
     CheckClass<AWorldInfo>("Engine.WorldInfo");
     CheckClass<UWorld>("Engine.World");
     CheckClass<UActorComponent>("Engine.ActorComponent");
@@ -2177,6 +2178,12 @@ void CheckClasses() {
 }
 
 void CheckFields() {
+    // game/Sights, game/Weapon (M3.3, research/le2-vrik.md "The sights on the sequels"): the near plane for the scope's pull,
+    // the zoom flag set for one aim-error call, the sniper's zoom
+    CheckField("Engine.PlayerController", "Player", SDK_FIELD(APlayerController, Player));
+    CheckField("Engine.LocalPlayer", "NearClipPlane", SDK_FIELD(ULocalPlayer, NearClipPlane));
+    CheckField("SFXGame.SFXWeapon_NativeBase", "bIsZoomed", SDK_BOOL(ASFXWeapon_NativeBase, bIsZoomed));
+    CheckField("SFXGame.SFXWeapon", "ZoomFOV", SDK_FIELD(ASFXWeapon, ZoomFOV));
     // ue3::runtime (the local player controller) and engine::World()'s path
     CheckField("Engine.Engine", "GamePlayers", SDK_FIELD(UEngine, GamePlayers));
     CheckField("Engine.Player", "Actor", SDK_FIELD(UPlayer, Actor));
@@ -2413,6 +2420,11 @@ void CheckSkeleton() {
 
 void CheckFunctions() {
     char const* const functions[] = {
+        "SFXGame.SFXWeapon.GetAimError",                  // game/Sights: a scope's aimed fire (ME1's GetPlayerAimError(Accuracy))
+        "SFXGame.BioPlayerController.SwitchWeapon",       // game/Holsters' sequel draw (`mevr weapon <family>`)
+        "Engine.SkeletalMeshComponent.HideBone",          // game/ScopeParts: the scope's lens part while its picture is up
+        "Engine.SkeletalMeshComponent.UnHideBone",
+        "Engine.SkeletalMeshComponent.IsBoneHidden",
         "Engine.Camera.UpdateCamera",                     // the script-package gate, head tracking
         "Engine.PlayerController.GetPlayerViewPoint",     // head tracking
         "Engine.PlayerController.GetFOVAngle",            // head tracking
@@ -2484,6 +2496,15 @@ void CheckFunctions() {
 }
 
 void CheckParams() {
+    // game/Sights and game/ScopeParts (M3.3)
+    PARAM(ASFXWeapon_execGetAimError_Parms, "SFXGame.SFXWeapon.GetAimError", Accuracy);
+    PARAM(ASFXWeapon_execGetAimError_Parms, "SFXGame.SFXWeapon.GetAimError", ReturnValue);
+    PARAM(ABioPlayerController_eventSwitchWeapon_Parms, "SFXGame.BioPlayerController.SwitchWeapon", oWpn);
+    PARAM(USkeletalMeshComponent_execHideBone_Parms, "Engine.SkeletalMeshComponent.HideBone", BoneIndex);
+    PARAM(USkeletalMeshComponent_execHideBone_Parms, "Engine.SkeletalMeshComponent.HideBone", PhysBodyOption);
+    PARAM(USkeletalMeshComponent_execUnHideBone_Parms, "Engine.SkeletalMeshComponent.UnHideBone", BoneIndex);
+    PARAM(USkeletalMeshComponent_execIsBoneHidden_Parms, "Engine.SkeletalMeshComponent.IsBoneHidden", BoneIndex);
+    PARAM(USkeletalMeshComponent_execIsBoneHidden_Parms, "Engine.SkeletalMeshComponent.IsBoneHidden", ReturnValue);
     // game/GameMenuRequest (M4.3): the back-out's B
     PARAM(USFXGameModeBase_execGuiKey_Parms, "SFXGame.SFXGameModeBase.GuiKey", Event);
     PARAM(UBioSFHandler_eventHandleInputEvent_Parms, "Engine.BioSFHandler.HandleInputEvent", Event);
@@ -3086,6 +3107,7 @@ void CheckLe3Dialogue() {
 
 void CheckFields() {
     CheckLe3CaptureRig();
+    CheckField("Engine.LocalPlayer", "NearClipPlane", SDK_FIELD(ULocalPlayer, NearClipPlane));  // game/Sights: the scope's pull
     CheckField("Engine.SkeletalMeshComponent", "SkeletalMesh", SDK_FIELD(USkeletalMeshComponent, SkeletalMesh));
     // L3 menu pause: native override owns admission; this bit is observed, never forced.
     CheckField("Engine.WorldInfo", "bPlayersOnly", SDK_BOOL(AWorldInfo, bPlayersOnly));
@@ -3295,6 +3317,27 @@ void CheckSaveDescriptor(char const* function, char const* parameter) {
 }
 
 void CheckFunctions() {
+    // game/Sights and game/ScopeParts (research/le2-vrik.md "The sights on the sequels"): the sight line's trace, a scope's
+    // aimed fire, the lens part hidden
+    CheckFunction("Engine.Actor.Trace");
+    PARAM(AActor_execTrace_Parms, "Engine.Actor.Trace", HitLocation);
+    PARAM(AActor_execTrace_Parms, "Engine.Actor.Trace", TraceEnd);
+    PARAM(AActor_execTrace_Parms, "Engine.Actor.Trace", TraceStart);
+    PARAM(AActor_execTrace_Parms, "Engine.Actor.Trace", bTraceActors);
+    PARAM(AActor_execTrace_Parms, "Engine.Actor.Trace", ReturnValue);
+    CheckFunction("SFXGame.SFXWeapon.GetPlayerAimError");
+    PARAM(ASFXWeapon_execGetPlayerAimError_Parms, "SFXGame.SFXWeapon.GetPlayerAimError", Accuracy);
+    PARAM(ASFXWeapon_execGetPlayerAimError_Parms, "SFXGame.SFXWeapon.GetPlayerAimError", ReturnValue);
+    CheckFunction("SFXGame.BioPlayerController.SwitchWeapon");  // game/Holsters' sequel draw (`mevr weapon <family>`)
+    PARAM(ABioPlayerController_eventSwitchWeapon_Parms, "SFXGame.BioPlayerController.SwitchWeapon", oWpn);
+    CheckFunction("Engine.SkeletalMeshComponent.HideBone");
+    PARAM(USkeletalMeshComponent_execHideBone_Parms, "Engine.SkeletalMeshComponent.HideBone", BoneIndex);
+    PARAM(USkeletalMeshComponent_execHideBone_Parms, "Engine.SkeletalMeshComponent.HideBone", PhysBodyOption);
+    CheckFunction("Engine.SkeletalMeshComponent.UnHideBone");
+    PARAM(USkeletalMeshComponent_execUnHideBone_Parms, "Engine.SkeletalMeshComponent.UnHideBone", BoneIndex);
+    CheckFunction("Engine.SkeletalMeshComponent.IsBoneHidden");
+    PARAM(USkeletalMeshComponent_execIsBoneHidden_Parms, "Engine.SkeletalMeshComponent.IsBoneHidden", BoneIndex);
+    PARAM(USkeletalMeshComponent_execIsBoneHidden_Parms, "Engine.SkeletalMeshComponent.IsBoneHidden", ReturnValue);
     CheckFunction("Engine.SkeletalMeshComponent.GetBoneLocation");
     CheckFunction("SFXGame.BioWorldInfo.PauseGame");
     PARAM(ABioWorldInfo_execPauseGame_Parms, "SFXGame.BioWorldInfo.PauseGame", bPause);

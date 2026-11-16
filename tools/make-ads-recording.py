@@ -5,7 +5,9 @@ head sway so Umbra and the blur see motion. For the scope-capture A/B on the fak
 without a person"). Usage: python tools/make-ads-recording.py out.mevrrec [seconds] [hz] [eye height m] [hand drop m]
 [fire every s] [fire hold s] (the right trigger pulled for `hold` seconds every `every` seconds from 3 s on, for the gun kick,
 research/24 section 8; 0, the default: never); then `tools/console.ps1 "mevr weapon sniper"`,
-`tools/replay.ps1 -Path out.mevrrec -Loop -Inputs`, `tools/measure-levers.ps1 -Section Sights -Key scopeCapture -Values 0,1`."""
+`tools/replay.ps1 -Path out.mevrrec -Loop -Inputs`, `tools/measure-levers.ps1 -Section Sights -Key scopeCapture -Values 0,1`.
+Flags (anywhere after the positionals): --no-support: the left hand low at the side, its grip open (a pistol in one hand);
+--no-grip: the right grip open (a game where the grip isn't the holsters' yet: ME2's and ME3's right grip is the pad's RB)."""
 import math
 import struct
 import sys
@@ -26,6 +28,9 @@ def quat_yaw_pitch(yaw, pitch):
 
 
 def main():
+    no_support = "--no-support" in sys.argv
+    no_grip = "--no-grip" in sys.argv
+    sys.argv = [a for a in sys.argv if a not in ("--no-support", "--no-grip")]
     out = sys.argv[1]
     seconds = float(sys.argv[2]) if len(sys.argv) > 2 else 30.0
     hz = float(sys.argv[3]) if len(sys.argv) > 3 else 90.0
@@ -68,6 +73,12 @@ def main():
         buttons = (1 << 4) | (1 << 5)  # gripValid, aimValid
         left_sq = 1.0 if t > 2.0 else 0.0  # the support grip after 2 s
         right_sq = 1.0  # the right grip holds the gun
+        if no_support:
+            left_sq = 0.0
+            left_grip = (q[0], q[1], q[2], q[3], hx - 0.25 * rx, hy - 0.60, hz_ - 0.25 * rz)
+            left_aim = left_grip
+        if no_grip:
+            right_sq = 0.0
         right_trigger = 1.0 if fire_every > 0.0 and t > 3.0 and (t - 3.0) % fire_every < fire_hold else 0.0
         frame = FRAME.pack(int(t * 1e9), 3,
                            *eyes[0], *fov, *eyes[1], *fov,

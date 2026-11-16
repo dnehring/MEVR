@@ -445,6 +445,7 @@
     "Glow",
     "HalcyonLe2",
     "HalcyonLe2Bridge",
+    "HalcyonSequelBridge",
     "HandReticle",
     "HdrDisplayPolicy",
     "HudPanel",
@@ -467,9 +468,11 @@
     "RecenterTilt",
     "RenderLevers",
     "RendererLe2",
+    "ReportRequest",
     "ScopeCaptureSource",
     "Seams",
     "SequelCinema",
+    "SequelOverlays",
     "SequelSquadLayers",
     "SequelWeaponLayers",
     "SetupRequest",
@@ -685,6 +688,7 @@
     "Glow",
     "HalcyonLe3",
     "HalcyonLe3Bridge",
+    "HalcyonSequelBridge",
     "HandReticle",
     "HdrDisplayPolicy",
     "HudPanel",
@@ -709,9 +713,11 @@
     "RecenterTilt",
     "RenderLevers",
     "RendererLe3",
+    "ReportRequest",
     "ScopeCaptureSource",
     "Seams",
     "SequelCinema",
+    "SequelOverlays",
     "SequelSquadLayers",
     "SequelWeaponLayers",
     "SetupRequest",
@@ -1969,13 +1975,13 @@
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "run"
     },
     "LE3": {
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "run"
     }
    },
    "namespace": "game::holsters"
@@ -2429,13 +2435,13 @@
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "run"
     },
     "LE3": {
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "run"
     }
    },
    "namespace": "game::scope_parts"
@@ -2481,7 +2487,7 @@
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "run"
     }
    },
    "namespace": "game::sights"

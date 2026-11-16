@@ -19,20 +19,20 @@ $sampler = @('build', 'build-trilogy') | ForEach-Object { Join-Path $PSScriptRoo
     Where-Object { Test-Path $_ } | Select-Object -First 1
 if (-not $sampler) { throw "Build it first: cmake --build build --config Release --target mevr-stack-sampler (or in build-trilogy)" }
 $processName = "MassEffect$($Game.Substring(2))"
-$game = Get-Process $processName -ErrorAction SilentlyContinue | Select-Object -First 1
-if (-not $game) { throw "$processName is not running" }
+$process = Get-Process $processName -ErrorAction SilentlyContinue | Select-Object -First 1
+if (-not $process) { throw "$processName is not running" }
 $dir = Join-Path $MevrDataDir 'perf'
 function Latest { Get-ChildItem -LiteralPath $dir -Filter '*-probe.json' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime | Select-Object -Last 1 }
 $probe = Latest
 $meta = if ($probe) { Get-Content -Raw -LiteralPath $probe.FullName | ConvertFrom-Json }
-if (-not $meta -or $meta.pid -ne $game.Id) {
+if (-not $meta -or $meta.pid -ne $process.Id) {
     Write-Host 'Taking a 2 s capture to find the render thread...'
     & "$PSScriptRoot\perf-probe.ps1" -Seconds 2 -Tag thread | Out-Null
     $meta = Get-Content -Raw -LiteralPath (Latest).FullName | ConvertFrom-Json
 }
-Write-Host "Sampling render thread $($meta.renderThread) of pid $($game.Id) for $Seconds s"
+Write-Host "Sampling render thread $($meta.renderThread) of pid $($process.Id) for $Seconds s"
 $raw = Join-Path $dir ("{0:yyyy-MM-dd_HH-mm-ss}-stacks.txt" -f (Get-Date))
-& $sampler $game.Id $meta.renderThread $Seconds $IntervalUs $raw
+& $sampler $process.Id $meta.renderThread $Seconds $IntervalUs $raw
 $extra = @('--game', $Game, '--top', $Top)
 if ($Under) { $extra += @('--under', $Under) }
 & python -I "$PSScriptRoot\stack-functions.py" $raw @extra

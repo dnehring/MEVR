@@ -60,7 +60,13 @@ struct Panel;
 //     wheel's own steps for Shepard (UpdatePrimaryAndSecondaryWeapons, DrawPrimaryWeapon) are left out:
 //     his weapon isn't being changed. All through ProcessEvent, never the SDK's wrappers.
 // Logged once per change (`squad:` lines); a heartbeat line; the snapshot's mod status has a "squad"
-// object. Game thread. LE2 uses native inventory/order adapters with the custom panel; LE3 is off.
+// object. Game thread.
+//
+// Every game runs the same drawn-menu tick (SquadWeapons.cpp TickCustom: the gates, the pointing, the cards, the machine,
+// the haptics and the logs above); each game's native side is a small adapter (`native`: ME1's in SquadWeapons.cpp, the
+// quick slots and the weapon wheel's own order; ME2's and ME3's in game/Le2SquadMenu.inc, a paged inventory of weapon
+// objects, BioPlayerController.OrderWeaponSwitch and the pawn's Pawn.Weapon). The game's own wheel (style = native) is ME1's
+// only: the sequels' wheels are different UIs, so they always draw ours.
 namespace mevr::game::squad_weapons {
 
 // What the host offers this tick (Mod.cpp fills it from HostServices v11).

@@ -28,6 +28,10 @@
 //       checked, put in ASI\voice, recorded; the model's release from MEVR-Setup.ini's [Voice] keys, or --repo) | --remove-voice
 //       | --check-voice [--deep]  (their sizes, or with --deep their SHA-256 sums)
 //   with --game <folder> and --payload <folder> (default: payload\ next to the exe).
+//   --for LE1|LE2|LE3: which of the Legendary Edition's three games the command (or the window) is about. Without it:
+//     the game whose folder --game names (...\Game\ME2\Binaries\Win64: a game's own setup copy and its in-game Report say
+//     it that way), else Mass Effect 1. Each game has its own install record; the window offers the sequels only when
+//     MEVR-Setup.ini says so ([Setup] games, tools/package-release.ps1 -Games) or they are installed already.
 //   --preview <folder> --request [--wait-pid N] [--game <folder>] [--out <file>]: the window's real start for "Install after I
 //     quit" (the request file read and removed, the page, the wait for the game's exit) as PNGs and its state as text.
 //   --test-server http://127.0.0.1:<port>: TESTS ONLY (research/33 section 10). Every web request goes to that local server
@@ -399,6 +403,15 @@ int Preview(fs::path const& output, bool warp, mevr::setup::Options const& real,
         {"repair-needed", "repair-needed", "repair"},
         {"launch-repair", "repair-needed", "launch"},
         {"launch-meta", "meta", "launch"},
+        // The three games (docs/trilogy-plan.md T52): a release that offers the sequels, nothing installed yet; then the
+        // pages about Mass Effect 2 with the mod in.
+        {"welcome-games", "games-fresh", "welcome"},
+        {"install-games", "games-fresh", "install"},
+        {"welcome-le2", "games-installed", "welcome"},
+        {"install-le2", "games-installed", "install"},
+        {"content-le2", "games-installed", "content"},
+        {"settings-le2", "games-installed", "settings"},
+        {"launch-le2", "games-installed", "launch"},
     };
     for (Shot const& shot : shots) {
         app.Sample(shot.state);
@@ -413,6 +426,7 @@ int Preview(fs::path const& output, bool warp, mevr::setup::Options const& real,
 struct Cli {
     std::string command;
     std::optional<fs::path> game;
+    std::optional<mevr::install::GameId> forGame;  // --for
     std::optional<fs::path> payload;
     std::optional<fs::path> out;
     std::string quality = "auto";
@@ -488,6 +502,7 @@ int RunReport(Cli const& cli, std::optional<fs::path> const& root, std::string c
     namespace report = mevr::install::report;
     namespace marks = mevr::install::report_marks;
     report::Options options;
+    options.game = cli.forGame.value_or(mevr::install::GameId::LE1);
     options.gameRoot = root.value_or(fs::path());
     options.store = source == "Steam" || source == "EA app" ? source : std::string();
     options.snapshot = cli.snapshot;
@@ -523,7 +538,8 @@ int RunReport(Cli const& cli, std::optional<fs::path> const& root, std::string c
     return result.ok ? 0 : 1;
 }
 
-int RunCli(Cli const& cli) {
+int RunCli(Cli const& given) {
+    Cli cli = given;
     std::string text;
     auto say = [&](std::string const& line) {
         text += line + "\n";
@@ -538,6 +554,13 @@ int RunCli(Cli const& cli) {
         root = installs.front().root;
         source = source.empty() ? installs.front().source : source;
     }
+    // Which of the three games: --for, else the game whose folder --game names, else Mass Effect 1.
+    if (!cli.forGame && cli.game && root) {
+        cli.forGame = detect::GameFromPicked(*cli.game, *root);
+    }
+    mevr::install::GameId const game = cli.forGame.value_or(mevr::install::GameId::LE1);
+    mevr::install::GameSpec const& spec = mevr::install::Spec(game);
+    cli.forGame = game;
     int code = 0;
     if (cli.command == "check-update" || cli.command == "get-mem" || cli.command == "download-update") {
         if (cli.command == "download-update") {
@@ -571,7 +594,7 @@ int RunCli(Cli const& cli) {
         say("game: not found");
         code = 2;
     } else {
-        mevr::install::Layout const layout{*root};
+        mevr::install::Layout const layout{*root, game};
         mevr::install::settings::Choices choices;
         if (cli.quality == "headset") {
             if (auto const log = mevr::install::ReadFile(detect::HalcyonLogPath())) {
@@ -597,8 +620,9 @@ int RunCli(Cli const& cli) {
         } else if (cli.command == "install") {
             auto const payload = cli.payload ? std::optional<mevr::install::Payload>(mevr::install::Payload{*cli.payload})
                                              : mevr::install::FindPayload(ExePath().parent_path());
-            if (!payload || !payload->Valid()) {
-                say("payload: not found or incomplete");
+            if (!payload || !payload->Has(game)) {
+                say(game == mevr::install::GameId::LE1 ? std::string("payload: not found or incomplete")
+                                                       : std::string("payload: not found, or without ") + spec.key + "MEVR.asi");
                 code = 1;
             } else {
                 mevr::install::InstallOptions options;
@@ -623,7 +647,7 @@ int RunCli(Cli const& cli) {
             }
         } else if (cli.command == "launch") {
             // The Launch button's start (SteamVR first when it's the runtime, then the game): for a desktop shortcut, and to test it.
-            if (detect::GameRunningIn(*root)) {
+            if (detect::GameRunningIn(*root, game)) {
                 say("Mass Effect is already running.");
             } else {
                 std::wstring lower = root->wstring();
@@ -639,7 +663,7 @@ int RunCli(Cli const& cli) {
                     }
                 };
                 hooks.post = [&](std::string const& line, bool warning) { say(std::string(warning ? "  ! " : "  ") + line); };
-                mevr::install::launch::Result const r = mevr::install::launch::StartLe1WithVr(*root, steam, xr.kind, xr.manifest, hooks);
+                mevr::install::launch::Result const r = mevr::install::launch::StartGameWithVr(*root, game, steam, xr.kind, xr.manifest, hooks);
                 // Through Steam there's no pid of ours: Steam starts the launcher, which starts the game.
                 say(!r.started ? std::string("FAILED") : r.pid != 0 ? std::format("started (pid {})", r.pid) : std::string("started (through Steam)"));
                 code = r.started ? 0 : 1;
@@ -687,21 +711,30 @@ int RunCli(Cli const& cli) {
                 }, nullptr));
             }
         }
-        mevr::install::Status const s = mevr::install::ReadStatus(*root, source);
+        mevr::install::Status const s = mevr::install::ReadStatus(*root, source, game);
         say("game: " + detect::Utf8(s.root.wstring()) + " (" + source + ")");
+        if (game != mevr::install::GameId::LE1) {
+            // Mass Effect 1's output is as it always was; a sequel's says which game it is about.
+            say(std::string("title: ") + spec.name + " (" + spec.key + ")" + (s.gameFound ? "" : ": not in this folder"));
+        }
         say("version: " + (s.version ? s.version->ToString() : std::string("unknown")) +
             (s.versionCheck == detect::VersionCheck::Supported ? " (supported)" : " (NOT supported)"));
         say(std::string("loader: ") + detect::BinkStateText(s.bink));
         // The launcher's (research/33 section 12): what lets Launch start Mass Effect 1 without the launcher's picker.
-        say(std::string("launcher: ") + (s.launcherBink == detect::BinkState::Ours            ? "our loader starts Mass Effect 1 for Launch"
-                                         : s.launcherBink == detect::BinkState::LEBinkProxy ? "ME3Tweaks' LEBinkProxy starts Mass Effect 1 for Launch"
-                                         : s.launcherBink == detect::BinkState::Original    ? "the launcher's own Bink: Launch shows its game picker"
-                                                                                            : "no loader of ours: Launch shows the launcher's game picker"));
+        std::string const title = spec.name;
+        bool const oursBoots = mevr::install::launch::kOurLauncherBoots[spec.number];
+        say(std::string("launcher: ") + (s.launcherBink == detect::BinkState::Ours && oursBoots ? "our loader starts " + title + " for Launch"
+                                         : s.launcherBink == detect::BinkState::Ours ? "our loader starts only Mass Effect 1 yet: Launch shows the launcher's game picker for " + title
+                                         : s.launcherBink == detect::BinkState::LEBinkProxy ? "ME3Tweaks' LEBinkProxy starts " + title + " for Launch"
+                                         : s.launcherBink == detect::BinkState::Original    ? std::string("the launcher's own Bink: Launch shows its game picker")
+                                                                                            : std::string("no loader of ours: Launch shows the launcher's game picker")));
         say("installed: " + (s.installed ? "yes, " + s.installedVersion + ", loader " + s.loader : std::string("no")));
         say(std::string("game settings applied: ") + (s.gameSettings ? "yes" : "no"));
         say(std::string("game started once (GamerSettings.ini): ") + (s.hasGamerSettings ? "yes" : "no"));
-        if (s.pendingSettings) {
+        if (s.pendingSettings && spec.stereoTarget) {
             say(std::format("game settings waiting for the game's first start: {} x {}", s.pendingSettings->width, s.pendingSettings->height));
+        } else if (s.pendingSettings) {
+            say("game settings waiting for the game's first start (the renderer sizes the picture itself)");
         }
         if (s.installed) {
             std::string list;
@@ -710,15 +743,17 @@ int RunCli(Cli const& cli) {
             }
             say("needs repair: " + (list.empty() ? std::string("nothing") : list));
         }
-        say(std::string("textures marked by MEM: ") + (s.texturesMarked ? "yes" : "no"));
-        std::string packList;
-        for (mevr::install::PackRecord const& p : s.packs) {
-            if (p.method == "mem") {
-                packList += (packList.empty() ? "" : ", ") + p.name + " (" + p.id + ", " + p.method + ", " + p.installedAt + ")";
+        if (spec.packs) {
+            say(std::string("textures marked by MEM: ") + (s.texturesMarked ? "yes" : "no"));
+            std::string packList;
+            for (mevr::install::PackRecord const& p : s.packs) {
+                if (p.method == "mem") {
+                    packList += (packList.empty() ? "" : ", ") + p.name + " (" + p.id + ", " + p.method + ", " + p.installedAt + ")";
+                }
             }
+            say("texture packs installed: " + (packList.empty() ? std::string("none") : packList));
         }
-        say("texture packs installed: " + (packList.empty() ? std::string("none") : packList));
-        {
+        if (spec.voice) {
             namespace voice = mevr::install::voice;
             voice::State const v = voice::ReadState(layout);
             std::string parts;
@@ -730,7 +765,9 @@ int RunCli(Cli const& cli) {
                 (v.dll ? "; MEVR-Voice.dll present" : "; no MEVR-Voice.dll"));
         }
         std::error_code memEc;
-        say(std::string("Mass Effect Modder: ") + (fs::exists(mevr::install::packs::MemExe(), memEc) ? "downloaded" : "not downloaded"));
+        if (spec.packs) {
+            say(std::string("Mass Effect Modder: ") + (fs::exists(mevr::install::packs::MemExe(), memEc) ? "downloaded" : "not downloaded"));
+        }
         detect::XrRuntime const xr = detect::ActiveRuntime();
         say("VR runtime: " + (xr.kind.empty() ? std::string("none") : xr.kind + " (" + xr.manifest + ")"));
         say("before launch: " + mevr::install::launch::runtime_start::PlanFor(xr.kind, xr.manifest).advice);
@@ -1117,6 +1154,17 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         } else if (a == L"--game") {
             cli.game = fs::path(next());
             options.gameRoot = cli.game;
+        } else if (a == L"--for") {
+            cli.forGame = mevr::install::ParseGame(detect::Utf8(next()));
+            options.game = cli.forGame;
+            if (!cli.forGame) {
+                if (AttachConsole(ATTACH_PARENT_PROCESS)) {
+                    FILE* f = nullptr;
+                    freopen_s(&f, "CONOUT$", "w", stderr);
+                }
+                std::fprintf(stderr, "--for: LE1, LE2 or LE3\n");
+                return 2;
+            }
         } else if (a == L"--payload") {
             cli.payload = fs::path(next());
         } else if (a == L"--out") {

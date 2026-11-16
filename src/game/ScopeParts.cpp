@@ -24,12 +24,12 @@ namespace {
 
 namespace sv = vr::sights;
 
+// Our reflection layer (research/34); rows in engine/ReflectCheck. The engine's own functions: every game's.
+ue3::FunctionRef gHideBoneRef{"Engine.SkeletalMeshComponent.HideBone", ue3::kEveryGame};
+ue3::FunctionRef gUnHideBoneRef{"Engine.SkeletalMeshComponent.UnHideBone", ue3::kEveryGame};
+ue3::FunctionRef gIsBoneHiddenRef{"Engine.SkeletalMeshComponent.IsBoneHidden", ue3::kEveryGame};
 #if defined(MEVR_GAME_LE1)
-// Our reflection layer (research/34); rows in engine/ReflectCheck.
-ue3::FunctionRef gHideBoneRef{"Engine.SkeletalMeshComponent.HideBone"};
-ue3::FunctionRef gUnHideBoneRef{"Engine.SkeletalMeshComponent.UnHideBone"};
-ue3::FunctionRef gIsBoneHiddenRef{"Engine.SkeletalMeshComponent.IsBoneHidden"};
-// The material log.
+// The material log (ME1: to find what glows on a scope).
 ue3::FieldRef gComponentMaterials{"Engine.MeshComponent", "Materials"};
 ue3::FieldRef gMeshMaterials{"Engine.SkeletalMesh", "Materials"};
 ue3::ClassRef gMaterialInstance{"Engine.MaterialInstance"};
@@ -70,11 +70,10 @@ unsigned gRestores = 0;
 std::string gLastWhat = "nothing hidden";
 
 bool LookUp() {
-#if defined(MEVR_GAME_LE1)
     if (gLookedUp) {
         return gAvailable;
     }
-    if (!ue3::runtime::Ready()) {
+    if (!ue3::runtime::Up()) {
         return false;
     }
     gLookedUp = true;
@@ -86,12 +85,8 @@ bool LookUp() {
         log::Warn("sights: SkeletalMeshComponent.HideBone/UnHideBone not found: the scope's lens part stays visible");
     }
     return gAvailable;
-#else
-    return false;
-#endif
 }
 
-#if defined(MEVR_GAME_LE1)
 bool IsHidden(ue3::Object* mesh, int bone) {
     if (gIsBoneHidden == nullptr) {
         return false;
@@ -115,6 +110,7 @@ void Unhide(ue3::Object* mesh, int bone) {
     ue3::runtime::Call(mesh, gUnHideBone, parms);
 }
 
+#if defined(MEVR_GAME_LE1)
 std::string ObjectText(ue3::Object const* object) {
     return object != nullptr ? ue3::runtime::FullName(object) : std::string("none");
 }
@@ -190,9 +186,8 @@ void LogMaterials(ue3::Object* mesh, char const* weapon) {
 #endif
 
 void RestoreNow(char const* why) {
-#if defined(MEVR_GAME_LE1)
     if (gMesh != nullptr && !gHidden.empty()) {
-        bool const alive = ue3::runtime::Ready() && ue3::runtime::IsAlive(gMesh) && gUnHideBone != nullptr;
+        bool const alive = ue3::runtime::Up() && ue3::runtime::IsAlive(gMesh) && gUnHideBone != nullptr;
         if (alive) {
             for (int bone : gHidden) {
                 Unhide(gMesh, bone);
@@ -207,9 +202,6 @@ void RestoreNow(char const* why) {
             log::Info("sights: {} {} again ({})", alive ? "showed" : "couldn't show (the gun's mesh is gone)", names, why);
         }
     }
-#else
-    (void)why;
-#endif
     gMesh = nullptr;
     gHidden.clear();
     gHiddenNames.clear();
@@ -221,15 +213,16 @@ void RestoreNow(char const* why) {
 } // namespace
 
 void Update(bool up, std::vector<std::string> const& wanted, std::optional<std::size_t> sightBone, int weaponType) {
-#if defined(MEVR_GAME_LE1)
-    if (!ue3::runtime::Ready()) {
+    if (!ue3::runtime::Up()) {
         return;
     }
     char const* const weapon = sv::WeaponName(weaponType);
     ue3::Object* const mesh = weapon::HeldMesh();
+#if defined(MEVR_GAME_LE1)
     if (mesh != nullptr) {
         LogMaterials(mesh, weapon);
     }
+#endif
     if (!LookUp()) {
         return;
     }
@@ -306,12 +299,6 @@ void Update(bool up, std::vector<std::string> const& wanted, std::optional<std::
             gHiddenNames.empty() ? std::string("nothing") : std::format("'{}'", gLastWhat), sv::WeaponKey(weaponType),
             skipped.empty() ? std::string() : std::format("; not hidden: {}", skipped));
     }
-#else
-    (void)up;
-    (void)wanted;
-    (void)sightBone;
-    (void)weaponType;
-#endif
 }
 
 void Restore(char const* why) {
@@ -339,11 +326,9 @@ void Shutdown(bool exiting) {
     gLastWhat = "nothing hidden";
     gHideBone = gUnHideBone = gIsBoneHidden = nullptr;
     gLookedUp = gAvailable = false;
-#if defined(MEVR_GAME_LE1)
     gHideBoneRef.Reset();
     gUnHideBoneRef.Reset();
     gIsBoneHiddenRef.Reset();
-#endif
 }
 
 } // namespace mevr::game::scope_parts

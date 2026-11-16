@@ -2,6 +2,7 @@
 #include "game/Weapon.hpp"
 
 #include "core/Log.hpp"
+#include "core/WriteJournal.hpp"
 #include "core/ik/ArmPose.hpp"
 #include "engine/BonePose.hpp"
 #include "engine/Engine.hpp"
@@ -85,11 +86,8 @@ ue3::FieldRef gPawnWeapon{"Engine.Pawn", "Weapon", ue3::kEveryGame};
 ue3::FieldRef gWeaponMesh{"Engine.Weapon", "Mesh", ue3::kEveryGame};
 ue3::FieldRef gSkelMeshComp{"Engine.Weapon", "Mesh", ue3::kEveryGame};
 ue3::FieldRef gMuzzleSocketName{"SFXGame.SFXWeapon", "MuzzleSocketName", ue3::kEveryGame};
-#if defined(MEVR_GAME_LE3)
+// The zoom flag is SFXWeapon_NativeBase's on both sequels (ME2 0x3D0 bit 0x20, ME3 0x3BC bit 0x80).
 ue3::FieldRef gIsZoomed{"SFXGame.SFXWeapon_NativeBase", "bIsZoomed", ue3::kEveryGame};
-#else
-ue3::FieldRef gIsZoomed{"SFXGame.SFXWeapon", "bIsZoomed"};
-#endif
 ue3::FieldRef gBounds{"Engine.SkeletalMesh", "Bounds", ue3::kEveryGame};
 ue3::FieldRef gBoundsOrigin{gBounds, "Origin"};
 ue3::FieldRef gBoundsExtent{gBounds, "BoxExtent"};
@@ -97,7 +95,14 @@ ue3::FieldRef gBoundsExtent{gBounds, "BoxExtent"};
 ue3::FunctionRef gGetMuzzleLocFn{"SFXGame.SFXWeapon.GetMuzzleLoc", ue3::kEveryGame};
 ue3::FunctionRef gGetSocketWorldFn{"Engine.SkeletalMeshComponent.GetSocketWorldLocationAndRotation", ue3::kEveryGame};
 ue3::FunctionRef gGetRangedWeaponTypeFn{"SFXGame.SFXWeapon.GetRangedWeaponType"};
-ue3::FunctionRef gGetPlayerAimErrorFn{"SFXGame.SFXWeapon.GetPlayerAimError"};
+// The aim error for an accuracy (ME1: BioWeaponRanged.GetPlayerAimError(Accuracy)): ME3's SFXWeapon.GetPlayerAimError takes
+// the accuracy too; ME2's takes none and asks SFXWeapon.GetAimError(Accuracy), which is the one with ME1's shape. Each is
+// script: the zoomed range is picked by bIsZoomed in GetWeaponAimErrorRange (research/le2-vrik.md "The sights").
+#if defined(MEVR_GAME_LE3)
+ue3::FunctionRef gGetPlayerAimErrorFn{"SFXGame.SFXWeapon.GetPlayerAimError", ue3::kEveryGame};
+#else
+ue3::FunctionRef gGetPlayerAimErrorFn{"SFXGame.SFXWeapon.GetAimError", ue3::kEveryGame};
+#endif
 ue3::FunctionRef gTickFireFn{"SFXGame.SFXWeapon.TickFire"};
 ue3::FunctionRef gPawnStartTraceFn{"SFXGame.BioPawn.GetWeaponStartTraceLocation", ue3::kEveryGame};
 #endif
@@ -1011,10 +1016,11 @@ std::optional<bool> Zoomed() {
 #endif
 }
 
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 namespace {
 // GetPlayerAimError (0xC59920): lerp(Stats' aim-error range picked by bIsZoomed, accuracy). A native with
-// a plain float in and out, so ProcessEvent passes both (research/14). Never a generated wrapper.
+// a plain float in and out, so ProcessEvent passes both (research/14). Never a generated wrapper. The sequels' counterpart
+// (gGetPlayerAimErrorFn above) is script with the same parameters.
 std::optional<float> CallAimError(ue3::Object* weapon, float accuracy) {
     if (gGetPlayerAimError == nullptr) {
         return std::nullopt;
@@ -1040,7 +1046,7 @@ ue3::Object* HeldRanged(ue3::Object* weapon) {
 #endif
 
 std::optional<float> AimError(ue3::Object* weapon, float accuracy) {
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     if (ue3::Object* const held = HeldRanged(weapon)) {
         return CallAimError(held, accuracy);
     }
@@ -1052,13 +1058,14 @@ std::optional<float> AimError(ue3::Object* weapon, float accuracy) {
 }
 
 std::optional<float> ZoomedAimError(ue3::Object* weapon, float accuracy) {
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     ue3::Object* const held = HeldRanged(weapon);
     std::optional<bool> const zoomed = held != nullptr ? gIsZoomed.ReadBool(held) : std::nullopt;
     if (!zoomed || *zoomed) {
         return std::nullopt;
     }
     gIsZoomed.WriteBool(held, true);  // for this one call: put back before anything else runs on this thread
+    write_journal::Wrote("Weapon.bIsZoomed (one aim-error call)", gIsZoomed.Address(held), 4);
     std::optional<float> const error = CallAimError(held, accuracy);
     gIsZoomed.WriteBool(held, false);
     return error;

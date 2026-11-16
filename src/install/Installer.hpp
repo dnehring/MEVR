@@ -26,9 +26,19 @@ namespace mevr::install {
 // the mod; what it needs besides is optional content the setup downloads (install/Voice, research/33 section 14); and
 // optionally payload\audio\ (OpenAL Soft: soft_oal.dll and its licence texts, research/69 "Real 3D audio"), which goes in
 // ASI\audio, where the host loads it for the game's audio: no game file is replaced.
+//
+// The sequels (docs/trilogy-plan.md T52), when the release carries them: payload\LE2MEVR.asi and payload\LE3MEVR.asi (each
+// game's monolithic build) next to Mass Effect 1's, and payload\MELE2VR.ini / payload\MELE3VR.ini, the renderer's release
+// settings file for that game, installed next to its exe only when there is none (as Mass Effect 1's MELEVR.ini, which is
+// made in code). The loader, the fonts and the menu are the same files for all three.
 struct Payload {
     std::filesystem::path dir;
     bool Valid() const;
+    // The release has this game's mod (and the shared loader, fonts and menu). Has(LE1) is Valid().
+    bool Has(GameId game) const;
+    std::filesystem::path Asi(GameId game) const;
+    // The renderer's settings file to install when the game has none (the sequels; Mass Effect 1's is made in code).
+    std::filesystem::path RendererIni(GameId game) const;
     std::filesystem::path Asi() const { return dir / L"LE1MEVR.asi"; }
     std::filesystem::path Loader() const { return dir / L"bink2w64.dll"; }
     std::filesystem::path Fonts() const { return dir / L"fonts"; }
@@ -46,6 +56,7 @@ struct Payload {
 std::optional<Payload> FindPayload(std::filesystem::path const& exeDir);
 
 struct Status {
+    GameId game = GameId::LE1;  // which of the three this is the status of
     bool gameFound = false;
     std::filesystem::path root;
     std::string source;  // "Steam", "EA app", "Folder"
@@ -75,6 +86,11 @@ struct Status {
     std::vector<PackRecord> packs;
 };
 Status ReadStatus(std::filesystem::path const& root, std::string const& source);
+// The same for any of the three games (Mass Effect 1 is the function above).
+Status ReadStatus(std::filesystem::path const& root, std::string const& source, GameId game);
+// The games at `root` with an install record that has the mod (MEVR-install.json in that game's ASI folder), other than
+// `except` (if given): what shares the launcher's loader and %LOCALAPPDATA%\MEVR with an install being removed.
+std::vector<GameId> InstalledGames(std::filesystem::path const& root, std::optional<GameId> except = std::nullopt);
 
 PendingSettings PendingFromChoices(settings::Choices const& choices);
 settings::Choices ChoicesFromPending(PendingSettings const& pending);
@@ -140,5 +156,7 @@ std::optional<SetupRequest> ParseSetupRequest(std::string_view text);
 std::filesystem::path LocalDataDir();
 // The mod's run-time files in the game folder (recorded at install as user data, deleted by a full uninstall).
 std::vector<std::string> RuntimeFiles();
+// The same for any of the three games (Mass Effect 1 is the function above).
+std::vector<std::string> RuntimeFiles(GameId game);
 
 } // namespace mevr::install

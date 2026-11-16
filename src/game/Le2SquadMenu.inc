@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: MIT
-// Included inside SquadWeapons' private namespace; reuses ME1's menu machine and host view.
-std::array<std::vector<ue3::Object*>, kMaxMembers> gLe2OpenInventory;
+// ME2's and ME3's native side of the squad's weapon menu (docs/trilogy-parity-ledger.md Forks 5), included inside
+// SquadWeapons' private namespace: the `native` adapter that SquadWeapons.cpp's one menu tick (TickCustom) calls. The tick,
+// the pointing, the cards, the haptics and the logs are ME1's, shared; what ME2 and ME3 force is here: a squadmate's
+// inventory is a list of weapon objects (four tiles a page, a "more weapons" tile for the rest: ReadLe2Members), the order is
+// BioPlayerController.OrderWeaponSwitch with the weapon object, its outcome is the pawn's own Pawn.Weapon, and the pause is
+// the main menu's owner (game/MenuPause). Until 2026-11-16 this file held a second tick (TickLe2) beside ME1's.
 std::uintptr_t gLe2PendingWeapon = 0;
 std::uint64_t gLe2PendingGeneration = 0;
 void const* gLe2PendingWorld = nullptr;
@@ -25,74 +29,46 @@ void EquipLe2(int member, int slot) {
     log::Info("squad: {}", gLastResult);
 }
 
-void TickLe2(double dt, Link const& link, hand_calibration::Squad const& settings,
-    vr::controllers::State const& controllers, bool newPull) {
-    gStyleNative = false; // The sequels' native wheels are different UIs; reuse our custom hand menu.
-    auto const frame = view_anchor::Current();
-    bool const busy = gMachine.IsOpen();
+namespace native {
+struct Squad {};  // the roster is gMembers itself: nothing else to carry from Read to Equip
+
+std::optional<Squad> Read(double, bool busy, bool newPull, std::string& why) {
+    // Tick has aged and, every half second, re-read the roster already (other modules read it through Members()); while the
+    // menu is busy, on a new pull or with an order's outcome pending it is read afresh every tick, as ME1's.
     if (busy || newPull || gPending.key != 0) {
         gDetailsAge = 1e9;
         ReadLe2Members(0.0, head_tracking::GameMode());
     }
-    bool same = !busy || gCount == gOpenCount;
-    for (int i = 0; busy && same && i < gCount; ++i)
-        same = gMembers[i].key == gOpenKeys[i] && gMembers[i].inventory == gLe2OpenInventory[i];
-    gUsable = gStarted && same && le2_squad::CanOrder() && frame.has_value() && vr::host_view::Latest().valid &&
-        controllers.active && controllers.left.aimValid && !link.menuOpen && !power_wheel::OwnsLeftHand() && !support_grip::Held();
-    int pointed = -1, preferred = 0;
-    if (frame && controllers.left.aimValid) {
-        // Do the angular test in world coordinates, avoiding a second quaternion implementation.
-        auto const origin = engine::ToWorld(*frame, controllers.left.aim.position);
-        auto const direction = engine::OrientationToWorld(*frame, controllers.left.aim.orientation).forward;
-        float best = static_cast<float>(settings.pointConeDeg) * kDeg;
-        for (int i = 0; i < gCount; ++i) {
-            if (gMembers[i].key == gLastUsed) preferred = i;
-            auto const p = player::Location(reinterpret_cast<ue3::Object*>(gMembers[i].key));
-            if (!p) continue;
-            double const dx = p->x - origin.x, dy = p->y - origin.y, dz = p->z + kChestUnits - origin.z;
-            double const distance = std::sqrt(dx * dx + dy * dy + dz * dz);
-            double const upm = frame->unitsPerMeter > 0.0 ? frame->unitsPerMeter : engine::kUnitsPerMeter;
-            if (distance < 1e-3 || distance > settings.pointMaxM * upm) continue;
-            float const angle = static_cast<float>(std::acos(std::clamp((dx * direction.x + dy * direction.y + dz * direction.z) / distance, -1.0, 1.0)));
-            if (angle < best) { best = angle; pointed = i; }
-        }
+    if (!le2_squad::CanOrder()) {
+        why = "the game takes no squad orders now (the layer, the player's pawn, or combat is off here)";
+        return std::nullopt;
     }
-    gCardOrder = {0, 1};
-    menu::Input in;
-    in.dt = static_cast<float>(dt);
-    in.usable = gUsable;
-    in.triggerDown = gTrigger;
-    in.newPull = newPull;
-    in.pointed = pointed;
-    in.preferred = preferred;
-    in.memberCount = gCount;
-    for (int i = 0; i < gCount; ++i) in.members[i] = {gMembers[i].carried, gMembers[i].current, gMembers[i].page.more};
-    in.leftX = controllers.left.stickX; in.leftY = controllers.left.stickY;
-    in.rightX = controllers.right.stickX; in.rightY = controllers.right.stickY;
-    in.a = controllers.right.primary; in.b = controllers.right.secondary;
-    in.confirmOnRelease = settings.confirmOnRelease;
-    auto const step = gMachine.Update(in);
-    // Use the main menu's pause owner; closing restores its prior state before native equip admission.
-    menu_pause::SetSquadPause(gMachine.IsOpen() && settings.pause);
-    if (step.opened) {
-        ++gSerial; ++gOpens; gOpenCount = gCount;
-        for (int i = 0; i < gCount; ++i) { gOpenKeys[i] = gMembers[i].key; gLe2OpenInventory[i] = gMembers[i].inventory; }
-        gPointedCard = pointed;
-    }
-    if (step.pageChanged && step.member >= 0 && step.member < gCount) {
-        auto const& member = gMembers[step.member];
-        gLe2Pages[member.key] = (member.page.index + 1) % member.page.pages;
-        gDetailsAge = 1e9;
-        ReadLe2Members(0.0, head_tracking::GameMode());
-    }
-    if (step.refused || step.tileRefused) ++gRefusals;
-    if (step.closed == menu::Close::Confirmed) {
-        ++gConfirms;
-        EquipLe2(step.member, step.weapon);
-    } else if (step.closed != menu::Close::None) ++gCancels;
-    if (link.haptic != nullptr && (step.opened || step.cardChanged || step.tileChanged || step.pageChanged || step.closed != menu::Close::None || step.refused || step.tileRefused))
-        link.haptic(step.tileChanged ? 1 : 0, step.refused || step.tileRefused ? 0.08f : 0.02f,
-            static_cast<float>(settings.hapticAmplitude));
+    return Squad{};
+}
+
+void Pause(Squad const&) {
+    // The main menu's pause owner (game/MenuPause); Mod.cpp's link keeps it while the menu is open.
+    menu_pause::SetSquadPause(true);
+    gPausedByUs = true;
+}
+
+void Unpause(Squad const&) {
+    // Always, before the order goes out: closing restores the prior state before the game's own equip admission.
+    menu_pause::SetSquadPause(false);
+    gPausedByUs = false;
+}
+
+void Stop(char const*) {
+    menu_pause::SetSquadPause(false);
+    gPausedByUs = false;
+    gPending = {};
+    gLe2PendingWeapon = 0;
+}
+
+void Equip(Squad const&, int member, int tile) { EquipLe2(member, tile); }
+
+// The order's outcome: the pawn's own equipped weapon, while the scene and the recipient stay the same.
+void Follow(double deltaSeconds) {
     if (gPending.key != 0 && (gLe2PendingWorld != engine::World() ||
         gLe2PendingGeneration != squad_context::Generation() || head_tracking::GameMode() != 0 ||
         std::none_of(gMembers.begin(), gMembers.begin() + gCount, [](auto const& m) { return m.key == gPending.key && m.name == gPending.who; }))) {
@@ -102,7 +78,7 @@ void TickLe2(double dt, Link const& link, hand_calibration::Squad const& setting
     if (gPending.key != 0) {
         auto* pawn = reinterpret_cast<ue3::Object*>(gPending.key);
         auto* held = ue3::runtime::IsAlive(pawn) ? le2_squad::equippedWeapon.Read<ue3::Object*>(pawn).value_or(nullptr) : nullptr;
-        gPending.age += dt;
+        gPending.age += deltaSeconds;
         if (reinterpret_cast<std::uintptr_t>(held) == gLe2PendingWeapon) {
             gLastResult = std::format("{}: requested weapon observed equipped", gPending.who);
             log::Info("squad: {}", gLastResult); gPending = {};
@@ -111,6 +87,22 @@ void TickLe2(double dt, Link const& link, hand_calibration::Squad const& setting
             log::Warn("squad: {}", gLastResult); gPending = {};
         }
     }
-    SetWhy(gMachine.IsOpen() ? "native squad menu open" : gUsable ? "native squad menu ready" : "native squad menu unavailable (mode, tracking, input owner or roster)");
-    Publish(link, gMachine.IsOpen());
 }
+
+// A tile is a slot of the member's page: the weapon's type in words, or the navigation tile.
+std::string TileName(MemberInfo const& member, int tile) {
+    if (tile < 0 || tile >= kWeapons) return "none";
+    if (tile == member.page.more) return std::format("more weapons (page {} of {})", member.page.index + 1, member.page.pages);
+    std::string label = le2_squad::WeaponLabel(member.typeOfSlot[tile]);
+    std::transform(label.begin(), label.end(), label.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return label;
+}
+
+void NextPage(int member) {
+    if (member < 0 || member >= gCount) return;
+    auto const& m = gMembers[member];
+    gLe2Pages[m.key] = (m.page.index + 1) % m.page.pages;
+    gDetailsAge = 1e9;
+    ReadLe2Members(0.0, head_tracking::GameMode());
+}
+}  // namespace native

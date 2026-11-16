@@ -777,9 +777,10 @@ The probe's seams are functions in `plugin/PerfProbe.hpp` that a sequel's bridge
 | draws | `perf::NoteDraws()` | each D3D draw hook in `d3d_capture.cpp` |
 | the waits | `perf::WrapFrameFunctions(waitSwapchainImage, waitFrame, beginFrame, endFrame)` | `MevrBridge::WrapSessionFunctions`, after the test loop's wrap |
 
-**Until the sequels' bridges call them** the probe works without a seam: `testloop::WrapSessionFunctions` hands the
-probe the `xrEndFrame` slot (sequel builds only), and a frame is **xrEndFrame's return to the next one's**
-(`PerfProbe.cpp` `EndFrameAsFrameBoundary`). The game's immediate context for the GPU timestamps is found from the
+Since main 60791416 (lane U1) both sequel bridges call all of them (`MevrSeams::PerfPresentScope`,
+`PerfFirstEyeCaptured`, `PerfDraw`, the four slots). **Before the first `SeamPresentBegin`**, or in a build without
+those calls (the measurements below were taken in one), the probe works without a seam: a frame is **xrEndFrame's
+return to the next one's** (`PerfProbe.cpp` `EndFrameAsFrameBoundary`). The game's immediate context for the GPU timestamps is found from the
 frame's own projection layer (its swapchain's first D3D11 texture's device). The capture then has: the frame interval,
 the render thread's busy time per frame, the submit's time, GPU timestamps at the frame's start, at the submit and at
 its end (the GPU's lag behind the CPU, and its span), and every game-thread tick. It has no draw count, no split between
@@ -923,19 +924,180 @@ In the entry menu the visible-instance hook read a sane projection (`[1][1] = 5.
 ME1's sign (`the view matrix is the translated one moved by plus the pre-view translation`). The run ended there
 (`load.ps1` refused it, above); nothing was measured in it.
 
+#### ME2: the baseline and the A/Bs (2026-11-16 14:14-14:24)
+
+Session `20261116-141434-005-LE2-pl-levers` (restored: `verification: 0 differences`); the lane's copies in
+`scratch\pl\runs\LE2-20261116-141432`. A try build; Freedom's Progress (Save 4), where the save puts Shepard, Jacob and
+Miranda in view; the head turning a full circle every 20 s, so each capture covers every direction once; eye images
+4096x2304, two a frame; the fake headset at 90 Hz. Other sessions were compiling during it (6 compilers at the first
+capture), so read differences under about 0.5 ms as noise. All levers at the game's own unless named.
+
+**What the probe gives without a Present seam** (frames bounded by xrEndFrame, 20 s each, median / p90, ms):
+
+| capture | frames | frame interval | render thread busy | GPU span | game thread busy | xrEndFrame |
+|---|---|---|---|---|---|---|
+| baseline | 1056 | 13.89 / 20.99 | 7.23 / 14.04 | 4.27 / 8.77 | 3.45 / 5.19 | 0.34 |
+| baseline, again | 1100 | 13.98 / 19.56 | 10.42 / 15.00 | 4.31 / 10.36 | 3.60 / 5.33 | 0.36 |
+| `keepBoundShaderStates` 0 | 1379 | 13.69 / 16.49 | 12.09 / 14.74 | 4.28 / 7.64 | 3.69 / 4.95 | 0.38 |
+| `keepBoundShaderStates` 1 | 1393 | 13.44 / 17.93 | 9.14 / 14.27 | 4.15 / 7.81 | 3.37 / 4.76 | 0.34 |
+| `minScreenRadiusPx` 0 | 1361 | 13.41 / 16.05 | 11.46 / 14.48 | 4.24 / 7.16 | 3.59 / 4.95 | 0.37 |
+| `minScreenRadiusPx` 8 | 1388 | 12.97 / 16.09 | 10.84 / 14.36 | 4.04 / 7.04 | 3.50 / 4.91 | 0.37 |
+| `umbraQueryWait` 1 | 1505 | 12.96 / 15.43 | 10.74 / 14.32 | 4.14 / 6.16 | 3.46 / 4.56 | 0.35 |
+| `umbraQueryWait` 0 | 1521 | **11.34** / 16.43 | **6.19** / 14.42 | 4.09 / 8.03 | 3.68 / 5.22 | 0.38 |
+
+The render thread's busy median swings between 7 and 12 ms at one setting (the three "game's own" rows): it is two
+populations, a frame whose second eye spins for Umbra's query results and one whose doesn't (below), so the median is
+a poor measure here and the per-render lines are the ones to read. ME2 is **not GPU-bound** at this spot (the GPU's
+span is 4.3 ms); the render thread sets the pace. No draw count yet (no seam).
+
+**How SFR splits its two Draws** (the `render levers: last 10 s` lines; the head's turn makes alternate 10 s windows
+light and heavy):
+
+| window | scene renders a frame | #0, the first eye | #1, the second eye | the second eye's Umbra results read | query reads a frame, #0 / #1 |
+|---|---|---|---|---|---|
+| light direction | 2 | 1.4-1.8 ms | 5.5-6.0 ms | 3.9-4.5 ms | 60-100 / 21,000-27,000, nearly all without a result |
+| heavy direction | 2 | 3.5-4.6 ms | 6.6-7.6 ms | 2.0-3.6 ms | 110-150 / 9,000-22,000, nearly all without a result |
+
+**The second eye costs 3 to 4 ms more than the first, and all of it is one thing:** its Umbra resolve reads its
+occluder queries' results (command code 6) and they are never ready, so it polls `GetQueryData` some 20,000 times a
+frame until its time budget runs out; the longest single read in a window was 11 to 210 ms (the float stamp's
+precision: research/35). The first eye's read takes 0.02 to 0.14 ms. This is the pathology ME1 measured when it tried a
+view state per eye (research/35 attempts 17-21), which Halcyon's ME2 SFR always has, and which lane R3 predicted for
+ME3. A few frames in a hundred have a third scene render (1.2 to 12 ms; not identified: no capture is spawned by us).
+
+**`umbraQueryWait` 1 then 0** (ME1's default is 1):
+
+| | #0 light / heavy | #1 light / heavy | #1's results read | query reads a frame, #1 | visible instances a frame, light / heavy |
+|---|---|---|---|---|---|
+| 1 (the game's own) | 1.8 / 3.6-3.7 ms | 5.5 / 6.9 ms | 3.0-4.1 ms | 16,000-22,000 | 205 / 530-580 |
+| 0 | 2.0-2.2 / 4.8-5.4 ms | 2.1-2.6 / 4.8-5.2 ms | 0.13-0.21 ms | 60-300 | 204-224 / 730-870 |
+
+With 0 the second eye costs what the first does. Both eyes then draw what an unready query would have hidden (40% more
+instances in the heavy direction, 1.2 to 1.7 ms more for the first eye there), so the two renders together go from
+7.3 to 4.2 ms in the light direction and from 10.5 to 9.6-10.6 ms in the heavy one; the probe's frame interval fell from
+12.96 to 11.34 ms and the render thread's busy median from 10.74 to 6.19 ms (p90 unchanged, 14.4). The picture can only
+gain meshes, never lose one (an unready query counts as visible); the snapshots show nothing missing. **Not switched:**
+ME1's value is the default, and 0 on ME2 is a change of default for the owner to decide. It is the largest lever found:
+it removes the second eye's spin without a seam and without one-Draw.
+
+**`keepBoundShaderStates` 0 then 1.** ME2 builds far fewer than ME1 did (22 to 45 bound shader states a frame in the
+heavy direction, under 1 in the light one; ME1's heavy spot: 300). On: 161 kept in all, creations 0.0 to 0.1 a frame.
+The first eye in the heavy direction went from 4.3-4.6 to 3.7-4.1 ms (about 0.4 ms, at the noise's edge), the light
+direction and the second eye didn't move. The log's check line: `bound shader states kept: the RHI's AddRef is at RVA
+0x2B2640; the int at +8 went 0 -> 1 on the first kept object`. **That RVA is not the one lane R2's recipe names
+(`0x992830`)**: `0x992830` is slot 0x8A0 of the vtable at `0x1227C50`, and the live `GDynamicRHI` object's vtable is
+another one, whose slot 0x8A0 is `0x2B2640`: the counterpart of ME1's `0x215B10` and ME3's `0x2CB940` (both are what
+slot 0x8A0 of ME1's `0x120FF00` and ME3's `0x12FC7A0` hold in the exe files). The reference count went 0 to 1 exactly
+as on ME1, so the hook is right and the recipe's expected RVA is the thing to correct. No damage in the snapshots.
+**On for ME2** (`boundShaderStateVerified`), ME1's default 1.
+
+**`minScreenRadiusPx` 0 then 8.** 73 to 81 of 520 to 585 visible instances a frame are under 8 px in the heavy
+direction (14%), 46 of 204 in the light one (23%); neither eye's render time moved measurably (3.9-4.0 / 6.6-7.6 ms
+against 3.7-4.0 / 6.9 ms). The snapshots show nothing missing, but they were taken under a turning head, so two
+snapshots a second apart can't show pop-in. **Left off for ME2** (`umbraInstanceVerified` false) until a pair under a
+still head (`make-look-recording.py --yaw <deg>`), since it gains nothing measurable here either.
+
+**`umbraEyeMatrix`** hooked and idle, as lanes R2 and R3 said: `Umbra's queries with the eye's matrix: 0 renders
+fixed, N already right` in every window (both eyes use one symmetric frustum).
+
+**On for ME2 from this run:** the accounting (`sceneRendererVerified`), the commander's timing and the query-read
+counts (`umbraCommanderVerified`), `keepBoundShaderStates`, and the idle `umbraEyeMatrix` hook (`umbraQueriesVerified`).
+
+**Character shadows (run 7).** `scale set LightEnvironmentShadows True`, four snapshots: with Jacob and Miranda in
+view the dark contact shadows sit under each one's feet in the left eye and in the right eye alike, shifted with the
+feet by the eyes' parallax; with `False` the same ground is clean. So on ME2 the shadows are right in both eyes with
+them on, as the code says (each eye is a full engine render). One scene, by eye (`sheet-shadows.png`, `crop-on.png`
+in the run folder); a 10 s capture with them on read the same as without (render busy 10.4 ms median, in the
+noise).
+
+#### ME3: the baseline and the A/Bs (2026-11-16 14:30-14:38)
+
+Session `20261116-143006-726-LE3-pl-levers` (the runner's `-RendererPreview` mode; restored: `verification: 0
+differences`); the lane's copies in `scratch\pl\runs\LE3-20261116-143005`. A try build; the Normandy (`Save_0031`), the
+head turning a full circle every 20 s; 5 compilers of other sessions were running. The exe gate took all 66 of ME3's
+rows (`exe: 66 of 66 addresses at their RVAs`), every hook went in, and `render levers: Umbra's command gate is 1`
+(lane R3's difference 4: the commander is live).
+
+| capture | frames | frame interval | render thread busy | GPU span | game thread busy | xrEndFrame |
+|---|---|---|---|---|---|---|
+| baseline | 1465 | 13.80 / 15.71 | 12.97 / 14.92 | 3.33 / 6.47 | 2.77 / 3.97 | 0.30 |
+| baseline, again | 1445 | 13.84 / 16.24 | 12.47 / 14.76 | 3.48 / 6.68 | 2.80 / 4.01 | 0.30 |
+| `keepBoundShaderStates` 0 | 1409 | 13.79 / 16.21 | 12.25 / 14.80 | 3.43 / 6.75 | 2.95 / 4.27 | 0.31 |
+| `keepBoundShaderStates` 1 | 1210 | 13.97 / 18.66 | 10.85 / 14.68 | 3.76 / 9.11 | 3.41 / 4.86 | 0.35 |
+| `minScreenRadiusPx` 0 | 1452 | 13.67 / 16.08 | 11.81 / 14.67 | 3.57 / 6.66 | 3.19 / 4.27 | 0.33 |
+| `minScreenRadiusPx` 8 | 1408 | 13.69 / 16.33 | 11.97 / 14.64 | 3.59 / 7.70 | 3.36 / 4.66 | 0.35 |
+| `umbraQueryWait` 1 | 1464 | 12.92 / 15.45 | 11.39 / 14.39 | 3.40 / 6.09 | 3.16 / 4.46 | 0.32 |
+| `umbraQueryWait` 0 | 1539 | **11.22** / 18.21 | **5.37** / 16.05 | 3.12 / 9.31 | 2.97 / 4.31 | 0.31 |
+
+ME3 is not GPU-bound here either (3.3 ms); the render thread is the limit, busy 12 to 13 ms of a 13.8 ms frame.
+
+**How SFR splits its two Draws:**
+
+| window | scene renders a frame | #0, the first eye | #1, the second eye | the second eye's Umbra results read | query reads a frame, #0 / #1 |
+|---|---|---|---|---|---|
+| light direction | 2 | 1.3-1.9 ms | 5.4-6.0 ms | 3.9-4.8 ms | 100-160 / 21,000-30,000, nearly all without a result |
+| heavy direction | 2 | 3.6-4.5 ms | 7.3-8.5 ms | 3.2-4.3 ms | 220-270 / 16,000-27,000, nearly all without a result |
+
+**Lane R3's "measure this first" is answered: yes.** ME3's second pass polls unready Umbra queries exactly as ME2's
+does (and as ME1's did with a view state per eye): 3 to 5 ms of every frame, the longest single read 11 to 334 ms.
+
+**`umbraQueryWait` 1 then 0:** the second eye's results read falls to 0.08-0.31 ms and its query reads to 100-330 a
+frame; #1 in the light direction 5.9 to 1.5 ms (the two renders together 7.3 to 3.1 ms). In the heavy direction the one
+window measured had #0 at 6.6 and #1 at 7.0 ms (13.6 together, against 11.4 to 12.9 before) with 994 visible instances
+against 860 to 916: what the wait saves the unoccluded draws cost again there. The probe's frame interval fell from
+12.92 to 11.22 ms and the busy median from 11.39 to 5.37 ms, but the p90s rose (15.45 to 18.21 ms, 14.39 to 16.05 ms).
+So on ME3 it is a clear win in light views and about even, perhaps a loss, in heavy ones. **Not switched** (a change of
+default; and it needs a heavier ME3 scene than the Normandy before anyone decides).
+
+**`keepBoundShaderStates` 0 then 1.** ME3 builds 86 to 122 bound shader states a frame in the heavy direction (ME2: 22
+to 45), 0.0 to 0.1 in the light one. On: 436 kept, creations 0.0 to 0.1 a frame, and the check line is the one lane
+R3's recipe gives: `the RHI's AddRef is at RVA 0x2CB940; the int at +8 went 0 -> 1`. The second eye in the heavy
+direction went from 8.2-8.5 to 7.3-7.7 ms (about 0.8 ms); the first eye and the light direction didn't move. No damage
+in the snapshots. **On for ME3** (`boundShaderStateVerified`), ME1's default 1.
+
+**`minScreenRadiusPx` 0 then 8.** 102 to 219 of 315 to 911 instances a frame are under 8 px (ME3 reports a constant
+108 instances under 1 px in every direction); neither eye's time moved measurably (4.7 / 7.3-7.5 ms against 4.5 / 7.7
+ms). **Left off for ME3**, for ME2's reasons.
+
+**`umbraEyeMatrix`** hooked and idle (`0 renders fixed, N already right`).
+
+**On for ME3 from this run:** the accounting, the commander's timing and the query-read counts, `keepBoundShaderStates`,
+the idle `umbraEyeMatrix` hook.
+
+**Character shadows (run 7): not determined on ME3.** The fixture is a dim corridor of the Normandy; with
+`LightEnvironmentShadows True` and `False` Shepard's body shows no shadow that can be told from the floor in either eye
+(`sheet-shadows.png`). It needs a lit scene with a character on open ground.
+
+#### The landed configuration with lane U1's seams (2026-11-16 14:54-15:06)
+
+A normal build (no try option) of main 60791416 plus this lane's second landing, one short run per sequel (sessions
+`*-LE2-pl-seams`, `*-LE3-pl-seams`; `scratch\pl\runs\LE2-20261116-145403`, `LE3-20261116-145833`; both restored with
+0 differences; 8 to 18 compilers of other sessions running, so no timings are taken from these).
+
+- **Attach, both games:** `render levers: on LE2: the scene render is counted and timed, the Umbra commander, the query
+  reads, Umbra's query matrix, the bound shader states`, with `sharePass`, `umbraShareResults` and `minScreenRadiusPx`
+  standing down by name; `bound shader states kept: ... RVA 0x2CB940` on ME3. That is the configuration a build from
+  main has.
+- **ME2, the seams run:** the capture says `frames bounded by Present`; draws a frame 961 median, 3,059 at p90 (the
+  first draw counts for a sequel); `xrWaitFrame` 0.03 ms, `xrBeginFrame` 0.02 ms (ME2's frame is not held in the wait).
+  **`PerfFirstEyeCaptured` does not split the eyes on ME2:** it comes 0.5 ms and 61 draws before Present, after 895
+  draws, so "to the last left-eye capture" is nearly the whole frame. The eyes' split is the levers' `#0`/`#1` lines
+  until the call sits at the pass boundary (lane U1's file; where ME2's pass-0 copy really happens is lane R2's
+  "pass opening" question in its one-Draw recipe).
+- **ME3, the seams run: a capture never started.** `perf probe: armed for 20 s` and no `measuring` line: ME3's Present
+  hook hands the probe no device context, and the probe starts only with one. Fixed on the probe's side
+  (`SeamPresentBegin`/`SeamPresentEnd` fall back to the context found from the frame's projection layer); **that fix
+  has not run in the game.** The levers' accounting worked throughout (2 renders a frame, the same spin).
+
 #### Still to measure
 
-Steam ignored every launch until 12:30 on 2026-11-16 and the game lock was shared by eight lanes after that, so at the
-time of the shared modules' landing these runs were queued, in this order. Each row's numbers go here when it is run.
-
-| # | run | answers | state |
-|---|---|---|---|
-| 2 | ME2 baseline at Freedom's Progress | render-thread ms, GPU ms, the game thread's ticks; with a try build the scene renders per frame and ms per eye, slot 1's query reads | queued |
-| 3 | ME3 baseline on the Normandy (Save 31) | the same; and lane R3's "measure this first": does the second pass poll unready Umbra queries (`query reads a frame: #1 N (... without a result)`, the `query results` part of render #1) | queued |
-| 4 | `keepBoundShaderStates` 0 then 1, each sequel | render-thread ms before and after; the log's `the RHI's AddRef is at RVA 0x992830` (ME2) / `0x2CB940` (ME3) and `the int at +8 went N -> N+1`; any other RVA: stop, the slot is wrong | queued |
-| 5 | `minScreenRadiusPx` 0 then 8, each sequel | ms, the size distribution in the levers line, pop-in between two snapshots a second apart | queued |
-| 6 | `umbraQueryWait` 1 then 0, each sequel | the `query results` part of each render, draws | queued |
-| 7 | character shadows on, each sequel | whether a character's shadow sits under it in both eyes (the audit's defect, below) | queued |
+| run | answers |
+|---|---|
+| ME3 with the probe's context fallback; both sequels in a quiet machine | ME3's draw counts; that a capture starts on ME3 with lane U1's seams; clean timings with the seams |
+| `minScreenRadiusPx` 0 and 8 under a still head (`make-look-recording.py out.mevrrec 10 --yaw <deg>`), two snapshots a second apart at each | pop-in; then `umbraInstanceVerified` |
+| `umbraQueryWait` 0 in a heavy ME3 scene (combat, a hub) and in a heavy ME2 one | whether the second eye's saved spin outweighs the extra unoccluded draws there |
+| character shadows on ME3 in a lit scene | the audit's defect on ME3 |
+| a real headset | everything here is the fake headset: it shows which thread does the work, not what a player feels |
 
 ### Character shadows on the sequels (the audit's defect, for lane GF)
 
@@ -948,29 +1110,35 @@ and R3 read the same in the natives (two calls of the scene render a present, ea
 2026-11-16 `sharePass` stands down on both sequels in the shared module (`render levers: ... sharePass stands down`), so
 nothing there replays an eye.
 
-So by the code the workaround costs the sequels their character shadows for nothing. **Not confirmed by a picture**:
-run 7 above is the check (four snapshots with the shadows on, a squadmate in view: the shadow under the feet in both
-eyes, shifted by the same parallax as the feet). Recommendation to lane GF: gate the `LightEnvironmentShadows False`
-entry on the host's second eye actually being a replay (ME1's host with `sharePass` 2, 3 or 5; a host flag, since a
-sequel that takes one-Draw later needs it back), and land it after run 7.
+So by the code the workaround costs the sequels their character shadows for nothing, and **on ME2 the picture
+agrees** (run 7 under "ME2" above): with `LightEnvironmentShadows True` the contact shadows sit under the squadmates'
+feet in both eyes alike. ME3's fixture was too dark to tell. Recommendation to lane GF: gate the
+`LightEnvironmentShadows False` entry on the host's second eye actually being a replay (ME1's host with `sharePass` 2, 3
+or 5; a host flag rather than `#if LE1`, since a sequel that takes one-Draw later needs the workaround back).
 
 ### One Draw a frame on the sequels: the recommendation
 
-Not now, and not next. In order:
+**Not now.** The measurements changed the question. On both sequels the second eye costs 3 to 5 ms more than the first,
+and that whole difference is the Umbra results read spinning for queries that are never ready, because Halcyon's SFR
+gives each pass its own view state. One-Draw would remove it (no second resolve), but so does `umbraQueryWait = 0`
+today, with no seam, no replay and no picture risk beyond drawing more. Without the spin the second eye costs what the
+first does: 1.5 to 2 ms in light views, 4 to 5 ms in heavy ones. That is what one-Draw would then save, less its own
+recording and replay (on ME1: about 1.1 ms of recording and 1.4 ms of replay for a 4.6 ms render). At these fixtures
+that is a gain of 1 to 2 ms at best in heavy views and nothing in light ones, for the largest job on the list and with
+ME1's open defect (character shadows wrong in the replayed eye) brought along.
 
-1. **Measure first** (runs 2 and 3). ME1's one-Draw was worth 2.3 ms of 11.4 at its heaviest cell (20%), and that
-   included removing a second Umbra resolve of 1.4 ms. Whether a sequel's second render costs as much is unknown until
-   the accounting's `#0`/`#1` lines exist. ME3's second pass may be paying for unready Umbra queries (lane R3), which a
-   cheaper lever (`umbraQueryWait = 0`) or one view state for both passes would cure without one-Draw.
-2. **The cheap levers first** (`keepBoundShaderStates`, `minScreenRadiusPx`): hooks on identical code, no seam, no
-   picture risk beyond pop-in. On ME1 they were worth about 1 ms warm and 0.3 ms.
-3. **The per-eye frustum before one-Draw** (the ledger's R06). One-Draw on the sequels' symmetric window is ME1's
+In order:
+
+1. **The owner decides `umbraQueryWait = 0` for the sequels** (ME2: 13.0 to 11.3 ms a frame at Freedom's Progress, the
+   render thread's median work 10.7 to 6.2 ms; ME3: 12.9 to 11.2 ms, 11.4 to 5.4 ms, with worse p90s in heavy views).
+   The alternative with the same effect and no extra draws is one view state for both passes in gameplay, as ME1
+   ships, which is a change inside Halcyon's SFR branch (lane U1's files) and brings back the wait `ue3QueryWait`
+   exists for; measure it against `umbraQueryWait = 0` before choosing.
+2. **`keepBoundShaderStates`** is on for both (0.4 ms on ME2, 0.8 ms on ME3 in heavy views).
+3. **The per-eye frustum before one-Draw** (the ledger's R06): one-Draw on the sequels' symmetric window is ME1's
    `oneDrawWindow = 1`, which the owner's QA rejected (meshes dropping out frame by frame).
-4. **Then one-Draw, ME3 or ME2 first by whichever baseline is heavier**, with the seams of the design above. It brings
-   ME1's open defect with it: character shadows wrong in the replayed eye, so they go off again on that game. If the
-   owner would rather keep character shadows on the sequels than gain about 20% of the render thread, one-Draw should
-   wait for ME1's shadow fix (research/37 "Open").
+4. **Measure again in a heavy scene of each game** (combat, a hub) with lane U1's seams, so the draw counts and the
+   eyes' split are in the probe. Only if the second eye's own render (without the spin) is then several milliseconds
+   is one-Draw worth its seams (the design above; both R2 and R3 name the pass-0 capture as its main risk).
 
-The host side is ready for it (the module, the table, the recorder are in all three hosts); what remains is the
-renderers' seams (lane U1's vocabulary reserves the names) and each sequel's pass-0 capture, which both R2 and R3 name
-as the main risk in their recipes.
+The host side is ready for it either way: the module, the table and the recorder are in all three hosts.
