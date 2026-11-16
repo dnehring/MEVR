@@ -195,6 +195,13 @@ function Get-RunLaunchIdentity([int]$ProcessId, [string]$ExpectedPath, [DateTime
     try { $stillPath = $still.Path; $stillStarted = $still.StartTime.ToUniversalTime() } catch { }
     if ($still.HasExited) { return $null }
     $observed = "pid=$ProcessId path='$stillPath' startedUtc='$(if ($stillStarted) { $stillStarted.ToString('o') } else { 'unavailable' })'"
+    # A newly created Steam launcher can expose its identity only on the second
+    # observation. Do not adopt from that single sample or abort before its game
+    # is discovered: leave it pending for the bounded launch loop. Fully observed
+    # wrong identities and persistent unreadability still fail closed below.
+    if ((-not $path -or -not $started) -and (-not $path -or $path -eq $stillPath) -and
+        (-not $started -or $started -eq $stillStarted) -and $stillPath -eq $ExpectedPath -and
+        $stillStarted -and $stillStarted -ge $RequestedUtc) { return $null }
     if (-not $path -or -not $started -or -not $stillPath -or -not $stillStarted -or
         $path -ne $stillPath -or $started -ne $stillStarted) {
         throw "Live process identity unavailable or changed; not adopted ($observed)"

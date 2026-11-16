@@ -99,6 +99,11 @@ no load/artifact guard was relaxed. Both successful runs verified the unchanged
 source save and restored game/profile files, with the LE1 ini unchanged and the
 run lock released. ME3 also verified its exact VR-environment restoration.
 
+The subsequent ME3 Back/recenter transition trial hit a native post-processing
+resource fault before recenter completion or same-save reload. See the
+[failed-transition investigation](le3-recenter-transition-failure.md); the earlier
+static/menu/turning results do not close this lifecycle gate.
+
 Still open: physical Quest 3/Virtual Desktop fusion, real head-motion comfort,
 native recenter/mode-transition scenarios, and deliberately induced stale capture
 or failed GPU-copy scenarios. Those lifecycle failures have offline policy coverage,

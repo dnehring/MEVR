@@ -171,6 +171,11 @@ try {
         With-ProcessObservations @($liveProcess, $exited) { Check ($null -eq (Get-RunLaunchIdentity 42 $expected $requested)) }
     }
     Case 'live launcher must have the expected path and launch creation time' {
+        With-ProcessObservations @($unreadableProcess, $liveProcess) {
+            Check ($null -eq (Get-RunLaunchIdentity 42 $expected $requested)) # pending, never adopted from one sample
+        }
+        $partialWrong = [pscustomobject]@{ Id=42; Path='C:\other\launcher.exe'; StartTime=$null; HasExited=$false }
+        With-ProcessObservations @($partialWrong, $liveProcess) { Reject { Get-RunLaunchIdentity 42 $expected $requested } }
         With-ProcessObservations @($liveProcess, $liveProcess) {
             $identity = Get-RunLaunchIdentity 42 $expected $requested
             Check ($identity.pid -eq 42 -and $identity.path -eq $expected -and $identity.startedUtc -eq $liveProcess.StartTime.ToString('o'))

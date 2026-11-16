@@ -31,11 +31,19 @@ function Stop-Owned {
     foreach ($p in $launcherProcess) { Assert-RunProcess $p $open.launcherProcess $launcherExe }
     foreach ($p in $gameProcess) {
         $still = Get-Process -Id $p.Id -ErrorAction SilentlyContinue
-        if ($still) { Assert-RunProcess $still $open.gameProcess $exe; Stop-Process -Id $p.Id -Force -Confirm:$false }
+        if ($still) {
+            Assert-RunProcess $still $open.gameProcess $exe
+            Stop-Process -Id $p.Id -Force -Confirm:$false
+            if (-not $still.WaitForExit(15000)) { throw 'Owned game did not exit within 15 seconds; keep the session locked' }
+        }
     }
     foreach ($p in $launcherProcess) {
         $still = Get-Process -Id $p.Id -ErrorAction SilentlyContinue
-        if ($still) { Assert-RunProcess $still $open.launcherProcess $launcherExe; Stop-Process -Id $p.Id -Confirm:$false }
+        if ($still) {
+            Assert-RunProcess $still $open.launcherProcess $launcherExe
+            Stop-Process -Id $p.Id -Confirm:$false
+            if (-not $still.WaitForExit(15000)) { throw 'Owned launcher did not exit within 15 seconds; keep the session locked' }
+        }
     }
 }
 $others = @(Get-Process MassEffect1, MassEffect2, MassEffect3 -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -ne $names.process })
