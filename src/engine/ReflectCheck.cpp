@@ -2979,6 +2979,19 @@ void CheckFields() {
     CheckField("SFXGame.SFXGameModeBase", "LocalizedBindings", SDK_FIELD(USFXGameModeBase, LocalizedBindings));
     CheckField("SFXGame.SFXGameModeGalaxy", "GalaxyCam", SDK_FIELD(USFXGameModeGalaxy, GalaxyCam));
     // LE3 CIC projector discovery and geometry: independent of the map camera.
+    CheckClass<ULevelStreaming>("Engine.LevelStreaming");
+    CheckField("Engine.WorldInfo", "StreamingLevels", SDK_FIELD(AWorldInfo, StreamingLevels));
+    CheckField("Engine.LevelStreaming", "PackageName", SDK_FIELD(ULevelStreaming, PackageName));
+    CheckField("Engine.LevelStreaming", "LoadedLevel", SDK_FIELD(ULevelStreaming, LoadedLevel));
+    CheckField("Engine.LevelStreaming", "bShouldBeLoaded", SDK_BOOL(ULevelStreaming, bShouldBeLoaded));
+    CheckField("Engine.LevelStreaming", "bShouldBeVisible", SDK_BOOL(ULevelStreaming, bShouldBeVisible));
+    CheckField("Engine.LevelStreaming", "bIsVisible", SDK_BOOL(ULevelStreaming, bIsVisible));
+    CheckField("Engine.LevelStreaming", "bHasLoadRequestPending", SDK_BOOL(ULevelStreaming, bHasLoadRequestPending));
+    CheckField("Engine.LevelStreaming", "bHasUnloadRequestPending", SDK_BOOL(ULevelStreaming, bHasUnloadRequestPending));
+    CheckField("SFXGame.BioWorldInfo", "m_WorldStreamingStates", SDK_FIELD(ABioWorldInfo, m_WorldStreamingStates));
+    CheckElement("SFXGame.BioWorldInfo", "m_WorldStreamingStates", static_cast<long long>(sizeof(FWorldStreamingState)));
+    CheckPath("SFXGame.BioWorldInfo", {"m_WorldStreamingStates", "Name"}, SDK_AT(offsetof(FWorldStreamingState, Name), 8));
+    CheckPath("SFXGame.BioWorldInfo", {"m_WorldStreamingStates", "Enabled"}, SDK_BOOL(FWorldStreamingState, Enabled));
     CheckField("Engine.Actor", "Tag", SDK_FIELD(AActor, Tag));
     CheckClass<AInterpActor>("Engine.InterpActor");
     CheckClass<ASFXPointOfInterest>("SFXGame.SFXPointOfInterest");

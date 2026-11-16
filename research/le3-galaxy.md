@@ -145,6 +145,43 @@ initial focused test disappears under the existing unsandboxed test route.
 Rendering at the projector, room retention, stereo map capture and camera
 handback remain unimplemented/unaccepted by this increment.
 
+### CIC residency confirmed
+
+Protected run `20261115-211620-664-LE3-navigation` extends the same read-only
+command with the native streaming descriptors. It reuses the fields read by
+ME1's `mevr stream chunks/states`; no streaming setter or campaign mutation is
+introduced. All **538/538** SDK/reflection checks agree. Normal AutoSave loading
+and normal console use reproduce this transition:
+
+| Art package | On foot | Map mode 11 |
+|---|---|---|
+| `BioA_Nor_200` | Loaded, visible, requested | Loaded, visible, requested |
+| `BioA_Nor_210CIC` | Loaded, visible, requested | Unloaded, invisible, neither load nor visibility requested |
+| `BioA_Nor_203aGalaxyMap` | Unloaded, invisible, not requested | Loaded, visible, requested |
+
+The streaming descriptor identities remain the same, as do the player/world
+and use target. Neither snapshot has a pending load/unload request. This proves
+that the missing projector is caused by its art level being unloaded, rather
+than merely failing a tag lookup. The two observed world-state flags
+`stream_inGalaxyMap` and `stream_GalaxyMap` are false at both sample points;
+these endpoint samples do not establish their transient values or the native
+mechanism selecting the art chunks. Do not infer that toggling either flag
+would retain the room safely.
+
+Next implementation must retain the identified room art across normal map
+entry, without freezing all streaming or preventing native mission departure.
+Acquire geometry while the original component exists; never reuse a stale
+component pointer after unloading. Pair residency with ME1's scoped main-view
+hold and independent native map capture. Verify normal exit, briefing/mission
+interruption and save reload before making this the default. A cached anchor
+alone cannot render missing room geometry.
+
+Captures `2026-11-15_21-17-19-063` and `2026-11-15_21-17-39-133` have no reported
+errors. The development LE3 host/module and monolithic player build pass. The
+owned game closes, restoration reports zero differences including the VR
+configuration, and the shared lock is released. This increment diagnoses the
+remaining presentation work; it does not enable projector rendering.
+
 ## Native adapter reuse boundary
 
 ME1 `game/GalaxyMap` is a native camera/projector/table adapter for ME1. Its mode 9, Normandy

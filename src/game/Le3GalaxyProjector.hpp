@@ -6,6 +6,7 @@
 #include "core/vr/GalaxyHologram.hpp"
 #include <algorithm>
 #include <array>
+#include <cctype>
 
 // Read-only precursor to the CIC view hold. Resolve by native identity and tag,
 // never by the serialized actor number/position or the map camera's coordinates.
@@ -14,6 +15,60 @@ namespace mevr::game::le3_galaxy {
 inline json::Value ProjectorVector(std::array<double, 3> const& value) {
     auto out = json::Value::Array();
     for (double x : value) out.Push(x);
+    return out;
+}
+inline json::Value ProjectorStreaming(ue3::Object* wi) {
+    // Same native fields as ME1's `mevr stream chunks/states`, scoped to the
+    // already identified CIC art and map packages. No streaming setters here.
+    auto out = json::Value::Object();
+    out["available"] = false;
+    ue3::FieldRef levels{"Engine.WorldInfo", "StreamingLevels", ue3::kEveryGame};
+    auto const list = levels.ElementsOf(wi, 4096);
+    auto& r = ue3::runtime::Get();
+    auto* const cls = r.FindClass("Engine.LevelStreaming");
+    if (!cls || !list || list->stride != sizeof(ue3::Object*)) return out;
+    auto rows = json::Value::Array();
+    for (int i = 0; i < list->count; ++i) {
+        auto* const level = *static_cast<ue3::Object**>(list->At(i));
+        if (!level) continue;
+        if (!r.IsAlive(level) || !r.IsA(level, cls)) return out;
+        auto const package = Read<ue3::Name>(level, "Engine.LevelStreaming", "PackageName");
+        if (!package) return out;
+        auto name = r.ToString(*package);
+        std::transform(name.begin(), name.end(), name.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        if (name != "bioa_nor_210cic" && name != "bioa_nor_200" && name != "bioa_nor_203agalaxymap") continue;
+        auto row = json::Value::Object();
+        row["package"] = name; row["descriptor"] = Identity(level);
+        auto const loaded = Read<ue3::Object*>(level, "Engine.LevelStreaming", "LoadedLevel");
+        if (loaded) {
+            row["loaded"] = *loaded != nullptr;
+            row["loadedObjectAlive"] = *loaded != nullptr && r.IsAlive(*loaded);
+        }
+        row["visible"] = Scalar(ReadBool(level, "Engine.LevelStreaming", "bIsVisible"));
+        row["shouldLoad"] = Scalar(ReadBool(level, "Engine.LevelStreaming", "bShouldBeLoaded"));
+        row["shouldShow"] = Scalar(ReadBool(level, "Engine.LevelStreaming", "bShouldBeVisible"));
+        row["loadPending"] = Scalar(ReadBool(level, "Engine.LevelStreaming", "bHasLoadRequestPending"));
+        row["unloadPending"] = Scalar(ReadBool(level, "Engine.LevelStreaming", "bHasUnloadRequestPending"));
+        rows.Push(std::move(row));
+    }
+    out["levels"] = std::move(rows);
+    out["available"] = true;
+    ue3::FieldRef states{"SFXGame.BioWorldInfo", "m_WorldStreamingStates", ue3::kEveryGame};
+    ue3::FieldRef stateName{states, "Name"}, stateEnabled{states, "Enabled"};
+    auto const entries = states.ElementsOf(wi, 4096);
+    auto stateRows = json::Value::Array();
+    if (entries) {
+        for (int i = 0; i < entries->count; ++i) {
+            auto const value = stateName.Read<ue3::Name>(entries->At(i));
+            if (!value) continue;
+            auto const name = r.ToString(*value);
+            if (name != "stream_inGalaxyMap" && name != "stream_GalaxyMap" && name != "stream_leaveMap2") continue;
+            auto row = json::Value::Object(); row["name"] = name;
+            row["enabled"] = Scalar(stateEnabled.ReadBool(entries->At(i)));
+            stateRows.Push(std::move(row));
+        }
+    }
+    out["statesAvailable"] = entries.has_value(); out["states"] = std::move(stateRows);
     return out;
 }
 inline json::Value ObserveProjector(ue3::Object* pc) {
@@ -27,6 +82,8 @@ inline json::Value ObserveProjector(ue3::Object* pc) {
     auto* const pawn = player::Pawn(pc);
     auto const mode = player::GameMode(pc);
     if (!wi || !pawn || !mode || Object(pawn, "Engine.Actor", "WorldInfo") != wi) return out;
+    out["gameMode"] = *mode; out["world"] = Identity(wi);
+    out["streaming"] = ProjectorStreaming(wi);
     out["reason"] = "not-on-foot-or-map";
     if (*mode != 0 && !engine::adapter::IsMapMode(*mode)) return out;
     auto& r = ue3::runtime::Get();
