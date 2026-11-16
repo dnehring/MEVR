@@ -594,6 +594,16 @@ shared core, two call shapes:
   - The game's display question answered SDR (`hdr display: ... answered SDR: the game keeps its 8-bit frame
     ([Colour] hdrDisplay = -1)`) through the one policy.
   - Not seen in a game: the sequels' tonemap (a float frame needs `hdrDisplay = 0/1`).
+- **ME3 in the game** (the renderer preview, Save 31 on the Normandy, session `20261116-161710-117-LE3-ey-me3`, restored
+  with 0 differences): backbuffer 3072x1728, wider than the recommended size, so the copy stays raw and FSR does not
+  engage. Neutral is the raw copy bit for bit (the source moved by the convergence shift, +46 px on the left eye, 100% of
+  pixels identical); Quest 100% within one step of the CPU reference (91.9% exact); the candidate 100% within one step
+  (93.1% exact). ME3's HUD panel is off in the preview (`hudPanel = false`), so its new colour hooks were not seen.
+- **LE1 same pose** (sessions `2026-11-16_16-19-52-ey-before`, the build of main 60791416, and `..._16-23-08-ey-after`,
+  this lane's 434ed942 with lane U2's merge): `hostView` identical; the same layers at the same poses; the HUD panel and
+  both eyes, with and without the world layer, 100% of pixels identical, in neutral and with the Quest profile. LE1's FSR
+  did not engage in either run (the fake headset's eye, 1912x1952, is smaller than LE1's 2344x2392 render), so LE1's
+  refactored upscale call (the same draws moved into `upscale::Passes`) is covered by the WARP test, not by this run.
 
 ### 9.6 ME2's dark scenes through the shared pipeline (2026-11-16)
 
@@ -611,6 +621,10 @@ noise floor for the means.
 | candidate: contrast 1.06, saturation 1.12, mid-tones 1.0, black +0.03 | 59.7 | 1.1% | 11.3% | 10.6, 16%, 17 |
 | neutral with the game's own gamma 2.6 (`gamma 2.6`; ME2's 2.2) | 63.3 | 7.2% | 15.6% | 6.3, 68%, 24 |
 | neutral again (the noise floor) | 53.0 | 15.0% | 22.9% | 4.1, 91%, 17 |
+
+ME3, the Normandy (Save 31, the same method, left eye): neutral mean luma 43.9, 15.6% under 8, 23.9% under 13; ME1's
+Quest 36.3, 22.8%, 34.2%; the candidate 48.1, 1.2%, 14.2%; neutral again 43.9, 15.8%, 23.8%. The same pattern as
+ME2's night: ME1's Quest profile puts a third of the frame under the Quest LCD's floor, the candidate a seventh.
 
 The same picture as research/le2-picture.md's of 2026-11-14 (then through ME2's own copy of the pipeline; within the
 noise floor everywhere): ME1's Quest profile darkens ME2's night (a quarter of the frame under the Quest LCD's floor), the

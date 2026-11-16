@@ -170,18 +170,21 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Waits for:** T01. **Who:** U2.
 
 #### T03 One eye-image pipeline: colour, tonemap, FSR, the HDR display answer [Forks 7, 8; R13, R14, R15, R16]
-- **State:** LE1 build · LE2 build · LE3 build (2026-11-16, lane EY: research/27 section 9)
+- **State:** LE1 V (same pose identical) · LE2 V (colour, FSR) · LE3 V colour, FSR U (2026-11-16, lane EY: research/27
+  section 9)
 - **Lives in:** `core/vr/Colour`, `core/vr/Upscale`, `plugin/Colour`, `plugin/Upscale`, `plugin/EyeCopy`,
   `plugin/HdrDisplayPolicy`, seam `MevrSeams::EyeImageSize`. One colour, tonemap and FSR core and one display-answer
   policy in all three hosts; the sequels reach them from `EyeCopy` (`CopyIntoImage`), LE1 from its blit's own
   `EyeColour*`/`EyeUpscale` seams (one core, two call shapes: research/27 9.3).
-- **Left:** **ME2, ME3:** the run that shows it: an eye larger than the backbuffer (`upscale: the eye images are ...`),
-  FSR-scaled and sharper than the runtime's scale; a colour-profile snapshot A/B. **LE1:** optional, its blit onto
-  `CopyIntoImage` with a fill argument, after a same-pose check of its four blit paths. **The owner:** the picture defaults
-  for ME2's dark scenes (research/le2-picture.md section 5, research/27 9.6).
-- **Closes when:** LE1's eye snapshots are unchanged; an ME2 and an ME3 colour-profile snapshot A/B shows the profile
-  applied; an eye rendered below the headset's size comes out FSR-scaled on each sequel; ctest `mevr-eye-copy-warp`,
-  `mevr-colour-shader` and `mevr-upscale-shader` pass on the one stage (they do: the WARP test runs the real FSR passes).
+- **Left:** **ME3:** FSR seen in a run with a backbuffer below the recommended eye (the preview's 3072x1728 is wider);
+  its HUD panel's colour once the panel is on. **LE1:** its FSR path in a run whose render is below the eye (the fake
+  headset's eye is smaller than LE1's render); optional, its blit onto `CopyIntoImage` with a fill argument after a
+  same-pose check of its four blit paths. **The sequels:** the render-size and Performance rows (greyed until the owner
+  has seen them). **The owner:** the picture defaults for dark scenes (research/27 9.6).
+- **Closes when:** LE1's eye snapshots are unchanged (they are, neutral and Quest); an ME2 and an ME3 colour-profile
+  snapshot A/B shows the profile applied (both: within one 8-bit step of the CPU reference); an eye rendered below the
+  headset's size comes out FSR-scaled on each sequel (ME2 yes, ME3 left); ctest `mevr-eye-copy-warp`, `mevr-colour-shader`
+  and `mevr-upscale-shader` pass on the one stage (they do: the WARP test runs the real FSR passes).
 - **Waits for:** T01. **Who:** EY.
 
 #### T04 Engine access on our reflection layer; no LExSDKv2 in a players' build [G52, G50, G55; G02's fallback]
