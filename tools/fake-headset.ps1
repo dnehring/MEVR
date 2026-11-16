@@ -15,7 +15,7 @@
 #   Steam\config\steamvr.vrsettings: steamvr.forcedDriver = "null", steamvr.activateMultipleDrivers = false,
 #     driver_playstation_vr2.enable = false, power.pauseCompositorOnStandby = false, power.turnOffScreensTimeout = 36000
 #     (without the power keys the null headset goes to standby 5 s after each wake and the session never leaves READY).
-#   Steam\config\chaperone_info.vrchap: a universe "2" (the null driver's) at the zero pose with a 1 x 1 m play area.
+#   Steam\config\chaperone_info.vrchap: universe "2", with the tracked head 1.7526 m (5'9") above the floor.
 #     Without it the chaperone's calibration state is 201 (universe uninitialised) and vrmonitor launches room setup the
 #     first time the universe appears after a SteamVR start; room setup is a scene app, so vrserver sends the running
 #     scene app (the game) a Quit event and KILLS it 5 s later ("Kill process MassEffect1 because it didn't quit in
@@ -23,6 +23,7 @@
 #     survived because the game then evicted room setup (which exits at once with no real headset).
 # The game must not be running while the driver changes.
 param([switch]$On, [switch]$Off, [switch]$Status, [int]$Width = 2824, [int]$Height = 2880,
+      [ValidateRange(0.5, 2.5)][double]$HeadHeightM = 1.7526,
       [string]$SteamRoot = 'C:\Program Files (x86)\Steam', [string]$SteamVRRoot = '',
       [string]$BackupDirectory = '', [int]$AppResolutionScale = 0, [switch]$FixedRenderScale)
 $ErrorActionPreference = 'Stop'
@@ -56,8 +57,10 @@ function Write-Json($path, $obj) {
 }
 function Has-NullUniverse($chap) { [bool]($chap.universes | Where-Object { "$($_.universeID)" -eq $nullUniverse }) }
 function New-NullUniverse {
-    # a 1 x 1 m square around the zero pose, walls 2.43 m high (the user's own entry's shape), standing and seated at
-    # the identity, the zero pose SteamVR used for this universe before it was registered
+    # The null driver reports its head at raw zero. Place the standing floor BELOW
+    # that raw origin; its inverse gives +HeadHeightM in STAGE. LOCAL/seated stays
+    # head-relative, so existing head-relative controller recordings remain valid.
+    # Collision bounds are in setup-standing coordinates, not raw tracking space.
     $w = 0.5; $h = 2.43
     $corners = @(@(-$w, -$w), @(-$w, $w), @($w, $w), @($w, -$w))
     $walls = @()
@@ -69,7 +72,7 @@ function New-NullUniverse {
         collision_bounds = $walls
         play_area        = @(1, 1)
         seated           = [pscustomobject]@{ translation = @(0, 0, 0); yaw = 0 }
-        standing         = [pscustomobject]@{ translation = @(0, 0, 0); yaw = 0 }
+        standing         = [pscustomobject]@{ translation = @(0, -$HeadHeightM, 0); yaw = 0 }
         time             = (Get-Date).ToString('ddd MMM dd HH:mm:ss yyyy', [Globalization.CultureInfo]::InvariantCulture)
         universeID       = $nullUniverse
     }
@@ -96,15 +99,16 @@ if ($Status -or -not ($On -or $Off)) {
     "null driver enable: $($n.driver_null.enable) ($($n.driver_null.renderWidth)x$($n.driver_null.renderHeight) @ $($n.driver_null.displayFrequency) Hz)"
     "steamvr.forcedDriver: $forced; driver_playstation_vr2.enable: $psvr"
     "chaperone universe $nullUniverse (the null driver's) registered: $(if (Test-Path -LiteralPath $chaperone) { Has-NullUniverse (Read-Json $chaperone) } else { 'no chaperone file' })"
-    "SteamVR running: $([bool](Get-Process vrserver -ErrorAction SilentlyContinue)); game running: $([bool](Get-Process MassEffect1 -ErrorAction SilentlyContinue))"
+    "SteamVR running: $([bool](Get-Process vrserver -ErrorAction SilentlyContinue)); game running: $([bool](Get-Process MassEffect1,MassEffect2,MassEffect3 -ErrorAction SilentlyContinue))"
     return
 }
-if (Get-Process MassEffect1 -ErrorAction SilentlyContinue) { throw 'the game is running: close it first' }
+if (Get-Process MassEffect1,MassEffect2,MassEffect3 -ErrorAction SilentlyContinue) { throw 'a trilogy game is running: close it first' }
 
 New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
 $nullBackup = Join-Path $backupDir 'null-default.vrsettings'
 $vrBackup = Join-Path $backupDir 'steamvr.vrsettings'   # the first -On's copy: kept as a record, no longer restored
 $undoFile = Join-Path $backupDir 'undo.json'
+$universeUndo = Join-Path $backupDir 'null-universe-before.json'
 $undoKeys = @(@('steamvr', 'forcedDriver'), @('steamvr', 'activateMultipleDrivers'), @('steamvr', 'supersampleManualOverride'),
               @('steamvr', 'supersampleScale'), @('steam.app.1328670', 'resolutionScale'), @('driver_playstation_vr2', 'enable'),
               @('power', 'pauseCompositorOnStandby'), @('power', 'turnOffScreensTimeout'))
@@ -159,16 +163,19 @@ if ($On) {
     } else {
         $c = [pscustomobject]@{ jsonid = 'chaperone_info'; universes = @(); version = 5 }
     }
-    if (-not (Has-NullUniverse $c)) {
-        $c.universes = @($c.universes) + @(New-NullUniverse)
-        Write-Json $chaperone $c
+    if (-not $alreadyOn -or -not (Test-Path -LiteralPath $universeUndo)) {
+        # Preserve a pre-existing null calibration too; repeated -On must not
+        # replace this receipt with our temporary height.
+        Write-Json $universeUndo ([pscustomobject]@{ universes = @($c.universes | Where-Object { "$($_.universeID)" -eq $nullUniverse }) })
     }
+    $c.universes = @($c.universes | Where-Object { "$($_.universeID)" -ne $nullUniverse }) + @(New-NullUniverse)
+    Write-Json $chaperone $c
     Start-Process -FilePath $vrStartup -WindowStyle Hidden | Out-Null
     # The host's statically linked OpenXR loader takes the machine's active runtime (HKLM), which is Virtual Desktop's or
     # Meta's when the owner tests a Quest; the null driver lives in SteamVR, so the game must use SteamVR's manifest for this
     # process: [Debug] openxrRuntime in the deployed LE1MEVR.ini (plugin/HalcyonBridge sets XR_RUNTIME_JSON; 2026-11-09).
     Set-ModRuntime (Join-Path $SteamVRRoot 'steamxr_win64.json')
-    "fake headset ON: null driver ${Width}x${Height} @ 90 Hz, the PS VR2 driver off, standby off, chaperone universe $nullUniverse registered; SteamVR starting (backups in $backupDir); the game's OpenXR runtime pinned to SteamVR's manifest"
+    "fake headset ON: null driver ${Width}x${Height} @ 90 Hz, head height $HeadHeightM m, the PS VR2 driver off, standby off, chaperone universe $nullUniverse registered; SteamVR starting (backups in $backupDir); the game's OpenXR runtime pinned to SteamVR's manifest"
 }
 if ($Off) {
     Set-ModRuntime ''
@@ -190,7 +197,11 @@ if ($Off) {
     if (Test-Path -LiteralPath $chaperone) {
         $c = Read-Json $chaperone
         $c.universes = @($c.universes | Where-Object { "$($_.universeID)" -ne $nullUniverse })
+        if (Test-Path -LiteralPath $universeUndo) {
+            $c.universes += @((Read-Json $universeUndo).universes)
+        }
         Write-Json $chaperone $c
     }
+    if (Test-Path -LiteralPath $universeUndo) { Remove-Item -LiteralPath $universeUndo -Confirm:$false }
     "fake headset OFF: the user's SteamVR settings and chaperone restored; SteamVR stopped (start it with the headset on)"
 }
