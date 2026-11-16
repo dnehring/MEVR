@@ -1187,6 +1187,7 @@ uint64_t g_sfrClearsThisPresent = 0;   // [SFRDIAG] scene-sized clears captured 
 std::uintptr_t g_bbResourcePtr = 0;        // cached backbuffer resource identity (refreshed per present)
 bool g_sfrBbBoundThisPresent = false;      // backbuffer bound as RTV => pass 0 has composited
 bool g_sfrCapturedThisPresent = false;     // pass-0 snapshot already taken this present
+bool g_mevrFirstEyeMarked = false;         // [MEVR] the probe was told where the first eye's render ended, this present
 std::atomic_bool g_pass0Anchor{true};      // toggle for A/B against the old last-clear behaviour
 std::atomic<uint64_t> g_sfrAnchorMisses{0}; // presents where the anchor never fired (diagnostic)
 // [CLEARMAP] Frame-structure instrumentation. Two blind anchor designs failed; this makes the third
@@ -1971,6 +1972,13 @@ void SfrMaybeCapturePass0AtClear(ID3D11DeviceContext* ctx, ID3D11DepthStencilVie
     if (!sceneSized) return;
 
     ++g_sceneClearsSeen;
+#if defined(MEVR_ASI)
+    // [MEVR] frame-breakdown probe: the first eye's render ends where the next pass's scene opens, the first
+    // scene-sized clear after this present's first backbuffer draw. (The pass-0 snapshot below waits for the
+    // group's second clear, which comes late in pass 1: 895 of 956 draws, lane PL 2026-11-16.)
+    if (!g_mevrFirstEyeMarked && g_sfrBbDrawsThisPresent != 0)
+    { g_mevrFirstEyeMarked = true; ::MevrSeams::PerfFirstEyeCaptured(ctx); }
+#endif
     // [CLEARMAP] record this scene clear: which depth resource (identity only, low 20 bits is plenty
     // to tell targets apart) and how many backbuffer draws had happened when it fired.
     if (ME2VR::Log::DiagnosticsOn() && g_clearMapLen < (int)sizeof(g_clearMap) - 20)
@@ -2021,9 +2029,6 @@ void SfrMaybeCapturePass0AtClear(ID3D11DeviceContext* ctx, ID3D11DepthStencilVie
         ++g_sfrClearsThisPresent;
         g_sfrPass0Caps.fetch_add(1, std::memory_order_relaxed);
         g_sfrCapturedThisPresent = true;
-#if defined(MEVR_ASI)
-        ::MevrSeams::PerfFirstEyeCaptured(ctx);   // [MEVR] frame-breakdown probe: the first eye is captured
-#endif
         // [CLEARMAP] mark the capture point in the map so the log shows WHERE the snapshot landed
         if (g_clearMapLen > 0 && g_clearMapLen < (int)sizeof(g_clearMap) - 2)
         { g_clearMap[g_clearMapLen++] = '*'; g_clearMap[g_clearMapLen] = '\0'; }
@@ -2764,6 +2769,7 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDXGISwapChain* swapChain, UINT syncInterv
         g_sfrLastClearCount = cc;
     }
     g_clearMap[0] = '\0'; g_clearMapLen = 0; g_sfrBbDrawsThisPresent = 0;
+    g_mevrFirstEyeMarked = false;   // [MEVR] frame-breakdown probe: per present
     g_sceneClearsSeen = 0;
     g_sfrClearRunBbDraws = ~0ull; g_sfrClearRunLen = 0; g_sfrPassOpens = 0;   // [CLEARGROUP] per-present
     g_sfrBbCopiesThisPresent = 0;                                                      // [CINECOPY]

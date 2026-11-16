@@ -311,6 +311,19 @@ snapshot `2026-11-16_15-13-21-312` shows the title on the native panel placed in
 both eyes. No save was loaded: the on-foot layers, the pad merge with tracked controllers, a recenter and the map lease
 were not exercised on ME3. `restore.ps1`: 0 differences.
 
+**The probe's first-eye mark on ME2** (lane PL's finding: `PerfFirstEyeCaptured` fired 61 draws before Present, after
+895). It was called at Halcyon's pass-0 snapshot, which waits for the second clear of a pass's opening group and so lands
+late in the second pass. It is now called at the first scene-sized clear after this present's first backbuffer draw
+(`[MEVR]` in `src/halcyon/le2/d3d_capture.cpp`, `g_mevrFirstEyeMarked`), where the second pass opens. Measured at
+Freedom's Progress (fake headset, `2026-11-16_15-27-50-u2-le2-probe.json`, 467 frames): 1,129 draws before the mark and
+1,661 after (median; 3,038 a frame), 6.87 ms busy before and 4.27 ms after. Not half the draws: the second pass carries
+the UI and the HUD's second batch; by time the mark splits the frame 62/38. The snapshot itself is unchanged.
+
+**The probe on ME3** (lane PL's fallback: the device context taken from the projection layer, f1a1bcbb): at the title
+(renderer preview, `20261116-152836-917-LE3-u2-le3`) the probe was armed (`perf probe: armed for 8 s`) and no capture
+started within 60 s. The title submits only the native panel's quad, no projection layer, so the fallback had no context
+to find there; it is untried in gameplay, which needs a loaded save.
+
 **LE1**: no line LE1 compiles changed (the new files are in the sequel hosts' source lists only), so no same-pose pair.
 
 ## State
