@@ -155,12 +155,15 @@ These unblock the most: almost every other entry gets smaller once they land.
 
 #### T02 One sequel bridge, one overlay composition, one menu glue [Forks 1, 2, 13; R20; R17]
 - **State:** LE1 build · LE2 build · LE3 build
-- **Lives in:** today three compositions (`plugin/HalcyonOverlays.cpp`, `HalcyonLe2Bridge.cpp`, `HalcyonLe3Bridge.cpp`)
-  and two `OverlayFrame` structs. Target: one `OverlayFrame`, one `plugin/Overlays` composer that calls each layer module
-  in one order, `plugin/SequelBridge.cpp` for what the two sequel bridges repeat (session, recenter, controller merge,
-  galaxy settings), `plugin/MenusLe2` renamed `Menus` and called by LE1's bridge too.
-- **Left, every game:** the bridges only fill the frame; LE1's label quad becomes `HudPieceLayers::Interaction` with ME1's
-  default crop.
+- **Lives in:** one `OverlayFrame` (U1). Since lane U2 (2026-11-16): `plugin/HalcyonSequelBridge.cpp` for the seams the
+  two sequel bridges repeated (session, frame, view, recenter, controller merge, cinema screen, galaxy settings),
+  `plugin/SequelOverlays.cpp` as the one composition for both sequels (capabilities plus each game's adapter,
+  `sequel_bridge::game` in `HalcyonLe2Bridge.cpp` / `HalcyonLe3Bridge.cpp`); LE1 still composes in
+  `plugin/HalcyonOverlays.cpp`. research/trilogy-seams.md "One sequel bridge", "One overlay composition".
+- **Left, every game:** LE1 onto the shared composition one layer at a time, each with a same-pose pair (the note lists
+  the five blocks); LE1's label quad becomes `HudPieceLayers::Interaction` with ME1's default crop; `plugin/MenusLe2`
+  renamed `Menus` and called by LE1's bridge too; one `PlacePanel` (ME2's renderer takes `panelsInRoom`). **ME3:** a run
+  of the merged bridge with a save loaded (it ran to the title only).
 - **Closes when:** LE1 same-pose snapshots show the same layers at the same places; an LE2 and an LE3 snapshot set shows
   every layer the old compositions drew; an LE3 run with `[Debug] swapchainCap = N` refuses and recovers as LE1's did on
   2026-11-06 (R17).

@@ -53,8 +53,8 @@ rows the change touches.
 
 | game | shared | adapted | forked | missing | n/a | present and verified (V) | present, unverified (U) |
 |---|---|---|---|---|---|---|---|
-| LE2 | 11 | 42 | 4 | 32 | 4 | 38 | 19 |
-| LE3 | 11 | 42 | 6 | 28 | 6 | 19 | 40 |
+| LE2 | 11 | 43 | 3 | 32 | 4 | 38 | 19 |
+| LE3 | 11 | 43 | 5 | 28 | 6 | 19 | 40 |
 <!-- /parity:totals -->
 
 LE1 is the reference, so it has no cells. A few LE1 systems are themselves n/a under Halcyon's renderer: the reflection
@@ -65,13 +65,14 @@ counted.
 
 These are ordered by wasted or blocked work. Each is detailed under [Forks](#forks) or its row.
 
-1. **Overlay composition exists three times** (Forks 1). LE1 has `plugin/HalcyonOverlays.cpp` `OverlayLayers` (1,790
-   lines). LE2 has `HalcyonLe2Bridge.cpp` `OverlayLayers` with `SequelWeaponLayers`, `SequelSquadLayers` and `MenusLe2`.
-   LE3 has a third copy in `HalcyonLe3Bridge.cpp`. There are two `OverlayFrame` structs. Every new quad (reticle,
-   label, wheel, panel) is wired two or three times, each in its own order and with its own gates.
-2. **The sequel bridges duplicate each other** (Forks 2). `HalcyonLe2Bridge.cpp` (761 lines) and `HalcyonLe3Bridge.cpp`
-   (545 lines) repeat the session, recenter and controller-merge bodies, the galaxy settings and the overlay stack. A
-   fix to one doesn't reach the other.
+1. **Overlay composition exists twice** (Forks 1; three times until lane U2, 2026-11-16). LE1 has
+   `plugin/HalcyonOverlays.cpp` `OverlayLayers` (1,790 lines). Both sequels share `plugin/SequelOverlays.cpp`
+   `OverlayLayers`, driven by the capability set and each game's adapter. One `OverlayFrame`. A new quad is wired twice
+   (LE1's file and the sequels') until LE1 moves onto the shared function, one layer at a time.
+2. **The sequel bridges were merged** (Forks 2, lane U2, 2026-11-16): `plugin/HalcyonSequelBridge.cpp` has the session,
+   frame, view, recenter and controller-merge seams, the galaxy settings and the cinema screen once;
+   `HalcyonLe2Bridge.cpp` and `HalcyonLe3Bridge.cpp` are each game's adapter, its `PlacePanel` and the eye-image seams.
+   ME2 ran with a save; ME3 to its title.
 3. **The galaxy map has three designs** (Forks 3, G25).
    - ME1: projector hologram and stereo window (`game/GalaxyMap`, `plugin/GalaxyHologram`).
    - ME2: an opt-in flat table (`NativeTablePanel` via `PlaceGalaxyPanel`).
@@ -151,7 +152,7 @@ The [technique groups](#renderer-techniques-by-group) summary follows the table.
 | R17 | Swapchain budget (`plugin/Swapchains`, `core/vr/SwapchainBudget`) | 1 | **shared** V: `swapchains: gun status ... made` (stretch `20261114-212412-lane-b2-layers`) | **shared** U | LE3: a `[Debug] swapchainCap = N` run, as LE1's of 2026-11-06. |
 | R18 | HUD panel (`plugin/HudPanel`; LE1 has 11 `HudPanel*` seams in d3d_capture.cpp via HalcyonOverlays) | 1 (core) / 2 (UI-draw classification) | **adapted** V: one `MevrHudPanelDraw` seam in le2 d3d_capture.cpp's three draw hooks, `PcHud::SetAuthoredLayout`; stretch `20261114-2152..2206-lane-b3-hud` (e03a7364) | **adapted** U: one `HudPanelDraw` site, but `RendererLe3::Hud().hudPanel = false`: only cinema UI and measured label crops leave the eyes, and the gameplay HUD stays in the eye images | LE3: measure the HUD's draw batches and crops (research/le3-shared-presentation "crop gates"), then turn `hudPanel` on. |
 | R19 | Hand reticle, with the game's crosshair hidden (`plugin/HandReticle`; `game/ScreenReticle`, `hideScreenReticle`) | 1 | **adapted** V: crosshair `_alpha=0` (stretch `20261115-001659-lane-b4-m2`, 30902fc6) | **adapted** U: ring through `SequelWeaponLayers`. Crosshair hide missing: `hideScreenReticle = nullptr` in BuildServices, and ScreenReticle compiles LE1 field names in its `#else` | LE3: a ScreenReticle LE3 branch (ME3's SDK list has no `BioSFHandler_Reticule`, see the generated names). |
-| R20 | Overlay layer composition (`plugin/HalcyonOverlays.cpp` OverlayLayers) | 1 (modules) | **forked** V: `HalcyonLe2Bridge.cpp` OverlayLayers + `SequelWeaponLayers`/`SequelSquadLayers`/`MenusLe2`; stretch `20261114-212412-lane-b2-layers` | **forked** U: a third composition in `HalcyonLe3Bridge.cpp` (menu captures show no missing layer) | Forks 1. |
+| R20 | Overlay layer composition (`plugin/HalcyonOverlays.cpp` OverlayLayers) | 1 (modules) | **adapted** V: `plugin/SequelOverlays.cpp` OverlayLayers (one composition for both sequels: capabilities + ME2's adapter in `HalcyonLe2Bridge.cpp`) + `SequelWeaponLayers`/`SequelSquadLayers`/`MenusLe2`; stretch `20261116-150654-945-LE2-u2-le2` (Save 4: both eyes, the `hud` layer, every seam group in the log) | **adapted** U: the same `SequelOverlays.cpp` with ME3's adapter in `HalcyonLe3Bridge.cpp`; ran to the title on the native panel (preview `20261116-151138-682-LE3-u2-le3`), no save loaded since the merge | Forks 1: LE1's own composition is the remaining copy. |
 | R21 | Cinema screen, its backdrop and the transition fade (`plugin/CineScreen`, `core/vr/CineScreen`, `CinemaBackdrop`, `TransitionFade`; LE1 seams in xr_session.cpp and PlanStereo's screen branch) | 1 + seams | **adapted** V: `plugin/SequelCinema` through `CineScreenWanted`/`HalfSeparationUU`/`Layers`/`TransitionFadeLayer`; run `20261115-042015-m5-cinema` (research/le2-cinema.md, 1834c240) | **adapted** U: the same seams wired (le3 me2_xr.cpp), Halcyon's own VR cine forced off; no separate-eye cinema acceptance | LE3: snapshots in a mode-7 conversation (the LE2 run's script). |
 | R22 | Front end and presentation hold (`plugin/PresentationHold`; seams `FrontEndHold`, `HoldPlainVr`, `FrontEndOnScreen`, `FrontEndBeforeTitle`) | 3 | **missing**: Halcyon ME2's flat panel (MonoMenus) | **missing** | Check first whether the sequels flip between views at start-up: snapshots from launch to the title. Port only if they do. |
 | R23 | Metric (life-size) stereo (`plugin/MetricStereo`, `core/vr/MetricStereo`, `PlanStereo`, `NoteStereoSubmit`; `sfr2Metric`) | 2 (seam) on a group-1 core | **missing**: `HalfEyeUU` 3.55 at 50 uu/m with convergence 0.025 at submit (me2_menu.cpp LoadValues) | **missing**: half eye 1.6, convergence 0.03 | Measure far-scenery disparity on a sequel snapshot pair with `tools/stereo-check.py`. research/30 found LE1's divergent; the number sets the priority. |
@@ -287,25 +288,25 @@ Each item: the copies, then what unifying would take. Line counts are as of `cca
 
 1. **Overlay composition.**
    - Copies: LE1 `plugin/HalcyonOverlays.cpp` `OverlayLayers` (and its own label quad, `gLabelSwapchain`/`LabelWanted`);
-     LE2 `plugin/HalcyonLe2Bridge.cpp` `OverlayLayers`, with `SequelWeaponLayers.cpp`, `SequelSquadLayers.cpp`,
-     `SequelCinema.cpp` (the sequel files say "extracted from the LE2 bridge") and `MenusLe2.cpp`'s `PanelLayers`; LE3
-     `plugin/HalcyonLe3Bridge.cpp` `OverlayLayers`.
+     the sequels' `plugin/SequelOverlays.cpp` `OverlayLayers` (one for LE2 and LE3 since lane U2, 2026-11-16; before it
+     one in each sequel bridge), with `SequelWeaponLayers.cpp`, `SequelSquadLayers.cpp`, `SequelCinema.cpp` and
+     `MenusLe2.cpp`'s `PanelLayers`. research/trilogy-seams.md "One overlay composition": its order, the capabilities it
+     reads, each game's adapter, and the five things LE1 needs before it can call it.
    - The frame is one type since lane U1 (`MevrSeams::OverlayFrame`, `src/halcyon/MevrSeams.h`: the sequels' fields and
      LE1's), and all three composers are `MevrSeams::OverlayLayers`, one definition per host.
-   - **To unify:** one composer,
-     `plugin/Overlays` (`Compose(frame, capabilities, out)`), that calls each layer module in one order and asks the
-     renderer's capabilities (`plugin/Renderer.hpp`) in place of `#if MEVR_WITH_HALCYON_LEx`. The three bridges then
-     only fill the frame. LE1's label quad becomes `HudPieceLayers::Interaction` with ME1's default crop.
+   - **To unify the rest:** move LE1's layers into `SequelOverlays.cpp` (then `plugin/Overlays`) one at a time, each
+     behind a capability and with an LE1 same-pose pair: the HUD panel's inputs, the game's wheel quad, LE1's label quad
+     as `HudPieceLayers::Interaction` with ME1's default crop, the LE1-only layers, the menus' glue (Forks 13).
 2. **The sequel bridges.**
-   - Copies: `HalcyonLe2Bridge.cpp` (761 lines) and `HalcyonLe3Bridge.cpp` (545 lines).
-   - Both repeat:
-     - the `OnSessionCreated`/`OnSessionStopped`/`OnRecentered` resets;
-     - the `OnViewBuilt` publication;
-     - `MergeMotionControllers` (packet numbering, close latch, menu filter);
-     - the galaxy settings and the overlay stack.
-   - **To unify:** `plugin/SequelBridge.cpp`, the shared seam implementations parameterised by a per-game
-     `SequelHooks` struct (galaxy placement, traversal presentation, HUD pieces). Better still, the common seam header
-     below, implemented once for all three.
+   - **Merged by lane U2 (2026-11-16):** `plugin/HalcyonSequelBridge.cpp` defines the session, frame, view, recenter,
+     cinema-screen, HUD-draw and controller-merge seams and the galaxy settings once; each game implements the adapter in
+     `plugin/HalcyonSequelBridge.hpp` (`sequel_bridge::game`: `Facts` and hooks) in `HalcyonLe2Bridge.cpp` (408 lines)
+     and `HalcyonLe3Bridge.cpp` (389 lines). research/trilogy-seams.md "One sequel bridge" lists the adapter per game and
+     every behaviour the merge changed.
+   - Still two: `PlacePanel` (ME2 places only the table, ME3 every native panel: needs ME2's renderer to take
+     `panelsInRoom`), the native map's input (pointer and latch on ME2, a lease on ME3: Forks 3), and the eye-image
+     seams (lane EY).
+   - **Next:** the same shared file for LE1's bridge, seam by seam (`OnViewBuilt` and `OnRecentered` are closest).
 3. **The galaxy map.**
    - ME1: `game/GalaxyMap.cpp` (`StepWindow`, the hologram, the view hold) and `plugin/GalaxyHologram`.
    - LE2: `HalcyonLe2Bridge::PlaceGalaxyPanel` + `gGalaxyTable` (`vr::galaxy_map::NativeTablePanel`), its own
@@ -574,8 +575,8 @@ defined in the tool's header:
 | game | renderer | host plugin files | host core files | services served | src/game + src/engine modules by status | common seams called | own seams |
 |---|---|---|---|---|---|---|---|
 | LE1 | halcyon-le1 | 72 | 71 | 57 | run 67, out 4, ungated 23, unbuilt 4 | 20 of 32 | 91 |
-| LE2 | halcyon-le2 | 63 | 55 | 48 | run 39, ready 10, out 22, ungated 21, unreferenced 2, unbuilt 4 | 30 of 32 | 4 |
-| LE3 | halcyon-le3 | 66 | 55 | 48 | run 39, ready 10, out 22, ungated 22, unreferenced 2, unbuilt 3 | 30 of 32 | 2 |
+| LE2 | halcyon-le2 | 65 | 55 | 48 | run 39, ready 10, out 22, ungated 21, unreferenced 2, unbuilt 4 | 30 of 32 | 4 |
+| LE3 | halcyon-le3 | 68 | 55 | 48 | run 39, ready 10, out 22, ungated 22, unreferenced 2, unbuilt 3 | 30 of 32 | 2 |
 <!-- /parity:summary -->
 
 ### Host plugin files per game
@@ -608,6 +609,7 @@ defined in the tool's header:
 | `HalcyonLe3` | - | - | yes |
 | `HalcyonLe3Bridge` | - | - | yes |
 | `HalcyonOverlays` | yes | - | - |
+| `HalcyonSequelBridge` | - | yes | yes |
 | `HandReticle` | yes | yes | yes |
 | `HdrDisplayPolicy` | - | yes | yes |
 | `HudPanel` | yes | yes | yes |
@@ -647,6 +649,7 @@ defined in the tool's header:
 | `ScopeCaptureSource` | yes | yes | yes |
 | `Seams` | yes | yes | yes |
 | `SequelCinema` | - | yes | yes |
+| `SequelOverlays` | - | yes | yes |
 | `SequelSquadLayers` | - | yes | yes |
 | `SequelWeaponLayers` | - | yes | yes |
 | `SetupRequest` | yes | yes | yes |

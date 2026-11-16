@@ -1042,6 +1042,7 @@ function(mevr_add_plugin game)
     if (MEVR_HALCYON AND game STREQUAL "LE2" AND NOT MEVR_LE2_DIAGNOSTIC)
         set(with_halcyon_le2 ON)
         list(APPEND host_sources src/plugin/HalcyonLe2.cpp src/plugin/HalcyonLe2.hpp src/plugin/HalcyonLe2Bridge.cpp
+            src/plugin/HalcyonSequelBridge.cpp src/plugin/HalcyonSequelBridge.hpp src/plugin/SequelOverlays.cpp
             src/plugin/Seams.cpp src/halcyon/MevrSeams.h src/plugin/RecenterTilt.cpp src/plugin/RecenterTilt.hpp
             src/core/vr/Recenter.cpp src/core/vr/Recenter.hpp
             src/plugin/HdrDisplayPolicy.cpp src/plugin/HdrDisplayPolicy.hpp
@@ -1120,6 +1121,7 @@ function(mevr_add_plugin game)
             src/plugin/Le3SceneCapture.cpp src/plugin/Le3SceneCapture.hpp src/plugin/SceneCaptureTarget.hpp
             src/plugin/MotionBlurGuard.cpp src/plugin/MotionBlurGuard.hpp
             src/plugin/HalcyonLe3Bridge.cpp src/plugin/RendererLe3.cpp src/halcyon/le3/mevr_bridge.h
+            src/plugin/HalcyonSequelBridge.cpp src/plugin/HalcyonSequelBridge.hpp src/plugin/SequelOverlays.cpp
             src/plugin/HdrDisplayPolicy.cpp src/plugin/HdrDisplayPolicy.hpp
             src/plugin/GameThreadCalls.cpp src/plugin/XrHost.cpp src/plugin/FloorLock.cpp src/plugin/PadMerge.cpp
             src/plugin/TestLoop.cpp src/plugin/Swapchains.cpp src/plugin/EyeCopy.cpp src/plugin/Colour.cpp
