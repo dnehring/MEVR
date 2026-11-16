@@ -171,7 +171,6 @@ void NoteGalaxyUi(bool window, unsigned draws, unsigned text, unsigned early, un
 using mevr::host::QuadSwapchain;
 
 XrSession gSession = XR_NULL_HANDLE;
-QuadSwapchain gPointerDotSwapchain;   // the game pointer's dot (plugin/GamePointer, research/42)
 
 // `evict`: how plugin/Swapchains lets go of it for room (default: Destroy; it's made again when next wanted).
 bool CreateSwapchain(XrSession session, std::uint32_t width, std::uint32_t height, QuadSwapchain& out,
@@ -665,77 +664,7 @@ void PlaceControl(ControlQuad& control, XrVector3f const& at, XrVector3f const& 
     control.quad.size = {widthM, lengthM};
 }
 
-// The game pointer's dot (plugin/GamePointer, research/42): a filled light dot over a half-transparent dark rim, the
-// menu pointer's look (MevrMenuPointer.cpp), premultiplied; one static image like the reticle's.
-constexpr UINT kPointerDotSize = 64;
-
-std::vector<std::uint32_t> PointerDotPixels() {
-    std::vector<std::uint32_t> pixels(static_cast<size_t>(kPointerDotSize) * kPointerDotSize);
-    auto encode = [](float linear) {
-        float const c = linear <= 0.0031308f ? linear * 12.92f : 1.055f * std::pow(linear, 1.0f / 2.4f) - 0.055f;
-        return static_cast<std::uint32_t>(std::clamp(c, 0.0f, 1.0f) * 255.0f + 0.5f);
-    };
-    float const px = 2.0f / static_cast<float>(kPointerDotSize);
-    auto disc = [px](float d, float radius) { return std::clamp((radius - d) / px + 0.5f, 0.0f, 1.0f); };
-    for (UINT y = 0; y < kPointerDotSize; ++y) {
-        for (UINT x = 0; x < kPointerDotSize; ++x) {
-            float const u = (static_cast<float>(x) + 0.5f) * px - 1.0f;
-            float const v = (static_cast<float>(y) + 0.5f) * px - 1.0f;
-            float const d = std::sqrt(u * u + v * v);
-            float const light = disc(d, 0.62f);
-            float const rimAlpha = 0.75f * disc(d, 0.95f);
-            float const a = light + rimAlpha * (1.0f - light);
-            float const r = light * 0.31f, g = light * 0.78f, b = light * 1.0f;
-            pixels[static_cast<size_t>(y) * kPointerDotSize + x] =
-                encode(r) | (encode(g) << 8) | (encode(b) << 16) | (static_cast<std::uint32_t>(a * 255.0f + 0.5f) << 24);
-        }
-    }
-    return pixels;
-}
-
-bool EnsurePointerDot(ID3D11DeviceContext* context, ID3D11Device* device) {
-    if (gPointerDotSwapchain.handle != XR_NULL_HANDLE) {
-        return true;
-    }
-    if (gPointerDotSwapchain.Refused() ||
-        !CreateSwapchain(gSession, kPointerDotSize, kPointerDotSize, gPointerDotSwapchain, "game pointer dot")) {
-        return false;
-    }
-    std::vector<std::uint32_t> const pixels = PointerDotPixels();
-    D3D11_TEXTURE2D_DESC td{};
-    td.Width = kPointerDotSize;
-    td.Height = kPointerDotSize;
-    td.MipLevels = 1;
-    td.ArraySize = 1;
-    td.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
-    td.SampleDesc.Count = 1;
-    td.Usage = D3D11_USAGE_IMMUTABLE;
-    td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-    D3D11_SUBRESOURCE_DATA data{pixels.data(), kPointerDotSize * 4, 0};
-    ComPtr<ID3D11Texture2D> source;
-    if (FAILED(device->CreateTexture2D(&td, &data, source.GetAddressOf()))) {
-        mevr::log::Error("overlays: game pointer dot texture creation failed");
-        gPointerDotSwapchain.Destroy();
-        gPointerDotSwapchain.Refuse();
-        return false;
-    }
-    for (size_t i = 0; i < gPointerDotSwapchain.images.size(); ++i) {
-        std::uint32_t index = 0;
-        if (!AcquireImage(gPointerDotSwapchain, index)) {
-            mevr::log::Error("overlays: game pointer dot swapchain image acquire failed");
-            gPointerDotSwapchain.Destroy();
-            gPointerDotSwapchain.Refuse();
-            return false;
-        }
-        context->CopyResource(gPointerDotSwapchain.images[index], source.Get());
-        ReleaseImage(gPointerDotSwapchain);
-    }
-    mevr::host::testloop::NameSwapchain(gPointerDotSwapchain.handle, "gamepointer");
-    mevr::host::testloop::SetStaticImage(gPointerDotSwapchain.handle, kPointerDotSize, kPointerDotSize, pixels);
-    return true;
-}
-
-XrCompositionLayerQuad gPointerDotQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};
+// The game pointer's dot: plugin/GamePointer's DotLayer (both hosts since 2026-11-15).
 bool gLoggedPointerDot = false;
 
 XrVector3f ToVec(float const v[3]) { return {v[0], v[1], v[2]}; }
@@ -836,6 +765,7 @@ void OnRecentered() noexcept {
     mevr::host::calibration::Recentered();  // and the guided calibration's layout
 #if defined(MEVR_WITH_MAIN_MENU)
     mevr::host::main_menu::Recentered();  // and our open main menu
+    mevr::host::thespian::Recentered();
 #endif
     mevr::host::halcyon::NoteRecentered();  // the holsters take the standing eye height there
 }
@@ -900,7 +830,7 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     XrSession const session = static_cast<XrSession>(frame.session);
     if (session != gSession) {
         hud_panel::ForgetSession();
-        gPointerDotSwapchain.Forget();
+        mevr::host::game_pointer::ForgetSession();  // the game pointer's dot
         gWheelSwapchain.Forget();
         gLabelSwapchain.Forget();
         hpl::ForgetSession();
@@ -1129,7 +1059,7 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
                 if (!worldShown->puzzle) {
                     float const touchArea[4] = {worldShown->part.u0, worldShown->part.v0, worldShown->part.u1, worldShown->part.v1};
                     mevr::host::game_pointer::NoteGameUiQuad(worldShown->whole.pose, worldShown->whole.widthM, worldShown->whole.heightM,
-                        MELEVR::MevrBridge::PanelKind::GameMenu, touchArea, worldShown->onWrist ? 0 : -1);
+                        mevr::host::game_pointer::PanelKind::GameMenu, touchArea, worldShown->onWrist ? 0 : -1);
                 } else {
                     mevr::host::game_pointer::HoldOffForPuzzle();  // its first frame forgets the quad at once
                 }
@@ -1608,7 +1538,7 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
             if (galaxyWindowUi || mevr::host::galaxy_hologram::AskingTravel()) {
                 bool const flash = galaxyScene && mevr::vr::galaxy_map::FlashInteraction(galaxyScene->level, galaxyScene->askTravel != 0);
                 mevr::host::game_pointer::NoteGameUiQuad(gPanelQuad.pose, gPanelQuad.size.width, gPanelQuad.size.height,
-                    flash ? MELEVR::MevrBridge::PanelKind::GameMenu : MELEVR::MevrBridge::PanelKind::GalaxyMap);
+                    flash ? mevr::host::game_pointer::PanelKind::GameMenu : mevr::host::game_pointer::PanelKind::GalaxyMap);
             }
         }
     }
@@ -1655,18 +1585,10 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
         pointerFrame.headValid = frame.headValid;
         pointerFrame.head = ToVec(frame.headPosition);
         mevr::host::game_pointer::Dot dot;
+        XrCompositionLayerQuad const* dotLayer = nullptr;
         if (mevr::host::game_pointer::Step(pointerFrame, dot) && count < capacity && device != nullptr &&
-            EnsurePointerDot(context, device.Get())) {
-            gPointerDotQuad = {XR_TYPE_COMPOSITION_LAYER_QUAD};
-            gPointerDotQuad.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;  // premultiplied
-            gPointerDotQuad.space = static_cast<XrSpace>(frame.appSpace);
-            gPointerDotQuad.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
-            gPointerDotQuad.subImage.swapchain = gPointerDotSwapchain.handle;
-            gPointerDotQuad.subImage.imageRect = {{0, 0}, {static_cast<int32_t>(kPointerDotSize), static_cast<int32_t>(kPointerDotSize)}};
-            gPointerDotQuad.pose = dot.pose;
-            float const size = dot.pressed ? dot.size * 0.8f : dot.size;  // a press shrinks it a little
-            gPointerDotQuad.size = {size, size};
-            layersOut[count++] = &gPointerDotQuad;
+            (dotLayer = mevr::host::game_pointer::DotLayer(session, static_cast<XrSpace>(frame.appSpace), context, device.Get(), dot)) != nullptr) {
+            layersOut[count++] = dotLayer;
             if (!gLoggedPointerDot) {
                 gLoggedPointerDot = true;
                 mevr::log::Info("overlays: first game pointer dot at ({:.2f}, {:.2f}, {:.2f}) m, {:.3f} m across", dot.pose.position.x,

@@ -9,6 +9,7 @@
 #include "ue3/Pattern.hpp"
 #include "ue3/Reflect.hpp"
 #include "ue3/SafeNames.hpp"
+#include "ue3/UnambiguousMethod.hpp"
 
 #include <cstdint>
 #include <cstdio>
@@ -159,7 +160,8 @@ struct World {
         return p;
     }
 
-    World() {
+    explicit World(ue3::Layout layout = TestLayout()) {
+        f.layout = layout;
         ue3::Object* const package = f.Make("Package", nullptr, nullptr);  // class fixed up below
         ue3::Object* const core = f.Make("Core", package, nullptr);
         ue3::Object* const engine = f.Make("Engine", package, nullptr);
@@ -386,6 +388,35 @@ void TestParams() {
     CHECK(q.Set("Count", 7) && q.Get<int>("Count") == std::optional<int>(7));
     CHECK(q.SetBool("bPause", false) && static_cast<std::uint8_t*>(q.Data())[0] == 0);
     CHECK(!q.ReturnSpec());
+}
+
+// LE3 puts the native function pointer before the flags/index/parameter metadata. Keep this
+// synthetic layout distinct from every game's offsets: the shared reader must not assume the
+// LE1/LE2 ordering or overlay the pointer with metadata. No process event is executed here.
+void TestFunctionPointerBeforeFlags() {
+    ue3::Layout layout = TestLayout();
+    layout.functionFunc = 0x50;
+    layout.functionFlags = 0x58;
+    layout.functionNative = 0x5C;
+    layout.functionParmsSize = 0x5E;
+    layout.functionReturnOffset = 0x60;
+    World w(layout);
+    auto* const fn = static_cast<ue3::Function*>(w.setRotation);
+    void* const marker = w.actor;  // a data marker, never callable
+    w.f.Set(fn, layout.functionFunc, marker);
+    w.f.Set(fn, layout.functionFlags, std::uint32_t{ue3::function_flags::kNative});
+    w.f.Set(fn, layout.functionNative, std::uint16_t{0x123});
+    ue3::Reflection r(w.f.Universe());
+    CHECK(r.NativeFunc(fn) == marker);
+    CHECK(r.FunctionFlags(fn) == ue3::function_flags::kNative);
+    CHECK(r.NativeIndex(fn) == 0x123);
+    CHECK(r.ParmsSize(fn) == 16 && r.ReturnOffset(fn) == 12);
+    ue3::Params args(r, fn);
+    CHECK(args.Valid() && args.Size() == 16);
+    CHECK(args.Set("NewRotation", ue3::Rotator{12, 34, 56}));
+    CHECK(args.SetBool("ReturnValue", true));
+    CHECK(args.ReturnBool() == std::optional<bool>(true));
+    CHECK(r.NativeFunc(fn) == marker && r.NativeIndex(fn) == 0x123);
 }
 
 void TestPatterns() {
@@ -631,12 +662,59 @@ void TestSafeNames() {
     CHECK(ue3::safe::FindFrames(blind, fl, lo, lo + sizeof(stack), frames, 8) == 0);
 }
 
+void TestUnambiguousMethods() {
+    World w;
+    ue3::Reflection initial(w.f.Universe());
+    auto* structure = initial.FindClass("Core.Struct");
+    auto* function = initial.FunctionClass();
+    auto* core = initial.OuterOf(structure);
+    auto* stateClass = w.f.Make("State", w.classClass, core);
+    w.f.Set(stateClass, w.f.layout.fieldSuper, structure);
+    auto* state = w.f.Make("Reloading", stateClass, w.bioPawn);
+    auto* stateParent = w.f.Make("Busy", stateClass, w.pawn);
+    auto* overrideMethod = w.f.Make("SetRotation", function, w.bioPawn);
+    auto* duplicate = w.f.Make("SetRotation", function, w.bioPawn);
+    auto* stateMethod = w.f.Make("SetRotation", function, stateParent);
+    w.f.Link(w.bioPawn, {overrideMethod, state});
+    w.f.Link(state, {});
+    w.f.Link(stateParent, {});
+    w.f.Set(state, w.f.layout.fieldSuper, stateParent);
+    ue3::Reflection r(w.f.Universe());
+    CHECK(ue3::UnambiguousMethod(r, w.shepard, "SetRotation") == overrideMethod);
+    CHECK(ue3::UnambiguousMethod(r, w.shepard, "Jump") == w.jump);
+    CHECK(ue3::UnambiguousMethod(r, w.shepard, "Missing") == nullptr);
+    CHECK(ue3::UnambiguousMethod(r, w.dying, "Jump") == nullptr);
+    // Even a state inherited from another class can override a class method. No active
+    // StateFrame offsets are guessed; that ambiguous query must stay unavailable.
+    w.f.Link(stateParent, {stateMethod});
+    CHECK(ue3::UnambiguousMethod(r, w.shepard, "SetRotation") == nullptr);
+    CHECK(ue3::UnambiguousMethod(r, w.shepard, "Jump") == w.jump);
+    w.f.Link(stateParent, {});
+    w.f.Set(stateParent, w.f.layout.fieldSuper, state);
+    CHECK(ue3::UnambiguousMethod(r, w.shepard, "Jump") == nullptr); // cyclic state inheritance
+    w.f.Set(stateParent, w.f.layout.fieldSuper, static_cast<ue3::Object*>(nullptr));
+    w.f.Set(state, w.f.layout.fieldNext, state);
+    CHECK(ue3::UnambiguousMethod(r, w.shepard, "Jump") == nullptr); // cyclic child chain
+    w.f.Set(state, w.f.layout.fieldNext, static_cast<ue3::Object*>(nullptr));
+    w.f.Set(state, w.f.layout.objectOuter, w.pawn);
+    CHECK(ue3::UnambiguousMethod(r, w.shepard, "Jump") == nullptr); // foreign declaration
+    w.f.Set(state, w.f.layout.objectOuter, w.bioPawn);
+    w.f.Link(w.bioPawn, {overrideMethod, duplicate});
+    CHECK(ue3::UnambiguousMethod(r, w.shepard, "SetRotation") == nullptr);
+    w.f.Link(w.bioPawn, {overrideMethod});
+    w.f.Set(overrideMethod, w.f.layout.fieldNext, static_cast<ue3::Object*>(nullptr));
+    w.f.Set(w.bioPawn, w.f.layout.fieldSuper, w.bioPawn);
+    CHECK(ue3::UnambiguousMethod(r, w.shepard, "SetRotation") == nullptr); // cyclic class chain
+}
+
 int RunReflectTests() {
+    TestUnambiguousMethods();
     TestNames();
     TestSafeNames();
     TestLookups();
     TestProperties();
     TestParams();
+    TestFunctionPointerBeforeFlags();
     TestPatterns();
     TestMemory();
     TestOuters();

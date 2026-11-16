@@ -402,7 +402,7 @@ void MeasureModel(engine::UnrealVector const& topWorld, sv::Kind kind, float len
                 }
                 gModel.boneName = gModel.bone ? names[*gModel.bone] : std::string();
                 // Which of the game's models it is (research/21 section 16): the rifles' carry a measured optic.
-#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
                 ue3::Object* const component = weapon::HeldMesh();
                 ue3::Object* const asset = component != nullptr ? player::SkeletalMesh(component) : nullptr;
                 gModel.mesh = asset != nullptr ? ue3::runtime::Get().NameText(asset) : std::string();
@@ -977,7 +977,7 @@ std::optional<XrVector3f> GunTop(vr::aim_ray::Ray const& ray) {
     if (!ray.valid) {
         return std::nullopt;
     }
-    return TopFor(static_cast<int>(weapon::Type()), ray.direction);
+    return TopFor(weapon::PresentationProfile(), ray.direction);
 }
 
 bool TryStartup() {
@@ -1000,8 +1000,8 @@ bool TryStartup() {
 
 sv::Sight Current(vr::aim_ray::Ray const& ray) {
     sv::Settings settings = hand_calibration::GetSights();
-#if defined(MEVR_GAME_LE2)
-    // Validate LE2's sight presentation before using the scope to move the gun or steer shots.
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+    // Validate each sequel's sight presentation before using the scope to move the gun or steer shots.
     settings.assist.enabled = false;
     settings.converge = false;
     settings.aimedFire = false;
@@ -1011,7 +1011,7 @@ sv::Sight Current(vr::aim_ray::Ray const& ray) {
     out.kind = static_cast<std::int32_t>(sv::Kind::None);
     gPull = {};  // set below for a scope with the pull on
     std::string status;
-    int const type = static_cast<int>(weapon::Type());
+    int const type = weapon::PresentationProfile();
     if (!settings.enabled) {
         status = "off ([Sights] enabled = 0)";
     } else if (!ray.valid) {
@@ -1206,7 +1206,7 @@ sv::Sight Current(vr::aim_ray::Ray const& ray) {
 }
 
 std::optional<ik::Vec3> SightInHand(weapon::Grip const& grip, ik::Vec3 const& upInHand) {
-    int const type = static_cast<int>(weapon::Type());
+    int const type = weapon::PresentationProfile();
     auto const muzzle = weapon::Current();
     if (type < 0 || type >= sv::kWeaponTypes || !muzzle) {
         return std::nullopt;
@@ -1278,7 +1278,7 @@ void SetHostView(std::uint32_t view) {
         log::Info("sights: {}", ViewText(view));
     }
     // The model's parts hidden while the scope's picture is up (the sniper's glowing lens; research/21 section 14).
-    int const type = static_cast<int>(weapon::Type());
+    int const type = weapon::PresentationProfile();
     std::string const hide = type >= 0 && type < sv::kWeaponTypes ? hand_calibration::GetSights().guns[type].hide : std::string();
     bool const ownModel = gModel.measured && gModel.weapon != 0 && gModel.weapon == weapon::Key();
     // "auto": the game's model's own parts (research/21 section 16), so the list follows the model as well as the setting.

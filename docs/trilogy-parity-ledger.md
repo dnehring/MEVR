@@ -1,0 +1,986 @@
+<!-- SPDX-License-Identifier: MIT -->
+# Trilogy parity ledger
+
+**As of 2026-11-16, main `ccacd667`.** This was a read-only audit of the code and the docs: no game runs and no code changes.
+
+**Why it exists.** The owner, 2026-11-16: "We likely need to unify approaches to ensure consistency among all games. We
+would find that some work would not leverage the prior art in ME1 and it lead to a lot of waste."
+
+ME1 (LE1) is the reference. ME2 (LE2) and ME3 (LE3) continue it: ME1's systems and defaults first. This page shows in one
+place which ME1 system exists for which game, and in what form. It also lists where the sequels copied instead of
+sharing, and the seams and plans that would let the next lane reuse instead of redo.
+
+## How to read it
+
+**Cells.** Each row is one ME1 system. Its LE1 code is named in the system column. Each LE2 and LE3 cell starts with
+one of these:
+- **shared**: the same code runs on that game. At most a name in `engine/GameAdapter.hpp` differs.
+- **adapted**: shared core plus a small per-game adapter: `#if defined(MEVR_GAME_LEx)` branches, a per-game address, or
+  a thin game file.
+- **forked**: a game-specific copy of what ME1 (or the other sequel) has. This is the waste to remove; see [Forks](#forks).
+- **missing**: not on that game.
+- **n/a**: the game lacks the mechanic. The cell says what the game has instead.
+
+**Verification marks.** A present cell (shared, adapted or forked) then carries one of:
+- **V**: verified. The cell names the check: a commit, a research note with its section and date, or a run's stamp under
+  `%LOCALAPPDATA%\MEVR\sessions` or the protected runner's receipts.
+- **U**: unverified. The code builds and the offline tests pass, but nothing in the game showed it working.
+
+Sequel V marks are fake-headset (SteamVR null driver) or protected runs. No LE3 system and few LE2 systems have a
+physical-headset result.
+
+**Check / next step.** The last column says what would move the cell, usually to V. Where it adds work, it names the files.
+
+**What is generated and what isn't.** `python tools/parity-ledger.py` generates the facts at the [end](#generated-facts)
+from the sources:
+- which host files each game compiles;
+- which HostServices each host serves;
+- each `src/game` and `src/engine` module's status per game (run, ready, out, ungated, unreferenced, unbuilt; defined in
+  the tool's header);
+- the three `MevrBridge` seam vocabularies;
+- the engine names a sequel build uses that the game lacks.
+
+It also counts this page's cells into the [totals](#totals). The cells themselves are judgement and cite those facts.
+
+**Keeping it current.** ctest `mevr-parity-ledger` runs `--check`. It fails whenever a host list, a service, a module's
+gate or a seam changes without `python tools/parity-ledger.py --write`. When it fails, rerun `--write`, then reread the
+rows the change touches.
+
+## Totals
+
+<!-- parity:totals -->
+93 rows.
+
+| game | shared | adapted | forked | missing | n/a | present and verified (V) | present, unverified (U) |
+|---|---|---|---|---|---|---|---|
+| LE2 | 10 | 41 | 5 | 33 | 4 | 37 | 19 |
+| LE3 | 10 | 38 | 7 | 32 | 6 | 20 | 35 |
+<!-- /parity:totals -->
+
+LE1 is the reference, so it has no cells. A few LE1 systems are themselves n/a under Halcyon's renderer: the reflection
+fix (G51), and the classic menu's tab, which our menu replaced. [Sequel-only systems](#sequel-only-systems) aren't
+counted.
+
+## The ten biggest forks and gaps
+
+These are ordered by wasted or blocked work. Each is detailed under [Forks](#forks) or its row.
+
+1. **Overlay composition exists three times** (Forks 1). LE1 has `plugin/HalcyonOverlays.cpp` `OverlayLayers` (1,790
+   lines). LE2 has `HalcyonLe2Bridge.cpp` `OverlayLayers` with `SequelWeaponLayers`, `SequelSquadLayers` and `MenusLe2`.
+   LE3 has a third copy in `HalcyonLe3Bridge.cpp`. There are two `OverlayFrame` structs. Every new quad (reticle,
+   label, wheel, panel) is wired two or three times, each in its own order and with its own gates.
+2. **The sequel bridges duplicate each other** (Forks 2). `HalcyonLe2Bridge.cpp` (761 lines) and `HalcyonLe3Bridge.cpp`
+   (545 lines) repeat the session, recenter and controller-merge bodies, the galaxy settings and the overlay stack. A
+   fix to one doesn't reach the other.
+3. **The galaxy map has three designs** (Forks 3, G25).
+   - ME1: projector hologram and stereo window (`game/GalaxyMap`, `plugin/GalaxyHologram`).
+   - ME2: an opt-in flat table (`NativeTablePanel` via `PlaceGalaxyPanel`).
+   - ME3: `Le3GalaxyCapture` re-implements ME1's `StepWindow`, plus a copy of LE2's table placement and its own input
+     lease.
+
+   `docs/galaxy-projector-handoff.md` "5. Apply the same shared flow to ME2" is the plan, still to do.
+4. **Neither sequel has ME1's renderer performance work** (R02-R09, R13, R23, R24, R26).
+   - Missing: one-Draw stereo, the replay, the Umbra levers, `keepBoundShaderStates`, FSR, metric stereo, Quest pacing
+     and the perf probe.
+   - The sequels render the whole frame twice every present. On LE1, one-Draw saved 2.3 ms (20%) at the heaviest cell
+     (research/37).
+   - Without `PerfProbe` the sequels can't even be measured the ME1 way.
+5. **ME3 lacks ME1's VRIK presentation layer; ME2 lacks holsters** (G08-G12, G18).
+   - LE3 has no holsters, gun kick (no shot source), view level, camera shakes, camera collision or combat stance.
+   - LE2 has no holsters, and its right grip is RB, which opens ME2's wheel.
+   - All of this code exists for ME1; the sequels need adapters, not designs.
+6. **Squad weapons and the sequel power roster are forked** (Forks 5, 6).
+   - `SquadWeapons::TickLe2`/`EquipLe2` (`game/Le2SquadMenu.inc`, used by LE2 and LE3) re-implement LE1's `Tick`.
+   - `le2_squad::Powers` duplicates `game/PowerWheel`'s ME2 roster read.
+7. **Traversal and LE3's movement admission are forked** (Forks 4, 11).
+   - LE2's native block in `game/Traversal.cpp` and `game/Le3Traversal.cpp` are two observers over one core.
+   - LE3 copies the same movement-admission predicate six times (Comfort, ArmIk, Posture, Sprint, Melee, Le3Traversal).
+8. **The test tooling is forked** (Forks 10, G54, R26).
+   - LE2 has a diagnostic host (`MEVR_LE2_DIAGNOSTIC`), `tools/qa-le2`, `tools/le2-halcyon-run`, three launchers and a
+     second save contract (`le2-save.py` recipes and receipts beside `le1-save.py` rewinds).
+   - LE1 has `fake-headset-session.ps1`.
+   - The perf probe exists only on LE1.
+9. **Neither sequel can ship yet** (G47, G50, G02).
+   - Setup and report-a-problem are LE1-only.
+   - Both sequels' player builds still link LExSDKv2.
+   - `game/HeadTracking` reads through `engine::legacy` on LE3. On LE2, and in `game/HandAim` on both, LExSDKv2 is
+     only a fallback while the layer is off (`MEVR_OR_LEGACY`). The "LExSDKv2" notes in the generated module table list
+     every such build.
+   - This blocks M7.1/M7.2 for ME2 and L3-10 for ME3.
+10. **The eye-image pipeline is forked and incomplete on the sequels** (Forks 7, 8; R11, R13-R16).
+    - The sequels apply colour in `plugin/EyeCopy`'s own shader, without the tonemap and without FSR.
+    - The HDR answer is a second module (`plugin/HdrDisplayPolicy`).
+    - `LightEnvironmentShadows False`, a workaround for LE1's replay, is applied on both sequels, which have no replay.
+
+The deferred first-person conversations (G36, G38) are the largest gap by line count: about 10,000 `Ready()`-gated
+lines. They are left off this list because the owner deferred them, not because the work went to waste.
+
+## Renderer and performance
+
+**Groups** say what porting an ME1 technique takes:
+- **1**: already game-independent (D3D11/OpenXR/maths); it runs on any host once its call site exists.
+- **2**: the same technique, needing a per-game hook point, address table or renderer seam.
+- **3**: a fix for Halcyon ME1's own bug or for our LE1 workaround; port it only if the bug shows there.
+
+The [technique groups](#renderer-techniques-by-group) summary follows the table.
+
+| id | technique (LE1 code) | group | LE2 | LE3 | check / next step |
+|---|---|---|---|---|---|
+| R01 | Two-pass stereo: Halcyon's Stereo 2, two `FViewportClient::Draw` per present (`src/halcyon/le1` render_hook.cpp, xr_session.cpp) | 2 | **adapted** V: upstream ME2 SFR (`src/halcyon/le2/calcview_hook.cpp` DrawDetour, `t_replay`), pinned by `ApplyMevrBaseline`; separate eyes in run `20261115-165553-786-LE2-renderer-preview` (d93d39de) | **adapted** V: upstream ME3 SFR (le3 calcview_hook.cpp DrawDetour); 304 first-eye captures for 304 presents, run `20261115-162209-606` (research/le3-renderer-preview-evidence.md) | Physical fusion in a headset. Add an LE3 line to notes/headset-checklist.md (it has none). |
+| R02 | One-Draw stereo, `[Performance] sharePass = 5`. `plugin/RenderLevers.cpp`: SceneRenderHook on FSceneRenderer::Render `0x76EE20`, FinishHook `0x76DD10` → SynthesiseSecondView, tail start `0x77BE00`, deleter `0x4ED700`. Seams `RecordPass1View`, `g_oneDrawStereo` | 2 | **missing**: DrawDetour always runs both Draws | **missing**: same | Per game it needs: the render entry (research candidates LE2 `0x34BF70`, LE3 `0x368850`); the finish, tail and deleter addresses; the views field and clone stride (LE1 0x12F0, LE2 0x11A0, LE3 0x11B0); a RecordPass1View in the SFR branch; and a skip of DrawDetour's replay Draw. Then A/B with R26. |
+| R03 | Second-eye D3D replay (`plugin/DrawReplay.cpp`, sharePass 2/3/5; `Record*` seams in le1 d3d_capture.cpp) | 1 (recorder) / 2 (tail and finish) | **missing** | **missing** | Port with R02: the `Record*` seams in each sequel `d3d_capture.cpp` draw hook. |
+| R04 | Replay screen-space matrices (`core/vr/ScreenMatrix`, `core/d3d11/ShaderReflect`, seam `NotePixelShaderCreated` on CreatePixelShader, `replayScreenMatrices`) | 1 + seam | **missing** (moot without R03) | **missing** | Not determined: whether ME2/ME3 shaders take `ScreenToShadowMatrix`/`ScreenToWorld`. |
+| R05 | Replay buffer-wrap shadows (DrawReplay's Map hook, `ShadowFor`) | 1 | **missing** (moot without R03) | **missing** | Comes with R03. |
+| R06 | Each eye's own off-centre frustum (`oneDrawWindow = 0`, `sfr2MetricEyeFrustum`; render_hook.cpp `ApplyMetricFrustumSEH` at view +0x1D0) | 2 | **missing**: symmetric FOV plus a submit shift (`g_sfrConvergence`) | **missing**: same | Needs a CalcSceneView seam per renderer. The FSceneView offsets 0x90..0x320 are the same in all three trees (le2 calcview_hook.cpp:28-34, le1 render_hook.cpp:71-77). |
+| R07 | Umbra levers: `umbraEyeMatrix` (IssueOcclusionQueries `0x8B6550`), `umbraQueryWait` (`0x8C34C0`), `perEyeOcclusion` (view state +0xD10), `umbraSharedVisibility`, `umbraSecondEyeClearBits` | 2 | **missing** | **missing** | First find out whether ME2/ME3 run Umbra at all (not determined; LE3's table has `Capture.RenderUmbra` `0x3685C0`). |
+| R08 | `keepBoundShaderStates`: hook on the FD3D11BoundShaderState constructor `0x9A89F0`, AddRef through GDynamicRHI `0x17938C8` vtable slot 0x8A0 | 2 | **missing** | **missing** | The cheapest render-thread win to port (LE1: −5 ms cold, ~−1 ms warm; research/35 attempt 43). First sample the sequel render thread for CreateInputLayout (`tools/sample-render-thread.ps1`). Needs the constructor RVA, GDynamicRHI (LE3 `0x1894018`; LE2 not determined), the slot and the handle offset. |
+| R09 | `minScreenRadiusPx` (UmbraInstanceVisibleHook `0x8BE0B0`) | 2 | **missing** | **missing** | Depends on R07's Umbra question. |
+| R10 | Motion-blur guard (`plugin/MotionBlurGuard.cpp`: MotionBlurProxy vtable swap, LE1 5 pairs, installed in `Entry.cpp`) | 2 (3 on LE1: settings re-enabled the blur, research/62) | **missing**: blur is off only through R12's `MotionBlur False`; `motionBlurProtected` not served | **adapted** V: 7 audited ME3 proxy pairs (`Addresses.hpp` LE3 `kMotionBlurProxyPairs`); a different reason (a null velocity buffer crashed the recenter); run `20261115-180239-899`, 2,825 guarded conversions, 0 unknown (research/le3-recenter-transition-failure.md) | LE2: a head-turn snapshot pair looking for one-eye smear (LE1's symptom) before porting. |
+| R11 | `LightEnvironmentShadows False` while the second eye is a replay (`game/SystemSettings.cpp` `Wanted()`) | 3 (our replay's workaround) | **shared** U: **applied without a replay**. An empty `[Performance] sharePass` reads as 5, so ME2 loses character shadows for nothing | **shared** U: same | Gate it on the LE1 host's replay (`#if defined(MEVR_GAME_LE1)`, or a host flag), then check the sequels' character shadows come back. |
+| R12 | SystemSettings applied by the mod (`game/SystemSettings`: `scale set` after each level change, each boolean through its opposite) | 1 | **adapted** V: `#if MEVR_GAME_LE2` waits 3 s into gameplay; A/B runs A–J 2026-11-14 (research/le2-renderer-integration "The first-gameplay-frame fault", 87af915d) | **shared** U: no receipt that `scale set` applies on LE3 | LE3: the `system settings:` log lines in a protected run, plus an A/B of DynamicShadows. |
+| R13 | FSR 1 eye upscale (`plugin/Upscale`, `core/vr/Upscale`; seam `EyeUpscale` in BlitTextureToEyeWithFill) | 1 + seam | **missing**: eye swapchains at backbuffer size (le2 me2_xr.cpp `g_aerSwapW = g_bbW`) | **missing** | Run `core/vr/Upscale` inside `plugin/EyeCopy` (the sequels' `CopyIntoImage`), with eye swapchains at the headset's recommended size. |
+| R14 | Colour per headset (`plugin/Colour`, `core/vr/Colour`; LE1 seams `EyeColourShaders/Shader/Done` in Halcyon's eye blit) | 1 | **adapted** V: the same core in `plugin/EyeCopy`'s corrected shader (`MEVR_EYE_OUT`); research/le2-picture.md | **adapted** U: same path; headset set in `HalcyonLe3Bridge::OnSessionCreated` | LE3: a colour-profile snapshot A/B. Unify the call site (Forks 8). |
+| R15 | HDR tonemap (`MEVR_TONE` in le1 xr_session.cpp `ToEye`; `[Colour] tonemap`, `toneHue`) | 1 + seam | **missing**: EyeCopy's shader never calls `MevrTone` | **missing** | Moot while `hdrDisplay = -1`, the default on all three. Add it to EyeCopy with R13. |
+| R16 | HDR display answer (LE1 `HalcyonBridge.cpp` `HdrDisplayDesc`, through Halcyon LE1's GetDesc1 patch) and the float frame copied into the eyes | 1 | **forked** V: `plugin/HdrDisplayPolicy` (its own IDXGIOutput6::GetDesc1 hook from `OnFactory`) + `plugin/EyeCopy`; answered SDR, format 28 (research/le2-hdr.md) | **forked** V: same modules; 8-bit backbuffer in run `20261115-162209-606`; ctest `mevr-eye-copy-warp` | Unify: LE1's seam calls `hdr_display` (Forks 7). |
+| R17 | Swapchain budget (`plugin/Swapchains`, `core/vr/SwapchainBudget`) | 1 | **shared** V: `swapchains: gun status ... made` (stretch `20261114-212412-lane-b2-layers`) | **shared** U | LE3: a `[Debug] swapchainCap = N` run, as LE1's of 2026-11-06. |
+| R18 | HUD panel (`plugin/HudPanel`; LE1 has 11 `HudPanel*` seams in d3d_capture.cpp via HalcyonOverlays) | 1 (core) / 2 (UI-draw classification) | **adapted** V: one `MevrHudPanelDraw` seam in le2 d3d_capture.cpp's three draw hooks, `PcHud::SetAuthoredLayout`; stretch `20261114-2152..2206-lane-b3-hud` (e03a7364) | **adapted** U: one `HudPanelDraw` site, but `RendererLe3::Hud().hudPanel = false`: only cinema UI and measured label crops leave the eyes, and the gameplay HUD stays in the eye images | LE3: measure the HUD's draw batches and crops (research/le3-shared-presentation "crop gates"), then turn `hudPanel` on. |
+| R19 | Hand reticle, with the game's crosshair hidden (`plugin/HandReticle`; `game/ScreenReticle`, `hideScreenReticle`) | 1 | **adapted** V: crosshair `_alpha=0` (stretch `20261115-001659-lane-b4-m2`, 30902fc6) | **adapted** U: ring through `SequelWeaponLayers`. Crosshair hide missing: `hideScreenReticle = nullptr` in BuildServices, and ScreenReticle compiles LE1 field names in its `#else` | LE3: a ScreenReticle LE3 branch (ME3's SDK list has no `BioSFHandler_Reticule`, see the generated names). |
+| R20 | Overlay layer composition (`plugin/HalcyonOverlays.cpp` OverlayLayers) | 1 (modules) | **forked** V: `HalcyonLe2Bridge.cpp` OverlayLayers + `SequelWeaponLayers`/`SequelSquadLayers`/`MenusLe2`; stretch `20261114-212412-lane-b2-layers` | **forked** U: a third composition in `HalcyonLe3Bridge.cpp` (menu captures show no missing layer) | Forks 1. |
+| R21 | Cinema screen, its backdrop and the transition fade (`plugin/CineScreen`, `core/vr/CineScreen`, `CinemaBackdrop`, `TransitionFade`; LE1 seams in xr_session.cpp and PlanStereo's screen branch) | 1 + seams | **adapted** V: `plugin/SequelCinema` through `CineScreenWanted`/`HalfSeparationUU`/`Layers`/`TransitionFadeLayer`; run `20261115-042015-m5-cinema` (research/le2-cinema.md, 1834c240) | **adapted** U: the same seams wired (le3 me2_xr.cpp), Halcyon's own VR cine forced off; no separate-eye cinema acceptance | LE3: snapshots in a mode-7 conversation (the LE2 run's script). |
+| R22 | Front end and presentation hold (`plugin/PresentationHold`; seams `FrontEndHold`, `HoldPlainVr`, `FrontEndOnScreen`, `FrontEndBeforeTitle`) | 3 | **missing**: Halcyon ME2's flat panel (MonoMenus) | **missing** | Check first whether the sequels flip between views at start-up: snapshots from launch to the title. Port only if they do. |
+| R23 | Metric (life-size) stereo (`plugin/MetricStereo`, `core/vr/MetricStereo`, `PlanStereo`, `NoteStereoSubmit`; `sfr2Metric`) | 2 (seam) on a group-1 core | **missing**: `HalfEyeUU` 3.55 at 50 uu/m with convergence 0.025 at submit (me2_menu.cpp LoadValues) | **missing**: half eye 1.6, convergence 0.03 | Measure far-scenery disparity on a sequel snapshot pair with `tools/stereo-check.py`. research/30 found LE1's divergent; the number sets the priority. |
+| R24 | Frame pacing (`plugin/QuestPacing`; seams `EarlyFrameWait`, `FullFrameLoop`, `QuestPacing*`; `pacingRecovery`) | 1 (core) + 2 | **missing**: upstream StereoFramePacing | **missing**: upstream PaceDisplayLocked | Needs an xrWaitFrame seam in each sequel RunFrame (le2 me2_xr.cpp ~1587, le3 ~1395). Test on a streamed Quest. |
+| R25 | Test loop: snapshots, recording, replay (`plugin/TestLoop`, seam `WrapSessionFunctions`) | 1 + seam | **adapted** V: run `20261114-191506-lane-b-testloop` (04fa43a2); waitFrame/beginFrame not wrapped | **adapted** V: every protected run, e.g. `20261115-182253-344` (14 captures) | — |
+| R26 | Perf probe (`plugin/PerfProbe`, `core/vr/FrameProbe`; seams `PerfPresentScope`, `PerfPass0Captured`, `PerfPoint`) | 1 (core) + seams | **missing** | **missing** | PerfProbe includes halcyon/le1 headers: split those out, then add the seams at each sequel's Present, xrWaitFrame and xrBeginFrame (docs/me3-overall-goal-handoff.md §4). |
+| R27 | Delayed per-eye pose history (LE1: Halcyon's EYETAG code in xr_session.cpp; sequels: `core/vr/StereoPoseTag.hpp`, `core/vr/EyePublication`) | 1 + seams | **adapted** V: run `20261115-165553-786` (research/sequel-eye-pose-tags.md) | **adapted** V: runs `20261115-165123-287`, `20261115-174634-476` | Physical fusion. |
+| R28 | Recenter: yaw-only, plus a removed tilt (seam `RecenterOrientation` → `plugin/RecenterTilt`, `core/vr/Recenter`) | 1 + seam | **adapted** U: yaw-only `RecenterAppSpace` → `OnRecentered`. Tilt removal missing (`RendererLe2::RecenterTiltDeg` has no consumer) | **adapted** V: recenter in run `20261115-180239-899`; tilt removal missing | Call `RecenterOrientation` in each sequel's `RecenterAppSpace`. SteamVR's upside-down start reaches every game (docs/le2-from-le1.md 3.1). |
+| R29 | Body bounds for the culling camera (`engine/BodyBounds`: post-hook `0x58EEC0`, Umbra hand-over `0x25CFE0`; ArmIk's `bConsiderAllBodiesForBounds`) | 2 + 3 (cause: Halcyon LE1's GPU-only view offset) | **missing**: `ready`; `kSkelUpdateBounds`/`kPrimitiveUmbraBounds` are 0. ArmIk's flag part runs | **missing**: same | First check whether the sequels cull the body at all. LE1's repro: look down with the head turned (gotchas/culling-camera-ahead-of-the-eye). |
+| R30 | Spectator mirror (`game/Spectator`, `plugin/Spectator`, seam `SpectatorMirror`) | 1 (host draw) + 2 | **missing** | **missing** | — |
+| R31 | Scene-capture plumbing (RenderLevers CaptureSceneHook `0x742C80`, BeginBackBufferHook `0x773D30`; UiWorldFigure's Umbra skip `0x7526C0`) | 2 | **missing** | **forked** V: `plugin/Le3SceneCapture` (its own RVAs; shares `plugin/SceneCaptureTarget.hpp`, `core/vr/SceneCaptureScope`); raw map captures in run `20261115-220823-943` (research/le3-galaxy.md) | Forks 9. |
+| R32 | Pinned renderer baseline (LE1 `MevrBridge::ModernBaseline`: stereo, flat menus, first person, no head aim) | per renderer | **adapted** V: `ApplyMevrBaseline` (le2 me2_menu.cpp) after every ini load; first run 2026-11-14 (research/le2-renderer-integration) | **adapted** U: compile-time `#if !defined(MEVR_ASI)` disables in le3 me2_menu.cpp | Per renderer by nature. |
+| R33 | Hotkeys only with the game in front (`MevrBridge::KeyDown`) | 1 | **adapted** U: `MevrBridge::HotkeyDown` (le2 mevr_bridge.h) | **adapted** U: `KeyDown` in le3 d3d_capture.cpp | Type the key in another window during a run; nothing should toggle. |
+| R34 | Halcyon's script calls queued to the game thread (seam `QueueProcessEvent`, `plugin/GameThreadCalls`; research/36) | 3 (Halcyon's Present-thread ProcessEvents; the sequels have the same pattern) | **shared** V: "stereo and the queue work", first run 2026-11-14 (CLAUDE.md) | **shared** U: le3 engine_probe.cpp:282 queues | LE3: the host's `process event: off the game thread:` count in a run log. |
+| R35 | Performance modes and the first start's eye size (`core/vr/PerformanceModes`, `MainMenuSettings` Display > Performance, `FirstStartEyeSize`) | menu | **missing**: `FirstStartEyeSize` is empty off LE1 (`#if !defined(MEVR_MENU_LE1)`), and the levers it bundles don't exist there | **missing** | After R08 and R13. |
+
+### Renderer techniques by group
+
+**Group 1 (already game-independent): bring the call site, not the code.**
+- The draw recorder and replay (`plugin/DrawReplay.cpp`: d3d11 vtable slots, no engine address).
+- Its screen-space matrix rewrite (`core/vr/ScreenMatrix`, `core/d3d11/ShaderReflect`) and buffer-wrap shadows.
+- `game/SystemSettings` (console commands through reflection).
+- FSR (`core/vr/Upscale`), colour per headset (`core/vr/Colour`), the HDR tonemap (shader text).
+- The HDR display answer and EyeCopy (DXGI/D3D11 only).
+- The swapchain budget, the HUD panel core, the hand reticle, the overlay modules, the cinema screen core, backdrop and fade.
+- Per-eye pose tags (`core/vr/StereoPoseTag.hpp`).
+- The test loop core and `core/vr/FrameProbe`, Quest pacing's core (OpenXR extensions), recenter tilt (`core/vr/Recenter`).
+- The spectator's host draw, and the scope capture source's texture search (`ScopeCaptureSource`: UTexture.Resource +0xA0 → +0x8).
+
+**Group 2 (per-game hook, address or seam).**
+- One-Draw stereo (RenderLevers: `0x76EE20`, `0x76DD10`, `0x77BE00`, `0x4ED700`; views field and clone stride) and the
+  replay's tail and finish boundaries.
+- The per-eye frustum (a CalcSceneView seam; the view offsets match in all three trees).
+- The Umbra levers (`0x8B6550`, `0x8C34C0`, `0x9A04B0`, view state +0xD10) and `minScreenRadiusPx` (`0x8BE0B0`).
+- `keepBoundShaderStates` (`0x9A89F0`, GDynamicRHI `0x17938C8` slot 0x8A0).
+- The motion-blur guard (a per-game proxy-pair table; done for LE3).
+- Metric stereo (a seam in the SFR branch).
+- Frame pacing (a seam at xrWaitFrame, which depends on the RunFrame order).
+- The perf probe's seams; the HUD's UI-draw classification and crops.
+- Body bounds (`0x58EEC0`, `0x25CFE0`); the scene-capture hooks (`0x742C80`, `0x773D30`, `0x7526C0`; LE3 has its own,
+  `plugin/Le3SceneCapture`).
+
+**Group 3 (Halcyon ME1's bugs or our LE1 workarounds): port only if the bug shows.**
+- **The presentation hold.** Halcyon ME1's unreadable mode byte, logos movie and title camera-flight cine latch. The
+  sequels classify views their own way; whether they flip is not determined.
+- **`LightEnvironmentShadows False`.** Our replay's workaround; wrongly on in the sequels (R11).
+- **The body-bounds padding.** Caused by Halcyon LE1's GPU-only view offset of 0.43 m back.
+- **The motion-blur guard's LE1 reason.** Settings paths re-enabled the blur. LE3 needed the guard for a different crash.
+- **The HUD panel's tint-blend path.** Scaleform's non-"over" blends stayed in the eyes (the doubled wheel).
+- **The game-thread queue.** Halcyon's Present-thread ProcessEvents. This one did show in the sequels: the seam is in all
+  three (R34).
+- **The `MELEVR.ini` save safety and ImGui's `HasGamepad` flag.** Halcyon LE1's own; the sequels' menus are upstream's.
+
+## Gameplay and UI
+
+| id | system (LE1 code) | LE2 | LE3 | check / next step |
+|---|---|---|---|---|
+| G01 | VRIK arm IK (`game/ArmIk`, `engine/BonePose`, `core/ik`; docs/vrik-porting-guide.md) | **adapted** V: LE2 `kUpdateSkelPose 0x79B8A0`; research/le2-vrik.md "The run" 2026-11-14 (141fd1d5, 965321e2): wrists 0.07 m off, skeleton audit within 3 cm. Root-motion work unmerged: 5f16c065 on `worktree-agent-a2e1237ec285988ed` | **adapted** V: LE3 layout, `kUpdateSkelPose 0x796EB0`, `MenuBodyEligible`; runs `20261115-182253-344`, `20261115-183117-290` (research/le3-body-pose.md) | Headset: hands on the controllers (snapshot `mod.armIk.hands`). |
+| G02 | Hand aim and the aim ray (`game/HandAim`) | **adapted** V: `SFXWeapon.GetAdjustedAim` post-handler; 34 shots 0.4–0.8° from the barrel (le2-vrik) | **adapted** U: LE3 branches; LExSDKv2 (`engine::legacy`) only as a fallback while the layer is off (`MEVR_OR_LEGACY`), as on LE2 | LE3: a combat fixture (research/le3-combat-fixtures.md). Drop the fallback for the SDK-free players' build. |
+| G03 | Fingers (`game/Fingers`, `core/ik/Fingers`) | **shared** U | **shared** U | Snapshot `mod.fingers` with a replayed trigger and grip on each game's skeleton. |
+| G04 | The drawn gun (`game/Weapon`) | **adapted** V: muzzle against `GetMuzzleLoc`, 0.00 units (le2-vrik) | **adapted** U: LE3 weapon classes, the SMG as its own `RangedType` | LE3: a combat fixture. |
+| G05 | Support grip, two-handed (`game/SupportGrip`, `plugin/PadMerge` v7/v11) | **shared** U: ctest `mevr-pad-merge` only | **shared** U | A replay with the left grip in the zone, then snapshot `supportGrip`. |
+| G06 | Sights: red dot, holo, ADS, alignment assist (`game/Sights`, `plugin/SightLayers`, `core/vr/Ads`) | **adapted** U: drawing only. `TryStartup` returns false on the sequels; assist, convergence and aimed fire are off; reads `SFXWeapon.ZoomFOV` | **adapted** U: the same sequel path (`Sights` is `out` on LE3); the SMG borrows the rifle profile | research/le2-le3-vr-optics.md "LE2 implementation" steps 1–3. |
+| G07 | Scope: picture-in-picture, virtual eyepiece, scope parts, scope capture (`game/ScopeParts`, `game/ScopeCapture`, `plugin/ScopeCaptureSource`) | **adapted** U: picture from the eye copy. `ScopeParts`/`ScopeCapture` are `out`; ScopeCaptureSource is linked but `setScopeCapture` isn't served | **adapted** U: same | A sniper-rifle fixture per game. Then ScopeCapture (it needs R31 on LE2). |
+| G08 | Holsters and "only holsters draw" (`game/Holsters`, `core/ik/BodySlots`) | **missing**: startup `#if MEVR_GAME_LE1`. Side effect: the right grip is RB and opens ME2's wheel | **missing** | docs/le3-port-reuse-audit.md "Holsters": separate a body slot from LE1's four weapon categories (the SMG), then each game's draw and holster functions. |
+| G09 | Gun kick (`game/GunKick`, `core/ik/GunKick`) | **adapted** V: recoil from `SFXWeapon.GetWeaponRecoil`; `gun kick: first kick` (le2-vrik) | **missing**: compiled but no shot source (`NoteShot` comes only from ViewLevel's LE1/LE2 `SetWeaponRecoil` handler) | LE3: a shot hook, together with G10. |
+| G10 | View level, aim assist zeroed (`game/ViewLevel`) | **adapted** V: pitch held in 4,723 of 4,723 ticks, yaw kick removed (le2-vrik); the aim-assist zeroing unmeasured | **missing**: `TryStartup`/`Tick` `#if LE1 \|\| LE2` | LE3: the handler on ME3's recoil call. `python tools/le2-name-audit.py --game LE3 game/ViewLevel`: ME3 has all 29 of its names. |
+| G11 | Camera shakes off (`game/CameraShake`) | **adapted** V: ME2's branch sets `CameraModifier.bDisabled`; modifiers off in the run. Which gun shakes exist is [verify] | **missing**: a stub, "LE1 and LE2 only" | — |
+| G12 | Camera collision off in first person (`game/CameraCollision`) | **missing** | **missing** | First check whether Halcyon ME2/ME3's first person pulls back near geometry. LE1's symptom was the eye behind the knees (research/69). |
+| G13 | Body follow: torso, legs keep the run, steady idle (`game/BodyFollow`, `core/ik/BodyFollow`) | **adapted** V: skeleton audit (le2-vrik). Conversation `BodyAway` is LE1-only | **adapted** V: shared follower plus a head-only solve on grip loss, run `20261115-182253-344`. "Legs keep the run" is off: no Velocity read (`BodyFollow` is `out` on LE3) | LE3: a Velocity handle declared `kEveryGame`. |
+| G14 | Body scale (`game/BodyScale`, `core/ik/BodyScale`) | **shared** U | **shared** U | Needs a recorded floor fixture: the fake headset's floor is at its head. |
+| G15 | Floor lock (`plugin/FloorLock`, `core/vr/FloorLock`, seam `FloorViewTranslation`) | **adapted** U: the path seen on the fake headset (M2 step 8); the correction itself unmeasured; manual height not wired | **adapted** V: `stageEyeM = finalEyeM = 1.7526`, run `20261115-170957-963`; menu continuity `20261115-183117-290` (research/null-headset-height.md) | LE2: the LE3 null-height run's script on Save 4. |
+| G16 | Guided calibration and hand calibration (`plugin/Calibration`, `CalibrationDraw`, `ArmSample`, `game/BodyCalibration`, `game/HandCalibration`) | **adapted** U: `MEVR_SEQUEL_MENU_SOURCES`, `WithMenus` v15, glue in `plugin/MenusLe2` | **adapted** U: same | A headset run: the fake headset has no interaction profile. |
+| G17 | Comfort: snap/smooth turn, vignette, walk toward the hand (`game/Comfort`, `plugin/Vignette`) | **shared** U: the comfort run timed out; the vignette layer path was seen (`20261114-212412`) | **adapted** U: `NativeLocomotionAllowed` (one of LE3's six admission copies, Forks 11) | docs/le2-m6-native-checks.md comfort row: two right-stick flicks and a hand-yawed walk. |
+| G18 | Weapon drawn like exploring: explore stance, constant eye, linear walk and stick, draw rate (`game/CombatStance`, `core/vr/CombatStance`, seam `ConstantFpEye`) | **missing**: `out`; ME2 lacks `BioPawnBehavior`'s ramp fields (research/le2-vrik-audit.md) | **missing** | Port per item. The linear walk and stick is the one players notice (research/38). Decide per game what stands in for the ramp fields. |
+| G19 | Our main menu (`plugin/MainMenu`, `MainMenuSettings`, `src/plugin/menu`, `assets/menu`) | **shared** V: run `20261114-222813-lane-d-menu` (f9809ed3); unported rows greyed | **shared** V: menu open and resume, run `20261115-183117-290` | notes/headset-checklist.md §5. |
+| G20 | Menu pause (`game/MenuPause`) | **adapted** V: `WorldInfo.bPlayersOnly` (same run) | **adapted** U: `BioWorldInfo.PauseGame` through `UnambiguousMethod` (research/le3-menu-pause.md) | — |
+| G21 | Game menu and Holster buttons (`game/GameMenuRequest`) | **adapted** V: Game menu opened the Mission Computer; Holster not exercised | **adapted** U: browser pages; Holster missing (`#if !LE3`) | — |
+| G22 | Omni-tool rail, wrist tap, gauntlet (`plugin/OmniToolRail`, `RailArt`, `game/OmniTool`, `game/GameArt`) | **adapted** V: run `20261114-234544-lane-d2-rail` (1a8d3b39). `GameArt` LE1-only (ME1's art cache, recoloured) | **adapted** U: rail shared; the gauntlet (`game/OmniTool`) and `GameArt` are `out` | LE3: research/le3-native-gui "Crop and art gates". |
+| G23 | Game screens in the room and on the wrist; the UI-world figure (`game/WorldUi`, `plugin/WorldUi`, `game/UiWorldFigure`) | **adapted** V: `SetMovieVisibility`; runs `20261115-043419-wrist-visual` and the Save 4 pointer run (827cd3af). UiWorldFigure missing | **missing**: no `setWorldUi`. The whole native GUI frame goes on a `WorldPanels` quad (`PlaceNativePanel`) | LE3: research/le3-native-gui gates 1–4. |
+| G24 | Omni pad for the bypass minigame (`plugin/OmniPad`, `core/vr/OmniPad`) | **missing**: ME2's hack and bypass minigames are different games (docs/le2-validation-coverage.md "Hacking and bypass") | **n/a**: ME3 has no bypass minigame (game knowledge, not checked in its data) | — |
+| G25 | Galaxy map: hologram, stereo window, projector (`game/GalaxyMap`, `plugin/GalaxyHologram`, `game/SceneCaptureRig`) | **forked** U: `HalcyonLe2Bridge::PlaceGalaxyPanel` + `vr::galaxy_map::NativeTablePanel`, opt-in `[Galaxy] nativeTable = 1`. GalaxyMap and GalaxyHologram aren't on LE2 | **forked** V: `Le3GalaxyCapture` (re-implements GalaxyMap's `StepWindow`), `PlaceNativePanel` (a copy of LE2's), `Le3GalaxyRetention`, `NativeMapInputLease`. Navigation run `20261115-194205-273`, retention `20261115-214310-005`, raw eye captures `20261115-220823-943`; the post-effect fix never ran (`20261115-221710-284` timed out) | docs/galaxy-projector-handoff.md "Remaining work" 1–5; Forks 3. |
+| G26 | Game pointer and GUI events (`plugin/GamePointer`, `game/GuiCursor`, `core/vr/GuiEvents`) | **adapted** V: the Save 4 pointer run, 2026-11-15 (research/le2-menus.md "Game screens and pointer") | **adapted** U: pointer on the native GUI quad. `game/GuiCursor`'s LE3 translation is built, but `takeGuiEvents` isn't served on LE3, so clicks take the SendInput fallback | LE3: serve `takeGuiEvents` in `WithMenus`; it is `#if defined(MEVR_WITH_HALCYON_LE2)` today. |
+| G27 | Interaction: selection by gaze, label at the object (`engine/SelectionGaze`, `game/Interact`, `HudPieceLayers::Interaction`) | **adapted** U: labels need an explicit `[Interact] crop`. Gaze selection missing (LE2 `kUpdateSelection = 0`) | **adapted** V: gaze at `0xA9BF90`; run `20261115-190610-153` (War Terminal selected, A opens War Assets). Labels U | LE2: M6 A (docs/le2-m6-implementation-guide.md). |
+| G28 | HUD pieces: wrist status, gun panel (`game/HudPieces`, `plugin/HudPieceLayers`) | **adapted** V: `Layout::Me2` crops; run `20261115-002101-lane-b4-m2b` (f71e7a71); ammo mount 2a108759 | **missing**: `setHudPieces` not served (`#if !defined(MEVR_WITH_HALCYON_LE3)` in ModLoader.cpp) | LE3: docs/me3-overall-goal-handoff.md L3-4 "native wrist crop". |
+| G29 | Power wheel at the left hand, lock and push, self-cast gestures, coach (`game/PowerWheel`, `plugin/PowerWheel`) | **adapted** V: ME2 roster (`SFXPowerManager`); chest Adrenaline Rush and rifle Disruptor Ammo, 2026-11-15 05:25 (483ac2fb; research/55 "Mass Effect 2") | **adapted** U: `game/Le3Powers.hpp` (`SFXPowerCustomActionBase`); metadata only | research/55 "Still to verify"; L3-6. |
+| G30 | Squad weapons wheel (`game/SquadWeapons`, `plugin/SquadPanel`) | **forked** U: `TickLe2`/`EquipLe2` (`game/Le2SquadMenu.inc`) beside LE1's `Tick`; custom style only | **forked** U: the same `Le2SquadMenu.inc` | Forks 5. |
+| G31 | Squad context and gesture orders (`game/SquadContext`, `game/SquadOrders`, `core/vr/Squad*`) | **adapted** U: `game/Le2Squad.hpp` (`HenchmanOrderAttackTarget`, `SquadOrderUsePower`) | **adapted** U | M6 C; L3-6. |
+| G32 | Squad placement by an arc (`game/SquadPlace`, `plugin/SquadPlaceDraw`) | **adapted** U: opt-in `[SquadOrders] place = 1` | **adapted** U | M6 table, squad roster and placement row: Miranda and Jacob on Freedom's Progress. |
+| G33 | Voice orders, the model tier, the Voice page (`game/Voice`, `plugin/Voice`, `plugin/VoiceModel`) | **shared** U: the protected voice run timed out | **shared** U: the model tier compiles into LE3 only when LE2 is built too (`CMakeLists.txt` `OR TARGET halcyon-le2`) | A microphone run, or `voice.request wav`, per game. |
+| G34 | Squad acknowledgement (`game/SquadAck`) | **missing**: `ready` | **missing**: `ready` | Port with G31. `SquadHandleChatterEvent` and `PlaySoundSet` are in neither sequel's SDK list (generated names). |
+| G35 | Thespian mode (`game/Thespian`, `plugin/Thespian`, `core/voice/ScriptMatch`) | **adapted** U: replies by native slot; no mute or `SkipNode` on ME2 (research/70 "ME2 cinema adapter") | **adapted** V: reader on three native wheels, run `20261115-203330-839`. Spoken selection unverified | M6 E; L3-4. |
+| G36 | Conversations in the world: flow, moments, keep-in-place (`game/ConversationWorld`, `ConversationFlow`, `AuthoredMoment`, `engine/ConversationHooks`, `plugin/ConversationWorld`) | **missing**: deferred by the owner 2026-11-15; `ready` | **missing**: deferred; `convo_fp` hard-off | M6 F (deferred); LE3 plan "remain deferred". |
+| G37 | Two-ear audio: OpenAL Soft with HRTF (`plugin/OpenAlSoft`) | **n/a**: ME2 plays through Wwise, not ISACT/OpenAL (research/69's audio note; [verify] the exe's imports) | **n/a**: same | Check `MassEffect2.exe`/`MassEffect3.exe` imports for OpenAL32 before closing the row. |
+| G38 | Sound placement: voices, people near, the gun (`game/SoundPlace`, `engine/VoicePlace` on ISACT `0x7BA90`) | **missing**: `ready`; `kSoundSourceUpdate = 0` | **missing** | Wwise needs a placement hook of its own. |
+| G39 | No cover snapping, VR cover (`engine/CoverAcquire`, `game/VrCover`, `core/vr/VrCover`) | **adapted** V: `FindPlayerCover` post-handler; VrCover on `SFXGame.ModifyDamage`; research/23 §7.4, 2026-11-14 (61705db8) | **adapted** U: `game/Le3Cover.inc` (ModifyDamage on SFXPawn_PlayerParty); no-snap only as a diagnostic opt-in | M6 table, cover/crouch/sprint row; L3-8. |
+| G40 | Physical crouch (`game/Posture`, `core/ik/Posture`) | **adapted** V: `Engine.Pawn.ShouldCrouch`; research/23 §7.4 step 1 | **adapted** U: LE3 native admission | — |
+| G41 | Vent, weapon heat (`game/Vent`, `core/ik/Vent`) | **n/a**: ME2 reloads thermal clips; there is no heat. Its counterpart, the physical reload (P4, `PhysicalReloadRequest`), isn't in the Halcyon host | **n/a**: thermal clips | The reload: docs/le2-port-implementation-plan.md P4. |
+| G42 | Physical grenades (`game/Throwables`, `core/ik/Throwing`) | **n/a**: ME2 has no grenades | **n/a**: ME3's grenades are powers (research/le3-powers.md) | — |
+| G43 | Melee gesture (`game/Throwables` `RouteMelee`, the fist) | **missing** | **forked** U: `game/Melee` (LE3-only) on `core/ik/Throwing`, a second gesture-to-dispatch path; opt-in | Forks 12; research/le3-melee-audit.md; L3-7. |
+| G44 | The Mako: aim, controls, cockpit, gunner, panel, hazard (`game/Mako*`, `game/Cockpit*`, `core/vr/MakoControls`) | **missing**: the Hammerhead, with ME1's Mako controls and cockpit, has its own later pass (continuation plan M6) | **n/a**: no player vehicle; the Atlas has no adapter (LE3 plan: "safe fallback") | — |
+| G45 | Focus pause off (`game/FocusPause`) | **missing** | **missing** | First check whether ME2/ME3 freeze without window focus (`bPlayersOnly`). |
+| G46 | Our ASI loader (`src/loader`) | **adapted** U: `LoaderCore.cpp` maps MassEffect2.exe, but every ME2 run used LEBinkProxy | **adapted** U: maps MassEffect3.exe | A run with our `bink2w64.dll` in that game's Binaries. |
+| G47 | Installer, report a problem, release packaging (`MEVR-Setup`, `src/install`, `plugin/ReportRequest`, `tools/package-release.ps1`) | **missing**: Setup is LE1-only (`LE1MEVR.asi` hard-coded in `Installer.hpp`); `SetupRequest` linked but never written; ReportRequest is in the LE1 host only; the players' build still links LExSDKv2 | **missing**: same; the LE3 player ASI links `LESDK-LE3` | M7.1 and M7.2; L3-10. |
+| G48 | Crash breadcrumbs, first-chance report, quit safety (`plugin/CrashBreadcrumbs`, `plugin/KeptLocks`, the ExitProcess hook) | **adapted** V: breadcrumbs in every host; a first-chance report in an ME2 log (research/le2-menus "The checks"). KeptLocks LE1-only | **adapted** U: same | Check whether ME2/ME3 fault at quit (LE1: a deleted lock at exe+0x1BA22C0). |
+| G49 | Controller input: Touch as pad 0, profiles, our actions, haptics (`plugin/PadMerge`, `game/GamepadMapping`, `plugin/XrHost`, `core/xr/Input`) | **adapted** V: `MergeMotionControllers` (conversation and orbital triggers, R3 gate); stretch `20261115-001659-lane-b4-m2`; ctest `mevr-pad-merge` | **adapted** V: semantic modes, map lease, traversal yaw; replayed controllers in run `20261115-182253-344` | Headset: the L3+R3 hold. |
+| G50 | Head tracking and the view anchor (`game/HeadTracking`, `game/ViewAnchor`) | **adapted** V: `hostView.valid` and the replayed turn (le2-vrik). Falls back to LExSDKv2 when the layer is off | **adapted** V: head look in the pose-tag runs. The game mode is read through `engine::legacy` (LExSDKv2) | M7.1 and L3-10: ue3 reads in place of the legacy ones. |
+| G51 | Reflection (mirror) fix (`game/Reflections`) | **n/a**: stands down whenever the host owns VR (`src/mod/Mod.cpp`), as on LE1 under Halcyon | **n/a** | — |
+| G52 | Engine access: reflection layer, ReflectCheck, addresses, the game adapter (`src/ue3`, `engine/ReflectCheck`, `engine/Addresses.hpp`, `engine/GameAdapter.hpp`) | **adapted** V: `reflect: 377 of 377` (research/le2-menus; 0b2df0ac, 48f2e5bb) | **adapted** V: 603 of 603, run `20261115-220151-721` | `kModulesOnLayer` is false on both. Each `ready` module in the generated table needs its handles declared `kEveryGame` and its gate moved to `Up()`. |
+| G53 | Host/mod split, hot reload, HostServices (`plugin/Entry`, `plugin/ModLoader`, `src/mod`) | **shared** V: every LE2 run above used a host and mod pair | **shared** V: the protected LE3 runs | — |
+| G54 | Save tools and scripted runs (`tools/le1-save.py`, `fake-headset-session.ps1`, `launch-game.ps1`, the conversation tools) | **forked** V: `tools/le2-save.py` (recipes and receipts), `tools/le2-halcyon-run` (`load.ps1`, 3e8609b7), `tools/qa-le2`, a diagnostic LE2 host | **forked** V: `tools/le3-save.py` (imports le2-save), le2-halcyon-run's LE3 mode; 6 saves round-trip byte for byte | Forks 10. |
+| G55 | Console request, call trace, dev request files (`game/ConsoleRequest`, `game/CallTrace`, `core/DevChannels`) | **adapted** V: `mevr load` and `mevr omni squad` in runs. CallTrace `ready` | **adapted** V: `mevr thespian cards`, run `20261115-203330-839`. CallTrace `ready` | CallTrace: handles to `kEveryGame`. |
+| G56 | Classic menu's VR hands tab and menu pointer (`plugin/MevrMenuTab`, `plugin/MevrMenuPointer`) | **missing**: Halcyon ME2's own menu, without our tab | **missing** | Low value: our main menu replaces it. |
+| G57 | The game's wheels cut onto a hand quad (`core/vr/WheelCrop`, `setWheelPanel`, the native squad-wheel style) | **missing**: `setWheelPanel` is LE1-only | **missing** | With G30. |
+| G58 | VR sprint (`game/Sprint`, `core/vr/Sprint`) | **missing**: by design, ME2's native Storm (continuation plan M6 table) | **adapted** U: native admission (`Sprint.cpp` `#if LE1 \|\| LE3`) | L3-8. |
+
+### Sequel-only systems
+
+These are not ME1 systems, so the [totals](#totals) don't count them. Their form still matters for unification.
+
+| sequel-only | LE2 | LE3 | notes |
+|---|---|---|---|
+| Traversal, vault (`game/Traversal`, `plugin/TraversalCue`, `core/vr/Traversal`; ME1 has no vault) | origin V: research/le2-traversal.md "Measured (fake headset, 2026-11-14)" | forked U: `game/Le3Traversal.cpp` | Forks 4. |
+| The float frame into the eyes (`plugin/EyeCopy`) | V (R16) | V (R16) | Halcyon ME2/ME3 assumed an 8-bit swap chain. |
+| CIC residency during the map (`game/Le3GalaxyRetention`) | — | V: 541/541, run `20261115-214310-005` | ME1's map doesn't unload the CIC. |
+| Native GUI accessors (`game/Le3Gui`) | — | adapter | ME3's GUI is SFXGUIMovie, not BioSFManager. |
+| Diagnostic host (`MEVR_LE2_DIAGNOSTIC`: `engine/Le2DiagnosticHost`, `Le2ControlHost`, `core/qa`) | test-only host | — | Forks 10. |
+
+## Forks
+
+Each item: the copies, then what unifying would take. Line counts are as of `ccacd667`.
+
+1. **Overlay composition.**
+   - Copies: LE1 `plugin/HalcyonOverlays.cpp` `OverlayLayers` (and its own label quad, `gLabelSwapchain`/`LabelWanted`);
+     LE2 `plugin/HalcyonLe2Bridge.cpp` `OverlayLayers`, with `SequelWeaponLayers.cpp`, `SequelSquadLayers.cpp`,
+     `SequelCinema.cpp` (the sequel files say "extracted from the LE2 bridge") and `MenusLe2.cpp`'s `PanelLayers`; LE3
+     `plugin/HalcyonLe3Bridge.cpp` `OverlayLayers`.
+   - There are two frame types: `MELEVR::MevrBridge::OverlayFrame` (`src/halcyon/le1/mevr_bridge.h`) and
+     `ME2VR::MevrBridge::OverlayFrame` (`src/halcyon/SequelPresentation.h`).
+   - **To unify:** one game-neutral `OverlayFrame` (SequelPresentation.h's, with LE1's extra fields). One composer,
+     `plugin/Overlays` (`Compose(frame, capabilities, out)`), that calls each layer module in one order and asks the
+     renderer's capabilities (`plugin/Renderer.hpp`) in place of `#if MEVR_WITH_HALCYON_LEx`. The three bridges then
+     only fill the frame. LE1's label quad becomes `HudPieceLayers::Interaction` with ME1's default crop.
+2. **The sequel bridges.**
+   - Copies: `HalcyonLe2Bridge.cpp` (761 lines) and `HalcyonLe3Bridge.cpp` (545 lines).
+   - Both repeat:
+     - the `OnSessionCreated`/`OnSessionStopped`/`OnRecentered` resets;
+     - the `OnViewBuilt` publication;
+     - `MergeMotionControllers` (packet numbering, close latch, menu filter);
+     - the galaxy settings and the overlay stack.
+   - **To unify:** `plugin/SequelBridge.cpp`, the shared seam implementations parameterised by a per-game
+     `SequelHooks` struct (galaxy placement, traversal presentation, HUD pieces). Better still, the common seam header
+     below, implemented once for all three.
+3. **The galaxy map.**
+   - ME1: `game/GalaxyMap.cpp` (`StepWindow`, the hologram, the view hold) and `plugin/GalaxyHologram`.
+   - LE2: `HalcyonLe2Bridge::PlaceGalaxyPanel` + `gGalaxyTable` (`vr::galaxy_map::NativeTablePanel`), its own
+     `gGalaxyInputMode`/`gGalaxyTriggerLatch`.
+   - LE3:
+     - `HalcyonLe3Bridge.cpp` `ReadGalaxySettings`/`PlaceNativePanel`: the same `[Galaxy] nativeTable`,
+       `tableDistanceM` 0.70, `tableBelowM` and `tableRadiusM` keys and clamps as LE2's;
+     - `NativeMapInputLease`;
+     - `game/Le3GalaxyCapture.cpp`, whose comment says "Same parallel-camera/crop policy as ME1 StepWindow"; it repeats
+       `vr::cine_screen::CropFraction`/`BaselineUU` with a hard-coded 1024×576 target.
+   - **To unify:**
+     - `vr::galaxy_map::ReadTableSettings` and one host helper for both bridges;
+     - LE2 adopts LE3's input lease;
+     - a shared `capture_rig::StereoWindow::Step(pov, convergeUU, widthM, depth, options)` that ME1's `StepWindow` and
+       `Le3GalaxyCapture` both call;
+     - then docs/galaxy-projector-handoff.md "Remaining work" 5: ME1's flow on ME2 with ME2's native adapter.
+4. **Traversal's native observer.**
+   - Copies: `game/Le3Traversal.cpp` (626 lines) and the `#if defined(MEVR_GAME_LE2)` block of `game/Traversal.cpp`.
+   - Both watch the camera update and the custom action's start and end over `core/vr/Traversal`. Only LE3 uses
+     `ActionLifecycle`/`AuthoredYaw`.
+   - **To unify:** move LE2's block to `game/Le2Traversal.cpp` behind the `traversal::le3` interface, and put both on
+     `ActionLifecycle`. Keep the per-game admission: `CanPerformMantle`/`MantleCover` on ME2; ladders and evade on ME3.
+5. **The squad weapons tick.**
+   - Copies: `game/Le2SquadMenu.inc` `TickLe2`/`EquipLe2` (LE2 and LE3) beside `game/SquadWeapons.cpp` `Tick` (LE1).
+   - The `.inc` re-implements the pointing pre-selection (a world-space angle in place of `menu::PickPointed`), the
+     input assembly, the haptics and the pending-weapon follow-up. They share only `gMachine`.
+   - **To unify:** one `Tick` over a per-game roster and equip adapter (`le2_squad::Weapons`, LE1's quick slots).
+6. **The sequel power roster.**
+   - Copies: `game/Le2Squad.hpp` `le2_squad::Powers` (lines ~49-100) and `game/PowerWheel.cpp`'s ME2 roster read
+     (`gPowerManager`, `gManagedPowers`, `gLe2Cooldown`, `gLe2Evolved`; its comment says it follows the same rules).
+   - **To unify:** one sequel power reader, beside `game/Le3Powers.hpp`.
+7. **The HDR display answer.**
+   - Copies: LE1 `plugin/HalcyonBridge.cpp` `HdrDisplayDesc`, reached through Halcyon LE1's GetDesc1 patch; the sequels
+     `plugin/HdrDisplayPolicy.cpp`, which installs its own `GetDesc1` hook from `OnFactory`.
+   - **To unify:** LE1's seam forwards to `hdr_display`. The `hdrDisplay` migration (0 → −1) lives in one place.
+8. **The eye-image pipeline.**
+   - LE1 applies colour, upscale and the tonemap in Halcyon's blit, through `EyeColour*`/`EyeUpscale` seams and
+     `MEVR_TONE`. The sequels apply colour only, in `plugin/EyeCopy.cpp`'s `kCorrectedShader`.
+   - **To unify:** one eye-image stage (`CopyIntoImage`-style) that owns colour, tonemap and FSR for all three. LE1's
+     blit calls it. FSR and the tonemap then reach the sequels for free (R13, R15).
+9. **Scene-capture hook scope.**
+   - Copies: `plugin/Le3SceneCapture.cpp` (CaptureHook, RenderScoped, BackbufferHook) re-implements RenderLevers'
+     capture-depth and thread-local scope. The target logic is already shared (`plugin/SceneCaptureTarget.hpp`,
+     `core/vr/SceneCaptureScope`).
+   - **To unify:** one scope helper parameterised by each game's RVAs. LE2's scope capture (G07) and galaxy window then
+     come with it.
+10. **Test tooling.**
+    - Launchers: `tools/launch-game.ps1`, `tools/le2-halcyon-run/launch.ps1`, `tools/qa-le2/launch.ps1`.
+    - Save contracts: `tools/le1-save.py` (rewind) and `tools/le2-save.py` (recipes and receipts; `le3-save.py` imports it).
+    - Runners: `fake-headset-session.ps1`, and for the sequels `tools/le2-halcyon-run` plus `run-lock.ps1`.
+    - The LE2 diagnostic host's own pad and observers.
+    - **To unify:** the LE3 plan's rule 6 ("extend existing runners and save tools rather than introducing another
+      launcher, recorder, screenshot format or writable gameplay ledger"). One runner with a `-Game` parameter, one save
+      tool interface (`rewind` and `recipe` both). Retire the diagnostic host once the Halcyon host covers its observers.
+11. **LE3's movement admission predicate, six times.**
+    - The copies: `Comfort.cpp` `NativeLocomotionAllowed`, `ArmIk.cpp` `MenuBodyEligible`, `Posture.cpp`
+      `NativeMovement`, `Sprint.cpp` `NativeAllowed`, `Melee.cpp` `ReadContext`/`Refusal`, `Le3Traversal.cpp`
+      `Guard`/`ReadContext`.
+    - Each checks mode 0, `CurrentCustomAction == 0`, `IsMoveInputIgnored`, `IsDead`, physics and cover.
+    - **To unify:** one `game/Player` query that returns the reasons. LE2 could use it too.
+12. **Melee routing.** `game/Melee.cpp` (LE3) and `game/Throwables` `ik::throwing::RouteMelee` (LE1) are two
+    gesture-to-dispatch paths over the same swing detector. **To unify:** LE1 moves onto `ik::melee::Gestures` with a
+    per-game dispatch.
+13. **Menu glue.** `plugin/MenusLe2.cpp` (LE2 and LE3) says in its header that it is LE1's menu glue: the
+    `HalcyonBridge` `OnFrameBegun`/`OnMenuKey`/merge parts, plus HalcyonOverlays' layer composition. **To unify:**
+    `HalcyonBridge` calls `MenusLe2` (renamed `Menus`).
+14. **Upstream's renderer trees.** `src/halcyon/le2` and `le3` are upstream's two ME2/ME3 renderers, so their
+    differences aren't our waste. Our `[MEVR]` seams are re-applied in each (pose tags, HDR `OnFactory`, the floor
+    translation, the ProcessEvent queue). The common seam header below keeps that to one declaration.
+15. **Necessarily per renderer, not waste.** `ApplyMevrBaseline` (le2 `me2_menu.cpp`) against LE1's `ModernBaseline`;
+    `RendererLe1/2/3.cpp`; Halcyon ME2's `convo_fp.cpp`.
+
+Not forks, thin adapters (checked): `game/Le3Gui.cpp`, `game/Le3Cover.inc` (included inside VrCover),
+`game/Le3Powers.hpp`, `game/Le3WeaponAmmo.hpp`, `game/Le2Squad.hpp`'s field tables, `game/Le3GalaxyRetention`.
+
+## Seams
+
+The generated [seam table](#the-three-mevrbridge-vocabularies) lists every `MevrBridge` function each tree declares,
+and marks whether the tree calls it. LE1 declares 111, LE2 32 and LE3 29.
+
+**Common to all three today (18):** `StaticXrGetInstanceProcAddr`, `WrapSessionFunctions`, `OnSessionCreated`,
+`OnSessionStopped`, `OnFrameBegun`, `OnRecentered`, `OnViewBuilt`, `FloorViewTranslation`, `MergeMotionControllers`,
+`KeyDown` (LE2 calls it through `HotkeyDown`), `OnMenuKey`, `MainMenuOpen`, `OnGameThread`, `QueueProcessEvent`,
+`OverlayLayers`, `CineScreenWanted`, `CineScreenFullRate`, `TransitionFadeLayer`.
+
+Even these differ in signature:
+- `OnViewBuilt`: LE1 passes a head quaternion, the sequels yaw and pitch in UU.
+- `WrapSessionFunctions`: LE1/LE2 take five pointers, LE3 four.
+- `OnEyeCopied`: LE2 adds index/acquired/waited.
+- `CopyIntoImage`: LE3 adds the eye.
+- `HudPanelDraw`: LE2 adds `textBatch`.
+- `QueueProcessEvent`: LE1 has no size.
+
+So no shared module can be written against them once.
+
+**Sequels only (9):** `CopyIntoImage`, `OnEyeSource`, `OnEyeCopied`, `OnEyeReleased`, `OnFactory`, `HudPanelDraw`,
+`CineScreenHalfSeparationUU`, `CineScreenLayers`, `XrRuntimeIsSteamVr`. One game only: LE2 `PlaceGalaxyPanel`,
+`WorldUiOwnsGui`, `OnSwapChainPresent`; LE3 `PlaceNativePanel`, `OnPresent`. The other ~90 LE1 seams are the
+performance work, the HUD panel's 11 draw seams, the galaxy view swaps, conversations, the front end and the menus.
+
+**Recommendation: the smallest common seam set.** One game-neutral header, `src/halcyon/MevrSeams.h`: SequelPresentation.h
+grown with LE1's frame fields, one namespace, one signature per function. All three trees include it; one host file
+implements it. It needs 26 functions in six groups:
+
+1. **Session and frame (7):** `StaticXrGetInstanceProcAddr`, `WrapSessionFunctions` (five pointers; a renderer passes
+   null for what it lacks), `OnSessionCreated`, `OnSessionStopped`, `OnFrameBegun`, `OnRecentered`, `XrRuntimeIsSteamVr`.
+2. **View (3):** `OnViewBuilt` (head quaternion and position; the sequels convert their yaw and pitch),
+   `FloorViewTranslation`, `RecenterOrientation`. The last gives the sequels LE1's tilt removal (R28).
+3. **Eye image (5):** `OnEyeSource`, `CopyIntoImage(context, image, source, shiftX, eye)`, `OnEyeCopied`, `OnEyeReleased`,
+   `OnFactory`. LE1's blit calls the same stage (Forks 7, 8), so colour, tonemap, FSR and the HDR answer live in one
+   place.
+4. **Composition (6):** `OverlayLayers(OverlayFrame)`, `HudPanelDraw(context, draw, user, textBatch, afterLeftEye)`,
+   `CineScreenWanted`, `CineScreenLayers`, `TransitionFadeLayer`, and one `PlacePanel(kind, frame, ...)`.
+   - `PlacePanel` replaces LE1's `PlacePanel`, LE2's `PlaceGalaxyPanel` and LE3's `PlaceNativePanel`.
+   - LE1's other ten `HudPanel*` seams stay LE1 adapter detail behind `HudPanelDraw`.
+5. **Input and threads (5):** `MergeMotionControllers`, `KeyDown`, `OnMenuKey`, `OnGameThread`,
+   `QueueProcessEvent(object, function, params, size)`.
+6. **Capabilities:** a `RendererCaps` bitset in `plugin/Renderer.hpp`: one-Draw, per-eye frustum, metric stereo, perf
+   seams, HUD-panel gameplay, world UI, galaxy window. Shared host modules and `BuildServices` ask it in place of
+   `#if defined(MEVR_WITH_HALCYON_LEx)`.
+   - Optional seam groups (the one-Draw `Record*`/`RecordPass1View`, the perf `Perf*`, the front end, the
+     conversation-in-world hold) stay per-renderer extensions, behind a capability bit.
+   - This is the LE3 plan's architecture-contract rule 3, "populate a service only when its renderer ... exist",
+     made checkable.
+
+With that set, a shared module (overlays, galaxy table, menus glue, eye colour, tilt removal) stops branching per game.
+Only the per-renderer extensions and the native adapters in `src/game` stay per game.
+
+## Plans
+
+This maps where each row's open work is written today. It is the input for merging the plans into one trilogy work list
+later. No plan was merged or removed here. Rows marked **none** have no plan anywhere: that work is new.
+
+| rows | open work lives in |
+|---|---|
+| R01, R27 | notes/headset-checklist.md (LE2 lines; **none** for LE3); research/sequel-eye-pose-tags.md |
+| R02-R09, R13, R15, R22-R24, R26, R30, R35 | **none** for LE2. LE3: docs/me3-overall-goal-handoff.md §4 and its step 7 (performance only, generally) |
+| R10 | LE3: research/le3-recenter-transition-failure.md (other scenes, stale-copy injection); LE2 **none** |
+| R11 | research/le2-renderer-integration.md "Defaults from ME1" ("Also noted", [verify]); LE3 **none** |
+| R12 | docs/knowledge/gotchas/me2-scale-set-during-load; LE3 **none** |
+| R14, R16 | research/le2-hdr.md (HDR dropped by the owner 2026-11-14); research/le3-hdr-eye-copy-test.md; docs/le3-port-implementation-plan.md ledger "HDR reuse" |
+| R17, R25, R32-R34 | — (done; checks only) |
+| R18, R19, R20 | research/le2-renderer-integration.md "What is left of M2"; research/le3-shared-presentation.md "crop gates"; research/le3-native-renderer-audit.md |
+| R21 | docs/le2-continuation-plan.md M5 (Veetor's timed interrupts); research/le3-dialogue-cinema.md "LE3 stereo cinema candidate"; L3-4 |
+| R28, R29, R31 | **none** (R31: docs/galaxy-projector-handoff.md for LE3's own) |
+| G01-G05, G13-G16 | docs/le2-continuation-plan.md M3; docs/vrik-porting-guide.md §5-6; research/le2-vrik-audit.md; docs/le2-port-implementation-plan.md P3; LE3: research/le3-body-pose.md "Native gates still required", L3-3 |
+| G06, G07 | research/le2-le3-vr-optics.md; L3-5 |
+| G08, G18 | docs/le3-port-reuse-audit.md "Holsters", "Locomotion and comfort"; docs/le2-port-implementation-plan.md P6 (holsters), P5; **none** for combat stance on LE2 |
+| G09-G12 | research/le2-vrik-audit.md (LE2); **none** for LE3 |
+| G17, G39, G40, G58 | docs/le2-continuation-plan.md M6 table; docs/le2-m6-native-checks.md; L3-8; research/le3-locomotion-audit.md |
+| G19-G23, G26 | docs/le2-continuation-plan.md M4; research/le2-menus.md; research/le3-native-gui.md; research/le3-menu-pause.md; L3-4 |
+| G24 | docs/le2-validation-coverage.md "Hacking and bypass" |
+| G25 | docs/galaxy-projector-handoff.md "Remaining work" 1-5; docs/le2-m6-implementation-guide.md G; research/le3-galaxy.md; L3-9 |
+| G27, G28 | docs/le2-m6-implementation-guide.md A; docs/le2-continuation-plan.md M6 table (wrist/gun, labels); L3-4 |
+| G29-G35, G57 | docs/le2-m6-implementation-guide.md B-E; docs/le2-m6-squad-implementation.md; research/55; research/70; research/le3-powers.md; research/le3-squad.md; L3-6 |
+| G36, G38 | docs/le2-m6-implementation-guide.md F (deferred); LE3 plan "remain deferred"; **none** for sound placement |
+| G41, G42, G43 | docs/le2-port-implementation-plan.md P4 (reload); research/le3-melee-audit.md, L3-7 |
+| G44 | docs/le2-continuation-plan.md M6 ("the Hammerhead has its own later pass"); docs/le2-from-le1.md 3.8; P8 |
+| G45, G48, G51, G56 | **none** |
+| G46, G47, G50 | docs/le2-continuation-plan.md M7.1, M7.2; docs/me3-overall-goal-handoff.md L3-10 |
+| G49 | notes/headset-checklist.md; L3-10 |
+| G52 | docs/le2-continuation-plan.md M1; research/le2-engine-access-discovery.md; research/le3-engine-access-discovery.md; L3-1 |
+| G54, G55 | docs/le3-port-implementation-plan.md "Architecture contract" rule 6, "Reuse the save/editor and test flow"; docs/le2-scripted-testing.md |
+| Forks 1, 2, 13, seams | **none**: the LE3 plan's architecture contract states the rule, but no plan schedules the refactor |
+
+The plans and handoffs this draws on (none was changed):
+- **ME2:** docs/le2-continuation-plan.md (M1-M7), docs/le2-m6-implementation-guide.md (A-G), docs/le2-from-le1.md,
+  docs/le2-port-implementation-plan.md (P0-P9), docs/le2-port-reuse-map.md, docs/le2-integration-contract.md,
+  docs/le2-validation-coverage.md.
+- **ME3:** docs/le3-port-implementation-plan.md (L3-0..L3-10, architecture contract), docs/le3-port-reuse-audit.md,
+  docs/me3-overall-goal-handoff.md, docs/galaxy-projector-handoff.md.
+- **Both:** docs/vrik-porting-guide.md, research/le2-vrik-audit.md, research/le2-renderer-integration.md,
+  notes/headset-checklist.md.
+
+## Found while auditing
+
+These are concrete, each with its check. None was fixed here (read-only audit).
+
+- **The sequels turn character shadows off for nothing (R11).** `game/SystemSettings.cpp` reads an empty
+  `[Performance] sharePass` as 5 on every game.
+- **EyeCopy has no tonemap (R15).** It is harmless while `hdrDisplay = -1`.
+- **`umbraSecondEyeClearBits = 2` does nothing at the shipped defaults (LE1).** RenderLevers applies it only when
+  `umbraSharedVisibility != 0`.
+- **Latent "not LE2 means LE1" defaults on LE3.**
+  - `game/ScreenReticle.cpp` and `game/HudPieces.cpp` compile LE1 field names in their `#else`. Both are inert only
+    because LE3 serves neither service.
+  - The LE3 plan's architecture rule 3 forbids exactly this.
+- **LE3's voice model tier needs LE2 in the build.** It compiles into LE3 only when LE2 is built too: the llama block
+  in `CMakeLists.txt` tests `TARGET halcyon-le2`.
+- **Two configuration values nobody reads.**
+  - `RendererLe2::RecenterTiltDeg` answers 60, and nothing reads it.
+  - `PowerWheel::StatusJson` reads the controller through `Ready()`, so `mappedPower` is always empty in LE2 snapshots.
+- **LExSDKv2's generated LE3 header lists no `Engine.Actor.Location`**, though every game has it, so the generated
+  "names" table has false entries. ReflectCheck, against the running game, is the authority; the table is a lead.
+
+## Generated facts
+
+`python tools/parity-ledger.py --write` regenerates this part. Don't edit between the markers. Module statuses are
+defined in the tool's header:
+- `run`: its engine access runs there.
+- `ready`: stands down off LE1.
+- `out`: the engine part is compiled out.
+- `ungated`: no ue3 access in any game.
+- `unreferenced` and `unbuilt`: as named.
+- "ME1-only handles": default-reach handles compiled into a sequel build, which never resolve there.
+
+### Summary
+
+<!-- parity:summary -->
+| game | renderer | host plugin files | host core files | services served | src/game + src/engine modules by status | MevrBridge seams |
+|---|---|---|---|---|---|---|
+| LE1 | halcyon-le1 | 70 | 71 | 57 | run 67, out 4, ungated 22, unreferenced 1, unbuilt 4 | 111 |
+| LE2 | halcyon-le2 | 57 | 51 | 48 | run 38, ready 11, out 22, ungated 21, unreferenced 2, unbuilt 4 | 32 |
+| LE3 | halcyon-le3 | 60 | 51 | 46 | run 33, ready 11, out 27, ungated 22, unreferenced 2, unbuilt 3 | 29 |
+<!-- /parity:summary -->
+
+### Host plugin files per game
+
+<!-- parity:hosts -->
+| src/plugin | LE1 | LE2 | LE3 |
+|---|---|---|---|
+| `ArmSample` | - | yes | yes |
+| `Calibration` | yes | yes | yes |
+| `CalibrationDraw` | yes | yes | yes |
+| `CineScreen` | yes | yes | yes |
+| `CinemaBackdrop` | yes | yes | yes |
+| `CinemaBackdropDraw` | yes | yes | yes |
+| `Colour` | yes | yes | yes |
+| `ConversationWorld` | yes | - | - |
+| `CrashBreadcrumbs` | yes | yes | yes |
+| `DrawReplay` | yes | - | - |
+| `Entry` | yes | yes | yes |
+| `EyeCopy` | - | yes | yes |
+| `FloorLock` | yes | yes | yes |
+| `GalaxyHologram` | yes | - | yes |
+| `GalaxyHologramDraw` | yes | yes | yes |
+| `GamePointer` | yes | yes | yes |
+| `GameThreadCalls` | yes | yes | yes |
+| `Glow` | yes | yes | yes |
+| `Halcyon` | yes | - | - |
+| `HalcyonBridge` | yes | - | - |
+| `HalcyonLe2` | - | yes | - |
+| `HalcyonLe2Bridge` | - | yes | - |
+| `HalcyonLe3` | - | - | yes |
+| `HalcyonLe3Bridge` | - | - | yes |
+| `HalcyonOverlays` | yes | - | - |
+| `HandReticle` | yes | yes | yes |
+| `HdrDisplayPolicy` | - | yes | yes |
+| `HudPanel` | yes | yes | yes |
+| `HudPieceLayers` | yes | yes | yes |
+| `KeptLocks` | yes | - | - |
+| `Le3SceneCapture` | - | - | yes |
+| `MainMenu` | yes | yes | yes |
+| `MainMenuSettings` | yes | yes | yes |
+| `MenusLe2` | - | yes | yes |
+| `MetricStereo` | yes | - | - |
+| `MevrMenuPointer` | yes | - | - |
+| `MevrMenuTab` | yes | - | - |
+| `ModLoader` | yes | yes | yes |
+| `MotionBlurGuard` | yes | - | yes |
+| `OmniPad` | yes | - | - |
+| `OmniToolRail` | yes | yes | yes |
+| `OpenAlSoft` | yes | - | - |
+| `PadMerge` | yes | yes | yes |
+| `PerfProbe` | yes | - | - |
+| `PowerIcons` | yes | yes | yes |
+| `PowerWheel` | yes | yes | yes |
+| `PowerWheelDraw` | yes | yes | yes |
+| `PresentHook` | yes | yes | yes |
+| `PresentationHold` | yes | - | - |
+| `ProcessEventHook` | yes | yes | yes |
+| `QuadSwapchain` | yes | yes | yes |
+| `QuestPacing` | yes | - | - |
+| `RailArt` | yes | yes | yes |
+| `RecenterTilt` | yes | - | - |
+| `RenderLevers` | yes | - | - |
+| `RendererLe1` | yes | - | - |
+| `RendererLe2` | - | yes | - |
+| `RendererLe3` | - | - | yes |
+| `ReportRequest` | yes | - | - |
+| `ScopeCaptureSource` | yes | yes | yes |
+| `SequelCinema` | - | yes | yes |
+| `SequelSquadLayers` | - | yes | yes |
+| `SequelWeaponLayers` | - | yes | yes |
+| `SetupRequest` | yes | yes | yes |
+| `SightLayers` | yes | yes | yes |
+| `SightPictures` | yes | yes | yes |
+| `Spectator` | yes | - | - |
+| `SquadPanel` | yes | yes | yes |
+| `SquadPanelDraw` | yes | yes | yes |
+| `SquadPlaceDraw` | yes | yes | yes |
+| `SteamVrSmoothingRequest` | yes | - | - |
+| `Swapchains` | yes | yes | yes |
+| `TestLoop` | yes | yes | yes |
+| `Thespian` | yes | yes | yes |
+| `TransitionFade` | yes | yes | yes |
+| `TraversalCue` | - | yes | yes |
+| `UiWorldFigure` | yes | - | - |
+| `Upscale` | yes | - | - |
+| `Vignette` | yes | yes | yes |
+| `Voice` | yes | yes | yes |
+| `VoiceModel` | yes | yes | yes |
+| `WorldPanels` | yes | yes | yes |
+| `WorldUi` | yes | yes | yes |
+| `WristBeam` | yes | yes | yes |
+| `XrHost` | yes | yes | yes |
+
+- LE1: also `engine/CodeDump`, `game/GamepadMapping`, `ue3/Pattern`, `ue3/SafeNames`
+- LE2: also `engine/CodeDump`, `game/GamepadMapping`, `ue3/Pattern`, `ue3/SafeNames`
+- LE3: also `engine/CodeDump`, `game/GamepadMapping`, `ue3/Pattern`, `ue3/SafeNames`
+- LE3 mod extras: `core/Json`, `game/Le3Gui`
+<!-- /parity:hosts -->
+
+### Host core files per game
+
+<!-- parity:core -->
+In all three hosts (49): `Exe`, `ExeCheck`, `Hook`, `Hotkey`, `Ini`, `Json`, `Log`, `PngFile`, `Version`, `Window`, `gfx/Raster`, `gfx/Swf`, `gfx/SwfFont`, `voice/ScriptMatch`, `vr/AimRay`, `vr/Calibration`, `vr/CineScreen`, `vr/Colour`, `vr/Comfort`, `vr/Controllers`, `vr/ConversationWorld`, `vr/FloorLock`, `vr/GalaxyHologram`, `vr/GalaxyMap`, `vr/GameMenuRequest`, `vr/GamePointer`, `vr/GuiEvents`, `vr/Haptics`, `vr/HostView`, `vr/HudPieces`, `vr/ImageConvert`, `vr/InteractLabel`, `vr/LayerComposite`, `vr/MenuPointer`, `vr/OmniRail`, `vr/OverlayPlacement`, `vr/PoseRecording`, `vr/PowerWheel`, `vr/ScopeArt`, `vr/ScopeCapture`, `vr/Sights`, `vr/SquadMenu`, `vr/SquadPlace`, `vr/TestRequest`, `vr/Thespian`, `vr/TransitionFade`, `vr/WorldUi`, `xr/Floor`, `xr/Input`.
+
+| src/core (host) | LE1 | LE2 | LE3 |
+|---|---|---|---|
+| `d3d11/Blit` | - | yes | yes |
+| `d3d11/ShaderReflect` | yes | - | - |
+| `vr/CockpitHazard` | yes | - | - |
+| `vr/ColourStrip` | yes | - | - |
+| `vr/CombatStance` | yes | - | - |
+| `vr/FrameProbe` | yes | - | - |
+| `vr/MakoControls` | yes | - | - |
+| `vr/MakoGunner` | yes | - | - |
+| `vr/MetricStereo` | yes | - | - |
+| `vr/OmniPad` | yes | - | - |
+| `vr/PresentationHold` | yes | - | - |
+| `vr/QuestPacing` | yes | - | - |
+| `vr/Recenter` | yes | - | - |
+| `vr/ScreenMatrix` | yes | - | - |
+| `vr/Spectator` | yes | - | - |
+| `vr/Sprint` | yes | - | - |
+| `vr/SquadContext` | yes | - | - |
+| `vr/SquadGesture` | yes | - | - |
+| `vr/SquadParser` | yes | - | - |
+| `vr/SquadRetreat` | yes | - | - |
+| `vr/SquadStanding` | yes | - | - |
+| `vr/Traversal` | - | yes | yes |
+| `vr/Upscale` | yes | - | - |
+| `vr/WheelCrop` | yes | - | - |
+<!-- /parity:core -->
+
+### HostServices per game
+
+<!-- parity:services -->
+Helpers applied, in order:
+
+- LE1: `BaseServices`, `WithCrashBreadcrumbs`, `WithRenderer`, `WithVignette`, `WithSights`, `WithPadMerge`, `WithHudPieces`, `WithFloorLock`, `WithVoice`, `WithPowerWheel`, `WithLe1Modules`, `WithGameMenuRequest`, `WithScopeCapture`, `WithInteractLabel`, `WithMakoControls`, `WithSpectator`, `WithGalaxyMap`, `WithGalaxyHologram`, `WithWorldUi`, `WithLe1ExtraUi`
+- LE2: `BaseServices`, `WithCrashBreadcrumbs`, `WithRenderer`, `WithVignette`, `WithSights`, `WithPadMerge`, `WithHudPieces`, `WithFloorLock`, `WithVoice`, `WithPowerWheel`, `WithTraversal`, `WithMenus`
+- LE3: `BaseServices`, `WithCrashBreadcrumbs`, `WithGalaxyHologram`, `WithRenderer`, `WithVignette`, `WithSights`, `WithPadMerge`, `WithFloorLock`, `WithTraversal`, `WithVoice`, `WithPowerWheel`, `WithMenus`
+
+| HostServices field | LE1 | LE2 | LE3 |
+|---|---|---|---|
+| `askVoiceModel` | WithVoice | WithVoice | WithVoice |
+| `beginScriptCall` | WithCrashBreadcrumbs | WithCrashBreadcrumbs | WithCrashBreadcrumbs |
+| `calibration` | WithLe1Modules | WithMenus | WithMenus |
+| `controllers` | WithRenderer | WithRenderer | WithRenderer |
+| `endScriptCall` | WithCrashBreadcrumbs | WithCrashBreadcrumbs | WithCrashBreadcrumbs |
+| `floor` | WithRenderer | WithRenderer | WithRenderer |
+| `hapticContinuous` | WithRenderer | WithRenderer | WithRenderer |
+| `hapticPulse` | WithRenderer | WithRenderer | WithRenderer |
+| `hapticPulseHz` | WithRenderer | WithRenderer | WithRenderer |
+| `hideScreenReticle` | WithRenderer | WithRenderer | - |
+| `keepLoaded` | BaseServices | BaseServices | BaseServices |
+| `leftGripAway` | WithPadMerge | WithPadMerge | WithPadMerge |
+| `logWorldUiStats` | WithWorldUi | WithMenus | - |
+| `mainMenu` | WithLe1Modules | WithMenus | WithMenus |
+| `motionBlurProtected` | WithLe1ExtraUi | - | BuildServices |
+| `processExiting` | BaseServices | BaseServices | BaseServices |
+| `publishCameraOffset` | WithLe1ExtraUi | - | - |
+| `recordWrite` | WithCrashBreadcrumbs | WithCrashBreadcrumbs | WithCrashBreadcrumbs |
+| `reserveWorldUi` | WithWorldUi | WithMenus | - |
+| `rightGripFree` | WithPadMerge | WithPadMerge | WithPadMerge |
+| `setAimRay` | WithRenderer | WithRenderer | WithRenderer |
+| `setConversationWorld` | WithLe1ExtraUi | - | - |
+| `setFloorLockSample` | WithFloorLock | WithFloorLock | WithFloorLock |
+| `setGalaxyHologram` | WithGalaxyHologram | - | WithGalaxyHologram |
+| `setGalaxyMap` | WithGalaxyMap | - | - |
+| `setHandAim` | WithRenderer | WithRenderer | WithRenderer |
+| `setHudPieces` | WithHudPieces | WithHudPieces | - |
+| `setInteractLabel` | WithInteractLabel | BuildServices | BuildServices |
+| `setMakoControls` | WithMakoControls | - | - |
+| `setPowerLock` | WithPowerWheel | WithPowerWheel | WithPowerWheel |
+| `setPowerWheel` | WithPowerWheel | WithPowerWheel | WithPowerWheel |
+| `setProcessEventCallback` | BaseServices | BaseServices | BaseServices |
+| `setScopeCapture` | WithScopeCapture | - | - |
+| `setSight` | WithSights | WithSights | WithSights |
+| `setSpectator` | WithSpectator | - | - |
+| `setSquadMenu` | WithLe1Modules | BuildServices | BuildServices |
+| `setSquadPlace` | BuildServices | BuildServices | BuildServices |
+| `setStatus` | WithRenderer | WithRenderer | WithRenderer |
+| `setSupportGrip` | WithPadMerge | WithPadMerge | WithPadMerge |
+| `setThespian` | WithLe1ExtraUi | BuildServices | BuildServices |
+| `setTraversal` | - | WithTraversal | WithTraversal |
+| `setTraversalPresentation` | - | - | BuildServices |
+| `setVignette` | WithVignette | WithVignette | WithVignette |
+| `setVoiceKeyterms` | WithVoice | WithVoice | WithVoice |
+| `setVoiceListen` | WithVoice | WithVoice | WithVoice |
+| `setWheelPanel` | WithLe1Modules | - | - |
+| `setWorldUi` | WithWorldUi | WithMenus | - |
+| `sightView` | WithSights | WithSights | WithSights |
+| `statusWanted` | WithRenderer | WithRenderer | WithRenderer |
+| `supportGripHeld` | WithPadMerge | WithPadMerge | WithPadMerge |
+| `takeGalaxyPick` | WithGalaxyHologram | - | WithGalaxyHologram |
+| `takeGameMenuRequest` | WithGameMenuRequest | WithMenus | WithMenus |
+| `takeGameUiRequest` | WithWorldUi | WithMenus | - |
+| `takeGuiEvents` | WithLe1ExtraUi | WithMenus | - |
+| `takeVoiceLine` | WithVoice | WithVoice | WithVoice |
+| `takeVoiceModelAnswer` | WithVoice | WithVoice | WithVoice |
+| `thespianInputBlocked` | - | - | BuildServices |
+| `view` | WithRenderer | WithRenderer | WithRenderer |
+| `voiceCommand` | WithVoice | WithVoice | WithVoice |
+| `voiceState` | WithVoice | WithVoice | WithVoice |
+<!-- /parity:services -->
+
+### Game and engine modules per game
+
+<!-- parity:modules -->
+| module | LE1 | LE2 | LE3 |
+|---|---|---|---|
+| `engine/BodyBounds` | run | ready | ready |
+| `engine/BonePose` | run | run | run |
+| `engine/CallFunction` | ungated | ungated | ungated |
+| `engine/CodeDump` | ungated | ungated | ungated |
+| `engine/ConversationHooks` | ungated | ungated | ungated |
+| `engine/CoverAcquire` | run | ready | ready |
+| `engine/Engine` | run | run (LExSDKv2) | run |
+| `engine/Le2ControlHost` | unbuilt | unbuilt | unbuilt |
+| `engine/Le2DiagnosticHost` | unbuilt | unbuilt | unbuilt |
+| `engine/Le2DiagnosticObservation` | unbuilt | unbuilt | unbuilt |
+| `engine/Legacy` | unreferenced | ungated | ungated |
+| `engine/NameLookup` | ungated | ungated | ungated |
+| `engine/NativesDump` | run | run | run |
+| `engine/ProcessEvent` | ungated | ungated | ungated |
+| `engine/ReflectCheck` | run | run | run |
+| `engine/SceneView` | ungated | ungated | ungated |
+| `engine/SelectionGaze` | ungated | ungated | ungated |
+| `engine/Skeleton` | run | run | run |
+| `engine/VoicePlace` | run | ready | ready |
+| `engine/XrToUnreal` | ungated | ungated | ungated |
+| `game/ArmIk` | run | run | run |
+| `game/AuthoredMoment` | run | ready | ready |
+| `game/BodyCalibration` | ungated | ungated | ungated |
+| `game/BodyFollow` | run | run | out |
+| `game/BodyProbe` | ungated | unreferenced | unreferenced |
+| `game/BodyScale` | ungated | ungated | ungated |
+| `game/CallTrace` | run | ready | ready |
+| `game/CameraCollision` | run | out | out |
+| `game/CameraProbe` | run | run (ME1-only handles) | out |
+| `game/CameraShake` | run | run (ME1-only handles) | out |
+| `game/CockpitPanel` | run | out | out |
+| `game/CockpitProbe` | run | out | out |
+| `game/CombatStance` | run | out | out |
+| `game/Comfort` | run | run | run |
+| `game/ConsoleRequest` | run | run (part, LExSDKv2) | run (part) |
+| `game/ConversationFlow` | run | ready | ready |
+| `game/ConversationWorld` | run | ready | ready |
+| `game/Fingers` | ungated | ungated | ungated |
+| `game/FocusPause` | run | out | out |
+| `game/GalaxyDump` | run | ready | ready |
+| `game/GalaxyMap` | run | ready | ready |
+| `game/GameArt` | run | out | out |
+| `game/GameMenuRequest` | run | run (ME1-only handles) | run (ME1-only handles) |
+| `game/GamepadBridge` | ungated | ungated | ungated |
+| `game/GamepadMapping` | ungated | ungated | ungated |
+| `game/GuiCursor` | run | run | run |
+| `game/GunKick` | run | run | out |
+| `game/HandAim` | run | run (LExSDKv2) | run (LExSDKv2) |
+| `game/HandCalibration` | ungated | ungated | ungated |
+| `game/HandTargets` | ungated | ungated | ungated |
+| `game/HeadSim` | ungated | ungated | ungated |
+| `game/HeadTracking` | run | run (LExSDKv2) | out (LExSDKv2) |
+| `game/HoloProbe` | run | out | out |
+| `game/Holsters` | run | out | out |
+| `game/HudPieces` | ungated | run | ungated |
+| `game/Interact` | run | run | run |
+| `game/InventoryProbe` | run | unreferenced | unreferenced |
+| `game/Le3GalaxyCapture` | ungated | ungated | ungated |
+| `game/Le3GalaxyRetention` | out | out | run |
+| `game/Le3Gui` | unbuilt | unbuilt | run |
+| `game/Le3Traversal` | out | out | run |
+| `game/Mako` | run | out | out |
+| `game/MakoControls` | run | out | out |
+| `game/MakoGunner` | run | out | out |
+| `game/Melee` | out | out | run |
+| `game/MenuPause` | run | run | run |
+| `game/OmniTool` | run | run | out |
+| `game/Player` | run | run (ME1-only handles) | run (ME1-only handles) |
+| `game/Posture` | run | run | run |
+| `game/PowerWheel` | run | run (ME1-only handles) | run (ME1-only handles) |
+| `game/Reflections` | run | run (LExSDKv2) | out (LExSDKv2) |
+| `game/SceneCaptureRig` | run | out | run |
+| `game/ScopeCapture` | run | out | out |
+| `game/ScopeParts` | run | out | out |
+| `game/ScreenReticle` | run | run | run |
+| `game/Sights` | run | run | out |
+| `game/SkeletonProbe` | run | run (ME1-only handles) | run (ME1-only handles) |
+| `game/SoundPlace` | run | ready | ready |
+| `game/Spectator` | run | out | out |
+| `game/Sprint` | run | out | run (ME1-only handles) |
+| `game/SquadAck` | run | ready | ready |
+| `game/SquadContext` | run | run (ME1-only handles) | run (ME1-only handles) |
+| `game/SquadOrders` | run | run (ME1-only handles) | run (ME1-only handles) |
+| `game/SquadPlace` | run | run | run |
+| `game/SquadWeapons` | run | run | run |
+| `game/SupportGrip` | ungated | ungated | ungated |
+| `game/SystemSettings` | ungated | ungated | ungated |
+| `game/Thespian` | run | run | run |
+| `game/Throwables` | run | out | out |
+| `game/Traversal` | out | run | out |
+| `game/UiWorldFigure` | run | out | out |
+| `game/Vent` | run | out | out |
+| `game/ViewAnchor` | ungated | ungated | ungated |
+| `game/ViewLevel` | run | run | out |
+| `game/Voice` | run | run | run |
+| `game/VrCover` | run | run | run |
+| `game/Weapon` | run | run (ME1-only handles) | run (ME1-only handles) |
+| `game/WorldUi` | run | run (ME1-only handles) | run (ME1-only handles) |
+<!-- /parity:modules -->
+
+### The three MevrBridge vocabularies
+
+<!-- parity:seams -->
+| MevrBridge seam | LE1 | LE2 | LE3 |
+|---|---|---|---|
+| `BuildMenuTabs` | yes | - | - |
+| `CineScreenFullRate` | yes | yes | yes |
+| `CineScreenHalfSeparationUU` | - | yes | yes |
+| `CineScreenLayers` | - | yes | yes |
+| `CineScreenPointerPlane` | yes | - | - |
+| `CineScreenQuadsNow` | yes | - | - |
+| `CineScreenWanted` | yes | yes | yes |
+| `CinemaBackdropLayer` | yes | - | - |
+| `CockpitLook` | yes | - | - |
+| `ConstantFpEye` | yes | - | - |
+| `ControllerAimActive` | yes | - | - |
+| `ConversationHandover` | yes | - | - |
+| `ConversationInWorld` | yes | - | - |
+| `ConversationWorldOrComing` | yes | - | - |
+| `CopyIntoImage` | - | yes | yes |
+| `DrawMenuPointer` | yes | - | - |
+| `EarlyFrameWait` | yes | - | - |
+| `EyeColourActive` | yes | - | - |
+| `EyeColourDone` | yes | - | - |
+| `EyeColourShader` | yes | - | - |
+| `EyeColourShaders` | yes | - | - |
+| `EyeUpscale` | yes | - | - |
+| `FindPass1View` | declared | - | - |
+| `FirstPersonAtBoot` | yes | - | - |
+| `FloorLockEnabled` | yes | - | - |
+| `FloorViewLook` | yes | - | - |
+| `FloorViewTranslation` | yes | yes | yes |
+| `ForwardLeanEmphasis` | yes | - | - |
+| `FrontEndBeforeTitle` | yes | - | - |
+| `FrontEndHold` | yes | - | - |
+| `FrontEndOnScreen` | yes | - | - |
+| `FullFrameLoop` | yes | - | - |
+| `GalaxyHeld` | yes | - | - |
+| `GalaxyHologram` | yes | - | - |
+| `GalaxyProjectionSwapBegin` | yes | - | - |
+| `GalaxyProjectionSwapEnd` | yes | - | - |
+| `GalaxyViewSwapBegin` | yes | - | - |
+| `GalaxyViewSwapEnd` | yes | - | - |
+| `HdrDisplayDesc` | yes | - | - |
+| `HoldPlainVr` | yes | - | - |
+| `HotkeyDown` | - | yes | - |
+| `HudPanelArmed` | yes | - | - |
+| `HudPanelBlend` | yes | - | - |
+| `HudPanelCapturesEarlyUi` | yes | - | - |
+| `HudPanelDraw` | - | yes | yes |
+| `HudPanelDrawsLastFrame` | yes | - | - |
+| `HudPanelIsFloat` | yes | - | - |
+| `HudPanelNoWrites` | yes | - | - |
+| `HudPanelPresentBegin` | yes | - | - |
+| `HudPanelPresentDesktop` | yes | - | - |
+| `HudPanelPresentDraw` | yes | - | - |
+| `HudPanelPresentEnd` | yes | - | - |
+| `HudPanelTarget` | yes | - | - |
+| `HudPanelTintBlends` | yes | - | - |
+| `HudPanelTintTarget` | yes | - | - |
+| `InterpolateDestinationWritten` | yes | - | - |
+| `JournalFloorViewWrite` | yes | yes | - |
+| `KeyDown` | yes | declared | yes |
+| `MainMenuOpen` | yes | yes | yes |
+| `MenuMouseFromOs` | yes | - | - |
+| `MergeMotionControllers` | yes | yes | yes |
+| `ModernBaseline` | yes | - | - |
+| `NewestPass1View` | declared | - | - |
+| `NoteCineScreenSubmit` | yes | - | - |
+| `NoteDrawArm` | yes | - | - |
+| `NoteHudPanelDraw` | yes | - | - |
+| `NoteHudPanelTint` | yes | - | - |
+| `NotePixelShaderCreated` | yes | - | - |
+| `NoteStereoSubmit` | yes | - | - |
+| `OnEyeCopied` | - | yes | yes |
+| `OnEyeReleased` | - | yes | yes |
+| `OnEyeSource` | - | yes | yes |
+| `OnFactory` | - | yes | yes |
+| `OnFlatQuad` | yes | - | - |
+| `OnFrameBegun` | yes | yes | yes |
+| `OnGalaxyHologram` | yes | - | - |
+| `OnGameThread` | yes | yes | yes |
+| `OnMenuKey` | yes | yes | yes |
+| `OnMenuQuad` | yes | - | - |
+| `OnPresent` | - | - | yes |
+| `OnRecentered` | yes | yes | yes |
+| `OnSessionCreated` | yes | yes | yes |
+| `OnSessionStopped` | yes | yes | yes |
+| `OnSwapChainPresent` | - | yes | - |
+| `OnViewBuilt` | yes | yes | yes |
+| `OverlayLayers` | yes | yes | yes |
+| `Pass1Records` | declared | - | - |
+| `PerEyeViewState` | yes | - | - |
+| `PerfPass0Captured` | yes | - | - |
+| `PerfPoint` | yes | - | - |
+| `PerfPresentBegin` | declared | - | - |
+| `PerfPresentEnd` | declared | - | - |
+| `PlaceGalaxyPanel` | - | yes | - |
+| `PlaceNativePanel` | - | - | yes |
+| `PlacePanel` | yes | - | - |
+| `PlanStereo` | yes | - | - |
+| `ProbeTextureAlpha` | yes | - | - |
+| `QuestPacingEnabled` | yes | - | - |
+| `QuestPacingFrame` | yes | - | - |
+| `QuestPacingInit` | yes | - | - |
+| `QuestPacingNextFrame` | yes | - | - |
+| `QuestPacingStopped` | yes | - | - |
+| `QueueProcessEvent` | yes | yes | yes |
+| `RecenterOrientation` | yes | - | - |
+| `RecordClearDepthStencilView` | yes | - | - |
+| `RecordDraw` | yes | - | - |
+| `RecordDrawAuto` | yes | - | - |
+| `RecordDrawIndexed` | yes | - | - |
+| `RecordDrawIndexedInstanced` | yes | - | - |
+| `RecordDrawInstanced` | yes | - | - |
+| `RecordPass1View` | yes | - | - |
+| `RecordUpdateSubresource` | yes | - | - |
+| `RequestHudPanelReplace` | yes | - | - |
+| `SampleMenuPointer` | yes | - | - |
+| `SetGameWindow` | yes | - | - |
+| `SpectatorMirror` | yes | - | - |
+| `StaticXrGetInstanceProcAddr` | yes | yes | yes |
+| `StereoFrameActive` | declared | - | - |
+| `TransitionFadeLayer` | yes | yes | yes |
+| `WorldUiActive` | yes | - | - |
+| `WorldUiHoldFrame` | yes | - | - |
+| `WorldUiOwnership` | yes | - | - |
+| `WorldUiOwnsGui` | - | yes | - |
+| `WorldUiPresent` | yes | - | - |
+| `WrapSessionFunctions` | yes | yes | yes |
+| `XrRuntimeIsSteamVr` | - | yes | yes |
+<!-- /parity:seams -->
+
+### Engine names the sequels lack
+
+Needs LExSDKv2 (the submodule, or the main checkout's). This lists only what a sequel build itself tries: names it
+declares with `ue3::kEveryGame` handles that the game's SDK list lacks.
+
+The rest moves with every ME1 edit, so it is not committed. `python tools/parity-ledger.py --names` prints it:
+- each sequel build's other literals that the game lacks: ME1-reach handles, inert there, and CallFunction paths;
+- ME1's build's names that the sequel lacks: the porting gap, per module. `python tools/le2-name-audit.py --game LE3
+  game/<Module>` gives the same for one module, with the sequel's names of the same short name.
+
+<!-- parity:names -->
+Handles a sequel build declares `ue3::kEveryGame` whose name that game's SDK list lacks (the lookup is tried there: a failure, or a gap in the generated SDK list; ReflectCheck decides):
+
+- LE3 `game/Comfort`: `Engine.Actor:Location`
+- LE3 `game/GameMenuRequest`: `Engine.BioSFHandler.HandleInputEvent`, `Engine.BioSFManager:m_FocusPanel`, `Engine.BioSFPanel:m_DefaultHandler`, `Engine.BioSFPanel:nmTag`, `Engine.PlayerController:m_oCachedScaleFormManager`, `SFXGame.MassEffectGuiManager.GetBrowserHandler`, `SFXGame.MassEffectGuiManager:m_oBWHandler`
+- LE3 `game/GuiCursor`: `Engine.BioSFManager:m_FocusPanel`, `Engine.PlayerController:m_oCachedScaleFormManager`
+- LE2 `game/OmniTool`: `Engine.StaticMesh:LODInfo`
+- LE3 `game/Player`: `Engine.Actor:Location`
+- LE3 `game/Posture`: `Engine.Actor:Location`
+- LE3 `game/PowerWheel`: `SFXGame.BioPawn.IsHostile`, `SFXGame.BioPawn:m_oBehavior`
+- LE3 `game/ScreenReticle`: `Engine.BioSFHandler:oPanel`, `Engine.BioSFManager:m_lstPanels`, `Engine.BioSFPanel`, `Engine.BioSFPanel.GetVariableBool`, `Engine.BioSFPanel.GetVariableFloat`, `Engine.BioSFPanel.SetVariableFloat`, `Engine.BioSFPanel:MovieRef`, `Engine.BioSFPanel:ScriptHandlers`, `Engine.BioSFPanel:m_DefaultHandler`, `Engine.BioSFPanel:nmTag`, `Engine.PlayerController:m_oCachedScaleFormManager`, `SFXGame.BioSFHandler_Reticule`, `SFXGame.BioSFHandler_Reticule:m_Reticule`, `SFXGame.BioSFHandler_Reticule:m_eLastReticuleMode`
+- LE2 `game/SquadContext`: `SFXGame.BioPawn.IsInCombatActionState`
+- LE3 `game/SquadContext`: `SFXGame.BioActorBehavior:ActorGameName`, `SFXGame.BioPawn.IsHostile`, `SFXGame.BioPawn.IsInCombatActionState`, `SFXGame.BioPawn:m_oBehavior`
+- LE3 `game/SquadWeapons`: `SFXGame.BioActorBehavior:ActorGameName`, `SFXGame.BioBaseSquad.GetMember`, `SFXGame.BioBaseSquad.GetSquadSize`, `SFXGame.BioPawn:m_oBehavior`
+- LE3 `game/Thespian`: `Engine.BioSFHandler:oPanel`, `Engine.BioSFPanel.InvokeMethod`, `SFXGame.BioConversation.GetEntryText`, `SFXGame.BioConversation.GetReplyText`, `SFXGame.BioWorldInfo.EndCurrentConversation`
+- LE3 `game/VrCover`: `Engine.Actor:Location`, `SFXGame.BioPawn.IsHostile`
+- LE3 `game/WorldUi`: `Engine.BioSFManager:m_FocusPanel`, `Engine.BioSFManager:m_lstPanels`, `Engine.BioSFPanel:m_DefaultHandler`, `Engine.BioSFPanel:nmTag`, `Engine.PlayerController:m_oCachedScaleFormManager`
+<!-- /parity:names -->

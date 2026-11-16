@@ -240,8 +240,8 @@ inline constexpr Entry kTable[] = {
 // LE2 (2.0.0.48602, timestamp 0x60AEEFA5): the hooks it runs today and our reflection layer's globals (M1,
 // research/le2-engine-access-discovery.md "M1: what ME2's code showed"); patterns from tools/rva-patterns.py over ME2's
 // .text dump (MassEffect-60AEEFA5.text.bin), each unique there; the tests check them against the dump when it's on the
-// machine. LE3 (2.0.0.48602): the hooks it runs today, .pdata-checked with tools/verify_rvas.py, no patterns yet (no .text
-// dump). The LE1-only features have no address there (0).
+// machine. LE3 uses the same original-code workflow against its 0x60AEF0C4 captured text.
+// Unsupported game-specific features retain a zero address.
 MEVR_ADDRESSES_LE2 {
 
 inline constexpr std::uint32_t kProcessEvent = 0xD8D50;
@@ -312,6 +312,17 @@ inline constexpr Entry kTable[] = {
 
 MEVR_ADDRESSES_LE3 {
 
+// Capture loop and post-effect target contract, verified in the 60AEF0C4 dump.
+inline constexpr std::uint32_t kCaptureScene = 0x344540;
+inline constexpr std::uint32_t kCaptureRender = 0x365370;
+inline constexpr std::uint32_t kCaptureRenderUmbra = 0x3685C0;
+inline constexpr std::uint32_t kBeginBackbuffer = 0x36D760;
+inline constexpr std::uint32_t kDynamicRhi = 0x1894018;
+
+// Native tier evaluation, void(this, int force), before streaming queues are
+// classified. Ghidra from the installed 60AEF0C4 dump; research/le3-galaxy.md.
+inline constexpr std::uint32_t kReevaluateStreaming = 0xAC67C0;
+
 inline constexpr std::uint32_t kProcessEvent = 0xF4F80;
 inline constexpr std::uint32_t kCallFunction = 0xF2C30;
 inline constexpr std::uint32_t kGameEngineTick = 0x5502C0;
@@ -319,31 +330,94 @@ inline constexpr std::uint32_t kCalcSceneView = 0x6CFFD0;
 inline constexpr std::uint32_t kCalcSceneViewPrimaryReturn = 0;  // not pinned yet: any call from Draw counts
 inline constexpr std::uint32_t kViewportDraw = 0x6D1E30;
 inline constexpr std::uint32_t kViewportDrawEnd = 0x6D40DB;
-inline constexpr std::uint32_t kUpdateSkelPose = 0;
+inline constexpr std::uint32_t kUpdateSkelPose = 0x796EB0;
 inline constexpr std::uint32_t kSkelUpdateBounds = 0;
 inline constexpr std::uint32_t kPrimitiveUmbraBounds = 0;
 inline constexpr std::uint32_t kSoundSourceUpdate = 0;
 inline constexpr std::uint32_t kNameFromText = 0;
 inline constexpr std::uint32_t kTryAcquireCover = 0;
 inline constexpr std::uint32_t kCoverTrace = 0;
-inline constexpr std::uint32_t kUpdateSelection = 0;
+// FindCurrentSelectionTarget body, void(this); research/le3-interaction-gaze.md.
+inline constexpr std::uint32_t kUpdateSelection = 0xA9BF90;
 inline constexpr std::uint32_t kConversationSetPositionRotator = 0;
 inline constexpr std::uint32_t kInterruptConversation = 0;
 inline constexpr std::uint32_t kMoveWithInterpMoveTrack = 0;
-inline constexpr std::uint32_t kGObjects = 0;  // LE3's reflection layout: stage 5
-inline constexpr std::uint32_t kNamePools = 0;
-inline constexpr std::uint32_t kGMalloc = 0;
-inline constexpr std::uint32_t kAppMalloc = 0;
-inline constexpr std::uint32_t kAppFree = 0;
-inline constexpr std::uint32_t kGNatives = 0;
+inline constexpr std::uint32_t kGObjects = 0x1887E40;  // Original captured native code; research/le3-engine-access-discovery.md.
+inline constexpr std::uint32_t kNamePools = 0x17B33D0;
+inline constexpr std::uint32_t kGMalloc = 0x17CD588;
+inline constexpr std::uint32_t kAppMalloc = 0xBF110;
+inline constexpr std::uint32_t kAppFree = 0xBF0D0;
+inline constexpr std::uint32_t kGNatives = 0x17F4BB0;
+
+// ME3 counterparts of LE1's combined post-process guard. Native constructor,
+// factory and full dispatch-table audit: research/le3-recenter-transition-failure.md.
+inline constexpr std::uint32_t kMotionBlurProxyRender = 0x3E3F20;
+inline constexpr std::uint32_t kNoBlurProxyRender = 0x3E4250;
+inline constexpr le1::MotionBlurProxyPair kMotionBlurProxyPairs[] = {
+    {0x1154B20, 0x1154990, 0x672AC625B88E709Cull, 0x34208617999F0373ull},
+    {0x1154B70, 0x11549E0, 0xEB2AEFDB51EC1DB1ull, 0x1924AFE40335BB63ull},
+    {0x1154BC0, 0x1154A30, 0x3402F4E6469ECCF5ull, 0x15454443A34FC654ull},
+    {0x1154C10, 0x1154A80, 0x55281E47FA78BD1Aull, 0x3B367E8E9327D8E3ull},
+    {0x1154C60, 0x1154AD0, 0x328E9C2384836DAAull, 0xC7B82F3E6CDC2313ull},
+    {0x1157E78, 0x1157DD8, 0x1AE92F8BB1E9F57Bull, 0x1786DF4B7BB170D0ull},
+    {0x1157EC8, 0x1157E28, 0x682EAA364BF8D6F0ull, 0x2A143EDF5F7AC152ull},
+};
 
 inline constexpr Entry kTable[] = {
-    {"UObject::ProcessEvent", kProcessEvent, Kind::Function, nullptr, 0, 0, "host, mod"},
-    {"UGameEngine::Tick", kGameEngineTick, Kind::Function, nullptr, 0, 0, "host"},
-    {"UObject::CallFunction", kCallFunction, Kind::Function, nullptr, 0, 0, "mod"},
-    {"ULocalPlayer::CalcSceneView", kCalcSceneView, Kind::Function, nullptr, 0, 0, "mod (scene view)"},
-    {"FViewportClient::Draw", kViewportDraw, Kind::Function, nullptr, 0, 0, "mod (scene view)"},
+    {"MotionBlurProxy::Render", kMotionBlurProxyRender, Kind::Function, "48 8B C4 56 57 41 54 41 56 41 57 48 81 EC 80 00 00 00 48 C7 40 A0 FE FF FF FF", 0, 0, "motion blur guard"},
+    {"NoBlurProxy::Render", kNoBlurProxyRender, Kind::Function, "48 8B C4 56 57 41 54 41 56 41 57 48 81 EC 80 00 00 00 48 C7 40 A0 FE FF FF FF", 0, 0, "motion blur guard"},
+    {"MotionBlurProxy.Pair1.Blur", 0x1154B20, Kind::Data, "48 8D 05 ?? ?? ?? ?? 48 89 03 48 85 FF 74 0A F3", 3, 0x3D5314, "motion blur guard"},
+    {"MotionBlurProxy.Pair1.Sharp", 0x1154990, Kind::Data, "48 8D 05 ?? ?? ?? ?? 48 89 03 48 85 FF 74 0A F3", 3, 0x3D6734, "motion blur guard"},
+    {"MotionBlurProxy.Pair2.Blur", 0x1154B70, Kind::Data, "48 8D 05 ?? ?? ?? ?? 48 89 03 48 85 FF 74 0A F3", 3, 0x3D4F34, "motion blur guard"},
+    {"MotionBlurProxy.Pair2.Sharp", 0x11549E0, Kind::Data, "48 8D 05 ?? ?? ?? ?? 48 89 03 48 85 FF 74 0A F3", 3, 0x3D6354, "motion blur guard"},
+    {"MotionBlurProxy.Pair3.Blur", 0x1154BC0, Kind::Data, "48 8D 05 ?? ?? ?? ?? 48 89 03 48 85 FF 74 0A F3", 3, 0x3D4AA1, "motion blur guard"},
+    {"MotionBlurProxy.Pair3.Sharp", 0x1154A30, Kind::Data, "48 8D 05 ?? ?? ?? ?? 48 89 03 48 85 FF 74 0A F3", 3, 0x3D5EC1, "motion blur guard"},
+    {"MotionBlurProxy.Pair4.Blur", 0x1154C10, Kind::Data, "48 8D 05 ?? ?? ?? ?? 48 89 03 48 85 FF 74 0A F3", 3, 0x3D46B4, "motion blur guard"},
+    {"MotionBlurProxy.Pair4.Sharp", 0x1154A80, Kind::Data, "48 8D 05 ?? ?? ?? ?? 48 89 03 48 85 FF 74 0A F3", 3, 0x3D5AD4, "motion blur guard"},
+    {"MotionBlurProxy.Pair5.Blur", 0x1154C60, Kind::Data, "48 8D 05 ?? ?? ?? ?? 48 89 03 48 85 FF 74 0A F3", 3, 0x3D42D4, "motion blur guard"},
+    {"MotionBlurProxy.Pair5.Sharp", 0x1154AD0, Kind::Data, "48 8D 05 ?? ?? ?? ?? 48 89 03 48 85 FF 74 0A F3", 3, 0x3D56F4, "motion blur guard"},
+    {"MotionBlurProxy.Pair6.Blur", 0x1157E78, Kind::Data, "48 8D 05 ?? ?? ?? ?? 48 89 06 45 8B C4 B8 01 00", 3, 0x3DA4DB, "motion blur guard"},
+    {"MotionBlurProxy.Pair6.Sharp", 0x1157DD8, Kind::Data, "48 8D 05 ?? ?? ?? ?? 48 89 06 45 8B C4 B8 01 00", 3, 0x3DA273, "motion blur guard"},
+    {"MotionBlurProxy.Pair7.Blur", 0x1157EC8, Kind::Data, "48 8D 05 ?? ?? ?? ?? 48 89 06 45 8B C4 B8 01 00", 3, 0x3DA60B, "motion blur guard"},
+    {"MotionBlurProxy.Pair7.Sharp", 0x1157E28, Kind::Data, "48 8D 05 ?? ?? ?? ?? 48 89 06 45 8B C4 B8 01 00", 3, 0x3DA3A3, "motion blur guard"},
+    // The host's hooks.
+    {"UObject::ProcessEvent", kProcessEvent, Kind::Function, "40 55 41 56 41 57 48 81 EC 90 00 00 00 48 8D 6C 24 20 48 C7", 0, 0,
+        "host, mod"},
+    {"UGameEngine::Tick", kGameEngineTick, Kind::Function, "48 8B C4 55 56 57 41 54 41 55 41 56 41 57 48 8D A8 A8 FC FF", 0, 0,
+        "host"},
+    // The mod's hooks.
+    {"UObject::CallFunction", kCallFunction, Kind::Function, "40 55 53 56 57 41 54 41 55 41 56 41 57 48 81 EC A8 04 00 00", 0,
+        0, "mod"},
+    {"ULocalPlayer::CalcSceneView", kCalcSceneView, Kind::Function,
+        "48 8B C4 55 53 56 57 41 54 41 55 41 56 41 57 48 8D A8 98 FD FF FF 48 81 EC 88 03 00", 0, 0, "mod (scene view)"},
+    {"FViewportClient::Draw", kViewportDraw, Kind::Function,
+        "48 8B C4 55 56 57 41 54 41 55 41 56 41 57 48 8D A8 58 FC FF FF 48 81 EC D0 04 00 00", 0, 0, "mod (scene view)"},
     {"FViewportClient::Draw (end)", kViewportDrawEnd, Kind::End, nullptr, 0, 0, "mod (scene view)"},
+    {"USkeletalMeshComponent::UpdateSkelPose", kUpdateSkelPose, Kind::Function,
+        "48 8B C4 44 89 40 18 55 56 57 41 54 41 55 41 56 41 57 48 8D 68 A8 48 81", 0, 0, "mod (arm IK)"},
+    // Our reflection layer's globals and the engine's allocator (ue3/Runtime has its own patterns too).
+    {"GObjects", kGObjects, Kind::Data, "C9 74 5B EB F0 4C 8B 05 ?? ?? ?? ?? 4B 8B 04 06", 8, 0xBC8EB,
+        "mod (reflection), host (Halcyon LE3's game-thread queue)"},
+    {"UBioPlayerSelection::FindCurrentSelectionTarget", kUpdateSelection, Kind::Function,
+        "48 8B C4 48 89 48 08 55 56 57 41 54 41 55 41 57", 0, 0, "mod (interaction gaze)"},
+    {"UBioTierManager::ReevaluateStreaming", kReevaluateStreaming, Kind::Function,
+        "41 56 48 83 EC 40 4C 8B F1 85 D2 75 0D ?? ?? ??", 0, 0, "mod (CIC art retention)"},
+    {"CaptureScene", kCaptureScene, Kind::Leaf, "48 8B 09 48 85 C9 74 07 48 8B 01 48 FF 60 08 C3", 0, 0, "host (capture target)"},
+    {"Capture.Render", kCaptureRender, Kind::Function, "48 8B C4 56 57 41 56 48 83 EC 60 48 C7 40 C0 FE", 0, 0, "host (capture target)"},
+    {"Capture.RenderUmbra", kCaptureRenderUmbra, Kind::Function, "48 89 74 24 18 48 89 7C 24 20 55 48 8B EC 48 83 EC 50 48 8B", 0, 0, "host (capture target)"},
+    {"Capture.BeginBackbuffer", kBeginBackbuffer, Kind::Function, "40 53 48 83 EC 30 48 C7 44 24 20 FE FF FF FF 48 8B D9 48 8B 0D ?? ?? ?? ?? 48 8B 01", 0, 0, "host (capture target)"},
+    {"Capture.GDynamicRHI", kDynamicRhi, Kind::Data, "40 53 48 83 EC 30 48 C7 44 24 20 FE FF FF FF 48 8B D9 48 8B 0D ?? ?? ?? ?? 48 8B 01", 21, 0x36D760, "host (capture target)"},
+    {"the name pools", kNamePools, Kind::Data, "38 49 63 46 0C 48 8D 2D ?? ?? ?? ?? 33 FF 85 C0", 8, 0x81A11, "mod (reflection)"},
+    {"GMalloc", kGMalloc, Kind::Data, "B9 98 00 00 00 48 8B 0D ?? ?? ?? ?? 48 85 C9 75", 8, 0xB7683, "mod (engine strings)"},
+    {"appMalloc", kAppMalloc, Kind::Function,
+        "48 89 5C 24 08 48 89 74 24 10 57 48 83 EC 20 8B F1 41 8B D8 48 8B 0D ?? ?? ?? ?? 8B FA 48 85 C9 75 0C "
+        "E8 ?? ?? ?? ?? 48 8B 0D ?? ?? ?? ?? 48 8B 01 44 8B CB 44 8B C7 8B D6",
+        0, 0, "mod (engine strings)"},
+    {"appFree", kAppFree, Kind::Function,
+        "48 89 5C 24 08 57 48 83 EC 20 48 8B F9 8B DA 48 8B 0D ?? ?? ?? ?? 48 85 C9 75 0C E8 ?? ?? ?? ?? "
+        "48 8B 0D ?? ?? ?? ?? 48 8B 01 44 8B C3 48 8B D7 48 8B 5C 24 30 48 83 C4 20 5F 48 FF 60 18",
+        0, 0, "mod (engine strings)"},
+    {"GNatives", kGNatives, Kind::Data, "74 13 0F B7 C0 48 8D 0D ?? ?? ?? ?? 48 8B 04 C1", 8, 0xCA8A1, "mod (diagnostics)"},
 };
 
 } // le3

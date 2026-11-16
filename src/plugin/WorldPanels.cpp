@@ -3,14 +3,16 @@
 // flat screen (menus, galaxy map, flat conversations, cutscenes, movies) and its Insert menu stay
 // put in the app space where they appeared, instead of riding the head (VIEW space). The placement
 // rules are core/vr/OverlayPlacement's WorldPanel (unit-tested); this file feeds it Halcyon's
-// frames and settings (MELEVR.ini worldLockedPanels, panelFollowDeg).
+// frames and settings (MELEVR.ini worldLockedPanels, panelFollowDeg). Both Halcyon hosts: LE2 places
+// its 3D cinema screen here (research/le2-cinema.md); LE1's seams forward to world_panels.
 
 #include "plugin/WorldPanels.hpp"
 #include "plugin/Renderer.hpp"
 
+#if defined(MEVR_WITH_HALCYON)
 #include "plugin/GalaxyHologram.hpp"
-
 #include "halcyon/le1/mevr_bridge.h"
+#endif
 
 #include "core/Log.hpp"
 #include "core/vr/OverlayPlacement.hpp"
@@ -23,7 +25,7 @@
 #include <cmath>
 #include <cstdint>
 
-namespace MELEVR::MevrBridge {
+namespace mevr::host::world_panels {
 namespace {
 
 namespace overlay = mevr::vr::overlay;
@@ -42,32 +44,32 @@ Slot gSlots[2];  // 0: the flat screen, 1: the Insert menu
 std::uint64_t gFrame = 1;
 unsigned gPlacementLogs = 0;
 
-char const* KindName(PanelKind kind) {
+char const* KindName(Kind kind) {
     switch (kind) {
-    case PanelKind::InsertMenu: return "Insert menu";
-    case PanelKind::GameMenu: return "game menu";
-    case PanelKind::GalaxyMap: return "galaxy map";
-    case PanelKind::Conversation: return "conversation";
-    case PanelKind::Cutscene: return "cutscene/movie";
+    case Kind::HalcyonMenu: return "Insert menu";
+    case Kind::GameMenu: return "game menu";
+    case Kind::GalaxyMap: return "galaxy map";
+    case Kind::Conversation: return "conversation";
+    case Kind::Cutscene: return "cutscene/movie";
     }
     return "?";
 }
 
 } // namespace
 
-void NoteWorldPanelFrame() noexcept {
+void NoteFrame() noexcept {
     ++gFrame;
 }
 
-void RecenterWorldPanels() noexcept {
+void Recenter() noexcept {
     for (Slot& slot : gSlots) {
         slot.panel.Recenter();
     }
 }
 
-PanelPose PlacePanel(PanelKind kind, float const viewPosition[3], void* viewSpace, void* appSpace, bool headValid,
+Pose Place(Kind kind, float const viewPosition[3], void* viewSpace, void* appSpace, bool headValid,
     float const headOrientation[4], float const headPosition[3]) noexcept {
-    PanelPose out;
+    Pose out;
     out.space = viewSpace;
     out.position[0] = viewPosition[0];
     out.position[1] = viewPosition[1];
@@ -75,10 +77,10 @@ PanelPose PlacePanel(PanelKind kind, float const viewPosition[3], void* viewSpac
     out.headLocked = true;
 
     mevr::host::renderer::PanelSettings const cfg = mevr::host::renderer::Panels();
-    Slot& slot = gSlots[kind == PanelKind::InsertMenu ? 1 : 0];
+    Slot& slot = gSlots[kind == Kind::HalcyonMenu ? 1 : 0];
     bool const on = cfg.worldLockedPanels && appSpace != nullptr;
     if (on != slot.on) {
-        mevr::log::Info("world panels: the {} slot is {}", kind == PanelKind::InsertMenu ? "Insert menu" : "flat screen",
+        mevr::log::Info("world panels: the {} slot is {}", kind == Kind::HalcyonMenu ? "Insert menu" : "flat screen",
             on ? "world-locked (stays where it appears)" : "head-locked (Halcyon's VIEW space)");
         slot = Slot{};
         slot.on = on;
@@ -95,8 +97,8 @@ PanelPose PlacePanel(PanelKind kind, float const viewPosition[3], void* viewSpac
 
     // Conversations and cutscenes are one showing on the cinema screen (and the flat panel's movies inside them): ME1 flips
     // between the two modes mid-scene, and each flip was a kind change that re-placed the screen at the head.
-    bool const cinema = kind == PanelKind::Conversation || kind == PanelKind::Cutscene;
-    int const kindId = cinema ? static_cast<int>(PanelKind::Cutscene) : static_cast<int>(kind);
+    bool const cinema = kind == Kind::Conversation || kind == Kind::Cutscene;
+    int const kindId = cinema ? static_cast<int>(Kind::Cutscene) : static_cast<int>(kind);
     overlay::WorldPanelSettings settings = cinema ? overlay::ScreenPanelSettings() : overlay::WorldPanelSettings{};
     if (!cinema) {
         settings.followAfter = cfg.panelFollowDeg > 0.0f ? std::clamp(cfg.panelFollowDeg, 10.0f, 170.0f) * kDegToRad : 0.0f;
@@ -117,11 +119,13 @@ PanelPose PlacePanel(PanelKind kind, float const viewPosition[3], void* viewSpac
 
     overlay::Placement const why = slot.panel.Update(kindId, gFrame, head, headValid, settings, dt);
     XrPosef pose = slot.panel.PoseOf({viewPosition[0], viewPosition[1], viewPosition[2]});
-    if (kind == PanelKind::GalaxyMap && mevr::host::galaxy_hologram::Active()) {
+#if defined(MEVR_WITH_HALCYON)
+    if (kind == Kind::GalaxyMap && mevr::host::galaxy_hologram::Active()) {
         // The galaxy hologram is up (research/51 section 8): the game's own map moves back and up, a screen behind the table.
         XrVector3f const away = overlay::Rotate(pose.orientation, {0.0f, 0.0f, -1.0f});
         pose.position = {pose.position.x + away.x * 1.0f, pose.position.y + 0.75f + away.y * 1.0f, pose.position.z + away.z * 1.0f};
     }
+#endif
     if (why != overlay::Placement::Kept && gPlacementLogs < kMaxPlacementLogs) {
         ++gPlacementLogs;
         XrVector3f const anchor = slot.panel.Anchor();
@@ -142,4 +146,36 @@ PanelPose PlacePanel(PanelKind kind, float const viewPosition[3], void* viewSpac
     return out;
 }
 
+} // namespace mevr::host::world_panels
+
+#if defined(MEVR_WITH_HALCYON)
+// LE1's seams, forwarded to world_panels (the kinds have the same values).
+namespace MELEVR::MevrBridge {
+
+void NoteWorldPanelFrame() noexcept {
+    mevr::host::world_panels::NoteFrame();
+}
+
+void RecenterWorldPanels() noexcept {
+    mevr::host::world_panels::Recenter();
+}
+
+PanelPose PlacePanel(PanelKind kind, float const viewPosition[3], void* viewSpace, void* appSpace, bool headValid,
+    float const headOrientation[4], float const headPosition[3]) noexcept {
+    mevr::host::world_panels::Pose const placed = mevr::host::world_panels::Place(
+        static_cast<mevr::host::world_panels::Kind>(static_cast<int>(kind)), viewPosition, viewSpace, appSpace, headValid,
+        headOrientation, headPosition);
+    PanelPose out;
+    out.space = placed.space;
+    for (int i = 0; i < 4; ++i) {
+        out.orientation[i] = placed.orientation[i];
+    }
+    for (int i = 0; i < 3; ++i) {
+        out.position[i] = placed.position[i];
+    }
+    out.headLocked = placed.headLocked;
+    return out;
+}
+
 } // namespace MELEVR::MevrBridge
+#endif

@@ -1,0 +1,3650 @@
+{
+ "hosts": {
+  "LE1": {
+   "core": [
+    "Exe",
+    "ExeCheck",
+    "Hook",
+    "Hotkey",
+    "Ini",
+    "Json",
+    "Log",
+    "PngFile",
+    "Version",
+    "Window",
+    "d3d11/ShaderReflect",
+    "gfx/Raster",
+    "gfx/Swf",
+    "gfx/SwfFont",
+    "voice/ScriptMatch",
+    "vr/AimRay",
+    "vr/Calibration",
+    "vr/CineScreen",
+    "vr/CockpitHazard",
+    "vr/Colour",
+    "vr/ColourStrip",
+    "vr/CombatStance",
+    "vr/Comfort",
+    "vr/Controllers",
+    "vr/ConversationWorld",
+    "vr/FloorLock",
+    "vr/FrameProbe",
+    "vr/GalaxyHologram",
+    "vr/GalaxyMap",
+    "vr/GameMenuRequest",
+    "vr/GamePointer",
+    "vr/GuiEvents",
+    "vr/Haptics",
+    "vr/HostView",
+    "vr/HudPieces",
+    "vr/ImageConvert",
+    "vr/InteractLabel",
+    "vr/LayerComposite",
+    "vr/MakoControls",
+    "vr/MakoGunner",
+    "vr/MenuPointer",
+    "vr/MetricStereo",
+    "vr/OmniPad",
+    "vr/OmniRail",
+    "vr/OverlayPlacement",
+    "vr/PoseRecording",
+    "vr/PowerWheel",
+    "vr/PresentationHold",
+    "vr/QuestPacing",
+    "vr/Recenter",
+    "vr/ScopeArt",
+    "vr/ScopeCapture",
+    "vr/ScreenMatrix",
+    "vr/Sights",
+    "vr/Spectator",
+    "vr/Sprint",
+    "vr/SquadContext",
+    "vr/SquadGesture",
+    "vr/SquadMenu",
+    "vr/SquadParser",
+    "vr/SquadPlace",
+    "vr/SquadRetreat",
+    "vr/SquadStanding",
+    "vr/TestRequest",
+    "vr/Thespian",
+    "vr/TransitionFade",
+    "vr/Upscale",
+    "vr/WheelCrop",
+    "vr/WorldUi",
+    "xr/Floor",
+    "xr/Input"
+   ],
+   "defines": [
+    "MEVR_GAME_LE1",
+    "MEVR_WITH_HALCYON",
+    "MEVR_WITH_MAIN_MENU"
+   ],
+   "modExtra": [],
+   "modModules": [
+    "engine/BodyBounds",
+    "engine/BonePose",
+    "engine/CallFunction",
+    "engine/CodeDump",
+    "engine/ConversationHooks",
+    "engine/CoverAcquire",
+    "engine/Engine",
+    "engine/Legacy",
+    "engine/NameLookup",
+    "engine/NativesDump",
+    "engine/ProcessEvent",
+    "engine/ReflectCheck",
+    "engine/SceneView",
+    "engine/SelectionGaze",
+    "engine/Skeleton",
+    "engine/VoicePlace",
+    "engine/XrToUnreal",
+    "game/ArmIk",
+    "game/AuthoredMoment",
+    "game/BodyCalibration",
+    "game/BodyFollow",
+    "game/BodyProbe",
+    "game/BodyScale",
+    "game/CallTrace",
+    "game/CameraCollision",
+    "game/CameraProbe",
+    "game/CameraShake",
+    "game/CockpitPanel",
+    "game/CockpitProbe",
+    "game/CombatStance",
+    "game/Comfort",
+    "game/ConsoleRequest",
+    "game/ConversationFlow",
+    "game/ConversationWorld",
+    "game/Fingers",
+    "game/FocusPause",
+    "game/GalaxyDump",
+    "game/GalaxyMap",
+    "game/GameArt",
+    "game/GameMenuRequest",
+    "game/GamepadBridge",
+    "game/GamepadMapping",
+    "game/GuiCursor",
+    "game/GunKick",
+    "game/HandAim",
+    "game/HandCalibration",
+    "game/HandTargets",
+    "game/HeadSim",
+    "game/HeadTracking",
+    "game/HoloProbe",
+    "game/Holsters",
+    "game/HudPieces",
+    "game/Interact",
+    "game/InventoryProbe",
+    "game/Le3GalaxyCapture",
+    "game/Le3GalaxyRetention",
+    "game/Le3Traversal",
+    "game/Mako",
+    "game/MakoControls",
+    "game/MakoGunner",
+    "game/Melee",
+    "game/MenuPause",
+    "game/OmniTool",
+    "game/Player",
+    "game/Posture",
+    "game/PowerWheel",
+    "game/Reflections",
+    "game/SceneCaptureRig",
+    "game/ScopeCapture",
+    "game/ScopeParts",
+    "game/ScreenReticle",
+    "game/Sights",
+    "game/SkeletonProbe",
+    "game/SoundPlace",
+    "game/Spectator",
+    "game/Sprint",
+    "game/SquadAck",
+    "game/SquadContext",
+    "game/SquadOrders",
+    "game/SquadPlace",
+    "game/SquadWeapons",
+    "game/SupportGrip",
+    "game/SystemSettings",
+    "game/Thespian",
+    "game/Throwables",
+    "game/Traversal",
+    "game/UiWorldFigure",
+    "game/Vent",
+    "game/ViewAnchor",
+    "game/ViewLevel",
+    "game/Voice",
+    "game/VrCover",
+    "game/Weapon",
+    "game/WorldUi"
+   ],
+   "other": [
+    "engine/CodeDump",
+    "game/GamepadMapping",
+    "ue3/Pattern",
+    "ue3/SafeNames"
+   ],
+   "plugin": [
+    "Calibration",
+    "CalibrationDraw",
+    "CineScreen",
+    "CinemaBackdrop",
+    "CinemaBackdropDraw",
+    "Colour",
+    "ConversationWorld",
+    "CrashBreadcrumbs",
+    "DrawReplay",
+    "Entry",
+    "FloorLock",
+    "GalaxyHologram",
+    "GalaxyHologramDraw",
+    "GamePointer",
+    "GameThreadCalls",
+    "Glow",
+    "Halcyon",
+    "HalcyonBridge",
+    "HalcyonOverlays",
+    "HandReticle",
+    "HudPanel",
+    "HudPieceLayers",
+    "KeptLocks",
+    "MainMenu",
+    "MainMenuSettings",
+    "MetricStereo",
+    "MevrMenuPointer",
+    "MevrMenuTab",
+    "ModLoader",
+    "MotionBlurGuard",
+    "OmniPad",
+    "OmniToolRail",
+    "OpenAlSoft",
+    "PadMerge",
+    "PerfProbe",
+    "PowerIcons",
+    "PowerWheel",
+    "PowerWheelDraw",
+    "PresentHook",
+    "PresentationHold",
+    "ProcessEventHook",
+    "QuadSwapchain",
+    "QuestPacing",
+    "RailArt",
+    "RecenterTilt",
+    "RenderLevers",
+    "RendererLe1",
+    "ReportRequest",
+    "ScopeCaptureSource",
+    "SetupRequest",
+    "SightLayers",
+    "SightPictures",
+    "Spectator",
+    "SquadPanel",
+    "SquadPanelDraw",
+    "SquadPlaceDraw",
+    "SteamVrSmoothingRequest",
+    "Swapchains",
+    "TestLoop",
+    "Thespian",
+    "TransitionFade",
+    "UiWorldFigure",
+    "Upscale",
+    "Vignette",
+    "Voice",
+    "VoiceModel",
+    "WorldPanels",
+    "WorldUi",
+    "WristBeam",
+    "XrHost"
+   ],
+   "renderer": "halcyon-le1"
+  },
+  "LE2": {
+   "core": [
+    "Exe",
+    "ExeCheck",
+    "Hook",
+    "Hotkey",
+    "Ini",
+    "Json",
+    "Log",
+    "PngFile",
+    "Version",
+    "Window",
+    "d3d11/Blit",
+    "gfx/Raster",
+    "gfx/Swf",
+    "gfx/SwfFont",
+    "voice/ScriptMatch",
+    "vr/AimRay",
+    "vr/Calibration",
+    "vr/CineScreen",
+    "vr/Colour",
+    "vr/Comfort",
+    "vr/Controllers",
+    "vr/ConversationWorld",
+    "vr/FloorLock",
+    "vr/GalaxyHologram",
+    "vr/GalaxyMap",
+    "vr/GameMenuRequest",
+    "vr/GamePointer",
+    "vr/GuiEvents",
+    "vr/Haptics",
+    "vr/HostView",
+    "vr/HudPieces",
+    "vr/ImageConvert",
+    "vr/InteractLabel",
+    "vr/LayerComposite",
+    "vr/MenuPointer",
+    "vr/OmniRail",
+    "vr/OverlayPlacement",
+    "vr/PoseRecording",
+    "vr/PowerWheel",
+    "vr/ScopeArt",
+    "vr/ScopeCapture",
+    "vr/Sights",
+    "vr/SquadMenu",
+    "vr/SquadPlace",
+    "vr/TestRequest",
+    "vr/Thespian",
+    "vr/TransitionFade",
+    "vr/Traversal",
+    "vr/WorldUi",
+    "xr/Floor",
+    "xr/Input"
+   ],
+   "defines": [
+    "MEVR_GAME_LE2",
+    "MEVR_WITH_HALCYON_LE2",
+    "MEVR_WITH_MAIN_MENU"
+   ],
+   "modExtra": [],
+   "modModules": [
+    "engine/BodyBounds",
+    "engine/BonePose",
+    "engine/CallFunction",
+    "engine/CodeDump",
+    "engine/ConversationHooks",
+    "engine/CoverAcquire",
+    "engine/Engine",
+    "engine/Legacy",
+    "engine/NameLookup",
+    "engine/NativesDump",
+    "engine/ProcessEvent",
+    "engine/ReflectCheck",
+    "engine/SceneView",
+    "engine/SelectionGaze",
+    "engine/Skeleton",
+    "engine/VoicePlace",
+    "engine/XrToUnreal",
+    "game/ArmIk",
+    "game/AuthoredMoment",
+    "game/BodyCalibration",
+    "game/BodyFollow",
+    "game/BodyProbe",
+    "game/BodyScale",
+    "game/CallTrace",
+    "game/CameraCollision",
+    "game/CameraProbe",
+    "game/CameraShake",
+    "game/CockpitPanel",
+    "game/CockpitProbe",
+    "game/CombatStance",
+    "game/Comfort",
+    "game/ConsoleRequest",
+    "game/ConversationFlow",
+    "game/ConversationWorld",
+    "game/Fingers",
+    "game/FocusPause",
+    "game/GalaxyDump",
+    "game/GalaxyMap",
+    "game/GameArt",
+    "game/GameMenuRequest",
+    "game/GamepadBridge",
+    "game/GamepadMapping",
+    "game/GuiCursor",
+    "game/GunKick",
+    "game/HandAim",
+    "game/HandCalibration",
+    "game/HandTargets",
+    "game/HeadSim",
+    "game/HeadTracking",
+    "game/HoloProbe",
+    "game/Holsters",
+    "game/HudPieces",
+    "game/Interact",
+    "game/InventoryProbe",
+    "game/Le3GalaxyCapture",
+    "game/Le3GalaxyRetention",
+    "game/Le3Traversal",
+    "game/Mako",
+    "game/MakoControls",
+    "game/MakoGunner",
+    "game/Melee",
+    "game/MenuPause",
+    "game/OmniTool",
+    "game/Player",
+    "game/Posture",
+    "game/PowerWheel",
+    "game/Reflections",
+    "game/SceneCaptureRig",
+    "game/ScopeCapture",
+    "game/ScopeParts",
+    "game/ScreenReticle",
+    "game/Sights",
+    "game/SkeletonProbe",
+    "game/SoundPlace",
+    "game/Spectator",
+    "game/Sprint",
+    "game/SquadAck",
+    "game/SquadContext",
+    "game/SquadOrders",
+    "game/SquadPlace",
+    "game/SquadWeapons",
+    "game/SupportGrip",
+    "game/SystemSettings",
+    "game/Thespian",
+    "game/Throwables",
+    "game/Traversal",
+    "game/UiWorldFigure",
+    "game/Vent",
+    "game/ViewAnchor",
+    "game/ViewLevel",
+    "game/Voice",
+    "game/VrCover",
+    "game/Weapon",
+    "game/WorldUi"
+   ],
+   "other": [
+    "engine/CodeDump",
+    "game/GamepadMapping",
+    "ue3/Pattern",
+    "ue3/SafeNames"
+   ],
+   "plugin": [
+    "ArmSample",
+    "Calibration",
+    "CalibrationDraw",
+    "CineScreen",
+    "CinemaBackdrop",
+    "CinemaBackdropDraw",
+    "Colour",
+    "CrashBreadcrumbs",
+    "Entry",
+    "EyeCopy",
+    "FloorLock",
+    "GalaxyHologramDraw",
+    "GamePointer",
+    "GameThreadCalls",
+    "Glow",
+    "HalcyonLe2",
+    "HalcyonLe2Bridge",
+    "HandReticle",
+    "HdrDisplayPolicy",
+    "HudPanel",
+    "HudPieceLayers",
+    "MainMenu",
+    "MainMenuSettings",
+    "MenusLe2",
+    "ModLoader",
+    "OmniToolRail",
+    "PadMerge",
+    "PowerIcons",
+    "PowerWheel",
+    "PowerWheelDraw",
+    "PresentHook",
+    "ProcessEventHook",
+    "QuadSwapchain",
+    "RailArt",
+    "RendererLe2",
+    "ScopeCaptureSource",
+    "SequelCinema",
+    "SequelSquadLayers",
+    "SequelWeaponLayers",
+    "SetupRequest",
+    "SightLayers",
+    "SightPictures",
+    "SquadPanel",
+    "SquadPanelDraw",
+    "SquadPlaceDraw",
+    "Swapchains",
+    "TestLoop",
+    "Thespian",
+    "TransitionFade",
+    "TraversalCue",
+    "Vignette",
+    "Voice",
+    "VoiceModel",
+    "WorldPanels",
+    "WorldUi",
+    "WristBeam",
+    "XrHost"
+   ],
+   "renderer": "halcyon-le2"
+  },
+  "LE3": {
+   "core": [
+    "Exe",
+    "ExeCheck",
+    "Hook",
+    "Hotkey",
+    "Ini",
+    "Json",
+    "Log",
+    "PngFile",
+    "Version",
+    "Window",
+    "d3d11/Blit",
+    "gfx/Raster",
+    "gfx/Swf",
+    "gfx/SwfFont",
+    "voice/ScriptMatch",
+    "vr/AimRay",
+    "vr/Calibration",
+    "vr/CineScreen",
+    "vr/Colour",
+    "vr/Comfort",
+    "vr/Controllers",
+    "vr/ConversationWorld",
+    "vr/FloorLock",
+    "vr/GalaxyHologram",
+    "vr/GalaxyMap",
+    "vr/GameMenuRequest",
+    "vr/GamePointer",
+    "vr/GuiEvents",
+    "vr/Haptics",
+    "vr/HostView",
+    "vr/HudPieces",
+    "vr/ImageConvert",
+    "vr/InteractLabel",
+    "vr/LayerComposite",
+    "vr/MenuPointer",
+    "vr/OmniRail",
+    "vr/OverlayPlacement",
+    "vr/PoseRecording",
+    "vr/PowerWheel",
+    "vr/ScopeArt",
+    "vr/ScopeCapture",
+    "vr/Sights",
+    "vr/SquadMenu",
+    "vr/SquadPlace",
+    "vr/TestRequest",
+    "vr/Thespian",
+    "vr/TransitionFade",
+    "vr/Traversal",
+    "vr/WorldUi",
+    "xr/Floor",
+    "xr/Input"
+   ],
+   "defines": [
+    "MEVR_GAME_LE3",
+    "MEVR_WITH_HALCYON_LE3",
+    "MEVR_WITH_MAIN_MENU"
+   ],
+   "modExtra": [
+    "core/Json",
+    "game/Le3Gui"
+   ],
+   "modModules": [
+    "engine/BodyBounds",
+    "engine/BonePose",
+    "engine/CallFunction",
+    "engine/CodeDump",
+    "engine/ConversationHooks",
+    "engine/CoverAcquire",
+    "engine/Engine",
+    "engine/Legacy",
+    "engine/NameLookup",
+    "engine/NativesDump",
+    "engine/ProcessEvent",
+    "engine/ReflectCheck",
+    "engine/SceneView",
+    "engine/SelectionGaze",
+    "engine/Skeleton",
+    "engine/VoicePlace",
+    "engine/XrToUnreal",
+    "game/ArmIk",
+    "game/AuthoredMoment",
+    "game/BodyCalibration",
+    "game/BodyFollow",
+    "game/BodyProbe",
+    "game/BodyScale",
+    "game/CallTrace",
+    "game/CameraCollision",
+    "game/CameraProbe",
+    "game/CameraShake",
+    "game/CockpitPanel",
+    "game/CockpitProbe",
+    "game/CombatStance",
+    "game/Comfort",
+    "game/ConsoleRequest",
+    "game/ConversationFlow",
+    "game/ConversationWorld",
+    "game/Fingers",
+    "game/FocusPause",
+    "game/GalaxyDump",
+    "game/GalaxyMap",
+    "game/GameArt",
+    "game/GameMenuRequest",
+    "game/GamepadBridge",
+    "game/GamepadMapping",
+    "game/GuiCursor",
+    "game/GunKick",
+    "game/HandAim",
+    "game/HandCalibration",
+    "game/HandTargets",
+    "game/HeadSim",
+    "game/HeadTracking",
+    "game/HoloProbe",
+    "game/Holsters",
+    "game/HudPieces",
+    "game/Interact",
+    "game/InventoryProbe",
+    "game/Le3GalaxyCapture",
+    "game/Le3GalaxyRetention",
+    "game/Le3Gui",
+    "game/Le3Traversal",
+    "game/Mako",
+    "game/MakoControls",
+    "game/MakoGunner",
+    "game/Melee",
+    "game/MenuPause",
+    "game/OmniTool",
+    "game/Player",
+    "game/Posture",
+    "game/PowerWheel",
+    "game/Reflections",
+    "game/SceneCaptureRig",
+    "game/ScopeCapture",
+    "game/ScopeParts",
+    "game/ScreenReticle",
+    "game/Sights",
+    "game/SkeletonProbe",
+    "game/SoundPlace",
+    "game/Spectator",
+    "game/Sprint",
+    "game/SquadAck",
+    "game/SquadContext",
+    "game/SquadOrders",
+    "game/SquadPlace",
+    "game/SquadWeapons",
+    "game/SupportGrip",
+    "game/SystemSettings",
+    "game/Thespian",
+    "game/Throwables",
+    "game/Traversal",
+    "game/UiWorldFigure",
+    "game/Vent",
+    "game/ViewAnchor",
+    "game/ViewLevel",
+    "game/Voice",
+    "game/VrCover",
+    "game/Weapon",
+    "game/WorldUi"
+   ],
+   "other": [
+    "engine/CodeDump",
+    "game/GamepadMapping",
+    "ue3/Pattern",
+    "ue3/SafeNames"
+   ],
+   "plugin": [
+    "ArmSample",
+    "Calibration",
+    "CalibrationDraw",
+    "CineScreen",
+    "CinemaBackdrop",
+    "CinemaBackdropDraw",
+    "Colour",
+    "CrashBreadcrumbs",
+    "Entry",
+    "EyeCopy",
+    "FloorLock",
+    "GalaxyHologram",
+    "GalaxyHologramDraw",
+    "GamePointer",
+    "GameThreadCalls",
+    "Glow",
+    "HalcyonLe3",
+    "HalcyonLe3Bridge",
+    "HandReticle",
+    "HdrDisplayPolicy",
+    "HudPanel",
+    "HudPieceLayers",
+    "Le3SceneCapture",
+    "MainMenu",
+    "MainMenuSettings",
+    "MenusLe2",
+    "ModLoader",
+    "MotionBlurGuard",
+    "OmniToolRail",
+    "PadMerge",
+    "PowerIcons",
+    "PowerWheel",
+    "PowerWheelDraw",
+    "PresentHook",
+    "ProcessEventHook",
+    "QuadSwapchain",
+    "RailArt",
+    "RendererLe3",
+    "ScopeCaptureSource",
+    "SequelCinema",
+    "SequelSquadLayers",
+    "SequelWeaponLayers",
+    "SetupRequest",
+    "SightLayers",
+    "SightPictures",
+    "SquadPanel",
+    "SquadPanelDraw",
+    "SquadPlaceDraw",
+    "Swapchains",
+    "TestLoop",
+    "Thespian",
+    "TransitionFade",
+    "TraversalCue",
+    "Vignette",
+    "Voice",
+    "VoiceModel",
+    "WorldPanels",
+    "WorldUi",
+    "WristBeam",
+    "XrHost"
+   ],
+   "renderer": "halcyon-le3"
+  }
+ },
+ "modules": {
+  "engine/BodyBounds": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ready"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ready"
+    }
+   },
+   "namespace": "engine::body_bounds"
+  },
+  "engine/BonePose": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    }
+   },
+   "namespace": "engine::bone_pose"
+  },
+  "engine/CallFunction": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    }
+   },
+   "namespace": "engine::call_function"
+  },
+  "engine/CodeDump": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    }
+   },
+   "namespace": "engine::code_dump"
+  },
+  "engine/ConversationHooks": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    }
+   },
+   "namespace": "engine::conversation_hooks"
+  },
+  "engine/CoverAcquire": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ready"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ready"
+    }
+   },
+   "namespace": "engine::cover_acquire"
+  },
+  "engine/Engine": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": true,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    }
+   },
+   "namespace": "engine"
+  },
+  "engine/Le2ControlHost": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "unbuilt"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "unbuilt"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "unbuilt"
+    }
+   },
+   "namespace": "engine::le2_control"
+  },
+  "engine/Le2DiagnosticHost": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "unbuilt"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "unbuilt"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "unbuilt"
+    }
+   },
+   "namespace": "engine::le2_diagnostic"
+  },
+  "engine/Le2DiagnosticObservation": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "unbuilt"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "unbuilt"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "unbuilt"
+    }
+   },
+   "namespace": "engine::le2_diagnostic"
+  },
+  "engine/Legacy": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "unreferenced"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    }
+   },
+   "namespace": "engine::legacy"
+  },
+  "engine/NameLookup": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    }
+   },
+   "namespace": "engine::name_lookup"
+  },
+  "engine/NativesDump": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    }
+   },
+   "namespace": "engine::natives_dump"
+  },
+  "engine/ProcessEvent": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    }
+   },
+   "namespace": "engine::process_event"
+  },
+  "engine/ReflectCheck": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    }
+   },
+   "namespace": "engine::reflect_check"
+  },
+  "engine/SceneView": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    }
+   },
+   "namespace": "engine::scene_view"
+  },
+  "engine/SelectionGaze": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    }
+   },
+   "namespace": "engine::selection_gaze"
+  },
+  "engine/Skeleton": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    }
+   },
+   "namespace": "engine::skeleton"
+  },
+  "engine/VoicePlace": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ready"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ready"
+    }
+   },
+   "namespace": "engine::voice_place"
+  },
+  "engine/XrToUnreal": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    }
+   },
+   "namespace": "engine"
+  },
+  "game/ArmIk": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    }
+   },
+   "namespace": "game::arm_ik"
+  },
+  "game/AuthoredMoment": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ready"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ready"
+    }
+   },
+   "namespace": "game::authored_moment"
+  },
+  "game/BodyCalibration": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    }
+   },
+   "namespace": "game::body_calibration"
+  },
+  "game/BodyFollow": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    }
+   },
+   "namespace": "game::body_follow"
+  },
+  "game/BodyProbe": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "unreferenced"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "unreferenced"
+    }
+   },
+   "namespace": "game::body_probe"
+  },
+  "game/BodyScale": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    }
+   },
+   "namespace": "game::body_scale"
+  },
+  "game/CallTrace": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ready"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ready"
+    }
+   },
+   "namespace": "game::call_trace"
+  },
+  "game/CameraCollision": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    }
+   },
+   "namespace": "game::camera_collision"
+  },
+  "game/CameraProbe": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": true,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    }
+   },
+   "namespace": "game::camera_probe"
+  },
+  "game/CameraShake": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": true,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    }
+   },
+   "namespace": "game::camera_shake"
+  },
+  "game/CockpitPanel": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    }
+   },
+   "namespace": "game::cockpit_panel"
+  },
+  "game/CockpitProbe": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    }
+   },
+   "namespace": "game::cockpit_probe"
+  },
+  "game/CombatStance": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    }
+   },
+   "namespace": "game::combat_stance"
+  },
+  "game/Comfort": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    }
+   },
+   "namespace": "game::comfort"
+  },
+  "game/ConsoleRequest": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": true,
+     "me1OnlyHandles": false,
+     "part": true,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": true,
+     "status": "run"
+    }
+   },
+   "namespace": "game::console_request"
+  },
+  "game/ConversationFlow": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ready"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ready"
+    }
+   },
+   "namespace": "game::conversation_flow"
+  },
+  "game/ConversationWorld": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ready"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ready"
+    }
+   },
+   "namespace": "game::conversation_world"
+  },
+  "game/Fingers": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    }
+   },
+   "namespace": "game::fingers"
+  },
+  "game/FocusPause": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    }
+   },
+   "namespace": "game::focus_pause"
+  },
+  "game/GalaxyDump": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ready"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ready"
+    }
+   },
+   "namespace": "game::galaxy_dump"
+  },
+  "game/GalaxyMap": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ready"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ready"
+    }
+   },
+   "namespace": "game::galaxy_map"
+  },
+  "game/GameArt": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    }
+   },
+   "namespace": "game::game_art"
+  },
+  "game/GameMenuRequest": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": true,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": true,
+     "part": false,
+     "status": "run"
+    }
+   },
+   "namespace": "game::game_menu_request"
+  },
+  "game/GamepadBridge": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    }
+   },
+   "namespace": "game::gamepad_bridge"
+  },
+  "game/GamepadMapping": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    }
+   },
+   "namespace": "game::gamepad"
+  },
+  "game/GuiCursor": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    }
+   },
+   "namespace": "game::gui_cursor"
+  },
+  "game/GunKick": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    }
+   },
+   "namespace": "game::gun_kick"
+  },
+  "game/HandAim": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": true,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": true,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    }
+   },
+   "namespace": "game::hand_aim"
+  },
+  "game/HandCalibration": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    }
+   },
+   "namespace": "game::hand_calibration"
+  },
+  "game/HandTargets": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    }
+   },
+   "namespace": "game::hand_targets"
+  },
+  "game/HeadSim": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    }
+   },
+   "namespace": "game::head_sim"
+  },
+  "game/HeadTracking": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": true,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": true,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    }
+   },
+   "namespace": "game::head_tracking"
+  },
+  "game/HoloProbe": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    }
+   },
+   "namespace": "game::holo_probe"
+  },
+  "game/Holsters": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    }
+   },
+   "namespace": "game::holsters"
+  },
+  "game/HudPieces": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    }
+   },
+   "namespace": "game::hud_pieces"
+  },
+  "game/Interact": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    }
+   },
+   "namespace": "game::interact"
+  },
+  "game/InventoryProbe": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "unreferenced"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "unreferenced"
+    }
+   },
+   "namespace": "game::inventory_probe"
+  },
+  "game/Le3GalaxyCapture": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    }
+   },
+   "namespace": "game::le3_galaxy_capture"
+  },
+  "game/Le3GalaxyRetention": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    }
+   },
+   "namespace": "game::le3_galaxy_retention"
+  },
+  "game/Le3Gui": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "unbuilt"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "unbuilt"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    }
+   },
+   "namespace": "game::le3_gui"
+  },
+  "game/Le3Traversal": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    }
+   },
+   "namespace": "game::traversal::le3"
+  },
+  "game/Mako": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    }
+   },
+   "namespace": "game::mako"
+  },
+  "game/MakoControls": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    }
+   },
+   "namespace": "game::mako_controls"
+  },
+  "game/MakoGunner": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    }
+   },
+   "namespace": "game::mako_gunner"
+  },
+  "game/Melee": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    }
+   },
+   "namespace": "game::melee"
+  },
+  "game/MenuPause": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    }
+   },
+   "namespace": "game::menu_pause"
+  },
+  "game/OmniTool": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    }
+   },
+   "namespace": "game::omni_tool"
+  },
+  "game/Player": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": true,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": true,
+     "part": false,
+     "status": "run"
+    }
+   },
+   "namespace": "game::player"
+  },
+  "game/Posture": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    }
+   },
+   "namespace": "game::posture"
+  },
+  "game/PowerWheel": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": true,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": true,
+     "part": false,
+     "status": "run"
+    }
+   },
+   "namespace": "game::power_wheel"
+  },
+  "game/Reflections": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": true,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": true,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    }
+   },
+   "namespace": "game::reflections"
+  },
+  "game/SceneCaptureRig": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    }
+   },
+   "namespace": "game::capture_rig"
+  },
+  "game/ScopeCapture": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    }
+   },
+   "namespace": "game::scope_capture"
+  },
+  "game/ScopeParts": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    }
+   },
+   "namespace": "game::scope_parts"
+  },
+  "game/ScreenReticle": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    }
+   },
+   "namespace": "game::screen_reticle"
+  },
+  "game/Sights": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    }
+   },
+   "namespace": "game::sights"
+  },
+  "game/SkeletonProbe": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": true,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": true,
+     "part": false,
+     "status": "run"
+    }
+   },
+   "namespace": "game::skeleton_probe"
+  },
+  "game/SoundPlace": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ready"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ready"
+    }
+   },
+   "namespace": "game::sound_place"
+  },
+  "game/Spectator": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    }
+   },
+   "namespace": "game::spectator"
+  },
+  "game/Sprint": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": true,
+     "part": false,
+     "status": "run"
+    }
+   },
+   "namespace": "game::sprint"
+  },
+  "game/SquadAck": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ready"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ready"
+    }
+   },
+   "namespace": "game::squad_ack"
+  },
+  "game/SquadContext": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": true,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": true,
+     "part": false,
+     "status": "run"
+    }
+   },
+   "namespace": "game::squad_context"
+  },
+  "game/SquadOrders": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": true,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": true,
+     "part": false,
+     "status": "run"
+    }
+   },
+   "namespace": "game::squad_orders"
+  },
+  "game/SquadPlace": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    }
+   },
+   "namespace": "game::squad_place"
+  },
+  "game/SquadWeapons": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    }
+   },
+   "namespace": "game::squad_weapons"
+  },
+  "game/SupportGrip": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    }
+   },
+   "namespace": "game::support_grip"
+  },
+  "game/SystemSettings": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    }
+   },
+   "namespace": "game::system_settings"
+  },
+  "game/Thespian": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    }
+   },
+   "namespace": "game::thespian"
+  },
+  "game/Throwables": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    }
+   },
+   "namespace": "game::throwables"
+  },
+  "game/Traversal": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    }
+   },
+   "namespace": "game::traversal"
+  },
+  "game/UiWorldFigure": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    }
+   },
+   "namespace": "game::ui_world_figure"
+  },
+  "game/Vent": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    }
+   },
+   "namespace": "game::vent"
+  },
+  "game/ViewAnchor": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    }
+   },
+   "namespace": "game::view_anchor"
+  },
+  "game/ViewLevel": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    }
+   },
+   "namespace": "game::view_level"
+  },
+  "game/Voice": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    }
+   },
+   "namespace": "game::voice"
+  },
+  "game/VrCover": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    }
+   },
+   "namespace": "game::vr_cover"
+  },
+  "game/Weapon": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": true,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": true,
+     "part": false,
+     "status": "run"
+    }
+   },
+   "namespace": "game::weapon"
+  },
+  "game/WorldUi": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": true,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": true,
+     "part": false,
+     "status": "run"
+    }
+   },
+   "namespace": "game::world_ui"
+  }
+ },
+ "names": {
+  "game/Comfort": {
+   "LE3": [
+    "Engine.Actor:Location"
+   ]
+  },
+  "game/GameMenuRequest": {
+   "LE3": [
+    "Engine.BioSFHandler.HandleInputEvent",
+    "Engine.BioSFManager:m_FocusPanel",
+    "Engine.BioSFPanel:m_DefaultHandler",
+    "Engine.BioSFPanel:nmTag",
+    "Engine.PlayerController:m_oCachedScaleFormManager",
+    "SFXGame.MassEffectGuiManager.GetBrowserHandler",
+    "SFXGame.MassEffectGuiManager:m_oBWHandler"
+   ]
+  },
+  "game/GuiCursor": {
+   "LE3": [
+    "Engine.BioSFManager:m_FocusPanel",
+    "Engine.PlayerController:m_oCachedScaleFormManager"
+   ]
+  },
+  "game/OmniTool": {
+   "LE2": [
+    "Engine.StaticMesh:LODInfo"
+   ]
+  },
+  "game/Player": {
+   "LE3": [
+    "Engine.Actor:Location"
+   ]
+  },
+  "game/Posture": {
+   "LE3": [
+    "Engine.Actor:Location"
+   ]
+  },
+  "game/PowerWheel": {
+   "LE3": [
+    "SFXGame.BioPawn.IsHostile",
+    "SFXGame.BioPawn:m_oBehavior"
+   ]
+  },
+  "game/ScreenReticle": {
+   "LE3": [
+    "Engine.BioSFHandler:oPanel",
+    "Engine.BioSFManager:m_lstPanels",
+    "Engine.BioSFPanel",
+    "Engine.BioSFPanel.GetVariableBool",
+    "Engine.BioSFPanel.GetVariableFloat",
+    "Engine.BioSFPanel.SetVariableFloat",
+    "Engine.BioSFPanel:MovieRef",
+    "Engine.BioSFPanel:ScriptHandlers",
+    "Engine.BioSFPanel:m_DefaultHandler",
+    "Engine.BioSFPanel:nmTag",
+    "Engine.PlayerController:m_oCachedScaleFormManager",
+    "SFXGame.BioSFHandler_Reticule",
+    "SFXGame.BioSFHandler_Reticule:m_Reticule",
+    "SFXGame.BioSFHandler_Reticule:m_eLastReticuleMode"
+   ]
+  },
+  "game/SquadContext": {
+   "LE2": [
+    "SFXGame.BioPawn.IsInCombatActionState"
+   ],
+   "LE3": [
+    "SFXGame.BioActorBehavior:ActorGameName",
+    "SFXGame.BioPawn.IsHostile",
+    "SFXGame.BioPawn.IsInCombatActionState",
+    "SFXGame.BioPawn:m_oBehavior"
+   ]
+  },
+  "game/SquadWeapons": {
+   "LE3": [
+    "SFXGame.BioActorBehavior:ActorGameName",
+    "SFXGame.BioBaseSquad.GetMember",
+    "SFXGame.BioBaseSquad.GetSquadSize",
+    "SFXGame.BioPawn:m_oBehavior"
+   ]
+  },
+  "game/Thespian": {
+   "LE3": [
+    "Engine.BioSFHandler:oPanel",
+    "Engine.BioSFPanel.InvokeMethod",
+    "SFXGame.BioConversation.GetEntryText",
+    "SFXGame.BioConversation.GetReplyText",
+    "SFXGame.BioWorldInfo.EndCurrentConversation"
+   ]
+  },
+  "game/VrCover": {
+   "LE3": [
+    "Engine.Actor:Location",
+    "SFXGame.BioPawn.IsHostile"
+   ]
+  },
+  "game/WorldUi": {
+   "LE3": [
+    "Engine.BioSFManager:m_FocusPanel",
+    "Engine.BioSFManager:m_lstPanels",
+    "Engine.BioSFPanel:m_DefaultHandler",
+    "Engine.BioSFPanel:nmTag",
+    "Engine.PlayerController:m_oCachedScaleFormManager"
+   ]
+  }
+ },
+ "seams": {
+  "LE1": {
+   "declared": [
+    "BuildMenuTabs",
+    "CineScreenFullRate",
+    "CineScreenPointerPlane",
+    "CineScreenQuadsNow",
+    "CineScreenWanted",
+    "CinemaBackdropLayer",
+    "CockpitLook",
+    "ConstantFpEye",
+    "ControllerAimActive",
+    "ConversationHandover",
+    "ConversationInWorld",
+    "ConversationWorldOrComing",
+    "DrawMenuPointer",
+    "EarlyFrameWait",
+    "EyeColourActive",
+    "EyeColourDone",
+    "EyeColourShader",
+    "EyeColourShaders",
+    "EyeUpscale",
+    "FindPass1View",
+    "FirstPersonAtBoot",
+    "FloorLockEnabled",
+    "FloorViewLook",
+    "FloorViewTranslation",
+    "ForwardLeanEmphasis",
+    "FrontEndBeforeTitle",
+    "FrontEndHold",
+    "FrontEndOnScreen",
+    "FullFrameLoop",
+    "GalaxyHeld",
+    "GalaxyHologram",
+    "GalaxyProjectionSwapBegin",
+    "GalaxyProjectionSwapEnd",
+    "GalaxyViewSwapBegin",
+    "GalaxyViewSwapEnd",
+    "HdrDisplayDesc",
+    "HoldPlainVr",
+    "HudPanelArmed",
+    "HudPanelBlend",
+    "HudPanelCapturesEarlyUi",
+    "HudPanelDrawsLastFrame",
+    "HudPanelIsFloat",
+    "HudPanelNoWrites",
+    "HudPanelPresentBegin",
+    "HudPanelPresentDesktop",
+    "HudPanelPresentDraw",
+    "HudPanelPresentEnd",
+    "HudPanelTarget",
+    "HudPanelTintBlends",
+    "HudPanelTintTarget",
+    "InterpolateDestinationWritten",
+    "JournalFloorViewWrite",
+    "KeyDown",
+    "MainMenuOpen",
+    "MenuMouseFromOs",
+    "MergeMotionControllers",
+    "ModernBaseline",
+    "NewestPass1View",
+    "NoteCineScreenSubmit",
+    "NoteDrawArm",
+    "NoteHudPanelDraw",
+    "NoteHudPanelTint",
+    "NotePixelShaderCreated",
+    "NoteStereoSubmit",
+    "OnFlatQuad",
+    "OnFrameBegun",
+    "OnGalaxyHologram",
+    "OnGameThread",
+    "OnMenuKey",
+    "OnMenuQuad",
+    "OnRecentered",
+    "OnSessionCreated",
+    "OnSessionStopped",
+    "OnViewBuilt",
+    "OverlayLayers",
+    "Pass1Records",
+    "PerEyeViewState",
+    "PerfPass0Captured",
+    "PerfPoint",
+    "PerfPresentBegin",
+    "PerfPresentEnd",
+    "PlacePanel",
+    "PlanStereo",
+    "ProbeTextureAlpha",
+    "QuestPacingEnabled",
+    "QuestPacingFrame",
+    "QuestPacingInit",
+    "QuestPacingNextFrame",
+    "QuestPacingStopped",
+    "QueueProcessEvent",
+    "RecenterOrientation",
+    "RecordClearDepthStencilView",
+    "RecordDraw",
+    "RecordDrawAuto",
+    "RecordDrawIndexed",
+    "RecordDrawIndexedInstanced",
+    "RecordDrawInstanced",
+    "RecordPass1View",
+    "RecordUpdateSubresource",
+    "RequestHudPanelReplace",
+    "SampleMenuPointer",
+    "SetGameWindow",
+    "SpectatorMirror",
+    "StaticXrGetInstanceProcAddr",
+    "StereoFrameActive",
+    "TransitionFadeLayer",
+    "WorldUiActive",
+    "WorldUiHoldFrame",
+    "WorldUiOwnership",
+    "WorldUiPresent",
+    "WrapSessionFunctions"
+   ],
+   "used": [
+    "BuildMenuTabs",
+    "CineScreenFullRate",
+    "CineScreenPointerPlane",
+    "CineScreenQuadsNow",
+    "CineScreenWanted",
+    "CinemaBackdropLayer",
+    "CockpitLook",
+    "ConstantFpEye",
+    "ControllerAimActive",
+    "ConversationHandover",
+    "ConversationInWorld",
+    "ConversationWorldOrComing",
+    "DrawMenuPointer",
+    "EarlyFrameWait",
+    "EyeColourActive",
+    "EyeColourDone",
+    "EyeColourShader",
+    "EyeColourShaders",
+    "EyeUpscale",
+    "FirstPersonAtBoot",
+    "FloorLockEnabled",
+    "FloorViewLook",
+    "FloorViewTranslation",
+    "ForwardLeanEmphasis",
+    "FrontEndBeforeTitle",
+    "FrontEndHold",
+    "FrontEndOnScreen",
+    "FullFrameLoop",
+    "GalaxyHeld",
+    "GalaxyHologram",
+    "GalaxyProjectionSwapBegin",
+    "GalaxyProjectionSwapEnd",
+    "GalaxyViewSwapBegin",
+    "GalaxyViewSwapEnd",
+    "HdrDisplayDesc",
+    "HoldPlainVr",
+    "HudPanelArmed",
+    "HudPanelBlend",
+    "HudPanelCapturesEarlyUi",
+    "HudPanelDrawsLastFrame",
+    "HudPanelIsFloat",
+    "HudPanelNoWrites",
+    "HudPanelPresentBegin",
+    "HudPanelPresentDesktop",
+    "HudPanelPresentDraw",
+    "HudPanelPresentEnd",
+    "HudPanelTarget",
+    "HudPanelTintBlends",
+    "HudPanelTintTarget",
+    "InterpolateDestinationWritten",
+    "JournalFloorViewWrite",
+    "KeyDown",
+    "MainMenuOpen",
+    "MenuMouseFromOs",
+    "MergeMotionControllers",
+    "ModernBaseline",
+    "NoteCineScreenSubmit",
+    "NoteDrawArm",
+    "NoteHudPanelDraw",
+    "NoteHudPanelTint",
+    "NotePixelShaderCreated",
+    "NoteStereoSubmit",
+    "OnFlatQuad",
+    "OnFrameBegun",
+    "OnGalaxyHologram",
+    "OnGameThread",
+    "OnMenuKey",
+    "OnMenuQuad",
+    "OnRecentered",
+    "OnSessionCreated",
+    "OnSessionStopped",
+    "OnViewBuilt",
+    "OverlayLayers",
+    "PerEyeViewState",
+    "PerfPass0Captured",
+    "PerfPoint",
+    "PlacePanel",
+    "PlanStereo",
+    "ProbeTextureAlpha",
+    "QuestPacingEnabled",
+    "QuestPacingFrame",
+    "QuestPacingInit",
+    "QuestPacingNextFrame",
+    "QuestPacingStopped",
+    "QueueProcessEvent",
+    "RecenterOrientation",
+    "RecordClearDepthStencilView",
+    "RecordDraw",
+    "RecordDrawAuto",
+    "RecordDrawIndexed",
+    "RecordDrawIndexedInstanced",
+    "RecordDrawInstanced",
+    "RecordPass1View",
+    "RecordUpdateSubresource",
+    "RequestHudPanelReplace",
+    "SampleMenuPointer",
+    "SetGameWindow",
+    "SpectatorMirror",
+    "StaticXrGetInstanceProcAddr",
+    "TransitionFadeLayer",
+    "WorldUiActive",
+    "WorldUiHoldFrame",
+    "WorldUiOwnership",
+    "WorldUiPresent",
+    "WrapSessionFunctions"
+   ],
+   "usedUndeclared": []
+  },
+  "LE2": {
+   "declared": [
+    "CineScreenFullRate",
+    "CineScreenHalfSeparationUU",
+    "CineScreenLayers",
+    "CineScreenWanted",
+    "CopyIntoImage",
+    "FloorViewTranslation",
+    "HotkeyDown",
+    "HudPanelDraw",
+    "JournalFloorViewWrite",
+    "KeyDown",
+    "MainMenuOpen",
+    "MergeMotionControllers",
+    "OnEyeCopied",
+    "OnEyeReleased",
+    "OnEyeSource",
+    "OnFactory",
+    "OnFrameBegun",
+    "OnGameThread",
+    "OnMenuKey",
+    "OnRecentered",
+    "OnSessionCreated",
+    "OnSessionStopped",
+    "OnSwapChainPresent",
+    "OnViewBuilt",
+    "OverlayLayers",
+    "PlaceGalaxyPanel",
+    "QueueProcessEvent",
+    "StaticXrGetInstanceProcAddr",
+    "TransitionFadeLayer",
+    "WorldUiOwnsGui",
+    "WrapSessionFunctions",
+    "XrRuntimeIsSteamVr"
+   ],
+   "used": [
+    "CineScreenFullRate",
+    "CineScreenHalfSeparationUU",
+    "CineScreenLayers",
+    "CineScreenWanted",
+    "CopyIntoImage",
+    "FloorViewTranslation",
+    "HotkeyDown",
+    "HudPanelDraw",
+    "JournalFloorViewWrite",
+    "MainMenuOpen",
+    "MergeMotionControllers",
+    "OnEyeCopied",
+    "OnEyeReleased",
+    "OnEyeSource",
+    "OnFactory",
+    "OnFrameBegun",
+    "OnGameThread",
+    "OnMenuKey",
+    "OnRecentered",
+    "OnSessionCreated",
+    "OnSessionStopped",
+    "OnSwapChainPresent",
+    "OnViewBuilt",
+    "OverlayLayers",
+    "PlaceGalaxyPanel",
+    "QueueProcessEvent",
+    "StaticXrGetInstanceProcAddr",
+    "TransitionFadeLayer",
+    "WorldUiOwnsGui",
+    "WrapSessionFunctions",
+    "XrRuntimeIsSteamVr"
+   ],
+   "usedUndeclared": []
+  },
+  "LE3": {
+   "declared": [
+    "CineScreenFullRate",
+    "CineScreenHalfSeparationUU",
+    "CineScreenLayers",
+    "CineScreenWanted",
+    "CopyIntoImage",
+    "FloorViewTranslation",
+    "HudPanelDraw",
+    "KeyDown",
+    "MainMenuOpen",
+    "MergeMotionControllers",
+    "OnEyeCopied",
+    "OnEyeReleased",
+    "OnEyeSource",
+    "OnFactory",
+    "OnFrameBegun",
+    "OnGameThread",
+    "OnMenuKey",
+    "OnPresent",
+    "OnRecentered",
+    "OnSessionCreated",
+    "OnSessionStopped",
+    "OnViewBuilt",
+    "OverlayLayers",
+    "PlaceNativePanel",
+    "QueueProcessEvent",
+    "StaticXrGetInstanceProcAddr",
+    "TransitionFadeLayer",
+    "WrapSessionFunctions",
+    "XrRuntimeIsSteamVr"
+   ],
+   "used": [
+    "CineScreenFullRate",
+    "CineScreenHalfSeparationUU",
+    "CineScreenLayers",
+    "CineScreenWanted",
+    "CopyIntoImage",
+    "FloorViewTranslation",
+    "HudPanelDraw",
+    "KeyDown",
+    "MainMenuOpen",
+    "MergeMotionControllers",
+    "OnEyeCopied",
+    "OnEyeReleased",
+    "OnEyeSource",
+    "OnFactory",
+    "OnFrameBegun",
+    "OnGameThread",
+    "OnMenuKey",
+    "OnPresent",
+    "OnRecentered",
+    "OnSessionCreated",
+    "OnSessionStopped",
+    "OnViewBuilt",
+    "OverlayLayers",
+    "PlaceNativePanel",
+    "QueueProcessEvent",
+    "StaticXrGetInstanceProcAddr",
+    "TransitionFadeLayer",
+    "WrapSessionFunctions",
+    "XrRuntimeIsSteamVr"
+   ],
+   "usedUndeclared": []
+  }
+ },
+ "services": {
+  "LE1": {
+   "fields": {
+    "askVoiceModel": "WithVoice",
+    "beginScriptCall": "WithCrashBreadcrumbs",
+    "calibration": "WithLe1Modules",
+    "controllers": "WithRenderer",
+    "endScriptCall": "WithCrashBreadcrumbs",
+    "floor": "WithRenderer",
+    "hapticContinuous": "WithRenderer",
+    "hapticPulse": "WithRenderer",
+    "hapticPulseHz": "WithRenderer",
+    "hideScreenReticle": "WithRenderer",
+    "keepLoaded": "BaseServices",
+    "leftGripAway": "WithPadMerge",
+    "logWorldUiStats": "WithWorldUi",
+    "mainMenu": "WithLe1Modules",
+    "motionBlurProtected": "WithLe1ExtraUi",
+    "processExiting": "BaseServices",
+    "publishCameraOffset": "WithLe1ExtraUi",
+    "recordWrite": "WithCrashBreadcrumbs",
+    "reserveWorldUi": "WithWorldUi",
+    "rightGripFree": "WithPadMerge",
+    "setAimRay": "WithRenderer",
+    "setConversationWorld": "WithLe1ExtraUi",
+    "setFloorLockSample": "WithFloorLock",
+    "setGalaxyHologram": "WithGalaxyHologram",
+    "setGalaxyMap": "WithGalaxyMap",
+    "setHandAim": "WithRenderer",
+    "setHudPieces": "WithHudPieces",
+    "setInteractLabel": "WithInteractLabel",
+    "setMakoControls": "WithMakoControls",
+    "setPowerLock": "WithPowerWheel",
+    "setPowerWheel": "WithPowerWheel",
+    "setProcessEventCallback": "BaseServices",
+    "setScopeCapture": "WithScopeCapture",
+    "setSight": "WithSights",
+    "setSpectator": "WithSpectator",
+    "setSquadMenu": "WithLe1Modules",
+    "setSquadPlace": "BuildServices",
+    "setStatus": "WithRenderer",
+    "setSupportGrip": "WithPadMerge",
+    "setThespian": "WithLe1ExtraUi",
+    "setVignette": "WithVignette",
+    "setVoiceKeyterms": "WithVoice",
+    "setVoiceListen": "WithVoice",
+    "setWheelPanel": "WithLe1Modules",
+    "setWorldUi": "WithWorldUi",
+    "sightView": "WithSights",
+    "statusWanted": "WithRenderer",
+    "supportGripHeld": "WithPadMerge",
+    "takeGalaxyPick": "WithGalaxyHologram",
+    "takeGameMenuRequest": "WithGameMenuRequest",
+    "takeGameUiRequest": "WithWorldUi",
+    "takeGuiEvents": "WithLe1ExtraUi",
+    "takeVoiceLine": "WithVoice",
+    "takeVoiceModelAnswer": "WithVoice",
+    "view": "WithRenderer",
+    "voiceCommand": "WithVoice",
+    "voiceState": "WithVoice"
+   },
+   "helpers": [
+    "BaseServices",
+    "WithCrashBreadcrumbs",
+    "WithRenderer",
+    "WithVignette",
+    "WithSights",
+    "WithPadMerge",
+    "WithHudPieces",
+    "WithFloorLock",
+    "WithVoice",
+    "WithPowerWheel",
+    "WithLe1Modules",
+    "WithGameMenuRequest",
+    "WithScopeCapture",
+    "WithInteractLabel",
+    "WithMakoControls",
+    "WithSpectator",
+    "WithGalaxyMap",
+    "WithGalaxyHologram",
+    "WithWorldUi",
+    "WithLe1ExtraUi"
+   ]
+  },
+  "LE2": {
+   "fields": {
+    "askVoiceModel": "WithVoice",
+    "beginScriptCall": "WithCrashBreadcrumbs",
+    "calibration": "WithMenus",
+    "controllers": "WithRenderer",
+    "endScriptCall": "WithCrashBreadcrumbs",
+    "floor": "WithRenderer",
+    "hapticContinuous": "WithRenderer",
+    "hapticPulse": "WithRenderer",
+    "hapticPulseHz": "WithRenderer",
+    "hideScreenReticle": "WithRenderer",
+    "keepLoaded": "BaseServices",
+    "leftGripAway": "WithPadMerge",
+    "logWorldUiStats": "WithMenus",
+    "mainMenu": "WithMenus",
+    "processExiting": "BaseServices",
+    "recordWrite": "WithCrashBreadcrumbs",
+    "reserveWorldUi": "WithMenus",
+    "rightGripFree": "WithPadMerge",
+    "setAimRay": "WithRenderer",
+    "setFloorLockSample": "WithFloorLock",
+    "setHandAim": "WithRenderer",
+    "setHudPieces": "WithHudPieces",
+    "setInteractLabel": "BuildServices",
+    "setPowerLock": "WithPowerWheel",
+    "setPowerWheel": "WithPowerWheel",
+    "setProcessEventCallback": "BaseServices",
+    "setSight": "WithSights",
+    "setSquadMenu": "BuildServices",
+    "setSquadPlace": "BuildServices",
+    "setStatus": "WithRenderer",
+    "setSupportGrip": "WithPadMerge",
+    "setThespian": "BuildServices",
+    "setTraversal": "WithTraversal",
+    "setVignette": "WithVignette",
+    "setVoiceKeyterms": "WithVoice",
+    "setVoiceListen": "WithVoice",
+    "setWorldUi": "WithMenus",
+    "sightView": "WithSights",
+    "statusWanted": "WithRenderer",
+    "supportGripHeld": "WithPadMerge",
+    "takeGameMenuRequest": "WithMenus",
+    "takeGameUiRequest": "WithMenus",
+    "takeGuiEvents": "WithMenus",
+    "takeVoiceLine": "WithVoice",
+    "takeVoiceModelAnswer": "WithVoice",
+    "view": "WithRenderer",
+    "voiceCommand": "WithVoice",
+    "voiceState": "WithVoice"
+   },
+   "helpers": [
+    "BaseServices",
+    "WithCrashBreadcrumbs",
+    "WithRenderer",
+    "WithVignette",
+    "WithSights",
+    "WithPadMerge",
+    "WithHudPieces",
+    "WithFloorLock",
+    "WithVoice",
+    "WithPowerWheel",
+    "WithTraversal",
+    "WithMenus"
+   ]
+  },
+  "LE3": {
+   "fields": {
+    "askVoiceModel": "WithVoice",
+    "beginScriptCall": "WithCrashBreadcrumbs",
+    "calibration": "WithMenus",
+    "controllers": "WithRenderer",
+    "endScriptCall": "WithCrashBreadcrumbs",
+    "floor": "WithRenderer",
+    "hapticContinuous": "WithRenderer",
+    "hapticPulse": "WithRenderer",
+    "hapticPulseHz": "WithRenderer",
+    "keepLoaded": "BaseServices",
+    "leftGripAway": "WithPadMerge",
+    "mainMenu": "WithMenus",
+    "motionBlurProtected": "BuildServices",
+    "processExiting": "BaseServices",
+    "recordWrite": "WithCrashBreadcrumbs",
+    "rightGripFree": "WithPadMerge",
+    "setAimRay": "WithRenderer",
+    "setFloorLockSample": "WithFloorLock",
+    "setGalaxyHologram": "WithGalaxyHologram",
+    "setHandAim": "WithRenderer",
+    "setInteractLabel": "BuildServices",
+    "setPowerLock": "WithPowerWheel",
+    "setPowerWheel": "WithPowerWheel",
+    "setProcessEventCallback": "BaseServices",
+    "setSight": "WithSights",
+    "setSquadMenu": "BuildServices",
+    "setSquadPlace": "BuildServices",
+    "setStatus": "WithRenderer",
+    "setSupportGrip": "WithPadMerge",
+    "setThespian": "BuildServices",
+    "setTraversal": "WithTraversal",
+    "setTraversalPresentation": "BuildServices",
+    "setVignette": "WithVignette",
+    "setVoiceKeyterms": "WithVoice",
+    "setVoiceListen": "WithVoice",
+    "sightView": "WithSights",
+    "statusWanted": "WithRenderer",
+    "supportGripHeld": "WithPadMerge",
+    "takeGalaxyPick": "WithGalaxyHologram",
+    "takeGameMenuRequest": "WithMenus",
+    "takeVoiceLine": "WithVoice",
+    "takeVoiceModelAnswer": "WithVoice",
+    "thespianInputBlocked": "BuildServices",
+    "view": "WithRenderer",
+    "voiceCommand": "WithVoice",
+    "voiceState": "WithVoice"
+   },
+   "helpers": [
+    "BaseServices",
+    "WithCrashBreadcrumbs",
+    "WithGalaxyHologram",
+    "WithRenderer",
+    "WithVignette",
+    "WithSights",
+    "WithPadMerge",
+    "WithFloorLock",
+    "WithTraversal",
+    "WithVoice",
+    "WithPowerWheel",
+    "WithMenus"
+   ]
+  }
+ }
+}

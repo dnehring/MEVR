@@ -30,6 +30,7 @@ namespace mevr::game::thespian {
 struct Link {
     voice::Link voice;  // the host's recognizer (as game/Voice's)
     void (*setPanel)(vr::thespian::Panel const* panel) = nullptr;  // HostServices setThespian; null: an older host, no panel
+    bool (*otherUiOwnsInput)() = nullptr; // fresh host menu/calibration ownership immediately before native selection
 };
 
 // Once per game tick, after game/ConversationWorld's.

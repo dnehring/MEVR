@@ -92,6 +92,12 @@ public:
     std::optional<bool> Pending() const { return pending_; }
     // A new pawn (a level load): nothing is ours, nothing seen.
     void Forget();
+    // A menu/recenter/focus transition cancels pending gestures, never the current
+    // pawn's owned crouch. Reset the detector to that native baseline as one operation.
+    void ResetTracking(CrouchDetector& detector, std::optional<bool> gameWants);
+    // An owned release is complete only after the native bit is observed false.
+    // Missing/true observations retain ownership for a later tick or unload retry.
+    bool FinishRelease(std::optional<bool> gameWants);
 
 private:
     bool seen_ = false;

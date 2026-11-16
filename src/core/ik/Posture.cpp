@@ -117,4 +117,18 @@ void CrouchArbiter::Forget() {
     tries_ = 0;
 }
 
+void CrouchArbiter::ResetTracking(CrouchDetector& detector, std::optional<bool> gameWants) {
+    pending_.reset();
+    tries_ = 0;
+    if (gameWants) Observe(*gameWants);
+    detector.Reset(Owns() && gameWants.value_or(last_));
+}
+
+bool CrouchArbiter::FinishRelease(std::optional<bool> gameWants) {
+    if (!owns_) return true;
+    if (gameWants != false) return false;
+    Applied(false);
+    return true;
+}
+
 } // namespace mevr::ik::posture

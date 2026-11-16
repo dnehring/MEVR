@@ -14,14 +14,17 @@
 #include "engine/Addresses.hpp"
 #include "engine/CodeDump.hpp"
 #include "engine/GameAdapter.hpp"
+#include "engine/SettingsFile.hpp"
 #include "loader/SpiAbi.hpp"
 #include "plugin/CrashBreadcrumbs.hpp"
 #include "plugin/ModLoader.hpp"
 #include "plugin/PresentHook.hpp"
 #include "plugin/ProcessEventHook.hpp"
 
-#if defined(MEVR_WITH_HALCYON)
+#if defined(MEVR_WITH_HALCYON) || ((defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)) && defined(MEVR_WITH_MAIN_MENU))
 #include "plugin/GamePointer.hpp"
+#endif
+#if defined(MEVR_WITH_HALCYON)
 #include "plugin/OpenAlSoft.hpp"
 #include "plugin/UiWorldFigure.hpp"
 #include "plugin/GameThreadCalls.hpp"
@@ -34,6 +37,12 @@
 #if defined(MEVR_WITH_HALCYON_LE2)
 #include "plugin/GameThreadCalls.hpp"
 #include "plugin/HalcyonLe2.hpp"
+#endif
+#if defined(MEVR_WITH_HALCYON_LE3)
+#include "plugin/MotionBlurGuard.hpp"
+#include "plugin/GameThreadCalls.hpp"
+#include "plugin/HalcyonLe3.hpp"
+#include "plugin/Le3SceneCapture.hpp"
 #endif
 #if defined(MEVR_WITH_MAIN_MENU)
 #include "plugin/SetupRequest.hpp"
@@ -79,8 +88,15 @@ namespace {
 // hook goes live (core/Hook), so a detour entered at once never calls through null.
 using tGameEngineTick = void(void* self, float deltaSeconds);  // UGameEngine::Tick
 tGameEngineTick* gGameEngineTickOrig = nullptr;
+bool gEngineProbe = false;
 
 void GameEngineTickHook(void* self, float deltaSeconds) {
+    if (gEngineProbe) {
+        mevr::host::crash::NoteGameThread();
+        gGameEngineTickOrig(self, deltaSeconds);
+        mevr::host::Tick(deltaSeconds);
+        return;
+    }
 #if defined(MEVR_WITH_HALCYON)
     mevr::host::perf::GameTickBegin();
 #endif
@@ -90,7 +106,7 @@ void GameEngineTickHook(void* self, float deltaSeconds) {
     mevr::host::perf::QueueDrainBegin();
     mevr::host::game_thread::Drain();
 #endif
-#if defined(MEVR_WITH_HALCYON_LE2)
+#if defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
     mevr::host::game_thread::Drain();  // ME2's renderer's Present-thread ProcessEvent calls, queued for here (as LE1's)
 #endif
 #if defined(MEVR_WITH_HALCYON)
@@ -105,6 +121,10 @@ void GameEngineTickHook(void* self, float deltaSeconds) {
 #endif
 #if defined(MEVR_WITH_HALCYON_LE2)
     mevr::host::halcyon_le2::AfterTick(deltaSeconds);
+#endif
+#if defined(MEVR_WITH_HALCYON_LE3)
+    mevr::host::halcyon_le3::AfterTick(deltaSeconds);
+    mevr::host::motion_blur_guard::Tick();
 #endif
     mevr::host::Tick(deltaSeconds);
     mevr::host::process_event::ReportOffThread();
@@ -158,7 +178,7 @@ void WINAPI ExitProcessHook(UINT exitCode) {
 #else
         "");
 #endif
-#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2)
+#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
     TerminateProcess(GetCurrentProcess(), exitCode);
 #endif
     mevr::log::Close();
@@ -213,6 +233,13 @@ extern "C" __declspec(dllexport) bool SpiOnAttach(spi::Interface* InterfacePtr) 
     // Research dump of the decrypted code, before our or Halcyon's hooks patch any of it.
 #if !defined(MEVR_LE2_DIAGNOSTIC)
     mevr::engine::code_dump::SaveOnce();
+#if !defined(MEVR_MONOLITHIC)
+    // Development-only diagnostic launch: dump before any renderer, tick or mod hooks.
+    if (GetPrivateProfileIntW(L"Debug", L"dumpOnly", 0, mevr::engine::SettingsFile().c_str()) != 0) {
+        mevr::log::Info("dump-only: code dump attempted; renderer and hooks disabled");
+        return true;
+    }
+#endif
 #endif
     // Hook names: "<owner>_<name>", as before stage 4 ("LE1MEVR_UGameEngine::Tick").
     static mevr::hook::Context init{InterfacePtr, MEVR_GAME_NAME_A "MEVR"};
@@ -228,6 +255,14 @@ extern "C" __declspec(dllexport) bool SpiOnAttach(spi::Interface* InterfacePtr) 
 #if defined(MEVR_WITH_HALCYON_LE2)
     // Halcyon's ME2 renderer, likewise first (plugin/HalcyonLe2).
     mevr::host::halcyon_le2::Attach();
+#endif
+#if defined(MEVR_WITH_HALCYON_LE3)
+    gEngineProbe = mevr::engine::DevelopmentEngineProbe();
+    if (!gEngineProbe) {
+        mevr::host::le3_scene_capture::Attach(init);
+        mevr::host::halcyon_le3::Attach();
+    }
+    else mevr::log::Info("engine-probe: host renderer disabled");
 #endif
     if (InterfacePtr == nullptr) {
         mevr::log::Warn("no SPI interface from the loader: hooking with our own MinHook");
@@ -252,19 +287,24 @@ extern "C" __declspec(dllexport) bool SpiOnAttach(spi::Interface* InterfacePtr) 
         mevr::host::Stop();
         return true;
     }
-#if !defined(MEVR_WITH_HALCYON) && !defined(MEVR_WITH_HALCYON_LE2) && !defined(MEVR_LE2_DIAGNOSTIC)  // Halcyon's own, or none
+#if !defined(MEVR_WITH_HALCYON) && !defined(MEVR_WITH_HALCYON_LE2) && !defined(MEVR_WITH_HALCYON_LE3) && !defined(MEVR_LE2_DIAGNOSTIC)  // Halcyon's own, or none
     // Owned by the host so the render thread never runs code from an unloading mod DLL.
     if (!mevr::host::present::Install(init)) {
         mevr::log::Error("present hook failed; VR output disabled");
     }
 #endif
     HookExitProcess(init);
+#if defined(MEVR_WITH_HALCYON) || ((defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)) && defined(MEVR_WITH_MAIN_MENU))
+    if (!gEngineProbe) mevr::host::game_pointer::InstallCursorHook(init);  // present the tracked pointer's position to the game's GUI
+#endif
 #if defined(MEVR_WITH_HALCYON) && defined(MEVR_GAME_LE1)
     mevr::host::kept_locks::Install(init);  // research/36 "The fault at quit": the game's teardown deletes a lock in use
     mevr::host::render_levers::Install(init);  // research/22: the render thread's levers and accounting
     mevr::host::motion_blur_guard::Install(init);
-    mevr::host::game_pointer::InstallCursorHook(init);  // research/57 section 6: the game's cursor onto the pointer
     mevr::host::ui_world_figure::Install(init);  // research/57 section 7: no Umbra query for the UI world's capture
+#endif
+#if defined(MEVR_WITH_HALCYON_LE3)
+    if (!gEngineProbe) mevr::host::motion_blur_guard::Install(init);
 #endif
     mevr::log::Info("host attached");
     return true;

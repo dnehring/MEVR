@@ -8,6 +8,12 @@ description: Runs LE1 unattended on SteamVR's null-driver "fake headset" and put
 One command does the whole run and always puts the machine back: **`tools/fake-headset-session.ps1`**. Write what the run does
 in a small script; the session tool deploys, backs up, launches, dot-sources your script, and restores in a `finally`.
 
+**Shared null-headset height (ME1–3): 5 ft 9 in / 1.7526 m above the floor.**
+`tools/fake-headset.ps1` configures the standing origin for every game. Recentered
+local replay poses still use head Y=0; do not add the floor height to their head or
+hands. `--hands view` intentionally raises hands near the eyes; use `--hands chest`
+for a normal view. See `research/null-headset-height.md` for reference spaces and verification.
+
 ```powershell
 tools\fake-headset-session.ps1 -Tag heads -Run C:\...\scratchpad\run-heads.ps1 -IgnoreSlot -Audit
 tools\fake-headset-session.ps1 -Tag one -Command "tools\conversation-from-save.ps1 -All -Career John02 -Only 85 -Stances"

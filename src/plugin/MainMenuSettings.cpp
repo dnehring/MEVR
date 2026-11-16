@@ -37,6 +37,7 @@
 #include "plugin/Calibration.hpp"
 #include "plugin/Renderer.hpp"
 #include "plugin/TestLoop.hpp"
+#include "plugin/Voice.hpp"
 
 #include "mevr/BuildInfo.hpp"  // MEVR_GIT_COMMIT, About (generated: tools/cmake/BuildInfo.cmake)
 #include "mevr/Version.hpp"    // MEVR_VERSION, About (generated from CMake's project(VERSION))
@@ -288,12 +289,15 @@ void Settings::Read(menu::Values& v) {
     bool const cineConvo = c.cineVrConvo;
     bool const cineCut = c.cineVrCutscene;
 #else
-    // ME2: the stick walks where the head looks (its MoveFollowsHead, always on), and conversations and cutscenes are on
-    // Halcyon's flat cine panel (ApplyMevrBaseline: CineVrConvo and CineVrCutscene off until ME1's 3D cinema screen, M5).
+    // ME2's MoveFollowsHead stays on. The cinema screen is selected through our INI.
     bool const followsHead = true;
-    bool const cineConvo = false;
-    bool const cineCut = false;
-    flag("le2", true);  // the document greys out what ME2 doesn't have yet (research/le2-menus.md)
+    flag("le2", true); // shared sequel limitations; le3 below distinguishes native capabilities
+#if defined(MEVR_WITH_HALCYON_LE3)
+    flag("le3", true);
+    v.texts["game_title"] = "Mass Effect 3";
+#else
+    v.texts["game_title"] = "Mass Effect 2";
+#endif
 #endif
     // [Comfort] (research/31; the mod reads it: game/comfort). Smooth is the game's own turn ("turn = game"); the
     // file-only "turn = smooth" (the mod's steady turn) shows as Smooth too.
@@ -317,6 +321,7 @@ void Settings::Read(menu::Values& v) {
     // Conversations and cutscenes (research/52), each on its own row: flat with Halcyon's VR conversations (cutscenes) off, on the
     // 3D cinema screen with [Cinematics] conversations (cutscenes) on, else in VR.
     mevr::vr::cine_screen::Settings const cineDefaults;
+#if defined(MEVR_MENU_LE1)
     auto const cineChoice = [&](bool inVr, char const* key, bool fallback) {
         return !inVr ? std::string("flat") : ini.Num("Cinematics", key, fallback ? 1.0f : 0.0f) != 0.0f ? std::string("screen")
                                                                                                        : std::string("vr");
@@ -328,6 +333,16 @@ void Settings::Read(menu::Values& v) {
         v.texts["cine_convo"] = "world";
     }
     v.texts["cine_cut"] = cineChoice(cineCut, "cutscenes", cineDefaults.cutscenes);
+#else
+    namespace cw = mevr::vr::conversation_world;
+    auto const convo = cw::ParseMode(ini.Text("Cinematics", "conversations", "").c_str(),
+        cineDefaults.conversations ? cw::Mode::Screen : cw::Mode::Vr);
+    v.texts["cine_convo"] = convo == cw::Mode::Vr ? "flat" : "screen";
+    v.texts["cine_cut"] = ini.Num("Cinematics", "cutscenes", cineDefaults.cutscenes ? 1.0f : 0.0f) != 0.0f ? "screen" : "flat";
+#endif
+#if defined(MEVR_WITH_HALCYON_LE3)
+    v.texts["cine_convo"] = v.texts["cine_cut"] = "flat";
+#endif
     v.numbers["cine_width"] = std::clamp(ini.Num("Cinematics", "widthM", 2.9f), 1.5f, 8.0f);
     v.numbers["cine_distance"] = std::clamp(ini.Num("Cinematics", "distanceM", 3.5f), 1.0f, 6.0f);
     v.numbers["cine_depth"] = std::clamp(std::round(ini.Num("Cinematics", "depth", kCineDepthFull) / kCineDepthFull * 100.0f), 0.0f, 150.0f);
@@ -393,6 +408,9 @@ void Settings::Read(menu::Values& v) {
         g.handWheel = ini.Num("PowerWheel", "on", 1.0f) != 0.0f;  // the mod's defaults (game/PowerWheel)
         g.castLock = ini.Num("PowerWheel", "lock", 1.0f) != 0.0f;
         g.selfGestures = ini.Num("PowerWheel", "selfGestures", 1.0f) != 0.0f;
+#if !defined(MEVR_MENU_LE1)
+        g.le2 = true;
+#endif
         for (auto const& [key, text] : ms::GuideTexts(g)) {
             v.texts[key] = text;
         }
@@ -571,8 +589,8 @@ void Settings::Read(menu::Values& v) {
     // width, depth of field and the desktop mirror. Its keyboard recenter is off (R is ME2's reload: ApplyMevrBaseline).
     renderer::MenuRows const rows = renderer::GetMenuRows();
     flag("recenter_key", false);
-    v.texts["recenter_key_desc"] = "R is Mass Effect 2's reload, so the keyboard doesn't recenter: use Recenter at the top of this menu";
-    v.texts["classic_desc"] = std::format("The original ME2 VR settings menu, with expert settings these pages don't have (also: "
+    v.texts["recenter_key_desc"] = "Use Recenter at the top of this menu or the controller recenter shortcut.";
+    v.texts["classic_desc"] = std::format("The renderer settings menu, with expert settings these pages don't have (also: "
                                           "Ctrl + {})", KeyName(renderer::OwnMenuKey()));
     v.texts["menu_key"] = KeyName(renderer::OwnMenuKey());
     v.numbers["look_smooth"] = rows.lookSmoothing;
@@ -603,15 +621,17 @@ void Settings::Read(menu::Values& v) {
 #else
     v.texts["about_build"] = ms::AboutBuild(MEVR_VERSION, MEVR_GIT_COMMIT, true);
 #endif
-#if defined(MEVR_MENU_LE1)
     ReadVoice(v, ini.Num("Voice", "enabled", 1.0f) != 0.0f, ini.Text("Voice", "model", "tiny"), ini.Num("Voice", "earCueStrength", 0.4f));
-#endif
     // Thespian mode (research/70): the mod reads [Thespian] every second.
     v.numbers["thespian_on"] = ini.Num("Thespian", "on", 0.0f) != 0.0f ? 1.0f : 0.0f;
     {
         std::string const strictness = mevr::ini::Lower(mevr::ini::Trim(ini.Text("Thespian", "strictness", "performer")));
         v.texts["thespian_strictness"] = strictness == "relaxed" || strictness == "method" ? strictness : std::string("performer");
+#if !defined(MEVR_MENU_LE1)
+        v.texts["thespian_hand"] = "voice";  // LE2 keeps native Shepard playback until a verified Wwise adapter exists.
+#else
         v.texts["thespian_hand"] = mevr::ini::Lower(mevr::ini::Trim(ini.Text("Thespian", "handPick", "voice"))) == "silent" ? "silent" : "voice";
+#endif
     }
     // Sound (research/69 A3): [Audio] spatial and gainDb are read once when the game starts (plugin/OpenAlSoft), so the note says
     // whether the file's choice is what plays now; overheard and gun are the mod's and live (game/SoundPlace).
@@ -624,7 +644,7 @@ void Settings::Read(menu::Values& v) {
         v.texts["audio_now"] = openal_soft::Describe();
         v.texts["audio_note"] = ms::AudioNote(spatial, gain, openal_soft::Running(), openal_soft::RunningGainDb(), openal_soft::Installed());
 #else
-        v.texts["audio_now"] = "Mass Effect 2's own audio (ME2 plays through Wwise; OpenAL Soft is ME1's)";
+        v.texts["audio_now"] = v.texts["game_title"] + " native audio (Wwise)";
 #endif
         auto const on = [&](char const* key) {
             std::string const text = Lower(ini.Text("Audio", key, "1"));
@@ -637,7 +657,6 @@ void Settings::Read(menu::Values& v) {
 
 // The Voice page (research/54 "The menu's Voice page"): the recognizer's state from the host (plugin/Voice), the microphones it
 // lists, and [Voice]'s keys. The level bar is MainMenu's (every frame while the page is open).
-#if defined(MEVR_MENU_LE1)
 void Settings::ReadVoice(menu::Values& v, bool enabled, std::string const& model, float earCue) {
     std::uint64_t const now = Now();
     bool const onPage = v.Text("section") == "voice";
@@ -696,7 +715,7 @@ void Settings::WriteVoiceDevice(std::string const& name) {
     micPicked_ = name;
     micPickedMs_ = Now();
 }
-#endif
+
 
 void Settings::Wrote(bool ok, std::string_view what) {
     DWORD const error = ok ? 0 : GetLastError();
@@ -820,6 +839,9 @@ void Settings::ClearCullTenths() {
 }
 
 void Settings::Write(std::string const& key, menu::Values const& v, bool final) {
+#if defined(MEVR_WITH_HALCYON_LE3)
+    if (ms::UnavailableInLe3Presentation(key)) return;
+#endif
     for (auto const& f : vr::manual_calibration::kFields) {
         if (key != f.menu) continue;
         auto const cal = calibration::GetSummary();
@@ -843,14 +865,14 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
 #if defined(MEVR_MENU_LE1)
         (convo ? c.cineVrConvo : c.cineVrCutscene) = view != "flat";
         HalcyonChanged(false);
-#else
-        if (view != "flat") {
-            return;  // ME2: the flat cine panel only, until ME1's 3D cinema screen (M5); the row is greyed out
-        }
-#endif
         if (view != "flat") {
             Put("Cinematics", convo ? "conversations" : "cutscenes", view == "world" && convo ? "world" : view == "screen" ? "1" : "0", true);
         }
+#else
+        if (view == "screen" || view == "flat") {
+            Put("Cinematics", convo ? "conversations" : "cutscenes", view == "screen" ? "1" : "0", true);
+        }
+#endif
     } else if (key == "cine_width") {
         Put("Cinematics", "widthM", fixed(v.Number("cine_width"), 2), final);
     } else if (key == "cine_distance") {
@@ -866,7 +888,6 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
         Put("WorldUi", "on", onOff("world_ui"), true);
     } else if (key == "galaxy_holo") {
         Put("Galaxy", "hologram", onOff("galaxy_holo"), true);
-#if defined(MEVR_MENU_LE1)
     } else if (key == "voice_on") {
         // Voice (research/54 "The menu's Voice page"): the recognizer restarts with the file's [Voice] (plugin/Voice).
         Put("Voice", "enabled", onOff("voice_on"), true);
@@ -893,13 +914,15 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
                                          : "the menu: microphone " + view.devices[static_cast<std::size_t>(std::atoi(pick.c_str()))]);
     } else if (key == "ear_cue") {
         Put("Voice", "earCueStrength", fixed(v.Number("ear_cue") / 100.0f, 2), final);  // the mod re-reads it
-#endif
+
     } else if (key == "thespian_on") {
         Put("Thespian", "on", onOff("thespian_on"), true);  // the mod re-reads [Thespian] every second
     } else if (key == "thespian_strictness") {
         Put("Thespian", "strictness", v.Text("thespian_strictness"), true);
     } else if (key == "thespian_hand") {
+#if defined(MEVR_MENU_LE1)
         Put("Thespian", "handPick", v.Text("thespian_hand"), true);
+#endif
     } else if (key == "audio_spatial") {
         // The host reads it once when the game starts (plugin/OpenAlSoft): the row's note says so.
         Put("Audio", "spatial", ms::AudioSpatialChoice(v.Text("audio_spatial")), true);
@@ -1038,7 +1061,7 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
 #if !defined(MEVR_MENU_LE1)
     // ---- ME2's renderer (plugin/Renderer.hpp's MenuRows: Halcyon ME2's MELE2VR.ini, saved when the menu closes) ----
     else if (key == "walk") {
-        Put("Comfort", "walk", v.Text("walk") == "hand" ? "hand" : "head", true);  // ME2's stick always walks where you look
+        Put("Comfort", "walk", v.Text("walk") == "hand" ? "hand" : "head", true);
     } else if (key == "look_smooth" || key == "flat_size" || key == "mirror") {
         renderer::MenuRows rows = renderer::GetMenuRows();
         if (key == "look_smooth") {
@@ -1254,9 +1277,9 @@ void Settings::Command(std::string const& name, std::string const& argument, men
         MELEVR::Menu::CancelKeyCapture();
         Put("Voice", "key", "0", true);
         voice::SetKey(0);
+#endif
     } else if (name == "voice_restart") {
         voice::Restart("the menu's Restart");
-#endif
     } else if (name == "resume") {
         after_ = After::Close;
     } else if (name == "game_menu") {

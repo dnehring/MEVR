@@ -3,6 +3,7 @@
 // pad as RmlUi's mouse and keys, the frosted backdrop from the left eye's image, and the cost while open.
 
 #include "plugin/MainMenu.hpp"
+#include "plugin/Voice.hpp"
 
 #include "plugin/MainMenuSettings.hpp"
 #include "plugin/menu/MenuBackdrop.hpp"
@@ -1098,7 +1099,6 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
         g.model->Refresh();
         gPauseWanted.store(!LiveAdjusting() && g.settings->PauseWanted());
     }
-#if defined(MEVR_MENU_LE1)
     if (now - g.lastLevelMs >= 33 && g.model->Get().Text("section") == "voice") {
         // The microphone's level (research/54 "The menu's Voice page"): a meter's quick rise and slow fall, in whole percents
         // so the page redraws only when the bar moves.
@@ -1111,7 +1111,7 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
         g.model->SetNumber("voice_level", std::round(g.levelShown));
         g.model->SetNumber("voice_heard", now < g.heardUntilMs ? 1.0f : 0.0f);
     }
-#endif
+
     g.settings->Tick(g.live, frame.headValid, frame.head.position);
     if (LiveAdjusting()) {
         TickLive(frame, dt);
@@ -1158,6 +1158,10 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
         if (g.submitted) {
             ++g.renders;
         }
+    } else if (testloop::SnapshotArmed()) {
+        // A quiet menu reuses its last image. Republish the existing canvas while a
+        // capture is armed so the shared release tap can include it in both eyes.
+        g.submitted = Submit();
     }
     if (timed) {
         g.context->End(g.gpuEnd.Get());

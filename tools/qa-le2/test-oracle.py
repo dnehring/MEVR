@@ -237,6 +237,17 @@ class CrosscheckTests(unittest.TestCase):
             self.verify()
         self.assertEqual(marker.read_text(), "preserve")
 
+    def test_le3_independent_failure_precedes_any_save_clone(self):
+        le3_fixture = module("oracle_le3_wire_fixture", ROOT / "tests/Le3SaveTests.py")
+        self.save.write_bytes(le3_fixture.fixture()[0])
+        adapter = ROOT / "tools/le3-save.py"
+        with mock.patch.object(checker.subprocess, "run", return_value=subprocess.CompletedProcess([], 1, "", "refused")):
+            with self.assertRaisesRegex(RuntimeError, "LE3 baseline rejected"):
+                checker.verify(self.save, self.oracle, self.output, adapter)
+        self.assertFalse((self.output / "base.pcsav").exists())
+        self.assertFalse((self.output / "prepared.pcsav").exists())
+        self.assertFalse((self.output / "result.json").exists())
+
 
 class RealOracleIntegration(unittest.TestCase):
     @unittest.skipUnless(os.environ.get("LE2_TSE_ORACLE") and os.environ.get("LE2_TEST_SAVE"),

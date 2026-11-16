@@ -6,6 +6,7 @@
 
 #include "core/vr/Controllers.hpp"
 #include "core/vr/PowerWheel.hpp"
+#include "core/vr/NativePower.hpp"
 #include "core/vr/FootControls.hpp"
 #include "game/GamepadMapping.hpp"
 
@@ -13,6 +14,7 @@
 #include <cstdio>
 #include <string>
 #include <vector>
+#include <limits>
 
 namespace {
 
@@ -993,7 +995,108 @@ void TestXOwnership() {
     CHECK(std::string(pw::kControlsCoach).find("either hand at your left chest") != std::string::npos);
 }
 
+void TestRosterPages() {
+    // Unchanged LE1/LE2 normal-size layout; overflow must expose every real
+    // power exactly once while keeping No power and navigation in the view.
+    for (int count : {0, 1, 10, 11, 12, 20, 21, 64, 128}) {
+        auto const first = pw::PowerPage(count, 0);
+        std::vector<int> visited(static_cast<std::size_t>(count));
+        for (int page = 0; page < first.pages; ++page) {
+            auto const p = pw::PowerPage(count, page);
+            CHECK(p.index == page && p.pages == first.pages);
+            CHECK(p.count + 1 + (p.more >= 0 ? 1 : 0) <= pw::kMaxEntries);
+            CHECK(p.more == (count > 11 ? p.count + 1 : -1));
+            for (int i = 0; i < p.count; ++i) ++visited[static_cast<std::size_t>(p.first + i)];
+        }
+        for (auto visits : visited) CHECK(visits == 1);
+        CHECK(pw::PowerPage(count, first.pages).index == 0);
+        CHECK(pw::PowerPage(count, -1).index == 0);
+        if (count <= 11) CHECK(first.count == count && first.first == 0 && first.more == -1);
+    }
+    CHECK(pw::PowerPage(-1, 0).count == 0);
+
+    // Each existing confirmation route pages without equip; a continued held
+    // control cannot activate a power on the next page or cycle repeatedly.
+    for (int control = 0; control < 4; ++control) {
+        pw::Machine m;
+        m.open = true;
+        m.selected = 11;
+        m.toggled = control != 0;
+        m.buttonWas = control == 0;
+        m.triggerArmed = m.gripArmed = true;
+        pw::MachineInput in;
+        in.allowed = true;
+        in.time = 1;
+        in.moreIndex = 11;
+        in.trigger = control == 1 ? 1.0f : 0.0f;
+        in.grip = control == 2 ? 1.0f : 0.0f;
+        in.button = control == 3;
+        auto const angles = pw::Angles(12);
+        CHECK(pw::Step(m, in, angles, {}) == pw::Event::PageChanged);
+        CHECK(m.open && m.toggled && m.selected == -1 && m.equipped == -1);
+        m.selected = 0;  // pointing at an actual power after the page change
+        in.time = 1.1;
+        CHECK(pw::Step(m, in, angles, {}) == pw::Event::None && m.open);
+        in.trigger = in.grip = 0;
+        in.button = false;
+        in.time = 1.2;
+        CHECK(pw::Step(m, in, angles, {}) == pw::Event::None && m.open);
+        in.trigger = 1;
+        in.time = 1.3;
+        CHECK(pw::Step(m, in, angles, {}) == pw::Event::Equipped && m.equipped == 0);
+    }
+    pw::Machine m;
+    m.open = true;
+    m.selected = 11;
+    pw::MachineInput lost;
+    lost.moreIndex = 11;
+    CHECK(pw::Step(m, lost, pw::Angles(12), {}) == pw::Event::Cancelled);
+}
+
 int RunPowerWheelTests() {
+    TestRosterPages();
+    CHECK(pw::NativeLocationInRange(100, 100, 200));
+    CHECK(pw::NativeLocationInRange(200, 100, 200));
+    CHECK(!pw::NativeLocationInRange(99, 100, 200));
+    CHECK(!pw::NativeLocationInRange(201, 100, 200));
+    CHECK(!pw::NativeLocationInRange(100, 200, 100));
+    CHECK(!pw::NativeLocationInRange(0, 0, 0));
+    CHECK(!pw::NativeLocationInRange(std::numeric_limits<double>::infinity(), 0, 200));
+    // Native values may change with weapon weight, resource pickups and class
+    // transitions. Presentation must neither invent availability nor reset them.
+    pw::NativePowerState native{1, true, 5, 10, false, std::nullopt};
+    CHECK(pw::EvaluateNativePower(native).valid);
+    CHECK(pw::EvaluateNativePower(native).enabled);
+    CHECK(Close(pw::EvaluateNativePower(native).cooldown, 0.5f));
+    native.total = 20;
+    CHECK(Close(pw::EvaluateNativePower(native).cooldown, 0.25f));
+    native.total = 0;
+    CHECK(pw::EvaluateNativePower(native).cooldown == 1);
+    native.remaining = -0.01f;
+    CHECK(pw::EvaluateNativePower(native).cooldown == 0);
+    native.grenade = true;
+    CHECK(!pw::EvaluateNativePower(native).valid);
+    native.grenades = -1;
+    CHECK(!pw::EvaluateNativePower(native).valid);
+    native.grenades = 0;
+    CHECK(pw::EvaluateNativePower(native).valid && !pw::EvaluateNativePower(native).enabled);
+    native.grenades = 2;
+    CHECK(pw::EvaluateNativePower(native).enabled);
+    native.enabled = false;
+    CHECK(!pw::EvaluateNativePower(native).enabled);
+    native.enabled = true;
+    native.rank = 0;
+    CHECK(!pw::EvaluateNativePower(native).learned && !pw::EvaluateNativePower(native).enabled);
+    native.rank = std::numeric_limits<float>::quiet_NaN();
+    CHECK(!pw::EvaluateNativePower(native).valid);
+    native.rank = 1;
+    native.remaining = std::numeric_limits<float>::infinity();
+    CHECK(!pw::EvaluateNativePower(native).valid);
+    CHECK(pw::NativeSelfGesture(true, false, true) == pw::SelfGesture::Gun);
+    CHECK(pw::NativeSelfGesture(false, true, true) == pw::SelfGesture::Raise);
+    CHECK(pw::NativeSelfGesture(false, false, true) == pw::SelfGesture::Chest);
+    CHECK(pw::NativeSelfGesture(false, false, false) == pw::SelfGesture::None);
+    CHECK(pw::NativeSelfGesture(false, false, true, true) == pw::SelfGesture::Gun);
     TestXOwnership();
     TestMachine();
     TestPlacement();
@@ -1011,5 +1114,14 @@ int RunPowerWheelTests() {
     TestSelfNotReady();
     TestNoPowerAndGuns();
     TestSelfHolding();
+    auto const* ammo = pw::FindLe2Power("DisruptorAmmo");
+    CHECK(ammo != nullptr && ammo->aim == pw::Aim::None && pw::SelfGestureFor(ammo->label) == pw::SelfGesture::Gun);
+    CHECK(pw::RequiredWeapon("DisruptorAmmo") == -1);
+    auto const* adrenaline = pw::FindLe2Power("AdrenalineRush");
+    CHECK(adrenaline != nullptr && adrenaline->aim == pw::Aim::None &&
+        pw::SelfGestureFor(adrenaline->label) == pw::SelfGesture::Chest);
+    auto const* overload = pw::FindLe2Power("Overload");
+    CHECK(overload != nullptr && overload->aim == pw::Aim::Target && pw::SelfGestureFor(overload->label) == pw::SelfGesture::None);
+    CHECK(pw::FindLe2Power("LW_Marksman") == nullptr);
     return gFailures;
 }

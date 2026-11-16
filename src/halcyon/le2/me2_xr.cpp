@@ -15,6 +15,8 @@
 #include <d3d11.h>
 
 #include "mevr_bridge.h"  // [MEVR]
+#include "../../core/vr/StereoPoseTag.hpp"
+#include "../../core/vr/EyePublication.hpp" // [MEVR] image/pose publication receipts
 
 #include <atomic>
 #include <cmath>
@@ -108,14 +110,16 @@ bool g_aerHistValid[2] = { false, false };
 // acquire/copy when its content actually changes - see SubmitAerFrame. Cleared by ResetAerHistory,
 // which matters here because SFR/mono/DIBR submit through these same swapchains: after any of them
 // has owned the image, AER must not assume its own content is still in there.
-bool g_aerEyeFilled[2] = { false, false };
+struct EyeContentTag { XrPosef pose{}; XrFovf fov{}; uint64_t sequence = 0; bool history = false; };
+mevr::vr::EyePublication<EyeContentTag> g_publishedEyes;
+mevr::vr::SwapchainOwnership g_eyeOwnership[2], g_monoOwnership;
+void ResetAerHistory() noexcept;
 D3D11_TEXTURE2D_DESC g_aerHistDesc = {};
 bool g_aerHistDescValid = false;
 // THE anti-ghost pose-tag (sacred rule): each slot remembers the head pose it was CAPTURED at, so
 // the STALE eye is submitted at the orientation it was actually rendered facing - not the current head yaw.
 // Tagging the stale eye with the current pose (old shared-pose behavior, and ME1's too) is what ghosts on turn.
-XrPosef g_aerHistPose[2] = {};
-bool g_aerHistPoseValid[2] = { false, false };
+EyeContentTag g_aerHistTag[2] = {};
 uint64_t g_aerLastSeq = 0;           // last stamp seq consumed (the drift-free handshake)
 uint64_t g_aerPresent = 0;
 ULONGLONG g_aerHzWindowStartMs = 0;  // [AERHZ] cadence meter
@@ -546,6 +550,7 @@ void PumpEvents() noexcept
                 g_fn.endSession(g_session);
                 g_begun = false;
 #if defined(MEVR_ASI)
+                ResetAerHistory();
                 ::ME2VR::MevrBridge::OnSessionStopped();   // [MEVR] as LE1's: our quads and the view go
 #endif
             }
@@ -673,25 +678,44 @@ bool g_tagRingInit = false;
 XrPosef g_delayedTagPose = { {0,0,0,1}, {0,0,0} };   // read by the SFR submit
 std::atomic_bool g_poseTagReset{ true };             // reset the ring on recenter / first use
 
+// ME1 EYETAG reuse: actual runtime eye positions travel with the same head-ring sample.
+namespace st = mevr::vr::stereo_tag;
+st::EyeHistory<XrVector3f, 4> g_eyeTagRing;
+std::array<XrVector3f, 2> g_delayedEyePositions{};
+struct SfrPoseTag { XrPosef head{}; std::array<XrVector3f, 2> eyes{}; XrFovf fov[2]{}; bool stereo = false; };
+st::SourceTag<SfrPoseTag> g_sfrSourceTag;
+st::CaptureEpoch g_sfrEpoch;
+void ResetSfrPoseTags() noexcept {
+    g_sfrSourceTag.Reset();
+    g_sfrEpoch.Reset(ME2VR::D3DCapture::GetSfrPass0CaptureSeq());
+    g_poseTagReset.store(true, std::memory_order_relaxed);
+    g_smoothQuatInit = false; // old-space orientation must not leak through smoothing after recenter
+}
+
 // Push this present's smoothed render pose into the ring and compute the delayed tag. `smoothedRollFree`
 // is the roll-removed smoothed orientation that fed the render; `pos` is the head position used.
-void PoseTagPush(const XrQuaternionf& smoothedRollFree, const XrVector3f& pos) noexcept
+void PoseTagPush(const XrQuaternionf& smoothedRollFree, const XrVector3f& pos, XrView const* stereoViews) noexcept
 {
     XrPosef cur; cur.orientation = smoothedRollFree; cur.position = pos;
+    std::array<XrVector3f, 2> const eyes = stereoViews
+        ? std::array<XrVector3f, 2>{stereoViews[0].pose.position, stereoViews[1].pose.position}
+        : std::array<XrVector3f, 2>{pos, pos};
     if (g_poseTagReset.exchange(false, std::memory_order_relaxed) || !g_tagRingInit)
     {
         for (int i = 0; i < 4; ++i) g_tagRing[i] = cur;
+        g_eyeTagRing.Seed(eyes);
         g_tagRingInit = true;
     }
     else
     {
         g_tagRing[3] = g_tagRing[2]; g_tagRing[2] = g_tagRing[1]; g_tagRing[1] = g_tagRing[0];
         g_tagRing[0] = cur;
+        g_eyeTagRing.Shift(eyes);
     }
-    const float delay = ME2VR::CalcViewHook::GetPoseTagDelayFrames();
-    int k0 = static_cast<int>(delay); if (k0 > 3) k0 = 3;
-    int k1 = k0 + 1; if (k1 > 3) k1 = 3;
-    const float frac = delay - static_cast<float>(k0);
+    auto const delay = st::FrameDelay(ME2VR::CalcViewHook::GetPoseTagDelayFrames(), 3);
+    int const k0 = delay.newer, k1 = delay.older;
+    float const frac = delay.fraction;
+    g_delayedEyePositions = g_eyeTagRing.At(k0, k1, frac);
     g_delayedTagPose.orientation = NlerpQuat(g_tagRing[k0].orientation, g_tagRing[k1].orientation, frac);
     g_delayedTagPose.position.x = g_tagRing[k0].position.x + (g_tagRing[k1].position.x - g_tagRing[k0].position.x) * frac;
     g_delayedTagPose.position.y = g_tagRing[k0].position.y + (g_tagRing[k1].position.y - g_tagRing[k0].position.y) * frac;
@@ -701,6 +725,7 @@ void PoseTagPush(const XrQuaternionf& smoothedRollFree, const XrVector3f& pos) n
 // Re-origin g_localSpace to the current head yaw (level) + position, read from the never-moved base space.
 void RecenterAppSpace(XrTime displayTime) noexcept
 {
+    ResetAerHistory(); // [MEVR] old submitted/source tags belong to the previous reference space
     if (g_baseSpace == nullptr) return;
     g_poseTagReset.store(true, std::memory_order_relaxed);   // [POSETAG] old ring samples are meaningless after re-origin
     XrViewLocateInfo li = {};
@@ -742,7 +767,7 @@ void RecenterAppSpace(XrTime displayTime) noexcept
 // axes (the same formula: 50 uu/m times HeadPosScale, the forward 3x, clamped to 2 m; none while the cine locks tracking).
 void MevrPublishView(const XrView& view) noexcept
 {
-    const bool cineLocked = ME2VR::CalcViewHook::GetVrCineActive() && !ME2VR::CalcViewHook::GetCineVrHeadTracking();
+    const bool cineLocked = ME2VR::CalcViewHook::GetCineTrackingLocked();   // or the 3D cinema screen's
     const float w2m = 50.0f * ME2VR::CalcViewHook::GetHeadPosScale();
     float right = 0.0f, up = 0.0f, fwd = 0.0f;
     if (ME2VR::CalcViewHook::GetHeadPosEnabled() && !cineLocked)
@@ -766,7 +791,7 @@ void MevrPublishView(const XrView& view) noexcept
 
 // Located head (already relative to the recentered localSpace) -> drive the render-side head-look +
 // positional 6DOF. pose.position is the head's translation from recenter, in meters (XR axes).
-void DriveHeadLook(const XrView& centerView) noexcept
+void DriveHeadLook(const XrView& centerView, XrView const* stereoViews = nullptr) noexcept
 {
 #if defined(MEVR_ASI)
     // [MEVR] publish the view once DriveHeadLook has decided it, whichever way it returns.
@@ -789,11 +814,11 @@ void DriveHeadLook(const XrView& centerView) noexcept
     const float follow = followSlow + (1.0f - followSlow) * ramp;
     g_smoothQuat = NlerpQuat(g_smoothQuat, rawQ, (smoothing > 0.001f) ? follow : 1.0f);
     HeadEulerDegrees(g_smoothQuat, yawDeg, pitchDeg);                      // render consumes the SMOOTHED angle
-    PoseTagPush(RemoveRoll(g_smoothQuat), centerView.pose.position);      // submit tag = same pose, delayed
+    PoseTagPush(RemoveRoll(g_smoothQuat), centerView.pose.position, stereoViews);      // submit tag = same pose, delayed
 
     // [VRCINE] head-tracking-OFF during a VR cine: park render rotation so the head doesn't turn the
     // view; the submit anchors the stereo pair at the current head (head-locked 3D picture below).
-    if (ME2VR::CalcViewHook::GetVrCineActive() && !ME2VR::CalcViewHook::GetCineVrHeadTracking())
+    if (ME2VR::CalcViewHook::GetCineTrackingLocked())   // [MEVR] or ME1's 3D cinema screen (head look parked)
     {
         ME2VR::CalcViewHook::SetHeadLook(0, 0, false);
         return;
@@ -962,6 +987,7 @@ void EnsureMonoSwapchain() noexcept
     sc.format = g_swapFormat;
     sc.sampleCount = 1; sc.width = g_bbW; sc.height = g_swapH; sc.faceCount = 1; sc.arraySize = 1; sc.mipCount = 1;
     if (!XrSucceeded(g_fn.createSwapchain(g_session, &sc, &g_monoSwap)) || g_monoSwap == nullptr) { g_monoSwap = nullptr; return; }
+    g_monoOwnership.Recreated();
     uint32_t c = 0;
     g_fn.enumerateSwapchainImages(g_monoSwap, 0, &c, nullptr);
     std::vector<XrSwapchainImageD3D11KHR> imgs(c);
@@ -977,6 +1003,8 @@ void EnsureMonoSwapchain() noexcept
 bool EnsureAerSwapchains() noexcept
 {
     if (g_aerSwap[0] != nullptr && g_aerSwap[1] != nullptr) return true;
+    ResetSfrPoseTags();
+    g_publishedEyes.Reset(); g_dibrHaveLast = false; g_aerHaveLast = false;
     g_aerSwapW = g_bbW;
     g_aerSwapH = g_swapH;   // = full backbuffer height
     if (g_aerSwapW == 0 || g_aerSwapH == 0) return false;
@@ -990,6 +1018,7 @@ bool EnsureAerSwapchains() noexcept
         sc.faceCount = 1; sc.arraySize = 1; sc.mipCount = 1;
         if (!XrSucceeded(g_fn.createSwapchain(g_session, &sc, &g_aerSwap[eye])) || g_aerSwap[eye] == nullptr)
         { g_aerSwap[eye] = nullptr; return false; }
+        g_eyeOwnership[eye].Recreated();
         uint32_t c = 0;
         g_fn.enumerateSwapchainImages(g_aerSwap[eye], 0, &c, nullptr);
         std::vector<XrSwapchainImageD3D11KHR> imgs(c);
@@ -1004,14 +1033,14 @@ bool EnsureAerSwapchains() noexcept
 
 void ResetAerHistory() noexcept
 {
+    ResetSfrPoseTags();
+    g_publishedEyes.Reset(); g_aerHaveLast = false; g_dibrHaveLast = false;
     for (int e = 0; e < 2; ++e)
     {
         if (g_aerHist[e] != nullptr) { g_aerHist[e]->Release(); g_aerHist[e] = nullptr; }
         g_aerHistValid[e] = false;
-        g_aerEyeFilled[e] = false;   // [AERBLINK] swapchain content is not the mod's any more
     }
     g_aerHistDescValid = false;
-    g_aerHistPoseValid[0] = false; g_aerHistPoseValid[1] = false;
     g_aerLastSeq = 0;
     g_aerPrevCaptureEye = -1;
     g_aerSameEyeTwice = 0; g_aerSeqGapBad = 0; g_aerMaxSeqGap = 0;
@@ -1025,7 +1054,8 @@ bool EnsureAerHistory(ID3D11Texture2D* src) noexcept
     src->GetDesc(&d);
     d.BindFlags = 0; d.CPUAccessFlags = 0; d.MiscFlags = 0; d.Usage = D3D11_USAGE_DEFAULT;
     if (g_aerHistDescValid && g_aerHist[0] && g_aerHist[1] &&
-        g_aerHistDesc.Width == d.Width && g_aerHistDesc.Height == d.Height && g_aerHistDesc.Format == d.Format)
+        g_aerHistDesc.Width == d.Width && g_aerHistDesc.Height == d.Height && g_aerHistDesc.Format == d.Format &&
+        g_aerHistDesc.SampleDesc.Count == d.SampleDesc.Count && g_aerHistDesc.SampleDesc.Quality == d.SampleDesc.Quality)
         return true;
     ResetAerHistory();
     for (int e = 0; e < 2; ++e)
@@ -1040,9 +1070,9 @@ bool EnsureAerHistory(ID3D11Texture2D* src) noexcept
 // shiftPx > 0 moves the copied image content toward +x (right), < 0 toward - x (left); 0 = plain full copy
 // (byte-identical to the old behaviour, so every non-convergence caller is unchanged). Used by the SFR
 // submit to apply convergence AFTER compositing - see [SFRCONV DECOUPLE] in calcview_hook.cpp.
-bool CopyTextureToEyeFullFrame(int eye, ID3D11Texture2D* src, int shiftPx = 0) noexcept
+bool CopyTextureToEyeFullFrame(int eye, ID3D11Texture2D* src, int shiftPx = 0, EyeContentTag const* tag = nullptr) noexcept
 {
-    if (src == nullptr || g_aerSwap[eye] == nullptr) return false;
+    if (eye < 0 || eye > 1 || src == nullptr || g_aerSwap[eye] == nullptr || !g_eyeOwnership[eye].MayAcquire()) return false;
 #if defined(MEVR_ASI)
     ::ME2VR::MevrBridge::OnEyeSource(eye, src);  // [MEVR] a snapshot armed now saves the source too (plugin/TestLoop)
 #endif
@@ -1054,18 +1084,19 @@ bool CopyTextureToEyeFullFrame(int eye, ID3D11Texture2D* src, int shiftPx = 0) n
         ::ME2VR::MevrBridge::OnEyeCopied(eye, nullptr, idx, static_cast<int>(acquired), 0);
 #endif
     if (!XrSucceeded(acquired)) return false;
+    g_eyeOwnership[eye].Acquired();
     bool copied = false;   // [AERBLINK] the caller must know if the image really changed
     XrSwapchainImageWaitInfo wi = {}; wi.type = XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO_VALUE; wi.timeout = XR_INFINITE_DURATION_VALUE;
     const XrResult waited = g_fn.waitSwapchainImage(g_aerSwap[eye], &wi);  // [MEVR] kept for OnEyeCopied
-    if (XrSucceeded(waited) && idx < g_aerImages[eye].size())
+    if (g_eyeOwnership[eye].WaitCompleted(waited == XR_SUCCESS_VALUE) && idx < g_aerImages[eye].size())
     {
         ID3D11Texture2D* dst = g_aerImages[eye][idx];
-        copied = true;
 #if defined(MEVR_ASI)
-        // [MEVR] a source CopyResource can't copy into the eye (ME2's float swap chain in gameplay) is drawn instead
-        if (::ME2VR::MevrBridge::CopyIntoImage(g_ctx, dst, src, shiftPx)) {}
-        else
-#endif
+        // [MEVR] The shared copy owns raw copies and HDR conversion. False is a failure,
+        // never permission to issue an incompatible raw copy or report a filled eye.
+        copied = ::ME2VR::MevrBridge::CopyIntoImage(g_ctx, dst, src, shiftPx);
+#else
+        copied = true;
         if (shiftPx == 0)
         {
             g_ctx->CopyResource(dst, src);
@@ -1092,15 +1123,26 @@ bool CopyTextureToEyeFullFrame(int eye, ID3D11Texture2D* src, int shiftPx = 0) n
             else        { box.left = static_cast<UINT>(-s); box.right = static_cast<UINT>(W); dstX = 0; }
             g_ctx->CopySubresourceRegion(dst, 0, dstX, 0, 0, src, 0, &box);   // shifted overwrite
         }
+#endif
     }
 #if defined(MEVR_ASI)
     // [MEVR] the copy counted (and a snapshot armed now saves the image right after it: plugin/TestLoop)
-    ::ME2VR::MevrBridge::OnEyeCopied(eye, idx < g_aerImages[eye].size() ? g_aerImages[eye][idx] : nullptr, idx, 0,
+    ::ME2VR::MevrBridge::OnEyeCopied(eye, copied && idx < g_aerImages[eye].size() ? g_aerImages[eye][idx] : nullptr, idx, 0,
                                      static_cast<int>(waited));
 #endif
     XrSwapchainImageReleaseInfo ri = {}; ri.type = XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO_VALUE;
-    g_fn.releaseSwapchainImage(g_aerSwap[eye], &ri);
-    return copied;
+    // A failed/timeout wait is not permission to release or sample the image.
+    // A failed release must not let the next copy get attributed to an older
+    // still-acquired index (OpenXR releases the oldest waited image).
+    bool const released = g_eyeOwnership[eye].MayRelease() &&
+        g_fn.releaseSwapchainImage(g_aerSwap[eye], &ri) == XR_SUCCESS_VALUE;
+    if (!g_eyeOwnership[eye].ReleaseCompleted(released))
+        XLog("[MEVR] eye swapchain quarantined after wait/release failure; restart required, eye=" + std::to_string(eye));
+    bool const published = g_publishedEyes.Complete(eye, true, copied, released, tag);
+#if defined(MEVR_ASI)
+    ::ME2VR::MevrBridge::OnEyeReleased(eye, published);
+#endif
+    return published;
 }
 
 // Capture the freshly-rendered eye into its history slot (drift-free stamp handshake), then submit BOTH
@@ -1110,18 +1152,27 @@ bool CopyTextureToEyeFullFrame(int eye, ID3D11Texture2D* src, int shiftPx = 0) n
 // fillSwapchains=false: consume the render handshake and refresh history WITHOUT touching any
 // OpenXR swapchain. Used on presents the runtime asked the mod not to render ([AERGAP]) - the engine
 // rendered an eye regardless, and if nobody consumes that stamp the eye toggle never advances.
-bool SubmitAerFrame(ID3D11Texture2D* backBuffer, const XrPosef& headPose, bool fillSwapchains) noexcept
+bool SubmitAerFrame(ID3D11Texture2D* backBuffer, const XrPosef& headPose, bool fillSwapchains, XrView const* views) noexcept
 {
     if (backBuffer == nullptr) return false;
     ++g_aerPresent;
+    auto makeTag = [&](int eye, uint64_t sequence, bool history) {
+        EyeContentTag tag{headPose, views[eye].fov, sequence, history};
+        const float gh = ME2VR::CalcViewHook::GetGameHalfFovH();
+        const float gv = ME2VR::CalcViewHook::GetGameHalfFovV();
+        if (gh > 0.01f && gv > 0.01f) tag.fov = {-gh, gh, gv, -gv};
+        return tag;
+    };
+    auto bootstrap = [&] {
+        for (int eye = 0; eye < 2; ++eye) {
+            auto const tag = makeTag(eye, g_aerPresent, false);
+            CopyTextureToEyeFullFrame(eye, backBuffer, 0, &tag);
+        }
+        return g_publishedEyes.CurrentPair();
+    };
     if (!EnsureAerHistory(backBuffer) || (fillSwapchains && !EnsureAerSwapchains()))
     {
-        if (fillSwapchains)
-        {
-            CopyTextureToEyeFullFrame(0, backBuffer);   // bootstrap on alloc failure
-            CopyTextureToEyeFullFrame(1, backBuffer);
-        }
-        return true;
+        return !fillSwapchains || bootstrap();
     }
     // [AERSHAKE] FIFO consume: the OLDEST unconsumed build - the one whose pixels this present
     // actually shows - never "the latest stamp", whose eye can belong to a build still in flight.
@@ -1141,8 +1192,7 @@ bool SubmitAerFrame(ID3D11Texture2D* backBuffer, const XrPosef& headPose, bool f
 
         g_ctx->CopyResource(g_aerHist[eye], backBuffer);
         g_aerHistValid[eye] = true;
-        g_aerHistPose[eye] = headPose;          // tag THIS eye with the pose it was rendered at (anti-ghost)
-        g_aerHistPoseValid[eye] = true;
+        g_aerHistTag[eye] = makeTag(eye, seq, true);          // tag THIS eye with the pose it was rendered at (anti-ghost)
         g_aerLastSeq = seq;
         const ULONGLONG now = GetTickCount64();
         if (g_aerHzWindowStartMs == 0) { g_aerHzWindowStartMs = now; g_aerHzCaptures = 0; }
@@ -1176,21 +1226,17 @@ bool SubmitAerFrame(ID3D11Texture2D* backBuffer, const XrPosef& headPose, bool f
     if (!fillSwapchains) return true;   // [AERGAP] handshake kept alive; nothing to present this frame
     if (g_aerHistValid[0] && g_aerHistValid[1])
     {
-        if (newFrame && CopyTextureToEyeFullFrame(eye, g_aerHist[eye])) g_aerEyeFilled[eye] = true;
-        // Catch-up: an eye whose swapchain has never held real stereo content (the first pair after
-        // bootstrap, or one that SFR/mono/DIBR owned before AER was re-entered) gets one top-up copy.
-        for (int e = 0; e < 2; ++e)
-            if (!g_aerEyeFilled[e] && CopyTextureToEyeFullFrame(e, g_aerHist[e])) g_aerEyeFilled[e] = true;
+        for (int e = 0; e < 2; ++e) {
+            auto const* image = g_publishedEyes.Get(e);
+            // A new history pose is not the pose of the previously released image. Retry
+            // an unfilled/failed eye or an unpublished history sequence, once this frame.
+            if (!image || !image->tagged || !image->tag.history ||
+                image->tag.sequence != g_aerHistTag[e].sequence)
+                CopyTextureToEyeFullFrame(e, g_aerHist[e], 0, &g_aerHistTag[e]);
+        }
+        return g_publishedEyes.TaggedPair(); // untouched old eyes retain their submitted tags
     }
-    else
-    {
-        // Bootstrap until both slots captured once: the same mono frame to both eyes, refreshed
-        // every present. Deliberately does NOT set g_aerEyeFilled - the first real stereo pair must
-        // overwrite this mono content via the catch-up above.
-        CopyTextureToEyeFullFrame(0, backBuffer);
-        CopyTextureToEyeFullFrame(1, backBuffer);
-    }
-    return true;
+    return bootstrap();
 }
 
 // Learn the headset's TRUE refresh. Order: pinned Hz -> XR_FB_display_refresh_rate -> measure. (ME1 verbatim.)
@@ -1415,6 +1461,8 @@ bool CaptureMovieBackbufferBmp(int sampleFrame) noexcept
 }
 void RunFrame() noexcept
 {
+    g_sfrSourceTag.BeginFrame();
+    g_publishedEyes.BeginFrame(); // [MEVR] current-pair receipts never carry over implicitly
     // [PERF] present-cadence probe: avg/max present-to-present time + late count (> 1.5x refresh) +
     // SFR replay (2nd render) cost, one line every ~10s. Names the bottleneck when the frame rate is poor:
     // avg high = raw GPU/engine load (lower res); replayAvg ~ half of avg = the double render is the
@@ -1524,7 +1572,15 @@ void RunFrame() noexcept
     // own pacing-enable toggle; SFR/Stereo share StereoFramePacing.
     const bool wantPace = (aerMode && ME2VR::CalcViewHook::GetAerFramePacing()) ||
                           ((stereoMode || sfrMode) && ME2VR::CalcViewHook::GetStereoFramePacing());
-    if (wantPace) PaceDisplayLockedAer(true);
+    if (wantPace) {
+#if defined(MEVR_ASI)
+        // The cinema screen can request half refresh through [Cinematics]. Retain the global pacing limit.
+        const bool allow1x = !ME2VR::CalcViewHook::GetMevrCineScreen() || ::ME2VR::MevrBridge::CineScreenFullRate();
+        PaceDisplayLockedAer(allow1x);
+#else
+        PaceDisplayLockedAer(true);
+#endif
+    }
 
     XrFrameWaitInfo fwi = {}; fwi.type = XR_TYPE_FRAME_WAIT_INFO_VALUE;
     XrFrameState fs = {}; fs.type = XR_TYPE_FRAME_STATE_VALUE;
@@ -1549,6 +1605,8 @@ void RunFrame() noexcept
     XrCompositionLayerProjectionView projViews[2] = {};
     XrCompositionLayerProjection layer = {};
     bool rendered = false;
+    unsigned mevrScreenLayerCount = 0;    // [MEVR] ME1's 3D cinema screen's layers this frame (its floor, its two quads)
+    const void* mevrScreenLayers[3] = {};  // [MEVR]
 #if defined(MEVR_ASI)
     XrVector3f sightEyes[2] = {};
     bool sightEyesValid = false;
@@ -1736,9 +1794,23 @@ void RunFrame() noexcept
         // liveness is diagnostic only. It may stall at transitions and must never demote a real
         // conversation/cutscene to the flat panel. Unknown/transitional modes also fail open to VR.
         const bool recognizedCine = gm == 5 || gm == 6;
+#if defined(MEVR_ASI)
+        const bool renderCineInVrHalcyon = (gm == 5 && (ME2VR::CalcViewHook::GetCineVrConvo() ||
+                                                        s_convoVrLatch)) ||
+                                           (gm == 6 && ME2VR::CalcViewHook::GetCineVrCutscene());
+        // [MEVR] ME1's 3D cinema screen (research/52, research/le2-cinema.md): a conversation (5) or cutscene (6) that
+        // [Cinematics] sends to the screen renders as a VR cine (both SFR passes: the replay's gate refuses only menus and
+        // the flat cine) and is shown on a screen fixed in the room. Prerendered movies stay flat (they read as 8 here);
+        // Halcyon's own first-person conversation, when armed, keeps its conversation (one presentation owner).
+        const bool mevrScreen = sfrMode && recognizedCine && s_fovCine && !moviePlayback && !s_convoVrLatch &&
+                                ::ME2VR::MevrBridge::CineScreenWanted(gm == 5);
+        ME2VR::CalcViewHook::SetMevrCineScreen(mevrScreen);
+        const bool renderCineInVr = renderCineInVrHalcyon || mevrScreen;
+#else
         const bool renderCineInVr = (gm == 5 && (ME2VR::CalcViewHook::GetCineVrConvo() ||
                                                  s_convoVrLatch)) ||
                                     (gm == 6 && ME2VR::CalcViewHook::GetCineVrCutscene());
+#endif
         ME2VR::CalcViewHook::SetVrCineActive(renderCineInVr && s_fovCine);
         ME2VR::CalcViewHook::SetCinematic(s_fovCine && recognizedCine && !renderCineInVr);
 
@@ -1753,10 +1825,12 @@ void RunFrame() noexcept
             const bool cineNow = ME2VR::CalcViewHook::GetCinematic();
             const bool vrCine  = ME2VR::CalcViewHook::GetVrCineActive();
             const bool paused  = ME2VR::D3DCapture::GetAutoPaused();
+            const bool screen3d = ME2VR::CalcViewHook::GetMevrCineScreen();   // [MEVR] ME1's 3D cinema screen
             const unsigned key = (unsigned)(gmRaw & 0xFF) | ((unsigned)(gmEff & 0xFF) << 8) |
                                  (flatNow ? 1u<<16 : 0) | (cineNow ? 1u<<17 : 0) |
                                  (vrCine ? 1u<<18 : 0) | (paused ? 1u<<19 : 0) |
-                                 (sceneAlive ? 1u<<20 : 0) | (loadMoviePlaying ? 1u<<21 : 0) | (binkFullscreen ? 1u<<22 : 0);
+                                 (sceneAlive ? 1u<<20 : 0) | (loadMoviePlaying ? 1u<<21 : 0) | (binkFullscreen ? 1u<<22 : 0) |
+                                 (screen3d ? 1u<<23 : 0);   // [MEVR]
             if (key != s_lastKey)
             {
                 s_lastKey = key;
@@ -1767,6 +1841,7 @@ void RunFrame() noexcept
                     (binkFullscreen ? " BINK" : "") +
                     " -> " + (flatNow ? "FLAT menu panel" :
                               cineNow ? "FLAT cine panel" :
+                              screen3d ? "3D screen (MEVR)" :   // [MEVR] research/le2-cinema.md
                               vrCine  ? "VR cine" : "VR"));
             }
         }
@@ -1785,6 +1860,7 @@ void RunFrame() noexcept
 
     XrCompositionLayerQuad monoQuad = {};
     bool haveMono = false;
+    bool mevrMonoImageReady = false; // [MEVR] a freshly copied image is required for table presentation
 
     if (fs.shouldRender && flatPresentation)
     {
@@ -1793,20 +1869,28 @@ void RunFrame() noexcept
         ID3D11Texture2D* backbuffer = nullptr;
         IDXGISwapChain* sc = ME2VR::D3DCapture::GetGameSwapChain();
         if (sc) sc->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&backbuffer));
-        if (g_monoSwap != nullptr && backbuffer != nullptr)
+        if (g_monoSwap != nullptr && backbuffer != nullptr && g_monoOwnership.MayAcquire())
         {
             uint32_t idx = 0;
             XrSwapchainImageAcquireInfo ai = {}; ai.type = XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO_VALUE;
             if (XrSucceeded(g_fn.acquireSwapchainImage(g_monoSwap, &ai, &idx)))
             {
+                g_monoOwnership.Acquired();
                 XrSwapchainImageWaitInfo wi = {}; wi.type = XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO_VALUE; wi.timeout = XR_INFINITE_DURATION_VALUE;
-                if (XrSucceeded(g_fn.waitSwapchainImage(g_monoSwap, &wi)) && idx < g_monoImages.size())
+                if (g_monoOwnership.WaitCompleted(g_fn.waitSwapchainImage(g_monoSwap, &wi) == XR_SUCCESS_VALUE) && idx < g_monoImages.size())
+                {
 #if defined(MEVR_ASI)
-                    if (!::ME2VR::MevrBridge::CopyIntoImage(g_ctx, g_monoImages[idx], backbuffer, 0))  // [MEVR] as the eyes
-#endif
+                    mevrMonoImageReady = ::ME2VR::MevrBridge::CopyIntoImage(g_ctx, g_monoImages[idx], backbuffer, 0);
+#else
                     g_ctx->CopyResource(g_monoImages[idx], backbuffer);
+                    mevrMonoImageReady = true;
+#endif
+                }
                 XrSwapchainImageReleaseInfo ri = {}; ri.type = XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO_VALUE;
-                g_fn.releaseSwapchainImage(g_monoSwap, &ri);
+                bool const released = g_monoOwnership.MayRelease() &&
+                    g_fn.releaseSwapchainImage(g_monoSwap, &ri) == XR_SUCCESS_VALUE;
+                mevrMonoImageReady = g_monoOwnership.ReleaseCompleted(released) && mevrMonoImageReady;
+                if (!released) XLog("[MEVR] mono swapchain quarantined after wait/release failure; restart required");
 
                 const float aspect = (g_bbW != 0) ? static_cast<float>(g_swapH) / static_cast<float>(g_bbW) : 0.5625f;
                 monoQuad.type = XR_TYPE_COMPOSITION_LAYER_QUAD_VALUE;
@@ -1832,7 +1916,7 @@ void RunFrame() noexcept
                 monoQuad.pose.position.z = -mdist;
                 monoQuad.size.width = mw;
                 monoQuad.size.height = mw * aspect;
-                haveMono = true;
+                haveMono = mevrMonoImageReady;
             }
         }
         if (backbuffer) backbuffer->Release();
@@ -1872,7 +1956,7 @@ void RunFrame() noexcept
                 headPose.position.y = (views[0].pose.position.y + views[1].pose.position.y) * 0.5f;
                 headPose.position.z = (views[0].pose.position.z + views[1].pose.position.z) * 0.5f;
             }
-            SubmitAerFrame(backbuffer, headPose, false);   // handshake + history only
+            SubmitAerFrame(backbuffer, headPose, false, views);   // handshake + history only
             backbuffer->Release();
         }
     }
@@ -1932,9 +2016,9 @@ void RunFrame() noexcept
 
             // Capture the freshly-rendered offset eye into history (tagged with headPose) + fill BOTH full-size
             // AER eye swapchains (full-frame -> whole eye = the un-squash). Allocates g_aerSwap/g_aerHist first use.
-            SubmitAerFrame(backbuffer, headPose, true);
+            bool const aerPublished = SubmitAerFrame(backbuffer, headPose, true, views);
 
-            if (g_aerSwap[0] != nullptr && g_aerSwap[1] != nullptr)
+            if (aerPublished && g_publishedEyes.TaggedPair() && g_aerSwap[0] != nullptr && g_aerSwap[1] != nullptr)
             {
                 for (int eye = 0; eye < 2; ++eye)
                 {
@@ -1945,8 +2029,8 @@ void RunFrame() noexcept
                     // NOT the shared current pose. Fresh eye's stored pose == headPose (just captured); the STALE
                     // eye keeps its OLDER capture pose, so the compositor reprojects it to align -> no turn ghost.
                     projViews[eye].type = XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW_VALUE;
-                    projViews[eye].pose = g_aerHistPoseValid[eye] ? g_aerHistPose[eye] : headPose;
-                    projViews[eye].fov = fov;
+                    projViews[eye].pose = g_publishedEyes.Get(eye)->tag.pose;
+                    projViews[eye].fov = g_publishedEyes.Get(eye)->tag.fov;
                     projViews[eye].subImage.swapchain = g_aerSwap[eye];
                     projViews[eye].subImage.imageRect.offset = { 0, 0 };
                     projViews[eye].subImage.imageRect.extent = { static_cast<int32_t>(g_aerSwapW), static_cast<int32_t>(g_aerSwapH) };
@@ -1975,13 +2059,13 @@ void RunFrame() noexcept
             // (nothing overwrote them: [AERBLINK] only copies on a fresh render), so re-present them
             // under the last known-good pose/FOV and let the compositor reproject. Per-slot history
             // poses are kept where valid, so the anti-ghost tagging survives the hiccup too.
-            if (g_aerHaveLast && g_aerSwap[0] != nullptr && g_aerSwap[1] != nullptr)
+            if (g_aerHaveLast && g_publishedEyes.TaggedPair() && g_aerSwap[0] != nullptr && g_aerSwap[1] != nullptr)
             {
                 for (int eye = 0; eye < 2; ++eye)
                 {
                     projViews[eye].type = XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW_VALUE;
-                    projViews[eye].pose = g_aerHistPoseValid[eye] ? g_aerHistPose[eye] : g_aerLastHeadPose;
-                    projViews[eye].fov = (eye == 0) ? g_aerLastFovL : g_aerLastFovR;
+                    projViews[eye].pose = g_publishedEyes.Get(eye)->tag.pose;
+                    projViews[eye].fov = g_publishedEyes.Get(eye)->tag.fov;
                     projViews[eye].subImage.swapchain = g_aerSwap[eye];
                     projViews[eye].subImage.imageRect.offset = { 0, 0 };
                     projViews[eye].subImage.imageRect.extent = { static_cast<int32_t>(g_aerSwapW), static_cast<int32_t>(g_aerSwapH) };
@@ -2037,13 +2121,27 @@ void RunFrame() noexcept
 #if defined(MEVR_ASI)
         rememberSightEyes(lr, viewCount, vs, views);
 #endif
-        if (XrSucceeded(lr) && viewCount == 2) DriveHeadLook(views[0]);
+        bool const sfrTrackingValid = XrSucceeded(lr) && viewCount == 2 &&
+            (vs.viewStateFlags & XR_VIEW_STATE_ORIENTATION_VALID_BIT_VALUE) != 0 &&
+            (vs.viewStateFlags & XR_VIEW_STATE_POSITION_VALID_BIT_VALUE) != 0;
+        bool const sfrLockedCine = ME2VR::CalcViewHook::GetVrCineActive() && !ME2VR::CalcViewHook::GetCineVrHeadTracking();
+        unsigned const sfrContext = (sfrLockedCine ? 1u : 0u) |
+            (ME2VR::CalcViewHook::GetMevrCineScreen() ? 2u : 0u) | (ME2VR::CalcViewHook::GetSwapEyes() ? 4u : 0u) |
+            (ME2VR::CalcViewHook::GetVrCineActive() ? 8u : 0u);
+        if (!sfrTrackingValid) ResetSfrPoseTags();
+        else {
+            if (g_sfrSourceTag.Enter(sfrContext)) {
+                g_poseTagReset.store(true, std::memory_order_relaxed); g_smoothQuatInit = false;
+                g_sfrEpoch.Reset(ME2VR::D3DCapture::GetSfrPass0CaptureSeq());
+            }
+            DriveHeadLook(views[0], views);
+        }
 
         ID3D11Texture2D* backbuffer = nullptr;
         IDXGISwapChain* sc = ME2VR::D3DCapture::GetGameSwapChain();
         if (sc) sc->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&backbuffer));
 
-        if (XrSucceeded(lr) && viewCount == 2 && backbuffer)
+        if (sfrTrackingValid && backbuffer)
         {
             // FOV-FILL (same as AER/stereo): widen the gameplay view to fill the headset.
             {
@@ -2071,7 +2169,9 @@ void RunFrame() noexcept
             if (EnsureAerSwapchains())
             {
                 ID3D11Texture2D* pass0 = ME2VR::D3DCapture::GetSfrPass0Texture();   // left (-halfEye), mid-present
-                const bool swap = ME2VR::CalcViewHook::GetSwapEyes();
+                // [MEVR] ME1's 3D cinema screen: pass 0 is always the left eye's camera (calcview's screen branch), no swap
+                const bool mevrScreenNow = ME2VR::CalcViewHook::GetMevrCineScreen();
+                const bool swap = ME2VR::CalcViewHook::GetSwapEyes() && !mevrScreenNow;
                 // [STALEEYE] Only show pass 0 if it was captured THIS frame. During VR conversations the
                 // engine intermittently declines to render pass 1 ([STEREODEAD] NO-OP bursts); pass 1 then
                 // never starts, the anchor never fires, and the old code happily submitted a pass-0 texture
@@ -2082,29 +2182,18 @@ void RunFrame() noexcept
                 static unsigned long long s_lastCapSeq = 0;
                 const unsigned long long capSeq = ME2VR::D3DCapture::GetSfrPass0CaptureSeq();
                 const bool freshPass0 = (capSeq != s_lastCapSeq);
+                bool const captureInEpoch = g_sfrEpoch.Advance(capSeq);
+                const bool stereoSource = pass0 != nullptr && freshPass0 && captureInEpoch;
                 s_lastCapSeq = capSeq;
-                ID3D11Texture2D* leftSrc  = (pass0 != nullptr && freshPass0) ? pass0 : backbuffer;  // fall back to mono until 1st capture
+                ID3D11Texture2D* leftSrc  = stereoSource ? pass0 : backbuffer;  // fall back to mono until 1st capture
                 ID3D11Texture2D* rightSrc = backbuffer;                                // right (+halfEye) = pass 1 (now)
                 // [SFRCONV DECOUPLE] convergence at SUBMIT (world+UI already composited). conv/2 in UV ->
                 // pixels; sign bolted to the PASS (ME1 parity): pass0/left content shifts right (+), pass1/
                 // right content shifts left (-). Swap-eyes flips the destination routing, so it inverts the
                 // convergence plane exactly as ME2's swap toggle does - no swap term here. conv=0 -> plain
                 // copy (no shift), so the UI stops doubling and gameplay is untouched when convergence is off.
-                const float conv = ME2VR::CalcViewHook::GetSfrConvergence();
-                const int convPx = static_cast<int>(lroundf(conv * 0.5f * static_cast<float>(g_aerSwapW)));
-                CopyTextureToEyeFullFrame(swap ? 1 : 0, leftSrc,  +convPx);
-                CopyTextureToEyeFullFrame(swap ? 0 : 1, rightSrc, -convPx);
-                {
-                    static float s_lastLoggedConv = -999.0f;
-                    if (conv != s_lastLoggedConv)   // log only when the slider actually changes
-                    {
-                        s_lastLoggedConv = conv;
-                        XLog("[SFRCONV] submit conv=" + std::to_string(conv) + " -> shiftPx=" +
-                             std::to_string(convPx) + " (eyeW=" + std::to_string(g_aerSwapW) +
-                             ", leftEye content right, rightEye content left)");
-                    }
-                }
-
+                const float conv = mevrScreenNow ? 0.0f : ME2VR::CalcViewHook::GetSfrConvergence();   // [MEVR] the screen: its crop sets the depth
+                const int convPx = stereoSource ? static_cast<int>(lroundf(conv * 0.5f * static_cast<float>(g_aerSwapW))) : 0;
                 // [FREEZETAG] A projection layer only head-tracks if pose tag and PIXELS agree. During
                 // conversation shot changes the engine skips rendering for ~20-frame bursts ([STEREODEAD]
                 // NO-OP, one burst per camera cut); the image freezes, but this tag kept following the
@@ -2115,31 +2204,81 @@ void RunFrame() noexcept
                 // and the runtime reprojects it as the head moves - tracking survives the stale frame.
                 // Skipped for the deliberate head-locked mode (VrCine + head-tracking off), where the
                 // current-head anchor IS the intent.
-                float ghUse = gh, gvUse = gv;
+                SfrPoseTag candidate;
+                candidate.head = headPose;
+                candidate.eyes = g_delayedEyePositions;
+                candidate.stereo = stereoSource;
+                if (!stereoSource && !sfrLockedCine) {
+                    candidate.head = views[0].pose;
+                    candidate.head.orientation = RemoveRoll(g_smoothQuat);
+                }
+                for (int eye = 0; eye != 2; ++eye) {
+                    if (sfrLockedCine) candidate.eyes[eye] = views[eye].pose.position;
+                    candidate.fov[eye] = views[eye].fov;
+                    if (gh > 0.01f && gv > 0.01f)
+                        candidate.fov[eye] = {-gh, gh, gv, -gv};
+                }
+                // Live mono fallback and deliberately head-locked cinema do not reuse a held stereo tag.
+                auto const& sourceTag = g_sfrSourceTag.Select(capSeq, candidate, stereoSource && !sfrLockedCine && !mevrScreenNow);
+
+                EyeContentTag uploadTag[2];
+                for (int eye = 0; eye != 2; ++eye) {
+                    uploadTag[eye] = {sourceTag.head, sourceTag.fov[eye], capSeq, false};
+                    if (sourceTag.stereo) uploadTag[eye].pose.position = sourceTag.eyes[eye];
+                }
+                CopyTextureToEyeFullFrame(swap ? 1 : 0, leftSrc,  +convPx, &uploadTag[swap ? 1 : 0]);
+                CopyTextureToEyeFullFrame(swap ? 0 : 1, rightSrc, -convPx, &uploadTag[swap ? 0 : 1]);
                 {
-                    static XrPosef s_freshPose = {};
-                    static float   s_freshGh = 0.0f, s_freshGv = 0.0f;
-                    static bool    s_freshInit = false;
-                    const bool lockedCine = ME2VR::CalcViewHook::GetVrCineActive() &&
-                                            !ME2VR::CalcViewHook::GetCineVrHeadTracking();
-                    if (freshPass0 || !s_freshInit || lockedCine)
+                    static float s_lastLoggedConv = -999.0f;
+                    if (conv != s_lastLoggedConv)   // log only when the slider actually changes
                     {
-                        s_freshPose = headPose; s_freshGh = gh; s_freshGv = gv; s_freshInit = true;
-                    }
-                    else
-                    {
-                        headPose = s_freshPose; ghUse = s_freshGh; gvUse = s_freshGv;
+                        s_lastLoggedConv = conv;
+                        XLog("[SFRCONV] submit conv=" + std::to_string(conv) + " -> shiftPx=" +
+                             std::to_string(convPx) + " (eyeW=" + std::to_string(g_aerSwapW) +
+                             ", leftEye content right, rightEye content left)");
                     }
                 }
+#if defined(MEVR_ASI)
+                // [MEVR] ME1's 3D cinema screen (research/52, research/le2-cinema.md): instead of the projection layer, each
+                // eye's render of the shot on one screen fixed in the room (two quads, eye visibility, each cropped on
+                // opposite sides), the floor and horizon under it; our plugin/CineScreen and CinemaBackdrop place and draw
+                // them (HalcyonLe2Bridge's CineScreenLayers).
+                if (mevrScreenNow && g_publishedEyes.CurrentPair() && g_aerSwap[0] != nullptr && g_aerSwap[1] != nullptr)
+                {
+                    ::ME2VR::MevrBridge::CineScreenFrame sf;
+                    sf.session = g_session;
+                    sf.appSpace = g_localSpace;
+                    sf.viewSpace = g_viewSpace;
+                    sf.context = g_ctx;
+                    sf.stereoSource = stereoSource;
+                    sf.conversation = ME2VR::D3DCapture::GetAutoGameMode() == 5;
+                    sf.headValid = (vs.viewStateFlags & XR_VIEW_STATE_ORIENTATION_VALID_BIT_VALUE) != 0 &&
+                                   (vs.viewStateFlags & XR_VIEW_STATE_POSITION_VALID_BIT_VALUE) != 0;
+                    for (int e = 0; e < 2; ++e)
+                    {
+                        const XrView& v = views[e];
+                        sf.eyeOrientation[e][0] = v.pose.orientation.x; sf.eyeOrientation[e][1] = v.pose.orientation.y;
+                        sf.eyeOrientation[e][2] = v.pose.orientation.z; sf.eyeOrientation[e][3] = v.pose.orientation.w;
+                        sf.eyePosition[e][0] = v.pose.position.x; sf.eyePosition[e][1] = v.pose.position.y;
+                        sf.eyePosition[e][2] = v.pose.position.z;
+                        sf.eyeFov[e][0] = v.fov.angleLeft; sf.eyeFov[e][1] = v.fov.angleRight;
+                        sf.eyeFov[e][2] = v.fov.angleUp; sf.eyeFov[e][3] = v.fov.angleDown;
+                        sf.eyeSwapchain[e] = g_aerSwap[e];
+                    }
+                    sf.eyeWidth = g_aerSwapW;
+                    sf.eyeHeight = g_aerSwapH;
+                    mevrScreenLayerCount = ::ME2VR::MevrBridge::CineScreenLayers(sf, mevrScreenLayers, 3);
+                }
+#endif
 
-                if (g_aerSwap[0] != nullptr && g_aerSwap[1] != nullptr)
+                if (g_publishedEyes.CurrentPair() && g_aerSwap[0] != nullptr && g_aerSwap[1] != nullptr && mevrScreenLayerCount == 0)   // [MEVR] not on the 3D screen
                 {
                     for (int eye = 0; eye < 2; ++eye)
                     {
-                        XrFovf fov = views[eye].fov;
-                        if (ghUse > 0.01f && gvUse > 0.01f) { fov.angleLeft = -ghUse; fov.angleRight = ghUse; fov.angleUp = gvUse; fov.angleDown = -gvUse; }
+                        auto const& publishedTag = g_publishedEyes.Get(eye)->tag;
+                        XrFovf const fov = publishedTag.fov;
                         projViews[eye].type = XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW_VALUE;
-                        projViews[eye].pose = headPose;   // same-frame: ONE shared pose (both eyes fresh)
+                        projViews[eye].pose = publishedTag.pose;
                         projViews[eye].fov = fov;
                         projViews[eye].subImage.swapchain = g_aerSwap[eye];
                         projViews[eye].subImage.imageRect.offset = { 0, 0 };
@@ -2248,31 +2387,34 @@ void RunFrame() noexcept
 
             CopyTextureToEyeFullFrame(0, backbuffer);
             CopyTextureToEyeFullFrame(1, backbuffer);
-
-            XrPosef headPose = views[0].pose;
-            headPose.orientation = RemoveRoll(views[0].pose.orientation);
-            headPose.position.x = (views[0].pose.position.x + views[1].pose.position.x) * 0.5f;
-            headPose.position.y = (views[0].pose.position.y + views[1].pose.position.y) * 0.5f;
-            headPose.position.z = (views[0].pose.position.z + views[1].pose.position.z) * 0.5f;
-
-            for (int eye = 0; eye < 2; ++eye)
+            if (g_publishedEyes.CurrentPair()) // [MEVR] publish/cache only a completed current pair
             {
-                XrFovf fov = views[eye].fov;
-                if (gh > 0.01f && gv > 0.01f) { fov.angleLeft = -gh; fov.angleRight = gh; fov.angleUp = gv; fov.angleDown = -gv; }
-                projViews[eye].type = XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW_VALUE;
-                projViews[eye].pose = headPose;
-                projViews[eye].fov = fov;
-                projViews[eye].subImage.swapchain = g_aerSwap[eye];
-                projViews[eye].subImage.imageRect.offset = { 0, 0 };
-                projViews[eye].subImage.imageRect.extent = { static_cast<int32_t>(g_aerSwapW), static_cast<int32_t>(g_aerSwapH) };
-                projViews[eye].subImage.imageArrayIndex = 0;
+
+                XrPosef headPose = views[0].pose;
+                headPose.orientation = RemoveRoll(views[0].pose.orientation);
+                headPose.position.x = (views[0].pose.position.x + views[1].pose.position.x) * 0.5f;
+                headPose.position.y = (views[0].pose.position.y + views[1].pose.position.y) * 0.5f;
+                headPose.position.z = (views[0].pose.position.z + views[1].pose.position.z) * 0.5f;
+
+                for (int eye = 0; eye < 2; ++eye)
+                {
+                    XrFovf fov = views[eye].fov;
+                    if (gh > 0.01f && gv > 0.01f) { fov.angleLeft = -gh; fov.angleRight = gh; fov.angleUp = gv; fov.angleDown = -gv; }
+                    projViews[eye].type = XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW_VALUE;
+                    projViews[eye].pose = headPose;
+                    projViews[eye].fov = fov;
+                    projViews[eye].subImage.swapchain = g_aerSwap[eye];
+                    projViews[eye].subImage.imageRect.offset = { 0, 0 };
+                    projViews[eye].subImage.imageRect.extent = { static_cast<int32_t>(g_aerSwapW), static_cast<int32_t>(g_aerSwapH) };
+                    projViews[eye].subImage.imageArrayIndex = 0;
+                }
+                layer.type = XR_TYPE_COMPOSITION_LAYER_PROJECTION_VALUE;
+                layer.space = g_localSpace;
+                layer.viewCount = 2;
+                layer.views = projViews;
+                rendered = true;
+                LogFrameMode(3, "frame mode = Mono (gameplay) -> both eyes, same frame");
             }
-            layer.type = XR_TYPE_COMPOSITION_LAYER_PROJECTION_VALUE;
-            layer.space = g_localSpace;
-            layer.viewCount = 2;
-            layer.views = projViews;
-            rendered = true;
-            LogFrameMode(3, "frame mode = Mono (gameplay) -> both eyes, same frame");
         }
         if (backbuffer) backbuffer->Release();
     }
@@ -2327,38 +2469,41 @@ void RunFrame() noexcept
             ID3D11Texture2D* right = ME2VR::D3DCapture::GetDibrRightEye(backbuffer);
             CopyTextureToEyeFullFrame(0, backbuffer);
             CopyTextureToEyeFullFrame(1, right != nullptr ? right : backbuffer);
-
-            // ONE shared current pose for both eyes (same-frame stereo; roll removed, centered position).
-            XrPosef headPose = views[0].pose;
-            headPose.orientation = RemoveRoll(views[0].pose.orientation);
-            headPose.position.x = (views[0].pose.position.x + views[1].pose.position.x) * 0.5f;
-            headPose.position.y = (views[0].pose.position.y + views[1].pose.position.y) * 0.5f;
-            headPose.position.z = (views[0].pose.position.z + views[1].pose.position.z) * 0.5f;
-
-            for (int eye = 0; eye < 2; ++eye)
+            if (g_publishedEyes.CurrentPair()) // [MEVR] publish/cache only a completed current pair
             {
-                XrFovf fov = views[eye].fov;
-                if (gh > 0.01f && gv > 0.01f) { fov.angleLeft = -gh; fov.angleRight = gh; fov.angleUp = gv; fov.angleDown = -gv; }
-                projViews[eye].type = XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW_VALUE;
-                projViews[eye].pose = headPose;
-                projViews[eye].fov = fov;
-                projViews[eye].subImage.swapchain = g_aerSwap[eye];
-                projViews[eye].subImage.imageRect.offset = { 0, 0 };
-                projViews[eye].subImage.imageRect.extent = { static_cast<int32_t>(g_aerSwapW), static_cast<int32_t>(g_aerSwapH) };
-                projViews[eye].subImage.imageArrayIndex = 0;
+
+                // ONE shared current pose for both eyes (same-frame stereo; roll removed, centered position).
+                XrPosef headPose = views[0].pose;
+                headPose.orientation = RemoveRoll(views[0].pose.orientation);
+                headPose.position.x = (views[0].pose.position.x + views[1].pose.position.x) * 0.5f;
+                headPose.position.y = (views[0].pose.position.y + views[1].pose.position.y) * 0.5f;
+                headPose.position.z = (views[0].pose.position.z + views[1].pose.position.z) * 0.5f;
+
+                for (int eye = 0; eye < 2; ++eye)
+                {
+                    XrFovf fov = views[eye].fov;
+                    if (gh > 0.01f && gv > 0.01f) { fov.angleLeft = -gh; fov.angleRight = gh; fov.angleUp = gv; fov.angleDown = -gv; }
+                    projViews[eye].type = XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW_VALUE;
+                    projViews[eye].pose = headPose;
+                    projViews[eye].fov = fov;
+                    projViews[eye].subImage.swapchain = g_aerSwap[eye];
+                    projViews[eye].subImage.imageRect.offset = { 0, 0 };
+                    projViews[eye].subImage.imageRect.extent = { static_cast<int32_t>(g_aerSwapW), static_cast<int32_t>(g_aerSwapH) };
+                    projViews[eye].subImage.imageArrayIndex = 0;
+                }
+                layer.type = XR_TYPE_COMPOSITION_LAYER_PROJECTION_VALUE;
+                layer.space = g_localSpace;
+                layer.viewCount = 2;
+                layer.views = projViews;
+                rendered = true;
+                // Stash this good pose/FOV so a later hiccup frame can hold it instead of going black.
+                g_dibrLastHeadPose = headPose;
+                g_dibrLastFovL = projViews[0].fov;
+                g_dibrLastFovR = projViews[1].fov;
+                g_dibrHaveLast = true;
+                ++g_dibrFullFrames;
+                LogFrameMode(4, "frame mode = DIBR (depth warp) -> left real, right synth");
             }
-            layer.type = XR_TYPE_COMPOSITION_LAYER_PROJECTION_VALUE;
-            layer.space = g_localSpace;
-            layer.viewCount = 2;
-            layer.views = projViews;
-            rendered = true;
-            // Stash this good pose/FOV so a later hiccup frame can hold it instead of going black.
-            g_dibrLastHeadPose = headPose;
-            g_dibrLastFovL = projViews[0].fov;
-            g_dibrLastFovR = projViews[1].fov;
-            g_dibrHaveLast = true;
-            ++g_dibrFullFrames;
-            LogFrameMode(4, "frame mode = DIBR (depth warp) -> left real, right synth");
         }
         else if (backbuffer && EnsureAerSwapchains() && g_dibrHaveLast)
         {
@@ -2368,22 +2513,25 @@ void RunFrame() noexcept
             // Hold the last good pose/FOV and refresh both eyes to the current backbuffer (mono).
             CopyTextureToEyeFullFrame(0, backbuffer);
             CopyTextureToEyeFullFrame(1, backbuffer);
-            for (int eye = 0; eye < 2; ++eye)
+            if (g_publishedEyes.CurrentPair()) // [MEVR] publish/cache only a completed current pair
             {
-                projViews[eye].type = XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW_VALUE;
-                projViews[eye].pose = g_dibrLastHeadPose;
-                projViews[eye].fov = (eye == 0) ? g_dibrLastFovL : g_dibrLastFovR;
-                projViews[eye].subImage.swapchain = g_aerSwap[eye];
-                projViews[eye].subImage.imageRect.offset = { 0, 0 };
-                projViews[eye].subImage.imageRect.extent = { static_cast<int32_t>(g_aerSwapW), static_cast<int32_t>(g_aerSwapH) };
-                projViews[eye].subImage.imageArrayIndex = 0;
+                for (int eye = 0; eye < 2; ++eye)
+                {
+                    projViews[eye].type = XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW_VALUE;
+                    projViews[eye].pose = g_dibrLastHeadPose;
+                    projViews[eye].fov = (eye == 0) ? g_dibrLastFovL : g_dibrLastFovR;
+                    projViews[eye].subImage.swapchain = g_aerSwap[eye];
+                    projViews[eye].subImage.imageRect.offset = { 0, 0 };
+                    projViews[eye].subImage.imageRect.extent = { static_cast<int32_t>(g_aerSwapW), static_cast<int32_t>(g_aerSwapH) };
+                    projViews[eye].subImage.imageArrayIndex = 0;
+                }
+                layer.type = XR_TYPE_COMPOSITION_LAYER_PROJECTION_VALUE;
+                layer.space = g_localSpace;
+                layer.viewCount = 2;
+                layer.views = projViews;
+                rendered = true;
+                ++g_dibrFallbackFrames;
             }
-            layer.type = XR_TYPE_COMPOSITION_LAYER_PROJECTION_VALUE;
-            layer.space = g_localSpace;
-            layer.viewCount = 2;
-            layer.views = projViews;
-            rendered = true;
-            ++g_dibrFallbackFrames;
         }
         else
         {
@@ -2665,9 +2813,12 @@ void RunFrame() noexcept
         }
     }
 
-    const XrCompositionLayerBaseHeader* layers[4 + 12] = {};   // [MEVR] + our quads
+    constexpr uint32_t kMevrMaxLayers = 4 + 12 + 4;   // [MEVR] + our quads, the 3D screen's floor and quads, the fade
+    const XrCompositionLayerBaseHeader* layers[kMevrMaxLayers] = {};
     uint32_t layerCount = 0;
     if (rendered)   layers[layerCount++] = reinterpret_cast<XrCompositionLayerBaseHeader*>(&layer);
+    for (unsigned i = 0; i < mevrScreenLayerCount; ++i)   // [MEVR] ME1's 3D cinema screen: its floor, then its two quads
+        layers[layerCount++] = static_cast<const XrCompositionLayerBaseHeader*>(mevrScreenLayers[i]);
     if (haveMono)   layers[layerCount++] = reinterpret_cast<XrCompositionLayerBaseHeader*>(&monoQuad);
     if (haveGameUi) layers[layerCount++] = reinterpret_cast<XrCompositionLayerBaseHeader*>(&gameUiQuad);
 #if defined(MEVR_ASI)
@@ -2724,13 +2875,34 @@ void RunFrame() noexcept
                 mevrFrame.headPosition[2] = 0.5f * (hv[0].pose.position.z + hv[1].pose.position.z);
             }
         }
+        // [MEVR] The game's whole galaxy/orbit image on a fixed table, including native UI.
+        ::ME2VR::MevrBridge::GalaxyPanel table;
+        if (::ME2VR::MevrBridge::PlaceGalaxyPanel(mevrFrame, haveMono && mevrMonoImageReady,
+                monoQuad.size.width > 0 ? monoQuad.size.height / monoQuad.size.width : 0, table))
+        {
+            monoQuad.space = g_localSpace;
+            monoQuad.pose.orientation = {table.orientation[0], table.orientation[1], table.orientation[2], table.orientation[3]};
+            monoQuad.pose.position = {table.position[0], table.position[1], table.position[2]};
+            monoQuad.size = {table.widthM, table.heightM};
+        }
         const void* mevrQuads[12] = {};
         const unsigned mevrQuadCount = ::ME2VR::MevrBridge::OverlayLayers(mevrFrame, mevrQuads, 12);
-        for (unsigned i = 0; i < mevrQuadCount && layerCount < 4 + 12 - 1; ++i)   // room for the menu
+        for (unsigned i = 0; i < mevrQuadCount && layerCount < kMevrMaxLayers - 2; ++i)   // room for the menu and the fade
             layers[layerCount++] = static_cast<const XrCompositionLayerBaseHeader*>(mevrQuads[i]);
     }
 #endif
     if (haveUi)     layers[layerCount++] = reinterpret_cast<XrCompositionLayerBaseHeader*>(&uiQuad);
+#if defined(MEVR_ASI)
+    {   // [MEVR] ME1's dip from black when the view changes between the world, the 3D cinema screen and a cinematic's flat
+        // movie (plugin/TransitionFade, research/52): the frame's last layer. 0 the world, 1 the screen, 2 a cinematic on the
+        // flat panel (Halcyon's flat cine, a movie inside a scene), 3 another flat panel (menus, loads), -1 none.
+        const int mevrView = rendered ? 0 : mevrScreenLayerCount > 0 ? 1
+                           : haveMono ? ((ME2VR::CalcViewHook::GetCinematic() || binkFullscreen) ? 2 : 3) : -1;
+        if (layerCount < kMevrMaxLayers)
+            if (const void* fade = ::ME2VR::MevrBridge::TransitionFadeLayer(g_session, g_viewSpace, g_ctx, mevrView))
+                layers[layerCount++] = static_cast<const XrCompositionLayerBaseHeader*>(fade);
+    }
+#endif
 
     XrFrameEndInfo fei = {};
     fei.type = XR_TYPE_FRAME_END_INFO_VALUE;

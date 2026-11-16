@@ -9,7 +9,7 @@ survey): replayed in a loop, every direction is in view for the same share of a 
 seconds: one full turn (default 20). --sweep YAW: back and forth between -YAW and +YAW degrees instead of a full turn (one
 there-and-back per `seconds`). --yaw DEG: the head held DEG degrees to the right (+) the whole time, looking at one
 thing (e.g. someone walking in a scene). --pitch: the head pitched DEG degrees (+ up). --eye-height: the head's height in tracking
-space (default 0: the fake headset's floor is at the head)."""
+space (default 0 relative to the recentered head; the null headset's STAGE height is separately 1.7526 m)."""
 import math
 import struct
 import sys

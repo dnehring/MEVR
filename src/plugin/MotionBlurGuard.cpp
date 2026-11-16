@@ -18,7 +18,11 @@
 
 namespace mevr::host::motion_blur_guard {
 namespace {
+#if defined(MEVR_GAME_LE3)
+namespace address = engine::addresses::le3;
+#else
 namespace address = engine::addresses::le1;
+#endif
 
 // Native signature: this, scene, DPG/render arguments, view, final argument, output flags.
 // All six argument slots are integer/pointer registers or stack slots; forward them unchanged.
@@ -26,10 +30,11 @@ using Render = std::uintptr_t(void*, void*, void*, void*, std::uintptr_t, void*)
 Render* gOriginal = nullptr;
 Render* gSharpRender = nullptr;
 struct Pair { void* blur; void* sharp; };
-std::array<Pair, 5> gPairs{};  // published before the hook is enabled; immutable thereafter
+constexpr auto kPairCount = std::size(address::kMotionBlurProxyPairs);
+std::array<Pair, kPairCount> gPairs{};  // published before the hook is enabled; immutable thereafter
 std::atomic<bool> gInstalled{false};
 std::atomic<std::uint64_t> gConverted{0}, gUnknown{0};
-std::array<std::atomic<std::uint64_t>, 5> gVariants{};
+std::array<std::atomic<std::uint64_t>, kPairCount> gVariants{};
 
 // The complete ten-slot vtables, normalized to RVAs, are fingerprinted. This rejects another
 // plugin's modified shader selectors as well as a mismatched exe. Function prologues alone
@@ -106,8 +111,8 @@ bool Install(hook::Context& context) {
     bool const installed = target && gSharpRender &&
         hook::Install(context, "MotionBlurProxy::Render", target, &RenderHook, gOriginal);
     gInstalled.store(installed, std::memory_order_release);
-    log::Info("motion blur guard: {} (five paired post-process variants; cached and new proxies; conditional menu-return fallback)",
-              installed ? "installed" : "installation failed");
+    log::Info("motion blur guard: {} ({} paired post-process variants; cached and new proxies; conditional menu-return fallback)",
+              installed ? "installed" : "installation failed", gPairs.size());
     return installed;
 }
 
@@ -132,12 +137,15 @@ void Tick() {
 }
 
 std::string StatsJson() {
-    return std::format("{{\"installed\":{},\"protectsGameplay\":{},\"converted\":{},\"unknown\":{},\"variants\":[{},{},{},{},{}]}}",
+    std::string variants;
+    for (auto const& count : gVariants) {
+        if (!variants.empty()) variants += ',';
+        variants += std::to_string(count.load(std::memory_order_relaxed));
+    }
+    return std::format("{{\"installed\":{},\"protectsGameplay\":{},\"converted\":{},\"unknown\":{},\"variants\":[{}]}}",
         gInstalled.load(std::memory_order_acquire) ? "true" : "false",
         ProtectsGameplay() ? "true" : "false",
         gConverted.load(std::memory_order_relaxed), gUnknown.load(std::memory_order_relaxed),
-        gVariants[0].load(std::memory_order_relaxed), gVariants[1].load(std::memory_order_relaxed),
-        gVariants[2].load(std::memory_order_relaxed), gVariants[3].load(std::memory_order_relaxed),
-        gVariants[4].load(std::memory_order_relaxed));
+        variants);
 }
 } // namespace mevr::host::motion_blur_guard

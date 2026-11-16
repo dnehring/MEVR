@@ -101,6 +101,12 @@ void TestKey() {
 }  // namespace
 
 int RunVoiceMenuTests() {
+    CHECK(ms::Find("le3") != nullptr && ms::Find("le3")->local);
+    CHECK(ms::Find("game_title") != nullptr && ms::Find("game_title")->local);
+    for (auto const* key : {"cine_convo", "cine_cut", "cine_depth", "thespian_on", "voice_on", "voice_key", "mic", "mic0", "world_ui", "wrist_screen", "wrist_width", "galaxy_holo"})
+        CHECK(ms::UnavailableInLe3Presentation(key));
+    for (auto const* key : {"flat_size", "look_smooth", "mirror", "play_position", "manual_left_yaw", "colour_profile"})
+        CHECK(!ms::UnavailableInLe3Presentation(key));
     TestMicIndex();
     TestMeter();
     TestChoicesAndText();

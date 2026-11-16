@@ -25,6 +25,25 @@ namespace menu = vr::squad_menu;
 constexpr ImU32 Rgba(int r, int g, int b, int a = 255) {
     return IM_COL32(r, g, b, a);
 }
+#if defined(MEVR_GAME_LE2)
+constexpr ImU32 kBackdrop = Rgba(24, 12, 4, 120);
+constexpr ImU32 kPanel = Rgba(38, 20, 8, 205);
+constexpr ImU32 kCard = Rgba(50, 28, 10, 225);
+constexpr ImU32 kCardSelected = Rgba(58, 38, 22, 235);
+constexpr ImU32 kTile = Rgba(60, 34, 12, 228);
+constexpr ImU32 kCyan = Rgba(255, 178, 72);
+constexpr ImU32 kCyanDim = Rgba(200, 135, 55, 175);
+constexpr ImU32 kCyanFaint = Rgba(200, 135, 55, 70);
+constexpr ImU32 kAmber = Rgba(255, 180, 48);
+constexpr ImU32 kAmberFill = Rgba(255, 166, 30, 238);
+constexpr ImU32 kText = Rgba(255, 240, 224);
+constexpr ImU32 kTextDim = Rgba(216, 186, 150);
+constexpr ImU32 kTextOnAmber = Rgba(30, 18, 4);
+constexpr ImU32 kHealth = Rgba(255, 182, 84);
+constexpr ImU32 kHealthLow = Rgba(255, 92, 70);
+constexpr ImU32 kHealthEmpty = Rgba(76, 52, 30, 220);
+
+#else
 constexpr ImU32 kBackdrop = Rgba(4, 12, 24, 120);
 constexpr ImU32 kPanel = Rgba(8, 20, 38, 205);
 constexpr ImU32 kCard = Rgba(10, 28, 50, 225);
@@ -41,6 +60,8 @@ constexpr ImU32 kTextOnAmber = Rgba(30, 18, 4);
 constexpr ImU32 kHealth = Rgba(84, 182, 255);
 constexpr ImU32 kHealthLow = Rgba(255, 92, 70);
 constexpr ImU32 kHealthEmpty = Rgba(30, 52, 76, 220);
+
+#endif
 
 ImU32 WithAlpha(ImU32 colour, int alpha) {
     return (colour & ~IM_COL32_A_MASK) | (static_cast<ImU32>(std::clamp(alpha, 0, 255)) << IM_COL32_A_SHIFT);
@@ -239,13 +260,14 @@ void Card(ImDrawList* dl, ImFont* font, menu::MemberView const& m, float x0, flo
     // The weapon in hand.
     Text(dl, font, 16.0f, {(x0 + x1) * 0.5f, 272.0f}, kTextDim, "IN HAND", 0.5f);
     float const cx = (x0 + x1) * 0.5f;
-    if (m.current >= 0) {
-        Weapon(dl, m.current, {cx, 340.0f}, 1.6f, selected ? kAmber : kCyan);
+    if (m.current >= 0 && m.current < menu::kWeapons) {
+        Weapon(dl, m.icons[m.current], {cx, 340.0f}, 1.6f, selected ? kAmber : kCyan);
     }
-    FitText(dl, font, 24.0f, {cx, 404.0f}, m.current >= 0 ? kText : kTextDim, WeaponLabel(m.current), x1 - x0 - 32.0f, 0.5f);
+    FitText(dl, font, 24.0f, {cx, 404.0f}, m.current >= 0 ? kText : kTextDim,
+        m.current >= 0 && m.current < menu::kWeapons && m.labels[m.current][0] ? m.labels[m.current] : WeaponLabel(m.current), x1 - x0 - 32.0f, 0.5f);
 }
 
-void Tile(ImDrawList* dl, ImFont* font, int weapon, ImVec2 c, float w, float h, bool highlighted, bool inHand) {
+void Tile(ImDrawList* dl, ImFont* font, int weapon, ImVec2 c, float w, float h, bool highlighted, bool inHand, char const* label = nullptr) {
     if (highlighted) {
         for (int i = 3; i >= 1; --i) {
             float const g = 5.0f * static_cast<float>(i);
@@ -261,7 +283,7 @@ void Tile(ImDrawList* dl, ImFont* font, int weapon, ImVec2 c, float w, float h, 
     // The label sits where the hexagon narrows: fit it to the width there.
     float const k = h * 0.38f;
     float const labelWidth = w - 2.0f * k * (30.0f / (h * 0.5f)) - 12.0f;
-    FitText(dl, font, 20.0f, {c.x, c.y + 20.0f}, ink, WeaponLabel(weapon), labelWidth, 0.5f);
+    FitText(dl, font, 20.0f, {c.x, c.y + 20.0f}, ink, label != nullptr && label[0] ? label : WeaponLabel(weapon), labelWidth, 0.5f);
 }
 
 // A weapon this squadmate doesn't carry or can't equip: hidden (user, 2026-10-22).
@@ -277,7 +299,7 @@ void Draw(ImDrawList* dl, ImFont* font, menu::View const& view) {
     Bevel(dl, {352.0f, 12.0f}, {672.0f, 56.0f}, 12.0f, kPanel, kCyanDim, 2.0f);
     Text(dl, font, 30.0f, {W * 0.5f, 18.0f}, kText, "SQUAD WEAPONS", 0.5f);
     Text(dl, font, 17.0f, {W * 0.5f, 62.0f}, kTextDim,
-        view.confirmOnRelease ? "release the grip to confirm" : "A confirms, B cancels", 0.5f);
+        view.confirmOnRelease ? "release the trigger to confirm" : "A confirms, B cancels", 0.5f);
 
     int const count = std::clamp<int>(view.count, 0, menu::kMaxMembers);
     int const selected = std::clamp<int>(view.selected, 0, std::max(count - 1, 0));
@@ -322,7 +344,7 @@ void Draw(ImDrawList* dl, ImFont* font, menu::View const& view) {
                 continue;
             }
             bool const lit = view.highlighted == weapon;
-            Tile(dl, font, weapon, p.at, p.w, 104.0f, lit, m->current == weapon);
+            Tile(dl, font, m->icons[weapon], p.at, p.w, 104.0f, lit, m->current == weapon, m->labels[weapon]);
             if (lit) {
                 float const dx = p.at.x == centre.x ? 0.0f : (p.at.x > centre.x ? 1.0f : -1.0f);
                 float const dy = p.at.y == centre.y ? 0.0f : (p.at.y > centre.y ? 1.0f : -1.0f);

@@ -2,6 +2,7 @@
 #pragma once
 
 #include <openxr/openxr.h>
+#include "core/vr/GalaxyHologram.hpp"
 
 #include <cstdint>
 #include <optional>
@@ -150,6 +151,18 @@ struct Screen {
     XrPosef pose{};   // its centre; it faces +Z (toward the camera)
     float width = 0.0f;
     float height = 0.0f;
+};
+// Native galaxy and orbital screens share one table through that transition. The game adapter classifies the mode;
+// this placement machine never interprets a game's raw mode numbers (LE3's 9/10 are GUI/movie, not a map).
+// Missing tracking/image suppresses submission; leaving the map, recenter or disable resets placement.
+class NativeTablePanel {
+public:
+    std::optional<Screen> Update(bool mapActive, bool enabled, bool ready, XrPosef const& head, float aspect,
+        galaxy_holo::TableSettings const& settings);
+    void Reset() { placed_ = false; }
+private:
+    bool placed_ = false;
+    XrPosef pose_{};
 };
 std::optional<Screen> VirtualScreen(float distanceM, float belowM, float tanHalfX, float tanHalfY);
 

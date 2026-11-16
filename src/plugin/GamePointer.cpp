@@ -4,16 +4,26 @@
 
 #include "plugin/GamePointer.hpp"
 
-#include "core/vr/GalaxyHologram.hpp"
-#include "core/vr/GalaxyMap.hpp"
 #include "core/vr/WorldUi.hpp"
 
+#if defined(MEVR_WITH_HALCYON)
+#include "core/vr/GalaxyHologram.hpp"
+#include "core/vr/GalaxyMap.hpp"
 #include "halcyon/le1/mevr_bridge.h"
-#include "plugin/Calibration.hpp"
 #include "plugin/ConversationWorld.hpp"
 #include "plugin/GalaxyHologram.hpp"
 #include "plugin/Halcyon.hpp"
+#else
+#include "plugin/MainMenu.hpp"  // ME2 (plugin/MenusLe2): our menu owns the controllers while it's open
+#include "plugin/XrHost.hpp"    // ME2's haptics (LE1's halcyon::RequestHaptic forwards there too)
+#endif
+#include "plugin/Calibration.hpp"
+#include "plugin/QuadSwapchain.hpp"
 #include "plugin/Renderer.hpp"
+#include "plugin/TestLoop.hpp"
+
+#include <d3d11.h>
+#include <wrl/client.h>
 
 #include "core/Hook.hpp"
 #include "core/Ini.hpp"
@@ -38,6 +48,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace mevr::host::game_pointer {
 namespace {
@@ -93,7 +104,7 @@ float gTouchArea[4] = {0.0f, 0.0f, 1.0f, 1.0f};  // the touchable part (quad UV)
 int gProjectingHand = -1;                        // the hand a wrist screen is projected from: its fingertip doesn't touch it
 bool gWasTouching = false;                       // the last step's point was a fingertip's (haptic tick on arrival)
 std::uint64_t gQuadMs = 0;
-MELEVR::MevrBridge::PanelKind gKind = MELEVR::MevrBridge::PanelKind::GameMenu;
+PanelKind gKind = PanelKind::GameMenu;
 bool gQuadHeadLocked = false;
 std::uint64_t gShownSinceMs = 0;   // the current appearance's start; 0 = not shown
 bool gWaitRelease = false;         // a trigger was held as the quad appeared (the pull that brought it up): ignored until let go
@@ -146,29 +157,44 @@ BOOL WINAPI GetCursorPosHook(LPPOINT point) {
 
 // Any thread: the status for snapshots.
 std::atomic<bool> gOwnsTriggers{false};  // OwnsTriggers(): written by Step (Present thread), read by the XInput hook
+std::atomic<bool> gOwnsWheel{false};
 std::mutex gStatusMutex;
 std::string gStatus = "null";
 
-char const* KindName(MELEVR::MevrBridge::PanelKind kind) {
-    using MELEVR::MevrBridge::PanelKind;
+// Our main menu is open (it owns the controllers), and a pulse in a hand: LE1's through its Halcyon bridge, ME2's directly.
+bool OurMenuOpen() {
+#if defined(MEVR_WITH_HALCYON)
+    return MELEVR::MevrBridge::MainMenuOpen();
+#else
+    return mevr::host::main_menu::IsOpen();
+#endif
+}
+void Haptic(int hand, float seconds, float amplitude) {
+#if defined(MEVR_WITH_HALCYON)
+    mevr::host::halcyon::RequestHaptic(hand, seconds, amplitude);
+#else
+    mevr::host::xr_host::RequestHaptic(hand, seconds, amplitude);
+#endif
+}
+
+char const* KindName(PanelKind kind) {
     switch (kind) {
     case PanelKind::GameMenu: return "the game's menus";
     case PanelKind::GalaxyMap: return "the galaxy map";
     case PanelKind::Conversation: return "a flat conversation";
     case PanelKind::Cutscene: return "a flat cutscene or movie";
-    case PanelKind::InsertMenu: break;
+    case PanelKind::HalcyonMenu: break;
     }
     return "Halcyon's menu";
 }
 
-bool KindWanted(MELEVR::MevrBridge::PanelKind kind, Settings const& s) {
-    using MELEVR::MevrBridge::PanelKind;
+bool KindWanted(PanelKind kind, Settings const& s) {
     switch (kind) {
     case PanelKind::GameMenu:
     case PanelKind::GalaxyMap: return s.gameMenus;
     case PanelKind::Conversation:
     case PanelKind::Cutscene: return s.gameMenus && s.flatCine;
-    case PanelKind::InsertMenu: break;
+    case PanelKind::HalcyonMenu: break;
     }
     return false;
 }
@@ -396,7 +422,7 @@ void Send(Post const& p, Settings const& s) {
 
 // The game's cursor is steered on this quad (Settings::gameCursor): its clicks and wheel go by SendInput after the placement.
 bool Steering(Settings const& s) {
-    return s.gameCursor && gCursorHooked && gKind == MELEVR::MevrBridge::PanelKind::GameMenu;
+    return s.gameCursor && gCursorHooked && gKind == PanelKind::GameMenu;
 }
 
 // `edge`: the move re-sent just before a button edge: the cursor goes to the point again, without a nudge (the hover's moves
@@ -580,6 +606,7 @@ static bool StepInner(Frame const& frame, Dot& dot);
 bool Step(Frame const& frame, Dot& dot) {
     bool const pointing = StepInner(frame, dot);  // true: the ray is on the quad (or a press is held), a dot is drawn
     gOwnsTriggers.store(pointing, std::memory_order_release);
+    gOwnsWheel.store(pointing && gSettings.wheel && gSettings.wheelPerSecond > 0.0f, std::memory_order_release);
     return pointing;
 }
 
@@ -604,6 +631,10 @@ void InstallCursorHook(mevr::hook::Context& init) {
 
 bool OwnsTriggers() {
     return gOwnsTriggers.load(std::memory_order_acquire);
+}
+
+bool OwnsWheel() {
+    return gOwnsWheel.load(std::memory_order_acquire);
 }
 
 static bool StepInner(Frame const& frame, Dot& dot) {
@@ -634,7 +665,7 @@ static bool StepInner(Frame const& frame, Dot& dot) {
 
     // Who owns the pointer now: ours only with our menus closed and no calibration running.
     if (frame.railOwnsInput) gWaitRelease = true;  // a held rail trigger must not click the screen as the sliding rail leaves it
-    bool const othersOwn = frame.railOwnsInput || frame.halcyonMenuOpen || MELEVR::MevrBridge::MainMenuOpen() || mevr::host::calibration::Active() ||
+    bool const othersOwn = frame.railOwnsInput || frame.halcyonMenuOpen || OurMenuOpen() || mevr::host::calibration::Active() ||
         mevr::host::calibration::Running();
     if (!KindWanted(gKind, gSettings) || othersOwn) {
         ReleaseAll(window, othersOwn ? "a menu of ours or the calibration took the controllers" : "the setting is off");
@@ -702,18 +733,20 @@ static bool StepInner(Frame const& frame, Dot& dot) {
     input.width = static_cast<int>(client.right);
     input.height = static_cast<int>(client.bottom);
     input.dt = dt;
+#if defined(MEVR_WITH_HALCYON)
     if (mevr::host::galaxy_hologram::Hovering()) {
         // A controller points at the galaxy hologram's table: the game's screen behind it gets no ray (no click through it).
         input.hands[0].aimValid = false;
         input.hands[1].aimValid = false;
     }
+#endif
     pointer::Output const out = gPointer.Step(gQuad, input);
     // Touch's feel: a light tick as the fingertip reaches a screen, a click on the press and a lighter one on the release.
     if (out.touch && !gWasTouching) {
-        mevr::host::halcyon::RequestHaptic(out.hand, 0.01f, 0.12f);
+        Haptic(out.hand, 0.01f, 0.12f);
     }
     if (out.touch && out.pressEdge) {
-        mevr::host::halcyon::RequestHaptic(out.hand, out.pressed ? 0.02f : 0.012f, out.pressed ? 0.5f : 0.25f);
+        Haptic(out.hand, out.pressed ? 0.02f : 0.012f, out.pressed ? 0.5f : 0.25f);
     }
     gWasTouching = out.touch;
 
@@ -751,7 +784,7 @@ static bool StepInner(Frame const& frame, Dot& dot) {
         if (out.pressed && !gLoggedPress) {
             gLoggedPress = true;
             mevr::log::Info("game pointer: the {} clicked the game's menu at ({}, {}) px ({})", out.touch ? "fingertip" : "trigger", gLastX,
-                gLastY, gSettings.sendInput ? "SendInput" : "WM_LBUTTONDOWN posted");
+                gLastY, gModDown.load() ? "native GUI events" : Steering(gSettings) || gSettings.sendInput ? "SendInput" : "WM_LBUTTONDOWN posted");
         }
         if (out.touch) {
             mevr::log::Info("game pointer: the {} fingertip {} at ({}, {}) px, {:.3f} m from the surface", out.hand == 1 ? "right" : "left",
@@ -759,7 +792,7 @@ static bool StepInner(Frame const& frame, Dot& dot) {
         }
     }
     SendWheel(window, gLastX, gLastY, out.wheelNotches, out.pressed, gSettings);
-    if (gSettings.gameCursor && gCursorHooked && gKind == MELEVR::MevrBridge::PanelKind::GameMenu && gHaveLast) {
+    if (gSettings.gameCursor && gCursorHooked && gKind == PanelKind::GameMenu && gHaveLast) {
         gCursorUntilMs.store(GetTickCount64() + kCursorHoldMs, std::memory_order_release);  // still on it: the answer holds
     }
     PublishStatus(true, &out, input.width, input.height);
@@ -785,7 +818,7 @@ std::string StatusJson() {
 }
 
 // The seam's record (MevrBridge::OnFlatQuad below): the quad brought into the app space.
-void NoteFlatQuad(MELEVR::MevrBridge::PanelKind kind, XrPosef const& space, XrPosef const& local, float width, float height,
+void NoteFlatQuad(PanelKind kind, XrPosef const& space, XrPosef const& local, float width, float height,
     bool headLocked) {
     if (GetTickCount64() < gPuzzleUntilMs.load(std::memory_order_acquire)) {
         return;  // the bypass puzzle is played: no quad of the game's is a pointer target (HoldOffForPuzzle)
@@ -813,7 +846,7 @@ void HoldOffForPuzzle() {
     gPuzzleUntilMs.store(now + kPuzzleHoldMs, std::memory_order_release);
 }
 
-void NoteGameUiQuad(XrPosef const& pose, float width, float height, MELEVR::MevrBridge::PanelKind kind, float const* touchArea,
+void NoteGameUiQuad(XrPosef const& pose, float width, float height, PanelKind kind, float const* touchArea,
     int projectingHand) {
     XrPosef const space{{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f}};
     NoteFlatQuad(kind, space, pose, width, height, false);
@@ -823,8 +856,107 @@ void NoteGameUiQuad(XrPosef const& pose, float width, float height, MELEVR::Mevr
     gProjectingHand = projectingHand;
 }
 
+// ---- The dot (moved here unchanged from LE1's HalcyonOverlays, 2026-11-15, so ME2's host draws the same) ----------------------
+namespace {
+
+// A filled light dot over a half-transparent dark rim, the menu pointer's look (MevrMenuPointer.cpp), premultiplied; one static
+// image like the reticle's.
+constexpr UINT kPointerDotSize = 64;
+QuadSwapchain gPointerDotSwapchain;
+XrCompositionLayerQuad gPointerDotQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};
+
+std::vector<std::uint32_t> PointerDotPixels() {
+    std::vector<std::uint32_t> pixels(static_cast<size_t>(kPointerDotSize) * kPointerDotSize);
+    auto encode = [](float linear) {
+        float const c = linear <= 0.0031308f ? linear * 12.92f : 1.055f * std::pow(linear, 1.0f / 2.4f) - 0.055f;
+        return static_cast<std::uint32_t>(std::clamp(c, 0.0f, 1.0f) * 255.0f + 0.5f);
+    };
+    float const px = 2.0f / static_cast<float>(kPointerDotSize);
+    auto disc = [px](float d, float radius) { return std::clamp((radius - d) / px + 0.5f, 0.0f, 1.0f); };
+    for (UINT y = 0; y < kPointerDotSize; ++y) {
+        for (UINT x = 0; x < kPointerDotSize; ++x) {
+            float const u = (static_cast<float>(x) + 0.5f) * px - 1.0f;
+            float const v = (static_cast<float>(y) + 0.5f) * px - 1.0f;
+            float const d = std::sqrt(u * u + v * v);
+            float const light = disc(d, 0.62f);
+            float const rimAlpha = 0.75f * disc(d, 0.95f);
+            float const a = light + rimAlpha * (1.0f - light);
+            float const r = light * 0.31f, g = light * 0.78f, b = light * 1.0f;
+            pixels[static_cast<size_t>(y) * kPointerDotSize + x] =
+                encode(r) | (encode(g) << 8) | (encode(b) << 16) | (static_cast<std::uint32_t>(a * 255.0f + 0.5f) << 24);
+        }
+    }
+    return pixels;
+}
+
+bool EnsurePointerDot(XrSession session, ID3D11DeviceContext* context, ID3D11Device* device) {
+    if (gPointerDotSwapchain.handle != XR_NULL_HANDLE) {
+        return true;
+    }
+    if (gPointerDotSwapchain.Refused() ||
+        !mevr::host::quad_swapchain::Create(session, kPointerDotSize, kPointerDotSize, gPointerDotSwapchain, "game pointer dot")) {
+        return false;
+    }
+    std::vector<std::uint32_t> const pixels = PointerDotPixels();
+    D3D11_TEXTURE2D_DESC td{};
+    td.Width = kPointerDotSize;
+    td.Height = kPointerDotSize;
+    td.MipLevels = 1;
+    td.ArraySize = 1;
+    td.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+    td.SampleDesc.Count = 1;
+    td.Usage = D3D11_USAGE_IMMUTABLE;
+    td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    D3D11_SUBRESOURCE_DATA data{pixels.data(), kPointerDotSize * 4, 0};
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> source;
+    if (FAILED(device->CreateTexture2D(&td, &data, source.GetAddressOf()))) {
+        mevr::log::Error("overlays: game pointer dot texture creation failed");
+        gPointerDotSwapchain.Destroy();
+        gPointerDotSwapchain.Refuse();
+        return false;
+    }
+    for (size_t i = 0; i < gPointerDotSwapchain.images.size(); ++i) {
+        std::uint32_t index = 0;
+        if (!mevr::host::quad_swapchain::Acquire(gPointerDotSwapchain, index)) {
+            mevr::log::Error("overlays: game pointer dot swapchain image acquire failed");
+            gPointerDotSwapchain.Destroy();
+            gPointerDotSwapchain.Refuse();
+            return false;
+        }
+        context->CopyResource(gPointerDotSwapchain.images[index], source.Get());
+        mevr::host::quad_swapchain::Release(gPointerDotSwapchain);
+    }
+    mevr::host::testloop::NameSwapchain(gPointerDotSwapchain.handle, "gamepointer");
+    mevr::host::testloop::SetStaticImage(gPointerDotSwapchain.handle, kPointerDotSize, kPointerDotSize, pixels);
+    return true;
+}
+
+} // namespace
+
+XrCompositionLayerQuad const* DotLayer(XrSession session, XrSpace appSpace, ID3D11DeviceContext* context, ID3D11Device* device,
+    Dot const& dot) {
+    if (session == XR_NULL_HANDLE || context == nullptr || device == nullptr || !EnsurePointerDot(session, context, device)) {
+        return nullptr;
+    }
+    gPointerDotQuad = {XR_TYPE_COMPOSITION_LAYER_QUAD};
+    gPointerDotQuad.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;  // premultiplied
+    gPointerDotQuad.space = appSpace;
+    gPointerDotQuad.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
+    gPointerDotQuad.subImage.swapchain = gPointerDotSwapchain.handle;
+    gPointerDotQuad.subImage.imageRect = {{0, 0}, {static_cast<int32_t>(kPointerDotSize), static_cast<int32_t>(kPointerDotSize)}};
+    gPointerDotQuad.pose = dot.pose;
+    float const size = dot.pressed ? dot.size * 0.8f : dot.size;  // a press shrinks it a little
+    gPointerDotQuad.size = {size, size};
+    return &gPointerDotQuad;
+}
+
+void ForgetSession() {
+    gPointerDotSwapchain.Forget();
+}
+
 } // namespace mevr::host::game_pointer
 
+#if defined(MEVR_WITH_HALCYON)
 namespace MELEVR::MevrBridge {
 
 void OnFlatQuad(PanelKind kind, float const headOrientation[4], float const headPosition[3], PanelPose const& placed,
@@ -840,7 +972,8 @@ void OnFlatQuad(PanelKind kind, float const headOrientation[4], float const head
     XrPosef local{};
     local.orientation = {placed.orientation[0], placed.orientation[1], placed.orientation[2], placed.orientation[3]};
     local.position = {placed.position[0], placed.position[1], placed.position[2]};
-    mevr::host::game_pointer::NoteFlatQuad(kind, space, local, width, height, placed.headLocked);
+    mevr::host::game_pointer::NoteFlatQuad(static_cast<mevr::host::game_pointer::PanelKind>(kind), space, local, width, height,
+        placed.headLocked);
 }
 
 bool GalaxyHologram(float* unitsPerMeter, float* belowM) noexcept {
@@ -1079,7 +1212,9 @@ void OnGalaxyHologram(float cpuHalfH, float cpuHalfV) noexcept {
         return;
     }
     XrPosef const space{{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f}};
-    mevr::host::game_pointer::NoteFlatQuad(PanelKind::GalaxyMap, space, screen->pose, screen->width, screen->height, false);
+    mevr::host::game_pointer::NoteFlatQuad(mevr::host::game_pointer::PanelKind::GalaxyMap, space, screen->pose, screen->width,
+        screen->height, false);
 }
 
 } // namespace MELEVR::MevrBridge
+#endif

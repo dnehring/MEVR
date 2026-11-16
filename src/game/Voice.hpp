@@ -20,6 +20,7 @@ namespace mevr::game::voice {
 
 struct Link {
     bool has = false;  // the host has the voice services (v31)
+    bool menuOpen = false; // main menu, calibration or wrist rail owns input
     void (*setListen)(int on) = nullptr;
     bool (*takeLine)(vr::voice::Line* out) = nullptr;
     void (*state)(vr::voice::State* out) = nullptr;

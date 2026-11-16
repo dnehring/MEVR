@@ -7,6 +7,7 @@
 #include "core/Ini.hpp"
 #include "core/Log.hpp"
 #include "core/vr/Controllers.hpp"
+#include "core/vr/InteractLabel.hpp"
 #include "plugin/Renderer.hpp"
 
 #include <cstdio>
@@ -24,6 +25,8 @@ void LogBoth(std::string const& line) {
 
 QuadSwapchain gWristSwapchain;
 QuadSwapchain gGunSwapchain;
+QuadSwapchain gInteractionSwapchain;
+XrCompositionLayerQuad gInteractionQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};
 XrCompositionLayerQuad gWristQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};
 XrCompositionLayerQuad gGunQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};
 
@@ -88,6 +91,27 @@ hp::Pieces Wanted() {
 void ForgetSession() {
     gWristSwapchain.Forget();
     gGunSwapchain.Forget();
+    gInteractionSwapchain.Forget();
+}
+
+XrCompositionLayerQuad const* Interaction(Common const& c, bool wanted, hud_panel::Masks& masks) {
+    namespace il = vr::interact;
+    il::Label const label = il::Latest();
+    if (!wanted || label.size != sizeof(il::Label) || !label.visible || gInteractionSwapchain.Refused()) return nullptr;
+    // LE1's top-centre band is not ME2's layout. Require a measured band supplied by the operator until the native
+    // ME2 prompt is captured and its default is verified. The native HUD remains intact without it.
+    il::Rect const rect = il::ExplicitCrop(label);
+    if (!rect.Valid()) return nullptr;
+    il::Pixels const px = il::ToPixels(rect, hud_panel::Width(), hud_panel::Height());
+    if (px.width == 0 || px.height == 0) return nullptr;
+    il::Quad placed;
+    if (!il::Place(label.position, c.head, label.heightDeg, static_cast<float>(px.width) / px.height, placed)) return nullptr;
+    if (!Show(c.session, c.context, c.device, gInteractionSwapchain, gInteractionQuad, "interaction label", "label",
+            {px.x, px.y, px.width, px.height}, label.position, c.head, placed.width, {}, c.appSpace, c.whiteScale, c.options)) {
+        return nullptr;
+    }
+    masks.Add(px.x, px.y, px.width, px.height);
+    return &gInteractionQuad;
 }
 
 bool WristRefused() {

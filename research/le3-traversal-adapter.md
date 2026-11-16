@@ -1,0 +1,198 @@
+<!-- SPDX-License-Identifier: MIT -->
+# ME3 native traversal adapter checkpoint
+
+2026-11-15. Implements the native request/observation portion of L3-8 in `game/Le3Traversal`, reached through
+the existing `game/Traversal` lifecycle and command surface. **Implemented offline, not natively accepted.**
+Requests and gesture binding default off. No game launch, deployment or saved-game mutation was performed in
+this lane. Camera level/yaw presentation is not implemented by this checkpoint and L3-8 is not complete.
+
+## Native routes and evidence
+
+Exact exports were inspected with the existing private LegendaryExplorerCore scanner/LE3 retarget. Scanner and
+base-package hashes are recorded in [the melee audit](le3-melee-audit.md). Scripts stay ignored. All exports below
+are in original base `SFXGame.pcc` except the explicitly identified Adept package exports. These are script/SDK
+findings, not reconstructed game code or runtime acceptance.
+
+| Request | Native route preserved | What must be observed |
+| --- | --- | --- |
+| `ladder` | `BioPlayerController.FindLadderNode` supplies a live `SFXLadderReachSpec`; its `ReachSpec.Start` must be a ladder node and its end must match `LadderDest`. Native `CanUseLadder`, then `TryUseLadder`, retain use events and native node `OnUse`. | Native discovery must select the nearby approach, including the correct side. The outer true return does not prove start: `OnUse` may reject facing/blockage. Its selected action can be up (46), down (47), or jump-down (30). |
+| `vault` | `SFXGameModeDefault.MantleCover` uses normal `BioPawn.StartCustomAction`; the mounted action's `SFXCustomAction_MantleOverCoverBase.InternalCanDoCustomAction` uses its owned `MyMantleInfo`. The inspected chain is `CanPerformMantleSlow` → `FindMantleDistance` → `VerifyLandingClear`. | Action 31/32, native landing/collision, ordinary end or interruption, return to movement. No temporary mod-owned `MantleInfo` is allocated: its embedded arrays stay native-owned. |
+| `climb` | Native `FindCover` supplies its own `CovPosInfo`; the unchanged, reflected POD result goes to native `CanPerformClimb`. Only an affirmative result reaches `ClimbCover`. In `SFXCharacterClass_Adept.pcc`, `SFXCustomAction_PlayerMantleUp.InternalCanDoCustomAction` resolves an authored reach path; native stop clears its starting-slot/anchor state. | Action 33, actual mounted action/path, native landing/recovery. A legal out-of-cover approach may still be refused by the current native guard/config. The mod does not override the out-of-cover flag or stick. |
+| `evade` | `TryRoll` handles native left/right/backward input; `TryForwardRoll` handles forward input. Current `RawJoyRight/RawJoyUp` selects the entry point using native precedence. | One action 54–57, blocked and allowed paths, native actor eligibility and recovery. Installed Adept `PlayerEvadeForward/Left.InternalCanDoCustomAction` preserves the native `bCanRoll` restriction. |
+
+The `FindCover` result is **native ME3 output**, not a synthetic LE2 cover structure. Its source/destination reflected
+struct identities and widths must agree before copying the POD query result between parameter blocks. No
+`SetLocation`, `SetRotation`, root-motion writes, forced action ID, collision bypass, direct `StartCustomAction`,
+cover snap, input spoof or direct ladder-end call is made. A separate 1.5 m approach cap supplements native ladder
+discovery; it can conservatively refuse a fixture and is not claimed to reproduce native reach limits.
+
+Installed `TryForwardRoll` can attempt cover acquisition while storming. Both evade functions and the outer
+mantle/climb requests can cancel reload before later admission. The adapter therefore rechecks live mode, compatible
+pawn/world, death, ignored movement, walking physics, current action, cover/peek, storm, reload, zoom and host ownership
+before dispatch. Weapon/input readiness is checked additionally for evade. Authored seating always refuses requests;
+physical seated-play calibration does not. No native `Try*` request is used as a continuous eligibility probe.
+
+## Shared lifecycle and presentation
+
+`core/vr/Traversal::ActionLifecycle` separates requested, started, native-end observed, native-interrupt observed,
+unclassified exit, no-start-observed and cancelled observation. The request boolean never changes the lifecycle
+to started. A matching native action pointer and kind must be observed. A load/actor/world/mode/generation change
+invalidates the observation even if an address is reused.
+
+The native adapter observes `BioPawn.StartCustomAction`, `BioCustomAction.EndThisCustomAction` and
+`BioCustomAction.InterruptThisCustomAction` through both existing ProcessEvent and CallFunction hooks. End/interrupt
+correlation is to the exact observed action, not every action on the pawn. An interrupt wraps the common end, so
+its later callback overrides the common-end classification. An exit without the matching callback remains
+**unclassified**; a half-second polling deadline means **no start observed**, not proven refusal. The normal-end
+callback is evidence of the native end route, not proof that a destination, mission trigger or visual transition
+was correct. Overrides not reaching these common callbacks need additional targeted hooks after observation.
+
+The adapter reuses `MoveRecord` for native camera/pawn movement and collision, the shared press policy and the
+existing comfort mask/cue channel. `status` includes action name/ID, request serial/kind, native phase, recovery,
+camera yaw/pitch and measured movement. Recovery requires the native action slot to clear, walking physics and
+movement input to return. A long-running native action is never forcibly stopped by a VR timeout or tracking loss.
+
+The renderer's existing two-row cue atlas now has a third **Use ladder** row with a ladder icon. It avoids
+promising ascent/descent before native selection, particularly at a top node that may choose jump-down. The cue
+describes discovery, not successful native admission. Both-eye visual review remains open.
+
+The existing ME2 `LevelView` removes pitch/roll but follows native yaw. Applying it unchanged does not prove
+stable headset orientation across a native ME3 roll/ladder turn. This checkpoint measures that yaw; it neither
+writes camera/pawn transforms nor claims `[Traversal] view=level` is applied on LE3. Stable base-yaw ownership,
+tracked-head composition and a non-snapping handback are the next presentation increment. Cue/mask are usable
+independently. Normal locomotion, sprint/physical-cover behavior and movement powers remain other L3-8 acceptance
+requirements; this checkpoint does not declare them complete.
+
+## Coordinator wiring
+
+1. Add `src/game/Le3Traversal.cpp` to the existing shared game source list. Existing `Traversal` public entry points
+   delegate on LE3. Call startup **before installing** CallFunction/ProcessEvent hooks. A missing reflected field,
+   class or signature refuses startup. No global module gate changes are required or made here.
+2. Populate `traversal::Link.allowNativeTraversal` with a callback that reads the **current** native/host context,
+   menu, input focus, hand ownership and loading/scene restriction at dispatch. Null refuses. Supply monotonically
+   changing `sceneGeneration`, and `authoredSeated` independently of physical seated play. Existing tracked view,
+   cue, vignette, controller and right-A fields remain shared.
+3. Keep `le3DoubleTap=false` initially. When enabled, the shared double A requests a discovered ladder or a vault;
+   selected noncombat Use targets take precedence. Climb-up currently has an explicit diagnostic command rather
+   than a guessed automatic height classifier. `evadeDown` is a separate semantic input; it must not be mapped to
+   the same action/use press. It requires neutral release after lost ownership. Replays must drive native stick
+   direction before evade; the adapter does not synthesize it.
+4. Pair with the updated host `plugin/TraversalCue.cpp` for the new cue row. Current settings `enabled`, `commit`,
+   `doubleTapS`, `cue`, and mask settings are shared. `view` is still measured/native on LE3, as explained above.
+
+LE3 reflection check additions for the coordinator (no SDK wrappers in gameplay):
+
+- `BioPawn.CurrentCustomAction` int; `CoverType/CoverAction` bytes; `bStorming/bCombatPawn` bools;
+  `BioCustomAction.m_oPawn`, `Pawn.Weapon`, `PlayerController.PlayerInput`, `Actor.WorldInfo` object fields;
+  `Actor.Physics` byte and `bBlockActors` bool; inherited `PlayerInput.RawJoyUp/RawJoyRight` floats.
+- `ReachSpec.Start` object, `End` `ActorReference` struct (24 bytes) and its `Actor` member;
+  `SFXNav_LadderNode.LadderDest` object; existing selection object/target/combat flag.
+- `FindLadderNode`: out object at 0, float `MinDistance` at 8, bool return at 12, total 16.
+  `CanUseLadder/TryUseLadder`: object `LadderNode` at 0, bool return at 8, total 12.
+- `FindCover`: `FoundCover` struct at 0 (56), bool `bWideCheck` at 56, bool return at 60, total 64.
+  `CanPerformClimb`: same struct `CoverInfo` at 0, bool return at 56, total 60.
+- `MantleCover/ClimbCover`, `EndThisCustomAction/InterruptThisCustomAction`: no parameters.
+  `TryRoll/TryForwardRoll`: bool return, size 4. The mode/action/state/guard query signatures are the ones
+  listed in the [melee adapter checkpoint](le3-melee-audit.md#staged-ordinary-request-adapter-2026-11-15).
+  Observe `BioPawn.StartCustomAction` and `Engine.Camera.UpdateCamera`; do not invoke lower-level starts.
+
+## Exact protected native probe
+
+Use the existing protected runner, command channel, snapshot and replay tools under root's exclusive game window.
+Never create a new launch/control framework or force-stream a fixture.
+
+1. Check `mevr traversal status` reports the LE3 observer ready, requests off; verify the new reflection rows.
+   With a live on-foot pawn and fresh host guard wired, run `mevr traversal requests on`.
+2. At an ordinary reachable ladder, run `mevr traversal probe`, capture the named approach/end, then
+   `mevr traversal ladder`. Poll `status` across started → native end/interruption → recovered, with snapshots
+   and movement/collision telemetry. Repeat upward, downward/jump-down and a blocked/misaligned approach.
+3. At a natural vault, run `mevr traversal vault` and the same observation. At a natural climb-up approach,
+   supply normal forward intent then `mevr traversal climb`. If `CanPerformClimb` refuses a valid out-of-cover
+   route, record live flag/input/native guard results; inspect that native function before any override.
+4. In a legal combat fixture, drive one normal stick direction and run `mevr traversal evade`. Repeat all four
+   directions plus native `bCanRoll=false`, reload, storm, zoom, menus, authored seating and pending-action refusals.
+5. Verify ordinary native input as the comparison, normal mission trigger continuation, save/reload and scene
+   cancellation. `mevr traversal requests off` blocks new requests while an already-started native action is
+   allowed to finish. Physical-headset camera comfort remains a separate gate.
+
+Offline checks: changed core/game/renderer translation units and traversal tests compile with strict MSVC warnings
+for LE1/LE2/LE3; SDK-only static assertions confirm the native parameter sizes/offsets above; executable traversal
+and melee intent tests pass. Lifecycle tests distinguish dispatch/start, duplicate requests, nested interruption,
+unclassified action disappearance, timeout and scene-generation reuse. No native acceptance is inferred from them.
+
+
+## Normal runtime input wiring (2026-11-15)
+
+`Mod.cpp` now constructs the LE3 traversal link on the game thread after the squad,
+radio, power-wheel, support-grip and hand ownership updates. The dispatcher invokes
+its ownership callback again immediately before native admission. Main menu, Omni
+rail, held wrist UI, squad/power menus, guided calibration, stale XR focus, authored
+non-gameplay modes and a current authored movement track reject gestures. The
+native adapter independently rejects movement-ignore, active actions, non-walking
+physics, cover/storm, reload and zoom. Physical seated calibration does not disable
+ordinary play.
+
+The game-thread `mod/GameplayActions.hpp` command entry points construct a fresh
+link. They refuse engine-probe and diagnostic-host modes, even if those modes allow
+console requests. An assisted desktop action requires the foreground window to
+belong to this game process, both controllers' action controls released, current
+ordinary gameplay and unclaimed hands. Desktop focus is not treated as XR focus.
+Native requests remain off after startup/hot reload: use `mevr traversal requests
+on` explicitly. Double A additionally requires `mevr traversal gestures on` and
+existing `[Traversal] enabled/commit` eligibility. `ladder`, `vault`, `climb` and
+`evade` use the adapter's explicit commands; evade has no newly invented controller
+binding. Scene/load/mode/focus and ownership transitions invalidate pending gesture
+history. Shutdown clears both the adapter and opt-in state.
+
+Validation: strict MSVC syntax checks for Mod, Melee and Le3Traversal on all three
+games; existing shared melee-intent and traversal lifecycle tests. These do not
+prove native request admission, action completion, controller ergonomics or camera
+comfort. The LE3 level/yaw camera presentation is implemented in the separate checkpoint below; native acceptance remains pending.
+The main ConsoleRequest router must call `gameplay_actions::TraversalCommand` on
+LE3 (the coordinator owns that router); using the old cached-link command route is
+not the new diagnostic entry point.
+
+
+## Staged level/yaw presentation (2026-11-15)
+
+`[Traversal] view = level` (or `mevr traversal view level`) now selects a camera
+presentation adapter. It reuses the shared `LevelView` pitch/roll and optional
+vertical filter. Horizontal camera translation always stays native, including
+recovery; no pawn, controller, collision, reach-node or root-motion transform is
+changed. Measurements are captured before the presentation writes.
+
+`AuthoredYaw` retains the heading from the camera sample before the native action.
+While an observed native traversal owns the action slot it accumulates an inverse
+of the authored camera yaw. After the action relinquishes the slot, that correction
+remains a view-basis offset: subsequent ordinary game yaw changes pass through
+one-for-one. Another traversal starts from the already corrected heading. Physical
+head movement remains the renderer's own tracking; this module never writes the
+tracked head or substitutes an animation pose for it.
+
+This only runs with the complete HostServices v41 endpoint. The fixed 40-byte,
+versioned `Presentation` publishes the applied UE/right-positive yaw offset and
+scene/reference-space identity; the host must accept it before the camera is
+written. Host movement uses the opposite sign in Halcyon's left-positive stick
+rotation convention. The movement endpoint must reject stale active state rather
+than silently replacing it with zero correction. A missing/declined endpoint leaves
+the native camera untouched. The publication is refreshed by the camera update,
+not fabricated from an old view on every mod tick. The payload carries no engine
+pointers and has explicit size/version/known-flags/range/time/space checks.
+
+Its lifetime is separate from gesture ownership: real world/controller/pawn changes,
+authored non-gameplay contexts, explicit recenter or XR session replacement clear
+the basis; same-world pause/GUI/weapon/power/command menus and temporary focus loss
+retain it. Those contexts suppress publication and input as appropriate; returning
+to ordinary gameplay republishes the correction with the new native camera.
+Disabling the level-view option deliberately returns to the game's original basis.
+
+Offline proof: all-game strict compilation, yaw wraparound, a 90-degree authored
+turn without an exit snap, repeated actions, later player turns, explicit reset,
+and publication schema/expiry/reference-space rejection tests. Still required:
+native camera-update ordering, the final authored camera blend after the action
+slot is released, interrupted ladder/mantle/evade recovery, correct left/right and
+lateral movement after the offset, head/hand alignment, menu/focus/recenter cycles,
+and physical-headset comfort. A post-action native blend may still change the view;
+the implementation deliberately does not cancel arbitrary later yaw (which could
+be the player's own turn) without evidence distinguishing those sources. This is
+an implemented opt-in camera policy, not complete L3-8 acceptance.

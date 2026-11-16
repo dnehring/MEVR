@@ -9,7 +9,12 @@
 #include "core/vr/OverlayPlacement.hpp"
 #include "core/vr/TestRequest.hpp"
 #include "plugin/GalaxyHologramDraw.hpp"
+#if defined(MEVR_GAME_LE3)
+#include "plugin/XrHost.hpp"
+#else
 #include "plugin/Halcyon.hpp"
+#endif
+#include "engine/GameAdapter.hpp"
 #include "plugin/Renderer.hpp"
 #include "plugin/ScopeCaptureSource.hpp"
 #include "plugin/TestLoop.hpp"
@@ -432,7 +437,11 @@ XrCompositionLayerBaseHeader const* Layer(Frame const& frame) {
     auto const selected = gPointer.Step(candidate, onTable ? h.trigger : 0.0f, valid);
     if (candidate != gHovered) {
         if (candidate >= 0) {
+#if defined(MEVR_GAME_LE3)
+            xr_host::RequestHaptic(hand, 0.012f, 0.18f);
+#else
             halcyon::RequestHaptic(hand, 0.012f, 0.18f);
+#endif
         }
         gHovered = candidate;
     }
@@ -440,7 +449,11 @@ XrCompositionLayerBaseHeader const* Layer(Frame const& frame) {
         gh::Object const& o = scene->objects[*selected];
         gh::PostPick(o.id);
         ++gPicks;
+#if defined(MEVR_GAME_LE3)
+        xr_host::RequestHaptic(hand, 0.04f, 0.6f);
+#else
         halcyon::RequestHaptic(hand, 0.04f, 0.6f);
+#endif
         log::Info("galaxy hologram: picked '{}' (id {}) with the {} controller", o.label, o.id, hand == 1 ? "right" : "left");
     }
     gHovering.store(onTable, std::memory_order_release);
@@ -771,7 +784,12 @@ void WindowDown(char const* why) {
 
 int WindowLayers(Frame const& frame, XrCompositionLayerBaseHeader const** out) {
     auto const scene = gh::Latest(kFreshMs);
-    bool const wanted = scene && scene->suspended == 0 && scene->windowOn != 0 && scene->inWorld != 0 && scene->anchorValid != 0 && frame.gameMode == 9 &&
+#if defined(MEVR_GAME_LE3)
+    bool const mapMode = engine::adapter::IsMapMode(frame.gameMode);
+#else
+    bool const mapMode = frame.gameMode == 9;
+#endif
+    bool const wanted = scene && scene->suspended == 0 && scene->windowOn != 0 && scene->inWorld != 0 && scene->anchorValid != 0 && mapMode &&
         !frame.menuOpen && frame.session != XR_NULL_HANDLE && frame.context != nullptr && frame.device != nullptr && frame.headValid;
     if (!wanted) {
         WindowDown(!scene || scene->windowOn == 0 ? "the mod sends no window" : "not the map's mode");

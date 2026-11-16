@@ -3,6 +3,7 @@
 // runtime: `ctest -C Release --test-dir build`.
 
 #include "core/DevChannels.hpp"
+#include "core/vr/PauseOwner.hpp"
 #include "core/DiskBudget.hpp"
 #include "core/Ini.hpp"
 #include "core/PngFile.hpp"
@@ -5204,6 +5205,10 @@ void TestSquadParser() {
     Settings st;
     auto const parse = [&](char const* text) { return Parse(text, scene, groups, roster, st); };
     auto const line = [](Parsed const& p, std::size_t i) { return i < p.clauses.size() ? sc::Line(p.clauses[i].action) : std::string("(none)"); };
+    // ME2 adds SMGs to the shared vocabulary without reassigning ME1's four weapon codes.
+    CHECK(sc::WeaponFromCode("SMG") == 4 && std::string(sc::WeaponCode(4)) == "SMG");
+    CHECK(line(parse("Garrus, equip your submachine gun"), 0) == "G|SMG|-|-|-");
+    CHECK(line(parse("Garrus, equip your smg"), 0) == "G|SMG|-|-|-");
     // The example: two clauses, the deictic kept with its position, the description picking the bridge group.
     Parsed p = parse("Garrus, equip your sniper and take out those troops on the bridge");
     CHECK(!p.empty && p.clauses.size() == 2 && line(p, 0) == "G|SR|-|-|-" && line(p, 1) == "G|-|-|attack|E1");
@@ -7801,6 +7806,13 @@ void TestCineScreen() {
     int const drop = static_cast<int>(std::lround(c * 2344.0f));
     CHECK(r.left.x == drop && r.left.width == 2344 - drop && r.right.x == 0 && r.right.width == r.left.width && r.left.height == 2392 &&
           r.right.height == 2392 && r.left.y == 0);
+    { // An identical-image capture fallback must not acquire disparity from the convergence crop.
+        auto const mono = cs::MonoSourceRects(r);
+        CHECK(mono.left.x == mono.right.x && mono.left.x == drop / 2);
+        CHECK(mono.left.width == r.left.width && mono.right.width == r.right.width);
+        CHECK(mono.left.y == r.left.y && mono.right.height == r.right.height);
+        CHECK(NearD(cs::HeightM(mono, 3.0f), cs::HeightM(r, 3.0f), 1e-6));
+    }
     CHECK(cs::Rects(0, 100, c).left.width == 0 && cs::Rects(100, 100, 2.0f).left.x == 25);   // the crop is limited to a quarter
     CHECK(NearD(cs::HeightM(r, 3.0f), 3.0 * 2392.0 / (2344.0 - drop), 1e-5));
     {   // 16:9: the middle band of rows, the same in both eyes; the screen that shape; a wider image keeps all its rows.
@@ -8068,6 +8080,7 @@ void TestWorldUi() {
     // The tags (the game's GUI library), either case.
     CHECK(wu::FromTag("shop") == wu::Screen::Shop && wu::FromTag("SHOP") == wu::Screen::Shop);
     CHECK(wu::FromTag("Inventory") == wu::Screen::Inventory && wu::FromTag("MainMenu") == wu::Screen::None);
+    CHECK(wu::FromTag("AreaMap") == wu::Screen::Map && std::string(wu::Name(wu::Screen::Map)) == "Map");  // ME2's map page
     CHECK(std::string(wu::Name(wu::Screen::Loot)) == "Loot" && std::string(wu::Name(wu::Screen::None)) == "None");
     // The stage in the shop's window (2344 x 2392, measured: rows 537..1855): letterboxed 16:9.
     wu::Rect const stage = wu::Stage(2344.0f, 2392.0f);
@@ -8356,7 +8369,41 @@ void TestGalaxyHologram() {
 }
 
 void TestGalaxyMap() {
+    // Projector geometry is measured in world space, not from the use prompt or
+    // the map camera. A tilted/thick square must retain its in-plane radius.
+    namespace holo = mevr::vr::galaxy_holo;
+    auto radius = holo::ProjectorRadius({188.125, 188.125, 2}, {1, 0, 0}, {0, 1, 0});
+    CHECK(radius && NearD(*radius, 188.125));
+    double const q = std::sqrt(0.5);
+    radius = holo::ProjectorRadius({200, 202 * q, 202 * q}, {1, 0, 0}, {0, q, q});
+    CHECK(radius && NearD(*radius, 200));
+    CHECK(!holo::ProjectorRadius({0, 0, 0}, {1, 0, 0}, {0, 1, 0}));
+    CHECK(!holo::ProjectorRadius({200, -1, 200}, {1, 0, 0}, {0, 1, 0}));
+    CHECK(!holo::ProjectorRadius({200, 200, 0}, {1, 0, 0}, {1, 0, 0}));
+    CHECK(!holo::ProjectorRadius({200, 200, 0}, {0.5, 0, 0}, {0, 1, 0}));
+    CHECK(!holo::ProjectorRadius({200, std::numeric_limits<double>::infinity(), 0}, {1, 0, 0}, {0, 1, 0}));
     namespace gm = mevr::vr::galaxy_map;
+    gm::NativeTablePanel native;
+    mevr::vr::galaxy_holo::TableSettings tableSettings;
+    tableSettings.tiltDeg = 35;
+    XrPosef head{{0, 0, 0, 1}, {0, 1.6f, 0}};
+    auto first = native.Update(true, true, true, head, 0.5625f, tableSettings);
+    CHECK(first.has_value());
+    CHECK(NearD(first->width, 0.96, 1e-5) && NearD(first->height, 0.54, 1e-5));
+    head.position.x = 1;
+    auto orbit = native.Update(true, true, true, head, 0.5625f, tableSettings);
+    CHECK(orbit && NearD(orbit->pose.position.x, first->pose.position.x));
+    CHECK(!native.Update(true, true, false, head, 0.5625f, tableSettings));
+    auto recovered = native.Update(true, true, true, head, 0.5625f, tableSettings);
+    CHECK(recovered && NearD(recovered->pose.position.x, first->pose.position.x));
+    CHECK(!native.Update(false, true, true, head, 0.5625f, tableSettings));
+    auto reopened = native.Update(true, true, true, head, 0.5625f, tableSettings);
+    CHECK(reopened && NearD(reopened->pose.position.x, 1));
+    native.Reset();
+    head.position.x = 2;
+    CHECK(NearD(native.Update(true, true, true, head, 0.5625f, tableSettings)->pose.position.x, 2));
+    CHECK(!native.Update(true, false, true, head, 0.5625f, tableSettings));
+    CHECK(!native.Update(true, true, true, head, 0, tableSettings));
     // The observed exit sequence must never release/reacquire the CIC view in its middle.
     gm::ClosingHold close;
     CHECK(!close.Update(9, true, 1000));
@@ -9159,6 +9206,19 @@ void TestSightPullReachesRelief() {
 // The interaction prompt at the object (core/vr/InteractLabel, research/40).
 void TestInteractLabel() {
     namespace il = mevr::vr::interact;
+    il::Label manual;
+    CHECK(!il::ExplicitCrop(manual).Valid());
+    manual.crop[0] = 0.2f; manual.crop[1] = 0.1f; manual.crop[2] = 0.4f; manual.crop[3] = 0.2f;
+    CHECK(il::ExplicitCrop(manual).Valid());
+    manual.crop[0] = 0.9f;
+    CHECK(!il::ExplicitCrop(manual).Valid());
+    manual.crop[0] = -0.1f;
+    CHECK(!il::ExplicitCrop(manual).Valid());
+    manual.crop[0] = std::numeric_limits<float>::quiet_NaN();
+    CHECK(!il::ExplicitCrop(manual).Valid());
+    manual.crop[0] = 0.2f;
+    manual.crop[3] = std::numeric_limits<float>::infinity();
+    CHECK(!il::ExplicitCrop(manual).Valid());
     auto close = [](double a, double b, double tolerance) { return std::abs(a - b) <= tolerance; };
     // The band in stage pixels (384..896, 30..100), the stage across the frame's width: the measured 2344x2392 HUD frame.
     il::Rect const crop = il::DefaultCrop(2344, 2392);
@@ -12096,6 +12156,13 @@ int RunThespianTests();
 // tests/TraversalTests.cpp: the vault's double A, its record, view and cue (core/vr/Traversal, research/le2-traversal.md).
 int RunTraversalTests();
 int RunGoalStepTests();
+int RunTraversalPresentationTests();
+int RunRendererRequestTests();
+int RunHostServicesTests();
+int RunMenuBodyHoldTests();
+int RunPostureOwnershipTests();
+int RunGfxTransformProbeTests();
+int RunMeleeTests();
 int RunScreenMatrixTests();
 // tests/ConversationWorldTests.cpp: conversations in the world (research/59).
 int RunConversationWorldTests();
@@ -12258,6 +12325,40 @@ void TestScreenReticle() {
     CHECK(!sr::AimCaptureActive(true));  // leave/disable: never follow the head on foot
 }
 
+// Saved pause state must never leak into the next world, including a failed restore followed by retry.
+void TestPauseOwner() {
+    mevr::vr::PauseOwner owner;
+    unsigned calls = 0;
+    CHECK(!owner.Acquire(0, false, [&](std::uintptr_t) { ++calls; return true; }));
+    CHECK(calls == 0 && owner.Owner() == 0);
+    CHECK(!owner.Acquire(1, false, [&](std::uintptr_t) { ++calls; return false; }));
+    CHECK(calls == 1 && owner.Owner() == 0); // native pause refused: nothing to restore
+    CHECK(owner.Acquire(1, false, [&](std::uintptr_t world) { CHECK(world == 1); ++calls; return true; }));
+    CHECK(!owner.Acquire(2, true, [&](std::uintptr_t) { ++calls; return true; }));
+    CHECK(calls == 2 && owner.Owner() == 1); // never overwrite a pending original owner
+    CHECK(!owner.Release([](std::uintptr_t, bool) { return false; }));
+    CHECK(!owner.Acquire(2, true, [&](std::uintptr_t) { ++calls; return true; }));
+    CHECK(calls == 2 && owner.Owner() == 1); // failed native restore retains original value
+    CHECK(owner.Release([](std::uintptr_t world, bool previous) { CHECK(world == 1 && !previous); return true; }));
+    CHECK(owner.Owner() == 0);
+    bool oldWorld = true, newWorld = true;
+    owner.Capture(1, false);
+    CHECK(owner.Release([&](std::uintptr_t world, bool previous) {
+        CHECK(world == 1); oldWorld = previous; return true;
+    }));
+    CHECK(!oldWorld && newWorld && owner.Owner() == 0);
+    owner.Capture(2, true); // an existing pause must survive our menu closing
+    CHECK(!owner.Release([](std::uintptr_t world, bool previous) { CHECK(world == 2 && previous); return false; }));
+    CHECK(owner.Owner() == 2);
+    CHECK(owner.Release([&](std::uintptr_t world, bool previous) {
+        CHECK(world == 2); newWorld = previous; return true;
+    }));
+    CHECK(newWorld && owner.Owner() == 0);
+    owner.Capture(1, false);
+    CHECK(owner.Release([](std::uintptr_t, bool) { return true; })); // destroyed owner: no write to its successor
+    CHECK(newWorld && owner.Owner() == 0);
+}
+
 int main() {
     TestScreenReticle();
     TestIni();
@@ -12282,6 +12383,13 @@ int main() {
     gFailures += RunThespianTests();
     gFailures += RunTraversalTests();
     gFailures += RunGoalStepTests();
+    gFailures += RunTraversalPresentationTests();
+    gFailures += RunRendererRequestTests();
+    gFailures += RunHostServicesTests();
+    gFailures += RunMenuBodyHoldTests();
+    gFailures += RunPostureOwnershipTests();
+    gFailures += RunGfxTransformProbeTests();
+    gFailures += RunMeleeTests();
     gFailures += RunScreenMatrixTests();
     gFailures += RunConversationWorldTests();
     gFailures += RunSoundPlaceTests();
@@ -12370,6 +12478,7 @@ int main() {
     TestStickChord();
     TestStickChordFirst();
     TestGameMenuRequest();
+    TestPauseOwner();
     TestSquadContext();
     TestSquadGesture();
     TestSquadParser();

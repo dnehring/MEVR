@@ -35,7 +35,8 @@ namespace tv = vr::traversal;
 
 constexpr std::int64_t kFormat = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;  // as our other quads
 constexpr int kLabelWidth = 512;
-constexpr int kLabelHeight = 128;          // one label; the swapchain holds both, stacked (Vault, then Climb up)
+constexpr int kLabelHeight = 128;
+constexpr int kLabelRows = 3; // Vault, Climb up, Use ladder (direction is chosen by the native action)
 constexpr int kBlinkSize = 8;
 constexpr int kBlinkLevels = 32;
 constexpr std::uint64_t kStaleMs = 300;
@@ -86,7 +87,7 @@ double RoundedBox(double x, double y, double cx, double cy, double hw, double hh
 }
 
 // One label's text and arrow as coverage (0..255 per pixel), drawn by GDI (grey anti-aliasing, white on black).
-std::vector<std::uint8_t> TextCoverage(wchar_t const* text, bool up) {
+std::vector<std::uint8_t> TextCoverage(wchar_t const* text, int icon) {
     std::vector<std::uint8_t> coverage(static_cast<std::size_t>(kLabelWidth) * kLabelHeight, 0);
     HDC const dc = CreateCompatibleDC(nullptr);
     if (dc == nullptr) {
@@ -118,7 +119,11 @@ std::vector<std::uint8_t> TextCoverage(wchar_t const* text, bool up) {
     HBRUSH const brush = CreateSolidBrush(RGB(255, 255, 255));
     HGDIOBJ const oldBrush = SelectObject(dc, brush);
     HGDIOBJ const oldPen = SelectObject(dc, GetStockObject(NULL_PEN));
-    if (up) {
+    if (icon == 2) {
+        Rectangle(dc, 32, 22, 42, 106);
+        Rectangle(dc, 78, 22, 88, 106);
+        for (int y : {30, 50, 70, 90}) Rectangle(dc, 40, y, 80, y + 8);
+    } else if (icon == 1) {
         POINT const arrow[] = {{60, 22}, {92, 58}, {72, 58}, {72, 104}, {48, 104}, {48, 58}, {28, 58}};
         Polygon(dc, arrow, 7);
     } else {
@@ -145,11 +150,12 @@ std::vector<std::uint8_t> TextCoverage(wchar_t const* text, bool up) {
     return coverage;
 }
 
-// Both labels, stacked: a dark glass plate with an orange rim, the white word and arrow.
+// Labels stacked: a dark glass plate with an orange rim, the white word and action icon.
 std::vector<std::uint32_t> LabelPixels() {
-    std::vector<std::uint32_t> pixels(static_cast<std::size_t>(kLabelWidth) * kLabelHeight * 2, 0);
-    for (int label = 0; label < 2; ++label) {
-        std::vector<std::uint8_t> const text = TextCoverage(label == 0 ? L"Vault" : L"Climb up", label == 1);
+    std::vector<std::uint32_t> pixels(static_cast<std::size_t>(kLabelWidth) * kLabelHeight * kLabelRows, 0);
+    wchar_t const* const labels[kLabelRows] = {L"Vault", L"Climb up", L"Use ladder"};
+    for (int label = 0; label < kLabelRows; ++label) {
+        std::vector<std::uint8_t> const text = TextCoverage(labels[label], label);
         for (int y = 0; y < kLabelHeight; ++y) {
             for (int x = 0; x < kLabelWidth; ++x) {
                 double const d = RoundedBox(x + 0.5, y + 0.5, kLabelWidth / 2.0, kLabelHeight / 2.0, kLabelWidth / 2.0 - 4.0,
@@ -320,14 +326,15 @@ unsigned Layers(Frame const& frame, void const** layersOut, unsigned capacity) {
     }
     unsigned count = 0;
     // The label at the interaction point.
-    if (cue.visible && frame.headValid && (cue.kind == tv::Kind::Vault || cue.kind == tv::Kind::ClimbUp) && count < capacity &&
-        EnsurePicture(gLabel, frame.device, kLabelWidth, kLabelHeight * 2, "traversalcue")) {
+    int const row = cue.kind == tv::Kind::Vault ? 0 : cue.kind == tv::Kind::ClimbUp ? 1 : cue.kind == tv::Kind::Ladder ? 2 : -1;
+    if (cue.visible && frame.headValid && row >= 0 && count < capacity &&
+        EnsurePicture(gLabel, frame.device, kLabelWidth, kLabelHeight * kLabelRows, "traversalcue")) {
         bool ready = gLabel.level == 1;
         if (!ready) {
             if (gLabelPixels.empty()) {
                 gLabelPixels = LabelPixels();
             }
-            ready = Fill(gLabel, frame.context, gLabelPixels, kLabelWidth, kLabelHeight * 2);
+            ready = Fill(gLabel, frame.context, gLabelPixels, kLabelWidth, kLabelHeight * kLabelRows);
             gLabel.level = ready ? 1 : -1;
         }
         tv::Quad quad;
@@ -337,7 +344,6 @@ unsigned Layers(Frame const& frame, void const** layersOut, unsigned capacity) {
             gLabelQuad.space = frame.appSpace;
             gLabelQuad.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
             gLabelQuad.subImage.swapchain = gLabel.swapchain;
-            int const row = cue.kind == tv::Kind::ClimbUp ? 1 : 0;
             gLabelQuad.subImage.imageRect = {{0, row * kLabelHeight}, {kLabelWidth, kLabelHeight}};
             gLabelQuad.pose = quad.pose;
             gLabelQuad.size = {quad.width, quad.height};

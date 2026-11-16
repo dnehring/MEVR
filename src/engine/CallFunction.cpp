@@ -53,6 +53,11 @@ struct FrameEntry {
     FramePostHandler handler;
 };
 std::vector<FrameEntry> gFrameHandlers;
+struct ScopeEntry {
+    ue3::Function* function;
+    ScopedCall::Registration registration;
+};
+std::vector<ScopeEntry> gScopes;
 bool gInstalled = false;
 
 tCallFunction* gCallFunctionOrig = nullptr;
@@ -146,7 +151,7 @@ bool TryAnswer(ue3::Object* context, FFrame* stack, void* result, ue3::Function*
     return true;
 }
 
-void CallFunctionHook(ue3::Object* context, FFrame* stack, void* result, ue3::Function* function) {
+void CallFunctionBody(ue3::Object* context, FFrame* stack, void* result, ue3::Function* function) {
     if (Observer const observer = gObserver.load(std::memory_order_relaxed)) {
         observer(context, function, stack != nullptr ? ReadNode(stack) : nullptr);
     }
@@ -186,7 +191,42 @@ void CallFunctionHook(ue3::Object* context, FFrame* stack, void* result, ue3::Fu
     }
 }
 
+// Keep this wrapper free of C++ objects requiring unwinding: MSVC permits __finally here, and
+// it runs for script skip/answer returns, C++ exceptions and SEH unwinding alike.
+void ScopedCallFunction(ue3::Object* context, FFrame* stack, void* result, ue3::Function* function) {
+    ScopedCall::Invocation invocation;
+    __try {
+        for (auto const& entry : gScopes) {
+            if (entry.function == function) invocation.Begin(entry.registration, context, function);
+        }
+        CallFunctionBody(context, stack, result, function);
+    } __finally {
+        invocation.End();
+    }
+}
+
+void CallFunctionHook(ue3::Object* context, FFrame* stack, void* result, ue3::Function* function) {
+    for (auto const& entry : gScopes) {
+        if (entry.function == function) {
+            ScopedCallFunction(context, stack, result, function);
+            return;
+        }
+    }
+    // The usual call allocates no scope storage and keeps its original callback ordering.
+    CallFunctionBody(context, stack, result, function);
+}
+
 } // namespace
+
+bool AddScopedHandler(ue3::Function* function, ScopedCall::Enter enter, ScopedCall::Leave leave) {
+    if (!function || !enter || !leave) return false;
+    std::size_t count = 0;
+    for (auto const& entry : gScopes) {
+        if (entry.function == function && ++count >= ScopedCall::kCapacity) return false;
+    }
+    gScopes.push_back({function, {enter, leave}});
+    return true;
+}
 
 void AddPostHandler(ue3::Function* function, Handler handler) {
     gHandlers.push_back({function, handler});
@@ -205,6 +245,7 @@ void AddAnswerHandler(ue3::Function* function, AnswerHandler handler) {
 }
 
 void ClearHandlers() {
+    gScopes.clear();
     gHandlers.clear();
     gFrameHandlers.clear();
     gSkips.clear();

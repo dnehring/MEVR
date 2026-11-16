@@ -29,4 +29,14 @@ inline std::filesystem::path SettingsFile() {
     return std::filesystem::path(buffer).parent_path() / L"ASI" / (MEVR_GAME_NAME_W L"MEVR.ini");
 }
 
+// Development-only engine validation: the host and mod independently select the same immutable session mode.
+// Player builds can never disable normal startup through this research option.
+inline bool DevelopmentEngineProbe() {
+#if defined(MEVR_GAME_LE3) && !defined(MEVR_MONOLITHIC)
+    return GetPrivateProfileIntW(L"Debug", L"engineProbe", 0, SettingsFile().c_str()) != 0;
+#else
+    return false;
+#endif
+}
+
 } // namespace mevr::engine

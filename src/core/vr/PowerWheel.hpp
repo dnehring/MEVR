@@ -105,6 +105,8 @@ struct PowerInfo {
 };
 // Null: not one of the player's mappable powers (melee, healing, NPC powers...).
 PowerInfo const* FindPower(char const* label);
+// LE2's base power name. The game-side adapter keeps the actual evolved power's identity for dispatch.
+PowerInfo const* FindLe2Power(char const* label);
 // The wheel's last tile, "No power" (the user, 2026-11-09: "we don't have an option for it to return to neutral"): equipping
 // it puts the engine's None into the mapped power, so nothing is aimed, locked or gestured until a power is chosen again
 // (the game itself does nothing for an unmapped power, research/55 section 1). Its label is the engine's "None"; FindPower
@@ -123,6 +125,13 @@ char const* WeaponName(int rangedType);
 // What the host draws, as the mod sends it each tick while the wheel is open (HostServices v28, setPowerWheel). Twelve since
 // 2026-11-09 (No power took a tile; a Sentinel has ten powers): the View grew, host and mod deploy together.
 inline constexpr int kMaxEntries = 12;
+// Pages contain real powers, then No power, then (only for overflow) More powers.
+// View stays unchanged; navigation is handled before any native equip/dispatch.
+struct Page {
+    int index = 0, pages = 1, first = 0, count = 0;
+    int more = -1;  // local tile index, -1 for the unchanged single-page layout
+};
+Page PowerPage(int powerCount, int requestedPage);
 inline constexpr int kLabelBytes = 32;
 struct ViewEntry {
     char label[kLabelBytes] = {};  // UTF-8, as shown
@@ -202,8 +211,9 @@ struct MachineInput {
     float grip = 0.0f;        // the left grip, 0..1
     bool handValid = false;
     Vec2 hand;                // the palm's offset from the wheel's centre in its plane (metres)
+    int moreIndex = -1;       // optional navigation tile: never returned as Equipped
 };
-enum class Event : std::uint8_t { None, Opened, Equipped, Cancelled };
+enum class Event : std::uint8_t { None, Opened, Equipped, Cancelled, PageChanged };
 struct Machine {
     bool open = false;
     bool toggled = false;     // opened by a tap: stays open until a pinch, a squeeze or X again

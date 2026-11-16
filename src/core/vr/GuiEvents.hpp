@@ -35,6 +35,34 @@ inline constexpr bool IsControl(std::uint8_t event) {
     return (event >= kControlDown && event <= kControlUp) || (event >= kControlDownRelease && event <= kControlUpRelease);
 }
 
+// The queue uses LE1's numbers on both hosts. Translate at the call to ME2's
+// SFXGameModeGUI.GuiKey, whose BIOGUI_EVENT enum moved the wheel and mouse buttons.
+inline constexpr std::uint8_t Le2NativeEvent(std::uint8_t event) {
+    switch (event) {
+    case kWheelUp: return 27;
+    case kWheelDown: return 28;
+    case kLeftDown: return 48;
+    case kLeftUp: return 50;
+    default:
+        return event >= kControlDownRelease && event <= kControlUpRelease ? static_cast<std::uint8_t>(event - 1) : event;
+    }
+}
+
+// LE3 BioDefine.BioGuiEvents (SDK + installed SFXGame.pcc). These are canonical
+// queue values only: developer guikey numeric input is already native and is not translated.
+inline constexpr std::uint8_t Le3NativeEvent(std::uint8_t event) {
+    switch (event) {
+    case kWheelUp: return 8;
+    case kWheelDown: return 9;
+    case kLeftDown: return 31;
+    case kLeftUp: return 52;
+    default:
+        if (event >= kControlDown && event <= kControlUp) return static_cast<std::uint8_t>(event + 3);
+        if (event >= kControlDownRelease && event <= kControlUpRelease) return static_cast<std::uint8_t>(event + 2);
+        return event;
+    }
+}
+
 // The host's side: what the pointer did, in order. Moves are coalesced (one in a row); at most kCapacity wait (the oldest
 // motion or wheel notches go first when full; a button is never dropped).
 class Queue {
@@ -65,9 +93,14 @@ public:
     std::vector<std::uint8_t> Tick();
     std::size_t Waiting() const { return pending_.size(); }
     void Clear() { pending_.clear(); }
+    // Track only successfully dispatched presses. Owner changes discard pending actions
+    // and release these held buttons without a synthetic motion/press on a hidden screen.
+    void NoteSent(std::uint8_t event);
+    std::vector<std::uint8_t> ReleaseSent();
 
 private:
     std::deque<std::uint8_t> pending_;
+    std::uint8_t sentMask_ = 0;
 };
 
 } // namespace mevr::vr::gui_events

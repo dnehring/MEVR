@@ -14,39 +14,47 @@
 namespace mevr::game::capture_rig {
 namespace {
 
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE3)
+
+#if defined(MEVR_GAME_LE3)
+constexpr auto kCaptureReach = ue3::kEveryGame;
+#else
+constexpr auto kCaptureReach = ue3::Reach::Modules;
+#endif
 
 // The spectator's handles (game/Spectator.cpp; their rows in engine/ReflectCheck).
-ue3::ClassRef gActorClass{"Engine.SceneCapture2DActor"};
-ue3::ClassRef gComponentClass{"Engine.SceneCapture2DComponent"};
-ue3::ClassRef gTargetClass{"Engine.TextureRenderTarget2D"};
-ue3::FunctionRef gSpawn{"Engine.Actor.Spawn"};
-ue3::FunctionRef gDestroy{"Engine.Actor.Destroy"};
-ue3::FunctionRef gForceUpdate{"Engine.Actor.ForceUpdateComponents"};
-ue3::FunctionRef gCreate{"Engine.TextureRenderTarget2D.Create"};
-ue3::FunctionRef gSetEnabled{"Engine.SceneCaptureComponent.SetEnabled"};
-ue3::FunctionRef gSetFrameRate{"Engine.SceneCaptureComponent.SetFrameRate"};
-ue3::FunctionRef gSetView{"Engine.SceneCapture2DComponent.SetView"};
-ue3::FunctionRef gSetParameters{"Engine.SceneCapture2DComponent.SetCaptureParameters"};
-ue3::FieldRef gSceneCapture{"Engine.SceneCaptureActor", "SceneCapture"};
-ue3::FieldRef gStatic{"Engine.Actor", "bStatic"};
-ue3::FieldRef gNoDelete{"Engine.Actor", "bNoDelete"};
-ue3::FieldRef gEnabled{"Engine.SceneCaptureComponent", "bEnabled"};
-ue3::FieldRef gEnablePostProcess{"Engine.SceneCaptureComponent", "bEnablePostProcess"};
-ue3::FieldRef gEnableFog{"Engine.SceneCaptureComponent", "bEnableFog"};
-ue3::FieldRef gEnableParticles{"Engine.SceneCaptureComponent", "bEnableParticles"};
-ue3::FieldRef gUseMainPostProcess{"Engine.SceneCaptureComponent", "bUseMainScenePostProcessSettings"};
-ue3::FieldRef gSkipUsersOccluded{"Engine.SceneCaptureComponent", "bSkipUpdateIfTextureUsersOccluded"};
-ue3::FieldRef gSkipOwnerOccluded{"Engine.SceneCaptureComponent", "bSkipUpdateIfOwnerOccluded"};
-ue3::FieldRef gMaxUpdateDist{"Engine.SceneCaptureComponent", "MaxUpdateDist"};
-ue3::FieldRef gPostProcess{"Engine.SceneCaptureComponent", "PostProcess"};
-ue3::FieldRef gFrameRate{"Engine.SceneCaptureComponent", "FrameRate"};
-ue3::FieldRef gUpdateMatrices{"Engine.SceneCapture2DComponent", "bUpdateMatrices"};
-ue3::FieldRef gResource{"Engine.Texture", "Resource"};
-ue3::FieldRef gFormat{"Engine.TextureRenderTarget2D", "Format"};
-ue3::FieldRef gPlayer{"Engine.PlayerController", "Player"};
-ue3::FieldRef gPlayerPostProcess{"Engine.LocalPlayer", "PlayerPostProcess"};
-ue3::FieldRef gDefaultPostProcess{"Engine.Engine", "DefaultPostProcess"};
+ue3::ClassRef gActorClass{"Engine.SceneCapture2DActor", kCaptureReach};
+ue3::ClassRef gComponentClass{"Engine.SceneCapture2DComponent", kCaptureReach};
+ue3::ClassRef gTargetClass{"Engine.TextureRenderTarget2D", kCaptureReach};
+ue3::FunctionRef gSpawn{"Engine.Actor.Spawn", kCaptureReach};
+ue3::FunctionRef gDestroy{"Engine.Actor.Destroy", kCaptureReach};
+ue3::FunctionRef gForceUpdate{"Engine.Actor.ForceUpdateComponents", kCaptureReach};
+ue3::FunctionRef gCreate{"Engine.TextureRenderTarget2D.Create", kCaptureReach};
+ue3::FunctionRef gSetEnabled{"Engine.SceneCaptureComponent.SetEnabled", kCaptureReach};
+ue3::FunctionRef gSetFrameRate{"Engine.SceneCaptureComponent.SetFrameRate", kCaptureReach};
+ue3::FunctionRef gSetView{"Engine.SceneCapture2DComponent.SetView", kCaptureReach};
+ue3::FunctionRef gSetParameters{"Engine.SceneCapture2DComponent.SetCaptureParameters", kCaptureReach};
+ue3::FieldRef gSceneCapture{"Engine.SceneCaptureActor", "SceneCapture", kCaptureReach};
+ue3::FieldRef gStatic{"Engine.Actor", "bStatic", kCaptureReach};
+ue3::FieldRef gNoDelete{"Engine.Actor", "bNoDelete", kCaptureReach};
+ue3::FieldRef gEnabled{"Engine.SceneCaptureComponent", "bEnabled", kCaptureReach};
+ue3::FieldRef gEnablePostProcess{"Engine.SceneCaptureComponent", "bEnablePostProcess", kCaptureReach};
+ue3::FieldRef gEnableFog{"Engine.SceneCaptureComponent", "bEnableFog", kCaptureReach};
+#if defined(MEVR_GAME_LE1)
+ue3::FieldRef gEnableParticles{"Engine.SceneCaptureComponent", "bEnableParticles", kCaptureReach};
+#endif
+ue3::FieldRef gUseMainPostProcess{"Engine.SceneCaptureComponent", "bUseMainScenePostProcessSettings", kCaptureReach};
+ue3::FieldRef gSkipUsersOccluded{"Engine.SceneCaptureComponent", "bSkipUpdateIfTextureUsersOccluded", kCaptureReach};
+ue3::FieldRef gSkipOwnerOccluded{"Engine.SceneCaptureComponent", "bSkipUpdateIfOwnerOccluded", kCaptureReach};
+ue3::FieldRef gMaxUpdateDist{"Engine.SceneCaptureComponent", "MaxUpdateDist", kCaptureReach};
+ue3::FieldRef gPostProcess{"Engine.SceneCaptureComponent", "PostProcess", kCaptureReach};
+ue3::FieldRef gFrameRate{"Engine.SceneCaptureComponent", "FrameRate", kCaptureReach};
+ue3::FieldRef gUpdateMatrices{"Engine.SceneCapture2DComponent", "bUpdateMatrices", kCaptureReach};
+ue3::FieldRef gResource{"Engine.Texture", "Resource", kCaptureReach};
+ue3::FieldRef gFormat{"Engine.TextureRenderTarget2D", "Format", kCaptureReach};
+ue3::FieldRef gPlayer{"Engine.PlayerController", "Player", kCaptureReach};
+ue3::FieldRef gPlayerPostProcess{"Engine.LocalPlayer", "PlayerPostProcess", kCaptureReach};
+ue3::FieldRef gDefaultPostProcess{"Engine.Engine", "DefaultPostProcess", kCaptureReach};
 
 constexpr std::uint64_t kClassDefaultFlag = 0x200;  // EObjectFlags: RF_ClassDefaultObject
 constexpr float kMaxUpdateDist = 10000000.0f;       // never stopped by distance (research/39 section 2)
@@ -75,6 +83,21 @@ ue3::Object* DefaultObject(ue3::Class* cls) {
 
 bool Call(ue3::Object* object, ue3::FunctionRef& function, ue3::Params& params) {
     return object != nullptr && function.Get() != nullptr && ue3::runtime::Call(object, function.Get(), params);
+}
+
+// The shared spawn path must restore CDO flags even if ProcessEvent faults.
+// Keep SEH in a helper without C++ objects that need unwinding (MSVC C2712).
+bool SpawnScoped(ue3::Object* controller, ue3::Object* defaults, ue3::Params& params,
+                 bool wasStatic, bool wasNoDelete) {
+    bool ok = false;
+    __try {
+        if (gStatic.WriteBool(defaults, false) && gNoDelete.WriteBool(defaults, false))
+            ok = Call(controller, gSpawn, params);
+    } __finally {
+        gStatic.WriteBool(defaults, wasStatic);
+        gNoDelete.WriteBool(defaults, wasNoDelete);
+    }
+    return ok;
 }
 
 template <class T>
@@ -106,7 +129,7 @@ ue3::Object* PostProcessChain(ue3::Object* controller) {
 
 } // namespace
 
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE3)
 
 bool Rig::Alive() const {
     return actor_ != nullptr && world_ == engine::World() && ue3::runtime::IsAlive(actor_) && ue3::IsA(actor_, gActorClass) &&
@@ -129,7 +152,7 @@ bool Rig::Create(char const* tag, Options const& options, ue3::Vector const& at)
     options_ = options;
     failure_.clear();
     Forget();
-    if (!ue3::runtime::Ready()) {
+    if (!ue3::detail::Resolvable(kCaptureReach)) {
         failure_ = "our reflection layer is off";
         return false;
     }
@@ -183,21 +206,18 @@ bool Rig::Create(char const* tag, Options const& options, ue3::Vector const& at)
         failure_ = "no SceneCapture2DActor defaults";
         return false;
     }
-    bool const wasStatic = gStatic.ReadBool(actorDefaults).value_or(false);
-    bool const wasNoDelete = gNoDelete.ReadBool(actorDefaults).value_or(false);
-    if (wasStatic || wasNoDelete) {
-        gStatic.WriteBool(actorDefaults, false);
-        gNoDelete.WriteBool(actorDefaults, false);
+    auto const wasStatic = gStatic.ReadBool(actorDefaults);
+    auto const wasNoDelete = gNoDelete.ReadBool(actorDefaults);
+    if (!wasStatic || !wasNoDelete) {
+        failure_ = "SceneCapture2DActor spawn flags unavailable";
+        return false;
     }
     ue3::Params spawn(ue3::runtime::Get(), gSpawn.Get());
-    spawn.Set("SpawnClass", gActorClass.Get());
-    spawn.Set("SpawnOwner", controller);
-    spawn.Set("SpawnLocation", at);
-    spawn.SetBool("bNoCollisionFail", true);
-    Call(controller, gSpawn, spawn);
-    if (wasStatic || wasNoDelete) {
-        gStatic.WriteBool(actorDefaults, wasStatic);
-        gNoDelete.WriteBool(actorDefaults, wasNoDelete);
+    if (!spawn.Set("SpawnClass", gActorClass.Get()) || !spawn.Set("SpawnOwner", controller) ||
+        !spawn.Set("SpawnLocation", at) || !spawn.SetBool("bNoCollisionFail", true) ||
+        !SpawnScoped(controller, actorDefaults, spawn, *wasStatic, *wasNoDelete)) {
+        failure_ = "SceneCapture2DActor spawn failed";
+        return false;
     }
     actor_ = spawn.Return<ue3::Object*>().value_or(nullptr);
     if (!ue3::IsA(actor_, gActorClass)) {
@@ -219,7 +239,9 @@ bool Rig::Create(char const* tag, Options const& options, ue3::Vector const& at)
     gSkipOwnerOccluded.WriteBool(component_, false);  // nor the invisible actor
     WriteField(gMaxUpdateDist, component_, kMaxUpdateDist, "CaptureRig.MaxUpdateDist");
     gEnableFog.WriteBool(component_, true);
-    gEnableParticles.WriteBool(component_, true);
+#if defined(MEVR_GAME_LE1)
+    gEnableParticles.WriteBool(component_, true); // LE3 has no corresponding flag
+#endif
     ue3::Object* const chain = !options.postProcess ? nullptr
         : options.postProcessChain != nullptr       ? options.postProcessChain
                                                     : PostProcessChain(controller);
@@ -330,7 +352,7 @@ std::int32_t Rig::PixelFormat() const {
 
 bool Rig::Alive() const { return false; }
 void Rig::Forget() {}
-bool Rig::Create(char const*, Options const&, ue3::Vector const&) { failure_ = "LE1 only"; return false; }
+bool Rig::Create(char const*, Options const&, ue3::Vector const&) { failure_ = "capture rig unavailable for this game"; return false; }
 void Rig::Destroy(char const*) {}
 bool Rig::SetEnabled(bool) { return false; }
 bool Rig::SetFov(float) { return false; }

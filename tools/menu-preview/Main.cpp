@@ -293,7 +293,7 @@ int main(int argc, char** argv) {
     fs::path assets;
     fs::path fonts;
     fs::path gameArt;
-    bool le2 = false;  // also the pages as Mass Effect 2's host shows them (le2-*.png)
+    bool le2 = false;  // also the ME2 pages (le2-*.png) and its palette for the rail
     for (int i = 1; i < argc; ++i) {
         std::string const a = argv[i];
         if (a == "--warp") {
@@ -918,6 +918,9 @@ int main(int argc, char** argv) {
         Target railTarget;
         bool ok = railUi.Init(railSetup) && MakeTarget(device.Get(), rw, rh, railTarget);
         if (ok) {
+            using mevr::host::rail_art::Palette;
+            auto const palette = le2 ? Palette::MissionComputer : Palette::Original;
+            railUi.Context()->ActivateTheme("mission-computer", le2);
             Rml::DataModelConstructor ctor = railUi.Context()->CreateDataModel("omnitool");
             ok = static_cast<bool>(ctor);
             if (ok) {
@@ -932,7 +935,8 @@ int main(int argc, char** argv) {
                 ctor.BindEventCallback("pick", [](Rml::DataModelHandle, Rml::Event&, Rml::VariantList const&) {});
                 handle = ctor.GetModelHandle();
                 if (!gameArt.empty()) {
-                    mevr::host::rail_art::Status const status = mevr::host::rail_art::Load(device.Get(), railUi.GetRenderer(), {}, gameArt);
+                    mevr::host::rail_art::Status const status =
+                        mevr::host::rail_art::Load(device.Get(), railUi.GetRenderer(), {}, gameArt, palette);
                     art = status.fonts && status.tabs && status.panel;
                     std::printf("omni-tool rail: %s\n", status.summary.c_str());
                 }
@@ -1078,6 +1082,7 @@ int main(int argc, char** argv) {
             std::fprintf(stderr, "the Thespian panel's document didn't load\n");
             return 1;
         }
+        thUi.Document()->SetClass("le2", le2);
         std::vector<std::uint32_t> const dark(static_cast<std::size_t>(tw) * thh, 0xFF30241Cu);
         auto card = [](th::Panel& p, char const* label, char const* line, th::Tone tone, th::Look look) -> th::PanelCard& {
             th::PanelCard& c = p.cards[p.cardCount++];

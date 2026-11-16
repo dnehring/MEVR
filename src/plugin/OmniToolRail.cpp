@@ -7,6 +7,7 @@
 #include "plugin/menu/MenuUi.hpp"
 
 #include "core/Ini.hpp"
+#include "engine/GameAdapter.hpp"
 #include "core/Log.hpp"
 #include "core/vr/Controllers.hpp"
 #include "core/vr/GameMenuRequest.hpp"
@@ -59,6 +60,11 @@ constexpr int kHeight = 640;
 constexpr std::int64_t kSwapchainFormat = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;  // our bytes are sRGB already
 constexpr std::uint64_t kSettingsEveryMs = 2000;
 constexpr float kTipAheadM = 0.035f;  // the index fingertip ahead of the aim pose (plugin/GamePointer's touchTipM)
+#if defined(MEVR_WITH_HALCYON_LE2)
+constexpr auto kPalette = rail_art::Palette::MissionComputer;
+#else
+constexpr auto kPalette = rail_art::Palette::Original;
+#endif
 
 // The rail's buttons by touch (2026-11-06, the owner's QA: only a perfectly aligned poke selected anything, and the hand went
 // through without a feel of the surface): a click the moment the fingertip reaches a button, where it touched (a poke that
@@ -92,6 +98,7 @@ struct TargetStatus {
     float acrossM = 0.0f;
     XrVector3f target{};
     XrVector3f eyes{};
+    XrVector3f tip{};
 };
 TargetStatus gTargetStatus;
 
@@ -112,6 +119,7 @@ struct Settings {
 };
 
 struct State {
+    XrSession session = XR_NULL_HANDLE;
     bool initTried = false;
     bool ready = false;
     ComPtr<ID3D11Device> device;
@@ -258,6 +266,7 @@ bool Init(ID3D11Device* device, ID3D11DeviceContext* context) {
     if (!g.ui->Init(setup)) {
         return false;
     }
+    g.ui->Context()->ActivateTheme("mission-computer", kPalette == rail_art::Palette::MissionComputer);
     Rml::DataModelConstructor ctor = g.ui->Context()->CreateDataModel("omnitool");
     if (!ctor) {
         log::Error("omni-tool rail: its data model couldn't be made; no rail");
@@ -279,7 +288,7 @@ bool Init(ID3D11Device* device, ID3D11DeviceContext* context) {
     g.model = ctor.GetModelHandle();
     // The game's own art (research/57 section 5), before the document loads so its fonts resolve; without it the rail keeps
     // its own drawn look.
-    rail_art::Status const art = rail_art::Load(device, g.ui->GetRenderer(), {});
+    rail_art::Status const art = rail_art::Load(device, g.ui->GetRenderer(), {}, {}, kPalette);
     g.art = art.fonts && art.tabs && art.panel;
     log::Info("omni-tool rail: {}{}", art.summary, g.art ? "" : " (its own look until the game's art is cached)");
     if (!g.ui->LoadDocument()) {
@@ -514,7 +523,7 @@ void StepTarget(Frame const& frame, bool handsTracked, XrVector3f const& tip, Xr
         std::lock_guard lock(gStatusMutex);
         gTargetStatus = {true, frame.wristValid, frame.headValid, handsTracked, allowed, refused, static_cast<int>(look), false,
             handsTracked ? d : -1.0f, frame.eyes.y - target.y, std::hypot(target.x - frame.eyes.x, target.z - frame.eyes.z), target,
-            frame.eyes};
+            frame.eyes, tip};
     }
     rail::TargetLook const shown = g.pressedS > 0.0f ? rail::TargetLook::Armed : look;  // the pressed picture below
     if (shown == rail::TargetLook::Hidden && g.pressedS <= 0.0f) {
@@ -754,7 +763,24 @@ std::optional<rail::Rail> Place(Frame const& frame, float dt) {
 
 } // namespace
 
+void HideForSessionStop() {
+    Hide("VR session stopped");
+    gOpen.store(false, std::memory_order_relaxed);
+    g.targetShown = false;
+}
+
 XrCompositionLayerQuad const* Layer(Frame const& frame) {
+    if (frame.session != g.session) {
+        Hide("VR session changed");
+        swapchains::Forget(g.swapchain.handle);
+        swapchains::Forget(g.target.handle);
+        g.swapchain = {}; g.target = {};
+        g.targetShown = false; g.targetDrawn = -1;
+        g.needRender = true;
+        g.pointer = gp::Pointer{RailPointerSettings()};
+        g.session = frame.session;
+        g.lastCounter = {};
+    }
     ReadSettings();
     LARGE_INTEGER counter{};
     QueryPerformanceCounter(&counter);
@@ -766,9 +792,9 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
         return nullptr;
     }
     // The owner's QA (2026-11-07): an open rail stayed up through a load (a save loaded from Computer), cutscenes and the
-    // rest. It belongs to on-foot play and the game's screens (0 on foot, 7 the GUI, 10 the bypass puzzle): anything else
-    // (-1 loading, 8 a movie, 6 a cinematic, 5 a conversation, 1 the Mako...) closes it, as a tap on the wrist would.
-    if (gOpen.load(std::memory_order_relaxed) && frame.gameMode != 0 && frame.gameMode != 7 && frame.gameMode != 10) {
+    // rest. It belongs to on-foot play, GUI and LE1's bypass puzzle. Native mode numbers differ in the sequels;
+    // a movie, orbital screen or authored conversation must not keep the wrist rail open.
+    if (gOpen.load(std::memory_order_relaxed) && !engine::adapter::IsWristMenuMode(frame.gameMode)) {
         gOpen.store(false, std::memory_order_relaxed);
         log::Info("omni-tool rail: closed by itself: the game left on-foot play (game mode {})", static_cast<int>(frame.gameMode));
     }
@@ -813,10 +839,11 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
     if (goingForPanel) {
         ++g.tapsHeld;
     }
-    bool const tapAllowed = g.settings.tap && !frame.gunDrawn && (frame.gameMode == 0 || frame.gameMode == 7) && !goingForPanel;
+    bool const tapAllowed = g.settings.tap && !frame.gunDrawn && (engine::adapter::GameMode(frame.gameMode) == engine::adapter::Mode::OnFoot ||
+        engine::adapter::GameMode(frame.gameMode) == engine::adapter::Mode::Gui) && !goingForPanel;
     char const* const refused = !g.settings.tap                                ? "[OmniTool] tap = 0"
                                 : frame.gunDrawn                               ? "a weapon is drawn (holster it first)"
-                                : frame.gameMode != 0 && frame.gameMode != 7   ? "not on foot"
+                                : !engine::adapter::IsWristMenuMode(frame.gameMode) ? "not on foot"
                                 : goingForPanel                                ? "the fingertip was going for a screen"
                                                                                : nullptr;
     // The tap aims at its target, a button just below the wrist readout (rail::TargetPoint).
@@ -896,7 +923,7 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
     }
     if (rail_art::CacheChanged()) {
         // The mod (game/GameArt) cached the movies, or they changed: the art again, and the document again so new fonts resolve.
-        rail_art::Status const art = rail_art::Load(g.device.Get(), g.ui->GetRenderer(), {});
+        rail_art::Status const art = rail_art::Load(g.device.Get(), g.ui->GetRenderer(), {}, {}, kPalette);
         g.art = art.fonts && art.tabs && art.panel;
         log::Info("omni-tool rail: the cache changed; {}", art.summary);
         g.ui->LoadDocument();
@@ -968,10 +995,12 @@ std::string StatusJson() {
     return std::format("{{\"rail\": {}, \"target\": {{\"stepped\": {}, \"wristValid\": {}, \"headValid\": {}, \"handsTracked\": {}, "
                        "\"allowed\": {}, \"refused\": \"{}\", \"look\": \"{}\", \"shown\": {}, \"fingertipM\": {:.3f}, "
                        "\"belowEyesM\": {:.3f}, \"acrossM\": {:.3f}, \"at\": [{:.3f}, {:.3f}, {:.3f}], \"eyes\": [{:.3f}, {:.3f}, {:.3f}], "
-                       "\"layerCalls\": {}, \"layerGiven\": {}, \"swapchain\": \"{:#x}\", \"onBody\": {}}}}}",
+                       "\"tip\": {}, \"layerCalls\": {}, \"layerGiven\": {}, \"swapchain\": \"{:#x}\", \"onBody\": {}}}}}",
         gStatus, t.stepped, t.wristValid, t.headValid, t.handsTracked, t.allowed, t.refused != nullptr ? t.refused : "",
         LookName(static_cast<rail::TargetLook>(t.look)), t.shown, t.distanceM, t.belowEyesM, t.acrossM, t.target.x, t.target.y,
-        t.target.z, t.eyes.x, t.eyes.y, t.eyes.z, gTargetCalls.load(std::memory_order_relaxed),
+        t.target.z, t.eyes.x, t.eyes.y, t.eyes.z,
+        t.handsTracked ? std::format("[{:.4f}, {:.4f}, {:.4f}]", t.tip.x, t.tip.y, t.tip.z) : std::string("null"),
+        gTargetCalls.load(std::memory_order_relaxed),
         gTargetGiven.load(std::memory_order_relaxed), reinterpret_cast<std::uintptr_t>(g.targetQuad.subImage.swapchain), g.onBody);
 }
 

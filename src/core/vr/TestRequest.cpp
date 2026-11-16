@@ -41,6 +41,15 @@ bool IsOption(std::string_view token, std::string_view& key, std::string_view& v
 
 } // namespace
 
+FirstPersonRequest ParseFirstPerson(Request const& request) {
+    if (!request.Has("firstperson")) return FirstPersonRequest::Unspecified;
+    auto const value = Lower(request.Get("firstperson"));
+    if (value == "status") return FirstPersonRequest::Status;
+    if (value == "off") return FirstPersonRequest::Off;
+    if (value == "on") return FirstPersonRequest::On;
+    return FirstPersonRequest::Invalid;
+}
+
 bool Request::Has(std::string_view key) const {
     return options.find(Lower(key)) != options.end();
 }

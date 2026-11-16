@@ -179,6 +179,13 @@ XrQuaternionf TableOrientation(float yaw, float tiltRad);
 // turned to the head's side, its +X level (the head's right across the disc), its +Y up the disc's slope.
 XrPosef DiscPose(XrVector3f const& centre, XrVector3f const& normal, XrVector3f const& head);
 
+// ME1's square-projector measurement, shared with sequel native adapters. Inputs
+// are world-axis AABB half extents and unit in-plane mesh axes, in the same space.
+// Thickness can enlarge the AABB, so this is a geometric candidate, not proof of
+// a particular mesh or a fallback radius. Refuse nonfinite/degenerate inputs.
+std::optional<double> ProjectorRadius(std::array<double, 3> const& extent,
+    std::array<double, 3> const& forward, std::array<double, 3> const& right);
+
 // Metres per game unit for `scene` on a table of `radiusM` (the extent, or the farthest object in the plane, at the rim).
 float FitScale(Scene const& scene, float radiusM);
 // A game position on the table, room space.

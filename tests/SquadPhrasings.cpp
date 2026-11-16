@@ -254,6 +254,79 @@ std::string Lines(sp::Parsed const& p) {
     return out;
 }
 
+// Sequel adapters provide a live roster, including DLC names and SMGs. The shared parser must not
+// require an ME1 class ID, and an old spoken alias must not authorize a power absent from the current scene.
+int DynamicRoster() {
+    sc::Scene scene;
+    scene.combat = true;
+    sc::Member member;
+    member.letter = 'J'; member.present = true; member.carried = 1u << 4;
+    member.powers = {{"DCH", 0.0f}};
+    scene.party = {member};
+    sc::RosterEntry entry;
+    entry.letter = 'J'; entry.name = "Javik"; entry.aliases = {"Javik"};
+    entry.powers = {{"DCH", "dark channel"}};
+    std::vector<sc::RosterEntry> roster{entry};
+    int failures = 0;
+    auto check = [&](bool ok, char const* what) {
+        if (!ok) { ++failures; std::printf("FAIL dynamic squad roster: %s\n", what); }
+    };
+    auto power = sp::Parse("Javik use dark channel", scene, {}, roster, {});
+    check(!power.empty && power.confidence >= 0.6f && Lines(power) == "J|-|DCH|use|-", "DLC power from live roster");
+    auto weapon = sp::Parse("Javik equip smg", scene, {}, roster, {});
+    check(!weapon.empty && weapon.confidence >= 0.6f && Lines(weapon) == "J|SMG|-|-|-", "fifth weapon type");
+    if (!power.clauses.empty()) {
+        auto action = power.clauses.front().action;
+        action.target = {sc::Target::Group, 1};
+        sc::Group group;
+        group.id = 1; group.members = {42};
+        std::vector<sc::Group> groups{group};
+        check(sc::Validate(action, scene, groups, {}, {}).ok, "present learned power admitted");
+        scene.party[0].powers[0].readyInS = 4.0f;
+        auto cooling = sc::Validate(action, scene, groups, {}, {});
+        check(cooling.ok && cooling.notReady && cooling.readyInS == 4.0f, "native cooldown retained for dispatcher refusal/wait");
+        scene.party[0].powers.clear();
+        check(!sc::Validate(action, scene, groups, {}, {}).ok, "remembered alias cannot authorize unavailable power");
+        scene.party[0].powers = {{"DCH", 0.0f}};
+        scene.party[0].present = false;
+        check(!sc::Validate(action, scene, groups, {}, {}).ok, "removed companion refused");
+
+        scene.party[0].present = true;
+        scene.party[0].powers = {{"DCH", 0, sc::PowerSelf}};
+        action.target = {};
+        auto self = sc::Validate(action, scene, {}, {}, {});
+        check(self.ok && self.selfPower && self.group == 0, "native self intent needs no invented enemy");
+        action.target = {sc::Target::Group, 1};
+        check(!sc::Validate(action, scene, groups, {}, {}).ok, "self buff rejects external target");
+        scene.party[0].powers = {{"DCH", 0, sc::PowerHostile | sc::PowerAlly | sc::PowerLocation}};
+        sc::Member ally;
+        ally.letter = 'L'; ally.present = true;
+        scene.party.push_back(ally);
+        sc::RosterEntry allyEntry;
+        allyEntry.letter = 'L'; allyEntry.name = "Liara"; allyEntry.aliases = {"Liara"};
+        roster.push_back(allyEntry);
+        auto named = sp::Parse("Javik use dark channel on Liara", scene, {}, roster, {});
+        // Test intent transport only: the actual game's IsValidTarget still rejects Dark Channel on an ally.
+        check(!named.empty && named.confidence >= 0.6f && Lines(named) == "J|-|DCH|use|ALLY:L", "ally name is a target, not a second order recipient");
+        action.target = {sc::Target::Ally, 'L'};
+        auto support = sc::Validate(action, scene, {}, {}, {});
+        check(support.ok && support.ally == 'L', "current living ally intent");
+        auto encoded = sc::ParseLine(sc::Line(action));
+        check(encoded && encoded->target.kind == sc::Target::Ally && encoded->target.index == 'L', "ally protocol roundtrip");
+        scene.party[1].alive = false;
+        check(!sc::Validate(action, scene, {}, {}, {}).ok, "downed ally rejected by ordinary support intent");
+        scene.party[1].alive = true;
+        scene.party[0].powers[0].targets = sc::PowerHostile;
+        check(!sc::Validate(action, scene, {}, {}, {}).ok, "legacy hostile-only power cannot target ally");
+        action.target = {sc::Target::Pointed, 1};
+        check(!sc::Validate(action, scene, {}, {}, {}).ok, "legacy hostile-only power cannot target empty ground");
+        scene.party[0].powers[0].targets = sc::PowerHostile | sc::PowerLocation;
+        auto ground = sc::Validate(action, scene, {}, {}, {});
+        check(ground.ok && ground.locationPower && ground.group == 0, "location intent proceeds to required observed-point check");
+    }
+    return failures;
+}
+
 }  // namespace
 
 int RunSquadPhrasingTests() {
@@ -346,5 +419,5 @@ int RunSquadPhrasingTests() {
     }
     std::printf("squad phrasings: %d of %d orders parsed as said, %d of %d non-orders refused, %d known gaps open (%d closed)\n", passes,
         wanted, refusals, talk, gapsOpen, gapsClosed);
-    return failures;
+    return failures + DynamicRoster();
 }

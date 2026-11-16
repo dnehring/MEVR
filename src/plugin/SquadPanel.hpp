@@ -28,5 +28,7 @@ struct Frame {
 XrCompositionLayerQuad const* Layer(Frame const& frame);
 // Recentering re-origined the app space: an open menu is placed again.
 void Recentered();
+// The renderer session ended; forget handles even if the runtime reuses its session pointer.
+void ForgetSession();
 
 } // namespace mevr::host::squad_panel

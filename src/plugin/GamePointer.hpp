@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
-#include "halcyon/le1/mevr_bridge.h"
-
 #include <openxr/openxr.h>
+
+struct ID3D11Device;
+struct ID3D11DeviceContext;
 
 namespace mevr::hook {
 class Context;
@@ -18,8 +19,12 @@ class Context;
 // stick the wheel, and a dot on the quad marks the hit. The mouse reaches the game as window messages posted to its
 // window and as the OS cursor (SetCursorPos), each a setting, since UE3 reads both. Nothing is sent while the ray is
 // off the quad, while our main menu or Halcyon's is open (they own the pointer), or while the guided calibration runs.
-// Host side, LE1 only; `[Pointer]` in ASI\LE1MEVR.ini; log `game pointer:`. Present thread unless noted.
+// Host side; `[Pointer]` in ASI\<GAME>MEVR.ini; log `game pointer:`. Present thread unless noted. LE1: Halcyon's flat quad
+// (MevrBridge::OnFlatQuad) and our quads; ME2 (since 2026-11-15, research/le2-menus.md "ME2's screens on the wrist"): the
+// game's screens of plugin/WorldUi on our quads only (NoteGameUiQuad), ME1's settings, touch and GUI events.
 namespace mevr::host::game_pointer {
+
+enum class PanelKind : int { HalcyonMenu = 0, GameMenu = 1, GalaxyMap = 2, Conversation = 3, Cutscene = 4 };  // LE1's
 
 struct Frame {
     std::optional<vr::omni_rail::Body> body; // Shepard's drawn bones in app space
@@ -48,6 +53,8 @@ std::string StatusJson();
 // kept from the game (a trigger that also reached the game as RT switched a Flash box to the pad, which then ignored the click:
 // the galaxy map's travel question, research/51 section 8). Any thread.
 bool OwnsTriggers();
+// The right stick's vertical axis is in use for scrolling the pointed-at screen.
+bool OwnsWheel();
 
 // At attach (plugin/Entry): user32's GetCursorPos hooked, so that the game's Flash cursor can be put on the pointer's point
 // (`[Pointer] gameCursor`, research/57 section 6). Never removed.
@@ -72,8 +79,15 @@ void ForgetGameUiQuad();
 // second after the last no quad of the game's is a pointer target (the world UI's or Halcyon's flat panel, which a hitch can bring
 // back for a frame) and GetCursorPos isn't answered: any cursor off its centre turns the puzzle's marker. Present thread.
 void HoldOffForPuzzle();
-void NoteGameUiQuad(XrPosef const& pose, float width, float height,
-    MELEVR::MevrBridge::PanelKind kind = MELEVR::MevrBridge::PanelKind::GalaxyMap, float const* touchArea = nullptr,
-    int projectingHand = -1);
+void NoteGameUiQuad(XrPosef const& pose, float width, float height, PanelKind kind = PanelKind::GalaxyMap,
+    float const* touchArea = nullptr, int projectingHand = -1);
+
+// The dot's quad for this frame's `dot` (Step's): a light dot over a half-transparent dark rim, one static 64 x 64 image of a
+// swapchain of its own ("game pointer dot", snapshot layer `gamepointer`); nullptr if it can't be made. Both hosts (LE1's
+// HalcyonOverlays and ME2's plugin/MenusLe2). Present thread.
+XrCompositionLayerQuad const* DotLayer(XrSession session, XrSpace appSpace, ID3D11DeviceContext* context, ID3D11Device* device,
+    Dot const& dot);
+// The session changed: the dot's swapchain went with the old one.
+void ForgetSession();
 
 } // namespace mevr::host::game_pointer

@@ -31,5 +31,6 @@ struct Frame {
 XrCompositionLayerBaseHeader const* Layer(Frame const& frame);
 // Snapshot JSON ("squadPlace").
 std::string StatusJson();
+void ForgetSession();
 
 } // namespace mevr::host::squad_place_draw

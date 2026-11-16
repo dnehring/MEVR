@@ -9,11 +9,12 @@ keeping the run (research/29 "The legs keep the run"): replay it with its inputs
 
     python tools/make-walk-recording.py out.mevrrec [segment] [hz] [--yaw DEG] [--pitch DEG] [--eye-height M] [--stick S] [--grip]
         [--plan forward:14,stand:600] [--hands chest|view] [--hand-yaw DEG] [--fire EVERY[:HOLD]] [--crouch-drop M]
+        [--tracking both|left|right|none]
     tools/replay.ps1 -Path out.mevrrec -Loop -Inputs
 
 segment: seconds per stick direction (default 3). --yaw: the head (and the hands) turned DEG degrees right in the room.
 --pitch: the head pitched DEG degrees (+ up; -60 shows the legs). --eye-height: the head's height in tracking space
-(default 0: the fake headset's floor is at the head). --stick: the stick's deflection (default 0.9, a run: above the
+(default 0 relative to the recentered head; the null headset's STAGE height is separately 1.7526 m). --stick: the stick's deflection (default 0.9, a run: above the
 game's 0.70). --grip: the right grip held all the way (a gun drawn with `mevr weapon pistol` stays in the hand). --plan: the
 segments by name and seconds instead of the loop of five (forward, strafe right, back, strafe left, stand): `stand:600` is a
 player standing with tracked hands (an audit run's hands, tools/conversation-audit.ps1); `forward:14,stand:600` one who walks
@@ -22,12 +23,26 @@ mark"). --hands: chest (default, 0.35 m under the eyes and 0.30 m ahead: below a
 the eyes, 0.25 m ahead and 0.09 m to each side: 0.28 m from the eyes, inside [Hands] reachNearFaceM's 0.30, so the drawn hands
 sit on the controllers unscaled by the arm-length calibration; the wrists, 7 cm behind the grips, 24 degrees down and 27 to
 the side). At 0.40 m ahead the hands were reach-scaled 0.16 m low, cut off at the snapshot's bottom edge (2026-11-13).
+--tracking: which controllers have valid grip/aim poses (default both); none clears the recording's controller-active
+flag while retaining the recorded head. The current replay adapter forces active=true while replaying, so none tests
+invalid grips/aims; stop replay to test genuinely inactive controllers on the null headset. Use without replay -Inputs
+to test loss/reacquisition without recorded gameplay button input.
 --hand-yaw: the right controller (grip and aim) turned DEG degrees right of where the body faces, the head still ahead: hand
 aim's check (shots follow the controller, not the view; research/le2-vrik.md "Hand aim"). --fire: the right trigger pulled all
 the way for HOLD seconds (default 0.15) every EVERY seconds, from 2 s on (shots; replay with -Inputs). A plan's `crouch`
 segment holds the stick still with the head (and the hands) --crouch-drop metres lower (default 0.6: below [Hands]
 crouchBelow's 0.75 of a 1.65 m standing eye height), the physical crouch's check (research/23 section 7):
-`--plan stand:8,crouch:4,stand:8`."""
+`--plan stand:8,crouch:4,stand:8`.
+The plan also accepts `back-button` (left menu with left grip, mapped to pad Back) and `r3`
+(right stick click). For ME2/ME3's existing Back double-tap recenter use
+`--plan stand:2,back-button:0.12,stand:0.12,back-button:0.12,stand:12 --live-head` with replay `-Inputs`.
+ME1's double-tap uses `r3` instead. These are actual mapped inputs, not a direct recenter
+request; native button side effects still apply. `--live-head` leaves head tracking to
+the runtime (only controller poses/inputs are replayed), so recenter's base-space query
+cannot mistake a head-relative recorded pose for an absolute head pose. Use an owned,
+backed-up test fixture. ME3's first Back-transition trial currently faults in native
+post-processing before recenter completes (research/le3-recenter-transition-failure.md);
+this recording capability is not acceptance of that gameplay route."""
 import math
 import struct
 import sys
@@ -42,7 +57,8 @@ FRAME = struct.Struct("<qI" + (POSE + "4f") * 2 + ("I4f" + POSE + POSE) * 2)
 SEGMENTS = [("forward", 0.0, 1.0), ("strafe right", 1.0, 0.0), ("back", 0.0, -1.0), ("strafe left", -1.0, 0.0),
             ("stand", 0.0, 0.0)]
 # Plan-only segments (not in the default loop): the head lowered, the stick still.
-EXTRA = [("crouch", 0.0, 0.0), ("a", 0.0, 0.0), ("sprint", 0.0, 1.0)]
+EXTRA = [("crouch", 0.0, 0.0), ("a", 0.0, 0.0), ("sprint", 0.0, 1.0),
+         ("back-button", 0.0, 0.0), ("r3", 0.0, 0.0)]
 
 
 def head_orientation(yaw_deg, pitch_deg):
@@ -66,6 +82,11 @@ def main():
     eye_h = option("--eye-height", 0.0)
     stick = option("--stick", 0.9)
     grip = 1.0 if "--grip" in sys.argv else 0.0
+    live_head = "--live-head" in sys.argv
+    tracking = sys.argv[sys.argv.index("--tracking") + 1] if "--tracking" in sys.argv else "both"
+    if tracking not in ("both", "left", "right", "none"):
+        print("--tracking both|left|right|none")
+        return 2
     hands = sys.argv[sys.argv.index("--hands") + 1] if "--hands" in sys.argv else "chest"
     hand_yaw = option("--hand-yaw", 0.0)
     fire_text = sys.argv[sys.argv.index("--fire") + 1] if "--fire" in sys.argv else ""
@@ -76,7 +97,7 @@ def main():
         print("--hands chest|view")
         return 2
     taken = {i + 1 for i, a in enumerate(sys.argv) if a in ("--yaw", "--pitch", "--eye-height", "--stick", "--plan", "--hands", "--hand-yaw", "--fire",
-                                                             "--crouch-drop")}
+                                                             "--crouch-drop", "--tracking")}
     args = [a for i, a in enumerate(sys.argv) if i > 0 and not a.startswith("--") and i not in taken]
     if not args:
         print(__doc__)
@@ -122,13 +143,16 @@ def main():
                 return (*pose[:4], pose[4], pose[5] + dy, pose[6])
 
             e0, e1, lh, rh = lowered(eyes[0]), lowered(eyes[1]), lowered(left_hand), lowered(right_hand)
-            f.write(FRAME.pack(int(t * 1e9), 3, *e0, *fov, *e1, *fov,
-                               valid, 0.0, 0.0, sx * stick, sy * stick, *lh, *lh,
-                               valid | (2 if name in ("a", "sprint") else 0), trigger, grip, 0.0, 0.0, *rh, *rh))
+            flags = (0 if live_head else 1) | (0 if tracking == "none" else 2)
+            f.write(FRAME.pack(int(t * 1e9), flags, *e0, *fov, *e1, *fov,
+                               (valid if tracking in ("both", "left") else 0) | (8 if name == "back-button" else 0), 0.0,
+                               1.0 if name == "back-button" else 0.0, sx * stick, sy * stick, *lh, *lh,
+                               (valid if tracking in ("both", "right") else 0) | (2 if name in ("a", "sprint") else 0) | (1 if name == "r3" else 0),
+                               trigger, grip, 0.0, 0.0, *rh, *rh))
     starts = [sum(seconds for _, seconds in steps[:k]) for k in range(len(steps))]
     plan = ", ".join(f"{seg[0]} {start:g}-{start + seconds:g} s" for (seg, seconds), start in zip(steps, starts))
     print(f"{out}: {n} frames at {hz:g} Hz: {plan}; head yaw {yaw:g}, pitch {pitch:g}, stick {stick:g}, hands {hands}"
-          f"{', right grip held' if grip else ''}{f', right hand turned {hand_yaw:g}' if hand_yaw else ''}"
+          f"; tracking {tracking}{', live runtime head' if live_head else ''}{', right grip held' if grip else ''}{f', right hand turned {hand_yaw:g}' if hand_yaw else ''}"
           f"{f', trigger {fire_hold:g} s every {fire_every:g} s' if fire_every else ''}")
     return 0
 

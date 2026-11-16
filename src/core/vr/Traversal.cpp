@@ -42,6 +42,11 @@ char const* Label(Kind kind) {
     switch (kind) {
     case Kind::Vault: return "Vault";
     case Kind::ClimbUp: return "Climb up";
+    case Kind::LadderUp: return "Climb ladder";
+    case Kind::LadderDown: return "Descend ladder";
+    case Kind::JumpDown: return "Drop down";
+    case Kind::Evade: return "Evade";
+    case Kind::Ladder: return "Use ladder";
     case Kind::None: break;
     }
     return "";
@@ -51,6 +56,11 @@ char const* Name(Kind kind) {
     switch (kind) {
     case Kind::Vault: return "vault";
     case Kind::ClimbUp: return "climb up";
+    case Kind::LadderUp: return "ladder up";
+    case Kind::LadderDown: return "ladder down";
+    case Kind::JumpDown: return "jump down";
+    case Kind::Evade: return "evade";
+    case Kind::Ladder: return "ladder approach";
     case Kind::None: break;
     }
     return "none";
@@ -91,6 +101,7 @@ char const* Name(PressWhy why) {
     case PressWhy::UseFirst: return "A uses the selected object first";
     case PressWhy::FromMenu: return "pressed in a menu or without input focus";
     case PressWhy::DuringTraversal: return "pressed while a move ran";
+    case PressWhy::AuthoredSeated: return "authored seated scene blocks traversal";
     case PressWhy::NotOnFoot: break;
     }
     return "not on foot";
@@ -119,8 +130,11 @@ char const* Name(CommitWhy why) {
 
 Tap PressTracker::Step(PressInput const& in, double doubleTapS) {
     PressInput const before = haveBefore_ ? before_ : PressInput{in.nowS, false, in.focused, in.menuOpen, in.onFoot, in.eligible,
-        in.useFirst, in.traversing};
+        in.useFirst, in.traversing, in.authoredSeated};
     bool const edge = in.down && !down_;
+    // No first tap survives an interruption, including a menu that opens and closes between taps.
+    // Keep held-button history: restoring gameplay must not manufacture a fresh edge.
+    if (in.authoredSeated || in.menuOpen || !in.focused || !in.onFoot) last_.clean = false;
     if (!in.down && down_ && last_.valid && last_.upS < 0.0) {
         last_.upS = in.nowS;
     }
@@ -132,10 +146,13 @@ Tap PressTracker::Step(PressInput const& in, double doubleTapS) {
         p.atS = in.nowS;
         // The verdict from the state before this tick: the game may have acted on the press already (used something, begun a move).
         bool const menu = in.menuOpen || !in.focused || before.menuOpen || !before.focused;
-        p.clean = !menu && before.onFoot && !before.traversing && !before.useFirst;
-        if (menu) {
+        bool const seated = in.authoredSeated || before.authoredSeated;
+        p.clean = !seated && !menu && in.onFoot && before.onFoot && !before.traversing && !before.useFirst;
+        if (seated) {
+            p.why = PressWhy::AuthoredSeated;
+        } else if (menu) {
             p.why = PressWhy::FromMenu;
-        } else if (!before.onFoot) {
+        } else if (!in.onFoot || !before.onFoot) {
             p.why = PressWhy::NotOnFoot;
         } else if (before.traversing) {
             p.why = PressWhy::DuringTraversal;
@@ -182,7 +199,7 @@ Commit Judge(PressTracker& presses, double nowS, double windowS) {
     }
     c.press = last.serial;
     c.sincePressS = since;
-    if (last.why != PressWhy::Fresh) {
+    if (last.why != PressWhy::Fresh || !last.clean) {
         c.why = CommitWhy::NotFresh;
     } else if (last.commits > 0) {
         c.why = CommitWhy::Repeated;
@@ -199,6 +216,57 @@ void PressTracker::NoteCommit() {
     if (last_.valid) {
         ++last_.commits;
     }
+}
+
+char const* Name(ActionPhase phase) {
+    switch (phase) {
+    case ActionPhase::Idle: return "idle";
+    case ActionPhase::Requested: return "requested";
+    case ActionPhase::Started: return "started";
+    case ActionPhase::Completed: return "native end observed";
+    case ActionPhase::Interrupted: return "native interrupt observed";
+    case ActionPhase::EndedUnknown: return "left action without classified end";
+    case ActionPhase::NoStartObserved: return "no start observed";
+    case ActionPhase::Cancelled: return "observation cancelled";
+    }
+    return "unknown";
+}
+bool ActionLifecycle::Request(std::uint64_t epoch, double now) {
+    if (Busy() || !std::isfinite(now)) return false;
+    auto const next = serial + 1;
+    *this = {};
+    serial = next;
+    generation = epoch;
+    requestedAt = now;
+    phase = ActionPhase::Requested;
+    return true;
+}
+void ActionLifecycle::Observe(std::uint64_t epoch, std::uintptr_t current, Kind type, double now) {
+    if (epoch != generation) { Cancel(); return; }
+    if (phase == ActionPhase::Requested) {
+        if (current != 0 && type != Kind::None) {
+            action = current;
+            kind = type;
+            startedAt = now;
+            phase = ActionPhase::Started;
+        } else if (now - requestedAt >= 0.5) {
+            phase = ActionPhase::NoStartObserved; // polling window, not proof of a native refusal
+        }
+    } else if (phase == ActionPhase::Started && current != action) {
+        endedAt = now;
+        phase = ActionPhase::EndedUnknown;
+    }
+}
+void ActionLifecycle::End(std::uint64_t epoch, std::uintptr_t ended, bool interrupted, double now) {
+    if (epoch != generation || ended == 0 || ended != action || phase == ActionPhase::Cancelled ||
+        phase == ActionPhase::Idle || phase == ActionPhase::Requested) return;
+    if (interrupted || phase != ActionPhase::Interrupted)
+        phase = interrupted ? ActionPhase::Interrupted : ActionPhase::Completed;
+    endedAt = now;
+}
+void ActionLifecycle::Cancel() {
+    if (Busy() || phase == ActionPhase::EndedUnknown) phase = ActionPhase::Cancelled;
+    action = 0;
 }
 
 Vec3 operator+(Vec3 a, Vec3 b) {
@@ -436,6 +504,26 @@ std::optional<Pose> LevelView::After(Pose const& game, double sinceEndS, double 
     p.yaw = SignedDegrees(ended_.yaw + SignedDegrees(game.yaw - ended_.yaw) * w);
     p.roll = ended_.roll + SignedDegrees(game.roll - ended_.roll) * w;
     return p;
+}
+
+void AuthoredYaw::Begin(double nativeYaw) {
+    if (!Finite(nativeYaw)) return;
+    held_ = SignedDegrees(nativeYaw + offset_);
+    holding_ = true;
+}
+double AuthoredYaw::Update(double nativeYaw, bool actionOwned) {
+    if (!Finite(nativeYaw)) return held_;
+    if (holding_ && actionOwned) offset_ = SignedDegrees(held_ - nativeYaw);
+    else holding_ = false;
+    return SignedDegrees(nativeYaw + offset_);
+}
+bool PresentationFresh(Presentation const& p, std::uint64_t nowMs, std::uint32_t recenters,
+    std::uint32_t sessions) {
+    return p.size == sizeof(Presentation) && p.version == kPresentationVersion &&
+        (p.flags & ~(kPresentationActive | kPresentationActionOwned)) == 0 &&
+        p.timeMs != 0 && p.timeMs <= nowMs && nowMs - p.timeMs <= 100 &&
+        p.recenters == recenters && p.sessions == sessions && p.sceneGeneration != 0 &&
+        p.yawOffsetUU >= -32768 && p.yawOffsetUU <= 32768;
 }
 
 float MaskAmount(Mask mask, Settings const& s, bool running, double sinceStartS, double sinceEndS) {

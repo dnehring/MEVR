@@ -5,6 +5,8 @@ and what is still unverified. The [docs/](../docs) folder holds the conclusions.
 
 | File | Topic | Date |
 |------|-------|------|
+| [le3-combat-fixtures.md](le3-combat-fixtures.md) | Existing-save reuse, native Citadel range entry and checkpoint acquisition gates | 2026-11-15 |
+| [le3-interaction-gaze.md](le3-interaction-gaze.md) | ME3 selection ABI and camera/controller split; reuse of ME1's scoped gaze hook | 2026-11-15 |
 | [01-feasibility.md](01-feasibility.md) | Can ME LE get VR at all? Why "build in UDK and port it" fails, and what exists today | 2026-10-07 |
 | [02-titanfall2-vr.md](02-titanfall2-vr.md) | CircuitLord's Titanfall 2 VR mod | 2026-10-07 |
 | [le2-le3-vr-traversal.md](le2-le3-vr-traversal.md) | Titanfall 2 VR source and shipped VR precedents for ladders, vaulting and mantling, with native LE2/LE3 routes and headset tests | 2026-11-14 |

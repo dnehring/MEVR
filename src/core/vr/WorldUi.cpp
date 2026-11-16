@@ -44,6 +44,11 @@ Screen FromTag(std::string_view tag) {
             return static_cast<Screen>(i);
         }
     }
+    // ME2's pause menu calls its map page AreaMap (BioSFHandler_BrowserWheel.lstPages; research/le2-menus.md): ME1's Map. ME1's
+    // GUI library has no such tag.
+    if (SameText(tag, "AreaMap")) {
+        return Screen::Map;
+    }
     return Screen::None;
 }
 

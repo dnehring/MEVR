@@ -4,6 +4,7 @@
 #include "core/vr/SquadContext.hpp"
 #include "ue3/Types.hpp"
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -19,6 +20,8 @@
 namespace mevr::game::squad_context {
 
 void Tick(double deltaSeconds);
+// Changes across world, game mode, player and gameplay-availability transitions. Capture for async voice/model requests.
+std::uint64_t Generation();
 
 // The latest scene and groups (empty while off foot or unreadable).
 vr::squad_context::Scene const& Scene();

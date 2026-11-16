@@ -97,6 +97,8 @@ std::vector<Field> const& Schema() {
         {"first_run", Type::Flag, 0, "", 0, 1, F::None, true},  // opened by itself on the controller guide (MainMenu's first run)
         // Mass Effect 2's host (research/le2-menus.md): the document greys out the rows ME2 doesn't have yet. 0 on LE1.
         {"le2", Type::Flag, 0, "", 0, 1, F::None, true},
+        {"le3", Type::Flag, 0, "", 0, 1, F::None, true},
+        {"game_title", Type::Text, 0, "Mass Effect 1", 0, 0, F::None, true},
         // The top bar.
         {"chip_headset", Type::Text, 0, "Headset not started"},
         {"chip_controllers", Type::Text, 0, "No controllers"},
@@ -638,9 +640,14 @@ std::vector<std::pair<std::string, std::string>> GuideTexts(GuideInput const& in
             (grenadeLeft ? " At the left of your chest: take a grenade." : ""));
     std::string const toward = in.walk == "hand" ? "where your left hand points" : in.walk == "body" ? "where Shepard faces"
                                                                                                    : "where you look";
-    put("lstick", "Walk, click: crouch",
-        "Walk toward " + toward + ". Click to crouch or stand" + (in.seated ? ". Seated play: lowering your head never crouches Shepard."
-            : in.physicalCrouch ? "; or just crouch for real." : "."));
+    if (in.le2) {
+        put("lstick", "Walk", "Walk toward " + toward + "." +
+            (!in.seated && in.physicalCrouch ? " Lower your head to crouch." : ""));
+    } else {
+        put("lstick", "Walk, click: crouch",
+            "Walk toward " + toward + ". Click to crouch or stand" + (in.seated ? ". Seated play: lowering your head never crouches Shepard."
+                : in.physicalCrouch ? "; or just crouch for real." : "."));
+    }
     if (in.handWheel) {
         put("x", "Power wheel", std::string("Hold for your powers around your left hand: move the hand toward one and let go of X to "
                                             "equip it (a tap keeps the wheel open).") +
@@ -709,16 +716,18 @@ std::vector<std::pair<std::string, std::string>> GuideTexts(GuideInput const& in
                                                 : "The power wheel at your hand is off ([PowerWheel] on): " + gameWheel + ".");
     out.emplace_back("guide_cast", in.handWheel && in.castLock
                                        ? std::string("Raise your left hand at an enemy: orange brackets lock on (or on the one you face). "
-                                                     "Push your open hand toward it to cast what you equipped. Powers that land somewhere "
-                                                     "go where your hand points. Your right hand can keep the gun.")
+                                                     "Push your open hand toward it to cast what you equipped. ") +
+                                             (in.le2 ? "" : "Powers that land somewhere go where your hand points. ") +
+                                             "Your right hand can keep the gun."
                                        : "Cast from the game's power wheel: " + gameWheel + ".");
-    out.emplace_back("guide_self", !(in.handWheel && in.castLock) ? std::string("From the game's power wheel, like the others.")
-                                   : in.selfGestures ? std::string("Powers on yourself are gestures of the open left hand: flat on "
-                                                                   "your chest, held (Barrier, Shield Boost, Immunity, Adrenaline "
-                                                                   "Burst); slapped onto the gun (Marksman, Overkill, Carnage, "
-                                                                   "Assassination: each on its own gun); raised above your head, "
-                                                                   "held (Unity). The glowing target shows when it's ready.")
-                                                     : std::string("Pushed forward like the others."));
+    char const* const selfGestures = in.le2
+        ? "Hold your open left palm against your chest for powers like Adrenaline Rush. Slap your open left palm against the "
+          "drawn gun to apply an ammo power. The glowing target shows where to move your hand."
+        : "Powers on yourself are gestures of the open left hand: flat on your chest, held (Barrier, Shield Boost, Immunity, "
+          "Adrenaline Burst); slapped onto the gun (Marksman, Overkill, Carnage, Assassination: each on its own gun); raised "
+          "above your head, held (Unity). The glowing target shows when it's ready.";
+    out.emplace_back("guide_self", !(in.handWheel && in.castLock) ? "From the game's power wheel, like the others."
+                                   : in.selfGestures ? selfGestures : "Pushed forward like the others.");
     return out;
 }
 
@@ -876,6 +885,12 @@ std::map<std::string, std::string> ParseSection(std::string_view lines) {
     // core/Ini's reader (the mod's too): lower-cased keys, the first occurrence wins as in Win32's profile API.
     ini::Section const section = ini::ParseKeys(lines);
     return std::map<std::string, std::string>(section.begin(), section.end());
+}
+
+// LE3 presentation foundation: reject unsupported writes even if an old document or queued event requests one.
+bool UnavailableInLe3Presentation(std::string_view key) {
+    return key.starts_with("cine_") || key.starts_with("thespian_") || key.starts_with("voice_") ||
+        key.starts_with("mic") || key == "world_ui" || key == "wrist_screen" || key == "wrist_width" || key == "galaxy_holo";
 }
 
 } // namespace mevr::vr::menu_settings

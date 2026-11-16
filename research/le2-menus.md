@@ -86,7 +86,7 @@ also writes `le2-section-*.png` and `le2-advanced-*.png`, the pages as ME2 shows
 | Advanced > Tracking: Flat screen width | ME2 `[VR] MenuScreenSize` | |
 | Advanced > Graphics: Desktop mirror | ME2 `[VR] MirrorPresentEvery` (0 = every 8th) | |
 | Comfort: Turning group, Walk toward, Physical crouch | greyed | game/Comfort and game/Posture are ME1's only (M6) |
-| Conversations and cutscenes | greyed (flat) | ME2 shows them on Halcyon's flat cine panel until ME1's 3D screen is ported (M5; `ApplyMevrBaseline`) |
+| Comfort: Conversations and cutscenes | 3D screen or flat, with width, distance and depth controls for the 3D screen | `[Cinematics]` in `ASI\LE2MEVR.ini`; see [ME2 cinema](le2-cinema.md) |
 | Game screens (in the room, omni-tool screens, galaxy hologram) | greyed | M4.3 / M6 |
 | Controls: Weapons (holsters), Left trigger, grenades and melee, Vent, Steady view, Draw speed, Mako | greyed | holsters wait for lane B3's host side; ME2 has no grenades nor heat (research/le2-vrik-audit.md); the rest ME1's modules (M6) |
 | Voice, Sound pages | greyed | plugin/Voice, plugin/OpenAlSoft and their mod modules are ME1's (ME2 plays through Wwise) |
@@ -212,6 +212,11 @@ mod writes (`game/GameArt`, LE1 only: ME2 has none of ME1's GFx movies loaded). 
 MEVR): the rail draws its own look (`assets/menu/omnitool.rcss` without `art`: Titillium/Rajdhani, the drawn frame and tabs,
 `mevr-menu-preview`'s `rail-*.png` without `--gameart`), the same entries and behaviour. Game art is never committed or shipped.
 
+ME2 selects the Mission Computer palette automatically. `plugin/RailArt.cpp` maps the cached frame and tabs to warm
+shadows, amber edges and gold highlights while preserving their transparency. `assets/menu/omnitool.rcss` contains the
+matching text, touch ring and drawn fallback colors under the `mission-computer` theme. ME1 uses its original palette.
+Preview the ME2 rail offline with `mevr-menu-preview --le2`. Include `--gameart <folder>` to render the recolored cached art.
+
 ### ME2's omni-tool (built, checked 2026-11-14 23:57)
 
 The deviation the owner named ("the model for the Omni tool will be different in Mass Effect 2"). ME2 has no
@@ -240,31 +245,47 @@ BioVFX_T_TechPowers._OmniTool.VFX.OmniTool_2Piece_2second`, `OmniHand_2sec on Sh
 ... LeftElbowTwist2`, `on Shepard's arm`; the snapshot 3 s after the tap shows ME2's orange holographic gauntlet on Shepard's
 left forearm, the rail with ME1's art above it.
 
-### What M4.3 still needs
+### Game screens and pointer on the wrist
 
-1. **ME2's screens on the wrist** (`plugin/WorldUi` + `game/WorldUi`), not built. Today they stand on Halcyon's flat panel
-   (head-locked, no world), the rail at the wrist beside them, Close closing them. What it takes, in order:
-   1. The mod (`game/WorldUi`): its handles (`gCachedManager`, `gPanels`, `gFocusPanel`, `gPanelTag`, `gPanelFullScreen`,
-      `gPanelHandler`, `gPanelVisible`, `gWorldInfo`, `gPlayerSelection`, `gCurrentTarget`) with `ue3::kEveryGame` and LE2 rows;
-      the loot, shop and skill-game handles stay ME1's (`tools/le2-name-audit.py game/WorldUi`: ME2 has none of
-      `BioSFHandler_Loot`, `_Shop`, `BioSkillGame_Handler`). ME2's panel tags in `vr::world_ui::FromTag`: its pause menu's
-      pages are `AreaMap`, `CharacterRecord`, `Journal`, `Codex` (the pages list above) under the browser wheel's panel
-      (`MenuBrowser`: [verify] the tags `world ui: the game's open panels:` logs on ME2 before mapping them).
-   2. The host's service: `setWorldUi`, `reserveWorldUi`, `logWorldUiStats`, `takeGameUiRequest` in `ModLoader`'s LE2
-      `WithMenus` (LE1's `WithWorldUi` gives the same functions; lane B4 owns `ModLoader`).
-   3. Two `[MEVR]` seams in Halcyon ME2 (lane B owns `src/halcyon/le2`): in `me2_xr.cpp`'s `flatPresentation`, a GUI mode the
-      world UI owns is not flat (LE1's `MevrBridge::WorldUiActive` / `WorldUiOwnership` in xr_session.cpp's decision: the world
-      renders in stereo behind the screen), and in `d3d_capture.cpp`'s UI-draw path the GUI's draws go to our HUD panel in mode
-      7 too while the world UI owns it (`hud_panel::Frame::gameplay` is 0-4 only today).
-   4. The quad: `MenusLe2` (or the bridge) blits the panel texture's shown part (`world_ui::Current`'s `part`) into a quad at
-      `Shown::panel` with `hud_panel::Blit` and its `backdrop` (LE1's `HalcyonOverlays` `RenderPanel` with `worldShown`), the
-      fan of light (`plugin/WristBeam`), and passes `rail.screen = Shown` so the rail slides out beside it (LE1's order).
-2. **The tap on Shepard's arm**: `MenusLe2` already reads `hud_pieces::Latest()`'s `bodyValid`, `leftWrist`, `leftElbow`,
-   `rightIndex1`, `rightIndex2` and `gunVisible`; once lane B4 serves the mod's HUD pieces on LE2 (`setHudPieces`, HostServices
-   v22, as LE1's `WithHudPieces`; the mod already finds the bones: `hud pieces: the omni-tool tap's bones: LeftWrist 59,
-   LeftElbow 58, RightIndexFinger1 90, RightIndexFinger2 91`), the target moves onto the drawn forearm and the touch to the drawn
-   fingertip with no change here (check: `omni-tool rail: the tap's target is on Shepard's drawn forearm`, `touch from Shepard's
-   drawn fingertip`; replay `make-wrist-recording.py`'s tap). Until then the tap is at the controllers (ME1's fallback).
+ME2 uses the shared `WorldUi`, `GamePointer` and `WristBeam` modules. The native GUI draws to the HUD panel while the level
+renders in stereo. `MenusLe2` projects the panel's visible crop from the wrist and gives the pointer the whole game window
+on the same plane. The left hand holds the screen. The right ray and Shepard's drawn fingertip can interact with it.
+The rail takes priority while it owns the pointer. Dismissing the screen discards the old hit target immediately.
+
+The host queues the same logical pointer events for both games. The mod translates them on the game thread before calling
+ME2's native `GuiKey`. ME2 uses move 6, left press/release 48/50 and wheel up/down 27/28. The LE2 pad filter consumes the
+vertical right stick while it drives the pointer's wheel, so the gesture cannot also switch Scaleform into gamepad mode.
+Snapshots report the hit, press and native GUI counters in `gamePointer` and `mod.guiCursor`. The `omniRail.target.tip`
+sample lets the existing wrist and rail replay tools aim touch gestures at Shepard's drawn hand.
+
+ME2 asks the Mission Computer to open a page only while it has focus.
+When a child page is already open, the mod sends the game's Back event
+and waits for the browser. This keeps the outgoing page from receiving
+events intended for the newly opened page.
+
+On the wrist, the native child page owns the projection. ME2 can leave one or more Mission Computer movies in the
+native stack after opening a page or returning from it. `WorldUi` hides those background movies with
+`BioSFPanel.SetMovieVisibility` and keeps them in the stack for native Back. The fake-headset run
+`20261115-043419-wrist-visual` captured Mission Computer, Squad and Codex in sequence and verified the underlying menu
+stayed out of both child pages. The tagged eye captures show the native omni-tool gauntlet and its projection together.
+
+**Freedom's Progress Save 4, fake headset, 2026-11-15.** The right ray's
+trigger activated Squad's Back and returned focus to the Mission
+Computer (snapshot `03-42-38-941`). A pose-only replay registered
+Shepard's fingertip pressing at `(3708, 2181)` client pixels, 4 mm from
+the panel (snapshot `03-54-24-796`). Switching from Squad to Codex
+returned to the browser first, then Codex took focus. A trigger click
+expanded Council Races. Ten wheel notches moved the Codex from Asari to
+Turians, with zero failed GUI calls (snapshots `03-54-55-338` and
+`03-55-11-593`). Close returned to gameplay and the pointer target was
+cleared (`03-55-22-790`). Both Release hosts built, `mevr-tests` and
+`mevr-pad-merge` passed, and the test session restored with zero
+differences.
+
+The captures show the Mission Computer artwork behind its active
+child page. Physical-headset reach, pointing comfort and readability
+still need a pass.
+
 
 ## The checks
 
@@ -334,7 +355,7 @@ tools\make-menu-recording.py rec.mevrrec "point 1318 792; click; hold 3"` and `t
 
 ## What is left
 
-- M4.3's screens on the wrist and the tap on Shepard's arm (above, "What M4.3 still needs").
+- Check wrist-screen reach, pointer comfort and legibility on a physical headset.
 - M4.2's own check: a guided calibration run through on ME2 and its `[Calibration.<key>]` read back by `game/BodyCalibration`
   (built and wired; the fake headset has no interaction profile, so no controller key: `calibration: ... no controller type
   known yet`; a replay of the calibration's poses, or the headset, is next).

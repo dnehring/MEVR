@@ -1,9 +1,13 @@
 <!-- SPDX-License-Identifier: MIT -->
 # Mass Effect 2 and 3 VR port feasibility and work map
 
-Execution entry point: [ME2 implementation plan](le2-port-implementation-plan.md). Existing systems and source reuse:
-[ME2 reuse map](le2-port-reuse-map.md). These turn the assessment into bounded agent tasks; implementation and runtime
-proofs remain pending.
+Execution entry points: [ME2 implementation plan](le2-port-implementation-plan.md) and
+[ME3 implementation plan](le3-port-implementation-plan.md). Existing systems and source reuse:
+[ME2 reuse map](le2-port-reuse-map.md), [ME3 reuse audit](le3-port-reuse-audit.md) and
+[ME3 melee audit](../research/le3-melee-audit.md).
+
+**Historical assessment:** the findings below describe the 2026-11-13 baseline, before the subsequent ME2 integration.
+Use the linked plans and their evidence gates for current status; this assessment is not a current parity checklist.
 
 Assessment date: 2026-11-13. Scope: **Legendary Edition single-player LE2 and LE3**, including their included DLC. Original standalone releases are a separate port. Baseline: working tree at `557628cac6fb1b37aa06803326cf4ff0776406f7`, including existing uncommitted changes.
 

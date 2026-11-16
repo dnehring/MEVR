@@ -283,6 +283,43 @@ PowerInfo const* FindPower(char const* label) {
     return nullptr;
 }
 
+PowerInfo const* FindLe2Power(char const* label) {
+    static constexpr PowerInfo kPowers[] = {
+        {"Throw", "Throw", 0, 1, Aim::Target},
+        {"Pull", "Pull", 0, 2, Aim::Target},
+        {"Warp", "Warp", 0, 3, Aim::Target},
+        {"Slam", "Slam", 0, 2, Aim::Target},
+        {"Reave", "Reave", 0, 3, Aim::Target},
+        {"Dominate", "Dominate", 0, 0, Aim::Target},
+        {"Stasis", "Stasis", 0, 5, Aim::Target},
+        {"Barrier", "Barrier", 0, 6, Aim::None},
+        {"Overload", "Overload", 1, 7, Aim::Target},
+        {"Incinerate", "Incinerate", 1, 9, Aim::Target},
+        {"CryoBlast", "Cryo Blast", 1, 11, Aim::Target},
+        {"EnergyDrain", "Energy Drain", 1, 7, Aim::Target},
+        {"AIHacking", "AI Hacking", 1, 10, Aim::Target},
+        {"NeuralShock", "Neural Shock", 1, 11, Aim::Target},
+        {"TechArmor", "Tech Armor", 1, 12, Aim::None},
+        {"TacticalCloak", "Tactical Cloak", 1, 14, Aim::None},
+        {"GethShieldBoost", "Geth Shield Boost", 1, 12, Aim::None},
+        {"Fortification", "Fortification", 2, 14, Aim::None},
+        {"AdrenalineRush", "Adrenaline Rush", 2, 13, Aim::None},
+        {"ConcussiveShot", "Concussive Shot", 2, 18, Aim::Target},
+        {"ArmorPiercingAmmo", "Armor-Piercing Ammo", 2, 19, Aim::None},
+        {"CryoAmmo", "Cryo Ammo", 2, 16, Aim::None},
+        {"DisruptorAmmo", "Disruptor Ammo", 2, 17, Aim::None},
+        {"IncendiaryAmmo", "Incendiary Ammo", 2, 18, Aim::None},
+        {"WarpAmmo", "Warp Ammo", 2, 19, Aim::None},
+        {"ShredderAmmo", "Shredder Ammo", 2, 17, Aim::None},
+    };
+    if (label != nullptr) {
+        for (auto const& power : kPowers) {
+            if (std::strcmp(power.label, label) == 0) return &power;
+        }
+    }
+    return nullptr;
+}
+
 PowerInfo const& NoPower() {
     static constexpr PowerInfo kNone{"None", "No power", 2, kNoPowerIcon, Aim::None};
     return kNone;
@@ -530,12 +567,23 @@ Vec2 SeenInPlane(XrPosef const& wheel, XrVector3f eye, XrVector3f source) {
     return InPlane(wheel, source);
 }
 
+Page PowerPage(int powerCount, int requestedPage) {
+    powerCount = std::max(powerCount, 0);
+    if (powerCount <= kMaxEntries - 1) return {0, 1, 0, powerCount, -1};
+    int constexpr capacity = kMaxEntries - 2;
+    int const pages = 1 + (powerCount - 1) / capacity;
+    int const page = std::max(requestedPage, 0) % pages;
+    int const count = std::min(capacity, powerCount - page * capacity);
+    return {page, pages, page * capacity, count, count + 1};
+}
+
 char const* Name(Event event) {
     switch (event) {
     case Event::None: return "none";
     case Event::Opened: return "opened";
     case Event::Equipped: return "equipped";
     case Event::Cancelled: return "cancelled";
+    case Event::PageChanged: return "page changed";
     }
     return "?";
 }
@@ -607,6 +655,19 @@ Event Step(Machine& m, MachineInput const& in, std::vector<float> const& angles,
 
     auto equip = [&]() {
         if (m.selected >= 0) {
+            if (m.selected == in.moreIndex) {
+                // Continue in tap mode after X release or pinch/squeeze, without
+                // letting a held confirmation equip a tile on the new page.
+                m.toggled = true;
+                m.selected = -1;
+                m.equipped = -1;
+                m.selectedAt = in.time;
+                m.stickPicked = true;
+                m.stickHand = in.hand;
+                m.triggerArmed = false;
+                m.gripArmed = false;
+                return Event::PageChanged;
+            }
             m.equipped = m.selected;
             return close(Event::Equipped);
         }
@@ -639,6 +700,10 @@ SelfGesture SelfGestureFor(char const* label) {
         {"KF_Barrier", SelfGesture::Chest},      {"AR_ShieldBoost", SelfGesture::Chest}, {"AT_Immunity", SelfGesture::Chest},
         {"FT_Adrenaline", SelfGesture::Chest},   {"LW_Marksman", SelfGesture::Gun},      {"AW_Suppression", SelfGesture::Gun},
         {"BW_CarnageSetup", SelfGesture::Gun},   {"SW_Critical", SelfGesture::Gun},      {"TC_TakeDown", SelfGesture::Raise},
+        {"AdrenalineRush", SelfGesture::Chest}, {"Barrier", SelfGesture::Chest}, {"TechArmor", SelfGesture::Chest},
+        {"TacticalCloak", SelfGesture::Chest}, {"GethShieldBoost", SelfGesture::Chest}, {"Fortification", SelfGesture::Chest},
+        {"ArmorPiercingAmmo", SelfGesture::Gun}, {"CryoAmmo", SelfGesture::Gun}, {"DisruptorAmmo", SelfGesture::Gun},
+        {"IncendiaryAmmo", SelfGesture::Gun}, {"WarpAmmo", SelfGesture::Gun}, {"ShredderAmmo", SelfGesture::Gun},
     };
     for (auto const& s : kSelf) {
         if (std::strcmp(s.label, label) == 0) {

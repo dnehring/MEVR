@@ -510,7 +510,118 @@ void TestCue() {
 int RunTraversalTests() {
     gFailures = 0;
     TestNames();
+    {
+        tv::ActionLifecycle a;
+        CHECK(a.Request(10, 1.0));
+        CHECK(!a.Request(10, 1.1)); // one pending request
+        a.Observe(10, 0, tv::Kind::None, 1.1);
+        CHECK(a.phase == tv::ActionPhase::Requested); // dispatch isn't a start
+        a.Observe(10, 42, tv::Kind::LadderUp, 1.2);
+        CHECK(a.phase == tv::ActionPhase::Started && a.kind == tv::Kind::LadderUp);
+        a.End(10, 43, false, 1.3);
+        CHECK(a.phase == tv::ActionPhase::Started); // another action can't finish ours
+        a.End(10, 42, false, 2.0);
+        CHECK(a.phase == tv::ActionPhase::Completed);
+        a.End(10, 42, true, 2.0); // native interrupt wraps common end
+        CHECK(a.phase == tv::ActionPhase::Interrupted);
+        a.End(10, 42, false, 2.0);
+        CHECK(a.phase == tv::ActionPhase::Interrupted); // a later common callback cannot hide interruption
+        CHECK(a.Request(10, 3.0) && a.serial == 2);
+        a.Observe(10, 0, tv::Kind::None, 3.6);
+        CHECK(a.phase == tv::ActionPhase::NoStartObserved);
+        CHECK(a.Request(10, 4.0));
+        a.Observe(10, 50, tv::Kind::Vault, 4.1);
+        a.Observe(10, 0, tv::Kind::None, 4.3);
+        CHECK(a.phase == tv::ActionPhase::EndedUnknown); // disappearing doesn't prove completion
+        CHECK(a.Request(10, 5.0));
+        a.Observe(10, 51, tv::Kind::Evade, 5.1);
+        a.Observe(11, 51, tv::Kind::Evade, 5.2); // same pointer after load is a different context
+        CHECK(a.phase == tv::ActionPhase::Cancelled && a.action == 0);
+        a.End(10, 51, false, 5.3);
+        CHECK(a.phase == tv::ActionPhase::Cancelled);
+        CHECK(std::string(tv::Label(tv::Kind::Ladder)) == "Use ladder");
+    }
     TestDoubleTap();
+    // Scene entry on the second press cannot use the previous on-foot sample to authorize it.
+    {
+        tv::PressTracker p;
+        p.Step(At(0.0, false));
+        CHECK(p.Step(At(0.05, true)) == tv::Tap::First);
+        p.Step(At(0.1, false));
+        auto seated = At(0.15, true);
+        seated.authoredSeated = true;
+        CHECK(p.Step(seated) == tv::Tap::Other);
+        CHECK(p.Last().why == tv::PressWhy::AuthoredSeated);
+        CHECK(tv::Judge(p, 0.15).why == tv::CommitWhy::NotFresh);
+        p.Step(At(0.2, false));
+        CHECK(p.Step(At(0.25, true)) == tv::Tap::First);
+    }
+    // A menu/seat interruption between taps consumes the pending first tap even without a button edge.
+    for (bool seat : {false, true}) {
+        tv::PressTracker p;
+        p.Step(At(0.0, false));
+        p.Step(At(0.05, true));
+        p.Step(At(0.1, false));
+        auto interrupted = At(0.12, false);
+        interrupted.authoredSeated = seat;
+        interrupted.menuOpen = !seat;
+        p.Step(interrupted);
+        p.Step(At(0.14, false));
+        CHECK(p.Step(At(0.16, true)) == tv::Tap::First);
+    }
+    {
+        tv::PressTracker p;
+        p.Step(At(0.0, false));
+        p.Step(At(0.05, true));
+        p.Step(At(0.1, false));
+        CHECK(p.Step(At(0.15, true)) == tv::Tap::Double);
+        auto seated = At(0.16, true);
+        seated.authoredSeated = true;
+        p.Step(seated); // no new button edge, but the pending double cannot survive the scene
+        CHECK(tv::Judge(p, 0.16).why == tv::CommitWhy::NotFresh);
+    }
+    // A native 90-degree turn must not rotate the player's view at action end.
+    // The accumulated basis survives recovery; later player turns remain one-for-one.
+    {
+        tv::AuthoredYaw yaw;
+        yaw.Begin(20);
+        CHECK(Near(yaw.Update(110, true), 20));
+        CHECK(Near(yaw.Offset(), -90));
+        CHECK(Near(yaw.Update(110, false), 20));
+        CHECK(!yaw.Holding());
+        CHECK(Near(yaw.Update(140, false), 50));
+        yaw.Begin(140); // another authored action starts from the already corrected basis
+        CHECK(Near(yaw.Update(50, true), 50));
+        CHECK(Near(yaw.Update(50, false), 50));
+        yaw.Reset(); // explicit new scene/reference space
+        CHECK(Near(yaw.Update(75, false), 75));
+    }
+    {
+        tv::AuthoredYaw yaw;
+        yaw.Begin(170);
+        CHECK(Near(yaw.Update(-175, true), 170));
+        CHECK(Near(yaw.Offset(), -15));
+        CHECK(Near(yaw.Update(-175, false), 170));
+        CHECK(Near(yaw.Update(-165, false), 180));
+    }
+    {
+        tv::Presentation p;
+        p.flags = tv::kPresentationActive;
+        p.sceneGeneration = 5; p.timeMs = 1000; p.sessions = 2; p.recenters = 7; p.yawOffsetUU = -16384;
+        CHECK(tv::PresentationFresh(p, 1100, 7, 2));
+        CHECK(!tv::PresentationFresh(p, 1101, 7, 2));
+        CHECK(!tv::PresentationFresh(p, 999, 7, 2));
+        CHECK(!tv::PresentationFresh(p, 1000, 8, 2));
+        CHECK(!tv::PresentationFresh(p, 1000, 7, 3));
+        p.flags |= 4;
+        CHECK(!tv::PresentationFresh(p, 1000, 7, 2));
+        p.flags = tv::kPresentationActive; p.yawOffsetUU = 32769;
+        CHECK(!tv::PresentationFresh(p, 1000, 7, 2));
+        p.yawOffsetUU = 0; p.version = 0;
+        CHECK(!tv::PresentationFresh(p, 1000, 7, 2));
+        p.version = tv::kPresentationVersion; --p.size;
+        CHECK(!tv::PresentationFresh(p, 1000, 7, 2));
+    }
     TestJudge();
     TestMoveRecord();
     TestLevelView();

@@ -16,6 +16,9 @@
 // a slider's only once it has rested for a moment. Unit-tested in tests/Main.cpp.
 namespace mevr::vr::menu_settings {
 
+// LE3 foundation settings whose actual native/presentation adapters are not implemented yet.
+bool UnavailableInLe3Presentation(std::string_view key);
+
 // `[Hands] handPitch` when the file has none: the game's hand model sits 90 degrees off the OpenXR grip pose (on every
 // controller tried since 2026-10-08: Touch, PS VR2 Sense), so 90 is where hands look right (the owner, 2026-11-05: the
 // dev settings are the defaults). The menu's hand-angle row shows and sets the trim around it (its -30..30).
@@ -177,6 +180,7 @@ struct GuideInput {
     bool handWheel = true;               // [PowerWheel] on: X opens the power wheel at the left hand (research/55)
     bool castLock = true;                // [PowerWheel] lock: raise the left hand at an enemy, push to cast
     bool selfGestures = true;            // [PowerWheel] selfGestures: powers on yourself by a gesture of the open left hand
+    bool le2 = false;
 };
 // The page's texts, as (key, text): "guide_<id>" (the short label on the controller drawing) and "guide_<id>_how" (the
 // line in the list under it) for the ids lt, lgrip, lstick, x, y, menu, rt, rgrip, rstick, a, b; "guide_grenade",

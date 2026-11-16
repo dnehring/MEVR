@@ -299,7 +299,7 @@ bool SubmitAlternateEye(ID3D11DeviceContext* context, ID3D11Texture2D* backbuffe
         }
     }
     EyeImage& current = gEyes[static_cast<std::size_t>(view.eye)];
-    gBlit.Draw(context, backbuffer, current.heldRtv.Get(), width, height);
+    if (!gBlit.Draw(context, backbuffer, current.heldRtv.Get(), width, height)) return false;
     current.view = view;
     for (std::size_t e = 0; e < gEyes.size(); ++e) {
         EyeImage& eye = gEyes[e];
@@ -517,13 +517,13 @@ void OnPresent(IDXGISwapChain* swapChain) {
         }
     } else if (gFrame.shouldRender && haveView) {
         if (ID3D11RenderTargetView* const target = gImage.Acquire()) {
-            gBlit.Draw(immediate.Get(), backbuffer.Get(), target, gImage.Width(), gImage.Height());
+            bool const copied = gBlit.Draw(immediate.Get(), backbuffer.Get(), target, gImage.Width(), gImage.Height());
             gImage.Release();
 
-            if (submitMode == Mode::Screen) {
+            if (copied && submitMode == Mode::Screen) {
                 quad = ScreenLayer();
                 layers[layerCount++] = reinterpret_cast<XrCompositionLayerBaseHeader const*>(&quad);
-            } else {
+            } else if (copied) {
                 FillProjectionViews(*gLastRendered, views);
                 projection.space = gSession.LocalSpace();
                 projection.viewCount = static_cast<std::uint32_t>(views.size());

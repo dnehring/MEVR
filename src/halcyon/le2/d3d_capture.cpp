@@ -4184,6 +4184,9 @@ bool GetMenuMode() noexcept
     const int m = g_autoGameMode.load(std::memory_order_acquire);
     if (m == 8 || m == 9 || m == 10) return true;   // Movie / Galaxy / Orbital - genuinely flat, no depth exists
     if (m != 7) return false;                       // gameplay (and - 1 unreadable) -> fail OPEN to VR
+#if defined(MEVR_ASI)
+    if (::ME2VR::MevrBridge::WorldUiOwnsGui(m)) return false;   // [MEVR] a game screen of ours stands in the world (M4.3)
+#endif
     // [GM7PAUSE] GUI mode: flat only when a blocking menu has actually paused the engine. Without this,
     // the gameplay HUD (objectives/tutorials/aiming) also reports 7 and flattens live combat.
     if (!g_gm7NeedsPause.load(std::memory_order_acquire)) return true;   // toggle off = old always-flat behaviour

@@ -44,6 +44,81 @@ th::Input In(bool wheel, std::uint32_t silentMs, th::Match now = {}, th::Match a
     return in;
 }
 
+void TestListenOwnership() {
+    th::ListenOwnership listens;
+    // The game ticks Voice before Thespian. An ordinary or developer-open radio listen observed on foot
+    // with no spoken turn must remain routable as a squad command on the next tick.
+    listens.Observe(false, false, 100);
+    listens.Observe(false, true, 101);
+    CHECK(!listens.Owns(0) && !listens.Owns(100) && !listens.Owns(101));
+    // During an actual turn, a pending closed stream is not ours; the accepted open stream is.
+    listens.Observe(true, false, 200);
+    CHECK(!listens.Owns(200));
+    listens.Observe(true, true, 200);
+    CHECK(listens.Owns(200));
+    // Ending the turn or opening a menu preserves its late-final ownership, without swallowing the next radio.
+    listens.Observe(false, false, 200);
+    listens.Observe(false, true, 300);
+    CHECK(listens.Owns(200) && !listens.Owns(300));
+    for (int i = 0; i < 12; ++i) listens.Observe(true, true, 400);
+    CHECK(listens.Owns(200) && listens.Owns(400)); // repeated state samples must not evict history
+}
+
+void TestMenuOwnership() {
+    th::State state;
+    th::Settings settings;
+    th::Step(state, settings, In(true, 0));
+    th::Match const full = Heard(1, true, true, 1.0f);
+    auto leading = th::Step(state, settings, In(true, 0, full, full));
+    CHECK(leading.phase == th::Phase::Leading && leading.commit < 0);
+    // A full, confident transcript and elapsed silence would commit here, but a hidden panel cannot select.
+    auto hidden = In(true, 2000, full, full);
+    hidden.otherUiOwnsInput = true;
+    auto blocked = th::Step(state, settings, hidden);
+    CHECK(blocked.phase == th::Phase::Off && blocked.commit < 0 && state.phase == th::Phase::Off);
+    // Returning requests a new transcript; it must not resume that hidden partial at its commit threshold.
+    auto resumed = th::Step(state, settings, In(true, 2000, full, full));
+    CHECK(resumed.phase == th::Phase::Armed && resumed.restart && resumed.commit < 0);
+    auto empty = th::Step(state, settings, In(true, 2000));
+    CHECK(empty.phase == th::Phase::Armed && empty.commit < 0);
+}
+
+void TestWheelIdentity() {
+    th::WheelIdentity const original{7, 1, 2, 3, 4, 5, 10, 123};
+    CHECK(th::SameWheel(original, original));
+    auto next = original;
+    next.entry = 11; // same [0,1,2] offers and visible slots on the next line
+    CHECK(!th::SameWheel(original, next));
+    next = original; ++next.sceneGeneration; // pointer reuse after load/travel
+    CHECK(!th::SameWheel(original, next));
+    next = original; ++next.data;
+    CHECK(!th::SameWheel(original, next));
+    next = original; ++next.handler;
+    CHECK(!th::SameWheel(original, next));
+    next = original; ++next.offers; // investigate/back without an entry change
+    CHECK(!th::SameWheel(original, next));
+    next = original; next.entry = -1;
+    CHECK(!th::SameWheel(next, next));
+    CHECK(!th::SameWheel({}, {}));
+}
+
+void TestTurnRestartBarrier() {
+    CHECK(!th::FreshTurnListen(100, 200, 100)); // late final from the prior wheel
+    CHECK(!th::FreshTurnListen(100, 200, 150)); // an earlier radio listen is not the new turn
+    CHECK(!th::FreshTurnListen(200, 200, 200)); // request coalesced with an already open stream
+    CHECK(!th::FreshTurnListen(100, 0, 300)); // stop is not yet observed; start not requested
+    CHECK(th::FreshTurnListen(100, 200, 200));
+    CHECK(th::FreshTurnListen(100, 200, 300));
+    th::State state; state.phase = th::Phase::Committed; state.committed = 1;
+    th::Output out; out.phase = th::Phase::Committed; out.commit = 1; out.leader = 1;
+    th::RejectSelection(state, out);
+    CHECK(state.phase == th::Phase::Off && state.committed == -1);
+    CHECK(out.phase == th::Phase::Off && out.commit == -1 && out.leader == -1);
+    auto const full = Heard(1, true, true, 1.0f);
+    auto const next = th::Step(state, {}, In(true, 2000, full, full));
+    CHECK(next.phase == th::Phase::Armed && next.restart && next.commit == -1);
+}
+
 void TestStrictness() {
     CHECK(th::ParseStrictness("Method") == th::Strictness::Method);
     CHECK(th::ParseStrictness(" relaxed ") == th::Strictness::Relaxed);
@@ -257,6 +332,17 @@ void TestPanel() {
 }
 
 int RunThespianTests() {
+    // Missing/revoked, old and future render contexts cannot dispatch invisible cards.
+    CHECK(!th::InputContextFresh(0, 100));
+    CHECK(th::InputContextFresh(100, 100));
+    CHECK(th::InputContextFresh(100, 133)); // the null headset's normal frame interval
+    CHECK(th::InputContextFresh(100, 200));
+    CHECK(!th::InputContextFresh(100, 201));
+    CHECK(!th::InputContextFresh(101, 100));
+    TestWheelIdentity();
+    TestTurnRestartBarrier();
+    TestListenOwnership();
+    TestMenuOwnership();
     TestPanel();
     TestStrictness();
     TestTurn();

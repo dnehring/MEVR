@@ -32,14 +32,49 @@ namespace mevr::engine::adapter {
 // cinematics, full-screen GUI, movies, the galaxy map and similar (the cameras cut, or there's no
 // world to look around in). On-foot play, vehicles and the power/weapon/command wheels stay
 // head-tracked. SFXGameModeManager.EGameModes differs per game.
-inline bool IsFlatScreenMode(unsigned char mode) {
+enum class Mode { Unknown, OnFoot, Vehicle, Atlas, PowerWheel, WeaponWheel, Command, Injured,
+    Conversation, Cinematic, Gui, Movie, Galaxy, Orbital, Minigame };
+
+// Translate only known native contexts. Invalid/loading values remain Unknown rather than wrapping to a byte.
+// Values are the original games' SFXGameModeManager.EGameModes (LE3 adds Atlas and InjuredShepard).
+inline constexpr Mode GameMode(int mode) {
+    if (mode == 0) return Mode::OnFoot;
 #if defined(MEVR_GAME_LE1)
-    return mode >= 5 && mode <= 10;  // Conversation, Cinematic, GUI, Movie, Galaxy, Minigame
+    switch (mode) {
+    case 1: return Mode::Vehicle; case 2: return Mode::PowerWheel; case 3: return Mode::WeaponWheel;
+    case 4: return Mode::Command; case 5: return Mode::Conversation; case 6: return Mode::Cinematic;
+    case 7: return Mode::Gui; case 8: return Mode::Movie; case 9: return Mode::Galaxy; case 10: return Mode::Minigame;
+    default: return Mode::Unknown;
+    }
 #elif defined(MEVR_GAME_LE2)
-    return mode >= 5 && mode <= 10;  // Conversation, Cinematic, GUI, Movie, Galaxy, Orbital
+    switch (mode) {
+    case 1: return Mode::PowerWheel; case 2: return Mode::WeaponWheel; case 3: return Mode::Command;
+    case 4: return Mode::Vehicle; case 5: return Mode::Conversation; case 6: return Mode::Cinematic;
+    case 7: return Mode::Gui; case 8: return Mode::Movie; case 9: return Mode::Galaxy; case 10: return Mode::Orbital;
+    default: return Mode::Unknown;
+    }
 #else
-    return mode >= 7 && mode <= 12;  // Conversation, Cinematic, GUI, Movie, Galaxy, Orbital
+    switch (mode) {
+    case 1: return Mode::Vehicle; case 2: return Mode::Atlas; case 3: return Mode::PowerWheel;
+    case 4: return Mode::WeaponWheel; case 5: return Mode::Command; case 6: return Mode::Injured;
+    case 7: return Mode::Conversation; case 8: return Mode::Cinematic; case 9: return Mode::Gui;
+    case 10: return Mode::Movie; case 11: return Mode::Galaxy; case 12: return Mode::Orbital;
+    default: return Mode::Unknown;
+    }
 #endif
+}
+inline constexpr bool IsFlatScreenMode(int mode) {
+    auto const context = GameMode(mode);
+    return context == Mode::Conversation || context == Mode::Cinematic || context == Mode::Gui ||
+        context == Mode::Movie || context == Mode::Galaxy || context == Mode::Orbital || context == Mode::Minigame;
+}
+inline constexpr bool IsConversationMode(int mode) { return GameMode(mode) == Mode::Conversation; }
+inline constexpr bool IsGalaxyMode(int mode) { return GameMode(mode) == Mode::Galaxy; }
+inline constexpr bool IsOrbitalMode(int mode) { return GameMode(mode) == Mode::Orbital; }
+inline constexpr bool IsMapMode(int mode) { return IsGalaxyMode(mode) || IsOrbitalMode(mode); }
+inline constexpr bool IsWristMenuMode(int mode) {
+    auto const context = GameMode(mode);
+    return context == Mode::OnFoot || context == Mode::Gui || context == Mode::Minigame;
 }
 
 // BioPlayerController's game-mode manager property (EGameModes: 0 = on-foot gameplay in all three
@@ -71,7 +106,8 @@ inline constexpr FrameOffsets kFrame{0x14, 0x1C, 0x24, 0x34, 0x2C};
 
 // Where the reflection fields are. LE1's come from our Ghidra reading of 2.0.0.48602 (research/34
 // section 2), LE2's from the same reading of ME2's exe (research/le2-engine-access-discovery.md "M1: what ME2's code
-// showed"). LE3 isn't analysed yet: the layer stays off there and the modules using it stand down.
+// showed"). LE3's are read from its captured native code (research/le3-engine-access-discovery.md).
+// Engine access does not enable the separately gated gameplay modules.
 inline std::optional<ue3::Layout> ReflectionLayout() {
 #if defined(MEVR_GAME_LE1)
     ue3::Layout l;
@@ -148,6 +184,38 @@ inline std::optional<ue3::Layout> ReflectionLayout() {
     l.nameChars = 0x0C;
     l.nameWideFlag = 0x40000000;
     return l;
+#elif defined(MEVR_GAME_LE3)
+    ue3::Layout l;
+    // ~UObject 0x121250; IsPendingKill 0x879D0; GetPathName 0x127F60; execIsA 0xE2BA0.
+    l.objectIndex = 0x08;
+    l.objectFlags = 0x0C;
+    l.objectOuter = 0x40;
+    l.objectName = 0x48;
+    l.objectClass = 0x50;
+    l.pendingKillFlag = 1ull << 61;
+    l.processEventSlot = 0x230; // ProcessEvent at UObject vtable 0x10774F8 +0x230.
+    l.fieldSuper = 0x60;
+    l.fieldNext = 0x68;
+    // ProcessEvent 0xF4F80 parameter loops and CallFunction 0xF2C30.
+    l.structChildren = 0x70;
+    l.structPropertySize = 0x78;
+    l.propertyArrayDim = 0x70;
+    l.propertyElementSize = 0x74;
+    l.propertyFlags = 0x78;
+    l.propertyOffset = 0x94;
+    l.propertyTyped = 0xD0; // execLetBool 0xE98A0: BoolProperty mask / ArrayProperty inner.
+    l.functionFlags = 0xE0;
+    l.functionNative = 0xE4;
+    l.functionParmsSize = 0xE6;
+    l.functionReturnOffset = 0xE8;
+    l.functionFunc = 0xD8; // Precedes flags, unlike LE1/LE2.
+    // AppendString 0x90580; entry text 0x904E0 / comparison 0x8E570.
+    l.namePoolShift = 29;
+    l.namePoolMask = 7;
+    l.nameOffsetMask = 0x1FFFFFFF;
+    l.nameChars = 0x0C;
+    l.nameWideFlag = 0x40000000;
+    return l;
 #else
     return std::nullopt;
 #endif
@@ -193,7 +261,8 @@ inline std::optional<ReflectionGlobals> ReflectionGlobalsForGame() {
     g.namePoolsPattern = {"48 8D 15 ?? ?? ?? ?? 48 C1 F8 1D 81 E1 FF FF FF 1F 83 E0 07 48 03 0C C2", 0, 3, 7};
     g.processEventRva = addresses::kProcessEvent;
     return g;
-#elif defined(MEVR_GAME_LE2)
+#elif defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+    // LE3: one GObjects reference at 0x12128F; 43 name-pool matches all resolve to 0x17B33D0.
     // LE1's two patterns match ME2's exe too: ~UObject's load of GObjects (one match, at 0x104FC3) and AppendString's load
     // of the pools before the index split (33 matches, all naming 0x1668A10).
     ReflectionGlobals g;
@@ -247,7 +316,8 @@ inline std::optional<AllocatorGlobals> AllocatorGlobalsForGame() {
         0x0F};
     g.gmallocRva = addresses::kGMalloc;
     return g;
-#elif defined(MEVR_GAME_LE2)
+#elif defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+    // ME3's 0xBF110 / 0xBF0D0 use the same ABI and slots as ME2; both load GMalloc at 0x17CD588.
     // ME2: appMalloc (0x9C900) is LE1's byte for byte; appFree (0x9C8C0) is LE1's but for its last instruction: GMalloc's
     // Free is its vtable's +0x18 there (LE1's +0x20). Both take LE1's parameters (size, alignment, flags; pointer, flags).
     AllocatorGlobals g;

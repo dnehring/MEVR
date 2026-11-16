@@ -14,7 +14,13 @@
 namespace mevr::engine::selection_gaze {
 namespace {
 
+#if defined(MEVR_GAME_LE3)
+constexpr char const* kHookName = "UBioPlayerSelection::FindCurrentSelectionTarget";
+using tUpdateSelection = void(void* selection);
+#else
 constexpr char const* kHookName = "UBioPlayerSelection::UpdateSelection";
+using tUpdateSelection = int(void* selection, float deltaSeconds);
+#endif
 
 // research/40 (Ghidra on the LE1 project; the .pdata function start checked with tools/rva-patterns.py):
 //   0xB7E850  execUpdateSelection, the script's native thunk: reads DeltaTime, calls
@@ -24,7 +30,8 @@ constexpr char const* kHookName = "UBioPlayerSelection::UpdateSelection";
 //             with the smallest angle that the POV's location can see (IsInLineOfSightFrom).
 constexpr std::uint32_t kUpdateSelectionRva = addresses::kUpdateSelection;
 
-using tUpdateSelection = int(void* selection, float deltaSeconds);
+// LE3 searches in a separate void(this) body. Its provider supplies the controller's
+// rotation, not CameraCache.POV.Rotation. Both paths share the swap/restore lifetime.
 
 tUpdateSelection* gOrig = nullptr;  // written before the hook goes live (core/Hook)
 bool gInstalled = false;
@@ -51,7 +58,11 @@ bool Ask(Provider provider, void const* selection, Swap& swap) {
 
 // No C++ objects with destructors here, so __finally keeps the in-flight count right and the camera put back even
 // when an exception unwinds through the engine's call.
+#if defined(MEVR_GAME_LE3)
+void UpdateSelectionHook(void* selection) {
+#else
 int UpdateSelectionHook(void* selection, float deltaSeconds) {
+#endif
     gInFlight.fetch_add(1, std::memory_order_acquire);
     gCalls.fetch_add(1, std::memory_order_relaxed);
     Swap swap;
@@ -68,9 +79,15 @@ int UpdateSelectionHook(void* selection, float deltaSeconds) {
         write_journal::Wrote("SelectionGaze.povRotation", swap.povRotation);
         gSwapped.fetch_add(1, std::memory_order_relaxed);
     }
+#if !defined(MEVR_GAME_LE3)
     int result = 0;
+#endif
     __try {
+#if defined(MEVR_GAME_LE3)
+        gOrig(selection);
+#else
         result = gOrig(selection, deltaSeconds);
+#endif
     } __finally {
         if (swapping) {
             *swap.povLocation = savedLocation;
@@ -79,7 +96,9 @@ int UpdateSelectionHook(void* selection, float deltaSeconds) {
         }
         gInFlight.fetch_sub(1, std::memory_order_release);
     }
+#if !defined(MEVR_GAME_LE3)
     return result;
+#endif
 }
 
 } // namespace
@@ -88,7 +107,7 @@ bool Install(hook::Context& init) {
     if (gInstalled) {
         return true;
     }
-    if (kUpdateSelectionRva == 0) {
+    if constexpr (kUpdateSelectionRva == 0) {
         log::Warn("interact: no address for this game's selection update: the game chooses what A uses from its camera");
         return false;
     }

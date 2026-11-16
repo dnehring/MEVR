@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "game/Traversal.hpp"
+#include "game/Le3Traversal.hpp"
 
 #include "core/Ini.hpp"
 #include "core/Log.hpp"
@@ -526,6 +527,9 @@ std::optional<bool> GameAdmits(ue3::Object* pc, Slot const& slot) {
 
 // The game's own move from where the pawn stands: SFXPlayerController.MantleCover / ClimbCover(the slot).
 bool CallMove(ue3::Object* pc, Slot const& slot) {
+    // Recheck immediately before mutation; a press/near-slot result can predate a scene transition.
+    if (gLink.authoredSeated || gLink.menuOpen || player::GameMode(pc) != 0 ||
+        gIgnoreMove.Read<std::uint8_t>(pc).value_or(1) != 0) return false;
     bool const climb = slot.kind == tv::Kind::ClimbUp;
     ue3::Function* const fn = climb ? gClimbCoverRef.Get() : gMantleCoverRef.Get();
     if (fn == nullptr || !ue3::runtime::IsAlive(slot.link)) {
@@ -957,7 +961,9 @@ void RefreshSettings() {
 } // namespace
 
 bool TryStartup() {
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE3)
+    return le3::TryStartup();
+#elif defined(MEVR_GAME_LE2)
     if (!ue3::runtime::Up()) {
         log::Warn("traversal: our reflection layer is off ({}): no vault", ue3::runtime::Status());
         return false;
@@ -998,7 +1004,10 @@ bool TryStartup() {
 
 void Tick(float /*deltaSeconds*/, Link const& link) {
     gLink = link;
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE3)
+    RefreshSettings();
+    le3::Tick(link, gSettings);
+#elif defined(MEVR_GAME_LE2)
     if (!gStarted) {
         return;
     }
@@ -1036,9 +1045,9 @@ void Tick(float /*deltaSeconds*/, Link const& link) {
         log::Info("traversal: paused {:.2f} s into the {} (a test: `pause` again resumes)", now - gMove.startS, tv::Name(gMove.kind));
     }
     bool const traversing = gMove.active;
-    if (onFoot && !traversing) {
+    if (onFoot && !link.authoredSeated && !traversing) {
         UpdateNear(pc, pawn, now);
-    } else if (!onFoot) {
+    } else if (!onFoot || link.authoredSeated) {
         gNear.slot = -1;
         gNear.admitted = false;
     }
@@ -1052,6 +1061,7 @@ void Tick(float /*deltaSeconds*/, Link const& link) {
     in.eligible = gNear.slot >= 0 && gNear.admitted;
     in.useFirst = useFirst;
     in.traversing = traversing;
+    in.authoredSeated = link.authoredSeated;
     tv::Tap const tap = gPresses.Step(in, gSettings.doubleTapS);
     if (tap != tv::Tap::None) {
         ++gCounters.presses;
@@ -1160,10 +1170,17 @@ void Tick(float /*deltaSeconds*/, Link const& link) {
 }
 
 bool Moving() {
+#if defined(MEVR_GAME_LE3)
+    return le3::Moving();
+#else
     return gMove.active || gMove.settling;
+#endif
 }
 
 std::string StatusJson() {
+#if defined(MEVR_GAME_LE3)
+    return le3::StatusJson();
+#else
     namespace json = vr::test_request;
     std::string nearText = "null";
     if (gNear.slot >= 0 && static_cast<std::size_t>(gNear.slot) < gSlots.size()) {
@@ -1176,9 +1193,14 @@ std::string StatusJson() {
                        "\"doubleTaps\": {}, \"commits\": {}, \"commitsRefused\": {}, \"violations\": {}, \"last\": {}}}",
         gStarted ? "true" : "false", json::JsonString(gSettingsText), gSlots.size(), nearText, Moving() ? "true" : "false", gMoves,
         gTotals.presses, gTotals.doubleTaps, gTotals.commits, gTotals.commitsRefused, gTotals.violations, gLastSummary);
+#endif
 }
 
 void LogStats() {
+#if defined(MEVR_GAME_LE3)
+    log::Info("    traversal: {}", le3::StatusJson());
+    return;
+#endif
     if (!gStarted) {
         return;
     }
@@ -1192,6 +1214,10 @@ void LogStats() {
     gCounters = Counters{};
 }
 
+std::string Command(std::string const& args, Link const& freshLink) {
+    gLink = freshLink;
+    return Command(args);
+}
 std::string Command(std::string const& args) {
     std::istringstream words(args);
     std::string verb;
@@ -1221,20 +1247,30 @@ std::string Command(std::string const& args) {
         gSettingsMs = 0;
         return std::format("traversal: mask {}", gMaskOverride ? tv::Name(*gMaskOverride) : "from the ini");
     }
+#if defined(MEVR_GAME_LE2)
     if (verb == "pause") {
         double seconds = 0.5;
         words >> seconds;
         gPauseAfterS = std::max(0.0, seconds);
         return std::format("traversal: the next move pauses the game {:.2f} s in (a test; the console's `pause` resumes)", gPauseAfterS);
     }
+#endif
     if (verb == "cue") return onOff(gCueOverride, "cue");
     if (verb == "trace") return onOff(gTraceOverride, "trace");
     if (verb == "commit") return onOff(gCommitOverride, "commit on the double A");
+#if defined(MEVR_GAME_LE3)
+    return le3::Command(args, gLink);
+#endif
 #if defined(MEVR_GAME_LE2)
     ue3::Object* const pc = player::Controller();
     ue3::Object* const pawn = player::BioPawn(pc);
     if (pc == nullptr || pawn == nullptr) {
         return "traversal: no player pawn";
+    }
+    if ((verb == "place" || verb == "go" || verb == "try") &&
+        (gLink.authoredSeated || gLink.menuOpen || player::GameMode(pc) != 0 ||
+         gIgnoreMove.Read<std::uint8_t>(pc).value_or(1) != 0)) {
+        return "traversal: scene/menu/native movement guard blocks mutation";
     }
     if (verb == "slots") {
         RefreshSlots(pawn, Now());
@@ -1352,6 +1388,9 @@ std::string Command(std::string const& args) {
 }
 
 void Shutdown() {
+#if defined(MEVR_GAME_LE3)
+    le3::Shutdown();
+#endif
     gStarted = false;
     gLink = {};
     gSlots.clear();

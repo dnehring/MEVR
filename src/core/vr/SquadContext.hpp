@@ -42,13 +42,15 @@ using PawnId = std::uint64_t;  // whatever identifies a pawn while it lives (its
 
 // ---- The scene the mod snapshots -----------------------------------------------------------------------------------
 
-inline constexpr int kWeapons = 4;  // squad_menu's types: 0 pistol, 1 shotgun, 2 assault rifle, 3 sniper rifle
-char const* WeaponCode(int weapon);  // "PI", "SG", "AR", "SR"; "-" for anything else
+inline constexpr int kWeapons = 5;  // squad_menu's types: 0 pistol, 1 shotgun, 2 assault rifle, 3 sniper rifle, 4 SMG
+char const* WeaponCode(int weapon);  // "PI", "SG", "AR", "SR", "SMG"; "-" for anything else
 std::optional<int> WeaponFromCode(std::string_view code);
 
+enum PowerTarget : std::uint8_t { PowerHostile = 1, PowerSelf = 2, PowerAlly = 4, PowerLocation = 8 };
 struct Power {
     std::string code;        // the prompt's short name (e.g. "OVR"): three or four capitals, from the roster
     float readyInS = 0.0f;   // the cooldown left; 0 = ready
+    std::uint8_t targets = PowerHostile; // default preserves ME1/ME2 validation; native adapters supply broader intent
 };
 struct Member {
     char letter = 0;           // the roster letter the prompt uses (G Garrus, W Wrex, T Tali, L Liara, A Ashley, K Kaidan)
@@ -262,7 +264,7 @@ struct Target {
     // Direction: "go left", "move up", "flank right": a point `directionM` from the player that way (index: the Sector);
     // an attack that way is the nearest group in that sector.
     // Landmark: "behind that crate", "the wall on the left": a move or hold to the cover's far side (never an attack).
-    enum Kind : std::uint8_t { None, Group, Pointed, Aim, Gaze, Last, Other, Self, Direction, Landmark } kind = None;
+    enum Kind : std::uint8_t { None, Group, Pointed, Aim, Gaze, Last, Other, Self, Direction, Landmark, Ally } kind = None;
     int index = 0;  // Group: the id; Pointed: the deictic's index; Direction: the Sector; Landmark: the id
 };
 // The point `distanceM` from the player's feet in a direction relative to where they face (Behind: back the way they came).
@@ -302,6 +304,9 @@ struct Resolved {
     int group = 0;      // the target group (0: none)
     int runnerUp = 0;   // the next-best group, kept for "no, the other ones"
     int landmark = 0;   // a move or hold to this cover (0: none)
+    bool selfPower = false;
+    bool locationPower = false;
+    char ally = 0; // current party identity; game adapter resolves and revalidates the actual target
 };
 Resolved Validate(Action const& action, Scene const& scene, std::vector<Group> const& groups, std::vector<Landmark> const& landmarks,
     std::vector<Deictic> const& deictics, std::vector<Command> const& history);

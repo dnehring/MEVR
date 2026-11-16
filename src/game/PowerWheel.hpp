@@ -7,7 +7,9 @@
 #include <string>
 #include <string_view>
 
-// The power wheel at the left hand (research/55; LE1, on foot in VR; [PowerWheel] in ASI\LE1MEVR.ini). X held opens it
+// The shared power wheel at the left hand (research/55; sequel adapters in PowerWheel.cpp,
+// research/le3-powers.md). LE1 maps BioPower; LE2/LE3 select a live native power without writing quick slots.
+// On foot in VR, [PowerWheel] in the game's MEVR.ini. X held opens it
 // at the left palm, fixed in the room, facing the eyes, with the player's own powers (their behaviour's m_powers, the
 // mappable ones, biotics first); the left hand's travel toward a tile, or the left stick's direction, picks one; letting go
 // of X equips it. X tapped keeps it open until a pinch of the left trigger, a squeeze of the left grip or X again
@@ -27,6 +29,7 @@ struct Link {
     void (*publish)(vr::power_wheel::View const* view) = nullptr;  // v28 setPowerWheel; null: an older host (no wheel)
     void (*publishLock)(vr::power_wheel::LockView const* view) = nullptr;  // v29 setPowerLock; null: no marker (the lock still works)
     void (*haptic)(int hand, float seconds, float amplitude) = nullptr;
+    bool menuOpen = false;
 };
 
 // Before the ProcessEvent hook goes in (Mod.cpp): the handler that times the game's release against the bolt (research/55

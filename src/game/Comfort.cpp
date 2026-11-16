@@ -11,6 +11,8 @@
 #include "game/HandCalibration.hpp"
 #include "game/HeadTracking.hpp"
 #include "game/Mako.hpp"
+#include "game/PowerWheel.hpp"
+#include "game/Player.hpp"
 #include "game/SquadWeapons.hpp"
 #include "game/SquadPlace.hpp"
 #include "game/ViewAnchor.hpp"
@@ -102,27 +104,43 @@ struct Counts {
 unsigned gSnapsLogged = 0;
 unsigned long long gSnapsTotal = 0;
 
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 // Our reflection layer (ue3/, research/34): each found once, by name, in the running game.
-ue3::ClassRef gCameraNativeBase{"SFXGame.SFXCameraNativeBase"};
-ue3::ClassRef gCameraModeInterpolate{"SFXGame.SFXCameraMode_Interpolate"};
-ue3::ClassRef gBioPawn{"SFXGame.BioPawn"};
-ue3::FieldRef gRotation{"Engine.Actor", "Rotation"};
-ue3::FieldRef gLocation{"Engine.Actor", "Location"};
-ue3::FieldRef gPhysics{"Engine.Actor", "Physics"};
-ue3::FieldRef gPawn{"Engine.Controller", "Pawn"};
-ue3::FieldRef gMesh{"Engine.Pawn", "Mesh"};
-ue3::FieldRef gCoverType{"SFXGame.BioPawn", "CoverType"};
-ue3::FieldRef gCoverAction{"SFXGame.BioPawn", "CoverAction"};
-ue3::FieldRef gPlayerCamera{"Engine.PlayerController", "PlayerCamera"};
-ue3::FieldRef gCurrentCameraMode{"SFXGame.SFXCameraNativeBase", "CurrentCameraMode"};
-ue3::FieldRef gInterpolateTo{"SFXGame.SFXCameraMode_Interpolate", "To"};
-ue3::FieldRef gCameraInput{"SFXGame.SFXCameraMode", "Input"};
-ue3::FieldRef gMaxCameraRotationSpeed{"SFXGame.SFXCameraInput", "MaxCameraRotationSpeed"};
-ue3::FieldRef gCameraSensitivity{"SFXGame.SFXCameraInput", "CameraSensitivity"};
-ue3::FieldRef gTimeToReachFullSpeed{"SFXGame.SFXCameraInput", "TimeToReachFullSpeed"};
-ue3::FieldRef gStickDeadZone{"SFXGame.SFXCameraInput", "StickDeadZone"};
-ue3::FunctionRef gSetRotationRef{"Engine.Actor.SetRotation"};
+ue3::ClassRef gCameraNativeBase{"SFXGame.SFXCameraNativeBase", ue3::kEveryGame};
+ue3::ClassRef gCameraModeInterpolate{"SFXGame.SFXCameraMode_Interpolate", ue3::kEveryGame};
+ue3::ClassRef gBioPawn{"SFXGame.BioPawn", ue3::kEveryGame};
+ue3::FieldRef gRotation{"Engine.Actor", "Rotation", ue3::kEveryGame};
+ue3::FieldRef gLocation{"Engine.Actor", "Location", ue3::kEveryGame};
+ue3::FieldRef gPhysics{"Engine.Actor", "Physics", ue3::kEveryGame};
+ue3::FieldRef gPawn{"Engine.Controller", "Pawn", ue3::kEveryGame};
+ue3::FieldRef gMesh{"Engine.Pawn", "Mesh", ue3::kEveryGame};
+ue3::FieldRef gCoverType{"SFXGame.BioPawn", "CoverType", ue3::kEveryGame};
+ue3::FieldRef gCoverAction{"SFXGame.BioPawn", "CoverAction", ue3::kEveryGame};
+ue3::FieldRef gPlayerCamera{"Engine.PlayerController", "PlayerCamera", ue3::kEveryGame};
+ue3::FieldRef gCurrentCameraMode{"SFXGame.SFXCameraNativeBase", "CurrentCameraMode", ue3::kEveryGame};
+ue3::FieldRef gInterpolateTo{"SFXGame.SFXCameraMode_Interpolate", "To", ue3::kEveryGame};
+ue3::FieldRef gCameraInput{"SFXGame.SFXCameraMode", "Input", ue3::kEveryGame};
+ue3::FieldRef gMaxCameraRotationSpeed{"SFXGame.SFXCameraInput", "MaxCameraRotationSpeed", ue3::kEveryGame};
+ue3::FieldRef gCameraSensitivity{"SFXGame.SFXCameraInput", "CameraSensitivity", ue3::kEveryGame};
+ue3::FieldRef gTimeToReachFullSpeed{"SFXGame.SFXCameraInput", "TimeToReachFullSpeed", ue3::kEveryGame};
+ue3::FieldRef gStickDeadZone{"SFXGame.SFXCameraInput", "StickDeadZone", ue3::kEveryGame};
+ue3::FunctionRef gSetRotationRef{"Engine.Actor.SetRotation", ue3::kEveryGame};
+#if defined(MEVR_GAME_LE3)
+ue3::FunctionRef gMoveIgnored{"Engine.PlayerController.IsMoveInputIgnored", ue3::kEveryGame};
+ue3::FieldRef gCurrentAction{"SFXGame.BioPawn", "CurrentCustomAction", ue3::kEveryGame};
+// Mode 0 alone does not admit locomotion: authored scenes can retain it while ignoring input.
+// Query the current native owner on the game thread; missing fields/returns block all comfort movement.
+bool NativeLocomotionAllowed() {
+    auto* pc = player::Controller();
+    auto* pawn = player::BioPawn(pc);
+    if (!ue3::runtime::IsAlive(pc) || !ue3::runtime::IsAlive(pawn) || player::GameMode(pc) != 0 ||
+        gCurrentAction.Read<std::int32_t>(pawn) != 0 || !gPhysics.Read<std::uint8_t>(pawn) ||
+        !gCoverType.Read<std::uint8_t>(pawn) || !gCoverAction.Read<std::uint8_t>(pawn)) return false;
+    auto* function = gMoveIgnored.Get();
+    ue3::Params parms(ue3::runtime::Get(), function);
+    return ue3::runtime::Call(pc, function, parms) && parms.ReturnBool() == false;
+}
+#endif
 
 ue3::Function* gSetRotation = nullptr;
 bool gLookedUp = false;
@@ -158,7 +176,7 @@ void LogWhy(Why why, double now) {
     log::Info("comfort: {} (camera mode {})", Name(why), gModeName);
 }
 
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 
 // The camera's mode, or the one it blends to; nullptr if none.
 ue3::Object* CameraMode(ue3::Object* controller) {
@@ -269,12 +287,17 @@ void Tick(double deltaSeconds, Link const& link) {
     float const stickX = tracked && !squad_place::Holding() ? controllers.right.stickX : 0.0f;
     float const moveX = tracked ? controllers.left.stickX : 0.0f;
     float const moveY = tracked ? controllers.left.stickY : 0.0f;
-    bool const onFoot = head_tracking::OnFoot();
+    bool const onFoot = head_tracking::OnFoot()
+#if defined(MEVR_GAME_LE3)
+        && NativeLocomotionAllowed()
+#endif
+        ;
     bool const squad = squad_weapons::IsOpen();
+    bool const movementBlocked = squad || power_wheel::IsOpen() || squad_place::Holding();
     Why why = Why::Turning;
     bool turnedThisTick = false;
     bool snapped = false;
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     ue3::Object* const controller = ue3::runtime::LocalPlayerController();
     ue3::Object* const pawn = controller != nullptr ? ObjectField(controller, gPawn) : nullptr;
     ue3::Object* const mode = controller != nullptr ? CameraMode(controller) : nullptr;
@@ -291,7 +314,7 @@ void Tick(double deltaSeconds, Link const& link) {
         why = Why::Off;
     } else if (!link.supported) {
         why = Why::NoHost;
-    } else if (!ue3::runtime::Ready()) {
+    } else if (!ue3::runtime::Up()) {
         why = Why::NoReflection;
     } else if (!link.headTrackedView) {
         why = Why::NoView;
@@ -360,7 +383,7 @@ void Tick(double deltaSeconds, Link const& link) {
 
     // Walking toward the left hand (the host turns the stick): on foot, in the view, outside menus and wheels.
     gHandWalk = link.supported && gSettings.walk == cf::WalkToward::LeftHand && link.headTrackedView && !link.mainMenuOpen && onFoot &&
-        !squad;
+        !movementBlocked;
 
     // The vignette: while the stick turns the player (ours or the game's), or moves him; and after each snap. In the
     // Mako (research/44, [Mako] vignette): while the vehicle turns or drives (game/mako measures its yaw rate and speed).
@@ -370,7 +393,7 @@ void Tick(double deltaSeconds, Link const& link) {
     bool const turning = inPlay && (onFoot ? (gOwn ? (gSettings.turn == cf::TurnStyle::Smooth ? turnedThisTick : false)
                                                    : cf::StickTurns(stickX, gSettings))
                                            : vehicle.turning);
-    bool const moving = inPlay && (onFoot ? std::hypot(moveX, moveY) > gSettings.moveThreshold : vehicle.moving);
+    bool const moving = inPlay && (onFoot ? !movementBlocked && std::hypot(moveX, moveY) > gSettings.moveThreshold : vehicle.moving);
     float const vignette = gVignette.Target(turning, moving, snapped, now, gSettings);
     if (link.setVignette != nullptr) {
         link.setVignette(vignette);
@@ -423,7 +446,7 @@ void Shutdown() {
     gCounts = Counts{};
     gSnapsLogged = 0;
     gSnapsTotal = 0;
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     gSetRotation = nullptr;
     gLookedUp = false;
     gModesLogged.clear();

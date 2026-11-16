@@ -5,7 +5,8 @@
 
 #include "plugin/MenusLe2.hpp"
 
-#include "halcyon/le2/mevr_bridge.h"
+#include "halcyon/SequelPresentation.h"
+#include "engine/GameAdapter.hpp"
 
 #include "core/Log.hpp"
 #include "game/GamepadMapping.hpp"
@@ -20,9 +21,12 @@
 #include "core/vr/OmniRail.hpp"
 #include "core/vr/WorldUi.hpp"
 #include "plugin/Calibration.hpp"
+#include "plugin/GamePointer.hpp"
+#include "plugin/HudPanel.hpp"
 #include "plugin/MainMenu.hpp"
 #include "plugin/OmniToolRail.hpp"
 #include "plugin/WorldUi.hpp"
+#include "plugin/WristBeam.hpp"
 #endif
 
 #include <openxr/openxr.h>
@@ -92,6 +96,14 @@ vr::hud_pieces::Settings const& HudSettings() {
     }
     return settings;
 }
+
+// ME2's game screens on the wrist (BeforePanel, PanelLayers; Present thread): this frame's, as LE1's HalcyonOverlays keeps it.
+int gLastGameMode = -1;                          // the last readable game mode (LE1's gLastGameMode)
+bool gWorldUiOwns = false;                       // a screen of ours takes the panel this frame
+std::optional<world_ui::Shown> gWorldShown;      // where it stands this frame (nullopt: not placed yet)
+XrCompositionLayerQuad gWorldQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};
+bool gWorldShownLogged = false;
+bool gWorldPointerShown = false;
 #endif
 
 } // namespace
@@ -113,9 +125,11 @@ void OnSessionCreated(XrInstance instance, XrSession session) {
 #endif
     }
 #if defined(MEVR_WITH_MAIN_MENU)
+    OnSessionStopped();
     gSession = session;
     gProfileFrames = 0;
     gProfile.clear();
+    game_pointer::ForgetSession();  // the pointer's dot went with the old session
 #else
     (void)session;
 #endif
@@ -175,6 +189,106 @@ vr::controllers::State OnFrameBegun(XrSession session, XrSpace space, XrTime tim
     (void)session, (void)space, (void)time, (void)live, (void)focused;
     return state;
 #endif
+}
+
+WorldUiPanel BeforePanel(ME2VR::MevrBridge::OverlayFrame const& frame, unsigned panelWidth, unsigned panelHeight) {
+    WorldUiPanel out;
+#if defined(MEVR_WITH_MAIN_MENU)
+    if (frame.gameMode >= 0) {
+        gLastGameMode = frame.gameMode;  // an unreadable mode (-1) keeps the last one, as LE1's overlays
+    }
+    // LE1's HalcyonOverlays: a screen of ours standing (the mod's state is fresh in the GUI or minigame mode), or one being opened
+    // (the mod reserved it just before the game's call: mode 7, or still 0-4 as the call changes it). Either way the game's UI goes
+    // to the panel (it isn't drawn into the eyes), shown only once the screen is placed.
+    bool const active = vr::world_ui::ScreenMode(gLastGameMode) && world_ui::Active();
+    bool const pending = (world_ui::Ownership(gLastGameMode) & 6u) != 0;
+    gWorldUiOwns = active || pending;
+    gWorldShown.reset();
+    if (active && hud_panel::HasTexture()) {
+        vr::controllers::State const controllers = vr::controllers::Latest();
+        std::optional<XrVector3f> wrist;
+        if (controllers.active && controllers.left.gripValid) {
+            wrist = vr::hud_pieces::WristPoint(controllers.left.grip, HudSettings().wristOffset);  // the HUD's wrist piece's point
+        }
+        gWorldShown = world_ui::Current(XrVector3f{frame.headPosition[0], frame.headPosition[1], frame.headPosition[2]},
+            XrQuaternionf{frame.headOrientation[0], frame.headOrientation[1], frame.headOrientation[2], frame.headOrientation[3]},
+            frame.headValid, panelWidth, panelHeight, wrist);
+    }
+    out.owns = gWorldUiOwns;
+    out.backdrop = gWorldShown ? std::max(gWorldShown->backdrop, 1.0f / 256.0f) : 0.0f;  // LE1's gPanelBackdrop
+#else
+    (void)frame, (void)panelWidth, (void)panelHeight;
+#endif
+    return out;
+}
+
+unsigned PanelLayers(ME2VR::MevrBridge::OverlayFrame const& frame, ID3D11Device* device, void const* panelLayer,
+    void const** layersOut, unsigned count, unsigned capacity) {
+    if (layersOut == nullptr) {
+        return count;
+    }
+#if defined(MEVR_WITH_MAIN_MENU)
+    if (!gWorldUiOwns || panelLayer == nullptr || !gWorldShown || count >= capacity) {
+        if (gWorldPointerShown) {
+            game_pointer::ForgetGameUiQuad();
+            gWorldPointerShown = false;
+        }
+        if (!gWorldUiOwns && panelLayer != nullptr && count < capacity) {
+            layersOut[count++] = panelLayer;  // the HUD in front of the body, as before
+        }
+        return count;
+    }
+    world_ui::Shown const& shown = *gWorldShown;
+    // A screen projected from the wrist: its fan of light first, under the screen (LE1's order).
+    if (shown.beam && count + 1 < capacity && device != nullptr) {
+        wrist_beam::Frame beamFrame;
+        beamFrame.session = static_cast<XrSession>(frame.session);
+        beamFrame.appSpace = static_cast<XrSpace>(frame.appSpace);
+        beamFrame.context = frame.context;
+        beamFrame.device = device;
+        if (XrCompositionLayerQuad const* beam = wrist_beam::Layer(beamFrame, *shown.beam)) {
+            layersOut[count++] = beam;
+        }
+    }
+    // The screen's shown part (the stage's content) of the panel image, where it stands; the game pointer gets the whole window
+    // on its plane (LE1's HalcyonOverlays word for word).
+    gWorldQuad = *static_cast<XrCompositionLayerQuad const*>(panelLayer);
+    auto const sw = static_cast<float>(hud_panel::Swapchain().width);
+    auto const sh = static_cast<float>(hud_panel::Swapchain().height);
+    gWorldQuad.subImage.imageRect = {{static_cast<int32_t>(shown.part.u0 * sw), static_cast<int32_t>(shown.part.v0 * sh)},
+        {std::max<int32_t>(1, static_cast<int32_t>((shown.part.u1 - shown.part.u0) * sw)),
+            std::max<int32_t>(1, static_cast<int32_t>((shown.part.v1 - shown.part.v0) * sh))}};
+    gWorldQuad.pose = shown.panel.pose;
+    gWorldQuad.size = {shown.panel.widthM, shown.panel.heightM};
+    if (shown.puzzle) {
+        game_pointer::HoldOffForPuzzle();
+        gWorldPointerShown = false;
+    } else if (shown.panel.widthM > 0.0f && shown.panel.heightM > 0.0f) {
+        float const touchArea[4] = {shown.part.u0, shown.part.v0, shown.part.u1, shown.part.v1};
+        game_pointer::NoteGameUiQuad(shown.whole.pose, shown.whole.widthM, shown.whole.heightM, game_pointer::PanelKind::GameMenu,
+            touchArea, shown.onWrist ? 0 : -1);
+        gWorldPointerShown = true;
+    } else if (gWorldPointerShown) {
+        game_pointer::ForgetGameUiQuad();
+        gWorldPointerShown = false;
+    }
+    world_ui::RedirectReady(hud_panel::DrawsLastFrame() > 0 && hud_panel::Armed());
+    if (!gWorldShownLogged) {
+        gWorldShownLogged = true;
+        log::Info("menus le2: the game's screens stand in the world on ME2: the GUI mode in stereo, their UI on the HUD panel's "
+                  "image shown at the screen's place (window UV {:.3f}..{:.3f} x {:.3f}..{:.3f} of the panel's {}x{} swapchain)",
+            shown.part.u0, shown.part.u1, shown.part.v0, shown.part.v1, hud_panel::Swapchain().width, hud_panel::Swapchain().height);
+    }
+    if (count < capacity) {
+        layersOut[count++] = &gWorldQuad;
+    }
+#else
+    (void)frame, (void)device;
+    if (panelLayer != nullptr && count < capacity) {
+        layersOut[count++] = panelLayer;
+    }
+#endif
+    return count;
 }
 
 unsigned Layers(ME2VR::MevrBridge::OverlayFrame const& frame, ID3D11Device* device, void const** layersOut, unsigned count,
@@ -247,15 +361,36 @@ unsigned Layers(ME2VR::MevrBridge::OverlayFrame const& frame, ID3D11Device* devi
         }
         rail.gunDrawn = piecesValid && pieces.gunVisible;
         rail.gameMode = frame.gameMode;
-        // ME2's screens stand on Halcyon's flat panel until its world UI (M4.3 step 3): one is up when the GUI mode (7) shows
-        // flat (ME2 also reports 7 in play under some HUD pop-ups, which stay in the world). The rail's Close closes it.
-        rail.gameScreenUp = frame.gameMode == 7 && !frame.worldFrame;
+        // The game's screen this frame (BeforePanel): the rail slides out beside it, as LE1's.
+        rail.screen = gWorldShown;
+        // A game screen of ME2's on Halcyon's flat panel (not one of ours: [WorldUi] screens, a screen we don't know): the GUI
+        // mode (7) shows flat (ME2 also reports 7 in play under some HUD pop-ups, which stay in the world). Close closes it too.
+        rail.gameScreenUp = engine::adapter::GameMode(frame.gameMode) == engine::adapter::Mode::Gui && !frame.worldFrame;
         rail.othersOwnInput = frame.menuOpen || main_menu::IsOpen() || calibration::Active();
-        if (XrCompositionLayerQuad const* const railLayer = omni_rail::Layer(rail); railLayer != nullptr && count < capacity) {
+        XrCompositionLayerQuad const* const railLayer = omni_rail::Layer(rail);
+        if (railLayer != nullptr && count < capacity) {
             layersOut[count++] = railLayer;
         }
         if (XrCompositionLayerQuad const* const target = omni_rail::TargetLayer(); target != nullptr && count < capacity) {
             layersOut[count++] = target;  // the wrist tap's target
+        }
+        // ---- The game pointer (plugin/GamePointer, research/42): a controller's ray or the fingertip on a game screen of ours
+        // (noted by PanelLayers) is the game's mouse, as LE1's overlays: stepped every frame (it lets go of what it holds when
+        // the screen goes), its dot over the screen ----
+        game_pointer::Frame pointer;
+        pointer.appSpace = appSpace;
+        pointer.halcyonMenuOpen = frame.menuOpen;
+        pointer.railOwnsInput = railLayer != nullptr && omni_rail::OwnsTriggers();
+        if (piecesValid && pieces.bodyValid) {
+            pointer.body = vr::omni_rail::Body{pieces.leftWrist, pieces.leftElbow, pieces.rightIndex1, pieces.rightIndex2};
+        }
+        pointer.headValid = headValid;
+        pointer.head = head.pose.position;
+        game_pointer::Dot dot;
+        if (game_pointer::Step(pointer, dot) && count < capacity) {
+            if (XrCompositionLayerQuad const* const dotLayer = game_pointer::DotLayer(session, appSpace, frame.context, device, dot)) {
+                layersOut[count++] = dotLayer;
+            }
         }
     }
     // ---- Our main menu (plugin/MainMenu): while it's open, its quad is the only one of ours. Closed, it returns at once ----
@@ -314,6 +449,30 @@ unsigned Layers(ME2VR::MevrBridge::OverlayFrame const& frame, ID3D11Device* devi
 #endif
 }
 
+void OnSessionStopped() {
+#if defined(MEVR_WITH_MAIN_MENU)
+    main_menu::SetOpen(false, "VR session stopped");
+    calibration::Cancel("VR session stopped");
+    calibration::NoteFocused(false);
+    main_menu::NoteControllers({});
+    calibration::NoteControllers({});
+    game_pointer::ForgetGameUiQuad();
+    game_pointer::Dot released;
+    game_pointer::Step({}, released); // release a native mouse-down even if no more XR frames arrive
+    omni_rail::HideForSessionStop();
+    world_ui::Forget();
+    gWorldShown.reset();
+    gWorldUiOwns = gWorldPointerShown = gWorldShownLogged = false;
+    gLastGameMode = -1;
+    gTime = 0;
+    // STOPPING may resume the same session without OnSessionCreated; retain its identity.
+    gChord = {};
+    std::lock_guard lock(gPadMutex);
+    gLatch = {};
+    gLatchKept = false;
+#endif
+}
+
 void OnRecentered() {
 #if defined(MEVR_WITH_MAIN_MENU)
     main_menu::Recentered();
@@ -345,9 +504,12 @@ void FilterPad(XINPUT_GAMEPAD const* real, XINPUT_GAMEPAD& pad) {
     if (menu && real != nullptr) {
         main_menu::NotePad(*real);  // a real pad navigates our menu
     }
-    if (omni_rail::OwnsTriggers()) {
-        pad.bLeftTrigger = 0;  // the omni-tool's rail is pointed at: the trigger is its click there (as LE1's pad merge)
+    if (omni_rail::OwnsTriggers() || game_pointer::OwnsTriggers()) {
+        pad.bLeftTrigger = 0;  // the omni-tool's rail or a game screen is pointed at: the trigger is its click (LE1's pad merge)
         pad.bRightTrigger = 0;
+    }
+    if (game_pointer::OwnsWheel()) {
+        pad.sThumbRY = 0;  // Scaleform receives wheel events for this axis and stays in mouse mode.
     }
     std::lock_guard lock(gPadMutex);
     if (menu || calibration::Active()) {
@@ -407,6 +569,16 @@ bool MainMenuOpen() noexcept {
 #if defined(MEVR_WITH_MAIN_MENU)
     return mevr::host::main_menu::IsOpen();
 #else
+    return false;
+#endif
+}
+
+bool WorldUiOwnsGui(int mode) noexcept {
+#if defined(MEVR_WITH_MAIN_MENU)
+    // LE1's xr_session.cpp decision: active (bit 0) or an eligible reservation in the GUI mode (bit 1) keeps it live.
+    return (mevr::host::world_ui::Ownership(mode) & 3u) != 0;
+#else
+    (void)mode;
     return false;
 #endif
 }

@@ -350,6 +350,34 @@ class SessionTests(unittest.TestCase):
         with self.assertRaisesRegex(s.SessionError, "receipt"):
             self.quiet_prepare()
 
+    def test_le3_contract_is_descriptive_not_native_permission(self):
+        contract = s.game_contract.describe("LE3")
+        self.assertEqual(contract["save_version"], 59)
+        self.assertFalse(contract["native_session_supported"])
+        self.assertTrue(contract["mutations"])
+        self.assertEqual(contract["mutation_scope"], "private-resource-variants")
+        self.assertFalse(contract["fixture_ready"])
+        self.plan["game"] = "LE3"
+        with mock.patch.object(s, "safe_path", side_effect=AssertionError("must refuse before paths")):
+            with self.assertRaisesRegex(s.SessionError, "LE3 native sessions are disabled"):
+                s.validate_plan(self.plan, self.run)
+        self.assertFalse(self.run.exists())
+
+    def test_wrong_game_scenario_and_inspection_receipt_fail_closed(self):
+        self.scenario_data["game"] = "LE3"
+        with self.assertRaisesRegex(s.SessionError, "Scenario game"):
+            self.quiet_prepare()
+        self.scenario_data["game"] = "LE2"
+        original = s.read_json(self.receipt)
+        for change in ({"game": "LE3", "save_version": 59}, {"operation": "roundtrip"},
+                       {"full_decode": False}, {"fixture_ready": False},
+                       {"output_sha256": "b" * 64}, {"recipe_sha256": "b" * 64}):
+            with self.subTest(change=change):
+                s.write_json(self.receipt, dict(original, **change))
+                with self.assertRaisesRegex(s.SessionError, "receipt"):
+                    self.quiet_prepare()
+                self.assertFalse(self.run.exists())
+
     def test_preflight_checks_current_slot_without_staging(self):
         s.write_json(self.plan_path, self.plan)
         initial = s.snapshot(self.root)

@@ -19,8 +19,11 @@ struct ID3D11DeviceContext;
 // `thespian`.
 namespace mevr::host::thespian {
 
-// The mod's panel, each game tick (any thread). A panel not renewed for half a second is gone.
+// The mod's panel, each game tick (any thread). nullptr clears it; stale panels expire on the render thread.
 void SetPanel(vr::thespian::Panel const* panel);
+// Any thread: invalidate old-session resources or the placement, applied by the render thread before its next layer.
+void ForgetSession();
+void Recentered();
 
 struct Frame {
     XrSession session = XR_NULL_HANDLE;

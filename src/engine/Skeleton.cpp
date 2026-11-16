@@ -28,7 +28,10 @@ ue3::FunctionRef gMatchRefBone{"Engine.SkeletalMeshComponent.MatchRefBone", ue3:
 // TArray<Matrix>): research/14's for LE1. ME2's are the same (research/le2-vrik.md "The skeleton"): its natives read
 // FMeshBone with a 0x50 stride and ParentIndex at +0x40 (execGetBoneNames 0x79DD90, execGetParentBoneIndex 0x79E2A0), and
 // UpdateSkelPose (0x79B8A0) sizes LocalAtoms and SpaceBases with 0x20-byte FBoneAtoms.
-#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
+// LE3: original runtime image 60AEF0C4, names/parent readers 0x7993F0/0x799910 and composition 0x77FBA0
+// establish the same element layouts (research/le3-body-pose.md). Object field offsets still resolve
+// by reflection; ArmIk independently compares live bone locations before permitting a pose request.
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 constexpr bool kSupported = true;
 #else
 constexpr bool kSupported = false;

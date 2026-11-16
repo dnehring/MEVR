@@ -11,10 +11,22 @@
 #include "plugin/TestLoop.hpp"
 #include "core/vr/CameraDiagnostic.hpp"
 #include "plugin/Renderer.hpp"
+#include "engine/GameAdapter.hpp"
 #include "plugin/SightLayers.hpp"
+#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE3)
+#include "plugin/MotionBlurGuard.hpp"
+#endif
+#if defined(MEVR_WITH_HALCYON_LE3)
+#include "plugin/Colour.hpp"
+#include "plugin/FloorLock.hpp"
+#include "plugin/CineScreen.hpp"
+#endif
 #include "plugin/Swapchains.hpp"
 #if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2)
 #include "plugin/Colour.hpp"  // both Halcyon hosts (LE2: the eye copy's correction)
+#include "plugin/CineScreen.hpp"  // both Halcyon hosts (ME1's 3D cinema screen)
+#include "plugin/CinemaBackdrop.hpp"
+#include "plugin/Voice.hpp"
 #endif
 #if defined(MEVR_WITH_HALCYON)
 #include "plugin/Calibration.hpp"
@@ -36,8 +48,9 @@
 #include "plugin/UiWorldFigure.hpp"
 #include "plugin/FloorLock.hpp"
 #endif
-#if defined(MEVR_WITH_HALCYON_LE2) && defined(MEVR_WITH_MAIN_MENU)
+#if (defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)) && defined(MEVR_WITH_MAIN_MENU)
 #include "plugin/Calibration.hpp"  // our menus on LE2 (plugin/MenusLe2, M4)
+#include "plugin/GamePointer.hpp"
 #include "plugin/MainMenu.hpp"
 #include "plugin/OmniToolRail.hpp"
 #endif
@@ -246,6 +259,40 @@ struct Replay {
 };
 
 std::mutex gControlMutex;
+std::atomic<req::FirstPersonRequest> gFirstPersonPending{req::FirstPersonRequest::Unspecified};
+std::string gFirstPersonRequested = "none";
+std::string gFirstPersonResult = "none";
+std::uint64_t gFirstPersonAppliedMs = 0;
+std::uint64_t gFirstPersonCaptureDelayMs = 100;
+std::string FirstPersonJson() {
+    std::lock_guard lock(gControlMutex);
+    auto const state = renderer::FirstPersonControlState();
+    int const raw = renderer::GameMode();
+    using M = engine::adapter::Mode;
+    char const* mode = "unknown";
+    switch (engine::adapter::GameMode(raw)) {
+    case M::OnFoot: mode = "onFoot"; break;
+    case M::Vehicle: mode = "vehicle"; break;
+    case M::Atlas: mode = "atlas"; break;
+    case M::PowerWheel: mode = "powerWheel"; break;
+    case M::WeaponWheel: mode = "weaponWheel"; break;
+    case M::Command: mode = "command"; break;
+    case M::Injured: mode = "injured"; break;
+    case M::Conversation: mode = "conversation"; break;
+    case M::Cinematic: mode = "cinematic"; break;
+    case M::Gui: mode = "gui"; break;
+    case M::Movie: mode = "movie"; break;
+    case M::Galaxy: mode = "galaxy"; break;
+    case M::Orbital: mode = "orbital"; break;
+    case M::Minigame: mode = "minigame"; break;
+    case M::Unknown: break;
+    }
+    return std::format("{{\"requested\":{},\"result\":{},\"actualEnabled\":{},\"controlSupported\":{},"
+        "\"viewHookInstalled\":{},\"gameMode\":{},\"semanticMode\":{},\"rendererReportsOwned\":{},\"appliedMs\":{}}}",
+        req::JsonString(gFirstPersonRequested), req::JsonString(gFirstPersonResult), state.enabled ? "true" : "false",
+        state.supported ? "true" : "false", state.hookKnown ? (state.hookInstalled ? "true" : "false") : "null",
+        raw, req::JsonString(mode), renderer::FirstPersonOwned() ? "true" : "false", gFirstPersonAppliedMs);
+}
 int gSnapshotsPending = 0;  // snapshots still to take
 double gSnapshotInterval = 0.0;
 std::uint64_t gSnapshotDueMs = 0;
@@ -796,14 +843,23 @@ struct ModuleBlocks {
     std::string recenter = "null", sights = "null", calibration = "null", colour = "null", stereo = "null",
         floorLock = "null", cineScreen = "null", mainMenu = "null", gamePointer = "null", galaxyHologram = "null",
         voice = "null", spectator = "null", figure = "null", omniPad = "null", omniRail = "null", swapchains = "null",
-        questPacing = "null";
+        questPacing = "null", motionBlurGuard = "null";
 };
 ModuleBlocks ModuleStatus() {
     ModuleBlocks m;
     m.sights = sight_layers::StatusJson();
+#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE3)
+    m.motionBlurGuard = motion_blur_guard::StatsJson();
+#endif
+#if defined(MEVR_WITH_HALCYON_LE3)
+    m.colour = colour::StatusJson();
+    m.floorLock = floor_lock::StatusJson();
+    m.cineScreen = cine_screen::StatusJson();
+#endif
 #if defined(MEVR_WITH_HALCYON)
     m.recenter = recenter_tilt::StatusJson();
     m.calibration = calibration::StatusJson();
+    m.voice = voice::StatusJson();
     m.colour = mevr::host::colour::StatusJson();
     m.stereo = metric_stereo::StatusJson();
     m.floorLock = floor_lock::StatusJson();
@@ -821,12 +877,15 @@ ModuleBlocks ModuleStatus() {
     m.questPacing = quest_pacing::StatusJson();
 #endif
 #if defined(MEVR_WITH_HALCYON_LE2)
+    m.voice = voice::StatusJson();
     m.colour = mevr::host::colour::StatusJson();
+    m.cineScreen = mevr::host::cine_screen::StatusJson();  // ME1's 3D cinema screen on LE2 (research/le2-cinema.md)
 #endif
-#if defined(MEVR_WITH_HALCYON_LE2) && defined(MEVR_WITH_MAIN_MENU)
+#if (defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)) && defined(MEVR_WITH_MAIN_MENU)
     m.calibration = calibration::StatusJson();
     m.mainMenu = main_menu::StatusJson();
     m.omniRail = omni_rail::StatusJson();  // the omni-tool's rail on LE2 (M4.3)
+    m.gamePointer = game_pointer::StatusJson();
 #endif
     m.swapchains = swapchains::StatusJson();  // both Halcyon hosts
     return m;
@@ -883,7 +942,9 @@ std::string MetaJson(std::vector<LayerShot> const& layers, XrTime displayTime, s
         J(view.valid), J(view.headLook), J(view.headAim), view.lookYaw, view.lookPitch, J(view.offsetForward),
         J(view.offsetRight), J(view.offsetUp), J(view.unitsPerMeter), m.recenter, m.sights, m.calibration, m.colour, m.stereo,
         m.floorLock, m.cineScreen, m.mainMenu, m.gamePointer, m.galaxyHologram, m.voice, m.spectator, m.figure, m.omniPad,
-        m.omniRail, m.swapchains, mod, cameraDiagnostic, m.questPacing, LayersJson(layers));
+        m.omniRail, m.swapchains, mod, cameraDiagnostic, m.questPacing, LayersJson(layers)) +
+        ",\n  \"firstPerson\": " + FirstPersonJson() +
+        ",\n  \"motionBlurGuard\": " + m.motionBlurGuard;
 }
 
 void LocateQuads(std::vector<LayerShot>& layers, XrSpace reference, XrTime displayTime);
@@ -1106,7 +1167,8 @@ void TickCapture() {
         std::string trigger;
         {
             std::lock_guard lock(gControlMutex);
-            if (gSnapshotsPending <= 0 || now < gSnapshotDueMs) {
+            if (gSnapshotsPending <= 0 || now < gSnapshotDueMs ||
+                gFirstPersonPending.load() != req::FirstPersonRequest::Unspecified) {
                 if (gSnapshotsPending <= 0 && !gCapture.staged.empty()) {
                     gCapture.staged.clear();  // nothing more to take: give the staging memory back
                     gCapture.context.Reset();
@@ -1401,7 +1463,13 @@ XrResult XRAPI_CALL WrappedRelease(XrSwapchain swapchain, XrSwapchainImageReleas
             SpectatorImageReleased(swapchain, image);
         }
     }
-    return gRealRelease(swapchain, info);
+    XrResult const result = gRealRelease(swapchain, info);
+    if (result != XR_SUCCESS && armed && onPresent) {
+        // Stage while owned, but never retain a failed release as snapshot evidence.
+        gCapture.staged.erase(std::remove_if(gCapture.staged.begin(), gCapture.staged.end(),
+            [swapchain](Staged const& staged) { return staged.swapchain == swapchain; }), gCapture.staged.end());
+    }
+    return result;
 }
 
 XrResult XRAPI_CALL WrappedEndFrame(XrSession session, XrFrameEndInfo const* info) {
@@ -1516,6 +1584,15 @@ void PollRequests() {
     std::string text;
     if (TakeRequest(BaseDir() / L"snapshot.request", text)) {
         req::Request const r = req::Parse(text);
+        auto const firstPerson = req::ParseFirstPerson(r);
+        if (firstPerson != req::FirstPersonRequest::Unspecified) {
+            std::lock_guard lock(gControlMutex);
+            gFirstPersonRequested = r.Get("firstperson");
+            gFirstPersonCaptureDelayMs = static_cast<std::uint64_t>(std::clamp(r.Number("delay", 0.0), 0.1, 3600.0) * 1000.0);
+            gFirstPersonResult = firstPerson == req::FirstPersonRequest::Invalid ? "invalid: use on/off/status" : "queued";
+            gFirstPersonPending.store(firstPerson == req::FirstPersonRequest::Invalid ?
+                req::FirstPersonRequest::Unspecified : firstPerson);
+        }
         SnapshotRequest s;
         s.count = static_cast<int>(std::clamp(r.Number("count", 1.0), 1.0, 600.0));
         s.intervalSeconds = std::clamp(r.Number("interval", 1.0), 0.0, 3600.0);
@@ -1576,10 +1653,10 @@ std::string StatusJson(Status const& s) {
         "{{\n  \"recording\": {},\n  \"recordingSeconds\": {},\n  \"replaying\": {},\n  \"replayPath\": {},\n"
         "  \"replaySeconds\": {},\n  \"replayDuration\": {},\n  \"replayLoop\": {},\n  \"replayInputs\": {},\n"
         "  \"replayFovs\": {},\n"
-        "  \"lastRecording\": {},\n  \"lastSnapshot\": {},\n  \"snapshotsPending\": {},\n  \"framesRunning\": {}\n}}\n",
+        "  \"lastRecording\": {},\n  \"lastSnapshot\": {},\n  \"snapshotsPending\": {},\n  \"framesRunning\": {},\n  \"firstPerson\": {}\n}}\n",
         J(s.recording), J(s.recordingSeconds), J(s.replaying), req::JsonString(s.replayPath), J(s.replaySeconds),
         J(s.replayDuration), J(s.replayLoop), J(s.replayInputs), J(s.replayFovs), req::JsonString(s.lastRecording),
-        req::JsonString(s.lastSnapshot), s.snapshotsPending, J(s.framesRunning));
+        req::JsonString(s.lastSnapshot), s.snapshotsPending, J(s.framesRunning), FirstPersonJson());
 }
 
 Hotkey gSnapshotKey{VK_END};
@@ -1651,7 +1728,24 @@ void OnSessionCreated(XrSession session) {
     (void)session;
 }
 
+void OnPresent() {
+    {
+        std::lock_guard lock(gControlMutex);
+        auto const request = gFirstPersonPending.exchange(req::FirstPersonRequest::Unspecified);
+        if (request == req::FirstPersonRequest::Unspecified) return;
+        bool accepted = true;
+        if (request == req::FirstPersonRequest::On || request == req::FirstPersonRequest::Off)
+            accepted = renderer::SetFirstPersonEnabled(request == req::FirstPersonRequest::On);
+        gFirstPersonAppliedMs = GetTickCount64();
+        gFirstPersonResult = accepted ? (request == req::FirstPersonRequest::Status ? "status" : "applied") : "unsupported";
+        // Delay starts after the Present-thread application, not after the game-thread request read.
+        gSnapshotDueMs = std::max(gSnapshotDueMs, gFirstPersonAppliedMs + gFirstPersonCaptureDelayMs);
+    }
+    log::Info("test loop: renderer first person {}", FirstPersonJson());
+}
+
 void OnFrameBegun(XrSession session, XrSpace appSpace, XrTime displayTime, bool focused, vr::controllers::State& state) {
+    OnPresent(); // same owning frame thread, before any delayed snapshot capture
     gPresentThread.store(GetCurrentThreadId(), std::memory_order_relaxed);
     gSession = session;
     gAppSpace = appSpace;
@@ -1693,6 +1787,14 @@ void OnEyeSource(int eye, ID3D11Texture2D* source) {
 void OnEyeCopied(int eye, ID3D11Texture2D* image) {
     if ((eye == 0 || eye == 1) && image != nullptr && gArmed.load(std::memory_order_relaxed) && OnPresentThread()) {
         StageImage(kEyeCopySwapchain[2 + eye], image);
+    }
+}
+
+void OnEyeReleased(int eye, bool published) {
+    if (!published && (eye == 0 || eye == 1) && gArmed.load(std::memory_order_relaxed) && OnPresentThread()) {
+        auto const key = kEyeCopySwapchain[2 + eye];
+        gCapture.staged.erase(std::remove_if(gCapture.staged.begin(), gCapture.staged.end(),
+            [key](Staged const& staged) { return staged.swapchain == key; }), gCapture.staged.end());
     }
 }
 

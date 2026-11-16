@@ -54,6 +54,8 @@ th::Panel gPanel;              // the mod's last
 std::uint64_t gPanelMs = 0;    // when it came
 std::atomic<bool> gShown{false};
 std::atomic<bool> gHidesWheel{false};
+std::atomic<bool> gForgetSession{false};
+std::atomic<bool> gRecentered{false};
 std::mutex gStatusMutex;
 std::string gStatus = "{\"shown\": false}";
 
@@ -77,6 +79,7 @@ struct State {
     Rml::String speaker, heard, prompt, footerClass = "footer", levelWidth = "0%";
     std::string rows;        // the rows' markup now in the document
     Swapchain swapchain;
+    XrSession session = XR_NULL_HANDLE;
     XrCompositionLayerQuad quad{XR_TYPE_COMPOSITION_LAYER_QUAD};
     bool needRender = true;
     bool shown = false;
@@ -97,6 +100,12 @@ void Say(menu::LogLevel level, std::string const& text) {
     case menu::LogLevel::Warn: log::Warn("thespian panel: {}", text); break;
     case menu::LogLevel::Info: log::Info("thespian panel: {}", text); break;
     }
+}
+
+void ApplyTheme() {
+#if defined(MEVR_GAME_LE2)
+    if (auto* const document = g.ui->Document()) document->SetClass("le2", true);
+#endif
 }
 
 bool Init(ID3D11Device* device, ID3D11DeviceContext* context) {
@@ -147,6 +156,7 @@ bool Init(ID3D11Device* device, ID3D11DeviceContext* context) {
         log::Error("thespian panel: thespian.rml didn't load from {} (deployed? see the rmlui: lines); no panel", ini::Utf8(main_menu::AssetsFolder()));
         return false;
     }
+    ApplyTheme();
     g.ready = true;
     log::Info("thespian panel: ready ({}x{} canvas, {})", kWidth, kHeight, ini::Utf8(main_menu::AssetsFolder() / L"thespian.rml"));
     return true;
@@ -252,15 +262,36 @@ bool Fill(th::Panel const& panel) {
 }  // namespace
 
 void SetPanel(th::Panel const* panel) {
-    if (panel == nullptr || panel->size != sizeof(th::Panel)) {
+    if (panel != nullptr && panel->size != sizeof(th::Panel)) {
         return;
     }
     std::lock_guard lock(gPanelMutex);
-    gPanel = *panel;
+    gPanel = panel != nullptr ? *panel : th::Panel{};
     gPanelMs = GetTickCount64();
 }
 
+void ForgetSession() {
+    gForgetSession.store(true, std::memory_order_release);
+    gShown.store(false, std::memory_order_relaxed);
+    gHidesWheel.store(false, std::memory_order_relaxed);
+    SetPanel(nullptr);
+}
+
+void Recentered() {
+    gRecentered.store(true, std::memory_order_release);
+}
+
 XrCompositionLayerQuad const* Layer(Frame const& frame) {
+    if (gForgetSession.exchange(false, std::memory_order_acq_rel) || frame.session != g.session) {
+        swapchains::Forget(g.swapchain.handle); // the old session destroyed its swapchain, never destroy its dead handle
+        g.swapchain = {};
+        g.session = frame.session;
+        g.needRender = true;
+        g.holdUntilMs = 0;
+        Hide("the XR session changed");
+    }
+    if (gRecentered.exchange(false, std::memory_order_acq_rel)) g.placed = false;
+
     th::Panel panel;
     std::uint64_t at = 0;
     {
@@ -289,6 +320,7 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
         return nullptr;
     }
     if (g.ui->ReloadIfChanged()) {
+        ApplyTheme();
         g.rows.clear();  // the new document's rows are empty
         g.needRender = true;
     }

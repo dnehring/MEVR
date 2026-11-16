@@ -8,6 +8,8 @@ namespace ME2VR::CalcViewHook
 // Proj/View/ViewOrigin to confirm identity + validate the LE1-identical offsets live.
 // Call once per Present; installs once, logs a few frames, then stays quiet. Pure observe+forward.
 void Tick() noexcept;
+// [MEVR] Fresh installation state for development snapshot diagnostics.
+bool Installed() noexcept;
 
 // Game's per-eye rendered half-FOV (radians), published from CalcSceneView's projection matrix.
 // The OpenXR bridge declares THESE (not the headset FOV) so the stereo image isn't stretched/zoomed.
@@ -43,6 +45,12 @@ bool GetCineVrConvo() noexcept;        void SetCineVrConvo(bool on) noexcept;
 bool GetCineVrCutscene() noexcept;     void SetCineVrCutscene(bool on) noexcept;
 bool GetCineVrHeadTracking() noexcept; void SetCineVrHeadTracking(bool on) noexcept;
 bool GetVrCineActive() noexcept;       void SetVrCineActive(bool on) noexcept;
+// [MEVR] ME1's 3D cinema screen (research/52, research/le2-cinema.md): this VR cine goes on a screen fixed in the room, so
+// head look and lean stay parked, both SFR passes render at the game's own projection (no fill) from two parallel cameras
+// on the director's camera, half our plan's separation to each side (MevrBridge::CineScreenHalfSeparationUU), no swap.
+bool GetMevrCineScreen() noexcept;     void SetMevrCineScreen(bool on) noexcept;
+// [MEVR] The cine's tracking lock: Halcyon's (VR cine with CineVrHeadTracking off) or the 3D cinema screen's.
+bool GetCineTrackingLocked() noexcept;
 // [ENGCINE] P1 CalcSceneView heartbeat - advances every frame the engine builds a real scene view.
 // Dead (~0/s) during prerendered biks; alive during in-engine gm-8 cutscenes. ME3's discriminator.
 unsigned GetP1CalcSeq() noexcept;

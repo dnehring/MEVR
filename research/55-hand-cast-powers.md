@@ -650,3 +650,32 @@ answers true. With UNC20's own wake (`ModifyPropertyPawn_1`, above) they fight: 
 alive and fighting 8 s later, one scene render 4.5 ms. Not checked: whether the wake is needed when the squad is ours alone.
 `mevr call1 <n> <Function> <m>` calls a found object's function with another found object as its first parameter. Opening UNC20 and
 the Mako's landing autosave into the career: back up the saves first and restore them after (done; restored byte for byte).
+
+## Mass Effect 2
+
+Hold **X** to open Shepard's wheel at the left Omni-tool. Move your left hand or thumbstick toward a tile and release X
+to equip it. You can also tap X to keep the wheel open. The last tile clears the selection. When the wheel closes, the
+coach shows the matching action.
+
+| Power | Left-hand action |
+| --- | --- |
+| Targeted biotics, tech and combat powers such as Slam | Point at an enemy to lock on, then push your open hand forward. |
+| Self buffs such as Adrenaline Rush | Hold your open palm against your chest. |
+| Ammo powers such as Disruptor Ammo | Slap your open palm onto the drawn gun. The gesture zone moves with the weapon. Empty hands and heavy weapons disable the ammo tile. |
+
+The wheel, gesture recognizers, haptics and coach are shared with ME1. ME2's `SFXPowerManager` supplies trained,
+HUD-visible powers and their evolutions. `SFXPower` supplies eligibility and cooldowns, and
+`BioPlayerInput.ActivatePower` owns the cast, animation and effects. The VR selection does not write to the native
+quick slots. The ammo effect and gun panel both follow the weapon that received the power. Squad powers, placement,
+Charge and medi-gel remain available through the native controls and need separate VR handling.
+
+In the protected [ME2 fake-headset runner](../tools/le2-halcyon-run/README.md), Freedom's Progress Save 4 loaded by
+normal save flow. Replayed X opened the wheel and the left-eye snapshot showed it emitted from the Omni-tool
+(`2026-11-15_05-25-11-327`). A replayed chest hold with the pistol drawn started Adrenaline Rush and triggered shared
+cooldown. After switching to the assault rifle, a replayed slap applied Disruptor Ammo. The rifle's HUD snapshot
+changed from `ammoPower: null` (`05-25-57-783`) to `DisruptorAmmo` (`05-26-10-734`). The Slam probe refused to cast
+when only Miranda and Jacob were present. Tile selection in these trials used the debug console. Save and installation
+restoration verified with zero differences.
+
+Still to verify in game: target acquisition and a successful physical push against a hostile, hand or thumbstick
+tile selection, other weapon families, holstered casts, evolved powers and gesture feel in a physical headset.

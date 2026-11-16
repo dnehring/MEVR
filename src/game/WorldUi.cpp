@@ -36,13 +36,33 @@ namespace wu = vr::world_ui;
 
 // The GUI manager (the player controller's cached one) and its panels: each open screen is a BioSFPanel tagged with its library
 // tag (the shop's: nmTag "shop", bFullScreen, m_DefaultHandler its BioSFHandler_Shop; measured 2026-11-04).
-ue3::FieldRef gCachedManager{"Engine.PlayerController", "m_oCachedScaleFormManager"};
-ue3::FieldRef gPanels{"Engine.BioSFManager", "m_lstPanels"};
-ue3::FieldRef gFocusPanel{"Engine.BioSFManager", "m_FocusPanel"};
-ue3::FieldRef gPanelTag{"Engine.BioSFPanel", "nmTag"};
-ue3::FieldRef gPanelFullScreen{"Engine.BioSFPanel", "bFullScreen"};
-ue3::FieldRef gPanelHandler{"Engine.BioSFPanel", "m_DefaultHandler"};
-ue3::FieldRef gPanelVisible{"Engine.BioSFPanel", "IsVisible"};
+// Every game (ME2: its pause menu's pages, research/le2-menus.md "ME2's screens on the wrist"); the loot, shop and minigame
+// handles below stay ME1's (ME2 has no BioSFHandler_Loot, _Shop or BioSkillGame_Handler: tools/le2-name-audit.py game/WorldUi).
+ue3::FieldRef gCachedManager{"Engine.PlayerController", "m_oCachedScaleFormManager", ue3::kEveryGame};
+ue3::FieldRef gPanels{"Engine.BioSFManager", "m_lstPanels", ue3::kEveryGame};
+ue3::FieldRef gFocusPanel{"Engine.BioSFManager", "m_FocusPanel", ue3::kEveryGame};
+ue3::FieldRef gPanelTag{"Engine.BioSFPanel", "nmTag", ue3::kEveryGame};
+ue3::FieldRef gPanelFullScreen{"Engine.BioSFPanel", "bFullScreen", ue3::kEveryGame};
+ue3::FieldRef gPanelHandler{"Engine.BioSFPanel", "m_DefaultHandler", ue3::kEveryGame};
+ue3::FieldRef gPanelVisible{"Engine.BioSFPanel", "IsVisible", ue3::kEveryGame};
+#if defined(MEVR_GAME_LE2)
+ue3::FunctionRef gSetMovieVisibility{"Engine.BioSFPanel.SetMovieVisibility", ue3::kEveryGame};
+std::vector<ue3::Object*> gHiddenBrowsers;  // still on the native stack so Back can return to them
+
+bool SetMovieVisibility(ue3::Object* panel, bool visible) {
+    auto* const fn = gSetMovieVisibility.Get();
+    if (fn == nullptr || !ue3::runtime::IsAlive(panel)) return false;
+    ue3::Params p(ue3::runtime::Get(), fn);
+    return p.SetBool("bVisible", visible) && ue3::runtime::Call(panel, fn, p);
+}
+
+void RestoreBrowsers() {
+    for (auto* const panel : gHiddenBrowsers) {
+        SetMovieVisibility(panel, true);
+    }
+    gHiddenBrowsers.clear();
+}
+#endif
 // The loot screen's inventory belongs to the container (or the body) it came from: its outer chain reaches that actor.
 ue3::ClassRef gLootHandlerClass{"SFXGame.BioSFHandler_Loot"};
 ue3::FieldRef gLootInventory{"SFXGame.BioSFHandler_Loot", "m_oLootInventory"};
@@ -54,12 +74,12 @@ ue3::FieldRef gSkillGameDependent{"SFXGame.BioSkillGame_Handler", "m_oDependent"
 ue3::FieldRef gSkillGameActive{"SFXGame.BioSkillGame_Handler", "m_bGameActive"};
 bool gPuzzleLogged = false;
 // What A would use (research/40's BioPlayerSelection): the thing a screen opened by a use belongs to.
-ue3::FieldRef gPlayerSelection{"SFXGame.BioPlayerController", "m_oPlayerSelection"};
-ue3::FieldRef gCurrentTarget{"SFXGame.BioPlayerSelection", "m_oCurrentSelectionTarget"};
+ue3::FieldRef gPlayerSelection{"SFXGame.BioPlayerController", "m_oPlayerSelection", ue3::kEveryGame};
+ue3::FieldRef gCurrentTarget{"SFXGame.BioPlayerSelection", "m_oCurrentSelectionTarget", ue3::kEveryGame};
 ue3::ClassRef gShopHandlerClass{"SFXGame.BioSFHandler_Shop"};
 ue3::FieldRef gShopActor{"SFXGame.BioSFHandler_Shop", "m_shop"};
-ue3::FunctionRef gUpdateCamera{"Engine.Camera.UpdateCamera"};
-ue3::FieldRef gWorldInfo{"Engine.Actor", "WorldInfo"}; // existing ReflectCheck row
+ue3::FunctionRef gUpdateCamera{"Engine.Camera.UpdateCamera", ue3::kEveryGame};
+ue3::FieldRef gWorldInfo{"Engine.Actor", "WorldInfo", ue3::kEveryGame}; // existing ReflectCheck row
 
 // Shepard's view on foot (the last camera update in mode 0), and the player camera's POV fields while a screen is up: the host
 // puts the former into the latter for the main view's render only (the shop's own camera looks at a backdrop stage elsewhere).
@@ -363,6 +383,9 @@ void Down(Link const& link, char const* why) {
         log::Info("world ui: {} down ({})", gS.screen.empty() ? "the screen" : gS.screen, why);
     }
     RestoreFullScreen();
+#if defined(MEVR_GAME_LE2)
+    RestoreBrowsers();
+#endif
     omni_tool::Tick(gRailOmniTool);  // the rail alone on the wrist still wears it
     // ... and stands at its display, as the screens are projected from it (the rendered arm can fall short of the controller):
     // an inactive state carrying only the emitter (the host shows no screen for it).
@@ -398,7 +421,7 @@ void Down(Link const& link, char const* why) {
 } // namespace
 
 void TryStartup() {
-    ue3::Function* const update = ue3::runtime::Ready() ? gUpdateCamera.Get() : nullptr;
+    ue3::Function* const update = ue3::runtime::Up() ? gUpdateCamera.Get() : nullptr;  // every game (LE1: Up() is Ready())
     if (update == nullptr) {
         log::Warn("world ui: Engine.Camera.UpdateCamera not found: the game's screens can't hold Shepard's view (they stay on Halcyon's panel)");
         return;
@@ -505,13 +528,39 @@ void Tick(Link const& link) {
     std::vector<OpenPanel> const panels = OpenPanels(controller);
     std::string stack;
     OpenPanel const* base = nullptr;  // the first of ours opened decides (a message box over the shop stays on the shop's place)
+#if defined(MEVR_GAME_LE2)
+    std::vector<OpenPanel const*> browsers;
+    OpenPanel const* focusedBrowser = nullptr;
+    OpenPanel const* browserPage = nullptr;
+#endif
     for (OpenPanel const& o : panels) {
         stack += std::format("{}{}{}{}{}", stack.empty() ? "" : ", ", o.tag, o.fullScreen ? " (full screen)" : "", o.focus ? " (focus)" : "",
                              o.visible ? "" : " (hidden)");
         if (base == nullptr && o.visible && wu::FromTag(o.tag) != wu::Screen::None) {
             base = &o;
         }
+#if defined(MEVR_GAME_LE2)
+        auto const tag = wu::FromTag(o.tag);
+        if (tag == wu::Screen::MenuBrowser) {
+            browsers.push_back(&o);
+            if (o.focus) focusedBrowser = &o;
+        } else if (!browsers.empty() && browserPage == nullptr && o.visible && wu::RailPanel(tag) &&
+                   tag != wu::FromTag("MessageBox")) {
+            browserPage = &o;  // a dialog over a page still uses the page's placement
+        }
+#endif
     }
+#if defined(MEVR_GAME_LE2)
+    std::erase_if(gHiddenBrowsers, [&](ue3::Object* panel) {
+        return std::none_of(browsers.begin(), browsers.end(), [&](OpenPanel const* browser) { return browser->panel == panel; });
+    });
+    bool const fromBrowser = !browsers.empty() &&
+        (base == nullptr || wu::FromTag(base->tag) == wu::Screen::MenuBrowser || base == browserPage);
+    if (fromBrowser) {
+        if (browserPage != nullptr) base = browserPage;
+        else if (focusedBrowser != nullptr) base = focusedBrowser;
+    }
+#endif
     if (stack != gS.stack) {
         log::Info("world ui: the game's open panels: {}", stack.empty() ? "none" : stack);
         gS.stack = stack;
@@ -610,6 +659,23 @@ void Tick(Link const& link) {
     // stands by what was used. The bypass minigame is the omni-tool's own, so it always goes on the wrist; never in the Mako's
     // cockpit (its screens stand at the windshield), except explicit rail picks, which always request the wrist.
     bool const onWrist = (inCockpit || haveFootView) && (!inCockpit || railOpening) && wu::OnWrist(settings, screen, state.anchored != 0, origin);
+#if defined(MEVR_GAME_LE2)
+    if (onWrist && fromBrowser) {
+        // Back from a child can push a fresh browser over the old one. Only the current page's movie belongs on the wrist.
+        for (auto const* browser : browsers) {
+            auto const hidden = std::find(gHiddenBrowsers.begin(), gHiddenBrowsers.end(), browser->panel);
+            if (browser == base) {
+                if (hidden != gHiddenBrowsers.end() && SetMovieVisibility(browser->panel, true)) {
+                    gHiddenBrowsers.erase(hidden);
+                }
+            } else if (browser->visible && hidden == gHiddenBrowsers.end() && SetMovieVisibility(browser->panel, false)) {
+                gHiddenBrowsers.push_back(browser->panel);
+            }
+        }
+    } else {
+        RestoreBrowsers();
+    }
+#endif
     wu::Rect const crop = wu::DefaultCrop(screen);  // the room's; on the wrist the host shows WristCrop
     state.stageCrop[0] = crop.u0;
     state.stageCrop[1] = crop.v0;

@@ -29,7 +29,7 @@ double Distance(engine::UnrealVector const& a, engine::UnrealVector const& b) {
 
 } // namespace
 
-Targets Current(std::optional<engine::UnrealVector> const& animatedHead, bool inView) {
+Targets Current(std::optional<engine::UnrealVector> const& animatedHead, bool inView, bool allowHeadOnly) {
     Targets targets;
     if (gDesktopTest) {
         targets.source = Source::DesktopTest;
@@ -39,10 +39,15 @@ Targets Current(std::optional<engine::UnrealVector> const& animatedHead, bool in
     // in the world for the view being shown (none in menus, the flat screen or without tracking).
     auto const anchor = view_anchor::Current();
     vr::controllers::State const controllers = vr::controllers::Latest();
-    if (!anchor || !controllers.active) {
+    if (!anchor) {
+        ResetTracking();
         return targets;
     }
-    targets.source = Source::Controllers;
+    bool const headOnly = allowHeadOnly &&
+        (!controllers.active || (!controllers.left.gripValid && !controllers.right.gripValid));
+    if ((!controllers.active && !headOnly) ||
+        (headOnly && (view_anchor::Held() || !vr::host_view::Latest().valid))) return targets;
+    targets.source = headOnly ? Source::HeadOnly : Source::Controllers;
     // The scale the player sees the world at (Halcyon: 50 units per meter, its lean and its eye
     // separation), so the hands land where the player sees the controllers. Mapping them at 100
     // while the view used 50 put them twice as far from the head as the controllers were
@@ -75,6 +80,11 @@ Targets Current(std::optional<engine::UnrealVector> const& animatedHead, bool in
     }
     targets.head = anchor->head;
     targets.headWorld = engine::ToWorld(targets.body, anchor->head.position);
+    if (headOnly) {
+        // Latest() marks stale controller samples inactive but retains their old
+        // grip/button fields. Never promote those fields into new targets.
+        return targets.anchor == Anchor::View ? targets : Targets{};
+    }
     for (int side : {0, 1}) {
         vr::controllers::Hand const& hand = side == 0 ? controllers.left : controllers.right;
         if (!hand.gripValid) {
@@ -111,6 +121,8 @@ void SetDesktopTest(bool on) {
     gDesktopTest = on;
 }
 
+void ResetTracking() { gFirstPerson = false; }
+
 bool DesktopTest() {
     return gDesktopTest;
 }
@@ -119,6 +131,7 @@ char const* Name(Source source) {
     switch (source) {
     case Source::Controllers: return "controllers";
     case Source::DesktopTest: return "desktop test";
+    case Source::HeadOnly: return "head only";
     default: return "none";
     }
 }

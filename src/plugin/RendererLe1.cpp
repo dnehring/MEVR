@@ -63,6 +63,11 @@ int MoveStickHeadLookYawUU() noexcept {
     return MELEVR::Config::Get().moveFollowsHead ? MELEVR::RenderHook::HeadLookYawUU() : 0;
 }
 
+FirstPersonControl FirstPersonControlState() noexcept {
+    return {false, MELEVR::Config::Get().fpEnabled, false, false};
+}
+bool SetFirstPersonEnabled(bool) noexcept { return false; } // no new LE1 mutation path
+
 bool FirstPersonOwned() noexcept {
     return MELEVR::Config::Get().fpEnabled && MELEVR::HeadAim::FirstPersonOwnsAny();
 }

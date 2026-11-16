@@ -117,6 +117,42 @@ void TestControls() {
 
 int RunGuiEventsTests() {
     gFailures = 0;
+    CHECK(ge::Le2NativeEvent(ge::kMouseMove) == 6);
+    CHECK(ge::Le2NativeEvent(ge::kLeftDown) == 48 && ge::Le2NativeEvent(ge::kLeftUp) == 50);
+    CHECK(ge::Le2NativeEvent(ge::kWheelUp) == 27 && ge::Le2NativeEvent(ge::kWheelDown) == 28);
+    CHECK(ge::Le2NativeEvent(ge::kControlDown) == 8 && ge::Le2NativeEvent(ge::kControlUpRelease) == 32);
+    // LE3 is not an offset of either older enum: wheel/control/down/release collide differently.
+    CHECK(ge::Le3NativeEvent(ge::kMouseMove) == 6);
+    CHECK(ge::Le3NativeEvent(ge::kWheelUp) == 8 && ge::Le3NativeEvent(ge::kWheelDown) == 9);
+    CHECK(ge::Le3NativeEvent(ge::kLeftDown) == 31 && ge::Le3NativeEvent(ge::kLeftUp) == 52);
+    for (std::uint8_t i = 0; i != 4; ++i) {
+        CHECK(ge::Le3NativeEvent(ge::kControlDown + i) == 11 + i);
+        CHECK(ge::Le3NativeEvent(ge::kControlDownRelease + i) == 32 + i);
+    }
+    ge::Queue le3Queue;
+    le3Queue.Move(); le3Queue.Button(true); le3Queue.Button(false); le3Queue.Wheel(-1);
+    ge::Scheduler le3Schedule;
+    auto pending = TakeAll(le3Queue);
+    le3Schedule.Add(pending.data(), static_cast<std::uint32_t>(pending.size()));
+    std::vector<std::uint8_t> native;
+    while (le3Schedule.Waiting())
+        for (auto event : le3Schedule.Tick()) native.push_back(ge::Le3NativeEvent(event));
+    CHECK((native == std::vector<std::uint8_t>{6, 31, 6, 52, 6, 9}));
+    // A hidden screen must never receive an unfinished queued press. Only actually sent presses
+    // get cleanup releases, once; controls that were already released are not released twice.
+    ge::Scheduler owner;
+    std::uint8_t hidden[] = {ge::kLeftDown, ge::kWheelUp};
+    owner.Add(hidden, 2);
+    owner.Clear();
+    CHECK(owner.Tick().empty() && owner.ReleaseSent().empty());
+    owner.NoteSent(ge::kLeftDown);
+    owner.NoteSent(ge::kControlLeft);
+    owner.NoteSent(ge::kControlRight);
+    owner.NoteSent(ge::kControlRightRelease);
+    owner.Add(hidden, 2);
+    owner.Clear();
+    CHECK((owner.ReleaseSent() == std::vector<std::uint8_t>{ge::kLeftUp, ge::kControlLeftRelease}));
+    CHECK(owner.ReleaseSent().empty() && owner.Tick().empty());
     TestQueue();
     TestScheduler();
     TestControls();

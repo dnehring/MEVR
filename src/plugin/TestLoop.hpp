@@ -57,6 +57,8 @@ void OnSessionCreated(XrSession session);
 // After xrBeginFrame and the live controller sync, before the sample is published: records the frame,
 // or replaces `state` with the replay's (poses; buttons and sticks too with inputs=1), and runs the
 // snapshot capture. `focused`: the session has input focus.
+// Applies queued developer renderer controls on the owning Present thread.
+void OnPresent();
 void OnFrameBegun(XrSession session, XrSpace appSpace, XrTime displayTime, bool focused,
                   vr::controllers::State& state);
 // Our own quads (HalcyonOverlays), right before a swapchain image is released: Halcyon's go through
@@ -69,6 +71,9 @@ void OnEyeSource(int eye, ID3D11Texture2D* source);
 // Right after that copy, before the image is released: saved as <stamp>-copied-left/right.png (the image the renderer
 // wrote, by its own pointer; the eye layer is the image the test loop finds by the acquired index at its release).
 void OnEyeCopied(int eye, ID3D11Texture2D* image);
+// Complete the staged sample after release without accessing the now-unowned image.
+// Failed publication discards the copied-eye diagnostic.
+void OnEyeReleased(int eye, bool published);
 // A snapshot is armed: a quad that redraws only on change (the omni-tool's rail) draws and releases an image this frame,
 // or the snapshot has no copy of it. Any thread.
 bool SnapshotArmed();

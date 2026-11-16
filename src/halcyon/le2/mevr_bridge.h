@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #pragma once
+#include "../SequelPresentation.h"
 
 // MEVR (ME VR Attempt) addition, GPL-3.0: the seams where our host plugs into Halcyon's ME2 renderer, as
 // src/halcyon/le1/mevr_bridge.h does for LE1. Declared without the OpenXR SDK headers, because xr_types.h defines the
@@ -14,6 +15,15 @@ struct ID3D11DeviceContext;
 
 namespace ME2VR::MevrBridge
 {
+struct OverlayFrame;
+// [MEVR] The native galaxy/orbital image on ME1's table geometry. Updated before OverlayLayers.
+struct GalaxyPanel {
+    float orientation[4] = {0, 0, 0, 1};
+    float position[3] = {};
+    float widthM = 0;
+    float heightM = 0;
+};
+bool PlaceGalaxyPanel(OverlayFrame const& frame, bool imageReady, float aspect, GalaxyPanel& out) noexcept;
 // The statically linked OpenXR loader's xrGetInstanceProcAddr (upstream loads openxr_loader.dll, which our ASI doesn't
 // ship). Our controller actions must come from the same loader instance.
 void* StaticXrGetInstanceProcAddr() noexcept;
@@ -63,41 +73,17 @@ void OnEyeSource(int eye, void* source) noexcept;
 // Right after the copy into eye `eye`'s image `image` (index `index`), before its release; `acquired`/`waited` the
 // XrResults of its acquire and wait (a failed one means no copy): counted, and logged when one fails.
 void OnEyeCopied(int eye, void* image, std::uint32_t index, int acquired, int waited) noexcept;
+void OnEyeReleased(int eye, bool published) noexcept; // receipt only, no released-image access
 
 // Present thread, in place of CopyResource(image, source) into an eye or the flat panel's image (ID3D11DeviceContext,
-// ID3D11Texture2D): true if it drew `source` into `image` because D3D11 can't copy between their formats (ME2's swap chain
-// is R16G16B16A16_FLOAT in gameplay, the images R8G8B8A8; plugin/EyeCopy), false when the caller's copy is right.
+// ID3D11Texture2D): owns the complete validated raw-copy or shader-conversion operation.
+// True means issued; false is failure, never permission for a raw-copy fallback.
 // `shiftX`: the SFR convergence shift in pixels.
 bool CopyIntoImage(void* context, void* image, void* source, int shiftX) noexcept;
 
 // What RunFrame knows about the frame it is submitting, for our layers (LE1's MevrBridge::OverlayFrame, the same names;
 // the fields LE2 has so far). Present thread.
-struct OverlayFrame
-{
-    void* session = nullptr;    // XrSession
-    void* appSpace = nullptr;   // XrSpace: Halcyon's recentered LOCAL app space (the projection layer's)
-    void* viewSpace = nullptr;  // XrSpace: VIEW (head-locked quads)
-    ID3D11DeviceContext* context = nullptr;   // the game's immediate context
-    bool worldFrame = false;    // this frame submits the head-tracked world (the projection layer), not a flat panel
-    bool menuOpen = false;      // Halcyon's Insert menu is open
-    int gameMode = -1;          // the engine's game mode (EngineProbe::ReadGameModeSEH), -1 unreadable
-    // Tracked eyes in app space. Projection poses can instead be centered or taken from frame history.
-    bool eyesValid = false;
-    float eyePosition[2][3] = {};
-    // The world layer's views as submitted (each eye's swapchain, rect, pose and FOV), when projectionValid.
-    bool projectionValid = false;
-    void* projectionSwapchain[2] = {nullptr, nullptr};   // XrSwapchain
-    int projectionRect[2][4] = {};                       // x, y, width, height (pixels)
-    float projectionOrientation[2][4] = {{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
-    float projectionPosition[2][3] = {};
-    float projectionFov[2][4] = {};                      // angleLeft, angleRight, angleUp, angleDown (radians)
-    bool stereo = false;        // SFR (the stereo mode whose eyes carry no HUD while the HUD panel takes it)
-    // The head at the frame's display time in appSpace (the located views: their mean position, the left eye's
-    // orientation, as LE1's), when headValid.
-    bool headValid = false;
-    float headOrientation[4] = {0.0f, 0.0f, 0.0f, 1.0f};   // xyzw
-    float headPosition[3] = {};
-};
+
 
 // Render thread, from d3d_capture.cpp's draw hooks: an SFR UI draw (IsUiDrawNow, not a menu or cinematic frame).
 // `draw(user)` re-issues the game's draw; called with our HUD panel bound while it is armed (plugin/HudPanel: "over"
@@ -110,6 +96,24 @@ bool HudPanelDraw(ID3D11DeviceContext* context, void (*draw)(void*), void* user,
 // host modules on LE2 so far: plugin/Vignette), up to `capacity` XrCompositionLayerQuad* into `layersOut`, drawn over
 // Halcyon's. Returns how many. LE1's MevrBridge::OverlayLayers.
 unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsigned capacity) noexcept;
+
+// ---- ME1's 3D cinema screen (research/52; research/le2-cinema.md; plugin/CineScreen, CinemaBackdrop, TransitionFade) -------
+// Present thread, each frame a conversation (`conversation`) or cutscene is decided (me2_xr.cpp's VRCINE block): whether it
+// goes on the 3D screen ([Cinematics] conversations / cutscenes in ASI\LE2MEVR.ini, ME1's keys and defaults).
+bool CineScreenWanted(bool conversation) noexcept;
+bool CineScreenFullRate() noexcept;
+// Game thread, calcview_hook.cpp's SFR branch while the screen is up: half the two cameras' distance (game units) for a view
+// whose horizontal half angle is `halfH` (radians, 0 unknown), our plan for this frame (core/vr/CineScreen: the scene
+// [Cinematics] convergeM away on the screen plane once each eye is cropped by its depth).
+float CineScreenHalfSeparationUU(float halfH) noexcept;
+// Present thread, at the SFR submit while the screen is up: the eyes as located (app space) and each eye's image.
+// The screen's layers in submit order (the floor and horizon's projection layer, then the left and right eyes' quads), at
+// most `capacity` into `layersOut`; 0 if it can't be shown (the caller then submits its projection layer as before). The
+// screen's place is kept for this frame's OverlayLayers (the game's UI on its own layer in front of it).
+unsigned CineScreenLayers(const CineScreenFrame& frame, const void** layersOut, unsigned capacity) noexcept;
+// Present thread, the frame's last layer: this frame's view (0 the world, 1 the 3D screen, 2 a cinematic on the flat panel,
+// 3 another flat panel, -1 none submitted); a head-locked black quad (an XrCompositionLayerQuad*) to submit last, or null.
+const void* TransitionFadeLayer(void* session, void* viewSpace, ID3D11DeviceContext* context, int view) noexcept;
 
 // d3d_capture.cpp's TryInstallFactoryHooks, for each DXGI factory the game makes (an IDXGIFactory*): our hook on the
 // first output's IDXGIOutput6::GetDesc1, where the game asks whether the display is HDR (research/27 7c for LE1).
@@ -145,6 +149,12 @@ bool KeyDown(int vk) noexcept;
 bool OnMenuKey(bool ownMenuOpen) noexcept;
 // Our main menu is open (plugin/MainMenu): Halcyon's window procedure swallows the desktop's input as for its own menu.
 bool MainMenuOpen() noexcept;
+
+// One of the game's screens stands on the wrist or in the room (plugin/WorldUi, the mod's game/WorldUi; plugin/MenusLe2,
+// research/le2-menus.md "ME2's screens on the wrist"), or is being opened (the mod reserved it): the GUI mode `mode` (7) is then
+// not flat (d3d_capture.cpp's GetMenuMode answers false: the world in stereo behind the screen, its UI on our HUD panel), as
+// LE1's MevrBridge::WorldUiOwnership in xr_session.cpp's decision. Any thread.
+bool WorldUiOwnsGui(int mode) noexcept;
 
 // Halcyon's hotkey polls go through this: KeyDown in our ASI, the plain poll in an upstream build.
 inline bool HotkeyDown(int vk) noexcept

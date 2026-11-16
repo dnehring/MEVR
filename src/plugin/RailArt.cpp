@@ -15,6 +15,7 @@
 #include <wrl/client.h>
 
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <format>
 #include <fstream>
@@ -76,10 +77,35 @@ fs::file_time_type Newest() {
     return newest;
 }
 
-bool Upload(ID3D11Device* device, menu::Renderer* renderer, std::string const& name, gfx::Image const& image) {
+void ApplyPalette(gfx::Image& image, Palette palette) {
+    if (palette == Palette::Original) return;
+
+    // Mission Computer shadows, amber edges and gold highlights. Map brightness before alpha so the
+    // nine-slice borders and translucent pixels keep their shape and opacity.
+    constexpr gfx::Rgba shadow{34, 14, 5, 255};
+    constexpr gfx::Rgba amber{208, 101, 26, 255};
+    constexpr gfx::Rgba gold{255, 216, 150, 255};
+    constexpr float midpoint = 0.60f;
+    for (auto& p : image.pixels) {
+        std::uint32_t const alpha = gfx::Alpha(p);
+        if (alpha == 0) continue;
+        float const light = (0.213f * gfx::Red(p) + 0.715f * gfx::Green(p) + 0.072f * gfx::Blue(p)) / alpha;
+        bool const bright = light >= midpoint;
+        float const t = bright ? (light - midpoint) / (1.0f - midpoint) : light / midpoint;
+        gfx::Rgba const lo = bright ? amber : shadow;
+        gfx::Rgba const hi = bright ? gold : amber;
+        auto const channel = [t, alpha](float a, float b) {
+            return static_cast<std::uint32_t>(std::lround(std::lerp(a, b, t) * alpha / 255.0f));
+        };
+        p = channel(lo.r, hi.r) | (channel(lo.g, hi.g) << 8) | (channel(lo.b, hi.b) << 16) | (alpha << 24);
+    }
+}
+
+bool Upload(ID3D11Device* device, menu::Renderer* renderer, std::string const& name, gfx::Image image, Palette palette) {
     if (image.width <= 0 || image.height <= 0 || image.pixels.size() != static_cast<std::size_t>(image.width) * image.height) {
         return false;
     }
+    ApplyPalette(image, palette);
     D3D11_TEXTURE2D_DESC td{};
     td.Width = static_cast<UINT>(image.width);
     td.Height = static_cast<UINT>(image.height);
@@ -120,7 +146,7 @@ bool CacheChanged() {
     return Newest() != gStamp;
 }
 
-Status Load(ID3D11Device* device, menu::Renderer* renderer, Sizes const& sizes, fs::path const& from) {
+Status Load(ID3D11Device* device, menu::Renderer* renderer, Sizes const& sizes, fs::path const& from, Palette palette) {
     Status status;
     gFolder = from.empty() ? CacheFolder() : from;
     gStamp = Newest();
@@ -187,8 +213,9 @@ Status Load(ID3D11Device* device, menu::Renderer* renderer, Sizes const& sizes, 
                     status.detail += std::format(" the tab has no '{}';", state.label);
                     continue;
                 }
-                gfx::Image const image = gfx::RenderFit(*movie, *tab, *frame, sizes.tabWidth, sizes.tabHeight, gfx::Insets{50, 0, 15, 0}, fit);
-                made += Upload(device, renderer, state.name, image) ? 1 : 0;
+                made += Upload(device, renderer, state.name,
+                    gfx::RenderFit(*movie, *tab, *frame, sizes.tabWidth, sizes.tabHeight, gfx::Insets{50, 0, 15, 0}, fit),
+                    palette) ? 1 : 0;
             }
         } else {
             status.detail += " no `leftTab` in the journal's movie;";
@@ -198,8 +225,8 @@ Status Load(ID3D11Device* device, menu::Renderer* renderer, Sizes const& sizes, 
     // The inventory's item-list frame behind the rail: the left 262 px (the side bump and the whole title notch, about 200 x 30,
     // where the title goes) and the corners at the game's own size, the straight middle squeezed, the sides stretched.
     if (auto const movie = ReadMovie(folder / kInventory, status.detail)) {
-        gfx::Image const image = gfx::RenderFit(*movie, kFrameShape, 0, sizes.panelWidth, sizes.panelHeight, gfx::Insets{262, 60, 60, 50});
-        status.panel = Upload(device, renderer, "me1-panel", image);
+        status.panel = Upload(device, renderer, "me1-panel",
+            gfx::RenderFit(*movie, kFrameShape, 0, sizes.panelWidth, sizes.panelHeight, gfx::Insets{262, 60, 60, 50}), palette);
         if (!status.panel) {
             status.detail += " the frame didn't render;";
         }

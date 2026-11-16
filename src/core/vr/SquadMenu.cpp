@@ -250,6 +250,15 @@ void Machine::Reset() {
     *this = Machine{};
 }
 
+InventoryPage PageInventory(int weaponCount, int requestedPage) {
+    int const count = std::max(weaponCount, 0);
+    if (count <= kWeapons) return {0, 1, 0, count, -1};
+    int const pages = 1 + (count - 1) / (kWeapons - 1);
+    int const page = std::clamp(requestedPage, 0, pages - 1);
+    int const first = page * (kWeapons - 1);
+    return {page, pages, first, std::min(kWeapons - 1, count - first), kWeapons - 1};
+}
+
 void Machine::OpenMenu(Input const& input, int member, Step& step) {
     phase_ = Phase::Open;
     selected_ = std::clamp(member, 0, std::max(input.memberCount - 1, 0));
@@ -260,6 +269,7 @@ void Machine::OpenMenu(Input const& input, int member, Step& step) {
     leftSide_ = SideOf(input.leftX, input.leftY, input.cardPush);
     idleFor_ = 0.0f;
     step.opened = true;
+    paging_ = false;
 }
 
 void Machine::CloseMenu(Close why, Step& step) {
@@ -273,6 +283,7 @@ void Machine::CloseMenu(Close why, Step& step) {
     rightHeld_ = Direction::None;
     flickRefused_ = false;
     idleFor_ = 0.0f;
+    paging_ = false;
 }
 
 Step Machine::Update(Input const& in) {
@@ -344,13 +355,21 @@ Step Machine::Update(Input const& in) {
         idleFor_ = touched ? 0.0f : idleFor_ + std::max(in.dt, 0.0f);
         if (bPressed) {
             CloseMenu(Close::CancelButton, step);
+        } else if ((aPressed || (triggerReleased && in.confirmOnRelease)) && highlighted_ >= 0 &&
+                   highlighted_ == in.members[selected_].more) {
+            step.pageChanged = true;
+            step.member = selected_;
+            highlighted_ = -1;
+            flickRefused_ = true;
+            idleFor_ = 0.0f;
+            paging_ = true;
         } else if (aPressed && highlighted_ >= 0) {
             CloseMenu(Close::Confirmed, step);
         } else if (triggerReleased && in.confirmOnRelease) {
             CloseMenu(highlighted_ >= 0 ? Close::Confirmed : Close::Released, step);
         } else if (!in.confirmOnRelease && in.newPull) {
             CloseMenu(Close::Repulled, step);
-        } else if (!in.confirmOnRelease && idleFor_ >= in.idleCloseSeconds) {
+        } else if ((!in.confirmOnRelease || paging_) && idleFor_ >= in.idleCloseSeconds) {
             CloseMenu(Close::Idle, step);
         }
         break;

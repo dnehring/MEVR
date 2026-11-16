@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include "core/CallScope.hpp"
+
 #include <cstdint>
 
 namespace mevr::hook {
@@ -38,6 +40,13 @@ using AnswerHandler = bool (*)(ue3::Object* context, ue3::Function* function, ue
 // Handler.
 using FramePostHandler = void (*)(ue3::Object* context, ue3::Function* function, ue3::Function* caller, std::uint8_t* callerLocals,
     void* result);
+
+// Per-invocation bracket around the existing hook body, including skip/answer/early return and
+// exceptions. Enter returns an opaque identity; Leave runs in reverse registration order in __finally.
+// Leave must be noexcept and validate any temporary writes before restoring them. Direct ProcessEvent
+// calls are outside this seam. Register before Install; false refuses invalid/over-capacity entries.
+using ScopedCall = mevr::CallScope<ue3::Object, ue3::Function>;
+bool AddScopedHandler(ue3::Function* function, ScopedCall::Enter enter, ScopedCall::Leave leave);
 
 // Register before Install; the table is read without locking while hooked.
 void AddPostHandler(ue3::Function* function, Handler handler);

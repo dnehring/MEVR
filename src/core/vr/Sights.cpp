@@ -120,6 +120,7 @@ char const* WeaponName(int weapon) {
     case 1: return "shotgun";
     case 2: return "assault rifle";
     case 3: return "sniper rifle";
+    case 4: return "SMG";  // family label only: its borrowed settings profile is 2
     default: return "unknown";
     }
 }

@@ -3,6 +3,7 @@
 // points; the host ASI only owns the loader hookup, the engine tick and the Present hook.
 
 #include "mod/ModApi.hpp"
+#include "mod/GameplayActions.hpp"
 
 #include "core/DevChannels.hpp"
 #include "core/Exe.hpp"
@@ -69,6 +70,8 @@
 #include "game/HudPieces.hpp"
 #include "game/ScreenReticle.hpp"
 #include "game/Interact.hpp"
+#include "game/Le3GalaxyRetention.hpp"
+#include "game/Le3GalaxyCapture.hpp"
 #include "game/Mako.hpp"
 #include "game/Holsters.hpp"
 #include "game/CockpitProbe.hpp"
@@ -104,6 +107,8 @@
 #include "game/SupportGrip.hpp"
 #include "game/Throwables.hpp"
 #include "game/Traversal.hpp"
+#include "game/Le3Traversal.hpp"
+#include "game/Melee.hpp"
 #include "game/Vent.hpp"
 #include "game/ViewAnchor.hpp"
 #include "game/ViewLevel.hpp"
@@ -116,6 +121,7 @@
 #include <format>
 #include <memory>
 #include <optional>
+#include <sstream>
 #include <string>
 
 namespace {
@@ -167,12 +173,20 @@ bool gToldNoSupportGrip = false;
 bool gHooked = false;  // ProcessEvent hook live (after the script packages loaded)
 // Our reflection layer (ue3/, research/34) found and checked against LExSDKv2 (once per load).
 bool gReflectChecked = false;
+bool gEngineProbe = false;
+bool gEngineProbePassed = false;
+bool gEngineRequests = false;
 bool gToldLayerOff = false;  // the startup gate said it goes on without the layer
 bool gSceneViewHooked = false;
 bool gGamepadHooked = false;  // XInput hooks (once the game has loaded an XInput DLL)
 bool gCallFunctionHooked = false;  // installed the first time hand aim is turned on
 bool gHandAimAvailable = false;
-bool gTraversalOn = false;  // game/traversal started (LE2): its custom action handlers want the CallFunction hook
+bool gMeleeOn = false;
+bool gMeleeRequests = false;
+bool gMeleeGestures = false;
+bool gMeleeHeavyGestures = false;
+bool gTraversalGestures = false;
+bool gTraversalOn = false;  // native custom-action observers require the CallFunction hook
 bool gBonePoseTried = false;  // the arm writeback hook goes in the first time arm IK is turned on
 bool gBonePoseHooked = false;
 bool gBodyBoundsHooked = false;  // the player's body bounds padded (engine/BodyBounds): goes in with the arm writeback
@@ -277,7 +291,7 @@ void WaitForThisFrameToPresent() {
 // does LE2 if its layer is off.
 bool ScriptPackagesLoaded() {
     using namespace mevr;
-#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     if (!ue3::runtime::Init()) {
         if (ue3::runtime::Pending()) {
             return false;  // the game is still starting: the next try is in a second
@@ -309,10 +323,16 @@ bool ScriptPackagesLoaded() {
 // registered before the ProcessEvent hook goes live so the table never changes under it.
 void TryInstallScriptHooks() {
     using namespace mevr;
-    // CalcSceneView is native and always there, but the handlers it serves need the scripts.
-    if (!gSceneViewHooked && !gHostOwnsVr) {
-        gSceneViewHooked = engine::scene_view::Install(*gInit, &game::head_tracking::OnBeforePrimaryView);
-    }
+    // The LE3 developer build must pass the SDK cross-check before installing even the
+    // standalone view hook. Other games and SDK-free players retain their existing order.
+    auto installSceneView = [&] {
+        if (!gSceneViewHooked && !gHostOwnsVr) {
+            gSceneViewHooked = engine::scene_view::Install(*gInit, &game::head_tracking::OnBeforePrimaryView);
+        }
+    };
+#if !defined(MEVR_GAME_LE3) || defined(MEVR_NO_LESDK)
+    installSceneView();
+#endif
     // Once the script packages are in (our reflection layer is up by then on LE1), before the modules
     // that use it start: the world's path, and the layer proven against LExSDKv2 (research/34).
     if (!gReflectChecked) {
@@ -322,8 +342,19 @@ void TryInstallScriptHooks() {
         gReflectChecked = true;
         ue3::runtime::Init();  // LE2/LE3: says once that there's no layout yet
         engine::ResolveWorld();
+#if defined(MEVR_GAME_LE3) && !defined(MEVR_NO_LESDK)
+        if (!engine::reflect_check::Run(*gInit)) {
+            log::Error("LE3 startup refused: SDK reflection cross-check failed; gameplay hooks remain disabled until the mod reloads");
+            gActive = false;
+            return;
+        }
+#else
         engine::reflect_check::Run(*gInit);
+#endif
     }
+#if defined(MEVR_GAME_LE3) && !defined(MEVR_NO_LESDK)
+    installSceneView();
+#endif
     // Without the scene view hook (or a head source) head tracking stays inert; it still reads
     // the game mode, which the probes and features use.
     if (!game::head_tracking::TryStartup(gSceneViewHooked)) {
@@ -354,15 +385,21 @@ void TryInstallScriptHooks() {
     game::camera_collision::TryStartup();  // [Game] cameraCollision (research/69: the camera pulled to Shepard's knees)
     game::camera_shake::TryStartup();  // [Comfort] screenShake, viewShake (research/71: the view shaken by shots and the run)
     game::galaxy_dump::TryStartup();  // the galaxy map's Flash calls, traced on request (research/51 section 8)
+    game::le3_galaxy_retention::Startup(*gInit);
     game::world_ui::TryStartup();  // the camera-update handler that holds Shepard's view while a game screen stands in the room
+#if !defined(MEVR_GAME_LE3)
     game::conversation_world::TryStartup();  // ... and the one that holds it through a conversation in the world (research/59)
+#endif
+#if !defined(MEVR_GAME_LE3)
     game::galaxy_map::TryStartup();  // the camera-update handler holding the view in the CIC while the map is open in-world
+#endif
     if (gHostOwnsVr && gHost->version >= 36 && gHost->floorLockSampleSize == sizeof(vr::floor_lock::PawnSample)) {
         game::player::PublishFloorLockOnCamera(gHost->setFloorLockSample);
     }
     game::sights::TryStartup();  // the scoped shots' aimed fire (a CallFunction handler, registered before the hook)
     game::view_level::TryStartup();  // the level camera (PlayerTick and SetWeaponRecoil handlers, before the hooks)
-    gTraversalOn = game::traversal::TryStartup();  // ME2's vault on the double A (research/le2-traversal.md; LE2 only)
+    gMeleeOn = game::melee::TryStartup();
+    gTraversalOn = game::traversal::TryStartup();  // shared traversal lifecycle with separate LE2/LE3 native admission
     game::power_wheel::TryStartup();  // the bolt from the hand: BioPawn.ReleasePower's timing (research/55 section 9)
     if (!gHandAimAvailable) {
         log::Warn("hand aim: BioPlayerController.GetAdjustedAimFor not found; hand aim unavailable");
@@ -676,6 +713,11 @@ mevr::game::power_wheel::Link PowerWheelLink() {
             link.publishLock = gHost->setPowerLock;
         }
     }
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+    if (MEVR_HOST_HAS(mainMenu) && gHost->mainMenu != nullptr) {
+        link.menuOpen = (gHost->mainMenu() & (kMainMenuOpen | kOmniRailOpen)) != 0;
+    }
+#endif
     return link;
 }
 
@@ -795,6 +837,9 @@ mevr::game::squad_weapons::Link SquadLink() {
     if (MEVR_HOST_HAS(hapticPulseHz)) {
         link.hapticHz = gHost->hapticPulseHz;
     }
+    if (MEVR_HOST_HAS(mainMenu) && gHost->mainMenu != nullptr) {
+        link.menuOpen = (gHost->mainMenu() & (kMainMenuOpen | kOmniRailOpen)) != 0;
+    }
     return link;
 }
 
@@ -830,8 +875,12 @@ mevr::game::throwables::Link ThrowablesLink() {
 mevr::game::voice::Link VoiceLink() {
     using namespace mevr;
     game::voice::Link link;
+    link.menuOpen = game::body_calibration::Calibrating();
     if (!gHostOwnsVr) {
         return link;
+    }
+    if (MEVR_HOST_HAS(mainMenu) && gHost->mainMenu != nullptr) {
+        link.menuOpen = link.menuOpen || (gHost->mainMenu() & (kMainMenuOpen | kOmniRailOpen)) != 0;
     }
     if (gHost->version >= 9) {
         link.haptic = gHost->hapticPulse;
@@ -862,6 +911,14 @@ mevr::game::thespian::Link ThespianLink() {
     using namespace mevr;
     game::thespian::Link link;
     link.voice = VoiceLink();
+    link.otherUiOwnsInput = [] {
+#if defined(MEVR_GAME_LE3)
+        if (!gHostOwnsVr || HostBlocksThespian(gHost)) return true;
+#endif
+        return game::body_calibration::Calibrating() ||
+            (gHostOwnsVr && MEVR_HOST_HAS(mainMenu) && gHost->mainMenu != nullptr &&
+                (gHost->mainMenu() & (kMainMenuOpen | kOmniRailOpen)) != 0);
+    };
     if (MEVR_HOST_HAS(setThespian) && gHost->setThespian != nullptr && gHost->thespianPanelSize == sizeof(vr::thespian::Panel)) {
         link.setPanel = gHost->setThespian;
     }
@@ -880,6 +937,9 @@ mevr::game::squad_orders::Link SquadOrdersLink() {
     if (MEVR_HOST_HAS(leftGripAway) && gHost->leftGripAway != nullptr) {
         link.leftGrip = gHost->leftGripAway();
     }
+    if (MEVR_HOST_HAS(mainMenu) && gHost->mainMenu != nullptr) {
+        link.menuOpen = (gHost->mainMenu() & (kMainMenuOpen | kOmniRailOpen)) != 0;
+    }
     return link;
 }
 
@@ -895,6 +955,9 @@ mevr::game::squad_place::Link SquadPlaceLink() {
     }
     if (MEVR_HOST_HAS(setSquadPlace) && gHost->setSquadPlace != nullptr && gHost->squadPlaceSize == sizeof(vr::squad_place::View)) {
         link.publish = gHost->setSquadPlace;
+    }
+    if (MEVR_HOST_HAS(mainMenu) && gHost->mainMenu != nullptr) {
+        link.menuOpen = (gHost->mainMenu() & (kMainMenuOpen | kOmniRailOpen)) != 0;
     }
     return link;
 }
@@ -939,10 +1002,193 @@ mevr::game::view_level::Link ViewLevelLink() {
     return link;
 }
 
+// Staged action adapters share current host ownership. These checks also run at native dispatch,
+// not only at the preceding tick (the console and asynchronous UI can run before claim updates).
+bool ActionRuntimeReady() {
+#if defined(MEVR_LE2_DIAGNOSTIC)
+    return false;
+#else
+    return gActive && gHooked && !gEngineProbe && mevr::ue3::runtime::Up();
+#endif
+}
+bool ActionMenuOpen() {
+    using namespace mevr;
+    return (MEVR_HOST_HAS(mainMenu) && gHost->mainMenu != nullptr &&
+            (gHost->mainMenu() & (kMainMenuOpen | kOmniRailOpen)) != 0) ||
+        game::world_ui::WristScreenUp() || game::view_anchor::Held() ||
+        game::power_wheel::IsOpen() || game::squad_weapons::IsOpen();
+}
+bool ActionCalibrating() {
+    using namespace mevr;
+    if (game::body_calibration::Calibrating()) return true;
+    if (MEVR_HOST_HAS(calibration) && gHost->calibration &&
+        gHost->calibrationStateSize == sizeof(vr::calibration::HostState)) {
+        vr::calibration::HostState state;
+        gHost->calibration(&state);
+        return (state.flags & vr::calibration::kCalibrating) != 0;
+    }
+    return false;
+}
+bool ActionForeground() {
+    DWORD pid = 0;
+    HWND const window = GetForegroundWindow();
+    return window != nullptr && GetWindowThreadProcessId(window, &pid) != 0 && pid == GetCurrentProcessId();
+}
+bool ActionSceneAllowed() {
+    using namespace mevr;
+    if (!ActionRuntimeReady() || ActionMenuOpen() || ActionCalibrating()) return false;
+    auto* pc = game::player::Controller();
+    if (!ue3::runtime::IsAlive(pc) || game::player::GameMode(pc) != 0) return false;
+    auto* pawn = game::player::BioPawn(pc);
+    // Native adapters additionally query movement-ignore/action/physics/combat. A physical seated
+    // calibration is intentionally NOT consulted: only authored context denies traversal.
+    return ue3::runtime::IsAlive(pawn) && !game::authored_moment::TrackMoves(pawn);
+}
+bool ActionHandFree(int hand) {
+    using namespace mevr;
+    if (hand < 0 || hand > 1 || game::support_grip::Held() || game::squad_place::Holding() ||
+        game::power_wheel::OwnsLeftHand()) return false;
+    if (hand == 0) return !game::throwables::ClaimedLeft() && !game::vent::ClaimedLeft() && !game::voice::ClaimedLeft();
+    return !game::throwables::RightHandBusy() && !game::throwables::ClaimedRight() &&
+        !game::holsters::RightHandInSlot() && game::holsters::SecondsSinceDraw() >= 0.3;
+}
+bool PhysicalControlsAllowed() {
+    using namespace mevr;
+    return gHostOwnsVr && gHostDataOk && ActionSceneAllowed() &&
+        vr::host_view::Latest().valid && vr::controllers::Latest().active;
+}
+bool ActionControlsReleased(mevr::vr::controllers::Hand const& hand) {
+    return hand.trigger < 0.15f && hand.squeeze < 0.15f && !hand.primary && !hand.secondary && !hand.menu && !hand.stickClick;
+}
+bool AllowMeleeGesture(int hand) {
+    auto const state = mevr::vr::controllers::Latest();
+    return ActionSceneAllowed() && state.active && ActionHandFree(hand) &&
+        ActionControlsReleased(hand == 0 ? state.left : state.right) && !mevr::game::traversal::Moving();
+}
+bool AllowMeleeDiagnostic(int hand) {
+    auto const state = mevr::vr::controllers::Latest();
+    // Desktop diagnostics don't infer XR focus. They require THIS process in the foreground,
+    // and neither controller may carry an outstanding press/claim into the assisted request.
+    return ActionSceneAllowed() && ActionForeground() && ActionHandFree(hand) &&
+        ActionControlsReleased(state.left) && ActionControlsReleased(state.right) && !mevr::game::traversal::Moving();
+}
+bool AllowTraversalGesture() {
+    auto const state = mevr::vr::controllers::Latest();
+    // A is the explicit double-tap; it is the only competing button admitted here.
+    auto right = state.right;
+    right.primary = false;
+    return ActionSceneAllowed() && state.active && ActionHandFree(0) && ActionHandFree(1) &&
+        ActionControlsReleased(state.left) && ActionControlsReleased(right) && !mevr::game::melee::Busy();
+}
+bool AllowTraversalDiagnostic() {
+    auto const state = mevr::vr::controllers::Latest();
+    return ActionSceneAllowed() && ActionForeground() && ActionHandFree(0) && ActionHandFree(1) &&
+        ActionControlsReleased(state.left) && ActionControlsReleased(state.right) && !mevr::game::melee::Busy();
+}
+struct ActionContext {
+    void const* world = nullptr;
+    void const* pc = nullptr;
+    void const* pawn = nullptr;
+    int mode = -1;
+    bool allowed = false;
+    bool focused = false;
+    std::uint64_t squadGeneration = 0;
+    bool trackingEpochKnown = false;
+    std::uint32_t recenters = 0;
+    std::uint32_t sessions = 0;
+    bool operator==(ActionContext const&) const = default;
+};
+ActionContext gActionContext;
+std::uint64_t gActionGeneration = 0;
+std::uint64_t ActionGeneration() {
+    using namespace mevr;
+    auto* pc = ActionRuntimeReady() ? game::player::Controller() : nullptr;
+    if (!ue3::runtime::IsAlive(pc)) pc = nullptr;
+    auto const floor = HostFloor();
+    // Epoch counters also change on a small recenter that doesn't trip the pose-jump detector.
+    // Ignore measured height/validity/sequence: seated calibration and per-frame floor jitter
+    // must not reset gestures or traversal. Host availability itself remains a transition.
+    ActionContext const current{engine::World(), pc, pc ? game::player::BioPawn(pc) : nullptr,
+        pc ? static_cast<int>(game::player::GameMode(pc).value_or(255)) : -1,
+        ActionSceneAllowed(), vr::controllers::Latest().active, game::squad_context::Generation(),
+        floor.has_value(), floor ? floor->recenters : 0, floor ? floor->sessions : 0};
+    if (!(current == gActionContext)) { gActionContext = current; ++gActionGeneration; }
+    return gActionGeneration;
+}
+mevr::game::melee::Link MeleeLink(bool diagnostic = false) {
+    using namespace mevr;
+    game::melee::Link link;
+    auto const state = vr::controllers::Latest();
+    auto const view = vr::host_view::Latest();
+    link.enabled = gMeleeRequests;
+    link.gestures = gMeleeGestures && !diagnostic;
+    link.focused = diagnostic ? ActionForeground() : state.active;
+    link.menuOpen = ActionMenuOpen() || ActionCalibrating();
+    link.authoredSeated = !ActionSceneAllowed();
+    link.allowRequest = diagnostic ? AllowMeleeDiagnostic : AllowMeleeGesture;
+    if (MEVR_HOST_HAS(hapticPulse)) link.haptic = gHost->hapticPulse;
+    link.input.allowed = ActionSceneAllowed() && (diagnostic || (view.valid && state.active));
+    link.input.generation = ActionGeneration();
+    link.input.chamberHeavy = gMeleeHeavyGestures && !diagnostic;
+    auto const yaw = game::arm_ik::TorsoYaw().value_or(ik::YawOf(
+        view.head.orientation.x, view.head.orientation.y, view.head.orientation.z, view.head.orientation.w));
+    vr::controllers::Hand const* hands[] = {&state.left, &state.right};
+    for (int hand = 0; hand < 2; ++hand) {
+        auto& out = link.input.hands[static_cast<std::size_t>(hand)];
+        auto const& source = *hands[hand];
+        out.available = link.allowRequest(hand);
+        out.neutral = ActionControlsReleased(source);
+        // The shared optional chamber hold supplies heavy intent after fresh native admission.
+        // Controls remain released: no fire, grip, squad, power or menu binding is stolen.
+        out.heavy = false;
+        out.motion.now = static_cast<double>(state.timeMs) * 0.001;
+        out.motion.tracked = state.active && source.gripValid && view.valid;
+        out.motion.position = {source.grip.position.x - view.head.position.x,
+            source.grip.position.y - view.head.position.y, source.grip.position.z - view.head.position.z};
+        out.motion.bodyForward = ik::body_slots::YawForward(yaw);
+        out.motion.suppressed = !out.available;
+    }
+    return link;
+}
+
+mevr::game::arm_ik::OverlayMenu BodyOverlayMenu() {
+    using namespace mevr;
+    game::arm_ik::OverlayMenu menu;
+#if defined(MEVR_GAME_LE3)
+    menu.eligible = ActionRuntimeReady() && gHostOwnsVr && gHostDataOk && gHostView &&
+        vr::host_view::Latest().valid && !ActionCalibrating();
+    // The existing live-adjustment mode publishes poses-only active controllers deliberately:
+    // preserve that live body preview. Normal shared menu publishes Hidden, never unmask it here.
+    menu.open = MEVR_HOST_HAS(mainMenu) && gHost->mainMenu &&
+        (gHost->mainMenu() & kMainMenuOpen) != 0 && !vr::controllers::Latest().active;
+    if (auto const floor = HostFloor()) {
+        menu.epochKnown = true;
+        menu.sessions = floor->sessions;
+        menu.recenters = floor->recenters;
+    }
+#endif
+    return menu;
+}
+
 // Vaulting and climbing (game/traversal, research/le2-traversal.md): the right A, the menu, the vignette and the cue's service.
-mevr::game::traversal::Link TraversalLink() {
+mevr::game::traversal::Link TraversalLink(bool diagnostic = false) {
     using namespace mevr;
     game::traversal::Link link;
+    link.menuOpen = ActionMenuOpen() || ActionCalibrating();
+    link.authoredSeated = !ActionSceneAllowed();
+    link.sceneGeneration = ActionGeneration();
+    link.allowNativeTraversal = diagnostic ? AllowTraversalDiagnostic : AllowTraversalGesture;
+    link.le3DoubleTap = gTraversalGestures && !diagnostic;
+    if (MEVR_HOST_HAS(setTraversalPresentation) && gHost->setTraversalPresentation != nullptr &&
+        gHost->traversalPresentationSize == sizeof(vr::traversal::Presentation)) {
+        link.setPresentation = gHost->setTraversalPresentation;
+        link.allowPresentation = ActionSceneAllowed;
+        if (auto const floor = HostFloor()) {
+            link.viewSpaceKnown = true;
+            link.viewRecenters = floor->recenters;
+            link.viewSessions = floor->sessions;
+        }
+    }
     if (!gHostOwnsVr) {
         return link;
     }
@@ -952,9 +1198,6 @@ mevr::game::traversal::Link TraversalLink() {
     vr::controllers::State const controllers = vr::controllers::Latest();
     link.controllers = controllers.active;
     link.rightA = controllers.right.primary;
-    if (MEVR_HOST_HAS(mainMenu) && gHost->mainMenu != nullptr) {
-        link.menuOpen = (gHost->mainMenu() & kMainMenuOpen) != 0;
-    }
     if (MEVR_HOST_HAS(setVignette)) {
         link.setVignette = gHost->setVignette;
     }
@@ -982,6 +1225,9 @@ mevr::game::body_calibration::Link BodyCalibrationLink() {
 // Host renderer (HostServices v16): our VR main menu's state, for its "pause while open" (research/28).
 mevr::game::menu_pause::Link MenuPauseLink() {
     mevr::game::menu_pause::Link link;
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+    link.squadPause = mevr::game::squad_weapons::IsOpen() && mevr::game::hand_calibration::GetSquad().pause;
+#endif
     if (gHostOwnsVr && MEVR_HOST_HAS(mainMenu)) {
         link.state = gHost->mainMenu;
     }
@@ -1020,7 +1266,7 @@ mevr::game::comfort::Link ComfortLink() {
         link.headTrackedView = vr::host_view::Latest().valid;
     }
     if (MEVR_HOST_HAS(mainMenu) && gHost->mainMenu != nullptr) {
-        link.mainMenuOpen = (gHost->mainMenu() & kMainMenuOpen) != 0;
+        link.mainMenuOpen = (gHost->mainMenu() & (kMainMenuOpen | kOmniRailOpen)) != 0;
     }
     return link;
 }
@@ -1080,6 +1326,7 @@ void PublishStatus() {
     auto const mode = gHooked ? game::head_tracking::GameMode() : std::nullopt;
     char const* type = "none";
     switch (game::weapon::Type()) {
+    case game::weapon::RangedType::Smg: type = "SMG"; break;
     case game::weapon::RangedType::Pistol: type = "pistol"; break;
     case game::weapon::RangedType::Shotgun: type = "shotgun"; break;
     case game::weapon::RangedType::AssaultRifle: type = "assault rifle"; break;
@@ -1111,6 +1358,9 @@ void PublishStatus() {
     std::string full = status;
     if (!full.empty() && full.back() == '}') {
         full.pop_back();
+#if defined(MEVR_GAME_LE3)
+        full += ", \"melee\": " + vr::test_request::JsonString(game::melee::Status());
+#endif
         full += ", \"traversal\": " + game::traversal::StatusJson() + "}";
     }
     gHost->setStatus(full.c_str());
@@ -1291,6 +1541,52 @@ void Heartbeat() {
 
 } // namespace
 
+namespace mevr::mod::gameplay_actions {
+std::string MeleeCommand(std::string const& args) {
+#if defined(MEVR_GAME_LE3)
+    if (!ActionRuntimeReady()) return "melee: normal gameplay module context required (engine probe/diagnostic host refused)";
+    std::istringstream words(args);
+    std::string verb, value, extra;
+    words >> verb >> value >> extra;
+    if (verb.empty() || verb == "status") return std::format("melee: requests {}; gestures {}; heavy chamber gestures {}; {}",
+        gMeleeRequests, gMeleeGestures, gMeleeHeavyGestures, game::melee::Status());
+    if ((verb == "requests" || verb == "gestures" || verb == "heavy-gestures") &&
+        (value == "on" || value == "off") && extra.empty()) {
+        if (verb == "requests") gMeleeRequests = value == "on";
+        else if (verb == "gestures") gMeleeGestures = value == "on";
+        else gMeleeHeavyGestures = value == "on";
+        // Reset the release latch even if the setting is toggled twice between ticks.
+        auto link = MeleeLink(); link.input.allowed = false; game::melee::Tick(link);
+        return "melee: " + verb + " " + value + "; native/physical acceptance still pending";
+    }
+    if ((verb == "light" || verb == "heavy") && (value.empty() || value == "left" || value == "right") && extra.empty())
+        return game::melee::Request(verb == "heavy" ? ik::melee::Intent::Heavy : ik::melee::Intent::Light,
+            value == "left" ? 0 : 1, MeleeLink(true));
+    return "melee: status | requests on/off | gestures on/off | heavy-gestures on/off (right chamber hold then strike) | light [left/right] | heavy [left/right]";
+#else
+    (void)args;
+    return "melee: use this game's existing native adapter";
+#endif
+}
+std::string TraversalCommand(std::string const& args) {
+#if defined(MEVR_GAME_LE3)
+    if (!ActionRuntimeReady()) return "traversal: normal gameplay module context required (engine probe/diagnostic host refused)";
+    std::istringstream words(args);
+    std::string verb, value, extra;
+    words >> verb >> value >> extra;
+    if (verb == "gestures" && (value == "on" || value == "off") && extra.empty()) {
+        gTraversalGestures = value == "on";
+        auto link = TraversalLink(); link.authoredSeated = true;
+        game::traversal::Tick(0, link); // consume any held traverse press before rearming
+        return "traversal: double-tap gestures " + value + "; evade remains an explicit diagnostic command";
+    }
+    return game::traversal::Command(args, TraversalLink(true));
+#else
+    return game::traversal::Command(args);
+#endif
+}
+} // namespace mevr::mod::gameplay_actions
+
 MEVR_MOD_API bool MevrModStartup(mevr::loader::spi::Interface* spi, mevr::HostServices const* host) {
     using namespace mevr;
     // Version 2 and up: fields are only appended, so read what both sides know. (The monolithic
@@ -1337,6 +1633,14 @@ MEVR_MOD_API bool MevrModStartup(mevr::loader::spi::Interface* spi, mevr::HostSe
     if (spi == nullptr) {
         log::Warn("no SPI interface from the host: the mod hooks with its own MinHook");
     }
+    gEngineProbe = engine::DevelopmentEngineProbe();
+    if (gEngineProbe) {
+        gEngineRequests = GetPrivateProfileIntW(L"Debug", L"engineProbeRequests", 0, engine::SettingsFile().c_str()) != 0;
+        gEngineProbePassed = false;
+        gActive = true;
+        log::Info("engine-probe: renderer and gameplay disabled; waiting for reflection");
+        return true;
+    }
 #if !defined(MEVR_GAME_LE1)
     // LE2/LE3 read the engine through LExSDKv2 until they have a reflection layout (research/34 stage 5).
     if (!engine::legacy::Init(*gInit)) {
@@ -1358,15 +1662,44 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
     if (!gActive) {
         return;
     }
+    if (gEngineProbe) {
+        gRetryTimer += deltaSeconds;
+        if (!gReflectChecked && gRetryTimer >= kStartupRetrySeconds) {
+            gRetryTimer = 0.0;
+            if (ue3::runtime::Init() &&
+                ue3::runtime::Get().FindClass("SFXGame.SFXWeapon") != nullptr &&
+                ue3::runtime::Get().FindFunction("Engine.Camera.UpdateCamera") != nullptr) {
+                engine::ResolveWorld();
+                gEngineProbePassed = engine::reflect_check::Run(*gInit);
+                gReflectChecked = true;
+                log::Info("engine-probe: reflection checks finished");
+            }
+        }
+        if (gEngineProbePassed && gEngineRequests) game::console_request::Tick(deltaSeconds);
+        return;
+    }
 #if defined(MEVR_LE2_DIAGNOSTIC)
     engine::le2_diagnostic::Tick(deltaSeconds);
     return;
+#endif
+#if defined(MEVR_GAME_LE3) && !defined(MEVR_NO_LESDK)
+    // Several consumers below run before gHooked (requests, settings, hand aim and IK).
+    // Keep them idle until the SDK contract has passed, including the initial wait for scripts.
+    if (!gReflectChecked) {
+        gRetryTimer += deltaSeconds;
+        if (gRetryTimer >= kStartupRetrySeconds) {
+            gRetryTimer = 0.0;
+            TryInstallScriptHooks();
+        }
+        if (!gReflectChecked || !gActive) return;
+    }
 #endif
     gTickSeconds = deltaSeconds;
     if (gHostOwnsVr) {
         MirrorHostState();
         gGamepadHooked = true;  // the host's XInput hook feeds the controllers to the game
     }
+    (void)ActionGeneration();
     PollHotkeys();
     if (dev_channels::Allowed(engine::SettingsFile())) {
         game::console_request::Tick(deltaSeconds);  // the test loop's console.request (research/22); off in the players' build
@@ -1378,6 +1711,7 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
             gRetryTimer = 0.0;
             if (!gHooked) {
                 TryInstallScriptHooks();
+                if (!gActive) return; // a rejected startup must not continue this tick's feature work
             }
             if (!gGamepadHooked && gActive) {
                 gGamepadHooked = game::gamepad_bridge::TryInstall(*gInit);
@@ -1398,10 +1732,13 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         game::menu_pause::Tick(MenuPauseLink());  // the main menu's "pause while open"
         // Its Game menu and Holster buttons, after the unpause above (research/28, HostServices v19).
         if (gHostOwnsVr) {
-            game::game_menu_request::Tick(GameMenuRequestLink());
+            auto menuLink = GameMenuRequestLink();
+            menuLink.menuOpen = menuLink.menuOpen || game::body_calibration::Calibrating();
+            game::game_menu_request::Tick(menuLink);
             game::game_art::Tick();  // the game's UI art for the omni-tool's rail, cached once (research/57)
             // The game pointer's input as the game's own GUI events (research/57 section 6, HostServices v30), and mevr guikey's.
-            game::gui_cursor::Tick(MEVR_HOST_HAS(takeGuiEvents) ? gHost->takeGuiEvents : nullptr);
+            game::gui_cursor::Tick(MEVR_HOST_HAS(takeGuiEvents) ? gHost->takeGuiEvents : nullptr,
+                menuLink.menuOpen);
         }
     }
     if (gHostOwnsVr) {
@@ -1443,7 +1780,7 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         game::comfort::Tick(deltaSeconds, ComfortLink());
         // A shot's kick of the gun model (research/24 section 8): this tick's, for arm IK's request.
         game::gun_kick::Tick(deltaSeconds);
-        game::arm_ik::Tick(deltaSeconds);
+        game::arm_ik::Tick(deltaSeconds, BodyOverlayMenu());
         // Holsters, the squad menu and the grenades before the support grip: it publishes the pad flags,
         // theirs among them. A squeeze at the grenade slot is claimed first, so neither holsters nor the
         // squad menu take it.
@@ -1461,7 +1798,15 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         game::vent::Tick(deltaSeconds, ventLink);
         // Physical cover and crouch (research/23): the cover test's hook goes in once noCover is wanted.
         EnsureCoverHook();
-        game::posture::Tick(deltaSeconds, game::posture::Link{HostFloor()});
+        game::posture::Link postureLink;
+        postureLink.floor = HostFloor();
+        postureLink.runtimeOwned = gHostOwnsVr && gHostDataOk && ActionRuntimeReady();
+        postureLink.focused = vr::host_view::Latest().valid && vr::controllers::Latest().active;
+        postureLink.menuOpen = ActionMenuOpen();
+        postureLink.calibrating = ActionCalibrating();
+        postureLink.sceneGeneration = ActionGeneration();
+        postureLink.controlsAllowed = PhysicalControlsAllowed;
+        game::posture::Tick(deltaSeconds, postureLink);
         game::vr_cover::Tick();  // after posture: whether the game's cover is refused this tick
         if (game::posture::RefusingCover()) {
             EnsureCallFunctionHook();  // VR cover answers the damage call's IsInCover in the script hook, controllers or not
@@ -1473,13 +1818,10 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         game::camera_shake::Tick();      // the game's camera shakes scaled or off in VR (research/71)
         // The weapon drawn, like exploring (research/38): the stance for the next pose, the speed ramp, draw rates.
         game::combat_stance::Tick(deltaSeconds, CombatStanceLink());
-        game::sprint::Tick(deltaSeconds, CombatStanceLink().headTrackedView);
+        game::sprint::Tick(deltaSeconds, CombatStanceLink().headTrackedView,
+            PhysicalControlsAllowed(), PhysicalControlsAllowed);
         game::hand_aim::Tick();
         game::view_level::Tick(ViewLevelLink());
-        if (gTraversalOn) {
-            EnsureCallFunctionHook();  // the climb/mantle custom action's script calls (game/traversal)
-            game::traversal::Tick(deltaSeconds, TraversalLink());
-        }
         gTickAimRay = {};
         PublishAimRay();
         // The weapon panel on the gun (research/41): from this tick's ray.
@@ -1490,9 +1832,15 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         // The squad's world for squad orders (research/54): the scene every refreshS, a pose sample every tick.
         game::squad_context::Tick(deltaSeconds);
         // The flat squad orders by gesture (research/54), on this tick's scene: after the grenades' and the vent's claims.
+        game::squad_orders::SetMenuOpen(SquadOrdersLink().menuOpen);
         game::voice::Tick(deltaSeconds, VoiceLink());  // before the flat orders: the radio claims its squeeze
         game::squad_orders::Tick(deltaSeconds, SquadOrdersLink());
         game::squad_place::Tick(deltaSeconds, SquadPlaceLink());  // the right B's arc: a move through the same dispatcher
+        if (gTraversalOn) {
+            EnsureCallFunctionHook();  // the climb/mantle custom action's script calls (game/traversal)
+            game::traversal::Tick(deltaSeconds, TraversalLink());
+        }
+        if (gMeleeOn) game::melee::Tick(MeleeLink());
         {
             auto const floor = HostFloor();  // the cockpit takes a new seat at each recenter (research/47)
             game::cockpit_probe::Tick(floor ? std::optional<std::uint32_t>(floor->recenters) : std::nullopt);
@@ -1501,16 +1849,25 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
                                   gHost->hideScreenReticle());
         // The spectator camera (research/49): after everything that moves the head, the pawn and the cockpit this tick.
         game::spectator::Tick(deltaSeconds, SpectatorLink());
+#if !defined(MEVR_GAME_LE3)
         game::galaxy_map::Tick(GalaxyMapLink());
+#else
+        game::le3_galaxy_capture::Tick(GalaxyMapLink().setScene, HostFloor());
+#endif
         game::world_ui::Tick(WorldUiLink());
         // Conversations (research/59): measured always; in the world, Shepard's view held (after world_ui: its Hold is ours in mode 5).
+#if !defined(MEVR_GAME_LE3)
+        // First-person world conversations and their LE1 audio/scene hooks are not LE3 adapters.
         EnsureConversationHooks();
         EnsureVoicePlaceHook();
         game::conversation_world::Tick(deltaSeconds, ConversationWorldLink());
-        game::thespian::Tick(deltaSeconds, ThespianLink());  // after the conversation's: the dialogue wheel spoken (research/70)
+#endif
+        game::thespian::Tick(deltaSeconds, ThespianLink());  // shared panel and selection policy, native game adapter
+#if !defined(MEVR_GAME_LE3)
         game::conversation_flow::Tick();  // the chain starts' lines flagged ambient before the level's script starts them (research/59)
         game::authored_moment::Tick();    // what the level's script does to the player: a track's walk, a teleport (research/69)
         game::sound_place::Tick(deltaSeconds);  // on foot: people near the player and the gun heard from where they are (research/69 A1, A2)
+#endif
         game::head_tracking::OnTickEnd();
     }
     PublishStatus();
@@ -1535,9 +1892,33 @@ MEVR_MOD_API void MevrModOnPresent(IDXGISwapChain* swapChain) {
 #endif
 }
 
+MEVR_MOD_API bool MevrModPrepareUnload() {
+#if defined(MEVR_GAME_LE3)
+    // Restore before shutdown clears hooks/runtime. Native admission may refuse; keep the
+    // current generation active so the host's existing reload poll can retry. Shutdown's
+    // successful reset is tentative: an ordinary next menu tick can acquire pause again.
+    mevr::game::menu_pause::Shutdown(false);
+    bool const postureReady = mevr::game::posture::PrepareUnload();
+    return !mevr::game::menu_pause::Paused() && postureReady;
+#else
+    return true;
+#endif
+}
+
 MEVR_MOD_API void MevrModShutdown() {
     using namespace mevr;
     gActive = false;
+    if (gEngineProbe) {
+        engine::ForgetWorld();
+        ue3::runtime::Shutdown();
+        gReflectChecked = false;
+        gEngineProbe = gEngineProbePassed = gEngineRequests = false;
+        gInit.reset();
+        gHost = nullptr;
+        log::Info("engine-probe: shut down");
+        log::SetSink(nullptr);
+        return;
+    }
 #if defined(MEVR_LE2_DIAGNOSTIC)
     engine::le2_diagnostic::Shutdown();
     engine::le2_control::Shutdown();
@@ -1562,6 +1943,8 @@ MEVR_MOD_API void MevrModShutdown() {
     gScreenWantedFor = 0.0;
     // The host has already detached the present callback, so the render thread is out.
     vr::output::Shutdown();
+    game::le3_galaxy_capture::Shutdown(exiting);
+    if (gInit) removed(game::le3_galaxy_retention::Shutdown(*gInit, exiting), "the CIC streaming hook couldn't be removed");
     if (gInit && gHooked) {
         removed(engine::process_event::Uninstall(*gInit), "the ProcessEvent hook couldn't be removed");
     }
@@ -1684,6 +2067,10 @@ MEVR_MOD_API void MevrModShutdown() {
     game::view_level::Shutdown();
     game::traversal::Shutdown();
     gTraversalOn = false;
+    game::melee::Shutdown();
+    gMeleeOn = gMeleeRequests = gMeleeGestures = gMeleeHeavyGestures = gTraversalGestures = false;
+    gActionContext = {};
+    ++gActionGeneration;
     game::gun_kick::Shutdown();
     if (gHost != nullptr && MEVR_HOST_HAS(setVignette) && gHost->setVignette != nullptr) {
         gHost->setVignette(0.0f);  // no vignette without the mod (the host also forgets on unload)

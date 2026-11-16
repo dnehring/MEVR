@@ -109,3 +109,25 @@ anchor, the top, why not, whether the host takes it) and the `wrist` and `gun` l
   arm), and whether the scope on the sniper rifle hides it (`gunBackM` smaller, or per-weapon offsets).
 - The squad's custom menu (`[Squad] style = custom`) is drawn at the left hand too and would overlap the wrist piece
   while it is up.
+
+## ME2's ammo display
+
+The shared HUD blit keeps ME2's native clip count, reserve count and reload prompt. ME2's
+`SFXWeapon.EnableAmmoPowerHologram` attaches the weapon effect to its `Modal` socket and the player's ammo-power icon
+to its `Ammo` socket. The gun HUD uses that same posed `Ammo` socket as its reference and sits beside it with clearance
+for the icon. The current weapon's `AmmoPowerName` is read for snapshots. The game owns power selection, effects and
+ammo counts throughout.
+
+Under `[Hud]` in `ASI/LE2MEVR.ini`, `gunSocketMount=0` selects the adjustable muzzle-offset mount. Weapons with no
+usable `Ammo` socket use that placement automatically. The gun panel still moves back to the main HUD when sighting or
+holstering. The HUD & sights page exposes the wrist status and weapon panel toggles in ME2.
+
+Freedom's Progress Save 4 already has Disruptor Ammo on the heavy pistol. In protected fake-headset runs
+`20261115-050108-ammo-hud`, `20261115-050312-ammo-hud` and `20261115-050508-ammo-hud`, the raised pistol returned its
+panel to the HUD and the lowered pistol showed both the counter and the blue native effect. Twice running `NextWeapon`
+cycled via the grenade launcher to the assault rifle, whose `ammoPower` snapshot field was initially null. The native
+`TryUsePower 1` action reported `DisruptorAmmo` on the rifle, and the eye capture showed its effect beside the 40/400
+readout. Disabling `gunSocketMount` live changed `gunMount` from `Ammo socket` to `muzzle offset` while keeping the
+active ammo state and visible counter. The unsupported launcher mesh used the central HUD during the swap.
+
+Physical-headset readability, other weapon families and other ammo effects still need their own checks.

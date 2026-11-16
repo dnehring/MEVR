@@ -11,6 +11,7 @@
 #include "game/SquadContext.hpp"
 #include "game/SquadOrders.hpp"
 #include "game/SquadPlace.hpp"
+#include "game/SquadWeapons.hpp"
 #include "game/Voice.hpp"
 #include "game/VrCover.hpp"
 
@@ -35,6 +36,11 @@
 #include "game/Holsters.hpp"
 #include "game/OmniTool.hpp"
 #include "game/Player.hpp"
+#include "game/Le3WeaponAmmo.hpp"
+#include "game/Le3Galaxy.hpp"
+#include "game/Le3GalaxyProjector.hpp"
+#include "game/Le3GalaxyRetention.hpp"
+#include "game/Le3GalaxyCapture.hpp"
 #include "game/PowerWheel.hpp"
 #include "game/SoundPlace.hpp"
 #include "game/Spectator.hpp"
@@ -43,6 +49,7 @@
 #include "game/Traversal.hpp"
 #include "game/Vent.hpp"
 #include "core/WriteJournal.hpp"
+#include "mod/GameplayActions.hpp"
 
 #include <Windows.h>
 
@@ -79,7 +86,7 @@ std::filesystem::path Directory() {
     return std::filesystem::path(buffer) / L"MEVR";
 }
 
-#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 
 // Our reflection layer (research/34; LE2's since M1, docs/le2-continuation-plan.md): the function, found once in the
 // running game. On LE2, LExSDKv2 (engine/Legacy) while the layer is off.
@@ -1636,9 +1643,9 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
 
 #endif
 
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 
-// ME2's saves by script (M1.6 of docs/le2-continuation-plan.md; research/le2-engine-access-discovery.md "A save loaded
+// The sequels' saves by script (M1.6 of docs/le2-continuation-plan.md; research/le2-engine-access-discovery.md "A save loaded
 // by script"): SFXEngine.QueueSaveGameCommand(SaveGame_Load = 1, the save's descriptor, no callback), the call the Load
 // screen's Callback_ConfirmLoadGame and the console's QuickLoad (BioPlayerController.ResumeGame, SFXEngine.ResumeGame)
 // make. It reads a save; it never writes one. Game thread (the console request's tick).
@@ -1671,7 +1678,9 @@ std::string CurrentSave(ue3::Object* engine) {
         return "mevr savedesc: SFXEngine.GetCurrentSaveDescriptor isn't there (see the 'reflect:' lines)";
     }
     ue3::Params parms(ue3::runtime::Get(), function);
-    ue3::runtime::Call(engine, function, parms);
+    if (!ue3::runtime::Call(engine, function, parms)) {
+        return "mevr savedesc: native descriptor call failed";
+    }
     void* const descriptor = gCurrentReturn.Address(parms.Data());
     ue3::FString* const career = gCurrentCareer.In<ue3::FString>(descriptor);
     ue3::FString* const name = gCurrentSaveName.In<ue3::FString>(descriptor);
@@ -1692,8 +1701,17 @@ std::string LoadSave(ue3::Object* engine, std::istringstream& words) {
     std::string name;
     int index = 0;
     int type = 0;
-    if (!(words >> career >> name >> index >> type) || type < 0 || type > 3) {
+    if (!(words >> career >> name >> index >> type)) {
         return "mevr load <career> <save name> <index> <type 0 manual | 1 quick | 2 auto | 3 chapter>";
+    }
+    bool supported = type >= 0 && type <= 3;
+#if defined(MEVR_GAME_LE3)
+    // Installed SFXEngine.ESFXSaveGameType: Legend is 5, not Export (4).
+    // Preserve the special descriptor; never relabel it as an ordinary quicksave.
+    supported = supported || (type == 5 && name == "LegendSave" && index == -1);
+#endif
+    if (!supported) {
+        return "mevr load: unsupported descriptor; types 0..3, or LE3 LegendSave -1 5; exports/NG+ refused";
     }
     ue3::Function* const function = gQueueSaveCommand.Get();
     if (engine == nullptr || function == nullptr || !ue3::memory::Ready()) {
@@ -1716,7 +1734,9 @@ std::string LoadSave(ue3::Object* engine, std::istringstream& words) {
     *nameField = nameText.Get();
     *indexField = index;
     *typeField = static_cast<std::uint8_t>(type);
-    ue3::runtime::Call(engine, function, parms);  // the callback stays None
+    if (!ue3::runtime::Call(engine, function, parms)) {  // the callback stays None
+        return "mevr load: native queue call failed";
+    }
     return "mevr load: queued " + Describe(careerField, nameField, indexField, typeField);
 }
 
@@ -1726,10 +1746,131 @@ std::string State(ue3::Object* pc) {
     std::optional<ue3::Vector> const at = pawn != nullptr ? player::Location(pawn) : std::nullopt;
     std::optional<std::uint8_t> const mode = player::GameMode(pc);
     void const* const world = engine::World();
-    return std::format("mevr state: world {}; pawn {}{}; game mode {}",
+    std::string text = std::format("mevr state: world {}; pawn {}{}; game mode {}",
         world != nullptr ? ue3::runtime::FullName(static_cast<ue3::Object const*>(world)) : std::string("None"),
         ue3::runtime::FullName(pawn), at ? std::format(" at ({:.0f}, {:.0f}, {:.0f})", at->x, at->y, at->z) : std::string(),
         mode ? std::to_string(*mode) : std::string("none"));
+#if defined(MEVR_GAME_LE3)
+    text += std::format("; worldId 0x{:X}; pawnId 0x{:X}", reinterpret_cast<std::uintptr_t>(world), reinterpret_cast<std::uintptr_t>(pawn));
+#endif
+    return text;
+}
+
+#if defined(MEVR_GAME_LE3)
+// L3-1 scalar cross-check on the actual loaded weapon. No pose/weapon modules or writes.
+std::string WeaponProbeLe3(ue3::Object* pc) {
+    return "mevr weaponprobe: " + json::Write(le3_weapon_ammo::Observe(pc), 0);
+}
+
+std::optional<std::string> RunOursLe3(ue3::Object* pc, std::string const& line) {
+    std::istringstream words(line);
+    std::string head, verb;
+    words >> head >> verb;
+    if (head != "mevr" || !ue3::runtime::Up()) return std::nullopt;
+    if (verb == "thespian") {
+        std::string rest;
+        std::getline(words, rest);
+        return thespian::Command(rest);
+    }
+    if (verb == "load") return LoadSave(ue3::runtime::GameEngine(), words);
+    if (verb == "savedesc") return CurrentSave(ue3::runtime::GameEngine());
+    if (verb == "state") return State(pc);
+    if (verb == "weaponprobe") return WeaponProbeLe3(pc);
+    if (verb == "galaxy") {
+        std::string action, extra;
+        words >> action;
+        if (action == "state" && !(words >> extra))
+            return "mevr galaxy: " + json::Write(le3_galaxy::Observe(pc), 0);
+        if (action == "projector" && !(words >> extra))
+            return "mevr galaxy projector: " + json::Write(le3_galaxy::ObserveProjector(pc), 0);
+        if (action == "retain" || action == "capture") {
+            std::string option, trailing;
+            words >> option;
+            if (!(words >> trailing)) return action == "capture" ? le3_galaxy_capture::Command(pc, option) : le3_galaxy_retention::Command(pc, option);
+        }
+        return "mevr galaxy: state | projector (read-only) | (retain|capture) on|off|state (bounded CIC diagnostics)";
+    }
+    if (verb == "melee" || verb == "traversal") {
+        std::string rest; std::getline(words, rest);
+        return verb == "melee" ? mod::gameplay_actions::MeleeCommand(rest) : mod::gameplay_actions::TraversalCommand(rest);
+    }
+    if (verb == "powerwheel") { std::string rest; std::getline(words, rest); return power_wheel::Console(rest); }
+    if (verb == "omni") { std::string which; words >> which; return game_menu_request::Inject(which); }
+    if (verb == "guimouse" || verb == "guikey") {
+        std::string rest; std::getline(words, rest);
+        return verb == "guimouse" ? gui_cursor::Command(rest) : gui_cursor::KeyCommand(rest);
+    }
+    return std::string("unknown on ME3: mevr load <career> <save name> <index> <type> | mevr savedesc | mevr state | mevr weaponprobe | mevr galaxy state | mevr melee | mevr traversal | mevr powerwheel | mevr omni | mevr guimouse | mevr guikey | mevr thespian");
+}
+#endif
+#endif // shared sequel save/state requests
+
+#if defined(MEVR_GAME_LE2)
+
+// "mevr instances <Package.Class> [text]" and "mevr activate <n> [input]" on ME2 (LE1's lines, the same output): the live
+// objects of a class whose full name holds the text (up to 60 kept for `activate`), and a Kismet op's input fired
+// (Engine.SequenceOp.ForceActivateInput), as LE1's tools/conversation-launch.ps1 starts a scene: a level's conversations start
+// from its script (`mevr instances SFXGame.BioSeqAct_StartConversation`, `mevr activate n 0`; research/le2-cinema.md).
+std::vector<ue3::Object*> gFoundLe2;
+
+std::string InstancesLe2(std::istringstream& words) {
+    std::string path, filter;
+    words >> path >> filter;
+    ue3::Reflection& r = ue3::runtime::Get();
+    ue3::Class* const cls = path.empty() ? nullptr : r.FindClass(path);
+    if (cls == nullptr) {
+        return std::string("usage: mevr instances <Package.Class> [text] (no such class)");
+    }
+    ue3::Class* const actorClass = r.FindClass("Engine.Actor");
+    gFoundLe2.clear();
+    std::string out;
+    int total = 0;
+    for (std::int32_t i = 0, n = r.ObjectCount(); i < n; ++i) {
+        ue3::Object* const o = r.ObjectAt(i);
+        if (o == nullptr || !r.IsAlive(o) || !r.IsA(o, cls)) {
+            continue;
+        }
+        std::string const name = r.FullName(o);
+        if (name.find("Default__") != std::string::npos || (!filter.empty() && name.find(filter) == std::string::npos)) {
+            continue;
+        }
+        ++total;
+        if (gFoundLe2.size() >= 60) {
+            continue;
+        }
+        ue3::Object* owner = o;
+        for (int depth = 0; owner != nullptr && depth < 8 && !(actorClass != nullptr && r.IsA(owner, actorClass)); ++depth) {
+            owner = r.OuterOf(owner);
+        }
+        out += std::format("\n[{}] {}", gFoundLe2.size(), name);
+        if (owner != nullptr && owner != o) {
+            out += " (of " + r.NameText(owner) + ")";
+        }
+        if (auto const at = owner != nullptr ? player::Location(owner) : std::nullopt) {
+            out += std::format(" at {:.0f} {:.0f} {:.0f}", at->x, at->y, at->z);
+        }
+        gFoundLe2.push_back(o);
+    }
+    return std::format("{} instances{}", total, out);
+}
+
+std::string ActivateLe2(std::istringstream& words) {
+    std::size_t index = 0;
+    int input = 0;
+    words >> index >> input;
+    ue3::Reflection& r = ue3::runtime::Get();
+    if (index >= gFoundLe2.size() || !r.IsAlive(gFoundLe2[index])) {
+        return std::format("mevr activate: no object {} (mevr instances first)", index);
+    }
+    ue3::Object* const target = gFoundLe2[index];
+    ue3::Function* const f = r.FindFunction(r.ClassOf(target), "ForceActivateInput");
+    if (f == nullptr) {
+        return std::format("{} has no ForceActivateInput", r.FullName(target));
+    }
+    ue3::Params parms(r, f);
+    parms.Set("InputIdx", static_cast<std::int32_t>(input));
+    bool const called = ue3::runtime::Call(target, f, parms);
+    return std::format("{}.ForceActivateInput({}) called {}", r.FullName(target), input, called);
 }
 
 // Our own lines on ME2 (LE1's are RunOurs'): "mevr load", "mevr savedesc", "mevr state". Nullopt for anything else.
@@ -1740,6 +1881,11 @@ std::optional<std::string> RunOursLe2(ue3::Object* pc, std::string const& line) 
     words >> head >> verb;
     if (head != "mevr" || !ue3::runtime::Up()) {
         return std::nullopt;
+    }
+    if (verb == "thespian") {
+        std::string rest;
+        std::getline(words, rest);
+        return thespian::Command(rest);
     }
     if (verb == "load") {
         return LoadSave(ue3::runtime::GameEngine(), words);
@@ -1772,13 +1918,62 @@ std::optional<std::string> RunOursLe2(ue3::Object* pc, std::string const& line) 
         words >> which;
         return game_menu_request::Inject(which);
     }
+    if (verb == "guimouse" || verb == "guikey") {
+        // `mevr guimouse` (where the game's Flash cursor is) and `mevr guikey <event|w> ...` (GUI events through GuiKey, one
+        // per tick): the game pointer's path into ME2's screens (research/57 section 6, research/le2-menus.md M4.3).
+        std::string rest;
+        std::getline(words, rest);
+        return verb == "guimouse" ? gui_cursor::Command(rest) : gui_cursor::KeyCommand(rest);
+    }
     if (verb == "traversal") {
         std::string rest;
         std::getline(words, rest);
         return traversal::Command(rest);  // the vault's fixture and tests (research/le2-traversal.md)
     }
+    if (verb == "powerwheel") {
+        std::string rest;
+        std::getline(words, rest);
+        return power_wheel::Console(rest);
+    }
+    if (verb == "voice") {
+        std::string rest;
+        std::getline(words, rest);
+        return voice::Console(rest);
+    }
+    if (verb == "place") {
+        std::string rest;
+        std::getline(words, rest);
+        return squad_place::Console(rest);
+    }
+    if (verb == "instances") {
+        return InstancesLe2(words);  // a scene's Kismet start, for the cinema screen's checks (research/le2-cinema.md)
+    }
+    if (verb == "squad") return squad_weapons::StatusJson();
+    if (verb == "say") {
+        std::string rest;
+        std::getline(words, rest);
+        return squad_orders::Say(rest);
+    }
+    if (verb == "order") {
+        std::string actionLine;
+        words >> actionLine;
+        auto const action = vr::squad_context::ParseLine(actionLine);
+        if (!action) return std::string("usage: mevr order WHO|WEAPON|POWER|ORDER|TARGET");
+        return squad_orders::Give(*action);
+    }
+    if (verb == "context") {
+        std::string word, ago;
+        words >> word >> ago;
+        if (word == "prefix") return squad_context::Prefix();
+        return squad_context::Block("", word, ini::Number(ago).value_or(0.5));
+    }
+    if (verb == "activate") {
+        return ActivateLe2(words);
+    }
     return std::string("unknown on ME2: mevr load <career> <save name> <index> <type> | mevr savedesc | mevr state | "
-                       "mevr camera trace <seconds> [label] | mevr armik step ... | mevr omni <screen> | mevr cover ... | mevr traversal ...");
+                       "mevr camera trace <seconds> [label] | mevr armik step ... | mevr omni <screen> | mevr guimouse | mevr guikey ... | mevr cover ... | "
+                       "mevr traversal ... | mevr squad | mevr context | mevr order ... | mevr say ... | mevr voice ... | mevr thespian ... | "
+                       "mevr instances <Package.Class> [text] | mevr activate <n> [input]");
 }
 
 #endif
@@ -1848,6 +2043,10 @@ void Tick(float deltaSeconds) {
         std::string output;
 #if defined(MEVR_GAME_LE1)
         if (std::optional<std::string> ours = RunOurs(pc, line)) {
+            output = *ours;
+        } else
+#elif defined(MEVR_GAME_LE3)
+        if (std::optional<std::string> ours = RunOursLe3(pc, line)) {
             output = *ours;
         } else
 #elif defined(MEVR_GAME_LE2)

@@ -70,6 +70,7 @@ char const* WeaponCode(int weapon) {
     case 1: return "SG";
     case 2: return "AR";
     case 3: return "SR";
+    case 4: return "SMG";
     default: return "-";
     }
 }
@@ -491,6 +492,7 @@ std::string Line(Action const& a) {
     case Target::Last: target = "LAST"; break;
     case Target::Other: target = "OTHER"; break;
     case Target::Self: target = "SELF"; break;
+    case Target::Ally: target = std::format("ALLY:{}", static_cast<char>(a.target.index)); break;
     case Target::Direction: target = Upper(Name(static_cast<Sector>(a.target.index))); break;
     case Target::Landmark: target = std::format("L{}", a.target.index); break;
     case Target::None: break;
@@ -561,6 +563,7 @@ std::optional<Action> ParseLine(std::string_view line) {
     else if (target == "LAST") a.target.kind = Target::Last;
     else if (target == "OTHER") a.target.kind = Target::Other;
     else if (target == "SELF") a.target.kind = Target::Self;
+    else if (target.size() == 6 && target.starts_with("ALLY:") && target[5] >= 'A' && target[5] <= 'Z') a.target = {Target::Ally, target[5]};
     else if (target == "AHEAD") a.target = {Target::Direction, static_cast<int>(Sector::Ahead)};
     else if (target == "LEFT") a.target = {Target::Direction, static_cast<int>(Sector::Left)};
     else if (target == "RIGHT") a.target = {Target::Direction, static_cast<int>(Sector::Right)};
@@ -658,6 +661,17 @@ Resolved Validate(Action const& action, Scene const& scene, std::vector<Group> c
                 r.notReady = true;
                 r.readyInS = p->readyInS;
             }
+            r.selfPower = (a.target.kind == Target::Self || a.target.kind == Target::None) && (p->targets & PowerSelf) != 0;
+            r.locationPower = (a.target.kind == Target::Pointed || a.target.kind == Target::Landmark) && (p->targets & PowerLocation) != 0;
+            if (a.target.kind == Target::Ally) {
+                if ((p->targets & PowerAlly) == 0) { r.problem = "power does not support ally intent"; return r; }
+                for (auto const& ally : scene.party) {
+                    if (ally.letter == a.target.index && ally.present && ally.alive) r.ally = ally.letter;
+                }
+                if (r.ally == 0) { r.problem = "ally is absent or down"; return r; }
+            }
+            if (a.target.kind == Target::Self && !r.selfPower) { r.problem = "power is not a self buff"; return r; }
+            if ((p->targets & PowerSelf) != 0 && !r.selfPower) { r.problem = "self buff cannot take an external target"; return r; }
         }
         break;
     }
@@ -675,7 +689,7 @@ Resolved Validate(Action const& action, Scene const& scene, std::vector<Group> c
     }
     if (a.order == Order::None) r.order = a.power.empty() ? Order::None : Order::Use;
     // The target.
-    bool const wantsTarget = r.order == Order::Attack || r.order == Order::Use || r.order == Order::Move;
+    bool const wantsTarget = r.order == Order::Attack || (r.order == Order::Use && !r.selfPower && r.ally == 0 && !r.locationPower) || r.order == Order::Move;
     auto const nearestOther = [&](int except, std::string const& type) {
         Group const* best = nullptr;
         for (Group const& g : groups) {
@@ -704,7 +718,7 @@ Resolved Validate(Action const& action, Scene const& scene, std::vector<Group> c
         for (Deictic const& c : deictics) {
             if (c.index == a.target.index) d = &c;
         }
-        bool const place = r.order == Order::Move || r.order == Order::Hold;
+        bool const place = r.order == Order::Move || r.order == Order::Hold || r.locationPower;
         if (d == nullptr || d->candidates.empty()) {
             // A move or hold at a pointed spot needs no thing there: the dispatcher has the floor the ray hit.
             if (place) break;
@@ -735,7 +749,7 @@ Resolved Validate(Action const& action, Scene const& scene, std::vector<Group> c
             r.problem = std::format("no cover L{}", a.target.index);
             return r;
         }
-        if (r.order != Order::Move && r.order != Order::Hold) {
+        if (r.order != Order::Move && r.order != Order::Hold && !r.locationPower) {
             r.problem = std::format("L{} is cover: a place to go, not a target", a.target.index);
             return r;
         }
@@ -766,6 +780,9 @@ Resolved Validate(Action const& action, Scene const& scene, std::vector<Group> c
         break;
     }
     case Target::Self:
+        break;
+    case Target::Ally:
+        if (r.order != Order::Use || r.ally == 0) { r.problem = "ally target needs a compatible power"; return r; }
         break;
     case Target::Direction: {
         // A move or hold that way needs no group (the dispatcher makes the point); an attack that way is the nearest group there.
@@ -833,6 +850,9 @@ std::string Block(Scene const& scene, std::vector<Group> const& groups, std::vec
         first = true;
         for (Power const& p : m.powers) {
             out += std::format("{}{} {}", first ? "" : ", ", p.code, p.readyInS > 0.0f ? Seconds(p.readyInS) : "ok");
+            if ((p.targets & PowerSelf) != 0) out += " self";
+            if ((p.targets & PowerLocation) != 0) out += " place";
+            if ((p.targets & PowerAlly) != 0) out += " ally";
             first = false;
         }
         if (first) out += "-";
@@ -916,7 +936,8 @@ std::string Prefix(std::vector<RosterEntry> const& roster) {
         "You turn a spoken squad order into one line: WHO|WEAPON|POWER|ORDER|TARGET.\n"
         "WHO: a party letter, ALL, or LAST. WEAPON: a code or -. POWER: a code or -.\n"
         "ORDER: attack, move, follow, hold, regroup, use, cancel, repeat.\n"
-        "TARGET: an E id, an L id (cover: only for move and hold), PT1..PT3 (what the player pointed at while saying a word), AIM, GAZE, LAST, OTHER, SELF, or -.\n"
+        "TARGET: an E id, an L id (cover), PT1..PT3 (pointed location), AIM, GAZE, LAST, OTHER, SELF, ALLY:<party letter>, or -.\n"
+        "A power marked self needs SELF or -; place permits PT/L locations; ally permits ALLY but the game must still approve that target. Unmarked powers need an enemy.\n"
         "Only name squadmates listed in PARTY. Use only powers marked ok unless told to wait.\n"
         "ROSTER\n";
     for (RosterEntry const& e : roster) {

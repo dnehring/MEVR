@@ -10,6 +10,7 @@
 #include <wrl/client.h>
 
 #include <cstring>
+#include <algorithm>
 #include <format>
 #include <string>
 #include <unordered_map>
@@ -137,9 +138,10 @@ ID3D11RenderTargetView* UnormViewOf(ID3D11Texture2D* image, D3D11_TEXTURE2D_DESC
 }
 
 bool EnsureBlit(ID3D11DeviceContext* context, DXGI_FORMAT sourceFormat) {
+    ComPtr<ID3D11Device> device;
+    context->GetDevice(&device);
+    if (gBlit != nullptr && gDevice.Get() != device.Get()) return false;
     if (gBlit == nullptr && !gBlitFailed) {
-        ComPtr<ID3D11Device> device;
-        context->GetDevice(&device);
         auto* blit = new d3d11::Blit;
         if (device != nullptr && blit->Initialize(device.Get())) {
             gBlit = blit;
@@ -224,7 +226,7 @@ bool DrawCorrected(ID3D11DeviceContext* context, ID3D11Texture2D* image, ID3D11T
         gCorrected.uploaded = k;
         gCorrected.haveUploaded = true;
     }
-    gBlit->DrawWith(context, source, view, to.Width, to.Height, shiftX, shader, gCorrected.constants.Get());
+    if (!gBlit->DrawWith(context, source, view, to.Width, to.Height, shiftX, shader, gCorrected.constants.Get())) return false;
     std::string const line = std::format("eye copy: the colour correction draws the game's picture ({}x{}, format {}) into the "
                                          "images ({}x{}, format {}) through {}",
         from.Width, from.Height, static_cast<int>(from.Format), to.Width, to.Height, static_cast<int>(to.Format), how);
@@ -259,35 +261,51 @@ bool CopyCompatible(DXGI_FORMAT a, DXGI_FORMAT b) {
 }
 
 bool Copy(ID3D11DeviceContext* context, ID3D11Texture2D* image, ID3D11Texture2D* source, int shiftX, int eye) {
-    if (context == nullptr || image == nullptr || source == nullptr) {
+    if (context == nullptr || image == nullptr || source == nullptr || image == source ||
+        context->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) {
         return false;
     }
+    ComPtr<ID3D11Device> device, sourceDevice, imageDevice;
+    context->GetDevice(&device); source->GetDevice(&sourceDevice); image->GetDevice(&imageDevice);
+    if (device.Get() != sourceDevice.Get() || device.Get() != imageDevice.Get()) return false;
     D3D11_TEXTURE2D_DESC from{};
     D3D11_TEXTURE2D_DESC to{};
     source->GetDesc(&from);
     image->GetDesc(&to);
+    if (from.MipLevels != 1 || from.ArraySize != 1 || to.MipLevels != 1 || to.ArraySize != 1 ||
+        to.SampleDesc.Count != 1 || to.Usage != D3D11_USAGE_DEFAULT || to.Width == 0 || to.Height == 0) return false;
+    // One convergence policy for both raw and drawn eyes: unshifted fill followed by the
+    // shifted overwrite. Clamp without abs(INT_MIN); the vacated strip never stays stale.
+    shiftX = std::clamp(shiftX, -static_cast<int>(to.Width - 1), static_cast<int>(to.Width - 1));
     if (DrawCorrected(context, image, source, from, to, shiftX, eye)) {
         return true;
     }
-    if (CopyCompatible(from.Format, to.Format)) {
-        return false;  // the renderer's own CopyResource is right
+    if (CopyCompatible(from.Format, to.Format) && from.Width == to.Width && from.Height == to.Height &&
+        from.SampleDesc.Count == to.SampleDesc.Count && from.SampleDesc.Quality == to.SampleDesc.Quality) {
+        context->CopyResource(image, source);
+        if (shiftX != 0) {
+            UINT const offset = static_cast<UINT>(shiftX > 0 ? shiftX : -shiftX);
+            D3D11_BOX box{shiftX < 0 ? offset : 0u, 0, 0, shiftX < 0 ? from.Width : from.Width - offset, from.Height, 1};
+            context->CopySubresourceRegion(image, 0, shiftX > 0 ? offset : 0u, 0, 0, source, 0, &box);
+        }
+        return SUCCEEDED(device->GetDeviceRemovedReason());
     }
-    EnsureBlit(context, from.Format);
+    if (!EnsureBlit(context, from.Format)) return false;
     ID3D11RenderTargetView* const view = gBlit != nullptr ? ViewOf(image, to) : nullptr;
     if (view == nullptr) {
         if (!gToldRefused) {
             gToldRefused = true;
-            log::Warn("eye copy: a source of format {} can't be drawn into an image of format {} (bind {:#x}); left to "
-                      "the renderer's copy, which D3D11 drops",
+            log::Warn("eye copy: a source of format {} can't be drawn into an image of format {} (bind {:#x}); refused "
+                      "without an incompatible raw copy",
                 static_cast<int>(from.Format), static_cast<int>(to.Format), to.BindFlags);
         }
         return false;
     }
-    gBlit->Draw(context, source, view, to.Width, to.Height, shiftX);
+    if (!gBlit->Draw(context, source, view, to.Width, to.Height, shiftX)) return false;
     if (!gToldDraw) {
         gToldDraw = true;
         log::Info("eye copy: the game's picture ({}x{}, format {}) is drawn into the eye images ({}x{}, format {}) through "
-                  "an sRGB view: CopyResource can't copy between the two",
+                  "an sRGB view: a full raw copy is unavailable",
             from.Width, from.Height, static_cast<int>(from.Format), to.Width, to.Height, static_cast<int>(to.Format));
     }
     return true;

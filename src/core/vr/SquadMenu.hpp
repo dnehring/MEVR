@@ -20,6 +20,10 @@ namespace mevr::vr::squad_menu {
 inline constexpr int kWeapons = 4;
 inline constexpr int kMaxMembers = 2;  // ME1 takes two squadmates along
 
+// Native inventories may exceed the four visual tiles. Overflow pages reserve one tile for navigation.
+struct InventoryPage { int index = 0, pages = 1, first = 0, count = 0, more = -1; };
+InventoryPage PageInventory(int weaponCount, int requestedPage);
+
 // ---- The radial: four tiles, one per weapon type, at fixed places ----------------------------------
 
 enum class Direction : std::int8_t { None = -1, Up = 0, Left = 1, Right = 2, Down = 3 };
@@ -71,6 +75,7 @@ XrPosef PlaceAtHand(XrVector3f const& hand, XrVector3f const& head, float distan
 struct Member {
     std::uint8_t carried = 0;  // bit w: carries a weapon of type w
     int current = -1;          // the type in hand (-1: none or unknown)
+    int more = -1;             // optional navigation tile; never a weapon order
 };
 
 struct Input {
@@ -118,6 +123,7 @@ struct Step {
     bool cardChanged = false;
     bool tileChanged = false;     // the highlight moved (to a tile or to none)
     bool tileRefused = false;     // a flick toward a tile the member doesn't carry
+    bool pageChanged = false;     // confirmed navigation; member identifies whose page to advance
     int member = -1;              // with Confirmed: the card index
     int weapon = -1;              // with Confirmed: the weapon type
 };
@@ -146,6 +152,7 @@ private:
     bool triggerWasDown_ = false;
     bool aWasDown_ = true;  // edges only from a press that began while open
     bool bWasDown_ = true;
+    bool paging_ = false;
 };
 
 // ---- What the host draws -------------------------------------------------------------------------
@@ -159,6 +166,8 @@ struct MemberView {
     std::uint8_t carried = 0;    // bit per weapon type
     std::uint8_t pointed = 0;    // the hand pointed at them when the menu opened
     float health = -1.0f;        // 0..1; negative: unknown
+    std::int8_t icons[kWeapons] = {0, 1, 2, 3};
+    char labels[kWeapons][32] = {}; // optional per-slot labels for native inventories
 };
 
 struct View {

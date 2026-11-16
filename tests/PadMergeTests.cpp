@@ -7,6 +7,7 @@
 
 #include "core/vr/Comfort.hpp"
 #include "game/GamepadMapping.hpp"
+#include "game/NativeMapInput.hpp"
 
 #include <cmath>
 #include <cstdio>
@@ -394,9 +395,213 @@ void TestRightClickGate() {
     CHECK((pad.wButtons & XINPUT_GAMEPAD_RIGHT_THUMB) != 0);
 }
 
+// ME2's interrupts on the triggers (Renderer::conversationTriggers, M5.2): in the conversation mode the left trigger is LT
+// and the right RT whatever the mod's flags say on foot ([Controls] leftTrigger = lb, the left trigger freed for the squad, a
+// support grip still latched, the Mako's lever) and whatever of the host's owns a trigger; out of it, the flags again.
+void TestConversationTriggers() {
+    pm::Reset();
+    pm::Renderer renderer;
+    State s = Controllers(1000);
+    // On foot with the squad wheel's LB ([Controls] leftTrigger = lb) and the trigger not LT.
+    std::uint32_t const onFoot = gp::kFlagLeftTriggerShoulder | gp::kFlagSupportAims;
+    pm::SetSupportGrip(-1.0f, 0.12f, 0.22f, onFoot);
+    s.left.trigger = s.right.trigger = 1.0f;
+    XINPUT_GAMEPAD pad = pm::Merge({}, s, renderer, GetTickCount64());
+    CHECK(pad.bLeftTrigger == 0 && (pad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) != 0 && pad.bRightTrigger == 255);
+    // The conversation mode: LT and RT, no LB.
+    renderer.conversationTriggers = true;
+    s.timeMs += 16;
+    pad = pm::Merge({}, s, renderer, GetTickCount64());
+    CHECK(pad.bLeftTrigger == 255 && pad.bRightTrigger == 255 && (pad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) == 0);
+    // Let go: nothing (no interrupt by itself).
+    s.left.trigger = s.right.trigger = 0.0f;
+    s.timeMs += 16;
+    pad = pm::Merge({}, s, renderer, GetTickCount64());
+    CHECK(pad.bLeftTrigger == 0 && pad.bRightTrigger == 0);
+    // The host's trigger owners don't take them there (a pointer on a quad of ours).
+    gOwnsLeft = true;
+    gOwnsBoth = true;
+    renderer.ownsLeftTrigger = &OwnsLeft;
+    renderer.ownsTriggers = &OwnsBoth;
+    s.left.trigger = 1.0f;
+    s.timeMs += 16;
+    pad = pm::Merge({}, s, renderer, GetTickCount64());
+    CHECK(pad.bLeftTrigger == 255 && pad.bRightTrigger == 0);
+    s.left.trigger = 0.0f;
+    s.right.trigger = 1.0f;
+    s.timeMs += 16;
+    pad = pm::Merge({}, s, renderer, GetTickCount64());
+    CHECK(pad.bLeftTrigger == 0 && pad.bRightTrigger == 255);
+    // A support grip latched from gameplay pulls no LT in the conversation (an accidental Paragon interrupt).
+    pm::Reset();
+    pm::Renderer foot;
+    State g = Controllers(1000);
+    std::uint32_t const grip = gp::kFlagLeftTrigger | gp::kFlagSupportAims;
+    pm::SetSupportGrip(0.05f, 0.12f, 0.22f, grip);
+    (void)pm::Merge({}, g, foot, GetTickCount64());  // the grip open: armed
+    g.left.squeeze = 1.0f;
+    g.timeMs += 16;
+    pad = pm::Merge({}, g, foot, GetTickCount64());
+    CHECK(pm::SupportGripHeld() && pad.bLeftTrigger == 255);  // on foot: aimed fire
+    pm::Renderer convo;
+    convo.conversationTriggers = true;
+    g.timeMs += 16;
+    pad = pm::Merge({}, g, convo, GetTickCount64());
+    CHECK(pad.bLeftTrigger == 0);
+    // The Mako's driving keeps the left trigger off its lever on foot... in the conversation mode it's LT.
+    pm::SetSupportGrip(-1.0f, 0.12f, 0.22f, gp::kFlagLeftTrigger | gp::kFlagMakoDrive);
+    State m = Controllers(5000);
+    m.left.trigger = 1.0f;
+    pad = pm::Merge({}, m, foot, GetTickCount64());
+    CHECK(pad.bLeftTrigger == 0);
+    m.timeMs += 16;
+    pad = pm::Merge({}, m, convo, GetTickCount64());
+    CHECK(pad.bLeftTrigger == 255);
+    // LE3's conversation wheel reads unrotated left-stick axes and A; X remains native skip.
+    // A stale gameplay wheel/hand-walk setting must not steal or rotate this input.
+    pm::Reset();
+    pm::SetSupportGrip(-1, 0.12f, 0.22f, gp::kFlagHandWalk | gp::kFlagSquadMenu | gp::kFlagNativeWheel |
+        gp::kFlagHandPowerWheel | gp::kFlagPowerWheel | gp::kFlagWheelPressA);
+    State wheel = Controllers(7000);
+    wheel.left.stickX = 0.75f;
+    wheel.right.primary = true;
+    wheel.left.primary = true;
+    pad = pm::Merge({}, wheel, convo, GetTickCount64());
+    CHECK(pad.sThumbLX > 20000 && pad.sThumbLY == 0);
+    CHECK((pad.wButtons & XINPUT_GAMEPAD_A) != 0 && (pad.wButtons & XINPUT_GAMEPAD_X) != 0);
+    // ConversationTriggers itself.
+    gp::Options o;
+    o.leftTrigger = false;
+    o.leftTriggerShoulder = true;
+    o.supportAims = true;
+    o.makoDrive = o.makoLever = o.makoStick = o.powerWheel = true;
+    gp::Options const c = pm::ConversationTriggers(o);
+    CHECK(c.leftTrigger && !c.leftTriggerShoulder && !c.supportAims && !c.makoDrive && !c.makoLever && !c.makoStick && !c.powerWheel);
+}
+
+void TestOrbitalTriggers() {
+    pm::Reset();
+    pm::Renderer orbital;
+    orbital.orbitalTriggers = true;
+    gOwnsBoth = true;
+    orbital.ownsTriggers = &OwnsBoth;
+    State s = Controllers(1000);
+    pm::SetSupportGrip(-1, 0.12f, 0.22f, gp::kFlagLeftTriggerShoulder | gp::kFlagSupportAims);
+    s.left.trigger = s.right.trigger = 1;
+    auto pad = pm::Merge({}, s, orbital, GetTickCount64());
+    CHECK(pad.bLeftTrigger == 255 && pad.bRightTrigger == 255);
+    CHECK((pad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) == 0);
+    // A planet-selection pull is held through orbit entry, then released independently.
+    gp::CloseLatch latch;
+    latch.leftTrigger = latch.rightTrigger = true;
+    CHECK(gp::ApplyCloseLatch(latch, pad));
+    CHECK(pad.bLeftTrigger == 0 && pad.bRightTrigger == 0);
+    pad.bLeftTrigger = 0;
+    pad.bRightTrigger = 255;
+    CHECK(gp::ApplyCloseLatch(latch, pad));
+    CHECK(!latch.leftTrigger && latch.rightTrigger);
+    pad.bLeftTrigger = 255;
+    pad.bRightTrigger = 0;
+    CHECK(!gp::ApplyCloseLatch(latch, pad));
+    CHECK(pad.bLeftTrigger == 255 && pad.bRightTrigger == 0);
+    gOwnsBoth = false;
+}
+
 } // namespace
 
+void TestNativeMapTransitions() {
+    gp::NativeMapInput gate;
+    XINPUT_GAMEPAD pad{};
+    auto held = [&] { pad.bLeftTrigger = 255; pad.bRightTrigger = 255; };
+    pad.sThumbLX = 24000; pad.sThumbLY = -16000; pad.sThumbRX = 11000;
+    held();
+    gate.Apply(true, false, 1, true, pad);
+    CHECK(pad.bLeftTrigger == 0 && pad.bRightTrigger == 0);
+    CHECK(pad.sThumbLX == 24000 && pad.sThumbLY == -16000 && pad.sThumbRX == 11000);
+    gate.Apply(true, false, 1, true, pad); // both physically released
+    held(); gate.Apply(true, false, 1, true, pad);
+    CHECK(pad.bLeftTrigger == 255 && pad.bRightTrigger == 255);
+    held(); gate.Apply(true, true, 1, true, pad); // selecting a planet must not launch on orbit entry
+    CHECK(pad.bLeftTrigger == 0 && pad.bRightTrigger == 0);
+    pad.bLeftTrigger = 0; pad.bRightTrigger = 255; gate.Apply(true, true, 1, true, pad);
+    held(); gate.Apply(true, true, 1, true, pad);
+    CHECK(pad.bLeftTrigger == 255 && pad.bRightTrigger == 0); // independent release
+    pad.bLeftTrigger = pad.bRightTrigger = 0;
+    gate.Apply(true, true, 1, false, pad); // neutral output while menu owns input is not release
+    held(); gate.Apply(true, true, 1, true, pad);
+    CHECK(pad.bLeftTrigger == 0 && pad.bRightTrigger == 0);
+    gate.Apply(true, true, 1, true, pad);
+    held(); gate.Apply(true, true, 2, true, pad); // session/recenter generation
+    CHECK(pad.bLeftTrigger == 0 && pad.bRightTrigger == 0);
+    gate.Apply(true, true, 2, true, pad);
+    held(); gate.Apply(false, false, 2, true, pad);
+    CHECK(pad.bLeftTrigger == 255 && pad.bRightTrigger == 255); // never alters non-map mapping
+    gate.Apply(true, false, 2, true, pad);
+    CHECK(pad.bLeftTrigger == 0 && pad.bRightTrigger == 0);
+    CHECK(pad.sThumbLX == 24000 && pad.sThumbLY == -16000 && pad.sThumbRX == 11000); // pursuit steering intact
+}
+
+void TestNativeMapLease() {
+    gp::NativeMapInputLease lease;
+    pm::Reset();
+    pm::Renderer map;
+    map.orbitalTriggers = true;
+    // The host must keep native pursuit/reticle steering despite stale on-foot flags.
+    pm::SetSupportGrip(-1, 0.12f, 0.22f, gp::kFlagHandWalk | gp::kFlagSquadMenu |
+        gp::kFlagHandPowerWheel | gp::kFlagModTurns | gp::kFlagLeftTriggerShoulder);
+    State hands = Controllers(1000);
+    hands.left.trigger = hands.right.trigger = 1;
+    hands.left.stickX = .75f; hands.left.stickY = -.5f;
+    hands.right.stickX = .5f;
+    auto raw = [&] { return pm::Merge({}, hands, map, GetTickCount64()); };
+    auto pad = raw();
+    auto const steering = pad;
+    auto apply = [&](std::uint64_t now, bool allowed = true, bool orbital = false, std::uint64_t generation = 1) {
+        pad = raw(); lease.Apply(true, orbital, generation, allowed, now, pad);
+        CHECK(pad.sThumbLX == steering.sThumbLX && pad.sThumbLY == steering.sThumbLY && pad.sThumbRX == steering.sThumbRX);
+    };
+    auto blocked = [&] { CHECK(pad.bLeftTrigger == 0 && pad.bRightTrigger == 0); };
+    auto pass = [&] { CHECK(pad.bLeftTrigger == 255 && pad.bRightTrigger == 255); };
+    apply(1000); blocked(); // no owner publication
+    lease.Publish(true, false, 1, true, 1000);
+    apply(1001); blocked(); // entry while held
+    hands.left.trigger = hands.right.trigger = 0; apply(1002);
+    hands.left.trigger = hands.right.trigger = 1; apply(1003); pass();
+    // A valid frame renewal must not demand release every frame.
+    lease.Publish(true, false, 1, true, 1016); apply(1017); pass();
+    apply(1267); blocked(); // rendering stopped; held trigger cannot survive expiry
+    lease.Publish(true, false, 1, true, 1268); apply(1269); blocked();
+    hands.left.trigger = 0; apply(1270);
+    hands.left.trigger = 1; apply(1271);
+    CHECK(pad.bLeftTrigger == 255 && pad.bRightTrigger == 0);
+    hands.right.trigger = 0; apply(1272);
+    hands.right.trigger = 1; apply(1273); pass();
+    // A menu, tracking loss or image absence can begin and end with no XInput poll.
+    lease.Publish(true, false, 1, false, 1280);
+    lease.Publish(true, false, 1, true, 1290); apply(1291); blocked();
+    hands.left.trigger = hands.right.trigger = 0; apply(1292);
+    hands.left.trigger = hands.right.trigger = 1; apply(1293); pass();
+    // Same-poll ownership takes precedence over a still-fresh render publication.
+    apply(1294, false); blocked();
+    apply(1295); blocked(); // ownership alone cannot revive the expired lease
+    lease.Publish(true, false, 1, true, 1300); apply(1301); blocked();
+    hands.left.trigger = hands.right.trigger = 0; apply(1302);
+    hands.left.trigger = hands.right.trigger = 1; apply(1303); pass();
+    apply(1304, true, true); blocked(); // entering orbit before its first publication
+    lease.Publish(true, true, 1, true, 1305); apply(1306, true, true); blocked();
+    hands.left.trigger = hands.right.trigger = 0; apply(1307, true, true);
+    hands.left.trigger = hands.right.trigger = 1; apply(1308, true, true); pass();
+    lease.Publish(true, true, 2, true, 1310); apply(1311, true, true, 2); blocked(); // space/recenter/session
+    hands.left.trigger = hands.right.trigger = 0; apply(1312, true, true, 2);
+    hands.left.trigger = hands.right.trigger = 1; apply(1313, true, true, 2); pass();
+    apply(1309, true, true, 2); blocked(); // clock reversal fails closed
+    lease.Reset(); apply(1314, true, true, 2); blocked();
+    pad = raw(); lease.Apply(false, false, 2, false, 1315, pad); pass(); // no non-map takeover
+}
+
 int main() {
+    TestNativeMapLease();
+    TestNativeMapTransitions();
     TestSameAsLe1Before();
     TestStaleInput();
     TestChordAndOwners();
@@ -405,6 +610,8 @@ int main() {
     TestLeftGripAway();
     TestWalkTowardHand();
     TestRightClickGate();
+    TestConversationTriggers();
+    TestOrbitalTriggers();
     if (gFailures == 0) {
         std::printf("pad merge tests passed\n");
     }

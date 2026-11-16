@@ -4,6 +4,7 @@
 #include "core/ik/Ik.hpp"
 
 #include <array>
+#include <cstdint>
 #include <optional>
 #include <string>
 
@@ -22,10 +23,18 @@
 // front of the chest, visible in the normal third-person camera.
 namespace mevr::game::arm_ik {
 
+struct OverlayMenu {
+    bool eligible = false; // fresh host world view, normal module, not calibration or native cinema
+    bool open = false;     // ONLY the shared overlay menu; no native UI/wrist/cinematic ownership
+    bool epochKnown = false;
+    std::uint32_t sessions = 0;
+    std::uint32_t recenters = 0;
+};
+
 // Game thread, after each engine tick (needs the engine::bone_pose hook installed to write).
 // Holding a gun (game/weapon has its grip), the right hand turns so the gun's barrel points along
 // the right controller's aim ray instead of following the grip pose (core/ik HandForBarrel).
-void Tick(float deltaSeconds);
+void Tick(float deltaSeconds, OverlayMenu const& menu = {});
 // This tick's request points the held gun along the right controller's aim, and the writer is
 // writing the pose: the gun model follows the controller, so shots can follow the gun.
 bool RightHandAimsGun();

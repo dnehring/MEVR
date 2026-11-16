@@ -10,28 +10,55 @@
 #include "plugin/CrashBreadcrumbs.hpp"
 #include "plugin/PresentHook.hpp"
 #include "plugin/ProcessEventHook.hpp"
+#include "engine/SettingsFile.hpp"
 
-#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2)
+#if defined(MEVR_WITH_HALCYON_LE3)
+#include "plugin/HalcyonLe3.hpp"
+#include "plugin/MotionBlurGuard.hpp"
+#include "core/vr/PowerWheel.hpp"
+#include "core/vr/Sights.hpp"
+#include "core/vr/ScopeCapture.hpp"
+#include "plugin/Vignette.hpp"
+#include "core/vr/AimRay.hpp"
+#include "core/vr/Controllers.hpp"
+#include "core/vr/Floor.hpp"
+#include "core/vr/HostView.hpp"
+#include "plugin/FloorLock.hpp"
+#include "plugin/PadMerge.hpp"
+#include "plugin/TestLoop.hpp"
+#include "plugin/XrHost.hpp"
+#endif
+#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
 #include "core/vr/AimRay.hpp"
 #include "core/vr/Controllers.hpp"
 #include "core/vr/Floor.hpp"
 #include "core/vr/HostView.hpp"
 #include "core/vr/HudPieces.hpp"
+#include "core/vr/InteractLabel.hpp"
+#include "core/vr/PowerWheel.hpp"
+#include "core/vr/SquadPlace.hpp"
+#include "core/vr/SquadMenu.hpp"
 #include "core/vr/Sights.hpp"
 #include "plugin/FloorLock.hpp"
 #include "plugin/PadMerge.hpp"
 #include "plugin/TestLoop.hpp"
 #include "plugin/Vignette.hpp"
 #include "plugin/XrHost.hpp"
+#include "plugin/Voice.hpp"
+#include "plugin/VoiceModel.hpp"
 #endif
-#if defined(MEVR_WITH_HALCYON_LE2)
+#if defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
 #include "core/vr/Traversal.hpp"
 #include "plugin/TraversalCue.hpp"
 #endif
-#if defined(MEVR_WITH_HALCYON_LE2) && defined(MEVR_WITH_MAIN_MENU)
+#if (defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)) && defined(MEVR_WITH_MAIN_MENU)
 #include "core/vr/Calibration.hpp"
+#include "plugin/Thespian.hpp"
+#include "core/vr/WorldUi.hpp"
 #include "plugin/Calibration.hpp"
+#include "plugin/GamePointer.hpp"
 #include "plugin/MainMenu.hpp"
+#include "plugin/WorldUi.hpp"
 #endif
 #if defined(MEVR_WITH_HALCYON)
 #include "core/vr/Calibration.hpp"
@@ -47,11 +74,9 @@
 #include "core/vr/ScopeCapture.hpp"
 #include "core/vr/GalaxyHologram.hpp"
 #include "core/vr/GalaxyMap.hpp"
-#include "core/vr/PowerWheel.hpp"
 #include "core/vr/WorldUi.hpp"
 #include "core/vr/Spectator.hpp"
 #include "core/vr/SquadMenu.hpp"
-#include "core/vr/SquadPlace.hpp"
 #include "core/vr/ConversationWorld.hpp"
 #include "plugin/Calibration.hpp"
 #include "plugin/FloorLock.hpp"
@@ -67,6 +92,8 @@
 #include "plugin/MainMenu.hpp"
 #endif
 #endif
+
+#include "core/vr/GalaxyHologram.hpp"
 
 #include <Windows.h>
 
@@ -132,8 +159,8 @@ HostServices BaseServices() {
     return services;
 }
 
-#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2)
-// What a host with Halcyon's renderer gives, either game's (docs/le2-continuation-plan.md M2.5): the controllers, the view
+#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
+// What a host with Halcyon's renderer gives (docs/le2-continuation-plan.md M2.5): the controllers, the view
 // each frame (core/vr/HostView, published by the renderer's bridge), hand aim and the aim ray, the snapshots' status, the
 // controllers' vibration and the floor (plugin/XrHost). The renderer owns VR: a mod given `controllers` stands its own down.
 void HostControllers(vr::controllers::State* out) {
@@ -209,6 +236,17 @@ HostServices WithSights(HostServices services) {
     services.sightView = &HostSightView;
     return services;
 }
+HostServices WithPowerWheel(HostServices services) {
+    services.powerWheelSize = static_cast<std::uint32_t>(sizeof(vr::power_wheel::View));
+    services.setPowerWheel = [](vr::power_wheel::View const* view) {
+        vr::power_wheel::Publish(view != nullptr ? *view : vr::power_wheel::View{});
+    };
+    services.powerLockSize = static_cast<std::uint32_t>(sizeof(vr::power_wheel::LockView));
+    services.setPowerLock = [](vr::power_wheel::LockView const* view) {
+        vr::power_wheel::PublishLock(view != nullptr ? *view : vr::power_wheel::LockView{});
+    };
+    return services;
+}
 // The pad mapping with the mod's flags (plugin/PadMerge, both hosts): v7 the support grip and the flags it carries (the
 // holsters', the squad's, comfort's ...), v9 the right grip's report, v11 the left grip's.
 void HostSetSupportGrip(float distanceMeters, float acquireMeters, float releaseMeters, std::uint32_t flags) {
@@ -223,6 +261,7 @@ std::uint32_t HostRightGripFree() {
 std::uint32_t HostLeftGripAway() {
     return pad_merge::LeftGripAway();
 }
+#if !defined(MEVR_WITH_HALCYON_LE3)
 // v22: HUD pieces on the body (game/HudPieces; plugin/HudPieceLayers on both hosts, research/41).
 void HostSetHudPieces(vr::hud_pieces::Pieces const* pieces) {
     if (pieces != nullptr) {
@@ -236,6 +275,7 @@ HostServices WithHudPieces(HostServices services) {
     services.setHudPieces = &HostSetHudPieces;
     return services;
 }
+#endif
 // v36: the pawn's floor for the floor lock (game/Player's sample; plugin/FloorLock on both hosts, research/58).
 HostServices WithFloorLock(HostServices services) {
     services.floorLockSampleSize = static_cast<std::uint32_t>(sizeof(vr::floor_lock::PawnSample));
@@ -254,23 +294,89 @@ HostServices WithPadMerge(HostServices services) {
 void ForgetRendererModState() {
     pad_merge::ForgetSupportGrip();
     floor_lock::SetPawn(nullptr);
+#if !defined(MEVR_WITH_HALCYON_LE3)
     vr::hud_pieces::Reset();  // the weapon panel back on the HUD (the wrist piece needs no mod)
+#endif
+    vr::interact::Reset();
+#if defined(MEVR_WITH_HALCYON_LE3)
+    halcyon_le3::SetTraversalPresentation(nullptr);
+#endif
+    vr::sights::Reset();
+    vignette::Forget();
     renderer::SetModHandAim(false);
     vr::aim_ray::Reset();
-    vr::sights::Reset();
     xr_host::ForgetHaptics();
-    vignette::Forget();
-#if defined(MEVR_WITH_HALCYON_LE2)
+#if defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
     traversal_cue::Forget();
 #endif
 }
 #endif
 
-#if defined(MEVR_WITH_HALCYON_LE2)
-// v40: traversal's cue and blink (plugin/TraversalCue, research/le2-traversal.md; LE2's host so far).
+#if defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
+// v40: the shared traversal cue and blink on the sequel hosts.
 HostServices WithTraversal(HostServices services) {
     services.traversalCueSize = static_cast<std::uint32_t>(sizeof(vr::traversal::Cue));
     services.setTraversal = &traversal_cue::Set;
+    return services;
+}
+#endif
+
+#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2) || (defined(MEVR_WITH_HALCYON_LE3) && defined(MEVR_WITH_MAIN_MENU))
+void HostSetVoiceListen(int on) {
+    host::voice::SetListen(on);
+}
+bool HostTakeVoiceLine(vr::voice::Line* out) {
+    return host::voice::TakeLine(out);
+}
+void HostVoiceState(vr::voice::State* out) {
+    host::voice::GetState(out);
+}
+void HostSetVoiceKeyterms(char const* terms) {
+    host::voice::SetKeyterms(terms);
+}
+void HostVoiceCommand(char const* line) {
+    host::voice::Command(line);
+}
+std::uint32_t HostAskVoiceModel(char const* prefix, char const* rest, char const* gbnf) {
+    return host::voice_model::Ask(prefix, rest, gbnf);
+}
+bool HostTakeVoiceModelAnswer(std::uint32_t* id, char* text, std::uint32_t capacity, std::uint32_t* ms) {
+    return host::voice_model::TakeAnswer(id, text, capacity, ms);
+}
+HostServices WithVoice(HostServices services) {
+    services.voiceLineSize = static_cast<std::uint32_t>(sizeof(vr::voice::Line));  // v31: voice orders (research/54)
+    services.voiceStateSize = static_cast<std::uint32_t>(sizeof(vr::voice::State));
+    services.setVoiceListen = &HostSetVoiceListen;
+    services.takeVoiceLine = &HostTakeVoiceLine;
+    services.voiceState = &HostVoiceState;
+    services.setVoiceKeyterms = &HostSetVoiceKeyterms;
+    services.voiceCommand = &HostVoiceCommand;
+    services.askVoiceModel = &HostAskVoiceModel;
+    services.takeVoiceModelAnswer = &HostTakeVoiceModelAnswer;
+    return services;
+}
+#endif
+
+#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE3)
+// v26: the galaxy hologram (core/vr/GalaxyHologram, plugin/GalaxyHologram, research/51 section 8).
+void HostSetGalaxyHologram(vr::galaxy_holo::Scene const* scene) {
+    if (scene != nullptr) {
+        vr::galaxy_holo::Publish(*scene);
+    } else {
+        vr::galaxy_holo::Forget();
+    }
+}
+bool HostTakeGalaxyPick(std::uint32_t* id) {
+    auto const pick = vr::galaxy_holo::TakePick();
+    if (pick && id != nullptr) {
+        *id = *pick;
+    }
+    return pick.has_value();
+}
+HostServices WithGalaxyHologram(HostServices services) {
+    services.galaxyHologramSize = static_cast<std::uint32_t>(sizeof(vr::galaxy_holo::Scene));
+    services.setGalaxyHologram = &HostSetGalaxyHologram;
+    services.takeGalaxyPick = &HostTakeGalaxyPick;
     return services;
 }
 #endif
@@ -367,27 +473,6 @@ void HostSetGalaxyMap(vr::galaxy_map::View const* view) {
         vr::galaxy_map::Reset();
     }
 }
-// v26: the galaxy hologram (core/vr/GalaxyHologram, plugin/GalaxyHologram, research/51 section 8).
-void HostSetGalaxyHologram(vr::galaxy_holo::Scene const* scene) {
-    if (scene != nullptr) {
-        vr::galaxy_holo::Publish(*scene);
-    } else {
-        vr::galaxy_holo::Forget();
-    }
-}
-bool HostTakeGalaxyPick(std::uint32_t* id) {
-    auto const pick = vr::galaxy_holo::TakePick();
-    if (pick && id != nullptr) {
-        *id = *pick;
-    }
-    return pick.has_value();
-}
-HostServices WithGalaxyHologram(HostServices services) {
-    services.galaxyHologramSize = static_cast<std::uint32_t>(sizeof(vr::galaxy_holo::Scene));
-    services.setGalaxyHologram = &HostSetGalaxyHologram;
-    services.takeGalaxyPick = &HostTakeGalaxyPick;
-    return services;
-}
 // v27: the game's screens in the room (core/vr/WorldUi, plugin/WorldUi, research/53).
 void HostSetWorldUi(vr::world_ui::State const* state) {
     world_ui::Publish(state);
@@ -412,50 +497,8 @@ HostServices WithGalaxyMap(HostServices services) {
     services.setGalaxyMap = &HostSetGalaxyMap;
     return services;
 }
-void HostSetPowerWheel(vr::power_wheel::View const* view) {
-    vr::power_wheel::View closed;
-    closed.open = 0;
-    vr::power_wheel::Publish(view != nullptr ? *view : closed);
-}
-void HostSetPowerLock(vr::power_wheel::LockView const* view) {
-    vr::power_wheel::LockView none;
-    vr::power_wheel::PublishLock(view != nullptr ? *view : none);
-}
 std::uint32_t HostTakeGuiEvents(std::uint8_t* events, std::uint32_t capacity) {
     return host::game_pointer::TakeGuiEvents(events, capacity);
-}
-void HostSetVoiceListen(int on) {
-    host::voice::SetListen(on);
-}
-bool HostTakeVoiceLine(vr::voice::Line* out) {
-    return host::voice::TakeLine(out);
-}
-void HostVoiceState(vr::voice::State* out) {
-    host::voice::GetState(out);
-}
-void HostSetVoiceKeyterms(char const* terms) {
-    host::voice::SetKeyterms(terms);
-}
-void HostVoiceCommand(char const* line) {
-    host::voice::Command(line);
-}
-std::uint32_t HostAskVoiceModel(char const* prefix, char const* rest, char const* gbnf) {
-    return host::voice_model::Ask(prefix, rest, gbnf);
-}
-bool HostTakeVoiceModelAnswer(std::uint32_t* id, char* text, std::uint32_t capacity, std::uint32_t* ms) {
-    return host::voice_model::TakeAnswer(id, text, capacity, ms);
-}
-HostServices WithVoice(HostServices services) {
-    services.voiceLineSize = static_cast<std::uint32_t>(sizeof(vr::voice::Line));  // v31: voice orders (research/54)
-    services.voiceStateSize = static_cast<std::uint32_t>(sizeof(vr::voice::State));
-    services.setVoiceListen = &HostSetVoiceListen;
-    services.takeVoiceLine = &HostTakeVoiceLine;
-    services.voiceState = &HostVoiceState;
-    services.setVoiceKeyterms = &HostSetVoiceKeyterms;
-    services.voiceCommand = &HostVoiceCommand;
-    services.askVoiceModel = &HostAskVoiceModel;
-    services.takeVoiceModelAnswer = &HostTakeVoiceModelAnswer;
-    return services;
 }
 void HostSetConversationWorld(vr::conversation_world::State const* state) {
     if (state != nullptr && state->size == sizeof(vr::conversation_world::State)) {
@@ -464,21 +507,11 @@ void HostSetConversationWorld(vr::conversation_world::State const* state) {
         vr::conversation_world::Reset();
     }
 }
-void HostSetSquadPlace(vr::squad_place::View const* view) {
-    vr::squad_place::View none;
-    vr::squad_place::Publish(view != nullptr && view->size == sizeof(vr::squad_place::View) ? *view : none);
-}
-HostServices WithPowerWheel(HostServices services) {
+HostServices WithLe1ExtraUi(HostServices services) {
     services.publishCameraOffset = [](double forward, double right, double up) {
         vr::camera_diagnostic::gCameraDiagnostic.Publish(forward, right, up, GetTickCount64());
     };
-    services.powerWheelSize = static_cast<std::uint32_t>(sizeof(vr::power_wheel::View));
-    services.setPowerWheel = &HostSetPowerWheel;
-    services.powerLockSize = static_cast<std::uint32_t>(sizeof(vr::power_wheel::LockView));  // v29
-    services.setPowerLock = &HostSetPowerLock;
     services.takeGuiEvents = &HostTakeGuiEvents;  // v30: the game pointer's input as GuiKey events (research/57 section 6)
-    services.squadPlaceSize = static_cast<std::uint32_t>(sizeof(vr::squad_place::View));  // v32: squad placement's arc
-    services.setSquadPlace = &HostSetSquadPlace;
     services.conversationWorldSize = static_cast<std::uint32_t>(sizeof(vr::conversation_world::State));  // v33 (research/59)
     services.setConversationWorld = &HostSetConversationWorld;
     services.motionBlurProtected = &motion_blur_guard::ProtectsGameplay;
@@ -515,7 +548,7 @@ void ForgetLe1ModState() {
 }
 #endif
 
-#if defined(MEVR_WITH_HALCYON_LE2) && defined(MEVR_WITH_MAIN_MENU)
+#if (defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)) && defined(MEVR_WITH_MAIN_MENU)
 // LE2 (M4, research/le2-menus.md): our main menu and the guided calibration, as LE1's WithLe1Modules and
 // WithGameMenuRequest give them: v15 the calibration's state, v16 the menu's state, v19 its Game menu and Holster buttons.
 void HostCalibration(vr::calibration::HostState* out) {
@@ -527,11 +560,32 @@ std::uint32_t HostMainMenu() {
 std::uint32_t HostTakeGameMenuRequest() {
     return static_cast<std::uint32_t>(main_menu::TakeGameRequest());
 }
+#if defined(MEVR_WITH_HALCYON_LE2)
+// M4.3 (research/le2-menus.md "ME2's screens on the wrist"): the game's screens on the wrist, as LE1's WithWorldUi gives them
+// (v27 setWorldUi, v34 reserveWorldUi, the rail's requests with their origin), and the game pointer's GUI events (v30).
+void HostSetWorldUi(vr::world_ui::State const* state) {
+    world_ui::Publish(state);
+}
+std::uint32_t HostTakeGameUiRequest() {
+    return main_menu::TakeGameRequestValue();
+}
+std::uint32_t HostTakeGuiEvents(std::uint8_t* events, std::uint32_t capacity) {
+    return game_pointer::TakeGuiEvents(events, capacity);
+}
+#endif
 HostServices WithMenus(HostServices services) {
     services.calibrationStateSize = static_cast<std::uint32_t>(sizeof(vr::calibration::HostState));
     services.calibration = &HostCalibration;
     services.mainMenu = &HostMainMenu;
     services.takeGameMenuRequest = &HostTakeGameMenuRequest;
+#if defined(MEVR_WITH_HALCYON_LE2)
+    services.worldUiSize = static_cast<std::uint32_t>(sizeof(vr::world_ui::State));
+    services.setWorldUi = &HostSetWorldUi;
+    services.takeGameUiRequest = &HostTakeGameUiRequest;
+    services.reserveWorldUi = &world_ui::Reserve;
+    services.logWorldUiStats = &world_ui::LogStats;
+    services.takeGuiEvents = &HostTakeGuiEvents;
+#endif
     return services;
 }
 #endif
@@ -541,29 +595,78 @@ HostServices WithMenus(HostServices services) {
 // that comes over to LE2 moves its With* out of the LE1-only list.
 HostServices BuildServices() {
     HostServices services = WithCrashBreadcrumbs(BaseServices());
+    if (engine::DevelopmentEngineProbe()) return services;
+#if defined(MEVR_WITH_HALCYON_LE3)
+    // Shared layers now consume these publications. Native/headset acceptance remains separate.
+    services = WithGalaxyHologram(services);
+    services.motionBlurProtected = &motion_blur_guard::ProtectsGameplay;
+    services = WithTraversal(WithFloorLock(WithPadMerge(WithSights(WithVignette(WithRenderer(services))))));
+#if defined(MEVR_WITH_MAIN_MENU)
+    services = WithVoice(services);
+#endif
+    services.hideScreenReticle = nullptr; // native LE3 crosshair ownership has not been verified
+    services.traversalPresentationSize = static_cast<std::uint32_t>(sizeof(vr::traversal::Presentation));
+    services.setTraversalPresentation = &halcyon_le3::SetTraversalPresentation;
+    services.thespianInputBlocked = &halcyon_le3::ThespianInputBlocked;
+    // LE3 uses the shared eye-image scope tap. The native scene-capture producer remains unavailable.
+#endif
 #if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2)
-    services = WithFloorLock(WithHudPieces(WithPadMerge(WithSights(WithVignette(WithRenderer(services))))));  // both renderers' modules
+    services = WithVoice(WithFloorLock(WithHudPieces(WithPadMerge(WithSights(WithVignette(WithRenderer(services)))))));  // both renderers' modules
+#endif
+#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
+    services.squadMenuSize = static_cast<std::uint32_t>(sizeof(vr::squad_menu::View));
+    services.setSquadMenu = [](vr::squad_menu::View const* view) {
+        vr::squad_menu::Publish(view != nullptr && view->size == sizeof(vr::squad_menu::View) ? *view : vr::squad_menu::View{});
+    };
+    services = WithPowerWheel(services);
+    services.squadPlaceSize = static_cast<std::uint32_t>(sizeof(vr::squad_place::View));
+    services.setSquadPlace = [](vr::squad_place::View const* view) {
+        vr::squad_place::Publish(view != nullptr && view->size == sizeof(vr::squad_place::View) ? *view : vr::squad_place::View{});
+    };
 #endif
 #if defined(MEVR_WITH_HALCYON_LE2)
     services = WithTraversal(services);
 #endif
-#if defined(MEVR_WITH_HALCYON)
-    services = WithVoice(WithPowerWheel(WithWorldUi(WithGalaxyHologram(WithGalaxyMap(WithSpectator(WithMakoControls(
-        WithInteractLabel(WithScopeCapture(WithGameMenuRequest(WithLe1Modules(services)))))))))));
+#if defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
+    services.interactLabelSize = static_cast<std::uint32_t>(sizeof(vr::interact::Label));
+    services.setInteractLabel = [](vr::interact::Label const* label) {
+        if (label != nullptr && label->size == sizeof(vr::interact::Label)) vr::interact::Publish(*label);
+        else vr::interact::Reset();
+    };
 #endif
-#if defined(MEVR_WITH_HALCYON_LE2) && defined(MEVR_WITH_MAIN_MENU)
+#if defined(MEVR_WITH_HALCYON)
+    services = WithLe1ExtraUi(WithWorldUi(WithGalaxyHologram(WithGalaxyMap(WithSpectator(WithMakoControls(
+        WithInteractLabel(WithScopeCapture(WithGameMenuRequest(WithLe1Modules(services))))))))));
+#endif
+#if (defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)) && defined(MEVR_WITH_MAIN_MENU)
     services = WithMenus(services);  // our main menu and the calibration on LE2 (M4)
+    services.thespianPanelSize = static_cast<std::uint32_t>(sizeof(vr::thespian::Panel));
+    services.setThespian = &thespian::SetPanel;
 #endif
     return services;
 }
 HostServices const gServices = BuildServices();
 
 void ForgetModState() {
-#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2)
+#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2) || (defined(MEVR_WITH_HALCYON_LE3) && defined(MEVR_WITH_MAIN_MENU))
+    host::voice::SetListen(0); // also release a crashed/unloaded mod's microphone claim
+#endif
+#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
     ForgetRendererModState();
+    vr::power_wheel::Publish({});
+    vr::power_wheel::PublishLock({});
+    vr::squad_place::Publish({});
+    vr::squad_menu::Reset();
 #endif
 #if defined(MEVR_WITH_HALCYON)
     ForgetLe1ModState();
+#endif
+#if defined(MEVR_WITH_HALCYON_LE3)
+    vr::galaxy_holo::Forget();
+#endif
+#if (defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)) && defined(MEVR_WITH_MAIN_MENU)
+    world_ui::Forget();  // ME2's screens and pending ownership go back to Halcyon's flat panel (M4.3)
+    thespian::SetPanel(nullptr);
 #endif
 }
 loader::spi::Interface* gSpi = nullptr;
@@ -575,7 +678,7 @@ void SetProcessExiting() {
 }
 
 void StopWorkersForUnload() {
-#if defined(MEVR_WITH_HALCYON)  // LE1's host only (LE2/LE3 have no voice)
+#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2) || (defined(MEVR_WITH_HALCYON_LE3) && defined(MEVR_WITH_MAIN_MENU))
     host::voice::Shutdown();  // its capture and worker threads, before the DLLs unload
     host::voice_model::Shutdown();
 #endif
@@ -628,6 +731,7 @@ struct LoadedMod {
     fs::path shadowPath;
     MevrModTickFn tick = nullptr;
     MevrModShutdownFn shutdown = nullptr;
+    MevrModPrepareUnloadFn prepareUnload = nullptr; // optional: old generations have no preflight
 };
 
 LoadedMod gMod;
@@ -638,6 +742,7 @@ FILETIME gPendingStamp{};
 bool gHavePending = false;
 double gPollTimer = 0.0;
 unsigned gGeneration = 0;
+bool gUnloadDeferred = false;
 
 fs::path HostDirectory() {
     HMODULE self = nullptr;
@@ -686,10 +791,18 @@ void Pin(HMODULE module) {
     }
 }
 
-void Unload() {
+bool Unload() {
     if (gMod.module == nullptr) {
-        return;
+        return true;
     }
+    // A refusal leaves all callbacks, state and ticks intact. Pinning after shutdown is
+    // different: it keeps code mapped but cannot retry an owned game-state restoration.
+    if (!gProcessExiting.load() && gMod.prepareUnload != nullptr && !gMod.prepareUnload()) {
+        if (!gUnloadDeferred) log::Warn("mod reload deferred: current generation has pending native restoration");
+        gUnloadDeferred = true;
+        return false;
+    }
+    gUnloadDeferred = false;
     // Waits for the render thread to leave the mod's present callback.
     present::SetCallback(nullptr);
     if (gMod.shutdown != nullptr) {
@@ -715,6 +828,7 @@ void Unload() {
     }
     gKeepReason.clear();
     gMod = {};
+    return true;
 }
 
 enum class LoadResult { Loaded, CopyFailed, Failed };
@@ -736,6 +850,7 @@ LoadResult Load() {
     auto const tick = reinterpret_cast<MevrModTickFn>(GetProcAddress(module, "MevrModTick"));
     auto const shutdown = reinterpret_cast<MevrModShutdownFn>(GetProcAddress(module, "MevrModShutdown"));
     auto const onPresent = reinterpret_cast<MevrModOnPresentFn>(GetProcAddress(module, "MevrModOnPresent"));
+    auto const prepareUnload = reinterpret_cast<MevrModPrepareUnloadFn>(GetProcAddress(module, "MevrModPrepareUnload"));
     if (startup == nullptr || tick == nullptr || shutdown == nullptr || onPresent == nullptr) {
         log::Error("mod DLL is missing its entry points");
         FreeLibrary(module);
@@ -746,7 +861,7 @@ LoadResult Load() {
         FreeLibrary(module);
         return LoadResult::Failed;
     }
-    gMod = {module, shadow, tick, shutdown};
+    gMod = {module, shadow, tick, shutdown, prepareUnload};
     present::SetCallback(onPresent);
     log::Info("mod generation {} loaded from {}", gGeneration, ini::Utf8(gSourcePath));
     return LoadResult::Loaded;
@@ -772,8 +887,8 @@ void CheckForNewBuild() {
         gHavePending = true;
         return;
     }
+    if (!Unload()) return; // keep the source stamp pending; the existing poll retries
     log::Info("new mod build detected; reloading");
-    Unload();
     LoadResult const result = Load();
     if (result == LoadResult::CopyFailed) {
         return;  // stamp not recorded, so the next poll retries

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "core/DevChannels.hpp"
 #include "plugin/RenderLevers.hpp"
+#include "plugin/SceneCaptureTarget.hpp"
 #include "plugin/MotionBlurGuard.hpp"
 
 #include "core/Hook.hpp"
@@ -1369,25 +1370,9 @@ std::atomic<std::uint64_t> gSecondRenderSkipped{0};
 // consecutive index-0 renders while Stereo 2 renders the world; after that a render into another target, or of a size a
 // quarter off, runs untouched with index -1 (no recording or replay, every eye check false, the stats slot 0) and is
 // counted as a capture. If no render hits the learned target for 30 stereo frames (a viewport resize) it is relearned.
-struct RenderTargetInfo {
-    void* target = nullptr;
-    std::uint32_t sizeX = 0, sizeY = 0;
-};
+using RenderTargetInfo = scene_capture_target::Info;
 RenderTargetInfo TargetInfoSEH(void* renderer) noexcept {
-    RenderTargetInfo info;
-    __try {
-        void* const target = Field<void*>(static_cast<std::uint8_t*>(renderer), 0x18);
-        if (target != nullptr) {
-            void** const table = *reinterpret_cast<void***>(target);
-            info.target = target;
-            info.sizeX = reinterpret_cast<std::uint32_t (*)(void*)>(table[0x18 / 8])(target);
-            info.sizeY = reinterpret_cast<std::uint32_t (*)(void*)>(table[0x20 / 8])(target);
-        }
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        info.target = nullptr;
-        info.sizeX = info.sizeY = 0;
-    }
-    return info;
+    return scene_capture_target::Read(renderer);
 }
 constexpr int kEyeTargetStable = 30;
 RenderTargetInfo gEyeTarget;        // the eye renders' target, once learned
@@ -1662,17 +1647,8 @@ void CaptureFinished(void* renderer) {
 // The family's target's GetRenderTargetSurface (vtable +8) returns a reference to its surface.
 bool BindCaptureFinalSEH(RenderTargetInfo const& t) noexcept {
     __try {
-        void** const table = *reinterpret_cast<void***>(t.target);
-        void* const* const surface = reinterpret_cast<void* const* (*)(void*)>(table[0x8 / 8])(t.target);
-        if (surface == nullptr || *surface == nullptr) {
-            return false;
-        }
         void* const rhi = *At<void**>(kDynamicRhiRva);
-        void** const rhiTable = *reinterpret_cast<void***>(rhi);
-        reinterpret_cast<void (*)(void*, void*, void*)>(rhiTable[0x520 / 8])(rhi, *surface, nullptr);
-        reinterpret_cast<void (*)(void*, std::uint32_t, std::uint32_t, float, std::uint32_t, std::uint32_t, float)>(rhiTable[0x340 / 8])(
-            rhi, 0, 0, 0.0f, t.sizeX, t.sizeY, 1.0f);
-        return true;
+        return scene_capture_target::Bind(t, rhi);
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         return false;
     }

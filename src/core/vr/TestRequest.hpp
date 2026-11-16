@@ -26,6 +26,9 @@ struct Request {
 };
 
 Request Parse(std::string_view text);
+// Optional renderer control on the existing developer snapshot channel. Invalid is never a toggle.
+enum class FirstPersonRequest { Unspecified, Status, Off, On, Invalid };
+FirstPersonRequest ParseFirstPerson(Request const& request);
 
 // `text` as a JSON string literal, quotes included (UTF-8 passes through; control characters
 // escaped).

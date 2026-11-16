@@ -847,18 +847,10 @@ std::optional<WorldDisc> HologramDisc() {
     disc.radiusUnits = kHologramHalfUnits;
     if (auto const component = gMeshComponent.Read<ue3::Object*>(actor); component && *component != nullptr) {
         if (auto const extent = gBoundsExtent.Read<ue3::Vector>(gBounds.Address(*component))) {
-            double const e[3] = {extent->x, extent->y, extent->z};
-            double const fx[3] = {axes.forward.x, axes.forward.y, axes.forward.z};
-            double const ry[3] = {axes.right.x, axes.right.y, axes.right.z};
-            double half = 1e9;
-            for (int i = 0; i < 3; ++i) {
-                double const across = std::fabs(fx[i]) + std::fabs(ry[i]);
-                if (across > 0.3) {
-                    half = std::min(half, e[i] / across);
-                }
-            }
-            if (half > 50.0 && half < 2000.0) {
-                disc.radiusUnits = half;
+            auto const half = gh::ProjectorRadius({extent->x, extent->y, extent->z},
+                {axes.forward.x, axes.forward.y, axes.forward.z}, {axes.right.x, axes.right.y, axes.right.z});
+            if (half && *half > 50.0 && *half < 2000.0) {
+                disc.radiusUnits = *half;
                 disc.measured = true;
             }
         }

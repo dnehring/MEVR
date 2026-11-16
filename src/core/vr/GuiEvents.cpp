@@ -86,6 +86,24 @@ void Scheduler::Add(std::uint8_t const* events, std::uint32_t count) {
     }
 }
 
+void Scheduler::NoteSent(std::uint8_t event) {
+    if (event == kLeftDown) sentMask_ |= 1;
+    else if (event == kLeftUp) sentMask_ &= static_cast<std::uint8_t>(~1u);
+    else if (event >= kControlDown && event <= kControlUp)
+        sentMask_ |= static_cast<std::uint8_t>(2u << (event - kControlDown));
+    else if (event >= kControlDownRelease && event <= kControlUpRelease)
+        sentMask_ &= static_cast<std::uint8_t>(~(2u << (event - kControlDownRelease)));
+}
+
+std::vector<std::uint8_t> Scheduler::ReleaseSent() {
+    std::vector<std::uint8_t> releases;
+    if (sentMask_ & 1) releases.push_back(kLeftUp);
+    for (unsigned i = 0; i != 4; ++i)
+        if (sentMask_ & (2u << i)) releases.push_back(static_cast<std::uint8_t>(kControlDownRelease + i));
+    sentMask_ = 0;
+    return releases;
+}
+
 std::vector<std::uint8_t> Scheduler::Tick() {
     std::vector<std::uint8_t> out;
     bool moved = false;

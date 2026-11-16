@@ -9,6 +9,8 @@
 #include "game/HandCalibration.hpp"
 #include "game/Interact.hpp"
 #include "game/Player.hpp"
+#include "game/Le2Squad.hpp"
+#include "engine/Engine.hpp"
 #include "game/Sights.hpp"
 #include "game/SquadWeapons.hpp"
 #include "game/ViewAnchor.hpp"
@@ -30,29 +32,41 @@ namespace json = vr::test_request;
 
 namespace {
 
-ue3::FieldRef gBehavior{"SFXGame.BioPawn", "m_oBehavior"};
+bool LayerReady() {
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+    return ue3::runtime::Up();
+#else
+    return ue3::runtime::Ready();
+#endif
+}
+
+ue3::FieldRef gBehavior{"SFXGame.BioPawn", "m_oBehavior", ue3::kEveryGame};
 ue3::FieldRef gPowers{"SFXGame.BioEpicPawnBehavior", "m_powers"};
 ue3::FieldRef gPowerName{"SFXGame.BioPower", "m_nmPower"};
 ue3::FieldRef gCooldownRemaining{"SFXGame.BioPower", "m_fCooldownRemaining"};
-ue3::FieldRef gActorGameName{"SFXGame.BioActorBehavior", "ActorGameName"};
+ue3::FieldRef gActorGameName{"SFXGame.BioActorBehavior", "ActorGameName", ue3::kEveryGame};
 ue3::FieldRef gActorType{"SFXGame.BioActorBehavior", "m_oActorType"};
 ue3::FieldRef gTypeGameName{"SFXGame.BioActorType", "ActorGameName"};
-ue3::FieldRef gWorldInfo{"Engine.Actor", "WorldInfo"};
-ue3::FieldRef gPawnList{"Engine.WorldInfo", "PawnList"};
-ue3::FieldRef gNextPawn{"Engine.Pawn", "NextPawn"};
-ue3::FieldRef gLastRenderTime{"Engine.Actor", "LastRenderTime"};
-ue3::FieldRef gTimeSeconds{"Engine.WorldInfo", "TimeSeconds"};
+ue3::FieldRef gWorldInfo{"Engine.Actor", "WorldInfo", ue3::kEveryGame};
+ue3::FieldRef gPawnList{"Engine.WorldInfo", "PawnList", ue3::kEveryGame};
+ue3::FieldRef gNextPawn{"Engine.Pawn", "NextPawn", ue3::kEveryGame};
+ue3::FieldRef gLastRenderTime{"Engine.Actor", "LastRenderTime", ue3::kEveryGame};
+ue3::FieldRef gTimeSeconds{"Engine.WorldInfo", "TimeSeconds", ue3::kEveryGame};
 
-ue3::FunctionRef gIsHostileFn{"SFXGame.BioPawn.IsHostile"};
+ue3::FunctionRef gIsHostileFn{"SFXGame.BioPawn.IsHostile", ue3::kEveryGame};
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+ue3::FunctionRef gIsDeadFn{"Engine.Pawn.IsDead", ue3::kEveryGame};
+#else
 ue3::FunctionRef gIsDeadFn{"SFXGame.BioPawn.IsDead"};
+#endif
 ue3::FunctionRef gGetPercentHealthFn{"SFXGame.BioEpicPawnBehavior.GetPercentHealth"};
-ue3::FunctionRef gIsInCombatActionStateFn{"SFXGame.BioPawn.IsInCombatActionState"};
+ue3::FunctionRef gIsInCombatActionStateFn{"SFXGame.BioPawn.IsInCombatActionState", ue3::kEveryGame};
 // The level's cover (research/54 "Landmarks"): CoverLink slots, each at the link's place plus its offset in the link's axes
 // (the rows are game/SquadOrders' retreat's).
-ue3::ClassRef gCoverLink{"Engine.CoverLink"};
-ue3::FieldRef gCoverSlots{"Engine.CoverLink", "Slots"};
+ue3::ClassRef gCoverLink{"Engine.CoverLink", ue3::kEveryGame};
+ue3::FieldRef gCoverSlots{"Engine.CoverLink", "Slots", ue3::kEveryGame};
 ue3::FieldRef gCoverSlotOffset{gCoverSlots, "LocationOffset"};
-ue3::FieldRef gCoverDisabled{"Engine.CoverLink", "bDisabled"};
+ue3::FieldRef gCoverDisabled{"Engine.CoverLink", "bDisabled", ue3::kEveryGame};
 
 constexpr int kMaxPawns = 512;
 constexpr double kCoverRefreshS = 2.0;  // the cover is static: a walk over the objects this often is enough
@@ -74,6 +88,10 @@ sc::PoseHistory gPoses(4.0);
 double gClock = 0.0;      // the mod's seconds, the history's clock
 double gSinceRead = 1e9;
 bool gOnFoot = false;
+std::uint64_t gGeneration = 0;
+void const* gLastWorld = nullptr;
+ue3::Object* gLastPawn = nullptr;
+std::optional<std::uint8_t> gLastMode;
 std::string gWhyNot;
 std::map<char, Known> gRoster;
 std::map<std::string, std::string> gPowerCodes;  // internal power name -> code
@@ -101,6 +119,9 @@ bool CallBool(ue3::Object* object, ue3::Function* fn) {
 }
 
 char LetterOfClass(int classId) {
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+    if (classId >= 1000 + 'A' && classId <= 1000 + 'Z') return static_cast<char>(classId - 1000);
+#endif
     switch (classId) {
     case 6: return 'L';
     case 7: return 'W';
@@ -122,6 +143,9 @@ std::string Lower(std::string s) {
 // "emp"). Until 2026-11-09 the letters went in whole ("Ar Shield Boost", "Kro Pistol Whip"): 20 of the recognizer's key
 // terms were words nobody says, and the parser's power words with them.
 std::string Spoken(std::string const& internal) {
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+    if (auto const* info = vr::power_wheel::FindLe2Power(internal.c_str()); info != nullptr) return Lower(info->name);
+#endif
     if (vr::power_wheel::PowerInfo const* const info = vr::power_wheel::FindPower(internal.c_str()); info != nullptr && info->name != nullptr) {
         return Lower(info->name);
     }
@@ -175,6 +199,25 @@ std::string CodeOf(std::string const& internal) {
 
 // The powers on a pawn's behaviour: the game's own list, with the cooldown left.
 void ReadPowers(ue3::Object* behavior, sc::Member& member, Known& known) {
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+    member.powers.clear();
+    for (auto const& native : le2_squad::Powers(behavior)) {
+        if (!native.enabled && native.cooldown <= 0.0f) continue;
+        auto const internal = ue3::runtime::NameText(native.name);
+        auto const code = CodeOf(internal);
+        gPowerNames[code] = native.name;
+#if defined(MEVR_GAME_LE3)
+        bool const self = le3_powers::type.Read<std::uint8_t>(native.object) == 3 || ue3::IsA(native.object, le3_powers::reviveClass);
+        auto const targets = static_cast<std::uint8_t>(self ? sc::PowerSelf : sc::PowerHostile | sc::PowerAlly | sc::PowerLocation);
+        member.powers.push_back({code, native.cooldown, targets});
+#else
+        member.powers.push_back({code, native.cooldown});
+#endif
+        if (std::none_of(known.powers.begin(), known.powers.end(), [&](auto const& p) { return p.first == code; }))
+            known.powers.emplace_back(code, Spoken(internal));
+    }
+#else
+
     member.powers.clear();
     auto const list = gPowers.ElementsOf(behavior);
     if (!list) return;
@@ -194,6 +237,7 @@ void ReadPowers(ue3::Object* behavior, sc::Member& member, Known& known) {
         for (auto const& [code, spoken] : known.powers) listed = listed || code == p.code;
         if (!listed) known.powers.emplace_back(p.code, Spoken(internal));
     }
+#endif
 }
 
 sc::Vec3 Metres(ue3::Vector const& v, double upm) {
@@ -251,8 +295,13 @@ void ReadScene(ue3::Object* controller, ue3::Object* pawn, engine::TrackingFrame
     scene.head = Metres(frame.headWorld, upm);
     engine::UnrealVector const forward = engine::OrientationToWorld(frame, frame.head.orientation).forward;
     scene.headYawDeg = static_cast<float>(std::atan2(forward.y, forward.x) * 180.0 / 3.14159265358979);
-    scene.combat = CallBool(pawn, gIsInCombatActionStateFn.Get());
     ue3::Object* const held = weapon::HeldObject();
+#if defined(MEVR_GAME_LE3)
+    // LE3 has no BioPawn.IsInCombatActionState; use its native combat-input admission.
+    scene.combat = held != nullptr && le2_squad::CanOrder();
+#else
+    scene.combat = CallBool(pawn, gIsInCombatActionStateFn.Get());
+#endif
     scene.shepardWeapon = held != nullptr ? squad_weapons::WeaponTypeOf(held) : -1;
     // The party, as the squad menu read it (names, classes, quick slots, health).
     for (squad_weapons::MemberView const& view : squad_weapons::Members()) {
@@ -268,7 +317,12 @@ void ReadScene(ue3::Object* controller, ue3::Object* pawn, engine::TrackingFrame
         known.letter = m.letter;
         known.name = view.name;
         known.weapons = static_cast<std::uint8_t>(known.weapons | view.carried);
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+        m.alive = le2_squad::Living(view.pawn);
+        ReadPowers(view.pawn, m, known);
+#else
         ReadPowers(ObjectOf(gBehavior, view.pawn), m, known);
+#endif
         scene.party.push_back(m);
     }
     // The hostiles: the pawn list, the living ones hostile to Shepard.
@@ -276,7 +330,9 @@ void ReadScene(ue3::Object* controller, ue3::Object* pawn, engine::TrackingFrame
     float const now = world != nullptr ? gTimeSeconds.Read<float>(world).value_or(0.0f) : 0.0f;
     ue3::Function* const isHostile = gIsHostileFn.Get();
     ue3::Function* const isDead = gIsDeadFn.Get();
+#if !defined(MEVR_GAME_LE3)
     ue3::Function* const percentHealth = gGetPercentHealthFn.Get();
+#endif
     int guard = 0;
     for (ue3::Object* p = ObjectOf(gPawnList, world); p != nullptr && guard < kMaxPawns && isHostile != nullptr;
          p = ObjectOf(gNextPawn, p), ++guard) {
@@ -288,13 +344,24 @@ void ReadScene(ue3::Object* controller, ue3::Object* pawn, engine::TrackingFrame
         sc::Hostile h;
         h.id = reinterpret_cast<sc::PawnId>(p);
         h.position = Metres(player::Location(p).value_or(ue3::Vector{}), upm);
+#if defined(MEVR_GAME_LE3)
+        std::string type = le2_squad::ActorName(p);
+#else
         ue3::Object* const behavior = ObjectOf(gBehavior, p);
         std::string type = StringOf(gTypeGameName, ObjectOf(gActorType, behavior));
         if (type.empty()) type = StringOf(gActorGameName, behavior);
+#endif
         h.type = Lower(type);
         if (!h.type.empty() && gLoggedTypes[h.type]++ == 0) {
             log::Info("squad context: a hostile of type \"{}\" ({})", h.type, ue3::runtime::FullName(p));
         }
+#if defined(MEVR_GAME_LE3)
+        static ue3::FieldRef healthField{"Engine.Pawn", "Health", ue3::kEveryGame};
+        static ue3::FieldRef healthMax{"Engine.Pawn", "HealthMax", ue3::kEveryGame};
+        auto const health = healthField.Read<std::int32_t>(p);
+        auto const maximum = healthMax.Read<std::int32_t>(p);
+        if (health && maximum && *maximum > 0) h.health = std::clamp(static_cast<float>(*health) / *maximum, 0.01f, 1.0f);
+#else
         if (behavior != nullptr && percentHealth != nullptr) {
             ue3::Params parms(ue3::runtime::Get(), percentHealth);
             ue3::runtime::Call(behavior, percentHealth, parms);
@@ -303,6 +370,7 @@ void ReadScene(ue3::Object* controller, ue3::Object* pawn, engine::TrackingFrame
             h.health = std::clamp(health, 0.0f, 1.0f);
             if (h.health <= 0.0f) h.health = 0.01f;  // alive (IsDead said so), however low
         }
+#endif
         float const rendered = gLastRenderTime.Read<float>(p).value_or(-1e9f);
         h.visible = now - rendered < 1.0f;
         scene.hostiles.push_back(h);
@@ -356,14 +424,29 @@ void Sample(engine::TrackingFrame const& frame, double upm) {
 }  // namespace
 
 void Tick(double deltaSeconds) {
+    auto* currentController = LayerReady() ? player::Controller() : nullptr;
+    auto const currentMode = currentController != nullptr ? player::GameMode(currentController) : std::nullopt;
+    auto* currentPawn = currentController != nullptr ? player::BioPawn(currentController) : nullptr;
+    if (engine::World() != gLastWorld || currentMode != gLastMode || currentPawn != gLastPawn) {
+        ++gGeneration;
+        gLastWorld = engine::World(); gLastMode = currentMode; gLastPawn = currentPawn;
+        gScene = {}; gGrouper.Reset(); gLandmarker.Reset(); gCover.clear(); gPoses.Clear();
+        gSinceCover = 1e9; gSinceRead = 1e9;
+    }
     gClock += deltaSeconds;
     gSinceRead += deltaSeconds;
     hand_calibration::SquadContext const settings = hand_calibration::GetSquadContext();
     if (!settings.enabled) {
+        if (gOnFoot) ++gGeneration;
+        gOnFoot = false;
+        gScene = {}; gGrouper.Reset(); gLandmarker.Reset(); gPoses.Clear();
         gWhyNot = "off ([SquadContext] enabled = 0)";
         return;
     }
-    if (!ue3::runtime::Ready()) {
+    if (!LayerReady()) {
+        if (gOnFoot) ++gGeneration;
+        gOnFoot = false;
+        gScene = {}; gGrouper.Reset(); gLandmarker.Reset(); gPoses.Clear();
         gWhyNot = "our reflection layer is off";
         if (!gToldNoLayer) {
             gToldNoLayer = true;
@@ -375,8 +458,11 @@ void Tick(double deltaSeconds) {
     std::optional<std::uint8_t> const mode = controller != nullptr ? player::GameMode(controller) : std::nullopt;
     ue3::Object* const pawn = controller != nullptr ? player::BioPawn(controller) : nullptr;
     std::optional<engine::TrackingFrame> const frame = view_anchor::Current();
-    gOnFoot = mode && *mode == 0 && pawn != nullptr && frame.has_value();
+    bool const onFoot = mode && *mode == 0 && pawn != nullptr && frame.has_value();
+    if (onFoot != gOnFoot) { ++gGeneration; gSinceRead = 1e9; }
+    gOnFoot = onFoot;
     if (!gOnFoot) {
+        gPoses.Clear();
         gWhyNot = pawn == nullptr ? "no player pawn (vehicle or cutscene?)" : !frame ? "no tracking frame" : "not on foot";
         if (gScene.hostiles.size() + gScene.party.size() + gScene.cover.size() > 0) {
             gScene = {};
@@ -395,6 +481,8 @@ void Tick(double deltaSeconds) {
         ReadScene(controller, pawn, *frame, upm);
     }
 }
+
+std::uint64_t Generation() { return gGeneration; }
 
 char LetterOf(int classId) { return LetterOfClass(classId); }
 
@@ -490,6 +578,8 @@ void LogStats() {
 }
 
 void Shutdown() {
+    ++gGeneration;
+    gLastWorld = nullptr; gLastPawn = nullptr; gLastMode.reset();
     gScene = {};
     gGrouper.Reset();
     gLandmarker.Reset();

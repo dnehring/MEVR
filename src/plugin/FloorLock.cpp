@@ -2,14 +2,12 @@
 #include "plugin/FloorLock.hpp"
 
 #include "core/Log.hpp"
+#include "core/vr/Calibration.hpp" // seated motion is shared even when this host has no calibration UI
 #if defined(MEVR_WITH_HALCYON)
 #include "halcyon/le1/mevr_bridge.h"  // LE1's render seams, implemented at the end
 #endif
 #if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_MAIN_MENU)
 #include "plugin/Calibration.hpp"
-#endif
-#if defined(MEVR_WITH_MAIN_MENU)
-#include "plugin/MainMenu.hpp"
 #endif
 #include "plugin/Renderer.hpp"
 #include "plugin/CrashBreadcrumbs.hpp"
@@ -78,17 +76,16 @@ void Queue(vr::host_view::State const& view, vr::floor::State const& floor, bool
     p.arm = mevr::host::renderer::HeadArmSequence();
     p.context.world = view.valid && ordinaryWorld;
     p.context.firstPerson = mevr::host::renderer::FirstPersonOwned();
-    // Our main menu (LE1's MevrBridge::MainMenuOpen: main_menu::IsOpen) blocks it, unless it's adjusting live; the
-    // renderer's own menu and the calibration always.
-    bool menuBlocks = false;
+    // The shared menu is an overlay over this same world: hiding its controller
+    // input must not lower the view to the native camera height. Ordinary-world,
+    // first-person ownership and fresh pawn/floor gates still apply behind it.
+    // Native flat screens fail those gates; the renderer menu and calibration
+    // explicitly stand down. Never retain an old floor offset across a transition.
     bool calibrating = false;
-#if defined(MEVR_WITH_MAIN_MENU)
-    menuBlocks = main_menu::IsOpen() && !main_menu::LiveAdjusting();
-#endif
 #if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_MAIN_MENU)
     calibrating = calibration::Active();
 #endif
-    p.context.menu = mevr::host::renderer::OwnMenuOpen() || menuBlocks || calibrating;
+    p.context.menu = mevr::host::renderer::OwnMenuOpen() || calibrating;
     std::lock_guard lock(gMutex);
     p.context.enabled = gEnabled;
     p.context.heightOffsetM = gManualHeight;

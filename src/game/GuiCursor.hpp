@@ -10,6 +10,7 @@
 // arrives (measured 2026-11-05).
 //   mevr guimouse     the focused movie's mouse (_root._xmouse/_ymouse), its stage size, and where the client pixel the Windows
 //                     cursor reports would put it
+//   mevr guimouse hud   LE3 only: read-only native HUD clip bounds for capture/layout validation
 //   mevr guikey <event|w> ...   GUI events through GuiKey on the active game mode, one per tick (w: a tick without one): e.g.
 //                     `6 w 50 w w w 52` = the mouse's motion, the left button, its release (game_menu_request::GuiKey)
 // Each tick it also sends the game pointer's input as those events (HostServices v30, core/vr/GuiEvents' Scheduler): the host
@@ -20,7 +21,8 @@ namespace mevr::game::gui_cursor {
 std::string Command(std::string const& args);
 std::string KeyCommand(std::string const& args);
 // `take`: HostServices::takeGuiEvents, or null (an older host: only the console's events).
-void Tick(std::uint32_t (*take)(std::uint8_t* events, std::uint32_t capacity));
+// otherUiOwns: main menu or guided calibration, including when the game keeps ticking unpaused.
+void Tick(std::uint32_t (*take)(std::uint8_t* events, std::uint32_t capacity), bool otherUiOwns = false);
 std::string StatusJson();
 
 } // namespace mevr::game::gui_cursor

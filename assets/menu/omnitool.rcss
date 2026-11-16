@@ -4,13 +4,20 @@
  * 2026-11-04: "those left menu items don't really look like they are in mass-effect"). Read from the game's equipment screen:
  * octagonal panels with a slate-blue edge and a thin inner line over a dark navy gradient; slanted tabs, dark teal, the
  * selected one bright cyan with white text and a glow (its squad list); light-blue line icons in rounded squares (its weapon
- * tabs); pale cyan titles with a glow. Our own shapes and colours: no game art. Edit while the game runs: it reloads within a
+ * tabs); pale cyan titles with a glow. The fallback uses drawn shapes. ME2 selects the Mission Computer palette,
+ * and RailArt applies the same warm range to the cached art. Edit while the game runs: it reloads within a
  * second of a save (plugin/OmniToolRail). Decorators (plugin/menu/MenuDecorators): bevel(...), slant(...), chamfer(...), icon(...).
  */
 
 body, div { display: block; }
 
 body {
+	--rail-label: #CBEBF5;
+	--rail-art-label: #D2F1F8;
+	--rail-title: #B9F3F6;
+	--rail-glow: rgba(110,220,240,45%);
+	--rail-ring: #C4F6FF;
+	--rail-ring-fill: rgba(143,232,255,28%);
 	width: 360dp;
 	height: 640dp;  /* plugin/OmniToolRail's canvas, vr::omni_rail::kRailAspect */
 	display: flex;
@@ -18,7 +25,7 @@ body {
 	justify-content: center;
 	font-family: "Titillium Web";
 	font-weight: 600;
-	color: #CBEBF5;
+	color: var(--rail-label);
 	position: relative;
 }
 
@@ -42,8 +49,8 @@ body {
 	font-size: 32dp;
 	letter-spacing: 0.08em;
 	line-height: 34dp;
-	color: #B9F3F6;
-	font-effect: glow(1dp 5dp 0dp 0dp rgba(110,220,240,45%));
+	color: var(--rail-title);
+	font-effect: glow(1dp 5dp 0dp 0dp var(--rail-glow));
 }
 .sub { font-size: 19dp; line-height: 22dp; color: #7FA9BD; }
 .rule {
@@ -60,7 +67,7 @@ body {
 	gap: 16dp;
 	padding: 0dp 22dp 0dp 26dp;
 	font-size: 26dp;
-	color: #CBEBF5;
+	color: var(--rail-label);
 	decorator: slant(16dp rgba(30,78,108,94%) rgba(17,46,72,94%) #5C93BE #2E5E86 2dp transparent 0dp);
 }
 .entry:hover {
@@ -140,7 +147,7 @@ body.art .kicker {
 	font-size: 21dp;
 	line-height: 26dp;
 	letter-spacing: 0em;
-	color: #B9F3F6;
+	color: var(--rail-title);
 	font-effect: glow(1dp 4dp 0dp 0dp rgba(110,220,240,40%));
 }
 body.art .sub, body.art .rule, body.art .box { display: none; }
@@ -154,7 +161,7 @@ body.art .entry, body.art .entry.close {
 	font-weight: normal;
 	font-size: 28dp;
 	letter-spacing: 0em;
-	color: #D2F1F8;
+	color: var(--rail-art-label);
 	font-effect: none;
 	decorator: image(mevr:me1-tab);
 }
@@ -165,8 +172,47 @@ body.art .entry.on:hover { decorator: image(mevr:me1-tab-selected-hover); }
 /* The fingertip's ring (plugin/OmniToolRail): the depth cue, wide and faint far off, small and bright at the surface. */
 .touchring {
 	position: absolute;
-	border: 3dp #C4F6FF;
+	border: 3dp var(--rail-ring);
 	border-radius: 999dp;
-	background-color: rgba(143, 232, 255, 28%);
+	background-color: var(--rail-ring-fill);
 	pointer-events: none;
+}
+
+/* Mission Computer colors sampled from ME2. The cached frame and tabs take their palette in RailArt. */
+@media (theme: mission-computer) {
+	body {
+		--rail-label: #FFDEAA;
+		--rail-art-label: #FFE2AD;
+		--rail-title: #FFD491;
+		--rail-glow: rgba(255,159,63,45%);
+		--rail-ring: #FFDC9A;
+		--rail-ring-fill: rgba(255,169,69,28%);
+	}
+	body.art .kicker { font-effect: glow(1dp 4dp 0dp 0dp var(--rail-glow)); }
+	.panel { decorator: bevel(30dp rgba(62,28,10,92%) rgba(34,14,5,92%) #B16A31 2dp rgba(255,153,74,42%) 8dp); }
+	.sub { color: #E1B57C; }
+	.rule { background-color: rgba(255,153,74,38%); }
+	.entry { decorator: slant(16dp rgba(106,51,16,94%) rgba(58,24,8,94%) #D0651A #884516 2dp transparent 0dp); }
+	.entry:hover {
+		color: #FFF3DC;
+		decorator: slant(16dp rgba(155,74,25,96%) rgba(100,43,13,96%) #F9BF74 #B76A33 2dp rgba(255,159,63,32%) 6dp);
+	}
+	.entry:active { decorator: slant(16dp #C86B26 #914415 #FFE5AB #D89044 2dp rgba(255,174,72,40%) 8dp); }
+	.entry.on {
+		font-effect: glow(1dp 4dp 0dp 0dp rgba(255,207,128,55%));
+		decorator: slant(16dp #C87530 #9E4510 #FFE5AB #E4A050 2dp rgba(255,159,63,45%) 9dp);
+	}
+	.box { decorator: chamfer(7dp rgba(66,27,8,85%) rgba(42,15,4,85%) rgba(255,174,85,75%) rgba(188,102,38,60%) 1.5dp); }
+	.entry.on .box { decorator: chamfer(7dp rgba(255,223,166,22%) rgba(255,223,166,8%) #FFE9B2 #FFD295 1.5dp); }
+	.ico { color: #FFBF7D; }
+	.entry:hover .ico { color: #FFE2AD; }
+	.entry.close {
+		color: #E1B57C;
+		decorator: slant(12dp rgba(60,26,9,90%) rgba(34,14,5,90%) #9A5427 #6F3314 1.5dp transparent 0dp);
+	}
+	.entry.close:hover {
+		color: #FFF3DC;
+		decorator: slant(12dp rgba(117,53,17,94%) rgba(61,24,8,94%) #D69452 #A8531F 1.5dp transparent 0dp);
+	}
+	.entry.close .ico { color: #E1B57C; }
 }

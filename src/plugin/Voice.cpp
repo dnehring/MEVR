@@ -5,7 +5,6 @@
 #include "core/Ini.hpp"
 #include "core/Log.hpp"
 #include "core/vr/TestRequest.hpp"
-#include "halcyon/le1/mevr_bridge.h"
 #include "plugin/Renderer.hpp"
 #include "core/Window.hpp"
 #include "plugin/VoiceModel.hpp"

@@ -11,10 +11,11 @@ class Context;
 // "reflect: N of M checks agree; mismatches: ..." and writes the whole table to
 // %LOCALAPPDATA%\MEVR\reflect-check.json. Once per mod load, after the script packages are in and
 // ue3::runtime::Init ran. Every check is guarded: a wrong layout logs a fault, it never crashes.
-// LE1 only (the layer has no layout for LE2/LE3 yet).
+// Development cross-checks are available for all three game adapters.
 namespace mevr::engine::reflect_check {
 
 // `context`: the mod's hook context (its loader interface makes LExSDKv2's resolver for the reference side).
-void Run(hook::Context& context);
+// True only when actual SDK comparisons ran and none mismatched.
+bool Run(hook::Context& context);
 
 } // namespace mevr::engine::reflect_check

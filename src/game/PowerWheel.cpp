@@ -14,6 +14,7 @@
 #include "engine/ProcessEvent.hpp"
 #include "engine/SettingsFile.hpp"
 #include "game/HeadTracking.hpp"
+#include "game/Le3Powers.hpp"
 #include "game/OmniTool.hpp"
 #include "game/Player.hpp"
 #include "game/SquadWeapons.hpp"
@@ -45,17 +46,17 @@ namespace {
 namespace pw = vr::power_wheel;
 namespace json = vr::test_request;
 
-ue3::FieldRef gBehavior{"SFXGame.BioPawn", "m_oBehavior"};
+ue3::FieldRef gBehavior{"SFXGame.BioPawn", "m_oBehavior", ue3::kEveryGame};
 ue3::FieldRef gPowers{"SFXGame.BioEpicPawnBehavior", "m_powers"};
 ue3::FieldRef gPowerName{"SFXGame.BioPower", "m_nmPower"};
 ue3::FieldRef gCooldownRemaining{"SFXGame.BioPower", "m_fCooldownRemaining"};
 ue3::FieldRef gTotalCooldown{"SFXGame.BioPower", "m_fTotalCooldownTime"};
 ue3::FieldRef gEnabledCount{"SFXGame.BioPower", "m_nEnabled"};
 ue3::FieldRef gSuppressed{"SFXGame.BioPower", "m_nSuppressedCount"};
-ue3::FieldRef gPlayerInput{"Engine.PlayerController", "PlayerInput"};
+ue3::FieldRef gPlayerInput{"Engine.PlayerController", "PlayerInput", ue3::kEveryGame};
 ue3::FieldRef gMappedPower{"SFXGame.BioPlayerInput", "MappedPower"};
 ue3::FunctionRef gIsEnabledFn{"SFXGame.BioPower.IsEnabled"};
-ue3::FunctionRef gIsCombatEnabledFn{"SFXGame.BioPlayerInput.IsCombatEnabled"};
+ue3::FunctionRef gIsCombatEnabledFn{"SFXGame.BioPlayerInput.IsCombatEnabled", ue3::kEveryGame};
 ue3::FunctionRef gIsRequiredWeaponFn{"SFXGame.BioPower.IsRequiredWeaponEquipped"};
 // `mevr powerwheel cast` (tests): SFXGameModeDefault.TryUseMappedPower, what the game's RB tap does (the right stick click's
 // tap until 2026-11-05).
@@ -65,6 +66,38 @@ ue3::ClassRef gGameModeDefault{"SFXGame.SFXGameModeDefault"};
 ue3::FunctionRef gTryUseMappedPowerFn{"SFXGame.SFXGameModeDefault.TryUseMappedPower"};
 bool gShowUnlearned = false;  // `mevr powerwheel unlearned on` (tests): untrained powers on the wheel too, dim
 
+#if defined(MEVR_GAME_LE2)
+ue3::FieldRef gPowerManager{"SFXGame.BioPawn", "PowerManager", ue3::kEveryGame};
+ue3::FieldRef gManagedPowers{"SFXGame.SFXPowerManager", "Powers", ue3::kEveryGame};
+ue3::FieldRef gLe2PowerName{"SFXGame.SFXPower", "PowerName", ue3::kEveryGame};
+ue3::FieldRef gLe2BaseName{"SFXGame.SFXPower", "BaseName", ue3::kEveryGame};
+ue3::FieldRef gLe2Rank{"SFXGame.SFXPower", "Rank", ue3::kEveryGame};
+ue3::FieldRef gLe2Visible{"SFXGame.SFXPower", "DisplayInHUD", ue3::kEveryGame};
+ue3::FunctionRef gLe2IsEnabled{"SFXGame.SFXPower.IsEnabled", ue3::kEveryGame};
+ue3::FunctionRef gLe2Cooldown{"SFXGame.SFXPower.GetCooldownRemaining", ue3::kEveryGame};
+ue3::FunctionRef gLe2CooldownTotal{"SFXGame.SFXPower.GetTotalCooldownTime", ue3::kEveryGame};
+ue3::FunctionRef gLe2Evolved{"SFXGame.SFXPowerManager.HasPowerBeenEvolved", ue3::kEveryGame};
+ue3::FunctionRef gLe2BlockingAction{"SFXGame.BioPawn.IsPerformingBlockingAction", ue3::kEveryGame};
+ue3::ClassRef gLe2HeavyWeapon{"SFXGame.SFXHeavyWeapon", ue3::kEveryGame};
+ue3::Name gLe2Selected;  // separate from the native quick slots
+ue3::Object* gLe2SelectionPawn = nullptr;
+ue3::Object* gLe2SelectionManager = nullptr;
+
+bool Le2AmmoWeaponHeld() {
+    auto* const weapon = weapon::HeldObject();
+    auto const* const heavy = gLe2HeavyWeapon.Get();
+    return weapon != nullptr && heavy != nullptr && !ue3::runtime::Get().IsA(weapon, heavy);
+}
+#endif
+
+#if defined(MEVR_GAME_LE3)
+ue3::FieldRef& gPowerManager = le3_powers::manager;
+ue3::FieldRef& gManagedPowers = le3_powers::powers;
+ue3::Name gLe2Selected;  // shared sequel selection state; never writes native quick slots
+ue3::Object* gLe2SelectionPawn = nullptr;
+ue3::Object* gLe2SelectionManager = nullptr;
+#endif
+
 // ---- Settings: [PowerWheel] in the mod's settings file, read once a second, its defaults appended when it's missing --
 constexpr char kBlock[] =
     "\n"
@@ -72,8 +105,11 @@ constexpr char kBlock[] =
     "; The power wheel at your left hand (research/55): hold X on foot and it opens around your left palm with your powers;\n"
     "; move your left hand toward one (or push the left stick toward it: you don't walk while it's open) and let go of X to\n"
     "; equip it. Tap X instead and it stays open: a pinch of the left trigger, a squeeze of the left grip or X again equips.\n"
-    "; Push your left hand to cast the equipped power (lock, below). While on = 1, X never throws a grenade on foot (the\n"
-    "; physical throw stays). widthM the wheel's width; towardM its centre from your palm toward your eyes; deadZoneM how far\n"
+    "; Push your left hand to cast a targeted power (lock, below).\n"
+#if !defined(MEVR_GAME_LE2) && !defined(MEVR_GAME_LE3)
+    "; While on = 1, X never throws a grenade on foot (the physical throw stays).\n"
+#endif
+    "; widthM the wheel's width; towardM its centre from your palm toward your eyes; deadZoneM how far\n"
     "; the hand moves before it picks; keepDeg how much nearer another tile must be to take over; stickPick how far the left\n"
     "; stick must be pushed to pick; tapS how short a tap is; emblem 1: our N7 mark on the palm, 0: nothing; upperCase 1: the\n"
     "; names in capitals; hintOpenings: the explanation card shows the first this many openings of each session; haptic\n"
@@ -113,8 +149,15 @@ constexpr char kBlock[] =
     "autoLockHandDeg = 30\n"
     "autoLockGazeDeg = 20\n"
     "; selfGestures 1: the powers that aim at nothing are cast by a gesture of the open left hand, not the push: the palm on\n"
+#if defined(MEVR_GAME_LE3)
+    "; your chest (native buffs), slapped onto your drawn gun (ammo powers), or raised above your head (Unity).\n"
+    "; 0: the push casts them too. The game's own availability, cooldown and resources still apply.\n"
+#elif defined(MEVR_GAME_LE2)
+    "; your chest (Adrenaline Rush, Barrier) or slapped onto your drawn gun (ammo powers). 0: the push casts them too.\n"
+#else
     "; your chest (Barrier, Shield Boost, Immunity, Adrenaline Burst), slapped onto the gun (Marksman, Overkill, Carnage,\n"
     "; Assassination), or raised above your head (Unity). 0: the push casts them too.\n"
+#endif
     "selfGestures = 1\n";
 
 pw::Settings gSettings;
@@ -227,7 +270,63 @@ struct Power {
     std::optional<bool> requiredWeapon;
     std::int32_t enabledCount = 0;  // m_nEnabled
     std::int32_t suppressed = 0;    // m_nSuppressedCount
+    std::optional<pw::SelfGesture> nativeGesture;
 };
+
+pw::SelfGesture GestureFor(Power const& power) {
+    return power.nativeGesture.value_or(pw::SelfGestureFor(power.label.c_str()));
+}
+
+#if defined(MEVR_GAME_LE3)
+// Metadata is attached to actual native instances, never a synthetic roster. Unknown/DLC
+// names keep their identity and a generic icon; the native PowerType chooses self vs aimed.
+struct Le3Label {
+    std::string label;
+    std::string name;
+    pw::PowerInfo info{};
+};
+std::map<std::string, Le3Label> gLe3Labels;
+
+std::optional<Power> Le3Power(ue3::Object* object, bool includeUnlearned) {
+    auto& r = ue3::runtime::Get();
+    if (!r.IsAlive(object)) return std::nullopt;
+    bool const revive = ue3::IsA(object, le3_powers::reviveClass);
+    // Native Unity may use the flat game's dedicated healing control instead of its wheel.
+    // Only a real learned Unity instance is admitted here; we never add a synthetic heal entry.
+    if (!revive && !le3_powers::visible.ReadBool(object).value_or(false)) return std::nullopt;
+    auto state = le3_powers::State(object);
+    auto const type = le3_powers::type.Read<std::uint8_t>(object);
+    auto const name = le3_powers::name.Read<ue3::Name>(object);
+    if (!state || !type || *type >= 4 || !name || name->Key() == 0) return std::nullopt;
+    auto const availability = pw::EvaluateNativePower(*state);
+    if (!availability.valid || (!availability.learned && !includeUnlearned)) return std::nullopt;
+    auto const label = r.ToString(*name);
+    auto const* known = pw::FindLe2Power(label.c_str());  // display text/icons only, not availability or membership
+    auto [entry, added] = gLe3Labels.try_emplace(label);
+    auto& text = entry->second;
+    if (added) {
+        text.label = label;
+        text.name = known != nullptr ? known->name : label;
+    }
+    bool const ammo = ue3::IsA(object, le3_powers::ammoClass);
+    auto const gesture = pw::NativeSelfGesture(ammo, revive, *type == 3, ue3::IsA(object, le3_powers::weaponBuffClass));
+    bool const self = gesture != pw::SelfGesture::None;  // installed EPowerType: Buff = 3
+    text.info = {text.label.c_str(), text.name.c_str(), known != nullptr ? known->discipline : std::uint8_t{2},
+        known != nullptr ? known->icon : 0, self ? pw::Aim::None : pw::Aim::Place};
+    Power power;
+    power.object = object;
+    power.name = *name;
+    power.label = label;
+    power.info = &text.info;
+    power.enabledCount = availability.learned ? 1 : 0;
+    power.gameEnabled = state->enabled;
+    // The actual self-power override owns medi-gel/health, weapon and other contextual admission.
+    power.enabled = availability.enabled && (!self || le3_powers::CanUse(object, nullptr));
+    power.cooldown = availability.cooldown;
+    power.nativeGesture = gesture;
+    return power;
+}
+#endif
 
 bool CallBool(ue3::Object* object, ue3::FunctionRef& ref) {
     ue3::Function* const function = ref.Get();
@@ -239,16 +338,58 @@ bool CallBool(ue3::Object* object, ue3::FunctionRef& ref) {
     return parms.ReturnBool().value_or(false);
 }
 
+#if defined(MEVR_GAME_LE2)
+float Le2Seconds(ue3::Object* power, ue3::FunctionRef& ref) {
+    auto* const fn = ref.Get();
+    if (fn == nullptr) return 0.0f;
+    ue3::Params p(ue3::runtime::Get(), fn);
+    return ue3::runtime::Call(power, fn, p) ? std::max(0.0f, p.Return<float>().value_or(0.0f)) : 0.0f;
+}
+
+std::optional<Power> Le2Power(ue3::Object* object, bool includeUnlearned) {
+    auto& r = ue3::runtime::Get();
+    if (!r.IsAlive(object) || !gLe2Visible.ReadBool(object).value_or(false)) return std::nullopt;
+    auto const name = gLe2PowerName.Read<ue3::Name>(object).value_or(ue3::Name{});
+    if (name.Key() == 0) return std::nullopt;
+    auto const base = gLe2BaseName.Read<ue3::Name>(object).value_or(ue3::Name{});
+    auto const* info = pw::FindLe2Power(r.ToString(base).c_str());
+    if (info == nullptr) info = pw::FindLe2Power(r.ToString(name).c_str());
+    if (info == nullptr) return std::nullopt;
+    bool const learned = gLe2Rank.Read<float>(object).value_or(0.0f) > 0.0f;
+    if (!learned && !includeUnlearned) return std::nullopt;
+    Power p;
+    p.object = object;
+    p.name = name;
+    p.label = info->label;
+    p.info = info;
+    p.enabledCount = learned ? 1 : 0;
+    p.gameEnabled = CallBool(object, gLe2IsEnabled);
+    if (pw::SelfGestureFor(info->label) == pw::SelfGesture::Gun) p.requiredWeapon = Le2AmmoWeaponHeld();
+    p.enabled = learned && *p.gameEnabled && p.requiredWeapon.value_or(true);
+    float const remaining = Le2Seconds(object, gLe2Cooldown);
+    float const total = Le2Seconds(object, gLe2CooldownTotal);
+    p.cooldown = total > 0.01f ? std::clamp(remaining / total, 0.0f, 1.0f) : (remaining > 0.0f ? 1.0f : 0.0f);
+    return p;
+}
+#endif
+
+#if !defined(MEVR_GAME_LE2) && !defined(MEVR_GAME_LE3)
 void ReadEnabled(Power& power, ue3::Object* object) {
     power.gameEnabled = gIsEnabledFn.Get() != nullptr ? std::optional<bool>(CallBool(object, gIsEnabledFn)) : std::nullopt;
     power.requiredWeapon = gIsRequiredWeaponFn.Get() != nullptr ? std::optional<bool>(CallBool(object, gIsRequiredWeaponFn)) : std::nullopt;
     power.enabled = power.enabledCount != 0 && power.gameEnabled.value_or(true) && power.requiredWeapon.value_or(true);
 }
+#endif
 
 std::string EnabledChecks(Power const& power) {
     auto const flag = [](std::optional<bool> value) { return value ? (*value ? "true" : "false") : "function missing"; };
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+    return std::format("learned {}, IsEnabled {}{}", power.enabledCount > 0, flag(power.gameEnabled),
+        power.requiredWeapon ? std::format(", compatible weapon drawn {}", *power.requiredWeapon) : "");
+#else
     return std::format("m_nEnabled {}, m_nSuppressedCount {}, IsEnabled {}, IsRequiredWeaponEquipped {}",
         power.enabledCount, power.suppressed, flag(power.gameEnabled), flag(power.requiredWeapon));
+#endif
 }
 
 // The pawn's mappable powers it has trained (m_nEnabled > 0: 0 for every talent without a rank, measured on a save
@@ -256,6 +397,39 @@ std::string EnabledChecks(Power const& power) {
 // cast it now (IsEnabled false: suppressed; or its weapon isn't the one held).
 std::vector<Power> ReadRoster(ue3::Object* pawn, bool includeUnlearned) {
     std::vector<Power> out;
+#if defined(MEVR_GAME_LE3)
+    auto* const manager = gPowerManager.Read<ue3::Object*>(pawn).value_or(nullptr);
+    auto const list = ue3::runtime::IsAlive(manager) ? gManagedPowers.ElementsOf(manager) : std::nullopt;
+    if (!list || list->count > 128) return out;
+    for (int i = 0; i < list->count; ++i) {
+        auto** slot = static_cast<ue3::Object**>(list->At(i));
+        if (slot == nullptr) continue;
+        if (auto power = Le3Power(*slot, includeUnlearned)) {
+            if (std::none_of(out.begin(), out.end(), [&](Power const& p) { return p.name == power->name; }))
+                out.push_back(std::move(*power));
+        }
+    }
+#elif defined(MEVR_GAME_LE2)
+    auto* const manager = gPowerManager.Read<ue3::Object*>(pawn).value_or(nullptr);
+    auto const list = ue3::runtime::IsAlive(manager) ? gManagedPowers.ElementsOf(manager) : std::nullopt;
+    if (!list) return out;
+    for (int i = 0; i < list->count && i < 64; ++i) {
+        auto* const slot = static_cast<ue3::Object**>(list->At(i));
+        auto* object = slot != nullptr ? *slot : nullptr;
+        if (!ue3::runtime::IsAlive(object)) continue;
+        if (auto* const evolved = gLe2Evolved.Get()) {
+            ue3::Params args(ue3::runtime::Get(), evolved);
+            if (args.Set("Power", object) && ue3::runtime::Call(manager, evolved, args) && args.ReturnBool().value_or(false)) {
+                object = args.Get<ue3::Object*>("EvolvedPower").value_or(nullptr);
+            }
+        }
+        if (auto power = Le2Power(object, includeUnlearned)) {
+            if (std::none_of(out.begin(), out.end(), [&](Power const& other) { return other.object == power->object; })) {
+                out.push_back(std::move(*power));
+            }
+        }
+    }
+#else
     ue3::Object* const behavior = gBehavior.Read<ue3::Object*>(pawn).value_or(nullptr);
     if (behavior == nullptr) {
         return out;
@@ -288,14 +462,9 @@ std::vector<Power> ReadRoster(ue3::Object* pawn, bool includeUnlearned) {
         }
         ReadEnabled(p, power);
         out.push_back(std::move(p));
-        if (out.size() >= static_cast<std::size_t>(pw::kMaxEntries) * 2) {
-            break;
-        }
     }
+#endif
     std::stable_sort(out.begin(), out.end(), [](Power const& a, Power const& b) { return a.info->discipline < b.info->discipline; });
-    if (out.size() > static_cast<std::size_t>(pw::kMaxEntries) - 1) {
-        out.resize(static_cast<std::size_t>(pw::kMaxEntries) - 1);
-    }
     // The last tile: No power (the engine's None in the mapped power), back to neutral.
     if (!out.empty()) {
         Power none;
@@ -311,15 +480,54 @@ ue3::Object* PlayerInput(ue3::Object* controller) {
 }
 
 std::string MappedPower(ue3::Object* controller) {
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+    (void)controller;
+    return ue3::runtime::NameText(gLe2Selected);
+#else
     ue3::Object* const input = PlayerInput(controller);
     auto const name = input != nullptr ? gMappedPower.Read<ue3::Name>(input) : std::nullopt;
     return name ? ue3::runtime::NameText(*name) : std::string();
+#endif
 }
 
 // ---- State --------------------------------------------------------------------------------------------------------------
 pw::Machine gMachine;
 double gClock = 0.0;
 std::vector<Power> gRoster;
+std::vector<Power> gFullRoster;
+pw::Page gPage;
+bool gRosterChanged = false;
+char gMoreLabel[pw::kLabelBytes] = {};
+pw::PowerInfo gMoreInfo{"__MEVR_MORE_POWERS__", gMoreLabel, 2, 0, pw::Aim::None};
+
+void RefreshRoster(ue3::Object* pawn, bool includeUnlearned, bool resetPage) {
+    auto full = ReadRoster(pawn, includeUnlearned);
+    bool const changed = full.size() != gFullRoster.size() || !std::equal(full.begin(), full.end(), gFullRoster.begin(),
+        [](Power const& a, Power const& b) { return a.name == b.name && a.object == b.object && a.label == b.label; });
+    gRosterChanged = changed && gMachine.open;
+    if (gRosterChanged) {
+        // A native roster change must not reinterpret an old highlighted index.
+        gMachine.selected = -1;
+        gMachine.equipped = -1;
+        gMachine.selectedAt = gClock;
+        gMachine.triggerArmed = false;
+        gMachine.gripArmed = false;
+    }
+    gFullRoster = std::move(full);
+    gPage = pw::PowerPage(gFullRoster.empty() ? 0 : static_cast<int>(gFullRoster.size()) - 1,
+        resetPage || changed ? 0 : gPage.index);
+    gRoster.clear();
+    if (gFullRoster.empty()) return;
+    for (int i = 0; i < gPage.count; ++i) gRoster.push_back(gFullRoster[static_cast<std::size_t>(gPage.first + i)]);
+    gRoster.push_back(gFullRoster.back());  // No power remains reachable on every page.
+    if (gPage.more >= 0) {
+        std::snprintf(gMoreLabel, sizeof(gMoreLabel), "More powers %d/%d", gPage.index + 1, gPage.pages);
+        Power more;
+        more.info = &gMoreInfo;
+        more.label = gMoreInfo.label;
+        gRoster.push_back(std::move(more));  // navigation only; Machine never emits Equipped for it
+    }
+}
 pw::View gView;
 bool gPadOn = false;          // on foot with the wheel on: X is the wheel's
 bool gHeldAfter = false;      // a left trigger, grip or X used in it is still held after it closed
@@ -353,6 +561,11 @@ XrVector3f HeadForwardFlat(XrQuaternionf const& q) {
 }
 
 void Equip(ue3::Object* controller, Power const& power) {
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+    (void)controller;
+    std::string const before = MappedPower(controller);
+    gLe2Selected = power.name;
+#else
     ue3::Object* const input = PlayerInput(controller);
     ue3::Name* const slot = input != nullptr ? gMappedPower.In<ue3::Name>(input) : nullptr;
     if (slot == nullptr) {
@@ -362,28 +575,33 @@ void Equip(ue3::Object* controller, Power const& power) {
     std::string const before = ue3::runtime::NameText(*slot);
     *slot = power.name;
     write_journal::Wrote("PowerWheel.mappedPower", slot);
+#endif
     gEquipped = power.label;
     if (pw::IsNoPower(power.label.c_str())) {
         log::Info("power wheel: no power equipped (the game's mapped power was {}, now {}): nothing is aimed, locked or gestured "
-                  "until a power is chosen", before.empty() ? "none" : before, ue3::runtime::NameText(*slot));
+                  "until a power is chosen", before.empty() ? "none" : before, MappedPower(controller));
         return;
     }
-    pw::SelfGesture const gesture = gSelfGestures ? pw::SelfGestureFor(power.label.c_str()) : pw::SelfGesture::None;
+    pw::SelfGesture const gesture = gSelfGestures ? GestureFor(power) : pw::SelfGesture::None;
     log::Info("power wheel: equipped {} ({}): the game's mapped power was {}; {} casts it", power.info->name, power.label,
         before.empty() ? "none" : before, gesture != pw::SelfGesture::None ? pw::Name(gesture) : "a push of the left hand");
 }
 
 // ---- The lock and the push (research/55 section 4) ----------------------------------------------------------------------
-ue3::FieldRef gWorldInfo{"Engine.Actor", "WorldInfo"};
-ue3::FieldRef gPawnList{"Engine.WorldInfo", "PawnList"};
-ue3::FieldRef gNextPawn{"Engine.Pawn", "NextPawn"};
-ue3::FieldRef gHidden{"Engine.Actor", "bHidden"};
-ue3::FieldRef gBehaviorActive{"SFXGame.BioActorBehavior", "bActive"};  // the encounter's switch (dormant: false)
-ue3::FunctionRef gIsHostileFn{"SFXGame.BioPawn.IsHostile"};
+ue3::FieldRef gWorldInfo{"Engine.Actor", "WorldInfo", ue3::kEveryGame};
+ue3::FieldRef gPawnList{"Engine.WorldInfo", "PawnList", ue3::kEveryGame};
+ue3::FieldRef gNextPawn{"Engine.Pawn", "NextPawn", ue3::kEveryGame};
+ue3::FieldRef gHidden{"Engine.Actor", "bHidden", ue3::kEveryGame};
+ue3::FieldRef gBehaviorActive{"SFXGame.BioActorBehavior", "bActive", ue3::kEveryGame};  // the encounter's switch (dormant: false)
+ue3::FunctionRef gIsHostileFn{"SFXGame.BioPawn.IsHostile", ue3::kEveryGame};
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+ue3::FunctionRef gIsDeadFn{"Engine.Pawn.IsDead", ue3::kEveryGame};
+#else
 ue3::FunctionRef gIsDeadFn{"SFXGame.BioPawn.IsDead"};
-ue3::FunctionRef gFastTraceFn{"Engine.Actor.FastTrace"};
-ue3::FunctionRef gTraceFn{"Engine.Actor.Trace"};
-ue3::FunctionRef gActivatePowerFn{"SFXGame.BioPlayerInput.ActivatePower"};
+#endif
+ue3::FunctionRef gFastTraceFn{"Engine.Actor.FastTrace", ue3::kEveryGame};
+ue3::FunctionRef gTraceFn{"Engine.Actor.Trace", ue3::kEveryGame};
+ue3::FunctionRef gActivatePowerFn{"SFXGame.BioPlayerInput.ActivatePower", ue3::kEveryGame};
 
 constexpr double kChestUnits = 20.0;  // the marker a little above the pawn's centre (its location)
 
@@ -442,6 +660,27 @@ XrVector3f RotateXr(XrQuaternionf q, XrVector3f v) {
 
 // The power the game has mapped (the wheel's equip, or the game's own wheel), if it's one of the player's.
 std::optional<Power> ReadyPower(ue3::Object* controller, ue3::Object* pawn) {
+#if defined(MEVR_GAME_LE3)
+    (void)controller;
+    if (gLe2Selected.Key() == 0 || pawn != gLe2SelectionPawn ||
+        gPowerManager.Read<ue3::Object*>(pawn).value_or(nullptr) != gLe2SelectionManager) return std::nullopt;
+    auto const roster = ReadRoster(pawn, false);
+    for (auto const& power : roster) if (power.name == gLe2Selected) return power;
+    return std::nullopt;
+#elif defined(MEVR_GAME_LE2)
+    (void)controller;
+    if (gLe2Selected.Key() == 0 || pawn != gLe2SelectionPawn) return std::nullopt;
+    auto const list = ue3::runtime::IsAlive(gLe2SelectionManager) ? gManagedPowers.ElementsOf(gLe2SelectionManager) : std::nullopt;
+    if (!list) return std::nullopt;
+    for (int i = 0; i < list->count && i < 64; ++i) {
+        auto* const slot = static_cast<ue3::Object**>(list->At(i));
+        auto* const object = slot != nullptr ? *slot : nullptr;
+        if (ue3::runtime::IsAlive(object) && gLe2PowerName.Read<ue3::Name>(object) == gLe2Selected) {
+            return Le2Power(object, false);
+        }
+    }
+    return std::nullopt;
+#else
     std::string const mapped = MappedPower(controller);
     if (mapped.empty() || mapped == "None") {
         return std::nullopt;
@@ -477,6 +716,7 @@ std::optional<Power> ReadyPower(ue3::Object* controller, ue3::Object* pawn) {
         return p;
     }
     return std::nullopt;
+#endif
 }
 
 // The angle between `direction` (a unit vector) and the line from `from` to `point`, degrees.
@@ -492,7 +732,10 @@ float AngleTo(engine::UnrealVector const& from, engine::UnrealVector const& dire
 // The living hostiles near the hand's ray (within keepDeg) or, with the automatic resolver, within its cones of the hand's
 // ray or the eyes' forward, and in range; each with its line of sight from the hand.
 void Scan(ue3::Object* pawn, engine::UnrealVector const& origin, engine::UnrealVector const& direction, engine::UnrealVector const& eye,
-    engine::UnrealVector const& gaze, double upm, pw::LockSettings const& s) {
+    engine::UnrealVector const& gaze, double upm, pw::LockSettings const& s, ue3::Object* power) {
+#if !defined(MEVR_GAME_LE3)
+    (void)power;
+#endif
     float const handLimit = std::max(s.keepDeg, s.autoLock ? s.autoHandDeg + pw::kAutoKeepMarginDeg : 0.0f);
     float const gazeLimit = s.autoLock ? s.autoGazeDeg + pw::kAutoKeepMarginDeg : -1.0f;
     gSeen.clear();
@@ -508,7 +751,11 @@ void Scan(ue3::Object* pawn, engine::UnrealVector const& origin, engine::UnrealV
     for (ue3::Object* p = gPawnList.Read<ue3::Object*>(world).value_or(nullptr); p != nullptr && guard < 512;
          p = gNextPawn.Read<ue3::Object*>(p).value_or(nullptr), ++guard) {
         ++gScanPawns;
+#if defined(MEVR_GAME_LE3)
+        ue3::Object* const behavior = nullptr; // LE3 has no LE1/LE2 m_oBehavior field.
+#else
         ue3::Object* const behavior = player::IsBioPawn(p) ? gBehavior.Read<ue3::Object*>(p).value_or(nullptr) : nullptr;
+#endif
         if (p == pawn || !player::IsBioPawn(p) || gHidden.ReadBool(p).value_or(false) ||
             (behavior != nullptr && !gBehaviorActive.ReadBool(behavior).value_or(true)) || CallBool(p, gIsDeadFn)) {
             // Dead, or dormant: hidden, or its behaviour switched off (bActive false: a base's crew before its encounter's
@@ -538,12 +785,17 @@ void Scan(ue3::Object* pawn, engine::UnrealVector const& origin, engine::UnrealV
             continue;  // the cheap tests first
         }
         ++gScanNear;
+#if defined(MEVR_GAME_LE3)
+        // Base powers accept hostiles; actual support/DLC overrides may admit a living ally.
+        if (!le3_powers::ValidTarget(power, p)) continue;
+#else
         ue3::Params hostile(ue3::runtime::Get(), gIsHostileFn.Get());
         hostile.Set("Other", p);
         ue3::runtime::Call(pawn, gIsHostileFn.Get(), hostile);
         if (!hostile.ReturnBool().value_or(false)) {
             continue;
         }
+#endif
         ++gScanHostile;
         Seen seen{p, {at->x, at->y, at->z}, angle, gazeAngle, distanceM, true};
         if (ue3::Function* const trace = gFastTraceFn.Get()) {
@@ -595,17 +847,64 @@ bool Cast(ue3::Object* controller, Power const& power, ue3::Object* target, std:
         return false;
     }
     ue3::Params parms(ue3::runtime::Get(), fn);
+#if defined(MEVR_GAME_LE3)
+    auto* const pawn = player::BioPawn(controller);
+    auto const current = ReadyPower(controller, pawn);
+    auto const frame = view_anchor::Current();
+    if (!current || current->object != power.object || !current->enabled || current->cooldown > 0.0f ||
+        !frame || !CallBool(input, gIsCombatEnabledFn) || !le3_powers::CanUse(power.object, target)) {
+        gLastCast = std::string(power.info->name) + ": native power/loadout/target/resource guard refused";
+        return false;
+    }
+    if (target != nullptr && !le3_powers::ValidTarget(power.object, target)) {
+        gLastCast = "Native power does not accept this target";
+        return false;
+    }
+    if (target == nullptr && power.info->aim != pw::Aim::None) {
+        auto const origin = player::Location(pawn);
+        auto const delta = origin && at ? Minus(*at, {origin->x, origin->y, origin->z}) : engine::UnrealVector{};
+        if (!origin || !at || !le3_powers::LocationInRange(power.object, std::sqrt(Dot3(delta, delta)))) {
+            gLastCast = "Power location is outside its native range";
+            return false;
+        }
+    }
+    auto const rotation = engine::ToRotation(engine::OrientationToWorld(*frame, frame->head.orientation).forward);
+    if (!parms.Set("nmPower", power.name) || !parms.Set("oTarget", target) ||
+        !parms.Set("vTargetLocation", at ? ToVector(*at) : ue3::Vector{}) ||
+        !parms.Set("vOriginalCameraLocation", ToVector(frame->headWorld)) ||
+        !parms.Set("rOriginalCameraRotation", ue3::Rotator{rotation.pitch, rotation.yaw, 0})) {
+        gLastCast = "LE3 ActivatePower parameter contract unavailable";
+        return false;
+    }
+#elif defined(MEVR_GAME_LE2)
+    auto* const pawn = player::BioPawn(controller);
+    if (pawn == nullptr || !CallBool(input, gIsCombatEnabledFn) || CallBool(pawn, gLe2BlockingAction) ||
+        (target != nullptr && !ue3::runtime::IsAlive(target)) || !parms.Set("nmPower", power.name)) {
+        gLastCast = std::string(power.info->name) + ": unavailable in the current game state";
+        return false;
+    }
+    if (auto const view = view_anchor::Current()) {
+        auto const rotation = engine::ToRotation(engine::OrientationToWorld(*view, view->head.orientation).forward);
+        parms.Set("vOriginalCameraLocation", ToVector(view->headWorld));
+        parms.Set("rOriginalCameraRotation", ue3::Rotator{rotation.pitch, rotation.yaw, 0});
+    }
+#else
     parms.Set("nmPower", power.name);
+#endif
     if (target != nullptr) {
         parms.Set("oTarget", target);
     }
     if (at) {
         parms.Set("vTargetLocation", ToVector(*at));
     }
-    ue3::runtime::Call(input, fn, parms);
-    bool const ok = parms.ReturnBool().value_or(false);
+    bool const ok = ue3::runtime::Call(input, fn, parms) && parms.ReturnBool().value_or(false);
     gLastCast = std::format("{} at {}{}: {}", power.info->name, target != nullptr ? NameOf(target) : std::string("no actor"),
-        at ? std::format(" ({:.0f}, {:.0f}, {:.0f})", at->x, at->y, at->z) : std::string(), ok ? "started" : "the game refused it");
+        at ? std::format(" ({:.0f}, {:.0f}, {:.0f})", at->x, at->y, at->z) : std::string(),
+#if defined(MEVR_GAME_LE3)
+        ok ? "native request accepted (execution/release not yet observed)" : "the game refused it");
+#else
+        ok ? "started" : "the game refused it");
+#endif
     return ok;
 }
 
@@ -651,7 +950,11 @@ struct Bolt {
     std::string template_;
 };
 std::optional<Bolt> gBolt;
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+bool gBoltOn = false;          // sequels use their native projectiles and effects
+#else
 bool gBoltOn = true;           // `mevr powerwheel bolt on|off` (a prototype)
+#endif
 std::string gPushCastPower;    // its power's label
 double gPushCastAt = -100.0;
 bool gReleasedSinceCast = false;  // BioPawn.ReleasePower seen since our last cast
@@ -815,7 +1118,7 @@ void TickBolt() {
 }
 
 // BioPawn.ReleasePower (the casting animation's notify, ProcessEvent from native code): when the game's power actually goes off.
-void OnReleasePower(ue3::Object* pawn, ue3::Function* /*function*/, void* /*parms*/, void* /*result*/) {
+[[maybe_unused]] void OnReleasePower(ue3::Object* pawn, ue3::Function* /*function*/, void* /*parms*/, void* /*result*/) {
     ue3::Object* const controller = player::Controller();
     if (controller == nullptr || pawn != player::BioPawn(controller) || gClock - gPushCastAt > 6.0) {
         return;
@@ -842,6 +1145,9 @@ double gUnarmedReleaseAt = -1.0;
 ue3::Object* gUnarmedPawn = nullptr;
 
 bool WeaponOut(ue3::Object* pawn) {
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+    return pawn != nullptr && weapon::HeldObject() != nullptr;
+#else
     ue3::Function* const fn = gInCombatStateFn.Get();
     if (pawn == nullptr || fn == nullptr) {
         return true;  // unknown: leave it to the game
@@ -849,6 +1155,7 @@ bool WeaponOut(ue3::Object* pawn) {
     ue3::Params parms(ue3::runtime::Get(), fn);
     ue3::runtime::Call(pawn, fn, parms);
     return parms.ReturnBool().value_or(true);
+#endif
 }
 
 void TickUnarmedRelease() {
@@ -874,6 +1181,7 @@ pw::SelfView gSelfView;
 pw::ConfirmationState gConfirmation;
 pw::SelfView gConfirmed;
 std::string gSelfPower;
+pw::SelfGesture gSelfPowerGesture = pw::SelfGesture::None;
 float gSelfProgress = 0.0f;         // the gesture's dwell, 0..1 (the hand is in place)
 std::string gSelfReadyWhy;          // the gesture target shown or why hidden, as last logged
 bool gConsoleSelfCast = false;      // `mevr powerwheel selfcast` (tests)
@@ -913,11 +1221,15 @@ void AfterCast(Power const& power, ue3::Object* pawn) {
     gPushCastPower = power.label;
     gLastCastPower = power.label;
     gLastCastUsesOmniTool = UsesOmniTool(power);
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+    (void)pawn;  // the native cast owns release and animation
+#else
     if (gUnarmedRelease && !WeaponOut(pawn)) {
         auto const learned = gReleaseDelay.find(power.label);
         gUnarmedReleaseAt = gClock + (learned != gReleaseDelay.end() ? learned->second : kDefaultReleaseS);
         gUnarmedPawn = pawn;
     }
+#endif
 }
 
 void CastFeedback(Link const& link, bool ok) {
@@ -1000,14 +1312,15 @@ void TickLock(Link const& link, vr::host_view::State const& view, vr::controller
         why = "the left controller isn't tracked";
     } else if (gMachine.open || gHeldAfter) {
         why = "the wheel has the left hand";
-    } else if (support_grip::Held() && (!gSelfGestures || pw::SelfGestureFor(ready->label.c_str()) == pw::SelfGesture::None)) {
+    } else if (support_grip::Held() && (!gSelfGestures || GestureFor(*ready) == pw::SelfGesture::None)) {
         why = "the left hand holds the gun";
     } else if (squad_weapons::IsOpen()) {
         why = "the squad's weapon wheel is open";
     }
     if (why != nullptr) {
+        gConsoleSelfCast = false;
         if (gSelfCast.reaching && !gSelfCast.reported) {
-            LogGesture(gSelfCast.attempt, gSelfPower, pw::SelfGestureFor(gSelfPower.c_str()), std::format("missed ({})", why));
+            LogGesture(gSelfCast.attempt, gSelfPower, gSelfPowerGesture, std::format("missed ({})", why));
         }
         gSelfCast = {};
         if (!onFoot || !view.valid || !s.on || gMachine.open) {
@@ -1020,14 +1333,15 @@ void TickLock(Link const& link, vr::host_view::State const& view, vr::controller
         return;
     }
     gLockWhy = "ready";
-    pw::SelfGesture const gesture = gSelfGestures ? pw::SelfGestureFor(ready->label.c_str()) : pw::SelfGesture::None;
+    pw::SelfGesture const gesture = gSelfGestures ? GestureFor(*ready) : pw::SelfGesture::None;
     if (gSelfPower != ready->label) {
         if (gSelfCast.reaching && !gSelfCast.reported) {
-            LogGesture(gSelfCast.attempt, gSelfPower, pw::SelfGestureFor(gSelfPower.c_str()), "missed (power changed)");
+            LogGesture(gSelfCast.attempt, gSelfPower, gSelfPowerGesture, "missed (power changed)");
         }
         gSelfCast = {};
         gConfirmation = {};
         gSelfPower = ready->label;
+        gSelfPowerGesture = gesture;
         gSelfReadyWhy.clear();
     }
     XrPosef const aim = hand ? controllers.left.aim : view.head;
@@ -1041,7 +1355,7 @@ void TickLock(Link const& link, vr::host_view::State const& view, vr::controller
     engine::UnrealVector const eye = engine::ToWorld(*frame, view.head.position);
     engine::UnrealVector const gaze = engine::OrientationToWorld(*frame, view.head.orientation).forward;
     if (ready->info->aim != pw::Aim::None && raised) {
-        Scan(pawn, origin, direction, eye, gaze, upm, s);
+        Scan(pawn, origin, direction, eye, gaze, upm, s, ready->object);
     }
     std::vector<pw::LockCandidate> candidates;
     for (Seen const& seen : gSeen) {
@@ -1127,10 +1441,10 @@ void TickLock(Link const& link, vr::host_view::State const& view, vr::controller
                 }
                 break;
             case pw::Aim::None:
-                if (gSelfGestures && pw::SelfGestureFor(ready->label.c_str()) != pw::SelfGesture::None) {
+                if (gSelfGestures && GestureFor(*ready) != pw::SelfGesture::None) {
                     tried = false;
                     Refuse(link, std::format("{} isn't pushed: {} casts it", ready->info->name,
-                        pw::Name(pw::SelfGestureFor(ready->label.c_str()))));
+                        pw::Name(GestureFor(*ready))));
                 } else {
                     ok = Cast(controller, *ready, nullptr, std::nullopt);
                 }
@@ -1382,6 +1696,11 @@ std::string VfxMap(bool all) {
 }  // namespace
 
 bool TryStartup() {
+#if defined(MEVR_GAME_LE3)
+    return le3_powers::powerClass.Get() != nullptr && gActivatePowerFn.Get() != nullptr;
+#elif defined(MEVR_GAME_LE2)
+    return gLe2IsEnabled.Get() != nullptr && gActivatePowerFn.Get() != nullptr;
+#else
     ue3::Function* const release = gReleasePowerFn.Get();
     if (release == nullptr) {
         log::Warn("power wheel: BioPawn.ReleasePower not found: the bolt's timing against the game's release isn't logged");
@@ -1389,6 +1708,7 @@ bool TryStartup() {
     }
     engine::process_event::AddPostHandler(release, &OnReleasePower);
     return true;
+#endif
 }
 
 void Tick(double deltaSeconds, Link const& link) {
@@ -1398,14 +1718,24 @@ void Tick(double deltaSeconds, Link const& link) {
     TickUnarmedRelease();
     pw::Settings const& s = gSettings;
 
-    ue3::Object* const controller = ue3::runtime::Ready() ? player::Controller() : nullptr;
+    ue3::Object* const controller = ue3::runtime::Up() ? player::Controller() : nullptr;
     ue3::Object* const pawn = controller != nullptr ? player::BioPawn(controller) : nullptr;
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+    auto* const manager = pawn != nullptr ? gPowerManager.Read<ue3::Object*>(pawn).value_or(nullptr) : nullptr;
+    if (pawn != gLe2SelectionPawn || manager != gLe2SelectionManager) {
+        gLe2Selected = {};
+        gLe2SelectionPawn = pawn;
+        gLe2SelectionManager = manager;
+        gEquipped.clear();
+        gCoach = {};
+    }
+#endif
     auto const mode = head_tracking::GameMode();
     bool const onFoot = mode && *mode == 0 && pawn != nullptr;
     vr::host_view::State const view = vr::host_view::Latest();
     vr::controllers::State const controllers = vr::controllers::Latest();
     vr::controllers::Hand const& left = controllers.left;
-    gPadOn = vr::foot_controls::HandWheelOwnsX(mode ? static_cast<int>(*mode) : -1, s.on,
+    gPadOn = !link.menuOpen && vr::foot_controls::HandWheelOwnsX(mode ? static_cast<int>(*mode) : -1, s.on,
         link.publish != nullptr, view.valid, pawn != nullptr);
 
     std::string why;
@@ -1415,6 +1745,8 @@ void Tick(double deltaSeconds, Link const& link) {
         why = "the host is older than services v28 (close the game and redeploy the host)";
     } else if (!onFoot) {
         why = mode ? std::format("not on foot (game mode {})", static_cast<int>(*mode)) : std::string("no player");
+    } else if (link.menuOpen) {
+        why = "the VR settings or omni-tool rail is open";
     } else if (gConsoleCancel) {
         why = "closed from the console";
     } else if (!gConsole && !view.valid) {
@@ -1434,14 +1766,15 @@ void Tick(double deltaSeconds, Link const& link) {
 
     bool const xHeld = (controllers.active && left.primary) || gConsoleHold;
     if (allowed && (gMachine.open || (xHeld && !gMachine.buttonWas))) {
-        gRoster = ReadRoster(pawn, gShowUnlearned);
+        RefreshRoster(pawn, gShowUnlearned, !gMachine.open);
     }
     std::vector<float> const angles = pw::Angles(static_cast<int>(gRoster.size()));
 
     pw::MachineInput in;
     in.time = gClock;
-    in.allowed = allowed && !gRoster.empty();
+    in.allowed = allowed && !gRoster.empty() && !gRosterChanged;
     in.button = xHeld;
+    in.moreIndex = gPage.more;
     if (controllers.active) {
         in.stickX = left.stickX;
         in.stickY = left.stickY;
@@ -1467,6 +1800,13 @@ void Tick(double deltaSeconds, Link const& link) {
     }
 
     switch (event) {
+    case pw::Event::PageChanged:
+        ++gPage.index;
+        RefreshRoster(pawn, gShowUnlearned, false);
+        gConsolePick.reset();
+        gLastEvent = std::format("page {}/{}", gPage.index + 1, gPage.pages);
+        if (link.haptic != nullptr && s.haptic > 0) link.haptic(0, 0.035f, s.haptic);
+        break;
     case pw::Event::Opened: {
         ++gOpened;
         gConsolePick.reset();
@@ -1513,7 +1853,7 @@ void Tick(double deltaSeconds, Link const& link) {
             // How to cast it, on a card where the wheel was: the first coachTimes equips of each power this session (not No power).
             pw::Coach const kind = pw::IsNoPower(equipped.info->label)
                 ? pw::Coach::None
-                : pw::CoachFor(equipped.info->aim, gSelfGestures ? pw::SelfGestureFor(equipped.info->label) : pw::SelfGesture::None);
+                : pw::CoachFor(equipped.info->aim, gSelfGestures ? GestureFor(equipped) : pw::SelfGesture::None);
             int& shown = gCoachShown[equipped.info->label];
             if (s.coachTimes > 0 && shown < s.coachTimes && kind != pw::Coach::None) {
                 ++shown;
@@ -1577,7 +1917,12 @@ void Tick(double deltaSeconds, Link const& link) {
             }
         }
     }
-    TickLock(link, view, controllers, controller, pawn, onFoot);
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+    bool const canCast = onFoot && !link.menuOpen && s.on && link.publish != nullptr && CallBool(PlayerInput(controller), gIsCombatEnabledFn);
+#else
+    bool const canCast = onFoot;
+#endif
+    TickLock(link, view, controllers, controller, pawn, canCast);
     TickConfirmation(link, controllers);
     gView.self = gSelfView;
     // What the host draws.
@@ -1711,12 +2056,19 @@ std::string Console(std::string_view args) {
         return "power wheel: the equipped self-cast power's gesture on the next tick (tests)";
     }
     if (verb == "unarmed") {
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+        return "power wheel: this sequel leaves unarmed release and animation to the game";
+#else
         std::string state;
         words >> state;
         gUnarmedRelease = state != "off";
         return std::format("power wheel: a cast with the weapon away {}", gUnarmedRelease ? "gets the release from the mod" : "is left to the game");
+#endif
     }
     if (verb == "bolt") {
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+        return "power wheel: this sequel uses its native projectiles and effects";
+#else
         std::string state;
         words >> state;
         if (state == "speed") {
@@ -1726,6 +2078,7 @@ std::string Console(std::string_view args) {
         }
         return std::format("power wheel: the bolt from the hand is {} (a prototype); {} bolts; last: {}", gBoltOn ? "on" : "off", gBolts,
             gLastBolt);
+#endif
     }
     if (verb == "vfx") {
         std::string scope;
@@ -1750,6 +2103,9 @@ std::string Console(std::string_view args) {
         return std::format("power wheel: untrained powers {} the wheel (tests)", gShowUnlearned ? "on" : "off");
     }
     if (verb == "cast") {
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+        return "power wheel: use selfcast or push for the equipped power";
+#else
         ue3::Object* const controller = ue3::runtime::Ready() ? player::Controller() : nullptr;
         ue3::Object* const manager = controller != nullptr ? gGameModeManager.Read<ue3::Object*>(controller).value_or(nullptr) : nullptr;
         ue3::TArray<ue3::Object*> const* const modes = manager != nullptr ? gGameModes.In<ue3::TArray<ue3::Object*>>(manager) : nullptr;
@@ -1766,9 +2122,10 @@ std::string Console(std::string_view args) {
         ue3::Params parms(ue3::runtime::Get(), function);
         ue3::runtime::Call(mode, function, parms);
         return std::format("power wheel: SFXGameModeDefault.TryUseMappedPower called (the mapped power is {})", MappedPower(controller));
+#endif
     }
     if (verb == "roster") {
-        ue3::Object* const controller = ue3::runtime::Ready() ? player::Controller() : nullptr;
+        ue3::Object* const controller = ue3::runtime::Up() ? player::Controller() : nullptr;
         ue3::Object* const pawn = controller != nullptr ? player::BioPawn(controller) : nullptr;
         if (pawn == nullptr) {
             return "power wheel: no player pawn";
@@ -1796,13 +2153,15 @@ std::string StatusJson() {
     ue3::Object* const controller = ue3::runtime::Ready() ? player::Controller() : nullptr;
     return std::format("{{\"on\": {}, \"why\": {}, \"open\": {}, \"toggled\": {}, \"serial\": {}, \"roster\": [{}], \"selected\": {}, "
                        "\"hand\": [{}, {}], \"pose\": [{}, {}, {}], \"equipped\": {}, \"mappedPower\": {}, \"last\": {}, \"opened\": {}, "
-                       "\"equips\": {}, \"cancels\": {}, \"picks\": {}, \"lock\": {{\"why\": {}, \"target\": {}, \"automatic\": {}, \"seen\": {}, \"locks\": {}, "
+                       "\"equips\": {}, \"cancels\": {}, \"picks\": {}, \"gestureTarget\": [{}, {}, {}], "
+                       "\"lock\": {{\"why\": {}, \"target\": {}, \"automatic\": {}, \"seen\": {}, \"locks\": {}, "
         "\"pushes\": {}, \"casts\": {}, \"refused\": {}, \"lastCast\": {}}}}}",
         gSettings.on ? "true" : "false", json::JsonString(gWhy), gMachine.open ? "true" : "false", gMachine.toggled ? "true" : "false",
         gMachine.serial, roster, gMachine.selected, json::JsonNumber(gView.hand.x), json::JsonNumber(gView.hand.y),
         json::JsonNumber(gView.pose.position.x), json::JsonNumber(gView.pose.position.y), json::JsonNumber(gView.pose.position.z),
         json::JsonString(gEquipped), json::JsonString(MappedPower(controller)), json::JsonString(gLastEvent), gOpened, gEquips, gCancels,
-        gPicks, json::JsonString(gLockWhy), json::JsonString(NameOf(gTarget)), gTarget != nullptr && gLock.automatic ? "true" : "false", gSeen.size(), gLocks, gPushes, gCastCount, gRefused,
+        gPicks, json::JsonNumber(gSelfView.target.x), json::JsonNumber(gSelfView.target.y), json::JsonNumber(gSelfView.target.z),
+        json::JsonString(gLockWhy), json::JsonString(NameOf(gTarget)), gTarget != nullptr && gLock.automatic ? "true" : "false", gSeen.size(), gLocks, gPushes, gCastCount, gRefused,
         json::JsonString(gLastCast));
 }
 
@@ -1823,6 +2182,10 @@ void Shutdown(Link const& link) {
         link.publish(&closed);
     }
     gMachine = {};
+    gRoster.clear();
+    gFullRoster.clear();
+    gPage = {};
+    gRosterChanged = false;
 }
 
 }  // namespace mevr::game::power_wheel

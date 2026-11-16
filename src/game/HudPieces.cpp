@@ -13,6 +13,7 @@
 #include "game/Player.hpp"
 #include "game/Sights.hpp"
 #include "game/Weapon.hpp"
+#include "ue3/Handles.hpp"
 
 #include <cmath>
 #include <cstdint>
@@ -32,6 +33,11 @@ bool gToldNoHost = false;
 std::uintptr_t gWeaponKey = 0;
 std::uint32_t gSerial = 0;
 std::string gWhy;  // why the gun piece isn't shown (empty: shown)
+bool gGunSocketMounted = false;
+#if defined(MEVR_GAME_LE2)
+ue3::FieldRef gAmmoPowerName{"SFXGame.SFXWeapon", "AmmoPowerName", ue3::kEveryGame};
+ue3::Name gAmmoPower;
+#endif
 // Raised to the eye, the panel over the receiver sat right in the sight line (the owner's QA, 2026-11-05: "I can't actually
 // see through my iron sights"): it leaves the gun above this raised weight (sights::RaisedWeight) and comes back below
 // the lower one, so it doesn't flicker at the edge. Meanwhile the host shows the weapon panel on the HUD panel.
@@ -47,6 +53,7 @@ char const* TypeName() {
     case weapon::RangedType::Shotgun: return "shotgun";
     case weapon::RangedType::AssaultRifle: return "assault rifle";
     case weapon::RangedType::Sniper: return "sniper rifle";
+    case weapon::RangedType::Smg: return "SMG";
     case weapon::RangedType::Unknown: break;
     }
     return "gun";
@@ -172,6 +179,14 @@ void Tick(vr::aim_ray::Ray const& ray, Link const& link) {
 
     hp::Pieces pieces;
     pieces.serial = gSerial;
+    bool const wasSocketMounted = gGunSocketMounted;
+    gGunSocketMounted = false;
+#if defined(MEVR_GAME_LE2)
+    gAmmoPower = {};
+    if (auto* const held = weapon::HeldObject()) {
+        gAmmoPower = gAmmoPowerName.Read<ue3::Name>(held).value_or(ue3::Name{});
+    }
+#endif
     std::string why;
     if (!gSettings.gunStatus) {
         why = "off ([Hud] gunStatus = 0)";
@@ -188,14 +203,32 @@ void Tick(vr::aim_ray::Ray const& ray, Link const& link) {
         bool const pistol = weapon::Type() == weapon::RangedType::Pistol;  // beside the slide, clear of its sight
         pieces.gunAnchor = hp::GunPoint(ray.origin, ray.direction, *top, gSettings.gunBackM, pistol ? gSettings.pistolUpM : gSettings.gunUpM,
             pistol ? gSettings.pistolSideM : 0.0f);
+#if defined(MEVR_GAME_LE2)
+        if (gSettings.gunSocketMount) {
+            // Keep the counter beside the actual receiver on each mesh. Leave the native Ammo/Modal visuals room,
+            // including when an ammo power is activated mid-encounter. Both follow the drawn weapon.
+            if (auto const tracking = view_anchor::Current()) {
+                if (auto const socket = weapon::AmmoSocketAsDrawn()) {
+                    constexpr float kRearM = 0.025f;
+                    constexpr float kAboveM = 0.01f;
+                    constexpr float kIconClearanceM = 0.026f;
+                    pieces.gunAnchor = hp::GunPoint(engine::ToTracking(*tracking, *socket), ray.direction, *top, kRearM,
+                        kAboveM, -(0.5f * gSettings.gunWidthM + kIconClearanceM));
+                    gGunSocketMounted = true;
+                }
+            }
+        }
+#endif
         pieces.gunUp = *top;
         pieces.gunVisible = std::isfinite(pieces.gunAnchor.x) && std::isfinite(pieces.gunAnchor.y) && std::isfinite(pieces.gunAnchor.z);
         if (!pieces.gunVisible) {
             why = "the anchor isn't finite";
         }
     }
-    if (why != gWhy) {
-        if (why.empty()) {
+    if (why != gWhy || gGunSocketMounted != wasSocketMounted) {
+        if (why.empty() && gGunSocketMounted) {
+            log::Info("hud pieces: the weapon panel rides beside the {}'s Ammo socket", TypeName());
+        } else if (why.empty()) {
             log::Info("hud pieces: the weapon panel rides on the {} ({:.0f} mm behind the muzzle, {:.0f} mm above the bore)", TypeName(),
                 gSettings.gunBackM * 1000.0f, gSettings.gunUpM * 1000.0f);
         } else if (gWhy.empty() && gSent) {
@@ -216,12 +249,20 @@ void Tick(vr::aim_ray::Ray const& ray, Link const& link) {
 
 std::string StatusJson() {
     hp::Pieces const& p = gLast;
+#if defined(MEVR_GAME_LE2)
+    std::string const ammoPower = ue3::runtime::NameText(gAmmoPower.Key());
+#else
+    std::string const ammoPower;
+#endif
     return std::format("{{\"gunStatus\": {}, \"wristStatus\": {}, \"gunVisible\": {}, \"why\": {}, \"anchor\": [{}, {}, {}], "
-                       "\"up\": [{}, {}, {}], \"gunBackM\": {}, \"gunUpM\": {}, \"serial\": {}, \"hostTakesIt\": {}, \"body\": {}}}",
+                       "\"up\": [{}, {}, {}], \"gunBackM\": {}, \"gunUpM\": {}, \"serial\": {}, \"hostTakesIt\": {}, "
+                       "\"gunMount\": \"{}\", \"ammoPower\": {}, \"body\": {}}}",
         gSettings.gunStatus ? "true" : "false", gSettings.wristStatus ? "true" : "false", p.gunVisible ? "true" : "false",
         gWhy.empty() ? std::string("null") : json::JsonString(gWhy), json::JsonNumber(p.gunAnchor.x), json::JsonNumber(p.gunAnchor.y),
         json::JsonNumber(p.gunAnchor.z), json::JsonNumber(p.gunUp.x), json::JsonNumber(p.gunUp.y), json::JsonNumber(p.gunUp.z),
         json::JsonNumber(gSettings.gunBackM), json::JsonNumber(gSettings.gunUpM), p.serial, gSent ? "true" : "false",
+        gGunSocketMounted ? "Ammo socket" : p.gunVisible ? "muzzle offset" : "HUD",
+        ammoPower.empty() || ammoPower == "None" ? std::string("null") : json::JsonString(ammoPower),
         p.bodyValid ? std::format("{{\"leftWrist\": [{}, {}, {}], \"leftElbow\": [{}, {}, {}], \"rightIndex2\": [{}, {}, {}], "
                                   "\"rightWrist\": [{}, {}, {}], \"rightIndex2Native\": {}}}",
                           json::JsonNumber(p.leftWrist.x), json::JsonNumber(p.leftWrist.y), json::JsonNumber(p.leftWrist.z),
@@ -254,6 +295,10 @@ void Shutdown(Link const& link) {
     gLast = {};
     gWhy.clear();
     gWeaponKey = 0;
+    gGunSocketMounted = false;
+#if defined(MEVR_GAME_LE2)
+    gAmmoPower = {};
+#endif
     gToldNoHost = false;
     gSettings = {};
     gBody = {};

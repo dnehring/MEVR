@@ -9,9 +9,21 @@ engine access, the host's services, VRIK fast-tracked, the menus, the cinema scr
 list; ME1's systems and defaults on ME2, deviating only where the game forces it. Its lanes run as parallel sessions;
 ME2 ships after M5; interrupts on the triggers; the Hammerhead with the Mako's controls and cockpit. **One game run at a
 time across sessions:** `tools/le2-halcyon-run/run-lock.ps1` (its `prep.ps1`/`restore.ps1` for ME2 runs on the fake headset).
+**One trilogy, one ledger** (the owner, 2026-11-16: unify the approaches; work that ignored ME1's prior art was wasted):
+[docs/trilogy-parity-ledger.md](docs/trilogy-parity-ledger.md) rates every ME1 system on ME2 and ME3 (shared, adapted,
+forked, missing, n/a; verified or not) with its code and the check that moves it; `tools/parity-ledger.py --write`
+regenerates its facts, and ctest `mevr-parity-ledger` fails after a change to a host list, a service, a module's gate or
+a seam until they are regenerated and the rows reread. Read a system's row before porting it to a sequel; build it as
+the shared core plus a per-game adapter, never as another game-specific copy (a "fork" in the ledger).
 **LE2 port entry point:** [ME2 implementation plan](docs/le2-port-implementation-plan.md) defines agent work packages,
 dependencies and proof gates; [reuse map](docs/le2-port-reuse-map.md) names existing MEVR/native-game systems and pinned
 external code candidates. Read these before sequel work. The current scope is proving LE2 first, then extending to LE3.
+
+**LE3 port entry point:** [ME3 implementation plan](docs/le3-port-implementation-plan.md),
+[current reuse audit](docs/le3-port-reuse-audit.md) and [melee audit](research/le3-melee-audit.md) define the next port.
+Keep one shared implementation with three native adapters; audit existing ME1/ME2 systems before adding code.
+The plan's implementation ledger tracks foundation work separately from native acceptance. First-person world conversations remain deferred;
+authored seated scenes (such as shuttles) must reject traversal while retaining head tracking.
 
 ## Git
 
@@ -126,7 +138,13 @@ external code candidates. Read these before sequel work. The current scope is pr
 - **UObject::ProcessEvent is hooked by the host at attach and never removed** (all games); the
   mod's handlers run through `HostServices::setProcessEventCallback`. Halcyon hooks it too, with
   its own MinHook, on top of ours: never uninstall a hook another hooker may sit on.
-  LE3 still uses our own renderer until Halcyon's ME3 code is brought in. **LE2's host runs Halcyon's ME2 renderer**
+  **LE3's candidate host now integrates Halcyon's ME3 renderer** (`src/halcyon/le3`, `MEVR_WITH_HALCYON_LE3`;
+  [foundation and remaining gates](research/le3-renderer-integration.md)). It reuses controller/floor/pad/test-loop services;
+  native reflection now passes the protected 259-row probe and ordinary Normandy save loading/reloading is verified.
+  Body/UI outcomes and VR acceptance remain pending. Use the existing protected desktop/engine-request routes in
+  `tools/le2-halcyon-run/README.md` for discovery; do not deploy the candidate as accepted VR support. The chapter
+  save tested as a combat candidate enters cinematic/injured modes and is not an accepted ordinary combat fixture.
+  **LE2's host runs Halcyon's ME2 renderer**
   since 2026-11-14 (`src/halcyon/le2`, library `halcyon-le2`, `MEVR_WITH_HALCYON_LE2`, not the diagnostic host; started by
   `plugin/HalcyonLe2`, seams in `src/halcyon/le2/mevr_bridge.h` implemented in `plugin/HalcyonLe2Bridge.cpp`: static loader,
   our actions on its session, Touch as pad 0, its Present-thread ProcessEvents queued for the game thread; its log

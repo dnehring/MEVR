@@ -264,12 +264,14 @@ SwingStep SwingDetector::Update(SwingInput const& input, SwingParams const& para
     SwingStep step;
     if (!input.tracked || !Finite(input.position)) {
         Reset();
+        step.discontinuous = true;
         return step;
     }
     if (history_.Count() > 0 && !(input.now > history_.Newest().t)) {
         return step;  // the same sample again
     }
     if (history_.Add(input.now, input.position)) {
+        step.discontinuous = true;
         stroke_ = false;  // a jump: no stroke spans it
         spent_ = false;
     }

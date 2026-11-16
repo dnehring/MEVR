@@ -212,3 +212,25 @@ body {
 	line-height: 22dp;
 	color: rgba(160,196,220,70%);
 }
+
+/* ME2 chrome: amber/orange; reply category and unavailable/committed meaning stay distinct. */
+body.le2 { color: #FFE8C4; }
+.le2 .panel { decorator: chamfer(34dp rgba(56,30,13,90%) rgba(30,14,6,92%) #E6AE57 #9C642C 2dp rgba(245,186,110,20%)); }
+.le2 .header { border-bottom-color: rgba(220,160,96,40%); }
+.le2 .who { font-effect: glow(1dp 5dp 0dp 0dp rgba(245,186,110,45%)); }
+.le2 .heard { color: #EEDCCF; }
+.le2 .row { decorator: chamfer(16dp rgba(84,48,26,78%) rgba(56,29,15,78%) rgba(220,170,110,60%) rgba(150,104,60,60%) 2dp); }
+.le2 .row.hover { decorator: chamfer(16dp rgba(112,66,36,84%) rgba(76,40,20,84%) #F6CE9A #C4945A 2dp rgba(240,195,150,22%)); }
+.le2 .row.leading { decorator: chamfer(16dp rgba(120,74,24,92%) rgba(84,44,12,92%) #FFD97F #E8A638 3dp rgba(255,201,110,55%)); }
+.le2 .row.committed { decorator: chamfer(16dp #D08F2C #A86B18 #FFF0D8 #FFD28F 3dp rgba(255,220,170,70%)); }
+.le2 .row.leading .line span.said { font-effect: glow(1dp 4dp 0dp 0dp rgba(255,200,120,60%)); }
+.le2 .row.default .label { color: #FFE8C4; }
+.le2 .footer { border-top-color: rgba(220,160,96,40%); }
+.le2 .ring { border-color: #F2BA5F; }
+.le2 .mic { color: #FFE5BF; }
+.le2 .fill { background-color: #F2BA5F; }
+.le2 .footer.hearing .ring { border-color: #FFDD9B; box-shadow: #F2BA5F 0dp 0dp 14dp 2dp; }
+.le2 .footer.hearing .prompt { color: #FFDD9B; }
+.le2 .footer.understood .mic { color: #8CFFB4; }
+.le2 .footer.understood .fill { background-color: #8CFFB4; }
+.le2 .hints { color: rgba(220,190,160,70%); }

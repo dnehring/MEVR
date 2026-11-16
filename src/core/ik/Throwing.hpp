@@ -187,6 +187,7 @@ struct SwingStep {
     double forward = 0.0;      // its cosine against the body's forward
     // Why a stroke fast and long enough didn't strike (nullptr: it did, or there was none).
     char const* refused = nullptr;
+    bool discontinuous = false; // invalid pose or broken motion history; consumers must discard armed intent
 };
 
 class SwingDetector {

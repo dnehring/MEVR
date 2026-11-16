@@ -13,6 +13,8 @@
 #include "plugin/FloorLock.hpp"
 #include "plugin/GameThreadCalls.hpp"
 #include "plugin/TestLoop.hpp"
+#include "plugin/Voice.hpp"
+#include "plugin/VoiceModel.hpp"
 
 #include <MinHook.h>
 
@@ -85,6 +87,8 @@ void Attach() {
         log::Error("halcyon le2: the system dxgi.dll didn't load; VR renderer off");
         return;
     }
+    voice::Init();
+    voice_model::Init();
     ME2VR::Dxgi::InstallRealFactoryHooks();
     log::Info("halcyon le2: renderer attached (its log: MELE2VR_Log.txt; its settings: MELE2VR.ini next to MassEffect2.exe)");
 }
