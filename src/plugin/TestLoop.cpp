@@ -48,6 +48,9 @@
 #include "plugin/UiWorldFigure.hpp"
 #include "plugin/FloorLock.hpp"
 #endif
+#if defined(MEVR_WITH_PERF_PROBE) && !defined(MEVR_WITH_HALCYON)
+#include "plugin/PerfProbe.hpp"  // the sequels' hosts: the frame-breakdown probe's request and its xrEndFrame wrap
+#endif
 #if (defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)) && defined(MEVR_WITH_MAIN_MENU)
 #include "plugin/Calibration.hpp"  // our menus on LE2 (plugin/MenusLe2, M4)
 #include "plugin/GamePointer.hpp"
@@ -1624,7 +1627,7 @@ void PollRequests() {
             }
         }
     }
-#if defined(MEVR_WITH_HALCYON)
+#if defined(MEVR_WITH_PERF_PROBE)
     if (TakeRequest(BaseDir() / L"perf.request", text)) {
         req::Request const r = req::Parse(text);
         double const seconds = r.Number("seconds", 20.0);
@@ -1633,17 +1636,20 @@ void PollRequests() {
             delay > 0.0 ? std::format(", starting in {:.1f} s", delay) : std::string());
         perf::Request(seconds, r.Get("tag"), "file", delay);
     }
+#else
+    if (TakeRequest(BaseDir() / L"perf.request", text)) {
+        log::Warn("test loop: perf.request ignored: this host has no frame-breakdown probe");
+    }
+#endif
+#if defined(MEVR_WITH_HALCYON)
     if (TakeRequest(BaseDir() / L"eyediff.request", text)) {
         req::Request const r = req::Parse(text);
         log::Info("test loop: eyediff.request: the next paired scene render's streams compared (plugin/DrawReplay)");
         mevr::host::draw_replay::RequestDiff(r.Get("tag"));
     }
 #else
-    for (wchar_t const* name : {L"perf.request", L"eyediff.request"}) {
-        if (TakeRequest(BaseDir() / name, text)) {
-            log::Warn("test loop: {} ignored: the frame-breakdown probe and the draw replay are LE1's host only so far",
-                Narrow(name));
-        }
+    if (TakeRequest(BaseDir() / L"eyediff.request", text)) {
+        log::Warn("test loop: eyediff.request ignored: the draw recorder hears LE1's renderer only so far (the Record* seams)");
     }
 #endif
 }
@@ -1988,6 +1994,12 @@ void WrapSessionFunctions(void** acquireSwapchainImage, void** releaseSwapchainI
     wrap(releaseSwapchainImage, gRealRelease, &WrappedRelease);
     wrap(endFrame, gRealEndFrame, &WrappedEndFrame);
     wrap(locateViews, gRealLocateViews, &WrappedLocateViews);
+#if defined(MEVR_WITH_PERF_PROBE) && !defined(MEVR_WITH_HALCYON)
+    // The sequels: the frame-breakdown probe's xrEndFrame goes outside ours (as LE1's bridge puts it, with its other three
+    // slots: plugin/HalcyonBridge), so its submit time includes a snapshot's work and each frame has its bounds
+    // (plugin/PerfProbe: a frame is xrEndFrame's return to the next one's until the sequels' Present hooks have seams).
+    perf::WrapFrameFunctions(nullptr, nullptr, nullptr, endFrame);
+#endif
 }
 
 } // namespace mevr::host::testloop

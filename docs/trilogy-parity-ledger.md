@@ -53,8 +53,8 @@ rows the change touches.
 
 | game | shared | adapted | forked | missing | n/a | present and verified (V) | present, unverified (U) |
 |---|---|---|---|---|---|---|---|
-| LE2 | 11 | 40 | 5 | 33 | 4 | 37 | 19 |
-| LE3 | 10 | 41 | 7 | 29 | 6 | 20 | 38 |
+| LE2 | 11 | 41 | 5 | 32 | 4 | 37 | 20 |
+| LE3 | 10 | 42 | 7 | 28 | 6 | 20 | 39 |
 <!-- /parity:totals -->
 
 LE1 is the reference, so it has no cells. A few LE1 systems are themselves n/a under Halcyon's renderer: the reflection
@@ -79,12 +79,15 @@ These are ordered by wasted or blocked work. Each is detailed under [Forks](#for
      lease.
 
    `docs/galaxy-projector-handoff.md` "5. Apply the same shared flow to ME2" is the plan, still to do.
-4. **Neither sequel has ME1's renderer performance work** (R02-R09, R13, R23, R24, R26).
-   - Missing: one-Draw stereo, the replay, the Umbra levers, `keepBoundShaderStates`, FSR, metric stereo, Quest pacing
-     and the perf probe.
+4. **Neither sequel has ME1's renderer performance work switched on** (R02-R09, R13, R23, R24).
+   - Since 2026-11-16 the render levers, the draw replay and the perf probe are **one module in all three hosts**
+     (`plugin/RenderLevers`, `DrawReplay`, `PerfProbe`), each lever reading its addresses from the game's rows of
+     `engine/Addresses.hpp` by name (`plugin/RenderLeversTable.hpp`; research/sequel-render-levers.md). A lever without
+     its rows, its verified layout or its A/B stands down. So what is left per lever is addresses (lanes R2, R3), an
+     A/B, and for one-Draw the renderer's seams.
+   - Still missing outright: FSR, metric stereo and Quest pacing.
    - The sequels render the whole frame twice every present. On LE1, one-Draw saved 2.3 ms (20%) at the heaviest cell
      (research/37).
-   - Without `PerfProbe` the sequels can't even be measured the ME1 way.
 5. **ME3 lacks ME1's VRIK presentation layer; ME2 lacks holsters** (G08-G12, G18).
    - LE3 has no holsters, camera collision or combat stance. Its gun kick, view level and camera shakes are ME2's
      branches since 2026-11-16 (lane GF; G09-G11), built and ReflectChecked but not yet run in ME3.
@@ -103,7 +106,8 @@ These are ordered by wasted or blocked work. Each is detailed under [Forks](#for
    - LE2 has a diagnostic host (`MEVR_LE2_DIAGNOSTIC`), `tools/qa-le2`, `tools/le2-halcyon-run`, three launchers and a
      second save contract (`le2-save.py` recipes and receipts beside `le1-save.py` rewinds).
    - LE1 has `fake-headset-session.ps1`.
-   - The perf probe exists only on LE1.
+   - The perf probe is in all three hosts since 2026-11-16 (R26); the sequels' captures lack what their renderers have
+     no seam for yet (the eyes' split, the draw count).
 9. **Neither sequel can ship yet** (G47, G50, G02).
    - Setup and report-a-problem are LE1-only.
    - Both sequels' player builds still link LExSDKv2.
@@ -131,14 +135,14 @@ The [technique groups](#renderer-techniques-by-group) summary follows the table.
 | id | technique (LE1 code) | group | LE2 | LE3 | check / next step |
 |---|---|---|---|---|---|
 | R01 | Two-pass stereo: Halcyon's Stereo 2, two `FViewportClient::Draw` per present (`src/halcyon/le1` render_hook.cpp, xr_session.cpp) | 2 | **adapted** V: upstream ME2 SFR (`src/halcyon/le2/calcview_hook.cpp` DrawDetour, `t_replay`), pinned by `ApplyMevrBaseline`; separate eyes in run `20261115-165553-786-LE2-renderer-preview` (d93d39de) | **adapted** V: upstream ME3 SFR (le3 calcview_hook.cpp DrawDetour); 304 first-eye captures for 304 presents, run `20261115-162209-606` (research/le3-renderer-preview-evidence.md) | Physical fusion in a headset. Add an LE3 line to notes/headset-checklist.md (it has none). |
-| R02 | One-Draw stereo, `[Performance] sharePass = 5`. `plugin/RenderLevers.cpp`: SceneRenderHook on FSceneRenderer::Render `0x76EE20`, FinishHook `0x76DD10` → SynthesiseSecondView, tail start `0x77BE00`, deleter `0x4ED700`. Seams `RecordPass1View`, `g_oneDrawStereo` | 2 | **missing**: DrawDetour always runs both Draws | **missing**: same | Per game it needs: the render entry (research candidates LE2 `0x34BF70`, LE3 `0x368850`); the finish, tail and deleter addresses; the views field and clone stride (LE1 0x12F0, LE2 0x11A0, LE3 0x11B0); a RecordPass1View in the SFR branch; and a skip of DrawDetour's replay Draw. Then A/B with R26. **ME3: every address is a row** in `le3::kTable` under LE1's row names, and research/sequel-render-levers.md "ME3" recipe 8 names the three Halcyon seams (DrawDetour's second Draw, CalcViewDetour's pass-1 view, the pass-0 capture at a clear). |
-| R03 | Second-eye D3D replay (`plugin/DrawReplay.cpp`, sharePass 2/3/5; `Record*` seams in le1 d3d_capture.cpp) | 1 (recorder) / 2 (tail and finish) | **missing** | **missing** | Port with R02: the `Record*` seams in each sequel `d3d_capture.cpp` draw hook. |
+| R02 | One-Draw stereo, `[Performance] sharePass = 5`. `plugin/RenderLevers.cpp`: SceneRenderHook on FSceneRenderer::Render `0x76EE20`, FinishHook `0x76DD10` → SynthesiseSecondView, tail start `0x77BE00`, deleter `0x4ED700`. Seams `RecordPass1View`, `g_oneDrawStereo` | 2 | **missing**: DrawDetour always runs both Draws. The module is in the host, every row is in ME2's table (lane R2; the stride is 0x11A0), and `sharePass` stands down for want of the renderer's seams | **missing**: same; lane R3 found every row and layout (the stride is 0x11B0) | The host side is shared (`RenderLeversTable.hpp`). Per game it needs: the rows of the `sharePass` group under LE1's names; `sharePassVerified`; and in Halcyon's tree a RecordPass1View in the SFR branch, a skip of DrawDetour's replay Draw, `StereoFrameActive` and a pass-0 capture between the finish and the replay (research/sequel-render-levers.md "One Draw a frame on the sequels"). The per-eye frustum (R06) first. Then A/B with R26. |
+| R03 | Second-eye D3D replay (`plugin/DrawReplay.cpp`, sharePass 2/3/5; `Record*` seams in le1 d3d_capture.cpp) | 1 (recorder) / 2 (tail and finish) | **missing**: `plugin/DrawReplay` is compiled in and never attached (nothing feeds it) | **missing**: same | Port with R02: the `Record*` seams in each sequel `d3d_capture.cpp` draw hook. |
 | R04 | Replay screen-space matrices (`core/vr/ScreenMatrix`, `core/d3d11/ShaderReflect`, seam `NotePixelShaderCreated` on CreatePixelShader, `replayScreenMatrices`) | 1 + seam | **missing** (moot without R03) | **missing** | Not determined: whether ME2/ME3 shaders take `ScreenToShadowMatrix`/`ScreenToWorld`. |
 | R05 | Replay buffer-wrap shadows (DrawReplay's Map hook, `ShadowFor`) | 1 | **missing** (moot without R03) | **missing** | Comes with R03. |
 | R06 | Each eye's own off-centre frustum (`oneDrawWindow = 0`, `sfr2MetricEyeFrustum`; render_hook.cpp `ApplyMetricFrustumSEH` at view +0x1D0) | 2 | **missing**: symmetric FOV plus a submit shift (`g_sfrConvergence`) | **missing**: same | Needs a CalcSceneView seam per renderer. The FSceneView offsets 0x90..0x320 are the same in all three trees (le2 calcview_hook.cpp:28-34, le1 render_hook.cpp:71-77). |
-| R07 | Umbra levers: `umbraEyeMatrix` (IssueOcclusionQueries `0x8B6550`), `umbraQueryWait` (`0x8C34C0`), `perEyeOcclusion` (view state +0xD10), `umbraSharedVisibility`, `umbraSecondEyeClearBits` | 2 | **missing** | **missing** | First find out whether ME2 runs Umbra at all (not determined). **ME3 does**: the same library build and the same commander as ME1's, every address a row (command `0x3E8B80`, IssueOcclusionQueries `0x3D8EB0`, the history at state +0xD10 too). ME3's SFR renders each pass through its own view state, which on ME1 left the second eye's Umbra queries never ready (research/35 attempts 17–21): measure that first (research/sequel-render-levers.md "ME3", "Measure this first"). |
-| R08 | `keepBoundShaderStates`: hook on the FD3D11BoundShaderState constructor `0x9A89F0`, AddRef through GDynamicRHI `0x17938C8` vtable slot 0x8A0 | 2 | **missing** | **missing** | The cheapest render-thread win to port (LE1: −5 ms cold, ~−1 ms warm; research/35 attempt 43). First sample the sequel render thread for CreateInputLayout (`tools/sample-render-thread.ps1`). Needs the constructor RVA, GDynamicRHI (LE3 `0x1894018`; LE2 not determined), the slot and the handle offset. **ME3: all found**, byte for byte ME1's (constructor `0x9B0270`, slot 0x8A0, handle +0xC; research/sequel-render-levers.md "ME3" recipe 4). |
-| R09 | `minScreenRadiusPx` (UmbraInstanceVisibleHook `0x8BE0B0`) | 2 | **missing** | **missing** | Depends on R07's Umbra question. **ME3:** the hook is `0x3E3B00`, the same seven arguments, but ME3 also calls it to keep books: cull only when the last argument is non-zero and the sixth zero (research/sequel-render-levers.md "ME3" recipe 5). |
+| R07 | Umbra levers: `umbraEyeMatrix` (IssueOcclusionQueries `0x8B6550`), `umbraQueryWait` (`0x8C34C0`), `perEyeOcclusion` (view state +0xD10), `umbraSharedVisibility`, `umbraSecondEyeClearBits` | 2 | **missing**: ME2 runs Umbra with ME1's commander and every row is in its table (lane R2); the levers are in the host and stand down until each has run there. Each Draw has its own view state, so `ue3QueryWait` and `perEyeOcclusion` have nothing to cure and `umbraEyeMatrix` is a no-op until the eyes have their own frustum | **missing**: the same; ME3 runs Umbra (the same library build as ME1's) and lane R3 found every row. Its SFR gives each pass its own view state, which on ME1 left the second eye's Umbra queries never ready (research/35 attempts 17-21) | ME3: measure slot 1's query reads first (the `render levers:` line, once `FSceneRenderer::Render`, `UmbraCommander::command` and `GetQueryData` are rows); then each lever's A/B (research/sequel-render-levers.md). ME2: lane R2's rows. |
+| R08 | `keepBoundShaderStates`: hook on the FD3D11BoundShaderState constructor `0x9A89F0`, AddRef through GDynamicRHI `0x17938C8` vtable slot 0x8A0 | 2 | **missing**: in the host, stands down until its A/B (lane R2: constructor `0x98ECD0`, GDynamicRHI `0x174C648`, slot 0x8A0 and handle +0xC as ME1's) | **missing**: in the host, stands down until its A/B (lane R3: constructor `0x9B0270`, GDynamicRHI `0x1894018`, slot 0x8A0 and handle +0xC as ME1's) | The cheapest render-thread win to port (LE1: −5 ms cold, ~−1 ms warm; research/35 attempt 43). First sample the sequel render thread (`tools/sample-render-thread.ps1 -Game LE3`), then set `boundShaderStateVerified` and A/B (research/sequel-render-levers.md "Enabling a lever on a sequel"). |
+| R09 | `minScreenRadiusPx` (UmbraInstanceVisibleHook `0x8BE0B0`) | 2 | **missing**: in the host, stands down until its A/B (lane R2: `0x3F3ED0`, ME1's one call shape) | **missing**: in the host, stands down until its A/B (lane R3: `0x3E3B00`; ME3 also calls it for bookkeeping, so the cull answers only the marking call, `Layout::instanceCallAlsoKeepsBooks`) | Set `umbraInstanceVerified`, A/B with snapshots a second apart for pop-in. |
 | R10 | Motion-blur guard (`plugin/MotionBlurGuard.cpp`: MotionBlurProxy vtable swap, LE1 5 pairs, installed in `Entry.cpp`) | 2 (3 on LE1: settings re-enabled the blur, research/62) | **missing**: blur is off only through R12's `MotionBlur False`; `motionBlurProtected` not served | **adapted** V: 7 audited ME3 proxy pairs (`Addresses.hpp` LE3 `kMotionBlurProxyPairs`); a different reason (a null velocity buffer crashed the recenter); run `20261115-180239-899`, 2,825 guarded conversions, 0 unknown (research/le3-recenter-transition-failure.md) | LE2: a head-turn snapshot pair looking for one-eye smear (LE1's symptom) before porting. |
 | R11 | `LightEnvironmentShadows False` while the second eye is a replay (`game/SystemSettings.cpp` `Wanted()`) | 3 (our replay's workaround) | **shared** U: **applied without a replay**. An empty `[Performance] sharePass` reads as 5, so ME2 loses character shadows for nothing | **shared** U: same | Gate it on the LE1 host's replay (`#if defined(MEVR_GAME_LE1)`, or a host flag), then check the sequels' character shadows come back. |
 | R12 | SystemSettings applied by the mod (`game/SystemSettings`: `scale set` after each level change, each boolean through its opposite) | 1 | **adapted** V: `#if MEVR_GAME_LE2` waits 3 s into gameplay; A/B runs A–J 2026-11-14 (research/le2-renderer-integration "The first-gameplay-frame fault", 87af915d) | **shared** U: no receipt that `scale set` applies on LE3 | LE3: the `system settings:` log lines in a protected run, plus an A/B of DynamicShadows. |
@@ -155,12 +159,12 @@ The [technique groups](#renderer-techniques-by-group) summary follows the table.
 | R23 | Metric (life-size) stereo (`plugin/MetricStereo`, `core/vr/MetricStereo`, `PlanStereo`, `NoteStereoSubmit`; `sfr2Metric`) | 2 (seam) on a group-1 core | **missing**: `HalfEyeUU` 3.55 at 50 uu/m with convergence 0.025 at submit (me2_menu.cpp LoadValues) | **missing**: half eye 1.6, convergence 0.03 | Measure far-scenery disparity on a sequel snapshot pair with `tools/stereo-check.py`. research/30 found LE1's divergent; the number sets the priority. |
 | R24 | Frame pacing (`plugin/QuestPacing`; seams `EarlyFrameWait`, `FullFrameLoop`, `QuestPacing*`; `pacingRecovery`) | 1 (core) + 2 | **missing**: upstream StereoFramePacing | **missing**: upstream PaceDisplayLocked | Needs an xrWaitFrame seam in each sequel RunFrame (le2 me2_xr.cpp ~1587, le3 ~1395). Test on a streamed Quest. |
 | R25 | Test loop: snapshots, recording, replay (`plugin/TestLoop`, seam `WrapSessionFunctions`) | 1 + seam | **adapted** V: run `20261114-191506-lane-b-testloop` (04fa43a2); waitFrame/beginFrame not wrapped | **adapted** V: every protected run, e.g. `20261115-182253-344` (14 captures) | — |
-| R26 | Perf probe (`plugin/PerfProbe`, `core/vr/FrameProbe`; seams `PerfPresentScope`, `PerfPass0Captured`, `PerfPoint`) | 1 (core) + seams | **missing** | **missing** | PerfProbe includes halcyon/le1 headers: split those out, then add the seams at each sequel's Present, xrWaitFrame and xrBeginFrame (docs/me3-overall-goal-handoff.md §4). |
+| R26 | Perf probe (`plugin/PerfProbe`, `core/vr/FrameProbe`; seams `PerfPresentScope`, `PerfPass0Captured`, `PerfPoint`) | 1 (core) + seams | **adapted** U: the same `plugin/PerfProbe.cpp` with the sequels' adapter (`PerfProbeSequel.cpp`): the game thread's ticks, the wrapped xrEndFrame, GPU timestamps, a frame bounded by xrEndFrame; `perf.request` served. No capture taken yet (Steam's launch was stuck on 2026-11-16) | **adapted** U: same | The first capture per game (research/sequel-render-levers.md "Measurements"). Then the seams lane U1 adds (`MevrSeams.h` `PerfPresentBegin/End`, `PerfFirstEyeCaptured`, `PerfDraw`, the wait and begin slots) give the eyes' split, the draws and the waits. |
 | R27 | Delayed per-eye pose history (LE1: Halcyon's EYETAG code in xr_session.cpp; sequels: `core/vr/StereoPoseTag.hpp`, `core/vr/EyePublication`) | 1 + seams | **adapted** V: run `20261115-165553-786` (research/sequel-eye-pose-tags.md) | **adapted** V: runs `20261115-165123-287`, `20261115-174634-476` | Physical fusion. |
 | R28 | Recenter: yaw-only, plus a removed tilt (seam `RecenterOrientation` → `plugin/RecenterTilt`, `core/vr/Recenter`) | 1 + seam | **shared** U: `RecenterAppSpace` asks `MevrSeams::RecenterOrientation` (`plugin/RecenterTilt` in the LE2 host, lane U1, 2026-11-16). Built; no run yet (Steam did not launch the game that day) | **adapted** V: recenter in run `20261115-180239-899`; tilt removal missing | Call `RecenterOrientation` in each sequel's `RecenterAppSpace`. SteamVR's upside-down start reaches every game (docs/le2-from-le1.md 3.1). |
-| R29 | Body bounds for the culling camera (`engine/BodyBounds`: post-hook `0x58EEC0`, Umbra hand-over `0x25CFE0`; ArmIk's `bConsiderAllBodiesForBounds`) | 2 + 3 (cause: Halcyon LE1's GPU-only view offset) | **missing**: `ready`; `kSkelUpdateBounds`/`kPrimitiveUmbraBounds` are 0. ArmIk's flag part runs | **missing**: same | First check whether the sequels cull the body at all. LE1's repro: look down with the head turned (gotchas/culling-camera-ahead-of-the-eye). ME3's two functions are found (`0x793850`, `0x32EC10`: rows, not used). |
+| R29 | Body bounds for the culling camera (`engine/BodyBounds`: post-hook `0x58EEC0`, Umbra hand-over `0x25CFE0`; ArmIk's `bConsiderAllBodiesForBounds`) | 2 + 3 (cause: Halcyon LE1's GPU-only view offset) | **missing**: `ready`; `kSkelUpdateBounds`/`kPrimitiveUmbraBounds` are 0 (lane R2 found both functions, `0x798350` and `0x3146C0`: rows of ME2's table). ArmIk's flag part runs | **missing**: same; lane R3 found ME3's two (`0x793850`, `0x32EC10`) | First check whether the sequels cull the body at all. LE1's repro: look down with the head turned (gotchas/culling-camera-ahead-of-the-eye). |
 | R30 | Spectator mirror (`game/Spectator`, `plugin/Spectator`, seam `SpectatorMirror`) | 1 (host draw) + 2 | **missing** | **missing** | — |
-| R31 | Scene-capture plumbing (RenderLevers CaptureSceneHook `0x742C80`, BeginBackBufferHook `0x773D30`; UiWorldFigure's Umbra skip `0x7526C0`) | 2 | **missing** | **forked** V: `plugin/Le3SceneCapture` (its own RVAs; shares `plugin/SceneCaptureTarget.hpp`, `core/vr/SceneCaptureScope`); raw map captures in run `20261115-220823-943` (research/le3-galaxy.md) | Forks 9. |
+| R31 | Scene-capture plumbing (RenderLevers CaptureSceneHook `0x742C80`, BeginBackBufferHook `0x773D30`; UiWorldFigure's Umbra skip `0x7526C0`) | 2 | **missing**: the rows are in ME2's table (`0x329B90`, `0x354570`; lane R2), the hooks stand down (`sceneCaptureVerified`: where ME2's final pass gets its viewport is unread), and nothing in ME2 makes a capture | **forked** V: `plugin/Le3SceneCapture` (its own RVAs; shares `plugin/SceneCaptureTarget.hpp`, `core/vr/SceneCaptureScope`); raw map captures in run `20261115-220823-943` (research/le3-galaxy.md) | Forks 9. |
 | R32 | Pinned renderer baseline (LE1 `MevrBridge::ModernBaseline`: stereo, flat menus, first person, no head aim) | per renderer | **adapted** V: `ApplyMevrBaseline` (le2 me2_menu.cpp) after every ini load; first run 2026-11-14 (research/le2-renderer-integration) | **adapted** U: compile-time `#if !defined(MEVR_ASI)` disables in le3 me2_menu.cpp | Per renderer by nature. |
 | R33 | Hotkeys only with the game in front (`MevrBridge::KeyDown`) | 1 | **adapted** U: `MevrBridge::HotkeyDown` (le2 mevr_bridge.h) | **adapted** U: `KeyDown` in le3 d3d_capture.cpp | Type the key in another window during a run; nothing should toggle. |
 | R34 | Halcyon's script calls queued to the game thread (seam `QueueProcessEvent`, `plugin/GameThreadCalls`; research/36) | 3 (Halcyon's Present-thread ProcessEvents; the sequels have the same pattern) | **shared** V: "stereo and the queue work", first run 2026-11-14 (CLAUDE.md) | **shared** U: le3 engine_probe.cpp:282 queues | LE3: the host's `process event: off the game thread:` count in a run log. |
@@ -181,7 +185,8 @@ The [technique groups](#renderer-techniques-by-group) summary follows the table.
 
 **Group 2 (per-game hook, address or seam).**
 - One-Draw stereo (RenderLevers: `0x76EE20`, `0x76DD10`, `0x77BE00`, `0x4ED700`; views field and clone stride) and the
-  replay's tail and finish boundaries.
+  replay's tail and finish boundaries. The address table is in place: `plugin/RenderLeversTable.hpp` finds each row of
+  `engine/Addresses.hpp` by LE1's row name in the current game's table.
 - The per-eye frustum (a CalcSceneView seam; the view offsets match in all three trees).
 - The Umbra levers (`0x8B6550`, `0x8C34C0`, `0x9A04B0`, view state +0xD10) and `minScreenRadiusPx` (`0x8BE0B0`).
 - `keepBoundShaderStates` (`0x9A89F0`, GDynamicRHI `0x17938C8` slot 0x8A0).
@@ -562,9 +567,9 @@ defined in the tool's header:
 <!-- parity:summary -->
 | game | renderer | host plugin files | host core files | services served | src/game + src/engine modules by status | common seams called | own seams |
 |---|---|---|---|---|---|---|---|
-| LE1 | halcyon-le1 | 71 | 71 | 57 | run 67, out 4, ungated 22, unreferenced 1, unbuilt 4 | 20 of 32 | 91 |
-| LE2 | halcyon-le2 | 59 | 52 | 48 | run 38, ready 11, out 22, ungated 21, unreferenced 2, unbuilt 4 | 28 of 32 | 4 |
-| LE3 | halcyon-le3 | 61 | 51 | 48 | run 35, ready 11, out 25, ungated 22, unreferenced 2, unbuilt 3 | 27 of 32 | 2 |
+| LE1 | halcyon-le1 | 72 | 71 | 57 | run 67, out 4, ungated 22, unreferenced 1, unbuilt 4 | 20 of 32 | 91 |
+| LE2 | halcyon-le2 | 63 | 55 | 48 | run 38, ready 11, out 22, ungated 21, unreferenced 2, unbuilt 4 | 28 of 32 | 4 |
+| LE3 | halcyon-le3 | 65 | 54 | 48 | run 35, ready 11, out 25, ungated 22, unreferenced 2, unbuilt 3 | 27 of 32 | 2 |
 <!-- /parity:summary -->
 
 ### Host plugin files per game
@@ -581,7 +586,7 @@ defined in the tool's header:
 | `Colour` | yes | yes | yes |
 | `ConversationWorld` | yes | - | - |
 | `CrashBreadcrumbs` | yes | yes | yes |
-| `DrawReplay` | yes | - | - |
+| `DrawReplay` | yes | yes | yes |
 | `Entry` | yes | yes | yes |
 | `EyeCopy` | - | yes | yes |
 | `FloorLock` | yes | yes | yes |
@@ -615,7 +620,9 @@ defined in the tool's header:
 | `OmniToolRail` | yes | yes | yes |
 | `OpenAlSoft` | yes | - | - |
 | `PadMerge` | yes | yes | yes |
-| `PerfProbe` | yes | - | - |
+| `PerfProbe` | yes | yes | yes |
+| `PerfProbeLe1` | yes | - | - |
+| `PerfProbeSequel` | - | yes | yes |
 | `PowerIcons` | yes | yes | yes |
 | `PowerWheel` | yes | yes | yes |
 | `PowerWheelDraw` | yes | yes | yes |
@@ -626,7 +633,7 @@ defined in the tool's header:
 | `QuestPacing` | yes | - | - |
 | `RailArt` | yes | yes | yes |
 | `RecenterTilt` | yes | yes | - |
-| `RenderLevers` | yes | - | - |
+| `RenderLevers` | yes | yes | yes |
 | `RendererLe1` | yes | - | - |
 | `RendererLe2` | - | yes | - |
 | `RendererLe3` | - | - | yes |
@@ -668,16 +675,14 @@ defined in the tool's header:
 ### Host core files per game
 
 <!-- parity:core -->
-In all three hosts (49): `Exe`, `ExeCheck`, `Hook`, `Hotkey`, `Ini`, `Json`, `Log`, `PngFile`, `Version`, `Window`, `gfx/Raster`, `gfx/Swf`, `gfx/SwfFont`, `voice/ScriptMatch`, `vr/AimRay`, `vr/Calibration`, `vr/CineScreen`, `vr/Colour`, `vr/Comfort`, `vr/Controllers`, `vr/ConversationWorld`, `vr/FloorLock`, `vr/GalaxyHologram`, `vr/GalaxyMap`, `vr/GameMenuRequest`, `vr/GamePointer`, `vr/GuiEvents`, `vr/Haptics`, `vr/HostView`, `vr/HudPieces`, `vr/ImageConvert`, `vr/InteractLabel`, `vr/LayerComposite`, `vr/MenuPointer`, `vr/OmniRail`, `vr/OverlayPlacement`, `vr/PoseRecording`, `vr/PowerWheel`, `vr/ScopeArt`, `vr/ScopeCapture`, `vr/Sights`, `vr/SquadMenu`, `vr/SquadPlace`, `vr/TestRequest`, `vr/Thespian`, `vr/TransitionFade`, `vr/WorldUi`, `xr/Floor`, `xr/Input`.
+In all three hosts (52): `Exe`, `ExeCheck`, `Hook`, `Hotkey`, `Ini`, `Json`, `Log`, `PngFile`, `Version`, `Window`, `d3d11/ShaderReflect`, `gfx/Raster`, `gfx/Swf`, `gfx/SwfFont`, `voice/ScriptMatch`, `vr/AimRay`, `vr/Calibration`, `vr/CineScreen`, `vr/Colour`, `vr/Comfort`, `vr/Controllers`, `vr/ConversationWorld`, `vr/FloorLock`, `vr/FrameProbe`, `vr/GalaxyHologram`, `vr/GalaxyMap`, `vr/GameMenuRequest`, `vr/GamePointer`, `vr/GuiEvents`, `vr/Haptics`, `vr/HostView`, `vr/HudPieces`, `vr/ImageConvert`, `vr/InteractLabel`, `vr/LayerComposite`, `vr/MenuPointer`, `vr/OmniRail`, `vr/OverlayPlacement`, `vr/PoseRecording`, `vr/PowerWheel`, `vr/ScopeArt`, `vr/ScopeCapture`, `vr/ScreenMatrix`, `vr/Sights`, `vr/SquadMenu`, `vr/SquadPlace`, `vr/TestRequest`, `vr/Thespian`, `vr/TransitionFade`, `vr/WorldUi`, `xr/Floor`, `xr/Input`.
 
 | src/core (host) | LE1 | LE2 | LE3 |
 |---|---|---|---|
 | `d3d11/Blit` | - | yes | yes |
-| `d3d11/ShaderReflect` | yes | - | - |
 | `vr/CockpitHazard` | yes | - | - |
 | `vr/ColourStrip` | yes | - | - |
 | `vr/CombatStance` | yes | - | - |
-| `vr/FrameProbe` | yes | - | - |
 | `vr/MakoControls` | yes | - | - |
 | `vr/MakoGunner` | yes | - | - |
 | `vr/MetricStereo` | yes | - | - |
@@ -685,7 +690,6 @@ In all three hosts (49): `Exe`, `ExeCheck`, `Hook`, `Hotkey`, `Ini`, `Json`, `Lo
 | `vr/PresentationHold` | yes | - | - |
 | `vr/QuestPacing` | yes | - | - |
 | `vr/Recenter` | yes | yes | - |
-| `vr/ScreenMatrix` | yes | - | - |
 | `vr/Spectator` | yes | - | - |
 | `vr/Sprint` | yes | - | - |
 | `vr/SquadContext` | yes | - | - |

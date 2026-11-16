@@ -184,6 +184,13 @@ target_compile_options(mevr-minhook PRIVATE /W3)
 # Halcyon's LE1 VR renderer (GPL-3.0, src/halcyon/le1) with its vendored MinHook (mevr-minhook) and Dear ImGui.
 # It runs inside the LE1 host: OpenXR session, Present path, stereo, first person, HUD, menu.
 option(MEVR_HALCYON "Use Halcyon's renderer for LE1" ON)
+# A sequel's first run and A/Bs of ME1's render levers before a lever's flag is set in plugin/RenderLeversTable.hpp
+# (research/sequel-render-levers.md "Enabling a lever on a sequel"). Never ON in a build that is deployed for anything else.
+option(MEVR_RENDER_LEVERS_TRY "LE2/LE3 development: hook the render levers whose layouts were read, for their A/Bs" OFF)
+if (MEVR_RENDER_LEVERS_TRY)
+    # On the one file that reads it, so switching it rebuilds one file per host. LE1's build of the file ignores it.
+    set_source_files_properties(src/plugin/RenderLevers.cpp PROPERTIES COMPILE_DEFINITIONS MEVR_RENDER_LEVERS_TRY)
+endif ()
 set(HALCYON_LE1_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/halcyon/le1)
 add_library(halcyon-le1 STATIC
     ${HALCYON_LE1_DIR}/d3d_capture.cpp
@@ -878,10 +885,14 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/plugin/MetricStereo.hpp
     src/plugin/PerfProbe.cpp
     src/plugin/PerfProbe.hpp
+    src/plugin/PerfProbeHost.hpp
+    src/plugin/PerfProbeLe1.cpp
     src/plugin/QuestPacing.cpp
     src/plugin/QuestPacing.hpp
     src/plugin/RenderLevers.cpp
     src/plugin/RenderLevers.hpp
+    src/plugin/RenderLeversSeams.hpp
+    src/plugin/RenderLeversTable.hpp
     src/plugin/MotionBlurGuard.cpp
     src/plugin/MotionBlurGuard.hpp
     src/plugin/KeptLocks.cpp
@@ -984,6 +995,18 @@ src/plugin/MainMenu.cpp src/plugin/MainMenu.hpp src/plugin/MainMenuSettings.cpp
                 src/plugin/SetupRequest.cpp src/plugin/SetupRequest.hpp src/core/Json.cpp src/core/Json.hpp
 )
 
+# ME1's frame-breakdown probe and render levers in the sequels' hosts (research/sequel-render-levers.md "Shared module"):
+# the same modules as LE1's list above, with the sequels' adapter for the probe (plugin/PerfProbeSequel) in place of LE1's
+# (plugin/PerfProbeLe1). The levers read each game's rows of engine/Addresses.hpp through plugin/RenderLeversTable.
+set(MEVR_SEQUEL_RENDER_PERF_SOURCES
+    src/plugin/PerfProbe.cpp src/plugin/PerfProbe.hpp src/plugin/PerfProbeHost.hpp src/plugin/PerfProbeSequel.cpp
+    src/core/vr/FrameProbe.cpp src/core/vr/FrameProbe.hpp
+    src/plugin/RenderLevers.cpp src/plugin/RenderLevers.hpp src/plugin/RenderLeversSeams.hpp src/plugin/RenderLeversTable.hpp
+    src/plugin/SceneCaptureTarget.hpp src/core/vr/SceneCaptureScope.hpp
+    src/plugin/DrawReplay.cpp src/plugin/DrawReplay.hpp
+    src/core/d3d11/ShaderReflect.cpp src/core/d3d11/ShaderReflect.hpp src/core/vr/ScreenMatrix.cpp src/core/vr/ScreenMatrix.hpp
+)
+
 function(mevr_add_plugin game)
     set(host MEVR-${game})
     set(host_sources ${MEVR_HOST_SOURCES} ${MEVR_CORE_SOURCES})
@@ -1068,7 +1091,8 @@ function(mevr_add_plugin game)
             src/core/vr/PoseRecording.hpp src/core/vr/TestRequest.cpp src/core/vr/TestRequest.hpp src/core/Hotkey.cpp
             src/core/Hotkey.hpp src/core/PngFile.cpp src/core/PngFile.hpp
             # Our menus' glue on ME2's renderer (plugin/MenusLe2: its OnMenuKey and MainMenuOpen seams, empty without the menu).
-            src/plugin/MenusLe2.cpp src/plugin/MenusLe2.hpp)
+            src/plugin/MenusLe2.cpp src/plugin/MenusLe2.hpp
+            ${MEVR_SEQUEL_RENDER_PERF_SOURCES})
         if (MEVR_MAIN_MENU)
             # Our main menu and the guided calibration on ME2 (docs/le2-continuation-plan.md M4.1, M4.2; research/le2-menus.md):
             # the same modules as LE1's, in the host (not hot-reloaded).
@@ -1111,7 +1135,8 @@ function(mevr_add_plugin game)
             src/core/vr/GalaxyMap.cpp src/core/vr/GalaxyMap.hpp
             src/core/vr/SquadMenu.cpp src/plugin/SquadPanel.cpp src/plugin/SquadPanelDraw.cpp
             src/plugin/PowerWheel.cpp src/plugin/PowerWheelDraw.cpp src/plugin/PowerIcons.cpp src/plugin/Glow.cpp
-            src/core/vr/OverlayPlacement.cpp src/core/vr/OverlayPlacement.hpp)
+            src/core/vr/OverlayPlacement.cpp src/core/vr/OverlayPlacement.hpp
+            ${MEVR_SEQUEL_RENDER_PERF_SOURCES})
         if (MEVR_MAIN_MENU)
             set(with_main_menu ON)
             list(APPEND host_sources ${MEVR_SEQUEL_MENU_SOURCES}
@@ -1162,16 +1187,16 @@ function(mevr_add_plugin game)
     if (with_halcyon)
         # windowscodecs: WIC, the test loop's PNG snapshots (plugin/TestLoop).
         target_link_libraries(${host} PRIVATE halcyon-le1 OpenXR::openxr_loader windowscodecs)
-        target_compile_definitions(${host} PRIVATE MEVR_WITH_HALCYON)
+        target_compile_definitions(${host} PRIVATE MEVR_WITH_HALCYON MEVR_WITH_PERF_PROBE)
     endif ()
     if (with_halcyon_le2)
         # windowscodecs: WIC, the test loop's PNG snapshots (plugin/TestLoop).
         target_link_libraries(${host} PRIVATE halcyon-le2 OpenXR::openxr_loader windowscodecs d3dcompiler)
-        target_compile_definitions(${host} PRIVATE MEVR_WITH_HALCYON_LE2)
+        target_compile_definitions(${host} PRIVATE MEVR_WITH_HALCYON_LE2 MEVR_WITH_PERF_PROBE)
     endif ()
     if (with_halcyon_le3)
         target_link_libraries(${host} PRIVATE halcyon-le3 OpenXR::openxr_loader windowscodecs d3dcompiler)
-        target_compile_definitions(${host} PRIVATE MEVR_WITH_HALCYON_LE3)
+        target_compile_definitions(${host} PRIVATE MEVR_WITH_HALCYON_LE3 MEVR_WITH_PERF_PROBE)
     endif ()
     if (MEVR_LE2_DIAGNOSTIC AND game STREQUAL "LE2")
         target_link_libraries(${host} PRIVATE bcrypt shell32 ole32)
@@ -1571,6 +1596,13 @@ if (MEVR_BUILD_TESTS)
     target_compile_options(mevr-le3-motion-blur-guard-tests PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
     add_dependencies(mevr-tests mevr-le3-motion-blur-guard-tests)
     add_test(NAME mevr-le3-motion-blur-guard COMMAND mevr-le3-motion-blur-guard-tests)
+    # plugin/RenderLevers finds its addresses by row name in engine/Addresses.hpp: the names it asks for against all three tables.
+    add_executable(mevr-render-levers-table-tests tests/RenderLeversTableTests.cpp)
+    target_include_directories(mevr-render-levers-table-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_compile_definitions(mevr-render-levers-table-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_compile_options(mevr-render-levers-table-tests PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
+    add_dependencies(mevr-tests mevr-render-levers-table-tests)
+    add_test(NAME mevr-render-levers-table COMMAND mevr-render-levers-table-tests)
     add_executable(mevr-system-settings-tests tests/SystemSettingsTests.cpp)
     target_include_directories(mevr-system-settings-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
     target_link_libraries(mevr-system-settings-tests PRIVATE OpenXR::headers)

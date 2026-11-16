@@ -2,7 +2,10 @@
 """Where each frame's time goes, from a frame-breakdown probe capture (plugin/PerfProbe, research/22).
 
 Reads %LOCALAPPDATA%\\MEVR\\perf\\<stamp>[-tag]-probe.json and its -frames.csv and -ticks.csv (written by the
-running game when asked: tools/perf-probe.ps1, perf.request, or the VR hands tab's "Measure frame timing").
+running game when asked: tools/perf-probe.ps1, perf.request, or the VR hands tab's "Measure frame timing"). Any of
+the three games: LE1's capture has every step below; a sequel's (research/sequel-render-levers.md) has the frame
+bounded by xrEndFrame, the game thread's ticks, the submit and the GPU's lag at the frame's ends until its renderer
+has LE1's seams, and the steps it lacks print nothing.
 
 For the headset frames (Stereo 2 ones on their own when there are enough), prints the median, 90th
 percentile and maximum, in milliseconds, of:
@@ -190,10 +193,26 @@ def main():
           f'GPU timestamps: {"yes" if meta["gpuTimestamps"] else "no"}'
           f' ({meta["gpuFramesDropped"]} frames without); {meta["accessViolations"]} access violations '
           f'({meta["accessViolations"] / max(meta["seconds"], 0.001):.0f}/s)')
-    h = meta['halcyon']
-    res = meta['resolution']
-    print(f'  Stereo 2 {h["sfr2"]}, dynResFraction {h["dynResFraction"]}, mirrorPresentEvery {h["mirrorPresentEvery"]}, '
-          f'render {res["render"][0]}x{res["render"][1]}, eye swapchain {res["eye"][0]}x{res["eye"][1]}')
+    h = meta.get('halcyon')
+    res = meta.get('resolution') or {}
+    by_end_frame = meta.get('frameBounds') == 'xrEndFrame'
+    if h:   # LE1: Halcyon's ME1 renderer
+        print(f'  Stereo 2 {h["sfr2"]}, dynResFraction {h["dynResFraction"]}, mirrorPresentEvery {h["mirrorPresentEvery"]}, '
+              f'render {res["render"][0]}x{res["render"][1]}, eye swapchain {res["eye"][0]}x{res["eye"][1]}')
+    else:   # a sequel's host (plugin/PerfProbeSequel)
+        eye = res.get('eye') or [0, 0]
+        print(f'  renderer {meta.get("renderer", "?")}, eye image {eye[0]}x{eye[1]} ({res.get("eyeViews", 0)} views a frame); '
+              f'frames bounded by {meta.get("frameBounds", "Present")}')
+    if by_end_frame:
+        print('  No Present seam on this host yet: a frame is xrEndFrame\'s return to the next one\'s. "game: both eyes + UI" '
+              'is then everything up to the submit\n  (the game\'s two eye renders, the renderer\'s copies, and xrWaitFrame '
+              'and xrBeginFrame where their slots are not wrapped: their rows are empty then),\n  and the swap chain\'s own '
+              'Present after the submit is at the start of the next frame.')
+    levers = meta.get('renderLevers') or {}
+    if levers:
+        print(f'  render levers: sharePass {levers.get("sharePass")}, keepBoundShaderStates {levers.get("keepBoundShaderStates")}, '
+              f'minScreenRadiusPx {levers.get("minScreenRadiusPx")}, umbraEyeMatrix {levers.get("umbraEyeMatrix")}, '
+              f'umbraQueryWait {levers.get("umbraQueryWait")}, hooked {levers.get("hooked")}')
     clocks = meta['clocks']
     if clocks['syncBegin']['valid'] and clocks['syncEnd']['valid']:
         drift = clocks['syncEnd']['gpuMinusCpuMs'] - clocks['syncBegin']['gpuMinusCpuMs']

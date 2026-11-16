@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-# Asks the running game (LE1, Halcyon's renderer) for a frame-breakdown capture and summarises it.
+# Asks the running game (any of the three, with its Halcyon renderer in our host) for a frame-breakdown capture and summarises it.
 #
 # Writes %LOCALAPPDATA%\MEVR\perf.request; the host polls it once a second and, from the next frame,
 # records for -Seconds where each frame's time goes (plugin/PerfProbe, research/22). In

@@ -664,3 +664,313 @@ finish `(translucency, dirty)`; RHI `+0x620`. Identical to ME1's. It can't pair 
   (`exe::Find`), so the names don't matter to it; nothing else read the old names.
 - Nothing here was run in the game. The first run with any hook installed should confirm the exe gate accepts all
   rows (`exe:` lines in `LE3MEVR.log`) before a lever is turned on.
+
+## Shared module
+
+### What is shared, and where the per-game part lives
+
+| module | shared file (all three hosts) | per-game part |
+|---|---|---|
+| frame-timing probe | `src/plugin/PerfProbe.cpp`, `PerfProbe.hpp`, `src/core/vr/FrameProbe.*`, `tools/perf-probe.ps1`, `tools/perf-probe.py` | `src/plugin/PerfProbeHost.hpp` (the adapter's interface), `PerfProbeLe1.cpp` (Halcyon ME1's seams and settings), `PerfProbeSequel.cpp` (both sequels) |
+| render levers | `src/plugin/RenderLevers.cpp`, `RenderLevers.hpp` | `src/plugin/RenderLeversTable.hpp` (addresses by row name, layouts), `RenderLeversSeams.hpp` (what the renderer answers) |
+| draw recorder and replay | `src/plugin/DrawReplay.cpp` (D3D11 only, no engine address), `core/d3d11/ShaderReflect`, `core/vr/ScreenMatrix` | none; it is fed by the renderer's `Record*` seams, which only Halcyon ME1 has |
+| A/B tools | `tools/perf-ab.ps1 -Game`, `tools/measure-levers.ps1 -Game` | the game's `ASI\<GAME>MEVR.ini` and process name, from `-Game` |
+
+CMake: LE1's list is `MEVR_HALCYON_HOST_SOURCES`; the sequels take `MEVR_SEQUEL_RENDER_PERF_SOURCES` (the same files
+with `PerfProbeSequel.cpp` in place of `PerfProbeLe1.cpp`). Every host with a Halcyon renderer is compiled with
+`MEVR_WITH_PERF_PROBE`; `plugin/Entry.cpp` marks the game thread's tick for the probe, and on the sequels calls
+`perf::Tick()`, `render_levers::Tick()` each tick and `render_levers::Install()` at attach (LE1 did all three already).
+
+**LE1 is unchanged.** Its constants moved from `RenderLevers.cpp` into `RenderLeversTable.hpp` and are pinned there by
+`static_assert`s against the old literals, so the same numbers are compiled in; its seam calls are the same names
+(`namespace seam = MELEVR::MevrBridge`); its probe adapter is its old code moved to `PerfProbeLe1.cpp`.
+
+### The address contract: rows by name
+
+`plugin/RenderLeversTable.hpp` finds each address **by row name** in the current game's `kTable` of
+`src/engine/Addresses.hpp`, at compile time (`table::Row("FSceneRenderer::Render")`). LE1's rows have had these names
+since research/34 stage 4. **A sequel gets a lever by adding a row with exactly LE1's name to its own `kTable`**, with a
+byte pattern (`tools/rva-patterns.py` over that game's `.text` dump), so the exe gate checks it at attach. No named
+`k...` constant is needed, and nothing in `plugin/` changes for a new address.
+
+A game without the row reads 0. At attach `render_levers::Install` checks, per lever, that every row it needs exists and
+(where the exe check ran) is at its RVA, and that the lever's layout group is verified (below). If not, the lever
+**stands down with one log line** and its setting stays the game's own:
+
+```
+render levers: keepBoundShaderStates stands down on LE2: no row 'FD3D11BoundShaderState constructor', no row 'GDynamicRHI'; its layout isn't verified for this game
+```
+
+ctest `mevr-render-levers-table` (`tests/RenderLeversTableTests.cpp`) checks that every name the module asks for is a row
+of LE1's table, that no table has two rows of one name, and prints what each sequel's table can already serve. Run it
+after adding rows: a misspelt name shows there as `[no '...']`.
+
+| lever (`[Performance]` key) | rows it needs (exact names) | layout group (`Layout` flag) |
+|---|---|---|
+| accounting: scene renders per frame, ms each (no key) | `FSceneRenderer::Render` | `sceneRendererVerified`: the family target (+0x18, its vtable's size getters), the views (+0x60, +0x68) |
+| the Umbra resolve's timing, `umbraQueryWait` | `UmbraCommander::command`, `Umbra resolve start stamp` (data) | `umbraCommanderVerified` |
+| `ue3QueryWait`, the query reads' count | `FD3D11DynamicRHI::GetQueryData` | `umbraCommanderVerified` |
+| `keepBoundShaderStates` | `FD3D11BoundShaderState constructor`, `GDynamicRHI` (data) | `boundShaderStateVerified`: the RHI vtable slot of AddRef for a bound shader state (LE1 0x8A0), the handle's offset in the constructed object (LE1 +0xC) |
+| `minScreenRadiusPx` | `UmbraCommander visible instance` | `umbraInstanceVerified`: record radius (+0x38), the commander's view (+0x68), the view's projection matrix (+0xD0) |
+| `umbraEyeMatrix` | `UmbraCommander::IssueOcclusionQueries` | `umbraQueriesVerified`: the commander's view (+0x68) and view-parameters-set flag (+0x5C); view matrices +0x90, +0x190, +0x1D0, +0x250, +0x260 |
+| `umbraShareResults` | `Umbra read of one query result`, `FD3D11DynamicRHI::GetQueryData` | `umbraSharedVerified` |
+| `umbraSharedVisibility` | `UmbraCommander visible instance` | `umbraSharedVerified`: the view's Umbra camera (+0x4D4), its impl (+0x10) and parameter word (+0x420); the query ring (commander +8, +0x1C8, +0x1CC, +0x2168, 0x19-byte entries) |
+| `perEyeOcclusion` | `FSceneRenderer::Render` | `occlusionHistoryVerified`: FSceneViewState's occlusion history (+0xD10, 0x48 bytes), the renderer's views (+0x60) and the view's state (+0x8) |
+| `sharePass` 1-5 (one Draw a frame is 5) | `FSceneRenderer deleting destructor`, `FSceneRenderer::RenderDpgLightTargets`, `RenderUmbraBasePass`, `before-lights pass`, `DPG pass`, `DPG lights`, `foreground pass`, `scene render finish`, `FSceneRenderTargets::Allocate`, `translucency check`, `SetUmbraCommander / wireframe state`, `GSceneRenderTargets`, `GDynamicRHI`, `scene frame counter`, `depth dirty flags`, `GSkipBeforeLights`, `Umbra commanders`, `Umbra commander index` | `sharePassVerified` and `sceneRendererVerified`: FSceneRenderer +0x00, +0x18, +0x28, +0x5C, +0x60/+0x68, +0xD8; the FViewInfo stride; the view's plain byte ranges; the RHI's begin/end scene slots (+0x628, +0x620); each pass function's signature. Also the renderer's seams (`kOneDrawSeams`, below) |
+| scene captures nested in an eye (no key) | `scene capture's CaptureScene thunk`, `FSceneRenderTargets::BeginRenderingBackBuffer` | `sceneRendererVerified`, `sceneCaptureVerified`, and `ownsSceneCaptureHooks` (false on LE3: `plugin/Le3SceneCapture` hooks the same two functions, the ledger's Forks 9) |
+| `pCoresOnly` | none (Win32) | none: works on every game |
+
+**Layouts are not addresses.** They live in `RenderLeversTable.hpp`'s `Layout` struct: LE1's values are the defaults, a
+game's own value goes into that game's `kLayout` where it differs (so far only the FViewInfo stride: 0x11A0 on ME2, 0x11B0
+on ME3), and each lever group has a `...Verified` flag. A flag is set only when (1) the layout was read in **that game's
+own code** (lanes R2 and R3 write each offset in their sections below) and (2) the group **ran in the game**: a lever
+after its A/B, the two passive groups (the accounting, the commander's timing) after a first protected run with their
+hooks in. Until then the group stands down, whatever the rows say, so a build from main never hooks something in a
+sequel that nobody has run there.
+
+**Where a game calls the same natives differently** is in `Layout` too, each read in that game's code:
+
+| `Layout` field | ME1 | ME2 | ME3 | what the module does with it |
+|---|---|---|---|---|
+| `ineligibleShowFlags` | 0x33 | 0x33 | 0x33, 0x47, 0x15, 0x1B | `Eligible()`: a renderer with one of them set leaves the Umbra branch, so it is never kept or replayed |
+| `instanceCallAlsoKeepsBooks` | no | no | yes | the visible-instance hook answers "not visible" (the size cull, the shared-visibility filter) only for the marking call, `a7 != 0 && a6 == 0`; every other call goes to the original |
+| `captureTakesUmbraBranch` | no | no | yes | the light-targets hook marks the replay's tail only outside a capture |
+| `umbraCommandGate` | none | none | 0x1767208 | logged once from the command hook (`render levers: Umbra's command gate is N`): while it is 0 ME3's `command()` does nothing |
+| `ownsSceneCaptureHooks` | yes | yes | no | the capture hooks are not installed where another module has them |
+
+### Enabling a lever on a sequel (the procedure)
+
+1. The row (or rows) is in the sequel's `kTable` with LE1's names; `ctest -C Release -R mevr-render-levers-table` shows
+   them (`LE3: ... 28 of 28 render-lever rows`).
+2. The lever's layout is in the sequel's `## ME2`/`## ME3` section; a value that differs from LE1's goes into that
+   game's `kLayout` (`src/plugin/RenderLeversTable.hpp`).
+3. Make a **try build**: `cmake -S . -B build-trilogy -DMEVR_RENDER_LEVERS_TRY=ON`, build `MEVR-LE2` or `MEVR-LE3`. In it
+   the groups whose layouts were read (`TryReadGroups` in the table: the accounting, the commander, the bound shader
+   states, the visible instances, Umbra's query matrix) are hooked on the sequels. Never deploy a try build for anything
+   but these runs, and turn the option off again afterwards (`-DMEVR_RENDER_LEVERS_TRY=OFF`).
+4. Deploy it in a protected run (`## Measurements`). In a try build the two levers that are on by default on ME1
+   (`keepBoundShaderStates` 1, `minScreenRadiusPx` 8) start at the game's own (0), so every A/B begins from a clean 0
+   and nothing has to be written into `ASI\<GAME>MEVR.ini` before the game starts (a kept bound shader state stays
+   kept, so that lever's "0" arm must come first). Read the attach lines in `Logs\<GAME>MEVR.log`: no `stands down` line
+   for the lever, and its settings line (for example `render levers: bound shader states live as long as the game's own
+   references ... ([Performance] keepBoundShaderStates = 0)` without `not hooked`).
+5. A/B at the baseline spot with `tools\measure-levers.ps1 -Game <game> -Key <key> -Values 0,1`, a snapshot at each
+   value: no missing meshes, no popping between two snapshots a second apart.
+6. If it holds: set the group's `...Verified = true` in that game's `kLayout`, write the numbers under
+   `## Measurements`, land. ME1's `[Performance]` key and default apply on that game from then on. If it damages the
+   picture the flag stays false and `## Measurements` says why.
+
+### What the renderer has to answer (seams)
+
+`plugin/RenderLeversSeams.hpp` is `render_levers::seam`. On LE1 it is `MELEVR::MevrBridge` itself. On the sequels the same
+names answer "no such seam yet": `StereoFrameActive()` false, `FindPass1View()` false, `g_oneDrawStereo` a flag nobody
+reads, `kOneDrawSeams = false` (so `sharePass` stands down whatever the table has). The one seam vocabulary is lane U1's
+(`src/halcyon/MevrSeams.h`); when a sequel's renderer has one of these, its answer replaces the stub.
+
+The probe's seams are functions in `plugin/PerfProbe.hpp` that a sequel's bridge calls (LE1's are Halcyon ME1's own
+`MevrBridge::PerfPresentBegin/End`, `PerfPass0Captured`, `g_perfDraws`):
+
+| what | call | where in the sequel's renderer |
+|---|---|---|
+| the frame's bounds and the context | `perf::SeamPresentBegin(ctx)`, `perf::SeamPresentEnd(ctx)` | the Present hook's first and last action |
+| the first eye's end | `perf::SeamFirstEyeCaptured(ctx)` | right after the first eye's capture in DrawDetour's SFR branch |
+| draws | `perf::NoteDraws()` | each D3D draw hook in `d3d_capture.cpp` |
+| the waits | `perf::WrapFrameFunctions(waitSwapchainImage, waitFrame, beginFrame, endFrame)` | `MevrBridge::WrapSessionFunctions`, after the test loop's wrap |
+
+**Until the sequels' bridges call them** the probe works without a seam: `testloop::WrapSessionFunctions` hands the
+probe the `xrEndFrame` slot (sequel builds only), and a frame is **xrEndFrame's return to the next one's**
+(`PerfProbe.cpp` `EndFrameAsFrameBoundary`). The game's immediate context for the GPU timestamps is found from the
+frame's own projection layer (its swapchain's first D3D11 texture's device). The capture then has: the frame interval,
+the render thread's busy time per frame, the submit's time, GPU timestamps at the frame's start, at the submit and at
+its end (the GPU's lag behind the CPU, and its span), and every game-thread tick. It has no draw count, no split between
+the eyes and no `xrWaitFrame`/`xrBeginFrame` rows; its JSON says `"frameBounds": "xrEndFrame"` and `tools/perf-probe.py`
+prints what that means. The per-eye split comes from the render levers' accounting instead (the `render levers:` line's
+scene renders per frame and ms per render by its place in the frame), as soon as the `FSceneRenderer::Render` row exists.
+
+### One Draw a frame on the sequels: the design (not built)
+
+Written before building, as the lane's task asks; it waits for the three things named at the end.
+
+**What the sequels do today.** Halcyon's ME2 and ME3 "SFR" is the same architecture as its ME1 "Stereo 2", ported
+from it (`src/halcyon/le2/calcview_hook.cpp` and `le3/calcview_hook.cpp`, `DrawDetour`): the game thread calls
+`FViewportClient::Draw` **twice a present** (pass 0, then the "replay", `t_replay = true`), each a full engine frame
+from its own eye (`ApplyEyeOffset` by plus or minus the half eye distance in the CalcSceneView detour), each through
+**its own scene view state** (`g_eyeStateLeft`, `g_eyeState`; ME1's gameplay shares one state between the eyes). The
+render thread snapshots the backbuffer into `g_sfrPass0Tex` at the pass boundary (the next scene depth clear:
+`SfrMaybeCapturePass0AtClear` in `d3d_capture.cpp`'s ClearDepthStencilView hook) and mirrors the UI draws into it. So
+every cost ME1's one-Draw removed is there: the second game-thread Draw, the second visibility, the second engine render.
+
+**The design is ME1's `sharePass = 5`, unchanged** (research/37 "The one-Draw design"): one Draw a frame; the frame's
+only scene render is recorded by `plugin/DrawReplay` from its tail mark, and in the render's finish hook, with the
+renderer still alive, the second eye's view is synthesised from the first's (`SynthesiseSecondView`: origin + d,
+pre-view translation - d, the translated view-projection rebuilt) and the recorded tail is re-issued with the view's
+bytes substituted. All of that is in the shared module already. What each sequel needs:
+
+| piece | where | on a sequel |
+|---|---|---|
+| the scene render's entry, its finish, the tail mark, the pass functions, the globals | rows of `engine/Addresses.hpp` (the `sharePass` line of the table above) | lanes R2/R3; each pass function's signature must be read in the sequel's code, not assumed |
+| layouts | `RenderLeversTable.hpp` `kLayout`: the FViewInfo stride (the ledger notes 0x11A0 for LE2 and 0x11B0 for LE3, [verify]), the renderer's views, target and flags, and the view's plain byte ranges (`kViewPlainRanges`, `kViewCaptureRanges`: the +0x480..+0x4D0 part is LE1's and must be read in each sequel's FSceneView copy constructor) | lanes R2/R3, then `sharePassVerified` |
+| the pass-1 view record | a `[MEVR]` seam in the SFR branch of each sequel's CalcSceneView detour, after `ApplyEyeOffset`, `ApplyHeadLook` and `ApplyFov` ran on pass 0: `RecordPass1View({the final view origin, forward, delta = pass 1's camera minus pass 0's (twice the half eye distance along the view's right axis, as the detour applies it), mode 0})` | lane U1 (`MevrSeams.h` reserves the names). The sequels' frusta are symmetric with the convergence applied at submit, so the record's projection terms stay unused |
+| the second Draw skipped | `DrawDetour`: while the host's `g_oneDrawStereo` is set, `SfrReplayDrawSEH` is not called, and everything that tells the render side "an SFR frame" still happens (its no-op retry must not take a skipped replay for a refused one) | lane U1 |
+| `StereoFrameActive()` | DrawDetour's own gate (`sfrGameplay`) | lane U1 |
+| the recorder's ear | `Record*` calls in each sequel's `d3d_capture.cpp` draw, clear and UpdateSubresource hooks; `NotePixelShaderCreated` in a CreatePixelShader hook | lane U1 |
+| the pass-0 capture | nothing new if the replayed tail contains the pass-boundary depth clear (LE1: "the replay's pass-boundary depth clear still takes Halcyon's pass-0 capture"); checked first in the eye snapshots | a check |
+
+**Risks specific to the sequels, each settled by a test before the lever is on:**
+
+1. **Per-eye view states.** The sequels gave each pass its own FSceneViewState so temporal effects (anti-aliasing
+   history, motion blur, eye adaptation) don't smear between the eyes. With one render there is one state again, and the
+   second eye is a replay of the first eye's post-processing. LE1's replay has the same property and its picture was
+   accepted, but the sequels' post chains differ. Test: a head-turn snapshot pair, looking for smear in the right eye.
+2. **Screen-space matrices.** LE1 needed `core/vr/ScreenMatrix` for `ScreenToShadowMatrix` and `ScreenToWorld`, and its
+   character (light-environment) shadows still land wrongly in the replayed eye (research/37, 2026-11-13: off by default
+   while the second eye is a replay). Whether the sequels' shaders take those constants is the ledger's open R04. Expect
+   the same defect: with one-Draw the sequels would need `LightEnvironmentShadows False`, which they don't need today
+   (`## Measurements`, "Character shadows").
+3. **One-eye objects.** Whatever the engine culls or sorts for the first eye only shows in one eye. LE1 moved to each
+   eye's own frustum for this (`oneDrawWindow = 0`); the sequels render both eyes on one symmetric window and shift at
+   submit, which is LE1's `oneDrawWindow = 1` case: whole meshes dropping out frame by frame in the owner's QA of
+   2026-11-06. So the per-eye frustum (the ledger's R06) comes **before** one-Draw on the sequels.
+4. **The dynamic rings.** The buffer-wrap shadows are D3D11 only and come with the recorder.
+
+**What it waits for:** (a) lanes R2/R3's rows and layouts for the `sharePass` group and their answer to "does the
+sequel's SFR allow it" (on LE1 one Draw a frame is the flat game's own state for Umbra's command ring, and a Draw
+without its resolve deadlocks: the second Draw is skipped whole, never half); (b) lane U1's seams above; (c) the
+baseline's answer to whether it is worth it (the recommendation under `## Measurements`).
+
+## Measurements
+
+### How to measure a sequel (the procedure)
+
+One game run at a time on the machine (`tools\le2-halcyon-run\run-lock.ps1 -Status`); no build and no ctest while it
+runs (a build skews the numbers; an installer test's fake `MassEffectLauncher.exe` makes `launch.ps1` refuse, as on
+2026-11-16 11:39). Everything is by script, from the repository's root, with a development (hot-reload) `build-trilogy`.
+
+ME2, at Freedom's Progress (the VR Shepard career's Save 4, the runner's default):
+
+```powershell
+$h = '<your session name>'
+tools\le2-halcyon-run\prep.ps1 -Holder $h -Tag perf            # backups, deploy build-trilogy, fake headset on
+tools\le2-halcyon-run\launch.ps1 -Holder $h                    # Steam's -game 2, waits for the XR session
+tools\le2-halcyon-run\load.ps1 -Holder $h                      # Save 4, waits for gameplay
+python tools\make-look-recording.py "$env:LOCALAPPDATA\MEVR\recordings\look-20s.mevrrec" 20   # the head turning a full circle in 20 s
+tools\replay.ps1 -Path "$env:LOCALAPPDATA\MEVR\recordings\look-20s.mevrrec" -Loop
+tools\perf-probe.ps1 -Seconds 20 -Tag le2-baseline             # one full turn; prints the breakdown (tools\perf-probe.py)
+tools\snapshot.ps1 -Tag le2-baseline -Delay 1                  # both eyes as PNGs, %LOCALAPPDATA%\MEVR\snapshots
+tools\sample-render-thread.ps1 -Game LE2 -Top 40               # the render thread by function (needs build\Release\mevr-stack-sampler.exe)
+tools\measure-levers.ps1 -Game LE2 -Key <key> -Values 0,1 -Rounds 2 -Seconds 20 -Recording "$env:LOCALAPPDATA\MEVR\recordings\look-20s.mevrrec"   # an A/B
+tools\replay.ps1 -Stop
+tools\le2-halcyon-run\launch.ps1 -Holder $h -Stop
+tools\le2-halcyon-run\restore.ps1 -Holder $h                   # expect "verification: 0 differences"
+```
+
+ME3, on the Normandy (the career's `Save_0031.pcsav`; the runner's `-RendererPreview` mode on every command, and
+`-BuildDir <repo>\build-trilogy` on prep):
+
+```powershell
+tools\le2-halcyon-run\prep.ps1 -Holder $h -Game LE3 -RendererPreview -Tag perf -BuildDir "$PWD\build-trilogy"
+tools\le2-halcyon-run\launch.ps1 -Holder $h -Game LE3 -RendererPreview
+tools\le2-halcyon-run\load.ps1 -Holder $h -Game LE3 -RendererPreview -Save 'John_12_Vanguard_021024_46e6e39\Save_0031.pcsav'
+# ... the same replay, probe, snapshot, sampler (-Game LE3) and A/B (-Game LE3) lines; change [Performance] keys only after load.ps1 returned
+tools\le2-halcyon-run\launch.ps1 -Holder $h -Game LE3 -RendererPreview -Stop
+tools\le2-halcyon-run\restore.ps1 -Holder $h -Game LE3 -RendererPreview
+```
+
+What to read: `tools\perf-probe.py`'s "busy, whole frame" (the render thread's work a frame; on a sequel without the
+wait slots wrapped it includes any spinning inside `xrWaitFrame`), "span: whole frame" (the GPU's work, at most) and
+"lag at frame end", the game thread's "busy, engine + ours" (both Draws' game-thread side), and in the game's
+`Logs\<GAME>MEVR.log` the `render levers: last 10 s:` line (scene renders per frame, ms per render by its place in the
+frame: `#0` the first eye, `#1` the second), once the `FSceneRenderer::Render` row exists. The fake headset holds the
+frame rate near 31 fps whatever the load (skill `fake-headset-run`), so compare the work, never the frame interval.
+For picture damage, Read the two snapshots' `-left.png` and `-right.png` side by side: no missing meshes, and no popping
+between two snapshots a second apart.
+
+The whole stretch for one sequel as one script (what lane PL runs): prep, launch, wait for the engine to tick
+(`mevr state` answers) plus 30 s (the mod writes its first-run settings then, and `load.ps1` refuses a run whose ini
+changes under it: "Save or runtime artifact changed during load", 2026-11-16 13:27), load, two baseline captures under
+the replayed head turn, the render thread by function, each lever's A/B (0 first, then 1, a capture and two snapshots a
+second apart at each value), four snapshots with `scale set LightEnvironmentShadows False` and four with `True`, then
+stop and restore. It is `scratch\pl\run-sequel-queue.ps1 -Game LE2|LE3` in the lane's worktree (not in the repository:
+its paths are the worktree's); every command in it is one of the lines above.
+
+### Results
+
+#### LE1 is unchanged by the shared modules (2026-11-16)
+
+The same-pose check the lanes' rules ask for, on the fake headset: `tools\fake-headset-session.ps1` twice, first with a
+players' build of main (494942ad) and then with the same build of the lane's branch, each time the world paused
+(`pause`), the head held still by a replayed recording (`make-look-recording.py ... --yaw 0`), one snapshot and one
+10 s frame capture. Sessions `2026-11-16_12-56-34-pl-before` and `2026-11-16_13-00-14-pl-after`
+(`%LOCALAPPDATA%\MEVR\sessions`, each with a `pl` folder holding its snapshot and capture).
+
+| compared | result |
+|---|---|
+| the snapshot's `hostView` | identical |
+| the layers (left, right, hud, label, wrist: names, kinds and every field) | identical, 0 fields differ |
+| `-hud.png`, `-left.png`, `-right.png`, `-left-world.png` | identical pixel for pixel (the world was paused) |
+| the capture's JSON keys, `halcyon`, `resolution`, the `renderLevers` settings | identical |
+| the `render levers:` attach and settings lines of `LE1MEVR.log` | the same 19 lines, the same `the RHI's AddRef is at RVA 0x215B10; the int at +8 went 0 -> 1` |
+
+The same table and seam names compile to the same constants (the `static_assert`s of `RenderLeversTable.hpp`).
+
+#### The sequels' hooks go in (ME2, 2026-11-16 13:26)
+
+The first protected ME2 run of a try build (session `20261116-132559-920-LE2-pl-levers`): the exe gate took all 45 of
+ME2's rows (`exe: 45 of 45 addresses at their RVAs (44 by their bytes ...)`), and at attach
+`render levers: on LE2: the scene render is counted and timed, the Umbra commander, the query reads, Umbra's query
+matrix, the bound shader states, Umbra's visible instances`; `sharePass` and `umbraShareResults` stood down as written.
+In the entry menu the visible-instance hook read a sane projection (`[1][1] = 5.638`) and the query-matrix hook found
+ME1's sign (`the view matrix is the translated one moved by plus the pre-view translation`). The run ended there
+(`load.ps1` refused it, above); nothing was measured in it.
+
+#### Still to measure
+
+Steam ignored every launch until 12:30 on 2026-11-16 and the game lock was shared by eight lanes after that, so at the
+time of the shared modules' landing these runs were queued, in this order. Each row's numbers go here when it is run.
+
+| # | run | answers | state |
+|---|---|---|---|
+| 2 | ME2 baseline at Freedom's Progress | render-thread ms, GPU ms, the game thread's ticks; with a try build the scene renders per frame and ms per eye, slot 1's query reads | queued |
+| 3 | ME3 baseline on the Normandy (Save 31) | the same; and lane R3's "measure this first": does the second pass poll unready Umbra queries (`query reads a frame: #1 N (... without a result)`, the `query results` part of render #1) | queued |
+| 4 | `keepBoundShaderStates` 0 then 1, each sequel | render-thread ms before and after; the log's `the RHI's AddRef is at RVA 0x992830` (ME2) / `0x2CB940` (ME3) and `the int at +8 went N -> N+1`; any other RVA: stop, the slot is wrong | queued |
+| 5 | `minScreenRadiusPx` 0 then 8, each sequel | ms, the size distribution in the levers line, pop-in between two snapshots a second apart | queued |
+| 6 | `umbraQueryWait` 1 then 0, each sequel | the `query results` part of each render, draws | queued |
+| 7 | character shadows on, each sequel | whether a character's shadow sits under it in both eyes (the audit's defect, below) | queued |
+
+### Character shadows on the sequels (the audit's defect, for lane GF)
+
+`game/SystemSettings` adds `LightEnvironmentShadows False` whenever `[Performance] sharePass` is 2, 3 or 5, and an empty
+key reads as 5 on every game. On ME1 that is right: the second eye is a replay of the first eye's D3D calls, whose
+screen-space shadow projection is the first eye's (research/37, 2026-11-13). **The sequels have no such replay.** Their
+second eye is a second full engine render (`DrawDetour`'s second `FViewportClient::Draw`, each pass through its own view
+state): the engine builds that eye's shadow projection from that eye's own view, as it does for the flat game. Lanes R2
+and R3 read the same in the natives (two calls of the scene render a present, each with its own InitViews). And since
+2026-11-16 `sharePass` stands down on both sequels in the shared module (`render levers: ... sharePass stands down`), so
+nothing there replays an eye.
+
+So by the code the workaround costs the sequels their character shadows for nothing. **Not confirmed by a picture**:
+run 7 above is the check (four snapshots with the shadows on, a squadmate in view: the shadow under the feet in both
+eyes, shifted by the same parallax as the feet). Recommendation to lane GF: gate the `LightEnvironmentShadows False`
+entry on the host's second eye actually being a replay (ME1's host with `sharePass` 2, 3 or 5; a host flag, since a
+sequel that takes one-Draw later needs it back), and land it after run 7.
+
+### One Draw a frame on the sequels: the recommendation
+
+Not now, and not next. In order:
+
+1. **Measure first** (runs 2 and 3). ME1's one-Draw was worth 2.3 ms of 11.4 at its heaviest cell (20%), and that
+   included removing a second Umbra resolve of 1.4 ms. Whether a sequel's second render costs as much is unknown until
+   the accounting's `#0`/`#1` lines exist. ME3's second pass may be paying for unready Umbra queries (lane R3), which a
+   cheaper lever (`umbraQueryWait = 0`) or one view state for both passes would cure without one-Draw.
+2. **The cheap levers first** (`keepBoundShaderStates`, `minScreenRadiusPx`): hooks on identical code, no seam, no
+   picture risk beyond pop-in. On ME1 they were worth about 1 ms warm and 0.3 ms.
+3. **The per-eye frustum before one-Draw** (the ledger's R06). One-Draw on the sequels' symmetric window is ME1's
+   `oneDrawWindow = 1`, which the owner's QA rejected (meshes dropping out frame by frame).
+4. **Then one-Draw, ME3 or ME2 first by whichever baseline is heavier**, with the seams of the design above. It brings
+   ME1's open defect with it: character shadows wrong in the replayed eye, so they go off again on that game. If the
+   owner would rather keep character shadows on the sequels than gain about 20% of the render thread, one-Draw should
+   wait for ME1's shadow fix (research/37 "Open").
+
+The host side is ready for it (the module, the table, the recorder are in all three hosts); what remains is the
+renderers' seams (lane U1's vocabulary reserves the names) and each sequel's pass-0 capture, which both R2 and R3 name
+as the main risk in their recipes.

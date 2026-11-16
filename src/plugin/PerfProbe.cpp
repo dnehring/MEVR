@@ -1,25 +1,16 @@
 // SPDX-License-Identifier: MIT
-// The frame-breakdown probe (plugin/PerfProbe.hpp, research/22). Its seams in Halcyon's code are
-// MevrBridge::PerfPresentScope, PerfPass0Captured and g_perfDraws (src/halcyon/le1/mevr_bridge.h), and the
-// frame functions wrapped through MevrBridge::WrapSessionFunctions (plugin/TestLoop).
+// The frame-breakdown probe (plugin/PerfProbe.hpp, research/22): one module for all three games' hosts. What differs per
+// game is in plugin/PerfProbeHost.hpp's adapter: LE1's seams in Halcyon's code (MevrBridge::PerfPresentScope,
+// PerfPass0Captured and g_perfDraws, src/halcyon/le1/mevr_bridge.h; plugin/PerfProbeLe1.cpp) and the sequels' frames
+// bounded by xrEndFrame until their renderers have such seams (plugin/PerfProbeSequel.cpp). The frame functions are
+// wrapped through MevrBridge::WrapSessionFunctions (plugin/TestLoop).
 
 #include "plugin/PerfProbe.hpp"
-#include "plugin/QuestPacing.hpp"
-#include "plugin/Colour.hpp"
-#include "plugin/Renderer.hpp"
-#include "plugin/RenderLevers.hpp"
-#if defined(MEVR_WITH_MAIN_MENU)
-#include "plugin/MainMenu.hpp"
-#endif
-#include "plugin/Upscale.hpp"
-#include "plugin/Voice.hpp"
+#include "plugin/PerfProbeHost.hpp"
 
 #include "core/Log.hpp"
 #include "core/vr/FrameProbe.hpp"
 #include "core/vr/TestRequest.hpp"
-#include "halcyon/le1/mevr_bridge.h"
-#include "halcyon/le1/vr_config.h"
-#include "halcyon/le1/xr_session.h"
 
 #include <Windows.h>
 #include <d3d11.h>
@@ -317,7 +308,7 @@ void Record(int point, ID3D11DeviceContext* context) {
     if (GetCurrentThreadId() != gRenderThread.load(std::memory_order_relaxed)) return;
     gFrame.qpc[point] = Now();
     gFrame.cycles[point] = ThreadCycles();
-    gFrame.draws[point] = MELEVR::MevrBridge::g_perfDraws;
+    gFrame.draws[point] = adapter::Draws();
     if (point == fp::kPass0) {
         ++gFrame.pass0Marks;
     }
@@ -396,7 +387,7 @@ void Start(ID3D11DeviceContext* context) {
     clocks.originQpc = now;
     gRunningSinceQpc.store(now, std::memory_order_relaxed);
     gNextSlot = 0;
-    OpenFrame(now, gCapture.cyclesBegin, MELEVR::MevrBridge::g_perfDraws);
+    OpenFrame(now, gCapture.cyclesBegin, adapter::Draws());
     gRunning.store(true, std::memory_order_release);
     StoreState(State::Running);
     log::Info("perf probe: measuring {:.0f} s from this frame (render thread {}{})", gCapture.seconds,
@@ -511,7 +502,7 @@ PFN_xrBeginFrame gRealBeginFrame = nullptr;
 PFN_xrEndFrame gRealEndFrame = nullptr;
 
 XrResult XRAPI_CALL WrappedWaitSwapchainImage(XrSwapchain swapchain, XrSwapchainImageWaitInfo const* info) {
-    quest_pacing::RuntimeCall const runtimeCall;
+    adapter::RuntimeCall const runtimeCall;
     if (!OnRenderThread()) {
         return gRealWaitSwapchainImage(swapchain, info);
     }
@@ -523,11 +514,11 @@ XrResult XRAPI_CALL WrappedWaitSwapchainImage(XrSwapchain swapchain, XrSwapchain
 }
 
 XrResult XRAPI_CALL WrappedWaitFrame(XrSession session, XrFrameWaitInfo const* info, XrFrameState* state) {
-    quest_pacing::RuntimeCall const runtimeCall;
+    adapter::RuntimeCall const runtimeCall;
     if (!OnRenderThread()) {
         return gRealWaitFrame(session, info, state);
     }
-    bool const next = quest_pacing::NextFramePhase();
+    bool const next = adapter::NextFramePhase();
     Record(next ? fp::kNextWaitBegin : fp::kWaitBegin, nullptr);
     XrResult const result = gRealWaitFrame(session, info, state);
     Record(next ? fp::kNextWaitEnd : fp::kWaitEnd, nullptr);
@@ -542,19 +533,52 @@ XrResult XRAPI_CALL WrappedWaitFrame(XrSession session, XrFrameWaitInfo const* i
 }
 
 XrResult XRAPI_CALL WrappedBeginFrame(XrSession session, XrFrameBeginInfo const* info) {
-    quest_pacing::RuntimeCall const runtimeCall;
+    adapter::RuntimeCall const runtimeCall;
     if (!OnRenderThread()) {
         return gRealBeginFrame(session, info);
     }
-    bool const next = quest_pacing::NextFramePhase();
+    bool const next = adapter::NextFramePhase();
     Record(next ? fp::kNextBeginBegin : fp::kBeginBegin, nullptr);
     XrResult const result = gRealBeginFrame(session, info);
     Record(next ? fp::kNextBeginEnd : fp::kBeginEnd, nullptr);
     return result;
 }
 
+// A host whose renderer has no seam in its Present hook (the sequels, until their bridges call SeamPresentBegin): a frame is
+// xrEndFrame's return to the next one's. The submit stands where LE1's Present hook does: kPresent at its start (the
+// game's two eye renders and the renderer's Present work up to here came before it), kEnd right after it returns. What the
+// swap chain's own Present costs after the submit is in the next frame's first part.
+std::atomic<bool> gPresentSeam{!adapter::kFramesByEndFrame};
+
+XrResult EndFrameAsFrameBoundary(XrSession session, XrFrameEndInfo const* info) {
+    State const state = LoadState();
+    if (state != State::Armed && state != State::Running) {
+        XrResult const result = gRealEndFrame(session, info);
+        adapter::FrameClosed(nullptr);
+        return result;
+    }
+    ID3D11DeviceContext* const context = adapter::FrameContext(info);
+    PresentBegin(context);
+    if (OnRenderThread()) {
+        Record(fp::kPresent, context);
+        Record(fp::kEndFrameBegin, gContext.Get());
+    }
+    XrResult const result = gRealEndFrame(session, info);
+    if (OnRenderThread()) {
+        Record(fp::kEndFrameEnd, nullptr);
+        std::lock_guard lock(gRenderMutex);
+        gFrame.xrFrame = true;
+    }
+    PresentEnd(context);
+    adapter::FrameClosed(context);
+    return result;
+}
+
 XrResult XRAPI_CALL WrappedEndFrame(XrSession session, XrFrameEndInfo const* info) {
-    quest_pacing::RuntimeCall const runtimeCall;
+    adapter::RuntimeCall const runtimeCall;
+    if (adapter::kFramesByEndFrame && !gPresentSeam.load(std::memory_order_relaxed)) {
+        return EndFrameAsFrameBoundary(session, info);
+    }
     if (!OnRenderThread()) {
         return gRealEndFrame(session, info);
     }
@@ -649,9 +673,6 @@ void WriteCapture() {
     }
     bool ok = WriteText(framesPath, frames) && WriteText(ticksPath, ticks) && WriteText(callsPath, calls);
 
-    MELEVR::Config::VrConfig const& h = MELEVR::Config::Get();
-    MELEVR::XrSession::ResolutionStats resolution;
-    MELEVR::XrSession::GetResolutionStats(&resolution);
     double const seconds = c.clocks.qpcFrequency > 0.0
         ? static_cast<double>(c.qpcEnd - c.clocks.originQpc) / c.clocks.qpcFrequency : 0.0;
     double const cycleSeconds = c.clocks.cycleFrequency > 0.0
@@ -665,10 +686,7 @@ void WriteCapture() {
         "\"syncEnd\": {}}},\n  \"gpuTimestamps\": {},\n  \"gpuFramesDropped\": {},\n  \"accessViolations\": {},\n"
         "  \"pid\": {},\n  \"renderThread\": {},\n  \"gameThread\": {},\n"
         "  \"renderThreadBusySeconds\": {{\"fromCycles\": {}, \"fromThreadTimes\": {}}},\n"
-        "  \"halcyon\": {{\"sfr2\": {}, \"dynResFraction\": {}, \"mirrorPresentEvery\": {}, \"stereoFramePacing\": {}, "
-        "\"cineFpsCap\": {}, \"disableDof\": {}, \"hudPanel\": {}, \"handReticle\": {}, \"sfr2Metric\": {}, "
-        "\"sfr2MetricEyeFrustum\": {}}},\n  \"renderLevers\": {},\n  \"upscale\": {},\n"
-        "  \"resolution\": {{\"render\": [{}, {}], \"eye\": [{}, {}], \"recommendedEye\": [{}, {}]}}\n}}\n",
+        "{}\n}}\n",  // the renderer's members: the host's adapter (plugin/PerfProbeHost.hpp)
         req::JsonString(c.stamp), req::JsonString(c.tag), req::JsonString(c.trigger), J(c.seconds), J(seconds),
         c.frames.size(), c.ticks.size(), req::JsonString(Utf8(framesPath.filename())),
         req::JsonString(Utf8(ticksPath.filename())), req::JsonString(Utf8(callsPath.filename())),
@@ -676,12 +694,7 @@ void WriteCapture() {
         gOverlappingPresents.load(std::memory_order_relaxed), c.contextChanges, c.clocks.originQpc, J(c.clocks.qpcFrequency), J(c.clocks.cycleFrequency),
         J(c.clocks.gpuFrequency), Sync(c.clocks.syncBegin, c.clocks), Sync(c.clocks.syncEnd, c.clocks),
         c.gpu ? "true" : "false", c.gpuDropped, c.accessViolations, GetCurrentProcessId(), c.renderThread, c.gameThread, J(cycleSeconds),
-        c.threadSwitches ? "null" : J(c.threadSecondsEnd - c.threadSecondsBegin), h.sfr2Enabled ? "true" : "false", J(h.dynResFraction),
-        h.mirrorPresentEvery, h.stereoFramePacing ? "true" : "false", h.cineFpsCap ? "true" : "false",
-        h.disableDof ? "true" : "false", h.hudPanel ? "true" : "false", h.handReticle ? "true" : "false",
-        h.sfr2Metric ? "true" : "false", h.sfr2MetricEyeFrustum ? "true" : "false", render_levers::SettingsJson(),
-        upscale::StatusJson(), resolution.renderWidth, resolution.renderHeight, resolution.eyeWidth, resolution.eyeHeight,
-        resolution.recommendedEyeWidth, resolution.recommendedEyeHeight);
+        c.threadSwitches ? "null" : J(c.threadSecondsEnd - c.threadSecondsBegin), adapter::RendererJson());
     ok = ok && WriteText(jsonPath, json);  // last: the scripts wait for it
     if (!ok) {
         log::Error("perf probe: writing {} failed", Utf8(dir / base));
@@ -711,7 +724,7 @@ void Mark(int point, ID3D11DeviceContext* context) {
     if (point <= fp::kStart || point >= fp::kPointCount || !OnRenderThread()) {
         return;
     }
-    if (quest_pacing::NextFramePhase()) {
+    if (adapter::NextFramePhase()) {
         switch (point) {
         case fp::kInputBegin: point = fp::kNextInputBegin; break;
         case fp::kInputEnd: point = fp::kNextInputEnd; break;
@@ -720,6 +733,22 @@ void Mark(int point, ID3D11DeviceContext* context) {
         }
     }
     Record(point, context);
+}
+
+void SeamPresentBegin(ID3D11DeviceContext* context) {
+    gPresentSeam.store(true, std::memory_order_relaxed);
+    Mark(fp::kPresent, context);
+}
+
+void SeamPresentEnd(ID3D11DeviceContext* context) {
+    Mark(fp::kEnd, context);
+    if (adapter::kFramesByEndFrame) {
+        adapter::FrameClosed(context);
+    }
+}
+
+void SeamFirstEyeCaptured(ID3D11DeviceContext* context) {
+    Mark(fp::kPass0, context);
 }
 
 GpuTiming LatestGpuTiming() {
@@ -878,78 +907,3 @@ Status GetStatus() {
 }
 
 } // namespace mevr::host::perf
-
-namespace MELEVR::MevrBridge {
-
-std::uint32_t g_perfDraws = 0;
-
-bool PerEyeViewState() noexcept {
-    return mevr::host::render_levers::PerEyeViewState();
-}
-
-bool EarlyFrameWait() noexcept {
-    static std::wstring path;
-    static std::uint64_t nextReadMs = 0;
-    static int value = -1;
-    std::uint64_t const now = GetTickCount64();
-    if (now >= nextReadMs) {
-        nextReadMs = now + 1000;
-        if (path.empty()) {
-            path = mevr::host::SettingsPath();  // <exe dir>\ASI\LE1MEVR.ini, as the mod
-        }
-        // `auto` (the default, or the key absent): the late wait for a streamed Meta headset, the early one for the rest. The
-        // owner's QA (2026-11-07, a Quest 3 over Steam Link and Quest Link): with the early wait the Quest dropped to half rate at
-        // a loading screen and never came back, although the game kept handing it 72 frames a second (SteamVR's CPU frame time
-        // read 13.76 of 13.89 ms); switched to the late wait live it climbed back to 72 at once, and after a later load it
-        // dropped and recovered. The PS VR2 needed the early wait to reach 90 (research/22, 2026-10-22).
-        wchar_t text[16] = L"";
-        if (!path.empty()) {
-            GetPrivateProfileStringW(L"Performance", L"earlyFrameWait", L"auto", text, static_cast<DWORD>(std::size(text)), path.c_str());
-        }
-        bool const automatic = text[0] == L'\0' || _wcsicmp(text, L"auto") == 0;
-        bool const streamed = mevr::host::colour::StreamedHeadset();
-        int const read = automatic ? (streamed ? 0 : 1) : (_wtoi(text) != 0 ? 1 : 0);
-        if (read != value) {
-            value = read;
-            mevr::log::Info("frame loop: {} ([Performance] earlyFrameWait = {}{})",
-                value != 0 ? "xrWaitFrame for the next frame right after xrEndFrame, before the game renders it"
-                           : "xrWaitFrame at Present, after the game rendered the frame (upstream)",
-                automatic ? "auto: " : "", automatic ? (streamed ? "a streamed Meta headset" : "not a streamed Meta headset")
-                                                     : (value != 0 ? "1" : "0"));
-        }
-    }
-    return value != 0;
-}
-
-void PerfPresentBegin(ID3D11DeviceContext* context) noexcept {
-    mevr::host::quest_pacing::PresentBegin();
-    mevr::host::perf::Mark(mevr::vr::frame_probe::kPresent, context);
-}
-
-void PerfPresentEnd(ID3D11DeviceContext* context) noexcept {
-    mevr::host::quest_pacing::PresentEnd();
-    mevr::host::perf::Mark(mevr::vr::frame_probe::kEnd, context);
-    mevr::host::render_levers::OnPresentEnd(context);
-#if defined(MEVR_WITH_MAIN_MENU)
-    mevr::host::main_menu::OnPresent();  // every Present, VR frame or not: an open menu nobody can see is closed
-#endif
-    mevr::host::voice::OnPresent();  // the push-to-talk key, the voice.request channel, the listen state
-}
-
-void PerfPass0Captured(ID3D11DeviceContext* context) noexcept {
-    mevr::host::perf::Mark(mevr::vr::frame_probe::kPass0, context);
-}
-
-void PerfPoint(int point) noexcept {
-    switch (point) {
-    case kPerfPreamble: mevr::host::perf::Mark(mevr::vr::frame_probe::kPreamble); break;
-    case kPerfFrameEntry: mevr::host::perf::Mark(mevr::vr::frame_probe::kFrameEntry); break;
-    case kPerfFrameReads: mevr::host::perf::Mark(mevr::vr::frame_probe::kFrameReads); break;
-    case kPerfFrameCine: mevr::host::perf::Mark(mevr::vr::frame_probe::kFrameCine); break;
-    case kPerfFramePrepared: mevr::host::perf::Mark(mevr::vr::frame_probe::kFramePrepared); break;
-    case kPerfFrameReady: mevr::host::perf::Mark(mevr::vr::frame_probe::kFrameReady); break;
-    default: break;
-    }
-}
-
-} // namespace MELEVR::MevrBridge

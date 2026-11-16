@@ -89,6 +89,24 @@ class ProbeTests(unittest.TestCase):
         self.assertAlmostEqual(m['copies'], .5)
         self.assertAlmostEqual(m['render_work'], 3.79)
 
+    def test_frame_bounded_by_end_frame(self):
+        # A sequel's host without a Present seam (research/sequel-render-levers.md): the frame is xrEndFrame's return to
+        # the next one's, with the submit's marks and the GPU's stamps at its start, the submit and its end. The steps it
+        # lacks stay empty; nothing raises.
+        row = {'t_start': 0, 't_present': 12.0, 't_end_frame_begin': 12.0, 't_end_frame_end': 12.4, 't_end': 12.4,
+               'busy_start': 0, 'busy_present': 7.5, 'busy_end_frame_begin': 7.5, 'busy_end_frame_end': 7.6, 'busy_end': 7.6,
+               'gpu_valid': 1, 'gpu_start': 1.0, 'gpu_present': 13.0, 'gpu_end_frame_begin': 13.0, 'gpu_end': 13.5,
+               'xr_frame': 1}
+        m = probe.frame_metrics(row)
+        self.assertAlmostEqual(m['interval'], 12.4)
+        self.assertAlmostEqual(m['game_busy'], 7.5)
+        self.assertAlmostEqual(m['end_frame'], .4)
+        self.assertAlmostEqual(m['render_work'], 7.5)   # the frame's busy time without the submit's
+        self.assertAlmostEqual(m['lag_present'], 1.0)
+        self.assertIsNone(m.get('left_wall'))
+        self.assertIsNone(m['wait_wall'])
+        self.assertIsNone(m['draws'])
+
 
 if __name__ == '__main__':
     unittest.main()
