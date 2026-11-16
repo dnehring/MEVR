@@ -259,7 +259,7 @@ DWORD WINAPI HookedXInputGetState(DWORD idx, XINPUT_STATE* state) noexcept
 {
     DWORD r = g_origXInput ? g_origXInput(idx, state) : ERROR_DEVICE_NOT_CONNECTED;
 #if defined(MEVR_ASI)
-    r = ::ME2VR::MevrBridge::MergeMotionControllers(idx, state, r);  // [MEVR] Touch -> Xbox pad 0
+    r = ::MevrSeams::MergeMotionControllers(idx, state, r);  // [MEVR] Touch -> Xbox pad 0
 #endif
     CaptureLeftStick(state, r, idx);
     CheckR3Recenter(state, r, idx);
@@ -280,7 +280,7 @@ DWORD WINAPI HookedXInputGetStateEx(DWORD idx, XINPUT_STATE* state) noexcept
     DWORD r = g_origXInputEx ? g_origXInputEx(idx, state)
                              : (g_origXInput ? g_origXInput(idx, state) : ERROR_DEVICE_NOT_CONNECTED);
 #if defined(MEVR_ASI)
-    r = ::ME2VR::MevrBridge::MergeMotionControllers(idx, state, r);  // [MEVR] Touch -> Xbox pad 0
+    r = ::MevrSeams::MergeMotionControllers(idx, state, r);  // [MEVR] Touch -> Xbox pad 0
 #endif
     CaptureLeftStick(state, r, idx);
     CheckR3Recenter(state, r, idx);
@@ -894,7 +894,7 @@ void SeedVirtualMouse() noexcept
 LRESULT CALLBACK MenuWndProc(HWND h, UINT msg, WPARAM w, LPARAM l)
 {
 #if defined(MEVR_ASI)
-    if (g_open || ::ME2VR::MevrBridge::MainMenuOpen())  // [MEVR] our main menu blocks the desktop's input too, as on ME1
+    if (g_open || ::MevrSeams::MainMenuOpen())  // [MEVR] our main menu blocks the desktop's input too, as on ME1
 #else
     if (g_open)
 #endif
@@ -926,7 +926,7 @@ void PollInsert() noexcept
     const bool down = ::ME2VR::MevrBridge::HotkeyDown(g_menuKey);  // [MEVR] game window only
 #if defined(MEVR_ASI)
     // [MEVR] The key opens our main menu (plugin/MainMenu); with Ctrl or Shift held, or while this menu is open, this one.
-    if (down && !g_insertWasDown && ::ME2VR::MevrBridge::OnMenuKey(g_open)) { g_insertWasDown = down; return; }
+    if (down && !g_insertWasDown && ::MevrSeams::OnMenuKey(g_open)) { g_insertWasDown = down; return; }
 #endif
     if (down && !g_insertWasDown)
     {

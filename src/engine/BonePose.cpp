@@ -312,6 +312,65 @@ SupportSample ApplySupport(Support const& s, double handScale, ik::ArmGoal& left
     return out;
 }
 
+// ---- Root-motion steps between the goals and the write (GoalFrame, StepRule; research/le2-vrik.md) ----------------------
+
+SRWLOCK gStepLock = SRWLOCK_INIT;
+StepSettings gStepSettings;  // under gStepLock
+StepStats gStepStats;        // under gStepLock
+std::atomic<int> gStepLines{0};
+constexpr int kMaxStepLines = 60;  // detailed lines per process (a vault has three big steps), then only the heartbeat's counts
+constexpr double kStepLineUnits = 20.0;  // a detailed line for a step past this (the vault's: 20-113 units); every one is counted
+
+std::string Text(ik::Vec3 const& v) {
+    return std::format("({:.1f}, {:.1f}, {:.1f})", v.x, v.y, v.z);
+}
+
+// The step between the goals' frame and this call (component now <- component then), or nullopt: none, or below the rule's
+// `units`, or the rule off. Logs the first kMaxStepLines steps seen in detail, whatever the rule.
+std::optional<ik::Transform> StepSince(Request const& request, Mesh const* mesh, std::span<ik::Transform const> pose) {
+    GoalFrame const& f = request.frame;
+    if (!f.valid) {
+        return std::nullopt;
+    }
+    AcquireSRWLockShared(&gStepLock);
+    StepSettings const settings = gStepSettings;
+    ReleaseSRWLockShared(&gStepLock);
+    int const count = static_cast<int>(pose.size());
+    ik::StepInput in;
+    in.rule = settings.rule;
+    in.units = settings.units;
+    in.viewOnAnchor = f.viewOnAnchor;
+    in.componentThen = f.componentToWorld;
+    in.componentNow = skeleton::LocalToWorld(mesh);
+    in.anchorKnown = f.anchor >= 0 && f.anchor < count && skeleton::RefBoneKey(mesh, f.anchor) == f.anchorKey;
+    in.anchorThen = f.anchorAt;
+    in.anchorNow = in.anchorKnown ? pose[static_cast<std::size_t>(f.anchor)].translation : ik::Vec3{};
+    ik::Step const step = ik::FindStep(in);
+    AcquireSRWLockExclusive(&gStepLock);
+    ++gStepStats.writes;
+    gStepStats.steps += step.seen ? 1 : 0;
+    gStepStats.corrected += step.toNow ? 1 : 0;
+    if (std::isfinite(step.anchorUnits)) {
+        gStepStats.maxAnchorUnits = (std::max)(gStepStats.maxAnchorUnits, step.anchorUnits);
+        ++gStepStats.byAnchor[step.anchorUnits < 1.0 ? 0 : step.anchorUnits < 5.0 ? 1 : step.anchorUnits < 20.0 ? 2 : 3];
+    }
+    if (std::isfinite(step.componentUnits)) {
+        gStepStats.maxComponentUnits = (std::max)(gStepStats.maxComponentUnits, step.componentUnits);
+    }
+    ReleaseSRWLockExclusive(&gStepLock);
+    if (step.seen && step.anchorUnits > kStepLineUnits && gStepLines.fetch_add(1, std::memory_order_relaxed) < kMaxStepLines) {
+        bool const rooted = f.root >= 0 && f.root < count;
+        ik::Vec3 const rootMove = rooted ? pose[static_cast<std::size_t>(f.root)].translation - f.rootAt : ik::Vec3{};
+        log::Info("arm IK: a step between the goals and the write: the camera's bone moved {:.1f} units {} and the root {} in "
+                  "component space, the mesh {:.1f} units in the world; rule {}{}: {}",
+            step.anchorUnits, Text(step.anchorMove), rooted ? Text(rootMove) : std::string("(unknown)"), step.componentUnits,
+            StepRuleName(settings.rule), f.viewOnAnchor ? "" : " (the view isn't on it)",
+            step.toNow ? std::format("the goals solved {:.1f} units off, in their own frame", ik::Length(step.toNow->translation))
+                       : std::string("the goals as published"));
+    }
+    return step.toNow;
+}
+
 // Copies the request for `self`, or false if there's nothing to write for it.
 bool TakeRequest(Mesh const* self, Request& copy) {
     void const* const owner = OwnerOf(self);
@@ -355,6 +414,7 @@ bool TakeRequest(Mesh const* self, Request& copy) {
         copy.keepKeys.assign(gRequest.keepKeys.begin(), gRequest.keepKeys.end());
         copy.bodyScale = gRequest.bodyScale;
         copy.eyes = gRequest.eyes;
+        copy.frame = gRequest.frame;
     }
     ReleaseSRWLockShared(&gRequestLock);
     if (stale != nullptr) {
@@ -419,12 +479,6 @@ void Write(Mesh* self, float deltaTime) {
     pose.resize(bases.size());
     for (std::size_t i = 0; i < bases.size(); ++i) {
         pose[i] = skeleton::ToTransform(bases[i]);
-    }
-    // The kept bones as the animation left them, to tell whether a solve moved one.
-    thread_local std::vector<ik::Transform> kept;
-    kept.clear();
-    for (int bone : request.keep) {
-        kept.push_back(pose[bone]);
     }
     // The body's scale (research/58). The animated pose is unscaled (the animation recomposed it): its floor (the lowest
     // bone not kept) and Shepard's eyes above it go to the mod for the factor. The goals are in the scaled world: through the
@@ -492,6 +546,28 @@ void Write(Mesh* self, float deltaTime) {
         gAnimatedHands = {left, pose[rightHand]};
         gHandsTimeMs = GetTickCount64();
         ReleaseSRWLockExclusive(&gSampleLock);
+    }
+    // A step between the goals and this call (GoalFrame, StepRule; research/le2-vrik.md "Arm IK across root-motion steps"):
+    // everything below is solved in the goals' own frame (the animated pose moved there) and moved back before the write. The
+    // samples above stay in this call's frame (the mod reads them with the next tick's LocalToWorld).
+    std::optional<ik::Transform> const step = StepSince(request, mesh, pose);
+    if (step) {
+        ik::Transform const back = ik::Inverse(*step);
+        for (ik::Transform& bone : pose) {
+            bone = ik::Compose(bone, back);
+        }
+        animatedFloorZ = std::numeric_limits<double>::infinity();
+        for (int i = 0; i < count; ++i) {
+            if (std::find(request.keep.begin(), request.keep.end(), i) == request.keep.end()) {
+                animatedFloorZ = (std::min)(animatedFloorZ, pose[static_cast<std::size_t>(i)].translation.z);
+            }
+        }
+    }
+    // The kept bones as the animation left them, to tell whether a solve moved one.
+    thread_local std::vector<ik::Transform> kept;
+    kept.clear();
+    for (int bone : request.keep) {
+        kept.push_back(pose[bone]);
     }
     int first = count;
     ik::BodyFrame body = request.body;
@@ -742,6 +818,21 @@ void Write(Mesh* self, float deltaTime) {
     if (movedKept) {
         gKeptMoves.fetch_add(1, std::memory_order_relaxed);
         gTotalKeptMoves.fetch_add(1, std::memory_order_relaxed);
+    }
+    if (step) {
+        // Back into this call's frame: what is written (the bones from `first` on) and what this call's kick sample says.
+        for (int i = first; i < count; ++i) {
+            pose[static_cast<std::size_t>(i)] = ik::Compose(pose[static_cast<std::size_t>(i)], *step);
+        }
+        if (kickSample.posed) {
+            kickSample.hand = ik::Normalize(step->rotation * kickSample.hand);
+        }
+        if (kickSample.kicked) {
+            ik::gun_kick::Written& w = kickSample.kick;
+            w.rotation = ik::Normalize(step->rotation * w.rotation * ik::Conjugate(step->rotation));
+            w.pivot = ik::Apply(*step, w.pivot);
+            w.translation = ik::Rotate(step->rotation, w.translation);
+        }
     }
     for (int i = first; i < count; ++i) {
         if (std::find(request.keep.begin(), request.keep.end(), i) == request.keep.end()) {
@@ -1392,6 +1483,34 @@ void Publish(Request request) {
     gMesh.store(gBroken.load() ? nullptr : mesh, std::memory_order_release);
 }
 
+void SetStepSettings(StepSettings settings) {
+    AcquireSRWLockExclusive(&gStepLock);
+    gStepSettings = settings;
+    ReleaseSRWLockExclusive(&gStepLock);
+}
+
+StepSettings GetStepSettings() {
+    AcquireSRWLockShared(&gStepLock);
+    StepSettings const settings = gStepSettings;
+    ReleaseSRWLockShared(&gStepLock);
+    return settings;
+}
+
+char const* StepRuleName(StepRule rule) {
+    switch (rule) {
+    case StepRule::Off: return "off";
+    case StepRule::Camera: return "camera";
+    }
+    return "?";
+}
+
+StepStats GetStepStats() {
+    AcquireSRWLockShared(&gStepLock);
+    StepStats const stats = gStepStats;
+    ReleaseSRWLockShared(&gStepLock);
+    return stats;
+}
+
 void Clear() {
     gMesh.store(nullptr, std::memory_order_release);
     AcquireSRWLockExclusive(&gRequestLock);
@@ -1591,6 +1710,16 @@ void LogStats() {
     log::Info("    arm IK writeback: {} UpdateSkelPose calls, {} for the player mesh (from{}; threads{}), {} written, {} rejected{}{}",
         calls, player, callers, threads, writes, rejects, lastReject != nullptr ? std::format(" (last: {})", lastReject) : "",
         gBroken.load() ? ", STOPPED after a fault" : "");
+    static std::uint64_t loggedSteps = 0;  // the heartbeat's thread
+    if (StepStats const steps = GetStepStats(); steps.steps != loggedSteps) {
+        loggedSteps = steps.steps;
+        StepSettings const settings = GetStepSettings();
+        log::Info("    arm IK writeback: {} steps between the goals and the write in {} writes since the hook went in (the camera's "
+                  "bone up to {:.1f} units, the mesh up to {:.1f}; by the bone's move: {} under 1 unit, {} 1-5, {} 5-20, {} past 20), {} "
+                  "solved in the goals' frame (rule {}, past {:.0f} units)",
+            steps.steps, steps.writes, steps.maxAnchorUnits, steps.maxComponentUnits, steps.byAnchor[0], steps.byAnchor[1],
+            steps.byAnchor[2], steps.byAnchor[3], steps.corrected, StepRuleName(settings.rule), settings.units);
+    }
     if (keptMoves > 0) {
         log::Warn("    arm IK writeback: {} writes moved a camera hook bone (Camera/God) in the solve; kept animated, not "
                   "written ({} since the hook went in)",

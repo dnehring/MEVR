@@ -192,7 +192,8 @@ between launches); the snapshot's new `"traversal"` block says `started: false`,
 
 ## What is left
 
-- **Arm IK across root-motion steps** (above): the goals should stay in the world when the mesh jumps; lane C's writer.
+- ~~Arm IK across root-motion steps~~ **done** (lane C2, 2026-11-15; research/le2-vrik.md "Arm IK across root-motion steps"): the
+  writer follows the camera's bone; through three vaults both wrists stay within 0.08 m of the controllers (0.07 standing).
 - **The grips on ME2:** a held right grip is the pad's RB on ME2 today (the power wheel after 0.3 s; the LE2 host has no `gripHolds`
   yet), and the left grip LB (the weapon wheel). A vault with the gun held by a grip waits for the holsters' and the support grip's
   host services on LE2; nothing in the vault needs a free hand (it is A and where the player stands).

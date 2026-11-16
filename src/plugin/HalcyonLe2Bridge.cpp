@@ -35,6 +35,7 @@
 #include "plugin/HudPieceLayers.hpp"
 #include "plugin/MenusLe2.hpp"
 #include "plugin/PadMerge.hpp"
+#include "plugin/RecenterTilt.hpp"
 #include "plugin/Renderer.hpp"
 #include "plugin/Voice.hpp"
 #include "plugin/Swapchains.hpp"
@@ -260,6 +261,7 @@ namespace MevrSeams {
 void OnRecentered() noexcept {
     gGalaxyTable.Reset();
     gGalaxyPanel.reset();
+    mevr::host::recenter_tilt::Committed();  // the orientation RecenterOrientation chose is the app space's now
     mevr::host::xr_host::NoteRecentered();
     mevr::host::sequel_squad_layers::Recentered();
     mevr::host::hud_panel::Recentered();  // the HUD panel straight ahead again
@@ -456,6 +458,7 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
         gScreen = ScreenNow{};
         return 0;
     }
+    mevr::host::recenter_tilt::NoteHead(frame.headOrientation, frame.headValid);  // the tilt-correcting recenter's watch
     unsigned count = 0;
     ID3D11Device* device = nullptr;
     frame.context->GetDevice(&device);
