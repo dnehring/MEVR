@@ -1,6 +1,11 @@
 <!-- SPDX-License-Identifier: MIT -->
 # ME3 unified-mod goal: complete status and resumption handoff
 
+> **The work list is [docs/trilogy-plan.md](trilogy-plan.md)** (since 2026-11-16: one list for all three games, keyed by
+> feature). This document stays as the record of ME3's checkpoint `0f02fd38`: the work history, the evidence behind each
+> milestone and the order its author suggested for resuming. Pick work from the trilogy plan; its "Where the old plans'
+> items went" maps the remaining work here to features there.
+
 Status as of 2026-11-15, implementation checkpoint **`0f02fd38`**.
 The user paused and then cleared the goal. This document records work and remaining requirements;
 it does not resume implementation, authorize a game session, or claim release readiness.

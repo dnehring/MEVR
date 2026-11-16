@@ -1,6 +1,11 @@
 <!-- SPDX-License-Identifier: MIT -->
 # ME2 as a continuation of ME1: the plan
 
+> **The work list is [docs/trilogy-plan.md](trilogy-plan.md)** (since 2026-11-16: one list for all three games, keyed by
+> feature). This document stays as the record of ME2's milestones M1-M7, the owner's answers of 2026-11-14 and the
+> evidence of each integration. Pick work from the trilogy plan; its "Where the old plans' items went" maps every
+> milestone here to a feature there.
+
 Date: 2026-11-14, against main `544067a3`; the owner's answers to its questions the same day (below). The why and the
 evidence are in [ME2 from ME1](le2-from-le1.md) (sections 0 and 4) and
 [research/le2-renderer-integration.md](../research/le2-renderer-integration.md); this is the work list. Each step names its

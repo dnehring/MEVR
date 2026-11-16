@@ -3,6 +3,9 @@
 > **Historical plan (2026-10-07).** The current design is in [CLAUDE.md](../CLAUDE.md) and [research/](../research/README.md).
 > For the current ME3 port, use the [implementation plan](le3-port-implementation-plan.md) and
 > [source reuse audit](le3-port-reuse-audit.md); this document's proposed layout and feature table are historical.
+>
+> **The work list is [docs/trilogy-plan.md](trilogy-plan.md)** (since 2026-11-16). This document stays as the record of
+> the first trilogy design (2026-10-07) and, in its change log below, of every game-mechanic change made for VR.
 
 **Principle:** LE1, LE2 and LE3 share one VR interaction model. When a game's mechanics don't fit
 VR, or differ from the other two in a way that would split the design, we **change the mechanic**

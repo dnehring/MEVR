@@ -1,6 +1,12 @@
 <!-- SPDX-License-Identifier: MIT -->
 # ME3 implementation plan for the unified MEVR mod
 
+> **The work list is [docs/trilogy-plan.md](trilogy-plan.md)** (since 2026-11-16: one list for all three games, keyed by
+> feature). This document stays as the record of ME3's packages L3-0 to L3-10, its implementation ledger with the native
+> evidence of each run, and the fixture matrix. Its architecture contract is carried into the trilogy plan as rules for
+> all three games. Pick work from the trilogy plan; its "Where the old plans' items went" maps every package here to a
+> feature there.
+
 Date: 2026-11-15. Audit baseline: committed main `7a3a1158`. Status: **implementation underway; native ME3 acceptance
 pending** (see the ledger below). Scope: Legendary Edition single-player ME3, including its included DLC. This extends
 the same mod used in ME1 and ME2; it is not a separate VR product.

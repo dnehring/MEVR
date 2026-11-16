@@ -1290,6 +1290,8 @@ if (MEVR_BUILD_TESTS)
     add_test(NAME mevr-stereo-pose-tag COMMAND mevr-stereo-pose-tag-tests)
     add_executable(mevr-mod-reload-tests tests/ModReloadTests.cpp)
     target_include_directories(mevr-mod-reload-tests PRIVATE src)
+    # ModLoader.cpp reaches core/vr/GalaxyHologram.hpp, which names OpenXR types (headers only).
+    target_link_libraries(mevr-mod-reload-tests PRIVATE OpenXR::headers)
     target_compile_definitions(mevr-mod-reload-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN MEVR_GAME_LE3 MEVR_NO_LESDK)
     target_compile_options(mevr-mod-reload-tests PRIVATE /W4 /WX /utf-8)
     add_test(NAME mevr-mod-reload COMMAND mevr-mod-reload-tests)

@@ -794,3 +794,44 @@ Ask Claude to run them when the machine is free; each is a console command, a sn
 - Reflection: `reflect: N of N checks agree`, then mark research/34's stages verified. (research/34)
 - Installer: our loader on the real game (Steam, EA app), Repair after Steam's verify, Uninstall byte for byte; the
   Launch button; "Install after I quit"; Report a problem; the first start of a never-started game. (research/33)
+
+## 8. The sequels, gathered from the plans (2026-11-16)
+Headset checks the ME2 and ME3 plans named that had no line here (ME3 had none at all). Gathered for
+[docs/trilogy-plan.md](../docs/trilogy-plan.md) "Headset-only checks"; T-numbers are its features. ME2's earlier lines
+stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs the feature seen working by script first.
+
+### ME2
+- [ ] Stereo (T06; research/sequel-eye-pose-tags.md): both eyes fuse while still and while turning, through menu and
+  resume; no doubled or swimming scenery.
+- [ ] Floor lock and height (T21; research/le2-renderer-integration.md "What is left of M2"): the eye height standing,
+  seated and physically crouched; the calibration's manual height once it is wired.
+- [ ] Guided calibration (T27): the whole run with each controller type; the fake headset has no interaction profile, so
+  only a headset can show it.
+- [ ] Wrist status and the gun's panel (T41; research/41 "ME2's ammo display"): readable on small and large guns, after a
+  weapon swap and after an ammo power.
+- [ ] Comfort and sprint (T30, T32; docs/le2-m6-native-checks.md): snap turns, walking toward the hand, the vignette;
+  Storm's heading and its release.
+- [ ] Powers (T44; research/55 "Mass Effect 2"): the push at a hostile, the chest and gun gestures' targets, the coach card.
+- [ ] Squad (T45, T46): the weapon menu at the left hand, the placement ring and arc, a hold and a call back.
+- [ ] Voice and Thespian (T47, T48): a real microphone at the ear; the reply panel's place and legibility on the cinema
+  screen.
+- [ ] Galaxy map (T42; docs/le2-m6-implementation-guide.md G): table or projector alignment, labels in both eyes, seated
+  reach, scanning comfort.
+- [ ] A streamed Quest (T10): full rate after a load, with no runtime setting changed.
+
+### ME3
+- [ ] Stereo (T06; research/sequel-eye-pose-tags.md, research/le3-renderer-preview-evidence.md): both eyes fuse while
+  still and turning, through menu, recenter and a reload.
+- [ ] Hands and the gun (T21, T22; research/le3-body-pose.md): the raw controller against Shepard's hand (place, twist,
+  reach), the gun in the grip, the two-handed support, standing and seated.
+- [ ] Sights (T24): the eye box of the dot and the scope per weapon and optic mod.
+- [ ] Menus (T37-T39; research/le3-native-gui.md): our menu, calibration, the rail and wrist projection, the game's
+  screens and the pointer.
+- [ ] Cinema (T15; research/le3-dialogue-cinema.md): the screen fixed in the room, the reply wheel and subtitles readable,
+  the interrupt prompt and its triggers.
+- [ ] Melee and traversal (T34, T33; research/le3-melee-audit.md, research/le3-traversal-adapter.md): no accidental
+  strike while handling the gun; the horizon and heading through a ladder, a vault and a roll.
+- [ ] Galaxy projector (T42; docs/galaxy-projector-handoff.md step 4): alignment with the physical projector, legibility,
+  comfort, GPU cost.
+- [ ] Performance (T07, T10; docs/me3-overall-goal-handoff.md section 4): frame pacing in a real headset; the desktop
+  mirror's cadence and the null driver's rate say nothing about it.
