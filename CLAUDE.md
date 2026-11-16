@@ -1275,7 +1275,11 @@ switching frameworks.
   `BlitTextureToEyeWithFill`, `MevrBridge::EyeUpscale` in `plugin/Upscale`, the math and shader text in
   `core/vr/Upscale` (unit-tested), AMD's MIT headers in `external/fsr1` embedded at build time. Offline look and
   check: `mevr-upscale-preview` (PNGs; `--check` is ctest `mevr-upscale-shader`; `--bench` times an eye). Log
-  `upscale:`; the probe JSON's `"upscale"`.
+  `upscale:`; the probe JSON's `"upscale"`. **One eye-image pipeline on all three games** (2026-11-16, lane EY,
+  [research/27](research/27-colour.md) section 9): the sequels' `plugin/EyeCopy` runs the same colour, dither, tonemap and
+  FSR code with the same `[Colour]`/`[Upscale]` keys and defaults, and the common seam `MevrSeams::EyeImageSize` makes
+  their eye images the headset's size when FSR is on (else the backbuffer's, a raw copy); one `hdrDisplay` policy
+  (`hdr_display::Answer`). LE1 still reaches the shared code through its own blit seams (section 9.3 says how to move it).
 - LE1 performance modes ([research/60](research/60-performance-modes.md), 2026-11-06, the owner: "better performance modes in
   our settings"; `core/vr/PerformanceModes`, unit-tested; `plugin/MainMenuSettings`): Display's **Performance** row, Quality /
   Balanced / Performance, each a bundle measured at Eden Prime's heavy cells: the render resolution chip (headset, × 0.85,
