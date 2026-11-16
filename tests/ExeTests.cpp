@@ -208,6 +208,21 @@ void TestTables() {
              a2::kGNatives}) {
         CHECK(listed(a2::kTable, rva));
     }
+    // plugin/RenderLevers finds each of its addresses by the row's name, and the names are LE1's (research/
+    // sequel-render-levers.md "ME2"): every LE1 "render levers" row has an ME2 row of the same name and kind.
+    for (exe::Entry const& lever : a1::kTable) {
+        if (std::strcmp(lever.user, "render levers") != 0) {
+            continue;
+        }
+        bool found = false;
+        for (exe::Entry const& e : a2::kTable) {
+            found = found || (std::strcmp(e.name, lever.name) == 0 && e.kind == lever.kind);
+        }
+        if (!found) {
+            std::printf("FAIL exe tests: LE2 has no \"%s\" row (LE1's render-lever row)\n", lever.name);
+            ++gFailures;
+        }
+    }
     namespace a3 = engine::addresses::le3;
     for (std::uint32_t rva : {a3::kProcessEvent, a3::kCallFunction, a3::kGameEngineTick, a3::kCalcSceneView,
              a3::kViewportDraw, a3::kViewportDrawEnd, a3::kUpdateSkelPose, a3::kGObjects, a3::kNamePools,
