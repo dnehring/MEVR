@@ -772,6 +772,28 @@ about stutter or pacing in a real headset.
 
 Each is asked once. "Today" is what the build does if nobody answers; no default changes without a yes (rule 19).
 
+**Answered 2026-11-16 (evening)** (the owner's words in quotes; the questions below stay for the record):
+
+- **2, faster shield recharge in VR cover:** "Faster recharge behind cover, yes." Lane GR builds it; how "in cover" is judged
+  outside a shot is GR's reported choice.
+- **4, ME2's first release:** "It should always be life sized stereo for all games." T09 is required for every game's
+  release (lane LS); one-Draw (T08) is not required.
+- **5, ME3's release bar:** "Release is in alpha, so we'll be doing more work to get feature parity." ME3 ships as an
+  alpha on a subset like ME2, parity after.
+- **6, sprint:** "Unified sprint." One sprint rule for all games (lane GR).
+- **7, ME3's roll/evade input:** "I'm curious if the analog direction will allow vault and roll." Lane GR researches
+  whether the stick's direction can tell a vault from a roll; nothing is built before the owner reads the design.
+- **8, Thespian on the sequels:** "Thespian is experimental, same with first person." Offered as experimental on the
+  sequels, as on ME1, and first-person conversations too.
+- **10 (lane U3's), our quads under our menu:** keep them hidden on every game (today's behaviour).
+- **The second eye and dynamic shadows:** settings may differ per game ("I imagine we'd want to consider second-eye
+  settings per game if they are all so different"), and "With our me1 second eye logic it breaks the dynamic shadows.
+  So if we go down that path then we will need to disable dynamic shadows." Lane SP measures each option per game with
+  and without dynamic shadows.
+- **Earlier the same day:** the sequels' sights use ME1's systems for now; vaulting with a two-handed hold is allowed, with
+  one hand to be considered ("The controls could get sloppy"; lane C4 compares); the trigger never draws a holstered
+  weapon in any game; "Ideally I want everything consistent" (a per-game difference needs a reason the game forces).
+
 **Asked by the plans and never answered**
 
 1. **The picture defaults on ME2** (research/le2-picture.md section 5; the same question comes to ME3).
