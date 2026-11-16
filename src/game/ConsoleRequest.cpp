@@ -39,6 +39,7 @@
 #include "game/Le3Galaxy.hpp"
 #include "game/Le3GalaxyProjector.hpp"
 #include "game/Le3GalaxyRetention.hpp"
+#include "game/Le3GalaxyCapture.hpp"
 #include "game/PowerWheel.hpp"
 #include "game/SoundPlace.hpp"
 #include "game/Spectator.hpp"
@@ -1776,12 +1777,12 @@ std::optional<std::string> RunOursLe3(ue3::Object* pc, std::string const& line) 
             return "mevr galaxy: " + json::Write(le3_galaxy::Observe(pc), 0);
         if (action == "projector" && !(words >> extra))
             return "mevr galaxy projector: " + json::Write(le3_galaxy::ObserveProjector(pc), 0);
-        if (action == "retain") {
+        if (action == "retain" || action == "capture") {
             std::string option, trailing;
             words >> option;
-            if (!(words >> trailing)) return le3_galaxy_retention::Command(pc, option);
+            if (!(words >> trailing)) return action == "capture" ? le3_galaxy_capture::Command(pc, option) : le3_galaxy_retention::Command(pc, option);
         }
-        return "mevr galaxy: state | projector (read-only) | retain on|off|state (bounded CIC diagnostic)";
+        return "mevr galaxy: state | projector (read-only) | (retain|capture) on|off|state (bounded CIC diagnostics)";
     }
     if (verb == "melee" || verb == "traversal") {
         std::string rest; std::getline(words, rest);

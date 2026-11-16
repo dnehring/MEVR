@@ -42,6 +42,7 @@
 #include "plugin/MotionBlurGuard.hpp"
 #include "plugin/GameThreadCalls.hpp"
 #include "plugin/HalcyonLe3.hpp"
+#include "plugin/Le3SceneCapture.hpp"
 #endif
 #if defined(MEVR_WITH_MAIN_MENU)
 #include "plugin/SetupRequest.hpp"
@@ -257,7 +258,10 @@ extern "C" __declspec(dllexport) bool SpiOnAttach(spi::Interface* InterfacePtr) 
 #endif
 #if defined(MEVR_WITH_HALCYON_LE3)
     gEngineProbe = mevr::engine::DevelopmentEngineProbe();
-    if (!gEngineProbe) mevr::host::halcyon_le3::Attach();
+    if (!gEngineProbe) {
+        mevr::host::le3_scene_capture::Attach(init);
+        mevr::host::halcyon_le3::Attach();
+    }
     else mevr::log::Info("engine-probe: host renderer disabled");
 #endif
     if (InterfacePtr == nullptr) {

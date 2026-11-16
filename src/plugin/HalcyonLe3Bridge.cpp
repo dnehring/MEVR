@@ -18,6 +18,7 @@
 #include "plugin/TraversalCue.hpp"
 #include "plugin/TraversalPresentation.hpp"
 #include "plugin/HalcyonLe3.hpp"
+#include "plugin/GalaxyHologram.hpp"
 #include "plugin/TransitionFade.hpp"
 #include "plugin/HudPanel.hpp"
 #include "plugin/HdrDisplayPolicy.hpp"
@@ -452,6 +453,19 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** out, unsigned cap
     gThespianContextMs.store(spoken.othersOwnInput ? 0 : GetTickCount64(), std::memory_order_release);
     if (auto const* layer = mevr::host::thespian::Layer(spoken)) out[count++] = layer;
 #endif
+    // The shared ME1 stereo map window; LE3's native adapter supplies measured
+    // projector geometry and its own map captures. Explicit diagnostic only.
+    if (capacity - count >= 2) {
+        mevr::host::galaxy_hologram::Frame galaxy;
+        galaxy.session = static_cast<XrSession>(frame.session);
+        galaxy.appSpace = static_cast<XrSpace>(frame.appSpace);
+        galaxy.context = frame.context; galaxy.device = device;
+        galaxy.gameMode = frame.gameMode; galaxy.menuOpen = gameplay.menuOpen;
+        galaxy.headValid = frame.headValid; galaxy.head = panel.head;
+        XrCompositionLayerBaseHeader const* layers[2]{};
+        int const n = mevr::host::galaxy_hologram::WindowLayers(galaxy, layers);
+        for (int i = 0; i < n; ++i) out[count++] = layers[i];
+    }
     count = mevr::host::menus_le2::Layers(frame, device, out, count, capacity);
     {
         std::lock_guard lock(gPadMutex);

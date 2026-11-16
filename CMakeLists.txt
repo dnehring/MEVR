@@ -627,6 +627,8 @@ set(MEVR_MOD_SOURCES
     src/game/SceneCaptureRig.cpp
     src/game/Le3GalaxyRetention.cpp
     src/game/Le3GalaxyRetention.hpp
+    src/game/Le3GalaxyCapture.cpp
+    src/game/Le3GalaxyCapture.hpp
     src/game/Spectator.hpp
     src/game/Sights.cpp
     src/game/Sights.hpp
@@ -1072,6 +1074,7 @@ function(mevr_add_plugin game)
         set(with_halcyon_le3 ON)
         # One shared controller/floor/input/capture implementation. Gameplay/UI service ports are separate gates.
         list(APPEND host_sources src/plugin/HalcyonLe3.cpp src/plugin/HalcyonLe3.hpp
+            src/plugin/Le3SceneCapture.cpp src/plugin/Le3SceneCapture.hpp src/plugin/SceneCaptureTarget.hpp
             src/plugin/MotionBlurGuard.cpp src/plugin/MotionBlurGuard.hpp
             src/plugin/HalcyonLe3Bridge.cpp src/plugin/RendererLe3.cpp src/halcyon/le3/mevr_bridge.h
             src/plugin/HdrDisplayPolicy.cpp src/plugin/HdrDisplayPolicy.hpp
@@ -1097,6 +1100,7 @@ function(mevr_add_plugin game)
             src/plugin/ScopeCaptureSource.cpp src/plugin/SightLayers.cpp src/plugin/SightPictures.cpp
             src/core/vr/PowerWheel.cpp src/core/vr/SquadPlace.cpp src/core/vr/InteractLabel.cpp
             src/plugin/SquadPlaceDraw.cpp src/plugin/GalaxyHologramDraw.cpp src/core/vr/GalaxyHologram.cpp
+            src/plugin/GalaxyHologram.cpp
             src/core/vr/GalaxyMap.cpp src/core/vr/GalaxyMap.hpp
             src/core/vr/SquadMenu.cpp src/plugin/SquadPanel.cpp src/plugin/SquadPanelDraw.cpp
             src/plugin/PowerWheel.cpp src/plugin/PowerWheelDraw.cpp src/plugin/PowerIcons.cpp src/plugin/Glow.cpp

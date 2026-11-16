@@ -312,6 +312,13 @@ inline constexpr Entry kTable[] = {
 
 MEVR_ADDRESSES_LE3 {
 
+// Capture loop and post-effect target contract, verified in the 60AEF0C4 dump.
+inline constexpr std::uint32_t kCaptureScene = 0x344540;
+inline constexpr std::uint32_t kCaptureRender = 0x365370;
+inline constexpr std::uint32_t kCaptureRenderUmbra = 0x3685C0;
+inline constexpr std::uint32_t kBeginBackbuffer = 0x36D760;
+inline constexpr std::uint32_t kDynamicRhi = 0x1894018;
+
 // Native tier evaluation, void(this, int force), before streaming queues are
 // classified. Ghidra from the installed 60AEF0C4 dump; research/le3-galaxy.md.
 inline constexpr std::uint32_t kReevaluateStreaming = 0xAC67C0;
@@ -395,6 +402,11 @@ inline constexpr Entry kTable[] = {
         "48 8B C4 48 89 48 08 55 56 57 41 54 41 55 41 57", 0, 0, "mod (interaction gaze)"},
     {"UBioTierManager::ReevaluateStreaming", kReevaluateStreaming, Kind::Function,
         "41 56 48 83 EC 40 4C 8B F1 85 D2 75 0D ?? ?? ??", 0, 0, "mod (CIC art retention)"},
+    {"CaptureScene", kCaptureScene, Kind::Leaf, "48 8B 09 48 85 C9 74 07 48 8B 01 48 FF 60 08 C3", 0, 0, "host (capture target)"},
+    {"Capture.Render", kCaptureRender, Kind::Function, "48 8B C4 56 57 41 56 48 83 EC 60 48 C7 40 C0 FE", 0, 0, "host (capture target)"},
+    {"Capture.RenderUmbra", kCaptureRenderUmbra, Kind::Function, "48 89 74 24 18 48 89 7C 24 20 55 48 8B EC 48 83 EC 50 48 8B", 0, 0, "host (capture target)"},
+    {"Capture.BeginBackbuffer", kBeginBackbuffer, Kind::Function, "40 53 48 83 EC 30 48 C7 44 24 20 FE FF FF FF 48 8B D9 48 8B 0D ?? ?? ?? ?? 48 8B 01", 0, 0, "host (capture target)"},
+    {"Capture.GDynamicRHI", kDynamicRhi, Kind::Data, "40 53 48 83 EC 30 48 C7 44 24 20 FE FF FF FF 48 8B D9 48 8B 0D ?? ?? ?? ?? 48 8B 01", 21, 0x36D760, "host (capture target)"},
     {"the name pools", kNamePools, Kind::Data, "38 49 63 46 0C 48 8D 2D ?? ?? ?? ?? 33 FF 85 C0", 8, 0x81A11, "mod (reflection)"},
     {"GMalloc", kGMalloc, Kind::Data, "B9 98 00 00 00 48 8B 0D ?? ?? ?? ?? 48 85 C9 75", 8, 0xB7683, "mod (engine strings)"},
     {"appMalloc", kAppMalloc, Kind::Function,

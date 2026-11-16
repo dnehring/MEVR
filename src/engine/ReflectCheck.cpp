@@ -2775,6 +2775,80 @@ void CheckTraversal() {
 }
 
 #elif defined(MEVR_GAME_LE3)
+// Shared SceneCaptureRig, checked against LE3 metadata before native use.
+void CheckLe3CaptureRig() {
+    CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_pCenterObject", SDK_FIELD(UBioCameraBehaviorGalaxy, m_pCenterObject));
+    CheckClass<UTextureRenderTarget2D>("Engine.TextureRenderTarget2D");
+    CheckClass<USceneCapture2DComponent>("Engine.SceneCapture2DComponent");
+    CheckClass<ASceneCapture2DActor>("Engine.SceneCapture2DActor");
+    CheckField("Engine.SceneCaptureActor", "SceneCapture", SDK_FIELD(ASceneCaptureActor, SceneCapture));
+    CheckField("Engine.Actor", "bStatic", SDK_BOOL(AActor, bStatic));
+    CheckField("Engine.Actor", "bNoDelete", SDK_BOOL(AActor, bNoDelete));
+    CheckField("Engine.SceneCaptureComponent", "bEnabled", SDK_BOOL(USceneCaptureComponent, bEnabled));
+    CheckField("Engine.SceneCaptureComponent", "bEnablePostProcess", SDK_BOOL(USceneCaptureComponent, bEnablePostProcess));
+    CheckField("Engine.SceneCaptureComponent", "bEnableFog", SDK_BOOL(USceneCaptureComponent, bEnableFog));
+    CheckField("Engine.SceneCaptureComponent", "bUseMainScenePostProcessSettings",
+        SDK_BOOL(USceneCaptureComponent, bUseMainScenePostProcessSettings));
+    CheckField("Engine.SceneCaptureComponent", "bSkipUpdateIfTextureUsersOccluded",
+        SDK_BOOL(USceneCaptureComponent, bSkipUpdateIfTextureUsersOccluded));
+    CheckField("Engine.SceneCaptureComponent", "bSkipUpdateIfOwnerOccluded", SDK_BOOL(USceneCaptureComponent, bSkipUpdateIfOwnerOccluded));
+    CheckField("Engine.SceneCaptureComponent", "MaxUpdateDist", SDK_FIELD(USceneCaptureComponent, MaxUpdateDist));
+    CheckField("Engine.SceneCaptureComponent", "PostProcess", SDK_FIELD(USceneCaptureComponent, PostProcess));
+    CheckField("Engine.SceneCaptureComponent", "FrameRate", SDK_FIELD(USceneCaptureComponent, FrameRate));
+    // The generated LE3 subclass is four bytes late here. Native SetCaptureParameters
+    // (60AEF0C4, RVA 0x700500) saves/sets/restores mask 1 at +0x174 around its update.
+    // Compare that independent native contract, not the incorrect compiled SDK bitfield.
+    Guard("native-layout", "SceneCapture2DComponent.bUpdateMatrices", [&] {
+        auto const info = R().PropertyOf(R().FindClass("Engine.SceneCapture2DComponent"), "bUpdateMatrices");
+        Add("native-layout", "SceneCapture2DComponent.bUpdateMatrices",
+            info && Matches(*info, info->offset, Sdk{0x174, 1, 4}), Ours(info),
+            "native SetCaptureParameters RVA 0x700500: +0x174 mask 1");
+    });
+    CheckField("Engine.Texture", "Resource", SDK_FIELD(UTexture, Resource));
+    CheckField("Engine.TextureRenderTarget2D", "Format", SDK_FIELD(UTextureRenderTarget2D, Format));
+    CheckField("Engine.PlayerController", "Player", SDK_FIELD(APlayerController, Player));
+    CheckField("Engine.LocalPlayer", "PlayerPostProcess", SDK_FIELD(ULocalPlayer, PlayerPostProcess));
+    CheckField("Engine.Engine", "DefaultPostProcess", SDK_FIELD(UEngine, DefaultPostProcess));
+    CheckFunction("Engine.Actor.Spawn");
+    PARAM(AActor_execSpawn_Parms, "Engine.Actor.Spawn", SpawnClass);
+    PARAM(AActor_execSpawn_Parms, "Engine.Actor.Spawn", SpawnOwner);
+    PARAM(AActor_execSpawn_Parms, "Engine.Actor.Spawn", SpawnLocation);
+    PARAM(AActor_execSpawn_Parms, "Engine.Actor.Spawn", bNoCollisionFail);
+    PARAM(AActor_execSpawn_Parms, "Engine.Actor.Spawn", ReturnValue);
+    PARMS(AActor_execSpawn_Parms, "Engine.Actor.Spawn");
+    CheckFunction("Engine.Actor.Destroy");
+    PARAM(AActor_execDestroy_Parms, "Engine.Actor.Destroy", ReturnValue);
+    PARMS(AActor_execDestroy_Parms, "Engine.Actor.Destroy");
+    CheckFunction("Engine.Actor.ForceUpdateComponents");
+    PARAM(AActor_execForceUpdateComponents_Parms, "Engine.Actor.ForceUpdateComponents", bCollisionUpdate);
+    PARAM(AActor_execForceUpdateComponents_Parms, "Engine.Actor.ForceUpdateComponents", bTransformOnly);
+    PARMS(AActor_execForceUpdateComponents_Parms, "Engine.Actor.ForceUpdateComponents");
+    CheckFunction("Engine.TextureRenderTarget2D.Create");
+    PARAM(UTextureRenderTarget2D_execCreate_Parms, "Engine.TextureRenderTarget2D.Create", InSizeX);
+    PARAM(UTextureRenderTarget2D_execCreate_Parms, "Engine.TextureRenderTarget2D.Create", InSizeY);
+    PARAM(UTextureRenderTarget2D_execCreate_Parms, "Engine.TextureRenderTarget2D.Create", InFormat);
+    PARAM(UTextureRenderTarget2D_execCreate_Parms, "Engine.TextureRenderTarget2D.Create", InClearColor);
+    PARAM(UTextureRenderTarget2D_execCreate_Parms, "Engine.TextureRenderTarget2D.Create", bOnlyRenderOnce);
+    PARAM(UTextureRenderTarget2D_execCreate_Parms, "Engine.TextureRenderTarget2D.Create", ReturnValue);
+    PARMS(UTextureRenderTarget2D_execCreate_Parms, "Engine.TextureRenderTarget2D.Create");
+    CheckFunction("Engine.SceneCaptureComponent.SetEnabled");
+    PARAM(USceneCaptureComponent_execSetEnabled_Parms, "Engine.SceneCaptureComponent.SetEnabled", bEnable);
+    PARMS(USceneCaptureComponent_execSetEnabled_Parms, "Engine.SceneCaptureComponent.SetEnabled");
+    CheckFunction("Engine.SceneCaptureComponent.SetFrameRate");
+    PARAM(USceneCaptureComponent_execSetFrameRate_Parms, "Engine.SceneCaptureComponent.SetFrameRate", NewFrameRate);
+    PARMS(USceneCaptureComponent_execSetFrameRate_Parms, "Engine.SceneCaptureComponent.SetFrameRate");
+    CheckFunction("Engine.SceneCapture2DComponent.SetView");
+    PARAM(USceneCapture2DComponent_execSetView_Parms, "Engine.SceneCapture2DComponent.SetView", NewLocation);
+    PARAM(USceneCapture2DComponent_execSetView_Parms, "Engine.SceneCapture2DComponent.SetView", NewRotation);
+    PARMS(USceneCapture2DComponent_execSetView_Parms, "Engine.SceneCapture2DComponent.SetView");
+    CheckFunction("Engine.SceneCapture2DComponent.SetCaptureParameters");
+    PARAM(USceneCapture2DComponent_execSetCaptureParameters_Parms, "Engine.SceneCapture2DComponent.SetCaptureParameters", NewTextureTarget);
+    PARAM(USceneCapture2DComponent_execSetCaptureParameters_Parms, "Engine.SceneCapture2DComponent.SetCaptureParameters", NewFOV);
+    PARAM(USceneCapture2DComponent_execSetCaptureParameters_Parms, "Engine.SceneCapture2DComponent.SetCaptureParameters", NewNearPlane);
+    PARAM(USceneCapture2DComponent_execSetCaptureParameters_Parms, "Engine.SceneCapture2DComponent.SetCaptureParameters", NewFarPlane);
+    PARMS(USceneCapture2DComponent_execSetCaptureParameters_Parms, "Engine.SceneCapture2DComponent.SetCaptureParameters");
+}
+
 
 // Scoped LE3 real-slot cover candidate: metadata only, no damage or gameplay invocation.
 void CheckLe3PhysicalCover() {
@@ -2958,6 +3032,7 @@ void CheckLe3Dialogue() {
 }
 
 void CheckFields() {
+    CheckLe3CaptureRig();
     CheckField("Engine.SkeletalMeshComponent", "SkeletalMesh", SDK_FIELD(USkeletalMeshComponent, SkeletalMesh));
     // L3 menu pause: native override owns admission; this bit is observed, never forced.
     CheckField("Engine.WorldInfo", "bPlayersOnly", SDK_BOOL(AWorldInfo, bPlayersOnly));
@@ -3097,6 +3172,10 @@ void CheckPaths() {
         SDK_AT(offsetof(USFXPowerCustomActionBase, MinimumRange) + offsetof(FPowerData, CurrentValue), sizeof(FPowerData::CurrentValue)));
     CheckPath("SFXGame.SFXPowerCustomActionBase", {"MaximumRange", "CurrentValue"},
         SDK_AT(offsetof(USFXPowerCustomActionBase, MaximumRange) + offsetof(FPowerData, CurrentValue), sizeof(FPowerData::CurrentValue)));
+    CheckPath("Engine.Camera", {"CameraCache", "POV", "Location"},
+        SDK_AT(offsetof(ACamera, CameraCache) + offsetof(FTCameraCache, POV) + offsetof(FTPOV, location), sizeof(FTPOV::location)));
+    CheckPath("Engine.Camera", {"CameraCache", "POV", "Rotation"},
+        SDK_AT(offsetof(ACamera, CameraCache) + offsetof(FTCameraCache, POV) + offsetof(FTPOV, Rotation), sizeof(FTPOV::Rotation)));
     CheckPath("Engine.Camera", {"CameraCache", "POV", "FOV"},
         SDK_AT(offsetof(ACamera, CameraCache) + offsetof(FTCameraCache, POV) + offsetof(FTPOV, FOV), sizeof(FTPOV::FOV)));
     CheckPath("SFXGame.SFXWeapon", {"MagSize", "Value"},

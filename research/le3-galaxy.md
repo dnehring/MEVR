@@ -241,6 +241,69 @@ The successful native run restores the original profile/game files with zero
 differences, verifies exact VR/LE1 environment restoration and releases the
 shared game lock. It installs no persistent player-facing behavior change.
 
+### Independent native captures (2026-11-15, diagnostic)
+
+The LE3 adapter now uses the existing `game/SceneCaptureRig`,
+`core/vr/CineScreen` parallel-camera baseline/crop, host publication service and
+`plugin/GalaxyHologram::WindowLayers`. The shared renderer uses semantic map
+modes for LE3 (11/12), retaining ME1's gate. Nothing copies ME1's native map
+adapter or enables the synthetic ME1 galaxy model on LE3.
+
+`mevr galaxy capture on` explicitly arms the bounded retention lease while on
+foot at the measured projector. It publishes two independent 1024x576 capture
+resources at that anchor. `off`, lease expiry, native map exit, invalid floor,
+recenter/session change or missing native camera stop publication and destroy
+the captures. This remains a diagnostic: native fullscreen presentation stays
+up, `roomViewHeld` and `presentationVerified` remain false. Do not ship both
+presentations as the finished interface. Production resolution/aspect, complete
+camera hold, UI projection and transition acceptance remain open.
+
+Native reflection passes **603/603** checks in protected run
+`20261115-220151-721-LE3-navigation`. An earlier check correctly stopped startup:
+the generated SDK's compiled `SceneCapture2DComponent.bUpdateMatrices` is four
+bytes later than reflection. Native `SetCaptureParameters` at `0x700500` reads
+and temporarily sets **+0x174, mask 1**, then restores the bit. The comparison
+now uses that independently verified native contract; the SDK is not edited.
+`SetView` at `0x6FE0A0` writes the view matrix and requests component update;
+`0x6FFC20` builds the target-aspect projection when that bit is set.
+
+The first run proves object/resource creation, two eye-specific layer submissions
+and native X-exit cleanup, **but both images are black**. Snapshot
+`2026-11-15_22-03-11-103` is not a visual pass despite zero snapshot errors.
+Reusing ME1's research/47 diagnosis, `capture on-raw` disables post-processing
+only for the diagnostic. Protected run `20261115-220823-943-LE3-navigation`
+produces visible native galaxy imagery in **both** capture layers (snapshot
+`2026-11-15_22-09-43-357`), with normal exit and zero restoration differences.
+This isolates the post-process path; the bright raw image is not the intended
+appearance or proof of complete stereo/projector alignment.
+
+The native-code audit identifies the same target-routing problem fixed for ME1:
+
+- `0x368850` loops through captures via the leaf thunk `0x344540` before the eye
+  render. Capture probes call `0x365370` or `0x3685C0` with their own renderer.
+- Final post effects `0x3D1F80` and `0x3D2D60` call `0x36D760`, which binds a
+  global backbuffer through `GDynamicRHI` (`0x1894018`) rather than the family's
+  target, then mark the view's `+0x4B4` as completed. The normal target finish
+  (`0x3534B0`) returns when that marker is set.
+- The verified family target contract matches ME1: renderer `+0x18`, target
+  surface virtual `+0x8`, dimensions `+0x18/+0x20`, RHI target/viewport virtuals
+  `+0x520/+0x340`. Only these facts and our implementation are tracked; the
+  decompilation stays private.
+
+`plugin/SceneCaptureTarget` extracts ME1's existing guarded target read/bind
+operation for both games. `plugin/Le3SceneCapture` adapts the capture/render
+scope and uses the existing `core/vr/SceneCaptureScope` target decision. It
+requires exact native address checks before attaching, installs the capture
+depth hook last, restores thread-local state on every return, and leaves
+ordinary eye binding native. Native validation of this correction is pending:
+run `20261115-221710-284-LE3-navigation` never obtained a game process within
+240 seconds after the Steam launch request. It restored with zero differences
+and released the lock; no corrected-image result can be claimed. All three
+development pairs and monolithic builds pass. All 71 tests pass across the
+suite and a focused unsandboxed rerun of three sandbox-affected installer/local
+HTTP tests. The [complete handoff](../docs/galaxy-projector-handoff.md) records
+the remaining camera, UI, lifecycle and ME2 work.
+
 ### Camera/capture reuse contract for the next increment
 
 The existing native dump identifies `Camera.GetCameraViewPoint`'s exec wrapper
@@ -252,13 +315,9 @@ swap. Add independent nested location/rotation metadata checks beside the
 existing LE3 FOV check before enabling writes. FOV must use the existing
 `EngineProbe::CameraFovEdit` getter selection: locked FOV can override the cache.
 
-The remaining code boundaries are explicit: `SceneCaptureRig` still compiles
-its real implementation only for LE1, and its reflected handles default to the
-LE1 module gate. Reuse it after checking LE3 spawn, target creation, enable,
-view/parameters and component-flush contracts; restore temporary CDO flags on
-every failure path. `ModLoader::WithGalaxyHologram` is still connected only to
-the LE1 host. `GalaxyHologram::WindowLayers` still gates on raw mode 9. Its
-shared renderer needs semantic map gating and LE3 overlay wiring, not a copy.
+The capture contracts, shared rig, publication service, semantic map gate and
+LE3 overlay wiring are now connected as described above. The shared spawn path
+restores temporary CDO flags with a finally scope, including exceptional exits.
 The LE3 main-view hook already checks both the native caller and primary local
 player; retain both checks when inserting the scoped hold. Native map camera
 state must remain intact for selection, labels and independent map captures.

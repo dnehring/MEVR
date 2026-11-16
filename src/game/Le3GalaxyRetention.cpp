@@ -149,6 +149,8 @@ void Startup(hook::Context& hooks) {
     if (!entry || imageBase + entry->BeginAddress != reinterpret_cast<DWORD64>(at)) return;
     installed = hook::Install(hooks, kHook, at, &Detour, original);
 }
+bool Armed() { return lease.deadline != 0 && GetTickCount64() < lease.deadline && SameLevel(); }
+bool Active() { return Armed() && lease.mapSeen && engine::adapter::IsMapMode(player::GameMode(lease.pc.object).value_or(255)); }
 bool Shutdown(hook::Context& hooks, bool exiting) {
     if (!exiting) Release("shutdown"); else lease = {};
     if (installed && !hook::Uninstall(hooks, kHook)) return false;
@@ -184,6 +186,8 @@ std::string Command(ue3::Object* pc, std::string const& action) {
 #else
 namespace mevr::game::le3_galaxy_retention {
 void Startup(hook::Context&) {}
+bool Armed() { return false; }
+bool Active() { return false; }
 bool Shutdown(hook::Context&, bool) { return true; }
 std::string Command(ue3::Object*, std::string const&) { return "galaxy retention: LE3 only"; }
 }

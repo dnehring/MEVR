@@ -93,6 +93,8 @@
 #endif
 #endif
 
+#include "core/vr/GalaxyHologram.hpp"
+
 #include <Windows.h>
 
 #include <atomic>
@@ -355,6 +357,30 @@ HostServices WithVoice(HostServices services) {
 }
 #endif
 
+#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE3)
+// v26: the galaxy hologram (core/vr/GalaxyHologram, plugin/GalaxyHologram, research/51 section 8).
+void HostSetGalaxyHologram(vr::galaxy_holo::Scene const* scene) {
+    if (scene != nullptr) {
+        vr::galaxy_holo::Publish(*scene);
+    } else {
+        vr::galaxy_holo::Forget();
+    }
+}
+bool HostTakeGalaxyPick(std::uint32_t* id) {
+    auto const pick = vr::galaxy_holo::TakePick();
+    if (pick && id != nullptr) {
+        *id = *pick;
+    }
+    return pick.has_value();
+}
+HostServices WithGalaxyHologram(HostServices services) {
+    services.galaxyHologramSize = static_cast<std::uint32_t>(sizeof(vr::galaxy_holo::Scene));
+    services.setGalaxyHologram = &HostSetGalaxyHologram;
+    services.takeGalaxyPick = &HostTakeGalaxyPick;
+    return services;
+}
+#endif
+
 #if defined(MEVR_WITH_HALCYON)
 void HostSetSquadMenu(vr::squad_menu::View const* view) {
     vr::squad_menu::Publish(view != nullptr ? *view : vr::squad_menu::View{});
@@ -446,27 +472,6 @@ void HostSetGalaxyMap(vr::galaxy_map::View const* view) {
     } else {
         vr::galaxy_map::Reset();
     }
-}
-// v26: the galaxy hologram (core/vr/GalaxyHologram, plugin/GalaxyHologram, research/51 section 8).
-void HostSetGalaxyHologram(vr::galaxy_holo::Scene const* scene) {
-    if (scene != nullptr) {
-        vr::galaxy_holo::Publish(*scene);
-    } else {
-        vr::galaxy_holo::Forget();
-    }
-}
-bool HostTakeGalaxyPick(std::uint32_t* id) {
-    auto const pick = vr::galaxy_holo::TakePick();
-    if (pick && id != nullptr) {
-        *id = *pick;
-    }
-    return pick.has_value();
-}
-HostServices WithGalaxyHologram(HostServices services) {
-    services.galaxyHologramSize = static_cast<std::uint32_t>(sizeof(vr::galaxy_holo::Scene));
-    services.setGalaxyHologram = &HostSetGalaxyHologram;
-    services.takeGalaxyPick = &HostTakeGalaxyPick;
-    return services;
 }
 // v27: the game's screens in the room (core/vr/WorldUi, plugin/WorldUi, research/53).
 void HostSetWorldUi(vr::world_ui::State const* state) {
@@ -593,6 +598,7 @@ HostServices BuildServices() {
     if (engine::DevelopmentEngineProbe()) return services;
 #if defined(MEVR_WITH_HALCYON_LE3)
     // Shared layers now consume these publications. Native/headset acceptance remains separate.
+    services = WithGalaxyHologram(services);
     services.motionBlurProtected = &motion_blur_guard::ProtectsGameplay;
     services = WithTraversal(WithFloorLock(WithPadMerge(WithSights(WithVignette(WithRenderer(services))))));
 #if defined(MEVR_WITH_MAIN_MENU)
@@ -654,6 +660,9 @@ void ForgetModState() {
 #endif
 #if defined(MEVR_WITH_HALCYON)
     ForgetLe1ModState();
+#endif
+#if defined(MEVR_WITH_HALCYON_LE3)
+    vr::galaxy_holo::Forget();
 #endif
 #if (defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)) && defined(MEVR_WITH_MAIN_MENU)
     world_ui::Forget();  // ME2's screens and pending ownership go back to Halcyon's flat panel (M4.3)

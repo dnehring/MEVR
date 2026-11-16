@@ -181,10 +181,18 @@ Implementation is now authorized. The audit baseline above remains historical; t
   entry and releases on normal X exit (run `20261115-214310-005`, 541 metadata checks). Exit recreates the actor,
   so reacquisition is mandatory. This proves room residence for one fixture, not camera/projection parity or
   mission/load/timeout acceptance; the default remains unchanged.
+  The shared ME1 capture rig/window renderer now publishes two eye-specific layers at the measured anchor.
+  The 603-row native check and normal X-exit cleanup pass. Post-processed captures were black; disabling post
+  processing diagnostically produced visible native imagery in both eyes. ME1's documented final-target fix
+  is being reused with verified LE3 bindings. Camera hold and final appearance remain unaccepted; see the
+  [capture evidence and native contract](../research/le3-galaxy.md#independent-native-captures-2026-11-15-diagnostic).
+  The [galaxy projector handoff](galaxy-projector-handoff.md) records the complete attempted-work history,
+  code inventory, native contracts and ordered remaining ME3/ME2 implementation. The post-effect correction
+  builds but its validation launch timed out before obtaining a game process; it is not runtime-accepted.
   The read-only projector adapter measures the on-foot anchor using ME1's shared radius calculation. The expanded
   538-row native metadata probe passes: normal map entry unloads `BioA_Nor_210CIC` and loads the separate map art;
   `BioA_Nor_200` stays visible. Room retention is required alongside pre-entry anchor capture and camera hold.
-  The sampled world-state flags do not establish the transient switching mechanism. No projected rendering is claimed.
+  The sampled world-state flags do not establish the transient switching mechanism. Complete projector parity is not claimed.
 - **L3-10:** campaign, installer/release and physical-headset qualification remain open.
 
 The desktop engine probes and normal descriptor loads passed and restored with zero differences. The existing chapter

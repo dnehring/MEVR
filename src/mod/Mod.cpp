@@ -71,6 +71,7 @@
 #include "game/ScreenReticle.hpp"
 #include "game/Interact.hpp"
 #include "game/Le3GalaxyRetention.hpp"
+#include "game/Le3GalaxyCapture.hpp"
 #include "game/Mako.hpp"
 #include "game/Holsters.hpp"
 #include "game/CockpitProbe.hpp"
@@ -1850,6 +1851,8 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         game::spectator::Tick(deltaSeconds, SpectatorLink());
 #if !defined(MEVR_GAME_LE3)
         game::galaxy_map::Tick(GalaxyMapLink());
+#else
+        game::le3_galaxy_capture::Tick(GalaxyMapLink().setScene, HostFloor());
 #endif
         game::world_ui::Tick(WorldUiLink());
         // Conversations (research/59): measured always; in the world, Shepard's view held (after world_ui: its Hold is ours in mode 5).
@@ -1940,6 +1943,7 @@ MEVR_MOD_API void MevrModShutdown() {
     gScreenWantedFor = 0.0;
     // The host has already detached the present callback, so the render thread is out.
     vr::output::Shutdown();
+    game::le3_galaxy_capture::Shutdown(exiting);
     if (gInit) removed(game::le3_galaxy_retention::Shutdown(*gInit, exiting), "the CIC streaming hook couldn't be removed");
     if (gInit && gHooked) {
         removed(engine::process_event::Uninstall(*gInit), "the ProcessEvent hook couldn't be removed");
