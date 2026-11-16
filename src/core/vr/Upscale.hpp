@@ -50,6 +50,21 @@ static_assert(sizeof(Constants) == 96);
 Constants MakeConstants(unsigned srcW, unsigned srcH, unsigned dstW, unsigned dstH, float const fillUv[4],
     float const imageRect[4], float sharpness);
 
+// The same constants for the picture moved `shiftPx` target pixels to the right (left if negative): the sequels'
+// convergence shift at the copy (src/halcyon/le2 and le3, CopyTextureToEyeFullFrame). 0 returns `k` unchanged.
+Constants Shifted(Constants k, int shiftPx);
+
+// The size of an eye image for a source of srcW x srcH on a headset whose runtime recommends recW x recH per eye, for
+// a renderer that makes its eye swapchains at the source's size (Halcyon's ME2 and ME3 renderers: the backbuffer's;
+// LE1's are the headset's size already): with FSR on and the source smaller than the recommended size both ways by 5%
+// or more, the source scaled by one factor until its width or height reaches the recommended one (even numbers);
+// otherwise the source's size, which keeps the copy raw.
+struct Size {
+    unsigned width = 0;
+    unsigned height = 0;
+};
+Size EyeImageSize(Settings const& settings, unsigned srcW, unsigned srcH, unsigned recW, unsigned recH);
+
 // The HLSL: the FSR 1 headers' text (ffx_a.h, ffx_fsr1.h: external/fsr1, embedded at build time) between the GPU
 // defines and our entry points: VSMain (a full-screen triangle, Halcyon's), PSEasu (t0 the source, s0 a clamping
 // sampler, b0 Halcyon's FillParams for the rectangle test, b2 the constants) and PSRcas (t0 EASU's output at the

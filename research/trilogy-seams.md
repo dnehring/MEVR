@@ -24,46 +24,51 @@ They shared 18 names, and of those six differed in signature, so no host module 
 - The host implements a common seam **once for all games** in `src/plugin/Seams.cpp` when the answer is the same
   everywhere; otherwise in that game's bridge, in `namespace MevrSeams { ... }`.
 
-## The common seams (33)
+## The common seams (34)
 
 Signatures are in `src/halcyon/MevrSeams.h`; that header is the reference, with the thread each runs on. "Host" names
 where each game's definition is. `Seams.cpp` means one definition for all three.
 
 | group | seam | LE1 host | LE2 host | LE3 host | called by |
 |---|---|---|---|---|---|
-| session | `StaticXrGetInstanceProcAddr()` | HalcyonBridge.cpp | HalcyonLe2Bridge.cpp | HalcyonLe3Bridge.cpp | all |
-| session | `WrapSessionFunctions(acquire, waitImage, release, waitFrame, beginFrame, endFrame, locateViews)` | HalcyonBridge.cpp | HalcyonLe2Bridge.cpp | HalcyonLe3Bridge.cpp | all |
-| session | `OnSessionCreated(instance, session)` | HalcyonBridge.cpp | HalcyonLe2Bridge.cpp | HalcyonLe3Bridge.cpp | all |
-| session | `OnSessionStopped()` | HalcyonOverlays.cpp | HalcyonLe2Bridge.cpp | HalcyonLe3Bridge.cpp | all |
-| session | `OnFrameBegun(session, space, predictedDisplayTime)` | HalcyonBridge.cpp | HalcyonLe2Bridge.cpp | HalcyonLe3Bridge.cpp | all |
-| session | `OnRecentered()` | HalcyonOverlays.cpp | HalcyonLe2Bridge.cpp | HalcyonLe3Bridge.cpp | all |
+| session | `StaticXrGetInstanceProcAddr()` | HalcyonBridge.cpp | HalcyonSequelBridge.cpp | HalcyonSequelBridge.cpp | all |
+| session | `WrapSessionFunctions(acquire, waitImage, release, waitFrame, beginFrame, endFrame, locateViews)` | HalcyonBridge.cpp | HalcyonSequelBridge.cpp | HalcyonSequelBridge.cpp | all |
+| session | `OnSessionCreated(instance, session)` | HalcyonBridge.cpp | HalcyonSequelBridge.cpp | HalcyonSequelBridge.cpp | all |
+| session | `OnSessionStopped()` | HalcyonOverlays.cpp | HalcyonSequelBridge.cpp | HalcyonSequelBridge.cpp | all |
+| session | `OnFrameBegun(session, space, predictedDisplayTime)` | HalcyonBridge.cpp | HalcyonSequelBridge.cpp | HalcyonSequelBridge.cpp | all |
+| session | `OnRecentered()` | HalcyonOverlays.cpp | HalcyonSequelBridge.cpp | HalcyonSequelBridge.cpp | all |
 | session | `XrRuntimeIsSteamVr()` | Seams.cpp | Seams.cpp | Seams.cpp | LE2, LE3 |
-| view | `OnViewBuilt(worldView, headLook, headAim, lookYawUU, lookPitchUU, headOrientation[4], headPosition[3], offsetRightUU, offsetUpUU, offsetForwardUU, unitsPerMeter, floorWorld)` | HalcyonBridge.cpp | HalcyonLe2Bridge.cpp | HalcyonLe3Bridge.cpp | all |
-| view | `FloorViewTranslation(replay, rawCameraZ, rightZ, upZ, forwardZ, right*, up*, forward*)` | FloorLock.cpp | HalcyonLe2Bridge.cpp | HalcyonLe3Bridge.cpp | all |
+| view | `OnViewBuilt(worldView, headLook, headAim, lookYawUU, lookPitchUU, headOrientation[4], headPosition[3], offsetRightUU, offsetUpUU, offsetForwardUU, unitsPerMeter, floorWorld)` | HalcyonBridge.cpp | HalcyonSequelBridge.cpp | HalcyonSequelBridge.cpp | all |
+| view | `FloorViewTranslation(replay, rawCameraZ, rightZ, upZ, forwardZ, right*, up*, forward*)` | FloorLock.cpp | HalcyonSequelBridge.cpp | HalcyonSequelBridge.cpp | all |
 | view | `RecenterOrientation(head[4], automatic, orientation[4])` | RecenterTilt.cpp | RecenterTilt.cpp | RecenterTilt.cpp | all |
+| eye image | `EyeImageSize(sourceW, sourceH, recommendedW, recommendedH, &w, &h)` | - | Seams.cpp | Seams.cpp | LE2, LE3 |
 | eye image | `OnEyeSource(eye, source)` | - | HalcyonLe2Bridge.cpp | HalcyonLe3Bridge.cpp | LE2, LE3 |
 | eye image | `CopyIntoImage(context, image, source, shiftX, eye)` | - | HalcyonLe2Bridge.cpp | HalcyonLe3Bridge.cpp | LE2, LE3 |
 | eye image | `OnEyeCopied(eye, image, index, acquired, waited)` | - | HalcyonLe2Bridge.cpp | HalcyonLe3Bridge.cpp | LE2, LE3 |
 | eye image | `OnEyeReleased(eye, published)` | - | HalcyonLe2Bridge.cpp | HalcyonLe3Bridge.cpp | LE2, LE3 |
 | eye image | `OnFactory(factory)` | - | HalcyonLe2Bridge.cpp | HalcyonLe3Bridge.cpp | LE2, LE3 |
-| composition | `OverlayLayers(OverlayFrame, layersOut, capacity)` | HalcyonOverlays.cpp | HalcyonLe2Bridge.cpp | HalcyonLe3Bridge.cpp | all |
-| composition | `HudPanelDraw(context, draw, user, textBatch, afterLeftEye)` | - | HalcyonLe2Bridge.cpp | HalcyonLe3Bridge.cpp | LE2, LE3 |
+| composition | `OverlayLayers(OverlayFrame, layersOut, capacity)` | HalcyonOverlays.cpp | SequelOverlays.cpp | SequelOverlays.cpp | all |
+| composition | `HudPanelDraw(context, draw, user, textBatch, afterLeftEye)` | - | HalcyonSequelBridge.cpp | HalcyonSequelBridge.cpp | LE2, LE3 |
 | composition | `CineScreenWanted(conversation)` | Seams.cpp | Seams.cpp | Seams.cpp | all |
 | composition | `CineScreenFullRate()` | Seams.cpp | Seams.cpp | Seams.cpp | all |
-| composition | `CineScreenLayers(CineScreenFrame, layersOut, capacity)` | - | HalcyonLe2Bridge.cpp | HalcyonLe3Bridge.cpp | LE2, LE3 |
-| composition | `TransitionFadeLayer(session, viewSpace, context, view)` | TransitionFade.cpp | HalcyonLe2Bridge.cpp | HalcyonLe3Bridge.cpp | all |
+| composition | `CineScreenLayers(CineScreenFrame, layersOut, capacity)` | - | HalcyonSequelBridge.cpp | HalcyonSequelBridge.cpp | LE2, LE3 |
+| composition | `TransitionFadeLayer(session, viewSpace, context, view)` | TransitionFade.cpp | HalcyonSequelBridge.cpp | HalcyonSequelBridge.cpp | all |
 | composition | `PlacePanel(kind, OverlayFrame, viewPosition[3], widthM, heightM, imageReady)` returns `PanelPose` | WorldPanels.cpp | HalcyonLe2Bridge.cpp | HalcyonLe3Bridge.cpp | all |
-| input | `MergeMotionControllers(index, state, result)` | HalcyonBridge.cpp | HalcyonLe2Bridge.cpp | HalcyonLe3Bridge.cpp | all |
+| input | `MergeMotionControllers(index, state, result)` | HalcyonBridge.cpp | HalcyonSequelBridge.cpp | HalcyonSequelBridge.cpp | all |
 | input | `KeyDown(vk)` | Seams.cpp | Seams.cpp | Seams.cpp | all (LE2 through its inline `HotkeyDown`) |
 | input | `OnMenuKey(ownMenuOpen)` returns bool | Seams.cpp | Seams.cpp | Seams.cpp | all |
 | input | `MainMenuOpen()` | Seams.cpp | Seams.cpp | Seams.cpp | all |
 | threads | `OnGameThread()` | Seams.cpp | Seams.cpp | Seams.cpp | all |
 | threads | `QueueProcessEvent(object, function, params, size)` | Seams.cpp | Seams.cpp | Seams.cpp | all |
-| perf (optional) | `PerfPresentBegin(context)`, `PerfPresentEnd(context)`, `PerfFirstEyeCaptured(context)`, `PerfDraw()` | - | HalcyonLe2Bridge.cpp | HalcyonLe3Bridge.cpp | LE2, LE3 |
+| perf (optional) | `PerfPresentBegin(context)`, `PerfPresentEnd(context)`, `PerfFirstEyeCaptured(context)`, `PerfDraw()` | - | HalcyonSequelBridge.cpp | HalcyonSequelBridge.cpp | LE2, LE3 |
 | perf (optional) | `PerEyeViewState()` (game thread, the SFR branch of CalcSceneView: each pass its own scene view state, or both the game's one; `[Performance] perEyeViewState`, research/sequel-render-levers.md "Performance research") | - (LE1's tree asks `MELEVR::MevrBridge::PerEyeViewState`, the same lever) | RenderLevers.cpp | RenderLevers.cpp | LE2, LE3 |
 
 A `-` means that game's host does not define the seam, because its renderer does not call it. Calling it there is a
 link error, which is the intended signal: define it in that game's bridge first.
+
+Added 2026-11-16 by lane EY (research/27 section 9): `EyeImageSize`, which the sequels' `EnsureAerSwapchains` asks for
+the eye images' size, so ME1's FSR upscale in `CopyIntoImage` has something to scale to. LE1 still calls none of the
+eye-image group: its blit keeps its own `EyeColour*`/`EyeUpscale` seams onto the same shared core (section 9.3 says why).
 
 ### What changed against the audit's list of 26, and why
 
@@ -153,6 +158,179 @@ To move a per-renderer seam into the common set (a second renderer takes it): mo
 `mevr_bridge.h` into `MevrSeams.h` unchanged, change the namespace of the host's definition, and rename the call sites.
 The one-Draw seams (`g_oneDrawStereo`, `RecordPass1View`, `FindPass1View`, `StereoFrameActive`, `Record*`) are reserved
 for that.
+
+## One sequel bridge
+
+2026-11-16, lane U2. Until then `plugin/HalcyonLe2Bridge.cpp` (778 lines) and `plugin/HalcyonLe3Bridge.cpp` (565 lines)
+each defined every common seam. Now:
+
+- `plugin/HalcyonSequelBridge.cpp` defines the common seams once for both sequels: `StaticXrGetInstanceProcAddr`,
+  `WrapSessionFunctions`, the perf group, `OnSessionCreated`, `OnSessionStopped`, `OnFrameBegun`, `OnViewBuilt`,
+  `FloorViewTranslation`, `OnRecentered`, `CineScreenLayers`, `TransitionFadeLayer`, `HudPanelDraw`,
+  `MergeMotionControllers`, and each tree's `ME2VR::MevrBridge::CineScreenHalfSeparationUU` (the same in both).
+- `plugin/SequelOverlays.cpp` defines `OverlayLayers` once for both ("One overlay composition" below).
+- `plugin/HalcyonSequelBridge.hpp` declares the **adapter** each game implements, namespace
+  `mevr::host::sequel_bridge::game`, in its own file (`HalcyonLe2Bridge.cpp`, 408 lines; `HalcyonLe3Bridge.cpp`, 389
+  lines). A game's file also keeps its `PlacePanel`, the eye-image seams (lane EY's, bodies untouched) and that
+  renderer's own seams (`JournalFloorViewWrite`, `OnSwapChainPresent` on ME2; `OnPresent` on ME3).
+
+**Rule: a fix or a feature on the host's side of a common seam goes in the shared file.** A new per-game fact goes in
+the adapter: a bool in `game::Facts` when it is a yes/no about the game, a function when the game must do something.
+
+The adapter, and what each game does in it:
+
+| adapter | ME2 | ME3 |
+|---|---|---|
+| `Get()` (`Facts`) | log prefix `halcyon le2 bridge`; see the facts below | `halcyon le3 bridge` |
+| `SessionCreated` | forgets the galaxy table, its pointer surface and the galaxy trigger latch | resets the galaxy table and the native map's input lease, the spoken-reply context, the traversal presentation |
+| `SessionStopped` | nothing | the same resets as at creation, and the native panel's pointer flags |
+| `FrameBegun` | nothing | the galaxy table's session and space identity, `gMapTracked` (focused and tracked), the spoken-reply panel's focus |
+| `FramePublished` | nothing | `host_view::Reset()` off foot or under Halcyon's menu (those paths do not build a view) |
+| `Recentered` | forgets the galaxy table | also drops the published controllers, the floor lock's views, the interaction label, the traversal cue and this frame's cinema screen |
+| `PadKeeps` | false | the native map is up, or a traversal presentation runs |
+| `PadOrbitalTriggers` | the orbital scanner's mode | both map modes while the session owns the map |
+| `PadMerged` | the pull that picked a planet is kept from the scanner until let go (`gGalaxyTriggerLatch`) | the native map's input lease (`NativeMapInputLease::Apply`) |
+| `PadFiltered` | nothing | the traversal presentation turns the left stick; a cinematic gets no left stick |
+| `UiDraw` | the UI draws' order for the log (`UiTrace`) | nothing |
+| `Overlay*` | see below | see below |
+
+`Facts`: `invalidViewAtOnce` (ME3 yes: `OnViewBuilt` publishes a view that is not the world's without waiting for the
+floor lock's 100 ms of quiet; ME2 waits), and five for the composition (below).
+
+**What changed in behaviour, by game.** The bodies were merged, not rewritten; where the two differed, the choice is
+listed here so a regression can be traced.
+
+- *Session created and stopped: the superset for both.* ME3's bridge reset more than ME2's. ME2 now also, at a new
+  session: resets the interaction label, re-places the world panels, resets the floor lock and the pad merge's latches,
+  and publishes "no controllers" until the first sync. At a stopped session ME2 now also: forgets the spoken-reply
+  panel, the HUD pieces, the vignette and the traversal cue (their swapchains died with the session), closes our menu
+  and the calibration (`menus_le2::OnSessionStopped`), drops the haptics, publishes "no controllers" and resets the pad
+  merge. ME3 gains the two log lines (`... the session stopped`, `... first controller sync`).
+- *`OnFrameBegun`: an inactive sample is always published* (ME3's way). ME2 returned early when the input was not
+  ready (attach failed) and no replay stood in, which left the last replayed sample published. ME1 still returns early
+  there (`HalcyonBridge.cpp`); the same latent case. Both clear this frame's cinema screen at the frame's start (ME2
+  cleared it only at the end of `OverlayLayers`).
+- *`OnRecentered`: ME1's list for both* (`recenter_tilt::Committed`, `xr_host::NoteRecentered`, the squad's layers, the
+  HUD panel, the world panels, our menus, the spoken-reply panel). ME3 gains `hud_panel::Recentered()` (ME1 and ME2
+  had it). ME3's extra drops stay ME3's, in its adapter: publishing "no controllers" and resetting the floor lock at
+  every recenter is not what ME1 or ME2 do, and the mod sees a frame without hands there. **Decision open:** adopt it for
+  all three or remove it from ME3 once ME3's recenter is seen in a headset.
+- *`MergeMotionControllers`: one skeleton.* The pad's lock is taken before the early return on both (ME2 took it
+  after). The conversation triggers' dev log line (`conversation pad 0: LT .., RT ..`) is both games' now.
+- *`WrapSessionFunctions`:* the log line names the renderer (`halcyon-le2`, `halcyon-le3`); ME3 had none.
+- *Galaxy table settings:* one reader (`sequel_bridge::GalaxyTableSettings`), ME3's with the finite check.
+
+Kept apart on purpose:
+
+- **`PlacePanel`.** ME2 places only the native map on the table (`placed` false otherwise: its other panels are the
+  renderer's head-locked ones; capability `panelsInRoom` false). ME3 places every native panel in the room through
+  `plugin/WorldPanels`, the map on the table over that, and publishes a GUI panel as the pointer's surface. They also
+  differ in what makes the table "ready" (ME2: the renderer's `imageReady`; ME3: its own session and space identity from
+  `OnFrameBegun`) and in `nativeMap` (ME2: the table was placed; ME3: a map mode with an image). One function needs
+  ME2's renderer to take `panelsInRoom`, which is a renderer change with its own check.
+- **The native map's input.** ME2: the table is the game pointer's surface, plus a trigger latch between galaxy and
+  orbit. ME3: no pointer; an input lease that passes the triggers to the native map while tracked and focused. Two
+  designs (ledger Forks 3); the galaxy lanes own the choice.
+- **The eye-image group** (`OnEyeSource`, `CopyIntoImage`, `OnEyeCopied`, `OnEyeReleased`, `OnFactory`): lane EY's.
+  ME2's `OnEyeCopied` has a diagnostic (the copy's formats and counts each minute) ME3's lacks; otherwise identical.
+
+## One overlay composition
+
+`plugin/SequelOverlays.cpp` is `MevrSeams::OverlayLayers` for ME2 and ME3. One order, LE1's:
+
+1. the comfort vignette;
+2. the HUD panel (with the game's UI in front of the 3D cinema screen when that is up), then the interaction label,
+   then the wrist and gun pieces;
+3. the sights and the hand reticle (`SequelWeaponLayers`), and the game's crosshair hidden where the ring replaces it;
+4. the traversal cue;
+5. the power wheel, its hint and lock, the squad wheel;
+6. the squad's placement arc and panel (`SequelSquadLayers`);
+7. the spoken-reply panel (Thespian);
+8. the game's own part (`game::OverlayGameLayers`);
+9. our main menu, the calibration and the omni-tool's layers (`menus_le2::Layers`).
+
+What a renderer cannot do is a capability (`plugin/Renderer.hpp`), read in the composition:
+
+| capability | effect in `OverlayLayers` |
+|---|---|
+| `hudPanelGameplay` | the panel takes the whole gameplay HUD and follows the `hudPanel` setting; without it the panel is armed only for the interaction label's crop and is off under a menu |
+| `hudPieces` | the wrist and gun pieces are planned, blitted before the panel clears and put on top; room for 4 layers is reserved instead of 2 |
+| `worldUi` | `menus_le2::BeforePanel` and `PanelLayers`: a game screen of ours owns the panel and is shown at its place |
+| `screenReticleHide` | `SetScreenReticleHidden` does something (it is called on every renderer; a no-op without it) |
+
+What only a game knows is in its adapter:
+
+| adapter | ME2 | ME3 |
+|---|---|---|
+| `Facts::menusHideGameplay` | no: the gameplay layers stay under our menu, as on LE1 | yes: our menu and the calibration hide them |
+| `Facts::panelColour` | yes: the panel's UI gets the colour correction, as LE1's | no (lane EY decides) |
+| `Facts::weaponsNeedPublishedAim` | no | yes: sights and ring only with the mod's published hand aim |
+| `Facts::cueOnFootOnly` | no | yes |
+| `Facts::hudLayout` | ME2's bands | unused (no pieces) |
+| `OverlayBegin` | releases the galaxy table's pointer surface when the table is gone | resets the map lease and the spoken-reply context on an unusable frame; releases a native panel's pointer surface |
+| `OverlayLabel` | no screen of ours has the panel | the mod's label is visible and has a measured crop |
+| `OverlayReticleMode` | the last readable game mode | 0 on foot, else -1 |
+| `OverlayGameLayers` | the galaxy table as the pointer's surface | the galaxy window's two layers (`plugin/GalaxyHologram`) |
+| `OverlaySpokenBlocked`, `OverlaySpokenContext` | never; nothing | the calibration or no input focus; the context's lease |
+| `OverlayEnd` | nothing | publishes the native map's input lease |
+
+What changed in behaviour: on ME2 the power wheel's module is called every frame (with `worldFrame` false off foot)
+instead of only on foot, and the galaxy table's pointer surface is published after the squad's panel and the
+spoken-reply panel instead of before them (neither touches the game pointer). On ME3 the composition also needs a
+session (it ran without one before, which no layer can use), and the unusable-frame reset happens then too. Every
+other gate is the one each game had, expressed once.
+
+**LE1 is not on it.** `plugin/HalcyonOverlays.cpp`'s `OverlayLayers` (about 980 lines of the file's 1,805) composes the
+same modules but reads Halcyon LE1's own state throughout, and has layers the sequels do not have yet. Before LE1 can
+call the shared function, each of these needs a module or a capability of its own:
+
+1. the HUD panel's inputs: LE1 arms and fills it through its own `HudPanel*` seams (targets, blends, the tint
+   texture for non-"over" blend modes), not through `MevrSeams::HudPanelDraw`;
+2. the game's wheel on its own quad (`core/vr/WheelCrop`, measured per session, `gWheelRecentered`);
+3. LE1's own label quad (`gLabelSwapchain`, `LabelWanted`): it must become `HudPieceLayers::Interaction` with ME1's
+   default crop (ledger Forks 1), which changes pixels and needs the same-pose check on its own;
+4. the conversation-in-world subtitle and wheel quads, the Mako's radar on the cockpit display, the galaxy window and
+   its early UI, the world UI panel and the wrist beam, the sights' release tap and window, the scope capture;
+5. `menus_le2::Layers` against LE1's main menu, calibration, omni-tool rail and pad, which LE1 composes in
+   `HalcyonOverlays.cpp` and `HalcyonBridge.cpp` directly (ledger Forks 13: `MenusLe2` renamed `Menus`).
+
+The way there is one layer at a time: move a block of LE1's function into the shared one behind a capability, with an
+LE1 same-pose pair per move. This lane did not start it: no line LE1 compiles changed.
+
+### Lane U2's checks
+
+**ME2** (fake headset, 2026-11-16 15:07, session `20261116-150654-945-LE2-u2-le2`, the merged bridge and composition):
+`launch.ps1` adopted the game this time, `load.ps1` loaded Save 4, snapshot `2026-11-16_15-09-30-764` has both eyes
+(4096x2304), the `hud` layer with the game's UI (the power bar, the door's prompt, the weapon panel, the squad) and the
+source and copied eye images. `LE2MEVR.log` has the same lines as lane U1's reference run, in the same order: the session
+functions wrapped (the line now names `halcyon-le2`), the actions attached, the first controller sync, the yaw-only
+recenter, `recentered`, the first world view, the eye copies (4096x2304 format 28 into 27; 2,365 per eye a minute, none
+refused), the title's cutscene on the 3D screen with its backdrop and the dips from black, the HUD panel's swapchain on
+entering gameplay. No hand reticle in the picture: the fake headset has no tracked controllers and no replay ran.
+`restore.ps1`: 0 differences. Not exercised: a stopped session, a recenter by the player, the galaxy table, the
+conversation triggers, our menu over gameplay.
+
+**ME3** (renderer preview on the fake headset, 2026-11-16 15:12, session `20261116-151138-682-LE3-u2-le3`): the
+candidate host started, the session came up, `LE3MEVR.log` has the session functions wrapped (`halcyon-le3`), the actions
+attached and the first controller sync (two lines ME3 did not have before), `mevr state` answered at the entry menu, and
+snapshot `2026-11-16_15-13-21-312` shows the title on the native panel placed in the room (ME3's `PlacePanel`), the same in
+both eyes. No save was loaded: the on-foot layers, the pad merge with tracked controllers, a recenter and the map lease
+were not exercised on ME3. `restore.ps1`: 0 differences.
+
+**The probe's first-eye mark on ME2** (lane PL's finding: `PerfFirstEyeCaptured` fired 61 draws before Present, after
+895). It was called at Halcyon's pass-0 snapshot, which waits for the second clear of a pass's opening group and so lands
+late in the second pass. It is now called at the first scene-sized clear after this present's first backbuffer draw
+(`[MEVR]` in `src/halcyon/le2/d3d_capture.cpp`, `g_mevrFirstEyeMarked`), where the second pass opens. Measured at
+Freedom's Progress (fake headset, `2026-11-16_15-27-50-u2-le2-probe.json`, 467 frames): 1,129 draws before the mark and
+1,661 after (median; 3,038 a frame), 6.87 ms busy before and 4.27 ms after. Not half the draws: the second pass carries
+the UI and the HUD's second batch; by time the mark splits the frame 62/38. The snapshot itself is unchanged.
+
+**The probe on ME3** (lane PL's fallback: the device context taken from the projection layer, f1a1bcbb): at the title
+(renderer preview, `20261116-152836-917-LE3-u2-le3`) the probe was armed (`perf probe: armed for 8 s`) and no capture
+started within 60 s. The title submits only the native panel's quad, no projection layer, so the fallback had no context
+to find there; it is untried in gameplay, which needs a loaded save.
+
+**LE1**: no line LE1 compiles changed (the new files are in the sequel hosts' source lists only), so no same-pose pair.
 
 ## State
 

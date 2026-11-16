@@ -11506,6 +11506,28 @@ void TestUpscale() {
     CHECK(src.find("#define A_GPU 1") != std::string::npos && src.find("//A") != std::string::npos);
     CHECK(src.find("#define FSR_EASU_F 1") != std::string::npos && src.find("//F") < src.find("PSEasu"));
     CHECK(src.find("PSRcas") != std::string::npos && src.find("MEVR_EYE_OUT") != std::string::npos);
+    // The sequels' convergence shift (their eye copy): target pixel ip shows what ip - shift showed.
+    vu::Constants const moved = vu::Shifted(k, 12);
+    CHECK(std::fabs((100.0f * f(moved.con0[0]) + f(moved.con0[2])) - (88.0f * f(k.con0[0]) + f(k.con0[2]))) < 1e-3f);
+    CHECK(moved.con0[0] == k.con0[0] && moved.con0[1] == k.con0[1] && moved.con0[3] == k.con0[3]);
+    vu::Constants const still = vu::Shifted(k, 0);
+    CHECK(std::memcmp(&still, &k, sizeof k) == 0);
+    // The sequels' eye image (their swapchains are the backbuffer's size unless FSR has something to scale to): ME2's
+    // 2048x2304 on a headset recommending 2824x2880 becomes 2560x2880 (one factor, the height reaches it first).
+    vu::Settings fsr;
+    fsr.method = vu::Method::Fsr;
+    vu::Size const eye = vu::EyeImageSize(fsr, 2048, 2304, 2824, 2880);
+    CHECK(eye.width == 2560 && eye.height == 2880);
+    vu::Size const off = vu::EyeImageSize(vu::Settings{}, 2048, 2304, 2824, 2880);
+    CHECK(off.width == 2048 && off.height == 2304);                       // method off: the raw copy
+    vu::Size const same = vu::EyeImageSize(fsr, 2824, 2880, 2824, 2880);
+    CHECK(same.width == 2824 && same.height == 2880);                     // already the headset's size
+    vu::Size const wider = vu::EyeImageSize(fsr, 3840, 2160, 2824, 2880);
+    CHECK(wider.width == 3840 && wider.height == 2160);                   // wider than the eye: never scaled down
+    vu::Size const close = vu::EyeImageSize(fsr, 2760, 2800, 2824, 2880);
+    CHECK(close.width == 2760 && close.height == 2800);                   // under 5%: the runtime's scale
+    vu::Size const unknown = vu::EyeImageSize(fsr, 2048, 2304, 0, 0);
+    CHECK(unknown.width == 2048 && unknown.height == 2304);               // no recommendation known
 }
 
 // The weapon drawn, like exploring (core/vr/CombatStance, research/38).

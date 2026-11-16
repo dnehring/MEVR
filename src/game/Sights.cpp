@@ -36,14 +36,25 @@ namespace {
 
 namespace sv = vr::sights;
 
-#if defined(MEVR_GAME_LE1)
-// Our reflection layer (research/34).
-ue3::FunctionRef gGetPlayerAimError{"SFXGame.BioWeaponRanged.GetPlayerAimError"};
-ue3::FunctionRef gTrace{"Engine.Actor.Trace"};
+// Our reflection layer (research/34). The engine's own names are every game's; the weapon's aim error is each game's
+// (game/Weapon has the same table for its calls).
+ue3::FunctionRef gTrace{"Engine.Actor.Trace", ue3::kEveryGame};
 // The camera's near plane (research/21 section 14): LocalPlayer.NearClipPlane, 10 units by default (Halcyon's render hook
 // read it live; MassFPS pulls it in to 1, research/11). The scope's pull never brings the eyepiece inside it.
-ue3::FieldRef gControllerPlayer{"Engine.PlayerController", "Player"};
-ue3::FieldRef gNearClipPlane{"Engine.LocalPlayer", "NearClipPlane"};
+ue3::FieldRef gControllerPlayer{"Engine.PlayerController", "Player", ue3::kEveryGame};
+ue3::FieldRef gNearClipPlane{"Engine.LocalPlayer", "NearClipPlane", ue3::kEveryGame};
+#if defined(MEVR_GAME_LE1)
+constexpr char const* kAimErrorName = "BioWeaponRanged.GetPlayerAimError";
+ue3::FunctionRef gGetPlayerAimError{"SFXGame.BioWeaponRanged.GetPlayerAimError"};
+#elif defined(MEVR_GAME_LE3)
+constexpr char const* kAimErrorName = "SFXWeapon.GetPlayerAimError";
+ue3::FunctionRef gGetPlayerAimError{"SFXGame.SFXWeapon.GetPlayerAimError", ue3::kEveryGame};
+#else
+// ME2's GetPlayerAimError takes no accuracy and asks GetAimError(Accuracy): the function with ME1's shape.
+constexpr char const* kAimErrorName = "SFXWeapon.GetAimError";
+ue3::FunctionRef gGetPlayerAimError{"SFXGame.SFXWeapon.GetAimError", ue3::kEveryGame};
+#endif
+#if defined(MEVR_GAME_LE1)
 // The game's own magnifications (research/21 section 16): the held weapon's stats object (one class per manufacturer) and
 // its AimModes, each a zoomed camera FOV and whether it's a scope.
 ue3::FieldRef gWeaponStats{"SFXGame.BioWeaponRanged", "Stats"};
@@ -228,10 +239,15 @@ std::vector<std::string> gHideList;
 // 0 and 1), then ask the zoomed native for that accuracy (bIsZoomed set for that call only).
 void OnAimError(ue3::Object* context, ue3::Function* /*function*/, void* result) {
     gAimErrorCalls.fetch_add(1, std::memory_order_relaxed);
-    if (result == nullptr || !gScopeUp || !gAimedFire || context == nullptr ||
+    static bool inside = false;  // the game thread: our own calls of the function below never come back here
+    if (inside || result == nullptr || !gScopeUp || !gAimedFire || context == nullptr ||
         reinterpret_cast<std::uintptr_t>(context) != weapon::Key()) {
         return;
     }
+    struct Guard {
+        Guard() { inside = true; }
+        ~Guard() { inside = false; }
+    } const guard;
     float& error = *static_cast<float*>(result);
     auto const low = weapon::AimError(context, 0.0f);
     auto const high = weapon::AimError(context, 1.0f);
@@ -289,7 +305,6 @@ engine::UnrealVector DirectionToWorld(engine::TrackingFrame const& frame, XrVect
     return engine::Apply(frame.rotation, {-static_cast<double>(v.z), v.x, v.y});
 }
 
-#if defined(MEVR_GAME_LE1)
 // Actor.Trace on the player's pawn (which it ignores), directly through ProcessEvent (never a generated wrapper),
 // with the function's own parameter block: the actor hit and, if the native's out parameter came back, where.
 ue3::Object* TraceOnce(ue3::Object* pawn, engine::UnrealVector const& start, engine::UnrealVector const& end, engine::UnrealVector* hit) {
@@ -304,14 +319,12 @@ ue3::Object* TraceOnce(ue3::Object* pawn, engine::UnrealVector const& start, eng
     }
     return parms.Return<ue3::Object*>().value_or(nullptr);
 }
-#endif
 
 // The world along the sight line: how far from the sight's centre it's hit (the range when nothing is), the actor.
 // Bisects with the hit/no-hit answer when the hit point doesn't come back (as game/throwables does).
 void TraceSightLine(engine::UnrealVector const& center, engine::UnrealVector const& axis) {
     gWorld.traced = false;
     gWorld.hitActor = nullptr;
-#if defined(MEVR_GAME_LE1)
     ue3::Object* const pawn = gTraceFunction != nullptr ? player::Pawn(player::Controller()) : nullptr;
     if (pawn == nullptr) {
         return;
@@ -352,10 +365,6 @@ void TraceSightLine(engine::UnrealVector const& center, engine::UnrealVector con
         log::Info("sights: the sight line's trace (Actor.Trace through ProcessEvent): the hit point {}", plausible
             ? "came back" : "didn't come back (a native's out parameter): found by bisecting with the hit/no-hit answer");
     }
-#else
-    (void)center;
-    (void)axis;
-#endif
 }
 
 engine::UnrealVector Cross(engine::UnrealVector const& a, engine::UnrealVector const& b) {
@@ -762,7 +771,6 @@ void StepAssist(sv::Settings const& settings, sv::Sight const& drawn, vr::aim_ra
 
 // The camera's near plane in game units: the local player's NearClipPlane, else UE3's default.
 float NearUnits() {
-#if defined(MEVR_GAME_LE1)
     ue3::Object* const pc = player::Controller();
     ue3::Object* const localPlayer = pc != nullptr ? gControllerPlayer.Read<ue3::Object*>(pc).value_or(nullptr) : nullptr;
     if (auto const plane = localPlayer != nullptr ? gNearClipPlane.Read<float>(localPlayer) : std::nullopt;
@@ -770,7 +778,6 @@ float NearUnits() {
         gNearRead = true;
         return *plane;
     }
-#endif
     gNearRead = false;
     return kDefaultNearUnits;
 }
@@ -981,31 +988,31 @@ std::optional<XrVector3f> GunTop(vr::aim_ray::Ray const& ray) {
 }
 
 bool TryStartup() {
-#if defined(MEVR_GAME_LE1)
+    if (!ue3::runtime::Up()) {
+        return false;  // a game whose layout our layer doesn't have: the sights draw, the shots keep the barrel
+    }
     gTraceFunction = gTrace.Get();
     if (gTraceFunction == nullptr) {
         log::Warn("sights: Actor.Trace not found: shots keep the barrel's line (no convergence on the sight)");
     }
     gAimErrorFunction = gGetPlayerAimError.Get();
     if (gAimErrorFunction == nullptr) {
-        log::Warn("sights: BioWeaponRanged.GetPlayerAimError not found: no aimed fire through a scope (the sights still draw)");
+        log::Warn("sights: {} not found: no aimed fire through a scope (the sights still draw)", kAimErrorName);
         return false;
     }
     engine::call_function::AddPostHandler(gAimErrorFunction, &OnAimError);
-    return true;
-#else
-    return false;
+#if !defined(MEVR_GAME_LE1)
+    log::Info("sights: shots converge on the sight line (Actor.Trace {}) and a scope's shots take the zoomed aim error ({})",
+        gTraceFunction != nullptr ? "found" : "missing", kAimErrorName);
 #endif
+    return true;
 }
 
 sv::Sight Current(vr::aim_ray::Ray const& ray) {
     sv::Settings settings = hand_calibration::GetSights();
-#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
-    // Validate each sequel's sight presentation before using the scope to move the gun or steer shots.
-    settings.assist.enabled = false;
-    settings.converge = false;
-    settings.aimedFire = false;
-#endif
+    // What a game's functions weren't found for stays off (TryStartup): the shots then keep the barrel's line.
+    settings.converge = settings.converge && gTraceFunction != nullptr;
+    settings.aimedFire = settings.aimedFire && gAimErrorFunction != nullptr;
     gAimedFire = settings.aimedFire;
     sv::Sight out{};
     out.kind = static_cast<std::int32_t>(sv::Kind::None);

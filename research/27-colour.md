@@ -486,6 +486,163 @@ SDR pass (`hdrDisplay = 0`) stays the better picture until the float path carrie
   - ready for the coming menu to show on a quad;
   - `mevr-colour-preview` writes it through each preset.
 
+## 9. One eye-image pipeline for the three games (2026-11-16, lane EY)
+
+The owner (2026-11-16): "We likely need to unify approaches to ensure consistency among all games." This section is the
+audit of what each game does to an eye image, what was a sequel-only copy of something ME1 had, and what is one piece
+of code now. File and function names are exact; read them before changing anything here.
+
+### 9.1 The audit: an eye image, step by step
+
+| step | ME1 (`src/halcyon/le1/xr_session.cpp`) | ME2 and ME3 (`src/halcyon/le2/me2_xr.cpp`, `le3/me2_xr.cpp`) |
+|---|---|---|
+| where the picture comes from | the backbuffer (or Halcyon's per-eye history and atlas textures), 8-bit `R8G8B8A8_UNORM` by default, `R16G16B16A16_FLOAT` only with `[Colour] hdrDisplay = 0/1` and the game's HDR range | the backbuffer or the per-eye history texture `g_aerHist`, the same formats |
+| the display answer that decides the format | Halcyon LE1's patch of `IDXGIOutput6::GetDesc1` in `d3d_capture.cpp` calls `MELEVR::MevrBridge::HdrDisplayDesc` | our own hook on the same slot, installed from `MevrSeams::OnFactory` (`plugin/HdrDisplayPolicy.cpp`) |
+| the eye swapchain's size | the headset's eye size (Halcyon's own), so a smaller render target is scaled up at the blit | the backbuffer's size (`EnsureAerSwapchains`: `g_aerSwapW = g_bbW`), so the runtime scaled the picture, bilinearly |
+| the copy, neutral | `CopyTextureToEyeFullFrame` / `CopyTextureToEye`: `CopyResource` when the source is 8-bit, the eye's size and nothing is to be corrected | `CopyTextureToEyeFullFrame` calls `MevrSeams::CopyIntoImage`, which is `plugin/EyeCopy.cpp` `Copy`: `CopyResource` (and `CopySubresourceRegion` for the convergence shift) when the formats are one family and the sizes equal |
+| the copy, anything else | `BlitTextureToEyeWithFill` and the atlas blit: Halcyon's shaders `PSLeft`, `PSRight`, `PSFill` (a fill rectangle `fillUv`/`imageRect`, the atlas halves, `colorScale.x` = SDR white of a float source) | `EyeCopy` draws through `core/d3d11/Blit` (a pipeline state of its own): a float source through the image's sRGB view, an 8-bit one decoded first if the families differ |
+| colour correction and dither | the `[MEVR] colour` seams `EyeColourShaders`, `EyeColourActive`, `EyeColourShader`, `EyeColourDone` (`plugin/Colour.cpp`): variants of Halcyon's three shaders compiled with `core/vr/Colour`'s prelude in front, `MEVR_EYE_OUT` at their end | `EyeCopy`'s `kCorrectedShader` (`PSPlain`, `PSDecode`) with the same prelude and `MEVR_EYE_OUT`, constants from `colour::EyeConstants` |
+| tonemap of a float source | `MEVR_TONE` in Halcyon's `ToEye`: the hue-preserving clip, or `[Colour] tonemap`'s curve | none until this lane (a float source was clamped per channel by the hardware) |
+| upscale | the `[MEVR] upscale` seam `EyeUpscale` in `BlitTextureToEyeWithFill` (`plugin/Upscale.cpp`): FSR 1's EASU and RCAS when the 8-bit source is smaller than the eye | none until this lane |
+| the game's UI | the HUD panel's blit (`plugin/HudPanel.cpp`) with `colour::BeginPanel`/`EndPanel`, hooked by `HalcyonOverlays.cpp` | ME2: the same, hooked in `plugin/SequelOverlays.cpp` (lane U2's shared composition) where the game's fact `panelColour` is true. ME3: that fact was false, so its UI was uncorrected |
+| the flat panel (menus, the map) | Halcyon's `CopyResource` into `g_menuImages`: never corrected | `CopyIntoImage(..., eye = -1)`: corrected like an eye |
+
+### 9.2 What was a sequel-only copy, and what it is now
+
+1. **The upscale: missing on the sequels (ledger R13).** Now `plugin/Upscale.cpp` is one module in all three hosts.
+   Its two draws are one function, `Passes`. LE1 reaches it from `EyeUpscale` (Halcyon's pipeline state, its fill
+   rectangle); the sequels from `upscale::Copy`, called by `EyeCopy::Copy` before anything else for an 8-bit picture
+   smaller than the image both ways, inside `Blit::Run` (our own pipeline state, the game's put back). The same
+   shader text (`core/vr/Upscale` `ShaderSource`), the same constants (`MakeConstants`), the same keys (`[Upscale]
+   method`, `sharpness`; default `fsr`, 0.9), the same log lines (`upscale:`) and snapshot block.
+   - The sequels' eye images had to be able to be larger than the picture. New common seam
+     `MevrSeams::EyeImageSize(sourceW, sourceH, recommendedW, recommendedH, &w, &h)` (`src/halcyon/MevrSeams.h`, defined
+     once in `plugin/Seams.cpp`), called in both trees' `EnsureAerSwapchains` right after `g_aerSwapW = g_bbW`. The rule
+     is `core/vr/Upscale` `EyeImageSize` (unit-tested): method `fsr` and the picture smaller than the runtime's
+     recommended eye size both ways by 5% or more: the picture scaled by one factor until its width or height reaches
+     the recommendation (ME2's 2048x2304 on a 2824x2880 headset: 2560x2880). Otherwise the picture's size, and the copy
+     stays the raw `CopyResource` it was. Log: `upscale: the eye images are WxH for a WxH picture (...)`.
+   - The convergence shift (`shiftX`, in image pixels; both trees compute it from `g_aerSwapW`, so it scales with the
+     image) keeps `EyeCopy`'s policy, the unshifted picture with the shifted one over it: EASU is drawn twice, each in
+     its own columns (`core/vr/Upscale` `Shifted`).
+   - A method changed while the game runs applies to the next eye swapchains (a new session), like ME1's render
+     resolution. Until then a larger image with the method off is filled bilinearly by `EyeCopy`.
+2. **The tonemap: missing on the sequels (R15).** `EyeCopy`'s `PSPlain` now runs `MEVR_TONE` before `MEVR_EYE_OUT`, as
+   LE1's `ToEye` does: the hue-preserving clip or the curve for a float source, the identity (bit for bit) for an 8-bit
+   one. Two things LE1 has are still not on the sequels, both only reachable with `hdrDisplay = 0/1`, which the owner
+   took out of play: the float source's SDR-white scale (`colorScale.x`; the sequels use 1), and the clip in the
+   neutral profile (a neutral float copy is `Blit::Draw`, clamped per channel).
+3. **The display answer: two copies of one policy (R16, Forks 7).** Now one function, `hdr_display::Answer(desc,
+   moveOldDefault)` in `plugin/HdrDisplayPolicy.cpp`. LE1's `HdrDisplayDesc` (`plugin/HalcyonBridge.cpp`) forwards to it
+   with `moveOldDefault = true` (the one-time move of LE1's old default 0 to -1); the sequels' hook calls it with false.
+   The sequels now also read the key as a number (`-1.0` works) and fill the luminance when they answer HDR10, as LE1
+   did.
+4. **The UI on ME3's panel was uncorrected.** `panelColour` is now true in `HalcyonLe3Bridge.cpp`'s facts, so
+   `plugin/SequelOverlays.cpp` gives `hud_panel` the colour hooks there too, as on ME1 and ME2.
+5. **Not a copy, already shared before this lane:** the correction's math and shader text (`core/vr/Colour`), the
+   settings, the headset detection and the profiles (`plugin/Colour.cpp`: `[Colour]`, `[Colour.<headset>]`), the
+   snapshot's `"colour"` block. `EyeCopy`'s `kCorrectedShader` is 8 lines that call the shared prelude; it is the
+   sequels' counterpart of Halcyon LE1's `PSFill`, not a second implementation of the correction.
+
+### 9.3 LE1 stays on its own call shape, and why
+
+The task was to move LE1's blit onto the common eye-image seams if its picture stayed identical. It was not moved. One
+shared core, two call shapes:
+
+- `MevrSeams::CopyIntoImage(context, image, source, shiftX, eye)` copies a whole source into a whole image. LE1's blit
+  does more per eye than that signature can say: a fill rectangle (`fillUv`, `imageRect`: the FOV fill, the flat
+  cinematic's 16:9 band, the screen-distance crop), the atlas halves (`PSLeft`/`PSRight`), the float source's white
+  scale, and Halcyon's own acquire, wait and release around it, in about 900 lines of `xr_session.cpp` (lines 1100 to
+  2000). Moving it means either a second, wider seam that only LE1 would call, or rewriting that blit in the host.
+- Neither can be shown to be pixel-identical by the fake headset's one gameplay path: the mono, flat-cinematic, atlas
+  and fill paths each need their own scene, and Halcyon's files must change as little as possible.
+- What LE1 shares instead: the upscale's passes (`upscale::Passes`), the correction (`plugin/Colour`'s `Bind`, the
+  prelude), the settings and the display answer. `plugin/Renderer.hpp`'s capabilities stay as they were: LE1
+  `eyeColourInBlit`, the sequels `eyeImageSeams`.
+- To finish it later: give `CopyIntoImage` a fill argument (`fillUv[4]`, `imageRect[4]`, `whiteScale`), make LE1's
+  `BlitTextureToEyeWithFill` call it after its acquire, and compare all four LE1 paths same-pose first.
+
+### 9.4 Differences that remain (decisions, not defects)
+
+- **The flat panel.** The sequels correct it (it goes through `CopyIntoImage`); LE1 never did. On a Quest profile the
+  sequels' flat menus are graded and LE1's are not.
+- **The sequels' render size.** ME1's Display page sets the render resolution and the Performance modes bundle it with
+  the upscale; the sequels' size is still the borderless window `tools/vr-game-settings.ps1 -Game LE2` writes.
+
+### 9.5 Checks
+
+- `ctest -R mevr-eye-copy-warp`: the real `EyeCopy`, `Blit` and `Upscale` modules with FSR 1's real shaders on WARP: a
+  smaller 8-bit picture scaled up, shifted both ways, with the colour correction against `core/vr/Colour`'s CPU
+  reference, the game's pipeline state restored, and the method off.
+- `ctest -R "mevr-colour-shader|mevr-upscale-shader"`: the shared shader text, as before.
+- `mevr-tests`: `EyeImageSize` and `Shifted` (tests/Main.cpp `TestUpscale`).
+- **ME2 in the game** (fake headset, 2026-11-16, session `20261116-155924-548-LE2-ey-picture`, restored with 0
+  differences; the run script and measurements are lane EY's scratch, the snapshots stay local):
+  - At the shipped size (backbuffer 4096x2304, larger than the null driver's recommended 1912x1952): `EnsureAerSwapchains`
+    kept 4096x2304, the copy raw. **Neutral is the raw copy, bit for bit**: each eye equals its saved source moved by the
+    convergence shift (left -40 px, right +40 px), 100% of pixels identical.
+  - **The correction matches the CPU reference** (`core/vr/Colour`'s grade and dither hash in numpy, applied to the saved
+    source with the same shift): Quest 100% of pixels within one 8-bit step (90.7% exact), both eyes; Quest without
+    dither the same; the custom candidate below 100% within one step (91.8% exact). The rest is float rounding of `pow`.
+  - **FSR on ME2** (`[VR] RenderW/RenderH` 1280x720 in `MELE2VR.ini`): `upscale: the eye images are 1912x1076 for a
+    1280x720 picture`, `eye copy: FSR 1 scales the game's picture (1280x720, format 28) up into the images (1912x1076,
+    format 27) through their UNORM view`, 0.074-0.086 ms of GPU per eye. Against our bilinear fill into the same images
+    (`[Upscale] method = off` in the same run): mean absolute luma gradient 10.08 against 5.39, the 99th percentile of the
+    horizontal step 26.4 against 13.4, the same mean luma (56.3 / 56.4); edges and the panel's text visibly sharper, the
+    texture grain sharpened too, as on ME1. With Quest on top the same (10.07 against 5.34), the grade applied (mean luma
+    47.9 against 47.8).
+  - The game's display question answered SDR (`hdr display: ... answered SDR: the game keeps its 8-bit frame
+    ([Colour] hdrDisplay = -1)`) through the one policy.
+  - Not seen in a game: the sequels' tonemap (a float frame needs `hdrDisplay = 0/1`).
+- **ME3 in the game** (the renderer preview, Save 31 on the Normandy, session `20261116-161710-117-LE3-ey-me3`, restored
+  with 0 differences): backbuffer 3072x1728, wider than the recommended size, so the copy stays raw and FSR does not
+  engage. Neutral is the raw copy bit for bit (the source moved by the convergence shift, +46 px on the left eye, 100% of
+  pixels identical); Quest 100% within one step of the CPU reference (91.9% exact); the candidate 100% within one step
+  (93.1% exact). ME3's HUD panel is off in the preview (`hudPanel = false`), so its new colour hooks were not seen.
+- **LE1 same pose** (sessions `2026-11-16_16-19-52-ey-before`, the build of main 60791416, and `..._16-23-08-ey-after`,
+  this lane's 434ed942 with lane U2's merge): `hostView` identical; the same layers at the same poses; the HUD panel and
+  both eyes, with and without the world layer, 100% of pixels identical, in neutral and with the Quest profile. LE1's FSR
+  did not engage in either run (the fake headset's eye, 1912x1952, is smaller than LE1's 2344x2392 render), so LE1's
+  refactored upscale call (the same draws moved into `upscale::Passes`) is covered by the WARP test, not by this run.
+
+### 9.6 ME2's dark scenes through the shared pipeline (2026-11-16)
+
+The owner: "how we can get the best picture, when we know that me2 has a lot of dark scenes". Measured, not judged by eye:
+Freedom's Progress at night (Save 4), the head still, the world paused, the left eye after the copy (the swapchain image
+the headset gets), luma Rec. 709 on the encoded values; "dark window" is `tools/picture-stats.py`'s darkest 400x400
+window. Two neutral frames 2.5 minutes apart differ by 3.7 on average (ME2's lights move under `pause`): that is the
+noise floor for the means.
+
+| setting | mean luma | luma < 8 | luma < 13 (the Quest LCD's floor) | dark window: mean, black, luma levels |
+|---|---|---|---|---|
+| neutral (the default on PS VR2 and every headset that isn't a streamed Quest) | 55.6 | 13.0% | 21.2% | 4.6, 87%, 19 |
+| ME1's Quest (contrast 1.06, saturation 1.12, mid-tones 0.90; Auto on a streamed Quest) | 47.2 | 20.6% | 27.4% | 2.6, 99.5%, 13 |
+| ME1's Quest, dither off | 47.3 | 20.7% | 27.3% | 2.6, 99.5%, 13 |
+| candidate: contrast 1.06, saturation 1.12, mid-tones 1.0, black +0.03 | 59.7 | 1.1% | 11.3% | 10.6, 16%, 17 |
+| neutral with the game's own gamma 2.6 (`gamma 2.6`; ME2's 2.2) | 63.3 | 7.2% | 15.6% | 6.3, 68%, 24 |
+| neutral again (the noise floor) | 53.0 | 15.0% | 22.9% | 4.1, 91%, 17 |
+
+ME3, the Normandy (Save 31, the same method, left eye): neutral mean luma 43.9, 15.6% under 8, 23.9% under 13; ME1's
+Quest 36.3, 22.8%, 34.2%; the candidate 48.1, 1.2%, 14.2%; neutral again 43.9, 15.8%, 23.8%. The same pattern as
+ME2's night: ME1's Quest profile puts a third of the frame under the Quest LCD's floor, the candidate a seventh.
+
+The same picture as research/le2-picture.md's of 2026-11-14 (then through ME2's own copy of the pipeline; within the
+noise floor everywhere): ME1's Quest profile darkens ME2's night (a quarter of the frame under the Quest LCD's floor), the
+black lift keeps the shadow detail (dark window 87% black to 16%) at the price of true black, the game's gamma lifts the
+shadows before the 8-bit store with the most distinct dark levels (24), and the dither makes no measurable difference in
+these textured scenes.
+
+**Recommendation for the owner (nothing changed: ME1's values stay the defaults):**
+- **PS VR2 and other OLED or wired headsets:** keep neutral. For brighter dark scenes, raise ME2's own gamma
+  (`BIOEngine.ini [Engine.Client] DisplayGamma` 2.4-2.6, or the game's brightness slider [verify that it writes it])
+  rather than our mid-tones: it lifts the shadows before the game's 8-bit store, so the dark steps stay fine.
+- **A streamed Quest:** for ME2, the candidate above (ME1's Quest contrast and saturation, mid-tones 1.0, black +0.03):
+  11% of the frame under the LCD's floor instead of 27% with ME1's Quest profile, and 21% neutral. As a per-game preset it
+  would be a new code path (`core/vr/Colour` `Preset` per game); today a player gets it with `[Colour.<headset>]
+  profile = custom` and those four values, or the menu's Custom sliders.
+- **Dither:** keep ME1's 0.5 steps; it costs nothing here and matters where a grade meets a smooth gradient.
+- These need the owner's eye in each headset; the numbers say where the shadow detail goes, not whether it looks better.
+
 ## Sources
 
 - **Meta:**

@@ -203,6 +203,7 @@
     "HalcyonBridge",
     "HalcyonOverlays",
     "HandReticle",
+    "HdrDisplayPolicy",
     "HudPanel",
     "HudPieceLayers",
     "KeptLocks",
@@ -312,6 +313,7 @@
     "vr/Thespian",
     "vr/TransitionFade",
     "vr/Traversal",
+    "vr/Upscale",
     "vr/WorldUi",
     "xr/Floor",
     "xr/Input"
@@ -443,6 +445,7 @@
     "Glow",
     "HalcyonLe2",
     "HalcyonLe2Bridge",
+    "HalcyonSequelBridge",
     "HandReticle",
     "HdrDisplayPolicy",
     "HudPanel",
@@ -469,6 +472,7 @@
     "ScopeCaptureSource",
     "Seams",
     "SequelCinema",
+    "SequelOverlays",
     "SequelSquadLayers",
     "SequelWeaponLayers",
     "SetupRequest",
@@ -482,6 +486,7 @@
     "Thespian",
     "TransitionFade",
     "TraversalCue",
+    "Upscale",
     "Vignette",
     "Voice",
     "VoiceModel",
@@ -546,6 +551,7 @@
     "vr/Thespian",
     "vr/TransitionFade",
     "vr/Traversal",
+    "vr/Upscale",
     "vr/WorldUi",
     "xr/Floor",
     "xr/Input"
@@ -682,6 +688,7 @@
     "Glow",
     "HalcyonLe3",
     "HalcyonLe3Bridge",
+    "HalcyonSequelBridge",
     "HandReticle",
     "HdrDisplayPolicy",
     "HudPanel",
@@ -710,6 +717,7 @@
     "ScopeCaptureSource",
     "Seams",
     "SequelCinema",
+    "SequelOverlays",
     "SequelSquadLayers",
     "SequelWeaponLayers",
     "SetupRequest",
@@ -723,6 +731,7 @@
     "Thespian",
     "TransitionFade",
     "TraversalCue",
+    "Upscale",
     "Vignette",
     "Voice",
     "VoiceModel",
@@ -1966,13 +1975,13 @@
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "run"
     },
     "LE3": {
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "run"
     }
    },
    "namespace": "game::holsters"
@@ -2426,13 +2435,13 @@
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "run"
     },
     "LE3": {
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "run"
     }
    },
    "namespace": "game::scope_parts"
@@ -2478,7 +2487,7 @@
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "run"
     }
    },
    "namespace": "game::sights"
@@ -3069,6 +3078,7 @@
     "CineScreenLayers",
     "CineScreenWanted",
     "CopyIntoImage",
+    "EyeImageSize",
     "FloorViewTranslation",
     "HudPanelDraw",
     "KeyDown",
@@ -3311,6 +3321,7 @@
     "CineScreenLayers",
     "CineScreenWanted",
     "CopyIntoImage",
+    "EyeImageSize",
     "FloorViewTranslation",
     "HudPanelDraw",
     "KeyDown",
@@ -3346,6 +3357,7 @@
     "CineScreenLayers",
     "CineScreenWanted",
     "CopyIntoImage",
+    "EyeImageSize",
     "FloorViewTranslation",
     "HudPanelDraw",
     "KeyDown",
@@ -3379,6 +3391,7 @@
     "CineScreenHalfSeparationUU",
     "JournalFloorViewWrite",
     "OnSwapChainPresent",
+    "SfrReplayRetry",
     "WorldUiOwnsGui"
    ],
    "forwarders": [
@@ -3388,6 +3401,7 @@
     "CineScreenHalfSeparationUU",
     "JournalFloorViewWrite",
     "OnSwapChainPresent",
+    "SfrReplayRetry",
     "WorldUiOwnsGui"
    ],
    "usedUndeclared": []
@@ -3398,6 +3412,7 @@
     "CineScreenLayers",
     "CineScreenWanted",
     "CopyIntoImage",
+    "EyeImageSize",
     "FloorViewTranslation",
     "HudPanelDraw",
     "KeyDown",
@@ -3433,6 +3448,7 @@
     "CineScreenLayers",
     "CineScreenWanted",
     "CopyIntoImage",
+    "EyeImageSize",
     "FloorViewTranslation",
     "HudPanelDraw",
     "KeyDown",

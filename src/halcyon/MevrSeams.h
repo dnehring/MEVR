@@ -192,8 +192,18 @@ float FloorViewTranslation(bool replay, float rawCameraZ, float rightZ, float up
 void RecenterOrientation(float const head[4], bool automatic, float orientation[4]) noexcept;
 
 // =====================================================================================================================
-// 3. Eye image. Not called by LE1 (its blit has its own EyeColour* / EyeUpscale seams until the eye-image lane).
+// 3. Eye image. Not called by LE1: its blit keeps its fill rectangle, atlas halves and HDR scale, and reaches the same
+//    colour correction and upscale through its own EyeColour* / EyeUpscale seams (research/27 "One eye-image pipeline").
 // =====================================================================================================================
+
+// Present thread, when the renderer makes the swapchains its eye copies go into, for a renderer that makes them at the
+// picture's size (sourceWidth x sourceHeight: the backbuffer): the size to make them instead, given what the runtime
+// recommends per eye (0, 0 if unknown). With [Upscale] method = fsr and a picture smaller than the recommendation the
+// answer is larger than the picture and CopyIntoImage scales it up (FSR 1, as LE1's blit does into its headset-sized
+// eyes); otherwise it is the picture's size. The renderer must use the answer for the swapchain, its imageRect and any
+// shift it passes to CopyIntoImage in pixels.
+void EyeImageSize(std::uint32_t sourceWidth, std::uint32_t sourceHeight, std::uint32_t recommendedWidth,
+    std::uint32_t recommendedHeight, std::uint32_t* width, std::uint32_t* height) noexcept;
 
 // Present thread: `source` (an ID3D11Texture2D) is about to be copied into eye `eye`'s image (0 left, 1 right). A
 // snapshot armed now saves it too (plugin/TestLoop).

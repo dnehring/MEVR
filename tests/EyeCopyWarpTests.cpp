@@ -4,7 +4,10 @@
 #include "plugin/Colour.hpp"
 #include "core/Log.hpp"
 #include "core/d3d11/Blit.hpp"
+#include "core/vr/Colour.hpp"
+#include "TestTemp.hpp"
 
+#include <d3d11.h>
 #include <d3d11sdklayers.h>
 #include <wrl/client.h>
 
@@ -20,6 +23,29 @@
 // selects the actual uncorrected EyeCopy path; the real Colour shader code still links.
 namespace mevr::host::colour {
 bool EyeConstants(int, bool, vr::colour::Constants*) { return false; }
+// The eye upscale's last pass asks these (plugin/Upscale, the real module): the test's own grade, bound at b1 as
+// plugin/Colour binds it, when `gTestGrade` is set.
+bool gTestGrade = false;
+vr::colour::Constants gTestConstants{};
+Microsoft::WRL::ComPtr<ID3D11Buffer> gTestBuffer;
+bool BeginEye(ID3D11DeviceContext* context, int, bool) {
+    if (!gTestGrade) return false;
+    Microsoft::WRL::ComPtr<ID3D11Device> device; context->GetDevice(&device);
+    D3D11_BUFFER_DESC desc{}; desc.ByteWidth = sizeof gTestConstants; desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    D3D11_SUBRESOURCE_DATA const data{&gTestConstants, 0, 0};
+    gTestBuffer.Reset();
+    if (FAILED(device->CreateBuffer(&desc, &data, &gTestBuffer))) return false;
+    ID3D11Buffer* const buffer = gTestBuffer.Get(); context->PSSetConstantBuffers(1, 1, &buffer);
+    return true;
+}
+void EndEye(ID3D11DeviceContext* context) {
+    ID3D11Buffer* const none = nullptr; context->PSSetConstantBuffers(1, 1, &none);
+}
+}
+// [Upscale] in the test's own settings file (the host's <GAME>MEVR.ini).
+namespace mevr::host {
+std::wstring gTestSettings;
+std::wstring const& SettingsPath() noexcept { return gTestSettings; }
 }
 
 namespace {
@@ -227,6 +253,116 @@ void Run(ID3D11Device* device, ID3D11DeviceContext* context, ID3D11InfoQueue* qu
     context->ClearState();
     copy::Reset();
 }
+
+// ME1's eye upscale in the copy (plugin/Upscale, the real module and FSR 1's real shaders; research/27 "One eye-image
+// pipeline"): an 8-bit picture smaller than the image both ways is scaled up by EASU and RCAS through the image's UNORM
+// view, with the sequels' convergence shift and, when on, the colour correction at RCAS's end; the game's pipeline
+// state comes back. Then the method off: the same copy drawn bilinearly.
+constexpr UINT kSmallW = 16, kSmallH = 8, kBigW = 32, kBigH = 16;
+ComPtr<ID3D11Texture2D> Sized(ID3D11Device* device, DXGI_FORMAT format, UINT width, UINT height, void const* data) {
+    D3D11_TEXTURE2D_DESC desc{};
+    desc.Width = width; desc.Height = height; desc.MipLevels = 1; desc.ArraySize = 1; desc.Format = format;
+    desc.SampleDesc.Count = 1; desc.Usage = D3D11_USAGE_DEFAULT; desc.BindFlags = D3D11_BIND_RENDER_TARGET;
+    D3D11_SUBRESOURCE_DATA initial{}; initial.pSysMem = data; initial.SysMemPitch = width * sizeof(Pixel);
+    ComPtr<ID3D11Texture2D> texture;
+    Require(device->CreateTexture2D(&desc, data ? &initial : nullptr, &texture), "CreateTexture2D sized");
+    return texture;
+}
+std::vector<Pixel> ReadBig(ID3D11Device* device, ID3D11DeviceContext* context, ID3D11Texture2D* texture) {
+    D3D11_TEXTURE2D_DESC desc{}; texture->GetDesc(&desc);
+    desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    ComPtr<ID3D11Texture2D> typed;  // a TYPELESS image can't be mapped from a staging copy of its own format
+    desc.BindFlags = 0; desc.Usage = D3D11_USAGE_STAGING; desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+    Require(device->CreateTexture2D(&desc, nullptr, &typed), "Create staging big");
+    context->CopyResource(typed.Get(), texture);
+    D3D11_MAPPED_SUBRESOURCE mapped{};
+    Require(context->Map(typed.Get(), 0, D3D11_MAP_READ, 0, &mapped), "Map big");
+    std::vector<Pixel> pixels(kBigW * kBigH);
+    for (UINT y = 0; y < kBigH; ++y)
+        std::memcpy(pixels.data() + y * kBigW, static_cast<std::uint8_t*>(mapped.pData) + y * mapped.RowPitch, kBigW * sizeof(Pixel));
+    context->Unmap(typed.Get(), 0);
+    return pixels;
+}
+void CheckColumns(std::vector<Pixel> const& image, UINT first, UINT last, Pixel const& want, char const* label, int tolerance) {
+    for (UINT y = 0; y < kBigH; ++y) for (UINT x = first; x <= last; ++x) {
+        if (!Near(image[y * kBigW + x], want, tolerance)) {
+            ++failures;
+            Pixel const& got = image[y * kBigW + x];
+            std::printf("%s: pixel (%u, %u) is %u %u %u %u, wanted %u %u %u %u\n", label, x, y, got[0], got[1], got[2], got[3],
+                want[0], want[1], want[2], want[3]);
+            return;
+        }
+    }
+}
+void RunUpscale(ID3D11Device* device, ID3D11DeviceContext* context, ID3D11InfoQueue* queue, std::wstring const& ini) {
+    WritePrivateProfileStringW(L"Upscale", L"method", L"fsr", ini.c_str());
+    WritePrivateProfileStringW(L"Upscale", L"sharpness", L"0.9", ini.c_str());
+    Pixel const a{64, 128, 192, 255}, b{200, 60, 20, 255};
+    std::vector<Pixel> halves(kSmallW * kSmallH);
+    for (UINT y = 0; y < kSmallH; ++y) for (UINT x = 0; x < kSmallW; ++x) halves[y * kSmallW + x] = x < kSmallW / 2 ? a : b;
+    auto source = Sized(device, DXGI_FORMAT_R8G8B8A8_UNORM, kSmallW, kSmallH, halves.data());
+    std::vector<Pixel> const sentinel(kBigW * kBigH, Pixel{13, 19, 23, 29});
+    auto image = Sized(device, DXGI_FORMAT_R8G8B8A8_TYPELESS, kBigW, kBigH, sentinel.data());
+
+    auto gameTarget = Texture(device, DXGI_FORMAT_R8G8B8A8_UNORM, D3D11_BIND_RENDER_TARGET);
+    ComPtr<ID3D11RenderTargetView> gameView;
+    Require(device->CreateRenderTargetView(gameTarget.Get(), nullptr, &gameView), "game RTV");
+    ID3D11RenderTargetView* view = gameView.Get(); context->OMSetRenderTargets(1, &view, nullptr);
+    D3D11_VIEWPORT const gameViewport{2,3,6,7,0.2f,0.8f}; context->RSSetViewports(1, &gameViewport);
+    context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_LINESTRIP);
+    queue->ClearStoredMessages();
+
+    // No shift: each half keeps its colour away from the edge (the edge is at column 16).
+    CHECK(copy::Copy(context, image.Get(), source.Get(), 0, 0));
+    auto out = ReadBig(device, context, image.Get());
+    CheckColumns(out, 0, 11, a, "FSR left half", 2);
+    CheckColumns(out, 20, 31, b, "FSR right half", 2);
+    // Shifted 8 pixels right: the edge at column 24; the vacated 8 columns keep the unshifted picture (the left colour).
+    CHECK(copy::Copy(context, image.Get(), source.Get(), 8, 1));
+    out = ReadBig(device, context, image.Get());
+    CheckColumns(out, 0, 19, a, "FSR shifted right: left colour", 2);
+    CheckColumns(out, 30, 31, b, "FSR shifted right: right colour", 8);
+    // Shifted 8 pixels left: the edge at column 8; the vacated columns on the right keep the unshifted right colour.
+    CHECK(copy::Copy(context, image.Get(), source.Get(), -8, 0));
+    out = ReadBig(device, context, image.Get());
+    CheckColumns(out, 0, 1, a, "FSR shifted left: left colour", 8);
+    CheckColumns(out, 12, 31, b, "FSR shifted left: right colour", 2);
+    // The game's pipeline state is back.
+    UINT count = 1; D3D11_VIEWPORT after{}; context->RSGetViewports(&count, &after);
+    CHECK(count == 1 && std::memcmp(&after, &gameViewport, sizeof after) == 0);
+    D3D11_PRIMITIVE_TOPOLOGY topology{}; context->IAGetPrimitiveTopology(&topology);
+    CHECK(topology == D3D11_PRIMITIVE_TOPOLOGY_LINESTRIP);
+    ComPtr<ID3D11RenderTargetView> afterView; context->OMGetRenderTargets(1, &afterView, nullptr);
+    CHECK(afterView.Get() == gameView.Get());
+
+    // The colour correction at RCAS's end: a flat picture comes out as core/vr/Colour's CPU reference grades it.
+    namespace cv = mevr::vr::colour;
+    cv::Settings grade;
+    grade.contrast = 1.06f; grade.saturation = 1.12f; grade.gamma = 0.90f; grade.black = 0.03f;
+    mevr::host::colour::gTestConstants = cv::MakeConstants(grade, 0.0f, false, 0u);
+    mevr::host::colour::gTestGrade = true;
+    std::vector<Pixel> const flat(kSmallW * kSmallH, a);
+    context->UpdateSubresource(source.Get(), 0, nullptr, flat.data(), kSmallW * sizeof(Pixel), 0);
+    CHECK(copy::Copy(context, image.Get(), source.Get(), 0, 0));
+    cv::Rgb const graded = cv::Correct(mevr::host::colour::gTestConstants, {a[0] / 255.0f, a[1] / 255.0f, a[2] / 255.0f}, 5, 5, false);
+    Pixel const wanted{cv::ToUnorm8(graded[0]), cv::ToUnorm8(graded[1]), cv::ToUnorm8(graded[2]), 255};
+    CHECK(!Near(wanted, a, 2));  // the grade changes this colour, so the check below means something
+    CheckColumns(ReadBig(device, context, image.Get()), 0, 31, wanted, "FSR with the colour correction", 1);
+    mevr::host::colour::gTestGrade = false;
+    CHECK(copy::Copy(context, image.Get(), source.Get(), 0, 0));
+    CheckColumns(ReadBig(device, context, image.Get()), 0, 31, a, "FSR, flat stays flat", 1);
+
+    // The method off (re-read within a second): the larger image is still filled, bilinearly.
+    WritePrivateProfileStringW(L"Upscale", L"method", L"off", ini.c_str());
+    Sleep(1200);
+    context->UpdateSubresource(image.Get(), 0, nullptr, sentinel.data(), kBigW * sizeof(Pixel), 0);
+    CHECK(copy::Copy(context, image.Get(), source.Get(), 0, 0));
+    CheckColumns(ReadBig(device, context, image.Get()), 0, 31, a, "method off: bilinear fill", 1);
+    CHECK(DebugErrors(queue) == 0);
+    context->ClearState();
+    copy::Reset();
+    mevr::host::colour::gTestBuffer.Reset();
+}
 }
 
 int main() {
@@ -243,9 +379,13 @@ int main() {
         Require(hr, "Create WARP device");
         ComPtr<ID3D11InfoQueue> queue; Require(device.As(&queue), "D3D11 debug queue");
         Run(device.Get(), context.Get(), queue.Get());
+        mevr::host::gTestSettings = (mevr::tests::TempRoot() / L"EyeCopyWarp.ini").wstring();
+        RunUpscale(device.Get(), context.Get(), queue.Get(), mevr::host::gTestSettings);
+        mevr::tests::RemoveTempRoot();
     } catch (std::exception const& error) {
         std::printf("ERROR: %s\n", error.what()); return 1;
     }
-    std::printf("EyeCopy/Blit WARP: %s (HDR, SDR, shift, failure refusal, resize, MSAA, pipeline restore)\n", failures == 0 ? "PASS" : "FAIL");
+    std::printf("EyeCopy/Blit WARP: %s (HDR, SDR, shift, failure refusal, resize, MSAA, pipeline restore, FSR upscale with "
+                "shift and colour)\n", failures == 0 ? "PASS" : "FAIL");
     return failures == 0 ? 0 : 1;
 }
