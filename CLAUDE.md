@@ -5,8 +5,8 @@ our own `bink2w64.dll` loader (`src/loader`) or ME3Tweaks' LEBinkProxy, on top o
 mechanics may change to fit VR (see `docs/trilogy-design.md`).
 
 **ME2 continues ME1** (the owner, 2026-11-14): [the continuation plan](docs/le2-continuation-plan.md) (milestones M1-M7:
-engine access, the host's services, VRIK fast-tracked, the menus, the cinema screen, the rest, shipping) is the work
-list; ME1's systems and defaults on ME2, deviating only where the game forces it. Its lanes run as parallel sessions;
+engine access, the host's services, VRIK fast-tracked, the menus, the cinema screen, the rest, shipping) is ME2's
+record (the work list is docs/trilogy-plan.md since 2026-11-16); ME1's systems and defaults on ME2, deviating only where the game forces it. Its lanes run as parallel sessions;
 ME2 ships after M5; interrupts on the triggers; the Hammerhead with the Mako's controls and cockpit. **One game run at a
 time across sessions:** `tools/le2-halcyon-run/run-lock.ps1` (its `prep.ps1`/`restore.ps1` for ME2 runs on the fake headset).
 **One trilogy, one ledger** (the owner, 2026-11-16: unify the approaches; work that ignored ME1's prior art was wasted):
