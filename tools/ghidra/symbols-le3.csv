@@ -1,0 +1,55 @@
+# SPDX-License-Identifier: MIT
+# Hand-curated LE3 (2.0.0.48602, timestamp 0x60AEF0C4) names for the Ghidra project, from our
+# source and research notes (research/sequel-render-levers.md "ME3": ME1's render levers' natives).
+# tools/ghidra/seed.ps1 merges this with LExSDKv2's RVA table. Columns: rva,name,kind,comment.
+rva,name,kind,comment
+0x368850,SceneRenderB,func,LE1 0x76EE20: the capture loop then the eye's render (0x3685C0) then the renderer's deletion; void(renderer)
+0x3685C0,SceneRenderUmbraBranch,func,LE1 inlines this in 0x76EE20: show flags 0x47/0x15/0x1B or renderer +0x5C == 0 take 0x365370; else Allocate InitViews and the passes
+0x365370,FSceneRenderer::Render,func,LE1 0x76BC00 (byte-identical): the render without the Umbra branch
+0x355CC0,SceneRenderHitProxies_guess,func,LE1 0x75EC20: taken on show flag 0x33
+0x35F090,BeginRenderingViewFamily_guess,func,LE1 0x7655A0; Halcyon ME3's kSubmitFamilyRva
+0x360EA0,SceneRenderC,func,LE1 0x767900: the render command's thunk onto 0x368850
+0x35E6E0,FSceneRenderer::DeletingDestructor,func,LE1 0x4ED700 (ME3's has the destructor inlined); (renderer flags); frees 0x110 bytes on flags & 1
+0x36CDC0,FSceneRenderTargets::Allocate,func,LE1 0x772EB0; (this sizeX sizeY 0)
+0x361630,FSceneRenderer::InitViews_guess,func,LE1 0x768090; ends with the Umbra resolve 0x3E5890 light targets 0x38A450 base pass 0x3E55C0
+0x3E5890,FSceneRenderer::UmbraResolve_guess,func,LE1 0x8BFBB0; makes the two commanders (0xA4 bytes) and calls Umbra::Camera::resolveVisibility per view (stride 0x11B0)
+0x38A450,FSceneRenderer::RenderDpgLightTargets,func,LE1 0x77BE00; (renderer dpg)
+0x3E55C0,RenderUmbraBasePass,func,LE1 0x8BF8F0; per view commander +0x64 index +0x68 view then 0x3E4550
+0x3E4550,UmbraCommander::BasePassView_guess,func,LE1 0x8BEDB0; reads and clears commander +0x34 + 8 x index
+0x365940,FSceneRenderer::RenderBasePassView_guess,func,LE1 0x76C1D0: the opaque base pass of one view
+0x3600A0,SceneRenderTranslucencyCheck,func,LE1 0x7666A0; view stride 0x11B0
+0x351020,SceneRenderBeforeLights,func,LE1 0x759240
+0x366F20,SceneRenderDpgPass,func,LE1 0x76D650; (renderer dpg uint* dirty)
+0x366960,SceneRenderDpgLights,func,LE1 0x76D0A0; (renderer dpg translucency uint* dirty flag)
+0x366280,SceneRenderForeground,func,LE1 0x76CA70; (renderer 2 int* out uint* dirty flag)
+0x3675D0,SceneRenderFinish,func,LE1 0x76DD10; (renderer translucency dirty)
+0x3E84E0,SetUmbraCommanderIndex,func,LE1 0x8C1AE0; a leaf writing 0x189EBF8
+0x3E8B80,UmbraCommander::command,func,LE1 0x8C34C0; slot 1 of the commander's first vtable 0x1157F68; does nothing while 0x1767208 is 0
+0x3D8EB0,UmbraCommander::IssueOcclusionQueries,func,LE1 0x8B6550 (byte-identical); RHI slot 0x4C0 with view +0x260 and +0x320
+0x3D8C90,UmbraCommander::ReadQueryResults,func,LE1 0x8B6330 (byte-identical); command code 6
+0x3D8950,UmbraCommander::FlushOccluders_guess,func,LE1 0x8B5FF0; command codes 1 and 5
+0x3E3650,UmbraCommander::InstanceVisibleWithParent_guess,func,ME3 only: command code 3's per-instance wrapper (the record lookup the distance and a parent primitive); calls 0x3E3B00
+0x3E3B00,UmbraCommander::InstanceVisible,func,LE1 0x8BE0B0; (commander record distanceSq a4 a5 a6 a7); record flags at +0x54 (LE1 +0x48)
+0x35BE20,FSceneViewState::UpdatePrimitiveOcclusion_guess,func,LE1 0x762550; the occlusion history TSet at state +0xD10
+0x35CBB0,FSceneView::FSceneView_copy,func,LE1 0x763450; the same fields up to +0x4DC (LE1 copies one more int at +0x4E0)
+0xDFB650,Umbra::Camera::resolveVisibility,func,LE1 0xD41240 (byte-identical)
+0xE02430,Umbra::ReadQueryResult_guess,func,LE1 0xD48380 (byte-identical leaf); (context head count wait)
+0x9A7D10,FD3D11DynamicRHI::GetQueryData,func,LE1 0x9A04B0 (byte-identical); (this query out size bWait)
+0x9A7C50,FD3D11DynamicRHI::RHIGetOcclusionQueryResult_guess,func,LE1 0x9A03F0; RHI vtable +0x268
+0x9B0270,FD3D11BoundShaderState::FD3D11BoundShaderState,func,LE1 0x9A89F0 (byte-identical)
+0x9B24C0,FD3D11DynamicRHI::RHICreateBoundShaderState,func,LE1 0x9AB3B0 (byte-identical); RHI vtable +0xA0
+0x2CB940,RHIAddRefBoundShaderState_guess,func,LE1 0x215B10 (byte-identical); RHI vtable +0x8A0; the handle is the object + 0xC
+0x34D750,SceneCaptureUmbraCameraThunk,func,LE1 0x7526C0; a leaf; jumps through the capture's vtable +0x48 (LE1 +0x40)
+0x793850,USkeletalMeshComponent::UpdateBounds,func,LE1 0x58EEC0; Bounds at +0x8C; ends with 0x32EC10
+0x32EC10,UPrimitiveComponent::UpdateUmbraBounds,func,LE1 0x25CFE0; the Umbra object at +0x214 (LE1 +0x210)
+0x12FC7A0,FD3D11DynamicRHI::vftable,data,LE1 0x120FF00; the same slots (0xA0 0x268 0x340 0x4C0 0x520 0x620 0x628 0x8A0)
+0x1157F68,UmbraCommander::vftable,data,LE1 0x11D62C0; slot 1 is command()
+0x1764A20,GSceneRenderTargets,data,LE1 0x167D0E0
+0x1898678,GSceneFrameCounter,data,LE1 0x178779C
+0x189EC04,GUmbraDepthDirty,data,LE1 0x1795D38
+0x1764E18,GSkipBeforeLights,data,LE1 0x167D49C
+0x1756A20,GShowFlagBitsPerWord,data,LE1 0x164C720
+0x189ECC8,GUmbraCommanders,data,LE1 0x1798E88; two pointers
+0x189EBF8,GUmbraCommanderIndex,data,LE1 0x1795D28
+0x189EC0C,GUmbraResolveStart,data,LE1 0x1795D40; a float stamped by command code 0
+0x1767208,GUmbraCommandGate_guess,data,ME3 only: command() returns at once while this is 0
