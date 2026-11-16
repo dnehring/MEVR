@@ -30,9 +30,11 @@
 #include "plugin/GameThreadCalls.hpp"
 #include "plugin/Halcyon.hpp"
 #include "plugin/KeptLocks.hpp"
-#include "plugin/PerfProbe.hpp"
-#include "plugin/RenderLevers.hpp"
 #include "plugin/MotionBlurGuard.hpp"
+#endif
+#if defined(MEVR_WITH_PERF_PROBE)
+#include "plugin/PerfProbe.hpp"      // the frame-breakdown probe and the render levers: one module each for all three
+#include "plugin/RenderLevers.hpp"   // games (research/sequel-render-levers.md "Shared module")
 #endif
 #if defined(MEVR_WITH_HALCYON_LE2)
 #include "plugin/GameThreadCalls.hpp"
@@ -97,24 +99,34 @@ void GameEngineTickHook(void* self, float deltaSeconds) {
         mevr::host::Tick(deltaSeconds);
         return;
     }
-#if defined(MEVR_WITH_HALCYON)
+#if defined(MEVR_WITH_PERF_PROBE)
     mevr::host::perf::GameTickBegin();
 #endif
     mevr::host::crash::NoteGameThread();
+#if defined(MEVR_WITH_PERF_PROBE)
+    mevr::host::perf::QueueDrainBegin();
+#endif
 #if defined(MEVR_WITH_HALCYON)
     // Halcyon's ProcessEvent calls from the Present thread, queued for here (script on the game thread only).
-    mevr::host::perf::QueueDrainBegin();
     mevr::host::game_thread::Drain();
 #endif
 #if defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
     mevr::host::game_thread::Drain();  // ME2's renderer's Present-thread ProcessEvent calls, queued for here (as LE1's)
 #endif
-#if defined(MEVR_WITH_HALCYON)
+#if defined(MEVR_WITH_PERF_PROBE)
     mevr::host::perf::EngineTickBegin();
 #endif
     gGameEngineTickOrig(self, deltaSeconds);
-#if defined(MEVR_WITH_HALCYON)
+#if defined(MEVR_WITH_PERF_PROBE)
     mevr::host::perf::EngineTickEnd();
+#endif
+#if defined(MEVR_WITH_PERF_PROBE) && !defined(MEVR_WITH_HALCYON)
+    // The sequels: the probe's requests and captures and the render levers' settings (LE1: halcyon::Tick calls perf::Tick,
+    // and render_levers::Tick is the line after it).
+    mevr::host::perf::Tick();
+    mevr::host::render_levers::Tick();
+#endif
+#if defined(MEVR_WITH_HALCYON)
     mevr::host::halcyon::Tick(deltaSeconds);
     mevr::host::render_levers::Tick();
     mevr::host::motion_blur_guard::Tick();
@@ -128,7 +140,7 @@ void GameEngineTickHook(void* self, float deltaSeconds) {
 #endif
     mevr::host::Tick(deltaSeconds);
     mevr::host::process_event::ReportOffThread();
-#if defined(MEVR_WITH_HALCYON)
+#if defined(MEVR_WITH_PERF_PROBE)
     mevr::host::perf::HostTickEnd();
 #endif
 }
@@ -305,6 +317,11 @@ extern "C" __declspec(dllexport) bool SpiOnAttach(spi::Interface* InterfacePtr) 
 #endif
 #if defined(MEVR_WITH_HALCYON_LE3)
     if (!gEngineProbe) mevr::host::motion_blur_guard::Install(init);
+#endif
+#if defined(MEVR_WITH_PERF_PROBE) && !defined(MEVR_WITH_HALCYON)
+    // The sequels: ME1's render levers, each by what this game's rows of engine/Addresses.hpp have (plugin/RenderLeversTable);
+    // a lever without its rows stands down with one log line.
+    if (!gEngineProbe) mevr::host::render_levers::Install(init);
 #endif
     mevr::log::Info("host attached");
     return true;

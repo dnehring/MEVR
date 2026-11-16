@@ -233,6 +233,10 @@ inline constexpr Entry kTable[] = {
         "render levers"},
     {"Umbra commander index", 0x1795D28, Kind::Data, "00 48 03 53 60 48 8B 05 ?? ?? ?? ?? 48 8B 0C C6", 8, 0x8BFA49,
         "render levers"},
+    // The show flags' bits per word (32), which RenderLevers' ShowFlag() reads to test a bit of FSceneRenderer +0x28 (a
+    // literal in RenderLevers.cpp until 2026-11-16; the reference is the scene render's own test of show flag 0x33).
+    {"show flags' bits per word", 0x164C720, Kind::Data, "41 B8 33 00 00 00 41 8B C0 44 8B 0D ?? ?? ?? ?? 41 F7 F1 8B", 12,
+        0x76EF10, "render levers"},
 };
 
 } // le1
