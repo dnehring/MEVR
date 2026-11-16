@@ -403,8 +403,20 @@ function Get-PreviewVrProcesses($Open, [bool]$AllowNewHelpers = $false) {
     $vrRoot = 'C:\Program Files (x86)\Steam\steamapps\common\SteamVR\'
     $seen = @()
     foreach ($p in $processes) {
+        # SteamVR's startup helpers may exit between name enumeration and Path.
+        # Only a confirmed exit/absence may be skipped; a live unreadable process
+        # is still refused. Resolve again as the launcher identity reader does.
+        if ($p.HasExited) { continue }
         $path = $p.Path
-        if (-not $path -or -not $path.StartsWith($vrRoot, [StringComparison]::OrdinalIgnoreCase)) { throw 'Unexpected VR process executable path' }
+        if (-not $path) {
+            $again = Get-Process -Id $p.Id -ErrorAction SilentlyContinue
+            if (-not $again -or $again.HasExited -or $p.HasExited) { continue }
+            if ($again.ProcessName -ne $p.ProcessName) { throw 'VR process identity changed during discovery' }
+            $path = $again.Path
+        }
+        if (-not $path -or -not $path.StartsWith($vrRoot, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Unexpected VR process executable path: $($p.ProcessName) pid=$($p.Id) path='$path'"
+        }
         $old = @($recorded | Where-Object { $_.pid -eq $p.Id })
         if ($old.Count -eq 1) { Assert-RunProcess $p $old[0] $path }
         elseif (-not $AllowNewHelpers -or ($p.ProcessName -eq 'vrserver' -and @($recorded | Where-Object { $_.name -eq 'vrserver' }).Count)) {
@@ -438,7 +450,10 @@ function Get-PreviewOptions($Open) {
     [pscustomobject]@{ mode = $mode; diagnostics = $diagnostics; mirrorEvery = $mirror }
 }
 function Get-PreviewModConfig {
-    "[Debug]`r`nrequests = 1`r`nopenxrRuntime = C:\Program Files (x86)\Steam\steamapps\common\SteamVR\steamxr_win64.json`r`n[Pointer]`r`nsetCursor = 0`r`n"
+    # Reuse the existing local-only native symbol dumper for this explicit LE3
+    # research route. Keep it in the exact prep/launch contract, not an ini edit
+    # after preparation. It writes once and makes no engine mutations.
+    "[Debug]`r`nrequests = 1`r`ndumpNatives = 1`r`nopenxrRuntime = C:\Program Files (x86)\Steam\steamapps\common\SteamVR\steamxr_win64.json`r`n[Pointer]`r`nsetCursor = 0`r`n"
 }
 function Assert-PreviewConfig([string]$Bin, [ValidateSet(0, 2, 4)][int]$Mode = 4, [bool]$Diagnostics = $false,
     [ValidateSet(1, 2, 4, 8)][int]$MirrorEvery = 8) {

@@ -177,6 +177,10 @@ Implementation is now authorized. The audit baseline above remains historical; t
   are integrated. The owner's projector-placement parity is still missing: the verified default is a large flat
   panel, not the map over the physical CIC preview projector. Actual scan/probe bindings, pursuit, rewards and
   persistence remain unaccepted. See the [projector correction and reuse steps](../research/le3-galaxy.md#projector-parity-correction).
+  An explicitly armed, bounded CIC retention diagnostic now keeps the measured projector loaded during native map
+  entry and releases on normal X exit (run `20261115-214310-005`, 541 metadata checks). Exit recreates the actor,
+  so reacquisition is mandatory. This proves room residence for one fixture, not camera/projection parity or
+  mission/load/timeout acceptance; the default remains unchanged.
   The read-only projector adapter measures the on-foot anchor using ME1's shared radius calculation. The expanded
   538-row native metadata probe passes: normal map entry unloads `BioA_Nor_210CIC` and loads the separate map art;
   `BioA_Nor_200` stays visible. Room retention is required alongside pre-entry anchor capture and camera hold.

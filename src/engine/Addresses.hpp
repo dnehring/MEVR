@@ -312,6 +312,10 @@ inline constexpr Entry kTable[] = {
 
 MEVR_ADDRESSES_LE3 {
 
+// Native tier evaluation, void(this, int force), before streaming queues are
+// classified. Ghidra from the installed 60AEF0C4 dump; research/le3-galaxy.md.
+inline constexpr std::uint32_t kReevaluateStreaming = 0xAC67C0;
+
 inline constexpr std::uint32_t kProcessEvent = 0xF4F80;
 inline constexpr std::uint32_t kCallFunction = 0xF2C30;
 inline constexpr std::uint32_t kGameEngineTick = 0x5502C0;
@@ -389,6 +393,8 @@ inline constexpr Entry kTable[] = {
         "mod (reflection), host (Halcyon LE3's game-thread queue)"},
     {"UBioPlayerSelection::FindCurrentSelectionTarget", kUpdateSelection, Kind::Function,
         "48 8B C4 48 89 48 08 55 56 57 41 54 41 55 41 57", 0, 0, "mod (interaction gaze)"},
+    {"UBioTierManager::ReevaluateStreaming", kReevaluateStreaming, Kind::Function,
+        "41 56 48 83 EC 40 4C 8B F1 85 D2 75 0D ?? ?? ??", 0, 0, "mod (CIC art retention)"},
     {"the name pools", kNamePools, Kind::Data, "38 49 63 46 0C 48 8D 2D ?? ?? ?? ?? 33 FF 85 C0", 8, 0x81A11, "mod (reflection)"},
     {"GMalloc", kGMalloc, Kind::Data, "B9 98 00 00 00 48 8B 0D ?? ?? ?? ?? 48 85 C9 75", 8, 0xB7683, "mod (engine strings)"},
     {"appMalloc", kAppMalloc, Kind::Function,

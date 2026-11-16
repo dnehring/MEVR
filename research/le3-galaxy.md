@@ -182,6 +182,87 @@ owned game closes, restoration reports zero differences including the VR
 configuration, and the shared lock is released. This increment diagnoses the
 remaining presentation work; it does not enable projector rendering.
 
+### Bounded CIC retention candidate
+
+`game/Le3GalaxyRetention` now provides `mevr galaxy retain on|off|state` as an
+explicit diagnostic. Normal play does not arm it. Arming requires a measured,
+tracked on-foot projector and the native CIC art already loaded and visible.
+The lease waits at most 20 seconds for normal map entry and then lasts at most
+120 seconds. It runs only on the arming command's game thread and checks the
+current controller, pawn, world and unique streaming descriptor identities.
+
+The installed native-function dump and existing Ghidra tools identify the
+streaming evaluation boundary at RVA `0xAC67C0` for executable `60AEF0C4`.
+The address table names it `UBioTierManager::ReevaluateStreaming`; that name is
+an inferred role, not an exported symbol. The native streaming driver at
+`0xBDFFC0` invokes it before classifying loading/visibility queues at `0xBDEDC0`.
+The hook calls the original evaluator first, then requests only
+`BioA_Nor_210CIC`'s load and visibility during semantic map modes 11/12.
+It does not freeze streaming, set plot states or redirect the native map camera.
+The byte pattern has one match and agrees with the executable's function-start
+metadata. Native source/dumps remain private.
+
+The adapter records the original requests. Off, timeout or leaving map releases
+its requests only against the same live descriptor, and a fresh native rebuild
+takes precedence over saved requests. World/player/descriptor replacement drops
+the old lease. Writes use the existing journal. Hook removal participates in the
+mod's existing unload/pin contract; normal unload runs on the game thread.
+
+Protected run `20261115-214310-005-LE3-navigation` passes **541/541** reflection
+checks and loads the original AutoSave normally. The on-foot projector and its
+component remain the same live objects in mode 11; CIC art and the native galaxy
+art are both loaded/visible. The diagnostic reports one override. One native
+**X** press exits to mode 0; status becomes unarmed, with no owned requests and
+reason `left-map`. Native galaxy art unloads and CIC art is loaded/visible again.
+The projector actor/component have **new identities after exit**: the next open
+must reacquire them. Do not keep a cached UObject pointer across that transition.
+
+The preceding run `20261115-213912-340-LE3-navigation` proved retention but its
+exit assertion failed: the reused B replay backs out of an orbital view, whereas
+this system view visibly binds X to Exit. The corrected recording changes only
+that button to left-controller primary, retaining its existing timing and poses.
+This distinction belongs in later navigation scenarios.
+
+Captures `2026-11-15_21-44-08-204`, `2026-11-15_21-44-29-297` and
+`2026-11-15_21-44-45-358` cover before, map and exit. They report no snapshot
+errors. **The map capture still shows the flat native panel.** Room residency
+and normal exit are proven for this fixture; projector rendering, camera hold,
+stereo map capture, timeout/off/reload, mission departure and physical-headset
+acceptance remain separate gates. This diagnostic must not become the default
+until the renderer owns and validates the complete lifecycle.
+
+The protected preview now obtains native symbols with the existing
+`dumpNatives` option in its exact prepared configuration. Its process discovery
+also handles an exited SteamVR startup helper without accepting a live unreadable
+or replaced process. The offline runner tests cover both refusal cases.
+All three development host/module pairs and monolithic player builds pass.
+All **71 regression tests** pass, including the **37 offline runner cases**.
+The successful native run restores the original profile/game files with zero
+differences, verifies exact VR/LE1 environment restoration and releases the
+shared game lock. It installs no persistent player-facing behavior change.
+
+### Camera/capture reuse contract for the next increment
+
+The existing native dump identifies `Camera.GetCameraViewPoint`'s exec wrapper
+at `0x4E3FE0`. Its body at `0x46FC60` reads location at camera `+0x448` and
+rotation at `+0x454`, matching `CameraCache.POV`. This supports reusing
+`player::CameraPov` and ME1's scoped swap, rather than inventing another camera
+source. It does not prove the complete LE3 main-view caller chain or a successful
+swap. Add independent nested location/rotation metadata checks beside the
+existing LE3 FOV check before enabling writes. FOV must use the existing
+`EngineProbe::CameraFovEdit` getter selection: locked FOV can override the cache.
+
+The remaining code boundaries are explicit: `SceneCaptureRig` still compiles
+its real implementation only for LE1, and its reflected handles default to the
+LE1 module gate. Reuse it after checking LE3 spawn, target creation, enable,
+view/parameters and component-flush contracts; restore temporary CDO flags on
+every failure path. `ModLoader::WithGalaxyHologram` is still connected only to
+the LE1 host. `GalaxyHologram::WindowLayers` still gates on raw mode 9. Its
+shared renderer needs semantic map gating and LE3 overlay wiring, not a copy.
+The LE3 main-view hook already checks both the native caller and primary local
+player; retain both checks when inserting the scoped hold. Native map camera
+state must remain intact for selection, labels and independent map captures.
+
 ## Native adapter reuse boundary
 
 ME1 `game/GalaxyMap` is a native camera/projector/table adapter for ME1. Its mode 9, Normandy

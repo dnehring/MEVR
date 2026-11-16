@@ -223,6 +223,12 @@ retains the imported renderer's throttle. Values `2` and `4` are also explicit
 comparisons. The option is recorded and checked before and after startup. Compare
 engine frame timings separately from visible monitor updates: full-rate mirroring
 can reintroduce desktop-compositor back pressure and does not prove headset pacing.
+The preview enables the existing `[Debug] dumpNatives=1` diagnostic once per
+session. Its local native-function CSV supplies names to the existing Ghidra
+tools; this is research data, never a published artifact or gameplay acceptance.
+It is part of the exact prepared configuration and is restored with the other
+settings. No extra game launch is needed just to obtain the symbol map.
+
 The preview also sets `[Pointer] setCursor=0`, as the fake-headset skill requires for
 synthetic controller replays, so the recorded pointer cannot move the desktop cursor.
 Source: `src/halcyon/le3/me2_menu.cpp` `LoadValues`/resolution rows and

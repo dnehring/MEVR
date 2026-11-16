@@ -625,6 +625,8 @@ set(MEVR_MOD_SOURCES
     src/game/MakoGunner.hpp
     src/game/Spectator.cpp
     src/game/SceneCaptureRig.cpp
+    src/game/Le3GalaxyRetention.cpp
+    src/game/Le3GalaxyRetention.hpp
     src/game/Spectator.hpp
     src/game/Sights.cpp
     src/game/Sights.hpp

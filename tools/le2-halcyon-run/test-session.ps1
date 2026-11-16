@@ -482,6 +482,27 @@ try {
         $processSet=@($helper); Reject { Get-PreviewVrProcesses $session $true }
         $processSet=@($server,$server); Reject { Get-PreviewVrProcesses $session $true }
     }
+    Case 'preview skips exited helpers but refuses live unreadable identities' {
+        $when=[DateTime]::UtcNow
+        $server=[pscustomobject]@{Id=100;ProcessName='vrserver';Path='C:\Program Files (x86)\Steam\steamapps\common\SteamVR\bin\win64\vrserver.exe';StartTime=$when;HasExited=$false}
+        $helper=[pscustomobject]@{Id=102;ProcessName='vrstartup';Path=$null;StartTime=$when;HasExited=$true}
+        $processSet=@($server,$helper)
+        $liveSet=@($server)
+        function Get-Process {
+            param($Name,[int]$Id,$ErrorAction)
+            if ($PSBoundParameters.ContainsKey('Id')) { return @($liveSet | Where-Object { $_.Id -eq $Id }) }
+            return $processSet
+        }
+        $session=[pscustomobject]@{previewStartedUtc=$when.AddSeconds(-1).ToString('o')}
+        Check (@(Get-PreviewVrProcesses $session $true).Count -eq 1)
+        $helper.HasExited=$false # disappeared after enumeration, before resolving ID
+        Check (@(Get-PreviewVrProcesses $session $true).Count -eq 1)
+        $liveSet=@($server,$helper)
+        Reject { Get-PreviewVrProcesses $session $true }
+        $replacement=[pscustomobject]@{Id=102;ProcessName='different';Path=$server.Path;StartTime=$when;HasExited=$false}
+        $liveSet=@($server,$replacement)
+        Reject { Get-PreviewVrProcesses $session $true }
+    }
     "$count offline runner tests passed"
 } finally {
     $resolved = [IO.Path]::GetFullPath($root)

@@ -2979,6 +2979,8 @@ void CheckFields() {
     CheckField("SFXGame.SFXGameModeBase", "LocalizedBindings", SDK_FIELD(USFXGameModeBase, LocalizedBindings));
     CheckField("SFXGame.SFXGameModeGalaxy", "GalaxyCam", SDK_FIELD(USFXGameModeGalaxy, GalaxyCam));
     // LE3 CIC projector discovery and geometry: independent of the map camera.
+    CheckClass<UBioTierManager>("SFXGame.BioTierManager");
+    CheckField("SFXGame.BioTierManager", "bReevaluateStreaming", SDK_BOOL(UBioTierManager, bReevaluateStreaming));
     CheckClass<ULevelStreaming>("Engine.LevelStreaming");
     CheckField("Engine.WorldInfo", "StreamingLevels", SDK_FIELD(AWorldInfo, StreamingLevels));
     CheckField("Engine.LevelStreaming", "PackageName", SDK_FIELD(ULevelStreaming, PackageName));

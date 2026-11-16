@@ -70,6 +70,7 @@
 #include "game/HudPieces.hpp"
 #include "game/ScreenReticle.hpp"
 #include "game/Interact.hpp"
+#include "game/Le3GalaxyRetention.hpp"
 #include "game/Mako.hpp"
 #include "game/Holsters.hpp"
 #include "game/CockpitProbe.hpp"
@@ -383,6 +384,7 @@ void TryInstallScriptHooks() {
     game::camera_collision::TryStartup();  // [Game] cameraCollision (research/69: the camera pulled to Shepard's knees)
     game::camera_shake::TryStartup();  // [Comfort] screenShake, viewShake (research/71: the view shaken by shots and the run)
     game::galaxy_dump::TryStartup();  // the galaxy map's Flash calls, traced on request (research/51 section 8)
+    game::le3_galaxy_retention::Startup(*gInit);
     game::world_ui::TryStartup();  // the camera-update handler that holds Shepard's view while a game screen stands in the room
 #if !defined(MEVR_GAME_LE3)
     game::conversation_world::TryStartup();  // ... and the one that holds it through a conversation in the world (research/59)
@@ -1938,6 +1940,7 @@ MEVR_MOD_API void MevrModShutdown() {
     gScreenWantedFor = 0.0;
     // The host has already detached the present callback, so the render thread is out.
     vr::output::Shutdown();
+    if (gInit) removed(game::le3_galaxy_retention::Shutdown(*gInit, exiting), "the CIC streaming hook couldn't be removed");
     if (gInit && gHooked) {
         removed(engine::process_event::Uninstall(*gInit), "the ProcessEvent hook couldn't be removed");
     }
