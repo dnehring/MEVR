@@ -12,6 +12,7 @@
 #include "game/BodyCalibration.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/HeadTracking.hpp"
+#include "game/Le2Squad.hpp"
 #include "game/Player.hpp"
 #include "game/Throwables.hpp"
 #include "ue3/Handles.hpp"
@@ -647,8 +648,31 @@ std::string DrawByName(std::string_view name) {
     if (!weapon || *weapon == Weapon::None) {
         return "usage: mevr weapon pistol|shotgun|assault|sniper";
     }
-#if !defined(MEVR_GAME_LE1)
-    return "mevr weapon: LE1 only (the body holsters)";
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+    // The sequels' draw of a carried weapon (the holsters' adapter to come: research/le2-vrik.md "Holsters and the reload,
+    // the plan"): the player's inventory chain by weapon family (game/Le2Squad), BioPlayerController.SwitchWeapon (the
+    // event the weapon wheel's pick fires: SFXInventoryManager.SetWeaponIfAvailable).
+    static ue3::FunctionRef switchWeapon{"SFXGame.BioPlayerController.SwitchWeapon", ue3::kEveryGame};
+    ue3::Object* const pc = ue3::runtime::Up() ? player::Controller() : nullptr;
+    ue3::Object* const pawn = pc != nullptr ? player::Pawn(pc) : nullptr;
+    ue3::Function* const fn = switchWeapon.Get();
+    if (pawn == nullptr || fn == nullptr) {
+        return "no player pawn, or BioPlayerController.SwitchWeapon not found";
+    }
+    std::string carried;
+    for (ue3::Object* const item : le2_squad::Weapons(pawn)) {
+        int const family = le2_squad::WeaponType(item);
+        carried += std::format("{}{} ({})", carried.empty() ? "" : ", ", ue3::runtime::FullName(item), le2_squad::WeaponLabel(family));
+        if (family == static_cast<int>(*weapon)) {
+            ue3::Params parms(ue3::runtime::Get(), fn);
+            parms.Set("oWpn", item);
+            ue3::runtime::Call(pc, fn, parms);
+            return std::format("switching to {} (BioPlayerController.SwitchWeapon)", ue3::runtime::FullName(item));
+        }
+    }
+    return std::format("no {} is carried; carried: {}", slots::Name(*weapon), carried.empty() ? std::string("nothing") : carried);
+#elif !defined(MEVR_GAME_LE1)
+    return "mevr weapon: no weapon classes for this game";
 #else
     if (!gStarted) {
         return "the holsters aren't started (no script functions yet)";

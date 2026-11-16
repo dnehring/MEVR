@@ -556,11 +556,16 @@ void ShotAimed(ue3::Object* weapon, ue3::Rotator const* shot) {
     gNextShotLogMs = now + 2000;
     engine::UnrealRotation const ray = engine::ToRotation(gLastRayDirection);
     log::Info("hand aim: shot {}: along {}: the shot pitch {} yaw {}, {} pitch {} yaw {}: {:.2f} degrees apart (the weapon's aim "
-              "error); the game's own aim was pitch {} yaw {}, {:.1f} degrees from the shot",
+              "error); the game's own aim was pitch {} yaw {}, {:.1f} degrees from the shot{}",
         gShot.count, barrel ? (gShot.converged ? "the gun barrel toward what the sight line hit" : "the gun barrel")
                             : "the right controller's ray",
         shot->pitch, shot->yaw, barrel ? "aimed" : "the ray", ray.pitch, engine::Unwind(ray.yaw, shot->yaw), offRay,
-        gLastGameAim.pitch, gLastGameAim.yaw, offGame);
+        gLastGameAim.pitch, gLastGameAim.yaw, offGame,
+        barrel && gShot.converged
+            ? std::format("; the sight line hit {} {:.1f} m out: aimed {:.3f} degrees off the sight line, {:.3f} off the barrel",
+                  gShot.sightHit ? gShot.what : std::string("nothing (its trace's end)"), gShot.sightDistanceM, gShot.toSightDeg,
+                  gShot.toBarrelDeg)
+            : std::string());
 }
 
 void OnSfxWeaponAimCall(ue3::Object* context, ue3::Function* /*function*/, void* result) {
