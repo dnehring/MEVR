@@ -3156,6 +3156,13 @@ void CheckFunctions() {
     CheckFunction("SFXGame.SFXGameModeOrbital.StopScanning");
     CheckFunction("SFXGame.SFXGameModeOrbital.LaunchProbe");
     CheckNativeTarget("SFXGame.BioCameraBehaviorGalaxy.ScanSystem");
+    // ME3's reflected UpdateSelection has no parameters. Identify its thunk before
+    // adapting LE1's delta-time body hook; a matching name does not prove its ABI.
+    CheckNativeTarget("SFXGame.BioPlayerSelection.UpdateSelection");
+    CheckParmsSize("SFXGame.BioPlayerSelection.UpdateSelection", 0);
+    CheckNativeTarget("SFXGame.BioPlayerSelection.FindCurrentSelectionTarget");
+    CheckParmsSize("SFXGame.BioPlayerSelection.FindCurrentSelectionTarget", 0);
+    CheckField("Engine.Actor", "Rotation", SDK_FIELD(AActor, Rotation));
     CheckFunction("Engine.Pawn.ShouldCrouch");
     CheckFunction("Engine.Pawn.IsDead");
     CheckFunction("SFXGame.SFXGameModeDefault.StormOn");

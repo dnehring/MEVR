@@ -326,7 +326,8 @@ inline constexpr std::uint32_t kSoundSourceUpdate = 0;
 inline constexpr std::uint32_t kNameFromText = 0;
 inline constexpr std::uint32_t kTryAcquireCover = 0;
 inline constexpr std::uint32_t kCoverTrace = 0;
-inline constexpr std::uint32_t kUpdateSelection = 0;
+// FindCurrentSelectionTarget body, void(this); research/le3-interaction-gaze.md.
+inline constexpr std::uint32_t kUpdateSelection = 0xA9BF90;
 inline constexpr std::uint32_t kConversationSetPositionRotator = 0;
 inline constexpr std::uint32_t kInterruptConversation = 0;
 inline constexpr std::uint32_t kMoveWithInterpMoveTrack = 0;
@@ -386,6 +387,8 @@ inline constexpr Entry kTable[] = {
     // Our reflection layer's globals and the engine's allocator (ue3/Runtime has its own patterns too).
     {"GObjects", kGObjects, Kind::Data, "C9 74 5B EB F0 4C 8B 05 ?? ?? ?? ?? 4B 8B 04 06", 8, 0xBC8EB,
         "mod (reflection), host (Halcyon LE3's game-thread queue)"},
+    {"UBioPlayerSelection::FindCurrentSelectionTarget", kUpdateSelection, Kind::Function,
+        "48 8B C4 48 89 48 08 55 56 57 41 54 41 55 41 57", 0, 0, "mod (interaction gaze)"},
     {"the name pools", kNamePools, Kind::Data, "38 49 63 46 0C 48 8D 2D ?? ?? ?? ?? 33 FF 85 C0", 8, 0x81A11, "mod (reflection)"},
     {"GMalloc", kGMalloc, Kind::Data, "B9 98 00 00 00 48 8B 0D ?? ?? ?? ?? 48 85 C9 75", 8, 0xB7683, "mod (engine strings)"},
     {"appMalloc", kAppMalloc, Kind::Function,

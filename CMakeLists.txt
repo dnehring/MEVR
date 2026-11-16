@@ -1568,6 +1568,15 @@ if (MEVR_BUILD_TESTS)
     target_compile_options(mevr-floor-lock-host-tests PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
     add_dependencies(mevr-tests mevr-floor-lock-host-tests)
     add_test(NAME mevr-floor-lock-host COMMAND mevr-floor-lock-host-tests)
+    foreach(selection_game IN ITEMS LE1 LE3)
+        add_executable(mevr-selection-gaze-${selection_game}-tests tests/SelectionGazeTests.cpp)
+        target_include_directories(mevr-selection-gaze-${selection_game}-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+        target_compile_definitions(mevr-selection-gaze-${selection_game}-tests PRIVATE
+            MEVR_GAME_${selection_game} NOMINMAX WIN32_LEAN_AND_MEAN)
+        target_compile_options(mevr-selection-gaze-${selection_game}-tests PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
+        add_dependencies(mevr-tests mevr-selection-gaze-${selection_game}-tests)
+        add_test(NAME mevr-selection-gaze-${selection_game} COMMAND mevr-selection-gaze-${selection_game}-tests)
+    endforeach()
     # plugin/PadMerge (both hosts' pad mapping with the mod's flags) against LE1's merge before the move, and its rules.
     add_executable(mevr-pad-merge-tests tests/PadMergeTests.cpp src/plugin/PadMerge.cpp src/game/GamepadMapping.cpp
         src/core/vr/Controllers.cpp src/core/vr/Comfort.cpp src/core/Log.cpp)

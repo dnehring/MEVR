@@ -10,6 +10,22 @@ Read the [reuse audit](le3-port-reuse-audit.md), [ME3 melee audit](../research/l
 
 ## Implementation ledger (2026-11-15)
 
+**Combat fixture acquisition:** the refreshed six-save corpus still lacks an
+accepted ordinary combat checkpoint. Installed Citadel source identifies the
+normal range door/streaming/combat-pawn sequence and disables saving inside;
+acquire the checkpoint outside. Two protected Normandy approaches have not
+entered the galaxy map. The second reaches the table and exposes the missing
+headset-gaze selection hook. Its ME3 ABI and controller-rotation source are now
+audited; the shared ME1 swap/restore adapter now passes direct LE1/LE3 exception
+tests and a bounded native gaze/Use test: fixed-position down-left look selects
+the **War Terminal**, and A opens **War Assets** (mode 9). This corrects the earlier
+table identification; galaxy entry remains open. The run passes 517 metadata
+comparisons and restores with zero differences. All three development/player
+builds and 71 registered tests pass. Native UI return, combat aim, prompt cropping
+and broader interaction/headset acceptance still need their own proof. See
+[fixture research](../research/le3-combat-fixtures.md) and
+[selection audit](../research/le3-interaction-gaze.md).
+
 **Current renderer checkpoint:** the formerly failing Back/recenter transition now
 completes with ME1's shared motion-blur guard adapted to seven verified ME3 proxy
 pairs. The failing velocity-buffer bind belonged to a blur-specialized native

@@ -27,6 +27,9 @@ ue3::ClassRef gSelectionClass{"SFXGame.BioPlayerSelection", ue3::kEveryGame};
 ue3::FieldRef gPlayerSelection{"SFXGame.BioPlayerController", "m_oPlayerSelection", ue3::kEveryGame};
 ue3::FieldRef gCurrentTarget{"SFXGame.BioPlayerSelection", "m_oCurrentSelectionTarget", ue3::kEveryGame};
 ue3::FieldRef gIsCombatTarget{"SFXGame.BioPlayerSelection", "m_bCurrentSelectionIsCombatTarget", ue3::kEveryGame};
+#if defined(MEVR_GAME_LE3)
+ue3::FieldRef gControllerRotation{"Engine.Actor", "Rotation", ue3::kEveryGame};
+#endif
 ue3::FieldRef gCollision{"Engine.Actor", "CollisionComponent", ue3::kEveryGame};
 ue3::FieldRef gBounds{"Engine.PrimitiveComponent", "Bounds", ue3::kEveryGame};
 ue3::FieldRef gBoundsOrigin{gBounds, "Origin"};
@@ -43,6 +46,7 @@ struct Gaze {
     bool valid = false;
     void const* selection = nullptr;
     ue3::Object const* camera = nullptr;  // the POV's owner: still alive at the call (a level change frees it)
+    ue3::Object const* controller = nullptr;
     ue3::Vector* povLocation = nullptr;
     ue3::Rotator* povRotation = nullptr;
     ue3::Vector location;
@@ -71,7 +75,8 @@ unsigned gTargetChanges = 0;
 unsigned gTicksWithGaze = 0;
 
 bool Provide(void const* selection, engine::selection_gaze::Swap& out) {
-    if (!gGaze.valid || selection != gGaze.selection || !ue3::runtime::IsAlive(gGaze.camera)) {
+    if (!gGaze.valid || selection != gGaze.selection || !ue3::runtime::IsAlive(gGaze.camera) ||
+        !ue3::runtime::IsAlive(gGaze.controller)) {
         return false;
     }
     out.povLocation = gGaze.povLocation;
@@ -167,12 +172,20 @@ void Tick(float /*deltaSeconds*/, bool hooked, Link const& link) {
             gGaze.valid = std::isfinite(frame->headWorld.x) && std::isfinite(frame->headWorld.y) && std::isfinite(frame->headWorld.z);
             gGaze.selection = selection;
             gGaze.camera = camera;
+            gGaze.controller = controller;
             gGaze.povLocation = pov->location;
             gGaze.povRotation = pov->rotation;
+#if defined(MEVR_GAME_LE3)
+            // The audited native search reads camera-cache location but Actor.Rotation
+            // on the owning controller. Swap only for that search, never head-aim combat.
+            gGaze.povRotation = gControllerRotation.In<ue3::Rotator>(controller);
+            gGaze.valid = gGaze.valid && gGaze.povRotation != nullptr;
+#endif
             gGaze.location = {static_cast<float>(frame->headWorld.x), static_cast<float>(frame->headWorld.y),
                 static_cast<float>(frame->headWorld.z)};
             // The camera's own winding kept, so nothing that compares rotators sees a whole-turn jump.
-            gGaze.rotation = {engine::Unwind(look.pitch, pov->rotation->pitch), engine::Unwind(look.yaw, pov->rotation->yaw), 0};
+            if (gGaze.povRotation != nullptr)
+                gGaze.rotation = {engine::Unwind(look.pitch, gGaze.povRotation->pitch), engine::Unwind(look.yaw, gGaze.povRotation->yaw), 0};
             gTicksWithGaze += gGaze.valid ? 1u : 0u;
         }
     }
