@@ -813,7 +813,7 @@ void ApplyHeadPosition(std::uintptr_t sv) noexcept
 #if defined(MEVR_ASI)
         // [MEVR] One floor correction for both eye passes, matching the published controller space.
         float r = w2m * dR, u = w2m * dU, f = w2m * dF;
-        const float floorDz = ::ME2VR::MevrBridge::FloorViewTranslation(t_replay, -pvt[2], rZ, uZ, fZ, &r, &u, &f);
+        const float floorDz = ::MevrSeams::FloorViewTranslation(t_replay, -pvt[2], rZ, uZ, fZ, &r, &u, &f);
         const float wx = r * rX + u * uX + f * fX;
         const float wy = r * rY + u * uY + f * fY;
         const float wz = r * rZ + u * uZ + f * fZ + floorDz;

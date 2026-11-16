@@ -131,7 +131,11 @@ authored seated scenes (such as shuttles) must reject traversal while retaining 
   mouse, trigger clicks, right stick scrolls). Our tab there, "VR hands" (`src/plugin/MevrMenuTab.cpp`),
   edits `[Hands]` and `[Squad] style` in `ASI\LE1MEVR.ini` (the mod re-reads it) and writes the arm-length
   sample (`[Arms] measureRequest` counter plus grip/head positions; `armLengthM` is shown if present).
-- Our seams into it are marked `[MEVR]` and declared in `src/halcyon/le1/mevr_bridge.h`
+- **One seam vocabulary for the three renderers** (2026-11-16, research/trilogy-seams.md): a seam more than one renderer
+  has is `MevrSeams::X` in `src/halcyon/MevrSeams.h` (one signature; implemented once in `plugin/Seams.cpp` where every game
+  answers alike, else in that game's bridge); each tree's `mevr_bridge.h` holds only its own. A shared host module asks
+  `renderer::Capabilities()` (`plugin/Renderer.hpp`) instead of `#if MEVR_WITH_HALCYON_LEx`.
+- Our seams into it are marked `[MEVR]`; LE1's own are declared in `src/halcyon/le1/mevr_bridge.h`
   (implemented in `src/plugin/HalcyonBridge.cpp`): static OpenXR loader, our controller actions
   on its session, Touch → Xbox pad 0 in its XInput hooks. Keep changes to its files small and
   marked; `git log -p -- src/halcyon` must show every change.

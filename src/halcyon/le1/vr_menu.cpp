@@ -40,7 +40,7 @@ bool GameInFront() noexcept
     if (foreground != nullptr) GetWindowThreadProcessId(foreground, &process);
     return process == GetCurrentProcessId();
 }
-bool InputBlocked() noexcept { return (g_open || MELEVR::MevrBridge::MainMenuOpen()) && GameInFront(); }
+bool InputBlocked() noexcept { return (g_open || MevrSeams::MainMenuOpen()) && GameInFront(); }
 bool g_ready = false;
 ID3D11Device* g_dev = nullptr;
 ID3D11DeviceContext* g_ctx = nullptr;
@@ -200,7 +200,7 @@ bool MenuOwnsLook() noexcept
 DWORD WINAPI HookedXInputGetState(DWORD idx, XINPUT_STATE* state) noexcept
 {
     DWORD r = g_origXInput ? g_origXInput(idx, state) : ERROR_DEVICE_NOT_CONNECTED;
-    r = MELEVR::MevrBridge::MergeMotionControllers(idx, state, r);   // [MEVR] Touch -> Xbox pad 0
+    r = MevrSeams::MergeMotionControllers(idx, state, r);   // [MEVR] Touch -> Xbox pad 0
     CaptureLeftStick(state, r, idx);
     DetectRecenterCombo(state, r, idx);   // double-click R3 = recenter (read before any menu zeroing)
     if (state != nullptr)
@@ -229,7 +229,7 @@ DWORD WINAPI HookedXInputGetStateEx(DWORD idx, XINPUT_STATE* state) noexcept
 {
     DWORD r = g_origXInputEx ? g_origXInputEx(idx, state)
                              : (g_origXInput ? g_origXInput(idx, state) : ERROR_DEVICE_NOT_CONNECTED);
-    r = MELEVR::MevrBridge::MergeMotionControllers(idx, state, r);   // [MEVR] Touch -> Xbox pad 0
+    r = MevrSeams::MergeMotionControllers(idx, state, r);   // [MEVR] Touch -> Xbox pad 0
     CaptureLeftStick(state, r, idx);
     DetectRecenterCombo(state, r, idx);   // double-click R3 = recenter (Ex poll path)
     if (state != nullptr)
@@ -641,7 +641,7 @@ void ApplyGamepadInput() noexcept
     // doesn't link the static xinput import, so there's no direct-call fallback. Neutral until installed.
     XINPUT_STATE xs = {};
     DWORD r = g_origXInput ? g_origXInput(0, &xs) : ERROR_DEVICE_NOT_CONNECTED;
-    r = MELEVR::MevrBridge::MergeMotionControllers(0, &xs, r);   // [MEVR] Touch controllers drive the menu too
+    r = MevrSeams::MergeMotionControllers(0, &xs, r);   // [MEVR] Touch controllers drive the menu too
     if (r != ERROR_SUCCESS) ZeroMemory(&xs, sizeof(xs));
     const unsigned short pad = xs.Gamepad.wButtons;
     const float lx = static_cast<float>(xs.Gamepad.sThumbLX) / 32767.0f;

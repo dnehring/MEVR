@@ -35,6 +35,7 @@
 #include "plugin/HudPieceLayers.hpp"
 #include "plugin/MenusLe2.hpp"
 #include "plugin/PadMerge.hpp"
+#include "plugin/PerfProbe.hpp"
 #include "plugin/RecenterTilt.hpp"
 #include "plugin/Renderer.hpp"
 #include "plugin/Voice.hpp"
@@ -131,13 +132,18 @@ void* StaticXrGetInstanceProcAddr() noexcept {
 
 void WrapSessionFunctions(void** acquireSwapchainImage, void** waitSwapchainImage, void** releaseSwapchainImage,
     void** waitFrame, void** beginFrame, void** endFrame, void** locateViews) noexcept {
-    (void)waitSwapchainImage;  // the frame-breakdown probe's (plugin/PerfProbe): LE1's host only so far
-    (void)waitFrame;
-    (void)beginFrame;
     mevr::host::testloop::WrapSessionFunctions(acquireSwapchainImage, releaseSwapchainImage, endFrame, locateViews);
+    // The probe's wrappers go outside ours (its xrEndFrame timing includes a snapshot's work), as LE1's.
+    mevr::host::perf::WrapFrameFunctions(waitSwapchainImage, waitFrame, beginFrame, endFrame);
     mevr::log::Info("test loop: wrapped Halcyon's ME2 xrAcquireSwapchainImage, xrReleaseSwapchainImage, xrEndFrame and "
                     "xrLocateViews (snapshots, recording, replay)");
 }
+
+// The frame-breakdown probe's steps (plugin/PerfProbe): MevrSeams' optional perf group.
+void PerfPresentBegin(ID3D11DeviceContext* context) noexcept { mevr::host::perf::SeamPresentBegin(context); }
+void PerfPresentEnd(ID3D11DeviceContext* context) noexcept { mevr::host::perf::SeamPresentEnd(context); }
+void PerfFirstEyeCaptured(ID3D11DeviceContext* context) noexcept { mevr::host::perf::SeamFirstEyeCaptured(context); }
+void PerfDraw() noexcept { mevr::host::perf::NoteDraws(); }
 
 void OnSessionCreated(void* instance, void* session) noexcept {
     mevr::host::sequel_squad_layers::ForgetSession();

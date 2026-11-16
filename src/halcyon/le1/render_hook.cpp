@@ -1673,7 +1673,7 @@ bool ApplyViewOffsetSEH(void* fsv) noexcept
         float* pvt = reinterpret_cast<float*>(base + kFsvPreViewTranslation);
         // [MEVR] Anchor the common centre to the floor before metric stereo. PVT is -camera position;
         // use its pristine Z, never an eye's displaced origin. Policy and pair latching live in our host.
-        const float floorDz = MELEVR::MevrBridge::FloorViewTranslation(t_fvcReplay, -pvt[2], VM[8], VM[9], VM[10], &r, &u, &f);
+        const float floorDz = MevrSeams::FloorViewTranslation(t_fvcReplay, -pvt[2], VM[8], VM[9], VM[10], &r, &u, &f);
         if (r == 0.0f && u == 0.0f && f == 0.0f && floorDz == 0.0f) return true;
         // View axes expressed in world = columns of VM's rotation: right=col0, up=col1, forward=col2.
         const float wx = r * VM[0] + u * VM[1] + f * VM[2];
@@ -3489,7 +3489,7 @@ void NotifyPresentTick() noexcept
         return;
     }
 
-    const bool f9Down = MELEVR::MevrBridge::KeyDown(VK_F8);   // [MEVR] game in front; upstream: GetAsyncKeyState
+    const bool f9Down = MevrSeams::KeyDown(VK_F8);   // [MEVR] game in front; upstream: GetAsyncKeyState
     const bool wasDown = g_f9WasDown.exchange(f9Down, std::memory_order_acq_rel);
     if (f9Down && !wasDown)
     {

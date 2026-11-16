@@ -44,6 +44,7 @@ Caps const& Capabilities() noexcept {
         c.eyeImageSeams = true;
         c.hudPanelDraw = true;
         c.hostCineScreen = true;
+        c.perfSeams = true;          // MevrSeams' Perf* group and the wait/begin frame slots
         c.recenterTilt = true;       // ME1's tilt-correcting recenter (RecenterAppSpace)
         c.galaxyTable = true;        // [Galaxy] nativeTable, opt-in
         c.hudPanelGameplay = true;

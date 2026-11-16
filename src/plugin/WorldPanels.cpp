@@ -184,7 +184,4 @@ PanelPose PlacePanel(PanelKind kind, OverlayFrame const& frame, float const view
     return out;
 }
 } // namespace MevrSeams
-namespace MELEVR::MevrBridge {
-
-} // namespace MELEVR::MevrBridge
 #endif

@@ -94,7 +94,7 @@ bool RebindWidget(const char* label, int* key, bool* arming) noexcept
     for (int vk = 0x08; vk <= 0xFE; ++vk)
     {
         if (vk == VK_LBUTTON || vk == VK_RBUTTON || vk == VK_MBUTTON || vk == g_menuKey) continue;
-        if (!::ME2VR::MevrBridge::KeyDown(vk)) continue;
+        if (!::MevrSeams::KeyDown(vk)) continue;
         if (vk == VK_ESCAPE) { *arming = false; return false; }
         *key = vk;
         *arming = false;
@@ -222,7 +222,7 @@ inline void PostProcessPad(XINPUT_STATE* state) noexcept
 DWORD WINAPI HookedXInputGetState(DWORD idx, XINPUT_STATE* state) noexcept
 {
     DWORD r = g_origXInput ? g_origXInput(idx, state) : ERROR_DEVICE_NOT_CONNECTED;
-    r = ::ME2VR::MevrBridge::MergeMotionControllers(idx, state, r); // [MEVR]
+    r = ::MevrSeams::MergeMotionControllers(idx, state, r); // [MEVR]
     CaptureLeftStick(state, r, idx);
     CheckPadRecenter(state, r, idx);
     PostProcessPad(state);
@@ -233,7 +233,7 @@ DWORD WINAPI HookedXInputGetStateEx(DWORD idx, XINPUT_STATE* state) noexcept
 {
     DWORD r = g_origXInputEx ? g_origXInputEx(idx, state)
                                    : (g_origXInput ? g_origXInput(idx, state) : ERROR_DEVICE_NOT_CONNECTED);
-    r = ::ME2VR::MevrBridge::MergeMotionControllers(idx, state, r); // [MEVR]
+    r = ::MevrSeams::MergeMotionControllers(idx, state, r); // [MEVR]
     CaptureLeftStick(state, r, idx);
     CheckPadRecenter(state, r, idx);
     PostProcessPad(state);
@@ -763,7 +763,7 @@ void SeedVirtualMouse() noexcept
 
 LRESULT CALLBACK MenuWndProc(HWND h, UINT msg, WPARAM w, LPARAM l)
 {
-    if (g_open || ::ME2VR::MevrBridge::MainMenuOpen()) // [MEVR] one input owner
+    if (g_open || ::MevrSeams::MainMenuOpen()) // [MEVR] one input owner
     {
         // [MENUWHEEL] Capture the wheel BEFORE the swallow below so the menu can scroll. The game
         // still never sees it. Taken before the g_menuKey comparison too: for wheel messages wparam
@@ -801,7 +801,7 @@ void PollInsert() noexcept
         const bool canSwitch = g_profileHotkeys && g_valuesLoaded && !AnyRebinding();
         for (int i = 0; i < kProfileCount; ++i)
         {
-            const bool d = ::ME2VR::MevrBridge::KeyDown(g_profileKey[i]);
+            const bool d = ::MevrSeams::KeyDown(g_profileKey[i]);
             if (canSwitch && d && !s_profDown[i] && g_activeProfile != i) LoadProfile(i);
             s_profDown[i] = d;
         }
@@ -814,7 +814,7 @@ void PollInsert() noexcept
     {
         static bool s_markDown = false;
         static int s_markSeq = 0;
-        const bool md = ::ME2VR::MevrBridge::KeyDown(VK_F9);
+        const bool md = ::MevrSeams::KeyDown(VK_F9);
         if (md && !s_markDown)
         {
             ++s_markSeq;
@@ -840,8 +840,8 @@ void PollInsert() noexcept
         }
         s_markDown = md;
     }
-    const bool down = ::ME2VR::MevrBridge::KeyDown(g_menuKey);
-    if (!AnyRebinding() && down && !g_insertWasDown && ::ME2VR::MevrBridge::OnMenuKey(g_open)) { g_insertWasDown = down; return; } // [MEVR]
+    const bool down = ::MevrSeams::KeyDown(g_menuKey);
+    if (!AnyRebinding() && down && !g_insertWasDown && ::MevrSeams::OnMenuKey(g_open)) { g_insertWasDown = down; return; } // [MEVR]
     if (!AnyRebinding() && down && !g_insertWasDown)
     {
         g_open = !g_open;
@@ -874,8 +874,8 @@ void FeedMouse() noexcept
         SetCursorPos(g_mouseAnchorScreen.x, g_mouseAnchorScreen.y);   // pin the real cursor
     }
     io.AddMousePosEvent(g_virtualMouseX, g_virtualMouseY);
-    io.AddMouseButtonEvent(0, ::ME2VR::MevrBridge::KeyDown(VK_LBUTTON));
-    io.AddMouseButtonEvent(1, ::ME2VR::MevrBridge::KeyDown(VK_RBUTTON));
+    io.AddMouseButtonEvent(0, ::MevrSeams::KeyDown(VK_LBUTTON));
+    io.AddMouseButtonEvent(1, ::MevrSeams::KeyDown(VK_RBUTTON));
     // [MENUWHEEL] Drain whatever the WndProc collected since the last frame. exchange(0) so a frame
     // can never replay or lose a notch, however the two threads interleave.
     const int wv = g_wheelAccumV.exchange(0, std::memory_order_relaxed);
@@ -1385,7 +1385,7 @@ void BuildUI() noexcept
                 for (int vk = 0x08; vk <= 0xFE; ++vk)
                 {
                     if (vk == VK_LBUTTON || vk == VK_RBUTTON || vk == VK_MBUTTON) continue;
-                    if (!::ME2VR::MevrBridge::KeyDown(vk)) continue;
+                    if (!::MevrSeams::KeyDown(vk)) continue;
                     if (vk == VK_ESCAPE) { g_rebindingMenuKey = false; break; }
                     g_menuKey = vk;
                     g_insertWasDown = true;  // consume the key that completed capture
@@ -1495,7 +1495,7 @@ void BuildUI() noexcept
                     for (int vk = 0x08; vk <= 0xFE; ++vk)
                     {
                         if (vk == VK_LBUTTON || vk == VK_RBUTTON || vk == VK_MBUTTON || vk == g_menuKey) continue;
-                        if (!::ME2VR::MevrBridge::KeyDown(vk)) continue;
+                        if (!::MevrSeams::KeyDown(vk)) continue;
                         if (vk == VK_ESCAPE) { g_rebindingProfile = -1; break; }
                         g_profileKey[g_rebindingProfile] = vk;
                         g_rebindingProfile = -1;
@@ -1602,8 +1602,8 @@ void RenderToBackbuffer(IDXGISwapChain* swapChain) noexcept
             const float sy = (rc.bottom > 0) ? static_cast<float>(bd.Height) / rc.bottom : 1.0f;
             io.AddMousePosEvent(static_cast<float>(pt.x) * sx, static_cast<float>(pt.y) * sy);
         }
-        io.AddMouseButtonEvent(0, ::ME2VR::MevrBridge::KeyDown(VK_LBUTTON));
-        io.AddMouseButtonEvent(1, ::ME2VR::MevrBridge::KeyDown(VK_RBUTTON));
+        io.AddMouseButtonEvent(0, ::MevrSeams::KeyDown(VK_LBUTTON));
+        io.AddMouseButtonEvent(1, ::MevrSeams::KeyDown(VK_RBUTTON));
         ImGui::NewFrame();
         BuildUI();
         ImGui::Render();

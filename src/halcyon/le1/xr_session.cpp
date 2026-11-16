@@ -319,7 +319,7 @@ bool CreateInstance()
 #if defined(MEVR_ASI)
     // [MEVR] The OpenXR loader is linked statically into our ASI (no openxr_loader.dll in the game
     // folder), and our controller actions must use the same loader instance as this session.
-    g_getProc = reinterpret_cast<PFN_xrGetInstanceProcAddr>(MELEVR::MevrBridge::StaticXrGetInstanceProcAddr());
+    g_getProc = reinterpret_cast<PFN_xrGetInstanceProcAddr>(MevrSeams::StaticXrGetInstanceProcAddr());
     LogLine("[XR] using the statically linked OpenXR loader (MEVR).");
 #else
     g_loader = LoadLibraryW(L"openxr_loader.dll");
@@ -462,7 +462,7 @@ bool ResolveSessionFunctions()
 #undef RESOLVE
     // [MEVR] test loop (snapshots, pose recording and replay) and the frame-breakdown probe: wrappers
     // that call these originals
-    MELEVR::MevrBridge::WrapSessionFunctions(reinterpret_cast<void**>(&g_fn.acquireSwapchainImage),
+    MevrSeams::WrapSessionFunctions(reinterpret_cast<void**>(&g_fn.acquireSwapchainImage),
                                              reinterpret_cast<void**>(&g_fn.waitSwapchainImage),
                                              reinterpret_cast<void**>(&g_fn.releaseSwapchainImage),
                                              reinterpret_cast<void**>(&g_fn.waitFrame),
@@ -762,7 +762,7 @@ bool CreateSessionAndSwapchains()
     r = g_fn.createReferenceSpace(g_session, &vrci, &g_viewSpace);
     LogLine("[XR] xrCreateReferenceSpace(VIEW): " + FmtXr(r));
     if (!XrSucceeded(r) || g_viewSpace == nullptr) return false;
-    MELEVR::MevrBridge::OnSessionCreated(g_instance, g_session);   // [MEVR] motion controller actions
+    MevrSeams::OnSessionCreated(g_instance, g_session);   // [MEVR] motion controller actions
     return true;
 }
 
@@ -772,7 +772,7 @@ bool CreateSessionAndSwapchains()
 void MevrStandDown() noexcept
 {
     MELEVR::RenderHook::SetSfrEnabled(false, 0.0f);
-    MELEVR::MevrBridge::OnSessionStopped();
+    MevrSeams::OnSessionStopped();
     LogLine("[XR] [MEVR] session stood down: stereo off, HUD panel disarmed");
 }
 
@@ -2660,7 +2660,7 @@ bool DoRecenter(XrTime displayTime) noexcept
         XrQuaternionf& q = rsci.poseInReferenceSpace.orientation;
         const float head[4] = {h.x, h.y, h.z, h.w};
         float out[4] = {q.x, q.y, q.z, q.w};
-        MELEVR::MevrBridge::RecenterOrientation(head, !g_haveRecentered, out);
+        MevrSeams::RecenterOrientation(head, !g_haveRecentered, out);
         q.x = out[0]; q.y = out[1]; q.z = out[2]; q.w = out[3];
     }
     rsci.poseInReferenceSpace.position.x = (baseViews[0].pose.position.x + baseViews[1].pose.position.x) * 0.5f;
@@ -3537,7 +3537,7 @@ static void CineFinishDecision(CineDecision& d, const CineInputs& in,
     d.vrCineActive = cinematicContext && vrCineOn && !d.forceFlatCine;
     // [MEVR] the 3D cinema screen (research/52): a VR cine renders both passes as usual but at the game's own projection,
     // and each eye's render goes on a screen fixed in the room instead of filling the view ([Cinematics] in LE1MEVR.ini).
-    d.mevrScreen = d.vrCineActive && (in.frontEndScreen || MELEVR::MevrBridge::CineScreenWanted(d.inConversation));   // [MEVR] front end
+    d.mevrScreen = d.vrCineActive && (in.frontEndScreen || MevrSeams::CineScreenWanted(d.inConversation));   // [MEVR] front end
 
     // [VRCINE FILL] render AND declare the same window gameplay uses. ME2's reasoning, from its
     // own source: the director's per-shot framing FOV is not the mod's to honour in a headset.
@@ -4009,7 +4009,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
         // old inCutsceneMode gate for cutscenes (a flat cine already forces forceFlatCine) and
         // simply adds the convo lane; flat-presented cine and gameplay are untouched.
         const bool cinePace60 = paceCfg.cineFpsCap && vrCineActive && !forceFlatCine &&
-                                !(mevrCineScreen && MELEVR::MevrBridge::CineScreenFullRate());   // [MEVR] the screen: the headset's rate
+                                !(mevrCineScreen && MevrSeams::CineScreenFullRate());   // [MEVR] the screen: the headset's rate
         // [CINEPACE-ADAPT 2026-08-12] The fixed 60fps cap has no answer for shots the GPU cannot
         // hold at 60: the comm-room screen segment measured avgMs=16.67 maxMs=17.32 headroom=-0%
         // (pinned exactly at the budget; ordinary cutscene shots run 8-12ms) - frames landing a
@@ -4107,7 +4107,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
     if (!mevrAlreadyBegun) g_mevrEarlyBeginMs = GetTickCount64(); // [MEVR]
     g_mevrFrameSlot.Clear(); // [MEVR] RunFrame now owns the begun ticket through xrEndFrame, including a load's stale prediction
     // [MEVR] motion controllers, located in the app space at this frame's display time
-    if (!mevrAlreadyBegun) MELEVR::MevrBridge::OnFrameBegun(g_session, g_appSpace, static_cast<std::int64_t>(fs.predictedDisplayTime)); // [MEVR] full mode already published before rendering
+    if (!mevrAlreadyBegun) MevrSeams::OnFrameBegun(g_session, g_appSpace, static_cast<std::int64_t>(fs.predictedDisplayTime)); // [MEVR] full mode already published before rendering
     MELEVR::MevrBridge::PerfPoint(MELEVR::MevrBridge::kPerfFrameReady); // [MEVR] copies/layers follow, even when begin/input ran last Present
 
     // --- Options menu: lazy-init (Present thread), Insert toggle ------------------------------------
@@ -4124,7 +4124,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
         MELEVR::Pchud::Install();   // PCHUD Scaleform HUD move/scale hook (idempotent; Tick retries if not ready)
         g_menuInited = true;
     }
-    const bool insDown = (cfg.menuKey > 0) && MELEVR::MevrBridge::KeyDown(cfg.menuKey);   // [MEVR] only with the game in front; upstream: GetAsyncKeyState
+    const bool insDown = (cfg.menuKey > 0) && MevrSeams::KeyDown(cfg.menuKey);   // [MEVR] only with the game in front; upstream: GetAsyncKeyState
     if (insDown && !g_insertKeyPrev && !MevrSeams::OnMenuKey(MELEVR::Menu::IsOpen())) MELEVR::Menu::Toggle();   // [MEVR] our main menu takes the key (Ctrl/Shift: this one, as upstream)
     g_insertKeyPrev = insDown;
     // First-run: pop the menu open once so new users land on the welcome / HDR-off notice.
@@ -4374,7 +4374,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
     //  the head pose is located, so lean can use the live head position.)
 
     // --- Recenter (re-origin the app space to current head) ----------------------------------------
-    const bool rDown = cfg.recenterKeyEnabled && (g_recenterKey > 0) && MELEVR::MevrBridge::KeyDown(g_recenterKey);   // [MEVR] game in front
+    const bool rDown = cfg.recenterKeyEnabled && (g_recenterKey > 0) && MevrSeams::KeyDown(g_recenterKey);   // [MEVR] game in front
     if ((rDown && !g_recenterKeyPrev) || MELEVR::Menu::ConsumeRecenterRequest() ||
         MELEVR::Menu::ConsumeRecenterCombo() || !g_haveRecentered)
     {
@@ -4384,7 +4384,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
             g_recenterReLatchAim = true;
             g_smoothPoseReset = true;   // app space changed: old-space smoothed quat + tag history are invalid
             g_tagHistReset = true;
-            MELEVR::MevrBridge::OnRecentered();   // [MEVR] the body-locked HUD panel goes straight ahead again
+            MevrSeams::OnRecentered();   // [MEVR] the body-locked HUD panel goes straight ahead again
         }
     }
     g_recenterKeyPrev = rDown;
@@ -4393,7 +4393,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
     {
         static bool s_fpKeyPrev = false;
         const int fpKey = cfg.fpToggleKey;
-        const bool fpKeyDown = cfg.fpToggleKeyEnabled && (fpKey > 0) && MELEVR::MevrBridge::KeyDown(fpKey);   // [MEVR] game in front
+        const bool fpKeyDown = cfg.fpToggleKeyEnabled && (fpKey > 0) && MevrSeams::KeyDown(fpKey);   // [MEVR] game in front
         if (fpKeyDown && !s_fpKeyPrev)
         {
             MELEVR::Config::VrConfig& mutCfg = MELEVR::Config::Get();
@@ -4409,7 +4409,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
     {
         static bool s_depthPopKeyPrev = false;
         const int dpKey = cfg.depthPopKey;
-        const bool dpKeyDown = cfg.depthPopKeyEnabled && (dpKey > 0) && MELEVR::MevrBridge::KeyDown(dpKey);   // [MEVR] game in front
+        const bool dpKeyDown = cfg.depthPopKeyEnabled && (dpKey > 0) && MevrSeams::KeyDown(dpKey);   // [MEVR] game in front
         if (dpKeyDown && !s_depthPopKeyPrev)
         {
             MELEVR::Config::VrConfig& mutCfg = MELEVR::Config::Get();
@@ -4430,7 +4430,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
         for (int i = 0; i < pc && i < 8; ++i)
         {
             const int vk = MELEVR::Config::ProfileHotkey(i);
-            const bool down = (vk > 0) && MELEVR::MevrBridge::KeyDown(vk);   // [MEVR] game in front
+            const bool down = (vk > 0) && MevrSeams::KeyDown(vk);   // [MEVR] game in front
             if (down && !s_profKeyPrev[i] && i != MELEVR::Config::ActiveProfileIndex())
             {
                 MELEVR::Config::LoadProfile(i);
@@ -5204,7 +5204,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
             MevrSeams::OnViewBuilt(headValid && !menuOpen && !forceFlatCine, headLookApplied, headAimApplied,
                                    MELEVR::RenderHook::HeadLookYawUU(), MELEVR::RenderHook::HeadLookPitchUU(),
                                    mevrHeadQ, mevrHeadP, rightUU, upUU, fwdUU, kMetersToUU * mevrLeanScale,
-                                            gameMode == 0 && !cinematicContext && !mevrCineScreen && !frontEndHold); // [MEVR] floor lock: ordinary on foot only
+                                   gameMode == 0 && !cinematicContext && !mevrCineScreen && !frontEndHold); // [MEVR] floor lock: ordinary on foot only
 
             // [MEVR] life-size stereo (research/30): each pass of the next game frame from its eye's real place, at
             // the view's own scale (the lean's units per metre, which the hands use too); its own frustum where the
@@ -5980,13 +5980,23 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
         mevrHeadP[1] = 0.5f * (v0.position.y + v1.position.y);
         mevrHeadP[2] = 0.5f * (v0.position.z + v1.position.z);
     }
-    auto mevrApplyPanelPose = [](XrCompositionLayerQuad& quad, const MELEVR::MevrBridge::PanelPose& placed)
+    MevrSeams::OverlayFrame mevrPanelFrame;   // [MEVR] what PlacePanel reads of the frame: the spaces, the mode, the head
+    mevrPanelFrame.session = g_session;
+    mevrPanelFrame.appSpace = g_appSpace;
+    mevrPanelFrame.viewSpace = g_viewSpace;
+    mevrPanelFrame.context = g_context;
+    mevrPanelFrame.menuOpen = menuOpen;
+    mevrPanelFrame.gameMode = gameMode;
+    mevrPanelFrame.headValid = headValid;
+    for (int i = 0; i < 4; ++i) mevrPanelFrame.headOrientation[i] = mevrHeadQ[i];
+    for (int i = 0; i < 3; ++i) mevrPanelFrame.headPosition[i] = mevrHeadP[i];
+    auto mevrApplyPanelPose = [](XrCompositionLayerQuad& quad, const MevrSeams::PanelPose& placed)
     {
         quad.space = static_cast<XrSpace>(placed.space);
         quad.pose.orientation = {placed.orientation[0], placed.orientation[1], placed.orientation[2], placed.orientation[3]};
         quad.pose.position = {placed.position[0], placed.position[1], placed.position[2]};
     };
-    MELEVR::MevrBridge::OverlayFrame mevrScreenFrame;   // [MEVR] the 3D screen's place for the overlays (research/52)
+    MevrSeams::OverlayFrame mevrScreenFrame;   // [MEVR] the 3D screen's place for the overlays (research/52)
     // The head-locked per-eye QUAD path for cine was removed 2026-08-02. A VR cine now submits on
     // the normal projection layer with the [VRCINE FILL] window, which is what ME2 and ME3 do; the
     // quad path was an ME1 invention that declared no FOV and so could never carry the fill model.
@@ -6016,13 +6026,13 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
         flatCineQuad.size.width = monoWidth;
         flatCineQuad.size.height = flatCineQuad.size.width / quadAspect;
         {   // [MEVR] world-locked panels: VIEW space as above (upstream), or fixed in the app space where it appeared
-            using MELEVR::MevrBridge::PanelKind;
+            using MevrSeams::PanelKind;
             const PanelKind kind = inMenuMode ? PanelKind::GameMenu
                                  : (inGalaxyMode ? PanelKind::GalaxyMap
                                  : (inConversationMode ? PanelKind::Conversation : PanelKind::Cutscene));
             const float viewPos[3] = {flatCineQuad.pose.position.x, flatCineQuad.pose.position.y, flatCineQuad.pose.position.z};
-            const MELEVR::MevrBridge::PanelPose flatPlaced = MELEVR::MevrBridge::PlacePanel(kind, viewPos, g_viewSpace, g_appSpace,
-                                                                                            headValid, mevrHeadQ, mevrHeadP);
+            const MevrSeams::PanelPose flatPlaced = MevrSeams::PlacePanel(kind, mevrPanelFrame, viewPos, flatCineQuad.size.width,
+                                                                          flatCineQuad.size.height, true);
             mevrApplyPanelPose(flatCineQuad, flatPlaced);
             // [MEVR] the game pointer's target (src/plugin/GamePointer.cpp, research/42): a controller's ray on it is the mouse
             MELEVR::MevrBridge::OnFlatQuad(kind, mevrHeadQ, mevrHeadP, flatPlaced, flatCineQuad.size.width, flatCineQuad.size.height,
@@ -6038,11 +6048,10 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
         // screen plane; the passes' separation (PlanStereo's screen branch) puts the plan's distance on it.
         MELEVR::MevrBridge::CineScreenQuads screenNow;
         MELEVR::MevrBridge::CineScreenQuadsNow(g_eyes[0].width, g_eyes[0].height, &screenNow);
-        const MELEVR::MevrBridge::PanelKind kind = inConversationMode ? MELEVR::MevrBridge::PanelKind::Conversation
-                                                                      : MELEVR::MevrBridge::PanelKind::Cutscene;
+        const MevrSeams::PanelKind kind = inConversationMode ? MevrSeams::PanelKind::Conversation
+                                                                      : MevrSeams::PanelKind::Cutscene;
         const float viewPos[3] = {0.0f, 0.0f, -screenNow.distanceM};
-        const MELEVR::MevrBridge::PanelPose placed = MELEVR::MevrBridge::PlacePanel(kind, viewPos, g_viewSpace, g_appSpace,
-                                                                                    headValid, mevrHeadQ, mevrHeadP);
+        const MevrSeams::PanelPose placed = MevrSeams::PlacePanel(kind, mevrPanelFrame, viewPos, screenNow.widthM, screenNow.heightM, true);
         const float heightM = screenNow.heightM > 0.1f ? screenNow.heightM : screenNow.widthM * 9.0f / 16.0f;
         {   // [MEVR] the floor and horizon around the screen (src/plugin/CinemaBackdrop.cpp, research/52): under its quads
             MELEVR::MevrBridge::BackdropFrame bf;
@@ -6094,7 +6103,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
         const float crop = screenNow.crop > 0.0f && screenNow.crop < 0.25f ? screenNow.crop : 0.0f;
         const float shownRows = screenNow.rect[0][3] > 0 ? static_cast<float>(screenNow.rect[0][3]) : static_cast<float>(g_eyes[0].height);
         const float wholeHeightM = g_eyes[0].height > 0 ? heightM * static_cast<float>(g_eyes[0].height) / shownRows : heightM;
-        MELEVR::MevrBridge::PanelPose pointerPlaced = placed;   // [MEVR] research/52: on the UI layer's plane when it is up
+        MevrSeams::PanelPose pointerPlaced = placed;   // [MEVR] research/52: on the UI layer's plane when it is up
         float pointerWidthM = screenNow.widthM / (1.0f - crop), pointerHeightM = wholeHeightM;
         MELEVR::MevrBridge::CineScreenPointerPlane(&pointerPlaced, &pointerWidthM, &pointerHeightM, mevrHeadP);
         MELEVR::MevrBridge::OnFlatQuad(kind, mevrHeadQ, mevrHeadP, pointerPlaced, pointerWidthM, pointerHeightM, headValid);
@@ -6131,15 +6140,17 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
         mevrNearestQuadM = mevrScreenNow.distanceM;
     }
     {
-        MELEVR::MevrBridge::OverlayFrame mevrFrame;
+        MevrSeams::OverlayFrame mevrFrame;
         mevrFrame.session = g_session;
         mevrFrame.appSpace = g_appSpace;
+        mevrFrame.viewSpace = g_viewSpace;
         mevrFrame.context = g_context;
         mevrFrame.worldFrame = submitted && !forceFlatCine && !mevrCineScreen;   // [MEVR] the screen: no world layer
         mevrFrame.menuOpen = menuOpen;
         mevrFrame.stereo = cineIn.sfr2CfgOn;
         mevrFrame.gameMode = gameMode;
         mevrFrame.headValid = headValid;
+        mevrFrame.eyesValid = mevrFrame.eyeOrientationValid = headValid;   // the located views, below
         if (headValid)
         {
             const XrQuaternionf& hq = g_subViews[0].pose.orientation;
@@ -6187,7 +6198,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
             mevrFrame.screenRows[1] = mevrScreenFrame.screenRows[1];
         }
         const void* mevrQuads[12] = {};   // [MEVR] HUD panel, reticle, sight (two), squad menu, wheel, label, wrist and gun pieces, the Mako's lever and stick, the cockpit's radar
-        const unsigned mevrQuadCount = MELEVR::MevrBridge::OverlayLayers(mevrFrame, mevrQuads, 12);
+        const unsigned mevrQuadCount = MevrSeams::OverlayLayers(mevrFrame, mevrQuads, 12);
         for (unsigned i = 0; i < mevrQuadCount && layerCount < kMaxLayers - 3; ++i)   // [MEVR] room for the menu, the placeholder, the fade
             layers[layerCount++] = static_cast<const XrCompositionLayerBaseHeader*>(mevrQuads[i]);
         if (mevrQuadCount > 0 && cfg.hudPanelDistanceM < mevrNearestQuadM) mevrNearestQuadM = cfg.hudPanelDistanceM;
@@ -6260,8 +6271,8 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
             menuQuad.size.height = menuW * static_cast<float>(kMenuH) / static_cast<float>(kMenuW);  // keep aspect
             // [MEVR] world-locked panels: VIEW space as above (upstream), or fixed in the app space where it opened
             const float menuViewPos[3] = {menuQuad.pose.position.x, menuQuad.pose.position.y, menuQuad.pose.position.z};
-            const MELEVR::MevrBridge::PanelPose menuPlaced = MELEVR::MevrBridge::PlacePanel(
-                MELEVR::MevrBridge::PanelKind::InsertMenu, menuViewPos, g_viewSpace, g_appSpace, headValid, mevrHeadQ, mevrHeadP);
+            const MevrSeams::PanelPose menuPlaced = MevrSeams::PlacePanel(
+                MevrSeams::PanelKind::InsertMenu, mevrPanelFrame, menuViewPos, menuQuad.size.width, menuQuad.size.height, true);
             mevrApplyPanelPose(menuQuad, menuPlaced);
             layers[layerCount++] = reinterpret_cast<const XrCompositionLayerBaseHeader*>(&menuQuad);
             if (headValid)   // [MEVR] the laser pointer's target (src/plugin/MevrMenuPointer.cpp)
@@ -6333,7 +6344,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
     {   // [MEVR] a dip from black when the view changes between the world and a cinematic (src/plugin/TransitionFade.cpp): last
         const int mevrView = !submitted ? -1 : mevrCineScreen ? 1 : (forceFlatCine && cinematicContext) ? 2 : forceFlatCine ? 3 : 0;
         if (layerCount < kMaxLayers)
-            if (const void* fade = MELEVR::MevrBridge::TransitionFadeLayer(g_session, g_viewSpace, g_context, mevrView))
+            if (const void* fade = MevrSeams::TransitionFadeLayer(g_session, g_viewSpace, g_context, mevrView))
                 layers[layerCount++] = static_cast<const XrCompositionLayerBaseHeader*>(fade);
     }
     MELEVR::MevrBridge::WorldUiPresent((mevrWorldUi & 6u) != 0, submitted && forceFlatCine && g_eyes[0].swapchain != nullptr, mevrHoldWorldUi);   // [MEVR] every Present, actual flat-layer branch above
@@ -6470,7 +6481,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
                 {
                     g_mevrFrameSlot.Begun();
                     g_mevrEarlyBeginMs = GetTickCount64(); // [MEVR]
-                    MELEVR::MevrBridge::OnFrameBegun(g_session, g_appSpace, static_cast<std::int64_t>(next.predictedDisplayTime));
+                    MevrSeams::OnFrameBegun(g_session, g_appSpace, static_cast<std::int64_t>(next.predictedDisplayTime));
                 }
             }
         }

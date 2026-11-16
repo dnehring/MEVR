@@ -37,7 +37,7 @@ from the sources:
 - which HostServices each host serves;
 - each `src/game` and `src/engine` module's status per game (run, ready, out, ungated, unreferenced, unbuilt; defined in
   the tool's header);
-- the three `MevrBridge` seam vocabularies;
+- the common seam vocabulary (`MevrSeams`) per tree, and each tree's own `MevrBridge` seams;
 - the engine names a sequel build uses that the game lacks.
 
 It also counts this page's cells into the [totals](#totals). The cells themselves are judgement and cite those facts.
@@ -53,8 +53,8 @@ rows the change touches.
 
 | game | shared | adapted | forked | missing | n/a | present and verified (V) | present, unverified (U) |
 |---|---|---|---|---|---|---|---|
-| LE2 | 11 | 41 | 5 | 32 | 4 | 37 | 20 |
-| LE3 | 10 | 42 | 7 | 28 | 6 | 20 | 39 |
+| LE2 | 11 | 41 | 5 | 32 | 4 | 38 | 19 |
+| LE3 | 11 | 41 | 7 | 28 | 6 | 19 | 40 |
 <!-- /parity:totals -->
 
 LE1 is the reference, so it has no cells. A few LE1 systems are themselves n/a under Halcyon's renderer: the reflection
@@ -161,7 +161,7 @@ The [technique groups](#renderer-techniques-by-group) summary follows the table.
 | R25 | Test loop: snapshots, recording, replay (`plugin/TestLoop`, seam `WrapSessionFunctions`) | 1 + seam | **adapted** V: run `20261114-191506-lane-b-testloop` (04fa43a2); waitFrame/beginFrame not wrapped | **adapted** V: every protected run, e.g. `20261115-182253-344` (14 captures) | — |
 | R26 | Perf probe (`plugin/PerfProbe`, `core/vr/FrameProbe`; seams `PerfPresentScope`, `PerfPass0Captured`, `PerfPoint`) | 1 (core) + seams | **adapted** U: the same `plugin/PerfProbe.cpp` with the sequels' adapter (`PerfProbeSequel.cpp`): the game thread's ticks, the wrapped xrEndFrame, GPU timestamps, a frame bounded by xrEndFrame; `perf.request` served. No capture taken yet (Steam's launch was stuck on 2026-11-16) | **adapted** U: same | The first capture per game (research/sequel-render-levers.md "Measurements"). Then the seams lane U1 adds (`MevrSeams.h` `PerfPresentBegin/End`, `PerfFirstEyeCaptured`, `PerfDraw`, the wait and begin slots) give the eyes' split, the draws and the waits. |
 | R27 | Delayed per-eye pose history (LE1: Halcyon's EYETAG code in xr_session.cpp; sequels: `core/vr/StereoPoseTag.hpp`, `core/vr/EyePublication`) | 1 + seams | **adapted** V: run `20261115-165553-786` (research/sequel-eye-pose-tags.md) | **adapted** V: runs `20261115-165123-287`, `20261115-174634-476` | Physical fusion. |
-| R28 | Recenter: yaw-only, plus a removed tilt (seam `RecenterOrientation` → `plugin/RecenterTilt`, `core/vr/Recenter`) | 1 + seam | **shared** U: `RecenterAppSpace` asks `MevrSeams::RecenterOrientation` (`plugin/RecenterTilt` in the LE2 host, lane U1, 2026-11-16). Built; no run yet (Steam did not launch the game that day) | **adapted** V: recenter in run `20261115-180239-899`; tilt removal missing | Call `RecenterOrientation` in each sequel's `RecenterAppSpace`. SteamVR's upside-down start reaches every game (docs/le2-from-le1.md 3.1). |
+| R28 | Recenter: yaw-only, plus a removed tilt (seam `RecenterOrientation` → `plugin/RecenterTilt`, `core/vr/Recenter`) | 1 + seam | **shared** V: `RecenterAppSpace` asks `MevrSeams::RecenterOrientation` (`plugin/RecenterTilt` in the LE2 host, lane U1). The seam ran in session `20261116-123754-740-LE2-u1-le2` (`[MEVR-RECENTER] yaw-only recenter (upstream), automatic`). The correction itself needs a tilted base space, which the fake headset does not give: ME1 code, unseen on ME2 | **shared** U: `RecenterAppSpace` asks `MevrSeams::RecenterOrientation` (`plugin/RecenterTilt` in the LE3 host, lane U1, 2026-11-16). Built; no run since (the yaw-only recenter ran in `20261115-180239-899`) | Call `RecenterOrientation` in each sequel's `RecenterAppSpace`. SteamVR's upside-down start reaches every game (docs/le2-from-le1.md 3.1). |
 | R29 | Body bounds for the culling camera (`engine/BodyBounds`: post-hook `0x58EEC0`, Umbra hand-over `0x25CFE0`; ArmIk's `bConsiderAllBodiesForBounds`) | 2 + 3 (cause: Halcyon LE1's GPU-only view offset) | **missing**: `ready`; `kSkelUpdateBounds`/`kPrimitiveUmbraBounds` are 0 (lane R2 found both functions, `0x798350` and `0x3146C0`: rows of ME2's table). ArmIk's flag part runs | **missing**: same; lane R3 found ME3's two (`0x793850`, `0x32EC10`) | First check whether the sequels cull the body at all. LE1's repro: look down with the head turned (gotchas/culling-camera-ahead-of-the-eye). |
 | R30 | Spectator mirror (`game/Spectator`, `plugin/Spectator`, seam `SpectatorMirror`) | 1 (host draw) + 2 | **missing** | **missing** | — |
 | R31 | Scene-capture plumbing (RenderLevers CaptureSceneHook `0x742C80`, BeginBackBufferHook `0x773D30`; UiWorldFigure's Umbra skip `0x7526C0`) | 2 | **missing**: the rows are in ME2's table (`0x329B90`, `0x354570`; lane R2), the hooks stand down (`sceneCaptureVerified`: where ME2's final pass gets its viewport is unread), and nothing in ME2 makes a capture | **forked** V: `plugin/Le3SceneCapture` (its own RVAs; shares `plugin/SceneCaptureTarget.hpp`, `core/vr/SceneCaptureScope`); raw map captures in run `20261115-220823-943` (research/le3-galaxy.md) | Forks 9. |
@@ -292,9 +292,9 @@ Each item: the copies, then what unifying would take. Line counts are as of `cca
      LE2 `plugin/HalcyonLe2Bridge.cpp` `OverlayLayers`, with `SequelWeaponLayers.cpp`, `SequelSquadLayers.cpp`,
      `SequelCinema.cpp` (the sequel files say "extracted from the LE2 bridge") and `MenusLe2.cpp`'s `PanelLayers`; LE3
      `plugin/HalcyonLe3Bridge.cpp` `OverlayLayers`.
-   - There are two frame types: `MELEVR::MevrBridge::OverlayFrame` (`src/halcyon/le1/mevr_bridge.h`) and
-     `ME2VR::MevrBridge::OverlayFrame` (`src/halcyon/SequelPresentation.h`).
-   - **To unify:** one game-neutral `OverlayFrame` (SequelPresentation.h's, with LE1's extra fields). One composer,
+   - The frame is one type since lane U1 (`MevrSeams::OverlayFrame`, `src/halcyon/MevrSeams.h`: the sequels' fields and
+     LE1's), and all three composers are `MevrSeams::OverlayLayers`, one definition per host.
+   - **To unify:** one composer,
      `plugin/Overlays` (`Compose(frame, capabilities, out)`), that calls each layer module in one order and asks the
      renderer's capabilities (`plugin/Renderer.hpp`) in place of `#if MEVR_WITH_HALCYON_LEx`. The three bridges then
      only fill the frame. LE1's label quad becomes `HudPieceLayers::Interaction` with ME1's default crop.
@@ -437,7 +437,7 @@ and six of those differed in signature (`OnViewBuilt`, `WrapSessionFunctions`, `
 5. **Input and threads (6):** `MergeMotionControllers`, `KeyDown`, `OnMenuKey(ownMenuOpen)`, `MainMenuOpen`,
    `OnGameThread`, `QueueProcessEvent(object, function, params, size)`.
 6. **Frame-breakdown probe (4, optional):** `PerfPresentBegin`, `PerfPresentEnd`, `PerfFirstEyeCaptured`, `PerfDraw`,
-   for the sequels' trees (lane PL's request). LE1 keeps its own `PerfPresentScope`, `PerfPass0Captured`, `PerfPoint` and
+   called by both sequels' trees (lane PL's probe). LE1 keeps its own `PerfPresentScope`, `PerfPass0Captured`, `PerfPoint` and
    `g_perfDraws` until they move.
 
 **Against the audit's 26:** `MainMenuOpen` and `CineScreenFullRate` were added (already in all three trees with one
@@ -465,12 +465,14 @@ and 2 (the overlay composition and the sequel bridges).
   `HotkeyDown`.
 - LE3: `CineScreenHalfSeparationUU`, `OnPresent`.
 
-**State of the migration (2026-11-16).** Landings 1 and 2 of 5 are in: the header, the host's definitions in
-`namespace MevrSeams`, `plugin/Seams.cpp`, the capability set; and the **LE2 tree calls the common names** (`MevrSeams::X`),
-its recenter asks `RecenterOrientation` (R28), and `PlacePanel` replaced `PlaceGalaxyPanel`. The LE3 and LE1 trees still
-call their old names through thin inline forwarders in their `mevr_bridge.h` (the generated table lists them); they move
-next, each its own landing; then every forwarder goes. The perf group has no caller yet: it waits for lane PL's
-`mevr::host::perf` in the sequel hosts.
+**State of the migration (2026-11-16).** Done: the header, the host's definitions in `namespace MevrSeams`,
+`plugin/Seams.cpp`, the capability set, and **all three trees call the common names** (`MevrSeams::X`); the old names
+and their forwarders are gone, and `SequelPresentation.h` with them. The sequels' recenters ask `RecenterOrientation`
+(R28), and `PlacePanel` replaced `PlaceGalaxyPanel` and `PlaceNativePanel`. The perf group is wired on both sequels over lane PL's `mevr::host::perf` (capability `perfSeams`). Open: LE1 does
+not call the eye-image group, `HudPanelDraw` or `CineScreenLayers` (the eye-image lane and Forks 1). In-game checks (research/trilogy-seams.md
+"Checks"): ME2 ran on the fake headset (the session, Save 4, both eyes and the `hud` layer); LE1's same-pose pair matched
+(`hostView`, the layers, the HUD panel pixel for pixel) on a noisy day; ME3 was not run (the runner could not adopt the
+game that day).
 
 ## Plans
 
@@ -568,8 +570,8 @@ defined in the tool's header:
 | game | renderer | host plugin files | host core files | services served | src/game + src/engine modules by status | common seams called | own seams |
 |---|---|---|---|---|---|---|---|
 | LE1 | halcyon-le1 | 72 | 71 | 57 | run 67, out 4, ungated 23, unbuilt 4 | 20 of 32 | 91 |
-| LE2 | halcyon-le2 | 63 | 55 | 48 | run 39, ready 10, out 22, ungated 21, unreferenced 2, unbuilt 4 | 28 of 32 | 4 |
-| LE3 | halcyon-le3 | 65 | 54 | 48 | run 39, ready 10, out 22, ungated 22, unreferenced 2, unbuilt 3 | 27 of 32 | 2 |
+| LE2 | halcyon-le2 | 63 | 55 | 48 | run 39, ready 10, out 22, ungated 21, unreferenced 2, unbuilt 4 | 30 of 32 | 4 |
+| LE3 | halcyon-le3 | 66 | 55 | 48 | run 39, ready 10, out 22, ungated 22, unreferenced 2, unbuilt 3 | 30 of 32 | 2 |
 <!-- /parity:summary -->
 
 ### Host plugin files per game
@@ -632,7 +634,7 @@ defined in the tool's header:
 | `QuadSwapchain` | yes | yes | yes |
 | `QuestPacing` | yes | - | - |
 | `RailArt` | yes | yes | yes |
-| `RecenterTilt` | yes | yes | - |
+| `RecenterTilt` | yes | yes | yes |
 | `RenderLevers` | yes | yes | yes |
 | `RendererLe1` | yes | - | - |
 | `RendererLe2` | - | yes | - |
@@ -675,7 +677,7 @@ defined in the tool's header:
 ### Host core files per game
 
 <!-- parity:core -->
-In all three hosts (52): `Exe`, `ExeCheck`, `Hook`, `Hotkey`, `Ini`, `Json`, `Log`, `PngFile`, `Version`, `Window`, `d3d11/ShaderReflect`, `gfx/Raster`, `gfx/Swf`, `gfx/SwfFont`, `voice/ScriptMatch`, `vr/AimRay`, `vr/Calibration`, `vr/CineScreen`, `vr/Colour`, `vr/Comfort`, `vr/Controllers`, `vr/ConversationWorld`, `vr/FloorLock`, `vr/FrameProbe`, `vr/GalaxyHologram`, `vr/GalaxyMap`, `vr/GameMenuRequest`, `vr/GamePointer`, `vr/GuiEvents`, `vr/Haptics`, `vr/HostView`, `vr/HudPieces`, `vr/ImageConvert`, `vr/InteractLabel`, `vr/LayerComposite`, `vr/MenuPointer`, `vr/OmniRail`, `vr/OverlayPlacement`, `vr/PoseRecording`, `vr/PowerWheel`, `vr/ScopeArt`, `vr/ScopeCapture`, `vr/ScreenMatrix`, `vr/Sights`, `vr/SquadMenu`, `vr/SquadPlace`, `vr/TestRequest`, `vr/Thespian`, `vr/TransitionFade`, `vr/WorldUi`, `xr/Floor`, `xr/Input`.
+In all three hosts (53): `Exe`, `ExeCheck`, `Hook`, `Hotkey`, `Ini`, `Json`, `Log`, `PngFile`, `Version`, `Window`, `d3d11/ShaderReflect`, `gfx/Raster`, `gfx/Swf`, `gfx/SwfFont`, `voice/ScriptMatch`, `vr/AimRay`, `vr/Calibration`, `vr/CineScreen`, `vr/Colour`, `vr/Comfort`, `vr/Controllers`, `vr/ConversationWorld`, `vr/FloorLock`, `vr/FrameProbe`, `vr/GalaxyHologram`, `vr/GalaxyMap`, `vr/GameMenuRequest`, `vr/GamePointer`, `vr/GuiEvents`, `vr/Haptics`, `vr/HostView`, `vr/HudPieces`, `vr/ImageConvert`, `vr/InteractLabel`, `vr/LayerComposite`, `vr/MenuPointer`, `vr/OmniRail`, `vr/OverlayPlacement`, `vr/PoseRecording`, `vr/PowerWheel`, `vr/Recenter`, `vr/ScopeArt`, `vr/ScopeCapture`, `vr/ScreenMatrix`, `vr/Sights`, `vr/SquadMenu`, `vr/SquadPlace`, `vr/TestRequest`, `vr/Thespian`, `vr/TransitionFade`, `vr/WorldUi`, `xr/Floor`, `xr/Input`.
 
 | src/core (host) | LE1 | LE2 | LE3 |
 |---|---|---|---|
@@ -689,7 +691,6 @@ In all three hosts (52): `Exe`, `ExeCheck`, `Hook`, `Hotkey`, `Ini`, `Json`, `Lo
 | `vr/OmniPad` | yes | - | - |
 | `vr/PresentationHold` | yes | - | - |
 | `vr/QuestPacing` | yes | - | - |
-| `vr/Recenter` | yes | yes | - |
 | `vr/Spectator` | yes | - | - |
 | `vr/Sprint` | yes | - | - |
 | `vr/SquadContext` | yes | - | - |
@@ -908,13 +909,13 @@ The common vocabulary (`namespace MevrSeams`, `src/halcyon/MevrSeams.h`): `yes` 
 | `OnSessionStopped` | yes | yes | yes |
 | `OnViewBuilt` | yes | yes | yes |
 | `OverlayLayers` | yes | yes | yes |
-| `PerfDraw` | - | - | - |
-| `PerfFirstEyeCaptured` | - | - | - |
+| `PerfDraw` | - | yes | yes |
+| `PerfFirstEyeCaptured` | - | yes | yes |
 | `PerfPresentBegin` | - | - | - |
 | `PerfPresentEnd` | - | - | - |
 | `PlacePanel` | yes | yes | yes |
 | `QueueProcessEvent` | yes | yes | yes |
-| `RecenterOrientation` | yes | yes | - |
+| `RecenterOrientation` | yes | yes | yes |
 | `StaticXrGetInstanceProcAddr` | yes | yes | yes |
 | `TransitionFadeLayer` | yes | yes | yes |
 | `WrapSessionFunctions` | yes | yes | yes |
@@ -922,9 +923,7 @@ The common vocabulary (`namespace MevrSeams`, `src/halcyon/MevrSeams.h`): `yes` 
 
 Old names still forwarded to the common seams (inline, in the tree's `mevr_bridge.h`; removed once nobody calls them):
 
-- LE1: `CineScreenFullRate`, `CineScreenWanted`, `FloorViewTranslation`, `KeyDown`, `MainMenuOpen`, `MergeMotionControllers`, `OnFrameBegun`, `OnGameThread`, `OnRecentered`, `OnSessionCreated`, `OnSessionStopped`, `OverlayLayers`, `PlacePanel`, `QueueProcessEvent`, `RecenterOrientation`, `StaticXrGetInstanceProcAddr`, `TransitionFadeLayer`, `WrapSessionFunctions`
-- LE2: `CineScreenFullRate`, `CineScreenLayers`, `CineScreenWanted`, `CopyIntoImage`, `FloorViewTranslation`, `HotkeyDown`, `HudPanelDraw`, `KeyDown`, `MainMenuOpen`, `MergeMotionControllers`, `OnEyeCopied`, `OnEyeReleased`, `OnEyeSource`, `OnFactory`, `OnFrameBegun`, `OnGameThread`, `OnMenuKey`, `OnRecentered`, `OnSessionCreated`, `OnSessionStopped`, `OnViewBuilt`, `OverlayLayers`, `PlaceGalaxyPanel`, `QueueProcessEvent`, `StaticXrGetInstanceProcAddr`, `TransitionFadeLayer`, `WrapSessionFunctions`, `XrRuntimeIsSteamVr`
-- LE3: `CineScreenFullRate`, `CineScreenLayers`, `CineScreenWanted`, `CopyIntoImage`, `FloorViewTranslation`, `HudPanelDraw`, `KeyDown`, `MainMenuOpen`, `MergeMotionControllers`, `OnEyeCopied`, `OnEyeReleased`, `OnEyeSource`, `OnFactory`, `OnFrameBegun`, `OnGameThread`, `OnMenuKey`, `OnRecentered`, `OnSessionCreated`, `OnSessionStopped`, `OnViewBuilt`, `OverlayLayers`, `PlaceNativePanel`, `QueueProcessEvent`, `StaticXrGetInstanceProcAddr`, `TransitionFadeLayer`, `WrapSessionFunctions`, `XrRuntimeIsSteamVr`
+- LE2: `HotkeyDown`
 
 Each renderer's own seams (`MevrBridge`, its tree's `mevr_bridge.h`): the per-renderer extensions.
 

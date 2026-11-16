@@ -43,6 +43,8 @@ Caps const& Capabilities() noexcept {
         c.eyeImageSeams = true;
         c.hudPanelDraw = true;
         c.hostCineScreen = true;
+        c.perfSeams = true;          // MevrSeams' Perf* group and the wait/begin frame slots
+        c.recenterTilt = true;       // ME1's tilt-correcting recenter (RecenterAppSpace)
         c.panelsInRoom = true;
         c.galaxyTable = true;        // [Galaxy] nativeTable, opt-in
         // hudPanelGameplay false: only a measured prompt crop is captured, the native gameplay HUD stays in the eyes.

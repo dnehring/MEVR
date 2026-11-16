@@ -856,9 +856,9 @@ bool ProcessEventSEH(void* object, void* function, void* params) noexcept
     // [MEVR] Script runs on the game thread only (the 2026-10-23 crash, research/36): off it, queued for the next
     // engine tick. The callers are setters (SetHidden, SetOwnerNoSee, Hide/UnHideBoneByName);
     // GetPrimarySkelMeshComponentSEH, the one that reads a return value, doesn't call this off the game thread.
-    if (!::MELEVR::MevrBridge::OnGameThread())
+    if (!::MevrSeams::OnGameThread())
     {
-        return ::MELEVR::MevrBridge::QueueProcessEvent(object, function, params);
+        return ::MevrSeams::QueueProcessEvent(object, function, params, ::MevrSeams::kFunctionParmsSize);
     }
     __try
     {
@@ -920,7 +920,7 @@ void* GetPrimarySkelMeshComponentSEH(void* pawn) noexcept
         return mesh;
     }
     // [MEVR] The ProcessEvent fallback needs its return value, so it can't be queued: off the game thread, the field only.
-    if (!::MELEVR::MevrBridge::OnGameThread())
+    if (!::MevrSeams::OnGameThread())
     {
         return nullptr;
     }

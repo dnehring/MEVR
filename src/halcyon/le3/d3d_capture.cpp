@@ -1832,9 +1832,9 @@ void EmitUiDraw(ID3D11DeviceContext* ctx, const D3D11_VIEWPORT& vp, DrawThunk&& 
         // alpha/Scaleform state itself and takes only late draws after pass zero was captured.
         { // Shared bridge arms only cinema UI or an explicit measured interaction crop.
             auto& call = draw;
-            if (::ME2VR::MevrBridge::HudPanelDraw(ctx, [](void* user) noexcept {
+            if (::MevrSeams::HudPanelDraw(ctx, [](void* user) noexcept {
                 (*static_cast<typename std::remove_reference<DrawThunk>::type*>(user))();
-            }, &call, SfrUiMirrorArmed())) return;
+            }, &call, false, SfrUiMirrorArmed())) return;
         }
         // [UIALPHA 2026-08-17] IsUiDrawNow's broad "full viewport + blending" prefilter also
         // catches the club's fullscreen/world FX. The mirror already rejected those non-alpha
@@ -1986,6 +1986,7 @@ bool EmitReprojectedDistortionDraw(ID3D11DeviceContext* context, DrawThunk&& dra
 
 void STDMETHODCALLTYPE MhDrawIndexed(ID3D11DeviceContext* ctx, UINT a, UINT b, INT c) noexcept
 {
+    ::MevrSeams::PerfDraw();   // [MEVR] frame-breakdown probe: one draw
     const uint64_t hc0 = __rdtsc();   // [HOOKCOST]
     g_ftDraws.fetch_add(1, std::memory_order_relaxed);   // [FRAMETIME]
     RtHistNote();                                        // [RTTARGETS]
@@ -2014,6 +2015,7 @@ void STDMETHODCALLTYPE MhDrawIndexed(ID3D11DeviceContext* ctx, UINT a, UINT b, I
 // and land cross-eyed (= scrambled text) while panels (DrawIndexed) look right. Dup it the same way.
 void STDMETHODCALLTYPE MhDrawIndexedInstanced(ID3D11DeviceContext* ctx, UINT ipc, UINT ic, UINT sil, INT bvl, UINT sii) noexcept
 {
+    ::MevrSeams::PerfDraw();   // [MEVR] frame-breakdown probe: one draw
     const uint64_t hc0 = __rdtsc();   // [HOOKCOST]
     g_ftDraws.fetch_add(1, std::memory_order_relaxed);   // [FRAMETIME]
     RtHistNote();                                        // [RTTARGETS]
@@ -2033,6 +2035,7 @@ void STDMETHODCALLTYPE MhDrawIndexedInstanced(ID3D11DeviceContext* ctx, UINT ipc
 }
 void STDMETHODCALLTYPE MhDraw(ID3D11DeviceContext* ctx, UINT a, UINT b) noexcept
 {
+    ::MevrSeams::PerfDraw();   // [MEVR] frame-breakdown probe: one draw
     const uint64_t hc0 = __rdtsc();   // [HOOKCOST]
     g_ftDraws.fetch_add(1, std::memory_order_relaxed);   // [FRAMETIME]
     RtHistNote();                                        // [RTTARGETS]
@@ -2573,6 +2576,7 @@ void SfrMaybeCapturePass0AtClear(ID3D11DeviceContext* ctx, ID3D11DepthStencilVie
             if (ME2VR::CalcViewHook::GetVrCineActive() && g_cineCapturedAtIndex < 0)
                 g_cineCapturedAtIndex = g_cineMapLen - 1;   // [CINEMAP] probe: where this rule landed
             g_sfrPass0Caps.fetch_add(1, std::memory_order_relaxed);
+            ::MevrSeams::PerfFirstEyeCaptured(ctx);   // [MEVR] frame-breakdown probe: the first eye is captured
             // Which mechanism armed the CINE capture - one line per session, the next diagnostic.
             static bool s_cineArmLogged = false;
             if (!s_cineArmLogged && ME2VR::CalcViewHook::GetVrCineActive())
@@ -3766,6 +3770,7 @@ void FrameTimeAccount(const LARGE_INTEGER& entry, const LARGE_INTEGER& hookEnd, 
 
 HRESULT STDMETHODCALLTYPE PresentHook(IDXGISwapChain* swapChain, UINT syncInterval, UINT flags) noexcept
 {
+    const ::MevrSeams::PerfPresentScope mevrPerfPresent(g_gameContext);   // [MEVR] frame-breakdown probe: this Present, start to end
     LARGE_INTEGER ftEntry; QueryPerformanceCounter(&ftEntry);   // [FRAMETIME]
     const auto n = g_presentCount.fetch_add(1, std::memory_order_relaxed) + 1;
     // [BBREFRESH] The backbuffer resource pointer was captured once, at the first Present. If the
@@ -3982,7 +3987,7 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDXGISwapChain* swapChain, UINT syncInterv
     // F2 = manual flat/mono override (for journal/squad etc. that the mod doesn't auto-detect yet).
     {
         static bool s_f2Down = false;
-        const bool f2 = ::ME2VR::MevrBridge::KeyDown(VK_F2);
+        const bool f2 = ::MevrSeams::KeyDown(VK_F2);
         if (f2 && !s_f2Down)
         {
             const bool nm = !g_manualFlat.load(std::memory_order_acquire);
@@ -4007,7 +4012,7 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDXGISwapChain* swapChain, UINT syncInterv
     // in the galaxy map / journal, and compare to find which object/field marks a full-screen screen.
     {
         static bool s_f3Down = false;
-        const bool f3 = ::ME2VR::MevrBridge::KeyDown(VK_F3);
+        const bool f3 = ::MevrSeams::KeyDown(VK_F3);
         if (f3 && !s_f3Down) ME2VR::EngineProbe::DumpGfxState();
         s_f3Down = f3;
     }
@@ -4015,7 +4020,7 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDXGISwapChain* swapChain, UINT syncInterv
     // F4 = master VR on/off (OFF = vanilla flat, for first-person tuning).
     {
         static bool s_f4Down = false;
-        const bool f4 = ::ME2VR::MevrBridge::KeyDown(VK_F4);
+        const bool f4 = ::MevrSeams::KeyDown(VK_F4);
         if (f4 && !s_f4Down)
         {
             const bool on = !ME2VR::CalcViewHook::GetVrEnabled();
@@ -4030,7 +4035,7 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDXGISwapChain* swapChain, UINT syncInterv
         static bool s_fpKeyDown = false;
         const int fpVk = ME2VR::Menu::GetFpToggleKey();
         const bool fpKey = !ME2VR::Menu::IsRebindingFpToggle() && fpVk != 0 &&
-                        ::ME2VR::MevrBridge::KeyDown(fpVk);
+                        ::MevrSeams::KeyDown(fpVk);
         if (fpKey && !s_fpKeyDown)
         {
             const bool on = !ME2VR::EngineProbe::GetFirstPerson();
@@ -4040,11 +4045,11 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDXGISwapChain* swapChain, UINT syncInterv
         s_fpKeyDown = fpKey;
         static bool s_rcDown = false;
         const int rcKey = ME2VR::Menu::GetRecenterKey();
-        const bool rc = rcKey != 0 && ::ME2VR::MevrBridge::KeyDown(rcKey);
+        const bool rc = rcKey != 0 && ::MevrSeams::KeyDown(rcKey);
         if (rc && !s_rcDown) ME2VR::Me2Xr::Recenter();
         s_rcDown = rc;
         static bool s_f7Down = false;
-        const bool f7 = ::ME2VR::MevrBridge::KeyDown(VK_F7);
+        const bool f7 = ::MevrSeams::KeyDown(VK_F7);
         if (f7 && !s_f7Down)
         {
             const bool on = !ME2VR::EngineProbe::GetMeshHide();
@@ -4561,6 +4566,7 @@ void STDMETHODCALLTYPE DrawInstancedHook(ID3D11DeviceContext* context,
                                          UINT startVertexLocation,
                                          UINT startInstanceLocation) noexcept
 {
+    ::MevrSeams::PerfDraw();   // [MEVR] frame-breakdown probe: one draw
     FirstFire("DrawInstanced", 3);
     LogStereoBoundDraw("DrawInstanced", _ReturnAddress(), vertexCountPerInstance, startVertexLocation, 0, false);
     LogUiSeamStack("DrawInstanced", vertexCountPerInstance);
@@ -4587,6 +4593,7 @@ void STDMETHODCALLTYPE DrawInstancedHook(ID3D11DeviceContext* context,
 
 void STDMETHODCALLTYPE DrawAutoHook(ID3D11DeviceContext* context) noexcept
 {
+    ::MevrSeams::PerfDraw();   // [MEVR] frame-breakdown probe: one draw
     FirstFire("DrawAuto", 4);
     LogStereoBoundDraw("DrawAuto", _ReturnAddress(), 0, 0, 0, false);
     TraceOp("DrawAuto", context, 0);
@@ -4601,6 +4608,7 @@ void STDMETHODCALLTYPE DrawIndexedInstancedIndirectHook(ID3D11DeviceContext* con
                                                         ID3D11Buffer* bufferForArgs,
                                                         UINT alignedByteOffsetForArgs) noexcept
 {
+    ::MevrSeams::PerfDraw();   // [MEVR] frame-breakdown probe: one draw
     LogStereoBoundDraw("DrawIndexedInstancedIndirect",
                        _ReturnAddress(),
                        alignedByteOffsetForArgs,
@@ -4627,6 +4635,7 @@ void STDMETHODCALLTYPE DrawInstancedIndirectHook(ID3D11DeviceContext* context,
                                                  ID3D11Buffer* bufferForArgs,
                                                  UINT alignedByteOffsetForArgs) noexcept
 {
+    ::MevrSeams::PerfDraw();   // [MEVR] frame-breakdown probe: one draw
     LogStereoBoundDraw("DrawInstancedIndirect", _ReturnAddress(), alignedByteOffsetForArgs, 0, 0, false);
     FirstFire("DrawInstancedIndirect", 6);
     TraceOp("DrawInstIndir", context, 0);
@@ -5833,7 +5842,7 @@ D3D11CreateDeviceAndSwapChainFn g_origD3D11CreateDeviceAndSwapChain = nullptr;
 bool SvrIsSteamVrActiveRuntime() noexcept
 {
 #if defined(MEVR_ASI)
-    return ::ME2VR::MevrBridge::XrRuntimeIsSteamVr(); // [MEVR] process-local runtime
+    return ::MevrSeams::XrRuntimeIsSteamVr(); // [MEVR] process-local runtime
 #else
     static int cached = -1;
     if (cached >= 0) return cached != 0;
@@ -6122,7 +6131,7 @@ void TryInstallFactoryHooks(void* factory, const IID&) noexcept
         g_createSwapChainForCompositionSlot = &vtable[kCreateSwapChainForCompositionSlot];
     }
 #if defined(MEVR_ASI)
-    ::ME2VR::MevrBridge::OnFactory(factory);  // [MEVR] Same HDR display policy as LE2.
+    ::MevrSeams::OnFactory(factory);  // [MEVR] Same HDR display policy as LE2.
 #endif
 }
 }

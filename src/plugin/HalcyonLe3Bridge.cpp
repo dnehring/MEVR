@@ -29,6 +29,8 @@
 #include "plugin/EyeCopy.hpp"
 #include "plugin/FloorLock.hpp"
 #include "plugin/PadMerge.hpp"
+#include "plugin/PerfProbe.hpp"
+#include "plugin/RecenterTilt.hpp"
 #include "plugin/Renderer.hpp"
 #include "plugin/MenusLe2.hpp"
 #include "plugin/WorldPanels.hpp"
@@ -146,10 +148,16 @@ void ReadGalaxySettings() {
 }
 }
 void* StaticXrGetInstanceProcAddr() noexcept { return reinterpret_cast<void*>(&xrGetInstanceProcAddr); }
-void WrapSessionFunctions(void** acquire, void** /*waitImage*/, void** release, void** /*waitFrame*/, void** /*beginFrame*/,
+void WrapSessionFunctions(void** acquire, void** waitImage, void** release, void** waitFrame, void** beginFrame,
     void** endFrame, void** locateViews) noexcept {
     mevr::host::testloop::WrapSessionFunctions(acquire, release, endFrame, locateViews);
+    mevr::host::perf::WrapFrameFunctions(waitImage, waitFrame, beginFrame, endFrame);  // the probe's, outside ours
 }
+// The frame-breakdown probe's steps (plugin/PerfProbe): MevrSeams' optional perf group.
+void PerfPresentBegin(ID3D11DeviceContext* context) noexcept { mevr::host::perf::SeamPresentBegin(context); }
+void PerfPresentEnd(ID3D11DeviceContext* context) noexcept { mevr::host::perf::SeamPresentEnd(context); }
+void PerfFirstEyeCaptured(ID3D11DeviceContext* context) noexcept { mevr::host::perf::SeamFirstEyeCaptured(context); }
+void PerfDraw() noexcept { mevr::host::perf::NoteDraws(); }
 void OnSessionCreated(void* instance, void* session) noexcept {
     ResetGalaxy();
     { std::lock_guard lock(gPadMutex); gMapSessionOwned = session != nullptr; }
@@ -244,6 +252,7 @@ void OnFrameBegun(void* session, void* space, std::int64_t time) noexcept {
         mevr::vr::host_view::Reset(); // flat/menu paths do not call DriveHeadLook this frame
 }
 void OnRecentered() noexcept {
+    mevr::host::recenter_tilt::Committed();  // the orientation RecenterOrientation chose is the app space's now
     ResetGalaxy();
     gThespianContextMs.store(0, std::memory_order_release);
     mevr::host::sequel_squad_layers::Recentered();
@@ -369,6 +378,7 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** out, unsigned cap
         gNativePointerShown = false;
     }
 #endif
+    mevr::host::recenter_tilt::NoteHead(frame.headOrientation, frame.headValid);  // the tilt-correcting recenter's watch
     ID3D11Device* device = nullptr;
     frame.context->GetDevice(&device);
     // One submit owner. Suppress gameplay presentation under either menu or guided calibration.
