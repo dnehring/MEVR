@@ -174,7 +174,9 @@ Implementation is now authorized. The audit baseline above remains historical; t
 - **L3-5:** native ammo observation now distinguishes raw fields from effective getter results and rejects ambiguous
   methods. Production reload and attachment-aware optics still require implementation and weapon fixtures.
 - **L3-9, candidate:** the native galaxy observer, opt-in shared table placement and native-trigger transition guard
-  are integrated. Actual scan/probe bindings, pursuit, rewards and persistence remain unaccepted.
+  are integrated. The owner's projector-placement parity is still missing: the verified default is a large flat
+  panel, not the map over the physical CIC preview projector. Actual scan/probe bindings, pursuit, rewards and
+  persistence remain unaccepted. See the [projector correction and reuse steps](../research/le3-galaxy.md#projector-parity-correction).
 - **L3-10:** campaign, installer/release and physical-headset qualification remain open.
 
 The desktop engine probes and normal descriptor loads passed and restored with zero differences. The existing chapter
@@ -284,7 +286,7 @@ be prepared in parallel; native runs are serialized across **all three games**, 
 | L3-6 | Player powers, squad menu/orders, placement, healing/revive and radio commands. Reuse shared wheel/gestures, squad panel, parser, recognizer, scene generations and pause ownership. | L3-1/3; weapon requests need L3-5 | Correct ranked/evolved roster; self/ally/hostile/location targets; native cooldown and loadout effects; each squadmate visibly performs the requested action. Delayed speech cannot cross a scene/menu boundary. |
 | L3-7 | Light/heavy/class melee and intentional contextual attacks. Extend existing swing/intent code; implement LE3 native action adapters. | L3-1/3 and ownership contract; movement presentation coordinates L3-8 | One deliberate stroke/one native request, observed admission/impact/recovery, all six legal class fixtures, no accidental heavy or cover action. See the dedicated melee audit. |
 | L3-8 | Walking/turning/sprint, physical crouch/cover, evade, ladders/vaults/mantles and movement powers. Reuse comfort, traversal/cue and existing physical-cover findings. | L3-1/3; coordinate action lifecycle with L3-6/7 | Native destination/collision and action completion; no automatic cover snap; stable tracked orientation; safe restoration after interrupted actions; no traversal in authored seated scenes. |
-| L3-9 | Galaxy navigation, scan pulses, alert/pursuit and orbital retrieval. Reuse table/pointer surfaces and observation/fixture principles. | L3-0/1/2/4 | Navigate and scan natively; one intended pulse/probe action; steering remains usable during pursuit; discoveries/resources follow native save semantics; alert/pursuit match native persistence and reset behavior across save/load, escape/re-entry and mission transitions. |
+| L3-9 | Galaxy navigation, physical CIC projector presentation, scan pulses, alert/pursuit and orbital retrieval. Reuse ME1's measured projector, room-reference and scoped camera-swap architecture with LE3 native bindings, plus shared table/pointer surfaces. | L3-0/1/2/4 | Open at the existing preview projector with CIC surroundings retained and stable stereo/head motion; navigate and scan natively; one intended pulse/probe action; steering remains usable during pursuit; discoveries/resources follow native save semantics; alert/pursuit match native persistence and reset behavior across save/load, escape/re-entry and mission transitions. |
 | L3-10 | Campaign exception coverage, install/repair/update/uninstall and release qualification. Reuse existing loader/installer/tests and evidence format. | Starts with inventory; release requires applicable packages | Selected-game files only, byte-for-byte uninstall restoration, SDK-free release requirement, campaign/DLC matrix, Quest 3/Virtual Desktop standing/seated and performance results. |
 
 ## Specific adapter work that must not disappear inside “reuse”
@@ -329,14 +331,18 @@ When full text is unavailable, label/paraphrase matching may be an explicitly li
 full-line cards. Keep native Shepard playback until a separately verified LE3 mute/skip path exists. Do not enable
 the current non-LE2 Thespian branch: it contains LE1 assumptions.
 
-**Galaxy.** Present the native image on the shared surface first. ME3 system scan, Reaper alert/pursuit and orbital
+**Galaxy.** The normal VR map must open over the existing CIC preview projector, as in ME1, with the room retained.
+The whole native image on a smaller head-placed table is an intermediate diagnostic fallback, not parity. Measure the
+projector before the native camera changes, retain the room reference, and reuse ME1's scoped main-view camera swap
+with verified LE3 bindings. See the [concrete reuse steps](../research/le3-galaxy.md#projector-parity-correction).
+ME3 system scan, Reaper alert/pursuit and orbital
 retrieval are distinct input states even when a coarse game-mode value is shared. Continuous steering must survive
 scan/menu transitions; held triggers may not spam scans or launch on entry. Observe native fuel, discovery, retrieval
 and alert changes, including save/load, escape/re-entry and mission transitions. Observe native persistence and reset
 behavior rather than assuming alert must persist: the SDK exposes a transient live alert and explicit reset paths.
 Do not interpret retained mineral/probe save fields
-as proof of active ME2 mining semantics. Full CIC surroundings/stereo map depth are still unfinished in ME2 and need
-their own presentation gate if included in ME3.
+as proof of active ME2 mining semantics. CIC surroundings, projector alignment and stereo map presentation are required
+acceptance gates; ME2's unfinished presentation cannot stand in for the implemented ME1 experience.
 
 ## Reuse the save/editor and test flow
 

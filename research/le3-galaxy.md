@@ -43,7 +43,63 @@ hashes, reports zero differences, restores the four checked VR/LE1 environment
 hashes and releases the shared lock. See the
 [fixture audit](le3-combat-fixtures.md) before attempting Citadel travel.
 
-## Reuse boundary
+## Projector parity correction
+
+The owner clarified that ME1 opens the map at the physical preview hologram in
+the CIC. That is the required sequel outcome. The native image on a large screen
+or a smaller head-placed table does not meet it.
+
+Protected run `20261115-204835-705-LE3-navigation` reproduces the gap without
+changing presentation settings. Capture `2026-11-15_20-50-16-494` is native mode
+11, with one 3.2 by 1.8 metre quad 2.2 metres ahead and no published galaxy
+hologram. The live observer resolves camera state 3 and system 120300. The
+capture has no errors; the owned session exits normally and restores with zero
+differences. This is direct evidence of the flat fallback, not projector parity.
+
+The code agrees: `HalcyonLe3Bridge::ReadGalaxySettings` defaults `nativeTable`
+off. Its optional `NativeTablePanel` only repositions the same native image.
+`Mod.cpp` excludes ME1's `galaxy_map::Tick` from LE3 because its native bindings
+and raw mode constants are ME1-specific. LE3 has no equivalent CIC camera hold
+and projector-scene producer. Changing the default alone cannot repair this.
+
+Read-only LegendaryExplorer inspection identifies a concrete anchor in the
+installed `BioA_Nor_210CIC.pcc`: `InterpActor_0`, tagged `GalaxyMapProxy`, uses
+`BIOA_GalaxyMap_S.GalaxyMapProxy` through `StaticMeshComponent_5`. The adjacent
+`Emitter_0` supplies the decorative systems effect. The interaction target is
+separate: `BioD_Nor_203CIC`'s `SFXPointOfInterest_6`, tag `placu_galaxyMap`;
+the live capture selects that same target. Never use the interaction point as
+the projector centre or confuse the distant map actors with the CIC preview.
+The inspected CIC package SHA-256 is
+`cc8a7cbe1698f68a6803d489357446c00622e5899300b2579a2c51e48fa9d811`.
+Serialized transforms identify candidates, not accepted runtime geometry.
+
+Implement through the existing architecture in this order:
+
+1. Reuse ME1's `FindConsole`/`PlaceInWorld` design with LE3-native discovery of
+   the use target and projector mesh. Read its live transform and bounds while
+   still on foot, before the map camera takes over. Reuse the floor/view anchor,
+   `world_view::Reference` and `galaxy_holo::DiscPose`; invalidate on world,
+   pawn, session, recenter or actor replacement. No copied LE1 actor names,
+   hard-coded measured position or assumed 301-unit mesh extent.
+2. Adapt the main-view-only `GalaxyViewSwapBegin/End` scope and native camera
+   publication to LE3. The game's map camera must remain available to native
+   navigation, selection and source capture. Keep restoration on every return
+   and exception, and reject conversation, cinematic, loading and stale frames.
+   Do not simply disable the mono-map gate and render the distant map world.
+3. Connect the existing galaxy scene/window renderer and native image at the
+   measured projector, with CIC stereo surroundings. Share geometry, placement,
+   pointer and alpha/crop contracts; do not create a second UI renderer. Native
+   map/orbit and scan/pursuit semantics stay in the LE3 adapter.
+4. Verify the same physical projector before/open/close, left/right world
+   images, tracked head translation and hands, then map/orbit transitions,
+   travel confirmation, briefing interruption, recenter, tracking loss and
+   save reload. Preserve native steering and deliberate scan/probe input.
+
+The whole-image table remains a fallback until these outcomes are demonstrated.
+These are required L3-9 gates, not optional polish or a claim that the fix has
+already been implemented. Source dumps and native capture files remain private.
+
+## Native adapter reuse boundary
 
 ME1 `game/GalaxyMap` is a native camera/projector/table adapter for ME1. Its mode 9, Normandy
 actors, camera hold and opening-delay writes must not execute in ME3, where mode 9 is GUI.
