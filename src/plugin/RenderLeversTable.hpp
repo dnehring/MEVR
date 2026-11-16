@@ -195,6 +195,11 @@ inline constexpr char kGameName[] = "LE1";
 inline constexpr Layout kLayout = [] {
     Layout l;
     l.viewStride = 0x11A0;         // 11 functions add or multiply by it
+    // Ran in ME2 on 2026-11-16 (research/sequel-render-levers.md "ME2: the baseline and the A/Bs", session
+    // 20261116-141434-005-LE2-pl-levers): the accounting and the commander's timing; keepBoundShaderStates (161 kept, the
+    // reference count 0 -> 1 through the live RHI's slot 0x8A0, RVA 0x2B2640); the query-matrix hook, idle there.
+    // minScreenRadiusPx (umbraInstanceVerified) stays off: no measurable gain, and no still-head pair for pop-in yet.
+    l.sceneRendererVerified = l.umbraCommanderVerified = l.boundShaderStateVerified = l.umbraQueriesVerified = true;
     TryReadGroups(l);
     return l;
 }();
@@ -215,6 +220,12 @@ inline constexpr Layout kLayout = [] {
     l.captureTakesUmbraBranch = true;
     l.umbraCommandGate = 0x1767208;
     l.ownsSceneCaptureHooks = false;
+    // Ran in ME3 on 2026-11-16 (research/sequel-render-levers.md "ME3: the baseline and the A/Bs", session
+    // 20261116-143006-726-LE3-pl-levers): the accounting and the commander's timing (the command gate read 1);
+    // keepBoundShaderStates (436 kept, the reference count 0 -> 1 through RVA 0x2CB940, as lane R3's recipe says); the
+    // query-matrix hook, idle there. minScreenRadiusPx (umbraInstanceVerified) stays off: no measurable gain, and no
+    // still-head pair for pop-in yet.
+    l.sceneRendererVerified = l.umbraCommanderVerified = l.boundShaderStateVerified = l.umbraQueriesVerified = true;
     TryReadGroups(l);
     return l;
 }();
