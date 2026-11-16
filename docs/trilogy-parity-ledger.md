@@ -102,11 +102,11 @@ These are ordered by wasted or blocked work. Each is detailed under [Forks](#for
    - The perf probe exists only on LE1.
 9. **Neither sequel can ship yet** (G47, G50, G02).
    - Setup and report-a-problem are LE1-only.
-   - Both sequels' player builds still link LExSDKv2.
-   - `game/HeadTracking` reads through `engine::legacy` on LE3. On LE2, and in `game/HandAim` on both, LExSDKv2 is
-     only a fallback while the layer is off (`MEVR_OR_LEGACY`). The "LExSDKv2" notes in the generated module table list
-     every such build.
-   - This blocks M7.1/M7.2 for ME2 and L3-10 for ME3.
+   - Since T04 (2026-11-16) no sequel players' build links LExSDKv2: a monolithic build of all three games configures
+     without the submodule (`MEVR_LE2_LESDK`, `MEVR_LE3_LESDK` off), and no module reads through `engine::legacy`
+     (research/34 section 6.4; the generated module table has no "LExSDKv2" note left). Built and unit-tested; the
+     in-game checks (ME2's and ME3's `reflect:` lines on this code, a monolithic ME2 run) are still to run.
+   - What blocks M7.2 for ME2 and L3-10 for ME3 now is Setup and report-a-problem.
 10. **The eye-image pipeline is forked and incomplete on the sequels** (Forks 7, 8; R11, R13-R16).
     - The sequels apply colour in `plugin/EyeCopy`'s own shader, without the tonemap and without FSR.
     - The HDR answer is a second module (`plugin/HdrDisplayPolicy`).
@@ -204,7 +204,7 @@ The [technique groups](#renderer-techniques-by-group) summary follows the table.
 | id | system (LE1 code) | LE2 | LE3 | check / next step |
 |---|---|---|---|---|
 | G01 | VRIK arm IK (`game/ArmIk`, `engine/BonePose`, `core/ik`; docs/vrik-porting-guide.md) | **adapted** V: LE2 `kUpdateSkelPose 0x79B8A0`; research/le2-vrik.md "The run" 2026-11-14 (141fd1d5, 965321e2): wrists 0.07 m off, skeleton audit within 3 cm. Root-motion work unmerged: 5f16c065 on `worktree-agent-a2e1237ec285988ed` | **adapted** V: LE3 layout, `kUpdateSkelPose 0x796EB0`, `MenuBodyEligible`; runs `20261115-182253-344`, `20261115-183117-290` (research/le3-body-pose.md) | Headset: hands on the controllers (snapshot `mod.armIk.hands`). |
-| G02 | Hand aim and the aim ray (`game/HandAim`) | **adapted** V: `SFXWeapon.GetAdjustedAim` post-handler; 34 shots 0.4–0.8° from the barrel (le2-vrik) | **adapted** U: LE3 branches; LExSDKv2 (`engine::legacy`) only as a fallback while the layer is off (`MEVR_OR_LEGACY`), as on LE2 | LE3: a combat fixture (research/le3-combat-fixtures.md). Drop the fallback for the SDK-free players' build. |
+| G02 | Hand aim and the aim ray (`game/HandAim`) | **adapted** V: `SFXWeapon.GetAdjustedAim` post-handler; 34 shots 0.4–0.8° from the barrel (le2-vrik) | **adapted** U: LE3 branches, on our layer only (no LExSDKv2 fallback on either sequel since T04) | LE3: a combat fixture (research/le3-combat-fixtures.md). |
 | G03 | Fingers (`game/Fingers`, `core/ik/Fingers`) | **shared** U | **shared** U | Snapshot `mod.fingers` with a replayed trigger and grip on each game's skeleton. |
 | G04 | The drawn gun (`game/Weapon`) | **adapted** V: muzzle against `GetMuzzleLoc`, 0.00 units (le2-vrik) | **adapted** U: LE3 weapon classes, the SMG as its own `RangedType` | LE3: a combat fixture. |
 | G05 | Support grip, two-handed (`game/SupportGrip`, `plugin/PadMerge` v7/v11) | **shared** U: ctest `mevr-pad-merge` only | **shared** U | A replay with the left grip in the zone, then snapshot `supportGrip`. |
@@ -215,7 +215,7 @@ The [technique groups](#renderer-techniques-by-group) summary follows the table.
 | G10 | View level, aim assist zeroed (`game/ViewLevel`) | **adapted** V: pitch held in 4,723 of 4,723 ticks, yaw kick removed (le2-vrik); the aim-assist zeroing unmeasured | **missing**: `TryStartup`/`Tick` `#if LE1 \|\| LE2` | LE3: the handler on ME3's recoil call. `python tools/le2-name-audit.py --game LE3 game/ViewLevel`: ME3 has all 29 of its names. |
 | G11 | Camera shakes off (`game/CameraShake`) | **adapted** V: ME2's branch sets `CameraModifier.bDisabled`; modifiers off in the run. Which gun shakes exist is [verify] | **missing**: a stub, "LE1 and LE2 only" | — |
 | G12 | Camera collision off in first person (`game/CameraCollision`) | **missing** | **missing** | First check whether Halcyon ME2/ME3's first person pulls back near geometry. LE1's symptom was the eye behind the knees (research/69). |
-| G13 | Body follow: torso, legs keep the run, steady idle (`game/BodyFollow`, `core/ik/BodyFollow`) | **adapted** V: skeleton audit (le2-vrik). Conversation `BodyAway` is LE1-only | **adapted** V: shared follower plus a head-only solve on grip loss, run `20261115-182253-344`. "Legs keep the run" is off: no Velocity read (`BodyFollow` is `out` on LE3) | LE3: a Velocity handle declared `kEveryGame`. |
+| G13 | Body follow: torso, legs keep the run, steady idle (`game/BodyFollow`, `core/ik/BodyFollow`) | **adapted** V: skeleton audit (le2-vrik). Conversation `BodyAway` is LE1-only | **adapted** V: shared follower plus a head-only solve on grip loss, run `20261115-182253-344`. "Legs keep the run" has its Velocity read since T04 (U: built; the handle's ReflectCheck row is L3-3's) | LE3: a walk under replay showing `torso: legs:`. |
 | G14 | Body scale (`game/BodyScale`, `core/ik/BodyScale`) | **shared** U | **shared** U | Needs a recorded floor fixture: the fake headset's floor is at its head. |
 | G15 | Floor lock (`plugin/FloorLock`, `core/vr/FloorLock`, seam `FloorViewTranslation`) | **adapted** U: the path seen on the fake headset (M2 step 8); the correction itself unmeasured; manual height not wired | **adapted** V: `stageEyeM = finalEyeM = 1.7526`, run `20261115-170957-963`; menu continuity `20261115-183117-290` (research/null-headset-height.md) | LE2: the LE3 null-height run's script on Save 4. |
 | G16 | Guided calibration and hand calibration (`plugin/Calibration`, `CalibrationDraw`, `ArmSample`, `game/BodyCalibration`, `game/HandCalibration`) | **adapted** U: `MEVR_SEQUEL_MENU_SOURCES`, `WithMenus` v15, glue in `plugin/MenusLe2` | **adapted** U: same | A headset run: the fake headset has no interaction profile. |
@@ -249,15 +249,15 @@ The [technique groups](#renderer-techniques-by-group) summary follows the table.
 | G44 | The Mako: aim, controls, cockpit, gunner, panel, hazard (`game/Mako*`, `game/Cockpit*`, `core/vr/MakoControls`) | **missing**: the Hammerhead, with ME1's Mako controls and cockpit, has its own later pass (continuation plan M6) | **n/a**: no player vehicle; the Atlas has no adapter (LE3 plan: "safe fallback") | — |
 | G45 | Focus pause off (`game/FocusPause`) | **missing** | **missing** | First check whether ME2/ME3 freeze without window focus (`bPlayersOnly`). |
 | G46 | Our ASI loader (`src/loader`) | **adapted** U: `LoaderCore.cpp` maps MassEffect2.exe, but every ME2 run used LEBinkProxy | **adapted** U: maps MassEffect3.exe | A run with our `bink2w64.dll` in that game's Binaries. |
-| G47 | Installer, report a problem, release packaging (`MEVR-Setup`, `src/install`, `plugin/ReportRequest`, `tools/package-release.ps1`) | **missing**: Setup is LE1-only (`LE1MEVR.asi` hard-coded in `Installer.hpp`); `SetupRequest` linked but never written; ReportRequest is in the LE1 host only; the players' build still links LExSDKv2 | **missing**: same; the LE3 player ASI links `LESDK-LE3` | M7.1 and M7.2; L3-10. |
+| G47 | Installer, report a problem, release packaging (`MEVR-Setup`, `src/install`, `plugin/ReportRequest`, `tools/package-release.ps1`) | **missing**: Setup is LE1-only (`LE1MEVR.asi` hard-coded in `Installer.hpp`); `SetupRequest` linked but never written; ReportRequest is in the LE1 host only. The players' build links no LExSDKv2 since T04 and `package-release.ps1` refuses one that does | **missing**: same; the LE3 player ASI links no LExSDKv2 since T04 | M7.2; L3-10. |
 | G48 | Crash breadcrumbs, first-chance report, quit safety (`plugin/CrashBreadcrumbs`, `plugin/KeptLocks`, the ExitProcess hook) | **adapted** V: breadcrumbs in every host; a first-chance report in an ME2 log (research/le2-menus "The checks"). KeptLocks LE1-only | **adapted** U: same | Check whether ME2/ME3 fault at quit (LE1: a deleted lock at exe+0x1BA22C0). |
 | G49 | Controller input: Touch as pad 0, profiles, our actions, haptics (`plugin/PadMerge`, `game/GamepadMapping`, `plugin/XrHost`, `core/xr/Input`) | **adapted** V: `MergeMotionControllers` (conversation and orbital triggers, R3 gate); stretch `20261115-001659-lane-b4-m2`; ctest `mevr-pad-merge` | **adapted** V: semantic modes, map lease, traversal yaw; replayed controllers in run `20261115-182253-344` | Headset: the L3+R3 hold. |
-| G50 | Head tracking and the view anchor (`game/HeadTracking`, `game/ViewAnchor`) | **adapted** V: `hostView.valid` and the replayed turn (le2-vrik). Falls back to LExSDKv2 when the layer is off | **adapted** V: head look in the pose-tag runs. The game mode is read through `engine::legacy` (LExSDKv2) | M7.1 and L3-10: ue3 reads in place of the legacy ones. |
+| G50 | Head tracking and the view anchor (`game/HeadTracking`, `game/ViewAnchor`) | **adapted** V: `hostView.valid` and the replayed turn (le2-vrik). Stands down when the layer is off (no LExSDKv2 fallback since T04) | **adapted** V: head look in the pose-tag runs (through `engine::legacy` then). On our layer since T04: U, built, rows in `CheckLe3EngineAccess` | LE3: an engine probe and a renderer run on the T04 code. |
 | G51 | Reflection (mirror) fix (`game/Reflections`) | **n/a**: stands down whenever the host owns VR (`src/mod/Mod.cpp`), as on LE1 under Halcyon | **n/a** | — |
-| G52 | Engine access: reflection layer, ReflectCheck, addresses, the game adapter (`src/ue3`, `engine/ReflectCheck`, `engine/Addresses.hpp`, `engine/GameAdapter.hpp`) | **adapted** V: `reflect: 377 of 377` (research/le2-menus; 0b2df0ac, 48f2e5bb) | **adapted** V: 603 of 603, run `20261115-220151-721` | `kModulesOnLayer` is false on both. Each `ready` module in the generated table needs its handles declared `kEveryGame` and its gate moved to `Up()`. |
+| G52 | Engine access: reflection layer, ReflectCheck, addresses, the game adapter (`src/ue3`, `engine/ReflectCheck`, `engine/Addresses.hpp`, `engine/GameAdapter.hpp`) | **adapted** V: `reflect: 377 of 377` (research/le2-menus; 0b2df0ac, 48f2e5bb) | **adapted** V: 603 of 603, run `20261115-220151-721` | T04 closed the LExSDKv2 part (research/34 section 6.4). `kModulesOnLayer` stays false on both: the 10 `ready` modules left (BodyBounds, CoverAcquire, VoicePlace, SoundPlace, AuthoredMoment, ConversationFlow, ConversationWorld, GalaxyDump, GalaxyMap, SquadAck) are ME1 features on ME1's names and addresses; each moves to `kEveryGame` and `Up()` with its own feature's port. |
 | G53 | Host/mod split, hot reload, HostServices (`plugin/Entry`, `plugin/ModLoader`, `src/mod`) | **shared** V: every LE2 run above used a host and mod pair | **shared** V: the protected LE3 runs | — |
 | G54 | Save tools and scripted runs (`tools/le1-save.py`, `fake-headset-session.ps1`, `launch-game.ps1`, the conversation tools) | **forked** V: `tools/le2-save.py` (recipes and receipts), `tools/le2-halcyon-run` (`load.ps1`, 3e8609b7), `tools/qa-le2`, a diagnostic LE2 host | **forked** V: `tools/le3-save.py` (imports le2-save), le2-halcyon-run's LE3 mode; 6 saves round-trip byte for byte | Forks 10. |
-| G55 | Console request, call trace, dev request files (`game/ConsoleRequest`, `game/CallTrace`, `core/DevChannels`) | **adapted** V: `mevr load` and `mevr omni squad` in runs. CallTrace `ready` | **adapted** V: `mevr thespian cards`, run `20261115-203330-839`. CallTrace `ready` | CallTrace: handles to `kEveryGame`. |
+| G55 | Console request, call trace, dev request files (`game/ConsoleRequest`, `game/CallTrace`, `core/DevChannels`) | **adapted** V: `mevr load` and `mevr omni squad` in runs. CallTrace runs (`Up()`, `mevr calltrace` in ME2's console since T04: U) | **adapted** V: `mevr thespian cards`, run `20261115-203330-839`. CallTrace as ME2: U | One `mevr calltrace` in a run on each sequel. |
 | G56 | Classic menu's VR hands tab and menu pointer (`plugin/MevrMenuTab`, `plugin/MevrMenuPointer`) | **missing**: Halcyon ME2's own menu, without our tab | **missing** | Low value: our main menu replaces it. |
 | G57 | The game's wheels cut onto a hand quad (`core/vr/WheelCrop`, `setWheelPanel`, the native squad-wheel style) | **missing**: `setWheelPanel` is LE1-only | **missing** | With G30. |
 | G58 | VR sprint (`game/Sprint`, `core/vr/Sprint`) | **missing**: by design, ME2's native Storm (continuation plan M6 table) | **adapted** U: native admission (`Sprint.cpp` `#if LE1 \|\| LE3`) | L3-8. |
@@ -495,8 +495,10 @@ These are concrete, each with its check. None was fixed here (read-only audit).
 - **Two configuration values nobody reads.**
   - `RendererLe2::RecenterTiltDeg` answers 60, and nothing reads it.
   - `PowerWheel::StatusJson` reads the controller through `Ready()`, so `mappedPower` is always empty in LE2 snapshots.
-- **LExSDKv2's generated LE3 header lists no `Engine.Actor.Location`**, though every game has it, so the generated
-  "names" table has false entries. ReflectCheck, against the running game, is the authority; the table is a lead.
+- **LExSDKv2's generated LE3 header spells some names in lower case** (`Actor.location`, `FTPOV.location`,
+  `out_rotation`), which the generated "names" table took for missing names until T04 (`tools/le2-name-audit.py`
+  compares fields without case now, as the engine and `ue3::Reflection` do). ReflectCheck, against the running game,
+  is the authority; the table is a lead.
 
 ## Generated facts
 
@@ -514,9 +516,9 @@ defined in the tool's header:
 <!-- parity:summary -->
 | game | renderer | host plugin files | host core files | services served | src/game + src/engine modules by status | MevrBridge seams |
 |---|---|---|---|---|---|---|
-| LE1 | halcyon-le1 | 70 | 71 | 57 | run 67, out 4, ungated 22, unreferenced 1, unbuilt 4 | 111 |
-| LE2 | halcyon-le2 | 57 | 51 | 48 | run 38, ready 11, out 22, ungated 21, unreferenced 2, unbuilt 4 | 32 |
-| LE3 | halcyon-le3 | 60 | 51 | 46 | run 33, ready 11, out 27, ungated 22, unreferenced 2, unbuilt 3 | 29 |
+| LE1 | halcyon-le1 | 70 | 71 | 57 | run 67, out 4, ungated 23, unbuilt 4 | 111 |
+| LE2 | halcyon-le2 | 57 | 51 | 48 | run 39, ready 10, out 22, ungated 21, unreferenced 2, unbuilt 4 | 32 |
+| LE3 | halcyon-le3 | 60 | 51 | 46 | run 37, ready 10, out 24, ungated 22, unreferenced 2, unbuilt 3 | 29 |
 <!-- /parity:summary -->
 
 ### Host plugin files per game
@@ -733,11 +735,11 @@ Helpers applied, in order:
 | `engine/CodeDump` | ungated | ungated | ungated |
 | `engine/ConversationHooks` | ungated | ungated | ungated |
 | `engine/CoverAcquire` | run | ready | ready |
-| `engine/Engine` | run | run (LExSDKv2) | run |
+| `engine/Engine` | run | run | run |
 | `engine/Le2ControlHost` | unbuilt | unbuilt | unbuilt |
 | `engine/Le2DiagnosticHost` | unbuilt | unbuilt | unbuilt |
 | `engine/Le2DiagnosticObservation` | unbuilt | unbuilt | unbuilt |
-| `engine/Legacy` | unreferenced | ungated | ungated |
+| `engine/Legacy` | ungated | ungated | ungated |
 | `engine/NameLookup` | ungated | ungated | ungated |
 | `engine/NativesDump` | run | run | run |
 | `engine/ProcessEvent` | ungated | ungated | ungated |
@@ -750,10 +752,10 @@ Helpers applied, in order:
 | `game/ArmIk` | run | run | run |
 | `game/AuthoredMoment` | run | ready | ready |
 | `game/BodyCalibration` | ungated | ungated | ungated |
-| `game/BodyFollow` | run | run | out |
+| `game/BodyFollow` | run | run | run |
 | `game/BodyProbe` | ungated | unreferenced | unreferenced |
 | `game/BodyScale` | ungated | ungated | ungated |
-| `game/CallTrace` | run | ready | ready |
+| `game/CallTrace` | run | run | run |
 | `game/CameraCollision` | run | out | out |
 | `game/CameraProbe` | run | run (ME1-only handles) | out |
 | `game/CameraShake` | run | run (ME1-only handles) | out |
@@ -761,7 +763,7 @@ Helpers applied, in order:
 | `game/CockpitProbe` | run | out | out |
 | `game/CombatStance` | run | out | out |
 | `game/Comfort` | run | run | run |
-| `game/ConsoleRequest` | run | run (part, LExSDKv2) | run (part) |
+| `game/ConsoleRequest` | run | run (part) | run (part) |
 | `game/ConversationFlow` | run | ready | ready |
 | `game/ConversationWorld` | run | ready | ready |
 | `game/Fingers` | ungated | ungated | ungated |
@@ -774,11 +776,11 @@ Helpers applied, in order:
 | `game/GamepadMapping` | ungated | ungated | ungated |
 | `game/GuiCursor` | run | run | run |
 | `game/GunKick` | run | run | out |
-| `game/HandAim` | run | run (LExSDKv2) | run (LExSDKv2) |
+| `game/HandAim` | run | run | run |
 | `game/HandCalibration` | ungated | ungated | ungated |
 | `game/HandTargets` | ungated | ungated | ungated |
 | `game/HeadSim` | ungated | ungated | ungated |
-| `game/HeadTracking` | run | run (LExSDKv2) | out (LExSDKv2) |
+| `game/HeadTracking` | run | run | run |
 | `game/HoloProbe` | run | out | out |
 | `game/Holsters` | run | out | out |
 | `game/HudPieces` | ungated | run | ungated |
@@ -797,7 +799,7 @@ Helpers applied, in order:
 | `game/Player` | run | run (ME1-only handles) | run (ME1-only handles) |
 | `game/Posture` | run | run | run |
 | `game/PowerWheel` | run | run (ME1-only handles) | run (ME1-only handles) |
-| `game/Reflections` | run | run (LExSDKv2) | out (LExSDKv2) |
+| `game/Reflections` | run | run | run |
 | `game/SceneCaptureRig` | run | out | run |
 | `game/ScopeCapture` | run | out | out |
 | `game/ScopeParts` | run | out | out |
@@ -973,18 +975,15 @@ The rest moves with every ME1 edit, so it is not committed. `python tools/parity
 <!-- parity:names -->
 Handles a sequel build declares `ue3::kEveryGame` whose name that game's SDK list lacks (the lookup is tried there: a failure, or a gap in the generated SDK list; ReflectCheck decides):
 
-- LE3 `game/Comfort`: `Engine.Actor:Location`
 - LE3 `game/GameMenuRequest`: `Engine.BioSFHandler.HandleInputEvent`, `Engine.BioSFManager:m_FocusPanel`, `Engine.BioSFPanel:m_DefaultHandler`, `Engine.BioSFPanel:nmTag`, `Engine.PlayerController:m_oCachedScaleFormManager`, `SFXGame.MassEffectGuiManager.GetBrowserHandler`, `SFXGame.MassEffectGuiManager:m_oBWHandler`
 - LE3 `game/GuiCursor`: `Engine.BioSFManager:m_FocusPanel`, `Engine.PlayerController:m_oCachedScaleFormManager`
 - LE2 `game/OmniTool`: `Engine.StaticMesh:LODInfo`
-- LE3 `game/Player`: `Engine.Actor:Location`
-- LE3 `game/Posture`: `Engine.Actor:Location`
 - LE3 `game/PowerWheel`: `SFXGame.BioPawn.IsHostile`, `SFXGame.BioPawn:m_oBehavior`
 - LE3 `game/ScreenReticle`: `Engine.BioSFHandler:oPanel`, `Engine.BioSFManager:m_lstPanels`, `Engine.BioSFPanel`, `Engine.BioSFPanel.GetVariableBool`, `Engine.BioSFPanel.GetVariableFloat`, `Engine.BioSFPanel.SetVariableFloat`, `Engine.BioSFPanel:MovieRef`, `Engine.BioSFPanel:ScriptHandlers`, `Engine.BioSFPanel:m_DefaultHandler`, `Engine.BioSFPanel:nmTag`, `Engine.PlayerController:m_oCachedScaleFormManager`, `SFXGame.BioSFHandler_Reticule`, `SFXGame.BioSFHandler_Reticule:m_Reticule`, `SFXGame.BioSFHandler_Reticule:m_eLastReticuleMode`
 - LE2 `game/SquadContext`: `SFXGame.BioPawn.IsInCombatActionState`
 - LE3 `game/SquadContext`: `SFXGame.BioActorBehavior:ActorGameName`, `SFXGame.BioPawn.IsHostile`, `SFXGame.BioPawn.IsInCombatActionState`, `SFXGame.BioPawn:m_oBehavior`
 - LE3 `game/SquadWeapons`: `SFXGame.BioActorBehavior:ActorGameName`, `SFXGame.BioBaseSquad.GetMember`, `SFXGame.BioBaseSquad.GetSquadSize`, `SFXGame.BioPawn:m_oBehavior`
 - LE3 `game/Thespian`: `Engine.BioSFHandler:oPanel`, `Engine.BioSFPanel.InvokeMethod`, `SFXGame.BioConversation.GetEntryText`, `SFXGame.BioConversation.GetReplyText`, `SFXGame.BioWorldInfo.EndCurrentConversation`
-- LE3 `game/VrCover`: `Engine.Actor:Location`, `SFXGame.BioPawn.IsHostile`
+- LE3 `game/VrCover`: `SFXGame.BioPawn.IsHostile`
 - LE3 `game/WorldUi`: `Engine.BioSFManager:m_FocusPanel`, `Engine.BioSFManager:m_lstPanels`, `Engine.BioSFPanel:m_DefaultHandler`, `Engine.BioSFPanel:nmTag`, `Engine.PlayerController:m_oCachedScaleFormManager`
 <!-- /parity:names -->

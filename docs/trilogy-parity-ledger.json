@@ -858,7 +858,7 @@
      "status": "run"
     },
     "LE2": {
-     "legacy": true,
+     "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
      "status": "run"
@@ -947,7 +947,7 @@
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "unreferenced"
+     "status": "ungated"
     },
     "LE2": {
      "legacy": false,
@@ -1258,7 +1258,7 @@
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "run"
     }
    },
    "namespace": "game::body_follow"
@@ -1321,13 +1321,13 @@
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "ready"
+     "status": "run"
     },
     "LE3": {
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "ready"
+     "status": "run"
     }
    },
    "namespace": "game::call_trace"
@@ -1502,7 +1502,7 @@
      "status": "run"
     },
     "LE2": {
-     "legacy": true,
+     "legacy": false,
      "me1OnlyHandles": false,
      "part": true,
      "status": "run"
@@ -1801,13 +1801,13 @@
      "status": "run"
     },
     "LE2": {
-     "legacy": true,
+     "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE3": {
-     "legacy": true,
+     "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
      "status": "run"
@@ -1893,16 +1893,16 @@
      "status": "run"
     },
     "LE2": {
-     "legacy": true,
+     "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE3": {
-     "legacy": true,
+     "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "run"
     }
    },
    "namespace": "game::head_tracking"
@@ -2330,16 +2330,16 @@
      "status": "run"
     },
     "LE2": {
-     "legacy": true,
+     "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE3": {
-     "legacy": true,
+     "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "run"
     }
    },
    "namespace": "game::reflections"
@@ -2967,11 +2967,6 @@
   }
  },
  "names": {
-  "game/Comfort": {
-   "LE3": [
-    "Engine.Actor:Location"
-   ]
-  },
   "game/GameMenuRequest": {
    "LE3": [
     "Engine.BioSFHandler.HandleInputEvent",
@@ -2992,16 +2987,6 @@
   "game/OmniTool": {
    "LE2": [
     "Engine.StaticMesh:LODInfo"
-   ]
-  },
-  "game/Player": {
-   "LE3": [
-    "Engine.Actor:Location"
-   ]
-  },
-  "game/Posture": {
-   "LE3": [
-    "Engine.Actor:Location"
    ]
   },
   "game/PowerWheel": {
@@ -3058,7 +3043,6 @@
   },
   "game/VrCover": {
    "LE3": [
-    "Engine.Actor:Location",
     "SFXGame.BioPawn.IsHostile"
    ]
   },

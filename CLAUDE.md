@@ -247,10 +247,11 @@ switching frameworks.
 - Script-level hooks must wait for the script packages to load (they aren't there at attach).
   `Mod.cpp` retries every second before installing the ProcessEvent hook (LE1: `ue3::runtime::Init`, then
   `Engine.Camera.UpdateCamera` through our reflection layer, research/34 stage 3; LE2 the same since 2026-11-14, M1:
-  ME2's layout in `engine/GameAdapter.hpp`, research/le2-engine-access-discovery.md "M1: what ME2's code showed", with
-  `engine/Legacy` as LE2's fallback only; LE3: `engine/Legacy`).
-  Engine reads go through `src/ue3/` (handles, `Params`); new LExSDKv2 use belongs only in `engine/Legacy`,
-  ReflectCheck's reference side until stage 6 removes it (the hooks and RVAs are ours since stage 4: `core/Hook`'s
+  ME2's layout in `engine/GameAdapter.hpp`, research/le2-engine-access-discovery.md "M1: what ME2's code showed"; LE3 the
+  same since L3-1; **no game falls back to LExSDKv2 since 2026-11-16**, T04, research/34 section 6.4: with the layer off
+  the game features stand down, and `engine/Legacy` is the LE2 diagnostic host's only).
+  Engine reads go through `src/ue3/` (handles, `Params`); LExSDKv2 use belongs only in ReflectCheck's reference side
+  and the LE2 diagnostic host (`MEVR_LE2_DIAGNOSTIC`), never in a module a players' build compiles (the hooks and RVAs are ours since stage 4: `core/Hook`'s
   `hook::Context`, every raw address in `engine/Addresses.hpp`, research/34).
 - Hotkeys: not F-keys (bound in game), not backtick (UE console). `]` toggles VR (the XR
   session) on and off, and with it every VR feature: once a session runs, alternate-eye stereo,
@@ -1561,10 +1562,12 @@ switching frameworks.
   Test only on a fake game: `tools/setup/test-fake-game.ps1` (`scratch\fakegame`); pages offline:
   `MEVR-Setup.exe --preview <folder>`. Release: `tools/package-release.ps1 [-Zip]` into `dist\` (local only; it copies
   the third-party licence texts into `licenses\` and refuses while the ASI links LExSDKv2 unless `-LexSdkPermission`).
-  **LExSDKv2 has no licence, so the players' build has none of it** (2026-10-26): the release (monolithic) build sets
-  `MEVR_LE1_LESDK=OFF` (CMake; default = `MEVR_HOT_RELOAD`), LE1 links no `LESDK-LE1` and `engine/ReflectCheck`'s
-  cross-check compiles out (`MEVR_NO_LESDK`: it logs `reflect: no LExSDKv2 cross-check in this build`). Development
-  builds keep it. Never add LExSDKv2 use to an LE1 code path.
+  **LExSDKv2 has no licence, so the players' build has none of it, on any game** (LE1 2026-10-26; LE2 and LE3
+  2026-11-16, T04, research/34 section 6.4): the release (monolithic) build sets `MEVR_LE1_LESDK=OFF`, `MEVR_LE2_LESDK=OFF`
+  and `MEVR_LE3_LESDK=OFF` (CMake; each defaults to `MEVR_HOT_RELOAD`), no game links `LESDK-<game>` and
+  `engine/ReflectCheck`'s cross-check compiles out (`MEVR_NO_LESDK`: it logs `reflect: no LExSDKv2 cross-check in this
+  build`). Development builds keep it; `package-release.ps1` refuses a build tree whose LE1, LE2 or LE3 ASI links it.
+  Never add LExSDKv2 use to a code path a players' build compiles.
 - Report a problem ([research/33](research/33-installer.md) section 8): MEVR Setup's page (or `--report [--snapshot]
   [--perf]`), the menu's Advanced > Diagnostics > Report (`plugin/ReportRequest`: starts `ASI\MEVR-Setup.exe --report
   --from-game` at once, background priority, no window) and the crash offer (`install/ReportMarks`) write a redacted
@@ -1853,8 +1856,8 @@ Use it to check VR changes yourself instead of asking the user what they see
   `%LOCALAPPDATA%\MEVR\reflect-check.json` (our layer against LExSDKv2, while both exist).
   Since stage 2 no `src/game` file includes LExSDKv2: the player's shared handles are in `game/Player`,
   hook blocks are read through parameter handles (`FieldRef{functionRef, "ReturnValue"}`), engine
-  strings through `ue3::memory` (`OwnedString`, `FreeString`), and LE3's few all-game reads through `engine/Legacy`
-  until its layout exists (LE2's go through `ue3` since 2026-11-14; a module comes to ME2 by `Ready()` to `Up()` and
+  strings through `ue3::memory` (`OwnedString`, `FreeString`), and every game's all-game reads through `ue3` (LE2's
+  since 2026-11-14, LE3's since 2026-11-16; a module comes to a sequel by `Ready()` to `Up()` and
   `ue3::kEveryGame` handles, research/le2-engine-access-discovery.md). Every class, field, function or parameter you resolve
   needs a row in `engine/ReflectCheck`; a failed lookup stands the feature down with a log line. `IsAlive` is safe on a
   pointer whose memory the engine gave back (a guarded read of the header, 2026-11-10: a hot reload eight levels after the
