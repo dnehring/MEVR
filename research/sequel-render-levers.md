@@ -134,6 +134,9 @@ ones by construction; the others read at their aligned call sites and in Ghidra)
 
 ### Per lever: can ME2 have it, and the recipe
 
+(Line numbers below are as of main `036d544b`, 2026-11-16; they drift, so each reference also names its function or a
+string to search for.)
+
 Halcyon's ME2 stereo ("SFR", `src/halcyon/le2/calcview_hook.cpp`): `DrawDetour` (line 1086) runs the game's
 `FViewportClient::Draw` (pass 0, the left eye) and then calls it again (`SfrReplayDrawSEH`, pass 1, `t_replay = true`).
 In `CalcViewDetour`'s SFR branch (line 1432) each pass gets **its own `FSceneViewState`** (`g_eyeStateLeft` for pass 0,
@@ -223,10 +226,15 @@ after the Umbra resolve) to the "scene render finish", then replay them in the f
 bytes. What has to change in Halcyon's ME2 code, exactly:
 
 1. **`calcview_hook.cpp` `DrawDetour`, the replay block** (from `t_replay = true;` at line 1141 through the
-   `[NOOPRETRY]` retry to the `[SFR] Draw replay` log at line 1196): while the host's one-Draw flag is set (LE1's
+   `[NOOPRETRY]` retry to the `[SFR] Draw replay #` log at line 1193): while the host's one-Draw flag is set (LE1's
    `MevrBridge::g_oneDrawStereo`), `SfrReplayDrawSEH` must not be called, and neither must its retry. Still count the
-   frame as delivered: `g_sfrReplays` up, `g_sfrSkipStreak` to 0, `g_sfrNoopReplays` to 0. Otherwise `me2_xr.cpp`
-   line 2310 reports `[STEREODEAD]` (it reads both counters; over 20 means "both eyes the same image").
+   frame as delivered: `g_sfrReplays` up, `g_sfrSkipStreak` to 0, `g_sfrNoopReplays` to 0. Otherwise `me2_xr.cpp`'s
+   `[STEREODEAD]` watchdog (line 2322, `GetSfrNoopReplays()`) reports it: it reads both counters, and over 20 means
+   "both eyes the same image".
+
+   The seams keep LE1's names: `src/halcyon/MevrSeams.h` has a note "Room left for one-Draw stereo" saying a second
+   renderer that takes `g_oneDrawStereo`, `RecordPass1View` / `FindPass1View`, `StereoFrameActive` and the recorder's
+   `Record*` calls moves those declarations there unchanged (capability `oneDraw`).
 2. **`calcview_hook.cpp` `CalcViewDetour`, the SFR branch** (line 1432): for pass 0 (`!t_replay`), after
    `RefreshInverseSlots(svu)`, record the view pass 1 would have had (LE1's `RecordPass1View`): key = this view's final
    ViewOrigin (+0x320) and forward (the view matrix's third column: +0x90 elements 2, 6, 10); `delta` = pass 1's camera
@@ -255,7 +263,7 @@ bytes. What has to change in Halcyon's ME2 code, exactly:
    left eye is pass 0's image and the right eye the replay's.
 
 Then, on the host side (lane PL): `kViewStride` `0x11A0`; `StereoFrameActive()` = `DrawDetour`'s `sfrGameplay`
-condition; `g_perfDraws` counted in ME2's draw hooks; the fallback (`g_oneDrawStereo` cleared after 3 frames without a
+condition; the draws counted in ME2's draw hooks (`MevrSeams::PerfDraw()`, LE1's `++g_perfDraws`); the fallback (`g_oneDrawStereo` cleared after 3 frames without a
 matching record) as LE1's. The right-eye view state `g_eyeState` simply goes unused while one-Draw runs.
 
 Known limits carried over from LE1, to re-measure in ME2 rather than assume: whether ME2's shaders take
