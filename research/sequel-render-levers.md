@@ -1110,11 +1110,39 @@ and R3 read the same in the natives (two calls of the scene render a present, ea
 2026-11-16 `sharePass` stands down on both sequels in the shared module (`render levers: ... sharePass stands down`), so
 nothing there replays an eye.
 
-So by the code the workaround costs the sequels their character shadows for nothing, and **on ME2 the picture
-agrees** (run 7 under "ME2" above): with `LightEnvironmentShadows True` the contact shadows sit under the squadmates'
-feet in both eyes alike. ME3's fixture was too dark to tell. Recommendation to lane GF: gate the
+So by the code the workaround costs the sequels their character shadows for nothing. ~~On ME2 the picture agrees (run 7
+under "ME2" above)~~: **corrected 2026-11-16 (lane GF2), see below**: run 7's "on" and "off" pictures look in different
+directions, so they don't compare the key. ME3's fixture was too dark to tell. Recommendation to lane GF: gate the
 `LightEnvironmentShadows False` entry on the host's second eye actually being a replay (ME1's host with `sharePass` 2, 3
 or 5; a host flag rather than `#if LE1`, since a sequel that takes one-Draw later needs the workaround back).
+
+#### Built, and what a same-pose pair shows (lane GF2, 2026-11-16)
+
+**The rule as built.** `game/SystemSettings` adds `LightEnvironmentShadows False` only while the host says the frame's
+second eye is a replay: HostServices v43 `secondEyeIsReplay`, served by `render_levers::SecondEyeIsReplay()` (sharePass
+2, 3 or 5 on a game whose table and renderer have the lever). ME1 keeps False, because its second eye is a replay
+(sharePass 5 by default). Where the second eye is its own render (both sequels today: `sharePass stands down`), the mod
+puts the player's own value back from `GamerSettings.ini`: the game had written our earlier False into `BIOEngine.ini`'s
+`[SystemSettings]`, which wins at the next launch (research/35), so not sending the key would have kept the workaround
+for good. No value of the player's: the key isn't sent. A host before v43 says nothing; the mod then keeps the file's
+`sharePass` rule on LE1 only. Seen on ME2 (session `20261116-155312-554-LE2-gf2-run3`): `system settings: scale set
+DynamicShadows False, MotionBlur False, FoliageDrawRadiusMultiplier 0.5, LightEnvironmentShadows True`.
+
+**The same-pose pair** (`%LOCALAPPDATA%\MEVR\gf2-lane\run3`; Freedom's Progress, Save 4, the head held still by a
+replayed recording at yaw 150, pitch -20, Miranda and Jacob in view; each value set through the console's `scale set`
+through its opposite, a snapshot 4 s later; compared in 64-pixel blocks, mean absolute difference over 6 of 255):
+
+| change | blocks that differ | what they are |
+|---|---|---|
+| `LightEnvironmentShadows` False to True, `DynamicShadows` off (run2) | 85 of 2,304 | the people (animation) and snow |
+| `LightEnvironmentShadows` False to True, `DynamicShadows` on | 130 of 2,304 | the same; the shadows on the ground identical |
+| `DynamicShadows` True to False, `LightEnvironmentShadows` on | 347 of 2,304 | one cluster: Miranda's and Jacob's shadows on the ground go |
+
+So in this scene the key alone changes nothing visible, either way: **the character shadows on ME2's ground there are
+the dynamic shadows**, which the mod turns off on every game (ME1's value, a cost lever). With them on, each shadow lies
+under its owner in both eyes, shifted with the feet by the eyes' parallax (`dyn-on-left-right.png`): each eye is its own
+render. What `LightEnvironmentShadows` draws on ME2 (indoors, a character in a light environment's shadow) is not seen;
+whether to keep `DynamicShadows` off on the sequels is the owner's (docs/trilogy-plan.md question 10).
 
 ### One Draw a frame on the sequels: the recommendation
 

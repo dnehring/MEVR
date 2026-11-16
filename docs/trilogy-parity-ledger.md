@@ -53,7 +53,7 @@ rows the change touches.
 
 | game | shared | adapted | forked | missing | n/a | present and verified (V) | present, unverified (U) |
 |---|---|---|---|---|---|---|---|
-| LE2 | 13 | 44 | 3 | 29 | 4 | 42 | 18 |
+| LE2 | 13 | 44 | 3 | 29 | 4 | 43 | 17 |
 | LE3 | 13 | 44 | 5 | 25 | 6 | 22 | 40 |
 <!-- /parity:totals -->
 
@@ -121,7 +121,8 @@ These are ordered by wasted or blocked work. Each is detailed under [Forks](#for
 10. **The eye-image pipeline is forked and incomplete on the sequels** (Forks 7, 8; R11, R13-R16).
     - The sequels apply colour in `plugin/EyeCopy`'s own shader, without the tonemap and without FSR.
     - The HDR answer is a second module (`plugin/HdrDisplayPolicy`).
-    - `LightEnvironmentShadows False`, a workaround for LE1's replay, is applied on both sequels, which have no replay.
+    - ~~`LightEnvironmentShadows False`, a workaround for LE1's replay, is applied on both sequels~~ fixed 2026-11-16
+      (lane GF2, R11): it follows the host's word that the second eye is a replay (HostServices v43).
 
 The deferred first-person conversations (G36, G38) are the largest gap by line count: about 10,000 `Ready()`-gated
 lines. They are left off this list because the owner deferred them, not because the work went to waste.
@@ -147,7 +148,7 @@ The [technique groups](#renderer-techniques-by-group) summary follows the table.
 | R08 | `keepBoundShaderStates`: hook on the FD3D11BoundShaderState constructor `0x9A89F0`, AddRef through GDynamicRHI `0x17938C8` vtable slot 0x8A0 | 2 | **shared** V: on, ME1's default (`boundShaderStateVerified`); run `20261116-141434-005-LE2-pl-levers`: 22-45 states built a frame in heavy views before, 0.0-0.1 after, 161 kept, about 0.4 ms off the first eye there; the reference count 0 -> 1 through the live RHI's slot 0x8A0 (RVA `0x2B2640`, not the `0x992830` of lane R2's recipe) | **shared** V: on; run `20261116-143006-726-LE3-pl-levers`: 86-122 a frame before, 0.0-0.1 after, 436 kept, about 0.8 ms off the second eye in heavy views; AddRef at RVA `0x2CB940` as lane R3's recipe says | Measure again in a heavy scene of each game (research/sequel-render-levers.md "Still to measure"). |
 | R09 | `minScreenRadiusPx` (UmbraInstanceVisibleHook `0x8BE0B0`) | 2 | **missing**: hooked and measured in a try build (73-81 of 520-585 instances under 8 px in heavy views, no measurable gain), left off (`umbraInstanceVerified`) until a still-head snapshot pair shows no pop-in | **missing**: the same (102-219 of 315-911; the cull answers only the marking call, `Layout::instanceCallAlsoKeepsBooks`) | A pair of snapshots a second apart under a still head at 0 and at 8 (research/sequel-render-levers.md "Still to measure"), then set the flag. |
 | R10 | Motion-blur guard (`plugin/MotionBlurGuard.cpp`: MotionBlurProxy vtable swap, LE1 5 pairs, installed in `Entry.cpp`) | 2 (3 on LE1: settings re-enabled the blur, research/62) | **missing**: blur is off only through R12's `MotionBlur False`; `motionBlurProtected` not served | **adapted** V: 7 audited ME3 proxy pairs (`Addresses.hpp` LE3 `kMotionBlurProxyPairs`); a different reason (a null velocity buffer crashed the recenter); run `20261115-180239-899`, 2,825 guarded conversions, 0 unknown (research/le3-recenter-transition-failure.md) | LE2: a head-turn snapshot pair looking for one-eye smear (LE1's symptom) before porting. |
-| R11 | `LightEnvironmentShadows False` while the second eye is a replay (`game/SystemSettings.cpp` `Wanted()`) | 3 (our replay's workaround) | **shared** U: **applied without a replay**. An empty `[Performance] sharePass` reads as 5, so ME2 loses character shadows for nothing: with them on, the contact shadows sit under the squadmates' feet in both eyes alike (run `20261116-141434-005-LE2-pl-levers`, research/sequel-render-levers.md "Character shadows") | **shared** U: same by the code; the Normandy fixture was too dark to tell in a picture | Gate it on the host's second eye being a replay (a host flag, not `#if LE1`: a sequel that takes one-Draw needs it back). Lane GF. |
+| R11 | `LightEnvironmentShadows False` while the second eye is a replay (`game/SystemSettings.cpp` `Wanted()`) | 3 (our replay's workaround) | **shared** V: since 2026-11-16 (lane GF2) the entry follows the host's word (HostServices v43 `secondEyeIsReplay` = `render_levers::SecondEyeIsReplay()`: sharePass 2, 3 or 5 where the game has the lever), not the file; where the second eye is its own render the player's own `GamerSettings.ini` value is put back (the game had persisted our False into `BIOEngine.ini`). Seen: `system settings: scale set ..., LightEnvironmentShadows True` on ME2 (session `20261116-155312-554-LE2-gf2-run3`). **What it changes on screen is not shown:** at Freedom's Progress a same-pose A/B of the key alone changes nothing visible, with or without dynamic shadows; the squadmates' shadows on the ground there are `DynamicShadows` (R12's ME1 value, False, keeps them off; on, they are right in both eyes). PL's earlier "contact shadows" pair was not same-pose (research/sequel-render-levers.md "Character shadows on the sequels", 2026-11-16 correction) | **shared** U: the same rule; ME3's `sharePass` stands down, so it gets the player's value; not run | ME3: the `system settings:` line with `LightEnvironmentShadows True` in a run. A scene where the key shows at all (indoors, a light environment's shadow) for a same-pose pair. The owner: `DynamicShadows` on the sequels (docs/trilogy-plan.md question 10). |
 | R12 | SystemSettings applied by the mod (`game/SystemSettings`: `scale set` after each level change, each boolean through its opposite) | 1 | **adapted** V: `#if MEVR_GAME_LE2` waits 3 s into gameplay; A/B runs A–J 2026-11-14 (research/le2-renderer-integration "The first-gameplay-frame fault", 87af915d) | **shared** U: no receipt that `scale set` applies on LE3 | LE3: the `system settings:` log lines in a protected run, plus an A/B of DynamicShadows. |
 | R13 | FSR 1 eye upscale (`plugin/Upscale`, `core/vr/Upscale`; seam `EyeUpscale` in BlitTextureToEyeWithFill) | 1 + seam | **missing**: eye swapchains at backbuffer size (le2 me2_xr.cpp `g_aerSwapW = g_bbW`) | **missing** | Run `core/vr/Upscale` inside `plugin/EyeCopy` (the sequels' `CopyIntoImage`), with eye swapchains at the headset's recommended size. |
 | R14 | Colour per headset (`plugin/Colour`, `core/vr/Colour`; LE1 seams `EyeColourShaders/Shader/Done` in Halcyon's eye blit) | 1 | **adapted** V: the same core in `plugin/EyeCopy`'s corrected shader (`MEVR_EYE_OUT`); research/le2-picture.md | **adapted** U: same path; headset set in `HalcyonLe3Bridge::OnSessionCreated` | LE3: a colour-profile snapshot A/B. Unify the call site (Forks 8). |
@@ -203,7 +204,8 @@ The [technique groups](#renderer-techniques-by-group) summary follows the table.
 **Group 3 (Halcyon ME1's bugs or our LE1 workarounds): port only if the bug shows.**
 - **The presentation hold.** Halcyon ME1's unreadable mode byte, logos movie and title camera-flight cine latch. The
   sequels classify views their own way; whether they flip is not determined.
-- **`LightEnvironmentShadows False`.** Our replay's workaround; wrongly on in the sequels (R11).
+- **`LightEnvironmentShadows False`.** Our replay's workaround; on the sequels only if one ever replays an eye (R11,
+  fixed 2026-11-16).
 - **The body-bounds padding.** Caused by Halcyon LE1's GPU-only view offset of 0.43 m back.
 - **The motion-blur guard's LE1 reason.** Settings paths re-enabled the blur. LE3 needed the guard for a different crash.
 - **The HUD panel's tint-blend path.** Scaleform's non-"over" blends stayed in the eyes (the doubled wheel).
@@ -244,7 +246,7 @@ The [technique groups](#renderer-techniques-by-group) summary follows the table.
 | G27 | Interaction: selection by gaze, label at the object (`engine/SelectionGaze`, `game/Interact`, `HudPieceLayers::Interaction`) | **adapted** U: labels need an explicit `[Interact] crop`. Gaze selection missing (LE2 `kUpdateSelection = 0`) | **adapted** V: gaze at `0xA9BF90`; run `20261115-190610-153` (War Terminal selected, A opens War Assets). Labels U | LE2: M6 A (docs/le2-m6-implementation-guide.md). |
 | G28 | HUD pieces: wrist status, gun panel (`game/HudPieces`, `plugin/HudPieceLayers`) | **adapted** V: `Layout::Me2` crops; run `20261115-002101-lane-b4-m2b` (f71e7a71); ammo mount 2a108759 | **missing**: `setHudPieces` not served (`#if !defined(MEVR_WITH_HALCYON_LE3)` in ModLoader.cpp); `game/HudPieces` stands down by name on ME3 (no fall-back to ME1's placement) | LE3: docs/me3-overall-goal-handoff.md L3-4 "native wrist crop". |
 | G29 | Power wheel at the left hand, lock and push, self-cast gestures, coach (`game/PowerWheel`, `plugin/PowerWheel`) | **adapted** V: ME2 roster (`SFXPowerManager`); chest Adrenaline Rush and rifle Disruptor Ammo, 2026-11-15 05:25 (483ac2fb; research/55 "Mass Effect 2") | **adapted** U: `game/Le3Powers.hpp` (`SFXPowerCustomActionBase`); metadata only | research/55 "Still to verify"; L3-6. |
-| G30 | Squad weapons wheel (`game/SquadWeapons`, `plugin/SquadPanel`) | **adapted** U: ME1's menu tick (`TickCustom`: gates, pointing, cards by standing side, haptics, logs) over ME2's `native` adapter (`game/Le2SquadMenu.inc`: a paged inventory, `OrderWeaponSwitch`, `Pawn.Weapon`); custom style only. First ME2 run 2026-11-16 14:48 (Freedom's Progress, Save 4; log kept as `%LOCALAPPDATA%\MEVR\gf-lane\LE2MEVR-gf.log`): a replayed left-trigger pull opened it (`squad: menu #1 opened (pointing at nobody) ... cards: left .., right ..`) and letting go closed it (`released with nothing chosen`); no weapon was given: the null headset's view and controllers dropped out about once a second there (`no head-tracked world view`, `the controllers aren't active`), which closed the menu before the flick. Both squadmates read as "BioPawn" (the roster's `ActorGameName` read, unchanged by the unification) | **adapted** U: the same adapter with ME3's roster and input-method parameter | A replayed left-trigger pull with two squadmates (ME2: Freedom's Progress): `squad: menu #1 opened ... cards: left .., right ..`, a right-stick flick, the release, then `requested weapon observed equipped`. |
+| G30 | Squad weapons wheel (`game/SquadWeapons`, `plugin/SquadPanel`) | **adapted** U: ME1's menu tick (`TickCustom`: gates, pointing, cards by standing side, haptics, logs) over ME2's `native` adapter (`game/Le2SquadMenu.inc`: a paged inventory, `OrderWeaponSwitch`, `Pawn.Weapon`); custom style only. **V on ME2 for one tile** (lane GF2, session `20261116-153741-665-LE2-gf2-run2`, Freedom's Progress, Save 4): six replayed pulls with a flick down, `squad: menu #1 opened ... cards: left Jacob, right Miranda`, `menu #1 confirmed (trigger let go): Miranda gets the pistol`, `Miranda: requested weapon observed equipped` (SMG to pistol), 6 of 6. The names are ME2's own since then (`SFXPawn.GetPrettyName` through the game info's `GetSimpleString`, `game/Le2Squad.hpp` `ActorName`; the behaviour's `ActorGameName` is the class default "BioPawn"). Not shown: Jacob, a second tile, pointing at a squadmate, the page tile. The fake headset's view and controllers drop out under machine load (91 stand-down lines in one run, 182 in the next, when a pull's menu closed before the flick) | **adapted** U: the same adapter with ME3's roster and input-method parameter | A replayed left-trigger pull with two squadmates (ME2: Freedom's Progress): `squad: menu #1 opened ... cards: left .., right ..`, a right-stick flick, the release, then `requested weapon observed equipped`. |
 | G31 | Squad context and gesture orders (`game/SquadContext`, `game/SquadOrders`, `core/vr/Squad*`) | **adapted** U: `game/Le2Squad.hpp` (`HenchmanOrderAttackTarget`, `SquadOrderUsePower`) | **adapted** U | M6 C; L3-6. |
 | G32 | Squad placement by an arc (`game/SquadPlace`, `plugin/SquadPlaceDraw`) | **adapted** U: opt-in `[SquadOrders] place = 1` | **adapted** U | M6 table, squad roster and placement row: Miranda and Jacob on Freedom's Progress. |
 | G33 | Voice orders, the model tier, the Voice page (`game/Voice`, `plugin/Voice`, `plugin/VoiceModel`) | **shared** U: the protected voice run timed out | **shared** U: the model tier compiles into LE3 wherever its host compiles `plugin/VoiceModel.cpp` (until 2026-11-16 only when LE2 was built too) | A microphone run, or `voice.request wav`, per game. |
@@ -538,8 +540,12 @@ The plans and handoffs this draws on (none was changed):
 
 These are concrete, each with its check. None was fixed here (read-only audit).
 
-- **The sequels turn character shadows off for nothing (R11).** `game/SystemSettings.cpp` reads an empty
-  `[Performance] sharePass` as 5 on every game.
+- **The sequels turned character shadows off for nothing (R11). Fixed 2026-11-16 (lane GF2):** the entry follows the
+  host's `secondEyeIsReplay` (HostServices v43), and elsewhere the player's own value is put back. On ME2 the key alone
+  showed no visible change in the one scene tried; the ground shadows there are `DynamicShadows` (off on every game).
+- **CameraShake compiled ME1's handles into the sequels. Fixed 2026-11-16 (lane GF2):** the weapon-stats, Mako and
+  `SFXCameraShakeBase` handles and their scaling exist only in the LE1 build; the sequels keep their camera-modifier
+  adapter (G11), and their warning names their own fields.
 - **EyeCopy has no tonemap (R15).** It is harmless while `hdrDisplay = -1`.
 - **`umbraSecondEyeClearBits = 2` does nothing at the shipped defaults (LE1).** RenderLevers applies it only when
   `umbraSharedVisibility != 0`.
@@ -578,9 +584,9 @@ defined in the tool's header:
 <!-- parity:summary -->
 | game | renderer | host plugin files | host core files | services served | src/game + src/engine modules by status | common seams called | own seams |
 |---|---|---|---|---|---|---|---|
-| LE1 | halcyon-le1 | 72 | 71 | 57 | run 67, out 4, ungated 23, unbuilt 4 | 20 of 32 | 91 |
-| LE2 | halcyon-le2 | 66 | 55 | 48 | run 41, ready 10, out 20, ungated 21, unreferenced 2, unbuilt 4 | 30 of 32 | 4 |
-| LE3 | halcyon-le3 | 69 | 55 | 48 | run 42, ready 10, out 19, ungated 22, unreferenced 2, unbuilt 3 | 30 of 32 | 2 |
+| LE1 | halcyon-le1 | 72 | 71 | 58 | run 67, out 4, ungated 23, unbuilt 4 | 20 of 32 | 91 |
+| LE2 | halcyon-le2 | 66 | 55 | 49 | run 41, ready 10, out 20, ungated 21, unreferenced 2, unbuilt 4 | 30 of 32 | 4 |
+| LE3 | halcyon-le3 | 69 | 55 | 49 | run 42, ready 10, out 19, ungated 22, unreferenced 2, unbuilt 3 | 30 of 32 | 2 |
 <!-- /parity:summary -->
 
 ### Host plugin files per game
@@ -745,6 +751,7 @@ Helpers applied, in order:
 | `recordWrite` | WithCrashBreadcrumbs | WithCrashBreadcrumbs | WithCrashBreadcrumbs |
 | `reserveWorldUi` | WithWorldUi | WithMenus | - |
 | `rightGripFree` | WithPadMerge | WithPadMerge | WithPadMerge |
+| `secondEyeIsReplay` | WithRenderer | WithRenderer | WithRenderer |
 | `setAimRay` | WithRenderer | WithRenderer | WithRenderer |
 | `setConversationWorld` | WithLe1ExtraUi | - | - |
 | `setFloorLockSample` | WithFloorLock | WithFloorLock | WithFloorLock |
@@ -821,7 +828,7 @@ Helpers applied, in order:
 | `game/CallTrace` | run | run | run |
 | `game/CameraCollision` | run | out | out |
 | `game/CameraProbe` | run | run (ME1-only handles) | out |
-| `game/CameraShake` | run | run (ME1-only handles) | run (ME1-only handles) |
+| `game/CameraShake` | run | run | run |
 | `game/CockpitPanel` | run | out | out |
 | `game/CockpitProbe` | run | out | out |
 | `game/CombatStance` | run | out | out |

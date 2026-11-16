@@ -1416,13 +1416,13 @@
     },
     "LE2": {
      "legacy": false,
-     "me1OnlyHandles": true,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE3": {
      "legacy": false,
-     "me1OnlyHandles": true,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     }
@@ -3496,6 +3496,7 @@
     "recordWrite": "WithCrashBreadcrumbs",
     "reserveWorldUi": "WithWorldUi",
     "rightGripFree": "WithPadMerge",
+    "secondEyeIsReplay": "WithRenderer",
     "setAimRay": "WithRenderer",
     "setConversationWorld": "WithLe1ExtraUi",
     "setFloorLockSample": "WithFloorLock",
@@ -3577,6 +3578,7 @@
     "recordWrite": "WithCrashBreadcrumbs",
     "reserveWorldUi": "WithMenus",
     "rightGripFree": "WithPadMerge",
+    "secondEyeIsReplay": "WithRenderer",
     "setAimRay": "WithRenderer",
     "setFloorLockSample": "WithFloorLock",
     "setHandAim": "WithRenderer",
@@ -3642,6 +3644,7 @@
     "processExiting": "BaseServices",
     "recordWrite": "WithCrashBreadcrumbs",
     "rightGripFree": "WithPadMerge",
+    "secondEyeIsReplay": "WithRenderer",
     "setAimRay": "WithRenderer",
     "setFloorLockSample": "WithFloorLock",
     "setGalaxyHologram": "WithGalaxyHologram",

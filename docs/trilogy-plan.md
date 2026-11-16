@@ -274,11 +274,12 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Waits for:** T01, T07. **Who:** nobody yet.
 
 #### T11 The engine's settings, applied by the mod [R11, R12]
-- **State:** LE1 done · LE2 build · LE3 build
+- **State:** LE1 done · LE2 verify · LE3 build
 - **Lives in:** `game/SystemSettings` (`scale set` after each level change, each boolean through its opposite).
-- **Left:** `LightEnvironmentShadows False` is our replay's workaround and is applied on both sequels, which have no
-  replay (an empty `[Performance] sharePass` reads as 5): gate it on the host's replay, and the sequels' character
-  shadows come back. **ME3:** no receipt yet that `scale set` applies at all.
+- **Left:** ~~gate `LightEnvironmentShadows False` on the host's replay~~ done 2026-11-16 (GF2, HostServices v43
+  `secondEyeIsReplay`; elsewhere the player's own value). On ME2 the key alone changed nothing visible at Freedom's
+  Progress; the ground shadows there are `DynamicShadows`, which ME1's value keeps off on every game: the owner's
+  [question 10](#open-owner-questions). **ME3:** no receipt yet that `scale set` applies at all.
 - **Closes when:** an ME2 and an ME3 snapshot show character shadows; ME3's log has the `system settings:` lines and an
   A/B of `DynamicShadows` changes the frame.
 - **Waits for:** nothing; once T08 brings the replay to a sequel the gate follows the capability. **Who:** GF.
@@ -577,6 +578,8 @@ These unblock the most: almost every other entry gets smaller once they land.
 #### T45 The squad's weapons wheel [G30, G57; Forks 5]
 - **State:** LE1 build · LE2 build · LE3 build
 - **Lives in:** `game/SquadWeapons`, `core/vr/SquadMenu`, `plugin/SquadPanel`, `core/vr/WheelCrop`.
+- **Done 2026-11-16:** one tick for all three games (GF, Forks 5); ME2's names from `SFXPawn.GetPrettyName` and an
+  equip seen on ME2 (GF2: Miranda's pistol, 6 of 6 pulls; ledger G30).
 - **Left:** one `Tick` over a per-game roster and equip adapter (today `Le2SquadMenu.inc` re-implements LE1's `Tick` for
   both sequels; the LE1 part is a refactor). The sequels run the drawn "custom" style only; ME1's default is the game's
   own wheel cut onto a hand quad (`setWheelPanel`, LE1-only): port it or name the game fact that rules it out.
@@ -807,6 +810,10 @@ Each is asked once. "Today" is what the build does if nobody answers; no default
    greyed until the skip works?
 9. **Squad weapons' style on the sequels.** ME1's default is the game's own weapon wheel at the hand; both sequels run
    only our drawn menu. Is the drawn menu the sequels' style for good, or is the game's wheel at the hand still wanted?
+10. **`DynamicShadows` on the sequels.** ME1 keeps it off (`game/SystemSettings`, a cost lever: the scene renders twice a
+   frame), and the mod applies ME1's value on every game. On ME2 that removes every character's shadow on the ground
+   (Freedom's Progress, 2026-11-16, lane GF2: with it on, Miranda's and Jacob's shadows are right in both eyes, since each
+   eye is its own render). Keep ME1's value on the sequels, or price it (lane PL/SP's measurements) and turn it on there?
 
 **Defaults waiting for a seen result and a yes** (not questions yet): `[SquadOrders] place` on the sequels (ME1's is on),
 `[Traversal] cue`, ME3's melee and traversal gestures, ME3's no-snap (a diagnostic opt-in), the galaxy projector replacing
