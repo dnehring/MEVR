@@ -236,3 +236,38 @@ owned ordinary world from a native flat menu, calibration, held/cinematic view o
 renderer menu. Preserve the existing core rejection gates and validate the shared
 policy across all three hosts instead of changing ME3's eye height or caching an
 unvalidated camera offset.
+
+### Menu height correction and native result
+
+The shared host now treats the main menu as an overlay over the current world,
+not as a native camera mode. `FloorLock::Queue` no longer turns off floor correction
+merely because that overlay is open. It still rejects the renderer's own menu and
+guided calibration. The renderer supplies ordinary-world and first-person ownership;
+the existing core additionally requires a fresh valid pawn, owned camera, floor
+sample and valid height, excluding cover. Native flat/cinematic/held views do not
+gain admission. No cached offset, new height constant or per-game copy was added.
+This changes the old shared-menu exemption described in calibration research;
+live adjustment already used the normal corrected view.
+
+Protected ME3 session `20261115-183117-290-LE3-menu-height` supplies 11 captures:
+tracked first-person before/open/turned-open/resume, reacquisition, genuinely inactive
+controllers before/open/resume, third-person closed/open, and final first-person.
+Every first-person sample stays floor-locked at **1.752600 m**, with 32.260018 units
+of correction. Both third-person samples correctly leave floor lock off. Each
+first-person open-menu sample now reports the existing stationary torso hold and
+no hand/gun IK targets. A held 25-degree head turn changes the world view while
+the menu is open; closing the menu restores fresh head-only or controller placement.
+Both eye images are present without capture errors and match their corresponding
+located/submitted poses (64 mm replay, 63 mm live null input). Visual inspection of
+the underlying world confirms no menu-open height jump or collar obstruction.
+
+The run completed and restored with zero profile/game differences; the actual four
+VR/LE1 configuration hashes match the restoration receipt and the shared lock is
+free. All three player builds, ME3 development build and all **69 configured
+trilogy tests** pass. SPDX and knowledge-bundle checks also pass. The new
+`FloorLockHostTests` executes the real host queue/translation and core solve,
+checking shared-menu continuity, fresh height/floor movement, seated height,
+manual trim, 13 rejection cases, source validity, paired-eye latching and explicit
+disable. ME1/ME2 compile this same correction but were not separately launched
+for this change. Physical-headset menu transitions and moving/seated native trials
+remain acceptance work.

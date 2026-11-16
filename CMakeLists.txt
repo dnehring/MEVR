@@ -1560,6 +1560,14 @@ if (MEVR_BUILD_TESTS)
     target_compile_options(mevr-hand-targets-tests PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
     add_dependencies(mevr-tests mevr-hand-targets-tests)
     add_test(NAME mevr-hand-targets COMMAND mevr-hand-targets-tests)
+    add_executable(mevr-floor-lock-host-tests tests/FloorLockHostTests.cpp
+        src/core/vr/FloorLock.cpp src/core/vr/HostView.cpp src/core/vr/Calibration.cpp)
+    target_include_directories(mevr-floor-lock-host-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(mevr-floor-lock-host-tests PRIVATE OpenXR::headers)
+    target_compile_definitions(mevr-floor-lock-host-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_compile_options(mevr-floor-lock-host-tests PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
+    add_dependencies(mevr-tests mevr-floor-lock-host-tests)
+    add_test(NAME mevr-floor-lock-host COMMAND mevr-floor-lock-host-tests)
     # plugin/PadMerge (both hosts' pad mapping with the mod's flags) against LE1's merge before the move, and its rules.
     add_executable(mevr-pad-merge-tests tests/PadMergeTests.cpp src/plugin/PadMerge.cpp src/game/GamepadMapping.cpp
         src/core/vr/Controllers.cpp src/core/vr/Comfort.cpp src/core/Log.cpp)

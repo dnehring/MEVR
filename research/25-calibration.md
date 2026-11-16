@@ -426,6 +426,13 @@ on-foot first person with a fresh pawn floor; standing needs runtime floor track
 head motion once the standing-body reference is known. Cover, vehicles, cinematics, flat screens and menus retain their
 existing camera paths. `floorLock.heightOffsetM` in snapshots records the latched delta.
 
+2026-11-15 correction to that menu exemption: the shared MEVR menu is an overlay
+over the same ordinary first-person world, so it now retains fresh floor correction
+and the manual height delta. Native flat menus, the renderer's own menu, guided
+calibration and nonordinary cameras retain their rejection gates. This prevents a
+view-height jump when opening our menu; see the
+[ME3 native evidence and shared host tests](le3-body-pose.md#menu-height-correction-and-native-result).
+
 Offline checks cover identity, translation in a rotated grip frame, pitch/yaw/roll signs and left mirroring,
 independent hands, rigid aim/grip relationships, input/timestamp preservation, invalid tracking, finite bounds,
 schema limits and centimetre formatting. Floor-lock tests cover standing/seated deltas, no-floor seated motion,
