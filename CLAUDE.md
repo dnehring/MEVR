@@ -9,6 +9,12 @@ engine access, the host's services, VRIK fast-tracked, the menus, the cinema scr
 list; ME1's systems and defaults on ME2, deviating only where the game forces it. Its lanes run as parallel sessions;
 ME2 ships after M5; interrupts on the triggers; the Hammerhead with the Mako's controls and cockpit. **One game run at a
 time across sessions:** `tools/le2-halcyon-run/run-lock.ps1` (its `prep.ps1`/`restore.ps1` for ME2 runs on the fake headset).
+**One trilogy, one ledger** (the owner, 2026-11-16: unify the approaches; work that ignored ME1's prior art was wasted):
+[docs/trilogy-parity-ledger.md](docs/trilogy-parity-ledger.md) rates every ME1 system on ME2 and ME3 (shared, adapted,
+forked, missing, n/a; verified or not) with its code and the check that moves it; `tools/parity-ledger.py --write`
+regenerates its facts, and ctest `mevr-parity-ledger` fails after a change to a host list, a service, a module's gate or
+a seam until they are regenerated and the rows reread. Read a system's row before porting it to a sequel; build it as
+the shared core plus a per-game adapter, never as another game-specific copy (a "fork" in the ledger).
 **LE2 port entry point:** [ME2 implementation plan](docs/le2-port-implementation-plan.md) defines agent work packages,
 dependencies and proof gates; [reuse map](docs/le2-port-reuse-map.md) names existing MEVR/native-game systems and pinned
 external code candidates. Read these before sequel work. The current scope is proving LE2 first, then extending to LE3.
