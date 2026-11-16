@@ -791,7 +791,10 @@ switching frameworks.
   goto [x y]`), and in a moment a jump of Shepard under the game's black (`UnderGameBlack()`) takes the view with him whatever
   the distance; **except the curated walks** (`cw::IsCuratedWalk`: the walk with Anderson to the Council; more by
   `worldCuratedWalks`), which keep the walk; `worldBlackMoves = 0` is the old rule (staged scenes only, a teleport only if the
-  one spoken to moved, moments walked); the stances follow
+  one spoken to moved, moments walked); **what Shepard stands on carries the player** (`RideBase`: his pawn's `Actor.Base`
+  moving, a lift, moves the held view and every place the scene keeps; Therum's `lav70_trig04_elevator_ride` had left the view
+  at the bottom of the shaft and `End` put Shepard back there; research/69 item 42), and **the stick walks everywhere but a
+  seat** (`PlayerSeated`: his animated head under 0.62 m above his place for 0.5 s, not crouched); the stances follow
   a whole scene (`begin`, after each dip and walk, whenever someone moved a metre or turned 40 degrees; bystanders as `others`);
   logs `convo: circle:`, `convo: squad:`, `convo: stance:`, `convo: eyes:`, `convo: steer:`;
   while it walks, his hidden (unposed) head bone never moves the view, nor for 1.5 s after he is shown again

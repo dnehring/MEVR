@@ -27,6 +27,31 @@ std::wstring const& SettingsPath() noexcept {
 
 namespace mevr::host::renderer {
 
+Caps const& Capabilities() noexcept {
+    static Caps const caps = [] {
+        Caps c;
+        c.name = "halcyon-le1";
+        c.recenterTilt = true;
+        c.panelsInRoom = true;
+        c.perfSeams = true;          // LE1's own names (PerfPresentScope, g_perfDraws ...), plugin/PerfProbe
+        c.oneDraw = true;
+        c.perEyeFrustum = true;
+        c.metricStereo = true;
+        c.hudPanelGameplay = true;   // through LE1's own HudPanel* seams (hudPanelDraw false)
+        c.hudPieces = true;
+        c.worldUi = true;
+        c.galaxyWindow = true;
+        c.frontEnd = true;
+        c.conversationWorld = true;
+        c.eyeColourInBlit = true;
+        c.screenReticleHide = true;
+        c.floorViewJournal = true;
+        c.headArmSequence = true;
+        return c;
+    }();
+    return caps;
+}
+
 bool OwnMenuOpen() noexcept {
     return MELEVR::Menu::IsOpen();
 }

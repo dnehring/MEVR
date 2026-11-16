@@ -155,6 +155,8 @@ ue3::FieldRef gWalkVelocity{"Engine.Actor", "Velocity"};
 ue3::FieldRef gWalkAcceleration{"Engine.Actor", "Acceleration"};
 ue3::FieldRef gWalkPhysics{"Engine.Actor", "Physics"};
 ue3::FieldRef gWalkAccelRate{"Engine.Pawn", "AccelRate"};
+ue3::FieldRef gActorBase{"Engine.Actor", "Base"};          // what Shepard stands on: a lift carries the held view (RideBase)
+ue3::FieldRef gPawnCrouched{"Engine.Pawn", "bIsCrouched"};  // a crouch is not a seat (PlayerSeated)
 ue3::FieldRef gWalkIsWalking{"Engine.Pawn", "bIsWalking"};
 ue3::ClassRef gWalkPawnClass{"Engine.Pawn"};
 ue3::ClassRef gWalkAiClass{"SFXGame.BioAiController"};
@@ -4333,6 +4335,17 @@ MomentEnded gMomentEnded;
 // The places Shepard's pawn passed through while the player's view was elsewhere (a moment's track, the script's moves, the
 // stage's mark): the guided walk follows them (cw::TrailTarget). From a moment's start to the view's arrival.
 std::vector<cw::Vec3> gTrail;
+
+// The floor Shepard stood on last tick and where it was (RideBase, below).
+struct Ride {
+    ue3::Object* base = nullptr;
+    ik::Vec3 at{};
+    std::uint64_t ms = 0;
+    double units = 0.0;  // ridden in this scene (logged at its end)
+    bool logged = false;
+};
+Ride gRide;
+
 void ClearTrail() {
     gTrail.clear();
 }
@@ -4948,6 +4961,42 @@ void TurnPlayer(double dt) {
     TurnBy(degrees);
 }
 
+// A seated scene for the player (the owner, 2026-11-16: "freedom of movement except for seated scenes"): Shepard's animated head
+// bone under 0.62 m above his pawn's place (the seated rule of cw::MayReface and CanWalk) for half a second, not crouched. The
+// stick doesn't walk him out of his seat; head tracking stays. (Never while the view walks apart from him: his hidden mesh is not
+// posed.)
+std::uint64_t gSeatedSinceMs = 0;
+bool gSeatedLogged = false;
+bool PlayerSeated(ue3::Object* pawn) {
+    if (gC.detached || pawn == nullptr || gPawnCrouched.ReadBool(pawn).value_or(false)) {
+        gSeatedSinceMs = 0;
+        return false;
+    }
+    auto const at = player::Location(pawn);
+    auto const head = MarkHeadOf(pawn);
+    if (!at || !head || head->at.z - at->z >= 62.0) {
+        if (gSeatedSinceMs != 0 && gSeatedLogged) {
+            log::Info("convo: at {:.1f} s Shepard stands again: the stick walks", Seconds());
+        }
+        gSeatedSinceMs = 0;
+        gSeatedLogged = false;
+        return false;
+    }
+    std::uint64_t const now = GetTickCount64();
+    if (gSeatedSinceMs == 0) {
+        gSeatedSinceMs = now;
+    }
+    if (now - gSeatedSinceMs < 500) {
+        return false;
+    }
+    if (!gSeatedLogged) {
+        gSeatedLogged = true;
+        log::Info("convo: at {:.1f} s Shepard is seated (his head {:.2f} m above his place): the stick doesn't walk him, head tracking stays",
+            Seconds(), (head->at.z - at->z) / kUnitsPerMeter);
+    }
+    return true;
+}
+
 void MovePlayer(ue3::Object* pawn, engine::TrackingFrame& frame, vr::host_view::State const& view, double dt) {
     TurnPlayer(dt);
     auto stop = [&] {
@@ -4957,7 +5006,8 @@ void MovePlayer(ue3::Object* pawn, engine::TrackingFrame& frame, vr::host_view::
             gC.moving = false;
         }
     };
-    if (!gSettings.move || !gC.openingDone || pawn == nullptr || !ue3::runtime::IsAlive(pawn) || gSetLocation.Get() == nullptr) {
+    if (!gSettings.move || !gC.openingDone || pawn == nullptr || !ue3::runtime::IsAlive(pawn) || gSetLocation.Get() == nullptr ||
+        PlayerSeated(pawn)) {
         stop();
         return;
     }
@@ -5252,6 +5302,10 @@ void MovePlayer(ue3::Object* pawn, engine::TrackingFrame& frame, vr::host_view::
 void Begin(ue3::Object* conv, ue3::Object* controller) {
     gCutBase += gC.cut;
     gC = {};
+    gSeatedSinceMs = 0;
+    gSeatedLogged = false;
+    gRide.units = 0.0;
+    gRide.logged = false;
     gStay.clear();
     gStayMs = 0;
     gDrawnJumps = 0;
@@ -5411,6 +5465,10 @@ void End(char const* why) {
         log::Info("convo: {}", WriteStance("end"));
     }
     ShowTestHidden();
+    if (gRide.units > 0.0) {
+        log::Info("convo: the player rode {:.2f} m with what Shepard stood on", gRide.units / kUnitsPerMeter);
+        gRide.units = 0.0;
+    }
     if (gEyesOn) {
         gEyesOn = false;
         GiveBackEyes(why);
@@ -6256,6 +6314,72 @@ void Arm(Link const& link, bool armed, bool handover = false) {
     gHandoverPublished = handover;
 }
 
+// What Shepard stands on carries the player (the owner, 2026-11-16: Therum's lift up from Liara's cell,
+// lav70_trig04_elevator_ride, a conversation played while the lift rises). Nothing held a moving floor: the held view stayed where
+// the conversation began while his pawn rode up, and a view walking apart from him put him back under it at the end, at the
+// bottom of the shaft. Each tick the pawn's Engine.Actor.Base (the lift's InterpActor; the world's own floor never moves) is read;
+// how far it moved since the last tick moves every place a scene keeps in the world: the held view, the view's own feet, the
+// walk's boundary and marks, the head follower's anchors, the kept places of Shepard and of those standing on the same floor, and
+// a moment's own (its step logic then sees no move of his to carry twice). Rotation of the floor is not followed. (gRide: above.)
+void Shift(std::optional<ik::Vec3>& p, ik::Vec3 const& d) {
+    if (p) {
+        *p = *p + d;
+    }
+}
+
+void RideBase(ue3::Object* pawn) {
+    std::uint64_t const now = GetTickCount64();
+    ue3::Object* const base = pawn != nullptr && ue3::runtime::IsAlive(pawn) ? gActorBase.Read<ue3::Object*>(pawn).value_or(nullptr) : nullptr;
+    auto const baseAt = base != nullptr && ue3::runtime::IsAlive(base) ? player::Location(base) : std::nullopt;
+    bool const same = base != nullptr && base == gRide.base && baseAt && gRide.ms != 0 && now - gRide.ms < 250;
+    ik::Vec3 const was = gRide.at;
+    gRide.base = baseAt ? base : nullptr;
+    gRide.at = baseAt ? V(*baseAt) : ik::Vec3{};
+    gRide.ms = now;
+    if (!same) {
+        return;
+    }
+    ik::Vec3 const d = gRide.at - was;
+    double const len = std::sqrt(d.x * d.x + d.y * d.y + d.z * d.z);
+    if (len < 0.01 || len > 500.0) {
+        return;  // still, or a jump of the floor itself (not a ride: the scene's own rules)
+    }
+    gRide.units += len;
+    if (!gRide.logged) {
+        gRide.logged = true;
+        log::Info("convo: at {:.1f} s what Shepard stands on moves ({}, {:.2f} m this tick): the player rides with it",
+            Seconds(), ShortName(base), len / kUnitsPerMeter);
+    }
+    gC.hold = gC.hold + d;
+    if (gC.detached) {
+        gC.detachedAt = gC.detachedAt + d;
+    }
+    Shift(gC.boundaryAt, d);
+    Shift(gC.wantedMark, d);
+    Shift(gC.steerTo, d);
+    Shift(gC.sceneWants, d);
+    Shift(gC.anchorHead, d);
+    Shift(gC.composedAt, d);
+    gC.follow.place = {gC.follow.place.x + d.x, gC.follow.place.y + d.y, gC.follow.place.z + d.z};
+    gC.follow.anchor = {gC.follow.anchor.x + d.x, gC.follow.anchor.y + d.y, gC.follow.anchor.z + d.z};
+    for (cw::Vec3& p : gTrail) {
+        p = {p.x + d.x, p.y + d.y, p.z + d.z};
+    }
+    for (Stay& st : gStay) {
+        // Shepard, and whoever stands on the same floor: their kept places ride too (else keep-in-place reads the ride as a move).
+        ue3::Object* const on = st.actor != nullptr && ue3::runtime::IsAlive(st.actor) ? gActorBase.Read<ue3::Object*>(st.actor).value_or(nullptr) : nullptr;
+        if (st.actor == pawn || on == base) {
+            st.place = st.place + d;
+        }
+    }
+    if (gMoment.on) {
+        gMoment.pawnAt = gMoment.pawnAt + d;
+        Shift(gMoment.wanted, d);
+        Shift(gMoment.trackAt, d);
+        Shift(gMomentShepardAt, d);
+    }
+}
+
 // True while the moment's view is up this tick (the caller returns).
 bool TickMoment(Link const& link, ue3::Object* pawn, std::optional<std::uint8_t> mode, double deltaSeconds) {
     std::uint64_t const now = GetTickCount64();
@@ -6303,6 +6427,7 @@ bool TickMoment(Link const& link, ue3::Object* pawn, std::optional<std::uint8_t>
             return false;
         }
     }
+    RideBase(pawn);  // a lift under him carries the view and every place the moment keeps
     if (cinematic || directed) {
         gMoment.cinematicMs = now;
     } else if (!(mode && *mode == 0 && now - gMoment.cinematicMs < 1000)) {
@@ -7504,6 +7629,9 @@ void Tick(double deltaSeconds, Link const& link) {
     if (!gC.on || gC.object != conv) {
         End("another conversation began");
         Begin(conv, controller);
+    }
+    if (gC.world && gC.openingDone) {
+        RideBase(pawn);  // a lift under him carries the view, before the head follower reads his head bone (it rode too)
     }
     // The player's place follows Shepard's head bone when it jumps (a stage's placement, a cut to a new mark): re-anchored past
     // kReanchorUnits, never for the head's own small moves (gestures, breathing), which the player's real head replaces.

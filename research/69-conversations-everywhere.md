@@ -3976,8 +3976,43 @@ walks to him), so the elevator left without him.
    are unchanged.
 4. **Openings** were already this rule (item 39's `coveredByBlack` cut); unchanged.
 
-Not seen in the game yet: an elevator scene (which one the owner met is not named), and the council walk with the rule on
-(its own black-screen move must still be walked). Check both on the fake headset before the owner's next headset session.
+Not seen in the game yet: the elevator scene (item 42) and the council walk with the rule on (its own black-screen move must
+still be walked). Check both on the fake headset before the owner's next headset session.
+
+### Riding the lift; the stick everywhere but a seat (2026-11-16; item 42)
+
+**The owner, 2026-11-16:** the elevator was "when meeting liara and leaving the dig site. We also need to ensure we have freedom
+of movement except for seated scenes. This will be a bigger deal in me2."
+
+1. **The scene:** Therum's lift up from Liara's cell, `lav70_trig04_elevator_ride` (`BIOA_LAV70_00_DSG_LOC_INT`; the scan:
+   kind free, no stage, 34 lines, verdict world): a conversation the game plays while the lift (a level-script InterpActor)
+   carries everyone up. The validation save nearest it is John02_92 (Liara's intro, `save-dictionary.md`).
+2. **What stranded the player** (read from the code, not yet seen in the game): nothing held a moving floor. Shepard's pawn
+   rode up with the lift; the held view (`gC.hold`), the walk's boundary and the head follower's anchors stayed where the
+   conversation began (after an opening without a cut his head bone no longer moves the view). With the view walking apart
+   from him (`detached`), `End` puts Shepard back under the view (`PutAt(gC.playerPawn, gC.detachedAt)`): at the bottom of the
+   shaft, and the mission can't go on.
+3. **The fix, `RideBase`** (`game/ConversationWorld.cpp`; called each tick of a conversation in the world after its opening,
+   and of a moment before its step logic): the pawn's `Engine.Actor.Base` (ReflectCheck row exists) and its place; while the
+   same base moves (0.01 to 500 units a tick, ticks under 250 ms apart) the delta moves the held view, the view's own feet,
+   the boundary, the walk-in mark, the steer's and the scene's marks, the head anchor, the composed place, the follower's
+   place and anchor, the guided trail, the kept places of Shepard and of everyone on the same base, and a moment's own places
+   (so its step logic carries nothing twice). The world's own floor never moves, so nothing else changes. Logs `convo: at N s
+   what Shepard stands on moves (<base>, X m this tick): the player rides with it` and at the end `convo: the player rode X m
+   with what Shepard stood on`. Not followed: a turning floor.
+4. **Seated scenes** (`PlayerSeated`, in `MovePlayer`'s gate): Shepard's animated head bone (`MarkHeadOf`) under 0.62 m above
+   his pawn's place for 0.5 s, and not crouched (`Engine.Pawn.bIsCrouched`): the stick, the steer and the guided walk don't
+   walk him; head tracking stays. The same 0.62 m rule as `CanWalk`'s and `cw::MayReface`'s for seated people. Logs `convo: at
+   N s Shepard is seated ...`, `... Shepard stands again: the stick walks`. [verify] the threshold on Shepard's own skeleton
+   (and that a conversation's standing idle never reads under it).
+5. **Freedom of movement, what still limits it** (the owner, 2026-11-16: "I think we can keep both", the boundary and the
+   trigger stop stay): the boundary `worldMoveLeashM` 4 m (the
+   owner's own ask of 2026-11-11), the trigger stop `worldMoveTriggers` (a step into or out of a level trigger is refused: its
+   touch belongs to the script), the wheel up (the stick is the wheel's), set pieces on the 3D screen, and the walk's own
+   guards (walls, ledges over 0.6 m, people).
+
+Check on the fake headset: John02_92, Liara freed, the lift ride with the stick pushed (the view goes up with the lift, no
+`End` put-back at the bottom); a seated scene (none known in LE1 for Shepard: ME2's shuttle and cockpit scenes are the cases).
 
 ## To check in the game
 

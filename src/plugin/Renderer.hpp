@@ -34,6 +34,49 @@ std::wstring const& SettingsPath() noexcept;
 
 namespace mevr::host::renderer {
 
+// ---- What this host's renderer has ------------------------------------------------------------------------------------
+// One host ASI links exactly one renderer, and the three differ in what they can do. A shared host module, and
+// ModLoader's BuildServices, asks here ("does this renderer have X") instead of `#if defined(MEVR_WITH_HALCYON_LEx)`:
+// the module then compiles once into every host and stands down where the bit is false. Each RendererLeN.cpp fills it.
+// A bit is true only where the renderer's seam for it exists AND its tree calls it (docs/le3-port-implementation-plan.md's
+// rule 3: a service is populated only when its renderer side exists). `#if` stays only for what isn't linked into a host
+// at all. research/trilogy-seams.md "Capabilities" says how to add one.
+struct Caps {
+    char const* name = "none";        // "halcyon-le1" | "halcyon-le2" | "halcyon-le3": for logs, never to branch on
+
+    // -- Which groups of the common seams (src/halcyon/MevrSeams.h) the renderer's tree calls --
+    bool eyeImageSeams = false;       // OnEyeSource, CopyIntoImage, OnEyeCopied, OnEyeReleased, OnFactory: the host's
+                                      // plugin/EyeCopy owns every eye image (LE1: its own blit, with the EyeColour* and
+                                      // EyeUpscale seams below)
+    bool hudPanelDraw = false;        // MevrSeams::HudPanelDraw from its draw hooks (LE1: its own HudPanel* seams)
+    bool hostCineScreen = false;      // the host composes the 3D cinema screen (CineScreenLayers); false: the renderer
+                                      // does (LE1's xr_session.cpp, with CineScreenQuadsNow and PlanStereo's screen branch)
+    bool recenterTilt = false;        // its recenter asks RecenterOrientation (a tilted base space corrected)
+    bool panelsInRoom = false;        // PlacePanel places every flat panel (plugin/WorldPanels); false: only the
+                                      // galaxy table, the other panels stay the renderer's head-locked ones
+    bool galaxyTable = false;         // PlacePanel may put the native galaxy map and orbit image on the table
+    bool perfSeams = false;           // the frame-breakdown probe's steps: MevrSeams::Perf* (LE1: its PerfPresentScope,
+                                      // PerfPass0Captured, PerfPoint and g_perfDraws) and the wait/begin frame slots
+
+    // -- Per-renderer extensions (declared in that tree's own mevr_bridge.h) --
+    bool oneDraw = false;             // one FViewportClient::Draw a frame: g_oneDrawStereo, RecordPass1View, Record*
+    bool perEyeFrustum = false;       // each eye renders through its own off-centre frustum (metric mode 2)
+    bool metricStereo = false;        // PlanStereo: each pass from its eye's real place
+    bool hudPanelGameplay = false;    // the whole gameplay HUD goes to the body-locked panel (false: at most a measured
+                                      // crop of it, the rest stays in the eyes)
+    bool hudPieces = false;           // the HUD's pieces on the wrist and the gun are cut out of the panel
+    bool worldUi = false;             // the game's GUI screens can stand in the room (the GUI mode not flat)
+    bool galaxyWindow = false;        // the galaxy map's view swaps (GalaxyViewSwap*, GalaxyHologram, GalaxyHeld)
+    bool frontEnd = false;            // the front end's presentation holds (FrontEnd*, HoldPlainVr)
+    bool conversationWorld = false;   // a conversation shown in the world (ConversationInWorld ...)
+    bool eyeColourInBlit = false;     // colour, tonemap and FSR inside the renderer's blit (EyeColour*, EyeUpscale)
+    bool screenReticleHide = false;   // the game's own crosshair can be hidden (SetScreenReticleHidden is honoured)
+    bool floorViewJournal = false;    // JournalFloorViewWrite after a floor-locked view
+    bool headArmSequence = false;     // HeadArmSequence counts (render-side head look arms)
+    bool ownMenuRows = false;         // GetMenuRows / SetMenuRows answer (the renderer's settings in our menu)
+};
+Caps const& Capabilities() noexcept;
+
 // ---- Halcyon's own menu and log ---------------------------------------------------------------------------------------
 
 // The renderer's own developer menu is open: Halcyon's ImGui menu (LE1: Ctrl or Shift + \; ME2: its menu key, Insert

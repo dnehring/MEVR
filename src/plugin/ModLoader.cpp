@@ -209,7 +209,9 @@ HostServices WithRenderer(HostServices services) {
     services.floorStateSize = static_cast<std::uint32_t>(sizeof(vr::floor::State));
     services.floor = &HostFloor;
     // The game's crosshair hidden while the hand reticle stands in for it (game/ScreenReticle; both renderers' layers ask).
-    services.hideScreenReticle = &mevr::host::renderer::ScreenReticleHidden;
+    if (renderer::Capabilities().screenReticleHide) {
+        services.hideScreenReticle = &mevr::host::renderer::ScreenReticleHidden;
+    }
     return services;
 }
 // v17: the comfort vignette's darkness (plugin/Vignette, a quad of ours on either renderer).
@@ -261,8 +263,8 @@ std::uint32_t HostRightGripFree() {
 std::uint32_t HostLeftGripAway() {
     return pad_merge::LeftGripAway();
 }
-#if !defined(MEVR_WITH_HALCYON_LE3)
-// v22: HUD pieces on the body (game/HudPieces; plugin/HudPieceLayers on both hosts, research/41).
+// v22: HUD pieces on the body (game/HudPieces; plugin/HudPieceLayers, research/41), where the renderer's HUD panel takes
+// the gameplay HUD (renderer::Capabilities().hudPieces: not ME3's yet).
 void HostSetHudPieces(vr::hud_pieces::Pieces const* pieces) {
     if (pieces != nullptr) {
         vr::hud_pieces::Publish(*pieces);
@@ -271,11 +273,13 @@ void HostSetHudPieces(vr::hud_pieces::Pieces const* pieces) {
     }
 }
 HostServices WithHudPieces(HostServices services) {
+    if (!renderer::Capabilities().hudPieces) {
+        return services;
+    }
     services.hudPiecesSize = static_cast<std::uint32_t>(sizeof(vr::hud_pieces::Pieces));
     services.setHudPieces = &HostSetHudPieces;
     return services;
 }
-#endif
 // v36: the pawn's floor for the floor lock (game/Player's sample; plugin/FloorLock on both hosts, research/58).
 HostServices WithFloorLock(HostServices services) {
     services.floorLockSampleSize = static_cast<std::uint32_t>(sizeof(vr::floor_lock::PawnSample));
@@ -294,9 +298,7 @@ HostServices WithPadMerge(HostServices services) {
 void ForgetRendererModState() {
     pad_merge::ForgetSupportGrip();
     floor_lock::SetPawn(nullptr);
-#if !defined(MEVR_WITH_HALCYON_LE3)
     vr::hud_pieces::Reset();  // the weapon panel back on the HUD (the wrist piece needs no mod)
-#endif
     vr::interact::Reset();
 #if defined(MEVR_WITH_HALCYON_LE3)
     halcyon_le3::SetTraversalPresentation(nullptr);
@@ -600,11 +602,10 @@ HostServices BuildServices() {
     // Shared layers now consume these publications. Native/headset acceptance remains separate.
     services = WithGalaxyHologram(services);
     services.motionBlurProtected = &motion_blur_guard::ProtectsGameplay;
-    services = WithTraversal(WithFloorLock(WithPadMerge(WithSights(WithVignette(WithRenderer(services))))));
+    services = WithTraversal(WithFloorLock(WithHudPieces(WithPadMerge(WithSights(WithVignette(WithRenderer(services)))))));
 #if defined(MEVR_WITH_MAIN_MENU)
     services = WithVoice(services);
 #endif
-    services.hideScreenReticle = nullptr; // native LE3 crosshair ownership has not been verified
     services.traversalPresentationSize = static_cast<std::uint32_t>(sizeof(vr::traversal::Presentation));
     services.setTraversalPresentation = &halcyon_le3::SetTraversalPresentation;
     services.thespianInputBlocked = &halcyon_le3::ThespianInputBlocked;

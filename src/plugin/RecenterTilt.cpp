@@ -98,7 +98,7 @@ std::string StatusJson() {
 
 } // namespace mevr::host::recenter_tilt
 
-namespace MELEVR::MevrBridge {
+namespace MevrSeams {
 
 void RecenterOrientation(float const head[4], bool automatic, float orientation[4]) noexcept {
     using namespace mevr::host::recenter_tilt;
@@ -131,4 +131,4 @@ void RecenterOrientation(float const head[4], bool automatic, float orientation[
     gHavePending = true;
 }
 
-} // namespace MELEVR::MevrBridge
+} // namespace MevrSeams

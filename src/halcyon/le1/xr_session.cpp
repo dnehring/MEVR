@@ -4125,7 +4125,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
         g_menuInited = true;
     }
     const bool insDown = (cfg.menuKey > 0) && MELEVR::MevrBridge::KeyDown(cfg.menuKey);   // [MEVR] only with the game in front; upstream: GetAsyncKeyState
-    if (insDown && !g_insertKeyPrev) MELEVR::MevrBridge::OnMenuKey();   // [MEVR] our main menu (Ctrl/Shift: this one); upstream: MELEVR::Menu::Toggle()
+    if (insDown && !g_insertKeyPrev && !MevrSeams::OnMenuKey(MELEVR::Menu::IsOpen())) MELEVR::Menu::Toggle();   // [MEVR] our main menu takes the key (Ctrl/Shift: this one, as upstream)
     g_insertKeyPrev = insDown;
     // First-run: pop the menu open once so new users land on the welcome / HDR-off notice.
     {
@@ -5201,8 +5201,9 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
             const float mevrHeadP[3] = {renderTagPose.position.x, renderTagPose.position.y, renderTagPose.position.z};
             const float mevrLeanScale = mevrGalaxy ? mevrGalaxyUpm / kMetersToUU   // [MEVR] galaxy hologram
                                                    : ((cfg.leanEnabled && cfg.leanGain > 0.0f) ? cfg.leanGain : 1.0f);
-            MELEVR::MevrBridge::OnViewBuilt(headValid && !menuOpen && !forceFlatCine, headLookApplied, headAimApplied,
-                                            mevrHeadQ, mevrHeadP, rightUU, upUU, fwdUU, kMetersToUU * mevrLeanScale,
+            MevrSeams::OnViewBuilt(headValid && !menuOpen && !forceFlatCine, headLookApplied, headAimApplied,
+                                   MELEVR::RenderHook::HeadLookYawUU(), MELEVR::RenderHook::HeadLookPitchUU(),
+                                   mevrHeadQ, mevrHeadP, rightUU, upUU, fwdUU, kMetersToUU * mevrLeanScale,
                                             gameMode == 0 && !cinematicContext && !mevrCineScreen && !frontEndHold); // [MEVR] floor lock: ordinary on foot only
 
             // [MEVR] life-size stereo (research/30): each pass of the next game frame from its eye's real place, at
@@ -6136,7 +6137,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
         mevrFrame.context = g_context;
         mevrFrame.worldFrame = submitted && !forceFlatCine && !mevrCineScreen;   // [MEVR] the screen: no world layer
         mevrFrame.menuOpen = menuOpen;
-        mevrFrame.sfr2 = cineIn.sfr2CfgOn;
+        mevrFrame.stereo = cineIn.sfr2CfgOn;
         mevrFrame.gameMode = gameMode;
         mevrFrame.headValid = headValid;
         if (headValid)
