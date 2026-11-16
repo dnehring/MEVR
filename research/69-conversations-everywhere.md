@@ -3947,6 +3947,38 @@ flash, no dip but the opening's own; `speaker-behind` (Ashley behind the player 
 0 regressions. Not seen in the game: a move past 1.5 m under a scene's own black screen (no scene of the set has one; the rule's
 branch is exercised only by its log line), and the stall without the fix (the Virmire run is the before).
 
+### The fade to black always moves the player; curated walks excepted (2026-11-16; item 41)
+
+**The owner, 2026-11-16:** "we were too aggressive in the fade to black location changes. This can result in gameplay where a
+character can't complete a mission because when the fade to black triggers we'll move to places like elevators. So for now,
+we'll default to fade to black always moving us, the only exceptions are going to be on curated experiences like the council
+meeting where we need to do walking." The script's black screen puts Shepard somewhere the mission needs him (an elevator's
+car, past a door it then closes); items 31, 39 and 40 left the player where he stood and asked him to walk there (a staged
+scene's black screen: the simulated stick unless the one spoken to moved; a moment's move "within the same space": the view
+walks to him), so the elevator left without him.
+
+1. **The setting:** `[Cinematics] worldBlackMoves` (1 by default; 0 the rules of items 31 and 40) and `worldCuratedWalks`
+   (more curated walks, comma separated: a part of a moment's move track path, or a conversation key). The curated table is
+   `cw::IsCuratedWalk` (`core/vr/ConversationWorld`, unit-tested in `tests/ConversationWorldTests.cpp`): built in, the walk with
+   Anderson to the Council (`BIOA_STA70_02captain_DSG`'s `SarenCouncil.SeqAct_Interp_0`, the matcher `ShownEarlyFor` uses). Log
+   `convo: [Cinematics] ... the game's fade to black moves the player (but in curated walks)`.
+2. **In a conversation** (`ScriptBlackScreen`, `KeepAtSource`, `KeepInPlace`'s steer, `TeleportPlayerTo`): the script's black
+   screen opens the relocation window in every conversation in the world, not only the staged scenes (`BlackMovesPlayer()`:
+   `worldBlackMoves` and the conversation not curated); Shepard's new mark beyond 1.5 m (`stayUnits`) is a teleport under a dip
+   whether or not the one spoken to moved; a step within 1.5 m is still walked (item 40's second blink). A view walking apart
+   from his body (a walk-in by the view) joins him there (`detached` cleared, his pawn shown, `settleUntilMs`). Log `convo: at N
+   s under the game's black screen the player goes with Shepard to his new mark (X m) under a dip`.
+3. **In a moment** (`TickMoment`, the script's jump of Shepard): `UnderGameBlack()` (the opening's own test: a script's black
+   screen on within 1.5 s, a matinee's camera fade up or down within 1.5 s) makes the jump `coveredByBlack`, so `DecideOpening`
+   says Cut whatever the distance (a Stay too): the view goes with him under a dip. In a curated walk (`MomentCurated()`, the
+   track path kept in `gMoment.trackPath`) the old same-space rule stands and the log says `in a curated walk ... the player
+   walks on to him`. The moment's summary counts them (`"blackFollowed"`). Rides (`cw::IsRideStep`) and moves without a black
+   are unchanged.
+4. **Openings** were already this rule (item 39's `coveredByBlack` cut); unchanged.
+
+Not seen in the game yet: an elevator scene (which one the owner met is not named), and the council walk with the rule on
+(its own black-screen move must still be walked). Check both on the fake headset before the owner's next headset session.
+
 ## To check in the game
 
 In this order, on the fake headset, when the game folder is free (saves backed up first, as always):
