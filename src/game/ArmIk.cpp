@@ -1115,6 +1115,10 @@ void Drive(double deltaSeconds) {
     // camera when a root-motion step moves the component under them (ME2's vault).
     request.frame.valid = true;
     request.frame.componentToWorld = componentToWorld;
+    // The view hangs on the camera's bone: first person on foot with the game's own camera (a held view, a conversation shown
+    // in the world or a scripted walk, stays where it is held whatever the bone does).
+    request.frame.viewOnAnchor = targets.source == hand_targets::Source::Controllers && targets.anchor == hand_targets::Anchor::View &&
+        !view_anchor::Held() && !bodyAway;
     if (std::span<engine::skeleton::BoneAtom const> const bases = engine::skeleton::SpaceBases(mesh);
         static_cast<int>(bases.size()) == info->boneCount) {
         for (int bone : info->cameraHooks) {
@@ -1592,7 +1596,7 @@ std::string Command(std::string const& args) {
     words >> verb >> rule;
     namespace bp = engine::bone_pose;
     if (verb != "step") {
-        return "usage: mevr armik step [off|camera|world] [units]";
+        return "usage: mevr armik step [off|camera] [units]";
     }
     bp::StepSettings settings = bp::GetStepSettings();
     if (!rule.empty()) {
@@ -1600,10 +1604,8 @@ std::string Command(std::string const& args) {
             settings.rule = bp::StepRule::Off;
         } else if (rule == "camera") {
             settings.rule = bp::StepRule::Camera;
-        } else if (rule == "world") {
-            settings.rule = bp::StepRule::World;
         } else {
-            return "usage: mevr armik step [off|camera|world] [units]";
+            return "usage: mevr armik step [off|camera] [units]";
         }
         if (double units = 0.0; words >> units && std::isfinite(units) && units > 0.0) {
             settings.units = units;
@@ -1614,9 +1616,9 @@ std::string Command(std::string const& args) {
     }
     bp::StepStats const stats = bp::GetStepStats();
     return std::format("arm IK steps: rule {}, past {:.1f} units; {} steps in {} writes (the camera's bone up to {:.1f} units, the mesh up to "
-                       "{:.1f}), {} solved in the goals' frame",
+                       "{:.1f}; by the bone's move: {} under 1 unit, {} 1-5, {} 5-20, {} past 20), {} solved in the goals' frame",
         bp::StepRuleName(settings.rule), settings.units, stats.steps, stats.writes, stats.maxAnchorUnits, stats.maxComponentUnits,
-        stats.corrected);
+        stats.byAnchor[0], stats.byAnchor[1], stats.byAnchor[2], stats.byAnchor[3], stats.corrected);
 }
 
 void Shutdown() {

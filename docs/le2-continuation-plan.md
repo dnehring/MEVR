@@ -97,6 +97,9 @@ a snapshot in ME2 shows both eyes and the HUD panel.
 
 Waits for M1 and M2.
 
+**Lane C2, 2026-11-15:** arm IK keeps the hands on the controllers through root-motion steps (the vault: every tick within
+0.08 m, from 0.70-1.04 m at its steps; the goals follow the `Camera` bone, `core/ik/GoalStep`; LE1 unchanged).
+
 **Lane C, 2026-11-14 (fake headset; [research/le2-vrik.md](../research/le2-vrik.md)):** the mod's side of steps 1-3 runs on
 ME2: hand aim (shots along the barrel, 30 degrees off the view with the controller turned 30), the view level (no camera
 recoil: the pitch held at 0 in every tick of 34 shots, ME2's extra yaw kick taken out), the camera shakes off, arm IK,

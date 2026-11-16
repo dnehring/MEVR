@@ -1609,7 +1609,7 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
     if (verb == "armik") {
         std::string rest;
         std::getline(words, rest);
-        return arm_ik::Command(rest);  // `mevr armik step [off|camera|world] [units]` (research/le2-vrik.md, root-motion steps)
+        return arm_ik::Command(rest);  // `mevr armik step [off|camera] [units]` (research/le2-vrik.md, root-motion steps)
     }
     if (verb == "shake") {
         std::string rest;
@@ -1758,7 +1758,7 @@ std::optional<std::string> RunOursLe2(ue3::Object* pc, std::string const& line) 
     if (verb == "armik") {
         std::string rest;
         std::getline(words, rest);
-        return arm_ik::Command(rest);  // `mevr armik step [off|camera|world] [units]` (research/le2-vrik.md, root-motion steps)
+        return arm_ik::Command(rest);  // `mevr armik step [off|camera] [units]` (research/le2-vrik.md, root-motion steps)
     }
     if (verb == "cover") {
         std::string rest;

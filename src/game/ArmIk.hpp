@@ -72,7 +72,7 @@ std::string const& Status();
 // Where the hand targets come from (game/hand_targets' name for it).
 char const* HandSource();
 void LogStats();
-// The console's `mevr armik step [off|camera|world] [units]` (research/le2-vrik.md "Arm IK across root-motion steps"): what the
+// The console's `mevr armik step [off|camera] [units]` (research/le2-vrik.md "Arm IK across root-motion steps"): what the
 // writer does when a step moves the mesh between the goals and the write; no word: the rule and its counts.
 std::string Command(std::string const& args);
 // Stops all writes and forgets everything.

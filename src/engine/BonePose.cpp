@@ -317,7 +317,8 @@ SRWLOCK gStepLock = SRWLOCK_INIT;
 StepSettings gStepSettings;  // under gStepLock
 StepStats gStepStats;        // under gStepLock
 std::atomic<int> gStepLines{0};
-constexpr int kMaxStepLines = 60;  // detailed lines per process (a vault has three steps), then only the heartbeat's counts
+constexpr int kMaxStepLines = 60;  // detailed lines per process (a vault has three big steps), then only the heartbeat's counts
+constexpr double kStepLineUnits = 20.0;  // a detailed line for a step past this (the vault's: 20-113 units); every one is counted
 
 std::string Text(ik::Vec3 const& v) {
     return std::format("({:.1f}, {:.1f}, {:.1f})", v.x, v.y, v.z);
@@ -337,6 +338,7 @@ std::optional<ik::Transform> StepSince(Request const& request, Mesh const* mesh,
     ik::StepInput in;
     in.rule = settings.rule;
     in.units = settings.units;
+    in.viewOnAnchor = f.viewOnAnchor;
     in.componentThen = f.componentToWorld;
     in.componentNow = skeleton::LocalToWorld(mesh);
     in.anchorKnown = f.anchor >= 0 && f.anchor < count && skeleton::RefBoneKey(mesh, f.anchor) == f.anchorKey;
@@ -349,18 +351,19 @@ std::optional<ik::Transform> StepSince(Request const& request, Mesh const* mesh,
     gStepStats.corrected += step.toNow ? 1 : 0;
     if (std::isfinite(step.anchorUnits)) {
         gStepStats.maxAnchorUnits = (std::max)(gStepStats.maxAnchorUnits, step.anchorUnits);
+        ++gStepStats.byAnchor[step.anchorUnits < 1.0 ? 0 : step.anchorUnits < 5.0 ? 1 : step.anchorUnits < 20.0 ? 2 : 3];
     }
     if (std::isfinite(step.componentUnits)) {
         gStepStats.maxComponentUnits = (std::max)(gStepStats.maxComponentUnits, step.componentUnits);
     }
     ReleaseSRWLockExclusive(&gStepLock);
-    if (step.seen && gStepLines.fetch_add(1, std::memory_order_relaxed) < kMaxStepLines) {
+    if (step.seen && step.anchorUnits > kStepLineUnits && gStepLines.fetch_add(1, std::memory_order_relaxed) < kMaxStepLines) {
         bool const rooted = f.root >= 0 && f.root < count;
         ik::Vec3 const rootMove = rooted ? pose[static_cast<std::size_t>(f.root)].translation - f.rootAt : ik::Vec3{};
-        log::Info("arm IK: a step between the goals and the write: the mesh {:.1f} units {} in the world, the camera's bone {} "
-                  "{:.1f} units {} and the root {} in component space; rule {}: {}",
-            step.componentUnits, Text(step.componentMove), in.anchorKnown ? "moved" : "(unknown)", step.anchorUnits,
-            Text(step.anchorMove), rooted ? Text(rootMove) : std::string("(unknown)"), StepRuleName(settings.rule),
+        log::Info("arm IK: a step between the goals and the write: the camera's bone moved {:.1f} units {} and the root {} in "
+                  "component space, the mesh {:.1f} units in the world; rule {}{}: {}",
+            step.anchorUnits, Text(step.anchorMove), rooted ? Text(rootMove) : std::string("(unknown)"), step.componentUnits,
+            StepRuleName(settings.rule), f.viewOnAnchor ? "" : " (the view isn't on it)",
             step.toNow ? std::format("the goals solved {:.1f} units off, in their own frame", ik::Length(step.toNow->translation))
                        : std::string("the goals as published"));
     }
@@ -1496,7 +1499,6 @@ char const* StepRuleName(StepRule rule) {
     switch (rule) {
     case StepRule::Off: return "off";
     case StepRule::Camera: return "camera";
-    case StepRule::World: return "world";
     }
     return "?";
 }
@@ -1712,9 +1714,10 @@ void LogStats() {
         loggedSteps = steps.steps;
         StepSettings const settings = GetStepSettings();
         log::Info("    arm IK writeback: {} steps between the goals and the write in {} writes since the hook went in (the camera's "
-                  "bone up to {:.1f} units, the mesh up to {:.1f}), {} solved in the goals' frame (rule {}, past {:.0f} units)",
-            steps.steps, steps.writes, steps.maxAnchorUnits, steps.maxComponentUnits, steps.corrected, StepRuleName(settings.rule),
-            settings.units);
+                  "bone up to {:.1f} units, the mesh up to {:.1f}; by the bone's move: {} under 1 unit, {} 1-5, {} 5-20, {} past 20), {} "
+                  "solved in the goals' frame (rule {}, past {:.0f} units)",
+            steps.steps, steps.writes, steps.maxAnchorUnits, steps.maxComponentUnits, steps.byAnchor[0], steps.byAnchor[1],
+            steps.byAnchor[2], steps.byAnchor[3], steps.corrected, StepRuleName(settings.rule), settings.units);
     }
     if (keptMoves > 0) {
         log::Warn("    arm IK writeback: {} writes moved a camera hook bone (Camera/God) in the solve; kept animated, not "
