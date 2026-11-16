@@ -1494,7 +1494,7 @@ void SfrDrawUiBothEyes(ID3D11DeviceContext* ctx, const D3D11_VIEWPORT& vp, DrawT
 template <typename DrawThunk>
 bool MevrHudPanelDraw(ID3D11DeviceContext* ctx, DrawThunk& draw, bool textBatch) noexcept
 {
-    return ::ME2VR::MevrBridge::HudPanelDraw(ctx, [](void* d) noexcept { (*static_cast<DrawThunk*>(d))(); }, &draw, textBatch,
+    return ::MevrSeams::HudPanelDraw(ctx, [](void* d) noexcept { (*static_cast<DrawThunk*>(d))(); }, &draw, textBatch,
                                              SfrUiMirrorArmed());
 }
 
@@ -4328,7 +4328,7 @@ bool SvrIsSteamVrActiveRuntime() noexcept
     cached = 0;
 #if defined(MEVR_ASI)
     // [MEVR] the runtime this process uses: XR_RUNTIME_JSON (our [Debug] openxrRuntime, the fake headset) first
-    cached = ::ME2VR::MevrBridge::XrRuntimeIsSteamVr() ? 1 : 0;
+    cached = ::MevrSeams::XrRuntimeIsSteamVr() ? 1 : 0;
     ME2VR::Log::Line(std::string("[SVRFIX2] this process's OpenXR runtime is SteamVR [MEVR]: ") + (cached ? "yes" : "no"));
     return cached != 0;
 #endif
@@ -4614,7 +4614,7 @@ void TryInstallFactoryHooks(void* factory, const IID&) noexcept
         g_createSwapChainForCompositionSlot = &vtable[kCreateSwapChainForCompositionSlot];
     }
 #if defined(MEVR_ASI)
-    ::ME2VR::MevrBridge::OnFactory(factory);  // [MEVR] the display's HDR answer to the game (LE1's [Colour] hdrDisplay)
+    ::MevrSeams::OnFactory(factory);  // [MEVR] the display's HDR answer to the game (LE1's [Colour] hdrDisplay)
 #endif
 }
 }
