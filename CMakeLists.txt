@@ -342,6 +342,8 @@ set(MEVR_MOD_SOURCES
     src/core/ik/CameraHook.hpp
     src/core/ik/Fingers.cpp
     src/core/ik/Fingers.hpp
+    src/core/ik/GoalStep.cpp
+    src/core/ik/GoalStep.hpp
     src/core/ik/Melee.cpp
     src/core/ik/GunKick.cpp
     src/core/ik/GunKick.hpp
@@ -1415,6 +1417,7 @@ if (MEVR_BUILD_TESTS)
         tests/ThespianTests.cpp
         src/core/vr/Traversal.cpp
         tests/TraversalTests.cpp
+        tests/GoalStepTests.cpp
         tests/TraversalPresentationTests.cpp
         tests/RendererRequestTests.cpp
         tests/HostServicesTests.cpp
@@ -1444,6 +1447,7 @@ if (MEVR_BUILD_TESTS)
         src/core/ik/BoneNames.cpp
         src/core/ik/CameraHook.cpp
         src/core/ik/Fingers.cpp
+        src/core/ik/GoalStep.cpp
         src/core/ik/Melee.cpp
     src/core/ik/GunKick.cpp
         src/core/ik/Ik.cpp

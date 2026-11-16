@@ -152,6 +152,77 @@ commit's build against this one): the same arm IK targets ((24.8, -13.1, 156.8) 
 within 0.1 unit, `hostView` offsets identical (-43.3 / -4.1 / -18.1 uu), both hands 0.07 m from the grips, the same
 `hand aim:` lines (no gun was drawn there: `mevr weapon pistol` found no pistol in that career's quick slots).
 
+## Arm IK across root-motion steps (lane C2, 2026-11-15)
+
+**The problem** (lane E's finding, research/le2-traversal.md "The hands"): through ME2's vault the drawn wrists left the
+controllers by 0.38-0.43 m at the rise, 0.87-1.07 m at the 2 m step and 0.21-0.56 m at the drop, for about two frames each.
+
+**What happens, measured.** `engine/BonePose` now logs `arm IK: a step between the goals and the write: the camera's bone moved
+N units (x, y, z) and the root (...) in component space, the mesh M units in the world; rule R: ...` for every step past 20 units,
+and counts every write by how far the camera's bone moved (`mevr armik step`, the heartbeat's `arm IK writeback: N steps ...`).
+On the fixture (Save 4, `CoverLink_10` slot 0, `vault.ps1 -Mode tap`, nine vaults):
+- **The mesh component never moved** between the mod's tick (where the goals are computed, after the frame) and the next
+  `UpdateSkelPose` (where they are written): 0.0 units in 3,201 writes. The game moves the actor *after* the pose is composed.
+- **The `Camera` bone moved in component space at each step** (the root `God` stayed at 0): at the rise -22, -36, -51 units in
+  z over three writes, at the forward step -61 to -113 in x over three, at the drop +20 to +30 in z over four or five. The vault
+  animation composes the body and the camera's bone where they will be once the actor has stepped; the actor then steps, so
+  in the world the body and the camera stay put. Goals left in component space rode the step.
+- Standing, the camera's bone moves under 1 unit a write (745 of 1,097 writes in one stretch of three vaults and the standing
+  between them; 305 moved 1-5 units, 30 5-20, 17 past 20, all inside the vaults).
+
+**The fix** (`core/ik/GoalStep`, unit-tested in `tests/GoalStepTests.cpp`; `engine/BonePose` `GoalFrame`, `StepSince`;
+`game/ArmIk` fills the frame):
+1. The mod's request carries where its goals were computed (`Request::frame`): the mesh's `LocalToWorld`, the `Camera` bone's
+   index, name and SpaceBases translation at that tick, and `viewOnAnchor` (first person on foot with tracked controllers, the
+   view not held by `view_anchor::Hold` and the body not away: the camera hangs on that bone).
+2. In each write the writer compares the bone in the pose being written with where it stood (`ik::FindStep`). If it moved past
+   `units` (default **1 unit**) and the view hangs on it, the animated pose is moved by the inverse of that move into the goals'
+   frame, everything is solved there (torso, arms, support grip, gun kick, legs, fingers, body scale), and the written bones are
+   moved back (`ik::Compose(bone, step)`); the call's gun kick sample is moved with them. The samples the mod reads next tick
+   (`AnimatedHead`, `AnimatedHands`, the unscaled body) stay in the call's own frame.
+3. Not while the view is held (a conversation shown in the world, a scripted walk): an animation's jump of the bone there must not
+   move the hands. A teleport moves the component alone (the bone stays): the goals ride the component as before.
+
+**Checked** (`tools/le2-halcyon-run/vault.ps1 -Runs 3 -Mode tap`, the traversal's own count of the drawn wrists against the
+controllers through the move and its blend-out; stretch `20261115-010524-lane-c2-vault`, restored `verification: 0 differences`):
+
+| rule (`mevr armik step ...`) | ticks within 0.15 m, three vaults | mean | max |
+|---|---|---|---|
+| off (as before) | 131/142, 134/144, 129/140 | 0.11 m | 0.88, 1.04, 0.83 m |
+| camera, past 20 units | 142/144, 141/145, 146/148 | 0.09 m | 0.21 m |
+| camera, past 5 units | 139/139, 148/148, 149/149 | 0.08 m | 0.11-0.12 m |
+| **camera, past 1 unit (the default)** | 145/145, 143/143, 146/146 | 0.07 m | 0.08 m |
+
+Standing, both wrists are 0.07 m from the grips (the replayed hands' wrist-to-grip offset), so with the default the hands stay
+where they rest through the whole vault. A third rule tried first, the goals kept fixed in the world when the component moved, never
+fired (the component doesn't move between the goals and the write) and was dropped. Console: `mevr armik step [off|camera]
+[units]` (LE1 and LE2; the rule and the counts with no word).
+
+**LE1 unchanged** (`tools/fake-headset-session.ps1 -Tag lanec2-le1pose -BuildDir build`, session
+`2026-11-15_01-28-33-lanec2-le1pose`, the run script lane B4's `laneb4-after` session ran too: 20 s in the world, the standing
+replay with the hands in view, 12 s, `pause`, two snapshots, then a 2 s-per-direction walk loop): the camera's bone moved **0.0
+units** in all 1,890 standing writes and all 3,466 writes with the walk (on LE1 the mesh does move up to 7.1 units between the goals
+and the write while walking; the rule doesn't look at it), so nothing was solved in another frame. Against lane B4's `laneb4-after`
+snapshot (main f71e7a71 before this work, the same script): both wrists 0.07 m from the grips, `hostView` identical (-43.3 / -4.1
+/ -18.1 uu at 100 uu/m), the six layers at the same places (the omni-tool target 0.1 mm apart), the HUD panel, wrist piece,
+label and target identical pixel for pixel, the eyes 0.025% / 0.014% of pixels apart by more than 32/255.
+
+**A finding for "vault while holding our weapons":** with the left hand on the gun and its grip held (`vault.ps1 -Support`, the
+support grip taken: `halcyon bridge: support grip taken ...: LT to the game instead of LB`), ME2's `CanPerformMantle` refuses the
+vault (`the game refuses it`, the double tap never fires). See "Vaulting with the weapon held" below.
+
+### Vaulting with the weapon held
+
+`CanPerformMantle`'s pawn test (`0xABD700`, called first by the body `0xABD8E0`; Ghidra, `tools/ghidra/decompile.ps1 -Game LE2
+0xABD700`) refuses when the pawn's `Weapon` is an `SFXWeapon` whose `IsZoomed` is set (`0xBF0CF0`, `ASFXWeapon_NativeBase::
+execIsZoomed`'s body: `bIsZoomed`, bit 5 of the word at +0x3D0), then when the pawn performs a blocking action
+(`IsPerformingBlockingAction`, `0xAA4D90`), then (out of cover) unless `m_bCanMantleOutsideOfCover`, and needs
+`ActionState` combat. The support grip hands ME2 LT, its aim, and the aim zooms the weapon (`SFXWeapon.SetZoomed(true)`), so a
+two-handed hold refuses every vault. The right hand alone holding the gun (`gripHolds`) needs ME2's holsters (step 3, below);
+once they are in, `vault.ps1 -Grip` checks it, and `-Grip -Support` the two-handed hold. A fix for the zoom is the traversal's:
+its one-call writes around `CanPerformMantle` (and the commit) could clear `bIsZoomed` for that call as they set
+`m_bCanMantleOutsideOfCover` [verify] (whether `MantleCover`'s custom action then plays with LT still held).
+
 ## What M3 still needs from the host (lane B2)
 
 The mod's side of hand aim, arm IK, the torso, the fingers, the gun in the hand and the gun kick runs on ME2. What

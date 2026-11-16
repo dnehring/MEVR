@@ -4005,7 +4005,8 @@ of movement except for seated scenes. This will be a bigger deal in me2."
    walk him; head tracking stays. The same 0.62 m rule as `CanWalk`'s and `cw::MayReface`'s for seated people. Logs `convo: at
    N s Shepard is seated ...`, `... Shepard stands again: the stick walks`. [verify] the threshold on Shepard's own skeleton
    (and that a conversation's standing idle never reads under it).
-5. **Freedom of movement, what still limits it** (the owner's decision pending): the boundary `worldMoveLeashM` 4 m (the
+5. **Freedom of movement, what still limits it** (the owner, 2026-11-16: "I think we can keep both", the boundary and the
+   trigger stop stay): the boundary `worldMoveLeashM` 4 m (the
    owner's own ask of 2026-11-11), the trigger stop `worldMoveTriggers` (a step into or out of a level trigger is refused: its
    touch belongs to the script), the wheel up (the stick is the wheel's), set pieces on the 3D screen, and the walk's own
    guards (walls, ledges over 0.6 m, people).

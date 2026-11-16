@@ -4,6 +4,7 @@
 #include "core/ik/ArmPose.hpp"
 #include "core/ik/BodyScale.hpp"
 #include "core/ik/Fingers.hpp"
+#include "core/ik/GoalStep.hpp"
 #include "core/ik/GunKick.hpp"
 #include "core/ik/TorsoPose.hpp"
 
@@ -156,6 +157,44 @@ struct Leg {
     bool planted = false;
 };
 
+// Where the goals were computed (research/le2-vrik.md "Arm IK across root-motion steps"). The mod computes them in its tick,
+// after the frame, and the next frame's UpdateSkelPose writes them before the game moves the actor. ME2's vault composes a
+// pose whose `Camera` bone (and the body) is moved back by as much as the actor then steps (1.1-1.5 m), so the body and the
+// camera stay where they were in the world, and goals left in component space rode the step: the arms and the gun drawn
+// 0.4-1.1 m off for a frame, three times a vault (lane E's finding). The writer compares the anchor (the bone the camera
+// hangs on) in this call's animated pose with where it stood when the goals were computed (core/ik/GoalStep).
+struct GoalFrame {
+    bool valid = false;
+    ik::Affine componentToWorld;  // the mesh's LocalToWorld when the goals were computed (diagnostics)
+    int anchor = -1;              // the camera's hook bone (`Camera`; -1: none)
+    std::uint64_t anchorKey = 0;  // its RefSkeleton name, checked on each call
+    ik::Vec3 anchorAt;            // its SpaceBases translation then (component space; the writer never writes it)
+    bool viewOnAnchor = false;    // the view hangs on it (first person on foot, not held): the camera goes where it goes
+    int root = -1;                // the skeleton's root (`God`): diagnostics only
+    ik::Vec3 rootAt;
+};
+
+// What the writer does when the anchor moved under the goals (GoalFrame; core/ik/GoalStep).
+using StepRule = ik::StepRule;
+struct StepSettings {
+    StepRule rule = StepRule::Camera;
+    double units = 1.0;  // a step: the anchor moved more than this (standing it moves under a unit a frame)
+};
+// Any thread (the console, tests): what the writer does from its next call on.
+void SetStepSettings(StepSettings settings);
+StepSettings GetStepSettings();
+char const* StepRuleName(StepRule rule);
+struct StepStats {
+    std::uint64_t writes = 0;      // writes with a goal frame
+    std::uint64_t steps = 0;       // ...where the anchor moved past `units`
+    std::uint64_t corrected = 0;   // ...solved in the goals' frame (the rule applied)
+    double maxAnchorUnits = 0.0;   // the largest anchor move seen (component space) since the hook went in
+    double maxComponentUnits = 0.0;  // the largest component move between the goals and a write (world; 0 on ME2)
+    // Writes by the anchor's move: under 1 unit, 1-5, 5-20, past 20.
+    std::array<std::uint64_t, 4> byAnchor{};
+};
+StepStats GetStepStats();
+
 struct Request {
     ue3::Object const* mesh = nullptr;  // the SkeletalMeshComponent: compared by address only, never dereferenced
     int boneCount = 0;
@@ -189,6 +228,8 @@ struct Request {
     // Shepard's eye bones (-1: unknown): the writer measures their height above his lowest bone in the unscaled pose for
     // the scale's factor (UnscaledEyeHeight).
     std::array<int, 2> eyes{-1, -1};
+    // Where the goals were computed (GoalFrame, StepRule): without it the goals ride the component as before.
+    GoalFrame frame;
 };
 
 // What the writer did with Request::support on its last write.
