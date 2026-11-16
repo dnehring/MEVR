@@ -172,6 +172,9 @@ std::array<MemberInfo, kMaxMembers> gMembers;
 int gCount = 0;
 std::array<int, kMaxMembers> gCardOrder{0, 1};  // card c shows gMembers[gCardOrder[c]]
 std::array<std::uintptr_t, kMaxMembers> gOpenKeys{};
+// What each carried when the menu opened, where the tiles are pages of an inventory (ME2, ME3; empty on ME1, whose four
+// tiles are its four quick slots).
+std::array<std::vector<ue3::Object*>, kMaxMembers> gOpenInventory;
 int gOpenCount = 0;
 double gDetailsAge = 1e9;
 std::string gLoggedSquad;
@@ -451,6 +454,10 @@ std::string InitialsOf(std::string const& name) {
     return out.empty() ? std::string("?") : Upper(out);
 }
 
+#endif  // MEVR_GAME_LE1 (names)
+
+// ---- Every game: the menu's haptics and the pointing ---------------------------------------------
+
 void Pulse(Link const& link, int hand, float seconds, float amplitude, float frequency) {
     double const strength = hand_calibration::GetSquad().hapticAmplitude;
     float const a = std::clamp(amplitude * static_cast<float>(strength / 0.5), 0.0f, 1.0f);
@@ -482,6 +489,10 @@ XrVector3f Rotate(XrQuaternionf const& q, XrVector3f const& v) {
     XrVector3f const c = cross(u, t2);
     return {v.x + q.w * t2.x + c.x, v.y + q.w * t2.y + c.y, v.z + q.w * t2.z + c.z};
 }
+
+#if defined(MEVR_GAME_LE1)
+
+// ---- ME1's native side: the squad, its quick slots, the pause and the order (the weapon wheel's own path) ----
 
 std::string WeaponList(std::uint8_t carried) {
     std::string out;
@@ -796,20 +807,8 @@ void FollowPending(double deltaSeconds) {
     }
 }
 
-// ---- The squad and the pointing (both styles) -----------------------------------------------------
-
-struct Survey {
-    int pointed = -1;    // gMembers index the left hand points at (within the cone), -1: none
-    int nearest = -1;    // gMembers index nearest the left hand's ray, whatever the cone
-    int preferred = -1;  // who the custom menu preselects when not pointing
-    char const* preferredWhy = "";
-};
-
-// Reads the squad (names and classes once, quick slots and health now and then, every tick while
-// `busy`), maps them into tracking space, and what the left hand points at.
-Survey SurveySquad(Game const& game, double deltaSeconds, bool busy, bool newPull, vr::controllers::Hand const& left,
-    vr::host_view::State const& view, hand_calibration::Squad const& settings) {
-    Survey survey;
+// Reads the squad into gMembers (names and classes once, quick slots and health now and then, every tick while `busy`).
+void ReadMembers(Game const& game, double deltaSeconds, bool busy, bool newPull) {
     gDetailsAge += deltaSeconds;
     bool const details = busy || newPull || gPending.key != 0 || gDetailsAge >= kDetailsSeconds;
     if (details) {
@@ -839,7 +838,24 @@ Survey SurveySquad(Game const& game, double deltaSeconds, bool busy, bool newPul
         gLoggedSquad = squadText;
         log::Info("squad: {}", gCount > 0 ? squadText : std::string("no squadmates"));
     }
+}
 
+#endif  // MEVR_GAME_LE1 (the native side)
+
+// ---- The pointing (every game, both styles) -------------------------------------------------------
+
+struct Survey {
+    int pointed = -1;    // gMembers index the left hand points at (within the cone), -1: none
+    int nearest = -1;    // gMembers index nearest the left hand's ray, whatever the cone
+    int preferred = -1;  // who the custom menu preselects when not pointing
+    char const* preferredWhy = "";
+};
+
+// This tick's squad (gMembers, as the game's native side just read it) mapped into tracking space, and what the left hand
+// points at.
+Survey SurveyPointing(bool busy, vr::controllers::Hand const& left, vr::host_view::State const& view,
+    hand_calibration::Squad const& settings) {
+    Survey survey;
     // Where they are, and what the left hand points at.
     auto const anchor = view_anchor::Current();
     XrVector3f const handOrigin = left.aim.position;
@@ -850,7 +866,9 @@ Survey SurveySquad(Game const& game, double deltaSeconds, bool busy, bool newPul
         m.target.valid = false;
         m.angle = kPi;
         m.distance = -1.0f;
-        std::optional<ue3::Vector> const location = anchor ? player::Location(game.pawns[i]) : std::nullopt;
+        // The pawn the native side read (ME1 this tick; the sequels' roster is up to half a second old while the menu is shut).
+        ue3::Object* const pawn = reinterpret_cast<ue3::Object*>(m.key);
+        std::optional<ue3::Vector> const location = anchor && ue3::runtime::IsAlive(pawn) ? player::Location(pawn) : std::nullopt;
         if (location) {
             ue3::Vector const& at = *location;
             m.target.position = engine::ToTracking(*anchor, engine::UnrealVector{at.x, at.y, at.z + kChestUnits});
@@ -904,6 +922,15 @@ void LogPull(Survey const& survey, hand_calibration::Squad const& settings) {
         : survey.nearest >= 0 ? std::format("pointing at nobody (nearest {} at {:.0f} deg, cone {:.0f})", gMembers[survey.nearest].name,
                                     gMembers[survey.nearest].angle / kDeg, settings.pointConeDeg)
                               : std::string("no squadmate in view"));
+}
+
+#if defined(MEVR_GAME_LE1)
+
+// The squad read and surveyed in one call (the native wheel's tick).
+Survey SurveySquad(Game const& game, double deltaSeconds, bool busy, bool newPull, vr::controllers::Hand const& left,
+    vr::host_view::State const& view, hand_calibration::Squad const& settings) {
+    ReadMembers(game, deltaSeconds, busy, newPull);
+    return SurveyPointing(busy, left, view, settings);
 }
 
 // ---- style = native: the game's own weapon wheel -------------------------------------------------
@@ -1391,27 +1418,192 @@ void PublishWheelPanel(Link const& link, hand_calibration::Squad const& settings
     link.setWheelPanel(&panel);
 }
 
+// ---- The game's native side behind our drawn menu (docs/trilogy-parity-ledger.md Forks 5) -------------------
+// One menu tick for every game (TickCustom below); what differs per game is in `native`: how the squad is read, how
+// the game is paused under the menu, what a confirmed tile orders and how the order's outcome is observed.
+//   Read      this tick's squad into gMembers / gCount (details every tick while the menu is busy); nullopt with `why`
+//             while the game has no squad to order.
+//   Pause     the menu opened with [Squad] pause.        Unpause   it closed (before the order goes out).
+//   Stop      the menu went inactive some other way (mode, view, controllers, the feature off).
+//   Equip     the confirmed tile for gMembers[member].   Follow    what became of the last order.
+//   TileName  a tile's weapon in words.                  NextPage  the "more weapons" tile (a longer inventory).
+#if defined(MEVR_GAME_LE1)
+namespace native {
+using Squad = Game;
+std::optional<Squad> Read(double deltaSeconds, bool busy, bool newPull, std::string& why) {
+    std::optional<Game> game = ReadGame(why);
+    if (game) {
+        ReadMembers(*game, deltaSeconds, busy, newPull);
+    }
+    return game;
+}
+void Pause(Squad const& squad) { PauseGame(squad, true); }
+void Unpause(Squad const& squad) {
+    if (gPausedByUs) {
+        PauseGame(squad, false);  // first, as the wheel's Deactivated does
+    }
+}
+void Stop(char const* why) {
+    ResumeIfPaused(why);
+    ReleaseWheel(why);
+}
+void Equip(Squad const& squad, int member, int tile) { squad_weapons::Equip(squad, member, tile); }
+void Follow(double deltaSeconds) { FollowPending(deltaSeconds); }
+std::string TileName(MemberInfo const&, int tile) { return menu::WeaponName(tile); }  // ME1's tile is the weapon type
+void NextPage(int) {}  // four quick slots, four tiles: no pages
+}  // namespace native
+#elif defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+#include "game/Le2SquadMenu.inc"
+#endif
+
 void Inactive(std::string why, Link const& link) {
     if (gMachine.CurrentPhase() != menu::Phase::Idle) {
         log::Info("squad: menu closed ({})", why);
     }
-#if defined(MEVR_GAME_LE1)
-    ResumeIfPaused(why.c_str());
-    ReleaseWheel(why.c_str());
-#endif
-#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
-    menu_pause::SetSquadPause(false);
-    gPending = {};
-#endif
+    native::Stop(why.c_str());
     gMachine.Reset();
     gUsable = false;
     Publish(link, false);
     SetWhy(std::move(why));
 }
 
-#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
-#include "game/Le2SquadMenu.inc"
-#endif
+// Our drawn menu, every game: the gates, the squad and the pointing, the machine, and what its steps do.
+void TickCustom(double deltaSeconds, Link const& link, hand_calibration::Squad const& settings,
+    vr::controllers::State const& controllers, bool newPull, bool wasDown, std::optional<std::uint8_t> mode) {
+    vr::controllers::Hand const& left = controllers.left;
+    if (!mode || *mode != 0) {
+        Inactive(std::format("not on foot (game mode {})", mode ? std::to_string(*mode) : std::string("unknown")), link);
+        return;
+    }
+    vr::host_view::State const view = vr::host_view::Latest();
+    if (!view.valid) {
+        Inactive("no head-tracked world view (Halcyon's menu, a flat screen or VR off)", link);
+        return;
+    }
+    if (!controllers.active) {
+        Inactive("the controllers aren't active", link);
+        return;
+    }
+    // The squad, this tick, and what the left hand points at.
+    bool const busy = gMachine.CurrentPhase() != menu::Phase::Idle;
+    std::string why;
+    auto const squad = native::Read(deltaSeconds, busy, newPull, why);
+    if (!squad) {
+        Inactive(why, link);
+        return;
+    }
+    Survey const survey = SurveyPointing(busy, left, view, settings);
+    int const pointed = survey.pointed;
+    int const preferred = survey.preferred;
+    char const* const preferredWhy = survey.preferredWhy;
+
+    // The squad (and, where the tiles are pages of an inventory, what they carry) mustn't change under an open menu.
+    bool sameSquad = true;
+    if (busy) {
+        sameSquad = gCount == gOpenCount;
+        for (int i = 0; i < gCount && sameSquad; ++i) {
+            sameSquad = gMembers[i].key == gOpenKeys[i] && gMembers[i].inventory == gOpenInventory[i];
+        }
+    }
+    gUsable = sameSquad;  // an empty squad still answers a pull (a refusal); the machine closes on it
+
+    menu::Input in;
+    in.dt = static_cast<float>(deltaSeconds);
+    in.usable = gUsable && !support_grip::Held();
+    in.triggerDown = gTrigger;
+    in.newPull = newPull;
+    in.pointed = pointed >= 0 ? CardOf(pointed) : -1;
+    in.preferred = CardOf(preferred);
+    in.memberCount = gCount;
+    for (int c = 0; c < gCount; ++c) {
+        in.members[c].carried = gMembers[gCardOrder[c]].carried;
+        in.members[c].current = gMembers[gCardOrder[c]].current;
+        in.members[c].more = gMembers[gCardOrder[c]].page.more;  // -1 where the tiles are the whole inventory (ME1)
+    }
+    in.leftX = left.stickX;
+    in.leftY = left.stickY;
+    in.rightX = controllers.right.stickX;
+    in.rightY = controllers.right.stickY;
+    in.a = controllers.right.primary;
+    in.b = controllers.right.secondary;
+    in.confirmOnRelease = settings.confirmOnRelease;
+    int const selectedBefore = gMachine.Selected();
+    menu::Step const step = gMachine.Update(in);
+
+    auto const nameOfCard = [&](int card) {
+        return card >= 0 && card < gCount ? gMembers[gCardOrder[card]].name : std::string("-");
+    };
+    // A tile of the chosen card, in words.
+    auto const tileOfCard = [&](int card, int tile) {
+        return card >= 0 && card < gCount ? native::TileName(gMembers[gCardOrder[card]], tile) : std::string(menu::WeaponName(tile));
+    };
+    if (newPull) {
+        LogPull(survey, settings);
+    }
+    if (step.refused) {
+        ++gRefusals;
+        log::Info("squad: no squadmates to give weapons to");
+        RefusedHaptic(link, kLeft);
+    }
+    if (step.opened) {
+        ++gSerial;
+        ++gOpens;
+        gOpenCount = gCount;
+        for (int i = 0; i < kMaxMembers; ++i) {
+            gOpenKeys[i] = gMembers[i].key;
+            gOpenInventory[i] = gMembers[i].inventory;
+        }
+        gPointedCard = step.openedPointing ? gMachine.Selected() : -1;
+        log::Info("squad: menu #{} opened{}: {} chosen{}; cards: left {}, right {}", gSerial,
+            step.openedPointing ? " (pointed)" : " (pointing at nobody)", nameOfCard(gMachine.Selected()),
+            step.openedPointing ? std::string() : std::format(" ({})", preferredWhy), nameOfCard(0), nameOfCard(1));
+        OpenHaptic(link);
+        if (settings.pause) {
+            native::Pause(*squad);
+        }
+    }
+    if (step.cardChanged) {
+        log::Info("squad: card: {} (left stick, was {})", nameOfCard(gMachine.Selected()), nameOfCard(selectedBefore));
+        TickHaptic(link, kLeft);
+    }
+    if (step.tileChanged) {
+        log::Info("squad: highlight: {}", gMachine.Highlighted() >= 0
+            ? std::format("the {} ({})", tileOfCard(gMachine.Selected(), gMachine.Highlighted()),
+                  menu::DirectionName(menu::DirectionOf(gMachine.Highlighted())))
+            : std::string("none (the new squadmate doesn't carry it)"));
+        if (gMachine.Highlighted() >= 0) {
+            TickHaptic(link, kRight);
+        }
+    }
+    if (step.tileRefused) {
+        log::Info("squad: flick toward a weapon {} doesn't carry", nameOfCard(gMachine.Selected()));
+        RefusedHaptic(link, kRight);
+    }
+    if (step.pageChanged && step.member >= 0 && step.member < gCount) {
+        log::Info("squad: {}'s next weapons", nameOfCard(step.member));
+        TickHaptic(link, kRight);
+        native::NextPage(gCardOrder[step.member]);
+    }
+    if (step.closed != menu::Close::None) {
+        native::Unpause(*squad);
+        if (step.closed == menu::Close::Confirmed && step.member >= 0 && step.member < gCount) {
+            ++gConfirms;
+            int const member = gCardOrder[step.member];
+            log::Info("squad: menu #{} confirmed ({}): {} gets the {}", gSerial,
+                wasDown && !gTrigger ? "trigger let go" : "A", gMembers[member].name, tileOfCard(step.member, step.weapon));
+            ConfirmHaptic(link);
+            native::Equip(*squad, member, step.weapon);
+        } else {
+            ++gCancels;
+            log::Info("squad: menu #{} {}", gSerial, menu::CloseName(step.closed));
+            CancelHaptic(link);
+        }
+        gPointedCard = -1;
+    }
+    SetWhy(gMachine.IsOpen() ? "open" : "ready");
+    Publish(link, gMachine.IsOpen());
+    native::Follow(deltaSeconds);
+}
 
 } // namespace
 
@@ -1525,11 +1717,11 @@ void Tick(double deltaSeconds, Link const& link) {
         Inactive("the host is older than v11 (redeploy it)", link);
         return;
     }
-#if defined(MEVR_GAME_LE1)
     if (!gStarted) {
         Inactive("waiting for the script functions", link);
         return;
     }
+#if defined(MEVR_GAME_LE1)
     bool const nativeReady = gEnterWeaponWheel != nullptr && gExitWeaponWheel != nullptr;
     if (settings.native && (!link.nativeSupported || !nativeReady) && !gToldNoNative) {
         gToldNoNative = true;
@@ -1549,140 +1741,10 @@ void Tick(double deltaSeconds, Link const& link) {
     if (gWheel.Holding()) {
         ReleaseWheel("style is custom now");
     }
-    if (!mode || *mode != 0) {
-        Inactive(std::format("not on foot (game mode {})", mode ? std::to_string(*mode) : std::string("unknown")), link);
-        return;
-    }
-    vr::host_view::State const view = vr::host_view::Latest();
-    if (!view.valid) {
-        Inactive("no head-tracked world view (Halcyon's menu, a flat screen or VR off)", link);
-        return;
-    }
-    if (!controllers.active) {
-        Inactive("the controllers aren't active", link);
-        return;
-    }
-    std::string why;
-    auto const game = ReadGame(why);
-    if (!game) {
-        Inactive(why, link);
-        return;
-    }
-
-    // The squad, this tick, and what the left hand points at.
-    bool const busy = gMachine.CurrentPhase() != menu::Phase::Idle;
-    Survey const survey = SurveySquad(*game, deltaSeconds, busy, newPull, left, view, settings);
-    int const pointed = survey.pointed;
-    int const preferred = survey.preferred;
-    char const* const preferredWhy = survey.preferredWhy;
-
-    // The squad mustn't change under an open menu.
-    bool sameSquad = true;
-    if (busy) {
-        sameSquad = gCount == gOpenCount;
-        for (int i = 0; i < gCount && sameSquad; ++i) {
-            sameSquad = gMembers[i].key == gOpenKeys[i];
-        }
-    }
-    gUsable = sameSquad;  // an empty squad still answers a pull (a refusal); the machine closes on it
-
-    menu::Input in;
-    in.dt = static_cast<float>(deltaSeconds);
-    in.usable = gUsable && !support_grip::Held();
-    in.triggerDown = gTrigger;
-    in.newPull = newPull;
-    in.pointed = pointed >= 0 ? CardOf(pointed) : -1;
-    in.preferred = CardOf(preferred);
-    in.memberCount = gCount;
-    for (int c = 0; c < gCount; ++c) {
-        in.members[c].carried = gMembers[gCardOrder[c]].carried;
-        in.members[c].current = gMembers[gCardOrder[c]].current;
-    }
-    in.leftX = left.stickX;
-    in.leftY = left.stickY;
-    in.rightX = controllers.right.stickX;
-    in.rightY = controllers.right.stickY;
-    in.a = controllers.right.primary;
-    in.b = controllers.right.secondary;
-    in.confirmOnRelease = settings.confirmOnRelease;
-    int const selectedBefore = gMachine.Selected();
-    menu::Step const step = gMachine.Update(in);
-
-    auto const nameOfCard = [&](int card) {
-        return card >= 0 && card < gCount ? gMembers[gCardOrder[card]].name : std::string("-");
-    };
-    if (newPull) {
-        LogPull(survey, settings);
-    }
-    if (step.refused) {
-        ++gRefusals;
-        log::Info("squad: no squadmates to give weapons to");
-        RefusedHaptic(link, kLeft);
-    }
-    if (step.opened) {
-        ++gSerial;
-        ++gOpens;
-        gOpenCount = gCount;
-        for (int i = 0; i < kMaxMembers; ++i) {
-            gOpenKeys[i] = gMembers[i].key;
-        }
-        gPointedCard = step.openedPointing ? gMachine.Selected() : -1;
-        log::Info("squad: menu #{} opened{}: {} chosen{}; cards: left {}, right {}", gSerial,
-            step.openedPointing ? " (pointed)" : " (pointing at nobody)", nameOfCard(gMachine.Selected()),
-            step.openedPointing ? std::string() : std::format(" ({})", preferredWhy), nameOfCard(0), nameOfCard(1));
-        OpenHaptic(link);
-        if (settings.pause) {
-            PauseGame(*game, true);
-        }
-    }
-    if (step.cardChanged) {
-        log::Info("squad: card: {} (left stick, was {})", nameOfCard(gMachine.Selected()), nameOfCard(selectedBefore));
-        TickHaptic(link, kLeft);
-    }
-    if (step.tileChanged) {
-        log::Info("squad: highlight: {}", gMachine.Highlighted() >= 0
-            ? std::format("the {} ({})", menu::WeaponName(gMachine.Highlighted()), menu::DirectionName(menu::DirectionOf(gMachine.Highlighted())))
-            : std::string("none (the new squadmate doesn't carry it)"));
-        if (gMachine.Highlighted() >= 0) {
-            TickHaptic(link, kRight);
-        }
-    }
-    if (step.tileRefused) {
-        log::Info("squad: flick toward a weapon {} doesn't carry", nameOfCard(gMachine.Selected()));
-        RefusedHaptic(link, kRight);
-    }
-    if (step.closed != menu::Close::None) {
-        if (gPausedByUs) {
-            PauseGame(*game, false);  // first, as the wheel's Deactivated does
-        }
-        if (step.closed == menu::Close::Confirmed && step.member >= 0 && step.member < gCount) {
-            ++gConfirms;
-            int const member = gCardOrder[step.member];
-            log::Info("squad: menu #{} confirmed ({}): {} gets the {}", gSerial,
-                wasDown && !gTrigger ? "trigger let go" : "A", gMembers[member].name, menu::WeaponName(step.weapon));
-            ConfirmHaptic(link);
-            Equip(*game, member, step.weapon);
-        } else {
-            ++gCancels;
-            log::Info("squad: menu #{} {}", gSerial, menu::CloseName(step.closed));
-            CancelHaptic(link);
-        }
-        gPointedCard = -1;
-    }
-    SetWhy(gMachine.IsOpen() ? "open" : "ready");
-    Publish(link, gMachine.IsOpen());
-    FollowPending(deltaSeconds);
 #else
-    (void)deltaSeconds;
-    (void)newPull;
-    (void)wasDown;
-    (void)mode;
-#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
-    TickLe2(deltaSeconds, link, settings, controllers, newPull);
-#else
-    Inactive("LE1 only", link);
+    gStyleNative = false;  // the sequels' own weapon wheels are different UIs: our drawn menu at the hand
 #endif
-#endif
+    TickCustom(deltaSeconds, link, settings, controllers, newPull, wasDown, mode);
 }
 
 void AdjustPad(gamepad::Options& options) {
@@ -1875,11 +1937,13 @@ void Shutdown(bool processExiting) {
     gCount = 0;
     gCardOrder = {0, 1};
     gOpenKeys = {};
+    gOpenInventory = {};
     gOpenCount = 0;
     gDetailsAge = 1e9;
 #if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     gLe2LastSquad = nullptr;
     gLe2Pages.clear();
+    gLe2PendingWeapon = 0;
 #endif
     gLoggedSquad.clear();
     gTrigger = false;
