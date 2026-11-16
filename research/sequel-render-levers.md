@@ -90,7 +90,7 @@ uses seen in ME2's code); **U** found, some offset or behaviour not verified (na
 | sharePass 1 | Umbra commander index | `0x1795D28` | `0x175D288` | V | aligned; LE1's pattern finds it; `0x3FB390` writes it | int64 | yes |
 | sharePass (Eligible) | show flags' bits per word | `0x164C720` (a literal in RenderLevers.cpp, no LE1 row) | `0x1618A30` | V | aligned in 5 functions | uint (32) | yes |
 | captures | scene capture's CaptureScene thunk | `0x742C80` | `0x329B90` | V | the same 16 bytes; called from the capture loop at the same place | (capture info, main renderer) | yes; nothing in ME2 makes a capture yet |
-| captures | FSceneRenderTargets::BeginRenderingBackBuffer | `0x773D30` | `0x354570` | U | call site aligned (the finish); read in Ghidra | (targets, flags); binds RHI +0x520 as LE1. **ME2's sets no viewport** (LE1's calls RHI +0x340): who sets it for the caller is not read. The capture target's vtable +0x8 (its surface) is not read in ME2's code | yes |
+| captures | FSceneRenderTargets::BeginRenderingBackBuffer | `0x773D30` | `0x354570` | U | call site aligned (the finish); read in Ghidra | (targets, flags); binds RHI +0x520 as LE1. **ME2's sets no viewport** (LE1's calls RHI +0x340 itself), and its two proxy callers make no RHI +0x340 call of their own: where the final pass's viewport comes from (a quad-drawing helper, or the one left set) is not read, so whether a capture's final pass covers its own target is unverified | yes |
 | UI world figure | scene capture's Umbra camera thunk | `0x7526C0` | `0x333240` | U | the same bytes, one match | not read further: the feature is LE1's equipment screen | not applicable |
 | body bounds | USkeletalMeshComponent::UpdateBounds | `0x58EEC0` | `0x798350` | V | 0.964 over 390 instructions: only component offsets differ (+8); its last call is the Umbra hand-over | (component). `Bounds` comes from reflection | independent of stereo |
 | body bounds | UPrimitiveComponent::UpdateUmbraBounds | `0x25CFE0` | `0x3146C0` | V | 0.965; read in Ghidra | (component); the Umbra object at **+0x214** (LE1 +0x210), tested for null inside; safe to call again | independent of stereo |
@@ -126,7 +126,7 @@ Enter these in `RenderLeversTable.hpp`. "same" = the same value as LE1, seen in 
 | GDynamicRHI vtable | +0x8A0 AddRef bound shader state; +0x628 / +0x620 scene begin / end; +0x520 set render target; +0x340 set viewport; +0x4C0 set view parameters | | same | the two vtables match slot for slot (408 slots) |
 | FD3D11BoundShaderState | refcount +8; handle = object +0xC; size 0x84 | | same | `0x98ECD0`, `0x991690` |
 | FRenderTarget vtable | +0x18 GetSizeX, +0x20 GetSizeY | | same | `0x34BF70` |
-| | +0x08 GetRenderTargetSurface | | not read | — |
+| | +0x08 GetRenderTargetSurface (returns a pointer to the surface reference) | | same | the view finish `0x338B60` (LE1's `0x75B2E0`, 1.000): renderer +0x18 → vtable +8 → RHI +0x520, then RHI +0x340, exactly what `scene_capture_target::Bind` does; the view's +0x4B4 flag too |
 | USkeletalMeshComponent | the Umbra object | +0x210 | +0x214 | `0x3146C0` (BodyBounds does not read it) |
 
 Signatures: every hooked function takes the arguments LE1's takes, in the same registers and stack slots (the identical
@@ -269,10 +269,13 @@ saves little; port only 5. Their one ME2-specific fact: `ReplaySEH` arms command
 
 1. Hook "scene capture's CaptureScene thunk" (`0x329B90`) and "FSceneRenderTargets::BeginRenderingBackBuffer"
    (`0x354570`), as `CaptureSceneHook` and `BeginBackBufferHook`. The capture loop is at the same place in `0x34BF70`.
-2. Before relying on `scene_capture_target::Bind` in ME2, read two things this lane did not: the capture target's
-   vtable slot +0x8 (its surface), and who sets the viewport after ME2's `BeginRenderingBackBuffer` (LE1's sets it
-   itself through RHI +0x340; ME2's does not; its callers are the two post-process proxy renders `0x3A9FE0` and
-   `0x3AAE40`, and three others).
+2. `scene_capture_target::Bind`'s calls are right for ME2 (the target's vtable +0x8, RHI +0x520 and +0x340: the same
+   three calls ME2's own view finish `0x338B60` makes). Before relying on it, read the one thing this lane did not:
+   where the final pass's viewport comes from after ME2's `BeginRenderingBackBuffer` (LE1's sets it itself through RHI
+   +0x340; ME2's does not, and its callers, the two post-process proxy renders `0x3A9FE0` and `0x3AAE40`, make no such
+   call directly). `Bind` sets the capture's viewport itself; if a helper sets the back buffer's afterwards, a
+   capture's final pass needs that corrected too. The check: a capture with a post-process chain whose picture fills
+   its own target (LE1's symptom was a stretched picture in the backbuffer and an empty target, research/47).
 3. ME3's capture work (`plugin/Le3SceneCapture`) hooks the same four places; ME2's counterparts of its rows are
    `0x329B90` (CaptureScene), `0x348BE0` (the inner render a capture calls), `0x354570`, `0x174C648`.
 
@@ -286,10 +289,32 @@ look for the symptom in ME2 (look down with the head turned).
 
 #### Not in this lane: the motion-blur guard (ledger R10)
 
-ME2's two post-process proxy render bodies are `0x3A9FE0` (LE1's blur `0x279360`) and `0x3AAE40` (LE1's no-blur
-`0x27A100`), by similarity (0.91 each way, told apart by their order and their 40-byte size difference, as in LE1).
-The vtable pairs and their fingerprints were not audited (LE1's and ME3's each needed a constructor and factory audit:
-research/62, research/le3-recenter-transition-failure.md), so there are no rows for them.
+Found, not added to the table (state U: the structure matches LE1's; the constructor and factory audit LE1 and ME3
+each had, research/62 and research/le3-recenter-transition-failure.md, was not repeated; nothing installs the guard on
+ME2, and `plugin/MotionBlurGuard.cpp` takes LE1's namespace for any game but LE3).
+
+ME2's two proxy render bodies are `0x3A9FE0` (blur; LE1's `0x279360`) and `0x3AAE40` (no blur; LE1's `0x27A100`):
+similarity 0.91, told apart by their order and their 40-byte size difference as in LE1, and by their vtables. Each is
+reached through a `jmp` thunk in slot 1 of the proxy vtables (`0x3CE710` blur, `0x3CE720` no blur; LE1's `0x2BB0B0`,
+`0x2BB0C0`). ME2 has LE1's five pairs, laid out the same way (in a pair slot 0 and slot 9 are the same function, slots
+5 and 6 differ the same way, slots 7 and 8 are the shader selectors). The fingerprint is `MotionBlurGuard.cpp`'s
+(FNV-1a over the ten slots as RVAs), computed from the exe's `.rdata`; the same computation reproduces LE1's ten
+table values. Each vtable is referenced from one constructor site, with LE1's row patterns.
+
+| Pair | Blur vtable | Sharp vtable | Blur fingerprint | Sharp fingerprint | Blur site | Sharp site |
+|---|---|---|---|---|---|---|
+| 1 | `0x10916F8` | `0x1091608` | `0xBFC71FCE68229650` | `0x52E76B8A421260FC` | `0x3ACA94` | `0x3AD6F4` |
+| 2 | `0x1091748` | `0x1091658` | `0xCE1E0C8FBBC5C108` | `0x21030D6CD55FEDF1` | `0x3AC601` | `0x3AD261` |
+| 3 | `0x1091798` | `0x10916A8` | `0x13C2B4294DA71338` | `0x50E1AB55D374BD01` | `0x3AC214` | `0x3ACE74` |
+| 4 | `0x10931A8` | `0x1093108` | `0xA48F5C1ED1E104C0` | `0xAA81D23F6690FEA1` | `0x3B2387` | `0x3B2145` |
+| 5 | `0x10931F8` | `0x1093158` | `0x2723B679797B8B86` | `0x21761A01E2EB112F` | `0x3B24A4` | `0x3B2262` |
+
+Site pattern, offset 3: pairs 1-3 `48 8D 05 ?? ?? ?? ?? 48 89 03 48 85 FF 74 0A F3` (LE1's); pairs 4-5
+`48 8D 05 ?? ?? ?? ?? 48 89 07 45 8B C5 B8 01 00`. To port: add `kMotionBlurProxyRender = 0x3A9FE0`,
+`kNoBlurProxyRender = 0x3AAE40` and `kMotionBlurProxyPairs` to the LE2 block with twelve rows (the two functions'
+first bytes are the same, so give those two rows no pattern or a longer one: ME2's dump test wants a function's pattern
+unique), select `le2` in `MotionBlurGuard.cpp`, and install it in the LE2 host. Before that, the ledger's own next step:
+a head-turn snapshot pair looking for the one-eye smear.
 
 ### Which levers ME2 can't have
 
