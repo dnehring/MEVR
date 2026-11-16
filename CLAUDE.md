@@ -405,7 +405,7 @@ switching frameworks.
   `pawn.Location.z - CylinderComponent.CollisionHeight + unitsPerMeter * live STAGE/LOCAL_FLOOR eye height`, independent of
   recenter posture, animated camera bones, mode offsets and vertical framing. Both eyes share the correction before metric
   eye offsets and head look; `HostServices` v34 publishes the corrected centre/pose to ViewAnchor, IK and sights (host and mod
-  deploy together; current HostServices v38). `[Body] floorLock = 1` by default; file-only `0` opts out. The temporary
+  deploy together; current HostServices v43). `[Body] floorLock = 1` by default; file-only `0` opts out. The temporary
   0.1.0 default-off workaround is superseded by the held-camera fix (2026-11-07): world UI, conversations and map holds
   capture `corrected centre Z - common framing Z` using the captured camera's rotation, then framing is added once.
   A wrist/conversation hold retains its on-foot scale factor and cylinder-floor pivot, despite mode 7/5 disabling fresh correction.
@@ -1633,7 +1633,10 @@ switching frameworks.
   back once), so **the mod applies the VR values itself** (`game/SystemSettings`, hot-reloaded): `scale set
   DynamicShadows False`, `MotionBlur False`, `FoliageDrawRadiusMultiplier 0.5` (and `LightEnvironmentShadows False` while
   the second eye is a replay, sharePass 2/3/5: the right eye drew character shadows where the left eye sees them, research/37
-  2026-11-13) through the local player's console
+  2026-11-13; **the host says whether it is**, HostServices v43 `secondEyeIsReplay` = `render_levers::SecondEyeIsReplay()`,
+  false on a game where sharePass stands down, so ME2 and ME3 keep their character shadows: there the mod puts the player's
+  own `GamerSettings.ini` value back, since the game had written our earlier False into `BIOEngine.ini`; a host before v43:
+  the file's `sharePass` rule on LE1 only, `engine::adapter::kOlderHostReplaysSecondEye`) through the local player's console
   once a player exists, **again after every level change, each boolean through its opposite first** (research/35
   attempt 49, 2026-10-28: the save's level rendered with the blur although the ini and the title's `scale set` said
   off, and the same `False` there did nothing while True then False turned it off; in stereo the blur's velocity is

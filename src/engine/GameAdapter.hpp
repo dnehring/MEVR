@@ -231,6 +231,15 @@ inline constexpr bool kModulesOnLayer = true;
 inline constexpr bool kModulesOnLayer = false;
 #endif
 
+// Hosts before HostServices v43 didn't say whether the frame's second eye is a replay of the first's draws; the mod
+// read [Performance] sharePass itself. Only LE1's hosts ever replayed (plugin/RenderLevers' sharePass), so only there
+// does a newer mod on such a host keep the file's rule (game/SystemSettings' LightEnvironmentShadows entry).
+#if defined(MEVR_GAME_LE1)
+inline constexpr bool kOlderHostReplaysSecondEye = true;
+#else
+inline constexpr bool kOlderHostReplaysSecondEye = false;
+#endif
+
 // Where the layer finds the engine's globals: an RVA (fast; right for 2.0.0.48602) and a byte
 // pattern of code that references the global (survives a patch that moves it). Each pattern names
 // the RIP-relative instruction inside it: where it starts, where its displacement is, its length.
