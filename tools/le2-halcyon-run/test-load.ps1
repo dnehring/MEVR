@@ -30,6 +30,16 @@ Case 'imports paths injection and malformed types refused' {
     }
     foreach ($career in @('two words', 'test;quit', "test`nquit", '..', 'x/y', "test'name")) { Reject { Get-LoadDescriptor $career 'Save_0031.pcsav' } }
 }
+Case 'LE3 Legend checkpoint keeps its native descriptor and remains unavailable on LE2' {
+    $d = Get-LoadDescriptor test_career 'LegendSave.pcsav' LE3
+    Check ($d.name -ceq 'LegendSave' -and $d.index -eq -1 -and $d.type -eq 5)
+    Check ((Get-LoadDescriptor test_career 'legendsave.PCSAV' LE3).name -ceq 'LegendSave')
+    Reject { Get-LoadDescriptor test_career 'LegendSave.pcsav' LE2 }
+    foreach ($name in @('Export.pcsav', 'NewGamePlusSave.pcsav', 'LegendSave_1.pcsav', 'other\LegendSave.pcsav')) {
+        Reject { Get-LoadDescriptor test_career $name LE3 }
+    }
+    Check (-not (Test-LoadDescriptor $d (ConvertFrom-LoadDescriptor "mevr savedesc: career 'test_career' save 'LegendSave' index -1 type 4")))
+}
 Case 'exact descriptor matching does not trust queue acknowledgement' {
     $expected = Get-LoadDescriptor test_career 'Save_0031.pcsav'
     $text = "mevr savedesc: career 'test_career' save 'Save_0031' index 31 type 0"

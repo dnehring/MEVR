@@ -137,7 +137,12 @@ Always stop the owned process and restore in `finally`, including after a failed
 
 LE3 requires an explicit save and actual JSON `true` values for `desktopDump`, `engineProbe` and `engineRequests`
 in the session. These flags are established by the coordinator's `prep.ps1`/`launch.ps1` engine-request mode;
-this load helper does not enable them. Only normal manual/quick/auto/chapter descriptors (types 0..3) are accepted.
+this load helper does not enable them. Manual/quick/auto/chapter descriptors (types 0..3) are accepted.
+LE3 also accepts `LegendSave.pcsav` as its native Legend descriptor (type 5, index -1);
+LE2 continues to reject it. This reuses the same queue/load and acceptance gates without renaming or editing the file.
+The audited native Legend request failed acceptance: the resulting resume descriptor reported unnamed Auto,
+not the requested Legend descriptor. This remains a diagnostic candidate, not a verified load shortcut;
+the exact descriptor gate is intentionally unchanged. See `research/le3-save-foundation.md`.
 The file must be directly under a career in that game's save root. Reparse points, other-game files, malformed
 names, import/export/NG+ saves and command-unsafe career tokens are refused.
 

@@ -220,3 +220,40 @@ Its save and runtime hashes remained unchanged, and restoration reported zero di
 ordinary combat fixture**. The presence of a combat class and weapon records in a save is insufficient. Do not
 relax mode checks or label a queued request successful to admit it. Native weapon getter comparison was not run
 because the prerequisite gameplay gate failed. Private session suffix: `20261115-132944-348-LE3-weapon-load`.
+
+### Legend descriptor audit and failed acceptance
+
+The installed `SFXEngine.ESFXSaveGameType` enum agrees with the LE3 SDK: Legend
+is type 5, distinct from export type 4. The normal load GUI submits its selected
+descriptor to the already used `QueueSaveGameCommand` load action; import and
+NG+ modes use separate paths. The protected helper and in-mod request now admit
+only the exact additional LE3 descriptor `LegendSave`, index -1, type 5. LE2
+still refuses it. Twelve load-helper cases cover game separation, canonical
+filename case, malformed/unsupported names and exact descriptor mismatches.
+
+Protected run `20261115-202846-154-LE3-navigation` queues the untouched original
+LegendSave, changes world/pawn identity and reaches mode 0 in `BioP_Nor` at
+approximately (-2, 3389, 131), the CIC console. It does **not** enter the
+pre-assault cabin sequence suggested by its serialized streaming records.
+The current resume descriptor reports an empty save name and type 2 (Auto).
+The exact requested type-5 descriptor therefore does not match, and the existing
+120-second load acceptance gate correctly fails. Source and runtime hashes
+remain unchanged; restoration reports zero differences and releases the lock.
+
+Do not broaden descriptor matching to treat that unnamed Auto result as a
+verified Legend load. This is not a combat fixture or an accepted shortcut.
+The game updates AutoSave, but the first private preservation implementation
+incorrectly wraps Windows PowerShell's decoded JSON array and retains no copy.
+That wrapper enumeration is corrected and checked against all six manifest
+rows; native preservation still needs proof. The original user save is restored.
+Continue the already verified AutoSave-to-Cronos route while retaining this
+separate native save-type finding. Raw package decompilation remains private.
+
+The subsequent run `20261115-203330-839-LE3-navigation` proves the corrected
+preservation path: after stopping the owned game, the wrapper retains changed
+AutoSave and LegendSave files with matching copy hashes, then restores the user's
+originals. Both retained files pass full independent TSE comparison and identical
+reconstruction. They remain noncombat Normandy saves with no player weapons;
+neither has passed a native reload. The oracle's generated resource variants
+remain offline and were not installed. The environment restoration receipt
+reports zero differences, and both the game and owning wrapper have exited.

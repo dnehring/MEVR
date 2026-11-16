@@ -12,7 +12,7 @@ function ConvertFrom-LoadDescriptor([string]$Text) {
     if ($Text.Trim() -notmatch "^mevr savedesc: career '(?<career>[^']*)' save '(?<name>[^']*)' index (?<index>-?[0-9]+) type (?<type>[0-9]+)$") { return $null }
     [pscustomobject]@{ career = $Matches.career; name = $Matches.name; index = [int]$Matches.index; type = [int]$Matches.type }
 }
-function Get-LoadDescriptor([string]$Career, [string]$FileName) {
+function Get-LoadDescriptor([string]$Career, [string]$FileName, [ValidateSet('LE2', 'LE3')][string]$Game = 'LE2') {
     # ConsoleRequest reads whitespace-delimited tokens. Never permit command injection or a path as a token.
     if ($Career -notmatch '^[\p{L}\p{N}_-]+$' -or [IO.Path]::GetExtension($FileName) -ine '.pcsav' -or
         [IO.Path]::GetFileName($FileName) -cne $FileName) { throw 'Invalid career token or save filename' }
@@ -23,7 +23,12 @@ function Get-LoadDescriptor([string]$Career, [string]$FileName) {
         '^QuickSave$' { $type = 1; break }
         '^AutoSave$' { $type = 2; break }
         '^ChapterSave$' { $type = 3; break }
-        default { throw 'Only normal manual, quick, auto and chapter saves may be loaded; import/export/NG+ are refused' }
+        '^LegendSave$' {
+            if ($Game -ne 'LE3') { throw 'LegendSave loading is audited for LE3 only' }
+            $name = 'LegendSave'
+            $type = 5; break
+        }
+        default { throw 'Only manual, quick, auto, chapter and LE3 Legend saves may be loaded; import/export/NG+ are refused' }
     }
     [pscustomobject]@{ career = $Career; name = $name; index = $index; type = $type }
 }

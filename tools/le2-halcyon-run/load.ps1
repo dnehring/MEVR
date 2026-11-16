@@ -51,7 +51,7 @@ if ($file.PSIsContainer -or $file.Directory.Parent.FullName -ine [IO.Path]::GetF
 foreach ($path in @($saves, $file.Directory.FullName, $Save)) {
     if ((Get-Item -LiteralPath $path).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Linked save paths are refused' }
 }
-$expected = Get-LoadDescriptor $file.Directory.Name $file.Name
+$expected = Get-LoadDescriptor $file.Directory.Name $file.Name $Game
 $hash = (Get-FileHash -LiteralPath $Save).Hash
 $receiptDir = Resolve-RunChild $sessionPath ('load-' + [DateTime]::UtcNow.ToString('yyyyMMdd-HHmmss-fff') + '-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $receiptDir | Out-Null

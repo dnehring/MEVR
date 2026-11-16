@@ -161,6 +161,24 @@ Validation: LE1/LE2/LE3 game translation units compile under the repository warn
 Integration wiring: under the existing sequel/main-menu branch, publish `sizeof(vr::thespian::Panel)` and `&host::thespian::SetPanel` for LE3 as for LE2; clear its publication on mod unload. The LE3 renderer consumer/lifecycle is already in `13e3b109`. Keep the separate ConversationWorld/ISACT guards. The existing Mod ThespianLink already uses the ABI-checked panel callback and VoiceLink, and Tick already calls Thespian; its old unavailable comment should be updated.
 
 
+## Native dialogue reader and focus refusal
+
+Protected run `20261115-203330-839-LE3-navigation` exercises the routed
+`mevr thespian cards` command against three successive native reply wheels:
+the Hackett mission briefing and two cabin wheels. It returns live paraphrases,
+categories and localized full spoken lines. The ordinary pad route advances the
+authored sequences; holding the appropriate stick direction through A succeeds.
+This is native reader evidence, not microphone or spoken-selection acceptance.
+
+`mevr thespian pick 0` refuses because another owner holds input. Inspection
+shows the actual XR session is unfocused even with valid head tracking and
+replayed controllers. The LE3 bridge deliberately requires current focused
+context; synthetic pad input does not grant that ownership. Preserve this gate
+and validate command/voice selection with a genuinely focused session. Do not
+weaken it or infer a failed text reader from the selection refusal. Seated
+traversal, interrupts, investigate/back, persuasion eligibility and headset
+readability remain separate unaccepted gates.
+
 ## Selection-ownership review corrections
 
 The review found three concrete shared-path defects before dialogue acceptance: a different native entry could reuse the same reply positions/slots and inherit the old transcript; a failed selection was still counted/flashed as taken; and stop/start requests could coalesce across wheels, admitting late ASR finals to the next entry. These are corrected in the shared adapter, not duplicated for LE3.

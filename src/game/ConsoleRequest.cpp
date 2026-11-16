@@ -1692,8 +1692,17 @@ std::string LoadSave(ue3::Object* engine, std::istringstream& words) {
     std::string name;
     int index = 0;
     int type = 0;
-    if (!(words >> career >> name >> index >> type) || type < 0 || type > 3) {
+    if (!(words >> career >> name >> index >> type)) {
         return "mevr load <career> <save name> <index> <type 0 manual | 1 quick | 2 auto | 3 chapter>";
+    }
+    bool supported = type >= 0 && type <= 3;
+#if defined(MEVR_GAME_LE3)
+    // Installed SFXEngine.ESFXSaveGameType: Legend is 5, not Export (4).
+    // Preserve the special descriptor; never relabel it as an ordinary quicksave.
+    supported = supported || (type == 5 && name == "LegendSave" && index == -1);
+#endif
+    if (!supported) {
+        return "mevr load: unsupported descriptor; types 0..3, or LE3 LegendSave -1 5; exports/NG+ refused";
     }
     ue3::Function* const function = gQueueSaveCommand.Get();
     if (engine == nullptr || function == nullptr || !ue3::memory::Ready()) {

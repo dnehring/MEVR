@@ -55,11 +55,16 @@ to the briefing; two observed native stick-plus-A replies advance through the
 pre-assault sequence. Fifteen captures have no errors and cleanup exits normally
 with zero profile/game/VR differences. Combat is not reached, and no newly
 created checkpoint is retained from that run. The original LegendSave contains
-pre-assault streaming state and needs a native type-5 load audit before it can
+pre-assault streaming state, but its subsequent native type-5 load audit fails
+the exact descriptor gate (the resume descriptor is unnamed Auto); it cannot
 replace this route. The run also identifies and fixes a concrete L3-4 omission:
 ME3's console now routes `mevr thespian` to the existing shared adapter, as ME1/2
-already do. Rebuilt native command acceptance remains open; native pad replies
-do not prove spoken selection. See [dialogue evidence](../research/le3-dialogue-cinema.md).
+already do. The rebuilt reader now returns paraphrases and full localized lines
+on three native wheels. Selection correctly refuses an unfocused XR session;
+native pad replies do not prove spoken selection. The latest run preserves two
+changed native Normandy saves before restoration, and both pass independent
+TSE comparison. Neither contains weapons or is an accepted combat fixture.
+See [dialogue evidence](../research/le3-dialogue-cinema.md).
 
 **Current renderer checkpoint:** the formerly failing Back/recenter transition now
 completes with ME1's shared motion-blur guard adapted to seven verified ME3 proxy

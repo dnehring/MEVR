@@ -214,7 +214,13 @@ fails its process-identity check, and restoration completes before preservation;
 there is **no retained new checkpoint** from this run. The original saves are
 restored byte-for-byte. The private wrapper now preserves changed native saves
 after stopping the owned writer and before restoration, with restoration still
-in a `finally`; this added preservation path has only passed syntax checking.
+in a `finally`. Run `20261115-203330-839-LE3-navigation` subsequently proves this
+path after correcting PowerShell JSON-array enumeration: changed AutoSave and
+LegendSave files are retained and pass the independent TSE oracle. Their hashes
+are `460b22fa4fb52400f2ce202ffbe5a3e3c1d94a35c2fe093f9594bb01a718339d`
+and `eef6ab6ab367940fde7337be667a7939a8a7a2aefcb0c496dddb1c0583c31cd5`.
+Both are still Normandy noncombat checkpoints without weapons; normal reload
+and combat admission are not established for these copies.
 
 A further read-only decode identifies an overlooked existing candidate: the
 original LegendSave already has active `stream_Cat004Intro` and
