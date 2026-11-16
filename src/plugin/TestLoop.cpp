@@ -13,6 +13,9 @@
 #include "plugin/Renderer.hpp"
 #include "engine/GameAdapter.hpp"
 #include "plugin/SightLayers.hpp"
+#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE3)
+#include "plugin/MotionBlurGuard.hpp"
+#endif
 #if defined(MEVR_WITH_HALCYON_LE3)
 #include "plugin/Colour.hpp"
 #include "plugin/FloorLock.hpp"
@@ -840,11 +843,14 @@ struct ModuleBlocks {
     std::string recenter = "null", sights = "null", calibration = "null", colour = "null", stereo = "null",
         floorLock = "null", cineScreen = "null", mainMenu = "null", gamePointer = "null", galaxyHologram = "null",
         voice = "null", spectator = "null", figure = "null", omniPad = "null", omniRail = "null", swapchains = "null",
-        questPacing = "null";
+        questPacing = "null", motionBlurGuard = "null";
 };
 ModuleBlocks ModuleStatus() {
     ModuleBlocks m;
     m.sights = sight_layers::StatusJson();
+#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE3)
+    m.motionBlurGuard = motion_blur_guard::StatsJson();
+#endif
 #if defined(MEVR_WITH_HALCYON_LE3)
     m.colour = colour::StatusJson();
     m.floorLock = floor_lock::StatusJson();
@@ -937,7 +943,8 @@ std::string MetaJson(std::vector<LayerShot> const& layers, XrTime displayTime, s
         J(view.offsetRight), J(view.offsetUp), J(view.unitsPerMeter), m.recenter, m.sights, m.calibration, m.colour, m.stereo,
         m.floorLock, m.cineScreen, m.mainMenu, m.gamePointer, m.galaxyHologram, m.voice, m.spectator, m.figure, m.omniPad,
         m.omniRail, m.swapchains, mod, cameraDiagnostic, m.questPacing, LayersJson(layers)) +
-        ",\n  \"firstPerson\": " + FirstPersonJson();
+        ",\n  \"firstPerson\": " + FirstPersonJson() +
+        ",\n  \"motionBlurGuard\": " + m.motionBlurGuard;
 }
 
 void LocateQuads(std::vector<LayerShot>& layers, XrSpace reference, XrTime displayTime);

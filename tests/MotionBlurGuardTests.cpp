@@ -9,8 +9,11 @@
 
 namespace guard = mevr::host::motion_blur_guard;
 namespace {
-int failures = 0, originalCalls = 0, sharpCalls = 0, journalCalls = 0;
-std::array<std::array<void*, 10>, 5> blur{}, sharp{};
+int failures = 0;
+std::size_t originalCalls = 0, sharpCalls = 0, journalCalls = 0;
+std::array<std::array<void*, 10>, guard::kPairCount> blur{}, sharp{};
+bool exposeAddresses = false;
+mevr::exe::Status addressStatus = mevr::exe::Status::AtRva;
 struct Proxy { void* table; std::array<std::uint8_t, 256> fields; };
 Proxy* expectedProxy = nullptr;
 void* expectedTable = nullptr;
@@ -58,8 +61,22 @@ namespace mevr::host { std::wstring const& SettingsPath() noexcept { static std:
 namespace mevr::log { void Write(std::string_view, std::string_view) {} }
 namespace mevr::exe {
 std::uintptr_t Base() { return 0; }
-void* Resolve(std::uintptr_t) { return nullptr; }
-Result const* Find(std::uint32_t) { return nullptr; }
+void* Resolve(std::uintptr_t rva) {
+    if (!exposeAddresses) return nullptr;
+    if (rva == guard::address::kMotionBlurProxyRender) return reinterpret_cast<void*>(&Original);
+    if (rva == guard::address::kNoBlurProxyRender) return reinterpret_cast<void*>(&Sharp);
+    for (std::size_t i = 0; i < guard::kPairCount; ++i) {
+        auto const& spec = guard::address::kMotionBlurProxyPairs[i];
+        if (rva == spec.blur) return blur[i].data();
+        if (rva == spec.sharp) return sharp[i].data();
+    }
+    return nullptr;
+}
+Result const* Find(std::uint32_t) {
+    static Result result;
+    result.status = addressStatus;
+    return exposeAddresses ? &result : nullptr;
+}
 }
 namespace mevr::hook {
 bool Install(Context&, char const*, void*, void*, void**) { throw std::runtime_error("unverified code must not be hooked"); }
@@ -101,12 +118,18 @@ int main() {
     CHECK(guard::gUnknown.load() == 1 && originalCalls == 1);
     CHECK(!guard::ProtectsGameplay());
     guard::gInstalled.store(false);
-    CHECK(sharpCalls == 20 && journalCalls == 10 && output == 20);
-    CHECK(guard::StatsJson().find("\"converted\":10") != std::string::npos);
+    CHECK(sharpCalls == 4 * guard::kPairCount && journalCalls == 2 * guard::kPairCount && output == 4 * guard::kPairCount);
+    CHECK(guard::StatsJson().find("\"converted\":" + std::to_string(2 * guard::kPairCount) + ",") != std::string::npos);
     mevr::hook::Context context{nullptr, "test"};
     CHECK(!guard::Install(context));  // unverified addresses leave the existing workaround in charge
     CHECK(!guard::gInstalled.load());
-    std::printf("Motion blur guard: %s (five variants, cached/recreated proxies, arguments, persistent fields, foreign fallback)\n",
-                failures ? "FAIL" : "PASS");
+    exposeAddresses = true;
+    addressStatus = mevr::exe::Status::Moved;
+    CHECK(!guard::Install(context));  // a relocated match is not the verified native build
+    addressStatus = mevr::exe::Status::AtRva;
+    CHECK(!guard::Install(context));  // exact entry addresses with foreign vtable fingerprints still fail
+    CHECK(!guard::ProtectsGameplay());
+    std::printf("Motion blur guard: %s (%zu variants, cached/recreated proxies, arguments, persistent fields, foreign fallback)\n",
+                failures ? "FAIL" : "PASS", guard::kPairCount);
     return failures ? 1 : 0;
 }

@@ -138,3 +138,23 @@ calculation behavior. Its runtime hook/restoration remains separate coordinator 
 lane does not change the bounds address. The new skeleton/pose translation units pass syntax
 checks for all three games using the project's existing `/wd4127` constant-condition setting;
 the expanded LE3 SDK comparison also compiles.
+
+## Controller-loss observation during renderer validation
+
+Protected session `20261115-180239-899-LE3-renderer-preview` supplies a narrower
+current observation than full body acceptance. With tracked synthetic controllers,
+the first-person transition and post-reload eye images keep the central sightline
+clear. After the finite controller recording expires, snapshot
+`2026-11-15_18-04-01-023` reports `controllers.active=false` and shows Shepard's
+collar occupying the lower part of both eyes. Floor lock remains active with
+`stageEyeM = finalEyeM = 1.752600`, so this is not evidence for lowering the requested
+null-headset height. Physical hand alignment and the body's tracking-loss behavior
+remain unaccepted.
+
+Reuse audit for follow-up: shared `HandTargets::Current` rejects absent controller
+tracking. `ArmIk` already has a separate, identity-checked stationary torso hold
+for the shared menu, explicitly excluding hand targets and gun ownership. Inspect
+that presentation-only policy and the first-person body anchor before adding a
+ME3-specific offset or retaining stale controller input. Test head-only tracking,
+loss/reacquisition of one/both controllers, movement and pawn/world changes; a
+stationary screenshot alone cannot validate a general fallback.

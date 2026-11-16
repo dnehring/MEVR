@@ -39,6 +39,7 @@
 #include "plugin/HalcyonLe2.hpp"
 #endif
 #if defined(MEVR_WITH_HALCYON_LE3)
+#include "plugin/MotionBlurGuard.hpp"
 #include "plugin/GameThreadCalls.hpp"
 #include "plugin/HalcyonLe3.hpp"
 #endif
@@ -122,6 +123,7 @@ void GameEngineTickHook(void* self, float deltaSeconds) {
 #endif
 #if defined(MEVR_WITH_HALCYON_LE3)
     mevr::host::halcyon_le3::AfterTick(deltaSeconds);
+    mevr::host::motion_blur_guard::Tick();
 #endif
     mevr::host::Tick(deltaSeconds);
     mevr::host::process_event::ReportOffThread();
@@ -296,6 +298,9 @@ extern "C" __declspec(dllexport) bool SpiOnAttach(spi::Interface* InterfacePtr) 
     mevr::host::render_levers::Install(init);  // research/22: the render thread's levers and accounting
     mevr::host::motion_blur_guard::Install(init);
     mevr::host::ui_world_figure::Install(init);  // research/57 section 7: no Umbra query for the UI world's capture
+#endif
+#if defined(MEVR_WITH_HALCYON_LE3)
+    if (!gEngineProbe) mevr::host::motion_blur_guard::Install(init);
 #endif
     mevr::log::Info("host attached");
     return true;

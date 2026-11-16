@@ -286,9 +286,26 @@ void TestAgainstLe3Dump() {
         ++patterned;
         auto const compiled = ue3::pattern::Compile(e.pattern);
         auto const hits = ue3::pattern::FindAll(image.text, *compiled, 16);
-        CHECK(e.kind == Kind::Data ? !hits.empty() : hits.size() == 1);
+        // As in LE1, the guard requires exact-site signatures AND full vtable
+        // fingerprints. Its paired render bodies intentionally share a prologue.
+        CHECK(e.kind == Kind::Data || std::strcmp(e.user, "motion blur guard") == 0 ? !hits.empty() : hits.size() == 1);
     }
-    std::printf("exe tests: %d LE3 patterns checked against the dump\n", patterned);
+    std::vector<std::uint8_t> shifted(text.size() + 0x40, 0xCC);
+    std::memcpy(shifted.data() + 0x40, text.data(), text.size());
+    exe::Image patched;
+    patched.textRva = 0x1000;
+    patched.text = shifted;
+    int guardRefused = 0;
+    for (exe::Entry const& e : engine::addresses::le3::kTable) {
+        if (std::strcmp(e.user, "motion blur guard") != 0) continue;
+        exe::Result const r = exe::Check(patched, e);
+        CHECK(r.status == Status::Moved || r.status == Status::BytesDiffer);
+        CHECK(r.status != Status::AtRva);
+        ++guardRefused;
+    }
+    CHECK(guardRefused == 16);
+    std::printf("exe tests: %d LE3 patterns checked against the dump (%d strict guard entries refused after shifting)\n",
+                patterned, guardRefused);
 }
 
 // The LE1 table against the real decrypted .text (no .pdata or sections in the dump: bytes only).

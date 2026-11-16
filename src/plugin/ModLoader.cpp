@@ -14,6 +14,7 @@
 
 #if defined(MEVR_WITH_HALCYON_LE3)
 #include "plugin/HalcyonLe3.hpp"
+#include "plugin/MotionBlurGuard.hpp"
 #include "core/vr/PowerWheel.hpp"
 #include "core/vr/Sights.hpp"
 #include "core/vr/ScopeCapture.hpp"
@@ -592,6 +593,7 @@ HostServices BuildServices() {
     if (engine::DevelopmentEngineProbe()) return services;
 #if defined(MEVR_WITH_HALCYON_LE3)
     // Shared layers now consume these publications. Native/headset acceptance remains separate.
+    services.motionBlurProtected = &motion_blur_guard::ProtectsGameplay;
     services = WithTraversal(WithFloorLock(WithPadMerge(WithSights(WithVignette(WithRenderer(services))))));
 #if defined(MEVR_WITH_MAIN_MENU)
     services = WithVoice(services);

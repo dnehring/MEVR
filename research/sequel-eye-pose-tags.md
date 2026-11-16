@@ -115,3 +115,12 @@ Still open: physical Quest 3/Virtual Desktop fusion, real head-motion comfort,
 native recenter/mode-transition scenarios, and deliberately induced stale capture
 or failed GPU-copy scenarios. Those lifecycle failures have offline policy coverage,
 not native fault-injection acceptance. HDR opt-in remains outside this correction.
+
+The subsequent `20261115-180239-899-LE3-renderer-preview` run, with the shared
+motion-blur guard adapted to ME3, completes the previously failing Back/recenter
+and same-save reload scenario. A fresh recenter log accompanies seven valid
+stereo captures and zero-difference restoration. Stationary submitted eye poses
+match located input: 64 mm during synthetic head replay, 63 mm from the live null
+runtime. This closes that bounded transition scenario; broader mode transitions,
+physical fusion and injected GPU/capture failures remain open. See the detailed
+[guard validation](le3-recenter-transition-failure.md#protected-native-result-with-the-shared-guard).

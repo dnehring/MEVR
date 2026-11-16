@@ -337,7 +337,37 @@ inline constexpr std::uint32_t kAppMalloc = 0xBF110;
 inline constexpr std::uint32_t kAppFree = 0xBF0D0;
 inline constexpr std::uint32_t kGNatives = 0x17F4BB0;
 
+// ME3 counterparts of LE1's combined post-process guard. Native constructor,
+// factory and full dispatch-table audit: research/le3-recenter-transition-failure.md.
+inline constexpr std::uint32_t kMotionBlurProxyRender = 0x3E3F20;
+inline constexpr std::uint32_t kNoBlurProxyRender = 0x3E4250;
+inline constexpr le1::MotionBlurProxyPair kMotionBlurProxyPairs[] = {
+    {0x1154B20, 0x1154990, 0x672AC625B88E709Cull, 0x34208617999F0373ull},
+    {0x1154B70, 0x11549E0, 0xEB2AEFDB51EC1DB1ull, 0x1924AFE40335BB63ull},
+    {0x1154BC0, 0x1154A30, 0x3402F4E6469ECCF5ull, 0x15454443A34FC654ull},
+    {0x1154C10, 0x1154A80, 0x55281E47FA78BD1Aull, 0x3B367E8E9327D8E3ull},
+    {0x1154C60, 0x1154AD0, 0x328E9C2384836DAAull, 0xC7B82F3E6CDC2313ull},
+    {0x1157E78, 0x1157DD8, 0x1AE92F8BB1E9F57Bull, 0x1786DF4B7BB170D0ull},
+    {0x1157EC8, 0x1157E28, 0x682EAA364BF8D6F0ull, 0x2A143EDF5F7AC152ull},
+};
+
 inline constexpr Entry kTable[] = {
+    {"MotionBlurProxy::Render", kMotionBlurProxyRender, Kind::Function, "48 8B C4 56 57 41 54 41 56 41 57 48 81 EC 80 00 00 00 48 C7 40 A0 FE FF FF FF", 0, 0, "motion blur guard"},
+    {"NoBlurProxy::Render", kNoBlurProxyRender, Kind::Function, "48 8B C4 56 57 41 54 41 56 41 57 48 81 EC 80 00 00 00 48 C7 40 A0 FE FF FF FF", 0, 0, "motion blur guard"},
+    {"MotionBlurProxy.Pair1.Blur", 0x1154B20, Kind::Data, "48 8D 05 ?? ?? ?? ?? 48 89 03 48 85 FF 74 0A F3", 3, 0x3D5314, "motion blur guard"},
+    {"MotionBlurProxy.Pair1.Sharp", 0x1154990, Kind::Data, "48 8D 05 ?? ?? ?? ?? 48 89 03 48 85 FF 74 0A F3", 3, 0x3D6734, "motion blur guard"},
+    {"MotionBlurProxy.Pair2.Blur", 0x1154B70, Kind::Data, "48 8D 05 ?? ?? ?? ?? 48 89 03 48 85 FF 74 0A F3", 3, 0x3D4F34, "motion blur guard"},
+    {"MotionBlurProxy.Pair2.Sharp", 0x11549E0, Kind::Data, "48 8D 05 ?? ?? ?? ?? 48 89 03 48 85 FF 74 0A F3", 3, 0x3D6354, "motion blur guard"},
+    {"MotionBlurProxy.Pair3.Blur", 0x1154BC0, Kind::Data, "48 8D 05 ?? ?? ?? ?? 48 89 03 48 85 FF 74 0A F3", 3, 0x3D4AA1, "motion blur guard"},
+    {"MotionBlurProxy.Pair3.Sharp", 0x1154A30, Kind::Data, "48 8D 05 ?? ?? ?? ?? 48 89 03 48 85 FF 74 0A F3", 3, 0x3D5EC1, "motion blur guard"},
+    {"MotionBlurProxy.Pair4.Blur", 0x1154C10, Kind::Data, "48 8D 05 ?? ?? ?? ?? 48 89 03 48 85 FF 74 0A F3", 3, 0x3D46B4, "motion blur guard"},
+    {"MotionBlurProxy.Pair4.Sharp", 0x1154A80, Kind::Data, "48 8D 05 ?? ?? ?? ?? 48 89 03 48 85 FF 74 0A F3", 3, 0x3D5AD4, "motion blur guard"},
+    {"MotionBlurProxy.Pair5.Blur", 0x1154C60, Kind::Data, "48 8D 05 ?? ?? ?? ?? 48 89 03 48 85 FF 74 0A F3", 3, 0x3D42D4, "motion blur guard"},
+    {"MotionBlurProxy.Pair5.Sharp", 0x1154AD0, Kind::Data, "48 8D 05 ?? ?? ?? ?? 48 89 03 48 85 FF 74 0A F3", 3, 0x3D56F4, "motion blur guard"},
+    {"MotionBlurProxy.Pair6.Blur", 0x1157E78, Kind::Data, "48 8D 05 ?? ?? ?? ?? 48 89 06 45 8B C4 B8 01 00", 3, 0x3DA4DB, "motion blur guard"},
+    {"MotionBlurProxy.Pair6.Sharp", 0x1157DD8, Kind::Data, "48 8D 05 ?? ?? ?? ?? 48 89 06 45 8B C4 B8 01 00", 3, 0x3DA273, "motion blur guard"},
+    {"MotionBlurProxy.Pair7.Blur", 0x1157EC8, Kind::Data, "48 8D 05 ?? ?? ?? ?? 48 89 06 45 8B C4 B8 01 00", 3, 0x3DA60B, "motion blur guard"},
+    {"MotionBlurProxy.Pair7.Sharp", 0x1157E28, Kind::Data, "48 8D 05 ?? ?? ?? ?? 48 89 06 45 8B C4 B8 01 00", 3, 0x3DA3A3, "motion blur guard"},
     // The host's hooks.
     {"UObject::ProcessEvent", kProcessEvent, Kind::Function, "40 55 41 56 41 57 48 81 EC 90 00 00 00 48 8D 6C 24 20 48 C7", 0, 0,
         "host, mod"},

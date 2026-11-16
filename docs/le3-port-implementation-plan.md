@@ -10,18 +10,18 @@ Read the [reuse audit](le3-port-reuse-audit.md), [ME3 melee audit](../research/l
 
 ## Implementation ledger (2026-11-15)
 
-**Current renderer blocker:** the subsequent protected Back/recenter transition
-trial faulted in native post-processing before recenter completion; same-save reload
-was not reached. The fault is a null native render-resource argument, not established
-as an OpenXR copy failure. LE1's caller-plus-player ownership rule is now adapted
-to ME3's verified callsite: native logs prove auxiliary views retain their original
-state and gameplay retains stereo. The crash persists with live head tracking and
-that correction. The failing resource is the native velocity buffer; audit ME1's
-motion-blur guard against ME3's resource/proxy selection next. Saves and VR/game
-files were restored. See the
-[transition failure and next diagnostic](../research/le3-recenter-transition-failure.md).
+**Current renderer checkpoint:** the formerly failing Back/recenter transition now
+completes with ME1's shared motion-blur guard adapted to seven verified ME3 proxy
+pairs. The failing velocity-buffer bind belonged to a blur-specialized native
+path after settings disabled that buffer. The protected run verifies actual
+recenter, seven valid stereo captures, same-save reload, 2,825 guarded conversions,
+zero unknown variants and complete save/VR/game restoration. LE1's caller-plus-player
+ownership rule also keeps auxiliary views unmodified. These are bounded native
+gates, not general VR acceptance: physical-headset fusion, other scenes, stale-copy
+injection and the body presentation on controller tracking loss remain open. See
+[transition diagnosis and native result](../research/le3-recenter-transition-failure.md).
 
-Latest native checkpoint: the protected renderer run passed **493/493** metadata comparisons and an ordinary
+Earlier native checkpoint: the protected renderer run passed **493/493** metadata comparisons and an ordinary
 Normandy load, then restored with zero differences. Reusing ME2's omitted HDR display-capability hook now
 produces the actual 8-bit backbuffer, 304 first-eye captures for 304 presents, and visible left/right world
 images. Head-look publication and arm IK now run. ME1's per-eye pose-history correction is now reused in

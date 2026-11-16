@@ -1070,6 +1070,7 @@ function(mevr_add_plugin game)
         set(with_halcyon_le3 ON)
         # One shared controller/floor/input/capture implementation. Gameplay/UI service ports are separate gates.
         list(APPEND host_sources src/plugin/HalcyonLe3.cpp src/plugin/HalcyonLe3.hpp
+            src/plugin/MotionBlurGuard.cpp src/plugin/MotionBlurGuard.hpp
             src/plugin/HalcyonLe3Bridge.cpp src/plugin/RendererLe3.cpp src/halcyon/le3/mevr_bridge.h
             src/plugin/HdrDisplayPolicy.cpp src/plugin/HdrDisplayPolicy.hpp
             src/plugin/GameThreadCalls.cpp src/plugin/XrHost.cpp src/plugin/FloorLock.cpp src/plugin/PadMerge.cpp
@@ -1536,6 +1537,14 @@ if (MEVR_BUILD_TESTS)
     target_compile_options(mevr-motion-blur-guard-tests PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
     add_dependencies(mevr-tests mevr-motion-blur-guard-tests)
     add_test(NAME mevr-motion-blur-guard COMMAND mevr-motion-blur-guard-tests)
+    # Same detour/health tests, compiled against ME3's independently verified seven-pair adapter.
+    add_executable(mevr-le3-motion-blur-guard-tests tests/MotionBlurGuardTests.cpp)
+    target_include_directories(mevr-le3-motion-blur-guard-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(mevr-le3-motion-blur-guard-tests PRIVATE OpenXR::headers)
+    target_compile_definitions(mevr-le3-motion-blur-guard-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN MEVR_GAME_LE3)
+    target_compile_options(mevr-le3-motion-blur-guard-tests PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
+    add_dependencies(mevr-tests mevr-le3-motion-blur-guard-tests)
+    add_test(NAME mevr-le3-motion-blur-guard COMMAND mevr-le3-motion-blur-guard-tests)
     add_executable(mevr-system-settings-tests tests/SystemSettingsTests.cpp)
     target_include_directories(mevr-system-settings-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
     target_link_libraries(mevr-system-settings-tests PRIVATE OpenXR::headers)

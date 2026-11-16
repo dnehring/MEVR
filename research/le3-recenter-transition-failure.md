@@ -1,8 +1,9 @@
 <!-- SPDX-License-Identifier: MIT -->
 # ME3 recenter transition: native resource failure
 
-2026-11-15. This is a failed native test, not accepted recenter or reload parity.
-It follows the successful stationary/turning/menu stereo captures documented in
+2026-11-15. Initial failures and their diagnosis are preserved below. The final
+protected run with the shared motion-blur guard passes this bounded recenter/reload
+scenario; broader VR acceptance remains open. This follows the stereo captures in
 [per-eye evidence](sequel-eye-pose-tags.md). The first trial used `86fd9e72`;
 the subsequent diagnostic and ownership trials below use newer candidate builds.
 
@@ -106,8 +107,92 @@ game thread at view creation, not at the later render-thread bind. Zero is also
 the observer's unreadable sentinel, and normal gameplay often reports zero, so
 these samples alone cannot establish a bad lifetime or prove the crash's cause.
 
-Next reuse target: ME1's existing `plugin/MotionBlurGuard.cpp` and
-[motion-blur research](62-motion-blur-and-menu-pacing.md). ME3 currently uses the
-shared settings fallback, not that native guard. Establish ME3's allocation and
-proxy-selection conditions before adapting the guard. Do not turn off arbitrary
-post-processing or swallow the null-resource fault as a fix.
+## Reusing the existing motion-blur guard
+
+The next candidate adapts ME1's existing `plugin/MotionBlurGuard.cpp`; see its
+[original native audit](62-motion-blur-and-menu-pacing.md). No second guard or
+resource-replacement mechanism is introduced.
+
+ME3's native settings table identifies MotionBlur at settings offset `0x38`.
+Propagation copies that setting to render-thread RVA `0x189A8E4`. Changing it
+releases and reinitializes the render-target aggregate; initialization allocates
+VelocityBuffer only when the render-thread setting is enabled. A null slot is
+therefore expected after disabling blur. The blur-specialized render path
+`0x3E3F20 -> 0x3D1F80 -> 0x3E62B0` can still bind that slot without rechecking
+the setting. This establishes a settings/proxy mismatch mechanism, not proof that
+Back itself releases the resource. The failed run applied the existing settings
+fallback about three seconds before the fault.
+
+The native no-blur render body at `0x3E4250` uses its matching shader path and
+avoids that velocity bind. Both bodies share the six integer/pointer argument
+slots and 64-bit return contract used by the existing guard. ME3 has seven pairs:
+
+| Blur table | Matching no-blur table |
+| --- | --- |
+| `0x1154B20` | `0x1154990` |
+| `0x1154B70` | `0x11549E0` |
+| `0x1154BC0` | `0x1154A30` |
+| `0x1154C10` | `0x1154A80` |
+| `0x1154C60` | `0x1154AD0` |
+| `0x1157E78` | `0x1157DD8` |
+| `0x1157EC8` | `0x1157E28` |
+
+All ten slots of each table are fingerprinted relative to the executable base;
+all pairs agree on destructor and render slot. Five base constructor comparisons
+match after replacing only their final vtable identity. The two extended factory
+branches allocate the same `0x100` bytes and initialize the same fields through
+`0xFC`; their base constructor pair also matches. The intermediate third pair
+appears while constructing these extended objects; no independent smaller
+allocation is inferred from that intermediate table. Private comparisons and
+native code stay outside the repository.
+
+The shared implementation selects the game-specific address map, retains strict
+exact-address/signature and full-table fingerprint checks, and converts recognized
+proxies on their owning render thread. Changed identities persist for the host
+lifetime, including subsequent eyes. Unknown classes still use the original path
+and latch guard health false. ME3 publishes that health through the existing host
+service so healthy protection suppresses repeated settings resets. Engine-probe
+sessions do not install the hook. Snapshots expose the existing guard statistics
+directly, without importing LE1's unrelated render hooks.
+
+## Protected native result with the shared guard
+
+Session `20261115-180239-899-LE3-renderer-preview` completes the formerly failing
+sequence: ordinary Normandy load, first-person baseline, live-head Back replay,
+four transition captures, post-recenter capture, same-save reload and final capture.
+The renderer logs a new recenter at 18:03:46.187, after the replay begins, distinct
+from its startup recenter. Native saving is visible in the transition capture;
+QuickSave changed and was restored. Both load receipts pass exact descriptor,
+world/pawn transition, stable gameplay and unchanged source/runtime artifact checks.
+No fresh crash report was produced, and the owned game stopped normally through
+the runner. Restoration reports zero differences; the four actual VR/LE1 file
+hashes were independently checked and match the restoration receipt.
+
+All seven captures have two world images, no capture errors and matching eye
+orientations. At the stationary pose, each submitted eye equals its corresponding
+located input. Synthetic head replay uses a 64 mm pair; live runtime head tracking
+uses a 63 mm pair. The earlier private audit's fixed 64 mm assumption rejected the
+live captures at its strict lower bound. The stationary transition audit now
+checks submitted-versus-located poses instead of treating the synthetic recording's
+IPD as the runtime's IPD. This does not change the turning-history acceptance rule.
+
+Every capture reports the guard installed and healthy with zero unknown variants.
+Conversions increase from 55 before the action to 2,825 after reload; this scene
+exercises pair seven. The other six retain static-layout and dispatch-test coverage,
+not claims of being seen in this native scene. The native settings fallback logs
+that healthy protection suppresses the settling/menu-return resets.
+
+Development ME2/ME3 and all three player builds pass. The existing core suite
+checks 28 ME3 patterns against the private dump and rejects all 16 guard entries
+after a code shift. Six focused tests pass: both guard adapters, settings fallback,
+eye pose, publication and software-D3D copy. Guard tests exercise every pair,
+cached/recreated proxies, native argument/field forwarding, unknown-class fallback,
+missing/moved addresses and foreign fingerprints. Independent code review found
+no production blocker.
+
+The transition and post-reload eye images were visually inspected. A collar enters
+the lower view after the finite controller replay expires (`controllers.active=false`);
+tracked-controller transition and reload captures keep the central view clear.
+This is a separate tracking-loss/body presentation concern, not a height change:
+all seven captures retain active floor lock and `stageEyeM = finalEyeM = 1.752600`.
+Physical blur/comfort, other scenes/variants and full body acceptance remain open.
