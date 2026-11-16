@@ -223,7 +223,7 @@ once they are in, `vault.ps1 -Grip` checks it, and `-Grip -Support` the two-hand
 its one-call writes around `CanPerformMantle` (and the commit) could clear `bIsZoomed` for that call as they set
 `m_bCanMantleOutsideOfCover` [verify] (whether `MantleCover`'s custom action then plays with LT still held).
 
-## The sights on the sequels, mod side (lane C2, 2026-11-16; built, **not yet run in a game**)
+## The sights on the sequels, mod side (lane C2, 2026-11-16; run on ME2 by lane C3 the same day)
 
 The drawing came to ME2 and ME3 with 6d11493b ("Prototype shared VR weapon optics in LE2": `plugin/SightLayers` in both sequel
 hosts, `setSight`; research/le2-le3-vr-optics.md). That pass kept the shots and the gun out of it: on the sequels
@@ -281,6 +281,30 @@ Then LE1 at the same pose as before the change (`tools/fake-headset-session.ps1`
 `mevr weapon pistol` if the career carries one): the same `sights:` and `hand aim:` lines and the same layers.
 
 The whole check as one script: `tools\le2-halcyon-run\sights.ps1 -Holder <you>` (results in the stretch's `sights-<time>` folder).
+
+**Run on ME2** (lane C3, 2026-11-16 13:23, main b8fbb98c merged; stretch `20261116-131605-407-LE2-lane-c3-sights`, its
+`sights-132301` folder with the two snapshots and `LE2MEVR-run.log`; restored `verification: 0 differences`):
+- **The pistol** (`SFXWeapon_HeavyPistol`, automatic placement: 19.8 units behind the muzzle, 8.5 above the bore): the
+  snapshot's `sights` block says `kind: red dot`, `dotEye: right`; the right eye's PNG shows the window's ring with the red dot
+  in it. 14 shots: `hand aim: shot N: along the gun barrel toward what the sight line hit`, the shot 0.12 to 0.68 degrees
+  from the aimed direction (the weapon's own aim error), the aimed direction 0.21 to 0.61 degrees off the sight line, which
+  is the 8.5-unit height of the sight over the bore seen from the hit (8.2 to 23.5 m out: atan(0.085 / d)): the shots land
+  on what the sight line hits.
+- **The sniper rifle** (Save 4 carries one; `mevr weapon sniper`): `sights: SFXWeapon_SniperRifle_1 ZoomFOV 10.0 degrees,
+  8.0x`, the sight on the model's `Scope_Eye` bone, `sights: the sniper rifle is raised to the eye: hid 'Scope_Lens'`,
+  `sights: ADS on` 0.1 s later, the scope's picture up for 1,922 frames from the eye copy (the snapshot: `kind: scope`,
+  `scopeDrawn: true`, `aimingEye: left`, `sourceEye: right`, `pictureSource: eye copy`; the left eye's PNG shows the
+  magnified disc over the scope), `sights: first scoped shot with aimed fire: aim error 10.0000 -> 0.0000` and nine shots
+  0.00 degrees from the aimed direction; `showed 'Scope_Lens' again` when the picture went.
+- **Seen, not judged here:** in the pistol's PNG the ring stands about a hand's width left of the gun's own top. The eyes
+  on the fake headset take the monitor's shape on ME2 (4096x2304, research/le2-renderer-integration.md), so a metric quad
+  and the world don't line up there; [verify] in the headset. With the default `-SniperDropM 0.10` the eye sits 6 cm
+  under the scope's line (its sight is 13.4 units over the bore) and the assist slides the gun: pass `-SniperDropM 0.134`
+  for the eye on the line.
+
+**LE1 unchanged** (lane C3, the same day; `tools/fake-headset-session.ps1` with `scratch/c3/run-le1.ps1`: 20 s in the world,
+the standing replay with the hands in view, `pause`, two snapshots; then the pistol and the assault rifle drawn by `mevr
+weapon`, each raised and fired by `make-ads-recording.py ... --no-support`'s replay, a snapshot under `pause`). Three sessions of a build of main b8fbb98c (`2026-11-16_13-37-51-c3-le1-before`, `..._14-03-25-c3-le1-before2`, `..._14-26-12-c3-le1-before3`) against one of this step (`..._13-53-39-c3-le1-after`): the standing pose has an identical `hostView` (-43.3 / -4.1 / -18.1 uu), the same six layers at the same places (the omni-tool target 0.2 mm apart), the HUD panel, label, wrist piece and target identical pixel for pixel, the eyes 0.03 to 0.19% of pixels apart by more than 32/255; with the assault rifle raised (before3 against after) the `hostView` is identical again, the layers the same, the eyes 0.003% apart, the dot in the right eye in both, the sight on the `Scope` bone 42.1 / 9.7 against 41.8 / 9.6 units; the pistol has no sight in the owner's settings (`pistol = none`) and logs the same lines. Every `sights:`, `hand aim:` and holster draw line of the new build (numbers masked) is in the build of main's log. before2 ran while other lanes built (the game hitched: `the right controller isn't tracked` every second, a draw in 0.95 s instead of 0.13) and is kept only as that: a same-pose run needs a quiet machine.
 
 ## Holsters and the reload on the sequels: the plan (not built)
 
