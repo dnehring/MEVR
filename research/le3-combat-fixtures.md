@@ -142,8 +142,96 @@ QuickSave byte-for-byte, reports zero profile/game differences, restores all fou
 independently checked VR/LE1 environment hashes and releases the game lock.
 Both newly created native saves remain private in the session directory.
 
-Next: establish actual galaxy entry and native bindings, then
-use available native travel to reach the Citadel. Confirm range admission and
+### Citadel availability audit
+
+The next protected run (`20261115-194205-273-LE3-navigation`) proves actual
+galaxy entry, orbit exit and relay activation; see
+[native galaxy results](le3-galaxy.md). It also exposes why Save 31 is a poor
+Citadel candidate. Read-only inspection of the installed galaxy package identifies
+Serpent Nebula as `SFXCluster_0`, with visibility conditional 2744 and usability
+conditional 79. LegendaryExplorerCore's existing CND reader/decompiler identifies
+the latter as the Citadel-in-Widow check, requiring plot integer 10185 to be zero.
+Save 31 stores 38, as do the chapter and ending saves. Do not attempt to repair
+this by toggling one flag: it would not reconstruct a coherent earlier campaign.
+
+The original AutoSave, QuickSave and LegendSave omit that integer. Absence is a
+candidate for the normal default, not standalone proof of native access. The
+original AutoSave is already at the console, approximately (-2, 3389, 131), and
+is therefore the next untouched candidate. Its SHA-256 is
+`6c408498e8920036378100b8e878f5bf043327af0cd8cbcf9873f9860a2c9cc2`.
+The original QuickSave is at the War Room table, and LegendSave elsewhere in the
+War Room. The earlier inventory grouped all four as noncombat Normandy saves;
+that was insufficient for choosing a route and missed these important differences.
+
+The conditional audit uses the already installed LegendaryExplorerCore API,
+not a new plot codec. The installed `Conditionals.cnd` SHA-256 is
+`059867744f2f1619ae9e099e4e7a07cfaeaabaf9c94d705c8b0090a91ecc1a75`.
+Raw decompilation, plot dumps and saves remain private. No plot value was changed.
+
+The subsequent protected run (`20261115-195711-266-LE3-navigation`) loads
+that untouched AutoSave normally and enters the native Anadius system map
+(mode 11, camera state 3, world 120300). Capture `2026-11-15_19-59-20-698`
+shows Cronos Station with **Assault the Illusive Man's Base** available. This
+establishes a useful earlier mission candidate, not Citadel admission or a
+combat-ready checkpoint. The run is closed; restoration reports zero profile
+and game differences and releases the lock. The wrapper exits nonzero with an
+ownership-guard error during concurrent stop handling; do not label the entire
+run a clean pass. A subsequent process check finds no Mass Effect game running.
+
+### Reuse the ME1 story rewind workflow
+
+`tools/le1-save.py diff <before> <after> --rewind-out beat.json` records changed
+plot booleans, integers and floats with their earlier values. Applying
+`write <later> <out> --rewind beat.json` restores those values in a new save.
+Optional `--with-maps` also restores the affected maps' saved world state,
+including other progress made in those maps. A known before/after pair or an
+existing suitable recipe is needed; a late save alone does not reconstruct its
+entire campaign history.
+
+Reuse this comparison-and-recipe workflow for ME3, not the ME1 binary writer,
+plot IDs or legacy-map serialization. The existing `tools/le3-save.py` already
+fully decodes and round-trips v59 saves, but its `prepare` edit allowlist covers
+resources and existing weapon ammunition only. Story rewind is **not yet
+implemented for ME3**. Extend that existing adapter with game-specific typed
+plot comparisons, explicit source hashes and expected values, then audit ME3
+quest and saved-world dependencies before permitting writes. Validate private
+outputs with the existing independent TSE oracle and a normal protected native
+load; successful serialization alone does not prove a replayable story beat.
+Prefer the untouched earlier AutoSave for initial fixture acquisition while
+this additional capability remains unimplemented.
+
+### Normal mission entry from the original AutoSave
+
+Run `20261115-200511-376-LE3-navigation` reaches Cronos Station with native
+left-stick steering, enters orbit, docks and accepts the briefing reply
+**We go now!**. The game then plays the authored pre-assault cabin sequence;
+another native reply advances it. This establishes normal mission admission,
+but the bounded run ends before combat. See the
+[dialogue evidence](le3-dialogue-cinema.md) for the pad and capture details.
+
+The game updates LegendSave during the transition. The attempted private copy
+fails its process-identity check, and restoration completes before preservation;
+there is **no retained new checkpoint** from this run. The original saves are
+restored byte-for-byte. The private wrapper now preserves changed native saves
+after stopping the owned writer and before restoration, with restoration still
+in a `finally`; this added preservation path has only passed syntax checking.
+
+A further read-only decode identifies an overlooked existing candidate: the
+original LegendSave already has active `stream_Cat004Intro` and
+`stream_Cat004Intro_Liara`, while the original AutoSave does not. Its hash remains
+`13cff3ae3445bd28a93fdf33cfe9d7b6a0b71e33ed0995b841f5935b1c86447f`.
+Audit normal loading of that original checkpoint before repeating map travel.
+These streaming records suggest the pre-assault sequence; they do not prove its
+native entry state or a combat-ready load. No save fields were edited.
+
+The existing load helper and in-mod command currently accept only save types
+0 through 3 and reject LegendSave. The LE3 SDK declares `SaveGameType_Legend = 5`,
+distinct from export type 4. Audit its native descriptor/name and loading route
+before extending that allowlist; do not rename it to QuickSave as a shortcut.
+
+Next: audit the original LegendSave's normal load route for the hostile mission
+fixture. For a separate range fixture, verify Citadel availability from the
+untouched original AutoSave and use native travel. Confirm range admission and
 weapon identity before treating it as a fixture. Make a native save outside the
 range, preserve a private copy before restoration (an overwritten QuickSave is
 restored to its original bytes), decode it and verify a normal reload. Only then

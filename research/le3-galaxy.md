@@ -1,11 +1,47 @@
 <!-- SPDX-License-Identifier: MIT -->
 # LE3 native galaxy navigation, search and pursuit
 
-2026-11-15. L3-9 adapter candidate; no native galaxy run or discovery/persistence acceptance.
+2026-11-15. L3-9 adapter candidate; bounded native entry/navigation now observed below.
+Discovery, pursuit, retrieval and persistence acceptance remain open.
 This follows [the trilogy reuse audit](../docs/le3-port-reuse-audit.md) and
 [LE2 table work](le2-galaxy-table.md), with installed LE3 script contracts inspected through
 the existing private package scanner. SDK declarations are in LExSDKv2's LE3 SFXGame files.
 No extracted game script, save or binary is committed.
+
+## First native entry and navigation
+
+Protected run `20261115-194205-273-LE3-navigation` stages the independently
+verified native CIC checkpoint only after the original profile backup. Its normal
+load passes. At the saved position, a slight rightward gaze with about 20 degrees
+downward pitch selects the console; a short forward approach is also needed for
+Use. At approximately (-50, 3384, 130), one A press enters native mode 11.
+The quad capture shows Cronos Station's details, rather than the CIC's decorative
+hologram. `mevr galaxy state` resolves the owning mode/camera and planet/system,
+with camera state 4 and active-world ID 120300.
+
+The existing neutral-stick B recording leaves orbit. Native left-stick movement
+leaves the Anadius system for the Horsehead Nebula cluster. A later steering
+trial exhausts fuel and ends in Pax; its generated autosave records zero fuel,
+so this is **not** accepted as a clean, adequately fueled travel route. At Pax,
+the observer reports camera state 3, active-world ID 120200, a different system
+object, no selected planet, scan enabled and zero alert. Steering to the visible
+relay followed by A opens the full galaxy map: camera state 1, with null system
+and planet. Those nulls are legitimate for the galaxy-level context.
+
+The screen transitions verify native A/B/left-stick operation and a captured
+native map image through the shared presentation path. They do not prove
+system scan cadence, discovery, pursuit, orbital probes, trigger release latches,
+physical-headset readability or full stereo CIC/table presentation. No scan or
+probe was dispatched in this run. All 13 captures report no snapshot errors.
+
+The private Pax autosave has SHA-256
+`eb244233cc9f9f8731162bbbc5ea9cbbdfe33706719f03c38cd6da79d748366f`.
+The existing codec and independent pinned TSE oracle agree on its full structure
+and exact reconstruction; native reload/persistence of this autosave remains
+unverified. Cleanup restores the original QuickSave, AutoSave and Local_Profile
+hashes, reports zero differences, restores the four checked VR/LE1 environment
+hashes and releases the shared lock. See the
+[fixture audit](le3-combat-fixtures.md) before attempting Citadel travel.
 
 ## Reuse boundary
 

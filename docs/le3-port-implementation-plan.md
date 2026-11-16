@@ -13,13 +13,13 @@ Read the [reuse audit](le3-port-reuse-audit.md), [ME3 melee audit](../research/l
 **Combat fixture acquisition:** the refreshed six-save corpus still lacks an
 accepted ordinary combat checkpoint. Installed Citadel source identifies the
 normal range door/streaming/combat-pawn sequence and disables saving inside;
-acquire the checkpoint outside. Two protected Normandy approaches have not
-entered the galaxy map. The second reaches the table and exposes the missing
+acquire the checkpoint outside. Two initial protected Normandy approaches did not
+enter the galaxy map. The second reached the table and exposed the missing
 headset-gaze selection hook. Its ME3 ABI and controller-rotation source are now
 audited; the shared ME1 swap/restore adapter now passes direct LE1/LE3 exception
 tests and a bounded native gaze/Use test: fixed-position down-left look selects
 the **War Terminal**, and A opens **War Assets** (mode 9). This corrects the earlier
-table identification; galaxy entry remains open. The run passes 517 metadata
+table identification; subsequent galaxy entry is recorded below. The run passes 517 metadata
 comparisons and restores with zero differences. All three development/player
 builds and 71 registered tests pass. Native UI return, combat aim, prompt cropping
 and broader interaction/headset acceptance still need their own proof. See
@@ -31,10 +31,35 @@ Tech Labs/security into the CIC now work in protected runs. A new native
 QuickSave at the galaxy console passes ordinary reload with changed world/pawn,
 matching position/descriptor and unchanged source/runtime hashes. Full v59
 decode/re-encode and the independent TSE oracle agree. The private checkpoint
-removes the repeated War Room approach; it remains noncombat. The native galaxy
-prompt is observed, but active map entry/travel remain unverified. The final run
+removes the repeated War Room approach; it remains noncombat. In that run, the native galaxy
+prompt was observed without active map entry. The run
 has 23 error-free captures and restores the original QuickSave, game settings
 and VR environment. See the fixture research for the exact checkpoint identity.
+
+**Galaxy and earlier-save follow-up:** a subsequent protected run enters native
+mode 11, exits orbit to the system, moves to the cluster and activates the Pax
+relay to reach the galaxy map. Its 13 captures have no snapshot errors and
+restoration has zero differences. The Pax approach exhausted fuel, so it is not
+a clean travel acceptance route. Scan/pursuit/retrieval and persistence remain
+open. Installed conditionals explain why Save 31 cannot use Citadel-in-Widow:
+plot integer 10185 is 38 where the native condition requires zero. The untouched
+original AutoSave is already at the CIC console; normal loading and map entry
+show the Cerberus-base assault available. It remains a mission candidate, not a
+combat fixture or proof of Citadel access. ME1's existing before/after save
+rewind workflow has been audited for reuse, but the ME3 adapter currently permits
+resource edits only. See [galaxy evidence](../research/le3-galaxy.md) and the
+fixture research for the exact source saves and remaining gates.
+
+**Normal mission/dialogue follow-up:** native Cronos orbit and docking now lead
+to the briefing; two observed native stick-plus-A replies advance through the
+pre-assault sequence. Fifteen captures have no errors and cleanup exits normally
+with zero profile/game/VR differences. Combat is not reached, and no newly
+created checkpoint is retained from that run. The original LegendSave contains
+pre-assault streaming state and needs a native type-5 load audit before it can
+replace this route. The run also identifies and fixes a concrete L3-4 omission:
+ME3's console now routes `mevr thespian` to the existing shared adapter, as ME1/2
+already do. Rebuilt native command acceptance remains open; native pad replies
+do not prove spoken selection. See [dialogue evidence](../research/le3-dialogue-cinema.md).
 
 **Current renderer checkpoint:** the formerly failing Back/recenter transition now
 completes with ME1's shared motion-blur guard adapted to seven verified ME3 proxy
@@ -68,8 +93,9 @@ produces the actual 8-bit backbuffer, 304 first-eye captures for 304 presents, a
 images. Head-look publication and arm IK now run. ME1's per-eye pose-history correction is now reused in
 both sequels: five native snapshots per game show distinct 64 mm eye positions while stationary and turning,
 including menu/resume, with both world images and no capture errors. Both runs restored with zero differences.
-See [shared per-eye implementation and evidence](../research/sequel-eye-pose-tags.md). Physical-headset stereo remains open. The current priority remains
-the Halcyon/native rendering investigation; other parity implementation is paused at the owner's request.
+See [shared per-eye implementation and evidence](../research/sequel-eye-pose-tags.md). Physical-headset stereo remains open. At that checkpoint,
+the owner prioritized the Halcyon/native rendering investigation over other parity implementation.
+The active continuation now follows the remaining implementation gates, beginning with combat-fixture acquisition.
 See the [native preview and timing evidence](../research/le3-renderer-preview-evidence.md). All three
 development/player variants build and the expanded **65-test suite** passes. The protected runner's
 36 safety cases also pass, including bounded startup initialization: fresh writer

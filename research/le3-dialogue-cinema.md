@@ -5,6 +5,40 @@
 
 ## Verified native dialogue contract
 
+### Native pad selections and missing console route (2026-11-15)
+
+Protected session `20261115-200511-376-LE3-navigation` follows the original
+AutoSave through Cronos Station's Enter Orbit and Dock prompts into the native
+briefing. The HUD capture shows the eligible **We go now!** reply. Holding the
+left stick toward that reply while pressing A advances from mode 7 to the
+authored transition in mode 8, followed by the pre-assault cabin scene. A second
+visible reply (**Absolutely**) similarly advances that scene. Separate direction
+and confirm pulses, with the stick neutral at confirmation, did not advance the
+first wheel. Use a held direction plus confirm in synthetic native-pad fixtures.
+
+The relevant captures are `20-10-33-279` (briefing wheel), `20-12-58-277`
+(accepted briefing transition), `20-13-37-439` (cabin wheel), and
+`20-14-32-695` (accepted cabin transition), all on 2026-11-15. Inspect the
+separate `-hud.png` as well as cinema images: the dialogue wheel is not in the
+cinema source image. Fifteen captures report no errors; the owned run exits
+successfully and restores profile/game/VR files with zero differences.
+
+This is bounded native pad-selection evidence, not voice, interrupt, full-text,
+movement-lock or physical-headset acceptance. The same run finds that
+`mevr thespian cards` incorrectly returns `unknown on ME3`: `RunOursLe3` omitted
+the route already present in LE1/LE2. It now delegates to the existing shared
+`thespian::Command`, retaining its live-wheel and input-owner checks. No second
+dialogue implementation or first-person conversation mode is added. Native
+inspection/selection through this repaired console route still needs a rebuilt
+runtime check.
+
+Offline validation of the routing change: all three development host/mod pairs
+and player ASIs build, as do the required LE1 development targets. The main
+build's 71-test suite passes. The trilogy suite passes across its full run and
+three focused installer retries outside the sandbox (sandboxed backup paths
+and localhost connectivity failed initially). SPDX, knowledge-link and whitespace
+checks pass. These checks do not promote the native command gate above.
+
 Installed LE3 `SFXGame.pcc` scripts and class-default properties were inspected with the existing local conversation scanner. A private copy changes its default-object exclusion to an inclusion; no public scanner or game package was modified. Raw outputs remain ignored locally.
 
 `SFXGameModeConversation` inherits `bAllowMovement = false` and `bAllowRotationUpdate = false` from the base default. Its `Activated` calls the base activation, which invokes `IgnoreMoveInput(true)` and `IgnoreLookInput(true)` for these flags. The gameplay mode explicitly enables them. Authored conversations therefore retain the game's movement lock, including seated scenes. The mod's first-person world conversation path remains disabled.

@@ -1749,6 +1749,11 @@ std::optional<std::string> RunOursLe3(ue3::Object* pc, std::string const& line) 
     std::string head, verb;
     words >> head >> verb;
     if (head != "mevr" || !ue3::runtime::Up()) return std::nullopt;
+    if (verb == "thespian") {
+        std::string rest;
+        std::getline(words, rest);
+        return thespian::Command(rest);
+    }
     if (verb == "load") return LoadSave(ue3::runtime::GameEngine(), words);
     if (verb == "savedesc") return CurrentSave(ue3::runtime::GameEngine());
     if (verb == "state") return State(pc);
@@ -1770,7 +1775,7 @@ std::optional<std::string> RunOursLe3(ue3::Object* pc, std::string const& line) 
         std::string rest; std::getline(words, rest);
         return verb == "guimouse" ? gui_cursor::Command(rest) : gui_cursor::KeyCommand(rest);
     }
-    return std::string("unknown on ME3: mevr load <career> <save name> <index> <type> | mevr savedesc | mevr state | mevr weaponprobe | mevr melee | mevr traversal | mevr powerwheel | mevr omni | mevr guimouse | mevr guikey");
+    return std::string("unknown on ME3: mevr load <career> <save name> <index> <type> | mevr savedesc | mevr state | mevr weaponprobe | mevr galaxy state | mevr melee | mevr traversal | mevr powerwheel | mevr omni | mevr guimouse | mevr guikey | mevr thespian");
 }
 #endif
 #endif // shared sequel save/state requests
