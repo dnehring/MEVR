@@ -329,10 +329,14 @@ finish `(translucency, dirty)`; RHI `+0x620`. Identical to ME1's. It can't pair 
 ### Open
 
 - Whether ME3's second pass polls unready Umbra queries, as ME1's did with a state per eye ("Measure this first").
-- What sets the command gate `0x1767208`. It sits in a block of settings (the byte at `0x1767204` next to it is
-  read by `FViewportClient::Draw` and by the skeletal mesh's UpdateBounds) and nothing in `.text` writes it by its
-  own address: it is written through the block. ME1's console has `UMBRA OCCLUSIONCULLING`; whether ME3's toggles
-  this was not read.
+- What sets the command gate `0x1767208`. It is the dword right after three Umbra switches, and nothing in
+  `.text` writes it by its own address. ME3's console has ME1's `UMBRA <word>` command (the viewport client's Exec
+  `0x6D4670` holds the table): `CULLING` toggles the byte at `0x1767204` (the one `FViewportClient::Draw` and the
+  skeletal mesh's UpdateBounds read), `OCCLUSIONCULLING` `0x1767205`, `HOAX` `0x1767206`, `OCCLUSIONQUERIES`
+  `0x189EC02`, `OBJECTBOUNDS` `0x189EC00`, `OBJECTOBBS` `0x189EC01`, `MISC` `0x189EC03`, `VOXELS` `0x189EBEC`,
+  `CAMERAFRUSTUM` `0x189EBED`, `FREEZECAMERA` `0x189EBEE`, `FREEZEOCCLUSION` `0x189EBEF`. None of them is the gate.
+  Those switches are the cheapest A/B on ME3 (`UMBRA OCCLUSIONCULLING` through the console request) before any
+  lever exists. The `.data` section is not readable from the exe on disk, so the gate's start value is unknown.
 - The exe gate's view of the three renamed capture rows: `plugin/Le3SceneCapture` asks for them by RVA
   (`exe::Find`), so the names don't matter to it; nothing else read the old names.
 - Nothing here was run in the game. The first run with any hook installed should confirm the exe gate accepts all

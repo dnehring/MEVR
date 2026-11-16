@@ -53,3 +53,7 @@ rva,name,kind,comment
 0x189EBF8,GUmbraCommanderIndex,data,LE1 0x1795D28
 0x189EC0C,GUmbraResolveStart,data,LE1 0x1795D40; a float stamped by command code 0
 0x1767208,GUmbraCommandGate_guess,data,ME3 only: command() returns at once while this is 0
+0x1767204,GUmbraCulling,data,the console's UMBRA CULLING (the table is in the viewport client's Exec 0x6D4670)
+0x1767205,GUmbraOcclusionCulling,data,the console's UMBRA OCCLUSIONCULLING
+0x189EC02,GUmbraOcclusionQueries,data,the console's UMBRA OCCLUSIONQUERIES
+0x6D4670,UGameViewportClient::Exec_guess,func,LE1 0x4C99D0; holds the UMBRA and SHOW console tables
