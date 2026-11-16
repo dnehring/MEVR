@@ -1649,6 +1649,11 @@ if (MEVR_BUILD_TESTS)
         # indexes, resolving links, dated log headings (docs/knowledge/how-to-write.md).
         add_test(NAME mevr-okf COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-okf.py
             ${CMAKE_CURRENT_SOURCE_DIR}/docs/knowledge)
+        # The trilogy parity ledger's generated facts (docs/trilogy-parity-ledger.md, .json): each game's host files,
+        # services, module gates and MevrBridge seams as the sources say. A change to any fails it until
+        # `python tools/parity-ledger.py --write` and a look at the ledger rows it touches.
+        add_test(NAME mevr-parity-ledger COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tools/parity-ledger.py
+            --check)
     endif ()
 
     # Our ASI loader in a tiny host process (tools/loader-test, research/33): a folder like the game's Win64 with our
