@@ -53,7 +53,7 @@ Read these before changing code:
 
 1. [ME3 implementation ledger](le3-port-implementation-plan.md) and
    [reuse audit](le3-port-reuse-audit.md).
-2. [ME3 galaxy evidence](../research/le3-galaxy.md), especially the projector
+2. `research/le3-galaxy.md` in implementation checkpoint `0f02fd38`, especially the projector
    correction, retention, independent capture and camera contracts.
 3. [ME1 galaxy research](../research/51-galaxy-map.md): projector placement,
    scoped camera hold, label projection, transition/suspension fixes.
