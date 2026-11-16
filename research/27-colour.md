@@ -504,7 +504,7 @@ of code now. File and function names are exact; read them before changing anythi
 | colour correction and dither | the `[MEVR] colour` seams `EyeColourShaders`, `EyeColourActive`, `EyeColourShader`, `EyeColourDone` (`plugin/Colour.cpp`): variants of Halcyon's three shaders compiled with `core/vr/Colour`'s prelude in front, `MEVR_EYE_OUT` at their end | `EyeCopy`'s `kCorrectedShader` (`PSPlain`, `PSDecode`) with the same prelude and `MEVR_EYE_OUT`, constants from `colour::EyeConstants` |
 | tonemap of a float source | `MEVR_TONE` in Halcyon's `ToEye`: the hue-preserving clip, or `[Colour] tonemap`'s curve | none until this lane (a float source was clamped per channel by the hardware) |
 | upscale | the `[MEVR] upscale` seam `EyeUpscale` in `BlitTextureToEyeWithFill` (`plugin/Upscale.cpp`): FSR 1's EASU and RCAS when the 8-bit source is smaller than the eye | none until this lane |
-| the game's UI | the HUD panel's blit (`plugin/HudPanel.cpp`) with `colour::BeginPanel`/`EndPanel`, hooked by `HalcyonOverlays.cpp` | ME2: the same, hooked in `HalcyonLe2Bridge.cpp`'s `OverlayLayers`. ME3: the panel was never given the hooks, so its UI was uncorrected |
+| the game's UI | the HUD panel's blit (`plugin/HudPanel.cpp`) with `colour::BeginPanel`/`EndPanel`, hooked by `HalcyonOverlays.cpp` | ME2: the same, hooked in `plugin/SequelOverlays.cpp` (lane U2's shared composition) where the game's fact `panelColour` is true. ME3: that fact was false, so its UI was uncorrected |
 | the flat panel (menus, the map) | Halcyon's `CopyResource` into `g_menuImages`: never corrected | `CopyIntoImage(..., eye = -1)`: corrected like an eye |
 
 ### 9.2 What was a sequel-only copy, and what it is now
@@ -537,8 +537,8 @@ of code now. File and function names are exact; read them before changing anythi
    with `moveOldDefault = true` (the one-time move of LE1's old default 0 to -1); the sequels' hook calls it with false.
    The sequels now also read the key as a number (`-1.0` works) and fill the luminance when they answer HDR10, as LE1
    did.
-4. **The UI on ME3's panel was uncorrected.** `HalcyonLe3Bridge.cpp` `OnSessionCreated` now gives `hud_panel` the
-   colour hooks, as ME1 and ME2 do.
+4. **The UI on ME3's panel was uncorrected.** `panelColour` is now true in `HalcyonLe3Bridge.cpp`'s facts, so
+   `plugin/SequelOverlays.cpp` gives `hud_panel` the colour hooks there too, as on ME1 and ME2.
 5. **Not a copy, already shared before this lane:** the correction's math and shader text (`core/vr/Colour`), the
    settings, the headset detection and the profiles (`plugin/Colour.cpp`: `[Colour]`, `[Colour.<headset>]`), the
    snapshot's `"colour"` block. `EyeCopy`'s `kCorrectedShader` is 8 lines that call the shared prelude; it is the
