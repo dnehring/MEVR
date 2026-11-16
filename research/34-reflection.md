@@ -452,6 +452,22 @@ all three games configures without the submodule. `MEVR_LE2_DIAGNOSTIC` takes LE
    LExSDKv2 cross-check in this build ...`, and no `LESDK`, `SFXName::` or `GBioNamePools`; their PDBs hold `LESDK` only in
    the recorded compiler command line's `-DMEVR_NO_LESDK`.
 
+**In the game, 2026-11-16, commit `f2117a53`** (`tools/le2-halcyon-run`, holder `t04-engine`; each stretch restored with
+`verification: 0 differences`):
+- ME2, development build (`build-trilogy`), session `20261116-125123-331-LE2-t04`: `reflect: 637 of 637 checks agree`;
+  Save 4 loaded by `load.ps1` to gameplay; `mevr calltrace 2 updatecamera` logged 144 `call trace:` lines.
+- ME2, monolithic build (`build-mono`, `[Debug] requests = 1` added to `ASI\LE2MEVR.ini` after `prep.ps1`), the same
+  session: `MEVR 0.3.2 (monolithic, ...) attaching to LE2`, `reflect: ready: 109378 objects`, `reflect: no LExSDKv2
+  cross-check in this build ...`, Save 4 loaded to gameplay (`mevr state`: `BioP_ProFre`, the soldier's pawn, game mode
+  0), head tracking's status line reading "on foot yes".
+- ME3, development build, `-DesktopDump -EngineProbe`, session `20261116-125541-116-LE3-t04`: `reflect: 621 of 621 checks
+  agree`, 0 mismatches, 0 not reflected (603 before; the 18 new rows are `CheckLe3EngineAccess` and the ones other lanes
+  landed).
+- Not run: a monolithic ME3 build in the game (it builds and links no LExSDKv2; the runner's only ME3 gameplay mode is
+  the renderer preview), ME3's head tracking and reflection fix on the layer in a renderer run, LE1 (its changed
+  translation units preprocess to the same text as before but for `Ready()` to `Up()`, equal on LE1, and the call
+  trace's console verb moved into a function: `cl /EP` with the build's flags, before and after).
+
 **ReflectCheck rows** (development builds): ME2 had rows for all of these since M1. ME3 got `CheckLe3EngineAccess`
 (classes `Engine.PlayerController`, `Engine.Camera`, `Engine.SceneCaptureComponent`, `Engine.SceneCaptureReflectComponent`;
 `Engine.Camera.PCOwner`; the three functions; `GetPlayerViewPoint`'s `out_Location` and `out_Rotation` and its block's

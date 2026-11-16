@@ -180,23 +180,25 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Waits for:** T01. **Who:** EY.
 
 #### T04 Engine access on our reflection layer; no LExSDKv2 in a players' build [G52, G50, G55; G02's fallback]
-- **State:** LE1 done · LE2 verify · LE3 verify
+- **State:** LE1 done · LE2 done · LE3 verify
 - **Lives in:** `src/ue3`, `engine/GameAdapter.hpp`, `engine/Addresses.hpp`, `engine/ReflectCheck`. How it was done and
   how to check a build: research/34 section 6.4.
-- **Done 2026-11-16 (built, unit-tested; not yet run in a game):** no module reads through `engine::legacy` on any game
+- **Done 2026-11-16 (seen in the game: ME2 development `reflect: 637 of 637`, ME2 monolithic to gameplay with `reflect:
+  no LExSDKv2 cross-check in this build`, ME3's engine probe `621 of 621`; research/34 section 6.4):** no module reads through `engine::legacy` on any game
   (HeadTracking, HandAim, ConsoleRequest, Reflections, `engine::World`, Mod.cpp's gate; `engine/Legacy` is the LE2
   diagnostic host's only); `MEVR_LE2_LESDK` / `MEVR_LE3_LESDK` (default = `MEVR_HOT_RELOAD`), so a monolithic build of
   all three games configures without the LExSDKv2 submodule and its ASIs hold none of it; `tools/package-release.ps1`
   refuses a tree whose LE1, LE2 or LE3 ASI links it; `game/CallTrace` runs on every game; ME3's `Engine.Actor.Velocity`
   handle is declared (`game/BodyFollow`).
-- **Left, ME2 and ME3:** the in-game checks below. `kModulesOnLayer` stays false on both: the 10 `ready` modules left
+- **Left, ME3:** a monolithic ME3 build run to gameplay, and its head tracking on the layer in a renderer run.
+  **Both:** `kModulesOnLayer` stays false on both: the 10 `ready` modules left
   are ME1 features on ME1's names and addresses (BodyBounds, CoverAcquire, VoicePlace, SoundPlace, AuthoredMoment,
   ConversationFlow, ConversationWorld, GalaxyDump, GalaxyMap, SquadAck); each moves to `kEveryGame` and `Up()` with its
   own feature's entry, not here.
 - **Closes when:** a monolithic LE2 and LE3 build links no `LESDK-LEx` and logs `reflect: no LExSDKv2 cross-check in this
   build`; the development builds still log `reflect: N of N checks agree`; the generated module table has no "LExSDKv2"
   note left.
-- **Waits for:** a game run (Steam ignored launches on 2026-11-16). **Who:** T04's lane.
+- **Waits for:** nothing. **Who:** nobody (T04's lane ended 2026-11-16).
 
 #### T05 One test runner and one save-tool interface [Forks 10; G54; R25]
 - **State:** LE1 build · LE2 build · LE3 build
@@ -671,7 +673,7 @@ rest in the order players would notice.
 | 2 | T07 the perf probe on every host | nothing about sequel performance can be measured without it | PL, started |
 | 3 | T02 one bridge, one overlay composition | every quad is wired three times until it lands | U2, after U1 |
 | 4 | T03 one eye-image pipeline | FSR and the tonemap reach the sequels for free | EY, after U1 |
-| 5 | T04 engine access, no LExSDKv2 | built 2026-11-16: no players' build links it; the in-game checks are left | T04's lane |
+| 5 | T04 engine access, no LExSDKv2 | done 2026-11-16 but for a monolithic ME3 run: no players' build links it | nobody |
 | 6 | T25 holsters, T26 the reload, T24 the sights | ME2's first release needs M3.3-M3.5; combat is what the owner plays first | C2 |
 | 7 | T15 interrupts at Veetor (with T05's pre-Veetor save) | the last open check of M5 | nobody |
 | 8 | T08 the render levers, `keepBoundShaderStates` first | the sequels render every frame twice | R2, R3, PL |
