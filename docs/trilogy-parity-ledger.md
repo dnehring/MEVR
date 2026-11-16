@@ -53,8 +53,8 @@ rows the change touches.
 
 | game | shared | adapted | forked | missing | n/a | present and verified (V) | present, unverified (U) |
 |---|---|---|---|---|---|---|---|
-| LE2 | 11 | 41 | 5 | 32 | 4 | 38 | 19 |
-| LE3 | 11 | 41 | 7 | 28 | 6 | 19 | 40 |
+| LE2 | 11 | 42 | 4 | 32 | 4 | 38 | 19 |
+| LE3 | 11 | 42 | 6 | 28 | 6 | 19 | 40 |
 <!-- /parity:totals -->
 
 LE1 is the reference, so it has no cells. A few LE1 systems are themselves n/a under Halcyon's renderer: the reflection
@@ -93,11 +93,9 @@ These are ordered by wasted or blocked work. Each is detailed under [Forks](#for
      branches since 2026-11-16 (lane GF; G09-G11), built and ReflectChecked but not yet run in ME3.
    - LE2 has no holsters, and its right grip is RB, which opens ME2's wheel.
    - All of this code exists for ME1; the sequels need adapters, not designs.
-6. **Squad weapons and the sequel power roster are forked** (Forks 5, 6).
-   - `SquadWeapons::TickLe2`/`EquipLe2` (`game/Le2SquadMenu.inc`, used by LE2 and LE3) re-implement LE1's `Tick`. One
-     tick over a per-game adapter is written and waits for ME1's same-pose check (Forks 5).
-   - `le2_squad::Powers` duplicated `game/PowerWheel`'s ME2 roster read. **Unified 2026-11-16 (lane GF):**
-     `game/SequelPowers.hpp`.
+6. **Squad weapons and the sequel power roster were forked** (Forks 5, 6). **Unified 2026-11-16 (lane GF):** one menu
+   tick (`SquadWeapons.cpp` `TickCustom`) over a per-game `native` adapter, and one roster walk
+   (`game/SequelPowers.hpp`). What is left is the in-game check on each sequel (G30).
 7. **Traversal and LE3's movement admission are forked** (Forks 4, 11).
    - LE2's native block in `game/Traversal.cpp` and `game/Le3Traversal.cpp` are two observers over one core. Still open.
    - LE3 copied the same movement-admission predicate six times (Comfort, ArmIk, Posture, Sprint, Melee, Le3Traversal).
@@ -241,7 +239,7 @@ The [technique groups](#renderer-techniques-by-group) summary follows the table.
 | G27 | Interaction: selection by gaze, label at the object (`engine/SelectionGaze`, `game/Interact`, `HudPieceLayers::Interaction`) | **adapted** U: labels need an explicit `[Interact] crop`. Gaze selection missing (LE2 `kUpdateSelection = 0`) | **adapted** V: gaze at `0xA9BF90`; run `20261115-190610-153` (War Terminal selected, A opens War Assets). Labels U | LE2: M6 A (docs/le2-m6-implementation-guide.md). |
 | G28 | HUD pieces: wrist status, gun panel (`game/HudPieces`, `plugin/HudPieceLayers`) | **adapted** V: `Layout::Me2` crops; run `20261115-002101-lane-b4-m2b` (f71e7a71); ammo mount 2a108759 | **missing**: `setHudPieces` not served (`#if !defined(MEVR_WITH_HALCYON_LE3)` in ModLoader.cpp); `game/HudPieces` stands down by name on ME3 (no fall-back to ME1's placement) | LE3: docs/me3-overall-goal-handoff.md L3-4 "native wrist crop". |
 | G29 | Power wheel at the left hand, lock and push, self-cast gestures, coach (`game/PowerWheel`, `plugin/PowerWheel`) | **adapted** V: ME2 roster (`SFXPowerManager`); chest Adrenaline Rush and rifle Disruptor Ammo, 2026-11-15 05:25 (483ac2fb; research/55 "Mass Effect 2") | **adapted** U: `game/Le3Powers.hpp` (`SFXPowerCustomActionBase`); metadata only | research/55 "Still to verify"; L3-6. |
-| G30 | Squad weapons wheel (`game/SquadWeapons`, `plugin/SquadPanel`) | **forked** U: `TickLe2`/`EquipLe2` (`game/Le2SquadMenu.inc`) beside LE1's `Tick`; custom style only | **forked** U: the same `Le2SquadMenu.inc` | Forks 5: one tick over a per-game adapter is written (lane GF's branch) and lands after ME1's same-pose check. Then, per sequel, a replayed left-trigger pull with two squadmates (ME2: Freedom's Progress): `squad: menu #1 opened ... cards: left .., right ..`, a right-stick flick, the release, `requested weapon observed equipped`. |
+| G30 | Squad weapons wheel (`game/SquadWeapons`, `plugin/SquadPanel`) | **adapted** U: ME1's menu tick (`TickCustom`: gates, pointing, cards by standing side, haptics, logs) over ME2's `native` adapter (`game/Le2SquadMenu.inc`: a paged inventory, `OrderWeaponSwitch`, `Pawn.Weapon`); custom style only. Builds; not run in the game since the two ticks became one (2026-11-16) | **adapted** U: the same adapter with ME3's roster and input-method parameter | A replayed left-trigger pull with two squadmates (ME2: Freedom's Progress): `squad: menu #1 opened ... cards: left .., right ..`, a right-stick flick, the release, then `requested weapon observed equipped`. |
 | G31 | Squad context and gesture orders (`game/SquadContext`, `game/SquadOrders`, `core/vr/Squad*`) | **adapted** U: `game/Le2Squad.hpp` (`HenchmanOrderAttackTarget`, `SquadOrderUsePower`) | **adapted** U | M6 C; L3-6. |
 | G32 | Squad placement by an arc (`game/SquadPlace`, `plugin/SquadPlaceDraw`) | **adapted** U: opt-in `[SquadOrders] place = 1` | **adapted** U | M6 table, squad roster and placement row: Miranda and Jacob on Freedom's Progress. |
 | G33 | Voice orders, the model tier, the Voice page (`game/Voice`, `plugin/Voice`, `plugin/VoiceModel`) | **shared** U: the protected voice run timed out | **shared** U: the model tier compiles into LE3 wherever its host compiles `plugin/VoiceModel.cpp` (until 2026-11-16 only when LE2 was built too) | A microphone run, or `voice.request wav`, per game. |
@@ -340,18 +338,25 @@ Each item: the copies, then what unifying would take. Line counts are as of `cca
      handler in `Traversal.cpp` that reads the sample once and hands it to the game's adapter; (3) ME2's begin and end
      through `ActionLifecycle` (`Request` at the commit, `Observe` from the poll), keeping its `Move` record as the
      report. `Le3Traversal.cpp` was another session's file while this lane ran, so only its `Guard` changed (Forks 11).
-5. **The squad weapons tick.**
-   - Copies: `game/Le2SquadMenu.inc` `TickLe2`/`EquipLe2` (LE2 and LE3) beside `game/SquadWeapons.cpp` `Tick` (LE1).
-   - The `.inc` re-implements the pointing pre-selection (a world-space angle in place of `menu::PickPointed`), the
-     input assembly, the haptics and the pending-weapon follow-up. They share only `gMachine`.
-   - **To unify:** one `Tick` over a per-game roster and equip adapter (`le2_squad::Weapons`, LE1's quick slots).
-   - **Written, not landed (lane GF, 2026-11-16; branch `gf-full`):** ME1's drawn-menu tick as `TickCustom` for every
-     game over a `native` adapter per game (`Read`, `Pause`, `Unpause`, `Stop`, `Equip`, `Follow`, `TileName`,
-     `NextPage`; ME1's in `SquadWeapons.cpp`, the sequels' in `Le2SquadMenu.inc`). It builds for all three games. It
-     moves ME1's code, so it lands only after ME1's same-pose check (a squad save, the native style's status and a
-     replayed left-trigger pull in the custom style, before and after), which waits for game runs. On the sequels it
-     brings ME1's pointing (`menu::PickPointed`), preselection (nearest the ray), card order (who stands further left),
-     haptics and log lines in place of the copy's.
+5. **The squad weapons tick. Unified 2026-11-16 (lane GF).**
+   - Was: `game/Le2SquadMenu.inc` `TickLe2`/`EquipLe2` (LE2 and LE3, 116 lines) beside `game/SquadWeapons.cpp` `Tick`
+     (LE1). The `.inc` re-implemented the pointing pre-selection (a world-space angle in place of
+     `menu::PickPointed`), the input assembly, the haptics and the pending-weapon follow-up. They shared only `gMachine`.
+   - Now: one drawn-menu tick, `SquadWeapons.cpp` `TickCustom` (ME1's, moved out of `#if MEVR_GAME_LE1` unchanged),
+     over a `native` adapter per game with one interface (`Read`, `Pause`, `Unpause`, `Stop`, `Equip`, `Follow`,
+     `TileName`, `NextPage`): ME1's in `SquadWeapons.cpp` (quick slots, the weapon wheel's own order), the sequels' in
+     `Le2SquadMenu.inc` (a paged inventory of weapon objects, `OrderWeaponSwitch`, `Pawn.Weapon`). ME1's native wheel
+     (`TickNative`) stays ME1's.
+   - What changed on the sequels with it (ME1's behaviour, in place of the copy's): the pointing is
+     `menu::PickPointed` in tracking space; not pointing, the squadmate nearest the ray is preselected (was the first);
+     the two cards are ordered by who stands further left (was squad order); ME1's haptics per event (was one pulse)
+     and ME1's log lines; not on foot, no world view or sleeping controllers close the menu through `Inactive` (was an
+     unusable machine). Still to check in each sequel's game: G30.
+   - ME1 checked before and after on the fake headset (sessions `2026-11-16_13-57-19-gf-squad-before` at 6329fb0c
+     and `2026-11-16_13-47-06-gf-squad-after`; a squad save with Garrus and Tali, a paused snapshot under the same
+     replayed pose, then `style = custom` and a replayed left-trigger pull, right-stick flick and release): `hostView`
+     and `mod.squad` identical, the HUD, the wrist and both eyes pixel for pixel, and the same `squad:` lines from
+     `menu #1 opened` to `TALI holds the assault rifle`.
 6. **The sequel power roster. Unified 2026-11-16 (lane GF).**
    - Was: `game/Le2Squad.hpp` `le2_squad::Powers` and `game/PowerWheel.cpp`'s roster read each walked
      `BioPawn.PowerManager`'s `Powers` and resolved ME2's evolved instances with their own copies of the handles.
@@ -546,10 +551,9 @@ These are concrete, each with its check. None was fixed here (read-only audit).
 - **Two configuration values nobody reads.**
   - (fixed by lane U1: `RendererLe2::RecenterTiltDeg` is read by `plugin/RecenterTilt` since the LE2 tree calls
     `RecenterOrientation`.)
-  - `PowerWheel::StatusJson` reads the controller through `Ready()`, which is null on the sequels. The value shown is
-    not empty there, though: the sequels' `MappedPower` ignores the controller and names the wheel's own selection.
-    The one-line fix (`Up()`) is on lane GF's branch with the squad tick (Forks 5): the line is ME1's too, so it
-    lands after ME1's same-pose check.
+  - `PowerWheel::StatusJson` read the controller through `Ready()`, which is null on the sequels. **Fixed 2026-11-16
+    (lane GF):** it asks `Up()`. The value shown was never empty there, though: the sequels' `MappedPower` ignores
+    the controller and names the wheel's own selection.
 - **LExSDKv2's generated LE3 header lists no `Engine.Actor.Location`**, though every game has it, so the generated
   "names" table has false entries. ReflectCheck, against the running game, is the authority; the table is a lead.
 

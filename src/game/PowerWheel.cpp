@@ -2126,7 +2126,8 @@ std::string StatusJson() {
     for (Power const& p : gRoster) {
         roster += (roster.empty() ? "" : ", ") + json::JsonString(p.info->name);
     }
-    ue3::Object* const controller = ue3::runtime::Ready() ? player::Controller() : nullptr;
+    // Up(), not Ready(): this runs on every game (the sequels' wheel keeps its own selection; ME1 reads the game's mapped power).
+    ue3::Object* const controller = ue3::runtime::Up() ? player::Controller() : nullptr;
     return std::format("{{\"on\": {}, \"why\": {}, \"open\": {}, \"toggled\": {}, \"serial\": {}, \"roster\": [{}], \"selected\": {}, "
                        "\"hand\": [{}, {}], \"pose\": [{}, {}, {}], \"equipped\": {}, \"mappedPower\": {}, \"last\": {}, \"opened\": {}, "
                        "\"equips\": {}, \"cancels\": {}, \"picks\": {}, \"gestureTarget\": [{}, {}, {}], "
