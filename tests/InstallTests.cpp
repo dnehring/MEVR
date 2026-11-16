@@ -13,6 +13,7 @@
 #include "install/Launch.hpp"
 #include "install/Manifest.hpp"
 #include "install/Packs.hpp"
+#include "install/Report.hpp"
 #include "install/Toc.hpp"
 #include "install/Updates.hpp"
 #include "install/Voice.hpp"
@@ -24,6 +25,7 @@
 #include <shellapi.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
@@ -1919,6 +1921,326 @@ void TestBusyFile() {
     fs::remove_all(dir, ec);
 }
 
+// Every file under `dir` with its bytes, for "byte for byte what it was".
+std::vector<std::pair<std::string, std::string>> Tree(fs::path const& dir) {
+    std::vector<std::pair<std::string, std::string>> files;
+    std::error_code ec;
+    for (auto const& entry : fs::recursive_directory_iterator(dir, ec)) {
+        if (entry.is_regular_file(ec)) {
+            files.emplace_back(entry.path().lexically_relative(dir).generic_string(), Read(entry.path()));
+        }
+    }
+    std::sort(files.begin(), files.end());
+    return files;
+}
+
+// The three games (docs/trilogy-plan.md T52): one description per game, the same steps by the same code.
+void TestGames() {
+    using namespace mevr::install;
+    namespace l = mevr::install::launch;
+
+    // ---- The descriptions. Mass Effect 1's paths are the constants every caller has used so far.
+    GamePaths const& p1 = PathsFor(GameId::LE1);
+    ICHECK(p1.win64 == paths::kWin64 && p1.asi == paths::kAsi && p1.bink == paths::kBink && p1.binkOriginal == paths::kBinkOriginal);
+    ICHECK(p1.modAsi == paths::kModAsi && p1.modIni == paths::kModIni && p1.rendererIni == paths::kHalcyonIni && p1.setupExe == paths::kSetupExe);
+    ICHECK(p1.gamerSettings == paths::kGamerSettings && p1.engineIni == paths::kEngineIni && p1.steamAppId == paths::kSteamAppId && p1.exe == paths::kExe);
+    ICHECK((RuntimeFiles() == std::vector<std::string>{paths::kModIni, "Game/ME1/Binaries/Win64/Logs/LE1MEVR.log",
+        "Game/ME1/Binaries/Win64/Logs/LE1MEVR.prev.log", "Game/ME1/Binaries/Win64/Logs/MEVRLoader.log", paths::kLauncherLoaderLog}));
+    GamePaths const& p2 = PathsFor(GameId::LE2);
+    ICHECK(p2.modAsi == "Game/ME2/Binaries/Win64/ASI/LE2MEVR.asi" && p2.modIni == "Game/ME2/Binaries/Win64/ASI/LE2MEVR.ini");
+    ICHECK(p2.rendererIni == "Game/ME2/Binaries/Win64/MELE2VR.ini");  // next to the exe, not in the ASI folder
+    ICHECK(p2.gamerSettings == "Game/ME2/BioGame/Config/GamerSettings.ini" && p2.exe == "Game/ME2/Binaries/Win64/MassEffect2.exe");
+    GamePaths const& p3 = PathsFor(GameId::LE3);
+    ICHECK(p3.rendererIni == "Game/ME3/Binaries/Win64/MELE3VR.ini" && p3.modLog == "Game/ME3/Binaries/Win64/Logs/LE3MEVR.log");
+    ICHECK(RuntimeFiles(GameId::LE3).front() == "Game/ME3/Binaries/Win64/ASI/LE3MEVR.ini" && RuntimeFiles(GameId::LE3).back() == paths::kLauncherLoaderLog);
+    ICHECK(Spec(GameId::LE1).number == 1 && Spec(GameId::LE2).number == 2 && Spec(GameId::LE3).number == 3);
+    ICHECK(std::string(Spec(GameId::LE2).key) == "LE2" && std::string(Spec(GameId::LE3).exe) == "MassEffect3.exe");
+    ICHECK(Spec(GameId::LE1).cockpit && Spec(GameId::LE1).voice && Spec(GameId::LE1).audio && Spec(GameId::LE1).packs && Spec(GameId::LE1).stereoTarget);
+    ICHECK(!Spec(GameId::LE2).cockpit && !Spec(GameId::LE2).voice && !Spec(GameId::LE3).audio && !Spec(GameId::LE3).packs && !Spec(GameId::LE2).stereoTarget);
+    ICHECK(ParseGame("LE2") == GameId::LE2 && ParseGame("le3") == GameId::LE3 && ParseGame("ME1") == GameId::LE1 && ParseGame(" 2 ") == GameId::LE2);
+    ICHECK(ParseGame("Mass Effect 3") == GameId::LE3 && !ParseGame("LE4") && !ParseGame("") && !ParseGame("ME"));
+    ICHECK((ParseGameList("LE3, le1") == std::array<bool, 3>{true, false, true}) && (ParseGameList("nothing") == std::array<bool, 3>{}));
+    // The one switch: MEVR-Setup.ini's [Setup] games. Missing: Mass Effect 1 only, as every release so far.
+    ICHECK((OfferedGames("") == std::array<bool, 3>{true, false, false}));
+    ICHECK((OfferedGames("[Update]\r\nrepo = https://github.com/dnehring/MEVR\r\n") == std::array<bool, 3>{true, false, false}));
+    ICHECK((OfferedGames("[Setup]\r\ngames = LE1, LE2\r\n") == std::array<bool, 3>{true, true, false}));
+    ICHECK((OfferedGames("[Setup]\r\ngames = LE2;LE3\r\n") == std::array<bool, 3>{true, true, true}));  // Mass Effect 1 always
+    ICHECK((OfferedGames("[Setup]\r\ngames = \r\n") == std::array<bool, 3>{true, false, false}));
+
+    // ---- Starting a game: the arguments per game, Steam's -game <n>.
+    l::LauncherConfig config;
+    ICHECK(l::GameArguments(1, config) == l::Le1Arguments(config) && l::GameLanguage(1, config) == l::Le1Language(config));
+    ICHECK(l::GameArguments(2, config) == L"-NoHomeDir -SeekFreeLoadingPCConsole -locale {locale} -Subtitles 20 -OVERRIDELANGUAGE=INT");
+    ICHECK(l::GameArguments(3, config) == L"-NoHomeDir -SeekFreeLoadingPCConsole -locale {locale} -Subtitles 20 -language=INT");
+    config.language = "de_DE";
+    config.subtitleSize = 26;
+    ICHECK(l::GameLanguage(1, config) == "DE" && l::GameLanguage(2, config) == "DEU" && l::GameLanguage(3, config) == "DEU");
+    config.englishVoices = true;
+    ICHECK(l::GameLanguage(1, config) == "GE" && l::GameLanguage(2, config) == "DEE" && l::GameLanguage(3, config) == "DEE");
+    ICHECK(l::GameArguments(3, config) == L"-NoHomeDir -SeekFreeLoadingPCConsole -locale {locale} -Subtitles 26 -language=DEE");
+    config.language = "pl_PL";
+    ICHECK(l::GameLanguage(1, config) == "PL" && l::GameLanguage(2, config) == "POE" && l::GameLanguage(3, config) == "POL");
+    config.language = "xx_XX";
+    ICHECK(l::GameLanguage(2, config) == "INT" && l::GameLanguage(3, config) == "INT");
+    ICHECK(l::SteamBootArgs(1) == l::kSteamBootLe1Args && l::SteamBootArgs(2) == L"-applaunch 1328670 -game 2 -autoterminate");
+    ICHECK(l::SteamBootArgs(3) == L"-applaunch 1328670 -game 3 -autoterminate" && l::SteamBootArgs(7) == l::kSteamBootLe1Args);
+    ICHECK(std::wstring(l::GameExeName(2)) == L"MassEffect2.exe" && std::wstring(l::GameFolderName(3)) == L"ME3" && std::wstring(l::GameExeName(0)) == L"MassEffect1.exe");
+    for (GameId const game : {GameId::LE1, GameId::LE2, GameId::LE3}) {
+        for (bool const boots : {true, false}) {
+            std::wstring arguments;
+            l::SteamLaunchHooks hooks;
+            hooks.launch = [&](l::SteamLaunchMethod, std::wstring const&, std::wstring const& args, fs::path const&) -> unsigned long {
+                arguments = args;
+                return ERROR_SUCCESS;
+            };
+            l::Result const r = l::RequestSteamLaunch(L"C:\\Steam\\steam.exe", boots, hooks, game);
+            ICHECK(r.started && arguments == (boots ? l::SteamBootArgs(Spec(game).number) : std::wstring(L"-applaunch 1328670")));
+            ICHECK(r.message.find(Spec(game).name) != std::string::npos);
+            if (game == GameId::LE1) {  // Mass Effect 1's own function says the same
+                ICHECK(l::RequestSteamLaunch(L"C:\\Steam\\steam.exe", boots, hooks).message == r.message);
+            }
+            // Only the registered URL: the game's number is in it.
+            std::wstring url;
+            hooks.launch = [&](l::SteamLaunchMethod, std::wstring const& target, std::wstring const&, fs::path const&) -> unsigned long {
+                url = target;
+                return ERROR_SUCCESS;
+            };
+            ICHECK(l::RequestSteamLaunch({}, boots, hooks, game).started);
+            ICHECK(url == (boots ? L"steam://run/1328670//-game " + std::to_wstring(Spec(game).number) + L" -autoterminate/" : std::wstring(L"steam://run/1328670")));
+        }
+    }
+    namespace fst = mevr::install::launch::first_start;
+    ICHECK(fst::PhaseText(fst::Phase::Starting, GameId::LE1) == fst::PhaseText(fst::Phase::Starting));
+    ICHECK(fst::PhaseText(fst::Phase::WaitingForQuit, GameId::LE2).find("Mass Effect 2 made its settings file") == 0);
+    ICHECK(fst::PhaseText(fst::Phase::Closed, GameId::LE3).find("Mass Effect 1") == std::string::npos);
+
+    // ---- The VR game settings per game (tools/vr-game-settings.ps1 -Game).
+    std::string const gamer = "[SystemSettings]\r\nFullscreen=True\r\nResX=2560\r\nResY=1440\r\nUseVSync=True\r\nDynamicShadows=True\r\n\r\n[HDR]\r\nDesiredRange=DynamicRange_HDR\r\n";
+    settings::Choices choices;
+    choices.target = settings::TargetFor("performance", 0, 0);  // ignored by a sequel: its renderer sizes the target
+    std::vector<ini::Edit> edits1;
+    std::vector<ini::Edit> edits1b;
+    ICHECK(settings::ApplyGamerSettings(gamer, choices, &edits1, GameId::LE1) == settings::ApplyGamerSettings(gamer, choices, &edits1b) && edits1 == edits1b);
+    std::vector<ini::Edit> edits2;
+    std::string const le2 = settings::ApplyGamerSettings(gamer, choices, &edits2, GameId::LE2);
+    ICHECK(ini::Get(le2, "SystemSettings", "ResX") == std::optional<std::string>("2560") && ini::Get(le2, "SystemSettings", "ResY") == std::optional<std::string>("1440"));
+    ICHECK(ini::Get(le2, "SystemSettings", "BorderlessWindow") == std::optional<std::string>("True") && ini::Get(le2, "SystemSettings", "Fullscreen") == std::optional<std::string>("False"));
+    ICHECK(ini::Get(le2, "SystemSettings", "UseVSync") == std::optional<std::string>("False") && ini::Get(le2, "SystemSettings", "MaxAnisotropy") == std::optional<std::string>("16"));
+    ICHECK(ini::Get(le2, "SystemSettings", "DynamicShadows") == std::optional<std::string>("False"));
+    ICHECK(ini::Get(le2, "SystemSettings", "FoliageDrawRadiusMultiplier") == std::optional<std::string>("0.5"));
+    ICHECK(ini::Get(le2, "HDR", "DesiredRange") == std::optional<std::string>("DynamicRange_SDR"));
+    ICHECK(ini::Revert(le2, edits2) == gamer);  // every change on record
+    std::vector<ini::Edit> edits3;
+    std::string const le3 = settings::ApplyGamerSettings(gamer, choices, &edits3, GameId::LE3);
+    ICHECK(ini::Get(le3, "SystemSettings", "DynamicShadows") == std::optional<std::string>("True") && !ini::Get(le3, "SystemSettings", "FoliageDrawRadiusMultiplier"));
+    ICHECK(ini::Get(le3, "SystemSettings", "BorderlessWindow") == std::optional<std::string>("True") && ini::Revert(le3, edits3) == gamer);
+    // What a sequel's renderer writes later (its RenderW x RenderH into ResX/ResY, DepthOfField) goes back too.
+    std::string const renderer = "; a comment\r\n[VR]\r\nMode=4\r\nRenderW=4096\r\nRenderH=2304\r\nDisableDof=0\r\n";
+    std::string written = ini::Set(ini::Set(le2, "SystemSettings", "ResX", "4096"), "SystemSettings", "ResY", "2304");
+    written = ini::Set(written, "SystemSettings", "DepthOfField", "False");
+    ICHECK(ini::Revert(written, edits2, settings::ModWrites(renderer, GameId::LE2)) == gamer);
+    // A resolution the player set by hand (not the renderer's) stays theirs.
+    std::string const byHand = ini::Set(le2, "SystemSettings", "ResX", "3000");
+    ICHECK(ini::Get(ini::Revert(byHand, edits2, settings::ModWrites(renderer, GameId::LE2)), "SystemSettings", "ResX") == std::optional<std::string>("3000"));
+    // RenderW 0: the renderer leaves GamerSettings.ini alone, so a 0 there is never "the mod's".
+    ini::Ours const none = settings::ModWrites("[VR]\r\nRenderW=0\r\nRenderH=0\r\n", GameId::LE3);
+    ICHECK(!none(ini::Edit{"SystemSettings", "ResX", std::string("2560"), "2560"}, "0") && none(ini::Edit{"SystemSettings", "DepthOfField", std::nullopt, ""}, "False"));
+
+    // ---- Upstream's own release: told by the string its installer looks for.
+    ICHECK(detect::HasUpstreamMarker("xx MELEVR yy", "MELEVR") == detect::HasMelevrMarker("xx MELEVR yy") && detect::HasUpstreamMarker("..ME2VR..", "ME2VR"));
+    ICHECK(!detect::HasUpstreamMarker("..MELEVR..", "ME2VR") && !detect::HasUpstreamMarker("anything", ""));
+    static constexpr char kWideMarker[] = {'M', 0, 'E', 0, '2', 0, 'V', 0, 'R', 0};  // as a version resource spells it
+    ICHECK(detect::HasUpstreamMarker(std::string_view(kWideMarker, sizeof kWideMarker), "ME2VR"));
+
+    // ---- A fake Legendary Edition with the three games; Mass Effect 2 and 3 installed, repaired, uninstalled.
+    fs::path const base = fs::path(mevr::tests::TempRoot()) / L"mevr-install-games";
+    fs::path const root = base / L"Mass Effect Legendary Edition";
+    if (detect::GameRunningIn(root, GameId::LE2) || detect::GameRunningIn(root, GameId::LE3)) {
+        std::printf("  (a game runs from the test folder: the rest of TestGames is skipped)\n");
+        return;
+    }
+    std::error_code ec;
+    fs::remove_all(base, ec);
+    fs::path const payloadDir = base / L"payload";
+    Write(payloadDir / L"LE1MEVR.asi", "ASI 1");
+    Write(payloadDir / L"LE2MEVR.asi", "ASI 2");
+    Write(payloadDir / L"LE3MEVR.asi", "ASI 3");
+    Write(payloadDir / L"MELE2VR.ini", renderer);  // ME2's release settings; ME3's release has none
+    Write(payloadDir / L"bink2w64.dll", "our loader");
+    Write(payloadDir / L"fonts" / L"A.ttf", "font");
+    Write(payloadDir / L"menu" / L"main.rml", "<rml/>");
+    Write(payloadDir / L"cockpit" / L"BIOG_MEVR_Cockpit.pcc", std::string(100, 'p'));
+    Write(payloadDir / L"cockpit" / L"cockpit.txt", "seat\r\n");
+    Write(payloadDir / L"audio" / L"soft_oal.dll", "openal");
+    Write(payloadDir / L"voice" / L"MEVR-Voice.dll", "voice");
+    Payload const payload{payloadDir};
+    ICHECK(payload.Valid() && payload.Has(GameId::LE1) && payload.Has(GameId::LE2) && payload.Has(GameId::LE3));
+    ICHECK(payload.Asi(GameId::LE1) == payload.Asi() && payload.Asi(GameId::LE3).filename() == L"LE3MEVR.asi");
+    {
+        // A release without the sequels (every one so far) has only Mass Effect 1's.
+        fs::path const only1 = base / L"payload-le1";
+        Write(only1 / L"LE1MEVR.asi", "ASI 1");
+        Write(only1 / L"bink2w64.dll", "our loader");
+        Write(only1 / L"fonts" / L"A.ttf", "font");
+        Write(only1 / L"menu" / L"main.rml", "<rml/>");
+        ICHECK(Payload{only1}.Valid() && !Payload{only1}.Has(GameId::LE2) && FindPayload(only1).has_value());
+    }
+    for (GameId const game : kAllGames) {
+        Layout const layout{root, game};
+        Write(layout.Win64() / detect::Wide(Spec(game).exe), "exe");
+        Write(layout.Win64() / L"bink2w64.dll", "a proxy");  // no version resource: "another proxy" in front of...
+        Write(layout.Win64() / L"bink2w64_original.dll", "RAD original");
+        Write(layout.Full(layout.Paths().gamerSettings), gamer);
+    }
+    ICHECK(detect::IsGameRoot(root) && detect::IsEditionRoot(root) && detect::HasGame(root, GameId::LE3) && !detect::HasGame(base, GameId::LE2));
+    ICHECK(detect::RootFromPicked(root / L"Game" / L"ME2" / L"Binaries" / L"Win64") == std::optional<fs::path>(root));
+    ICHECK(detect::GameFromPicked(root / L"Game" / L"ME2" / L"Binaries" / L"Win64", root) == GameId::LE2);
+    ICHECK(detect::GameFromPicked(root / L"Game" / L"ME3", root) == GameId::LE3 && !detect::GameFromPicked(root, root) && !detect::GameFromPicked(root / L"Game", root));
+    {
+        // A folder with only Mass Effect 2 in it is still a game root (for that game).
+        fs::path const only2 = base / L"only2";
+        Write(only2 / L"Game" / L"ME2" / L"Binaries" / L"Win64" / L"MassEffect2.exe", "exe");
+        ICHECK(!detect::IsGameRoot(only2) && detect::IsEditionRoot(only2) && ReadStatus(only2, "Folder", GameId::LE2).gameFound && !ReadStatus(only2, "Folder").gameFound);
+    }
+    auto const untouched = Tree(root);
+    InstallOptions options;
+    options.ignoreVersion = true;
+    options.choices = choices;
+    options.source = "Steam";
+    ICHECK(InstalledGames(root).empty());
+    for (GameId const game : {GameId::LE2, GameId::LE3}) {
+        GameSpec const& spec = Spec(game);
+        Layout const layout{root, game};
+        GamePaths const& p = layout.Paths();
+        Status s = ReadStatus(root, "Folder", game);
+        ICHECK(s.game == game && s.gameFound && !s.installed && s.hasGamerSettings && s.bink == detect::BinkState::OtherProxy);
+        ICHECK(Ok(Install(layout, payload, options)));
+        s = ReadStatus(root, "Folder", game);
+        ICHECK(s.installed && s.gameSettings && !s.pendingSettings && !s.eyeSizeAtFirstStart && s.needsRepair.empty() && s.loader == "other");
+        ICHECK(Read(layout.Full(p.modAsi)) == std::string("ASI ") + std::to_string(spec.number));
+        ICHECK(fs::exists(layout.Asi() / L"fonts" / L"A.ttf") && fs::exists(layout.Asi() / L"menu" / L"main.rml"));
+        // Mass Effect 1's extras stay Mass Effect 1's.
+        ICHECK(!fs::exists(layout.Asi() / L"cockpit") && !fs::exists(layout.Asi() / L"audio") && !fs::exists(layout.Asi() / L"voice"));
+        ICHECK(!fs::exists(Layout{root}.Asi()) && !fs::exists(root / L"Game" / L"ME1" / L"BioGame" / L"CookedPCConsole"));
+        ICHECK(Read(layout.Full(p.steamAppId)) == "1328670");
+        Transaction tx(layout);
+        ICHECK(tx.Load() && tx.Exists() && tx.Data().game == spec.key);
+        ICHECK(tx.Data().Find(p.modIni) != nullptr && tx.Data().Find(p.modLog) != nullptr && tx.Data().Find(p.modIni)->userData);
+        std::string const g = Read(layout.Full(p.gamerSettings));
+        ICHECK(settings::Read(g).borderless && !settings::Read(g).vsync && !settings::Read(g).hdr && settings::Read(g).resX == 2560);
+        if (game == GameId::LE2) {
+            ICHECK(Read(layout.Full(p.rendererIni)) == renderer && tx.Data().Find(p.rendererIni) != nullptr && tx.Data().Find(p.rendererIni)->userData);
+        } else {
+            // No release settings for ME3: nothing made up; the file its renderer will write is on record as the player's.
+            ICHECK(!fs::exists(layout.Full(p.rendererIni)) && tx.Data().Find(p.rendererIni) != nullptr && tx.Data().Find(p.rendererIni)->userData);
+        }
+        // A file goes missing: Repair puts it back; the player's renderer settings are never put back from the release.
+        fs::remove(layout.Full(p.modAsi), ec);
+        if (game == GameId::LE2) {
+            Write(layout.Full(p.rendererIni), renderer + "HalfEyeUU=2.9\r\n");
+        }
+        ICHECK(!ReadStatus(root, "Folder", game).needsRepair.empty());
+        ICHECK(Ok(Repair(layout, payload)) && ReadStatus(root, "Folder", game).needsRepair.empty());
+        ICHECK(Read(layout.Full(p.modAsi)) == std::string("ASI ") + std::to_string(spec.number));
+        if (game == GameId::LE2) {
+            ICHECK(Read(layout.Full(p.rendererIni)) == renderer + "HalfEyeUU=2.9\r\n");
+        }
+        // The settings back and on again.
+        ICHECK(Ok(RestoreSettings(layout)) && Read(layout.Full(p.gamerSettings)) == gamer && !ReadStatus(root, "Folder", game).gameSettings);
+        ICHECK(Ok(ApplySettings(layout, choices)) && ReadStatus(root, "Folder", game).gameSettings);
+        // The voice orders and the texture packs are Mass Effect 1's: refused for a sequel, nothing written.
+        ICHECK(!voice::Remove(layout).ok && !InstallPack(layout, "alot", payloadDir / L"LE1MEVR.asi", {}, nullptr).ok);
+    }
+    ICHECK((InstalledGames(root) == std::vector<GameId>{GameId::LE2, GameId::LE3}) && (InstalledGames(root, GameId::LE2) == std::vector<GameId>{GameId::LE3}));
+    ICHECK(!ReadStatus(root, "Folder").installed && !ReadStatus(root, "Folder").hasRecord);  // Mass Effect 1: nothing
+
+    // The problem report for Mass Effect 2: its own log and settings, named so in REPORT.md.
+    {
+        Layout const layout{root, GameId::LE2};
+        Write(layout.Win64() / L"Logs" / L"LE2MEVR.log", "[01:00:00.000] [info] MEVR 0.1.0 (monolithic, commit abc1234) attaching to LE2\r\n"
+                                                         "[01:00:01.000] [error] something failed\r\n");
+        Write(Layout{root}.Win64() / L"Logs" / L"LE1MEVR.log", "[01:00:00.000] [error] Mass Effect 1's, not this report's\r\n");
+        report::Options ro;
+        ro.game = GameId::LE2;
+        ro.gameRoot = root;
+        ro.localData = base / L"local";
+        ro.halcyonLog = base / L"local" / L"MELE2VR_Log.txt";
+        ro.store = "Steam";
+        Write(ro.halcyonLog, "2026-11-16 01:00:00.000 | [XR] session started\r\n2026-11-16 01:00:01.000 | [D3D] present failed\r\n");
+        report::Bundle const bundle = report::Collect(ro, report::Redactor());
+        auto const has = [&](char const* name) {
+            return std::any_of(bundle.files.begin(), bundle.files.end(), [&](report::File const& f) { return f.name == name; });
+        };
+        ICHECK(bundle.game == GameId::LE2 && has("logs/LE2MEVR.log") && has("logs/MELE2VR_Log.txt") && has("settings/MELE2VR.ini") &&
+               has("settings/MEVR-install.json") && has("system/folders.txt"));
+        ICHECK(!has("logs/LE1MEVR.log") && !has("settings/MELEVR.ini"));
+        ICHECK(bundle.problems.errors == 1 && bundle.rendererProblems.errors == 1 && bundle.system.resolution.find("4096x2304") != std::string::npos);
+        std::string const md = report::BuildReportMd(bundle);
+        ICHECK(md.find("Game (MassEffect2.exe)") != std::string::npos && md.find("### Last session (logs/LE2MEVR.log): 1 errors") != std::string::npos);
+        ICHECK(md.find("logs/MELE2VR_Log.txt") != std::string::npos && md.find("LE1MEVR") == std::string::npos && md.find("MassEffect1.exe") == std::string::npos);
+        for (report::File const& f : bundle.files) {
+            if (f.name == "system/folders.txt") {
+                ICHECK(f.bytes.find("Game\\ME2\\Binaries\\Win64\\ASI (everything):") != std::string::npos && f.bytes.find("LE2MEVR.asi") != std::string::npos);
+            }
+        }
+        fs::remove_all(layout.Win64() / L"Logs", ec);
+        fs::remove_all(Layout{root}.Win64() / L"Logs", ec);
+    }
+    ICHECK(report::DiffModIni("[Comfort]\r\nturn = snap\r\n", GameId::LE3).front().file == "LE3MEVR.ini");
+    ICHECK(report::DiffModIni("[Comfort]\r\nturn = snap\r\n").front().file == "LE1MEVR.ini");
+
+    // Uninstall both: the folder is byte for byte what it was (the player's renderer value went with ME2's own file).
+    for (GameId const game : {GameId::LE2, GameId::LE3}) {
+        Layout const layout{root, game};
+        Write(layout.Full(layout.Paths().modIni), "[Hands]\r\n");  // what the mod wrote at run time
+        ICHECK(Ok(Uninstall(layout, false, {})));
+        ICHECK(!fs::exists(layout.Asi()) && !ReadStatus(root, "Folder", game).hasRecord);
+    }
+    ICHECK(Tree(root) == untouched && InstalledGames(root).empty());
+
+    // Halcyon's own settings file next to the exe before us (its release, or the player's): never written, recorded or deleted.
+    {
+        Layout const layout{root, GameId::LE2};
+        std::string const theirs = "[VR]\r\nMode=4\r\nInstallerRun=1\r\n";
+        Write(layout.Full(layout.Paths().rendererIni), theirs);
+        auto const withTheirs = Tree(root);
+        ICHECK(Ok(Install(layout, payload, options)) && Read(layout.Full(layout.Paths().rendererIni)) == theirs);
+        Transaction tx(layout);
+        ICHECK(tx.Load() && tx.Data().Find(layout.Paths().rendererIni) == nullptr);
+        ICHECK(Ok(Repair(layout, payload)) && Read(layout.Full(layout.Paths().rendererIni)) == theirs);
+        ICHECK(Ok(Uninstall(layout, false, {})) && Tree(root) == withTheirs);
+        fs::remove(layout.Full(layout.Paths().rendererIni), ec);
+    }
+
+    // A sequel never started: no GamerSettings.ini. The choices wait (nothing of the stereo target: its renderer's own).
+    {
+        Layout const layout{root, GameId::LE3};
+        fs::remove(layout.Full(layout.Paths().gamerSettings), ec);
+        options.choices.eyeSizeAtFirstStart = true;  // Mass Effect 1's "auto": means nothing for a sequel
+        Outcome const in = Install(layout, payload, options);
+        ICHECK(in.ok && std::any_of(in.log.begin(), in.log.end(), [](std::string const& line) { return line.find("Mass Effect 3 hasn't been started") != std::string::npos; }));
+        Status s = ReadStatus(root, "Folder", GameId::LE3);
+        ICHECK(s.installed && !s.gameSettings && s.pendingSettings.has_value() && !s.eyeSizeAtFirstStart && !s.hasGamerSettings);
+        // Nothing of Mass Effect 1's stereo target waits for a sequel: its renderer sizes the picture.
+        ICHECK(s.pendingSettings && s.pendingSettings->width == 0 && s.pendingSettings->height == 0 && !s.pendingSettings->eyeSizeAtFirstStart &&
+               s.pendingSettings->vsyncOff);
+        Outcome const early = Repair(layout, payload);
+        ICHECK(early.ok && std::any_of(early.log.begin(), early.log.end(), [](std::string const& line) { return line.find("start Mass Effect 3 once") != std::string::npos; }));
+        Write(layout.Full(layout.Paths().gamerSettings), gamer);
+        ICHECK(Ok(Repair(layout, payload)));
+        s = ReadStatus(root, "Folder", GameId::LE3);
+        ICHECK(s.gameSettings && !s.pendingSettings && settings::Read(Read(layout.Full(layout.Paths().gamerSettings))).borderless);
+        ICHECK(Ok(Uninstall(layout, false, {})) && Tree(root) == untouched);
+    }
+
+    // A release that doesn't carry a game's mod can't install it, and says which.
+    {
+        fs::path const only1 = base / L"payload-le1";
+        Outcome const refused = Install(Layout{root, GameId::LE2}, Payload{only1}, options);
+        ICHECK(!refused.ok && !refused.errors.empty() && refused.errors.front().find("LE2MEVR.asi") != std::string::npos && Tree(root) == untouched);
+    }
+}
+
 } // namespace
 
 void RunInstallTests(int& failures) {
@@ -1942,4 +2264,5 @@ void RunInstallTests(int& failures) {
     TestVoice();
     TestAudio();
     TestBusyFile();
+    TestGames();
 }

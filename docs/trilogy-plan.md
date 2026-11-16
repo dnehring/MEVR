@@ -640,14 +640,18 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Left:** every sequel run so far used LEBinkProxy: one run per game with our `bink2w64.dll` in its Binaries.
 
 #### T52 Setup, report a problem, the release package, the campaign pass [G47]
-- **State:** LE1 done · LE2 build · LE3 build
+- **State:** LE1 done · LE2 verify · LE3 verify
 - **Lives in:** `src/install`, `tools/setup`, `plugin/ReportRequest`, `tools/package-release.ps1`.
-- **Left, ME2 and ME3:** Setup is LE1-only (`LE1MEVR.asi` is hard-coded in `Installer.hpp`): the loader into the game's
-  Binaries, the VR settings, the renderer's ini, per-game manifests, uninstall byte for byte. `ReportRequest` is in the
-  LE1 host only. The package refuses a build that links LExSDKv2 (T04). The campaign and DLC exception register
+- **Built (2026-11-16, [research/33](../research/33-installer.md) section 17):** one installer, the game a parameter
+  (`install/Game.hpp`): install, Repair, the VR settings, launch, report and uninstall byte for byte for each game, its
+  own manifest per game; `MEVR-Setup --for LE2`; the window's game switcher; `ReportRequest` in every host. Tested on
+  fake games only (`tools/setup/test-fake-game.ps1`); ME1 byte for byte as before. **Not offered:** one switch,
+  `package-release.ps1 -Games LE1,LE2` (the payload and `MEVR-Setup.ini [Setup] games`), the owner's call.
+- **Left, ME2 and ME3:** an install, repair and uninstall of each on the real game; the launcher's own loader starting
+  `-game 2` and `3` (T51: `launch::GameArguments`, then `kOurLauncherBoots`); the voice files and OpenAL Soft for the
+  sequels. The package refuses a sequel that links LExSDKv2 (T04). The campaign and DLC exception register
   ([le2-validation-coverage.md](le2-validation-coverage.md); LE3 plan "Fixture and evidence matrix").
-- **Waits for:** T04. ME2's Setup "waits for nothing; it starts when M5 is close" (the owner, 2026-11-14).
-  **Who:** nobody yet.
+- **Waits for:** T51 (Launch without the picker); T04 landed 2026-11-16 (a monolithic sequel build links no LExSDKv2). **Who:** the campaign pass: nobody yet.
 
 #### T53 Crash reports and a safe quit [G48]
 - **State:** LE1 done · LE2 check first · LE3 check first
@@ -680,7 +684,7 @@ rest in the order players would notice.
 | 6 | T25 holsters, T26 the reload, T24 the sights | ME2's first release needs M3.3-M3.5; combat is what the owner plays first | C2 |
 | 7 | T15 interrupts at Veetor (with T05's pre-Veetor save) | the last open check of M5 | nobody |
 | 8 | T08 the render levers, `keepBoundShaderStates` first | the sequels render every frame twice | R2, R3, PL |
-| 9 | T52 Setup for ME2 | "starts when M5 is close" | nobody |
+| 9 | T52 Setup for ME2 | built 2026-11-16 for all three, not offered (the owner's switch); left: a real-game install | T52 lane, done |
 | 10 | T05 one runner, and ME3's combat fixture | every ME3 combat check waits for the fixture | nobody |
 | 11 | T45, T44, T33, T11, T14: the game-side forks and defects | small, already taken | GF |
 | 12 | T42 the galaxy projector | already running | the other session |
@@ -719,7 +723,7 @@ M1 to M5 of the continuation plan make the first release; M6's modules follow it
 | M3.5 the reload by hand | T26 | build |
 | M5.2 interrupts taken and missed at Veetor | T15 | verify (needs a save) |
 | M7.1 a players' build without LExSDKv2 | T04 | build |
-| M7.2 MEVR Setup for ME2, report a problem | T52 | build |
+| M7.2 MEVR Setup for ME2, report a problem | T52 | verify (fake games only) |
 | our loader seen working in ME2 | T51 | verify |
 | M7.3 the headset pass | [Headset-only checks](#headset-only-checks) | the owner |
 

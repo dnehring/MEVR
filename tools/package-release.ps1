@@ -28,6 +28,13 @@
 #                           texts. MEVR Setup puts it in ASI\audio; the host points the game's OpenAL imports at it (no game
 #                           file replaced). It is LGPL-2.0-or-later: the source it was built from goes in licenses\
 #                           (openal-soft-<version>.tar.bz2), the same place as the binary. -NoAudio leaves it out.
+#     With -Games LE1,LE2 (or LE3): the sequels' part of the release (docs/trilogy-plan.md T52). Whether and when a sequel is
+#     offered to players is the owner's call, so the default is -Games LE1 and nothing below is in the package:
+#     payload\LE2MEVR.asi   that game's monolithic mod (build-mono configured with -DMEVR_BUILD_LE2=ON / -DMEVR_BUILD_LE3=ON)
+#     payload\MELE2VR.ini   Halcyon's ME2 release settings (src/halcyon/le2/runtime, GPL-3.0), which MEVR Setup installs next
+#                           to MassEffect2.exe only when there is none; ME3's release has no such file
+#     MEVR-Setup.ini        gets [Setup] games = LE1, LE2: the one switch that makes MEVR Setup offer the sequels
+#     A sequel whose ASI links LExSDKv2 is refused (the gate below; a monolithic build links none since T04).
 #   dist\MEVR-<version>-symbols\
 #     *.pdb and the binaries they match (LE1MEVR.asi, bink2w64.dll, MEVR-Setup.exe, MEVR-Voice.dll), to symbolise the stacks in players'
 #     crash reports. Kept next to the players' folder, never inside it (the binaries name their PDB without a path:
@@ -36,7 +43,7 @@
 #     dist\MEVR-<version>-release-notes.md (.github/release-notes-template.md with this version's CHANGELOG.md entry).
 #
 #   tools\package-release.ps1 [-Version 0.1.0] [-Tag v0.1.0] [-NoBuild] [-Zip] [-AllowDirty] [-SkipTests]
-#                             [-LexSdkPermission] [-CockpitPackage <pcc>] [-NoCockpit] [-NoVoice]
+#                             [-LexSdkPermission] [-CockpitPackage <pcc>] [-NoCockpit] [-NoVoice] [-Games LE1,LE2,LE3]
 #
 # The version is CMake's: project(MEVR VERSION x.y.z) in CMakeLists.txt is the only place it is written. -Version only
 # confirms it. It refuses to package (docs/release-checklist.md section 5):
@@ -65,7 +72,9 @@ param(
     [string]$CockpitPackage = '',
     [switch]$NoCockpit,
     [switch]$NoVoice,
-    [switch]$NoAudio
+    [switch]$NoAudio,
+    # The games the package carries and MEVR Setup offers. Mass Effect 1 always; a sequel only when named.
+    [string[]]$Games = @('LE1')
 )
 
 $ErrorActionPreference = 'Stop'
@@ -81,6 +90,28 @@ function Invoke-Native([scriptblock]$Command) {
 }
 function Stop-Packaging([string]$Why) {
     throw "Refusing to package: $Why"
+}
+# -Games LE1,LE2 arrives as one word through powershell -File.
+$Games = @($Games | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim().ToUpper() } | Where-Object { $_ })
+foreach ($g in $Games) { if ($g -notin 'LE1', 'LE2', 'LE3') { Stop-Packaging "-Games: LE1, LE2 or LE3, not '$g'" } }
+$sequels = @('LE2', 'LE3' | Where-Object { $Games -contains $_ })
+# The hard gate for a sequel in -Games, asked early: right after configuring (before a long build) and, with -NoBuild,
+# before anything else about the sequel. The same rule as the gate before packaging (Test-LinksLexSdk below, T04): the
+# game's ASI project names the LESDK-<game> library or lacks the MEVR_NO_LESDK define; no project to read counts as
+# linking it (a build-mono never configured with -DMEVR_BUILD_<game>=ON).
+function Assert-SequelSdkFree([string]$Sequel) {
+    $project = Join-Path $buildDir "MEVR-$Sequel.vcxproj"
+    $links = $true
+    if (Test-Path $project) {
+        $text = [IO.File]::ReadAllText($project)
+        $links = $text.Contains("LESDK-$Sequel") -or -not $text.Contains('MEVR_NO_LESDK')
+    }
+    if ($links -and -not $LexSdkPermission) {
+        throw ("Refusing to package: ${Sequel}MEVR.asi is built with LExSDKv2, which has no licence, or $project is missing " +
+            "(configure $buildDir with -DMEVR_BUILD_${Sequel}=ON; a monolithic build links no SDK since T04). Leave $Sequel out " +
+            "of -Games, or run again with -LexSdkPermission once the SDK's author has agreed in writing.")
+    }
+    if ($links) { Write-Warning "LExSDKv2 is compiled into ${Sequel}MEVR.asi: packaging under -LexSdkPermission (its author agreed)." }
 }
 
 # ---- The version: CMake's, and only CMake's ------------------------------------------------------------------------
@@ -164,6 +195,15 @@ if (-not $NoBuild) {
     }
     if (-not $NoVoice -and -not (& $hostHasLlm)) { throw "$hostProject has no core\voice\Llm.cpp after configuring: the host would have no model tier" }
     $targets = @('MEVR-LE1', 'MEVR-Loader', 'MEVR-Setup')
+    foreach ($sequel in $sequels) {
+        # The sequel's host is only in a build configured for it.
+        if (-not (Select-String -Path (Join-Path $buildDir 'CMakeCache.txt') -Pattern "^MEVR_BUILD_${sequel}:BOOL=ON" -Quiet)) {
+            Invoke-Native { cmake -S $repo -B $buildDir "-DMEVR_BUILD_${sequel}=ON" }
+            if ($LASTEXITCODE -ne 0) { throw "configure failed (-DMEVR_BUILD_${sequel}=ON)" }
+        }
+        Assert-SequelSdkFree $sequel
+        $targets += "MEVR-$sequel"
+    }
     if (-not $NoVoice) { $targets += 'MEVR-Voice' }
     if (-not $SkipTests) { $targets += 'mevr-test-programs' }  # everything ctest runs (CMakeLists.txt)
     Invoke-Native { cmake --build $buildDir --config Release --parallel --target $targets }
@@ -171,7 +211,9 @@ if (-not $NoBuild) {
 }
 
 $out = Join-Path $buildDir 'Release'
+foreach ($sequel in $sequels) { Assert-SequelSdkFree $sequel }  # with -NoBuild too, before anything else about the sequel
 $binaries = @('LE1MEVR.asi', 'bink2w64.dll', 'MEVR-Setup.exe')
+foreach ($sequel in $sequels) { $binaries += "${sequel}MEVR.asi" }
 if (-not $NoVoice) { $binaries += 'MEVR-Voice.dll' }
 foreach ($f in $binaries) {
     if (-not (Test-Path (Join-Path $out $f))) { throw "Not built: $(Join-Path $out $f)" }
@@ -266,7 +308,10 @@ foreach ($source in $licences.Values) {
     if (-not (Test-Path (Join-Path $repo $source))) { throw "Licence text missing: $source (fill external\ and third_party\ first)" }
 }
 $pdbs = @('LE1MEVR.pdb', 'bink2w64.pdb', 'MEVR-Setup.pdb')
+foreach ($sequel in $sequels) { $pdbs += "${sequel}MEVR.pdb" }
 if (-not $NoVoice) { $pdbs += 'MEVR-Voice.pdb' }
+# The sequels' renderer settings the package carries (GPL-3.0 files of src/halcyon, shipped as they are).
+$rendererInis = @{ LE2 = 'src\halcyon\le2\runtime\MELE2VR.ini'; LE3 = 'src\halcyon\le3\runtime\MELE3VR.ini' }
 foreach ($f in $pdbs) {
     if (-not (Test-Path (Join-Path $out $f))) { throw "No $f in $out (the release binaries link with /DEBUG): rebuild" }
 }
@@ -278,6 +323,16 @@ New-Item -ItemType Directory -Force $payload | Out-Null
 
 Copy-Item (Join-Path $out 'MEVR-Setup.exe') $dist
 Copy-Item (Join-Path $out 'LE1MEVR.asi') $payload
+foreach ($sequel in $sequels) {
+    Copy-Item (Join-Path $out "${sequel}MEVR.asi") $payload
+    $rendererIni = Join-Path $repo $rendererInis[$sequel]
+    if (Test-Path $rendererIni) {
+        Copy-Item $rendererIni $payload
+        Write-Output "${sequel}: payload\${sequel}MEVR.asi and payload\$(Split-Path -Leaf $rendererIni)"
+    } else {
+        Write-Output "${sequel}: payload\${sequel}MEVR.asi (no release settings file for its renderer: it writes its own)"
+    }
+}
 Copy-Item (Join-Path $out 'bink2w64.dll') $payload
 Copy-Item -Recurse (Join-Path $repo 'third_party\fonts') (Join-Path $payload 'fonts')
 Copy-Item -Recurse (Join-Path $repo 'assets\menu') (Join-Path $payload 'menu')
@@ -343,6 +398,11 @@ $ini = "; MEVR Setup's settings.`r`n[Update]`r`n; The GitHub repository whose Re
     "; modelTag in [Update] repo (or modelRepo). modelUrl = https://... downloads that instead (checked against modelSha256 and`r`n" +
     "; modelSize when given). Until the release exists the setup installs the rest and says the model isn't published yet.`r`n" +
     ";modelTag = voice-model-1`r`n;modelAsset = model.gguf`r`n"
+if ($sequels.Count -gt 0) {
+    # The one switch that makes MEVR Setup offer a sequel (install/Game.hpp OfferedGames): without this key, Mass Effect 1 only.
+    $ini += "`r`n[Setup]`r`n; The games this release offers besides Mass Effect 1 (their mods are in payload\).`r`ngames = $((@('LE1') + $sequels) -join ', ')`r`n"
+    Write-Warning "This package offers $($sequels -join ' and ') to players (MEVR-Setup.ini [Setup] games): the owner decides when a sequel ships."
+}
 [IO.File]::WriteAllText((Join-Path $dist 'MEVR-Setup.ini'), $ini)
 
 # The symbols: the PDBs and the exact binaries they belong to, next to the players' folder.

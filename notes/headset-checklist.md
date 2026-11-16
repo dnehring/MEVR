@@ -751,6 +751,13 @@ Turn it on: the menu's Voice page > Thespian mode > Speak Shepard's lines (or `[
 
 ## 7. Claude checks these alone on the fake headset (no need to wear it)
 Ask Claude to run them when the machine is free; each is a console command, a snapshot, a replay or a probe.
+- The sequels' sights, mod side (research/le2-vrik.md "The sights on the sequels, mod side"; run on ME2's fake headset
+  2026-11-16, LE1 at the same pose unchanged): in the headset, on ME2 and ME3: the pistol's dot on the gun's own sight (on
+  the fake headset the ring stood a hand's width left of the gun: the eyes take the monitor's shape there), the sniper
+  rifle's eyepiece picture and its pull to the eye, shots landing where the dot or the reticle sits.
+- ME2's vault with the gun held (lane C2): `tools/le2-halcyon-run/vault.ps1 -Runs 3 -Mode tap` again on main after dc7c6f98
+  (every tick's wrists within 0.15 m; 0.08 m at most on 2026-11-15), and `-Support`: the two-handed hold is refused by the
+  game (the support grip's LT zooms the gun, `CanPerformMantle` tests it).
 - ME2 with Halcyon's renderer (research/le2-renderer-integration.md "The first run on the fake headset", 2026-11-14:
   done on the fake headset): once the deploy installs `MELE2VR.ini`, the same run in the headset (head tracking, first
   person without K, the eye size, the pad from the controllers).

@@ -2,6 +2,7 @@
 #pragma once
 
 #include "core/Version.hpp"
+#include "install/Game.hpp"
 
 #include <filesystem>
 #include <optional>
@@ -28,6 +29,13 @@ std::vector<std::filesystem::path> SteamLibraries(std::string_view libraryFolder
 std::optional<std::string> AppManifestInstallDir(std::string_view acf);
 // True if `root` holds Game\ME1\Binaries\Win64\MassEffect1.exe.
 bool IsGameRoot(std::filesystem::path const& root);
+// True if `root` holds that game's exe (Game\ME2\Binaries\Win64\MassEffect2.exe for LE2).
+bool HasGame(std::filesystem::path const& root, GameId game);
+// True if `root` holds any of the three games: the Legendary Edition's folder.
+bool IsEditionRoot(std::filesystem::path const& root);
+// The game whose folder (`root`\Game\ME<n>) `picked` is or lies in: the game's own setup copy and the in-game Report
+// name their game by where they are (...\Game\ME2\Binaries\Win64). nullopt for the root itself or anywhere else.
+std::optional<GameId> GameFromPicked(std::filesystem::path const& picked, std::filesystem::path const& root);
 // The game root for a folder the player picked: the folder itself, or the closest folder above or below it that is one
 // (they may pick Game, Game\ME1, Binaries\Win64 or the exe's folder). nullopt if none.
 std::optional<std::filesystem::path> RootFromPicked(std::filesystem::path const& picked);
@@ -67,12 +75,15 @@ char const* BinkStateText(BinkState state);
 // by the string "MELEVR" in it (findstr). With it and our host (which has Halcyon's renderer built in) two renderers
 // would run, so Install moves its two DLLs aside (recorded, put back on uninstall). Its MELEVR.ini stays.
 bool HasMelevrMarker(std::string_view bytes);
+// The same test for any of upstream's renderers: `marker` in ASCII or UTF-16 (GameSpec::upstreamMarker; ME2's and ME3's
+// installers look for "ME2VR").
+bool HasUpstreamMarker(std::string_view bytes, std::string_view marker);
 struct UpstreamHalcyon {
     bool dxgi = false;          // Win64\dxgi.dll is upstream's
     bool openxrLoader = false;  // Win64\openxr_loader.dll next to it (only counted with upstream's dxgi.dll)
     bool Found() const { return dxgi; }
 };
-UpstreamHalcyon FindUpstreamHalcyon(std::filesystem::path const& win64);
+UpstreamHalcyon FindUpstreamHalcyon(std::filesystem::path const& win64, std::string_view marker = "MELEVR");
 
 // ---- VR -----------------------------------------------------------------------------------------------------------
 struct XrRuntime {
@@ -93,6 +104,9 @@ struct EyeSize {
 };
 std::optional<EyeSize> EyeSizeFromHalcyonLog(std::string_view log);
 std::filesystem::path HalcyonLogPath();
+// The renderer's log for a game: Mass Effect 1's is HalcyonLogPath(); the sequels' are their renderers' own
+// (%LOCALAPPDATA%\MELE2VR\MELE2VR_Log.txt, %LOCALAPPDATA%\MELEVR\ME3PassiveDxgiProbe.log).
+std::filesystem::path RendererLogPath(GameId game);
 
 // ---- The machine --------------------------------------------------------------------------------------------------
 // A process with this exe name is running (e.g. L"MassEffect1.exe").
@@ -103,6 +117,8 @@ bool GameRunning();
 // under `root` (or the same file by another path), or one whose path can't be read (counted, to be safe). Another copy
 // of the game (a second install, or a fake game folder for tests) doesn't count.
 bool GameRunningIn(std::filesystem::path const& root);
+// The same for another of the three games (its exe, and the launcher they share).
+bool GameRunningIn(std::filesystem::path const& root, GameId game);
 // `file` lies inside the folder `root` (case-insensitive, either slash, a \\?\ prefix ignored). Pure.
 bool PathUnder(std::filesystem::path const& file, std::filesystem::path const& root);
 // We can create files in `dir` (else: run as administrator).

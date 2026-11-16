@@ -186,10 +186,16 @@ fs::path ResolveSteamExe(std::wstring_view steamExe, std::wstring_view installPa
 }
 
 Result RequestSteamLaunch(fs::path const& steamExe, bool boots, SteamLaunchHooks const& hooks) {
+    return RequestSteamLaunch(steamExe, boots, hooks, GameId::LE1);
+}
+
+Result RequestSteamLaunch(fs::path const& steamExe, bool boots, SteamLaunchHooks const& hooks, GameId game) {
     Result result;
-    std::wstring const arguments = boots ? kSteamBootLe1Args : L"-applaunch 1328670";
+    GameSpec const& spec = Spec(game);
+    std::string const title = spec.name;
+    std::wstring const arguments = boots ? SteamBootArgs(spec.number) : L"-applaunch 1328670";
     // Valve's run/<appid>//<args>/ form (research/33): keep the empty path segment and trailing slash.
-    std::wstring const url = boots ? L"steam://run/1328670//-game 1 -autoterminate/" : L"steam://run/1328670";
+    std::wstring const url = boots ? L"steam://run/1328670//-game " + std::to_wstring(spec.number) + L" -autoterminate/" : L"steam://run/1328670";
     std::string failures;
     auto log = [&](std::string const& line) {
         if (hooks.log) {
@@ -212,10 +218,13 @@ Result RequestSteamLaunch(fs::path const& steamExe, bool boots, SteamLaunchHooks
         log(std::string(name) + (error == ERROR_SUCCESS ? ": request accepted" : ": " + Win32Error(error)));
         if (error == ERROR_SUCCESS) {
             result.started = true;
-            result.message = boots ? "Asked Steam to start Mass Effect 1."
-                : "Asked Steam to start Mass Effect Legendary Edition: pick Mass Effect 1 in its launcher (Repair lets Launch skip that step).";
+            // With our loader in the launcher a sequel isn't booted yet (kOurLauncherBoots): the picker shows, and
+            // Repair doesn't change that.
+            result.message = boots ? "Asked Steam to start " + title + "."
+                : "Asked Steam to start Mass Effect Legendary Edition: pick " + title + " in its launcher" +
+                      (game == GameId::LE1 ? " (Repair lets Launch skip that step)." : ".");
             if (isUrl && boots) {
-                result.message += " Steam may ask you to confirm the launch options; if its game picker appears, pick Mass Effect 1.";
+                result.message += " Steam may ask you to confirm the launch options; if its game picker appears, pick " + title + ".";
             }
             return result;
         }
@@ -223,26 +232,42 @@ Result RequestSteamLaunch(fs::path const& steamExe, bool boots, SteamLaunchHooks
     }
     result.message = std::string("Windows couldn't ask Steam to start Mass Effect Legendary Edition. ") +
         (steamExe.empty() ? "Steam's program wasn't found in its saved locations. " : "") + failures +
-        "Start Mass Effect Legendary Edition from Steam's library and pick Mass Effect 1; your MEVR installation still applies.";
+        "Start Mass Effect Legendary Edition from Steam's library and pick " + title + "; your MEVR installation still applies.";
     return result;
 }
 
 bool LauncherBoots(fs::path const& gameRoot) {
+    return LauncherBoots(gameRoot, GameId::LE1);
+}
+
+bool LauncherBoots(fs::path const& gameRoot, GameId game) {
     fs::path const dir = gameRoot / L"Game" / L"Launcher";
     std::error_code ec;
     detect::BinkState const state =
         detect::ClassifyBink(detect::ReadIdentity(dir / L"bink2w64.dll"), fs::exists(dir / L"bink2w64_original.dll", ec));
-    return state == detect::BinkState::Ours || state == detect::BinkState::LEBinkProxy;
+    return state == detect::BinkState::LEBinkProxy || (state == detect::BinkState::Ours && kOurLauncherBoots[Spec(game).number]);
 }
 
+// The game StartLe1 starts: Mass Effect 1, except inside StartGameWithVr for a sequel, which runs StartLe1WithVr's wait
+// for the VR runtime and its start at the end as they are (one body for the three games; see StartGameWithVr).
+static thread_local GameId gStartGame = GameId::LE1;
+
 Result StartLe1(fs::path const& gameRoot, bool steam) {
+    return StartGame(gameRoot, gStartGame, steam);
+}
+
+Result StartGame(fs::path const& gameRoot, GameId game, bool steam) {
     Result r;
-    LogLaunch("Launch requested: game=\"" + detect::Utf8(gameRoot.wstring()) + "\" store=" + (steam ? "Steam" : "EA app / direct"));
-    Layout const layout{gameRoot};
-    fs::path const exe = layout.Win64() / L"MassEffect1.exe";
+    GameSpec const& spec = Spec(game);
+    std::string const gameName = spec.name;
+    // Mass Effect 1's line is as it always was; a sequel's names the game.
+    LogLaunch("Launch requested: game=\"" + detect::Utf8(gameRoot.wstring()) + "\" store=" + (steam ? "Steam" : "EA app / direct") +
+              (game == GameId::LE1 ? std::string() : std::string(" title=") + spec.key));
+    Layout const layout{gameRoot, game};
+    fs::path const exe = layout.Win64() / spec.exeW;
     std::error_code ec;
     if (!fs::exists(exe, ec)) {
-        r.message = "MassEffect1.exe not found";
+        r.message = std::string(spec.exe) + " not found";
         LogLaunch(r.message);
         return r;
     }
@@ -264,19 +289,20 @@ Result StartLe1(fs::path const& gameRoot, bool steam) {
         // Through Steam: started directly, the exe hands its start back to Steam, which then asks the player to confirm
         // the arguments (research/33 section 11).
         fs::path const steamExe = SteamExe();
-        bool const boots = LauncherBoots(gameRoot);
-        r = RequestSteamLaunch(steamExe, boots, {LaunchSteam, LogLaunch});
+        bool const boots = LauncherBoots(gameRoot, game);
+        r = RequestSteamLaunch(steamExe, boots, {LaunchSteam, LogLaunch}, game);
         LogLaunch(r.message);
         return r;
     }
-    std::wstring commandLine = L"\"" + exe.wstring() + L"\" " + Le1Arguments(config);
+    std::wstring const arguments = GameArguments(spec.number, config);
+    std::wstring commandLine = L"\"" + exe.wstring() + L"\" " + arguments;
     STARTUPINFOW startup{};
     startup.cb = sizeof startup;
     PROCESS_INFORMATION process{};
-    LogLaunch("Starting Mass Effect 1 directly: " + detect::Utf8(commandLine) + " directory=\"" + detect::Utf8(layout.Win64().wstring()) + "\"");
+    LogLaunch("Starting " + gameName + " directly: " + detect::Utf8(commandLine) + " directory=\"" + detect::Utf8(layout.Win64().wstring()) + "\"");
     if (!CreateProcessW(exe.c_str(), commandLine.data(), nullptr, nullptr, FALSE, 0, nullptr, layout.Win64().c_str(), &startup, &process)) {
         DWORD const error = GetLastError();
-        r.message = "Windows couldn't start Mass Effect 1: " + Win32Error(error) +
+        r.message = "Windows couldn't start " + gameName + ": " + Win32Error(error) +
             ". Start the game from the EA app; your MEVR installation still applies.";
         LogLaunch(r.message);
         return r;
@@ -287,6 +313,11 @@ Result StartLe1(fs::path const& gameRoot, bool steam) {
     LogLaunch(r.message);
     CloseHandle(process.hThread);
     CloseHandle(process.hProcess);
+    if (game != GameId::LE1) {
+        // A sequel's own arguments (the lines above are Mass Effect 1's as they were).
+        r.message = "Started " + gameName + " (" + detect::Utf8(arguments) + ")";
+        LogLaunch(r.message);
+    }
     return r;
 }
 
@@ -336,6 +367,16 @@ char const* PhaseText(Phase phase) {
         return "Stopped waiting. Once you've started Mass Effect 1 once and quit it, Repair (or Settings > Apply) puts the VR game settings on";
     }
     return "";
+}
+
+std::string PhaseText(Phase phase, GameId game) {
+    // Mass Effect 1's texts with the game's name in them.
+    std::string text = PhaseText(phase);
+    std::string const name = Spec(game).name;
+    for (std::size_t at = text.find("Mass Effect 1"); at != std::string::npos; at = text.find("Mass Effect 1", at + name.size())) {
+        text.replace(at, 13, name);
+    }
+    return text;
 }
 
 } // namespace first_start
@@ -469,6 +510,18 @@ Result StartLe1WithVr(std::filesystem::path const& gameRoot, bool steam, std::st
     }
     Result const r = StartLe1(gameRoot, steam);
     post(r.message, !r.started);
+    return r;
+}
+
+Result StartGameWithVr(std::filesystem::path const& gameRoot, GameId game, bool steam, std::string_view runtimeKind,
+    std::string_view runtimeManifest, LaunchHooks const& hooks) {
+    // The same wait and the same start as Mass Effect 1's, for this game: StartLe1WithVr's body is the one body, and its
+    // StartLe1 at the end starts gStartGame. (Written this way so that body stays line for line what it was while
+    // another session's edits to it are open; once those are in, pass the game through instead.)
+    GameId const before = gStartGame;
+    gStartGame = game;
+    Result const r = StartLe1WithVr(gameRoot, steam, runtimeKind, runtimeManifest, hooks);
+    gStartGame = before;
     return r;
 }
 

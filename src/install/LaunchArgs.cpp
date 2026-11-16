@@ -112,6 +112,46 @@ std::wstring Le1Arguments(LauncherConfig const& c) {
         std::wstring(language.begin(), language.end());
 }
 
+std::string GameLanguage(int game, LauncherConfig const& c) {
+    if (game != 2 && game != 3) {
+        return Le1Language(c);
+    }
+    // {local voices, English voices}; Polish with English voices is POE in LE2 and POL in LE3.
+    static std::map<std::string, std::pair<char const*, char const*>> const kCodes = {
+        {"en_US", {"INT", "INT"}}, {"fr_FR", {"FRA", "FRE"}}, {"de_DE", {"DEU", "DEE"}}, {"it_IT", {"ITA", "ITE"}},
+        {"ja_JP", {"JPN", "JPN"}}, {"es_ES", {"ESN", "ESN"}}, {"ru_RU", {"RUS", "RUS"}}, {"pl_PL", {"POL", "POE"}},
+    };
+    auto const it = kCodes.find(c.language);
+    if (it == kCodes.end()) {
+        return "INT";
+    }
+    if (game == 3 && c.language == "pl_PL") {
+        return "POL";
+    }
+    return c.englishVoices ? it->second.second : it->second.first;
+}
+
+std::wstring GameArguments(int game, LauncherConfig const& c) {
+    if (game != 2 && game != 3) {
+        return Le1Arguments(c);
+    }
+    std::string const language = GameLanguage(game, c);  // ASCII codes only
+    return L"-NoHomeDir -SeekFreeLoadingPCConsole -locale {locale} -Subtitles " + std::to_wstring(c.subtitleSize) +
+        (game == 3 ? L" -language=" : L" -OVERRIDELANGUAGE=") + std::wstring(language.begin(), language.end());
+}
+
+wchar_t const* GameFolderName(int game) {
+    return game == 2 ? L"ME2" : game == 3 ? L"ME3" : L"ME1";
+}
+
+wchar_t const* GameExeName(int game) {
+    return game == 2 ? L"MassEffect2.exe" : game == 3 ? L"MassEffect3.exe" : L"MassEffect1.exe";
+}
+
+std::wstring SteamBootArgs(int game) {
+    return L"-applaunch 1328670 -game " + std::to_wstring(game == 2 || game == 3 ? game : 1) + L" -autoterminate";
+}
+
 LauncherBoot ParseLauncherArgs(std::vector<std::wstring> const& args) {
     LauncherBoot boot;
     for (std::size_t i = 0; i < args.size(); ++i) {

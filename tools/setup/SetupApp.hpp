@@ -8,6 +8,7 @@
 
 #include <RmlUi/Core/DataModelHandle.h>
 
+#include <array>
 #include <atomic>
 #include <filesystem>
 #include <functional>
@@ -31,6 +32,18 @@ struct PackView {
     std::string id, name, author, description, size, licence, requirements, state, file;
     bool installed = false;
     bool large = false;
+};
+
+// One of the Legendary Edition's three games on the game switcher and the Install page's list (docs/trilogy-plan.md T52).
+// Only shown when more than one game is: the sequels are offered by MEVR-Setup.ini's [Setup] games (install/Game.hpp
+// OfferedGames) with their mod in the payload, or shown because they're installed already.
+struct GameView {
+    std::string key, name, state;  // "LE2", "Mass Effect 2", "Installed 0.2.0"
+    bool current = false;          // the game the pages are about
+    bool installed = false;
+    bool found = false;
+    bool chosen = false;           // ticked on the Install page: Install puts the mod in for it
+    bool can_install = false;      // found, a supported version, a usable Bink DLL, its mod in the payload
 };
 
 // A file the problem report will hold (the Report page's list).
@@ -57,6 +70,9 @@ struct Host {
 struct Options {
     std::filesystem::path exe;                      // this program
     std::optional<std::filesystem::path> gameRoot;  // --game
+    // --for: which of the three games the window opens on. Without it: the game whose folder --game names, this copy's
+    // own game (it lives in that game's ASI folder), else Mass Effect 1.
+    std::optional<install::GameId> game;
     bool request = false;                           // --request: the in-game menu asked for optional content
     unsigned long waitPid = 0;                      // --wait-pid: the game is still closing
     std::string repo;                               // the update check's repository (MEVR-Setup.ini)
@@ -98,6 +114,14 @@ private:
     void Apply(install::Outcome const& outcome);
     void SetGame(std::filesystem::path const& root, std::string const& source);
     bool SteamGame() const;
+    // The game the pages are about, its description and its place in the game folder.
+    install::GameSpec const& Game() const { return install::Spec(game_); }
+    install::Layout CurrentLayout() const { return install::Layout{status_.root, game_}; }
+    // The other games' statuses, which games are shown and can be installed, the switcher's rows and the game's names in
+    // the pages' texts. Mass Effect 1 alone (every release so far): no switcher, every text as it always was.
+    void UpdateGames();
+    bool CanInstallGame(install::GameId game) const;
+    std::vector<install::GameId> InstallTargets() const;
     install::settings::Choices ChoicesFromModel() const;
     void UpdatePacks();
     // The Optional content page's voice orders card (install/Voice, research/33 section 14): what's installed, the sizes,
@@ -121,7 +145,18 @@ private:
     Options options_;
     Host host_;
     std::optional<install::Payload> payload_;
-    install::Status status_;
+    install::Status status_;                      // the current game's
+    install::GameId game_ = install::GameId::LE1;  // the game the pages are about
+    std::array<install::Status, 3> statuses_;     // every game's (status_ is statuses_[game_], read last)
+    std::array<bool, 3> offered_{true, false, false};  // MEVR-Setup.ini's [Setup] games
+    std::array<bool, 3> shown_{true, false, false};    // offered with its mod in the payload, or installed already
+    std::array<bool, 3> chosen_{true, false, false};   // the Install page's ticks
+    bool chosenRead_ = false;                          // the ticks' defaults are set once per game folder
+    std::vector<GameView> games_;
+    bool multiGame_ = false;    // more than one game shown: the switcher and the Install page's list
+    bool hasTarget_ = true;     // the setup sets the render resolution (Mass Effect 1; a sequel's renderer sizes its own)
+    bool hasContent_ = true;    // optional content exists for this game (the voice orders, texture packs: Mass Effect 1's)
+    std::string gameName_ = "Mass Effect 1", gameShort_ = "ME1", modAsiText_, rendererText_, configDir_, gamesText_;
     install::detect::XrRuntime xr_;
     Rml::DataModelHandle handle_;
 

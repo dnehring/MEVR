@@ -466,6 +466,7 @@
     "RecenterTilt",
     "RenderLevers",
     "RendererLe2",
+    "ReportRequest",
     "ScopeCaptureSource",
     "Seams",
     "SequelCinema",
@@ -708,6 +709,7 @@
     "RecenterTilt",
     "RenderLevers",
     "RendererLe3",
+    "ReportRequest",
     "ScopeCaptureSource",
     "Seams",
     "SequelCinema",
@@ -1968,13 +1970,13 @@
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "run"
     },
     "LE3": {
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "run"
     }
    },
    "namespace": "game::holsters"
@@ -2428,13 +2430,13 @@
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "run"
     },
     "LE3": {
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "run"
     }
    },
    "namespace": "game::scope_parts"
@@ -2480,7 +2482,7 @@
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "run"
     }
    },
    "namespace": "game::sights"

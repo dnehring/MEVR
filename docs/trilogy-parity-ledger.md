@@ -53,8 +53,8 @@ rows the change touches.
 
 | game | shared | adapted | forked | missing | n/a | present and verified (V) | present, unverified (U) |
 |---|---|---|---|---|---|---|---|
-| LE2 | 12 | 44 | 3 | 30 | 4 | 41 | 18 |
-| LE3 | 12 | 44 | 5 | 26 | 6 | 22 | 39 |
+| LE2 | 13 | 44 | 3 | 29 | 4 | 42 | 18 |
+| LE3 | 13 | 44 | 5 | 25 | 6 | 22 | 40 |
 <!-- /parity:totals -->
 
 LE1 is the reference, so it has no cells. A few LE1 systems are themselves n/a under Halcyon's renderer: the reflection
@@ -111,12 +111,13 @@ These are ordered by wasted or blocked work. Each is detailed under [Forks](#for
    - The perf probe is in all three hosts since 2026-11-16 (R26); the sequels' captures lack what their renderers have
      no seam for yet (the eyes' split, the draw count).
 9. **Neither sequel can ship yet** (G47, G50, G02).
-   - Setup and report-a-problem are LE1-only.
+   - Setup and report-a-problem take the game as a parameter since 2026-11-16 (G47: tested on fake games only), but the
+     sequels are not offered: one switch (`package-release.ps1 -Games`), the owner's call.
    - Since T04 (2026-11-16) no sequel players' build links LExSDKv2: a monolithic build of all three games configures
      without the submodule (`MEVR_LE2_LESDK`, `MEVR_LE3_LESDK` off), and no module reads through `engine::legacy`
      (research/34 section 6.4; the generated module table has no "LExSDKv2" note left). Seen in the game: ME2 development
      `reflect: 637 of 637`, ME2 monolithic to gameplay, ME3's engine probe `621 of 621`; a monolithic ME3 run is left.
-   - What blocks M7.2 for ME2 and L3-10 for ME3 now is Setup and report-a-problem.
+   - What is left for M7.2 (ME2) and L3-10 (ME3) is an install of each on the real game and the owner's word to offer one.
 10. **The eye-image pipeline is forked and incomplete on the sequels** (Forks 7, 8; R11, R13-R16).
     - The sequels apply colour in `plugin/EyeCopy`'s own shader, without the tonemap and without FSR.
     - The HDR answer is a second module (`plugin/HdrDisplayPolicy`).
@@ -219,8 +220,8 @@ The [technique groups](#renderer-techniques-by-group) summary follows the table.
 | G03 | Fingers (`game/Fingers`, `core/ik/Fingers`) | **shared** U | **shared** U | Snapshot `mod.fingers` with a replayed trigger and grip on each game's skeleton. |
 | G04 | The drawn gun (`game/Weapon`) | **adapted** V: muzzle against `GetMuzzleLoc`, 0.00 units (le2-vrik) | **adapted** U: LE3 weapon classes, the SMG as its own `RangedType` | LE3: a combat fixture. |
 | G05 | Support grip, two-handed (`game/SupportGrip`, `plugin/PadMerge` v7/v11) | **shared** U: ctest `mevr-pad-merge` only | **shared** U | A replay with the left grip in the zone, then snapshot `supportGrip`. |
-| G06 | Sights: red dot, holo, ADS, alignment assist (`game/Sights`, `plugin/SightLayers`, `core/vr/Ads`) | **adapted** U: drawing only. `TryStartup` returns false on the sequels; assist, convergence and aimed fire are off; reads `SFXWeapon.ZoomFOV` | **adapted** U: the same sequel path (`Sights` is `out` on LE3); the SMG borrows the rifle profile | research/le2-le3-vr-optics.md "LE2 implementation" steps 1–3. |
-| G07 | Scope: picture-in-picture, virtual eyepiece, scope parts, scope capture (`game/ScopeParts`, `game/ScopeCapture`, `plugin/ScopeCaptureSource`) | **adapted** U: picture from the eye copy. `ScopeParts`/`ScopeCapture` are `out`; ScopeCaptureSource is linked but `setScopeCapture` isn't served | **adapted** U: same | A sniper-rifle fixture per game. Then ScopeCapture (it needs R31 on LE2). |
+| G06 | Sights: red dot, holo, ADS, alignment assist (`game/Sights`, `plugin/SightLayers`, `core/vr/Ads`) | **shared** V: one path with ME1 since lane C2's step 2 (the sight line's trace, convergence, the assist, a scope's aimed fire through `SFXWeapon.GetAimError` with `SFXWeapon_NativeBase.bIsZoomed` set for the call; `SFXWeapon.ZoomFOV`). Run on the fake headset 2026-11-16 (the pistol's dot in the right eye, shots on what the sight line hits; the sniper rifle's ADS, scope picture and aimed fire 10.0 -> 0.0): research/le2-vrik.md. The headset is the checklist's | **shared** U: the same path (`SFXWeapon.GetPlayerAimError(Accuracy)`); zoom steps (`AimModes`) not read; the SMG borrows the rifle profile | ME2: `tools/le2-halcyon-run/sights.ps1` (run 2026-11-16, LE1 at the same pose unchanged). ME3: a weapon fixture, then the same script's steps. research/le2-le3-vr-optics.md steps 1–3. |
+| G07 | Scope: picture-in-picture, virtual eyepiece, scope parts, scope capture (`game/ScopeParts`, `game/ScopeCapture`, `plugin/ScopeCaptureSource`) | **adapted** U: picture from the eye copy. `ScopeParts` shared (HideBone on every game; U); `ScopeCapture` is `out`; ScopeCaptureSource is linked but `setScopeCapture` isn't served | **adapted** U: same | A sniper-rifle fixture per game. Then ScopeCapture (it needs R31 on LE2). |
 | G08 | Holsters and "only holsters draw" (`game/Holsters`, `core/ik/BodySlots`) | **missing**: startup `#if MEVR_GAME_LE1`. Side effect: the right grip is RB and opens ME2's wheel | **missing** | docs/le3-port-reuse-audit.md "Holsters": separate a body slot from LE1's four weapon categories (the SMG), then each game's draw and holster functions. |
 | G09 | Gun kick (`game/GunKick`, `core/ik/GunKick`) | **adapted** V: recoil from `SFXWeapon.GetWeaponRecoil`; `gun kick: first kick` (le2-vrik) | **adapted** U: ME2's branch (`SFXWeapon.GetWeaponRecoil`, the shots from ViewLevel's `SetWeaponRecoil` handler) since 2026-11-16; builds, ReflectCheck rows (`CheckLe3ViewLevel`); not run in ME3 | LE3: a combat fixture with shots (research/le3-combat-fixtures.md): `reflect:` agrees on the new rows, `view level: first shot seen`, `gun kick: first kick`. |
 | G10 | View level, aim assist zeroed (`game/ViewLevel`) | **adapted** V: pitch held in 4,723 of 4,723 ticks, yaw kick removed (le2-vrik); the aim-assist zeroing unmeasured | **adapted** U: the same handlers as ME1 and ME2 since 2026-11-16 (PlayerTick, `SFXInventoryManager.SetWeaponRecoil`, aim assist's `ViewFriction`/`ViewAdhesion`), ME2's yaw-kick removal; ME3 has all 29 names; builds, ReflectCheck rows; not run in ME3 | LE3: the same fixture: `view level: handlers on ...`, the pitch held while shooting (the heartbeat's `view level:` line), whether ME3 queues a yaw kick, and which PlayerTick functions it found (none: it levels a frame late from the mod's tick). |
@@ -260,7 +261,7 @@ The [technique groups](#renderer-techniques-by-group) summary follows the table.
 | G44 | The Mako: aim, controls, cockpit, gunner, panel, hazard (`game/Mako*`, `game/Cockpit*`, `core/vr/MakoControls`) | **missing**: the Hammerhead, with ME1's Mako controls and cockpit, has its own later pass (continuation plan M6) | **n/a**: no player vehicle; the Atlas has no adapter (LE3 plan: "safe fallback") | — |
 | G45 | Focus pause off (`game/FocusPause`) | **missing** | **missing** | First check whether ME2/ME3 freeze without window focus (`bPlayersOnly`). |
 | G46 | Our ASI loader (`src/loader`) | **adapted** U: `LoaderCore.cpp` maps MassEffect2.exe, but every ME2 run used LEBinkProxy | **adapted** U: maps MassEffect3.exe | A run with our `bink2w64.dll` in that game's Binaries. |
-| G47 | Installer, report a problem, release packaging (`MEVR-Setup`, `src/install`, `plugin/ReportRequest`, `tools/package-release.ps1`) | **missing**: Setup is LE1-only (`LE1MEVR.asi` hard-coded in `Installer.hpp`); `SetupRequest` linked but never written; ReportRequest is in the LE1 host only. The players' build links no LExSDKv2 since T04 and `package-release.ps1` refuses one that does | **missing**: same; the LE3 player ASI links no LExSDKv2 since T04 | M7.2; L3-10. |
+| G47 | Installer, report a problem, release packaging (`MEVR-Setup`, `src/install`, `plugin/ReportRequest`, `tools/package-release.ps1`) | **adapted** U: one installer, the game a parameter (`install/Game.hpp`'s `GameSpec`: folder, exe, `-game 2`, `MELE2VR.ini` next to the exe, its GamerSettings keys; its own `ASI\MEVR-install.json`); install, "verify files" and Repair, the settings and their Restore, the report (`LE2MEVR.log`, `MELE2VR_Log.txt`), uninstall byte for byte pass on the fake game (`tools/setup/test-fake-game.ps1 -Games LE2`, 2026-11-16) and in `mevr-tests` (`TestGames`); `ReportRequest` in the host. Never installed into the real game; **not offered** (MEVR-Setup.ini `[Setup] games`, `package-release.ps1 -Games`); the players' build links no LExSDKv2 since T04 and the package refuses one that does; our loader in the launcher starts only ME1 (the picker shows) | **adapted** U: the same by the same code (`-Games LE3`); no release `MELE3VR.ini` (the renderer writes its own); its players' build links no LExSDKv2 since T04 | One install, repair and uninstall of each on the real game; T51 (the launcher's `-game 2`/`3`: `launch::GameArguments`, `kOurLauncherBoots`); the owner's word to offer one (`-Games`). M7.1, M7.2; L3-10. |
 | G48 | Crash breadcrumbs, first-chance report, quit safety (`plugin/CrashBreadcrumbs`, `plugin/KeptLocks`, the ExitProcess hook) | **adapted** V: breadcrumbs in every host; a first-chance report in an ME2 log (research/le2-menus "The checks"). KeptLocks LE1-only | **adapted** U: same | Check whether ME2/ME3 fault at quit (LE1: a deleted lock at exe+0x1BA22C0). |
 | G49 | Controller input: Touch as pad 0, profiles, our actions, haptics (`plugin/PadMerge`, `game/GamepadMapping`, `plugin/XrHost`, `core/xr/Input`) | **adapted** V: `MergeMotionControllers` (conversation and orbital triggers, R3 gate); stretch `20261115-001659-lane-b4-m2`; ctest `mevr-pad-merge` | **adapted** V: semantic modes, map lease, traversal yaw; replayed controllers in run `20261115-182253-344` | Headset: the L3+R3 hold. |
 | G50 | Head tracking and the view anchor (`game/HeadTracking`, `game/ViewAnchor`) | **adapted** V: `hostView.valid` and the replayed turn (le2-vrik). Stands down when the layer is off (no LExSDKv2 fallback since T04) | **adapted** V: head look in the pose-tag runs (through `engine::legacy` then). On our layer since T04: its rows agree in the engine probe (`CheckLe3EngineAccess`, 621 of 621), not yet seen in a renderer run | LE3: a renderer run on the T04 code. |
@@ -578,8 +579,8 @@ defined in the tool's header:
 | game | renderer | host plugin files | host core files | services served | src/game + src/engine modules by status | common seams called | own seams |
 |---|---|---|---|---|---|---|---|
 | LE1 | halcyon-le1 | 72 | 71 | 57 | run 67, out 4, ungated 23, unbuilt 4 | 20 of 32 | 91 |
-| LE2 | halcyon-le2 | 65 | 55 | 48 | run 39, ready 10, out 22, ungated 21, unreferenced 2, unbuilt 4 | 30 of 32 | 4 |
-| LE3 | halcyon-le3 | 68 | 55 | 48 | run 39, ready 10, out 22, ungated 22, unreferenced 2, unbuilt 3 | 30 of 32 | 2 |
+| LE2 | halcyon-le2 | 66 | 55 | 48 | run 41, ready 10, out 20, ungated 21, unreferenced 2, unbuilt 4 | 30 of 32 | 4 |
+| LE3 | halcyon-le3 | 69 | 55 | 48 | run 42, ready 10, out 19, ungated 22, unreferenced 2, unbuilt 3 | 30 of 32 | 2 |
 <!-- /parity:summary -->
 
 ### Host plugin files per game
@@ -648,7 +649,7 @@ defined in the tool's header:
 | `RendererLe1` | yes | - | - |
 | `RendererLe2` | - | yes | - |
 | `RendererLe3` | - | - | yes |
-| `ReportRequest` | yes | - | - |
+| `ReportRequest` | yes | yes | yes |
 | `ScopeCaptureSource` | yes | yes | yes |
 | `Seams` | yes | yes | yes |
 | `SequelCinema` | - | yes | yes |
@@ -844,7 +845,7 @@ Helpers applied, in order:
 | `game/HeadSim` | ungated | ungated | ungated |
 | `game/HeadTracking` | run | run | run |
 | `game/HoloProbe` | run | out | out |
-| `game/Holsters` | run | out | out |
+| `game/Holsters` | run | run | run |
 | `game/HudPieces` | ungated | run | ungated |
 | `game/Interact` | run | run | run |
 | `game/InventoryProbe` | run | unreferenced | unreferenced |
@@ -864,9 +865,9 @@ Helpers applied, in order:
 | `game/Reflections` | run | run | run |
 | `game/SceneCaptureRig` | run | out | run |
 | `game/ScopeCapture` | run | out | out |
-| `game/ScopeParts` | run | out | out |
+| `game/ScopeParts` | run | run | run |
 | `game/ScreenReticle` | run | run | out |
-| `game/Sights` | run | run | out |
+| `game/Sights` | run | run | run |
 | `game/SkeletonProbe` | run | run (ME1-only handles) | run (ME1-only handles) |
 | `game/SoundPlace` | run | ready | ready |
 | `game/Spectator` | run | out | out |

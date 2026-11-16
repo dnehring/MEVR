@@ -1881,6 +1881,11 @@ std::optional<std::string> RunOursLe2(ue3::Object* pc, std::string const& line) 
         std::getline(words, rest);
         return arm_ik::Command(rest);  // `mevr armik step [off|camera] [units]` (research/le2-vrik.md, root-motion steps)
     }
+    if (verb == "weapon") {
+        std::string which;
+        words >> which;
+        return holsters::DrawByName(which);  // a carried weapon by family (BioPlayerController.SwitchWeapon), for the sights' checks
+    }
     if (verb == "cover") {
         std::string rest;
         std::getline(words, rest);

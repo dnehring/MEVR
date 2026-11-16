@@ -1579,6 +1579,14 @@ switching frameworks.
   `engine/ReflectCheck`'s cross-check compiles out (`MEVR_NO_LESDK`: it logs `reflect: no LExSDKv2 cross-check in this
   build`). Development builds keep it; `package-release.ps1` refuses a build tree whose LE1, LE2 or LE3 ASI links it.
   Never add LExSDKv2 use to a code path a players' build compiles.
+- **One installer for the three games** ([research/33](research/33-installer.md) section 17, T52, 2026-11-16): the game is
+  a parameter (`install/Game.hpp` `GameSpec`; `Layout{root, game}`, `Layout::Paths()`; `MEVR-Setup --for LE2|LE3`, or the
+  game whose folder `--game` names); each game has its own `ASI\MEVR-install.json`; the launcher's loader is shared and
+  stays until the last game is uninstalled; a sequel's `MELE2VR.ini` next to the exe is never written if one is there.
+  **The sequels are not offered** unless `MEVR-Setup.ini` has `[Setup] games = LE1, LE2` and the payload their ASI
+  (`tools/package-release.ps1 -Games`, which refuses a sequel linking LExSDKv2). Tested on fake games only
+  (`tools/setup/test-fake-game.ps1 -Games LE1,LE2,LE3`; `-Setup <old exe> -Trace <folder>` proves ME1 unchanged between
+  two builds). Never add an LE1 path constant (`install::paths`) to a step that should work for every game.
 - Report a problem ([research/33](research/33-installer.md) section 8): MEVR Setup's page (or `--report [--snapshot]
   [--perf]`), the menu's Advanced > Diagnostics > Report (`plugin/ReportRequest`: starts `ASI\MEVR-Setup.exe --report
   --from-game` at once, background priority, no window) and the crash offer (`install/ReportMarks`) write a redacted

@@ -1004,6 +1004,9 @@ src/plugin/MainMenu.cpp src/plugin/MainMenu.hpp src/plugin/MainMenuSettings.cpp
                 src/core/vr/GuiEvents.cpp src/core/vr/GuiEvents.hpp
                 # Entry.cpp's ExitProcess hook asks it with the menu; nothing writes its request on ME2 yet (MEVR Setup, M7.2).
                 src/plugin/SetupRequest.cpp src/plugin/SetupRequest.hpp src/core/Json.cpp src/core/Json.hpp
+                # Report a problem and the crash offer (research/33 section 8, T52): the menu's Advanced > Diagnostics > Report
+                # starts the setup copy in this game's ASI folder, which writes the zip for the game it sits in.
+                src/plugin/ReportRequest.cpp src/plugin/ReportRequest.hpp src/install/ReportMarks.hpp
 )
 
 # ME1's frame-breakdown probe and render levers in the sequels' hosts (research/sequel-render-levers.md "Shared module"):
@@ -1265,6 +1268,8 @@ add_library(mevr-install STATIC
     src/core/Version.hpp
     src/install/Detect.cpp
     src/install/Detect.hpp
+    src/install/Game.cpp
+    src/install/Game.hpp
     src/install/SteamVrSettings.cpp
     src/install/SteamVrSettings.hpp
     src/install/GameSettings.cpp
