@@ -223,6 +223,112 @@ once they are in, `vault.ps1 -Grip` checks it, and `-Grip -Support` the two-hand
 its one-call writes around `CanPerformMantle` (and the commit) could clear `bIsZoomed` for that call as they set
 `m_bCanMantleOutsideOfCover` [verify] (whether `MantleCover`'s custom action then plays with LT still held).
 
+## The sights on the sequels, mod side (lane C2, 2026-11-16; built, **not yet run in a game**)
+
+The drawing came to ME2 and ME3 with 6d11493b ("Prototype shared VR weapon optics in LE2": `plugin/SightLayers` in both sequel
+hosts, `setSight`; research/le2-le3-vr-optics.md). That pass kept the shots and the gun out of it: on the sequels
+`sights::TryStartup` returned false and `sights::Current` forced the alignment assist, the shots' convergence and a scope's
+aimed fire off. This step puts the mod side on ME1's path, one module for the three games with each game's names behind it.
+
+**What is each game's** (the adapter; everything else is `game/Sights` as ME1 runs it):
+
+| | ME1 | ME2 | ME3 |
+|---|---|---|---|
+| the aim error for an accuracy (the handler's function, and the call with the zoom flag set) | `BioWeaponRanged.GetPlayerAimError(Accuracy)` (native) | `SFXWeapon.GetAimError(Accuracy)` (script; `GetPlayerAimError()` takes no accuracy and calls it) | `SFXWeapon.GetPlayerAimError(Accuracy)` (script) |
+| the zoom flag set for that one call | `BioWeaponRanged.bIsZoomed` | `SFXWeapon_NativeBase.bIsZoomed` (0x3D0 bit 0x20) | `SFXWeapon_NativeBase.bIsZoomed` (0x3BC bit 0x80) |
+| who reads the flag | the native itself | `SFXWeapon.GetWeaponAimErrorRange` (`MinZoomAimError`/`MaxZoomAimError` instead of `MinAimError`/`MaxAimError`) | the same function |
+| a scope's magnification | `Stats.AimModes` (`ZoomFOV`, `bScoped`) | `SFXWeapon.ZoomFOV` (sniper rifles; one step) | not read yet (`SFXWeapon.AimModes`, an `FSFXWeaponAimMode` array: left for the ME3 sniper fixture) |
+| the sight line's trace, the near plane, the lens part | `Engine.Actor.Trace`, `LocalPlayer.NearClipPlane`, `SkeletalMeshComponent.HideBone` / `UnHideBone` / `IsBoneHidden`: the same on all three |
+
+**How it works on a sequel** (ME2's script, read with `conversation-scan.exe --script`): each shot's `SFXWeapon.GetAdjustedAim`
+asks `Instigator.GetAdjustedAimFor` (hand aim's handler answers with the barrel, or with `sights::ShotAlongSight`: from the
+muzzle toward what the sight line hit this tick), then adds `GetPlayerAimError() * 182.044` of random spread. The spread is
+`GetAimError(InvManager.Accuracy)` = `Lerp(range.X, range.Y, Accuracy)` with the range picked by `bIsZoomed`. With a scope's
+picture up (`gScopeUp`: the host shows it and ADS holds), `sights::OnAimError` (a CallFunction post-handler on the function
+in the table) takes the unzoomed answer, finds the accuracy it was made from (the function called for accuracy 0 and 1),
+and replaces it by the zoomed answer for that accuracy (`weapon::ZoomedAimError`: the flag set, the function called, the flag
+cleared, on the game thread inside the handler; journalled `Weapon.bIsZoomed (one aim-error call)`). The camera never sees
+the flag, so the game's own zoom view doesn't start.
+
+**Files** (`git show` of the step's commit): `game/Sights.cpp` (handles `kEveryGame`, `TryStartup` on every game, no
+forced-off block: `converge` and `aimedFire` stay off only where `Actor.Trace` or the aim-error function wasn't found),
+`game/Weapon.cpp` (`AimError`, `ZoomedAimError` on every game), `game/ScopeParts.cpp` (the hide on every game; its material
+log stays ME1's), `engine/ReflectCheck.cpp` (LE2 and LE3 rows), `game/HandAim.cpp` (the shot line says what the sight line
+hit and how far the shot is off it), `game/Holsters.cpp` + `ConsoleRequest.cpp` (`mevr weapon <pistol|shotgun|assault|sniper>`
+on the sequels: the inventory chain by family from `game/Le2Squad`, `BioPlayerController.SwitchWeapon`).
+
+**Not ported:** `game/ScopeCapture` (the scope's own zoomed render): the sequel hosts don't serve `setScopeCapture` and have
+no scene-capture plumbing (ledger R31); a sequel's scope shows the other eye's image enlarged, as ME1 did before research/39.
+ME3's zoom steps (above). `weapon::Zoomed()` still answers nothing on ME2 (it would stand the level camera down while the
+support grip's LT zooms the gun: decide with the view level's owner).
+
+**The check to run once a game starts again** (queued 2026-11-16: Steam on the machine waited on a dialog with no window and
+started no game). On ME2, with a stretch open and Save 4 loaded:
+
+```
+python tools/make-ads-recording.py <out>\pistol.mevrrec 40 90 1.75 0.085 1.5 0.1 --no-support --no-grip
+tools\replay.ps1 -Path <out>\pistol.mevrrec -Loop -Inputs          # the pistol's sight 8.5 units over the bore: the right eye on its line
+tools\snapshot.ps1 -Delay 6 -Tag sights-pistol                      # pass: the json's "sights" block names the right eye, the right eye's PNG shows the dot
+# the log: `sights: the right eye looks through it`; `sights: shots converge on the sight line (Actor.Trace found) ...`;
+#          `hand aim: shot N: along the gun barrel toward what the sight line hit ...; the sight line hit <what> D m out: aimed
+#          0.0xx degrees off the sight line, x.xxx off the barrel`  (pass: under the weapon's aim error off the sight line)
+tools\console.ps1 "mevr weapon sniper"                               # a Soldier carries one after Freedom's Progress's loadout; else it lists what is carried
+python tools/make-ads-recording.py <out>\sniper.mevrrec 40 90 1.75 <the sniper's sight height in m, from its `sights:` line> 3 0.1 --no-support --no-grip
+# pass: `sights: ADS on`, a "sights" block with the scope's picture up, `sights: first scoped shot with aimed fire: aim error A -> B`,
+#       and the shot line within B degrees of the sight line; `sights: the sniper rifle is raised to the eye: hid ...` if its model has a lens bone
+```
+Then LE1 at the same pose as before the change (`tools/fake-headset-session.ps1`, the standing replay, two snapshots,
+`mevr weapon pistol` if the career carries one): the same `sights:` and `hand aim:` lines and the same layers.
+
+The whole check as one script: `tools\le2-halcyon-run\sights.ps1 -Holder <you>` (results in the stretch's `sights-<time>` folder).
+
+## Holsters and the reload on the sequels: the plan (not built)
+
+`plugin/PadMerge` with the grip flags is in both sequel hosts (f71e7a71), so the mod's side is what is missing. Both are
+one shared module each; what is each game's goes behind a small table, as above.
+
+**Holsters** (`game/Holsters.cpp`, 1,160 lines, today `#if MEVR_GAME_LE1` around every game access):
+1. Separate the game access into one struct (`holsters::Game` already holds the read state): `Carried()` (which families are
+   carried), `Draw(family)`, `Holster()`, `Drawn()`, `Switching()`, `HeldFamily()`. ME1's are the quick slots,
+   `SFXGameModeDefault.SwitchToWeapon`, `TryHolster`, `IsInCombatActionState`, `IsSwitchingWeapons`, `GetRangedWeaponType`.
+2. The sequels' (ME2's script read 2026-11-16; ME3's names are the same in LExSDKv2's headers, [verify] its script):
+   - carried: the pawn's inventory chain by family, `le2_squad::Weapons` / `WeaponType` (five families: the SMG is ME2's
+     `SFXWeapon_AutoPistol_Base`, ME3's `SFXWeapon_SMG_Base`; `core/ik/BodySlots`' `Weapon` enum has four: add the fifth and
+     give it a slot, docs/le3-port-reuse-audit.md "Holsters");
+   - draw: `BioPlayerController.SwitchWeapon(oWpn)` (-> `SFXInventoryManager.SetWeaponIfAvailable`), and the weapon out of
+     its holster is the pawn's action state: `m_oBehavior.SetActionState(1)` (combat; what `SFXGameModeBase.FireWeapon` and
+     `NextWeapon` do first). `mevr weapon <family>` already calls the first;
+   - holster: `SFXGameModeDefault.TryHolster` (ME2: refuses while reloading, in combat (`InCombat()`), using a power or in an
+     animated transition, then `SetActionState(0)`);
+   - drawn: `BioPawn.ActionState == 1` (`IsCombatActionState`); switching: the weapon's state `WeaponEquipping` /
+     `WeaponPuttingDown` (`IsInState`), which `NextWeapon` and `SwitchToBackupWeapon` also test.
+3. "Only holsters draw": ME2 has no `DrawPrimaryWeapon`; the game's own draws are `SetActionState(1)` from
+   `SFXGameModeBase.FireWeapon` (the trigger), `TryReload`, `NextWeapon`, `SwitchToBackupWeapon` (`SetCombatState_Active`) and
+   the powers. `BioPawnBehavior.SetActionState` takes a parameter, so ME1's skip handler (parameterless script functions only)
+   doesn't fit: use a CallFunction pre/answer on the callers instead (skip `FireWeapon`'s body while holstered), or leave the
+   trigger drawing on the sequels and say so. Find the routes with `mevr calltrace 10 setactionstate`.
+4. The pad: once `holsters::TryStartup` succeeds on a sequel, `AdjustPad` sends `gripHolds`, and the right grip stops being
+   RB (today it opens ME2's power wheel after 0.3 s). The power wheel then needs ME1's "right stick click held" route or the
+   hand power wheel (GF's lane).
+5. Checks: a replayed right-grip squeeze at the hip slot draws the pistol (`holsters:` lines, `mevr state`); `vault.ps1 -Grip`
+   (the gun held through the vault), and `-Grip -Support` once the traversal clears `bIsZoomed` for its `CanPerformMantle`
+   call (above: the two-handed hold zooms the gun and the game refuses the vault).
+
+**The reload** (a new `game/Reload` over `core/vr/PhysicalReloadRequest`, the coordinator; `core/ik/BodySlots` for the clip
+pouch; `core/ik/Vent`'s receiver zone for the gun's side):
+1. The gesture: the left hand at the clip pouch (a body slot, left hip by default) with a grip squeeze takes a clip
+   (`Signals::acquire`), the hand brought into the gun's receiver zone (`SupportSample::alongMeters`/`upMeters`/`sideMeters`,
+   as `vent::InZone`) is the insert (`Signals::insert`); `eject` is implicit at the grab (ME2's clip ejects in the game's own
+   reload animation). The hand grant is the left hand while no support grip is held.
+2. The native entry: `SFXWeapon.TryReload()` only if `CanReload()` (ME2: `bWeaponCanBeReloaded && AmmoUsedCount > 0 &&
+   HasSpareAmmo()`, and the pawn's `CanReload`), i.e. `StartFire(1)`: never `DoReload`. `SFXGameModeDefault.TryReload` is the
+   button's route (it first draws a holstered gun and returns). ME3: the same names in the SDK, [verify] its script.
+3. Feedback for the coordinator: accepted = `BioPawn.IsReloading(true)` turned true (or the weapon entered its reload state);
+   finished = `AmmoUsedCount` back to 0 with `CurrentSpareAmmo` down (the LE2 observers read these: ReflectCheck has the rows);
+   aborted = `IsReloading` false with the counts unchanged.
+4. The check (the plan's): Save 4's pistol reads 12 / 0 / 60 (magazine, used, spare), one shot 11 / 1 / 60, the replayed
+   gesture 12 / 0 / 59; `R` never sent. `tools/make-rack-recording.py` is the model for the recording.
+
 ## What M3 still needs from the host (lane B2)
 
 The mod's side of hand aim, arm IK, the torso, the fingers, the gun in the hand and the gun kick runs on ME2. What

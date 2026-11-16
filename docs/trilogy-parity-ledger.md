@@ -53,8 +53,8 @@ rows the change touches.
 
 | game | shared | adapted | forked | missing | n/a | present and verified (V) | present, unverified (U) |
 |---|---|---|---|---|---|---|---|
-| LE2 | 10 | 41 | 5 | 33 | 4 | 37 | 19 |
-| LE3 | 10 | 38 | 7 | 32 | 6 | 20 | 35 |
+| LE2 | 11 | 40 | 5 | 33 | 4 | 37 | 19 |
+| LE3 | 11 | 37 | 7 | 32 | 6 | 20 | 35 |
 <!-- /parity:totals -->
 
 LE1 is the reference, so it has no cells. A few LE1 systems are themselves n/a under Halcyon's renderer: the reflection
@@ -208,9 +208,9 @@ The [technique groups](#renderer-techniques-by-group) summary follows the table.
 | G03 | Fingers (`game/Fingers`, `core/ik/Fingers`) | **shared** U | **shared** U | Snapshot `mod.fingers` with a replayed trigger and grip on each game's skeleton. |
 | G04 | The drawn gun (`game/Weapon`) | **adapted** V: muzzle against `GetMuzzleLoc`, 0.00 units (le2-vrik) | **adapted** U: LE3 weapon classes, the SMG as its own `RangedType` | LE3: a combat fixture. |
 | G05 | Support grip, two-handed (`game/SupportGrip`, `plugin/PadMerge` v7/v11) | **shared** U: ctest `mevr-pad-merge` only | **shared** U | A replay with the left grip in the zone, then snapshot `supportGrip`. |
-| G06 | Sights: red dot, holo, ADS, alignment assist (`game/Sights`, `plugin/SightLayers`, `core/vr/Ads`) | **adapted** U: drawing only. `TryStartup` returns false on the sequels; assist, convergence and aimed fire are off; reads `SFXWeapon.ZoomFOV` | **adapted** U: the same sequel path (`Sights` is `out` on LE3); the SMG borrows the rifle profile | research/le2-le3-vr-optics.md "LE2 implementation" steps 1–3. |
-| G07 | Scope: picture-in-picture, virtual eyepiece, scope parts, scope capture (`game/ScopeParts`, `game/ScopeCapture`, `plugin/ScopeCaptureSource`) | **adapted** U: picture from the eye copy. `ScopeParts`/`ScopeCapture` are `out`; ScopeCaptureSource is linked but `setScopeCapture` isn't served | **adapted** U: same | A sniper-rifle fixture per game. Then ScopeCapture (it needs R31 on LE2). |
-| G08 | Holsters and "only holsters draw" (`game/Holsters`, `core/ik/BodySlots`) | **missing**: startup `#if MEVR_GAME_LE1`. Side effect: the right grip is RB and opens ME2's wheel | **missing** | docs/le3-port-reuse-audit.md "Holsters": separate a body slot from LE1's four weapon categories (the SMG), then each game's draw and holster functions. |
+| G06 | Sights: red dot, holo, ADS, alignment assist (`game/Sights`, `plugin/SightLayers`, `core/vr/Ads`) | **shared** U: one path with ME1 since lane C2's step 2 (the sight line's trace, convergence, the assist, a scope's aimed fire through `SFXWeapon.GetAimError` with `SFXWeapon_NativeBase.bIsZoomed` set for the call; `SFXWeapon.ZoomFOV`). Built, not run in a game | **shared** U: the same path (`SFXWeapon.GetPlayerAimError(Accuracy)`); zoom steps (`AimModes`) not read; the SMG borrows the rifle profile | The queued check: research/le2-vrik.md "The sights on the sequels, mod side" (`tools/le2-halcyon-run/sights.ps1`), then LE1 at the same pose. research/le2-le3-vr-optics.md steps 1–3. |
+| G07 | Scope: picture-in-picture, virtual eyepiece, scope parts, scope capture (`game/ScopeParts`, `game/ScopeCapture`, `plugin/ScopeCaptureSource`) | **adapted** U: picture from the eye copy. `ScopeParts` shared (HideBone on every game; U); `ScopeCapture` is `out`; ScopeCaptureSource is linked but `setScopeCapture` isn't served | **adapted** U: same | A sniper-rifle fixture per game. Then ScopeCapture (it needs R31 on LE2). |
+| G08 | Holsters and "only holsters draw" (`game/Holsters`, `core/ik/BodySlots`) | **missing**: startup `#if MEVR_GAME_LE1`. Side effect: the right grip is RB and opens ME2's wheel. `mevr weapon <family>` draws a carried weapon (`BioPlayerController.SwitchWeapon`; U) | **missing** (the same `mevr weapon`, U) | The adapter's plan with each game's names: research/le2-vrik.md "Holsters and the reload on the sequels: the plan". docs/le3-port-reuse-audit.md "Holsters": separate a body slot from LE1's four weapon categories (the SMG), then each game's draw and holster functions. |
 | G09 | Gun kick (`game/GunKick`, `core/ik/GunKick`) | **adapted** V: recoil from `SFXWeapon.GetWeaponRecoil`; `gun kick: first kick` (le2-vrik) | **missing**: compiled but no shot source (`NoteShot` comes only from ViewLevel's LE1/LE2 `SetWeaponRecoil` handler) | LE3: a shot hook, together with G10. |
 | G10 | View level, aim assist zeroed (`game/ViewLevel`) | **adapted** V: pitch held in 4,723 of 4,723 ticks, yaw kick removed (le2-vrik); the aim-assist zeroing unmeasured | **missing**: `TryStartup`/`Tick` `#if LE1 \|\| LE2` | LE3: the handler on ME3's recoil call. `python tools/le2-name-audit.py --game LE3 game/ViewLevel`: ME3 has all 29 of its names. |
 | G11 | Camera shakes off (`game/CameraShake`) | **adapted** V: ME2's branch sets `CameraModifier.bDisabled`; modifiers off in the run. Which gun shakes exist is [verify] | **missing**: a stub, "LE1 and LE2 only" | — |
@@ -526,8 +526,8 @@ defined in the tool's header:
 | game | renderer | host plugin files | host core files | services served | src/game + src/engine modules by status | common seams called | own seams |
 |---|---|---|---|---|---|---|---|
 | LE1 | halcyon-le1 | 71 | 71 | 57 | run 67, out 4, ungated 22, unreferenced 1, unbuilt 4 | 20 of 32 | 91 |
-| LE2 | halcyon-le2 | 58 | 51 | 48 | run 38, ready 11, out 22, ungated 21, unreferenced 2, unbuilt 4 | 27 of 32 | 4 |
-| LE3 | halcyon-le3 | 61 | 51 | 48 | run 33, ready 11, out 27, ungated 22, unreferenced 2, unbuilt 3 | 27 of 32 | 2 |
+| LE2 | halcyon-le2 | 58 | 51 | 48 | run 40, ready 11, out 20, ungated 21, unreferenced 2, unbuilt 4 | 27 of 32 | 4 |
+| LE3 | halcyon-le3 | 61 | 51 | 48 | run 36, ready 11, out 24, ungated 22, unreferenced 2, unbuilt 3 | 27 of 32 | 2 |
 <!-- /parity:summary -->
 
 ### Host plugin files per game
@@ -792,7 +792,7 @@ Helpers applied, in order:
 | `game/HeadSim` | ungated | ungated | ungated |
 | `game/HeadTracking` | run | run (LExSDKv2) | out (LExSDKv2) |
 | `game/HoloProbe` | run | out | out |
-| `game/Holsters` | run | out | out |
+| `game/Holsters` | run | run | run |
 | `game/HudPieces` | ungated | run | ungated |
 | `game/Interact` | run | run | run |
 | `game/InventoryProbe` | run | unreferenced | unreferenced |
@@ -812,9 +812,9 @@ Helpers applied, in order:
 | `game/Reflections` | run | run (LExSDKv2) | out (LExSDKv2) |
 | `game/SceneCaptureRig` | run | out | run |
 | `game/ScopeCapture` | run | out | out |
-| `game/ScopeParts` | run | out | out |
+| `game/ScopeParts` | run | run | run |
 | `game/ScreenReticle` | run | run | run |
-| `game/Sights` | run | run | out |
+| `game/Sights` | run | run | run |
 | `game/SkeletonProbe` | run | run (ME1-only handles) | run (ME1-only handles) |
 | `game/SoundPlace` | run | ready | ready |
 | `game/Spectator` | run | out | out |
