@@ -1292,6 +1292,7 @@ if (MEVR_BUILD_TESTS)
     target_include_directories(mevr-mod-reload-tests PRIVATE src)
     target_compile_definitions(mevr-mod-reload-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN MEVR_GAME_LE3 MEVR_NO_LESDK)
     target_compile_options(mevr-mod-reload-tests PRIVATE /W4 /WX /utf-8)
+    target_link_libraries(mevr-mod-reload-tests PRIVATE OpenXR::headers)  # ModLoader.cpp includes core/vr/GalaxyHologram.hpp (openxr.h) since 0f02fd38
     add_test(NAME mevr-mod-reload COMMAND mevr-mod-reload-tests)
     set_tests_properties(mevr-mod-reload PROPERTIES TIMEOUT 30)
     add_executable(mevr-call-scope-tests tests/CallScopeTests.cpp)
