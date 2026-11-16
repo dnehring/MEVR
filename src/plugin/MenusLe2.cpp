@@ -5,7 +5,7 @@
 
 #include "plugin/MenusLe2.hpp"
 
-#include "halcyon/SequelPresentation.h"
+#include "halcyon/MevrSeams.h"
 #include "engine/GameAdapter.hpp"
 
 #include "core/Log.hpp"
@@ -191,7 +191,7 @@ vr::controllers::State OnFrameBegun(XrSession session, XrSpace space, XrTime tim
 #endif
 }
 
-WorldUiPanel BeforePanel(ME2VR::MevrBridge::OverlayFrame const& frame, unsigned panelWidth, unsigned panelHeight) {
+WorldUiPanel BeforePanel(MevrSeams::OverlayFrame const& frame, unsigned panelWidth, unsigned panelHeight) {
     WorldUiPanel out;
 #if defined(MEVR_WITH_MAIN_MENU)
     if (frame.gameMode >= 0) {
@@ -222,7 +222,7 @@ WorldUiPanel BeforePanel(ME2VR::MevrBridge::OverlayFrame const& frame, unsigned 
     return out;
 }
 
-unsigned PanelLayers(ME2VR::MevrBridge::OverlayFrame const& frame, ID3D11Device* device, void const* panelLayer,
+unsigned PanelLayers(MevrSeams::OverlayFrame const& frame, ID3D11Device* device, void const* panelLayer,
     void const** layersOut, unsigned count, unsigned capacity) {
     if (layersOut == nullptr) {
         return count;
@@ -291,7 +291,7 @@ unsigned PanelLayers(ME2VR::MevrBridge::OverlayFrame const& frame, ID3D11Device*
     return count;
 }
 
-unsigned Layers(ME2VR::MevrBridge::OverlayFrame const& frame, ID3D11Device* device, void const** layersOut, unsigned count,
+unsigned Layers(MevrSeams::OverlayFrame const& frame, ID3D11Device* device, void const** layersOut, unsigned count,
     unsigned capacity) {
 #if defined(MEVR_WITH_MAIN_MENU)
     if (layersOut == nullptr || frame.session == nullptr || device == nullptr || count > capacity) {
@@ -546,32 +546,6 @@ std::string SystemName() {
 
 // ---- ME2's seams (src/halcyon/le2/mevr_bridge.h) ----------------------------------------------------------------------------
 namespace ME2VR::MevrBridge {
-
-bool OnMenuKey(bool ownMenuOpen) noexcept {
-#if defined(MEVR_WITH_MAIN_MENU)
-    // \ (Halcyon ME2's MenuKey in our baseline) is our menu's; with Ctrl or Shift held, Halcyon's own (a developer fallback).
-    // While Halcyon's menu is open, the key closes it as before. As LE1's MevrBridge::OnMenuKey.
-    bool const modifier = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0 || (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
-    if (!modifier && !ownMenuOpen) {
-        mevr::host::main_menu::Toggle("the menu key");
-        return true;
-    }
-    if (mevr::host::main_menu::IsOpen()) {
-        mevr::host::main_menu::SetOpen(false, "Ctrl/Shift + the menu key: Halcyon's menu instead");
-    }
-#else
-    (void)ownMenuOpen;
-#endif
-    return false;
-}
-
-bool MainMenuOpen() noexcept {
-#if defined(MEVR_WITH_MAIN_MENU)
-    return mevr::host::main_menu::IsOpen();
-#else
-    return false;
-#endif
-}
 
 bool WorldUiOwnsGui(int mode) noexcept {
 #if defined(MEVR_WITH_MAIN_MENU)
