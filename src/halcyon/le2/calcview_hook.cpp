@@ -760,7 +760,7 @@ void ApplyHeadPosition(std::uintptr_t sv) noexcept
         // floor under the pawn at the player's real eye height. PVT is -camera position: its Z before any lean. The second
         // pass reuses the first's answer. The lean in UE units may be replaced by the view the mod was told about.
         float r = w2m * dR, u = w2m * dU, f = w2m * dF;
-        const float floorDz = ::ME2VR::MevrBridge::FloorViewTranslation(t_replay, -pvt[2], rZ, uZ, fZ, &r, &u, &f);
+        const float floorDz = ::MevrSeams::FloorViewTranslation(t_replay, -pvt[2], rZ, uZ, fZ, &r, &u, &f);
         const float wx = r * rX + u * uX + f * fX;
         const float wy = r * rY + u * uY + f * fY;
         const float wz = r * rZ + u * uZ + f * fZ + floorDz;

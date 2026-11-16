@@ -155,14 +155,19 @@ for that.
 
 ## State
 
-Landing 1 of 5 (2026-11-16): `MevrSeams.h`, the host's definitions, `Seams.cpp`, the capability set, and inline
-forwarders from each tree's old names in its `mevr_bridge.h` (section "Old names"), so the trees still compile
-unchanged. Moved with it, because a forwarder could not supply the difference: LE1's `OnViewBuilt` and `OnMenuKey`
-call sites and ME2's two `CopyIntoImage` calls.
+Landings 1 and 2 of 5 (2026-11-16). In: `MevrSeams.h`, the host's definitions, `Seams.cpp`, the capability set; the LE2
+tree's call sites on `MevrSeams::`; ME2's recenter asks `RecenterOrientation` (`plugin/RecenterTilt` and
+`core/vr/Recenter` are in the LE2 host; the bridge calls `recenter_tilt::Committed()` in `OnRecentered` and
+`recenter_tilt::NoteHead()` each `OverlayLayers`; capability `recenterTilt`). ME2's check: no run yet: Steam did not launch the game on 2026-11-16 (a pending Steam dialog); the ME2 fake-headset run is owed.
 
 Not yet, and so `-` or "see State" above:
-- the trees' other call sites still use the old names (landings 2 to 4: LE2, LE3, LE1);
-- `RecenterOrientation` is defined for LE1 only; `plugin/RecenterTilt.cpp` joins a sequel's host with its tree's landing
-  (capability `recenterTilt`);
-- the perf group has no definition and no caller: it comes with each sequel tree's landing, forwarding to lane PL's
-  `mevr::host::perf` once that is in the sequel hosts (capability `perfSeams`).
+- the LE3 and LE1 trees' call sites still use the old names through the inline forwarders (section "Old names" of each
+  `mevr_bridge.h`; LE2's forwarders also stay until the last landing, for work in flight elsewhere);
+- `RecenterOrientation` on LE3 comes with its tree's landing;
+- the perf group has no definition and no caller. When lane PL's `mevr::host::perf` is in the sequel hosts: define the
+  four in each sequel bridge (`PerfPresentBegin` -> `perf::SeamPresentBegin` and so on), call
+  `perf::WrapFrameFunctions(waitSwapchainImage, waitFrame, beginFrame, endFrame)` after testloop's wrap in the bridge's
+  `WrapSessionFunctions`, put `MevrSeams::PerfPresentScope` as the first line of the tree's `PresentHook`,
+  `PerfFirstEyeCaptured` after the SFR pass-0 capture (`g_sfrPass0Caps.fetch_add` in `d3d_capture.cpp`) and `PerfDraw()` in
+  the draw hooks (once per draw: the inline `MhDraw*` hooks where a method has one, since the vtable hook's call lands
+  there too, and the vtable hooks of the methods without one), then set `perfSeams` in `RendererLe2/3.cpp`.

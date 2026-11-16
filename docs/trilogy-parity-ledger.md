@@ -53,7 +53,7 @@ rows the change touches.
 
 | game | shared | adapted | forked | missing | n/a | present and verified (V) | present, unverified (U) |
 |---|---|---|---|---|---|---|---|
-| LE2 | 11 | 40 | 5 | 33 | 4 | 37 | 19 |
+| LE2 | 12 | 39 | 5 | 33 | 4 | 37 | 19 |
 | LE3 | 11 | 37 | 7 | 32 | 6 | 20 | 35 |
 <!-- /parity:totals -->
 
@@ -153,7 +153,7 @@ The [technique groups](#renderer-techniques-by-group) summary follows the table.
 | R25 | Test loop: snapshots, recording, replay (`plugin/TestLoop`, seam `WrapSessionFunctions`) | 1 + seam | **adapted** V: run `20261114-191506-lane-b-testloop` (04fa43a2); waitFrame/beginFrame not wrapped | **adapted** V: every protected run, e.g. `20261115-182253-344` (14 captures) | — |
 | R26 | Perf probe (`plugin/PerfProbe`, `core/vr/FrameProbe`; seams `PerfPresentScope`, `PerfPass0Captured`, `PerfPoint`) | 1 (core) + seams | **missing** | **missing** | PerfProbe includes halcyon/le1 headers: split those out, then add the seams at each sequel's Present, xrWaitFrame and xrBeginFrame (docs/me3-overall-goal-handoff.md §4). |
 | R27 | Delayed per-eye pose history (LE1: Halcyon's EYETAG code in xr_session.cpp; sequels: `core/vr/StereoPoseTag.hpp`, `core/vr/EyePublication`) | 1 + seams | **adapted** V: run `20261115-165553-786` (research/sequel-eye-pose-tags.md) | **adapted** V: runs `20261115-165123-287`, `20261115-174634-476` | Physical fusion. |
-| R28 | Recenter: yaw-only, plus a removed tilt (seam `RecenterOrientation` → `plugin/RecenterTilt`, `core/vr/Recenter`) | 1 + seam | **adapted** U: yaw-only `RecenterAppSpace` → `OnRecentered`. Tilt removal missing (`RendererLe2::RecenterTiltDeg` has no consumer) | **adapted** V: recenter in run `20261115-180239-899`; tilt removal missing | Call `RecenterOrientation` in each sequel's `RecenterAppSpace`. SteamVR's upside-down start reaches every game (docs/le2-from-le1.md 3.1). |
+| R28 | Recenter: yaw-only, plus a removed tilt (seam `RecenterOrientation` → `plugin/RecenterTilt`, `core/vr/Recenter`) | 1 + seam | **shared** U: `RecenterAppSpace` asks `MevrSeams::RecenterOrientation` (`plugin/RecenterTilt` in the LE2 host, lane U1, 2026-11-16). Built; no run yet (Steam did not launch the game that day) | **adapted** V: recenter in run `20261115-180239-899`; tilt removal missing | Call `RecenterOrientation` in each sequel's `RecenterAppSpace`. SteamVR's upside-down start reaches every game (docs/le2-from-le1.md 3.1). |
 | R29 | Body bounds for the culling camera (`engine/BodyBounds`: post-hook `0x58EEC0`, Umbra hand-over `0x25CFE0`; ArmIk's `bConsiderAllBodiesForBounds`) | 2 + 3 (cause: Halcyon LE1's GPU-only view offset) | **missing**: `ready`; `kSkelUpdateBounds`/`kPrimitiveUmbraBounds` are 0. ArmIk's flag part runs | **missing**: same | First check whether the sequels cull the body at all. LE1's repro: look down with the head turned (gotchas/culling-camera-ahead-of-the-eye). |
 | R30 | Spectator mirror (`game/Spectator`, `plugin/Spectator`, seam `SpectatorMirror`) | 1 (host draw) + 2 | **missing** | **missing** | — |
 | R31 | Scene-capture plumbing (RenderLevers CaptureSceneHook `0x742C80`, BeginBackBufferHook `0x773D30`; UiWorldFigure's Umbra skip `0x7526C0`) | 2 | **missing** | **forked** V: `plugin/Le3SceneCapture` (its own RVAs; shares `plugin/SceneCaptureTarget.hpp`, `core/vr/SceneCaptureScope`); raw map captures in run `20261115-220823-943` (research/le3-galaxy.md) | Forks 9. |
@@ -431,12 +431,12 @@ and 2 (the overlay composition and the sequel bridges).
   `HotkeyDown`.
 - LE3: `CineScreenHalfSeparationUU`, `OnPresent`.
 
-**State of the migration (2026-11-16).** Landing 1 of 5 is in: the header, the host's definitions in `namespace
-MevrSeams`, `plugin/Seams.cpp`, the capability set, and thin inline forwarders from every old name (the generated table
-lists them per tree), so the trees' call sites still compile unchanged. Only three call sites moved with it, because their
-signature changed and a forwarder could not supply the difference: LE1's `OnViewBuilt` and `OnMenuKey`, and ME2's
-`CopyIntoImage` (the eye is the caller's now). Next: the call sites of the LE2 tree, then LE3's, then LE1's, each its own
-landing; then the forwarders go. The sequels do not call `RecenterOrientation` or the perf group yet.
+**State of the migration (2026-11-16).** Landings 1 and 2 of 5 are in: the header, the host's definitions in
+`namespace MevrSeams`, `plugin/Seams.cpp`, the capability set; and the **LE2 tree calls the common names** (`MevrSeams::X`),
+its recenter asks `RecenterOrientation` (R28), and `PlacePanel` replaced `PlaceGalaxyPanel`. The LE3 and LE1 trees still
+call their old names through thin inline forwarders in their `mevr_bridge.h` (the generated table lists them); they move
+next, each its own landing; then every forwarder goes. The perf group has no caller yet: it waits for lane PL's
+`mevr::host::perf` in the sequel hosts.
 
 ## Plans
 
@@ -504,7 +504,8 @@ These are concrete, each with its check. None was fixed here (read-only audit).
 - **LE3's voice model tier needs LE2 in the build.** It compiles into LE3 only when LE2 is built too: the llama block
   in `CMakeLists.txt` tests `TARGET halcyon-le2`.
 - **Two configuration values nobody reads.**
-  - `RendererLe2::RecenterTiltDeg` answers 60, and nothing reads it.
+  - (fixed by lane U1: `RendererLe2::RecenterTiltDeg` is read by `plugin/RecenterTilt` since the LE2 tree calls
+    `RecenterOrientation`.)
   - `PowerWheel::StatusJson` reads the controller through `Ready()`, so `mappedPower` is always empty in LE2 snapshots.
 - **LExSDKv2's generated LE3 header lists no `Engine.Actor.Location`**, though every game has it, so the generated
   "names" table has false entries. ReflectCheck, against the running game, is the authority; the table is a lead.
@@ -526,7 +527,7 @@ defined in the tool's header:
 | game | renderer | host plugin files | host core files | services served | src/game + src/engine modules by status | common seams called | own seams |
 |---|---|---|---|---|---|---|---|
 | LE1 | halcyon-le1 | 71 | 71 | 57 | run 67, out 4, ungated 22, unreferenced 1, unbuilt 4 | 20 of 32 | 91 |
-| LE2 | halcyon-le2 | 58 | 51 | 48 | run 40, ready 11, out 20, ungated 21, unreferenced 2, unbuilt 4 | 27 of 32 | 4 |
+| LE2 | halcyon-le2 | 59 | 52 | 48 | run 40, ready 11, out 20, ungated 21, unreferenced 2, unbuilt 4 | 28 of 32 | 4 |
 | LE3 | halcyon-le3 | 61 | 51 | 48 | run 36, ready 11, out 24, ungated 22, unreferenced 2, unbuilt 3 | 27 of 32 | 2 |
 <!-- /parity:summary -->
 
@@ -588,7 +589,7 @@ defined in the tool's header:
 | `QuadSwapchain` | yes | yes | yes |
 | `QuestPacing` | yes | - | - |
 | `RailArt` | yes | yes | yes |
-| `RecenterTilt` | yes | - | - |
+| `RecenterTilt` | yes | yes | - |
 | `RenderLevers` | yes | - | - |
 | `RendererLe1` | yes | - | - |
 | `RendererLe2` | - | yes | - |
@@ -647,7 +648,7 @@ In all three hosts (49): `Exe`, `ExeCheck`, `Hook`, `Hotkey`, `Ini`, `Json`, `Lo
 | `vr/OmniPad` | yes | - | - |
 | `vr/PresentationHold` | yes | - | - |
 | `vr/QuestPacing` | yes | - | - |
-| `vr/Recenter` | yes | - | - |
+| `vr/Recenter` | yes | yes | - |
 | `vr/ScreenMatrix` | yes | - | - |
 | `vr/Spectator` | yes | - | - |
 | `vr/Sprint` | yes | - | - |
@@ -873,7 +874,7 @@ The common vocabulary (`namespace MevrSeams`, `src/halcyon/MevrSeams.h`): `yes` 
 | `PerfPresentEnd` | - | - | - |
 | `PlacePanel` | yes | yes | yes |
 | `QueueProcessEvent` | yes | yes | yes |
-| `RecenterOrientation` | yes | - | - |
+| `RecenterOrientation` | yes | yes | - |
 | `StaticXrGetInstanceProcAddr` | yes | yes | yes |
 | `TransitionFadeLayer` | yes | yes | yes |
 | `WrapSessionFunctions` | yes | yes | yes |
