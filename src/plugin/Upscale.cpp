@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
-// Spatial upscaling of the eye images (plugin/Upscale.hpp, research/32): FSR 1's EASU and RCAS in Halcyon's eye
-// blit, the settings, the cost.
+// Spatial upscaling of the eye images (plugin/Upscale.hpp, research/32): FSR 1's EASU and RCAS, the settings, the cost.
+// One pass for the three games (research/27 "One eye-image pipeline"): LE1 reaches it from Halcyon's eye blit (the
+// [MEVR] upscale seam, in Halcyon's pipeline state), the sequels from plugin/EyeCopy (Copy, in a state of our own).
 
 #include "plugin/Upscale.hpp"
 
@@ -8,8 +9,11 @@
 #include "core/Log.hpp"
 #include "core/vr/Colour.hpp"
 #include "core/vr/TestRequest.hpp"
+#include "core/d3d11/Blit.hpp"
 #include "core/vr/Upscale.hpp"
+#if defined(MEVR_WITH_HALCYON)
 #include "halcyon/le1/mevr_bridge.h"
+#endif
 #include "plugin/Colour.hpp"
 #include "plugin/Renderer.hpp"
 
@@ -34,9 +38,9 @@ using Microsoft::WRL::ComPtr;
 namespace vu = mevr::vr::upscale;
 namespace cv = mevr::vr::colour;
 
-// ---- Settings ([Upscale] in ASI\LE1MEVR.ini, re-read once a second on the Present thread) --------------------
+// ---- Settings ([Upscale] in ASI\<GAME>MEVR.ini, re-read once a second on the Present thread) --------------------
 std::wstring const& IniPath() {
-    static std::wstring path = mevr::host::SettingsPath();  // <exe dir>\ASI\LE1MEVR.ini, as the mod
+    static std::wstring path = mevr::host::SettingsPath();  // <exe dir>\ASI\<GAME>MEVR.ini, as the mod
     return path;
 }
 
@@ -184,6 +188,7 @@ bool EnsureMiddle(ID3D11Device* device, unsigned width, unsigned height, DXGI_FO
     return true;
 }
 
+#if defined(MEVR_WITH_HALCYON)
 // The source's size and format (UNORM 8-bit only: the encoded SDR path), cached by view.
 struct Source {
     ID3D11ShaderResourceView* view = nullptr;
@@ -219,6 +224,8 @@ bool Describe(ID3D11ShaderResourceView* view, Source& out) {
     out = s;
     return true;
 }
+
+#endif
 
 // ---- Cost: GPU timestamps around the two passes, reported every 10 s ----------------------------------------
 struct QuerySet {
@@ -301,6 +308,118 @@ void TimerEnd(ID3D11DeviceContext* context) {
     gOpenQuery = -1;
 }
 
+// The two passes, in the pipeline state the caller set for a full-screen triangle of the eye's size (viewport, blend,
+// depth, raster, topology, layout): EASU, the source into the intermediate at the eye's size, then RCAS, the
+// intermediate into the eye with the colour correction at the end when it's on. `constants` is uploaded already when
+// `shiftPx` is 0. The sequels' convergence shift (`shiftPx`, plugin/EyeCopy's policy: the unshifted picture, then the
+// shifted one over it, so the vacated strip keeps the unshifted edge) is two EASU draws, each in its own columns: the
+// pass reads its target pixel from SV_Position, so a narrower viewport is a scissor.
+void Passes(ID3D11DeviceContext* context, ID3D11Device* device, ID3D11ShaderResourceView* source, ID3D11SamplerState* sampler,
+    ID3D11Buffer* fillConstants, ID3D11RenderTargetView* eyeRtv, unsigned eyeWidth, unsigned eyeHeight,
+    vu::Constants const& constants, int shiftPx, bool linearSource, int eye) {
+    ID3D11Buffer* savedB2 = nullptr;
+    context->PSGetConstantBuffers(2, 1, &savedB2);
+    TimerBegin(context, device);
+
+    ID3D11Buffer* const b2 = gGpu.constants.Get();
+    ID3D11ShaderResourceView* nullSrv = nullptr;
+    ID3D11RenderTargetView* const middleRtv = gGpu.middleRtv.Get();
+    context->OMSetRenderTargets(1, &middleRtv, nullptr);
+    context->VSSetShader(gGpu.vs.Get(), nullptr, 0);
+    context->PSSetShader(gGpu.easu.Get(), nullptr, 0);
+    context->PSSetShaderResources(0, 1, &source);
+    context->PSSetSamplers(0, 1, &sampler);
+    context->PSSetConstantBuffers(0, 1, &fillConstants);
+    context->PSSetConstantBuffers(2, 1, &b2);
+    if (shiftPx == 0) {
+        context->Draw(3, 0);
+    } else {
+        float const width = static_cast<float>(eyeWidth);
+        float const height = static_cast<float>(eyeHeight);
+        float const strip = static_cast<float>(shiftPx > 0 ? shiftPx : -shiftPx);
+        // The vacated strip, unshifted: the left columns for a shift to the right, the right ones for one to the left.
+        D3D11_VIEWPORT const vacated{shiftPx > 0 ? 0.0f : width - strip, 0.0f, strip, height, 0.0f, 1.0f};
+        D3D11_VIEWPORT const moved{shiftPx > 0 ? strip : 0.0f, 0.0f, width - strip, height, 0.0f, 1.0f};
+        D3D11_VIEWPORT const whole{0.0f, 0.0f, width, height, 0.0f, 1.0f};
+        context->UpdateSubresource(gGpu.constants.Get(), 0, nullptr, &constants, 0, 0);
+        context->RSSetViewports(1, &vacated);
+        context->Draw(3, 0);
+        vu::Constants const shifted = vu::Shifted(constants, shiftPx);
+        context->UpdateSubresource(gGpu.constants.Get(), 0, nullptr, &shifted, 0, 0);
+        gGpu.uploaded = shifted;
+        gGpu.haveUploaded = true;
+        context->RSSetViewports(1, &moved);
+        context->Draw(3, 0);
+        context->RSSetViewports(1, &whole);
+    }
+    context->PSSetShaderResources(0, 1, &nullSrv);
+
+    context->OMSetRenderTargets(1, &eyeRtv, nullptr);
+    bool const corrected = mevr::host::colour::BeginEye(context, eye, linearSource);
+    context->PSSetShader(corrected ? gGpu.rcasCorrected.Get() : gGpu.rcasPlain.Get(), nullptr, 0);
+    ID3D11ShaderResourceView* const middleSrv = gGpu.middleSrv.Get();
+    context->PSSetShaderResources(0, 1, &middleSrv);
+    context->Draw(3, 0);
+    mevr::host::colour::EndEye(context);
+    context->PSSetShaderResources(0, 1, &nullSrv);
+
+    TimerEnd(context);
+    context->PSSetConstantBuffers(2, 1, &savedB2);
+    if (savedB2 != nullptr) {
+        savedB2->Release();
+    }
+}
+
+void Upload(ID3D11DeviceContext* context, vu::Constants const& k) {
+    if (!gGpu.haveUploaded || std::memcmp(&k, &gGpu.uploaded, sizeof k) != 0) {
+        context->UpdateSubresource(gGpu.constants.Get(), 0, nullptr, &k, 0, 0);
+        gGpu.uploaded = k;
+        gGpu.haveUploaded = true;
+    }
+}
+
+void NoteActive(unsigned srcW, unsigned srcH, unsigned dstW, unsigned dstH) {
+    std::lock_guard<std::mutex> const lock(gMutex);
+    gLastSrcW = srcW;
+    gLastSrcH = srcH;
+    gLastDstW = dstW;
+    gLastDstH = dstH;
+    gActive = true;
+}
+
+#if !defined(MEVR_WITH_HALCYON)
+// ---- The sequels' pass (plugin/EyeCopy): a pipeline state of our own (core/d3d11/Blit's) ----------------------------
+// Halcyon's FillParams (b0) as the shaders read it: the whole source into the whole image, no HDR scale.
+struct FillParams {
+    float fillUv[4];
+    float imageRect[4];
+    float colorScale[4];
+};
+constexpr FillParams kWholeImage{{0.0f, 0.0f, 1.0f, 1.0f}, {0.0f, 0.0f, 1.0f, 1.0f}, {1.0f, 1.0f, 1.0f, 1.0f}};
+ComPtr<ID3D11Buffer> gWholeFill;
+
+struct CopyJob {
+    ID3D11Device* device;
+    ID3D11RenderTargetView* target;
+    unsigned width, height;
+    vu::Constants constants;
+    int shiftPx;
+    int eye;
+};
+
+bool CopyPasses(d3d11::Blit::Stage const& stage, void* user) {
+    CopyJob const& job = *static_cast<CopyJob const*>(user);
+    D3D11_VIEWPORT const whole{0.0f, 0.0f, static_cast<float>(job.width), static_cast<float>(job.height), 0.0f, 1.0f};
+    stage.context->RSSetViewports(1, &whole);
+    if (job.shiftPx == 0) {
+        Upload(stage.context, job.constants);
+    }
+    Passes(stage.context, job.device, stage.source, stage.sampler, gWholeFill.Get(), job.target, job.width, job.height,
+        job.constants, job.shiftPx, false, job.eye);
+    return true;
+}
+
+#endif
 } // namespace
 
 std::string StatusJson() {
@@ -311,8 +430,72 @@ std::string StatusJson() {
         gAverageMs >= 0.0 ? vr::test_request::JsonNumber(gAverageMs) : "null");
 }
 
+
+vr::upscale::Size EyeImageSize(unsigned sourceWidth, unsigned sourceHeight, unsigned recommendedWidth,
+    unsigned recommendedHeight) {
+    Tick();
+    vu::Settings settings;
+    {
+        std::lock_guard<std::mutex> const lock(gMutex);
+        settings = gSettings;
+    }
+    vu::Size const size = vu::EyeImageSize(settings, sourceWidth, sourceHeight, recommendedWidth, recommendedHeight);
+    log::Info("upscale: the eye images are {}x{} for a {}x{} picture (the headset recommends {}x{}; [Upscale] method = {}): {}",
+        size.width, size.height, sourceWidth, sourceHeight, recommendedWidth, recommendedHeight, vu::Name(settings.method),
+        size.width != sourceWidth || size.height != sourceHeight ? "FSR 1 scales each eye up at the copy"
+                                                                 : "the picture's own size, copied as it is");
+    return size;
+}
+
+#if !defined(MEVR_WITH_HALCYON)  // LE1 has no plugin/EyeCopy: its blit reaches Passes through the seam below
+bool Copy(ID3D11DeviceContext* context, d3d11::Blit& blit, ID3D11Texture2D* source, ID3D11RenderTargetView* target,
+    unsigned sourceWidth, unsigned sourceHeight, DXGI_FORMAT sourceFormat, unsigned width, unsigned height, int shiftX,
+    int eye) {
+    Tick();
+    vu::Settings settings;
+    {
+        std::lock_guard<std::mutex> const lock(gMutex);
+        settings = gSettings;
+        gActive = false;
+    }
+    bool const eightBit = sourceFormat == DXGI_FORMAT_R8G8B8A8_UNORM || sourceFormat == DXGI_FORMAT_B8G8R8A8_UNORM ||
+        sourceFormat == DXGI_FORMAT_B8G8R8X8_UNORM;
+    if (settings.method != vu::Method::Fsr || context == nullptr || source == nullptr || target == nullptr || !eightBit ||
+        sourceWidth >= width || sourceHeight >= height || gGpu.failed) {
+        return false;  // not a smaller 8-bit picture: the caller's own copy
+    }
+    ComPtr<ID3D11Device> device;
+    context->GetDevice(device.GetAddressOf());
+    if (device == nullptr || !EnsureShaders(device.Get()) || !EnsureMiddle(device.Get(), width, height, sourceFormat)) {
+        return false;
+    }
+    if (gWholeFill == nullptr) {
+        D3D11_BUFFER_DESC desc{};
+        desc.ByteWidth = sizeof(FillParams);
+        desc.Usage = D3D11_USAGE_IMMUTABLE;
+        desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+        D3D11_SUBRESOURCE_DATA const data{&kWholeImage, 0, 0};
+        if (FAILED(device->CreateBuffer(&desc, &data, gWholeFill.GetAddressOf()))) {
+            gGpu.failed = true;
+            log::Error("upscale: the fill constants couldn't be made: no upscaling");
+            return false;
+        }
+    }
+    CopyJob job{device.Get(), target, width, height,
+        vu::MakeConstants(sourceWidth, sourceHeight, width, height, kWholeImage.fillUv, kWholeImage.imageRect,
+            settings.sharpness),
+        shiftX, eye};
+    if (!blit.Run(context, source, &CopyPasses, &job)) {
+        return false;
+    }
+    NoteActive(sourceWidth, sourceHeight, width, height);
+    return true;
+}
+
+#endif
 } // namespace mevr::host::upscale
 
+#if defined(MEVR_WITH_HALCYON)
 // ---- The [MEVR] upscale seam in Halcyon's eye blit (src/halcyon/le1/mevr_bridge.h) ---------------------------
 namespace MELEVR::MevrBridge {
 
@@ -341,54 +524,12 @@ bool EyeUpscale(ID3D11DeviceContext* context, ID3D11ShaderResourceView* source, 
         return false;
     }
     vu::Constants const k = vu::MakeConstants(src.width, src.height, eyeWidth, eyeHeight, fill, fill + 4, settings.sharpness);
-    if (!gGpu.haveUploaded || std::memcmp(&k, &gGpu.uploaded, sizeof k) != 0) {
-        context->UpdateSubresource(gGpu.constants.Get(), 0, nullptr, &k, 0, 0);
-        gGpu.uploaded = k;
-        gGpu.haveUploaded = true;
-    }
-    {
-        std::lock_guard<std::mutex> const lock(gMutex);
-        gLastSrcW = src.width;
-        gLastSrcH = src.height;
-        gLastDstW = eyeWidth;
-        gLastDstH = eyeHeight;
-        gActive = true;
-    }
-    ID3D11Buffer* savedB2 = nullptr;
-    context->PSGetConstantBuffers(2, 1, &savedB2);
-    TimerBegin(context, device.Get());
-
-    // EASU: the source into the intermediate, at the eye's size (Halcyon set the viewport, blend, depth, raster,
-    // topology and layout for a full-screen triangle of this size already).
-    ID3D11Buffer* const b2 = gGpu.constants.Get();
-    ID3D11ShaderResourceView* nullSrv = nullptr;
-    ID3D11RenderTargetView* const middleRtv = gGpu.middleRtv.Get();
-    context->OMSetRenderTargets(1, &middleRtv, nullptr);
-    context->VSSetShader(gGpu.vs.Get(), nullptr, 0);
-    context->PSSetShader(gGpu.easu.Get(), nullptr, 0);
-    context->PSSetShaderResources(0, 1, &source);
-    context->PSSetSamplers(0, 1, &sampler);
-    context->PSSetConstantBuffers(0, 1, &fillConstants);
-    context->PSSetConstantBuffers(2, 1, &b2);
-    context->Draw(3, 0);
-    context->PSSetShaderResources(0, 1, &nullSrv);
-
-    // RCAS: the intermediate into the eye, the colour correction at the end when it's on.
-    context->OMSetRenderTargets(1, &eyeRtv, nullptr);
-    bool const corrected = mevr::host::colour::BeginEye(context, eye, linearSource);
-    context->PSSetShader(corrected ? gGpu.rcasCorrected.Get() : gGpu.rcasPlain.Get(), nullptr, 0);
-    ID3D11ShaderResourceView* const middleSrv = gGpu.middleSrv.Get();
-    context->PSSetShaderResources(0, 1, &middleSrv);
-    context->Draw(3, 0);
-    mevr::host::colour::EndEye(context);
-    context->PSSetShaderResources(0, 1, &nullSrv);
-
-    TimerEnd(context);
-    context->PSSetConstantBuffers(2, 1, &savedB2);
-    if (savedB2 != nullptr) {
-        savedB2->Release();
-    }
+    Upload(context, k);
+    NoteActive(src.width, src.height, eyeWidth, eyeHeight);
+    // Halcyon set the viewport, blend, depth, raster, topology and layout for a full-screen triangle of this size already.
+    Passes(context, device.Get(), source, sampler, fillConstants, eyeRtv, eyeWidth, eyeHeight, k, 0, linearSource, eye);
     return true;
 }
 
 } // namespace MELEVR::MevrBridge
+#endif

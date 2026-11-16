@@ -486,6 +486,97 @@ SDR pass (`hdrDisplay = 0`) stays the better picture until the float path carrie
   - ready for the coming menu to show on a quad;
   - `mevr-colour-preview` writes it through each preset.
 
+## 9. One eye-image pipeline for the three games (2026-11-16, lane EY)
+
+The owner (2026-11-16): "We likely need to unify approaches to ensure consistency among all games." This section is the
+audit of what each game does to an eye image, what was a sequel-only copy of something ME1 had, and what is one piece
+of code now. File and function names are exact; read them before changing anything here.
+
+### 9.1 The audit: an eye image, step by step
+
+| step | ME1 (`src/halcyon/le1/xr_session.cpp`) | ME2 and ME3 (`src/halcyon/le2/me2_xr.cpp`, `le3/me2_xr.cpp`) |
+|---|---|---|
+| where the picture comes from | the backbuffer (or Halcyon's per-eye history and atlas textures), 8-bit `R8G8B8A8_UNORM` by default, `R16G16B16A16_FLOAT` only with `[Colour] hdrDisplay = 0/1` and the game's HDR range | the backbuffer or the per-eye history texture `g_aerHist`, the same formats |
+| the display answer that decides the format | Halcyon LE1's patch of `IDXGIOutput6::GetDesc1` in `d3d_capture.cpp` calls `MELEVR::MevrBridge::HdrDisplayDesc` | our own hook on the same slot, installed from `MevrSeams::OnFactory` (`plugin/HdrDisplayPolicy.cpp`) |
+| the eye swapchain's size | the headset's eye size (Halcyon's own), so a smaller render target is scaled up at the blit | the backbuffer's size (`EnsureAerSwapchains`: `g_aerSwapW = g_bbW`), so the runtime scaled the picture, bilinearly |
+| the copy, neutral | `CopyTextureToEyeFullFrame` / `CopyTextureToEye`: `CopyResource` when the source is 8-bit, the eye's size and nothing is to be corrected | `CopyTextureToEyeFullFrame` calls `MevrSeams::CopyIntoImage`, which is `plugin/EyeCopy.cpp` `Copy`: `CopyResource` (and `CopySubresourceRegion` for the convergence shift) when the formats are one family and the sizes equal |
+| the copy, anything else | `BlitTextureToEyeWithFill` and the atlas blit: Halcyon's shaders `PSLeft`, `PSRight`, `PSFill` (a fill rectangle `fillUv`/`imageRect`, the atlas halves, `colorScale.x` = SDR white of a float source) | `EyeCopy` draws through `core/d3d11/Blit` (a pipeline state of its own): a float source through the image's sRGB view, an 8-bit one decoded first if the families differ |
+| colour correction and dither | the `[MEVR] colour` seams `EyeColourShaders`, `EyeColourActive`, `EyeColourShader`, `EyeColourDone` (`plugin/Colour.cpp`): variants of Halcyon's three shaders compiled with `core/vr/Colour`'s prelude in front, `MEVR_EYE_OUT` at their end | `EyeCopy`'s `kCorrectedShader` (`PSPlain`, `PSDecode`) with the same prelude and `MEVR_EYE_OUT`, constants from `colour::EyeConstants` |
+| tonemap of a float source | `MEVR_TONE` in Halcyon's `ToEye`: the hue-preserving clip, or `[Colour] tonemap`'s curve | none until this lane (a float source was clamped per channel by the hardware) |
+| upscale | the `[MEVR] upscale` seam `EyeUpscale` in `BlitTextureToEyeWithFill` (`plugin/Upscale.cpp`): FSR 1's EASU and RCAS when the 8-bit source is smaller than the eye | none until this lane |
+| the game's UI | the HUD panel's blit (`plugin/HudPanel.cpp`) with `colour::BeginPanel`/`EndPanel`, hooked by `HalcyonOverlays.cpp` | ME2: the same, hooked in `HalcyonLe2Bridge.cpp`'s `OverlayLayers`. ME3: the panel was never given the hooks, so its UI was uncorrected |
+| the flat panel (menus, the map) | Halcyon's `CopyResource` into `g_menuImages`: never corrected | `CopyIntoImage(..., eye = -1)`: corrected like an eye |
+
+### 9.2 What was a sequel-only copy, and what it is now
+
+1. **The upscale: missing on the sequels (ledger R13).** Now `plugin/Upscale.cpp` is one module in all three hosts.
+   Its two draws are one function, `Passes`. LE1 reaches it from `EyeUpscale` (Halcyon's pipeline state, its fill
+   rectangle); the sequels from `upscale::Copy`, called by `EyeCopy::Copy` before anything else for an 8-bit picture
+   smaller than the image both ways, inside `Blit::Run` (our own pipeline state, the game's put back). The same
+   shader text (`core/vr/Upscale` `ShaderSource`), the same constants (`MakeConstants`), the same keys (`[Upscale]
+   method`, `sharpness`; default `fsr`, 0.9), the same log lines (`upscale:`) and snapshot block.
+   - The sequels' eye images had to be able to be larger than the picture. New common seam
+     `MevrSeams::EyeImageSize(sourceW, sourceH, recommendedW, recommendedH, &w, &h)` (`src/halcyon/MevrSeams.h`, defined
+     once in `plugin/Seams.cpp`), called in both trees' `EnsureAerSwapchains` right after `g_aerSwapW = g_bbW`. The rule
+     is `core/vr/Upscale` `EyeImageSize` (unit-tested): method `fsr` and the picture smaller than the runtime's
+     recommended eye size both ways by 5% or more: the picture scaled by one factor until its width or height reaches
+     the recommendation (ME2's 2048x2304 on a 2824x2880 headset: 2560x2880). Otherwise the picture's size, and the copy
+     stays the raw `CopyResource` it was. Log: `upscale: the eye images are WxH for a WxH picture (...)`.
+   - The convergence shift (`shiftX`, in image pixels; both trees compute it from `g_aerSwapW`, so it scales with the
+     image) keeps `EyeCopy`'s policy, the unshifted picture with the shifted one over it: EASU is drawn twice, each in
+     its own columns (`core/vr/Upscale` `Shifted`).
+   - A method changed while the game runs applies to the next eye swapchains (a new session), like ME1's render
+     resolution. Until then a larger image with the method off is filled bilinearly by `EyeCopy`.
+2. **The tonemap: missing on the sequels (R15).** `EyeCopy`'s `PSPlain` now runs `MEVR_TONE` before `MEVR_EYE_OUT`, as
+   LE1's `ToEye` does: the hue-preserving clip or the curve for a float source, the identity (bit for bit) for an 8-bit
+   one. Two things LE1 has are still not on the sequels, both only reachable with `hdrDisplay = 0/1`, which the owner
+   took out of play: the float source's SDR-white scale (`colorScale.x`; the sequels use 1), and the clip in the
+   neutral profile (a neutral float copy is `Blit::Draw`, clamped per channel).
+3. **The display answer: two copies of one policy (R16, Forks 7).** Now one function, `hdr_display::Answer(desc,
+   moveOldDefault)` in `plugin/HdrDisplayPolicy.cpp`. LE1's `HdrDisplayDesc` (`plugin/HalcyonBridge.cpp`) forwards to it
+   with `moveOldDefault = true` (the one-time move of LE1's old default 0 to -1); the sequels' hook calls it with false.
+   The sequels now also read the key as a number (`-1.0` works) and fill the luminance when they answer HDR10, as LE1
+   did.
+4. **The UI on ME3's panel was uncorrected.** `HalcyonLe3Bridge.cpp` `OnSessionCreated` now gives `hud_panel` the
+   colour hooks, as ME1 and ME2 do.
+5. **Not a copy, already shared before this lane:** the correction's math and shader text (`core/vr/Colour`), the
+   settings, the headset detection and the profiles (`plugin/Colour.cpp`: `[Colour]`, `[Colour.<headset>]`), the
+   snapshot's `"colour"` block. `EyeCopy`'s `kCorrectedShader` is 8 lines that call the shared prelude; it is the
+   sequels' counterpart of Halcyon LE1's `PSFill`, not a second implementation of the correction.
+
+### 9.3 LE1 stays on its own call shape, and why
+
+The task was to move LE1's blit onto the common eye-image seams if its picture stayed identical. It was not moved. One
+shared core, two call shapes:
+
+- `MevrSeams::CopyIntoImage(context, image, source, shiftX, eye)` copies a whole source into a whole image. LE1's blit
+  does more per eye than that signature can say: a fill rectangle (`fillUv`, `imageRect`: the FOV fill, the flat
+  cinematic's 16:9 band, the screen-distance crop), the atlas halves (`PSLeft`/`PSRight`), the float source's white
+  scale, and Halcyon's own acquire, wait and release around it, in about 900 lines of `xr_session.cpp` (lines 1100 to
+  2000). Moving it means either a second, wider seam that only LE1 would call, or rewriting that blit in the host.
+- Neither can be shown to be pixel-identical by the fake headset's one gameplay path: the mono, flat-cinematic, atlas
+  and fill paths each need their own scene, and Halcyon's files must change as little as possible.
+- What LE1 shares instead: the upscale's passes (`upscale::Passes`), the correction (`plugin/Colour`'s `Bind`, the
+  prelude), the settings and the display answer. `plugin/Renderer.hpp`'s capabilities stay as they were: LE1
+  `eyeColourInBlit`, the sequels `eyeImageSeams`.
+- To finish it later: give `CopyIntoImage` a fill argument (`fillUv[4]`, `imageRect[4]`, `whiteScale`), make LE1's
+  `BlitTextureToEyeWithFill` call it after its acquire, and compare all four LE1 paths same-pose first.
+
+### 9.4 Differences that remain (decisions, not defects)
+
+- **The flat panel.** The sequels correct it (it goes through `CopyIntoImage`); LE1 never did. On a Quest profile the
+  sequels' flat menus are graded and LE1's are not.
+- **The sequels' render size.** ME1's Display page sets the render resolution and the Performance modes bundle it with
+  the upscale; the sequels' size is still the borderless window `tools/vr-game-settings.ps1 -Game LE2` writes.
+
+### 9.5 Checks
+
+- `ctest -R mevr-eye-copy-warp`: the real `EyeCopy`, `Blit` and `Upscale` modules with FSR 1's real shaders on WARP: a
+  smaller 8-bit picture scaled up, shifted both ways, with the colour correction against `core/vr/Colour`'s CPU
+  reference, the game's pipeline state restored, and the method off.
+- `ctest -R "mevr-colour-shader|mevr-upscale-shader"`: the shared shader text, as before.
+- `mevr-tests`: `EyeImageSize` and `Shifted` (tests/Main.cpp `TestUpscale`).
+
 ## Sources
 
 - **Meta:**

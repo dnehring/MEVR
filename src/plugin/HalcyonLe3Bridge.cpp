@@ -193,6 +193,10 @@ void OnSessionCreated(void* instance, void* session) noexcept {
         XR_SUCCEEDED(xrGetInstanceProperties(xrInstance, &runtime))) {
         mevr::host::colour::SetHeadset(runtime.runtimeName, properties.systemName, properties.vendorId);
     }
+    // The game's UI on the panel gets the eyes' colour correction, as on ME1 and ME2 (plugin/Colour; research/27 "One
+    // eye-image pipeline"): set before the panel's pipeline is made.
+    mevr::host::hud_panel::SetColour({mevr::vr::colour::ShaderPrelude(), &mevr::host::colour::BeginPanel,
+        &mevr::host::colour::EndPanel});
 }
 void OnSessionStopped() noexcept {
     ResetGalaxy();

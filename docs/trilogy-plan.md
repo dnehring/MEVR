@@ -167,16 +167,18 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Waits for:** T01. **Who:** U2.
 
 #### T03 One eye-image pipeline: colour, tonemap, FSR, the HDR display answer [Forks 7, 8; R13, R14, R15, R16]
-- **State:** LE1 build · LE2 build · LE3 build
+- **State:** LE1 build · LE2 build · LE3 build (2026-11-16, lane EY: research/27 section 9)
 - **Lives in:** `core/vr/Colour`, `core/vr/Upscale`, `plugin/Colour`, `plugin/Upscale`, `plugin/EyeCopy`,
-  `plugin/HdrDisplayPolicy`. Today LE1 applies colour, FSR and the tonemap inside Halcyon's blit; the sequels apply colour
-  only, in EyeCopy's own shader, and answer the display query from a second module.
-- **Left:** one eye-image stage that owns colour, tonemap and FSR; LE1's blit calls it; LE1's HDR seam forwards to
-  `hdr_display` so the `hdrDisplay` migration lives in one place. **ME2, ME3:** eye swapchains at the headset's
-  recommended size so FSR has something to scale (they are at backbuffer size today).
+  `plugin/HdrDisplayPolicy`, seam `MevrSeams::EyeImageSize`. One colour, tonemap and FSR core and one display-answer
+  policy in all three hosts; the sequels reach them from `EyeCopy` (`CopyIntoImage`), LE1 from its blit's own
+  `EyeColour*`/`EyeUpscale` seams (one core, two call shapes: research/27 9.3).
+- **Left:** **ME2, ME3:** the run that shows it: an eye larger than the backbuffer (`upscale: the eye images are ...`),
+  FSR-scaled and sharper than the runtime's scale; a colour-profile snapshot A/B. **LE1:** optional, its blit onto
+  `CopyIntoImage` with a fill argument, after a same-pose check of its four blit paths. **The owner:** the picture defaults
+  for ME2's dark scenes (research/le2-picture.md section 5, research/27 9.6).
 - **Closes when:** LE1's eye snapshots are unchanged; an ME2 and an ME3 colour-profile snapshot A/B shows the profile
   applied; an eye rendered below the headset's size comes out FSR-scaled on each sequel; ctest `mevr-eye-copy-warp`,
-  `mevr-colour-shader` and `mevr-upscale-shader` pass on the one stage.
+  `mevr-colour-shader` and `mevr-upscale-shader` pass on the one stage (they do: the WARP test runs the real FSR passes).
 - **Waits for:** T01. **Who:** EY.
 
 #### T04 Engine access on our reflection layer; no LExSDKv2 in a players' build [G52, G50, G55; G02's fallback]
