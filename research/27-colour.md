@@ -576,6 +576,58 @@ shared core, two call shapes:
   reference, the game's pipeline state restored, and the method off.
 - `ctest -R "mevr-colour-shader|mevr-upscale-shader"`: the shared shader text, as before.
 - `mevr-tests`: `EyeImageSize` and `Shifted` (tests/Main.cpp `TestUpscale`).
+- **ME2 in the game** (fake headset, 2026-11-16, session `20261116-155924-548-LE2-ey-picture`, restored with 0
+  differences; the run script and measurements are lane EY's scratch, the snapshots stay local):
+  - At the shipped size (backbuffer 4096x2304, larger than the null driver's recommended 1912x1952): `EnsureAerSwapchains`
+    kept 4096x2304, the copy raw. **Neutral is the raw copy, bit for bit**: each eye equals its saved source moved by the
+    convergence shift (left -40 px, right +40 px), 100% of pixels identical.
+  - **The correction matches the CPU reference** (`core/vr/Colour`'s grade and dither hash in numpy, applied to the saved
+    source with the same shift): Quest 100% of pixels within one 8-bit step (90.7% exact), both eyes; Quest without
+    dither the same; the custom candidate below 100% within one step (91.8% exact). The rest is float rounding of `pow`.
+  - **FSR on ME2** (`[VR] RenderW/RenderH` 1280x720 in `MELE2VR.ini`): `upscale: the eye images are 1912x1076 for a
+    1280x720 picture`, `eye copy: FSR 1 scales the game's picture (1280x720, format 28) up into the images (1912x1076,
+    format 27) through their UNORM view`, 0.074-0.086 ms of GPU per eye. Against our bilinear fill into the same images
+    (`[Upscale] method = off` in the same run): mean absolute luma gradient 10.08 against 5.39, the 99th percentile of the
+    horizontal step 26.4 against 13.4, the same mean luma (56.3 / 56.4); edges and the panel's text visibly sharper, the
+    texture grain sharpened too, as on ME1. With Quest on top the same (10.07 against 5.34), the grade applied (mean luma
+    47.9 against 47.8).
+  - The game's display question answered SDR (`hdr display: ... answered SDR: the game keeps its 8-bit frame
+    ([Colour] hdrDisplay = -1)`) through the one policy.
+  - Not seen in a game: the sequels' tonemap (a float frame needs `hdrDisplay = 0/1`).
+
+### 9.6 ME2's dark scenes through the shared pipeline (2026-11-16)
+
+The owner: "how we can get the best picture, when we know that me2 has a lot of dark scenes". Measured, not judged by eye:
+Freedom's Progress at night (Save 4), the head still, the world paused, the left eye after the copy (the swapchain image
+the headset gets), luma Rec. 709 on the encoded values; "dark window" is `tools/picture-stats.py`'s darkest 400x400
+window. Two neutral frames 2.5 minutes apart differ by 3.7 on average (ME2's lights move under `pause`): that is the
+noise floor for the means.
+
+| setting | mean luma | luma < 8 | luma < 13 (the Quest LCD's floor) | dark window: mean, black, luma levels |
+|---|---|---|---|---|
+| neutral (the default on PS VR2 and every headset that isn't a streamed Quest) | 55.6 | 13.0% | 21.2% | 4.6, 87%, 19 |
+| ME1's Quest (contrast 1.06, saturation 1.12, mid-tones 0.90; Auto on a streamed Quest) | 47.2 | 20.6% | 27.4% | 2.6, 99.5%, 13 |
+| ME1's Quest, dither off | 47.3 | 20.7% | 27.3% | 2.6, 99.5%, 13 |
+| candidate: contrast 1.06, saturation 1.12, mid-tones 1.0, black +0.03 | 59.7 | 1.1% | 11.3% | 10.6, 16%, 17 |
+| neutral with the game's own gamma 2.6 (`gamma 2.6`; ME2's 2.2) | 63.3 | 7.2% | 15.6% | 6.3, 68%, 24 |
+| neutral again (the noise floor) | 53.0 | 15.0% | 22.9% | 4.1, 91%, 17 |
+
+The same picture as research/le2-picture.md's of 2026-11-14 (then through ME2's own copy of the pipeline; within the
+noise floor everywhere): ME1's Quest profile darkens ME2's night (a quarter of the frame under the Quest LCD's floor), the
+black lift keeps the shadow detail (dark window 87% black to 16%) at the price of true black, the game's gamma lifts the
+shadows before the 8-bit store with the most distinct dark levels (24), and the dither makes no measurable difference in
+these textured scenes.
+
+**Recommendation for the owner (nothing changed: ME1's values stay the defaults):**
+- **PS VR2 and other OLED or wired headsets:** keep neutral. For brighter dark scenes, raise ME2's own gamma
+  (`BIOEngine.ini [Engine.Client] DisplayGamma` 2.4-2.6, or the game's brightness slider [verify that it writes it])
+  rather than our mid-tones: it lifts the shadows before the game's 8-bit store, so the dark steps stay fine.
+- **A streamed Quest:** for ME2, the candidate above (ME1's Quest contrast and saturation, mid-tones 1.0, black +0.03):
+  11% of the frame under the LCD's floor instead of 27% with ME1's Quest profile, and 21% neutral. As a per-game preset it
+  would be a new code path (`core/vr/Colour` `Preset` per game); today a player gets it with `[Colour.<headset>]
+  profile = custom` and those four values, or the menu's Custom sliders.
+- **Dither:** keep ME1's 0.5 steps; it costs nothing here and matters where a grade meets a smooth gradient.
+- These need the owner's eye in each headset; the numbers say where the shadow detail goes, not whether it looks better.
 
 ## Sources
 
