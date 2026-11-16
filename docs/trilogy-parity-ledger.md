@@ -432,6 +432,10 @@ Only the per-renderer extensions and the native adapters in `src/game` stay per 
 This maps where each row's open work is written today. It is the input for merging the plans into one trilogy work list
 later. No plan was merged or removed here. Rows marked **none** have no plan anywhere: that work is new.
 
+**That work list now exists: [docs/trilogy-plan.md](trilogy-plan.md)** (2026-11-16). Every row here, the **none** rows
+included, belongs to one of its features (T01-T53; its "Where the old plans' items went" lists them row by row). The
+table below stays as the map of where each row's work was written before.
+
 | rows | open work lives in |
 |---|---|
 | R01, R27 | notes/headset-checklist.md (LE2 lines; **none** for LE3); research/sequel-eye-pose-tags.md |

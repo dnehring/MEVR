@@ -1,6 +1,11 @@
 <!-- SPDX-License-Identifier: MIT -->
 # Mass Effect 2 VR existing systems and code reuse map
 
+> **The work list is [docs/trilogy-plan.md](trilogy-plan.md)** (since 2026-11-16: one list for all three games, keyed by
+> feature), and which ME1 system exists on which game is in the [parity ledger](trilogy-parity-ledger.md). This document
+> stays as the record of the pinned external sources, the Overlord reload candidates and the native leads per package;
+> it is still the reference for those.
+
 Date: 2026-11-13. Companion to the [implementation plan](le2-port-implementation-plan.md) and [trilogy assessment](le2-le3-port-feasibility.md).
 
 Use three distinct authorities: **the native game for rules and progression; MEVR for our established interaction behavior; external VR projects for bounded implementation reuse and design examples.** A convincing interaction in another game does not establish our engine call order, ammo accounting, animation timing or comfort.

@@ -5,8 +5,8 @@ our own `bink2w64.dll` loader (`src/loader`) or ME3Tweaks' LEBinkProxy, on top o
 mechanics may change to fit VR (see `docs/trilogy-design.md`).
 
 **ME2 continues ME1** (the owner, 2026-11-14): [the continuation plan](docs/le2-continuation-plan.md) (milestones M1-M7:
-engine access, the host's services, VRIK fast-tracked, the menus, the cinema screen, the rest, shipping) is the work
-list; ME1's systems and defaults on ME2, deviating only where the game forces it. Its lanes run as parallel sessions;
+engine access, the host's services, VRIK fast-tracked, the menus, the cinema screen, the rest, shipping) is ME2's
+record (the work list is docs/trilogy-plan.md since 2026-11-16); ME1's systems and defaults on ME2, deviating only where the game forces it. Its lanes run as parallel sessions;
 ME2 ships after M5; interrupts on the triggers; the Hammerhead with the Mako's controls and cockpit. **One game run at a
 time across sessions:** `tools/le2-halcyon-run/run-lock.ps1` (its `prep.ps1`/`restore.ps1` for ME2 runs on the fake headset).
 **One trilogy, one ledger** (the owner, 2026-11-16: unify the approaches; work that ignored ME1's prior art was wasted):
@@ -15,9 +15,11 @@ forked, missing, n/a; verified or not) with its code and the check that moves it
 regenerates its facts, and ctest `mevr-parity-ledger` fails after a change to a host list, a service, a module's gate or
 a seam until they are regenerated and the rows reread. Read a system's row before porting it to a sequel; build it as
 the shared core plus a per-game adapter, never as another game-specific copy (a "fork" in the ledger).
-**LE2 port entry point:** [ME2 implementation plan](docs/le2-port-implementation-plan.md) defines agent work packages,
-dependencies and proof gates; [reuse map](docs/le2-port-reuse-map.md) names existing MEVR/native-game systems and pinned
-external code candidates. Read these before sequel work. The current scope is proving LE2 first, then extending to LE3.
+**Sequel work starts at [the trilogy plan](docs/trilogy-plan.md)** (2026-11-16): the one work list, keyed by feature
+(T01-T53), with the owner's rules gathered once, each feature's shared module, what is left per game, the check that
+closes it, who has it, the order, shipping per game and the open owner questions; states and evidence are the ledger's.
+The per-game plans named in the paragraphs around this one stay as records and no longer list the work. Take a feature
+for every game at once, and update its entry and the ledger in the landing that moves it.
 
 **LE3 port entry point:** [ME3 implementation plan](docs/le3-port-implementation-plan.md),
 [current reuse audit](docs/le3-port-reuse-audit.md) and [melee audit](research/le3-melee-audit.md) define the next port.
