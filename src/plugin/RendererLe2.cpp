@@ -37,6 +37,25 @@ std::atomic<HWND> gGameWindow{nullptr};
 std::atomic<bool> gModHandAim{false};
 }
 
+Caps const& Capabilities() noexcept {
+    static Caps const caps = [] {
+        Caps c;
+        c.name = "halcyon-le2";
+        c.eyeImageSeams = true;
+        c.hudPanelDraw = true;
+        c.hostCineScreen = true;
+        c.galaxyTable = true;        // [Galaxy] nativeTable, opt-in
+        c.hudPanelGameplay = true;
+        c.hudPieces = true;
+        c.worldUi = true;            // WorldUiOwnsGui
+        c.screenReticleHide = true;  // the mod's game/ScreenReticle hides ME2's crosshair movie
+        c.floorViewJournal = true;
+        c.ownMenuRows = true;
+        return c;
+    }();
+    return caps;
+}
+
 bool OwnMenuOpen() noexcept {
     return ME2VR::Menu::IsOpen();
 }

@@ -1,9 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #pragma once
 
-// MEVR (ME VR Attempt) addition, GPL-3.0: the seams where our host plugs into Halcyon's code.
+// MEVR (ME VR Attempt) addition, GPL-3.0: the seams only Halcyon's ME1 renderer has. The seams every renderer shares
+// are MevrSeams:: (src/halcyon/MevrSeams.h: one vocabulary for LE1, LE2 and LE3); what is declared here is ME1's own
+// (the performance work, the HUD panel's draw seams, the galaxy view swaps, conversations in the world, the front end,
+// the menus), each group behind a capability bit of plugin/Renderer.hpp.
 // Declared without the OpenXR SDK headers, because xr_types.h defines the same names; the
-// implementation is in src/plugin/HalcyonBridge.cpp. Handles are passed as void*.
+// implementation is in src/plugin/HalcyonBridge.cpp and the host module each section names. Handles are passed as void*.
+
+#include "../MevrSeams.h"
 
 #include <Windows.h>
 #include <Xinput.h>
@@ -33,42 +38,23 @@ namespace MELEVR::Config { struct VrConfig; }   // [MEVR] vr_config.h's, for Mod
 
 namespace MELEVR::MevrBridge
 {
-// The statically linked OpenXR loader's xrGetInstanceProcAddr (upstream loads openxr_loader.dll,
-// which our ASI doesn't ship). Our controller actions must come from the same loader instance.
-void* StaticXrGetInstanceProcAddr() noexcept;
+// The shared frame and panel types are MevrSeams' (the host's modules name them through either namespace).
+using MevrSeams::OverlayFrame;
+using MevrSeams::PanelKind;
+using MevrSeams::PanelPose;
 
-// The session and its spaces exist (Halcyon's XR thread, before xrBeginSession; published to the
-// Present thread through its g_ready): create and attach our controller actions.
-void OnSessionCreated(void* instance, void* session) noexcept;
+
 
 // The game's window (Present thread, once known): brought to the foreground when the headset
 // session gains input focus, since UE3 ignores input without window focus.
 void SetGameWindow(HWND window) noexcept;
 
-// After xrBeginFrame (Present thread): sync the controller actions and publish their state, with
-// poses located in `space` (Halcyon's recentered LOCAL app space, the head pose's space).
-void OnFrameBegun(void* session, void* space, std::int64_t predictedDisplayTime) noexcept;
 
-// From Halcyon's XInput hooks, right after the real read: merges the motion controllers into pad
-// 0 (Touch -> Xbox mapping) before Halcyon's own pad handling (menu block, move-follows-head).
-DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noexcept;
 
-// Present thread, once per frame after the view for the next game frame is set up (head look,
-// view offset): publishes how that view relates to the game camera, so our mod can map the
-// controllers into the world (hand aim, arm IK). `worldView`: a head-tracked 3D view (head
-// valid, no menu, not the flat screen). `head`: the roll-removed head pose the view is built for
-// (orientation xyzw, position; Halcyon's app space). Offsets are the view offset in UE units
-// along the camera's right/up/forward; `unitsPerMeter` is the view's movement per meter of head
-// movement. Head look is read from RenderHook.
-void OnViewBuilt(bool worldView, bool headLook, bool headAim, float const headOrientation[4],
-                 float const headPosition[3], float offsetRightUU, float offsetUpUU, float offsetForwardUU,
-    float unitsPerMeter, bool floorWorld) noexcept;
 
 // [MEVR] Common centre before metric eye displacement/head look. Main pass latches; second eye reuses it.
 bool FloorLockEnabled() noexcept;
 void FloorViewLook(bool* on, float* yaw, float* pitch, std::uint64_t* arm) noexcept;
-float FloorViewTranslation(bool replay, float rawCameraZ, float rightZ, float upZ, float forwardZ,
-    float* right, float* up, float* forward) noexcept;
 void JournalFloorViewWrite(void const* origin, void const* preTranslation) noexcept;
 
 // True while our mod aims weapons with the right controller and that controller is tracked
@@ -99,9 +85,6 @@ void HudPanelPresentEnd(int mirrorPath) noexcept; // 0: no desktop call, 1: thro
 void HudPanelPresentDesktop() noexcept;
 bool HudPanelPresentDraw(unsigned shaderHash, bool textBatch) noexcept;
 
-// Present thread, when the XR session stops, is lost or exits (Halcyon's event poll; RunFrame no longer runs):
-// the HUD panel disarmed, so the game's UI draws go back to the frame for the monitor.
-void OnSessionStopped() noexcept;
 
 // Render thread, for one UI draw into a `width` x `height` target whose render target view has
 // DXGI format `format`: the panel texture's render target (made or remade on demand), or nullptr if
@@ -134,45 +117,6 @@ ID3D11DepthStencilState* HudPanelNoWrites(ID3D11DeviceContext* context, ID3D11De
 // Counts one draw that went into the tint texture.
 void NoteHudPanelTint() noexcept;
 
-// What RunFrame knows about the frame it is submitting.
-struct OverlayFrame
-{
-    void* session = nullptr;                 // XrSession
-    void* appSpace = nullptr;                // XrSpace: Halcyon's recentered LOCAL app space
-    ID3D11DeviceContext* context = nullptr;  // the game's immediate context
-    bool worldFrame = false;   // this frame submits the head-tracked world (the projection layer)
-    bool menuOpen = false;     // Halcyon's Insert menu is open
-    bool sfr2 = false;         // Stereo 2 is the active VR mode (the only one with a HUD-free frame)
-    int gameMode = -1;         // USFXGameModeManager::CurrentMode: 0 on foot, -1 unreadable
-    bool headValid = false;
-    float headOrientation[4] = {0.0f, 0.0f, 0.0f, 1.0f};   // xyzw, app space
-    float headPosition[3] = {0.0f, 0.0f, 0.0f};            // eye center, app space, meters
-    float floatWhiteScale = 1.0f;  // for a float (scRGB) panel: multiplier that maps SDR white to 1.0
-    // [MEVR] Gun sights (src/plugin/SightLayers.cpp): each eye this frame (the runtime's views, app space),
-    // which eye looks through a sight; and the world layer's views as submitted (swapchain, rect, the pose
-    // and FOV each image was rendered for), the eye image a scope magnifies.
-    float eyeOrientation[2][4] = {{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
-    float eyePosition[2][3] = {};
-    bool projectionValid = false;
-    void* projectionSwapchain[2] = {nullptr, nullptr};   // XrSwapchain
-    int projectionRect[2][4] = {};                       // x, y, width, height (pixels)
-    float projectionOrientation[2][4] = {{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};
-    float projectionPosition[2][3] = {};
-    float projectionFov[2][4] = {};                      // angleLeft, angleRight, angleUp, angleDown (radians)
-    // [MEVR] research/39: the head-look arm the submitted pair was rendered with ([CAPTUREPOSE] g_sfrPairArmThisFrame;
-    // 0 unknown): which Draw it came from, and so which pose the scope's scene capture rendered (NoteDrawArm).
-    std::uint64_t pairArm = 0;
-    // [MEVR] the 3D cinema screen (research/52 "Cross-eyed"): where it stands this frame, so the game's UI can go on a layer of
-    // its own just in front of it instead of the eye images (HalcyonOverlays). screenActive false: no screen this frame.
-    bool screenActive = false;
-    void* screenSpace = nullptr;                       // XrSpace of the pose: the app space, or VIEW while head-locked
-    bool screenHeadLocked = false;
-    float screenOrientation[4] = {0.0f, 0.0f, 0.0f, 1.0f};
-    float screenPosition[3] = {};
-    float screenWidthM = 0.0f, screenHeightM = 0.0f;
-    float screenCrop = 0.0f;                           // each eye's dropped share of its image's width
-    float screenRows[2] = {0.0f, 1.0f};                // the shown band's rows, fractions of the eye image's height
-};
 
 // [MEVR] research/39: game thread, each Draw's main pass when it latches its pair arm ([POSEEXACT]): the scope capture
 // (src/plugin/ScopeCaptureSource.cpp) notes which of the mod's capture poses that Draw renders.
@@ -182,31 +126,11 @@ void NoteDrawArm(std::uint64_t arm) noexcept;
 // spectator camera's picture (src/plugin/Spectator.cpp) into the backbuffer in place of the eye mirror, when on.
 void SpectatorMirror(IDXGISwapChain* swapChain) noexcept;
 
-// Present thread (RunFrame), once per frame after the eyes are filled, every frame (also flat and
-// menu frames): copies the HUD panel texture into its swapchain, places the panel and the reticle,
-// draws the gun's sight (a red dot or holo reticle, or a scope's picture: src/plugin/SightLayers.cpp),
-// draws the squad weapon menu while the mod has it open (src/plugin/SquadPanel.cpp), shows the game's
-// weapon or power wheel on a panel of its own at a hand while one is up (cut out of the HUD panel),
-// and writes up to `capacity` quad layers (XrCompositionLayerQuad*: panel, reticle, sight (two), squad
-// menu, wheel) into `layersOut`.
-// Also clears the panel texture, arms the redirect for the next frame, and hides the game's own
-// crosshair while the hand reticle replaces it. Returns the number of layers written.
-unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsigned capacity) noexcept;
 
 // True when the frame's panel texture is a float (scRGB) format, so RunFrame passes its white scale.
 bool HudPanelIsFloat() noexcept;
 
-// Recentering re-origined the app space: the HUD panel goes straight ahead again, and the world-locked
-// flat panels are placed afresh in front of the head.
-void OnRecentered() noexcept;
 
-// ---- A recenter that also corrects a tilted base space (src/plugin/RecenterTilt.cpp) --------------------
-// DoRecenter, before it creates the new app space: `head` is the head's orientation in the never-moved base
-// space (xyzw), `orientation` holds upstream's yaw-only re-origin orientation. Left as it is (bit for bit)
-// unless the base space is badly tilted (MELEVR.ini recenterTiltDeg, core/vr/Recenter), when it becomes the
-// head's full orientation. `automatic`: Halcyon's first recenter when tracking starts (never corrected).
-// Logs which kind of recenter ran; OnRecentered confirms it took.
-void RecenterOrientation(float const head[4], bool automatic, float orientation[4]) noexcept;
 
 // ---- World-locked flat panels (src/plugin/WorldPanels.cpp) -------------------------------------------
 // Halcyon's flat screen (menus, galaxy map, flat conversations, cutscenes, movies) and its Insert menu are
@@ -215,29 +139,6 @@ void RecenterOrientation(float const head[4], bool automatic, float orientation[
 // kept there while the player looks around or leans (parallax), and placed afresh when they reappear, when
 // the flat screen's kind changes, on recenter, or once the head has stayed turned past panelFollowDeg.
 
-enum class PanelKind : int
-{
-    InsertMenu = 0,     // Halcyon's own menu (its own slot)
-    GameMenu = 1,       // the flat screen: the game's menus
-    GalaxyMap = 2,
-    Conversation = 3,
-    Cutscene = 4,       // cutscenes and movies
-};
-
-struct PanelPose
-{
-    void* space = nullptr;                             // XrSpace to submit the quad in
-    float orientation[4] = {0.0f, 0.0f, 0.0f, 1.0f};   // xyzw, in `space`
-    float position[3] = {0.0f, 0.0f, 0.0f};            // meters, in `space`
-    bool headLocked = true;                            // `space` is VIEW (upstream's placement)
-};
-
-// Present thread, each frame a flat panel quad is submitted. `viewPosition`: where Halcyon puts it
-// head-locked (VIEW space, oriented like VIEW). `head`: the eye centre in the app space this frame
-// (orientation xyzw, position; ignored while !headValid). Returns VIEW and `viewPosition` unchanged
-// with the setting off (or no app space yet), else the app space and the pose fixed in it.
-PanelPose PlacePanel(PanelKind kind, float const viewPosition[3], void* viewSpace, void* appSpace, bool headValid,
-                     float const headOrientation[4], float const headPosition[3]) noexcept;
 
 // Insert menu: re-place the panel in front of where the head points now (next frame).
 void RequestHudPanelReplace() noexcept;
@@ -245,17 +146,6 @@ void RequestHudPanelReplace() noexcept;
 // Insert menu status: UI draws that went to the panel in the last world frame.
 unsigned HudPanelDrawsLastFrame() noexcept;
 
-// ---- Our VR main menu (src/plugin/MainMenu.cpp, research/28), which replaces Halcyon's menu for the player ----------
-// The menu key (cfg.menuKey: \ in our deploy) went down (xr_session.cpp): opens or closes our menu; with Ctrl or Shift
-// held (or while Halcyon's menu is open), toggles Halcyon's menu instead. Present thread.
-void OnMenuKey() noexcept;
-// A hotkey is down and the game has the keyboard (a window of this process is in the foreground): GetAsyncKeyState
-// alone sees keys typed into any program (a \ typed in Discord opened our menu and paused the game). Halcyon's key
-// polls (menu key, R, K, P, the profile keys) go through it. Any thread.
-bool KeyDown(int vk) noexcept;
-// Our main menu is open: Halcyon's input block (vr_menu.cpp) keeps the game's mouse and keyboard from it, as for its
-// own menu. Any thread.
-bool MainMenuOpen() noexcept;
 
 // ---- Halcyon's menu: laser pointer and our tab (src/plugin/MevrMenuPointer.cpp, MevrMenuTab.cpp) ---
 // All on the Present thread (RunFrame / RenderFrame).
@@ -349,16 +239,6 @@ bool FirstPersonAtBoot(bool saved) noexcept;
 // are put back to the one configuration we support, whatever an old file says. `when` names the caller for the log.
 void ModernBaseline(Config::VrConfig& c, char const* when) noexcept;
 
-// ---- Test loop: eye snapshots, pose recording and replay (src/plugin/TestLoop.cpp) ------------------
-// ResolveSessionFunctions, once its session functions are resolved: replaces some of them in place
-// (each argument points at a resolved function pointer) with wrappers that call the original. They
-// copy each swapchain image just before it's released and read the layers each xrEndFrame submits
-// (snapshots, only while one is being taken), note the head located in the app space (recording),
-// and during a replay substitute the recorded head poses in xrLocateViews, keeping the runtime's FOVs.
-// The frame-breakdown probe (src/plugin/PerfProbe.cpp) times the wait, begin and end of each frame and
-// the swapchain image waits.
-void WrapSessionFunctions(void** acquireSwapchainImage, void** waitSwapchainImage, void** releaseSwapchainImage,
-                          void** waitFrame, void** beginFrame, void** endFrame, void** locateViews) noexcept;
 
 // ---- Frame-breakdown probe (src/plugin/PerfProbe.cpp, research/22) -------------------------------------
 // Render thread. Steps of the frame the probe times while it runs (one atomic load each otherwise):
@@ -540,8 +420,6 @@ struct CineScreenQuads
     float crop = 0.0f;        // each eye's dropped share of its image's width (the left eye its left edge)
     int rect[2][4] = {};      // per eye (0 left): x, y, width, height of its image the screen shows
 };
-// Present thread, each frame a VR cine is decided: whether this one goes on the 3D screen ([Cinematics]).
-bool CineScreenWanted(bool conversation) noexcept;
 // The cinema screen's floor and horizon (src/plugin/CinemaBackdrop.cpp, research/52): this frame's eyes (app space) and the
 // screen as placed; the layer to submit UNDER the screen's quads (an XrCompositionLayerProjection*), or null.
 struct BackdropFrame
@@ -560,10 +438,6 @@ struct BackdropFrame
     int eyeHeight = 0;
 };
 const void* CinemaBackdropLayer(const BackdropFrame& frame) noexcept;
-// The dip from black when the view changes between the world and a cinematic (src/plugin/TransitionFade.cpp,
-// core/vr/TransitionFade): this frame's view (0 the world, 1 the 3D cinema screen, 2 a cinematic on the flat panel, 3 another
-// flat panel, -1 none submitted); a head-locked black quad (an XrCompositionLayerQuad*) to submit LAST, or null.
-const void* TransitionFadeLayer(void* session, void* viewSpace, ID3D11DeviceContext* context, int view) noexcept;
 
 // ---- Holds on the presentation decision (src/plugin/PresentationHold.cpp, core/vr/PresentationHold, research/56) ------
 // Present thread, each frame with the mode byte as read (-1 unreadable), before the decision: true while the frame is the
@@ -576,9 +450,6 @@ bool FrontEndHold(int gameMode) noexcept;
 // "within the bounding box of like a visual monitor, but it was still 3D"), false for the flat panel. Only before the first
 // load from the menus: the load itself is the flat panel. Prerendered movies go to the flat panel either way, at once.
 bool FrontEndOnScreen() noexcept;
-// Present thread: [Cinematics] fullRate (default 1): the 3D cinema screen runs at the headset's rate instead of Halcyon's
-// cinematic cap (cineFpsCap, half the display rate: 45 on a 90 Hz headset).
-bool CineScreenFullRate() noexcept;
 // Present thread, after FrontEndHold: the start-up's boot before the title (its unreadable byte, the logos' movie). With the
 // front end on the 3D screen it shows flat as a movie would (the cutscene latched: head look parked), so the screen comes up
 // once, with the title.
@@ -625,12 +496,60 @@ bool ConstantFpEye(void* mode, float* fwd, float* right, float* up) noexcept;
 // once per newly written destination.
 void InterpolateDestinationWritten(void* interpolateMode, void* toMode, float const before[3]) noexcept;
 
-// ProcessEvent only on the game thread (research/36, the 2026-10-23 crash): UnrealScript's VM keeps its state in
-// process-wide globals (GPropAddr, GRuntimeUCFlags...), so a script call from the Present thread races the game
-// thread's script. True on the engine tick's thread (src/plugin/GameThreadCalls).
-bool OnGameThread() noexcept;
-// Off the game thread: queues the call, with a copy of the function's parameter block (its ParmsSize bytes), for
-// the start of the next engine tick, where it runs if the object is still alive. True if queued. Return values
-// and out parameters are never filled in: for setters only.
-bool QueueProcessEvent(void* object, void* function, void const* params) noexcept;
+// ---- Old names (before MevrSeams.h): thin forwarders, removed once nobody calls them -------------------------------------
+inline void* StaticXrGetInstanceProcAddr() noexcept { return MevrSeams::StaticXrGetInstanceProcAddr(); }
+inline void WrapSessionFunctions(void** acquireSwapchainImage, void** waitSwapchainImage, void** releaseSwapchainImage,
+                                 void** waitFrame, void** beginFrame, void** endFrame, void** locateViews) noexcept
+{
+    MevrSeams::WrapSessionFunctions(acquireSwapchainImage, waitSwapchainImage, releaseSwapchainImage, waitFrame, beginFrame,
+                                    endFrame, locateViews);
+}
+inline void OnSessionCreated(void* instance, void* session) noexcept { MevrSeams::OnSessionCreated(instance, session); }
+inline void OnSessionStopped() noexcept { MevrSeams::OnSessionStopped(); }
+inline void OnFrameBegun(void* session, void* space, std::int64_t predictedDisplayTime) noexcept
+{
+    MevrSeams::OnFrameBegun(session, space, predictedDisplayTime);
+}
+inline void OnRecentered() noexcept { MevrSeams::OnRecentered(); }
+inline float FloorViewTranslation(bool replay, float rawCameraZ, float rightZ, float upZ, float forwardZ,
+                                  float* right, float* up, float* forward) noexcept
+{
+    return MevrSeams::FloorViewTranslation(replay, rawCameraZ, rightZ, upZ, forwardZ, right, up, forward);
+}
+inline void RecenterOrientation(float const head[4], bool automatic, float orientation[4]) noexcept
+{
+    MevrSeams::RecenterOrientation(head, automatic, orientation);
+}
+inline unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsigned capacity) noexcept
+{
+    return MevrSeams::OverlayLayers(frame, layersOut, capacity);
+}
+inline bool CineScreenWanted(bool conversation) noexcept { return MevrSeams::CineScreenWanted(conversation); }
+inline bool CineScreenFullRate() noexcept { return MevrSeams::CineScreenFullRate(); }
+inline const void* TransitionFadeLayer(void* session, void* viewSpace, ID3D11DeviceContext* context, int view) noexcept
+{
+    return MevrSeams::TransitionFadeLayer(session, viewSpace, context, view);
+}
+inline PanelPose PlacePanel(PanelKind kind, float const viewPosition[3], void* viewSpace, void* appSpace, bool headValid,
+                            float const headOrientation[4], float const headPosition[3]) noexcept
+{
+    OverlayFrame frame;
+    frame.viewSpace = viewSpace;
+    frame.appSpace = appSpace;
+    frame.headValid = headValid;
+    for (int i = 0; i < 4; ++i) frame.headOrientation[i] = headOrientation[i];
+    for (int i = 0; i < 3; ++i) frame.headPosition[i] = headPosition[i];
+    return MevrSeams::PlacePanel(kind, frame, viewPosition, 0.0f, 0.0f, true);
+}
+inline DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noexcept
+{
+    return MevrSeams::MergeMotionControllers(index, state, result);
+}
+inline bool KeyDown(int vk) noexcept { return MevrSeams::KeyDown(vk); }
+inline bool MainMenuOpen() noexcept { return MevrSeams::MainMenuOpen(); }
+inline bool OnGameThread() noexcept { return MevrSeams::OnGameThread(); }
+inline bool QueueProcessEvent(void* object, void* function, void const* params) noexcept
+{
+    return MevrSeams::QueueProcessEvent(object, function, params, MevrSeams::kFunctionParmsSize);
+}
 }

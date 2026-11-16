@@ -3947,6 +3947,72 @@ flash, no dip but the opening's own; `speaker-behind` (Ashley behind the player 
 0 regressions. Not seen in the game: a move past 1.5 m under a scene's own black screen (no scene of the set has one; the rule's
 branch is exercised only by its log line), and the stall without the fix (the Virmire run is the before).
 
+### The fade to black always moves the player; curated walks excepted (2026-11-16; item 41)
+
+**The owner, 2026-11-16:** "we were too aggressive in the fade to black location changes. This can result in gameplay where a
+character can't complete a mission because when the fade to black triggers we'll move to places like elevators. So for now,
+we'll default to fade to black always moving us, the only exceptions are going to be on curated experiences like the council
+meeting where we need to do walking." The script's black screen puts Shepard somewhere the mission needs him (an elevator's
+car, past a door it then closes); items 31, 39 and 40 left the player where he stood and asked him to walk there (a staged
+scene's black screen: the simulated stick unless the one spoken to moved; a moment's move "within the same space": the view
+walks to him), so the elevator left without him.
+
+1. **The setting:** `[Cinematics] worldBlackMoves` (1 by default; 0 the rules of items 31 and 40) and `worldCuratedWalks`
+   (more curated walks, comma separated: a part of a moment's move track path, or a conversation key). The curated table is
+   `cw::IsCuratedWalk` (`core/vr/ConversationWorld`, unit-tested in `tests/ConversationWorldTests.cpp`): built in, the walk with
+   Anderson to the Council (`BIOA_STA70_02captain_DSG`'s `SarenCouncil.SeqAct_Interp_0`, the matcher `ShownEarlyFor` uses). Log
+   `convo: [Cinematics] ... the game's fade to black moves the player (but in curated walks)`.
+2. **In a conversation** (`ScriptBlackScreen`, `KeepAtSource`, `KeepInPlace`'s steer, `TeleportPlayerTo`): the script's black
+   screen opens the relocation window in every conversation in the world, not only the staged scenes (`BlackMovesPlayer()`:
+   `worldBlackMoves` and the conversation not curated); Shepard's new mark beyond 1.5 m (`stayUnits`) is a teleport under a dip
+   whether or not the one spoken to moved; a step within 1.5 m is still walked (item 40's second blink). A view walking apart
+   from his body (a walk-in by the view) joins him there (`detached` cleared, his pawn shown, `settleUntilMs`). Log `convo: at N
+   s under the game's black screen the player goes with Shepard to his new mark (X m) under a dip`.
+3. **In a moment** (`TickMoment`, the script's jump of Shepard): `UnderGameBlack()` (the opening's own test: a script's black
+   screen on within 1.5 s, a matinee's camera fade up or down within 1.5 s) makes the jump `coveredByBlack`, so `DecideOpening`
+   says Cut whatever the distance (a Stay too): the view goes with him under a dip. In a curated walk (`MomentCurated()`, the
+   track path kept in `gMoment.trackPath`) the old same-space rule stands and the log says `in a curated walk ... the player
+   walks on to him`. The moment's summary counts them (`"blackFollowed"`). Rides (`cw::IsRideStep`) and moves without a black
+   are unchanged.
+4. **Openings** were already this rule (item 39's `coveredByBlack` cut); unchanged.
+
+Not seen in the game yet: the elevator scene (item 42) and the council walk with the rule on (its own black-screen move must
+still be walked). Check both on the fake headset before the owner's next headset session.
+
+### Riding the lift; the stick everywhere but a seat (2026-11-16; item 42)
+
+**The owner, 2026-11-16:** the elevator was "when meeting liara and leaving the dig site. We also need to ensure we have freedom
+of movement except for seated scenes. This will be a bigger deal in me2."
+
+1. **The scene:** Therum's lift up from Liara's cell, `lav70_trig04_elevator_ride` (`BIOA_LAV70_00_DSG_LOC_INT`; the scan:
+   kind free, no stage, 34 lines, verdict world): a conversation the game plays while the lift (a level-script InterpActor)
+   carries everyone up. The validation save nearest it is John02_92 (Liara's intro, `save-dictionary.md`).
+2. **What stranded the player** (read from the code, not yet seen in the game): nothing held a moving floor. Shepard's pawn
+   rode up with the lift; the held view (`gC.hold`), the walk's boundary and the head follower's anchors stayed where the
+   conversation began (after an opening without a cut his head bone no longer moves the view). With the view walking apart
+   from him (`detached`), `End` puts Shepard back under the view (`PutAt(gC.playerPawn, gC.detachedAt)`): at the bottom of the
+   shaft, and the mission can't go on.
+3. **The fix, `RideBase`** (`game/ConversationWorld.cpp`; called each tick of a conversation in the world after its opening,
+   and of a moment before its step logic): the pawn's `Engine.Actor.Base` (ReflectCheck row exists) and its place; while the
+   same base moves (0.01 to 500 units a tick, ticks under 250 ms apart) the delta moves the held view, the view's own feet,
+   the boundary, the walk-in mark, the steer's and the scene's marks, the head anchor, the composed place, the follower's
+   place and anchor, the guided trail, the kept places of Shepard and of everyone on the same base, and a moment's own places
+   (so its step logic carries nothing twice). The world's own floor never moves, so nothing else changes. Logs `convo: at N s
+   what Shepard stands on moves (<base>, X m this tick): the player rides with it` and at the end `convo: the player rode X m
+   with what Shepard stood on`. Not followed: a turning floor.
+4. **Seated scenes** (`PlayerSeated`, in `MovePlayer`'s gate): Shepard's animated head bone (`MarkHeadOf`) under 0.62 m above
+   his pawn's place for 0.5 s, and not crouched (`Engine.Pawn.bIsCrouched`): the stick, the steer and the guided walk don't
+   walk him; head tracking stays. The same 0.62 m rule as `CanWalk`'s and `cw::MayReface`'s for seated people. Logs `convo: at
+   N s Shepard is seated ...`, `... Shepard stands again: the stick walks`. [verify] the threshold on Shepard's own skeleton
+   (and that a conversation's standing idle never reads under it).
+5. **Freedom of movement, what still limits it** (the owner's decision pending): the boundary `worldMoveLeashM` 4 m (the
+   owner's own ask of 2026-11-11), the trigger stop `worldMoveTriggers` (a step into or out of a level trigger is refused: its
+   touch belongs to the script), the wheel up (the stick is the wheel's), set pieces on the 3D screen, and the walk's own
+   guards (walls, ledges over 0.6 m, people).
+
+Check on the fake headset: John02_92, Liara freed, the lift ride with the stick pushed (the view goes up with the lift, no
+`End` put-back at the bottom); a seated scene (none known in LE1 for Shepard: ME2's shuttle and cockpit scenes are the cases).
+
 ## To check in the game
 
 In this order, on the fake headset, when the game folder is free (saves backed up first, as always):

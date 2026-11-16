@@ -5,7 +5,7 @@
 #include "core/vr/SquadMenu.hpp"
 #include "core/vr/SquadPlace.hpp"
 namespace mevr::host::sequel_squad_layers {
-unsigned Place(ME2VR::MevrBridge::OverlayFrame const& f, ID3D11Device* device,
+unsigned Place(MevrSeams::OverlayFrame const& f, ID3D11Device* device,
     void const** out, unsigned count, unsigned capacity) noexcept {
     if (!out || count >= capacity || !f.worldFrame || f.menuOpen || !f.headValid || !f.projectionValid) return count;
     squad_place_draw::Frame place;
@@ -22,7 +22,7 @@ unsigned Place(ME2VR::MevrBridge::OverlayFrame const& f, ID3D11Device* device,
     if (auto const* layer = squad_place_draw::Layer(place)) out[count++] = layer;
     return count;
 }
-unsigned Panel(ME2VR::MevrBridge::OverlayFrame const& f, ID3D11Device* device,
+unsigned Panel(MevrSeams::OverlayFrame const& f, ID3D11Device* device,
     void const** out, unsigned count, unsigned capacity) noexcept {
     if (!out || count >= capacity) return count;
     squad_panel::Frame squad;

@@ -1094,7 +1094,7 @@ bool CopyTextureToEyeFullFrame(int eye, ID3D11Texture2D* src, int shiftPx = 0, E
 #if defined(MEVR_ASI)
         // [MEVR] The shared copy owns raw copies and HDR conversion. False is a failure,
         // never permission to issue an incompatible raw copy or report a filled eye.
-        copied = ::ME2VR::MevrBridge::CopyIntoImage(g_ctx, dst, src, shiftPx);
+        copied = ::ME2VR::MevrBridge::CopyIntoImage(g_ctx, dst, src, shiftPx, eye);
 #else
         copied = true;
         if (shiftPx == 0)
@@ -1880,7 +1880,7 @@ void RunFrame() noexcept
                 if (g_monoOwnership.WaitCompleted(g_fn.waitSwapchainImage(g_monoSwap, &wi) == XR_SUCCESS_VALUE) && idx < g_monoImages.size())
                 {
 #if defined(MEVR_ASI)
-                    mevrMonoImageReady = ::ME2VR::MevrBridge::CopyIntoImage(g_ctx, g_monoImages[idx], backbuffer, 0);
+                    mevrMonoImageReady = ::ME2VR::MevrBridge::CopyIntoImage(g_ctx, g_monoImages[idx], backbuffer, 0, -1);
 #else
                     g_ctx->CopyResource(g_monoImages[idx], backbuffer);
                     mevrMonoImageReady = true;

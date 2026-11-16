@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 #pragma once
-#include "halcyon/SequelPresentation.h"
+#include "halcyon/MevrSeams.h"
 #include "plugin/HudPanel.hpp"
 
 // Shared LE2/LE3 stereo cinema presentation. Renderer hooks supply actual lens and eye captures.
 namespace mevr::host::sequel_cinema {
-using Frame = ME2VR::MevrBridge::CineScreenFrame;
+using Frame = MevrSeams::CineScreenFrame;
 struct State {
     bool active = false;
     void* space = nullptr;

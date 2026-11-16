@@ -609,6 +609,10 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Lives in:** `game/ConversationWorld`, `ConversationFlow`, `AuthoredMoment`, `engine/ConversationHooks`.
 - **Why later:** the owner deferred it on both sequels (rule 9). It is the largest gap by size (about 10,000 lines stand
   down). ME1's is experimental and still being worked (ROADMAP "Now").
+- **Rules that carry over** (the owner, 2026-11-16, "this will be a bigger deal in me2"; research/69 items 41 and 42): the
+  game's fade to black always moves the player with Shepard (curated walks excepted); what Shepard stands on carries the
+  player (lifts, trams, shuttles: `Engine.Actor.Base`); freedom of movement everywhere except seated scenes. ME2's lifts,
+  shuttle rides and cockpit scenes make these the port's first checks.
 
 #### T50 Audio: two ears, and sounds placed where they are [G37, G38]
 - **State:** LE1 done · LE2 check first · LE3 check first

@@ -28,8 +28,9 @@ What it reads, with no compiler and no game:
     unreferenced  no other mod file of this game's build names its namespace, while another game's does;
     unbuilt       not in this game's mod sources (CMake: a game-only file, or the LE2 diagnostic host's);
   and "LExSDKv2" where the game's build calls engine/Legacy (LExSDKv2's reads: not in an SDK-free players' build).
-- seams: each Halcyon tree's MevrBridge functions declared in its mevr_bridge.h (the sequels' also in
-  src/halcyon/SequelPresentation.h) and those its own sources call.
+- seams: the common seam vocabulary (namespace MevrSeams, src/halcyon/MevrSeams.h) and which of it each Halcyon tree's
+  sources call; and each tree's own MevrBridge functions (its mevr_bridge.h: the per-renderer extensions, and while a
+  migration runs the old names' inline forwarders) and those its sources call.
 - names (needs LExSDKv2, see tools/le2-name-audit.py): per module, the engine names the LE2 and LE3 builds declare with
   `ue3::kEveryGame` handles that the game's SDK list lacks (lookups tried there that fail, or SDK-list gaps). --names
   prints the rest: other literals the sequel lacks and the names ME1's build uses that it lacks (the porting gap).
@@ -490,11 +491,11 @@ def modules(host_facts):
 
 
 # ------------------------------------------------------------------------------------------------------------- seams
-def bridge_declarations(text):
-    """Function names declared at the namespace level of `namespace ...::MevrBridge`."""
+def bridge_declarations(text, namespace=r'[\w:]*MevrBridge'):
+    """Function names declared at the namespace level of `namespace ...::MevrBridge` (or of `namespace`)."""
     text = strip_comments(text)
     names = []
-    for m in re.finditer(r'namespace\s+[\w:]*MevrBridge\s*\{', text):
+    for m in re.finditer(r'namespace\s+' + namespace + r'\s*\{', text):
         depth, i = 1, m.end()
         line = []
         while i < len(text) and depth:
@@ -526,23 +527,37 @@ def bridge_declarations(text):
 
 def seams():
     out = {}
+    common = sorted(set(bridge_declarations(read(os.path.join(ROOT, 'src', 'halcyon', 'MevrSeams.h')), 'MevrSeams')))
     for g, tree in (('LE1', 'le1'), ('LE2', 'le2'), ('LE3', 'le3')):
         d = os.path.join(ROOT, 'src', 'halcyon', tree)
-        decl_files = [os.path.join(d, 'mevr_bridge.h')]
-        if g != 'LE1':
-            decl_files.append(os.path.join(ROOT, 'src', 'halcyon', 'SequelPresentation.h'))
-        declared = []
-        for f in decl_files:
-            declared += bridge_declarations(read(f))
-        used, marks = set(), {}
+        header = strip_comments(read(os.path.join(d, 'mevr_bridge.h')))
+        declared = bridge_declarations(header)
+        # an old name's inline forwarder calls the common seam: the tree's own call of the old name is a call of it
+        forwards = {}
+        for m in re.finditer(r'inline\s[^{;]*?[\s\*&](\w+)\s*\([^{;]*\)\s*(?:noexcept)?\s*\{', header):
+            depth, i = 1, m.end()
+            while i < len(header) and depth:
+                depth += {'{': 1, '}': -1}.get(header[i], 0)
+                i += 1
+            called = re.findall(r'MevrSeams::(\w+)\s*\(', header[m.end():i])
+            if called:
+                forwards[m.group(1)] = called
+        used, used_common, marks = set(), set(), {}
         for f in sorted(os.listdir(d)):
             if f.endswith(('.cpp', '.h')) and f != 'mevr_bridge.h':
                 t = read(os.path.join(d, f))
-                used |= set(re.findall(r'MevrBridge::(\w+)\s*\(', strip_comments(t)))
+                code = strip_comments(t)
+                used |= set(re.findall(r'MevrBridge::(\w+)\s*\(', code))
+                used_common |= set(re.findall(r'MevrSeams::(\w+)\s*\(', code))
                 n = t.count('[MEVR]')
                 if n:
                     marks[f] = n
-        out[g] = {'declared': sorted(set(declared)), 'used': sorted(used & set(declared)),
+        for name in used:
+            used_common |= set(forwards.get(name, ()))
+        out[g] = {'common': common, 'commonUsed': sorted(used_common & set(common)),
+                  'commonUsedUndeclared': sorted(used_common - set(common)),
+                  'forwarders': sorted(forwards), 'declared': sorted(set(declared) - set(forwards)),
+                  'used': sorted((used & set(declared)) - set(forwards)),
                   'usedUndeclared': sorted(used - set(declared)), 'marks': marks}
     return out
 
@@ -609,9 +624,9 @@ def render(facts):
         sc = status_counts[g]
         rows.append([g, h[g]['renderer'] or '-', len(h[g]['plugin']), len(h[g]['core']), len(sv[g]['fields']),
                      ', '.join(f'{k} {sc[k]}' for k in ('run', 'ready', 'out', 'ungated', 'unreferenced', 'unbuilt') if k in sc),
-                     len(sm[g]['declared'])])
+                     f"{len(sm[g]['commonUsed'])} of {len(sm[g]['common'])}", len(sm[g]['declared'])])
     md['summary'] = table(['game', 'renderer', 'host plugin files', 'host core files', 'services served',
-                           'src/game + src/engine modules by status', 'MevrBridge seams'], rows)
+                           'src/game + src/engine modules by status', 'common seams called', 'own seams'], rows)
     # hosts
     allp = sorted(set().union(*(h[g]['plugin'] for g in GAMES)))
     md['hosts'] = table(['src/plugin', 'LE1', 'LE2', 'LE3'], [[f'`{p}`'] + [yes(p in h[g]['plugin']) for g in GAMES] for p in allp])
@@ -647,7 +662,20 @@ def render(facts):
         if s not in sm[g]['declared']:
             return '-'
         return 'yes' if s in sm[g]['used'] else 'declared'
-    md['seams'] = table(['MevrBridge seam', 'LE1', 'LE2', 'LE3'], [[f'`{s}`'] + [seam_cell(g, s) for g in GAMES] for s in alls])
+    common = sm['LE1']['common']
+    md['seams'] = ('The common vocabulary (`namespace MevrSeams`, `src/halcyon/MevrSeams.h`): `yes` where the tree calls it '
+                   '(through an old name\'s forwarder too), `-` where it does not yet.\n\n' +
+                   table(['MevrSeams seam', 'LE1', 'LE2', 'LE3'],
+                         [[f'`{s}`'] + ['yes' if s in sm[g]['commonUsed'] else '-' for g in GAMES] for s in common]))
+    stray = [f'- {g}: `{"`, `".join(sm[g]["commonUsedUndeclared"])}`' for g in GAMES if sm[g]['commonUsedUndeclared']]
+    if stray:
+        md['seams'] += '\n\nCalled as `MevrSeams::X` but not declared in MevrSeams.h:\n\n' + '\n'.join(stray)
+    fwd = [f'- {g}: `{"`, `".join(sm[g]["forwarders"])}`' for g in GAMES if sm[g]['forwarders']]
+    if fwd:
+        md['seams'] += ('\n\nOld names still forwarded to the common seams (inline, in the tree\'s `mevr_bridge.h`; removed once '
+                        'nobody calls them):\n\n' + '\n'.join(fwd))
+    md['seams'] += ('\n\nEach renderer\'s own seams (`MevrBridge`, its tree\'s `mevr_bridge.h`): the per-renderer extensions.\n\n' +
+                    table(['MevrBridge seam', 'LE1', 'LE2', 'LE3'], [[f'`{s}`'] + [seam_cell(g, s) for g in GAMES] for s in alls]))
     undeclared = [f'- {g}: `{"`, `".join(sm[g]["usedUndeclared"])}`' for g in GAMES if sm[g]['usedUndeclared']]
     if undeclared:
         md['seams'] += '\n\nCalled as `MevrBridge::X` but declared elsewhere (a header of the tree):\n\n' + '\n'.join(undeclared)
