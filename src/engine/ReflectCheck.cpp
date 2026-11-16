@@ -2978,6 +2978,16 @@ void CheckFields() {
     CheckField("SFXGame.SFXGameModeBase", "Bindings", SDK_FIELD(USFXGameModeBase, Bindings));
     CheckField("SFXGame.SFXGameModeBase", "LocalizedBindings", SDK_FIELD(USFXGameModeBase, LocalizedBindings));
     CheckField("SFXGame.SFXGameModeGalaxy", "GalaxyCam", SDK_FIELD(USFXGameModeGalaxy, GalaxyCam));
+    // LE3 CIC projector discovery and geometry: independent of the map camera.
+    CheckField("Engine.Actor", "Tag", SDK_FIELD(AActor, Tag));
+    CheckClass<AInterpActor>("Engine.InterpActor");
+    CheckClass<ASFXPointOfInterest>("SFXGame.SFXPointOfInterest");
+    CheckClass<UStaticMeshComponent>("Engine.StaticMeshComponent");
+    CheckField("Engine.DynamicSMActor", "StaticMeshComponent", SDK_FIELD(ADynamicSMActor, StaticMeshComponent));
+    CheckField("Engine.StaticMeshComponent", "StaticMesh", SDK_FIELD(UStaticMeshComponent, StaticMesh));
+    CheckField("Engine.PrimitiveComponent", "LocalToWorld", SDK_FIELD(UPrimitiveComponent, LocalToWorld));
+    CheckPath("Engine.PrimitiveComponent", {"Bounds", "BoxExtent"},
+        SDK_AT(offsetof(UPrimitiveComponent, Bounds) + offsetof(FBoxSphereBounds, BoxExtent), sizeof(FVector)));
     CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_nCurrentState", SDK_FIELD(UBioCameraBehaviorGalaxy, m_nCurrentState));
     CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_nActiveWorld", SDK_FIELD(UBioCameraBehaviorGalaxy, m_nActiveWorld));
     CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_pCurrentSystem", SDK_FIELD(UBioCameraBehaviorGalaxy, m_pCurrentSystem));

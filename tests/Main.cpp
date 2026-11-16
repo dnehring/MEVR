@@ -8369,6 +8369,19 @@ void TestGalaxyHologram() {
 }
 
 void TestGalaxyMap() {
+    // Projector geometry is measured in world space, not from the use prompt or
+    // the map camera. A tilted/thick square must retain its in-plane radius.
+    namespace holo = mevr::vr::galaxy_holo;
+    auto radius = holo::ProjectorRadius({188.125, 188.125, 2}, {1, 0, 0}, {0, 1, 0});
+    CHECK(radius && NearD(*radius, 188.125));
+    double const q = std::sqrt(0.5);
+    radius = holo::ProjectorRadius({200, 202 * q, 202 * q}, {1, 0, 0}, {0, q, q});
+    CHECK(radius && NearD(*radius, 200));
+    CHECK(!holo::ProjectorRadius({0, 0, 0}, {1, 0, 0}, {0, 1, 0}));
+    CHECK(!holo::ProjectorRadius({200, -1, 200}, {1, 0, 0}, {0, 1, 0}));
+    CHECK(!holo::ProjectorRadius({200, 200, 0}, {1, 0, 0}, {1, 0, 0}));
+    CHECK(!holo::ProjectorRadius({200, 200, 0}, {0.5, 0, 0}, {0, 1, 0}));
+    CHECK(!holo::ProjectorRadius({200, std::numeric_limits<double>::infinity(), 0}, {1, 0, 0}, {0, 1, 0}));
     namespace gm = mevr::vr::galaxy_map;
     gm::NativeTablePanel native;
     mevr::vr::galaxy_holo::TableSettings tableSettings;

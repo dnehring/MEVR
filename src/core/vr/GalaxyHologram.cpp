@@ -17,6 +17,23 @@
 
 namespace mevr::vr::galaxy_holo {
 
+std::optional<double> ProjectorRadius(std::array<double, 3> const& extent,
+    std::array<double, 3> const& forward, std::array<double, 3> const& right) {
+    double f2 = 0, r2 = 0, dot = 0, half = 1e9;
+    for (std::size_t i = 0; i < 3; ++i) {
+        if (!std::isfinite(extent[i]) || extent[i] < 0 ||
+            !std::isfinite(forward[i]) || !std::isfinite(right[i])) return std::nullopt;
+        f2 += forward[i] * forward[i];
+        r2 += right[i] * right[i];
+        dot += forward[i] * right[i];
+        double const across = std::fabs(forward[i]) + std::fabs(right[i]);
+        if (across > 0.3) half = std::min(half, extent[i] / across);
+    }
+    if (std::fabs(f2 - 1) > 1e-4 || std::fabs(r2 - 1) > 1e-4 || std::fabs(dot) > 1e-4 ||
+        half <= 0 || half >= 1e9) return std::nullopt;
+    return half;
+}
+
 namespace {
 constexpr float kPi = 3.14159265358979f;
 constexpr float kDegToRad = kPi / 180.0f;

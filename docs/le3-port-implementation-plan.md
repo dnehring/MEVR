@@ -177,6 +177,9 @@ Implementation is now authorized. The audit baseline above remains historical; t
   are integrated. The owner's projector-placement parity is still missing: the verified default is a large flat
   panel, not the map over the physical CIC preview projector. Actual scan/probe bindings, pursuit, rewards and
   persistence remain unaccepted. See the [projector correction and reuse steps](../research/le3-galaxy.md#projector-parity-correction).
+  The new read-only projector adapter passes a 525-row native metadata probe and measures the on-foot anchor using
+  ME1's shared radius calculation. Normal map entry removes the matching live projector candidate; room residency
+  must be understood alongside pre-entry anchor capture and camera hold. No projected rendering is claimed.
 - **L3-10:** campaign, installer/release and physical-headset qualification remain open.
 
 The desktop engine probes and normal descriptor loads passed and restored with zero differences. The existing chapter

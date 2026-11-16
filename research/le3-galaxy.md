@@ -99,6 +99,52 @@ The whole-image table remains a fallback until these outcomes are demonstrated.
 These are required L3-9 gates, not optional polish or a claim that the fix has
 already been implemented. Source dumps and native capture files remain private.
 
+## Live projector measurement increment
+
+`mevr galaxy projector` now reads the native CIC geometry on the game thread.
+It resolves a unique same-world `GalaxyMapProxy` actor and a separate
+`placu_galaxyMap` use target, checks component/mesh ownership, and reads the
+component's actual `LocalToWorld` and bounds. It rejects ambiguous actors,
+nonfinite or degenerate geometry, shear and unequal in-plane scale. ME1's
+existing bounds-to-radius calculation is extracted as shared
+`galaxy_holo::ProjectorRadius`; ME1 retains its existing fallback and limits.
+LE3 has no guessed-radius fallback. The component transform, rather than the
+actor's serialized location/rotation, supplies the measured pivot and normal.
+
+This diagnostic publishes no scene, caches no object pointers, writes no camera
+or streaming state and does not enable the table. A tracking-space result is
+allowed only from an actual unheld on-foot VR view, never from the native map
+camera. Both `cameraHoldActive` and `presentationVerified` remain false.
+
+Protected run `20261115-210528-483-LE3-navigation` passes **525/525** independent
+SDK/reflection comparisons and the ordinary original AutoSave load. On foot it
+finds exactly one projector and use target. The live component centre is about
+(-0.48, 3166.42, 92.20) game units, differing from the serialized actor position;
+its measured radius is 188.22 units. The current 100-units-per-metre tracking
+frame puts its centre at approximately (-0.029, -1.262, -2.575) metres with a
+1.882-metre radius. These are measurements from this fixture, not constants to
+put in the adapter.
+
+After normal map entry, mode 11 retains the same world/pawn and use target, but
+the query finds **zero matching live projector actors**. It correctly refuses
+both geometry and a new tracking anchor. Do not weaken discovery or substitute
+the use point. This proves why the anchor must be acquired before entry, and
+adds a room-residency investigation before a camera hold can be accepted. It
+does not yet establish whether the actor was unloaded, replaced or retagged.
+The installed sequence changes `stream_inGalaxyMap` on entry/exit; the CIC's
+art streaming rules also distinguish normal and mission-introduction states.
+Inspect native loaded/visible chunk state before introducing a reversible room
+retention adapter. Never blindly enable a campaign state or use `streamlevelin`.
+
+Both captures have no errors. The owned run exits normally, restores profile,
+game and VR files with zero differences, and releases the shared lock. All three
+development host/module pairs and monolithic player builds pass; the full
+71-test suite passes. New shared geometry cases cover a tilted/thick projector
+and invalid extents/axes. The sandbox-only installer-fixture failure on the
+initial focused test disappears under the existing unsandboxed test route.
+Rendering at the projector, room retention, stereo map capture and camera
+handback remain unimplemented/unaccepted by this increment.
+
 ## Native adapter reuse boundary
 
 ME1 `game/GalaxyMap` is a native camera/projector/table adapter for ME1. Its mode 9, Normandy
