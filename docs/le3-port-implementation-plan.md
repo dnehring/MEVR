@@ -10,6 +10,11 @@ Read the [reuse audit](le3-port-reuse-audit.md), [ME3 melee audit](../research/l
 
 ## Implementation ledger (2026-11-15)
 
+**Paused checkpoint:** the [overall goal handoff](me3-overall-goal-handoff.md)
+reconciles the newer implementation-worktree evidence through `0f02fd38` with
+the older ledger below. Read it before treating the historical pending gates
+here as current. Implementation is not fully merged into main or release-ready.
+
 Implementation is now authorized. The audit baseline above remains historical; these are the first foundation changes:
 
 - **L3-0, partial:** semantic game-mode mapping is shared. The full ME3 v59 save codec now reconstructs

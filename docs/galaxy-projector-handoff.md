@@ -272,6 +272,11 @@ and mod request channel; computer use is only a fallback for launch.
 
 ## Wider ME3 goal
 
+The [overall ME3 goal handoff](me3-overall-goal-handoff.md) now records every
+milestone, renderer/body/save/interaction work, native evidence, remaining gates
+and the full resumption order. This document remains the detailed galaxy subtask
+handoff; it was not intended to replace that broader status record.
+
 This checkpoint only advances galaxy milestone L3-9. The full ME3 parity goal
 remains unfinished. The implementation ledger is authoritative for the other
 lanes: combat fixture and edited-save persistence; native VRIK/weapon/headset
