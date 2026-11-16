@@ -2930,6 +2930,35 @@ void CheckLe3PhysicalCover() {
     }
 }
 
+// ME1's level camera, gun kick and camera shakes on ME3 (game/ViewLevel, game/GunKick, game/CameraShake; the trilogy
+// parity ledger's G09-G11): ME2's names, which ME3 keeps. The rows the other ME3 tables don't already have.
+void CheckLe3ViewLevel() {
+    CheckClass<ASFXInventoryManager>("SFXGame.SFXInventoryManager");  // the shots' recoil queue
+    CheckClass<USFXModule_AimAssist>("SFXGame.SFXModule_AimAssist");  // aim assist's friction and adhesion
+    CheckField("Engine.Actor", "Modules", SDK_FIELD(AActor, Modules));
+    CheckField("Engine.PlayerController", "PlayerInput", SDK_FIELD(APlayerController, PlayerInput));
+    CheckField("Engine.PlayerInput", "RawJoyLookRight", SDK_FIELD(UPlayerInput, RawJoyLookRight));
+    CheckField("Engine.PlayerInput", "RawJoyLookUp", SDK_FIELD(UPlayerInput, RawJoyLookUp));
+    CheckField("SFXGame.SFXInventoryManager", "WeaponRecoilOffset", SDK_FIELD(ASFXInventoryManager, WeaponRecoilOffset));
+    CheckField("SFXGame.SFXInventoryManager", "TotalRecoil", SDK_FIELD(ASFXInventoryManager, TotalRecoil));
+    CheckField("SFXGame.SFXModule_AimAssist", "LastZoomSnapTarget", SDK_FIELD(USFXModule_AimAssist, LastZoomSnapTarget));
+    CheckField("SFXGame.BioPawn", "CoverAction", SDK_FIELD(ABioPawn, CoverAction));
+    CheckFunction("SFXGame.SFXInventoryManager.SetWeaponRecoil");
+    CheckFunction("SFXGame.SFXModule_AimAssist.ViewFriction");
+    PARAM(USFXModule_AimAssist_execViewFriction_Parms, "SFXGame.SFXModule_AimAssist.ViewFriction", ReturnValue);
+    CheckFunction("SFXGame.SFXModule_AimAssist.ViewAdhesion");
+    PARAM(USFXModule_AimAssist_execViewAdhesion_Parms, "SFXGame.SFXModule_AimAssist.ViewAdhesion", ReturnValue);
+    // game/GunKick: the weapon's own recoil for a shot.
+    CheckFunction("SFXGame.SFXWeapon.GetWeaponRecoil");
+    PARAM(ASFXWeapon_execGetWeaponRecoil_Parms, "SFXGame.SFXWeapon.GetWeaponRecoil", ReturnValue);
+    PARMS(ASFXWeapon_execGetWeaponRecoil_Parms, "SFXGame.SFXWeapon.GetWeaponRecoil");
+    // game/CameraShake: the camera modes' body shakes and the camera's two shake modifiers.
+    CheckField("SFXGame.SFXCameraMode", "bIsCameraShakeEnabled", SDK_BOOL(USFXCameraMode, bIsCameraShakeEnabled));
+    CheckField("SFXGame.SFXPlayerCamera", "ScreenShakeModifier", SDK_FIELD(ASFXPlayerCamera, ScreenShakeModifier));
+    CheckField("Engine.Camera", "CameraShakeCamMod", SDK_FIELD(ACamera, CameraShakeCamMod));
+    CheckField("Engine.CameraModifier", "bDisabled", SDK_BOOL(UCameraModifier, bDisabled));
+}
+
 // L3-1: metadata comparisons only, not an assertion that any gameplay adapter is ready.
 // The common Run gate requires runtime::Up(); the default LE3 layout remains disabled until
 // native discovery is complete. These rows use the LE3 SDK as an independent comparison side.
@@ -3644,6 +3673,7 @@ bool Run(hook::Context& context) {
 #if defined(MEVR_GAME_LE3)
     CheckLe3PhysicalCover();
     CheckLe3EngineAccess();
+    CheckLe3ViewLevel();
 #endif
 #if defined(MEVR_GAME_LE2)
     CheckTraversal();

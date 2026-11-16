@@ -650,6 +650,7 @@ set(MEVR_MOD_SOURCES
     src/game/SquadWeapons.cpp
     src/game/SquadWeapons.hpp
     src/game/Le2Squad.hpp
+    src/game/SequelPowers.hpp
     src/game/Le2SquadMenu.inc
     src/game/SupportGrip.cpp
     src/game/SupportGrip.hpp
@@ -1209,7 +1210,16 @@ endforeach ()
 # -Llm; gitignored): all three voice hosts share it; without it VoiceModel reports the tier off.
 if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/llama-cpp/include/llama.h")
     foreach (game LE1 LE2 LE3)
-        if (TARGET MEVR-${game} AND (game STREQUAL "LE1" OR TARGET halcyon-le2))
+        # A sequel host has the tier where it compiles plugin/VoiceModel.cpp (its own Halcyon host; LE3's with the main menu),
+        # whichever other games this build has: until 2026-11-16 LE3 got it only when LE2 was built too (`TARGET halcyon-le2`).
+        set(has_voice_model OFF)
+        if (TARGET MEVR-${game})
+            get_target_property(game_host_sources MEVR-${game} SOURCES)
+            if (game STREQUAL "LE1" OR "src/plugin/VoiceModel.cpp" IN_LIST game_host_sources)
+                set(has_voice_model ON)
+            endif ()
+        endif ()
+        if (has_voice_model)
             target_sources(MEVR-${game} PRIVATE src/core/voice/Llm.cpp src/core/voice/Llm.hpp)
             target_include_directories(MEVR-${game} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/external/llama-cpp/include)
             target_compile_definitions(MEVR-${game} PRIVATE MEVR_HAVE_LLAMA)

@@ -17,8 +17,29 @@
 #include <vector>
 
 namespace mevr::game::screen_reticle {
+#if defined(MEVR_GAME_LE3)
+// ME3 stands down, explicitly (docs/trilogy-parity-ledger.md "Found while auditing"): its HUD is SFXGUIMovie (game/Le3Gui),
+// not BioSFManager's panels, and the LE3 host serves no hideScreenReticle. None of ME1's or ME2's panel and handler names
+// are compiled into this build; ME3's crosshair gets its own handles (and ReflectCheck rows) when it gets an adapter.
 namespace {
-// Every game's Scaleform panels (the same names in LE1 and LE2): the player's GUI manager, its panels, each panel's handlers.
+constexpr char kStandDown[] =
+    "reticles: no crosshair adapter on ME3 yet (its HUD is SFXGUIMovie, not BioSFPanel; nothing is hidden or read)";
+bool gToldStandDown = false;
+} // namespace
+
+void Tick(bool requested) {
+    if (requested && !gToldStandDown) {
+        gToldStandDown = true;
+        log::Warn("[MEVR-CROSSHAIR] the host asked to hide the game's crosshair, but {}", kStandDown);
+    }
+}
+
+std::string Command() { return kStandDown; }
+
+void Shutdown(bool) { gToldStandDown = false; }
+#else
+namespace {
+// ME1's and ME2's Scaleform panels (the same names in both): the player's GUI manager, its panels, each panel's handlers.
 ue3::FieldRef gManager{"Engine.PlayerController", "m_oCachedScaleFormManager", ue3::kEveryGame};
 ue3::FieldRef gPanels{"Engine.BioSFManager", "m_lstPanels", ue3::kEveryGame};
 ue3::FieldRef gTag{"Engine.BioSFPanel", "nmTag", ue3::kEveryGame};
@@ -40,7 +61,7 @@ ue3::FieldRef gCrosshair{"SFXGame.SFXSFHandler_Reticle", "m_eCurrentCrosshair", 
 ue3::FieldRef gSniperDetails{"SFXGame.SFXSFHandler_Reticle", "m_bShowSniperDetails", ue3::kEveryGame};
 constexpr std::uint8_t kSniperCrosshair = 3;
 constexpr std::uint8_t kCrosshairCount = 4;
-#else
+#else  // ME1 (never ME3: its stand-down is above)
 ue3::ClassRef gReticule{"SFXGame.BioSFHandler_Reticule", ue3::kEveryGame};
 ue3::FieldRef gReticuleInfo{"SFXGame.BioSFHandler_Reticule", "m_Reticule", ue3::kEveryGame};
 ue3::FieldRef gMode{gReticuleInfo, "m_eMode"};
@@ -239,4 +260,5 @@ void Shutdown(bool exiting) {
     gMeshLogged.clear();
     gRequested = false;
 }
+#endif  // !MEVR_GAME_LE3
 } // namespace mevr::game::screen_reticle

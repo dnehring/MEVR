@@ -126,19 +126,14 @@ ue3::FieldRef gTimeToReachFullSpeed{"SFXGame.SFXCameraInput", "TimeToReachFullSp
 ue3::FieldRef gStickDeadZone{"SFXGame.SFXCameraInput", "StickDeadZone", ue3::kEveryGame};
 ue3::FunctionRef gSetRotationRef{"Engine.Actor.SetRotation", ue3::kEveryGame};
 #if defined(MEVR_GAME_LE3)
-ue3::FunctionRef gMoveIgnored{"Engine.PlayerController.IsMoveInputIgnored", ue3::kEveryGame};
-ue3::FieldRef gCurrentAction{"SFXGame.BioPawn", "CurrentCustomAction", ue3::kEveryGame};
 // Mode 0 alone does not admit locomotion: authored scenes can retain it while ignoring input.
-// Query the current native owner on the game thread; missing fields/returns block all comfort movement.
+// Query the current native owner on the game thread; missing fields/returns block all comfort movement. Any physics and
+// cover or none admit a turn, as long as the game can say which (the one admission read: game/Player `MovementRefused`).
 bool NativeLocomotionAllowed() {
-    auto* pc = player::Controller();
-    auto* pawn = player::BioPawn(pc);
-    if (!ue3::runtime::IsAlive(pc) || !ue3::runtime::IsAlive(pawn) || player::GameMode(pc) != 0 ||
-        gCurrentAction.Read<std::int32_t>(pawn) != 0 || !gPhysics.Read<std::uint8_t>(pawn) ||
-        !gCoverType.Read<std::uint8_t>(pawn) || !gCoverAction.Read<std::uint8_t>(pawn)) return false;
-    auto* function = gMoveIgnored.Get();
-    ue3::Params parms(ue3::runtime::Get(), function);
-    return ue3::runtime::Call(pc, function, parms) && parms.ReturnBool() == false;
+    namespace admit = player::admission;
+    auto* const pc = player::Controller();
+    return player::MovementAdmitted(pc, player::BioPawn(pc),
+        admit::kOnFoot | admit::kNoAction | admit::kPhysicsKnown | admit::kCoverKnown | admit::kMoveInput);
 }
 #endif
 

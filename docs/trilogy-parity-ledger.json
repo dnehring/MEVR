@@ -1399,9 +1399,9 @@
     },
     "LE3": {
      "legacy": false,
-     "me1OnlyHandles": false,
+     "me1OnlyHandles": true,
      "part": false,
-     "status": "out"
+     "status": "run"
     }
    },
    "namespace": "game::camera_shake"
@@ -1792,7 +1792,7 @@
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "run"
     }
    },
    "namespace": "game::gun_kick"
@@ -2436,7 +2436,7 @@
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "run"
+     "status": "out"
     }
    },
    "namespace": "game::screen_reticle"
@@ -2873,7 +2873,7 @@
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "run"
     }
    },
    "namespace": "game::view_level"
@@ -2998,24 +2998,6 @@
    "LE3": [
     "SFXGame.BioPawn.IsHostile",
     "SFXGame.BioPawn:m_oBehavior"
-   ]
-  },
-  "game/ScreenReticle": {
-   "LE3": [
-    "Engine.BioSFHandler:oPanel",
-    "Engine.BioSFManager:m_lstPanels",
-    "Engine.BioSFPanel",
-    "Engine.BioSFPanel.GetVariableBool",
-    "Engine.BioSFPanel.GetVariableFloat",
-    "Engine.BioSFPanel.SetVariableFloat",
-    "Engine.BioSFPanel:MovieRef",
-    "Engine.BioSFPanel:ScriptHandlers",
-    "Engine.BioSFPanel:m_DefaultHandler",
-    "Engine.BioSFPanel:nmTag",
-    "Engine.PlayerController:m_oCachedScaleFormManager",
-    "SFXGame.BioSFHandler_Reticule",
-    "SFXGame.BioSFHandler_Reticule:m_Reticule",
-    "SFXGame.BioSFHandler_Reticule:m_eLastReticuleMode"
    ]
   },
   "game/SquadContext": {

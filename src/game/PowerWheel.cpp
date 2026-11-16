@@ -16,6 +16,7 @@
 #include "game/HeadTracking.hpp"
 #include "game/Le3Powers.hpp"
 #include "game/OmniTool.hpp"
+#include "game/SequelPowers.hpp"
 #include "game/Player.hpp"
 #include "game/SquadWeapons.hpp"
 #include "game/SupportGrip.hpp"
@@ -66,17 +67,17 @@ ue3::ClassRef gGameModeDefault{"SFXGame.SFXGameModeDefault"};
 ue3::FunctionRef gTryUseMappedPowerFn{"SFXGame.SFXGameModeDefault.TryUseMappedPower"};
 bool gShowUnlearned = false;  // `mevr powerwheel unlearned on` (tests): untrained powers on the wheel too, dim
 
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+// The sequels' roster is read through game/SequelPowers.hpp (one walk and one set of handles for the wheel and the squad).
+ue3::FieldRef& gPowerManager = sequel_powers::manager;
+ue3::FieldRef& gManagedPowers = sequel_powers::powers;
+#endif
+
 #if defined(MEVR_GAME_LE2)
-ue3::FieldRef gPowerManager{"SFXGame.BioPawn", "PowerManager", ue3::kEveryGame};
-ue3::FieldRef gManagedPowers{"SFXGame.SFXPowerManager", "Powers", ue3::kEveryGame};
-ue3::FieldRef gLe2PowerName{"SFXGame.SFXPower", "PowerName", ue3::kEveryGame};
-ue3::FieldRef gLe2BaseName{"SFXGame.SFXPower", "BaseName", ue3::kEveryGame};
-ue3::FieldRef gLe2Rank{"SFXGame.SFXPower", "Rank", ue3::kEveryGame};
-ue3::FieldRef gLe2Visible{"SFXGame.SFXPower", "DisplayInHUD", ue3::kEveryGame};
-ue3::FunctionRef gLe2IsEnabled{"SFXGame.SFXPower.IsEnabled", ue3::kEveryGame};
-ue3::FunctionRef gLe2Cooldown{"SFXGame.SFXPower.GetCooldownRemaining", ue3::kEveryGame};
-ue3::FunctionRef gLe2CooldownTotal{"SFXGame.SFXPower.GetTotalCooldownTime", ue3::kEveryGame};
-ue3::FunctionRef gLe2Evolved{"SFXGame.SFXPowerManager.HasPowerBeenEvolved", ue3::kEveryGame};
+ue3::FieldRef& gLe2PowerName = sequel_powers::name;
+ue3::FieldRef& gLe2BaseName = sequel_powers::baseName;
+ue3::FieldRef& gLe2Visible = sequel_powers::visible;
+ue3::FunctionRef& gLe2IsEnabled = sequel_powers::isEnabled;
 ue3::FunctionRef gLe2BlockingAction{"SFXGame.BioPawn.IsPerformingBlockingAction", ue3::kEveryGame};
 ue3::ClassRef gLe2HeavyWeapon{"SFXGame.SFXHeavyWeapon", ue3::kEveryGame};
 ue3::Name gLe2Selected;  // separate from the native quick slots
@@ -91,8 +92,6 @@ bool Le2AmmoWeaponHeld() {
 #endif
 
 #if defined(MEVR_GAME_LE3)
-ue3::FieldRef& gPowerManager = le3_powers::manager;
-ue3::FieldRef& gManagedPowers = le3_powers::powers;
 ue3::Name gLe2Selected;  // shared sequel selection state; never writes native quick slots
 ue3::Object* gLe2SelectionPawn = nullptr;
 ue3::Object* gLe2SelectionManager = nullptr;
@@ -339,13 +338,6 @@ bool CallBool(ue3::Object* object, ue3::FunctionRef& ref) {
 }
 
 #if defined(MEVR_GAME_LE2)
-float Le2Seconds(ue3::Object* power, ue3::FunctionRef& ref) {
-    auto* const fn = ref.Get();
-    if (fn == nullptr) return 0.0f;
-    ue3::Params p(ue3::runtime::Get(), fn);
-    return ue3::runtime::Call(power, fn, p) ? std::max(0.0f, p.Return<float>().value_or(0.0f)) : 0.0f;
-}
-
 std::optional<Power> Le2Power(ue3::Object* object, bool includeUnlearned) {
     auto& r = ue3::runtime::Get();
     if (!r.IsAlive(object) || !gLe2Visible.ReadBool(object).value_or(false)) return std::nullopt;
@@ -355,7 +347,7 @@ std::optional<Power> Le2Power(ue3::Object* object, bool includeUnlearned) {
     auto const* info = pw::FindLe2Power(r.ToString(base).c_str());
     if (info == nullptr) info = pw::FindLe2Power(r.ToString(name).c_str());
     if (info == nullptr) return std::nullopt;
-    bool const learned = gLe2Rank.Read<float>(object).value_or(0.0f) > 0.0f;
+    bool const learned = sequel_powers::Learned(object);
     if (!learned && !includeUnlearned) return std::nullopt;
     Power p;
     p.object = object;
@@ -366,8 +358,9 @@ std::optional<Power> Le2Power(ue3::Object* object, bool includeUnlearned) {
     p.gameEnabled = CallBool(object, gLe2IsEnabled);
     if (pw::SelfGestureFor(info->label) == pw::SelfGesture::Gun) p.requiredWeapon = Le2AmmoWeaponHeld();
     p.enabled = learned && *p.gameEnabled && p.requiredWeapon.value_or(true);
-    float const remaining = Le2Seconds(object, gLe2Cooldown);
-    float const total = Le2Seconds(object, gLe2CooldownTotal);
+    // A cooldown the game won't state shows as none (the squad's roster leaves such a power out: Le2Squad.hpp).
+    float const remaining = sequel_powers::Seconds(object, sequel_powers::cooldownRemaining).value_or(0.0f);
+    float const total = sequel_powers::Seconds(object, sequel_powers::cooldownTotal).value_or(0.0f);
     p.cooldown = total > 0.01f ? std::clamp(remaining / total, 0.0f, 1.0f) : (remaining > 0.0f ? 1.0f : 0.0f);
     return p;
 }
@@ -398,37 +391,20 @@ std::string EnabledChecks(Power const& power) {
 std::vector<Power> ReadRoster(ue3::Object* pawn, bool includeUnlearned) {
     std::vector<Power> out;
 #if defined(MEVR_GAME_LE3)
-    auto* const manager = gPowerManager.Read<ue3::Object*>(pawn).value_or(nullptr);
-    auto const list = ue3::runtime::IsAlive(manager) ? gManagedPowers.ElementsOf(manager) : std::nullopt;
-    if (!list || list->count > 128) return out;
-    for (int i = 0; i < list->count; ++i) {
-        auto** slot = static_cast<ue3::Object**>(list->At(i));
-        if (slot == nullptr) continue;
-        if (auto power = Le3Power(*slot, includeUnlearned)) {
+    sequel_powers::ForEach(pawn, [&](ue3::Object* object) {
+        if (auto power = Le3Power(object, includeUnlearned)) {
             if (std::none_of(out.begin(), out.end(), [&](Power const& p) { return p.name == power->name; }))
                 out.push_back(std::move(*power));
         }
-    }
+    });
 #elif defined(MEVR_GAME_LE2)
-    auto* const manager = gPowerManager.Read<ue3::Object*>(pawn).value_or(nullptr);
-    auto const list = ue3::runtime::IsAlive(manager) ? gManagedPowers.ElementsOf(manager) : std::nullopt;
-    if (!list) return out;
-    for (int i = 0; i < list->count && i < 64; ++i) {
-        auto* const slot = static_cast<ue3::Object**>(list->At(i));
-        auto* object = slot != nullptr ? *slot : nullptr;
-        if (!ue3::runtime::IsAlive(object)) continue;
-        if (auto* const evolved = gLe2Evolved.Get()) {
-            ue3::Params args(ue3::runtime::Get(), evolved);
-            if (args.Set("Power", object) && ue3::runtime::Call(manager, evolved, args) && args.ReturnBool().value_or(false)) {
-                object = args.Get<ue3::Object*>("EvolvedPower").value_or(nullptr);
-            }
-        }
+    sequel_powers::ForEach(pawn, [&](ue3::Object* object) {
         if (auto power = Le2Power(object, includeUnlearned)) {
             if (std::none_of(out.begin(), out.end(), [&](Power const& other) { return other.object == power->object; })) {
                 out.push_back(std::move(*power));
             }
         }
-    }
+    });
 #else
     ue3::Object* const behavior = gBehavior.Read<ue3::Object*>(pawn).value_or(nullptr);
     if (behavior == nullptr) {
