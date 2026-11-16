@@ -639,6 +639,7 @@ set(MEVR_MOD_SOURCES
     src/game/SquadWeapons.cpp
     src/game/SquadWeapons.hpp
     src/game/Le2Squad.hpp
+    src/game/SequelPowers.hpp
     src/game/Le2SquadMenu.inc
     src/game/SupportGrip.cpp
     src/game/SupportGrip.hpp
