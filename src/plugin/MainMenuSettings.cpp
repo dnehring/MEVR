@@ -522,8 +522,11 @@ void Settings::Read(menu::Values& v) {
     v.numbers["panel_follow"] = c.hudPanelFollowDeg;
     flag("reticle", c.handReticle);
 #else
-    // ME2: no render size, upscale or performance levers of ours on its renderer yet (their rows are greyed out); the HUD
-    // panel's values are ME1's defaults (renderer::Hud(); lane B's HUD panel on ME2).
+    // ME2: no render size or performance levers of ours on its renderer yet; their group is greyed out until the owner has
+    // seen it there. ME1's upscale runs on the sequels since 2026-11-16 (research/27 section 9), so its greyed row at least
+    // shows the shared [Upscale] method it reads. The HUD panel's values are ME1's defaults (renderer::Hud(); lane B's HUD
+    // panel on ME2).
+    v.texts["upscale"] = ms::UpscaleChoice(ini.Text("Upscale", "method", "fsr"));
     renderer::HudSettings const hud = renderer::Hud();
     v.numbers["hud_distance"] = hud.hudPanelDistanceM;
     v.numbers["hud_size"] = std::round(hud.hudPanelWidthM / 1.3f * 100.0f);
