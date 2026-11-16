@@ -79,7 +79,70 @@ one interaction path and supplies an exact navigation landmark; it does not
 establish galaxy access or acquire a combat checkpoint. Its five captures have
 no errors and restoration again reports zero differences with matching VR/LE1 hashes.
 
-Next: navigate to the actual galaxy console, observe map entry and native bindings, then
+### Normandy route and native door
+
+The installed Normandy packages distinguish the War Terminal (`poi_strikeTeam`,
+`BioD_Nor_204aWarRoom`) from the actual galaxy console (`placu_galaxyMap`,
+`BioD_Nor_203CIC`). The console's authored location is approximately (2, 3131, 97).
+The base Normandy package identifies the War Room door at (280, 6478, 0),
+the security/War Room door at (1050, 4705, 0), and the security/CIC door at
+(1050, 3880, 0). These are navigation landmarks, not teleport destinations or
+proof of an unobstructed straight path.
+
+Protected run `20261115-191348-134-LE3-navigation` normally loads Save 31 in the
+War Room at (-2267, 6498, 91). Its native prompt identifies the east exit as
+**Tech Labs / A Open**, selecting `BioD_Nor_200...SFXDoor_6`. A press at roughly
+4.91 m does not open it; after approaching to the observed 2.76 m selection
+distance, one A press visibly opens the door and clears selection. A subsequent
+left sidestep and forward walk crosses it to (1081, 6462, 91), still in ordinary
+mode 0 with the same player/world. Forward input off-centre stops against the
+door frame; farther inside, the direct sideways route stops against a railing.
+Neither collision establishes an input defect. Inspect the corridor before
+continuing toward the security doors.
+
+This adds native door selection, Use and passage evidence to the War Assets
+interaction. It does not establish galaxy access, a new save or a combat fixture.
+The bounded run ended normally, restored with zero differences and released the
+shared lock; all four independently checked VR/LE1 environment hashes matched.
+
+### Reusable native CIC checkpoint
+
+The follow-up protected run `20261115-192601-688-LE3-navigation` repeats the
+door route, goes around the Tech Labs railing, passes the authored security
+corridor and reaches the actual CIC galaxy platform. The direct side approach
+stops at the platform's collision; the walkable rear approach is around
+Y=3668, followed by alignment near X=0 and movement toward the console.
+Replay durations are not position guarantees: inspect native coordinates and
+both-eye captures at each landmark rather than treating the route as a blind macro.
+
+The game's existing `BioPlayerController.QuickSave` exec creates a checkpoint
+at approximately **(-56, 3468, 130)**. A private copy is preserved before cleanup:
+`galaxy-console-quick-save.pcsav` in that session directory, SHA-256
+`f3ecb9f11cc21720ce7eea96d2bf812c073ec4d875512d544bc1993f0fb14b81`.
+It remains a VanguardNonCombat Normandy checkpoint, not a weapon fixture.
+
+The existing protected `load.ps1` normally reloads this new QuickSave. Its receipt
+verifies the load transition, exact descriptor, ordinary gameplay, unchanged
+source hash and unchanged runtime artifacts. The world/pawn identities change;
+the new pawn returns to the saved position. The final stereo capture shows the
+galaxy platform from that position. The existing full v59 codec and independently
+pinned TSE oracle also agree on every field and byte-identical reconstruction.
+The oracle's generated resource probe is offline only and was never installed.
+
+The native **Galaxy Map / A Use** prompt is observed on the side approach, but
+the subsequent attempts do not establish mode 11/12 entry. The read-only galaxy
+observer still reports no consistent map context. Do not confuse the decorative
+galaxy hologram in the CIC with an active travel interface. Next inspect the
+console interaction from the reloaded checkpoint; no repeat walk from Save 31
+is necessary. Any future fixture staging must occur after the protected profile
+backup and preserve the original career/save identity and hashes.
+
+All 23 captures report no snapshot errors. Cleanup restores the original
+QuickSave byte-for-byte, reports zero profile/game differences, restores all four
+independently checked VR/LE1 environment hashes and releases the game lock.
+Both newly created native saves remain private in the session directory.
+
+Next: establish actual galaxy entry and native bindings, then
 use available native travel to reach the Citadel. Confirm range admission and
 weapon identity before treating it as a fixture. Make a native save outside the
 range, preserve a private copy before restoration (an overwritten QuickSave is

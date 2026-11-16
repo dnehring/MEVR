@@ -203,6 +203,17 @@ Both loads reached stable mode-0 gameplay, matched the native descriptor exactly
 The source save and runtime artifacts were unchanged; restoration reported zero differences. This resolves normal
 manual load/reload for this checkpoint, but not native save creation or persistence of edited variants.
 
+A later protected run, `20261115-192601-688-LE3-navigation`, now verifies native
+save creation and ordinary reload for a second Normandy location: the existing
+QuickSave exec writes the reached CIC console checkpoint, and `load.ps1` reloads
+it with a new world/pawn at the saved position. Exact descriptor, source hash,
+runtime artifact identity and stable mode-0 gameplay pass. The full codec and
+pinned TSE oracle independently reconstruct the new save identically and agree
+on all fields. Cleanup restores the original QuickSave, with its hash checked
+independently. See [checkpoint identity and limitations](le3-combat-fixtures.md).
+This closes native creation/reload for that noncombat fixture; persistence of
+edited resource variants and combat fixture acceptance remain separate gates.
+
 The separate unchanged `ChapterSave.pcsav` test entered `Biop_End001` with a Vanguard pawn. Across 120 seconds it
 reported cinematic mode 8, then injured-Shepard mode 6; it never satisfied the stable ordinary-gameplay gate.
 Its save and runtime hashes remained unchanged, and restoration reported zero differences. It is **not an accepted

@@ -26,6 +26,16 @@ and broader interaction/headset acceptance still need their own proof. See
 [fixture research](../research/le3-combat-fixtures.md) and
 [selection audit](../research/le3-interaction-gaze.md).
 
+**Native checkpoint follow-up:** normal door Use/passage and the route through
+Tech Labs/security into the CIC now work in protected runs. A new native
+QuickSave at the galaxy console passes ordinary reload with changed world/pawn,
+matching position/descriptor and unchanged source/runtime hashes. Full v59
+decode/re-encode and the independent TSE oracle agree. The private checkpoint
+removes the repeated War Room approach; it remains noncombat. The native galaxy
+prompt is observed, but active map entry/travel remain unverified. The final run
+has 23 error-free captures and restores the original QuickSave, game settings
+and VR environment. See the fixture research for the exact checkpoint identity.
+
 **Current renderer checkpoint:** the formerly failing Back/recenter transition now
 completes with ME1's shared motion-blur guard adapted to seven verified ME3 proxy
 pairs. The failing velocity-buffer bind belonged to a blur-specialized native
@@ -101,8 +111,9 @@ Implementation is now authorized. The audit baseline above remains historical; t
 - **L3-0, partial:** semantic game-mode mapping is shared. The full ME3 v59 save codec now reconstructs
   all six existing saves exactly, with independent Trilogy Save Editor full-field comparisons. Bounded private
   resource variants have offline receipts. Native loading and same-map reloading of the untouched Normandy
-  manual save now pass with exact descriptor, world/pawn identity changes and stable gameplay. Native save
-  creation, edited-variant persistence and combat fixture acceptance remain pending.
+  manual save now pass with exact descriptor, world/pawn identity changes and stable gameplay. Native QuickSave
+  creation and normal reload also pass at the reached CIC console; edited-variant persistence and combat
+  fixture acceptance remain pending.
   See [save foundation](../research/le3-save-foundation.md).
 - **L3-1, native analysis implemented:** the protected capture and Ghidra analysis establish ME3's object/function/
   name layouts and native allocators. Twelve address patterns match uniquely. The shared engine adapter and
