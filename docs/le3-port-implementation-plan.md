@@ -13,9 +13,12 @@ Read the [reuse audit](le3-port-reuse-audit.md), [ME3 melee audit](../research/l
 **Current renderer blocker:** the subsequent protected Back/recenter transition
 trial faulted in native post-processing before recenter completion; same-save reload
 was not reached. The fault is a null native render-resource argument, not established
-as an OpenXR copy failure. Compare LE1's caller-plus-player primary-view filtering
-with LE3's player-only check and observe the failing view/resource before changing
-behavior. Saves and VR/game files were restored. See the
+as an OpenXR copy failure. LE1's caller-plus-player ownership rule is now adapted
+to ME3's verified callsite: native logs prove auxiliary views retain their original
+state and gameplay retains stereo. The crash persists with live head tracking and
+that correction. The failing resource is the native velocity buffer; audit ME1's
+motion-blur guard against ME3's resource/proxy selection next. Saves and VR/game
+files were restored. See the
 [transition failure and next diagnostic](../research/le3-recenter-transition-failure.md).
 
 Latest native checkpoint: the protected renderer run passed **493/493** metadata comparisons and an ordinary

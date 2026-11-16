@@ -3,7 +3,8 @@
 
 2026-11-15. This is a failed native test, not accepted recenter or reload parity.
 It follows the successful stationary/turning/menu stereo captures documented in
-[per-eye evidence](sequel-eye-pose-tags.md). The renderer binaries remain `86fd9e72`.
+[per-eye evidence](sequel-eye-pose-tags.md). The first trial used `86fd9e72`;
+the subsequent diagnostic and ownership trials below use newer candidate builds.
 
 ## Reused route and evidence
 
@@ -39,9 +40,9 @@ post-processing, rather than our OpenXR image-copy helper.
 
 Reuse audit: ME1's `render_hook.cpp` identifies primary gameplay views by native
 caller **and** local-player identity, because auxiliary views can reuse that player.
-LE3's `CalcViewDetour` currently checks local-player identity alone before applying
-private eye view state and camera edits. This difference is a diagnostic target,
-not proof of causation and not authorization to copy an LE1 caller RVA into LE3.
+LE3's original `CalcViewDetour` checked local-player identity alone before applying
+private eye view state and camera edits. The ownership correction below now uses
+ME3's independently verified caller, not a copied LE1 address.
 
 Next: correlate the resource's availability with CalcView caller, owning family and
 render target, original/replaced view state, and the native save/Back transition.
@@ -69,3 +70,44 @@ The launch identity helper also defers a newly appearing launcher's incomplete f
 read only when all known fields agree with a valid second sample; a later pair of
 complete matching observations is still required for adoption. Wrong identities,
 changed creation times and persistent unreadability remain refusals.
+
+## Live-head reproduction and primary-view correction
+
+Session `20261115-174029-207-LE3-renderer-preview` used live runtime head tracking
+and replayed only controllers/inputs. It reproduced the same native fault at
+17:41:30.340, before recenter completion. Head substitution is therefore not
+required for the failure. A valid baseline preceded the fault; reload was not reached.
+
+The bounded, diagnostics-only `SFRVIEWOWNER` observer found an independent bug:
+auxiliary caller `0x480E24` shared the primary local player and received a private
+eye state. The gameplay call returns to `0x6D26AE`; both callsites were verified
+in the existing private native project. ME3 now reuses ME1's caller-plus-player
+ownership rule and validates the gameplay CALL bytes before installing hooks.
+Auxiliary views retain their native camera and view state.
+
+Session `20261115-174634-476-LE3-renderer-preview` verifies that correction:
+all five logged auxiliary calls report `primary=0` and identical original/final
+view-state pointers. Gameplay calls retain separate left/right states. Baseline
+`2026-11-15_17-47-31-320` has both world images, no capture errors, equal eye
+orientations and a 64 mm submitted baseline. Development/player builds and the
+three focused eye-pose/publication/copy tests pass.
+
+The same transition still faulted at `0x9AD7ED` at 17:47:37.482. No transition
+captures or recenter completion arrived, and reload was not reached. Thus the
+ownership bug is fixed, but it was not sufficient to resolve the resource failure.
+Both later runs stopped their owned processes and restored with zero differences.
+The final run's four actual VR/LE1 file hashes were compared with its restoration
+receipt and matched, independently of the success flag.
+
+The native aggregate at `0x1764A20` owns the failing slot at offset `0x1F8`.
+Its allocator labels that slot `VelocityBuffer`; the aggregate release path clears
+it along with the other render targets. The observer samples this resource on the
+game thread at view creation, not at the later render-thread bind. Zero is also
+the observer's unreadable sentinel, and normal gameplay often reports zero, so
+these samples alone cannot establish a bad lifetime or prove the crash's cause.
+
+Next reuse target: ME1's existing `plugin/MotionBlurGuard.cpp` and
+[motion-blur research](62-motion-blur-and-menu-pacing.md). ME3 currently uses the
+shared settings fallback, not that native guard. Establish ME3's allocation and
+proxy-selection conditions before adapting the guard. Do not turn off arbitrary
+post-processing or swallow the null-resource fault as a fix.

@@ -24,6 +24,9 @@
 namespace
 {
 constexpr std::uintptr_t kCalcSceneViewRva = 0x6CFFD0;   // ME3: confirmed by the finder (p1Calls=7/8), 2026-06-27
+// [MEVR] Native FViewportClient::Draw's primary view, verified in 60AEF0C4
+// and SFRVIEWOWNER. Engine-side auxiliary caller 480E24 shares the same player.
+constexpr std::uintptr_t kGameplayCalcSceneViewReturnRva = 0x6D26AE;
 
 // FSceneView offsets (LE1/LE3 identical per the ME3Tweaks SDK; confirming live here).
 constexpr std::uintptr_t kFsvViewMatrix = 0x90;
@@ -355,6 +358,52 @@ void SetViewState(std::uintptr_t sv, void* st) noexcept
 {
     __try { *reinterpret_cast<void* volatile*>(sv + kFsvState) = st; }
     __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+
+// [MEVR] Read-only transition census. A save/Back trial faulted in native
+// post-processing with a null resource; verify primary/auxiliary ownership and
+// correlate resource availability. No resource calls, lifetime changes or recovery.
+std::uintptr_t ReadTransitionPointer(std::uintptr_t address) noexcept
+{
+    __try { return address ? *reinterpret_cast<volatile std::uintptr_t const*>(address) : 0; }
+    __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
+}
+void NoteTransitionView(std::uintptr_t caller, void* lp, void* family, void* viewport,
+                        void* view, std::uintptr_t originalState, bool primary) noexcept
+{
+    if (!ME2VR::Log::DiagnosticsOn()) return;
+    const auto callerRva = caller >= g_base && caller - g_base < 0x1066FC1 ? caller - g_base : 0;
+    std::uintptr_t target = 0;
+    uint32_t flags[8]{};
+    const bool outputKnown = ReadFamilyOutput(family, &target, flags);
+    const auto state = ReadTransitionPointer(reinterpret_cast<std::uintptr_t>(view) + (view ? kFsvState : 0));
+    // Private native callsite analysis: first resource bound by 3E62B0, before
+    // return 3E6B18. The native allocator labels this slot VelocityBuffer. This
+    // game-thread sample does not establish its later render-thread availability.
+    const auto resource = ReadTransitionPointer(g_base + 0x1764C18);
+    struct Last { std::uintptr_t caller{}, target{}, original{}, state{}; bool primary{}, resource{}; uint64_t at{}; unsigned lines{}; };
+    static thread_local Last previous[2][16]{};
+    Last* entry = nullptr;
+    for (auto& candidate : previous[t_replay ? 1 : 0]) {
+        if (!candidate.lines || candidate.caller == callerRva) { entry = &candidate; break; }
+    }
+    if (!entry) return;
+    auto& last = *entry;
+    const auto now = GetTickCount64();
+    const bool changed = callerRva != last.caller || target != last.target || originalState != last.original ||
+        state != last.state || primary != last.primary || (resource != 0) != last.resource;
+    if (last.lines >= 128 || (last.lines >= 4 && !changed && now - last.at < 5000)) return;
+    const auto lines = last.lines + 1;
+    last = {callerRva, target, originalState, state, primary, resource != 0, now, lines};
+    char line[896]{};
+    sprintf_s(line, "[SFRVIEWOWNER] n=%u pass=%u thread=%lu callerRva=%llX primary=%d lp=%p "
+        "family=%p viewport=%p outputKnown=%d target=%llX view=%p originalState=%llX finalState=%llX "
+        "resource1764C18=%llX flags=%08X,%08X,%08X,%08X,%08X,%08X,%08X,%08X (read-only; zero also means unreadable)",
+        lines, t_replay ? 1u : 0u, GetCurrentThreadId(), static_cast<unsigned long long>(callerRva), primary,
+        lp, family, viewport, outputKnown, static_cast<unsigned long long>(target), view,
+        static_cast<unsigned long long>(originalState), static_cast<unsigned long long>(state),
+        static_cast<unsigned long long>(resource), flags[0], flags[1], flags[2], flags[3], flags[4], flags[5], flags[6], flags[7]);
+    ME2VR::Log::Line(line);
 }
 
 void* CallAllocViewState() noexcept
@@ -1235,10 +1284,14 @@ float MevrCinemaHalfFov(std::uintptr_t sv) noexcept {
 void* __fastcall CalcViewDetour(void* lp, void* family, void* loc, void* rot, void* vp, void* drawer) noexcept
 {
     if (g_orig == nullptr) return nullptr;
+    const auto nativeCaller = reinterpret_cast<std::uintptr_t>(_ReturnAddress());
     if (t_nativeDrawSample) ++t_nativeDrawSample->calcCalls;
 
     const std::uintptr_t lpu = reinterpret_cast<std::uintptr_t>(lp);
-    const bool isP1 = (lpu == ME2VR::EngineProbe::GetPrimaryLocalPlayer());
+    // [MEVR] Reuse LE1's caller AND player ownership rule. Pointer identity alone
+    // also claimed the auxiliary 480E24 view and replaced its native view state.
+    const bool isP1 = nativeCaller == g_base + kGameplayCalcSceneViewReturnRva &&
+        lpu == ME2VR::EngineProbe::GetPrimaryLocalPlayer();
 
     // [ENGCINE] bump on EVERY P1 view build, whatever branch runs below. A prerendered bik movie
     // does not build scene views at all (calcViews ~0/s observed during one), while an in-engine
@@ -1277,6 +1330,8 @@ void* __fastcall CalcViewDetour(void* lp, void* family, void* loc, void* rot, vo
         void* sv = g_orig(lp, family, loc, rot, vp, drawer);
         if (sv != nullptr) PublishGameFov(reinterpret_cast<std::uintptr_t>(sv));   // keep FOV live so XR detects cinematic END
         if (sv != nullptr) ViewCensusNote(reinterpret_cast<std::uintptr_t>(sv), true);   // [VIEWCEN]
+        if (ME2VR::Log::DiagnosticsOn()) NoteTransitionView(nativeCaller, lp, family, vp, sv,
+            ReadTransitionPointer(reinterpret_cast<std::uintptr_t>(sv) + (sv ? kFsvState : 0)), isP1);
         return sv;
     }
 
@@ -1350,6 +1405,8 @@ void* __fastcall CalcViewDetour(void* lp, void* family, void* loc, void* rot, vo
         g_vrMode.load(std::memory_order_acquire) == (int)VrMode::Sfr && isP1)
     {
         void* sv = g_orig(lp, family, loc, rot, vp, drawer);
+        const auto originalState = ME2VR::Log::DiagnosticsOn()
+            ? ReadTransitionPointer(reinterpret_cast<std::uintptr_t>(sv) + (sv ? kFsvState : 0)) : 0;
         if (sv != nullptr)
         {
             const std::uintptr_t svu = reinterpret_cast<std::uintptr_t>(sv);
@@ -1382,6 +1439,7 @@ void* __fastcall CalcViewDetour(void* lp, void* family, void* loc, void* rot, vo
             g_splitSeq.fetch_add(1, std::memory_order_release);   // keep SBS hysteresis satisfied
             ViewCensusNote(svu, true);       // [VIEWCEN]
         }
+        NoteTransitionView(nativeCaller, lp, family, vp, sv, originalState, isP1);
         return sv;
     }
 
@@ -1552,6 +1610,8 @@ void* __fastcall CalcViewDetour(void* lp, void* family, void* loc, void* rot, vo
     }
 
     void* sv = g_orig(lp, family, loc, rot, vp, drawer);
+    if (ME2VR::Log::DiagnosticsOn()) NoteTransitionView(nativeCaller, lp, family, vp, sv,
+        ReadTransitionPointer(reinterpret_cast<std::uintptr_t>(sv) + (sv ? kFsvState : 0)), isP1);
     if (sv != nullptr && isP1 && ME2VR::ConvoFp::OwnsCamera())
     {
         const auto svu = reinterpret_cast<std::uintptr_t>(sv);
@@ -1944,15 +2004,17 @@ bool RendererTargetsMatch() noexcept
     static const unsigned char calc[] = {0x48,0x8B,0xC4,0x55,0x53,0x56,0x57,0x41,0x54,0x41,0x55,0x41,0x56,0x41,0x57,0x48,0x8D,0xA8,0x98,0xFD,0xFF,0xFF,0x48,0x81,0xEC,0x88,0x03,0x00};
     static const unsigned char alloc[] = {0x40,0x53,0x48,0x83,0xEC,0x30,0x48,0xC7,0x44,0x24,0x20,0xFE,0xFF,0xFF,0xFF,0x8B,0xD9,0xB9,0x60,0x0D};
     static const unsigned char draw[] = {0x48,0x8B,0xC4,0x55,0x56,0x57,0x41,0x54,0x41,0x55,0x41,0x56,0x41,0x57,0x48,0x8D,0xA8,0x58,0xFC,0xFF,0xFF,0x48,0x81,0xEC,0xD0,0x04,0x00,0x00};
+    static const unsigned char primaryCall[] = {0xE8,0x22,0xD9,0xFF,0xFF}; // CALL 6CFFD0, return 6D26AE
     bool const c = RendererBytesMatch(kCalcSceneViewRva, calc, sizeof(calc));
     bool const a = RendererBytesMatch(kAllocateViewStateRva, alloc, sizeof(alloc));
     bool const d = RendererBytesMatch(kDrawRva, draw, sizeof(draw));
-    if (!c || !a || !d) {
+    bool const p = RendererBytesMatch(kGameplayCalcSceneViewReturnRva - sizeof(primaryCall), primaryCall, sizeof(primaryCall));
+    if (!c || !a || !d || !p) {
         ME2VR::Log::Line("[MEVR-LE3-ABI] renderer target mismatch: calc=" + std::to_string(c) +
-            " alloc=" + std::to_string(a) + " draw=" + std::to_string(d));
+            " alloc=" + std::to_string(a) + " draw=" + std::to_string(d) + " primaryCall=" + std::to_string(p));
         return false;
     }
-    ME2VR::Log::Line("[MEVR-LE3-ABI] CalcSceneView/AllocateViewState/Draw entry bytes verified (60AEF0C4)");
+    ME2VR::Log::Line("[MEVR-LE3-ABI] CalcSceneView/AllocateViewState/Draw entries and primary call verified (60AEF0C4)");
     return true;
 }
 

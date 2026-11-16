@@ -104,6 +104,13 @@ resource fault before recenter completion or same-save reload. See the
 [failed-transition investigation](le3-recenter-transition-failure.md); the earlier
 static/menu/turning results do not close this lifecycle gate.
 
+ME3 also now reuses ME1's primary-view ownership rule: both the verified native
+gameplay caller and the primary local player must match before eye-state/camera
+edits. The protected `20261115-174634-476-LE3-renderer-preview` run confirms five
+auxiliary views remained unmodified while gameplay retained separate eye states
+and a valid 64 mm baseline capture. The Back transition resource fault persists;
+this is ownership acceptance, not recenter or reload acceptance.
+
 Still open: physical Quest 3/Virtual Desktop fusion, real head-motion comfort,
 native recenter/mode-transition scenarios, and deliberately induced stale capture
 or failed GPU-copy scenarios. Those lifecycle failures have offline policy coverage,
