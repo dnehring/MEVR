@@ -1,6 +1,10 @@
 <!-- SPDX-License-Identifier: MIT -->
 # ME2 from ME1: what the LE1 port already solved, and the bridge plan
 
+> **The work list is [docs/trilogy-plan.md](trilogy-plan.md)** (since 2026-11-16: one list for all three games, keyed by
+> feature). This document stays as the record of what ME1 had already solved for each ME2 gap on 2026-11-14, the owner's
+> rule that ME2 continues ME1, and the bridge steps taken from it. Pick work from the trilogy plan.
+
 Date: 2026-11-14, against main `a784b5ef`. Written by the LE1 conversations session for the owner and the ME2 lead after
 reading the ME2 work on main: `docs/le2-*.md`, the 26 `research/le2-*.md` notes, the LE2 code and `tools/qa-le2`.
 Companion to the [implementation plan](le2-port-implementation-plan.md) and the [reuse map](le2-port-reuse-map.md); it

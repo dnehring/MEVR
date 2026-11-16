@@ -1,6 +1,10 @@
 <!-- SPDX-License-Identifier: MIT -->
 # Galaxy projector parity: implementation and research handoff
 
+> **The work list is [docs/trilogy-plan.md](trilogy-plan.md)** (since 2026-11-16: one list for all three games, keyed by
+> feature). The galaxy map is its feature T42, which follows this document's "Remaining work" 1-5 in order. This
+> document stays as the record of the projector work: every attempt, the native facts and the ordered steps.
+
 Updated 2026-11-15. Implementation checkpoint: **0f02fd38** on `worktree-agent-a08810c1900a1136a`. This main-checkout copy is documentation only; the implementation remains in that worktree. This is a resumption document, not a release or acceptance claim.
 The user requested this checkpoint to preserve work before usage runs out.
 
