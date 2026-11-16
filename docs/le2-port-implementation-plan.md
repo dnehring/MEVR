@@ -1,6 +1,11 @@
 <!-- SPDX-License-Identifier: MIT -->
 # Mass Effect 2 VR implementation plan
 
+> **The work list is [docs/trilogy-plan.md](trilogy-plan.md)** (since 2026-11-16: one list for all three games, keyed by
+> feature). This document stays as the record of the ME2 port's first plan: its product decisions, packages P0-P9, the
+> minimal ME2 proof and the handoff form. Pick work from the trilogy plan; its "Where the old plans' items went" maps
+> every package here to a feature there.
+
 Date: 2026-11-13. Status: **P9 offline tooling and P4 request prototype tested; P0 contract and P1/P2/P5 discovery recorded. Native port proof remains pending**.
 
 Use the [concise port goal](le2-port-goal.md) as the goal prompt's entry point; the documents below provide its detailed scope.

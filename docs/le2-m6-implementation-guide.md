@@ -1,6 +1,10 @@
 <!-- SPDX-License-Identifier: MIT -->
 # M6 implementation guide — reuse ME1, adapt ME2
 
+> **The work list is [docs/trilogy-plan.md](trilogy-plan.md)** (since 2026-11-16: one list for all three games, keyed by
+> feature). This document stays as the record of ME2's packages A-G, and is still the detailed reference for their
+> reuse, ME2 differences and acceptance (the trilogy plan's T40, T45-T48 and T42 point here).
+
 Source audit dated 2026-11-15, against local `main` at `87ebe0f4`. This is the detailed companion to
 [M6 in the continuation plan](le2-continuation-plan.md#m6-the-rest-of-me1-one-module-at-a-time-l).
 It describes remaining implementation and acceptance work, not additional completed features.

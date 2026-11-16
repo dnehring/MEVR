@@ -1,6 +1,10 @@
 <!-- SPDX-License-Identifier: MIT -->
 # ME3 port: existing-system audit
 
+> **The work list is [docs/trilogy-plan.md](trilogy-plan.md)** (since 2026-11-16: one list for all three games, keyed by
+> feature), and which ME1 system exists on which game today is in the [parity ledger](trilogy-parity-ledger.md). This
+> document stays as the record of the 2026-11-15 audit of what ME3 could reuse before its port began.
+
 Audited 2026-11-15 against committed main `7a3a1158`. Scope: Legendary Edition single-player ME3 and included DLC.
 This is an offline source audit, not a new game or headset test. Uncommitted work in the main checkout was excluded
 from the baseline. The [implementation plan](le3-port-implementation-plan.md) turns these findings into work packages.
