@@ -87,9 +87,11 @@ double gSyntheticWait = 0.0;
 // Our reflection layer (research/34): the weapon's own recoil for a shot (research/24 section 2: Stats.Recoil or ZoomRecoil,
 // times the talent curves), a native with a plain float return, which ProcessEvent passes back.
 ue3::FunctionRef gGetRecoil{"SFXGame.BioWeaponRanged.GetRecoil"};
-#elif defined(MEVR_GAME_LE2)
+#elif defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 // ME2's (research/le2-vrik.md "Recoil"): SFXWeapon.GetWeaponRecoil, script, ZoomRecoil or Recoil's value times the player's
 // recoil bonus; PlayOwnedFireEffects queues each shot's kick as SetWeaponRecoil(GetWeaponRecoil() * 182.044), as ME1's.
+// ME3 has the same function (its SDK lists SFXWeapon.GetWeaponRecoil with a float return) and the same shot source
+// (game/ViewLevel's SetWeaponRecoil handler); the kick's size on ME3's guns is [verify] in the game (`gun kick: first kick`).
 ue3::FunctionRef gGetRecoil{"SFXGame.SFXWeapon.GetWeaponRecoil", ue3::kEveryGame};
 #endif
 
@@ -117,7 +119,7 @@ unsigned long long gShotsTotal = 0;
 unsigned long long gKickedTotal = 0;
 
 std::optional<double> GameRecoil() {
-#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     ue3::Object* const held = weapon::HeldObject();
     if (held == nullptr) {
         return std::nullopt;
@@ -335,7 +337,7 @@ void Shutdown() {
     gRemembered = -1.0;
     gSyntheticLeft = 0;
     gSyntheticWait = 0.0;
-#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     gGetRecoil.Reset();
 #endif
     gToldFirst = gToldNoRecoil = gToldNoFunction = false;

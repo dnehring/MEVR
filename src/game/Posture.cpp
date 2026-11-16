@@ -140,10 +140,6 @@ ue3::FieldRef gWantsToCrouch{"Engine.Pawn", "bWantsToCrouch", ue3::kEveryGame};
 ue3::FunctionRef gLe3FindCover{"SFXGame.SFXGameModeDefault.FindCover", ue3::kEveryGame};
 ue3::FunctionRef gLe3AcquireCover{"SFXGame.SFXGameModeDefault.TryAcquireCover", ue3::kEveryGame};
 bool gLe3NoSnapReady = false;
-ue3::FunctionRef gDead{"Engine.Pawn.IsDead", ue3::kEveryGame};
-ue3::FunctionRef gMoveIgnored{"Engine.PlayerController.IsMoveInputIgnored", ue3::kEveryGame};
-ue3::FieldRef gCurrentAction{"SFXGame.BioPawn", "CurrentCustomAction", ue3::kEveryGame};
-ue3::FieldRef gPhysics{"Engine.Actor", "Physics", ue3::kEveryGame};
 ue3::FieldRef gWorldInfo{"Engine.Actor", "WorldInfo", ue3::kEveryGame};
 Link gLink;
 std::uint64_t gLinkTime = 0, gGeneration = 0;
@@ -285,14 +281,9 @@ std::optional<Game> ReadGame(std::string& why) {
 #if defined(MEVR_GAME_LE3)
 // Native admission is re-read for every request. Mode 0 alone includes authored actions.
 bool NativeMovement(Game const& game) {
-    if (player::GameMode(game.controller) != 0 ||
-        gCurrentAction.Read<std::int32_t>(game.pawn).value_or(-1) != 0 ||
-        gPhysics.Read<std::uint8_t>(game.pawn).value_or(255) != 1) return false; // PHYS_Walking only
-    ue3::Params dead(ue3::runtime::Get(), gDead.Get());
-    if (!dead.Valid() || !ue3::runtime::Call(game.pawn, gDead.Get(), dead) || dead.ReturnBool() != false) return false;
-    ue3::Params params(ue3::runtime::Get(), gMoveIgnored.Get());
-    return params.Valid() && ue3::runtime::Call(game.controller, gMoveIgnored.Get(), params) &&
-        params.ReturnBool() == false;
+    namespace admit = player::admission;  // the one admission read (game/Player): on foot, no authored action, walking, alive
+    return player::MovementAdmitted(game.controller, game.pawn,
+        admit::kOnFoot | admit::kNoAction | admit::kWalking | admit::kMoveInput | admit::kAlive);
 }
 bool HostMovement() {
     auto const now = GetTickCount64();
@@ -713,11 +704,9 @@ bool TryStartup() {
 #if defined(MEVR_GAME_LE3)
     ue3::Params crouch(ue3::runtime::Get(), gShouldCrouch);
     auto const* value = crouch.Find("bCrouch");
-    ue3::Params ignored(ue3::runtime::Get(), gMoveIgnored.Get());
     gStarted = crouch.Valid() && crouch.Size() == 4 && crouch.Specs().size() == 1 && value &&
         value->kind == ue3::Kind::Bool && value->offset == 0 && value->size == 4 &&
-        ignored.Valid() && ignored.Size() == 4 && ignored.Specs().size() == 1 &&
-        gCurrentAction.Get() && gPhysics.Get() && gWorldInfo.Get() && gStorming.Get() && gDead.Get() &&
+        player::MovementAdmissionReady() && gWorldInfo.Get() && gStorming.Get() &&
         gIsCrouched.Get() && gWantsToCrouch.Get() && gCoverType.Get();
     if (!gStarted) missing += " LE3 crouch/admission ABI unavailable";
     if (gStarted && !gLe3NoSnapReady && gLe3FindCover.Get() && gLe3AcquireCover.Get()) {

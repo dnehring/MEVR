@@ -37,13 +37,7 @@ ue3::FieldRef gStorming{"SFXGame.BioPlayerController", "bStorming", ue3::kEveryG
 #endif
 
 #if defined(MEVR_GAME_LE3)
-ue3::FunctionRef gDead{"Engine.Pawn.IsDead", ue3::kEveryGame};
-ue3::FunctionRef gMoveIgnored{"Engine.PlayerController.IsMoveInputIgnored", ue3::kEveryGame};
 ue3::FunctionRef gStormDisabled{"SFXGame.BioPlayerController.IsStormDisabled", ue3::kEveryGame};
-ue3::FieldRef gCurrentAction{"SFXGame.BioPawn", "CurrentCustomAction", ue3::kEveryGame};
-ue3::FieldRef gPhysics{"Engine.Actor", "Physics", ue3::kEveryGame};
-ue3::FieldRef gCoverType{"SFXGame.BioPawn", "CoverType", ue3::kEveryGame};
-ue3::FieldRef gCrouched{"Engine.Pawn", "bIsCrouched", ue3::kEveryGame};
 ue3::FieldRef gWorldInfo{"Engine.Actor", "WorldInfo", ue3::kEveryGame};
 bool (*gControlsAllowed)() = nullptr;
 std::uint64_t gTickTime = 0;
@@ -54,12 +48,12 @@ std::optional<bool> NativeBool(ue3::Object* object, ue3::FunctionRef& ref) {
     return p.Valid() && ue3::runtime::Call(object, ref.Get(), p) ? p.ReturnBool() : std::nullopt;
 }
 bool NativeAllowed(ue3::Object* pc, ue3::Object* pawn) {
-    return ue3::runtime::IsAlive(pc) && ue3::runtime::IsAlive(pawn) && player::GameMode(pc) == 0 &&
-        gPhysics.Read<std::uint8_t>(pawn).value_or(255) == 1 &&
-        gCurrentAction.Read<std::int32_t>(pawn).value_or(-1) == 0 &&
-        gCoverType.Read<std::uint8_t>(pawn).value_or(255) == 0 &&
-        gCrouched.ReadBool(pawn) == false && gStorming.ReadBool(pawn) == false &&
-        NativeBool(pc, gMoveIgnored) == false && NativeBool(pc, gStormDisabled) == false && NativeBool(pawn, gDead) == false;
+    // The one admission read (game/Player): walking on foot, out of cover, standing, not already storming, input taken,
+    // alive; then the sprint's own question, whether the game has the storm disabled.
+    namespace admit = player::admission;
+    return player::MovementAdmitted(pc, pawn, admit::kOnFoot | admit::kNoAction | admit::kWalking | admit::kOutOfCover |
+            admit::kNotCrouched | admit::kNotStorming | admit::kMoveInput | admit::kAlive) &&
+        NativeBool(pc, gStormDisabled) == false;
 }
 bool FreshOwner(ue3::Object* context) {
     auto const now = GetTickCount64();
@@ -143,8 +137,7 @@ bool TryStartup() {
     }
 #if defined(MEVR_GAME_LE3)
     if (!gGroundSpeed.Get() || !gStormSpeed.Get() || !gVelocity.Get() || !gStorming.Get() ||
-        !gMoveIgnored.Get() || !gDead.Get() || !gStormDisabled.Get() || !gCurrentAction.Get() || !gPhysics.Get() ||
-        !gCoverType.Get() || !gCrouched.Get() || !gWorldInfo.Get()) return false;
+        !gStormDisabled.Get() || !player::MovementAdmissionReady() || !gWorldInfo.Get()) return false;
 #endif
     gStarted = true;
     ue3::Reflection& reflection = ue3::runtime::Get();

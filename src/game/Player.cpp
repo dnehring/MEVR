@@ -165,6 +165,68 @@ vr::floor_lock::PawnSample FloorLockSample() {
     return out;
 }
 
+#if defined(MEVR_GAME_LE3)
+namespace {
+// ME3's names, all in engine/ReflectCheck's LE3 tables (the six modules that had copies of these put them there).
+ue3::FieldRef gAdmitAction{"SFXGame.BioPawn", "CurrentCustomAction", ue3::kEveryGame};
+ue3::FieldRef gAdmitPhysics{"Engine.Actor", "Physics", ue3::kEveryGame};
+ue3::FieldRef gAdmitCrouched{"Engine.Pawn", "bIsCrouched", ue3::kEveryGame};
+ue3::FieldRef gAdmitStorming{"SFXGame.BioPawn", "bStorming", ue3::kEveryGame};
+ue3::FunctionRef gAdmitMoveIgnored{"Engine.PlayerController.IsMoveInputIgnored", ue3::kEveryGame};
+ue3::FunctionRef gAdmitDead{"Engine.Pawn.IsDead", ue3::kEveryGame};
+constexpr std::uint8_t kPhysWalking = 1;
+
+// A script function without parameters that returns a bool (a 4-byte block): true only if it answered false.
+bool AnswersFalse(ue3::Object* object, ue3::FunctionRef& ref) {
+    ue3::Params params(ue3::runtime::Get(), ref.Get());
+    return params.Valid() && params.Size() == 4 && ue3::runtime::Call(object, ref.Get(), params) && params.ReturnBool() == false;
+}
+} // namespace
+
+admission::Facts MovementRefused(ue3::Object* controller, ue3::Object* pawn, admission::Facts wanted) {
+    namespace a = admission;
+    if (!ue3::runtime::IsAlive(controller) || !ue3::runtime::IsAlive(pawn)) return wanted;
+    auto const asked = [wanted](a::Facts fact) { return (wanted & fact) != 0; };
+    if (asked(a::kOnFoot) && GameMode(controller) != 0) return a::kOnFoot;
+    if (asked(a::kNoAction) && gAdmitAction.Read<std::int32_t>(pawn) != 0) return a::kNoAction;
+    if (asked(a::kPhysicsKnown | a::kWalking)) {
+        auto const physics = gAdmitPhysics.Read<std::uint8_t>(pawn);
+        if (asked(a::kPhysicsKnown) && !physics) return a::kPhysicsKnown;
+        if (asked(a::kWalking) && physics != kPhysWalking) return a::kWalking;
+    }
+    if (asked(a::kCoverKnown | a::kOutOfCover | a::kNoCoverAction)) {
+        auto const type = gCoverType.Read<std::uint8_t>(pawn);
+        auto const action = asked(a::kCoverKnown | a::kNoCoverAction) ? gCoverAction.Read<std::uint8_t>(pawn) : std::nullopt;
+        if (asked(a::kCoverKnown) && (!type || !action)) return a::kCoverKnown;
+        if (asked(a::kOutOfCover) && type != 0) return a::kOutOfCover;
+        if (asked(a::kNoCoverAction) && action != 0) return a::kNoCoverAction;
+    }
+    if (asked(a::kNotCrouched) && gAdmitCrouched.ReadBool(pawn) != false) return a::kNotCrouched;
+    if (asked(a::kNotStorming) && gAdmitStorming.ReadBool(pawn) != false) return a::kNotStorming;
+    if (asked(a::kMoveInput) && !AnswersFalse(controller, gAdmitMoveIgnored)) return a::kMoveInput;
+    if (asked(a::kAlive) && !AnswersFalse(pawn, gAdmitDead)) return a::kAlive;
+    return 0;
+}
+
+bool MovementAdmissionReady() {
+    if (!ue3::runtime::Up()) return false;
+    auto const field = [](ue3::FieldRef& ref, ue3::Kind kind, int bytes) {
+        auto const* const info = ref.Get();
+        return info != nullptr && info->kind == kind && info->elementSize == bytes && info->arrayDim == 1;
+    };
+    auto const answersBool = [](ue3::FunctionRef& ref) {
+        ue3::Params params(ue3::runtime::Get(), ref.Get());
+        auto const* const value = params.ReturnSpec();
+        return params.Valid() && params.Size() == 4 && params.Specs().size() == 1 && value != nullptr &&
+            value->kind == ue3::Kind::Bool && value->size == 4 && value->offset == 0;
+    };
+    return field(gAdmitAction, ue3::Kind::Int, 4) && field(gAdmitPhysics, ue3::Kind::Byte, 1) &&
+        field(gCoverType, ue3::Kind::Byte, 1) && field(gCoverAction, ue3::Kind::Byte, 1) &&
+        field(gAdmitCrouched, ue3::Kind::Bool, 4) && field(gAdmitStorming, ue3::Kind::Bool, 4) &&
+        answersBool(gAdmitMoveIgnored) && answersBool(gAdmitDead);
+}
+#endif
+
 ue3::Object* Mesh(ue3::Object const* pawn) {
     return ObjectField(gMesh, pawn);
 }
