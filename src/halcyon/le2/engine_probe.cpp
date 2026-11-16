@@ -597,8 +597,8 @@ using tProcessEvent = void(__fastcall*)(void* ctx, void* fn, void* parms, void* 
 bool MevrCallProcessEvent(void* object, void* fn, void* parms, std::uint32_t size) noexcept
 {
 #if defined(MEVR_ASI)
-    if (!::ME2VR::MevrBridge::OnGameThread())
-        return ::ME2VR::MevrBridge::QueueProcessEvent(object, fn, parms, size);
+    if (!::MevrSeams::OnGameThread())
+        return ::MevrSeams::QueueProcessEvent(object, fn, parms, size);
 #endif
     (void)size;
     const auto base = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));

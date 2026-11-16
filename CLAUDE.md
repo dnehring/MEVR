@@ -170,6 +170,10 @@ authored seated scenes (such as shuttles) must reject traversal while retaining 
   (journalled, put back in a `__finally`). ME2's camera stays level and smooth through it; `view = level`, `mask = vignette |
   blink` and the cue (`cue = 1`) are options, off by default. Fixture: Save 4's spaceport, `tools/le2-halcyon-run/vault.ps1`;
   `mevr traversal slots | near | place | go | pause | trace ...`; logs `traversal:`, `traversal cue:`.
+  **Arm IK across root-motion steps** (every game; `core/ik/GoalStep`, `engine/BonePose` `GoalFrame`, research/le2-vrik.md):
+  the vault's pose moves the `Camera` bone up to 113 units in the mesh's space before the actor steps, and goals left in
+  that space rode the step (hands 0.7-1.0 m off for a frame); the writer solves in the goals' frame whenever the bone moved
+  past 1 unit since the goals were computed and the view hangs on it (not a held view). `mevr armik step [off|camera] [units]`.
   **On an HDR display (this machine's) ME2's swap chain is R16G16B16A16_FLOAT in gameplay**, whatever `DesiredRange` says;
   Halcyon's ME2 renderer assumes 8 bits (its eye copies did nothing: black or stale eyes; no SFR left eye, no UI treatment):
   `plugin/EyeCopy` draws such a frame into the eyes, and `[Colour] hdrDisplay = -1` in `ASI\LE2MEVR.ini` answers the game's

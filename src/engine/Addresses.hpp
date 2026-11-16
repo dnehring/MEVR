@@ -254,6 +254,10 @@ inline constexpr std::uint32_t kViewportDrawEnd = 0x6D2C99;
 // M3 (research/le2-vrik.md "The skeleton"): execForceSkelUpdate (0x77D750) calls it as (this, 0, 1), as LE1's does; it
 // sizes SpaceBases (+0x2B8) and LocalAtoms (+0x2C8) to the RefSkeleton with 0x20-byte FBoneAtoms, as LE1's 0x592440.
 inline constexpr std::uint32_t kUpdateSkelPose = 0x79B8A0;
+// engine/BodyBounds is not ported to ME2 (parity ledger R29: port it only if ME2 culls the player's body), so these two
+// stay 0 and the module stands down. Their ME2 addresses are found and are rows of the table below
+// ("USkeletalMeshComponent::UpdateBounds" 0x798350, "UPrimitiveComponent::UpdateUmbraBounds" 0x3146C0; research/
+// sequel-render-levers.md "Body bounds"): setting these two to those values is the whole port.
 inline constexpr std::uint32_t kSkelUpdateBounds = 0;
 inline constexpr std::uint32_t kPrimitiveUmbraBounds = 0;
 inline constexpr std::uint32_t kSoundSourceUpdate = 0;
@@ -306,6 +310,77 @@ inline constexpr Entry kTable[] = {
         "48 8B 0D ?? ?? ?? ?? 48 8B 01 44 8B C3 48 8B D7 48 8B 5C 24 30 48 83 C4 20 5F 48 FF 60 18",
         0, 0, "mod (engine strings)"},
     {"GNatives", kGNatives, Kind::Data, "74 13 0F B7 C0 48 8D 0D ?? ?? ?? ?? 48 8B 04 C1", 8, 0xAEF81, "mod (diagnostics)"},
+    // plugin/RenderLevers' addresses in ME2 (research/sequel-render-levers.md "ME2": each found by matching LE1's function
+    // instruction for instruction, most identical but for the view stride, and by its place in the same callers). The row
+    // names are LE1's, exactly: plugin/RenderLevers finds each address by its row name, and a missing row stands that
+    // lever down on ME2.
+    {"FSceneRenderer::Render", 0x34BF70, Kind::Function,
+        "48 8B C4 55 41 56 41 57 48 8D 68 A1 48 81 EC C0 00 00 00 48 C7 45 17 FE FF FF FF 48 89 58 10 48", 0, 0, "render levers"},
+    {"UmbraCommander::command", 0x3FF410, Kind::Function, "83 FA 09 0F 87 ?? ?? ?? ?? 55 56 48 8D 6C 24 B8", 0, 0,
+        "render levers"},
+    {"FD3D11DynamicRHI::GetQueryData", 0x986790, Kind::Function,
+        "48 89 5C 24 10 48 89 6C 24 18 48 89 74 24 20 57 41 56 41 57 48 83 EC 60", 0, 0, "render levers"},
+    {"SetUmbraCommander / wireframe state", 0x3FB390, Kind::Leaf, "0F B6 C1 48 89 05 ?? ?? ?? ?? C3 CC CC CC CC CC", 0, 0,
+        "render levers"},
+    {"FSceneRenderer deleting destructor", 0x342480, Kind::Function,
+        "4C 8B DC 57 41 56 41 57 48 83 EC 50 49 C7 43 B8 FE FF FF FF 49 89 5B 08 49 89 6B 10 49 89 73 18 8B EA 4C 8B", 0, 0,
+        "render levers"},
+    {"FSceneRenderTargets::Allocate", 0x353AB0, Kind::Function,
+        "48 8B C4 57 41 56 41 57 48 83 EC 50 48 C7 40 D8 FE FF FF FF 48 89 58 10", 0, 0, "render levers"},
+    {"FSceneRenderer::RenderDpgLightTargets", 0x372F50, Kind::Function, "4C 8B DC 53 55 56 57 48 81 EC E8 ?? ?? ?? ?? 8B", 0,
+        0, "render levers"},
+    {"RenderUmbraBasePass", 0x3F80C0, Kind::Function,
+        "48 8B C4 56 57 41 56 48 83 EC 60 48 C7 40 C8 FE FF FF FF 48 89 58 10 48 89 68 18 48 8B 05 ?? ??", 0, 0,
+        "render levers"},
+    {"translucency check", 0x343E80, Kind::Function, "48 89 5C 24 08 4C 63 59 68 BB 01 00 00 00 4D 85", 0, 0, "render levers"},
+    {"before-lights pass", 0x336B20, Kind::Function,
+        "48 8B C4 48 89 48 08 55 53 56 57 41 54 41 55 41 56 41 57 48 8D A8 28 FF", 0, 0, "render levers"},
+    {"DPG pass", 0x34A660, Kind::Function,
+        "48 89 5C 24 20 55 56 57 48 83 EC 40 48 8B 05 ?? ?? ?? ?? 48 33 C4 48 89 44 24 30 48", 0, 0, "render levers"},
+    {"DPG lights", 0x34A0B0, Kind::Function, "4C 8B DC 55 56 57 41 56 49 8D 6B A9 48 81 EC A8", 0, 0, "render levers"},
+    {"FD3D11BoundShaderState constructor", 0x98ECD0, Kind::Function, "4C 8B DC 4D 89 4B 20 49 89 53 10 49 89 4B 08 55", 0, 0,
+        "render levers"},
+    {"UmbraCommander visible instance", 0x3F3ED0, Kind::Function, "40 53 55 56 57 41 54 41 56 41 57 48 81 EC A0 00", 0, 0,
+        "render levers"},
+    {"foreground pass", 0x349A20, Kind::Function,
+        "40 55 53 56 57 41 54 41 55 41 56 41 57 48 8D 6C 24 E9 ?? ?? ?? ?? 00 00 00 48 C7 45 AF FE FF FF", 0, 0,
+        "render levers"},
+    {"scene render finish", 0x34AE50, Kind::Function, "40 56 57 48 83 EC 48 33 F6 48 89 5C 24 60 48 89", 0, 0, "render levers"},
+    {"scene capture's CaptureScene thunk", 0x329B90, Kind::Leaf, "48 8B 09 48 85 C9 74 07 48 8B 01 48 FF 60 08 C3", 0, 0,
+        "render levers"},
+    {"scene capture's Umbra camera thunk", 0x333240, Kind::Leaf, "4C 8B D2 48 8B D1 48 8B 09 48 85 C9 74 18 48 8B 52 08 4D 8B C8", 0,
+        0, "ui world figure"},
+    {"FSceneRenderTargets::BeginRenderingBackBuffer", 0x354570, Kind::Function,
+        "40 53 48 83 EC 30 48 C7 44 24 20 FE FF FF FF 48 8B D9 48 8B 0D ?? ?? ?? ?? 48 8B 01", 0, 0, "render levers"},
+    {"UmbraCommander::IssueOcclusionQueries", 0x3DBB80, Kind::Function,
+        "40 55 56 57 41 54 41 55 41 56 41 57 48 83 EC 60 48 C7 44 24 50 FE FF FF FF 48 89 9C 24 B8 00 00", 0, 0,
+        "render levers"},
+    {"Umbra read of one query result", 0xD55BC0, Kind::Leaf, "89 91 CC 01 00 00 BA 06 00 00 00 44 89 81 C8 01", 0, 0,
+        "render levers"},
+    {"Umbra resolve start stamp", 0x175D2A0, Kind::Data, "66 0F 5A C0 F3 0F 11 05 ?? ?? ?? ?? E9 ?? ?? ?? ?? BA 01 00", 8,
+        0x3FF490, "render levers"},
+    {"GSceneRenderTargets", 0x161DDB0, Kind::Data, "44 8B C3 8B D0 48 8D 0D ?? ?? ?? ?? E8 ?? ?? ?? ?? 48 8B CF", 8, 0x34C205,
+        "render levers"},
+    {"GDynamicRHI", 0x174C648, Kind::Data, "87 3E 01 00 00 48 8B 0D ?? ?? ?? ?? 48 8B 01 48", 8, 0x1BAD14, "render levers"},
+    {"scene frame counter", 0x175301C, Kind::Data, "C4 20 5B C3 CC 48 8D 05 ?? ?? ?? ?? C3 CC CC CC", 8, 0x344B2B,
+        "render levers"},
+    {"depth dirty flags", 0x175D298, Kind::Data, "48 83 EA 01 75 DA 89 1D ?? ?? ?? ?? 41 89 59 60", 8, 0x3F8576,
+        "render levers"},
+    {"GSkipBeforeLights", 0x161E180, Kind::Data, "C9 40 0F 94 C7 44 39 35 ?? ?? ?? ?? 74 2B 4C 39", 8, 0x6F548C,
+        "render levers"},
+    {"Umbra commanders", 0x175D348, Kind::Data, "39 73 68 7E 46 48 8D 35 ?? ?? ?? ?? 0F 1F 84 00", 8, 0x3F81FC,
+        "render levers"},
+    {"Umbra commander index", 0x175D288, Kind::Data, "00 48 03 53 60 48 8B 05 ?? ?? ?? ?? 48 8B 0C C6", 8, 0x3F8219,
+        "render levers"},
+    // The show flags' bits per word (32), which RenderLevers' ShowFlag() reads to test a bit of FSceneRenderer +0x28: LE1's
+    // is the literal 0x164C720 in RenderLevers.cpp and has no row of its own.
+    {"show flags' bits per word", 0x1618A30, Kind::Data, "41 B8 33 00 00 00 41 8B C0 44 8B 0D ?? ?? ?? ?? 41 F7 F1 8B", 12,
+        0x34C060, "render levers"},
+    // engine/BodyBounds' two functions in ME2 (kSkelUpdateBounds and kPrimitiveUmbraBounds above stay 0 until it is ported).
+    {"USkeletalMeshComponent::UpdateBounds", 0x798350, Kind::Function, "40 55 53 48 8D AC 24 08 FF FF FF 48 81 EC F8 01", 0,
+        0, "mod (body bounds, not ported)"},
+    {"UPrimitiveComponent::UpdateUmbraBounds", 0x3146C0, Kind::Function, "40 53 48 81 EC C0 00 00 00 48 8B 01 48 8B D9 FF", 0,
+        0, "mod (body bounds, not ported)"},
 };
 
 } // le2

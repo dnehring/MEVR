@@ -43,6 +43,7 @@
 #include <format>
 #include <numbers>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -1201,6 +1202,32 @@ void Drive(double deltaSeconds) {
     for (int bone : info->cameraHooks) {
         request.keepKeys.push_back(info->bones.keys[bone]);
     }
+    // Where these goals are computed (engine/bone_pose GoalFrame, research/le2-vrik.md "Arm IK across root-motion steps"): the
+    // mesh's frame now and the camera's hook bone in the pose they are computed against, so the writer keeps them with the
+    // camera when a root-motion step moves the component under them (ME2's vault).
+    request.frame.valid = true;
+    request.frame.componentToWorld = componentToWorld;
+    // The view hangs on the camera's bone: first person on foot with the game's own camera (a held view, a conversation shown
+    // in the world or a scripted walk, stays where it is held whatever the bone does).
+    request.frame.viewOnAnchor = targets.source == hand_targets::Source::Controllers && targets.anchor == hand_targets::Anchor::View &&
+        !view_anchor::Held() && !bodyAway;
+    if (std::span<engine::skeleton::BoneAtom const> const bases = engine::skeleton::SpaceBases(mesh);
+        static_cast<int>(bases.size()) == info->boneCount) {
+        for (int bone : info->cameraHooks) {
+            if (bone < 0 || bone >= info->boneCount) {
+                continue;
+            }
+            ik::Vec3 const at = engine::skeleton::ToTransform(bases[static_cast<std::size_t>(bone)]).translation;
+            if (info->bones.parents[static_cast<std::size_t>(bone)] < 0) {
+                request.frame.root = bone;
+                request.frame.rootAt = at;
+            } else if (_stricmp(info->bones.names[static_cast<std::size_t>(bone)].c_str(), "Camera") == 0) {
+                request.frame.anchor = bone;
+                request.frame.anchorKey = info->bones.keys[static_cast<std::size_t>(bone)];
+                request.frame.anchorAt = at;
+            }
+        }
+    }
     // Arms that resolved and look like arms; the others stay with the animation.
     std::array<std::optional<ik::ArmChain>, 2> arms;
     for (int side : {kLeft, kRight}) {
@@ -1667,6 +1694,38 @@ void LogStats() {
         body_follow::LogStats();
     }
     engine::bone_pose::LogStats();
+}
+
+std::string Command(std::string const& args) {
+    std::istringstream words(args);
+    std::string verb;
+    std::string rule;
+    words >> verb >> rule;
+    namespace bp = engine::bone_pose;
+    if (verb != "step") {
+        return "usage: mevr armik step [off|camera] [units]";
+    }
+    bp::StepSettings settings = bp::GetStepSettings();
+    if (!rule.empty()) {
+        if (rule == "off") {
+            settings.rule = bp::StepRule::Off;
+        } else if (rule == "camera") {
+            settings.rule = bp::StepRule::Camera;
+        } else {
+            return "usage: mevr armik step [off|camera] [units]";
+        }
+        if (double units = 0.0; words >> units && std::isfinite(units) && units > 0.0) {
+            settings.units = units;
+        }
+        bp::SetStepSettings(settings);
+        log::Info("arm IK: steps between the goals and the write: rule {}, past {:.1f} units (the console)", bp::StepRuleName(settings.rule),
+            settings.units);
+    }
+    bp::StepStats const stats = bp::GetStepStats();
+    return std::format("arm IK steps: rule {}, past {:.1f} units; {} steps in {} writes (the camera's bone up to {:.1f} units, the mesh up to "
+                       "{:.1f}; by the bone's move: {} under 1 unit, {} 1-5, {} 5-20, {} past 20), {} solved in the goals' frame",
+        bp::StepRuleName(settings.rule), settings.units, stats.steps, stats.writes, stats.maxAnchorUnits, stats.maxComponentUnits,
+        stats.byAnchor[0], stats.byAnchor[1], stats.byAnchor[2], stats.byAnchor[3], stats.corrected);
 }
 
 void Shutdown() {

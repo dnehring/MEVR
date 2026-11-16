@@ -353,6 +353,8 @@ set(MEVR_MOD_SOURCES
     src/core/ik/CameraHook.hpp
     src/core/ik/Fingers.cpp
     src/core/ik/Fingers.hpp
+    src/core/ik/GoalStep.cpp
+    src/core/ik/GoalStep.hpp
     src/core/ik/Melee.cpp
     src/core/ik/GunKick.cpp
     src/core/ik/GunKick.hpp
@@ -1016,7 +1018,8 @@ function(mevr_add_plugin game)
     if (MEVR_HALCYON AND game STREQUAL "LE2" AND NOT MEVR_LE2_DIAGNOSTIC)
         set(with_halcyon_le2 ON)
         list(APPEND host_sources src/plugin/HalcyonLe2.cpp src/plugin/HalcyonLe2.hpp src/plugin/HalcyonLe2Bridge.cpp
-            src/plugin/Seams.cpp src/halcyon/MevrSeams.h
+            src/plugin/Seams.cpp src/halcyon/MevrSeams.h src/plugin/RecenterTilt.cpp src/plugin/RecenterTilt.hpp
+            src/core/vr/Recenter.cpp src/core/vr/Recenter.hpp
             src/plugin/HdrDisplayPolicy.cpp src/plugin/HdrDisplayPolicy.hpp
             src/plugin/Voice.cpp src/plugin/Voice.hpp src/plugin/VoiceModel.cpp src/plugin/VoiceModel.hpp
             src/halcyon/le2/mevr_bridge.h src/core/CallQueue.hpp src/plugin/GameThreadCalls.cpp src/plugin/GameThreadCalls.hpp
@@ -1427,6 +1430,7 @@ if (MEVR_BUILD_TESTS)
         tests/ThespianTests.cpp
         src/core/vr/Traversal.cpp
         tests/TraversalTests.cpp
+        tests/GoalStepTests.cpp
         tests/TraversalPresentationTests.cpp
         tests/RendererRequestTests.cpp
         tests/HostServicesTests.cpp
@@ -1456,6 +1460,7 @@ if (MEVR_BUILD_TESTS)
         src/core/ik/BoneNames.cpp
         src/core/ik/CameraHook.cpp
         src/core/ik/Fingers.cpp
+        src/core/ik/GoalStep.cpp
         src/core/ik/Melee.cpp
     src/core/ik/GunKick.cpp
         src/core/ik/Ik.cpp
