@@ -24,7 +24,7 @@ They shared 18 names, and of those six differed in signature, so no host module 
 - The host implements a common seam **once for all games** in `src/plugin/Seams.cpp` when the answer is the same
   everywhere; otherwise in that game's bridge, in `namespace MevrSeams { ... }`.
 
-## The common seams (32)
+## The common seams (33)
 
 Signatures are in `src/halcyon/MevrSeams.h`; that header is the reference, with the thread each runs on. "Host" names
 where each game's definition is. `Seams.cpp` means one definition for all three.
@@ -60,6 +60,7 @@ where each game's definition is. `Seams.cpp` means one definition for all three.
 | threads | `OnGameThread()` | Seams.cpp | Seams.cpp | Seams.cpp | all |
 | threads | `QueueProcessEvent(object, function, params, size)` | Seams.cpp | Seams.cpp | Seams.cpp | all |
 | perf (optional) | `PerfPresentBegin(context)`, `PerfPresentEnd(context)`, `PerfFirstEyeCaptured(context)`, `PerfDraw()` | - | HalcyonLe2Bridge.cpp | HalcyonLe3Bridge.cpp | LE2, LE3 |
+| perf (optional) | `PerEyeViewState()` (game thread, the SFR branch of CalcSceneView: each pass its own scene view state, or both the game's one; `[Performance] perEyeViewState`, research/sequel-render-levers.md "Performance research") | - (LE1's tree asks `MELEVR::MevrBridge::PerEyeViewState`, the same lever) | RenderLevers.cpp | RenderLevers.cpp | LE2, LE3 |
 
 A `-` means that game's host does not define the seam, because its renderer does not call it. Calling it there is a
 link error, which is the intended signal: define it in that game's bridge first.

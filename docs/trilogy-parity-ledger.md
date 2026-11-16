@@ -577,9 +577,9 @@ defined in the tool's header:
 <!-- parity:summary -->
 | game | renderer | host plugin files | host core files | services served | src/game + src/engine modules by status | common seams called | own seams |
 |---|---|---|---|---|---|---|---|
-| LE1 | halcyon-le1 | 72 | 71 | 57 | run 67, out 4, ungated 23, unbuilt 4 | 20 of 32 | 91 |
-| LE2 | halcyon-le2 | 64 | 55 | 48 | run 39, ready 10, out 22, ungated 21, unreferenced 2, unbuilt 4 | 30 of 32 | 4 |
-| LE3 | halcyon-le3 | 67 | 55 | 48 | run 39, ready 10, out 22, ungated 22, unreferenced 2, unbuilt 3 | 30 of 32 | 2 |
+| LE1 | halcyon-le1 | 72 | 71 | 57 | run 67, out 4, ungated 23, unbuilt 4 | 20 of 33 | 91 |
+| LE2 | halcyon-le2 | 64 | 55 | 48 | run 39, ready 10, out 22, ungated 21, unreferenced 2, unbuilt 4 | 31 of 33 | 4 |
+| LE3 | halcyon-le3 | 67 | 55 | 48 | run 39, ready 10, out 22, ungated 22, unreferenced 2, unbuilt 3 | 31 of 33 | 2 |
 <!-- /parity:summary -->
 
 ### Host plugin files per game
@@ -917,6 +917,7 @@ The common vocabulary (`namespace MevrSeams`, `src/halcyon/MevrSeams.h`): `yes` 
 | `OnSessionStopped` | yes | yes | yes |
 | `OnViewBuilt` | yes | yes | yes |
 | `OverlayLayers` | yes | yes | yes |
+| `PerEyeViewState` | - | yes | yes |
 | `PerfDraw` | - | yes | yes |
 | `PerfFirstEyeCaptured` | - | yes | yes |
 | `PerfPresentBegin` | - | - | - |

@@ -14,6 +14,12 @@
 #include "core/vr/SceneCaptureScope.hpp"
 #include "plugin/DrawReplay.hpp"
 #include "plugin/Renderer.hpp"
+#if defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
+#include "halcyon/MevrSeams.h"       // MevrSeams::PerEyeViewState, defined at the end of this file
+#endif
+#if defined(MEVR_WITH_HALCYON_LE2)
+#include "halcyon/le2/calcview_hook.h"   // ME2's same-frame replay retries, for the 10 s line
+#endif
 #if defined(MEVR_WITH_HALCYON)
 #include "plugin/MetricStereo.hpp"   // LE1's metric stereo plan: the eye scissor's shown window
 #include "plugin/UiWorldFigure.hpp"  // LE1's UI world figure: its capture's scene swap
@@ -100,7 +106,8 @@ tSetCommander* gSetCommanderOrig = nullptr;
 bool gSetCommanderHooked = false;
 std::atomic<int> gUe3QueryWait{1};  // 1 the game's own; 0 a frame's second render never waits for a query result
 std::atomic<std::uint64_t> gQueryWaitsSkipped{0};  // reads that would have waited, this period
-std::atomic<int> gPerEyeViewState{0};  // 1: Halcyon renders each Stereo 2 eye through its own view state in gameplay too
+// 1: Halcyon renders each stereo eye through its own view state in gameplay too (ME1 0; the sequels' SFR 1, from the start)
+std::atomic<int> gPerEyeViewState{kLayout.perEyeViewStateDefault};
 
 // ---- The second eye's own occlusion history (research/35, attempts 34-35) ------------------------------------------
 // FSceneViewState keeps the engine's per-primitive occlusion history as a TSet<FPrimitiveOcclusionHistory> at +0xD10:
@@ -2094,6 +2101,21 @@ void LogStats(Snapshot const& now, Snapshot const& before) {
                 static_cast<double>(seen) / f, static_cast<double>(culled) / f, bins[0] / f, bins[1] / f, bins[2] / f,
                 bins[3] / f, bins[4] / f, bins[5] / f, bins[6] / f, bins[7] / f);
         }
+#if defined(MEVR_WITH_HALCYON_LE2)
+        {
+            // ME2's SFR draws pass 1 again in the same frame when its game-thread Draw returned in under 100 us
+            // ([NOOPRETRY] in src/halcyon/le2/calcview_hook.cpp DrawDetour); a retry that renders is the frame's third
+            // scene render (research/sequel-render-levers.md "Performance research", the worst frames).
+            long long pass0Us = 0;
+            unsigned pass0Noops = 0, attempts = 0, successes = 0;
+            ME2VR::CalcViewHook::GetSfrNoopDiag(&pass0Us, &pass0Noops, &attempts, &successes);
+            static unsigned lastAttempts = 0, lastSuccesses = 0;
+            share += std::format("; ME2's same-frame replay retries: {} ({} of them took 100 us or more)",
+                attempts - lastAttempts, successes - lastSuccesses);
+            lastAttempts = attempts;
+            lastSuccesses = successes;
+        }
+#endif
         std::uint64_t const reported = gSecondEyeReported.exchange(0, std::memory_order_relaxed);
         std::uint64_t const filtered = gSecondEyeFiltered.exchange(0, std::memory_order_relaxed);
         std::uint64_t const cheap = gSecondEyeRendersCheap.exchange(0, std::memory_order_relaxed);
@@ -2378,16 +2400,29 @@ void Tick() {
             return end == buffer ? fallback : static_cast<int>(value);
         };
         static int perEye = -1;
-        int const perEyeRead = readInt(L"perEyeViewState", 0) != 0 ? 1 : 0;
+        // The default is the game's (RenderLeversTable: ME1 0, the sequels 1, each renderer's own behaviour).
+        int const perEyeRead = readInt(L"perEyeViewState", kLayout.perEyeViewStateDefault) != 0 ? 1 : 0;
         if (perEyeRead != perEye) {
             perEye = perEyeRead;
             gPerEyeViewState.store(perEyeRead, std::memory_order_relaxed);
+#if defined(MEVR_GAME_LE1)
             log::Info("render levers: {} ([Performance] perEyeViewState = {})",
                 perEyeRead != 0 ? "each Stereo 2 eye renders through its own scene view state in gameplay (its own "
                                   "occlusion history: no spin for the other eye's queries)"
                                 : "both eyes render through the game's one scene view state (Halcyon's own; per-eye "
                                   "states in cine only)",
                 perEyeRead);
+#else
+            // The sequels' SFR (research/sequel-render-levers.md "Performance research"): with a state per pass the
+            // second eye's Umbra results read polls queries that live in the other state's pool (never ready).
+            log::Info("render levers: {} ([Performance] perEyeViewState = {}{})",
+                perEyeRead != 0 ? "each SFR pass renders through its own scene view state (Halcyon's own: the second "
+                                  "eye's Umbra query results are never ready)"
+                                : "both SFR passes render through the game's one scene view state (ME1's gameplay: "
+                                  "Umbra's queries double-buffer across the eyes; the second eye's engine occlusion "
+                                  "reads wait for the first eye's)",
+                perEyeRead, perEyeRead == kLayout.perEyeViewStateDefault ? ", this game's default" : "");
+#endif
         }
         static int umbraEyeMatrix = -1;
         int const umbraEyeMatrixRead = readInt(L"umbraEyeMatrix", 1) != 0 ? 1 : 0;
@@ -2478,7 +2513,7 @@ void Tick() {
                 perEyeOcclusionRead);
         }
         static int ue3QueryWait = -1;
-        int const ue3Wait = readInt(L"ue3QueryWait", 1) != 0 ? 1 : 0;
+        int const ue3Wait = readInt(L"ue3QueryWait", kLayout.ue3QueryWaitDefault) != 0 ? 1 : 0;
         if (ue3Wait != ue3QueryWait) {
             ue3QueryWait = ue3Wait;
             gUe3QueryWait.store(ue3Wait, std::memory_order_relaxed);
@@ -2489,7 +2524,7 @@ void Tick() {
                                "counts as visible)",
                 ue3Wait, gQueryDataHooked ? "" : "; not hooked, so no effect");
         }
-        int const queryWait = readInt(L"umbraQueryWait", 1) != 0 ? 1 : 0;
+        int const queryWait = readInt(L"umbraQueryWait", kLayout.umbraQueryWaitDefault) != 0 ? 1 : 0;
         int const pCores = readInt(L"pCoresOnly", 0) != 0 ? 1 : 0;
         if (queryWait != umbraQueryWait) {
             umbraQueryWait = queryWait;
@@ -2608,6 +2643,19 @@ bool OneDrawWindow() {
 bool PerEyeViewState() {
     return gPerEyeViewState.load(std::memory_order_relaxed) != 0;
 }
+
+} // namespace mevr::host::render_levers
+
+#if defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
+// The seam the sequels' SFR asks (src/halcyon/MevrSeams.h; LE1's tree asks MELEVR::MevrBridge::PerEyeViewState).
+namespace MevrSeams {
+bool PerEyeViewState() noexcept {
+    return mevr::host::render_levers::PerEyeViewState();
+}
+} // namespace MevrSeams
+#endif
+
+namespace mevr::host::render_levers {
 
 std::string SettingsJson() {
     return std::format("{{\"umbraQueryWait\": {}, \"ue3QueryWait\": {}, \"perEyeViewState\": {}, \"perEyeOcclusion\": {}, \"umbraEyeMatrix\": {}, \"flushFirstEye\": {}, \"umbraShareResults\": {}, \"keepBoundShaderStates\": {}, \"minScreenRadiusPx\": {}, \"umbraSharedVisibility\": {}, \"pCoresOnly\": {}, \"sharePass\": {}, \"shareFailed\": {}, \"replayFailed\": {}, "
