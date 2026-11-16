@@ -20,7 +20,14 @@ See [shared per-eye implementation and evidence](../research/sequel-eye-pose-tag
 the Halcyon/native rendering investigation; other parity implementation is paused at the owner's request.
 See the [native preview and timing evidence](../research/le3-renderer-preview-evidence.md). All three
 development/player variants build and the expanded **65-test suite** passes. The protected runner's
-35 safety cases also pass, including the bounded startup settings-lock retry.
+36 safety cases also pass, including bounded startup initialization: fresh writer
+completion markers, stable complete default sections and unchanged protected artifacts.
+The normal load hash gate remains strict. A protected ME3 run at the shared 5 ft 9 in
+null-headset height now captures `stageEyeM = finalEyeM = 1.752600`, active floor lock,
+controller-driven IK and an unobstructed sightline with the chest-level replay. Five
+captures retain the 64 mm eye baseline and both world images. This is floor/view-height
+evidence, not physical hand/gun alignment or full-body acceptance; see
+[height evidence](../research/null-headset-height.md).
 Two earlier protected desktop probes passed **355/355** and **361/361** native
 comparisons, with ordinary Normandy loading and zero-difference restoration. The latter supplies the native
 dialogue-text and HUD-matrix entry points for the remaining source audits. These counts prove only the

@@ -368,6 +368,51 @@ try {
         [IO.File]::WriteAllText($renderer,(Get-PreviewRendererConfig)); [IO.File]::WriteAllText($dll,'changed module')
         Reject { Confirm-PreviewInitializedConfig $bin $artifacts }
     }
+    Case 'preview readiness waits for complete defaults and fresh writer completion before freezing' {
+        $bin=Join-Path $root 'preview-ready'; New-Item -ItemType Directory (Join-Path $bin 'ASI') | Out-Null
+        $mod=Join-Path $bin 'ASI\LE3MEVR.ini'; $renderer=Join-Path $bin 'MELE3VR.ini'
+        $dll=Join-Path $bin 'module.dll'; $log=Join-Path $bin 'startup.log'
+        [IO.File]::WriteAllText($mod,(Get-PreviewModConfig)); [IO.File]::WriteAllText($renderer,(Get-PreviewRendererConfig))
+        [IO.File]::WriteAllText($dll,'synthetic module')
+        $artifacts=@($mod,$renderer,$dll | ForEach-Object { [pscustomobject]@{path=$_;sha256=(Get-FileHash $_).Hash} })
+        $complete=(Get-PreviewModConfig)
+        foreach ($section in @('Colour','Controls','Holsters','Squad','Throwables','Comfort','Sights','Interact','Vent','Hud',
+            'Mako','Cockpit','Galaxy','WorldUi','Game','SquadContext','SquadOrders','Voice','PowerWheel','Cover')) {
+            $complete += "[$section]`r`nenabled=1`r`n"
+        }
+        $markers="hands: calibration pitch 0`r`ncolour: profile auto`r`n"
+        [IO.File]::WriteAllText($log,$markers)
+        $started=[DateTime]::UtcNow.AddSeconds(-1)
+        # Stale markers and incomplete blocks must never become readiness.
+        Reject { Wait-PreviewInitializedConfig $bin $artifacts @($log) @{} $started {} -TimeoutSeconds 2 }
+        [IO.File]::WriteAllText($mod,$complete)
+        $oldLogs=@{}; $oldLogs[$log]=$markers
+        Reject { Wait-PreviewInitializedConfig $bin $artifacts @($log) $oldLogs $started {} -TimeoutSeconds 2 }
+        # Simulate slow defaults followed by a migration; quiet time restarts on
+        # the changed text. A process/lock guard executes on every observation.
+        [IO.File]::WriteAllText($mod,(Get-PreviewModConfig))
+        $state=@{ polls=0; migratedAt=$null }; $clock=[Diagnostics.Stopwatch]::StartNew()
+        $result=Wait-PreviewInitializedConfig $bin $artifacts @((Join-Path $bin 'missing-primary.log'),$log) @{} $started {
+            $state.polls++
+            if ($state.polls -eq 1) { [IO.File]::AppendAllText($mod,"[Colour]`r`nprofi") }
+            if ($state.polls -eq 2) { [IO.File]::WriteAllText($mod,$complete) }
+            if ($state.polls -eq 4) {
+                [IO.File]::AppendAllText($mod,"migration=1`r`n"); $state.migratedAt=$clock.Elapsed.TotalMilliseconds
+            }
+        } -TimeoutSeconds 5
+        Check ($result.initializationMarkersFresh -and $result.missingSections.Count -eq 0)
+        Check ($result.initializationLog -eq $log)
+        Check ($result.text.EndsWith("migration=1`r`n") -and $result.stableMilliseconds -ge 1250)
+        Check ($clock.Elapsed.TotalMilliseconds - $state.migratedAt -ge 1250 -and $state.polls -ge 9)
+        Reject { Wait-PreviewInitializedConfig $bin $artifacts @($log) @{} $started { throw 'ownership lost' } -TimeoutSeconds 2 }
+        [IO.File]::WriteAllText($mod,($complete+"[Unknown]`r`nx=1`r`n"))
+        Reject { Wait-PreviewInitializedConfig $bin $artifacts @($log) @{} $started {} -TimeoutSeconds 3 }
+        [IO.File]::WriteAllText($mod,$complete)
+        # Drift while waiting is rejected, rather than silently establishing a new baseline.
+        Reject { Wait-PreviewInitializedConfig $bin $artifacts @($log) @{} $started {
+            [IO.File]::WriteAllText($dll,'changed module')
+        } -TimeoutSeconds 2 }
+    }
     Case 'preview bisection options preserve explicit mono and reject malformed metadata' {
         Check ((Get-PreviewOptions ([pscustomobject]@{})).mode -eq 4)
         $options = Get-PreviewOptions ([pscustomobject]@{ previewRendererMode=0; previewDiagnostics=$true })

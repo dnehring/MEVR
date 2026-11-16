@@ -453,7 +453,7 @@ function Read-RunStartupText([string]$Path, [ValidateRange(1,50)][int]$Attempts 
     }
 }
 function Confirm-PreviewInitializedConfig([string]$Bin, $Artifacts, [ValidateSet(0, 2, 4)][int]$Mode = 4, [bool]$Diagnostics = $false,
-    [ValidateSet(1, 2, 4, 8)][int]$MirrorEvery = 8) {
+    [ValidateSet(1, 2, 4, 8)][int]$MirrorEvery = 8, [switch]$DeferDefaults) {
     # HandCalibration and Colour append their compiled defaults on the first tick.
     # Only that append is permitted; protected keys, renderer mode and all binaries
     # retain their exact prep identity. Preserve the effective settings in the receipt.
@@ -464,6 +464,14 @@ function Confirm-PreviewInitializedConfig([string]$Bin, $Artifacts, [ValidateSet
         [IO.File]::ReadAllText((Join-Path $Bin 'MELE3VR.ini')) -cne (Get-PreviewRendererConfig $Mode $Diagnostics $MirrorEvery)) {
         throw 'Protected preview configuration changed during startup'
     }
+    Assert-RunArtifacts @($Artifacts | Where-Object { $_.path -ine $mod })
+    $missing = @()
+    if (-not $DeferDefaults) { $missing = @(Get-PreviewMissingDefaultSections $text) }
+    [pscustomobject]@{ defaultsAppended = ($text.Length -ne $prefix.Length); text = $text; missingSections = @($missing) }
+}
+function Get-PreviewMissingDefaultSections([string]$Text) {
+    $prefix = Get-PreviewModConfig
+    if (-not $Text.StartsWith($prefix, [StringComparison]::Ordinal)) { throw 'Protected preview configuration changed during startup' }
     $allowed = @('Colour','Controls','Holsters','Squad','Throwables','Comfort','Sights','Interact','Vent','Hud',
         'Mako','Cockpit','Galaxy','WorldUi','Game','SquadContext','SquadOrders','Voice','PowerWheel','Cover')
     $seen = @{}; $section = ''
@@ -481,8 +489,45 @@ function Confirm-PreviewInitializedConfig([string]$Bin, $Artifacts, [ValidateSet
             $seen[$section][$key] = $true
         }
     }
-    Assert-RunArtifacts @($Artifacts | Where-Object { $_.path -ine $mod })
-    [pscustomobject]@{ defaultsAppended = ($text.Length -ne $prefix.Length); text = $text }
+    @($allowed | Where-Object { -not $seen.ContainsKey($_) -or $seen[$_].Count -eq 0 })
+}
+function Wait-PreviewInitializedConfig([string]$Bin, $Artifacts, [string[]]$StartupLogs, [hashtable]$Before,
+    [DateTime]$Started, [scriptblock]$Guard, [ValidateSet(0, 2, 4)][int]$Mode = 4, [bool]$Diagnostics = $false,
+    [ValidateSet(1, 2, 4, 8)][int]$MirrorEvery = 8, [ValidateRange(1, 300)][int]$TimeoutSeconds = 30) {
+    # XR readiness precedes the mod's first tick. HandCalibration's marker follows
+    # its default blocks AND key migrations; Colour's follows its own writes.
+    # PowerWheel/Cover each append one closed block. Require every populated block
+    # and quiet text across a full one-second Refresh interval before load hashes
+    # are frozen. Never grant this startup exception to load.ps1's hash checks.
+    $timer = [Diagnostics.Stopwatch]::StartNew()
+    $stableSince = $null; $previous = $null
+    while ($timer.Elapsed.TotalSeconds -lt $TimeoutSeconds) {
+        & $Guard | Out-Null
+        # Appends can be readable halfway through a line. Validate protected
+        # state now, but parse the default suffix only after writer completion
+        # and quiet text; never mistake a partially written line for corruption.
+        $config = Confirm-PreviewInitializedConfig $Bin $Artifacts $Mode $Diagnostics $MirrorEvery -DeferDefaults
+        $completedLog = $null
+        foreach ($path in $StartupLogs) {
+            if ((Test-RunFreshMarker $path $Before[$path] $Started 'hands: calibration pitch ') -and
+                (Test-RunFreshMarker $path $Before[$path] $Started 'colour: profile ')) { $completedLog = $path; break }
+        }
+        if ($completedLog) {
+            if ($null -eq $stableSince -or $config.text -cne $previous) { $stableSince = $timer.Elapsed.TotalMilliseconds }
+            if ($timer.Elapsed.TotalMilliseconds - $stableSince -ge 1250) {
+                $config.missingSections = @(Get-PreviewMissingDefaultSections $config.text)
+                if ($config.missingSections.Count -eq 0) {
+                    $config | Add-Member -NotePropertyName initializationMarkersFresh -NotePropertyValue $true
+                    $config | Add-Member -NotePropertyName initializationLog -NotePropertyValue $completedLog
+                    $config | Add-Member -NotePropertyName stableMilliseconds -NotePropertyValue ($timer.Elapsed.TotalMilliseconds - $stableSince)
+                    return $config
+                }
+            }
+        } else { $stableSince = $null }
+        $previous = $config.text
+        Start-Sleep -Milliseconds 250
+    }
+    throw 'Preview settings initialization did not finish before the deadline; refusing to freeze load artifacts'
 }
 function Get-PreviewArtifacts([string]$Bin) {
     $paths = @((Join-Path $Bin 'MassEffect3.exe'), (Join-Path $Bin 'ASI\LE3MEVR.asi'),

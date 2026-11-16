@@ -6,6 +6,37 @@ campaign acceptance. Private sessions and images remain under `%LOCALAPPDATA%/ME
 The source branch, exact installed binary hashes, settings, normal save descriptor,
 process identity and restoration receipts are recorded by the existing runner.
 
+## Startup initialization and five-foot-nine capture
+
+The first-run ini race is now handled before freezing load hashes. XR readiness can
+precede the mod tick that appends defaults; even a console reply precedes settings
+refresh in that tick. The protected runner waits for the existing HandCalibration
+and Colour completion logs, all 20 populated allowed sections, and 1.25 seconds of
+unchanged text. Protected prefix, renderer configuration, binary identity and process
+ownership remain checked throughout. Host-log fallback and readable partial appends
+are covered, and changes during load remain failures. The actual runner's 36 offline
+safety cases and 11 load cases pass; a separate read-only review found no remaining
+substantive blocker in this change.
+
+Session `20261115-171920-179-LE3-renderer-preview` passed ordinary Normandy loading
+without ini hash drift, then five per-eye captures with the shared 1.7526 m null
+height. First-person floor lock reports `stageEyeM = finalEyeM = 1.752600`; arm IK
+follows the controllers. The chest-level replay places hands below the view and the
+inspected central sightline is clear. Both world layers and 64 mm eye separation
+remain present through third person, first person, menu, resume and a head turn.
+No capture errors occurred. Renderer binaries remain build `86fd9e72`; these changes
+are in test startup and the shared null-headset setup.
+
+The final gate's follow-up session `20261115-172213-351-LE3-renderer-preview` hit a
+separate transient launcher identity-read failure before normal game adoption.
+Recovery verified the live game's parent against that observed launcher PID,
+post-request creation time, exact executable and loaded deployed host before recording
+ownership. The final settings gate then passed and a normal load preserved all artifact
+hashes. Its failed launch receipt is retained alongside explicit recovery/readiness/load
+receipts; this is not a clean end-to-end launcher pass. Both sessions restored with
+zero differences, exact VR environment files, LE1 ini unchanged and the lock released.
+Physical-headset fit/fusion and broader body/weapon acceptance remain open.
+
 ## Per-eye correction follow-up
 
 The owner requested reuse of ME1's per-eye correction in both sequels. The source

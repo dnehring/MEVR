@@ -70,7 +70,11 @@ if (-not $DesktopDump) {
 }
 $log = if ($DesktopDump) { Join-Path $bin "Logs\${Game}MEVR.log" } else { Get-RunRendererLog $Game }
 $logs = @($log)
-if ($RendererPreview) { $logs += Join-Path $bin 'ME3PassiveDxgiProbe.log' } # actual logger fallback
+if ($RendererPreview) {
+    $logs += Join-Path $bin 'ME3PassiveDxgiProbe.log' # actual logger fallback
+    $settingsLogs = @((Join-Path $bin 'Logs\LE3MEVR.log'), (Join-Path $env:LOCALAPPDATA 'MEVR\LE3MEVR.log'))
+    $logs += $settingsLogs
+}
 $oldLogs = @{}
 foreach ($path in $logs) { $oldLogs[$path] = if (Test-Path -LiteralPath $path) { Read-RunLog $path } else { '' } }
 $started = [DateTime]::UtcNow
@@ -135,10 +139,19 @@ if ($RendererPreview) {
     $previewReceipt.freshMarker = $true; $previewReceipt.log = $log
     # The renderer can migrate an obsolete INI mode while starting. Never label
     # that run with the requested mode or continue on changed runtime artifacts.
-    $initialized = Confirm-PreviewInitializedConfig $bin $open.previewArtifacts $previewOptions.mode $previewOptions.diagnostics $previewOptions.mirrorEvery
+    $initialized = Wait-PreviewInitializedConfig -Bin $bin -Artifacts $open.previewArtifacts -StartupLogs $settingsLogs `
+        -Before $oldLogs -Started $started -Mode $previewOptions.mode -Diagnostics $previewOptions.diagnostics `
+        -MirrorEvery $previewOptions.mirrorEvery -Guard {
+            Assert-RunLock $Holder
+            $live = Get-Process -Id $p.pid -ErrorAction Stop
+            Assert-RunProcess $live $open.gameProcess $exe
+        }
     [IO.File]::WriteAllText((Join-Path $open.session 'effective-preview-mod.ini'), $initialized.text)
     $previewReceipt.rendererConfigurationUnchanged = $true
     $previewReceipt.modDefaultsAppended = $initialized.defaultsAppended
+    $previewReceipt.settingsInitializationMarkersFresh = $initialized.initializationMarkersFresh
+    $previewReceipt.settingsInitializationLog = $initialized.initializationLog
+    $previewReceipt.settingsStableMilliseconds = $initialized.stableMilliseconds
     $previewReceipt.configurationUnchanged = -not $initialized.defaultsAppended
 }
 if ($DesktopDump) {

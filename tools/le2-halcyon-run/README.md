@@ -251,6 +251,18 @@ remain bounded to 240 seconds for the process and 80 seconds for readiness; the
 optional `-LaunchTimeoutSeconds`/`-ReadyTimeoutSeconds` can shorten them. A failure
 retains ownership and a receipt for stop/restore.
 
+Renderer-preview launch then waits up to 30 seconds for compiled settings initialization.
+Fresh `hands: calibration pitch` and `colour: profile` markers must appear in the
+same host log (the game `Logs/LE3MEVR.log`, or its `%LOCALAPPDATA%/MEVR` fallback).
+The effective ini must remain unchanged for 1.25 seconds and contain all 20 known,
+populated default sections. Suffix parsing waits for stable text so a readable
+half-written append is not mistaken for corruption. Every poll still verifies
+process/lock ownership, the exact protected prefix, renderer ini and runtime binaries.
+The receipt records the completion log and quiet interval. This startup allowance
+ends before `load.ps1` freezes hashes: any settings or binary change during load
+still rejects the run. An XR-ready marker or a console reply alone is insufficient;
+console requests are consumed before settings refresh later in the same game tick.
+
 `renderer-preview-launch.json` records launch/process identity, expected and current
 exe/host/module/config hashes (including the actual `.modpath` target), readable
 loaded-module paths/hashes or an explicit read error, readiness source/freshness,

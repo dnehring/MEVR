@@ -51,7 +51,19 @@ This verifies the actual SteamVR sign and floor sample, not physical-headset sta
 The second run loaded the requested Normandy save but failed the artifact hash
 gate when the mod appended defaults to its ini during loading. The executable,
 host, module, module path, renderer ini and source save were unchanged. No guard
-was relaxed. It stopped before screenshots, so the new height has no accepted
-full-body screenshot yet. Both runs restored with zero differences, preserved the
+was relaxed. It stopped before screenshots. Both runs restored with zero differences, preserved the
 LE1 ini and released the game lock. ME1/ME2 inherit the same shared setup; they were
 not separately launched for this script-only change.
+
+After adding the startup settings completion gate, session
+`20261115-171920-179-LE3-renderer-preview` loaded the normal save with unchanged
+artifacts and captured third person, first person, menu, resume and a head turn.
+The first-person snapshot `2026-11-15_17-20-26-381` reports floor lock active,
+`stageEyeM = finalEyeM = 1.752600`, correction 32.260034 game units, and controller-driven
+arm IK. The chest-level replay keeps both hands below the eye view, and the inspected
+left-eye image has an unobstructed central sightline. All five captures retain both
+world images and a 64 mm submitted eye baseline, with no capture errors. This proves
+the configured floor/view height and removes the deliberately raised test hands;
+it does not establish weapon alignment, full-body fit or physical-controller calibration.
+Game/profile restoration had zero differences; the exact VR environment and LE1 ini
+were preserved and the game lock released.
