@@ -12,7 +12,7 @@
 
 struct ID3D11Device;
 
-namespace ME2VR::MevrBridge {
+namespace MevrSeams {
 struct OverlayFrame;
 }
 
@@ -34,7 +34,7 @@ vr::controllers::State OnFrameBegun(XrSession session, XrSpace space, XrTime tim
     vr::controllers::State const& state, bool focused);
 // OverlayLayers, after the vignette: the calibration's quads and our menu's, appended to layersOut[count..capacity). While
 // the calibration runs or our menu is open they replace ours before them, as on LE1. Returns the new count.
-unsigned Layers(ME2VR::MevrBridge::OverlayFrame const& frame, ID3D11Device* device, void const** layersOut, unsigned count,
+unsigned Layers(MevrSeams::OverlayFrame const& frame, ID3D11Device* device, void const** layersOut, unsigned count,
     unsigned capacity);
 // ---- ME2's game screens on the wrist (M4.3, research/le2-menus.md "ME2's screens on the wrist") ----
 // While one of the game's screens of the mod's game/WorldUi owns the GUI mode (or is being opened), the game's UI goes to the
@@ -47,11 +47,11 @@ struct WorldUiPanel {
 };
 // OverlayLayers, before the HUD panel is drawn: this frame's screen (plugin/WorldUi's Current, from the head and the left
 // wrist), panelWidth x panelHeight the panel texture (the game's UI frame).
-WorldUiPanel BeforePanel(ME2VR::MevrBridge::OverlayFrame const& frame, unsigned panelWidth, unsigned panelHeight);
+WorldUiPanel BeforePanel(MevrSeams::OverlayFrame const& frame, unsigned panelWidth, unsigned panelHeight);
 // After it: `panelLayer` (hud_panel::Layer's quad, or nullptr) appended to layersOut[count..capacity) as this frame shows it:
 // unchanged in gameplay; for a screen of ours its fan of light and the panel image's part at the screen's place (the game
 // pointer's quad noted); nothing while the screen isn't placed yet. Returns the new count.
-unsigned PanelLayers(ME2VR::MevrBridge::OverlayFrame const& frame, ID3D11Device* device, void const* panelLayer,
+unsigned PanelLayers(MevrSeams::OverlayFrame const& frame, ID3D11Device* device, void const* panelLayer,
     void const** layersOut, unsigned count, unsigned capacity);
 
 // The app space was re-origined: our menu and the calibration's layout placed again.

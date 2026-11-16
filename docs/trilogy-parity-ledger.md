@@ -203,7 +203,7 @@ The [technique groups](#renderer-techniques-by-group) summary follows the table.
 
 | id | system (LE1 code) | LE2 | LE3 | check / next step |
 |---|---|---|---|---|
-| G01 | VRIK arm IK (`game/ArmIk`, `engine/BonePose`, `core/ik`; docs/vrik-porting-guide.md) | **adapted** V: LE2 `kUpdateSkelPose 0x79B8A0`; research/le2-vrik.md "The run" 2026-11-14 (141fd1d5, 965321e2): wrists 0.07 m off, skeleton audit within 3 cm. Root-motion work unmerged: 5f16c065 on `worktree-agent-a2e1237ec285988ed` | **adapted** V: LE3 layout, `kUpdateSkelPose 0x796EB0`, `MenuBodyEligible`; runs `20261115-182253-344`, `20261115-183117-290` (research/le3-body-pose.md) | Headset: hands on the controllers (snapshot `mod.armIk.hands`). |
+| G01 | VRIK arm IK (`game/ArmIk`, `engine/BonePose`, `core/ik`; docs/vrik-porting-guide.md) | **adapted** V: LE2 `kUpdateSkelPose 0x79B8A0`; research/le2-vrik.md "The run" 2026-11-14 (141fd1d5, 965321e2): wrists 0.07 m off, skeleton audit within 3 cm. Root-motion steps (shared, `core/ik/GoalStep`): the goals follow the `Camera` bone; three vaults with every tick within 0.08 m of the controllers (0.70-1.04 m before; stretch `20261115-010524-lane-c2-vault`, research/le2-vrik.md) | **adapted** V: LE3 layout, `kUpdateSkelPose 0x796EB0`, `MenuBodyEligible`; runs `20261115-182253-344`, `20261115-183117-290` (research/le3-body-pose.md). The root-motion rule is the shared one, U on ME3 | Headset: hands on the controllers (snapshot `mod.armIk.hands`). |
 | G02 | Hand aim and the aim ray (`game/HandAim`) | **adapted** V: `SFXWeapon.GetAdjustedAim` post-handler; 34 shots 0.4–0.8° from the barrel (le2-vrik) | **adapted** U: LE3 branches; LExSDKv2 (`engine::legacy`) only as a fallback while the layer is off (`MEVR_OR_LEGACY`), as on LE2 | LE3: a combat fixture (research/le3-combat-fixtures.md). Drop the fallback for the SDK-free players' build. |
 | G03 | Fingers (`game/Fingers`, `core/ik/Fingers`) | **shared** U | **shared** U | Snapshot `mod.fingers` with a replayed trigger and grip on each game's skeleton. |
 | G04 | The drawn gun (`game/Weapon`) | **adapted** V: muzzle against `GetMuzzleLoc`, 0.00 units (le2-vrik) | **adapted** U: LE3 weapon classes, the SMG as its own `RangedType` | LE3: a combat fixture. |
@@ -376,56 +376,67 @@ Not forks, thin adapters (checked): `game/Le3Gui.cpp`, `game/Le3Cover.inc` (incl
 
 ## Seams
 
-The generated [seam table](#the-three-mevrbridge-vocabularies) lists every `MevrBridge` function each tree declares,
-and marks whether the tree calls it. LE1 declares 111, LE2 32 and LE3 29.
+Since 2026-11-16 (lane U1) the three renderers share **one seam vocabulary**: `src/halcyon/MevrSeams.h`, namespace
+`MevrSeams`, one signature per function. [research/trilogy-seams.md](../research/trilogy-seams.md) has each signature's
+reasoning, where each game's host defines each seam, and the steps to add one. The generated
+[seam tables](#the-three-mevrbridge-vocabularies) list which tree calls which common seam, and each tree's own.
 
-**Common to all three today (18):** `StaticXrGetInstanceProcAddr`, `WrapSessionFunctions`, `OnSessionCreated`,
-`OnSessionStopped`, `OnFrameBegun`, `OnRecentered`, `OnViewBuilt`, `FloorViewTranslation`, `MergeMotionControllers`,
-`KeyDown` (LE2 calls it through `HotkeyDown`), `OnMenuKey`, `MainMenuOpen`, `OnGameThread`, `QueueProcessEvent`,
-`OverlayLayers`, `CineScreenWanted`, `CineScreenFullRate`, `TransitionFadeLayer`.
+**Before** (the audit of `ccacd667`): LE1 declared 111 `MevrBridge` functions, LE2 32 and LE3 29. They shared 18 names
+and six of those differed in signature (`OnViewBuilt`, `WrapSessionFunctions`, `OnEyeCopied`, `CopyIntoImage`,
+`HudPanelDraw`, `QueueProcessEvent`), so no shared module could be written against them once. There were two
+`OverlayFrame` structs and three panel-placement seams.
 
-Even these differ in signature:
-- `OnViewBuilt`: LE1 passes a head quaternion, the sequels yaw and pitch in UU.
-- `WrapSessionFunctions`: LE1/LE2 take five pointers, LE3 four.
-- `OnEyeCopied`: LE2 adds index/acquired/waited.
-- `CopyIntoImage`: LE3 adds the eye.
-- `HudPanelDraw`: LE2 adds `textBatch`.
-- `QueueProcessEvent`: LE1 has no size.
+**The common set (32 functions, six groups).** Every tree includes `MevrSeams.h` and calls `MevrSeams::X`:
 
-So no shared module can be written against them once.
-
-**Sequels only (9):** `CopyIntoImage`, `OnEyeSource`, `OnEyeCopied`, `OnEyeReleased`, `OnFactory`, `HudPanelDraw`,
-`CineScreenHalfSeparationUU`, `CineScreenLayers`, `XrRuntimeIsSteamVr`. One game only: LE2 `PlaceGalaxyPanel`,
-`WorldUiOwnsGui`, `OnSwapChainPresent`; LE3 `PlaceNativePanel`, `OnPresent`. The other ~90 LE1 seams are the
-performance work, the HUD panel's 11 draw seams, the galaxy view swaps, conversations, the front end and the menus.
-
-**Recommendation: the smallest common seam set.** One game-neutral header, `src/halcyon/MevrSeams.h`: SequelPresentation.h
-grown with LE1's frame fields, one namespace, one signature per function. All three trees include it; one host file
-implements it. It needs 26 functions in six groups:
-
-1. **Session and frame (7):** `StaticXrGetInstanceProcAddr`, `WrapSessionFunctions` (five pointers; a renderer passes
-   null for what it lacks), `OnSessionCreated`, `OnSessionStopped`, `OnFrameBegun`, `OnRecentered`, `XrRuntimeIsSteamVr`.
-2. **View (3):** `OnViewBuilt` (head quaternion and position; the sequels convert their yaw and pitch),
-   `FloorViewTranslation`, `RecenterOrientation`. The last gives the sequels LE1's tilt removal (R28).
-3. **Eye image (5):** `OnEyeSource`, `CopyIntoImage(context, image, source, shiftX, eye)`, `OnEyeCopied`, `OnEyeReleased`,
-   `OnFactory`. LE1's blit calls the same stage (Forks 7, 8), so colour, tonemap, FSR and the HDR answer live in one
-   place.
-4. **Composition (6):** `OverlayLayers(OverlayFrame)`, `HudPanelDraw(context, draw, user, textBatch, afterLeftEye)`,
-   `CineScreenWanted`, `CineScreenLayers`, `TransitionFadeLayer`, and one `PlacePanel(kind, frame, ...)`.
+1. **Session and frame (7):** `StaticXrGetInstanceProcAddr`, `WrapSessionFunctions` (seven slots; a renderer passes
+   null for one it lacks), `OnSessionCreated`, `OnSessionStopped`, `OnFrameBegun`, `OnRecentered`, `XrRuntimeIsSteamVr`.
+2. **View (3):** `OnViewBuilt` (the head look in UU, the head quaternion and position, the view offset),
+   `FloorViewTranslation`, `RecenterOrientation` (ME1's tilt removal, R28, for every renderer that calls it).
+3. **Eye image (5):** `OnEyeSource`, `CopyIntoImage(context, image, source, shiftX, eye)`,
+   `OnEyeCopied(eye, image, index, acquired, waited)`, `OnEyeReleased`, `OnFactory`. LE1's blit does not call these yet
+   (Forks 7, 8: the eye-image lane).
+4. **Composition (7):** `OverlayLayers(OverlayFrame)` over **one** frame struct, `HudPanelDraw(context, draw, user,
+   textBatch, afterLeftEye)`, `CineScreenWanted`, `CineScreenFullRate`, `CineScreenLayers`, `TransitionFadeLayer`, and one
+   `PlacePanel(kind, frame, viewPosition, widthM, heightM, imageReady)`.
    - `PlacePanel` replaces LE1's `PlacePanel`, LE2's `PlaceGalaxyPanel` and LE3's `PlaceNativePanel`.
-   - LE1's other ten `HudPanel*` seams stay LE1 adapter detail behind `HudPanelDraw`.
-5. **Input and threads (5):** `MergeMotionControllers`, `KeyDown`, `OnMenuKey`, `OnGameThread`,
-   `QueueProcessEvent(object, function, params, size)`.
-6. **Capabilities:** a `RendererCaps` bitset in `plugin/Renderer.hpp`: one-Draw, per-eye frustum, metric stereo, perf
-   seams, HUD-panel gameplay, world UI, galaxy window. Shared host modules and `BuildServices` ask it in place of
-   `#if defined(MEVR_WITH_HALCYON_LEx)`.
-   - Optional seam groups (the one-Draw `Record*`/`RecordPass1View`, the perf `Perf*`, the front end, the
-     conversation-in-world hold) stay per-renderer extensions, behind a capability bit.
-   - This is the LE3 plan's architecture-contract rule 3, "populate a service only when its renderer ... exist",
-     made checkable.
+   - LE1's ten `HudPanel*` draw seams stay LE1's own until its draw hooks go through `HudPanelDraw`.
+5. **Input and threads (6):** `MergeMotionControllers`, `KeyDown`, `OnMenuKey(ownMenuOpen)`, `MainMenuOpen`,
+   `OnGameThread`, `QueueProcessEvent(object, function, params, size)`.
+6. **Frame-breakdown probe (4, optional):** `PerfPresentBegin`, `PerfPresentEnd`, `PerfFirstEyeCaptured`, `PerfDraw`,
+   for the sequels' trees (lane PL's request). LE1 keeps its own `PerfPresentScope`, `PerfPass0Captured`, `PerfPoint` and
+   `g_perfDraws` until they move.
 
-With that set, a shared module (overlays, galaxy table, menus glue, eye colour, tilt removal) stops branching per game.
-Only the per-renderer extensions and the native adapters in `src/game` stay per game.
+**Against the audit's 26:** `MainMenuOpen` and `CineScreenFullRate` were added (already in all three trees with one
+signature), and the perf group. `OnViewBuilt` takes the sequels' signature, which already carried the quaternion (the
+audit read it as yaw and pitch only). `WrapSessionFunctions` has seven slots, not five.
+
+**Capabilities.** `mevr::host::renderer::Capabilities()` (`plugin/Renderer.hpp`, filled by each `RendererLeN.cpp`):
+the common groups a renderer's tree calls (`eyeImageSeams`, `hudPanelDraw`, `hostCineScreen`, `recenterTilt`,
+`panelsInRoom`, `galaxyTable`, `perfSeams`) and the per-renderer extensions (`oneDraw`, `perEyeFrustum`, `metricStereo`,
+`hudPanelGameplay`, `hudPieces`, `worldUi`, `galaxyWindow`, `frontEnd`, `conversationWorld`, `eyeColourInBlit`,
+`screenReticleHide`, `floorViewJournal`, `headArmSequence`, `ownMenuRows`). Shared host modules and `BuildServices` ask it
+in place of `#if defined(MEVR_WITH_HALCYON_LEx)`; `WithRenderer` and `WithHudPieces` do so far. This is the LE3 plan's
+architecture-contract rule 3, "populate a service only when its renderer ... exist", made checkable.
+
+**The host side.** The seams with one answer for every game are implemented once, in `plugin/Seams.cpp`
+(`OnGameThread`, `QueueProcessEvent`, `KeyDown`, `OnMenuKey`, `MainMenuOpen`, `CineScreenWanted`, `CineScreenFullRate`,
+`XrRuntimeIsSteamVr`). The rest are still per game, in `namespace MevrSeams` of each bridge: merging those is Forks 1
+and 2 (the overlay composition and the sequel bridges).
+
+**Per renderer, not waste.** What stays in a tree's own `mevr_bridge.h`:
+- LE1 (about 90): the performance work (one-Draw's `Record*`, the perf points, Quest pacing), the HUD panel's draw
+  seams, metric stereo, the galaxy view swaps, conversations in the world, the front end, the eye blit's colour and
+  upscale, Halcyon's own menu.
+- LE2: `JournalFloorViewWrite`, `CineScreenHalfSeparationUU`, `OnSwapChainPresent`, `WorldUiOwnsGui`, and the inline
+  `HotkeyDown`.
+- LE3: `CineScreenHalfSeparationUU`, `OnPresent`.
+
+**State of the migration (2026-11-16).** Landing 1 of 5 is in: the header, the host's definitions in `namespace
+MevrSeams`, `plugin/Seams.cpp`, the capability set, and thin inline forwarders from every old name (the generated table
+lists them per tree), so the trees' call sites still compile unchanged. Only three call sites moved with it, because their
+signature changed and a forwarder could not supply the difference: LE1's `OnViewBuilt` and `OnMenuKey`, and ME2's
+`CopyIntoImage` (the eye is the caller's now). Next: the call sites of the LE2 tree, then LE3's, then LE1's, each its own
+landing; then the forwarders go. The sequels do not call `RecenterOrientation` or the perf group yet.
 
 ## Plans
 
@@ -512,11 +523,11 @@ defined in the tool's header:
 ### Summary
 
 <!-- parity:summary -->
-| game | renderer | host plugin files | host core files | services served | src/game + src/engine modules by status | MevrBridge seams |
-|---|---|---|---|---|---|---|
-| LE1 | halcyon-le1 | 70 | 71 | 57 | run 67, out 4, ungated 22, unreferenced 1, unbuilt 4 | 111 |
-| LE2 | halcyon-le2 | 57 | 51 | 48 | run 38, ready 11, out 22, ungated 21, unreferenced 2, unbuilt 4 | 32 |
-| LE3 | halcyon-le3 | 60 | 51 | 46 | run 33, ready 11, out 27, ungated 22, unreferenced 2, unbuilt 3 | 29 |
+| game | renderer | host plugin files | host core files | services served | src/game + src/engine modules by status | common seams called | own seams |
+|---|---|---|---|---|---|---|---|
+| LE1 | halcyon-le1 | 71 | 71 | 57 | run 67, out 4, ungated 22, unreferenced 1, unbuilt 4 | 20 of 32 | 91 |
+| LE2 | halcyon-le2 | 58 | 51 | 48 | run 38, ready 11, out 22, ungated 21, unreferenced 2, unbuilt 4 | 27 of 32 | 4 |
+| LE3 | halcyon-le3 | 61 | 51 | 48 | run 33, ready 11, out 27, ungated 22, unreferenced 2, unbuilt 3 | 27 of 32 | 2 |
 <!-- /parity:summary -->
 
 ### Host plugin files per game
@@ -584,6 +595,7 @@ defined in the tool's header:
 | `RendererLe3` | - | - | yes |
 | `ReportRequest` | yes | - | - |
 | `ScopeCaptureSource` | yes | yes | yes |
+| `Seams` | yes | yes | yes |
 | `SequelCinema` | - | yes | yes |
 | `SequelSquadLayers` | - | yes | yes |
 | `SequelWeaponLayers` | - | yes | yes |
@@ -656,7 +668,7 @@ Helpers applied, in order:
 
 - LE1: `BaseServices`, `WithCrashBreadcrumbs`, `WithRenderer`, `WithVignette`, `WithSights`, `WithPadMerge`, `WithHudPieces`, `WithFloorLock`, `WithVoice`, `WithPowerWheel`, `WithLe1Modules`, `WithGameMenuRequest`, `WithScopeCapture`, `WithInteractLabel`, `WithMakoControls`, `WithSpectator`, `WithGalaxyMap`, `WithGalaxyHologram`, `WithWorldUi`, `WithLe1ExtraUi`
 - LE2: `BaseServices`, `WithCrashBreadcrumbs`, `WithRenderer`, `WithVignette`, `WithSights`, `WithPadMerge`, `WithHudPieces`, `WithFloorLock`, `WithVoice`, `WithPowerWheel`, `WithTraversal`, `WithMenus`
-- LE3: `BaseServices`, `WithCrashBreadcrumbs`, `WithGalaxyHologram`, `WithRenderer`, `WithVignette`, `WithSights`, `WithPadMerge`, `WithFloorLock`, `WithTraversal`, `WithVoice`, `WithPowerWheel`, `WithMenus`
+- LE3: `BaseServices`, `WithCrashBreadcrumbs`, `WithGalaxyHologram`, `WithRenderer`, `WithVignette`, `WithSights`, `WithPadMerge`, `WithHudPieces`, `WithFloorLock`, `WithTraversal`, `WithVoice`, `WithPowerWheel`, `WithMenus`
 
 | HostServices field | LE1 | LE2 | LE3 |
 |---|---|---|---|
@@ -669,7 +681,7 @@ Helpers applied, in order:
 | `hapticContinuous` | WithRenderer | WithRenderer | WithRenderer |
 | `hapticPulse` | WithRenderer | WithRenderer | WithRenderer |
 | `hapticPulseHz` | WithRenderer | WithRenderer | WithRenderer |
-| `hideScreenReticle` | WithRenderer | WithRenderer | - |
+| `hideScreenReticle` | WithRenderer | WithRenderer | WithRenderer |
 | `keepLoaded` | BaseServices | BaseServices | BaseServices |
 | `leftGripAway` | WithPadMerge | WithPadMerge | WithPadMerge |
 | `logWorldUiStats` | WithWorldUi | WithMenus | - |
@@ -686,7 +698,7 @@ Helpers applied, in order:
 | `setGalaxyHologram` | WithGalaxyHologram | - | WithGalaxyHologram |
 | `setGalaxyMap` | WithGalaxyMap | - | - |
 | `setHandAim` | WithRenderer | WithRenderer | WithRenderer |
-| `setHudPieces` | WithHudPieces | WithHudPieces | - |
+| `setHudPieces` | WithHudPieces | WithHudPieces | WithHudPieces |
 | `setInteractLabel` | WithInteractLabel | BuildServices | BuildServices |
 | `setMakoControls` | WithMakoControls | - | - |
 | `setPowerLock` | WithPowerWheel | WithPowerWheel | WithPowerWheel |
@@ -830,15 +842,57 @@ Helpers applied, in order:
 ### The three MevrBridge vocabularies
 
 <!-- parity:seams -->
+The common vocabulary (`namespace MevrSeams`, `src/halcyon/MevrSeams.h`): `yes` where the tree calls it (through an old name's forwarder too), `-` where it does not yet.
+
+| MevrSeams seam | LE1 | LE2 | LE3 |
+|---|---|---|---|
+| `CineScreenFullRate` | yes | yes | yes |
+| `CineScreenLayers` | - | yes | yes |
+| `CineScreenWanted` | yes | yes | yes |
+| `CopyIntoImage` | - | yes | yes |
+| `FloorViewTranslation` | yes | yes | yes |
+| `HudPanelDraw` | - | yes | yes |
+| `KeyDown` | yes | yes | yes |
+| `MainMenuOpen` | yes | yes | yes |
+| `MergeMotionControllers` | yes | yes | yes |
+| `OnEyeCopied` | - | yes | yes |
+| `OnEyeReleased` | - | yes | yes |
+| `OnEyeSource` | - | yes | yes |
+| `OnFactory` | - | yes | yes |
+| `OnFrameBegun` | yes | yes | yes |
+| `OnGameThread` | yes | yes | yes |
+| `OnMenuKey` | yes | yes | yes |
+| `OnRecentered` | yes | yes | yes |
+| `OnSessionCreated` | yes | yes | yes |
+| `OnSessionStopped` | yes | yes | yes |
+| `OnViewBuilt` | yes | yes | yes |
+| `OverlayLayers` | yes | yes | yes |
+| `PerfDraw` | - | - | - |
+| `PerfFirstEyeCaptured` | - | - | - |
+| `PerfPresentBegin` | - | - | - |
+| `PerfPresentEnd` | - | - | - |
+| `PlacePanel` | yes | yes | yes |
+| `QueueProcessEvent` | yes | yes | yes |
+| `RecenterOrientation` | yes | - | - |
+| `StaticXrGetInstanceProcAddr` | yes | yes | yes |
+| `TransitionFadeLayer` | yes | yes | yes |
+| `WrapSessionFunctions` | yes | yes | yes |
+| `XrRuntimeIsSteamVr` | - | yes | yes |
+
+Old names still forwarded to the common seams (inline, in the tree's `mevr_bridge.h`; removed once nobody calls them):
+
+- LE1: `CineScreenFullRate`, `CineScreenWanted`, `FloorViewTranslation`, `KeyDown`, `MainMenuOpen`, `MergeMotionControllers`, `OnFrameBegun`, `OnGameThread`, `OnRecentered`, `OnSessionCreated`, `OnSessionStopped`, `OverlayLayers`, `PlacePanel`, `QueueProcessEvent`, `RecenterOrientation`, `StaticXrGetInstanceProcAddr`, `TransitionFadeLayer`, `WrapSessionFunctions`
+- LE2: `CineScreenFullRate`, `CineScreenLayers`, `CineScreenWanted`, `CopyIntoImage`, `FloorViewTranslation`, `HotkeyDown`, `HudPanelDraw`, `KeyDown`, `MainMenuOpen`, `MergeMotionControllers`, `OnEyeCopied`, `OnEyeReleased`, `OnEyeSource`, `OnFactory`, `OnFrameBegun`, `OnGameThread`, `OnMenuKey`, `OnRecentered`, `OnSessionCreated`, `OnSessionStopped`, `OnViewBuilt`, `OverlayLayers`, `PlaceGalaxyPanel`, `QueueProcessEvent`, `StaticXrGetInstanceProcAddr`, `TransitionFadeLayer`, `WrapSessionFunctions`, `XrRuntimeIsSteamVr`
+- LE3: `CineScreenFullRate`, `CineScreenLayers`, `CineScreenWanted`, `CopyIntoImage`, `FloorViewTranslation`, `HudPanelDraw`, `KeyDown`, `MainMenuOpen`, `MergeMotionControllers`, `OnEyeCopied`, `OnEyeReleased`, `OnEyeSource`, `OnFactory`, `OnFrameBegun`, `OnGameThread`, `OnMenuKey`, `OnRecentered`, `OnSessionCreated`, `OnSessionStopped`, `OnViewBuilt`, `OverlayLayers`, `PlaceNativePanel`, `QueueProcessEvent`, `StaticXrGetInstanceProcAddr`, `TransitionFadeLayer`, `WrapSessionFunctions`, `XrRuntimeIsSteamVr`
+
+Each renderer's own seams (`MevrBridge`, its tree's `mevr_bridge.h`): the per-renderer extensions.
+
 | MevrBridge seam | LE1 | LE2 | LE3 |
 |---|---|---|---|
 | `BuildMenuTabs` | yes | - | - |
-| `CineScreenFullRate` | yes | yes | yes |
 | `CineScreenHalfSeparationUU` | - | yes | yes |
-| `CineScreenLayers` | - | yes | yes |
 | `CineScreenPointerPlane` | yes | - | - |
 | `CineScreenQuadsNow` | yes | - | - |
-| `CineScreenWanted` | yes | yes | yes |
 | `CinemaBackdropLayer` | yes | - | - |
 | `CockpitLook` | yes | - | - |
 | `ConstantFpEye` | yes | - | - |
@@ -846,7 +900,6 @@ Helpers applied, in order:
 | `ConversationHandover` | yes | - | - |
 | `ConversationInWorld` | yes | - | - |
 | `ConversationWorldOrComing` | yes | - | - |
-| `CopyIntoImage` | - | yes | yes |
 | `DrawMenuPointer` | yes | - | - |
 | `EarlyFrameWait` | yes | - | - |
 | `EyeColourActive` | yes | - | - |
@@ -858,7 +911,6 @@ Helpers applied, in order:
 | `FirstPersonAtBoot` | yes | - | - |
 | `FloorLockEnabled` | yes | - | - |
 | `FloorViewLook` | yes | - | - |
-| `FloorViewTranslation` | yes | yes | yes |
 | `ForwardLeanEmphasis` | yes | - | - |
 | `FrontEndBeforeTitle` | yes | - | - |
 | `FrontEndHold` | yes | - | - |
@@ -872,11 +924,9 @@ Helpers applied, in order:
 | `GalaxyViewSwapEnd` | yes | - | - |
 | `HdrDisplayDesc` | yes | - | - |
 | `HoldPlainVr` | yes | - | - |
-| `HotkeyDown` | - | yes | - |
 | `HudPanelArmed` | yes | - | - |
 | `HudPanelBlend` | yes | - | - |
 | `HudPanelCapturesEarlyUi` | yes | - | - |
-| `HudPanelDraw` | - | yes | yes |
 | `HudPanelDrawsLastFrame` | yes | - | - |
 | `HudPanelIsFloat` | yes | - | - |
 | `HudPanelNoWrites` | yes | - | - |
@@ -889,10 +939,7 @@ Helpers applied, in order:
 | `HudPanelTintTarget` | yes | - | - |
 | `InterpolateDestinationWritten` | yes | - | - |
 | `JournalFloorViewWrite` | yes | yes | - |
-| `KeyDown` | yes | declared | yes |
-| `MainMenuOpen` | yes | yes | yes |
 | `MenuMouseFromOs` | yes | - | - |
-| `MergeMotionControllers` | yes | yes | yes |
 | `ModernBaseline` | yes | - | - |
 | `NewestPass1View` | declared | - | - |
 | `NoteCineScreenSubmit` | yes | - | - |
@@ -901,32 +948,17 @@ Helpers applied, in order:
 | `NoteHudPanelTint` | yes | - | - |
 | `NotePixelShaderCreated` | yes | - | - |
 | `NoteStereoSubmit` | yes | - | - |
-| `OnEyeCopied` | - | yes | yes |
-| `OnEyeReleased` | - | yes | yes |
-| `OnEyeSource` | - | yes | yes |
-| `OnFactory` | - | yes | yes |
 | `OnFlatQuad` | yes | - | - |
-| `OnFrameBegun` | yes | yes | yes |
 | `OnGalaxyHologram` | yes | - | - |
-| `OnGameThread` | yes | yes | yes |
-| `OnMenuKey` | yes | yes | yes |
 | `OnMenuQuad` | yes | - | - |
 | `OnPresent` | - | - | yes |
-| `OnRecentered` | yes | yes | yes |
-| `OnSessionCreated` | yes | yes | yes |
-| `OnSessionStopped` | yes | yes | yes |
 | `OnSwapChainPresent` | - | yes | - |
-| `OnViewBuilt` | yes | yes | yes |
-| `OverlayLayers` | yes | yes | yes |
 | `Pass1Records` | declared | - | - |
 | `PerEyeViewState` | yes | - | - |
 | `PerfPass0Captured` | yes | - | - |
 | `PerfPoint` | yes | - | - |
 | `PerfPresentBegin` | declared | - | - |
 | `PerfPresentEnd` | declared | - | - |
-| `PlaceGalaxyPanel` | - | yes | - |
-| `PlaceNativePanel` | - | - | yes |
-| `PlacePanel` | yes | - | - |
 | `PlanStereo` | yes | - | - |
 | `ProbeTextureAlpha` | yes | - | - |
 | `QuestPacingEnabled` | yes | - | - |
@@ -934,8 +966,6 @@ Helpers applied, in order:
 | `QuestPacingInit` | yes | - | - |
 | `QuestPacingNextFrame` | yes | - | - |
 | `QuestPacingStopped` | yes | - | - |
-| `QueueProcessEvent` | yes | yes | yes |
-| `RecenterOrientation` | yes | - | - |
 | `RecordClearDepthStencilView` | yes | - | - |
 | `RecordDraw` | yes | - | - |
 | `RecordDrawAuto` | yes | - | - |
@@ -948,16 +978,12 @@ Helpers applied, in order:
 | `SampleMenuPointer` | yes | - | - |
 | `SetGameWindow` | yes | - | - |
 | `SpectatorMirror` | yes | - | - |
-| `StaticXrGetInstanceProcAddr` | yes | yes | yes |
 | `StereoFrameActive` | declared | - | - |
-| `TransitionFadeLayer` | yes | yes | yes |
 | `WorldUiActive` | yes | - | - |
 | `WorldUiHoldFrame` | yes | - | - |
 | `WorldUiOwnership` | yes | - | - |
 | `WorldUiOwnsGui` | - | yes | - |
 | `WorldUiPresent` | yes | - | - |
-| `WrapSessionFunctions` | yes | yes | yes |
-| `XrRuntimeIsSteamVr` | - | yes | yes |
 <!-- /parity:seams -->
 
 ### Engine names the sequels lack

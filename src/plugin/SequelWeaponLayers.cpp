@@ -7,7 +7,7 @@
 #include "plugin/Renderer.hpp"
 #include <Windows.h>
 namespace mevr::host::sequel_weapon_layers {
-unsigned Layers(ME2VR::MevrBridge::OverlayFrame const& frame, ID3D11Device* device, int reticleMode,
+unsigned Layers(MevrSeams::OverlayFrame const& frame, ID3D11Device* device, int reticleMode,
     void const** layersOut, unsigned count, unsigned capacity, bool requirePublishedAim) noexcept {
     if (!layersOut || count >= capacity) return count;
     // The gun's sights (plugin/SightLayers, LE1's): worked out before the ring, which hides while an eye looks through the

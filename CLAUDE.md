@@ -170,6 +170,10 @@ authored seated scenes (such as shuttles) must reject traversal while retaining 
   (journalled, put back in a `__finally`). ME2's camera stays level and smooth through it; `view = level`, `mask = vignette |
   blink` and the cue (`cue = 1`) are options, off by default. Fixture: Save 4's spaceport, `tools/le2-halcyon-run/vault.ps1`;
   `mevr traversal slots | near | place | go | pause | trace ...`; logs `traversal:`, `traversal cue:`.
+  **Arm IK across root-motion steps** (every game; `core/ik/GoalStep`, `engine/BonePose` `GoalFrame`, research/le2-vrik.md):
+  the vault's pose moves the `Camera` bone up to 113 units in the mesh's space before the actor steps, and goals left in
+  that space rode the step (hands 0.7-1.0 m off for a frame); the writer solves in the goals' frame whenever the bone moved
+  past 1 unit since the goals were computed and the view hangs on it (not a held view). `mevr armik step [off|camera] [units]`.
   **On an HDR display (this machine's) ME2's swap chain is R16G16B16A16_FLOAT in gameplay**, whatever `DesiredRange` says;
   Halcyon's ME2 renderer assumes 8 bits (its eye copies did nothing: black or stale eyes; no SFR left eye, no UI treatment):
   `plugin/EyeCopy` draws such a frame into the eyes, and `[Colour] hdrDisplay = -1` in `ASI\LE2MEVR.ini` answers the game's
@@ -783,11 +787,17 @@ switching frameworks.
   `conversation-from-save.ps1 -Lines N` (a stance per line), `-TurnAt N` (`mevr convo turn <deg>`); **a staged scene's
   new composition under its own black screen** (research/69 "Virmire's start from above"): the stage's moves of the others for a
   second after the script's black screen (`ScriptBlackScreen`, from game/AuthoredMoment) are taken at once (put on the mark by us
-  where the game's call moved nobody); a simulated left stick walks the player to his new mark (`StartSteer` in `MovePlayer`, the
-  player's own walk step; his stick takes over; `mevr convo goto [x y]`), **unless the one the player talks to (the owner, the
-  speaker) was moved under that black screen and the mark is over 1.5 m away: then the player goes with Shepard under a dip**
-  (`TeleportPlayerTo`, the owner 2026-11-14: "if the black fade happens, and our target npc moves positions, we should likely
-  follow them on teleport"; research/69 item 40; moments never: the Citadel's walks stay walks); the stances follow
+  where the game's call moved nobody); **the game's fade to black always moves the player** (`[Cinematics] worldBlackMoves = 1`,
+  the owner 2026-11-16: a walk to the mark left players outside the elevator the script had put Shepard in, and the mission
+  stalled; research/69 item 41): in every conversation in the world a mark over 1.5 m away is a teleport with Shepard under a dip
+  (`TeleportPlayerTo`, a view walking apart joins him; a nearer one is walked by the simulated stick, `StartSteer`, `mevr convo
+  goto [x y]`), and in a moment a jump of Shepard under the game's black (`UnderGameBlack()`) takes the view with him whatever
+  the distance; **except the curated walks** (`cw::IsCuratedWalk`: the walk with Anderson to the Council; more by
+  `worldCuratedWalks`), which keep the walk; `worldBlackMoves = 0` is the old rule (staged scenes only, a teleport only if the
+  one spoken to moved, moments walked); **what Shepard stands on carries the player** (`RideBase`: his pawn's `Actor.Base`
+  moving, a lift, moves the held view and every place the scene keeps; Therum's `lav70_trig04_elevator_ride` had left the view
+  at the bottom of the shaft and `End` put Shepard back there; research/69 item 42), and **the stick walks everywhere but a
+  seat** (`PlayerSeated`: his animated head under 0.62 m above his place for 0.5 s, not crouched); the stances follow
   a whole scene (`begin`, after each dip and walk, whenever someone moved a metre or turned 40 degrees; bystanders as `others`);
   logs `convo: circle:`, `convo: squad:`, `convo: stance:`, `convo: eyes:`, `convo: steer:`;
   while it walks, his hidden (unposed) head bone never moves the view, nor for 1.5 s after he is shown again

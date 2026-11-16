@@ -160,6 +160,23 @@ void TestSetPieces() {
                                 "SeqAct_Interp_0.InterpGroupInst_1.InterpTrackInstMove_2") == nullptr);
         CHECK(cw::ShownEarlyFor("") == nullptr && cw::ShownEarlyFor("?") == nullptr);
     }
+    // The curated walks (the owner, 2026-11-16): everywhere else the game's fade to black moves the player; the walk with Anderson
+    // to the Council is walked on to Shepard. By its matinee, whole; more by worldCuratedWalks (a path's part or a conversation key).
+    {
+        std::string_view const walk = "InterpTrackInstMove BIOA_STA70_02captain_DSG.TheWorld.PersistentLevel.Main_Sequence.SarenCouncil."
+                                      "SeqAct_Interp_0.InterpGroupInst_53.InterpTrackInstMove_13";
+        CHECK(cw::IsCuratedWalk(walk));
+        CHECK(!cw::IsCuratedWalk("InterpTrackInstMove BIOA_STA70_02captain_DSG.TheWorld.PersistentLevel.Main_Sequence.SarenCouncil."
+                                 "SeqAct_Interp_01.InterpGroupInst_1.InterpTrackInstMove_2"));
+        CHECK(!cw::IsCuratedWalk("InterpTrackInstMove BIOA_NOR10_DSG.TheWorld.PersistentLevel.Main_Sequence.Elevator.SeqAct_Interp_2."
+                                 "InterpGroupInst_1.InterpTrackInstMove_1"));
+        CHECK(!cw::IsCuratedWalk("") && !cw::IsCuratedWalk("", "sta70"));
+        CHECK(!cw::IsCuratedWalk("BioConversation sta70_garrus_D.sta70_garrus_dlg"));
+        CHECK(cw::IsCuratedWalk("BioConversation sta70_garrus_D.sta70_garrus_dlg", " nor10_comm_room , STA70_GARRUS"));
+        CHECK(cw::IsCuratedWalk("InterpTrackInstMove BIOA_NOR10_DSG.TheWorld.PersistentLevel.Main_Sequence.Elevator.SeqAct_Interp_2.x",
+            "Elevator.SeqAct_Interp_2"));
+        CHECK(!cw::IsCuratedWalk("BioConversation sta70_garrus_D.sta70_garrus_dlg", ",, ,"));
+    }
     CHECK(!cw::IsSetPiece("BioConversation nor20_medbay_d.nor20_medbay_dlg"));  // the medical bay stays in the world
     CHECK(cw::IsSetPiece("end90_council_alive_dlg"));                           // Shepard walked by the game
     CHECK(!cw::IsSetPiece("BioConversation jug20_sal_captainkirrahe_D.jug20_sal_captainkirrahe_dlg"));  // staged, in first person

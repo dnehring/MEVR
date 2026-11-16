@@ -853,6 +853,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/plugin/OpenAlSoft.cpp
     src/plugin/OpenAlSoft.hpp
     src/plugin/HalcyonBridge.cpp
+    src/plugin/Seams.cpp
+    src/halcyon/MevrSeams.h
     src/plugin/PadMerge.cpp
     src/plugin/PadMerge.hpp
     src/plugin/FloorLock.cpp
@@ -1005,6 +1007,7 @@ function(mevr_add_plugin game)
     if (MEVR_HALCYON AND game STREQUAL "LE2" AND NOT MEVR_LE2_DIAGNOSTIC)
         set(with_halcyon_le2 ON)
         list(APPEND host_sources src/plugin/HalcyonLe2.cpp src/plugin/HalcyonLe2.hpp src/plugin/HalcyonLe2Bridge.cpp
+            src/plugin/Seams.cpp src/halcyon/MevrSeams.h
             src/plugin/HdrDisplayPolicy.cpp src/plugin/HdrDisplayPolicy.hpp
             src/plugin/Voice.cpp src/plugin/Voice.hpp src/plugin/VoiceModel.cpp src/plugin/VoiceModel.hpp
             src/halcyon/le2/mevr_bridge.h src/core/CallQueue.hpp src/plugin/GameThreadCalls.cpp src/plugin/GameThreadCalls.hpp
@@ -1075,7 +1078,7 @@ function(mevr_add_plugin game)
     if (MEVR_HALCYON AND game STREQUAL "LE3")
         set(with_halcyon_le3 ON)
         # One shared controller/floor/input/capture implementation. Gameplay/UI service ports are separate gates.
-        list(APPEND host_sources src/plugin/HalcyonLe3.cpp src/plugin/HalcyonLe3.hpp
+        list(APPEND host_sources src/plugin/HalcyonLe3.cpp src/plugin/HalcyonLe3.hpp src/plugin/Seams.cpp src/halcyon/MevrSeams.h
             src/plugin/Le3SceneCapture.cpp src/plugin/Le3SceneCapture.hpp src/plugin/SceneCaptureTarget.hpp
             src/plugin/MotionBlurGuard.cpp src/plugin/MotionBlurGuard.hpp
             src/plugin/HalcyonLe3Bridge.cpp src/plugin/RendererLe3.cpp src/halcyon/le3/mevr_bridge.h
@@ -1990,4 +1993,27 @@ if (MEVR_BUILD_TESTS AND MEVR_MAIN_MENU)
     target_link_libraries(mevr-menu-preview PRIVATE mevr-menu OpenXR::headers windowscodecs ole32 d3d11)
     target_compile_definitions(mevr-menu-preview PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_compile_options(mevr-menu-preview PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
+endif ()
+
+# Every test program is built by mevr-test-programs, which is all CI (.github/workflows) and tools/package-release.ps1
+# build before ctest: a test whose program that target doesn't build is "Not Run" there (2026-11-14 and 11-16: tests
+# added with their programs but not to the list above). So, at the end of the configure, every executable named
+# *-test or *-tests in this directory and the folders under tests/ is added to it, whoever adds the next one.
+if (TARGET mevr-test-programs)
+    function(mevr_collect_test_programs dir)
+        get_property(targets DIRECTORY "${dir}" PROPERTY BUILDSYSTEM_TARGETS)
+        foreach (target IN LISTS targets)
+            get_target_property(type ${target} TYPE)
+            if (type STREQUAL "EXECUTABLE" AND target MATCHES "-tests?$")
+                add_dependencies(mevr-test-programs ${target})
+            endif ()
+        endforeach ()
+        get_property(subdirs DIRECTORY "${dir}" PROPERTY SUBDIRECTORIES)
+        foreach (subdir IN LISTS subdirs)
+            if (subdir MATCHES "^${CMAKE_CURRENT_SOURCE_DIR}/tests/")
+                mevr_collect_test_programs("${subdir}")
+            endif ()
+        endforeach ()
+    endfunction ()
+    mevr_collect_test_programs("${CMAKE_CURRENT_SOURCE_DIR}")
 endif ()

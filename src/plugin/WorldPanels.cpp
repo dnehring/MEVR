@@ -160,12 +160,17 @@ void RecenterWorldPanels() noexcept {
     mevr::host::world_panels::Recenter();
 }
 
-PanelPose PlacePanel(PanelKind kind, float const viewPosition[3], void* viewSpace, void* appSpace, bool headValid,
-    float const headOrientation[4], float const headPosition[3]) noexcept {
+} // namespace MELEVR::MevrBridge
+namespace MevrSeams {
+// LE1's PlacePanel: every flat panel through world_panels (the kinds have the same values); always placed, the size the
+// renderer's.
+PanelPose PlacePanel(PanelKind kind, OverlayFrame const& frame, float const viewPosition[3], float widthM, float heightM,
+    bool /*imageReady*/) noexcept {
     mevr::host::world_panels::Pose const placed = mevr::host::world_panels::Place(
-        static_cast<mevr::host::world_panels::Kind>(static_cast<int>(kind)), viewPosition, viewSpace, appSpace, headValid,
-        headOrientation, headPosition);
+        static_cast<mevr::host::world_panels::Kind>(static_cast<int>(kind == PanelKind::ByGameMode ? PanelKind::GameMenu : kind)),
+        viewPosition, frame.viewSpace, frame.appSpace, frame.headValid, frame.headOrientation, frame.headPosition);
     PanelPose out;
+    out.placed = true;
     out.space = placed.space;
     for (int i = 0; i < 4; ++i) {
         out.orientation[i] = placed.orientation[i];
@@ -174,8 +179,12 @@ PanelPose PlacePanel(PanelKind kind, float const viewPosition[3], void* viewSpac
         out.position[i] = placed.position[i];
     }
     out.headLocked = placed.headLocked;
+    out.widthM = widthM;
+    out.heightM = heightM;
     return out;
 }
+} // namespace MevrSeams
+namespace MELEVR::MevrBridge {
 
 } // namespace MELEVR::MevrBridge
 #endif
