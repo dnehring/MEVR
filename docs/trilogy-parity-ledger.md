@@ -751,8 +751,8 @@ Helpers applied, in order:
 | `game/BodyScale` | ungated | ungated | ungated |
 | `game/CallTrace` | run | ready | ready |
 | `game/CameraCollision` | run | out | out |
-| `game/CameraProbe` | run | run (2 ME1-only handles) | out |
-| `game/CameraShake` | run | run (7 ME1-only handles) | out |
+| `game/CameraProbe` | run | run (ME1-only handles) | out |
+| `game/CameraShake` | run | run (ME1-only handles) | out |
 | `game/CockpitPanel` | run | out | out |
 | `game/CockpitProbe` | run | out | out |
 | `game/CombatStance` | run | out | out |
@@ -765,7 +765,7 @@ Helpers applied, in order:
 | `game/GalaxyDump` | run | ready | ready |
 | `game/GalaxyMap` | run | ready | ready |
 | `game/GameArt` | run | out | out |
-| `game/GameMenuRequest` | run | run (6 ME1-only handles) | run (6 ME1-only handles) |
+| `game/GameMenuRequest` | run | run (ME1-only handles) | run (ME1-only handles) |
 | `game/GamepadBridge` | ungated | ungated | ungated |
 | `game/GamepadMapping` | ungated | ungated | ungated |
 | `game/GuiCursor` | run | run | run |
@@ -790,22 +790,22 @@ Helpers applied, in order:
 | `game/Melee` | out | out | run |
 | `game/MenuPause` | run | run | run |
 | `game/OmniTool` | run | run | out |
-| `game/Player` | run | run (1 ME1-only handles) | run (1 ME1-only handles) |
+| `game/Player` | run | run (ME1-only handles) | run (ME1-only handles) |
 | `game/Posture` | run | run | run |
-| `game/PowerWheel` | run | run (35 ME1-only handles) | run (35 ME1-only handles) |
+| `game/PowerWheel` | run | run (ME1-only handles) | run (ME1-only handles) |
 | `game/Reflections` | run | run (LExSDKv2) | out (LExSDKv2) |
 | `game/SceneCaptureRig` | run | out | run |
 | `game/ScopeCapture` | run | out | out |
 | `game/ScopeParts` | run | out | out |
 | `game/ScreenReticle` | run | run | run |
 | `game/Sights` | run | run | out |
-| `game/SkeletonProbe` | run | run (4 ME1-only handles) | run (4 ME1-only handles) |
+| `game/SkeletonProbe` | run | run (ME1-only handles) | run (ME1-only handles) |
 | `game/SoundPlace` | run | ready | ready |
 | `game/Spectator` | run | out | out |
-| `game/Sprint` | run | out | run (1 ME1-only handles) |
+| `game/Sprint` | run | out | run (ME1-only handles) |
 | `game/SquadAck` | run | ready | ready |
-| `game/SquadContext` | run | run (6 ME1-only handles) | run (6 ME1-only handles) |
-| `game/SquadOrders` | run | run (14 ME1-only handles) | run (14 ME1-only handles) |
+| `game/SquadContext` | run | run (ME1-only handles) | run (ME1-only handles) |
+| `game/SquadOrders` | run | run (ME1-only handles) | run (ME1-only handles) |
 | `game/SquadPlace` | run | run | run |
 | `game/SquadWeapons` | run | run | run |
 | `game/SupportGrip` | ungated | ungated | ungated |
@@ -819,8 +819,8 @@ Helpers applied, in order:
 | `game/ViewLevel` | run | run | out |
 | `game/Voice` | run | run | run |
 | `game/VrCover` | run | run | run |
-| `game/Weapon` | run | run (4 ME1-only handles) | run (3 ME1-only handles) |
-| `game/WorldUi` | run | run (8 ME1-only handles) | run (8 ME1-only handles) |
+| `game/Weapon` | run | run (ME1-only handles) | run (ME1-only handles) |
+| `game/WorldUi` | run | run (ME1-only handles) | run (ME1-only handles) |
 <!-- /parity:modules -->
 
 ### The three MevrBridge vocabularies
@@ -958,60 +958,15 @@ Helpers applied, in order:
 
 ### Engine names the sequels lack
 
-Needs LExSDKv2 (the submodule, or the main checkout's). There are three counts per sequel:
-- the names the sequel build resolves with `ue3::kEveryGame` handles that the game's SDK list lacks;
-- its other literals that the game lacks: ME1-reach handles, inert there, and CallFunction paths;
-- ME1's build's names that the game lacks: the porting gap.
+Needs LExSDKv2 (the submodule, or the main checkout's). This lists only what a sequel build itself tries: names it
+declares with `ue3::kEveryGame` handles that the game's SDK list lacks.
+
+The rest moves with every ME1 edit, so it is not committed. `python tools/parity-ledger.py --names` prints it:
+- each sequel build's other literals that the game lacks: ME1-reach handles, inert there, and CallFunction paths;
+- ME1's build's names that the sequel lacks: the porting gap, per module. `python tools/le2-name-audit.py --game LE3
+  game/<Module>` gives the same for one module, with the sequel's names of the same short name.
 
 <!-- parity:names -->
-| module | LE2: every-game handles | LE2: other literals | ME1 build vs ME2 | LE3: every-game handles | LE3: other literals | ME1 build vs ME3 |
-|---|---|---|---|---|---|---|
-| `engine/ReflectCheck` | 0 | 0 | 105 | 0 | 0 | 155 |
-| `game/AuthoredMoment` | 0 | 0 | 0 | 0 | 2 | 2 |
-| `game/CameraProbe` | 0 | 1 | 1 | 0 | 0 | 0 |
-| `game/CameraShake` | 0 | 10 | 10 | 0 | 0 | 8 |
-| `game/CockpitPanel` | 0 | 0 | 5 | 0 | 0 | 8 |
-| `game/CockpitProbe` | 0 | 0 | 16 | 0 | 0 | 23 |
-| `game/CombatStance` | 0 | 0 | 6 | 0 | 0 | 11 |
-| `game/Comfort` | 0 | 0 | 0 | 1 | 0 | 1 |
-| `game/ConsoleRequest` | 0 | 0 | 0 | 0 | 0 | 1 |
-| `game/ConversationFlow` | 0 | 1 | 1 | 0 | 12 | 12 |
-| `game/ConversationWorld` | 0 | 7 | 7 | 0 | 40 | 40 |
-| `game/GalaxyDump` | 0 | 2 | 2 | 0 | 5 | 5 |
-| `game/GalaxyMap` | 0 | 9 | 9 | 0 | 18 | 18 |
-| `game/GameMenuRequest` | 0 | 6 | 7 | 7 | 9 | 14 |
-| `game/GuiCursor` | 0 | 0 | 0 | 2 | 1 | 3 |
-| `game/GunKick` | 0 | 0 | 1 | 0 | 0 | 1 |
-| `game/HandAim` | 0 | 0 | 1 | 0 | 0 | 1 |
-| `game/Holsters` | 0 | 0 | 10 | 0 | 0 | 14 |
-| `game/InventoryProbe` | 0 | 8 | 8 | 0 | 13 | 13 |
-| `game/Mako` | 0 | 0 | 8 | 0 | 0 | 8 |
-| `game/MakoControls` | 0 | 0 | 12 | 0 | 0 | 13 |
-| `game/MakoGunner` | 0 | 0 | 5 | 0 | 0 | 7 |
-| `game/MenuPause` | 0 | 0 | 1 | 0 | 0 | 0 |
-| `game/OmniTool` | 1 | 0 | 1 | 0 | 0 | 6 |
-| `game/Player` | 0 | 0 | 0 | 1 | 0 | 1 |
-| `game/Posture` | 0 | 0 | 1 | 1 | 0 | 2 |
-| `game/PowerWheel` | 0 | 6 | 7 | 2 | 21 | 24 |
-| `game/ScopeCapture` | 0 | 0 | 0 | 0 | 0 | 1 |
-| `game/ScreenReticle` | 0 | 0 | 3 | 14 | 2 | 16 |
-| `game/Sights` | 0 | 0 | 5 | 0 | 0 | 5 |
-| `game/SkeletonProbe` | 0 | 1 | 1 | 0 | 6 | 6 |
-| `game/Spectator` | 0 | 0 | 1 | 0 | 0 | 1 |
-| `game/Sprint` | 0 | 0 | 1 | 0 | 1 | 1 |
-| `game/SquadAck` | 0 | 2 | 2 | 0 | 2 | 2 |
-| `game/SquadContext` | 1 | 2 | 4 | 4 | 8 | 13 |
-| `game/SquadOrders` | 0 | 5 | 5 | 0 | 8 | 8 |
-| `game/SquadPlace` | 0 | 0 | 1 | 0 | 0 | 1 |
-| `game/SquadWeapons` | 0 | 0 | 18 | 4 | 1 | 36 |
-| `game/Thespian` | 0 | 0 | 0 | 5 | 1 | 11 |
-| `game/Throwables` | 0 | 0 | 21 | 0 | 0 | 27 |
-| `game/UiWorldFigure` | 0 | 0 | 0 | 0 | 0 | 1 |
-| `game/Vent` | 0 | 0 | 8 | 0 | 0 | 8 |
-| `game/VrCover` | 0 | 0 | 12 | 2 | 0 | 19 |
-| `game/Weapon` | 0 | 0 | 8 | 0 | 0 | 8 |
-| `game/WorldUi` | 0 | 6 | 6 | 5 | 8 | 13 |
-
 Handles a sequel build declares `ue3::kEveryGame` whose name that game's SDK list lacks (the lookup is tried there: a failure, or a gap in the generated SDK list; ReflectCheck decides):
 
 - LE3 `game/Comfort`: `Engine.Actor:Location`

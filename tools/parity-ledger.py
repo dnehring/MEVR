@@ -6,6 +6,8 @@
   python tools/parity-ledger.py --write      update docs/trilogy-parity-ledger.json and the doc's generated sections
   python tools/parity-ledger.py --check      exit 1 if the committed JSON or the doc's generated sections are stale
   python tools/parity-ledger.py --detail     per module: active lines, gates and handle counts per game (not committed)
+  python tools/parity-ledger.py --names      the full name audit: per module, what each sequel build and ME1's build name
+                                             that the sequel lacks (the porting gap; not committed: ME1 edits move it)
 
 What it reads, with no compiler and no game:
 - hosts: CMakeLists.txt's `mevr_add_plugin(game)` run per game with the default options (MEVR_HALCYON, MEVR_MAIN_MENU on,
@@ -17,7 +19,7 @@ What it reads, with no compiler and no game:
 - modules: every src/game and src/engine .cpp (with the .inc files it includes) preprocessed per game (MEVR_GAME_LEx;
   an in-file `#define` counts), one status per game:
     run           its engine access runs there: on LE1 any ue3 gate or handle; on LE2/LE3 `ue3::runtime::Up()` or handles
-                  declared `ue3::kEveryGame` (with "part": under 30% of the largest game's build of it; with "N ME1-only
+                  declared `ue3::kEveryGame` (with "part": under 30% of the largest game's build of it; with "ME1-only
                   handles": default-reach handles compiled in, which never resolve there: ME1 paths behind runtime checks);
     ready         only `ue3::runtime::Ready()` or default-reach handles: it stands down off LE1 (kModulesOnLayer false);
     out           no ue3 gate or handle in this game's build while another game's build has one: the engine part is
@@ -28,9 +30,13 @@ What it reads, with no compiler and no game:
   and "LExSDKv2" where the game's build calls engine/Legacy (LExSDKv2's reads: not in an SDK-free players' build).
 - seams: each Halcyon tree's MevrBridge functions declared in its mevr_bridge.h (the sequels' also in
   src/halcyon/SequelPresentation.h) and those its own sources call.
-- names (needs LExSDKv2, see tools/le2-name-audit.py): per module, the engine names (classes, functions, fields) the
-  LE2 and LE3 builds name that the game lacks, and the names ME1's build names that the sequel lacks (the porting gap).
+- names (needs LExSDKv2, see tools/le2-name-audit.py): per module, the engine names the LE2 and LE3 builds declare with
+  `ue3::kEveryGame` handles that the game's SDK list lacks (lookups tried there that fail, or SDK-list gaps). --names
+  prints the rest: other literals the sequel lacks and the names ME1's build uses that it lacks (the porting gap).
   Without the SDK this part is skipped and --check doesn't compare it.
+
+Only facts that move with parity changes are committed and checked: no line or handle counts, no [MEVR] mark counts,
+no porting gap (an LE1-only edit would fail the check otherwise). --detail and --names print those.
 
 The judgement (shared / adapted / forked / missing / n/a, verified or not) is the doc's, not this script's: these tables
 are the evidence it cites. The script only counts the doc's cells (the "totals" section: every table whose header has
@@ -629,7 +635,7 @@ def render(facts):
         cells = []
         for g in GAMES:
             e = m['games'][g]
-            notes = (['part'] if e['part'] else []) + ([f'{e["le1ReachHandles"]} ME1-only handles'] if e['le1ReachHandles'] else []) \
+            notes = (['part'] if e['part'] else []) + (['ME1-only handles'] if e['le1ReachHandles'] else []) \
                 + (['LExSDKv2'] if e['legacy'] else [])
             cells.append(e['status'] + (f' ({", ".join(notes)})' if notes else ''))
         rows.append([f'`{name}`'] + cells)
@@ -645,18 +651,27 @@ def render(facts):
     undeclared = [f'- {g}: `{"`, `".join(sm[g]["usedUndeclared"])}`' for g in GAMES if sm[g]['usedUndeclared']]
     if undeclared:
         md['seams'] += '\n\nCalled as `MevrBridge::X` but declared elsewhere (a header of the tree):\n\n' + '\n'.join(undeclared)
-    # names
+    # names: only what a sequel build itself tries (the checked part); the porting gap is --names (moves with ME1 edits)
     if nm is not None:
-        rows = [[f'`{mod}`'] + [len(e[g][k]) for g in ('LE2', 'LE3') for k in ('everyGameLacks', 'otherLacks', 'fromLe1Lacks')]
-                for mod, e in sorted(nm.items())]
-        md['names'] = table(['module', 'LE2: every-game handles', 'LE2: other literals', 'ME1 build vs ME2',
-                             'LE3: every-game handles', 'LE3: other literals', 'ME1 build vs ME3'], rows)
         own = [(mod, g, e[g]['everyGameLacks']) for mod, e in sorted(nm.items()) for g in ('LE2', 'LE3') if e[g]['everyGameLacks']]
-        if own:
-            md['names'] += ('\n\nHandles a sequel build declares `ue3::kEveryGame` whose name that game\'s SDK list lacks (the '
-                            'lookup is tried there: a failure, or a gap in the generated SDK list; ReflectCheck decides):\n\n'
-                            + '\n'.join(f'- {g} `{mod}`: ' + ', '.join(f'`{n}`' for n in lst) for mod, g, lst in own))
+        md['names'] = ('Handles a sequel build declares `ue3::kEveryGame` whose name that game\'s SDK list lacks (the lookup '
+                       'is tried there: a failure, or a gap in the generated SDK list; ReflectCheck decides):\n\n'
+                       + ('\n'.join(f'- {g} `{mod}`: ' + ', '.join(f'`{n}`' for n in lst) for mod, g, lst in own) or '- none'))
     return md
+
+
+def render_gap(nm):
+    """The full name audit (not committed: every ME1 edit moves the porting gap)."""
+    rows = [[f'`{mod}`'] + [len(e[g][k]) for g in ('LE2', 'LE3') for k in ('everyGameLacks', 'otherLacks', 'fromLe1Lacks')]
+            for mod, e in sorted(nm.items())]
+    out = table(['module', 'LE2: every-game handles', 'LE2: other literals', 'ME1 build vs ME2',
+                 'LE3: every-game handles', 'LE3: other literals', 'ME1 build vs ME3'], rows)
+    for mod, e in sorted(nm.items()):
+        for g in ('LE2', 'LE3'):
+            for k in ('otherLacks', 'fromLe1Lacks'):
+                if e[g][k]:
+                    out += f'\n- {g} `{mod}` {k}: ' + ', '.join(f'`{n}`' for n in e[g][k])
+    return out
 
 
 CELL = re.compile(r'^\*\*(shared|adapted|forked|missing|n/a)\*\*(?:\s+([VU])\b)?')
@@ -706,12 +721,13 @@ def committed(facts):
     """The checked part of the facts: no per-file counts that move with every edit."""
     c = {'hosts': facts['hosts'], 'services': facts['services'],
          'modules': {k: {'namespace': v['namespace'],
-                         'games': {g: {'status': e['status'], 'part': e['part'], 'le1ReachHandles': e['le1ReachHandles'],
+                         'games': {g: {'status': e['status'], 'part': e['part'], 'me1OnlyHandles': e['le1ReachHandles'] > 0,
                                        'legacy': e['legacy']}
                                    for g, e in v['games'].items()}} for k, v in facts['modules'].items()},
          'seams': {g: {k: v for k, v in s.items() if k != 'marks'} for g, s in facts['seams'].items()}}
     if facts.get('names') is not None:
-        c['names'] = facts['names']
+        c['names'] = {mod: {g: e[g]['everyGameLacks'] for g in ('LE2', 'LE3') if e[g]['everyGameLacks']}
+                      for mod, e in facts['names'].items() if any(e[g]['everyGameLacks'] for g in ('LE2', 'LE3'))}
     return c
 
 
@@ -741,11 +757,18 @@ def main(argv=None):
     ap.add_argument('--write', action='store_true', help='update docs/trilogy-parity-ledger.json and the doc sections')
     ap.add_argument('--check', action='store_true', help='fail if the committed JSON or the doc sections are stale')
     ap.add_argument('--detail', action='store_true', help='print per-module counts per game and the [MEVR] marks')
+    ap.add_argument('--names', action='store_true', help='print the full name audit: the porting gap per module and sequel')
     args = ap.parse_args(argv)
     facts = gather()
     md = render(facts)
     data = committed(facts)
     text = json.dumps(data, indent=1, sort_keys=True) + '\n'
+    if args.names:
+        if facts['names'] is None:
+            print('LExSDKv2 is not checked out (external/LExSDKv2), here or in the main checkout', file=sys.stderr)
+            return 1
+        print(render_gap(facts['names']))
+        return 0
     if args.detail:
         for name, m in sorted(facts['modules'].items()):
             print(name, ' | '.join(f'{g}: {e["status"]} {e["detail"]}' for g, e in m['games'].items()))

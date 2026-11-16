@@ -714,20 +714,20 @@
   "engine/BodyBounds": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ready"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ready"
     }
@@ -737,20 +737,20 @@
   "engine/BonePose": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     }
@@ -760,20 +760,20 @@
   "engine/CallFunction": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     }
@@ -783,20 +783,20 @@
   "engine/CodeDump": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     }
@@ -806,20 +806,20 @@
   "engine/ConversationHooks": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     }
@@ -829,20 +829,20 @@
   "engine/CoverAcquire": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ready"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ready"
     }
@@ -852,20 +852,20 @@
   "engine/Engine": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": true,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     }
@@ -875,20 +875,20 @@
   "engine/Le2ControlHost": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "unbuilt"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "unbuilt"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "unbuilt"
     }
@@ -898,20 +898,20 @@
   "engine/Le2DiagnosticHost": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "unbuilt"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "unbuilt"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "unbuilt"
     }
@@ -921,20 +921,20 @@
   "engine/Le2DiagnosticObservation": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "unbuilt"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "unbuilt"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "unbuilt"
     }
@@ -944,20 +944,20 @@
   "engine/Legacy": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "unreferenced"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     }
@@ -967,20 +967,20 @@
   "engine/NameLookup": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     }
@@ -990,20 +990,20 @@
   "engine/NativesDump": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     }
@@ -1013,20 +1013,20 @@
   "engine/ProcessEvent": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     }
@@ -1036,20 +1036,20 @@
   "engine/ReflectCheck": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     }
@@ -1059,20 +1059,20 @@
   "engine/SceneView": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     }
@@ -1082,20 +1082,20 @@
   "engine/SelectionGaze": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     }
@@ -1105,20 +1105,20 @@
   "engine/Skeleton": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     }
@@ -1128,20 +1128,20 @@
   "engine/VoicePlace": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ready"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ready"
     }
@@ -1151,20 +1151,20 @@
   "engine/XrToUnreal": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     }
@@ -1174,20 +1174,20 @@
   "game/ArmIk": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     }
@@ -1197,20 +1197,20 @@
   "game/AuthoredMoment": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ready"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ready"
     }
@@ -1220,20 +1220,20 @@
   "game/BodyCalibration": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     }
@@ -1243,20 +1243,20 @@
   "game/BodyFollow": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     }
@@ -1266,20 +1266,20 @@
   "game/BodyProbe": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "unreferenced"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "unreferenced"
     }
@@ -1289,20 +1289,20 @@
   "game/BodyScale": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     }
@@ -1312,20 +1312,20 @@
   "game/CallTrace": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ready"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ready"
     }
@@ -1335,20 +1335,20 @@
   "game/CameraCollision": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     }
@@ -1358,20 +1358,20 @@
   "game/CameraProbe": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 2,
      "legacy": false,
+     "me1OnlyHandles": true,
      "part": false,
      "status": "run"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     }
@@ -1381,20 +1381,20 @@
   "game/CameraShake": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 7,
      "legacy": false,
+     "me1OnlyHandles": true,
      "part": false,
      "status": "run"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     }
@@ -1404,20 +1404,20 @@
   "game/CockpitPanel": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     }
@@ -1427,20 +1427,20 @@
   "game/CockpitProbe": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     }
@@ -1450,20 +1450,20 @@
   "game/CombatStance": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     }
@@ -1473,20 +1473,20 @@
   "game/Comfort": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     }
@@ -1496,20 +1496,20 @@
   "game/ConsoleRequest": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": true,
+     "me1OnlyHandles": false,
      "part": true,
      "status": "run"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": true,
      "status": "run"
     }
@@ -1519,20 +1519,20 @@
   "game/ConversationFlow": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ready"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ready"
     }
@@ -1542,20 +1542,20 @@
   "game/ConversationWorld": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ready"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ready"
     }
@@ -1565,20 +1565,20 @@
   "game/Fingers": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     }
@@ -1588,20 +1588,20 @@
   "game/FocusPause": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     }
@@ -1611,20 +1611,20 @@
   "game/GalaxyDump": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ready"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ready"
     }
@@ -1634,20 +1634,20 @@
   "game/GalaxyMap": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ready"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ready"
     }
@@ -1657,20 +1657,20 @@
   "game/GameArt": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     }
@@ -1680,20 +1680,20 @@
   "game/GameMenuRequest": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 6,
      "legacy": false,
+     "me1OnlyHandles": true,
      "part": false,
      "status": "run"
     },
     "LE3": {
-     "le1ReachHandles": 6,
      "legacy": false,
+     "me1OnlyHandles": true,
      "part": false,
      "status": "run"
     }
@@ -1703,20 +1703,20 @@
   "game/GamepadBridge": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     }
@@ -1726,20 +1726,20 @@
   "game/GamepadMapping": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     }
@@ -1749,20 +1749,20 @@
   "game/GuiCursor": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     }
@@ -1772,20 +1772,20 @@
   "game/GunKick": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     }
@@ -1795,20 +1795,20 @@
   "game/HandAim": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": true,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": true,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     }
@@ -1818,20 +1818,20 @@
   "game/HandCalibration": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     }
@@ -1841,20 +1841,20 @@
   "game/HandTargets": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     }
@@ -1864,20 +1864,20 @@
   "game/HeadSim": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     }
@@ -1887,20 +1887,20 @@
   "game/HeadTracking": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": true,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": true,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     }
@@ -1910,20 +1910,20 @@
   "game/HoloProbe": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     }
@@ -1933,20 +1933,20 @@
   "game/Holsters": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     }
@@ -1956,20 +1956,20 @@
   "game/HudPieces": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     }
@@ -1979,20 +1979,20 @@
   "game/Interact": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     }
@@ -2002,20 +2002,20 @@
   "game/InventoryProbe": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "unreferenced"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "unreferenced"
     }
@@ -2025,20 +2025,20 @@
   "game/Le3GalaxyCapture": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     }
@@ -2048,20 +2048,20 @@
   "game/Le3GalaxyRetention": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     }
@@ -2071,20 +2071,20 @@
   "game/Le3Gui": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "unbuilt"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "unbuilt"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     }
@@ -2094,20 +2094,20 @@
   "game/Le3Traversal": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     }
@@ -2117,20 +2117,20 @@
   "game/Mako": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     }
@@ -2140,20 +2140,20 @@
   "game/MakoControls": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     }
@@ -2163,20 +2163,20 @@
   "game/MakoGunner": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     }
@@ -2186,20 +2186,20 @@
   "game/Melee": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     }
@@ -2209,20 +2209,20 @@
   "game/MenuPause": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     }
@@ -2232,20 +2232,20 @@
   "game/OmniTool": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     }
@@ -2255,20 +2255,20 @@
   "game/Player": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 1,
      "legacy": false,
+     "me1OnlyHandles": true,
      "part": false,
      "status": "run"
     },
     "LE3": {
-     "le1ReachHandles": 1,
      "legacy": false,
+     "me1OnlyHandles": true,
      "part": false,
      "status": "run"
     }
@@ -2278,20 +2278,20 @@
   "game/Posture": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     }
@@ -2301,20 +2301,20 @@
   "game/PowerWheel": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 35,
      "legacy": false,
+     "me1OnlyHandles": true,
      "part": false,
      "status": "run"
     },
     "LE3": {
-     "le1ReachHandles": 35,
      "legacy": false,
+     "me1OnlyHandles": true,
      "part": false,
      "status": "run"
     }
@@ -2324,20 +2324,20 @@
   "game/Reflections": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": true,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": true,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     }
@@ -2347,20 +2347,20 @@
   "game/SceneCaptureRig": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     }
@@ -2370,20 +2370,20 @@
   "game/ScopeCapture": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     }
@@ -2393,20 +2393,20 @@
   "game/ScopeParts": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     }
@@ -2416,20 +2416,20 @@
   "game/ScreenReticle": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     }
@@ -2439,20 +2439,20 @@
   "game/Sights": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     }
@@ -2462,20 +2462,20 @@
   "game/SkeletonProbe": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 4,
      "legacy": false,
+     "me1OnlyHandles": true,
      "part": false,
      "status": "run"
     },
     "LE3": {
-     "le1ReachHandles": 4,
      "legacy": false,
+     "me1OnlyHandles": true,
      "part": false,
      "status": "run"
     }
@@ -2485,20 +2485,20 @@
   "game/SoundPlace": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ready"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ready"
     }
@@ -2508,20 +2508,20 @@
   "game/Spectator": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     }
@@ -2531,20 +2531,20 @@
   "game/Sprint": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     },
     "LE3": {
-     "le1ReachHandles": 1,
      "legacy": false,
+     "me1OnlyHandles": true,
      "part": false,
      "status": "run"
     }
@@ -2554,20 +2554,20 @@
   "game/SquadAck": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ready"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ready"
     }
@@ -2577,20 +2577,20 @@
   "game/SquadContext": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 6,
      "legacy": false,
+     "me1OnlyHandles": true,
      "part": false,
      "status": "run"
     },
     "LE3": {
-     "le1ReachHandles": 6,
      "legacy": false,
+     "me1OnlyHandles": true,
      "part": false,
      "status": "run"
     }
@@ -2600,20 +2600,20 @@
   "game/SquadOrders": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 14,
      "legacy": false,
+     "me1OnlyHandles": true,
      "part": false,
      "status": "run"
     },
     "LE3": {
-     "le1ReachHandles": 14,
      "legacy": false,
+     "me1OnlyHandles": true,
      "part": false,
      "status": "run"
     }
@@ -2623,20 +2623,20 @@
   "game/SquadPlace": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     }
@@ -2646,20 +2646,20 @@
   "game/SquadWeapons": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     }
@@ -2669,20 +2669,20 @@
   "game/SupportGrip": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     }
@@ -2692,20 +2692,20 @@
   "game/SystemSettings": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     }
@@ -2715,20 +2715,20 @@
   "game/Thespian": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     }
@@ -2738,20 +2738,20 @@
   "game/Throwables": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     }
@@ -2761,20 +2761,20 @@
   "game/Traversal": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     }
@@ -2784,20 +2784,20 @@
   "game/UiWorldFigure": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     }
@@ -2807,20 +2807,20 @@
   "game/Vent": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     }
@@ -2830,20 +2830,20 @@
   "game/ViewAnchor": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "ungated"
     }
@@ -2853,20 +2853,20 @@
   "game/ViewLevel": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "out"
     }
@@ -2876,20 +2876,20 @@
   "game/Voice": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     }
@@ -2899,20 +2899,20 @@
   "game/VrCover": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE3": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     }
@@ -2922,20 +2922,20 @@
   "game/Weapon": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 4,
      "legacy": false,
+     "me1OnlyHandles": true,
      "part": false,
      "status": "run"
     },
     "LE3": {
-     "le1ReachHandles": 3,
      "legacy": false,
+     "me1OnlyHandles": true,
      "part": false,
      "status": "run"
     }
@@ -2945,20 +2945,20 @@
   "game/WorldUi": {
    "games": {
     "LE1": {
-     "le1ReachHandles": 0,
      "legacy": false,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE2": {
-     "le1ReachHandles": 8,
      "legacy": false,
+     "me1OnlyHandles": true,
      "part": false,
      "status": "run"
     },
     "LE3": {
-     "le1ReachHandles": 8,
      "legacy": false,
+     "me1OnlyHandles": true,
      "part": false,
      "status": "run"
     }
@@ -2967,1833 +2967,109 @@
   }
  },
  "names": {
-  "engine/ReflectCheck": {
-   "LE2": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "Engine.AudioComponent.BioIsPlaying",
-     "Engine.Bio2DA",
-     "Engine.Bio2DA.GetColumnName",
-     "Engine.Bio2DA.GetFloatEntryII",
-     "Engine.Bio2DA.GetIntEntryII",
-     "Engine.Bio2DA.GetNumColumns",
-     "Engine.Bio2DA.GetNumRows",
-     "Engine.Bio2DA.GetRowNumber",
-     "Engine.WorldInfo.PauseGame",
-     "SFXGame.BioAI_Henchman.DoesGameModeAllowMovement",
-     "SFXGame.BioActorBehavior.ReactToDeath",
-     "SFXGame.BioActorBehavior.TakeDamage",
-     "SFXGame.BioAiController.AddUsePower",
-     "SFXGame.BioAiController.DoesGameModeAllowMovement",
-     "SFXGame.BioAiController.PushMoveToPoint",
-     "SFXGame.BioAttributesShield",
-     "SFXGame.BioBaseSquad.GetMemberFormation",
-     "SFXGame.BioBaseSquad.GetMemberSwitchWeapon",
-     "SFXGame.BioBaseSquad.SetMemberHoldPosition",
-     "SFXGame.BioBaseSquad.SetMemberSwitchWeapon",
-     "SFXGame.BioBaseSquad.SetSquadFollowFormation",
-     "SFXGame.BioBaseSquad.SquadHandleChatterEvent",
-     "SFXGame.BioEpicPawnBehavior.GetHealthAndShieldsScaled",
-     "SFXGame.BioEpicPawnBehavior.GetPercentHealth",
-     "SFXGame.BioEquipment",
-     "SFXGame.BioEquipment.ChangeToQuickSlot",
-     "SFXGame.BioGrenade",
-     "SFXGame.BioGrenade.LaunchGrenade",
-     "SFXGame.BioGrenade.LaunchGrenadeAtActor",
-     "SFXGame.BioGrenade.LaunchGrenadeAtPoint",
-     "SFXGame.BioGrenadeProjectile",
-     "SFXGame.BioGrenadeProjectile.SetVelocity",
-     "SFXGame.BioGrenadeProjectileBallistic",
-     "SFXGame.BioGrenadeProjectileFrisbee",
-     "SFXGame.BioInventoryGuiInterface",
-     "SFXGame.BioInventoryGuiInterface.BuildEquippableItemList",
-     "SFXGame.BioInventoryGuiInterface.Equip",
-     "SFXGame.BioInventoryGuiInterface.GetEquippedItem",
-     "SFXGame.BioInventoryGuiInterface.SelectItemSlot",
-     "SFXGame.BioPawn.IsDead",
-     "SFXGame.BioPawn.IsInCombatActionState",
-     "SFXGame.BioPawn.IsThrowingGrenade",
-     "SFXGame.BioPawn.PlaySoundSet",
-     "SFXGame.BioPawn.SetDesiredRotation",
-     "SFXGame.BioPawn.SetDesiredSpeed",
-     "SFXGame.BioPawn.ShouldCrouch",
-     "SFXGame.BioPawnBehavior.GetGrenades",
-     "SFXGame.BioPawnBehavior.ProxyTakeDamage",
-     "SFXGame.BioPlayerController.BioEnterVehicle",
-     "SFXGame.BioPlayerController.BioExitVehicle",
-     "SFXGame.BioPower.IsRequiredResourceAvailable",
-     "SFXGame.BioPower.IsRequiredWeaponEquipped",
-     "SFXGame.BioSFHandler_HUD",
-     "SFXGame.BioSFHandler_Inventory",
-     "SFXGame.BioSFHandler_Loot",
-     "SFXGame.BioSFHandler_PCHUD",
-     "SFXGame.BioSFHandler_Reticule",
-     "SFXGame.BioSFHandler_Shop",
-     "SFXGame.BioSPGame.GetSimpleString",
-     "SFXGame.BioSVehicleSimTank",
-     "SFXGame.BioSeqData_MoveToPoint",
-     "SFXGame.BioShield",
-     "SFXGame.BioSkillGame_Handler",
-     "SFXGame.BioVehicleBase",
-     "SFXGame.BioVehicleBase.PlaceExitingDriver",
-     "SFXGame.BioVehicleBase.SetInputs",
-     "SFXGame.BioVehicleBehaviorBase",
-     "SFXGame.BioVehicleBehaviorBase.SetDesiredTurretAimPoint",
-     "SFXGame.BioVehicleWheeled",
-     "SFXGame.BioVehicleWheeled.GetWeaponStartTraceLocation",
-     "SFXGame.BioVehicleWheeled.Tick",
-     "SFXGame.BioWeapon",
-     "SFXGame.BioWeaponRanged",
-     "SFXGame.BioWeaponRanged.DoCoolDownEffect",
-     "SFXGame.BioWeaponRanged.GetAdjustedAim",
-     "SFXGame.BioWeaponRanged.GetMuzzleLoc",
-     "SFXGame.BioWeaponRanged.GetPlayerAimError",
-     "SFXGame.BioWeaponRanged.GetRangedWeaponType",
-     "SFXGame.BioWeaponRanged.GetRecoil",
-     "SFXGame.BioWeaponRanged.TickFire",
-     "SFXGame.BioWeaponVFXAppearance",
-     "SFXGame.SFXCameraShakeBase",
-     "SFXGame.SFXGameModeBase.ShowCodexGui",
-     "SFXGame.SFXGameModeBase.ShowEquipmentGui",
-     "SFXGame.SFXGameModeBase.ShowJournalGui",
-     "SFXGame.SFXGameModeBase.ShowMapGui",
-     "SFXGame.SFXGameModeBase.ShowMenuGui",
-     "SFXGame.SFXGameModeBase.ShowSquadGui",
-     "SFXGame.SFXGameModeCommand.ShowMenuGui",
-     "SFXGame.SFXGameModeDefault.SwitchToWeapon",
-     "SFXGame.SFXGameModeDefault.TryUseMappedPower",
-     "SFXGame.SFXGameModeDefault.UseFirstAid",
-     "SFXGame.SFXGameModeDefault.UseGrenade",
-     "SFXGame.SFXGameModePhoto.ShowMenuGui",
-     "SFXGame.SFXGameModePowerWheel.ShowMenuGui",
-     "SFXGame.SFXGameModeVehicle.FireCannon",
-     "SFXGame.SFXGameModeVehicle.LeaveWorld",
-     "SFXGame.SFXGameModeVehicle.RepairVehicle",
-     "SFXGame.SFXGameModeVehicle.ShowMenuGui",
-     "SFXGame.SFXGameModeVehicle.StopFiringCannon",
-     "SFXGame.SFXGameModeVehicle.TryExitVehicle",
-     "SFXGame.SFXGameModeWeaponWheel.ShowMenuGui",
-     "SFXGame.SFXPawn_Player.DrawPrimaryWeapon",
-     "SFXGame.SFXSaveGame.FindClosestDrivableVehicle",
-     "SFXGame.SFXWeaponStatsBase"
-    ],
-    "otherLacks": []
-   },
-   "LE3": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "Engine.AudioComponent.BioIsPlaying",
-     "Engine.Bio2DA",
-     "Engine.Bio2DA.GetColumnName",
-     "Engine.Bio2DA.GetFloatEntryII",
-     "Engine.Bio2DA.GetIntEntryII",
-     "Engine.Bio2DA.GetNumColumns",
-     "Engine.Bio2DA.GetNumRows",
-     "Engine.Bio2DA.GetRowNumber",
-     "Engine.BioSFHandler",
-     "Engine.BioSFHandler.HandleInputEvent",
-     "Engine.BioSFManager",
-     "Engine.BioSFPanel",
-     "Engine.BioSFPanel.GetVariableBool",
-     "Engine.BioSFPanel.GetVariableFloat",
-     "Engine.BioSFPanel.InvokeMethod",
-     "Engine.BioSFPanel.SetMovieVisibility",
-     "Engine.BioSFPanel.SetVariableFloat",
-     "Engine.PlayerController.GetScaleFormManager",
-     "SFXGame.BioAI_Henchman.DoesGameModeAllowMovement",
-     "SFXGame.BioActorBehavior",
-     "SFXGame.BioActorBehavior.AbilityEnable",
-     "SFXGame.BioActorBehavior.ReactToDeath",
-     "SFXGame.BioActorBehavior.TakeDamage",
-     "SFXGame.BioActorType",
-     "SFXGame.BioAiController.AddUsePower",
-     "SFXGame.BioAiController.DoesGameModeAllowMovement",
-     "SFXGame.BioAiController.PushMoveToPoint",
-     "SFXGame.BioArtPlaceableBehavior",
-     "SFXGame.BioArtPlaceableBehavior.OnArtPlaceableUsed",
-     "SFXGame.BioAttributesEpicPawn",
-     "SFXGame.BioAttributesShield",
-     "SFXGame.BioBaseSquad.GetMember",
-     "SFXGame.BioBaseSquad.GetMemberFormation",
-     "SFXGame.BioBaseSquad.GetMemberSwitchWeapon",
-     "SFXGame.BioBaseSquad.GetSquadSize",
-     "SFXGame.BioBaseSquad.SetMemberHoldPosition",
-     "SFXGame.BioBaseSquad.SetMemberSwitchWeapon",
-     "SFXGame.BioBaseSquad.SetSquadFollowFormation",
-     "SFXGame.BioBaseSquad.SquadHandleChatterEvent",
-     "SFXGame.BioConversation.GetEntryText",
-     "SFXGame.BioConversation.GetReplyCategory",
-     "SFXGame.BioConversation.GetReplyGUIStyle",
-     "SFXGame.BioConversation.GetReplyParaphraseText",
-     "SFXGame.BioConversation.GetReplyText",
-     "SFXGame.BioConversation.QueueReply",
-     "SFXGame.BioConversation.SkipNode",
-     "SFXGame.BioEpicPawnBehavior",
-     "SFXGame.BioEpicPawnBehavior.GetHealthAndShieldsScaled",
-     "SFXGame.BioEpicPawnBehavior.GetPercentHealth",
-     "SFXGame.BioEquipment",
-     "SFXGame.BioEquipment.ChangeToQuickSlot",
-     "SFXGame.BioGrenade",
-     "SFXGame.BioGrenade.LaunchGrenade",
-     "SFXGame.BioGrenade.LaunchGrenadeAtActor",
-     "SFXGame.BioGrenade.LaunchGrenadeAtPoint",
-     "SFXGame.BioGrenadeProjectile",
-     "SFXGame.BioGrenadeProjectile.SetVelocity",
-     "SFXGame.BioGrenadeProjectileBallistic",
-     "SFXGame.BioGrenadeProjectileFrisbee",
-     "SFXGame.BioInventoryGuiInterface",
-     "SFXGame.BioInventoryGuiInterface.BuildEquippableItemList",
-     "SFXGame.BioInventoryGuiInterface.Equip",
-     "SFXGame.BioInventoryGuiInterface.GetEquippedItem",
-     "SFXGame.BioInventoryGuiInterface.SelectItemSlot",
-     "SFXGame.BioLookAt",
-     "SFXGame.BioPawn.IsDead",
-     "SFXGame.BioPawn.IsHostile",
-     "SFXGame.BioPawn.IsInCombatActionState",
-     "SFXGame.BioPawn.IsThrowingGrenade",
-     "SFXGame.BioPawn.PlaySoundSet",
-     "SFXGame.BioPawn.ReleasePower",
-     "SFXGame.BioPawn.SetDesiredRotation",
-     "SFXGame.BioPawn.SetLookAtTarget",
-     "SFXGame.BioPawn.ShouldCrouch",
-     "SFXGame.BioPawnBehavior",
-     "SFXGame.BioPawnBehavior.GetClass",
-     "SFXGame.BioPawnBehavior.GetGrenades",
-     "SFXGame.BioPawnBehavior.ProxyTakeDamage",
-     "SFXGame.BioPawnLookAtController",
-     "SFXGame.BioPlayerController.BioEnterVehicle",
-     "SFXGame.BioPlayerController.BioExitVehicle",
-     "SFXGame.BioPower.IsRequiredResourceAvailable",
-     "SFXGame.BioPower.IsRequiredWeaponEquipped",
-     "SFXGame.BioPowerVFXAppearance",
-     "SFXGame.BioSFHandler_GameOver.HandleEvent",
-     "SFXGame.BioSFHandler_HUD",
-     "SFXGame.BioSFHandler_Inventory",
-     "SFXGame.BioSFHandler_Loot",
-     "SFXGame.BioSFHandler_PCHUD",
-     "SFXGame.BioSFHandler_PartySelection",
-     "SFXGame.BioSFHandler_PartySelection.FinalizeParty",
-     "SFXGame.BioSFHandler_Reticule",
-     "SFXGame.BioSFHandler_Shop",
-     "SFXGame.BioSPGame",
-     "SFXGame.BioSPGame.GetSimpleString",
-     "SFXGame.BioSVehicleSimTank",
-     "SFXGame.BioSeqAct_Delay",
-     "SFXGame.BioSeqAct_StartConversation",
-     "SFXGame.BioSeqData_MoveToPoint",
-     "SFXGame.BioSeqEvt_ArtPlaceableUsed",
-     "SFXGame.BioShield",
-     "SFXGame.BioSkillGame_Handler",
-     "SFXGame.BioSubtitles.DisplaySubtitle",
-     "SFXGame.BioTriggerStream.Retouch",
-     "SFXGame.BioVehicleBase",
-     "SFXGame.BioVehicleBase.PlaceExitingDriver",
-     "SFXGame.BioVehicleBase.SetInputs",
-     "SFXGame.BioVehicleBehaviorBase",
-     "SFXGame.BioVehicleBehaviorBase.SetDesiredTurretAimPoint",
-     "SFXGame.BioVehicleWheeled",
-     "SFXGame.BioVehicleWheeled.GetWeaponStartTraceLocation",
-     "SFXGame.BioVehicleWheeled.Tick",
-     "SFXGame.BioVisualEffect.CreateCrustEffect",
-     "SFXGame.BioVisualEffect.CreateVFXOnPosition",
-     "SFXGame.BioVisualEffect.SetLifeTime",
-     "SFXGame.BioVisualEffect.SetScalarParameter",
-     "SFXGame.BioVisualEffect.SetState",
-     "SFXGame.BioWeapon",
-     "SFXGame.BioWeaponRanged",
-     "SFXGame.BioWeaponRanged.DoCoolDownEffect",
-     "SFXGame.BioWeaponRanged.GetAdjustedAim",
-     "SFXGame.BioWeaponRanged.GetMuzzleLoc",
-     "SFXGame.BioWeaponRanged.GetPlayerAimError",
-     "SFXGame.BioWeaponRanged.GetRangedWeaponType",
-     "SFXGame.BioWeaponRanged.GetRecoil",
-     "SFXGame.BioWeaponRanged.TickFire",
-     "SFXGame.BioWeaponVFXAppearance",
-     "SFXGame.BioWorldInfo.EndCurrentConversation",
-     "SFXGame.MassEffectGuiManager",
-     "SFXGame.MassEffectGuiManager.HideBlackScreen",
-     "SFXGame.SFXGameModeBase.ShowCodexGui",
-     "SFXGame.SFXGameModeBase.ShowEquipmentGui",
-     "SFXGame.SFXGameModeBase.ShowJournalGui",
-     "SFXGame.SFXGameModeBase.ShowMapGui",
-     "SFXGame.SFXGameModeBase.ShowMenuGui",
-     "SFXGame.SFXGameModeBase.ShowSquadGui",
-     "SFXGame.SFXGameModeCommand.ShowMenuGui",
-     "SFXGame.SFXGameModeDefault.EnterPowerWheel",
-     "SFXGame.SFXGameModeDefault.EnterWeaponWheel",
-     "SFXGame.SFXGameModeDefault.SwitchToWeapon",
-     "SFXGame.SFXGameModeDefault.TryUseMappedPower",
-     "SFXGame.SFXGameModeDefault.UseFirstAid",
-     "SFXGame.SFXGameModeDefault.UseGrenade",
-     "SFXGame.SFXGameModePhoto.ShowMenuGui",
-     "SFXGame.SFXGameModePowerWheel.ShowMenuGui",
-     "SFXGame.SFXGameModeVehicle.FireCannon",
-     "SFXGame.SFXGameModeVehicle.LeaveWorld",
-     "SFXGame.SFXGameModeVehicle.RepairVehicle",
-     "SFXGame.SFXGameModeVehicle.ShowMenuGui",
-     "SFXGame.SFXGameModeVehicle.StopFiringCannon",
-     "SFXGame.SFXGameModeVehicle.TryExitVehicle",
-     "SFXGame.SFXGameModeWeaponWheel.ShowMenuGui",
-     "SFXGame.SFXPawn_Player.DrawPrimaryWeapon",
-     "SFXGame.SFXSaveGame.FindClosestDrivableVehicle",
-     "SFXGame.SFXWeaponStatsBase"
-    ],
-    "otherLacks": []
-   }
-  },
-  "game/AuthoredMoment": {
-   "LE2": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [],
-    "otherLacks": []
-   },
-   "LE3": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "Engine.PlayerController:m_oCachedScaleFormManager",
-     "SFXGame.MassEffectGuiManager.HideBlackScreen"
-    ],
-    "otherLacks": [
-     "Engine.PlayerController:m_oCachedScaleFormManager",
-     "SFXGame.MassEffectGuiManager.HideBlackScreen"
-    ]
-   }
-  },
-  "game/CameraProbe": {
-   "LE2": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.SFXCameraMode:LastHookPos"
-    ],
-    "otherLacks": [
-     "SFXGame.SFXCameraMode:LastHookPos"
-    ]
-   },
-   "LE3": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [],
-    "otherLacks": []
-   }
-  },
-  "game/CameraShake": {
-   "LE2": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioVehicleWheeled",
-     "SFXGame.BioVehicleWheeled:BoostShake",
-     "SFXGame.BioVehicleWheeled:JumpShake",
-     "SFXGame.BioWeaponRanged",
-     "SFXGame.BioWeaponRanged:Stats",
-     "SFXGame.SFXCameraShakeBase",
-     "SFXGame.SFXCameraShakeBase:TheShake",
-     "SFXGame.SFXWeaponStatsBase",
-     "SFXGame.SFXWeaponStatsBase:FiringShake",
-     "SFXGame.SFXWeaponStatsBase:TightAimFiringShake"
-    ],
-    "otherLacks": [
-     "SFXGame.BioVehicleWheeled",
-     "SFXGame.BioVehicleWheeled:BoostShake",
-     "SFXGame.BioVehicleWheeled:JumpShake",
-     "SFXGame.BioWeaponRanged",
-     "SFXGame.BioWeaponRanged:Stats",
-     "SFXGame.SFXCameraShakeBase",
-     "SFXGame.SFXCameraShakeBase:TheShake",
-     "SFXGame.SFXWeaponStatsBase",
-     "SFXGame.SFXWeaponStatsBase:FiringShake",
-     "SFXGame.SFXWeaponStatsBase:TightAimFiringShake"
-    ]
-   },
-   "LE3": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioVehicleWheeled",
-     "SFXGame.BioVehicleWheeled:BoostShake",
-     "SFXGame.BioVehicleWheeled:JumpShake",
-     "SFXGame.BioWeaponRanged",
-     "SFXGame.BioWeaponRanged:Stats",
-     "SFXGame.SFXWeaponStatsBase",
-     "SFXGame.SFXWeaponStatsBase:FiringShake",
-     "SFXGame.SFXWeaponStatsBase:TightAimFiringShake"
-    ],
-    "otherLacks": []
-   }
-  },
-  "game/CockpitPanel": {
-   "LE2": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioPower.IsRequiredResourceAvailable",
-     "SFXGame.BioVehicleBase",
-     "SFXGame.BioVehicleBase:m_oBehavior",
-     "SFXGame.SFXGameModeVehicle.LeaveWorld",
-     "SFXGame.SFXGameModeVehicle.RepairVehicle"
-    ],
-    "otherLacks": []
-   },
-   "LE3": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioEpicPawnBehavior",
-     "SFXGame.BioEpicPawnBehavior:m_powers",
-     "SFXGame.BioPower.IsRequiredResourceAvailable",
-     "SFXGame.BioPower:m_fCooldownRemaining",
-     "SFXGame.BioVehicleBase",
-     "SFXGame.BioVehicleBase:m_oBehavior",
-     "SFXGame.SFXGameModeVehicle.LeaveWorld",
-     "SFXGame.SFXGameModeVehicle.RepairVehicle"
-    ],
-    "otherLacks": []
-   }
-  },
-  "game/CockpitProbe": {
-   "LE2": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioActorBehavior.ReactToDeath",
-     "SFXGame.BioAttributesEpicPawn:m_HealthCurrent",
-     "SFXGame.BioEpicPawnBehavior.GetHealthAndShieldsScaled",
-     "SFXGame.BioPawn:m_oHeadMesh",
-     "SFXGame.BioPlayerController.BioEnterVehicle",
-     "SFXGame.BioPlayerController.BioExitVehicle",
-     "SFXGame.BioVehicleBase",
-     "SFXGame.BioVehicleBase.PlaceExitingDriver",
-     "SFXGame.BioVehicleBase:m_oBehavior",
-     "SFXGame.BioVehicleBehaviorBase",
-     "SFXGame.BioVehicleBehaviorBase:m_aVehicleWeaponInfo",
-     "SFXGame.BioWeaponRanged.GetMuzzleLoc",
-     "SFXGame.SFXGameModeVehicle.FireCannon",
-     "SFXGame.SFXGameModeVehicle.StopFiringCannon",
-     "SFXGame.SFXGameModeVehicle.TryExitVehicle",
-     "SFXGame.SFXSaveGame.FindClosestDrivableVehicle"
-    ],
-    "otherLacks": []
-   },
-   "LE3": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "Engine.Actor:Location",
-     "SFXGame.BioActorBehavior.ReactToDeath",
-     "SFXGame.BioAttributesEpicPawn",
-     "SFXGame.BioAttributesEpicPawn:m_HealthCurrent",
-     "SFXGame.BioEpicPawnBehavior",
-     "SFXGame.BioEpicPawnBehavior.GetHealthAndShieldsScaled",
-     "SFXGame.BioEpicPawnBehavior:m_PawnAttributes",
-     "SFXGame.BioPawn:m_oHeadMesh",
-     "SFXGame.BioPlayerController.BioEnterVehicle",
-     "SFXGame.BioPlayerController.BioExitVehicle",
-     "SFXGame.BioSFHandler_GameOver.HandleEvent",
-     "SFXGame.BioSFHandler_PartySelection",
-     "SFXGame.BioSFHandler_PartySelection.FinalizeParty",
-     "SFXGame.BioVehicleBase",
-     "SFXGame.BioVehicleBase.PlaceExitingDriver",
-     "SFXGame.BioVehicleBase:m_oBehavior",
-     "SFXGame.BioVehicleBehaviorBase",
-     "SFXGame.BioVehicleBehaviorBase:m_aVehicleWeaponInfo",
-     "SFXGame.BioWeaponRanged.GetMuzzleLoc",
-     "SFXGame.SFXGameModeVehicle.FireCannon",
-     "SFXGame.SFXGameModeVehicle.StopFiringCannon",
-     "SFXGame.SFXGameModeVehicle.TryExitVehicle",
-     "SFXGame.SFXSaveGame.FindClosestDrivableVehicle"
-    ],
-    "otherLacks": []
-   }
-  },
-  "game/CombatStance": {
-   "LE2": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioPawn.IsInCombatActionState",
-     "SFXGame.BioPawn.SetDesiredSpeed",
-     "SFXGame.BioPawnBehavior:m_fMaxDesSpdAccelRate",
-     "SFXGame.BioPawnBehavior:m_fMaxDesSpdDecelRate",
-     "SFXGame.BioPawnBehavior:m_fMaxDesSpdTacAccelRate",
-     "SFXGame.BioPawnBehavior:m_fMaxDesSpdTacDecelRate"
-    ],
-    "otherLacks": []
-   },
-   "LE3": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioPawn.IsInCombatActionState",
-     "SFXGame.BioPawn:m_oBehavior",
-     "SFXGame.BioPawnBehavior",
-     "SFXGame.BioPawnBehavior:m_eAnimSkidState",
-     "SFXGame.BioPawnBehavior:m_eAnimStartState",
-     "SFXGame.BioPawnBehavior:m_eAnimStopState",
-     "SFXGame.BioPawnBehavior:m_fDesiredMaxSpeed",
-     "SFXGame.BioPawnBehavior:m_fMaxDesSpdAccelRate",
-     "SFXGame.BioPawnBehavior:m_fMaxDesSpdDecelRate",
-     "SFXGame.BioPawnBehavior:m_fMaxDesSpdTacAccelRate",
-     "SFXGame.BioPawnBehavior:m_fMaxDesSpdTacDecelRate"
-    ],
-    "otherLacks": []
-   }
-  },
   "game/Comfort": {
-   "LE2": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [],
-    "otherLacks": []
-   },
-   "LE3": {
-    "everyGameLacks": [
-     "Engine.Actor:Location"
-    ],
-    "fromLe1Lacks": [
-     "Engine.Actor:Location"
-    ],
-    "otherLacks": []
-   }
-  },
-  "game/ConsoleRequest": {
-   "LE2": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [],
-    "otherLacks": []
-   },
-   "LE3": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioTriggerStream.Retouch"
-    ],
-    "otherLacks": []
-   }
-  },
-  "game/ConversationFlow": {
-   "LE2": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioConversation:m_nSubtitlesMode"
-    ],
-    "otherLacks": [
-     "SFXGame.BioConversation:m_nSubtitlesMode"
-    ]
-   },
-   "LE3": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioConversation:m_fInterruptRange",
-     "SFXGame.BioConversation:m_nCurrentEntry",
-     "SFXGame.BioConversation:m_nSubtitlesMode",
-     "SFXGame.BioConversation:m_pKismetStart",
-     "SFXGame.BioConversation:m_sCurrentSubTitle",
-     "SFXGame.BioSeqAct_StartConversation",
-     "SFXGame.BioSeqAct_StartConversation:Conv",
-     "SFXGame.BioSeqAct_StartConversation:m_fInterruptRange",
-     "SFXGame.BioSubtitles.DisplaySubtitle",
-     "SFXGame.BioSubtitles:m_CurrentRenderMode",
-     "SFXGame.BioWorldInfo:m_Subtitles",
-     "SFXGame.BioWorldInfo:m_oCurrentConversation"
-    ],
-    "otherLacks": [
-     "SFXGame.BioConversation:m_fInterruptRange",
-     "SFXGame.BioConversation:m_nCurrentEntry",
-     "SFXGame.BioConversation:m_nSubtitlesMode",
-     "SFXGame.BioConversation:m_pKismetStart",
-     "SFXGame.BioConversation:m_sCurrentSubTitle",
-     "SFXGame.BioSeqAct_StartConversation",
-     "SFXGame.BioSeqAct_StartConversation:Conv",
-     "SFXGame.BioSeqAct_StartConversation:m_fInterruptRange",
-     "SFXGame.BioSubtitles.DisplaySubtitle",
-     "SFXGame.BioSubtitles:m_CurrentRenderMode",
-     "SFXGame.BioWorldInfo:m_Subtitles",
-     "SFXGame.BioWorldInfo:m_oCurrentConversation"
-    ]
-   }
-  },
-  "game/ConversationWorld": {
-   "LE2": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "Engine.AudioComponent.BioIsPlaying",
-     "SFXGame.BioAI_Henchman.DoesGameModeAllowMovement",
-     "SFXGame.BioAiController.DoesGameModeAllowMovement",
-     "SFXGame.BioAiController.PushMoveToPoint",
-     "SFXGame.BioPawn.SetDesiredRotation",
-     "SFXGame.BioPawn.SetDesiredSpeed",
-     "SFXGame.BioSeqData_MoveToPoint"
-    ],
-    "otherLacks": [
-     "Engine.AudioComponent.BioIsPlaying",
-     "SFXGame.BioAI_Henchman.DoesGameModeAllowMovement",
-     "SFXGame.BioAiController.DoesGameModeAllowMovement",
-     "SFXGame.BioAiController.PushMoveToPoint",
-     "SFXGame.BioPawn.SetDesiredRotation",
-     "SFXGame.BioPawn.SetDesiredSpeed",
-     "SFXGame.BioSeqData_MoveToPoint"
-    ]
-   },
-   "LE3": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "Engine.Actor:oBioComponent",
-     "Engine.AudioComponent.BioIsPlaying",
-     "Engine.BioSFManager",
-     "Engine.BioSFManager:m_lstPanels",
-     "Engine.BioSFPanel",
-     "Engine.BioSFPanel:m_DefaultHandler",
-     "Engine.PlayerController:m_oCachedScaleFormManager",
-     "SFXGame.BioAI_Henchman.DoesGameModeAllowMovement",
-     "SFXGame.BioActorBehavior.AbilityEnable",
-     "SFXGame.BioAiController.DoesGameModeAllowMovement",
-     "SFXGame.BioAiController.PushMoveToPoint",
-     "SFXGame.BioConversation:m_LookAtList",
-     "SFXGame.BioConversation:m_SpeakerList",
-     "SFXGame.BioConversation:m_aFSPrevPositions",
-     "SFXGame.BioConversation:m_nCurrentEntry",
-     "SFXGame.BioConversation:m_pConversationOwner",
-     "SFXGame.BioConversation:m_pConversationPlayer",
-     "SFXGame.BioConversation:m_pListener",
-     "SFXGame.BioConversation:m_pSpeaker",
-     "SFXGame.BioConversation:m_sCurrentSubTitle",
-     "SFXGame.BioConversation:m_stage",
-     "SFXGame.BioEpicPawnBehavior",
-     "SFXGame.BioEpicPawnBehavior:Squad",
-     "SFXGame.BioEpicPawnBehavior:m_nALLEnabled",
-     "SFXGame.BioEpicPawnBehavior:m_nStackEnabled",
-     "SFXGame.BioLookAt",
-     "SFXGame.BioLookAt:m_Controllers",
-     "SFXGame.BioLookAt:m_Definition",
-     "SFXGame.BioLookAt:m_nRank",
-     "SFXGame.BioLookAt:m_oTarget",
-     "SFXGame.BioPawn.SetDesiredRotation",
-     "SFXGame.BioPawn.SetLookAtTarget",
-     "SFXGame.BioPawn:m_nHiddenRequestCount",
-     "SFXGame.BioPawn:m_oBehavior",
-     "SFXGame.BioPawn:m_oLookAtData",
-     "SFXGame.BioPawnLookAtController",
-     "SFXGame.BioPawnLookAtController:mc_pDefinition",
-     "SFXGame.BioSeqData_MoveToPoint",
-     "SFXGame.BioWorldInfo.EndCurrentConversation",
-     "SFXGame.BioWorldInfo:m_oCurrentConversation"
-    ],
-    "otherLacks": [
-     "Engine.Actor:oBioComponent",
-     "Engine.AudioComponent.BioIsPlaying",
-     "Engine.BioSFManager",
-     "Engine.BioSFManager:m_lstPanels",
-     "Engine.BioSFPanel",
-     "Engine.BioSFPanel:m_DefaultHandler",
-     "Engine.PlayerController:m_oCachedScaleFormManager",
-     "SFXGame.BioAI_Henchman.DoesGameModeAllowMovement",
-     "SFXGame.BioActorBehavior.AbilityEnable",
-     "SFXGame.BioAiController.DoesGameModeAllowMovement",
-     "SFXGame.BioAiController.PushMoveToPoint",
-     "SFXGame.BioConversation:m_LookAtList",
-     "SFXGame.BioConversation:m_SpeakerList",
-     "SFXGame.BioConversation:m_aFSPrevPositions",
-     "SFXGame.BioConversation:m_nCurrentEntry",
-     "SFXGame.BioConversation:m_pConversationOwner",
-     "SFXGame.BioConversation:m_pConversationPlayer",
-     "SFXGame.BioConversation:m_pListener",
-     "SFXGame.BioConversation:m_pSpeaker",
-     "SFXGame.BioConversation:m_sCurrentSubTitle",
-     "SFXGame.BioConversation:m_stage",
-     "SFXGame.BioEpicPawnBehavior",
-     "SFXGame.BioEpicPawnBehavior:Squad",
-     "SFXGame.BioEpicPawnBehavior:m_nALLEnabled",
-     "SFXGame.BioEpicPawnBehavior:m_nStackEnabled",
-     "SFXGame.BioLookAt",
-     "SFXGame.BioLookAt:m_Controllers",
-     "SFXGame.BioLookAt:m_Definition",
-     "SFXGame.BioLookAt:m_nRank",
-     "SFXGame.BioLookAt:m_oTarget",
-     "SFXGame.BioPawn.SetDesiredRotation",
-     "SFXGame.BioPawn.SetLookAtTarget",
-     "SFXGame.BioPawn:m_nHiddenRequestCount",
-     "SFXGame.BioPawn:m_oBehavior",
-     "SFXGame.BioPawn:m_oLookAtData",
-     "SFXGame.BioPawnLookAtController",
-     "SFXGame.BioPawnLookAtController:mc_pDefinition",
-     "SFXGame.BioSeqData_MoveToPoint",
-     "SFXGame.BioWorldInfo.EndCurrentConversation",
-     "SFXGame.BioWorldInfo:m_oCurrentConversation"
-    ]
-   }
-  },
-  "game/GalaxyDump": {
-   "LE2": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioInventory",
-     "SFXGame.BioSkillGame_Handler"
-    ],
-    "otherLacks": [
-     "SFXGame.BioInventory",
-     "SFXGame.BioSkillGame_Handler"
-    ]
-   },
-   "LE3": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "Engine.BioSFHandler.HandleEvent",
-     "Engine.BioSFHandler.HandleExternalEvent",
-     "SFXGame.BioAttributesPawn",
-     "SFXGame.BioInventory",
-     "SFXGame.BioSkillGame_Handler"
-    ],
-    "otherLacks": [
-     "Engine.BioSFHandler.HandleEvent",
-     "Engine.BioSFHandler.HandleExternalEvent",
-     "SFXGame.BioAttributesPawn",
-     "SFXGame.BioInventory",
-     "SFXGame.BioSkillGame_Handler"
-    ]
-   }
-  },
-  "game/GalaxyMap": {
-   "LE2": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "Engine.Bio2DA.GetColumnName",
-     "Engine.Bio2DA.GetFloatEntryII",
-     "Engine.Bio2DA.GetIntEntryII",
-     "Engine.Bio2DA.GetNumColumns",
-     "Engine.Bio2DA.GetNumRows",
-     "Engine.Bio2DA.GetRowNumber",
-     "SFXGame.BioCameraBehaviorGalaxy:m_pClusterTable",
-     "SFXGame.BioCameraBehaviorGalaxy:m_pRelayTable",
-     "SFXGame.BioSPGame.GetSimpleString"
-    ],
-    "otherLacks": [
-     "Engine.Bio2DA.GetColumnName",
-     "Engine.Bio2DA.GetFloatEntryII",
-     "Engine.Bio2DA.GetIntEntryII",
-     "Engine.Bio2DA.GetNumColumns",
-     "Engine.Bio2DA.GetNumRows",
-     "Engine.Bio2DA.GetRowNumber",
-     "SFXGame.BioCameraBehaviorGalaxy:m_pClusterTable",
-     "SFXGame.BioCameraBehaviorGalaxy:m_pRelayTable",
-     "SFXGame.BioSPGame.GetSimpleString"
-    ]
-   },
-   "LE3": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "Engine.Bio2DA.GetColumnName",
-     "Engine.Bio2DA.GetFloatEntryII",
-     "Engine.Bio2DA.GetIntEntryII",
-     "Engine.Bio2DA.GetNumColumns",
-     "Engine.Bio2DA.GetNumRows",
-     "Engine.Bio2DA.GetRowNumber",
-     "Engine.BioSFHandler",
-     "Engine.BioSFHandler:oPanel",
-     "Engine.BioSFPanel.InvokeMethod",
-     "Engine.BioSFPanel.SetMovieVisibility",
-     "SFXGame.BioArtPlaceableBehavior",
-     "SFXGame.BioArtPlaceableBehavior.OnArtPlaceableUsed",
-     "SFXGame.BioCameraBehaviorGalaxy:m_pClusterTable",
-     "SFXGame.BioCameraBehaviorGalaxy:m_pDynamicObjects",
-     "SFXGame.BioCameraBehaviorGalaxy:m_pRelayTable",
-     "SFXGame.BioSPGame.GetSimpleString",
-     "SFXGame.BioSeqAct_Delay",
-     "SFXGame.BioSeqEvt_ArtPlaceableUsed"
-    ],
-    "otherLacks": [
-     "Engine.Bio2DA.GetColumnName",
-     "Engine.Bio2DA.GetFloatEntryII",
-     "Engine.Bio2DA.GetIntEntryII",
-     "Engine.Bio2DA.GetNumColumns",
-     "Engine.Bio2DA.GetNumRows",
-     "Engine.Bio2DA.GetRowNumber",
-     "Engine.BioSFHandler",
-     "Engine.BioSFHandler:oPanel",
-     "Engine.BioSFPanel.InvokeMethod",
-     "Engine.BioSFPanel.SetMovieVisibility",
-     "SFXGame.BioArtPlaceableBehavior",
-     "SFXGame.BioArtPlaceableBehavior.OnArtPlaceableUsed",
-     "SFXGame.BioCameraBehaviorGalaxy:m_pClusterTable",
-     "SFXGame.BioCameraBehaviorGalaxy:m_pDynamicObjects",
-     "SFXGame.BioCameraBehaviorGalaxy:m_pRelayTable",
-     "SFXGame.BioSPGame.GetSimpleString",
-     "SFXGame.BioSeqAct_Delay",
-     "SFXGame.BioSeqEvt_ArtPlaceableUsed"
-    ]
-   }
+   "LE3": [
+    "Engine.Actor:Location"
+   ]
   },
   "game/GameMenuRequest": {
-   "LE2": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioPawn.IsInCombatActionState",
-     "SFXGame.SFXGameModeBase.ShowCodexGui",
-     "SFXGame.SFXGameModeBase.ShowEquipmentGui",
-     "SFXGame.SFXGameModeBase.ShowJournalGui",
-     "SFXGame.SFXGameModeBase.ShowMapGui",
-     "SFXGame.SFXGameModeBase.ShowMenuGui",
-     "SFXGame.SFXGameModeBase.ShowSquadGui"
-    ],
-    "otherLacks": [
-     "SFXGame.BioPawn.IsInCombatActionState",
-     "SFXGame.SFXGameModeBase.ShowCodexGui",
-     "SFXGame.SFXGameModeBase.ShowEquipmentGui",
-     "SFXGame.SFXGameModeBase.ShowJournalGui",
-     "SFXGame.SFXGameModeBase.ShowMapGui",
-     "SFXGame.SFXGameModeBase.ShowSquadGui"
-    ]
-   },
-   "LE3": {
-    "everyGameLacks": [
-     "Engine.BioSFHandler.HandleInputEvent",
-     "Engine.BioSFManager:m_FocusPanel",
-     "Engine.BioSFPanel:m_DefaultHandler",
-     "Engine.BioSFPanel:nmTag",
-     "Engine.PlayerController:m_oCachedScaleFormManager",
-     "SFXGame.MassEffectGuiManager.GetBrowserHandler",
-     "SFXGame.MassEffectGuiManager:m_oBWHandler"
-    ],
-    "fromLe1Lacks": [
-     "Engine.BioSFHandler.HandleInputEvent",
-     "Engine.BioSFManager",
-     "Engine.BioSFManager:m_FocusPanel",
-     "Engine.BioSFPanel",
-     "Engine.BioSFPanel:m_DefaultHandler",
-     "Engine.BioSFPanel:nmTag",
-     "Engine.PlayerController:m_oCachedScaleFormManager",
-     "SFXGame.BioPawn.IsInCombatActionState",
-     "SFXGame.SFXGameModeBase.ShowCodexGui",
-     "SFXGame.SFXGameModeBase.ShowEquipmentGui",
-     "SFXGame.SFXGameModeBase.ShowJournalGui",
-     "SFXGame.SFXGameModeBase.ShowMapGui",
-     "SFXGame.SFXGameModeBase.ShowMenuGui",
-     "SFXGame.SFXGameModeBase.ShowSquadGui"
-    ],
-    "otherLacks": [
-     "Engine.BioSFManager",
-     "Engine.BioSFPanel",
-     "SFXGame.BioPawn.IsInCombatActionState",
-     "SFXGame.MassEffectGuiManager",
-     "SFXGame.SFXGameModeBase.ShowCodexGui",
-     "SFXGame.SFXGameModeBase.ShowEquipmentGui",
-     "SFXGame.SFXGameModeBase.ShowJournalGui",
-     "SFXGame.SFXGameModeBase.ShowMapGui",
-     "SFXGame.SFXGameModeBase.ShowSquadGui"
-    ]
-   }
+   "LE3": [
+    "Engine.BioSFHandler.HandleInputEvent",
+    "Engine.BioSFManager:m_FocusPanel",
+    "Engine.BioSFPanel:m_DefaultHandler",
+    "Engine.BioSFPanel:nmTag",
+    "Engine.PlayerController:m_oCachedScaleFormManager",
+    "SFXGame.MassEffectGuiManager.GetBrowserHandler",
+    "SFXGame.MassEffectGuiManager:m_oBWHandler"
+   ]
   },
   "game/GuiCursor": {
-   "LE2": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [],
-    "otherLacks": []
-   },
-   "LE3": {
-    "everyGameLacks": [
-     "Engine.BioSFManager:m_FocusPanel",
-     "Engine.PlayerController:m_oCachedScaleFormManager"
-    ],
-    "fromLe1Lacks": [
-     "Engine.BioSFManager",
-     "Engine.BioSFManager:m_FocusPanel",
-     "Engine.PlayerController:m_oCachedScaleFormManager"
-    ],
-    "otherLacks": [
-     "Engine.BioSFManager"
-    ]
-   }
-  },
-  "game/GunKick": {
-   "LE2": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioWeaponRanged.GetRecoil"
-    ],
-    "otherLacks": []
-   },
-   "LE3": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioWeaponRanged.GetRecoil"
-    ],
-    "otherLacks": []
-   }
-  },
-  "game/HandAim": {
-   "LE2": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioWeaponRanged.GetAdjustedAim"
-    ],
-    "otherLacks": []
-   },
-   "LE3": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioWeaponRanged.GetAdjustedAim"
-    ],
-    "otherLacks": []
-   }
-  },
-  "game/Holsters": {
-   "LE2": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioEquipment",
-     "SFXGame.BioEquipment:m_eQuickSlotCurrent",
-     "SFXGame.BioPawn.IsInCombatActionState",
-     "SFXGame.BioPawnBehavior:m_oEquipment",
-     "SFXGame.BioWeaponRanged",
-     "SFXGame.BioWeaponRanged.GetRangedWeaponType",
-     "SFXGame.SFXGameModeDefault.SwitchToWeapon",
-     "SFXGame.SFXGameModeDefault.TryUseMappedPower",
-     "SFXGame.SFXGameModeDefault.UseFirstAid",
-     "SFXGame.SFXPawn_Player.DrawPrimaryWeapon"
-    ],
-    "otherLacks": []
-   },
-   "LE3": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioEquipment",
-     "SFXGame.BioEquipment:m_eQuickSlotCurrent",
-     "SFXGame.BioPawn.IsInCombatActionState",
-     "SFXGame.BioPawn:m_oBehavior",
-     "SFXGame.BioPawnBehavior",
-     "SFXGame.BioPawnBehavior:m_oEquipment",
-     "SFXGame.BioWeaponRanged",
-     "SFXGame.BioWeaponRanged.GetRangedWeaponType",
-     "SFXGame.SFXGameModeDefault.EnterPowerWheel",
-     "SFXGame.SFXGameModeDefault.EnterWeaponWheel",
-     "SFXGame.SFXGameModeDefault.SwitchToWeapon",
-     "SFXGame.SFXGameModeDefault.TryUseMappedPower",
-     "SFXGame.SFXGameModeDefault.UseFirstAid",
-     "SFXGame.SFXPawn_Player.DrawPrimaryWeapon"
-    ],
-    "otherLacks": []
-   }
-  },
-  "game/InventoryProbe": {
-   "LE2": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioInventoryGuiInterface",
-     "SFXGame.BioInventoryGuiInterface:EquippableItemsList",
-     "SFXGame.BioInventoryGuiInterface:lstEquipSlotOrder",
-     "SFXGame.BioInventoryGuiInterface:m_eCurrentSlot",
-     "SFXGame.BioSFHandler_Inventory",
-     "SFXGame.BioSFHandler_Inventory:m_eCurrentSlot",
-     "SFXGame.BioSFHandler_Inventory:m_nCurrentSquadMember",
-     "SFXGame.BioSFHandler_Inventory:m_oInvInterface"
-    ],
-    "otherLacks": [
-     "SFXGame.BioInventoryGuiInterface",
-     "SFXGame.BioInventoryGuiInterface:EquippableItemsList",
-     "SFXGame.BioInventoryGuiInterface:lstEquipSlotOrder",
-     "SFXGame.BioInventoryGuiInterface:m_eCurrentSlot",
-     "SFXGame.BioSFHandler_Inventory",
-     "SFXGame.BioSFHandler_Inventory:m_eCurrentSlot",
-     "SFXGame.BioSFHandler_Inventory:m_nCurrentSquadMember",
-     "SFXGame.BioSFHandler_Inventory:m_oInvInterface"
-    ]
-   },
-   "LE3": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "Engine.BioSFManager",
-     "Engine.BioSFManager:m_FocusPanel",
-     "Engine.BioSFPanel",
-     "Engine.BioSFPanel:m_DefaultHandler",
-     "Engine.PlayerController:m_oCachedScaleFormManager",
-     "SFXGame.BioInventoryGuiInterface",
-     "SFXGame.BioInventoryGuiInterface:EquippableItemsList",
-     "SFXGame.BioInventoryGuiInterface:lstEquipSlotOrder",
-     "SFXGame.BioInventoryGuiInterface:m_eCurrentSlot",
-     "SFXGame.BioSFHandler_Inventory",
-     "SFXGame.BioSFHandler_Inventory:m_eCurrentSlot",
-     "SFXGame.BioSFHandler_Inventory:m_nCurrentSquadMember",
-     "SFXGame.BioSFHandler_Inventory:m_oInvInterface"
-    ],
-    "otherLacks": [
-     "Engine.BioSFManager",
-     "Engine.BioSFManager:m_FocusPanel",
-     "Engine.BioSFPanel",
-     "Engine.BioSFPanel:m_DefaultHandler",
-     "Engine.PlayerController:m_oCachedScaleFormManager",
-     "SFXGame.BioInventoryGuiInterface",
-     "SFXGame.BioInventoryGuiInterface:EquippableItemsList",
-     "SFXGame.BioInventoryGuiInterface:lstEquipSlotOrder",
-     "SFXGame.BioInventoryGuiInterface:m_eCurrentSlot",
-     "SFXGame.BioSFHandler_Inventory",
-     "SFXGame.BioSFHandler_Inventory:m_eCurrentSlot",
-     "SFXGame.BioSFHandler_Inventory:m_nCurrentSquadMember",
-     "SFXGame.BioSFHandler_Inventory:m_oInvInterface"
-    ]
-   }
-  },
-  "game/Mako": {
-   "LE2": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioVehicleBase",
-     "SFXGame.BioVehicleBase:m_oBehavior",
-     "SFXGame.BioVehicleBehaviorBase",
-     "SFXGame.BioVehicleBehaviorBase.SetDesiredTurretAimPoint",
-     "SFXGame.BioVehicleBehaviorBase:m_aVehicleWeaponInfo",
-     "SFXGame.BioVehicleWheeled.GetWeaponStartTraceLocation",
-     "SFXGame.BioVehicleWheeled.Tick",
-     "SFXGame.BioWeaponRanged.GetMuzzleLoc"
-    ],
-    "otherLacks": []
-   },
-   "LE3": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioVehicleBase",
-     "SFXGame.BioVehicleBase:m_oBehavior",
-     "SFXGame.BioVehicleBehaviorBase",
-     "SFXGame.BioVehicleBehaviorBase.SetDesiredTurretAimPoint",
-     "SFXGame.BioVehicleBehaviorBase:m_aVehicleWeaponInfo",
-     "SFXGame.BioVehicleWheeled.GetWeaponStartTraceLocation",
-     "SFXGame.BioVehicleWheeled.Tick",
-     "SFXGame.BioWeaponRanged.GetMuzzleLoc"
-    ],
-    "otherLacks": []
-   }
-  },
-  "game/MakoControls": {
-   "LE2": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioPlayerController:bJumpJetsOn",
-     "SFXGame.BioSVehicleSimTank",
-     "SFXGame.BioSVehicleSimTank:m_fCurrentInputYaw",
-     "SFXGame.BioVehicleBase",
-     "SFXGame.BioVehicleBase.SetInputs",
-     "SFXGame.BioVehicleBase:m_oBehavior",
-     "SFXGame.BioVehicleBehaviorBase",
-     "SFXGame.BioVehicleWheeled",
-     "SFXGame.BioVehicleWheeled:CurrentBoostFuel",
-     "SFXGame.BioVehicleWheeled:CurrentJumpFuel",
-     "SFXGame.BioVehicleWheeled:MaxBoostFuel",
-     "SFXGame.BioVehicleWheeled:MaxJumpFuel"
-    ],
-    "otherLacks": []
-   },
-   "LE3": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "Engine.Actor:Location",
-     "SFXGame.BioPlayerController:bJumpJetsOn",
-     "SFXGame.BioSVehicleSimTank",
-     "SFXGame.BioSVehicleSimTank:m_fCurrentInputYaw",
-     "SFXGame.BioVehicleBase",
-     "SFXGame.BioVehicleBase.SetInputs",
-     "SFXGame.BioVehicleBase:m_oBehavior",
-     "SFXGame.BioVehicleBehaviorBase",
-     "SFXGame.BioVehicleWheeled",
-     "SFXGame.BioVehicleWheeled:CurrentBoostFuel",
-     "SFXGame.BioVehicleWheeled:CurrentJumpFuel",
-     "SFXGame.BioVehicleWheeled:MaxBoostFuel",
-     "SFXGame.BioVehicleWheeled:MaxJumpFuel"
-    ],
-    "otherLacks": []
-   }
-  },
-  "game/MakoGunner": {
-   "LE2": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioEpicPawnBehavior.GetHealthAndShieldsScaled",
-     "SFXGame.BioPawn.IsDead",
-     "SFXGame.BioWeaponRanged.GetMuzzleLoc",
-     "SFXGame.SFXGameModeVehicle.FireCannon",
-     "SFXGame.SFXGameModeVehicle.StopFiringCannon"
-    ],
-    "otherLacks": []
-   },
-   "LE3": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioEpicPawnBehavior.GetHealthAndShieldsScaled",
-     "SFXGame.BioPawn.IsDead",
-     "SFXGame.BioPawn.IsHostile",
-     "SFXGame.BioPawn:m_oBehavior",
-     "SFXGame.BioWeaponRanged.GetMuzzleLoc",
-     "SFXGame.SFXGameModeVehicle.FireCannon",
-     "SFXGame.SFXGameModeVehicle.StopFiringCannon"
-    ],
-    "otherLacks": []
-   }
-  },
-  "game/MenuPause": {
-   "LE2": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "Engine.WorldInfo.PauseGame"
-    ],
-    "otherLacks": []
-   },
-   "LE3": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [],
-    "otherLacks": []
-   }
+   "LE3": [
+    "Engine.BioSFManager:m_FocusPanel",
+    "Engine.PlayerController:m_oCachedScaleFormManager"
+   ]
   },
   "game/OmniTool": {
-   "LE2": {
-    "everyGameLacks": [
-     "Engine.StaticMesh:LODInfo"
-    ],
-    "fromLe1Lacks": [
-     "Engine.StaticMesh:LODInfo"
-    ],
-    "otherLacks": []
-   },
-   "LE3": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "Engine.StaticMesh:LODInfo",
-     "SFXGame.BioVisualEffect.CreateCrustEffect",
-     "SFXGame.BioVisualEffect.SetLifeTime",
-     "SFXGame.BioVisualEffect.SetScalarParameter",
-     "SFXGame.BioVisualEffect.SetState",
-     "SFXGame.BioVisualEffect:m_CachedInstanceParameters"
-    ],
-    "otherLacks": []
-   }
+   "LE2": [
+    "Engine.StaticMesh:LODInfo"
+   ]
   },
   "game/Player": {
-   "LE2": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [],
-    "otherLacks": []
-   },
-   "LE3": {
-    "everyGameLacks": [
-     "Engine.Actor:Location"
-    ],
-    "fromLe1Lacks": [
-     "Engine.Actor:Location"
-    ],
-    "otherLacks": []
-   }
+   "LE3": [
+    "Engine.Actor:Location"
+   ]
   },
   "game/Posture": {
-   "LE2": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioPawn.ShouldCrouch"
-    ],
-    "otherLacks": []
-   },
-   "LE3": {
-    "everyGameLacks": [
-     "Engine.Actor:Location"
-    ],
-    "fromLe1Lacks": [
-     "Engine.Actor:Location",
-     "SFXGame.BioPawn.ShouldCrouch"
-    ],
-    "otherLacks": []
-   }
+   "LE3": [
+    "Engine.Actor:Location"
+   ]
   },
   "game/PowerWheel": {
-   "LE2": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioPawn.IsDead",
-     "SFXGame.BioPawn.IsInCombatActionState",
-     "SFXGame.BioPlayerInput:MappedPower",
-     "SFXGame.BioPower.IsRequiredWeaponEquipped",
-     "SFXGame.BioPower:m_VFXAppearance",
-     "SFXGame.BioPower:m_nEnabled",
-     "SFXGame.SFXGameModeDefault.TryUseMappedPower"
-    ],
-    "otherLacks": [
-     "SFXGame.BioPawn.IsInCombatActionState",
-     "SFXGame.BioPlayerInput:MappedPower",
-     "SFXGame.BioPower.IsRequiredWeaponEquipped",
-     "SFXGame.BioPower:m_VFXAppearance",
-     "SFXGame.BioPower:m_nEnabled",
-     "SFXGame.SFXGameModeDefault.TryUseMappedPower"
-    ]
-   },
-   "LE3": {
-    "everyGameLacks": [
-     "SFXGame.BioPawn.IsHostile",
-     "SFXGame.BioPawn:m_oBehavior"
-    ],
-    "fromLe1Lacks": [
-     "SFXGame.BioActorBehavior",
-     "SFXGame.BioEpicPawnBehavior",
-     "SFXGame.BioEpicPawnBehavior:m_powers",
-     "SFXGame.BioPawn.IsDead",
-     "SFXGame.BioPawn.IsHostile",
-     "SFXGame.BioPawn.IsInCombatActionState",
-     "SFXGame.BioPawn.ReleasePower",
-     "SFXGame.BioPawn:m_oBehavior",
-     "SFXGame.BioPlayerInput:MappedPower",
-     "SFXGame.BioPower.IsRequiredWeaponEquipped",
-     "SFXGame.BioPower:m_VFXAppearance",
-     "SFXGame.BioPower:m_fCooldownRemaining",
-     "SFXGame.BioPower:m_fTotalCooldownTime",
-     "SFXGame.BioPower:m_nEnabled",
-     "SFXGame.BioPowerVFXAppearance",
-     "SFXGame.BioPowerVFXAppearance:PlayerCrust",
-     "SFXGame.BioPowerVFXAppearance:nmProjectileAttachPoint",
-     "SFXGame.BioPowerVFXAppearance:vfxProjectileEffect",
-     "SFXGame.BioPowerVFXAppearance:vfxReleaseEffect",
-     "SFXGame.BioVFXTemplate:fLifeTime",
-     "SFXGame.BioVFXTemplate:oPrefab",
-     "SFXGame.BioVisualEffect.CreateVFXOnPosition",
-     "SFXGame.BioVisualEffect.SetLifeTime",
-     "SFXGame.SFXGameModeDefault.TryUseMappedPower"
-    ],
-    "otherLacks": [
-     "SFXGame.BioActorBehavior",
-     "SFXGame.BioEpicPawnBehavior",
-     "SFXGame.BioEpicPawnBehavior:m_powers",
-     "SFXGame.BioPawn.IsInCombatActionState",
-     "SFXGame.BioPawn.ReleasePower",
-     "SFXGame.BioPlayerInput:MappedPower",
-     "SFXGame.BioPower.IsRequiredWeaponEquipped",
-     "SFXGame.BioPower:m_VFXAppearance",
-     "SFXGame.BioPower:m_fCooldownRemaining",
-     "SFXGame.BioPower:m_fTotalCooldownTime",
-     "SFXGame.BioPower:m_nEnabled",
-     "SFXGame.BioPowerVFXAppearance",
-     "SFXGame.BioPowerVFXAppearance:PlayerCrust",
-     "SFXGame.BioPowerVFXAppearance:nmProjectileAttachPoint",
-     "SFXGame.BioPowerVFXAppearance:vfxProjectileEffect",
-     "SFXGame.BioPowerVFXAppearance:vfxReleaseEffect",
-     "SFXGame.BioVFXTemplate:fLifeTime",
-     "SFXGame.BioVFXTemplate:oPrefab",
-     "SFXGame.BioVisualEffect.CreateVFXOnPosition",
-     "SFXGame.BioVisualEffect.SetLifeTime",
-     "SFXGame.SFXGameModeDefault.TryUseMappedPower"
-    ]
-   }
-  },
-  "game/ScopeCapture": {
-   "LE2": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [],
-    "otherLacks": []
-   },
-   "LE3": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "Engine.Actor:Location"
-    ],
-    "otherLacks": []
-   }
+   "LE3": [
+    "SFXGame.BioPawn.IsHostile",
+    "SFXGame.BioPawn:m_oBehavior"
+   ]
   },
   "game/ScreenReticle": {
-   "LE2": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioSFHandler_Reticule",
-     "SFXGame.BioSFHandler_Reticule:m_Reticule",
-     "SFXGame.BioSFHandler_Reticule:m_eLastReticuleMode"
-    ],
-    "otherLacks": []
-   },
-   "LE3": {
-    "everyGameLacks": [
-     "Engine.BioSFHandler:oPanel",
-     "Engine.BioSFManager:m_lstPanels",
-     "Engine.BioSFPanel",
-     "Engine.BioSFPanel.GetVariableBool",
-     "Engine.BioSFPanel.GetVariableFloat",
-     "Engine.BioSFPanel.SetVariableFloat",
-     "Engine.BioSFPanel:MovieRef",
-     "Engine.BioSFPanel:ScriptHandlers",
-     "Engine.BioSFPanel:m_DefaultHandler",
-     "Engine.BioSFPanel:nmTag",
-     "Engine.PlayerController:m_oCachedScaleFormManager",
-     "SFXGame.BioSFHandler_Reticule",
-     "SFXGame.BioSFHandler_Reticule:m_Reticule",
-     "SFXGame.BioSFHandler_Reticule:m_eLastReticuleMode"
-    ],
-    "fromLe1Lacks": [
-     "Engine.BioSFHandler",
-     "Engine.BioSFHandler:oPanel",
-     "Engine.BioSFManager",
-     "Engine.BioSFManager:m_lstPanels",
-     "Engine.BioSFPanel",
-     "Engine.BioSFPanel.GetVariableBool",
-     "Engine.BioSFPanel.GetVariableFloat",
-     "Engine.BioSFPanel.SetVariableFloat",
-     "Engine.BioSFPanel:MovieRef",
-     "Engine.BioSFPanel:ScriptHandlers",
-     "Engine.BioSFPanel:m_DefaultHandler",
-     "Engine.BioSFPanel:nmTag",
-     "Engine.PlayerController:m_oCachedScaleFormManager",
-     "SFXGame.BioSFHandler_Reticule",
-     "SFXGame.BioSFHandler_Reticule:m_Reticule",
-     "SFXGame.BioSFHandler_Reticule:m_eLastReticuleMode"
-    ],
-    "otherLacks": [
-     "Engine.BioSFHandler",
-     "Engine.BioSFManager"
-    ]
-   }
-  },
-  "game/Sights": {
-   "LE2": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioWeaponRanged",
-     "SFXGame.BioWeaponRanged.GetPlayerAimError",
-     "SFXGame.BioWeaponRanged:Stats",
-     "SFXGame.SFXWeaponStatsBase",
-     "SFXGame.SFXWeaponStatsBase:AimModes"
-    ],
-    "otherLacks": []
-   },
-   "LE3": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioWeaponRanged",
-     "SFXGame.BioWeaponRanged.GetPlayerAimError",
-     "SFXGame.BioWeaponRanged:Stats",
-     "SFXGame.SFXWeaponStatsBase",
-     "SFXGame.SFXWeaponStatsBase:AimModes"
-    ],
-    "otherLacks": []
-   }
-  },
-  "game/SkeletonProbe": {
-   "LE2": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioSFHandler_PCHUD"
-    ],
-    "otherLacks": [
-     "SFXGame.BioSFHandler_PCHUD"
-    ]
-   },
-   "LE3": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "Engine.BioSFHandler",
-     "Engine.BioSFHandler:oPanel",
-     "Engine.BioSFPanel",
-     "Engine.BioSFPanel:MovieRef",
-     "Engine.BioSFPanel:fMovieAspectRatio",
-     "SFXGame.BioSFHandler_PCHUD"
-    ],
-    "otherLacks": [
-     "Engine.BioSFHandler",
-     "Engine.BioSFHandler:oPanel",
-     "Engine.BioSFPanel",
-     "Engine.BioSFPanel:MovieRef",
-     "Engine.BioSFPanel:fMovieAspectRatio",
-     "SFXGame.BioSFHandler_PCHUD"
-    ]
-   }
-  },
-  "game/Spectator": {
-   "LE2": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioPawn:m_oHeadMesh"
-    ],
-    "otherLacks": []
-   },
-   "LE3": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioPawn:m_oHeadMesh"
-    ],
-    "otherLacks": []
-   }
-  },
-  "game/Sprint": {
-   "LE2": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioPawn:CombatStormSpeed"
-    ],
-    "otherLacks": []
-   },
-   "LE3": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioPawn:CombatStormSpeed"
-    ],
-    "otherLacks": [
-     "SFXGame.BioPawn:CombatStormSpeed"
-    ]
-   }
-  },
-  "game/SquadAck": {
-   "LE2": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioBaseSquad.SquadHandleChatterEvent",
-     "SFXGame.BioPawn.PlaySoundSet"
-    ],
-    "otherLacks": [
-     "SFXGame.BioBaseSquad.SquadHandleChatterEvent",
-     "SFXGame.BioPawn.PlaySoundSet"
-    ]
-   },
-   "LE3": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioBaseSquad.SquadHandleChatterEvent",
-     "SFXGame.BioPawn.PlaySoundSet"
-    ],
-    "otherLacks": [
-     "SFXGame.BioBaseSquad.SquadHandleChatterEvent",
-     "SFXGame.BioPawn.PlaySoundSet"
-    ]
-   }
+   "LE3": [
+    "Engine.BioSFHandler:oPanel",
+    "Engine.BioSFManager:m_lstPanels",
+    "Engine.BioSFPanel",
+    "Engine.BioSFPanel.GetVariableBool",
+    "Engine.BioSFPanel.GetVariableFloat",
+    "Engine.BioSFPanel.SetVariableFloat",
+    "Engine.BioSFPanel:MovieRef",
+    "Engine.BioSFPanel:ScriptHandlers",
+    "Engine.BioSFPanel:m_DefaultHandler",
+    "Engine.BioSFPanel:nmTag",
+    "Engine.PlayerController:m_oCachedScaleFormManager",
+    "SFXGame.BioSFHandler_Reticule",
+    "SFXGame.BioSFHandler_Reticule:m_Reticule",
+    "SFXGame.BioSFHandler_Reticule:m_eLastReticuleMode"
+   ]
   },
   "game/SquadContext": {
-   "LE2": {
-    "everyGameLacks": [
-     "SFXGame.BioPawn.IsInCombatActionState"
-    ],
-    "fromLe1Lacks": [
-     "SFXGame.BioActorBehavior:m_oActorType",
-     "SFXGame.BioEpicPawnBehavior.GetPercentHealth",
-     "SFXGame.BioPawn.IsDead",
-     "SFXGame.BioPawn.IsInCombatActionState"
-    ],
-    "otherLacks": [
-     "SFXGame.BioActorBehavior:m_oActorType",
-     "SFXGame.BioEpicPawnBehavior.GetPercentHealth"
-    ]
-   },
-   "LE3": {
-    "everyGameLacks": [
-     "SFXGame.BioActorBehavior:ActorGameName",
-     "SFXGame.BioPawn.IsHostile",
-     "SFXGame.BioPawn.IsInCombatActionState",
-     "SFXGame.BioPawn:m_oBehavior"
-    ],
-    "fromLe1Lacks": [
-     "SFXGame.BioActorBehavior",
-     "SFXGame.BioActorBehavior:ActorGameName",
-     "SFXGame.BioActorBehavior:m_oActorType",
-     "SFXGame.BioActorType",
-     "SFXGame.BioActorType:ActorGameName",
-     "SFXGame.BioEpicPawnBehavior",
-     "SFXGame.BioEpicPawnBehavior.GetPercentHealth",
-     "SFXGame.BioEpicPawnBehavior:m_powers",
-     "SFXGame.BioPawn.IsDead",
-     "SFXGame.BioPawn.IsHostile",
-     "SFXGame.BioPawn.IsInCombatActionState",
-     "SFXGame.BioPawn:m_oBehavior",
-     "SFXGame.BioPower:m_fCooldownRemaining"
-    ],
-    "otherLacks": [
-     "SFXGame.BioActorBehavior",
-     "SFXGame.BioActorBehavior:m_oActorType",
-     "SFXGame.BioActorType",
-     "SFXGame.BioActorType:ActorGameName",
-     "SFXGame.BioEpicPawnBehavior",
-     "SFXGame.BioEpicPawnBehavior.GetPercentHealth",
-     "SFXGame.BioEpicPawnBehavior:m_powers",
-     "SFXGame.BioPower:m_fCooldownRemaining"
-    ]
-   }
-  },
-  "game/SquadOrders": {
-   "LE2": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioAiController.AddUsePower",
-     "SFXGame.BioAiController.PushMoveToPoint",
-     "SFXGame.BioBaseSquad.GetMemberFormation",
-     "SFXGame.BioBaseSquad.SetMemberHoldPosition",
-     "SFXGame.BioBaseSquad.SetSquadFollowFormation"
-    ],
-    "otherLacks": [
-     "SFXGame.BioAiController.AddUsePower",
-     "SFXGame.BioAiController.PushMoveToPoint",
-     "SFXGame.BioBaseSquad.GetMemberFormation",
-     "SFXGame.BioBaseSquad.SetMemberHoldPosition",
-     "SFXGame.BioBaseSquad.SetSquadFollowFormation"
-    ]
-   },
-   "LE3": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioAiController.AddUsePower",
-     "SFXGame.BioAiController.PushMoveToPoint",
-     "SFXGame.BioBaseSquad.GetMemberFormation",
-     "SFXGame.BioBaseSquad.SetMemberHoldPosition",
-     "SFXGame.BioBaseSquad.SetSquadFollowFormation",
-     "SFXGame.BioEpicPawnBehavior",
-     "SFXGame.BioEpicPawnBehavior:Squad",
-     "SFXGame.BioPawn:m_oBehavior"
-    ],
-    "otherLacks": [
-     "SFXGame.BioAiController.AddUsePower",
-     "SFXGame.BioAiController.PushMoveToPoint",
-     "SFXGame.BioBaseSquad.GetMemberFormation",
-     "SFXGame.BioBaseSquad.SetMemberHoldPosition",
-     "SFXGame.BioBaseSquad.SetSquadFollowFormation",
-     "SFXGame.BioEpicPawnBehavior",
-     "SFXGame.BioEpicPawnBehavior:Squad",
-     "SFXGame.BioPawn:m_oBehavior"
-    ]
-   }
-  },
-  "game/SquadPlace": {
-   "LE2": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioAiController.PushMoveToPoint"
-    ],
-    "otherLacks": []
-   },
-   "LE3": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioAiController.PushMoveToPoint"
-    ],
-    "otherLacks": []
-   }
+   "LE2": [
+    "SFXGame.BioPawn.IsInCombatActionState"
+   ],
+   "LE3": [
+    "SFXGame.BioActorBehavior:ActorGameName",
+    "SFXGame.BioPawn.IsHostile",
+    "SFXGame.BioPawn.IsInCombatActionState",
+    "SFXGame.BioPawn:m_oBehavior"
+   ]
   },
   "game/SquadWeapons": {
-   "LE2": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "Engine.WorldInfo.PauseGame",
-     "SFXGame.BioActorBehavior:m_oActorType",
-     "SFXGame.BioBaseSquad.GetMemberSwitchWeapon",
-     "SFXGame.BioBaseSquad.SetMemberSwitchWeapon",
-     "SFXGame.BioEpicPawnBehavior.GetPercentHealth",
-     "SFXGame.BioEquipment",
-     "SFXGame.BioEquipment.ChangeToQuickSlot",
-     "SFXGame.BioEquipment:m_eQuickSlotCurrent",
-     "SFXGame.BioPawn.IsInCombatActionState",
-     "SFXGame.BioPawnBehavior:m_oEquipment",
-     "SFXGame.BioSFHandler_HUD",
-     "SFXGame.BioSFHandler_HUD:m_nHench1Index",
-     "SFXGame.BioSFHandler_HUD:m_nHench2Index",
-     "SFXGame.BioSFHandler_HUD:m_nShepardIndex",
-     "SFXGame.BioSFHandler_HUD:nAngle",
-     "SFXGame.BioSFHandler_HUD:nLastAngle",
-     "SFXGame.BioWeaponRanged",
-     "SFXGame.BioWeaponRanged.GetRangedWeaponType"
-    ],
-    "otherLacks": []
-   },
-   "LE3": {
-    "everyGameLacks": [
-     "SFXGame.BioActorBehavior:ActorGameName",
-     "SFXGame.BioBaseSquad.GetMember",
-     "SFXGame.BioBaseSquad.GetSquadSize",
-     "SFXGame.BioPawn:m_oBehavior"
-    ],
-    "fromLe1Lacks": [
-     "Engine.BioSFHandler",
-     "Engine.BioSFHandler:oPanel",
-     "Engine.BioSFPanel",
-     "Engine.PlayerController.GetScaleFormManager",
-     "Engine.PlayerController:m_oCachedScaleFormManager",
-     "SFXGame.BioActorBehavior",
-     "SFXGame.BioActorBehavior:ActorGameName",
-     "SFXGame.BioActorBehavior:m_oActorType",
-     "SFXGame.BioActorType",
-     "SFXGame.BioActorType:ActorGameName",
-     "SFXGame.BioBaseSquad.GetMember",
-     "SFXGame.BioBaseSquad.GetMemberSwitchWeapon",
-     "SFXGame.BioBaseSquad.GetSquadSize",
-     "SFXGame.BioBaseSquad.SetMemberSwitchWeapon",
-     "SFXGame.BioEpicPawnBehavior",
-     "SFXGame.BioEpicPawnBehavior.GetPercentHealth",
-     "SFXGame.BioEpicPawnBehavior:Squad",
-     "SFXGame.BioEquipment",
-     "SFXGame.BioEquipment.ChangeToQuickSlot",
-     "SFXGame.BioEquipment:m_eQuickSlotCurrent",
-     "SFXGame.BioPawn.IsInCombatActionState",
-     "SFXGame.BioPawn:m_oBehavior",
-     "SFXGame.BioPawnBehavior",
-     "SFXGame.BioPawnBehavior.GetClass",
-     "SFXGame.BioPawnBehavior:m_oEquipment",
-     "SFXGame.BioSFHandler_HUD",
-     "SFXGame.BioSFHandler_HUD:m_nHench1Index",
-     "SFXGame.BioSFHandler_HUD:m_nHench2Index",
-     "SFXGame.BioSFHandler_HUD:m_nShepardIndex",
-     "SFXGame.BioSFHandler_HUD:nAngle",
-     "SFXGame.BioSFHandler_HUD:nLastAngle",
-     "SFXGame.BioWeaponRanged",
-     "SFXGame.BioWeaponRanged.GetRangedWeaponType",
-     "SFXGame.MassEffectGuiManager",
-     "SFXGame.MassEffectGuiManager:m_oSFHudHandler",
-     "SFXGame.SFXGameModeDefault.EnterWeaponWheel"
-    ],
-    "otherLacks": [
-     "SFXGame.BioActorBehavior"
-    ]
-   }
+   "LE3": [
+    "SFXGame.BioActorBehavior:ActorGameName",
+    "SFXGame.BioBaseSquad.GetMember",
+    "SFXGame.BioBaseSquad.GetSquadSize",
+    "SFXGame.BioPawn:m_oBehavior"
+   ]
   },
   "game/Thespian": {
-   "LE2": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [],
-    "otherLacks": []
-   },
-   "LE3": {
-    "everyGameLacks": [
-     "Engine.BioSFHandler:oPanel",
-     "Engine.BioSFPanel.InvokeMethod",
-     "SFXGame.BioConversation.GetEntryText",
-     "SFXGame.BioConversation.GetReplyText",
-     "SFXGame.BioWorldInfo.EndCurrentConversation"
-    ],
-    "fromLe1Lacks": [
-     "Engine.BioSFHandler",
-     "Engine.BioSFHandler:oPanel",
-     "Engine.BioSFPanel.InvokeMethod",
-     "SFXGame.BioConversation.GetEntryText",
-     "SFXGame.BioConversation.GetReplyCategory",
-     "SFXGame.BioConversation.GetReplyGUIStyle",
-     "SFXGame.BioConversation.GetReplyParaphraseText",
-     "SFXGame.BioConversation.GetReplyText",
-     "SFXGame.BioConversation.QueueReply",
-     "SFXGame.BioConversation.SkipNode",
-     "SFXGame.BioWorldInfo.EndCurrentConversation"
-    ],
-    "otherLacks": [
-     "Engine.BioSFHandler"
-    ]
-   }
-  },
-  "game/Throwables": {
-   "LE2": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioEpicPawnBehavior.GetPercentHealth",
-     "SFXGame.BioEquipment",
-     "SFXGame.BioEquipment:m_eQuickSlotCurrent",
-     "SFXGame.BioGrenade",
-     "SFXGame.BioGrenade.LaunchGrenade",
-     "SFXGame.BioGrenade.LaunchGrenadeAtActor",
-     "SFXGame.BioGrenade.LaunchGrenadeAtPoint",
-     "SFXGame.BioGrenade:m_clsProjectile",
-     "SFXGame.BioGrenadeProjectile.SetVelocity",
-     "SFXGame.BioGrenadeProjectileBallistic",
-     "SFXGame.BioGrenadeProjectileFrisbee",
-     "SFXGame.BioGrenadeProjectileFrisbee:m_oHeatSeekTarget",
-     "SFXGame.BioGrenadeProjectileFrisbee:m_oIntendedTarget",
-     "SFXGame.BioGrenadeProjectileFrisbee:m_vIntendedTargetLocation",
-     "SFXGame.BioGrenadeProjectileFrisbee:m_vStartLocation",
-     "SFXGame.BioPawn.IsDead",
-     "SFXGame.BioPawn.IsInCombatActionState",
-     "SFXGame.BioPawn.IsThrowingGrenade",
-     "SFXGame.BioPawnBehavior.GetGrenades",
-     "SFXGame.BioPawnBehavior:m_oEquipment",
-     "SFXGame.SFXGameModeDefault.UseGrenade"
-    ],
-    "otherLacks": []
-   },
-   "LE3": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioEpicPawnBehavior",
-     "SFXGame.BioEpicPawnBehavior.GetPercentHealth",
-     "SFXGame.BioEpicPawnBehavior:m_powers",
-     "SFXGame.BioEquipment",
-     "SFXGame.BioEquipment:m_eQuickSlotCurrent",
-     "SFXGame.BioGrenade",
-     "SFXGame.BioGrenade.LaunchGrenade",
-     "SFXGame.BioGrenade.LaunchGrenadeAtActor",
-     "SFXGame.BioGrenade.LaunchGrenadeAtPoint",
-     "SFXGame.BioGrenade:m_clsProjectile",
-     "SFXGame.BioGrenadeProjectile.SetVelocity",
-     "SFXGame.BioGrenadeProjectileBallistic",
-     "SFXGame.BioGrenadeProjectileFrisbee",
-     "SFXGame.BioGrenadeProjectileFrisbee:m_oHeatSeekTarget",
-     "SFXGame.BioGrenadeProjectileFrisbee:m_oIntendedTarget",
-     "SFXGame.BioGrenadeProjectileFrisbee:m_vIntendedTargetLocation",
-     "SFXGame.BioGrenadeProjectileFrisbee:m_vStartLocation",
-     "SFXGame.BioPawn.IsDead",
-     "SFXGame.BioPawn.IsHostile",
-     "SFXGame.BioPawn.IsInCombatActionState",
-     "SFXGame.BioPawn.IsThrowingGrenade",
-     "SFXGame.BioPawn:m_oBehavior",
-     "SFXGame.BioPawnBehavior",
-     "SFXGame.BioPawnBehavior.GetGrenades",
-     "SFXGame.BioPawnBehavior:m_oEquipment",
-     "SFXGame.BioPower:m_fCooldownRemaining",
-     "SFXGame.SFXGameModeDefault.UseGrenade"
-    ],
-    "otherLacks": []
-   }
-  },
-  "game/UiWorldFigure": {
-   "LE2": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [],
-    "otherLacks": []
-   },
-   "LE3": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "Engine.Actor:Location"
-    ],
-    "otherLacks": []
-   }
-  },
-  "game/Vent": {
-   "LE2": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioWeaponRanged",
-     "SFXGame.BioWeaponRanged.DoCoolDownEffect",
-     "SFXGame.BioWeaponRanged:m_fCurrentHeat",
-     "SFXGame.BioWeaponRanged:m_pCachedVFXAppearance",
-     "SFXGame.BioWeaponVFXAppearance",
-     "SFXGame.BioWeaponVFXAppearance:fCooldownPerSecond",
-     "SFXGame.BioWeaponVFXAppearance:nmCoolDown",
-     "SFXGame.BioWeaponVFXAppearance:vfxCoolDown"
-    ],
-    "otherLacks": []
-   },
-   "LE3": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioWeaponRanged",
-     "SFXGame.BioWeaponRanged.DoCoolDownEffect",
-     "SFXGame.BioWeaponRanged:m_fCurrentHeat",
-     "SFXGame.BioWeaponRanged:m_pCachedVFXAppearance",
-     "SFXGame.BioWeaponVFXAppearance",
-     "SFXGame.BioWeaponVFXAppearance:fCooldownPerSecond",
-     "SFXGame.BioWeaponVFXAppearance:nmCoolDown",
-     "SFXGame.BioWeaponVFXAppearance:vfxCoolDown"
-    ],
-    "otherLacks": []
-   }
+   "LE3": [
+    "Engine.BioSFHandler:oPanel",
+    "Engine.BioSFPanel.InvokeMethod",
+    "SFXGame.BioConversation.GetEntryText",
+    "SFXGame.BioConversation.GetReplyText",
+    "SFXGame.BioWorldInfo.EndCurrentConversation"
+   ]
   },
   "game/VrCover": {
-   "LE2": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioActorBehavior.TakeDamage",
-     "SFXGame.BioActorBehavior:m_oShield",
-     "SFXGame.BioAttributesEpicPawn:m_HealthCurrent",
-     "SFXGame.BioAttributesShield",
-     "SFXGame.BioAttributesShield:m_DamageCapacity",
-     "SFXGame.BioPawn.IsDead",
-     "SFXGame.BioPawn:CoverNormal",
-     "SFXGame.BioPawnBehavior.ProxyTakeDamage",
-     "SFXGame.BioShield",
-     "SFXGame.BioShield:m_pAttributes",
-     "SFXGame.BioWeapon",
-     "SFXGame.BioWeapon:m_pDamage"
-    ],
-    "otherLacks": []
-   },
-   "LE3": {
-    "everyGameLacks": [
-     "Engine.Actor:Location",
-     "SFXGame.BioPawn.IsHostile"
-    ],
-    "fromLe1Lacks": [
-     "Engine.Actor:Location",
-     "SFXGame.BioActorBehavior",
-     "SFXGame.BioActorBehavior.TakeDamage",
-     "SFXGame.BioActorBehavior:m_oShield",
-     "SFXGame.BioAttributesEpicPawn",
-     "SFXGame.BioAttributesEpicPawn:m_HealthCurrent",
-     "SFXGame.BioAttributesShield",
-     "SFXGame.BioAttributesShield:m_DamageCapacity",
-     "SFXGame.BioEpicPawnBehavior",
-     "SFXGame.BioEpicPawnBehavior:m_PawnAttributes",
-     "SFXGame.BioPawn.IsDead",
-     "SFXGame.BioPawn.IsHostile",
-     "SFXGame.BioPawn:CoverNormal",
-     "SFXGame.BioPawn:m_oBehavior",
-     "SFXGame.BioPawnBehavior.ProxyTakeDamage",
-     "SFXGame.BioShield",
-     "SFXGame.BioShield:m_pAttributes",
-     "SFXGame.BioWeapon",
-     "SFXGame.BioWeapon:m_pDamage"
-    ],
-    "otherLacks": []
-   }
-  },
-  "game/Weapon": {
-   "LE2": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioWeapon",
-     "SFXGame.BioWeapon:SkelMeshComp",
-     "SFXGame.BioWeaponRanged",
-     "SFXGame.BioWeaponRanged.GetMuzzleLoc",
-     "SFXGame.BioWeaponRanged.GetPlayerAimError",
-     "SFXGame.BioWeaponRanged.GetRangedWeaponType",
-     "SFXGame.BioWeaponRanged.TickFire",
-     "SFXGame.BioWeaponRanged:m_MuzzleSocketName"
-    ],
-    "otherLacks": []
-   },
-   "LE3": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioWeapon",
-     "SFXGame.BioWeapon:SkelMeshComp",
-     "SFXGame.BioWeaponRanged",
-     "SFXGame.BioWeaponRanged.GetMuzzleLoc",
-     "SFXGame.BioWeaponRanged.GetPlayerAimError",
-     "SFXGame.BioWeaponRanged.GetRangedWeaponType",
-     "SFXGame.BioWeaponRanged.TickFire",
-     "SFXGame.BioWeaponRanged:m_MuzzleSocketName"
-    ],
-    "otherLacks": []
-   }
+   "LE3": [
+    "Engine.Actor:Location",
+    "SFXGame.BioPawn.IsHostile"
+   ]
   },
   "game/WorldUi": {
-   "LE2": {
-    "everyGameLacks": [],
-    "fromLe1Lacks": [
-     "SFXGame.BioSFHandler_Loot",
-     "SFXGame.BioSFHandler_Loot:m_oLootInventory",
-     "SFXGame.BioSFHandler_Shop",
-     "SFXGame.BioSFHandler_Shop:m_shop",
-     "SFXGame.BioSkillGame_Handler",
-     "SFXGame.BioSkillGame_Handler:m_oDependent"
-    ],
-    "otherLacks": [
-     "SFXGame.BioSFHandler_Loot",
-     "SFXGame.BioSFHandler_Loot:m_oLootInventory",
-     "SFXGame.BioSFHandler_Shop",
-     "SFXGame.BioSFHandler_Shop:m_shop",
-     "SFXGame.BioSkillGame_Handler",
-     "SFXGame.BioSkillGame_Handler:m_oDependent"
-    ]
-   },
-   "LE3": {
-    "everyGameLacks": [
-     "Engine.BioSFManager:m_FocusPanel",
-     "Engine.BioSFManager:m_lstPanels",
-     "Engine.BioSFPanel:m_DefaultHandler",
-     "Engine.BioSFPanel:nmTag",
-     "Engine.PlayerController:m_oCachedScaleFormManager"
-    ],
-    "fromLe1Lacks": [
-     "Engine.BioSFManager",
-     "Engine.BioSFManager:m_FocusPanel",
-     "Engine.BioSFManager:m_lstPanels",
-     "Engine.BioSFPanel",
-     "Engine.BioSFPanel:m_DefaultHandler",
-     "Engine.BioSFPanel:nmTag",
-     "Engine.PlayerController:m_oCachedScaleFormManager",
-     "SFXGame.BioSFHandler_Loot",
-     "SFXGame.BioSFHandler_Loot:m_oLootInventory",
-     "SFXGame.BioSFHandler_Shop",
-     "SFXGame.BioSFHandler_Shop:m_shop",
-     "SFXGame.BioSkillGame_Handler",
-     "SFXGame.BioSkillGame_Handler:m_oDependent"
-    ],
-    "otherLacks": [
-     "Engine.BioSFManager",
-     "Engine.BioSFPanel",
-     "SFXGame.BioSFHandler_Loot",
-     "SFXGame.BioSFHandler_Loot:m_oLootInventory",
-     "SFXGame.BioSFHandler_Shop",
-     "SFXGame.BioSFHandler_Shop:m_shop",
-     "SFXGame.BioSkillGame_Handler",
-     "SFXGame.BioSkillGame_Handler:m_oDependent"
-    ]
-   }
+   "LE3": [
+    "Engine.BioSFManager:m_FocusPanel",
+    "Engine.BioSFManager:m_lstPanels",
+    "Engine.BioSFPanel:m_DefaultHandler",
+    "Engine.BioSFPanel:nmTag",
+    "Engine.PlayerController:m_oCachedScaleFormManager"
+   ]
   }
  },
  "seams": {
