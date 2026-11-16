@@ -118,7 +118,7 @@ std::string RendererJson() {
     return std::format(
         "  \"renderer\": \"{}\",\n  \"frameBounds\": \"{}\",\n  \"renderLevers\": {},\n"
         "  \"resolution\": {{\"eye\": [{}, {}], \"eyeViews\": {}}}",
-        renderer, "xrEndFrame", render_levers::SettingsJson(), gEyeWidth.load(std::memory_order_relaxed),
+        renderer, PresentSeamSeen() ? "Present" : "xrEndFrame", render_levers::SettingsJson(), gEyeWidth.load(std::memory_order_relaxed),
         gEyeHeight.load(std::memory_order_relaxed), gEyeViews.load(std::memory_order_relaxed));
 }
 

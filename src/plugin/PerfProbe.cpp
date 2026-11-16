@@ -579,6 +579,9 @@ XrResult XRAPI_CALL WrappedEndFrame(XrSession session, XrFrameEndInfo const* inf
     if (adapter::kFramesByEndFrame && !gPresentSeam.load(std::memory_order_relaxed)) {
         return EndFrameAsFrameBoundary(session, info);
     }
+    if (adapter::kFramesByEndFrame) {
+        (void)adapter::FrameContext(info);  // a sequel with a Present seam: only the eye image's size, for the capture's JSON
+    }
     if (!OnRenderThread()) {
         return gRealEndFrame(session, info);
     }
@@ -735,12 +738,24 @@ void Mark(int point, ID3D11DeviceContext* context) {
     Record(point, context);
 }
 
+bool PresentSeamSeen() {
+    return gPresentSeam.load(std::memory_order_relaxed);
+}
+
 void SeamPresentBegin(ID3D11DeviceContext* context) {
     gPresentSeam.store(true, std::memory_order_relaxed);
+    // A renderer whose Present hook has no context to give (ME3's, 2026-11-16: armed captures never started): the one
+    // found from the frame's own projection layer (the sequels' adapter; null until a frame was submitted).
+    if (adapter::kFramesByEndFrame && context == nullptr) {
+        context = adapter::FrameContext(nullptr);
+    }
     Mark(fp::kPresent, context);
 }
 
 void SeamPresentEnd(ID3D11DeviceContext* context) {
+    if (adapter::kFramesByEndFrame && context == nullptr) {
+        context = adapter::FrameContext(nullptr);
+    }
     Mark(fp::kEnd, context);
     if (adapter::kFramesByEndFrame) {
         adapter::FrameClosed(context);
