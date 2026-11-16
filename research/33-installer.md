@@ -950,6 +950,116 @@ Run `mevr-menu-preview <folder>`: Display includes the row; `section-display-smo
 The sandbox could read installed SteamVR code/config/logs but denied the user's openvrpaths.vrpath; live helper,
 visual preview and headset verification are pending the user's build.
 
+## 17. One installer for the three games (2026-11-16)
+
+Lane T52 of [docs/trilogy-plan.md](../docs/trilogy-plan.md). MEVR Setup installs, repairs, uninstalls, launches and
+reports for Mass Effect 1, 2 and 3 **by the same code**: the game is a parameter, described once. There is no second
+installer and no copied page. **The sequels are not offered to players**: that is the owner's call (ME2 ships after M5;
+ME3's bar is open), behind one switch (below).
+
+### The description: `src/install/Game.hpp`
+
+| what | LE1 | LE2 | LE3 |
+|---|---|---|---|
+| `GameSpec::key`, the manifest's `game`, `<key>MEVR.asi`, `.ini`, `.log` | `LE1` | `LE2` | `LE3` |
+| folder, exe, the launcher's `-game <n>` | `Game\ME1`, `MassEffect1.exe`, 1 | `Game\ME2`, `MassEffect2.exe`, 2 | `Game\ME3`, `MassEffect3.exe`, 3 |
+| the renderer's settings | `ASI\MELEVR.ini` (made in code, `ini::HalcyonReleaseIni`, fixed per slot) | `MELE2VR.ini` next to the exe (the payload's, upstream's file) | `MELE3VR.ini` next to the exe (no release file: the renderer writes its own) |
+| the renderer's log (the report) | `%LOCALAPPDATA%\MELEVR\MELEVR_Log.txt` | `%LOCALAPPDATA%\MELE2VR\MELE2VR_Log.txt` | `%LOCALAPPDATA%\MELEVR\ME3PassiveDxgiProbe.log` |
+| upstream's own release, told by a string in its `dxgi.dll` | "MELEVR" (`MELE-VR.bat`) | "ME2VR" (`MELE2-VR.bat`) | "ME2VR" (`MELE3-VR.bat` looks for the same) |
+| GamerSettings.ini | as before (section 13) | VSync, blur, grain off, anisotropy 16, SDR, borderless, `Fullscreen=False`, `DynamicShadows=False`, `FoliageDrawRadiusMultiplier=0.5`; **ResX/ResY left alone** | the same without the shadows and foliage keys |
+| BIOEngine.ini | SmoothFrameRate and the game's copy | untouched | untouched |
+| cockpit, voice DLL, OpenAL Soft, texture packs | yes | no | no |
+
+These are what `tools/deploy-asi.ps1`, `tools/vr-game-settings.ps1 -Game` and `tools/le2-halcyon-run/prep.ps1` do for a
+development install. `Layout{root, game}` (default LE1, so `Layout{root}` still means Mass Effect 1) gives the folders;
+`Layout::Paths()` the relative paths (`GamePaths`: `modAsi`, `bink`, `rendererIni`, `gamerSettings`...). The constants in
+`install::paths` are Mass Effect 1's and stay for callers that only mean it. Every function that took a root for LE1 has
+a twin taking the game: `ReadStatus(root, source, game)`, `detect::HasGame`, `GameRunningIn(root, game)`,
+`settings::ApplyGamerSettings(..., game)`, `settings::ModWrites(ini, game)`, `launch::StartGame`, `StartGameWithVr`,
+`RequestSteamLaunch(..., game)`, `LauncherBoots(root, game)`, `first_start::PhaseText(phase, game)`, `RuntimeFiles(game)`,
+`report::Options::game`. The LE1 forms call the game forms with LE1.
+
+### What is per game and what is shared
+
+- **Per game:** the loader in that game's `Binaries\Win64`, the ASI, fonts, menu and the setup's copy in its `ASI`
+  folder, its `MEVR-install.json` and `MEVR-backup` there, its GamerSettings edits, its `steam_appid.txt`, its renderer
+  settings. Installing one game writes nothing into another's folder.
+- **Shared:** the loader in `Game\Launcher` and its log. A second game's install finds ours there and puts it on its own
+  record too (`AdoptRenamed`, `AdoptAdded`). Uninstalling a game while another still has it on record leaves it and
+  forgets it (`KeepSharedLauncher`: "left Game\Launcher's loader in place"); the last uninstall puts RAD's DLL back. A
+  loader a newer release wrote for another game is not "needs repair" for this one (`SharedLauncherCurrent`).
+  `%LOCALAPPDATA%\MEVR` is one folder: "remove local data" keeps it while another game has the mod.
+- **A sequel's renderer settings** sit next to the exe, where Halcyon's own release puts its file. One that is there
+  without a record of ours is the player's: never written, never recorded, never deleted (`InstallRendererIni`). With
+  none, the payload's `MELE2VR.ini` goes in (recorded as the player's data: a full uninstall removes it, "keep my
+  settings" keeps it); for ME3 the file the renderer will write is put on record. The baseline the mod needs is pinned
+  in the renderer's code at every start (`ApplyMevrBaseline`), so Setup never edits these files.
+- **The resolution** is the renderer's on the sequels (`RenderW`/`RenderH`, written into `ResX`/`ResY` at attach):
+  Setup's quality choice and "Automatic" are Mass Effect 1's (`GameSpec::stereoTarget`); ResX/ResY and DepthOfField are
+  recorded as they are, and `ModWrites` lets Uninstall put the player's back when they hold the renderer's values.
+
+### The command line and the window
+
+- `--for LE1|LE2|LE3` names the game for any command. Without it: the game whose folder `--game` names
+  (`...\Game\ME2\Binaries\Win64`: the in-game Report and a game's own setup copy start Setup that way,
+  `detect::GameFromPicked`), else Mass Effect 1. Mass Effect 1's output is unchanged; a sequel's adds a `title:` line.
+- The window is about one game at a time. With more than one game shown, a switcher row (the glass segmented control)
+  sits above every page and the Install page lists the games with a tick each: Install, and the Welcome page's one
+  click, install the ticked ones in one job. Launch, Settings, Repair, Uninstall and Report act on the current game.
+  With Mass Effect 1 alone (every release so far) there is no switcher and every page is pixel for pixel what it was.
+- Previews: `MEVR-Setup.exe --preview <folder>` adds `welcome-games`, `install-games` (the sequels offered, nothing
+  installed) and `welcome-le2`, `install-le2`, `content-le2`, `settings-le2`, `launch-le2` (the pages about ME2).
+
+### The switch
+
+A sequel is **shown** when it is the current game, when it already has the mod (so it can always be repaired, launched
+and uninstalled), or when the release offers it: `MEVR-Setup.ini` next to the setup has `[Setup] games = LE1, LE2` **and**
+the payload has `LE2MEVR.asi`. Without the key: Mass Effect 1 only. `tools/package-release.ps1 -Games LE1,LE2` is what
+writes both (the ASI, upstream's `MELE2VR.ini`, the key) and it refuses a sequel whose ASI links LExSDKv2 (no licence;
+since T04, 2026-11-16, a monolithic build of either sequel links none). So flipping a sequel on is one command:
+`package-release.ps1 -Games LE1,LE2` (it configures build-mono with `-DMEVR_BUILD_LE2=ON` and builds `MEVR-LE2`).
+Nothing else.
+
+### Launch
+
+Through Steam: `-applaunch 1328670 -game <n> -autoterminate` when the launcher boots that game itself. ME3Tweaks'
+LEBinkProxy in `Game\Launcher` boots all three; **our own loader boots only Mass Effect 1** (`src/loader`
+`BootFromLauncher`), so for a sequel Launch asks Steam for the launcher and says to pick the game
+(`launch::kOurLauncherBoots`). What the loader needs is in `install/LaunchArgs`: `GameArguments(n, config)` (the same
+switches; LE2 and LE3 take three-letter language codes, `INT`, `FRA`/`FRE`, `DEU`/`DEE`, `ITA`/`ITE`, `JPN`, `ESN`, `RUS`,
+`POL`/`POE`, LE3 `POL` for both; LE3's switch is `-language=`), `GameFolderName`, `GameExeName`. Once `BootFromLauncher`
+uses them for 2 and 3, set `kOurLauncherBoots` and Launch stops asking (T51).
+
+### Report a problem
+
+`report::Options::game` picks the files: `logs/LE2MEVR.log`, `.prev.log`, `logs/MELE2VR_Log.txt`,
+`settings/LE2MEVR.ini`, `settings/MELE2VR.ini`, that game's `MEVR-install.json` and folder listing; REPORT.md names them
+and the game's exe. Redaction is the same code. `plugin/ReportRequest` is in every host now (`MEVR_SEQUEL_MENU_SOURCES`)
+and the menu's Advanced > Diagnostics > Report and the crash offer are no longer greyed out on the sequels: the host
+starts `ASI\MEVR-Setup.exe --report --from-game --game <its Win64>`, and Setup takes the game from that folder.
+
+### Tested (fake games only: nothing was installed into a real game folder)
+
+- `tools/setup/test-fake-game.ps1` (default `-Games LE1,LE2,LE3`): the fake Legendary Edition has all three games.
+  After Mass Effect 1's steps, each sequel: status, install, "verify files" then Repair, restore and apply the settings,
+  an update, the report (its own log and settings, redacted), the renderer's writes put back, uninstall byte for byte;
+  upstream's release moved aside and its settings file left; a lost record; a game never started. Then the three
+  together: uninstalling one leaves the launcher's loader for the others; the last puts RAD's back; the folder byte for
+  byte. 226 checks.
+- **Mass Effect 1 is byte for byte what it was:** `-Setup <the build before the change> -Trace <folder>` and the build
+  after, the same payload: 21 commands, each with its output, every file's hash (692) and the install record; the two
+  traces are the same files. The 36 preview pages of the build before and after are the same PNG files.
+- `mevr-tests` `TestGames`: the descriptions, the arguments and language codes, the settings per game, a temp-folder
+  install, repair, report and uninstall of ME2 and ME3 with Mass Effect 1's folder untouched.
+
+### Left
+
+- Voice files (`ASI\voice`) and OpenAL Soft for the sequels: `install/Voice`'s paths are Mass Effect 1's and refuse a
+  sequel; the sequel hosts that use the recognizer (Thespian) need their own install of it.
+- The downloaded update (`updates::Apply`) updates every installed game the payload carries; not run against a release.
+- The renderer-settings diff in REPORT.md is Mass Effect 1's only (the sequels' file is in the zip as it is).
+- A real-game install of each sequel (the owner's, or a lane with the game slot), and the campaign pass.
+
 ## Open
 
 - **[verify]** In the game: the EA app build; "Install after I quit" end to end; "Start the game once" (section 9).
@@ -962,4 +1072,4 @@ visual preview and headset verification are pending the user's build.
   `model.gguf` of a release tagged `voice-model-1` (not `v*`); the setup then installs the model tier.
   Another tag or name: `MEVR-Setup.ini` `[Voice] modelTag` / `modelAsset` in the release package
   (`tools/package-release.ps1` writes the file). **[verify]** the game loading a Setup-installed `ASI\voice`.
-- The ME2/ME3 variants (the layout is `Game\ME<n>`; the classes take the game as a parameter only where needed).
+- The ME2/ME3 variants: section 17 (built, tested on fake games, not offered).

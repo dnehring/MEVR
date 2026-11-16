@@ -8,6 +8,20 @@
 # restore and apply of the game settings, and uninstall, and checks the folder is byte for byte what it was.
 #
 #   tools\setup\test-fake-game.ps1 [-Build build] [-Payload <folder>] [-BinkDll <path>] [-LauncherBinkDll <path>] [-Voice]
+#                                  [-Games LE1,LE2,LE3] [-Setup <MEVR-Setup.exe>] [-Trace <folder>]
+#
+# The three games (docs/trilogy-plan.md T52): the fake Legendary Edition has Game\ME2 and Game\ME3 beside Game\ME1 (the
+# stand-in exe under each game's name, RAD's Bink of the launcher's build, a GamerSettings.ini), and after Mass Effect 1's
+# steps the same steps run for each sequel in -Games with --for (install, "verify files" and Repair, the game settings,
+# an update, the report, the renderer's own writes, uninstall byte for byte, upstream's MELE2-VR, a lost record, a game
+# never started), then the three installed together: the launcher's loader, which they share, stays until the last one
+# goes. The payload gets LE2MEVR.asi / LE3MEVR.asi (build-trilogy's, else stand-ins) and upstream's MELE2VR.ini; ME3 has
+# no release settings file, which tests the path without one.
+#
+# -Setup runs another MEVR-Setup.exe (an older build) through the same steps, and -Trace writes, after every command, its
+# output, every file's hash and the install record (times and the setup copy's own hash masked) into that folder: two
+# traces of -Games LE1, one from the build before a change and one after, must be the same files (the proof that Mass
+# Effect 1's install is byte for byte what it was).
 #
 # The payload carries MEVR-Voice.dll when it's built (the voice orders, install/Voice): Install puts it in ASI\voice.
 # -Voice also runs the voice orders' downloads for real (research/33 section 14: Moonshine Voice's release and the tiny
@@ -22,7 +36,10 @@ param(
     [string]$Payload,
     [string]$BinkDll,
     [string]$LauncherBinkDll,
-    [switch]$Voice
+    [switch]$Voice,
+    [string[]]$Games = @('LE1', 'LE2', 'LE3'),
+    [string]$Setup,
+    [string]$Trace
 )
 
 $ErrorActionPreference = 'Stop'
@@ -33,8 +50,19 @@ $root = Join-Path $scratch 'fakegame\Mass Effect Legendary Edition'
 $win64 = Join-Path $root 'Game\ME1\Binaries\Win64'
 $config = Join-Path $root 'Game\ME1\BioGame\Config'
 $launcher = Join-Path $root 'Game\Launcher'
-$setup = Join-Path $Build 'Release\MEVR-Setup.exe'
+$setup = if ($Setup) { (Resolve-Path $Setup).Path } else { Join-Path $Build 'Release\MEVR-Setup.exe' }
 $failures = 0
+# -Games LE2,LE3 arrives as one word through powershell -File.
+$Games = @($Games | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim().ToUpper() } | Where-Object { $_ })
+foreach ($g in $Games) { if ($g -notin 'LE1', 'LE2', 'LE3') { throw "-Games: LE1, LE2 or LE3, not '$g'" } }
+$Games = @('LE1', 'LE2', 'LE3' | Where-Object { $Games -contains $_ })
+$script:For = $null    # --for <game> on every command (the sequels' steps)
+$script:Step = 0
+if ($Trace) {
+    Remove-Item -Recurse -Force $Trace -ErrorAction SilentlyContinue
+    New-Item -ItemType Directory -Force $Trace | Out-Null
+    $Trace = (Resolve-Path $Trace).Path
+}
 
 function Check([bool]$ok, [string]$what) {
     if ($ok) { Write-Output "ok   $what" } else { Write-Output "FAIL $what"; $script:failures++ }
@@ -42,12 +70,67 @@ function Check([bool]$ok, [string]$what) {
 
 function Run-Setup([string[]]$arguments) {
     $out = Join-Path $scratch 'setup-cli.txt'
-    $quoted = ($arguments + @('--game', $root, '--payload', $Payload, '--out', $out) | ForEach-Object { if ($_ -match '\s') { "`"$_`"" } else { $_ } }) -join ' '
+    Remove-Item $out -ErrorAction SilentlyContinue
+    $all = $arguments + @('--game', $root, '--payload', $Payload, '--out', $out)
+    if ($script:For) { $all += @('--for', $script:For) }
+    $quoted = ($all | ForEach-Object { if ($_ -match '\s') { "`"$_`"" } else { $_ } }) -join ' '
     $p = Start-Process -FilePath $setup -ArgumentList $quoted -Wait -PassThru -NoNewWindow
     $text = if (Test-Path $out) { Get-Content -Raw $out } else { '' }
-    Write-Host "---- MEVR-Setup $($arguments -join ' ') (exit $($p.ExitCode))"
+    Write-Host "---- MEVR-Setup $($arguments -join ' ')$(if ($script:For) { " --for $($script:For)" }) (exit $($p.ExitCode))"
     Write-Host $text.TrimEnd()
+    if ($Trace) { Write-Trace $arguments $p.ExitCode $text }
     return $p.ExitCode
+}
+
+# One step of the trace: the command, its output, every file under the fake game with its hash, and each game's install
+# record. What differs between two builds without meaning anything is masked: times, the setup's copy of itself (its hash
+# is the build's), the report's commit and sizes.
+function Write-Trace([string[]]$arguments, [int]$exit, [string]$text) {
+    $script:Step++
+    $setupHash = (Get-FileHash $setup).Hash
+    $mask = {
+        param([string]$s)
+        $s = $s -replace '\d{4}-\d{2}-\d{2}[T_ -]\d{2}[:-]?\d{2}([:-]\d{2})?([.-]\d+)?', '<time>'
+        $s = $s -replace '(?i)\b[0-9a-f]{7,10}(-dirty)?\b(?=\))', '<commit>'
+        $s = $s -replace ('(?i)' + $setupHash), '<setup>'
+        $s -replace '\d+(\.\d+)? (KB|MB|bytes)', '<size>'
+    }
+    $lines = @("command: $($arguments -join ' ')$(if ($script:For) { " --for $($script:For)" })", "exit: $exit", '', '== output', (& $mask $text).TrimEnd(), '', '== files')
+    $lines += Get-ChildItem -Recurse -File $root | Sort-Object FullName | ForEach-Object {
+        $rel = $_.FullName.Substring($root.Length)
+        $hash = if ($rel -match '\\ASI\\MEVR-Setup\.exe$|\\ASI\\MEVR-install\.json$|\\Logs\\MEVRLoader\.log$') { '<varies>' } else { (Get-FileHash $_.FullName).Hash }
+        "$rel $hash"
+    }
+    foreach ($record in Get-ChildItem -Recurse -File $root -Filter 'MEVR-install.json' | Sort-Object FullName) {
+        $lines += @('', "== $($record.FullName.Substring($root.Length))", (& $mask (Get-Content -Raw $record.FullName)).TrimEnd())
+    }
+    # The report: REPORT.md from the zip it just wrote (the same masks).
+    $dirAt = [array]::IndexOf($arguments, '--report-dir')
+    if ($dirAt -ge 0 -and $dirAt + 1 -lt $arguments.Count) {
+        $zip = Get-ChildItem (Join-Path $arguments[$dirAt + 1] 'MEVR-report-*.zip') -ErrorAction SilentlyContinue | Sort-Object LastWriteTime | Select-Object -Last 1
+        if ($zip) {
+            Add-Type -AssemblyName System.IO.Compression.FileSystem
+            $archive = [IO.Compression.ZipFile]::OpenRead($zip.FullName)
+            $lines += @('', '== the zip', (($archive.Entries | ForEach-Object { $_.FullName }) -join "`r`n"))
+            $entry = $archive.Entries | Where-Object { $_.FullName -eq 'REPORT.md' }
+            if ($entry) {
+                $reader = New-Object IO.StreamReader($entry.Open())
+                $lines += @('', '== REPORT.md', (& $mask $reader.ReadToEnd()).TrimEnd())
+                $reader.Dispose()
+            }
+            $archive.Dispose()
+        }
+    }
+    $name = '{0:D3}-{1}.txt' -f $script:Step, ((($arguments | Where-Object { $_ -notmatch '[\\/]' }) -join '_') -replace '[^A-Za-z0-9_-]', '')
+    [IO.File]::WriteAllText((Join-Path $Trace $name), ($lines -join "`r`n") + "`r`n")
+}
+
+# RAD's own Bink DLL among the candidates (a development install may have a proxy where RAD's file normally is).
+function Find-RadBink([string[]]$candidates) {
+    foreach ($c in $candidates) {
+        if ((Test-Path $c) -and (Get-Item $c).VersionInfo.CompanyName -match 'RAD') { return $c }
+    }
+    throw "No RAD bink2w64 DLL among: $($candidates -join ', ') (pass -BinkDll / -LauncherBinkDll)"
 }
 
 function Snapshot {
@@ -65,7 +148,12 @@ if (-not $BinkDll) {
 }
 if (-not $LauncherBinkDll) {
     . (Join-Path $repo 'tools\common.ps1')
-    $LauncherBinkDll = Join-Path (Get-MELEBinDir (Find-MELEInstall).Root 'LE2') 'bink2w64.dll'
+    # RAD's 2.7s build: LE2's own DLL (behind a loader when a development stretch is open), LE3's, or the launcher's.
+    $real = (Find-MELEInstall).Root
+    $LauncherBinkDll = Find-RadBink @(
+        (Join-Path (Get-MELEBinDir $real 'LE2') 'bink2w64.dll'), (Join-Path (Get-MELEBinDir $real 'LE2') 'bink2w64_original.dll'),
+        (Join-Path (Get-MELEBinDir $real 'LE3') 'bink2w64.dll'), (Join-Path (Get-MELEBinDir $real 'LE3') 'bink2w64_original.dll'),
+        (Join-Path $real 'Game\Launcher\bink2w64_original.dll'), (Join-Path $real 'Game\Launcher\bink2w64.dll'))
 }
 if (-not $Payload) {
     $Payload = Join-Path $scratch 'payload'
@@ -79,6 +167,15 @@ if (-not $Payload) {
         # No mod built here (a worktree that built only the setup): a stand-in, as the fake game never loads it.
         [IO.File]::WriteAllText((Join-Path $Payload 'LE1MEVR.asi'), 'stand-in LE1MEVR.asi (test-fake-game.ps1)')
     }
+    # The sequels' mods (build-trilogy's, else stand-ins: the fake games never load them) and ME2's renderer settings as the
+    # release carries them (upstream's file; ME3's release has none).
+    foreach ($sequel in 'LE2', 'LE3') {
+        $sequelAsi = Join-Path $repo "build-trilogy\Release\${sequel}MEVR.asi"
+        if (Test-Path $sequelAsi) { Copy-Item $sequelAsi $Payload } else {
+            [IO.File]::WriteAllText((Join-Path $Payload "${sequel}MEVR.asi"), "stand-in ${sequel}MEVR.asi (test-fake-game.ps1)")
+        }
+    }
+    Copy-Item (Join-Path $repo 'src\halcyon\le2\runtime\MELE2VR.ini') $Payload
     Copy-Item (Join-Path $Build 'Release\bink2w64.dll') $Payload
     Copy-Item -Recurse (Join-Path $repo 'third_party\fonts') (Join-Path $Payload 'fonts')
     Copy-Item -Recurse (Join-Path $repo 'assets\menu') (Join-Path $Payload 'menu')
@@ -110,6 +207,18 @@ Copy-Item $fakeExe $win64
 Copy-Item $BinkDll (Join-Path $win64 'bink2w64.dll')
 Copy-Item $fakeExe (Join-Path $launcher 'MassEffectLauncher.exe')
 Copy-Item $LauncherBinkDll (Join-Path $launcher 'bink2w64.dll')
+# The sequels: the stand-in exe under each game's name (the version resource is what counts), RAD's Bink of their build,
+# a GamerSettings.ini as the game writes it, and a second ini file nothing of ours may touch.
+$sequelGamer = "[SystemSettings]`r`nFullscreen=True`r`nResX=2560`r`nResY=1440`r`nUseVSync=True`r`nMotionBlur=True`r`nFilmGrain=True`r`nDynamicShadows=True`r`n`r`n[HDR]`r`nDesiredRange=DynamicRange_HDR`r`n"
+foreach ($n in 2, 3) {
+    $w = Join-Path $root "Game\ME$n\Binaries\Win64"
+    $c = Join-Path $root "Game\ME$n\BioGame\Config"
+    New-Item -ItemType Directory -Force $w, $c | Out-Null
+    Copy-Item $fakeExe (Join-Path $w "MassEffect$n.exe")
+    Copy-Item $LauncherBinkDll (Join-Path $w 'bink2w64.dll')
+    [IO.File]::WriteAllText((Join-Path $c 'GamerSettings.ini'), $sequelGamer)
+    [IO.File]::WriteAllText((Join-Path $c 'BIOEngine.ini'), "[Engine.GameEngine]`r`nSmoothFrameRate=TRUE`r`n`r`n[SystemSettings]`r`nDynamicShadows=True`r`n")
+}
 $gameToc = Join-Path $env:LOCALAPPDATA 'MEVR\cockpit-install\PCConsoleTOC.bin.original'
 if (-not (Test-Path $gameToc)) { $gameToc = Join-Path (Split-Path (Split-Path $BinkDll)) '..\BioGame\PCConsoleTOC.bin' }
 $toc = Join-Path $root 'Game\ME1\BioGame\PCConsoleTOC.bin'
@@ -123,8 +232,13 @@ $engineText = "[Engine.GameEngine]`r`nSmoothFrameRate=TRUE`r`nMaxSmoothedFrameRa
     "FoliageDrawRadiusMultiplier=1.000000`r`n`r`n[HDR]`r`nDesiredRange=DynamicRange_Auto`r`n"
 [IO.File]::WriteAllText((Join-Path $config 'BIOEngine.ini'), $engineText)
 $before = Snapshot
+# A real game of one of the three running elsewhere (another session's run) can fail a step here: Setup counts a
+# MassEffect<n>.exe or launcher process whose path it can't read as this folder's, on the safe side, and refuses.
+$live = @(Get-Process MassEffect1, MassEffect2, MassEffect3, MassEffectLauncher -ErrorAction SilentlyContinue | ForEach-Object { $_.Name } | Select-Object -Unique)
+if ($live.Count -gt 0) { Write-Warning "$($live -join ', ') is running: a step for that game may be refused with 'Mass Effect (or its launcher) is running'. Run this again once it has closed." }
 $ErrorActionPreference = 'Continue'  # from here on a failed check is reported, not thrown
 
+if ($Games -contains 'LE1') {
 Check ((Run-Setup @('--status')) -eq 0) 'status'
 Check ((Run-Setup @('--install', '--source', 'Steam', '--quality', 'performance')) -eq 0) 'install'
 $bink = (Get-Item (Join-Path $win64 'bink2w64.dll')).VersionInfo
@@ -351,6 +465,213 @@ Check (-not $diff) 'the folder is byte for byte what it was before the upgrade'
 Remove-Item -Recurse -Force (Join-Path $win64 'ASI')
 $diff = Compare-Object $before (Snapshot)
 Check (-not $diff) 'the fake game folder is byte for byte what it was'
+}  # LE1
+
+# ---- The sequels: the same steps by the same code, with --for (docs/trilogy-plan.md T52) -----------------------------
+function Test-Sequel([string]$game) {
+    $n = $game.Substring(2)
+    $name = "Mass Effect $n"
+    $script:For = $game
+    $w = Join-Path $root "Game\ME$n\Binaries\Win64"
+    $c = Join-Path $root "Game\ME$n\BioGame\Config"
+    $gamerFile = Join-Path $c 'GamerSettings.ini'
+    $engineFile = Join-Path $c 'BIOEngine.ini'
+    $engineBefore = Get-Content -Raw $engineFile
+    $rendererIni = Join-Path $w "MELE${n}VR.ini"
+    $hasTemplate = Test-Path (Join-Path $Payload "MELE${n}VR.ini")
+    $cli = Join-Path $scratch 'setup-cli.txt'
+    $beforeGame = Snapshot
+
+    Check ((Run-Setup @('--status')) -eq 0) "${game}: status"
+    Check ((Get-Content -Raw $cli) -match "(?m)^title: $name \($game\)") "${game}: status names the game"
+    Check ((Run-Setup @('--install', '--source', 'Steam')) -eq 0) "${game}: install"
+    Check ((Get-Item (Join-Path $w 'bink2w64.dll')).VersionInfo.FileDescription -like 'MEVR ASI loader*') "${game}: bink2w64.dll is our loader"
+    Check ((Get-FileHash (Join-Path $w 'bink2w64_original.dll')).Hash -eq (Get-FileHash $LauncherBinkDll).Hash) "${game}: RAD's DLL kept as bink2w64_original.dll"
+    Check ((Get-FileHash (Join-Path $w "ASI\${game}MEVR.asi")).Hash -eq (Get-FileHash (Join-Path $Payload "${game}MEVR.asi")).Hash) "${game}: its own ASI"
+    Check (-not (Test-Path (Join-Path $w 'ASI\LE1MEVR.asi'))) "${game}: not Mass Effect 1's ASI"
+    Check ((Get-Item (Join-Path $launcher 'bink2w64.dll')).VersionInfo.FileDescription -like 'MEVR ASI loader*') "${game}: Game\Launcher\bink2w64.dll is our loader"
+    Check ((Test-Path (Join-Path $w 'ASI\menu\main.rml')) -and (Test-Path (Join-Path $w 'ASI\fonts\Rajdhani-Bold.ttf')) -and (Test-Path (Join-Path $w 'ASI\MEVR-Setup.exe'))) "${game}: the menu, the fonts, the setup copy"
+    $record = Get-Content -Raw (Join-Path $w 'ASI\MEVR-install.json') | ConvertFrom-Json
+    Check ($record.game -eq $game -and $record.loader -eq 'mevr' -and $record.gameSettings) "${game}: its own install record (game, loader, settings applied)"
+    Check (-not (Test-Path (Join-Path $root 'Game\ME1\Binaries\Win64\ASI'))) "${game}: nothing in Mass Effect 1's folder"
+    Check (-not (Test-Path (Join-Path $w 'ASI\cockpit')) -and -not (Test-Path (Join-Path $w 'ASI\voice')) -and -not (Test-Path (Join-Path $w 'ASI\audio'))) "${game}: no cockpit, voice or OpenAL Soft (Mass Effect 1's)"
+    Check ((Get-Content -Raw (Join-Path $w 'steam_appid.txt')) -eq '1328670') "${game}: steam_appid.txt"
+    if ($hasTemplate) {
+        Check ((Get-FileHash $rendererIni).Hash -eq (Get-FileHash (Join-Path $Payload "MELE${n}VR.ini")).Hash) "${game}: the renderer's release settings next to the exe"
+    } else {
+        Check (-not (Test-Path $rendererIni)) "${game}: no renderer settings made up (the release has none: the renderer writes its own)"
+    }
+    $g = Get-Content -Raw $gamerFile
+    Check ($g -match '(?m)^BorderlessWindow=True' -and $g -match '(?m)^Fullscreen=False' -and $g -match '(?m)^UseVSync=False' -and $g -match '(?m)^MotionBlur=False' -and
+        $g -match '(?m)^FilmGrain=False' -and $g -match '(?m)^MaxAnisotropy=16' -and $g -match 'DynamicRange_SDR') "${game}: GamerSettings.ini: the VR values"
+    Check ($g -match '(?m)^ResX=2560' -and $g -match '(?m)^ResY=1440') "${game}: GamerSettings.ini: the resolution left to the renderer"
+    if ($game -eq 'LE2') {
+        Check ($g -match '(?m)^DynamicShadows=False' -and $g -match '(?m)^FoliageDrawRadiusMultiplier=0\.5') 'LE2: GamerSettings.ini: no dynamic shadows, the foliage radius'
+    } else {
+        Check ($g -match '(?m)^DynamicShadows=True' -and $g -notmatch 'FoliageDrawRadiusMultiplier') 'LE3: GamerSettings.ini: shadows and foliage as the game has them'
+    }
+    Check ((Get-Content -Raw $engineFile) -eq $engineBefore) "${game}: BIOEngine.ini untouched"
+
+    # The player tunes the renderer (a value we never touch): it must survive everything below.
+    if (-not (Test-Path $rendererIni)) { [IO.File]::WriteAllText($rendererIni, "[VR]`r`nHalfEyeUU=3.350`r`nRenderW=4096`r`nRenderH=2304`r`n") }
+    [IO.File]::WriteAllText($rendererIni, ([IO.File]::ReadAllText($rendererIni) -replace '(?m)^HalfEyeUU=.*$', 'HalfEyeUU=2.900'))
+
+    # Steam's "verify files": RAD's DLL back in the game and the launcher, a menu file gone.
+    Copy-Item $LauncherBinkDll (Join-Path $w 'bink2w64.dll') -Force
+    Copy-Item $LauncherBinkDll (Join-Path $launcher 'bink2w64.dll') -Force
+    Remove-Item (Join-Path $w 'ASI\menu\main.rcss')
+    Run-Setup @('--status') | Out-Null
+    $st = Get-Content -Raw $cli
+    Check ($st -match "(?m)^needs repair: .*Game/ME$n/Binaries/Win64/bink2w64\.dll" -and $st -match '(?m)^needs repair: .*Game/Launcher/bink2w64\.dll' -and $st -match '(?m)^needs repair: .*main\.rcss') "${game}: status after `"verify files`": both loaders and the menu file need repair"
+    Check ((Run-Setup @('--repair')) -eq 0) "${game}: repair"
+    Run-Setup @('--status') | Out-Null
+    Check ((Get-Content -Raw $cli) -match '(?m)^needs repair: nothing') "${game}: status after repair: nothing to repair"
+    Check ((Get-Item (Join-Path $w 'bink2w64.dll')).VersionInfo.FileDescription -like 'MEVR ASI loader*' -and
+        (Get-Item (Join-Path $launcher 'bink2w64.dll')).VersionInfo.FileDescription -like 'MEVR ASI loader*' -and (Test-Path (Join-Path $w 'ASI\menu\main.rcss'))) "${game}: repair: both loaders and the menu file back"
+    Check ((Get-Content -Raw $rendererIni) -match '(?m)^HalfEyeUU=2\.900') "${game}: repair: the player's renderer value kept"
+
+    Check ((Run-Setup @('--restore-settings')) -eq 0) "${game}: restore the game settings"
+    Check ((Get-Content -Raw $gamerFile) -eq $sequelGamer) "${game}: GamerSettings.ini exactly as it was"
+    Check ((Run-Setup @('--apply-settings')) -eq 0) "${game}: apply the game settings again"
+    Check ((Get-Content -Raw $gamerFile) -match '(?m)^BorderlessWindow=True') "${game}: GamerSettings.ini: the VR values again"
+    Check ((Run-Setup @('--install', '--source', 'Steam')) -eq 0) "${game}: install again (update)"
+    Check ((Get-Content -Raw $rendererIni) -match '(?m)^HalfEyeUU=2\.900') "${game}: update: the player's renderer value kept"
+
+    # Report a problem for this game: its own log and settings, redacted as Mass Effect 1's.
+    $fakeLocal = Join-Path $scratch "fake-local-$game\MEVR"
+    $reportOut = Join-Path $scratch "report-out-$game"
+    Remove-Item -Recurse -Force (Join-Path $scratch "fake-local-$game"), $reportOut -ErrorAction SilentlyContinue
+    New-Item -ItemType Directory -Force $fakeLocal, (Join-Path $w 'Logs') | Out-Null
+    $who = "C:\Users\$env:USERNAME\AppData\Local\MEVR on $env:COMPUTERNAME, mail $env:USERNAME.test@example.com"
+    [IO.File]::WriteAllText((Join-Path $w "Logs\${game}MEVR.log"),
+        "[01:00:00.000] [info] MEVR 0.1.0 (monolithic, commit abc1234) attaching to $game`r`n[01:00:01.000] [error] could not open $who`r`n[01:00:02.000] [warn] late frame 12 ms`r`n")
+    $beforeReport = Snapshot
+    Check ((Run-Setup @('--report', '--report-dir', $reportOut, '--local', $fakeLocal)) -eq 0) "${game}: report"
+    $zipFile = Get-ChildItem (Join-Path $reportOut 'MEVR-report-*.zip') | Select-Object -First 1
+    Check ($null -ne $zipFile) "${game}: report: the zip is written"
+    if ($zipFile) {
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $archive = [IO.Compression.ZipFile]::OpenRead($zipFile.FullName)
+        $names = @($archive.Entries | ForEach-Object { $_.FullName })
+        $texts = @{}
+        foreach ($entry in $archive.Entries) {
+            $reader = New-Object IO.StreamReader($entry.Open())
+            $texts[$entry.FullName] = $reader.ReadToEnd()
+            $reader.Dispose()
+        }
+        $archive.Dispose()
+        Check (($names -contains "logs/${game}MEVR.log") -and ($names -contains "settings/MELE${n}VR.ini") -and ($names -contains 'settings/MEVR-install.json') -and
+            ($names -contains 'system/folders.txt') -and -not ($names -contains 'logs/LE1MEVR.log')) "${game}: report: its own log, settings and listing"
+        Check ($texts['system/folders.txt'] -match "Game\\ME$n\\Binaries\\Win64" -and $texts['system/folders.txt'] -match "${game}MEVR\.asi") "${game}: report: the listing is its folder's"
+        $leak = $texts.Keys | Where-Object { $texts[$_] -match [regex]::Escape($env:COMPUTERNAME) -or $texts[$_] -match ('\b' + [regex]::Escape($env:USERNAME) + '\b') -or $texts[$_] -match 'test@example\.com' }
+        Check (-not $leak) "${game}: report: no user name, computer name or e-mail left ($($leak -join ', '))"
+        $md = $texts['REPORT.md']
+        Check ($md -match "MassEffect$n\.exe" -and $md -match "logs/${game}MEVR\.log\): 1 errors, 1 warnings" -and $md -notmatch 'LE1MEVR') "${game}: report: REPORT.md names this game's exe and log"
+    }
+    Check (-not (Compare-Object $beforeReport (Snapshot))) "${game}: report: the game folder untouched"
+
+    # What the renderer writes while the mod is installed: its RenderW x RenderH into ResX/ResY at attach, and DepthOfField.
+    [IO.File]::WriteAllText($gamerFile, ([IO.File]::ReadAllText($gamerFile) -replace '(?m)^ResX=\d+', 'ResX=4096' -replace '(?m)^ResY=\d+', 'ResY=2304' -replace
+        '(?m)^\[SystemSettings\]\r?\n', "[SystemSettings]`r`nDepthOfField=False`r`n"))
+    Check ((Run-Setup @('--uninstall')) -eq 0) "${game}: uninstall"
+    $diff = Compare-Object $beforeGame (Snapshot)
+    if ($diff) { $diff | ForEach-Object { Write-Output "  differs: $($_.SideIndicator) $($_.InputObject)" } }
+    Check (-not $diff) "${game}: the fake game folder is byte for byte what it was"
+    Check (-not (Test-Path (Join-Path $w 'ASI')) -and -not (Test-Path (Join-Path $w 'Logs'))) "${game}: the ASI and Logs folders are gone (we created them)"
+
+    # Halcyon's own release for this game: its dxgi.dll (told by "ME2VR" in it), openxr_loader.dll and its settings file
+    # next to the exe. The DLLs move aside; its settings file is the player's: never written, never deleted.
+    [IO.File]::WriteAllBytes((Join-Path $w 'dxgi.dll'), [Text.Encoding]::ASCII.GetBytes('MZ stand-in for upstream ME2VR dxgi.dll'))
+    [IO.File]::WriteAllText((Join-Path $w 'openxr_loader.dll'), 'stand-in')
+    $upstreamIni = "[VR]`r`nMode=4`r`nRenderW=3072`r`nRenderH=1728`r`nInstallerRun=1`r`n"
+    [IO.File]::WriteAllText($rendererIni, $upstreamIni)
+    $beforeUpstream = Snapshot
+    Check ((Run-Setup @('--install', '--source', 'Steam')) -eq 0) "${game}: install over Halcyon's own release"
+    Check ((Test-Path (Join-Path $w 'dxgi.dll.mevr-off')) -and -not (Test-Path (Join-Path $w 'dxgi.dll')) -and (Test-Path (Join-Path $w 'openxr_loader.dll.mevr-off'))) "${game}: its two DLLs moved aside"
+    Check ((Get-Content -Raw $rendererIni) -eq $upstreamIni) "${game}: its settings file left as it is"
+    Check ((Run-Setup @('--uninstall')) -eq 0) "${game}: uninstall"
+    Check (-not (Compare-Object $beforeUpstream (Snapshot))) "${game}: its DLLs back and its settings file still there, byte for byte"
+    Remove-Item (Join-Path $w 'dxgi.dll'), (Join-Path $w 'openxr_loader.dll'), $rendererIni
+
+    # A lost install record, then a reinstall: the uninstall still takes it all out.
+    Check ((Run-Setup @('--install', '--source', 'Steam', '--no-settings')) -eq 0) "${game}: install"
+    New-Item -ItemType Directory -Force (Join-Path $w 'Logs') | Out-Null
+    [IO.File]::WriteAllText((Join-Path $w "ASI\${game}MEVR.ini"), "[Hands]`r`n")
+    [IO.File]::WriteAllText((Join-Path $w "Logs\${game}MEVR.log"), 'log')
+    Remove-Item (Join-Path $w 'ASI\MEVR-install.json')
+    Check ((Run-Setup @('--install', '--source', 'Steam', '--no-settings')) -eq 0) "${game}: install again without the install record"
+    Check ((Run-Setup @('--uninstall')) -eq 0) "${game}: uninstall"
+    Check ((Get-FileHash (Join-Path $w 'bink2w64.dll')).Hash -eq (Get-FileHash $LauncherBinkDll).Hash -and -not (Test-Path (Join-Path $w 'bink2w64_original.dll'))) "${game}: RAD's DLL back after the lost record"
+    Check (-not (Test-Path (Join-Path $w 'ASI')) -and -not (Test-Path (Join-Path $w 'Logs'))) "${game}: its ini, the log, ASI and Logs gone"
+    # Left without their record, as Mass Effect 1's steam_appid.txt is: steam_appid.txt, and the release's renderer settings
+    # (next to the exe, where a file without a record counts as the player's).
+    Check (Test-Path (Join-Path $w 'steam_appid.txt')) "${game}: steam_appid.txt left (no record of it)"
+    Remove-Item (Join-Path $w 'steam_appid.txt')
+    if ($hasTemplate) {
+        Check (Test-Path $rendererIni) "${game}: the renderer settings left (no record of them: the player's)"
+        Remove-Item $rendererIni
+    }
+    $diff = Compare-Object $beforeGame (Snapshot)
+    if ($diff) { $diff | ForEach-Object { Write-Output "  differs: $($_.SideIndicator) $($_.InputObject)" } }
+    Check (-not $diff) "${game}: the fake game folder is byte for byte what it was"
+
+    # A game never started on this PC: no GamerSettings.ini. The settings wait; Repair applies them once the file exists.
+    Remove-Item $gamerFile
+    $beforeFirstStart = Snapshot
+    Check ((Run-Setup @('--install', '--source', 'Steam')) -eq 0) "${game}: install on a game never started"
+    $out = Get-Content -Raw $cli
+    Check ($out -match "$name hasn't been started on this PC yet" -and $out -match "(?m)^game settings waiting for the game's first start") "${game}: install: the VR game settings wait"
+    Check (-not (Test-Path $gamerFile)) "${game}: install: no GamerSettings.ini made up"
+    Check ((Run-Setup @('--repair')) -eq 0) "${game}: repair before the first start"
+    Check ((Get-Content -Raw $cli) -match "start $name once") "${game}: repair: the settings still wait, and it names the game"
+    $firstGamer = "[SystemSettings]`r`nFullscreen=True`r`nResX=1920`r`nResY=1080`r`nUseVSync=True`r`nMotionBlur=True`r`n`r`n[HDR]`r`nDesiredRange=DynamicRange_HDR`r`n"
+    [IO.File]::WriteAllText($gamerFile, $firstGamer)
+    Check ((Run-Setup @('--repair')) -eq 0) "${game}: repair after the first start"
+    $g = Get-Content -Raw $gamerFile
+    Check ($g -match '(?m)^BorderlessWindow=True' -and $g -match '(?m)^Fullscreen=False' -and $g -match 'DynamicRange_SDR' -and $g -match '(?m)^ResX=1920') "${game}: repair: the waiting VR game settings applied"
+    $out = Get-Content -Raw $cli
+    Check ($out -match '(?m)^game settings applied: yes' -and $out -notmatch 'game settings waiting') "${game}: repair: nothing waits any more"
+    Check ((Run-Setup @('--uninstall')) -eq 0) "${game}: uninstall"
+    Check ((Get-Content -Raw $gamerFile) -eq $firstGamer) "${game}: uninstall: the game's own GamerSettings.ini, exactly"
+    Remove-Item $gamerFile
+    $diff = Compare-Object $beforeFirstStart (Snapshot)
+    if ($diff) { $diff | ForEach-Object { Write-Output "  differs: $($_.SideIndicator) $($_.InputObject)" } }
+    Check (-not $diff) "${game}: the never-started game folder is byte for byte what it was"
+    [IO.File]::WriteAllText($gamerFile, $sequelGamer)
+    Check (-not (Compare-Object $beforeGame (Snapshot))) "${game}: the fake game folder is byte for byte what it was"
+    $script:For = $null
+}
+foreach ($sequel in $Games | Where-Object { $_ -ne 'LE1' }) { Test-Sequel $sequel }
+
+# ---- The games together: one launcher, one loader in it ---------------------------------------------------------------
+if ($Games.Count -gt 1) {
+    foreach ($game in $Games) {
+        $script:For = $game
+        Check ((Run-Setup @('--install', '--source', 'Steam', '--quality', 'performance')) -eq 0) "together: install $game"
+    }
+    $first = $Games[0]
+    $rest = @($Games | Select-Object -Skip 1)
+    $script:For = $first
+    Check ((Run-Setup @('--uninstall')) -eq 0) "together: uninstall $first while $($rest -join ' and ') stay"
+    Check ((Get-Content -Raw (Join-Path $scratch 'setup-cli.txt')) -match "left Game\\Launcher's loader in place") "together: the uninstall says the launcher's loader stays"
+    Check ((Get-Item (Join-Path $launcher 'bink2w64.dll')).VersionInfo.FileDescription -like 'MEVR ASI loader*' -and (Test-Path (Join-Path $launcher 'bink2w64_original.dll'))) "together: the launcher's loader is still there for the others"
+    Check (-not (Test-Path (Join-Path $root "Game\ME$($first.Substring(2))\Binaries\Win64\ASI"))) "together: $first's own files are gone"
+    foreach ($game in $rest) {
+        $script:For = $game
+        Run-Setup @('--status') | Out-Null
+        $st = Get-Content -Raw (Join-Path $scratch 'setup-cli.txt')
+        Check ($st -match '(?m)^installed: yes' -and $st -match '(?m)^needs repair: nothing') "together: $game still installed, nothing to repair"
+    }
+    foreach ($game in $rest) {
+        $script:For = $game
+        Check ((Run-Setup @('--uninstall')) -eq 0) "together: uninstall $game"
+    }
+    $script:For = $null
+    Check ((Get-FileHash (Join-Path $launcher 'bink2w64.dll')).Hash -eq (Get-FileHash $LauncherBinkDll).Hash -and -not (Test-Path (Join-Path $launcher 'bink2w64_original.dll'))) "together: the launcher's own Bink back with the last uninstall"
+    $diff = Compare-Object $before (Snapshot)
+    if ($diff) { $diff | ForEach-Object { Write-Output "  differs: $($_.SideIndicator) $($_.InputObject)" } }
+    Check (-not $diff) 'together: the fake game folder is byte for byte what it was'
+}
 
 Write-Output $(if ($failures -eq 0) { 'fake game test passed' } else { "fake game test FAILED ($failures)" })
 exit $failures

@@ -1800,6 +1800,3 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     return count;
 }
 } // namespace MevrSeams
-namespace MELEVR::MevrBridge {
-
-} // namespace MELEVR::MevrBridge

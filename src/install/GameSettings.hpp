@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include "install/Game.hpp"
 #include "install/Ini.hpp"
 
 #include <string>
@@ -41,6 +42,11 @@ struct Choices {
 // are (ini::Record): the mod writes them later (our menu's resolution and the first VR start's eye size through
 // Halcyon's profile; Halcyon's depth of field at every launch), and ModWrites lets Uninstall put the player's back.
 std::string ApplyGamerSettings(std::string_view text, Choices const& choices, std::vector<ini::Edit>* edits);
+// The same for any of the three games (tools/vr-game-settings.ps1 -Game): Mass Effect 1 is the function above. A sequel
+// keeps its ResX/ResY whatever the target says (its renderer writes them from its own ini's RenderW/RenderH at attach;
+// recorded, so Uninstall puts the player's back), gets the borderless window too, and by GameSpec DynamicShadows=False
+// and FoliageDrawRadiusMultiplier=0.5.
+std::string ApplyGamerSettings(std::string_view text, Choices const& choices, std::vector<ini::Edit>* edits, GameId game);
 // BIOEngine.ini: SmoothFrameRate=FALSE wherever a section sets it TRUE (the game's 60 fps cap). And in its [SystemSettings]
 // (only where the file has that section), the values the game copies there from its live settings during play
 // (research/33 section 13): the target's ResX/ResY, Fullscreen=False, MaxAnisotropy=16 (anisotropy16), and what the mod
@@ -54,6 +60,9 @@ std::string ApplyEngineSettings(std::string_view text, Choices const& choices, s
 // a ResX/ResY equal to any of its profiles' resolutions (Halcyon writes the active mode's into GamerSettings.ini, and the
 // game copies it into BIOEngine.ini), and DepthOfField whatever it holds (Halcyon writes it at every launch).
 ini::Ours ModWrites(std::string_view halcyonIni);
+// The same for any game, from its renderer's ini: Mass Effect 1 is the function above; a sequel's renderer writes its
+// ini's RenderW/RenderH into ResX/ResY at attach (MELE2VR.ini, MELE3VR.ini: [VRRES]) and DepthOfField.
+ini::Ours ModWrites(std::string_view rendererIni, GameId game);
 
 // What a GamerSettings.ini holds now, for the Settings page: "2824 × 2880", "On"/"Off"...
 struct Current {

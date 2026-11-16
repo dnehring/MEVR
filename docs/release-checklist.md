@@ -247,6 +247,12 @@ The owner decided these on 2026-11-04 (asked one by one); the rows below say wha
 - [x] **[C] package-release checks**: a clean tree, version consistency, ctest, `check-spdx`, a cockpit package built from
   the current models. `dist\MEVR-0.1.0` predates today's commits.
   **Done 2026-11-04 (663adb8, 42db650):** clean tree, tag, version and commit in the binaries, check-spdx, ctest; a warning for a stale cockpit package; checksums and release notes with `-Zip`.
+- [ ] **[C] A sequel in the package (T52; the owner decides when).** `tools/package-release.ps1 -Games LE1,LE2` (or `LE3`)
+  adds that game's ASI, its renderer's release settings and `MEVR-Setup.ini [Setup] games`, which is what makes MEVR Setup
+  offer it; the default is Mass Effect 1 only. It refuses while the sequel's ASI links LExSDKv2 (T04). Before the first
+  such release: `tools/setup/test-fake-game.ps1` (all three games), then one install, Repair and uninstall of that game
+  on a real install, and Launch with our loader in the launcher (it starts only Mass Effect 1 until T51).
+  **Built 2026-11-16** ([research/33](../research/33-installer.md) section 17), tested on fake games only.
 - [ ] **[C] CI needs real work (owner, 2026-11-04).** Today there is none: `.github` holds only the issue forms. At least a
   Windows workflow (VS 2022) that builds the players' configuration (monolithic, `MEVR_LE1_LESDK=OFF`, which since
   2026-11-04 configures without the LExSDKv2 submodule) and the setup, runs ctest (`mevr-tests`, the colour and upscale

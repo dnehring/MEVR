@@ -164,7 +164,7 @@ std::string gStatus = "null";
 // Our main menu is open (it owns the controllers), and a pulse in a hand: LE1's through its Halcyon bridge, ME2's directly.
 bool OurMenuOpen() {
 #if defined(MEVR_WITH_HALCYON)
-    return MELEVR::MevrBridge::MainMenuOpen();
+    return MevrSeams::MainMenuOpen();
 #else
     return mevr::host::main_menu::IsOpen();
 #endif

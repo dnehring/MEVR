@@ -43,6 +43,8 @@ GpuTiming LatestGpuTiming(); // render thread only; cached completed queries, ne
 // frame on the sequels. Render thread.
 void SeamPresentBegin(ID3D11DeviceContext* context);
 void SeamPresentEnd(ID3D11DeviceContext* context);
+// Whether a Present seam bounds the frames (LE1 always; a sequel once its Present hook called SeamPresentBegin).
+bool PresentSeamSeen();
 // The first eye's image was captured: what came before it this frame was the first eye's render. Render thread.
 void SeamFirstEyeCaptured(ID3D11DeviceContext* context);
 // The sequels' draw counter (LE1's is Halcyon's g_perfDraws): from the renderer's D3D draw hooks, any draw call.

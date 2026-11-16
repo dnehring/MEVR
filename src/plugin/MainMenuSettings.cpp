@@ -27,6 +27,9 @@
 #endif
 // The colour correction (plugin/Colour, research/27): in both hosts (ME2's eye copy since fc24c20d, research/le2-picture.md).
 #include "plugin/Colour.hpp"
+// Report a problem and the crash offer (research/33 section 8): in every host; MEVR Setup's copy in that game's ASI folder
+// writes the zip for the game it sits in (docs/trilogy-plan.md T52).
+#include "plugin/ReportRequest.hpp"
 
 #include "core/Ini.hpp"
 #include "core/Log.hpp"
@@ -605,11 +608,11 @@ void Settings::Read(menu::Values& v) {
     v.texts["perf_msg"] = p.pending ? std::format("Measuring: {:.0f} s of 20", p.seconds) : perfMsg_;
     v.texts["content_installed"] = setup_request::InstalledPacksText();
     v.texts["content_msg"] = contentMsg_;
+#endif
     // Report a problem (research/33 section 8): the last request's outcome, and the offer after a crash.
     std::string const reportStatus = report_request::StatusText();
     v.texts["report_msg"] = reportStatus.empty() ? reportMsg_ : reportStatus;
     flag("crash_offer", report_request::CrashOffer());
-#endif
     // The top bar.
     v.texts["chip_headset"] = headset.empty() ? std::string("Headset not started") : headset;
     v.texts["chip_controllers"] = controllers.empty() ? std::string("No controllers yet") : controllers;
@@ -1302,6 +1305,11 @@ void Settings::Command(std::string const& name, std::string const& argument, men
         after_ = After::Snapshot;
     } else if (name == "record") {
         testloop::RequestRecording(testloop::GetStatus().recording ? 0 : 1);
+    } else if (name == "report") {
+        // MEVR Setup writes the zip in its own process, now (plugin/ReportRequest): the menu stays open.
+        report_request::Request(v.Flag("report_snapshot"), v.Flag("report_perf"), reportMsg_);
+    } else if (name == "crash_dismiss") {
+        report_request::DismissCrash();
 #if defined(MEVR_MENU_LE1)
     } else if (name == "place_hud") {
         MELEVR::MevrBridge::RequestHudPanelReplace();
@@ -1340,11 +1348,6 @@ void Settings::Command(std::string const& name, std::string const& argument, men
         after_ = After::Perf;
     } else if (name == "content_request") {
         setup_request::Request(contentMsg_);  // MEVR Setup opens on Optional content after the game exits (research/33)
-    } else if (name == "report") {
-        // MEVR Setup writes the zip in its own process, now (plugin/ReportRequest): the menu stays open.
-        report_request::Request(v.Flag("report_snapshot"), v.Flag("report_perf"), reportMsg_);
-    } else if (name == "crash_dismiss") {
-        report_request::DismissCrash();
     } else if (name == "reset") {
         if (resetArmedMs_ == 0) {
             resetArmedMs_ = Now();

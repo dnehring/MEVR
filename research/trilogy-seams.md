@@ -40,7 +40,7 @@ where each game's definition is. `Seams.cpp` means one definition for all three.
 | session | `XrRuntimeIsSteamVr()` | Seams.cpp | Seams.cpp | Seams.cpp | LE2, LE3 |
 | view | `OnViewBuilt(worldView, headLook, headAim, lookYawUU, lookPitchUU, headOrientation[4], headPosition[3], offsetRightUU, offsetUpUU, offsetForwardUU, unitsPerMeter, floorWorld)` | HalcyonBridge.cpp | HalcyonLe2Bridge.cpp | HalcyonLe3Bridge.cpp | all |
 | view | `FloorViewTranslation(replay, rawCameraZ, rightZ, upZ, forwardZ, right*, up*, forward*)` | FloorLock.cpp | HalcyonLe2Bridge.cpp | HalcyonLe3Bridge.cpp | all |
-| view | `RecenterOrientation(head[4], automatic, orientation[4])` | RecenterTilt.cpp | RecenterTilt.cpp | RecenterTilt.cpp | see "State" |
+| view | `RecenterOrientation(head[4], automatic, orientation[4])` | RecenterTilt.cpp | RecenterTilt.cpp | RecenterTilt.cpp | all |
 | eye image | `OnEyeSource(eye, source)` | - | HalcyonLe2Bridge.cpp | HalcyonLe3Bridge.cpp | LE2, LE3 |
 | eye image | `CopyIntoImage(context, image, source, shiftX, eye)` | - | HalcyonLe2Bridge.cpp | HalcyonLe3Bridge.cpp | LE2, LE3 |
 | eye image | `OnEyeCopied(eye, image, index, acquired, waited)` | - | HalcyonLe2Bridge.cpp | HalcyonLe3Bridge.cpp | LE2, LE3 |
@@ -59,7 +59,7 @@ where each game's definition is. `Seams.cpp` means one definition for all three.
 | input | `MainMenuOpen()` | Seams.cpp | Seams.cpp | Seams.cpp | all |
 | threads | `OnGameThread()` | Seams.cpp | Seams.cpp | Seams.cpp | all |
 | threads | `QueueProcessEvent(object, function, params, size)` | Seams.cpp | Seams.cpp | Seams.cpp | all |
-| perf (optional) | `PerfPresentBegin(context)`, `PerfPresentEnd(context)`, `PerfFirstEyeCaptured(context)`, `PerfDraw()` | - | see "State" | see "State" | see "State" |
+| perf (optional) | `PerfPresentBegin(context)`, `PerfPresentEnd(context)`, `PerfFirstEyeCaptured(context)`, `PerfDraw()` | - | HalcyonLe2Bridge.cpp | HalcyonLe3Bridge.cpp | LE2, LE3 |
 
 A `-` means that game's host does not define the seam, because its renderer does not call it. Calling it there is a
 link error, which is the intended signal: define it in that game's bridge first.
@@ -112,10 +112,10 @@ unchanged. `src/halcyon/SequelPresentation.h` only includes `MevrSeams.h` now.
 | `eyeImageSeams` | - | yes | yes | the eye-image group is called; `plugin/EyeCopy` owns each eye image |
 | `hudPanelDraw` | - | yes | yes | `MevrSeams::HudPanelDraw` from the draw hooks (LE1 has its own `HudPanel*` seams) |
 | `hostCineScreen` | - | yes | yes | the host composes the 3D cinema screen (`CineScreenLayers`) |
-| `recenterTilt` | yes | see "State" | see "State" | the recenter asks `RecenterOrientation` |
+| `recenterTilt` | yes | yes | yes | the recenter asks `RecenterOrientation` |
 | `panelsInRoom` | yes | - | yes | `PlacePanel` places every flat panel |
 | `galaxyTable` | - | yes | yes | `PlacePanel` may put the native map on the table |
-| `perfSeams` | yes | see "State" | see "State" | the probe's steps are called |
+| `perfSeams` | yes | yes | yes | the probe's steps are called |
 | `oneDraw`, `perEyeFrustum`, `metricStereo` | yes | - | - | LE1's stereo and performance work |
 | `hudPanelGameplay` | yes | yes | - | the whole gameplay HUD goes to the panel |
 | `hudPieces` | yes | yes | - | the wrist and gun pieces |
@@ -155,19 +155,57 @@ for that.
 
 ## State
 
-Landings 1 and 2 of 5 (2026-11-16). In: `MevrSeams.h`, the host's definitions, `Seams.cpp`, the capability set; the LE2
-tree's call sites on `MevrSeams::`; ME2's recenter asks `RecenterOrientation` (`plugin/RecenterTilt` and
-`core/vr/Recenter` are in the LE2 host; the bridge calls `recenter_tilt::Committed()` in `OnRecentered` and
-`recenter_tilt::NoteHead()` each `OverlayLayers`; capability `recenterTilt`). ME2's check: no run yet: Steam did not launch the game on 2026-11-16 (a pending Steam dialog); the ME2 fake-headset run is owed.
+All five steps are made (2026-11-16): `MevrSeams.h`, the host's definitions, `Seams.cpp`, the capability set, all three
+trees' call sites on `MevrSeams::`, and the old names (with `SequelPresentation.h`) removed. Both sequels' recenters ask `RecenterOrientation`: `plugin/RecenterTilt` and
+`core/vr/Recenter` are in both sequel hosts, each bridge calls `recenter_tilt::Committed()` in `OnRecentered` and
+`recenter_tilt::NoteHead()` each `OverlayLayers`, and a player's recenter is told from a render path's first frame by
+`g_mevrRecenterAsked` in each `me2_xr.cpp` (set in `Recenter()`, taken in `RecenterAppSpace`); capability `recenterTilt`.
 
-Not yet, and so `-` or "see State" above:
-- the LE3 and LE1 trees' call sites still use the old names through the inline forwarders (section "Old names" of each
-  `mevr_bridge.h`; LE2's forwarders also stay until the last landing, for work in flight elsewhere);
-- `RecenterOrientation` on LE3 comes with its tree's landing;
-- the perf group has no definition and no caller. When lane PL's `mevr::host::perf` is in the sequel hosts: define the
-  four in each sequel bridge (`PerfPresentBegin` -> `perf::SeamPresentBegin` and so on), call
-  `perf::WrapFrameFunctions(waitSwapchainImage, waitFrame, beginFrame, endFrame)` after testloop's wrap in the bridge's
-  `WrapSessionFunctions`, put `MevrSeams::PerfPresentScope` as the first line of the tree's `PresentHook`,
-  `PerfFirstEyeCaptured` after the SFR pass-0 capture (`g_sfrPass0Caps.fetch_add` in `d3d_capture.cpp`) and `PerfDraw()` in
-  the draw hooks (once per draw: the inline `MhDraw*` hooks where a method has one, since the vtable hook's call lands
-  there too, and the vtable hooks of the methods without one), then set `perfSeams` in `RendererLe2/3.cpp`.
+The perf group is wired on both sequels (after lane PL's `mevr::host::perf` landed, b3e91e4e): each sequel bridge
+defines the four over `perf::SeamPresentBegin`, `SeamPresentEnd`, `SeamFirstEyeCaptured` and `NoteDraws`, and calls
+`perf::WrapFrameFunctions(waitSwapchainImage, waitFrame, beginFrame, endFrame)` after testloop's wrap; each tree has
+`MevrSeams::PerfPresentScope` at the top of its `PresentHook`, `PerfFirstEyeCaptured` after the SFR pass-0 capture
+(`g_sfrPass0Caps.fetch_add` in `d3d_capture.cpp`) and `PerfDraw()` once per draw: in the inline `MhDrawIndexed`,
+`MhDrawIndexedInstanced` and `MhDraw` hooks (the vtable hook's call lands there too) and in the vtable hooks of the
+methods without an inline one (`DrawInstancedHook`, `DrawAutoHook`, the two indirect ones). Capability `perfSeams`.
+Built, not run in the game. `testloop::WrapSessionFunctions` still wraps xrEndFrame for the probe on sequel builds
+(lane PL's line, a no-op now).
+
+Not yet:
+- one more LE1 same-pose pair on a quiet machine, and an ME3 run ("Checks" below).
+
+## Checks
+
+Builds: `build-trilogy` (all three hosts), `build`, `build-mono` at every step; ctest at the first and the last.
+
+**ME2** (fake headset, 2026-11-16 12:43, session `20261116-123754-740-LE2-u1-le2`, the build of the whole stack): the
+session came up, Save 4 (Freedom's Progress) loaded, snapshot `2026-11-16_12-48-58-367` has both eyes (4096x2304, the
+world without the HUD) and the `hud` layer with the game's UI (the power bar, the door's prompt, the weapon panel, the
+squad), plus the source and copied eye images. `LE2MEVR.log` shows each seam group at work: the session functions
+wrapped, our actions attached, the first controller sync, `[MEVR-RECENTER] yaw-only recenter (upstream), automatic` (the
+recenter seam, new on ME2), `recentered`, the first world view, the eye copies counted (4096x2304 format 28 into format
+27), and at the title the cutscene on the 3D screen with its backdrop and the transition fades.
+`tools/le2-halcyon-run/launch.ps1` could not adopt the game that day (MassEffect2 started as two processes, the first
+one gone before its path could be read: `Live process identity unavailable or changed; not adopted`), so the save was
+loaded with `tools\console.ps1 "mevr load <career> Save_0004 4 0"` and the game stopped by hand inside the stretch;
+`restore.ps1` verified 0 differences.
+
+**ME3**: no run. The renderer preview (`-RendererPreview`) depends on the same adoption by `launch.ps1`, which failed
+twice for ME2 that day. Evidence is the build (the LE3 host links with every common seam defined; a seam the tree calls
+without a definition is a link error) and that the LE3 bridge's bodies are unchanged: the namespace, four signatures
+and the `PlacePanel` wrapper around the untouched `PlaceNativePanel`. New on ME3 and unseen in the game: the recenter
+seam (`RecenterOrientation` in `RecenterAppSpace`), the same lines as ME2's.
+
+**LE1 same-pose** (fake headset, 2026-11-16; before = main `f67d10dd` built apart, session `2026-11-16_13-06-51-u1-before`;
+after = this stack, session `2026-11-16_13-11-07-u1-after`; lane B's script: a standing replay, `pause`, two snapshots):
+- `hostView` identical (offset -43.3 / -4.1 / -18.1 uu, 100 uu/m, head look 0/0);
+- the same layers at the same places (`hud`, `wrist`, the eyes: 0.0 mm apart; the `label` follows an NPC and was 154 mm
+  apart; the `omnitarget` 76 mm);
+- the HUD panel identical pixel for pixel (0.00% of pixels differ, `13-10-45-317` against `13-15-19-251`);
+- the eyes 1.5% and 0.9% of pixels apart by more than 32/255, all inside the lower left where the omni-tool's target
+  ring was drawn in one snapshot and not the other.
+That day's runs were noisy on the base build too: the mod lost and regained the head-tracked view 19 times in the
+"before" run (main without this work) and 42 times in the "after" run, against once per run the day before (lane PL's
+runs the same hour: 2 and 31). Each loss drops the arms, the ring and the label for a moment, which is what the two
+snapshots differ by. So the comparison shows nothing this work changed, but it is weaker than a quiet day's
+(0.1% of eye pixels): worth one more pair when the machine is idle.

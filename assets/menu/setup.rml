@@ -32,7 +32,7 @@
 		<button class="navb" data-class-on="page == 'settings'" data-event-click="page = 'settings'"><div class="nico i-sliders"/><div><div class="navl">Settings</div><div class="navs">VR game settings</div></div></button>
 		<button class="navb" data-class-on="page == 'repair'" data-event-click="page = 'repair'"><div class="nico i-wrench"/><div><div class="navl">Repair</div><div class="navs">Check the files</div></div></button>
 		<button class="navb" data-class-on="page == 'uninstall'" data-event-click="page = 'uninstall'"><div class="nico i-trash"/><div><div class="navl">Uninstall</div><div class="navs">Put the game back</div></div></button>
-		<button class="navb" data-class-on="page == 'launch'" data-event-click="page = 'launch'"><div class="nico i-play"/><div><div class="navl">Launch</div><div class="navs">Straight into ME1</div></div></button>
+		<button class="navb" data-class-on="page == 'launch'" data-event-click="page = 'launch'"><div class="nico i-play"/><div><div class="navl">Launch</div><div class="navs">Straight into {{game_short}}</div></div></button>
 		<button class="navb" data-class-on="page == 'report'" data-event-click="page = 'report'"><div class="nico i-report"/><div><div class="navl">Report a problem</div><div class="navs">A zip for an issue</div></div></button>
 	</div>
 
@@ -43,11 +43,14 @@
 		<div class="progress"><div class="fill" data-style-width="progress + '%'"/></div></div>
 		<button class="btn" data-if="can_cancel" data-event-click="act('stop_waiting')"><div class="sweep"/><span>{{cancel_text}}</span><div class="tick"/></button></div>
 	<div data-if="waiting" class="row warnrow"><div class="lead i-timer"/><div class="rl"><div class="rlab">Waiting to continue</div><div class="rdesc">{{wait_text}}</div></div></div>
+	<!-- The three games (docs/trilogy-plan.md T52): only when more than one is shown (the release offers a sequel, or one is installed). -->
+	<div data-if="multi_game" class="row gamesrow"><div class="lead i-folder"/><div class="rl"><div class="rlab">{{game_name}}</div><div class="rdesc">These pages are about one game at a time: each has the mod, its settings and its uninstall on its own.</div></div>
+		<div class="seg"><button class="segb" data-for="g : games" data-class-on="g.current" data-class-disabled="busy || waiting" data-event-click="act('game', g.key)">{{g.name}}</button></div></div>
 
 	<!-- ===================================================================================== Welcome -->
 	<div data-if="page == 'welcome'">
 		<div class="stitle">Mass Effect VR</div>
-		<div class="sdesc">VR for Mass Effect 1, Legendary Edition: install, tune and launch it from here.</div>
+		<div class="sdesc">VR for {{game_name}}, Legendary Edition: install, tune and launch it from here.</div>
 		<div data-if="crash_offer" class="row warnrow"><div class="lead i-warn"/><div class="rl"><div class="rlab">The game crashed last session</div><div class="rdesc">Create a report? It gathers the logs and the crash details into a zip on your Desktop. Nothing is sent: you look at it first.</div></div>
 			<div class="actions">
 				<button class="btn" data-class-disabled="busy" data-event-click="act('crash_dismiss')"><div class="sweep"/><span>No thanks</span><div class="tick"/></button>
@@ -102,17 +105,22 @@
 			<button class="btn" data-event-click="act('admin')"><div class="sweep"/><span>Restart as admin</span><div class="tick"/></button></div>
 		<div data-if="upstream_found" class="row warnrow"><div class="lead i-warn"/><div class="rl"><div class="rlab">Halcyon's MELE-VR is installed</div><div class="rdesc">{{upstream_text}}</div></div></div>
 		<div data-if="!has_payload" class="row warnrow"><div class="lead i-warn"/><div class="rl"><div class="rlab">No install files in this copy</div><div class="rdesc">To update an existing installation, use Updates on Welcome. A fresh install or repair needs the downloaded release's files.</div></div></div>
-		<div data-if="game_ok &amp;&amp; !has_gamer_settings" class="row warnrow"><div class="lead i-warn"/><div class="rl"><div class="rlab">Mass Effect 1 hasn't been started on this PC yet</div><div class="rdesc">{{first_start_text}}</div></div>
+		<div data-if="game_ok &amp;&amp; !has_gamer_settings" class="row warnrow"><div class="lead i-warn"/><div class="rl"><div class="rlab">{{game_name}} hasn't been started on this PC yet</div><div class="rdesc">{{first_start_text}}</div></div>
 			<button class="btn" data-class-disabled="busy || waiting" data-event-click="act('first_start')"><div class="sweep"/><div class="bi i-play"/><span>Start the game once</span><div class="tick"/></button></div>
 		<div class="group">
 			<div class="gtitle"><span>What goes in</span><div class="gline"/></div>
-			<div class="row"><div class="lead i-check"/><div class="rl"><div class="rlab">The VR mod</div><div class="rdesc">LE1MEVR.asi, its menu and fonts, in Binaries\Win64\ASI</div></div></div>
+			<div class="row"><div class="lead i-check"/><div class="rl"><div class="rlab">The VR mod</div><div class="rdesc">{{mod_asi_text}}</div></div></div>
 			<div class="row"><div class="lead i-check"/><div class="rl"><div class="rlab">ASI loader</div><div class="rdesc">{{loader_plan}}</div></div></div>
-			<div class="row"><div class="lead i-check"/><div class="rl"><div class="rlab">Renderer settings</div><div class="rdesc">Halcyon's MELEVR.ini, only if there's none yet. An existing one keeps your profiles: only the menu key, head aim and its welcome are set, and profiles from Halcyon's own MELE-VR also get this mod's VR mode, first person and mirror rate (recorded: an uninstall that keeps your VR settings puts them back).</div></div></div>
+			<div class="row"><div class="lead i-check"/><div class="rl"><div class="rlab">Renderer settings</div><div class="rdesc">{{renderer_text}}</div></div></div>
 			<div class="row"><div class="rl"><div class="rlab">VR game settings</div><div class="rdesc">Borderless window at the VR resolution, VSync, motion blur and film grain off, HDR off. Your values are kept for Restore.</div></div>
 				<button class="tog" data-class-on="opt_settings" data-event-click="opt_settings = !opt_settings"><div class="knob"/></button></div>
-			<div class="row resolution-row" data-class-disabled="!opt_settings"><div class="rl"><div class="rlab">Render resolution</div><div class="rdesc">{{quality_text}}</div></div>
+			<div class="row resolution-row" data-if="has_target" data-class-disabled="!opt_settings"><div class="rl"><div class="rlab">Render resolution</div><div class="rdesc">{{quality_text}}</div></div>
 				<div class="seg"><button class="segb" data-class-on="quality == 'auto'" data-event-click="quality = 'auto'">Automatic</button><button class="segb" data-if="headset_known" data-class-on="quality == 'headset'" data-event-click="quality = 'headset'">Headset</button><button class="segb" data-class-on="quality == 'performance'" data-event-click="quality = 'performance'">Performance</button><button class="segb" data-class-on="quality == 'balanced'" data-event-click="quality = 'balanced'">Balanced</button><button class="segb" data-class-on="quality == 'keep'" data-event-click="quality = 'keep'">Keep</button></div></div>
+		</div>
+		<div class="group" data-if="multi_game">
+			<div class="gtitle"><span>Games</span><div class="gline"/></div>
+			<div class="row" data-for="g : games" data-class-disabled="!g.can_install"><div class="rl"><div class="rlab">{{g.name}}</div><div class="rdesc">{{g.state}}</div></div>
+				<button class="tog" data-class-on="g.chosen" data-event-click="act('choose', g.key)"><div class="knob"/></button></div>
 		</div>
 		<div class="group">
 			<div class="row"><div class="rl"><div class="rlab">{{install_title}}</div><div class="rdesc">Close the game first. Takes a few seconds.</div></div>
@@ -125,6 +133,8 @@
 		<div class="stitle">Optional content</div>
 		<div class="sdesc">Extras that aren't in the download: the voice orders' recognizer and models, and texture packs made by others, each from where it officially lives, under its own terms.</div>
 		<div class="row" data-if="request_text != ''"><div class="lead i-info"/><div class="rl"><div class="rlab">Asked for from the game</div><div class="rdesc">{{request_text}}</div></div></div>
+		<div class="row" data-if="!has_content"><div class="lead i-info"/><div class="rl"><div class="rlab">Nothing optional for {{game_name}} yet</div><div class="rdesc">The voice orders' files and the texture packs here are Mass Effect 1's: switch to it above to add them.</div></div></div>
+		<div data-if="has_content">
 		<div class="group">
 			<div class="gtitle"><span>Voice orders</span><div class="gline"/></div>
 			<div class="card" data-class-installed="voice_installed">
@@ -170,6 +180,7 @@
 				</div>
 			</div>
 		</div>
+		</div>
 	</div>
 
 	<!-- ===================================================================================== Settings -->
@@ -179,7 +190,7 @@
 		<div class="row warnrow" data-if="!has_gamer_settings &amp;&amp; game_ok"><div class="lead i-warn"/><div class="rl"><div class="rlab">Start the game once first</div><div class="rdesc">Its settings file is made on the first start. {{first_start_text}}</div></div>
 			<button class="btn" data-class-disabled="busy || waiting" data-event-click="act('first_start')"><div class="sweep"/><div class="bi i-play"/><span>Start the game once</span><div class="tick"/></button></div>
 		<div class="row warnrow" data-if="has_gamer_settings &amp;&amp; settings_pending &amp;&amp; installed"><div class="lead i-warn"/><div class="rl"><div class="rlab">Waiting since the install</div><div class="rdesc">The VR game settings you chose when you installed haven't gone on yet: the game hadn't made this file then. Apply puts on what's chosen below.</div></div></div>
-		<div class="row warnrow" data-if="gamer_read_only"><div class="lead i-warn"/><div class="rl"><div class="rlab">GamerSettings.ini is read-only</div><div class="rdesc">You or a tool ticked Read-only in its Properties (Game\ME1\BioGame\Config), so nothing can be applied to it. Untick it, then Apply.</div></div></div>
+		<div class="row warnrow" data-if="gamer_read_only"><div class="lead i-warn"/><div class="rl"><div class="rlab">GamerSettings.ini is read-only</div><div class="rdesc">You or a tool ticked Read-only in its Properties ({{config_dir}}), so nothing can be applied to it. Untick it, then Apply.</div></div></div>
 		<div class="tiles">
 			<div class="tile"><div class="tl">Resolution</div><div class="tv small">{{cur_res}}</div></div>
 			<div class="tile"><div class="tl">Window</div><div class="tv small">{{cur_window}}</div></div>
@@ -190,7 +201,7 @@
 			<div class="tile"><div class="tl">Motion blur</div><div class="tv small">{{cur_blur}}</div></div>
 			<div class="tile"><div class="tl">Film grain</div><div class="tv small">{{cur_grain}}</div></div>
 		</div>
-		<div class="group">
+		<div class="group" data-if="has_target">
 			<div class="gtitle"><span>Resolution</span><div class="gline"/></div>
 			<div class="row resolution-row"><div class="rl"><div class="rlab">Render resolution</div><div class="rdesc">{{quality_text}}</div></div>
 				<div class="seg"><button class="segb" data-class-on="quality == 'auto'" data-event-click="quality = 'auto'">Automatic</button><button class="segb" data-if="headset_known" data-class-on="quality == 'headset'" data-event-click="quality = 'headset'">Headset</button><button class="segb" data-class-on="quality == 'performance'" data-event-click="quality = 'performance'">Performance</button><button class="segb" data-class-on="quality == 'balanced'" data-event-click="quality = 'balanced'">Balanced</button><button class="segb" data-class-on="quality == 'sharp'" data-event-click="quality = 'sharp'">Sharp</button><button class="segb" data-class-on="quality == 'keep'" data-event-click="quality = 'keep'">Keep</button></div></div>
@@ -285,7 +296,7 @@
 	<!-- ===================================================================================== Launch -->
 	<div data-if="page == 'launch'">
 		<div class="stitle">Launch</div>
-		<div class="sdesc">Starts Mass Effect 1 directly, past the Legendary Edition launcher's game picker.</div>
+		<div class="sdesc">Starts {{game_name}} directly, past the Legendary Edition launcher's game picker.</div>
 		<div data-if="installed &amp;&amp; repair_needed" class="row warnrow"><div class="lead i-warn"/><div class="rl"><div class="rlab">Repair first</div><div class="rdesc">{{repair_text}}</div></div>
 			<button class="btn" data-class-disabled="busy || waiting" data-event-click="page = 'repair'"><div class="sweep"/><div class="bi i-wrench"/><span>Repair</span><div class="tick"/></button></div>
 		<div data-if="game_ok &amp;&amp; !has_gamer_settings" class="row warnrow"><div class="lead i-warn"/><div class="rl"><div class="rlab">Start the game once first</div><div class="rdesc">{{first_start_text}}</div></div>

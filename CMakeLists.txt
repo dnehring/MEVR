@@ -1004,6 +1004,9 @@ src/plugin/MainMenu.cpp src/plugin/MainMenu.hpp src/plugin/MainMenuSettings.cpp
                 src/core/vr/GuiEvents.cpp src/core/vr/GuiEvents.hpp
                 # Entry.cpp's ExitProcess hook asks it with the menu; nothing writes its request on ME2 yet (MEVR Setup, M7.2).
                 src/plugin/SetupRequest.cpp src/plugin/SetupRequest.hpp src/core/Json.cpp src/core/Json.hpp
+                # Report a problem and the crash offer (research/33 section 8, T52): the menu's Advanced > Diagnostics > Report
+                # starts the setup copy in this game's ASI folder, which writes the zip for the game it sits in.
+                src/plugin/ReportRequest.cpp src/plugin/ReportRequest.hpp src/install/ReportMarks.hpp
 )
 
 # ME1's frame-breakdown probe and render levers in the sequels' hosts (research/sequel-render-levers.md "Shared module"):
@@ -1116,6 +1119,7 @@ function(mevr_add_plugin game)
         set(with_halcyon_le3 ON)
         # One shared controller/floor/input/capture implementation. Gameplay/UI service ports are separate gates.
         list(APPEND host_sources src/plugin/HalcyonLe3.cpp src/plugin/HalcyonLe3.hpp src/plugin/Seams.cpp src/halcyon/MevrSeams.h
+            src/plugin/RecenterTilt.cpp src/plugin/RecenterTilt.hpp src/core/vr/Recenter.cpp src/core/vr/Recenter.hpp
             src/plugin/Le3SceneCapture.cpp src/plugin/Le3SceneCapture.hpp src/plugin/SceneCaptureTarget.hpp
             src/plugin/MotionBlurGuard.cpp src/plugin/MotionBlurGuard.hpp
             src/plugin/HalcyonLe3Bridge.cpp src/plugin/RendererLe3.cpp src/halcyon/le3/mevr_bridge.h
@@ -1262,6 +1266,8 @@ add_library(mevr-install STATIC
     src/core/Version.hpp
     src/install/Detect.cpp
     src/install/Detect.hpp
+    src/install/Game.cpp
+    src/install/Game.hpp
     src/install/SteamVrSettings.cpp
     src/install/SteamVrSettings.hpp
     src/install/GameSettings.cpp
@@ -1705,6 +1711,8 @@ if (MEVR_BUILD_TESTS)
         add_test(NAME mevr-conversation-sweep COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tests/ConversationSweepTests.py)
         # The rules over first-person scenes' stance records (tools/scene_audit.py, research/69 "Auditing scenes by rule").
         add_test(NAME mevr-scene-audit COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tests/SceneAuditTests.py)
+        # tools/land-on-main.py (deletions, renames, the main checkout's own edits, the roll-back) in scratch repositories.
+        add_test(NAME mevr-land-on-main COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tests/LandOnMainTests.py)
         # The audit report's picture checks (tools/audit-report.py, research/69 "Obvious bugs, measured"), on made-up snapshots.
         add_test(NAME mevr-audit-report COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tests/AuditReportTests.py)
         add_test(NAME mevr-rva-table COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-rva-table.py

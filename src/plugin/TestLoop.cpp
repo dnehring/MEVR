@@ -1994,12 +1994,6 @@ void WrapSessionFunctions(void** acquireSwapchainImage, void** releaseSwapchainI
     wrap(releaseSwapchainImage, gRealRelease, &WrappedRelease);
     wrap(endFrame, gRealEndFrame, &WrappedEndFrame);
     wrap(locateViews, gRealLocateViews, &WrappedLocateViews);
-#if defined(MEVR_WITH_PERF_PROBE) && !defined(MEVR_WITH_HALCYON)
-    // The sequels: the frame-breakdown probe's xrEndFrame goes outside ours (as LE1's bridge puts it, with its other three
-    // slots: plugin/HalcyonBridge), so its submit time includes a snapshot's work and each frame has its bounds
-    // (plugin/PerfProbe: a frame is xrEndFrame's return to the next one's until the sequels' Present hooks have seams).
-    perf::WrapFrameFunctions(nullptr, nullptr, nullptr, endFrame);
-#endif
 }
 
 } // namespace mevr::host::testloop

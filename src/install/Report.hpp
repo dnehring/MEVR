@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include "install/Game.hpp"
+
 #include <cstdint>
 #include <filesystem>
 #include <optional>
@@ -15,6 +17,10 @@
 // Every text file is redacted first (the Windows user name, the profile folder, the computer name, e-mail addresses).
 // Nothing is ever sent: the player reads the zip and decides. The parsing and assembly are pure and unit-tested; the
 // reading, the system queries and the zip are Collect / Write.
+//
+// One report per game (Options::game, Mass Effect 1 unless said): its own mod log (LE2MEVR.log), its renderer's log and
+// settings (MELE2VR_Log.txt, MELE2VR.ini), its ASI folder and install record. The names below are Mass Effect 1's; a
+// sequel's report has its own in the same places.
 namespace mevr::install::report {
 
 inline constexpr char kRepoUrl[] = "https://github.com/dnehring/MEVR";
@@ -122,6 +128,8 @@ struct IniDefault {
 std::vector<IniDefault> const& ModIniDefaults();
 // The keys of ModIniDefaults() the file sets to something else (numbers compared as numbers).
 std::vector<SettingDiff> DiffModIni(std::string_view text);
+// The same for a sequel's <key>MEVR.ini, named so in each row ("ME2 continues ME1": the defaults are Mass Effect 1's).
+std::vector<SettingDiff> DiffModIni(std::string_view text, GameId game);
 // MELEVR.ini's active profile against the first profile of `templateText` (the release file the setup installs,
 // ini::HalcyonReleaseIni): only the template's keys.
 std::vector<SettingDiff> DiffHalcyonIni(std::string_view text, std::string_view templateText);
@@ -154,6 +162,7 @@ struct File {
 };
 
 struct Bundle {
+    GameId game = GameId::LE1;  // whose report this is: the names of its logs and settings in REPORT.md
     std::vector<File> files;  // REPORT.md is added by Write, first
     Redactions redactions;
     System system;
@@ -180,9 +189,10 @@ std::string UrlEncode(std::string_view text);
 
 // ---- Reading the machine, writing the zip ------------------------------------------------------------------------
 struct Options {
+    GameId game = GameId::LE1;         // which of the three games' logs and settings
     std::filesystem::path gameRoot;    // ...\Mass Effect Legendary Edition (empty: only the local files)
     std::filesystem::path localData;   // %LOCALAPPDATA%\MEVR (empty: the real one)
-    std::filesystem::path halcyonLog;  // empty: %LOCALAPPDATA%\MELEVR\MELEVR_Log.txt
+    std::filesystem::path halcyonLog;  // empty: the game's renderer log (detect::RendererLogPath; LE1 %LOCALAPPDATA%\MELEVR\MELEVR_Log.txt)
     std::filesystem::path outputDir;   // empty: the Desktop, else Documents
     std::string store;                 // "Steam", "EA app" (empty: worked out from the folder)
     bool snapshot = false;             // the latest snapshot's JSON and eye PNGs

@@ -1513,6 +1513,9 @@ void DrawUiRatioOnce(ID3D11DeviceContext* ctx, const D3D11_VIEWPORT& vp, DrawThu
 
 void STDMETHODCALLTYPE MhDrawIndexed(ID3D11DeviceContext* ctx, UINT a, UINT b, INT c) noexcept
 {
+#if defined(MEVR_ASI)
+    ::MevrSeams::PerfDraw();   // [MEVR] frame-breakdown probe: one draw
+#endif
     // DIBR draw-gate: attribute this draw to the bound depth resource (gameplay geometry flows through this
     // MinHook'd path, so the counter MUST be bumped here or the depth capture never triggers).
     if (g_depthMapEnabled.load(std::memory_order_relaxed) && g_boundDepthRes != nullptr)
@@ -1539,6 +1542,9 @@ void STDMETHODCALLTYPE MhDrawIndexed(ID3D11DeviceContext* ctx, UINT a, UINT b, I
 // and land cross-eyed (= scrambled text) while panels (DrawIndexed) look right. Dup it the same way.
 void STDMETHODCALLTYPE MhDrawIndexedInstanced(ID3D11DeviceContext* ctx, UINT ipc, UINT ic, UINT sil, INT bvl, UINT sii) noexcept
 {
+#if defined(MEVR_ASI)
+    ::MevrSeams::PerfDraw();   // [MEVR] frame-breakdown probe: one draw
+#endif
     if (g_mhRealDrawIndexedInstanced == nullptr) return;
     if (g_bbResourcePtr != 0 && g_currentRtvResourcePtr == g_bbResourcePtr) ++g_sfrBbDrawsThisPresent;   // [CLEARMAP]
     D3D11_VIEWPORT vp = {};
@@ -1556,6 +1562,9 @@ void STDMETHODCALLTYPE MhDrawIndexedInstanced(ID3D11DeviceContext* ctx, UINT ipc
 }
 void STDMETHODCALLTYPE MhDraw(ID3D11DeviceContext* ctx, UINT a, UINT b) noexcept
 {
+#if defined(MEVR_ASI)
+    ::MevrSeams::PerfDraw();   // [MEVR] frame-breakdown probe: one draw
+#endif
     if (g_mhRealDraw == nullptr) return;
     if (g_bbResourcePtr != 0 && g_currentRtvResourcePtr == g_bbResourcePtr) ++g_sfrBbDrawsThisPresent;   // [CLEARMAP]
     // Menu/codex TEXT is drawn via non-indexed Draw; panels use DrawIndexed. Both need the per-eye dup or
@@ -2012,6 +2021,9 @@ void SfrMaybeCapturePass0AtClear(ID3D11DeviceContext* ctx, ID3D11DepthStencilVie
         ++g_sfrClearsThisPresent;
         g_sfrPass0Caps.fetch_add(1, std::memory_order_relaxed);
         g_sfrCapturedThisPresent = true;
+#if defined(MEVR_ASI)
+        ::MevrSeams::PerfFirstEyeCaptured(ctx);   // [MEVR] frame-breakdown probe: the first eye is captured
+#endif
         // [CLEARMAP] mark the capture point in the map so the log shows WHERE the snapshot landed
         if (g_clearMapLen > 0 && g_clearMapLen < (int)sizeof(g_clearMap) - 2)
         { g_clearMap[g_clearMapLen++] = '*'; g_clearMap[g_clearMapLen] = '\0'; }
@@ -2551,6 +2563,9 @@ std::atomic<uint64_t> g_mirrorPresentEvery{kMirrorPresentEveryDefault};
 HRESULT STDMETHODCALLTYPE PresentHook(IDXGISwapChain* swapChain, UINT syncInterval, UINT flags) noexcept
 {
     if (g_gameContext == nullptr && g_gameDevice != nullptr) g_gameDevice->GetImmediateContext(&g_gameContext);
+#if defined(MEVR_ASI)
+    const ::MevrSeams::PerfPresentScope mevrPerfPresent(g_gameContext);   // [MEVR] frame-breakdown probe: this Present, start to end
+#endif
     ReassertContextVtableHooks(g_gameContext);
     const auto n = g_presentCount.fetch_add(1, std::memory_order_relaxed) + 1;
     TryInstallBinkHooks();
@@ -3222,6 +3237,9 @@ void STDMETHODCALLTYPE DrawInstancedHook(ID3D11DeviceContext* context,
                                          UINT startVertexLocation,
                                          UINT startInstanceLocation) noexcept
 {
+#if defined(MEVR_ASI)
+    ::MevrSeams::PerfDraw();   // [MEVR] frame-breakdown probe: one draw
+#endif
     FirstFire("DrawInstanced", 3);
     LogStereoBoundDraw("DrawInstanced", _ReturnAddress(), vertexCountPerInstance, startVertexLocation, 0, false);
     LogUiSeamStack("DrawInstanced", vertexCountPerInstance);
@@ -3245,6 +3263,9 @@ void STDMETHODCALLTYPE DrawInstancedHook(ID3D11DeviceContext* context,
 
 void STDMETHODCALLTYPE DrawAutoHook(ID3D11DeviceContext* context) noexcept
 {
+#if defined(MEVR_ASI)
+    ::MevrSeams::PerfDraw();   // [MEVR] frame-breakdown probe: one draw
+#endif
     FirstFire("DrawAuto", 4);
     LogStereoBoundDraw("DrawAuto", _ReturnAddress(), 0, 0, 0, false);
     TraceOp("DrawAuto", context, 0);
@@ -3259,6 +3280,9 @@ void STDMETHODCALLTYPE DrawIndexedInstancedIndirectHook(ID3D11DeviceContext* con
                                                         ID3D11Buffer* bufferForArgs,
                                                         UINT alignedByteOffsetForArgs) noexcept
 {
+#if defined(MEVR_ASI)
+    ::MevrSeams::PerfDraw();   // [MEVR] frame-breakdown probe: one draw
+#endif
     LogStereoBoundDraw("DrawIndexedInstancedIndirect",
                        _ReturnAddress(),
                        alignedByteOffsetForArgs,
@@ -3285,6 +3309,9 @@ void STDMETHODCALLTYPE DrawInstancedIndirectHook(ID3D11DeviceContext* context,
                                                  ID3D11Buffer* bufferForArgs,
                                                  UINT alignedByteOffsetForArgs) noexcept
 {
+#if defined(MEVR_ASI)
+    ::MevrSeams::PerfDraw();   // [MEVR] frame-breakdown probe: one draw
+#endif
     LogStereoBoundDraw("DrawInstancedIndirect", _ReturnAddress(), alignedByteOffsetForArgs, 0, 0, false);
     FirstFire("DrawInstancedIndirect", 6);
     TraceOp("DrawInstIndir", context, 0);

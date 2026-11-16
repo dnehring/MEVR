@@ -120,9 +120,30 @@ bool IsGameRoot(fs::path const& root) {
     return !root.empty() && fs::exists(root / L"Game" / L"ME1" / L"Binaries" / L"Win64" / L"MassEffect1.exe", ec);
 }
 
+bool HasGame(fs::path const& root, GameId game) {
+    GameSpec const& spec = Spec(game);
+    std::error_code ec;
+    return !root.empty() && fs::exists(root / L"Game" / spec.folderW / L"Binaries" / L"Win64" / spec.exeW, ec);
+}
+
+bool IsEditionRoot(fs::path const& root) {
+    return std::any_of(kAllGames.begin(), kAllGames.end(), [&](GameId game) { return HasGame(root, game); });
+}
+
+std::optional<GameId> GameFromPicked(fs::path const& picked, fs::path const& root) {
+    for (GameId const game : kAllGames) {
+        fs::path const folder = root / L"Game" / Spec(game).folderW;
+        std::error_code ec;
+        if (PathUnder(picked, folder) || fs::equivalent(picked, folder, ec)) {
+            return game;
+        }
+    }
+    return std::nullopt;
+}
+
 std::optional<fs::path> RootFromPicked(fs::path const& picked) {
     for (fs::path dir = picked; !dir.empty(); dir = dir.parent_path()) {
-        if (IsGameRoot(dir)) {
+        if (IsEditionRoot(dir)) {
             return dir;
         }
         if (dir == dir.parent_path()) {
@@ -132,7 +153,7 @@ std::optional<fs::path> RootFromPicked(fs::path const& picked) {
     // A folder above the root (a Steam library's common folder, say).
     std::error_code ec;
     for (fs::path const& child : {picked / L"Mass Effect Legendary Edition", picked / L"steamapps" / L"common" / L"Mass Effect Legendary Edition"}) {
-        if (IsGameRoot(child)) {
+        if (IsEditionRoot(child)) {
             return child;
         }
     }
@@ -142,7 +163,7 @@ std::optional<fs::path> RootFromPicked(fs::path const& picked) {
 std::vector<GameInstall> FindInstalls() {
     std::vector<GameInstall> found;
     auto add = [&](fs::path const& root, char const* source) {
-        if (!IsGameRoot(root)) {
+        if (!IsEditionRoot(root)) {
             return;
         }
         std::error_code ec;
@@ -373,6 +394,15 @@ fs::path HalcyonLogPath() {
     return fs::path(buffer) / L"MELEVR" / L"MELEVR_Log.txt";
 }
 
+fs::path RendererLogPath(GameId game) {
+    if (game == GameId::LE1) {
+        return HalcyonLogPath();
+    }
+    wchar_t buffer[MAX_PATH]{};
+    GetEnvironmentVariableW(L"LOCALAPPDATA", buffer, MAX_PATH);
+    return fs::path(buffer) / Spec(game).rendererLogDir / Spec(game).rendererLog;
+}
+
 bool ProcessRunning(wchar_t const* exeName) {
     HANDLE const snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (snapshot == INVALID_HANDLE_VALUE) {
@@ -412,17 +442,22 @@ bool PathUnder(fs::path const& file, fs::path const& root) {
 }
 
 bool GameRunningIn(fs::path const& root) {
+    return GameRunningIn(root, GameId::LE1);
+}
+
+bool GameRunningIn(fs::path const& root, GameId game) {
+    GameSpec const& spec = Spec(game);
     HANDLE const snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (snapshot == INVALID_HANDLE_VALUE) {
-        return GameRunning();
+        return ProcessRunning(spec.exeW) || ProcessRunning(L"MassEffectLauncher.exe");
     }
-    fs::path const gameExe = root / L"Game" / L"ME1" / L"Binaries" / L"Win64" / L"MassEffect1.exe";
+    fs::path const gameExe = root / L"Game" / spec.folderW / L"Binaries" / L"Win64" / spec.exeW;
     fs::path const launcherExe = root / L"Game" / L"Launcher" / L"MassEffectLauncher.exe";
     PROCESSENTRY32W entry{};
     entry.dwSize = sizeof entry;
     bool running = false;
     for (BOOL ok = Process32FirstW(snapshot, &entry); ok && !running; ok = Process32NextW(snapshot, &entry)) {
-        if (_wcsicmp(entry.szExeFile, L"MassEffect1.exe") != 0 && _wcsicmp(entry.szExeFile, L"MassEffectLauncher.exe") != 0) {
+        if (_wcsicmp(entry.szExeFile, spec.exeW) != 0 && _wcsicmp(entry.szExeFile, L"MassEffectLauncher.exe") != 0) {
             continue;
         }
         // Whose game is it? One we can't ask about counts as this one's (the safe side).
@@ -459,7 +494,19 @@ bool HasMelevrMarker(std::string_view bytes) {
     return bytes.find("MELEVR") != std::string_view::npos || bytes.find(std::string_view(kWide, sizeof kWide)) != std::string_view::npos;
 }
 
-UpstreamHalcyon FindUpstreamHalcyon(fs::path const& win64) {
+bool HasUpstreamMarker(std::string_view bytes, std::string_view marker) {
+    if (marker.empty()) {
+        return false;
+    }
+    std::string wide;
+    for (char const c : marker) {
+        wide.push_back(c);
+        wide.push_back('\0');
+    }
+    return bytes.find(marker) != std::string_view::npos || bytes.find(wide) != std::string_view::npos;
+}
+
+UpstreamHalcyon FindUpstreamHalcyon(fs::path const& win64, std::string_view marker) {
     UpstreamHalcyon u;
     std::error_code ec;
     fs::path const dxgi = win64 / L"dxgi.dll";
@@ -467,7 +514,7 @@ UpstreamHalcyon FindUpstreamHalcyon(fs::path const& win64) {
         return u;
     }
     if (auto const bytes = ReadFile(dxgi)) {
-        u.dxgi = HasMelevrMarker(*bytes);
+        u.dxgi = HasUpstreamMarker(*bytes, marker);
     }
     u.openxrLoader = u.dxgi && fs::is_regular_file(win64 / L"openxr_loader.dll", ec);
     return u;
