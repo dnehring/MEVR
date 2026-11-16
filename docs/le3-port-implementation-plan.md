@@ -10,6 +10,8 @@ Read the [reuse audit](le3-port-reuse-audit.md), [ME3 melee audit](../research/l
 
 ## Implementation ledger (2026-11-15)
 
+See the [overall goal handoff](me3-overall-goal-handoff.md) for the full checkpoint, remaining acceptance gates and resumption order. Integration into main does not establish runtime acceptance.
+
 **Combat fixture acquisition:** the refreshed six-save corpus still lacks an
 accepted ordinary combat checkpoint. Installed Citadel source identifies the
 normal range door/streaming/combat-pawn sequence and disables saving inside;

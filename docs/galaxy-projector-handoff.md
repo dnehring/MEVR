@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: MIT -->
 # Galaxy projector parity: implementation and research handoff
 
-Updated 2026-11-15. This is a resumption document, not a release or acceptance claim.
+Updated 2026-11-15. Implementation checkpoint: **0f02fd38** on `worktree-agent-a08810c1900a1136a`. This main-checkout copy is documentation only; the implementation remains in that worktree. This is a resumption document, not a release or acceptance claim.
 The user requested this checkpoint to preserve work before usage runs out.
 
 ## Intended result and current truth
@@ -53,7 +53,7 @@ Read these before changing code:
 
 1. [ME3 implementation ledger](le3-port-implementation-plan.md) and
    [reuse audit](le3-port-reuse-audit.md).
-2. [ME3 galaxy evidence](../research/le3-galaxy.md), especially the projector
+2. `research/le3-galaxy.md` in implementation checkpoint `0f02fd38`, especially the projector
    correction, retention, independent capture and camera contracts.
 3. [ME1 galaxy research](../research/51-galaxy-map.md): projector placement,
    scoped camera hold, label projection, transition/suspension fixes.
@@ -271,6 +271,11 @@ and never link a DLL while the running game owns it. Use the existing scripts
 and mod request channel; computer use is only a fallback for launch.
 
 ## Wider ME3 goal
+
+The [overall ME3 goal handoff](me3-overall-goal-handoff.md) now records every
+milestone, renderer/body/save/interaction work, native evidence, remaining gates
+and the full resumption order. This document remains the detailed galaxy subtask
+handoff; it was not intended to replace that broader status record.
 
 This checkpoint only advances galaxy milestone L3-9. The full ME3 parity goal
 remains unfinished. The implementation ledger is authoritative for the other
