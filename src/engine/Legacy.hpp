@@ -1,20 +1,21 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
-// LE3 until its reflection layout exists (research/34, stage 5), and LE2's fallback while its layer is off (LE2 reads
-// through our layer since M1, docs/le2-continuation-plan.md; the LE2 diagnostic observers still use LExSDKv2 directly):
-// the few engine reads and calls the all-game modules (head tracking, the console request, the reflection fix, hand aim's
-// aim query) need there, still from LExSDKv2, but in our layer's types so the modules themselves carry no LExSDKv2 code.
-// LE1 never uses this: our reflection layer (ue3/) serves it, and these functions aren't even built for it. Stage 5
-// deletes this file.
+// The LE2 diagnostic host's bridge to LExSDKv2 (MEVR_LE2_DIAGNOSTIC: an isolated development build, never a players'
+// build), in our layer's types: the globals its observers (engine/Le2DiagnosticObservation) read through LExSDKv2's
+// own headers, and the three reads they compare with.
 //
-// Game thread only, as the modules calling it.
+// Until T04 (docs/trilogy-plan.md, 2026-11-16) this file was also LE3's engine access and LE2's fallback while its
+// reflection layer was off (head tracking, the console request, the reflection fix, hand aim's aim query, the world).
+// Those all read through our reflection layer (ue3/) on every game now, and stand down with a log line when the layer
+// is off: LExSDKv2 has no licence, so no players' build may link it. Nothing outside the diagnostic host and
+// engine/ReflectCheck's reference side includes LExSDKv2.
+//
+// Game thread only.
 
 #include "ue3/Types.hpp"
 
 #include <cstdint>
-#include <optional>
-#include <string>
 
 namespace mevr::hook {
 class Context;
@@ -22,57 +23,19 @@ class Context;
 
 namespace mevr::engine::legacy {
 
-#if !defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE2)
 
-// Resolves the LExSDKv2 globals the functions below read (GMalloc, GObjObjects, the name pools, GEngine,
-// GWorld; engine/Engine's ResolveGlobals until stage 3) with LExSDKv2's own resolver, built here from the hook
-// context's loader interface (stage 4: nothing outside this file and ReflectCheck makes one). Mod startup; false
-// (logged) if one fails.
+// Resolves the LExSDKv2 globals the observers read (GMalloc, GObjObjects, the name pools, GEngine, GWorld) with
+// LExSDKv2's own resolver, built here from the hook context's loader interface. Mod startup; false (logged) if one
+// fails.
 bool Init(hook::Context& context);
 
-// *GWorld, as an identity (engine::World()).
+// *GWorld, as an identity.
 void const* World();
-// GObjObjects' count (the heartbeat).
+// GObjObjects' count.
 std::int32_t ObjectCount();
-
 // GEngine->GamePlayers[0]->Actor, or nullptr.
 ue3::Object* LocalPlayerController();
-// "Engine.Camera.UpdateCamera": that class's own function, or nullptr (its package not loaded yet).
-ue3::Function* FindFunction(char const* path);
-// "Function Engine.Camera.UpdateCamera", for the log.
-std::string FullName(ue3::Object const* object);
-
-bool IsPlayerController(ue3::Object const* object);
-// A BioPlayerController's game mode (SFXGameModeManager.CurrentMode, EGameModes), if it has a manager.
-std::optional<std::uint8_t> GameMode(ue3::Object const* controller);
-// The controller's pawn's location, if it has a pawn.
-std::optional<ue3::Vector> PawnLocation(ue3::Object const* controller);
-
-// Engine.Camera: its PCOwner, and CameraCache.POV.FOV (writable).
-ue3::Object* CameraOwner(ue3::Object const* camera);
-float* CameraFov(ue3::Object* camera);
-
-// Parameter blocks of the hooked functions, inside the engine's block (writable: out-parameters and
-// return values go back to the caller).
-ue3::Vector* ViewPointLocation(void* parms);   // Controller.GetPlayerViewPoint(out_Location)
-ue3::Rotator* ViewPointRotation(void* parms);  // ...(out_Rotation)
-float* FovAngleReturn(void* parms);            // PlayerController.GetFOVAngle's ReturnValue
-ue3::Rotator* AdjustedAimReturn(void* parms);  // BioPlayerController.GetAdjustedAimFor's ReturnValue
-
-// PlayerController.ConsoleCommand(command, bWriteToLog false) through ProcessEvent: what it printed.
-std::string ConsoleCommand(ue3::Object* controller, ue3::Function* function, std::string const& command);
-
-// The reflection fix's pass over GObjects: every live (not a template, not pending kill)
-// SceneCaptureReflectComponent among objects [begin, begin + limit) whose FrameRate is below `rate`
-// gets SceneCaptureComponent.SetFrameRate(rate). Returns where the pass continues, counts what it
-// saw, and says whether that was the end of GObjects.
-struct CaptureCounts {
-    unsigned seen = 0;
-    unsigned raised = 0;
-    unsigned failed = 0;
-    bool done = false;
-};
-int RaiseReflectionCaptures(ue3::Function* setFrameRate, float rate, int begin, int limit, CaptureCounts& counts);
 
 #endif
 

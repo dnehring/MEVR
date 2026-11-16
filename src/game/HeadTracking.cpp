@@ -5,7 +5,6 @@
 #include "core/WriteJournal.hpp"
 #include "core/vr/Output.hpp"
 #include "core/vr/ViewSync.hpp"
-#include "engine/Legacy.hpp"
 #include "engine/ProcessEvent.hpp"
 #include "engine/SceneView.hpp"
 #include "engine/XrToUnreal.hpp"
@@ -23,10 +22,9 @@ constexpr char const* kUpdateCamera = "Engine.Camera.UpdateCamera";
 constexpr char const* kGetPlayerViewPoint = "Engine.PlayerController.GetPlayerViewPoint";
 constexpr char const* kGetFovAngle = "Engine.PlayerController.GetFOVAngle";
 
-// ---- engine access: our reflection layer on LE1 and LE2 (research/34; LE2 since M1, docs/le2-continuation-plan.md),
-// LExSDKv2 on LE3 until stage 5 and on LE2 while its layer is off (engine/Legacy) --------------------------------
-
-#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
+// ---- engine access: our reflection layer on every game (research/34; LE2 since M1, LE3 since T04,
+// docs/trilogy-plan.md). With the layer off the lookups fail and head tracking stands down: no build reads the
+// engine through LExSDKv2 ---------------------------------------------------------------------------------------
 
 ue3::FunctionRef gUpdateCameraFn{kUpdateCamera, ue3::kEveryGame};
 ue3::FunctionRef gViewPointFn{kGetPlayerViewPoint, ue3::kEveryGame};
@@ -44,46 +42,20 @@ ue3::Function* Find(ue3::FunctionRef& ref) {
     return function;
 }
 
-// LE2: LExSDKv2's reads while our reflection layer is off (a layout that didn't check out, the log says why).
-#if defined(MEVR_GAME_LE2)
-#define MEVR_OR_LEGACY(call)     if (!ue3::runtime::Up()) {         return engine::legacy::call;     }
-#else
-#define MEVR_OR_LEGACY(call)
-#endif
-
-ue3::Function* FindUpdateCamera() { MEVR_OR_LEGACY(FindFunction(kUpdateCamera)) return Find(gUpdateCameraFn); }
-ue3::Function* FindViewPoint() { MEVR_OR_LEGACY(FindFunction(kGetPlayerViewPoint)) return Find(gViewPointFn); }
-ue3::Function* FindFovAngle() { MEVR_OR_LEGACY(FindFunction(kGetFovAngle)) return Find(gFovAngleFn); }
-ue3::Object* LocalController() { MEVR_OR_LEGACY(LocalPlayerController()) return player::Controller(); }
-bool IsPlayerController(ue3::Object const* object) { MEVR_OR_LEGACY(IsPlayerController(object)) return player::IsPlayerController(object); }
-std::optional<unsigned char> GameModeOf(ue3::Object const* controller) { MEVR_OR_LEGACY(GameMode(controller)) return player::GameMode(controller); }
-ue3::Object* CameraOwner(ue3::Object const* camera) { MEVR_OR_LEGACY(CameraOwner(camera)) return player::CameraOwner(camera); }
+ue3::Function* FindUpdateCamera() { return Find(gUpdateCameraFn); }
+ue3::Function* FindViewPoint() { return Find(gViewPointFn); }
+ue3::Function* FindFovAngle() { return Find(gFovAngleFn); }
+ue3::Object* LocalController() { return player::Controller(); }
+bool IsPlayerController(ue3::Object const* object) { return player::IsPlayerController(object); }
+std::optional<unsigned char> GameModeOf(ue3::Object const* controller) { return player::GameMode(controller); }
+ue3::Object* CameraOwner(ue3::Object const* camera) { return player::CameraOwner(camera); }
 float* CameraFov(ue3::Object* camera) {
-    MEVR_OR_LEGACY(CameraFov(camera))
     auto const pov = player::CameraPov(camera);
     return pov ? pov->fov : nullptr;
 }
-ue3::Vector* ViewPointLocation(void* parms) { MEVR_OR_LEGACY(ViewPointLocation(parms)) return gViewPointLocation.In<ue3::Vector>(parms); }
-ue3::Rotator* ViewPointRotation(void* parms) { MEVR_OR_LEGACY(ViewPointRotation(parms)) return gViewPointRotation.In<ue3::Rotator>(parms); }
-float* FovReturn(void* parms) { MEVR_OR_LEGACY(FovAngleReturn(parms)) return gFovReturn.In<float>(parms); }
-
-#undef MEVR_OR_LEGACY
-
-#else
-
-ue3::Function* FindUpdateCamera() { return engine::legacy::FindFunction(kUpdateCamera); }
-ue3::Function* FindViewPoint() { return engine::legacy::FindFunction(kGetPlayerViewPoint); }
-ue3::Function* FindFovAngle() { return engine::legacy::FindFunction(kGetFovAngle); }
-ue3::Object* LocalController() { return engine::legacy::LocalPlayerController(); }
-bool IsPlayerController(ue3::Object const* object) { return engine::legacy::IsPlayerController(object); }
-std::optional<unsigned char> GameModeOf(ue3::Object const* controller) { return engine::legacy::GameMode(controller); }
-ue3::Object* CameraOwner(ue3::Object const* camera) { return engine::legacy::CameraOwner(camera); }
-float* CameraFov(ue3::Object* camera) { return engine::legacy::CameraFov(camera); }
-ue3::Vector* ViewPointLocation(void* parms) { return engine::legacy::ViewPointLocation(parms); }
-ue3::Rotator* ViewPointRotation(void* parms) { return engine::legacy::ViewPointRotation(parms); }
-float* FovReturn(void* parms) { return engine::legacy::FovAngleReturn(parms); }
-
-#endif
+ue3::Vector* ViewPointLocation(void* parms) { return gViewPointLocation.In<ue3::Vector>(parms); }
+ue3::Rotator* ViewPointRotation(void* parms) { return gViewPointRotation.In<ue3::Rotator>(parms); }
+float* FovReturn(void* parms) { return gFovReturn.In<float>(parms); }
 constexpr float kDefaultHalfIpdMeters = 0.032f;
 constexpr unsigned char kGameModeDefault = 0;  // SFXGameModeManager.EGameModes: on foot, no GUI
 // Self-checks decide only after this many heartbeat windows in a row agree.
@@ -371,18 +343,17 @@ void OnTickEnd() {
 }
 
 bool TryStartup(bool renderPathAvailable) {
-#if defined(MEVR_GAME_LE1)
-    if (!ue3::runtime::Ready()) {
-        // Stand down (no handlers, no head tracking), and let the rest of the mod start.
+    if (!ue3::runtime::Up()) {
+        // Stand down (no handlers, no head tracking), and let the rest of the mod start. Every game: nothing reads the
+        // engine another way (T04).
         log::Warn("head tracking off: our reflection layer is off (see the 'reflect:' log lines)");
         return true;
     }
-#endif
     ue3::Function* const updateCamera = FindUpdateCamera();
     ue3::Function* const viewPoint = FindViewPoint();
     ue3::Function* const fovAngle = FindFovAngle();
     if (updateCamera == nullptr || viewPoint == nullptr || fovAngle == nullptr) {
-        return false;  // script packages not loaded yet (or, on LE1, our reflection layer is off)
+        return false;  // script packages not loaded yet
     }
     engine::process_event::AddPostHandler(updateCamera, &OnUpdateCamera);
     engine::process_event::AddPostHandler(viewPoint, &OnGetPlayerViewPoint);

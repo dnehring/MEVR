@@ -153,8 +153,8 @@ The API:
 LE2 has its layout since 2026-11-14 (M1 of docs/le2-continuation-plan.md; the Ghidra pass is
 research/le2-engine-access-discovery.md "M1: what ME2's code showed"): engine access runs on it there (`runtime::Up()`,
 handles declared `ue3::kEveryGame`), while the ME1 modules, which ask `runtime::Ready()`, stand down until each is
-ported. LE3: `ReflectionLayout()` is empty, so the layer reports itself off there; its layout needs its own Ghidra pass
-(stage 5); until then the all-game modules use `engine/Legacy` there (section 6.2).
+ported. LE3 has its layout since 2026-11-15 (L3-1, research/le3-engine-access-discovery.md), and since 2026-11-16 no
+game reads the engine through `engine/Legacy` (section 6.4).
 
 Unit tests (`tests/ReflectTests.cpp`, run from `tests/Main.cpp`) build a synthetic engine with its
 own layout. They cover:
@@ -416,6 +416,72 @@ Deliberate differences:
 - **Skeleton reads stand down** (empty pose, no sockets, no attachments) when a field doesn't resolve, with one
   `skeleton: ... not found` line, instead of reading at research/14's offsets.
 
+## 6.4 Stages 5 and 6 for ME2 and ME3: no LExSDKv2 in any players' build (T04, 2026-11-16)
+
+Lane T04 of [the trilogy plan](../docs/trilogy-plan.md). LE1 left LExSDKv2 in stages 1 to 6 above; ME2 got its layout in
+M1 (research/le2-engine-access-discovery.md "M1: what ME2's code showed") and ME3 in L3-1
+(research/le3-engine-access-discovery.md). What was left on 2026-11-16, and what was done with each:
+
+| Where | What it read through LExSDKv2 | Now |
+|---|---|---|
+| `game/HeadTracking.cpp` (LE3 always; LE2 while the layer was off, `MEVR_OR_LEGACY`) | `Engine.Camera.UpdateCamera`, `Engine.PlayerController.GetPlayerViewPoint` and its `out_Location` / `out_Rotation`, `GetFOVAngle`'s `ReturnValue`, the local controller, IsA PlayerController, the game mode, `Camera.PCOwner`, `CameraCache.POV.FOV` | one path for every game: three `ue3::FunctionRef{..., ue3::kEveryGame}` and three parameter `FieldRef`s in the file, the rest through `game/Player` (already `kEveryGame`). `TryStartup` stands down on every game when `ue3::runtime::Up()` is false (it returned "not yet" forever before, which would have stopped the rest of the mod's startup) |
+| `game/HandAim.cpp` (LE2 and LE3 while the layer was off) | `SFXGame.BioPlayerController.GetAdjustedAimFor` and its `ReturnValue`, the controller, the pawn's location | the `MEVR_OR_LEGACY` macro is gone; the handles were `kEveryGame` already |
+| `game/ConsoleRequest.cpp` (LE2 while the layer was off) | the controller, `Engine.PlayerController.ConsoleCommand`, the call | the three `#if defined(MEVR_GAME_LE2)` fallbacks are gone |
+| `game/Reflections.cpp` (LE3 always; LE2 while the layer was off) | `Engine.SceneCaptureComponent.SetFrameRate`, the GObjects pass over `SceneCaptureReflectComponent`s, `FrameRate` | one path for every game (the `kEveryGame` handles LE1 and LE2 had) |
+| `engine/Engine.cpp` (LE2 while the layer was off; a dead LE3 `#else`) | GWorld, GObjObjects' count | `World()` is null and `ObjectCount()` 0 while the layer is off |
+| `mod/Mod.cpp` | `legacy::Init` at startup on LE2 and LE3 (LExSDKv2's six globals), `ScriptPackagesLoaded`'s LE2 fallback | only the LE2 diagnostic host calls `legacy::Init`; a layer that is off for good goes on without the script packages on every game, as LE1 did since stage 3 |
+| `engine/Legacy.*`, `engine/GameAdapterSdk.hpp` | all of the above, in our types | **kept for the LE2 diagnostic host only** (`MEVR_LE2_DIAGNOSTIC`): `Init`, `World`, `ObjectCount`, `LocalPlayerController`. `Legacy.cpp` compiles to nothing in every other build and refuses to compile with `MEVR_NO_LESDK` |
+| `engine/ReflectCheck.cpp` | the reference side | unchanged: development builds only, `#if !defined(MEVR_NO_LESDK)` |
+| `engine/Le2DiagnosticObservation.cpp` and its `.inc` files (about 4,000 lines) | everything, through LExSDKv2's own types | unchanged: the diagnostic host is an isolated monolithic development build, never packaged |
+
+**The build switches** (`CMakeLists.txt`): `MEVR_LE2_LESDK` and `MEVR_LE3_LESDK` beside `MEVR_LE1_LESDK`, each defaulting
+to `MEVR_HOT_RELOAD`. With a game's switch off its host and mod get `MEVR_NO_LESDK` and no `LESDK-<game>` library
+(`mevr_configure ... NO_SDK`), and LExSDKv2's own CMake isn't added at all when no game links it, so a monolithic build of
+all three games configures without the submodule. `MEVR_LE2_DIAGNOSTIC` takes LE2's switch as on (a status line says so).
+`tools/package-release.ps1` refuses to package while the build tree's `MEVR-LE1.vcxproj`, or a `MEVR-LE2.vcxproj` /
+`MEVR-LE3.vcxproj` it holds, names `LESDK-<game>` or lacks `MEVR_NO_LESDK` (`Test-LinksLexSdk`).
+
+**How to check a build** (what "links no LExSDKv2" was proven with):
+1. `cmake -S . -B build-mono -G "Visual Studio 17 2022" -A x64 -DMEVR_HOT_RELOAD=OFF -DMEVR_BUILD_LE2=ON -DMEVR_BUILD_LE3=ON`,
+   then build `MEVR-LE2` and `MEVR-LE3`.
+2. `build-mono\CMakeCache.txt` has `MEVR_LE2_LESDK:BOOL=OFF` and `MEVR_LE3_LESDK:BOOL=OFF`; `build-mono\external` has no
+   `LExSDKv2` folder (the SDK was never configured: there is no `LESDK-LE2` project to link).
+3. `build-mono\MEVR-LE2.vcxproj` and `MEVR-LE3.vcxproj`: no `LESDK-` in `AdditionalDependencies` or the project
+   references; `MEVR_NO_LESDK` among the definitions.
+4. The binaries: `LE2MEVR.asi` and `LE3MEVR.asi` hold the text `LExSDKv2` only inside our own log line `reflect: no
+   LExSDKv2 cross-check in this build ...`, and no `LESDK`, `SFXName::` or `GBioNamePools`; their PDBs hold `LESDK` only in
+   the recorded compiler command line's `-DMEVR_NO_LESDK`.
+
+**ReflectCheck rows** (development builds): ME2 had rows for all of these since M1. ME3 got `CheckLe3EngineAccess`
+(classes `Engine.PlayerController`, `Engine.Camera`, `Engine.SceneCaptureComponent`, `Engine.SceneCaptureReflectComponent`;
+`Engine.Camera.PCOwner`; the three functions; `GetPlayerViewPoint`'s `out_Location` and `out_Rotation` and its block's
+size; `GetFOVAngle`'s `ReturnValue` and size). LExSDKv2's LE3 generator lower-cased some names (`AActor::location`,
+`FTPOV::location`, `out_rotation`); engine names are case-insensitive and `ue3::Reflection` lowers them, so the modules'
+spellings resolve (`tools/le2-name-audit.py` compares fields the same way since this lane, which removed the ledger's
+false "LE3 lacks `Engine.Actor:Location`" entries).
+
+**Handles that were waiting:** `Engine.Actor.Velocity` on ME3 was cross-checked since L3-3 (LE3's `CheckFields`) but
+`game/BodyFollow` declared it only for LE1 and LE2; it is declared on every game now, so "the legs keep the run" has its
+speed on ME3 ([verify] in a walk: lane C2). `game/CallTrace` asks `Up()` and `mevr calltrace` is in every game's console.
+
+**Deliberate differences:**
+- **ME2 and ME3 with the layer off** (a layout that didn't check out on another exe build): head tracking, hand aim, the
+  console request and the reflection fix stand down with their log lines, as on LE1 since stage 2. Before, a development
+  or players' build carried on through LExSDKv2. The plugin already fails closed on any exe but 2.0.0.48602.
+- **The ME3 development build still refuses to start gameplay hooks when the cross-check fails**
+  (`#if defined(MEVR_GAME_LE3) && !defined(MEVR_NO_LESDK)` in `mod/Mod.cpp`); a players' build has no cross-check to fail.
+- **The `ready` modules stay stood down** on the sequels (`engine::adapter::kModulesOnLayer` false): BodyBounds,
+  CoverAcquire, VoicePlace, SoundPlace, AuthoredMoment, ConversationFlow, ConversationWorld, GalaxyDump, GalaxyMap and
+  SquadAck are ME1 features on ME1's names and addresses. None of them reads LExSDKv2; each comes to a sequel with its
+  own feature's port (handles to `ue3::kEveryGame`, `Ready()` to `Up()`), not with engine access.
+- `engine/ConsoleCommandInput.hpp` and `engine/ScopedUnionMember.hpp` (the LExSDKv2 console call's input bound and
+  union-member lifetimes, with their ctests) have no production caller left.
+
+**What still includes LExSDKv2, and why:** `engine/ReflectCheck.cpp` (the reference side, development builds);
+`engine/Legacy.cpp`, `engine/GameAdapterSdk.hpp` and `engine/Le2DiagnosticObservation.cpp` (the LE2 diagnostic host);
+the standalone test projects under `tests/le2-*` that compile against its declarations; `tools/ghidra`'s symbol
+collection. The loader's test ASI uses its SPI header as an outside plugin would.
+
 ## 7. The plan for the rest
 
 | Stage | Work | Effort |
@@ -423,8 +489,8 @@ Deliberate differences:
 | 2 | **Done (section 6.2), built and unit-tested; one in-game session to verify** (notes/next-vr-session.md, step 32: the `reflect:` lines, then a smoke test of each feature). | - |
 | 3 | **Done (section 6.3), built and unit-tested; one in-game session to verify** (notes/next-vr-session.md, step 33: 423 rows, then the arm IK, socket and cover smoke tests). | - |
 | 4 | **Done (2026-10-23), built (all three trees) and unit-tested; one in-game session to verify.** Our own hook context (`core/Hook`: `hook::Context`, the loader's SPI or our MinHook, hook names `<owner>_<name>` as before), the SPI declared by us (`loader/SpiAbi.hpp`, the host's five exports in `plugin/Entry`, checked against SPI.h: names, signatures, version 3, game flags, the six virtuals in order), every raw address in one table per game (`engine/Addresses.hpp`: 39 LE1 entries, 37 with byte patterns that match the decrypted dump; LE2/LE3 structure only until stage 5) checked at attach (`core/Exe`, `core/ExeCheck`: the host fails closed and names each address that moved; the mod checks again and logs one line), ctest `mevr-rva-table` (every `k...Rva` constant in `src/` is in the table), and `ue3::Object`/`ue3::Function` at the host boundary (same ABI). The hot-reload host no longer links LExSDKv2. Left for stage 6: `engine/Legacy`, `GameAdapterSdk.hpp` and ReflectCheck's reference side. | - |
-| 5 | LE2/LE3 layouts: a Ghidra pass per exe (the same functions: `execIsA`, `GetPathName`, `ProcessEvent`, `execLetBool`, `AppendString`, `~UObject`), their RVAs and patterns in `GameAdapter.hpp` (with appMalloc/appFree in `AllocatorGlobalsForGame`, GNatives in `NativesTableRva`), the self-check run once per game (it is LE1-only today: `reflect_check::Run` is empty elsewhere). Then `engine/Legacy` and `engine/GameAdapterSdk.hpp` go: head tracking, the console request, the reflection fix and hand aim take their LE1 path (`#if defined(MEVR_GAME_LE1)` blocks become unconditional), `game/Player` serves all three games (LE2/LE3 spell the game-mode manager `GameModeManager2`: `adapter::kGameModeManager` already does), Mod.cpp's gate and `engine::World()` / `ObjectCount()` lose their LE2/LE3 branches, and `legacy::Init` (LExSDKv2's globals at startup) goes. Skeleton's element layouts (FMeshBone, FBoneAtom) need checking per game before `skeleton::Supported()` says yes there. | 1 session per game |
-| 6 | **For LE1's players' build: done (2026-10-26).** CMake `MEVR_LE1_LESDK` (default = `MEVR_HOT_RELOAD`): the release (monolithic) build links no `LESDK-LE1` and `engine/ReflectCheck`'s cross-check compiles out (`MEVR_NO_LESDK`); the release ASI holds none of LExSDKv2's strings, and `tools/package-release.ps1`'s gate passes. Development builds keep the cross-check; LE2/LE3 keep `engine/Legacy`. **Still to do (the rest of stage 6):** remove LExSDKv2: the submodule, `add_subdirectory`, `LESDK-${game}` from `mevr_configure`, `SDK_TARGET_*` (CMake defines `MEVR_GAME_*` already; nothing outside `engine/Legacy`, `GameAdapterSdk.hpp` and `plugin/` uses `SDK_TARGET_*` since stage 3), `engine/ReflectCheck` (or keep its pure checks as a ue3 self-test: Actor.Location is a 12-byte struct, the `skeleton` rows' research/14 offsets...), `GameAdapterSdk.hpp` (gone with `engine/Legacy`); NOTICE.md updated. Stage 4 must first give `core/Hook` and the `Install(init)` signatures our own hook context (`game/GamepadBridge.hpp` still names `LESDK::Initializer`). Also the `/permissive` and SDK warning suppressions in `mevr_configure`. | half a session |
+| 5 | **Done: ME2's layout 2026-11-14 (M1), ME3's 2026-11-15 (L3-1), `engine/Legacy` out of every game's path 2026-11-16 (section 6.4).** As planned: LE2/LE3 layouts: a Ghidra pass per exe (the same functions: `execIsA`, `GetPathName`, `ProcessEvent`, `execLetBool`, `AppendString`, `~UObject`), their RVAs and patterns in `GameAdapter.hpp` (with appMalloc/appFree in `AllocatorGlobalsForGame`, GNatives in `NativesTableRva`), the self-check run once per game (it is LE1-only today: `reflect_check::Run` is empty elsewhere). Then `engine/Legacy` and `engine/GameAdapterSdk.hpp` go: head tracking, the console request, the reflection fix and hand aim take their LE1 path (`#if defined(MEVR_GAME_LE1)` blocks become unconditional), `game/Player` serves all three games (LE2/LE3 spell the game-mode manager `GameModeManager2`: `adapter::kGameModeManager` already does), Mod.cpp's gate and `engine::World()` / `ObjectCount()` lose their LE2/LE3 branches, and `legacy::Init` (LExSDKv2's globals at startup) goes. Skeleton's element layouts (FMeshBone, FBoneAtom) need checking per game before `skeleton::Supported()` says yes there. | 1 session per game |
+| 6 | **For LE1's players' build: done (2026-10-26). For ME2's and ME3's: done (2026-11-16, section 6.4: `MEVR_LE2_LESDK`, `MEVR_LE3_LESDK`).** CMake `MEVR_LE1_LESDK` (default = `MEVR_HOT_RELOAD`): the release (monolithic) build links no `LESDK-LE1` and `engine/ReflectCheck`'s cross-check compiles out (`MEVR_NO_LESDK`); the release ASI holds none of LExSDKv2's strings, and `tools/package-release.ps1`'s gate passes. Development builds keep the cross-check; LE2/LE3 keep `engine/Legacy`. **Still to do (the rest of stage 6):** remove LExSDKv2: the submodule, `add_subdirectory`, `LESDK-${game}` from `mevr_configure`, `SDK_TARGET_*` (CMake defines `MEVR_GAME_*` already; nothing outside `engine/Legacy`, `GameAdapterSdk.hpp` and `plugin/` uses `SDK_TARGET_*` since stage 3), `engine/ReflectCheck` (or keep its pure checks as a ue3 self-test: Actor.Location is a 12-byte struct, the `skeleton` rows' research/14 offsets...), `GameAdapterSdk.hpp` (gone with `engine/Legacy`); NOTICE.md updated. Stage 4 must first give `core/Hook` and the `Install(init)` signatures our own hook context (`game/GamepadBridge.hpp` still names `LESDK::Initializer`). Also the `/permissive` and SDK warning suppressions in `mevr_configure`. | half a session |
 
 ### Stage 4 design: our own RVA resolution and hook installation
 
@@ -536,7 +602,8 @@ The replacement:
   walk). The SDK's lazy `StaticClass` did the same.
 - **Stage 4 risks:** LEBinkProxy's SPI ABI (if we declare it ourselves), and hook ordering if we
   ever leave its MinHook.
-- **LE2/LE3** have no layout yet. Until stage 5, the all-game modules use `engine/Legacy` there (LExSDKv2).
+- **LE2/LE3** had no layout until 2026-11-14 and 2026-11-15; the all-game modules used `engine/Legacy` there
+  (LExSDKv2) until 2026-11-16 (section 6.4).
 
 ## 9. Provenance
 

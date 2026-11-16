@@ -41,24 +41,35 @@ endif ()
 if (MEVR_LE2_DIAGNOSTIC AND MEVR_HOT_RELOAD)
     message(FATAL_ERROR "LE2 control producer requires a monolithic diagnostic host (MEVR_HOT_RELOAD=OFF)")
 endif ()
-# LExSDKv2 has no licence, so a players' build of LE1 has none of it (research/34 stage 6 for LE1): the mod runs on our
-# own reflection layer, and only development builds keep LExSDKv2 for the cross-check (engine/ReflectCheck). Off by
-# default in a release (monolithic) build. LE2/LE3 still read the engine through it (not released).
+# LExSDKv2 has no licence, so a players' build has none of it, on any game (research/34 stage 6 for LE1; T04,
+# docs/trilogy-plan.md, for LE2 and LE3): the mod runs on our own reflection layer, and only development builds keep
+# LExSDKv2 for the cross-check (engine/ReflectCheck). Off by default in a release (monolithic) build.
 option(MEVR_LE1_LESDK "LE1: link LExSDKv2 for the reflection cross-check (development builds)" ${MEVR_HOT_RELOAD})
+option(MEVR_LE2_LESDK "LE2: link LExSDKv2 for the reflection cross-check (development builds)" ${MEVR_HOT_RELOAD})
+option(MEVR_LE3_LESDK "LE3: link LExSDKv2 for the reflection cross-check (development builds)" ${MEVR_HOT_RELOAD})
+# The LE2 diagnostic host's observers read the engine through LExSDKv2's own headers (engine/Le2DiagnosticObservation,
+# engine/Legacy): a monolithic development build that is never packaged, so it links the SDK whatever the option says.
+set(MEVR_LE2_LINKS_LESDK ${MEVR_LE2_LESDK})
+if (MEVR_LE2_DIAGNOSTIC AND NOT MEVR_LE2_LESDK)
+    message(STATUS "MEVR_LE2_DIAGNOSTIC: the diagnostic host links LExSDKv2 (MEVR_LE2_LESDK is taken as ON; not a players' build)")
+    set(MEVR_LE2_LINKS_LESDK ON)
+endif ()
+set(MEVR_LE1_LINKS_LESDK ${MEVR_LE1_LESDK})
+set(MEVR_LE3_LINKS_LESDK ${MEVR_LE3_LESDK})
 
 # LExSDKv2 honors these as normal variables (CMP0077).
-if (MEVR_BUILD_LE1 AND MEVR_LE1_LESDK)
-    set(LESDK_WITH_LE1 ON)
-else ()
-    set(LESDK_WITH_LE1 OFF)
-endif ()
-set(LESDK_WITH_LE2 ${MEVR_BUILD_LE2})
-set(LESDK_WITH_LE3 ${MEVR_BUILD_LE3})
+foreach (game LE1 LE2 LE3)
+    if (MEVR_BUILD_${game} AND MEVR_${game}_LINKS_LESDK)
+        set(LESDK_WITH_${game} ON)
+    else ()
+        set(LESDK_WITH_${game} OFF)
+    endif ()
+endforeach ()
 set(LESDK_WITH_LEL OFF)
 set(LESDK_WITH_SAMPLES OFF)
 set(LESDK_WITH_TESTS OFF)
-# Only when something links it: a release build of LE1 configures and builds without the unlicensed submodule checked
-# out (docs/release-checklist.md section 1; research/34 stage 6).
+# Only when something links it: a release build of any game configures and builds without the unlicensed submodule
+# checked out (docs/release-checklist.md section 1; research/34 stage 6; T04).
 if (LESDK_WITH_LE1 OR LESDK_WITH_LE2 OR LESDK_WITH_LE3)
     add_subdirectory(external/LExSDKv2)
 endif ()
@@ -1127,9 +1138,10 @@ function(mevr_add_plugin game)
                 src/install/ReportMarks.hpp src/core/Json.cpp src/core/Json.hpp)
         endif ()
     endif ()
-    # LE1 without LExSDKv2 (MEVR_LE1_LESDK off: every release build): neither the mod nor the host links it.
+    # Without LExSDKv2 (MEVR_<game>_LESDK off: every release build, on every game since T04): neither the mod nor the
+    # host links it, and both get MEVR_NO_LESDK.
     set(game_sdk "")
-    if (game STREQUAL "LE1" AND NOT MEVR_LE1_LESDK)
+    if (NOT MEVR_${game}_LINKS_LESDK)
         set(game_sdk NO_SDK)
     endif ()
     set(host_sdk ${game_sdk})

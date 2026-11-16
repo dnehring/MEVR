@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
-// The LExSDKv2-typed per-game accessors, for the modules not yet on our reflection layer
-// (research/34, stage 2 removes this file). Each LExSDKv2 game target generates slightly different
-// names for identical fields; our layer looks names up case-insensitively, so they disappear there.
+// The LExSDKv2-typed per-game accessors, for the LE2 diagnostic host's observers (engine/Le2DiagnosticObservation: the
+// only code left that reads the engine through LExSDKv2's types; T04, docs/trilogy-plan.md). Each LExSDKv2 game target
+// generates slightly different names for identical fields; our layer looks names up case-insensitively, so they
+// disappear there. Never include this from a module a players' build compiles.
 
 #include "engine/GameAdapter.hpp"
 

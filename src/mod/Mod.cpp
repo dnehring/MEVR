@@ -35,7 +35,9 @@
 #include "engine/SelectionGaze.hpp"
 #include "engine/Engine.hpp"
 #include "engine/GameAdapter.hpp"
+#if defined(MEVR_LE2_DIAGNOSTIC)
 #include "engine/Legacy.hpp"
+#endif
 #include "engine/NativesDump.hpp"
 #include "engine/ProcessEvent.hpp"
 #include "engine/ReflectCheck.hpp"
@@ -286,24 +288,15 @@ void WaitForThisFrameToPresent() {
 }
 
 // The script packages are in once Engine.Camera.UpdateCamera exists (head tracking's first function,
-// the old gate). LE1 and LE2 ask our reflection layer, retrying ue3::runtime::Init each second until it's up
-// (research/34 stage 3; before, LExSDKv2's object scan; LE2 since M1); LE3 (no layout yet) asks engine/Legacy, and so
-// does LE2 if its layer is off.
+// the old gate). Every game asks our reflection layer, retrying ue3::runtime::Init each second until it's up
+// (research/34 stage 3; before, LExSDKv2's object scan; LE2 since M1, LE3 since L3-1). No game reads the engine
+// through LExSDKv2 when the layer is off (T04, docs/trilogy-plan.md).
 bool ScriptPackagesLoaded() {
     using namespace mevr;
-#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     if (!ue3::runtime::Init()) {
         if (ue3::runtime::Pending()) {
             return false;  // the game is still starting: the next try is in a second
         }
-#if defined(MEVR_GAME_LE2)
-        // Off for good (it said why): LExSDKv2's reads (engine/Legacy) carry on as before M1.
-        if (!gToldLayerOff) {
-            gToldLayerOff = true;
-            log::Warn("script hooks: our reflection layer is off; waiting for the script packages through LExSDKv2");
-        }
-        return engine::legacy::FindFunction("Engine.Camera.UpdateCamera") != nullptr;
-#else
         // Off for good (it said why): the game modules stand down, nothing is left to wait for.
         if (!gToldLayerOff) {
             gToldLayerOff = true;
@@ -311,12 +304,8 @@ bool ScriptPackagesLoaded() {
                       "without them (the game features stay off)");
         }
         return true;
-#endif
     }
     return ue3::runtime::Get().FindFunction("Engine.Camera.UpdateCamera") != nullptr;
-#else
-    return engine::legacy::FindFunction("Engine.Camera.UpdateCamera") != nullptr;
-#endif
 }
 
 // Script-level hooks need Engine.u/SFXGame.u loaded, which happens after attach. Handlers are
@@ -1641,14 +1630,13 @@ MEVR_MOD_API bool MevrModStartup(mevr::loader::spi::Interface* spi, mevr::HostSe
         log::Info("engine-probe: renderer and gameplay disabled; waiting for reflection");
         return true;
     }
-#if !defined(MEVR_GAME_LE1)
-    // LE2/LE3 read the engine through LExSDKv2 until they have a reflection layout (research/34 stage 5).
+#if defined(MEVR_LE2_DIAGNOSTIC)
+    // The LE2 diagnostic host's observers read the engine through LExSDKv2 (engine/Legacy: that build only, never a
+    // players' build; T04).
     if (!engine::legacy::Init(*gInit)) {
         gInit.reset();
         return false;
     }
-#endif
-#if defined(MEVR_LE2_DIAGNOSTIC)
     bool const controlRegistered = engine::le2_control::Start(gInit.get());
     log::Info("LE2 diagnostic host: bound control consumer {}; renderer, gameplay and shared request polling disabled",
               controlRegistered ? "registered; awaiting owned invitation" : "unavailable (fail closed)");

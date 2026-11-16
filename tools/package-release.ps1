@@ -46,12 +46,14 @@
 #     v<version>, a binary whose version resource names another version or another commit than HEAD;
 #   - a source file without its SPDX line (python tools/check-spdx.py);
 #   - a failing ctest in build-mono, unless -SkipTests;
-#   - an ASI that links LExSDKv2 (no licence), unless -LexSdkPermission says its author agreed;
+#   - an ASI that links LExSDKv2 (no licence), unless -LexSdkPermission says its author agreed: LE1MEVR.asi, and
+#     LE2MEVR.asi / LE3MEVR.asi when build-mono is configured with them (T04, docs/trilogy-plan.md);
 #   - a missing licence text, a missing cockpit package (unless -NoCockpit), or no MEVR-Voice.dll (unless -NoVoice).
 # It warns when HEAD has no tag v<version> and when the cockpit package is older than its sources (tools/cockpit,
 # concept/assets/game-ready: rebuild it with tools/cockpit/package). Texture packs are never bundled.
 #
-# LExSDKv2 has no licence: the release build (build-mono, MEVR_LE1_LESDK=OFF since 2026-10-26) doesn't link it.
+# LExSDKv2 has no licence: the release build (build-mono, MEVR_LE1_LESDK=OFF since 2026-10-26; MEVR_LE2_LESDK and
+# MEVR_LE3_LESDK, off in a monolithic build since 2026-11-16) doesn't link it on any game.
 param(
     [string]$Version = '',
     [string]$Tag = '',
@@ -191,15 +193,32 @@ foreach ($f in $binaries) {
 }
 
 # The hard gate: LExSDKv2 has no licence, so a build that links it can't be given to anyone without its author's
-# permission. MEVR-LE1's project says whether it links the SDK (LESDK-LE1); no project to read counts as linking it.
-$asiProject = Join-Path $buildDir 'MEVR-LE1.vcxproj'
-$linksSdk = -not (Test-Path $asiProject) -or (Select-String -Path $asiProject -Pattern 'LESDK-LE1' -SimpleMatch -Quiet)
-if ($linksSdk -and -not $LexSdkPermission) {
-    throw ("Refusing to package: LE1MEVR.asi is built with LExSDKv2, which has no licence. Distributing it needs its " +
-        "author's written permission (docs/release-readme.md, research/33). Once you have it, run again with " +
-        "-LexSdkPermission; or finish removing LExSDKv2 (research/34) first.")
+# permission. Each game's ASI project says whether it links the SDK (the LESDK-<game> library, or no MEVR_NO_LESDK
+# define: CMakeLists.txt's mevr_configure sets exactly one of the two); no project to read counts as linking it. LE1
+# always; LE2 and LE3 whenever this build tree is configured with them or holds their ASI, packaged yet or not, so a
+# sequel can never reach the payload from a tree that links the SDK (T04, docs/trilogy-plan.md).
+function Test-LinksLexSdk([string]$Game) {
+    $project = Join-Path $buildDir "MEVR-$Game.vcxproj"
+    if (-not (Test-Path $project)) { return $true }
+    $text = [IO.File]::ReadAllText($project)
+    return $text.Contains("LESDK-$Game") -or -not $text.Contains('MEVR_NO_LESDK')
 }
-if ($linksSdk) { Write-Warning 'LExSDKv2 is compiled into LE1MEVR.asi: packaging under -LexSdkPermission (its author agreed).' }
+$sdkGames = @('LE1')
+foreach ($game in @('LE2', 'LE3')) {
+    if ((Test-Path (Join-Path $buildDir "MEVR-$game.vcxproj")) -or (Test-Path (Join-Path $out "${game}MEVR.asi"))) { $sdkGames += $game }
+}
+$linksSdk = $false
+foreach ($game in $sdkGames) {
+    if (-not (Test-LinksLexSdk $game)) { continue }
+    $linksSdk = $true
+    if (-not $LexSdkPermission) {
+        throw ("Refusing to package: ${game}MEVR.asi is built with LExSDKv2, which has no licence. Distributing it needs its " +
+            "author's written permission (docs/release-readme.md, research/33). Once you have it, run again with " +
+            "-LexSdkPermission; or configure $buildDir without it (MEVR_${game}_LESDK=OFF, the default of a monolithic build; " +
+            "the LE2 diagnostic host, MEVR_LE2_DIAGNOSTIC, always links it and is never packaged).")
+    }
+    Write-Warning "LExSDKv2 is compiled into ${game}MEVR.asi: packaging under -LexSdkPermission (its author agreed)."
+}
 
 # ---- The tests -----------------------------------------------------------------------------------------------------
 if ($SkipTests) {
