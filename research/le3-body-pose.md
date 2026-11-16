@@ -225,3 +225,14 @@ units and eye height is 1.7526 m. The underlying world images show the correspon
 view-height shift. Do not weaken the cached torso identity check to hide this:
 audit the shared floor-lock eligibility and ME3 pause/menu adapter against ME1/ME2,
 then test menu open/close with fresh head movement and unchanged owner/epoch.
+
+Source audit after the run locates the immediate cause in shared
+`plugin/FloorLock.cpp::Queue`: `main_menu::IsOpen() && !LiveAdjusting()` sets
+`Context.menu`, which makes `core/vr/FloorLock::Applies` reject correction. Both
+sequels call this same queue/translation path. The current calibration research
+explicitly preserves menu exemptions; live adjustment already makes a deliberate
+exception. The next change must distinguish a shared overlay over an otherwise
+owned ordinary world from a native flat menu, calibration, held/cinematic view or
+renderer menu. Preserve the existing core rejection gates and validate the shared
+policy across all three hosts instead of changing ME3's eye height or caching an
+unvalidated camera offset.
