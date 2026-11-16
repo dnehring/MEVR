@@ -2,7 +2,6 @@
 #include "game/Reflections.hpp"
 
 #include "core/Log.hpp"
-#include "engine/Legacy.hpp"
 #include "ue3/Handles.hpp"
 
 #include <cstdint>
@@ -28,10 +27,8 @@ unsigned gRaised = 0;  // since the last LogStats
 unsigned gFailed = 0;
 unsigned gSeen = 0;  // in the last complete pass
 
-#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
-
-// Our reflection layer (research/34; LE2's since M1, docs/le2-continuation-plan.md). LE2 falls back to LExSDKv2
-// (engine/Legacy) if its layer is off.
+// Our reflection layer on every game (research/34; LE2's since M1, docs/le2-continuation-plan.md; LE3's since T04,
+// docs/trilogy-plan.md). With the layer off the fix is off (no LExSDKv2 fallback).
 ue3::FunctionRef gSetFrameRateRef{kSetFrameRate, ue3::kEveryGame};
 ue3::ClassRef gReflectClass{"Engine.SceneCaptureReflectComponent", ue3::kEveryGame};
 ue3::FieldRef gFrameRate{"Engine.SceneCaptureComponent", "FrameRate", ue3::kEveryGame};
@@ -40,12 +37,8 @@ constexpr std::uint64_t kTemplateFlags = 0x200 | 0x400;
 
 ue3::Function* FindSetFrameRate() {
     if (!ue3::runtime::Up()) {
-#if defined(MEVR_GAME_LE2)
-        return engine::legacy::FindFunction(kSetFrameRate);
-#else
         log::Warn("reflections: off: our reflection layer is off (see the 'reflect:' log lines)");
         return nullptr;
-#endif
     }
     return gSetFrameRateRef.Get();
 }
@@ -53,17 +46,6 @@ ue3::Function* FindSetFrameRate() {
 // Objects [begin, begin + kSliceObjects) of the pass. The class has no subclasses, so an exact class
 // match replaces IsA's superclass walk. Returns where the pass continues; `done`: that was the end.
 int Slice(int begin, bool& done) {
-#if defined(MEVR_GAME_LE2)
-    if (!ue3::runtime::Up()) {
-        engine::legacy::CaptureCounts counts;
-        int const end = engine::legacy::RaiseReflectionCaptures(gSetFrameRate, kFrameRate, begin, kSliceObjects, counts);
-        gPassSeen += counts.seen;
-        gPassRaised += counts.raised;
-        gPassFailed += counts.failed;
-        done = counts.done;
-        return end;
-    }
-#endif
     ue3::Reflection& r = ue3::runtime::Get();
     ue3::Class* const reflectClass = gReflectClass.Get();
     int const count = ue3::runtime::Up() ? r.ObjectCount() : 0;
@@ -98,24 +80,6 @@ int Slice(int begin, bool& done) {
     return end;
 }
 
-#else
-
-// LE3: LExSDKv2 until its layout (engine/Legacy, research/34).
-ue3::Function* FindSetFrameRate() {
-    return engine::legacy::FindFunction(kSetFrameRate);
-}
-
-int Slice(int begin, bool& done) {
-    engine::legacy::CaptureCounts counts;
-    int const end = engine::legacy::RaiseReflectionCaptures(gSetFrameRate, kFrameRate, begin, kSliceObjects, counts);
-    gPassSeen += counts.seen;
-    gPassRaised += counts.raised;
-    gPassFailed += counts.failed;
-    done = counts.done;
-    return end;
-}
-
-#endif
 
 // One slice of the current pass.
 void ScanSlice() {

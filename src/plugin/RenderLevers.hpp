@@ -9,8 +9,13 @@ namespace mevr::hook {
 class Context;
 }
 
-// Render-thread levers and accounting for LE1's VR performance (research/22, "What else can go"). LE1, with
-// Halcyon's renderer in the host.
+// Render-thread levers and accounting for VR performance (research/22, "What else can go"): ME1's, as one module in
+// all three games' hosts (research/sequel-render-levers.md "Shared module"). Each lever takes its native addresses from
+// the current game's rows of engine/Addresses.hpp, by name, and its object layouts from plugin/RenderLeversTable.hpp;
+// on a game that lacks a lever's rows or whose layout isn't verified, that lever stands down with one log line and its
+// setting stays the game's own. What it asks of the renderer (a stereo frame, the pass-1 view record, the one-Draw
+// switch) is plugin/RenderLeversSeams.hpp: LE1's Halcyon seams, and "no such seam yet" on the sequels. The addresses
+// in the text below are LE1's.
 //
 // Hooks the scene render (Halcyon's SceneRenderB, FSceneRenderer::Render, 0x76EE20) to count and time the
 // scene renders of each frame (between Presents), and the Umbra commander's command() (0x8C34C0, BioWare's side
@@ -39,7 +44,8 @@ class Context;
 // each render's average time by its place in the frame with its Umbra resolve's parts, and the draw replay's counts.
 namespace mevr::host::render_levers {
 
-// At attach (exe version checked): installs the hooks. False if the first two failed (the levers are then off).
+// At attach (exe version checked): installs the hooks this game's table has. False if the scene render's or the Umbra
+// commander's address is in the table but didn't resolve or hook (the levers are then off).
 bool Install(hook::Context& init);
 
 // Game thread, every engine tick: re-reads the switches once a second, applies the affinity, logs.

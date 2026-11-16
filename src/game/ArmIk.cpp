@@ -299,17 +299,10 @@ bool MenuBodyEligible(Body const& body) {
         world_ui::WristScreenUp() || player::GameMode(player::Controller()) != 0) return false;
     auto const floor = player::FloorLockSample();
     if (!floor.onFoot || !floor.pawn || floor.cover || !floor.cameraOwned) return false;
-    // Audited LE3 fields/functions; a mode-0 authored custom action is not ordinary standing.
-    static ue3::FieldRef action{"SFXGame.BioPawn", "CurrentCustomAction", ue3::kEveryGame};
-    static ue3::FunctionRef ignored{"Engine.PlayerController.IsMoveInputIgnored", ue3::kEveryGame};
-    static ue3::FunctionRef dead{"Engine.Pawn.IsDead", ue3::kEveryGame};
-    if (action.Read<std::int32_t>(body.pawn) != 0) return false;
-    auto falseResult = [](ue3::Object* owner, ue3::FunctionRef& ref) {
-        ue3::Params params(ue3::runtime::Get(), ref.Get());
-        return params.Valid() && params.Size() == 4 && ue3::runtime::Call(owner, ref.Get(), params) &&
-            params.ReturnBool() == false;
-    };
-    return falseResult(player::Controller(), ignored) && falseResult(body.pawn, dead);
+    // Audited LE3 fields/functions; a mode-0 authored custom action is not ordinary standing (the one admission read:
+    // game/Player `MovementRefused`).
+    namespace admit = player::admission;
+    return player::MovementAdmitted(player::Controller(), body.pawn, admit::kNoAction | admit::kMoveInput | admit::kAlive);
 #else
     (void)body;
     return false; // LE1/LE2 presentation behavior is unchanged by the LE3 candidate.

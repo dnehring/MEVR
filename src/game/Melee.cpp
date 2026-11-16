@@ -23,15 +23,10 @@ ue3::ClassRef gHeavyClass{"SFXGame.SFXCustomAction_PlayerHeavyMeleeBase", ue3::k
 ue3::FieldRef gWorld{"Engine.Actor", "WorldInfo", ue3::kEveryGame};
 ue3::FieldRef gWeapon{"Engine.Pawn", "Weapon", ue3::kEveryGame};
 ue3::FieldRef gInput{"Engine.PlayerController", "PlayerInput", ue3::kEveryGame};
-ue3::FieldRef gCoverType{"SFXGame.BioPawn", "CoverType", ue3::kEveryGame};
-ue3::FieldRef gCoverAction{"SFXGame.BioPawn", "CoverAction", ue3::kEveryGame};
-ue3::FieldRef gStorming{"SFXGame.BioPawn", "bStorming", ue3::kEveryGame};
 ue3::FieldRef gCurrentAction{"SFXGame.BioPawn", "CurrentCustomAction", ue3::kEveryGame};
 ue3::FieldRef gActionPawn{"SFXGame.BioCustomAction", "m_oPawn", ue3::kEveryGame};
 ue3::FunctionRef gGetMode{"SFXGame.BioPlayerController.GetGameModeDefault", ue3::kEveryGame};
 ue3::FunctionRef gGetAction{"SFXGame.BioPawn.GetCurrentCustomAction", ue3::kEveryGame};
-ue3::FunctionRef gMoveIgnored{"Engine.PlayerController.IsMoveInputIgnored", ue3::kEveryGame};
-ue3::FunctionRef gDead{"Engine.Pawn.IsDead", ue3::kEveryGame};
 ue3::FunctionRef gReloading{"SFXGame.BioPlayerController.IsReloading", ue3::kEveryGame};
 ue3::FunctionRef gZoomed{"SFXGame.BioPlayerController.IsZoomed", ue3::kEveryGame};
 ue3::FunctionRef gCombat{"SFXGame.BioPlayerInput.IsCombatEnabled", ue3::kEveryGame};
@@ -117,12 +112,14 @@ char const* Refusal(Link const& link, int hand) {
         link.allowRequest == nullptr || !link.allowRequest(hand)) return "hand ownership blocks melee";
     if (gContext.world == nullptr || gContext.pc == nullptr || gContext.pawn == nullptr || gContext.mode != 0)
         return "not ordinary Shepard gameplay";
-    if (Bool(gContext.pc, gMoveIgnored) != false || Bool(gContext.pawn, gDead) != false)
+    // The movement facts through the one admission read (game/Player), asked in this function's own order of reasons.
+    namespace admit = player::admission;
+    if (!player::MovementAdmitted(gContext.pc, gContext.pawn, admit::kMoveInput | admit::kAlive))
         return "movement ignored, dead, or unavailable native guard";
     auto* input = Object(gInput, gContext.pc);
     if (!ue3::IsA(input, gInputClass) || Bool(input, gCombat) != true) return "combat input unavailable";
-    if (gCoverType.Read<std::uint8_t>(gContext.pawn) != 0 || gCoverAction.Read<std::uint8_t>(gContext.pawn) != 0 ||
-        gStorming.ReadBool(gContext.pawn) != false) return "contextual cover/storm melee requires separate intent";
+    if (!player::MovementAdmitted(gContext.pc, gContext.pawn, admit::kOutOfCover | admit::kNoCoverAction | admit::kNotStorming))
+        return "contextual cover/storm melee requires separate intent";
     auto const current = CurrentAction();
     if (!current || *current != nullptr || gAwaiting || gObserved != nullptr) return "native action or unresolved admission pending";
     if (Bool(gContext.pc, gReloading) != false || Bool(gContext.pc, gZoomed) != false) return "reload or zoom blocks melee";
@@ -172,16 +169,16 @@ bool TryStartup() {
     if (!ue3::runtime::Up()) return false;
     for (auto* cls : {&gModeClass, &gInputClass, &gWeaponClass, &gActionClass, &gLightClass, &gHeavyClass})
         if (cls->Get() == nullptr) return false;
-    for (auto* field : {&gWorld, &gWeapon, &gInput, &gCoverType, &gCoverAction, &gStorming, &gCurrentAction, &gActionPawn})
+    for (auto* field : {&gWorld, &gWeapon, &gInput, &gCurrentAction, &gActionPawn})
         if (field->Get() == nullptr) return false;
-    for (auto* fn : {&gGetMode, &gGetAction, &gMoveIgnored, &gDead, &gReloading, &gZoomed, &gCombat, &gState, &gLight, &gHeavy})
+    for (auto* fn : {&gGetMode, &gGetAction, &gReloading, &gZoomed, &gCombat, &gState, &gLight, &gHeavy})
         if (fn->Get() == nullptr) return false;
-    // Parameter/type guards in addition to named block construction. No guessed offsets.
-    if (!Shape(gCurrentAction, ue3::Kind::Int, 4) || !Shape(gCoverType, ue3::Kind::Byte, 1) ||
-        !Shape(gCoverAction, ue3::Kind::Byte, 1) || !Shape(gStorming, ue3::Kind::Bool, 4)) return false;
+    // Parameter/type guards in addition to named block construction. No guessed offsets. The movement facts' names and
+    // shapes (cover, storming, ignored input, death) are game/Player's to check.
+    if (!Shape(gCurrentAction, ue3::Kind::Int, 4) || !player::MovementAdmissionReady()) return false;
     for (auto* field : {&gWorld, &gWeapon, &gInput, &gActionPawn})
         if (!Shape(*field, ue3::Kind::Object, 8)) return false;
-    for (auto* fn : {&gMoveIgnored, &gDead, &gReloading, &gZoomed, &gCombat})
+    for (auto* fn : {&gReloading, &gZoomed, &gCombat})
         if (!ReturnShape(*fn, ue3::Kind::Bool, 4)) return false;
     if (!ReturnShape(gGetMode, ue3::Kind::Object, 8) || !ReturnShape(gState, ue3::Kind::Name, 8)) return false;
     ue3::Params actionParams(ue3::runtime::Get(), gGetAction.Get());

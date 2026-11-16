@@ -18,7 +18,6 @@
 #include "core/Ini.hpp"
 #include "core/Log.hpp"
 #include "engine/Engine.hpp"
-#include "engine/Legacy.hpp"
 #include "ue3/Handles.hpp"
 #include "ue3/Memory.hpp"
 #include "game/CallTrace.hpp"
@@ -86,29 +85,17 @@ std::filesystem::path Directory() {
     return std::filesystem::path(buffer) / L"MEVR";
 }
 
-#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
-
-// Our reflection layer (research/34; LE2's since M1, docs/le2-continuation-plan.md): the function, found once in the
-// running game. On LE2, LExSDKv2 (engine/Legacy) while the layer is off.
+// Our reflection layer on every game (research/34; LE2's since M1, docs/le2-continuation-plan.md): the function, found
+// once in the running game. With the layer off nothing is run (no LExSDKv2 fallback).
 ue3::FunctionRef gConsoleCommandRef{kConsoleCommand, ue3::kEveryGame};
 bool gToldNoMemory = false;
 bool gToldParameters = false;
 
 ue3::Object* PlayerController() {
-#if defined(MEVR_GAME_LE2)
-    if (!ue3::runtime::Up()) {
-        return engine::legacy::LocalPlayerController();
-    }
-#endif
     return ue3::runtime::LocalPlayerController();
 }
 
 ue3::Function* FindConsoleCommand() {
-#if defined(MEVR_GAME_LE2)
-    if (!ue3::runtime::Up()) {
-        return engine::legacy::FindFunction(kConsoleCommand);
-    }
-#endif
     return gConsoleCommandRef.Get();
 }
 
@@ -116,11 +103,6 @@ ue3::Function* FindConsoleCommand() {
 // Both strings are in the engine's memory: ours goes in, the engine's comes back, and the block (ours) frees both.
 // Nullopt: it can't be run (no allocator, or the parameters aren't as expected; logged once).
 std::optional<std::string> Run(ue3::Object* pc, ue3::Function* function, std::string const& command) {
-#if defined(MEVR_GAME_LE2)
-    if (!ue3::runtime::Up()) {
-        return engine::legacy::ConsoleCommand(pc, function, command);
-    }
-#endif
     if (!ue3::memory::Ready()) {
         if (!gToldNoMemory) {
             gToldNoMemory = true;
@@ -145,22 +127,25 @@ std::optional<std::string> Run(ue3::Object* pc, ue3::Function* function, std::st
     return output;
 }
 
-#else
-
-// LE3: LExSDKv2 until its layout (engine/Legacy, research/34).
-ue3::Object* PlayerController() {
-    return engine::legacy::LocalPlayerController();
+// `mevr calltrace <seconds> <word> [-word...]` | `mevr calltrace off`: every script call and ProcessEvent whose
+// function's path holds a word and no -word (case-insensitive), with its caller, to the log for that long
+// (game/call_trace). Every game's console has it (T04, docs/trilogy-plan.md).
+std::string CallTraceCommand(std::istream& words) {
+    std::string first;
+    words >> first;
+    if (first == "off" || first.empty()) {
+        return call_trace::Stop();
+    }
+    std::optional<double> const seconds = ini::Number(first);
+    if (!seconds) {
+        return "usage: mevr calltrace <seconds> <word> [word...] | off";
+    }
+    std::vector<std::string> filters;
+    for (std::string word; words >> word;) {
+        filters.push_back(word);
+    }
+    return call_trace::Start(*seconds, filters);
 }
-
-ue3::Function* FindConsoleCommand() {
-    return engine::legacy::FindFunction(kConsoleCommand);
-}
-
-std::optional<std::string> Run(ue3::Object* pc, ue3::Function* function, std::string const& command) {
-    return engine::legacy::ConsoleCommand(pc, function, command);
-}
-
-#endif
 
 #if defined(MEVR_GAME_LE1)
 
@@ -1021,23 +1006,7 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         return squad_context::Block("", word, ini::Number(agoText).value_or(0.5));
     }
     if (verb == "calltrace") {
-        // `mevr calltrace <seconds> <word> [-word...]` | `mevr calltrace off`: every script call and ProcessEvent whose
-        // function's path holds a word and no -word (case-insensitive), with its caller, to the log for that long
-        // (game/call_trace).
-        std::string first;
-        words >> first;
-        if (first == "off" || first.empty()) {
-            return call_trace::Stop();
-        }
-        std::optional<double> const seconds = ini::Number(first);
-        if (!seconds) {
-            return "usage: mevr calltrace <seconds> <word> [word...] | off";
-        }
-        std::vector<std::string> filters;
-        for (std::string word; words >> word;) {
-            filters.push_back(word);
-        }
-        return call_trace::Start(*seconds, filters);
+        return CallTraceCommand(words);
     }
     if (verb == "omnitool") {
         // `mevr omnitool on [lifetime s] | off [fade s] | state`: the game's omni-tool on Shepard's arm (research/53 section 6).
@@ -1767,6 +1736,9 @@ std::optional<std::string> RunOursLe3(ue3::Object* pc, std::string const& line) 
     std::string head, verb;
     words >> head >> verb;
     if (head != "mevr" || !ue3::runtime::Up()) return std::nullopt;
+    if (verb == "calltrace") {
+        return CallTraceCommand(words);
+    }
     if (verb == "thespian") {
         std::string rest;
         std::getline(words, rest);
@@ -1881,6 +1853,9 @@ std::optional<std::string> RunOursLe2(ue3::Object* pc, std::string const& line) 
     words >> head >> verb;
     if (head != "mevr" || !ue3::runtime::Up()) {
         return std::nullopt;
+    }
+    if (verb == "calltrace") {
+        return CallTraceCommand(words);
     }
     if (verb == "thespian") {
         std::string rest;

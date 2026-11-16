@@ -233,6 +233,10 @@ inline constexpr Entry kTable[] = {
         "render levers"},
     {"Umbra commander index", 0x1795D28, Kind::Data, "00 48 03 53 60 48 8B 05 ?? ?? ?? ?? 48 8B 0C C6", 8, 0x8BFA49,
         "render levers"},
+    // The show flags' bits per word (32), which RenderLevers' ShowFlag() reads to test a bit of FSceneRenderer +0x28 (a
+    // literal in RenderLevers.cpp until 2026-11-16; the reference is the scene render's own test of show flag 0x33).
+    {"show flags' bits per word", 0x164C720, Kind::Data, "41 B8 33 00 00 00 41 8B C0 44 8B 0D ?? ?? ?? ?? 41 F7 F1 8B", 12,
+        0x76EF10, "render levers"},
 };
 
 } // le1
@@ -394,6 +398,64 @@ inline constexpr std::uint32_t kCaptureRenderUmbra = 0x3685C0;
 inline constexpr std::uint32_t kBeginBackbuffer = 0x36D760;
 inline constexpr std::uint32_t kDynamicRhi = 0x1894018;
 
+// ME1's render levers on ME3 (lane R3, research/sequel-render-levers.md "ME3": each row's evidence, the offsets its hook
+// reads and a recipe). Named as plugin/RenderLevers names its LE1 constants (k...Rva there). Ghidra over the 60AEF0C4 dump:
+// each found by the call structure it has in LE1 (the scene render's body, InitViews' tail, the commander's command switch)
+// and, where the code is unchanged, by masked bytes equal to LE1's. Nothing uses them yet: lane PL's address table does.
+// The scene render (LE1 0x76EE20): the capture loop, then the eye's render through kCaptureRenderUmbra (LE1 inlines that
+// branch), then the renderer's deletion. void(renderer).
+inline constexpr std::uint32_t kSceneRender = 0x368850;
+// FSceneRenderer's deleting destructor (LE1 0x4ED700; ME3's has the destructor inlined). void*(renderer, flags); 0x110 bytes.
+inline constexpr std::uint32_t kDeleteRenderer = 0x35E6E0;
+// GSceneRenderTargets.Allocate(this, sizeX, sizeY, 0) (LE1 0x772EB0) and the object (LE1 0x167D0E0).
+inline constexpr std::uint32_t kAllocateTargets = 0x36CDC0;
+inline constexpr std::uint32_t kSceneRenderTargets = 0x1764A20;
+// (byte which): the Umbra commander index for the render (LE1 0x8C1AE0). A leaf; it writes kCommanderIndex.
+inline constexpr std::uint32_t kSetCommander = 0x3E84E0;
+// InitViews' three calls on the Umbra path, in order: the resolve (LE1 0x8BFBB0), the DPG's light targets (renderer, dpg)
+// (LE1 0x77BE00: where the replay's tail starts) and the opaque base pass over the views (LE1 0x8BF8F0).
+inline constexpr std::uint32_t kUmbraResolve = 0x3E5890;
+inline constexpr std::uint32_t kDpgLightTargets = 0x38A450;
+inline constexpr std::uint32_t kPrepassViews = 0x3E55C0;
+// The Umbra branch's passes after InitViews, as kCaptureRenderUmbra calls them (LE1's, in the same order): the translucency
+// check (renderer) 0x7666A0, the before-lights pass (renderer) 0x759240 only while kSkipBeforeLights is 0, the DPG pass
+// (renderer, dpg, uint* dirty) 0x76D650, the DPG lights (renderer, dpg, translucency, uint* dirty, flag) 0x76D0A0, the
+// foreground pass (renderer, 2, int* out, uint* dirty, flag) 0x76CA70, the finish (renderer, translucency, dirty) 0x76DD10.
+inline constexpr std::uint32_t kTranslucencyCheck = 0x3600A0;
+inline constexpr std::uint32_t kBeforeLights = 0x351020;
+inline constexpr std::uint32_t kDpgPass = 0x366F20;
+inline constexpr std::uint32_t kDpgLights = 0x366960;
+inline constexpr std::uint32_t kForeground = 0x366280;
+inline constexpr std::uint32_t kFinish = 0x3675D0;
+// The globals that branch reads (LE1 0x178779C, 0x1795D38, 0x167D49C, 0x164C720).
+inline constexpr std::uint32_t kSceneFrame = 0x1898678;
+inline constexpr std::uint32_t kDepthDirty = 0x189EC04;
+inline constexpr std::uint32_t kSkipBeforeLights = 0x1764E18;
+inline constexpr std::uint32_t kShowFlagBitsPerWord = 0x1756A20;
+// BioWare's Umbra commander: its two instances and the index in use (LE1 0x1798E88, 0x1795D28); command(commander, code),
+// slot 1 of the commander's first vtable 0x1157F68 (LE1 0x8C34C0), and the float it stamps at code 0 (LE1 0x1795D40);
+// code 5's IssueOcclusionQueries(commander) (LE1 0x8B6550); the function every visible instance goes through, int(commander,
+// record, float distanceSq, a4, a5, a6, a7) (LE1 0x8BE0B0: ME3 also calls it with a7 = 0 from 0x3E3650); and Umbra's read
+// of one query result (context, head, count, wait), a leaf (LE1 0xD48380: byte-identical library code).
+inline constexpr std::uint32_t kCommanders = 0x189ECC8;
+inline constexpr std::uint32_t kCommanderIndex = 0x189EBF8;
+inline constexpr std::uint32_t kCommanderCommand = 0x3E8B80;
+inline constexpr std::uint32_t kUmbraResolveStart = 0x189EC0C;
+inline constexpr std::uint32_t kUmbraIssueQueries = 0x3D8EB0;
+inline constexpr std::uint32_t kUmbraInstanceVisible = 0x3E3B00;
+inline constexpr std::uint32_t kUmbraReadResult = 0xE02430;
+// FD3D11DynamicRHI::GetQueryData(this, query, out, size, bWait) (LE1 0x9A04B0) and the bound shader state's constructor
+// (LE1 0x9A89F0): both byte-identical to LE1's. The RHI's vtable is 0x12FC7A0 (LE1 0x120FF00), the same slots.
+inline constexpr std::uint32_t kGetQueryData = 0x9A7D10;
+inline constexpr std::uint32_t kBoundShaderStateCtor = 0x9B0270;
+// The capture's Umbra camera thunk (LE1 0x7526C0; a leaf, called once from 0x35F090).
+inline constexpr std::uint32_t kCaptureUmbraCamera = 0x34D750;
+// USkeletalMeshComponent::UpdateBounds and the primitive's hand-over of its Bounds to Umbra (LE1 0x58EEC0, 0x25CFE0). Found
+// and verified, but engine/BodyBounds stays off on ME3 (kSkelUpdateBounds = 0 below): the padding answers Halcyon LE1's view
+// offset (the ledger's group 3), so it is ported only if the bug shows. To port: set the two constants below to these.
+inline constexpr std::uint32_t kSkelUpdateBoundsNative = 0x793850;
+inline constexpr std::uint32_t kPrimitiveUmbraBoundsNative = 0x32EC10;
+
 // Native tier evaluation, void(this, int force), before streaming queues are
 // classified. Ghidra from the installed 60AEF0C4 dump; research/le3-galaxy.md.
 inline constexpr std::uint32_t kReevaluateStreaming = 0xAC67C0;
@@ -477,11 +539,12 @@ inline constexpr Entry kTable[] = {
         "48 8B C4 48 89 48 08 55 56 57 41 54 41 55 41 57", 0, 0, "mod (interaction gaze)"},
     {"UBioTierManager::ReevaluateStreaming", kReevaluateStreaming, Kind::Function,
         "41 56 48 83 EC 40 4C 8B F1 85 D2 75 0D ?? ?? ??", 0, 0, "mod (CIC art retention)"},
-    {"CaptureScene", kCaptureScene, Kind::Leaf, "48 8B 09 48 85 C9 74 07 48 8B 01 48 FF 60 08 C3", 0, 0, "host (capture target)"},
+    // Three of the capture rows carry LE1's row names: plugin/RenderLevers finds a row by name, plugin/Le3SceneCapture by RVA.
+    {"scene capture's CaptureScene thunk", kCaptureScene, Kind::Leaf, "48 8B 09 48 85 C9 74 07 48 8B 01 48 FF 60 08 C3", 0, 0, "host (capture target)"},
     {"Capture.Render", kCaptureRender, Kind::Function, "48 8B C4 56 57 41 56 48 83 EC 60 48 C7 40 C0 FE", 0, 0, "host (capture target)"},
     {"Capture.RenderUmbra", kCaptureRenderUmbra, Kind::Function, "48 89 74 24 18 48 89 7C 24 20 55 48 8B EC 48 83 EC 50 48 8B", 0, 0, "host (capture target)"},
-    {"Capture.BeginBackbuffer", kBeginBackbuffer, Kind::Function, "40 53 48 83 EC 30 48 C7 44 24 20 FE FF FF FF 48 8B D9 48 8B 0D ?? ?? ?? ?? 48 8B 01", 0, 0, "host (capture target)"},
-    {"Capture.GDynamicRHI", kDynamicRhi, Kind::Data, "40 53 48 83 EC 30 48 C7 44 24 20 FE FF FF FF 48 8B D9 48 8B 0D ?? ?? ?? ?? 48 8B 01", 21, 0x36D760, "host (capture target)"},
+    {"FSceneRenderTargets::BeginRenderingBackBuffer", kBeginBackbuffer, Kind::Function, "40 53 48 83 EC 30 48 C7 44 24 20 FE FF FF FF 48 8B D9 48 8B 0D ?? ?? ?? ?? 48 8B 01", 0, 0, "host (capture target)"},
+    {"GDynamicRHI", kDynamicRhi, Kind::Data, "40 53 48 83 EC 30 48 C7 44 24 20 FE FF FF FF 48 8B D9 48 8B 0D ?? ?? ?? ?? 48 8B 01", 21, 0x36D760, "host (capture target)"},
     {"the name pools", kNamePools, Kind::Data, "38 49 63 46 0C 48 8D 2D ?? ?? ?? ?? 33 FF 85 C0", 8, 0x81A11, "mod (reflection)"},
     {"GMalloc", kGMalloc, Kind::Data, "B9 98 00 00 00 48 8B 0D ?? ?? ?? ?? 48 85 C9 75", 8, 0xB7683, "mod (engine strings)"},
     {"appMalloc", kAppMalloc, Kind::Function,
@@ -493,6 +556,69 @@ inline constexpr Entry kTable[] = {
         "48 8B 0D ?? ?? ?? ?? 48 8B 01 44 8B C3 48 8B D7 48 8B 5C 24 30 48 83 C4 20 5F 48 FF 60 18",
         0, 0, "mod (engine strings)"},
     {"GNatives", kGNatives, Kind::Data, "74 13 0F B7 C0 48 8D 0D ?? ?? ?? ?? 48 8B 04 C1", 8, 0xCA8A1, "mod (diagnostics)"},
+    // ME1's render levers' natives on ME3 (research/sequel-render-levers.md "ME3"); the names are LE1's rows'.
+    {"FSceneRenderer::Render", kSceneRender, Kind::Function,
+        "48 8B C4 55 41 56 41 57 48 8D 68 A1 48 81 EC A0 00 00 00 48 C7 45 17 FE", 0, 0, "render levers"},
+    {"FSceneRenderer deleting destructor", kDeleteRenderer, Kind::Function,
+        "4C 8B DC 57 41 56 41 57 48 83 EC 50 49 C7 43 B8 FE FF FF FF 49 89 5B 08 49 89 6B 10 49 89 73 18 8B EA 4C 8B", 0, 0,
+        "render levers"},
+    {"FSceneRenderTargets::Allocate", kAllocateTargets, Kind::Function,
+        "48 8B C4 57 41 56 41 57 48 83 EC 50 48 C7 40 D8 FE FF FF FF 48 89 58 10 48 89 68 18 48 89 70 20 48 8B D9 BD", 0, 0,
+        "render levers"},
+    {"SetUmbraCommander / wireframe state", kSetCommander, Kind::Leaf, "0F B6 C1 48 89 05 ?? ?? ?? ?? C3 CC CC CC CC CC", 0, 0,
+        "render levers"},
+    {"FSceneRenderer::UmbraResolve", kUmbraResolve, Kind::Function,
+        "48 8B C4 57 41 54 41 55 41 56 41 57 48 83 EC 50 48 C7 40 B0 FE FF FF FF 48 89 58 10", 0, 0, "render levers"},
+    {"FSceneRenderer::RenderDpgLightTargets", kDpgLightTargets, Kind::Function, "4C 8B DC 55 53 56 57 41 56 49 8D 6B A1 48 81 EC", 0,
+        0, "render levers"},
+    {"RenderUmbraBasePass", kPrepassViews, Kind::Function, "48 8B C4 55 41 56 41 57 48 8B EC 48 83 EC 60 48 C7 45 E0 FE", 0, 0,
+        "render levers"},
+    {"translucency check", kTranslucencyCheck, Kind::Function, "48 89 5C 24 08 4C 63 59 68 BB 01 00 00 00 4D 85", 0, 0,
+        "render levers"},
+    {"before-lights pass", kBeforeLights, Kind::Function,
+        "48 8B C4 48 89 48 08 55 53 56 57 41 54 41 55 41 56 41 57 48 8D A8 28 FF", 0, 0, "render levers"},
+    {"DPG pass", kDpgPass, Kind::Function,
+        "48 89 5C 24 20 55 56 57 48 83 EC 40 48 8B 05 ?? ?? ?? ?? 48 33 C4 48 89 44 24 30 48", 0, 0, "render levers"},
+    {"DPG lights", kDpgLights, Kind::Function, "4C 8B DC 55 56 57 41 56 49 8D 6B A9 48 81 EC A8", 0, 0, "render levers"},
+    {"foreground pass", kForeground, Kind::Function,
+        "40 55 53 56 57 41 54 41 55 41 56 41 57 48 8D 6C 24 E9 ?? ?? ?? ?? 00 00 00 48 C7 45 AF FE FF FF", 0, 0,
+        "render levers"},
+    {"scene render finish", kFinish, Kind::Function, "40 56 57 48 83 EC 48 33 F6 48 89 5C 24 60 48 89", 0, 0, "render levers"},
+    {"UmbraCommander::command", kCommanderCommand, Kind::Function, "40 55 48 81 EC 90 00 00 00 48 8B 05 ?? ?? ?? ??", 0, 0,
+        "render levers"},
+    {"UmbraCommander::IssueOcclusionQueries", kUmbraIssueQueries, Kind::Function,
+        "40 55 56 57 41 54 41 55 41 56 41 57 48 83 EC 60 48 C7 44 24 50 FE FF FF FF 48 89 9C 24 B8 00 00", 0, 0,
+        "render levers"},
+    {"UmbraCommander visible instance", kUmbraInstanceVisible, Kind::Function,
+        "40 53 55 56 57 41 54 41 56 41 57 48 81 EC A0 00 00 00 48 C7 44 24 48 FE", 0, 0, "render levers"},
+    {"Umbra read of one query result", kUmbraReadResult, Kind::Leaf, "89 91 CC 01 00 00 BA 06 00 00 00 44 89 81 C8 01", 0, 0,
+        "render levers"},
+    {"FD3D11DynamicRHI::GetQueryData", kGetQueryData, Kind::Function,
+        "48 89 5C 24 10 48 89 6C 24 18 48 89 74 24 20 57 41 56 41 57 48 83 EC 60 48 8B F9 0F", 0, 0, "render levers"},
+    {"FD3D11BoundShaderState constructor", kBoundShaderStateCtor, Kind::Function, "4C 8B DC 4D 89 4B 20 49 89 53 10 49 89 4B 08 55",
+        0, 0, "render levers"},
+    {"scene capture's Umbra camera thunk", kCaptureUmbraCamera, Kind::Leaf, "4C 8B D2 48 8B D1 48 8B 09 48 85 C9 74 18 48 8B", 0, 0,
+        "render levers"},
+    {"USkeletalMeshComponent::UpdateBounds", kSkelUpdateBoundsNative, Kind::Function,
+        "40 55 53 48 8D AC 24 08 FF FF FF 48 81 EC F8 01", 0, 0, "body bounds (not used on ME3)"},
+    {"UPrimitiveComponent::UpdateUmbraBounds", kPrimitiveUmbraBoundsNative, Kind::Function,
+        "40 53 48 81 EC C0 00 00 00 48 83 B9 14 02 00 00", 0, 0, "body bounds (not used on ME3)"},
+    {"GSceneRenderTargets", kSceneRenderTargets, Kind::Data, "33 DB 39 59 38 48 8D 0D ?? ?? ?? ?? 0F 95 C3 8D", 8, 0x163CA2,
+        "render levers"},
+    {"scene frame counter", kSceneFrame, Kind::Data, "C4 20 5B C3 CC 48 8D 05 ?? ?? ?? ?? C3 CC CC CC", 8, 0x36111B,
+        "render levers"},
+    {"depth dirty flags", kDepthDirty, Kind::Data, "39 35 ?? ?? ?? ?? 8B D8 8B 0D ?? ?? ?? ?? 89 4D E0 75 08 48 8B CF", 10,
+        0x36875B, "render levers"},
+    {"GSkipBeforeLights", kSkipBeforeLights, Kind::Data, "89 75 E4 E8 ?? ?? ?? ?? 39 35 ?? ?? ?? ?? 8B D8 8B 0D", 10, 0x368753,
+        "render levers"},
+    {"show flags' bits per word", kShowFlagBitsPerWord, Kind::Data, "48 8B 06 74 63 0F AF 0D ?? ?? ?? ?? 44 2B C9 48", 8, 0x170369,
+        "render levers"},
+    {"Umbra commanders", kCommanders, Kind::Data, "39 7B 68 7E 3E 48 8D 35 ?? ?? ?? ?? 48 63 C7 48", 8, 0x3E5705,
+        "render levers"},
+    {"Umbra commander index", kCommanderIndex, Kind::Data, "00 48 03 53 60 48 8B 05 ?? ?? ?? ?? 48 8B 0C C6", 8, 0x3E571A,
+        "render levers"},
+    {"Umbra resolve start stamp", kUmbraResolveStart, Kind::Data, "66 0F 5A C0 F3 0F 11 05 ?? ?? ?? ?? E9 ?? ?? ?? ?? BA 01 00", 8,
+        0x3E8C09, "render levers"},
 };
 
 } // le3

@@ -2,16 +2,16 @@
 """Where a sampled thread's time goes, by the game's own functions (research/22).
 
 Reads the raw stacks mevr-stack-sampler writes (one sample per line, innermost frame first,
-"module+0xoffset"; tools/sample-render-thread.ps1 makes them), maps MassEffect1 frames to whole
-functions through the exe's .pdata unwind table (plain on disk, unlike .text), names them from
-tools/ghidra/symbols-le1.csv where we know them, and prints:
+"module+0xoffset"; tools/sample-render-thread.ps1 makes them), maps the game's frames (MassEffect1, or
+MassEffect2 / MassEffect3 with --game LE2 / LE3) to whole functions through the exe's .pdata unwind table (plain on
+disk, unlike .text), names them from tools/ghidra/symbols-<game>.csv where we know them, and prints:
   - inclusive: the share of samples with the function anywhere on the stack;
   - self: the share where it is the innermost game frame (time in it or in what it calls outside
     the exe: D3D, the driver, the C runtime);
   - with --under RVA: for the samples inside that function, which of its direct game callees
     they are in (a drill-down; repeat on a child to go deeper).
 
-    python -I tools/stack-functions.py <raw.txt> [--under 0x76EE20] [--top 30] [--exe PATH]
+    python -I tools/stack-functions.py <raw.txt> [--under 0x76EE20] [--top 30] [--game LE1|LE2|LE3] [--exe PATH]
 """
 import argparse
 import bisect
@@ -22,8 +22,15 @@ import os
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_EXE = (r'C:\Program Files (x86)\Steam\steamapps\common\Mass Effect Legendary Edition'
-               r'\Game\ME1\Binaries\Win64\MassEffect1.exe')
+GAME_ROOT = r'C:\Program Files (x86)\Steam\steamapps\common\Mass Effect Legendary Edition\Game'
+
+
+def default_exe(game):
+    n = game[2:]
+    return os.path.join(GAME_ROOT, f'ME{n}', 'Binaries', 'Win64', f'MassEffect{n}.exe')
+
+
+DEFAULT_EXE = default_exe('LE1')
 
 
 def load_pdata(exe):
@@ -34,9 +41,11 @@ def load_pdata(exe):
     return [f[0] for f in funcs], funcs
 
 
-def load_names():
+def load_names(game='LE1'):
     names = {}
-    path = os.path.join(HERE, 'ghidra', 'symbols-le1.csv')
+    path = os.path.join(HERE, 'ghidra', f'symbols-{game.lower()}.csv')
+    if not os.path.exists(path):
+        return names  # no symbol list for this game yet: RVAs alone
     with open(path, encoding='utf-8') as f:
         for row in csv.reader(f):
             if len(row) >= 2 and not row[0].startswith('#'):
@@ -52,11 +61,13 @@ def main():
     parser.add_argument('raw')
     parser.add_argument('--under', help='RVA of a game function: break its samples down by direct callee')
     parser.add_argument('--top', type=int, default=30)
-    parser.add_argument('--exe', default=DEFAULT_EXE)
+    parser.add_argument('--game', default='LE1', choices=['LE1', 'LE2', 'LE3'])
+    parser.add_argument('--exe')
     args = parser.parse_args()
+    module_name = f'MassEffect{args.game[2:]}'
 
-    starts, funcs = load_pdata(args.exe)
-    names = load_names()
+    starts, funcs = load_pdata(args.exe or default_exe(args.game))
+    names = load_names(args.game)
 
     def function_of(rva):
         i = bisect.bisect_right(starts, rva) - 1
@@ -89,13 +100,13 @@ def main():
     under = int(args.under, 16) if args.under else None
     under_total = 0
     for frames in samples:
-        game = [function_of(off) for module, off in frames if module == 'MassEffect1']
+        game = [function_of(off) for module, off in frames if module == module_name]
         game = [g for g in game if g is not None]
         for g in set(game):
             inclusive[g] += 1
         if game:
             self_time[game[0]] += 1
-            if frames[0][0] != 'MassEffect1':
+            if frames[0][0] != module_name:
                 outside[(game[0], frames[0][0])] += 1
         if under is not None and under in game:
             under_total += 1

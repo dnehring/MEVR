@@ -4,6 +4,7 @@
 #if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 #include "game/Player.hpp"
 #include "game/Le3Powers.hpp"
+#include "game/SequelPowers.hpp"
 #include "ue3/Handles.hpp"
 #include "ue3/Memory.hpp"
 #include "ue3/Runtime.hpp"
@@ -45,59 +46,45 @@ inline ue3::FunctionRef orderFollow{"SFXGame.BioPlayerController.HenchmanOrderFo
 inline ue3::FunctionRef orderHold{"SFXGame.BioPlayerController.HenchmanOrderHoldPosition", ue3::kEveryGame};
 inline ue3::FunctionRef orderPower{"SFXGame.BioPlayerController.SquadOrderUsePower", ue3::kEveryGame};
 inline ue3::FunctionRef applyOrders{"SFXGame.BioPlayerController.ApplyTacticalOrders", ue3::kEveryGame};
-inline ue3::FieldRef powerManager{"SFXGame.BioPawn", "PowerManager", ue3::kEveryGame};
-inline ue3::FieldRef powers{"SFXGame.SFXPowerManager", "Powers", ue3::kEveryGame};
-inline ue3::FieldRef powerName{"SFXGame.SFXPower", "PowerName", ue3::kEveryGame};
-inline ue3::FieldRef powerRank{"SFXGame.SFXPower", "Rank", ue3::kEveryGame};
-inline ue3::FieldRef powerVisible{"SFXGame.SFXPower", "DisplayInHUD", ue3::kEveryGame};
-inline ue3::FunctionRef powerEnabled{"SFXGame.SFXPower.IsEnabled", ue3::kEveryGame};
-inline ue3::FunctionRef powerCooldown{"SFXGame.SFXPower.GetCooldownRemaining", ue3::kEveryGame};
-inline ue3::FunctionRef powerEvolved{"SFXGame.SFXPowerManager.HasPowerBeenEvolved", ue3::kEveryGame};
+// The power handles live in game/SequelPowers.hpp since 2026-11-16 (one roster reader); the old names forward to them
+// while callers move.
+inline ue3::FieldRef& powerManager = sequel_powers::manager;
+inline ue3::FieldRef& powers = sequel_powers::powers;
+#if defined(MEVR_GAME_LE2)
+inline ue3::FieldRef& powerName = sequel_powers::name;
+inline ue3::FieldRef& powerRank = sequel_powers::rank;
+inline ue3::FieldRef& powerVisible = sequel_powers::visible;
+inline ue3::FunctionRef& powerEnabled = sequel_powers::isEnabled;
+inline ue3::FunctionRef& powerCooldown = sequel_powers::cooldownRemaining;
+inline ue3::FunctionRef& powerEvolved = sequel_powers::evolved;
+#endif
 
 struct Power { ue3::Name name; float cooldown; bool enabled; ue3::Object* object = nullptr; };
-// Same native source and evolution resolution as game/PowerWheel.cpp; includes cooling powers in context,
-// but dispatch re-reads both enabled state and cooldown rather than trusting an earlier voice snapshot.
+// A squadmate's trained, shown powers for the squad's context and orders, over the one roster walk the power wheel
+// uses too (game/SequelPowers.hpp: the manager's list, ME2's evolved instances). Cooling powers are included, but
+// dispatch re-reads both enabled state and cooldown rather than trusting an earlier voice snapshot.
 inline std::vector<Power> Powers(ue3::Object* pawn) {
     std::vector<Power> out;
-    auto* manager = powerManager.Read<ue3::Object*>(pawn).value_or(nullptr);
-    auto list = ue3::runtime::IsAlive(manager) ? powers.ElementsOf(manager) : std::nullopt;
-    if (!list) return out;
+    sequel_powers::ForEach(pawn, [&](ue3::Object* power) {
 #if defined(MEVR_GAME_LE3)
-    if (list->count > 128) return out;
-    for (int i = 0; i < list->count; ++i) {
-        auto** slot = static_cast<ue3::Object**>(list->At(i));
-        auto* object = slot != nullptr ? *slot : nullptr;
-        if (!ue3::runtime::IsAlive(object) || !le3_powers::visible.ReadBool(object).value_or(false)) continue;
-        auto const state = le3_powers::State(object);
-        auto const name = le3_powers::name.Read<ue3::Name>(object);
-        if (!state || !name || name->Key() == 0) continue;
+        if (!le3_powers::visible.ReadBool(power).value_or(false)) return;
+        auto const state = le3_powers::State(power);
+        auto const name = le3_powers::name.Read<ue3::Name>(power);
+        if (!state || !name || name->Key() == 0) return;
         auto const view = vr::power_wheel::EvaluateNativePower(*state);
-        if (!view.valid || !view.learned || std::any_of(out.begin(), out.end(), [&](auto const& p) { return p.name == *name; })) continue;
-        out.push_back({*name, std::max(state->remaining, 0.0f), view.enabled, object});
-    }
+        if (!view.valid || !view.learned || std::any_of(out.begin(), out.end(), [&](auto const& p) { return p.name == *name; })) return;
+        out.push_back({*name, std::max(state->remaining, 0.0f), view.enabled, power});
 #else
-    for (int i = 0; i < list->count && i < 64; ++i) {
-        auto** slot = static_cast<ue3::Object**>(list->At(i));
-        auto* power = slot != nullptr ? *slot : nullptr;
-        if (!ue3::runtime::IsAlive(power)) continue;
-        if (auto* fn = powerEvolved.Get()) {
-            ue3::Params args(ue3::runtime::Get(), fn);
-            if (args.Set("Power", power) && ue3::runtime::Call(manager, fn, args) && args.ReturnBool().value_or(false))
-                power = args.Get<ue3::Object*>("EvolvedPower").value_or(nullptr);
-        }
-        if (!ue3::runtime::IsAlive(power) || !powerVisible.ReadBool(power).value_or(false) ||
-            powerRank.Read<float>(power).value_or(0.0f) <= 0.0f) continue;
-        auto name = powerName.Read<ue3::Name>(power).value_or(ue3::Name{});
-        if (name.Key() == 0 || std::any_of(out.begin(), out.end(), [&](Power const& p) { return p.name.Key() == name.Key(); })) continue;
-        auto* enabled = powerEnabled.Get(); auto* cooldown = powerCooldown.Get();
-        if (enabled == nullptr || cooldown == nullptr) continue;
-        ue3::Params e(ue3::runtime::Get(), enabled), c(ue3::runtime::Get(), cooldown);
-        if (!ue3::runtime::Call(power, enabled, e) || !ue3::runtime::Call(power, cooldown, c)) continue;
-        auto seconds = c.Return<float>();
-        if (!seconds || !std::isfinite(*seconds)) continue;
-        out.push_back({name, std::max(0.0f, *seconds), e.ReturnBool().value_or(false)});
-    }
+        if (!sequel_powers::visible.ReadBool(power).value_or(false) || !sequel_powers::Learned(power)) return;
+        auto const name = sequel_powers::name.Read<ue3::Name>(power).value_or(ue3::Name{});
+        if (name.Key() == 0 || std::any_of(out.begin(), out.end(), [&](Power const& p) { return p.name.Key() == name.Key(); })) return;
+        // A power whose state the game won't state isn't offered (the wheel shows it dim instead).
+        auto const enabled = sequel_powers::Enabled(power);
+        auto const seconds = sequel_powers::Seconds(power, sequel_powers::cooldownRemaining);
+        if (!enabled || !seconds) return;
+        out.push_back({name, *seconds, *enabled});
 #endif
+    });
     return out;
 }
 

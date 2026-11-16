@@ -90,7 +90,9 @@ def lookup(name, game, sdk):
     funcs, classes, fields = engine_names(game, sdk)
     if ':' in name:
         cls, fld = name.split(':')
-        return 'field', fld in fields.get(cls.split('.')[1], ())
+        # Engine names are case-insensitive (ue3/Reflect lowers them), and LExSDKv2's LE3 generator lower-cased some
+        # (Actor.location, FTPOV.location, out_rotation): compare the field as the layer would.
+        return 'field', fld.lower() in {f.lower() for f in fields.get(cls.split('.')[1], ())}
     if name.count('.') == 2:
         return 'function', name in funcs
     return 'class', name in classes

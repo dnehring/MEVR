@@ -306,5 +306,6 @@ game; `tools/ghidra/symbols-le2.csv` has them with a `_guess` suffix:
 - The LE2 diagnostic observers (`engine/Le2DiagnosticObservation.cpp` and its `.inc` files, the `MEVR_LE2_DIAGNOSTIC`
   build only, about 4,000 lines, the ME2 validation session's) still read through LExSDKv2. Each read they make needs a
   `kEveryGame` handle and a ReflectCheck row (the weapon's are in the table already).
-- engine/Legacy stays: LE3's only path, LE2's fallback. M7.1 (the players' build without LExSDKv2 for LE2) removes the
-  fallback once the observers are moved.
+- **Done 2026-11-16 (T04, research/34 section 6.4):** engine/Legacy is no longer LE3's path nor LE2's fallback. It
+  serves the LE2 diagnostic host only, and a monolithic LE2 build (M7.1) links no LExSDKv2; the observers keep it in
+  their own build, which is never packaged.
