@@ -411,7 +411,9 @@ fs::path Layout::Full(std::string_view relative) const {
 
 // ---- Transaction ---------------------------------------------------------------------------------------------------
 
-Transaction::Transaction(Layout layout) : layout_(std::move(layout)) {}
+Transaction::Transaction(Layout layout) : layout_(std::move(layout)) {
+    manifest_.game = layout_.Game().key;  // a new record names its game; a loaded one keeps what it says
+}
 
 void Transaction::Fail(std::string message) {
     errors_.push_back(message);
@@ -983,7 +985,7 @@ bool Transaction::Uninstall(bool keepUserData) {
             }
             if (fs::exists(original, ec)) {
                 Note(f.from + " is already back; left " + f.path);
-            } else if (f.path != paths::kBinkOriginal && !fs::exists(target, ec)) {
+            } else if (f.path != layout_.Paths().binkOriginal && !fs::exists(target, ec)) {
                 Note(f.path + " is gone: nothing to rename back to " + f.from);
             } else if (!Retrying([&] { return MoveFileExW(target.c_str(), original.c_str(), MOVEFILE_WRITE_THROUGH) != FALSE; })) {
                 Fail("couldn't rename " + f.path + " back to " + f.from + " (error " + std::to_string(GetLastError()) + ")");
@@ -1066,7 +1068,7 @@ std::vector<std::string> Transaction::Verify() const {
         fs::path const target = layout_.Full(f.path);
         if (f.action == "renamed") {
             // The game's own Bink DLL behind our loader; a file moved aside (Halcyon's upstream DLLs) isn't needed.
-            if (f.path == paths::kBinkOriginal && !fs::exists(target, ec)) {
+            if (f.path == layout_.Paths().binkOriginal && !fs::exists(target, ec)) {
                 bad.push_back(f.path);
             }
         } else if (f.action == "toc") {

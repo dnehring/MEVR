@@ -616,7 +616,7 @@
 		<div data-if="advtab == 'diag'">
 			<div class="group">
 				<div class="gtitle"><span>Diagnostics</span><div class="gline"/></div>
-				<div class="row" data-class-disabled="le2"><div class="rl"><div class="rlab">Report a problem</div><div class="rdesc">Saves the logs, settings and a summary for your AI assistant or an issue in a zip on your Desktop, in the background. Nothing is sent: open it after the game</div><div class="note" data-if="report_msg != ''">{{report_msg}}</div></div>
+				<div class="row"><div class="rl"><div class="rlab">Report a problem</div><div class="rdesc">Saves the logs, settings and a summary for your AI assistant or an issue in a zip on your Desktop, in the background. Nothing is sent: open it after the game</div><div class="note" data-if="report_msg != ''">{{report_msg}}</div></div>
 					<button class="btn" data-event-click="cmd('report')"><div class="sweep"/><div class="bi i-report"/><span>Report</span><div class="tick"/></button></div>
 				<div class="row" data-class-disabled="le2"><div class="rl"><div class="rlab">With the latest snapshot</div><div class="rdesc">Take one first (below) if the problem is something you see</div></div>
 					<button class="tog" data-class-on="report_snapshot" data-event-click="toggle('report_snapshot')"><div class="knob"/></button></div>

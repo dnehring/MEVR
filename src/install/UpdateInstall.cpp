@@ -144,8 +144,8 @@ Prepared Prepare(Release const& release, Progress const& progress, std::atomic<b
 
 Outcome Apply(Layout const& layout, Payload const& payload, fs::path const& installer, Progress const& progress, std::atomic<bool> const* cancel) {
     auto error = [](std::string text) { Outcome out; out.errors.push_back(text); out.log.push_back("error: " + text); return out; };
-    if (!detect::IsGameRoot(layout.root)) return error("Choose the installed game's folder before updating.");
-    if (!payload.Valid() || !MatchesVersion(installer,kVersion) || !MatchesVersion(payload.Asi(),kVersion) || !MatchesVersion(payload.Loader(),kVersion)) {
+    if (!detect::HasGame(layout.root,layout.game)) return error("Choose the installed game's folder before updating.");
+    if (!payload.Has(layout.game) || !MatchesVersion(installer,kVersion) || !MatchesVersion(payload.Asi(layout.game),kVersion) || !MatchesVersion(payload.Loader(),kVersion)) {
         return error("The downloaded installer and payload versions don't match.");
     }
     Transaction tx(layout);
@@ -162,6 +162,15 @@ Outcome Apply(Layout const& layout, Payload const& payload, fs::path const& inst
     options.preserveSettings = true;
     options.gameSettings = false;
     Outcome out = Install(layout,payload,options);
+    // The other games of the three that have the mod here get the same update, when the release carries theirs (T52).
+    for (GameId const other : InstalledGames(layout.root,layout.game)) {
+        if (!out.ok || !payload.Has(other) || !MatchesVersion(payload.Asi(other),kVersion)) continue;
+        Outcome const theirs = Install(Layout{layout.root,other},payload,options);
+        out.log.push_back(std::string(Spec(other).name) + ":");
+        out.log.insert(out.log.end(),theirs.log.begin(),theirs.log.end());
+        out.errors.insert(out.errors.end(),theirs.errors.begin(),theirs.errors.end());
+        out.ok = out.ok && theirs.ok;
+    }
     if (out.ok) {
         out.log.push_back("Updated to " + std::string(kVersion) + ". Your game settings, VR profiles and calibration were kept.");
         if (progress) progress("Update complete. Your settings were kept.",100);
