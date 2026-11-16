@@ -1159,7 +1159,14 @@ void __fastcall DrawDetour(void* self, void* viewport, void* canvas) noexcept
         // no-ops too at the same tens-of-us cost, and the success counter stays at zero, which is
         // itself the answer. Only ever ONE retry: a burst that persists across the retry persists
         // for the frame, and re-looping the engine's Draw would trade a flicker for a stall.
+#if defined(MEVR_ASI)
+        // [MEVR] [Performance] sfrReplayRetry = 0: no retry. On our machines a pass 1 under 100 us usually rendered, and the
+        // retry was the frame's third scene render on ~20% of frames (research/sequel-render-levers.md "Performance
+        // research"). The default (1) is upstream's retry.
+        if (us < 100 && ::ME2VR::MevrBridge::SfrReplayRetry())
+#else
         if (us < 100)
+#endif
         {
             g_sfrRetryAttempts.fetch_add(1, std::memory_order_relaxed);
             LARGE_INTEGER r0 = {}, r1 = {};

@@ -19,6 +19,7 @@
 #endif
 #if defined(MEVR_WITH_HALCYON_LE2)
 #include "halcyon/le2/calcview_hook.h"   // ME2's same-frame replay retries, for the 10 s line
+#include "halcyon/le2/mevr_bridge.h"     // ME2VR::MevrBridge::SfrReplayRetry, defined at the end of this file
 #endif
 #if defined(MEVR_WITH_HALCYON)
 #include "plugin/MetricStereo.hpp"   // LE1's metric stereo plan: the eye scissor's shown window
@@ -108,6 +109,10 @@ std::atomic<int> gUe3QueryWait{1};  // 1 the game's own; 0 a frame's second rend
 std::atomic<std::uint64_t> gQueryWaitsSkipped{0};  // reads that would have waited, this period
 // 1: Halcyon renders each stereo eye through its own view state in gameplay too (ME1 0; the sequels' SFR 1, from the start)
 std::atomic<int> gPerEyeViewState{kLayout.perEyeViewStateDefault};
+#if defined(MEVR_WITH_HALCYON_LE2)
+// ME2 only: Halcyon's same-frame retry of a pass 1 that returned in under 100 us ([Performance] sfrReplayRetry, 1 upstream's)
+std::atomic<int> gSfrReplayRetry{1};
+#endif
 
 // ---- The second eye's own occlusion history (research/35, attempts 34-35) ------------------------------------------
 // FSceneViewState keeps the engine's per-primitive occlusion history as a TSet<FPrimitiveOcclusionHistory> at +0xD10:
@@ -2424,6 +2429,21 @@ void Tick() {
                 perEyeRead, perEyeRead == kLayout.perEyeViewStateDefault ? ", this game's default" : "");
 #endif
         }
+#if defined(MEVR_WITH_HALCYON_LE2)
+        {
+            static int retry = -1;
+            int const retryRead = readInt(L"sfrReplayRetry", 1) != 0 ? 1 : 0;
+            if (retryRead != retry) {
+                retry = retryRead;
+                gSfrReplayRetry.store(retryRead, std::memory_order_relaxed);
+                log::Info("render levers: {} ([Performance] sfrReplayRetry = {})",
+                    retryRead != 0 ? "a pass 1 Draw that returned in under 100 us is drawn again in the same frame (Halcyon "
+                                     "ME2's own [NOOPRETRY]; when it had rendered, the retry is a third scene render)"
+                                   : "a pass 1 Draw is never drawn again in the same frame",
+                    retryRead);
+            }
+        }
+#endif
         static int umbraEyeMatrix = -1;
         int const umbraEyeMatrixRead = readInt(L"umbraEyeMatrix", 1) != 0 ? 1 : 0;
         if (umbraEyeMatrixRead != umbraEyeMatrix) {
@@ -2653,6 +2673,14 @@ bool PerEyeViewState() noexcept {
     return mevr::host::render_levers::PerEyeViewState();
 }
 } // namespace MevrSeams
+#endif
+#if defined(MEVR_WITH_HALCYON_LE2)
+// ME2's own seam (src/halcyon/le2/mevr_bridge.h): DrawDetour's same-frame retry of pass 1.
+namespace ME2VR::MevrBridge {
+bool SfrReplayRetry() noexcept {
+    return mevr::host::render_levers::gSfrReplayRetry.load(std::memory_order_relaxed) != 0;
+}
+} // namespace ME2VR::MevrBridge
 #endif
 
 namespace mevr::host::render_levers {

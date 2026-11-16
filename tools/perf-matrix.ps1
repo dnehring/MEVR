@@ -23,7 +23,7 @@ param(
     [string]$Tag = 'matrix',
     [string]$OutDir = '',
     [int]$Snapshots = 1,
-    [int]$QuietWaitSeconds = 300,   # before each capture: wait this long at most for no cl, link, ctest or mevr-tests
+    [int]$QuietWaitSeconds = 45,   # before each capture: wait this long at most for no cl, link, ctest or mevr-tests
     [switch]$NoReplay
 )
 $ErrorActionPreference = 'Stop'
@@ -93,30 +93,30 @@ try {
                 [void][MevrMatrixIni.Native]::WritePrivateProfileString($section, $key, $value, $ini)
             }
             Start-Sleep -Seconds $Settle
-            $tag = "$Tag-c$i-r$round"
+            $captureTag = "$Tag-c$i-r$round"   # (not $tag: PowerShell names ignore case, it would be $Tag)
             $quietDeadline = (Get-Date).AddSeconds($QuietWaitSeconds)
             $waitStart = Get-Date
             while ((& $busy) -gt 0 -and (Get-Date) -lt $quietDeadline) { Start-Sleep -Seconds 5 }
             $waitedQuiet = [int]((Get-Date) - $waitStart).TotalSeconds
             $compilers = & $busy
             $t0 = Get-Date
-            $text = & "$PSScriptRoot\perf-probe.ps1" -Seconds $Seconds -Tag $tag 2>&1 | Out-String
+            $text = & "$PSScriptRoot\perf-probe.ps1" -Seconds $Seconds -Tag $captureTag 2>&1 | Out-String
             $t1 = Get-Date
-            $text | Set-Content -Encoding utf8 (Join-Path $OutDir "$tag-probe.txt")
+            $text | Set-Content -Encoding utf8 (Join-Path $OutDir "$captureTag-probe.txt")
             $probe = ($text -split "`r?`n" | Where-Object { $_ -match '-probe\.json$' } | Select-Object -Last 1)
             $snaps = @()
             if ($round -eq 1 -and $Snapshots -gt 0) {
                 $since = Get-Date
-                & "$PSScriptRoot\snapshot.ps1" -Count $Snapshots -Interval 1 -Tag $tag | Out-Null
-                $snaps = @(Get-ChildItem (Join-Path $MevrDataDir 'snapshots') -Filter "*-$tag*.json" -ErrorAction SilentlyContinue |
+                & "$PSScriptRoot\snapshot.ps1" -Count $Snapshots -Interval 1 -Tag $captureTag | Out-Null
+                $snaps = @(Get-ChildItem (Join-Path $MevrDataDir 'snapshots') -Filter "*.json" -ErrorAction SilentlyContinue |   # (the sequels name snapshots by time only)
                     Where-Object { $_.LastWriteTime -ge $since } | ForEach-Object { $_.FullName })
             }
             $entries += [pscustomobject]@{
-                combo = ($Combos[$i]); index = $i; round = $round; tag = $tag; probe = $probe
+                combo = ($Combos[$i]); index = $i; round = $round; tag = $captureTag; probe = $probe
                 start = $t0.ToString('HH:mm:ss'); end = $t1.ToString('HH:mm:ss'); seconds = $Seconds
                 compilersAtStart = $compilers; compilersAtEnd = (& $busy); waitedForQuietS = $waitedQuiet; snapshots = $snaps
             }
-            Write-Host ("{0} [{1}]: {2} (compilers {3}/{4}, waited {5} s for quiet)" -f $tag, $Combos[$i], $probe, $compilers,
+            Write-Host ("{0} [{1}]: {2} (compilers {3}/{4}, waited {5} s for quiet)" -f $captureTag, $Combos[$i], $probe, $compilers,
                 $entries[-1].compilersAtEnd, $waitedQuiet)
         }
     }
