@@ -251,14 +251,6 @@ void NoteSubmit(bool conversation, float heightM, bool stereoSource) noexcept {
 // LE1's seams (src/halcyon/le1/mevr_bridge.h), forwarded to the shared functions above.
 namespace MELEVR::MevrBridge {
 
-bool CineScreenWanted(bool conversation) noexcept {
-    return mevr::host::cine_screen::Wanted(conversation);
-}
-
-bool CineScreenFullRate() noexcept {
-    return mevr::host::cine_screen::FullRate();
-}
-
 bool CineScreenQuadsNow(unsigned eyeWidth, unsigned eyeHeight, CineScreenQuads* out) noexcept {
     if (out == nullptr) {
         return false;

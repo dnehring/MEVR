@@ -115,6 +115,9 @@ bool gLoggedView = false;     // Present thread
 
 } // namespace
 
+} // namespace MELEVR::MevrBridge
+namespace MevrSeams {
+using namespace MELEVR::MevrBridge;
 void* StaticXrGetInstanceProcAddr() noexcept {
     // [Debug] openxrRuntime = <runtime manifest .json>: the statically linked loader takes XR_RUNTIME_JSON over the machine's
     // active runtime (HKLM, admin to change). The fake headset's SteamVR null driver needs SteamVR's manifest while the owner's
@@ -298,31 +301,8 @@ void OnFrameBegun(void* session, void* space, std::int64_t predictedDisplayTime)
         mevr::host::testloop::RequestSnapshot(request);
     }
 }
-
-bool MainMenuOpen() noexcept {
-#if defined(MEVR_WITH_MAIN_MENU)
-    return mevr::host::main_menu::IsOpen();
-#else
-    return false;
-#endif
-}
-
-void OnMenuKey() noexcept {
-    // \ (Halcyon's menuKey in our deploy) is our menu's; with Ctrl or Shift held, Halcyon's own (a developer fallback).
-    // While Halcyon's menu is open, the key closes it as before.
-    bool const modifier = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0 || (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
-#if defined(MEVR_WITH_MAIN_MENU)
-    if (!modifier && !MELEVR::Menu::IsOpen()) {
-        mevr::host::main_menu::Toggle("the menu key");
-        return;
-    }
-    if (mevr::host::main_menu::IsOpen()) {
-        mevr::host::main_menu::SetOpen(false, "Ctrl/Shift + the menu key: Halcyon's menu instead");
-    }
-#endif
-    (void)modifier;
-    MELEVR::Menu::Toggle();
-}
+} // namespace MevrSeams
+namespace MELEVR::MevrBridge {
 
 bool FirstPersonAtBoot(bool saved) noexcept {
     mevr::log::Info("halcyon bridge: first person at launch {} (the active profile's saved state; upstream always boots it off)",
@@ -385,23 +365,22 @@ HWND GameWindow() noexcept {
     return gGameWindow.load();
 }
 
-bool KeyDown(int vk) noexcept {
-    return mevr::window::KeyDownInGame(vk);  // the game's window (or its console), not another program's
-}
-
-void OnViewBuilt(bool worldView, bool headLook, bool headAim, float const headOrientation[4],
-    float const headPosition[3], float offsetRightUU, float offsetUpUU, float offsetForwardUU,
-    float unitsPerMeter, bool floorWorld) noexcept {
+} // namespace MELEVR::MevrBridge
+namespace MevrSeams {
+using namespace MELEVR::MevrBridge;
+void OnViewBuilt(bool worldView, bool headLook, bool headAim, int lookYawUU, int lookPitchUU,
+    float const headOrientation[4], float const headPosition[3], float offsetRightUU, float offsetUpUU,
+    float offsetForwardUU, float unitsPerMeter, bool floorWorld) noexcept {
     mevr::vr::host_view::State view;
     view.valid = worldView;
     view.headLook = headLook;
     view.headAim = headAim;
     view.head.orientation = {headOrientation[0], headOrientation[1], headOrientation[2], headOrientation[3]};
     view.head.position = {headPosition[0], headPosition[1], headPosition[2]};
-    // Halcyon's head look yaw is + when the view turns left; ours (UE rotators) + right. Pitch is
-    // + up in both. Zero while head look is off.
-    view.lookYaw = -MELEVR::RenderHook::HeadLookYawUU();
-    view.lookPitch = MELEVR::RenderHook::HeadLookPitchUU();
+    // Halcyon's head look yaw (RenderHook::HeadLookYawUU, read by the caller) is + when the view turns left; ours (UE
+    // rotators) + right. Pitch is + up in both. Zero while head look is off.
+    view.lookYaw = -lookYawUU;
+    view.lookPitch = lookPitchUU;
     view.offsetForward = offsetForwardUU;
     view.offsetRight = offsetRightUU;
     view.offsetUp = offsetUpUU;
@@ -419,6 +398,8 @@ void OnViewBuilt(bool worldView, bool headLook, bool headAim, float const headOr
             unitsPerMeter, headPosition[0], headPosition[1], headPosition[2]);
     }
 }
+} // namespace MevrSeams
+namespace MELEVR::MevrBridge {
 
 void NoteDrawArm(std::uint64_t arm) noexcept {
     mevr::vr::scope_capture::NoteDrawArm(arm);  // research/39: which capture pose this Draw renders
@@ -469,6 +450,9 @@ void NoteCloseLatch(bool kept) noexcept {
 }
 } // namespace
 
+} // namespace MELEVR::MevrBridge
+namespace MevrSeams {
+using namespace MELEVR::MevrBridge;
 DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noexcept {
     if (index != 0 || state == nullptr) {
         return result;
@@ -556,14 +540,8 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
     state->Gamepad = pad;
     return ERROR_SUCCESS;
 }
-
-bool OnGameThread() noexcept {
-    return mevr::host::game_thread::OnGameThread();
-}
-
-bool QueueProcessEvent(void* object, void* function, void const* params) noexcept {
-    return mevr::host::game_thread::Queue(object, function, params);
-}
+} // namespace MevrSeams
+namespace MELEVR::MevrBridge {
 
 // One FViewportClient::Draw a frame (research/37): the host's switch, and pass 0's record of pass 1's view.
 std::atomic<bool> g_oneDrawStereo{false};

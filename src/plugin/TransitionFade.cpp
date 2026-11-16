@@ -171,9 +171,9 @@ const void* Layer(void* session, void* viewSpace, ID3D11DeviceContext* context, 
 } // namespace mevr::host::transition_fade
 
 #if defined(MEVR_WITH_HALCYON)
-// LE1's seam (src/halcyon/le1/mevr_bridge.h, xr_session.cpp's last layer), forwarded to the shared Layer above, with LE1's
+// LE1's answer to the common seam (src/halcyon/MevrSeams.h; xr_session.cpp's last layer), forwarded to the shared Layer above, with LE1's
 // cut inside a world conversation (the player re-placed at Shepard's mark after the opening, research/59 "Part A").
-namespace MELEVR::MevrBridge {
+namespace MevrSeams {
 
 const void* TransitionFadeLayer(void* session, void* viewSpace, ID3D11DeviceContext* context, int view) noexcept {
     static std::uint32_t lastCut = 0;
@@ -185,5 +185,5 @@ const void* TransitionFadeLayer(void* session, void* viewSpace, ID3D11DeviceCont
     return mevr::host::transition_fade::Layer(session, viewSpace, context, view, cut);
 }
 
-} // namespace MELEVR::MevrBridge
+} // namespace MevrSeams
 #endif

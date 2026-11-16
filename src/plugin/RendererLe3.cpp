@@ -36,6 +36,22 @@ std::atomic<HWND> gGameWindow{nullptr};
 std::atomic<bool> gModHandAim{false};
 }
 
+Caps const& Capabilities() noexcept {
+    static Caps const caps = [] {
+        Caps c;
+        c.name = "halcyon-le3";
+        c.eyeImageSeams = true;
+        c.hudPanelDraw = true;
+        c.hostCineScreen = true;
+        c.panelsInRoom = true;
+        c.galaxyTable = true;        // [Galaxy] nativeTable, opt-in
+        // hudPanelGameplay false: only a measured prompt crop is captured, the native gameplay HUD stays in the eyes.
+        // screenReticleHide false: the native LE3 crosshair's ownership has not been verified.
+        return c;
+    }();
+    return caps;
+}
+
 bool OwnMenuOpen() noexcept {
     return ME2VR::Menu::IsOpen();
 }

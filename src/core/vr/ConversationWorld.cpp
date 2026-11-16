@@ -307,6 +307,25 @@ bool HasText(std::string_view text, std::string_view part) {
 
 }  // namespace
 
+namespace {
+
+// Whether a move track instance's path is in that matinee of that level (its name whole: SeqAct_Interp_0, not SeqAct_Interp_01).
+bool InMatinee(std::string_view trackPath, std::string_view matineeLevel, std::string_view matineeName) {
+    std::string const level = std::string(matineeLevel) + ".TheWorld.PersistentLevel.";
+    std::string const matinee = "." + std::string(matineeName);
+    for (std::size_t i = 0; i + matinee.size() <= trackPath.size(); ++i) {
+        if (SameText(trackPath.substr(i, matinee.size()), matinee)) {
+            std::size_t const at = i + matinee.size();
+            if ((at == trackPath.size() || trackPath[at] == '.') && HasText(trackPath, level)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+}  // namespace
+
 ShownEarly const* ShownEarlyFor(std::string_view trackPath) {
     // The walk with Anderson to the Council (save 80): its matinee is the captain level's SarenCouncil.SeqAct_Interp_0; the hearing
     // stands in BIOA_STA70_02council_DSG, shown by the chamber's streaming volume (streamvol_council) under the walk's black screen,
@@ -316,23 +335,48 @@ ShownEarly const* ShownEarlyFor(std::string_view trackPath) {
          {"sta90_ambassador", "sta90_asari_councilor", "sta90_salarian_councilor", "sta90_turian_councilor"}},
     };
     for (ShownEarly const& e : kTable) {
-        std::string const level = std::string(e.matineeLevel) + ".TheWorld.PersistentLevel.";
-        std::string const matinee = "." + std::string(e.matinee);
-        std::size_t const at = [&]() -> std::size_t {
-            for (std::size_t i = 0; i + matinee.size() <= trackPath.size(); ++i) {
-                if (SameText(trackPath.substr(i, matinee.size()), matinee)) {
-                    return i + matinee.size();
-                }
-            }
-            return std::string_view::npos;
-        }();
-        // The matinee's name ends there (SeqAct_Interp_0, not SeqAct_Interp_01).
-        bool const whole = at != std::string_view::npos && (at == trackPath.size() || trackPath[at] == '.');
-        if (whole && HasText(trackPath, level)) {
+        if (InMatinee(trackPath, e.matineeLevel, e.matinee)) {
             return &e;
         }
     }
     return nullptr;
+}
+
+bool IsCuratedWalk(std::string_view what, std::string_view extra) {
+    // The walk with Anderson to the Council (the owner, 2026-11-16: "the only exceptions are going to be on curated experiences
+    // like the council meeting where we need to do walking"): its script moves Shepard under its black screen on the way, and
+    // the player walks on to him (research/69 "The council during the walk", "The hearing that ended at once").
+    struct Matinee {
+        std::string_view level;
+        std::string_view name;
+    };
+    static constexpr Matinee kMatinees[] = {
+        {"BIOA_STA70_02captain_DSG", "SarenCouncil.SeqAct_Interp_0"},
+    };
+    if (what.empty()) {
+        return false;
+    }
+    for (Matinee const& m : kMatinees) {
+        if (InMatinee(what, m.level, m.name)) {
+            return true;
+        }
+    }
+    std::string const key = ConversationKey(what);
+    while (!extra.empty()) {
+        std::size_t const comma = extra.find(',');
+        std::string_view item = extra.substr(0, comma);
+        extra = comma == std::string_view::npos ? std::string_view{} : extra.substr(comma + 1);
+        while (!item.empty() && (item.front() == ' ' || item.front() == '\t')) {
+            item.remove_prefix(1);
+        }
+        while (!item.empty() && (item.back() == ' ' || item.back() == '\t')) {
+            item.remove_suffix(1);
+        }
+        if (!item.empty() && (HasText(what, item) || SameText(key, item))) {
+            return true;
+        }
+    }
+    return false;
 }
 
 bool ShownEarlyTag(ShownEarly const& entry, std::string_view tag) {

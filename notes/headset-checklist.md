@@ -278,6 +278,13 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   a ledge stops you; the wheel takes the stick while it's up. Watch for your body or arms left behind, a snap back onto the mark at
   a camera cut (the log's `kept in place` for Shepard), or the squad standing where they were. `worldMoveLeashM`, `worldMoveSpeedMS`
   live; `worldMove = 0` off.
+- [ ] **The fade to black moves you** (2026-11-16, research/69 item 41; Claude can check the council walk on the fake headset
+  first): in first-person conversations and scripted walks, whenever the game fades to black and moves Shepard (into an elevator,
+  across a room), you come out of the fade where he is, never left behind; the walk with Anderson to the Council still walks.
+  Log `convo: at N s under the game's black screen the player goes with Shepard`, `moment: ... under the game's fade to black`.
+  `[Cinematics] worldBlackMoves = 0` is the old rule; `worldCuratedWalks` adds walks that keep walking.
+  The lift up from Liara's cell on Therum (research/69 item 42): you ride up with it, the conversation's view never stays at the
+  bottom, and you can walk on the lift (log `convo: ... the player rides with it`).
 - [ ] **First person for every conversation: the robustness round** (built 2026-11-09, research/69 "To check in the game"; Claude
   checks these on the fake headset first, when the game folder is free). Checked there 2026-11-09: placements withheld at their
   source (the wake-up scene: 28 withheld, 0 undone), the walk stopping at a trigger's edge, and another scene's start held during
