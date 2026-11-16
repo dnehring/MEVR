@@ -717,11 +717,16 @@ void HudPanelPresentEnd(int mirrorPath) noexcept {
     }
 }
 
+} // namespace MELEVR::MevrBridge
+namespace MevrSeams {
+using namespace MELEVR::MevrBridge;
 void OnSessionStopped() noexcept {
     mevr::host::floor_lock::Reset();
     hud_panel::SetArmed(false);  // no OverlayLayers runs now to disarm it: the UI back to the frame
     gGalaxyEarlyUi.store(false, std::memory_order_release);
 }
+} // namespace MevrSeams
+namespace MELEVR::MevrBridge {
 
 ID3D11RenderTargetView* HudPanelTarget(ID3D11DeviceContext* context, unsigned width, unsigned height, int format) noexcept {
     return hud_panel::Target(context, width, height, format);
@@ -756,6 +761,9 @@ bool HudPanelIsFloat() noexcept {
     return hud_panel::IsFloat();
 }
 
+} // namespace MELEVR::MevrBridge
+namespace MevrSeams {
+using namespace MELEVR::MevrBridge;
 void OnRecentered() noexcept {
     mevr::host::recenter_tilt::Committed();  // the orientation RecenterOrientation chose is the app space's now
     hud_panel::Recentered();
@@ -769,6 +777,8 @@ void OnRecentered() noexcept {
 #endif
     mevr::host::halcyon::NoteRecentered();  // the holsters take the standing eye height there
 }
+} // namespace MevrSeams
+namespace MELEVR::MevrBridge {
 
 void RequestHudPanelReplace() noexcept {
     hud_panel::RequestReplace();
@@ -809,6 +819,9 @@ void ProbeTextureAlpha(ID3D11DeviceContext* context, ID3D11Texture2D* texture, c
     gProbes.push_back(std::move(probe));
 }
 
+} // namespace MELEVR::MevrBridge
+namespace MevrSeams {
+using namespace MELEVR::MevrBridge;
 unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsigned capacity) noexcept {
     mevr::host::perf::ScopedMarks const timed(mevr::vr::frame_probe::kOverlayBegin, mevr::vr::frame_probe::kOverlayEnd);
     ID3D11DeviceContext* const context = frame.context;
@@ -879,7 +892,7 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
     // head-locked shrink-and-centre would only make it small there).
     bool const handAim = ControllerAimActive();
     bool const panelUsable = hud_panel::Usable();
-    bool const engaged = cfg.hudPanel && frame.sfr2 && panelUsable;
+    bool const engaged = cfg.hudPanel && frame.stereo && panelUsable;
     mevr::host::renderer::SetAuthoredHudLayout(engaged);
 
     unsigned count = 0;
@@ -1786,5 +1799,7 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
 #endif
     return count;
 }
+} // namespace MevrSeams
+namespace MELEVR::MevrBridge {
 
 } // namespace MELEVR::MevrBridge

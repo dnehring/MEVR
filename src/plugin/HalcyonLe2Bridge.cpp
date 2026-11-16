@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
-// Our side of the seams in Halcyon's ME2 renderer (src/halcyon/le2/mevr_bridge.h): the OpenXR loader, the session's
+// Our side of the seams in Halcyon's ME2 renderer (the common ones, src/halcyon/MevrSeams.h, and ME2's own,
+// src/halcyon/le2/mevr_bridge.h): the OpenXR loader, the session's
 // functions for the test loop, our controller actions, their vibration and the floor on Halcyon's session (plugin/XrHost,
 // shared with LE1's bridge), the view each frame for the mod (core/vr/HostView), and the motion controllers as Xbox pad 0.
 // As LE1's (plugin/HalcyonBridge.cpp). The game-thread queue and the runtime test are in plugin/HalcyonLe2.cpp. Separate
@@ -66,7 +67,7 @@
 #include <filesystem>
 #include <mutex>
 
-namespace ME2VR::MevrBridge {
+namespace MevrSeams {
 namespace {
 
 bool gToldFirstSync = false;  // Present thread
@@ -245,11 +246,16 @@ float FloorViewTranslation(bool replay, float rawCameraZ, float rightZ, float up
     return mevr::host::floor_lock::Translate(replay, rawCameraZ, rightZ, upZ, forwardZ, right, up, forward);
 }
 
+} // namespace MevrSeams
+namespace ME2VR::MevrBridge {
+using namespace MevrSeams;
 void JournalFloorViewWrite(void const* origin, void const* preTranslation) noexcept {
     mevr::host::crash::RecordWrite("FloorLock.viewOrigin", origin, 12, mevr::breadcrumbs::FirstBytes(origin, 12));
     mevr::host::crash::RecordWrite("FloorLock.preViewTranslation", preTranslation, 12,
         mevr::breadcrumbs::FirstBytes(preTranslation, 12));
 }
+} // namespace ME2VR::MevrBridge
+namespace MevrSeams {
 
 void OnRecentered() noexcept {
     gGalaxyTable.Reset();
@@ -275,8 +281,6 @@ void OnSessionStopped() noexcept {
 
 namespace {
 D3D11_TEXTURE2D_DESC gSourceDesc[2]{};  // Present thread: the last eye source's, for the copy's log line
-void* gPendingSource = nullptr;          // Present thread: OnEyeSource's, for the copy right after it (its eye)
-int gPendingEye = -1;
 D3D11_TEXTURE2D_DESC gLoggedSource{};
 D3D11_TEXTURE2D_DESC gLoggedImage{};
 int gCopyDescLogs = 0;
@@ -291,16 +295,12 @@ void OnEyeSource(int eye, void* source) noexcept {
     if ((eye == 0 || eye == 1) && source != nullptr) {
         static_cast<ID3D11Texture2D*>(source)->GetDesc(&gSourceDesc[eye]);
     }
-    gPendingSource = source;
-    gPendingEye = eye;
     mevr::host::testloop::OnEyeSource(eye, static_cast<ID3D11Texture2D*>(source));
 }
 
-bool CopyIntoImage(void* context, void* image, void* source, int shiftX) noexcept {
-    // The eye whose source OnEyeSource just named (CopyTextureToEyeFullFrame), else the flat panel (-1): the colour
-    // correction's dither pattern per eye (plugin/Colour).
-    int const eye = source != nullptr && source == gPendingSource ? gPendingEye : -1;
-    gPendingSource = nullptr;
+bool CopyIntoImage(void* context, void* image, void* source, int shiftX, int eye) noexcept {
+    // `eye`: 0 or 1 (CopyTextureToEyeFullFrame), else the flat panel (-1): the colour correction's dither pattern per eye
+    // (plugin/Colour).
     return mevr::host::eye_copy::Copy(static_cast<ID3D11DeviceContext*>(context), static_cast<ID3D11Texture2D*>(image),
         static_cast<ID3D11Texture2D*>(source), shiftX, eye);
 }
@@ -371,6 +371,9 @@ void OnEyeReleased(int eye, bool published) noexcept {
     mevr::host::testloop::OnEyeReleased(eye, published);
 }
 
+} // namespace MevrSeams
+namespace ME2VR::MevrBridge {
+using namespace MevrSeams;
 void OnSwapChainPresent(void* swapChain, void* capturedSwapChain) noexcept {
     // The last present's UI draws in order (HudPanelDraw), six presents with UI once the HUD panel is armed.
     if (swapChain != nullptr && swapChain == capturedSwapChain) {
@@ -437,6 +440,8 @@ void OnSwapChainPresent(void* swapChain, void* capturedSwapChain) noexcept {
         described ? static_cast<int>(desc.SwapEffect) : -1,
         described ? reinterpret_cast<std::uintptr_t>(desc.OutputWindow) : 0, described ? "" : " (no description)");
 }
+} // namespace ME2VR::MevrBridge
+namespace MevrSeams {
 
 // ---- Our layers (LE1's HalcyonOverlays::OverlayLayers) ------------------------------------------------------------------
 // LE2 composes the shared comfort vignette, the HUD panel, the weapon sights and the hand reticle over Halcyon's projection,
@@ -626,12 +631,14 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
     return count;
 }
 
-// ---- ME1's 3D cinema screen (plugin/CineScreen, CinemaBackdrop, WorldPanels; research/52, research/le2-cinema.md) ----------
-bool CineScreenWanted(bool conversation) noexcept {
-    return mevr::host::cine_screen::Wanted(conversation);
-}
-
-bool PlaceGalaxyPanel(OverlayFrame const& frame, bool imageReady, float aspect, GalaxyPanel& out) noexcept {
+// ME2's PlacePanel: only the native galaxy/orbital image, on ME1's table geometry ([Galaxy] nativeTable); every other flat
+// panel keeps the renderer's own placement (`placed` false). Called every frame, before OverlayLayers.
+PanelPose PlacePanel(PanelKind kind, OverlayFrame const& frame, float const viewPosition[3], float widthM, float heightM,
+    bool imageReady) noexcept {
+    (void)kind;  // ByGameMode: the table follows frame.gameMode
+    (void)viewPosition;
+    float const aspect = widthM > 0 ? heightM / widthM : 0;
+    PanelPose out;
     std::uint64_t const now = GetTickCount64();
     if (now - gGalaxySettingsRead >= 1000) {
         gGalaxySettingsRead = now;
@@ -654,20 +661,30 @@ bool PlaceGalaxyPanel(OverlayFrame const& frame, bool imageReady, float aspect, 
         {frame.headPosition[0], frame.headPosition[1], frame.headPosition[2]}};
     gGalaxyPanel = gGalaxyTable.Update(mevr::engine::adapter::IsMapMode(frame.gameMode), gGalaxyTableEnabled && frame.appSpace != nullptr,
         imageReady && frame.headValid, head, aspect, gGalaxySettings);
-    if (!gGalaxyPanel) return false;
+    if (!gGalaxyPanel) return out;
     auto const& p = gGalaxyPanel->pose;
-    out = {{p.orientation.x, p.orientation.y, p.orientation.z, p.orientation.w},
-        {p.position.x, p.position.y, p.position.z}, gGalaxyPanel->width, gGalaxyPanel->height};
-    return true;
+    out.placed = true;
+    out.space = frame.appSpace;
+    out.headLocked = false;
+    out.orientation[0] = p.orientation.x; out.orientation[1] = p.orientation.y;
+    out.orientation[2] = p.orientation.z; out.orientation[3] = p.orientation.w;
+    out.position[0] = p.position.x; out.position[1] = p.position.y; out.position[2] = p.position.z;
+    out.widthM = gGalaxyPanel->width;
+    out.heightM = gGalaxyPanel->height;
+    out.nativeMap = true;
+    return out;
 }
 
-bool CineScreenFullRate() noexcept {
-    return mevr::host::cine_screen::FullRate();
-}
-
+} // namespace MevrSeams
+namespace ME2VR::MevrBridge {
+using namespace MevrSeams;
+// ---- ME1's 3D cinema screen (plugin/CineScreen, CinemaBackdrop, WorldPanels; research/52, research/le2-cinema.md) ----------
+// (CineScreenWanted and CineScreenFullRate are plugin/Seams.cpp's, the same for every game.)
 float CineScreenHalfSeparationUU(float halfH) noexcept {
     return mevr::host::sequel_cinema::HalfSeparationUU(halfH);
 }
+} // namespace ME2VR::MevrBridge
+namespace MevrSeams {
 unsigned CineScreenLayers(const CineScreenFrame& frame, const void** layersOut, unsigned capacity) noexcept {
     return mevr::host::sequel_cinema::Layers(frame, layersOut, capacity, gScreen);
 }
@@ -758,4 +775,4 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
     return ERROR_SUCCESS;
 }
 
-} // namespace ME2VR::MevrBridge
+} // namespace MevrSeams

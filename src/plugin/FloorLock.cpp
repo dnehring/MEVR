@@ -198,10 +198,15 @@ void FloorViewLook(bool* on, float* yaw, float* pitch, std::uint64_t* arm) noexc
     *pitch = static_cast<float>(gPair.view.lookPitch);
     *arm = gPair.arm;
 }
+} // namespace MELEVR::MevrBridge
+namespace MevrSeams {
+using namespace MELEVR::MevrBridge;
 float FloorViewTranslation(bool replay, float rawCameraZ, float rightZ, float upZ, float forwardZ,
     float* right, float* up, float* forward) noexcept {
     return mevr::host::floor_lock::Translate(replay, rawCameraZ, rightZ, upZ, forwardZ, right, up, forward);
 }
+} // namespace MevrSeams
+namespace MELEVR::MevrBridge {
 void JournalFloorViewWrite(void const* origin, void const* preTranslation) noexcept {
     mevr::host::crash::RecordWrite("FloorLock.viewOrigin", origin, 12, mevr::breadcrumbs::FirstBytes(origin, 12));
     mevr::host::crash::RecordWrite("FloorLock.preViewTranslation", preTranslation, 12, mevr::breadcrumbs::FirstBytes(preTranslation, 12));

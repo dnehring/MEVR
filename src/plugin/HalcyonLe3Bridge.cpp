@@ -83,7 +83,7 @@ bool SetTraversalPresentation(vr::traversal::Presentation const* value) noexcept
     return gTraversalPresentation.Set(value, GetTickCount64(), floor.recenters, floor.sessions);
 }
 }
-namespace ME2VR::MevrBridge {
+namespace MevrSeams {
 void OnFactory(void* factory) noexcept {
     mevr::host::hdr_display::OnFactory(factory);
 }
@@ -146,7 +146,8 @@ void ReadGalaxySettings() {
 }
 }
 void* StaticXrGetInstanceProcAddr() noexcept { return reinterpret_cast<void*>(&xrGetInstanceProcAddr); }
-void WrapSessionFunctions(void** acquire, void** release, void** endFrame, void** locateViews) noexcept {
+void WrapSessionFunctions(void** acquire, void** /*waitImage*/, void** release, void** /*waitFrame*/, void** /*beginFrame*/,
+    void** endFrame, void** locateViews) noexcept {
     mevr::host::testloop::WrapSessionFunctions(acquire, release, endFrame, locateViews);
 }
 void OnSessionCreated(void* instance, void* session) noexcept {
@@ -289,7 +290,7 @@ float FloorViewTranslation(bool replay, float rawCameraZ, float rightZ, float up
 void OnEyeSource(int eye, void* source) noexcept {
     mevr::host::testloop::OnEyeSource(eye, static_cast<ID3D11Texture2D*>(source));
 }
-void OnEyeCopied(int eye, void* image) noexcept {
+void OnEyeCopied(int eye, void* image, std::uint32_t /*index*/, int /*acquired*/, int /*waited*/) noexcept {
     mevr::host::testloop::OnEyeCopied(eye, static_cast<ID3D11Texture2D*>(image));
 }
 void OnEyeReleased(int eye, bool published) noexcept {
@@ -344,6 +345,9 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
     state->Gamepad = pad;
     return ERROR_SUCCESS;
 }
+} // namespace MevrSeams
+namespace ME2VR::MevrBridge {
+using namespace MevrSeams;
 void OnPresent() noexcept {
     mevr::host::testloop::OnPresent();
 #if defined(MEVR_WITH_MAIN_MENU)
@@ -351,6 +355,8 @@ void OnPresent() noexcept {
 #endif
     mevr::host::menus_le2::OnPresent();
 }
+} // namespace ME2VR::MevrBridge
+namespace MevrSeams {
 unsigned OverlayLayers(OverlayFrame const& frame, void const** out, unsigned capacity) noexcept {
     if (!frame.context || !out || !capacity) {
         { std::lock_guard lock(gPadMutex); gMapInput.Reset(); }
@@ -529,17 +535,31 @@ bool PlaceNativePanel(OverlayFrame const& frame, float const viewPosition[3], fl
     return gMapImageReady;
 }
 
-bool CineScreenWanted(bool conversation) noexcept { return mevr::host::cine_screen::Wanted(conversation); }
-bool CineScreenFullRate() noexcept { return mevr::host::cine_screen::FullRate(); }
+// The common PlacePanel on ME3: every native panel through PlaceNativePanel above (ByGameMode).
+PanelPose PlacePanel(PanelKind /*kind*/, OverlayFrame const& frame, float const viewPosition[3], float widthM, float heightM,
+    bool /*imageReady*/) noexcept {
+    PanelPose out;
+    out.widthM = widthM;
+    out.heightM = heightM;
+    out.nativeMap = PlaceNativePanel(frame, viewPosition, out.widthM, out.heightM, &out.space, out.orientation, out.position);
+    out.headLocked = out.space == frame.viewSpace;
+    out.placed = true;
+    return out;
+}
+} // namespace MevrSeams
+namespace ME2VR::MevrBridge {
+using namespace MevrSeams;
 float CineScreenHalfSeparationUU(float halfH) noexcept { return mevr::host::sequel_cinema::HalfSeparationUU(halfH); }
+} // namespace ME2VR::MevrBridge
+namespace MevrSeams {
 unsigned CineScreenLayers(CineScreenFrame const& frame, void const** layers, unsigned capacity) noexcept {
     return mevr::host::sequel_cinema::Layers(frame, layers, capacity, gScreen);
 }
-bool HudPanelDraw(ID3D11DeviceContext* context, void (*draw)(void*), void* user, bool afterLeftEye) noexcept {
-    return mevr::host::hud_panel::Redirect(context, draw, user, false, afterLeftEye);
+bool HudPanelDraw(ID3D11DeviceContext* context, void (*draw)(void*), void* user, bool textBatch, bool afterLeftEye) noexcept {
+    return mevr::host::hud_panel::Redirect(context, draw, user, textBatch, afterLeftEye);
 }
 void const* TransitionFadeLayer(void* session, void* viewSpace, ID3D11DeviceContext* context, int view) noexcept {
     return mevr::host::transition_fade::Layer(session, viewSpace, context, view);
 }
 
-}
+} // namespace MevrSeams

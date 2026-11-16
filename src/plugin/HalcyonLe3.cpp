@@ -11,7 +11,6 @@
 #include "halcyon/le3/mevr_bridge.h"
 #include "plugin/CrashBreadcrumbs.hpp"
 #include "plugin/FloorLock.hpp"
-#include "plugin/GameThreadCalls.hpp"
 #include "plugin/TestLoop.hpp"
 #include "plugin/Voice.hpp"
 #include "plugin/VoiceModel.hpp"
@@ -30,7 +29,6 @@ namespace {
 
 // ---- [Debug] openxrRuntime ------------------------------------------------------------------------------------------
 
-std::wstring gRuntimeManifest;  // what XR_RUNTIME_JSON names ("" when unset), read at attach
 
 // [Debug] openxrRuntime = <runtime manifest .json>: the statically linked loader takes XR_RUNTIME_JSON over the machine's
 // active runtime (HKLM, admin to change), as the LE1 host does (plugin/HalcyonBridge). The fake headset's SteamVR null
@@ -49,15 +47,6 @@ void PinRuntime() {
                 ini::Utf8(std::filesystem::path(manifest)));
         }
     }
-    wchar_t current[1024] = {};
-    if (GetEnvironmentVariableW(L"XR_RUNTIME_JSON", current, 1024) > 0) {
-        gRuntimeManifest = current;
-    }
-}
-
-bool NamesSteamVr(std::wstring path) {
-    std::transform(path.begin(), path.end(), path.begin(), [](wchar_t c) { return static_cast<wchar_t>(std::towlower(c)); });
-    return path.find(L"steamvr") != std::wstring::npos || path.find(L"steamxr") != std::wstring::npos;
 }
 
 } // namespace
@@ -106,41 +95,3 @@ void AfterTick(float deltaSeconds) {
 }
 
 } // namespace mevr::host::halcyon_le3
-
-namespace ME2VR::MevrBridge {
-
-// ProcessEvent on the game thread only (research/36): ME3's renderer's Present-thread calls go to plugin/GameThreadCalls, the
-// queue LE1's host runs, drained at the start of the next engine tick (plugin/Entry).
-bool OnGameThread() noexcept {
-    return mevr::host::game_thread::OnGameThread();
-}
-
-bool QueueProcessEvent(void* object, void* function, void const* params, std::uint32_t size) noexcept {
-    return mevr::host::game_thread::Queue(object, function, params, size);
-}
-
-bool XrRuntimeIsSteamVr() noexcept {
-    namespace h = mevr::host::halcyon_le3;
-    if (!h::gRuntimeManifest.empty()) {
-        return h::NamesSteamVr(h::gRuntimeManifest);
-    }
-    HKEY key = nullptr;
-    bool steam = false;
-    if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Khronos\\OpenXR\\1", 0, KEY_READ, &key) == ERROR_SUCCESS) {
-        wchar_t path[1024] = {};
-        DWORD bytes = sizeof(path) - sizeof(wchar_t);
-        DWORD type = 0;
-        if (RegQueryValueExW(key, L"ActiveRuntime", nullptr, &type, reinterpret_cast<LPBYTE>(path), &bytes) == ERROR_SUCCESS &&
-            (type == REG_SZ || type == REG_EXPAND_SZ)) {
-            steam = h::NamesSteamVr(path);
-        }
-        RegCloseKey(key);
-    }
-    return steam;
-}
-
-bool KeyDown(int vk) noexcept {
-    return mevr::window::KeyDownInGame(vk);  // the game's window (or its console), not another program's
-}
-
-} // namespace ME2VR::MevrBridge
