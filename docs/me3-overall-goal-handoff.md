@@ -43,19 +43,21 @@ Explicit scope decisions:
 The latest implementation is on branch
 `worktree-agent-a08810c1900a1136a`, at repository-relative worktree
 `.claude/worktrees/agent-a08810c1900a1136a`, checkpoint `0f02fd38`.
-It is not all merged into main or installed for the player.
+Integration update: merge `ccc9325d` landed this checkpoint and the main handoffs on
+local main on 2026-11-15. The original worktree is retained for its built artifacts
+and private evidence. This does not mean it is installed or accepted for the player.
 
 Main's [implementation plan](le3-port-implementation-plan.md) and
 [reuse audit](le3-port-reuse-audit.md) establish the architecture/work packages,
-but main's implementation ledger is older than the worktree's. Read the ledger
+and main now includes the newer implementation ledger. Read the ledger
 at the checkpoint for the latest native evidence. This document provides the
-cross-milestone summary on main without wholesale merging the divergent branch.
+cross-milestone summary; the reviewed integration is now on local main.
 The [galaxy-specific handoff](galaxy-projector-handoff.md) contains its detailed
 attempt history, native addresses, code inventory and resumption procedure.
 
 All `research/...` and `src/...` references below refer to the implementation
-checkpoint unless stated otherwise. Some of these files are absent or older on
-main. Locate them with `git show 0f02fd38:<path>` or the retained worktree.
+checkpoint unless stated otherwise. These files are now integrated on main; use
+`git show 0f02fd38:<path>` when reproducing the original evidence checkpoint.
 Older introductory “untested” statements in research describe earlier stages:
 use later dated evidence and the worktree ledger, while retaining their limits.
 Do not silently interpret one later fixture success as validation of all cases.
@@ -329,16 +331,18 @@ snapshot identifier, native contract, changed file and ordered implementation st
   run also cleaned up after its pre-launch timeout; game-run lock was free at
   the recorded pause. Recheck ownership/processes before any future action.
 - No physical headset test was performed for this checkpoint. No production
-  installation, wholesale main merge, release or push was performed.
+  installation, release or push was performed. The later reviewed source merge
+  `ccc9325d` is on local main, with 71 tests passing again across the full run and
+  the focused rerun of three sandbox-restricted tests.
 - Main contains other agents' changes. Preserve them. Keep the worktree and its
-  ignored private evidence until the implementation is integrated or handed off.
+  ignored private evidence and built artifacts for the next bounded validation run.
 
 ## Remaining work and suggested order when the user resumes
 
 1. **Reconcile source and integration state.** Read this document, the checkpoint
    ledger and relevant reuse research. Check main and other active worktrees for
-   newer fixes. Select changes for reviewed integration; do not merge the whole
-   divergent branch blindly. Keep one shared implementation and explicit adapters.
+   newer fixes. The checkpoint is integrated at `ccc9325d`; preserve concurrent
+   cockpit/launcher edits and keep one shared implementation with explicit adapters.
 2. **Finish the current galaxy rendering increment.** Runtime-validate the
    post-effect target fix, then implement primary-view CIC hold and matching
    native UI/pointer projection. Prove exit/recenter/cinematic/reload/mission

@@ -41,9 +41,10 @@ Use the gates in this document instead of treating that number as proof.
 - Find the subsequent capture checkpoint with
   `git log --oneline --all --grep="ME3 galaxy capture"`. Do not infer deployment
   or main integration from the existence of that commit.
-- Main has concurrent work and substantial divergent history. Do not merge this
-  entire old worktree wholesale or overwrite main's files. Audit the current
-  diff and use the repository's reviewed landing workflow for selected changes.
+- Integration update (2026-11-15): checkpoint `0f02fd38` and main's handoffs
+  were reconciled and landed on local main as `ccc9325d`. Concurrent cockpit
+  and launcher edits remain preserved and uncommitted. This is source integration,
+  not runtime or player-installation acceptance.
 - Runtime artifacts and decompilation are private under the existing MEVR data
   directory. Private local runners/recordings are in this worktree's ignored
   `local-tools/le3-native-tests`; keep them while resuming. Do not prune this
@@ -264,7 +265,7 @@ SPDX, whitespace and knowledge-link checks pass. These checks do not establish
 native rendering or physical-headset acceptance of the new target correction.
 No game or build process from this checkpoint remains intentionally running.
 
-No production installation or main merge is implied. Normal cleanup restores
+Source integration is recorded above; no production installation is implied. Normal cleanup restores
 the user's files; do not install this unfinished galaxy presentation for them.
 Never run `streamlevelin`, never return the game slot without asking the owner,
 and never link a DLL while the running game owns it. Use the existing scripts

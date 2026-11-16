@@ -3,6 +3,7 @@
 
   python tools/clean-worktrees.py                 # lists what it would remove and why it keeps the rest (changes nothing)
   python tools/clean-worktrees.py --apply         # removes them
+  python tools/clean-worktrees.py --patch-equivalent  # also audit already cherry-picked lanes
   python tools/clean-worktrees.py --apply --idle-hours 2 --keep left-hand --delete-branches
   python tools/clean-worktrees.py --apply --only agent-ae7e --idle-hours 0 --delete-branches   # one lane, once it landed
 
@@ -10,8 +11,10 @@ A worktree is removed only when all of these hold, checked again right before it
   - it isn't the main checkout and isn't locked (`git worktree lock <path>` keeps one for good);
   - `git status --porcelain` is empty: no modified, staged or untracked (non-ignored) file;
   - its HEAD is main or an ancestor of main (land-on-main.py lands the commit itself, so a landed branch counts);
+    --patch-equivalent also accepts histories with every patch on main and no unique merge commits;
   - nothing at its top level, nor its index or HEAD, changed within --idle-hours (default 12): a session may be in it.
-Removing one deletes its folder and everything ignored in it (build directories: 1-6 GB each); its commits stay in git.
+Archive unique ignored scripts/evidence before removal. Patch-equivalent branches are retained unless Git itself
+accepts their deletion with -d. Removing one deletes its folder and everything ignored in it (build directories: 1-6 GB each); its commits stay in git.
 A folder another program holds open can survive as empty directories; it goes once that program ends. --delete-branches
 also deletes each removed worktree's branch (`git branch -d`, merged only). Never touches main, never pushes.
 Worktrees pile up because nothing removes them once their work lands (H: was full on 2026-11-13: 34 of them, 93 GB).
@@ -90,7 +93,7 @@ def links_in(path):
     return found
 
 
-def verdict(repo, wt, main, idle_s, keep):
+def verdict(repo, wt, main, idle_s, keep, patch_equivalent=False):
     """None if the worktree may go, else why it stays."""
     path = wt['worktree']
     if any(k.lower() in path.lower() for k in keep):
@@ -112,7 +115,17 @@ def verdict(repo, wt, main, idle_s, keep):
         return f'{n} uncommitted change(s)'
     head = wt.get('HEAD', '')
     if git(repo, 'merge-base', '--is-ancestor', head, main, check=False).returncode != 0:
-        return 'commits not on main'
+        if not patch_equivalent:
+            return 'commits not on main'
+        # Cherry-picked lanes have different commit IDs. Do not infer equivalence for
+        # merges (git cherry ignores them), failed commands, or empty histories.
+        merges = git(repo, 'rev-list', '--merges', f'{main}..{head}', check=False)
+        cherry = git(repo, 'cherry', main, head, check=False)
+        patches = cherry.stdout.decode(errors='replace').splitlines()
+        if merges.returncode or merges.stdout.strip() or cherry.returncode or not patches:
+            return 'cannot prove patch equivalence to main'
+        if any(not line.startswith('- ') for line in patches):
+            return 'unique patches not on main'
     age = time.time() - newest_change(path)
     if age < idle_s:
         return f'used {age / 3600:.1f} h ago'
@@ -163,6 +176,7 @@ def main(argv):
     ap.add_argument('--keep', action='append', default=[], help='keep worktrees whose path contains this text (repeatable)')
     ap.add_argument('--only', action='append', default=[], help='consider only worktrees whose path contains this text (repeatable)')
     ap.add_argument('--delete-branches', action='store_true', help="also delete each removed worktree's merged branch")
+    ap.add_argument('--patch-equivalent', action='store_true', help='also remove clean cherry-picked lanes whose every patch is on main; refuses unique merge commits')
     args = ap.parse_args(argv[1:])
 
     here = os.getcwd()
@@ -177,7 +191,7 @@ def main(argv):
         print(f'no worktree path contains {" or ".join(args.only)}')
         return 1
     for wt in considered:
-        why = verdict(repo, wt, main_rev, idle_s, args.keep)
+        why = verdict(repo, wt, main_rev, idle_s, args.keep, args.patch_equivalent)
         (stay if why else go).append((wt, why))
 
     for wt, why in stay:
@@ -194,7 +208,7 @@ def main(argv):
     removed, leftovers = 0, []
     for wt, _ in go:
         path = wt['worktree']
-        why = verdict(repo, wt, main_rev, idle_s, args.keep)  # again: a session may have started in it meanwhile
+        why = verdict(repo, wt, main_rev, idle_s, args.keep, args.patch_equivalent)  # again: a session may have started in it meanwhile
         if why:
             print(f'skipped {path}  ({why}, changed since the list)')
             continue
