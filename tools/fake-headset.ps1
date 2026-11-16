@@ -57,8 +57,8 @@ function Write-Json($path, $obj) {
 }
 function Has-NullUniverse($chap) { [bool]($chap.universes | Where-Object { "$($_.universeID)" -eq $nullUniverse }) }
 function New-NullUniverse {
-    # The null driver reports its head at raw zero. Place the standing floor BELOW
-    # that raw origin; its inverse gives +HeadHeightM in STAGE. LOCAL/seated stays
+    # The null driver reports its head at raw zero. Use SteamVR's raw-to-standing translation to place
+    # the raw head +HeadHeightM above the STAGE floor. LOCAL/seated stays
     # head-relative, so existing head-relative controller recordings remain valid.
     # Collision bounds are in setup-standing coordinates, not raw tracking space.
     $w = 0.5; $h = 2.43
@@ -72,7 +72,7 @@ function New-NullUniverse {
         collision_bounds = $walls
         play_area        = @(1, 1)
         seated           = [pscustomobject]@{ translation = @(0, 0, 0); yaw = 0 }
-        standing         = [pscustomobject]@{ translation = @(0, -$HeadHeightM, 0); yaw = 0 }
+        standing         = [pscustomobject]@{ translation = @(0, $HeadHeightM, 0); yaw = 0 }
         time             = (Get-Date).ToString('ddd MMM dd HH:mm:ss yyyy', [Globalization.CultureInfo]::InvariantCulture)
         universeID       = $nullUniverse
     }

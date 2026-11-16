@@ -23,7 +23,7 @@ $settings=Get-Content -LiteralPath $files[0] -Raw|ConvertFrom-Json
 $driver=Get-Content -LiteralPath $files[2] -Raw|ConvertFrom-Json
 $chap=Get-Content -LiteralPath $files[1] -Raw|ConvertFrom-Json
 $universe=@($chap.universes|Where-Object universeID -eq '2')
-if($universe.Count -ne 1 -or $universe[0].standing.translation[1] -ne -1.7526 -or
+if($universe.Count -ne 1 -or $universe[0].standing.translation[1] -ne 1.7526 -or
    $universe[0].seated.translation[1] -ne 0){throw 'Default 5ft9 floor/head-relative origins failed.'}
 if(-not $settings.steamvr.supersampleManualOverride -or $settings.steamvr.supersampleScale -ne 1.0 -or
    $settings.'steam.app.1328670'.resolutionScale -ne 100 -or -not $settings.unrelated.keep -or
@@ -44,11 +44,11 @@ if($restored.steamvr.supersampleScale -ne 1.28 -or $restored.'steam.app.1328670'
  Set-Content -LiteralPath $files[1]
 & "$repo\tools\fake-headset.ps1" -On -SteamRoot $steam -SteamVRRoot $runtime -BackupDirectory "$root\backup"
 $chap=Get-Content -LiteralPath $files[1] -Raw|ConvertFrom-Json
-if(($chap.universes|Where-Object universeID -eq '2').standing.translation[1] -ne -1.7526 -or
+if(($chap.universes|Where-Object universeID -eq '2').standing.translation[1] -ne 1.7526 -or
    ($chap.universes|Where-Object universeID -eq '77').keep -ne 'real'){throw 'Existing null universe was not updated safely.'}
 & "$repo\tools\fake-headset.ps1" -On -HeadHeightM 1.6 -SteamRoot $steam -SteamVRRoot $runtime -BackupDirectory "$root\backup"
 $chap=Get-Content -LiteralPath $files[1] -Raw|ConvertFrom-Json
-if(($chap.universes|Where-Object universeID -eq '2').standing.translation[1] -ne -1.6){throw 'Explicit height override failed.'}
+if(($chap.universes|Where-Object universeID -eq '2').standing.translation[1] -ne 1.6){throw 'Explicit height override failed.'}
 & "$repo\tools\fake-headset.ps1" -Off -SteamRoot $steam -SteamVRRoot $runtime -BackupDirectory "$root\backup"
 $chap=Get-Content -LiteralPath $files[1] -Raw|ConvertFrom-Json
 $nullEntry=$chap.universes|Where-Object universeID -eq '2'
