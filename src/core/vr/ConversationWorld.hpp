@@ -295,6 +295,13 @@ ShownEarly const* ShownEarlyFor(std::string_view trackPath);
 // Whether `tag` is one of the entry's people (case-insensitive).
 bool ShownEarlyTag(ShownEarly const& entry, std::string_view tag);
 
+// The curated walks (the owner, 2026-11-16): everywhere else the game's fade to black moves the player with Shepard to wherever
+// the script put him (`[Cinematics] worldBlackMoves`); in these the player walks on to him, as the scene is built for it. `what`
+// is a moment's move track path (as ShownEarlyFor takes it) or a conversation's name (any form ConversationKey takes). Built in:
+// the walk with Anderson to the Council. `extra`: more, comma separated, each a part of the path or a conversation key, any case
+// (`[Cinematics] worldCuratedWalks`).
+bool IsCuratedWalk(std::string_view what, std::string_view extra = {});
+
 // ---- The conversational circle (research/69 "The conversational circle", the owner's design, 2026-11-11) ----------------------
 // "I understand the squad being stationary if they aren't talking but if they ever engage then they should slowly walk up to
 // form a conversational circle. This needs to feel organic." Nobody moves at a scene's start; a person joins when it first

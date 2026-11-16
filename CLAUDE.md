@@ -783,11 +783,14 @@ switching frameworks.
   `conversation-from-save.ps1 -Lines N` (a stance per line), `-TurnAt N` (`mevr convo turn <deg>`); **a staged scene's
   new composition under its own black screen** (research/69 "Virmire's start from above"): the stage's moves of the others for a
   second after the script's black screen (`ScriptBlackScreen`, from game/AuthoredMoment) are taken at once (put on the mark by us
-  where the game's call moved nobody); a simulated left stick walks the player to his new mark (`StartSteer` in `MovePlayer`, the
-  player's own walk step; his stick takes over; `mevr convo goto [x y]`), **unless the one the player talks to (the owner, the
-  speaker) was moved under that black screen and the mark is over 1.5 m away: then the player goes with Shepard under a dip**
-  (`TeleportPlayerTo`, the owner 2026-11-14: "if the black fade happens, and our target npc moves positions, we should likely
-  follow them on teleport"; research/69 item 40; moments never: the Citadel's walks stay walks); the stances follow
+  where the game's call moved nobody); **the game's fade to black always moves the player** (`[Cinematics] worldBlackMoves = 1`,
+  the owner 2026-11-16: a walk to the mark left players outside the elevator the script had put Shepard in, and the mission
+  stalled; research/69 item 41): in every conversation in the world a mark over 1.5 m away is a teleport with Shepard under a dip
+  (`TeleportPlayerTo`, a view walking apart joins him; a nearer one is walked by the simulated stick, `StartSteer`, `mevr convo
+  goto [x y]`), and in a moment a jump of Shepard under the game's black (`UnderGameBlack()`) takes the view with him whatever
+  the distance; **except the curated walks** (`cw::IsCuratedWalk`: the walk with Anderson to the Council; more by
+  `worldCuratedWalks`), which keep the walk; `worldBlackMoves = 0` is the old rule (staged scenes only, a teleport only if the
+  one spoken to moved, moments walked); the stances follow
   a whole scene (`begin`, after each dip and walk, whenever someone moved a metre or turned 40 degrees; bystanders as `others`);
   logs `convo: circle:`, `convo: squad:`, `convo: stance:`, `convo: eyes:`, `convo: steer:`;
   while it walks, his hidden (unposed) head bone never moves the view, nor for 1.5 s after he is shown again
