@@ -16,6 +16,7 @@ enum class Source {
     None,         // nothing to follow: the animation keeps the arms
     Controllers,  // tracked motion controllers
     DesktopTest,  // no headset: arm IK holds the right hand in front of the chest (no positions here)
+    HeadOnly,     // fresh first-person head frame, presentation-only torso; no hand targets
 };
 
 struct Hand {
@@ -38,7 +39,7 @@ enum class Anchor {
 struct Targets {
     Source source = Source::None;
     std::array<Hand, 2> hands;  // 0 left, 1 right
-    // Controllers only: the frame used, and the headset in it.
+    // Controllers/HeadOnly: the frame used, and the headset in it.
     Anchor anchor = Anchor::None;
     engine::TrackingFrame body;
     XrPosef head{};                 // the headset, tracking space
@@ -59,7 +60,10 @@ struct Targets {
 //   view, not the hands. Without a head bone, where the view puts the origin.
 // - The wrist sits 7 units behind the grip, along the grip's -Z (in Shepard's units).
 // `inView`: the view's own frame whatever the head bone (the Mako's seated driver: the hands where the controllers are).
-Targets Current(std::optional<engine::UnrealVector> const& animatedHead, bool inView = false);
+// HeadOnly is opt-in after the caller's ordinary-gameplay/body-ownership gates.
+// It additionally requires a fresh host view and rejects held anchors/third person.
+Targets Current(std::optional<engine::UnrealVector> const& animatedHead, bool inView = false, bool allowHeadOnly = false);
+void ResetTracking(); // discard first-person hysteresis on owner/reference-space changes
 
 // Set by the mod every tick: true while there's no headset to follow (our renderer: no VR session;
 // the host's: no headset session seen yet). Arm IK then holds the right hand in front of the chest.

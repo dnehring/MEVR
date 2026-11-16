@@ -158,3 +158,70 @@ that presentation-only policy and the first-person body anchor before adding a
 ME3-specific offset or retaining stale controller input. Test head-only tracking,
 loss/reacquisition of one/both controllers, movement and pawn/world changes; a
 stationary screenshot alone cannot validate a general fallback.
+
+## Fresh torso solve during controller loss
+
+The shared `HandTargets` adapter now supports an opt-in `HeadOnly` source. ME3's
+existing ordinary-gameplay admission supplies the opt-in: fresh owned host view,
+verified player/body objects, known XR epoch, no held anchor, cover, custom action,
+movement-ignore state, death or wrist overlay. ME1/ME2 retain their current default.
+`ArmIk` reuses ME1's `BodyFollow` and body-scale solve, then the existing
+`menu_body::TorsoOnly` request stripping. It publishes fresh torso placement without
+hand targets, finger posing, support grip, gun IK or leg targets. This is not a
+stationary cached pose and does not add a game-specific height offset.
+
+World/player/mesh identity, session/recenter epochs and floor-lock policy reset the
+follower and first-person hysteresis; ordinary camera/component movement does not.
+The cached menu hold still requires its stricter full identity match. `Stop()`
+clears reported first-person/gun ownership as well as the pose request. Independent
+valid controller aim/button paths are unchanged: an active aim-only sample can
+still aim through `HandAim`; do not describe this as disabling every gun action.
+
+Protected session `20261115-182253-344-LE3-tracking-loss` tested the candidate on
+the Normandy Save 31 using the existing runner, normal descriptor loading and
+record/replay/snapshot channels. Fourteen stereo captures have no capture errors,
+both world images and corresponding located/submitted eye poses (64 mm synthetic,
+63 mm live null input). Native results:
+
+| Case | Observed result |
+| --- | --- |
+| Tracked chest-level baseline, then stop replay | Controllers become inactive; fresh head-only torso remains, both eyes have a clear central view instead of the earlier collar obstruction. |
+| Invalid grips/aims, then 25-degree head turn | Fresh head-only status, no hand/gun IK or support targets; the world view turns and the collar does not rise into view. |
+| Left-only, right-only, then both tracked | Reported hand targets match the available side(s); both-hand first-person ownership returns. |
+| Shared menu, then resume | Menu clears the torso hold because floor-lock policy changes; resume restores head-only placement. **Menu height continuity fails separately**, below. |
+| Third person, then first person | Head-only target is rejected in third person; native third-person body is visible. Both-controller first-person placement returns. |
+| Same-save normal reload | New world/pawn load passes exact-descriptor and unchanged-artifact checks; head-only placement and both-hand reacquisition work after loading. |
+
+First-person gameplay samples retain `stageEyeM = finalEyeM = 1.752600`.
+All captures retain a healthy motion-blur guard with zero unknown variants.
+The owned game process closed; profile/game restoration reports zero differences,
+and the actual null-driver, SteamVR, chaperone and LE1 ini hashes independently
+match their restoration receipt. The shared game lock is free.
+
+The replay adapter currently sets controller activity true while replaying,
+irrespective of a recording's activity flag. Consequently the new generator's
+`--tracking none` exercises invalid grips/aims; stopping replay exercises actual
+inactive controllers. Both were tested. Recordings remain head-relative at Y=0;
+the 1.7526 m STAGE height is separate.
+
+Offline: all three monolithic player builds and the ME3 development build pass;
+all 68 configured trilogy tests pass, including actual `HandTargets` adapter
+tests for stale fields, numerical mapping, reacquisition, held/stale/third-person
+rejection and hysteresis reset, plus owner/epoch identity tests. SPDX and knowledge
+bundle checks pass. The initial core run in the restricted sandbox failed on
+installer backup paths; the normal-filesystem rerun passed without changing tests.
+
+Remaining acceptance: head-only startup before any tracked controller has enabled
+IK; physical-headset alignment, continuous locomotion, seated play, combat/body
+variants and transitions beyond this normal save reload. The tested yaw is a held
+25-degree pose, not a continuous turning/translation stress run.
+
+### Separate menu height defect
+
+Snapshot `2026-11-15_18-25-06-547` has the shared menu open, first person still
+owned and a valid host view, but `floorLock.active=false`, correction zero and
+`finalEyeM=1.43`. Before opening and after closing it, the correction is 32.260018
+units and eye height is 1.7526 m. The underlying world images show the corresponding
+view-height shift. Do not weaken the cached torso identity check to hide this:
+audit the shared floor-lock eligibility and ME3 pause/menu adapter against ME1/ME2,
+then test menu open/close with fresh head movement and unchanged owner/epoch.

@@ -9,6 +9,7 @@ keeping the run (research/29 "The legs keep the run"): replay it with its inputs
 
     python tools/make-walk-recording.py out.mevrrec [segment] [hz] [--yaw DEG] [--pitch DEG] [--eye-height M] [--stick S] [--grip]
         [--plan forward:14,stand:600] [--hands chest|view] [--hand-yaw DEG] [--fire EVERY[:HOLD]] [--crouch-drop M]
+        [--tracking both|left|right|none]
     tools/replay.ps1 -Path out.mevrrec -Loop -Inputs
 
 segment: seconds per stick direction (default 3). --yaw: the head (and the hands) turned DEG degrees right in the room.
@@ -22,6 +23,10 @@ mark"). --hands: chest (default, 0.35 m under the eyes and 0.30 m ahead: below a
 the eyes, 0.25 m ahead and 0.09 m to each side: 0.28 m from the eyes, inside [Hands] reachNearFaceM's 0.30, so the drawn hands
 sit on the controllers unscaled by the arm-length calibration; the wrists, 7 cm behind the grips, 24 degrees down and 27 to
 the side). At 0.40 m ahead the hands were reach-scaled 0.16 m low, cut off at the snapshot's bottom edge (2026-11-13).
+--tracking: which controllers have valid grip/aim poses (default both); none clears the recording's controller-active
+flag while retaining the recorded head. The current replay adapter forces active=true while replaying, so none tests
+invalid grips/aims; stop replay to test genuinely inactive controllers on the null headset. Use without replay -Inputs
+to test loss/reacquisition without recorded gameplay button input.
 --hand-yaw: the right controller (grip and aim) turned DEG degrees right of where the body faces, the head still ahead: hand
 aim's check (shots follow the controller, not the view; research/le2-vrik.md "Hand aim"). --fire: the right trigger pulled all
 the way for HOLD seconds (default 0.15) every EVERY seconds, from 2 s on (shots; replay with -Inputs). A plan's `crouch`
@@ -78,6 +83,10 @@ def main():
     stick = option("--stick", 0.9)
     grip = 1.0 if "--grip" in sys.argv else 0.0
     live_head = "--live-head" in sys.argv
+    tracking = sys.argv[sys.argv.index("--tracking") + 1] if "--tracking" in sys.argv else "both"
+    if tracking not in ("both", "left", "right", "none"):
+        print("--tracking both|left|right|none")
+        return 2
     hands = sys.argv[sys.argv.index("--hands") + 1] if "--hands" in sys.argv else "chest"
     hand_yaw = option("--hand-yaw", 0.0)
     fire_text = sys.argv[sys.argv.index("--fire") + 1] if "--fire" in sys.argv else ""
@@ -88,7 +97,7 @@ def main():
         print("--hands chest|view")
         return 2
     taken = {i + 1 for i, a in enumerate(sys.argv) if a in ("--yaw", "--pitch", "--eye-height", "--stick", "--plan", "--hands", "--hand-yaw", "--fire",
-                                                             "--crouch-drop")}
+                                                             "--crouch-drop", "--tracking")}
     args = [a for i, a in enumerate(sys.argv) if i > 0 and not a.startswith("--") and i not in taken]
     if not args:
         print(__doc__)
@@ -134,15 +143,16 @@ def main():
                 return (*pose[:4], pose[4], pose[5] + dy, pose[6])
 
             e0, e1, lh, rh = lowered(eyes[0]), lowered(eyes[1]), lowered(left_hand), lowered(right_hand)
-            f.write(FRAME.pack(int(t * 1e9), 2 if live_head else 3, *e0, *fov, *e1, *fov,
-                               valid | (8 if name == "back-button" else 0), 0.0,
+            flags = (0 if live_head else 1) | (0 if tracking == "none" else 2)
+            f.write(FRAME.pack(int(t * 1e9), flags, *e0, *fov, *e1, *fov,
+                               (valid if tracking in ("both", "left") else 0) | (8 if name == "back-button" else 0), 0.0,
                                1.0 if name == "back-button" else 0.0, sx * stick, sy * stick, *lh, *lh,
-                               valid | (2 if name in ("a", "sprint") else 0) | (1 if name == "r3" else 0),
+                               (valid if tracking in ("both", "right") else 0) | (2 if name in ("a", "sprint") else 0) | (1 if name == "r3" else 0),
                                trigger, grip, 0.0, 0.0, *rh, *rh))
     starts = [sum(seconds for _, seconds in steps[:k]) for k in range(len(steps))]
     plan = ", ".join(f"{seg[0]} {start:g}-{start + seconds:g} s" for (seg, seconds), start in zip(steps, starts))
     print(f"{out}: {n} frames at {hz:g} Hz: {plan}; head yaw {yaw:g}, pitch {pitch:g}, stick {stick:g}, hands {hands}"
-          f"{', live runtime head' if live_head else ''}{', right grip held' if grip else ''}{f', right hand turned {hand_yaw:g}' if hand_yaw else ''}"
+          f"; tracking {tracking}{', live runtime head' if live_head else ''}{', right grip held' if grip else ''}{f', right hand turned {hand_yaw:g}' if hand_yaw else ''}"
           f"{f', trigger {fire_hold:g} s every {fire_every:g} s' if fire_every else ''}")
     return 0
 

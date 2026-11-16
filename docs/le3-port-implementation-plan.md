@@ -17,9 +17,20 @@ path after settings disabled that buffer. The protected run verifies actual
 recenter, seven valid stereo captures, same-save reload, 2,825 guarded conversions,
 zero unknown variants and complete save/VR/game restoration. LE1's caller-plus-player
 ownership rule also keeps auxiliary views unmodified. These are bounded native
-gates, not general VR acceptance: physical-headset fusion, other scenes, stale-copy
-injection and the body presentation on controller tracking loss remain open. See
+gates, not general VR acceptance: physical-headset fusion, other scenes and stale-copy
+injection remain open. See
 [transition diagnosis and native result](../research/le3-recenter-transition-failure.md).
+
+**Body follow-up:** a fresh head-only torso solve now reuses the shared body follower
+when ME3 loses controller grips. The protected 14-capture Normandy run verifies actual
+controller loss, a held head turn, one-/two-hand reacquisition, third-person rejection
+and same-save reload; the collar no longer obstructs the first-person view. All three
+player builds and 68 configured tests pass. This remains bounded body evidence, not
+physical alignment or full-body acceptance. The same run found a separate **menu
+height continuity defect**: opening the shared menu disables floor correction and
+lowers the view from 1.7526 m to 1.43 m; resume restores it. This is the next rendering
+investigation, not a reason to lower the null headset. See
+[body evidence and remaining gates](../research/le3-body-pose.md#fresh-torso-solve-during-controller-loss).
 
 Earlier native checkpoint: the protected renderer run passed **493/493** metadata comparisons and an ordinary
 Normandy load, then restored with zero differences. Reusing ME2's omitted HDR display-capability hook now

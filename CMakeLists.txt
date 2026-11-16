@@ -1552,6 +1552,14 @@ if (MEVR_BUILD_TESTS)
     target_compile_options(mevr-system-settings-tests PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
     add_dependencies(mevr-tests mevr-system-settings-tests)
     add_test(NAME mevr-system-settings COMMAND mevr-system-settings-tests)
+    add_executable(mevr-hand-targets-tests tests/HandTargetsTests.cpp
+        src/engine/XrToUnreal.cpp src/core/ik/Rigid.cpp src/core/ik/Ik.cpp)
+    target_include_directories(mevr-hand-targets-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(mevr-hand-targets-tests PRIVATE OpenXR::headers)
+    target_compile_definitions(mevr-hand-targets-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_compile_options(mevr-hand-targets-tests PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
+    add_dependencies(mevr-tests mevr-hand-targets-tests)
+    add_test(NAME mevr-hand-targets COMMAND mevr-hand-targets-tests)
     # plugin/PadMerge (both hosts' pad mapping with the mod's flags) against LE1's merge before the move, and its rules.
     add_executable(mevr-pad-merge-tests tests/PadMergeTests.cpp src/plugin/PadMerge.cpp src/game/GamepadMapping.cpp
         src/core/vr/Controllers.cpp src/core/vr/Comfort.cpp src/core/Log.cpp)

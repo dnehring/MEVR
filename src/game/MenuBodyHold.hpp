@@ -18,6 +18,12 @@ struct Identity {
     std::uint32_t sessions = 0;
     std::uint32_t recenters = 0;
     bool operator==(Identity const&) const = default;
+    // Owner/reference-space identity for a fresh solve. Ordinary head, camera
+    // and component motion must not reset the live body follower every frame.
+    bool SameTrackingSpace(Identity const& other) const {
+        return objects == other.objects && names == other.names && epochKnown == other.epochKnown &&
+            sessions == other.sessions && recenters == other.recenters && floorLocked == other.floorLocked;
+    }
     bool Valid() const {
         for (auto value : objects) if (!value) return false;
         for (auto value : componentToWorld) if (!std::isfinite(value)) return false;

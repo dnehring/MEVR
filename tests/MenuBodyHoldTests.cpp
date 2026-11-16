@@ -49,6 +49,22 @@ int RunMenuBodyHoldTests() {
     failures = 0;
     auto const identity = Identity();
     auto const request = Request();
+    // A fresh live solve follows camera/component movement; ownership and XR
+    // reference changes still reset it. The cached menu hold remains stricter.
+    auto moving = identity;
+    moving.camera[0] += 20;
+    moving.componentToWorld[12] += 20;
+    CHECK(identity.SameTrackingSpace(moving));
+    for (int change = 0; change < 16; ++change) {
+        auto changed = identity;
+        if (change < 8) ++changed.objects[static_cast<std::size_t>(change)];
+        else if (change < 12) ++changed.names[static_cast<std::size_t>(change - 8)];
+        else if (change == 12) ++changed.recenters;
+        else if (change == 13) ++changed.sessions;
+        else if (change == 14) changed.epochKnown = false;
+        else changed.floorLocked = !changed.floorLocked;
+        CHECK(!identity.SameTrackingSpace(changed));
+    }
     mb::Hold hold;
     CHECK(!hold.Get(identity, true, 1000)); // no fabricated pose when menu opens before gameplay
     hold.Capture(request, identity, true, 1000);

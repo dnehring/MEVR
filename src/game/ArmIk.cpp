@@ -65,6 +65,7 @@ constexpr double kMaxSegmentRatio = 2.5;
 bool gEnabled = false;
 OverlayMenu gOverlayMenu;
 menu_body::Hold gMenuBody;
+std::optional<menu_body::Identity> gBodyTrackingSpace;
 std::string gStatus = "off";
 std::string gLastLoggedStatus;
 hand_targets::Source gSource = hand_targets::Source::None;
@@ -577,6 +578,11 @@ std::optional<ik::BodyFrame> BodyAxes(ue3::Object const* pawn, ik::Affine const&
 
 void Stop(std::string status) {
     gMenuBody.Clear();
+    gBodyTrackingSpace.reset();
+    gFirstPersonMs = 0;
+    gGunAimed = gGunAimedAndWritten = false;
+    gSource = hand_targets::Source::None;
+    hand_targets::ResetTracking();
     engine::bone_pose::Clear();
     body_follow::Reset();
     fingers::Stop("arm IK isn't driving");
@@ -1138,12 +1144,26 @@ void Drive(double deltaSeconds) {
         gLastBodyScale = held->bodyScale;
         gFirstPersonMs = 0;
         gSource = hand_targets::Source::None;
-        gGunAimed = gSupportRequested = false;
+        gGunAimed = gGunAimedAndWritten = gSupportRequested = false;
         fingers::Stop("shared menu: presentation-only torso, controls hidden");
         gStatus = "shared menu: stationary torso retained; hand targets and gun control off";
         return;
     }
     gMenuBody.Close();
+
+    // Reuse the ordinary-gameplay admission and fresh owner/epoch identity from
+    // the menu-body audit, but solve from this tick's head rather than a held pose.
+    bool const headOnlyEligible = menuEligible && menuIdentity.Valid() && menuIdentity.epochKnown;
+    if (headOnlyEligible) {
+        if (!gBodyTrackingSpace || !gBodyTrackingSpace->SameTrackingSpace(menuIdentity)) {
+            body_follow::Reset();
+            hand_targets::ResetTracking();
+            gLastBodyScale = {};
+        }
+        gBodyTrackingSpace = menuIdentity;
+    } else {
+        gBodyTrackingSpace.reset();
+    }
 
     // The head bone as the animation left it: our spine writes move it, and the hands' anchor
     // mustn't chase them (engine::bone_pose::AnimatedHead). Before the first write, the pose is
@@ -1168,7 +1188,7 @@ void Drive(double deltaSeconds) {
 #else
     bool const bodyAway = false;
 #endif
-    hand_targets::Targets const targets = hand_targets::Current(headBone, bodyAway);
+    hand_targets::Targets const targets = hand_targets::Current(headBone, bodyAway, headOnlyEligible);
     gFirstPersonMs = targets.source == hand_targets::Source::Controllers && targets.anchor == hand_targets::Anchor::View ? GetTickCount64() : 0;
     gSource = targets.source;
     engine::bone_pose::Request request;
@@ -1209,7 +1229,7 @@ void Drive(double deltaSeconds) {
         request.arms[kRight].wrist = kDesktopWrist;
         driven = "right hand held in front of the chest (desktop test)";
         fingers::Stop("desktop test");
-    } else if (targets.source == hand_targets::Source::Controllers) {
+    } else if (targets.source == hand_targets::Source::Controllers || targets.source == hand_targets::Source::HeadOnly) {
         LogAnchor(targets);
         LogCameraOffset(targets);
         // The shoulders under the headset (game/body_follow, research/29): the whole body (not God or Camera)
@@ -1279,6 +1299,18 @@ void Drive(double deltaSeconds) {
             } else {
                 body_scale::Idle(deltaSeconds);  // nothing measured yet: the request stays unscaled, the reach too
             }
+        }
+        if (targets.source == hand_targets::Source::HeadOnly) {
+            if (!request.torso.enabled || !request.torso.goal.bodyMoves)
+                return Stop("head only: no eligible body-follow solve");
+            request = menu_body::TorsoOnly(std::move(request));
+            gLastBodyScale = request.bodyScale;
+            gGunAimed = gGunAimedAndWritten = gSupportRequested = false;
+            fingers::Stop("head only: controller targets unavailable");
+            gMenuBody.Capture(request, menuIdentity, headOnlyEligible, GetTickCount64());
+            engine::bone_pose::Publish(std::move(request));
+            gStatus = "head only: fresh torso follows the view; hand targets and gun IK off";
+            return; // no hand/support/finger/calibration side effects
         }
         auto const componentRotation = ik::RotationOf(componentToWorld);
         std::span<engine::skeleton::BoneAtom const> const pose = engine::skeleton::SpaceBases(mesh);
@@ -1639,6 +1671,8 @@ void LogStats() {
 
 void Shutdown() {
     gMenuBody.Clear();
+    gBodyTrackingSpace.reset();
+    hand_targets::ResetTracking();
     gOverlayMenu = {};
     engine::bone_pose::Clear();
     RestoreBodyBounds();
