@@ -121,7 +121,7 @@ For `RenderLeversTable.hpp`. "Same" means the value was read in ME3's code, not 
 | FSceneRenderer fields past `+0xD8` | | **4 bytes later** (`+0xF4` to `+0xF8`, `+0xF8` to `+0xFC`) | `0x3E5890`, `0x361630`; no lever reads them |
 | family target: surface, size X, size Y (vtable) | `+0x8`, `+0x18`, `+0x20` | same | `0x3685C0`; `plugin/SceneCaptureTarget.hpp` already uses them on ME3 |
 | **FViewInfo stride** | `0x12F0` | **`0x11B0`** | `0x3E5890`, `0x3E55C0`, `0x3600A0` |
-| FSceneView: state, view matrix, projection, translated view, translated view-projection, its inverse, pre-view translation, view-projection, view origin, Umbra camera | `+0x8`, `+0x90`, `+0xD0`, `+0x190`, `+0x1D0`, `+0x210`, `+0x250`, `+0x260`, `+0x320`, `+0x4D4` | same | the copy constructor `0x35CBB0` copies the same fields in the same order up to `+0x4DC` (ME1's copies one more int at `+0x4E0`); `+0x260` and `+0x320` go to RHI slot `+0x4C0` in `0x3D8EB0`, `+0x1D0` and `+0x320` in `0x3E4550`; `+0x4D4` in `0x3E5890`; `+0x8` in `0x3E3B00` |
+| FSceneView: state, view matrix, projection, translated view, translated view-projection, its inverse, pre-view translation, view-projection, view origin, Umbra camera | `+0x8`, `+0x90`, `+0xD0`, `+0x190`, `+0x1D0`, `+0x210`, `+0x250`, `+0x260`, `+0x320`, `+0x4D4` | same | the copy constructor `0x35CBB0` copies the same fields in the same order up to `+0x4DC` (ME1's copies one more int at `+0x4E0`); Halcyon's ME3 code edits the same offsets in play (`kFsv...` in `calcview_hook.cpp`, its inverse scan at `+0x210`); `+0x260` and `+0x320` go to RHI slot `+0x4C0` in `0x3D8EB0`, `+0x1D0` and `+0x320` in `0x3E4550`; `+0x4D4` in `0x3E5890`; `+0x8` in `0x3E3B00` |
 | the view's plain ranges (`kViewPlainRanges`, `kViewCaptureRanges`), compare block `+0x60..+0x8C` | `{0x8C,0x140} {0x190,0x330} {0x480,0x4B0} {0x4C0,0x4D0}` | same | the copy constructor: the same owned containers at `+0x44`, `+0x140`, `+0x330` |
 | FSceneViewState occlusion history (a TSet, `0x48` bytes, count at `+8`) | `+0xD10` | same | `0x35BE20` (1,849 bytes both; it differs from ME1's only in the record's flags offset) |
 | commander: context, base-pass flags per view, view params set, view index, view, family, scene, renderer, query count | `+0x8`, `+0x34 + 8i` (and `+0x38 + 8i`), `+0x5C`, `+0x64`, `+0x68`, `+0x70`, `+0x78`, `+0x8C`, `+0x94` | same | `0x3E5890`, `0x3E4550`, `0x3D8EB0`, `0x3E3B00` |
@@ -169,7 +169,7 @@ Halcyon's ME3 renderer (`src/halcyon/le3`) renders stereo as two `FViewportClien
 `DrawDetour` (`calcview_hook.cpp`) runs the game's Draw (pass 0, the left eye), then calls it again (pass 1,
 `t_replay = true`). Its CalcSceneView branch moves each pass's camera by half the eye distance and **gives each
 pass a view state of its own** (`g_eyeStateLeft`, `g_eyeState`, set with `SetViewState`), so temporal effects
-don't smear. The left eye is a copy of the backbuffer taken on the render thread at pass 1's first scene clear
+don't smear. Pass 0's eye (the left, unless its swap-eyes setting is on) is a copy of the backbuffer taken on the render thread at pass 1's first scene clear
 (`d3d_capture.cpp`, `SfrMaybeCapturePass0AtClear` into `g_sfrPass0Tex`); the right eye is the backbuffer at
 Present; UI draws are mirrored into the held left eye (`SfrMirrorUiDrawIntoPass0`).
 
@@ -291,18 +291,22 @@ PL's shared code can take over those hooks later. Until then **don't install bot
    - `DrawDetour` in `calcview_hook.cpp`: after pass 0, skip the second Draw (`t_replay = true;
      SfrReplayDrawSEH(...)`) while the host's one-Draw flag is set (ME1: `g_oneDrawStereo` in `render_hook.cpp`'s
      replay decision). `g_sfrReplays` then stops counting; `[SFRTIMING]` and `[SFRNATIVE]` only observe.
-   - The SFR branch of the CalcSceneView hook in the same file (`const float signedUU = t_replay ? +he : -he;
+   - The SFR branch of `CalcViewDetour` in the same file (`const float signedUU = t_replay ? +he : -he;
      ApplyEyeOffset; ApplyHeadLook; ApplyFov; RefreshInverseSlots`): in pass 0, also compute what pass 1's view
      would be (`+he`) and hand it to the host (ME1: `MevrBridge::RecordPass1View`, read back by `FindPass1View`
      from the rendered view's origin and forward). Pass 1's view state (`g_eyeState`) is then never rendered
-     through; leave it allocated for the fallback.
-   - `SfrMaybeCapturePass0AtClear` in `d3d_capture.cpp`: it takes the left eye at the first scene-sized clear
-     after pass 0's composite, which is pass 1's clear. With one Draw that clear never comes. Add a call the host
+     through; leave it allocated for the fallback. Whatever else is taken once per pass there (the per-eye pose
+     tag of research/sequel-eye-pose-tags.md) has to be taken for the right eye from pass 0 as well.
+   - `SfrMaybeCapturePass0AtClear` in `d3d_capture.cpp`: it takes the left eye once a present, at the first
+     scene-sized clear after pass 0's first draw into the backbuffer (`g_sfrBbDrawnThisPresent`), which is pass
+     1 starting. With one Draw pass 1 never starts, and a later scene-sized clear of the same Draw (its comments
+     say such clears follow a composite) would take the backbuffer after the replay: both eyes the right eye. Add a call the host
      makes on the render thread **between the first eye's finish and the replay** (ME1's `PerfPass0Captured`
      sits at the same moment) that copies the backbuffer into `g_sfrPass0Tex` and sets what the clear path sets
-     (`g_sfrCapturedThisPresent`, the capture sequence, `g_sfrClearsThisPresent >= 1` so the UI mirror arms).
-     The replay then draws the right eye into the backbuffer; the UI draws that follow go to the backbuffer and
-     are mirrored into the left eye as now.
+     (`g_sfrCapturedThisPresent`; `g_sfrPass0Caps`, the sequence `me2_xr.cpp`'s submit compares to tell a fresh
+     left eye from a frozen one; `g_sfrClearsThisPresent >= 1` so the UI mirror arms). The replay then draws the
+     right eye into the backbuffer; the UI draws that follow go to the backbuffer and are mirrored into the left
+     eye as now. The submit (`GetSfrPass0Texture()` left, the backbuffer right) doesn't change.
 5. The fallback is ME1's: when no recorded pass-1 view matches for 3 frames, clear the flag so `DrawDetour` draws
    twice again.
 6. Checks, in order, on the fake headset: `render levers:` shows 1 scene render a frame and `one Draw` replays;
@@ -324,6 +328,11 @@ finish `(translucency, dirty)`; RHI `+0x620`. Identical to ME1's. It can't pair 
 ### Open
 
 - Whether ME3's second pass polls unready Umbra queries, as ME1's did with a state per eye ("Measure this first").
-- What sets the command gate `0x1767208`.
+- What sets the command gate `0x1767208`. It sits in a block of settings (the byte at `0x1767204` next to it is
+  read by `FViewportClient::Draw` and by the skeletal mesh's UpdateBounds) and nothing in `.text` writes it by its
+  own address: it is written through the block. ME1's console has `UMBRA OCCLUSIONCULLING`; whether ME3's toggles
+  this was not read.
+- The exe gate's view of the three renamed capture rows: `plugin/Le3SceneCapture` asks for them by RVA
+  (`exe::Find`), so the names don't matter to it; nothing else read the old names.
 - Nothing here was run in the game. The first run with any hook installed should confirm the exe gate accepts all
   rows (`exe:` lines in `LE3MEVR.log`) before a lever is turned on.
