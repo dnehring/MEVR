@@ -63,9 +63,10 @@ The names are in `tools/ghidra/symbols-le3.csv` (`tools\ghidra\seed.ps1 -Game LE
 
 ### The table
 
-"Row" is the entry's name in `engine::addresses::le3::kTable` (the same text as ME1's row). Every function row is a
-`.pdata` start (checked with `--exe`) unless marked leaf; every pattern is unique in ME3's `.text`; ctest
-`mevr-tests` checks all of them against the dump. Status: **V** found and verified (the function, its signature and
+"Row" is the entry's name in `engine::addresses::le3::kTable` (the same text as ME1's row). Each row's byte pattern
+is there and only there (the exe gate and the dump test read it from the table; `tools/rva-patterns.py` made it).
+Every function row is a `.pdata` start (checked with `--exe`) unless marked leaf; every pattern is unique in ME3's
+`.text`; ctest `mevr-tests` checks all of them against the dump. Structure offsets are in "Layouts" below. Status: **V** found and verified (the function, its signature and
 every offset the hook uses were read in ME3's code), **U** found, an offset or a premise unverified.
 
 | Lever | Row | ME1 | ME3 | Verified how | Status | With ME3's SFR |
@@ -92,7 +93,7 @@ every offset the hook uses were read in ME3's code), **U** found, an offset or a
 | resolve timing, umbraQueryWait | UmbraCommander::command | `0x8C34C0` | `0x3E8B80` | slot 1 of the commander's vtable; the same ten codes; `void(commander, code)` | V | Allowed. |
 | umbraQueryWait | Umbra resolve start stamp | `0x1795D40` | `0x189EC0C` | code 0 stamps it (a float, the same expression), code 1 zeroes it, the results read (`0x3D8C90`) reads it | V | Allowed. |
 | ue3QueryWait | FD3D11DynamicRHI::GetQueryData | `0x9A04B0` | `0x9A7D10` | 351 bytes, identical; called from RHI slot `+0x268` (`0x9A7C50`) | V | Allowed, but see "What ME3's SFR design allows". |
-| keepBoundShaderStates | FD3D11BoundShaderState constructor | `0x9A89F0` | `0x9B0270` | 557 bytes, identical; its two callers are ME1's (`0x9B24C0` identical, `0x9B25E0` but two bytes) | V | Allowed (no stereo in it). |
+| keepBoundShaderStates | FD3D11BoundShaderState constructor | `0x9A89F0` | `0x9B0270` | 557 bytes, identical; its two callers (`0x9B24C0`, `0x9B25E0`) are identical to ME1's too | V | Allowed (no stereo in it). |
 | keepBoundShaderStates, replay | GDynamicRHI | `0x17938C8` | `0x1894018` | the capture work's row (it was `Capture.GDynamicRHI`), renamed to ME1's; the same vtable layout | V | |
 | minScreenRadiusPx, umbraSharedVisibility | UmbraCommander visible instance | `0x8BE0B0` | `0x3E3B00` | 909 bytes both, 3 bytes differ; the same seven arguments | V | Allowed; see difference 1. |
 | umbraEyeMatrix | UmbraCommander::IssueOcclusionQueries | `0x8B6550` | `0x3D8EB0` | 559 bytes, identical; code 5 calls it | V | Allowed; a no-op until the eyes get their own frustum. |
