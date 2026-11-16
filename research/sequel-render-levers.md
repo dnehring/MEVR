@@ -217,15 +217,18 @@ This is a measurement to make, not a finding: nothing was run.
 Every recipe assumes lane PL's per-game table: an address comes from ME3's row of the given name, and a missing or
 moved row stands the lever down with one log line, as on ME1.
 
-**0. What the bridge must answer first (lane U1's seams).** `RenderLevers.cpp` asks Halcyon's LE1 bridge four
-things; ME3's renderer has each fact:
+**0. What the renderer must answer first.** `RenderLevers.cpp` asks Halcyon's LE1 bridge four things; ME3's
+renderer has each fact. The names to give them are the one seam vocabulary's (`src/halcyon/MevrSeams.h`, section 6
+and its "Room left for one-Draw stereo" note; capabilities `perfSeams` and `oneDraw` in `plugin/Renderer.hpp`):
 
 1. `StereoFrameActive()`: "SFR renders the world this frame". ME3: `DrawDetour`'s `sfrGameplay` condition (VR on,
    mode `Sfr`, not menu or cinematic unless `ConvoFp::OwnsCamera()`).
-2. `g_perfDraws`: a draw counter. ME3: add `++` in `MhDrawIndexed`, `MhDrawIndexedInstanced` and `MhDraw`
-   (`d3d_capture.cpp`).
-3. The frame boundary (`gRenderIndex` back to 0): ME3's Present hook, where `g_sfrCapturedThisPresent` is cleared.
-4. For one-Draw only: `g_oneDrawStereo`, `RecordPass1View` / `FindPass1View` (recipe 8).
+2. The draw counter (`PerfDraw()`; LE1's `++g_perfDraws`): ME3 calls it in `MhDrawIndexed`,
+   `MhDrawIndexedInstanced` and `MhDraw` (`d3d_capture.cpp`).
+3. The frame boundary (`gRenderIndex` back to 0; `PerfPresentBegin` / `PerfPresentEnd`): ME3's Present hook, where
+   `g_sfrCapturedThisPresent` is cleared.
+4. For one-Draw only: `g_oneDrawStereo`, `RecordPass1View` / `FindPass1View` and the recorder's `Record*`, moved
+   into `MevrSeams.h` unchanged as its note says (recipe 8).
 
 **1. Accounting: the scene render hook.**
 
@@ -302,8 +305,8 @@ PL's shared code can take over those hooks later. Until then **don't install bot
      scene-sized clear after pass 0's first draw into the backbuffer (`g_sfrBbDrawnThisPresent`), which is pass
      1 starting. With one Draw pass 1 never starts, and a later scene-sized clear of the same Draw (its comments
      say such clears follow a composite) would take the backbuffer after the replay: both eyes the right eye. Add a call the host
-     makes on the render thread **between the first eye's finish and the replay** (ME1's `PerfPass0Captured`
-     sits at the same moment) that copies the backbuffer into `g_sfrPass0Tex` and sets what the clear path sets
+     makes on the render thread **between the first eye's finish and the replay** (ME1's `PerfPass0Captured`,
+     the vocabulary's `PerfFirstEyeCaptured`, sits at the same moment) that copies the backbuffer into `g_sfrPass0Tex` and sets what the clear path sets
      (`g_sfrCapturedThisPresent`; `g_sfrPass0Caps`, the sequence `me2_xr.cpp`'s submit compares to tell a fresh
      left eye from a frozen one; `g_sfrClearsThisPresent >= 1` so the UI mirror arms). The replay then draws the
      right eye into the backbuffer; the UI draws that follow go to the backbuffer and are mirrored into the left
