@@ -13,7 +13,7 @@ keeping the run (research/29 "The legs keep the run"): replay it with its inputs
 
 segment: seconds per stick direction (default 3). --yaw: the head (and the hands) turned DEG degrees right in the room.
 --pitch: the head pitched DEG degrees (+ up; -60 shows the legs). --eye-height: the head's height in tracking space
-(default 0: the fake headset's floor is at the head). --stick: the stick's deflection (default 0.9, a run: above the
+(default 0 relative to the recentered head; the null headset's STAGE height is separately 1.7526 m). --stick: the stick's deflection (default 0.9, a run: above the
 game's 0.70). --grip: the right grip held all the way (a gun drawn with `mevr weapon pistol` stays in the hand). --plan: the
 segments by name and seconds instead of the loop of five (forward, strafe right, back, strafe left, stand): `stand:600` is a
 player standing with tracked hands (an audit run's hands, tools/conversation-audit.ps1); `forward:14,stand:600` one who walks
