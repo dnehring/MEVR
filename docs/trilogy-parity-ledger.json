@@ -135,6 +135,7 @@
     "game/HudPieces",
     "game/Interact",
     "game/InventoryProbe",
+    "game/Le2Traversal",
     "game/Le3GalaxyCapture",
     "game/Le3GalaxyRetention",
     "game/Le3Traversal",
@@ -203,6 +204,7 @@
     "HalcyonBridge",
     "HalcyonOverlays",
     "HandReticle",
+    "HdrDisplayPolicy",
     "HudPanel",
     "HudPieceLayers",
     "KeptLocks",
@@ -313,6 +315,7 @@
     "vr/Thespian",
     "vr/TransitionFade",
     "vr/Traversal",
+    "vr/Upscale",
     "vr/WorldUi",
     "xr/Floor",
     "xr/Input"
@@ -378,6 +381,7 @@
     "game/HudPieces",
     "game/Interact",
     "game/InventoryProbe",
+    "game/Le2Traversal",
     "game/Le3GalaxyCapture",
     "game/Le3GalaxyRetention",
     "game/Le3Traversal",
@@ -486,6 +490,7 @@
     "Thespian",
     "TransitionFade",
     "TraversalCue",
+    "Upscale",
     "Vignette",
     "Voice",
     "VoiceModel",
@@ -551,6 +556,7 @@
     "vr/Thespian",
     "vr/TransitionFade",
     "vr/Traversal",
+    "vr/Upscale",
     "vr/WorldUi",
     "xr/Floor",
     "xr/Input"
@@ -619,6 +625,7 @@
     "game/HudPieces",
     "game/Interact",
     "game/InventoryProbe",
+    "game/Le2Traversal",
     "game/Le3GalaxyCapture",
     "game/Le3GalaxyRetention",
     "game/Le3Gui",
@@ -731,6 +738,7 @@
     "Thespian",
     "TransitionFade",
     "TraversalCue",
+    "Upscale",
     "Vignette",
     "Voice",
     "VoiceModel",
@@ -1420,13 +1428,13 @@
     },
     "LE2": {
      "legacy": false,
-     "me1OnlyHandles": true,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE3": {
      "legacy": false,
-     "me1OnlyHandles": true,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     }
@@ -2053,6 +2061,29 @@
     }
    },
    "namespace": "game::inventory_probe"
+  },
+  "game/Le2Traversal": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    }
+   },
+   "namespace": "game::traversal::le2"
   },
   "game/Le3GalaxyCapture": {
    "games": {
@@ -2796,7 +2827,7 @@
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "ungated"
     },
     "LE2": {
      "legacy": false,
@@ -2808,7 +2839,7 @@
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "ungated"
     }
    },
    "namespace": "game::traversal"
@@ -3077,6 +3108,7 @@
     "CineScreenLayers",
     "CineScreenWanted",
     "CopyIntoImage",
+    "EyeImageSize",
     "FloorViewTranslation",
     "HudPanelDraw",
     "KeyDown",
@@ -3319,6 +3351,7 @@
     "CineScreenLayers",
     "CineScreenWanted",
     "CopyIntoImage",
+    "EyeImageSize",
     "FloorViewTranslation",
     "HudPanelDraw",
     "KeyDown",
@@ -3356,6 +3389,7 @@
     "CineScreenLayers",
     "CineScreenWanted",
     "CopyIntoImage",
+    "EyeImageSize",
     "FloorViewTranslation",
     "HudPanelDraw",
     "KeyDown",
@@ -3410,6 +3444,7 @@
     "CineScreenLayers",
     "CineScreenWanted",
     "CopyIntoImage",
+    "EyeImageSize",
     "FloorViewTranslation",
     "HudPanelDraw",
     "KeyDown",
@@ -3447,6 +3482,7 @@
     "CineScreenLayers",
     "CineScreenWanted",
     "CopyIntoImage",
+    "EyeImageSize",
     "FloorViewTranslation",
     "HudPanelDraw",
     "KeyDown",
@@ -3513,6 +3549,7 @@
     "recordWrite": "WithCrashBreadcrumbs",
     "reserveWorldUi": "WithWorldUi",
     "rightGripFree": "WithPadMerge",
+    "secondEyeIsReplay": "WithRenderer",
     "setAimRay": "WithRenderer",
     "setConversationWorld": "WithLe1ExtraUi",
     "setFloorLockSample": "WithFloorLock",
@@ -3594,6 +3631,7 @@
     "recordWrite": "WithCrashBreadcrumbs",
     "reserveWorldUi": "WithMenus",
     "rightGripFree": "WithPadMerge",
+    "secondEyeIsReplay": "WithRenderer",
     "setAimRay": "WithRenderer",
     "setFloorLockSample": "WithFloorLock",
     "setHandAim": "WithRenderer",
@@ -3659,6 +3697,7 @@
     "processExiting": "BaseServices",
     "recordWrite": "WithCrashBreadcrumbs",
     "rightGripFree": "WithPadMerge",
+    "secondEyeIsReplay": "WithRenderer",
     "setAimRay": "WithRenderer",
     "setFloorLockSample": "WithFloorLock",
     "setGalaxyHologram": "WithGalaxyHologram",

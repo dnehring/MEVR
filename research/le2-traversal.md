@@ -192,6 +192,14 @@ between launches); the snapshot's new `"traversal"` block says `started: false`,
 
 ## What is left
 
+- **ME2's observer has its own file since 2026-11-16** (lane GF2, docs/trilogy-parity-ledger.md Forks 4 step 1):
+  `game/Le2Traversal.cpp`, moved unchanged from `game/Traversal.cpp`, which keeps `[Traversal]`'s settings, the console's
+  `mevr traversal` surface and the dispatch to `le2::` and `le3::`. Fixture after the move: `vault.ps1 -Runs 3 -Mode tap`
+  vaulted 3 of 3 (session `20261116-173826-670-LE2-gf2-run4`: each `vault over: the custom action 0.90-0.91 s (stance
+  FromCombat)`), as before it (`20261116-153741-665-LE2-gf2-run2`, 3 of 3). A run under heavy machine load in between
+  (`...-gf2-run3`) vaulted 1 of 3: the second A of two double taps never reached the mod (the null headset's controllers
+  dropped out), not a refusal.
+
 - ~~Arm IK across root-motion steps~~ **done** (lane C2, 2026-11-15; research/le2-vrik.md "Arm IK across root-motion steps"): the
   writer follows the camera's bone; through three vaults both wrists stay within 0.08 m of the controllers (0.07 standing).
 - **The grips on ME2:** a held right grip is the pad's RB on ME2 today (the power wheel after 0.3 s; the LE2 host has no `gripHolds`

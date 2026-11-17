@@ -5,6 +5,7 @@
 #include "core/d3d11/Blit.hpp"
 #include "core/vr/Colour.hpp"
 #include "plugin/Colour.hpp"
+#include "plugin/Upscale.hpp"
 
 #include <d3dcompiler.h>
 #include <wrl/client.h>
@@ -28,16 +29,19 @@ std::unordered_map<ID3D11Texture2D*, ComPtr<ID3D11RenderTargetView>> gViews;
 std::unordered_map<ID3D11Texture2D*, ComPtr<ID3D11RenderTargetView>> gUnormViews;
 bool gToldDraw = false;
 bool gToldRefused = false;
+bool gToldUpscale = false;
 
 // The colour correction's pass (core/vr/Colour's prelude in front): PSPlain reads the source as the pass wants it (an 8-bit
 // source's encoded values, or a float source's linear light), PSDecode decodes an 8-bit source first (drawn through an sRGB
-// view). Blit's vertex shader gives SV_Position (the dither's pixel) and the uv.
+// view). Blit's vertex shader gives SV_Position (the dither's pixel) and the uv. MEVR_TONE is LE1's ToEye step (research/27
+// 7b): for a float source the hue-preserving clip or [Colour] tonemap's curve, for an 8-bit one (values within 0..1, the
+// constants' linear flag off) the identity, bit for bit. An 8-bit source decoded first never gets a curve, as on LE1.
 constexpr char kCorrectedShader[] = R"(
 Texture2D mevrEyeSource : register(t0);
 SamplerState mevrEyeSampler : register(s0);
 struct MevrEyeIn { float4 position : SV_Position; float2 uv : TEXCOORD0; };
 float4 PSPlain(MevrEyeIn i) : SV_Target {
-    return MEVR_EYE_OUT(float4(mevrEyeSource.Sample(mevrEyeSampler, i.uv).rgb, 1.0), i.position);
+    return MEVR_EYE_OUT(float4(MEVR_TONE(mevrEyeSource.Sample(mevrEyeSampler, i.uv).rgb), 1.0), i.position);
 }
 float4 PSDecode(MevrEyeIn i) : SV_Target {
     return MEVR_EYE_OUT(float4(MevrDecode(mevrEyeSource.Sample(mevrEyeSampler, i.uv).rgb), 1.0), i.position);
@@ -277,6 +281,22 @@ bool Copy(ID3D11DeviceContext* context, ID3D11Texture2D* image, ID3D11Texture2D*
     // One convergence policy for both raw and drawn eyes: unshifted fill followed by the
     // shifted overwrite. Clamp without abs(INT_MIN); the vacated strip never stays stale.
     shiftX = std::clamp(shiftX, -static_cast<int>(to.Width - 1), static_cast<int>(to.Width - 1));
+    // An 8-bit picture smaller than the image: ME1's eye upscale (plugin/Upscale: FSR 1 with the colour correction at
+    // its end, [Upscale] in the game's MEVR.ini), written through the image's UNORM view as LE1's blit writes it.
+    if (d3d11::IsGammaEncodedUnorm(from.Format) && from.Width < to.Width && from.Height < to.Height &&
+        EnsureBlit(context, from.Format)) {
+        ID3D11RenderTargetView* const view = UnormViewOf(image, to);
+        if (view != nullptr && upscale::Copy(context, *gBlit, source, view, from.Width, from.Height, from.Format, to.Width,
+                to.Height, shiftX, eye)) {
+            if (!gToldUpscale) {
+                gToldUpscale = true;
+                log::Info("eye copy: FSR 1 scales the game's picture ({}x{}, format {}) up into the images ({}x{}, format {}) "
+                          "through their UNORM view",
+                    from.Width, from.Height, static_cast<int>(from.Format), to.Width, to.Height, static_cast<int>(to.Format));
+            }
+            return true;
+        }
+    }
     if (DrawCorrected(context, image, source, from, to, shiftX, eye)) {
         return true;
     }

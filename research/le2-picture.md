@@ -1,6 +1,10 @@
 <!-- SPDX-License-Identifier: MIT -->
 # ME2's picture in its dark scenes, ME1's way (2026-11-14)
 
+**Since 2026-11-16 (lane EY, research/27 section 9):** the eyes of all three games go through one pipeline (the same
+colour, tonemap and FSR code and keys as ME1's); the measurements below were repeated through it at the same place
+and agree within the noise floor (research/27 9.6, with ME3's Normandy). The recommendation in section 5 stands.
+
 **The owner (2026-11-14):** "We can take the HDR lane out of play. I'm just trying to figure out how we can get the best
 picture, when we know that me2 has a lot of dark scenes." So the HDR work stopped (research/le2-hdr.md stays as the study;
 nothing of its Steps 1-2 landed), both games answer the game's HDR question SDR by default

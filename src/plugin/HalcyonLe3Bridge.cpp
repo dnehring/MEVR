@@ -121,10 +121,7 @@ Facts const& Get() noexcept {
     static Facts const facts{
         "halcyon le3 bridge",
         true,   // invalidViewAtOnce: the flat and menu paths stop the floor lock's pass without a last invalid view
-        true,   // menusHideGameplay: one submit owner, no gameplay presentation under either menu or the calibration
-        false,  // panelColour: lane EY's pipeline decides it
-        true,   // weaponsNeedPublishedAim
-        true,   // cueOnFootOnly: authored scenes own traversal
+        true,   // panelColour: the game's UI on the panel gets the eyes' correction, as on ME1 and ME2 (research/27 section 9)
         0,      // hudLayout: no HUD pieces on ME3 yet (capability hudPieces)
     };
     return facts;
@@ -170,18 +167,15 @@ void FramePublished() noexcept {
         vr::host_view::Reset(); // flat/menu paths do not call DriveHeadLook this frame
 }
 
-// ME3 only, not ME1's or ME2's recenter: the published controllers and the floor lock's views are dropped too (old
-// app-space poses must not mix with the new head space), and what was placed in the old space is forgotten.
+// ME3's own state placed in the old app space: its galaxy table and map lease, its spoken-reply lease, its traversal
+// presentation. The rest is the one recenter rule (research/trilogy-seams.md "One recenter rule"): until 2026-11-16 ME3 also
+// dropped the published controllers, the floor lock's views, the interaction label, the traversal cue and the frame's
+// cinema screen; the controllers' drop showed the mod no controllers for the ticks until the next sample (every held grip
+// and trigger let go), and the others were sent again by the mod or placed again within the frame.
 void Recentered() noexcept {
     ResetGalaxy();
     gThespianContextMs.store(0, std::memory_order_release);
-    vr::interact::Reset();
     InvalidateTraversalPresentation();
-    Screen() = {};
-    traversal_cue::Forget();
-    vr::controllers::Publish({});
-    floor_lock::Reset();
-    ForgetFloorPass();
 }
 
 bool PadKeeps(int gameMode) noexcept {

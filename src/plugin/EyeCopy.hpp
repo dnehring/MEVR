@@ -12,6 +12,10 @@
 // neutral every copy into an eye or the flat panel is a corrected pass of core/vr/Colour's prelude (an 8-bit source through
 // the image's UNORM view, its encoded values as the raw copy leaves them; a float one through its sRGB view). Neutral leaves
 // the copies as they were.
+// ME1's eye upscale too (plugin/Upscale, research/32; research/27 section 9): an 8-bit picture smaller than the image both
+// ways (the sequels' eye images are larger than the backbuffer when MevrSeams::EyeImageSize says so) is scaled up by FSR 1
+// with the correction at its end, before any of the paths above. A float picture gets LE1's ToEye step in the corrected
+// pass (MEVR_TONE: the hue-preserving clip, or [Colour] tonemap's curve).
 // This is an opaque eye/flat-frame operation (shader alpha = 1), not an alpha-preserving UI converter.
 namespace mevr::host::eye_copy {
 

@@ -45,9 +45,10 @@ struct Caps {
     char const* name = "none";        // "halcyon-le1" | "halcyon-le2" | "halcyon-le3": for logs, never to branch on
 
     // -- Which groups of the common seams (src/halcyon/MevrSeams.h) the renderer's tree calls --
-    bool eyeImageSeams = false;       // OnEyeSource, CopyIntoImage, OnEyeCopied, OnEyeReleased, OnFactory: the host's
-                                      // plugin/EyeCopy owns every eye image (LE1: its own blit, with the EyeColour* and
-                                      // EyeUpscale seams below)
+    bool eyeImageSeams = false;       // EyeImageSize, OnEyeSource, CopyIntoImage, OnEyeCopied, OnEyeReleased, OnFactory:
+                                      // the host's plugin/EyeCopy owns every eye image (LE1: its own blit, which reaches
+                                      // the same colour correction and upscale through the EyeColour* and EyeUpscale
+                                      // seams below; research/27 section 9 says why it keeps that call shape)
     bool hudPanelDraw = false;        // MevrSeams::HudPanelDraw from its draw hooks (LE1: its own HudPanel* seams)
     bool hostCineScreen = false;      // the host composes the 3D cinema screen (CineScreenLayers); false: the renderer
                                       // does (LE1's xr_session.cpp, with CineScreenQuadsNow and PlanStereo's screen branch)

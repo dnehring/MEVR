@@ -52,6 +52,7 @@ XrSwapchain g_swap[2] = {};
 std::vector<ID3D11Texture2D*> g_images[2];
 uint32_t g_swapW = 0, g_swapH = 0;   // per-EYE swapchain dims (half the SBS backbuffer width)
 uint32_t g_bbW = 0;                  // full SBS backbuffer width
+uint32_t g_mevrRecommendedW = 0, g_mevrRecommendedH = 0;   // [MEVR] the runtime's recommended eye size (EyeImageSize)
 int64_t g_swapFormat = 0;
 
 // UI quad layer (the captured GFx UI texture, shown zero-disparity over the world).
@@ -398,6 +399,8 @@ bool CreateEyeSwapchains() noexcept
     std::vector<XrViewConfigurationView> vcv(viewCount);
     for (auto& v : vcv) v.type = XR_TYPE_VIEW_CONFIGURATION_VIEW_VALUE;
     g_fn.enumerateViewConfigurationViews(g_instance, g_system, kStereo, viewCount, &viewCount, vcv.data());
+    g_mevrRecommendedW = vcv[0].recommendedImageRectWidth;   // [MEVR] for the eye images' size (EnsureAerSwapchains)
+    g_mevrRecommendedH = vcv[0].recommendedImageRectHeight;
 
     // B2b (stereo): per-eye swapchain = HALF the SBS backbuffer (left half / right half).
     g_bbW = ME2VR::D3DCapture::GetBackbufferWidth();
@@ -1155,6 +1158,8 @@ bool EnsureAerSwapchains() noexcept
     g_publishedEyes.Reset(); g_dibrHaveLast = false;
     g_aerSwapW = g_bbW;
     g_aerSwapH = g_swapH;   // = full backbuffer height
+    // [MEVR] the eye images may be larger than the picture: ME1's FSR upscale at the copy (MevrSeams::EyeImageSize)
+    ::MevrSeams::EyeImageSize(g_bbW, g_swapH, g_mevrRecommendedW, g_mevrRecommendedH, &g_aerSwapW, &g_aerSwapH);
     if (g_aerSwapW == 0 || g_aerSwapH == 0) return false;
     for (int eye = 0; eye < 2; ++eye)
     {

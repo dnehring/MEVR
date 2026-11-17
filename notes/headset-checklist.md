@@ -285,6 +285,9 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   `[Cinematics] worldBlackMoves = 0` is the old rule; `worldCuratedWalks` adds walks that keep walking.
   The lift up from Liara's cell on Therum (research/69 item 42): you ride up with it, the conversation's view never stays at the
   bottom, and you can walk on the lift (log `convo: ... the player rides with it`).
+  The dancer's seat at Chora's Den (research/69 item 43): first person now, not the 3D screen; you sink into the seat with
+  Shepard, facing the dancer, the stick doesn't walk, you come back up when he stands (logs `convo: ... Shepard sits down`,
+  `... gets up`). Comfort of the sink and the seated eye height.
 - [ ] **First person for every conversation: the robustness round** (built 2026-11-09, research/69 "To check in the game"; Claude
   checks these on the fake headset first, when the game folder is free). Checked there 2026-11-09: placements withheld at their
   source (the wake-up scene: 28 withheld, 0 undone), the walk stopping at a trigger's edge, and another scene's start held during

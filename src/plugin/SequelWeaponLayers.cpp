@@ -2,13 +2,12 @@
 // Extracted from the LE2 bridge; draw modules remain the same ones used by LE1.
 #include "plugin/SequelWeaponLayers.hpp"
 #include "plugin/SightLayers.hpp"
-#include "core/vr/AimRay.hpp"
 #include "plugin/HandReticle.hpp"
 #include "plugin/Renderer.hpp"
 #include <Windows.h>
 namespace mevr::host::sequel_weapon_layers {
 unsigned Layers(MevrSeams::OverlayFrame const& frame, ID3D11Device* device, int reticleMode,
-    void const** layersOut, unsigned count, unsigned capacity, bool requirePublishedAim) noexcept {
+    void const** layersOut, unsigned count, unsigned capacity, bool handAim) noexcept {
     if (!layersOut || count >= capacity) return count;
     // The gun's sights (plugin/SightLayers, LE1's): worked out before the ring, which hides while an eye looks through the
     // sight (held 0.3 s, as LE1's HalcyonOverlays); their quads go on top of the ring's.
@@ -57,9 +56,7 @@ unsigned Layers(MevrSeams::OverlayFrame const& frame, ID3D11Device* device, int 
         reticle.headValid = frame.headValid;
         reticle.headPosition = {frame.headPosition[0], frame.headPosition[1], frame.headPosition[2]};
         reticle.gameMode = reticleMode;
-        auto const ray = mevr::vr::aim_ray::Latest();
-        bool const liveAim = ray.sequence != 0 && ray.valid && nowMs >= ray.timeMs && nowMs - ray.timeMs < 1000;
-        reticle.handAim = mevr::host::renderer::ModHandAim() && (!requirePublishedAim || liveAim);
+        reticle.handAim = handAim;  // the ring on the mod's aim ray (plugin/HandReticle), as LE1's
         reticle.sightHidesRing = sightSeenMs != 0 && nowMs - sightSeenMs < 300;
         reticle.enabled = cfg.handReticle;
         reticle.distanceM = cfg.handReticleDistanceM;

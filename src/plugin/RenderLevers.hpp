@@ -67,5 +67,9 @@ bool PerEyeViewState();
 // the owner's QA whole meshes (a floor piece, the arms and gun after a look up and back) dropped out frame by frame on
 // it, in both eyes, and stayed with the eye's own frustum).
 bool OneDrawWindow();
+// The frame's second eye is a replay of the first eye's recorded draws ([Performance] sharePass 2, 3 or 5 on a game
+// whose table and renderer have the lever; false wherever sharePass stands down). What depends on the replay's known
+// gaps asks this (HostServices v43: game/SystemSettings' LightEnvironmentShadows rule). Any thread.
+bool SecondEyeIsReplay();
 
 } // namespace mevr::host::render_levers
