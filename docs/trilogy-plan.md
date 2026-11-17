@@ -53,7 +53,7 @@ Each rule has who decided it, when, and where it was said. "The continuation pla
 | 17 | **Squad weapons stay on the left-trigger menu.** The weapon row inside the right-B placement wheel was built and reverted at the owner's request. | the owner, before 2026-11-15 | M6 guide B "Preserve the approved interaction" |
 | 18 | **The game stays the authority** for damage, ammo, inventory, cooldowns, resources and plot. VR asks the game to act through its own functions and keeps no writable second copy. A reload is done by hand but the game counts the ammo. | 2026-10-07; 2026-11-13 | [trilogy-design.md](trilogy-design.md) rule 3; le2-port-implementation-plan.md "Product decisions"; LE3 plan rule 5 |
 | 19 | **No new player-facing default without the owner's yes.** ME1's value is the default; a lane reports a recommendation instead of flipping one. | the owner, 2026-11-11; the lanes' rules, 2026-11-16 | research/le2-picture.md section 5 |
-| 20 | **Everything consistent.** "Ideally I want everything consistent. Me3 I'd prefer other elements stay open if it helps with immersion." A per-game difference in behaviour needs a reason the game forces; our menu treats the game's layers the same on every game, and our own quads stay hidden under it on all three (the owner, 2026-11-16, question 10). | the owner, 2026-11-16 | research/trilogy-seams.md "ME3 as ME1", "One recenter rule" |
+| 32 | **Everything consistent.** "Ideally I want everything consistent. Me3 I'd prefer other elements stay open if it helps with immersion." A per-game difference in behaviour needs a reason the game forces; our menu treats the game's layers the same on every game, and our own quads stay hidden under it on all three (the owner, 2026-11-16, question 10). | the owner, 2026-11-16 | research/trilogy-seams.md "ME3 as ME1", "One recenter rule" |
 | 30 | **Sights on the sequels use ME1's systems for now** ("sight details can use me1's systems for now"): ME1's dot, holo, scope, ADS, assist and convergence, each game's names behind the adapter; per-model optic profiles wait for measured numbers. | the owner, 2026-11-16 | the owner's answers of 2026-11-16; T24 |
 | 31 | **The trigger never draws a holstered weapon, on any game** ("trigger draw a holstered weapon? No, none of the games should do that."): only a grab at a holster draws (ME1's `[Holsters] onlyHolstersDraw`). | the owner, 2026-11-16 | the owner's answers of 2026-11-16; T25 |
 
@@ -163,7 +163,7 @@ These unblock the most: almost every other entry gets smaller once they land.
   `plugin/SequelOverlays.cpp` as the one composition for both sequels (capabilities plus each game's adapter,
   `sequel_bridge::game` in `HalcyonLe2Bridge.cpp` / `HalcyonLe3Bridge.cpp`); LE1 still composes in
   `plugin/HalcyonOverlays.cpp`. research/trilogy-seams.md "One sequel bridge", "One overlay composition". Since lane U3
-  (2026-11-16, rule 20): ME3's adapter answers like ME2's for our menu, the ring and the traversal cue (three facts gone),
+  (2026-11-16, rule 32): ME3's adapter answers like ME2's for our menu, the ring and the traversal cue (three facts gone),
   and one recenter rule holds for all three games ("ME3 as ME1", "One recenter rule").
 - **Left, every game:** LE1 onto the shared composition one layer at a time, each with a same-pose pair (the note lists
   the five blocks); LE1's label quad becomes `HudPieceLayers::Interaction` with ME1's default crop; `plugin/MenusLe2`
