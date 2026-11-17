@@ -499,4 +499,26 @@ timer or shield is written by us. The answers are read (not written) per call; n
   without hostiles: Save 4's squad), `as off`; `mevr cover recharge on|off` (an A/B until the mod reloads).
 - **ReflectCheck rows** (ME2): `SFXShield_Base.ShieldRegenTimer`, `bFastCoverRegen`, `SFXShield_Base.Tick`.
 
-**In the game:** see the measurement below (filled by the run of 2026-11-16).
+**In the game** (fake headset, 2026-11-16 20:00-20:06, Freedom's Progress, Save 4, session `20261116-195519-020-LE2-gr-me2`,
+restored `verification: 0 differences`): the player's shield is `SFXShield_Energy_Player_0`, its `bFastCoverRegen` **on**, the regen
+delay after a hit **5.00 s**. The places of section 7.4 (Shepard with `mevr cover put me -2290 20480 -11909`, Jacob put at
+`(-2290, 20200)`, standing on the lower ground at -12109, `mevr cover regen as <Jacob>`): each hit was `mevr cover hit 30 <Jacob>`
+with `mevr cover off` for the hit (else the cone cuts it to nothing and no wait starts: case D) and `on` again 0.5 s later.
+
+| case | the shelter | the wait before recharging |
+|---|---|---|
+| A: behind the crate, `recharge` on | `behind cover (1 hostile judged ... 1 hidden by cover)`, the crate 1.22 m from the eyes | **3.51 s**, 3.00 s of it behind cover |
+| A again | the same | **3.67 s**, 2.67 s of it behind cover |
+| B: the same place, `mevr cover recharge off` | (not asked) | **5.02 s** |
+| C: Shepard 3.2 m back (`-2290 20800`), recharge on | `hidden only by things far away` (the crate 3.93 m from the eyes) | **5.02 s** |
+| C': Jacob in the open, recharge on | `in the open to a hostile` | **5.50 s** |
+| no hostile at all | `no awake hostile` | 5.01 s |
+| D: protect on, behind the crate | (the damage call) | the cone cut the hit to nothing (shields 257.5 unchanged): no wait started |
+
+The game's own rule is a 1.5x countdown while in cover: 0.5 s unsheltered (the toggle's gap) plus 4.5 s / 1.5 = 3.50 s, as measured
+(A 3.51 s); the second A had the shelter answered later in the wait (2.67 s of it). **For this run `[Cover] reachM` was 1.5** (the
+file's 1.2 put back after): on ME2's current main a replayed crouch no longer lowers the eyes (floor lock pins the eye at the live
+STAGE height, 1.7526 m, `floor lock: ... correction +102.261, final eye 1.7526 m` while the replay's head was 0.9 m down), so the
+head stayed at standing height and the crate's nearest point on the line to Jacob was 1.22-1.28 m away. That is a test-tool gap
+(replays don't stand in for the STAGE floor query), not the rule's: the lane that owns floor lock was told. Not measured: a
+hostile's own shots, several hostiles, a headset.

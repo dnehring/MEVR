@@ -483,13 +483,14 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Waits for:** T05's ME3 combat fixture. See [question 2](#open-owner-questions). **Who:** lane GR (the recharge).
 
 #### T32 Sprint [G58]
-- **State:** LE1 done · LE2 verify · LE3 verify
+- **State:** LE1 headset · LE2 headset · LE3 headset (each run on the fake headset 2026-11-16: research/trilogy-sprint.md)
 - **Lives in:** `game/Sprint`, `core/vr/Sprint`: one module and rule for the three since 2026-11-16 (lane GR, the owner's
   "Unified sprint", [question 6](#open-owner-questions)): StormOn runs, its intent (`bWantsToStorm`) is withdrawn by both
   hooks' post-handlers (the binding's hold reaches StormOn through ProcessEvent: the old script-hook skip never fired, so
   ME1 ran the game's own sprint until then), the faster run raises the run speeds the game reads. Per game: ME3's native
   admission, ME2 not in the game's own cover. No ME2 fact forces its native Storm.
-- **Left:** the sprint's feel in a headset on each game; ME3's run where the storm isn't disabled.
+- **Left:** the sprint's feel and heading in a headset on each game (ME1's faster run is new to players: it never ran before);
+  ME3 off the Normandy; a sprint with a weapon drawn.
 
 #### T33 Traversal: vault, climb, ladder, evade [sequel-only; Forks 4]
 - **State:** LE1 n/a · LE2 build · LE3 build

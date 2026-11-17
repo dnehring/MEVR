@@ -832,7 +832,11 @@ stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs 
 - [ ] Wrist status and the gun's panel (T41; research/41 "ME2's ammo display"): readable on small and large guns, after a
   weapon swap and after an ammo power.
 - [ ] Comfort and sprint (T30, T32; docs/le2-m6-native-checks.md): snap turns, walking toward the hand, the vignette;
-  Storm's heading and its release.
+  the sprint as ME1's faster run on all three games since 2026-11-16 (lane GR, research/trilogy-sprint.md; on ME1 it never
+  ran before, the game's storm did): A held with the stick forward runs faster with the gun up, no storm posture or camera,
+  its speed comfortable, the release back to the run; the same with a weapon drawn.
+- [ ] ME2's faster shield recharge behind cover (T31, research/23 section 7.5): crouched behind a crate with every enemy
+  hidden, the shields come back sooner than standing in the open; a flanking enemy in view takes it away.
 - [ ] Powers (T44; research/55 "Mass Effect 2"): the push at a hostile, the chest and gun gestures' targets, the coach card.
 - [ ] Squad (T45, T46): the weapon menu at the left hand, the placement ring and arc, a hold and a call back.
 - [ ] Voice and Thespian (T47, T48): a real microphone at the ear; the reply panel's place and legibility on the cinema

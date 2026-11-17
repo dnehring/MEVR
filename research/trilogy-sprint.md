@@ -48,6 +48,31 @@ VR cover block refuses anyway (research/23 section 7.1). So ME2 takes ME1's rule
   run after .. s: the pawn's peak .. u/s`); `mevr sprint` (the status JSON, also the snapshot's `"mod"."sprint"`); ReflectCheck rows
   `bWantsToStorm`, `CombatGroundSpeed`, `Pawn.GetMaxSpeed` (and ME2's StormOn, StormOff, StormSpeed, GroundSpeed).
 
-## Measured
+## Measured (fake headset, 2026-11-16 19:40-20:08, lane GR)
 
-Filled by the runs of 2026-11-16 below.
+Before = main `4e7fe15f` built apart (`build-before2`), after = the same plus this change (`f141b918`); each LE1 session
+`tools/fake-headset-session.ps1` with one run script (20 s in the world, a standing replay with the hands in view, `pause`, two
+snapshots; then the sprint replay with `-Inputs`: `make-walk-recording.py --plan stand:3,sprint:2.5,stand:2,back:3.5,stand:2,
+forward:2.5,stand:3 --hands view --stick 1.0`, `sprint` being A held with the stick forward). ME2: Save 4 (Freedom's Progress),
+ME3: the renderer preview's Save 31 (the Normandy), `tools/le2-halcyon-run`, restores `verification: 0 differences`.
+
+| | LE1 before | LE1 after | ME2 after | ME3 after |
+|---|---|---|---|---|
+| StormOn seen | never (`0 presses taken`) | `the sprint button (the game's binding, through ProcessEvent)` | the same | the same |
+| the game's sprint | ran: `walking mode ExploreStorming (holstered), speed 450 u/s`, camera `SFXCameraMode_ExploreStorm`, `the game sprints by a route other than StormOn` | withdrawn; no storm camera mode or warning | withdrawn; none | withdrawn; none |
+| the faster run | none | `running fast: x1.16 (the run in effect 400 u/s, the game's sprint 462 u/s; GroundSpeed 400 -> 462, CombatGroundSpeed 400 -> 462)` | `x1.31 (400 -> 525, CombatGroundSpeed 400 -> 525)` | `x1.12 (400 -> 450, CombatGroundSpeed 350 -> 394)` |
+| speed after the push (0, 0.1, 0.2, 0.4 s) | 0, 355, 400, 535 (the storm) | 0, 347, 400, 462 | peak 525 u/s in 0.7 s | peak 450 u/s in 1.5 s |
+| the run (stick alone, back and forward) | 400 u/s | 400 u/s | 400 u/s | 400 u/s |
+
+Each sprint ended against the level's geometry (Shepard's start faces a wall 2-3 m ahead on LE1's save; ME2's against the crate
+of research/23 section 7.4, after a first attempt where the save's selected object took A: `traversal: A pressed: A uses the selected
+object first`, so StormOn never ran). Notes: on ME2, with the head turned 90 degrees in the room the binding still called StormOn
+but its own `RemappedJoyUp > 0` check refused the intent (nothing to withdraw), and the faster run went on (the press is ours either
+way). On ME3 the faster run began 4.3 s after the press (the native admission or a walk against the Normandy's corridor wall:
+not separated) [verify]. The LE1 same-pose pairs (first pass: snapshots `19-42-40-167`/`19-42-43-179` before,
+`19-45-59-680`/`19-46-02-685` after; second pass `19-50-24-232`/`19-50-27-232`, `19-53-56-402`/`19-53-59-405`): `hostView` identical
+(-43.3 / -4.1 / -18.1 uu, 100 uu/m), the layers at the same places (the omni-tool target 0.2 and 0.7 mm apart), the HUD panel and both
+world layers identical pixel for pixel, the composited eyes 0.03-0.12% of pixels apart by more than 32/255 (the omni-tool target's
+ring). **What differs on LE1 is the sprint, on purpose: the faster run now runs and the game's storm doesn't; nothing else.**
+Not measured: the sprint's feel and heading in a headset on any game; ME3 away from the Normandy; a sprint with a weapon drawn
+(LE1's `CombatStormSpeed`, the sequels' `CombatGroundSpeed` scaled).
