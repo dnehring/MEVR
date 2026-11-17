@@ -23,7 +23,7 @@ param(
     [string]$Tag = 'matrix',
     [string]$OutDir = '',
     [int]$Snapshots = 1,
-    [int]$QuietWaitSeconds = 45,   # before each capture: wait this long at most for no cl, link, ctest or mevr-tests
+    [int]$QuietWaitSeconds = 0,    # before each capture: wait this long at most for no cl, link, ctest or mevr-tests (0: only record them)
     [switch]$NoReplay
 )
 $ErrorActionPreference = 'Stop'

@@ -138,6 +138,7 @@ std::atomic<int> gPerEyeOcclusion{0};
 // so by the time the second eye's resolve asks, less is queued ahead of its queries. [Performance] flushFirstEye.
 std::atomic<int> gFlushFirstEye{0};
 std::atomic<std::uint64_t> gFlushes{0};
+ID3D11DeviceContext* gPresentContext = nullptr;   // render thread only: the context the last Present closed with
 
 // ---- The second eye's Umbra query results from the first eye (research/35, attempt 39) ---------------------------
 // Umbra's resolve issues its occluder queries and, in the same resolve, reads their results one by one (0xD48380,
@@ -1601,7 +1602,9 @@ void SceneRenderHook(void* renderer) {
     QueryPerformanceCounter(&end);
     EndEyeHistory(eyeHistory);
     if (index == 0 && gFlushFirstEye.load(std::memory_order_relaxed) != 0) {
-        if (ID3D11DeviceContext* const context = draw_replay::Context()) {
+        // The recorder's context (LE1), else the one the last Present closed with (the sequels: no recorder attached).
+        ID3D11DeviceContext* const recorderContext = draw_replay::Context();
+        if (ID3D11DeviceContext* const context = recorderContext != nullptr ? recorderContext : gPresentContext) {
             context->Flush();
             gFlushes.fetch_add(1, std::memory_order_relaxed);
         }
@@ -2616,6 +2619,9 @@ void Tick() {
 }
 
 void OnPresentEnd(ID3D11DeviceContext* context) {
+    if (context != nullptr) {
+        gPresentContext = context;   // render thread: the game's immediate context, for flushFirstEye without the recorder
+    }
     // Keep the full second Draw scheduled through the probe frame itself.
     if (gOneDrawMatches >= gOneDrawResumeAfter && gOneDrawFallback.load(std::memory_order_relaxed) &&
         gOneDrawWanted.load(std::memory_order_relaxed) && !gOneDrawFaulted.load(std::memory_order_relaxed)) {

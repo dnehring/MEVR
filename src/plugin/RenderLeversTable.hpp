@@ -179,6 +179,10 @@ constexpr void TryReadGroups(Layout& l) {
 #if defined(MEVR_RENDER_LEVERS_TRY_HERE)
     l.sceneRendererVerified = l.umbraCommanderVerified = l.boundShaderStateVerified = l.umbraInstanceVerified =
         l.umbraQueriesVerified = true;
+    // umbraShareResults' A/B (research/sequel-render-levers.md "Performance research"): its two rows and the context's
+    // +0x1C8/+0x1CC were read in both games (lanes R2, R3). The group also admits umbraSharedVisibility, which stays at
+    // its default 0 (never set it: research/35 attempt 46).
+    l.umbraSharedVerified = true;
 #else
     (void)l;
 #endif
