@@ -470,6 +470,14 @@ inline constexpr std::uint32_t kPrimitiveUmbraBoundsNative = 0x32EC10;
 // classified. Ghidra from the installed 60AEF0C4 dump; research/le3-galaxy.md.
 inline constexpr std::uint32_t kReevaluateStreaming = 0xAC67C0;
 
+// FLensFlareDynamicData's reflection pass, void(data, scene proxy, draw interface, view, DPG): the source projected through
+// the view's ViewProjectionMatrix (+0x260, FSceneView::WorldToScreen 0x34EF00), each element placed on the screen line
+// through the centre and turned back into a world point through InvTranslatedViewProjection (+0x210) + ViewOrigin (+0x320)
+// at clip depth 0.1 (plugin/FlareWindow; research/30 section 9.6). ME2's own (0x252AB0) unprojects through the world-space
+// InvViewProjection (+0x2E0), which pairs with +0x260 in every mode, so it needs no row; ME1 has no UE3 lens flare (its sun
+// is BioSunFlareComponent's world-space sprite, 0xB1E5D0).
+inline constexpr std::uint32_t kLensFlareReflections = 0x26B780;
+
 inline constexpr std::uint32_t kProcessEvent = 0xF4F80;
 inline constexpr std::uint32_t kCallFunction = 0xF2C30;
 inline constexpr std::uint32_t kGameEngineTick = 0x5502C0;
@@ -549,6 +557,8 @@ inline constexpr Entry kTable[] = {
         "48 8B C4 48 89 48 08 55 56 57 41 54 41 55 41 57", 0, 0, "mod (interaction gaze)"},
     {"UBioTierManager::ReevaluateStreaming", kReevaluateStreaming, Kind::Function,
         "41 56 48 83 EC 40 4C 8B F1 85 D2 75 0D ?? ?? ??", 0, 0, "mod (CIC art retention)"},
+    {"FLensFlareDynamicData::RenderReflections", kLensFlareReflections, Kind::Function,
+        "48 8B C4 4C 89 40 18 55 53 56 41 56 41 57 48 8D", 0, 0, "host (flare window)"},
     // Three of the capture rows carry LE1's row names: plugin/RenderLevers finds a row by name, plugin/Le3SceneCapture by RVA.
     {"scene capture's CaptureScene thunk", kCaptureScene, Kind::Leaf, "48 8B 09 48 85 C9 74 07 48 8B 01 48 FF 60 08 C3", 0, 0, "host (capture target)"},
     {"Capture.Render", kCaptureRender, Kind::Function, "48 8B C4 56 57 41 56 48 83 EC 60 48 C7 40 C0 FE", 0, 0, "host (capture target)"},

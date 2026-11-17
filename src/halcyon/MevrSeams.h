@@ -250,9 +250,11 @@ void NoteStereoSubmit(int mode, float const declaredPosition[2][3], float const 
 // with `[Debug] upstreamStereo = 1` in ASI\<GAME>MEVR.ini: the renderer's upstream stereo, for a before/after
 // measurement. Bit 1 (the default with bit 0; `[Debug] stereoWindowCoversEyes = 0` clears it): the renderer's window
 // widened by one uniform factor until it holds both eyes' frusta, as its Meta-runtime path does and as ME1's union
-// window is, so each eye renders its own frustum (mode 2). A development build also reads
-// %LOCALAPPDATA%\MEVR\stereo.measure (`[Stereo] mode = upstream | nocover`) for runs whose ini must stay exact.
-// Not called by LE1.
+// window is, so each eye renders its own frustum (mode 2). Bit 2 (off by default; `[Stereo] windowEyes = 1`, with bit 1):
+// the window is the eyes' union, each axis on its own, instead of the renderer's side-by-side aspect scaled up (which
+// overshoots the eyes' height: research/30 section 9.6). A development build also reads
+// %LOCALAPPDATA%\MEVR\stereo.measure (`[Stereo] mode = upstream | nocover`, `window = eyes | aspect`) for runs whose ini
+// must stay exact. Not called by LE1.
 int LifeSizeStereo() noexcept;
 
 // =====================================================================================================================

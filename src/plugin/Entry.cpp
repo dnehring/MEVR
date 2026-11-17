@@ -44,6 +44,7 @@
 #include "plugin/MotionBlurGuard.hpp"
 #include "plugin/GameThreadCalls.hpp"
 #include "plugin/HalcyonLe3.hpp"
+#include "plugin/FlareWindow.hpp"
 #include "plugin/Le3SceneCapture.hpp"
 #endif
 #if defined(MEVR_WITH_MAIN_MENU)
@@ -137,6 +138,7 @@ void GameEngineTickHook(void* self, float deltaSeconds) {
 #if defined(MEVR_WITH_HALCYON_LE3)
     mevr::host::halcyon_le3::AfterTick(deltaSeconds);
     mevr::host::motion_blur_guard::Tick();
+    mevr::host::flare_window::Tick();
 #endif
     mevr::host::Tick(deltaSeconds);
     mevr::host::process_event::ReportOffThread();
@@ -317,6 +319,7 @@ extern "C" __declspec(dllexport) bool SpiOnAttach(spi::Interface* InterfacePtr) 
 #endif
 #if defined(MEVR_WITH_HALCYON_LE3)
     if (!gEngineProbe) mevr::host::motion_blur_guard::Install(init);
+    if (!gEngineProbe) mevr::host::flare_window::Install(init);  // research/30 section 9.6: lens flares in mode 2
 #endif
 #if defined(MEVR_WITH_PERF_PROBE) && !defined(MEVR_WITH_HALCYON)
     // The sequels: ME1's render levers, each by what this game's rows of engine/Addresses.hpp have (plugin/RenderLeversTable);

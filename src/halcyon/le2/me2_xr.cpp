@@ -221,7 +221,19 @@ void ApplyFovFill(const XrView* views, float aspect) noexcept
             if (f.angleUp     > vNeed) vNeed = f.angleUp;
             if (-f.angleDown  > vNeed) vNeed = -f.angleDown;
         }
-        if (hNeed > 0.1f && hNeed < 1.4f && vNeed > 0.1f && vNeed < 1.4f)
+#if defined(MEVR_ASI)
+        // [MEVR] the window as the eyes' union, each axis on its own (research/30 section 9.6; [Stereo] windowEyes = 1):
+        // the aspect above is the old side-by-side half, which a two-pass render never had.
+        const bool mevrEyes = mevrCover && (::MevrSeams::LifeSizeStereo() & 4) != 0;
+#else
+        const bool mevrEyes = false;
+#endif
+        if (mevrEyes && hNeed > 0.1f && hNeed < 1.4f && vNeed > 0.1f && vNeed < 1.4f)
+        {
+            tH = hNeed;
+            tV = vNeed;
+        }
+        else if (hNeed > 0.1f && hNeed < 1.4f && vNeed > 0.1f && vNeed < 1.4f)
         {
             // ONE uniform tan-space scale on BOTH axes, not per-axis clamps: the fill has always kept
             // tan(tV)/tan(tH) locked to the engine's render aspect, and [UIRATIO] shrinks the HUD per

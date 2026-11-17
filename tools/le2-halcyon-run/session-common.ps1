@@ -603,21 +603,38 @@ function Get-PreviewVrProcesses($Open, [bool]$AllowNewHelpers = $false) {
     }
     return $seen
 }
+function Get-PreviewRenderSize([string]$RenderSize = '3072x1728') {
+    # The render target (RenderW x RenderH, GamerSettings ResX/ResY): 1280..8192, multiples of 8. ME3's
+    # FSceneRenderTargets::Allocate (0x36CDC0) rounds its buffers up to a multiple of 8, and the renderer's pass-0
+    # capture needs the scene's depth target to be the backbuffer's size: 4054x1728 rendered flat (research/
+    # le3-flares-and-window.md section 3).
+    if ($RenderSize -notmatch '^(\d{4})x(\d{4})$') { throw 'Invalid preview render size' }
+    $w = [int]$Matches[1]; $h = [int]$Matches[2]
+    if ($w -lt 1280 -or $w -gt 8192 -or $h -lt 1280 -or $h -gt 8192 -or ($w % 8) -or ($h % 8)) { throw 'Invalid preview render size' }
+    [pscustomobject]@{ width = $w; height = $h }
+}
 function Get-PreviewRendererConfig([ValidateSet(0, 2, 4)][int]$Mode = 4, [bool]$Diagnostics = $false,
-    [ValidateSet(1, 2, 4, 8)][int]$MirrorEvery = 8) {
-    # me2_menu.cpp LoadValues + its lowest displayed render target (3072x1728);
-    # d3d_capture.cpp reads RenderW/H beside MassEffect3.exe before rendering.
-    "[VR]`r`nEnabled=1`r`nMode=$Mode`r`nMirrorPresentEvery=$MirrorEvery`r`nRenderW=3072`r`nRenderH=1728`r`nHeadAim=0`r`nHeadLook=1`r`nMoveFollowsHead=1`r`nDecoupledPitch=1`r`nPosEnabled=1`r`nPosScale=2.0`r`nDiagnostics=$([int]$Diagnostics)`r`nCineVrConvo=0`r`nCineVrCutscene=0`r`n[FirstPerson]`r`nConvoFirstPerson=0`r`n"
+    [ValidateSet(1, 2, 4, 8)][int]$MirrorEvery = 8, [bool]$EyeFrustum = $false, [string]$RenderSize = '3072x1728') {
+    # me2_menu.cpp LoadValues + its lowest displayed render target (3072x1728) unless -PreviewRenderSize says otherwise;
+    # d3d_capture.cpp reads RenderW/H beside MassEffect3.exe before rendering. MetricEyeFrustum=1 (each eye's own frustum,
+    # mode 2) only with -PreviewEyeFrustum: ME3's default is the shared window (research/30 section 9.5).
+    $size = Get-PreviewRenderSize $RenderSize
+    $frustum = if ($EyeFrustum) { "MetricEyeFrustum=1`r`n" } else { '' }
+    "[VR]`r`nEnabled=1`r`nMode=$Mode`r`nMirrorPresentEvery=$MirrorEvery`r`nRenderW=$($size.width)`r`nRenderH=$($size.height)`r`nHeadAim=0`r`nHeadLook=1`r`nMoveFollowsHead=1`r`nDecoupledPitch=1`r`nPosEnabled=1`r`nPosScale=2.0`r`nDiagnostics=$([int]$Diagnostics)`r`n$($frustum)CineVrConvo=0`r`nCineVrCutscene=0`r`n[FirstPerson]`r`nConvoFirstPerson=0`r`n"
 }
 function Get-PreviewOptions($Open) {
     $mode = if ($Open.PSObject.Properties['previewRendererMode']) { $Open.previewRendererMode } else { 4 }
     $diagnostics = if ($Open.PSObject.Properties['previewDiagnostics']) { $Open.previewDiagnostics } else { $false }
     $mirror = if ($Open.PSObject.Properties['previewMirrorEvery']) { $Open.previewMirrorEvery } else { 8 }
+    $eyeFrustum = if ($Open.PSObject.Properties['previewEyeFrustum']) { $Open.previewEyeFrustum } else { $false }
+    $renderSize = if ($Open.PSObject.Properties['previewRenderSize']) { $Open.previewRenderSize } else { '3072x1728' }
     if (($mode -isnot [int] -and $mode -isnot [long]) -or $mode -notin @(0, 2, 4) -or $diagnostics -isnot [bool] -or
-        ($mirror -isnot [int] -and $mirror -isnot [long]) -or $mirror -notin @(1, 2, 4, 8)) {
+        ($mirror -isnot [int] -and $mirror -isnot [long]) -or $mirror -notin @(1, 2, 4, 8) -or $eyeFrustum -isnot [bool] -or
+        $renderSize -isnot [string]) {
         throw 'Invalid preview renderer options'
     }
-    [pscustomobject]@{ mode = $mode; diagnostics = $diagnostics; mirrorEvery = $mirror }
+    $null = Get-PreviewRenderSize $renderSize
+    [pscustomobject]@{ mode = $mode; diagnostics = $diagnostics; mirrorEvery = $mirror; eyeFrustum = $eyeFrustum; renderSize = $renderSize }
 }
 function Get-PreviewModConfig {
     # Reuse the existing local-only native symbol dumper for this explicit LE3
@@ -626,9 +643,9 @@ function Get-PreviewModConfig {
     "[Debug]`r`nrequests = 1`r`ndumpNatives = 1`r`nopenxrRuntime = C:\Program Files (x86)\Steam\steamapps\common\SteamVR\steamxr_win64.json`r`n[Pointer]`r`nsetCursor = 0`r`n"
 }
 function Assert-PreviewConfig([string]$Bin, [ValidateSet(0, 2, 4)][int]$Mode = 4, [bool]$Diagnostics = $false,
-    [ValidateSet(1, 2, 4, 8)][int]$MirrorEvery = 8) {
+    [ValidateSet(1, 2, 4, 8)][int]$MirrorEvery = 8, [bool]$EyeFrustum = $false, [string]$RenderSize = '3072x1728') {
     if ([IO.File]::ReadAllText((Join-Path $Bin 'ASI\LE3MEVR.ini')) -cne (Get-PreviewModConfig) -or
-        [IO.File]::ReadAllText((Join-Path $Bin 'MELE3VR.ini')) -cne (Get-PreviewRendererConfig $Mode $Diagnostics $MirrorEvery)) { throw 'Preview configuration changed since prep' }
+        [IO.File]::ReadAllText((Join-Path $Bin 'MELE3VR.ini')) -cne (Get-PreviewRendererConfig $Mode $Diagnostics $MirrorEvery $EyeFrustum $RenderSize)) { throw 'Preview configuration changed since prep' }
 }
 function Read-RunStartupText([string]$Path, [ValidateRange(1,50)][int]$Attempts = 50) {
     # The mod can still be appending defaults when XR becomes ready. Keep normal
@@ -645,7 +662,7 @@ function Read-RunStartupText([string]$Path, [ValidateRange(1,50)][int]$Attempts 
     }
 }
 function Confirm-PreviewInitializedConfig([string]$Bin, $Artifacts, [ValidateSet(0, 2, 4)][int]$Mode = 4, [bool]$Diagnostics = $false,
-    [ValidateSet(1, 2, 4, 8)][int]$MirrorEvery = 8, [switch]$DeferDefaults) {
+    [ValidateSet(1, 2, 4, 8)][int]$MirrorEvery = 8, [switch]$DeferDefaults, [bool]$EyeFrustum = $false, [string]$RenderSize = '3072x1728') {
     # HandCalibration and Colour append their compiled defaults on the first tick.
     # Only that append is permitted; protected keys, renderer mode and all binaries
     # retain their exact prep identity. Preserve the effective settings in the receipt.
@@ -653,7 +670,7 @@ function Confirm-PreviewInitializedConfig([string]$Bin, $Artifacts, [ValidateSet
     $text = Read-RunStartupText $mod
     $prefix = Get-PreviewModConfig
     if (-not $text.StartsWith($prefix, [StringComparison]::Ordinal) -or
-        [IO.File]::ReadAllText((Join-Path $Bin 'MELE3VR.ini')) -cne (Get-PreviewRendererConfig $Mode $Diagnostics $MirrorEvery)) {
+        [IO.File]::ReadAllText((Join-Path $Bin 'MELE3VR.ini')) -cne (Get-PreviewRendererConfig $Mode $Diagnostics $MirrorEvery $EyeFrustum $RenderSize)) {
         throw 'Protected preview configuration changed during startup'
     }
     Assert-RunArtifacts @($Artifacts | Where-Object { $_.path -ine $mod })
@@ -685,7 +702,8 @@ function Get-PreviewMissingDefaultSections([string]$Text) {
 }
 function Wait-PreviewInitializedConfig([string]$Bin, $Artifacts, [string[]]$StartupLogs, [hashtable]$Before,
     [DateTime]$Started, [scriptblock]$Guard, [ValidateSet(0, 2, 4)][int]$Mode = 4, [bool]$Diagnostics = $false,
-    [ValidateSet(1, 2, 4, 8)][int]$MirrorEvery = 8, [ValidateRange(1, 300)][int]$TimeoutSeconds = 30) {
+    [ValidateSet(1, 2, 4, 8)][int]$MirrorEvery = 8, [ValidateRange(1, 300)][int]$TimeoutSeconds = 30,
+    [bool]$EyeFrustum = $false, [string]$RenderSize = '3072x1728') {
     # XR readiness precedes the mod's first tick. HandCalibration's marker follows
     # its default blocks AND key migrations; Colour's follows its own writes.
     # PowerWheel/Cover each append one closed block. Require every populated block
@@ -698,7 +716,7 @@ function Wait-PreviewInitializedConfig([string]$Bin, $Artifacts, [string[]]$Star
         # Appends can be readable halfway through a line. Validate protected
         # state now, but parse the default suffix only after writer completion
         # and quiet text; never mistake a partially written line for corruption.
-        $config = Confirm-PreviewInitializedConfig $Bin $Artifacts $Mode $Diagnostics $MirrorEvery -DeferDefaults
+        $config = Confirm-PreviewInitializedConfig $Bin $Artifacts $Mode $Diagnostics $MirrorEvery -DeferDefaults -EyeFrustum $EyeFrustum -RenderSize $RenderSize
         $completedLog = $null
         foreach ($path in $StartupLogs) {
             if ((Test-RunFreshMarker $path $Before[$path] $Started 'hands: calibration pitch ') -and

@@ -455,3 +455,22 @@ session `20261117-112906-151-LE3-def-me3`, restored with 0 differences):
   `2026-11-17_12-07-12-def-le1-before`, `12-10-07-def-le1-after`): both snapshot pairs identical to the pixel in every image
   (eyes, world, HUD, label), `hostView`, `stereo` and every layer the same; the log as before (`umbraShareResults = 0`,
   `scale set DynamicShadows False ...`, mode 2).
+
+### 9.6 ME3's lens flares in mode 2 and the shape of its shared window (2026-11-17, lane FL)
+
+The full account and implementation guide is [research/le3-flares-and-window.md](le3-flares-and-window.md). In short:
+
+- **Where ME3 places a flare:** the reflection elements' draw (`0x26B780`) projects the source through ViewProjection
+  (`+0x260`, the CPU's symmetric window) and turns each element's screen point back into a world point through
+  InvTranslatedViewProjection (`+0x210`), which `[INVMAT]` refreshes from the eye's own frustum in mode 2: every element
+  comes back at the symmetric window's pixel of each eye's image (FXR's lamp: at x 1233, predicted 934, measured 920). The
+  source element (`0x26C160`) is world-space and right. ME2's reflection draw (`0x252AB0`) unprojects through the world
+  InvViewProjection (`+0x2E0`), which pairs with `+0x260`: no such bug. ME1 has no UE3 lens flare (its sun is BioWare's
+  `BioSunFlareComponent`, a world-space sprite).
+- **The fix (built, off by default, ME3's host only):** `plugin/FlareWindow` swaps `+0x210` for the CPU window's own
+  inverse around that one call (`[Stereo] flareWindow = 1`), so the flares in mode 2 are mode 1's.
+- **The window's shape:** ME3's (and ME2's) fill takes its aspect from upstream's side-by-side half eye (backbuffer width
+  / 2 over height, 0.889 at 16:9), so the uniform cover that holds both eyes is 56% taller than they need
+  (+-1.8418 x +-2.0720 for the PS VR2's +-1.8418 x +-1.3270). `[Stereo] windowEyes = 1` (built, off by default) takes the
+  eyes' union, each axis on its own.
+- **Measured and recommended:** research/le3-flares-and-window.md sections 3 and 4.

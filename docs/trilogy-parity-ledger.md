@@ -619,7 +619,7 @@ defined in the tool's header:
 |---|---|---|---|---|---|---|---|
 | LE1 | halcyon-le1 | 73 | 71 | 58 | run 67, out 4, ungated 25, unbuilt 4 | 22 of 42 | 89 |
 | LE2 | halcyon-le2 | 68 | 57 | 49 | run 44, ready 10, out 19, ungated 21, unreferenced 2, unbuilt 4 | 36 of 42 | 4 |
-| LE3 | halcyon-le3 | 71 | 57 | 54 | run 46, ready 10, out 16, ungated 23, unreferenced 2, unbuilt 3 | 40 of 42 | 2 |
+| LE3 | halcyon-le3 | 72 | 58 | 54 | run 46, ready 10, out 16, ungated 23, unreferenced 2, unbuilt 3 | 40 of 42 | 2 |
 <!-- /parity:summary -->
 
 ### Host plugin files per game
@@ -639,6 +639,7 @@ defined in the tool's header:
 | `DrawReplay` | yes | yes | yes |
 | `Entry` | yes | yes | yes |
 | `EyeCopy` | - | yes | yes |
+| `FlareWindow` | - | - | yes |
 | `FloorLock` | yes | yes | yes |
 | `GalaxyHologram` | yes | - | yes |
 | `GalaxyHologramDraw` | yes | yes | yes |
@@ -735,6 +736,7 @@ In all three hosts (55): `Exe`, `ExeCheck`, `Hook`, `Hotkey`, `Ini`, `Json`, `Lo
 | `vr/CockpitHazard` | yes | - | - |
 | `vr/ColourStrip` | yes | - | - |
 | `vr/CombatStance` | yes | - | - |
+| `vr/FlareWindow` | - | - | yes |
 | `vr/MakoControls` | yes | - | - |
 | `vr/MakoGunner` | yes | - | - |
 | `vr/OmniPad` | yes | - | - |

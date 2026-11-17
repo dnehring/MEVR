@@ -59,7 +59,7 @@ if ($DesktopDump) {
 }
 if ($RendererPreview) {
     $previewOptions = Get-PreviewOptions $open
-    Assert-PreviewConfig $bin $previewOptions.mode $previewOptions.diagnostics $previewOptions.mirrorEvery
+    Assert-PreviewConfig $bin $previewOptions.mode $previewOptions.diagnostics $previewOptions.mirrorEvery $previewOptions.eyeFrustum $previewOptions.renderSize
     Assert-RunArtifacts $open.previewArtifacts
     Assert-PreviewEnvironment $open (Get-PreviewPaths)
     if (Test-Path -LiteralPath (Join-Path $env:LOCALAPPDATA 'MEVR\fake-headset\undo.json')) { throw 'Another fake-headset session appeared' }
@@ -195,7 +195,7 @@ if ($RendererPreview) {
     # that run with the requested mode or continue on changed runtime artifacts.
     $initialized = Wait-PreviewInitializedConfig -Bin $bin -Artifacts $open.previewArtifacts -StartupLogs $settingsLogs `
         -Before $oldLogs -Started $started -Mode $previewOptions.mode -Diagnostics $previewOptions.diagnostics `
-        -MirrorEvery $previewOptions.mirrorEvery -Guard {
+        -MirrorEvery $previewOptions.mirrorEvery -EyeFrustum $previewOptions.eyeFrustum -RenderSize $previewOptions.renderSize -Guard {
             Assert-RunLock $Holder
             $live = Get-Process -Id $p.pid -ErrorAction Stop
             Assert-RunProcess $live $open.gameProcess $exe
