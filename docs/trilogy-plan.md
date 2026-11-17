@@ -125,19 +125,19 @@ Who has what today. "The other session" works outside the coordinating session's
 | `later` | deliberately left; the entry says why | no |
 | `n/a` | the game lacks the mechanic | no |
 
-**Totals** (counted from the State lines below): 53 features. Open (verify, build or check first): **LE1 9, LE2 43,
-LE3 47**.
+**Totals** (counted from the State lines below, 2026-11-17 after the review's fixes FX2, FX3, FXR and CH): 53 features.
+Open (verify, build or check first): **LE1 8, LE2 36, LE3 41** (were 9, 43, 47 on 2026-11-16).
 
 | game | done | n/a | headset | verify | build | check first | later |
 |---|---|---|---|---|---|---|---|
-| LE1 | 42 | 2 | 0 | 0 | 9 | 0 | 0 |
-| LE2 | 0 | 0 | 7 | 10 | 25 | 8 | 3 |
-| LE3 | 0 | 0 | 3 | 11 | 29 | 7 | 3 |
+| LE1 | 42 | 2 | 1 | 0 | 8 | 0 | 0 |
+| LE2 | 2 | 1 | 10 | 12 | 18 | 6 | 4 |
+| LE3 | 1 | 1 | 6 | 14 | 22 | 5 | 4 |
 
-LE1's nine are shared refactors that must leave ME1 unchanged; ME1's own product work is in
-[ROADMAP.md](../ROADMAP.md) "Now" and mapped under [Shipping](#me1). No feature is `done` on a sequel: even the ones
-seen working by script still owe a headset check. Ids in brackets are ledger rows (R = renderer table, G = gameplay
-table) and its numbered Forks.
+LE1's eight are shared refactors that must leave ME1 unchanged; ME1's own product work is in
+[ROADMAP.md](../ROADMAP.md) "Now" and mapped under [Shipping](#me1). A sequel's `done` is a feature with nothing left for
+that game (T04, engine access without LExSDKv2 on ME2; T11, the engine's settings applied by the mod, on both); everything else seen working by script still
+owes a headset check. Ids in brackets are ledger rows (R = renderer table, G = gameplay table) and its numbered Forks.
 
 ### Foundations
 
