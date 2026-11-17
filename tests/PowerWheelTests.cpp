@@ -365,6 +365,72 @@ void TestPowerHold() {
     CHECK(!pad::FromFlags(-1.0f, 0.1f, 0.2f, pad::ToFlags(pad::Options{})).modPowerHold);
 }
 
+// What the mod closes around a hold (gamepad::WatchPowerWheel): the wheel it asked for at the release, a wheel the game
+// opens late (ME3's EnterPowerWheel retries by a timer) within kPowerLateMs of that release, nothing it didn't ask for.
+void TestPowerWheelWatch() {
+    using Close = pad::PowerWheelClose;
+    pad::PowerHoldStep const none;
+    pad::PowerHoldStep open;
+    open.open = true;
+    pad::PowerHoldStep close;
+    close.close = true;
+    std::uint64_t now = 10000;
+    // ME1 and ME2: open at once; held; closed at the release.
+    {
+        pad::PowerWheelWatch w;
+        CHECK(pad::WatchPowerWheel(w, open, true, true, true, now) == Close::None && w.asked && w.opened);
+        CHECK(pad::WatchPowerWheel(w, none, false, true, true, now + 500) == Close::None);
+        CHECK(pad::WatchPowerWheel(w, close, false, true, false, now + 900) == Close::AtRelease && !w.asked);
+        CHECK(w.lateUntilMs == 0);
+        CHECK(pad::WatchPowerWheel(w, none, false, true, false, now + 950) == Close::None);  // nothing more of ours
+    }
+    // ME3 in an animated transition: shut at the call, open 0.2 s later while held: closed at the release.
+    {
+        pad::PowerWheelWatch w;
+        CHECK(pad::WatchPowerWheel(w, open, true, false, true, now) == Close::None && w.asked && !w.opened);
+        CHECK(pad::WatchPowerWheel(w, none, false, true, true, now + 200) == Close::None && w.opened);
+        CHECK(pad::WatchPowerWheel(w, close, false, true, false, now + 600) == Close::AtRelease);
+    }
+    // ...or opened by its timer after the release: closed then, nobody holds it.
+    {
+        pad::PowerWheelWatch w;
+        pad::WatchPowerWheel(w, open, true, false, true, now);
+        CHECK(pad::WatchPowerWheel(w, close, false, false, false, now + 100) == Close::None && w.lateUntilMs == now + 100 + pad::kPowerLateMs);
+        CHECK(pad::WatchPowerWheel(w, none, false, false, false, now + 200) == Close::None);
+        CHECK(pad::WatchPowerWheel(w, none, false, true, false, now + 300) == Close::Late && w.lateUntilMs == 0);
+        CHECK(pad::WatchPowerWheel(w, none, false, true, false, now + 350) == Close::None);  // once
+    }
+    // Refused for good (no combat here): the watch runs out and a later wheel is the player's own.
+    {
+        pad::PowerWheelWatch w;
+        pad::WatchPowerWheel(w, open, true, false, true, now);
+        pad::WatchPowerWheel(w, close, false, false, false, now + 100);
+        CHECK(pad::WatchPowerWheel(w, none, false, false, false, now + 100 + pad::kPowerLateMs) == Close::None && w.lateUntilMs == 0);
+        CHECK(pad::WatchPowerWheel(w, none, false, true, false, now + 2000) == Close::None);
+    }
+    // A new press ends the watch: what follows is that press's own.
+    {
+        pad::PowerWheelWatch w;
+        pad::WatchPowerWheel(w, open, true, false, true, now);
+        pad::WatchPowerWheel(w, close, false, false, false, now + 100);
+        CHECK(pad::WatchPowerWheel(w, none, false, false, true, now + 150) == Close::None && w.lateUntilMs == 0);
+        CHECK(pad::WatchPowerWheel(w, none, false, true, true, now + 200) == Close::None);
+    }
+    // Opened, then shut by the game before the release (a menu): nothing to close, and no late watch.
+    {
+        pad::PowerWheelWatch w;
+        pad::WatchPowerWheel(w, open, true, true, true, now);
+        pad::WatchPowerWheel(w, none, false, false, true, now + 300);
+        CHECK(pad::WatchPowerWheel(w, close, false, false, false, now + 500) == Close::None && w.lateUntilMs == 0);
+    }
+    // Not asked (refused before the call: not on foot): the release closes nothing, even a wheel that is open.
+    {
+        pad::PowerWheelWatch w;
+        CHECK(pad::WatchPowerWheel(w, open, false, true, true, now) == Close::None && !w.asked);
+        CHECK(pad::WatchPowerWheel(w, close, false, true, false, now + 400) == Close::None && w.lateUntilMs == 0);
+    }
+}
+
 }  // namespace
 
 // The lock (research/55 section 4): taken within acquireDeg, the nearest angle winning, kept to keepDeg, held through a
@@ -1107,6 +1173,7 @@ int RunPowerWheelTests() {
     TestTableAndView();
     TestPad();
     TestPowerHold();
+    TestPowerWheelWatch();
     TestLock();
     TestAutoLock();
     TestPush();

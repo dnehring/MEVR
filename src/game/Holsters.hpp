@@ -39,8 +39,10 @@
 // BioPawnBehavior.SetActionState(combat) to draw, SFXGameModeDefault.TryHolster to holster, BioPawn.ActionState for drawn.
 // "Only holsters draw" there: ME2's buttons draw by themselves with the weapon away (FireWeapon, TightAim, TryReload,
 // NextWeapon, PrevWeapon); each asks BioPlayerInput.IsCombatEnabled first, which is answered false for that call (the same
-// rule as ME1's skip: RefuseGameDraw; AllowGameDraw opens it). ME3 keeps no holstered state on foot. The right stick click
-// stays plain RB on the sequels.
+// rule as ME1's skip: RefuseGameDraw; AllowGameDraw opens it). ME3 keeps no holstered state on foot. A holster grab draws
+// only where the game's own draws would (BioPlayerInput.IsCombatEnabled, which ME1's SwitchToWeapon asks itself), and ME2's
+// holster is refused, felt, where its TryHolster would refuse it. The right stick click's hold opens the game's power wheel
+// on every game (ME1's rule since 2026-11-05; the sequels since 2026-11-17): a tap casts nothing.
 namespace mevr::game::holsters {
 
 // What the host offers this tick (Mod.cpp fills it from HostServices).

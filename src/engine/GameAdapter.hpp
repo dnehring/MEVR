@@ -69,6 +69,12 @@ inline constexpr bool IsFlatScreenMode(int mode) {
         context == Mode::Movie || context == Mode::Galaxy || context == Mode::Orbital || context == Mode::Minigame;
 }
 inline constexpr bool IsConversationMode(int mode) { return GameMode(mode) == Mode::Conversation; }
+// Where the right grip holds the gun (game/Holsters, ME1's rule): on foot and in the two wheels the game opens from there
+// (paused in them: a held grip must not turn into RB, nor the click that opened the power wheel). ME1's modes 0, 2, 3.
+inline constexpr bool IsFootOrWheelMode(int mode) {
+    Mode const context = GameMode(mode);
+    return context == Mode::OnFoot || context == Mode::PowerWheel || context == Mode::WeaponWheel;
+}
 inline constexpr bool IsGalaxyMode(int mode) { return GameMode(mode) == Mode::Galaxy; }
 inline constexpr bool IsOrbitalMode(int mode) { return GameMode(mode) == Mode::Orbital; }
 inline constexpr bool IsMapMode(int mode) { return IsGalaxyMode(mode) || IsOrbitalMode(mode); }

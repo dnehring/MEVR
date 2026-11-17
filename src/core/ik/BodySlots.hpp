@@ -184,6 +184,9 @@ public:
     bool Busy() const { return inSlot_ >= 0 || phase_ == Phase::HolsterArmed || (phase_ == Phase::Grab && !holds_); }
     // gripHolds: the seconds left before a let-go gun goes back (negative: none running).
     double ReturnLeft() const { return phase_ == Phase::Returning ? returnLeft_ : -1.0; }
+    // gripHolds: the Draw this step asked for was refused (the sequels: where the game allows no combat), so nothing is on
+    // its way and the grip's release has nothing to send back.
+    void ForgetDraw() { drawn_ = Weapon::None; }
     void Reset();
 
 private:

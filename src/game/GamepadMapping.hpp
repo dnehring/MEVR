@@ -102,6 +102,27 @@ struct PowerHoldStep {
 // `input.nowMs` a nonzero millisecond clock (0: nothing opens, a hold can't be told from a tap).
 PowerHoldStep PowerHoldFromStickClick(PowerHold& state, RbClickInput const& input);
 
+// What the mod does with the game's power wheel around one hold (pure; game/holsters asks the game and runs it): the
+// release closes the wheel the mod asked for if it's open then. A wheel the game hadn't opened by the release may still
+// open on its own (ME3's EnterPowerWheel sets a timer and tries again 0.2 s later while the pawn is in an animated
+// transition): opening within kPowerLateMs of that release with the click up, it's closed too (nobody holds it). A new
+// press ends that watch (the press is the player's own).
+inline constexpr std::uint64_t kPowerLateMs = 1000;
+struct PowerWheelWatch {
+    bool asked = false;             // the game was asked to open its wheel on this hold
+    bool opened = false;            // ...and it was seen open
+    std::uint64_t lateUntilMs = 0;  // after a release with it never open: a late opening is closed until then (0: none)
+};
+enum class PowerWheelClose : std::uint8_t {
+    None,
+    AtRelease,  // the click let go with the wheel open: close it
+    Late,       // the game opened it after the release: close it
+};
+// One step after PowerHoldFromStickClick's: `step` its result, `asked` the game was asked to open its wheel on this step
+// (with step.open), `wheelOpen` the game's power wheel mode is current now, `click` the click is down, `nowMs` the clock.
+PowerWheelClose WatchPowerWheel(PowerWheelWatch& watch, PowerHoldStep const& step, bool asked, bool wheelOpen, bool click,
+    std::uint64_t nowMs);
+
 // Both stick clicks are a chord, not L3 + R3: held kStickHoldMs, Halcyon's menu opens or closes (as
 // before); tapped (the second click down within kStickJoinMs of the first, both up again within
 // kStickTapMs of the first press), the test loop takes a snapshot. A tap is over before a hold could

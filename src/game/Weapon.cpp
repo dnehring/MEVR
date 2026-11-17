@@ -1042,6 +1042,29 @@ ue3::Object* HeldRanged(ue3::Object* weapon) {
     }
     return live->weapon;
 }
+
+struct AimErrorCall {
+    ue3::Object* weapon = nullptr;
+    float accuracy = 0.0f;
+    std::optional<float> error;
+};
+
+void AimErrorThunk(void* context) {
+    auto* const call = static_cast<AimErrorCall*>(context);
+    call->error = CallAimError(call->weapon, call->accuracy);
+}
+
+// POD only (no unwinding objects, so __finally is allowed): the flag set, the call, the flag put back whatever happens in
+// the call (a fault caught further up would otherwise leave the weapon zoomed where the camera can see it, research/18).
+void WithFlagSet(std::uint32_t* word, std::uint32_t mask, void (*call)(void*), void* context) {
+    std::uint32_t const was = *word;
+    __try {
+        *word |= mask;
+        call(context);
+    } __finally {
+        *word = (*word & ~mask) | (was & mask);
+    }
+}
 } // namespace
 #endif
 
@@ -1061,14 +1084,16 @@ std::optional<float> ZoomedAimError(ue3::Object* weapon, float accuracy) {
 #if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     ue3::Object* const held = HeldRanged(weapon);
     std::optional<bool> const zoomed = held != nullptr ? gIsZoomed.ReadBool(held) : std::nullopt;
-    if (!zoomed || *zoomed) {
+    ue3::PropertyInfo const* const info = gIsZoomed.Get();
+    if (!zoomed || *zoomed || info == nullptr || info->boolMask == 0) {
         return std::nullopt;
     }
-    gIsZoomed.WriteBool(held, true);  // for this one call: put back before anything else runs on this thread
-    write_journal::Wrote("Weapon.bIsZoomed (one aim-error call)", gIsZoomed.Address(held), 4);
-    std::optional<float> const error = CallAimError(held, accuracy);
-    gIsZoomed.WriteBool(held, false);
-    return error;
+    // For this one call (journalled, put back in a __finally, as the vault's one-call writes): the game's own zoomed range.
+    auto* const word = reinterpret_cast<std::uint32_t*>(reinterpret_cast<std::uint8_t*>(held) + info->offset);
+    write_journal::Wrote("Weapon.bIsZoomed (one aim-error call)", word, sizeof(std::uint32_t));
+    AimErrorCall call{held, accuracy, std::nullopt};
+    WithFlagSet(word, info->boolMask, &AimErrorThunk, &call);
+    return call.error;
 #else
     (void)weapon;
     (void)accuracy;

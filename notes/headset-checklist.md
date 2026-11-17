@@ -851,6 +851,12 @@ stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs 
   far from where it was lost, the pistol's right-hip buzz on the way round, a reach too high, too low or too far back
   (`[Holsters] lowerBack`); seated, the place beside the chair's back (`seatedLowerBack`). Then thighRight against lowerBack:
   which should be the default.
+- [ ] The right stick click and the holsters' refusals (T25; research/le2-vrik.md "The sequels' controls after the review of
+  57ae5b4e", lane FX2 2026-11-17; seen on the fake headset): hold the right stick click: the power wheel opens after 0.3 s and
+  closes when you let go; a quick tap casts nothing (it used to cast the second mapped power). Watch for: the objective radar
+  or the area map coming up with it (the game's own R3 still reaches it: docs/trilogy-plan.md question 14). On the Normandy
+  or in a hub, a grab at the hip gives the short refusal buzz and no gun; in a fight, letting go at the hip gives the same
+  buzz and the gun stays in the hand (ME2 holsters nothing in combat). ME3 the same once it has a combat fixture.
 - The reload by hand (T26): off by default on ME2 and ME3 since 2026-11-16 (the owner: a hand at the hip makes no sense);
   nothing to test until its gesture is redesigned with the owner. The game's own reload button and its automatic reload
   work as always.

@@ -185,6 +185,38 @@ PowerHoldStep PowerHoldFromStickClick(PowerHold& s, RbClickInput const& in) {
     return step;
 }
 
+PowerWheelClose WatchPowerWheel(PowerWheelWatch& w, PowerHoldStep const& step, bool asked, bool wheelOpen, bool click,
+    std::uint64_t nowMs) {
+    if (step.open && asked) {
+        w.asked = true;
+        w.opened = false;
+        w.lateUntilMs = 0;
+    }
+    if (w.asked && wheelOpen) {
+        w.opened = true;
+    }
+    if (step.close && w.asked) {
+        bool const everOpen = w.opened;
+        w.asked = false;
+        w.opened = false;
+        if (wheelOpen) {
+            return PowerWheelClose::AtRelease;
+        }
+        // Never open on this hold: the game may open it yet. One seen open and shut since stays shut (the game closed it).
+        w.lateUntilMs = !everOpen && nowMs != 0 ? nowMs + kPowerLateMs : 0;
+        return PowerWheelClose::None;
+    }
+    if (w.lateUntilMs != 0) {
+        if (click || nowMs >= w.lateUntilMs) {
+            w.lateUntilMs = 0;  // a new press is the player's own; or the time is up
+        } else if (wheelOpen) {
+            w.lateUntilMs = 0;
+            return PowerWheelClose::Late;
+        }
+    }
+    return PowerWheelClose::None;
+}
+
 StickChordStep UpdateStickChord(StickChord& c, bool leftClick, bool rightClick, std::uint64_t nowMs) {
     StickChordStep step;
     bool const anyBefore = c.left || c.right;

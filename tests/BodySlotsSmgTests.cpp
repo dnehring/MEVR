@@ -185,5 +185,23 @@ int RunBodySlotsSmgTests() {
         Step const step = grab.Update(squeeze);
         CHECK(step.action == Action::Draw && step.weapon == Weapon::Smg);
     }
+
+    // A draw the game refuses (the sequels' holsters where the game allows no combat): forgotten, the release at the slot
+    // sends nothing back; without it the release would wait for a draw that never comes (lane FX2, 2026-11-17).
+    for (bool forget : {true, false}) {
+        Machine refused;
+        Vec3 const atSmg = center(thigh, kSmgSlot, 1.0);
+        refused.Update(inputAt(thigh, atSmg));
+        Input squeeze = inputAt(thigh, atSmg);
+        squeeze.gripDown = squeeze.newSqueeze = true;
+        CHECK(refused.Update(squeeze).action == Action::Draw);
+        if (forget) {
+            refused.ForgetDraw();
+        }
+        Input release = inputAt(thigh, atSmg);
+        Step const let = refused.Update(release);
+        CHECK(forget ? let.action == Action::None && refused.CurrentPhase() == Phase::Idle
+                     : let.action == Action::ReturnArmed && refused.CurrentPhase() == Phase::Returning);
+    }
     return failures;
 }

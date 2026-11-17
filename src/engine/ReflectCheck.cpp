@@ -2498,6 +2498,11 @@ void CheckFunctions() {
         "Engine.Actor.SetLocation",
         "SFXGame.SFXGameModeBase.ShowMenu",               // game/GameMenuRequest (M4): Start's pause menu on ME2
         "SFXGame.SFXGameModeDefault.TryHolster",          // ... and the holster
+        "SFXGame.SFXGameModeDefault.EnterPowerWheel",     // game/Holsters: the right stick click's hold opens the power wheel,
+        "SFXGame.SFXGameModePowerWheel.ExitPowerWheel",   //     its release closes it (ME1's rule, 2026-11-17)
+        "SFXGame.BioPawn.IsReloading",                    // ... TryHolster's own refusals, asked before a holster:
+        "SFXGame.BioPawn.InCombat",
+        "SFXGame.BioPawn.IsUsingPower",
         "SFXGame.BioSFHandler_BrowserWheel.ShowSelectedPanel",  // ... and the omni-tool's entries (its pages)
         "SFXGame.MassEffectGuiManager.GetBrowserHandler",
         "Engine.BioSFPanel.GetVariableFloat",             // game/ScreenReticle (M2): the crosshair movie's alpha
@@ -2541,6 +2546,14 @@ void CheckParams() {
     PARAM(ASFXWeapon_execGetAimError_Parms, "SFXGame.SFXWeapon.GetAimError", Accuracy);
     PARAM(ASFXWeapon_execGetAimError_Parms, "SFXGame.SFXWeapon.GetAimError", ReturnValue);
     PARAM(ABioPlayerController_eventSwitchWeapon_Parms, "SFXGame.BioPlayerController.SwitchWeapon", oWpn);
+    // game/Holsters: the power wheel's open and close take nothing; TryHolster's refusals asked first
+    PARMS(USFXGameModeDefault_execEnterPowerWheel_Parms, "SFXGame.SFXGameModeDefault.EnterPowerWheel");
+    PARMS(USFXGameModePowerWheel_execExitPowerWheel_Parms, "SFXGame.SFXGameModePowerWheel.ExitPowerWheel");
+    PARAM(ABioPawn_execIsReloading_Parms, "SFXGame.BioPawn.IsReloading", bCheckReloadRequest);
+    PARAM(ABioPawn_execIsReloading_Parms, "SFXGame.BioPawn.IsReloading", ReturnValue);
+    PARAM(ABioPawn_execInCombat_Parms, "SFXGame.BioPawn.InCombat", ReturnValue);
+    PARAM(ABioPawn_execIsUsingPower_Parms, "SFXGame.BioPawn.IsUsingPower", ReturnValue);
+    PARMS(ABioPawn_execIsUsingPower_Parms, "SFXGame.BioPawn.IsUsingPower");
     // game/Reload
     PARAM(ASFXWeapon_execCanReload_Parms, "SFXGame.SFXWeapon.CanReload", ReturnValue);
     PARMS(ASFXWeapon_execCanReload_Parms, "SFXGame.SFXWeapon.CanReload");
@@ -3157,6 +3170,7 @@ void CheckLe3ViewLevel() {
 // native discovery is complete. These rows use the LE3 SDK as an independent comparison side.
 void CheckClasses() {
     CheckClass<USFXGameModeBase>("SFXGame.SFXGameModeBase");
+    CheckClass<USFXGameModePowerWheel>("SFXGame.SFXGameModePowerWheel");  // game/Holsters: the right stick click's hold
     CheckClass<USFXGameModeGalaxy>("SFXGame.SFXGameModeGalaxy");
     CheckClass<USFXGameModeOrbital>("SFXGame.SFXGameModeOrbital");
     CheckClass<UBioCameraBehaviorGalaxy>("SFXGame.BioCameraBehaviorGalaxy");
@@ -3523,6 +3537,10 @@ void CheckFunctions() {
     CheckFunction("SFXGame.SFXGameModeDefault.TryReload");
     CheckFunction("SFXGame.SFXGameModeDefault.NextWeapon");
     CheckFunction("SFXGame.SFXGameModeDefault.PrevWeapon");
+    CheckFunction("SFXGame.SFXGameModeBase.EnterPowerWheel");     // ... the right stick click's hold opens the power wheel
+    PARMS(USFXGameModeBase_execEnterPowerWheel_Parms, "SFXGame.SFXGameModeBase.EnterPowerWheel");
+    CheckFunction("SFXGame.SFXGameModePowerWheel.ExitPowerWheel");  // ... and its release closes it (ME1's rule, 2026-11-17)
+    PARMS(USFXGameModePowerWheel_execExitPowerWheel_Parms, "SFXGame.SFXGameModePowerWheel.ExitPowerWheel");
     PARAM(UObject_execGetStateName_Parms, "Core.Object.GetStateName", ReturnValue);
     CheckFunction("Engine.SkeletalMeshComponent.HideBone");
     PARAM(USkeletalMeshComponent_execHideBone_Parms, "Engine.SkeletalMeshComponent.HideBone", BoneIndex);

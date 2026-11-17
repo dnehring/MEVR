@@ -457,7 +457,7 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Lives in:** `game/Holsters` (one module, each game's names in its adapter), `core/ik/BodySlots`.
 - **Done on ME2** (2026-11-16, research/le2-vrik.md "Holsters on the sequels"): the draw (`BioPlayerController.SwitchWeapon`,
   then `BioPawnBehavior.SetActionState(1)`), the holster (`SFXGameModeDefault.TryHolster`), the right grip holding the gun
-  (no RB from it; RB is the right stick click), and only holsters draw (rule 31: the trigger, the aim trigger, reload and
+  (no RB from it; the right stick click's hold opens the power wheel, ME1's rule since 2026-11-17), and only holsters draw (rule 31: the trigger, the aim trigger, reload and
   the weapon cycling refused with the weapon away, `BioPlayerInput.IsCombatEnabled` answered false for their call).
   Seen by script: the assault rifle at the right shoulder and the pistol at the right hip drawn and holstered, four
   trigger pulls with the weapon away refused, three vaults with the right grip holding the pistol; ME1 at the same pose
@@ -477,6 +477,11 @@ These unblock the most: almost every other entry gets smaller once they land.
   equipped. ME2's release grace seen since (back after 0.20 s, holstered after 0.93 s). **Left, ME2:** the SMG's slot with a
   class that carries one. **ME3:** the combat fixture, then holsters.ps1 -Game LE3
   with `le3PutAway = 1`: draw, put away, draw again, four trigger pulls with the gun away, no stuck state; then its default.
+  **The review of 57ae5b4e** (lane FX2, 2026-11-17, research/le2-vrik.md "The sequels' controls after the review of
+  57ae5b4e"): ME1's power wheel hold on both sequels (an R3 tap quick-cast power 2 on ME2); a grab where the game allows no
+  combat refused (`IsCombatEnabled`); ME2's refused holster felt as a refusal; `ZoomedAimError`'s flag put back in a
+  `__finally`. Run on ME2 before and after. Open: ME3's heavy weapon and the raw R3 (questions 13, 14), ME1's own refused
+  draw (question 15).
 - **Closes when:** a replayed grip at the hip slot draws the pistol and letting go there holsters it, on each sequel.
 - **Waits for:** T05's ME3 combat fixture. Part of ME2's first release (M3.4). **Who:** WP (after C4).
 
@@ -993,6 +998,24 @@ Each is asked once. "Today" is what the build does if nobody answers; no default
     mechanism for the sun's sprite near the edges. Options: keep mode 2 and find where ME3 places the flare (Ghidra) to give
     it the eye's matrix; or run ME3 in mode 1 (the eyes' union window, flares right, about 15% fewer pixels per degree on a
     PS VR2) until then. Recommended: mode 1 on ME3 for its first headset test, the flare path as a lane.
+13. **ME3's heavy weapon and the holsters** (T25; lane FX2, 2026-11-17). A heavy weapon has no body slot, so the holsters
+    see an empty hand: a right-grip squeeze inside any slot (the right shoulder's, close to where a heavy weapon is held)
+    calls `SwitchWeapon`, and ME3's own `SwitchWeapon` puts the heavy weapon down with `SFXHeavyWeapon.PutDownWeapon`, which
+    in single player throws it away (`bTossOnWeaponSwitch`) for good. ME1 has no heavy weapon, so there is no ME1 rule to
+    follow. Today: the grab switches (and drops it). The options: (a) while a heavy weapon is out on ME3, a grab at a slot is
+    refused with the refusal buzz and a log line, and only the game's weapon wheel switches away; (b) the same, but a second
+    squeeze within a second switches (a deliberate double grab); (c) keep today's. ME2's heavy weapon stays in its inventory
+    on a switch, so ME2 needs none of this.
+14. **The raw right stick click on the sequels** (lane FX2, 2026-11-17). The click still reaches the game as R3 (Halcyon's
+    double-click recenter reads it; ME1's R3 does nothing in VR). ME2's R3 is `Console_ShowMap` (a tap opens the area map,
+    a hold turns the objective radar on); ME3's R3 is `Console_NavAssistanceOrCoverTurn` (every press: a cover turn, a point
+    of interest, else `ShowAreaMap`). So the power wheel's hold also brings up the radar on ME2 and, on ME3, may open the
+    area map before the wheel. Keep the R3 (today), or keep R3 from the game on foot while the click's hold is the power
+    wheel's (ME1's effect: R3 does nothing there), leaving the area map on the omni-tool's Map entry?
+15. **A refused holster draw on ME1** (lane FX2, 2026-11-17). On the sequels a grab where the game allows no combat (a hub,
+    the Normandy) is refused with the refusal buzz. On ME1 the grab buzzes as a draw and nothing comes out
+    (`SFXGameModeDefault.SwitchToWeapon` refuses by itself; a warning 3 s later). Give ME1 the sequels' refusal too (one
+    rule), or keep ME1 as it is?
 
 **Defaults waiting for a seen result and a yes** (not questions yet): `[SquadOrders] place` on the sequels (ME1's is on),
 `[Traversal] cue`, ME3's melee and traversal gestures, the galaxy projector replacing

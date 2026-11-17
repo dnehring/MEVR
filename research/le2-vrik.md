@@ -370,7 +370,7 @@ No, none of the games should do that."; docs/trilogy-plan.md rule 31).
 | drawn | `BioPawn.IsInCombatActionState` | `BioPawn.ActionState == 1` | an equipped gun |
 | mid-switch | `BioPawn.IsSwitchingWeapons` | the weapon's state `WeaponEquipping` / `WeaponPuttingDown` (`Object.GetStateName`) | the same |
 | the game's own draws refused | `SFXPawn_Player.DrawPrimaryWeapon` skipped by its caller (ME1's skip handler) | `BioPlayerInput.IsCombatEnabled` answered false inside `SFXGameModeBase.FireWeapon`, `SFXGameModeDefault.TightAim`, `TryReload`, `NextWeapon`, `PrevWeapon` while `ActionState` isn't combat (each button's own first test; they draw by `SetActionState(1)` after it) | nothing to refuse: no holstered state on foot |
-| the right stick click | holds the game's power wheel open (the mod's own Enter/ExitPowerWheel) | plain RB (ME2's own hold and tap) | plain RB |
+| the right stick click | holds the game's power wheel open (the mod's own Enter/ExitPowerWheel) | the same since 2026-11-17 (`SFXGameModeDefault.EnterPowerWheel`; plain RB until then: a tap quick-cast power 2) | the same since 2026-11-17 (`SFXGameModeBase.EnterPowerWheel`) |
 
 The gate was ME1's: `ReadGame` asked `ue3::runtime::Ready()`, which is true only where ME1's modules run on the layer, so on ME2
 the holsters stood down (`holsters: our reflection layer is off`). They ask `Up()` now (on LE1 the same answer). Every class,
@@ -565,6 +565,69 @@ controller was untracked`, and the heartbeat's `lost behind the back N times`; t
 zone (a buzz, no draw without a squeeze); behind the back the controller may be lost longer than 0.75 s or come back far from
 where it was lost; seated, the place beside the chair's back may be blocked by an armrest. Not seen in the game: no save here
 carries an SMG.
+
+## The sequels' controls after the review of 57ae5b4e (lane FX2, 2026-11-17)
+
+An adversarial review of main 57ae5b4e named five defects in the sequels' controls. Each was confirmed in the code and, where
+a run could show it, on ME2 with main's mod before the fix (hot-reloaded) and with the fix after. Stretch
+`%LOCALAPPDATA%\MEVR\sessions\20261117-082114-057-LE2-fx2-controls` (Save 4, Freedom's Progress; then the Normandy, Save 36
+of the John career, read only; restored with `verification: 0 differences`): folders `fx2-before-082552`, `fx2-after-082927`,
+`fx2-normandy-083702`, each with `steps.txt`, `console.txt`, `lines.txt` and the recordings; the lane's runner was a scratch
+script over `tools/make-walk-recording.py --plan ...,r3:1.5,...,r3:0.12,...`, `make-holster-recording.py --slot hip` and
+`holsters.ps1`.
+
+1. **An R3 tap cast a power on ME2.** With holsters on (4a366d9a) the right grip holds the gun and RB comes from the right stick
+   click (`gamepad::RbFromStickClick`). ME2's and ME3's RB is `Console_PowerWheelAndQuickPower2` = `OnTap 0.3 TryUsePower 1 |
+   OnHold 0.3 EnterPowerWheel` (ME2's `BIOInput.ini`; ME3's `Coalesced.bin`, `sfxgame.sfxgamemodedefault`, read with Legendary
+   Explorer's `CoalescedConverter`). **Before:** a tap logged `call trace: event SFXGame.SFXGameModeDefault.TryUsePower`.
+   **The fix is ME1's rule** (research/19 "Hold only") in the shared module: `holsters::TickPowerHold` runs on every game, the
+   click is never RB (`kFlagModPowerHold`), and the mod opens the wheel after 0.3 s alone and closes it at the release. The
+   adapter: ME2 `SFXGameModeDefault.EnterPowerWheel` (`GameModeManager2.EnableMode(1)`), ME3 `SFXGameModeBase.EnterPowerWheel`
+   (`EnableMode(3)`, inherited by the default mode), both `SFXGameModePowerWheel.ExitPowerWheel`; the modes by the adapter's
+   `engine::adapter::GameMode` (ME1 0/2, ME2 0/1, ME3 0/3). ME3's open sets a 0.2 s timer and tries again during an animated
+   transition, so a wheel the game opens after the release is closed too (`gamepad::WatchPowerWheel`, kPowerLateMs 1 s,
+   unit-tested). The right grip holds the gun on foot and in the two wheels on every game now (`IsFootOrWheelMode`: ME1's 0,
+   2, 3; on the sequels it was on foot only). **After:** the hold `SFXGameModeDefault.EnterPowerWheel opened the game's power
+   wheel`, game mode 1, the release `ExitPowerWheel`; the tap: no `TryUsePower`.
+   **The raw R3 still reaches the game** (it stays R3 for Halcyon's double-click recenter, as on ME1): ME2's R3 is
+   `Console_ShowMap` (`OnTap 0.3 ShowAreaMap | OnHold 0.3 TurnObjectiveRadarDisplayOn | OnRelease
+   TurnObjectiveRadarDisplayOff`); the trace shows the tap's `SFXGameModeDefault.ShowAreaMap` (no area map at Freedom's
+   Progress: the game stayed in mode 0) and `TurnObjectiveRadarDisplayOff` at each release. ME3's R3 is
+   `Console_NavAssistanceOrCoverTurn` (`Exclusive TryCoverTurn | Exclusive ActivatePOI | OnRelease DeactivatePOI | ShowAreaMap`,
+   every press). Left with the owner (docs/trilogy-plan.md question 14).
+2. **A holster grab drew where the game forbids combat.** The sequels' draw (`SwitchWeapon`, ME2's `SetActionState(1)`) skipped
+   the test every game draw makes first (`BioPlayerInput.IsCombatEnabled`; ME2's own FireWeapon, NextWeapon, EnterWeaponWheel,
+   EnterPowerWheel, TryUsePower; ME1's `SwitchToWeapon` itself). ME2 sets it per area (`BioSeqAct_NonCombatArea`:
+   `BioPlayerSquad.m_bCombatEnabled`). **Before**, with `set BioPlayerSquad m_bCombatEnabled False`: `grab at hipRight: drawing
+   the pistol ... in hand after 0.07 s`. **After:** `the pistol stays in its holster: the game allows no combat here
+   (BioPlayerInput.IsCombatEnabled false ...)`, the refusal buzz (`body_slots::Refused`), and the machine forgets the draw
+   (`Machine::ForgetDraw`, unit-tested: the release sends nothing back). On the Normandy (Save 36, combat off, the pistol
+   carried) the same for a hip grab and for `mevr weapon pistol`, and the R3 hold: `EnterPowerWheel didn't open it`.
+3. **The holster's click while the gun stayed out.** ME2's `TryHolster` refuses silently mid-reload (`IsReloading(TRUE)`), in
+   combat (`InCombat`: the AI's enemies, or `SFXGame.bInCombat`/`bForceCombat`), while a power runs and in an animated
+   transition; `ActionState` turns explore only when the holster animation ends (the run: `ME2's action state right after
+   TryHolster: 1`, holstered 1.16 s later), so it can't be read after the call. The four tests are asked first, in the game's
+   order, and a refused holster is felt as ME1's refusal. **Before**, with `set SFXGame bForceCombat True`: `let go at hipRight:
+   the pistol goes back in its holster` (the click) and 3 s later `the game didn't holster the pistol`. **After:** `the pistol
+   stays out: the game won't holster it now (in combat: SFXGameModeDefault.TryHolster refuses then)`; with combat ended the
+   same let-go holstered it in 0.94 s.
+4. **ME3's heavy weapon, confirmed in the code, not changed.** A heavy weapon has no slot (`le2_squad::WeaponType` -1), so
+   `Held()` is none and a right-grip squeeze inside a slot draws; ME3's `BioPlayerController.SwitchWeapon` calls
+   `SFXHeavyWeapon.PutDownWeapon`, which in single player throws the weapon away when `bTossOnWeaponSwitch` (or out of ammo,
+   or the config's `DropHeavyWeaponOnHolster`, false). ME1 has no heavy weapon; the options are the owner's (docs/trilogy-
+   plan.md question 13). ME2's heavy weapon stays in the inventory on a switch.
+5. **`Weapon::ZoomedAimError`** set `bIsZoomed` with a journal line but put it back outside any `__finally`, after a
+   ProcessEvent into the script: a fault caught further up would leave the weapon zoomed where the camera sees it
+   (research/18). Now the vault's pattern: journalled once, set and put back in a `__finally` (`WithFlagSet`, POD only).
+
+**ME1 at the same pose** (`tools/fake-headset-session.ps1`; the standing replay paused, two snapshots, then the pistol drawn,
+the right stick click tapped and held under a call trace, the pistol held and let go at the hip; before = this landing's build
+with main's `Holsters.cpp` and `Weapon.cpp`, after = this landing; sessions `2026-11-17_08-45-13-fx2-le1-before`,
+`2026-11-17_08-40-22-fx2-le1-after`): `hostView` identical (-43.3 / -4.1 / -18.1 uu), the same six layers at the same places
+(the omni-tool target 2.7 mm apart: the drawn arm), the HUD panel, label, wrist piece and target and both eyes' world layers
+identical pixel for pixel, the composed eyes 0.91% / 0.58% apart, all of it at the omni-tool target. Every `holsters:` and
+call-trace line (numbers masked) is in both logs and no other: the hold opened and closed the wheel
+(`SFXGameModeDefault.EnterPowerWheel` / `ExitPowerWheel`), the tap called nothing.
 
 ## The reload by hand: the game's side (lane WP, 2026-11-16)
 
