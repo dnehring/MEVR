@@ -522,8 +522,9 @@ These unblock the most: almost every other entry gets smaller once they land.
   observer since 2026-11-16), `game/Le3Traversal.cpp`, `plugin/TraversalCue`.
 - **Left:** ~~ME2's block moves to `game/Le2Traversal.cpp`~~ done 2026-11-16 (GF2, ledger Forks 4 step 1); both observers
   on `ActionLifecycle` (steps 2 and 3); the admission stays per game. **ME2:** the owner's choices
-  ([question 3](#open-owner-questions)); the two-handed hold (rule 8: the support grip's aim zooms the gun and
-  `CanPerformMantle` refuses a zoomed weapon). Arm IK across the move and the floor lock through it are done (T21): three
+  ([question 3](#open-owner-questions)). The two-handed hold vaults since 2026-11-16 (rule 8: the weapon's zoom cleared for
+  the admission's one call; research/le2-traversal.md "The two-handed hold"); letting go of the support grip mid-move is
+  sloppy (arm IK in third person for 0.7 s): the hold is kept. Arm IK across the move and the floor lock through it are done (T21): three
   vaults with every tick's wrists within 0.15 m of the controllers and no third-person frame, the eye riding the game's
   camera until it settles (research/le2-traversal.md "The floor lock through the vault"). ME3's moves reach the same hold
   through `traversal::Moving()`'s LE3 branch (not seen in a game); any other root-motion move must set
@@ -873,6 +874,8 @@ Each is asked once. "Today" is what the build does if nobody answers; no default
    - The comfort mask during the move: none (today), the vignette, or a blink? And the view: the game's (today) or held
      level?
    - The window the game asks for (within 0.39 m, facing within 45 degrees): keep it, or widen it?
+   - Both hands on the gun through the vault (today, measured: the hands stay on their controllers and the gun) or the support
+     grip let go for it (measured sloppy: arm IK falls to third person for 0.7 s while the game leaves its zoom camera)?
 
 **Raised by putting the plans side by side**
 

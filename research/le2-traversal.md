@@ -241,6 +241,37 @@ learn Shepard's eye height (then the body is 1.075 times as tall and the arms re
 **LE1 unchanged** (no traversal move: `MoveHold` passes every result through untouched; the snapshot's `"floorLock"` gains
 `"moveHold": "none"`): LE1RESULT
 
+## The two-handed hold (lane C4, 2026-11-16)
+
+The owner, 2026-11-16: "For VR we may need to allow for vault with two handed, but we may want to consider vaulting with one hand.
+The controls could get sloppy." With the left hand on the gun (the support grip) ME2 sees LT held, LT zooms the weapon
+(`SFXWeapon_NativeBase.bIsZoomed`), and `CanPerformMantle`'s pawn test refuses a zoomed weapon (research/le2-vrik.md "Vaulting with
+the weapon held"): every two-handed vault was refused. `GameAdmits` (`game/Le2Traversal.cpp`) now clears the held weapon's zoom bit
+for its one call, next to `m_bCanMantleOutsideOfCover` and the stick's push (journalled `Traversal.bIsZoomed cleared (one call)`, put
+back in the same `__finally`; the heartbeat counts `asked with the weapon's zoom cleared`; logged once `traversal: the weapon is
+zoomed (the support grip's aim): its bIsZoomed cleared for the game's CanPerformMantle call only`). The game zooms on as before; the
+commit's own recheck goes through the same admission.
+
+**Measured** (fake headset, Save 4, the pistol in the right grip; stretches `20261116-191210-770-LE2-lane-c4-holsters` for `-Grip` and
+`20261116-204916-179-LE2-lane-c4-twohanded` for the two-handed ways, each restored with `verification: 0 differences`). Both ways replay the same double A; `-SupportRelease` (`make-vault-recording.py --support-release`)
+lets the left grip go as the second press goes down and squeezes it again 1.8 s later.
+
+| | the right grip alone (`-Grip`) | both hands kept on the gun (`-Grip -Support`) | the support grip let go for the mantle (`-Grip -Support -SupportRelease`) |
+|---|---|---|---|
+| the game's admission | admitted | refused before; admitted now (the zoom cleared) | admitted |
+| the camera mode at the start | Combat | TightAim (the zoom) | TightAim |
+| right wrist within 0.15 m of its grip | 137/137, 135/135, 134/134 (max 0.08) | 134/134 three times (max 0.10) | 94/145 to 95/145 (mean 0.28, max 0.80) |
+| left wrist | its controller: max 0.11 | on the gun (0.14 from its controller at rest): 117-119 of 134 within 0.15, max 0.17-0.18 | 82-83 of 145 (mean 0.30, max 0.80) |
+| arm IK's anchor | first person throughout | first person throughout | **third person for 0.7 s each vault** (`view 75-76 units from Shepard's animated head bone`) |
+| the floor lock's hold | 163 units below the camera, released 0.59-0.61 s after | 148 below (TightAim's lower camera), released 0.61 s after, the eye's largest step 6.7 units a frame in the settle | the same 148, released 0.91 s after |
+
+Letting go mid-move ends LT, the game leaves TightAim for its ordinary camera mode while the custom action plays, the view
+jumps 0.75 m from Shepard's animated head and arm IK takes its third-person frame: both hands leave their controllers by up to
+0.8 m. That is the sloppiness the owner expected. **Recommendation:** keep the hold through the mantle (what ships); letting go
+needs the camera mode held through the move before it can be offered. Snapshots of both are in the stretch (`vault-205540`,
+`vault-205606`: before the double tap and at the move's end). The plain vault after `holsters.ps1` was refused because that script
+ends with the pistol holstered (ME2 needs the combat action state: "With the weapon away the game refuses" above).
+
 ## What is left
 
 - **ME2's observer has its own file since 2026-11-16** (lane GF2, docs/trilogy-parity-ledger.md Forks 4 step 1):
@@ -255,10 +286,8 @@ learn Shepard's eye height (then the body is 1.075 times as tall and the arms re
   writer follows the camera's bone; through three vaults both wrists stay within 0.08 m of the controllers (0.07 standing).
 - ~~The floor lock through the vault~~ **done** (lanes C3 and C4, 2026-11-16; "The floor lock through the vault" above): the eye
   rides the game's camera through the move and joins the floor-locked height once the camera has settled.
-- **The two-handed hold** (the owner, 2026-11-16: "For VR we may need to allow for vault with two handed, but we may want to
-  consider vaulting with one hand"): the support grip's LT zooms the gun, and `CanPerformMantle` refuses a zoomed weapon
-  (research/le2-vrik.md "Vaulting with the weapon held"); the admission's one-call writes are to clear the zoom too, then both
-  holds are measured with `vault.ps1 -Support`.
+- ~~**The two-handed hold**~~ **done** (lane C4, 2026-11-16; "The two-handed hold" above). The owner's pick between the hold kept
+  through the mantle (today) and letting go for it is open.
 - **The grips on ME2:** a held right grip is the pad's RB on ME2 today (the power wheel after 0.3 s; the LE2 host has no `gripHolds`
   yet), and the left grip LB (the weapon wheel). A vault with the gun held by a grip waits for the holsters' and the support grip's
   host services on LE2; nothing in the vault needs a free hand (it is A and where the player stands).

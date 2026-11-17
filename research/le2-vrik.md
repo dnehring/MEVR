@@ -222,6 +222,9 @@ two-handed hold refuses every vault. The right hand alone holding the gun (`grip
 once they are in, `vault.ps1 -Grip` checks it, and `-Grip -Support` the two-handed hold. A fix for the zoom is the traversal's:
 its one-call writes around `CanPerformMantle` (and the commit) could clear `bIsZoomed` for that call as they set
 `m_bCanMantleOutsideOfCover` [verify] (whether `MantleCover`'s custom action then plays with LT still held).
+**Done 2026-11-16 (lane C4):** the admission clears `bIsZoomed` for its one call and the two-handed hold vaults with LT held
+(the custom action plays in the TightAim camera mode); letting the support grip go mid-move drops arm IK to third person for
+0.7 s (research/le2-traversal.md "The two-handed hold").
 
 ## The sights on the sequels, mod side (lane C2, 2026-11-16; run on ME2 by lane C3 the same day)
 

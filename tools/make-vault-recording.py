@@ -4,7 +4,7 @@ hands and pressing the right controller's A: the vault's double A (research/le2-
 with its inputs on the fake headset after placing Shepard at an obstacle (mevr traversal place ...):
 
     python tools/make-vault-recording.py out.mevrrec [--start S] [--taps N] [--every S] [--gap S] [--tap S] [--single] [--length S]
-        [--hands chest|view] [--grip] [--support] [--trigger] [--yaw DEG] [--pitch DEG]
+        [--hands chest|view] [--grip] [--support [--support-release [--regrab S]]] [--trigger] [--yaw DEG] [--pitch DEG]
     tools/replay.ps1 -Path out.mevrrec -Inputs
 
 --start: the first double tap's first press, seconds from the replay's start (default 3). --taps: double taps (default 1), each
@@ -15,7 +15,9 @@ single A: nothing of ours). --length: the recording's length (default: 3 s after
 (chest default, view: up in front of the eyes). --grip: the right grip held all the way (on ME2 today it is the pad's RB, the
 power wheel after 0.3 s without the holsters' gripHolds). --support: the left hand on the held gun (5 cm ahead of the right hand, 3 cm
 in and 2 cm below it: a pistol cupped, inside the support grip's zone) and its grip squeezed from 0.5 s on (the two-handed grip;
-with --grip: the owner's "vault while holding our weapons"). --trigger: the right index resting on the trigger at 0.3 (a held gun's
+with --grip: the owner's "vault while holding our weapons"). --support-release: the left grip lets go as each double tap's
+second press goes down (the gun in the right hand alone for the mantle) and squeezes again --regrab seconds later (default
+1.8: the move and the camera's settle), the hand kept where it is. --trigger: the right index resting on the trigger at 0.3 (a held gun's
 finger; never a shot). --yaw / --pitch: the head turned or pitched (degrees)."""
 import math
 import struct
@@ -46,7 +48,7 @@ def option(name, default):
 
 
 def main():
-    valued = ("--start", "--taps", "--every", "--gap", "--tap", "--length", "--hands", "--yaw", "--pitch")
+    valued = ("--start", "--taps", "--every", "--gap", "--tap", "--length", "--hands", "--yaw", "--pitch", "--regrab")
     taken = {i + 1 for i, a in enumerate(sys.argv) if a in valued}
     args = [a for i, a in enumerate(sys.argv) if i > 0 and not a.startswith("--") and i not in taken]
     if not args:
@@ -64,6 +66,8 @@ def main():
     hands = sys.argv[sys.argv.index("--hands") + 1] if "--hands" in sys.argv else "chest"
     grip = 1.0 if "--grip" in sys.argv else 0.0
     support = "--support" in sys.argv
+    support_release = support and "--support-release" in sys.argv
+    regrab = option("--regrab", 1.8)
     trigger = 0.3 if "--trigger" in sys.argv else 0.0
     if hands not in ("chest", "view") or taps < 1:
         print(__doc__)
@@ -100,12 +104,14 @@ def main():
             t = i / hz
             a = any(d <= t < u for d, u in presses)
             left_grip = 1.0 if support and t >= 0.5 else 0.0
+            if support_release and any(d <= t < d + regrab for d, _ in presses[1::2] if not single):
+                left_grip = 0.0  # let go for the mantle, the gun in the right hand alone
             f.write(FRAME.pack(int(t * 1e9), 3, *eyes[0], *fov, *eyes[1], *fov,
                                VALID, 0.0, left_grip, 0.0, 0.0, *left_hand, *left_hand,
                                VALID | (PRIMARY if a else 0), trigger, grip, 0.0, 0.0, *right_hand, *right_hand))
     taps_text = ", ".join(f"{d:.2f}-{u:.2f}" for d, u in presses)
     print(f"{out}: {n} frames at {hz:g} Hz ({length:g} s); A down {taps_text} s ({'single' if single else 'double'} taps); hands {hands}"
-          f"{', right grip held' if grip else ''}{', left hand on the gun, its grip held' if support else ''}{', index on the trigger' if trigger else ''}; head yaw {yaw:g}, pitch {pitch:g}")
+          f"{', right grip held' if grip else ''}{', left hand on the gun, its grip held' if support else ''}{f', let go for {regrab:g} s at each vault' if support_release else ''}{', index on the trigger' if trigger else ''}; head yaw {yaw:g}, pitch {pitch:g}")
     return 0
 
 

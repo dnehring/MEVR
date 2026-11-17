@@ -190,7 +190,9 @@ struct Counters {
     unsigned gameRequestsTrue = 0;
     unsigned violations = 0;       // moves the rules wouldn't have committed
     unsigned faultsRestored = 0;
+    unsigned zoomedAdmissions = 0;  // admissions asked with the weapon's zoom cleared for the call (the two-handed hold)
 } gCounters, gTotals;
+bool gToldZoomed = false;  // the two-handed hold's first admission with the zoom cleared, logged once a session
 
 
 // Our reflection layer (ue3/, research/34), ME2's names (research/le2-traversal.md "The names").
@@ -224,6 +226,11 @@ ue3::FieldRef gIgnoreMove{"Engine.PlayerController", "bIgnoreMoveInput", ue3::kE
 ue3::FieldRef gIgnoreLook{"Engine.PlayerController", "bIgnoreLookInput", ue3::kEveryGame};
 ue3::FieldRef gPawnCurrentLink{"SFXGame.BioPawn", "CurrentLink", ue3::kEveryGame};
 ue3::FieldRef gPawnWeapon{"Engine.Pawn", "Weapon", ue3::kEveryGame};
+// The two-handed hold (the owner, 2026-11-16; docs/trilogy-plan.md rule 8): the support grip's aim (LT) zooms the gun, and
+// CanPerformMantle's pawn test (0xABD700) refuses a weapon whose IsZoomed is set (research/le2-vrik.md "Vaulting with the weapon
+// held"). The admission clears the flag for its one call, as it sets m_bCanMantleOutsideOfCover; the game zooms on as before.
+ue3::ClassRef gWeaponNativeBase{"SFXGame.SFXWeapon_NativeBase", ue3::kEveryGame};
+ue3::FieldRef gWeaponZoomed{"SFXGame.SFXWeapon_NativeBase", "bIsZoomed", ue3::kEveryGame};
 ue3::FieldRef gPhysics{"Engine.Actor", "Physics", ue3::kEveryGame};
 ue3::FieldRef gBlockActors{"Engine.Actor", "bBlockActors", ue3::kEveryGame};
 ue3::FieldRef gBodyStance{"SFXGame.BioCustomAction_CoverClimbMantleBase", "m_CurrentBodyStance", ue3::kEveryGame};
@@ -414,6 +421,9 @@ struct OneCallWrites {
     float joyUpWas = 0.0f;
     float* joyRight = nullptr;
     float joyRightWas = 0.0f;
+    std::uint32_t* clearWord = nullptr;  // a flag cleared for the call (the held weapon's bIsZoomed)
+    std::uint32_t clearMask = 0;
+    std::uint32_t clearWas = 0;
 };
 using CallThunk = void (*)(void* context);
 
@@ -429,6 +439,9 @@ void CallWithOneCallWrites(OneCallWrites const& w, CallThunk call, void* context
         if (w.joyRight != nullptr) {
             *w.joyRight = 0.0f;
         }
+        if (w.clearWord != nullptr) {
+            *w.clearWord &= ~w.clearMask;
+        }
         call(context);
     } __finally {
         if (w.flagWord != nullptr) {
@@ -439,6 +452,9 @@ void CallWithOneCallWrites(OneCallWrites const& w, CallThunk call, void* context
         }
         if (w.joyRight != nullptr) {
             *w.joyRight = w.joyRightWas;
+        }
+        if (w.clearWord != nullptr) {
+            *w.clearWord = (*w.clearWord & ~w.clearMask) | (w.clearWas & w.clearMask);
         }
     }
 }
@@ -515,9 +531,29 @@ std::optional<bool> GameAdmits(ue3::Object* pc, Slot const& slot) {
     write_journal::Wrote("Traversal.m_bCanMantleOutsideOfCover (one call)", w.flagWord, sizeof(std::uint32_t));
     write_journal::Wrote("Traversal.RemappedJoyUp (one call)", joyUp, sizeof(float));
     write_journal::Wrote("Traversal.RemappedJoyRight (one call)", joyRight, sizeof(float));
+    // A zoomed weapon (the two-handed hold's LT): its bIsZoomed cleared for this call only.
+    ue3::Object* const pawn = player::Pawn(pc);
+    ue3::Object* const weapon = pawn != nullptr ? gPawnWeapon.Read<ue3::Object*>(pawn).value_or(nullptr) : nullptr;
+    ue3::PropertyInfo const* const zoom = gWeaponZoomed.Get();
+    if (weapon != nullptr && zoom != nullptr && zoom->boolMask != 0 && ue3::runtime::IsAlive(weapon) && ue3::IsA(weapon, gWeaponNativeBase)) {
+        auto* const word = reinterpret_cast<std::uint32_t*>(reinterpret_cast<std::uint8_t*>(weapon) + zoom->offset);
+        if ((*word & zoom->boolMask) != 0) {
+            w.clearWord = word;
+            w.clearMask = zoom->boolMask;
+            w.clearWas = *word;
+            write_journal::Wrote("Traversal.bIsZoomed cleared (one call)", word, sizeof(std::uint32_t));
+            ++gCounters.zoomedAdmissions;
+            if (!gToldZoomed) {
+                gToldZoomed = true;
+                log::Info("traversal: the weapon is zoomed (the support grip's aim): its bIsZoomed cleared for the game's {} call "
+                          "only, so a two-handed hold can vault", climb ? "CanPerformClimb" : "CanPerformMantle");
+            }
+        }
+    }
     CallContext context{pc, fn, &parms};
     CallWithOneCallWrites(w, &CallThunkImpl, &context);
-    if (((*w.flagWord ^ w.flagWas) & w.flagMask) != 0 || *joyUp != w.joyUpWas || *joyRight != w.joyRightWas) {
+    if (((*w.flagWord ^ w.flagWas) & w.flagMask) != 0 || *joyUp != w.joyUpWas || *joyRight != w.joyRightWas ||
+        (w.clearWord != nullptr && ((*w.clearWord ^ w.clearWas) & w.clearMask) != 0)) {
         ++gCounters.faultsRestored;  // never expected: the __finally put them back
     }
     return parms.ReturnBool();
@@ -1138,10 +1174,12 @@ void LogStats() {
     }
     log::Info("    traversal: {} slots that vault or climb; nearest {}; the game asked {} times ({} admitted); {} A presses, {} double taps, {} "
               "commits ({} began nothing), the game's own in-cover A {} times ({} began a move); {} moves in all, {} the rules wouldn't have "
-              "committed{}",
+              "committed{}{}",
         gSlots.size(), gNear.slot >= 0 ? gSlots[static_cast<std::size_t>(gNear.slot)].name : std::string("none"), gCounters.admitAsks,
         gCounters.admitYes, gCounters.presses, gCounters.doubleTaps, gCounters.commits, gCounters.commitsRefused, gCounters.gameRequests,
         gCounters.gameRequestsTrue, gMoves, gTotals.violations,
+        gCounters.zoomedAdmissions > 0 ? std::format("; {} asked with the weapon's zoom cleared (the two-handed hold)", gCounters.zoomedAdmissions)
+                                       : std::string(),
         gCounters.faultsRestored > 0 ? std::format("; {} ONE-CALL WRITES NOT PUT BACK", gCounters.faultsRestored) : std::string());
     gCounters = Counters{};
 }
@@ -1288,6 +1326,7 @@ void Shutdown() {
     gSlotsAt = -1e9;
     gSlotsWorld = nullptr;
     gToldSlots = false;
+    gToldZoomed = false;
     gNear = Near{};
     gPresses.Reset();
     gMove = Move{};

@@ -679,7 +679,8 @@ Turn it on: the menu's Voice page > Thespian mode > Speak Shepard's lines (or `[
   with `[Traversal] cue = 1`? Is the view's rise over the wall (about 0.5 m, smooth, level) comfortable as the game moves it
   (`view = game`, today's), against `view = level`, `mask = vignette` and `mask = blink` (each in `ASI\LE2MEVR.ini [Traversal]`,
   read live)? Where are your hands and the gun during the move and the second after it (the body's landing crouch)? Does a single
-  A ever do anything near the wall? Seated and with the left hand on the gun too. With the floor lock (since 2026-11-16 the
+  A ever do anything near the wall? Seated and with the left hand on the gun too (both hands vault since 2026-11-16: does the
+  zoomed view through the mantle feel right?). With the floor lock (since 2026-11-16 the
   eye rides the game's camera through the move and joins the floor-locked height once that camera has settled, about 0.8 s
   after the landing; research/le2-traversal.md "The floor lock through the vault"): no drop, bob or second rise at the landing?
 - [ ] 2026-11-14 the idle sway (research/72; `[Hands] steadyIdle = 1` in ASI\LE1MEVR.ini, off by default until this
