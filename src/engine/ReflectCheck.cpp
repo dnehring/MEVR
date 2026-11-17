@@ -3199,6 +3199,7 @@ void CheckClasses() {
     CheckClass<ASFXWeapon_AssaultRifle_Base>("SFXGame.SFXWeapon_AssaultRifle_Base");
     CheckClass<ASFXWeapon_Shotgun_Base>("SFXGame.SFXWeapon_Shotgun_Base");
     CheckClass<ASFXWeapon_SniperRifle_Base>("SFXGame.SFXWeapon_SniperRifle_Base");
+    CheckClass<ASFXHeavyWeapon>("SFXGame.SFXHeavyWeapon");  // game/Holsters: a heavy weapon in hand refuses a slot's grab
     CheckClass<USkeletalMeshComponent>("Engine.SkeletalMeshComponent");
     CheckClass<USkeletalMesh>("Engine.SkeletalMesh");
     CheckClass<USkeletalMeshSocket>("Engine.SkeletalMeshSocket");

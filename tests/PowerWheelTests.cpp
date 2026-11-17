@@ -365,6 +365,71 @@ void TestPowerHold() {
     CHECK(!pad::FromFlags(-1.0f, 0.1f, 0.2f, pad::ToFlags(pad::Options{})).modPowerHold);
 }
 
+// The sequels' hosts keep a click the mod owns from the game (Options::keepPowerClick; the owner, 2026-11-17, question 14:
+// ME2's and ME3's R3 open the area map). Each press is decided when it goes down; a kept tap gives no gate pulse after its
+// release; LE1 (no keepPowerClick) still sends R3.
+void TestPowerClickKept() {
+    auto const seen = [](pad::Latches& latches, pad::Options const& options, bool click, std::uint64_t from, std::uint64_t to) {
+        mevr::vr::controllers::State c;
+        c.active = true;
+        c.right.stickClick = click;
+        WORD buttons = 0;
+        for (std::uint64_t t = from; t <= to; t += 16) {
+            c.timeMs = t;
+            buttons = static_cast<WORD>(buttons | pad::FromControllers(c, latches, options).wButtons);
+        }
+        return buttons;
+    };
+    pad::Options sequel;
+    sequel.rightGripHolds = true;
+    sequel.rbSource = pad::RbSource::RightStickClick;
+    sequel.modPowerHold = true;
+    sequel.keepPowerClick = true;
+    sequel.gateRightClick = true;  // ME2's and ME3's pad path
+    // A hold (the power wheel's) and a tap: never R3, never RB; nothing after the tap's release (no gate pulse).
+    {
+        pad::Latches latches;
+        CHECK((seen(latches, sequel, false, 1000, 1100) & XINPUT_GAMEPAD_RIGHT_THUMB) == 0);
+        WORD const hold = seen(latches, sequel, true, 1116, 2600);
+        CHECK((hold & (XINPUT_GAMEPAD_RIGHT_THUMB | XINPUT_GAMEPAD_RIGHT_SHOULDER)) == 0 && latches.rightClickKept);
+        CHECK((seen(latches, sequel, false, 2616, 3200) & XINPUT_GAMEPAD_RIGHT_THUMB) == 0 && !latches.rightClickKept);
+        WORD const tap = seen(latches, sequel, true, 3216, 3280);
+        WORD const after = seen(latches, sequel, false, 3296, 4000);
+        CHECK(((tap | after) & (XINPUT_GAMEPAD_RIGHT_THUMB | XINPUT_GAMEPAD_RIGHT_SHOULDER)) == 0);
+    }
+    // Ungated (a host without the chord's gate) the same.
+    {
+        pad::Options ungated = sequel;
+        ungated.gateRightClick = false;
+        pad::Latches latches;
+        CHECK((seen(latches, ungated, true, 1000, 1800) & XINPUT_GAMEPAD_RIGHT_THUMB) == 0);
+    }
+    // A press keeps the meaning it began with: kept while the mod stops owning the click mid-press (a wheel opening, a stale
+    // tick), and a press begun before the mod owned it (a menu, a conversation) stays R3 until it's let go.
+    {
+        pad::Latches latches;
+        seen(latches, sequel, true, 1000, 1200);
+        pad::Options notOwned = sequel;
+        notOwned.modPowerHold = false;
+        CHECK((seen(latches, notOwned, true, 1216, 1800) & XINPUT_GAMEPAD_RIGHT_THUMB) == 0);
+        seen(latches, notOwned, false, 1816, 2000);
+        CHECK((seen(latches, notOwned, true, 2016, 2400) & XINPUT_GAMEPAD_RIGHT_THUMB) != 0);  // not the mod's: the game's R3
+        CHECK((seen(latches, sequel, true, 2416, 2800) & XINPUT_GAMEPAD_RIGHT_THUMB) != 0);   // still that press
+        seen(latches, sequel, false, 2816, 3000);
+        CHECK((seen(latches, sequel, true, 3016, 3400) & XINPUT_GAMEPAD_RIGHT_THUMB) == 0);   // a new press: the mod's
+    }
+    // LE1 (keepPowerClick off): the mod's click still reaches the game as R3 (Halcyon's double-click recenter reads it).
+    {
+        pad::Options le1 = sequel;
+        le1.keepPowerClick = false;
+        le1.gateRightClick = false;
+        pad::Latches latches;
+        CHECK((seen(latches, le1, true, 1000, 1500) & XINPUT_GAMEPAD_RIGHT_THUMB) != 0 && !latches.rightClickKept);
+    }
+    // Host-only: it never crosses the boundary.
+    CHECK(!pad::FromFlags(-1.0f, 0.1f, 0.2f, pad::ToFlags(sequel)).keepPowerClick);
+}
+
 // What the mod closes around a hold (gamepad::WatchPowerWheel): the wheel it asked for at the release, a wheel the game
 // opens late (ME3's EnterPowerWheel retries by a timer) within kPowerLateMs of that release, nothing it didn't ask for.
 void TestPowerWheelWatch() {
@@ -1173,6 +1238,7 @@ int RunPowerWheelTests() {
     TestTableAndView();
     TestPad();
     TestPowerHold();
+    TestPowerClickKept();
     TestPowerWheelWatch();
     TestLock();
     TestAutoLock();

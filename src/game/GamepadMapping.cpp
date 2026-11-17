@@ -544,9 +544,10 @@ XINPUT_GAMEPAD FromControllers(vr::controllers::State const& input, Latches& lat
             }
         }
     }
-    // The right stick click stays R3 either way: Halcyon's double-click recenter reads it, and the
+    // The right stick click stays R3 on LE1 either way: Halcyon's double-click recenter reads it, and the
     // game's R3 (ChangeMagnification, a scoped weapon's zoom step) does nothing in Halcyon's view.
-    // With Options::modPowerHold the mod opens the power wheel from its hold, and it's never RB.
+    // With Options::modPowerHold the mod opens the power wheel from its hold, and it's never RB; with
+    // Options::keepPowerClick too (the sequels' hosts) that press isn't R3 either (below).
     RbClickInput click;
     click.click = r.stickClick;
     click.stickX = r.stickX;
@@ -561,7 +562,16 @@ XINPUT_GAMEPAD FromControllers(vr::controllers::State const& input, Latches& lat
     if (rb) buttons |= XINPUT_GAMEPAD_RIGHT_SHOULDER;
     if (r.primary || (options.nativeWheel && options.wheelPressA)) buttons |= XINPUT_GAMEPAD_A;
     if (GateClick(latches.leftClick, l.stickClick, r.stickClick, state.timeMs)) buttons |= XINPUT_GAMEPAD_LEFT_THUMB;
-    if (options.gateRightClick ? GateClick(latches.rightClick, r.stickClick, l.stickClick, state.timeMs) : r.stickClick) {
+    // A press that begins while the mod owns the click (Options::keepPowerClick) is kept from the game until it's let go,
+    // whatever the options say meanwhile; it never reaches the gate either, so no tap pulse follows its release.
+    if (r.stickClick && !latches.rightClickDown) {
+        latches.rightClickKept = options.modPowerHold && options.keepPowerClick;
+    } else if (!r.stickClick) {
+        latches.rightClickKept = false;
+    }
+    latches.rightClickDown = r.stickClick;
+    bool const rightClick = r.stickClick && !latches.rightClickKept;
+    if (options.gateRightClick ? GateClick(latches.rightClick, rightClick, l.stickClick, state.timeMs) : rightClick) {
         buttons |= XINPUT_GAMEPAD_RIGHT_THUMB;
     }
     if (l.menu) buttons |= leftGrip ? XINPUT_GAMEPAD_BACK : XINPUT_GAMEPAD_START;

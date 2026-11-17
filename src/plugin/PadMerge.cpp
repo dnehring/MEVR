@@ -40,6 +40,7 @@ bool gSquadMenuLogged = false;    // whether the mod's flag says the squad menu 
 bool gNativeWheelLogged = false;  // the mod holds the game's weapon wheel (v12)
 bool gWheelPressALogged = false;
 bool gConversationTriggersLogged = false;  // the renderer said the conversation mode's triggers are the interrupts' (ME2)
+bool gPowerClickKeptLogged = false;  // the first right stick click kept from the game (Renderer::keepPowerClick)
 // Comfort (v17, game/comfort in the mod, research/31): whether the mod turns the player (logged when it changes), and
 // walking toward the left hand: whether it's on, and the left controller's last usable flat yaw (+ left, radians).
 bool gModTurnsLogged = false;
@@ -148,6 +149,7 @@ XINPUT_GAMEPAD Merge(XINPUT_GAMEPAD const& real, vr::controllers::State const& c
     std::lock_guard lock(gMutex);
     gp::Options options = Options(nowMs);
     options.gateRightClick = renderer.gateRightClick;  // host-only, never across the boundary (lane D2's gate; LE1 false)
+    options.keepPowerClick = renderer.keepPowerClick;  // host-only too (the sequels': their R3 opens the area map; LE1 false)
     if (renderer.conversationTriggers || renderer.orbitalTriggers) {
         options = ConversationTriggers(options);  // ME2's native LT/RT pair for interrupts and orbital scanning
     }
@@ -164,6 +166,11 @@ XINPUT_GAMEPAD Merge(XINPUT_GAMEPAD const& real, vr::controllers::State const& c
         options.countKept = false;
     }
     XINPUT_GAMEPAD touch = gp::FromControllers(controllers, gLatches, options);
+    if (gLatches.rightClickKept && !gPowerClickKeptLogged) {
+        gPowerClickKeptLogged = true;
+        log::Info("halcyon bridge: first right stick click kept from the game: its hold is the power wheel's (the mod's), "
+                  "so no R3 (the game's area map stays on the omni-tool's Map entry)");
+    }
     bool const owned = options.squadMenu || options.nativeWheel;  // the squad menu or the game's wheel has the sticks
     WalkTowardHand(touch, controllers, options.handWalk && !owned && !renderer.ownMenuOpen, renderer, nowMs);
     if (options.modTurns != gModTurnsLogged && nowMs >= gModTurnsLogMs) {  // at most every 2 s (camera blends)
@@ -247,6 +254,7 @@ void Reset() {
     gModTurnsLogMs = 0;
     gHandWalkLogged = false;
     gConversationTriggersLogged = false;
+    gPowerClickKeptLogged = false;
     gHandWalkLogMs = 0;
     gHandYaw.reset();
 }

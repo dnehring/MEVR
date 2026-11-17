@@ -235,6 +235,10 @@ struct Latches {
     // R3 likewise, with Options::gateRightClick (ME2's pad path: the both-sticks hold for our menu comes before any use of
     // either click, the owner 2026-11-14).
     ClickGate rightClick;
+    // The right stick click with Options::keepPowerClick: down last step, and whether this press is kept from the game (it
+    // began while the mod owned the click). A kept press never reaches rightClick's gate either, so no tap pulse follows it.
+    bool rightClickDown = false;
+    bool rightClickKept = false;
     // The squad weapon menu (game/squad_weapons): the left-grip squeezes that began away from the gun's
     // foregrip (not the support grip), counted like the right grip's kept squeezes; whether the current
     // squeeze is one.
@@ -333,6 +337,13 @@ struct Options {
     // the both-sticks hold for our main menu always wins over the game's use of either click (the owner, 2026-11-14:
     // "always prioritize the L3 + R3 stick click"; research/le2-menus.md "Opening the menu").
     bool gateRightClick = false;
+    // A right stick click the mod owns (modPowerHold: its hold is the power wheel's) isn't R3 either: the press is kept from
+    // the game until released, decided when it goes down (Latches::rightClickKept). Not across the boundary: the host sets
+    // it. The sequels' hosts set it (the owner, 2026-11-17, docs/trilogy-plan.md question 14): ME2's R3 is Console_ShowMap (a
+    // tap the area map, a hold the objective radar), ME3's Console_NavAssistanceOrCoverTurn (every press a point of interest
+    // or the area map); the area map stays on the omni-tool's Map entry. LE1 leaves it off: Halcyon LE1's double-click
+    // recenter reads R3 from the game's pad, and ME1's own R3 (ChangeMagnification) acts only while zoomed (research/19).
+    bool keepPowerClick = false;
     // The squad weapon menu is open (game/squad_weapons, kFlagSquadMenu): the sticks, A, B and both
     // stick clicks are its own (Latches::squadHeld keeps them from the game until released).
     bool squadMenu = false;

@@ -58,6 +58,7 @@ char const* Name(Action action) {
     case Action::ReturnArmed: return "return armed";
     case Action::ReturnCancelled: return "return cancelled";
     case Action::Return: return "return";
+    case Action::SwitchRefused: return "switch refused";
     }
     return "?";
 }
@@ -203,6 +204,8 @@ void Machine::UpdateHolding(Input const& input, Step& step) {
             Weapon const weapon = input.weapon[inSlot_];
             if (input.held != Weapon::None && input.held == weapon) {
                 act(Action::AlreadyHeld, inSlot_, weapon);
+            } else if (input.available[inSlot_] && input.switchLosesHeld) {
+                act(Action::SwitchRefused, inSlot_, weapon);  // the weapon in hand stays: nothing on its way
             } else if (input.available[inSlot_]) {
                 act(Action::Draw, inSlot_, weapon);
                 drawn_ = weapon;
@@ -351,6 +354,9 @@ Step Machine::Update(Input const& input) {
                     armedSlot_ = inSlot_;
                     armedWeapon_ = input.held;
                 }
+            } else if (input.available[inSlot_] && input.switchLosesHeld) {
+                act(Action::SwitchRefused, inSlot_, weapon);
+                phase_ = Phase::Grab;
             } else if (input.available[inSlot_]) {
                 act(Action::Draw, inSlot_, weapon);
                 phase_ = Phase::Grab;

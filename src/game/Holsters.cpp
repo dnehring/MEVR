@@ -81,6 +81,10 @@ std::array<ue3::Function*, 2> gSeatedWheelCallers{};
 // a thumbs-up now (research/43 "Touch sensors"), not an attempt to draw.
 ue3::FunctionRef gFireWeaponFn{"SFXGame.SFXGameModeBase.FireWeapon"};
 ue3::Function* gFireWeapon = nullptr;
+// Whether the game allows combat here (CombatEnabled): what SwitchToWeapon asks first, a grab's draw asks it before the call
+// (the owner, 2026-11-17, question 15: a refused draw is felt as a refusal on every game).
+ue3::FieldRef gPlayerInput{"Engine.PlayerController", "PlayerInput"};
+ue3::FunctionRef gIsCombatEnabledFn{"SFXGame.BioPlayerInput.IsCombatEnabled"};
 
 ue3::Function* gSwitchToWeapon = nullptr;
 ue3::Function* gTryHolster = nullptr;
@@ -127,6 +131,11 @@ constexpr std::uint8_t kActionStateCombat = 1;  // EActionState.ActionState_Comb
 // its WeaponPuttingDown state (the holster animation, CustomAction 11) and leaves Pawn.Weapon None.
 ue3::FunctionRef gSetCurrentWeaponFn{"SFXGame.SFXInventoryManager.SetCurrentWeapon", ue3::kEveryGame};
 ue3::Function* gSetCurrentWeapon = nullptr;
+// ME3's heavy weapon (the owner, 2026-11-17, docs/trilogy-plan.md question 13): it has no slot, and ME3's
+// BioPlayerController.SwitchWeapon puts it down with SFXHeavyWeapon.PutDownWeapon, which in single player throws it away
+// (bTossOnWeaponSwitch). While one is in hand a grab at a slot is refused (body_slots::Input::switchLosesHeld); only the
+// game's weapon wheel switches away. ME2's SwitchWeapon keeps its heavy weapon in the inventory: no such rule there.
+ue3::ClassRef gHeavyWeapon{"SFXGame.SFXHeavyWeapon", ue3::kEveryGame};
 bool gPutAway = false;          // this tick's [Holsters] le3PutAway
 bool gToldNoPutAway = false;    // said once: a let-go gun stays in the hand
 #endif
@@ -274,6 +283,7 @@ struct Carried {
     int current = -1;     // m_eQuickSlotCurrent
     bool drawn = false;   // IsInCombatActionState
     bool switching = false;
+    bool switchLosesHeld = false;  // ME3: a heavy weapon is in hand (body_slots::Input::switchLosesHeld); false elsewhere
 };
 Carried gCarried;
 
@@ -585,19 +595,6 @@ std::string WeaponState(ue3::Object* weapon) {
     return name ? ue3::runtime::NameText(*name) : std::string();
 }
 
-// Whether the game allows combat here: what each of its own draws asks first (FireWeapon, TightAim, NextWeapon, the weapon
-// wheel's EnterWeaponWheel; ME1's SwitchToWeapon itself). False in the hubs and on the Normandy. Our answer handler
-// (OnIsCombatEnabled) answers only the draw routes' calls, never this one. Unknown counts as allowed (the draw as before).
-bool CombatEnabled(ue3::Object* controller) {
-    ue3::Object* const input = le2_squad::inputField.Read<ue3::Object*>(controller).value_or(nullptr);
-    ue3::Function* const fn = le2_squad::combatEnabled.Get();
-    if (!ue3::runtime::IsAlive(input) || fn == nullptr) {
-        return true;
-    }
-    ue3::Params parms(ue3::runtime::Get(), fn);
-    return !ue3::runtime::Call(input, fn, parms) || parms.ReturnBool().value_or(true);
-}
-
 #if defined(MEVR_GAME_LE2)
 // A function without parameters but its bool return, on `object` (false if it can't be asked).
 bool AskBool(ue3::Object* object, ue3::Function* function) {
@@ -655,12 +652,41 @@ void ReadCarried(Game const& game) {
     gCarried.drawn = held != nullptr && gActionState.Read<std::uint8_t>(game.pawn).value_or(0) == kActionStateCombat;
 #else
     gCarried.drawn = held != nullptr;  // ME3 has no holstered action state: an equipped gun is out
+    // A heavy weapon in hand: a switch would throw it away, so grabs at the slots are refused while it is (question 13).
+    bool const heavy = ue3::runtime::IsAlive(held) && ue3::IsA(held, gHeavyWeapon);
+    if (heavy != gCarried.switchLosesHeld) {
+        log::Info("holsters: {}", heavy
+            ? std::format("a heavy weapon is in hand ({}): a grab at a slot is refused while it is (ME3's SwitchWeapon would "
+                          "throw it away: SFXHeavyWeapon.PutDownWeapon); the game's weapon wheel switches away",
+                  ue3::runtime::FullName(held))
+            : std::string("the heavy weapon is out of the hand: grabs at the slots draw again"));
+    }
+    gCarried.switchLosesHeld = heavy;
 #endif
     std::string const state = WeaponState(held);
     gCarried.switching = state == "WeaponEquipping" || state == "WeaponPuttingDown";
 }
 
 #endif  // per game
+
+// Whether the game allows combat here: what each of its own draws asks first (ME1's SFXGameModeDefault.SwitchToWeapon
+// returns at once without it; the sequels' FireWeapon, TightAim, NextWeapon, the weapon wheel's EnterWeaponWheel). False in
+// the hubs and on the Normandy. The sequels' answer handler (OnIsCombatEnabled) answers only the draw routes' calls, never
+// this one. Unknown counts as allowed (the draw as before).
+bool CombatEnabled(ue3::Object* controller) {
+#if defined(MEVR_GAME_LE1)
+    ue3::Object* const input = gPlayerInput.Read<ue3::Object*>(controller).value_or(nullptr);
+    ue3::Function* const fn = gIsCombatEnabledFn.Get();
+#else
+    ue3::Object* const input = le2_squad::inputField.Read<ue3::Object*>(controller).value_or(nullptr);
+    ue3::Function* const fn = le2_squad::combatEnabled.Get();
+#endif
+    if (!ue3::runtime::IsAlive(input) || fn == nullptr) {
+        return true;
+    }
+    ue3::Params parms(ue3::runtime::Get(), fn);
+    return !ue3::runtime::Call(input, fn, parms) || parms.ReturnBool().value_or(true);
+}
 
 Weapon Held() {
     if (!gCarried.drawn || gCarried.current < 0 || gCarried.current >= slots::kSlots) {
@@ -677,6 +703,23 @@ bool Carries(Weapon weapon) {
 
 // The draw a grab asks for. False: refused here (the sequels: where the game's own draws are refused), felt as a refusal.
 bool Draw(Game const& game, Weapon weapon, char const* slot, Link const& link, double strength, bool holds) {
+#if !defined(MEVR_GAME_LE1)
+    ue3::Object* const item = CarriedOfFamily(game.pawn, static_cast<int>(weapon));
+    if (item == nullptr) {
+        log::Info("holsters: grab at {}: the {} is no longer carried", slot, slots::Name(weapon));
+        return false;
+    }
+#endif
+    // Every game's own draws ask BioPlayerInput.IsCombatEnabled first: ME1's SwitchToWeapon returns at once without it (the
+    // grab used to be felt as a draw while nothing came out), and the sequels' SwitchWeapon and SetActionState don't ask (a
+    // grab in a hub pulled a gun out where the game allows none). One rule since 2026-11-17 (the owner, question 15).
+    if (!CombatEnabled(game.controller)) {
+        ++gRefusals;
+        log::Info("holsters: grab at {}: the {} stays in its holster: the game allows no combat here (BioPlayerInput."
+                  "IsCombatEnabled false: its own draws are refused too)", slot, slots::Name(weapon));
+        Pulse(link, slots::Refused(strength));
+        return false;
+    }
 #if defined(MEVR_GAME_LE1)
     int const quickSlot = gCarried.slotOfType[static_cast<int>(weapon)];
     ue3::Params parms(ue3::runtime::Get(), gSwitchToWeapon);
@@ -686,20 +729,6 @@ bool Draw(Game const& game, Weapon weapon, char const* slot, Link const& link, d
         holds ? "; keep the grip squeezed to hold it" : "");
     ue3::runtime::Call(game.mode, gSwitchToWeapon, parms);  // directly: never a generated wrapper
 #else
-    ue3::Object* const item = CarriedOfFamily(game.pawn, static_cast<int>(weapon));
-    if (item == nullptr) {
-        log::Info("holsters: grab at {}: the {} is no longer carried", slot, slots::Name(weapon));
-        return false;
-    }
-    // The game's own draws ask BioPlayerInput.IsCombatEnabled first (ME1's SwitchToWeapon too); SwitchWeapon and
-    // SetActionState don't, so a grab in a hub pulled a gun out where the game allows none.
-    if (!CombatEnabled(game.controller)) {
-        ++gRefusals;
-        log::Info("holsters: grab at {}: the {} stays in its holster: the game allows no combat here (BioPlayerInput."
-                  "IsCombatEnabled false: its own draws are refused too)", slot, slots::Name(weapon));
-        Pulse(link, slots::Refused(strength));
-        return false;
-    }
     ue3::Object* const equipped = le2_squad::equippedWeapon.Read<ue3::Object*>(game.pawn).value_or(nullptr);
     bool const switches = equipped != item;
     bool raises = false;
@@ -1035,6 +1064,10 @@ std::string DrawByName(std::string_view name) {
         }
         return std::format("no {} is carried; carried: {}", slots::Name(*weapon), carried.empty() ? std::string("nothing") : carried);
     }
+    if (gCarried.switchLosesHeld) {  // ME3's heavy weapon in hand (question 13): as a grab at its slot
+        return std::format("the {} wasn't drawn: a heavy weapon is in hand and a switch would throw it away (the game's weapon "
+                           "wheel switches away)", slots::Name(*weapon));
+    }
 #endif
     if (!Carries(*weapon)) {
         return std::format("no {} is carried (the holsters haven't read the quick slots, or it isn't equipped)", slots::Name(*weapon));
@@ -1358,6 +1391,7 @@ void Tick(double deltaSeconds, Link const& link) {
     input.trigger = right.trigger >= kTriggerOn;
     input.held = Held();
     input.switching = gCarried.switching;
+    input.switchLosesHeld = gCarried.switchLosesHeld;  // ME3's heavy weapon in hand (always false on ME1 and ME2)
     input.holster = settings.holster;
 #if defined(MEVR_GAME_LE3)
     // Without the put-down ME3 can't put a gun away: no holster at all then (a let-go gun stays in the hand, no grace runs).
@@ -1431,6 +1465,13 @@ void Tick(double deltaSeconds, Link const& link) {
 #else
         log::Info("holsters: grab at {}: you carry no {}", name(step.slot), slots::Name(step.weapon));
 #endif
+        Pulse(link, slots::Refused(strength));
+        break;
+    case slots::Action::SwitchRefused:
+        ++gRefusals;
+        log::Info("holsters: grab at {}: the {} stays in its holster: a heavy weapon is in hand and a switch would throw it "
+                  "away (SFXHeavyWeapon.PutDownWeapon); the game's weapon wheel switches away", name(step.slot),
+            slots::Name(step.weapon));
         Pulse(link, slots::Refused(strength));
         break;
     case slots::Action::AlreadyHeld:
@@ -1556,9 +1597,9 @@ std::string StatusJson() {
 #if defined(MEVR_GAME_LE1)
     std::string const smg;
 #else
-    std::string const smg = std::format(", \"smgSlot\": {}, \"lostHand\": {{\"holdS\": {}, \"lostFor\": {}}}",
+    std::string const smg = std::format(", \"smgSlot\": {}, \"lostHand\": {{\"holdS\": {}, \"lostFor\": {}}}, \"switchLosesHeld\": {}",
         json::JsonString(slots::Name(settings.layout.smgPlace)), json::JsonNumber(settings.lostHandHoldS),
-        json::JsonNumber(gLostHand.LostSeconds()));
+        json::JsonNumber(gLostHand.LostSeconds()), gCarried.switchLosesHeld ? "true" : "false");
 #endif
     return std::format("{{\"enabled\": {}, \"active\": {}, \"why\": {}, \"gripHolds\": {}, \"rbSource\": {}, \"inSlot\": {}, "
                        "\"phase\": {}, \"returnLeft\": {}, \"near\": {}, \"contact\": {}, \"yawSource\": {}, \"yaw\": {}, "
