@@ -137,9 +137,10 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
         bool const room = capacity - count >= (caps.hudPieces ? 4u : 2u);
         bool const labelBase = ctx.onFoot && frame.worldFrame && frame.headValid && !anyMenu && room &&
             !mevr::vr::power_wheel::Latest().open && !mevr::vr::squad_menu::Latest().open && sb::game::OverlayLabel(ctx);
-        // Gameplay as LE1's: not conversations, cutscenes or menus (ME2's modes 0 to 4: on foot, its wheels, the squad
-        // command, the vehicle), and a screen of ours.
-        panel.gameplay = caps.hudPanelGameplay ? ((frame.gameMode >= 0 && frame.gameMode <= 4) || ctx.worldUiOwns) : labelBase;
+        // Gameplay as LE1's: not conversations, cutscenes or menus (on foot, the wheels, the squad command, the vehicle; ME3's
+        // Atlas and injured Shepard: engine::adapter's IsHudGameplayMode), and a screen of ours.
+        panel.gameplay = caps.hudPanelGameplay
+            ? (mevr::engine::adapter::IsHudGameplayMode(frame.gameMode) || ctx.worldUiOwns) : labelBase;
         // ME1's 3D cinema screen is up (CineScreenLayers, this frame): the game's UI (the dialogue wheel, subtitles, the
         // interrupt prompt) on a layer of its own just in front of it ([Cinematics] uiLayer, uiForwardM; research/52
         // "Cross-eyed"), the part of the window the screen shows, as large to the eye as on the screen.
@@ -208,7 +209,7 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
     // The game's own crosshair hidden where the ring replaces it (capability screenReticleHide; a no-op without it). Native
     // hiding stays each renderer's verified adapter, separate from the shared ring's drawing.
     mevr::host::renderer::SetScreenReticleHidden(
-        mevr::host::renderer::Hud().handReticle && lastGameMode >= 0 && lastGameMode <= 4);
+        mevr::host::renderer::Hud().handReticle && mevr::engine::adapter::IsHudGameplayMode(lastGameMode));
 
     // Traversal's cue at the obstacle and its blink (plugin/TraversalCue, research/le2-traversal.md): the blink over the
     // world's layers, under the menus. On any world frame: the mod sends a cue only on foot and a blink only through its own

@@ -49,7 +49,9 @@ Caps const& Capabilities() noexcept {
         c.galaxyTable = true;        // [Galaxy] nativeTable, opt-in
         c.metricStereo = true;       // MevrSeams::PlanStereo: each pass from its eye's real place (research/30 section 9)
         c.perEyeFrustum = true;      // mode 2 where the window holds the eyes (src/halcyon/MevrMetricView.h)
-        // hudPanelGameplay false: only a measured prompt crop is captured, the native gameplay HUD stays in the eyes.
+        // The whole gameplay HUD on the body-locked panel, as ME1's and ME2's (research/le3-hud-panel.md): d3d_capture.cpp's
+        // EmitUiDraw sends each SFR UI draw to MevrSeams::HudPanelDraw, at the game's own viewport and layout.
+        c.hudPanelGameplay = true;
         // screenReticleHide false: the native LE3 crosshair's ownership has not been verified.
         return c;
     }();
@@ -142,11 +144,9 @@ HWND GameWindow() noexcept {
 }
 
 HudSettings Hud() noexcept {
-    HudSettings settings;
-    // The shared ring now draws only while the mod owns live hand aim. Native crosshair suppression
-    // remains unavailable; the native HUD itself stays in the eyes until its LE3 layout is verified.
-    settings.hudPanel = false;
-    return settings;
+    // ME1's defaults: ME3's renderer keeps no HUD panel settings (the HUD panel on, as on ME1 and ME2). The shared ring draws
+    // only while the mod owns live hand aim; native crosshair suppression remains unavailable.
+    return {};
 }
 
 PanelSettings Panels() noexcept {
@@ -157,9 +157,13 @@ float RecenterTiltDeg() noexcept {
     return 60.0f;  // ME1's default (vr_config.h recenterTiltDeg)
 }
 
-// [MEVR] No LE3 crosshair or HUD-layout native adapter is published yet.
+// [MEVR] No LE3 crosshair adapter is published yet.
 void SetScreenReticleHidden(bool) noexcept {}
 bool ScreenReticleHidden() noexcept { return false; }
+
+// The HUD keeps the movie's own layout on our panel already: Halcyon ME3's per-element moves for a head-locked HUD
+// (hud_probe.cpp's baked [HUD] groups) never run in our host ([MEVR] in its Tick and SetEditorEnabled), so there is nothing to
+// stand down here (ME2's PcHud::SetAuthoredLayout, LE1's Pchud).
 void SetAuthoredHudLayout(bool) noexcept {}
 
 void SetModHandAim(bool on) noexcept {
