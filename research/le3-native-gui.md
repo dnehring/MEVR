@@ -186,3 +186,91 @@ it.)
   no such seam yet.
 - The galaxy console was not reached from Save 31 (the CIC is beyond the doors the earlier navigation runs stopped at); the
   galaxy map's own path is untouched by this change (its demand and modes 11/12 aren't the world UI's).
+
+(The first two are fixed by lane OM3 below.)
+
+## The movie's mouse and the view behind a screen (lane OM3, 2026-11-17)
+
+Run on the fake headset, renderer preview, Save 31, holder `OM3` (session `20261117-*-LE3-om3-me3*`), scripts after lane OM2's
+(`me3-run.ps1`: `mevr omni computer`, a ray or fingertip replay on the wrist screen, `mevr guimouse` while it hovers and after the
+press).
+
+### The movie's mouse
+
+**Why the clicks didn't take.** `SFXGameModeBase.GuiKey(Event)` is `SFXGUIInteraction.HandleInputEvent(ControllerId, Event)`,
+native (exe+0xB35F00, its body 0xBAEA60 on the interaction's `InputHandler`, `SFXGUIInteraction` +0x430). It hands the event to
+the focused movie's script `HandleInputEvent` (the Mission Computer's `BioSFHandler_BrowserWheel` takes only the left stick and
+returns false for the rest) and then gives a mouse event (moves 6/7, wheel 8/9, left 31/52, right 30/51) to the movie's GFx
+view only if the movie's `m_bMouseVisibleWhenFocused` (`SFXGUIMovie` +0x2E8, bit 0x400) is set and a virtual check of its own
+(vtable +0x410; a `return 0` stub on these movies) passes. The mouse step itself (0xBB47A0) reads the viewport's mouse
+(`FViewport::GetMouseX/Y`: `GetCursorPos` and `ScreenToClient`, which the host answers with the pointer's point) and sends GFx
+the event at that point, unless an in-world render-to-texture movie took it first. `m_bMouseVisibleWhenFocused` follows the input
+device: with the motion controllers as Xbox pad 0 the game is in its pad mode (`SFXGUIMovie.bUsingGamepad` 1,
+`m_bMouseVisibleWhenFocused` 0), so every pointer event GuiKey sent was dropped before the mouse step and the movie's mouse
+stayed where the real cursor had left it (`mevr guimouse` read (1391, 450) of the 1280 x 720 stage through the whole A/B
+below). GuiKey's key path doesn't carry the mouse either: its table maps no key to the left button (0x13A7390: 11..29 only).
+
+**The fix (`game/GuiCursor`, ME3 only).** `SFXGUIMovie.SendMouseEvent(nEventID)` (native exe+0xB67B00, body 0xBC9BF0) goes to
+the same mouse step for the focused movie without that gate; ME3's own scripts use it (the galaxy map's wheel in
+`BioSFHandler_PCGalaxyMap.HandleInputEvent`, the power wheel's release in `SFXSFHandler_PCPowerWheel`). The pointer's moves,
+clicks and wheel now go to the focused movie that way (the pad's events, the d-pad and B, still through GuiKey); a call that
+can't be made falls back to GuiKey, never both for one event. `mevr guimouse route movie|guikey` switches it for an A/B,
+`mevr guimouse send <event>` calls it by hand; `mevr guimouse` prints the movie's mouse, `m_bMouseVisibleWhenFocused`,
+`bUsingGamepad` and the movie's vtable slots, and reads ME3's own movies (War Assets) through `GFxMovie.GetVariableNumber`.
+ReflectCheck rows: `SendMouseEvent` and its block, the two flags, `GetVariableNumber`. Log `gui cursor: ME3's movie takes the
+pointer's mouse through its own SendMouseEvent`.
+
+**In the game (session `om3-me3a`):** the Mission Computer on the wrist; a ray from 15 cm on its Journal button (stage 0.395,
+0.43): while it hovered, the movie's mouse was at (505.4, 309.6), the button's place; the trigger opened the Journal (focus
+`Journal`, `world ui: Journal takes over from MenuBrowser`). B back to the Mission Computer, then a replayed fingertip press on
+Journal: the Journal again. The same ray with `mevr guimouse route guikey`: the movie's mouse unmoved at (1391.2, 449.6), the
+Mission Computer stayed (the bug as lane OM2 found it). After a pointer click the game counts the mouse as the input device
+(`bUsingGamepad` 0, `m_bMouseVisibleWhenFocused` 1); the player's B puts it back in its pad mode.
+
+### Shepard's view held behind a screen
+
+ME1's way, shared now: `plugin/WorldUi`'s `HoldViewBegin/End` puts the view game/WorldUi saved on foot (`State::holdRender`,
+the POV's addresses) into the player camera's `CameraCache.POV` for the main view's build only and puts the camera's own back
+after it (journalled `WorldView.*`). LE1's `GalaxyViewSwapBegin` calls it for its world-UI branch (its galaxy-map and
+conversation branches are unchanged), ME3's renderer through two new common seams (`src/halcyon/MevrSeams.h`):
+`WorldViewHoldBegin/End` around the primary player's view in `calcview_hook.cpp`'s `CalcViewDetour` (after the flat menu and
+cinematic branch, before the FOV-at-source guard, so it is restored after that guard's restore; both stereo passes), and
+`WorldViewHeld(mode)` in `engine_probe.cpp`'s `ApplyFirstPerson`: 1 while the hold is in force for a wrist screen, when the
+first person's mesh hides stay as gameplay last wanted them (Shepard's head hidden at the held eyes; arm IK keeps the arm and
+body under the view, as on foot) instead of the head coming back outside mode 0; 2 for a screen standing in the room, when the
+body is hidden too. The second came from War Assets: in the GUI mode the body follower and arm IK stand down (no head-tracked
+view, the view anchor held only for wrist screens, as on ME1), the body turns back to the pawn's facing (30 degrees from the
+head's in the run) and the game puts Shepard's hands on the War Terminal, so his dark sleeve and shoulder covered the right half
+of the screen from the held eyes (`2026-11-17_01-43-56-080`). No camera mode writes in the GUI mode (OM2's stalled try let first
+person write there); the only engine writes are the POV swap on the game thread and the `SetOwnerNoSee` calls first person
+already makes on foot (queued to the game thread by `MevrCallProcessEvent`). Logs `world ui: the view held at Shepard's ...
+(the game's screen keeps its own camera, N units from the held eyes)`, the stats line's `views held at Shepard's`, and
+Halcyon's `[MEVR-HELDVIEW] gm 9: a screen of ours on the wrist ... hides kept` / `in the room ... his head and body hidden` /
+`the held view ended`. ME1's renderer doesn't ask: whether ME1's room screens (the shop, loot) show the body the same way when
+the game poses Shepard for them is [verify]; nothing there was changed.
+
+**In the game:** the Mission Computer's GUI camera stood 32 units straight below the held eyes (`(+0, +0, -32)`: inside
+Shepard's chest); with the hold the eyes are where they were on foot: the snapshot with the Mission Computer on the wrist shows
+the same corridor and floor from the same place as the one on foot before it, Shepard's forearm with the omni-tool's glow and
+no head or body in front (`2026-11-17_01-39-56-413` on foot, `01-40-10-765` with the screen; again in session `om3-me3c`:
+`01-49-21-353`, `01-49-34-813`). About 60 held builds a second (both stereo passes; the stats line counted 104 to 1,924 over
+the first 30 s). War Assets in the room (session `om3-me3c`, `01-52-14-382`): the table, the hologram and the whole screen
+clear, no sleeve or shoulder; its entries took the ray's clicks (Alien opened its list, then Shadow Broker Support Team was
+selected; `01-52-33-715`, `01-52-53-054`), B back to gameplay after closing the opened list first (two presses here, three in session `om3-me3b`: the game's own back-out, not ours). No `off the game
+thread`, stall or fault lines in either run; ME3 restored with `verification: 0 differences`.
+
+### ME2's game mode 10 after lane OM2's per-game modes
+
+Lane OM2's `core/vr/WorldUi.hpp` made ME1's bypass-minigame mode (10) a screen mode on ME1 only. ME2's mode 10 is
+`GameMode_Orbital`, the planet scan (`SFXGameModeManager.EGameModes` in LExSDKv2's LE2 headers: 9 Galaxy, 10 Orbital, 11 Photo,
+12 CheatMenu; `engine/GameAdapter.hpp`'s LE2 table says the same). Nothing on ME2 relied on 10 being a world-UI screen mode:
+- Halcyon's ME2 renderer always shows modes 8, 9 and 10 flat (`d3d_capture.cpp` `GetMenuMode`: "Movie / Galaxy / Orbital -
+  genuinely flat") and asks `WorldUiOwnsGui` only for mode 7, so the presentation and its hold never looked at our state in 10.
+- The only users of `ScreenMode` on ME2 are game/WorldUi's tick and `WristTrackingFrame`, and plugin/MenusLe2's `BeforePanel`.
+  Before OM2, ME2's tick in mode 10 read the open panels and could have claimed a known screen (a message box over the scan):
+  `BeforePanel` would then have taken the game's UI to our panel while the renderer showed the mode flat, the scan's UI gone
+  from its flat panel. OM2's rule removed that latent conflict; the HUD panel's arming (`panel.gameplay || worldUiOwns`), the
+  wrist tap's gate (semantic on-foot and GUI contexts) and the GUI cursor's readiness (`Gui` or `Minigame` contexts: ME2's 10 is
+  `Orbital`) never counted 10 as a screen mode.
+So nothing is restored for ME2. Not run: the planet scan is reached from the Normandy's galaxy map, not from Save 4 (Freedom's
+Progress); the runner's other ME2 saves weren't needed for a mode no ME2 code path reads as a screen mode.

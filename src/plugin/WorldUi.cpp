@@ -3,7 +3,10 @@
 #include "plugin/WorldUi.hpp"
 
 #include "core/Log.hpp"
+#include "core/WriteJournal.hpp"
 #include "core/vr/OverlayPlacement.hpp"
+#include "halcyon/MevrSeams.h"
+#include "plugin/Renderer.hpp"
 #if defined(MEVR_WITH_HALCYON)
 #include "halcyon/le1/mevr_bridge.h"
 #endif
@@ -11,6 +14,7 @@
 #include <Windows.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <format>
 #include <cstring>
@@ -48,6 +52,7 @@ std::uint64_t gGuardSinceMs = 0;
 std::uint64_t gReservedPresents = 0;
 std::uint64_t gReservedFlat = 0;
 std::uint64_t gHeldPresents = 0;
+std::atomic<std::uint64_t> gHeldViews{0};  // main view builds with Shepard's view held (HoldViewBegin)
 
 void ExpireOpening() {
     wu::Screen const screen = gOpening.Expected();
@@ -168,8 +173,8 @@ void NotePresent(bool reserved, bool flatPanel, bool held) {
 void LogStats() {
     std::lock_guard<std::mutex> const lock(gOpeningMutex);
     ExpireOpening();
-    log::Info("    world ui: reservation Presents {}, flat-panel frames during reservation {} (expected 0), clean-eye holds {}",
-        gReservedPresents, gReservedFlat, gHeldPresents);
+    log::Info("    world ui: reservation Presents {}, flat-panel frames during reservation {} (expected 0), clean-eye holds {}, "
+              "views held at Shepard's {}", gReservedPresents, gReservedFlat, gHeldPresents, gHeldViews.load(std::memory_order_relaxed));
 }
 
 std::optional<Shown> Current(XrVector3f const& eyes, XrQuaternionf const& head, bool headValid, std::uint32_t windowWidth,
@@ -299,7 +304,128 @@ std::optional<Shown> Current(XrVector3f const& eyes, XrQuaternionf const& head, 
     return shown;
 }
 
+namespace {
+
+constexpr std::uint64_t kHoldFreshMs = 500;  // the mod sends every tick while a screen is up
+
+// The player camera's POV fields while the held view is in them (game thread: the CalcSceneView detour), and what they held.
+struct HeldPov {
+    bool active = false;
+    float* location = nullptr;
+    std::int32_t* rotation = nullptr;
+    float* fov = nullptr;
+    float savedLocation[3] = {};
+    std::int32_t savedRotation[3] = {};
+    float savedFov = 0.0f;
+};
+HeldPov gHeldPov;
+
+// The held view's state, if it would be held in `gameMode` now: a screen of ours up (fresh), the mod's saved view and the POV's place.
+std::optional<wu::State> HoldState(int gameMode) {
+    if (!wu::ScreenMode(gameMode)) {
+        return std::nullopt;
+    }
+    auto const ui = wu::Latest(kHoldFreshMs);
+    if (!ui || ui->holdRender == 0 || ui->povLocationAddress == 0 || ui->povRotationAddress == 0 || ui->povFovAddress == 0) {
+        return std::nullopt;
+    }
+    return ui;
+}
+
+// The POV's fields swapped (journalled as LE1's GalaxyViewSwapBegin always did: the same names), guarded: false if unreadable.
+bool SwapPovIn(HeldPov& s, float const location[3], std::int32_t const rotation[3], float fov) noexcept {
+    __try {
+        for (int i = 0; i < 3; ++i) {
+            s.savedLocation[i] = s.location[i];
+            s.savedRotation[i] = s.rotation[i];
+        }
+        s.savedFov = *s.fov;
+        for (int i = 0; i < 3; ++i) {
+            s.location[i] = location[i];
+            s.rotation[i] = rotation[i];
+        }
+        write_journal::Wrote("WorldView.holdLocation", s.location, sizeof(float) * 3);
+        write_journal::Wrote("WorldView.holdRotation", s.rotation, sizeof(std::int32_t) * 3);
+        *s.fov = fov;
+        write_journal::Wrote("WorldView.holdFov", s.fov, sizeof(float));
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
+void SwapPovOut(HeldPov& s) noexcept {
+    __try {
+        for (int i = 0; i < 3; ++i) {
+            s.location[i] = s.savedLocation[i];
+            s.rotation[i] = s.savedRotation[i];
+        }
+        write_journal::Wrote("WorldView.restoreLocation", s.location, sizeof(float) * 3);
+        write_journal::Wrote("WorldView.restoreRotation", s.rotation, sizeof(std::int32_t) * 3);
+        *s.fov = s.savedFov;
+        write_journal::Wrote("WorldView.restoreFov", s.fov, sizeof(float));
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    }
+}
+
+} // namespace
+
+bool HoldViewBegin(int gameMode) noexcept {
+    HoldViewEnd();  // never two in a row: a missed end puts the camera's own view back first
+    auto const ui = HoldState(gameMode);
+    if (!ui) {
+        return false;
+    }
+    gHeldPov.location = reinterpret_cast<float*>(ui->povLocationAddress);
+    gHeldPov.rotation = reinterpret_cast<std::int32_t*>(ui->povRotationAddress);
+    gHeldPov.fov = reinterpret_cast<float*>(ui->povFovAddress);
+    if (!SwapPovIn(gHeldPov, ui->holdLocation, ui->holdRotation, ui->holdFov)) {
+        return false;
+    }
+    gHeldPov.active = true;
+    if (gHeldViews++ == 0) {
+        float const dx = gHeldPov.savedLocation[0] - ui->holdLocation[0];
+        float const dy = gHeldPov.savedLocation[1] - ui->holdLocation[1];
+        float const dz = gHeldPov.savedLocation[2] - ui->holdLocation[2];
+        log::Info("world ui: the view held at Shepard's for the main view's build only (the game's screen keeps its own camera, "
+                  "{:.0f} units from the held eyes: ({:+.0f}, {:+.0f}, {:+.0f}))", std::sqrt(dx * dx + dy * dy + dz * dz), dx, dy, dz);
+    }
+    return true;
+}
+
+void HoldViewEnd() noexcept {
+    if (gHeldPov.active) {
+        SwapPovOut(gHeldPov);
+        gHeldPov.active = false;
+    }
+}
+
+int HoldsView(int gameMode) noexcept {
+    auto const ui = HoldState(gameMode);
+    if (!ui) {
+        return 0;
+    }
+    return static_cast<wu::Placement>(ui->placement) == wu::Placement::Room ? 2 : 1;
+}
+
 } // namespace mevr::host::world_ui
+
+// ---- The held view's seams (src/halcyon/MevrSeams.h): ME3's renderer; LE1's GalaxyViewSwapBegin calls HoldViewBegin itself ----
+namespace MevrSeams {
+
+bool WorldViewHoldBegin() noexcept {
+    return mevr::host::world_ui::HoldViewBegin(mevr::host::renderer::GameMode());
+}
+
+void WorldViewHoldEnd() noexcept {
+    mevr::host::world_ui::HoldViewEnd();
+}
+
+int WorldViewHeld(int mode) noexcept {
+    return mevr::host::world_ui::HoldsView(mode);
+}
+
+} // namespace MevrSeams
 
 #if defined(MEVR_WITH_HALCYON)
 // LE1's seams (xr_session.cpp's decision). ME2's are in plugin/MenusLe2.cpp.

@@ -604,12 +604,15 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Done, ME3 (lane OM2, 2026-11-16):** `setWorldUi` served; the Mission Computer and the map on the wrist, War Assets in
   the room toward the War Terminal, the squad record (3D Shepard) on the native panel, the level behind ours (their UI world
   turned off while they stand), B and Close back to gameplay (research/le3-native-gui.md "The game's screens on ME3").
+- **Done, ME3 (lane OM3, 2026-11-17):** the pointer's clicks take on world screens (ME3's movie mouse moved by
+  `SFXGUIMovie.SendMouseEvent`, past the pad mode's mouse gate: a ray and a fingertip opened the Journal from the Mission
+  Computer, War Assets' entries respond); Shepard's view on foot held at render time behind every screen of ours (ME1's hold,
+  shared now: `plugin/WorldUi` `HoldViewBegin/End`, `MevrSeams::WorldViewHoldBegin/End`, `WorldViewHeld`), his head hidden
+  and, for a screen in the room, his body (research/le3-native-gui.md "The movie's mouse and the view behind a screen").
 - **Left, ME2:** the squad member in the equipment screens (`UiWorldFigure`); ME2's hack and bypass minigames are
   different games from ME1's and have no VR treatment ([le2-validation-coverage.md](le2-validation-coverage.md) "Hacking
-  and bypass"); research and loadout screens. **ME3:** a pointer click on a world screen reaches the right pixel as GUI
-  events but ME3's movie mouse doesn't follow it (the page didn't open); behind a screen the eye is the GUI camera's, not
-  first person's (no render hold; Shepard's body in view); the squad member (`UiWorldFigure`); the headset. ME3 has no
-  bypass minigame.
+  and bypass"); research and loadout screens. **ME3:** the squad member (`UiWorldFigure`); the headset. ME3 has no bypass
+  minigame.
 - **Closes when:** a replayed wrist tap opens the rail, an entry opens the game's screen on the wrist, a ray click and a
   fingertip press land where they point, and B returns to gameplay, on each sequel.
 - **Waits for:** T02. **Who:** nobody yet.

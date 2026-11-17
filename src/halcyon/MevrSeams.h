@@ -347,6 +347,22 @@ PanelPose PlacePanel(PanelKind kind, OverlayFrame const& frame, float const view
 // Moved here from ME2's mevr_bridge.h when ME3 took it (2026-11-16; ME2's name forwards).
 bool WorldUiOwnsGui(int mode) noexcept;
 
+// Game thread, the renderer's CalcSceneView detour, around the primary local player's main view build (each stereo pass's):
+// while one of the game's screens of ours stands in its GUI mode and the mod sends Shepard's view on foot (game/WorldUi's
+// held view), the host puts that view into the player camera's POV for this one build, so the eyes stay where the player
+// stands while the GUI mode's own camera (ME3's third-person one) keeps serving the game. True: held, call WorldViewHoldEnd
+// right after the build (it puts the camera's own view back). plugin/WorldUi's HoldViewBegin/End, one for every game.
+// Not called by LE1: its GalaxyViewSwapBegin/End (src/halcyon/le1/mevr_bridge.h) has the same contract and calls the same
+// hold for its world UI (and also holds the galaxy map in the CIC and conversations in the world). Not called by LE2 yet.
+bool WorldViewHoldBegin() noexcept;
+void WorldViewHoldEnd() noexcept;
+// Any thread: whether the hold above is in force for game mode `mode` (a screen of ours up in it, the mod's held view fresh):
+// 0 no; 1 held for a screen on the wrist (arm IK keeps the body under the view: the renderer keeps its first person's mesh
+// hides as they are, Shepard's head hidden at the held eyes); 2 held for a screen standing in the room (the game poses Shepard
+// for the screen, e.g. both hands on the War Terminal, which put his arm and shoulder in front of the held eyes: the renderer
+// hides his body as well as his head). Not called by LE1 nor LE2 yet.
+int WorldViewHeld(int mode) noexcept;
+
 // =====================================================================================================================
 // 5. Input and threads
 // =====================================================================================================================

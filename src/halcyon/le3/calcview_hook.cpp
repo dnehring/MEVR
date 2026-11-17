@@ -1348,6 +1348,19 @@ void* __fastcall CalcViewDetour(void* lp, void* family, void* loc, void* rot, vo
         return sv;
     }
 
+#if defined(MEVR_ASI)
+    // [MEVR] One of the game's screens of ours stands in the GUI mode (MevrSeams::WorldUiOwnsGui keeps it out of the flat
+    // branch above): ME3's first person writes only in game mode 0, so the GUI mode's camera is the game's third-person one and
+    // Shepard's body stood in front of the eyes. Shepard's view on foot goes into the player camera's POV for this build only,
+    // as LE1's GalaxyViewSwapBegin, and back after it (declared before the FOV guard below, so put back after that guard's
+    // restore). research/le3-native-gui.md "The movie's mouse and the view behind a screen".
+    struct MevrHeldView
+    {
+        bool on;
+        ~MevrHeldView() { if (on) ::MevrSeams::WorldViewHoldEnd(); }
+    } const mevrHeldView{g_vrEnabled.load(std::memory_order_acquire) && isP1 && ::MevrSeams::WorldViewHoldBegin()};
+#endif
+
     // ---- [FILLSRC] gameplay fill at the SOURCE (ME2's glass-smear fix) -------------------------
     // Write the fill FOV into the CAMERA before the engine builds this view, so distortion-class
     // shader constants (glass/refraction) derive from the FOV the scene actually renders with.

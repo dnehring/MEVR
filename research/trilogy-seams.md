@@ -24,7 +24,7 @@ They shared 18 names, and of those six differed in signature, so no host module 
 - The host implements a common seam **once for all games** in `src/plugin/Seams.cpp` when the answer is the same
   everywhere; otherwise in that game's bridge, in `namespace MevrSeams { ... }`.
 
-## The common seams (38)
+## The common seams (41)
 
 Signatures are in `src/halcyon/MevrSeams.h`; that header is the reference, with the thread each runs on. "Host" names
 where each game's definition is. `Seams.cpp` means one definition for all three.
@@ -58,6 +58,8 @@ where each game's definition is. `Seams.cpp` means one definition for all three.
 | composition | `TransitionFadeLayer(session, viewSpace, context, view)` | TransitionFade.cpp | HalcyonSequelBridge.cpp | HalcyonSequelBridge.cpp | all |
 | composition | `PlacePanel(kind, OverlayFrame, viewPosition[3], widthM, heightM, imageReady)` returns `PanelPose` | WorldPanels.cpp | HalcyonLe2Bridge.cpp | HalcyonLe3Bridge.cpp | all |
 | composition | `WorldUiOwnsGui(mode)`: a game screen of ours stands in the GUI mode, which then stays in stereo (moved from ME2's mevr_bridge.h, 2026-11-16, lane OM2) | - | MenusLe2.cpp | MenusLe2.cpp | LE2, LE3 |
+| view | `WorldViewHoldBegin()`, `WorldViewHoldEnd()`: game thread, around the primary player's view build in CalcSceneView: Shepard's view on foot in the camera's POV while a game screen of ours stands (added 2026-11-17, lane OM3; LE1's `GalaxyViewSwapBegin/End` is the same contract and calls the same hold for its world UI) | WorldUi.cpp | WorldUi.cpp | WorldUi.cpp | LE3 |
+| view | `WorldViewHeld(mode)` returns int: 0 no hold, 1 a wrist screen's (first person's hides kept), 2 a room screen's (the body hidden too) (added 2026-11-17, lane OM3) | WorldUi.cpp | WorldUi.cpp | WorldUi.cpp | LE3 |
 | input | `MergeMotionControllers(index, state, result)` | HalcyonBridge.cpp | HalcyonSequelBridge.cpp | HalcyonSequelBridge.cpp | all |
 | input | `KeyDown(vk)` | Seams.cpp | Seams.cpp | Seams.cpp | all (LE2 through its inline `HotkeyDown`) |
 | input | `OnMenuKey(ownMenuOpen)` returns bool | Seams.cpp | Seams.cpp | Seams.cpp | all |

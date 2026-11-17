@@ -3166,6 +3166,9 @@
     "StaticXrGetInstanceProcAddr",
     "TransitionFadeLayer",
     "WorldUiOwnsGui",
+    "WorldViewHeld",
+    "WorldViewHoldBegin",
+    "WorldViewHoldEnd",
     "WrapSessionFunctions",
     "XrRuntimeIsSteamVr"
    ],
@@ -3411,6 +3414,9 @@
     "StaticXrGetInstanceProcAddr",
     "TransitionFadeLayer",
     "WorldUiOwnsGui",
+    "WorldViewHeld",
+    "WorldViewHoldBegin",
+    "WorldViewHoldEnd",
     "WrapSessionFunctions",
     "XrRuntimeIsSteamVr"
    ],
@@ -3509,6 +3515,9 @@
     "StaticXrGetInstanceProcAddr",
     "TransitionFadeLayer",
     "WorldUiOwnsGui",
+    "WorldViewHeld",
+    "WorldViewHoldBegin",
+    "WorldViewHoldEnd",
     "WrapSessionFunctions",
     "XrRuntimeIsSteamVr"
    ],
@@ -3547,6 +3556,9 @@
     "StaticXrGetInstanceProcAddr",
     "TransitionFadeLayer",
     "WorldUiOwnsGui",
+    "WorldViewHeld",
+    "WorldViewHoldBegin",
+    "WorldViewHoldEnd",
     "WrapSessionFunctions",
     "XrRuntimeIsSteamVr"
    ],

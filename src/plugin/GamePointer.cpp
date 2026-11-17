@@ -13,6 +13,7 @@
 #include "plugin/ConversationWorld.hpp"
 #include "plugin/GalaxyHologram.hpp"
 #include "plugin/Halcyon.hpp"
+#include "plugin/WorldUi.hpp"
 #else
 #include "plugin/MainMenu.hpp"  // ME2 (plugin/MenusLe2): our menu owns the controllers while it's open
 #include "plugin/XrHost.hpp"    // ME2's haptics (LE1's halcyon::RequestHaptic forwards there too)
@@ -1170,23 +1171,10 @@ bool GalaxyViewSwapBegin() noexcept {
         }
         return true;
     }
-    auto const ui = mevr::vr::world_ui::Latest(500);
-    if (!mevr::vr::world_ui::ScreenMode(mevr::host::renderer::GameMode()) ||
-        !ui || ui->holdRender == 0 || ui->povLocationAddress == 0 || ui->povRotationAddress == 0 || ui->povFovAddress == 0) {
-        return false;
-    }
-    gGalaxySwap.location = reinterpret_cast<float*>(ui->povLocationAddress);
-    gGalaxySwap.rotation = reinterpret_cast<std::int32_t*>(ui->povRotationAddress);
-    gGalaxySwap.fov = reinterpret_cast<float*>(ui->povFovAddress);
-    if (!SwapIn(gGalaxySwap, ui->holdLocation, ui->holdRotation, ui->holdFov)) {
-        return false;
-    }
-    gGalaxySwap.active = true;
-    static std::uint64_t worldUiSwaps = 0;
-    if (worldUiSwaps++ == 0) {
-        mevr::log::Info("world ui: the view held at Shepard's for the main view's build only (the game's screen keeps its own camera)");
-    }
-    return true;
+    // One of the game's screens of ours: every game's world-UI hold (plugin/WorldUi; ME3's renderer asks it through
+    // MevrSeams::WorldViewHoldBegin): the same POV writes this branch made itself until 2026-11-17 (its first log line now
+    // also says how far the screen's own camera stood from the held eyes).
+    return mevr::host::world_ui::HoldViewBegin(mevr::host::renderer::GameMode());
 }
 
 void GalaxyViewSwapEnd() noexcept {
@@ -1194,6 +1182,7 @@ void GalaxyViewSwapEnd() noexcept {
         SwapOut(gGalaxySwap);
         gGalaxySwap.active = false;
     }
+    mevr::host::world_ui::HoldViewEnd();
 }
 
 bool GalaxyHeld(int gameMode) noexcept {

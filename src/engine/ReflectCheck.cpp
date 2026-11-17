@@ -2989,6 +2989,15 @@ void CheckLe3WorldUi() {
     CheckFunction("SFXGame.SFXGUIMovie.SetRequiresUIWorld");
     PARAM(USFXGUIMovie_execSetRequiresUIWorld_Parms, "SFXGame.SFXGUIMovie.SetRequiresUIWorld", bUIWorldRequired);
     PARMS(USFXGUIMovie_execSetRequiresUIWorld_Parms, "SFXGame.SFXGUIMovie.SetRequiresUIWorld");
+    // game/GuiCursor's ME3 route for the pointer's mouse (research/le3-native-gui.md "The movie's mouse") and its diagnostics.
+    CheckFunction("SFXGame.SFXGUIMovie.SendMouseEvent");
+    PARAM(USFXGUIMovie_execSendMouseEvent_Parms, "SFXGame.SFXGUIMovie.SendMouseEvent", nEventID);
+    PARMS(USFXGUIMovie_execSendMouseEvent_Parms, "SFXGame.SFXGUIMovie.SendMouseEvent");
+    CheckField("SFXGame.SFXGUIMovie", "m_bMouseVisibleWhenFocused", SDK_BOOL(USFXGUIMovie, m_bMouseVisibleWhenFocused));
+    CheckField("SFXGame.SFXGUIMovie", "bUsingGamepad", SDK_BOOL(USFXGUIMovie, bUsingGamepad));
+    CheckFunction("GFxUI.GFxMovie.GetVariableNumber");  // `mevr guimouse` on a movie that isn't a legacy adapter (War Assets)
+    PARAM(UGFxMovie_execGetVariableNumber_Parms, "GFxUI.GFxMovie.GetVariableNumber", Path);
+    PARAM(UGFxMovie_execGetVariableNumber_Parms, "GFxUI.GFxMovie.GetVariableNumber", ReturnValue);
 }
 
 void CheckLe3PhysicalCover() {

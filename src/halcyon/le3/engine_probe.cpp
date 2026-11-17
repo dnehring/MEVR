@@ -2823,8 +2823,35 @@ void ApplyFirstPerson() noexcept
         if (fpWriteContext) ++s_reassert; else s_reassert = 0;
         const bool due = fpWriteContext && s_reassert >= 30;
         if (due) s_reassert = 0;
-        const bool wantedHead = convoFpOwnsMesh ? ME2VR::ConvoFp::GetHideHead() : (fpWriteContext ? hideHead : false);
-        const bool wantedBody = convoFpOwnsMesh ? false : (fpWriteContext ? hideBody : false);
+        // [MEVR] While one of the game's screens of ours holds Shepard's view on foot in the GUI mode (MevrSeams::WorldViewHeld,
+        // calcview_hook.cpp's held view), the eyes are at Shepard's head: first person's hides stay as gameplay last wanted them
+        // instead of the head coming back outside mode 0 (1: a wrist screen, arm IK keeps the body under the view); for a screen
+        // standing in the room (2) the game poses Shepard for it (both hands on the War Terminal: his arm and shoulder came in
+        // front of the held eyes), so his body is hidden too. research/le3-native-gui.md "The movie's mouse and the view behind
+        // a screen".
+        static bool s_fpHead = false, s_fpBody = false;
+        if (fpWriteContext && !convoFpOwnsMesh) { s_fpHead = hideHead; s_fpBody = hideBody; }
+#if defined(MEVR_ASI)
+        const int mevrHeld = (!fpWriteContext && !convoFpOwnsMesh) ? ::MevrSeams::WorldViewHeld(currentGameMode) : 0;
+#else
+        const int mevrHeld = 0;
+#endif
+        {
+            static int s_prevHeld = 0;
+            if (mevrHeld != s_prevHeld)
+            {
+                char hb[220] = {};
+                sprintf_s(hb, "[MEVR-HELDVIEW] gm %d: %s", currentGameMode,
+                          mevrHeld == 2 ? "a screen of ours in the room holds Shepard's view on foot: his head and body hidden"
+                          : mevrHeld == 1 ? "a screen of ours on the wrist holds Shepard's view on foot: first person's hides kept (head hidden)"
+                                          : "the held view ended: first person's hides follow the game mode again");
+                ME2VR::Log::Line(hb);
+                s_prevHeld = mevrHeld;
+            }
+        }
+        const bool wantedHead = convoFpOwnsMesh ? ME2VR::ConvoFp::GetHideHead()
+                                                : (fpWriteContext ? hideHead : (mevrHeld == 2 ? true : mevrHeld == 1 ? s_fpHead : false));
+        const bool wantedBody = convoFpOwnsMesh ? false : (fpWriteContext ? hideBody : (mevrHeld == 2 ? true : mevrHeld == 1 ? s_fpBody : false));
         if (due || pawn != s_hidPawn || wantedHead != s_prevHead || wantedBody != s_prevBody)
         {
             FpHideMeshes(pawn, wantedHead, wantedBody);
