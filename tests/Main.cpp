@@ -12233,6 +12233,8 @@ int RunThespianTests();
 // tests/TraversalTests.cpp: the vault's double A, its record, view and cue (core/vr/Traversal, research/le2-traversal.md).
 int RunTraversalTests();
 int RunGoalStepTests();
+// tests/GameMenuBackOutTests.cpp: backing out of ME3's screens one B each (vr::game_menu::StepBackOut, lane OMX).
+int RunGameMenuBackOutTests();
 int RunTraversalPresentationTests();
 int RunRendererRequestTests();
 int RunHostServicesTests();
@@ -12463,6 +12465,7 @@ int main() {
     gFailures += RunThespianTests();
     gFailures += RunTraversalTests();
     gFailures += RunGoalStepTests();
+    gFailures += RunGameMenuBackOutTests();
     gFailures += RunTraversalPresentationTests();
     gFailures += RunRendererRequestTests();
     gFailures += RunHostServicesTests();

@@ -1494,6 +1494,7 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/Traversal.cpp
         tests/TraversalTests.cpp
         tests/GoalStepTests.cpp
+        tests/GameMenuBackOutTests.cpp
         tests/TraversalPresentationTests.cpp
         tests/RendererRequestTests.cpp
         tests/HostServicesTests.cpp

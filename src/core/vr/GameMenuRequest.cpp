@@ -101,4 +101,42 @@ Step Advance(Schedule& schedule, bool menuOpen, bool pausedByMenu) {
     return step;
 }
 
+BackOutStep StepBackOut(BackOut& state, BackOutScreen const& focused, std::uint64_t nowMs, BackOutRules const& rules) {
+    if (!state.started) {
+        // The screen up when the back-out begins has been up a while: its B goes at once.
+        state.started = true;
+        state.seen = focused;
+        state.seenSinceMs = nowMs >= rules.settleMs ? nowMs - rules.settleMs : 0;
+    } else if (!(focused == state.seen)) {
+        state.seen = focused;
+        state.seenSinceMs = nowMs;
+    }
+    if (focused.object == 0) {
+        // Between two screens (or none yet): wait for the next one, not forever.
+        return nowMs - state.seenSinceMs >= rules.noFocusMs ? BackOutStep::GiveUp : BackOutStep::Wait;
+    }
+    bool const same = state.sends > 0 && focused == state.sentTo;
+    if (same) {
+        if (nowMs - state.sentAtMs < rules.resendMs) {
+            return BackOutStep::Wait;  // its close may still be under way: another B would start it again
+        }
+        if (state.sentToSame >= rules.maxPerScreen) {
+            return BackOutStep::GiveUp;
+        }
+    } else if (nowMs - state.seenSinceMs < rules.settleMs) {
+        return BackOutStep::Wait;  // a new screen: let it come up
+    }
+    if (state.sends >= rules.maxSends) {
+        return BackOutStep::GiveUp;
+    }
+    if (!same) {
+        state.sentTo = focused;
+        state.sentToSame = 0;
+    }
+    ++state.sentToSame;
+    ++state.sends;
+    state.sentAtMs = nowMs;
+    return BackOutStep::Send;
+}
+
 } // namespace mevr::vr::game_menu

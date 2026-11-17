@@ -12,6 +12,7 @@
 #include "ue3/Handles.hpp"
 #include "ue3/Runtime.hpp"
 
+#include <chrono>
 #include <format>
 
 namespace mevr::game::game_menu_request {
@@ -77,9 +78,14 @@ constexpr std::uint8_t kGuiEventBRelease = 37;
 constexpr std::uint8_t kGuiEventB = 13;  // BIOGUI_EVENT_BUTTON_B (Engine.EBioGuiEvent; ME2's BioSFSharedBase.BioGuiEvents too)
 #endif
 #if defined(MEVR_GAME_LE3)
-// ME3's map page took about a second to answer B (six back-outs 4 ticks apart left it up, 2026-11-16, Save 31).
-constexpr int kBackOutWaitTicks = 12;
-constexpr int kMaxBackOuts = 8;
+// ME3 backs out by waiting for each screen to go (vr::game_menu::StepBackOut) instead of a B every few ticks: its area map
+// closes by an animation its B release starts and another B starts again, so a B every 12 ticks held it up through 8
+// back-outs (lane CTL, 2026-11-17; "six back-outs 4 ticks apart left it up" on 2026-11-16 was the same). The times are the
+// measured ones (research/le3-native-gui.md, lane OMX).
+constexpr vr::game_menu::BackOutRules kBackOutRules{};
+// The game out of its GUI mode this long after a B before the screens count as closed (a screen's way back to the
+// Mission Computer must not pass for the end).
+constexpr std::uint64_t kClosedSettleMs = 200;
 #else
 constexpr int kBackOutWaitTicks = 4;     // after a B, the ticks to let the screen go before looking again
 constexpr int kMaxBackOuts = 6;          // a screen over the main wheel takes two
@@ -279,8 +285,63 @@ struct Switch {
     int backOuts = 0;
     int wait = 0;
     gm::Origin origin = gm::Origin::Menu;
+#if defined(MEVR_GAME_LE3)
+    gm::BackOut backOut;          // each screen's B once, the next when another has the focus
+    std::uint64_t outOfGuiMs = 0;  // since when the game is out of its GUI mode after a B (0: in it)
+#endif
 };
 Switch gSwitch;
+
+#if defined(MEVR_GAME_LE3)
+std::uint64_t NowMs() {
+    return static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
+}
+
+// The player's B as ME3's screens take it: B, then its release (they act on the release, and the game passes a release on only
+// after its press: `mevr guikey 37` alone left the area map up, 2026-11-17).
+bool GuiKeyB(std::string& why) {
+    if (!GuiKey(kGuiEventB, why)) {
+        return false;
+    }
+    std::string const press = why;
+    if (!GuiKey(kGuiEventBRelease, why)) {
+        return false;
+    }
+    why = std::format("{} then {}", press, why);
+    return true;
+}
+
+// One look at the focused screen while backing out on ME3: sends B (and its release) when vr::game_menu::StepBackOut says so,
+// logs a screen giving way (the time from its B: the measure of its close), and says what happened.
+gm::BackOutStep BackOutLook(gm::BackOut& state, ue3::Object* panel, std::string const& tag, char const* forWhat) {
+    std::uint64_t const now = NowMs();
+    gm::BackOutScreen const screen{reinterpret_cast<std::uintptr_t>(panel), tag};
+    std::uint64_t const sinceLast = state.sends > 0 ? now - state.sentAtMs : 0;
+    if (state.sends > 0 && state.started && !(screen == state.seen) && state.seen == state.sentTo) {
+        log::Info("omni-tool: '{}' gave way to '{}' {} ms after its B", state.seen.tag, screen.object != 0 ? tag : std::string("no screen"),
+            sinceLast);
+    }
+    gm::BackOutStep const step = gm::StepBackOut(state, screen, now, kBackOutRules);
+    if (step == gm::BackOutStep::GiveUp) {
+        log::Warn("omni-tool: {} not done: the game stayed in its GUI mode ('{}' in focus {} ms, {} B{} to it, {} in all)", forWhat,
+            screen.object != 0 ? tag : std::string("no screen"), now - state.seenSinceMs, screen == state.sentTo ? state.sentToSame : 0,
+            screen == state.sentTo && state.sentToSame == 1 ? "" : "s", state.sends);
+        return step;
+    }
+    if (step == gm::BackOutStep::Send) {
+        std::string why;
+        if (!GuiKeyB(why)) {
+            log::Warn("omni-tool: {} not done: B couldn't be sent ({})", forWhat, why);
+            return gm::BackOutStep::GiveUp;
+        }
+        log::Info("omni-tool: backing out of '{}' (B and its release through {}; {}, {} of at most {}) for {}", tag, why,
+            state.sentToSame == 1 ? std::string("its first") : std::format("again: still up {} ms after the last", sinceLast),
+            state.sends, kBackOutRules.maxSends, forWhat);
+    }
+    return step;
+}
+#endif
 
 ue3::FunctionRef* ShowRef(gm::Action action) {
     switch (action) {
@@ -383,6 +444,40 @@ void StepSwitch(Link const& link) {
         return;
     }
     std::uint8_t const current = *modes->current;
+#if defined(MEVR_GAME_LE3)
+    if (current == kModeGui) {
+        gSwitch.outOfGuiMs = 0;
+        Focus const focus = FocusedPanel();
+        // ME3 has no Show<Screen>Gui here (its screens are the Mission Computer's pages: StepPage); only the pause menu and
+        // Close come this way. Each screen gets its B once; the next B waits for the screen that takes its place.
+        if (gSwitch.action == gm::Action::PauseMenu && focus.tag == "MenuBrowser") {
+            gLast = "pause menu: already up";
+            log::Info("omni-tool: the Mission Computer is up ('MenuBrowser' has the focus)");
+            gSwitch = {};
+            return;
+        }
+        switch (BackOutLook(gSwitch.backOut, focus.panel, focus.tag, gm::Name(gSwitch.action))) {
+        case gm::BackOutStep::Wait: return;
+        case gm::BackOutStep::Send: gLast = std::format("{}: backing out of '{}'", gm::Name(gSwitch.action), focus.tag); return;
+        case gm::BackOutStep::GiveUp:
+            gLast = std::format("{}: the game's screen didn't close", gm::Name(gSwitch.action));
+            gSwitch = {};
+            return;
+        }
+        return;
+    }
+    if (gSwitch.backOut.sends > 0) {
+        // Out of the GUI mode: settled only after kClosedSettleMs (a screen's way back to the Mission Computer must not count).
+        std::uint64_t const now = NowMs();
+        if (gSwitch.outOfGuiMs == 0) {
+            gSwitch.outOfGuiMs = now;
+            log::Info("omni-tool: the game left its GUI mode {} ms after the last B (game mode {})", now - gSwitch.backOut.sentAtMs, current);
+        }
+        if (now - gSwitch.outOfGuiMs < kClosedSettleMs) {
+            return;
+        }
+    }
+#else
     if (current == kModeGui) {
         Focus const focus = FocusedPanel();
         if (gm::IsScreen(gSwitch.action) && focus.tag == PanelTag(gSwitch.action)) {
@@ -400,13 +495,6 @@ void StepSwitch(Link const& link) {
         ue3::Object* const mode = ActiveMode(*modes, how);
         ue3::Reflection& r = ue3::runtime::Get();
         ue3::Function* const guiKey = mode != nullptr && gGuiKey.Get() != nullptr ? r.FindFunction(r.ClassOf(mode), "GuiKey") : nullptr;
-#if defined(MEVR_GAME_LE3)
-        if (guiKey == nullptr) {
-            gLast = "close: native GuiKey unavailable";
-            gSwitch = {};
-            return;
-        }
-#endif
         if (gSwitch.backOuts >= kMaxBackOuts || (guiKey == nullptr && (focus.handler == nullptr || gHandleInputEvent.Get() == nullptr))) {
             gLast = std::format("{}: the game's screen didn't close", gm::Name(gSwitch.action));
             log::Warn("omni-tool: {} not done: the game stayed in its GUI mode after {} backs out (the focused panel '{}'{})",
@@ -419,11 +507,6 @@ void StepSwitch(Link const& link) {
             ue3::Params parms(r, guiKey);
             parms.Set("Event", kGuiEventB);
             ue3::runtime::Call(mode, guiKey, parms);  // the player's B: the GUI manager offers it to the whole stack
-#if defined(MEVR_GAME_LE3)
-            ue3::Params release(r, guiKey);
-            release.Set("Event", kGuiEventBRelease);
-            ue3::runtime::Call(mode, guiKey, release);
-#endif
         } else {
             ue3::Params parms(r, gHandleInputEvent.Get());
             parms.Set("Event", kGuiEventB);
@@ -437,6 +520,7 @@ void StepSwitch(Link const& link) {
             kMaxBackOuts, gm::Name(gSwitch.action));
         return;
     }
+#endif
     gm::Action const action = gSwitch.action;
     gm::Origin const origin = gSwitch.origin;
     gSwitch = {};
@@ -483,6 +567,10 @@ struct Page {
     int wait = 0;
     int tries = 0;
     int backOuts = 0;
+#if defined(MEVR_GAME_LE3)
+    gm::BackOut backOut;             // back to the Mission Computer from another page, each screen's B once
+    std::uint64_t browserSinceMs = 0;  // the Mission Computer in focus since, after a B
+#endif
 };
 Page gPage;
 bool gLoggedPages = false;
@@ -547,11 +635,44 @@ void StepPage(Link const& link) {
         return;
     }
     Focus const focus = FocusedPanel();
-    if (focus.tag == PanelTag(action) || (action == gm::Action::Map && focus.tag == "AreaMap")) {
+    // ME2's map page is 'AreaMap', ME3's 'Areamap'.
+    if (focus.tag == PanelTag(action) || (action == gm::Action::Map && (focus.tag == "AreaMap" || focus.tag == "Areamap"))) {
         gLast = std::format("{}: already up", gm::Name(action));
         gPage = {};
         return;
     }
+#if defined(MEVR_GAME_LE3)
+    if (focus.tag != "MenuBrowser") {
+        // Opening from a different child page stacks two movies and leaves the old one accepting clicks: back out to the
+        // Mission Computer first, each screen's B once (the map's B starts its close, a second starts it again).
+        if (gPage.asked || focus.tag.empty()) {
+            // The pause menu asked for, or no screen in focus yet: wait for the browser.
+            if (++gPage.tries > kPageMaxTries) {
+                gLast = std::format("{}: the browser did not take focus", gm::Name(action));
+                log::Warn("omni-tool: {} not opened: the focused page is '{}'", gm::Name(action), focus.tag);
+                gPage = {};
+            }
+            return;
+        }
+        std::string const forWhat = std::format("returning to the Mission Computer before opening {}", gm::Name(action));
+        if (BackOutLook(gPage.backOut, focus.panel, focus.tag, forWhat.c_str()) == gm::BackOutStep::GiveUp) {
+            gLast = std::format("{}: the browser did not take focus", gm::Name(action));
+            gPage = {};
+        }
+        return;
+    }
+    if (gPage.backOut.sends > 0) {
+        // Back at the Mission Computer after a B: let its new movie come up before asking it for a page.
+        std::uint64_t const now = NowMs();
+        if (gPage.browserSinceMs == 0) {
+            gPage.browserSinceMs = now;
+            log::Info("omni-tool: back at the Mission Computer {} ms after the last B", now - gPage.backOut.sentAtMs);
+        }
+        if (now - gPage.browserSinceMs < kBackOutRules.settleMs) {
+            return;
+        }
+    }
+#else
     if (focus.tag != "MenuBrowser") {
         // Opening from a different child page stacks two movies and leaves the old one accepting clicks.
         // Let the game return to its browser before asking the browser to open the next page.
@@ -559,17 +680,14 @@ void StepPage(Link const& link) {
             gLast = std::format("{}: the browser did not take focus", gm::Name(action));
             log::Warn("omni-tool: {} not opened: the focused page is '{}'", gm::Name(action), focus.tag);
             gPage = {};
-        } else if (!gPage.asked && !focus.tag.empty() && GuiKey(kGuiEventB, why)
-#if defined(MEVR_GAME_LE3)
-                   && GuiKey(kGuiEventBRelease, why)
-#endif
-        ) {
+        } else if (!gPage.asked && !focus.tag.empty() && GuiKey(kGuiEventB, why)) {
             ++gPage.backOuts;
             gPage.wait = kBackOutWaitTicks;
             log::Info("omni-tool: returning from '{}' to the browser before opening {}", focus.tag, gm::Name(action));
         }
         return;
     }
+#endif
 #if defined(MEVR_GAME_LE3)
     ue3::Object* const manager = le3_gui::Manager();
     ue3::Object* const wheel = le3_gui::Browser(manager);
