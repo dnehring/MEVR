@@ -684,6 +684,29 @@ opened and closed the power wheel in both; only the combat-off grab differs, as 
 game allows no combat here ...` and the console's `grab at the console: ...` the same. (`mevr calltrace ... iscombatenabled`
 fills its 600 lines in 2.5 s: the HUD asks it every frame; trace `switchtoweapon` alone.)
 
+**ME2 and ME3 on the fake headset** (one stretch, holder CTL, 12:42-12:47; each restored with `verification: 0 differences`;
+the runner `run-sequel.ps1` in the lane's scratch folder: prep, launch, load, then `make-walk-recording.py --plan
+'stand:2,r3:1.5,stand:3,r3:0.12,stand:5' --hands view` replayed with `-Inputs` under a 15 s call trace, then `mevr omni map`
+and `mevr omni close`):
+- **ME2, Save 4** (Freedom's Progress, the pistol drawn): the trace (`tryusepower enterpowerwheel exitpowerwheel showareamap
+  objectiveradar`) has two lines: `SFXGameModeDefault.EnterPowerWheel` at the hold (`opened the game's power wheel`, game mode
+  1) and `SFXGameModePowerWheel.ExitPowerWheel` at its release; the tap 4 s later called nothing. FX2's run of the same replay
+  on main 30cf473c (the code before this lane, `20261117-082114-057-LE2-fx2-controls\fx2-after-082927\lines.txt`) had
+  `SFXGameModeDefault.ShowAreaMap` (`MassEffectGuiManager.ShowAreaMap`) at the tap and `TurnObjectiveRadarDisplayOff`
+  (`ToggleObjectiveRadarDisplay`) at both releases. The host's `halcyon bridge: first right stick click kept from the game ...`
+  came at the hold's press. `mevr omni map`: the Mission Computer, then its page 1 (`AreaMap`, type 0) through
+  `ShowSelectedPanel` (`omni-tool: opened the map ...`), the area map on the HUD panel (Freedom's Progress shows Omega's
+  layout: the game's own data), placed in the room (the replay's left controller had stopped); `mevr omni close` back to game
+  mode 0.
+- **ME3, Save 31** (`-RendererPreview`, the Normandy, `SFXPawn_PlayerVanguardNonCombat`): the trace (`tryusepower
+  enterpowerwheel exitpowerwheel showareamap activatepoi deactivatepoi trycoverturn navassistance`) has one line,
+  `SFXGameModeBase.EnterPowerWheel` at the hold (`didn't open it`: no combat on the Normandy); no `ShowAreaMap`, `ActivatePOI`,
+  `DeactivatePOI` or `TryCoverTurn` at the hold, its release or the tap (ME3's R3 binding, FX2's read of Coalesced.bin, calls one
+  of them at every press). `mevr omni map`: the Mission Computer's page 3 (`Areamap`, type 0), the deck map (Combat Information
+  Center, its points of interest) on the HUD panel, game mode 9. **Found, not this lane's:** on ME3 `mevr omni close` from the
+  `Areamap` backed out 8 times (`B through SFXGameModeGUI.GuiKey`) and left the Mission Computer (`MenuBrowser`) up in game mode
+  9 (`omni-tool: close the game's screens not done: the game stayed in its GUI mode after 8 backs out`); ME2's closed at once.
+
 ## The reload by hand: the game's side (lane WP, 2026-11-16)
 
 **Off by default since 2026-11-16** (the owner: "putting my left hand to the hip makes no sense ... So don't enable that

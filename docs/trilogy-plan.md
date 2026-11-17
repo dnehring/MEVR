@@ -1039,14 +1039,16 @@ Each is asked once. "Today" is what the build does if nobody answers; no default
     begins while the mod owns it (`kFlagModPowerHold`: on foot and in the wheels) never reaches the game as R3
     (`gamepad::Options::keepPowerClick`, set by the sequels' bridge); other modes keep the click. ME1 unchanged: its R3 is
     `ChangeMagnification` (a zoomed scope's step, no screen) and Halcyon LE1's double-click recenter reads R3 from the
-    game's pad (the sequels' recenter is a double Back). The map: the omni-tool's Map entry on both sequels.
+    game's pad (the sequels' recenter is a double Back). The map: the omni-tool's Map entry on both sequels. Seen on the
+    fake headset: ME2 Save 4 (a tap and a hold call no `ShowAreaMap` or objective radar any more; the Map entry opens the
+    `AreaMap` page) and ME3 Save 31 (no point of interest or area map; the Map entry opens the deck map).
 15. **A refused holster draw on ME1** (lane FX2, 2026-11-17). On the sequels a grab where the game allows no combat (a hub,
     the Normandy) is refused with the refusal buzz. On ME1 the grab buzzes as a draw and nothing comes out
     (`SFXGameModeDefault.SwitchToWeapon` refuses by itself; a warning 3 s later). Give ME1 the sequels' refusal too (one
     rule), or keep ME1 as it is? **Answered 2026-11-17, the owner ("All recommendations"): one rule.** Built (lane CTL): the
     shared draw asks `BioPlayerInput.IsCombatEnabled` first on every game (what ME1's `SwitchToWeapon` asks), and a refusal
     is the refusal buzz and `the <gun> stays in its holster: the game allows no combat here`. A haptic and log change on
-    ME1; checked at the same pose.
+    ME1; checked at the same pose (identical but for the combat-off grab: research/le2-vrik.md).
 
 **Defaults waiting for a seen result and a yes** (not questions yet): `[SquadOrders] place` on the sequels (ME1's is on),
 `[Traversal] cue`, ME3's melee and traversal gestures, the galaxy projector replacing
