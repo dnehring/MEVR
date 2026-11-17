@@ -450,3 +450,8 @@ session `20261117-112906-151-LE3-def-me3`, restored with 0 differences):
   path.
 - Frame timing in that run was taken with two compilers running (other lanes): not comparable with lane SP2's quiet
   numbers (`umbraShareResults = 1` read with no key in the file, as the defaults now say).
+- **LE1 at the same pose** (the shared `plugin/MetricStereo`, `RenderLevers` and `game/SystemSettings` changed): lane FXR's
+  replay and the same save, main 79e97c4a's players' build before and this lane's after (sessions
+  `2026-11-17_12-07-12-def-le1-before`, `12-10-07-def-le1-after`): both snapshot pairs identical to the pixel in every image
+  (eyes, world, HUD, label), `hostView`, `stereo` and every layer the same; the log as before (`umbraShareResults = 0`,
+  `scale set DynamicShadows False ...`, mode 2).
