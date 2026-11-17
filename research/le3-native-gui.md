@@ -158,6 +158,19 @@ the wrist; Close returned to game mode 0. At the War Room table (walked as lane 
 opened War Assets (`warAssets`): `the WarAssets screen opened by using SFXPointOfInterest_0`, `stands in the room ... toward
 what it belongs to`; B closed it; the War Terminal's label was back at the console in first person.
 
+**ME1 unchanged** (its numbers are the code's without a game define; the shared files compile per game): the same-pose pair
+`2026-11-17_00-49-15-om2-le1-before` (main f7ef8b88's players' build) and `00-52-12-om2-le1-after` (this lane's): the paused
+pose pixel for pixel (both eyes, their world layers, the HUD panel, the label and wrist pieces), the same `hostView` and
+layers; then the journal on the wrist (`mevr omni journal`, the world running): the same screen, stack and placement and the
+HUD panel's image pixel for pixel; only the screen's place moved with the omni-tool display's drawn position (the world
+unpaused), as between any two runs. `mevr-menu-preview`'s 91 PNGs identical before and after.
+
+**ME2 unchanged:** Save 4 (session `20261117-*-LE2-om2-me2b`, restored with 0 differences): `mevr omni squad` and `codex`
+projected ME2's Mission Computer, its squad page and the codex from the wrist (placement 1, the fan of light and the rail
+beside them), Close back to gameplay. (A first try's `load.ps1` refused: the mod appended its first-run `[Section]` defaults
+to `LE2MEVR.ini` while the load ran, `Save or runtime artifact changed during load`; waiting 45 s at the title first avoids
+it.)
+
 **Not right yet (for the next lane):**
 - **The pointer's clicks don't reach ME3's movie mouse on a world screen.** The ray's and the fingertip's clicks land on the
   right pixel and go in as ME3's GUI events (`game pointer: the trigger clicked the game's menu at (1213, 743) px (native GUI
