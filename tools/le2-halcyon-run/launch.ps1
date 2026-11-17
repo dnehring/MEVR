@@ -104,29 +104,53 @@ if ($RendererPreview) {
 }
 Start-Process -WindowStyle Hidden -FilePath 'C:\Program Files (x86)\Steam\steam.exe' -ArgumentList '-applaunch', '1328670', '-game', $names.number, '-autoterminate'
 "Asked Steam for $Game at $(Get-Date -Format HH:mm:ss)"
+# EA's Steam launcher holds MassEffectLauncher suspended for up to ~14 s (no readable Path), so every candidate is
+# tracked over time (session-common.ps1, Step-RunAdoption): the launcher is recorded once readable, the game only
+# after its identity has stayed readable and unchanged for the settle time. Each candidate and verdict is printed
+# and kept in the session's launch-candidates.txt.
+$launcherAdoption = New-RunAdoption 'MassEffectLauncher' $launcherExe $started
+$gameAdoption = New-RunAdoption $names.process $exe $started -SettleSeconds 5
+$foreign = @(Get-RunForeignProcesses $names.current)
+$candidateLog = Join-Path $open.session 'launch-candidates.txt'
+Add-Content -LiteralPath $candidateLog -Value "== $Game launch requested $($started.ToString('o')) by $Holder" -Encoding utf8
+function Read-LaunchCandidates([string]$Name, $Adoption) {
+    foreach ($candidate in @(Get-Process -Name $Name -ErrorAction SilentlyContinue)) {
+        $o = Read-RunCandidate $candidate.Id
+        if ($o.alive -and -not $Adoption.candidates.ContainsKey([string]$candidate.Id)) {
+            $o | Add-Member -NotePropertyName parent -NotePropertyValue (Get-RunParentText $candidate.Id)
+        }
+        $o
+    }
+}
+function Write-LaunchCandidateLog {
+    $lines = @(Get-RunAdoptionLines $launcherAdoption) + @(Get-RunAdoptionLines $gameAdoption)
+    if ($lines.Count) { Add-Content -LiteralPath $candidateLog -Value $lines -Encoding utf8; $lines }
+}
 $p = $null
-for ($i = 0; $i -lt [math]::Ceiling($LaunchTimeoutSeconds / 2) -and -not $p; $i++) {
-    $launchers = @(Get-Process MassEffectLauncher -ErrorAction SilentlyContinue)
-    if ($launchers.Count -gt 1) { throw 'Multiple launchers appeared; refusing to adopt them' }
-    foreach ($launcher in $launchers) {
-        $identity = Get-RunLaunchIdentity $launcher.Id $launcherExe $started
-        if ($identity) {
-            $open.launcherProcess = $identity
+$deadline = $started.AddSeconds($LaunchTimeoutSeconds)
+try {
+    while (-not $p) {
+        Assert-RunLock $Holder
+        if (@(Get-Process MassEffect1, MassEffect2, MassEffect3 -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -ne $names.process }).Count) {
+            throw 'Another game started during the launch; refusing to adopt'
+        }
+        $now = [DateTime]::UtcNow
+        $launcher = Step-RunAdoption $launcherAdoption @(Read-LaunchCandidates 'MassEffectLauncher' $launcherAdoption) $now $foreign
+        if ($launcher -and (-not $open.launcherProcess -or $open.launcherProcess.pid -ne $launcher.pid -or $open.launcherProcess.startedUtc -ne $launcher.startedUtc)) {
+            $open.launcherProcess = $launcher
             Write-RunSession $open $names.current
         }
-    }
-    $found = @(Get-Process -Name $names.process -ErrorAction SilentlyContinue)
-    if ($found.Count -gt 1) { throw 'Multiple game processes appeared; refusing to adopt them' }
-    if ($found.Count) {
-        $p = Get-RunLaunchIdentity $found[0].Id $exe $started
+        $p = Step-RunAdoption $gameAdoption @(Read-LaunchCandidates $names.process $gameAdoption) $now $foreign
         if ($p) {
             $open.gameProcess = $p
             Write-RunSession $open $names.current
+        } elseif ([DateTime]::UtcNow -ge $deadline) {
+            throw "No $($names.process) within $LaunchTimeoutSeconds seconds; keep the session locked and inspect it"
         }
+        Write-LaunchCandidateLog
+        if (-not $p) { Start-Sleep 1 }
     }
-    if (-not $p) { Start-Sleep 2 }
-}
-if (-not $p) { throw "No $($names.process) within $LaunchTimeoutSeconds seconds; keep the session locked and inspect it" }
+} finally { Write-LaunchCandidateLog }
 "$($names.process) pid $($p.pid) startedUtc $($p.startedUtc)"
 $marker = if ($EngineProbe) { 'engine-probe: reflection checks finished' } elseif ($DesktopDump) { 'dump-only: code dump attempted; renderer and hooks disabled' } elseif ($RendererPreview) { '[ME3XR] VR session ready; starting frame submission.' } else { 'VR session ready' }
 $seen = $false
