@@ -115,9 +115,10 @@ numbers (ctest `mevr-tests`).
   the window's inverse; if it doesn't differ (mode 1) call the original untouched; else write it (journalled
   `FlareWindow.inverse`), call the original inside `__try/__finally`, and write the engine's inverse back. Counters:
   passes, rewritten, already the window's, faults; a `flare window:` line every 10 s while they change.
-- **The setting, off by default:** `ASI\LE3MEVR.ini [Stereo] flareWindow = 1`, read once a second (live). A development
-  build also reads `%LOCALAPPDATA%\MEVR\stereo.measure`'s `[Stereo] flareWindow = 0 | 1`, which wins. It acts only where
-  mode 2 runs, and ME3's mode 2 is itself off by default (`MELE3VR.ini [VR] MetricEyeFrustum = 0`).
+- **The setting:** `ASI\LE3MEVR.ini [Stereo] flareWindow`, read once a second (live); **1 when the key is missing since the
+  owner's answer to question 17 (2026-11-17, section 5)**, 0 before. A development build also reads
+  `%LOCALAPPDATA%\MEVR\stereo.measure`'s `[Stereo] flareWindow = 0 | 1`, which wins. It acts only where mode 2 runs, ME3's
+  default again since then (`MELE3VR.ini [VR] MetricEyeFrustum = 1`).
 - Logs: `flare window: hooked the reflection pass; lens flares' reflections in mode 2 ...` at attach, `flare window: N
   reflection passes, M through the window's inverse, K already the window's (mode 1), F faults`.
 - To port it to another game: find the game's reflection draw as in 1.1, check which inverse its step 3 reads; only a
@@ -256,3 +257,52 @@ only on ME3).
 
 **What the owner must decide:** 1 (ME3's mode and the flare fix as its defaults), 2 (the window's shape on ME2 and ME3),
 3 (ME3's render size). ME1 is untouched by all three: its window is already the eyes' union and it has no UE3 lens flare.
+
+## 5. Decided and shipped (2026-11-17, lane DEF2)
+
+The owner: "All recommendations" (docs/trilogy-plan.md question 17): 1 yes, 3 yes, 2 after a look at the HUD panel in a scene
+with a HUD. ME2 is unchanged.
+
+**What ME3 ships now, and where each default lives:**
+
+| | value | where |
+|---|---|---|
+| each eye's own frustum (mode 2) | `MELE3VR.ini [VR] MetricEyeFrustum = 1` | le3 `me2_menu.cpp` `LoadValues` (`GetPrivateProfileIntW(..., 1)`), `me2_xr.cpp` `g_mevrEyeFrustum{true}` |
+| the flare fix | `ASI\LE3MEVR.ini [Stereo] flareWindow = 1` | `plugin/FlareWindow.cpp` `ReadEnabled` (1 when missing) |
+| the render size | `MELE3VR.ini [VR] RenderW = 3072`, `RenderH = 2216` | le3 `d3d_capture.cpp` `ArmResolutionSpoof` (the code default when the keys are missing; `0` still leaves the game's own); Halcyon's classic menu lists it first |
+| the installed renderer ini | the runner's preview text without `Diagnostics` | `src/halcyon/le3/runtime/MELE3VR.ini` (GPL-3.0, as the tree): `tools/deploy-asi.ps1 -Game LE3` copies it next to `MassEffect3.exe` when there is none, `tools/package-release.ps1 -Games LE3` ships it as `payload\MELE3VR.ini` for MEVR Setup; `test-session.ps1` checks it equals the preview's defaults |
+| GamerSettings' ResX/ResY | 3072x2216 | `tools/vr-game-settings.ps1 -Game LE3` without `-ResX/-ResY` reads `MELE3VR.ini`'s RenderW/RenderH, else 3072x2216; MEVR Setup's uninstall knows them as the renderer's (`GameSpec::rendererDefaultW/H`, `settings::ModWrites`) |
+| the runner | `prep.ps1 -RendererPreview` defaults | `-PreviewRenderSize 3072x2216`, `MetricEyeFrustum=1` written; `-PreviewSharedWindow` writes 0 (mode 1); `-PreviewEyeFrustum` still accepted. A stretch prepared before (no key in its file) fails `Assert-PreviewConfig` and must be restored |
+| the eyes' window | `[Stereo] windowEyes = 0` | unchanged: after the HUD check |
+
+No migration: no player has an ME3 install yet, and nothing wrote `MetricEyeFrustum = 0` except Halcyon's classic menu when
+closed since lane DEF (that file is the player's).
+
+**Seen on the fake headset** (Save 31 on the Normandy, the runner's `-RendererPreview` with prep's defaults only and no
+`[Stereo]` key, lane FXR's still level PS VR2 recording replayed with `-Fovs`; run `%LOCALAPPDATA%\MEVR\def2-lane\runs\
+LE3-20261117-144209`, script `def2-lane\scripts\me3-def2.ps1`, session `20261117-144209-867-LE3-def2`, restored with 0
+differences):
+- The deploy installed the runtime file (`Installed ME3's MELE3VR.ini ...`), then prep wrote the preview's;
+  `vr-game-settings.ps1` wrote ResX 3072, ResY 2216.
+- Logs: `[VRRES] user render override 3072x2216`, `per-eye swapchain 1536x2216`, `[SFRCLEAR] ... biggest depth seen
+  3072x2216 ... backbuffer 3072x2216`, `AER full-size eye swapchains created 3072x2216`; `[MEVR-STEREO] ME3's frustum: each
+  eye's own ... (mode 2; ... MetricEyeFrustum = 1, ME3's default ...)`; `flare window: hooked the reflection pass; ... placed
+  through the CPU's own window ([Stereo] flareWindow = 1)`; with the PS VR2's eyes `stereo mode 2: life-size, each eye's own
+  frustum`, `pass 0 frustum: tan L -1.8418 R 0.9472 U 1.3290 D -1.3290 ... the CPU window +-1.8418 x +-2.6571 holds it`.
+- Each eye's projection layer `[0, 0, 3072, 2216]` at its own FOV (-61.5 / 43.4 / +-53.0 degrees and the mirror): 1101 x 834
+  px per tangent, **19.2 x 14.6 px/deg** (the 16:9 mode 1 had 14.6 x 7.3).
+- **The flares** (`analyse.py --flares`, `crops.py`: `lamp-left.png`, `lamp-right.png` in the run folder): the defaults put the
+  left lamp's streak at -25 / -22 px (the streak's own asymmetry, FL's -23) in the left eye and the right lamp's at +5 px in
+  the right; the canary, `flareWindow = 0` written live, put them off their lamps (the left one's flare far left in the left
+  eye, missing in the right; the stray cores at x 2058 and 2036 back), and the defaults again put them back (-27 / +4 px).
+- **Life-size:** `stereo-check.py` at FL's nine directions: +1.29 +1.21 +1.19 / +1.08 +1.06 +1.06 / +0.77 +0.80 +0.69 degrees
+  per eye crossed (FL: +1.27 .. +1.33, +1.06 .. +1.11, +0.68 .. +0.78).
+- **Found:** with the aspect window (`windowEyes` off) the taller render makes the CPU window taller too: the fill's aspect is
+  the backbuffer's half width over its height (1536 / 2216 = 0.69), so the cover that holds both eyes is +-1.8418 x +-2.6571,
+  twice the eyes' height (+-1.3290); at 3072x1728 it was +-2.0720. Only culling sees it (each eye renders its own frustum),
+  and its cost was not measured (FL's 3072x2216 runs used the eyes' window). `windowEyes = 1` brings it to the eyes'.
+- ME1 and ME2: no code they run changed. The le3 tree, `plugin/FlareWindow` and `src/halcyon/le3/runtime` are ME3's only; the
+  ME1 and ME2 builds of `src/mod/Mod.cpp`, `src/game/Melee.cpp` and `src/plugin/MetricStereo.cpp` preprocess (`cl /EP`, the
+  targets' own flags) to the same text as before (ME3's build of `Mod.cpp` differs, the canary); the deploy and
+  `vr-game-settings.ps1` changes are LE3 branches; Setup's LE1 and LE2 paths are unchanged (`GameSpec`'s new fields are 0
+  there; the setup tests pass).

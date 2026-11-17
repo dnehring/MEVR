@@ -473,7 +473,13 @@ magazine (12, 0 used, 60 spare), with a call trace of the weapon's own reload ca
 (`Active.BeginState`), then with the magazine empty `StartReload.BeginState` -> `Reloading.BeginState` -> `ReloadNearFinished`
 1.2 s later -> `FinishReloading` (1.5 s in all); afterwards 11 in the magazine, 1 used, 48 spare. Nothing about reload was changed.
 
-**ME3** stays opt-in; its checks wait for the combat save: research/le3-combat-fixtures.md "Melee on the first combat save". On Save
+**ME3's stroke melee is on by default since the owner's "All recommendations" (2026-11-17, lane DEF2):** `src/mod/Mod.cpp`'s
+ME3 switches (`gMeleeRequests`, `gMeleeGestures`, which only ME3's staged adapter reads) start on, so a stroke reaches `Strike` as
+on ME1 and ME2, with `[Throwables] melee = 0` the off switch on every game; the heavy "chamber and strike" stays opt-in (`mevr
+melee heavy-gestures on`) until question 7. The start logs `melee: ME3's stroke melee on by default (...)`. No migration: ME3's
+switches were never kept in an ini. The ME1 and ME2 builds of `Mod.cpp` and `Melee.cpp` preprocess to the same text as before
+(the switches' new values are under `#if defined(MEVR_GAME_LE3)`). Before that, ME3 stayed opt-in. Its strike checks wait for
+the combat save: research/le3-combat-fixtures.md "Melee on the first combat save". On Save
 31 (the Normandy, renderer preview): `mevr melee` says `requests false; gestures false; ...`; `light`, `heavy` and `punch` are
 refused `combat is disabled here`; `melee-b.ps1 -Game LE3`: B double-tapped and held, no `TryMelee`; the canary, ME3's own
 `SFXGameModeDefault.TryMelee` twice.

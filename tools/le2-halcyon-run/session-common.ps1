@@ -603,7 +603,7 @@ function Get-PreviewVrProcesses($Open, [bool]$AllowNewHelpers = $false) {
     }
     return $seen
 }
-function Get-PreviewRenderSize([string]$RenderSize = '3072x1728') {
+function Get-PreviewRenderSize([string]$RenderSize = '3072x2216') {
     # The render target (RenderW x RenderH, GamerSettings ResX/ResY): 1280..8192, multiples of 8. ME3's
     # FSceneRenderTargets::Allocate (0x36CDC0) rounds its buffers up to a multiple of 8, and the renderer's pass-0
     # capture needs the scene's depth target to be the backbuffer's size: 4054x1728 rendered flat (research/
@@ -614,12 +614,14 @@ function Get-PreviewRenderSize([string]$RenderSize = '3072x1728') {
     [pscustomobject]@{ width = $w; height = $h }
 }
 function Get-PreviewRendererConfig([ValidateSet(0, 2, 4)][int]$Mode = 4, [bool]$Diagnostics = $false,
-    [ValidateSet(1, 2, 4, 8)][int]$MirrorEvery = 8, [bool]$EyeFrustum = $false, [string]$RenderSize = '3072x1728') {
-    # me2_menu.cpp LoadValues + its lowest displayed render target (3072x1728) unless -PreviewRenderSize says otherwise;
-    # d3d_capture.cpp reads RenderW/H beside MassEffect3.exe before rendering. MetricEyeFrustum=1 (each eye's own frustum,
-    # mode 2) only with -PreviewEyeFrustum: ME3's default is the shared window (research/30 section 9.5).
+    [ValidateSet(1, 2, 4, 8)][int]$MirrorEvery = 8, [bool]$EyeFrustum = $true, [string]$RenderSize = '3072x2216') {
+    # me2_menu.cpp LoadValues; d3d_capture.cpp reads RenderW/H beside MassEffect3.exe before rendering. The defaults are ME3's
+    # shipped ones (the owner, 2026-11-17, docs/trilogy-plan.md question 17): 3072x2216 and MetricEyeFrustum=1 (each eye's own
+    # frustum, mode 2, with the host's [Stereo] flareWindow); -PreviewSharedWindow writes 0 (mode 1). Written either way: the
+    # renderer's default is 1. src/halcyon/le3/runtime/MELE3VR.ini (what tools/deploy-asi.ps1 and MEVR Setup install) is
+    # this text with the defaults and without the Diagnostics line (test-session.ps1 checks it).
     $size = Get-PreviewRenderSize $RenderSize
-    $frustum = if ($EyeFrustum) { "MetricEyeFrustum=1`r`n" } else { '' }
+    $frustum = "MetricEyeFrustum=$([int]$EyeFrustum)`r`n"
     "[VR]`r`nEnabled=1`r`nMode=$Mode`r`nMirrorPresentEvery=$MirrorEvery`r`nRenderW=$($size.width)`r`nRenderH=$($size.height)`r`nHeadAim=0`r`nHeadLook=1`r`nMoveFollowsHead=1`r`nDecoupledPitch=1`r`nPosEnabled=1`r`nPosScale=2.0`r`nDiagnostics=$([int]$Diagnostics)`r`n$($frustum)CineVrConvo=0`r`nCineVrCutscene=0`r`n[FirstPerson]`r`nConvoFirstPerson=0`r`n"
 }
 function Get-PreviewOptions($Open) {
@@ -627,6 +629,8 @@ function Get-PreviewOptions($Open) {
     $diagnostics = if ($Open.PSObject.Properties['previewDiagnostics']) { $Open.previewDiagnostics } else { $false }
     $mirror = if ($Open.PSObject.Properties['previewMirrorEvery']) { $Open.previewMirrorEvery } else { 8 }
     $eyeFrustum = if ($Open.PSObject.Properties['previewEyeFrustum']) { $Open.previewEyeFrustum } else { $false }
+    # A stretch recorded before these options existed rendered mode 1 at 3072x1728 (and wrote no MetricEyeFrustum key: such
+    # an open stretch now fails Assert-PreviewConfig and must be restored, since the renderer's default became mode 2).
     $renderSize = if ($Open.PSObject.Properties['previewRenderSize']) { $Open.previewRenderSize } else { '3072x1728' }
     if (($mode -isnot [int] -and $mode -isnot [long]) -or $mode -notin @(0, 2, 4) -or $diagnostics -isnot [bool] -or
         ($mirror -isnot [int] -and $mirror -isnot [long]) -or $mirror -notin @(1, 2, 4, 8) -or $eyeFrustum -isnot [bool] -or
@@ -643,7 +647,7 @@ function Get-PreviewModConfig {
     "[Debug]`r`nrequests = 1`r`ndumpNatives = 1`r`nopenxrRuntime = C:\Program Files (x86)\Steam\steamapps\common\SteamVR\steamxr_win64.json`r`n[Pointer]`r`nsetCursor = 0`r`n"
 }
 function Assert-PreviewConfig([string]$Bin, [ValidateSet(0, 2, 4)][int]$Mode = 4, [bool]$Diagnostics = $false,
-    [ValidateSet(1, 2, 4, 8)][int]$MirrorEvery = 8, [bool]$EyeFrustum = $false, [string]$RenderSize = '3072x1728') {
+    [ValidateSet(1, 2, 4, 8)][int]$MirrorEvery = 8, [bool]$EyeFrustum = $true, [string]$RenderSize = '3072x2216') {
     if ([IO.File]::ReadAllText((Join-Path $Bin 'ASI\LE3MEVR.ini')) -cne (Get-PreviewModConfig) -or
         [IO.File]::ReadAllText((Join-Path $Bin 'MELE3VR.ini')) -cne (Get-PreviewRendererConfig $Mode $Diagnostics $MirrorEvery $EyeFrustum $RenderSize)) { throw 'Preview configuration changed since prep' }
 }
@@ -662,7 +666,7 @@ function Read-RunStartupText([string]$Path, [ValidateRange(1,50)][int]$Attempts 
     }
 }
 function Confirm-PreviewInitializedConfig([string]$Bin, $Artifacts, [ValidateSet(0, 2, 4)][int]$Mode = 4, [bool]$Diagnostics = $false,
-    [ValidateSet(1, 2, 4, 8)][int]$MirrorEvery = 8, [switch]$DeferDefaults, [bool]$EyeFrustum = $false, [string]$RenderSize = '3072x1728') {
+    [ValidateSet(1, 2, 4, 8)][int]$MirrorEvery = 8, [switch]$DeferDefaults, [bool]$EyeFrustum = $true, [string]$RenderSize = '3072x2216') {
     # HandCalibration and Colour append their compiled defaults on the first tick.
     # Only that append is permitted; protected keys, renderer mode and all binaries
     # retain their exact prep identity. Preserve the effective settings in the receipt.
@@ -703,7 +707,7 @@ function Get-PreviewMissingDefaultSections([string]$Text) {
 function Wait-PreviewInitializedConfig([string]$Bin, $Artifacts, [string[]]$StartupLogs, [hashtable]$Before,
     [DateTime]$Started, [scriptblock]$Guard, [ValidateSet(0, 2, 4)][int]$Mode = 4, [bool]$Diagnostics = $false,
     [ValidateSet(1, 2, 4, 8)][int]$MirrorEvery = 8, [ValidateRange(1, 300)][int]$TimeoutSeconds = 30,
-    [bool]$EyeFrustum = $false, [string]$RenderSize = '3072x1728') {
+    [bool]$EyeFrustum = $true, [string]$RenderSize = '3072x2216') {
     # XR readiness precedes the mod's first tick. HandCalibration's marker follows
     # its default blocks AND key migrations; Colour's follows its own writes.
     # PowerWheel/Cover each append one closed block. Require every populated block

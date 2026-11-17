@@ -675,18 +675,20 @@ void LoadValues() noexcept
                          : scaleWas ? "[MEVR-STEREO] life-size stereo: the MEVR baseline; PosScale set to 2 (100 uu per metre)"
                                     : "[MEVR-STEREO] life-size stereo: the MEVR baseline (HalfEyeUU, SfrConvergence and "
                                       "SwapEyes unused)");
-        // Its frustum (LE1's sfr2MetricEyeFrustum; the owner, 2026-11-17): 0, ME3's default, renders both eyes through the
-        // shared symmetric window (mode 1): in mode 2 every lamp's lens flare, placed through the CPU's symmetric window,
-        // lands at the same pixel of both off-centre eye images and can't fuse (research/30 section 9.4). Stereo stays
-        // life-size either way. A per-game choice, so ApplyMevrBaseline leaves it alone (ME1 and ME2 render mode 2).
-        const bool eyeFrustum = GetPrivateProfileIntW(L"VR", L"MetricEyeFrustum", 0, path.c_str()) != 0;
+        // Its frustum (LE1's sfr2MetricEyeFrustum): 1, ME3's default since the owner's answer to question 17 (2026-11-17), as
+        // ME1 and ME2: each eye through its own off-centre frustum where the window holds it (mode 2), with the host's flare
+        // fix (plugin/FlareWindow, ASI\LE3MEVR.ini [Stereo] flareWindow, 1 by default) putting every lamp's lens flare on its
+        // lamp in both eyes (research/le3-flares-and-window.md). 0 renders both eyes through the shared symmetric window
+        // (mode 1, lane DEF's interim default). Stereo stays life-size either way. Not pinned by ApplyMevrBaseline.
+        const bool eyeFrustum = GetPrivateProfileIntW(L"VR", L"MetricEyeFrustum", 1, path.c_str()) != 0;
         ME2VR::Me2Xr::SetMevrEyeFrustum(eyeFrustum);
         if (lifeSize)
             ME2VR::Log::Line(eyeFrustum
                 ? "[MEVR-STEREO] ME3's frustum: each eye's own where the window holds it (mode 2; MELE3VR.ini [VR] "
-                  "MetricEyeFrustum = 1): the lamps' lens flares are misplaced per eye there (research/30 section 9.4)"
-                : "[MEVR-STEREO] ME3's frustum: the shared symmetric window (mode 1; MELE3VR.ini [VR] MetricEyeFrustum = 0, "
-                  "ME3's default: each lamp's lens flare on its lamp in both eyes, research/30 section 9.4)");
+                  "MetricEyeFrustum = 1, ME3's default: the lamps' lens flares on their lamps through [Stereo] flareWindow, "
+                  "research/le3-flares-and-window.md)"
+                : "[MEVR-STEREO] ME3's frustum: the shared symmetric window (mode 1; MELE3VR.ini [VR] MetricEyeFrustum = 0: "
+                  "each eye a crop of the shared window, research/30 section 9.5)");
     }
 #if defined(MEVR_ASI)
     ApplyMevrBaseline();  // [MEVR]
@@ -1340,9 +1342,12 @@ void BuildUI() noexcept
                 ImGui::TextUnformatted("Render resolution");
                 ImGui::TextDisabled("Takes effect next time you launch.");
                 const std::wstring ip = IniPath();
-                const int curW = GetPrivateProfileIntW(L"VR", L"RenderW", 0, ip.c_str());
-                const int curH = GetPrivateProfileIntW(L"VR", L"RenderH", 0, ip.c_str());
+                // [MEVR] 3072 x 2216, ME3's default when the ini has no size (d3d_capture.cpp ArmResolutionSpoof; the owner,
+                // 2026-11-17): any shape whose sides are multiples of 8 renders (research/le3-flares-and-window.md section 3).
+                const int curW = GetPrivateProfileIntW(L"VR", L"RenderW", 3072, ip.c_str());
+                const int curH = GetPrivateProfileIntW(L"VR", L"RenderH", 2216, ip.c_str());
                 static const char* const kResLabels[] = {
+                    "3K tall - 3072 x 2216 (default)",   // [MEVR]
                     "3K  -  3072 x 1728",
                     "4K  -  4096 x 2304",
                     "5K  -  5120 x 2880",
@@ -1350,10 +1355,10 @@ void BuildUI() noexcept
                     "8K  -  8192 x 4608",
                     "10K - 10240 x 5760",
                 };
-                static const int kResW[] = { 3072, 4096, 5120, 6144, 8192, 10240 };
-                static const int kResH[] = { 1728, 2304, 2880, 3456, 4608,  5760 };
+                static const int kResW[] = { 3072, 3072, 4096, 5120, 6144, 8192, 10240 };   // [MEVR] 3072 x 2216 first
+                static const int kResH[] = { 2216, 1728, 2304, 2880, 3456, 4608,  5760 };
                 constexpr int kResCount = static_cast<int>(sizeof(kResW) / sizeof(kResW[0]));
-                int idx = 3;   // 6K if the ini holds something the mod doesn't recognise
+                int idx = 4;   // 6K if the ini holds something the mod doesn't recognise
                 for (int k = 0; k < kResCount; ++k) if (kResW[k] == curW && kResH[k] == curH) { idx = k; break; }
                 ImGui::SetNextItemWidth(420.0f);
                 if (ImGui::Combo("##vrres", &idx, kResLabels, kResCount))

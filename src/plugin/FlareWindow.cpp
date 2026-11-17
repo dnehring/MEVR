@@ -99,14 +99,15 @@ void RenderReflectionsHook(void* data, void* proxy, void* pdi, void* view, std::
     CallWithWindow(data, proxy, pdi, view, dpg, m.inv.data());
 }
 
-// The setting: the ini's key, then (development builds) the measure file's, which wins.
+// The setting: the ini's key (1 when missing: ME3's default since the owner's answer to question 17, 2026-11-17, with mode 2
+// its default), then (development builds) the measure file's, which wins.
 bool ReadEnabled() {
     namespace ini = mevr::ini;
-    bool enabled = false;
+    bool enabled = true;
     std::wstring const& path = mevr::host::SettingsPath();
     if (!path.empty()) {
         ini::File const file = ini::Read(std::filesystem::path(path)).file;
-        enabled = ini::GetNumber(file, "Stereo", "flareWindow").value_or(0.0) != 0.0;
+        enabled = ini::GetNumber(file, "Stereo", "flareWindow").value_or(1.0) != 0.0;
     }
     wchar_t appData[MAX_PATH] = {};
     if (dev_channels::kDevelopmentBuild && GetEnvironmentVariableW(L"LOCALAPPDATA", appData, MAX_PATH) > 0) {

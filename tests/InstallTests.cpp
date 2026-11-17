@@ -2046,6 +2046,16 @@ void TestGames() {
     // RenderW 0: the renderer leaves GamerSettings.ini alone, so a 0 there is never "the mod's".
     ini::Ours const none = settings::ModWrites("[VR]\r\nRenderW=0\r\nRenderH=0\r\n", GameId::LE3);
     ICHECK(!none(ini::Edit{"SystemSettings", "ResX", std::string("2560"), "2560"}, "0") && none(ini::Edit{"SystemSettings", "DepthOfField", std::nullopt, ""}, "False"));
+    // No RenderW/RenderH: the renderer's code default, ME3's 3072x2216 (docs/trilogy-plan.md question 17); ME2's leaves the
+    // game alone. The ResX/ResY it wrote are the mod's; a size by hand stays the player's.
+    ICHECK(Spec(GameId::LE3).rendererDefaultW == 3072 && Spec(GameId::LE3).rendererDefaultH == 2216 &&
+           Spec(GameId::LE2).rendererDefaultW == 0 && Spec(GameId::LE1).rendererDefaultW == 0);
+    ini::Ours const me3Default = settings::ModWrites("[VR]\r\nMode=4\r\n", GameId::LE3);
+    ICHECK(me3Default(ini::Edit{"SystemSettings", "ResX", std::string("2560"), "2560"}, "3072") &&
+           me3Default(ini::Edit{"SystemSettings", "ResY", std::string("1440"), "1440"}, "2216") &&
+           !me3Default(ini::Edit{"SystemSettings", "ResX", std::string("2560"), "2560"}, "3000"));
+    ini::Ours const me2Default = settings::ModWrites("[VR]\r\nMode=4\r\n", GameId::LE2);
+    ICHECK(!me2Default(ini::Edit{"SystemSettings", "ResX", std::string("2560"), "2560"}, "3072"));
 
     // ---- Upstream's own release: told by the string its installer looks for.
     ICHECK(detect::HasUpstreamMarker("xx MELEVR yy", "MELEVR") == detect::HasMelevrMarker("xx MELEVR yy") && detect::HasUpstreamMarker("..ME2VR..", "ME2VR"));

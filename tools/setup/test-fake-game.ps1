@@ -15,8 +15,8 @@
 # steps the same steps run for each sequel in -Games with --for (install, "verify files" and Repair, the game settings,
 # an update, the report, the renderer's own writes, uninstall byte for byte, upstream's MELE2-VR, a lost record, a game
 # never started), then the three installed together: the launcher's loader, which they share, stays until the last one
-# goes. The payload gets LE2MEVR.asi / LE3MEVR.asi (build-trilogy's, else stand-ins) and upstream's MELE2VR.ini; ME3 has
-# no release settings file, which tests the path without one.
+# goes. The payload gets LE2MEVR.asi / LE3MEVR.asi (build-trilogy's, else stand-ins), upstream's MELE2VR.ini and ME3's own
+# MELE3VR.ini (src/halcyon/le3/runtime, since 2026-11-17), as tools/package-release.ps1 -Games puts them.
 #
 # -Setup runs another MEVR-Setup.exe (an older build) through the same steps, and -Trace writes, after every command, its
 # output, every file's hash and the install record (times and the setup copy's own hash masked) into that folder: two
@@ -167,8 +167,8 @@ if (-not $Payload) {
         # No mod built here (a worktree that built only the setup): a stand-in, as the fake game never loads it.
         [IO.File]::WriteAllText((Join-Path $Payload 'LE1MEVR.asi'), 'stand-in LE1MEVR.asi (test-fake-game.ps1)')
     }
-    # The sequels' mods (build-trilogy's, else stand-ins: the fake games never load them) and ME2's renderer settings as the
-    # release carries them (upstream's file; ME3's release has none).
+    # The sequels' mods (build-trilogy's, else stand-ins: the fake games never load them) and their renderer settings as the
+    # release carries them (ME2: upstream's file; ME3: ours, src/halcyon/le3/runtime, since 2026-11-17).
     foreach ($sequel in 'LE2', 'LE3') {
         $sequelAsi = Join-Path $repo "build-trilogy\Release\${sequel}MEVR.asi"
         if (Test-Path $sequelAsi) { Copy-Item $sequelAsi $Payload } else {
@@ -176,6 +176,7 @@ if (-not $Payload) {
         }
     }
     Copy-Item (Join-Path $repo 'src\halcyon\le2\runtime\MELE2VR.ini') $Payload
+    Copy-Item (Join-Path $repo 'src\halcyon\le3\runtime\MELE3VR.ini') $Payload
     Copy-Item (Join-Path $Build 'Release\bink2w64.dll') $Payload
     Copy-Item -Recurse (Join-Path $repo 'third_party\fonts') (Join-Path $Payload 'fonts')
     Copy-Item -Recurse (Join-Path $repo 'assets\menu') (Join-Path $Payload 'menu')
@@ -514,7 +515,9 @@ function Test-Sequel([string]$game) {
 
     # The player tunes the renderer (a value we never touch): it must survive everything below.
     if (-not (Test-Path $rendererIni)) { [IO.File]::WriteAllText($rendererIni, "[VR]`r`nHalfEyeUU=3.350`r`nRenderW=4096`r`nRenderH=2304`r`n") }
-    [IO.File]::WriteAllText($rendererIni, ([IO.File]::ReadAllText($rendererIni) -replace '(?m)^HalfEyeUU=.*$', 'HalfEyeUU=2.900'))
+    $tuned = [IO.File]::ReadAllText($rendererIni)
+    $tuned = if ($tuned -match '(?m)^HalfEyeUU=') { $tuned -replace '(?m)^HalfEyeUU=.*$', 'HalfEyeUU=2.900' } else { $tuned -replace '(?m)^\[VR\]\r?\n', "[VR]`r`nHalfEyeUU=2.900`r`n" }
+    [IO.File]::WriteAllText($rendererIni, $tuned)   # ME3's own file has no HalfEyeUU (unused in life-size stereo): added
 
     # Steam's "verify files": RAD's DLL back in the game and the launcher, a menu file gone.
     Copy-Item $LauncherBinkDll (Join-Path $w 'bink2w64.dll') -Force
@@ -570,8 +573,13 @@ function Test-Sequel([string]$game) {
     }
     Check (-not (Compare-Object $beforeReport (Snapshot))) "${game}: report: the game folder untouched"
 
-    # What the renderer writes while the mod is installed: its RenderW x RenderH into ResX/ResY at attach, and DepthOfField.
-    [IO.File]::WriteAllText($gamerFile, ([IO.File]::ReadAllText($gamerFile) -replace '(?m)^ResX=\d+', 'ResX=4096' -replace '(?m)^ResY=\d+', 'ResY=2304' -replace
+    # What the renderer writes while the mod is installed: its RenderW x RenderH into ResX/ResY at attach (the renderer ini's:
+    # ME2's 4096x2304, ME3's 3072x2216), and DepthOfField.
+    $renderer = [IO.File]::ReadAllText($rendererIni)
+    $renderW = [regex]::Match($renderer, '(?m)^RenderW=(\d+)').Groups[1].Value
+    $renderH = [regex]::Match($renderer, '(?m)^RenderH=(\d+)').Groups[1].Value
+    Check ($renderW -and $renderH) "${game}: the renderer's size in its settings file ($renderW x $renderH)"
+    [IO.File]::WriteAllText($gamerFile, ([IO.File]::ReadAllText($gamerFile) -replace '(?m)^ResX=\d+', "ResX=$renderW" -replace '(?m)^ResY=\d+', "ResY=$renderH" -replace
         '(?m)^\[SystemSettings\]\r?\n', "[SystemSettings]`r`nDepthOfField=False`r`n"))
     Check ((Run-Setup @('--uninstall')) -eq 0) "${game}: uninstall"
     $diff = Compare-Object $beforeGame (Snapshot)

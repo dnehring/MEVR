@@ -892,13 +892,14 @@ stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs 
   still and turning, through menu, recenter and a reload.
 - [ ] Life-size stereo (T09; research/30 section 9): as ME2's line; upstream ME3 squeezed everything into the first metre,
   so the scale change is large: check depth and size, and that the HUD panel and sights still sit where they should.
-  **Lamps' lens flares** (research/30 9.4 item 6 and 9.5; the owner chose mode 1 on ME3, 2026-11-17, lane DEF: both eyes
-  through the shared symmetric window, `MELE3VR.ini [VR] MetricEyeFrustum = 0`): look at a ceiling lamp on the Normandy with
-  each eye closed in turn: its flare on the lamp in both eyes, fusing; nothing missing at either eye's outer edge. (In mode 2,
-  `MetricEyeFrustum = 1`, each flare sat off its lamp, differently in each eye.) **If question 17 (a) is a yes** (lane FL,
-  research/le3-flares-and-window.md: mode 2 with `ASI\LE3MEVR.ini [Stereo] flareWindow = 1`): the same look at the same
-  lamp, now sharper (19.2 x 11.3 px per degree against 14.6 x 7.3); with (b), `[Stereo] windowEyes = 1`, the HUD panel's
-  elements still on their world points in a scene with a HUD.
+  **Lamps' lens flares and sharpness** (research/le3-flares-and-window.md; the owner's answer to question 17, 2026-11-17,
+  lane DEF2: ME3 ships mode 2, each eye's own frustum, `MELE3VR.ini [VR] MetricEyeFrustum = 1`, with the flare fix,
+  `ASI\LE3MEVR.ini [Stereo] flareWindow = 1`, at 3072x2216; seen on the fake headset with your PS VR2's eyes replayed): look
+  at a ceiling lamp on the Normandy with each eye closed in turn: its flare on the lamp in both eyes, fusing; nothing missing
+  at either eye's outer edge; the room as sharp across and down as ME2 (each eye 19.2 x 14.6 px per degree, mode 1 had 14.6
+  x 7.3). If a flare sits off its lamp, `[Stereo] flareWindow = 0` shows the engine's own placement (off, differently per
+  eye) and `MetricEyeFrustum = 0` the old mode 1. Still open (question 17 (b)): `[Stereo] windowEyes = 1`, the HUD panel's
+  elements on their world points in a scene with a HUD, before it becomes the default.
 - [ ] Changes of view on ME2 and ME3 (research/30 9.4, lane FXR): leaving the 3D cinema screen, a load's end, a menu and
   back: no single frame with the eyes swapped or the world jumping in depth.
 - [ ] First person from the start (T01's R32; research/trilogy-first-person.md, lane FP3 2026-11-17; seen on the fake
@@ -947,10 +948,11 @@ stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs 
 - [ ] Cinema (T15; research/le3-dialogue-cinema.md): the screen fixed in the room, the reply wheel and subtitles readable,
   the interrupt prompt and its triggers.
 - [ ] Melee and traversal (T34, T33; research/le3-melee-audit.md, research/le3-traversal-adapter.md): no accidental
-  strike while handling the gun; the horizon and heading through a ladder, a vault and a roll. ME3's melee is opt-in until the
-  owner answers question 7 (`mevr melee requests on`, `gestures on`), and B is squad placement's on ME3 too since 2026-11-17
-  (lane MEL): by default ME3 has no melee on foot. Once on: the checks of research/le3-combat-fixtures.md "Melee on the first
-  combat save", then the feel.
+  strike while handling the gun; the horizon and heading through a ladder, a vault and a roll. ME3's stroke melee is on by
+  default since 2026-11-17 (lane DEF2, as on ME1 and ME2; `[Throwables] melee = 0` turns it off), B is squad placement's
+  (lane MEL), and the heavy "chamber and strike" stays opt-in until question 7 (`mevr melee heavy-gestures on`). In a fight:
+  a fast stroke of either hand at an enemy within reach melees with the gun out, a stroke while aiming or reloading doesn't;
+  the checks of research/le3-combat-fixtures.md "Melee on the first combat save", then the feel.
 - [ ] Galaxy projector (T42; docs/galaxy-projector-handoff.md step 4): alignment with the physical projector, legibility,
   comfort, GPU cost.
 - [ ] Performance (T07, T10; docs/me3-overall-goal-handoff.md section 4): frame pacing in a real headset; the desktop

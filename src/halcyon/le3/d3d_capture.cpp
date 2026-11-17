@@ -5748,8 +5748,12 @@ void ArmResolutionSpoof() noexcept
             if (slash != std::wstring::npos)
             {
                 ini = ini.substr(0, slash + 1) + L"MELE3VR.ini";
-                UINT rw = static_cast<UINT>(GetPrivateProfileIntW(L"VR", L"RenderW", 0, ini.c_str()));
-                UINT rh = static_cast<UINT>(GetPrivateProfileIntW(L"VR", L"RenderH", 0, ini.c_str()));
+                // [MEVR] ME3's render size when the ini has no RenderW/RenderH: 3072x2216 (the owner's answer to question 17,
+                // 2026-11-17; research/le3-flares-and-window.md section 3: both sides multiples of 8, the vertical the 16:9
+                // image lacked). An explicit 0 still leaves the game's own resolution alone. Needs the borderless window
+                // tools/vr-game-settings.ps1 and MEVR Setup set (a titled window's height is clamped to the desktop).
+                UINT rw = static_cast<UINT>(GetPrivateProfileIntW(L"VR", L"RenderW", 3072, ini.c_str()));
+                UINT rh = static_cast<UINT>(GetPrivateProfileIntW(L"VR", L"RenderH", 2216, ini.c_str()));
 
                 // NOTHING is forced here any more. Two things were learned the hard way:
                 //
