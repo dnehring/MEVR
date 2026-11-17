@@ -194,6 +194,109 @@ try {
         $replacement = [pscustomobject]@{ Id = 42; Path = $expected; StartTime = $requested.AddSeconds(2); HasExited = $false }
         With-ProcessObservations @($liveProcess, $replacement) { Reject { Get-RunLaunchIdentity 42 $expected $requested } }
     }
+    # Launch adoption over time (Step-RunAdoption): synthetic observations only, no process is started or stopped.
+    $gameExe = 'C:\synthetic\MassEffect2.exe'
+    function Obs([int]$ProcessId, $Path, $Start, [switch]$Gone) {
+        if ($Gone) { return [pscustomobject]@{ pid = $ProcessId; alive = $false; readable = $false; changed = $false; path = $null; startedUtc = $null } }
+        [pscustomobject]@{ pid = $ProcessId; alive = $true; readable = [bool]($Path -and $null -ne $Start); changed = $false; path = $Path; startedUtc = $Start }
+    }
+    Case 'launch adoption waits out a suspended launcher, then records it' {
+        $a = New-RunAdoption 'MassEffectLauncher' $expected $requested
+        $born = $requested.AddSeconds(1)
+        foreach ($s in 0..13) { Check ($null -eq (Step-RunAdoption $a @(Obs 7 $null $born) $requested.AddSeconds(1 + $s))) }
+        $identity = Step-RunAdoption $a @(Obs 7 $expected $born) $requested.AddSeconds(15)
+        Check ($identity.pid -eq 7 -and $identity.path -eq $expected -and $identity.startedUtc -eq $born.ToString('o'))
+        $p = [pscustomobject]@{ Id = 7; Path = $expected; StartTime = $born }
+        Assert-RunProcess $p $identity $expected # the same record -Stop, load.ps1 and restore.ps1 already accept
+        Check ((@(Get-RunAdoptionLines $a) -join "`n") -match 'not readable yet(?s).*readable after 14 s unreadable(?s).*adopted pid=7')
+        Check (@(Get-RunAdoptionLines $a).Count -eq 0) # each line handed out once
+        Check ($null -eq (Step-RunAdoption $a @() $requested.AddSeconds(17))) # the launcher ends after starting the game
+        Check ((@(Get-RunAdoptionLines $a) -join "`n") -match 'pid=7 exited .*recorded earlier')
+    }
+    Case 'launch adoption drops a candidate that exits and adopts the survivor after the settle time' {
+        $a = New-RunAdoption 'MassEffect2' $gameExe $requested -SettleSeconds 5
+        $first = $requested.AddSeconds(2); $second = $requested.AddSeconds(17)
+        Check ($null -eq (Step-RunAdoption $a @(Obs 11 $gameExe $first) $requested.AddSeconds(2)))
+        Check ($null -eq (Step-RunAdoption $a @(Obs 11 $gameExe $first) $requested.AddSeconds(4))) # readable, not settled
+        Check ($null -eq (Step-RunAdoption $a @(Obs 11 -Gone) $requested.AddSeconds(5)))
+        Check ($null -eq (Step-RunAdoption $a @() $requested.AddSeconds(10)))
+        Check ($null -eq (Step-RunAdoption $a @(Obs 12 $null $second) $requested.AddSeconds(17))) # successor, still suspended
+        foreach ($s in 18..22) { Check ($null -eq (Step-RunAdoption $a @(Obs 12 $gameExe $second) $requested.AddSeconds($s))) }
+        $identity = Step-RunAdoption $a @(Obs 12 $gameExe $second) $requested.AddSeconds(23)
+        Check ($identity.pid -eq 12 -and $identity.startedUtc -eq $second.ToString('o'))
+        $text = @(Get-RunAdoptionLines $a) -join "`n"
+        Check ($text -match 'pid=11 exited' -and $text -match 'candidate seen: pid=12' -and $text -match 'adopted pid=12')
+        Check ($text -notmatch 'adopted pid=11')
+    }
+    Case 'launch adoption restarts the settle time when an identity stops reading and refuses persistent unreadability' {
+        $a = New-RunAdoption 'MassEffect2' $gameExe $requested -SettleSeconds 5
+        $born = $requested.AddSeconds(1)
+        Check ($null -eq (Step-RunAdoption $a @(Obs 21 $gameExe $born) $requested.AddSeconds(1)))
+        Check ($null -eq (Step-RunAdoption $a @(Obs 21 $null $born) $requested.AddSeconds(4))) # exiting or briefly unreadable
+        Check ($null -eq (Step-RunAdoption $a @(Obs 21 $gameExe $born) $requested.AddSeconds(7)))
+        Check ($null -eq (Step-RunAdoption $a @(Obs 21 $gameExe $born) $requested.AddSeconds(11))) # 4 s since it read again
+        Check ($null -ne (Step-RunAdoption $a @(Obs 21 $gameExe $born) $requested.AddSeconds(12)))
+        $b = New-RunAdoption 'MassEffect2' $gameExe $requested -SettleSeconds 5
+        Check ($null -eq (Step-RunAdoption $b @(Obs 22 $null $born) $requested.AddSeconds(1)))
+        Check ($null -eq (Step-RunAdoption $b @(Obs 22 $null $born) $requested.AddSeconds(61)))
+        Reject { Step-RunAdoption $b @(Obs 22 $null $born) $requested.AddSeconds(62) }
+    }
+    Case 'launch adoption refuses two live candidates, earlier or foreign processes and replaced identities' {
+        $born = $requested.AddSeconds(1)
+        $a = New-RunAdoption 'MassEffect2' $gameExe $requested -SettleSeconds 5
+        Reject { Step-RunAdoption $a @((Obs 31 $gameExe $born), (Obs 32 $null $born)) $requested.AddSeconds(2) }
+        foreach ($bad in @((Obs 33 $gameExe $requested.AddMinutes(-1)), (Obs 33 $null $requested.AddMinutes(-1)),
+            (Obs 33 'C:\other\MassEffect2.exe' $born), (Obs 33 'C:\other\MassEffect2.exe' $null))) {
+            $a = New-RunAdoption 'MassEffect2' $gameExe $requested -SettleSeconds 5
+            Reject { Step-RunAdoption $a @($bad) $requested.AddSeconds(2) }
+        }
+        $a = New-RunAdoption 'MassEffect2' $gameExe $requested -SettleSeconds 5
+        $changed = Obs 34 $gameExe $born; $changed.changed = $true; $changed.readable = $false
+        Reject { Step-RunAdoption $a @($changed) $requested.AddSeconds(2) }
+        $a = New-RunAdoption 'MassEffect2' $gameExe $requested -SettleSeconds 5
+        Check ($null -eq (Step-RunAdoption $a @(Obs 35 $gameExe $born) $requested.AddSeconds(2)))
+        Reject { Step-RunAdoption $a @(Obs 35 $gameExe $born.AddSeconds(3)) $requested.AddSeconds(4) } # PID replaced
+        $a = New-RunAdoption 'MassEffect2' $gameExe $requested -SettleSeconds 5
+        Check ($null -eq (Step-RunAdoption $a @(Obs 36 -Gone) $requested.AddSeconds(2)))
+        Reject { Step-RunAdoption $a @(Obs 36 $gameExe $born) $requested.AddSeconds(3) } # alive again after it exited
+        $foreign = @([pscustomobject]@{ pid = 37; startedUtc = $born.ToString('o'); source = 'le3-current.json' })
+        $a = New-RunAdoption 'MassEffect2' $gameExe $requested -SettleSeconds 5
+        Reject { Step-RunAdoption $a @(Obs 37 $gameExe $born) $requested.AddSeconds(2) $foreign }
+        $a = New-RunAdoption 'MassEffect2' $gameExe $requested -SettleSeconds 5
+        Reject { Step-RunAdoption $a @(Obs 37 $null $null) $requested.AddSeconds(2) $foreign }
+        $a = New-RunAdoption 'MassEffect2' $gameExe $requested -SettleSeconds 0 # a stale foreign record of a reused PID
+        Check ($null -ne (Step-RunAdoption $a @(Obs 37 $gameExe $born.AddSeconds(1)) $requested.AddSeconds(3) $foreign))
+    }
+    Case 'launch candidate reads tolerate suspension and exit but report replacement' {
+        $born = $requested.AddSeconds(1)
+        $suspended = [pscustomobject]@{ Id = 42; Path = $null; StartTime = $born; HasExited = $false }
+        With-ProcessObservations @($suspended, $suspended) {
+            $o = Read-RunCandidate 42; Check ($o.alive -and -not $o.readable -and -not $o.changed -and $o.startedUtc -eq $born)
+        }
+        With-ProcessObservations @($null) { Check (-not (Read-RunCandidate 42).alive) }
+        $exited = [pscustomobject]@{ Id = 42; Path = $null; StartTime = $null; HasExited = $true }
+        With-ProcessObservations @($liveProcess, $exited) { Check (-not (Read-RunCandidate 42).alive) }
+        With-ProcessObservations @($liveProcess, $liveProcess) {
+            $o = Read-RunCandidate 42; Check ($o.readable -and $o.path -eq $expected -and $o.startedUtc -eq $liveProcess.StartTime)
+        }
+        $replacement = [pscustomobject]@{ Id = 42; Path = $expected; StartTime = $requested.AddSeconds(2); HasExited = $false }
+        With-ProcessObservations @($liveProcess, $replacement) { $o = Read-RunCandidate 42; Check ($o.changed -and -not $o.readable) }
+        $denied = [pscustomobject]@{ Id = 42; Path = $null; StartTime = $born } | Add-Member -MemberType ScriptProperty -Name HasExited -Value { throw 'Access is denied' } -PassThru
+        With-ProcessObservations @($denied, $denied) { $o = Read-RunCandidate 42; Check ($o.alive -and -not $o.readable) }
+    }
+    Case 'foreign process records come only from other open sessions' {
+        $oldData = $env:LOCALAPPDATA
+        $env:LOCALAPPDATA = Join-Path $root 'foreign-appdata'
+        try {
+            $sessions = Join-Path $env:LOCALAPPDATA 'MEVR\sessions'; New-Item -ItemType Directory -Force $sessions | Out-Null
+            $own = Join-Path $sessions 'le2-current.json'
+            '{"gameProcess":{"pid":5,"path":"x","startedUtc":"a"}}' | Set-Content -LiteralPath $own
+            '{"gameProcess":{"pid":6,"path":"y","startedUtc":"b"},"launcherProcess":null}' | Set-Content -LiteralPath (Join-Path $sessions 'le3-current.json')
+            'not json' | Set-Content -LiteralPath (Join-Path $sessions 'broken-current.json')
+            $rows = @(Get-RunForeignProcesses $own)
+            Check ($rows.Count -eq 1 -and $rows[0].pid -eq 6 -and $rows[0].startedUtc -eq 'b' -and $rows[0].source -eq 'le3-current.json')
+        } finally { $env:LOCALAPPDATA = $oldData }
+    }
     $live = Join-Path $root 'live'; $backup = Join-Path $root 'backup'; $manifest = Join-Path $root 'before.json'
     New-Item -ItemType Directory $live | Out-Null
     [IO.File]::WriteAllText("$live\save[1].pcsav", 'synthetic save bytes')

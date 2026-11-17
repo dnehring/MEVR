@@ -216,6 +216,176 @@ function Assert-RunProcess($Process, $Recorded, [string]$ExpectedPath) {
         $Process.Path -ne $ExpectedPath -or $Process.Path -ne $Recorded.path -or
         $Process.StartTime.ToUniversalTime().ToString('o') -ne $Recorded.startedUtc) { throw 'Unowned or changed process: refusing to stop it' }
 }
+# Launch adoption over time (2026-11-16, gotcha launcher-suspended-by-ea). Steam starts EA's EASteamLauncher, which
+# creates MassEffectLauncher.exe SUSPENDED and resumes it 0.2-14 s later; a suspended (or exiting) process reports no
+# Path while its StartTime reads, so one double read (Get-RunLaunchIdentity) cannot judge it. launch.ps1 instead
+# tracks every candidate of a name across polls: a live candidate whose identity is not readable yet is waited for
+# (bounded), one that exits is dropped, and only a single live candidate whose identity has stayed readable and
+# unchanged for the settle time is adopted. Wrong path, a start before the request, a PID whose identity changes,
+# another runner's recorded process and two live candidates at once are refused, as before.
+function Test-RunExited($Process) {
+    # HasExited needs a process handle; when it cannot be read the process counts as alive (and unreadable).
+    try { return [bool]$Process.HasExited } catch { return $false }
+}
+function Read-RunCandidate([int]$ProcessId) {
+    # One observation: the PID resolved twice. Never throws for an unreadable identity; reports what was read.
+    $gone = [pscustomobject]@{ pid = $ProcessId; alive = $false; readable = $false; changed = $false; path = $null; startedUtc = $null }
+    $process = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
+    if (-not $process) { return $gone }
+    $path = $null; $started = $null
+    try { $path = $process.Path } catch { }
+    try { $started = $process.StartTime.ToUniversalTime() } catch { }
+    $still = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
+    if (-not $still -or (Test-RunExited $still)) { return $gone }
+    $stillPath = $null; $stillStarted = $null
+    try { $stillPath = $still.Path } catch { }
+    try { $stillStarted = $still.StartTime.ToUniversalTime() } catch { }
+    if (Test-RunExited $still) { return $gone }
+    # A field read on both samples that differs is a replaced PID, never a slow start.
+    $changed = [bool](($path -and $stillPath -and $path -ne $stillPath) -or
+        ($null -ne $started -and $null -ne $stillStarted -and $started -ne $stillStarted))
+    $readable = [bool]($path -and $stillPath -and $null -ne $started -and $null -ne $stillStarted -and -not $changed)
+    [pscustomobject]@{ pid = $ProcessId; alive = $true; readable = $readable; changed = $changed
+        path = $(if ($stillPath) { $stillPath } else { $path })
+        startedUtc = $(if ($null -ne $stillStarted) { $stillStarted } else { $started }) }
+}
+function Get-RunParentText([int]$ProcessId) {
+    # Diagnostics only (who started a candidate); never used for ownership.
+    try {
+        $row = Get-CimInstance Win32_Process -Filter "ProcessId = $ProcessId" -ErrorAction Stop
+        if (-not $row) { return 'parent unknown (process gone)' }
+        $parent = Get-Process -Id $row.ParentProcessId -ErrorAction SilentlyContinue
+        $name = if (-not $parent) { 'exited' } elseif ($row.CreationDate -and $parent.StartTime -gt $row.CreationDate) { 'exited (PID reused)' } else { $parent.ProcessName }
+        return "parent $name pid $($row.ParentProcessId)"
+    } catch { return "parent unknown ($($_.Exception.Message))" }
+}
+function Get-RunForeignProcesses([string]$Current) {
+    # Processes another runner's open session (another *-current.json) records. Unparseable files are skipped:
+    # the global run lock already keeps two runners apart; this only refuses a recorded match.
+    $sessions = Join-Path $env:LOCALAPPDATA 'MEVR\sessions'
+    $rows = @()
+    foreach ($file in @(Get-ChildItem -LiteralPath $sessions -Filter '*-current.json' -File -ErrorAction SilentlyContinue)) {
+        if ([IO.Path]::GetFullPath($file.FullName) -ieq [IO.Path]::GetFullPath($Current)) { continue }
+        $other = $null
+        try { $other = Get-Content -LiteralPath $file.FullName -Raw | ConvertFrom-Json } catch { continue }
+        foreach ($name in @('gameProcess', 'launcherProcess')) {
+            $property = $other.PSObject.Properties[$name]
+            if ($property -and $property.Value -and $property.Value.pid) {
+                $rows += [pscustomobject]@{ pid = [int]$property.Value.pid; startedUtc = [string]$property.Value.startedUtc; source = $file.Name }
+            }
+        }
+    }
+    return $rows
+}
+function New-RunAdoption([string]$Label, [string]$ExpectedPath, [DateTime]$RequestedUtc,
+    [double]$SettleSeconds = 0, [double]$UnreadableSeconds = 60) {
+    [pscustomobject]@{ label = $Label; expectedPath = $ExpectedPath; requestedUtc = $RequestedUtc; settleSeconds = $SettleSeconds
+        unreadableSeconds = $UnreadableSeconds; candidates = @{}; adopted = $null; printed = 0
+        log = (New-Object Collections.Generic.List[string]) }
+}
+function Add-RunAdoptionLog($Adoption, [DateTime]$Now, [string]$Text) {
+    $Adoption.log.Add("[$($Now.ToLocalTime().ToString('HH:mm:ss.fff'))] $($Adoption.label) $Text")
+}
+function Format-RunCandidate($Observation) {
+    $started = if ($null -ne $Observation.startedUtc) { $Observation.startedUtc.ToString('o') } else { 'unavailable' }
+    "pid=$($Observation.pid) path='$($Observation.path)' startedUtc='$started'"
+}
+function Step-RunAdoption($Adoption, [object[]]$Observations, [DateTime]$Now, [object[]]$Foreign = @()) {
+    # $Observations: Read-RunCandidate for every PID of the name enumerated this poll (a PID absent has exited).
+    # Returns the adopted identity (pid, path, startedUtc as now recorded) or $null; throws on every refusal.
+    $A = $Adoption
+    $seen = @{}
+    $live = @()
+    foreach ($o in @($Observations)) {
+        if ($null -eq $o) { continue }
+        $key = [string]$o.pid
+        $seen[$key] = $true
+        $c = $A.candidates[$key]
+        $text = Format-RunCandidate $o
+        $parent = if ($o.PSObject.Properties['parent'] -and $o.parent) { "; $($o.parent)" } else { '' }
+        if (-not $o.alive) {
+            if (-not $c) {
+                $A.candidates[$key] = [pscustomobject]@{ pid = $o.pid; firstSeen = $Now; readableSince = $null; unreadableSince = $null; identity = $null; exited = $true }
+                Add-RunAdoptionLog $A $Now "pid=$($o.pid) seen as it exited; not adopted"
+            } elseif (-not $c.exited) {
+                $c.exited = $true
+                Add-RunAdoptionLog $A $Now "pid=$($o.pid) exited $([int]($Now - $c.firstSeen).TotalSeconds) s after it was seen; not adopted"
+            }
+            continue
+        }
+        if ($c -and $c.exited) {
+            throw "$($A.label) PID $($o.pid) is alive again after it exited (PID reused); not adopted ($text)"
+        }
+        if (-not $c) {
+            $c = [pscustomobject]@{ pid = $o.pid; firstSeen = $Now; readableSince = $null; unreadableSince = $null; identity = $null; exited = $false }
+            $A.candidates[$key] = $c
+            Add-RunAdoptionLog $A $Now "candidate seen: $text$parent"
+        }
+        # Refusals that waiting never cures.
+        foreach ($row in @($Foreign)) {
+            if ($row.pid -eq $o.pid -and ($null -eq $o.startedUtc -or $row.startedUtc -eq $o.startedUtc.ToString('o'))) {
+                throw "$($A.label) $text is recorded by another runner's session ($($row.source)); not adopted"
+            }
+        }
+        if ($o.changed) { throw "Live process identity changed between reads; not adopted ($text)" }
+        if (($o.path -and $o.path -ne $A.expectedPath) -or ($null -ne $o.startedUtc -and $o.startedUtc -lt $A.requestedUtc)) {
+            throw "Unexpected live process; not adopted ($text; expectedPath='$($A.expectedPath)' requestedUtc='$($A.requestedUtc.ToString('o'))')"
+        }
+        if ($o.readable) {
+            $identity = [pscustomobject]@{ pid = $o.pid; path = $o.path; startedUtc = $o.startedUtc.ToString('o') }
+            if ($c.identity -and ($c.identity.path -ne $identity.path -or $c.identity.startedUtc -ne $identity.startedUtc)) {
+                throw "Live process identity changed since it was first read (PID replaced); not adopted ($text)"
+            }
+            $c.identity = $identity
+            if ($c.unreadableSince) {
+                Add-RunAdoptionLog $A $Now "pid=$($o.pid) readable after $([math]::Round(($Now - $c.unreadableSince).TotalSeconds, 1)) s unreadable"
+                $c.unreadableSince = $null
+            }
+            if (-not $c.readableSince) {
+                $c.readableSince = $Now
+                Add-RunAdoptionLog $A $Now "pid=$($o.pid) identity readable ($text); settling $($A.settleSeconds) s"
+            }
+        } else {
+            if ($c.readableSince) {
+                $c.readableSince = $null
+                Add-RunAdoptionLog $A $Now "pid=$($o.pid) identity no longer readable while alive; settle restarts"
+            }
+            if (-not $c.unreadableSince) {
+                $c.unreadableSince = $Now
+                Add-RunAdoptionLog $A $Now "pid=$($o.pid) identity not readable yet (suspended, starting or exiting): $text; waiting up to $($A.unreadableSeconds) s"
+            } elseif (($Now - $c.unreadableSince).TotalSeconds -gt $A.unreadableSeconds) {
+                throw "Live process identity unavailable for over $($A.unreadableSeconds) seconds; not adopted ($text)"
+            }
+        }
+        $live += $c
+    }
+    foreach ($key in @($A.candidates.Keys)) {
+        $c = $A.candidates[$key]
+        if (-not $seen.ContainsKey($key) -and -not $c.exited) {
+            $c.exited = $true
+            $what = if ($A.adopted -and $A.adopted.pid -eq $c.pid) { 'recorded earlier' } else { 'not adopted' }
+            Add-RunAdoptionLog $A $Now "pid=$($c.pid) exited $([int]($Now - $c.firstSeen).TotalSeconds) s after it was seen; $what"
+        }
+    }
+    if ($live.Count -gt 1) {
+        throw "Multiple live $($A.label) processes ($((@($live | ForEach-Object { $_.pid })) -join ', ')); refusing to adopt them"
+    }
+    if ($live.Count -eq 1 -and $live[0].readableSince -and ($Now - $live[0].readableSince).TotalSeconds -ge $A.settleSeconds) {
+        $c = $live[0]
+        if (-not $A.adopted -or $A.adopted.pid -ne $c.identity.pid -or $A.adopted.startedUtc -ne $c.identity.startedUtc) {
+            $A.adopted = $c.identity
+            Add-RunAdoptionLog $A $Now "adopted pid=$($c.pid): alive, readable and unchanged for $([math]::Round(($Now - $c.readableSince).TotalSeconds, 1)) s"
+        }
+        return $c.identity
+    }
+    return $null
+}
+function Get-RunAdoptionLines($Adoption) {
+    # The log lines not yet handed out, for printing and the session's launch-candidates.txt.
+    $lines = @()
+    for (; $Adoption.printed -lt $Adoption.log.Count; $Adoption.printed++) { $lines += $Adoption.log[$Adoption.printed] }
+    return $lines
+}
 function Assert-RunDumpHost([string]$HostPath, [bool]$EngineProbe = $false) {
     $marker = if ($EngineProbe) { 'engine-probe: host renderer disabled' } else { 'dump-only: code dump attempted; renderer and hooks disabled' }
     if (-not [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($HostPath)).Contains($marker)) {

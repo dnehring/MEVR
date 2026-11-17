@@ -40,6 +40,20 @@ tools\le2-halcyon-run\restore.ps1 -Holder <session name>                        
   held 0.3 s dumps the camera graph).
 - Never run anything that takes the game slot (`tools/game-slot.ps1`) while a stretch is open, and never `return` a
   slot without asking the owner.
+- **A launch shows two processes, and the first one ends** (since 2026-11-16; gotcha
+  [ea-steam-launcher-starts-the-launcher-suspended](../../docs/knowledge/gotchas/ea-steam-launcher-starts-the-launcher-suspended.md)):
+  Steam hands `-applaunch 1328670` to EA's `EASteamLauncher.exe`, which creates `MassEffectLauncher.exe` **suspended**
+  and resumes it 0.2-14 s later; the launcher starts the game and exits. A suspended process has no readable path, which
+  the old one-shot check refused (`Live process identity unavailable or changed; not adopted (pid=... path='' ...)`), and
+  the launcher's exit looked like a first game process. `launch.ps1` now follows every `MassEffectLauncher` and game
+  process over time (`Step-RunAdoption` in `session-common.ps1`): one whose identity can't be read yet is waited for (at
+  most 60 s), one that exits is dropped, the launcher is recorded once its identity reads, and the game is adopted only
+  as the single live one whose path and start time have stayed readable and unchanged for 5 s. A wrong path, a start
+  before the request, a PID whose identity changes or comes back after exiting, a process another open session records
+  and two live game processes at once are still refused. Every candidate (with its parent process) and every verdict is
+  printed and appended to the session's `launch-candidates.txt`. The recorded `gameProcess`/`launcherProcess` are as
+  before, so `-Stop`, `-Kill`, `load.ps1` and `restore.ps1` are unchanged; the by-hand workaround (console `mevr load`,
+  `Stop-Process`) is no longer needed.
 
 ## ME3 development dump only
 
@@ -109,7 +123,9 @@ Synthetic files only; these checks never launch or deploy the game.
 powershell -NoProfile -ExecutionPolicy Bypass -File tools\le2-halcyon-run\test-session.ps1
 ```
 
-These cover mode/holder/game refusals, legacy metadata, path boundaries, PID reuse, failed/altered/empty backups,
+These cover mode/holder/game refusals, legacy metadata, path boundaries, PID reuse, launch adoption over time (a
+suspended launcher, a candidate that exits before its successor settles, unreadable then readable identities, two live
+candidates, earlier or foreign processes), failed/altered/empty backups,
 wrong-build and truncated dump metadata, and rejecting hosts without the dump-only gate. They do not replace the
 first protected native launch and hash-verified restoration acceptance.
 
