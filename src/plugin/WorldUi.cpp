@@ -136,19 +136,19 @@ void Forget() {
 unsigned Ownership(int mode) {
     std::lock_guard<std::mutex> const lock(gOpeningMutex);
     ExpireOpening();
-    if (gOpening.Pending() && mode != 7 && !(mode >= 0 && mode <= 4)) {
+    if (gOpening.Pending() && !wu::GuiMode(mode) && !wu::PlayMode(mode)) {
         gOpening.Cancel(0);
         gGuard = false;
         log::Info("world ui: reservation cancelled (game mode {})", mode);
     }
     return (wu::ScreenMode(mode) && Active() ? 1u : 0u) | (gOpening.Eligible(mode) ? 2u : 0u) |
-        (gOpening.Pending() && mode >= 0 && mode <= 4 ? 4u : 0u);  // opening call hasn't changed the mode yet
+        (gOpening.Pending() && wu::PlayMode(mode) ? 4u : 0u);  // opening call hasn't changed the mode yet
 }
 
 bool HoldFrame(int mode) {
     std::lock_guard<std::mutex> const lock(gOpeningMutex);
     ExpireOpening();
-    return (mode == 7 || (mode >= 0 && mode <= 4)) && gGuard && (gOpening.Pending() || Active());
+    return (wu::GuiMode(mode) || wu::PlayMode(mode)) && gGuard && (gOpening.Pending() || Active());
 }
 
 void RedirectReady(bool ready) {

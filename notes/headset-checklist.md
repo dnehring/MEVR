@@ -851,10 +851,9 @@ stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs 
   far from where it was lost, the pistol's right-hip buzz on the way round, a reach too high, too low or too far back
   (`[Holsters] lowerBack`); seated, the place beside the chair's back (`seatedLowerBack`). Then thighRight against lowerBack:
   which should be the default.
-- [ ] The reload by hand (T26; research/le2-vrik.md "The reload by hand: the game's side"): fire a few shots, squeeze the left
-  grip at the left hip (the pouch), bring the hand over the gun just behind your right hand and push in: the game reloads,
-  the ammo as the game's own reload counts it. Watch for: the pouch's place, the receiver too small or too far, a two-handed
-  grip that turns into a clip, the reload's sound and animation; a full magazine buzzes no.
+- The reload by hand (T26): off by default on ME2 and ME3 since 2026-11-16 (the owner: a hand at the hip makes no sense);
+  nothing to test until its gesture is redesigned with the owner. The game's own reload button and its automatic reload
+  work as always.
 - [ ] ME2's faster shield recharge behind cover (T31, research/23 section 7.5): crouched behind a crate with every enemy
   hidden, the shields come back sooner than standing in the open; a flanking enemy in view takes it away.
 - [ ] Powers (T44; research/55 "Mass Effect 2"): the push at a hostile, the chest and gun gestures' targets, the coach card.
@@ -883,9 +882,14 @@ stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs 
   pulls: the log says `holsters: the game wanted to draw your weapon (...FireWeapon): refused` each time), a grab at a slot
   drawing it again, no stuck state (powers, melee, cover, a reload, a conversation and a cutscene with the gun away), and
   no error dialog or crash. Report what you see; it becomes ME3's default only once it works.
-- [ ] The reload by hand (T26): as ME2's line, on a mission (unverified on ME3: no combat save here).
 - [ ] Menus (T37-T39; research/le3-native-gui.md): our menu, calibration, the rail and wrist projection, the game's
   screens and the pointer.
+- [ ] The game's screens on the wrist and in the room (T39; research/le3-native-gui.md "The game's screens on ME3", lane OM2
+  2026-11-16): the Mission Computer and the map projected from the left wrist with the rail beside them, the War Terminal's
+  War Assets standing toward the console, the Normandy visible behind them (not the dark nebula), the squad record still on
+  the flat panel. Known on the fake headset: a pointer click on a world screen doesn't open the page yet (use the rail's
+  entries), and Shepard's body may fill part of the view behind a screen (the GUI camera's eye). Report legibility, reach,
+  and whether the screen's place feels right.
 - [ ] Cinema (T15; research/le3-dialogue-cinema.md): the screen fixed in the room, the reply wheel and subtitles readable,
   the interrupt prompt and its triggers.
 - [ ] Melee and traversal (T34, T33; research/le3-melee-audit.md, research/le3-traversal-adapter.md): no accidental

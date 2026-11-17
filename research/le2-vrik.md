@@ -568,6 +568,11 @@ carries an SMG.
 
 ## The reload by hand: the game's side (lane WP, 2026-11-16)
 
+**Off by default since 2026-11-16** (the owner: "putting my left hand to the hip makes no sense ... So don't enable that
+flow"): `[Reload] enabled = 0` in a new file and `hand_calibration::Reload::enabled`'s code default; an older file's `enabled = 1`
+(the first default) moves to 0 once (marker `enabledMoved`). The code stays for the gesture's redesign with the owner;
+`reload.ps1` warns while it's off. The game's own reload button and its automatic reload work as always.
+
 `game/Reload` (MIT; the sequels only: on ME1 `TryStartup` is false and nothing runs) over `core/vr/ReloadGesture` and
 `vr::reload::Coordinator`, the five steps above:
 1. **The pouch** is a body slot for the LEFT hand on the holsters' body frame and scale (`holsters::SlotFrame`: the smoothed

@@ -52,6 +52,9 @@ Caps const& Capabilities() noexcept {
         // The whole gameplay HUD on the body-locked panel, as ME1's and ME2's (research/le3-hud-panel.md): d3d_capture.cpp's
         // EmitUiDraw sends each SFR UI draw to MevrSeams::HudPanelDraw, at the game's own viewport and layout.
         c.hudPanelGameplay = true;
+        // The game's screens on the wrist and in the room, as ME1's and ME2's (research/le3-native-gui.md "The game's screens on
+        // ME3"): d3d_capture.cpp's presentation decision stays out of MENU_MONO while MevrSeams::WorldUiOwnsGui (plugin/MenusLe2).
+        c.worldUi = true;
         // screenReticleHide false: the native LE3 crosshair's ownership has not been verified.
         return c;
     }();

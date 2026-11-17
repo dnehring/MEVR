@@ -5641,7 +5641,10 @@ void UpdatePresentationState() noexcept
         else s_suppressRun = 0;
     }
     const bool galaxy = autoMenus && !fpConvo && ME2VR::EngineProbe::IsGalaxyMapOpen();
-    const int demand = manual ? Manual : menuInputOwner ? InputOwner : galaxy ? Galaxy : Gameplay;
+    // [MEVR] a game screen of ours stands on the wrist or in the room (or is being opened): the GUI mode's input owner is
+    // not a menu presentation; the world stays in stereo and the screen's UI goes to our HUD panel (as ME2's GetMenuMode).
+    const bool worldUiOwns = ::MevrSeams::WorldUiOwnsGui(gmNow);
+    const int demand = manual ? Manual : (menuInputOwner && !worldUiOwns) ? InputOwner : galaxy ? Galaxy : Gameplay;
     const bool wasMenu = g_menuPresentation.load(std::memory_order_acquire);
 
     static int previousInput = -1;

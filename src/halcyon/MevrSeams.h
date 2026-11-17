@@ -340,6 +340,13 @@ void const* TransitionFadeLayer(void* session, void* viewSpace, ID3D11DeviceCont
 PanelPose PlacePanel(PanelKind kind, OverlayFrame const& frame, float const viewPosition[3], float widthM, float heightM,
     bool imageReady) noexcept;
 
+// One of the game's screens stands on the wrist or in the room (plugin/WorldUi, the mod's game/WorldUi; plugin/MenusLe2),
+// or is being opened (the mod reserved it): the GUI mode `mode` (ME2's 7, ME3's 9) is then not flat (the renderer's menu
+// presentation stays out: the world in stereo behind the screen, its UI on our HUD panel), as LE1's
+// MevrBridge::WorldUiOwnership in xr_session.cpp's decision. Any thread. Not called by LE1 (its WorldUiOwnership seams).
+// Moved here from ME2's mevr_bridge.h when ME3 took it (2026-11-16; ME2's name forwards).
+bool WorldUiOwnsGui(int mode) noexcept;
+
 // =====================================================================================================================
 // 5. Input and threads
 // =====================================================================================================================

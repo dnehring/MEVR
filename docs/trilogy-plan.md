@@ -466,7 +466,11 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Waits for:** T05's ME3 combat fixture. Part of ME2's first release (M3.4). **Who:** WP (after C4).
 
 #### T26 The reload by hand [G41]
-- **State:** LE1 n/a · LE2 verify · LE3 build
+- **State:** LE1 n/a · LE2 later · LE3 later
+- **Why later:** the owner, 2026-11-16: "putting my left hand to the hip makes no sense ... So don't enable that flow."
+  Off by default on both sequels since then (`[Reload] enabled = 0`; an older file's 1 moved to 0 once, marker
+  `enabledMoved`; lane RL); the code stays for a gesture redesigned with the owner. The game's own reload button and its
+  automatic reload work as always. What follows is the record of the first gesture.
 - **Lives in:** `game/Reload` (the adapter), `core/vr/PhysicalReloadRequest.hpp` (the coordinator, 18 tests) and `core/vr/ReloadGesture` (the gesture:
   the pouch, the clip held, the receiver entered from outside, Overlord's contact invariants; unit-tested with the
   coordinator, 2026-11-16, research/le2-vrik.md "The reload by hand: the gesture's core"), with `core/ik/BodySlots` for
@@ -476,11 +480,14 @@ These unblock the most: almost every other entry gets smaller once they land.
   coordinator's identities and grant, the request through the button's own `SFXGameModeDefault.TryReload` (state-aware, never
   DoReload or R), the game's ammo observed for the feedback. **Seen on ME2** (Save 4): 12/0/60 -> one shot 11/1/60 -> the
   replayed gesture 12/0/59 (`reloaded after 1.50 s`), a full magazine refused; the game's R and automatic reload stay.
+- **Seen:** nothing yet (no clip in the hand or going in); the game's assets, the clip prop and the gesture's options for
+  the owner to choose (the hip pouch rejected 2026-11-16): research/thermal-clips.md.
 - **Left:** empty, no-reserve and cancelled reloads; contact geometry from Overlord's reviewed pieces (research/
   le2-overlord-reload-reuse.md); ME3's run with a combat fixture.
 - **Closes when:** the Freedom's Progress pistol baseline (12/0/60, 11/1/60, 12/0/59) is reproduced by a replayed
   gesture instead of `R`; empty, partial, no-reserve and cancelled reloads conserve ammo; ME3 the same with its fixture.
-- **Waits for:** T05's ME3 combat fixture for ME3. Part of ME2's first release (M3.5). **Who:** WP (after C4).
+- **Waits for:** the gesture's redesign with the owner (its options: research/thermal-clips.md); then T05's ME3 combat fixture for ME3. Was part of ME2's first
+  release (M3.5) until the owner's decision. **Who:** nobody until the redesign.
 
 #### T27 Guided calibration and hand calibration [G16]
 - **State:** LE1 done · LE2 headset · LE3 headset
@@ -580,7 +587,8 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Lives in:** `plugin/MainMenu`, `plugin/MainMenuSettings`, `src/plugin/menu`, `assets/menu`, `game/MenuPause`,
   `game/GameMenuRequest`.
 - **Left, ME2:** the Holster button was never exercised. **ME3:** the pause (`BioWorldInfo.PauseGame`) has no in-game
-  result and the Holster button is compiled out.
+  result; the Holster button is greyed ("Not on ME3 yet", lane OM2, 2026-11-16) until lane WP's `holsters::PutAway()` and
+  `[Holsters] le3PutAway` on by default (game/GameMenuRequest's `Run(Action::Holster)` then calls it on LE3).
 - **Waits for:** T25 for Holster. **Who:** nobody yet.
 
 #### T38 The omni-tool: the rail, the wrist tap, the gauntlet [G22]
@@ -590,19 +598,24 @@ These unblock the most: almost every other entry gets smaller once they land.
   Mission Computer colours; the entries switch pages and Close returns to gameplay (B and its release). ME3's own frames,
   tabs and fonts are not read (bitmap fills, a font library that isn't a live object): research/le3-native-gui.md "The
   omni-tool on ME3".
-- **Left, ME3:** the headset look; Holster on our menu's top bar (G21, after lane WP's ME3 holster call).
-- **Who:** lane OM.
+- **Done, ME3 (lane OM2, 2026-11-16):** a replayed wrist tap and a fingertip press on the rail's Squad opened the Mission
+  Computer and its squad record.
+- **Left, ME3:** the headset look; Holster on our menu's top bar (G21, greyed until lane WP's ME3 holster call).
+- **Who:** lane OM, OM2.
 
 #### T39 The game's screens in the room and on the wrist, the pointer, the minigames [G23, G26, G24]
 - **State:** LE1 done · LE2 build · LE3 build
 - **Lives in:** `game/WorldUi`, `plugin/WorldUi`, `plugin/GamePointer`, `game/GuiCursor`, `core/vr/GuiEvents`,
   `game/UiWorldFigure`, `plugin/OmniPad`.
+- **Done, ME3 (lane OM2, 2026-11-16):** `setWorldUi` served; the Mission Computer and the map on the wrist, War Assets in
+  the room toward the War Terminal, the squad record (3D Shepard) on the native panel, the level behind ours (their UI world
+  turned off while they stand), B and Close back to gameplay (research/le3-native-gui.md "The game's screens on ME3").
 - **Left, ME2:** the squad member in the equipment screens (`UiWorldFigure`); ME2's hack and bypass minigames are
   different games from ME1's and have no VR treatment ([le2-validation-coverage.md](le2-validation-coverage.md) "Hacking
-  and bypass"); research and loadout screens. **ME3:** `setWorldUi` isn't served: the whole native GUI frame sits on one
-  quad (research/le3-native-gui.md gates 1-4, measured there: "The omni-tool on ME3"); it builds on lane HU's ME3 UI
-  redirect to the HUD panel. `takeGuiEvents` is served on both sequels (ME3's clicks are its own GUI events since lane OM,
-  2026-11-16). ME3 has no bypass minigame.
+  and bypass"); research and loadout screens. **ME3:** a pointer click on a world screen reaches the right pixel as GUI
+  events but ME3's movie mouse doesn't follow it (the page didn't open); behind a screen the eye is the GUI camera's, not
+  first person's (no render hold; Shepard's body in view); the squad member (`UiWorldFigure`); the headset. ME3 has no
+  bypass minigame.
 - **Closes when:** a replayed wrist tap opens the rail, an entry opens the game's screen on the wrist, a ray click and a
   fingertip press land where they point, and B returns to gameplay, on each sequel.
 - **Waits for:** T02. **Who:** nobody yet.
@@ -803,7 +816,7 @@ M1 to M5 of the continuation plan make the first release; M6's modules follow it
 |---|---|---|
 | M3.3 the gun in the hand: sights' mod side, the support grip seen | T24, T22 | build, verify |
 | M3.4 holsters | T25 | build |
-| M3.5 the reload by hand | T26 | build |
+| M3.5 the reload by hand | T26 | later: off until its gesture is redesigned with the owner (2026-11-16) |
 | M5.2 interrupts taken and missed at Veetor | T15 | verify (needs a save) |
 | M7.1 a players' build without LExSDKv2 | T04 | build |
 | M7.2 MEVR Setup for ME2, report a problem | T52 | verify (fake games only) |
@@ -866,6 +879,8 @@ Each is asked once. "Today" is what the build does if nobody answers; no default
 - **8, Thespian on the sequels:** "Thespian is experimental, same with first person." Offered as experimental on the
   sequels, as on ME1, and first-person conversations too.
 - **10 (lane U3's), our quads under our menu:** keep them hidden on every game (today's behaviour).
+- **The reload by hand (T26):** "putting my left hand to the hip makes no sense ... So don't enable that flow." Off by
+  default on ME2 and ME3 (lane RL); the gesture is to be redesigned with the owner.
 - **The second eye and dynamic shadows:** settings may differ per game ("I imagine we'd want to consider second-eye
   settings per game if they are all so different"), and "With our me1 second eye logic it breaks the dynamic shadows.
   So if we go down that path then we will need to disable dynamic shadows." Lane SP measures each option per game with
@@ -995,7 +1010,7 @@ Each with both sides and the side this page takes.
 | 11 | Interrupts "pop up beside the matching hand" (trilogy-design's table) | the prompt shows on the cinema screen's UI layer, taken by the triggers (continuation plan M5.2) | the later one (rule 11) |
 | 12 | Vehicles and the galaxy "on a cinema screen / panel to start"; "physical heat-sink reload everywhere", ME1 included; one holster layout with the SMG at the left hip (trilogy-design) | ME1 shipped a cockpit, a projector hologram, the vent instead of a reload, and the shotgun at the left hip | what ME1 shipped is the reference (rule 1); trilogy-design is historical |
 | 13 | "Do not enable the current non-LE2 Thespian branch: it contains LE1 assumptions" (LE3 plan "Cinema and dialogue") | the ME3 handoff and the ledger record ME3's own Thespian adapter reading three native wheels | the later one: the adapter replaced that branch |
-| 14 | "M6 follows the first ME2 release", and that release has M3, which includes holsters (M3.4) and the reload (M3.5) (continuation plan M6, M7) | on 2026-11-15 the owner authorized M6's parity work in parallel and its packages A-G were built; holsters are still missing and the reload is linked into nothing (ledger G08, G41) | both stand: M6's code is on main, and T25 and T26 are still owed to ME2's first release |
+| 14 | "M6 follows the first ME2 release", and that release has M3, which includes holsters (M3.4) and the reload (M3.5) (continuation plan M6, M7) | on 2026-11-15 the owner authorized M6's parity work in parallel and its packages A-G were built; holsters are still missing and the reload is linked into nothing (ledger G08, G41) | both stand: M6's code is on main, and T25 is still owed to ME2's first release; T26 is off since the owner's decision of 2026-11-16 (later, its gesture to be redesigned) |
 | 15 | Squad placement is on by default (ME1) | opt-in on both sequels | not a disagreement to settle here: an unseen feature stays off until seen (rules 15, 19) |
 
 ## Dropped, with reasons
