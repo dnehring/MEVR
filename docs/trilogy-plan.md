@@ -41,7 +41,7 @@ Each rule has who decided it, when, and where it was said. "The continuation pla
 | 5 | **No camera recoil, from the first shot.** It "wasn't popular". The view stays level, the gun kicks in the hand, the firing shakes are off at their source. | the owner, 2026-11-14 | continuation plan M3.1; research/le2-vrik-audit.md "No camera recoil on ME2 either" |
 | 6 | **The stick doesn't pitch the view** (ME1's `decoupledPitch`). | the owner, 2026-11-14 | le2-from-le1.md section 0 |
 | 7 | **No cover snapping.** "We won't snap to cover for VR, it's not a realistic experience. It risks the same problems of our skeleton not matching our players position in space." Physical crouch and the VR cover rule instead; the game's cover protection is kept. | the owner, 2026-11-14 | answer 7; research/23-cover.md sections 6-7 |
-| 8 | **Double A vaults, with weapons held**, from where the player stands. Disabling cover never disables vaults, climbs or mission triggers. | the owner, 2026-11-14 | answer 7; research/le2-traversal.md; [le2-port-implementation-plan.md](le2-port-implementation-plan.md) "Product decisions" |
+| 8 | **Double A vaults, with weapons held**, from where the player stands. Disabling cover never disables vaults, climbs or mission triggers. A two-handed hold must vault too; vaulting with one hand on the gun is to be weighed ("For VR we may need to allow for vault with two handed, but we may want to consider vaulting with one hand. The controls could get sloppy."): both are measured, the hold is kept until the owner picks. | the owner, 2026-11-14; the two-handed hold 2026-11-16 | answer 7; research/le2-traversal.md; [le2-port-implementation-plan.md](le2-port-implementation-plan.md) "Product decisions"; the owner's answers of 2026-11-16 (the lanes' notes) |
 | 9 | **Conversations and cutscenes on ME1's 3D cinema screen.** First-person conversations in the world are deferred on ME2 and ME3; Thespian mode may use the cinema screen. | the owner, 2026-11-14 and 2026-11-15 | le2-from-le1.md section 0; continuation plan M6; LE3 plan "Outcome and boundaries" |
 | 10 | **Authored seated scenes (shuttle rides) allow no traversal and no combat gestures**, and keep head tracking and the dialogue controls. Decided from the native scene's state; physically seated play in ordinary gameplay keeps movement. | the owner, 2026-11-15 | continuation plan M6; [le2-m6-implementation-guide.md](le2-m6-implementation-guide.md) "Current scope"; LE3 plan |
 | 11 | **Interrupts are on the triggers**, as the game has them on a pad (LT Paragon, RT Renegade). Nothing of ours claims a trigger in the conversation mode. | the owner, 2026-11-14 | answer 1; continuation plan M5.2 |
@@ -54,6 +54,8 @@ Each rule has who decided it, when, and where it was said. "The continuation pla
 | 18 | **The game stays the authority** for damage, ammo, inventory, cooldowns, resources and plot. VR asks the game to act through its own functions and keeps no writable second copy. A reload is done by hand but the game counts the ammo. | 2026-10-07; 2026-11-13 | [trilogy-design.md](trilogy-design.md) rule 3; le2-port-implementation-plan.md "Product decisions"; LE3 plan rule 5 |
 | 19 | **No new player-facing default without the owner's yes.** ME1's value is the default; a lane reports a recommendation instead of flipping one. | the owner, 2026-11-11; the lanes' rules, 2026-11-16 | research/le2-picture.md section 5 |
 | 20 | **Everything consistent.** "Ideally I want everything consistent. Me3 I'd prefer other elements stay open if it helps with immersion." A per-game difference in behaviour needs a reason the game forces; our menu treats the game's layers the same on every game, and our own quads stay hidden under it on all three (the owner, 2026-11-16, question 10). | the owner, 2026-11-16 | research/trilogy-seams.md "ME3 as ME1", "One recenter rule" |
+| 30 | **Sights on the sequels use ME1's systems for now** ("sight details can use me1's systems for now"): ME1's dot, holo, scope, ADS, assist and convergence, each game's names behind the adapter; per-model optic profiles wait for measured numbers. | the owner, 2026-11-16 | the owner's answers of 2026-11-16; T24 |
+| 31 | **The trigger never draws a holstered weapon, on any game** ("trigger draw a holstered weapon? No, none of the games should do that."): only a grab at a holster draws (ME1's `[Holsters] onlyHolstersDraw`). | the owner, 2026-11-16 | the owner's answers of 2026-11-16; T25 |
 
 ### How the work is done
 
@@ -381,13 +383,14 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **State:** LE1 done · LE2 build · LE3 verify
 - **Lives in:** `game/ArmIk`, `engine/BonePose`, `core/ik`, `game/Fingers`, `game/BodyFollow`, `game/BodyScale`,
   `plugin/FloorLock`. Guide: [vrik-porting-guide.md](vrik-porting-guide.md).
-- **Left, ME2:** arm IK across a move's root-motion steps is unmerged (5f16c065 on a worktree branch); the floor lock's
-  correction is unmeasured and the calibration's manual height isn't wired; fingers and body scale have no in-game
-  check. **ME3:** "the legs keep the run" is off (no Velocity read: declare the handle `kEveryGame`); fingers, body scale
+- **Left, ME2:** the floor lock's correction is measured on Save 4 (the final eye is the STAGE eye, 1.7526 m) and held
+  through the vault's root-motion steps (`vr::floor_lock::MoveHold`, research/le2-traversal.md "The floor lock through the
+  vault"; arm IK across the steps is on main since dc7c6f98); the calibration's manual height isn't wired; fingers and
+  body scale have no in-game check. **ME3:** "the legs keep the run" is off (no Velocity read: declare the handle `kEveryGame`); fingers, body scale
   unverified. **Both:** body scale needs a recorded floor fixture (the fake headset's floor is at its head).
 - **Closes when:** snapshot `mod.armIk.hands` puts each wrist on its controller through a vault; `mod.fingers` follows
   a replayed trigger and grip; the ME3 null-height run's script passes on ME2's Save 4.
-- **Waits for:** nothing (T04 declared the ME3 Velocity handle, 2026-11-16: see it in a walk). **Who:** C2.
+- **Waits for:** nothing (T04 declared the ME3 Velocity handle, 2026-11-16: see it in a walk). **Who:** C4 (C2's successor).
 
 #### T22 Aim and the gun: hand aim, the drawn gun, the two-handed grip [G02, G04, G05]
 - **State:** LE1 done · LE2 verify · LE3 verify
@@ -412,12 +415,19 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **State:** LE1 done · LE2 build · LE3 build
 - **Lives in:** `game/Sights`, `core/vr/Ads`, `plugin/SightLayers`, `game/ScopeParts`, `game/ScopeCapture`,
   `plugin/ScopeCaptureSource`. Plan: research/le2-le3-vr-optics.md "LE2 implementation and first headset run", steps 1-3.
-- **Left, ME2 and ME3:** only the drawing runs. The mod's side returns false at startup: no alignment assist, no
-  convergence, no aimed fire, no ADS. The scope's picture comes from the eye copy; `ScopeParts` and `ScopeCapture` are
-  compiled out and `setScopeCapture` isn't served. **ME3 adds:** aim modes and installed optic mods change the profile.
+- **Left, ME2 and ME3:** the mod's side is ME1's path on every game since 4e6cc18b (rule 30; research/le2-vrik.md "The
+  sights on the sequels, mod side"): the alignment assist, the shots' convergence, a scope's aimed fire, ADS and the
+  lens part's hide. Seen on ME2 by script (`tools/le2-halcyon-run/sights.ps1`, Save 4, 2026-11-16): the pistol's dot in
+  the right eye and the shots on what the sight line hits; the sniper rifle's ADS, its picture over the scope, its
+  `Scope_Eye` sight bone and aimed fire 10.0 -> 0.0. Left: the scope's picture comes from the eye copy (`ScopeCapture`
+  is compiled out and `setScopeCapture` isn't served: T16); per-model optic profiles (ME1's `vr::sights::OpticFor` is
+  keyed by mesh name, and ME2 reuses ME1's names for other models: its Mantis is `WPN_SNPa_MDL`) need a game key and
+  measured numbers per model; on the fake headset ME2's pistol ring stands a hand's width left of the gun (the eyes take
+  the monitor's shape there: a headset check). **ME3:** all of it in a game; aim modes and installed optic mods change
+  the profile.
 - **Closes when:** a scoped shot hits the sight line and the `sights:` lines name the game's own sight bones, with a
-  sniper-rifle fixture per game.
-- **Waits for:** T16 for the scope capture on ME2; T05's fixtures. **Who:** C2.
+  sniper-rifle fixture per game (ME2's: done 2026-11-16, but for the scope capture).
+- **Waits for:** T16 for the scope capture on ME2; T05's ME3 fixture. **Who:** C4.
 
 #### T25 Holsters, and only holsters draw [G08]
 - **State:** LE1 done · LE2 build · LE3 build
@@ -491,12 +501,18 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Lives in:** `core/vr/Traversal`, `game/Traversal` (settings, commands, dispatch), `game/Le2Traversal.cpp` (ME2's
   observer since 2026-11-16), `game/Le3Traversal.cpp`, `plugin/TraversalCue`.
 - **Left:** ~~ME2's block moves to `game/Le2Traversal.cpp`~~ done 2026-11-16 (GF2, ledger Forks 4 step 1); both observers
-  on `ActionLifecycle` (steps 2 and 3); the admission stays per game. **ME2:** the owner's choices ([question 3](#open-owner-questions)); arm IK across the move
-  (T21). **ME3:** ladders need a lifecycle of their own (the shared kinds are None, Vault, ClimbUp); a stable horizon
-  and camera hand-back; no traversal in authored seated scenes (rule 10); every gesture is opt-in until seen.
+  on `ActionLifecycle` (steps 2 and 3); the admission stays per game. **ME2:** the owner's choices
+  ([question 3](#open-owner-questions)); the two-handed hold (rule 8: the support grip's aim zooms the gun and
+  `CanPerformMantle` refuses a zoomed weapon). Arm IK across the move and the floor lock through it are done (T21): three
+  vaults with every tick's wrists within 0.15 m of the controllers and no third-person frame, the eye riding the game's
+  camera until it settles (research/le2-traversal.md "The floor lock through the vault"). ME3's moves reach the same hold
+  through `traversal::Moving()`'s LE3 branch (not seen in a game); any other root-motion move must set
+  `PawnSample::traversalMove` too. **ME3:** ladders need a lifecycle of their own (the shared kinds are None, Vault,
+  ClimbUp); a stable horizon and camera hand-back; no traversal in authored seated scenes (rule 10); every gesture is
+  opt-in until seen.
 - **Closes when:** `tools/le2-halcyon-run/vault.ps1` still vaults three times on ME2 after the move, and an ME3 fixture
   shows a ladder, a vault and an evade each start, end and hand the camera back.
-- **Waits for:** T05's ME3 fixtures. **Who:** GF (the observers); C2 (the arm IK).
+- **Waits for:** T05's ME3 fixtures. **Who:** GF (the observers); C4 (the arm IK, the floor lock, the two-handed hold).
 
 #### T34 Melee by gesture [G43; Forks 12]
 - **State:** LE1 build · LE2 build · LE3 build

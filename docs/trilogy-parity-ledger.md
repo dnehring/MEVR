@@ -53,7 +53,7 @@ rows the change touches.
 
 | game | shared | adapted | forked | missing | n/a | present and verified (V) | present, unverified (U) |
 |---|---|---|---|---|---|---|---|
-| LE2 | 13 | 49 | 2 | 25 | 4 | 46 | 18 |
+| LE2 | 13 | 49 | 2 | 25 | 4 | 47 | 17 |
 | LE3 | 13 | 49 | 4 | 21 | 6 | 24 | 42 |
 <!-- /parity:totals -->
 
@@ -232,7 +232,7 @@ The [technique groups](#renderer-techniques-by-group) summary follows the table.
 | G12 | Camera collision off in first person (`game/CameraCollision`) | **missing** | **missing** | First check whether Halcyon ME2/ME3's first person pulls back near geometry. LE1's symptom was the eye behind the knees (research/69). |
 | G13 | Body follow: torso, legs keep the run, steady idle (`game/BodyFollow`, `core/ik/BodyFollow`) | **adapted** V: skeleton audit (le2-vrik). Conversation `BodyAway` is LE1-only | **adapted** V: shared follower plus a head-only solve on grip loss, run `20261115-182253-344`. "Legs keep the run" has its Velocity read since T04 (U: built; the handle's ReflectCheck row is L3-3's) | LE3: a walk under replay showing `torso: legs:`. |
 | G14 | Body scale (`game/BodyScale`, `core/ik/BodyScale`) | **shared** U | **shared** U | Needs a recorded floor fixture: the fake headset's floor is at its head. |
-| G15 | Floor lock (`plugin/FloorLock`, `core/vr/FloorLock`, seam `FloorViewTranslation`) | **adapted** U: the path seen on the fake headset (M2 step 8); the correction itself unmeasured; manual height not wired | **adapted** V: `stageEyeM = finalEyeM = 1.7526`, run `20261115-170957-963`; menu continuity `20261115-183117-290` (research/null-headset-height.md) | LE2: the LE3 null-height run's script on Save 4. |
+| G15 | Floor lock (`plugin/FloorLock`, `core/vr/FloorLock`, seam `FloorViewTranslation`) | **adapted** V: the correction measured on Save 4 (`final eye 1.7526 m` = the STAGE eye, correction +12.26) and held through the vault's root-motion steps (shared `vr::floor_lock::MoveHold`, the mod's `traversalMove`): three vaults with every tick's wrists within 0.15 m, no third-person frame (research/le2-traversal.md "The floor lock through the vault", 2026-11-16); manual height not wired | **adapted** V: `stageEyeM = finalEyeM = 1.7526`, run `20261115-170957-963`; menu continuity `20261115-183117-290` (research/null-headset-height.md) | LE2: the calibration's manual height once wired; the headset. LE3: a traversal move under the hold. |
 | G16 | Guided calibration and hand calibration (`plugin/Calibration`, `CalibrationDraw`, `ArmSample`, `game/BodyCalibration`, `game/HandCalibration`) | **adapted** U: `MEVR_SEQUEL_MENU_SOURCES`, `WithMenus` v15, glue in `plugin/MenusLe2` | **adapted** U: same | A headset run: the fake headset has no interaction profile. |
 | G17 | Comfort: snap/smooth turn, vignette, walk toward the hand (`game/Comfort`, `plugin/Vignette`) | **shared** U: the comfort run timed out; the vignette layer path was seen (`20261114-212412`) | **adapted** U: `NativeLocomotionAllowed` over `player::MovementRefused` (ME3's one admission read, Forks 11) | docs/le2-m6-native-checks.md comfort row: two right-stick flicks and a hand-yawed walk. |
 | G18 | Weapon drawn like exploring: explore stance, constant eye, linear walk and stick, draw rate (`game/CombatStance`, `core/vr/CombatStance`, seam `ConstantFpEye`) | **missing**: `out`; ME2 lacks `BioPawnBehavior`'s ramp fields (research/le2-vrik-audit.md) | **missing** | Port per item. The linear walk and stick is the one players notice (research/38). Decide per game what stands in for the ramp fields. |

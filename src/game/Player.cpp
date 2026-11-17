@@ -7,6 +7,7 @@
 #include "core/vr/CombatStance.hpp"
 #include "game/BodyCalibration.hpp"
 #include "game/BodyScale.hpp"
+#include "game/Traversal.hpp"
 
 #include <Windows.h>
 #include <cmath>
@@ -141,6 +142,7 @@ vr::floor_lock::PawnSample FloorLockSample() {
     auto* const pc = Controller();
     if (pc == nullptr) return out;
     out.onFoot = GameMode(pc) == 0;
+    out.traversalMove = traversal::Moving();  // a native vault or climb: the host holds its correction (MoveHold)
     auto* const pawn = BioPawn(pc);
     out.pawn = pawn != nullptr;
     if (!out.onFoot || !out.pawn) return out;

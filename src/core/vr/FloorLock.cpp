@@ -38,6 +38,55 @@ Result Correct(Context const& c, floor::State const& s, std::uint64_t nowMs,
     return out;
 }
 
+Result MoveHold::Step(MoveInput const& in, MoveHoldSettings const& settings) {
+    Result const& fresh = in.fresh;
+    bool const freshUsable = fresh.active && std::isfinite(fresh.centreZ) && std::isfinite(in.floorZ);
+    double const dtS = lastMs_ != 0 && in.nowMs > lastMs_ ? std::min(0.1, (in.nowMs - lastMs_) / 1000.0) : 0.0;
+    lastMs_ = in.nowMs;
+    bool const rising = in.moving && !wasMoving_;
+    wasMoving_ = in.moving;
+    auto release = [&]() {
+        phase_ = Phase::None;
+        haveLast_ = freshUsable;
+        if (haveLast_) {
+            gap_ = in.floorZ - in.rawCameraZ;
+            eye_ = fresh.centreZ - in.floorZ;
+        }
+        return fresh;
+    };
+    if (!in.eligible || !std::isfinite(in.rawCameraZ) || !std::isfinite(in.commonWorldZ)) {
+        return release();
+    }
+    if (in.moving) {
+        if (phase_ == Phase::None) {
+            // Only from the tick before the move began: a lock that comes on mid-move has no floor of its own to hold.
+            if (!rising || !haveLast_) return release();
+            eased_ = false;
+        }
+        phase_ = Phase::Moving;  // a new move while settling keeps the floor where it is held now
+    } else if (phase_ == Phase::None) {
+        return release();
+    } else {
+        if (phase_ == Phase::Moving) {
+            phase_ = Phase::Settling;
+            endedMs_ = in.nowMs;
+        }
+        if (!freshUsable) return release();
+        double const upm = std::isfinite(in.unitsPerMeter) && in.unitsPerMeter > 0.0 ? in.unitsPerMeter : 100.0;
+        settleGap_ = (in.floorZ - in.rawCameraZ) - gap_;
+        if (std::abs(settleGap_) <= settings.releaseM * upm) return release();
+        if (in.nowMs - endedMs_ >= static_cast<std::uint64_t>(std::max(0.0, settings.waitS) * 1000.0)) {
+            double const step = std::max(0.0, settings.easeMS) * upm * dtS;
+            gap_ += std::clamp(settleGap_, -step, step);
+            eased_ = true;
+        }
+    }
+    if (freshUsable) eye_ = fresh.centreZ - in.floorZ;
+    double const centreZ = in.rawCameraZ + gap_ + eye_;
+    correction_ = centreZ - (in.rawCameraZ + in.commonWorldZ);
+    return Result{true, correction_, centreZ};
+}
+
 void StandingReference::Feed(std::uintptr_t skeleton, bool physicalCrouch, bool gameCrouch, bool holstered,
     double stageEyeM, double shepardEyeM, double dt, bool seated) {
     if (skeleton != skeleton_) {

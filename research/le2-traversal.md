@@ -190,6 +190,57 @@ session `2026-11-15_00-04-13-lanee-le1pose`, the build of main 9ed1ed91 with thi
 100 uu/m), the HUD panel identical pixel for pixel, the eyes 0.10% and 0.06% of pixels apart by more than 32/255 (what animates
 between launches); the snapshot's new `"traversal"` block says `started: false`, and the log has no `traversal:` line.
 
+## The floor lock through the vault (lanes C3 and C4, 2026-11-16)
+
+**The problem.** Once the LE2 host published a floor sample (2026-11-15) the floor lock ran on ME2, and the vault's hands left the
+controllers again: `vault.ps1 -Runs 3 -Mode tap` gave 102 of 135, 107 of 142 and 99 of 133 ticks within 0.15 m (mean 0.33 m, max
+1.49 m), with `arm IK: body anchor: third person ... view 104 units from Shepard's animated head bone` mid-vault. The floor lock
+puts the eye at `pawn.Location.z - CollisionHeight + unitsPerMeter * the headset's eye height`, solved again every frame, and the
+mantle steps the pawn's place up to 1.1 m at a time while the game's camera travels smoothly over the wall
+(gotchas/floor-lock-through-a-traversal-move).
+
+**The rule** (`vr::floor_lock::MoveHold` in `core/vr/FloorLock`, unit-tested in `tests/FloorLockTests.cpp`; the host's
+`plugin/FloorLock` `Translate`): the mod's floor sample carries `PawnSample::traversalMove` (`game/Traversal`'s `Moving()`, in the
+struct's padding after `seated`: the size and the HostServices version are unchanged). From the tick before a move begins, the
+pawn's floor is held where it stood below the game's camera (`floorZ - rawCameraZ`: 163.0 units on the fixture) and the eye is
+solved from that floor with the headset's live eye height, so the eye is the game's camera plus a constant and a player who ducks
+mid-vault still ducks. A lock that comes on mid-move holds nothing until the next move.
+
+**The release** (lane C4). Released at the custom action's end (lane C3's first version, 36bc92aa), the eye dropped 52 units in one
+frame: the game's camera is still 0.51 m high there and at rest about 0.8 s later (the stance blends out over 1.0 s). So the hold
+lasts past the move until the pawn's floor is back within `releaseM` (0.02 m) of the held one, that is until the camera has settled
+over the pawn, and the eye then joins the fresh solve with a step of at most 2 cm; a camera that hasn't come back after `waitS`
+(1.5 s) is eased there at `easeMS` (0.5 m/s). The log (every line says "traversal", so `vault.ps1`'s run files keep them):
+`floor lock: a traversal move began: the pawn's floor held 163.0 units below the game's camera, correction +12.260 ...`,
+`floor lock: the traversal move ended after 0.92 s (65 frames): the held eye's largest step 2.1 units a frame ...; solved from the
+pawn's floor it would have stepped up to 59.0 units a frame; the game's camera is 50.9 units off its place over the pawn before
+the move: held until it settles`, `floor lock: the traversal hold released 0.61 s after the move's end (42 frames, the camera
+settled): ... the release -2.2 units`. The host's snapshot block `"floorLock"` has `"moveHold": "none" | "moving" | "settling"`.
+
+**Measured** (fake headset, Save 4, `CoverLink_10` slot 0, `vault.ps1 -Runs 3 -Mode tap`, `[Body] floorLock = 1`; stretches
+`20261116-165309-803-LE2-lane-c4-floorlock`, `...-165808-464-LE2-lane-c4-trace` and `...-172613-568-LE2-lane-c4-scaled`, each restored with
+`verification: 0 differences`):
+
+| | no floor lock (C2, 2026-11-15) | the floor lock, no hold (C3) | held to the action's end (C3) | held until the camera settles (C4) |
+|---|---|---|---|---|
+| ticks within 0.15 m, three vaults | 145/145, 143/143, 146/146 | 102/135, 107/142, 99/133 | 134/135, 134/135, 77/79 | 136/136, 134/134, 133/133 |
+| mean, max | 0.07, 0.08 m | 0.33, 1.49 m | 0.07, 0.51-0.52 m | 0.07; right 0.08, left 0.11 m |
+| `body anchor: third person` during a vault | none | each vault | none | none |
+| the eye's largest step a frame | the camera's | 40-56 units (the pawn's floor) | 2.0 units, then 52 at the release | 1.7-2.4 units; the release 2.1-2.4 |
+| released after the action's end | - | - | at once | 0.59-0.61 s (42 frames), the camera settled each time |
+
+**The left wrist's 0.11 m** is the landing, not the release: traced (`mevr traversal trace on`, one vault), the left wrist is 0.10-0.12
+m from its grip for 0.12 s of the blend-out (0.18-0.30 s after the action's end, the game's camera still 0.2-0.3 m over its rest), the right
+0.07-0.09; the same vault with `[Body] floorLock = 0` stays within 0.08 m. With the lock the eye is the player's height, 12.3 cm
+over the unscaled Shepard's camera (`correction +12.260`; body scale waits for Shepard standing holstered, and Save 4 has the pistol
+out: `body scale: 1.000 ... waiting for Shepard standing holstered`), so the replayed hands are 12 cm higher too, and the left arm in
+the landing crouch falls 4 cm short of them. Two more vaults (the trace's and a fourth) gave the same: 134/134 and 135/135, left 0.11, right 0.08 m (the floor lock off: 95/95, both 0.08).
+A scaled A/B waits for the holsters on ME2: `mevr body scale` is LE1's console only, and a holstered stand is what lets body scale
+learn Shepard's eye height (then the body is 1.075 times as tall and the arms reach with it).
+
+**LE1 unchanged** (no traversal move: `MoveHold` passes every result through untouched; the snapshot's `"floorLock"` gains
+`"moveHold": "none"`): LE1RESULT
+
 ## What is left
 
 - **ME2's observer has its own file since 2026-11-16** (lane GF2, docs/trilogy-parity-ledger.md Forks 4 step 1):
@@ -202,6 +253,12 @@ between launches); the snapshot's new `"traversal"` block says `started: false`,
 
 - ~~Arm IK across root-motion steps~~ **done** (lane C2, 2026-11-15; research/le2-vrik.md "Arm IK across root-motion steps"): the
   writer follows the camera's bone; through three vaults both wrists stay within 0.08 m of the controllers (0.07 standing).
+- ~~The floor lock through the vault~~ **done** (lanes C3 and C4, 2026-11-16; "The floor lock through the vault" above): the eye
+  rides the game's camera through the move and joins the floor-locked height once the camera has settled.
+- **The two-handed hold** (the owner, 2026-11-16: "For VR we may need to allow for vault with two handed, but we may want to
+  consider vaulting with one hand"): the support grip's LT zooms the gun, and `CanPerformMantle` refuses a zoomed weapon
+  (research/le2-vrik.md "Vaulting with the weapon held"); the admission's one-call writes are to clear the zoom too, then both
+  holds are measured with `vault.ps1 -Support`.
 - **The grips on ME2:** a held right grip is the pad's RB on ME2 today (the power wheel after 0.3 s; the LE2 host has no `gripHolds`
   yet), and the left grip LB (the weapon wheel). A vault with the gun held by a grip waits for the holsters' and the support grip's
   host services on LE2; nothing in the vault needs a free hand (it is A and where the player stands).

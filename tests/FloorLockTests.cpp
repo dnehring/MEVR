@@ -269,5 +269,122 @@ int RunFloorLockTests() {
     CHECK(mevr::ik::body_scale::Factor(*standing.Player(), *standing.Shepard(), 1.0) == target);
     standing.Feed(2, true, true, true, 1.1, 1.2, 0.05);
     CHECK(!standing.Shepard()); // another skeleton needs its own standing sample
+
+    // A traversal move (ME2's vault): the pawn's floor is held where it stood below the game's camera on the tick before the
+    // move began, so the eye follows the camera, not the pawn's steps, and the headset's eye height still counts; after the
+    // move the hold lasts until the camera has settled back over the pawn (within 2 cm), past 1.5 s it eases at 0.5 m/s.
+    // No move: every result passes through untouched.
+    {
+        std::uint64_t now = 1000;
+        auto Near = [](double a, double b) { return std::abs(a - b) < 1e-4; };  // float eye heights
+        auto at = [&](double floorZ, double rawZ, double commonZ = 0.0, float eyeM = 1.845f) {
+            fl::Context k = Ordinary();
+            k.pawn.floorZ = floorZ;
+            k.pawn.timeMs = now;
+            auto s = Sample(eyeM);
+            s.timeMs = now;
+            return fl::Correct(k, s, now, rawZ, commonZ, 100);
+        };
+        auto in = [&](fl::Result const& fresh, bool moving, double floorZ, double rawZ, double commonZ = 0.0, bool eligible = true) {
+            fl::MoveInput m;
+            m.fresh = fresh;
+            m.moving = moving;
+            m.eligible = eligible;
+            m.rawCameraZ = rawZ;
+            m.commonWorldZ = commonZ;
+            m.floorZ = floorZ;
+            m.unitsPerMeter = 100.0;
+            m.nowMs = now;
+            return m;
+        };
+        fl::MoveHold hold;
+        auto const standingFresh = at(1000.0, 1172.0);  // the game's eye 1.72 m up, the player's 1.845: +12.5
+        auto const before = hold.Step(in(standingFresh, false, 1000.0, 1172.0));
+        CHECK(before.active && Near(before.correction, standingFresh.correction) && Near(before.centreZ, standingFresh.centreZ));
+        CHECK(!hold.Holding());
+        // The move begins; the pawn steps up 90 units at once while the game's camera rises 20.
+        now += 100;
+        auto const stepFresh = at(1090.0, 1192.0);
+        CHECK(Near(stepFresh.centreZ - standingFresh.centreZ, 90.0));  // what the eye did without the hold
+        auto const held = hold.Step(in(stepFresh, true, 1090.0, 1192.0));
+        CHECK(hold.State() == fl::MoveHold::Phase::Moving && held.active);
+        CHECK(Near(held.centreZ - before.centreZ, 20.0));  // the eye rides the camera
+        CHECK(Near(held.correction, standingFresh.correction));
+        CHECK(Near(hold.FloorGap(), -172.0));
+        // The player ducks 0.3 m mid-move: the live eye height still counts.
+        now += 10;
+        auto const ducked = hold.Step(in(at(1090.0, 1192.0, 0.0, 1.545f), true, 1090.0, 1192.0));
+        CHECK(Near(ducked.centreZ, held.centreZ - 30.0));
+        now += 10;
+        hold.Step(in(stepFresh, true, 1090.0, 1192.0));
+        // Mid-move the fresh solve may fail (cover, camera mode): the hold stands, with the last eye height.
+        now += 10;
+        auto const blind = hold.Step(in(fl::Result{false, 0.0, 1210.0}, true, 1090.0, 1210.0));
+        CHECK(blind.active && Near(blind.centreZ, 1210.0 - 172.0 + 184.5));
+        // The common framing term moves with the view; the eye's centre doesn't take it (as in Correct), the correction does.
+        now += 10;
+        auto const framed = hold.Step(in(at(1090.0, 1192.0, -4.1), true, 1090.0, 1192.0, -4.1));
+        CHECK(Near(framed.centreZ, held.centreZ) && Near(framed.correction, held.correction + 4.1));
+        // The move ends with the pawn level again and the game's camera still 52 units high: held while it settles.
+        now += 10;
+        auto const ended = hold.Step(in(at(1000.0, 1224.0), false, 1000.0, 1224.0));
+        CHECK(hold.State() == fl::MoveHold::Phase::Settling && ended.active);
+        CHECK(Near(ended.centreZ, 1224.0 - 172.0 + 184.5) && Near(hold.SettleGap(), -52.0));
+        now += 200;
+        auto const settling = hold.Step(in(at(1000.0, 1180.0), false, 1000.0, 1180.0));
+        CHECK(hold.Holding() && Near(settling.centreZ, 1180.0 - 172.0 + 184.5));
+        // Within 2 cm of its place over the pawn: released, the eye's step 1.5 units.
+        now += 200;
+        auto const landedFresh = at(1000.0, 1173.5);
+        auto const landed = hold.Step(in(landedFresh, false, 1000.0, 1173.5));
+        CHECK(!hold.Holding() && !hold.Eased() && Near(landed.centreZ, landedFresh.centreZ));
+        CHECK(std::abs(landed.centreZ - (1173.5 - 172.0 + 184.5)) <= 2.0);  // the release's step
+        // A camera that never comes back (30 units high): held for 1.5 s, then eased at 0.5 m/s, 5 units a 0.1 s tick.
+        now += 100;
+        hold.Step(in(at(1000.0, 1172.0), false, 1000.0, 1172.0));
+        now += 100;
+        hold.Step(in(at(1090.0, 1192.0), true, 1090.0, 1192.0));
+        now += 100;
+        auto const high = at(1000.0, 1202.0);
+        auto last = hold.Step(in(high, false, 1000.0, 1202.0));
+        CHECK(hold.State() == fl::MoveHold::Phase::Settling && Near(last.centreZ, 1202.0 - 172.0 + 184.5));
+        for (int i = 0; i < 14; ++i) {
+            now += 100;
+            auto const r = hold.Step(in(high, false, 1000.0, 1202.0));
+            CHECK(hold.Holding() && Near(r.centreZ, last.centreZ));  // 1.4 s: still waiting
+            last = r;
+        }
+        bool released = false;
+        for (int i = 0; i < 10 && !released; ++i) {
+            now += 100;
+            auto const r = hold.Step(in(high, false, 1000.0, 1202.0));
+            CHECK(std::abs(r.centreZ - last.centreZ) <= 5.0 + 1e-9);
+            released = !hold.Holding();
+            last = r;
+        }
+        CHECK(released && Near(last.centreZ, high.centreZ));
+        // Not eligible (the lock off, a menu): released at once, nothing held over.
+        now += 100;
+        hold.Step(in(standingFresh, false, 1000.0, 1172.0));
+        now += 100;
+        hold.Step(in(stepFresh, true, 1090.0, 1192.0));
+        CHECK(hold.Holding());
+        now += 100;
+        auto const ineligible = hold.Step(in(fl::Result{false, 0.0, 1172.0}, true, 1000.0, 1172.0, 0.0, false));
+        CHECK(!hold.Holding() && !ineligible.active);
+        // A move that begins while the lock was not on has nothing to hold, not even once the lock comes on mid-move.
+        fl::MoveHold cold;
+        now += 100;
+        auto const none = cold.Step(in(fl::Result{false, 0.0, 1172.0}, true, 1000.0, 1172.0));
+        CHECK(!cold.Holding() && !none.active);
+        now += 10;
+        auto const late = cold.Step(in(stepFresh, true, 1090.0, 1192.0));
+        CHECK(!cold.Holding() && Near(late.centreZ, stepFresh.centreZ));
+        now += 10;
+        cold.Step(in(standingFresh, false, 1000.0, 1172.0));
+        now += 10;
+        cold.Step(in(stepFresh, true, 1090.0, 1192.0));
+        CHECK(cold.Holding());  // the next move does
+    }
     return gFailures;
 }

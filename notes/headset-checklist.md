@@ -679,7 +679,9 @@ Turn it on: the menu's Voice page > Thespian mode > Speak Shepard's lines (or `[
   with `[Traversal] cue = 1`? Is the view's rise over the wall (about 0.5 m, smooth, level) comfortable as the game moves it
   (`view = game`, today's), against `view = level`, `mask = vignette` and `mask = blink` (each in `ASI\LE2MEVR.ini [Traversal]`,
   read live)? Where are your hands and the gun during the move and the second after it (the body's landing crouch)? Does a single
-  A ever do anything near the wall? Seated and with the left hand on the gun too.
+  A ever do anything near the wall? Seated and with the left hand on the gun too. With the floor lock (since 2026-11-16 the
+  eye rides the game's camera through the move and joins the floor-locked height once that camera has settled, about 0.8 s
+  after the landing; research/le2-traversal.md "The floor lock through the vault"): no drop, bob or second rise at the landing?
 - [ ] 2026-11-14 the idle sway (research/72; `[Hands] steadyIdle = 1` in ASI\LE1MEVR.ini, off by default until this
   check): stand still and look down at Shepard's feet for 30 s: they stay planted (without it they slide 2-3 cm, 16 cm in an
   idle fidget, while the hips stay under you); then walk off and stop: no jump or skating as it blends in and out. Compare
@@ -754,10 +756,6 @@ Turn it on: the menu's Voice page > Thespian mode > Speak Shepard's lines (or `[
 
 ## 7. Claude checks these alone on the fake headset (no need to wear it)
 Ask Claude to run them when the machine is free; each is a console command, a snapshot, a replay or a probe.
-- The sequels' sights, mod side (research/le2-vrik.md "The sights on the sequels, mod side"; run on ME2's fake headset
-  2026-11-16, LE1 at the same pose unchanged): in the headset, on ME2 and ME3: the pistol's dot on the gun's own sight (on
-  the fake headset the ring stood a hand's width left of the gun: the eyes take the monitor's shape there), the sniper
-  rifle's eyepiece picture and its pull to the eye, shots landing where the dot or the reticle sits.
 - ME2's vault with the gun held (lane C2): `tools/le2-halcyon-run/vault.ps1 -Runs 3 -Mode tap` again on main after dc7c6f98
   (every tick's wrists within 0.15 m; 0.08 m at most on 2026-11-15), and `-Support`: the two-handed hold is refused by the
   game (the support grip's LT zooms the gun, `CanPerformMantle` tests it).
@@ -831,6 +829,10 @@ stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs 
   only a headset can show it.
 - [ ] Wrist status and the gun's panel (T41; research/41 "ME2's ammo display"): readable on small and large guns, after a
   weapon swap and after an ammo power.
+- [ ] Sights (T24; research/le2-vrik.md "The sights on the sequels, mod side"; seen on ME2's fake headset 2026-11-16, LE1 at
+  the same pose unchanged): the pistol's dot on the gun's own sight (on the fake headset its ring stood a hand's width left
+  of the gun: the eyes take the monitor's shape there), the sniper rifle's eyepiece picture and its pull to the eye, shots
+  landing where the dot or the reticle sits. ME3 the same once it has a combat fixture.
 - [ ] Comfort and sprint (T30, T32; docs/le2-m6-native-checks.md): snap turns, walking toward the hand, the vignette;
   Storm's heading and its release.
 - [ ] Powers (T44; research/55 "Mass Effect 2"): the push at a hostile, the chest and gun gestures' targets, the coach card.
