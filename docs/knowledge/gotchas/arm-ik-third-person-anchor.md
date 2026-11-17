@@ -6,7 +6,7 @@ tags: [vrik, first-person, conversations, mod]
 status: stable
 timestamp: 2026-11-13T13:00:00Z
 generated: { by: claude-code/opus-5.5, at: 2026-11-13T13:00:00Z }
-bitten: [2026-11-09, 2026-11-13]
+bitten: [2026-11-09, 2026-11-13, 2026-11-16]
 ---
 
 # Symptom
@@ -15,6 +15,7 @@ bitten: [2026-11-09, 2026-11-13]
 |---|---|
 | "weapons very low" after a crouch, until holstering | on foot with the body scaled to the player (the owner, 2026-11-09) |
 | "I'm still not synced up with my body ... my body is where I was previously walking" | the council hearing after the walk with Anderson, first person (the owner, 2026-11-13: the body up to 5.7 m from the eyes for 225 of 227 s, and through the two conversations after it) |
+| `vault.ps1`: the wrists up to 1.49 m from the controllers for 35 ticks of ME2's vault; `body anchor: third person ... view 104 units` | ME2 once the floor lock ran there (lane C3, 2026-11-16): the eye solved from the pawn's floor left the animated head; its own gotcha: floor-lock-through-a-traversal-move |
 
 # Cause
 

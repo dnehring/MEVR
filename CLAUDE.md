@@ -389,6 +389,11 @@ switching frameworks.
   the weapon away is ours (`holsters::AllowGameDraw`). Logs `holsters: the game wanted to draw your weapon (<caller>):
   refused`, `... for <caller>: let through` and, for a draw by any other route, `holsters: the <gun> came out without a
   holster grab (triggers, grips)`. The shotgun's slot is the left hip (`hipLeft`, a cross-draw).
+  **The sequels** (2026-11-16, research/le2-vrik.md "Holsters on the sequels"): the same module with each game's names (the
+  inventory chain by family; ME2's draw `BioPlayerController.SwitchWeapon` then `BioPawnBehavior.SetActionState(1)`, holster
+  `TryHolster`, drawn `BioPawn.ActionState == 1`); only holsters draw on every game (the owner, 2026-11-16): on ME2
+  `BioPlayerInput.IsCombatEnabled` is answered false inside FireWeapon, TightAim, TryReload and Next/PrevWeapon while the
+  weapon is away (one rule, `RefuseGameDraw`); ME3 keeps no holstered state. The module asks `ue3::runtime::Up()`.
 - LE1 body under the player ([research/29](research/29-body-follow.md), `core/ik/BodyFollow`, `game/BodyFollow`):
   first person, Shepard's whole body (the `Root` subtree; never `God`/`Camera`) turns by what the spine's 30
   degrees can't (the explore pawn faces where it runs) and slides under the view (feet that step after the
@@ -428,6 +433,10 @@ switching frameworks.
   `off`, or a number. The writer scales every bone except Camera/God about that floor and inversely maps goals first, keeping
   hands on controllers. `mevr body scale <s>|auto|off`; logs `floor lock:` and `body scale:` (reference named), snapshot `"floorLock"`
   and `"mod"."bodyScale"`. [verify] PS VR2 height, slopes/stairs, held views and gates in the headset; replay needs a recorded floor fixture.
+  **Through a native traversal move** (ME2's vault, gotchas/floor-lock-through-a-traversal-move): the mod's sample says so
+  (`PawnSample::traversalMove`), and `vr::floor_lock::MoveHold` holds the pawn's floor where it stood below the game's camera
+  until that camera has settled after the move (within 2 cm; else eased after 1.5 s): the pawn steps up to 1.1 m at a time
+  under a smooth camera. Log `floor lock: a traversal move began`, `... the traversal hold released`.
   **In a scripted walk the body is the player's** (`worldBody = player`, research/69 "The body in scenes in the world" and
   "The legs under the player"): the body follower slides Shepard's bones to where the player stands while the script moves
   his actor, the legs stand by the writer's leg IK while the view rests and keep the script's walk while it moves

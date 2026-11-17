@@ -306,7 +306,7 @@ The whole check as one script: `tools\le2-halcyon-run\sights.ps1 -Holder <you>` 
 the standing replay with the hands in view, `pause`, two snapshots; then the pistol and the assault rifle drawn by `mevr
 weapon`, each raised and fired by `make-ads-recording.py ... --no-support`'s replay, a snapshot under `pause`). Three sessions of a build of main b8fbb98c (`2026-11-16_13-37-51-c3-le1-before`, `..._14-03-25-c3-le1-before2`, `..._14-26-12-c3-le1-before3`) against one of this step (`..._13-53-39-c3-le1-after`): the standing pose has an identical `hostView` (-43.3 / -4.1 / -18.1 uu), the same six layers at the same places (the omni-tool target 0.2 mm apart), the HUD panel, label, wrist piece and target identical pixel for pixel, the eyes 0.03 to 0.19% of pixels apart by more than 32/255; with the assault rifle raised (before3 against after) the `hostView` is identical again, the layers the same, the eyes 0.003% apart, the dot in the right eye in both, the sight on the `Scope` bone 42.1 / 9.7 against 41.8 / 9.6 units; the pistol has no sight in the owner's settings (`pistol = none`) and logs the same lines. Every `sights:`, `hand aim:` and holster draw line of the new build (numbers masked) is in the build of main's log. before2 ran while other lanes built (the game hitched: `the right controller isn't tracked` every second, a draw in 0.95 s instead of 0.13) and is kept only as that: a same-pose run needs a quiet machine.
 
-## Holsters and the reload on the sequels: the plan (not built)
+## Holsters and the reload on the sequels: the plan (the holsters built 2026-11-16: the next section)
 
 `plugin/PadMerge` with the grip flags is in both sequel hosts (f71e7a71), so the mod's side is what is missing. Both are
 one shared module each; what is each game's goes behind a small table, as above.
@@ -352,6 +352,59 @@ pouch; `core/ik/Vent`'s receiver zone for the gun's side):
    aborted = `IsReloading` false with the counts unchanged.
 4. The check (the plan's): Save 4's pistol reads 12 / 0 / 60 (magazine, used, spare), one shot 11 / 1 / 60, the replayed
    gesture 12 / 0 / 59; `R` never sent. `tools/make-rack-recording.py` is the model for the recording.
+
+## Holsters on the sequels (lanes C3 and C4, 2026-11-16)
+
+The plan above, built: `game/Holsters` is one module for the three games with each game's names in its adapter (995dca38 and
+this landing), and "only holsters draw" is one rule, `RefuseGameDraw` (the owner, 2026-11-16: "trigger draw a holstered weapon?
+No, none of the games should do that."; docs/trilogy-plan.md rule 31).
+
+| | ME1 | ME2 | ME3 |
+|---|---|---|---|
+| what is carried | the quick slots (`BioEquipment.m_QuickSlotArray`) | the pawn's inventory chain by weapon family (`le2_squad::Weapons` / `WeaponType`; the SMG has no body slot yet) | the same |
+| draw | `SFXGameModeDefault.SwitchToWeapon(slot)` | `BioPlayerController.SwitchWeapon(oWpn)`, then `BioPawnBehavior.SetActionState(1)` if holstered | `SwitchWeapon` alone (no action state) |
+| holster | `SFXGameModeDefault.TryHolster` | the same (`SetActionState(0)`, refused in combat, mid-reload, in a power or a transition) | the same name [verify on a mission] |
+| drawn | `BioPawn.IsInCombatActionState` | `BioPawn.ActionState == 1` | an equipped gun |
+| mid-switch | `BioPawn.IsSwitchingWeapons` | the weapon's state `WeaponEquipping` / `WeaponPuttingDown` (`Object.GetStateName`) | the same |
+| the game's own draws refused | `SFXPawn_Player.DrawPrimaryWeapon` skipped by its caller (ME1's skip handler) | `BioPlayerInput.IsCombatEnabled` answered false inside `SFXGameModeBase.FireWeapon`, `SFXGameModeDefault.TightAim`, `TryReload`, `NextWeapon`, `PrevWeapon` while `ActionState` isn't combat (each button's own first test; they draw by `SetActionState(1)` after it) | nothing to refuse: no holstered state on foot |
+| the right stick click | holds the game's power wheel open (the mod's own Enter/ExitPowerWheel) | plain RB (ME2's own hold and tap) | plain RB |
+
+The gate was ME1's: `ReadGame` asked `ue3::runtime::Ready()`, which is true only where ME1's modules run on the layer, so on ME2
+the holsters stood down (`holsters: our reflection layer is off`). They ask `Up()` now (on LE1 the same answer). Every class,
+field, function and parameter has its ReflectCheck row (`BioPawn.m_oBehavior`, `ActionState`, `BioPawnBehavior.SetActionState`
+`eState`, `Object.GetStateName` `ReturnValue`, `SFXGameModeDefault.TryHolster`, `BioPlayerController.SwitchWeapon` `oWpn`).
+
+**The check** (`tools\le2-halcyon-run\holsters.ps1 -Holder <you>`, replayed right-hand grabs from `tools/make-holster-recording.py`;
+ME2, Save 4, the pistol out; stretch `20261116-191210-770-LE2-lane-c4-holsters`, its `holsters-191431` folder, restored with
+`verification: 0 differences`):
+- startup: `holsters: script functions found (BioPlayerController.SwitchWeapon true, SFXGameModeDefault.TryHolster true, the inventory
+  chain and game modes true, the action state ... found, Object.GetStateName true)`, `the game's own draws with the weapon away can
+  be refused ...: BioPlayerInput.IsCombatEnabled is answered false inside ... FireWeapon, ... TightAim, ... TryReload, ... NextWeapon,
+  ... PrevWeapon`; on foot in VR `the right grip holds the gun (no RB from it); RB is the right stick click`; `the player carries:`
+  the grenade launcher (a heavy weapon: no slot), the heavy pistol, the shotgun, the assault rifle, the sniper rifle.
+- the right shoulder: `grab at shoulderRight: drawing the assault rifle (BioPlayerController.SwitchWeapon; was pistol)`, in hand after
+  0.63 s; let go there: `the assault rifle goes back in its holster (SFXGameModeDefault.TryHolster)`, holstered after 1.14 s.
+- **the trigger with the weapon away** (four pulls, `make-ads-recording.py`'s replay): four times `holsters: the game wanted to draw
+  your weapon (Function SFXGame.SFXGameModeBase.FireWeapon): refused, only a grab at a holster draws ...; trigger ..., so no buzz`, and
+  no `came out without a holster grab` line: the gun stayed away.
+- the right hip: `drawing the pistol (BioPlayerController.SwitchWeapon, BioPawnBehavior.SetActionState(combat); was holstered)`, in
+  hand after 0.03 s; let go there, holstered after 0.91 s; the snapshot with it held (`2026-11-16_19-15-22-885`).
+- the hip, let go in front of the chest (the release grace): not seen: the head-tracked view went invalid three times for a few
+  frames during that replay (`holsters: no head-tracked world view`), which resets the slots' machine, and the pistol stayed out.
+  [verify] again on a quiet machine.
+- `vault.ps1 -Runs 3 -Mode tap -Grip` (the right grip holding the pistol through the vault): three vaults admitted, every tick's
+  wrists within 0.15 m (left 0.11, right 0.08 m at most). `-Grip -Support` (both hands on the gun): the game refuses the vault, as
+  before (the two-handed hold: research/le2-traversal.md "What is left").
+
+**ME1 at the same pose** (`tools/fake-headset-session.ps1`, lane C4's `scratch/c4/run-le1.ps1`: the standing replay paused, two
+snapshots, then the pistol and the assault rifle drawn by `mevr weapon`, raised and fired, a snapshot each; before = a build of main
+ad0db88c, after = that main with the floor lock's hold and these holsters; sessions `2026-11-16_19-05-06-c4-le1-before`,
+`..._19-09-00-c4-le1-after`): the standing pose's `hostView` identical (-43.3 / -4.1 / -18.1 uu, 100 uu/m), the same layers at the
+same places, the HUD panel, wrist piece, label and target identical pixel for pixel, the eyes 0.49% / 0.33% of pixels apart by more
+than 32/255 (what animates between launches), both wrists 0.07 m from the grips; the guns' snapshots the same layers, the HUD
+identical but for 0.007% of the pistol's, the eyes 0.08% apart. Every `holsters:`, `sights:`, `hand aim:`, `floor lock:` and `support
+grip:` line of the after build (numbers masked) is in the before build's log; only arm IK's timing-dependent first write after the
+replay's restart and one `weapon: grip moved` line differ.
 
 ## What M3 still needs from the host (lane B2)
 
