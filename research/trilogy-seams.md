@@ -426,11 +426,24 @@ known two-process start: the shared notes' workaround, the save loaded with `mev
 **LE1:** no line LE1 compiles changed in this lane (the files are in the sequel hosts' lists only), so no same-pose pair; its
 frame order is read from `src/halcyon/le1/xr_session.cpp` (`OnFrameBegun`, then `DoRecenter`, then `OverlayLayers`).
 
-**Found:** `plugin/HandReticle` falls back to the right controller's aim pose whenever the mod's aim ray is over 1 s old,
-also after the mod has published one: a stalled game thread in game mode 0 moves the ring from the gun's line to the
-controller's for the stall, on all three games (seen on ME3 above; ME3's removed `weaponsNeedPublishedAim` used to hide
-it). One shared fix, if wanted: fall back only before the mod's first ray (`sequence == 0`), else hide; it touches LE1's
-host, so it needs an LE1 same-pose pair.
+**Found, and fixed for all three games:** `plugin/HandReticle` fell back to the right controller's aim pose whenever the
+mod's aim ray was over 1 s old, also after the mod had published one: a stalled game thread in game mode 0 moved the ring
+from the gun's line to the controller's for the stall, on all three games (seen on ME3 above; ME3's removed
+`weaponsNeedPublishedAim` used to hide it). Since commit dd8e0ca8 (the coordinator's follow-up, 2026-11-16) the ring
+reads the mod's last ray whatever its age (`aim_ray::Latest(UINT64_MAX)`): through a stall it stays where the mod last
+aimed it, or stays hidden if the mod's last ray was no aim; the controller's aim pose is the fallback only before the mod's
+first ray (`sequence == 0`: an older mod, or a host and mod that don't match). Log `overlays: the mod's aim ray stopped
+coming ...` / `... comes again`.
+- LE1 pair (sessions `2026-11-16_18-37-59-u3-before`, build at `ad0db88c`, and `2026-11-16_18-41-55-u3-after`, at `dd8e0ca8`;
+  hands replayed with the right grip held, `mevr weapon pistol`, snapshots live, then with the world `pause`d): live, both
+  have the same layers (`hud`, `label`, `wrist`, `gun`, `reticle`) and the same view offset, the ring 10.55 m out on the gun's
+  line (a few centimetres apart, the pistol's idle sway, as between two frames of one run); paused, LE1's mod keeps sending
+  a ray ("no aim" while paused), so no stall: no ring in either, and the HUD panel, both eyes and the wrist piece are
+  identical pixel for pixel.
+- ME3 (session `20261116-184546-351-LE3-u3-le3b`, Save 31, the same sequence): the Back double tap did not stall the game
+  this time, so the stall case was not seen again; the ring stayed hidden on the mod's "no aim" (`overlays: reticle hidden
+  (the mod reports no aim ray)`), the recenter line again 1 engine tick (14.7 ms), our menu alone over the world. The stall
+  case itself is covered by the code: no age test is left between the mod's last ray and the ring.
 
 ## State
 
