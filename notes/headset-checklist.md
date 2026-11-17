@@ -869,6 +869,11 @@ stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs 
   still and turning, through menu, recenter and a reload.
 - [ ] Life-size stereo (T09; research/30 section 9): as ME2's line; upstream ME3 squeezed everything into the first metre,
   so the scale change is large: check depth and size, and that the HUD panel and sights still sit where they should.
+- [ ] First person from the start (T01's R32; research/trilogy-first-person.md, lane FP3 2026-11-17; seen on the fake
+  headset): ME3 now opens in first person with Shepard's head hidden, like ME1 and ME2 (it used to start in third person
+  until K). Check: no head or hair in view, no shoulders in front of the eyes once the controllers are tracked, the eye at
+  your height walking up to a wall or a railing and backing into one (the view must not jump back toward the body), the
+  stick not tilting the view up or down, conversations still on the cinema screen.
 - [ ] Hands and the gun (T21, T22; research/le3-body-pose.md): the raw controller against Shepard's hand (place, twist,
   reach), the gun in the grip, the two-handed support, standing and seated.
 - [ ] Sights (T24): the eye box of the dot and the scope per weapon and optic mod.

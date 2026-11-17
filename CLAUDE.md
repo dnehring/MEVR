@@ -147,7 +147,10 @@ authored seated scenes (such as shuttles) must reject traversal while retaining 
   **LE3's candidate host now integrates Halcyon's ME3 renderer** (`src/halcyon/le3`, `MEVR_WITH_HALCYON_LE3`;
   [foundation and remaining gates](research/le3-renderer-integration.md)). It reuses controller/floor/pad/test-loop services;
   native reflection now passes the protected 259-row probe and ordinary Normandy save loading/reloading is verified.
-  Body/UI outcomes and VR acceptance remain pending. Use the existing protected desktop/engine-request routes in
+  Body/UI outcomes and VR acceptance remain pending. ME3's renderer pins ME2's baseline after every ini load (`[MEVR]`
+  `ApplyMevrBaseline` in le3 me2_menu.cpp since 2026-11-17: first person with the head hidden, no head aim, no stick pitch,
+  flat menus, cinematic conversations, no profile hotkeys or R recenter, `\`; K still toggles first person).
+  Use the existing protected desktop/engine-request routes in
   `tools/le2-halcyon-run/README.md` for discovery; do not deploy the candidate as accepted VR support. The chapter
   save tested as a combat candidate enters cinematic/injured modes and is not an accepted ordinary combat fixture.
   **LE2's host runs Halcyon's ME2 renderer**

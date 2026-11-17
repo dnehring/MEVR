@@ -155,6 +155,11 @@ These unblock the most: almost every other entry gets smaller once they land.
   before and after; in a run, a key typed in another window toggles nothing on ME2 and ME3 (R33), and LE3's host log
   has no `process event: off the game thread:` (R34).
 - **Waits for:** nothing. **Who:** U1.
+- **R32, ME3's baseline** (lane FP3, 2026-11-17; research/trilogy-first-person.md section 1): `ApplyMevrBaseline` in le3
+  `me2_menu.cpp` after every ini load, ME2's list: first person with the head hidden (rule 1; ME3 started in third person),
+  no head aim (rule 4), the stick doesn't pitch the view (rule 6), flat menus and conversations as cinematics on the cinema
+  screen, never in the world (ME1's choices, rule 9), no profile hotkeys, no R recenter, the menu key `\` (rule 16). Seen on
+  Save 31 (the fake headset); the headset is the checklist's ME3 "First person" line.
 
 #### T02 One sequel bridge, one overlay composition, one menu glue [Forks 1, 2, 13; R20; R17]
 - **State:** LE1 build · LE2 build · LE3 build

@@ -467,6 +467,57 @@ void SaveFpStates(const std::wstring& path) noexcept
     }
 }
 
+#if defined(MEVR_ASI)
+// [MEVR] MEVR's one supported configuration on ME3's keys, ME2's ApplyMevrBaseline (le2 me2_menu.cpp) and LE1's
+// MevrBridge::ModernBaseline (plugin/HalcyonBridge.cpp): stereo, the Quest image fix, the view filled, lean, look speed 1,
+// flat menus, first person with the head hidden (upstream ME3 starts in third person: g_fpEnabled false, K only), no head
+// aim, the stick doesn't tilt the view, conversations and cutscenes on the native flat screen, no profile hotkeys (ME3's 1-4
+// are its power keys), no recenter on R (ME3's reload; double-tapping Back, the menu's Recenter view and opening the menu
+// still recenter) and ME1's menu key \. Run after every load of the ini (LoadValues), so an old, upstream or hand-edited
+// MELE3VR.ini can't bring one back; nothing is written to the file. K still toggles first person for that session (the
+// developer key, as on ME2). The owner (2026-11-16): first person only, on every game; ME2 continues ME1.
+void ApplyMevrBaseline() noexcept
+{
+    int changed = 0;
+    std::string names;
+    auto note = [&](bool differs, const char* name) {
+        if (!differs) return false;
+        ++changed;
+        names += names.empty() ? std::string(name) : std::string(", ") + name;
+        return true;
+    };
+    if (note(ME2VR::CalcViewHook::GetVrMode() != 4, "stereo (Mode=4)")) ME2VR::CalcViewHook::SetVrMode(4);
+    if (note(!ME2VR::Me2Xr::GetQuestFovMatch(), "Quest image fix (QuestFovMatch)")) ME2VR::Me2Xr::SetQuestFovMatch(true);
+    if (note(!ME2VR::Me2Xr::GetVrFovFill(), "field of view fill (VrFovFill)")) ME2VR::Me2Xr::SetVrFovFill(true);
+    if (note(!ME2VR::CalcViewHook::GetHeadPosEnabled(), "lean (PosEnabled)")) ME2VR::CalcViewHook::SetHeadPosEnabled(true);
+    if (note(std::fabs(ME2VR::CalcViewHook::GetLookSensitivity() - 1.0f) > 1e-4f, "look speed (LookSensitivity)"))
+        ME2VR::CalcViewHook::SetLookSensitivity(1.0f);
+    if (note(!ME2VR::D3DCapture::GetMonoMenus(), "flat menus (MonoMenus)")) ME2VR::D3DCapture::SetMonoMenus(true);
+    if (note(!ME2VR::EngineProbe::GetFirstPerson(), "first person (K)")) ME2VR::EngineProbe::SetFirstPerson(true);
+    bool headShown = false;
+    for (int i = 0; i < ME2VR::EngineProbe::FpStateCount(); ++i)
+    {
+        ME2VR::EngineProbe::FpStateCfg* s = ME2VR::EngineProbe::GetFpStateCfg(i);
+        if (s != nullptr && !s->hideHead) { s->hideHead = true; headShown = true; }
+    }
+    note(headShown, "Shepard's head hidden ([FirstPerson] S*_hideHead)");
+    if (note(ME2VR::EngineProbe::GetHeadAimEnabled(), "head aim (HeadAim)")) ME2VR::EngineProbe::SetHeadAimEnabled(false);
+    if (note(!g_decoupledPitch.load(std::memory_order_relaxed), "the stick's pitch (DecoupledPitch)"))
+        g_decoupledPitch.store(true, std::memory_order_relaxed);
+    if (note(ME2VR::CalcViewHook::GetCineVrConvo(), "conversations in VR (CineVrConvo)")) ME2VR::CalcViewHook::SetCineVrConvo(false);
+    if (note(ME2VR::CalcViewHook::GetCineVrCutscene(), "cutscenes in VR (CineVrCutscene)"))
+        ME2VR::CalcViewHook::SetCineVrCutscene(false);
+    if (note(g_profileHotkeys, "profile hotkeys (ProfileHotkeys)")) g_profileHotkeys = false;
+    if (note(g_recenterKey == 'R', "the recenter key R (RecenterKey)")) g_recenterKey = 0;  // rcKey != 0 gates it
+    // The menu key is ME1's \ (it opens our main menu, Ctrl or Shift + \ this one), not upstream's Insert; a key the
+    // player bound in this menu stays.
+    if (note(g_menuKey == VK_INSERT, "the menu key \\ (MenuKey; upstream Insert)")) g_menuKey = VK_OEM_5;
+    if (changed == 0) { ME2VR::Log::Line("[MEVR-BASELINE] MELE3VR.ini already matches the MEVR baseline"); return; }
+    ME2VR::Log::Line("[MEVR-BASELINE] " + std::to_string(changed) + " setting(s) in MELE3VR.ini set to the MEVR baseline: " +
+                     names);
+}
+#endif
+
 void LoadValues() noexcept
 {
     const std::wstring path = IniPath();
@@ -620,6 +671,9 @@ void LoadValues() noexcept
                                     : "[MEVR-STEREO] life-size stereo: the MEVR baseline (HalfEyeUU, SfrConvergence and "
                                       "SwapEyes unused)");
     }
+#if defined(MEVR_ASI)
+    ApplyMevrBaseline();  // [MEVR]
+#endif
     g_valuesLoaded = true;
 }
 

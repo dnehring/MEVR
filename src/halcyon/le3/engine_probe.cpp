@@ -145,7 +145,11 @@ bool ActorIsDying(std::uintptr_t actor) noexcept
 }
 
 // ===== First-person (ported from ME2, LE3 offsets) ==========================================
+#if defined(MEVR_ASI)
+std::atomic_bool g_fpEnabled{true};   // [MEVR] first person from the start, as ME2's; me2_menu.cpp's ApplyMevrBaseline pins it
+#else
 std::atomic_bool g_fpEnabled{false};
+#endif
 std::atomic_bool g_meshHidden{false};
 // MEASURED, not ported: the full PlayerController census ([PCSLOTS]) reported +E28=SFXPlayerCamera and
 // +C38=SFXGameModeManager. The previous 0x684 here was an untested guess carried over from LE2-shaped

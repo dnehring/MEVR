@@ -236,7 +236,9 @@ for LE2. The candidate selects source mode 4 (SFR2), the lowest resolution shown
 ME3's menu (3072x1728), head look, head aim off, native positional scale 2.0 and
 first-person conversations off. `vr-game-settings.ps1` supplies matching dimensions,
 SDR and borderless/non-fullscreen settings. No nonexistent `[FirstPerson] Enabled`
-key is written: first-person activation is an independent existing renderer control.
+key is written: since 2026-11-17 (lane FP3) the renderer's `ApplyMevrBaseline` pins first
+person, the head hidden, after every ini load, in memory (research/trilogy-first-person.md),
+so the preview runs in first person and this file stays as prep wrote it.
 For a bounded renderer bisection, prep accepts `-PreviewRendererMode 0` (mono), `2`
 (alternate-eye stereo) or the default `4` (same-frame stereo), and optional
 `-Diagnostics`. The session records these typed options; launch verifies the exact

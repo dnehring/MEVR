@@ -122,7 +122,8 @@ bool SetFirstPersonEnabled(bool enabled) noexcept {
 }
 
 bool FirstPersonOwned() noexcept {
-    // ME3's first person is on ([FirstPerson] Enabled, K): engine_probe's ApplyFirstPerson then owns the on-foot camera
+    // ME3's first person is on (pinned by me2_menu.cpp's ApplyMevrBaseline after every ini load; K toggles it for the
+    // session): engine_probe's ApplyFirstPerson then owns the on-foot camera
     // modes. Which mode it owns this frame is the mod's half of the floor lock (PawnSample::cameraOwned: the explore and
     // combat modes, as LE1's constant eye), so on/off is LE1's FirstPersonOwnsAny here. [verify] a mode it doesn't own.
     return ME2VR::EngineProbe::GetFirstPerson();
