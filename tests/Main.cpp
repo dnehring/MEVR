@@ -12243,6 +12243,8 @@ int RunPostureOwnershipTests();
 int RunGfxTransformProbeTests();
 int RunMeleeTests();
 int RunScreenMatrixTests();
+// tests/FlareWindowTests.cpp: lens flares in life-size stereo's mode 2 (research/30 section 9.6).
+int RunFlareWindowTests();
 // tests/ConversationWorldTests.cpp: conversations in the world (research/59).
 int RunConversationWorldTests();
 // tests/SoundPlaceTests.cpp: where sounds come from on foot (research/69 A1).
@@ -12474,6 +12476,7 @@ int main() {
     gFailures += RunGfxTransformProbeTests();
     gFailures += RunMeleeTests();
     gFailures += RunScreenMatrixTests();
+    gFailures += RunFlareWindowTests();
     gFailures += RunConversationWorldTests();
     gFailures += RunSoundPlaceTests();
     gFailures += RunGuiEventsTests();

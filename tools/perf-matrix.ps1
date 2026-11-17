@@ -24,7 +24,8 @@ param(
     [string]$OutDir = '',
     [int]$Snapshots = 1,
     [int]$QuietWaitSeconds = 0,    # before each capture: wait this long at most for no cl, link, ctest or mevr-tests (0: only record them)
-    [switch]$NoReplay
+    [switch]$NoReplay,
+    [switch]$Fovs                  # replay the recording's own per-eye FOVs (a PS VR2 recording on the fake headset)
 )
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\common.ps1"
@@ -75,7 +76,7 @@ if (-not $NoReplay) {
         $Recording = Join-Path $MevrDataDir 'recordings\look-10s.mevrrec'
         if (-not (Test-Path $Recording)) { & python "$PSScriptRoot\make-look-recording.py" $Recording 10 | Out-Null }
     }
-    & "$PSScriptRoot\replay.ps1" -Path $Recording -Loop | Out-Null
+    & "$PSScriptRoot\replay.ps1" -Path $Recording -Loop -Fovs:$Fovs | Out-Null
     Start-Sleep -Seconds 3
 }
 $entries = @()

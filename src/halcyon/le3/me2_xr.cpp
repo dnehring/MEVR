@@ -1384,7 +1384,16 @@ void ApplyFovFill(const XrView* views) noexcept
             if (-f.angleDown > vNeed) vNeed = -f.angleDown;
         }
         const float tanH = tanf(tH), tanV = tanf(tV);
-        if (hNeed > 0.1f && hNeed < 1.4f && vNeed > 0.1f && vNeed < 1.4f && tanH > 1e-4f && tanV > 1e-4f)
+        // [MEVR] the window as the eyes' union, each axis on its own (research/30 section 9.6; [Stereo] windowEyes = 1):
+        // the aspect above is the old side-by-side half (backbuffer width / 2 over its height), which a two-pass render
+        // never had, and its uniform cover overshot the eyes' height by half (+-64 degrees for the PS VR2's +-53).
+        if (mevrCover && (::MevrSeams::LifeSizeStereo() & 4) != 0 &&
+            hNeed > 0.1f && hNeed < 1.4f && vNeed > 0.1f && vNeed < 1.4f)
+        {
+            tH = hNeed;
+            tV = vNeed;
+        }
+        else if (hNeed > 0.1f && hNeed < 1.4f && vNeed > 0.1f && vNeed < 1.4f && tanH > 1e-4f && tanV > 1e-4f)
         {
             float k = 1.0f;
             const float kH = tanf(hNeed) / tanH, kV = tanf(vNeed) / tanV;

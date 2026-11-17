@@ -300,14 +300,23 @@ These unblock the most: almost every other entry gets smaller once they land.
   sits on its lamp in both eyes; still life-size (both seen with the PS VR2's eyes replayed, research/30 9.5). ME1 and ME2
   keep mode 2. The cost is sharpness: each eye's crop of the window at the backbuffer's 16:9 has 24% fewer pixels per
   degree across and 36% fewer down than mode 2 (a render size with the window's own shape would give the vertical back).
-- **Left:** ME3's lens flares in mode 2 (placed through the CPU's symmetric window: each lamp's flare off its lamp,
-  differently in each eye, on any headset whose eyes are asymmetric; mode 2 stays off on ME3 until the flare path is
-  found); `[DISTFIX]` in mode 2
+- **ME3's flare path found and fixed, the window's shape and size measured (lane FL, 2026-11-17,
+  research/le3-flares-and-window.md; all off by default, question 17):** the reflection pass (`0x26B780`) projects through
+  `+0x260` and unprojects through `+0x210`, which `[INVMAT]` makes the eye's in mode 2; `plugin/FlareWindow` (ME3's host
+  only, `[Stereo] flareWindow = 1`) gives that one call the window's own inverse: in mode 2 the flares sit on their lamps
+  in both eyes, at no measurable cost (ME2's pass unprojects through `+0x2E0` and is right; ME1 has no UE3 lens flare). The
+  sequels' fill window takes upstream's side-by-side half-eye aspect and stands 1.56x taller than the eyes:
+  `[Stereo] windowEyes = 1` (both trees) takes their union. ME3 renders any size whose sides are multiples of 8 (3072x2216
+  and 4056x1728 seen; 4054 fell flat: `0x36CDC0` rounds the scene targets up). Per eye, px/deg across x down with the
+  PS VR2's eyes: today 14.6 x 7.3; the eyes' window 14.6 x 11.3; mode 2 + the fix 19.2 x 11.3; 3072x2216 in mode 1
+  14.6 x 14.6, in mode 2 19.2 x 14.6. Life-size in every variant (`stereo-check.py`, the same nine directions).
+- **Left:** the owner's choice (question 17) and, with mode 2 back on ME3, a headset look at a lamp-lit room; `[DISTFIX]` in mode 2
   unmeasured (no scene with distortion yet); the owner's headset check (depth, size, comfort, nothing popping at an
   eye's outer edge); the wider culling window's cost (lane SP's levers).
 - **Closes when:** `stereo-check.py` reads parallel far scenery and a pistol at 0.5 m reads 0.5 m on each sequel, and the
   owner's headset check (notes/headset-checklist.md section 8).
-- **Waits for:** the owner's headset. **Who:** lane LS (2026-11-16).
+- **Waits for:** the owner's headset; ME3's mode, question 17. **Who:** lane LS (2026-11-16); ME3's flares and window,
+  lane FL (2026-11-17).
 
 #### T10 Frame pacing for streamed headsets [R24]
 - **State:** LE1 done · LE2 build · LE3 build
@@ -1050,7 +1059,7 @@ Each is asked once. "Today" is what the build does if nobody answers; no default
     PS VR2) until then. Recommended: mode 1 on ME3 for its first headset test, the flare path as a lane. **Answered
     2026-11-17, the owner ("All recommendations"): mode 1 on ME3** (lane DEF: `MELE3VR.ini [VR] MetricEyeFrustum`, LE1's
     `sfr2MetricEyeFrustum`, 0 by default and not pinned by the baseline; ME1 and ME2 keep mode 2). The flare path stays a
-    lane for later.
+    lane for later. **Found and fixed by lane FL (2026-11-17), off by default:** the way back to mode 2 is question 17.
 13. **ME3's heavy weapon and the holsters** (T25; lane FX2, 2026-11-17). A heavy weapon has no body slot, so the holsters
     see an empty hand: a right-grip squeeze inside any slot (the right shoulder's, close to where a heavy weapon is held)
     calls `SwitchWeapon`, and ME3's own `SwitchWeapon` puts the heavy weapon down with `SFXHeavyWeapon.PutDownWeapon`, which
@@ -1089,6 +1098,21 @@ Each is asked once. "Today" is what the build does if nobody answers; no default
     that calls `LeaveWorld` on the game thread (as Game menu and Holster do); (b) B tapped (not held, not double) reaches the
     game only where a level has a leave event; (c) leave it. Which levels carry the event is a scan away
     (`tools/conversation-scan --script grep:` over the levels).
+17. **ME3's sharpness: mode 2 with the flare fix, the eyes' window, a taller render** (T09; lane FL, 2026-11-17,
+    research/le3-flares-and-window.md sections 3 and 4). All three are built and off by default; each eye's pixels per
+    degree (across x down) with the PS VR2's eyes, same life-size stereo in all:
+    - (a) **Mode 2 back on ME3 with the flare fix** (`MELE3VR.ini [VR] MetricEyeFrustum = 1`, `ASI\LE3MEVR.ini [Stereo]
+      flareWindow = 1`): 14.6 x 7.3 today -> 19.2 x 11.3; every lamp's flare on its lamp in both eyes; no measurable cost.
+      ME3 then runs ME1's and ME2's mode. Recommended.
+    - (b) **The eyes' window on ME2 and ME3** (`[Stereo] windowEyes = 1`): the fill window today takes upstream's
+      side-by-side half-eye aspect and is 56% taller than the eyes; the union gives mode 1 11.3 down instead of 7.3 at no
+      pixel cost, and mode 2 a culling window no taller than the eyes. Recommended, after a look at the HUD panel in a
+      scene with a HUD (Save 31 draws none).
+    - (c) **A taller render for ME3** (`RenderW`/`RenderH`, multiples of 8): 3072x2216 gives 14.6 down in mode 1, 19.2 x 14.6
+      in mode 2, for 28% more pixels (about +0.6 ms GPU on the 4090 at Save 31; the render thread, draw-bound, unchanged
+      within the noise). The PS VR2 asks for about 17.7 x 18.9. Optional; the menu's sizes are all 16:9 today.
+    - Not recommended: mode 1 widened to mode 2's sharpness (4056x1728): the same picture as (a) for 32% more pixels.
+    Today: mode 1 on the 16:9 window (14.6 x 7.3).
 
 **Defaults waiting for a seen result and a yes** (not questions yet): `[SquadOrders] place` on the sequels (ME1's is on),
 `[Traversal] cue`, ME3's melee and traversal gestures (with B kept from the game, ME3 has no melee on foot until a yes), the

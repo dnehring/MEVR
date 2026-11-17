@@ -243,6 +243,11 @@ For a bounded renderer bisection, prep accepts `-PreviewRendererMode 0` (mono), 
 (alternate-eye stereo) or the default `4` (same-frame stereo), and optional
 `-Diagnostics`. The session records these typed options; launch verifies the exact
 corresponding config and artifact hashes. Restore before selecting another variant.
+`-PreviewEyeFrustum` writes `MetricEyeFrustum=1` (each eye's own frustum, mode 2; ME3's default is the shared window)
+and `-PreviewRenderSize <W>x<H>` (multiples of 8, 1280..8192, four digits each; default `3072x1728`: ME3 rounds its
+scene targets up to a multiple of 8 and the renderer's capture needs them the backbuffer's size) sets `RenderW`/`RenderH` and
+`vr-game-settings.ps1`'s ResX/ResY (research/le3-flares-and-window.md). Both are recorded in the session like the
+mode and checked by launch.
 Launch checks the renderer config and binary hashes again after XR readiness. The
 mod may append its known first-run settings sections; its original Debug/Pointer
 prefix cannot change, duplicate or unknown appended sections/keys are refused, and

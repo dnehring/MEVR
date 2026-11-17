@@ -895,7 +895,10 @@ stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs 
   **Lamps' lens flares** (research/30 9.4 item 6 and 9.5; the owner chose mode 1 on ME3, 2026-11-17, lane DEF: both eyes
   through the shared symmetric window, `MELE3VR.ini [VR] MetricEyeFrustum = 0`): look at a ceiling lamp on the Normandy with
   each eye closed in turn: its flare on the lamp in both eyes, fusing; nothing missing at either eye's outer edge. (In mode 2,
-  `MetricEyeFrustum = 1`, each flare sat off its lamp, differently in each eye.)
+  `MetricEyeFrustum = 1`, each flare sat off its lamp, differently in each eye.) **If question 17 (a) is a yes** (lane FL,
+  research/le3-flares-and-window.md: mode 2 with `ASI\LE3MEVR.ini [Stereo] flareWindow = 1`): the same look at the same
+  lamp, now sharper (19.2 x 11.3 px per degree against 14.6 x 7.3); with (b), `[Stereo] windowEyes = 1`, the HUD panel's
+  elements still on their world points in a scene with a HUD.
 - [ ] Changes of view on ME2 and ME3 (research/30 9.4, lane FXR): leaving the 3D cinema screen, a load's end, a menu and
   back: no single frame with the eyes swapped or the world jumping in depth.
 - [ ] First person from the start (T01's R32; research/trilogy-first-person.md, lane FP3 2026-11-17; seen on the fake

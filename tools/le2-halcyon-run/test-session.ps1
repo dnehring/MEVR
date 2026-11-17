@@ -611,6 +611,29 @@ try {
         Reject { Assert-PreviewConfig $bin 4 $true 8 }
         Check ((Get-PreviewRendererConfig 4 $true 1) -match 'MirrorPresentEvery=1\r?\n')
     }
+    Case 'preview eye frustum and render size bind the renderer file and reject malformed or changed options' {
+        $defaults = Get-PreviewOptions ([pscustomobject]@{})
+        Check (-not $defaults.eyeFrustum -and $defaults.renderSize -eq '3072x1728')
+        Check ((Get-PreviewRendererConfig) -notmatch 'MetricEyeFrustum')
+        Check ((Get-PreviewRendererConfig) -match 'RenderW=3072\r\nRenderH=1728\r\n')
+        $tall = Get-PreviewRendererConfig 4 $false 8 $true '3072x2216'
+        Check ($tall -match 'RenderW=3072\r\nRenderH=2216\r\n' -and $tall -match 'Diagnostics=0\r\nMetricEyeFrustum=1\r\nCineVrConvo=0')
+        foreach ($bad in @('3072x1727', '4054x1728', '1024x2216', '9000x1728', '3072*1728', '')) {
+            Reject { Get-PreviewRenderSize $bad }
+            Reject { Get-PreviewOptions ([pscustomobject]@{previewRenderSize=$bad}) }
+        }
+        Reject { Get-PreviewOptions ([pscustomobject]@{previewEyeFrustum='true'}) }
+        Reject { Get-PreviewOptions ([pscustomobject]@{previewRenderSize=3072}) }
+        Reject { & "$PSScriptRoot\prep.ps1" -Holder synthetic -Game LE3 -DesktopDump -PreviewEyeFrustum }
+        Reject { & "$PSScriptRoot\prep.ps1" -Holder synthetic -Game LE3 -DesktopDump -PreviewRenderSize 3072x2216 }
+        $bin=Join-Path $root 'preview-frustum'; New-Item -ItemType Directory (Join-Path $bin 'ASI') | Out-Null
+        [IO.File]::WriteAllText((Join-Path $bin 'ASI\LE3MEVR.ini'),(Get-PreviewModConfig))
+        [IO.File]::WriteAllText((Join-Path $bin 'MELE3VR.ini'),$tall)
+        Assert-PreviewConfig $bin 4 $false 8 $true '3072x2216'
+        Reject { Assert-PreviewConfig $bin 4 $false 8 $false '3072x2216' }
+        Reject { Assert-PreviewConfig $bin 4 $false 8 $true '3072x1728' }
+        Reject { Assert-PreviewConfig $bin }
+    }
     Case 'renderer readiness marker must be fresh rather than replayed old log content' {
         $path=Join-Path $root 'preview.log'; $marker='[ME3XR] VR session ready; starting frame submission.'
         [IO.File]::WriteAllText($path,$marker); $started=[DateTime]::UtcNow.AddSeconds(-1)

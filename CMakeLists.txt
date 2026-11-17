@@ -1154,6 +1154,8 @@ function(mevr_add_plugin game)
             src/plugin/SequelSquadLayers.cpp src/plugin/SequelSquadLayers.hpp
             src/plugin/CineScreen.cpp src/core/vr/CineScreen.cpp
             src/plugin/MetricStereo.cpp src/core/vr/MetricStereo.cpp src/halcyon/MevrMetricView.h   # life-size stereo (research/30 section 9)
+            # Lens flares' reflections in mode 2 through the CPU's own window (research/30 section 9.6): ME3's only.
+            src/plugin/FlareWindow.cpp src/plugin/FlareWindow.hpp src/core/vr/FlareWindow.cpp src/core/vr/FlareWindow.hpp
             src/core/vr/ConversationWorld.cpp src/plugin/CinemaBackdrop.cpp src/plugin/CinemaBackdropDraw.cpp
             src/plugin/TransitionFade.cpp src/core/vr/TransitionFade.cpp
             src/plugin/HudPanel.cpp src/plugin/QuadSwapchain.cpp
@@ -1471,6 +1473,8 @@ if (MEVR_BUILD_TESTS)
         tests/ScreenMatrixTests.cpp
         src/core/d3d11/ShaderReflect.cpp
         src/core/vr/ScreenMatrix.cpp
+        tests/FlareWindowTests.cpp
+        src/core/vr/FlareWindow.cpp
         tests/ConversationWorldTests.cpp
         tests/SoundPlaceTests.cpp
         tests/GuiEventsTests.cpp
