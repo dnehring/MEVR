@@ -2,7 +2,6 @@
 // What each row of our main menu drives (plugin/MainMenuSettings.hpp, research/28 section 4).
 
 #include "plugin/MainMenuSettings.hpp"
-#include "plugin/MainMenu.hpp"
 
 // One menu for both games (docs/le2-continuation-plan.md M4.1, research/le2-menus.md): LE1's host has Halcyon's LE1 renderer
 // (its VrConfig, profiles and render size) and the LE1 host's modules the rows drive (the colour, the voice, OpenAL Soft, the
@@ -39,6 +38,7 @@
 #include "core/vr/PerformanceModes.hpp"
 #include "core/vr/WorldUi.hpp"
 #include "plugin/Calibration.hpp"
+#include "plugin/MainMenu.hpp"  // the top bar's Leave: the mod's word (research/28 "Leave")
 #include "plugin/Renderer.hpp"
 #include "plugin/TestLoop.hpp"
 #include "plugin/Voice.hpp"
