@@ -1089,6 +1089,9 @@ function(mevr_add_plugin game)
             # ME1's 3D cinema screen for conversations and cutscenes, its floor and horizon, the dip from black and the
             # world-locked placement (research/52, research/le2-cinema.md): LE1's modules, shared.
             src/plugin/CineScreen.cpp src/plugin/CineScreen.hpp src/core/vr/CineScreen.cpp src/core/vr/CineScreen.hpp
+            # Life-size stereo (research/30 section 9): ME1's plan, shared; the render-side edits in src/halcyon/MevrMetricView.h.
+            src/plugin/MetricStereo.cpp src/plugin/MetricStereo.hpp src/core/vr/MetricStereo.cpp src/core/vr/MetricStereo.hpp
+            src/halcyon/MevrMetricView.h
             src/plugin/SequelCinema.cpp src/plugin/SequelCinema.hpp
             src/plugin/SequelWeaponLayers.cpp src/plugin/SequelWeaponLayers.hpp
             src/plugin/SequelSquadLayers.cpp src/plugin/SequelSquadLayers.hpp
@@ -1138,6 +1141,7 @@ function(mevr_add_plugin game)
             src/plugin/SequelWeaponLayers.cpp src/plugin/SequelWeaponLayers.hpp
             src/plugin/SequelSquadLayers.cpp src/plugin/SequelSquadLayers.hpp
             src/plugin/CineScreen.cpp src/core/vr/CineScreen.cpp
+            src/plugin/MetricStereo.cpp src/core/vr/MetricStereo.cpp src/halcyon/MevrMetricView.h   # life-size stereo (research/30 section 9)
             src/core/vr/ConversationWorld.cpp src/plugin/CinemaBackdrop.cpp src/plugin/CinemaBackdropDraw.cpp
             src/plugin/TransitionFade.cpp src/core/vr/TransitionFade.cpp
             src/plugin/HudPanel.cpp src/plugin/QuadSwapchain.cpp
@@ -1439,6 +1443,7 @@ if (MEVR_BUILD_TESTS)
         tests/BreadcrumbTests.cpp
         tests/ExeTests.cpp
         tests/PowerWheelTests.cpp
+        tests/MetricStereoSequelTests.cpp
         tests/VoiceMenuTests.cpp
         tests/SquadPlaceTests.cpp
         tests/BodyScaleTests.cpp

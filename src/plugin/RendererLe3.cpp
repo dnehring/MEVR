@@ -47,6 +47,8 @@ Caps const& Capabilities() noexcept {
         c.recenterTilt = true;       // ME1's tilt-correcting recenter (RecenterAppSpace)
         c.panelsInRoom = true;
         c.galaxyTable = true;        // [Galaxy] nativeTable, opt-in
+        c.metricStereo = true;       // MevrSeams::PlanStereo: each pass from its eye's real place (research/30 section 9)
+        c.perEyeFrustum = true;      // mode 2 where the window holds the eyes (src/halcyon/MevrMetricView.h)
         // hudPanelGameplay false: only a measured prompt crop is captured, the native gameplay HUD stays in the eyes.
         // screenReticleHide false: the native LE3 crosshair's ownership has not been verified.
         return c;

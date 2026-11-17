@@ -578,9 +578,9 @@ defined in the tool's header:
 <!-- parity:summary -->
 | game | renderer | host plugin files | host core files | services served | src/game + src/engine modules by status | common seams called | own seams |
 |---|---|---|---|---|---|---|---|
-| LE1 | halcyon-le1 | 72 | 71 | 57 | run 67, out 4, ungated 23, unbuilt 4 | 20 of 32 | 91 |
-| LE2 | halcyon-le2 | 66 | 55 | 48 | run 41, ready 10, out 20, ungated 21, unreferenced 2, unbuilt 4 | 30 of 32 | 4 |
-| LE3 | halcyon-le3 | 69 | 55 | 48 | run 42, ready 10, out 19, ungated 22, unreferenced 2, unbuilt 3 | 30 of 32 | 2 |
+| LE1 | halcyon-le1 | 72 | 71 | 57 | run 67, out 4, ungated 23, unbuilt 4 | 22 of 35 | 89 |
+| LE2 | halcyon-le2 | 67 | 56 | 48 | run 41, ready 10, out 20, ungated 21, unreferenced 2, unbuilt 4 | 33 of 35 | 4 |
+| LE3 | halcyon-le3 | 70 | 56 | 48 | run 42, ready 10, out 19, ungated 22, unreferenced 2, unbuilt 3 | 33 of 35 | 2 |
 <!-- /parity:summary -->
 
 ### Host plugin files per game
@@ -623,7 +623,7 @@ defined in the tool's header:
 | `MainMenu` | yes | yes | yes |
 | `MainMenuSettings` | yes | yes | yes |
 | `MenusLe2` | - | yes | yes |
-| `MetricStereo` | yes | - | - |
+| `MetricStereo` | yes | yes | yes |
 | `MevrMenuPointer` | yes | - | - |
 | `MevrMenuTab` | yes | - | - |
 | `ModLoader` | yes | yes | yes |
@@ -688,7 +688,7 @@ defined in the tool's header:
 ### Host core files per game
 
 <!-- parity:core -->
-In all three hosts (53): `Exe`, `ExeCheck`, `Hook`, `Hotkey`, `Ini`, `Json`, `Log`, `PngFile`, `Version`, `Window`, `d3d11/ShaderReflect`, `gfx/Raster`, `gfx/Swf`, `gfx/SwfFont`, `voice/ScriptMatch`, `vr/AimRay`, `vr/Calibration`, `vr/CineScreen`, `vr/Colour`, `vr/Comfort`, `vr/Controllers`, `vr/ConversationWorld`, `vr/FloorLock`, `vr/FrameProbe`, `vr/GalaxyHologram`, `vr/GalaxyMap`, `vr/GameMenuRequest`, `vr/GamePointer`, `vr/GuiEvents`, `vr/Haptics`, `vr/HostView`, `vr/HudPieces`, `vr/ImageConvert`, `vr/InteractLabel`, `vr/LayerComposite`, `vr/MenuPointer`, `vr/OmniRail`, `vr/OverlayPlacement`, `vr/PoseRecording`, `vr/PowerWheel`, `vr/Recenter`, `vr/ScopeArt`, `vr/ScopeCapture`, `vr/ScreenMatrix`, `vr/Sights`, `vr/SquadMenu`, `vr/SquadPlace`, `vr/TestRequest`, `vr/Thespian`, `vr/TransitionFade`, `vr/WorldUi`, `xr/Floor`, `xr/Input`.
+In all three hosts (54): `Exe`, `ExeCheck`, `Hook`, `Hotkey`, `Ini`, `Json`, `Log`, `PngFile`, `Version`, `Window`, `d3d11/ShaderReflect`, `gfx/Raster`, `gfx/Swf`, `gfx/SwfFont`, `voice/ScriptMatch`, `vr/AimRay`, `vr/Calibration`, `vr/CineScreen`, `vr/Colour`, `vr/Comfort`, `vr/Controllers`, `vr/ConversationWorld`, `vr/FloorLock`, `vr/FrameProbe`, `vr/GalaxyHologram`, `vr/GalaxyMap`, `vr/GameMenuRequest`, `vr/GamePointer`, `vr/GuiEvents`, `vr/Haptics`, `vr/HostView`, `vr/HudPieces`, `vr/ImageConvert`, `vr/InteractLabel`, `vr/LayerComposite`, `vr/MenuPointer`, `vr/MetricStereo`, `vr/OmniRail`, `vr/OverlayPlacement`, `vr/PoseRecording`, `vr/PowerWheel`, `vr/Recenter`, `vr/ScopeArt`, `vr/ScopeCapture`, `vr/ScreenMatrix`, `vr/Sights`, `vr/SquadMenu`, `vr/SquadPlace`, `vr/TestRequest`, `vr/Thespian`, `vr/TransitionFade`, `vr/WorldUi`, `xr/Floor`, `xr/Input`.
 
 | src/core (host) | LE1 | LE2 | LE3 |
 |---|---|---|---|
@@ -698,7 +698,6 @@ In all three hosts (53): `Exe`, `ExeCheck`, `Hook`, `Hotkey`, `Ini`, `Json`, `Lo
 | `vr/CombatStance` | yes | - | - |
 | `vr/MakoControls` | yes | - | - |
 | `vr/MakoGunner` | yes | - | - |
-| `vr/MetricStereo` | yes | - | - |
 | `vr/OmniPad` | yes | - | - |
 | `vr/PresentationHold` | yes | - | - |
 | `vr/QuestPacing` | yes | - | - |
@@ -906,8 +905,10 @@ The common vocabulary (`namespace MevrSeams`, `src/halcyon/MevrSeams.h`): `yes` 
 | `FloorViewTranslation` | yes | yes | yes |
 | `HudPanelDraw` | - | yes | yes |
 | `KeyDown` | yes | yes | yes |
+| `LifeSizeStereo` | - | yes | yes |
 | `MainMenuOpen` | yes | yes | yes |
 | `MergeMotionControllers` | yes | yes | yes |
+| `NoteStereoSubmit` | yes | yes | yes |
 | `OnEyeCopied` | - | yes | yes |
 | `OnEyeReleased` | - | yes | yes |
 | `OnEyeSource` | - | yes | yes |
@@ -925,6 +926,7 @@ The common vocabulary (`namespace MevrSeams`, `src/halcyon/MevrSeams.h`): `yes` 
 | `PerfPresentBegin` | - | - | - |
 | `PerfPresentEnd` | - | - | - |
 | `PlacePanel` | yes | yes | yes |
+| `PlanStereo` | yes | yes | yes |
 | `QueueProcessEvent` | yes | yes | yes |
 | `RecenterOrientation` | yes | yes | yes |
 | `StaticXrGetInstanceProcAddr` | yes | yes | yes |
@@ -998,7 +1000,6 @@ Each renderer's own seams (`MevrBridge`, its tree's `mevr_bridge.h`): the per-re
 | `NoteHudPanelDraw` | yes | - | - |
 | `NoteHudPanelTint` | yes | - | - |
 | `NotePixelShaderCreated` | yes | - | - |
-| `NoteStereoSubmit` | yes | - | - |
 | `OnFlatQuad` | yes | - | - |
 | `OnGalaxyHologram` | yes | - | - |
 | `OnMenuQuad` | yes | - | - |
@@ -1010,7 +1011,6 @@ Each renderer's own seams (`MevrBridge`, its tree's `mevr_bridge.h`): the per-re
 | `PerfPoint` | yes | - | - |
 | `PerfPresentBegin` | declared | - | - |
 | `PerfPresentEnd` | declared | - | - |
-| `PlanStereo` | yes | - | - |
 | `ProbeTextureAlpha` | yes | - | - |
 | `QuestPacingEnabled` | yes | - | - |
 | `QuestPacingFrame` | yes | - | - |

@@ -5209,7 +5209,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
             // [MEVR] life-size stereo (research/30): each pass of the next game frame from its eye's real place, at
             // the view's own scale (the lean's units per metre, which the hands use too); its own frustum where the
             // game's UI isn't in the eye images (gameplay, the HUD panel taking it). Off: upstream's offsets.
-            MELEVR::MevrBridge::StereoPlanInput mevrIn;
+            MevrSeams::StereoPlanInput mevrIn;
             mevrIn.metric = cfg.sfr2Metric;
             mevrIn.eyeFrustum = cfg.sfr2MetricEyeFrustum;
             mevrIn.sfr2Active = sfr2Active;
@@ -5237,8 +5237,8 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
             mevrIn.unitsPerMeter = kMetersToUU * mevrLeanScale;
             mevrIn.depth = cfg.sfr2MetricDepth * cineSepMul;
             MELEVR::RenderHook::GetRenderFovHalfAngles(&mevrIn.cpuHalfH, &mevrIn.cpuHalfV);   // the culling window
-            MELEVR::MevrBridge::StereoPlan mevrPlan;
-            MELEVR::MevrBridge::PlanStereo(mevrIn, &mevrPlan);
+            MevrSeams::StereoPlan mevrPlan;
+            MevrSeams::PlanStereo(mevrIn, &mevrPlan);
             MELEVR::RenderHook::MetricPass mevrPasses[2];
             for (int p = 0; p < 2; ++p)
             {
@@ -5827,7 +5827,7 @@ void RunFrame(IDXGISwapChain* gameSwapChain) noexcept
             mevrFov[e][0] = projViews[e].fov.angleLeft; mevrFov[e][1] = projViews[e].fov.angleRight;
             mevrFov[e][2] = projViews[e].fov.angleUp; mevrFov[e][3] = projViews[e].fov.angleDown;
         }
-        MELEVR::MevrBridge::NoteStereoSubmit(mevrDeclare != nullptr ? mevrDeclare->mode : 0, mevrPos, mevrQ, mevrFov);
+        MevrSeams::NoteStereoSubmit(mevrDeclare != nullptr ? mevrDeclare->mode : 0, mevrPos, mevrQ, mevrFov);
     }
 
     // [AERBLACK] A renderable XR frame must never lose the projection layer because GetBuffer or

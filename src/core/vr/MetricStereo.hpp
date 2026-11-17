@@ -37,6 +37,11 @@ Fov Filled(Fov const& eye, float fillH, float fillV);
 // eye's own (filled) frustum lies inside it.
 Fov UnionWindow(Fov const& left, Fov const& right, float fillH, float fillV);
 Tangents TangentsOf(Fov const& fov);
+// Whether a symmetric render window (its half angles, radians) holds an eye's own (filled) frustum, every edge inside it
+// (a 0.1% tolerance for rounding). The CPU's culling window must, for an eye rendered through its own frustum (mode 2),
+// or objects at that eye's outer edge are culled and pop in. The sequels' window is the left eye's vertical half angle
+// with the horizontal from the image's aspect (research/30 "The sequels"), which needn't hold either eye.
+bool WindowHolds(float halfH, float halfV, Fov const& eye, float fillH, float fillV);
 
 // UE3's off-centre perspective terms for a frustum (w = z, so a projection whose M[2][3] is 1):
 // p0 = 2/(r-l), p8 = -(r+l)/(r-l), p5 = 2/(u-d), p9 = -(u+d)/(u-d). A symmetric frustum has p8 = p9 = 0

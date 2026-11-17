@@ -191,6 +191,69 @@ float FloorViewTranslation(bool replay, float rawCameraZ, float rightZ, float up
 // when tracking starts (never corrected). OnRecentered confirms it took.
 void RecenterOrientation(float const head[4], bool automatic, float orientation[4]) noexcept;
 
+// ---- Life-size (metric) stereo (plugin/MetricStereo over core/vr/MetricStereo; research/30, "The sequels" section 9) ----
+// Halcyon's stereo renders both passes from the head centre +- a half eye along the body's right, with one symmetric FOV,
+// and shifts each finished image by a convergence at submit. Life-size: each pass renders from its eye's real place (the
+// runtime's views, at the view's own units per metre), no convergence shift, and, where no screen-space UI is in the eye
+// images, through that eye's own off-centre frustum. LE1: sfr2Metric (ModernBaseline pins it); ME2 and ME3: always,
+// unless LifeSizeStereo() says otherwise. Moved here from LE1's mevr_bridge.h unchanged, with `windowHoldsEyes`.
+struct StereoPlanInput
+{
+    bool metric = false;            // life-size stereo on (LE1: sfr2Metric)
+    bool eyeFrustum = false;        // each eye's own frustum wanted (LE1: sfr2MetricEyeFrustum)
+    bool sfr2Active = false;        // the two-pass stereo renders the world this frame (not a flat screen)
+    bool headValid = false;
+    bool viewFollowsHead = true;    // head look on: the rendered view turns with the head
+    bool uiInEyes = true;           // the game's screen-space UI would land in the eye images (no HUD panel)
+    bool fovOverride = false;       // the renderer's render FOV override is on (its FOV fill, not the flat screen)
+    bool swapEyes = false;          // the renderer's swap: pass 0 renders the right eye (upstream only)
+    // The renderer's symmetric window holds both eyes' own frusta (core/vr/MetricStereo WindowHolds): mode 2 only then.
+    // LE1's window is the eyes' union by construction (left at true); the sequels' is aspect-derived (research/30 9.2).
+    bool windowHoldsEyes = true;
+    float eyeOrientation[2][4] = {{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};   // the runtime's views
+    float eyePosition[2][3] = {};                                                         // (app space, metres)
+    float eyeFov[2][4] = {};                                                              // left, right, up, down
+    float viewOrientation[4] = {0.0f, 0.0f, 0.0f, 1.0f};   // the roll-removed head the view is built for
+    float fillH = 1.0f, fillV = 1.0f;                      // the FOV fill applied to the eyes' angles
+    float unitsPerMeter = 50.0f;                           // the view's scale (the lean's units per metre)
+    float depth = 1.0f;                                    // the extra depth (LE1: sfr2MetricDepth x the cine separation)
+    // The CPU projection the render last used (radians; 0 = none seen yet): the culling window, which must hold each eye's
+    // own frustum in mode 2 (logged with the plan, warned when it doesn't).
+    float cpuHalfH = 0.0f, cpuHalfV = 0.0f;
+    // A cinematic on the 3D cinema screen (CineScreenWanted, research/52) where the plan sets its cameras (LE1): mode 1
+    // whatever `metric`, the two passes from parallel cameras on the director's camera. The sequels keep their own
+    // (CineScreenHalfSeparationUU) and pass false.
+    bool screen = false;
+};
+struct StereoPlan
+{
+    int mode = 0;                   // 0 upstream, 1 life-size (symmetric window), 2 life-size (each eye's own frustum)
+    int pass0Eye = 0;               // the eye render pass 0 is for (pass 1: the other)
+    float passOffsetUU[2][3] = {};  // per pass: camera right, up, forward from the lean's eye centre
+    float passTerms[2][4] = {};     // per pass, mode 2: p0, p5, p8, p9 (UE3's off-centre terms, w = z)
+    float passTan[2][4] = {};       // per pass, mode 2: the frustum's left, right, up, down tangents
+    float ipdM = 0.0f;              // the runtime's eye distance
+    float ipdUU = 0.0f;             // as rendered
+    // The 3D cinema screen (mode 1, research/52 "Cross-eyed"): the tangent of the lens half angle the offsets were planned
+    // for, and the largest one planned. The render hook scales the offsets to the lens of the frame it draws. 0: as planned.
+    float lensTan = 0.0f;
+    float lensTanMax = 0.0f;
+};
+// Present thread, once per frame with the view offset: the plan for the next game frame's passes ([MEVR-STEREO] lines).
+void PlanStereo(const StereoPlanInput& in, StereoPlan* out) noexcept;
+// Present thread, with the projection views: what this frame submits. `mode`: what the pair was rendered with (0
+// upstream's, also a flat screen). Declared poses (position xyz, orientation xyzw) and FOVs per eye.
+void NoteStereoSubmit(int mode, float const declaredPosition[2][3], float const declaredOrientation[2][4],
+    float const declaredFov[2][4]) noexcept;
+// Any thread, read once: life-size stereo is the sequels' only configuration (the owner, 2026-11-16: "It should always
+// be life sized stereo for all games"; ME1's ModernBaseline pins sfr2Metric). Bit 0 set: life-size (the default). 0 only
+// with `[Debug] upstreamStereo = 1` in ASI\<GAME>MEVR.ini: the renderer's upstream stereo, for a before/after
+// measurement. Bit 1 (`[Debug] stereoWindowCoversEyes = 1`, a measurement): the renderer's window widened by one uniform
+// factor until it holds both eyes' frusta, as its Meta-runtime path does, so mode 2 can run. A development build also
+// reads %LOCALAPPDATA%\MEVR\stereo.measure (`[Stereo] mode = upstream | cover`) for runs whose ini must stay exact.
+// Not called by LE1.
+int LifeSizeStereo() noexcept;
+
 // =====================================================================================================================
 // 3. Eye image. Not called by LE1 (its blit has its own EyeColour* / EyeUpscale seams until the eye-image lane).
 // =====================================================================================================================

@@ -28,6 +28,13 @@ void SetCinematic(bool on) noexcept;
 // [MEVR] Director-camera stereo rendered onto the shared screen; never first-person world placement.
 bool GetMevrCineScreen() noexcept;
 void SetMevrCineScreen(bool on) noexcept;
+// [MEVR] Life-size stereo (research/30 section 9): on, each SFR pass renders from its eye's real place (MevrMetricView's plan),
+// the lean from the eyes' centre at 1:1 forward; off, upstream exactly. Set by me2_menu.cpp's baseline.
+bool GetMevrLifeSize() noexcept;
+void SetMevrLifeSize(bool on) noexcept;
+// [MEVR] Whether head look turns the render this frame (SetHeadLook's enabled), and the FOV fill's target window.
+bool GetHeadLookApplied() noexcept;
+bool GetFovFillTarget(float* hHalfRad, float* vHalfRad) noexcept;
 bool GetCineVrConvo() noexcept;         void SetCineVrConvo(bool on) noexcept;      // [VRCINE]
 bool GetCineVrCutscene() noexcept;      void SetCineVrCutscene(bool on) noexcept;
 bool GetCineVrHeadTracking() noexcept;  void SetCineVrHeadTracking(bool on) noexcept;

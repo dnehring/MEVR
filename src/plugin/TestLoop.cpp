@@ -22,6 +22,9 @@
 #include "plugin/CineScreen.hpp"
 #endif
 #include "plugin/Swapchains.hpp"
+#if defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
+#include "plugin/MetricStereo.hpp"  // life-size stereo on the sequels (research/30 section 9)
+#endif
 #if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2)
 #include "plugin/Colour.hpp"  // both Halcyon hosts (LE2: the eye copy's correction)
 #include "plugin/CineScreen.hpp"  // both Halcyon hosts (ME1's 3D cinema screen)
@@ -858,6 +861,9 @@ ModuleBlocks ModuleStatus() {
     m.colour = colour::StatusJson();
     m.floorLock = floor_lock::StatusJson();
     m.cineScreen = cine_screen::StatusJson();
+#endif
+#if defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
+    m.stereo = metric_stereo::StatusJson();   // life-size stereo's plan and submit (research/30 section 9)
 #endif
 #if defined(MEVR_WITH_HALCYON)
     m.recenter = recenter_tilt::StatusJson();

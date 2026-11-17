@@ -605,6 +605,21 @@ void LoadValues() noexcept
         ME2VR::HudProbe::SetGroupConfig(i, cfg);
     }
     LoadFpStates(path);
+    {
+        // [MEVR] Life-size stereo (research/30 section 9; the owner, 2026-11-16: "It should always be life sized stereo for
+        // all games"), ME1's ModernBaseline and ME2's ApplyMevrBaseline: each eye from its real place at 100 uu per metre
+        // (PosScale 2), no convergence, the lean from the eyes' centre at 1:1 forward; after every load of the ini.
+        // HalfEyeUU, SfrConvergence and SwapEyes stay in the file, unused. [Debug] upstreamStereo = 1 in ASI\LE3MEVR.ini
+        // leaves upstream's stereo for a measurement.
+        const bool lifeSize = (::MevrSeams::LifeSizeStereo() & 1) != 0;
+        ME2VR::CalcViewHook::SetMevrLifeSize(lifeSize);
+        const bool scaleWas = std::fabs(ME2VR::CalcViewHook::GetHeadPosScale() - 2.0f) > 1e-4f;
+        if (lifeSize && scaleWas) ME2VR::CalcViewHook::SetHeadPosScale(2.0f);
+        ME2VR::Log::Line(!lifeSize ? "[MEVR-STEREO] life-size stereo OFF ([Debug] upstreamStereo = 1): upstream's stereo"
+                         : scaleWas ? "[MEVR-STEREO] life-size stereo: the MEVR baseline; PosScale set to 2 (100 uu per metre)"
+                                    : "[MEVR-STEREO] life-size stereo: the MEVR baseline (HalfEyeUU, SfrConvergence and "
+                                      "SwapEyes unused)");
+    }
     g_valuesLoaded = true;
 }
 

@@ -8,6 +8,7 @@
 #include "me2_xr.h"
 #if defined(MEVR_ASI)
 #include "mevr_bridge.h"  // [MEVR] FloorViewTranslation (the floor lock)
+#include "../MevrMetricView.h"  // [MEVR] life-size stereo's render-side edits (research/30 section 9)
 #endif
 
 #include <Windows.h>
@@ -72,6 +73,10 @@ std::atomic_bool g_cineVrCutscene{false};
 std::atomic_bool g_cineVrHeadTracking{true};
 std::atomic_bool g_vrCineActive{false};   // runtime: a VR cine is being rendered this frame
 std::atomic_bool g_mevrCineScreen{false}; // [MEVR] runtime: ...on ME1's 3D cinema screen (research/le2-cinema.md)
+// [MEVR] Life-size stereo (research/30 section 9; MevrSeams::LifeSizeStereo, set by me2_menu.cpp's baseline): each pass from
+// its eye's real place (MevrMetricView's plan), the lean from the eyes' centre at 1:1 forward. False: upstream exactly.
+std::atomic_bool g_mevrLifeSize{false};
+float MevrForwardLeanEmphasis() noexcept { return g_mevrLifeSize.load(std::memory_order_relaxed) ? 1.0f : 3.0f; }
 std::atomic<unsigned> g_p1CalcSeq{0};     // [ENGCINE] P1 CalcSceneView heartbeat (see bump site)
 std::atomic_bool g_engCineAlive{true};    // [ENGCINE] gm8+alive scene = in-engine cutscene (toggle for A/B)
 std::atomic<int> g_cineEnterFrames{8};    // [CINEDEBOUNCE] consecutive narrow frames before cine entry (0 = instant/old)
@@ -738,7 +743,7 @@ void ApplyHeadPosition(std::uintptr_t sv) noexcept
     // ME1-PARITY 6DOF (2026-07-04): fixed 50 uu/m (WORLD_TO_METERS), NOT coupled to the stereo eye slider, and
     // forward/back emphasized 3x - matches ME1 exactly (xr_session.cpp kMetersToUU=50, kFwdLeanEmphasis=3).
     constexpr float kMetersToUU = 50.0f;
-    constexpr float kFwdLeanEmphasis = 3.0f;
+    const float kFwdLeanEmphasis = MevrForwardLeanEmphasis();   // [MEVR] upstream: 3.0f (1 with life-size stereo)
     const float w2m = kMetersToUU * g_headPosScale.load(std::memory_order_relaxed);   // uu/m * gain (ME1 leanGain)
     __try
     {
@@ -883,6 +888,14 @@ void ApplyConvergence(std::uintptr_t sv, float signedShift) noexcept
 // screen positions land on their world points in the widened render - bullets meet the crosshair.
 std::atomic<float> g_renderHalfFovH{0.0f};
 std::atomic<float> g_renderHalfFovV{0.0f};
+// [MEVR] Life-size stereo's mode 2: the renderer's zoom (ADS, the cine zoom) as the tangent of the window it rendered over
+// the one it declares; the eye's own frustum is scaled by it so a zoom magnifies the same way in both modes.
+float MevrRenderZoom() noexcept
+{
+    const float r = g_renderHalfFovH.load(std::memory_order_relaxed);
+    const float d = g_gameHalfFovH.load(std::memory_order_relaxed);
+    return (r > 0.01f && d > 0.01f) ? tanf(r) / tanf(d) : 1.0f;
+}
 
 // Per-eye FOV: publish the game's FOV, then if fill is on and this view is NARROWER than the target
 // (a conversation/cutscene), widen it to fill + publish the target as the submitted FOV. Wide gameplay
@@ -1459,11 +1472,29 @@ void* __fastcall CalcViewDetour(void* lp, void* family, void* loc, void* rot, vo
             // (the submit routes it so: no swap), no convergence.
             if (g_mevrCineScreen.load(std::memory_order_acquire))
                 he = ::ME2VR::MevrBridge::CineScreenHalfSeparationUU(MevrViewHalfFovH(svu));
+            // [MEVR] Life-size stereo (research/30 section 9): this pass from its eye's real place, our plan's offset along the
+            // camera's right, up and forward in place of the half eye; pass 0 takes the newest plan, pass 1 keeps it.
+            const ::MevrMetricView::ViewFields mevrFields{kFsvViewMatrix, kFsvProjectionMatrix, kFsvTranslatedViewMatrix,
+                kFsvTranslatedViewProjMatrix, kFsvPreViewTranslation, kFsvViewProjectionMatrix, kFsvViewOrigin};
+            const ::MevrMetricView::Plan& mevrPlan = ::MevrMetricView::Latch(t_replay);
+            const bool mevrMetric = mevrPlan.mode != 0 && !g_mevrCineScreen.load(std::memory_order_acquire);
+            auto mevrLog = [](const char* line) { ME2VR::Log::Line(line); };
+            if (mevrMetric)
+            {
+                EnsureConvoFpOrigin(svu);   // as ApplyEyeOffset does first
+                ::MevrMetricView::ApplyEyeOffset(svu, mevrFields, mevrPlan, t_replay, mevrLog);
+            }
+#else
+            const bool mevrMetric = false;
 #endif
             const float signedUU = t_replay ? +he : -he;   // pass1 = right (+), pass0 = left (-)
-            ApplyEyeOffset(svu, signedUU);   // IPD only (lean comes from ApplyHeadLook)
+            if (!mevrMetric) ApplyEyeOffset(svu, signedUU);   // IPD only (lean comes from ApplyHeadLook)
             ApplyHeadLook(svu);              // offset BEFORE head rotation (same order as stereo/AER)
             ApplyFov(svu);
+#if defined(MEVR_ASI)
+            // [MEVR] mode 2: the GPU matrix through this eye's own frustum (the CPU's window stays the symmetric one)
+            if (mevrMetric) ::MevrMetricView::ApplyEyeFrustum(svu, mevrFields, mevrPlan, t_replay, MevrRenderZoom(), mevrLog);
+#endif
             // [SFRCONV DECOUPLE 2026-07-20] convergence is NO LONGER applied at render (ported from ME1's
             // final fix). A render-side per-pass projection shift moves the pass-drawn/mirrored HUD along
             // with the scene in one pass but not identically in the other -> the crosshair/interact/health
@@ -1652,6 +1683,15 @@ void GetConvoFpCounts(unsigned long long* applies, unsigned long long* skips) no
 void SetCineVrHeadTracking(bool on) noexcept { g_cineVrHeadTracking.store(on, std::memory_order_release); }
 bool GetVrCineActive() noexcept { return g_vrCineActive.load(std::memory_order_acquire); }
 void SetVrCineActive(bool on) noexcept { g_vrCineActive.store(on, std::memory_order_release); }
+bool GetMevrLifeSize() noexcept { return g_mevrLifeSize.load(std::memory_order_acquire); }   // [MEVR] research/30 s. 9
+void SetMevrLifeSize(bool on) noexcept { g_mevrLifeSize.store(on, std::memory_order_release); }   // [MEVR]
+bool GetHeadLookApplied() noexcept { return g_headLookEnabled.load(std::memory_order_acquire); }   // [MEVR]
+bool GetFovFillTarget(float* hHalfRad, float* vHalfRad) noexcept   // [MEVR]
+{
+    if (hHalfRad != nullptr) *hHalfRad = g_fovFillH.load(std::memory_order_relaxed);
+    if (vHalfRad != nullptr) *vHalfRad = g_fovFillV.load(std::memory_order_relaxed);
+    return g_fovFillOn.load(std::memory_order_acquire);
+}
 bool GetMevrCineScreen() noexcept { return g_mevrCineScreen.load(std::memory_order_acquire); }   // [MEVR]
 void SetMevrCineScreen(bool on) noexcept { g_mevrCineScreen.store(on, std::memory_order_release); }   // [MEVR]
 bool GetCineTrackingLocked() noexcept   // [MEVR]

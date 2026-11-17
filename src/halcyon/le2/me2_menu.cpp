@@ -523,6 +523,16 @@ void ApplyMevrBaseline() noexcept
     // The menu key is ME1's \ (our deploy's on ME1: it opens our main menu, Ctrl or Shift + \ this one), not upstream's
     // Insert; a key the player bound in this menu stays (lane D, M4).
     if (note(g_menuKey == VK_INSERT, "the menu key \\ (MenuKey; upstream Insert)")) g_menuKey = VK_OEM_5;
+    // Life-size stereo (research/30 section 9; the owner, 2026-11-16: "It should always be life sized stereo for all
+    // games"), ME1's ModernBaseline: each eye from its real place at 100 uu per metre (PosScale 2, the lean's 50 x 2), no
+    // convergence, the lean from the eyes' centre at 1:1 forward. HalfEyeUU, Convergence and SwapEyes stay in the file
+    // and stand unused. [Debug] upstreamStereo = 1 in ASI\LE2MEVR.ini leaves upstream's stereo for a measurement.
+    const bool lifeSize = (::MevrSeams::LifeSizeStereo() & 1) != 0;
+    ME2VR::CalcViewHook::SetMevrLifeSize(lifeSize);
+    if (lifeSize && note(std::fabs(ME2VR::CalcViewHook::GetHeadPosScale() - 2.0f) > 1e-4f, "life-size movement (PosScale 2)"))
+        ME2VR::CalcViewHook::SetHeadPosScale(2.0f);
+    ME2VR::Log::Line(lifeSize ? "[MEVR-STEREO] life-size stereo: the MEVR baseline (HalfEyeUU, Convergence and SwapEyes unused)"
+                              : "[MEVR-STEREO] life-size stereo OFF ([Debug] upstreamStereo = 1): upstream's stereo");
     if (changed == 0) { ME2VR::Log::Line("[MEVR-BASELINE] MELE2VR.ini already matches the MEVR baseline"); return; }
     ME2VR::Log::Line("[MEVR-BASELINE] " + std::to_string(changed) + " setting(s) in MELE2VR.ini set to the MEVR baseline: " +
                      names);
