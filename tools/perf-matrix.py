@@ -71,6 +71,8 @@ def capture_stats(path):
         "rightBusy": summary(get("right_busy")),
         "frameBounds": meta.get("frameBounds", "Present"),
         "renderLevers": meta.get("renderLevers"),
+        "resolution": meta.get("resolution"),   # the eye image (the sequels: the backbuffer's, or FSR's target)
+        "upscale": meta.get("upscale"),         # method, source and target sizes (absent in captures before 2026-11-16 17:00)
     }
     # Frames over budget: how often the render thread's work alone passes the headset period.
     budget = out["periodMs"] or (1000.0 / 90.0)
@@ -170,6 +172,16 @@ def main(argv=None):
     print(f"{'capture':24} " + " ".join(f"{n:>9}" for n, _ in columns) + "  compilers")
     for c in captures:
         print(f"{c['tag']:24} " + " ".join(f"{fmt(val(c, *p), n):>9}" for n, p in columns) + f"  {c['compilers']}")
+
+    sizes = {}
+    for c in captures:
+        p = c.get("probe") or {}
+        res, up = p.get("resolution") or {}, p.get("upscale") or {}
+        key = f"eye {res.get('eye')}, upscale {up.get('method', '?')} active {up.get('active', '?')} " \
+              f"source {up.get('source', '?')} target {up.get('target', '?')}"
+        sizes.setdefault(key, []).append(c["tag"])
+    for key, tags in sizes.items():
+        print(f"  {key}: {len(tags)} captures")
 
     combos = []
     for index in sorted({c["index"] for c in captures}):
