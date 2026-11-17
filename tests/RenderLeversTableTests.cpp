@@ -40,6 +40,82 @@ std::uint32_t Rva(std::span<Entry const> rows, std::string_view name) {
 static_assert(table::RowIn(addresses::le1::kTable, table::row::kSceneRender) == 0x76EE20);
 static_assert(table::RowIn(addresses::le1::kTable, table::row::kBoundShaderStateCtor) == 0x9A89F0);
 static_assert(table::RowIn(addresses::le1::kTable, "no such row") == 0);
+// ME3's Umbra command gate is a row of ME3's table only (LE1 and ME2 have no such gate).
+static_assert(table::RowIn(addresses::le3::kTable, table::row::kUmbraCommandGate) == 0x1767208);
+static_assert(table::RowIn(addresses::le1::kTable, table::row::kUmbraCommandGate) == 0);
+static_assert(table::RowIn(addresses::le2::kTable, table::row::kUmbraCommandGate) == 0);
+
+Entry const* Find(std::span<Entry const> rows, std::string_view name) {
+    for (Entry const& e : rows) {
+        if (std::string_view(e.name) == name) {
+            return &e;
+        }
+    }
+    return nullptr;
+}
+
+#define CHECK(expr)                                                                       \
+    do {                                                                                  \
+        if (!(expr)) {                                                                    \
+            std::printf("FAIL tests/RenderLeversTableTests.cpp line %d: %s\n", __LINE__, #expr); \
+            ++failures;                                                                   \
+        }                                                                                 \
+    } while (0)
+
+// The gate's row: a data global referenced by `cmp dword ptr [rip+X], 0`, the displacement 8 bytes into the pattern and
+// one byte of immediate after it (exe::Entry::tail).
+int CheckGateRow() {
+    int failures = 0;
+    Entry const* gate = Find(addresses::le3::kTable, table::row::kUmbraCommandGate);
+    CHECK(gate != nullptr);
+    if (gate != nullptr) {
+        CHECK(gate->kind == mevr::exe::Kind::Data && gate->tail == 1 && gate->offset == 8 && gate->pattern != nullptr);
+    }
+    return failures;
+}
+
+// The current game's layout and lever defaults (compiled once per sequel: a flag or default that changes shows here, as
+// LE1's do in RenderLeversTable.hpp's static_asserts).
+int CheckGameLayout() {
+    int failures = 0;
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+    table::Layout const& l = table::kLayout;
+    // Defaults: the renderer's own SFR state per pass; the query waits the game's own.
+    CHECK(l.perEyeViewStateDefault == 1);
+    CHECK(l.umbraQueryWaitDefault == 1);
+    CHECK(l.ue3QueryWaitDefault == 1);
+    // The groups that ran in the game (research/sequel-render-levers.md "ME2"/"ME3: the baseline and the A/Bs"), and the
+    // ones that stand down until they do.
+    CHECK(l.sceneRendererVerified && l.umbraCommanderVerified && l.boundShaderStateVerified && l.umbraQueriesVerified);
+    CHECK(!l.umbraInstanceVerified && !l.occlusionHistoryVerified && !l.sharePassVerified && !l.sceneCaptureVerified);
+    CHECK(l.umbraSharedVerified == table::kTryBuild);
+    // FSceneView's matrices umbraEyeMatrix reads and writes are LE1's offsets in all three games.
+    CHECK(l.viewViewMatrix == 0x90 && l.viewTranslatedViewMatrix == 0x190 && l.viewTranslatedViewProj == 0x1D0 &&
+          l.viewPreViewTranslation == 0x250 && l.viewViewProj == 0x260 && l.commanderView == 0x68 &&
+          l.commanderViewParamsSet == 0x5C);
+#endif
+#if defined(MEVR_GAME_LE2)
+    CHECK(std::string_view(table::kGameName) == "LE2");
+    CHECK(l.viewStride == 0x11A0);
+    CHECK(l.ineligibleShowFlagCount == 1 && l.ineligibleShowFlags[0] == 0x33);
+    CHECK(!l.instanceCallAlsoKeepsBooks && !l.captureTakesUmbraBranch);
+    CHECK(l.umbraCommandGate == 0);
+    CHECK(l.ownsSceneCaptureHooks);
+#elif defined(MEVR_GAME_LE3)
+    CHECK(std::string_view(table::kGameName) == "LE3");
+    CHECK(l.viewStride == 0x11B0);
+    CHECK(l.ineligibleShowFlagCount == 4 && l.ineligibleShowFlags[0] == 0x33 && l.ineligibleShowFlags[1] == 0x47 &&
+          l.ineligibleShowFlags[2] == 0x15 && l.ineligibleShowFlags[3] == 0x1B);
+    CHECK(l.instanceCallAlsoKeepsBooks && l.captureTakesUmbraBranch);
+    CHECK(l.umbraCommandGate == 0x1767208 && l.umbraCommandGate == addresses::kUmbraCommandGate);
+    CHECK(!l.ownsSceneCaptureHooks);   // plugin/Le3SceneCapture hooks the capture functions (the ledger's Forks 9)
+    // The rows umbraEyeMatrix (the lever the life-size stereo's mode 2 needs) hooks are ME3's own.
+    static_assert(table::kUmbraIssueQueriesRva == 0x3D8EB0 && table::kCommanderCommandRva == 0x3E8B80);
+#endif
+    return failures;
+}
+
+#undef CHECK
 
 } // namespace
 
@@ -75,8 +151,18 @@ int main() {
         }
         std::printf(" %d of %d render-lever rows\n", have, static_cast<int>(std::size(table::kRowNames)));
     }
+    failures += CheckGateRow();
+    failures += CheckGameLayout();
     if (failures == 0) {
-        std::printf("render levers table: every row the module asks for is in LE1's table; no duplicate names\n");
+        std::printf("render levers table: every row the module asks for is in LE1's table; no duplicate names%s\n",
+#if defined(MEVR_GAME_LE2)
+            "; LE2's layout and lever defaults as measured"
+#elif defined(MEVR_GAME_LE3)
+            "; LE3's layout, lever defaults and command gate as measured"
+#else
+            ""
+#endif
+        );
     }
     return failures == 0 ? 0 : 1;
 }

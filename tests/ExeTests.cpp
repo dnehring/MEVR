@@ -116,6 +116,22 @@ void TestSyntheticChecks() {
     exe::Entry const badPattern{"b", 0x1100, Kind::Function, "48 8", 0, 0, "test"};
     CHECK(exe::Check(image, badPattern).status == Status::AtRvaUnchecked);
 
+    // A global referenced only by an instruction with an immediate after its displacement (ME3's Umbra command gate:
+    // cmp dword ptr [rip + disp], 0): the target is the displacement's end + the tail + disp.
+    {
+        Synthetic t = s;
+        std::int32_t const disp = 0x8030 - (0x1282 + 4 + 1);
+        std::vector<std::uint8_t> bytes{0x48, 0x8B, 0xE9, 0x83, 0x3D, 0, 0, 0, 0, 0x00, 0x74, 0x05, 0x48, 0x8B, 0xCB};
+        std::memcpy(bytes.data() + 5, &disp, 4);
+        t.Put(0x127D, bytes);
+        t.functions.push_back({0x1270, 0x12A0});
+        char const* const cmp = "48 8B E9 83 3D ?? ?? ?? ?? 00 74 05 48 8B CB";
+        exe::Entry const gate{"gate", 0x8030, Kind::Data, cmp, 5, 0x127D, "test", 1};
+        CHECK(exe::Check(t.Image(), gate).status == Status::AtRva);
+        exe::Entry const noTail{"gate0", 0x8030, Kind::Data, cmp, 5, 0x127D, "test"};
+        CHECK(exe::Check(t.Image(), noTail).status != Status::AtRva);  // the target one byte off without the tail
+    }
+
     // Another module hooked the function: E9 rel32 over its first five bytes.
     Synthetic hooked = s;
     hooked.Put(0x1100, {0xE9, 0x11, 0x22, 0x33, 0x44});
@@ -169,7 +185,7 @@ void CheckTableShape(exe::Entry const (&table)[N]) {
             if (compiled) {
                 CHECK(e.offset <= compiled->bytes.size());
                 if (e.kind == Kind::Data) {
-                    CHECK(e.site != 0 && e.offset + 4 <= compiled->bytes.size());
+                    CHECK(e.site != 0 && e.offset + 4 + e.tail <= compiled->bytes.size());
                     for (std::size_t k = e.offset; k < e.offset + 4; ++k) {
                         CHECK(compiled->wild[k]);  // the displacement is a wildcard
                     }

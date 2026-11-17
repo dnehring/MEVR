@@ -480,8 +480,10 @@ Function signatures are ME1's in every row (the argument lists in the table abov
    should add those three flags on ME3, or a render it calls eligible never reaches the finish hook's Umbra path.
 4. **`command()` has a gate.** While the dword at `0x1767208` is 0, ME3's `command()` does nothing for any code.
    Log it once from the command hook (`render levers: Umbra's command gate is N`): if it is 0 in play, none of the
-   Umbra levers has anything to act on. It can't be a table row (the only reference is a compare with an
-   immediate after the displacement, which the table's Data kind can't express).
+   Umbra levers has anything to act on. Since 2026-11-17 (lane FXR) it is the LE3 table's `Umbra command gate` row: its
+   only reference (`cmp dword ptr [rip+X], 0` at `0x3E8B98`) has an immediate after the displacement, which
+   `exe::Entry::tail` now expresses (the target is the displacement's end + the tail + disp32; `tools/rva-patterns.py
+   name=0x1767208:data+1` finds the pattern), so the exe gate checks it at attach, and the hook reads it under SEH.
 5. **Each SFR pass has its own view state.** See the next section.
 
 ### What ME3's SFR design allows
@@ -735,7 +737,7 @@ sequel that nobody has run there.
 | `ineligibleShowFlags` | 0x33 | 0x33 | 0x33, 0x47, 0x15, 0x1B | `Eligible()`: a renderer with one of them set leaves the Umbra branch, so it is never kept or replayed |
 | `instanceCallAlsoKeepsBooks` | no | no | yes | the visible-instance hook answers "not visible" (the size cull, the shared-visibility filter) only for the marking call, `a7 != 0 && a6 == 0`; every other call goes to the original |
 | `captureTakesUmbraBranch` | no | no | yes | the light-targets hook marks the replay's tail only outside a capture |
-| `umbraCommandGate` | none | none | 0x1767208 | logged once from the command hook (`render levers: Umbra's command gate is N`): while it is 0 ME3's `command()` does nothing |
+| `umbraCommandGate` | none | none | 0x1767208 (the table's `Umbra command gate` row, tail 1) | logged once from the command hook (`render levers: Umbra's command gate is N`, read under SEH): while it is 0 ME3's `command()` does nothing |
 | `ownsSceneCaptureHooks` | yes | yes | no | the capture hooks are not installed where another module has them |
 
 ### Enabling a lever on a sequel (the procedure)
