@@ -53,8 +53,8 @@ rows the change touches.
 
 | game | shared | adapted | forked | missing | n/a | present and verified (V) | present, unverified (U) |
 |---|---|---|---|---|---|---|---|
-| LE2 | 14 | 50 | 2 | 23 | 4 | 51 | 15 |
-| LE3 | 14 | 50 | 4 | 19 | 6 | 32 | 36 |
+| LE2 | 14 | 50 | 2 | 22 | 5 | 51 | 15 |
+| LE3 | 14 | 50 | 4 | 18 | 7 | 32 | 36 |
 <!-- /parity:totals -->
 
 LE1 is the reference, so it has no cells. A few LE1 systems are themselves n/a under Halcyon's renderer: the reflection
@@ -231,7 +231,7 @@ The [technique groups](#renderer-techniques-by-group) summary follows the table.
 | G09 | Gun kick (`game/GunKick`, `core/ik/GunKick`) | **adapted** V: recoil from `SFXWeapon.GetWeaponRecoil`; `gun kick: first kick` (le2-vrik) | **adapted** U: ME2's branch (`SFXWeapon.GetWeaponRecoil`, the shots from ViewLevel's `SetWeaponRecoil` handler) since 2026-11-16; builds, ReflectCheck rows (`CheckLe3ViewLevel`); not run in ME3 | LE3: a combat fixture with shots (research/le3-combat-fixtures.md): `reflect:` agrees on the new rows, `view level: first shot seen`, `gun kick: first kick`. |
 | G10 | View level, aim assist zeroed (`game/ViewLevel`) | **adapted** V: pitch held in 4,723 of 4,723 ticks, yaw kick removed (le2-vrik); the aim-assist zeroing unmeasured | **adapted** U: the same handlers as ME1 and ME2 since 2026-11-16 (PlayerTick, `SFXInventoryManager.SetWeaponRecoil`, aim assist's `ViewFriction`/`ViewAdhesion`), ME2's yaw-kick removal; ME3 has all 29 names; builds, ReflectCheck rows; not run in ME3 | LE3: the same fixture: `view level: handlers on ...`, the pitch held while shooting (the heartbeat's `view level:` line), whether ME3 queues a yaw kick, and which PlayerTick functions it found (none: it levels a frame late from the mod's tick). |
 | G11 | Camera shakes off (`game/CameraShake`) | **adapted** V: ME2's branch sets `CameraModifier.bDisabled`; modifiers off in the run. Which gun shakes exist is [verify] | **adapted** U: ME2's branch since 2026-11-16 (`SFXPlayerCamera.ScreenShakeModifier`, `Camera.CameraShakeCamMod`, `SFXCameraMode.bIsCameraShakeEnabled`: all in ME3's SDK); builds, ReflectCheck rows; not run in ME3 | LE3: `camera shake: ... off in VR` names each modifier it found; `mevr shake` in a combat fixture. |
-| G12 | Camera collision off in first person (`game/CameraCollision`) | **missing** | **missing** | First check whether Halcyon ME2/ME3's first person pulls back near geometry. LE1's symptom was the eye behind the knees (research/69). |
+| G12 | Camera collision off in first person (`game/CameraCollision`) | **n/a**: Halcyon ME2's first person clears `SFXCameraMode.bCollisionEnabled` itself on the mode it writes and on an interpolation (`FpApplyOffset`, upstream). Save 4, 2026-11-17 (lane FP3): `mevr camera trace` read the flag 0 in every tick, and the game camera stayed 30.0 uu ahead of the pawn while the stick pressed Shepard into geometry forward and backward (research/trilogy-first-person.md) | **n/a**: the same in Halcyon ME3 (the current mode and an interpolation's To; the Interpolate object's own flag is left, [verify] during a draw on a combat fixture). Save 31: the flag 0 in every tick, the camera 35.0 uu from the pawn unchanged while pressed into the galaxy map's ring and the corridor's end | Nothing to port: ME1's module stays LE1's (its Halcyon never cleared the flag). The trace's `modeCollision`/`toCollision` columns check it again. |
 | G13 | Body follow: torso, legs keep the run, steady idle (`game/BodyFollow`, `core/ik/BodyFollow`) | **adapted** V: skeleton audit (le2-vrik). Conversation `BodyAway` is LE1-only | **adapted** V: shared follower plus a head-only solve on grip loss, run `20261115-182253-344`. "Legs keep the run" has its Velocity read since T04 (U: built; the handle's ReflectCheck row is L3-3's) | LE3: a walk under replay showing `torso: legs:`. |
 | G14 | Body scale (`game/BodyScale`, `core/ik/BodyScale`) | **shared** U | **shared** U | Needs a recorded floor fixture: the fake headset's floor is at its head. |
 | G15 | Floor lock (`plugin/FloorLock`, `core/vr/FloorLock`, seam `FloorViewTranslation`) | **adapted** V: the correction measured on Save 4 (`final eye 1.7526 m` = the STAGE eye, correction +12.26) and held through the vault's root-motion steps (shared `vr::floor_lock::MoveHold`, the mod's `traversalMove`): three vaults with every tick's wrists within 0.15 m, no third-person frame (research/le2-traversal.md "The floor lock through the vault", 2026-11-16); manual height not wired | **adapted** V: `stageEyeM = finalEyeM = 1.7526`, run `20261115-170957-963`; menu continuity `20261115-183117-290` (research/null-headset-height.md) | LE2: the calibration's manual height once wired; the headset. LE3: a traversal move under the hold. |
@@ -604,7 +604,7 @@ defined in the tool's header:
 |---|---|---|---|---|---|---|---|
 | LE1 | halcyon-le1 | 73 | 71 | 58 | run 67, out 4, ungated 25, unbuilt 4 | 22 of 41 | 89 |
 | LE2 | halcyon-le2 | 68 | 57 | 49 | run 44, ready 10, out 19, ungated 21, unreferenced 2, unbuilt 4 | 36 of 41 | 4 |
-| LE3 | halcyon-le3 | 71 | 57 | 54 | run 44, ready 10, out 18, ungated 23, unreferenced 2, unbuilt 3 | 39 of 41 | 2 |
+| LE3 | halcyon-le3 | 71 | 57 | 54 | run 45, ready 10, out 17, ungated 23, unreferenced 2, unbuilt 3 | 39 of 41 | 2 |
 <!-- /parity:summary -->
 
 ### Host plugin files per game
@@ -843,7 +843,7 @@ Helpers applied, in order:
 | `game/BodyScale` | ungated | ungated | ungated |
 | `game/CallTrace` | run | run | run |
 | `game/CameraCollision` | run | out | out |
-| `game/CameraProbe` | run | run (ME1-only handles) | out |
+| `game/CameraProbe` | run | run (ME1-only handles) | run |
 | `game/CameraShake` | run | run | run |
 | `game/CockpitPanel` | run | out | out |
 | `game/CockpitProbe` | run | out | out |

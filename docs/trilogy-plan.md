@@ -500,10 +500,15 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Left:** a headset run on each sequel: the fake headset has no interaction profile, so nothing by script can show it.
 
 #### T28 The game's camera collision off in first person [G12]
-- **State:** LE1 done · LE2 check first · LE3 check first
-- **Lives in:** `game/CameraCollision`.
-- **Left:** find out whether Halcyon ME2/ME3's first person pulls back near geometry (LE1's symptom: the eye behind the
-  knees, research/69). Port only if it does. **Who:** nobody yet.
+- **State:** LE1 done · LE2 n/a · LE3 n/a
+- **Lives in:** `game/CameraCollision` (LE1); on the sequels Halcyon's own `FpApplyOffset` clears the flag.
+- **Done (lane FP3, 2026-11-17; research/trilogy-first-person.md section 3):** `mevr camera trace` (ME3 too now, with the
+  camera mode's `bCollisionEnabled` on the sequels) read the flag 0 in every tick on ME2's Save 4 and ME3's Save 31, and the
+  game camera's offset from the pawn didn't move while the stick pressed Shepard into walls forward and backward. Nothing to
+  port.
+- **Left, ME3:** the `SFXCameraMode_Interpolate` object's own flag isn't cleared (only its To): trace a draw on the combat
+  fixture; if `modeCollision` reads 1 there with the offset dropping, clear it in `FpApplyOffset`'s Interpolate branch as
+  ME2 does. **Who:** whoever runs the ME3 combat fixture.
 
 #### T29 Weapon drawn like exploring: the constant eye, linear walking, the draw rate [G18]
 - **State:** LE1 done · LE2 build · LE3 build

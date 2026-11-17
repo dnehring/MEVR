@@ -2261,6 +2261,7 @@ void CheckFields() {
     CheckField("SFXGame.SFXCameraMode", "Offset", SDK_FIELD(USFXCameraMode, Offset));
     CheckField("SFXGame.SFXCameraMode", "HookOffset", SDK_FIELD(USFXCameraMode, HookOffset));
     CheckField("SFXGame.SFXCameraMode", "HookName", SDK_FIELD(USFXCameraMode, HookName));
+    CheckField("SFXGame.SFXCameraMode", "bCollisionEnabled", SDK_BOOL(USFXCameraMode, bCollisionEnabled));  // game/CameraProbe's trace
     // game/ViewLevel (M3.1: no camera recoil on ME2 either, research/le2-vrik-audit.md)
     CheckField("Engine.Actor", "Physics", SDK_FIELD(AActor, Physics));
     CheckField("Engine.Actor", "Modules", SDK_FIELD(AActor, Modules));
@@ -3312,6 +3313,11 @@ void CheckFields() {
     CheckField("Engine.Camera", "CameraCache", SDK_FIELD(ACamera, CameraCache));
     CheckField("SFXGame.SFXCameraNativeBase", "CurrentCameraMode", SDK_FIELD(ASFXCameraNativeBase, CurrentCameraMode));
     CheckField("SFXGame.SFXCameraMode_Interpolate", "To", SDK_FIELD(USFXCameraMode_Interpolate, To));
+    // game/CameraProbe's trace (the parity ledger's G12 check, lane FP3): the camera mode's collision with the world.
+    CheckClass<ASFXCameraNativeBase>("SFXGame.SFXCameraNativeBase");
+    CheckClass<USFXCameraMode>("SFXGame.SFXCameraMode");
+    CheckClass<USFXCameraMode_Interpolate>("SFXGame.SFXCameraMode_Interpolate");
+    CheckField("SFXGame.SFXCameraMode", "bCollisionEnabled", SDK_BOOL(USFXCameraMode, bCollisionEnabled));
     CheckField("SFXGame.SFXCameraMode", "Input", SDK_FIELD(USFXCameraMode, Input));
     CheckField("SFXGame.SFXCameraInput", "MaxCameraRotationSpeed", SDK_FIELD(USFXCameraInput, MaxCameraRotationSpeed));
     CheckField("SFXGame.SFXCameraInput", "CameraSensitivity", SDK_FIELD(USFXCameraInput, CameraSensitivity));

@@ -23,10 +23,29 @@
 namespace mevr::game::camera_probe {
 namespace {
 
-#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 
-// `mevr camera trace <seconds>`: one CSV row a mod tick (an idle sway report, 2026-11-14).
+// `mevr camera trace <seconds>`: one CSV row a mod tick (an idle sway report, 2026-11-14; ME3 too since 2026-11-17, lane FP3).
 ue3::FieldRef gActorVelocity{"Engine.Actor", "Velocity", ue3::kEveryGame};
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+// On the sequels each row also has the camera mode's bCollisionEnabled (and the one an interpolation blends to): Halcyon's
+// first person clears it on the mode it writes, the parity ledger's G12 (research/trilogy-first-person.md).
+ue3::ClassRef gTraceCameraBase{"SFXGame.SFXCameraNativeBase", ue3::kEveryGame};
+ue3::ClassRef gTraceCameraMode{"SFXGame.SFXCameraMode", ue3::kEveryGame};
+ue3::ClassRef gTraceInterpolate{"SFXGame.SFXCameraMode_Interpolate", ue3::kEveryGame};
+ue3::FieldRef gTraceCurrentMode{"SFXGame.SFXCameraNativeBase", "CurrentCameraMode", ue3::kEveryGame};
+ue3::FieldRef gTraceInterpolateTo{"SFXGame.SFXCameraMode_Interpolate", "To", ue3::kEveryGame};
+ue3::FieldRef gTraceCollision{"SFXGame.SFXCameraMode", "bCollisionEnabled", ue3::kEveryGame};
+
+// A camera mode's bCollisionEnabled: 1, 0, or -1 (no mode, or not an SFXCameraMode: ME3's galaxy behaviour sits there too).
+int ModeCollision(ue3::Object* mode) {
+    if (mode == nullptr || !ue3::runtime::IsAlive(mode) || !ue3::IsA(mode, gTraceCameraMode)) {
+        return -1;
+    }
+    std::optional<bool> const on = gTraceCollision.ReadBool(mode);
+    return on ? (*on ? 1 : 0) : -1;
+}
+#endif
 constexpr char const* kTraceBones[] = {"Camera", "God", "Root", "Pelvis", "LowerBack", "Chest2", "Neck", "Head", "LeftCollar",
     "RightCollar", "LeftHip", "RightHip", "LeftAnkle", "RightAnkle"};
 constexpr int kTraceBoneCount = static_cast<int>(sizeof(kTraceBones) / sizeof(kTraceBones[0]));
@@ -90,6 +109,19 @@ void TraceTick() {
     std::string row = std::format("{:.4f},{},{:.2f},{:.2f},{:.2f},{},{:.2f},{:.2f},{:.2f},{:.3f},{:.3f},{:.3f},{},{},{}", t,
         head_tracking::OnFoot() ? 1 : 0, at.x, at.y, at.z, rot.yaw, vel.x, vel.y, vel.z, pov->location->x, pov->location->y,
         pov->location->z, pov->rotation->pitch, pov->rotation->yaw, pov->rotation->roll);
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+    {
+        int modeCollision = -1, toCollision = -1;
+        if (ue3::IsA(camera, gTraceCameraBase)) {
+            ue3::Object* const mode = gTraceCurrentMode.Read<ue3::Object*>(camera).value_or(nullptr);
+            modeCollision = ModeCollision(mode);
+            if (mode != nullptr && ue3::runtime::IsAlive(mode) && ue3::IsA(mode, gTraceInterpolate)) {
+                toCollision = ModeCollision(gTraceInterpolateTo.Read<ue3::Object*>(mode).value_or(nullptr));
+            }
+        }
+        row += std::format(",{},{}", modeCollision, toCollision);
+    }
+#endif
     for (int b = 0; b < kTraceBoneCount; ++b) {
         auto const c = gTrace.bones[b] >= 0
             ? engine::skeleton::BoneLocation(mesh, gTrace.bones[b], engine::skeleton::Space::Component) : std::nullopt;
@@ -99,6 +131,10 @@ void TraceTick() {
     std::fputs(row.c_str(), gTrace.file);
     ++gTrace.rows;
 }
+
+#endif
+
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
 
 // Our reflection layer (research/34): the fields research/18 read from the code (CalculateOffsetHook
 // 0xCAEF50, GetCameraLocation 0xCB2240): PlayerController.PlayerCamera +0x6B0,
@@ -239,11 +275,13 @@ void Tick() {
 #if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
     TraceTick();
     TickLe1();
+#elif defined(MEVR_GAME_LE3)
+    TraceTick();
 #endif
 }
 
 std::string Command(std::string const& args) {
-#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     std::istringstream words(args);
     std::string sub;
     double seconds = 10.0;
@@ -272,6 +310,9 @@ std::string Command(std::string const& args) {
         return "camera: can't write the trace file";
     }
     std::string header = "t,onFoot,pawnX,pawnY,pawnZ,pawnYaw,velX,velY,velZ,camX,camY,camZ,camPitch,camYaw,camRoll";
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+    header += ",modeCollision,toCollision";
+#endif
     for (char const* name : kTraceBones) {
         header += std::format(",{0}X,{0}Y,{0}Z", name);
     }
@@ -297,6 +338,8 @@ void Shutdown() {
     gHaveLogged = false;
     gLoggedMode.clear();
     gLastLogMs = 0;
+#elif defined(MEVR_GAME_LE3)
+    TraceClose("stopped (unload)");
 #endif
 }
 
