@@ -362,6 +362,12 @@ void WorldViewHoldEnd() noexcept;
 // for the screen, e.g. both hands on the War Terminal, which put his arm and shoulder in front of the held eyes: the renderer
 // hides his body as well as his head). Not called by LE1 nor LE2 yet.
 int WorldViewHeld(int mode) noexcept;
+// Present thread, once a frame before the eye images are filled: true while an opening of ours is reserved and its screen not
+// yet shown on our panel (plugin/WorldUi's clean-eye guard, research/57): the renderer then keeps the last clean eyes (no copy
+// into the eye images, the last released images submitted with their own tags), so neither the GUI mode's own camera nor its
+// UI in the eyes shows for the frame or two the opening takes. LE1's MevrBridge::WorldUiHoldFrame is the same function (its
+// xr_session.cpp keeps its name); ME3's me2_xr.cpp SFR pair. Not called by LE2 yet.
+bool WorldUiHoldFrame(int mode) noexcept;
 
 // =====================================================================================================================
 // 5. Input and threads

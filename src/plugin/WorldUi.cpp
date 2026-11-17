@@ -53,6 +53,11 @@ std::uint64_t gReservedPresents = 0;
 std::uint64_t gReservedFlat = 0;
 std::uint64_t gHeldPresents = 0;
 std::atomic<std::uint64_t> gHeldViews{0};  // main view builds with Shepard's view held (HoldViewBegin)
+// Main view builds in the GUI mode while an opening of ours is reserved and nothing is published yet: drawn from the GUI mode's
+// own camera (the renderer's clean-eye guard keeps them out of the eyes). The mod counts the states it published without the
+// hold it wanted (game/WorldUi). Game thread.
+std::uint64_t gUnheldViews = 0;
+std::uint64_t gUnheldLoggedMs = 0;
 
 void ExpireOpening() {
     wu::Screen const screen = gOpening.Expected();
@@ -174,7 +179,8 @@ void LogStats() {
     std::lock_guard<std::mutex> const lock(gOpeningMutex);
     ExpireOpening();
     log::Info("    world ui: reservation Presents {}, flat-panel frames during reservation {} (expected 0), clean-eye holds {}, "
-              "views held at Shepard's {}", gReservedPresents, gReservedFlat, gHeldPresents, gHeldViews.load(std::memory_order_relaxed));
+              "views held at Shepard's {}, views behind a screen of ours not held {}", gReservedPresents, gReservedFlat, gHeldPresents,
+        gHeldViews.load(std::memory_order_relaxed), gUnheldViews);
 }
 
 std::optional<Shown> Current(XrVector3f const& eyes, XrQuaternionf const& head, bool headValid, std::uint32_t windowWidth,
@@ -374,6 +380,15 @@ bool HoldViewBegin(int gameMode) noexcept {
     HoldViewEnd();  // never two in a row: a missed end puts the camera's own view back first
     auto const ui = HoldState(gameMode);
     if (!ui) {
+        if (wu::ScreenMode(gameMode) && !Active() && (Ownership(gameMode) & 2u) != 0) {
+            ++gUnheldViews;  // the GUI mode's own camera behind an opening of ours: what the clean-eye guard hides
+            std::uint64_t const now = GetTickCount64();
+            if (now - gUnheldLoggedMs > 2000) {
+                gUnheldLoggedMs = now;
+                log::Info("world ui: a main view built for a reserved opening before its first state (the GUI mode's own camera, "
+                          "{} so far)", gUnheldViews);
+            }
+        }
         return false;
     }
     gHeldPov.location = reinterpret_cast<float*>(ui->povLocationAddress);
@@ -423,6 +438,12 @@ void WorldViewHoldEnd() noexcept {
 
 int WorldViewHeld(int mode) noexcept {
     return mevr::host::world_ui::HoldsView(mode);
+}
+
+bool WorldUiHoldFrame(int mode) noexcept {
+    bool const held = mevr::host::world_ui::HoldFrame(mode);
+    mevr::host::world_ui::NotePresent(false, false, held);  // the stats line's clean-eye holds (LE1's xr_session.cpp notes its own)
+    return held;
 }
 
 } // namespace MevrSeams

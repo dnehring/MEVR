@@ -38,6 +38,9 @@ std::optional<engine::TrackingFrame> WristTrackingFrame();
 bool PuzzlePlaying();
 // Snapshot JSON ("worldUi").
 std::string StatusJson();
+// `mevr worldui firstheld [on|off]`: whether the first state of an opening already holds Shepard's view (the POV's place
+// recorded at every camera update; off is the old rule, for an A/B), and how many states went out without it. Game thread.
+std::string Console(std::string_view args);
 // Mod shutdown: the host forgets the screen.
 void Shutdown(Link const& link);
 

@@ -35,6 +35,7 @@
 #include "game/GunKick.hpp"
 #include "game/Holsters.hpp"
 #include "game/OmniTool.hpp"
+#include "game/WorldUi.hpp"
 #include "game/Player.hpp"
 #include "game/Le3WeaponAmmo.hpp"
 #include "game/Le3Galaxy.hpp"
@@ -1803,11 +1804,12 @@ std::optional<std::string> RunOursLe3(ue3::Object* pc, std::string const& line) 
     if (verb == "reload") { std::string rest; std::getline(words, rest); return reload::Command(rest); }
     if (verb == "omni") { std::string which; words >> which; return game_menu_request::Inject(which); }
     if (verb == "omnitool") { std::string rest; std::getline(words, rest); return omni_tool::Console(rest); }  // on | off | display | state
+    if (verb == "worldui") { std::string rest; std::getline(words, rest); return world_ui::Console(rest); }  // firstheld [on|off]
     if (verb == "guimouse" || verb == "guikey") {
         std::string rest; std::getline(words, rest);
         return verb == "guimouse" ? gui_cursor::Command(rest) : gui_cursor::KeyCommand(rest);
     }
-    return std::string("unknown on ME3: mevr load <career> <save name> <index> <type> | mevr savedesc | mevr state | mevr weaponprobe | mevr galaxy state | mevr melee | mevr traversal | mevr powerwheel | mevr place ... | mevr squad | mevr say ... | mevr order ... | mevr context | mevr weapon <family> | mevr reload | mevr omni | mevr omnitool | mevr guimouse | mevr guikey | mevr thespian | mevr cover | mevr camera trace");
+    return std::string("unknown on ME3: mevr load <career> <save name> <index> <type> | mevr savedesc | mevr state | mevr weaponprobe | mevr galaxy state | mevr melee | mevr traversal | mevr powerwheel | mevr place ... | mevr squad | mevr say ... | mevr order ... | mevr context | mevr weapon <family> | mevr reload | mevr omni | mevr omnitool | mevr worldui | mevr guimouse | mevr guikey | mevr thespian | mevr cover | mevr camera trace");
 }
 #endif
 #endif // shared sequel save/state requests

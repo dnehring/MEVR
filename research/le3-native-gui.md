@@ -291,3 +291,63 @@ Lane OM2's `core/vr/WorldUi.hpp` made ME1's bypass-minigame mode (10) a screen m
   `Orbital`) never counted 10 as a screen mode.
 So nothing is restored for ME2. Not run: the planet scan is reached from the Normandy's galaxy map, not from Save 4 (Freedom's
 Progress); the runner's other ME2 saves weren't needed for a mode no ME2 code path reads as a screen mode.
+
+## Room changes, the UI world coming back, the first frame and the omni-tool's display (lane FX3, 2026-11-17)
+
+An adversarial review of main 57ae5b4e named five defects in ME3's wrist screens; each was confirmed in the code first.
+
+**1. Calls on the old room's movies.** On a room or world change (`vr::world_view::Reference`: the world or the player
+controller changed: a save load, a level change) `game/WorldUi`'s `Tick` went `Down`, whose `RestoreUiWorld` called
+`SFXGUIMovie.SetRequiresUIWorld(true)` on every movie it had told not to ask for the UI world, from the previous room.
+`ue3::runtime::IsAlive` only checks that the object's GObjects slot still holds that address, which a new object of another
+class can take after the movie was freed, and `runtime::Call` doesn't check the class. `gLe3Parent` (the message box's
+parent) was kept the same way. ME1's `RestoreFullScreen` (`bFullScreen` written back on the old room's panels) and ME2's
+hidden browsers (`SetMovieVisibility`) had the same pattern. **Now:** a room change forgets them without a call or a write
+(`ForgetScreenObjects`, before `Down`; log `world ui: forgot N screen(s) ... in the old room (not called again)`), and every
+kept object is checked to still be one before anything is called on it or written to it (`StillMovie`: `SFXGame.SFXGUIMovie`;
+`StillPanel`: `Engine.BioSFPanel`; ReflectCheck rows exist for both classes).
+
+**2. The UI-world void coming back.** A movie already in `gUiWorldCleared` was skipped even when it read
+`m_bRequiresUIWorld` true again, and ME3's script sets it as pages open (item 5 of "The game's screens on ME3"). **Now:** a
+movie of ours that reads true again is told again (log `world ui: the <tag> screen asked for the game's UI world again (its
+script, as a page opened): told again it doesn't`, once per movie; the snapshot's `worldUi.uiWorldClearedAgain` counts).
+
+**3. The wrong camera for a frame at each opening.** `OnUpdateCamera` recorded where the player camera's POV lives only once a
+screen of ours had been published (`gScreenUp`), and the state carries `holdRender` only with that address under 500 ms old,
+so the first state of every opening held no view and the frame after it was drawn from the GUI mode's own camera (32 units
+below the held eyes on the Mission Computer, inside Shepard's chest). LE1 hides the frames of a reserved opening with its
+clean-eye guard (`MevrBridge::WorldUiHoldFrame` in `xr_session.cpp`: no new eye images until the screen is redirected);
+ME3's renderer had no such seam. **Now:** the POV's place (the camera's own fields, the same on foot and behind a screen) is
+recorded at every update of the player's camera, so the first state already holds the view (every game: on ME1 this removes
+the same one frame of the screen's own camera after a game-started opening, the shop or a locker); and ME3's renderer asks
+the clean-eye guard as LE1's does: the common seam `MevrSeams::WorldUiHoldFrame(mode)` (`plugin/WorldUi`'s `HoldFrame`, the
+function LE1's own seam calls), in `me2_xr.cpp`'s SFR pair: while it holds, no copy into the eye images and the last pair is
+submitted with its own tags (`EyePublication::TaggedPair`). Measures: the mod logs `world ui: <screen> (opening N) published
+without the held view` (`mevr worldui firstheld off` brings back the old rule for an A/B), the host's stats line counts
+`views behind a screen of ours not held` (a reserved opening before its first state) and `clean-eye holds`.
+
+Not changed: an opening the game starts itself (Start, A at the War Terminal) is not reserved, so its first GUI-mode frame is
+still `[PRESENTATION] MENU_MONO` until the mod's first state (one tick), on ME3 as on ME1, whose mode-7 decision is the same.
+Holding the presentation for an opening nobody announced would need a rule for when to give up; not built.
+
+**4. The Atlas and injured Shepard.** `vr::world_ui::PlayMode` admits ME3's modes 2 (Atlas) and 6 (injured), but the view on
+foot is remembered only in mode 0, so a screen opened from them would have held a view from anywhere earlier in the level.
+**Now:** `FootViewMode(mode)` (core/vr/WorldUi; a static_assert in the LE3 build) is false for those two; `game/WorldUi`
+keeps the last play mode's answer, `BeginOpening` reserves nothing there and a screen opened there keeps the native panel
+(`world ui: ... opened from a mode not on foot (the Atlas, injured Shepard): no view on foot is held`), as one opened before
+any view on foot. ME1's model is the Mako's cockpit guard (`gCockpit`); the vehicle mode keeps it (ME1's Mako without the
+cockpit still holds the view remembered on foot: unchanged, an owner's question).
+
+**5. The omni-tool's display.** `game/OmniTool`'s ME3 adapter took the nearest `OmniHand_Loop` particle system within 250
+units, which could be a pooled one (the effect's spawnables keep the template after they stop), a stopped one or a squadmate's.
+**Now:** only the player's own live one (`NotOurs`): its owner a `RvrClientEffectActor` whose `m_pCEffectComponent` is
+`m_bActive`, not `m_bStopRequested`, and was started for the player's pawn (`m_oTarget.Instigator`, the pawn
+`RvrClientEffectManager.Start` was given); the passed-over candidates and why are in the `omni tool: its display is ...` line
+(or `no display of the player's own near Shepard yet` after 2 s). `Stop`'s `bAllowCooldown` and the new fields have
+ReflectCheck rows. The particle system's own `bWasDeactivated`/`bWasCompleted` are not read: their first rows disagreed
+(ours 0x364, LExSDKv2's compiled struct 0x35C: its particle headers are 8 bytes early, as the `Template` comment in
+`CheckLe3OmniTool` says), and a development build refuses ME3's gameplay hooks on any disagreeing row (`LE3 startup refused:
+SDK reflection cross-check failed`, the first run of this lane). A struct member's row (`CheckPath`) sums the offsets, so the
+SDK side of `m_oTarget.Instigator` is `offsetof(component, m_oTarget) + offsetof(target, Instigator)`.
+
+**In the game:** see the run below (Save 31).

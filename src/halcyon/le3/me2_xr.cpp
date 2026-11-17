@@ -2273,8 +2273,15 @@ void RunFrame() noexcept
                 uploadTag[eye] = {sourceTag.head, sourceTag.fov[eye], capSeq, false};
                 if (sourceTag.stereo) uploadTag[eye].pose.position = sourceTag.eyes[eye];
             }
-            CopyTextureToEyeFullFrame(swap ? 1 : 0, leftSrc,  +convPx, &uploadTag[swap ? 1 : 0]);
-            CopyTextureToEyeFullFrame(swap ? 0 : 1, rightSrc, -convPx, &uploadTag[swap ? 0 : 1]);
+            // [MEVR] research/57 (LE1's WorldUiHoldFrame): while an opening of ours is reserved and its screen not yet shown on our
+            // panel, keep the last clean eyes (no copy: the last released images with their own tags), so the GUI mode's own camera
+            // and its UI never reach the eyes for the frame or two an opening takes.
+            const bool mevrHoldWorldUi = !mevrScreenNow && g_publishedEyes.TaggedPair() &&
+                ::MevrSeams::WorldUiHoldFrame(ME2VR::EngineProbe::ReadGameMode());
+            if (!mevrHoldWorldUi) {
+                CopyTextureToEyeFullFrame(swap ? 1 : 0, leftSrc,  +convPx, &uploadTag[swap ? 1 : 0]);
+                CopyTextureToEyeFullFrame(swap ? 0 : 1, rightSrc, -convPx, &uploadTag[swap ? 0 : 1]);
+            }
 
             // [MEVR] Actual pass-zero/pass-one images on the shared stereo cinema screen.
             if (mevrScreenNow && g_publishedEyes.CurrentPair() && g_aerSwap[0] && g_aerSwap[1]) {
@@ -2301,7 +2308,7 @@ void RunFrame() noexcept
                 mevrScreenLayerCount = ::MevrSeams::CineScreenLayers(screen, mevrScreenLayers, 3);
             }
 
-            if (g_publishedEyes.CurrentPair() && g_aerSwap[0] != nullptr && g_aerSwap[1] != nullptr)
+            if ((g_publishedEyes.CurrentPair() || mevrHoldWorldUi) && g_aerSwap[0] != nullptr && g_aerSwap[1] != nullptr)   // [MEVR] held: the last pair
             {
                 for (int eye = 0; eye < 2; ++eye)
                 {

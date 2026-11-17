@@ -27,6 +27,7 @@
 #include <format>
 #include <mutex>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -56,13 +57,22 @@ ue3::FieldRef gPanelTag{"Engine.BioSFPanel", "nmTag", ue3::kEveryGame};
 ue3::FieldRef gPanelFullScreen{"Engine.BioSFPanel", "bFullScreen", ue3::kEveryGame};
 ue3::FieldRef gPanelHandler{"Engine.BioSFPanel", "m_DefaultHandler", ue3::kEveryGame};
 ue3::FieldRef gPanelVisible{"Engine.BioSFPanel", "IsVisible", ue3::kEveryGame};
+#if !defined(MEVR_GAME_LE3)
+// A panel kept from an earlier tick is checked to still be one before anything is written to it or called on it: IsAlive only
+// says its GObjects slot holds that address, which a new object of another class can take after the panel was freed.
+ue3::ClassRef gPanelClass{"Engine.BioSFPanel", ue3::kEveryGame};
+
+bool StillPanel(ue3::Object* panel) {
+    return panel != nullptr && ue3::runtime::IsAlive(panel) && ue3::IsA(panel, gPanelClass);
+}
+#endif
 #if defined(MEVR_GAME_LE2)
 ue3::FunctionRef gSetMovieVisibility{"Engine.BioSFPanel.SetMovieVisibility", ue3::kEveryGame};
 std::vector<ue3::Object*> gHiddenBrowsers;  // still on the native stack so Back can return to them
 
 bool SetMovieVisibility(ue3::Object* panel, bool visible) {
     auto* const fn = gSetMovieVisibility.Get();
-    if (fn == nullptr || !ue3::runtime::IsAlive(panel)) return false;
+    if (fn == nullptr || !StillPanel(panel)) return false;
     ue3::Params p(ue3::runtime::Get(), fn);
     return p.SetBool("bVisible", visible) && ue3::runtime::Call(panel, fn, p);
 }
@@ -111,6 +121,14 @@ Hold gHold;
 vr::world_view::Reference gRoomReference;
 bool gRoomChanged = false;
 bool gScreenUp = false;  // a screen of ours was published last tick (game thread)
+// The last play mode the player was in (each tick) may hold the view remembered on foot (vr::world_ui::FootViewMode): not ME3's
+// Atlas or injured Shepard, whose screens keep the native panel instead of a view remembered anywhere earlier in the level.
+bool gFootViewMode = true;
+// `mevr worldui firstheld off`: the old rule (the POV's place recorded only once a screen was up), an A/B of the first state's
+// hold; on by default.
+bool gPovAlways = true;
+unsigned gUnheldStates = 0;              // states published without the hold they wanted (the POV not seen yet)
+std::uint32_t gUnheldLoggedOpening = 0;
 
 // The Mako's cockpit as the last frame with a head-tracked view saw it (tracking space; the cockpit stands still in the room
 // while it rides): its HUD anchor at the windshield and the eyes. Kept through the game's GUI mode, where the view anchor is gone
@@ -158,7 +176,11 @@ std::vector<ue3::Object*> gClearedPanels;
 void RestoreFullScreen() {
     int restored = 0;
     for (ue3::Object* const panel : gClearedPanels) {
-        if (panel != nullptr && ue3::runtime::IsAlive(panel)) {
+#if defined(MEVR_GAME_LE3)
+        if (panel != nullptr && ue3::runtime::IsAlive(panel)) {  // never filled on ME3 (no bFullScreen)
+#else
+        if (StillPanel(panel)) {
+#endif
             gPanelFullScreen.WriteBool(panel, true);  // journalled by the handle
             ++restored;
         }
@@ -205,7 +227,15 @@ struct OpenPanel {
 // stretch). A movie that shows the game's UI world (m_bRequiresUIWorld: the squad record's Shepard) keeps Halcyon's native
 // panel until ME1's figure (game/UiWorldFigure) is ported.
 ue3::FieldRef gRequiresUiWorld{"SFXGame.SFXGUIMovie", "m_bRequiresUIWorld", ue3::kEveryGame};
-OpenPanel gLe3Parent;  // game thread; cleared when the GUI mode ends
+OpenPanel gLe3Parent;  // game thread; cleared when the GUI mode ends and forgotten on a room change
+// A movie kept from an earlier tick (gLe3Parent, gUiWorldCleared) is checked to still be one before anything is called on it:
+// IsAlive only says its GObjects slot holds that address, which a new object of another class can take after the movie was
+// freed, and runtime::Call doesn't check the class.
+ue3::ClassRef gGuiMovieClass{"SFXGame.SFXGUIMovie", ue3::kEveryGame};
+
+bool StillMovie(ue3::Object* movie) {
+    return movie != nullptr && ue3::runtime::IsAlive(movie) && ue3::IsA(movie, gGuiMovieClass);
+}
 
 // Every Mission Computer page and the War Terminal's War Assets ask for the UI world (SFXGUIInteraction's script calls
 // SetRequiresUIWorld(TRUE) as it opens them), and while one does the game renders the UI world's dark backdrop instead of the
@@ -214,10 +244,12 @@ OpenPanel gLe3Parent;  // game thread; cleared when the GUI mode ends
 // need it while they stand in the room, and told again that they do when ours goes down.
 ue3::FunctionRef gSetRequiresUiWorld{"SFXGame.SFXGUIMovie.SetRequiresUIWorld", ue3::kEveryGame};
 std::vector<ue3::Object*> gUiWorldCleared;  // game thread
+std::vector<ue3::Object*> gUiWorldAskedAgain;  // ... of those, the ones whose script asked for the UI world again (logged once)
+unsigned gUiWorldClearedAgain = 0;           // times told again (the heartbeat's world ui line)
 
 bool SetRequiresUiWorld(ue3::Object* movie, bool required) {
     ue3::Function* const fn = gSetRequiresUiWorld.Get();
-    if (fn == nullptr || !ue3::runtime::IsAlive(movie)) return false;
+    if (fn == nullptr || !StillMovie(movie)) return false;
     ue3::Params p(ue3::runtime::Get(), fn);
     return p.SetBool("bUIWorldRequired", required) && ue3::runtime::Call(movie, fn, p);
 }
@@ -231,6 +263,7 @@ void RestoreUiWorld() {
         log::Info("world ui: {} of the game's screens ask for its UI world again (SFXGUIMovie.SetRequiresUIWorld(true))", restored);
     }
     gUiWorldCleared.clear();
+    gUiWorldAskedAgain.clear();
 }
 
 bool Resolved() {
@@ -252,7 +285,7 @@ std::vector<OpenPanel> OpenPanels(ue3::Object* /*controller*/) {
     top.uiWorld = gRequiresUiWorld.ReadBool(focus).value_or(false);
     wu::Screen const screen = ScreenOf(top.tag);
     bool const dialog = screen == wu::FromTag("MessageBox");  // avoid Windows.h's MessageBox macro at the enum's use site
-    if (dialog && gLe3Parent.panel != nullptr && gLe3Parent.panel != focus && ue3::runtime::IsAlive(gLe3Parent.panel)) {
+    if (dialog && gLe3Parent.panel != nullptr && gLe3Parent.panel != focus && StillMovie(gLe3Parent.panel)) {
         OpenPanel parent = gLe3Parent;
         parent.focus = false;
         open.push_back(parent);
@@ -425,6 +458,15 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
     if (!pov || pov->location == nullptr || pov->rotation == nullptr || pov->fov == nullptr) {
         return;
     }
+    // Where the POV lives, at every update of the player's camera (the camera's own fields, the same on foot and behind a
+    // screen): the first state published for an opening then already holds the view. Recorded only once a screen was up, the
+    // first frame after every opening was drawn from the screen's own camera (ME3's: inside Shepard's chest).
+    if (gPovAlways || gScreenUp) {
+        gHold.povLocation = reinterpret_cast<float*>(pov->location);
+        gHold.povRotation = pov->rotation;
+        gHold.povFov = pov->fov;
+        gHold.povMs = GetTickCount64();
+    }
     auto const mode = player::GameMode(controller);
     if (mode && gRoomReference.Remember(*mode, player::FloorLockSample().cameraOwned, gScreenUp)) {
         gHold.location = *pov->location;
@@ -436,22 +478,46 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
             basis.right.z, basis.up.z, basis.forward.z));
         gHold.fov = *pov->fov;
         gHold.haveView = true;
-        return;
-    }
-    if (gScreenUp) {
-        gHold.povLocation = reinterpret_cast<float*>(pov->location);
-        gHold.povRotation = pov->rotation;
-        gHold.povFov = pov->fov;
-        gHold.povMs = GetTickCount64();
     }
 }
 
 bool gRailOmniTool = false;  // Tick: the host's rail is open alone on foot (Down keeps the omni-tool for it)
 bool gEmitterOnly = false;   // an inactive state with only the omni-tool's display is published (the rail alone stands there)
 
+unsigned UiWorldClearedAgain() {
+#if defined(MEVR_GAME_LE3)
+    return gUiWorldClearedAgain;
+#else
+    return 0;
+#endif
+}
+
 void SetStatus(std::string json) {
     std::lock_guard<std::mutex> const lock(gStatusMutex);
     gStatusJson = std::move(json);
+}
+
+// A room or world change (game/WorldViewHold's Reference): the screens' objects kept from the old one (the panels made not
+// full screen, ME2's hidden browsers, ME3's movies told not to ask for the UI world and the message box's parent) are
+// forgotten without a call or a write: they went with the old world, and an address the engine gave back can hold another
+// object by now (research/le3-native-gui.md "Room changes").
+void ForgetScreenObjects() {
+    if (!gClearedPanels.empty()) {
+        log::Info("world ui: forgot {} screen(s) made not full screen in the old room (not touched again)", gClearedPanels.size());
+    }
+    gClearedPanels.clear();
+#if defined(MEVR_GAME_LE2)
+    gHiddenBrowsers.clear();
+#endif
+#if defined(MEVR_GAME_LE3)
+    if (!gUiWorldCleared.empty()) {
+        log::Info("world ui: forgot {} screen(s) told not to ask for the UI world in the old room (not called again)",
+            gUiWorldCleared.size());
+    }
+    gUiWorldCleared.clear();
+    gUiWorldAskedAgain.clear();
+    gLe3Parent = {};
+#endif
 }
 
 void Down(Link const& link, char const* why) {
@@ -537,7 +603,8 @@ std::uint32_t BeginOpening(Link const& link, vr::game_menu::Action action, vr::g
     std::uint32_t const required = wu::Bit(screen) | ((action == Action::Squad || action == Action::Map) ? wu::Bit(wu::Screen::MenuBrowser) : 0u);
     auto const mode = player::GameMode(player::Controller());
     if (link.setState == nullptr || link.reserve == nullptr || !settings.on || !Resolved() ||
-        (settings.screens & required) != required || !mode || !wu::PlayMode(*mode) || (!gCockpit.valid && (!gHold.haveView || !gHold.footFrame))) {
+        (settings.screens & required) != required || !mode || !wu::PlayMode(*mode) ||
+        (!gCockpit.valid && (!gHold.haveView || !gHold.footFrame || !wu::FootViewMode(*mode)))) {
         return 0;
     }
     if (++gRequestSerial == 0) ++gRequestSerial;
@@ -555,10 +622,20 @@ void Tick(Link const& link) {
     if (gRoomChanged) {
         gRailOmniTool = false;
         CancelOpening(link);
+        ForgetScreenObjects();  // before Down, which would restore them
         Down(link, "player/world changed");
         gRoomChanged = false;
     }
     auto const mode = controller != nullptr ? player::GameMode(controller) : std::nullopt;
+    if (mode && wu::PlayMode(*mode)) {
+        bool const footViewMode = wu::FootViewMode(*mode);
+        if (footViewMode != gFootViewMode) {
+            log::Info("world ui: game mode {}: {}", *mode, footViewMode ? "Shepard on foot again: screens may hold the view on foot"
+                                                                         : "Shepard isn't on foot (the Atlas, injured): a screen opened "
+                                                                           "here holds no view remembered on foot (the native panel)");
+        }
+        gFootViewMode = footViewMode;
+    }
     if (gOpening.Expire(GetTickCount64())) {
         if (link.reserve != nullptr) link.reserve(0, 0, 0);
     }
@@ -693,10 +770,11 @@ void Tick(Link const& link) {
         eyesNow = gCockpit.eyes;
     }
     bool const inCockpit = cockpitAnchor.has_value();
-    bool const haveFootView = gRoomReference.Available() && gHold.haveView && gHold.footFrame.has_value();
+    bool const haveFootView = gRoomReference.Available() && gHold.haveView && gHold.footFrame.has_value() && gFootViewMode;
     if (!inCockpit && !wu::CanPlaceWithView(screen, haveFootView)) {
         CancelOpening(link);
-        Down(link, "Shepard's view on foot isn't known (opened before any camera update on foot)");
+        Down(link, gFootViewMode ? "Shepard's view on foot isn't known (opened before any camera update on foot)"
+                                 : "opened from a mode not on foot (the Atlas, injured Shepard): no view on foot is held");
         return;
     }
     bool const matched = gOpening.Matches(gOpening.Request(), visibleScreens);
@@ -712,13 +790,22 @@ void Tick(Link const& link) {
             log::Info("world ui: the {} screen isn't full screen any more: the level renders behind it, not the game's UI world", o.tag);
         }
 #if defined(MEVR_GAME_LE3)
-        // ME3's way of the same (the squad record's movie never gets here: it keeps the native panel above).
-        if (o.uiWorld && ScreenOf(o.tag) != wu::Screen::None &&
-            std::find(gUiWorldCleared.begin(), gUiWorldCleared.end(), o.panel) == gUiWorldCleared.end() &&
-            SetRequiresUiWorld(o.panel, false)) {
-            gUiWorldCleared.push_back(o.panel);
-            log::Info("world ui: the {} screen doesn't ask for the game's UI world any more (SFXGUIMovie.SetRequiresUIWorld(false)): the "
-                      "level renders behind it", o.tag);
+        // ME3's way of the same (the squad record's movie never gets here: it keeps the native panel above). ME3's script sets
+        // the flag again as a page opens in the same movie (research/le3-native-gui.md item 5), so a movie already told is
+        // told again whenever it reads true again; else the void came back behind the next page.
+        if (o.uiWorld && ScreenOf(o.tag) != wu::Screen::None && SetRequiresUiWorld(o.panel, false)) {
+            if (std::find(gUiWorldCleared.begin(), gUiWorldCleared.end(), o.panel) == gUiWorldCleared.end()) {
+                gUiWorldCleared.push_back(o.panel);
+                log::Info("world ui: the {} screen doesn't ask for the game's UI world any more (SFXGUIMovie.SetRequiresUIWorld(false)): "
+                          "the level renders behind it", o.tag);
+            } else {
+                ++gUiWorldClearedAgain;
+                if (std::find(gUiWorldAskedAgain.begin(), gUiWorldAskedAgain.end(), o.panel) == gUiWorldAskedAgain.end()) {
+                    gUiWorldAskedAgain.push_back(o.panel);
+                    log::Info("world ui: the {} screen asked for the game's UI world again (its script, as a page opened): told again "
+                              "it doesn't", o.tag);
+                }
+            }
         }
 #endif
     }
@@ -840,6 +927,13 @@ void Tick(Link const& link) {
         state.povLocationAddress = reinterpret_cast<std::uint64_t>(gHold.povLocation);
         state.povRotationAddress = reinterpret_cast<std::uint64_t>(gHold.povRotation);
         state.povFovAddress = reinterpret_cast<std::uint64_t>(gHold.povFov);
+    } else if (!inCockpit && haveFootView) {
+        ++gUnheldStates;  // the next frame is drawn from the screen's own camera
+        if (gUnheldLoggedOpening != gS.opening) {
+            gUnheldLoggedOpening = gS.opening;
+            log::Info("world ui: {} (opening {}) published without the held view: the player camera's POV not seen yet ({} so far)",
+                gS.screen, gS.opening, gUnheldStates);
+        }
     }
     ui_world_figure::Tick(settings, screen, state);  // the equipment and squad screens' squad member behind them (research/57 section 7)
     omni_tool::Tick(onWrist && settings.omniTool);
@@ -866,9 +960,11 @@ void Tick(Link const& link) {
     gWristUp = onWrist;
     view_anchor::Hold(onWrist && !inCockpit ? gHold.footFrame : std::nullopt, gHold.footView);  // rail in the Mako uses its controller
     SetStatus(std::format("{{\"open\": true, \"screen\": \"{}\", \"stack\": \"{}\", \"opening\": {}, \"anchored\": {}, \"anchor\": [{:.3f}, {:.3f}, {:.3f}], "
-                          "\"placement\": {}, \"inCockpit\": {}, \"heldView\": {}, \"omniTool\": {}, \"figure\": {}}}",
+                          "\"placement\": {}, \"inCockpit\": {}, \"heldView\": {}, \"unheldStates\": {}, \"uiWorldClearedAgain\": {}, "
+                          "\"omniTool\": {}, \"figure\": {}}}",
         gS.screen, stack, gS.opening, gS.anchored ? "true" : "false", gS.anchor[0], gS.anchor[1], gS.anchor[2], state.placement,
-        inCockpit ? "true" : "false", state.holdRender != 0 ? "true" : "false", omni_tool::StatusJson(), ui_world_figure::StatusJson()));
+        inCockpit ? "true" : "false", state.holdRender != 0 ? "true" : "false", gUnheldStates, UiWorldClearedAgain(),
+        omni_tool::StatusJson(), ui_world_figure::StatusJson()));
 }
 
 bool WristScreenUp() {
@@ -878,6 +974,20 @@ bool WristScreenUp() {
 std::optional<engine::TrackingFrame> WristTrackingFrame() {
     auto const mode = player::GameMode(player::Controller());
     return gWristUp && view_anchor::Held() && gHold.haveView && mode && wu::ScreenMode(*mode) ? gHold.footFrame : std::nullopt;
+}
+
+std::string Console(std::string_view args) {
+    std::istringstream words{std::string(args)};
+    std::string sub, value;
+    words >> sub >> value;
+    if (sub == "firstheld") {
+        if (value == "on" || value == "off") gPovAlways = value == "on";
+        else if (!value.empty()) return "usage: mevr worldui firstheld on|off";
+        return std::format("world ui: the first state of an opening {} (the POV's place {}); {} states published without the held view so far",
+            gPovAlways ? "holds the view" : "holds no view (the old rule, an A/B)",
+            gPovAlways ? "recorded at every camera update" : "recorded only once a screen is up", gUnheldStates);
+    }
+    return "usage: mevr worldui firstheld [on|off]; the status: " + StatusJson();
 }
 
 bool PuzzlePlaying() {

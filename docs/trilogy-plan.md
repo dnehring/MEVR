@@ -159,7 +159,8 @@ These unblock the most: almost every other entry gets smaller once they land.
   `me2_menu.cpp` after every ini load, ME2's list: first person with the head hidden (rule 1; ME3 started in third person),
   no head aim (rule 4), the stick doesn't pitch the view (rule 6), flat menus and conversations as cinematics on the cinema
   screen, never in the world (ME1's choices, rule 9), no profile hotkeys, no R recenter, the menu key `\` (rule 16). Seen on
-  Save 31 (the fake headset); the headset is the checklist's ME3 "First person" line.
+  Save 31 (the fake headset); the headset is the checklist's ME3 "First person" line. Lane FX3 (2026-11-17) pinned first
+  person in cover too (upstream ME3 went third person there, `CoverThirdPerson`); its check is the combat save's.
 
 #### T02 One sequel bridge, one overlay composition, one menu glue [Forks 1, 2, 13; R20; R17]
 - **State:** LE1 build · LE2 build · LE3 build
@@ -536,9 +537,10 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Left, ME2:** recheck crouch, protection and the vault on the current build with standing and seated calibration.
   **ME3:** no snapping by default since 2026-11-17 (lane FP3: `[Hands] noCover`, ME1's and ME2's key and default; VR cover's
   real-slot damage rule follows it, every answer logged; research/trilogy-first-person.md section 2), but neither has an
-  in-game result (Save 31 has no cover): research/le3-combat-fixtures.md "First on the combat save". The HUD's cover prompt
-  isn't hidden yet (ME2's `ShowCoverWidget` follow-up; ME3's `SFXGUIInteraction.ShowCoverWidget`). The crouch has no
-  in-game result either.
+  in-game result (Save 31 has no cover): research/le3-combat-fixtures.md "First on the combat save". Lane FX3 (2026-11-17):
+  one refusal rule for the three games (`ik::posture::RefuseCoverSnap`, unit-tested; ME3's had also asked for the host's
+  controls and native movement and failed open), the take-cover prompt hidden as ME2's, first person kept in cover; their
+  checks are "The cover checks lane FX3 added" in the same fixture note. The crouch has no in-game result either.
 - **Closes when:** `mevr cover hit` shows no damage covered and full damage exposed, and A never snaps, on each sequel.
   ME2 also: the shields' wait before recharging is two thirds behind cover (`mevr cover regen`), whole exposed (the faster
   recharge, granted 2026-11-16 and built by lane GR: research/23 section 7.5; ME1 and ME3 have no such rule).
@@ -614,6 +616,8 @@ These unblock the most: almost every other entry gets smaller once they land.
   omni-tool on ME3".
 - **Done, ME3 (lane OM2, 2026-11-16):** a replayed wrist tap and a fingertip press on the rail's Squad opened the Mission
   Computer and its squad record.
+- **Done, ME3 (lane FX3, 2026-11-17):** the display the wrist screens project from is the player's own live `OmniHand_Loop`
+  (a pooled, stopped or squadmate's one was taken before); `Stop`'s `bAllowCooldown` has its ReflectCheck row.
 - **Left, ME3:** the headset look; Holster on our menu's top bar (G21, greyed until lane WP's ME3 holster call).
 - **Who:** lane OM, OM2.
 
@@ -629,6 +633,12 @@ These unblock the most: almost every other entry gets smaller once they land.
   Computer, War Assets' entries respond); Shepard's view on foot held at render time behind every screen of ours (ME1's hold,
   shared now: `plugin/WorldUi` `HoldViewBegin/End`, `MevrSeams::WorldViewHoldBegin/End`, `WorldViewHeld`), his head hidden
   and, for a screen in the room, his body (research/le3-native-gui.md "The movie's mouse and the view behind a screen").
+- **Done, ME3 (lane FX3, 2026-11-17):** no calls on the old room's movies after a room change (every game's kept screens
+  forgotten, each checked for its class before a call); a movie whose script asks for the UI world again is told again; the
+  first state of an opening holds the view (every game) and ME3 keeps the last clean eyes through a reserved opening
+  (`MevrSeams::WorldUiHoldFrame`, LE1's guard); the Atlas and injured Shepard hold no view on foot (research/le3-native-gui.md
+  "Room changes, the UI world coming back, the first frame and the omni-tool's display"). An opening the game starts itself
+  still shows one MENU_MONO frame on ME3, as on ME1.
 - **Left, ME2:** the squad member in the equipment screens (`UiWorldFigure`); ME2's hack and bypass minigames are
   different games from ME1's and have no VR treatment ([le2-validation-coverage.md](le2-validation-coverage.md) "Hacking
   and bypass"); research and loadout screens. **ME3:** the squad member (`UiWorldFigure`); the headset. ME3 has no bypass

@@ -765,6 +765,15 @@ ue3::ClassRef gParticleClass{"Engine.ParticleSystemComponent", ue3::kEveryGame};
 ue3::FieldRef gParticleTemplate{"Engine.ParticleSystemComponent", "Template", ue3::kEveryGame};
 ue3::FieldRef gComponentOwner{"Engine.ActorComponent", "Owner", ue3::kEveryGame};
 ue3::FieldRef gLocalToWorld{"Engine.PrimitiveComponent", "LocalToWorld", ue3::kEveryGame};
+// Whose display a particle system is (FindDisplay): its actor the client effect's, whose effect component is active, not
+// stopping, and was started for the player's pawn (its target's Instigator). The particle system's own bWasDeactivated isn't
+// read: no ReflectCheck row vouches for it (LExSDKv2's particle headers are 8 bytes early); its effect's state says the same.
+ue3::ClassRef gEffectActorClass{"SFXGame.RvrClientEffectActor", ue3::kEveryGame};
+ue3::FieldRef gEffectComponent{"SFXGame.RvrClientEffectActor", "m_pCEffectComponent", ue3::kEveryGame};
+ue3::FieldRef gEffectActive{"SFXGame.RvrClientEffectComponent", "m_bActive", ue3::kEveryGame};
+ue3::FieldRef gEffectStopping{"SFXGame.RvrClientEffectComponent", "m_bStopRequested", ue3::kEveryGame};
+ue3::FieldRef gEffectTarget{"SFXGame.RvrClientEffectComponent", "m_oTarget", ue3::kEveryGame};
+ue3::FieldRef gEffectInstigator{gEffectTarget, "Instigator"};
 
 constexpr std::string_view kEffect = "BioVFX_T_TechPowers._OmniTool.VCFX.OmniTool_LeftFull_VCFX_M";
 constexpr std::string_view kDisplay = "BioVFX_T_TechPowers._OmniTool.Particles.OmniHand_Loop";
@@ -791,6 +800,7 @@ struct State {
     ue3::Object* display = nullptr;   // the display's particle system as the effect spawned it
     std::uint64_t displayLookMs = 0;
     bool displayLogged = false;
+    bool displayMissLogged = false;   // why no OmniHand_Loop near Shepard was the player's own (once per start)
     std::string why = "off";
 };
 State gS;
@@ -861,10 +871,35 @@ ue3::Object* Manager() {
     return ue3::runtime::IsAlive(manager) ? manager : nullptr;
 }
 
-// The display's particle system: the one with OmniHand_Loop's template on Shepard (its component's owner), looked for again
-// every half second until found (the effect spawns its emitters as it starts).
+// Why an OmniHand_Loop system isn't the player's own live display, or nullptr if it is (FindDisplay).
+char const* NotOurs(ue3::Object* system) {
+    ue3::Reflection& r = ue3::runtime::Get();
+    ue3::Object* const owner = gComponentOwner.Read<ue3::Object*>(system).value_or(nullptr);
+    if (owner == nullptr || !r.IsAlive(owner) || !ue3::IsA(owner, gEffectActorClass)) {
+        return "not a client effect's actor";
+    }
+    ue3::Object* const component = gEffectComponent.Read<ue3::Object*>(owner).value_or(nullptr);
+    if (component == nullptr || !r.IsAlive(component)) {
+        return "no effect component";
+    }
+    if (!gEffectActive.ReadBool(component).value_or(false) || gEffectStopping.ReadBool(component).value_or(true)) {
+        return "its effect inactive or stopping (pooled, or ending)";
+    }
+    void const* const target = gEffectTarget.Address(component);
+    ue3::Object* const instigator = target != nullptr ? gEffectInstigator.Read<ue3::Object*>(target).value_or(nullptr) : nullptr;
+    if (instigator == nullptr || instigator != gS.pawn) {
+        return "started for someone else (a squadmate's, or another effect)";
+    }
+    return nullptr;
+}
+
+// The display's particle system: the player's own live OmniHand_Loop (NotOurs), the nearest to Shepard within
+// kDisplayNearUnits, looked for again every half second until found (the effect spawns its emitters as it starts). The effect
+// spawns its particle systems on pooled actors of its own (RvrClientEffectSpawnable_N, their components' Owner), attached to
+// Shepard's bones; a pooled one keeps the template after it stopped, and a squadmate's omni-tool has the same one: neither is
+// the player's display (the nearest within 250 units used to be taken, whichever it was).
 void FindDisplay() {
-    if (gS.display != nullptr && ue3::runtime::IsAlive(gS.display)) {
+    if (gS.display != nullptr && ue3::runtime::IsAlive(gS.display) && NotOurs(gS.display) == nullptr) {
         return;
     }
     gS.display = nullptr;
@@ -873,8 +908,6 @@ void FindDisplay() {
         return;
     }
     gS.displayLookMs = now;
-    // The effect spawns its particle systems on pooled actors of its own (RvrClientEffectSpawnable_N, their components' Owner),
-    // attached to Shepard's bones: the display is the OmniHand_Loop system nearest Shepard, within kDisplayNearUnits.
     struct Matrix {
         float m[16];
     };
@@ -886,6 +919,7 @@ void FindDisplay() {
     ue3::Reflection& r = ue3::runtime::Get();
     ue3::Class* const cls = gParticleClass.Get();
     float best = kDisplayNearUnits;
+    std::string skipped;  // the candidates near Shepard that weren't ours, and why (logged once while none is)
     for (std::int32_t i = 0, n = cls != nullptr ? r.ObjectCount() : 0; i < n; ++i) {
         ue3::Object* const o = r.ObjectAt(i);
         if (o == nullptr || !r.IsAlive(o) || !r.IsA(o, cls) || (r.FlagsOf(o) & kClassDefaultFlag) != 0) {
@@ -904,6 +938,13 @@ void FindDisplay() {
             continue;
         }
         float const d = std::hypot(m->m[12] - pawnAt->x, m->m[13] - pawnAt->y, m->m[14] - pawnAt->z);
+        if (d >= kDisplayNearUnits) {
+            continue;
+        }
+        if (char const* const why = NotOurs(o)) {
+            skipped += std::format("{}{} ({:.0f} units: {})", skipped.empty() ? "" : "; ", r.NameText(o), d, why);
+            continue;
+        }
         if (d < best) {
             best = d;
             gS.display = o;
@@ -912,8 +953,13 @@ void FindDisplay() {
     if (gS.display != nullptr && !gS.displayLogged) {
         gS.displayLogged = true;
         ue3::Object* const owner = gComponentOwner.Read<ue3::Object*>(gS.display).value_or(nullptr);
-        log::Info("omni tool: its display is {} ({:.0f} units from Shepard; its actor {})", r.FullName(gS.display), best,
-            owner != nullptr ? r.FullName(owner) : std::string("none"));
+        log::Info("omni tool: its display is {} ({:.0f} units from Shepard; its actor {}; the player's own, live){}", r.FullName(gS.display),
+            best, owner != nullptr ? r.FullName(owner) : std::string("none"),
+            skipped.empty() ? std::string() : std::format("; passed over: {}", skipped));
+    } else if (gS.display == nullptr && !skipped.empty() && !gS.displayMissLogged && now - gS.onMs > 2000) {
+        gS.displayMissLogged = true;
+        log::Info("omni tool: no display of the player's own near Shepard yet (the screens project from the controller's wrist): {}",
+            skipped);
     }
 }
 
@@ -982,6 +1028,7 @@ bool Show() {
     gS.onMs = now;
     gS.display = nullptr;
     gS.displayLookMs = 0;
+    gS.displayMissLogged = false;
     ++gS.made;
     gS.why = "on";
     log::Info("omni tool: on Shepard's arm ({} started by RvrClientEffectManager on {})", ue3::runtime::FullName(effect),

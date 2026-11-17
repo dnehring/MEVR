@@ -230,6 +230,17 @@ inline constexpr std::uint8_t kMinigameMode = 10; // ME1's GameMode_Minigame (th
 inline constexpr bool GuiMode(int mode) { return mode == kGuiMode; }
 inline constexpr bool ScreenMode(int mode) { return mode == kGuiMode || (kHasMinigameMode && mode == kMinigameMode); }
 inline constexpr bool PlayMode(int mode) { return mode >= 0 && mode <= kLastPlayMode; }
+// A play mode whose screens may hold the view remembered on foot: Shepard stands where it was remembered (on foot, the wheels,
+// the squad command; the vehicle has its own guard, game/WorldUi's cockpit, ME1's Mako). ME3's Atlas (2) and injured Shepard (6)
+// are play modes but not on foot: the view on foot was remembered anywhere earlier in the level, so a screen opened from them
+// holds nothing and keeps the native panel, as one opened before any view on foot.
+#if defined(MEVR_GAME_LE3)
+inline constexpr bool FootViewMode(int mode) { return PlayMode(mode) && mode != 2 && mode != 6; }
+static_assert(FootViewMode(0) && FootViewMode(3) && FootViewMode(4) && FootViewMode(5) && !FootViewMode(2) && !FootViewMode(6) &&
+    !FootViewMode(9), "ME3: on foot and its wheels and squad command hold the view on foot; the Atlas and injured Shepard don't");
+#else
+inline constexpr bool FootViewMode(int mode) { return PlayMode(mode); }
+#endif
 // The latest state if published within maxAgeMs and active; else nullopt.
 std::optional<State> Latest(std::uint64_t maxAgeMs);
 // The omni-tool's display (State::emitter) if published within maxAgeMs, active or not: with no screen up the mod publishes an

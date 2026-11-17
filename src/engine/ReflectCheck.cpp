@@ -2992,7 +2992,21 @@ void CheckLe3OmniTool() {
     CheckFunction("SFXGame.RvrClientEffectManager.Stop");
     PARAM(URvrClientEffectManager_execStop_Parms, "SFXGame.RvrClientEffectManager.Stop", pEffect);
     PARAM(URvrClientEffectManager_execStop_Parms, "SFXGame.RvrClientEffectManager.Stop", Id);
+    PARAM(URvrClientEffectManager_execStop_Parms, "SFXGame.RvrClientEffectManager.Stop", bAllowCooldown);
     PARMS(URvrClientEffectManager_execStop_Parms, "SFXGame.RvrClientEffectManager.Stop");
+    // The display: the player's own, live OmniHand_Loop (FindDisplay): its actor the client effect's (RvrClientEffectActor),
+    // whose effect component is active, not stopping, and was started for the player's pawn (its target's Instigator). The
+    // particle system's own bWasCompleted/bWasDeactivated aren't read: LExSDKv2's particle headers are 8 bytes early here too
+    // (as for Template above; their rows disagreed, 0x364 ours against 0x35C, 2026-11-17).
+    CheckClass<ARvrClientEffectActor>("SFXGame.RvrClientEffectActor");
+    CheckClass<URvrClientEffectComponent>("SFXGame.RvrClientEffectComponent");
+    CheckField("SFXGame.RvrClientEffectActor", "m_pCEffectComponent", SDK_FIELD(ARvrClientEffectActor, m_pCEffectComponent));
+    CheckField("SFXGame.RvrClientEffectComponent", "m_bActive", SDK_BOOL(URvrClientEffectComponent, m_bActive));
+    CheckField("SFXGame.RvrClientEffectComponent", "m_bStopRequested", SDK_BOOL(URvrClientEffectComponent, m_bStopRequested));
+    CheckField("SFXGame.RvrClientEffectComponent", "m_oTarget", SDK_FIELD(URvrClientEffectComponent, m_oTarget));
+    // A struct's member: the offsets add up (CheckPath), so LExSDKv2's side is the struct's place plus the member's in it.
+    CheckPath("SFXGame.RvrClientEffectComponent", {"m_oTarget", "Instigator"},
+        SDK_AT(offsetof(URvrClientEffectComponent, m_oTarget) + offsetof(FRvrClientEffectTarget, Instigator), 8));
 }
 
 // game/WorldUi's ME3 adapter (research/le3-native-gui.md "The game's screens on ME3"): the focused movie's tag (game/Le3Gui)
