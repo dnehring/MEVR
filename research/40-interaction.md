@@ -133,7 +133,8 @@ and ME3's bridge gates it as ME2's (`OverlayLabel`: not while a screen of ours h
   726 checks agree`; head ahead: `A would use SFXDoor BioD_ProFre_100SpacePort...SFXDoor_0, 13.4 m away (chosen from where you
   look)`, every selection update from the gaze, the `label` layer up; head turned 60 degrees right or left: nothing selected, no
   label; ahead again: the door and its label. The first label used ME1's band and showed the power bar's edge at its left: the
-  band above is the fix, built after this run.
+  band above is the fix. Again with it (session `20261116-230035-894-LE2-hu-me2g1`): the same selections, the label holding the
+  hexagon alone (stage x 600..680), the power bar whole on the HUD panel (x 13..433).
 - ME3, Save 31 (session `20261116-215851-868-LE3-hu-me3c`, two runs): walked to the War Room table (`-1131, 6571, -29`), head 30
   degrees left and 30 down: `SFXPointOfInterest_0` 1.35 m away, the `label` layer holding the whole box (War Terminal, A Use) at the
   console, the HUD panel empty (the band cut out), the eyes' world layer without any of the prompt; head 70 degrees right: nothing,
