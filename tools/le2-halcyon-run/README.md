@@ -36,6 +36,19 @@ tools\le2-halcyon-run\restore.ps1 -Holder <session name>                        
   is checked before and after, and the game's own autosaves after a load are put back by `restore.ps1`. `mevr state`
   (the world, the pawn, the game mode) and `mevr savedesc` (the save the game would resume) are the console's other ME2
   lines. Needs a development build (the console request).
+- **The mod's first-run settings are waited out at launch** (since 2026-11-17; gotcha
+  [mod-settings-appended-after-xr-ready](../../docs/knowledge/gotchas/mod-settings-appended-after-xr-ready.md)): every
+  prep leaves only `[Debug] openxrRuntime` in `ASI\LE2MEVR.ini`, and the mod appends its default blocks on its first tick,
+  about 2 s after the XR marker at the title (a block the busy file refused about a second later). `load.ps1` hashes that
+  file with the save and the binaries before its first request, so a load started at once was refused as `Save or runtime
+  artifact changed during load` although the save had loaded. After the XR marker `launch.ps1` now waits for this
+  launch's `hands: calibration pitch` and `colour: profile` lines in the mod's log, then for 3 s without a write to the
+  file (attributes only: it never opens the file, so it can't make an append fail), at most 90 s, and prints
+  `mod settings settled: LE2MEVR.ini unchanged for ...` (a timeout only warns `mod settings did not settle ...`); both go
+  to the session's `mod-settings.txt`, the settled file to `effective-mod.ini`. Load at once after `launch.ps1`: no
+  waiting at the title. `load.ps1` accepts nothing new: any change to a recorded artifact during a load, an appended block
+  included, still refuses it. ME3's renderer preview has waited the same way since 2026-11-15
+  (`Wait-PreviewInitializedConfig`, stricter: every known block, nothing unknown) and needed nothing.
 - `-Diagnostics` turns `MELE2VR.ini`'s `[VR] Diagnostics` on for the stretch (Halcyon's `[ME2FP]`, `[ME2DISC]` lines; F3
   held 0.3 s dumps the camera graph).
 - Never run anything that takes the game slot (`tools/game-slot.ps1`) while a stretch is open, and never `return` a
@@ -125,7 +138,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\le2-halcyon-run\test-s
 
 These cover mode/holder/game refusals, legacy metadata, path boundaries, PID reuse, launch adoption over time (a
 suspended launcher, a candidate that exits before its successor settles, unreadable then readable identities, two live
-candidates, earlier or foreign processes), failed/altered/empty backups,
+candidates, earlier or foreign processes), ME2's wait for the mod's settings (stale markers, a late append restarting
+the quiet time under an exclusive writer, a file that never stands still, lost ownership), failed/altered/empty backups,
 wrong-build and truncated dump metadata, and rejecting hosts without the dump-only gate. They do not replace the
 first protected native launch and hash-verified restoration acceptance.
 
@@ -178,7 +192,8 @@ Session restore still owns any autosave/settings changes caused by the game.
 
 Offline checks: `powershell -NoProfile -File tools/le2-halcyon-run/test-load.ps1`. They cover types, state parsing,
 identity transitions, gameplay refusals, exact descriptor/response matching, strict mode booleans and process
-ownership. They do not call the request channel or touch a game/profile.
+ownership, and the artifact freeze after launch's settings wait (an appended block, an edited key, a same-length
+rewrite or another artifact changed during the load each refuse it). They do not call the request channel or touch a game/profile.
 
 
 ## Explicit ME3 renderer preview

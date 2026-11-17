@@ -83,8 +83,11 @@ if ($RendererPreview) {
     $settingsLogs = @((Join-Path $bin 'Logs\LE3MEVR.log'), (Join-Path $env:LOCALAPPDATA 'MEVR\LE3MEVR.log'))
     $logs += $settingsLogs
 }
+# ME2's VR mode: the mod's first-run settings appends are waited out after the XR marker (Wait-RunModSettings).
+# Kept apart from $logs, which the readiness loop searches for the renderer's marker.
+$modLogs = if (-not $DesktopDump -and -not $RendererPreview) { @(Get-RunModLogs $bin $Game) } else { @() }
 $oldLogs = @{}
-foreach ($path in $logs) { $oldLogs[$path] = if (Test-Path -LiteralPath $path) { Read-RunLog $path } else { '' } }
+foreach ($path in @($logs + $modLogs)) { $oldLogs[$path] = if (Test-Path -LiteralPath $path) { Read-RunLog $path } else { '' } }
 $started = [DateTime]::UtcNow
 $open | Add-Member -NotePropertyName launchRequestedUtc -NotePropertyValue $started.ToString('o') -Force
 $open | Add-Member -NotePropertyName gameProcess -NotePropertyValue $null -Force
@@ -167,6 +170,25 @@ for ($i = 0; $i -lt [math]::Ceiling($ReadyTimeoutSeconds / 2); $i++) {
 }
 if (-not $seen) { throw "Expected marker was not observed: $marker (the session remains owned; use -Stop, then restore)" }
 $marker
+if ($modLogs.Count) {
+    # The mod appends its default blocks to <GAME>MEVR.ini on its first tick, a few seconds after the XR marker; a load
+    # whose hashes were frozen before that was refused. Wait for the settings markers and a quiet file. A timeout only
+    # warns: load.ps1 still refuses any change during the load. Gotcha mod-settings-appended-after-xr-ready.
+    $modSettings = Join-Path $bin "ASI\${Game}MEVR.ini"
+    $settled = Wait-RunModSettings -Path $modSettings -Logs $modLogs -Before $oldLogs -Started $started -Guard {
+        Assert-RunLock $Holder
+        $live = Get-Process -Id $p.pid -ErrorAction SilentlyContinue
+        if (-not $live) { throw 'The game exited while its settings were written' }
+        Assert-RunProcess $live $open.gameProcess $exe
+    }
+    $line = Format-RunModSettings $settled $modSettings
+    Add-Content -LiteralPath (Join-Path $open.session 'mod-settings.txt') -Value "[$((Get-Date).ToString('HH:mm:ss.fff'))] $line" -Encoding utf8
+    if ($settled.settled) {
+        $line
+        try { [IO.File]::WriteAllText((Join-Path $open.session 'effective-mod.ini'), (Read-RunLog $modSettings)) }
+        catch { Write-Warning "effective settings not copied: $($_.Exception.Message)" }
+    } else { Write-Warning $line }
+}
 if ($RendererPreview) {
     $previewReceipt.freshMarker = $true; $previewReceipt.log = $log
     # The renderer can migrate an obsolete INI mode while starting. Never label

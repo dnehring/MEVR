@@ -521,6 +521,65 @@ try {
             [IO.File]::WriteAllText($dll,'changed module')
         } -TimeoutSeconds 2 }
     }
+    Case 'ME2 launch waits out the mod''s first-run settings appends without opening the file' {
+        $modBin = Join-Path $root 'mod-settings'; New-Item -ItemType Directory (Join-Path $modBin 'ASI') | Out-Null
+        $modIni = Join-Path $modBin 'ASI\LE2MEVR.ini'; $modLog = Join-Path $modBin 'LE2MEVR.log'
+        [IO.File]::WriteAllText($modIni, "[Debug]`r`nopenxrRuntime = C:\synthetic\steamxr_win64.json`r`n")
+        $modMarkers = "hands: calibration pitch 90.0`r`ncolour: profile auto`r`n"
+        $modOld = "[last launch] $modMarkers"
+        [IO.File]::WriteAllText($modLog, $modOld)
+        $modBefore = @{}; $modBefore[$modLog] = $modOld
+        $modStarted = [DateTime]::UtcNow.AddSeconds(-1)
+        # The last launch's markers never count, however still the file is; the bound reports instead of throwing.
+        $stale = Wait-RunModSettings $modIni @($modLog) $modBefore $modStarted {} -TimeoutSeconds 1 -QuietMilliseconds 100 -PollMilliseconds 50
+        Check (-not $stale.settled -and -not $stale.markerLog)
+        Check ((Format-RunModSettings $stale $modIni) -match 'did not settle .*markers not seen.*may be refused')
+        # The first tick: a block appended, the markers logged, a block the busy file refused appended a moment later,
+        # then an exclusive writer holds the file. The wait returns only once the last append has stood still for the
+        # quiet time, reading attributes only (the writer never stops it, so it can't refuse the mod's appends).
+        $modState = @{ polls = 0; lastAt = $null; hold = $null }
+        $modClock = [Diagnostics.Stopwatch]::StartNew()
+        try {
+            $settled = Wait-RunModSettings $modIni @((Join-Path $modBin 'missing-primary.log'), $modLog) $modBefore $modStarted {
+                $modState.polls++
+                if ($modState.polls -eq 1) {
+                    [IO.File]::AppendAllText($modIni, "[Controls]`r`nsupportZone = capsule`r`n"); $modState.lastAt = $modClock.Elapsed.TotalMilliseconds
+                }
+                if ($modState.polls -eq 2) { [IO.File]::AppendAllText($modLog, $modMarkers) }
+                if ($modState.polls -eq 5) {
+                    [IO.File]::AppendAllText($modIni, "[Holsters]`r`ngripHolds = 1`r`n"); $modState.lastAt = $modClock.Elapsed.TotalMilliseconds
+                    for ($try = 0; -not $modState.hold; $try++) {  # an antivirus look at the fresh file may delay it
+                        try { $modState.hold = [IO.File]::Open($modIni, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None) }
+                        catch [IO.IOException] { if ($try -ge 40) { throw }; Start-Sleep -Milliseconds 25 }
+                    }
+                }
+            } -TimeoutSeconds 10 -QuietMilliseconds 600 -PollMilliseconds 50
+        } finally { if ($modState.hold) { $modState.hold.Dispose() } }
+        Check ($settled.settled -and $settled.markerLog -eq $modLog)
+        Check ($modClock.Elapsed.TotalMilliseconds - $modState.lastAt -ge 600 -and $settled.quietMilliseconds -ge 600)
+        Check ($settled.length -eq (Get-Item -LiteralPath $modIni).Length -and $settled.length -gt $settled.lengthBefore)
+        Check ((Format-RunModSettings $settled $modIni) -match '^mod settings settled: LE2MEVR\.ini unchanged for ')
+        # A later launch: the file complete long ago, this launch's markers come: settled without another quiet wait.
+        $modOld = [IO.File]::ReadAllText($modLog); $modBefore[$modLog] = $modOld
+        (Get-Item -LiteralPath $modIni).LastWriteTimeUtc = [DateTime]::UtcNow.AddMinutes(-5)
+        $modState.polls = 0
+        $again = Wait-RunModSettings $modIni @($modLog) $modBefore $modStarted {
+            $modState.polls++
+            if ($modState.polls -eq 2) { [IO.File]::AppendAllText($modLog, $modMarkers) }
+        } -TimeoutSeconds 10 -QuietMilliseconds 600 -PollMilliseconds 50
+        Check ($again.settled -and $again.length -eq $again.lengthBefore -and $again.waitedMilliseconds -lt 2000)
+        # A file written on every look never settles: bounded, reported.
+        $busy = Wait-RunModSettings $modIni @($modLog) @{} $modStarted {
+            [IO.File]::AppendAllText($modIni, "; still writing`r`n")
+        } -TimeoutSeconds 1 -QuietMilliseconds 300 -PollMilliseconds 50
+        Check (-not $busy.settled -and $busy.markerLog -eq $modLog -and $busy.length -gt $busy.lengthBefore)
+        Check ((Format-RunModSettings $busy $modIni) -match 'markers seen in LE2MEVR\.log')
+        # Lost ownership (the lock, the game) and a missing settings file stop the wait.
+        Reject { Wait-RunModSettings $modIni @($modLog) @{} $modStarted { throw 'ownership lost' } -TimeoutSeconds 2 }
+        Reject { Wait-RunModSettings (Join-Path $modBin 'ASI\missing.ini') @($modLog) @{} $modStarted {} -TimeoutSeconds 1 }
+        Check ((Get-RunModLogs 'C:\synthetic\Win64' LE2)[0] -eq 'C:\synthetic\Win64\Logs\LE2MEVR.log')
+        Check ((Get-RunModLogs 'C:\synthetic\Win64' LE2)[1].EndsWith('MEVR\LE2MEVR.log'))
+    }
     Case 'preview bisection options preserve explicit mono and reject malformed metadata' {
         Check ((Get-PreviewOptions ([pscustomobject]@{})).mode -eq 4)
         $options = Get-PreviewOptions ([pscustomobject]@{ previewRendererMode=0; previewDiagnostics=$true })
