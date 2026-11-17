@@ -1135,6 +1135,9 @@ mevr::game::melee::Link MeleeLink(bool diagnostic = false) {
     link.authoredSeated = !ActionSceneAllowed();
     link.allowRequest = diagnostic ? AllowMeleeDiagnostic : AllowMeleeGesture;
     if (MEVR_HOST_HAS(hapticPulse)) link.haptic = gHost->hapticPulse;
+    if (MEVR_HOST_HAS(hapticPulseHz)) link.hapticHz = gHost->hapticPulseHz;
+    // The host's pad mapping keeps B from the game (gamepad::kFlagNoMeleeButton, v14); our own renderer's mapping knows every flag.
+    link.buttonFlags = !gHostOwnsVr || gHost->version >= 14;
     link.input.allowed = ActionSceneAllowed() && (diagnostic || (view.valid && state.active));
     link.input.generation = ActionGeneration();
     link.input.chamberHeavy = gMeleeHeavyGestures && !diagnostic;
@@ -1508,6 +1511,7 @@ void Heartbeat() {
         game::scope_capture::LogStats();
         game::cockpit_probe::LogStats();
         game::throwables::LogStats();
+        game::melee::LogStats();
         game::vent::LogStats();
         game::reload::LogStats();
         game::posture::LogStats();
@@ -1565,16 +1569,18 @@ std::string MeleeCommand(std::string const& args) {
         else if (verb == "gestures") gMeleeGestures = value == "on";
         else gMeleeHeavyGestures = value == "on";
         // Reset the release latch even if the setting is toggled twice between ticks.
-        auto link = MeleeLink(); link.input.allowed = false; game::melee::Tick(link);
+        auto link = MeleeLink(); link.input.allowed = false; game::melee::Tick(0.0, link);
         return "melee: " + verb + " " + value + "; native/physical acceptance still pending";
     }
     if ((verb == "light" || verb == "heavy") && (value.empty() || value == "left" || value == "right") && extra.empty())
         return game::melee::Request(verb == "heavy" ? ik::melee::Intent::Heavy : ik::melee::Intent::Light,
             value == "left" ? 0 : 1, MeleeLink(true));
-    return "melee: status | requests on/off | gestures on/off | heavy-gestures on/off (right chamber hold then strike) | light [left/right] | heavy [left/right]";
+    // ME1's test verbs on ME3's staged adapter: the right hand's light request (ME3 has no punch with the weapon away).
+    if ((verb == "punch" || verb == "strike") && value.empty())
+        return game::melee::Request(ik::melee::Intent::Light, 1, MeleeLink(true));
+    return "melee: status | requests on/off | gestures on/off | heavy-gestures on/off (right chamber hold then strike) | light [left/right] | heavy [left/right] | punch | strike";
 #else
-    (void)args;
-    return "melee: use this game's existing native adapter";
+    return game::melee::Console(args);  // `mevr melee punch|strike` (ME1 and ME2 reach game/Melee from game/ConsoleRequest)
 #endif
 }
 std::string TraversalCommand(std::string const& args) {
@@ -1707,6 +1713,9 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         MirrorHostState();
         gGamepadHooked = true;  // the host's XInput hook feeds the controllers to the game
     }
+    // A load's new world can free the old level's classes while GObjects' count stays put: the class index starts over
+    // (every game; gotchas/stale-class-index).
+    ue3::runtime::NoteWorld(engine::World());
     (void)ActionGeneration();
     PollHotkeys();
     if (dev_channels::Allowed(engine::SettingsFile())) {
@@ -1803,6 +1812,10 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         game::power_wheel::Tick(deltaSeconds, PowerWheelLink());
         game::squad_weapons::Tick(deltaSeconds, SquadLink());
         game::throwables::Tick(deltaSeconds, throwablesLink);
+        // Melee by gesture, every game (game/Melee, research/20): ME1's strokes came through the grenades' tick just above; ME2
+        // feeds ME1's rules itself, ME3 runs its staged opt-in rules. Before the support grip's tick, which asks it whether B is
+        // kept from the game (squad placement's).
+        game::melee::Tick(deltaSeconds, MeleeLink());
         game::vent::Tick(deltaSeconds, ventLink);
         // The reload by hand (the sequels): a left squeeze at the clip pouch nothing above claimed, carried into the receiver.
         game::reload::Tick(deltaSeconds, ReloadLink());
@@ -1850,7 +1863,6 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
             EnsureCallFunctionHook();  // the climb/mantle custom action's script calls (game/traversal)
             game::traversal::Tick(deltaSeconds, TraversalLink());
         }
-        if (gMeleeOn) game::melee::Tick(MeleeLink());
         {
             auto const floor = HostFloor();  // the cockpit takes a new seat at each recenter (research/47)
             game::cockpit_probe::Tick(floor ? std::optional<std::uint32_t>(floor->recenters) : std::nullopt);

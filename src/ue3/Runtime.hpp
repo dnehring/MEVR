@@ -75,6 +75,10 @@ Object* GameEngine();
 Object* LocalPlayerController();
 // A live GObjects entry, not pending kill (see engine::IsAlive for when that check means anything).
 bool IsAlive(Object const* object);
+// The world the game is in now (the mod's tick passes engine::World()): another one than last time drops the reflection's
+// classes-by-name index, which a load can leave holding a level's freed classes while GObjects' count stays put
+// (Reflection::ForgetClassIndex; gotchas/stale-class-index). Game thread.
+void NoteWorld(void const* world);
 
 // "Class Engine.Actor" or "None" (null, or the layer is off), as the log lines print objects.
 std::string FullName(Object const* object);

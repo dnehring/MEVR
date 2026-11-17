@@ -69,13 +69,43 @@ void Gestures::Reset() {
     readyAt_ = 0;
     chamber_.Reset();
 }
-std::optional<Request> Gestures::Step(Input const& source, throwing::SwingParams const& params) {
+void Gestures::ResetPeaks() {
+    for (auto& detector : detectors_) detector.ResetPeak();
+}
+Strokes Gestures::StepAll(Input const& in, throwing::SwingParams const& params) {
+    if (rules_ != in.rules) { Reset(); rules_ = in.rules; }
+    return in.rules == Rules::Physical ? StepPhysical(in, params) : StepStaged(in, params);
+}
+std::optional<Request> Gestures::Step(Input const& in, throwing::SwingParams const& params) {
+    auto const strokes = StepAll(in, params);
+    for (auto const& request : strokes.requests)
+        if (request) return request;
+    return std::nullopt;
+}
+// ME1's loop as game/Throwables ran it (research/20): each hand's detector on every sample, its own suppression refusing a
+// stroke (the detector keeps its history and spends the stroke), each strike a request; the shared wait is the caller's.
+Strokes Gestures::StepPhysical(Input const& in, throwing::SwingParams const& params) {
+    Strokes out;
+    if (generation_ != in.generation || !in.allowed) {
+        Reset();
+        generation_ = in.generation;
+        return out;
+    }
+    for (std::size_t h = 0; h < in.hands.size(); ++h) {
+        auto const& hand = in.hands[h];
+        out.hands[h] = detectors_[h].Update(hand.motion, hand.params.value_or(params));
+        if (out.hands[h].strike) out.requests[h] = Request{Intent::Light, static_cast<int>(h), ++stroke_, generation_};
+    }
+    return out;
+}
+Strokes Gestures::StepStaged(Input const& source, throwing::SwingParams const& params) {
+    Strokes out;
     auto in = source;
     if (chamberEnabled_ != in.chamberHeavy) { Reset(); chamberEnabled_ = in.chamberHeavy; }
     if (generation_ != in.generation || !in.allowed) {
         Reset();
         generation_ = in.generation;
-        return std::nullopt;
+        return out;
     }
     if (in.chamberHeavy) {
         chamber_.Step(in.hands[1]);
@@ -109,6 +139,7 @@ std::optional<Request> Gestures::Step(Input const& source, throwing::SwingParams
         auto strokeParams = params;
         if (in.chamberHeavy && hand.heavy) strokeParams.forwardMin = std::max(0.707, params.forwardMin);
         auto const swing = detectors_[h].Update(hand.motion, strokeParams);
+        out.hands[h] = swing;
         if (swing.discontinuous) {
             detectors_[h].Reset();
             ready_[h] = heavyReleased_[h] = false;
@@ -117,11 +148,12 @@ std::optional<Request> Gestures::Step(Input const& source, throwing::SwingParams
         }
         if (swing.strike && hand.motion.now >= readyAt_ && !request && (!hand.heavy || heavyReleased_[h])) {
             request = Request{hand.heavy ? Intent::Heavy : Intent::Light, static_cast<int>(h), ++stroke_, generation_};
+            out.requests[h] = request;
             readyAt_ = hand.motion.now + std::max(0.0, params.cooldown);
             if (hand.heavy) heavyReleased_[h] = false; // release/rearm for each heavy attack
             if (h == 1 && in.chamberHeavy && hand.heavy) chamber_.Consume();
         }
     }
-    return request;
+    return out;
 }
 } // namespace mevr::ik::melee

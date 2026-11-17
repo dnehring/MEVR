@@ -2345,6 +2345,11 @@ void CheckFields() {
     CheckField("Engine.Pawn", "bWantsToCrouch", SDK_BOOL(APawn, bWantsToCrouch));
     CheckField("SFXGame.BioPlayerController", "bStorming", SDK_BOOL(ABioPlayerController, bStorming));
     CheckField("SFXGame.BioPlayerController", "m_bEnableStormToCover", SDK_BOOL(ABioPlayerController, m_bEnableStormToCover));
+    // game/Melee (ME1's melee by gesture on ME2): the held weapon's melee power, found in the behaviour's powers for its cooldown
+    CheckField("SFXGame.SFXWeapon", "MeleePowerName", SDK_FIELD(ASFXWeapon, MeleePowerName));
+    CheckField("SFXGame.BioEpicPawnBehavior", "m_powers", SDK_FIELD(UBioEpicPawnBehavior, m_powers));
+    CheckField("SFXGame.BioPower", "m_nmPower", SDK_FIELD(UBioPower, m_nmPower));
+    CheckField("SFXGame.BioPower", "m_fCooldownRemaining", SDK_FIELD(UBioPower, m_fCooldownRemaining));
     CheckField("SFXGame.BioPawn", "CurrentLink", SDK_FIELD(ABioPawn, CurrentLink));
     CheckField("SFXGame.BioPawn", "CurrentSlotIdx", SDK_FIELD(ABioPawn, CurrentSlotIdx));
     // game/VrCover: the shooter, the pawns, the damage type's defaults, Shepard's health and shields (`mevr cover hit`)
@@ -2503,6 +2508,18 @@ void CheckFunctions() {
         "SFXGame.BioPawn.IsReloading",                    // ... TryHolster's own refusals, asked before a holster:
         "SFXGame.BioPawn.InCombat",
         "SFXGame.BioPawn.IsUsingPower",
+        // game/Melee (ME1's melee by gesture on ME2, 2026-11-17): the B button's exec and its own refusals, the busy pawn, the
+        // fist's cast, the hit's health and shields
+        "SFXGame.SFXGameModeDefault.TryMelee",
+        "SFXGame.BioPlayerController.IsZoomed",
+        "SFXGame.BioPlayerController.IsInCoverState",
+        "SFXGame.BioPawn.IsSwitchingWeapons",
+        "SFXGame.BioPawn.IsPerformingBlockingAction",
+        "SFXGame.BioPlayerInput.ActivatePower",
+        "SFXGame.BioPawn.GetCurrentHealth",
+        "SFXGame.BioPawn.GetMaxHealth",
+        "SFXGame.BioPawn.GetCurrentShields",
+        "SFXGame.BioPawn.GetMaxShields",
         "SFXGame.BioSFHandler_BrowserWheel.ShowSelectedPanel",  // ... and the omni-tool's entries (its pages)
         "SFXGame.MassEffectGuiManager.GetBrowserHandler",
         "Engine.BioSFPanel.GetVariableFloat",             // game/ScreenReticle (M2): the crosshair movie's alpha
@@ -2554,6 +2571,23 @@ void CheckParams() {
     PARAM(ABioPawn_execInCombat_Parms, "SFXGame.BioPawn.InCombat", ReturnValue);
     PARAM(ABioPawn_execIsUsingPower_Parms, "SFXGame.BioPawn.IsUsingPower", ReturnValue);
     PARMS(ABioPawn_execIsUsingPower_Parms, "SFXGame.BioPawn.IsUsingPower");
+    // game/Melee: TryMelee takes nothing; the busy pawn's question; the fist's cast (the power wheel's too); the hit's reads
+    PARMS(USFXGameModeDefault_execTryMelee_Parms, "SFXGame.SFXGameModeDefault.TryMelee");
+    PARAM(ABioPlayerController_execIsZoomed_Parms, "SFXGame.BioPlayerController.IsZoomed", ReturnValue);
+    PARAM(ABioPlayerController_execIsInCoverState_Parms, "SFXGame.BioPlayerController.IsInCoverState", ReturnValue);
+    PARAM(ABioPawn_execIsSwitchingWeapons_Parms, "SFXGame.BioPawn.IsSwitchingWeapons", bBlendOut);
+    PARAM(ABioPawn_execIsSwitchingWeapons_Parms, "SFXGame.BioPawn.IsSwitchingWeapons", ReturnValue);
+    PARAM(ABioPawn_execIsPerformingBlockingAction_Parms, "SFXGame.BioPawn.IsPerformingBlockingAction", ReturnValue);
+    PARAM(UBioPlayerInput_execActivatePower_Parms, "SFXGame.BioPlayerInput.ActivatePower", nmPower);
+    PARAM(UBioPlayerInput_execActivatePower_Parms, "SFXGame.BioPlayerInput.ActivatePower", oTarget);
+    PARAM(UBioPlayerInput_execActivatePower_Parms, "SFXGame.BioPlayerInput.ActivatePower", vTargetLocation);
+    PARAM(UBioPlayerInput_execActivatePower_Parms, "SFXGame.BioPlayerInput.ActivatePower", vOriginalCameraLocation);
+    PARAM(UBioPlayerInput_execActivatePower_Parms, "SFXGame.BioPlayerInput.ActivatePower", rOriginalCameraRotation);
+    PARAM(UBioPlayerInput_execActivatePower_Parms, "SFXGame.BioPlayerInput.ActivatePower", ReturnValue);
+    PARAM(ABioPawn_eventGetCurrentHealth_Parms, "SFXGame.BioPawn.GetCurrentHealth", ReturnValue);
+    PARAM(ABioPawn_eventGetMaxHealth_Parms, "SFXGame.BioPawn.GetMaxHealth", ReturnValue);
+    PARAM(ABioPawn_eventGetCurrentShields_Parms, "SFXGame.BioPawn.GetCurrentShields", ReturnValue);
+    PARAM(ABioPawn_eventGetMaxShields_Parms, "SFXGame.BioPawn.GetMaxShields", ReturnValue);
     // game/Reload
     PARAM(ASFXWeapon_execCanReload_Parms, "SFXGame.SFXWeapon.CanReload", ReturnValue);
     PARMS(ASFXWeapon_execCanReload_Parms, "SFXGame.SFXWeapon.CanReload");
@@ -3578,6 +3612,10 @@ void CheckFunctions() {
     CheckField("Engine.Actor", "Rotation", SDK_FIELD(AActor, Rotation));
     CheckFunction("Engine.Pawn.ShouldCrouch");
     CheckFunction("Engine.Pawn.IsDead");
+    // game/Melee's enemy in reach (the trilogy's one path): ME3's BioPawn has no IsHostile of its own
+    CheckFunction("Engine.Pawn.IsHostile");
+    PARAM(APawn_execIsHostile_Parms, "Engine.Pawn.IsHostile", Other);
+    PARAM(APawn_execIsHostile_Parms, "Engine.Pawn.IsHostile", ReturnValue);
     CheckFunction("SFXGame.SFXGameModeDefault.StormOn");
     CheckFunction("SFXGame.SFXGameModeDefault.StormOff");
     CheckFunction("SFXGame.BioPlayerController.IsStormDisabled");

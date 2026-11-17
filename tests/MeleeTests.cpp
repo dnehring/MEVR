@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "core/ik/Melee.hpp"
+#include <array>
 #include <cstdio>
 #include <limits>
 #include <vector>
@@ -249,6 +250,116 @@ int RunMeleeTests() {
             r.Sample({chamber.x, chamber.y, chamber.z - i * r.dt * 4});
         }
         CHECK(r.requests.size() == 1 && r.requests[0].intent == melee::Intent::Heavy);
+    }
+    // The physical rules (ME1's since 2026-11-05, ME2's since 2026-11-17) are exactly ME1's two bare detectors as
+    // game/Throwables ran them: the same steps, refusals and strikes on any motion, suppression, tracking loss and jump.
+    {
+        namespace thr = mevr::ik::throwing;
+        melee::Gestures g;
+        std::array<thr::SwingDetector, 2> bare;
+        thr::SwingParams params;
+        params.cooldown = 0.8;
+        thr::SwingParams gun = params;
+        gun.minSpeed = 3.5;  // the gun hand's own speed, as ME1's right hand with the weapon drawn
+        unsigned seed = 12345u;
+        auto next = [&seed] { seed = seed * 1103515245u + 12345u; return static_cast<double>((seed >> 8) & 0xFFFF) / 65535.0; };
+        int strikes = 0, refusals = 0, both = 0;
+        mevr::ik::Vec3 pos[2] = {{-0.2, -0.3, -0.3}, {0.2, -0.3, -0.3}};
+        mevr::ik::Vec3 vel[2] = {{0, 0, 0}, {0, 0, 0}};
+        double t = 0.0;
+        for (int step = 0; step < 6000; ++step) {
+            t += 1.0 / 90.0;
+            if (step % 97 == 13) t += 0.3;  // a gap: the history starts over
+            melee::Input in;
+            in.rules = melee::Rules::Physical;
+            in.allowed = step % 1500 != 777;  // inactive now and then (ME1's Inactive)
+            for (int h = 0; h < 2; ++h) {
+                // Bursts of fast strokes in random directions, rests between them.
+                if (step % 40 == 0) {
+                    double const fast = next() < 0.6 ? 5.0 * next() : 0.0;
+                    vel[h] = {fast * (next() - 0.5), fast * (next() - 0.5), -fast * next()};
+                }
+                pos[h] = pos[h] + vel[h] * (1.0 / 90.0);
+                if (step % 40 == 25) pos[h] = {h ? 0.2 : -0.2, -0.3, -0.3};
+                if (step % 503 == 101) pos[h] = pos[h] + mevr::ik::Vec3{1.0, 0, 0};  // a tracking jump
+                auto& hand = in.hands[static_cast<std::size_t>(h)];
+                hand.motion.now = t;
+                hand.motion.tracked = step % 211 != 50;
+                hand.motion.position = pos[h];
+                hand.motion.bodyForward = {0, 0, -1};
+                hand.motion.suppressed = (step / 60) % 5 == h;
+                hand.params = h == 1 && (step / 300) % 2 == 0 ? gun : params;
+                hand.available = false;  // the staged rules' fields mean nothing here
+                hand.neutral = false;
+            }
+            auto const strokes = g.StepAll(in);
+            for (int h = 0; h < 2; ++h) {
+                auto const& hand = in.hands[static_cast<std::size_t>(h)];
+                thr::SwingStep expected;
+                if (!in.allowed) {
+                    bare[static_cast<std::size_t>(h)].Reset();
+                } else {
+                    expected = bare[static_cast<std::size_t>(h)].Update(hand.motion, *hand.params);
+                }
+                auto const& got = strokes.hands[static_cast<std::size_t>(h)];
+                CHECK(got.strike == expected.strike && got.discontinuous == expected.discontinuous && got.speed == expected.speed &&
+                    got.travel == expected.travel && got.refused == expected.refused);
+                CHECK(strokes.requests[static_cast<std::size_t>(h)].has_value() == expected.strike);
+                if (expected.strike) {
+                    ++strikes;
+                    CHECK(strokes.requests[static_cast<std::size_t>(h)]->hand == h &&
+                        strokes.requests[static_cast<std::size_t>(h)]->intent == melee::Intent::Light);
+                }
+                if (expected.refused != nullptr) ++refusals;
+            }
+            if (strokes.requests[0] && strokes.requests[1]) ++both;
+        }
+        CHECK(strikes > 10 && refusals > 20);  // the run exercised both
+        std::printf("melee physical rules: %d strikes, %d refused strokes, %d steps where both hands struck\n", strikes, refusals, both);
+    }
+    // Physical: either hand may strike in the same step (the dispatcher's cooldown decides), no neutral pose wanted, and a
+    // suppressed stroke is refused and spent: lifting the suppression mid-stroke doesn't strike.
+    {
+        melee::Gestures g;
+        auto in = Input();
+        in.rules = melee::Rules::Physical;
+        for (auto& hand : in.hands) hand.neutral = false;
+        int bothAtOnce = 0;
+        for (int tick = 0; tick < 28; ++tick) {
+            for (auto& hand : in.hands) {
+                hand.motion.now = tick * 0.01;
+                hand.motion.position = {tick < 5 ? 0.0 : (tick - 5) * 0.06, 0, 0};
+            }
+            auto const s = g.StepAll(in);
+            if (s.requests[0] && s.requests[1]) ++bothAtOnce;
+        }
+        CHECK(bothAtOnce == 1);
+        melee::Gestures spent;
+        auto suppressed = Input();
+        suppressed.rules = melee::Rules::Physical;
+        int requests = 0, refused = 0;
+        for (int tick = 0; tick < 28; ++tick) {
+            for (std::size_t h = 0; h < 2; ++h) {
+                suppressed.hands[h].motion.now = tick * 0.01;
+                suppressed.hands[h].motion.position = {tick < 5 ? 0.0 : (tick - 5) * 0.06, 0, 0};
+                suppressed.hands[h].motion.suppressed = tick < 12;
+            }
+            auto const s = spent.StepAll(suppressed);
+            requests += (s.requests[0] ? 1 : 0) + (s.requests[1] ? 1 : 0);
+            refused += (s.hands[0].refused != nullptr ? 1 : 0) + (s.hands[1].refused != nullptr ? 1 : 0);
+        }
+        CHECK(requests == 0 && refused == 2);
+    }
+    // Switching rules starts over (no history crosses from one rule set to the other).
+    {
+        melee::Gestures g;
+        auto in = Input();
+        in.hands[1].available = false;
+        auto const staged = Stroke(g, in, 0.0);
+        CHECK(staged.size() == 1);
+        in.rules = melee::Rules::Physical;
+        auto const physical = Stroke(g, in, 1.0);
+        CHECK(physical.size() == 1);  // both hands strike in one step; Step gives the first request
     }
     std::printf("melee intent tests: %s\n", failures == 0 ? "ok" : "FAILED");
     return failures;

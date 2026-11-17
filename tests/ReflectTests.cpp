@@ -296,6 +296,45 @@ void TestLookups() {
     CHECK(r2.FindClass("Engine.Late") == late);
 }
 
+// A load frees a level's own classes and reuses their GObjects slots while the count stays put (ME2's
+// SFXPawn_AssaultDrone, a class of BioD_ProFre_200Vorcha's package: the console's `mevr instances` faulted in PathName on
+// the freed one after a save's reload, 2026-11-17; gotchas/stale-class-index): a lookup skips such an entry and re-indexes.
+void TestStaleClassIndex() {
+    World w;
+    ue3::Object* const package = w.f.objects[0];  // "Package", the class of packages
+    ue3::Object* const level1 = w.f.Make("Level1", package, nullptr);
+    ue3::Object* const drone1 = w.f.Make("Drone", w.classClass, level1);
+    ue3::Reflection r(w.f.Universe());
+    CHECK(r.FindClass("SFXGame.Drone") == drone1);  // another package's: found, with a note
+    CHECK(r.TakeNotes().size() == 1);
+    // The reload: the level's class is gone, its block garbage (an outer the old PathName followed), its slot another class's.
+    std::int32_t const slot = r.IndexOf(drone1);
+    ue3::Object* const level2 = w.f.Make("Level2", package, nullptr);
+    ue3::Object* const drone2 = w.f.Make("Drone", w.classClass, level2);
+    w.f.objects.pop_back();  // drone2 takes drone1's slot: GObjects' count is what it was plus Level2
+    w.f.objects[static_cast<std::size_t>(slot)] = drone2;
+    w.f.Set(drone2, w.f.layout.objectIndex, slot);
+    w.f.Set(drone1, w.f.layout.objectOuter, reinterpret_cast<ue3::Object*>(~std::uintptr_t{0}));
+    ue3::Reflection r2(w.f.Universe());
+    CHECK(r2.FindClass("SFXGame.Drone") == drone2);  // indexes afresh: the new one
+    // The same view kept across the reload (the runtime's): its index holds the freed class; the lookup skips it.
+    w.f.objects[static_cast<std::size_t>(slot)] = drone1;
+    w.f.Set(drone1, w.f.layout.objectOuter, level1);
+    ue3::Reflection r3(w.f.Universe());
+    CHECK(r3.FindClass("SFXGame.Drone") == drone1);  // indexed with the old class
+    w.f.objects[static_cast<std::size_t>(slot)] = drone2;
+    w.f.Set(drone1, w.f.layout.objectOuter, reinterpret_cast<ue3::Object*>(~std::uintptr_t{0}));
+    CHECK(r3.FindClass("SFXGame.Drone") == drone2);  // the stale entry skipped, re-indexed, no fault
+    // A slot reused in place by another class (the same block, another name): not that class any more.
+    w.f.Set(drone2, w.f.layout.objectName, ue3::Name{w.f.Name("Other"), 0});
+    (void)w.f.Universe();  // the name pool may have moved: its base again (r3 reads it through the same table)
+    CHECK(r3.FindClass("SFXGame.Drone") == nullptr);
+    CHECK(r3.FindClass("Other") == drone2);
+    // A world change drops the index outright (runtime::NoteWorld); lookups still work.
+    r3.ForgetClassIndex();
+    CHECK(r3.FindClass("Engine.Actor") == w.actor);
+}
+
 void TestProperties() {
     World w;
     ue3::Reflection r(w.f.Universe());
@@ -712,6 +751,7 @@ int RunReflectTests() {
     TestNames();
     TestSafeNames();
     TestLookups();
+    TestStaleClassIndex();
     TestProperties();
     TestParams();
     TestFunctionPointerBeforeFlags();

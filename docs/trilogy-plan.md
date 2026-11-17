@@ -125,16 +125,16 @@ Who has what today. "The other session" works outside the coordinating session's
 | `later` | deliberately left; the entry says why | no |
 | `n/a` | the game lacks the mechanic | no |
 
-**Totals** (counted from the State lines below, 2026-11-17 after the review's fixes FX2, FX3, FXR and CH): 53 features.
-Open (verify, build or check first): **LE1 8, LE2 36, LE3 41** (were 9, 43, 47 on 2026-11-16).
+**Totals** (counted from the State lines below, 2026-11-17 after lane MEL's T34): 53 features.
+Open (verify, build or check first): **LE1 7, LE2 35, LE3 41** (were 8, 36, 41 after the review's fixes; 9, 43, 47 on 2026-11-16).
 
 | game | done | n/a | headset | verify | build | check first | later |
 |---|---|---|---|---|---|---|---|
-| LE1 | 42 | 2 | 1 | 0 | 8 | 0 | 0 |
-| LE2 | 2 | 1 | 10 | 12 | 18 | 6 | 4 |
-| LE3 | 1 | 1 | 6 | 14 | 22 | 5 | 4 |
+| LE1 | 42 | 2 | 2 | 0 | 7 | 0 | 0 |
+| LE2 | 2 | 1 | 11 | 12 | 17 | 6 | 4 |
+| LE3 | 1 | 1 | 6 | 15 | 21 | 5 | 4 |
 
-LE1's eight are shared refactors that must leave ME1 unchanged; ME1's own product work is in
+LE1's seven are shared refactors that must leave ME1 unchanged; ME1's own product work is in
 [ROADMAP.md](../ROADMAP.md) "Now" and mapped under [Shipping](#me1). A sequel's `done` is a feature with nothing left for
 that game (T04, engine access without LExSDKv2 on ME2; T11, the engine's settings applied by the mod, on both); everything else seen working by script still
 owes a headset check. Ids in brackets are ledger rows (R = renderer table, G = gameplay table) and its numbered Forks.
@@ -603,13 +603,28 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Waits for:** T05's ME3 fixtures. **Who:** GF (the observers); C4 (the arm IK, the floor lock, the two-handed hold).
 
 #### T34 Melee by gesture [G43; Forks 12]
-- **State:** LE1 build · LE2 build · LE3 build
-- **Lives in:** `core/ik/Throwing` (the swing), LE1's routing in `game/Throwables`, ME3's in `game/Melee`.
-- **Left:** LE1 moves onto `ik::melee::Gestures` with a per-game dispatch (a refactor). **ME2:** nothing exists and no
-  plan covered it; its lead is `TryMelee`. **ME3:** light and heavy routes are staged and opt-in; all six class heavy
-  actions, the storm variants and the cover and Atlas cases are separate contexts (research/le3-melee-audit.md).
+- **State:** LE1 headset · LE2 headset · LE3 verify
+- **Lives in:** since 2026-11-17 (lane MEL; research/20 "The trilogy's one path") one path for the three games:
+  `core/ik/Melee` (`ik::melee::Gestures`, the one gesture core over `core/ik/Throwing`'s swing: rules `Physical`, ME1's two
+  detectors exactly, and `Staged`, ME3's opt-in rules with the heavy chamber), `game/Melee` (the one dispatcher, `Strike`,
+  with ME1's order of reasons, `RouteMelee` and `MeleeWait`, over each game's adapter: ME1 `TryMelee`/`ActivatePower
+  (Pistol_Whip)`, ME2 `TryMelee` and the held weapon's `MeleePowerName`, ME3 its native admission and `TryMelee`/
+  `TryHeavyMelee`). `game/Throwables` only feeds ME1's strokes in its body frame (grenades are n/a on the sequels).
+- **The owner (2026-11-17):** B on ME2 and ME3 works as on ME1: squad placement (hold B, the arc; a double B regroups), never
+  the game's melee on foot; melee is ME1's fist gesture. `melee::AdjustPad` keeps B from the game on foot in VR on every game
+  (`[Throwables] meleeButton = 0`); squad placement stands down only while B really reaches the game (`BIsGameButton`).
+- **Seen 2026-11-17 by script:** ME1 unchanged at the same pose (the same melee answers, `reflect` count, `hostView` and pixels);
+  ME2 on Save 4: a strike with the pistol out hit a drone, either hand's replayed stroke reaches `TryMelee`, B never reaches
+  the game's melee (a call trace, with its canary), placement unchanged. **ME2 has no punch with the weapon away, forced by the
+  game:** holstered, its pawn holds no weapon and its melee is the held weapon's; the fist is refused by name (ME1's punch
+  would need a draw, which only holsters do).
+- **Left:** ME1 and ME2: the feel in a headset (the checklist). **ME3:** its melee stays opt-in until the owner answers
+  [question 7](#open-owner-questions), so with B kept from the game ME3 has no melee on foot by default; its light, heavy and
+  B checks wait for the combat save (research/le3-combat-fixtures.md "Melee on the first combat save"); all six class heavy
+  actions, the storm variants and the cover and Atlas cases are separate contexts (research/le3-melee-audit.md). ME2's
+  `LeaveWorld` on B (outside combat, the level's own "leave" events) has no route on foot now: [question 16](#open-owner-questions).
 - **Closes when:** one deliberate stroke makes one native request with its admission, impact and recovery seen, per game.
-- **Waits for:** T05's fixtures. See [question 7](#open-owner-questions). **Who:** nobody yet.
+- **Waits for:** the headset (ME1, ME2); T05's ME3 combat fixture and question 7 (ME3). **Who:** MEL (2026-11-17).
 
 #### T35 Vehicles: the Mako, the Hammerhead, the Atlas [G44]
 - **State:** LE1 done · LE2 later · LE3 later
@@ -926,6 +941,17 @@ about stutter or pacing in a real headset.
 
 Each is asked once. "Today" is what the build does if nobody answers; no default changes without a yes (rule 19).
 
+**Answered 2026-11-17** (lane REV's review of 57ae5b4e raised both):
+
+- **B on the sequels** (ME2's B is `Console_Melee`: `TryExitCover 1 | TryMelee | LeaveWorld`; placement's hold and double tap
+  also meleed): "B on ME2 and ME3 works as on ME1": squad placement (hold B, the arc; a double B regroups), never the game's
+  melee on foot; melee is ME1's fist gesture. Built by lane MEL (T34): one melee path for the three games, B kept from the game
+  on foot in VR on every game, ME1's fist and weapon strokes on ME2. ME3's melee stays opt-in (question 7), so ME3 has no melee
+  on foot until that answer.
+- **The reload button on the sequels** (X is the hand power wheel there; the game's reload is X): "automatic reload for now".
+  Checked by lane MEL on ME2's Save 4: the pistol fired dry reloads by itself (research/20 "The trilogy's one path"); nothing
+  changed.
+
 **Answered 2026-11-16 (evening)** (the owner's words in quotes; the questions below stay for the record):
 
 - **2, faster shield recharge in VR cover:** "Faster recharge behind cover, yes." Lane GR builds it; how "in cover" is judged
@@ -1049,9 +1075,17 @@ Each is asked once. "Today" is what the build does if nobody answers; no default
     shared draw asks `BioPlayerInput.IsCombatEnabled` first on every game (what ME1's `SwitchToWeapon` asks), and a refusal
     is the refusal buzz and `the <gun> stays in its holster: the game allows no combat here`. A haptic and log change on
     ME1; checked at the same pose (identical but for the combat-off grab: research/le2-vrik.md).
+16. **ME2's "leave" on B** (T34; lane MEL, 2026-11-17). With B kept from the game on foot, its other two uses there are gone:
+    `TryExitCover` (nothing: no cover snapping in VR) and `SFXGameModeBase.LeaveWorld`, which outside combat fires the level's
+    own `SFXSeqEvt_LeaveWorld` events (its script, read 2026-11-17: the levels that let the player leave by the button). ME1's B
+    had no such use. Today: nothing reaches it on foot. Options: (a) an entry on our menu's top bar or the omni-tool's rail
+    that calls `LeaveWorld` on the game thread (as Game menu and Holster do); (b) B tapped (not held, not double) reaches the
+    game only where a level has a leave event; (c) leave it. Which levels carry the event is a scan away
+    (`tools/conversation-scan --script grep:` over the levels).
 
 **Defaults waiting for a seen result and a yes** (not questions yet): `[SquadOrders] place` on the sequels (ME1's is on),
-`[Traversal] cue`, ME3's melee and traversal gestures, the galaxy projector replacing
+`[Traversal] cue`, ME3's melee and traversal gestures (with B kept from the game, ME3 has no melee on foot until a yes), the
+galaxy projector replacing
 the flat presentation, `exploreStance` and `steadyIdle` on ME1.
 
 ## Where the old plans' items went
