@@ -858,10 +858,16 @@ stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs 
   which should be the default.
 - [ ] The right stick click and the holsters' refusals (T25; research/le2-vrik.md "The sequels' controls after the review of
   57ae5b4e", lane FX2 2026-11-17; seen on the fake headset): hold the right stick click: the power wheel opens after 0.3 s and
-  closes when you let go; a quick tap casts nothing (it used to cast the second mapped power). Watch for: the objective radar
-  or the area map coming up with it (the game's own R3 still reaches it: docs/trilogy-plan.md question 14). On the Normandy
-  or in a hub, a grab at the hip gives the short refusal buzz and no gun; in a fight, letting go at the hip gives the same
-  buzz and the gun stays in the hand (ME2 holsters nothing in combat). ME3 the same once it has a combat fixture.
+  closes when you let go; a quick tap casts nothing (it used to cast the second mapped power). Since 2026-11-17 (lane CTL,
+  the owner's answer to docs/trilogy-plan.md question 14) the click no longer reaches the game on foot: neither the tap nor
+  the hold may bring up ME2's area map or objective radar, or ME3's point of interest or area map; the omni-tool's Map entry
+  opens the map. On the Normandy or in a hub, a grab at the hip gives the short refusal buzz and no gun; in a fight, letting
+  go at the hip gives the same buzz and the gun stays in the hand (ME2 holsters nothing in combat). ME3 the same once it has
+  a combat fixture, and there with a heavy weapon in hand (question 13): a grab at any slot gives the refusal buzz and the
+  heavy weapon stays in the hand (never thrown away); the game's weapon wheel still switches away from it.
+- [ ] ME1's refused draw (lane CTL, 2026-11-17, the owner's answer to docs/trilogy-plan.md question 15; seen on the fake
+  headset): on the Normandy (or anywhere ME1 allows no combat) a grab at the hip gives the short refusal buzz, not the draw's
+  click, and nothing comes out; elsewhere the hip grab draws as always.
 - The reload by hand (T26): off by default on ME2 and ME3 since 2026-11-16 (the owner: a hand at the hip makes no sense);
   nothing to test until its gesture is redesigned with the owner. The game's own reload button and its automatic reload
   work as always.
@@ -869,6 +875,12 @@ stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs 
   hidden, the shields come back sooner than standing in the open; a flanking enemy in view takes it away.
 - [ ] Powers (T44; research/55 "Mass Effect 2"): the push at a hostile, the chest and gun gestures' targets, the coach card.
 - [ ] Squad (T45, T46): the weapon menu at the left hand, the placement ring and arc, a hold and a call back.
+- [ ] Melee by gesture and B (T34; research/20 "The trilogy's one path", lane MEL 2026-11-17; seen on the fake headset): ME1's
+  rules on ME2. With the gun out, a fast stroke of either hand near an enemy (within 2 m) is the game's melee (the pistol whip) and
+  hurts it; the right hand with its finger on the trigger fires instead. With the weapon away there is no melee on ME2 (the game's
+  melee is the held weapon's, and a holstered Shepard holds none): a fist does nothing there. B never melees on foot any more: holding B
+  is squad placement's arc and a double B calls the squad back, and neither swings. Flailing gives at most one strike a second or
+  so; aiming, firing and reaching for a holster never strike by themselves. Say whether 2 m and the punch's speed feel right.
 - [ ] Voice and Thespian (T47, T48): a real microphone at the ear; the reply panel's place and legibility on the cinema
   screen.
 - [ ] Galaxy map (T42; docs/le2-m6-implementation-guide.md G): table or projector alignment, labels in both eyes, seated
@@ -926,7 +938,10 @@ stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs 
 - [ ] Cinema (T15; research/le3-dialogue-cinema.md): the screen fixed in the room, the reply wheel and subtitles readable,
   the interrupt prompt and its triggers.
 - [ ] Melee and traversal (T34, T33; research/le3-melee-audit.md, research/le3-traversal-adapter.md): no accidental
-  strike while handling the gun; the horizon and heading through a ladder, a vault and a roll.
+  strike while handling the gun; the horizon and heading through a ladder, a vault and a roll. ME3's melee is opt-in until the
+  owner answers question 7 (`mevr melee requests on`, `gestures on`), and B is squad placement's on ME3 too since 2026-11-17
+  (lane MEL): by default ME3 has no melee on foot. Once on: the checks of research/le3-combat-fixtures.md "Melee on the first
+  combat save", then the feel.
 - [ ] Galaxy projector (T42; docs/galaxy-projector-handoff.md step 4): alignment with the physical projector, legibility,
   comfort, GPU cost.
 - [ ] Performance (T07, T10; docs/me3-overall-goal-handoff.md section 4): frame pacing in a real headset; the desktop

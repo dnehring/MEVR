@@ -297,6 +297,17 @@ switching frameworks.
   right FIST (grip and trigger) punches through `BioPlayerInput.ActivatePower(Pistol_Whip)` (`meleeFist`; the left hand
   doesn't, its trigger and grip are the squad's); both hands share one cooldown that also waits out the game's melee
   power's (`ik::throwing::RouteMelee`, `MeleeWait`). `mevr melee punch|strike` tests it without controllers.
+  **One melee for the trilogy** (2026-11-17, the owner: "B on ME2 and ME3 works as on ME1", melee is ME1's fist gesture;
+  research/20 "The trilogy's one path"): `game/Melee` is the one dispatcher (`Strike`: ME1's order of reasons) over each game's
+  adapter (ME1 `TryMelee`/`ActivatePower(Pistol_Whip)`; ME2 `TryMelee`, the held weapon's `MeleePowerName` and its BioPower's
+  cooldown; ME3 its native admission, `TryMelee`/`TryHeavyMelee`), and `ik::melee::Gestures` the one gesture core (rules
+  `Physical`: ME1's two detectors exactly, `tests/MeleeTests.cpp` compares; `Staged`: ME3's opt-in rules, off until `mevr melee
+  requests on` and `gestures on`, the owner's question 7). `game/Throwables` only feeds ME1's strokes (`melee::StepPhysical`, its
+  body frame); ME2's feed is `melee::Tick`. **B is kept from the game on foot in VR on every game** (`melee::AdjustPad`,
+  `gamepad::kFlagNoMeleeButton`; ME2 lost its `TryMelee`, `TryExitCover` and `LeaveWorld` on B there: question 16), and
+  ME2 has no punch with the weapon away (holstered, its pawn holds no weapon and its melee is the held weapon's), and squad placement
+  stands down only while B really reaches the game (`melee::BIsGameButton`). Logs `melee:`; `tools/le2-halcyon-run/melee.ps1`,
+  `melee-b.ps1` (B with a TryMelee call trace and a canary).
 - No cover snapping, physical crouch (LE1, VR on foot; `game/Posture` + `core/ik/Posture`, research/23,
   `[Hands] noCover`, `physicalCrouch`, `crouchBelow`/`standAbove`/`crouchDwellS`): ME1 takes cover by
   itself (BioPawn's native test, no button; A only leaves it). `engine/cover_acquire` pre-hooks that
@@ -402,6 +413,10 @@ switching frameworks.
   `TryHolster`, drawn `BioPawn.ActionState == 1`); only holsters draw on every game (the owner, 2026-11-16): on ME2
   `BioPlayerInput.IsCombatEnabled` is answered false inside FireWeapon, TightAim, TryReload and Next/PrevWeapon while the
   weapon is away (one rule, `RefuseGameDraw`); ME3 keeps no holstered state. The module asks `ue3::runtime::Up()`.
+  **The owner's answers of 2026-11-17** (docs/trilogy-plan.md questions 13-15): a grab's draw asks `IsCombatEnabled` first on
+  every game, ME1 included, and a refusal is the refusal buzz; ME3's heavy weapon in hand refuses a grab at a slot (a switch
+  would throw it away: `body_slots::Input::switchLosesHeld`); on the sequels the right stick click the mod owns never reaches
+  the game as R3 (their R3 opens the area map; host-only `gamepad::Options::keepPowerClick`), ME1's R3 still does.
 - LE1 body under the player ([research/29](research/29-body-follow.md), `core/ik/BodyFollow`, `game/BodyFollow`):
   first person, Shepard's whole body (the `Root` subtree; never `God`/`Camera`) turns by what the spine's 30
   degrees can't (the explore pawn faces where it runs) and slides under the view (feet that step after the

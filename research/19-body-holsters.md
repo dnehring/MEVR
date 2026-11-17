@@ -713,6 +713,14 @@ either function isn't found the mod doesn't set the flag and the click stays RB 
 still RB (tap = the mapped power). Logs `holsters: the right stick click held ...` / `... let go ...`; the status block's
 holsters line counts the opens. **[verify in the game]**: the wheel opened and closed this way, steered while held.
 
+**The click still reaches ME1 as R3; the sequels keep it** (the owner, 2026-11-17, docs/trilogy-plan.md question 14; lane CTL,
+research/le2-vrik.md "The right stick click, the heavy weapon and ME1's refused draw"). On ME1 the press stays R3: Halcyon
+LE1's double-click recenter reads R3 from the game's pad (after the merge), and ME1's own R3 is `ChangeMagnification`, a
+zoomed scope's step with no screen. ME2's R3 opens the area map (and its hold the objective radar) and ME3's a point of interest
+or the area map, and their Halcyon recenter is a double Back, so their bridge sets the host-only
+`gamepad::Options::keepPowerClick`: a press that begins while the mod owns the click (`kFlagModPowerHold`) is kept from the
+game until let go, and never reaches the R3 gate (no tap pulse after it).
+
 ## 7. Haptics as contact
 
 The user asked for feedback like Blade & Sorcery's collision haptics: the hand *feels* the slot,

@@ -484,6 +484,17 @@ std::string const& Status() {
     return gStatus;
 }
 
+void NoteWorld(void const* world) {
+    static void const* last = nullptr;
+    if (world == last) {
+        return;
+    }
+    last = world;
+    if (gReady) {
+        gReflection.ForgetClassIndex();
+    }
+}
+
 void Shutdown() {
     gTried = gReady = gTransient = gToldPending = false;
     gPendingTries = 0;

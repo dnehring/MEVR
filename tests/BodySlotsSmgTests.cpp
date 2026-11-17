@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // The SMG's two places on the sequels (lane SG, research/le2-vrik.md "The SMG at the small of the back"): the front of the
-// right thigh (the default) and the small of the back, and a right hand that loses tracking behind the back.
+// right thigh (the default) and the small of the back, and a right hand that loses tracking behind the back. Also the other
+// sequel-only slot rules: a draw the game refuses (ForgetDraw) and ME3's heavy weapon in hand (Input::switchLosesHeld).
 #include "core/ik/BodySlots.hpp"
 
 #include <array>
@@ -203,5 +204,48 @@ int RunBodySlotsSmgTests() {
         CHECK(forget ? let.action == Action::None && refused.CurrentPhase() == Phase::Idle
                      : let.action == Action::ReturnArmed && refused.CurrentPhase() == Phase::Returning);
     }
+
+    // ME3's heavy weapon (the owner, 2026-11-17, docs/trilogy-plan.md question 13): it has no slot (held None) and a switch
+    // away throws it away, so a squeeze at any slot whose gun would be drawn is refused, nothing is on its way and the
+    // release sends nothing; with the gun-holding grip and without. A slot whose weapon isn't carried stays Unavailable. ME2
+    // (a switch keeps its heavy weapon: switchLosesHeld false) draws as before.
+    for (bool holds : {true, false}) {
+        for (int slot : {0, 1, 2, kSmgSlot}) {  // the pistol's hip, the assault rifle's shoulder (near the heavy weapon), the
+                                                // shotgun's hip, the SMG's thigh
+            Vec3 const atSlot = center(thigh, slot, 1.0);
+            Machine heavy;
+            Input in = inputAt(thigh, atSlot);
+            in.gripHolds = holds;
+            in.switchLosesHeld = true;
+            heavy.Update(in);
+            Input squeeze = in;
+            squeeze.gripDown = squeeze.newSqueeze = true;
+            Step const refusedGrab = heavy.Update(squeeze);
+            CHECK(refusedGrab.action == Action::SwitchRefused && refusedGrab.slot == slot &&
+                  refusedGrab.weapon == thigh.slots[slot].weapon);
+            Input hold = in;
+            hold.gripDown = true;
+            CHECK(heavy.Update(hold).action == Action::None);
+            Step const let = heavy.Update(in);
+            CHECK(let.action == Action::None && heavy.CurrentPhase() == Phase::Idle);
+            // Not carried: the usual refusal.
+            Machine none;
+            Input empty = in;
+            empty.available[slot] = false;
+            none.Update(empty);
+            Input emptySqueeze = empty;
+            emptySqueeze.gripDown = emptySqueeze.newSqueeze = true;
+            CHECK(none.Update(emptySqueeze).action == Action::Unavailable);
+            // ME2: the same squeeze draws.
+            Machine me2;
+            Input keeps = in;
+            keeps.switchLosesHeld = false;
+            me2.Update(keeps);
+            Input drawSqueeze = keeps;
+            drawSqueeze.gripDown = drawSqueeze.newSqueeze = true;
+            CHECK(me2.Update(drawSqueeze).action == Action::Draw);
+        }
+    }
+    CHECK(std::string_view(Name(Action::SwitchRefused)) == "switch refused");
     return failures;
 }

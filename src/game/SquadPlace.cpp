@@ -14,6 +14,7 @@
 #include "game/HandCalibration.hpp"
 #include "game/Player.hpp"
 #include "game/Le2Squad.hpp"
+#include "game/Melee.hpp"
 #include "game/PowerWheel.hpp"
 #include "game/SquadContext.hpp"
 #include "game/SquadOrders.hpp"
@@ -111,7 +112,7 @@ constexpr float kPointToleranceUnits = 60.0f;
 
 sp::Machine gMachine;
 double gUpm = engine::kUnitsPerMeter;
-bool gToldMelee = false;
+bool gStoodDown = false;  // the last tick stood down because B is the game's own button (logged on each change)
 bool gPublished = false;  // the last view sent was active (one inactive view follows the end)
 
 // The console's stand-in for B (no tracked controllers): held with the arc from the head at a pitch.
@@ -331,15 +332,21 @@ void Tick(double deltaSeconds, Link const& link) {
     std::optional<engine::TrackingFrame> const frame = view_anchor::Current();
     if (frame && frame->unitsPerMeter > 0.0) gUpm = frame->unitsPerMeter;
     bool const onFoot = mode && *mode == 0 && pawn != nullptr;
-    bool const melee = hand_calibration::GetThrowables().meleeButton;
-    if (melee && s.enabled && s.place && !gToldMelee) {
-        gToldMelee = true;
-        log::Info("squad place: off while B is the game's melee button ([Throwables] meleeButton = 1)");
-    }
     gClock += deltaSeconds;
     bool const tracked = controllers.active && controllers.right.aimValid;
     bool const scripted = !gSim.script.empty();
     bool const simulated = gSim.held || gSim.releasing || scripted;
+    // The controller's B is the game's own button on foot now (game/Melee's real state of it: [Throwables] meleeButton = 1 or
+    // enabled = 0, or a host without the pad flag): the same press would also be the game's melee (ME2's TryMelee), so placement
+    // stands down. Since 2026-11-17 every game keeps it (the owner: B is placement's on ME2 and ME3 as on ME1). The console's
+    // stand-in presses no game button.
+    bool const melee = onFoot && tracked && !simulated && melee::BIsGameButton();
+    if (melee != gStoodDown && s.enabled && s.place) {
+        log::Info("{}", melee ? "squad place: off while B reaches the game as its own button (its melee): [Throwables] meleeButton = 1 "
+                                "or enabled = 0, or a host without the pad flag"
+                              : "squad place: B is kept from the game again: placement is back");
+    }
+    gStoodDown = melee;
     gSim.releasing = false;
     bool button = gSim.held || (tracked && controllers.right.secondary);
     if (scripted) {

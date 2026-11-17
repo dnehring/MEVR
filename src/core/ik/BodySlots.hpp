@@ -124,6 +124,11 @@ struct Input {
     // `held` turns on about 0.01 s into a draw, but the game ignores TryHolster until the switch is over, so a
     // let-go then is kept (Returning, no grace) and acted on once the switch has finished.
     bool switching = false;
+    // The hand holds a weapon no slot holds that a switch away would lose (ME3's heavy weapon: its own SwitchWeapon calls
+    // SFXHeavyWeapon.PutDownWeapon, which in single player throws it away). A squeeze at a slot that would draw is refused
+    // (Action::SwitchRefused); only the game's weapon wheel switches away (the owner, 2026-11-17, docs/trilogy-plan.md
+    // question 13). ME2's switch keeps its heavy weapon and ME1 has none: false there.
+    bool switchLosesHeld = false;
     Holster holster = Holster::OwnSlot;
     // The grip holds the gun ([Holsters] gripHolds, research/19 "The right grip holds the gun"):
     // squeeze at a slot to draw, keep squeezing to carry, let go at the gun's own slot to holster it;
@@ -151,6 +156,8 @@ enum class Action {
     ReturnArmed,       // let go away from the gun's slot: it goes back after the grace
     ReturnCancelled,   // ... squeezed again in time (or the gun changed or went away)
     Return,            // ... the grace is over: put the gun away (as Holster)
+    SwitchRefused,     // squeezed at a slot whose gun would be drawn, but the weapon in hand would be lost by the switch
+                       // (Input::switchLosesHeld): nothing drawn
 };
 char const* Name(Action action);
 

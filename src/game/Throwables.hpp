@@ -29,17 +29,11 @@
 //       arc (experimental): the game's ballistic grenade class (BioGrenadeProjectileBallistic, shipped
 //       but unused: a rigid body with a velocity) launched with the hand's velocity through
 //       BioGrenade.LaunchGrenade, replacing the disc.
-// Melee: a fast stroke of a hand relative to the head (ik::throwing::SwingDetector: speed, travel in
-// one direction, not backward, once per stroke) with an enemy in reach (a living hostile BioPawn within
-// meleeReachM and meleeConeDeg of the body's front) calls SFXGameModeDefault.TryMelee(): the game's
-// pistol whip or rifle butt, its cone. With the weapon away (TryMelee would only draw it) the right
-// hand's fist (grip and trigger held, [Throwables] meleeFist) casts the pistol whip power through
-// BioPlayerInput.ActivatePower. Both hands share one cooldown, never shorter than the game's own melee
-// cooldown (read live from the power). A tick on the strike; a thump when the target's health drops
-// within 1.2 s (the hit).
+// Melee is game/Melee's since 2026-11-17 (the trilogy's one path, docs/trilogy-parity-ledger.md Forks 12): this tick feeds it
+// each new controller sample in the body frame above (melee::StepPhysical), a hand holding a grenade or just after a throw
+// suppressed, and it keeps B from the game on foot (meleeButton = 0, ME1's default since 2026-11-05).
 // X is the hand power wheel only on foot while [PowerWheel] on = 1. With it off, grenadeButton = 1 restores game X;
-// grenadeButton = 0 (default) keeps physical throws only. B no longer melees on foot by
-// default since 2026-11-05 (meleeButton = 0: the gesture only; host v14).
+// grenadeButton = 0 (default) keeps physical throws only.
 //
 // Ties to the other hand features: a squeeze that takes a grenade is "claimed" (Claim, before holsters
 // and the squad menu tick): the squad menu ignores a claimed left squeeze; holsters keep the gun out
@@ -57,7 +51,7 @@ struct Link {
     void (*haptic)(int hand, float seconds, float amplitude) = nullptr;
     void (*hapticHz)(int hand, float seconds, float amplitude, float frequencyHz) = nullptr;
     void (*hapticContinuous)(int hand, float amplitude, float frequencyHz, float seconds) = nullptr;
-    // The host's pad mapping knows gamepad::kFlagNoMeleeButton / kFlagNoGrenadeButton (v14).
+    // The host's pad mapping knows gamepad::kFlagNoMeleeButton / kFlagNoGrenadeButton (v14): passed on to game/Melee.
     bool buttonFlags = false;
 };
 
@@ -73,14 +67,11 @@ bool ClaimedRight();
 bool RightHandBusy();
 // Each tick after holsters (it reads their eye height and draw timing).
 void Tick(double deltaSeconds, Link const& link);
-// B and X kept from the game on foot if turned off; RB kept off a new right squeeze at the grenade slot
-// (when the right grip is RB at all). Called by game/support_grip before it publishes the flags.
+// X kept from the game on foot if turned off (B: game/Melee's AdjustPad); RB kept off a new right squeeze at the grenade
+// slot (when the right grip is RB at all). Called by game/support_grip before it publishes the flags.
 void AdjustPad(gamepad::Options& options);
 std::string StatusJson();
 void LogStats();
 void Shutdown();
-// `mevr melee punch|strike` (tests, no tracked controllers needed): the right hand's strike now, through Strike's rules
-// (punch: a fist; any direction, the enemy within meleeReachM). Game thread.
-std::string Console(std::string_view args);
 
 } // namespace mevr::game::throwables

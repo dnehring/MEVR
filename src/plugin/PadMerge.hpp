@@ -63,6 +63,10 @@ struct Renderer {
     // R3 waits for L3 too, as L3 waits for R3 (game::gamepad::Options::gateRightClick, the stick chord's gate on both
     // clicks): ME2's (the owner's L3 + R3 priority); LE1 leaves it false (unchanged).
     bool gateRightClick = false;
+    // The right stick click the mod owns (its hold is the power wheel's, on foot and in the wheels) is kept from the game as
+    // R3 (game::gamepad::Options::keepPowerClick): the sequels' (the owner, 2026-11-17: ME2's and ME3's R3 open the area
+    // map); LE1 leaves it false (Halcyon LE1's double-click recenter reads R3 from the game's pad; unchanged).
+    bool keepPowerClick = false;
     // The game's conversation mode is up and its triggers are the interrupts' (ME2: LT Paragon, RT Renegade; M5.2,
     // research/le2-cinema.md): ConversationTriggers below, and no trigger owner of the host's this poll. LE1 leaves it false.
     bool conversationTriggers = false;

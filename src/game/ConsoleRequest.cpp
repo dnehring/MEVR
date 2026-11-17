@@ -34,6 +34,7 @@
 #include "game/GameMenuRequest.hpp"
 #include "game/GunKick.hpp"
 #include "game/Holsters.hpp"
+#include "game/Melee.hpp"
 #include "game/OmniTool.hpp"
 #include "game/WorldUi.hpp"
 #include "game/Player.hpp"
@@ -958,7 +959,7 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         // punch = a fist (with the weapon away, the pistol whip power), strike = an open hand. No tracked controllers needed.
         std::string rest;
         std::getline(words, rest);
-        return throwables::Console(rest);
+        return melee::Console(rest);
     }
     if (verb == "say") {
         // `mevr say <words>`: the words as a recognizer would give them (research/54), through the rule parser, the squad
@@ -1995,6 +1996,12 @@ std::optional<std::string> RunOursLe2(ue3::Object* pc, std::string const& line) 
         std::getline(words, rest);
         return squad_place::Console(rest);
     }
+    if (verb == "melee") {
+        // `mevr melee punch|strike`: ME1's melee by gesture on ME2 (game/Melee), the right hand's strike now through its rules.
+        std::string rest;
+        std::getline(words, rest);
+        return melee::Console(rest);
+    }
     if (verb == "instances") {
         return InstancesLe2(words);  // a scene's Kismet start, for the cinema screen's checks (research/le2-cinema.md)
     }
@@ -2035,7 +2042,7 @@ std::optional<std::string> RunOursLe2(ue3::Object* pc, std::string const& line) 
                        "mevr camera trace <seconds> [label] | mevr armik step ... | mevr omni <screen> | mevr guimouse | mevr guikey ... | mevr cover ... | "
                        "mevr traversal ... | mevr squad | mevr context | mevr order ... | mevr say ... | mevr voice ... | mevr thespian ... | "
                        "mevr instances <Package.Class> [text] | mevr activate <n> [input] | mevr setloc <n> X Y Z | mevr reload [status | try] | "
-                       "mevr reticles");
+                       "mevr reticles | mevr melee punch|strike");
 }
 
 #endif

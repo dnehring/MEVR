@@ -370,6 +370,11 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
     renderer.ownMenuOpen = mevr::host::renderer::OwnMenuOpen();  // Halcyon's own menu
     renderer.headLookYawUU = &mevr::host::renderer::MoveStickHeadLookYawUU;  // its "run where you look", after the merge
     renderer.gateRightClick = true;
+    // The right stick click's hold is the power wheel's on foot (the mod's, ME1's rule): that press never reaches the game as
+    // R3, which is ME2's Console_ShowMap (the area map, the objective radar) and ME3's NavAssistanceOrCoverTurn (a point of
+    // interest, the area map). The owner, 2026-11-17 (docs/trilogy-plan.md question 14); the map stays on the omni-tool's
+    // Map entry, and Halcyon's sequel recenter is a double Back, not R3.
+    renderer.keepPowerClick = true;
     // The interrupts (M5.2, research/le2-cinema.md): in the conversation mode the triggers are the game's LT (Paragon) and
     // RT (Renegade), as on a pad; nothing of ours keeps them (pad_merge::ConversationTriggers).
     renderer.conversationTriggers = mevr::engine::adapter::IsConversationMode(mode);
