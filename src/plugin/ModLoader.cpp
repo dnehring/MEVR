@@ -41,6 +41,7 @@
 #include "core/vr/Sights.hpp"
 #include "plugin/FloorLock.hpp"
 #include "plugin/PadMerge.hpp"
+#include "plugin/RenderLevers.hpp"
 #include "plugin/TestLoop.hpp"
 #include "plugin/Vignette.hpp"
 #include "plugin/XrHost.hpp"
@@ -212,6 +213,7 @@ HostServices WithRenderer(HostServices services) {
     if (renderer::Capabilities().screenReticleHide) {
         services.hideScreenReticle = &mevr::host::renderer::ScreenReticleHidden;
     }
+    services.secondEyeIsReplay = &render_levers::SecondEyeIsReplay;  // v43: false where sharePass stands down
     return services;
 }
 // v17: the comfort vignette's darkness (plugin/Vignette, a quad of ours on either renderer).

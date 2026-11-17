@@ -52,9 +52,16 @@ int main() {
     CHECK(!mevr::HasMotionBlurProtection(&host));
 
     namespace fs = std::filesystem;
+    // The game's layout: <game>\Binaries\Win64\ASI\<GAME>MEVR.ini and <game>\BioGame\Config\GamerSettings.ini.
     auto const folder = fs::temp_directory_path() / ("mevr-settings-test-" + std::to_string(GetCurrentProcessId()) + "-" + std::to_string(GetTickCount64()));
-    fs::create_directory(folder);
-    auto const file = folder / "test.ini";
+    fs::create_directories(folder / "Binaries" / "Win64" / "ASI");
+    fs::create_directories(folder / "BioGame" / "Config");
+    auto const file = folder / "Binaries" / "Win64" / "ASI" / "test.ini";
+    auto const gamer = folder / "BioGame" / "Config" / "GamerSettings.ini";
+    auto writeGamer = [&](std::string const& text) {
+        { std::ofstream out(gamer, std::ios::binary); out << text; }
+        WritePrivateProfileStringW(nullptr, nullptr, nullptr, gamer.c_str());
+    };
     auto stamp = fs::file_time_type::clock::now();
     auto write = [&](std::string const& text) {
         { std::ofstream out(file, std::ios::binary); out << text; }
@@ -131,23 +138,85 @@ int main() {
     commands.clear();
     poll(0, false);
     CHECK(commands.empty());
-    // Character shadows (research/37, 2026-11-13): off only while the second eye is a replay (sharePass 2, 3, 5), and the
-    // file's own value wins.
+    // Character shadows (research/37, 2026-11-13; HostServices v43): off only while the host says the second eye is a
+    // replay, whatever [Performance] sharePass reads; the file's own value wins.
     auto has = [](std::vector<settings::Setting> const& w, char const* key, char const* value) {
         return std::any_of(w.begin(), w.end(), [&](settings::Setting const& v) { return v.key == key && v.value == value; });
     };
-    write("[Performance]\nsharePass=0\n[SystemSettings]\n");
-    CHECK(!has(settings::Wanted(file), "LightEnvironmentShadows", "False"));
-    write("[Performance]\nsharePass=\n[SystemSettings]\n");
-    CHECK(has(settings::Wanted(file), "LightEnvironmentShadows", "False"));  // empty is the default, 5
+    auto names = [](std::vector<settings::Setting> const& w, char const* key) {
+        return std::any_of(w.begin(), w.end(), [&](settings::Setting const& v) { return v.key == key; });
+    };
+    write("[Performance]\nsharePass=5\n[SystemSettings]\n");
+    CHECK(has(settings::Wanted(file, true), "LightEnvironmentShadows", "False"));
+    CHECK(!names(settings::Wanted(file, false), "LightEnvironmentShadows"));  // no replay, no value of the player's: untouched
+    writeGamer("[SystemSettings]\nLightEnvironmentShadows=True\n");
+    CHECK(has(settings::Wanted(file, false), "LightEnvironmentShadows", "True"));   // the player's own value put back
+    CHECK(has(settings::Wanted(file, true), "LightEnvironmentShadows", "False"));   // the replay still wins over it
+    writeGamer("[SystemSettings]\nLightEnvironmentShadows=False\n");
+    CHECK(has(settings::Wanted(file, false), "LightEnvironmentShadows", "False"));
+    writeGamer("[SystemSettings]\nLightEnvironmentShadows=True\n");
     write("[Performance]\nsharePass=5\n[SystemSettings]\nLightEnvironmentShadows=True\n");
-    CHECK(has(settings::Wanted(file), "LightEnvironmentShadows", "True") &&
-          !has(settings::Wanted(file), "LightEnvironmentShadows", "False"));
+    CHECK(has(settings::Wanted(file, true), "LightEnvironmentShadows", "True") &&
+          !has(settings::Wanted(file, true), "LightEnvironmentShadows", "False"));
+    // A host before v43 says nothing: the file's sharePass rule, on the game whose older hosts replayed (this test is LE1's).
+    write("[Performance]\nsharePass=0\n[SystemSettings]\n");
+    CHECK(!settings::ReplayByFile(file));
+    write("[Performance]\nsharePass=\n[SystemSettings]\n");
+    CHECK(settings::ReplayByFile(file));  // empty is the default, 5
+    write("[Performance]\nsharePass=3\n[SystemSettings]\n");
+    CHECK(settings::ReplayByFile(file));
+    // The host's helper: nothing from an older or shorter table, else the callback's answer (false without one).
+    {
+        static bool replay = true;
+        mevr::HostServices h;
+        h.servicesSize = sizeof h;
+        h.secondEyeIsReplay = [] { return replay; };
+        CHECK(!mevr::SecondEyeIsReplay(nullptr).has_value());
+        h.version = 42;
+        CHECK(!mevr::SecondEyeIsReplay(&h).has_value());
+        h.version = 43;
+        h.servicesSize = static_cast<std::uint32_t>(offsetof(mevr::HostServices, secondEyeIsReplay));
+        CHECK(!mevr::SecondEyeIsReplay(&h).has_value());
+        h.servicesSize = sizeof h;
+        CHECK(mevr::SecondEyeIsReplay(&h) == std::optional<bool>(true));
+        replay = false;
+        CHECK(mevr::SecondEyeIsReplay(&h) == std::optional<bool>(false));
+        h.secondEyeIsReplay = nullptr;
+        CHECK(mevr::SecondEyeIsReplay(&h) == std::optional<bool>(false));
+    }
+    // The host's answer changing applies again, once: a replay starting turns the shadows off, one ending puts the
+    // player's value back; an unchanged answer does nothing.
+    {
+        int replayWorld = 5;
+        world = &replayWorld;
+        write("[SystemSettings]\n");
+        commands.clear();
+        settings::Poll(1.0f, static_cast<unsigned char>(0), true, file, world, false);
+        CHECK(commands.size() == 7);
+        CHECK(commands.back() == "scale set LightEnvironmentShadows True");  // through its opposite, the wanted value last
+        commands.clear();
+        settings::Poll(1.0f, static_cast<unsigned char>(0), true, file, world, false);
+        CHECK(commands.empty());
+        settings::Poll(1.0f, static_cast<unsigned char>(0), true, file, world, true);
+        CHECK(!commands.empty() && commands.back() == "scale set LightEnvironmentShadows False");
+        commands.clear();
+        settings::Poll(1.0f, static_cast<unsigned char>(0), true, file, world, true);
+        CHECK(commands.empty());
+        settings::Poll(1.0f, static_cast<unsigned char>(0), true, file, world, false);
+        CHECK(!commands.empty() && commands.back() == "scale set LightEnvironmentShadows True");
+        commands.clear();
+        writeGamer("[SystemSettings]\n");  // no value of the player's and no replay: the key is not sent at all
+        int plainWorld = 6;
+        world = &plainWorld;
+        settings::Poll(1.0f, static_cast<unsigned char>(0), true, file, world, false);
+        CHECK(commands.size() == 5 && !contains("scale set LightEnvironmentShadows True") &&
+              !contains("scale set LightEnvironmentShadows False"));
+        commands.clear();
+    }
     write("[SystemSettings]\napply=0\n");
     poll(0, true); poll(0, false); poll(7, false); poll(0, false);
     CHECK(commands.empty() && !settings::gGuardFallbackPending);
-    fs::remove(file);
-    fs::remove(folder);
+    fs::remove_all(folder);
     std::printf("System settings: %s (guarded returns, fallback/retry, ABI gates, settings edits, startup/load/settle, character shadows)\n",
                 failures ? "FAIL" : "PASS");
     return failures ? 1 : 0;

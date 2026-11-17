@@ -41,6 +41,28 @@ Use `.claude/skills/fake-headset-run/SKILL.md` and the existing session/console/
 
 Remaining runtime boundaries: ME2 native attack/power outcome, actual inventory completeness, all unusual henchman loadouts, physical-controller arbitration and panel comfort. The fake headset cannot establish real-headset comfort or performance.
 
+## In the game (2026-11-16, lanes GF and GF2)
+
+After the one tick (`SquadWeapons.cpp` `TickCustom` over `Le2SquadMenu.inc`'s `native` adapter, docs/trilogy-parity-ledger.md
+Forks 5), on the fake headset at Freedom's Progress (Save 4), the left trigger replayed through
+`%LOCALAPPDATA%\MEVR\gf2-lane\make-squad-recording.py` (six pulls of 0.9 s, 3 s apart, the right stick down 0.3-0.6 s
+into each: slot 0 of the page, which every squadmate carries; up is slot 2, which neither carries there):
+
+- Session `20261116-153741-665-LE2-gf2-run2`: `squad: menu #1 opened (pointing at nobody): Miranda chosen ...; cards:
+  left Jacob, right Miranda`, `menu #1 confirmed (trigger let go): Miranda gets the pistol`, `Miranda: PISTOL order
+  dispatched`, `Miranda: requested weapon observed equipped` 0.8 s later; `mevr squad` then shows her `current` PISTOL
+  (SMG before). Six pulls, six confirmed.
+- **The names.** ME2's `BioActorBehavior.ActorGameName` is the class default "BioPawn" on every henchman. The roster now
+  takes `SFXPawn.GetPrettyName` (a string reference) through the game info's `GetSimpleString` (`game/Le2Squad.hpp`
+  `ActorName`, ReflectCheck rows in `CheckLe2Squad`), with the behaviour's own `GetActorGameName` second; `mevr squad`
+  shows `"name": "Miranda", "nameSource": "SFXPawn.GetPrettyName"` and Jacob. The log names the sources once per
+  squadmate (`squad: squadmate 0x...: "Miranda" from SFXPawn.GetPrettyName (PrettyName <ref> = ...)`).
+- **The fake headset's dropouts.** The null driver's view and controllers drop out under machine load (`squad: no
+  head-tracked world view`, `the controllers aren't active`): 91 such lines in run2 (none during the pulls), 182 in the
+  next run, where one pull's menu closed before its flick (`menu closed (no head-tracked world view ...)`). Run with no
+  builds going.
+- Not shown: Jacob, the other tiles, pointing at a squadmate, the page tile, A/B.
+
 ## Offline evidence (2026-11-15)
 
 - Isolated Release `MEVR-LE2` host and `MEVR-LE2-mod` compiled and linked successfully after the final ownership/generation review.

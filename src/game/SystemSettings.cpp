@@ -55,6 +55,22 @@ int gLeftMode = -1;  // the last mode outside gameplay, for the log
 bool gGuardPolicyKnown = false;
 bool gMotionBlurProtected = false;
 bool gGuardFallbackPending = false;
+// What the last apply knew of the second eye (the host's word, HostServices v43): the character shadows' entry follows
+// it, so a changed answer applies again (a [Performance] sharePass edit reaches the host's poll and ours in either order).
+bool gReplayKnown = false;
+bool gSecondEyeIsReplay = false;
+
+// A host older than v43 says nothing: the rule from before the service, the file's [Performance] sharePass (empty = 5,
+// RenderLevers' default), on the game whose older hosts had the replay (engine::adapter::kOlderHostReplaysSecondEye).
+bool ReplayByFile(fs::path const& path) {
+    if (!engine::adapter::kOlderHostReplaysSecondEye) {
+        return false;
+    }
+    wchar_t text[32] = {};
+    GetPrivateProfileStringW(L"Performance", L"sharePass", L"", text, 32, path.wstring().c_str());
+    int const sharePass = text[0] == L'\0' ? 5 : _wtoi(text);   // empty is the default (RenderLevers' rule), not 0
+    return sharePass == 2 || sharePass == 3 || sharePass == 5;
+}
 
 fs::path FilePath() {
     return engine::SettingsFile();  // <exe dir>\ASI\<GAME>MEVR.ini, the host's file too
@@ -94,26 +110,38 @@ std::string Opposite(std::string const& value) {
     return {};
 }
 
+// The player's own value of a key: GamerSettings.ini's [SystemSettings] (<game>\BioGame\Config, four folders up from
+// <game>\Binaries\Win64\ASI\<GAME>MEVR.ini). Empty if the file or the key isn't there.
+std::string GamersValue(fs::path const& settingsFile, wchar_t const* key) {
+    fs::path const gamer = settingsFile.parent_path().parent_path().parent_path().parent_path() /
+                           L"BioGame" / L"Config" / L"GamerSettings.ini";
+    wchar_t text[32] = {};
+    GetPrivateProfileStringW(L"SystemSettings", key, L"", text, 32, gamer.wstring().c_str());
+    return Trim(Narrow(text));
+}
+
 // The built-in values, then the file's section over them (a key the file sets replaces the built-in one; apply = 0
 // returns nothing).
-std::vector<Setting> Wanted(fs::path const& path) {
+std::vector<Setting> Wanted(fs::path const& path, bool secondEyeIsReplay) {
     std::vector<Setting> wanted{
         {"DynamicShadows", "False"},
         {"MotionBlur", "False"},
         {"FoliageDrawRadiusMultiplier", "0.5"},
     };
     // Character shadows (the light environments' modulated shadows) while the second eye is a replay of the first's draws
-    // ([Performance] sharePass 2, 3 or 5, 5 the default): their projection rebuilds each pixel's place from a matrix the
-    // engine builds from the first eye's view, so the right eye drew them where the left eye sees them (the owner's
-    // headset, 2026-11-11 and 2026-11-13; the replay's correction, research/37, doesn't reach them yet). Off by default
-    // until it does (the owner, 2026-11-13); `[SystemSettings] LightEnvironmentShadows = True` brings them back.
-    {
-        wchar_t text[32] = {};
-        GetPrivateProfileStringW(L"Performance", L"sharePass", L"", text, 32, path.wstring().c_str());
-        int const sharePass = text[0] == L'\0' ? 5 : _wtoi(text);   // empty is the default (RenderLevers' rule), not 0
-        if (sharePass == 2 || sharePass == 3 || sharePass == 5) {
-            wanted.push_back({"LightEnvironmentShadows", "False"});
-        }
+    // (the host's word, HostServices v43: [Performance] sharePass 2, 3 or 5 where the game has the lever): their
+    // projection rebuilds each pixel's place from a matrix the engine builds from the first eye's view, so the right eye
+    // drew them where the left eye sees them (the owner's headset, 2026-11-11 and 2026-11-13; the replay's correction,
+    // research/37, doesn't reach them yet). Off by default until it does (the owner, 2026-11-13); `[SystemSettings]
+    // LightEnvironmentShadows = True` brings them back. A game whose second eye is a render of its own keeps the game's
+    // shadows (ME2, measured 2026-11-16: under the feet in both eyes alike, research/sequel-render-levers.md): there the
+    // player's own value (GamerSettings.ini's) is put back, since the game wrote our earlier False into BIOEngine.ini's
+    // [SystemSettings], which wins over GamerSettings' at the next launch (research/35), so leaving the key alone would
+    // leave the workaround in force for good. No value of the player's: the key isn't touched.
+    if (secondEyeIsReplay) {
+        wanted.push_back({"LightEnvironmentShadows", "False"});
+    } else if (std::string const own = GamersValue(path, L"LightEnvironmentShadows"); SameKey(own, "True") || SameKey(own, "False")) {
+        wanted.push_back({"LightEnvironmentShadows", SameKey(own, "True") ? "True" : "False"});
     }
     std::vector<wchar_t> buffer(32768);
     DWORD const n = GetPrivateProfileSectionW(L"SystemSettings", buffer.data(), static_cast<DWORD>(buffer.size()),
@@ -158,7 +186,9 @@ void ObserveMode(std::optional<unsigned char> mode) {
 
 // The poll is separated from engine reads so regression tests exercise the real command path.
 void Poll(float elapsed, std::optional<unsigned char> mode, bool motionBlurProtected,
-          fs::path const& path, void const* world) {
+          fs::path const& path, void const* world, std::optional<bool> hostSecondEyeIsReplay = std::nullopt) {
+    bool const secondEyeIsReplay = hostSecondEyeIsReplay ? *hostSecondEyeIsReplay : ReplayByFile(path);
+    bool const replayChanged = gApplied && gReplayKnown && secondEyeIsReplay != gSecondEyeIsReplay;
     if (!gGuardPolicyKnown || gMotionBlurProtected != motionBlurProtected) {
         gGuardFallbackPending = gGuardFallbackPending || (gMotionBlurProtected && !motionBlurProtected);
         gGuardPolicyKnown = true;
@@ -198,7 +228,7 @@ void Poll(float elapsed, std::optional<unsigned char> mode, bool motionBlurProte
             log::Info("system settings: skipped menu-return reapply after mode {}: native motion-blur guard healthy", gLeftMode);
         }
     }
-    if (gApplied && !changed && !newLevel && !settleDue && !backToGameplay && !gGuardFallbackPending) {
+    if (gApplied && !changed && !newLevel && !settleDue && !backToGameplay && !gGuardFallbackPending && !replayChanged) {
         return;
     }
 #if defined(MEVR_GAME_LE2)
@@ -211,7 +241,7 @@ void Poll(float elapsed, std::optional<unsigned char> mode, bool motionBlurProte
         return;
     }
 #endif
-    std::vector<Setting> const wanted = Wanted(path);
+    std::vector<Setting> const wanted = Wanted(path, secondEyeIsReplay);
     static std::vector<Setting> applied;  // what the game last got: a rewrite of the file with the same values is nothing
     auto const same = [&] {
         if (wanted.size() != applied.size()) {
@@ -227,6 +257,8 @@ void Poll(float elapsed, std::optional<unsigned char> mode, bool motionBlurProte
     if (gApplied && same() && !newLevel && !settleDue && !backToGameplay && !gGuardFallbackPending) {
         gStamp = stamp;
         gHaveStamp = !ec;
+        gReplayKnown = true;
+        gSecondEyeIsReplay = secondEyeIsReplay;
         return;
     }
     if (wanted.empty()) {
@@ -239,6 +271,8 @@ void Poll(float elapsed, std::optional<unsigned char> mode, bool motionBlurProte
         gAppliedWorld = world;
         gStamp = stamp;
         gHaveStamp = !ec;
+        gReplayKnown = true;
+        gSecondEyeIsReplay = secondEyeIsReplay;
         gGuardFallbackPending = false;  // explicit apply=0 remains authoritative
         return;
     }
@@ -261,6 +295,8 @@ void Poll(float elapsed, std::optional<unsigned char> mode, bool motionBlurProte
               gGuardFallbackPending ? " (native motion-blur protection lost: fallback applied)"
               : newLevel            ? " (a new level: applied again)"
               : changed && gApplied ? " (the file's values changed)"
+              : replayChanged       ? (secondEyeIsReplay ? " (the second eye became a replay of the first: character shadows off)"
+                                                         : " (the second eye is no longer a replay: character shadows back to the player's own setting)")
               : settleDue           ? std::format(" (the level has rendered {:.0f} s: applied again)", gSinceWorldChange)
               : backToGameplay      ? std::format(" (back to gameplay after mode {}: applied again)", gLeftMode)
                                     : " (BIOEngine.ini's [SystemSettings] wins over GamerSettings' and the game rewrites it)");
@@ -270,6 +306,8 @@ void Poll(float elapsed, std::optional<unsigned char> mode, bool motionBlurProte
     applied = wanted;
     gApplied = true;
     gAppliedWorld = world;
+    gReplayKnown = true;
+    gSecondEyeIsReplay = secondEyeIsReplay;
     gToldOff = false;
     gStamp = stamp;
     gHaveStamp = !ec;
@@ -278,14 +316,14 @@ void Poll(float elapsed, std::optional<unsigned char> mode, bool motionBlurProte
 
 } // namespace
 
-void Tick(float deltaSeconds, bool motionBlurProtected) {
+void Tick(float deltaSeconds, bool motionBlurProtected, std::optional<bool> secondEyeIsReplay) {
     auto const mode = head_tracking::GameMode();
     ObserveMode(mode);
     gSincePoll += deltaSeconds;
     if (gSincePoll < kPollSeconds) return;
     float const elapsed = gSincePoll;
     gSincePoll = 0.0f;
-    Poll(elapsed, mode, motionBlurProtected, FilePath(), engine::World());
+    Poll(elapsed, mode, motionBlurProtected, FilePath(), engine::World(), secondEyeIsReplay);
 }
 
 } // namespace mevr::game::system_settings

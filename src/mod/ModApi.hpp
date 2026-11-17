@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 
 struct IDXGISwapChain;
 
@@ -102,7 +103,7 @@ struct Presentation;
 // `controllers`. The controller-aim branch had {view, setHandAim}; the review-fix branch (commit
 // f95d01d) had {u32 controllerStateSize, setProcessEventCallback}. Version 4 is their merge. So a
 // mod reads nothing past `controllers` from a v3 host: `view` and `setHandAim` only from v4 on.
-inline constexpr int kHostServicesVersion = 42;
+inline constexpr int kHostServicesVersion = 43;
 
 // HostServices::mainMenu's bits (v16).
 inline constexpr std::uint32_t kMainMenuOpen = 1u;   // our main menu is open
@@ -458,7 +459,22 @@ struct HostServices {
     // covers missing/stale tracking or context; it does not mean the main menu is open.
     // Any thread. LE3 requires this capability before accepting a spoken selection.
     bool (*thespianInputBlocked)() = nullptr;
+
+    // v43: the frame's second eye is a replay of the first eye's recorded draws (plugin/RenderLevers: sharePass 2, 3 or
+    // 5 on a game whose table and renderer have the lever). The replay's workarounds ask this instead of reading the
+    // file themselves (game/SystemSettings' LightEnvironmentShadows rule: the sequels have no replay, whatever their
+    // file says). False on a host without a replay. Any thread.
+    bool (*secondEyeIsReplay)() = nullptr;
 };
+
+// The host's answer, or nothing from a host older than v43 (the caller then keeps the rule it had before the service).
+inline std::optional<bool> SecondEyeIsReplay(HostServices const* host) {
+    if (host == nullptr || host->version < 43 ||
+        host->servicesSize < offsetof(HostServices, secondEyeIsReplay) + sizeof(HostServices::secondEyeIsReplay)) {
+        return std::nullopt;
+    }
+    return host->secondEyeIsReplay != nullptr && host->secondEyeIsReplay();
+}
 
 inline bool HostBlocksThespian(HostServices const* host) {
     return host == nullptr || host->version < 42 ||
