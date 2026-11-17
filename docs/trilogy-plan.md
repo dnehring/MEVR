@@ -660,8 +660,15 @@ These unblock the most: almost every other entry gets smaller once they land.
   Computer and its squad record.
 - **Done, ME3 (lane FX3, 2026-11-17):** the display the wrist screens project from is the player's own live `OmniHand_Loop`
   (a pooled, stopped or squadmate's one was taken before); `Stop`'s `bAllowCooldown` has its ReflectCheck row.
+- **Done, ME3 (lane OMX, 2026-11-17):** Close leaves every screen the rail opens. Lane CTL's `mevr omni close` from the area
+  map stayed in the Mission Computer: the map's B release starts its close animation and each B restarted it, so the map
+  gave way only after the last of 8 back-outs. A back-out on ME3 now gives each screen one B and waits for the next screen
+  (`vr::game_menu::StepBackOut`, unit-tested; ME1 and ME2 keep their tick rule, LE1's object code identical). Checked on
+  Save 31 from the map, squad record, journal, Mission Computer, Codex (no page: the Mission Computer) and Equipment (none),
+  the page switches, and after the game's own Start and `ShowAreaMap` (research/le3-native-gui.md "Close from the area
+  map").
 - **Left, ME3:** the headset look; Holster on our menu's top bar (G21, greyed until lane WP's ME3 holster call).
-- **Who:** lane OM, OM2.
+- **Who:** lane OM, OM2, OMX.
 
 #### T39 The game's screens in the room and on the wrist, the pointer, the minigames [G23, G26, G24]
 - **State:** LE1 done · LE2 build · LE3 build

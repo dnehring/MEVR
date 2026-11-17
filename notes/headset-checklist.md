@@ -935,6 +935,12 @@ stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs 
   dot is, after pressing B too (the game switches between its pad and mouse modes); nothing of Shepard in front of War
   Assets; no jump of the view as a screen opens or closes. Report legibility, reach, and whether the screen's place feels
   right.
+- [ ] Close on the rail (T38; research/le3-native-gui.md "Close from the area map", lane OMX 2026-11-17; seen on the fake
+  headset): open the map from the wrist (the rail's Map), then press the rail's Close: the map folds back into the Mission
+  Computer for a quarter of a second, then that closes too and you are back on foot. The same from the squad record, the
+  journal, the Mission Computer itself, and after opening the Mission Computer with the left controller's menu button (where
+  it reaches the game). Watch for
+  a screen left up, a flash of the Mission Computer in the wrong place, or the rail staying open after everything closed.
 - [ ] Cinema (T15; research/le3-dialogue-cinema.md): the screen fixed in the room, the reply wheel and subtitles readable,
   the interrupt prompt and its triggers.
 - [ ] Melee and traversal (T34, T33; research/le3-melee-audit.md, research/le3-traversal-adapter.md): no accidental

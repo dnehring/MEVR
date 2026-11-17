@@ -38,3 +38,4 @@
 
 ## 2026-11-17
 * **Create**: [The mod appends its default settings blocks on its first tick, seconds after the XR marker](gotchas/mod-settings-appended-after-xr-ready.md), after four lanes' first ME2 loads after a prep were refused as `Save or runtime artifact changed during load` (lane RN2; 21 of 39 ME2 loads since 2026-11-15).
+* **Create**: [ME3's area map closes by an animation its B starts, and every B before the end starts it again](gotchas/me3-area-map-b-restarts-close.md), after lane CTL's Close from the map stayed in the Mission Computer (lane OMX); lane OM2's "the map page took about a second to answer B" the day before was the same.

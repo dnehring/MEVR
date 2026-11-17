@@ -26,6 +26,7 @@
 * [BioConversation's reply functions read its lists unchecked, so a call without a standing wheel ends the game](conversation-reply-natives-without-a-wheel.md) - A pick between lines (2026-11-06) and Thespian reading a wheel 57-82 ms after `mevr convo end` (twice, 2026-11-13) ended the game inside GetReplyText / SelectConversationEntry; read the reply natives only on a wheel that stands, with its current line and reply nodes there.
 * [The script VM's FFrame is packed on 4 bytes, so its Node is at 0x14 in LE1 and LE2](fframe-packed-on-four-bytes.md) - Every CallFunction skip failed silently for ten days (the game drew the gun however it liked) and the crash report found no script frames.
 * [A key binding's exec function reaches the script through ProcessEvent, never through a script call](binding-execs-come-through-process-event.md) - A CallFunction skip on StormOn (A held) never ran: ME1's faster-run sprint never started from 2026-11-06 to 2026-11-16 (the game's own sprint ran); undo the exec's effect in post-handlers on both hooks, or intervene in what it calls; bitten 2026-11-14 (ME2's TryAcquireCover) and 2026-11-16.
+* [ME3's area map closes by an animation its B starts, and every B before the end starts it again](me3-area-map-b-restarts-close.md) - The rail's Close backed out of the map 8 times and left the Mission Computer up: B every 12 ticks (about 0.2 s) restarted the map's 0.24 s close; ME3's back-out now gives each screen one B and waits for the next; bitten 2026-11-16 and 2026-11-17.
 
 # Launching and measuring
 

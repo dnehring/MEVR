@@ -706,6 +706,8 @@ and `mevr omni close`):
   Center, its points of interest) on the HUD panel, game mode 9. **Found, not this lane's:** on ME3 `mevr omni close` from the
   `Areamap` backed out 8 times (`B through SFXGameModeGUI.GuiKey`) and left the Mission Computer (`MenuBrowser`) up in game mode
   9 (`omni-tool: close the game's screens not done: the game stayed in its GUI mode after 8 backs out`); ME2's closed at once.
+  Fixed by lane OMX the same day (each B restarted the map's close animation; research/le3-native-gui.md "Close from the area
+  map").
 
 ## The reload by hand: the game's side (lane WP, 2026-11-16)
 

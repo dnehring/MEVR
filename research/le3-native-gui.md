@@ -147,7 +147,8 @@ holder `OM2`, sessions `20261116-*-LE3-om2-me3*` (the last two, `om2-me3f` and `
    screen shows its whole stage (`DefaultCrop`'s default, as ME1's journal, codex and map): the Mission Computer and the map
    0.70 x 0.39 m on the wrist, War Assets 1.20 x 0.68 m in the room. No tighter crop was measured worth taking.
 7. `game/GameMenuRequest` on ME3: back-outs 12 ticks apart, at most 8 (the map page took about a second to answer B; six
-   back-outs 4 ticks apart left it up).
+   back-outs 4 ticks apart left it up). Superseded by lane OMX's "Close from the area map" below: each B restarted the map's
+   close, and a back-out on ME3 now waits for each screen to go.
 
 **In the game (Save 31):** a replayed wrist tap (`make-wrist-recording.py ... 4 0 wrist`) opened the rail, standing on the
 omni-tool's display; a fingertip press on its Squad entry 6 s into `make-rail-press-recording.py` (the rail rides Shepard's
@@ -386,3 +387,72 @@ journal`, the world running): the world layers pixel for pixel, the same held vi
 image differed only where the journal's new entries pulse (3.6% of its pixels, the rows' highlight caught at another phase);
 after `mevr omni close` everything pixel for pixel again. The one frame of the screen's own camera that the first state's
 hold removes on ME1 (an opening the game starts itself) is not in a gameplay frame and can't be caught by a snapshot.
+
+## Close from the area map (lane OMX, 2026-11-17)
+
+**The defect** (lane CTL, research/le2-vrik.md, session `20261117-124509-737-LE3-ctl-le3`): `mevr omni map` opened the
+Mission Computer's area map; `mevr omni close` (the rail's Close) then backed out 8 times (`B through SFXGameModeGUI.GuiKey`,
+12 ticks apart) with `'Areamap'` in focus every time, gave up (`the game stayed in its GUI mode after 8 backs out`), and the
+Mission Computer came up 63 ms later and stayed. A player who opened the map from the wrist and pressed Close stayed in the
+game's menus.
+
+**The cause: the map's B starts a close animation, and another B starts it again.** Read with the conversation scanner's `--script` mode
+over ME3's `SFXGame.pcc` (a scratch build with `--game LE3`, lane FX2's; the repository's takes LE1 and LE2; output in scratch
+only): `SFXSFHandler_AreaMap.HandleInputEvent` answers
+`BIOGUI_EVENT_BUTTON_B_RELEASE` (and either stick click) with `OnBeginClose`, which removes the depth of field and calls the
+movie's ActionScript `OnBeginClose`; at the end of that animation the movie calls back `CloseMap`, which goes back to the
+Mission Computer (`ReturnToBrowserWheel`) when the map was opened from it (`Initialize(bFromBrowserWheel)`), else hides the
+map (`SFXGUIInteraction.HideAreaMap`, out of the GUI mode). It is the only screen of the rail's whose script acts on B's release
+(the other handlers that do are the PC galaxy map and personalization screens); the Mission Computer, the squad record and the
+journal have no such script and went 20-50 ms after their B. Measured on Save 31 (sessions `20261117-135058-709-LE3-omx-me3` and
+`20261117-140155-459-LE3-omx-me3`, `mevr guikey` and the new back-out, times from the log):
+
+| What was sent to the map | When it gave way |
+|---|---|
+| one B (press, then release) | 235 ms after it (`mevr guikey 16 37`); 234, 237, 247, 266 ms in the new back-out |
+| six Bs about 200 ms apart (`16 37` with 10 empty ticks between) | 242 ms after the second, not after the first (the second came before the close ended) |
+| two Bs about 490 ms apart | 243 ms after the first |
+| lane CTL's eight, 176-205 ms apart | 249 ms after the last |
+| the release alone (`mevr guikey 37`), once or five times | never: the game passes a release on only after its press |
+
+So the old back-out, a B every 12 ticks (about 190-200 ms at the fake headset's rate), kept starting the map's 0.24 s close
+again and the map went only once the Bs stopped; lane OM2's earlier "the map page took about a second to answer B" was the same
+(and its runs at a few frames a second, where 12 ticks were longer than the close, worked). Neither the event codes (B 16 and
+its release 37 are right) nor the map being a mode of its own (it is a page in game mode 9, or opened alone by
+`ShowAreaMap` in the same mode) was the cause; the 8-try limit only decided when the back-out gave up.
+
+**The fix (ME3 only; ME1 and ME2 keep their tick rule).** `vr::game_menu::StepBackOut` (core/vr/GameMenuRequest, unit-tested in
+tests/GameMenuBackOutTests.cpp): a screen is its focused movie's object and tag (ME3 makes a new movie for every page and every
+return to the Mission Computer); it gets one B (the press, then the release, in the same tick); the next B goes to the screen that
+takes its place once it has had the focus 250 ms; the same screen gets another B only if it is still in focus 1.5 s after its B
+(it took no notice: still opening), 3 at most; 8 Bs in all; 3 s with nothing in focus gives up. `game/GameMenuRequest`'s ME3
+Close and its page switch (back to the Mission Computer before `ShowSelectedPanel`, which also waits 250 ms for the new
+Mission Computer) take it; the game out of its GUI mode counts as closed after 200 ms; Computer asked over a page stops at the
+Mission Computer instead of closing and reopening it; the map's "already up" check knows ME3's `Areamap` tag. Logs: `omni-tool:
+backing out of '<tag>' (B and its release through ...; its first | again: still up N ms after the last, n of at most 8) for
+<what>`, `'<tag>' gave way to '<tag>' N ms after its B`, `the game left its GUI mode N ms after the last B`, `back at the
+Mission Computer N ms after the last B`.
+
+**In the game** (Save 31, `-RendererPreview`, holder OMX; both stretches restored with `verification: 0 differences`; runner
+and logs in the lane's scratch folder): Close returned to game mode 0 from every screen the rail opens, each screen with one B:
+
+| Opened by | Close |
+|---|---|
+| the rail's Map | the map gave way in 234-266 ms, then the Mission Computer left the GUI mode 24-34 ms after its B |
+| the rail's Squad | the squad record gave way in 29-47 ms, then the Mission Computer (it left the GUI mode 20-43 ms after its B, once 442 ms) |
+| the rail's Journal | the journal in 39-49 ms, then the Mission Computer |
+| the rail's Computer | the Mission Computer in 29 ms |
+| the rail's Codex | ME3's Mission Computer has no codex page (Options, Resume, Load, Areamap, SquadRecord, Journal, Save, INVALID): the Mission Computer stays up (`no page for it`); Close closed it |
+| the rail's Equipment | nothing opens on ME3 (`use the game's weapon/armour stations`); Close had nothing to do |
+| Map, then Journal, then Squad (page switches) | the map gave way in 237 ms, the journal in 37 ms, each page opened from the new Mission Computer; Close closed the squad record and the Mission Computer |
+| Journal, then Computer | one B: the journal gave way, the Mission Computer stayed up (`the Mission Computer is up`) |
+| the game's Start (the left controller's menu button replayed as pad Start: `make-walk-recording.py --plan stand:1,start-button:0.15,stand:3`), alone and then Map, Squad or Journal from it | the same as from the rail |
+| the console's `ShowAreaMap` (the game's own R3 route, which CTL keeps from the game: the map not from the Mission Computer) | the map left the GUI mode 228 ms after its one B |
+
+The replayed Start opened the Mission Computer 4 times in 7 (the other three presses showed nothing; not investigated: the
+game's Start binding, not the back-out).
+
+**ME1 unchanged:** the ME1 and ME2 back-out code is the old code under `#else`; LE1's object code for
+game/GameMenuRequest.cpp compiled with the build's own flags from main's source and from this lane's is identical (the
+disassembly and the symbol table compared; only the debug records naming the pdb differ). The new core function compiles into
+LE1 and isn't called there. No LE1 game run was needed for that reason.
