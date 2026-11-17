@@ -350,4 +350,39 @@ ReflectCheck rows. The particle system's own `bWasDeactivated`/`bWasCompleted` a
 SDK reflection cross-check failed`, the first run of this lane). A struct member's row (`CheckPath`) sums the offsets, so the
 SDK side of `m_oTarget.Instigator` is `offsetof(component, m_oTarget) + offsetof(target, Instigator)`.
 
-**In the game:** see the run below (Save 31).
+**In the game** (Save 31, renderer preview, holder `FX3`, session `20261117-090142-899-LE3-fx3-me3`, script `mevr omni`
+openings without tracked controllers, so the screens stood in the room; restored with `verification: 0 differences`. The
+`build` tree was compiling during the second half of the run: the stall below is marked as taken under compiler load):
+- `reflect: 789 of 789 checks agree`. (The first try refused ME3's gameplay hooks, `LE3 startup refused: SDK reflection
+  cross-check failed`: the particle rows and the struct path above; fixed before this run.)
+- `[MEVR-BASELINE] 4 setting(s) ... first person in cover (CoverThirdPerson), ...`: the preview's `MELE3VR.ini` asks for third
+  person in cover and the baseline pins it off.
+- `mevr cover where`: `cover snapping refused` with no controllers replayed (before FX3 it read `the game's` until the host's
+  controls were fresh); `posture: script functions found` with no "cover prompt stays" note (the prompt's handler is in). The
+  Normandy has no cover, so no prompt or refusal was seen.
+- **The first state's hold, A/B:** with `mevr worldui firstheld off` the Mission Computer's opening logged `world ui:
+  MenuBrowser (opening 160415985) published without the held view`; with the fix, none in the next five openings (the
+  Mission Computer, the Journal over it, B back to it, a rail opening, the Mission Computer after a load). The host's stats:
+  `clean-eye holds` 3 per reserved opening (11 in all), `views behind a screen of ours not held 0`, `flat-panel frames during
+  reservation 0`. The Mission Computer stood with the corridor behind it at the held eyes (`2026-11-17_09-04-28-404`).
+- **A load with a screen of ours up** (the Mission Computer, then `load.ps1` of Save 31): `world ui: forgot 4 screen(s) told
+  not to ask for the UI world in the old room (not called again)`, `MenuBrowser down (player/world changed)`, no fault; the
+  next Mission Computer opened as before and the omni-tool's display was the new pawn's (`its display is ...
+  RvrClientEffectSpawnable_19 ... the player's own, live`; before the load `_9`, 36 units from Shepard).
+- **The flag set again:** in this flow ME3 makes a new movie for each page and for B's return (the four forgotten were four
+  objects), so the same movie was never asked again here. As a stand-in, `set SFXGUIMovie m_bRequiresUIWorld True` with the
+  Mission Computer up: `world ui: the MenuBrowser screen asked for the game's UI world again (its script, as a page opened):
+  told again it doesn't`. `set` changes every movie (and the class default), so the void it left behind
+  (`2026-11-17_09-05-57-234`) came from the others; the picture can't judge this one, the log line can.
+- Under the compiler load (09:05:42-50, the heartbeat at 17 then 1.8 fps) the mod's state went stale past the host's 400 ms
+  and ME3 entered MENU_MONO twice (1.5 s and 4 s) until it came again: the existing freshness rule, not this change.
+
+**ME1 unchanged where it should be** (the shared WorldUi, Posture and plugin/WorldUi code compile into LE1): the same-pose pair
+on the fake headset, the lock held by hand, main 57ae5b4e's players' build (`le1-before`; ecd47552 changed no code LE1
+compiles) against this lane's merged build (0.3.2+add433ba83): sessions `2026-11-17_09-06-59-fx3-le1-before` and
+`09-10-15-fx3-le1-after`. The paused pose pixel for pixel (both eyes, their world layers, the HUD panel, the label), the same
+`hostView`, eyes and layers; `mevr cover where`: `cover snapping refused` in both. The journal on the wrist (`mevr omni
+journal`, the world running): the world layers pixel for pixel, the same held view, stack and placement; the HUD panel's
+image differed only where the journal's new entries pulse (3.6% of its pixels, the rows' highlight caught at another phase);
+after `mevr omni close` everything pixel for pixel again. The one frame of the screen's own camera that the first state's
+hold removes on ME1 (an opening the game starts itself) is not in a gameplay frame and can't be caught by a snapshot.

@@ -639,7 +639,7 @@ These unblock the most: almost every other entry gets smaller once they land.
   forgotten, each checked for its class before a call); a movie whose script asks for the UI world again is told again; the
   first state of an opening holds the view (every game) and ME3 keeps the last clean eyes through a reserved opening
   (`MevrSeams::WorldUiHoldFrame`, LE1's guard); the Atlas and injured Shepard hold no view on foot (research/le3-native-gui.md
-  "Room changes, the UI world coming back, the first frame and the omni-tool's display"). An opening the game starts itself
+  "Room changes, the UI world coming back, the first frame and the omni-tool's display"; seen on Save 31 but the Atlas). An opening the game starts itself
   still shows one MENU_MONO frame on ME3, as on ME1.
 - **Left, ME2:** the squad member in the equipment screens (`UiWorldFigure`); ME2's hack and bypass minigames are
   different games from ME1's and have no VR treatment ([le2-validation-coverage.md](le2-validation-coverage.md) "Hacking
