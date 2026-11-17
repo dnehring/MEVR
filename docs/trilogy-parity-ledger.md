@@ -53,8 +53,8 @@ rows the change touches.
 
 | game | shared | adapted | forked | missing | n/a | present and verified (V) | present, unverified (U) |
 |---|---|---|---|---|---|---|---|
-| LE2 | 13 | 49 | 2 | 25 | 4 | 47 | 17 |
-| LE3 | 13 | 49 | 4 | 21 | 6 | 24 | 42 |
+| LE2 | 13 | 50 | 2 | 24 | 4 | 48 | 17 |
+| LE3 | 13 | 50 | 4 | 20 | 6 | 24 | 43 |
 <!-- /parity:totals -->
 
 LE1 is the reference, so it has no cells. A few LE1 systems are themselves n/a under Halcyon's renderer: the reflection
@@ -92,10 +92,12 @@ These are ordered by wasted or blocked work. Each is detailed under [Forks](#for
    - Still missing outright: FSR, metric stereo and Quest pacing.
    - The sequels render the whole frame twice every present. On LE1, one-Draw saved 2.3 ms (20%) at the heaviest cell
      (research/37).
-5. **ME3 lacks ME1's VRIK presentation layer; ME2 lacks holsters** (G08-G12, G18).
-   - LE3 has no holsters, camera collision or combat stance. Its gun kick, view level and camera shakes are ME2's
+5. **ME3 lacks ME1's VRIK presentation layer; ME2 lacks holsters** (G08-G12, G18). **Holsters adapted 2026-11-16 (lanes
+   C3, C4):** one module for the three games, run on ME2 (G08).
+   - LE3 has the holsters' adapter (unrun); no camera collision or combat stance. Its gun kick, view level and camera shakes are ME2's
      branches since 2026-11-16 (lane GF; G09-G11), built and ReflectChecked but not yet run in ME3.
-   - LE2 has no holsters, and its right grip is RB, which opens ME2's wheel.
+   - ~~LE2 has no holsters, and its right grip is RB, which opens ME2's wheel.~~ The right grip holds the gun on foot in VR;
+     RB is the right stick click (ME2's own hold and tap).
    - All of this code exists for ME1; the sequels need adapters, not designs.
 6. **Squad weapons and the sequel power roster were forked** (Forks 5, 6). **Unified 2026-11-16 (lane GF):** one menu
    tick (`SquadWeapons.cpp` `TickCustom`) over a per-game `native` adapter, and one roster walk
@@ -225,7 +227,7 @@ The [technique groups](#renderer-techniques-by-group) summary follows the table.
 | G05 | Support grip, two-handed (`game/SupportGrip`, `plugin/PadMerge` v7/v11) | **shared** U: ctest `mevr-pad-merge` only | **shared** U | A replay with the left grip in the zone, then snapshot `supportGrip`. |
 | G06 | Sights: red dot, holo, ADS, alignment assist (`game/Sights`, `plugin/SightLayers`, `core/vr/Ads`) | **shared** V: one path with ME1 since lane C2's step 2 (the sight line's trace, convergence, the assist, a scope's aimed fire through `SFXWeapon.GetAimError` with `SFXWeapon_NativeBase.bIsZoomed` set for the call; `SFXWeapon.ZoomFOV`). Run on the fake headset 2026-11-16 (the pistol's dot in the right eye, shots on what the sight line hits; the sniper rifle's ADS, scope picture and aimed fire 10.0 -> 0.0): research/le2-vrik.md. The headset is the checklist's | **shared** U: the same path (`SFXWeapon.GetPlayerAimError(Accuracy)`); zoom steps (`AimModes`) not read; the SMG borrows the rifle profile | ME2: `tools/le2-halcyon-run/sights.ps1` (run 2026-11-16, LE1 at the same pose unchanged). ME3: a weapon fixture, then the same script's steps. research/le2-le3-vr-optics.md steps 1–3. |
 | G07 | Scope: picture-in-picture, virtual eyepiece, scope parts, scope capture (`game/ScopeParts`, `game/ScopeCapture`, `plugin/ScopeCaptureSource`) | **adapted** U: picture from the eye copy. `ScopeParts` shared (HideBone on every game; U); `ScopeCapture` is `out`; ScopeCaptureSource is linked but `setScopeCapture` isn't served | **adapted** U: same | A sniper-rifle fixture per game. Then ScopeCapture (it needs R31 on LE2). |
-| G08 | Holsters and "only holsters draw" (`game/Holsters`, `core/ik/BodySlots`) | **missing**: startup `#if MEVR_GAME_LE1`. Side effect: the right grip is RB and opens ME2's wheel | **missing** | docs/le3-port-reuse-audit.md "Holsters": separate a body slot from LE1's four weapon categories (the SMG), then each game's draw and holster functions. |
+| G08 | Holsters and "only holsters draw" (`game/Holsters`, `core/ik/BodySlots`) | **adapted** V: one module, ME2's names in its adapter (the inventory chain by family, `SwitchWeapon` + `SetActionState(1)`, `TryHolster`, `ActionState`); only holsters draw by one rule (`RefuseGameDraw`: `IsCombatEnabled` answered false inside FireWeapon, TightAim, TryReload, Next/PrevWeapon). Run 2026-11-16: the rifle at the shoulder and the pistol at the hip drawn and holstered, four trigger pulls with the weapon away refused, the right grip holding the gun through three vaults (research/le2-vrik.md "Holsters on the sequels"); ME1 at the same pose unchanged. The SMG has no body slot; the release grace unseen | **adapted** U: the adapter (no action state: an equipped gun is out, nothing to refuse); names resolve | LE2: the release grace on a quiet machine; the SMG's slot. LE3: the combat fixture, then `tools/le2-halcyon-run/holsters.ps1`'s steps. |
 | G09 | Gun kick (`game/GunKick`, `core/ik/GunKick`) | **adapted** V: recoil from `SFXWeapon.GetWeaponRecoil`; `gun kick: first kick` (le2-vrik) | **adapted** U: ME2's branch (`SFXWeapon.GetWeaponRecoil`, the shots from ViewLevel's `SetWeaponRecoil` handler) since 2026-11-16; builds, ReflectCheck rows (`CheckLe3ViewLevel`); not run in ME3 | LE3: a combat fixture with shots (research/le3-combat-fixtures.md): `reflect:` agrees on the new rows, `view level: first shot seen`, `gun kick: first kick`. |
 | G10 | View level, aim assist zeroed (`game/ViewLevel`) | **adapted** V: pitch held in 4,723 of 4,723 ticks, yaw kick removed (le2-vrik); the aim-assist zeroing unmeasured | **adapted** U: the same handlers as ME1 and ME2 since 2026-11-16 (PlayerTick, `SFXInventoryManager.SetWeaponRecoil`, aim assist's `ViewFriction`/`ViewAdhesion`), ME2's yaw-kick removal; ME3 has all 29 names; builds, ReflectCheck rows; not run in ME3 | LE3: the same fixture: `view level: handlers on ...`, the pitch held while shooting (the heartbeat's `view level:` line), whether ME3 queues a yaw kick, and which PlayerTick functions it found (none: it levels a frame late from the mod's tick). |
 | G11 | Camera shakes off (`game/CameraShake`) | **adapted** V: ME2's branch sets `CameraModifier.bDisabled`; modifiers off in the run. Which gun shakes exist is [verify] | **adapted** U: ME2's branch since 2026-11-16 (`SFXPlayerCamera.ScreenShakeModifier`, `Camera.CameraShakeCamMod`, `SFXCameraMode.bIsCameraShakeEnabled`: all in ME3's SDK); builds, ReflectCheck rows; not run in ME3 | LE3: `camera shake: ... off in VR` names each modifier it found; `mevr shake` in a combat fixture. |

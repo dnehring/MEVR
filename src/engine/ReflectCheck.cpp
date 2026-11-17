@@ -2183,6 +2183,10 @@ void CheckFields() {
     CheckField("Engine.PlayerController", "Player", SDK_FIELD(APlayerController, Player));
     CheckField("Engine.LocalPlayer", "NearClipPlane", SDK_FIELD(ULocalPlayer, NearClipPlane));
     CheckField("SFXGame.SFXWeapon_NativeBase", "bIsZoomed", SDK_BOOL(ASFXWeapon_NativeBase, bIsZoomed));
+    // game/Holsters' sequel adapter (research/le2-vrik.md "Holsters and the reload on the sequels"): drawn is the action
+    // state, and the draw raises it through the pawn's behavior
+    CheckField("SFXGame.BioPawn", "m_oBehavior", SDK_FIELD(ABioPawn, m_oBehavior));
+    CheckField("SFXGame.BioPawn", "ActionState", SDK_FIELD(ABioPawn, ActionState));
     CheckField("SFXGame.SFXWeapon", "ZoomFOV", SDK_FIELD(ASFXWeapon, ZoomFOV));
     // ue3::runtime (the local player controller) and engine::World()'s path
     CheckField("Engine.Engine", "GamePlayers", SDK_FIELD(UEngine, GamePlayers));
@@ -2421,7 +2425,15 @@ void CheckSkeleton() {
 void CheckFunctions() {
     char const* const functions[] = {
         "SFXGame.SFXWeapon.GetAimError",                  // game/Sights: a scope's aimed fire (ME1's GetPlayerAimError(Accuracy))
-        "SFXGame.BioPlayerController.SwitchWeapon",       // game/Holsters' sequel draw (`mevr weapon <family>`)
+        "SFXGame.BioPlayerController.SwitchWeapon",       // game/Holsters' sequel draw (a holster grab, `mevr weapon <family>`)
+        "SFXGame.BioPawnBehavior.SetActionState",         // ... the weapon out of its holster (combat), as FireWeapon does first
+        "Core.Object.GetStateName",                       // ... the weapon's state: mid-switch (WeaponEquipping, WeaponPuttingDown)
+        "SFXGame.BioPlayerInput.IsCombatEnabled",         // ... only holsters draw: answered false inside the buttons' draws
+        "SFXGame.SFXGameModeBase.FireWeapon",             //     (the trigger),
+        "SFXGame.SFXGameModeDefault.TightAim",            //     (the aim trigger),
+        "SFXGame.SFXGameModeDefault.TryReload",
+        "SFXGame.SFXGameModeDefault.NextWeapon",
+        "SFXGame.SFXGameModeDefault.PrevWeapon",
         "Engine.SkeletalMeshComponent.HideBone",          // game/ScopeParts: the scope's lens part while its picture is up
         "Engine.SkeletalMeshComponent.UnHideBone",
         "Engine.SkeletalMeshComponent.IsBoneHidden",
@@ -2500,6 +2512,8 @@ void CheckParams() {
     PARAM(ASFXWeapon_execGetAimError_Parms, "SFXGame.SFXWeapon.GetAimError", Accuracy);
     PARAM(ASFXWeapon_execGetAimError_Parms, "SFXGame.SFXWeapon.GetAimError", ReturnValue);
     PARAM(ABioPlayerController_eventSwitchWeapon_Parms, "SFXGame.BioPlayerController.SwitchWeapon", oWpn);
+    PARAM(UBioPawnBehavior_execSetActionState_Parms, "SFXGame.BioPawnBehavior.SetActionState", eState);
+    PARAM(UObject_execGetStateName_Parms, "Core.Object.GetStateName", ReturnValue);
     PARAM(USkeletalMeshComponent_execHideBone_Parms, "Engine.SkeletalMeshComponent.HideBone", BoneIndex);
     PARAM(USkeletalMeshComponent_execHideBone_Parms, "Engine.SkeletalMeshComponent.HideBone", PhysBodyOption);
     PARAM(USkeletalMeshComponent_execUnHideBone_Parms, "Engine.SkeletalMeshComponent.UnHideBone", BoneIndex);
@@ -3341,8 +3355,17 @@ void CheckFunctions() {
     CheckFunction("SFXGame.SFXWeapon.GetPlayerAimError");
     PARAM(ASFXWeapon_execGetPlayerAimError_Parms, "SFXGame.SFXWeapon.GetPlayerAimError", Accuracy);
     PARAM(ASFXWeapon_execGetPlayerAimError_Parms, "SFXGame.SFXWeapon.GetPlayerAimError", ReturnValue);
-    CheckFunction("SFXGame.BioPlayerController.SwitchWeapon");  // game/Holsters' sequel draw (`mevr weapon <family>`)
+    CheckFunction("SFXGame.BioPlayerController.SwitchWeapon");  // game/Holsters' sequel draw (a holster grab, `mevr weapon <family>`)
     PARAM(ABioPlayerController_eventSwitchWeapon_Parms, "SFXGame.BioPlayerController.SwitchWeapon", oWpn);
+    CheckFunction("SFXGame.SFXGameModeDefault.TryHolster");     // ... its holster (ME3 has no action state: research/le2-vrik.md)
+    CheckFunction("Core.Object.GetStateName");                  // ... the weapon's state: mid-switch
+    CheckFunction("SFXGame.BioPlayerInput.IsCombatEnabled");    // ... only holsters draw: resolved; ME3 has no holstered state
+    CheckFunction("SFXGame.SFXGameModeBase.FireWeapon");
+    CheckFunction("SFXGame.SFXGameModeDefault.TightAim");
+    CheckFunction("SFXGame.SFXGameModeDefault.TryReload");
+    CheckFunction("SFXGame.SFXGameModeDefault.NextWeapon");
+    CheckFunction("SFXGame.SFXGameModeDefault.PrevWeapon");
+    PARAM(UObject_execGetStateName_Parms, "Core.Object.GetStateName", ReturnValue);
     CheckFunction("Engine.SkeletalMeshComponent.HideBone");
     PARAM(USkeletalMeshComponent_execHideBone_Parms, "Engine.SkeletalMeshComponent.HideBone", BoneIndex);
     PARAM(USkeletalMeshComponent_execHideBone_Parms, "Engine.SkeletalMeshComponent.HideBone", PhysBodyOption);

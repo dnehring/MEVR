@@ -33,7 +33,13 @@
 //     the player's quick slots (BioPawn -> BioPawnBehavior -> BioEquipment) for what they carry.
 //     All through ProcessEvent, never the SDK's wrappers.
 // Logged once per change; a heartbeat line; the snapshot's mod status carries the slots.
-// Game thread. LE2/LE3: off (their weapon classes differ).
+// Game thread. The sequels (research/le2-vrik.md "Holsters and the reload on the sequels"): the same module with each
+// game's names: the pawn's inventory chain by weapon family for what is carried, BioPlayerController.SwitchWeapon and (ME2)
+// BioPawnBehavior.SetActionState(combat) to draw, SFXGameModeDefault.TryHolster to holster, BioPawn.ActionState for drawn.
+// "Only holsters draw" there: ME2's buttons draw by themselves with the weapon away (FireWeapon, TightAim, TryReload,
+// NextWeapon, PrevWeapon); each asks BioPlayerInput.IsCombatEnabled first, which is answered false for that call (the same
+// rule as ME1's skip: RefuseGameDraw; AllowGameDraw opens it). ME3 keeps no holstered state on foot. The right stick click
+// stays plain RB on the sequels.
 namespace mevr::game::holsters {
 
 // What the host offers this tick (Mod.cpp fills it from HostServices).

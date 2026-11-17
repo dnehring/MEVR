@@ -131,7 +131,7 @@ LE3 47**.
 | game | done | n/a | headset | verify | build | check first | later |
 |---|---|---|---|---|---|---|---|
 | LE1 | 42 | 2 | 0 | 0 | 9 | 0 | 0 |
-| LE2 | 0 | 0 | 7 | 9 | 26 | 8 | 3 |
+| LE2 | 0 | 0 | 7 | 10 | 25 | 8 | 3 |
 | LE3 | 0 | 0 | 3 | 11 | 29 | 7 | 3 |
 
 LE1's nine are shared refactors that must leave ME1 unchanged; ME1's own product work is in
@@ -430,13 +430,19 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Waits for:** T16 for the scope capture on ME2; T05's ME3 fixture. **Who:** C4.
 
 #### T25 Holsters, and only holsters draw [G08]
-- **State:** LE1 done · LE2 build · LE3 build
-- **Lives in:** `game/Holsters`, `core/ik/BodySlots`.
-- **Left, ME2 and ME3:** separate a body slot from LE1's four weapon categories (the SMG, ME3's variable loadouts:
-  le3-port-reuse-audit.md "Holsters"), then each game's draw and holster functions. Until then ME2's right grip is the
-  pad's RB and opens ME2's wheel.
+- **State:** LE1 done · LE2 verify · LE3 build
+- **Lives in:** `game/Holsters` (one module, each game's names in its adapter), `core/ik/BodySlots`.
+- **Done on ME2** (2026-11-16, research/le2-vrik.md "Holsters on the sequels"): the draw (`BioPlayerController.SwitchWeapon`,
+  then `BioPawnBehavior.SetActionState(1)`), the holster (`SFXGameModeDefault.TryHolster`), the right grip holding the gun
+  (no RB from it; RB is the right stick click), and only holsters draw (rule 31: the trigger, the aim trigger, reload and
+  the weapon cycling refused with the weapon away, `BioPlayerInput.IsCombatEnabled` answered false for their call).
+  Seen by script: the assault rifle at the right shoulder and the pistol at the right hip drawn and holstered, four
+  trigger pulls with the weapon away refused, three vaults with the right grip holding the pistol; ME1 at the same pose
+  unchanged. **Left, ME2:** the release grace (a gun let go away from its slot) on a quiet machine; the SMG's body slot
+  (`SFXWeapon_AutoPistol_Base` has none: the game's own switch draws it). **ME3:** its adapter is built (no action state:
+  an equipped gun is out, nothing to refuse) and its names resolve; its draw and holster need the combat fixture.
 - **Closes when:** a replayed grip at the hip slot draws the pistol and letting go there holsters it, on each sequel.
-- **Waits for:** nothing on ME2. Part of ME2's first release (M3.4). **Who:** C2.
+- **Waits for:** T05's ME3 combat fixture. Part of ME2's first release (M3.4). **Who:** C4.
 
 #### T26 The reload by hand [G41]
 - **State:** LE1 n/a · LE2 build · LE3 build
