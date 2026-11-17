@@ -143,6 +143,69 @@ inline std::string ActorName(ue3::Object* pawn) {
     ue3::memory::FreeString(*text);  // native/script FString return belongs to caller
     return result;
 }
+#else
+// ME2's name of a pawn (docs/trilogy-parity-ledger.md G30): its PrettyName, a string reference (SFXPawn.GetPrettyName, the
+// squad HUD's own), as text through the game info's GetSimpleString. A henchman's BioActorBehavior.ActorGameName is the
+// class default "BioPawn" (the roster read that until 2026-11-16), so the behaviour's own GetActorGameName comes second
+// and only where it says something else. Functions are looked up on the object's class: a subclass may override them.
+inline ue3::FunctionRef prettyName{"SFXGame.SFXPawn.GetPrettyName", ue3::kEveryGame};
+inline ue3::FunctionRef simpleString{"SFXGame.SFXGame.GetSimpleString", ue3::kEveryGame};
+inline ue3::FunctionRef behaviorName{"SFXGame.BioActorBehavior.GetActorGameName", ue3::kEveryGame};
+inline ue3::FieldRef actorWorld{"Engine.Actor", "WorldInfo", ue3::kEveryGame};
+inline ue3::FieldRef worldGame{"Engine.WorldInfo", "Game", ue3::kEveryGame};
+inline ue3::FieldRef pawnBehavior{"SFXGame.BioPawn", "m_oBehavior", ue3::kEveryGame};
+
+struct NameRead {
+    std::string name;       // empty: nothing usable (the caller falls back to the pawn's class)
+    char const* source = "pawn class";
+    std::int32_t prettyRef = 0;
+    std::string prettyText;
+    std::string behaviorText;
+};
+
+inline std::string TakeString(ue3::Params& parms) {
+    auto text = parms.Return<ue3::FString>();
+    if (!text) return {};
+    std::string result = ue3::memory::Narrow(*text);
+    ue3::memory::FreeString(*text);  // a script function's FString return belongs to the caller
+    return result;
+}
+
+inline NameRead ActorName(ue3::Object* pawn) {
+    NameRead out;
+    if (!ue3::runtime::IsAlive(pawn) || !ue3::memory::Ready()) return out;
+    auto& r = ue3::runtime::Get();
+    if (prettyName.Get() != nullptr && simpleString.Get() != nullptr) {
+        if (auto* fn = r.FindFunction(r.ClassOf(pawn), "GetPrettyName")) {
+            ue3::Params args(r, fn);
+            if (ue3::runtime::Call(pawn, fn, args)) out.prettyRef = args.Return<std::int32_t>().value_or(0);
+        }
+        auto* world = actorWorld.Read<ue3::Object*>(pawn).value_or(nullptr);
+        auto* game = ue3::runtime::IsAlive(world) ? worldGame.Read<ue3::Object*>(world).value_or(nullptr) : nullptr;
+        auto* text = ue3::runtime::IsAlive(game) ? r.FindFunction(r.ClassOf(game), "GetSimpleString") : nullptr;
+        if (out.prettyRef > 0 && text != nullptr) {
+            ue3::Params args(r, text);
+            if (args.Set("StrRef", out.prettyRef) && args.SetBool("bParse", false) && ue3::runtime::Call(game, text, args)) {
+                out.prettyText = TakeString(args);
+            }
+        }
+    }
+    auto* behavior = pawnBehavior.Read<ue3::Object*>(pawn).value_or(nullptr);
+    if (behaviorName.Get() != nullptr && ue3::runtime::IsAlive(behavior)) {
+        if (auto* fn = r.FindFunction(r.ClassOf(behavior), "GetActorGameName")) {
+            ue3::Params args(r, fn);
+            if (ue3::runtime::Call(behavior, fn, args)) out.behaviorText = TakeString(args);
+        }
+    }
+    if (!out.prettyText.empty()) {
+        out.name = out.prettyText;
+        out.source = "SFXPawn.GetPrettyName";
+    } else if (!out.behaviorText.empty() && out.behaviorText != "BioPawn") {
+        out.name = out.behaviorText;
+        out.source = "BioActorBehavior.GetActorGameName";
+    }
+    return out;
+}
 #endif
 
 inline bool RecipientReady(ue3::Object* pawn) {

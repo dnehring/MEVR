@@ -275,6 +275,10 @@ std::string ConversationKey(std::string_view name);
 // at Shepard's mark: "if we have to do the black fade in/out I recognize that it's acceptable for now"), people walk to the
 // stage's marks, and no conversational circle forms. `extra`: more keys, comma separated ([Cinematics] worldStaged).
 bool IsStagedScene(std::string_view name, std::string_view extra = {});
+// The scenes where the game sits Shepard down (the owner, 2026-11-16: the dancer at Chora's Den, "any of the types of sit down
+// based interactions that happen across all three games"): played in first person as a staged scene, the player's view going
+// down into the seat and up again with Shepard's head, no walking while he sits. A table, as the staged scenes'.
+bool IsSeatedScene(std::string_view name);
 
 // A scene the script shows only under its black screen, though the player walks up to it in first person (research/69 item 36,
 // "The council during the walk", 2026-11-13: the hearing's level is loaded but hidden, and its people hidden, all through the walk

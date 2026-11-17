@@ -1692,7 +1692,7 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
     if (dev_channels::Allowed(engine::SettingsFile())) {
         game::console_request::Tick(deltaSeconds);  // the test loop's console.request (research/22); off in the players' build
     }
-    game::system_settings::Tick(deltaSeconds, HasMotionBlurProtection(gHost));  // research/62: conditional menu-return reset
+    game::system_settings::Tick(deltaSeconds, HasMotionBlurProtection(gHost), SecondEyeIsReplay(gHost));  // research/62: conditional menu-return reset
     if (!gHooked || !gGamepadHooked) {
         gRetryTimer += deltaSeconds;
         if (gRetryTimer >= kStartupRetrySeconds) {

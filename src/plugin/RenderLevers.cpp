@@ -2605,6 +2605,11 @@ bool OneDrawWindow() {
     return gOneDrawWindow.load(std::memory_order_relaxed) != 0;
 }
 
+bool SecondEyeIsReplay() {
+    int const share = gSharePass.load(std::memory_order_relaxed);
+    return gSharePassReady && (share == 2 || share == 3 || share == 5);
+}
+
 bool PerEyeViewState() {
     return gPerEyeViewState.load(std::memory_order_relaxed) != 0;
 }

@@ -405,7 +405,7 @@ switching frameworks.
   `pawn.Location.z - CylinderComponent.CollisionHeight + unitsPerMeter * live STAGE/LOCAL_FLOOR eye height`, independent of
   recenter posture, animated camera bones, mode offsets and vertical framing. Both eyes share the correction before metric
   eye offsets and head look; `HostServices` v34 publishes the corrected centre/pose to ViewAnchor, IK and sights (host and mod
-  deploy together; current HostServices v38). `[Body] floorLock = 1` by default; file-only `0` opts out. The temporary
+  deploy together; current HostServices v43). `[Body] floorLock = 1` by default; file-only `0` opts out. The temporary
   0.1.0 default-off workaround is superseded by the held-camera fix (2026-11-07): world UI, conversations and map holds
   capture `corrected centre Z - common framing Z` using the captured camera's rotation, then framing is added once.
   A wrist/conversation hold retains its on-foot scale factor and cylinder-floor pivot, despite mode 7/5 disabling fresh correction.
@@ -725,7 +725,7 @@ switching frameworks.
   floor height where the player stood and his mesh settles 1.5 s before his head bone is read again; after such an opening
   his head bone no longer moves the view. An actor a matinee's move track moves is left to it (an authored walk; the
   summary's `trackWalks`), and a track's move of the player's own pawn is withheld in a first-person conversation
-  (`trackHeld`). **The set-piece list is 15** (`cw::IsSetPiece`): six framed conversations seen in first person with a place
+  (`trackHeld`). **The set-piece list is 13** (`cw::IsSetPiece`; the dancer's seat a seated scene since 2026-11-16): six framed conversations seen in first person with a place
   for the player are out of it (the scan's `SEEN_IN_WORLD`: the council hearing, the comm room with Anderson and Nihlus, the
   approach to Ilos, the archive door, Wrex at Fist's). **A walk-in nobody walks is guided** (`worldWalkInS` 5, 0 at once, -1 never; `cw::StepGuide`; the summary's `guidedM`):
   after five seconds without the stick the player is walked to Shepard's mark by the walk's own step (floor, walls, people,
@@ -802,7 +802,10 @@ switching frameworks.
   one spoken to moved, moments walked); **what Shepard stands on carries the player** (`RideBase`: his pawn's `Actor.Base`
   moving, a lift, moves the held view and every place the scene keeps; Therum's `lav70_trig04_elevator_ride` had left the view
   at the bottom of the shaft and `End` put Shepard back there; research/69 item 42), and **the stick walks everywhere but a
-  seat** (`PlayerSeated`: his animated head under 0.62 m above his place for 0.5 s, not crouched); the stances follow
+  seat** (`PlayerSeated`: his animated head under 0.62 m above his place for 0.5 s, not crouched); **the view sits with him**
+  (`StepSeat`, any conversation in the world: his head 15 cm under his standing height, the view follows it into the seat and
+  back up, 1 m/s, a 4 cm deadband, the legs the seat's), and the dancer's seat at Chora's Den is a seated scene
+  (`cw::IsSeatedScene`, the scan's `SEATED_IN_WORLD`: staged, no longer a set piece; research/69 item 43); the stances follow
   a whole scene (`begin`, after each dip and walk, whenever someone moved a metre or turned 40 degrees; bystanders as `others`);
   logs `convo: circle:`, `convo: squad:`, `convo: stance:`, `convo: eyes:`, `convo: steer:`;
   while it walks, his hidden (unposed) head bone never moves the view, nor for 1.5 s after he is shown again
@@ -1637,7 +1640,10 @@ switching frameworks.
   back once), so **the mod applies the VR values itself** (`game/SystemSettings`, hot-reloaded): `scale set
   DynamicShadows False`, `MotionBlur False`, `FoliageDrawRadiusMultiplier 0.5` (and `LightEnvironmentShadows False` while
   the second eye is a replay, sharePass 2/3/5: the right eye drew character shadows where the left eye sees them, research/37
-  2026-11-13) through the local player's console
+  2026-11-13; **the host says whether it is**, HostServices v43 `secondEyeIsReplay` = `render_levers::SecondEyeIsReplay()`,
+  false on a game where sharePass stands down, so ME2 and ME3 keep their character shadows: there the mod puts the player's
+  own `GamerSettings.ini` value back, since the game had written our earlier False into `BIOEngine.ini`; a host before v43:
+  the file's `sharePass` rule on LE1 only, `engine::adapter::kOlderHostReplaysSecondEye`) through the local player's console
   once a player exists, **again after every level change, each boolean through its opposite first** (research/35
   attempt 49, 2026-10-28: the save's level rendered with the blur although the ini and the title's `scale set` said
   off, and the same `False` there did nothing while True then False turned it off; in stereo the blur's velocity is

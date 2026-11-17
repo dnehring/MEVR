@@ -283,11 +283,14 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Waits for:** T01, T07. **Who:** nobody yet.
 
 #### T11 The engine's settings, applied by the mod [R11, R12]
-- **State:** LE1 done · LE2 build · LE3 build
+- **State:** LE1 done · LE2 verify · LE3 build
 - **Lives in:** `game/SystemSettings` (`scale set` after each level change, each boolean through its opposite).
-- **Left:** `LightEnvironmentShadows False` is our replay's workaround and is applied on both sequels, which have no
-  replay (an empty `[Performance] sharePass` reads as 5): gate it on the host's replay, and the sequels' character
-  shadows come back. **ME3:** no receipt yet that `scale set` applies at all.
+- **Left:** ~~gate `LightEnvironmentShadows False` on the host's replay~~ done 2026-11-16 (GF2, HostServices v43
+  `secondEyeIsReplay`; elsewhere the player's own value). On ME2 the key alone changed nothing visible at Freedom's
+  Progress; the ground shadows there are `DynamicShadows`, which ME1's value keeps off on every game: the owner's
+  owner's answer of 2026-11-16 evening ("The second eye and dynamic shadows": lane SP measures each second-eye option
+  per game with and without them; with it on, ME2's shadows are right in both eyes, each eye being its own render).
+  **ME3:** no receipt yet that `scale set` applies at all.
 - **Closes when:** an ME2 and an ME3 snapshot show character shadows; ME3's log has the `system settings:` lines and an
   A/B of `DynamicShadows` changes the frame.
 - **Waits for:** nothing; once T08 brings the replay to a sequel the gate follows the capability. **Who:** GF.
@@ -477,10 +480,10 @@ These unblock the most: almost every other entry gets smaller once they land.
 
 #### T33 Traversal: vault, climb, ladder, evade [sequel-only; Forks 4]
 - **State:** LE1 n/a · LE2 build · LE3 build
-- **Lives in:** `core/vr/Traversal`, `game/Traversal` (ME2's observer in an `#if`), `game/Le3Traversal.cpp`,
-  `plugin/TraversalCue`.
-- **Left:** ME2's block moves to `game/Le2Traversal.cpp` behind the interface ME3's uses, both on `ActionLifecycle`; the
-  admission stays per game. **ME2:** the owner's choices ([question 3](#open-owner-questions)); arm IK across the move
+- **Lives in:** `core/vr/Traversal`, `game/Traversal` (settings, commands, dispatch), `game/Le2Traversal.cpp` (ME2's
+  observer since 2026-11-16), `game/Le3Traversal.cpp`, `plugin/TraversalCue`.
+- **Left:** ~~ME2's block moves to `game/Le2Traversal.cpp`~~ done 2026-11-16 (GF2, ledger Forks 4 step 1); both observers
+  on `ActionLifecycle` (steps 2 and 3); the admission stays per game. **ME2:** the owner's choices ([question 3](#open-owner-questions)); arm IK across the move
   (T21). **ME3:** ladders need a lifecycle of their own (the shared kinds are None, Vault, ClimbUp); a stable horizon
   and camera hand-back; no traversal in authored seated scenes (rule 10); every gesture is opt-in until seen.
 - **Closes when:** `tools/le2-halcyon-run/vault.ps1` still vaults three times on ME2 after the move, and an ME3 fixture
@@ -586,6 +589,8 @@ These unblock the most: almost every other entry gets smaller once they land.
 #### T45 The squad's weapons wheel [G30, G57; Forks 5]
 - **State:** LE1 build · LE2 build · LE3 build
 - **Lives in:** `game/SquadWeapons`, `core/vr/SquadMenu`, `plugin/SquadPanel`, `core/vr/WheelCrop`.
+- **Done 2026-11-16:** one tick for all three games (GF, Forks 5); ME2's names from `SFXPawn.GetPrettyName` and an
+  equip seen on ME2 (GF2: Miranda's pistol, 6 of 6 pulls; ledger G30).
 - **Left:** one `Tick` over a per-game roster and equip adapter (today `Le2SquadMenu.inc` re-implements LE1's `Tick` for
   both sequels; the LE1 part is a refactor). The sequels run the drawn "custom" style only; ME1's default is the game's
   own wheel cut onto a hand quad (`setWheelPanel`, LE1-only): port it or name the game fact that rules it out.
@@ -631,8 +636,11 @@ These unblock the most: almost every other entry gets smaller once they land.
   down). ME1's is experimental and still being worked (ROADMAP "Now").
 - **Rules that carry over** (the owner, 2026-11-16, "this will be a bigger deal in me2"; research/69 items 41 and 42): the
   game's fade to black always moves the player with Shepard (curated walks excepted); what Shepard stands on carries the
-  player (lifts, trams, shuttles: `Engine.Actor.Base`); freedom of movement everywhere except seated scenes. ME2's lifts,
-  shuttle rides and cockpit scenes make these the port's first checks.
+  player (lifts, trams, shuttles: `Engine.Actor.Base`); freedom of movement everywhere except seated scenes, and every
+  sit-down supported in first person, the view sitting with Shepard's head (`StepSeat`, `cw::IsSeatedScene`; the owner: "any
+  of the types of sit down based interactions that happen across all three games"; research/69 item 43). ME2's lifts,
+  shuttle rides, cockpit chairs and bar and couch scenes make these the port's first checks; sits inside a matinee (no
+  conversation) are not covered yet.
 
 #### T50 Audio: two ears, and sounds placed where they are [G37, G38]
 - **State:** LE1 done · LE2 check first · LE3 check first
