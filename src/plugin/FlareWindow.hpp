@@ -8,7 +8,9 @@
 // pixel of both eyes. For that call only, the view's InvTranslatedViewProjectionMatrix holds the inverse of the CPU's own
 // window (core/vr/FlareWindow); put back as the call returns. Render thread; SEH-guarded reads and writes.
 //
-// `[Stereo] flareWindow = 1` in ASI\<GAME>MEVR.ini (0 by default: ME3 renders mode 1 by default, where nothing differs);
+// `[Stereo] flareWindow` in ASI\<GAME>MEVR.ini: 1 by default since the owner's answer to question 17 (2026-11-17), when ME3's
+// mode 2 became its default again (MELE3VR.ini [VR] MetricEyeFrustum = 1); 0 leaves the engine's placement (in mode 1
+// nothing differs and the pass runs untouched either way);
 // a development build also reads %LOCALAPPDATA%\MEVR\stereo.measure's `[Stereo] flareWindow = 0 | 1`, which wins (for
 // a run whose ini a runner keeps exact). Both read once a second. A game without the row stands down with one log line.
 

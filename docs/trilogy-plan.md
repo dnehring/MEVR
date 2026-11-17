@@ -310,13 +310,21 @@ These unblock the most: almost every other entry gets smaller once they land.
   and 4056x1728 seen; 4054 fell flat: `0x36CDC0` rounds the scene targets up). Per eye, px/deg across x down with the
   PS VR2's eyes: today 14.6 x 7.3; the eyes' window 14.6 x 11.3; mode 2 + the fix 19.2 x 11.3; 3072x2216 in mode 1
   14.6 x 14.6, in mode 2 19.2 x 14.6. Life-size in every variant (`stereo-check.py`, the same nine directions).
-- **Left:** the owner's choice (question 17) and, with mode 2 back on ME3, a headset look at a lamp-lit room; `[DISTFIX]` in mode 2
+- **ME3 back on mode 2 at 3072x2216 (the owner's answer to question 17, 2026-11-17; lane DEF2):** `MetricEyeFrustum = 1`,
+  `flareWindow = 1` and `RenderW/RenderH` 3072x2216 are ME3's defaults (code, `src/halcyon/le3/runtime/MELE3VR.ini` which the
+  deploy and Setup install, `vr-game-settings.ps1 -Game LE3`, the runner); `windowEyes` stays off. Save 31 with the PS VR2's
+  eyes: `[MEVR-STEREO] stereo mode 2`, each eye 19.2 x 14.6 px/deg from a 3072x2216 target, the flares on their lamps in both
+  eyes (left -25 px, the streak's own asymmetry; right +5 px; with `flareWindow = 0` off the lamp again), `stereo-check.py`
+  +0.69 to +1.29 degrees per eye crossed at FL's nine directions, as before. **Found:** with the aspect window and the taller
+  render, the CPU (culling) window is +-1.8418 x +-2.6571, twice the eyes' height (the fill takes the backbuffer's half-width
+  aspect, now 1536/2216): question 17 (b)'s `windowEyes` brings it to the eyes'; its cost at 3072x2216 is unmeasured.
+- **Left:** a headset look at a lamp-lit room on ME3; `windowEyes` after a HUD check (question 17 (b)); `[DISTFIX]` in mode 2
   unmeasured (no scene with distortion yet); the owner's headset check (depth, size, comfort, nothing popping at an
   eye's outer edge); the wider culling window's cost (lane SP's levers).
 - **Closes when:** `stereo-check.py` reads parallel far scenery and a pistol at 0.5 m reads 0.5 m on each sequel, and the
   owner's headset check (notes/headset-checklist.md section 8).
-- **Waits for:** the owner's headset; ME3's mode, question 17. **Who:** lane LS (2026-11-16); ME3's flares and window,
-  lane FL (2026-11-17).
+- **Waits for:** the owner's headset; question 17 (b), the eyes' window. **Who:** lane LS (2026-11-16); ME3's flares and
+  window, lane FL (2026-11-17); ME3's defaults, lane DEF2 (2026-11-17).
 
 #### T10 Frame pacing for streamed headsets [R24]
 - **State:** LE1 done · LE2 build · LE3 build
@@ -615,7 +623,7 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **State:** LE1 headset · LE2 headset · LE3 verify
 - **Lives in:** since 2026-11-17 (lane MEL; research/20 "The trilogy's one path") one path for the three games:
   `core/ik/Melee` (`ik::melee::Gestures`, the one gesture core over `core/ik/Throwing`'s swing: rules `Physical`, ME1's two
-  detectors exactly, and `Staged`, ME3's opt-in rules with the heavy chamber), `game/Melee` (the one dispatcher, `Strike`,
+  detectors exactly, and `Staged`, ME3's rules with the heavy chamber), `game/Melee` (the one dispatcher, `Strike`,
   with ME1's order of reasons, `RouteMelee` and `MeleeWait`, over each game's adapter: ME1 `TryMelee`/`ActivatePower
   (Pistol_Whip)`, ME2 `TryMelee` and the held weapon's `MeleePowerName`, ME3 its native admission and `TryMelee`/
   `TryHeavyMelee`). `game/Throwables` only feeds ME1's strokes in its body frame (grenades are n/a on the sequels).
@@ -627,14 +635,18 @@ These unblock the most: almost every other entry gets smaller once they land.
   the game's melee (a call trace, with its canary), placement unchanged. **ME2 has no punch with the weapon away, forced by the
   game:** holstered, its pawn holds no weapon and its melee is the held weapon's; the fist is refused by name (ME1's punch
   would need a draw, which only holsters do).
-- **Left:** ME1 and ME2: the feel in a headset (the checklist). **ME3:** its melee stays opt-in until the owner answers
-  [question 7](#open-owner-questions), so with B kept from the game ME3 has no melee on foot by default; its light, heavy and
+- **ME3's stroke melee on by default (the owner, 2026-11-17, "All recommendations"; lane DEF2):** its requests and gestures
+  switches start on (`[Throwables] melee = 0` the off switch, as on ME1 and ME2; `melee: ME3's stroke melee on by default`
+  at start, `mevr melee` says `requests true; gestures true`, seen on Save 31); the heavy "chamber and strike" stays opt-in
+  until [question 7](#open-owner-questions). ME1's and ME2's builds of `Mod.cpp` and `Melee.cpp` preprocess to the same text.
+- **Left:** ME1 and ME2: the feel in a headset (the checklist). **ME3:** its light, heavy and
   B checks wait for the combat save (research/le3-combat-fixtures.md "Melee on the first combat save"); all six class heavy
   actions, the storm variants and the cover and Atlas cases are separate contexts (research/le3-melee-audit.md). ME2's and
   ME3's `LeaveWorld` on B (outside combat, the level's own "leave" events) is the top bar's Leave since lane LV (2026-11-17,
   [question 16](#open-owner-questions), research/28 "Leave"), shown only where a level's leave event would act.
 - **Closes when:** one deliberate stroke makes one native request with its admission, impact and recovery seen, per game.
-- **Waits for:** the headset (ME1, ME2); T05's ME3 combat fixture and question 7 (ME3). **Who:** MEL (2026-11-17).
+- **Waits for:** the headset (ME1, ME2); T05's ME3 combat fixture and question 7 (ME3's heavy melee). **Who:** MEL
+  (2026-11-17); ME3's default, DEF2 (2026-11-17).
 
 #### T35 Vehicles: the Mako, the Hammerhead, the Atlas [G44]
 - **State:** LE1 done · LE2 later · LE3 later
@@ -969,8 +981,13 @@ Each is asked once. "Today" is what the build does if nobody answers; no default
 - **B on the sequels** (ME2's B is `Console_Melee`: `TryExitCover 1 | TryMelee | LeaveWorld`; placement's hold and double tap
   also meleed): "B on ME2 and ME3 works as on ME1": squad placement (hold B, the arc; a double B regroups), never the game's
   melee on foot; melee is ME1's fist gesture. Built by lane MEL (T34): one melee path for the three games, B kept from the game
-  on foot in VR on every game, ME1's fist and weapon strokes on ME2. ME3's melee stays opt-in (question 7), so ME3 has no melee
-  on foot until that answer.
+  on foot in VR on every game, ME1's fist and weapon strokes on ME2. ME3's melee stayed opt-in (question 7) until the
+  owner's "All recommendations" later that day: **ME3's stroke melee is on by default since then** (lane DEF2, below); only
+  its heavy "chamber and strike" waits for question 7.
+- **ME3's sharpness, question 17** (the owner, 2026-11-17: "All recommendations"): (a) yes, mode 2 with the flare fix as ME3's
+  defaults; (c) yes, 3072x2216; (b) the eyes' window only after a look at the HUD panel in a scene with a HUD (stays off).
+  And **ME3's stroke melee on by default**, as on ME1 and ME2, the heavy one out of it. Built by lane DEF2: question 17's
+  entry below, T09, T34.
 - **The reload button on the sequels** (X is the hand power wheel there; the game's reload is X): "automatic reload for now".
   Checked by lane MEL on ME2's Save 4: the pistol fired dry reloads by itself (research/20 "The trilogy's one path"); nothing
   changed.
@@ -1042,6 +1059,8 @@ Each is asked once. "Today" is what the build does if nobody answers; no default
    admission. One rule for both, or is there an ME2 fact that forces the difference?
 7. **ME3's heavy melee.** Proposed and staged: arm deliberately, then strike ("chamber and strike"), never "swing
    faster". Approve that, or another input? And which input rolls and evades, given A is use and the double A vaults?
+   (ME3's light stroke melee is on by default since 2026-11-17, lane DEF2; this question is only the heavy one, which stays
+   opt-in: `mevr melee heavy-gestures on`.)
 8. **Thespian mode on the sequels while Shepard still speaks.** Neither sequel can mute or skip Shepard's recording yet,
    so a line the player read aloud is said again. Offer the mode that way (experimental, as on ME1), or keep its row
    greyed until the skip works?
@@ -1066,7 +1085,8 @@ Each is asked once. "Today" is what the build does if nobody answers; no default
     PS VR2) until then. Recommended: mode 1 on ME3 for its first headset test, the flare path as a lane. **Answered
     2026-11-17, the owner ("All recommendations"): mode 1 on ME3** (lane DEF: `MELE3VR.ini [VR] MetricEyeFrustum`, LE1's
     `sfr2MetricEyeFrustum`, 0 by default and not pinned by the baseline; ME1 and ME2 keep mode 2). The flare path stays a
-    lane for later. **Found and fixed by lane FL (2026-11-17), off by default:** the way back to mode 2 is question 17.
+    lane for later. **Found and fixed by lane FL (2026-11-17), off by default:** the way back to mode 2 is question 17,
+    answered the same day: ME3 renders mode 2 with the fix by default since lane DEF2.
 13. **ME3's heavy weapon and the holsters** (T25; lane FX2, 2026-11-17). A heavy weapon has no body slot, so the holsters
     see an empty hand: a right-grip squeeze inside any slot (the right shoulder's, close to where a heavy weapon is held)
     calls `SwitchWeapon`, and ME3's own `SwitchWeapon` puts the heavy weapon down with `SFXHeavyWeapon.PutDownWeapon`, which
@@ -1127,10 +1147,18 @@ Each is asked once. "Today" is what the build does if nobody answers; no default
       in mode 2, for 28% more pixels (about +0.6 ms GPU on the 4090 at Save 31; the render thread, draw-bound, unchanged
       within the noise). The PS VR2 asks for about 17.7 x 18.9. Optional; the menu's sizes are all 16:9 today.
     - Not recommended: mode 1 widened to mode 2's sharpness (4056x1728): the same picture as (a) for 32% more pixels.
-    Today: mode 1 on the 16:9 window (14.6 x 7.3).
+    **Answered 2026-11-17, the owner ("All recommendations"): (a) yes, (c) yes, (b) after a HUD check.** Built by lane DEF2:
+    ME3's defaults are now `MELE3VR.ini [VR] MetricEyeFrustum = 1` (le3 `me2_menu.cpp` `LoadValues`' default) with `[Stereo]
+    flareWindow = 1` (`plugin/FlareWindow`'s default when the key is missing) and a 3072x2216 render (the code default of
+    `RenderW`/`RenderH` in le3 `d3d_capture.cpp` `ArmResolutionSpoof`; `src/halcyon/le3/runtime/MELE3VR.ini`, which
+    `tools/deploy-asi.ps1 -Game LE3` and MEVR Setup install when there is none; `vr-game-settings.ps1 -Game LE3`'s ResX/ResY;
+    the runner's preview). `[Stereo] windowEyes` stays 0 on both sequels until the HUD panel is seen in a scene with a HUD.
+    Seen on the fake headset with the PS VR2's eyes replayed (Save 31, run `def2-lane\runs\LE3-20261117-144209`): mode 2, each
+    eye 19.2 x 14.6 px/deg from a 3072x2216 target, the lamps' flares on their lamps in both eyes (a canary with `flareWindow
+    = 0` put them off again), life-size as before (research/le3-flares-and-window.md section 5).
 
 **Defaults waiting for a seen result and a yes** (not questions yet): `[SquadOrders] place` on the sequels (ME1's is on),
-`[Traversal] cue`, ME3's melee and traversal gestures (with B kept from the game, ME3 has no melee on foot until a yes), the
+`[Traversal] cue`, ME3's heavy melee and traversal gestures (its stroke melee is on by default since 2026-11-17), the
 galaxy projector replacing
 the flat presentation, `exploreStance` and `steadyIdle` on ME1.
 

@@ -366,8 +366,8 @@ void PlanStereo(const StereoPlanInput& in, StereoPlan* out) noexcept {
                   "section 9)"
                 : "; the symmetric window because Halcyon's FOV override is off";
     } else if (out->mode == 1) {
-        // Each eye's own frustum not asked for: LE1's sfr2MetricEyeFrustum = 0, or ME3's MetricEyeFrustum = 0, its default
-        // (its lamps' lens flares are placed through the CPU's symmetric window: research/30 section 9.4).
+        // Each eye's own frustum not asked for: LE1's sfr2MetricEyeFrustum = 0, or ME3's MetricEyeFrustum = 0 (1 by default
+        // since 2026-11-17, with plugin/FlareWindow for its lamps' lens flares: research/le3-flares-and-window.md).
         line += "; the symmetric window by choice (each eye's own frustum off: sfr2MetricEyeFrustum / MetricEyeFrustum = 0)";
     }
     if (std::fabs(in.unitsPerMeter - kLifeSizeUnitsPerMeter) > 1.0f) {

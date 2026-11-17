@@ -25,7 +25,8 @@ constexpr GameSpec kSpecs[] = {
     {GameId::LE3, 3, "LE3", "Mass Effect 3", "ME3", L"ME3", "MassEffect3.exe", L"MassEffect3.exe",
         "MELE3VR.ini", false, L"MELEVR", L"ME3PassiveDxgiProbe.log", "MELE3-VR", "ME2VR",
         false, false, false, false,
-        false, false, false, false},
+        false, false, false, false,
+        3072, 2216},  // src/halcyon/le3/d3d_capture.cpp ArmResolutionSpoof's default
 };
 
 GamePaths Make(GameSpec const& s) {

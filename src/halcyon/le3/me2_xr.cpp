@@ -153,7 +153,7 @@ bool g_lastRtFovValid = false;
 bool g_isOculusRuntime = false;   // Meta PC runtime: ignores declared FOV -> doubled image without the crop
 bool g_isSteamVrRuntime = false;  // SteamVR: voids any view declared wider than its own frustum
 std::atomic_bool g_questFovMatch{true};   // ini QuestFovMatch - escape hatch for the Meta crop
-std::atomic_bool g_mevrEyeFrustum{false};   // [MEVR] ini MetricEyeFrustum: 0 mode 1 (ME3's default), 1 mode 2
+std::atomic_bool g_mevrEyeFrustum{true};   // [MEVR] ini MetricEyeFrustum: 1 mode 2 (ME3's default), 0 mode 1
 double g_displayPeriodSec = 1.0 / 120.0;
 int g_paceWarmCount = 0;
 XrTime g_lastPredictedDisplayTime = 0;
@@ -888,10 +888,10 @@ void MevrPublishView(const XrView& view) noexcept
 
 // [MEVR] Life-size stereo (research/30 section 9): our plan for the next game frame's two SFR passes (MevrSeams::PlanStereo,
 // ME1's plugin/MetricStereo), published to calcview_hook.cpp's SFR branch through MevrMetricView. After DriveHeadLook (the
-// head look this frame) and ApplyFovFill (the window). Mode 2 (each eye's own frustum) only where the window holds both eyes
-// and MetricEyeFrustum asks for it: ME3 renders mode 1 by default (every lamp's lens flare is placed through the CPU's
-// symmetric window, so in mode 2 it lands at the same pixel of both off-centre eye images and can't fuse; research/30
-// section 9.4, the owner 2026-11-17). The same function as ME2's me2_xr.cpp (the trees' names agree) but for that choice.
+// head look this frame) and ApplyFovFill (the window). Mode 2 (each eye's own frustum) where the window holds both eyes and
+// MetricEyeFrustum asks for it (1, ME3's default since the owner's answer to question 17, 2026-11-17; the lamps' lens flares,
+// placed through the CPU's symmetric window, are kept on their lamps by the host's plugin/FlareWindow: research/
+// le3-flares-and-window.md). The same function as ME2's me2_xr.cpp (the trees' names agree) but for that choice.
 void MevrPlanStereo(const XrView views[2], bool trackingValid) noexcept
 {
     ::MevrSeams::StereoPlanInput in;

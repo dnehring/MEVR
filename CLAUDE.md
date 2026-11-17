@@ -153,9 +153,14 @@ authored seated scenes (such as shuttles) must reject traversal while retaining 
   Body/UI outcomes and VR acceptance remain pending. ME3's renderer pins ME2's baseline after every ini load (`[MEVR]`
   `ApplyMevrBaseline` in le3 me2_menu.cpp since 2026-11-17: first person with the head hidden, no head aim, no stick pitch,
   flat menus, cinematic conversations, no profile hotkeys or R recenter, `\`; K still toggles first person).
-  ME3's life-size stereo renders on the shared symmetric window (mode 1; the owner, 2026-11-17: in mode 2 every lamp's lens
-  flare is placed through the CPU's window and can't fuse, research/30 section 9.4): `MELE3VR.ini [VR] MetricEyeFrustum`
-  (LE1's `sfr2MetricEyeFrustum`), 0 by default, not pinned by the baseline; ME1 and ME2 render mode 2.
+  ME3's life-size stereo renders each eye through its own frustum (mode 2, as ME1 and ME2; the owner's answer to
+  docs/trilogy-plan.md question 17, 2026-11-17): `MELE3VR.ini [VR] MetricEyeFrustum` (LE1's `sfr2MetricEyeFrustum`), 1 by
+  default (0: the shared symmetric window, mode 1), not pinned by the baseline, with the host's flare fix on by default
+  (`plugin/FlareWindow`, `ASI\LE3MEVR.ini [Stereo] flareWindow`: ME3's lens-flare reflections unprojected through the CPU's
+  own window, else every lamp's flare lands off its lamp, differently per eye; research/le3-flares-and-window.md). ME3
+  renders 3072x2216 by default (`MELE3VR.ini [VR] RenderW/RenderH`, the code default when missing; multiples of 8);
+  `tools/deploy-asi.ps1 -Game LE3` installs `src/halcyon/le3/runtime/MELE3VR.ini` (the runner's preview without diagnostics)
+  when there is none, `vr-game-settings.ps1 -Game LE3` writes its size. `[Stereo] windowEyes` stays 0 until a HUD check.
   Use the existing protected desktop/engine-request routes in
   `tools/le2-halcyon-run/README.md` for discovery; do not deploy the candidate as accepted VR support. The chapter
   save tested as a combat candidate enters cinematic/injured modes and is not an accepted ordinary combat fixture.
@@ -304,8 +309,9 @@ switching frameworks.
   research/20 "The trilogy's one path"): `game/Melee` is the one dispatcher (`Strike`: ME1's order of reasons) over each game's
   adapter (ME1 `TryMelee`/`ActivatePower(Pistol_Whip)`; ME2 `TryMelee`, the held weapon's `MeleePowerName` and its BioPower's
   cooldown; ME3 its native admission, `TryMelee`/`TryHeavyMelee`), and `ik::melee::Gestures` the one gesture core (rules
-  `Physical`: ME1's two detectors exactly, `tests/MeleeTests.cpp` compares; `Staged`: ME3's opt-in rules, off until `mevr melee
-  requests on` and `gestures on`, the owner's question 7). `game/Throwables` only feeds ME1's strokes (`melee::StepPhysical`, its
+  `Physical`: ME1's two detectors exactly, `tests/MeleeTests.cpp` compares; `Staged`: ME3's rules, its stroke melee on by
+  default since 2026-11-17 as on ME1 and ME2 (`[Throwables] melee`; `mevr melee requests|gestures on|off`), the heavy
+  "chamber and strike" opt-in until the owner's question 7, `mevr melee heavy-gestures on`). `game/Throwables` only feeds ME1's strokes (`melee::StepPhysical`, its
   body frame); ME2's feed is `melee::Tick`. **B is kept from the game on foot in VR on every game** (`melee::AdjustPad`,
   `gamepad::kFlagNoMeleeButton`; ME2 lost its `TryMelee`, `TryExitCover` and `LeaveWorld` on B there: question 16), and
   ME2 has no punch with the weapon away (holstered, its pawn holds no weapon and its melee is the held weapon's), and squad placement

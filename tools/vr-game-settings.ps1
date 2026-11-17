@@ -20,7 +20,8 @@
 #                     given; a later apply without them keeps the target (since 2026-10-23 it's the headset's
 #                     own eye size, 2824x2880 for the user's PS VR2: research/22). Halcyon reports a display
 #                     of that size to the game, so it may exceed the monitor.
-#   BorderlessWindow=True, Fullscreen=False  (LE2 too, below: ResX/ResY there come from Halcyon's MELE2VR.ini)
+#   BorderlessWindow=True, Fullscreen=False  (LE2 too, below: ResX/ResY there come from Halcyon's MELE2VR.ini; LE3 as well,
+#                     with ResX/ResY from MELE3VR.ini's RenderW/RenderH, else ME3's default 3072x2216, when none are given)
 #                     A bordered window is capped by Windows at the real monitor's height: on a
 #                     1440p monitor a 2048x2048 target rendered gameplay at 2009x1421, and
 #                     Halcyon's left-eye capture (which needs the scene to fill the backbuffer)
@@ -97,6 +98,22 @@ if ($Scale) {
 }
 if ($ResX -or $ResY) {
     if (-not ($ResX -gt 0 -and $ResY -gt 0)) { throw 'Give both -ResX and -ResY.' }
+} elseif ($Game -eq 'LE3') {
+    # ME3's renderer size, the one Halcyon's ME3 writes into ResX/ResY at attach and at exit (d3d_capture.cpp
+    # ArmResolutionSpoof): MELE3VR.ini's [VR] RenderW/RenderH next to MassEffect3.exe, else its code default 3072x2216 (the
+    # owner's answer to docs/trilogy-plan.md question 17), so the first launch renders it too. RenderW = 0 leaves the
+    # game's own resolution, as the renderer does.
+    $ResX = 3072; $ResY = 2216
+    $rendererIni = Join-Path $GameRoot 'Game\ME3\Binaries\Win64\MELE3VR.ini'
+    if (Test-Path $rendererIni) {
+        $r = [IO.File]::ReadAllText($rendererIni)
+        foreach ($key in 'RenderW', 'RenderH') {
+            $m = [regex]::Match($r, "(?msi)^\[VR\][ \t]*\r?\n(?:(?!^\[).)*?^[ \t]*$key[ \t]*=[ \t]*(\d+)")
+            if ($m.Success) { if ($key -eq 'RenderW') { $ResX = [int]$m.Groups[1].Value } else { $ResY = [int]$m.Groups[1].Value } }
+        }
+    }
+    if ($ResX -lt 640 -or $ResY -lt 360) { $ResX = 0; $ResY = 0 }
+    elseif (-not ($Show -or $Restore)) { Write-Output ("ME3's render size {0}x{1} (MELE3VR.ini, else the renderer's default)" -f $ResX, $ResY) }
 } elseif ($Game -eq 'LE1' -and ($PSBoundParameters.ContainsKey('Quality') -or -not (Test-Path $backup))) {
     # The ladder on the first apply or when asked; a later apply without -Quality/-ResX keeps the target as it is.
     $ladder = @{ Low = 2048; Performance = 3072; Balanced = 4096; Sharp = 5120; Max = 6144 }
@@ -113,7 +130,7 @@ if ($Game -in @('LE1', 'LE2', 'LE3')) {
     # LE2 too since 2026-11-14, as Halcyon's ME2 installer (MELE2-VR.bat) sets them: its renderer writes ResX/ResY from
     # MELE2VR.ini's RenderW/RenderH (4096x2304) at attach, and in a fullscreen window on a 1440p monitor the game got
     # 4096x1460; borderless it rendered 4096x2304, 2048x2304 an eye (research/le2-renderer-integration.md "Defaults from ME1").
-    # LE3 uses the same renderer resolution path; its explicit candidate runner supplies ResX/ResY.
+    # LE3 uses the same renderer resolution path; ResX/ResY above (MELE3VR.ini's, else 3072x2216) unless given.
     $wanted['SystemSettings']['BorderlessWindow'] = 'True'
     $wanted['SystemSettings']['Fullscreen'] = 'False'
 }

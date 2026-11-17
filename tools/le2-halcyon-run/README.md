@@ -231,10 +231,10 @@ try {
 
 Prep writes a small `ASI/LE3MEVR.ini` with `[Debug] requests=1` and a process-only
 SteamVR OpenXR manifest override. It writes the actual renderer file,
-`Binaries/Win64/MELE3VR.ini`; the current deploy script only installs a renderer INI
-for LE2. The candidate selects source mode 4 (SFR2), the lowest resolution shown by
-ME3's menu (3072x1728), head look, head aim off, native positional scale 2.0 and
-first-person conversations off. `vr-game-settings.ps1` supplies matching dimensions,
+`Binaries/Win64/MELE3VR.ini` (over the one `deploy-asi.ps1 -Game LE3` installs when there is none,
+`src/halcyon/le3/runtime/MELE3VR.ini`: this preview's defaults without the Diagnostics line). The candidate selects
+source mode 4 (SFR2), ME3's default render size 3072x2216, each eye's own frustum, head look, head aim off, native
+positional scale 2.0 and first-person conversations off. `vr-game-settings.ps1` supplies matching dimensions,
 SDR and borderless/non-fullscreen settings. No nonexistent `[FirstPerson] Enabled`
 key is written: since 2026-11-17 (lane FP3) the renderer's `ApplyMevrBaseline` pins first
 person, the head hidden, after every ini load, in memory (research/trilogy-first-person.md),
@@ -243,8 +243,10 @@ For a bounded renderer bisection, prep accepts `-PreviewRendererMode 0` (mono), 
 (alternate-eye stereo) or the default `4` (same-frame stereo), and optional
 `-Diagnostics`. The session records these typed options; launch verifies the exact
 corresponding config and artifact hashes. Restore before selecting another variant.
-`-PreviewEyeFrustum` writes `MetricEyeFrustum=1` (each eye's own frustum, mode 2; ME3's default is the shared window)
-and `-PreviewRenderSize <W>x<H>` (multiples of 8, 1280..8192, four digits each; default `3072x1728`: ME3 rounds its
+`MetricEyeFrustum=1` (each eye's own frustum, mode 2, with the host's `[Stereo] flareWindow`) is ME3's default since
+2026-11-17 (the owner's answer to docs/trilogy-plan.md question 17); `-PreviewSharedWindow` writes `MetricEyeFrustum=0`
+(the shared symmetric window, mode 1), and `-PreviewEyeFrustum` (the default) is still accepted. `-PreviewRenderSize
+<W>x<H>` (multiples of 8, 1280..8192, four digits each; default `3072x2216`, ME3's default: ME3 rounds its
 scene targets up to a multiple of 8 and the renderer's capture needs them the backbuffer's size) sets `RenderW`/`RenderH` and
 `vr-game-settings.ps1`'s ResX/ResY (research/le3-flares-and-window.md). Both are recorded in the session like the
 mode and checked by launch.

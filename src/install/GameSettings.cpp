@@ -216,12 +216,15 @@ ini::Ours ModWrites(std::string_view rendererIni, GameId game) {
     if (game == GameId::LE1) {
         return ModWrites(rendererIni);
     }
-    // The sequels' renderer keeps one size, [VR] RenderW / RenderH (0: it leaves GamerSettings.ini alone).
-    auto const value = [&](char const* key) {
-        std::string v = ini::Get(rendererIni, "VR", key).value_or(std::string());
+    // The sequels' renderer keeps one size, [VR] RenderW / RenderH (0: it leaves GamerSettings.ini alone; no key: its code
+    // default, GameSpec::rendererDefaultW/H, which ME3's renderer writes too).
+    GameSpec const& spec = Spec(game);
+    auto const value = [&](char const* key, int fallback) {
+        std::string v = ini::Get(rendererIni, "VR", key).value_or(fallback > 0 ? std::to_string(fallback) : std::string());
         return v == "0" ? std::string() : v;
     };
-    return [w = value("RenderW"), h = value("RenderH")](ini::Edit const& e, std::string_view now) {
+    return [w = value("RenderW", spec.rendererDefaultW), h = value("RenderH", spec.rendererDefaultH)](ini::Edit const& e,
+               std::string_view now) {
         if (_stricmp(e.section.c_str(), "SystemSettings") != 0) {
             return false;
         }

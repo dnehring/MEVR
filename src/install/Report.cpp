@@ -1417,8 +1417,12 @@ Bundle Collect(Options const& options, Redactor const& redactor) {
             s.resolution = "stereo target " + *x + "x" + *y + " (MELEVR.ini; no VR session in the log)";
         }
     } else if (std::string_view const sequel = text(rendererIniName); options.game != GameId::LE1 && !sequel.empty()) {
-        auto const w = ini::Get(sequel, "VR", "RenderW");
-        auto const h = ini::Get(sequel, "VR", "RenderH");
+        // No key: the renderer's code default (ME3's 3072x2216, GameSpec::rendererDefaultW/H).
+        auto const orDefault = [](std::optional<std::string> v, int fallback) {
+            return v || fallback <= 0 ? v : std::optional<std::string>(std::to_string(fallback));
+        };
+        auto const w = orDefault(ini::Get(sequel, "VR", "RenderW"), spec.rendererDefaultW);
+        auto const h = orDefault(ini::Get(sequel, "VR", "RenderH"), spec.rendererDefaultH);
         if (w && h) {
             s.resolution = "render size " + *w + "x" + *h + " for both eyes (" + spec.rendererIni + "; no VR session in the log)";
         }

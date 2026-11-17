@@ -262,4 +262,16 @@ if ($Game -eq 'LE2') {
         Write-Output "Installed Halcyon's ME2 MELE2VR.ini (upstream's, next to MassEffect2.exe)"
     }
 }
+# LE3 runs Halcyon's ME3 renderer (src/halcyon/le3), which reads MELE3VR.ini next to MassEffect3.exe. Install ours once
+# (src/halcyon/le3/runtime/MELE3VR.ini: the runner's renderer preview without its diagnostics): stereo, head look, no head
+# aim, 3072x2216 and each eye's own frustum (the owner's answer to docs/trilogy-plan.md question 17), which Halcyon writes
+# into GamerSettings.ini (tools/vr-game-settings.ps1 -Game LE3 writes the same size and the borderless window it needs).
+# The rest of the MEVR baseline is pinned in code (me2_menu.cpp ApplyMevrBaseline). A file already there is left alone.
+if ($Game -eq 'LE3') {
+    $ini3 = Join-Path $bin 'MELE3VR.ini'
+    if (-not (Test-Path $ini3)) {
+        Copy-Item (Join-Path $PSScriptRoot '..\src\halcyon\le3\runtime\MELE3VR.ini') $ini3
+        Write-Output "Installed ME3's MELE3VR.ini (src/halcyon/le3/runtime: 3072x2216, each eye's own frustum; next to MassEffect3.exe)"
+    }
+}
 Write-Output "Log: $(Join-Path $bin "Logs\$name.log")"

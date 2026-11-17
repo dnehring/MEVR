@@ -474,3 +474,6 @@ The full account and implementation guide is [research/le3-flares-and-window.md]
   (+-1.8418 x +-2.0720 for the PS VR2's +-1.8418 x +-1.3270). `[Stereo] windowEyes = 1` (built, off by default) takes the
   eyes' union, each axis on its own.
 - **Measured and recommended:** research/le3-flares-and-window.md sections 3 and 4.
+- **Decided (2026-11-17, lane DEF2):** ME3's defaults are mode 2 (`MetricEyeFrustum = 1`) with `flareWindow = 1` at
+  3072x2216; `windowEyes` waits for a HUD check. Seen on Save 31 with the PS VR2's eyes: research/le3-flares-and-window.md
+  section 5.

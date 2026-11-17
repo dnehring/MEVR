@@ -9,19 +9,22 @@ param(
     [switch]$RendererPreview,
     [ValidateSet(0, 2, 4)][int]$PreviewRendererMode = 4,
     [ValidateSet(1, 2, 4, 8)][int]$PreviewMirrorEvery = 8,
-    [switch]$PreviewEyeFrustum,                              # MELE3VR.ini MetricEyeFrustum=1: each eye's own frustum (mode 2)
-    [ValidatePattern('^\d{4}x\d{4}$')][string]$PreviewRenderSize = '3072x1728',   # RenderW x RenderH and ResX/ResY
+    [switch]$PreviewEyeFrustum,                              # MELE3VR.ini MetricEyeFrustum=1: each eye's own frustum (mode 2, the default)
+    [switch]$PreviewSharedWindow,                            # MetricEyeFrustum=0: both eyes through the shared symmetric window (mode 1)
+    [ValidatePattern('^\d{4}x\d{4}$')][string]$PreviewRenderSize = '3072x2216',   # RenderW x RenderH and ResX/ResY (ME3's default)
     [ValidatePattern('^[A-Za-z0-9_-]+$')][string]$Tag = 'halcyon',
     [string]$BuildDir,
     [switch]$Diagnostics
 )
 $ErrorActionPreference = 'Stop'
+if ($PreviewEyeFrustum -and $PreviewSharedWindow) { throw 'Give -PreviewEyeFrustum (the default) or -PreviewSharedWindow, not both' }
+$eyeFrustum = -not $PreviewSharedWindow   # ME3's default since 2026-11-17: mode 2 (research/le3-flares-and-window.md)
 . "$PSScriptRoot\session-common.ps1"
 Assert-RunMode $Game ([bool]$DesktopDump) ([bool]$EngineProbe) ([bool]$EngineRequests) ([bool]$RendererPreview)
 if ($DesktopDump -and $Diagnostics) { throw '-Diagnostics requires a renderer session' }
 if (-not $RendererPreview -and $PSBoundParameters.ContainsKey('PreviewRendererMode')) { throw '-PreviewRendererMode requires RendererPreview' }
 if (-not $RendererPreview -and $PSBoundParameters.ContainsKey('PreviewMirrorEvery')) { throw '-PreviewMirrorEvery requires RendererPreview' }
-if (-not $RendererPreview -and ($PreviewEyeFrustum -or $PSBoundParameters.ContainsKey('PreviewRenderSize'))) { throw '-PreviewEyeFrustum and -PreviewRenderSize require RendererPreview' }
+if (-not $RendererPreview -and ($PreviewEyeFrustum -or $PreviewSharedWindow -or $PSBoundParameters.ContainsKey('PreviewRenderSize'))) { throw '-PreviewEyeFrustum, -PreviewSharedWindow and -PreviewRenderSize require RendererPreview' }
 . "$PSScriptRoot\..\common.ps1"
 $W = (Resolve-Path "$PSScriptRoot\..\..").Path
 if (-not $BuildDir) { $BuildDir = Join-Path $W 'build-trilogy' }
@@ -75,7 +78,7 @@ if (-not $open) {
         $open | Add-Member -NotePropertyName previewRendererMode -NotePropertyValue $PreviewRendererMode
         $open | Add-Member -NotePropertyName previewMirrorEvery -NotePropertyValue $PreviewMirrorEvery
         $open | Add-Member -NotePropertyName previewDiagnostics -NotePropertyValue ([bool]$Diagnostics)
-        $open | Add-Member -NotePropertyName previewEyeFrustum -NotePropertyValue ([bool]$PreviewEyeFrustum)
+        $open | Add-Member -NotePropertyName previewEyeFrustum -NotePropertyValue ([bool]$eyeFrustum)
         $open | Add-Member -NotePropertyName previewRenderSize -NotePropertyValue $PreviewRenderSize
         $environment = @(Backup-PreviewEnvironment $S $previewPaths)
         $open | Add-Member -NotePropertyName previewEnvironment -NotePropertyValue $environment
@@ -92,7 +95,7 @@ if (-not $open) {
     if ($RendererPreview) {
         $options = Get-PreviewOptions $open
         if ($options.mode -ne $PreviewRendererMode -or $options.diagnostics -ne [bool]$Diagnostics -or
-            $options.mirrorEvery -ne $PreviewMirrorEvery -or $options.eyeFrustum -ne [bool]$PreviewEyeFrustum -or
+            $options.mirrorEvery -ne $PreviewMirrorEvery -or $options.eyeFrustum -ne [bool]$eyeFrustum -or
             $options.renderSize -ne $PreviewRenderSize) { throw 'Preview options changed; restore before starting a different experiment' }
     }
     "The stretch in $($open.session) is open: redeploying only"
@@ -115,7 +118,7 @@ if ($RendererPreview) {
     Backup-RunConsole $open $current $channel
     Backup-RunConsole $open $current $channel -Names (Get-PreviewChannels) -Metadata 'previewChannelsBefore' -Directory 'preview-channels-before'
     [IO.File]::WriteAllText("$b\ASI\LE3MEVR.ini", (Get-PreviewModConfig))
-    [IO.File]::WriteAllText((Join-Path $b 'MELE3VR.ini'), (Get-PreviewRendererConfig $PreviewRendererMode ([bool]$Diagnostics) $PreviewMirrorEvery ([bool]$PreviewEyeFrustum) $PreviewRenderSize))
+    [IO.File]::WriteAllText((Join-Path $b 'MELE3VR.ini'), (Get-PreviewRendererConfig $PreviewRendererMode ([bool]$Diagnostics) $PreviewMirrorEvery ([bool]$eyeFrustum) $PreviewRenderSize))
     $previewSize = Get-PreviewRenderSize $PreviewRenderSize
     & powershell -NoProfile -ExecutionPolicy Bypass -File "$W\tools\vr-game-settings.ps1" -Game LE3 -GameRoot $install -ResX $previewSize.width -ResY $previewSize.height -Sdr
     if ($LASTEXITCODE -ne 0) { throw 'Preview graphics setup failed; restore the owned session' }

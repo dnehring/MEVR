@@ -43,6 +43,10 @@ struct GameSpec {
     bool voice;                  // MEVR-Voice.dll and the voice orders' downloads
     bool audio;                  // OpenAL Soft
     bool packs;                  // the texture packs' catalogue (Mass Effect Modder)
+    // The sequels' renderer: the render size it writes into GamerSettings.ini when its ini has no [VR] RenderW/RenderH (LE3:
+    // 3072x2216, the owner's answer to docs/trilogy-plan.md question 17; 0: the game's own resolution, LE2's code default).
+    int rendererDefaultW = 0;
+    int rendererDefaultH = 0;
 };
 
 inline constexpr std::array<GameId, 3> kAllGames{GameId::LE1, GameId::LE2, GameId::LE3};

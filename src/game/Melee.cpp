@@ -1052,7 +1052,8 @@ void Le2Tick(double deltaSeconds, Link const& link) {
 #endif
 
 #if defined(MEVR_GAME_LE3)
-// ME3's staged rules (opt-in): the host's hands, each one's availability from the full admission, the requests through Strike.
+// ME3's staged rules (on by default since 2026-11-17, the heavy chamber opt-in): the host's hands, each one's availability from
+// the full admission, the requests through Strike.
 void Le3Tick(Link const& link) {
     std::string why;
     gButtonFlags = link.buttonFlags;
@@ -1114,7 +1115,7 @@ bool TryStartup() {
     log::Info("melee: script functions {}{}", gStarted ? "found" : "MISSING: melee by gesture stays off",
         missing.empty() ? std::string() : std::format(" (not found: {})", missing));
 #if defined(MEVR_GAME_LE3)
-    if (gStarted) SetStatus("ready for opt-in native diagnostics; gameplay/headset acceptance pending");
+    if (gStarted) SetStatus("ready (ME3's stroke melee on by default; the heavy chamber opt-in; gameplay/headset acceptance pending)");
 #endif
     return gStarted;
 }

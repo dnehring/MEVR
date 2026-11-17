@@ -185,8 +185,16 @@ bool gGamepadHooked = false;  // XInput hooks (once the game has loaded an XInpu
 bool gCallFunctionHooked = false;  // installed the first time hand aim is turned on
 bool gHandAimAvailable = false;
 bool gMeleeOn = false;
-bool gMeleeRequests = false;
+#if defined(MEVR_GAME_LE3)
+// ME3's stroke melee (game/Melee's staged rules): on by default since the owner's answer of 2026-11-17, as on ME1 and ME2
+// ([Throwables] melee = 0 turns strikes off on every game); the heavy "chamber and strike" stays opt-in (`mevr melee
+// heavy-gestures on`) until docs/trilogy-plan.md question 7 is answered.
+bool gMeleeRequests = true;
+bool gMeleeGestures = true;
+#else
+bool gMeleeRequests = false;  // read only by ME3's staged adapter (ME1 and ME2 feed their strokes elsewhere)
 bool gMeleeGestures = false;
+#endif
 bool gMeleeHeavyGestures = false;
 bool gTraversalGestures = false;
 bool gTraversalOn = false;  // native custom-action observers require the CallFunction hook
@@ -390,6 +398,14 @@ void TryInstallScriptHooks() {
     game::sights::TryStartup();  // the scoped shots' aimed fire (a CallFunction handler, registered before the hook)
     game::view_level::TryStartup();  // the level camera (PlayerTick and SetWeaponRecoil handlers, before the hooks)
     gMeleeOn = game::melee::TryStartup();
+#if defined(MEVR_GAME_LE3)
+    if (gMeleeOn) {
+        log::Info("melee: ME3's stroke melee {} by default (requests {}, gestures {}; heavy chamber gestures {}: question 7; "
+                  "[Throwables] melee = 0 turns strikes off; `mevr melee requests|gestures on|off`)",
+            gMeleeRequests && gMeleeGestures ? "on" : "off", gMeleeRequests ? "on" : "off", gMeleeGestures ? "on" : "off",
+            gMeleeHeavyGestures ? "on" : "off");
+    }
+#endif
     gTraversalOn = game::traversal::TryStartup();  // shared traversal lifecycle with separate LE2/LE3 native admission
     game::power_wheel::TryStartup();  // the bolt from the hand: BioPawn.ReleasePower's timing (research/55 section 9)
     if (!gHandAimAvailable) {

@@ -18,8 +18,8 @@ float GetVrFillV() noexcept;    void SetVrFillV(float v) noexcept;
 void SetQuestFovMatch(bool on) noexcept;
 bool GetQuestFovMatch() noexcept;
 // [MEVR] Life-size stereo's frustum (ini [VR] MetricEyeFrustum, LE1's sfr2MetricEyeFrustum): 1 each eye renders through its
-// own off-centre frustum where the window holds it (mode 2), 0 both eyes through the shared symmetric window (mode 1;
-// ME3's default since 2026-11-17: research/30 section 9.4). Read by MevrPlanStereo.
+// own off-centre frustum where the window holds it (mode 2; ME3's default, with the host's flare fix: research/
+// le3-flares-and-window.md), 0 both eyes through the shared symmetric window (mode 1). Read by MevrPlanStereo.
 void SetMevrEyeFrustum(bool on) noexcept;
 bool GetMevrEyeFrustum() noexcept;
 bool IsOculusRuntime() noexcept;
