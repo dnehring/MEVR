@@ -17,6 +17,11 @@ float GetVrFillH() noexcept;    void SetVrFillH(float v) noexcept;
 float GetVrFillV() noexcept;    void SetVrFillV(float v) noexcept;
 void SetQuestFovMatch(bool on) noexcept;
 bool GetQuestFovMatch() noexcept;
+// [MEVR] Life-size stereo's frustum (ini [VR] MetricEyeFrustum, LE1's sfr2MetricEyeFrustum): 1 each eye renders through its
+// own off-centre frustum where the window holds it (mode 2), 0 both eyes through the shared symmetric window (mode 1;
+// ME3's default since 2026-11-17: research/30 section 9.4). Read by MevrPlanStereo.
+void SetMevrEyeFrustum(bool on) noexcept;
+bool GetMevrEyeFrustum() noexcept;
 bool IsOculusRuntime() noexcept;
 // Milestone A1: bring up OpenXR on the GAME's D3D11 device and create a session (log-only, no
 // submit). Answers the one real Milestone-A risk: does ME2's own device bind to xrCreateSession?

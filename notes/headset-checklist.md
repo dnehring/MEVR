@@ -824,6 +824,11 @@ stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs 
   infinity, leaning forward 1:1, comfortable after ten minutes; each eye now renders its own frustum in a wider window:
   nothing pops in at the outer edge of either eye (a PS VR2's and a Quest's eyes are asymmetric, the fake headset's not),
   and the view reaches each eye's full width.
+- [ ] The second eye's speed-up and dynamic shadows on ME2 and ME3 (T08, T11; the owner's yes 2026-11-17, lane DEF:
+  `umbraShareResults = 1` on both, `sfrReplayRetry = 0` on ME2, `DynamicShadows` on; research/sequel-render-levers.md "The
+  batch before the headset test"): squadmates' shadows under their feet in both eyes, fusing; look past a door frame's or a
+  pillar's edge and close each eye in turn: nothing missing in the right eye for a frame as the head moves (the first eye's
+  occlusion stands in for the second's); the frame rate holds while a power or weapon wheel is up (the paused world).
 - [ ] Floor lock and height (T21; research/le2-renderer-integration.md "What is left of M2"): the eye height standing,
   seated and physically crouched; the calibration's manual height once it is wired.
 - [ ] Guided calibration (T27): the whole run with each controller type; the fake headset has no interaction profile, so
@@ -875,9 +880,10 @@ stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs 
   still and turning, through menu, recenter and a reload.
 - [ ] Life-size stereo (T09; research/30 section 9): as ME2's line; upstream ME3 squeezed everything into the first metre,
   so the scale change is large: check depth and size, and that the HUD panel and sights still sit where they should.
-  **Lamps' lens flares** (research/30 9.4 item 6, lane FXR 2026-11-17: with the PS VR2's eyes replayed each flare sat off
-  its lamp, differently in each eye): look at a ceiling lamp on the Normandy with each eye closed in turn; a flare that
-  doubles or won't fuse is that finding (trilogy-plan owner question 12).
+  **Lamps' lens flares** (research/30 9.4 item 6 and 9.5; the owner chose mode 1 on ME3, 2026-11-17, lane DEF: both eyes
+  through the shared symmetric window, `MELE3VR.ini [VR] MetricEyeFrustum = 0`): look at a ceiling lamp on the Normandy with
+  each eye closed in turn: its flare on the lamp in both eyes, fusing; nothing missing at either eye's outer edge. (In mode 2,
+  `MetricEyeFrustum = 1`, each flare sat off its lamp, differently in each eye.)
 - [ ] Changes of view on ME2 and ME3 (research/30 9.4, lane FXR): leaving the 3D cinema screen, a load's end, a menu and
   back: no single frame with the eyes swapped or the world jumping in depth.
 - [ ] First person from the start (T01's R32; research/trilogy-first-person.md, lane FP3 2026-11-17; seen on the fake

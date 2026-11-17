@@ -41,8 +41,9 @@ inline bool WorldUiOwnsGui(int mode) noexcept
 }
 
 // Game thread, calcview_hook.cpp's DrawDetour: whether a pass-1 Draw that returned in under 100 us is drawn again in the
-// same frame ([NOOPRETRY]; [Performance] sfrReplayRetry, 1 by default: upstream's behaviour). Such a Draw usually did
-// render, and its retry is then the frame's third scene render (research/sequel-render-levers.md "Performance research").
+// same frame ([NOOPRETRY]; [Performance] sfrReplayRetry, 1 upstream's behaviour, 0 our default since the owner's yes of
+// 2026-11-17: plugin/RenderLeversTable). Such a Draw usually did render, and its retry is then the frame's third scene
+// render (research/sequel-render-levers.md "Performance research").
 // Defined by plugin/RenderLevers in the LE2 host.
 bool SfrReplayRetry() noexcept;
 

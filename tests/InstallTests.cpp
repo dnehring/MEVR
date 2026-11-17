@@ -2026,7 +2026,8 @@ void TestGames() {
     ICHECK(ini::Get(le2, "SystemSettings", "ResX") == std::optional<std::string>("2560") && ini::Get(le2, "SystemSettings", "ResY") == std::optional<std::string>("1440"));
     ICHECK(ini::Get(le2, "SystemSettings", "BorderlessWindow") == std::optional<std::string>("True") && ini::Get(le2, "SystemSettings", "Fullscreen") == std::optional<std::string>("False"));
     ICHECK(ini::Get(le2, "SystemSettings", "UseVSync") == std::optional<std::string>("False") && ini::Get(le2, "SystemSettings", "MaxAnisotropy") == std::optional<std::string>("16"));
-    ICHECK(ini::Get(le2, "SystemSettings", "DynamicShadows") == std::optional<std::string>("False"));
+    // The game's own dynamic shadows on a sequel (the owner, 2026-11-17: the mod turns them on there; ME1's cost lever only).
+    ICHECK(ini::Get(le2, "SystemSettings", "DynamicShadows") == std::optional<std::string>("True"));
     ICHECK(ini::Get(le2, "SystemSettings", "FoliageDrawRadiusMultiplier") == std::optional<std::string>("0.5"));
     ICHECK(ini::Get(le2, "HDR", "DesiredRange") == std::optional<std::string>("DynamicRange_SDR"));
     ICHECK(ini::Revert(le2, edits2) == gamer);  // every change on record

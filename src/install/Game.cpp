@@ -20,7 +20,7 @@ constexpr GameSpec kSpecs[] = {
         true, true, true, true},
     {GameId::LE2, 2, "LE2", "Mass Effect 2", "ME2", L"ME2", "MassEffect2.exe", L"MassEffect2.exe",
         "MELE2VR.ini", false, L"MELE2VR", L"MELE2VR_Log.txt", "MELE2-VR", "ME2VR",
-        false, false, true, true,
+        false, false, false, true,
         false, false, false, false},
     {GameId::LE3, 3, "LE3", "Mass Effect 3", "ME3", L"ME3", "MassEffect3.exe", L"MassEffect3.exe",
         "MELE3VR.ini", false, L"MELEVR", L"ME3PassiveDxgiProbe.log", "MELE3-VR", "ME2VR",

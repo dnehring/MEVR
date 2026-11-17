@@ -675,6 +675,18 @@ void LoadValues() noexcept
                          : scaleWas ? "[MEVR-STEREO] life-size stereo: the MEVR baseline; PosScale set to 2 (100 uu per metre)"
                                     : "[MEVR-STEREO] life-size stereo: the MEVR baseline (HalfEyeUU, SfrConvergence and "
                                       "SwapEyes unused)");
+        // Its frustum (LE1's sfr2MetricEyeFrustum; the owner, 2026-11-17): 0, ME3's default, renders both eyes through the
+        // shared symmetric window (mode 1): in mode 2 every lamp's lens flare, placed through the CPU's symmetric window,
+        // lands at the same pixel of both off-centre eye images and can't fuse (research/30 section 9.4). Stereo stays
+        // life-size either way. A per-game choice, so ApplyMevrBaseline leaves it alone (ME1 and ME2 render mode 2).
+        const bool eyeFrustum = GetPrivateProfileIntW(L"VR", L"MetricEyeFrustum", 0, path.c_str()) != 0;
+        ME2VR::Me2Xr::SetMevrEyeFrustum(eyeFrustum);
+        if (lifeSize)
+            ME2VR::Log::Line(eyeFrustum
+                ? "[MEVR-STEREO] ME3's frustum: each eye's own where the window holds it (mode 2; MELE3VR.ini [VR] "
+                  "MetricEyeFrustum = 1): the lamps' lens flares are misplaced per eye there (research/30 section 9.4)"
+                : "[MEVR-STEREO] ME3's frustum: the shared symmetric window (mode 1; MELE3VR.ini [VR] MetricEyeFrustum = 0, "
+                  "ME3's default: each lamp's lens flare on its lamp in both eyes, research/30 section 9.4)");
     }
 #if defined(MEVR_ASI)
     ApplyMevrBaseline();  // [MEVR]
@@ -716,6 +728,7 @@ void SaveValues() noexcept
     swprintf_s(buf, L"%.3f", ME2VR::Me2Xr::GetVrFillH()); WritePrivateProfileStringW(L"VR", L"VrFillH", buf, path.c_str());
     swprintf_s(buf, L"%.3f", ME2VR::Me2Xr::GetVrFillV()); WritePrivateProfileStringW(L"VR", L"VrFillV", buf, path.c_str());
     WritePrivateProfileStringW(L"VR", L"QuestFovMatch", ME2VR::Me2Xr::GetQuestFovMatch() ? L"1" : L"0", path.c_str());
+    WritePrivateProfileStringW(L"VR", L"MetricEyeFrustum", ME2VR::Me2Xr::GetMevrEyeFrustum() ? L"1" : L"0", path.c_str());   // [MEVR]
     WritePrivateProfileStringW(L"VR", L"FullRefreshPacing", ME2VR::CalcViewHook::GetFullRefreshPacing() ? L"1" : L"0", path.c_str());
     WritePrivateProfileStringW(L"VR", L"Diagnostics", ME2VR::Log::DiagnosticsOn() ? L"1" : L"0", path.c_str());
     WritePrivateProfileStringW(L"VR", L"HeadAim", ME2VR::EngineProbe::GetHeadAimEnabled() ? L"1" : L"0", path.c_str());

@@ -506,7 +506,7 @@ function Test-Sequel([string]$game) {
         $g -match '(?m)^FilmGrain=False' -and $g -match '(?m)^MaxAnisotropy=16' -and $g -match 'DynamicRange_SDR') "${game}: GamerSettings.ini: the VR values"
     Check ($g -match '(?m)^ResX=2560' -and $g -match '(?m)^ResY=1440') "${game}: GamerSettings.ini: the resolution left to the renderer"
     if ($game -eq 'LE2') {
-        Check ($g -match '(?m)^DynamicShadows=False' -and $g -match '(?m)^FoliageDrawRadiusMultiplier=0\.5') 'LE2: GamerSettings.ini: no dynamic shadows, the foliage radius'
+        Check ($g -match '(?m)^DynamicShadows=True' -and $g -match '(?m)^FoliageDrawRadiusMultiplier=0\.5') 'LE2: GamerSettings.ini: the game''s dynamic shadows, the foliage radius'
     } else {
         Check ($g -match '(?m)^DynamicShadows=True' -and $g -notmatch 'FoliageDrawRadiusMultiplier') 'LE3: GamerSettings.ini: shadows and foliage as the game has them'
     }

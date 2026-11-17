@@ -150,6 +150,9 @@ authored seated scenes (such as shuttles) must reject traversal while retaining 
   Body/UI outcomes and VR acceptance remain pending. ME3's renderer pins ME2's baseline after every ini load (`[MEVR]`
   `ApplyMevrBaseline` in le3 me2_menu.cpp since 2026-11-17: first person with the head hidden, no head aim, no stick pitch,
   flat menus, cinematic conversations, no profile hotkeys or R recenter, `\`; K still toggles first person).
+  ME3's life-size stereo renders on the shared symmetric window (mode 1; the owner, 2026-11-17: in mode 2 every lamp's lens
+  flare is placed through the CPU's window and can't fuse, research/30 section 9.4): `MELE3VR.ini [VR] MetricEyeFrustum`
+  (LE1's `sfr2MetricEyeFrustum`), 0 by default, not pinned by the baseline; ME1 and ME2 render mode 2.
   Use the existing protected desktop/engine-request routes in
   `tools/le2-halcyon-run/README.md` for discovery; do not deploy the candidate as accepted VR support. The chapter
   save tested as a combat candidate enters cinematic/injured modes and is not an accepted ordinary combat fixture.
@@ -1659,7 +1662,9 @@ switching frameworks.
   **BIOEngine.ini's `[SystemSettings]` wins over GamerSettings'** for `DynamicShadows` and `MotionBlur` (measured
   2026-10-23, research/35), and the game rewrites that file (after every `scale set`; a launch put the defaults
   back once), so **the mod applies the VR values itself** (`game/SystemSettings`, hot-reloaded): `scale set
-  DynamicShadows False`, `MotionBlur False`, `FoliageDrawRadiusMultiplier 0.5` (and `LightEnvironmentShadows False` while
+  DynamicShadows False` on ME1 (its cost lever; **ME2 and ME3 `True`** since 2026-11-17, the owner: 0.2-0.3 ms there and each
+  eye a render of its own, `engine::adapter::kVrDynamicShadows`; `vr-game-settings.ps1` and Setup write False for LE1 only),
+  `MotionBlur False`, `FoliageDrawRadiusMultiplier 0.5` (and `LightEnvironmentShadows False` while
   the second eye is a replay, sharePass 2/3/5: the right eye drew character shadows where the left eye sees them, research/37
   2026-11-13; **the host says whether it is**, HostServices v43 `secondEyeIsReplay` = `render_levers::SecondEyeIsReplay()`,
   false on a game where sharePass stands down, so ME2 and ME3 keep their character shadows: there the mod puts the player's

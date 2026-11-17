@@ -110,8 +110,9 @@ std::atomic<std::uint64_t> gQueryWaitsSkipped{0};  // reads that would have wait
 // 1: Halcyon renders each stereo eye through its own view state in gameplay too (ME1 0; the sequels' SFR 1, from the start)
 std::atomic<int> gPerEyeViewState{kLayout.perEyeViewStateDefault};
 #if defined(MEVR_WITH_HALCYON_LE2)
-// ME2 only: Halcyon's same-frame retry of a pass 1 that returned in under 100 us ([Performance] sfrReplayRetry, 1 upstream's)
-std::atomic<int> gSfrReplayRetry{1};
+// ME2 only: Halcyon's same-frame retry of a pass 1 that returned in under 100 us ([Performance] sfrReplayRetry, 1 upstream's;
+// the default is the game's, RenderLeversTable)
+std::atomic<int> gSfrReplayRetry{kLayout.sfrReplayRetryDefault};
 #endif
 
 // ---- The second eye's own occlusion history (research/35, attempts 34-35) ------------------------------------------
@@ -382,7 +383,7 @@ int UmbraInstanceVisibleHook(void* commander, void* record, float distanceSq, st
 using tUmbraReadResult = void(void* ctx, int head, int count, std::uint8_t wait);
 tUmbraReadResult* gUmbraReadResultOrig = nullptr;
 bool gUmbraReadResultHooked = false;
-std::atomic<int> gUmbraShareResults{0};
+std::atomic<int> gUmbraShareResults{kLayout.umbraShareResultsDefault};
 thread_local bool t_inUmbraRead = false;
 thread_local int t_umbraQueryIndex = 0;  // results delivered so far in this render
 constexpr int kMaxUmbraResults = 8192;
@@ -2486,7 +2487,7 @@ void Tick() {
 #if defined(MEVR_WITH_HALCYON_LE2)
         {
             static int retry = -1;
-            int const retryRead = readInt(L"sfrReplayRetry", 1) != 0 ? 1 : 0;
+            int const retryRead = readInt(L"sfrReplayRetry", kLayout.sfrReplayRetryDefault) != 0 ? 1 : 0;
             if (retryRead != retry) {
                 retry = retryRead;
                 gSfrReplayRetry.store(retryRead, std::memory_order_relaxed);
@@ -2511,7 +2512,7 @@ void Tick() {
                 umbraEyeMatrixRead, gUmbraIssueQueriesHooked ? "" : "; not hooked, so no effect");
         }
         static int umbraShare = -1;
-        int const umbraShareRead = readInt(L"umbraShareResults", 0) != 0 ? 1 : 0;
+        int const umbraShareRead = readInt(L"umbraShareResults", kLayout.umbraShareResultsDefault) != 0 ? 1 : 0;
         if (umbraShareRead != umbraShare) {
             umbraShare = umbraShareRead;
             gUmbraShareResults.store(umbraShareRead, std::memory_order_relaxed);
