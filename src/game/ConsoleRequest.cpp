@@ -12,6 +12,7 @@
 #include "game/SquadOrders.hpp"
 #include "game/SquadPlace.hpp"
 #include "game/SquadWeapons.hpp"
+#include "game/Sprint.hpp"
 #include "game/Voice.hpp"
 #include "game/VrCover.hpp"
 
@@ -940,6 +941,9 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         std::getline(words, rest);
         return vr_cover::Console(rest);
     }
+    if (verb == "sprint") {
+        return sprint::StatusJson();  // the faster run's state (game/Sprint: one sprint for the trilogy)
+    }
     if (verb == "powerwheel") {
         // `mevr powerwheel [open|hand x y|pick n|equip|close|roster]`: the power wheel at the left hand (research/55) without
         // tracked controllers: X held, the hand's offset from its centre (metres), a tile picked, X let go (equips), closed.
@@ -1747,6 +1751,7 @@ std::optional<std::string> RunOursLe3(ue3::Object* pc, std::string const& line) 
     if (verb == "load") return LoadSave(ue3::runtime::GameEngine(), words);
     if (verb == "savedesc") return CurrentSave(ue3::runtime::GameEngine());
     if (verb == "state") return State(pc);
+    if (verb == "sprint") return sprint::StatusJson();  // game/Sprint: one sprint for the trilogy
     if (verb == "weaponprobe") return WeaponProbeLe3(pc);
     if (verb == "galaxy") {
         std::string action, extra;
@@ -1870,6 +1875,9 @@ std::optional<std::string> RunOursLe2(ue3::Object* pc, std::string const& line) 
     }
     if (verb == "state") {
         return State(pc);
+    }
+    if (verb == "sprint") {
+        return sprint::StatusJson();  // game/Sprint: one sprint for the trilogy
     }
     if (verb == "camera") {
         std::string rest;

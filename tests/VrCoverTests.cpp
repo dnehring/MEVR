@@ -4,8 +4,11 @@
 
 #include "core/vr/VrCover.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <initializer_list>
+#include <limits>
 #include <optional>
 #include <string_view>
 
@@ -137,6 +140,67 @@ void TestGameCone() {
     CHECK(vc::GameCone(v.coverNormal, kEyes, kShooter));
 }
 
+// Behind cover outside a shot (the shields' faster recharge on ME2): hidden from every awake hostile, by the player's own
+// cover from at least one.
+void TestShelter() {
+    using W = vc::Why;
+    using S = vc::ShelterWhy;
+    auto const shelter = [](std::initializer_list<W> verdicts) {
+        vc::ShelterCount count;
+        for (W w : verdicts) {
+            vc::Add(count, w);
+        }
+        return vc::Shelter(count);
+    };
+    CHECK(shelter({}) == S::NoHostile);
+    CHECK(shelter({W::NoShooter, W::Off}) == S::NoHostile);         // nobody judged
+    CHECK(shelter({W::Covered}) == S::Sheltered);
+    CHECK(shelter({W::Covered, W::CoverTooFar}) == S::Sheltered);   // a far wall hides the other one: still sheltered
+    CHECK(shelter({W::Covered, W::Exposed}) == S::Exposed);         // a second hostile sees the head
+    CHECK(shelter({W::Covered, W::Overhead}) == S::Exposed);        // one straight above: no facing, counted as open
+    CHECK(shelter({W::CoverTooFar, W::CoverTooFar}) == S::NoCloseCover);  // hidden, but not by the player's own cover
+    vc::ShelterCount count;
+    vc::Add(count, W::Covered);
+    vc::Add(count, W::CoverTooFar);
+    vc::Add(count, W::NoShooter);
+    CHECK(count.hostiles == 2 && count.covered == 1 && count.blockedFar == 1 && count.exposed == 0);
+    CHECK(std::string_view(vc::Name(S::Sheltered)) == "behind cover");
+}
+
+// The shields' wait from the game's timer: a hit raises it, it counts down, the recharge begins at 0.
+void TestRegenWait() {
+    vc::RegenWait w;
+    double t = 1.0;
+    CHECK(!vc::Step(w, t, 0.0f, false));                 // nothing yet
+    t += 0.1;
+    CHECK(!vc::Step(w, t, 3.0f, false) && w.waiting);    // a hit: a 3 s wait begins
+    // 1.5x as fast while sheltered (ME2's extra 0.5 dt): the timer reaches 0 after 2 s.
+    std::optional<vc::RegenWaitDone> done;
+    float timer = 3.0f;
+    for (int i = 0; i < 60 && !done; ++i) {
+        t += 0.05;
+        timer = std::max(0.0f, timer - 0.075f);
+        done = vc::Step(w, t, timer, true);
+    }
+    CHECK(done.has_value());
+    if (done) {
+        CHECK(Near(done->waitS, 2.0, 0.051));
+        CHECK(Near(done->shelteredS, 2.0, 0.051));
+        CHECK(Near(done->startTimer, 3.0, 1e-6));
+    }
+    CHECK(!w.waiting);
+    // Reported once; a second hit mid-wait starts it again and reports only the second.
+    CHECK(!vc::Step(w, t + 0.05, 0.0f, false));
+    CHECK(!vc::Step(w, t + 0.1, 3.0f, false));
+    CHECK(!vc::Step(w, t + 1.1, 2.0f, false));
+    CHECK(!vc::Step(w, t + 1.2, 3.0f, false));  // hit again
+    std::optional<vc::RegenWaitDone> second = vc::Step(w, t + 4.2, 0.0f, false);
+    CHECK(second.has_value() && Near(second->waitS, 3.0, 1e-6) && Near(second->shelteredS, 0.0, 1e-9));
+    // A non-finite timer reads as 0 and ends nothing that didn't start.
+    vc::RegenWait fresh;
+    CHECK(!vc::Step(fresh, 1.0, std::numeric_limits<float>::quiet_NaN(), true));
+}
+
 } // namespace
 
 int RunVrCoverTests() {
@@ -144,6 +208,8 @@ int RunVrCoverTests() {
     TestSlotLease();
     TestVerdicts();
     TestGameCone();
+    TestShelter();
+    TestRegenWait();
     std::printf("vr cover: %s\n", gFailures == 0 ? "ok" : "FAILED");
     return gFailures;
 }

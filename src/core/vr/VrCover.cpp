@@ -88,4 +88,59 @@ bool GameCone(Vec3 const& coverNormal, Vec3 const& hitLocation, Vec3 const& inst
     return Dot(shot, reversed) / distance < kGameConeDot;
 }
 
+void Add(ShelterCount& count, Why why) {
+    switch (why) {
+    case Why::Covered: ++count.hostiles; ++count.covered; break;
+    case Why::Exposed: ++count.hostiles; ++count.exposed; break;
+    case Why::CoverTooFar: ++count.hostiles; ++count.blockedFar; break;
+    case Why::Overhead: ++count.hostiles; ++count.overhead; break;
+    case Why::Off:
+    case Why::NoShooter: break;  // nobody to judge
+    }
+}
+
+char const* Name(ShelterWhy why) {
+    switch (why) {
+    case ShelterWhy::NoHostile: return "no awake hostile";
+    case ShelterWhy::Exposed: return "in the open to a hostile";
+    case ShelterWhy::NoCloseCover: return "hidden only by things far away";
+    case ShelterWhy::Sheltered: return "behind cover";
+    }
+    return "?";
+}
+
+ShelterWhy Shelter(ShelterCount const& count) {
+    if (count.hostiles <= 0) {
+        return ShelterWhy::NoHostile;
+    }
+    if (count.exposed > 0 || count.overhead > 0) {
+        return ShelterWhy::Exposed;
+    }
+    return count.covered > 0 ? ShelterWhy::Sheltered : ShelterWhy::NoCloseCover;
+}
+
+std::optional<RegenWaitDone> Step(RegenWait& w, double nowS, float timerIn, bool sheltered) {
+    float const timer = std::isfinite(timerIn) ? timerIn : 0.0f;
+    double const dt = w.lastS > 0.0 && nowS > w.lastS ? std::min(nowS - w.lastS, 0.25) : 0.0;
+    std::optional<RegenWaitDone> done;
+    if (timer > w.lastTimer + 0.05f) {
+        // A hit set the timer (again): a new wait; one cut short by another hit isn't reported.
+        w.waiting = true;
+        w.startS = nowS;
+        w.startTimer = timer;
+        w.shelteredS = 0.0;
+    } else if (w.waiting) {
+        if (sheltered) {
+            w.shelteredS += dt;
+        }
+        if (timer <= 0.0f) {
+            done = RegenWaitDone{nowS - w.startS, w.shelteredS, w.startTimer};
+            w.waiting = false;
+        }
+    }
+    w.lastS = nowS;
+    w.lastTimer = timer;
+    return done;
+}
+
 } // namespace mevr::vr::cover

@@ -458,13 +458,18 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Left, ME2:** recheck crouch, protection and the vault on the current build with standing and seated calibration.
   **ME3:** no-snap is only a diagnostic opt-in, and the damage rule and crouch have no in-game result.
 - **Closes when:** `mevr cover hit` shows no damage covered and full damage exposed, and A never snaps, on each sequel.
-- **Waits for:** T05's ME3 combat fixture. See [question 2](#open-owner-questions). **Who:** nobody yet.
+  ME2 also: the shields' wait before recharging is two thirds behind cover (`mevr cover regen`), whole exposed (the faster
+  recharge, granted 2026-11-16 and built by lane GR: research/23 section 7.5; ME1 and ME3 have no such rule).
+- **Waits for:** T05's ME3 combat fixture. See [question 2](#open-owner-questions). **Who:** lane GR (the recharge).
 
 #### T32 Sprint [G58]
-- **State:** LE1 done · LE2 headset · LE3 verify
-- **Lives in:** `game/Sprint`, `core/vr/Sprint` on LE1 and ME3; ME2 keeps its native Storm with Halcyon's handling.
-- **Left, ME2:** sprint heading and release in a headset. **ME3:** the native admission in a run. The two sequels differ
-  with no game fact named: see [question 6](#open-owner-questions).
+- **State:** LE1 done · LE2 verify · LE3 verify
+- **Lives in:** `game/Sprint`, `core/vr/Sprint`: one module and rule for the three since 2026-11-16 (lane GR, the owner's
+  "Unified sprint", [question 6](#open-owner-questions)): StormOn runs, its intent (`bWantsToStorm`) is withdrawn by both
+  hooks' post-handlers (the binding's hold reaches StormOn through ProcessEvent: the old script-hook skip never fired, so
+  ME1 ran the game's own sprint until then), the faster run raises the run speeds the game reads. Per game: ME3's native
+  admission, ME2 not in the game's own cover. No ME2 fact forces its native Storm.
+- **Left:** the sprint's feel in a headset on each game; ME3's run where the storm isn't disabled.
 
 #### T33 Traversal: vault, climb, ladder, evade [sequel-only; Forks 4]
 - **State:** LE1 n/a · LE2 build · LE3 build
@@ -777,7 +782,9 @@ Each is asked once. "Today" is what the build does if nobody answers; no default
   alpha on a subset like ME2, parity after.
 - **6, sprint:** "Unified sprint." One sprint rule for all games (lane GR).
 - **7, ME3's roll/evade input:** "I'm curious if the analog direction will allow vault and roll." Lane GR researches
-  whether the stick's direction can tell a vault from a roll; nothing is built before the owner reads the design.
+  whether the stick's direction can tell a vault from a roll; nothing is built before the owner reads the design. The design
+  (2026-11-16): research/le2-traversal.md "The stick's direction: vault or roll" (yes on ME3, which already reads the stick;
+  ME2 has no roll; the owner's choice: whether a single A may still roll).
 - **8, Thespian on the sequels:** "Thespian is experimental, same with first person." Offered as experimental on the
   sequels, as on ME1, and first-person conversations too.
 - **10 (lane U3's), our quads under our menu:** keep them hidden on every game (today's behaviour).
@@ -892,9 +899,9 @@ Each with both sides and the side this page takes.
 | 5 | `tools/qa-le2` "is the LE2 runner; don't port `fake-headset-session.ps1` to it"; its protected runner "becomes the ME2 test runner" (le2-from-le1 3.3; continuation plan "Who and when") | `tools/le2-halcyon-run` is the runner every lane uses, and "extend existing runners ... rather than introducing another launcher" (LE3 plan rule 6); the ledger counts three launchers | one runner with `-Game` (T05), grown from `le2-halcyon-run` |
 | 6 | One lock agreed between `game-slot\lock.json` and `qa-cafeteria.lock` (le2-from-le1 3.3 step 3) | a third lock, `tools/le2-halcyon-run/run-lock.ps1`, is the one all lanes use | `run-lock.ps1` (rule 23); the other two fold into it under T05 |
 | 7 | ME2 ships after M5 with the rest after (the owner, answer 4) | P9 and L3-10 ask for the campaign and DLC matrix and all packages before a release | ME2: the owner's. ME3: [question 5](#open-owner-questions) |
-| 8 | ME2's sprint is the game's native Storm "by design" (continuation plan M6) | P5 and le2-from-le1 3.6 list `game/Sprint` for porting, and ME3 runs it (L3-8) | open: [question 6](#open-owner-questions) |
+| 8 | ME2's sprint is the game's native Storm "by design" (continuation plan M6) | P5 and le2-from-le1 3.6 list `game/Sprint` for porting, and ME3 runs it (L3-8) | "Unified sprint" (the owner, 2026-11-16): one `game/Sprint` for the three (lane GR) |
 | 9 | The Hammerhead's "physical cockpit is a later explicit gate", and "do not reuse Mako physics writes or weapon assumptions" (le2-port-implementation-plan P8; reuse map) | "ME1's Mako controls and cockpit, for now" (the owner, answer 3) | the owner's, with the reuse map's limit kept: the control geometry and panel code, not the physics writes (rule 13) |
-| 10 | "Use physical cover with equivalent native combat benefits" (le2-port-implementation-plan "Product decisions") | the VR cover rule gives the damage cut only; the faster shield recharge is "open, the owner's choice" (research/23) | open: [question 2](#open-owner-questions) |
+| 10 | "Use physical cover with equivalent native combat benefits" (le2-port-implementation-plan "Product decisions") | the VR cover rule gives the damage cut only; the faster shield recharge is "open, the owner's choice" (research/23) | "Faster recharge behind cover, yes" (the owner, 2026-11-16): built, research/23 section 7.5 |
 | 11 | Interrupts "pop up beside the matching hand" (trilogy-design's table) | the prompt shows on the cinema screen's UI layer, taken by the triggers (continuation plan M5.2) | the later one (rule 11) |
 | 12 | Vehicles and the galaxy "on a cinema screen / panel to start"; "physical heat-sink reload everywhere", ME1 included; one holster layout with the SMG at the left hip (trilogy-design) | ME1 shipped a cockpit, a projector hologram, the vent instead of a reload, and the shotgun at the left hip | what ME1 shipped is the reference (rule 1); trilogy-design is historical |
 | 13 | "Do not enable the current non-LE2 Thespian branch: it contains LE1 assumptions" (LE3 plan "Cinema and dialogue") | the ME3 handoff and the ledger record ME3's own Thespian adapter reading three native wheels | the later one: the adapter replaced that branch |

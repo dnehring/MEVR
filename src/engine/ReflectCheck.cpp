@@ -748,6 +748,8 @@ void CheckFields() {
     CheckField("Engine.Pawn", "GroundSpeed", SDK_FIELD(APawn, GroundSpeed));  // game/sprint
     CheckField("SFXGame.BioPawn", "StormSpeed", SDK_FIELD(ABioPawn, StormSpeed));
     CheckField("SFXGame.BioPawn", "CombatStormSpeed", SDK_FIELD(ABioPawn, CombatStormSpeed));
+    CheckField("SFXGame.BioPawn", "CombatGroundSpeed", SDK_FIELD(ABioPawn, CombatGroundSpeed));  // game/sprint: the drawn run
+    CheckField("SFXGame.BioPlayerController", "bWantsToStorm", SDK_FIELD(ABioPlayerController, bWantsToStorm));  // StormOn's intent
     CheckField("Engine.Pawn", "Controller", SDK_FIELD(APawn, Controller));  // a squadmate's AI for a power order (research/54)
     CheckField("Engine.WorldInfo", "bPlayersOnly", SDK_BOOL(AWorldInfo, bPlayersOnly));
     CheckField("Engine.WorldInfo", "bPlayersOnlyPending", SDK_BOOL(AWorldInfo, bPlayersOnlyPending));
@@ -1513,6 +1515,7 @@ void CheckFunctions() {
         "SFXGame.SFXGameModeDefault.TryHolster",
         "SFXGame.SFXGameModeDefault.StormOn",   // game/sprint: the sprint button as a faster run (2026-11-06)
         "SFXGame.SFXGameModeDefault.StormOff",
+        "Engine.Pawn.GetMaxSpeed",              // ... the run in effect (2026-11-16)
         "SFXGame.SFXGameModeDefault.SwitchToWeapon",
         "SFXGame.SFXPawn_Player.DrawPrimaryWeapon",  // holsters' onlyHolstersDraw (2026-10-25)
         "SFXGame.SFXGameModeDefault.UseFirstAid",         // ...whose draws still go through from these (2026-10-26)
@@ -2349,6 +2352,14 @@ void CheckFields() {
     CheckField("SFXGame.SFXShield_Base", "CurrentShields", SDK_FIELD(ASFXShield_Base, CurrentShields));
     CheckField("Engine.InventoryManager", "InventoryChain", SDK_FIELD(AInventoryManager, InventoryChain));
     CheckField("Engine.Inventory", "Inventory", SDK_FIELD(AInventory, Inventory));
+    // game/VrCover: the shields' faster recharge behind cover (research/23 section 7.5)
+    CheckField("SFXGame.SFXShield_Base", "ShieldRegenTimer", SDK_FIELD(ASFXShield_Base, ShieldRegenTimer));
+    CheckField("SFXGame.SFXShield_Base", "bFastCoverRegen", SDK_BOOL(ASFXShield_Base, bFastCoverRegen));
+    // game/Sprint: one sprint for the trilogy (the faster run; StormOn's intent withdrawn)
+    CheckField("SFXGame.BioPlayerController", "bWantsToStorm", SDK_FIELD(ABioPlayerController, bWantsToStorm));
+    CheckField("Engine.Pawn", "GroundSpeed", SDK_FIELD(APawn, GroundSpeed));
+    CheckField("SFXGame.BioPawn", "CombatGroundSpeed", SDK_FIELD(ABioPawn, CombatGroundSpeed));
+    CheckField("SFXGame.BioPawn", "StormSpeed", SDK_FIELD(ABioPawn, StormSpeed));
 }
 
 void CheckPaths() {
@@ -2489,6 +2500,10 @@ void CheckFunctions() {
         "Engine.ParticleSystemComponent.SetVectorParameter",
         "Engine.ParticleSystemComponent.SetColorParameter",
         "Engine.MaterialInstanceConstant.SetScalarParameterValue",
+        "SFXGame.SFXShield_Base.Tick",                    // game/VrCover: the shields' faster recharge behind cover
+        "SFXGame.SFXGameModeDefault.StormOn",             // game/Sprint: one sprint for the trilogy
+        "SFXGame.SFXGameModeDefault.StormOff",
+        "Engine.Pawn.GetMaxSpeed",
     };
     for (char const* function : functions) {
         CheckFunction(function);
@@ -3184,6 +3199,8 @@ void CheckFields() {
     CheckField("SFXGame.BioPawn", "CoverType", SDK_FIELD(ABioPawn, CoverType));
     CheckField("SFXGame.BioPawn", "StormSpeed", SDK_FIELD(ABioPawn, StormSpeed));
     CheckField("SFXGame.BioPawn", "bStorming", SDK_BOOL(ABioPawn, bStorming));
+    CheckField("SFXGame.BioPawn", "CombatGroundSpeed", SDK_FIELD(ABioPawn, CombatGroundSpeed));  // game/Sprint: the drawn run
+    CheckField("SFXGame.BioPlayerController", "bWantsToStorm", SDK_FIELD(ABioPlayerController, bWantsToStorm));  // StormOn's intent
     CheckField("SFXGame.BioPlayerController", "m_oPlayerSelection", SDK_FIELD(ABioPlayerController, m_oPlayerSelection));
     CheckField("SFXGame.BioPlayerSelection", "m_oCurrentSelectionTarget", SDK_FIELD(UBioPlayerSelection, m_oCurrentSelectionTarget));
     CheckField("Engine.PlayerController", "PlayerCamera", SDK_FIELD(APlayerController, PlayerCamera));
@@ -3368,6 +3385,7 @@ void CheckFunctions() {
     CheckFunction("SFXGame.SFXGameModeDefault.StormOn");
     CheckFunction("SFXGame.SFXGameModeDefault.StormOff");
     CheckFunction("SFXGame.BioPlayerController.IsStormDisabled");
+    CheckFunction("Engine.Pawn.GetMaxSpeed");  // game/Sprint: the run in effect
     CheckFunction("GFxUI.GFxValue.GetObject");
     CheckNativeTarget("GFxUI.GFxValue.GetDisplayMatrix");
     CheckNativeTarget("SFXGame.BioConversationController.GetReplyParaphraseText");

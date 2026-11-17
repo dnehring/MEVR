@@ -391,7 +391,7 @@ with `bFastCoverRegen`, a pawn in cover and not leaning takes an extra decrement
 `PlayerCoverRegenTimerMultiplier` 1.5). The VR rule answers only inside ModifyDamage, so a VR player hiding behind cover gets
 the damage rule but not the faster recharge. Granting it would mean answering `IsInCover`/`IsInCoverLeaning` in
 `SFXShield_Base.Tick` too, with a judgement that isn't per shot (from which shooter? the nearest hostile, or every awake one).
-Not built.
+**Granted by the owner on 2026-11-16 ("Faster recharge behind cover, yes") and built: section 7.5.**
 
 ### 7.4 In the game (fake headset, 2026-11-14 23:12-23:20, Freedom's Progress, Save 4)
 
@@ -449,3 +449,54 @@ call's IsInCover and IsInCoverLeaning are answered ...`; the crouch replay `SFXG
 standing height and `(false)` at 1.00, as before; `mevr cover hit 30 0` from a pawn 3.3 m away in the open: `exposed`,
 shields 63.0 -> 39.5 -> 15.9 (protect on), then 15.9 -> 0 and health 141 -> 135 -> 116.4 (off): ME1's own damage path as
 section 6.2 measured it (the covered case wasn't set up again: LE1's code paths are the same lines, moved).
+
+### 7.5 The shields' faster recharge behind cover (2026-11-16, lane GR)
+
+The owner, 2026-11-16 (docs/trilogy-plan.md open question 2): "Faster recharge behind cover, yes."
+
+**Which games have the rule.** Only ME2. Read from each game's script (the scanners of section 7 and research/le3-traversal-adapter.md;
+the outputs stay in a scratch folder):
+- **ME2:** `SFXShield_Base.Tick(DeltaSeconds)`: `if (bFastCoverRegen && ShieldRegenTimer > 0 && BioPawn(Owner) != None &&
+  !BioPawn(Owner).IsInCoverLeaning() && BioPawn(Owner).IsInCover()) ShieldRegenTimer -= (PlayerCoverRegenTimerMultiplier - 1) *
+  DeltaSeconds;` then the ordinary `ShieldRegenTimer -= DeltaSeconds`; the recharge starts once the timer is 0. With the config's
+  1.5 the wait in cover is two thirds of the delay (a 3 s delay: 2 s). `SFXShield_Base.ApplyDamage` sets the timer to
+  `GetShieldRegenDelay()` on every hit, and `SFXModule_DamageParty.Regen` (the health's regeneration) waits while any shield's
+  timer runs, so the health's wait shortens with it. `bFastCoverRegen` is the only reference to the flag in the package.
+- **ME3:** `SFXShield_Base.Tick` counts its timer down with no cover question; the delay comes from the difficulty handler
+  (`SFXShield_Player.GetShieldRegenDelay`, `PartialShieldRegenDelay`). No script function about shields or health regeneration
+  calls `IsInCover`. No rule to grant.
+- **ME1:** the shield's regeneration is native (`BioShield.Regenerate`, `UBioShield::execRegenerate` RVA `0xBA4F40` calls a virtual),
+  and no script function that names regeneration calls `IsInCover` (34 script functions call it: AI, cover moves, the damage
+  call, the HUD). The native body wasn't read; ME1 is not known to have such a rule. Nothing built.
+
+**How "in cover" is judged outside a shot: against every awake hostile** (`core/vr/VrCover` `ShelterCount`, `Shelter`, unit-tested
+in `tests/VrCoverTests.cpp` `TestShelter`). Each awake hostile within 40 m (the nearest 16) is judged as a shot from it would be
+(section 6.2's `Judge`: the line from the headset's eyes to its eyes): the player is behind cover when the head is hidden from every
+one of them, and by a surface within `[Cover] reachM` of the eyes from at least one. A hostile behind a far wall (`cover too far`)
+neither grants nor denies it; one with a line to the head (or straight overhead) denies it; with no hostile judged there is
+nothing to shelter from and the game's rule stays as for a player out of cover. Why this and not the nearest hostile alone:
+- it is the damage rule's spirit: the damage rule asks "hidden from the one who shoots"; outside a shot every hostile might
+  shoot, so the head must be hidden from each, and the faster recharge is what a hit from any of them would also respect;
+- the nearest alone is wrong both ways: a nearest hostile in another room (behind a far wall) refuses a player crouched behind a
+  crate in front of the real fight, and a nearest hostile hidden by the crate grants it while a second one sees the head;
+- it is cheap: one trace per hostile, at most 16 traces every 0.25 s (the verdict is cached that long), and only while the
+  shields' wait runs (the game asks only then: `bFastCoverRegen` and `ShieldRegenTimer > 0`), on the player's shield only.
+What a player feels beyond the recharge: nothing; no cover state, camera or animation changes, as for the damage rule.
+
+**Built** (`game/VrCover`, ME2's block; no host change): the same two answer handlers as the damage call's, for the frame of
+`SFXShield_Base.Tick`: `IsInCoverLeaning` answers false and `IsInCover` true for the player's pawn while VR cover applies (`posture`
+refusing the game's cover: VR on foot, `[Hands] noCover = 1`), `[Cover] protect = 1` and the new `[Cover] recharge = 1` (on by
+default: the owner's yes; appended with the `[Cover]` block in a new file only), the game's own cover not taken (then its own
+answers stand), and the player is behind cover by the rule above. The game's own code then takes its own extra decrement: no
+timer or shield is written by us. The answers are read (not written) per call; nothing is held between ticks.
+- **Logs:** `vr cover: SFXShield_Base.Tick's IsInCoverLeaning and IsInCover are answered ...` at the start; `vr cover: while the
+  shields wait: <verdict> (N hostiles judged: ...)` when the verdict changes (at most every 2 s); `vr cover: the shields' wait
+  before recharging: X s after a hit that set Y s, Z s of it behind cover (the game's fast regen in cover on)` after each wait,
+  measured from the game's own `ShieldRegenTimer` (`core/vr/VrCover` `RegenWait`, unit-tested `TestRegenWait`); the heartbeat's
+  `vr cover: the shields' recharge: ...`. Snapshot `"mod"."vrCover"."recharge"` (ME1 and ME3: `{"applies": false}`).
+- **Console:** `mevr cover regen` (the player's shield, its timer, `bFastCoverRegen`, the shields, and the shelter judged now
+  hostile by hostile); `mevr cover regen as <n>` judges against pawn n of `mevr cover pawns` instead of the hostiles (a fixture
+  without hostiles: Save 4's squad), `as off`; `mevr cover recharge on|off` (an A/B until the mod reloads).
+- **ReflectCheck rows** (ME2): `SFXShield_Base.ShieldRegenTimer`, `bFastCoverRegen`, `SFXShield_Base.Tick`.
+
+**In the game:** see the measurement below (filled by the run of 2026-11-16).

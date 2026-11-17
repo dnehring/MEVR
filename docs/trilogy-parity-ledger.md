@@ -53,8 +53,8 @@ rows the change touches.
 
 | game | shared | adapted | forked | missing | n/a | present and verified (V) | present, unverified (U) |
 |---|---|---|---|---|---|---|---|
-| LE2 | 13 | 44 | 3 | 29 | 4 | 42 | 18 |
-| LE3 | 13 | 44 | 5 | 25 | 6 | 22 | 40 |
+| LE2 | 14 | 44 | 3 | 28 | 4 | 42 | 19 |
+| LE3 | 14 | 43 | 5 | 25 | 6 | 22 | 40 |
 <!-- /parity:totals -->
 
 LE1 is the reference, so it has no cells. A few LE1 systems are themselves n/a under Halcyon's renderer: the reflection
@@ -253,7 +253,7 @@ The [technique groups](#renderer-techniques-by-group) summary follows the table.
 | G36 | Conversations in the world: flow, moments, keep-in-place (`game/ConversationWorld`, `ConversationFlow`, `AuthoredMoment`, `engine/ConversationHooks`, `plugin/ConversationWorld`) | **missing**: deferred by the owner 2026-11-15; `ready` | **missing**: deferred; `convo_fp` hard-off | M6 F (deferred); LE3 plan "remain deferred". |
 | G37 | Two-ear audio: OpenAL Soft with HRTF (`plugin/OpenAlSoft`) | **n/a**: ME2 plays through Wwise, not ISACT/OpenAL (research/69's audio note; [verify] the exe's imports) | **n/a**: same | Check `MassEffect2.exe`/`MassEffect3.exe` imports for OpenAL32 before closing the row. |
 | G38 | Sound placement: voices, people near, the gun (`game/SoundPlace`, `engine/VoicePlace` on ISACT `0x7BA90`) | **missing**: `ready`; `kSoundSourceUpdate = 0` | **missing** | Wwise needs a placement hook of its own. |
-| G39 | No cover snapping, VR cover (`engine/CoverAcquire`, `game/VrCover`, `core/vr/VrCover`) | **adapted** V: `FindPlayerCover` post-handler; VrCover on `SFXGame.ModifyDamage`; research/23 §7.4, 2026-11-14 (61705db8) | **adapted** U: `game/Le3Cover.inc` (ModifyDamage on SFXPawn_PlayerParty); no-snap only as a diagnostic opt-in | M6 table, cover/crouch/sprint row; L3-8. |
+| G39 | No cover snapping, VR cover (`engine/CoverAcquire`, `game/VrCover`, `core/vr/VrCover`) | **adapted** V: `FindPlayerCover` post-handler; VrCover on `SFXGame.ModifyDamage`; research/23 §7.4, 2026-11-14 (61705db8). The shields' faster recharge behind cover (ME2's own rule, the owner's yes 2026-11-16): `SFXShield_Base.Tick`'s two questions answered while the head is hidden from every awake hostile (`vr::cover::Shelter`), U; research/23 §7.5 | **adapted** U: `game/Le3Cover.inc` (ModifyDamage on SFXPawn_PlayerParty); no-snap only as a diagnostic opt-in. ME3 (and ME1) have no faster recharge in cover: n/a | M6 table, cover/crouch/sprint row; L3-8. |
 | G40 | Physical crouch (`game/Posture`, `core/ik/Posture`) | **adapted** V: `Engine.Pawn.ShouldCrouch`; research/23 §7.4 step 1 | **adapted** U: LE3 native admission | — |
 | G41 | Vent, weapon heat (`game/Vent`, `core/ik/Vent`) | **n/a**: ME2 reloads thermal clips; there is no heat. Its counterpart, the physical reload (P4, `PhysicalReloadRequest`), isn't in the Halcyon host | **n/a**: thermal clips | The reload: docs/le2-port-implementation-plan.md P4. |
 | G42 | Physical grenades (`game/Throwables`, `core/ik/Throwing`) | **n/a**: ME2 has no grenades | **n/a**: ME3's grenades are powers (research/le3-powers.md) | — |
@@ -272,7 +272,7 @@ The [technique groups](#renderer-techniques-by-group) summary follows the table.
 | G55 | Console request, call trace, dev request files (`game/ConsoleRequest`, `game/CallTrace`, `core/DevChannels`) | **adapted** V: `mevr load` and `mevr omni squad` in runs. CallTrace runs (`Up()`; V: `mevr calltrace 2 updatecamera`, 144 lines, T04's session) | **adapted** V: `mevr thespian cards`, run `20261115-203330-839`. CallTrace as ME2: U | LE3: one `mevr calltrace` in a run. |
 | G56 | Classic menu's VR hands tab and menu pointer (`plugin/MevrMenuTab`, `plugin/MevrMenuPointer`) | **missing**: Halcyon ME2's own menu, without our tab | **missing** | Low value: our main menu replaces it. |
 | G57 | The game's wheels cut onto a hand quad (`core/vr/WheelCrop`, `setWheelPanel`, the native squad-wheel style) | **missing**: `setWheelPanel` is LE1-only | **missing** | With G30. |
-| G58 | VR sprint (`game/Sprint`, `core/vr/Sprint`) | **missing**: by design, ME2's native Storm (continuation plan M6 table) | **adapted** U: native admission (`Sprint.cpp` `#if LE1 \|\| LE3`) | L3-8. |
+| G58 | VR sprint (`game/Sprint`, `core/vr/Sprint`) | **shared** U: one module and rule for the three (lane GR, 2026-11-16, the owner's "Unified sprint"): `SFXGameModeDefault.StormOn` runs, its intent `BioPlayerController.bWantsToStorm` is withdrawn by both hooks' post-handlers, the faster run raises `GroundSpeed`/`CombatGroundSpeed` by `StormSpeed` over `Pawn.GetMaxSpeed`; ME2's adapter: not in the game's own cover. No ME2 fact forces the native Storm | **shared** U: the same, with ME3's native admission (`player::MovementRefused`, `IsStormDisabled`, the fresh-owner check) | Each game: a replayed A held with the stick forward logs `sprint: running fast: x...` and `back to the run`, the pawn's peak speed at the game's sprint speed, and no `the game sprints by a route other than StormOn`. |
 
 ### Sequel-only systems
 
@@ -579,7 +579,7 @@ defined in the tool's header:
 | game | renderer | host plugin files | host core files | services served | src/game + src/engine modules by status | common seams called | own seams |
 |---|---|---|---|---|---|---|---|
 | LE1 | halcyon-le1 | 72 | 71 | 57 | run 67, out 4, ungated 23, unbuilt 4 | 20 of 32 | 91 |
-| LE2 | halcyon-le2 | 66 | 55 | 48 | run 41, ready 10, out 20, ungated 21, unreferenced 2, unbuilt 4 | 30 of 32 | 4 |
+| LE2 | halcyon-le2 | 66 | 55 | 48 | run 42, ready 10, out 19, ungated 21, unreferenced 2, unbuilt 4 | 30 of 32 | 4 |
 | LE3 | halcyon-le3 | 69 | 55 | 48 | run 42, ready 10, out 19, ungated 22, unreferenced 2, unbuilt 3 | 30 of 32 | 2 |
 <!-- /parity:summary -->
 
@@ -871,7 +871,7 @@ Helpers applied, in order:
 | `game/SkeletonProbe` | run | run (ME1-only handles) | run (ME1-only handles) |
 | `game/SoundPlace` | run | ready | ready |
 | `game/Spectator` | run | out | out |
-| `game/Sprint` | run | out | run (ME1-only handles) |
+| `game/Sprint` | run | run | run |
 | `game/SquadAck` | run | ready | ready |
 | `game/SquadContext` | run | run (ME1-only handles) | run (ME1-only handles) |
 | `game/SquadOrders` | run | run (ME1-only handles) | run (ME1-only handles) |

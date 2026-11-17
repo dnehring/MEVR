@@ -312,7 +312,14 @@ switching frameworks.
   by its `HideCoverWidget`); the crouch is `Engine.Pawn.ShouldCrouch`; VR cover answers `SFXGame.ModifyDamage`'s
   `IsInCoverLeaning`/`IsInCover` and gives its cone's `CoverLink.GetSlotRotation` the surface's facing (`BioPawn.CurrentLink`
   holds CoverLink's class default object for that call). `mevr cover snap on|off|auto | acquire | where | links | put`. LE3's
-  plan: research/23 section 6.3.
+  plan: research/23 section 6.3. **ME2's shorter wait before the shields recharge in cover** (the owner, 2026-11-16; research/23
+  section 7.5; only ME2 has the rule): `SFXShield_Base.Tick`'s same two questions answered while the head is hidden from every
+  awake hostile within 40 m, by cover within reachM from at least one (`vr::cover::Shelter`; `[Cover] recharge = 1`; `mevr cover
+  regen [as <n>] | recharge on|off`; log `vr cover: the shields' wait before recharging: ...`).
+  **One sprint for the trilogy** (the owner, 2026-11-16, "Unified sprint"; `game/Sprint`): the binding's `OnHold StormOn` reaches
+  StormOn through ProcessEvent (a timer), so a CallFunction skip never saw it (the game's own sprint ran on ME1 from 2026-11-06 to
+  11-16); now StormOn runs and its intent `BioPlayerController.bWantsToStorm` is withdrawn right after (both hooks' post-handlers),
+  and the faster run raises GroundSpeed and CombatGroundSpeed by the game's sprint speed over `Pawn.GetMaxSpeed`. Logs `sprint:`.
 - LE1 level camera (`game/view_level`, `core/vr/ViewLevel`, [research/24](research/24-view-level.md)):
   each shot's recoil goes into the player controller's rotation (ControlRotation) and the rifles' pitch
   kick never fades (`RecoilFadeSpeed=0`); with the stick's pitch off (`decoupledPitch`) the world tilted

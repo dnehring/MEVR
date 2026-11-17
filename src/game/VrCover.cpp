@@ -120,6 +120,13 @@ ue3::FieldRef gPawnController{"Engine.Pawn", "Controller", ue3::kEveryGame};
 ue3::FunctionRef gSetLocationFn{"Engine.Actor.SetLocation", ue3::kEveryGame};
 // EObjectFlags: RF_ClassDefaultObject.
 constexpr std::uint64_t kClassDefaultFlag = 0x200;
+// The shields' faster recharge in cover (research/23 section 7.5): SFXShield_Base.Tick asks `!BioPawn(Owner).IsInCoverLeaning()
+// && BioPawn(Owner).IsInCover()` while bFastCoverRegen is set and ShieldRegenTimer runs, and then takes an extra
+// (PlayerCoverRegenTimerMultiplier - 1) * DeltaSeconds off the timer. Those two calls are answered for the VR player behind
+// cover (judged against every awake hostile: no shot, no single shooter).
+ue3::FunctionRef gShieldTickFn{"SFXGame.SFXShield_Base.Tick", ue3::kEveryGame};
+ue3::FieldRef gShieldRegenTimer{"SFXGame.SFXShield_Base", "ShieldRegenTimer", ue3::kEveryGame};
+ue3::FieldRef gFastCoverRegen{"SFXGame.SFXShield_Base", "bFastCoverRegen", ue3::kEveryGame};
 #endif
 
 // ---- Settings: [Cover] in the mod's settings file, read once a second, its defaults appended when it's missing --------
@@ -132,8 +139,11 @@ constexpr char kBlock[] =
     "; beyond 3 m, three quarters of it otherwise) never applied. With protect = 1, a hit counts as taken in cover when your head\n"
     "; is hidden from the shooter by something within reachM (metres) of your eyes: crouched behind a crate, beside a pillar.\n"
     "; Raise your head over it to shoot and you're in the open. The game's own rule does the rest. log = 1 logs every hit judged.\n"
+    "; recharge = 1: the game's shorter wait before the shields recharge in cover, while your head is hidden from every awake\n"
+    "; hostile, by cover within reachM from at least one of them.\n"
     "protect = 1\n"
     "reachM = 1.2\n"
+    "recharge = 1\n"
     "log = 0\n";
 #elif defined(MEVR_GAME_LE3)
 constexpr char kBlock[] =
@@ -159,6 +169,8 @@ constexpr char kBlock[] =
 #if defined(MEVR_VR_COVER)
 vc::Settings gSettings;
 std::optional<bool> gOverride;  // `mevr cover on|off`
+bool gRecharge = true;                  // [Cover] recharge (ME2: the shields' faster recharge behind cover)
+std::optional<bool> gRechargeOverride;  // `mevr cover recharge on|off`
 bool gLogHits = false;
 std::uint64_t gSettingsAtMs = 0;
 bool gTriedAppend = false;
@@ -201,6 +213,19 @@ void RefreshSettings() {
     if (gOverride) {
         s.on = *gOverride;  // `mevr cover on|off` (tests), until the mod reloads
     }
+    bool recharge = true;
+    if (auto const v = ini::GetNumber(loaded.file, "Cover", "recharge")) {
+        recharge = *v != 0.0;
+    }
+    if (gRechargeOverride) {
+        recharge = *gRechargeOverride;
+    }
+#if defined(MEVR_GAME_LE2)
+    if (recharge != gRecharge) {
+        log::Info("vr cover: the shields' faster recharge behind cover {}", recharge ? "on ([Cover] recharge = 1)" : "off ([Cover] recharge = 0)");
+    }
+#endif
+    gRecharge = recharge;
     std::string const text = s.on ? std::format("on: a hit counts as taken in cover with the head hidden from the shooter by a surface "
                                                 "within {:.2f} m of the eyes{}", s.reachM, logHits ? "; every judged hit logged" : "")
                                   : std::string("off ([Cover] protect = 0): a VR player takes every hit whole");
@@ -235,6 +260,33 @@ std::unordered_map<ue3::Class const*, ue3::Object*> gDamageDefaults;  // each SF
 std::uint64_t gDefaultsScanMs = 0;
 bool gToldNoDefaults = false;
 std::uint64_t gSlotAnswers = 0;
+// The shields' faster recharge behind cover (research/23 section 7.5).
+bool gRechargeReady = false;                 // SFXShield_Base.Tick and its fields found
+std::uint8_t const* gShelterLocals = nullptr;  // the shield tick's frame we said "not leaning" to
+struct Shelter {
+    std::uint64_t atMs = 0;                  // judged then (again at most every kShelterEveryMs)
+    vc::ShelterWhy why = vc::ShelterWhy::NoHostile;
+    vc::ShelterCount count;
+    std::string text = "not judged yet";
+};
+Shelter gShelter;
+constexpr std::uint64_t kShelterEveryMs = 250;
+constexpr double kShelterRangeM = 40.0;      // hostiles further than this aren't judged
+constexpr int kShelterMaxHostiles = 16;      // the nearest this many
+ue3::Object* gShelterAs = nullptr;           // `mevr cover regen as <n>`: this pawn stands in for the hostiles (tests)
+std::uint64_t gShelterAnswerMs = 0;          // the last tick the shield's two questions were answered
+struct Recharge {
+    std::uint64_t asked = 0, answered = 0, exposed = 0, noHostile = 0, noCloseCover = 0, gameCover = 0, waits = 0;
+};
+Recharge gRechargeCounts, gLoggedRechargeCounts;
+vc::RegenWait gWait;
+std::string gLastWait = "none yet";
+std::optional<bool> gFastRegen;  // the player's shield's bFastCoverRegen, as last read
+vc::ShelterWhy gLoggedShelter = vc::ShelterWhy::NoHostile;
+std::uint64_t gShelterLogMs = 0;
+bool ShelteredNow(ue3::Object* pawn);  // below, after the pawn list
+void TickRecharge(ue3::Object* pawn);
+std::string RechargeJson();
 #endif
 
 struct Counts {
@@ -540,10 +592,45 @@ ue3::Object* LinkDefaults() {
     return gLinkDefaults;
 }
 
+// The shields' tick asks `!IsInCoverLeaning() && IsInCover()` for its owner while the wait before recharge runs (bFastCoverRegen
+// set): for the VR player behind cover, not leaning (here) and in cover (OnShieldInCover), so the game takes its own extra
+// decrement. The game's own cover keeps its own answers.
+bool OnShieldLeaning(ue3::Object* context, std::uint8_t* locals, void* result) {
+    if (!gRechargeReady || !gRecharge || !gSettings.on || context == nullptr || context != gPlayerPawn || locals == nullptr ||
+        result == nullptr) {
+        return false;
+    }
+    gShelterLocals = nullptr;
+    ++gRechargeCounts.asked;
+    if (CallBool(context, gIsInCoverFn)) {
+        ++gRechargeCounts.gameCover;
+        return false;
+    }
+    if (!ShelteredNow(context)) {
+        return false;
+    }
+    gShelterLocals = locals;
+    *static_cast<std::uint32_t*>(result) = 0;
+    return true;
+}
+bool OnShieldInCover(ue3::Object* context, std::uint8_t* locals, void* result) {
+    if (locals == nullptr || locals != gShelterLocals || context == nullptr || context != gPlayerPawn || result == nullptr) {
+        return false;
+    }
+    gShelterLocals = nullptr;
+    ++gRechargeCounts.answered;
+    gShelterAnswerMs = GetTickCount64();
+    *static_cast<std::uint32_t*>(result) = 1;
+    return true;
+}
+
 // BioPawn.IsInCoverLeaning, asked first by SFXGame.ModifyDamage for the player's pawn: judged here; false (not leaning out)
 // when the head is hidden from this shot's shooter. The game's own cover (taken by a script, or allowed: [Hands] noCover =
 // 0) keeps its own rules: not answered.
 bool OnIsInCoverLeaning(ue3::Object* context, ue3::Function* /*function*/, ue3::Function* caller, std::uint8_t* locals, void* result) {
+    if (caller != nullptr && caller == gShieldTickFn.Get()) {
+        return OnShieldLeaning(context, locals, result);
+    }
     if (caller == nullptr || caller != gDamageFn.Get() || locals == nullptr || result == nullptr || context == nullptr ||
         context != gPlayerPawn || !gSettings.on) {
         return false;
@@ -569,6 +656,9 @@ bool OnIsInCoverLeaning(ue3::Object* context, ue3::Function* /*function*/, ue3::
 // BioPawn.IsInCover, right after: true. Unless the damage type ignores the cover's direction (then the cone isn't asked),
 // the cone's GetSlotRotation is made to reach us: BioPawn.CurrentLink holds CoverLink's defaults until it returns.
 bool OnIsInCover(ue3::Object* context, ue3::Function* /*function*/, ue3::Function* caller, std::uint8_t* locals, void* result) {
+    if (caller != nullptr && caller == gShieldTickFn.Get()) {
+        return OnShieldInCover(context, locals, result);
+    }
     if (caller == nullptr || caller != gDamageFn.Get() || locals == nullptr || locals != gAnsweredLocals || result == nullptr ||
         context != gPlayerPawn) {
         return false;
@@ -675,6 +765,17 @@ bool TryStartup() {
         return true;
     }
     engine::call_function::AddFramePostHandler(gGetSlotRotationFn.Get(), &OnGetSlotRotation);
+    // The shields' faster recharge behind cover: the same two answer handlers, for SFXShield_Base.Tick's frame.
+    gRechargeReady = gShieldTickFn.Get() != nullptr && gShieldRegenTimer.Get() != nullptr && gFastCoverRegen.Get() != nullptr &&
+        gShieldClass.Get() != nullptr && gInvManager.Get() != nullptr && gInventoryChain.Get() != nullptr &&
+        gInventoryNext.Get() != nullptr && gIsHostileFn.Get() != nullptr && gIsDeadFn.Get() != nullptr;
+    if (gRechargeReady) {
+        log::Info("vr cover: SFXShield_Base.Tick's IsInCoverLeaning and IsInCover are answered for the player behind cover: the "
+                  "game's shorter wait before the shields recharge ([Cover] recharge, research/23 section 7.5)");
+    } else {
+        log::Warn("vr cover: SFXShield_Base.Tick, its ShieldRegenTimer or bFastCoverRegen, or the pawn list's functions weren't "
+                  "found: no faster recharge behind cover");
+    }
 #endif
     engine::call_function::AddAnswerHandler(inCover, &OnIsInCover);
     engine::call_function::AddAnswerHandler(leaning, &OnIsInCoverLeaning);
@@ -726,12 +827,19 @@ void Tick() {
         gWhyNot = "active";
     }
 #endif
+#if defined(MEVR_GAME_LE2)
+    gShelterLocals = nullptr;  // never held between ticks
+    if (gShelterAs != nullptr && !ue3::runtime::IsAlive(gShelterAs)) {
+        gShelterAs = nullptr;
+    }
+    TickRecharge(pawn);
+#endif
 }
 
 std::string StatusJson() {
     return std::format("{{\"active\": {}, \"why\": \"{}\", \"protect\": {}, \"reachM\": {:.2f}, \"judged\": {}, \"covered\": {}, "
                        "\"coneCut\": {}, \"exposed\": {}, \"coverTooFar\": {}, \"overhead\": {}, \"noShooter\": {}, \"noView\": {}, "
-                       "\"gameCover\": {}, \"last\": \"{}\"}}",
+                       "\"gameCover\": {}, \"last\": \"{}\", \"recharge\": {}}}",
         gPlayerPawn != nullptr, gWhyNot, gSettings.on, gSettings.reachM, gCounts.judged, gCounts.covered, gCounts.coneCut,
         gCounts.exposed, gCounts.tooFar, gCounts.overhead, gCounts.noShooter, gCounts.noView, gCounts.gameCover, [] {
             std::string s;
@@ -739,10 +847,25 @@ std::string StatusJson() {
                 s += (c == '"' || c == '\\') ? '\'' : c;
             }
             return s;
-        }());
+        }(),
+#if defined(MEVR_GAME_LE2)
+        RechargeJson()
+#else
+        std::string("{\"applies\": false}")  // ME1 and ME3 have no faster recharge in cover (research/23 section 7.5)
+#endif
+    );
 }
 
 void LogStats() {
+#if defined(MEVR_GAME_LE2)
+    Recharge const& r = gRechargeCounts;
+    if (r.asked != gLoggedRechargeCounts.asked || r.waits != gLoggedRechargeCounts.waits) {
+        log::Info("vr cover: the shields' recharge: {} ticks of the wait asked, {} answered behind cover ({} in the game's own cover); "
+                  "judged: {} in the open, {} without a hostile, {} hidden only by far things; {} waits measured, last: {}; now: {}",
+            r.asked, r.answered, r.gameCover, r.exposed, r.noHostile, r.noCloseCover, r.waits, gLastWait, gShelter.text);
+        gLoggedRechargeCounts = r;
+    }
+#endif
     if (gCounts.judged == gLoggedCounts.judged && gCounts.gameCover == gLoggedCounts.gameCover) {
         return;
     }
@@ -872,6 +995,127 @@ ue3::Class* FriendlyFireType() {
     }
     return best;
 }
+
+// The player's shield (the first SFXShield_Base in the pawn's inventory: the one whose tick asks about cover).
+ue3::Object* PlayerShield(ue3::Object* pawn) {
+    ue3::Object* const manager = gInvManager.Read<ue3::Object*>(pawn).value_or(nullptr);
+    int guard = 0;
+    for (ue3::Object* item = manager != nullptr ? gInventoryChain.Read<ue3::Object*>(manager).value_or(nullptr) : nullptr;
+         item != nullptr && guard < 64; item = gInventoryNext.Read<ue3::Object*>(item).value_or(nullptr), ++guard) {
+        if (!ue3::runtime::IsAlive(item)) {
+            return nullptr;
+        }
+        if (ue3::IsA(item, gShieldClass)) {
+            return item;
+        }
+    }
+    return nullptr;
+}
+
+// Behind cover outside a shot: every awake hostile within kShelterRangeM (the nearest kShelterMaxHostiles) judged as a shot
+// from it would be (from its eyes; `mevr cover regen as <n>` puts one pawn in their place for tests), tallied by the shared rule.
+void JudgeShelter(ue3::Object* pawn, Shelter& out, std::string* detail = nullptr) {
+    out.count = {};
+    auto const frame = view_anchor::Current();
+    if (!frame) {
+        out.why = vc::ShelterWhy::NoHostile;
+        out.text = "no head-tracked view";
+        return;
+    }
+    vc::Vec3 const eyes = ToVec(frame->headWorld);
+    vc::Settings settings = gSettings;
+    settings.on = true;
+    settings.unitsPerMeter = frame->unitsPerMeter;
+    int judged = 0;
+    for (ue3::Object* p : Pawns(pawn)) {
+        if (gShelterAs != nullptr ? p != gShelterAs : !Hostile(pawn, p)) {
+            continue;
+        }
+        Shooter const shooter = FromPawn(p);
+        if (!shooter.eyes) {
+            continue;
+        }
+        double const metres = std::hypot(shooter.eyes->x - eyes.x, shooter.eyes->y - eyes.y, shooter.eyes->z - eyes.z) /
+            settings.unitsPerMeter;
+        if (metres > kShelterRangeM) {
+            break;  // nearest first
+        }
+        std::string surface;
+        std::optional<vc::Block> const block = FirstSurface(pawn, eyes, *shooter.eyes, &surface);
+        vc::Verdict const verdict = vc::Judge(eyes, shooter.eyes, block, settings);
+        vc::Add(out.count, verdict.why);
+        if (detail != nullptr) {
+            *detail += "\n    " + Describe(verdict, shooter, eyes, surface, std::nullopt);
+        }
+        if (++judged >= kShelterMaxHostiles) {
+            break;
+        }
+    }
+    out.why = vc::Shelter(out.count);
+    out.text = std::format("{} ({} hostile{} judged{}: {} hidden by cover within {:.2f} m, {} in the open, {} beyond far walls, {} "
+                           "overhead)",
+        vc::Name(out.why), out.count.hostiles, out.count.hostiles == 1 ? "" : "s", gShelterAs != nullptr ? ", a test stand-in" : "",
+        out.count.covered, gSettings.reachM, out.count.exposed, out.count.blockedFar, out.count.overhead);
+}
+
+bool ShelteredNow(ue3::Object* pawn) {
+    std::uint64_t const now = GetTickCount64();
+    if (gShelter.atMs != 0 && now - gShelter.atMs < kShelterEveryMs) {
+        return gShelter.why == vc::ShelterWhy::Sheltered;
+    }
+    gShelter.atMs = now;
+    JudgeShelter(pawn, gShelter);
+    switch (gShelter.why) {
+    case vc::ShelterWhy::Exposed: ++gRechargeCounts.exposed; break;
+    case vc::ShelterWhy::NoHostile: ++gRechargeCounts.noHostile; break;
+    case vc::ShelterWhy::NoCloseCover: ++gRechargeCounts.noCloseCover; break;
+    case vc::ShelterWhy::Sheltered: break;
+    }
+    if (gShelter.why != gLoggedShelter && (gLogHits || now - gShelterLogMs > 2000)) {
+        gShelterLogMs = now;
+        gLoggedShelter = gShelter.why;
+        log::Info("vr cover: while the shields wait: {}{}", gShelter.text,
+            gShelter.why == vc::ShelterWhy::Sheltered ? ": the game's faster recharge in cover applies" : "");
+    }
+    return gShelter.why == vc::ShelterWhy::Sheltered;
+}
+
+// Each mod tick: the wait before the shields recharge, from the game's own timer, and how much of it was behind cover.
+void TickRecharge(ue3::Object* pawn) {
+    if (!gRechargeReady || pawn == nullptr || !ue3::runtime::IsAlive(pawn)) {
+        return;
+    }
+    ue3::Object* const shield = PlayerShield(pawn);
+    if (shield == nullptr) {
+        return;
+    }
+    gFastRegen = gFastCoverRegen.ReadBool(shield);
+    std::optional<float> const timer = gShieldRegenTimer.Read<float>(shield);
+    if (!timer) {
+        return;
+    }
+    std::uint64_t const now = GetTickCount64();
+    bool const sheltered = gShelterAnswerMs != 0 && now - gShelterAnswerMs <= 300;
+    if (std::optional<vc::RegenWaitDone> const done = vc::Step(gWait, static_cast<double>(now) / 1000.0, *timer, sheltered)) {
+        ++gRechargeCounts.waits;
+        gLastWait = std::format("{:.2f} s after a hit that set {:.2f} s, {:.2f} s of it behind cover (the game's fast regen in "
+                                "cover {})",
+            done->waitS, done->startTimer, done->shelteredS, gFastRegen ? (*gFastRegen ? "on" : "off") : "unread");
+        log::Info("vr cover: the shields' wait before recharging: {}", gLastWait);
+    }
+}
+
+std::string RechargeJson() {
+    std::string text;
+    for (char c : gShelter.text + " | " + gLastWait) {
+        text += (c == '"' || c == '\\') ? '\'' : c;
+    }
+    Recharge const& r = gRechargeCounts;
+    return std::format("{{\"applies\": true, \"ready\": {}, \"on\": {}, \"fastRegen\": {}, \"waiting\": {}, \"asked\": {}, "
+                       "\"answered\": {}, \"gameCover\": {}, \"waits\": {}, \"shelter\": \"{}\", \"text\": \"{}\"}}",
+        gRechargeReady, gRecharge, gFastRegen ? (*gFastRegen ? "true" : "false") : "null", gWait.waiting, r.asked, r.answered,
+        r.gameCover, r.waits, vc::Name(gShelter.why), text);
+}
 #endif
 
 std::string Judged(ue3::Object* self, vc::Vec3 const& eyes, std::optional<vc::Vec3> const& selfAt, Shooter const& shooter,
@@ -906,9 +1150,23 @@ std::string Console(std::string_view args) {
     if (sub == "snap" || sub == "where" || sub == "acquire" || sub == "links") {
         return posture::CoverConsole(args);  // the cover snapping's refusal and its test (game/posture)
     }
-    if (sub != "test" && sub != "pawns" && sub != "hit" && sub != "probe" && sub != "put") {
+#if defined(MEVR_GAME_LE2)
+    if (sub == "recharge") {
+        // `mevr cover recharge [on|off]`: the shields' faster recharge behind cover, overridden until the mod reloads.
+        std::string value;
+        words >> value;
+        if (value == "on" || value == "off") {
+            gRechargeOverride = value == "on";
+            gSettingsAtMs = 0;
+            RefreshSettings();
+            return std::format("vr cover: the faster recharge behind cover {} until the mod reloads ([Cover] recharge stays as it is)", value);
+        }
+        return RechargeJson();
+    }
+#endif
+    if (sub != "test" && sub != "pawns" && sub != "hit" && sub != "probe" && sub != "put" && sub != "regen") {
         return "usage: mevr cover [on|off | test | pawns | hit <damage> <n> | probe <yawDeg> [rangeM] | put <me|n> <x> <y> <z> | "
-               "snap on|off|auto | where | acquire | links [n]]";
+               "regen [as <n>|as off] | recharge [on|off] | snap on|off|auto | where | acquire | links [n]]";
     }
     ue3::Object* const controller = player::Controller();
     ue3::Object* const pawn = controller != nullptr ? player::BioPawn(controller) : nullptr;
@@ -948,6 +1206,37 @@ std::string Console(std::string_view args) {
     }
     std::vector<ue3::Object*> const pawns = Pawns(pawn);
 #if defined(MEVR_GAME_LE2)
+    if (sub == "regen") {
+        // `mevr cover regen [as <n> | as off]`: the player's shield (its wait before recharging, the game's fast regen in cover)
+        // and the shelter judged now, hostile by hostile; `as <n>` judges against pawn n of `mevr cover pawns` instead of the
+        // hostiles (a fixture without hostiles), until `as off` or the mod reloads.
+        std::string word;
+        if (words >> word && word == "as") {
+            std::string who;
+            words >> who;
+            if (who == "off") {
+                gShelterAs = nullptr;
+            } else {
+                std::size_t const index = static_cast<std::size_t>(std::strtoul(who.c_str(), nullptr, 10));
+                if (index >= pawns.size()) {
+                    return std::format("mevr cover regen as: no pawn {} ({} listed)", who, pawns.size());
+                }
+                gShelterAs = pawns[index];
+            }
+            gShelter.atMs = 0;
+        }
+        ue3::Object* const shield = PlayerShield(pawn);
+        Shelter now;
+        std::string detail;
+        JudgeShelter(pawn, now, &detail);
+        return std::format("vr cover regen ({}; recharge {}): shield {}, its wait {:.2f} s, the game's fast regen in cover {}, "
+                           "shields {:.1f}; behind cover now: {}{}{}; last wait: {}",
+            gWhyNot, gRecharge ? "on" : "off", NameOf(shield),
+            shield != nullptr ? gShieldRegenTimer.Read<float>(shield).value_or(-1.0f) : -1.0f,
+            shield != nullptr ? (gFastCoverRegen.ReadBool(shield).value_or(false) ? "on" : "off") : "?",
+            HealthAndShields(pawn).second, now.text, gShelterAs != nullptr ? " (as " + NameOf(gShelterAs) + ")" : std::string(),
+            detail, gLastWait);
+    }
     if (sub == "put") {
         // `mevr cover put <me|n> <x> <y> <z>`: Shepard (me) or pawn n of `mevr cover pawns` moved there (Engine.Actor.SetLocation
         // through ProcessEvent, this tick), for placing the shooter or Shepard behind a surface `probe` found.
@@ -1073,6 +1362,9 @@ std::string Console(std::string_view args) {
     }
     if (sub == "put") {
         return "mevr cover put: ME2 only (ME1: mevr setloc)";
+    }
+    if (sub == "regen") {
+        return "mevr cover regen: ME2 only (ME1 and ME3 have no faster recharge in cover: research/23 section 7.5)";
     }
     // `test`: every awake hostile judged now, as a hit on Shepard's location from it would be.
     std::string out = std::format("vr cover ({}): the eyes at ({:.0f}, {:.0f}, {:.0f})", gWhyNot, eyes.x, eyes.y, eyes.z);

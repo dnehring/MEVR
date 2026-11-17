@@ -23,6 +23,7 @@
 * [ProcessEvent skips every native that has an opcode of its own](process-event-skips-opcode-natives.md) - Trace never hit, Destroy never destroyed, SetLocation and SetOwner did nothing; bitten 2026-10-24, 2026-10-31 and 2026-11-03 under four names.
 * [BioConversation's reply functions read its lists unchecked, so a call without a standing wheel ends the game](conversation-reply-natives-without-a-wheel.md) - A pick between lines (2026-11-06) and Thespian reading a wheel 57-82 ms after `mevr convo end` (twice, 2026-11-13) ended the game inside GetReplyText / SelectConversationEntry; read the reply natives only on a wheel that stands, with its current line and reply nodes there.
 * [The script VM's FFrame is packed on 4 bytes, so its Node is at 0x14 in LE1 and LE2](fframe-packed-on-four-bytes.md) - Every CallFunction skip failed silently for ten days (the game drew the gun however it liked) and the crash report found no script frames.
+* [A key binding's exec function reaches the script through ProcessEvent, never through a script call](binding-execs-come-through-process-event.md) - A CallFunction skip on StormOn (A held) never ran: ME1's faster-run sprint never started from 2026-11-06 to 2026-11-16 (the game's own sprint ran); undo the exec's effect in post-handlers on both hooks, or intervene in what it calls; bitten 2026-11-14 (ME2's TryAcquireCover) and 2026-11-16.
 
 # Launching and measuring
 

@@ -206,3 +206,120 @@ between launches); the snapshot's new `"traversal"` block says `started: false`,
   camera's angle), or it isn't drawn into the panel. Lane F's to settle (a pawn walking toward the cover, `mevr cover acquire`).
 - **Climb up** (`ClimbCover`, custom action 9): no slot climbs in this level; the code path is the same (`CanPerformClimb`), unseen.
 - **ME3:** ladders (`TryUseLadder`) and its vaults wait for Halcyon's ME3 renderer in our host; `core/vr/Traversal` is game-independent.
+
+## The stick's direction: vault or roll (design for the owner, 2026-11-16, lane GR; nothing built)
+
+The owner (2026-11-16, open question 7 of docs/trilogy-plan.md): "I'm curious if the analog direction will allow vault and roll."
+Asked: can a double A (or the game's own evade press) with the left stick's direction choose between a vault (toward an obstacle
+the game can mantle) and a roll or evade (any other direction), on ME3 and on ME2? **Yes on ME3, and it is the game's own idea:
+ME3's A already reads the stick to choose between a mantle, a climb and four rolls. ME2 has no roll at all**, so there the
+stick can only choose between a vault and nothing. Read from each game's script with the scanners named in this file's header
+(ME3: `local-tools\le3-traversal-survey\scanner`, whose `--game LE2` selects LE3 on ME3's `CookedPCConsole`) and ME3's coalesced
+`BioInput` (dumped with LegendaryExplorerCore's `CoalescedConverter.DecompileGame3ToAssets` into a scratch folder); the outputs
+are game code and stay out of git.
+
+### What each game does with A and the stick
+
+**ME3.** A is `Console_Action`: `Exclusive TryStandingJump | Exclusive Used | OnRelease StormOff | OnHold 0.2 StormOn |
+Exclusive PressAction | OnTap 0.3 TapAction | OnHold 0.3 HoldAction` (the same as `PC_Action`).
+- On the press, `SFXGameModeDefault.PressAction`: `TryAcquireCover(FALSE, TRUE)` (stop if it took cover), then
+  `TryCoverAction` (in cover only: the stick's `RawJoyUp > 0.8` with `CanPerformClimb` climbs, with `CanPerformMantle` and
+  `BioPawn.CanPerformMantleSlow` mantles; a peek with the stick sideways past 0.88 swat-turns or rolls), else `TryRoll`.
+- `TryRoll` (script, an exec, returns bool, no parameters): refused while move input is ignored, without a weapon, zoomed or
+  falling, or unless the pawn is `bCombatPawn`; it **cancels the reload before its last checks**; with the weapon not equipping
+  or putting down: `BioPlayerInput.RawJoyRight > 0.707` starts custom action 55 (roll right), `< -0.707` 54 (left), `RawJoyUp <
+  -0.707` 57 (back; not in an aim-back). Sideways wins over back. Forward does nothing here.
+- On a tap (released within 0.3 s), `TapAction`: `TryAcquireCover`, `TryCoverSlip`, `TryForwardRoll`, `TryExitCover`.
+  `TryForwardRoll` has `TryRoll`'s guards and its reload cancel; while storming with `RawJoyUp > 0.707` it tries cover instead;
+  otherwise `RawJoyUp > 0.707`, out of a high or mid cover, starts 56 (forward roll).
+- Out of cover the mantle has its own route: `CanPerformMantleSlow` finds an anchor through `FindCover(wide)` when the pawn
+  isn't in cover, and `BioPawn.TryEarlyMantle` (an event, action 32) is the sprint's vault, started by native code [verify
+  where].
+- So ME3's own rule is already "A, and the stick says which": forward at cover mantles or climbs, sideways or back rolls on the
+  press, forward rolls on the tap. **In VR today a single A with the stick pushed sideways or back rolls** (the pad's A reaches
+  the game and `PressAction` runs: away from cover, or with the opt-in no-snap, `TryAcquireCover` takes nothing and `TryRoll`
+  follows), and a forward tap rolls forward [verify in the game].
+- Our ME3 adapter (`game/Le3Traversal`, research/le3-traversal-adapter.md) calls `TryRoll` or `TryForwardRoll` itself on
+  `mevr traversal evade`, choosing by the same 0.707 thresholds from the native stick; its `Link.evadeDown` has no binding.
+  The double A requests a ladder or a vault only with `le3DoubleTap`, off.
+
+**ME2.** No player roll or evade exists: no `TryRoll`, no roll custom action, no `Dodge`; the only evade is the AI's Kismet
+action `SFXSeqAct_CoverUserEvade`. ME2's A ("What ME2 does" above) is use, climb or mantle in cover, cover, sprint on hold, exit
+on tap. Its `CanPerformMantle` itself requires the stick forward (`RemappedJoyUp >= DeadZoneThreshold`, `|RemappedJoyRight| <=
+RemappedJoyUp`); our vault sets the stick forward for that one call, so today the stick's real direction plays no part.
+
+**The stick the game sees.** In VR the left stick reaches the game as the pad's (Touch as pad 0), turned by the host for the
+head's or the hand's yaw (`walk = head | hand`) before the game reads it, so `RawJoyRight`/`RawJoyUp` are the push in the game's
+camera frame: "forward" is where the player walks, the frame the game also uses for its rolls (relative to the pawn, which faces
+the camera in combat). [verify] that the turn happens before `RawJoy*` (step 3 below).
+
+### The rule proposed
+
+**One traversal press, the double A (the owner's convention); the left stick chooses what it does.** At the second press of a
+double A (`core/vr/Traversal` `PressTracker`, `doubleTapS` 0.45 s):
+1. A selected usable takes the press, as today (`Exclusive Used` comes first in both games' bindings).
+2. Read the stick as the game will see it (`RawJoyRight`, `RawJoyUp`). Below 0.35 of a full push it is **centred**; from the
+   game's own 0.707 on an axis it is **pushed**; in between it counts as centred (no accidental roll).
+3. **Centred:** vault (or climb) if the game admits one here, exactly today's ME2 rule (within 0.39 m, the pawn facing within 45
+   degrees, the game's own `CanPerformMantle`); else nothing.
+4. **Pushed toward an admitted obstacle** (the push's world direction, the stick turned by the camera's yaw, within 45 degrees of
+   the slot's direction: the game's own facing window, `m_fClimbMantleFaceAngleThreshold` 0.7): vault or climb. If the game
+   refuses it (its facing, its landing), **nothing**: never a roll into the obstacle.
+5. **Pushed anywhere else:** ME3 rolls that way with the game's own calls and precedence (`TryRoll` for right, left and back,
+   sideways first; `TryForwardRoll` for forward), the adapter's existing `evade` route. ME2: nothing.
+6. **A single A never rolls** in VR (ME3): `TryRoll` and `TryForwardRoll` are script calls from `PressAction`, `TryCoverAction`
+   and `TapAction`, without parameters and returning a bool, so `engine/call_function` answer handlers can answer them `FALSE`
+   for the player's mode when the caller is one of those three and the press isn't ours, VR on foot, out of the game's cover. The
+   reload is then not cancelled either (the cancel is inside the answered call). Our double press then calls the same functions.
+
+**The alternative the owner may prefer:** keep ME3's single-A roll as the game has it (step 6 left out). It is faster (no
+second press) and the game's own feel, but in VR every A pressed while strafing with nothing selected rolls, and the first press
+of a double A with the stick pushed already rolls, so a pushed double A could no longer vault: the stick would then only choose
+on a centred double A. That is why the proposal withholds the single-A roll.
+
+### What the player feels
+
+- Standing at a crate, gun in hand: double-tap A and Shepard vaults it (today's ME2). Push the stick toward the crate and
+  double-tap: the same vault. Push left and double-tap: a roll to the left; back: a roll back; forward with no obstacle ahead:
+  a forward roll (ME3). A single A uses what is selected and otherwise does nothing of ours.
+- ME2: the same vault in every case where it vaults today; a pushed double tap away from an obstacle does nothing.
+- Holding A is the sprint (`OnHold 0.2 StormOn` in both sequels), so a double tap must be two taps; today's measured double
+  taps are 0.23-0.26 s apart.
+- Holstered: neither (ME3's rolls need a weapon and `bCombatPawn`; ME2's mantle needs the combat stance); the owner's earlier
+  question about a holstered vault stays open.
+- A roll moves the body about 3 m in under a second. The comfort mask (`[Traversal] mask = vignette | blink`) and the level view
+  (`view = level`, measured but not applied on ME3) apply as for the vault.
+
+### Conflicts and limits
+
+- **Use:** a selected object always wins (step 1).
+- **Sprint:** a press held past 0.2 s is the sprint; while it runs (A held) the double tap can't happen.
+- **Reload:** the game's rolls cancel the reload before their own last checks; the adapter's admission (reload, zoom, storm,
+  cover, custom action, ignored input, physics) runs first, as `mevr traversal evade` does today.
+- **Cover:** in the game's own cover (ME3 with snapping allowed) nothing of ours runs: `PressAction`'s own cover rules stay.
+- **Whose facing:** the game's vault admission checks the pawn's facing; step 4 checks the stick's direction. With the stick
+  toward the crate but the pawn turned away (combat faces the camera), the game refuses and nothing happens (step 4): open
+  question 3 of the plan (turn the pawn to the obstacle at the commit, or not) decides whether that case vaults.
+- **Seated play:** the same rule; the stick and A don't depend on standing.
+- **First person through a roll:** ME3 has its own camera modes for it (`SFXCameraMode_Roll`, `SFXCameraMode_ForwardRoll`);
+  whether Halcyon's ME3 first person keeps them first person is unknown [verify].
+
+### What to verify before building
+
+1. `mevr calltrace 5 roll` on ME3 while pressing A with the stick pushed: `TryRoll` and `TryForwardRoll` arrive through
+   CallFunction with `PressAction` / `TapAction` / `TryCoverAction` as the caller (else step 6 needs another seam).
+2. With step 6's answer on, a single A pushed sideways starts no custom action 54-57 and doesn't cancel a reload; the cover
+   and use parts of `PressAction` and `TapAction` still run.
+3. The stick the game reads against the controller's: push each way with `walk = head` and `walk = hand` and read
+   `BioPlayerInput.RawJoyRight`/`RawJoyUp` (`mevr props`).
+4. At an ME3 vault fixture (none known yet: T05's) and ME2's Save 4 crate (`vault.ps1`): a double A centred, toward, left,
+   right, back and forward with no obstacle; each must start exactly one action (ME3 31/32 or 33, 55, 54, 57, 56; ME2 10, or
+   nothing), and a single A none.
+5. In the headset: whether a roll is comfortable in first person, with and without the mask.
+
+### Where it would live
+
+A pure chooser in `core/vr/Traversal` (stick, the nearest admitted slot's direction and the thresholds in; centred, toward a
+slot, or a roll direction out; unit-tested), called by the per-game adapters at the commit: `game/Le2Traversal` (vault or
+nothing) and `game/Le3Traversal` (vault, climb, the rolls, and step 6's answer handlers). Those files belong to lanes GF2 and C4
+today; the owner decides first.
