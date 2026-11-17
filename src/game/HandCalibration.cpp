@@ -2219,7 +2219,11 @@ vr::world_ui::Settings ReadWorldUi(Ini const& ini) {
             std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
             if (lower == "all") {
                 bits = 0xFFFFFFFFu;
+#if defined(MEVR_GAME_LE3)
+            } else if (vr::world_ui::Screen const screen = vr::world_ui::FromMe3Tag(w); screen != vr::world_ui::Screen::None) {
+#else
             } else if (vr::world_ui::Screen const screen = vr::world_ui::FromTag(w); screen != vr::world_ui::Screen::None) {
+#endif
                 bits |= vr::world_ui::Bit(screen);
             } else if (!w.empty() && lower != "none") {
                 log::Warn("world ui: [WorldUi] {}: '{}' isn't one of the game's screens we place (research/53)", key, w);

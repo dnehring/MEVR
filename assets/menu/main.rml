@@ -33,7 +33,8 @@
 	<!-- The game's own menus: the way into them (no controller menu button can be counted on, e.g. a Quest over Link). -->
 	<div class="gamebtns">
 		<button class="btn game" id="game-menu" data-event-click="cmd('game_menu')"><div class="sweep"/><div class="bi i-gamemenu"/><div class="gl"><span class="gt">Game menu</span><span class="gs">Save, load, squad, map, options</span></div></button>
-		<button class="btn game" id="game-back" data-event-click="cmd('game_back')"><div class="sweep"/><div class="bi i-holster"/><div class="gl"><span class="gt">Holster</span><span class="gs">Puts the drawn gun away</span></div></button>
+		<!-- Greyed on ME3 until its put-away is checked in the game (lane WP's holsters, [Holsters] le3PutAway; the owner: "Keep them greyed until I can see them"). -->
+		<button class="btn game" id="game-back" data-class-disabled="le3" data-event-click="cmd('game_back')"><div class="sweep"/><div class="bi i-holster"/><div class="gl"><span class="gt">Holster</span><span class="gs" data-if="!le3">Puts the drawn gun away</span><span class="gs" data-if="le3">Not on ME3 yet</span></div></button>
 	</div>
 	<button class="btn primary" id="resume" data-event-click="cmd('resume')"><div class="sweep"/><div class="bi i-play"/><span>Resume</span></button>
 </div>

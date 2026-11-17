@@ -544,8 +544,8 @@ std::string SystemName() {
 
 } // namespace mevr::host::menus_le2
 
-// ---- ME2's seams (src/halcyon/le2/mevr_bridge.h) ----------------------------------------------------------------------------
-namespace ME2VR::MevrBridge {
+// ---- The sequels' world-UI seam (src/halcyon/MevrSeams.h; ME2's ME2VR::MevrBridge::WorldUiOwnsGui forwards here) -------------
+namespace MevrSeams {
 
 bool WorldUiOwnsGui(int mode) noexcept {
 #if defined(MEVR_WITH_MAIN_MENU)
@@ -557,4 +557,4 @@ bool WorldUiOwnsGui(int mode) noexcept {
 #endif
 }
 
-} // namespace ME2VR::MevrBridge
+} // namespace MevrSeams

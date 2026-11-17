@@ -564,9 +564,10 @@ std::uint32_t HostMainMenu() {
 std::uint32_t HostTakeGameMenuRequest() {
     return static_cast<std::uint32_t>(main_menu::TakeGameRequest());
 }
-#if defined(MEVR_WITH_HALCYON_LE2)
-// M4.3 (research/le2-menus.md "ME2's screens on the wrist"): the game's screens on the wrist, as LE1's WithWorldUi gives them
-// (v27 setWorldUi, v34 reserveWorldUi, the rail's requests with their origin).
+#if defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
+// M4.3 (research/le2-menus.md "ME2's screens on the wrist"; ME3: research/le3-native-gui.md "The game's screens on ME3"): the
+// game's screens on the wrist, as LE1's WithWorldUi gives them (v27 setWorldUi, v34 reserveWorldUi, the rail's requests with
+// their origin).
 void HostSetWorldUi(vr::world_ui::State const* state) {
     world_ui::Publish(state);
 }
@@ -585,7 +586,7 @@ HostServices WithMenus(HostServices services) {
     services.calibration = &HostCalibration;
     services.mainMenu = &HostMainMenu;
     services.takeGameMenuRequest = &HostTakeGameMenuRequest;
-#if defined(MEVR_WITH_HALCYON_LE2)
+#if defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
     services.worldUiSize = static_cast<std::uint32_t>(sizeof(vr::world_ui::State));
     services.setWorldUi = &HostSetWorldUi;
     services.takeGameUiRequest = &HostTakeGameUiRequest;
