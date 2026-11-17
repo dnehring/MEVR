@@ -9,6 +9,7 @@
 #include "plugin/PerfProbeHost.hpp"
 
 #include "plugin/RenderLevers.hpp"
+#include "plugin/Upscale.hpp"
 
 #include "core/Log.hpp"
 
@@ -115,11 +116,14 @@ std::string RendererJson() {
 #else
     char const* const renderer = "halcyon-le3";
 #endif
+    // The eye copy's upscale (plugin/Upscale: the method, its source and target sizes) goes with every capture, so captures
+    // taken before and after a render size or FSR change stay comparable (research/sequel-render-levers.md "Performance
+    // research").
     return std::format(
-        "  \"renderer\": \"{}\",\n  \"frameBounds\": \"{}\",\n  \"renderLevers\": {},\n"
+        "  \"renderer\": \"{}\",\n  \"frameBounds\": \"{}\",\n  \"renderLevers\": {},\n  \"upscale\": {},\n"
         "  \"resolution\": {{\"eye\": [{}, {}], \"eyeViews\": {}}}",
-        renderer, PresentSeamSeen() ? "Present" : "xrEndFrame", render_levers::SettingsJson(), gEyeWidth.load(std::memory_order_relaxed),
-        gEyeHeight.load(std::memory_order_relaxed), gEyeViews.load(std::memory_order_relaxed));
+        renderer, PresentSeamSeen() ? "Present" : "xrEndFrame", render_levers::SettingsJson(), upscale::StatusJson(),
+        gEyeWidth.load(std::memory_order_relaxed), gEyeHeight.load(std::memory_order_relaxed), gEyeViews.load(std::memory_order_relaxed));
 }
 
 } // namespace adapter

@@ -38,6 +38,12 @@ void OnSwapChainPresent(void* swapChain, void* capturedSwapChain) noexcept;
 // panel), as LE1's MevrBridge::WorldUiOwnership in xr_session.cpp's decision. Any thread.
 bool WorldUiOwnsGui(int mode) noexcept;
 
+// Game thread, calcview_hook.cpp's DrawDetour: whether a pass-1 Draw that returned in under 100 us is drawn again in the
+// same frame ([NOOPRETRY]; [Performance] sfrReplayRetry, 1 by default: upstream's behaviour). Such a Draw usually did
+// render, and its retry is then the frame's third scene render (research/sequel-render-levers.md "Performance research").
+// Defined by plugin/RenderLevers in the LE2 host.
+bool SfrReplayRetry() noexcept;
+
 // Halcyon's hotkey polls go through this: MevrSeams::KeyDown in our ASI, the plain poll in an upstream build.
 inline bool HotkeyDown(int vk) noexcept
 {

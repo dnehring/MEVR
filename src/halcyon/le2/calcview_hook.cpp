@@ -1159,7 +1159,14 @@ void __fastcall DrawDetour(void* self, void* viewport, void* canvas) noexcept
         // no-ops too at the same tens-of-us cost, and the success counter stays at zero, which is
         // itself the answer. Only ever ONE retry: a burst that persists across the retry persists
         // for the frame, and re-looping the engine's Draw would trade a flicker for a stall.
+#if defined(MEVR_ASI)
+        // [MEVR] [Performance] sfrReplayRetry = 0: no retry. On our machines a pass 1 under 100 us usually rendered, and the
+        // retry was the frame's third scene render on ~20% of frames (research/sequel-render-levers.md "Performance
+        // research"). The default (1) is upstream's retry.
+        if (us < 100 && ::ME2VR::MevrBridge::SfrReplayRetry())
+#else
         if (us < 100)
+#endif
         {
             g_sfrRetryAttempts.fetch_add(1, std::memory_order_relaxed);
             LARGE_INTEGER r0 = {}, r1 = {};
@@ -1441,6 +1448,13 @@ void* __fastcall CalcViewDetour(void* lp, void* family, void* loc, void* rot, vo
             // shared state; without this, pass 1 (replay) inherits the temporal history pass 0 JUST wrote
             // (different camera = -halfEye), so TAA/motion-blur/temporal effects smear + shake on the right
             // eye while the left (pass 0, always first) stays consistent. Reuses Stereo's two eye states.
+#if defined(MEVR_ASI)
+            // [MEVR] [Performance] perEyeViewState = 0 (research/sequel-render-levers.md "Performance research"): both
+            // passes keep the game's one state, as ME1's gameplay does. With a state per pass the second eye's Umbra
+            // resolve reads queries that live in the other state's pool and polls them for its whole budget (3-5 ms a
+            // frame). The default (1, plugin/RenderLeversTable) is upstream's block below, unchanged.
+            if (::MevrSeams::PerEyeViewState())
+#endif
             {
                 void*& eyeSt = t_replay ? g_eyeState : g_eyeStateLeft;   // pass1=right state, pass0=left state
                 if (eyeSt == nullptr && g_allocViewState != nullptr)
