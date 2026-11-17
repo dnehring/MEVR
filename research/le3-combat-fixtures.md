@@ -336,6 +336,21 @@ What each must show (`holsters-<time>\lines.txt`, `reload-<time>\lines.txt` and 
    status`: `no gun`), the hip grab drawing the pistol again (`drawing the pistol (BioPlayerController.SwitchWeapon; was holstered)`,
    `in hand after N s`), and no stuck state: a power cast, a melee, cover and a reload with the gun away and after, the HUD's weapon
    panel back. Only then make `le3PutAway = 1` ME3's default (ME1's behaviour) and note it in docs/trilogy-plan.md T25.
+4. **The heavy weapon kept** (lane CTL, 2026-11-17; the owner's answer to docs/trilogy-plan.md question 13; unit-tested in
+   `tests/BodySlotsSmgTests.cpp`, never seen in the game: the Normandy's pawn carries nothing). Needs a heavy weapon in hand:
+   one the mission offers as a pickup (use it), or a save made holding one. Then:
+   - the log says once `holsters: a heavy weapon is in hand (<its class>): a grab at a slot is refused while it is ...`, and
+     a snapshot's `"mod"."holsters"` has `"switchLosesHeld": true`;
+   - `make-holster-recording.py --slot shoulder` replayed with `-Inputs` (the assault rifle's slot, closest to where the heavy
+     weapon is held), then `--slot hip`: each `holsters: grab at shoulderRight: the assault rifle stays in its holster: a heavy
+     weapon is in hand and a switch would throw it away ...` (the refusal buzz), no `drawing the ...` line, no
+     `BioPlayerController.SwitchWeapon` in `mevr calltrace 12 switchweapon putdownweapon tossweapon` and the heavy weapon still
+     `Pawn.Weapon` after (`mevr reload status` names it, or the HUD's weapon panel shows it);
+   - `mevr weapon pistol` answers `the pistol wasn't drawn: a heavy weapon is in hand ...`;
+   - the game's own weapon wheel (left trigger, `[Squad] style = native`, or `mevr calltrace` around a pick) still switches
+     away (ME3 then throws the heavy weapon itself, as on a pad), after which `the heavy weapon is out of the hand: grabs at
+     the slots draw again` and a hip grab draws the pistol.
+   A heavy weapon drawn by a grab, or a `SFXHeavyWeapon.PutDownWeapon` in the trace after a grab: the rule failed; report it.
 
 ### The powers and the squad on the first combat save (lane SQ, 2026-11-17)
 

@@ -629,6 +629,61 @@ identical pixel for pixel, the composed eyes 0.91% / 0.58% apart, all of it at t
 call-trace line (numbers masked) is in both logs and no other: the hold opened and closed the wheel
 (`SFXGameModeDefault.EnterPowerWheel` / `ExitPowerWheel`), the tap called nothing.
 
+## The right stick click, the heavy weapon and ME1's refused draw (lane CTL, 2026-11-17)
+
+The owner took the recommendations for FX2's three questions ("All recommendations", 2026-11-17; docs/trilogy-plan.md
+questions 13-15). What each game does now:
+
+| | ME1 | ME2 | ME3 |
+|---|---|---|---|
+| the right stick click on foot (and in the wheels), its hold the power wheel's | still R3 to the game: `ChangeMagnification` (a zoomed scope's step), and Halcyon LE1's double-click recenter reads R3 from the game's pad | kept from the game: no `ShowAreaMap` (tap), no objective radar (hold) | kept from the game: no point of interest, no `ShowAreaMap` |
+| the area map | (ME1's own map screen: the omni-tool's Map entry) | the omni-tool's Map entry (the Mission Computer's `AreaMap` page) | the omni-tool's Map entry |
+| a grab at a slot with a heavy weapon in hand | no heavy weapons | draws (ME2's `SwitchWeapon` keeps the heavy weapon) | refused, the refusal buzz |
+| a grab where the game allows no combat | refused, the refusal buzz (was the draw's click) | refused, the refusal buzz | refused, the refusal buzz |
+
+1. **R3 (question 14).** The click reaches the game through the host's pad merge (`plugin/PadMerge`, `game/GamepadMapping`'s
+   `FromControllers`), not the mod; the mod only says it owns the click (`kFlagModPowerHold`, set by `game/Holsters` on foot and in
+   the two wheels while the hold is the power wheel's). New host-only option `gamepad::Options::keepPowerClick`
+   (`pad_merge::Renderer::keepPowerClick`), set by `plugin/HalcyonSequelBridge` (both sequels): a press that begins while the mod
+   owns the click is kept from the game until it is let go (`Latches::rightClickKept`, decided at the press like the face
+   buttons' RB), and it never reaches the R3 gate (`gateRightClick`), so no tap pulse follows its release. A press that began
+   before (a menu, a conversation) stays the game's until let go. The mod's own hold reads the live controllers, so the power
+   wheel is untouched. The host logs `halcyon bridge: first right stick click kept from the game ...` once. Why ME1 keeps
+   its R3: Halcyon LE1's `DetectRecenterCombo` (`vr_menu.cpp`) reads R3 after the merge, and ME1's R3 is harmless (below);
+   the sequels' Halcyon recenter is a double Back (`me2_menu.cpp` `CheckR3Recenter` reads `XINPUT_GAMEPAD_BACK` in both
+   trees), so nothing of theirs needs R3. Tests: `TestPowerClickKept` in `tests/PowerWheelTests.cpp` (the mapping: hold, tap,
+   ungated, a press keeping its meaning, LE1) and `tests/PadMergeTests.cpp` (the merge with the sequels' and LE1's renderer).
+2. **ME3's heavy weapon (question 13).** `core/ik/BodySlots`' `Input::switchLosesHeld`: with it, a new squeeze at a slot whose
+   gun would be drawn is `Action::SwitchRefused` (nothing on its way, the release sends nothing); a slot whose gun isn't carried
+   stays `Unavailable`. `game/Holsters` sets it on ME3 while `Pawn.Weapon` is an `SFXGame.SFXHeavyWeapon` (ReflectCheck row) and
+   logs the change (`holsters: a heavy weapon is in hand (...): a grab at a slot is refused while it is ...`); `mevr weapon
+   <family>` refuses too. The refusal is ME1's refusal buzz and `holsters: grab at <slot>: the <gun> stays in its holster: a
+   heavy weapon is in hand and a switch would throw it away (SFXHeavyWeapon.PutDownWeapon); the game's weapon wheel switches
+   away`. ME2: its `SFXHeavyWeapon` has no `PutDownWeapon`, `DropGun` or `bTossOnWeaponSwitch` (LExSDKv2's LE2 header) and its
+   `BioPlayerController.SwitchWeapon` only calls `SetWeaponIfAvailable` (FX2's read of its script), so a switch keeps the heavy
+   weapon: no loss, no rule. Unit-tested in `tests/BodySlotsSmgTests.cpp` (four slots, with and without the gun-holding grip, ME2's
+   draw). Not seen in the game: no save here holds a heavy weapon (research/le3-combat-fixtures.md, the weapon checks' item 4).
+3. **ME1's refused draw (question 15).** The draw's `IsCombatEnabled` test (FX2's, sequels only) moved to the shared top of
+   `Draw()`; ME1 reads it through `Engine.PlayerController.PlayerInput` and `SFXGame.BioPlayerInput.IsCombatEnabled` (ME1's
+   ReflectCheck rows existed). ME1's `SFXGameModeDefault.SwitchToWeapon` begins with the same test and returns, so the only change
+   is what the player feels and the log: the refusal buzz instead of the draw's click, `the pistol stays in its holster: the game
+   allows no combat here` instead of `drawing the pistol` and, 3 s later, `the game didn't draw the pistol`; the machine forgets
+   the draw, so the release sends nothing back.
+
+**ME1 at the same pose** (`tools/fake-headset-session.ps1`; before = main 79e97c4a's players' build, after = this landing's;
+sessions `2026-11-17_11-49-58-ctl-le1-before`, `2026-11-17_11-54-31-ctl-le1-after`; the standing replay paused, two snapshots,
+then the pistol drawn, the click tapped and held under `mevr calltrace 15 tryusemappedpower enterpowerwheel exitpowerwheel
+changemagnification`, the pistol at the hip, then `set BioPlayerSquad m_bCombatEnabled False`, the hip grab and `mevr weapon
+pistol`, combat back on and the hip grab again): `hostView` identical (-43.3 / -4.1 / -18.1 uu), the same six layers at the same
+places (the omni-tool target 1.2 mm apart: the drawn arm), both eyes' world layers, the HUD panel, label, wrist piece and target
+identical pixel for pixel, the composed eyes 0.12% / 0.08% of pixels over 32/255 apart, at the target. The holsters' and call
+trace's lines (numbers masked): 30 shared; R3 reached ME1 in both (`ChangeMagnification` at the tap and at the hold), the hold
+opened and closed the power wheel in both; only the combat-off grab differs, as meant: before `drawing the pistol
+(SFXGameModeDefault.SwitchToWeapon(0) ...)`, `the game didn't draw the pistol within 3 s`, the let-go waiting for a draw and
+`the pistol stays out (it's already away, or never came out)`; after `grab at hipRight: the pistol stays in its holster: the
+game allows no combat here ...` and the console's `grab at the console: ...` the same. (`mevr calltrace ... iscombatenabled`
+fills its 600 lines in 2.5 s: the HUD asks it every frame; trace `switchtoweapon` alone.)
+
 ## The reload by hand: the game's side (lane WP, 2026-11-16)
 
 **Off by default since 2026-11-16** (the owner: "putting my left hand to the hip makes no sense ... So don't enable that

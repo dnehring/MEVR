@@ -399,6 +399,10 @@ switching frameworks.
   `TryHolster`, drawn `BioPawn.ActionState == 1`); only holsters draw on every game (the owner, 2026-11-16): on ME2
   `BioPlayerInput.IsCombatEnabled` is answered false inside FireWeapon, TightAim, TryReload and Next/PrevWeapon while the
   weapon is away (one rule, `RefuseGameDraw`); ME3 keeps no holstered state. The module asks `ue3::runtime::Up()`.
+  **The owner's answers of 2026-11-17** (docs/trilogy-plan.md questions 13-15): a grab's draw asks `IsCombatEnabled` first on
+  every game, ME1 included, and a refusal is the refusal buzz; ME3's heavy weapon in hand refuses a grab at a slot (a switch
+  would throw it away: `body_slots::Input::switchLosesHeld`); on the sequels the right stick click the mod owns never reaches
+  the game as R3 (their R3 opens the area map; host-only `gamepad::Options::keepPowerClick`), ME1's R3 still does.
 - LE1 body under the player ([research/29](research/29-body-follow.md), `core/ik/BodyFollow`, `game/BodyFollow`):
   first person, Shepard's whole body (the `Root` subtree; never `God`/`Camera`) turns by what the spine's 30
   degrees can't (the explore pawn faces where it runs) and slides under the view (feet that step after the

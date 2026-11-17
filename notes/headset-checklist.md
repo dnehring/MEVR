@@ -853,10 +853,16 @@ stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs 
   which should be the default.
 - [ ] The right stick click and the holsters' refusals (T25; research/le2-vrik.md "The sequels' controls after the review of
   57ae5b4e", lane FX2 2026-11-17; seen on the fake headset): hold the right stick click: the power wheel opens after 0.3 s and
-  closes when you let go; a quick tap casts nothing (it used to cast the second mapped power). Watch for: the objective radar
-  or the area map coming up with it (the game's own R3 still reaches it: docs/trilogy-plan.md question 14). On the Normandy
-  or in a hub, a grab at the hip gives the short refusal buzz and no gun; in a fight, letting go at the hip gives the same
-  buzz and the gun stays in the hand (ME2 holsters nothing in combat). ME3 the same once it has a combat fixture.
+  closes when you let go; a quick tap casts nothing (it used to cast the second mapped power). Since 2026-11-17 (lane CTL,
+  the owner's answer to docs/trilogy-plan.md question 14) the click no longer reaches the game on foot: neither the tap nor
+  the hold may bring up ME2's area map or objective radar, or ME3's point of interest or area map; the omni-tool's Map entry
+  opens the map. On the Normandy or in a hub, a grab at the hip gives the short refusal buzz and no gun; in a fight, letting
+  go at the hip gives the same buzz and the gun stays in the hand (ME2 holsters nothing in combat). ME3 the same once it has
+  a combat fixture, and there with a heavy weapon in hand (question 13): a grab at any slot gives the refusal buzz and the
+  heavy weapon stays in the hand (never thrown away); the game's weapon wheel still switches away from it.
+- [ ] ME1's refused draw (lane CTL, 2026-11-17, the owner's answer to docs/trilogy-plan.md question 15; seen on the fake
+  headset): on the Normandy (or anywhere ME1 allows no combat) a grab at the hip gives the short refusal buzz, not the draw's
+  click, and nothing comes out; elsewhere the hip grab draws as always.
 - The reload by hand (T26): off by default on ME2 and ME3 since 2026-11-16 (the owner: a hand at the hip makes no sense);
   nothing to test until its gesture is redesigned with the owner. The game's own reload button and its automatic reload
   work as always.

@@ -480,8 +480,13 @@ These unblock the most: almost every other entry gets smaller once they land.
   **The review of 57ae5b4e** (lane FX2, 2026-11-17, research/le2-vrik.md "The sequels' controls after the review of
   57ae5b4e"): ME1's power wheel hold on both sequels (an R3 tap quick-cast power 2 on ME2); a grab where the game allows no
   combat refused (`IsCombatEnabled`); ME2's refused holster felt as a refusal; `ZoomedAimError`'s flag put back in a
-  `__finally`. Run on ME2 before and after. Open: ME3's heavy weapon and the raw R3 (questions 13, 14), ME1's own refused
-  draw (question 15).
+  `__finally`. Run on ME2 before and after. **The owner's answers of 2026-11-17** (questions 13-15, lane CTL,
+  research/le2-vrik.md "The right stick click, the heavy weapon and ME1's refused draw"): the click the mod owns is kept from
+  the game on the sequels (no R3: ME2's area map and radar, ME3's point of interest and area map; the map on the omni-tool's
+  Map entry), ME1's R3 still reaching the game (Halcyon LE1's recenter reads it there, ME1's R3 is a zoomed scope's step);
+  ME3's heavy weapon in hand refuses a grab at a slot (`body_slots::Input::switchLosesHeld`, unit-tested; ME2's switch keeps
+  its heavy weapon); a draw where the game allows no combat is refused with the refusal buzz on every game, ME1 included.
+  ME3's heavy weapon waits for a combat fixture (research/le3-combat-fixtures.md).
 - **Closes when:** a replayed grip at the hip slot draws the pistol and letting go there holsters it, on each sequel.
 - **Waits for:** T05's ME3 combat fixture. Part of ME2's first release (M3.4). **Who:** WP (after C4).
 
@@ -1005,17 +1010,28 @@ Each is asked once. "Today" is what the build does if nobody answers; no default
     follow. Today: the grab switches (and drops it). The options: (a) while a heavy weapon is out on ME3, a grab at a slot is
     refused with the refusal buzz and a log line, and only the game's weapon wheel switches away; (b) the same, but a second
     squeeze within a second switches (a deliberate double grab); (c) keep today's. ME2's heavy weapon stays in its inventory
-    on a switch, so ME2 needs none of this.
+    on a switch, so ME2 needs none of this. **Answered 2026-11-17, the owner ("All recommendations"): (a).** Built (lane
+    CTL): while ME3's `SFXHeavyWeapon` is in hand a grab at a slot is refused with the refusal buzz and a log line
+    (`body_slots::Action::SwitchRefused`; `mevr weapon` refuses too); ME2 keeps its draw (its `SwitchWeapon` keeps the
+    heavy weapon: no loss). Unit-tested; the game check waits for an ME3 combat fixture (research/le3-combat-fixtures.md).
 14. **The raw right stick click on the sequels** (lane FX2, 2026-11-17). The click still reaches the game as R3 (Halcyon's
     double-click recenter reads it; ME1's R3 does nothing in VR). ME2's R3 is `Console_ShowMap` (a tap opens the area map,
     a hold turns the objective radar on); ME3's R3 is `Console_NavAssistanceOrCoverTurn` (every press: a cover turn, a point
     of interest, else `ShowAreaMap`). So the power wheel's hold also brings up the radar on ME2 and, on ME3, may open the
     area map before the wheel. Keep the R3 (today), or keep R3 from the game on foot while the click's hold is the power
-    wheel's (ME1's effect: R3 does nothing there), leaving the area map on the omni-tool's Map entry?
+    wheel's (ME1's effect: R3 does nothing there), leaving the area map on the omni-tool's Map entry? **Answered 2026-11-17,
+    the owner ("All recommendations"): keep it from the game.** Built (lane CTL): on the sequels a press of the click that
+    begins while the mod owns it (`kFlagModPowerHold`: on foot and in the wheels) never reaches the game as R3
+    (`gamepad::Options::keepPowerClick`, set by the sequels' bridge); other modes keep the click. ME1 unchanged: its R3 is
+    `ChangeMagnification` (a zoomed scope's step, no screen) and Halcyon LE1's double-click recenter reads R3 from the
+    game's pad (the sequels' recenter is a double Back). The map: the omni-tool's Map entry on both sequels.
 15. **A refused holster draw on ME1** (lane FX2, 2026-11-17). On the sequels a grab where the game allows no combat (a hub,
     the Normandy) is refused with the refusal buzz. On ME1 the grab buzzes as a draw and nothing comes out
     (`SFXGameModeDefault.SwitchToWeapon` refuses by itself; a warning 3 s later). Give ME1 the sequels' refusal too (one
-    rule), or keep ME1 as it is?
+    rule), or keep ME1 as it is? **Answered 2026-11-17, the owner ("All recommendations"): one rule.** Built (lane CTL): the
+    shared draw asks `BioPlayerInput.IsCombatEnabled` first on every game (what ME1's `SwitchToWeapon` asks), and a refusal
+    is the refusal buzz and `the <gun> stays in its holster: the game allows no combat here`. A haptic and log change on
+    ME1; checked at the same pose.
 
 **Defaults waiting for a seen result and a yes** (not questions yet): `[SquadOrders] place` on the sequels (ME1's is on),
 `[Traversal] cue`, ME3's melee and traversal gestures, the galaxy projector replacing
