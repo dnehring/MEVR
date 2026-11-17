@@ -113,4 +113,45 @@ Case 'preview load requires explicit mode and matching JSON booleans' {
     $s.engineRequests=$true; Reject { Assert-LoadMode $s LE3 $true }
 }
 
+Case 'first-run settings appends are waited out before the freeze; any change during the load still refuses it' {
+    $base = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\build-runner-tests'))
+    $dir = Join-Path $base ([Guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory (Join-Path $dir 'ASI') | Out-Null
+    try {
+        $ini = Join-Path $dir 'ASI\LE2MEVR.ini'; $exe = Join-Path $dir 'MassEffect2.exe'; $log = Join-Path $dir 'LE2MEVR.log'
+        $prep = "[Debug]`r`nopenxrRuntime = C:\synthetic\steamxr_win64.json`r`n"
+        [IO.File]::WriteAllText($ini, $prep); [IO.File]::WriteAllText($exe, 'synthetic exe'); [IO.File]::WriteAllText($log, '')
+        $started = [DateTime]::UtcNow.AddSeconds(-1)
+        # The mod's first tick during launch.ps1's wait: its blocks appended, then its markers.
+        $polls = @{ n = 0 }
+        $settled = Wait-RunModSettings $ini @($log) @{} $started {
+            $polls.n++
+            if ($polls.n -eq 1) { [IO.File]::AppendAllText($ini, "[Controls]`r`nsupportZone = capsule`r`n[Reload]`r`nenabled = 0`r`n") }
+            if ($polls.n -eq 2) { [IO.File]::AppendAllText($log, "hands: calibration pitch 90.0`r`ncolour: profile auto`r`n") }
+        } -TimeoutSeconds 10 -QuietMilliseconds 400 -PollMilliseconds 50
+        Check ($settled.settled -and [IO.File]::ReadAllText($ini).StartsWith($prep + '[Controls]'))
+        # load.ps1 freezes after that: an unchanged run passes.
+        $identity = @(Get-LoadArtifactIdentity @($exe, $ini))
+        Check ($identity.Count -eq 2 -and (Test-LoadArtifactsUnchanged $identity))
+        $complete = [IO.File]::ReadAllText($ini)
+        # During the load: a pure append (another block), an edit of a key, the same length rewritten, another
+        # artifact changed: each one refuses the load.
+        foreach ($change in @(
+            { [IO.File]::AppendAllText($ini, "[Cover]`r`nprotect = 1`r`n") },
+            { [IO.File]::WriteAllText($ini, $complete.Replace('enabled = 0', 'enabled = 1')) },
+            { [IO.File]::WriteAllText($ini, $complete.Replace('capsule', 'CAPSULE')) },
+            { [IO.File]::WriteAllText($exe, 'other exe') })) {
+            & $change
+            Check (-not (Test-LoadArtifactsUnchanged $identity))
+            [IO.File]::WriteAllText($ini, $complete); [IO.File]::WriteAllText($exe, 'synthetic exe')
+            Check (Test-LoadArtifactsUnchanged $identity)
+        }
+        Reject { Test-LoadArtifactsUnchanged @() }
+    } finally {
+        $resolved = [IO.Path]::GetFullPath($dir)
+        if (-not $resolved.StartsWith($base + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Unsafe test cleanup path' }
+        Remove-Item -LiteralPath $resolved -Recurse -Force
+    }
+}
+
 "$count load tests passed"

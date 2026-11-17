@@ -748,3 +748,67 @@ function Test-RunFreshMarker([string]$Path, [string]$Before, [DateTime]$Started,
     $fresh = if ($Before -and $text.StartsWith($Before, [StringComparison]::Ordinal)) { $text.Substring($Before.Length) } else { $text }
     return $fresh.Contains($Marker)
 }
+function Get-RunModLogs([string]$Bin, [string]$Game) {
+    # The mod's log: the game's Logs folder, or its %LOCALAPPDATA% fallback when that isn't writable.
+    @((Join-Path $Bin "Logs\${Game}MEVR.log"), (Join-Path $env:LOCALAPPDATA "MEVR\${Game}MEVR.log"))
+}
+function Get-RunFileStamp([string]$Path) {
+    # Attributes only: the settings file's data is never opened here, so a poll can't make the mod's append fail.
+    $info = New-Object IO.FileInfo($Path)
+    $info.Refresh()
+    if (-not $info.Exists) { throw "Mod settings file missing: $Path" }
+    [pscustomobject]@{ length = $info.Length; writtenUtc = $info.LastWriteTimeUtc }
+}
+function Wait-RunModSettings([string]$Path, [string[]]$Logs, [hashtable]$Before, [DateTime]$Started, [scriptblock]$Guard,
+    [ValidateRange(1, 600)][int]$TimeoutSeconds = 90, [ValidateRange(100, 60000)][int]$QuietMilliseconds = 3000,
+    [ValidateRange(10, 5000)][int]$PollMilliseconds = 250) {
+    # The mod's first tick comes once its engine access is ready, about 2 s after ME2's XR session at the title, and
+    # appends its default blocks to <GAME>MEVR.ini; a block the busy file refused goes in about a second later. Wait for
+    # this launch's settings markers (HandCalibration logs its pitch after its appends and key migrations, Colour its
+    # profile after its own write), then for QuietMilliseconds without a write, before load.ps1 freezes its artifact
+    # hashes. This is no exception for load.ps1: any change during a load still refuses it. Not settled within the
+    # bound: the result says so and the caller warns. Gotcha mod-settings-appended-after-xr-ready.
+    $timer = [Diagnostics.Stopwatch]::StartNew()
+    $markers = @('hands: calibration pitch ', 'colour: profile ')
+    $markerLog = $null; $markersAtMs = $null; $previous = $null
+    $first = Get-RunFileStamp $Path
+    $stamp = $first
+    while ($true) {
+        & $Guard | Out-Null
+        if (-not $markerLog) {
+            foreach ($log in $Logs) {
+                if (@($markers | Where-Object { -not (Test-RunFreshMarker $log $Before[$log] $Started $_) }).Count -eq 0) {
+                    $markerLog = $log; $markersAtMs = $timer.Elapsed.TotalMilliseconds; break
+                }
+            }
+        }
+        $stamp = Get-RunFileStamp $Path
+        $quiet = ([DateTime]::UtcNow - $stamp.writtenUtc).TotalMilliseconds
+        # Two equal looks a poll apart, and the last write QuietMilliseconds old, after the markers.
+        if ($markerLog -and $previous -and $stamp.length -eq $previous.length -and $stamp.writtenUtc -eq $previous.writtenUtc -and
+            $quiet -ge $QuietMilliseconds) {
+            return [pscustomobject]@{ settled = $true; markerLog = $markerLog; markersAtMilliseconds = $markersAtMs
+                waitedMilliseconds = $timer.Elapsed.TotalMilliseconds; quietMilliseconds = $quiet
+                lengthBefore = $first.length; length = $stamp.length; writtenUtc = $stamp.writtenUtc.ToString('o') }
+        }
+        if ($timer.Elapsed.TotalSeconds -ge $TimeoutSeconds) { break }
+        $previous = $stamp
+        Start-Sleep -Milliseconds $PollMilliseconds
+    }
+    [pscustomobject]@{ settled = $false; markerLog = $markerLog; markersAtMilliseconds = $markersAtMs
+        waitedMilliseconds = $timer.Elapsed.TotalMilliseconds; quietMilliseconds = ([DateTime]::UtcNow - $stamp.writtenUtc).TotalMilliseconds
+        lengthBefore = $first.length; length = $stamp.length; writtenUtc = $stamp.writtenUtc.ToString('o') }
+}
+function Format-RunModSettings($Result, [string]$Path) {
+    $name = Split-Path -Leaf $Path
+    $grew = $Result.length - $Result.lengthBefore
+    if ($Result.settled) {
+        return ('mod settings settled: {0} unchanged for {1:0.0} s after this launch''s settings markers ({2}), {3:0.0} s after ' +
+            'the XR marker; {4} bytes, {5} added during the wait') -f $name, ($Result.quietMilliseconds / 1000),
+            (Split-Path -Leaf $Result.markerLog), ($Result.waitedMilliseconds / 1000), $Result.length, $grew
+    }
+    $seen = if ($Result.markerLog) { "seen in $(Split-Path -Leaf $Result.markerLog)" } else { 'not seen' }
+    return ('mod settings did not settle within {0:0} s (this launch''s settings markers {1}; {2} last written {3:0.0} s ago, ' +
+        '{4} bytes added during the wait): a load now may be refused as ''Save or runtime artifact changed during load''') -f
+        ($Result.waitedMilliseconds / 1000), $seen, $name, ($Result.quietMilliseconds / 1000), $grew
+}

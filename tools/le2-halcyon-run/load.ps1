@@ -65,7 +65,7 @@ if (Test-Path -LiteralPath $modpath) {
     $artifacts += $module
 }
 if ($RendererPreview) { $artifacts += Join-Path $bin 'MELE3VR.ini' }
-$artifactIdentity = @($artifacts | ForEach-Object { [pscustomobject]@{ path = $_; sha256 = (Get-FileHash -LiteralPath $_).Hash } })
+$artifactIdentity = @(Get-LoadArtifactIdentity $artifacts)
 $receipt = [ordered]@{ schemaVersion = 1; operation = 'normal-save-load'; game = $Game; holder = $Holder;
     rendererPreview = [bool]$RendererPreview; startedUtc = [DateTime]::UtcNow.ToString('o'); session = $sessionPath; sessionMetadataSha256 = $sessionHash;
     process = $processIdentity; artifacts = $artifactIdentity; save = $Save; saveSha256Before = $hash; expected = $expected;
@@ -129,7 +129,7 @@ try {
     try {
         $receipt.saveSha256After = (Get-FileHash -LiteralPath $Save).Hash
         $receipt.saveUnchanged = $receipt.saveSha256After -eq $hash
-        $receipt.artifactsUnchanged = @($artifactIdentity | Where-Object { (Get-FileHash -LiteralPath $_.path).Hash -ne $_.sha256 }).Count -eq 0
+        $receipt.artifactsUnchanged = Test-LoadArtifactsUnchanged $artifactIdentity
     } catch { $receipt.error = "Final hash verification failed: $($_.Exception.Message)" }
     if (-not $receipt.saveUnchanged -or -not $receipt.artifactsUnchanged) {
         $receipt.passed = $false

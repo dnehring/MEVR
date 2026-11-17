@@ -35,3 +35,6 @@
 * **Create**: [A key binding's exec function reaches the script through ProcessEvent, never through a script call](gotchas/binding-execs-come-through-process-event.md), after lane GR found that ME1's faster-run sprint (2026-11-06) had never started: its skip of StormOn sat in the CallFunction hook, and A's hold calls StormOn from a timer.
 * **Create**: [fpsVR starts SteamVR again after the fake headset is turned off](gotchas/fpsvr-relaunches-steamvr.md), after an ME3 preview run's restore refused the relaunched SteamVR (lane EY).
 * **Create**: [EA's Steam launcher starts MassEffectLauncher suspended](gotchas/ea-steam-launcher-starts-the-launcher-suspended.md), after ME2's and ME3's runner launches failed to adopt "a game that starts twice" (lane RN; it was the suspended launcher).
+
+## 2026-11-17
+* **Create**: [The mod appends its default settings blocks on its first tick, seconds after the XR marker](gotchas/mod-settings-appended-after-xr-ready.md), after four lanes' first ME2 loads after a prep were refused as `Save or runtime artifact changed during load` (lane RN2; 21 of 39 ME2 loads since 2026-11-15).
