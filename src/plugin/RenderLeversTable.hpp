@@ -140,6 +140,15 @@ struct Layout {
     // plugin/Le3SceneCapture hooks the same two functions (two hooks would each bind the target; the ledger's Forks 9).
     bool ownsSceneCaptureHooks = true;
 
+    // ---- Each game's own default for a lever whose best value differs by game (research/sequel-render-levers.md
+    // "Performance research"): what an empty or absent [Performance] key means on this game. ME1's are the values its
+    // levers have always had; a sequel's is its renderer's own behaviour until the owner chooses another.
+    // perEyeViewState: 1 each stereo pass renders through a scene view state of its own (Halcyon ME2's and ME3's SFR
+    // always did); 0 both passes through the game's one state (ME1's gameplay).
+    int perEyeViewStateDefault = 0;
+    int umbraQueryWaitDefault = 1;   // 1 the resolve waits for its query results (the game's own); 0 never
+    int ue3QueryWaitDefault = 1;     // 1 the engine's occlusion reads wait (the game's own); 0 a second render's never do
+
     // Which lever groups are on for this game: the layout was read in this game's own code AND the lever ran in the game
     // (its A/B at the baseline spot, or for the two passive groups a first run with the hooks in). LE1: all
     // (research/22, 32, 35, 37).
@@ -170,6 +179,10 @@ constexpr void TryReadGroups(Layout& l) {
 #if defined(MEVR_RENDER_LEVERS_TRY_HERE)
     l.sceneRendererVerified = l.umbraCommanderVerified = l.boundShaderStateVerified = l.umbraInstanceVerified =
         l.umbraQueriesVerified = true;
+    // umbraShareResults' A/B (research/sequel-render-levers.md "Performance research"): its two rows and the context's
+    // +0x1C8/+0x1CC were read in both games (lanes R2, R3). The group also admits umbraSharedVisibility, which stays at
+    // its default 0 (never set it: research/35 attempt 46).
+    l.umbraSharedVerified = true;
 #else
     (void)l;
 #endif
@@ -195,6 +208,7 @@ inline constexpr char kGameName[] = "LE1";
 inline constexpr Layout kLayout = [] {
     Layout l;
     l.viewStride = 0x11A0;         // 11 functions add or multiply by it
+    l.perEyeViewStateDefault = 1;  // Halcyon ME2's SFR: a state per pass (src/halcyon/le2/calcview_hook.cpp)
     // Ran in ME2 on 2026-11-16 (research/sequel-render-levers.md "ME2: the baseline and the A/Bs", session
     // 20261116-141434-005-LE2-pl-levers): the accounting and the commander's timing; keepBoundShaderStates (161 kept, the
     // reference count 0 -> 1 through the live RHI's slot 0x8A0, RVA 0x2B2640); the query-matrix hook, idle there.
@@ -212,6 +226,7 @@ inline constexpr char kGameName[] = "LE2";
 inline constexpr Layout kLayout = [] {
     Layout l;
     l.viewStride = 0x11B0;         // read in 0x3E5890, 0x3E55C0, 0x3600A0
+    l.perEyeViewStateDefault = 1;  // Halcyon ME3's SFR: a state per pass (src/halcyon/le3/calcview_hook.cpp)
     l.ineligibleShowFlags[1] = 0x47;
     l.ineligibleShowFlags[2] = 0x15;
     l.ineligibleShowFlags[3] = 0x1B;
@@ -326,6 +341,8 @@ static_assert(kViewStride == 0x12F0 && kStateOcclusionHistory == 0xD10 && kRende
     !kLayout.instanceCallAlsoKeepsBooks && !kLayout.captureTakesUmbraBranch && kLayout.umbraCommandGate == 0 &&
     kLayout.ownsSceneCaptureHooks && kLayout.sceneCaptureVerified,
     "LE1's layouts are the measured ones");
+static_assert(kLayout.perEyeViewStateDefault == 0 && kLayout.umbraQueryWaitDefault == 1 && kLayout.ue3QueryWaitDefault == 1,
+    "LE1's lever defaults are the ones its levers have always had");
 #endif
 
 #endif // a game

@@ -1427,6 +1427,13 @@ void* __fastcall CalcViewDetour(void* lp, void* family, void* loc, void* rot, vo
             // through the game's normal Draw, which uses P1's shared state; without this, pass 1
             // inherits the temporal history pass 0 just wrote (different camera), so TAA/motion-blur
             // smear and shake on one eye. Reuses the two eye states the SBS path already allocates.
+#if defined(MEVR_ASI)
+            // [MEVR] [Performance] perEyeViewState = 0 (research/sequel-render-levers.md "Performance research"): both
+            // passes keep the game's one state, as ME1's gameplay does. With a state per pass the second eye's Umbra
+            // resolve reads queries that live in the other state's pool and polls them for its whole budget (3-5 ms a
+            // frame). The default (1, plugin/RenderLeversTable) is upstream's block below, unchanged.
+            if (::MevrSeams::PerEyeViewState())
+#endif
             {
                 void*& eyeSt = t_replay ? g_eyeState : g_eyeStateLeft;   // pass1=right state, pass0=left state
                 if (eyeSt == nullptr && g_allocViewState != nullptr)

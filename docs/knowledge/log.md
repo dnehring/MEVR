@@ -33,3 +33,4 @@
 
 ## 2026-11-16
 * **Create**: [fpsVR starts SteamVR again after the fake headset is turned off](gotchas/fpsvr-relaunches-steamvr.md), after an ME3 preview run's restore refused the relaunched SteamVR (lane EY).
+* **Create**: [EA's Steam launcher starts MassEffectLauncher suspended](gotchas/ea-steam-launcher-starts-the-launcher-suspended.md), after ME2's and ME3's runner launches failed to adopt "a game that starts twice" (lane RN; it was the suspended launcher).

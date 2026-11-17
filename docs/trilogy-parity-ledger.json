@@ -3128,6 +3128,7 @@
     "OnSessionStopped",
     "OnViewBuilt",
     "OverlayLayers",
+    "PerEyeViewState",
     "PerfDraw",
     "PerfFirstEyeCaptured",
     "PerfPresentBegin",
@@ -3371,6 +3372,7 @@
     "OnSessionStopped",
     "OnViewBuilt",
     "OverlayLayers",
+    "PerEyeViewState",
     "PerfDraw",
     "PerfFirstEyeCaptured",
     "PerfPresentBegin",
@@ -3409,6 +3411,7 @@
     "OnSessionStopped",
     "OnViewBuilt",
     "OverlayLayers",
+    "PerEyeViewState",
     "PerfDraw",
     "PerfFirstEyeCaptured",
     "PlacePanel",
@@ -3425,6 +3428,7 @@
     "CineScreenHalfSeparationUU",
     "JournalFloorViewWrite",
     "OnSwapChainPresent",
+    "SfrReplayRetry",
     "WorldUiOwnsGui"
    ],
    "forwarders": [
@@ -3434,6 +3438,7 @@
     "CineScreenHalfSeparationUU",
     "JournalFloorViewWrite",
     "OnSwapChainPresent",
+    "SfrReplayRetry",
     "WorldUiOwnsGui"
    ],
    "usedUndeclared": []
@@ -3464,6 +3469,7 @@
     "OnSessionStopped",
     "OnViewBuilt",
     "OverlayLayers",
+    "PerEyeViewState",
     "PerfDraw",
     "PerfFirstEyeCaptured",
     "PerfPresentBegin",
@@ -3502,6 +3508,7 @@
     "OnSessionStopped",
     "OnViewBuilt",
     "OverlayLayers",
+    "PerEyeViewState",
     "PerfDraw",
     "PerfFirstEyeCaptured",
     "PlacePanel",

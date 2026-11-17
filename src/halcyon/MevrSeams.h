@@ -396,6 +396,12 @@ struct PerfPresentScope
 void PerfFirstEyeCaptured(ID3D11DeviceContext* context) noexcept;
 // Render thread, in each of the renderer's immediate-context draw hooks: one draw call (LE1's ++g_perfDraws).
 void PerfDraw() noexcept;
+// Game thread, in the stereo branch of the renderer's CalcSceneView detour: true while each stereo pass is to render
+// through a scene view state of its own, false while both go through the game's one state ([Performance]
+// perEyeViewState; its default is the game's, plugin/RenderLeversTable: the sequels 1, their SFR's own behaviour;
+// research/sequel-render-levers.md "Performance research"). Defined by plugin/RenderLevers in the LE2 and LE3 hosts.
+// Not called by LE1: its tree asks MELEVR::MevrBridge::PerEyeViewState, the same lever.
+bool PerEyeViewState() noexcept;
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Room left for one-Draw stereo ([Performance] sharePass = 5, research/37) on a sequel: LE1's seams for it are

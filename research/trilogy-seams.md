@@ -24,7 +24,7 @@ They shared 18 names, and of those six differed in signature, so no host module 
 - The host implements a common seam **once for all games** in `src/plugin/Seams.cpp` when the answer is the same
   everywhere; otherwise in that game's bridge, in `namespace MevrSeams { ... }`.
 
-## The common seams (36)
+## The common seams (37)
 
 Signatures are in `src/halcyon/MevrSeams.h`; that header is the reference, with the thread each runs on. "Host" names
 where each game's definition is. `Seams.cpp` means one definition for all three.
@@ -64,6 +64,7 @@ where each game's definition is. `Seams.cpp` means one definition for all three.
 | threads | `OnGameThread()` | Seams.cpp | Seams.cpp | Seams.cpp | all |
 | threads | `QueueProcessEvent(object, function, params, size)` | Seams.cpp | Seams.cpp | Seams.cpp | all |
 | perf (optional) | `PerfPresentBegin(context)`, `PerfPresentEnd(context)`, `PerfFirstEyeCaptured(context)`, `PerfDraw()` | - | HalcyonSequelBridge.cpp | HalcyonSequelBridge.cpp | LE2, LE3 |
+| perf (optional) | `PerEyeViewState()` (game thread, the SFR branch of CalcSceneView: each pass its own scene view state, or both the game's one; `[Performance] perEyeViewState`, research/sequel-render-levers.md "Performance research") | - (LE1's tree asks `MELEVR::MevrBridge::PerEyeViewState`, the same lever) | RenderLevers.cpp | RenderLevers.cpp | LE2, LE3 |
 
 A `-` means that game's host does not define the seam, because its renderer does not call it. Calling it there is a
 link error, which is the intended signal: define it in that game's bridge first.
@@ -86,7 +87,7 @@ The ledger's audit recommended 26 functions. The code showed four places where i
    and the same body; leaving them out would have kept three declarations of each.
 4. **A perf group added (32)**, at lane PL's request: the frame-breakdown probe's steps on the sequels. Optional, behind
    capability `perfSeams`.
-5. **Life-size stereo's plan moved in (35; 36 with lane EY's `EyeImageSize`)**, lane LS (2026-11-16, research/30 section 9): `PlanStereo` and
+5. **Life-size stereo's plan moved in (37 with lane EY's `EyeImageSize` and lane SP's `PerEyeViewState`)**, lane LS (2026-11-16, research/30 section 9): `PlanStereo` and
    `NoteStereoSubmit` with their structs, moved from LE1's `mevr_bridge.h` unchanged but for one field
    (`StereoPlanInput::windowHoldsEyes`, default true: LE1's window is the eyes' union), and `LifeSizeStereo` for the
    sequels' baselines. The render-side edits of the sequels are one header both trees include
@@ -433,11 +434,24 @@ known two-process start: the shared notes' workaround, the save loaded with `mev
 **LE1:** no line LE1 compiles changed in this lane (the files are in the sequel hosts' lists only), so no same-pose pair; its
 frame order is read from `src/halcyon/le1/xr_session.cpp` (`OnFrameBegun`, then `DoRecenter`, then `OverlayLayers`).
 
-**Found:** `plugin/HandReticle` falls back to the right controller's aim pose whenever the mod's aim ray is over 1 s old,
-also after the mod has published one: a stalled game thread in game mode 0 moves the ring from the gun's line to the
-controller's for the stall, on all three games (seen on ME3 above; ME3's removed `weaponsNeedPublishedAim` used to hide
-it). One shared fix, if wanted: fall back only before the mod's first ray (`sequence == 0`), else hide; it touches LE1's
-host, so it needs an LE1 same-pose pair.
+**Found, and fixed for all three games:** `plugin/HandReticle` fell back to the right controller's aim pose whenever the
+mod's aim ray was over 1 s old, also after the mod had published one: a stalled game thread in game mode 0 moved the ring
+from the gun's line to the controller's for the stall, on all three games (seen on ME3 above; ME3's removed
+`weaponsNeedPublishedAim` used to hide it). Since commit dd8e0ca8 (the coordinator's follow-up, 2026-11-16) the ring
+reads the mod's last ray whatever its age (`aim_ray::Latest(UINT64_MAX)`): through a stall it stays where the mod last
+aimed it, or stays hidden if the mod's last ray was no aim; the controller's aim pose is the fallback only before the mod's
+first ray (`sequence == 0`: an older mod, or a host and mod that don't match). Log `overlays: the mod's aim ray stopped
+coming ...` / `... comes again`.
+- LE1 pair (sessions `2026-11-16_18-37-59-u3-before`, build at `ad0db88c`, and `2026-11-16_18-41-55-u3-after`, at `dd8e0ca8`;
+  hands replayed with the right grip held, `mevr weapon pistol`, snapshots live, then with the world `pause`d): live, both
+  have the same layers (`hud`, `label`, `wrist`, `gun`, `reticle`) and the same view offset, the ring 10.55 m out on the gun's
+  line (a few centimetres apart, the pistol's idle sway, as between two frames of one run); paused, LE1's mod keeps sending
+  a ray ("no aim" while paused), so no stall: no ring in either, and the HUD panel, both eyes and the wrist piece are
+  identical pixel for pixel.
+- ME3 (session `20261116-184546-351-LE3-u3-le3b`, Save 31, the same sequence): the Back double tap did not stall the game
+  this time, so the stall case was not seen again; the ring stayed hidden on the mod's "no aim" (`overlays: reticle hidden
+  (the mod reports no aim ray)`), the recenter line again 1 engine tick (14.7 ms), our menu alone over the world. The stall
+  case itself is covered by the code: no age test is left between the mod's last ray and the ring.
 
 ## State
 
