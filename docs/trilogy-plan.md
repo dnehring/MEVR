@@ -476,10 +476,10 @@ These unblock the most: almost every other entry gets smaller once they land.
 
 #### T33 Traversal: vault, climb, ladder, evade [sequel-only; Forks 4]
 - **State:** LE1 n/a · LE2 build · LE3 build
-- **Lives in:** `core/vr/Traversal`, `game/Traversal` (ME2's observer in an `#if`), `game/Le3Traversal.cpp`,
-  `plugin/TraversalCue`.
-- **Left:** ME2's block moves to `game/Le2Traversal.cpp` behind the interface ME3's uses, both on `ActionLifecycle`; the
-  admission stays per game. **ME2:** the owner's choices ([question 3](#open-owner-questions)); arm IK across the move
+- **Lives in:** `core/vr/Traversal`, `game/Traversal` (settings, commands, dispatch), `game/Le2Traversal.cpp` (ME2's
+  observer since 2026-11-16), `game/Le3Traversal.cpp`, `plugin/TraversalCue`.
+- **Left:** ~~ME2's block moves to `game/Le2Traversal.cpp`~~ done 2026-11-16 (GF2, ledger Forks 4 step 1); both observers
+  on `ActionLifecycle` (steps 2 and 3); the admission stays per game. **ME2:** the owner's choices ([question 3](#open-owner-questions)); arm IK across the move
   (T21). **ME3:** ladders need a lifecycle of their own (the shared kinds are None, Vault, ClimbUp); a stable horizon
   and camera hand-back; no traversal in authored seated scenes (rule 10); every gesture is opt-in until seen.
 - **Closes when:** `tools/le2-halcyon-run/vault.ps1` still vaults three times on ME2 after the move, and an ME3 fixture

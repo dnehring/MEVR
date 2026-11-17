@@ -135,6 +135,7 @@
     "game/HudPieces",
     "game/Interact",
     "game/InventoryProbe",
+    "game/Le2Traversal",
     "game/Le3GalaxyCapture",
     "game/Le3GalaxyRetention",
     "game/Le3Traversal",
@@ -379,6 +380,7 @@
     "game/HudPieces",
     "game/Interact",
     "game/InventoryProbe",
+    "game/Le2Traversal",
     "game/Le3GalaxyCapture",
     "game/Le3GalaxyRetention",
     "game/Le3Traversal",
@@ -620,6 +622,7 @@
     "game/HudPieces",
     "game/Interact",
     "game/InventoryProbe",
+    "game/Le2Traversal",
     "game/Le3GalaxyCapture",
     "game/Le3GalaxyRetention",
     "game/Le3Gui",
@@ -2055,6 +2058,29 @@
    },
    "namespace": "game::inventory_probe"
   },
+  "game/Le2Traversal": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    }
+   },
+   "namespace": "game::traversal::le2"
+  },
   "game/Le3GalaxyCapture": {
    "games": {
     "LE1": {
@@ -2797,7 +2823,7 @@
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "ungated"
     },
     "LE2": {
      "legacy": false,
@@ -2809,7 +2835,7 @@
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "ungated"
     }
    },
    "namespace": "game::traversal"

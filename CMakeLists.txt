@@ -547,6 +547,8 @@ set(MEVR_MOD_SOURCES
     src/game/Thespian.hpp
     # Vaulting and climbing (research/le2-traversal.md): ME2's own move on the double A, measured and presented.
     src/game/Traversal.cpp
+    src/game/Le2Traversal.cpp
+    src/game/Le2Traversal.hpp
     src/game/Le3Traversal.cpp
     src/game/Traversal.hpp
     src/core/vr/Traversal.cpp

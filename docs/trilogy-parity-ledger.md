@@ -331,10 +331,16 @@ Each item: the copies, then what unifying would take. Line counts are as of `cca
        `Le3GalaxyCapture` both call;
      - then docs/galaxy-projector-handoff.md "Remaining work" 5: ME1's flow on ME2 with ME2's native adapter.
 4. **Traversal's native observer.**
-   - Copies: `game/Le3Traversal.cpp` (626 lines) and the `#if defined(MEVR_GAME_LE2)` block of `game/Traversal.cpp`.
+   - Copies: `game/Le3Traversal.cpp` (626 lines) and ME2's observer, `game/Le2Traversal.cpp` (until 2026-11-16 the
+     `#if defined(MEVR_GAME_LE2)` block of `game/Traversal.cpp`).
+   - **Step 1 done 2026-11-16 (lane GF2):** ME2's block moved unchanged to `game/Le2Traversal.cpp` behind
+     `traversal::le2` (`Le2Traversal.hpp`, the shape of `Le3Traversal.hpp`: `TryStartup`, `Tick`, `Moving`, `StatusJson`,
+     `LogStats`, `Command`, `Shutdown`). `game/Traversal.cpp` keeps the settings, the one command surface and the dispatch;
+     `traversal::Moving()` means what it did. Checked: the three builds, ctest, ME2's vault fixture 3 of 3 before and after
+     (sessions `20261116-153741-665-LE2-gf2-run2`, `20261116-173826-670-LE2-gf2-run4`), LE1's same-pose run (identical).
    - Both watch the camera update and the custom action's start and end over `core/vr/Traversal`. Only LE3 uses
      `ActionLifecycle`/`AuthoredYaw`.
-   - **To unify:** move LE2's block to `game/Le2Traversal.cpp` behind the `traversal::le3` interface, and put both on
+   - **To unify:** ~~move LE2's block to `game/Le2Traversal.cpp`~~ (step 1, done), and put both on
      `ActionLifecycle`. Keep the per-game admission: `CanPerformMantle`/`MantleCover` on ME2; ladders and evade on ME3.
    - **Still open (lane GF looked, 2026-11-16).** The two are not one observer written twice. ME2's polls the
      controller's `CurrentCustomAction` byte (`Observe`, `BeginMove`/`EndMove`, a `Move` record with the level view, the
@@ -588,9 +594,9 @@ defined in the tool's header:
 <!-- parity:summary -->
 | game | renderer | host plugin files | host core files | services served | src/game + src/engine modules by status | common seams called | own seams |
 |---|---|---|---|---|---|---|---|
-| LE1 | halcyon-le1 | 73 | 71 | 58 | run 67, out 4, ungated 23, unbuilt 4 | 20 of 33 | 91 |
-| LE2 | halcyon-le2 | 67 | 56 | 49 | run 41, ready 10, out 20, ungated 21, unreferenced 2, unbuilt 4 | 31 of 33 | 4 |
-| LE3 | halcyon-le3 | 70 | 56 | 49 | run 42, ready 10, out 19, ungated 22, unreferenced 2, unbuilt 3 | 31 of 33 | 2 |
+| LE1 | halcyon-le1 | 73 | 71 | 58 | run 67, out 4, ungated 24, unbuilt 4 | 20 of 33 | 91 |
+| LE2 | halcyon-le2 | 67 | 56 | 49 | run 42, ready 10, out 20, ungated 21, unreferenced 2, unbuilt 4 | 31 of 33 | 4 |
+| LE3 | halcyon-le3 | 70 | 56 | 49 | run 42, ready 10, out 19, ungated 23, unreferenced 2, unbuilt 3 | 31 of 33 | 2 |
 <!-- /parity:summary -->
 
 ### Host plugin files per game
@@ -859,6 +865,7 @@ Helpers applied, in order:
 | `game/HudPieces` | ungated | run | ungated |
 | `game/Interact` | run | run | run |
 | `game/InventoryProbe` | run | unreferenced | unreferenced |
+| `game/Le2Traversal` | out | run | out |
 | `game/Le3GalaxyCapture` | ungated | ungated | ungated |
 | `game/Le3GalaxyRetention` | out | out | run |
 | `game/Le3Gui` | unbuilt | unbuilt | run |
@@ -891,7 +898,7 @@ Helpers applied, in order:
 | `game/SystemSettings` | ungated | ungated | ungated |
 | `game/Thespian` | run | run | run |
 | `game/Throwables` | run | out | out |
-| `game/Traversal` | out | run | out |
+| `game/Traversal` | ungated | run | ungated |
 | `game/UiWorldFigure` | run | out | out |
 | `game/Vent` | run | out | out |
 | `game/ViewAnchor` | ungated | ungated | ungated |
