@@ -529,7 +529,11 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Lives in:** `engine/CoverAcquire`, `game/VrCover`, `core/vr/VrCover`, `game/Posture`; ME3's facts in
   `game/Le3Cover.inc`.
 - **Left, ME2:** recheck crouch, protection and the vault on the current build with standing and seated calibration.
-  **ME3:** no-snap is only a diagnostic opt-in, and the damage rule and crouch have no in-game result.
+  **ME3:** no snapping by default since 2026-11-17 (lane FP3: `[Hands] noCover`, ME1's and ME2's key and default; VR cover's
+  real-slot damage rule follows it, every answer logged; research/trilogy-first-person.md section 2), but neither has an
+  in-game result (Save 31 has no cover): research/le3-combat-fixtures.md "First on the combat save". The HUD's cover prompt
+  isn't hidden yet (ME2's `ShowCoverWidget` follow-up; ME3's `SFXGUIInteraction.ShowCoverWidget`). The crouch has no
+  in-game result either.
 - **Closes when:** `mevr cover hit` shows no damage covered and full damage exposed, and A never snaps, on each sequel.
   ME2 also: the shields' wait before recharging is two thirds behind cover (`mevr cover regen`), whole exposed (the faster
   recharge, granted 2026-11-16 and built by lane GR: research/23 section 7.5; ME1 and ME3 have no such rule).
@@ -960,7 +964,7 @@ Each is asked once. "Today" is what the build does if nobody answers; no default
     reaching it passes the pistol's right hip; the thigh is in view and clear of the pistol.
 
 **Defaults waiting for a seen result and a yes** (not questions yet): `[SquadOrders] place` on the sequels (ME1's is on),
-`[Traversal] cue`, ME3's melee and traversal gestures, ME3's no-snap (a diagnostic opt-in), the galaxy projector replacing
+`[Traversal] cue`, ME3's melee and traversal gestures, the galaxy projector replacing
 the flat presentation, `exploreStance` and `steadyIdle` on ME1.
 
 ## Where the old plans' items went

@@ -874,6 +874,9 @@ stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs 
   until K). Check: no head or hair in view, no shoulders in front of the eyes once the controllers are tracked, the eye at
   your height walking up to a wall or a railing and backing into one (the view must not jump back toward the body), the
   stick not tilting the view up or down, conversations still on the cinema screen.
+- [ ] No cover snapping (T31; research/le3-combat-fixtures.md "First on the combat save"): on a mission next to cover, A
+  doesn't snap Shepard into it; crouching behind it, hits from beyond it don't hurt, standing in the open they do. The
+  game's "take cover" prompt may still show (not hidden on ME3 yet): report it if it does.
 - [ ] Hands and the gun (T21, T22; research/le3-body-pose.md): the raw controller against Shepard's hand (place, twist,
   reach), the gun in the grip, the two-handed support, standing and seated.
 - [ ] Sights (T24): the eye box of the dot and the scope per weapon and optic mod.

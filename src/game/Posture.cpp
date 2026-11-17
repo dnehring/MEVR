@@ -140,6 +140,12 @@ ue3::FieldRef gWantsToCrouch{"Engine.Pawn", "bWantsToCrouch", ue3::kEveryGame};
 ue3::FunctionRef gLe3FindCover{"SFXGame.SFXGameModeDefault.FindCover", ue3::kEveryGame};
 ue3::FunctionRef gLe3AcquireCover{"SFXGame.SFXGameModeDefault.TryAcquireCover", ue3::kEveryGame};
 bool gLe3NoSnapReady = false;
+bool gLe3NoCover = true;  // this tick's [Hands] noCover (or `mevr cover snap`): FindCover's answer inside TryAcquireCover
+unsigned gLe3Looked = 0;                // FindCover answers inside TryAcquireCover that had found nothing anyway (heartbeat)
+std::uint64_t gLe3LastRefusalMs = 0;
+std::uint64_t gLe3LastRefusalLogMs = 0;
+bool gLe3ToldRefusal = false;
+ue3::ClassRef gCoverLinkClass{"Engine.CoverLink", ue3::kEveryGame};  // `mevr cover links`
 ue3::FieldRef gWorldInfo{"Engine.Actor", "WorldInfo", ue3::kEveryGame};
 Link gLink;
 std::uint64_t gLinkTime = 0, gGeneration = 0;
@@ -292,13 +298,29 @@ bool HostMovement() {
         gLink.sceneGeneration && gLink.controlsAllowed && gLink.controlsAllowed();
 }
 void OnLe3FindCover(ue3::Object* context, ue3::Function*, ue3::Function* caller, std::uint8_t*, void* result) {
-    if (!gNoCoverOverride.value_or(false) || !gLe3NoSnapReady || !vr_cover::CandidateReady() || !HostMovement() ||
-        caller != gLe3AcquireCover.Get() || !result) return;
+    if (!gLe3NoCover || !gLe3NoSnapReady || !HostMovement() || caller != gLe3AcquireCover.Get() || !result) return;
     std::string why;
     auto const game = ReadGame(why);
     if (!game || context != game->mode || !NativeMovement(*game)) return;
     auto* const found = static_cast<std::uint32_t*>(result);
-    if (*found) { *found = 0; ++gRefusedEntries; ++gRefusedTotal; write_journal::Wrote("Posture.LE3.FindCover", found); }
+    if (*found == 0) { ++gLe3Looked; return; }
+    *found = 0;
+    write_journal::Wrote("Posture.LE3.FindCover", found);
+    ++gRefusedTests;
+    std::uint64_t const now = GetTickCount64();
+    if (now - gLe3LastRefusalMs <= 250) return;  // the same press asking again (bWideCheck)
+    gLe3LastRefusalMs = now;
+    ++gRefusedEntries;
+    ++gRefusedTotal;
+    if (now - gLe3LastRefusalLogMs > 2000) {  // a sprint against cover asks again and again: the heartbeat counts the rest
+        gLe3LastRefusalLogMs = now;
+        std::optional<ue3::Vector> const at = gLocation.Read<ue3::Vector>(game->pawn);
+        log::Info("posture: refused a cover entry: SFXGameModeDefault.FindCover found cover for TryAcquireCover (A, or a sprint "
+                  "into cover), answered false ([Hands] noCover: no snapping in VR); Shepard stays at ({:.0f}, {:.0f}, {:.0f}){}",
+            at ? at->x : 0.0f, at ? at->y : 0.0f, at ? at->z : 0.0f,
+            gLe3ToldRefusal ? "" : "; A's other uses untouched, cover already taken is left to the game");
+        gLe3ToldRefusal = true;
+    }
 }
 #endif
 
@@ -417,9 +439,11 @@ void OnShowCoverWidget(ue3::Object* context, ue3::Function* /*function*/, void* 
 // The cover side, each tick with a game.
 void TickCover(Game const& game, bool active, bool noCover, double deltaSeconds) {
 #if defined(MEVR_GAME_LE3)
-    (void)noCover; (void)deltaSeconds;
-    // Explicit diagnostic opt-in only until native protection/slot/collision acceptance.
-    gRefusingCover = active && gNoCoverOverride.value_or(false) && gLe3NoSnapReady && vr_cover::CandidateReady() && engine::call_function::Installed();
+    (void)deltaSeconds;
+    // No cover snapping in VR, ME1's and ME2's [Hands] noCover (the owner, 2026-11-14: "We won't snap to cover for VR"):
+    // FindCover answered false inside the player's mode's TryAcquireCover (OnLe3FindCover, a CallFunction handler: Mod.cpp
+    // puts the hook in while RefusingCover()). VR cover (game/vr_cover, Le3Cover.inc) judges the player's cover meanwhile.
+    gRefusingCover = active && noCover && gLe3NoSnapReady;
     gInCover = InCover(game.pawn);
     return; // Existing native cover is never forcibly exited; acquire refusal acts before new entry.
 #endif
@@ -786,6 +810,7 @@ void Tick(double deltaSeconds, Link const& link) {
 #if defined(MEVR_GAME_LE3)
     gLink = link;
     gLinkTime = GetTickCount64();
+    gLe3NoCover = noCover;
 #endif
     if (!gStarted) {
         engine::cover_acquire::Refuse(nullptr);
@@ -904,6 +929,12 @@ void LogStats() {
     }
     gPromptsShown = gPromptsHidden = gAcquireLooked = 0;
 #endif
+#if defined(MEVR_GAME_LE3)
+    if (gLe3Looked > 0) {
+        log::Info("    posture: this period TryAcquireCover's FindCover found nothing {} times", gLe3Looked);
+    }
+    gLe3Looked = 0;
+#endif
     gRefusedTests = gRefusedEntries = gExits = gCrouches = gStands = gExternal = 0;
 }
 
@@ -958,6 +989,11 @@ void Shutdown(bool processExiting) {
     gPromptsShown = gPromptsHidden = 0;
     gPromptsHiddenTotal = 0;
     gToldPrompt = false;
+#endif
+#if defined(MEVR_GAME_LE3)
+    gLe3Looked = 0;
+    gLe3LastRefusalMs = gLe3LastRefusalLogMs = 0;
+    gLe3ToldRefusal = false;
 #endif
 #if !defined(MEVR_GAME_LE3)
     if (!processExiting && gArbiter.Owns() && gShouldCrouch != nullptr && ue3::runtime::Up()) {
@@ -1026,8 +1062,9 @@ std::string CoverConsole(std::string_view args) {
             return "usage: mevr cover snap on|off|auto";
         }
 #if defined(MEVR_GAME_LE3)
-        return std::format("posture LE3: real-slot cover candidate {}; no native cover exit; runtime acceptance pending",
-            gNoCoverOverride.value_or(false) ? "requested (requires fresh ownership and complete adapter metadata)" : "disabled");
+        return std::format("posture LE3: the game's cover snapping {} until the mod reloads (refused only on foot with the host's "
+                           "controls fresh; cover already taken is left to the game); VR cover's real-slot damage rule follows it",
+            gNoCoverOverride ? (*gNoCoverOverride ? "refused" : "allowed") : "as [Hands] noCover says");
 #endif
         return std::format("posture: the game's cover snapping {} until the mod reloads", gNoCoverOverride ? (*gNoCoverOverride ? "refused" : "allowed")
                                                                                                          : "as [Hands] noCover says");
@@ -1058,7 +1095,7 @@ std::string CoverConsole(std::string_view args) {
     if (sub == "where") {
         return "mevr cover where: " + where();
     }
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     if (sub == "links") {
         // `mevr cover links [n]`: the nearest n (8) CoverLink actors to Shepard, for standing next to cover.
         int count = 8;
@@ -1106,6 +1143,30 @@ std::string CoverConsole(std::string_view args) {
         return std::format("mevr cover acquire: TryAcquireCover returned {} (FindPlayerCover refused {} times, found nothing {} times); "
                            "before: {}; after: {}",
             took ? "TRUE" : "FALSE", gRefusedTests - refusedBefore, gAcquireLooked - lookedBefore, before, where());
+#elif defined(MEVR_GAME_LE3)
+        // `mevr cover acquire [wide]`: the player's mode's SFXGameModeDefault.TryAcquireCover(bWideCheck, bTestOnly = true)
+        // through ProcessEvent, what A asks next to cover, as a test only (the game acquires nothing): its answer, and whether
+        // the refusal's handler saw its FindCover (refused, or found nothing).
+        ue3::Function* const tryAcquire = gLe3AcquireCover.Get();
+        if (tryAcquire == nullptr || game->mode == nullptr) {
+            return "mevr cover acquire: SFXGameModeDefault.TryAcquireCover or the player's mode not found";
+        }
+        std::string option;
+        words >> option;
+        bool const wide = option == "wide";
+        ue3::Params parms(ue3::runtime::Get(), tryAcquire);
+        if (!parms.SetBool("bWideCheck", wide) || !parms.SetBool("bTestOnly", true)) {
+            return "mevr cover acquire: TryAcquireCover's parameters bWideCheck/bTestOnly not found";
+        }
+        std::string const before = where();
+        unsigned const refusedBefore = gRefusedTests;
+        unsigned const lookedBefore = gLe3Looked;
+        ue3::runtime::Call(game->mode, tryAcquire, parms);
+        std::optional<bool> const took = parms.ReturnBool();
+        return std::format("mevr cover acquire: TryAcquireCover({}, test only) returned {} (FindCover refused {} times, found nothing "
+                           "{} times; the refusal {}); before: {}; after: {}",
+            wide ? "wide" : "narrow", took ? (*took ? "TRUE" : "FALSE") : "?", gRefusedTests - refusedBefore, gLe3Looked - lookedBefore,
+            gLe3NoCover ? "on" : "off", before, where());
 #else
         return "mevr cover acquire: ME2 only (ME1 takes cover by itself: its test is engine/CoverAcquire's)";
 #endif

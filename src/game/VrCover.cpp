@@ -148,8 +148,9 @@ constexpr char kBlock[] =
 #elif defined(MEVR_GAME_LE3)
 constexpr char kBlock[] =
     "\n[Cover]\n"
-    "; LE3 real-slot candidate: explicit mevr cover snap off is additionally required.\n"
-    "; Shared head-cover judgment; qualified native slots retain the game's damage rules.\n"
+    "; VR cover (research/23 section 6): the game never snaps you into cover in VR ([Hands] noCover). With protect = 1, a hit\n"
+    "; counts as taken in cover when your head is hidden from the shooter by something within reachM (metres) of your eyes and\n"
+    "; an authored cover slot of the game's stands there: that slot's own damage rules apply. log = 1 logs every hit judged.\n"
     "protect = 1\nreachM = 1.2\nlog = 0\n";
 #else
 constexpr char kBlock[] =
@@ -864,6 +865,14 @@ void LogStats() {
                   "judged: {} in the open, {} without a hostile, {} hidden only by far things; {} waits measured, last: {}; now: {}",
             r.asked, r.answered, r.gameCover, r.exposed, r.noHostile, r.noCloseCover, r.waits, gLastWait, gShelter.text);
         gLoggedRechargeCounts = r;
+    }
+#endif
+#if defined(MEVR_GAME_LE3)
+    if (gLe3Borrowed != gLe3LoggedBorrowed || gLe3NoSlot != gLe3LoggedNoSlot) {
+        log::Info("vr cover: LE3 since the start: {} covered hits answered through a real cover slot (the game's cover rules), {} "
+                  "covered hits with no qualified slot (the game's full damage)", gLe3Borrowed, gLe3NoSlot);
+        gLe3LoggedBorrowed = gLe3Borrowed;
+        gLe3LoggedNoSlot = gLe3NoSlot;
     }
 #endif
     if (gCounts.judged == gLoggedCounts.judged && gCounts.gameCover == gLoggedCounts.gameCover) {

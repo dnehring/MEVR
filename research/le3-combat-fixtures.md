@@ -255,6 +255,29 @@ records; the chapter save is `Biop_End001` (London, the injured Shepard's mode) 
 **no ME3 combat fixture on this machine yet**: the Citadel range route and the LegendSave audit above stay the next step, and
 every ME3 weapon check (holsters, the put-away, only holsters draw, the reload by hand) waits for it.
 
+### First on the combat save: VR cover and no cover snapping (lane FP3, 2026-11-17)
+
+**VR cover on ME3: covered = no damage, exposed = full damage, as ME2's `mevr cover hit` check.** Since lane FP3 ME3 refuses
+the game's cover snapping by default (`[Hands] noCover = 1`, ME1's and ME2's key and default; the owner's rule 7), and with it
+VR cover's damage rule is on by default too (`game/Le3Cover.inc`: it answers `IsInCover` only while the snapping is refused).
+Neither was seen in a fight: Save 31 is the Normandy, with no hostile and (the run's `mevr cover links`) no reachable cover
+(research/trilogy-first-person.md). ME3 has no synthetic hit (`mevr cover hit` says so): the check takes real enemy fire. In
+the same renderer-preview stretch, before anything else, with a replay that holds tracked hands (`make-walk-recording.py
+--hands view --plan stand:600`, `replay.ps1 -Inputs`: the refusal needs the host's controls fresh):
+
+1. `mevr cover links 6`: an authored cover within a few metres; walk there (`set` the pawn's place or a stick plan).
+2. Next to it: `mevr cover acquire wide` must answer `TryAcquireCover(wide, test only) returned FALSE (FindCover refused 1
+   times ...)` and the log `posture: refused a cover entry: SFXGameModeDefault.FindCover found cover for TryAcquireCover ...
+   ([Hands] noCover: no snapping in VR)`; a replayed A there (a plan's `a` segment) leaves Shepard where he stands (`mevr cover
+   where`: `in cover no`). `mevr cover snap on` then the same A: Shepard snaps (the A/B); `mevr cover snap auto` back.
+3. Crouched behind that cover (a plan's `crouch` segment) with the enemy beyond it: each hit logs `vr cover: LE3 answered
+   IsInCover TRUE for this hit through <CoverLink> slot <n>: the game's own cover rules decide the damage` and the shields and
+   health don't move (the HUD, or `vr cover:` heartbeat's counts); standing in the open: `vr cover: a hit from ... in the open`
+   lines, no `answered` line, and the damage the game deals anyway. A covered hit with `no authored cover slot within reachM
+   qualified` is the game's full damage: note where it stood.
+4. Any fault, a `call function:` warning, damage taken while the line says TRUE, or no damage in the open: make the rule
+   opt-in again (Le3AnswerCover's gate) and report to the coordinator before anything else.
+
 ### The weapon checks to run on the first combat save (lane WP's list)
 
 The owner makes an ME3 save in combat (2026-11-17). With it, in one renderer-preview stretch (`<career>` and `<file>` the

@@ -1795,6 +1795,10 @@ std::optional<std::string> RunOursLe3(ue3::Object* pc, std::string const& line) 
         if (word == "prefix") return squad_context::Prefix();
         return squad_context::Block("", word, ini::Number(ago).value_or(0.5));
     }
+    // VR cover and the cover snapping's refusal (`mevr cover [snap on|off|auto | where | acquire [wide] | links [n]]`), and the
+    // game camera against the pawn tick by tick (`mevr camera trace <seconds> [label]`): ME2's lines (lane FP3, 2026-11-17).
+    if (verb == "cover") { std::string rest; std::getline(words, rest); return vr_cover::Console(rest); }
+    if (verb == "camera") { std::string rest; std::getline(words, rest); return camera_probe::Command(rest); }
     if (verb == "weapon") { std::string which; words >> which; return holsters::DrawByName(which); }  // a carried weapon by family
     if (verb == "reload") { std::string rest; std::getline(words, rest); return reload::Command(rest); }
     if (verb == "omni") { std::string which; words >> which; return game_menu_request::Inject(which); }
@@ -1803,7 +1807,7 @@ std::optional<std::string> RunOursLe3(ue3::Object* pc, std::string const& line) 
         std::string rest; std::getline(words, rest);
         return verb == "guimouse" ? gui_cursor::Command(rest) : gui_cursor::KeyCommand(rest);
     }
-    return std::string("unknown on ME3: mevr load <career> <save name> <index> <type> | mevr savedesc | mevr state | mevr weaponprobe | mevr galaxy state | mevr melee | mevr traversal | mevr powerwheel | mevr place ... | mevr squad | mevr say ... | mevr order ... | mevr context | mevr weapon <family> | mevr reload | mevr omni | mevr omnitool | mevr guimouse | mevr guikey | mevr thespian");
+    return std::string("unknown on ME3: mevr load <career> <save name> <index> <type> | mevr savedesc | mevr state | mevr weaponprobe | mevr galaxy state | mevr melee | mevr traversal | mevr powerwheel | mevr place ... | mevr squad | mevr say ... | mevr order ... | mevr context | mevr weapon <family> | mevr reload | mevr omni | mevr omnitool | mevr guimouse | mevr guikey | mevr thespian | mevr cover | mevr camera trace");
 }
 #endif
 #endif // shared sequel save/state requests

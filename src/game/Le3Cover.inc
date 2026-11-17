@@ -125,6 +125,24 @@ std::optional<vc::SlotState> Le3QualifySlot(ue3::Object* pawn) {
     }
     return selected;
 }
+// Every answer, plainly (the coordinator's condition for the default, 2026-11-17): a hit judged covered either borrows a real
+// slot (the game's cover rules: no damage from the slot's front) or finds none (the game's full damage). At most a line every
+// 0.5 s; LogStats counts them all.
+unsigned gLe3Borrowed = 0, gLe3NoSlot = 0, gLe3LoggedBorrowed = 0, gLe3LoggedNoSlot = 0;
+std::uint64_t gLe3AnswerLogMs = 0;
+void Le3LogAnswer(bool borrowed, ue3::Object* link, int index) {
+    ++(borrowed ? gLe3Borrowed : gLe3NoSlot);
+    std::uint64_t const now = GetTickCount64();
+    if (now - gLe3AnswerLogMs < 500) return;
+    gLe3AnswerLogMs = now;
+    if (borrowed) {
+        log::Info("vr cover: LE3 answered IsInCover TRUE for this hit through {} slot {}: the game's own cover rules decide the "
+                  "damage; {}", ue3::runtime::Get().NameText(link), index, gLast);
+    } else {
+        log::Info("vr cover: LE3 judged this hit covered but no authored cover slot within reachM qualified: answered nothing, "
+                  "the game's full damage; {}", gLast);
+    }
+}
 bool Le3AnswerCover(ue3::Object* context, ue3::Function*, ue3::Function* caller, std::uint8_t* locals, void* result) {
     auto* frame = Le3Frame();
     if (!frame || gLe3Depth >= gLe3Frames.size() || frame->object != context || !locals || !result || caller != gDamageFn.Get() ||
@@ -135,7 +153,11 @@ bool Le3AnswerCover(ue3::Object* context, ue3::Function*, ue3::Function* caller,
     if (!verdict.Covered() || !std::isfinite(verdict.coverM) ||
         !std::isfinite(verdict.coverNormal.x) || !std::isfinite(verdict.coverNormal.y)) return false;
     auto const slot = Le3QualifySlot(context);
-    if (!slot) { gLast += "; no qualified safe native slot (native damage retained)"; return false; }
+    if (!slot) {
+        gLast += "; no qualified safe native slot (native damage retained)";
+        Le3LogAnswer(false, nullptr, -1);
+        return false;
+    }
     auto** link = gLe3CurrentLink.In<ue3::Object*>(context);
     auto* index = gLe3CurrentSlot.In<std::int32_t>(context);
     if (!link || !index || *link != nullptr) return false; // never replace an existing native link or restore a stale original pointer
@@ -150,6 +172,7 @@ bool Le3AnswerCover(ue3::Object* context, ue3::Function*, ue3::Function* caller,
     write_journal::Wrote("VrCover.LE3.link.borrow", link); write_journal::Wrote("VrCover.LE3.slot.borrow", index);
     *static_cast<std::uint32_t*>(result) = 1;
     gLast += "; qualified native slot borrowed for this damage scope";
+    Le3LogAnswer(true, reinterpret_cast<ue3::Object*>(state.link), state.index);
     return true;
 }
 bool Le3StillBorrowed(Le3DamageFrame const& frame) {
@@ -220,6 +243,7 @@ bool Le3Startup() {
     engine::call_function::AddAnswerHandler(gIsInCoverLeaningFn.Get(), &Le3AnswerLeaning);
     engine::call_function::AddFramePostHandler(gLe3SlotRotation.Get(), &Le3AnswerFacing);
     gStarted = gHandlersReady = true;
-    log::Info("vr cover LE3: scoped real-slot candidate registered; explicit 'mevr cover snap off' required; native acceptance pending");
+    log::Info("vr cover LE3: scoped real-slot candidate registered; it judges hits while the snapping is refused ([Hands] noCover); "
+              "native acceptance pending");
     return true;
 }

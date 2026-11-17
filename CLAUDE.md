@@ -314,8 +314,10 @@ switching frameworks.
   sprint into cover never snap, A's use and lane E's out-of-cover mantle untouched; `MassEffectGuiManager.ShowCoverWidget` followed
   by its `HideCoverWidget`); the crouch is `Engine.Pawn.ShouldCrouch`; VR cover answers `SFXGame.ModifyDamage`'s
   `IsInCoverLeaning`/`IsInCover` and gives its cone's `CoverLink.GetSlotRotation` the surface's facing (`BioPawn.CurrentLink`
-  holds CoverLink's class default object for that call). `mevr cover snap on|off|auto | acquire | where | links | put`. LE3's
-  plan: research/23 section 6.3. **ME2's shorter wait before the shields recharge in cover** (the owner, 2026-11-16; research/23
+  holds CoverLink's class default object for that call). `mevr cover snap on|off|auto | acquire | where | links | put`. **ME3
+  too since 2026-11-17** (lane FP3, research/trilogy-first-person.md): `[Hands] noCover` refuses `SFXGameModeDefault.FindCover`
+  inside `TryAcquireCover`, and VR cover's real-slot rule (`game/Le3Cover.inc`) follows it, each answer logged; neither seen
+  in a fight yet (research/le3-combat-fixtures.md's first check). **ME2's shorter wait before the shields recharge in cover** (the owner, 2026-11-16; research/23
   section 7.5; only ME2 has the rule): `SFXShield_Base.Tick`'s same two questions answered while the head is hidden from every
   awake hostile within 40 m, by cover within reachM from at least one (`vr::cover::Shelter`; `[Cover] recharge = 1`; `mevr cover
   regen [as <n>] | recharge on|off`; log `vr cover: the shields' wait before recharging: ...`).
