@@ -430,6 +430,8 @@ struct CoachText {
 };
 CoachText CoachLines(Coach coach);
 inline constexpr char kControlsCoach[] = "X: power wheel. Grenades: either hand at your left chest, grip, throw.";
+// The sequels have no physical grenade (game/Throwables is ME1's): the card names the wheel alone there.
+inline constexpr char kControlsCoachSequel[] = "X: power wheel.";
 char const* Name(Coach coach);
 inline constexpr float kCoachS = 8.0f;
 
