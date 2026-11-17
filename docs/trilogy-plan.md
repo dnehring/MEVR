@@ -474,11 +474,13 @@ These unblock the most: almost every other entry gets smaller once they land.
   coordinator's identities and grant, the request through the button's own `SFXGameModeDefault.TryReload` (state-aware, never
   DoReload or R), the game's ammo observed for the feedback. **Seen on ME2** (Save 4): 12/0/60 -> one shot 11/1/60 -> the
   replayed gesture 12/0/59 (`reloaded after 1.50 s`), a full magazine refused; the game's R and automatic reload stay.
+- **Seen:** nothing yet (no clip in the hand or going in); the game's assets, the clip prop and the gesture's options for
+  the owner to choose (the hip pouch rejected 2026-11-16): research/thermal-clips.md.
 - **Left:** empty, no-reserve and cancelled reloads; contact geometry from Overlord's reviewed pieces (research/
   le2-overlord-reload-reuse.md); ME3's run with a combat fixture.
 - **Closes when:** the Freedom's Progress pistol baseline (12/0/60, 11/1/60, 12/0/59) is reproduced by a replayed
   gesture instead of `R`; empty, partial, no-reserve and cancelled reloads conserve ammo; ME3 the same with its fixture.
-- **Waits for:** the gesture's redesign with the owner; then T05's ME3 combat fixture for ME3. Was part of ME2's first
+- **Waits for:** the gesture's redesign with the owner (its options: research/thermal-clips.md); then T05's ME3 combat fixture for ME3. Was part of ME2's first
   release (M3.5) until the owner's decision. **Who:** nobody until the redesign.
 
 #### T27 Guided calibration and hand calibration [G16]
