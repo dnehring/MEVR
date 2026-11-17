@@ -152,6 +152,12 @@ struct Layout {
     int perEyeViewStateDefault = 0;
     int umbraQueryWaitDefault = 1;   // 1 the resolve waits for its query results (the game's own); 0 never
     int ue3QueryWaitDefault = 1;     // 1 the engine's occlusion reads wait (the game's own); 0 a second render's never do
+    // umbraShareResults: 1 the second eye's unready Umbra query results are the first eye's of the same frame (only
+    // where umbraSharedVerified admits the lever); 0 each eye waits for its own (the game's own).
+    int umbraShareResultsDefault = 0;
+    // sfrReplayRetry (ME2's renderer only): 1 Halcyon ME2's same-frame retry of a pass 1 that returned in under 100 us
+    // (upstream's [NOOPRETRY]); 0 never.
+    int sfrReplayRetryDefault = 1;
 
     // Which lever groups are on for this game: the layout was read in this game's own code AND the lever ran in the game
     // (its A/B at the baseline spot, or for the two passive groups a first run with the hooks in). LE1: all
@@ -218,6 +224,10 @@ inline constexpr Layout kLayout = [] {
     // reference count 0 -> 1 through the live RHI's slot 0x8A0, RVA 0x2B2640); the query-matrix hook, idle there.
     // minScreenRadiusPx (umbraInstanceVerified) stays off: no measurable gain, and no still-head pair for pop-in yet.
     l.sceneRendererVerified = l.umbraCommanderVerified = l.boundShaderStateVerified = l.umbraQueriesVerified = true;
+    // The second eye (research/sequel-render-levers.md "The batch before the headset test", stretch
+    // LE2-20261116-201015): the first eye's Umbra results stand in for the second eye's unready ones, and the renderer's
+    // same-frame retry of pass 1 is off (a third scene render on 1-3% of moving frames, on 94-98% with the world paused).
+    l.umbraSharedVerified = true; l.umbraShareResultsDefault = 1; l.sfrReplayRetryDefault = 0;
     TryReadGroups(l);
     return l;
 }();
@@ -245,6 +255,9 @@ inline constexpr Layout kLayout = [] {
     // query-matrix hook, idle there. minScreenRadiusPx (umbraInstanceVerified) stays off: no measurable gain, and no
     // still-head pair for pop-in yet.
     l.sceneRendererVerified = l.umbraCommanderVerified = l.boundShaderStateVerified = l.umbraQueriesVerified = true;
+    // The second eye (research/sequel-render-levers.md "The batch before the headset test", stretch
+    // LE3-20261116-202316): the first eye's Umbra results stand in for the second eye's unready ones.
+    l.umbraSharedVerified = true; l.umbraShareResultsDefault = 1;
     TryReadGroups(l);
     return l;
 }();
@@ -345,7 +358,8 @@ static_assert(kViewStride == 0x12F0 && kStateOcclusionHistory == 0xD10 && kRende
     !kLayout.instanceCallAlsoKeepsBooks && !kLayout.captureTakesUmbraBranch && kLayout.umbraCommandGate == 0 &&
     kLayout.ownsSceneCaptureHooks && kLayout.sceneCaptureVerified,
     "LE1's layouts are the measured ones");
-static_assert(kLayout.perEyeViewStateDefault == 0 && kLayout.umbraQueryWaitDefault == 1 && kLayout.ue3QueryWaitDefault == 1,
+static_assert(kLayout.perEyeViewStateDefault == 0 && kLayout.umbraQueryWaitDefault == 1 && kLayout.ue3QueryWaitDefault == 1 &&
+    kLayout.umbraShareResultsDefault == 0,
     "LE1's lever defaults are the ones its levers have always had");
 #endif
 

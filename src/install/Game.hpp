@@ -35,7 +35,8 @@ struct GameSpec {
     bool stereoTarget;           // the setup sets ResX/ResY and Halcyon's copy of them (LE1); the sequels' renderer writes
                                  // them itself from its ini's RenderW/RenderH at attach
     bool engineIni;              // BIOEngine.ini: SmoothFrameRate and the game's copy of its live settings (LE1)
-    bool dynamicShadowsOff;      // GamerSettings.ini DynamicShadows=False
+    bool dynamicShadowsOff;      // GamerSettings.ini DynamicShadows=False (LE1 only: the sequels keep them, the mod turns
+                                 // them on there; the owner, 2026-11-17)
     bool foliageRadius;          // GamerSettings.ini FoliageDrawRadiusMultiplier=0.5 (LE1 sets it in BIOEngine.ini instead)
     // What the release carries for this game besides the ASI, the loader, the fonts and the menu.
     bool cockpit;                // the Mako's cockpit package and its TOC entry

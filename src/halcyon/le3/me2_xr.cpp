@@ -153,6 +153,7 @@ bool g_lastRtFovValid = false;
 bool g_isOculusRuntime = false;   // Meta PC runtime: ignores declared FOV -> doubled image without the crop
 bool g_isSteamVrRuntime = false;  // SteamVR: voids any view declared wider than its own frustum
 std::atomic_bool g_questFovMatch{true};   // ini QuestFovMatch - escape hatch for the Meta crop
+std::atomic_bool g_mevrEyeFrustum{false};   // [MEVR] ini MetricEyeFrustum: 0 mode 1 (ME3's default), 1 mode 2
 double g_displayPeriodSec = 1.0 / 120.0;
 int g_paceWarmCount = 0;
 XrTime g_lastPredictedDisplayTime = 0;
@@ -887,14 +888,16 @@ void MevrPublishView(const XrView& view) noexcept
 
 // [MEVR] Life-size stereo (research/30 section 9): our plan for the next game frame's two SFR passes (MevrSeams::PlanStereo,
 // ME1's plugin/MetricStereo), published to calcview_hook.cpp's SFR branch through MevrMetricView. After DriveHeadLook (the
-// head look this frame) and ApplyFovFill (the window). Mode 2 (each eye's own frustum) only where the window holds both eyes.
-// The same function as ME2's me2_xr.cpp (the trees' names agree).
+// head look this frame) and ApplyFovFill (the window). Mode 2 (each eye's own frustum) only where the window holds both eyes
+// and MetricEyeFrustum asks for it: ME3 renders mode 1 by default (every lamp's lens flare is placed through the CPU's
+// symmetric window, so in mode 2 it lands at the same pixel of both off-centre eye images and can't fuse; research/30
+// section 9.4, the owner 2026-11-17). The same function as ME2's me2_xr.cpp (the trees' names agree) but for that choice.
 void MevrPlanStereo(const XrView views[2], bool trackingValid) noexcept
 {
     ::MevrSeams::StereoPlanInput in;
     const bool screen = ME2VR::CalcViewHook::GetMevrCineScreen();
     in.metric = ME2VR::CalcViewHook::GetMevrLifeSize();
-    in.eyeFrustum = in.metric;
+    in.eyeFrustum = in.metric && g_mevrEyeFrustum.load(std::memory_order_relaxed);
     in.sfr2Active = ME2VR::CalcViewHook::GetVrEnabled() && ME2VR::CalcViewHook::GetVrMode() == 4 && !screen &&
                     !ME2VR::D3DCapture::GetMenuMode() && !ME2VR::CalcViewHook::GetCinematic();
     in.headValid = trackingValid;
@@ -2866,6 +2869,8 @@ float GetVrFillV() noexcept { return g_vrFillV.load(std::memory_order_relaxed); 
 void  SetVrFillV(float v) noexcept { g_vrFillV.store((v < 0.5f) ? 0.5f : (v > 1.25f ? 1.25f : v), std::memory_order_relaxed); }
 void SetQuestFovMatch(bool on) noexcept { g_questFovMatch.store(on, std::memory_order_relaxed); }
 bool GetQuestFovMatch() noexcept { return g_questFovMatch.load(std::memory_order_relaxed); }
+void SetMevrEyeFrustum(bool on) noexcept { g_mevrEyeFrustum.store(on, std::memory_order_relaxed); }   // [MEVR]
+bool GetMevrEyeFrustum() noexcept { return g_mevrEyeFrustum.load(std::memory_order_relaxed); }       // [MEVR]
 bool IsOculusRuntime() noexcept { return g_isOculusRuntime; }
 void Recenter() noexcept
 {

@@ -1541,6 +1541,37 @@ them.
 
 **Not verified:** a real headset; asymmetric eyes (a PS VR2's culling edge, mode 2 on ME2); a heavy fixture (Omega,
 combat, ME3's lit scene: items 2 and 4); the first eye's results standing in at an occluder's edge while the head turns
-fast (a still pose cannot show a one-frame cull, and the moving snapshots are not same-pose); the prepared change in
-the game (it builds; a run would read `umbraShareResults = 1` and `sfrReplayRetry = 0` in the levers' lines with no key
-in the file).
+fast (a still pose cannot show a one-frame cull, and the moving snapshots are not same-pose). (The prepared change in the
+game: seen 2026-11-17, below.)
+
+#### The defaults landed, and seen in the game (2026-11-17, lane DEF)
+
+The owner said yes to the recommendation ("All recommendations", 2026-11-17). SP2's prepared change is on main with the
+table tests (`tests/RenderLeversTableTests.cpp` pins each sequel's `umbraSharedVerified`, `umbraShareResultsDefault` and
+`sfrReplayRetryDefault`), and **dynamic shadows are on by default on ME2 and ME3** (`engine::adapter::kVrDynamicShadows`
+in `game/SystemSettings`' built-in values; ME1 keeps its cost lever off; `tools/vr-game-settings.ps1` and MEVR Setup no
+longer write `DynamicShadows=False` for LE2; ctests `mevr-le2-/mevr-le3-system-settings`).
+
+**ME2, Save 4** (stretch `%LOCALAPPDATA%\MEVR\def-lane\runs\LE2-20261117-120024`, no `[Performance]` or `[SystemSettings]`
+key in `ASI\LE2MEVR.ini`, restored with 0 differences): the log reads `... ([Performance] sfrReplayRetry = 0)`,
+`... ([Performance] umbraShareResults = 1)` and `system settings: scale set DynamicShadows True, ...`. At GF2's still pose
+(yaw 150, pitch -20, the world paused) the defaults against `DynamicShadows=False`: 0.72% of the left eye's pixels and
+0.38% of the right's, all of it Miranda's and her gun's shadows on the snow and the shadow on Shepard's gun, each eye at
+its own place (`still\ds-left.png`, `ds-right.png`, `me2-shadows-on-above-off-below.png`; SP2's pair: 0.80% and 0.47%).
+Moving, two rounds of 20 s under the head turn, 0-1 compilers, the defaults against main's old ones in the same stretch:
+
+| ME2 | frame p90 / p99 | render work median / p90 / p99 | over 11.1 ms | GPU | third renders |
+|---|---|---|---|---|---|
+| the defaults (S + R0 + DS) | 11.78 / 14.93 | 5.80 / 10.59 / 14.06 | 5.8% | 4.05 | 0 |
+| main's old (A: retry on, no sharing, DS off) | 14.63 / 16.45 | 10.55 / 14.07 / 15.86 | 46% | 3.88 | 4.3% |
+| SP2's S + R0 + DS (yesterday) | 12.32 / 16.39 | 6.43 / 11.21 / 15.04 | 9% | 4.66 | 0 |
+| SP2's B + R0 (yesterday) | 14.34 / 20.35 | 6.21 / 13.04 / 18.39 | 17% | 4.19 | 0 |
+
+So the defaults hold what SP2 measured (render work halved, frames over the period 46% -> 6%), with the shadows on.
+
+**ME3, Save 31** (`-RendererPreview`, stretch `LE3-20261117-112905`): `umbraShareResults = 1` read with no key, `scale set
+DynamicShadows True`; its stereo on the shared window is research/30 section 9.5. Its one capture had two compilers
+running (other lanes): render work 6.5 ms median, not comparable with SP2's quiet 4.8.
+
+**LE1 unchanged:** the same-pose pair before and after (research/30 9.5's last item): identical to the pixel, the log's
+`umbraShareResults = 0` and `DynamicShadows False` as before.

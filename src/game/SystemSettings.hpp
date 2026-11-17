@@ -6,7 +6,8 @@
 // defaults back once), so a file edit can't be trusted. The mod runs `scale set <key> <value>` through the local
 // player's console (game/ConsoleRequest) once a local player exists, and again whenever the section changes:
 //   [SystemSettings] in ASI\<game>MEVR.ini, any key = value; apply = 0 turns it off.
-// Built in unless the file says otherwise: DynamicShadows False (the scene renders twice a frame), MotionBlur False
+// Built in unless the file says otherwise: DynamicShadows False on ME1 (its cost lever: the scene renders twice a frame;
+// True on ME2 and ME3, where they cost 0.2-0.3 ms and each eye is its own render: engine::adapter::kVrDynamicShadows), MotionBlur False
 // (the two eyes share one "previous frame", so the blur smeared one eye and not the other, every few seconds),
 // FoliageDrawRadiusMultiplier 0.5 (the grass costs per instance, per eye; 0.25 pops in too close), and while the second
 // eye is a replay (the host says: [Performance] sharePass 2, 3 or 5 where the game has it) LightEnvironmentShadows False (the character shadows: the right eye

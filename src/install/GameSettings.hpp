@@ -45,7 +45,7 @@ std::string ApplyGamerSettings(std::string_view text, Choices const& choices, st
 // The same for any of the three games (tools/vr-game-settings.ps1 -Game): Mass Effect 1 is the function above. A sequel
 // keeps its ResX/ResY whatever the target says (its renderer writes them from its own ini's RenderW/RenderH at attach;
 // recorded, so Uninstall puts the player's back), gets the borderless window too, and by GameSpec DynamicShadows=False
-// and FoliageDrawRadiusMultiplier=0.5.
+// (no sequel since 2026-11-17: the mod turns them on there) and FoliageDrawRadiusMultiplier=0.5 (LE2).
 std::string ApplyGamerSettings(std::string_view text, Choices const& choices, std::vector<ini::Edit>* edits, GameId game);
 // BIOEngine.ini: SmoothFrameRate=FALSE wherever a section sets it TRUE (the game's 60 fps cap). And in its [SystemSettings]
 // (only where the file has that section), the values the game copies there from its live settings during play

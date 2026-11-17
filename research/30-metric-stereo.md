@@ -418,3 +418,40 @@ before anything changed; what each turned out to be:
      files) and after: the eye images identical to the pixel in both snapshot pairs, the second pair identical in every
      layer and `hostView` (the first pair's HUD 0.19% apart: what animates; sessions `2026-11-17_08-55-01-fxr-le1-before`,
      `08-57-41-fxr-le1-after`).
+
+### 9.5 ME3 on the shared symmetric window (2026-11-17, lane DEF)
+
+The owner's answer to question 12 (docs/trilogy-plan.md, "All recommendations"): ME3 renders life-size stereo in mode 1
+until its lens-flare path is found. **What was built:** le3 `me2_xr.cpp`'s `MevrPlanStereo` asks for each eye's own
+frustum only when `MELE3VR.ini [VR] MetricEyeFrustum = 1` (LE1's `sfr2MetricEyeFrustum`; `ME2VR::Me2Xr::SetMevrEyeFrustum`),
+read in le3 `me2_menu.cpp`'s `LoadValues` with 0 as the default, written by `SaveValues`, and not pinned by
+`ApplyMevrBaseline` (a per-game choice: ME1 and ME2 keep mode 2). `LoadValues` logs the choice (`[MEVR-STEREO] ME3's
+frustum: the shared symmetric window (mode 1; ...)`), and the plan line ends `the symmetric window by choice (each eye's
+own frustum off: ...)` when nothing else forced mode 1 (`plugin/MetricStereo`).
+
+**Checked on the fake headset** (Save 31 on the Normandy, `-RendererPreview`, lane FXR's still, level PS VR2 recording
+`fxr-psvr2-still-level.mevrrec` replayed with `-Fovs`; run `%LOCALAPPDATA%\MEVR\def-lane\runs\LE3-20261117-112905`,
+session `20261117-112906-151-LE3-def-me3`, restored with 0 differences):
+- The log: `stereo mode 1: life-size, the symmetric window; eye distance 0.0630 m ...`; the snapshot's `stereo.submitted`
+  mode 1, each eye declared at its own FOV (-61.5, 43.4, +-53.0 degrees and the mirror) on an `imageRect` of the symmetric
+  render (left `[0, 310, 2326, 1108]`, right `[746, 310, 2326, 1108]` of 3072 x 1728).
+- **The lamps' flares sit on their lamps in both eyes** (`lamp-left.png`, `lamp-right.png` in the run folder: the same
+  angular window around each of the two ceiling lamps, lane FXR's mode 2 pair above, mode 1 below). In mode 2 the left
+  lamp's flare stood well left of it in the left eye and was missing in the right; the right lamp's stood far right of
+  it in the right eye; in mode 1 each lamp's streak and glow are centred on the lamp in both eyes.
+- **Still life-size:** `tools/stereo-check.py` at the directions lane FXR sampled gives the same crossed disparity point for
+  point (+1.30/+1.27/+1.20, +1.10/+1.06/+1.06, +0.75/+0.68 degrees per eye against mode 2's +1.32/+1.21/+1.19,
+  +1.08/+1.06, +0.74/+0.69/+0.69): the eyes' geometry is mode 2's; only the image each eye gets is cut from the shared
+  window.
+- **The cost is sharpness**, more than 9.4 estimated: the renderer keeps the backbuffer's 16:9 shape for the symmetric
+  window (+-61.5 x +-64.2 degrees here), so each eye's crop is 2326 x 1108 of the 3072 x 1728 render: 834 px per tangent
+  across and 417 down, against mode 2's 1101 and 650 (24% and 36% fewer). A render size with the window's own shape (the
+  preview's 3072 x 1728 is the runner's, not a measured choice) would give the vertical back: a follow-up with the flare
+  path.
+- Frame timing in that run was taken with two compilers running (other lanes): not comparable with lane SP2's quiet
+  numbers (`umbraShareResults = 1` read with no key in the file, as the defaults now say).
+- **LE1 at the same pose** (the shared `plugin/MetricStereo`, `RenderLevers` and `game/SystemSettings` changed): lane FXR's
+  replay and the same save, main 79e97c4a's players' build before and this lane's after (sessions
+  `2026-11-17_12-07-12-def-le1-before`, `12-10-07-def-le1-after`): both snapshot pairs identical to the pixel in every image
+  (eyes, world, HUD, label), `hostView`, `stereo` and every layer the same; the log as before (`umbraShareResults = 0`,
+  `scale set DynamicShadows False ...`, mode 2).

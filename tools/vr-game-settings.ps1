@@ -25,7 +25,8 @@
 #                     1440p monitor a 2048x2048 target rendered gameplay at 2009x1421, and
 #                     Halcyon's left-eye capture (which needs the scene to fill the backbuffer)
 #                     never fired, so both eyes got the same image (2026-10-08).
-#   DynamicShadows=False  Halcyon's default; the scene renders twice per frame. Written to BIOEngine.ini too: its
+#   DynamicShadows=False  LE1 only (LE2 and LE3 keep the game's: the mod turns them on there). Halcyon's default; the
+#                     scene renders twice per frame. Written to BIOEngine.ini too: its
 #                     [SystemSettings] value wins over GamerSettings' (measured 2026-10-23: with False in GamerSettings and
 #                     True in BIOEngine.ini the game still drew 366 shadow draws a frame, 0.6 ms; research/35).
 #   FoliageDrawRadiusMultiplier=0.5 (BIOEngine.ini too; 0.25 pops the grass in too close)  Eden Prime's grass costs 2.4 ms of render thread and 3.1 ms of
@@ -116,8 +117,12 @@ if ($Game -in @('LE1', 'LE2', 'LE3')) {
     $wanted['SystemSettings']['BorderlessWindow'] = 'True'
     $wanted['SystemSettings']['Fullscreen'] = 'False'
 }
-if ($Game -in @('LE1', 'LE2')) {
+if ($Game -eq 'LE1') {
+    # ME1's cost lever. The sequels keep the game's own (the owner, 2026-11-17: 0.2-0.3 ms on ME2, nothing measurable on
+    # ME3, each eye a render of its own; the mod's built-in is True there, engine::adapter::kVrDynamicShadows).
     $wanted['SystemSettings']['DynamicShadows'] = 'False'
+}
+if ($Game -in @('LE1', 'LE2')) {
     $wanted['SystemSettings']['FoliageDrawRadiusMultiplier'] = '0.5'
 }
 # BIOEngine.ini [SystemSettings] keys that must be set there as well (its value wins over GamerSettings').

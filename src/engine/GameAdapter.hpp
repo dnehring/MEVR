@@ -258,6 +258,20 @@ inline constexpr bool kOlderHostReplaysSecondEye = true;
 inline constexpr bool kOlderHostReplaysSecondEye = false;
 #endif
 
+// The engine's dynamic shadows in VR (game/SystemSettings' built-in `DynamicShadows`; a player's [SystemSettings]
+// DynamicShadows still wins). A per-game cost decision, not the second eye's: ME1 keeps them off, its cost lever since
+// research/35 (366 shadow draws and 0.6 ms a frame; with the grass radius the render thread at a heavy Eden Prime spot
+// went from 9.35 to 6.88 ms), whatever sharePass says; tying them to the replay would turn them on for an ME1 player
+// with sharePass 0, which no one chose. The sequels keep them on (the owner, 2026-11-17): measured at 0.2-0.3 ms of render
+// work on ME2 and nothing measurable on ME3 (research/sequel-render-levers.md, "DynamicShadows True costs 0.2-0.3 ms"),
+// and each of their eyes is a render of its own, so the shadows lie under their owners in both eyes (the same research,
+// lane GF2's same-pose pair at Freedom's Progress).
+#if defined(MEVR_GAME_LE1)
+inline constexpr bool kVrDynamicShadows = false;
+#else
+inline constexpr bool kVrDynamicShadows = true;
+#endif
+
 // Where the layer finds the engine's globals: an RVA (fast; right for 2.0.0.48602) and a byte
 // pattern of code that references the global (survives a patch that moves it). Each pattern names
 // the RIP-relative instruction inside it: where it starts, where its displacement is, its length.

@@ -365,6 +365,10 @@ void PlanStereo(const StereoPlanInput& in, StereoPlan* out) noexcept {
                   "eye's height at the image's aspect: an eye's own frustum would be culled at its outer edge; research/30 "
                   "section 9)"
                 : "; the symmetric window because Halcyon's FOV override is off";
+    } else if (out->mode == 1) {
+        // Each eye's own frustum not asked for: LE1's sfr2MetricEyeFrustum = 0, or ME3's MetricEyeFrustum = 0, its default
+        // (its lamps' lens flares are placed through the CPU's symmetric window: research/30 section 9.4).
+        line += "; the symmetric window by choice (each eye's own frustum off: sfr2MetricEyeFrustum / MetricEyeFrustum = 0)";
     }
     if (std::fabs(in.unitsPerMeter - kLifeSizeUnitsPerMeter) > 1.0f) {
         line += std::format("; NOT life-size: Shepard's skeleton is about {:.0f} uu/m, so the world reads {:.2f} times "
@@ -440,7 +444,8 @@ int LifeSizeStereo() noexcept {
                                         "renderer's upstream eye separation, convergence and lean")
                           : std::format("[MEVR-STEREO] life-size stereo: each eye from its real place, no convergence, the "
                                         "lean from the eyes' centre at 1:1 forward; {}",
-                                (bits & 2) != 0 ? "the render window widened to hold both eyes' frusta (each eye's own frustum)"
+                                (bits & 2) != 0 ? "the render window widened to hold both eyes' frusta (for each eye's own "
+                                                  "frustum, mode 2, where the renderer asks for it)"
                                                 : "the renderer's own window ([Debug] stereoWindowCoversEyes = 0)"));
         return bits;
     }();

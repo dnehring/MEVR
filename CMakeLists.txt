@@ -1671,6 +1671,20 @@ if (MEVR_BUILD_TESTS)
     target_compile_options(mevr-system-settings-tests PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
     add_dependencies(mevr-tests mevr-system-settings-tests)
     add_test(NAME mevr-system-settings COMMAND mevr-system-settings-tests)
+    # The same compiled as each sequel: its built-in values (dynamic shadows on: engine::adapter::kVrDynamicShadows), the
+    # character-shadow rule without a replay, ME2's held new level.
+    foreach(game LE2 LE3)
+        string(TOLOWER ${game} gameLower)
+        add_executable(mevr-${gameLower}-system-settings-tests tests/SystemSettingsTests.cpp)
+        target_include_directories(mevr-${gameLower}-system-settings-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+        target_link_libraries(mevr-${gameLower}-system-settings-tests PRIVATE OpenXR::headers)
+        target_compile_definitions(mevr-${gameLower}-system-settings-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN
+            MEVR_GAME_${game})
+        target_compile_options(mevr-${gameLower}-system-settings-tests PRIVATE /W4 /WX /permissive- /utf-8
+            /Zc:__cplusplus)
+        add_dependencies(mevr-tests mevr-${gameLower}-system-settings-tests)
+        add_test(NAME mevr-${gameLower}-system-settings COMMAND mevr-${gameLower}-system-settings-tests)
+    endforeach()
     add_executable(mevr-hand-targets-tests tests/HandTargetsTests.cpp
         src/engine/XrToUnreal.cpp src/core/ik/Rigid.cpp src/core/ik/Ik.cpp)
     target_include_directories(mevr-hand-targets-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
-// Real settings-command path with simulated modes, world changes and guard health.
+// Real settings-command path with simulated modes, world changes and guard health. Compiled once per game
+// (mevr-system-settings is LE1's; mevr-le2-/mevr-le3-system-settings the sequels'): the guard and settling sequence is
+// ME1's, the built-in values and the character-shadow rule every game's.
 #include "game/SystemSettings.cpp"
 #include "mod/ModApi.hpp"
 
@@ -69,8 +71,7 @@ int main() {
         fs::last_write_time(file, stamp);  // deterministic change without sleeps
         WritePrivateProfileStringW(nullptr, nullptr, nullptr, file.c_str());
     };
-    int firstWorld = 1, nextWorld = 2;
-    void const* world = &firstWorld;
+    void const* world = nullptr;
     auto poll = [&](unsigned char mode, bool healthy) {
         settings::ObserveMode(mode);
         settings::Poll(1.0f, mode, healthy, file, world);
@@ -78,6 +79,19 @@ int main() {
     auto contains = [](std::string const& command) {
         return std::find(commands.begin(), commands.end(), command) != commands.end();
     };
+    // The built-in dynamic shadows (engine::adapter::kVrDynamicShadows): ME1's cost lever keeps them off; the sequels keep
+    // them on (the owner, 2026-11-17: 0.2-0.3 ms on ME2, nothing measurable on ME3, each eye its own render).
+#if defined(MEVR_GAME_LE1)
+    std::string const builtInShadows = "False";
+    std::string const otherShadows = "True";
+#else
+    std::string const builtInShadows = "True";
+    std::string const otherShadows = "False";
+#endif
+#if defined(MEVR_GAME_LE1)
+    // ME1's guard and settling sequence (LE2 holds a new level's settings for 3 s; the sequels' runs are below).
+    int firstWorld = 1, nextWorld = 2;
+    world = &firstWorld;
     write("[SystemSettings]\nAntiAliasing=True\n");
     poll(0, true);
     CHECK(commands.size() == 9);  // initial values, including AA, still apply
@@ -138,6 +152,7 @@ int main() {
     commands.clear();
     poll(0, false);
     CHECK(commands.empty());
+#endif
     // Character shadows (research/37, 2026-11-13; HostServices v43): off only while the host says the second eye is a
     // replay, whatever [Performance] sharePass reads; the file's own value wins.
     auto has = [](std::vector<settings::Setting> const& w, char const* key, char const* value) {
@@ -158,13 +173,19 @@ int main() {
     write("[Performance]\nsharePass=5\n[SystemSettings]\nLightEnvironmentShadows=True\n");
     CHECK(has(settings::Wanted(file, true), "LightEnvironmentShadows", "True") &&
           !has(settings::Wanted(file, true), "LightEnvironmentShadows", "False"));
-    // A host before v43 says nothing: the file's sharePass rule, on the game whose older hosts replayed (this test is LE1's).
+    // A host before v43 says nothing: the file's sharePass rule, on the game whose older hosts replayed (LE1's only).
     write("[Performance]\nsharePass=0\n[SystemSettings]\n");
     CHECK(!settings::ReplayByFile(file));
     write("[Performance]\nsharePass=\n[SystemSettings]\n");
+#if defined(MEVR_GAME_LE1)
     CHECK(settings::ReplayByFile(file));  // empty is the default, 5
     write("[Performance]\nsharePass=3\n[SystemSettings]\n");
     CHECK(settings::ReplayByFile(file));
+#else
+    CHECK(!settings::ReplayByFile(file));  // a sequel's host never replayed: whatever the file says
+    write("[Performance]\nsharePass=5\n[SystemSettings]\n");
+    CHECK(!settings::ReplayByFile(file));
+#endif
     // The host's helper: nothing from an older or shorter table, else the callback's answer (false without one).
     {
         static bool replay = true;
@@ -194,6 +215,9 @@ int main() {
         settings::Poll(1.0f, static_cast<unsigned char>(0), true, file, world, false);
         CHECK(commands.size() == 7);
         CHECK(commands.back() == "scale set LightEnvironmentShadows True");  // through its opposite, the wanted value last
+        // The game's dynamic shadows, first and through their opposite.
+        CHECK(commands.size() >= 2 && commands[0] == "scale set DynamicShadows " + otherShadows &&
+              commands[1] == "scale set DynamicShadows " + builtInShadows);
         commands.clear();
         settings::Poll(1.0f, static_cast<unsigned char>(0), true, file, world, false);
         CHECK(commands.empty());
@@ -209,15 +233,46 @@ int main() {
         int plainWorld = 6;
         world = &plainWorld;
         settings::Poll(1.0f, static_cast<unsigned char>(0), true, file, world, false);
+#if defined(MEVR_GAME_LE2)
+        // ME2 holds a new level's settings until it has been in gameplay for 3 s (a scale set during the load faulted).
+        CHECK(commands.empty());
+        settings::Poll(3.0f, static_cast<unsigned char>(0), true, file, world, false);
+#endif
         CHECK(commands.size() == 5 && !contains("scale set LightEnvironmentShadows True") &&
               !contains("scale set LightEnvironmentShadows False"));
+        commands.clear();
+    }
+    // Dynamic shadows: the game's built-in value, and a player's [SystemSettings] DynamicShadows over it, either way.
+    {
+        CHECK(has(settings::Wanted(file, false), "DynamicShadows", builtInShadows.c_str()) &&
+              has(settings::Wanted(file, true), "DynamicShadows", builtInShadows.c_str()));
+        write("[SystemSettings]\nDynamicShadows=" + otherShadows + "\n");
+        CHECK(has(settings::Wanted(file, false), "DynamicShadows", otherShadows.c_str()) &&
+              !has(settings::Wanted(file, false), "DynamicShadows", builtInShadows.c_str()));
+        settings::Poll(1.0f, static_cast<unsigned char>(0), true, file, world, false);
+        CHECK(commands.size() == 5 && commands[0] == "scale set DynamicShadows " + builtInShadows &&
+              commands[1] == "scale set DynamicShadows " + otherShadows);
+        commands.clear();
+        write("[SystemSettings]\n");   // the player's key removed: the built-in value again
+        settings::Poll(1.0f, static_cast<unsigned char>(0), true, file, world, false);
+        CHECK(commands.size() == 5 && commands[0] == "scale set DynamicShadows " + otherShadows &&
+              commands[1] == "scale set DynamicShadows " + builtInShadows);
         commands.clear();
     }
     write("[SystemSettings]\napply=0\n");
     poll(0, true); poll(0, false); poll(7, false); poll(0, false);
     CHECK(commands.empty() && !settings::gGuardFallbackPending);
     fs::remove_all(folder);
-    std::printf("System settings: %s (guarded returns, fallback/retry, ABI gates, settings edits, startup/load/settle, character shadows)\n",
-                failures ? "FAIL" : "PASS");
+    CHECK(mevr::engine::adapter::kVrDynamicShadows == (builtInShadows == "True"));
+    std::printf("System settings (%s): %s (%scharacter shadows, dynamic shadows %s)\n",
+#if defined(MEVR_GAME_LE1)
+                "LE1", failures ? "FAIL" : "PASS",
+                "guarded returns, fallback/retry, ABI gates, settings edits, startup/load/settle, ",
+#elif defined(MEVR_GAME_LE2)
+                "LE2", failures ? "FAIL" : "PASS", "ABI gates, settings edits, the new level held 3 s, ",
+#else
+                "LE3", failures ? "FAIL" : "PASS", "ABI gates, settings edits, ",
+#endif
+                builtInShadows.c_str());
     return failures ? 1 : 0;
 }

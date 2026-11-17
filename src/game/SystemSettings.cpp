@@ -121,10 +121,10 @@ std::string GamersValue(fs::path const& settingsFile, wchar_t const* key) {
 }
 
 // The built-in values, then the file's section over them (a key the file sets replaces the built-in one; apply = 0
-// returns nothing).
+// returns nothing). DynamicShadows is the game's (engine::adapter::kVrDynamicShadows): off on ME1, on on the sequels.
 std::vector<Setting> Wanted(fs::path const& path, bool secondEyeIsReplay) {
     std::vector<Setting> wanted{
-        {"DynamicShadows", "False"},
+        {"DynamicShadows", engine::adapter::kVrDynamicShadows ? "True" : "False"},
         {"MotionBlur", "False"},
         {"FoliageDrawRadiusMultiplier", "0.5"},
     };

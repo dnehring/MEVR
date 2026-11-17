@@ -88,7 +88,10 @@ int CheckGameLayout() {
     // ones that stand down until they do.
     CHECK(l.sceneRendererVerified && l.umbraCommanderVerified && l.boundShaderStateVerified && l.umbraQueriesVerified);
     CHECK(!l.umbraInstanceVerified && !l.occlusionHistoryVerified && !l.sharePassVerified && !l.sceneCaptureVerified);
-    CHECK(l.umbraSharedVerified == table::kTryBuild);
+    // The second eye (the owner's yes, 2026-11-17; research/sequel-render-levers.md "The batch before the headset test"):
+    // the first eye's Umbra results stand in for the second eye's unready ones on both sequels.
+    CHECK(l.umbraSharedVerified);
+    CHECK(l.umbraShareResultsDefault == 1);
     // FSceneView's matrices umbraEyeMatrix reads and writes are LE1's offsets in all three games.
     CHECK(l.viewViewMatrix == 0x90 && l.viewTranslatedViewMatrix == 0x190 && l.viewTranslatedViewProj == 0x1D0 &&
           l.viewPreViewTranslation == 0x250 && l.viewViewProj == 0x260 && l.commanderView == 0x68 &&
@@ -101,6 +104,8 @@ int CheckGameLayout() {
     CHECK(!l.instanceCallAlsoKeepsBooks && !l.captureTakesUmbraBranch);
     CHECK(l.umbraCommandGate == 0);
     CHECK(l.ownsSceneCaptureHooks);
+    // Halcyon ME2's same-frame retry of pass 1 is off (a third scene render on 1-3% of moving frames).
+    CHECK(l.sfrReplayRetryDefault == 0);
 #elif defined(MEVR_GAME_LE3)
     CHECK(std::string_view(table::kGameName) == "LE3");
     CHECK(l.viewStride == 0x11B0);
@@ -109,6 +114,7 @@ int CheckGameLayout() {
     CHECK(l.instanceCallAlsoKeepsBooks && l.captureTakesUmbraBranch);
     CHECK(l.umbraCommandGate == 0x1767208 && l.umbraCommandGate == addresses::kUmbraCommandGate);
     CHECK(!l.ownsSceneCaptureHooks);   // plugin/Le3SceneCapture hooks the capture functions (the ledger's Forks 9)
+    CHECK(l.sfrReplayRetryDefault == 1);   // ME2's renderer only: ME3's table keeps the Layout's default, never read
     // The rows umbraEyeMatrix (the lever the life-size stereo's mode 2 needs) hooks are ME3's own.
     static_assert(table::kUmbraIssueQueriesRva == 0x3D8EB0 && table::kCommanderCommandRva == 0x3E8B80);
 #endif

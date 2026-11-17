@@ -1175,7 +1175,7 @@ void __fastcall DrawDetour(void* self, void* viewport, void* canvas) noexcept
 #if defined(MEVR_ASI)
         // [MEVR] [Performance] sfrReplayRetry = 0: no retry. On our machines a pass 1 under 100 us usually rendered, and the
         // retry was the frame's third scene render on ~20% of frames (research/sequel-render-levers.md "Performance
-        // research"). The default (1) is upstream's retry.
+        // research"). 1 is upstream's retry; the default is 0 since 2026-11-17 (plugin/RenderLeversTable).
         if (us < 100 && ::ME2VR::MevrBridge::SfrReplayRetry())
 #else
         if (us < 100)

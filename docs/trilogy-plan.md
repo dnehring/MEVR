@@ -269,8 +269,9 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **The second eye (2026-11-16, lanes SP and SP2):** the second eye's 4-5 ms is Umbra's results read spinning for
   queries that are never ready; on a quiet machine after life-size stereo the recommendation is ME2
   `umbraShareResults=1` with `sfrReplayRetry=0`, ME3 `umbraShareResults=1` (render work 11.0 -> 5.8 and 11.5 -> 4.8 ms,
-  the second eye still occluded, the pictures today's), prepared unlanded on branch `sp2-second-eye-defaults` for the
-  owner's yes (research/sequel-render-levers.md "The batch before the headset test"). One-Draw stays "not now".
+  the second eye still occluded, the pictures today's) (research/sequel-render-levers.md "The batch before the headset
+  test"); **the defaults since 2026-11-17** (the owner's yes; lane DEF: per-game `umbraShareResultsDefault` and
+  `sfrReplayRetryDefault` in each `kLayout`, an ini's `[Performance]` key still wins). One-Draw stays "not now".
 - **Closes when:** an A/B under a replayed head at one heavy fixture per game (`tools/measure-levers.ps1`) shows each
   lever's cost and a correct second eye (`tools/eye-diff.ps1`).
 - **Waits for:** T07 to measure; R2 and R3 for the addresses. **Who:** R2 and R3 (addresses), PL (the shared module and
@@ -294,8 +295,14 @@ These unblock the most: almost every other entry gets smaller once they land.
   frame shown flat expires the plan), a view whose CPU window can't hold the eyes renders on the symmetric window,
   `umbraEyeMatrix` and ME3's command gate guarded on the render thread (the gate a table row), tests for all of it; the
   PS VR2's eyes replayed on both sequels: ME2 parallel, nothing missing at the outer edges, LE1 unchanged at the same pose.
+- **ME3 on the shared symmetric window (2026-11-17, the owner's answer to question 12; lane DEF):** mode 1 by default
+  (`MELE3VR.ini [VR] MetricEyeFrustum = 0`, LE1's `sfr2MetricEyeFrustum`; not pinned by the baseline), so each lamp's flare
+  sits on its lamp in both eyes; still life-size (both seen with the PS VR2's eyes replayed, research/30 9.5). ME1 and ME2
+  keep mode 2. The cost is sharpness: each eye's crop of the window at the backbuffer's 16:9 has 24% fewer pixels per
+  degree across and 36% fewer down than mode 2 (a render size with the window's own shape would give the vertical back).
 - **Left:** ME3's lens flares in mode 2 (placed through the CPU's symmetric window: each lamp's flare off its lamp,
-  differently in each eye, on any headset whose eyes are asymmetric; owner question 12 below); `[DISTFIX]` in mode 2
+  differently in each eye, on any headset whose eyes are asymmetric; mode 2 stays off on ME3 until the flare path is
+  found); `[DISTFIX]` in mode 2
   unmeasured (no scene with distortion yet); the owner's headset check (depth, size, comfort, nothing popping at an
   eye's outer edge); the wider culling window's cost (lane SP's levers).
 - **Closes when:** `stereo-check.py` reads parallel far scenery and a pistol at 0.5 m reads 0.5 m on each sequel, and the
@@ -319,7 +326,8 @@ These unblock the most: almost every other entry gets smaller once they land.
   answer of 2026-11-16 evening ("The second eye and dynamic shadows"). ~~Lane SP measures each second-eye option per
   game with and without them~~ done (lane SP2, research/sequel-render-levers.md "The batch before the headset test"):
   with each recommended option the shadows are right in both eyes on both sequels (Miranda's and her gun's at Freedom's
-  Progress, Shepard's on the Normandy), about 0.4 ms; on or off is the owner's call. ~~ME3: no receipt yet that `scale
+  Progress, Shepard's on the Normandy), about 0.4 ms; **on on ME2 and ME3 since 2026-11-17** (the owner's yes, lane DEF:
+  `engine::adapter::kVrDynamicShadows`; off on ME1, its cost lever). ~~ME3: no receipt yet that `scale
   set` applies at all~~: it does (the log's `system settings: scale set DynamicShadows True ...` and the frame changes in
   both eyes). Still unshown on ME3: `MotionBlur` and `FoliageDrawRadiusMultiplier` (the ledger's R12).
 - **Closes when:** an ME2 and an ME3 snapshot show character shadows; ME3's log has the `system settings:` lines and an
@@ -939,7 +947,11 @@ Each is asked once. "Today" is what the build does if nobody answers; no default
 - **The second eye and dynamic shadows:** settings may differ per game ("I imagine we'd want to consider second-eye
   settings per game if they are all so different"), and "With our me1 second eye logic it breaks the dynamic shadows.
   So if we go down that path then we will need to disable dynamic shadows." Lane SP measures each option per game with
-  and without dynamic shadows.
+  and without dynamic shadows. **Answered 2026-11-17, the owner ("All recommendations"), built by lane DEF:** the second
+  eye's defaults per game as lane SP2 measured them (ME2 `umbraShareResults = 1` and `sfrReplayRetry = 0`, ME3
+  `umbraShareResults = 1`, ME1 unchanged: `plugin/RenderLeversTable.hpp`); dynamic shadows **on** on ME2 and ME3 (0.2-0.3 ms,
+  each eye its own render) and off on ME1 (`engine::adapter::kVrDynamicShadows`; `vr-game-settings.ps1` and Setup write
+  False for LE1 only; a player's `[SystemSettings] DynamicShadows` still wins).
 - **Earlier the same day:** the sequels' sights use ME1's systems for now; vaulting with a two-handed hold is allowed, with
   one hand to be considered ("The controls could get sloppy"; lane C4 compares); the trigger never draws a holstered
   weapon in any game; "Ideally I want everything consistent" (a per-game difference needs a reason the game forces).
@@ -1002,7 +1014,10 @@ Each is asked once. "Today" is what the build does if nobody answers; no default
     off-centre frustum (mode 2). The fake headset's symmetric eyes hid it; ME2's lamps showed none; ME1 has the same
     mechanism for the sun's sprite near the edges. Options: keep mode 2 and find where ME3 places the flare (Ghidra) to give
     it the eye's matrix; or run ME3 in mode 1 (the eyes' union window, flares right, about 15% fewer pixels per degree on a
-    PS VR2) until then. Recommended: mode 1 on ME3 for its first headset test, the flare path as a lane.
+    PS VR2) until then. Recommended: mode 1 on ME3 for its first headset test, the flare path as a lane. **Answered
+    2026-11-17, the owner ("All recommendations"): mode 1 on ME3** (lane DEF: `MELE3VR.ini [VR] MetricEyeFrustum`, LE1's
+    `sfr2MetricEyeFrustum`, 0 by default and not pinned by the baseline; ME1 and ME2 keep mode 2). The flare path stays a
+    lane for later.
 13. **ME3's heavy weapon and the holsters** (T25; lane FX2, 2026-11-17). A heavy weapon has no body slot, so the holsters
     see an empty hand: a right-grip squeeze inside any slot (the right shoulder's, close to where a heavy weapon is held)
     calls `SwitchWeapon`, and ME3's own `SwitchWeapon` puts the heavy weapon down with `SFXHeavyWeapon.PutDownWeapon`, which

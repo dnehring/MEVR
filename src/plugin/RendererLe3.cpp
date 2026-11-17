@@ -49,7 +49,9 @@ Caps const& Capabilities() noexcept {
         c.panelsInRoom = true;
         c.galaxyTable = true;        // [Galaxy] nativeTable, opt-in
         c.metricStereo = true;       // MevrSeams::PlanStereo: each pass from its eye's real place (research/30 section 9)
-        c.perEyeFrustum = true;      // mode 2 where the window holds the eyes (src/halcyon/MevrMetricView.h)
+        // Mode 2 where the window holds the eyes (src/halcyon/MevrMetricView.h), when MELE3VR.ini [VR] MetricEyeFrustum = 1 asks:
+        // off by default on ME3 (mode 1, its lamps' lens flares; research/30 section 9.4).
+        c.perEyeFrustum = true;
         // The whole gameplay HUD on the body-locked panel, as ME1's and ME2's (research/le3-hud-panel.md): d3d_capture.cpp's
         // EmitUiDraw sends each SFR UI draw to MevrSeams::HudPanelDraw, at the game's own viewport and layout.
         c.hudPanelGameplay = true;
