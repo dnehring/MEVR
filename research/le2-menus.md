@@ -136,8 +136,9 @@ primary way and always wins:
 ### Opening the menu by script
 
 `%LOCALAPPDATA%\MEVR\mainmenu.request` (development builds, or `[Debug] requests = 1`; read once a second on the Present
-thread, then deleted): `open [section]`, `close`, `toggle`, or `rail` (the omni-tool's rail opened or closed as a wrist tap
-does; it stands only on a tracked left controller). Log `main menu: request file: '<line>'`. A replay's stick
+thread, then deleted): `open [section]`, `close`, `toggle`, `rail` (the omni-tool's rail opened or closed as a wrist tap
+does; it stands only on a tracked left controller), or `press <id>` (a button of the open menu clicked by its element id, as
+the pointer's trigger would; refused while the menu doesn't show it: research/28 "Leave"). Log `main menu: request file: '<line>'`. A replay's stick
 clicks never open the menu (the stick chord counts the player's own), so scripts use this; the menu's rows are then worked
 with `tools/make-menu-recording.py` and `tools/replay.ps1 -Inputs` as on ME1.
 

@@ -96,7 +96,10 @@ authored seated scenes (such as shuttles) must reject traversal while retaining 
   game mode, looked up on that object's class so the Mako's or a wheel's override runs; `SFXGameModeDefault.TryHolster`
   (Back's `Console_Holster`) on foot, only while a weapon is drawn (it's a toggle). No pad press: the old fake Start
   (2026-10-25) never reached the game (2026-10-26). Logs `main menu request:`, `main menu: opened the game's pause menu
-  (<class>.ShowMenuGui returned 1; ...)`, `main menu: holstered the weapon`; snapshots `"mod"."gameMenu"`. The menu button and each hand's interaction profile are only logged (`halcyon bridge:`). Pointer: a controller's aim ray is
+  (<class>.ShowMenuGui returned 1; ...)`, `main menu: holstered the weapon`; snapshots `"mod"."gameMenu"`. **On ME2 and ME3 a
+  third entry, Leave** (the owner's answer to question 16, 2026-11-17; research/28 "Leave"): their B tap's `LeaveWorld` (the
+  level's `SFXSeqEvt_LeaveWorld` events: an assignment's "return to the Normandy?"), shown only on foot, out of combat and with
+  an armed leave event loaded (HostServices v44 `setGameMenuOffers`, fresh 1 s; `mevr omni offers`); never on ME1. The menu button and each hand's interaction profile are only logged (`halcyon bridge:`). Pointer: a controller's aim ray is
   the mouse (trigger clicks, right stick scrolls, haptic ticks); the pad or left stick moves the focus, A
   activates, B backs out then closes; on Display holding A compares the colour. Sections: Controller guide (every button and gesture,
   texts from the settings: `vr::menu_settings::GuideTexts`; opened once on a first run, `[Menu] controlsShown`), Comfort, Controls,
@@ -440,7 +443,7 @@ switching frameworks.
   `pawn.Location.z - CylinderComponent.CollisionHeight + unitsPerMeter * live STAGE/LOCAL_FLOOR eye height`, independent of
   recenter posture, animated camera bones, mode offsets and vertical framing. Both eyes share the correction before metric
   eye offsets and head look; `HostServices` v34 publishes the corrected centre/pose to ViewAnchor, IK and sights (host and mod
-  deploy together; current HostServices v43). `[Body] floorLock = 1` by default; file-only `0` opts out. The temporary
+  deploy together; current HostServices v44). `[Body] floorLock = 1` by default; file-only `0` opts out. The temporary
   0.1.0 default-off workaround is superseded by the held-camera fix (2026-11-07): world UI, conversations and map holds
   capture `corrected centre Z - common framing Z` using the captured camera's rotation, then framing is added once.
   A wrist/conversation hold retains its on-foot scale factor and cylinder-floor pivot, despite mode 7/5 disabling fresh correction.

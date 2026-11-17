@@ -1258,6 +1258,9 @@ mevr::game::game_menu_request::Link GameMenuRequestLink() {
     if (gHostOwnsVr && MEVR_HOST_HAS(mainMenu) && gHost->mainMenu != nullptr) {
         link.menuOpen = (gHost->mainMenu() & kMainMenuOpen) != 0;
     }
+    if (gHostOwnsVr) {
+        link.offer = GameMenuOffersPublisher(gHost);  // v44: what the menu's Leave entry needs to know (research/28 "Leave")
+    }
     return link;
 }
 

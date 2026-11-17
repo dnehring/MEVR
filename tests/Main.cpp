@@ -5560,7 +5560,7 @@ void TestGameMenuRequest() {
     using namespace mevr::vr::game_menu;
     // The values cross the host/mod boundary: unknown ones are None.
     CHECK(FromValue(0) == Action::None && FromValue(1) == Action::PauseMenu && FromValue(2) == Action::Holster);
-    CHECK(FromValue(9) == Action::None && FromValue(0xFFFFFFFFu) == Action::None);
+    CHECK(FromValue(10) == Action::None && FromValue(0xFFFFFFFFu) == Action::None);  // 9 is Leave (research/28 "Leave")
     // The omni-tool's rail (research/57): the five screens by their game functions, and closing them.
     CHECK(FromValue(3) == Action::Equipment && FromValue(7) == Action::Map && FromValue(8) == Action::CloseScreens);
     CHECK(IsScreen(Action::Squad) && IsScreen(Action::Codex) && !IsScreen(Action::PauseMenu) && !IsScreen(Action::CloseScreens));
@@ -10827,6 +10827,11 @@ void TestMenuSettings() {
         kept.turn = "snap";
         kept.handWheel = false;  // X free of the hand's power wheel
         CHECK(text(kept, "guide_x") == "Nothing" && text(kept, "guide_b") == "Back (menus)");
+        // The sequels' B tap left a level where its script allowed it: the guide points at the top bar's Leave (research/28).
+        CHECK(text(kept, "guide_b_how").find("Leave") == std::string::npos);
+        ms::GuideInput sequel = kept;
+        sequel.le2 = true;
+        CHECK(text(sequel, "guide_b") == "Back (menus)" && text(sequel, "guide_b_how").find("Leave at the top") != std::string::npos);
         CHECK(text(kept, "guide_lgrip") == "Two-handed grip" && text(kept, "guide_lgrip_how").find("vent") == std::string::npos);
         CHECK(text(kept, "guide_lgrip_how").find("grenade") != std::string::npos);
         CHECK(text(kept, "guide_grenade").rfind("Left hand", 0) == 0);
@@ -12235,6 +12240,8 @@ int RunTraversalTests();
 int RunGoalStepTests();
 // tests/GameMenuBackOutTests.cpp: backing out of ME3's screens one B each (vr::game_menu::StepBackOut, lane OMX).
 int RunGameMenuBackOutTests();
+// tests/GameMenuLeaveTests.cpp: our menu's Leave entry on ME2 and ME3 (vr::game_menu Leave, offers; research/28 "Leave").
+int RunGameMenuLeaveTests();
 int RunTraversalPresentationTests();
 int RunRendererRequestTests();
 int RunHostServicesTests();
@@ -12468,6 +12475,7 @@ int main() {
     gFailures += RunTraversalTests();
     gFailures += RunGoalStepTests();
     gFailures += RunGameMenuBackOutTests();
+    gFailures += RunGameMenuLeaveTests();
     gFailures += RunTraversalPresentationTests();
     gFailures += RunRendererRequestTests();
     gFailures += RunHostServicesTests();

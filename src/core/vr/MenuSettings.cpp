@@ -99,6 +99,8 @@ std::vector<Field> const& Schema() {
         {"le2", Type::Flag, 0, "", 0, 1, F::None, true},
         {"le3", Type::Flag, 0, "", 0, 1, F::None, true},
         {"game_title", Type::Text, 0, "Mass Effect 1", 0, 0, F::None, true},
+        // The top bar's Leave (ME2 and ME3, research/28 "Leave"): shown while the mod says LeaveWorld would act. 0 on LE1.
+        {"can_leave", Type::Flag, 0, "", 0, 1, F::None, true},
         // The top bar.
         {"chip_headset", Type::Text, 0, "Headset not started"},
         {"chip_controllers", Type::Text, 0, "No controllers"},
@@ -691,7 +693,12 @@ std::vector<std::pair<std::string, std::string>> GuideTexts(GuideInput const& in
     } else if (in.meleeButton) {
         put("b", "Melee", "Strike with your weapon.");
     } else {
-        put("b", "Back (menus)", "Nothing on foot: melee is a real strike (below). In menus it backs out.");
+        // ME2's and ME3's B tap also left a level where its script allowed it (LeaveWorld); that is the top bar's Leave now
+        // (research/28 "Leave"). ME1's B never did.
+        put("b", "Back (menus)", std::string("Nothing on foot: melee is a real strike (below). In menus it backs out.") +
+                                     (in.le2 ? " Where a level lets you leave (a finished assignment's way back to the Normandy), "
+                                               "Leave at the top of this menu does it."
+                                             : ""));
     }
 
     // ---- Gestures ----

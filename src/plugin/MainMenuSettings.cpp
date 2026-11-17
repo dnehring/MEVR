@@ -2,6 +2,7 @@
 // What each row of our main menu drives (plugin/MainMenuSettings.hpp, research/28 section 4).
 
 #include "plugin/MainMenuSettings.hpp"
+#include "plugin/MainMenu.hpp"
 
 // One menu for both games (docs/le2-continuation-plan.md M4.1, research/le2-menus.md): LE1's host has Halcyon's LE1 renderer
 // (its VrConfig, profiles and render size) and the LE1 host's modules the rows drive (the colour, the voice, OpenAL Soft, the
@@ -284,6 +285,8 @@ void Settings::Read(menu::Values& v) {
         }
     }
     auto flag = [&](char const* key, bool value) { v.numbers[key] = value ? 1.0f : 0.0f; };
+    // The top bar's Leave (ME2 and ME3, research/28 "Leave"): only while the mod says the level's way out would act here.
+    flag("can_leave", (GameMenuOffers() & vr::game_menu::kOfferLeave) != 0);
 
     // Comfort.
 #if defined(MEVR_MENU_LE1)
@@ -1292,6 +1295,8 @@ void Settings::Command(std::string const& name, std::string const& argument, men
         after_ = After::GameStart;
     } else if (name == "game_back") {
         after_ = After::GameBack;
+    } else if (name == "game_leave") {
+        after_ = After::GameLeave;
     } else if (name == "calibrate") {
         after_ = After::Calibrate;
     } else if (name == "recenter") {

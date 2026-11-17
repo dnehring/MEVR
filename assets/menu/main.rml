@@ -35,6 +35,8 @@
 		<button class="btn game" id="game-menu" data-event-click="cmd('game_menu')"><div class="sweep"/><div class="bi i-gamemenu"/><div class="gl"><span class="gt">Game menu</span><span class="gs">Save, load, squad, map, options</span></div></button>
 		<!-- Greyed on ME3 until its put-away is checked in the game (lane WP's holsters, [Holsters] le3PutAway; the owner: "Keep them greyed until I can see them"). -->
 		<button class="btn game" id="game-back" data-class-disabled="le3" data-event-click="cmd('game_back')"><div class="sweep"/><div class="bi i-holster"/><div class="gl"><span class="gt">Holster</span><span class="gs" data-if="!le3">Puts the drawn gun away</span><span class="gs" data-if="le3">Not on ME3 yet</span></div></button>
+		<!-- ME2 and ME3 (research/28 "Leave"): the level's own way out, which their B tap gave on foot; shown only where it would act. -->
+		<button class="btn game" id="game-leave" data-if="can_leave" data-event-click="cmd('game_leave')"><div class="sweep"/><div class="bi i-leave"/><div class="gl"><span class="gt">Leave</span><span class="gs">This level's way out</span></div></button>
 	</div>
 	<button class="btn primary" id="resume" data-event-click="cmd('resume')"><div class="sweep"/><div class="bi i-play"/><span>Resume</span></button>
 </div>

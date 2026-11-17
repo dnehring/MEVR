@@ -883,6 +883,10 @@ stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs 
   so; aiming, firing and reaching for a holster never strike by themselves. Say whether 2 m and the punch's speed feel right.
 - [ ] Voice and Thespian (T47, T48): a real microphone at the ear; the reply panel's place and legibility on the cinema
   screen.
+- [ ] Leave on our menu's top bar (T37, question 16; research/28 "Leave", lane LV 2026-11-17; seen on the fake headset at
+  `BioP_N7Mine`): finish an assignment, choose to stay on the planet, then open our menu on foot: Leave is there next to Game menu
+  and Holster and asks "return to the Normandy?" as B did. Elsewhere (a hub, the Normandy, in combat, in a conversation) it is
+  not on the bar. Known: during an unfinished assignment it shows but the game's script answers nothing (plot state 4849).
 - [ ] Galaxy map (T42; docs/le2-m6-implementation-guide.md G): table or projector alignment, labels in both eyes, seated
   reach, scanning comfort.
 - [ ] A streamed Quest (T10): full rate after a load, with no runtime setting changed.
@@ -951,6 +955,9 @@ stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs 
   owner answers question 7 (`mevr melee requests on`, `gestures on`), and B is squad placement's on ME3 too since 2026-11-17
   (lane MEL): by default ME3 has no melee on foot. Once on: the checks of research/le3-combat-fixtures.md "Melee on the first
   combat save", then the feel.
+- [ ] Leave (T37, question 16; research/28 "Leave"; not seen in the game: no save reaches its levels): in the Citadel DLC (a
+  party conversation, the dance floor, the casino race, the combat simulator's summary) Leave on our menu's top bar does what
+  B's tap did; nowhere in the base campaign.
 - [ ] Galaxy projector (T42; docs/galaxy-projector-handoff.md step 4): alignment with the physical projector, legibility,
   comfort, GPU cost.
 - [ ] Performance (T07, T10; docs/me3-overall-goal-handoff.md section 4): frame pacing in a real headset; the desktop

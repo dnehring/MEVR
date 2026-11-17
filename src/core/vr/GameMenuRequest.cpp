@@ -14,6 +14,7 @@ char const* Name(Action action) {
     case Action::Codex: return "the codex";
     case Action::Map: return "the map";
     case Action::CloseScreens: return "close the game's screens";
+    case Action::Leave: return "leave";
     }
     return "none";
 }
@@ -34,7 +35,7 @@ char const* ShowFunction(Action action) {
 }
 
 Action FromValue(std::uint32_t value) {
-    if (value >= static_cast<std::uint32_t>(Action::PauseMenu) && value <= static_cast<std::uint32_t>(Action::CloseScreens)) {
+    if (value >= static_cast<std::uint32_t>(Action::PauseMenu) && value <= static_cast<std::uint32_t>(Action::Leave)) {
         return static_cast<Action>(value);
     }
     return Action::None;
@@ -50,6 +51,49 @@ Action DecodeAction(std::uint32_t value) {
 
 Origin DecodeOrigin(std::uint32_t value) {
     return DecodeAction(value) != Action::None && (value & 0x100u) != 0 ? Origin::OmniRail : Origin::Menu;
+}
+
+void Offers::Publish(std::uint32_t bits, std::uint64_t nowMs) {
+    bits_.store(bits, std::memory_order_relaxed);
+    atMs_.store(nowMs == 0 ? 1 : nowMs, std::memory_order_release);
+}
+
+std::uint32_t Offers::Current(std::uint64_t nowMs) const {
+    std::uint64_t const at = atMs_.load(std::memory_order_acquire);
+    if (at == 0 || nowMs < at || nowMs - at > kOfferFreshMs) {
+        return 0;
+    }
+    return bits_.load(std::memory_order_relaxed);
+}
+
+void Offers::Forget() {
+    atMs_.store(0, std::memory_order_release);
+    bits_.store(0, std::memory_order_relaxed);
+}
+
+bool Armed(LeaveEvent const& event) {
+    return event.enabled && (event.maxTriggers <= 0 || event.triggers < event.maxTriggers) && event.openPaths > 0;
+}
+
+LeaveWhy LeaveOffer(LeaveFacts const& facts) {
+    if (!facts.known) return LeaveWhy::Unknown;
+    if (!facts.onFoot) return LeaveWhy::NotOnFoot;
+    if (facts.inCombat) return LeaveWhy::InCombat;
+    if (facts.events <= 0) return LeaveWhy::NoEvent;
+    if (facts.armed <= 0) return LeaveWhy::NoneArmed;
+    return LeaveWhy::Offered;
+}
+
+char const* Text(LeaveWhy why) {
+    switch (why) {
+    case LeaveWhy::Offered: return "offered";
+    case LeaveWhy::Unknown: return "the game's state isn't readable";
+    case LeaveWhy::NotOnFoot: return "not on foot";
+    case LeaveWhy::InCombat: return "in combat";
+    case LeaveWhy::NoEvent: return "no leave event in this level";
+    case LeaveWhy::NoneArmed: return "the level's leave events are off, used up or behind a closed gate";
+    }
+    return "?";
 }
 
 Action Slot::Put(Action action, Origin origin) {

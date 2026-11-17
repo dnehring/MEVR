@@ -86,6 +86,7 @@ std::atomic<bool> gOpen{false};
 std::atomic<bool> gLiveAdjusting{false};
 std::atomic<bool> gPauseWanted{false};
 vr::game_menu::Slot gGameRequest;  // what the Game menu or Holster button asked the mod to do (HostServices v19), not yet taken
+vr::game_menu::Offers gGameOffers;  // what the mod says the game entries can do now (HostServices v44): Leave
 std::mutex gPadMutex;
 XINPUT_GAMEPAD gPad{};
 std::uint64_t gPadMs = 0;
@@ -257,12 +258,29 @@ std::string gOpenSection;   // a request's section, applied with the next frame 
 
 // %LOCALAPPDATA%\MEVR\mainmenu.request (a development build's request file, core/DevChannels; read once a second on the
 // Present thread, then deleted): `open [section]`, `close` or `toggle`, so a script opens the menu without the player's
-// sticks or keyboard (a replay's stick clicks never open it); `rail` opens or closes the omni-tool's rail as a wrist tap does.
+// sticks or keyboard (a replay's stick clicks never open it); `rail` opens or closes the omni-tool's rail as a wrist tap does;
+// `press <id>` clicks a button of the open menu by its element id, as the pointer's trigger would, and refuses one the menu
+// doesn't show (the top bar's `game-leave` where the level has no way out: research/28 "Leave").
 // research/le2-menus.md "Opening the menu by script".
 std::filesystem::path RequestFile() {
     wchar_t buffer[MAX_PATH]{};
     DWORD const n = GetEnvironmentVariableW(L"LOCALAPPDATA", buffer, MAX_PATH);
     return n > 0 && n < MAX_PATH ? std::filesystem::path(buffer) / L"MEVR" / L"mainmenu.request" : std::filesystem::path();
+}
+
+void Press(std::string const& id) {
+    Rml::ElementDocument* const doc = gOpen.load() && g.ui != nullptr ? g.ui->Document() : nullptr;
+    Rml::Element* const element = doc != nullptr ? doc->GetElementById(id) : nullptr;
+    if (element == nullptr) {
+        log::Warn("main menu: request file: press {}: {}", id, doc == nullptr ? "the menu isn't open" : "no element with that id");
+        return;
+    }
+    if (!element->IsVisible(true)) {
+        log::Info("main menu: request file: press {}: not shown, not pressed", id);
+        return;
+    }
+    element->Click();
+    log::Info("main menu: request file: pressed {}", id);
 }
 
 void PollRequest(std::uint64_t now) {
@@ -304,8 +322,10 @@ void PollRequest(std::uint64_t now) {
         Toggle("the request file");
     } else if (word == "rail") {
         omni_rail::Toggle("the request file");  // the omni-tool's rail alone on the wrist, as a tap opens it
+    } else if (word == "press") {
+        Press(section);
     } else {
-        log::Warn("main menu: request file: '{}' isn't open [section], close, toggle or rail", line);
+        log::Warn("main menu: request file: '{}' isn't open [section], close, toggle, rail or press <id>", line);
     }
 }
 
@@ -836,6 +856,10 @@ void AfterCommand(After after, Frame const& frame) {
         SetOpen(false, "Holster");
         AskTheMod(vr::game_menu::Action::Holster);
         return;
+    case After::GameLeave:
+        SetOpen(false, "Leave");
+        AskTheMod(vr::game_menu::Action::Leave);
+        return;
     case After::Calibrate:
         SetOpen(false, "Start calibration");
         calibration::Start("the main menu");
@@ -1011,6 +1035,14 @@ vr::game_menu::Action TakeGameRequest() {
 }
 
 std::uint32_t TakeGameRequestValue() { return gGameRequest.TakeValue(); }
+
+void NoteGameMenuOffers(std::uint32_t offers) {
+    gGameOffers.Publish(offers, GetTickCount64());
+}
+
+std::uint32_t GameMenuOffers() {
+    return gGameOffers.Current(GetTickCount64());
+}
 
 void PutGameRequest(vr::game_menu::Action action, vr::game_menu::Origin origin) {
     vr::game_menu::Action const replaced = gGameRequest.Put(action, origin);

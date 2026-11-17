@@ -14,6 +14,8 @@
 
 #include <chrono>
 #include <format>
+#include <unordered_set>
+#include <vector>
 
 namespace mevr::game::game_menu_request {
 namespace {
@@ -754,8 +756,344 @@ void StepPage(Link const& link) {
 }
 #endif
 
+// ---- Leave (ME2 and ME3; the owner's answer to question 16, 2026-11-17; research/28 "Leave") ----
+// SFXGameModeBase.LeaveWorld (ME2's and ME3's B tap on foot, Console_Melee) asks the game whether it is in combat and, if not,
+// activates every SFXSeqEvt_LeaveWorld event of the game's sequence (WorldInfo.GetGameSequence, FindSeqObjectsByClass
+// recursively). The menu offers Leave only where that would act (vr::game_menu::LeaveOffer): the same walk over the script,
+// each event as CheckActivate would take it (enabled, not used up) and with something behind it that acts (not a closed gate).
+// ME1 has no on-foot leave (its LeaveWorld is the Mako's, X and the cockpit's extraction lever): nothing here runs there.
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+ue3::ClassRef gLeaveEventClass{"SFXGame.SFXSeqEvt_LeaveWorld", ue3::kEveryGame};
+ue3::ClassRef gSequenceClass{"Engine.Sequence", ue3::kEveryGame};
+ue3::ClassRef gSequenceReferenceClass{"Engine.SequenceReference", ue3::kEveryGame};  // a Sequence in these games
+ue3::ClassRef gLogClass{"Engine.SeqAct_Log", ue3::kEveryGame};
+ue3::ClassRef gGateClass{"Engine.SeqAct_Gate", ue3::kEveryGame};
+ue3::FieldRef gSequenceObjects{"Engine.Sequence", "SequenceObjects", ue3::kEveryGame};
+ue3::FieldRef gNestedSequences{"Engine.Sequence", "NestedSequences", ue3::kEveryGame};  // the streamed levels' scripts
+ue3::FieldRef gReferencedSequence{"Engine.SequenceReference", "oSequenceReference", ue3::kEveryGame};  // a prefab's script
+ue3::FieldRef gOutputLinks{"Engine.SequenceOp", "OutputLinks", ue3::kEveryGame};
+ue3::FieldRef gOutputLinkLinks{gOutputLinks, "Links"};
+ue3::FieldRef gLinkedOp{gOutputLinkLinks, "LinkedOp"};
+ue3::FieldRef gLinkInput{gOutputLinkLinks, "InputLinkIdx"};
+ue3::FieldRef gGateOpen{"Engine.SeqAct_Gate", "bOpen", ue3::kEveryGame};
+ue3::FieldRef gEventEnabled{"Engine.SequenceEvent", "bEnabled", ue3::kEveryGame};
+ue3::FieldRef gTriggerCount{"Engine.SequenceEvent", "TriggerCount", ue3::kEveryGame};
+ue3::FieldRef gMaxTriggerCount{"Engine.SequenceEvent", "MaxTriggerCount", ue3::kEveryGame};
+ue3::FieldRef gActorWorldInfo{"Engine.Actor", "WorldInfo", ue3::kEveryGame};
+ue3::FunctionRef gGetGameSequence{"Engine.WorldInfo.GetGameSequence", ue3::kEveryGame};
+ue3::FunctionRef gLeaveWorld{"SFXGame.SFXGameModeBase.LeaveWorld", ue3::kEveryGame};
+#if defined(MEVR_GAME_LE2)
+// ME2's LeaveWorld asks SFXGame(WorldInfo.Game).InCombat() (bInCombat or bForceCombat).
+ue3::FieldRef gCombatHolder{"Engine.WorldInfo", "Game", ue3::kEveryGame};
+ue3::FunctionRef gInCombat{"SFXGame.SFXGame.InCombat", ue3::kEveryGame};
+constexpr char const* kCombatWhere = "SFXGame.InCombat";
+#else
+// ME3's asks SFXGRI(WorldInfo.GRI).InCombat() (bInCombat, bForceCombat or bAlwaysInCombat).
+ue3::FieldRef gCombatHolder{"Engine.WorldInfo", "GRI", ue3::kEveryGame};
+ue3::FunctionRef gInCombat{"SFXGame.SFXGRI.InCombat", ue3::kEveryGame};
+constexpr char const* kCombatWhere = "SFXGRI.InCombat";
+#endif
+constexpr int kOfferEveryTicks = 8;          // the facts read every 8 game ticks (the word itself goes every tick)
+constexpr std::uint64_t kRescanMs = 5000;    // the script walked again this often whatever its signature says
+constexpr int kMaxVisited = 200000;          // sequence objects in one walk, at most
+constexpr int kMaxDepth = 64;
+constexpr int kMaxHops = 8;                  // through logs behind an event, at most
+
+struct LeaveScan {
+    ue3::Object* root = nullptr;
+    std::uint64_t signature = 0;  // the root and its nested sequences (a streamed level's script joins them)
+    std::uint64_t atMs = 0;
+    std::vector<ue3::Object*> events;
+    int visited = 0;
+    int sequences = 0;
+    int nested = 0;   // sequences reached through NestedSequences (the streamed levels' scripts)
+    bool truncated = false;
+    double ms = 0.0;
+};
+LeaveScan gLeaveScan;
+int gOfferTick = 0;
+std::uint32_t gOffers = 0;
+gm::LeaveWhy gLastWhy = gm::LeaveWhy::Unknown;
+bool gLoggedWhy = false;
+std::size_t gLoggedEvents = static_cast<std::size_t>(-1);
+std::string gLeaveFacts = "not read yet";
+
+std::uint64_t LeaveNowMs() {
+    return static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
+}
+
+ue3::Object* GameSequence(ue3::Object* worldInfo) {
+    if (worldInfo == nullptr || gGetGameSequence.Get() == nullptr) {
+        return nullptr;
+    }
+    ue3::Params parms(ue3::runtime::Get(), gGetGameSequence.Get());
+    if (!ue3::runtime::Call(worldInfo, gGetGameSequence.Get(), parms)) {
+        return nullptr;
+    }
+    return parms.Return<ue3::Object*>().value_or(nullptr);
+}
+
+std::uint64_t SequenceSignature(ue3::Object* root) {
+    std::uint64_t h = reinterpret_cast<std::uintptr_t>(root) * 0x9E3779B97F4A7C15ull;
+    if (auto const* nested = root != nullptr ? gNestedSequences.In<ue3::TArray<ue3::Object*>>(root) : nullptr) {
+        h ^= static_cast<std::uint64_t>(nested->Count()) << 1;
+        for (int i = 0; i < nested->Count() && i < 4096; ++i) {
+            h = (h ^ reinterpret_cast<std::uintptr_t>(nested->data[i])) * 0x100000001B3ull;
+        }
+    }
+    return h;
+}
+
+// What FindSeqObjectsByClass(SFXSeqEvt_LeaveWorld, true) finds: the sequence's objects, every sequence among them (a prefab's
+// SequenceReference through the sequence it references), and the nested sequences (the streamed levels' scripts).
+void WalkSequence(ue3::Object* seq, int depth, std::unordered_set<ue3::Object*>& seen, LeaveScan& out) {
+    if (seq == nullptr || depth > kMaxDepth || out.visited > kMaxVisited) {
+        out.truncated = out.truncated || (seq != nullptr);
+        return;
+    }
+    if (!seen.insert(seq).second) {
+        return;
+    }
+    ue3::Reflection& r = ue3::runtime::Get();
+    if (!r.IsAlive(seq)) {
+        return;
+    }
+    if (ue3::IsA(seq, gSequenceReferenceClass)) {
+        WalkSequence(gReferencedSequence.Read<ue3::Object*>(seq).value_or(nullptr), depth + 1, seen, out);
+    }
+    if (auto const* list = gSequenceObjects.In<ue3::TArray<ue3::Object*>>(seq); list != nullptr && list->Count() <= 65536) {
+        for (int i = 0; i < list->Count(); ++i) {
+            ue3::Object* const o = list->data[i];
+            if (o == nullptr) {
+                continue;
+            }
+            ++out.visited;
+            if (ue3::IsA(o, gLeaveEventClass)) {
+                out.events.push_back(o);
+            } else if (ue3::IsA(o, gSequenceClass)) {
+                WalkSequence(o, depth + 1, seen, out);
+            }
+        }
+    }
+    if (auto const* nested = gNestedSequences.In<ue3::TArray<ue3::Object*>>(seq); nested != nullptr && nested->Count() <= 4096) {
+        out.nested += nested->Count();
+        for (int i = 0; i < nested->Count(); ++i) {
+            WalkSequence(nested->data[i], depth + 1, seen, out);
+        }
+    }
+}
+
+// How many of the event's output links reach a node that acts: through logs (they pass on at once), up to a gate's In (index
+// 0) that is closed, which does nothing. Any other node (a plot check, a message box, a switch...) counts as acting: it is the
+// script's to decide.
+int OpenPaths(ue3::Object* op, int hops) {
+    std::optional<ue3::Elements> const outputs = gOutputLinks.ElementsOf(op, 64);
+    if (!outputs) {
+        return 0;
+    }
+    ue3::Reflection& r = ue3::runtime::Get();
+    int open = 0;
+    for (int o = 0; o < outputs->count; ++o) {
+        std::optional<ue3::Elements> const links = gOutputLinkLinks.ElementsOf(outputs->At(o), 64);
+        if (!links) {
+            continue;
+        }
+        for (int l = 0; l < links->count; ++l) {
+            ue3::Object* const next = gLinkedOp.Read<ue3::Object*>(links->At(l)).value_or(nullptr);
+            if (next == nullptr || !r.IsAlive(next)) {
+                continue;
+            }
+            int const input = gLinkInput.Read<std::int32_t>(links->At(l)).value_or(0);
+            if (ue3::IsA(next, gGateClass) && input == 0 && !gGateOpen.ReadBool(next).value_or(true)) {
+                continue;  // a closed gate's In: stops here
+            }
+            if (ue3::IsA(next, gLogClass) && hops < kMaxHops) {
+                open += OpenPaths(next, hops + 1) > 0 ? 1 : 0;
+                continue;
+            }
+            ++open;
+        }
+    }
+    return open;
+}
+
+// The facts for vr::game_menu::LeaveOffer, read now. `rescan`: walk the script again whatever its signature says. `events`:
+// also each leave event's state, one line each (mevr omni offers).
+gm::LeaveFacts ReadLeaveFacts(bool rescan, std::string& detail, std::string* events = nullptr) {
+    gm::LeaveFacts facts;
+    if (gLeaveEventClass.Get() == nullptr || gSequenceObjects.Get() == nullptr || gGetGameSequence.Get() == nullptr) {
+        detail = "SFXSeqEvt_LeaveWorld, Sequence.SequenceObjects or WorldInfo.GetGameSequence not found";
+        return facts;
+    }
+    std::string why;
+    std::optional<Modes> const modes = ReadModes(why);
+    if (!modes || !modes->current) {
+        detail = modes ? "the game mode isn't known" : why;
+        return facts;
+    }
+    ue3::Object* const pc = player::Controller();
+    ue3::Object* const worldInfo = gActorWorldInfo.Read<ue3::Object*>(pc).value_or(nullptr);
+    ue3::Object* const root = GameSequence(worldInfo);
+    if (root == nullptr) {
+        detail = "no game sequence";
+        return facts;
+    }
+    std::uint64_t const now = LeaveNowMs();
+    std::uint64_t const signature = SequenceSignature(root);
+    if (rescan || root != gLeaveScan.root || signature != gLeaveScan.signature || now - gLeaveScan.atMs >= kRescanMs) {
+        auto const start = std::chrono::steady_clock::now();
+        LeaveScan scan;
+        scan.root = root;
+        scan.signature = signature;
+        scan.atMs = now;
+        std::unordered_set<ue3::Object*> seen;
+        WalkSequence(root, 0, seen, scan);
+        scan.sequences = static_cast<int>(seen.size());
+        scan.ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+        gLeaveScan = std::move(scan);
+        if (gLeaveScan.events.size() != gLoggedEvents) {
+            gLoggedEvents = gLeaveScan.events.size();
+            ue3::Reflection& r = ue3::runtime::Get();
+            std::string names;
+            for (std::size_t i = 0; i < gLeaveScan.events.size() && i < 4; ++i) {
+                names += std::format("{}{}", i == 0 ? ": " : ", ", r.PathName(gLeaveScan.events[i]));
+            }
+            log::Info("main menu: leave: {} leave event{} in the level's script{}{} ({} sequence objects in {} sequences, {:.2f} ms{})",
+                gLeaveScan.events.size(), gLeaveScan.events.size() == 1 ? "" : "s", names,
+                gLeaveScan.events.size() > 4 ? ", ..." : "", gLeaveScan.visited, seen.size(), gLeaveScan.ms,
+                gLeaveScan.truncated ? "; the walk stopped at its limit" : "");
+        }
+    }
+    facts.known = true;
+    facts.onFoot = engine::adapter::GameMode(*modes->current) == engine::adapter::Mode::OnFoot;
+    ue3::Reflection& r = ue3::runtime::Get();
+    for (ue3::Object* const event : gLeaveScan.events) {
+        if (!r.IsAlive(event)) {
+            continue;
+        }
+        ++facts.events;
+        gm::LeaveEvent e;
+        e.enabled = gEventEnabled.ReadBool(event).value_or(false);
+        e.triggers = gTriggerCount.Read<std::int32_t>(event).value_or(0);
+        e.maxTriggers = gMaxTriggerCount.Read<std::int32_t>(event).value_or(0);
+        e.openPaths = OpenPaths(event, 0);
+        facts.armed += gm::Armed(e) ? 1 : 0;
+        if (events != nullptr) {
+            *events += std::format("\n  {}: enabled {}, triggered {} of {}, {} open path{}: {}", r.PathName(event), e.enabled ? 1 : 0,
+                e.triggers, e.maxTriggers <= 0 ? std::string("any") : std::to_string(e.maxTriggers), e.openPaths,
+                e.openPaths == 1 ? "" : "s", gm::Armed(e) ? "armed" : "not armed");
+        }
+    }
+    // The game's own answer, as LeaveWorld asks it.
+    ue3::Object* const holder = worldInfo != nullptr ? gCombatHolder.Read<ue3::Object*>(worldInfo).value_or(nullptr) : nullptr;
+    ue3::Function* const inCombat = holder != nullptr && gInCombat.Get() != nullptr ? r.FindFunction(r.ClassOf(holder), "InCombat")
+                                                                                     : nullptr;
+    if (inCombat == nullptr) {
+        facts.known = false;
+        detail = std::format("no {} to ask", kCombatWhere);
+        return facts;
+    }
+    ue3::Params parms(r, inCombat);
+    if (!ue3::runtime::Call(holder, inCombat, parms)) {
+        facts.known = false;
+        detail = std::format("{} couldn't be asked", kCombatWhere);
+        return facts;
+    }
+    facts.inCombat = parms.ReturnBool().value_or(true);
+    detail = std::format("game mode {}, {} {}, {} leave event{} ({} armed) in {} sequence objects of {} sequences, {} of them "
+                         "nested (the streamed levels')", *modes->current, kCombatWhere, facts.inCombat ? "true" : "false",
+        facts.events, facts.events == 1 ? "" : "s", facts.armed, gLeaveScan.visited, gLeaveScan.sequences, gLeaveScan.nested);
+    return facts;
+}
+
+// Each tick: the word for the host (every tick, so it stays fresh while our menu is open and the game paused), the facts
+// behind it every kOfferEveryTicks ticks. A change of the answer is logged once.
+void StepOffers(Link const& link) {
+    if (link.offer == nullptr) {
+        return;
+    }
+    if (gOfferTick-- <= 0) {
+        gOfferTick = kOfferEveryTicks;
+        std::string detail;
+        gm::LeaveFacts const facts = ReadLeaveFacts(false, detail);
+        gm::LeaveWhy const why = gm::LeaveOffer(facts);
+        gOffers = why == gm::LeaveWhy::Offered ? gm::kOfferLeave : 0;
+        gLeaveFacts = std::format("{} ({})", gm::Text(why), detail);
+        if (!gLoggedWhy || why != gLastWhy) {
+            gLoggedWhy = true;
+            gLastWhy = why;
+            log::Info("main menu: leave: {} ({})", why == gm::LeaveWhy::Offered ? "offered" : std::format("hidden: {}", gm::Text(why)), detail);
+        }
+    }
+    link.offer(gOffers);
+}
+
+#if defined(MEVR_GAME_LE2)
+// `mevr omni party` (a test fixture's way past ME2's squad selection, lane LV: a map opened by the console starts with it): the
+// screen's own A on its confirmation, BioSFHandler_PartySelection.FinalizeParty(true, 0), on the focused PartySelect panel's
+// handler, with the party it has selected (none: no squad).
+ue3::ClassRef gPartySelection{"SFXGame.BioSFHandler_PartySelection", ue3::kEveryGame};
+ue3::FunctionRef gFinalizeParty{"SFXGame.BioSFHandler_PartySelection.FinalizeParty", ue3::kEveryGame};
+
+std::string FinalizeParty() {
+    Focus const focus = FocusedPanel();
+    if (focus.tag != "PartySelect" || focus.handler == nullptr || !ue3::IsA(focus.handler, gPartySelection)) {
+        return std::format("omni party: no squad selection in focus (the focused panel is '{}')", focus.tag);
+    }
+    if (gFinalizeParty.Get() == nullptr) {
+        return "omni party: BioSFHandler_PartySelection.FinalizeParty not found";
+    }
+    ue3::Params parms(ue3::runtime::Get(), gFinalizeParty.Get());
+    bool const set = parms.SetBool("bAPressed", true) && parms.Set("nContext", std::int32_t{0});
+    bool const called = set && ue3::runtime::Call(focus.handler, gFinalizeParty.Get(), parms);
+    log::Info("omni-tool: the squad selection finalized by the console ({}.FinalizeParty(true, 0) {})", ClassName(focus.handler),
+        called ? "called" : "not called");
+    return std::format("omni party: {}.FinalizeParty(true, 0) {}", ClassName(focus.handler), called ? "called" : "not called");
+}
+#endif
+
+void Leave() {
+    std::string detail;
+    gm::LeaveFacts const facts = ReadLeaveFacts(true, detail);
+    gm::LeaveWhy const why = gm::LeaveOffer(facts);
+    if (why != gm::LeaveWhy::Offered) {
+        gLast = std::format("leave: not done ({})", gm::Text(why));
+        log::Info("main menu: leave not done: {} ({})", gm::Text(why), detail);
+        return;
+    }
+    std::string mwhy;
+    std::optional<Modes> const modes = ReadModes(mwhy);
+    std::string how;
+    ue3::Object* const mode = modes ? ActiveMode(*modes, how) : nullptr;
+    ue3::Reflection& r = ue3::runtime::Get();
+    ue3::Function* const leave = mode != nullptr && gLeaveWorld.Get() != nullptr ? r.FindFunction(r.ClassOf(mode), "LeaveWorld")
+                                                                                  : nullptr;
+    if (leave == nullptr) {
+        gLast = "leave: no LeaveWorld on the active mode";
+        log::Warn("main menu: leave not done: {}", mode == nullptr ? "no active game mode" : std::format("{} has no LeaveWorld", ClassName(mode)));
+        return;
+    }
+    ue3::Params parms(r, leave);
+    bool const called = ue3::runtime::Call(mode, leave, parms);  // directly: never a generated wrapper
+    std::string const declared = r.NameText(r.OuterOf(leave));
+    gLast = std::format("leave: {}.LeaveWorld {}", ClassName(mode), called ? "called" : "call failed");
+    log::Info("main menu: leave: {}.LeaveWorld{} {} ({}; {})", ClassName(mode),
+        declared != ClassName(mode) ? std::format(" (declared on {})", declared) : std::string(), called ? "called" : "call failed",
+        detail, how);
+}
+#endif
+
 void Run(gm::Action action, gm::Origin origin) {
     switch (action) {
+    case gm::Action::Leave:
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+        Leave();
+#else
+        gLast = "leave: ME1 has none on foot";
+        log::Info("main menu: leave not done: ME1 has no leave on foot (its LeaveWorld is the Mako's)");
+#endif
+        return;
     case gm::Action::Holster:
 #if defined(MEVR_GAME_LE3)
         gLast = "holster: ME3 native contract not enabled";
@@ -831,6 +1169,9 @@ void Tick(Link const& link) {
     if (step.run != gm::Action::None) {
         Run(step.run, step.origin);
     }
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+    StepOffers(link);  // whether the menu's Leave would act here, every tick (also while our menu is open)
+#endif
 #if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     if (link.menuOpen) {
         gSwitch = {};
@@ -853,7 +1194,16 @@ std::string Inject(std::string const& which) {
     };
     static constexpr Name kNames[] = {{"equipment", gm::Action::Equipment}, {"squad", gm::Action::Squad}, {"map", gm::Action::Map},
         {"journal", gm::Action::Journal}, {"codex", gm::Action::Codex}, {"computer", gm::Action::PauseMenu},
-        {"menu", gm::Action::PauseMenu}, {"close", gm::Action::CloseScreens}, {"holster", gm::Action::Holster}};
+        {"menu", gm::Action::PauseMenu}, {"close", gm::Action::CloseScreens}, {"holster", gm::Action::Holster},
+        {"leave", gm::Action::Leave}};
+    if (which == "offers") {
+        return LeaveStatus();
+    }
+#if defined(MEVR_GAME_LE2)
+    if (which == "party") {
+        return FinalizeParty();
+    }
+#endif
     for (Name const& name : kNames) {
         if (which == name.word) {
             log::Info("main menu request: {} asked from the console (mevr omni {})", gm::Name(name.action), which);
@@ -862,7 +1212,20 @@ std::string Inject(std::string const& which) {
                                "`omni-tool:`)", gm::Name(name.action), gm::kSettleTicks);
         }
     }
-    return "usage: mevr omni <equipment|squad|map|journal|codex|computer|close|holster>";
+    return "usage: mevr omni <equipment|squad|map|journal|codex|computer|close|holster|leave|offers>";
+}
+
+std::string LeaveStatus() {
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+    std::string detail;
+    std::string events;
+    gm::LeaveFacts const facts = ReadLeaveFacts(true, detail, &events);
+    gm::LeaveWhy const why = gm::LeaveOffer(facts);
+    return std::format("leave: {} ({}); the last tick's word to the host: {}{}", why == gm::LeaveWhy::Offered ? "offered" :
+        std::format("hidden: {}", gm::Text(why)), detail, gOffers != 0 ? "offered" : "hidden", events);
+#else
+    return "leave: ME1 has no leave on foot (its LeaveWorld is the Mako's)";
+#endif
 }
 
 bool GuiInputReady() {
@@ -916,6 +1279,13 @@ bool GuiKey(std::uint8_t event, std::string& why) {
 void Shutdown() {
     gSchedule = {};
     gToldOldHost = false;
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+    gLeaveScan = {};
+    gOfferTick = 0;
+    gOffers = 0;
+    gLoggedWhy = false;
+    gLoggedEvents = static_cast<std::size_t>(-1);
+#endif
 #if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     gSwitch = {};
 #endif
@@ -926,7 +1296,12 @@ void Shutdown() {
 }
 
 std::string StatusJson() {
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+    return std::format("{{\"waiting\": \"{}\", \"last\": \"{}\", \"leave\": \"{}\", \"leaveOffered\": {}}}", gm::Name(gSchedule.action), gLast,
+        gLeaveFacts, gOffers != 0 ? "true" : "false");
+#else
     return std::format("{{\"waiting\": \"{}\", \"last\": \"{}\"}}", gm::Name(gSchedule.action), gLast);
+#endif
 }
 
 } // namespace mevr::game::game_menu_request

@@ -24,6 +24,11 @@ enum class Action : std::uint32_t {
     Codex = 6,      // ShowCodexGui
     Map = 7,        // ShowMapGui
     CloseScreens = 8,
+    // The level's own way out (ME2 and ME3, the owner's answer to question 16, 2026-11-17): SFXGameModeBase.LeaveWorld on the
+    // active mode, what their B tap called on foot (Console_Melee) before B was kept from the game in VR. Outside combat it fires
+    // the level's SFXSeqEvt_LeaveWorld events (a finished assignment's "return to the Normandy?", leaving a scene or an
+    // activity). The menu offers it only where it would act (Offers, LeaveOffer below).
+    Leave = 9,
 };
 char const* Name(Action action);
 // One of the screens (Equipment..Map): what the rail opens.
@@ -36,6 +41,47 @@ enum class Origin : std::uint32_t { Menu = 0, OmniRail = 1 };
 std::uint32_t Encode(Action action, Origin origin);
 Action DecodeAction(std::uint32_t value);
 Origin DecodeOrigin(std::uint32_t value);
+
+// ---- What the menu's game entries can do now (HostServices v44 setGameMenuOffers; research/28 "Leave") ----
+// The mod says each game tick which entries would act (bits); the host shows such an entry only while that word is fresh, so a
+// mod that is gone, reloading or older than v44 leaves the entry hidden.
+inline constexpr std::uint32_t kOfferLeave = 1u << 0;
+inline constexpr std::uint64_t kOfferFreshMs = 1000;
+class Offers {
+public:
+    void Publish(std::uint32_t bits, std::uint64_t nowMs);
+    // The bits last published, or 0 once older than kOfferFreshMs (or never published).
+    std::uint32_t Current(std::uint64_t nowMs) const;
+    void Forget();
+
+private:
+    std::atomic<std::uint32_t> bits_{0};
+    std::atomic<std::uint64_t> atMs_{0};
+};
+
+// One of the level's SFXSeqEvt_LeaveWorld events as the game would take it (SequenceEvent.CheckActivate's own conditions)
+// and where its output leads: through pass-through nodes (logs) to the first node that does something; a closed gate there
+// does nothing (the cabins' post-credits scenes and the shooting gallery open theirs only while their scene or game runs).
+struct LeaveEvent {
+    bool enabled = false;          // SequenceEvent.bEnabled
+    std::int32_t triggers = 0;     // TriggerCount
+    std::int32_t maxTriggers = 0;  // MaxTriggerCount (0: no limit)
+    int openPaths = 0;             // output links reaching a node that acts (anything but a closed gate)
+};
+bool Armed(LeaveEvent const& event);
+
+// When the menu offers Leave: on foot, out of combat (the game's own InCombat, which LeaveWorld asks), and at least one armed
+// leave event loaded in the game's sequence (WorldInfo.GetGameSequence, recursively, as LeaveWorld's FindSeqObjectsByClass).
+struct LeaveFacts {
+    bool known = false;      // the game's modes, the sequence and the combat answer were read
+    bool onFoot = false;
+    bool inCombat = false;
+    int events = 0;          // SFXSeqEvt_LeaveWorld events loaded
+    int armed = 0;           // ...of which Armed
+};
+enum class LeaveWhy { Offered, Unknown, NotOnFoot, InCombat, NoEvent, NoneArmed };
+LeaveWhy LeaveOffer(LeaveFacts const& facts);
+char const* Text(LeaveWhy why);
 
 // The host's side: the menu's button stores a request (any thread), the mod takes it once (HostServices v19). A newer
 // request replaces one not yet taken. Whether anything has ever asked (Taken() called) tells the host a v19 mod runs.

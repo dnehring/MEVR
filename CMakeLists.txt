@@ -1499,6 +1499,7 @@ if (MEVR_BUILD_TESTS)
         tests/TraversalTests.cpp
         tests/GoalStepTests.cpp
         tests/GameMenuBackOutTests.cpp
+        tests/GameMenuLeaveTests.cpp
         tests/TraversalPresentationTests.cpp
         tests/RendererRequestTests.cpp
         tests/HostServicesTests.cpp

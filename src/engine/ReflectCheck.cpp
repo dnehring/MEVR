@@ -2921,6 +2921,41 @@ void CheckTraversal() {
     PARAM(AActor_execSetLocation_Parms, "Engine.Actor.SetLocation", NewLocation);
 }
 
+// game/GameMenuRequest's Leave (research/28 "Leave"; the owner's answer to question 16, 2026-11-17): LeaveWorld's own walk over
+// the game's sequence for SFXSeqEvt_LeaveWorld events, each event's state and what its output reaches, and the game's combat
+// answer LeaveWorld asks (SFXGame.InCombat on WorldInfo.Game).
+void CheckLeave() {
+    CheckClass<USFXSeqEvt_LeaveWorld>("SFXGame.SFXSeqEvt_LeaveWorld");
+    CheckClass<USequence>("Engine.Sequence");
+    CheckClass<USequenceReference>("Engine.SequenceReference");
+    CheckClass<USeqAct_Log>("Engine.SeqAct_Log");
+    CheckClass<USeqAct_Gate>("Engine.SeqAct_Gate");
+    CheckClass<ASFXGame>("SFXGame.SFXGame");
+    CheckField("Engine.Sequence", "SequenceObjects", SDK_FIELD(USequence, SequenceObjects));
+    CheckField("Engine.Sequence", "NestedSequences", SDK_FIELD(USequence, NestedSequences));
+    CheckField("Engine.SequenceReference", "oSequenceReference", SDK_FIELD(USequenceReference, oSequenceReference));
+    CheckField("Engine.SequenceOp", "OutputLinks", SDK_FIELD(USequenceOp, OutputLinks));
+    CheckPath("Engine.SequenceOp", {"OutputLinks", "Links"}, SDK_AT(offsetof(FSeqOpOutputLink, Links), 16));
+    CheckPath("Engine.SequenceOp", {"OutputLinks", "Links", "LinkedOp"}, SDK_AT(offsetof(FSeqOpOutputInputLink, LinkedOp), 8));
+    CheckPath("Engine.SequenceOp", {"OutputLinks", "Links", "InputLinkIdx"}, SDK_AT(offsetof(FSeqOpOutputInputLink, InputLinkIdx), 4));
+    CheckField("Engine.SeqAct_Gate", "bOpen", SDK_BOOL(USeqAct_Gate, bOpen));
+    CheckField("Engine.SequenceEvent", "bEnabled", SDK_BOOL(USequenceEvent, bEnabled));
+    CheckField("Engine.SequenceEvent", "TriggerCount", SDK_FIELD(USequenceEvent, TriggerCount));
+    CheckField("Engine.SequenceEvent", "MaxTriggerCount", SDK_FIELD(USequenceEvent, MaxTriggerCount));
+    CheckField("Engine.Actor", "WorldInfo", SDK_FIELD(AActor, WorldInfo));
+    CheckField("Engine.WorldInfo", "Game", SDK_FIELD(AWorldInfo, Game));
+    CheckFunction("Engine.WorldInfo.GetGameSequence");
+    PARAM(AWorldInfo_execGetGameSequence_Parms, "Engine.WorldInfo.GetGameSequence", ReturnValue);
+    CheckFunction("SFXGame.SFXGameModeBase.LeaveWorld");
+    CheckFunction("SFXGame.SFXGame.InCombat");
+    PARAM(ASFXGame_eventInCombat_Parms, "SFXGame.SFXGame.InCombat", ReturnValue);
+    // `mevr omni party`: the squad selection's own A, for a map the console opens (the leave check's fixture)
+    CheckClass<UBioSFHandler_PartySelection>("SFXGame.BioSFHandler_PartySelection");
+    CheckFunction("SFXGame.BioSFHandler_PartySelection.FinalizeParty");
+    PARAM(UBioSFHandler_PartySelection_execFinalizeParty_Parms, "SFXGame.BioSFHandler_PartySelection.FinalizeParty", bAPressed);
+    PARAM(UBioSFHandler_PartySelection_execFinalizeParty_Parms, "SFXGame.BioSFHandler_PartySelection.FinalizeParty", nContext);
+}
+
 #elif defined(MEVR_GAME_LE3)
 // Shared SceneCaptureRig, checked against LE3 metadata before native use.
 void CheckLe3CaptureRig() {
@@ -3767,6 +3802,36 @@ void CheckParams() {
     PARMS(APlayerController_execConsoleCommand_Parms, "Engine.PlayerController.ConsoleCommand");
 }
 
+// game/GameMenuRequest's Leave (research/28 "Leave"; the owner's answer to question 16, 2026-11-17): LeaveWorld's own walk over
+// the game's sequence for SFXSeqEvt_LeaveWorld events, each event's state and what its output reaches, and the game's combat
+// answer LeaveWorld asks (SFXGRI.InCombat on WorldInfo.GRI).
+void CheckLeave() {
+    CheckClass<USFXSeqEvt_LeaveWorld>("SFXGame.SFXSeqEvt_LeaveWorld");
+    CheckClass<USequence>("Engine.Sequence");
+    CheckClass<USequenceReference>("Engine.SequenceReference");
+    CheckClass<USeqAct_Log>("Engine.SeqAct_Log");
+    CheckClass<USeqAct_Gate>("Engine.SeqAct_Gate");
+    CheckClass<ASFXGRI>("SFXGame.SFXGRI");
+    CheckField("Engine.Sequence", "SequenceObjects", SDK_FIELD(USequence, SequenceObjects));
+    CheckField("Engine.Sequence", "NestedSequences", SDK_FIELD(USequence, NestedSequences));
+    CheckField("Engine.SequenceReference", "oSequenceReference", SDK_FIELD(USequenceReference, oSequenceReference));
+    CheckField("Engine.SequenceOp", "OutputLinks", SDK_FIELD(USequenceOp, OutputLinks));
+    CheckPath("Engine.SequenceOp", {"OutputLinks", "Links"}, SDK_AT(offsetof(FSeqOpOutputLink, Links), 16));
+    CheckPath("Engine.SequenceOp", {"OutputLinks", "Links", "LinkedOp"}, SDK_AT(offsetof(FSeqOpOutputInputLink, LinkedOp), 8));
+    CheckPath("Engine.SequenceOp", {"OutputLinks", "Links", "InputLinkIdx"}, SDK_AT(offsetof(FSeqOpOutputInputLink, InputLinkIdx), 4));
+    CheckField("Engine.SeqAct_Gate", "bOpen", SDK_BOOL(USeqAct_Gate, bOpen));
+    CheckField("Engine.SequenceEvent", "bEnabled", SDK_BOOL(USequenceEvent, bEnabled));
+    CheckField("Engine.SequenceEvent", "TriggerCount", SDK_FIELD(USequenceEvent, TriggerCount));
+    CheckField("Engine.SequenceEvent", "MaxTriggerCount", SDK_FIELD(USequenceEvent, MaxTriggerCount));
+    CheckField("Engine.Actor", "WorldInfo", SDK_FIELD(AActor, WorldInfo));
+    CheckField("Engine.WorldInfo", "GRI", SDK_FIELD(AWorldInfo, GRI));
+    CheckFunction("Engine.WorldInfo.GetGameSequence");
+    PARAM(AWorldInfo_execGetGameSequence_Parms, "Engine.WorldInfo.GetGameSequence", ReturnValue);
+    CheckFunction("SFXGame.SFXGameModeBase.LeaveWorld");
+    CheckFunction("SFXGame.SFXGRI.InCombat");
+    PARAM(ASFXGRI_eventInCombat_Parms, "SFXGame.SFXGRI.InCombat", ReturnValue);
+}
+
 #endif  // per-game metadata tables
 
 // Names, full names, IsA and IsAlive over a spread of GObjects, both ways.
@@ -3983,6 +4048,9 @@ bool Run(hook::Context& context) {
     CheckTraversal();
     CheckThespian();
     CheckLe2Squad();
+#endif
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+    CheckLeave();
 #endif
     CheckSamples();
     CheckMemory();

@@ -1195,6 +1195,12 @@ int main(int argc, char** argv) {
             frames(30);
             save(std::string("le2-advanced-") + tab);
         }
+        // The top bar's Leave (research/28 "Leave"): shown only while the mod says the level's way out would act.
+        model.SetText("section", "guide");
+        model.SetNumber("can_leave", 1.0f);
+        frames(30);
+        save("le2-section-guide-leave");
+        model.SetNumber("can_leave", 0.0f);
         model.SetNumber("le2", 0.0f);
     }
     ui.Shutdown();

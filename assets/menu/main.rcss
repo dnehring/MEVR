@@ -168,6 +168,7 @@ button { display: inline-block; focus: auto; tab-index: auto; nav: auto; }
 .i-place { decorator: icon(place); }
 .i-gamemenu { decorator: icon(gamemenu); }
 .i-holster { decorator: icon(holster); }
+.i-leave { decorator: icon(leave); }
 .i-trash { decorator: icon(trash); }
 .i-camera { decorator: icon(camera); }
 .i-record { decorator: icon(record); }

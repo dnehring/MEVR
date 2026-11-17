@@ -594,6 +594,7 @@ HostServices WithMenus(HostServices services) {
     services.logWorldUiStats = &world_ui::LogStats;
 #endif
     services.takeGuiEvents = &HostTakeGuiEvents;
+    services.setGameMenuOffers = &main_menu::NoteGameMenuOffers;  // v44: whether the top bar's Leave would act (research/28)
     return services;
 }
 #endif

@@ -630,8 +630,9 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Left:** ME1 and ME2: the feel in a headset (the checklist). **ME3:** its melee stays opt-in until the owner answers
   [question 7](#open-owner-questions), so with B kept from the game ME3 has no melee on foot by default; its light, heavy and
   B checks wait for the combat save (research/le3-combat-fixtures.md "Melee on the first combat save"); all six class heavy
-  actions, the storm variants and the cover and Atlas cases are separate contexts (research/le3-melee-audit.md). ME2's
-  `LeaveWorld` on B (outside combat, the level's own "leave" events) has no route on foot now: [question 16](#open-owner-questions).
+  actions, the storm variants and the cover and Atlas cases are separate contexts (research/le3-melee-audit.md). ME2's and
+  ME3's `LeaveWorld` on B (outside combat, the level's own "leave" events) is the top bar's Leave since lane LV (2026-11-17,
+  [question 16](#open-owner-questions), research/28 "Leave"), shown only where a level's leave event would act.
 - **Closes when:** one deliberate stroke makes one native request with its admission, impact and recovery seen, per game.
 - **Waits for:** the headset (ME1, ME2); T05's ME3 combat fixture and question 7 (ME3). **Who:** MEL (2026-11-17).
 
@@ -653,6 +654,12 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **State:** LE1 done · LE2 verify · LE3 build
 - **Lives in:** `plugin/MainMenu`, `plugin/MainMenuSettings`, `src/plugin/menu`, `assets/menu`, `game/MenuPause`,
   `game/GameMenuRequest`.
+- **Done, ME2 and ME3 (lane LV, 2026-11-17; question 16):** a third top-bar entry, **Leave**: the level's own way out
+  (`SFXGameModeBase.LeaveWorld`, what their B tap called on foot), shown only on foot, out of combat and with an armed
+  `SFXSeqEvt_LeaveWorld` loaded (HostServices v44 `setGameMenuOffers`; `vr::game_menu::LeaveOffer`, unit-tested); never on
+  ME1 (research/28 "Leave"). Seen on the fake headset: hidden on ME2's Save 4 and the Normandy (no event) and during
+  `BioP_N7Mine`'s squad selection; offered there on foot, pressed: `LeaveWorld` called and the level's event triggered. ME1 at
+  the same pose identical (the open menu's layer included). Left: ME3's in a Citadel DLC level (no save reaches one).
 - **Left, ME2:** the Holster button was never exercised. **ME3:** the pause (`BioWorldInfo.PauseGame`) has no in-game
   result; the Holster button is greyed ("Not on ME3 yet", lane OM2, 2026-11-16) until lane WP's `holsters::PutAway()` and
   `[Holsters] le3PutAway` on by default (game/GameMenuRequest's `Run(Action::Holster)` then calls it on LE3).
@@ -1097,7 +1104,15 @@ Each is asked once. "Today" is what the build does if nobody answers; no default
     had no such use. Today: nothing reaches it on foot. Options: (a) an entry on our menu's top bar or the omni-tool's rail
     that calls `LeaveWorld` on the game thread (as Game menu and Holster do); (b) B tapped (not held, not double) reaches the
     game only where a level has a leave event; (c) leave it. Which levels carry the event is a scan away
-    (`tools/conversation-scan --script grep:` over the levels).
+    (`tools/conversation-scan --script grep:` over the levels). **Answered 2026-11-17, the owner: (a), a Leave entry on the top
+    bar next to Game menu and Holster.** Built (lane LV, research/28 "Leave"): it closes our menu and the mod calls `LeaveWorld`
+    on the active mode on the game thread two ticks after the menu's pause is lifted; it shows only where that would act (on
+    foot, out of combat as the game's own `InCombat` says, an armed `SFXSeqEvt_LeaveWorld` loaded: enabled, not used up, not
+    behind a closed gate), told to the host each tick by HostServices v44 `setGameMenuOffers`. ME3 binds the same leave on its B
+    tap (`Console_Melee`: `OnTap 0.3 TryMelee | LeaveWorld | ...`), so ME3 has the entry by the same rule; never on ME1 (its
+    only `LeaveWorld` is the Mako's X). The levels: ME2's assignments after their end (one shared prefab: "return to the
+    Normandy?"), the post-credits cabin scenes, the shooting gallery; ME3's Citadel party, dance floors, casino race and combat
+    simulator.
 17. **ME3's sharpness: mode 2 with the flare fix, the eyes' window, a taller render** (T09; lane FL, 2026-11-17,
     research/le3-flares-and-window.md sections 3 and 4). All three are built and off by default; each eye's pixels per
     degree (across x down) with the PS VR2's eyes, same life-size stereo in all:
