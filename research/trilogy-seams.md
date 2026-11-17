@@ -391,6 +391,46 @@ The log line, once per recenter on both sequels (`HalcyonSequelBridge.cpp`, the 
 `halcyon le<n> bridge: recenter: that frame's controllers had been sampled X ms before it, in the old app space (A), and its
 layers went in the new one (B); the first sample in the new space came Y ms after it, N engine ticks later`.
 
+### Lane U3's checks
+
+On the fake headset, 2026-11-16, the merged branch (main `4c17807b` with lane EY's pipeline, plus this lane's commits), each
+stretch restored with `verification: 0 differences`. Both runs replayed `make-walk-recording.py --plan
+stand:10,back-button:0.12,stand:0.12,back-button:0.12,stand:25 --live-head --hands view` with its inputs (tracked hands, then
+Back twice within 400 ms with the left grip held: the sequels' recenter), then a looping hands-only replay, our menu opened
+and closed through `mainmenu.request`, and a snapshot at each step (the recordings and the script in
+`%LOCALAPPDATA%\MEVR\u3-lane`).
+
+**ME3** (renderer preview, Save 31 on the Normandy, session `20261116-173100-560-LE3-u3-le3`):
+- the recenter: `halcyon le3 bridge: recenter: that frame's controllers had been sampled 0.2 ms before it, in the old app
+  space (0x1349f290b10), and its layers went in the new one (0x1354a7e7080); the first sample in the new space came 19.2 ms
+  after it, 1 engine tick later`. Under ME3's former rule that tick read no controllers (the Back gesture's held left grip
+  let go and squeezed again).
+- the ring by LE1's rule: `the right controller aims weapons: the hand reticle is on its aim` with the replay's hands,
+  `controller aim stopped` when it ended. Snapshot `2026-11-16_17-35-38-801` has the `reticle` layer; the mod's aim ray was
+  1,093 ms old there (the game thread stalled after the Back double tap; that snapshot took 25 s), so the ring stood on the
+  right controller's aim pose: `plugin/HandReticle`'s fallback, the same on LE1 and ME2 ("Found" below).
+- our menu over gameplay: snapshot `2026-11-16_17-36-22-137` has the world (Shepard on the Normandy's deck) in both eyes and
+  the `mainmenu` layer alone of ours, as on ME1 and ME2; before (`17-36-07-831`) and after (`17-36-34-247`) the omni-tool's
+  wrist target is there. ME3 shows no HUD panel in on-foot gameplay yet (capability `hudPanelGameplay` off), so the armed
+  panel under the menu has nothing to show on this deck.
+
+**ME2** (Save 4, Freedom's Progress, session `20261116-174137-798-LE2-u3-le2`; `launch.ps1` could not adopt the game, the
+known two-process start: the shared notes' workaround, the save loaded with `mevr load`, the game stopped by its pid):
+- the recenter: `halcyon le2 bridge: recenter: ... sampled 1.8 ms before it, in the old app space (0x18e4920d8b0), and its
+  layers went in the new one (0x18e33c159c0); the first sample in the new space came 11.0 ms after it, 1 engine tick later`.
+- snapshots: `2026-11-16_17-44-15-358` the HUD panel; `17-44-41-268` with hands: the HUD panel, the wrist piece, the gun's
+  sight (the ring hides behind it, LE1's rule); `17-45-33-171` our menu alone over the world; `17-45-46-666` after it, the HUD
+  panel and the wrist piece again. ME2's behaviour is unchanged except the ring's one-second tracking hold.
+
+**LE1:** no line LE1 compiles changed in this lane (the files are in the sequel hosts' lists only), so no same-pose pair; its
+frame order is read from `src/halcyon/le1/xr_session.cpp` (`OnFrameBegun`, then `DoRecenter`, then `OverlayLayers`).
+
+**Found:** `plugin/HandReticle` falls back to the right controller's aim pose whenever the mod's aim ray is over 1 s old,
+also after the mod has published one: a stalled game thread in game mode 0 moves the ring from the gun's line to the
+controller's for the stall, on all three games (seen on ME3 above; ME3's removed `weaponsNeedPublishedAim` used to hide
+it). One shared fix, if wanted: fall back only before the mod's first ray (`sequence == 0`), else hide; it touches LE1's
+host, so it needs an LE1 same-pose pair.
+
 ## State
 
 All five steps are made (2026-11-16): `MevrSeams.h`, the host's definitions, `Seams.cpp`, the capability set, all three

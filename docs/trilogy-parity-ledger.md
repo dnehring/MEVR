@@ -311,7 +311,8 @@ Each item: the copies, then what unifying would take. Line counts are as of `cca
    - **ME3 as ME1 (lane U3, 2026-11-16, the owner: "everything consistent"):** the adapter's `menusHideGameplay`,
      `weaponsNeedPublishedAim` and `cueOnFootOnly` are gone (none was forced by ME3's game; the ring takes LE1's
      `ControllerAimActive` on both sequels), and ME3's recenter drops nothing published: one recenter rule for all three,
-     each adapter resetting only its own state. research/trilogy-seams.md "ME3 as ME1", "One recenter rule".
+     each adapter resetting only its own state. research/trilogy-seams.md "ME3 as ME1", "One recenter rule"; run on ME3
+     (renderer preview, Save 31) and ME2 (Save 4) with replayed hands, a recenter and our menu ("Lane U3's checks").
    - Still two: `PlacePanel` (ME2 places only the table, ME3 every native panel: needs ME2's renderer to take
      `panelsInRoom`), the native map's input (pointer and latch on ME2, a lease on ME3: Forks 3), and the eye-image
      seams (lane EY).

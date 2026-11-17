@@ -165,8 +165,9 @@ These unblock the most: almost every other entry gets smaller once they land.
   and one recenter rule holds for all three games ("ME3 as ME1", "One recenter rule").
 - **Left, every game:** LE1 onto the shared composition one layer at a time, each with a same-pose pair (the note lists
   the five blocks); LE1's label quad becomes `HudPieceLayers::Interaction` with ME1's default crop; `plugin/MenusLe2`
-  renamed `Menus` and called by LE1's bridge too; one `PlacePanel` (ME2's renderer takes `panelsInRoom`). **ME3:** a run
-  of the merged bridge with a save loaded (it ran to the title only).
+  renamed `Menus` and called by LE1's bridge too; one `PlacePanel` (ME2's renderer takes `panelsInRoom`). (ME3's merged
+  bridge ran with a save loaded on 2026-11-16, lane U3: Save 31, replayed hands, a recenter, our menu; "Lane U3's checks".)
+  A shared fix for `plugin/HandReticle`'s fallback to the controller's aim on a stale aim ray, if wanted (same note, "Found").
 - **Closes when:** LE1 same-pose snapshots show the same layers at the same places; an LE2 and an LE3 snapshot set shows
   every layer the old compositions drew; an LE3 run with `[Debug] swapchainCap = N` refuses and recovers as LE1's did on
   2026-11-06 (R17).
