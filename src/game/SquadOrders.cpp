@@ -267,9 +267,14 @@ std::string Le2Order(ue3::Object* controller, int index, ue3::FunctionRef& ref,
     if (&ref == &le2_squad::orderAttack) {
         if (!le2_squad::Hostile(target) || !args.Set("oTargetActor", target)) return "refused: target unavailable";
     }
-    if (point && !args.Set("vLocation", ue3::Vector{static_cast<float>(point->x), static_cast<float>(point->y), static_cast<float>(point->z)}))
+    ue3::Vector const at = point ? ue3::Vector{static_cast<float>(point->x), static_cast<float>(point->y), static_cast<float>(point->z)}
+                                 : ue3::Vector{};
+    if (point && !args.Set("vLocation", at))
         return "refused: position parameter unavailable";
-    return ue3::runtime::Call(controller, fn, args) ? "native order dispatched (AI outcome pending)" : "native order not called";
+    // The hold order's AI walks to the squadmate's move marker: the game's own move order places it first.
+    bool const marker = point && le2_squad::PlaceMoveIndicator(controller, pawn, at);
+    if (!ue3::runtime::Call(controller, fn, args)) return "native order not called";
+    return point && !marker ? "native order dispatched, the move marker refused (AI outcome pending)" : "native order dispatched (AI outcome pending)";
 }
 #endif
 

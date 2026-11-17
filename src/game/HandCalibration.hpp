@@ -421,11 +421,7 @@ struct SquadOrders {
     std::string powerRoute = "tactical";
     // Placement by an arc (game/SquadPlace, 2026-11-05): hold the right B on foot, an arc from the right hand, let go: they move
     // where it lands. placeSpeedMS: the arc's launch speed (14: about 20 m at 45 degrees); placeRangeM: no farther than this.
-#if defined(MEVR_GAME_LE2)
-    bool place = false;  // opt in while the ME2 order path is being verified
-#else
-    bool place = true;
-#endif
+    bool place = true;  // ME1's default on every game (ME2's since its run on Save 4, research/54 "Placement by an arc")
     double placeSpeedMS = 14.0;
     double placeRangeM = 30.0;
     double placeMinHoldS = 0.15;  // a shorter press of B is a blip

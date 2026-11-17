@@ -29,6 +29,7 @@
 #include <cmath>
 #include <format>
 #include <numbers>
+#include <optional>
 #include <sstream>
 #include <vector>
 
@@ -86,9 +87,17 @@ std::string GiveLe2Order(ue3::Object* controller, std::vector<squad_weapons::Mem
         if (!Le2Living(member)) continue;
         ue3::Params args(ue3::runtime::Get(), fn);
         if (!args.Set("oHenchman", member.pawn) || !le2_squad::BindInputMethod(args)) continue;
-        if (point && !args.Set("vLocation", ue3::Vector{static_cast<float>(point->x), static_cast<float>(point->y),
-                         static_cast<float>(point->z)})) continue;
+        ue3::Vector const at = point ? ue3::Vector{static_cast<float>(point->x), static_cast<float>(point->y), static_cast<float>(point->z)}
+                                     : ue3::Vector{};
+        if (point && !args.Set("vLocation", at)) continue;
+        // The marker first: the hold order's AI walks to it (le2_squad::PlaceMoveIndicator).
+        if (point && !le2_squad::PlaceMoveIndicator(controller, member.pawn, at)) {
+            log::Info("squad place: the game's move marker for {} wasn't placed (UpdateMoveToIndicator refused the point)", member.name);
+        }
         if (ue3::runtime::Call(controller, fn, args)) ++called;
+#if defined(MEVR_GAME_LE2)
+        log::Info("squad place: {}'s AI after the order: {}", member.name, le2_squad::OrderState(member.pawn));
+#endif
     }
     return std::format("{} called for {} squadmate(s)", point ? "HenchmanOrderHoldPosition" : "HenchmanOrderFollow", called);
 }
@@ -142,6 +151,9 @@ constexpr float kWheelTowardM = 0.04f;
 
 unsigned gStarted = 0, gGiven = 0, gCancelled = 0, gTraces = 0, gTicksTraced = 0, gSelections = 0, gRegroups = 0;
 std::string gLast;
+// The last hold's point (game units) and who it was for (-1: the squad): the status measures each squadmate against it.
+std::optional<engine::UnrealVector> gGivenPoint;
+int gGivenMember = -1;
 
 sp::ArcSettings ArcSettingsFrom(hand_calibration::SquadOrders const& s) {
     sp::ArcSettings a;
@@ -502,6 +514,8 @@ void Tick(double deltaSeconds, Link const& link) {
             outcome += "; " + WalkThere(step.member, gArc.point);
         }
 #endif
+        gGivenPoint = step.order == sp::Order::Follow ? std::nullopt : std::optional(gArc.point);
+        gGivenMember = step.member;
         gLast = std::format("{} for {}, {:.1f} m from Shepard at ({:.0f}, {:.0f}, {:.0f}): {}", sp::Name(step.order),
             whoName(step.member), gArc.fromPlayerM, gArc.point.x, gArc.point.y, gArc.point.z, outcome);
         log::Info("squad place: {}", gLast);
@@ -570,13 +584,36 @@ void AdjustPad(gamepad::Options& options) {
 }
 
 std::string StatusJson() {
+    // Where each squadmate stands, and how far from the last hold's point (the ring), metres: the placement's measure.
+    std::string squad;
+    ue3::Object* const controller = ue3::runtime::Up() ? player::Controller() : nullptr;
+    ue3::Object* const shepard = controller != nullptr ? player::BioPawn(controller) : nullptr;
+    std::optional<ue3::Vector> const me = shepard != nullptr ? player::Location(shepard) : std::nullopt;
+    std::vector<squad_weapons::MemberView> const members = controller != nullptr ? squad_weapons::Members() : std::vector<squad_weapons::MemberView>{};
+    int index = 0;
+    for (squad_weapons::MemberView const& m : members) {
+        std::optional<ue3::Vector> const at = ue3::runtime::IsAlive(m.pawn) ? player::Location(m.pawn) : std::nullopt;
+        auto const flat = [&](double x, double y) { return at ? std::hypot(at->x - x, at->y - y) / gUpm : -1.0; };
+        squad += std::format("{}{{\"name\": {}, \"at\": [{:.0f}, {:.0f}, {:.0f}], \"fromPointM\": {:.2f}, \"fromShepardM\": {:.2f}, "
+                             "\"wasSent\": {}, \"ai\": {}}}",
+            squad.empty() ? "" : ", ", json::JsonString(m.name), at ? at->x : 0.0f, at ? at->y : 0.0f, at ? at->z : 0.0f,
+            gGivenPoint ? flat(gGivenPoint->x, gGivenPoint->y) : -1.0, me ? flat(me->x, me->y) : -1.0,
+            gGivenPoint && (gGivenMember < 0 || gGivenMember == index) ? "true" : "false",
+#if defined(MEVR_GAME_LE2)
+            json::JsonString(le2_squad::OrderState(m.pawn)));
+#else
+            json::JsonString(""));
+#endif
+        ++index;
+    }
     return std::format(
         "{{\"holding\": {}, \"member\": {}, \"tile\": {}, \"members\": {}, \"heldS\": {:.2f}, \"landing\": {}, \"fromPlayerM\": {:.2f}, "
         "\"point\": [{:.0f}, {:.0f}, {:.0f}], \"traces\": {}, \"simulated\": {}, \"started\": {}, \"given\": {}, \"cancelled\": {}, "
-        "\"selections\": {}, \"regroups\": {}, \"last\": {}}}",
+        "\"selections\": {}, \"regroups\": {}, \"last\": {}, \"givenPoint\": {}, \"squad\": [{}]}}",
         gMachine.Holding() ? "true" : "false", gMachine.Member(), gMachine.Tile(), gMachine.Members(), gMachine.HeldS(),
         json::JsonString(sp::Name(gArc.landing)), gArc.fromPlayerM, gArc.point.x, gArc.point.y, gArc.point.z, gArc.traces,
-        gSim.held ? "true" : "false", gStarted, gGiven, gCancelled, gSelections, gRegroups, json::JsonString(gLast));
+        gSim.held ? "true" : "false", gStarted, gGiven, gCancelled, gSelections, gRegroups, json::JsonString(gLast),
+        gGivenPoint ? std::format("[{:.0f}, {:.0f}, {:.0f}]", gGivenPoint->x, gGivenPoint->y, gGivenPoint->z) : std::string("null"), squad);
 }
 
 void LogStats() {
@@ -592,6 +629,8 @@ void Shutdown() {
     gLe2Recipients = {};
 #endif
     gArc = {};
+    gGivenPoint.reset();
+    gGivenMember = -1;
     gPublished = false;
 }
 

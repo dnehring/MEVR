@@ -609,11 +609,7 @@ constexpr char const* kSquadOrdersBlock =
     "; lands; let go and the squad moves there (on a squadmate as B goes down: that one alone; near you: they regroup; on a\n"
     "; wall or nothing: called off). placeSpeedMS: the arc's launch speed (14: about 20 m aimed at 45 degrees); placeRangeM:\n"
     "; never farther than this; placeMinHoldS: a shorter press is a blip. place = 0: off.\n"
-#if defined(MEVR_GAME_LE2)
-    "place = 0\n"
-#else
     "place = 1\n"
-#endif
     "placeSpeedMS = 14\n"
     "placeRangeM = 30\n"
     "placeMinHoldS = 0.15\n";

@@ -11,6 +11,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <format>
+#include <string>
 #include <vector>
 
 // Shared sequel inventory and order prerequisites; LE3's distinct contracts are explicit below.
@@ -265,5 +267,51 @@ inline std::vector<ue3::Object*> Weapons(ue3::Object* pawn) {
     std::stable_sort(out.begin(), out.end(), [](auto* a, auto* b) { return WeaponType(a) < WeaponType(b); });
     return out;
 }
+
+// A move order's marker (research/54 "Placement by an arc" on ME2, 2026-11-17): the hold order's AI walks to the squadmate's
+// move indicator (SFXAI_Henchman.MovingToHoldLocation pathfinds to BioBaseSquad.GetMemberMoveIndicator), not to the order's
+// point, and the game's own move order puts that marker there first (the native BioPlayerController.UpdateMoveToIndicator).
+// HenchmanOrderHoldPosition alone left Jacob where he stood. Call this before every hold order with a point.
+inline ue3::FunctionRef updateMoveIndicator{"SFXGame.BioPlayerController.UpdateMoveToIndicator", ue3::kEveryGame};
+inline bool PlaceMoveIndicator(ue3::Object* controller, ue3::Object* pawn, ue3::Vector const& at) {
+    auto* fn = updateMoveIndicator.Get();
+    if (fn == nullptr || !ue3::runtime::IsAlive(controller) || !ue3::runtime::IsAlive(pawn)) return false;
+    ue3::Params args(ue3::runtime::Get(), fn);
+    return args.Set("pSquadPawn", pawn) && args.Set("vMoveToPosition", at) && ue3::runtime::Call(controller, fn, args) &&
+           args.ReturnBool().value_or(false);
+}
+
+#if defined(MEVR_GAME_LE2)
+// What the henchman's AI made of an order (research/54 "Placement by an arc", ME2): HenchmanOrderHoldPosition only queues it
+// (SFXAI_Henchman.AddOrder, refused while the AI follows or defends an actor the level asked for); the Idle state's timer
+// takes the queue, sets m_vHoldLocation, and Idle's ChooseBehavior walks there while Shepard is within
+// TetherDistanceWhileExecutingOrder. Read only, for the log and `mevr place status`.
+inline ue3::FieldRef aiOrders{"SFXGame.SFXAI_Henchman", "m_Orders", ue3::kEveryGame};
+inline ue3::FieldRef aiHoldLocation{"SFXGame.SFXAI_Henchman", "m_vHoldLocation", ue3::kEveryGame};
+inline ue3::FieldRef aiHolding{"SFXGame.SFXAI_Henchman", "m_bHoldingPosition", ue3::kEveryGame};
+inline ue3::FieldRef aiFollowPlayer{"SFXGame.SFXAI_Henchman", "m_bFollowPlayer", ue3::kEveryGame};
+inline ue3::FieldRef aiDefend{"SFXGame.SFXAI_Henchman", "m_ActorToDefend", ue3::kEveryGame};
+inline ue3::FieldRef aiTether{"SFXGame.SFXAI_Henchman", "TetherDistanceWhileExecutingOrder", ue3::kEveryGame};
+inline ue3::FieldRef aiFollowActor{"SFXGame.SFXAI_Core", "m_RequestedActorToFollow", ue3::kEveryGame};
+inline ue3::FunctionRef aiStateName{"Core.Object.GetStateName", ue3::kEveryGame};
+inline ue3::FieldRef aiPawnController{"Engine.Pawn", "Controller", ue3::kEveryGame};
+inline ue3::ClassRef aiClass{"SFXGame.SFXAI_Henchman", ue3::kEveryGame};
+inline std::string OrderState(ue3::Object* pawn) {
+    auto* ai = ue3::runtime::IsAlive(pawn) ? aiPawnController.Read<ue3::Object*>(pawn).value_or(nullptr) : nullptr;
+    if (!ue3::runtime::IsAlive(ai) || !ue3::IsA(ai, aiClass)) return "no henchman AI";
+    std::string state = "?";
+    if (auto* fn = aiStateName.Get()) {
+        ue3::Params args(ue3::runtime::Get(), fn);
+        if (ue3::runtime::Call(ai, fn, args)) state = ue3::runtime::NameText(args.Return<ue3::Name>().value_or(ue3::Name{}));
+    }
+    auto const orders = aiOrders.ElementsOf(ai, 64);
+    auto const hold = aiHoldLocation.Read<ue3::Vector>(ai).value_or(ue3::Vector{});
+    auto const name = [](ue3::Object* o) { return o != nullptr ? ue3::runtime::Get().NameText(o) : std::string("none"); };
+    return std::format("state {}, {} queued order(s), hold at ({:.0f}, {:.0f}, {:.0f}){}{}, tether {:.0f}, following the level's {}, defending {}",
+        state, orders ? orders->count : -1, hold.x, hold.y, hold.z, aiHolding.ReadBool(ai).value_or(false) ? " (holding)" : "",
+        aiFollowPlayer.ReadBool(ai).value_or(false) ? ", follows Shepard" : "", aiTether.Read<float>(ai).value_or(-1.0f),
+        name(aiFollowActor.Read<ue3::Object*>(ai).value_or(nullptr)), name(aiDefend.Read<ue3::Object*>(ai).value_or(nullptr)));
+}
+#endif
 } // namespace mevr::game::le2_squad
 #endif

@@ -2776,6 +2776,20 @@ void CheckLe2Squad() {
     CheckFunction("SFXGame.BioActorBehavior.GetActorGameName");
     PARAM(UBioActorBehavior_eventGetActorGameName_Parms, "SFXGame.BioActorBehavior.GetActorGameName", ReturnValue);
     PARMS(UBioActorBehavior_eventGetActorGameName_Parms, "SFXGame.BioActorBehavior.GetActorGameName");
+    // The move order's marker, placed before every hold order with a point (game/Le2Squad.hpp PlaceMoveIndicator).
+    CheckFunction("SFXGame.BioPlayerController.UpdateMoveToIndicator");
+    PARAM(ABioPlayerController_execUpdateMoveToIndicator_Parms, "SFXGame.BioPlayerController.UpdateMoveToIndicator", pSquadPawn);
+    PARAM(ABioPlayerController_execUpdateMoveToIndicator_Parms, "SFXGame.BioPlayerController.UpdateMoveToIndicator", vMoveToPosition);
+    PARAM(ABioPlayerController_execUpdateMoveToIndicator_Parms, "SFXGame.BioPlayerController.UpdateMoveToIndicator", ReturnValue);
+    PARMS(ABioPlayerController_execUpdateMoveToIndicator_Parms, "SFXGame.BioPlayerController.UpdateMoveToIndicator");
+    // What the henchman's AI made of an order (game/Le2Squad.hpp OrderState: the placement's log and status).
+    CheckField("SFXGame.SFXAI_Henchman", "m_Orders", SDK_FIELD(ASFXAI_Henchman, m_Orders));
+    CheckField("SFXGame.SFXAI_Henchman", "m_vHoldLocation", SDK_FIELD(ASFXAI_Henchman, m_vHoldLocation));
+    CheckField("SFXGame.SFXAI_Henchman", "m_bHoldingPosition", SDK_BOOL(ASFXAI_Henchman, m_bHoldingPosition));
+    CheckField("SFXGame.SFXAI_Henchman", "m_bFollowPlayer", SDK_BOOL(ASFXAI_Henchman, m_bFollowPlayer));
+    CheckField("SFXGame.SFXAI_Henchman", "m_ActorToDefend", SDK_FIELD(ASFXAI_Henchman, m_ActorToDefend));
+    CheckField("SFXGame.SFXAI_Henchman", "TetherDistanceWhileExecutingOrder", SDK_FIELD(ASFXAI_Henchman, TetherDistanceWhileExecutingOrder));
+    CheckField("SFXGame.SFXAI_Core", "m_RequestedActorToFollow", SDK_FIELD(ASFXAI_Core, m_RequestedActorToFollow));
 }
 
 void CheckTraversal() {
@@ -3564,6 +3578,12 @@ void CheckParams() {
     PARAM(ABioPlayerController_eventHenchmanOrderHoldPosition_Parms, "SFXGame.BioPlayerController.HenchmanOrderHoldPosition", vLocation);
     PARAM(ABioPlayerController_eventHenchmanOrderHoldPosition_Parms, "SFXGame.BioPlayerController.HenchmanOrderHoldPosition", eInputMethod);
     PARMS(ABioPlayerController_eventHenchmanOrderHoldPosition_Parms, "SFXGame.BioPlayerController.HenchmanOrderHoldPosition");
+    // The move order's marker before the hold order (game/Le2Squad.hpp PlaceMoveIndicator, found on ME2).
+    CheckFunction("SFXGame.BioPlayerController.UpdateMoveToIndicator");
+    PARAM(ABioPlayerController_execUpdateMoveToIndicator_Parms, "SFXGame.BioPlayerController.UpdateMoveToIndicator", pSquadPawn);
+    PARAM(ABioPlayerController_execUpdateMoveToIndicator_Parms, "SFXGame.BioPlayerController.UpdateMoveToIndicator", vMoveToPosition);
+    PARAM(ABioPlayerController_execUpdateMoveToIndicator_Parms, "SFXGame.BioPlayerController.UpdateMoveToIndicator", ReturnValue);
+    PARMS(ABioPlayerController_execUpdateMoveToIndicator_Parms, "SFXGame.BioPlayerController.UpdateMoveToIndicator");
     PARAM(ABioPlayerController_eventHenchmanOrderAttackTarget_Parms, "SFXGame.BioPlayerController.HenchmanOrderAttackTarget", oHenchman);
     PARAM(ABioPlayerController_eventHenchmanOrderAttackTarget_Parms, "SFXGame.BioPlayerController.HenchmanOrderAttackTarget", oTargetActor);
     PARAM(ABioPlayerController_eventHenchmanOrderAttackTarget_Parms, "SFXGame.BioPlayerController.HenchmanOrderAttackTarget", eInputMethod);
