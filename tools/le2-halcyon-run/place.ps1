@@ -15,7 +15,8 @@ param(
     [Parameter(Mandatory)][string]$Holder,
     [ValidateSet('LE2', 'LE3')][string]$Game = 'LE2',
     [double]$SettleS = 8,
-    [double]$RingM = 1.5,
+    [double]$RingM = 1.5,       # one squadmate sent: this near the ring (ME1 measured 0.6 m)
+    [double]$SquadRingM = 2.5,  # the squad sent to one point: two people cannot stand on it (ME2: 0.27 and 0.38 m, or 1.9 m beside the first)
     [string[]]$Only = @('wheel', 'one', 'double', 'gesture')
 )
 $ErrorActionPreference = 'Stop'
@@ -101,7 +102,7 @@ if ($Only -contains 'wheel') {
     Start-Sleep -Seconds $SettleS
     $after = Status
     $sent = @($after.squad | Where-Object { $_.wasSent })
-    $near = @($sent | Where-Object { $_.fromPointM -ge 0 -and $_.fromPointM -le $RingM })
+    $near = @($sent | Where-Object { $_.fromPointM -ge 0 -and $_.fromPointM -le $SquadRingM })
     Verdict 'B held, the squad picked up, the arc let go: both go to the ring' ($after.given -gt $before.given -and $sent.Count -eq $members -and $near.Count -eq $members) (
         "given $($before.given) -> $($after.given), last '$($after.last)'; $(Placed $after)")
 }
