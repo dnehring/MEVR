@@ -9,6 +9,7 @@
 // --gameart: a folder holding the movies game/GameArt caches (GUI_SF_Fonts.Fonts.gfx, GUI_SF_Journal.PC_Journal.gfx,
 // GUI_SF_Inventory.PCInventory.gfx; the player's own game data, never committed): the omni-tool rail is drawn in the game's
 // own art as the host does (plugin/RailArt), else in its own look.
+// --le3: the rail in ME3's look as ME3's host draws it (the `me3` theme: ME3's colours on the rail's own shapes; no game art).
 //
 //   section-<name>.png       each section (the menu over the stand-in world, as the headset composites it)
 //   section-<name>-<x>.png   a section's other states (Comfort's snap and movement, Display's image quality rows with
@@ -294,12 +295,15 @@ int main(int argc, char** argv) {
     fs::path fonts;
     fs::path gameArt;
     bool le2 = false;  // also the ME2 pages (le2-*.png) and its palette for the rail
+    bool le3 = false;  // the rail in ME3's look (its colours, never ME1's art)
     for (int i = 1; i < argc; ++i) {
         std::string const a = argv[i];
         if (a == "--warp") {
             warp = true;
         } else if (a == "--le2") {
             le2 = true;
+        } else if (a == "--le3") {
+            le3 = true;
         } else if (a == "--assets" && i + 1 < argc) {
             assets = argv[++i];
         } else if (a == "--fonts" && i + 1 < argc) {
@@ -920,7 +924,8 @@ int main(int argc, char** argv) {
         if (ok) {
             using mevr::host::rail_art::Palette;
             auto const palette = le2 ? Palette::MissionComputer : Palette::Original;
-            railUi.Context()->ActivateTheme("mission-computer", le2);
+            railUi.Context()->ActivateTheme("mission-computer", le2 && !le3);
+            railUi.Context()->ActivateTheme("me3", le3);
             Rml::DataModelConstructor ctor = railUi.Context()->CreateDataModel("omnitool");
             ok = static_cast<bool>(ctor);
             if (ok) {
@@ -934,7 +939,7 @@ int main(int argc, char** argv) {
                 ctor.Bind("ringAlpha", &ringAlpha);
                 ctor.BindEventCallback("pick", [](Rml::DataModelHandle, Rml::Event&, Rml::VariantList const&) {});
                 handle = ctor.GetModelHandle();
-                if (!gameArt.empty()) {
+                if (!le3 && !gameArt.empty()) {
                     mevr::host::rail_art::Status const status =
                         mevr::host::rail_art::Load(device.Get(), railUi.GetRenderer(), {}, gameArt, palette);
                     art = status.fonts && status.tabs && status.panel;

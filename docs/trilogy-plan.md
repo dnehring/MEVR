@@ -568,11 +568,14 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Waits for:** T25 for Holster. **Who:** nobody yet.
 
 #### T38 The omni-tool: the rail, the wrist tap, the gauntlet [G22]
-- **State:** LE1 done · LE2 headset · LE3 build
+- **State:** LE1 done · LE2 headset · LE3 headset
 - **Lives in:** `plugin/OmniToolRail`, `plugin/RailArt`, `game/OmniTool`, `game/GameArt`.
-- **Left, ME3:** the rail is shared, but the gauntlet (`game/OmniTool`) and the art cache are compiled out
-  (research/le3-native-gui.md "Crop and art gates").
-- **Who:** nobody yet.
+- **Done, ME3 (lane OM, 2026-11-16):** the gauntlet is ME3's own client effect on Shepard's forearm; the rail in ME3's
+  Mission Computer colours; the entries switch pages and Close returns to gameplay (B and its release). ME3's own frames,
+  tabs and fonts are not read (bitmap fills, a font library that isn't a live object): research/le3-native-gui.md "The
+  omni-tool on ME3".
+- **Left, ME3:** the headset look; Holster on our menu's top bar (G21, after lane WP's ME3 holster call).
+- **Who:** lane OM.
 
 #### T39 The game's screens in the room and on the wrist, the pointer, the minigames [G23, G26, G24]
 - **State:** LE1 done · LE2 build · LE3 build
@@ -581,8 +584,9 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Left, ME2:** the squad member in the equipment screens (`UiWorldFigure`); ME2's hack and bypass minigames are
   different games from ME1's and have no VR treatment ([le2-validation-coverage.md](le2-validation-coverage.md) "Hacking
   and bypass"); research and loadout screens. **ME3:** `setWorldUi` isn't served: the whole native GUI frame sits on one
-  quad (research/le3-native-gui.md gates 1-4); `takeGuiEvents` is served only on ME2, so ME3's clicks take the
-  `SendInput` fallback. ME3 has no bypass minigame.
+  quad (research/le3-native-gui.md gates 1-4, measured there: "The omni-tool on ME3"); it builds on lane HU's ME3 UI
+  redirect to the HUD panel. `takeGuiEvents` is served on both sequels (ME3's clicks are its own GUI events since lane OM,
+  2026-11-16). ME3 has no bypass minigame.
 - **Closes when:** a replayed wrist tap opens the rail, an entry opens the game's screen on the wrist, a ray click and a
   fingertip press land where they point, and B returns to gameplay, on each sequel.
 - **Waits for:** T02. **Who:** nobody yet.

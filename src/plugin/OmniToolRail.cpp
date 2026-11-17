@@ -65,6 +65,13 @@ constexpr auto kPalette = rail_art::Palette::MissionComputer;
 #else
 constexpr auto kPalette = rail_art::Palette::Original;
 #endif
+// ME3 draws the rail in its own look (research/le3-native-gui.md "The rail in ME3's look"): ME3's colours, the `me3` theme of
+// omnitool.rcss on the rail's own shapes; never ME1's art (ME3's own frames, tabs and fonts can't be read from its movies yet).
+#if defined(MEVR_WITH_HALCYON_LE3)
+constexpr bool kMe3 = true;
+#else
+constexpr bool kMe3 = false;
+#endif
 
 // The rail's buttons by touch (2026-11-06, the owner's QA: only a perfectly aligned poke selected anything, and the hand went
 // through without a feel of the surface): a click the moment the fingertip reaches a button, where it touched (a poke that
@@ -267,6 +274,7 @@ bool Init(ID3D11Device* device, ID3D11DeviceContext* context) {
         return false;
     }
     g.ui->Context()->ActivateTheme("mission-computer", kPalette == rail_art::Palette::MissionComputer);
+    g.ui->Context()->ActivateTheme("me3", kMe3);
     Rml::DataModelConstructor ctor = g.ui->Context()->CreateDataModel("omnitool");
     if (!ctor) {
         log::Error("omni-tool rail: its data model couldn't be made; no rail");
@@ -288,9 +296,13 @@ bool Init(ID3D11Device* device, ID3D11DeviceContext* context) {
     g.model = ctor.GetModelHandle();
     // The game's own art (research/57 section 5), before the document loads so its fonts resolve; without it the rail keeps
     // its own drawn look.
-    rail_art::Status const art = rail_art::Load(device, g.ui->GetRenderer(), {}, {}, kPalette);
-    g.art = art.fonts && art.tabs && art.panel;
-    log::Info("omni-tool rail: {}{}", art.summary, g.art ? "" : " (its own look until the game's art is cached)");
+    if constexpr (kMe3) {
+        log::Info("omni-tool rail: ME3's look: ME3's Mission Computer colours on the rail's own shapes and fonts");
+    } else {
+        rail_art::Status const art = rail_art::Load(device, g.ui->GetRenderer(), {}, {}, kPalette);
+        g.art = art.fonts && art.tabs && art.panel;
+        log::Info("omni-tool rail: {}{}", art.summary, g.art ? "" : " (its own look until the game's art is cached)");
+    }
     if (!g.ui->LoadDocument()) {
         log::Error("omni-tool rail: omnitool.rml didn't load from {} (deployed? see the rmlui: lines); no rail",
             ini::Utf8(main_menu::AssetsFolder()));
@@ -921,7 +933,7 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
     if (g.ui->ReloadIfChanged()) {
         g.needRender = true;
     }
-    if (rail_art::CacheChanged()) {
+    if (!kMe3 && rail_art::CacheChanged()) {
         // The mod (game/GameArt) cached the movies, or they changed: the art again, and the document again so new fonts resolve.
         rail_art::Status const art = rail_art::Load(g.device.Get(), g.ui->GetRenderer(), {}, {}, kPalette);
         g.art = art.fonts && art.tabs && art.panel;

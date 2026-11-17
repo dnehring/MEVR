@@ -2310,7 +2310,7 @@
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "run"
     }
    },
    "namespace": "game::omni_tool"
@@ -3730,6 +3730,7 @@
     "supportGripHeld": "WithPadMerge",
     "takeGalaxyPick": "WithGalaxyHologram",
     "takeGameMenuRequest": "WithMenus",
+    "takeGuiEvents": "WithMenus",
     "takeVoiceLine": "WithVoice",
     "takeVoiceModelAnswer": "WithVoice",
     "thespianInputBlocked": "BuildServices",
