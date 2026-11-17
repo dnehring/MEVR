@@ -274,7 +274,8 @@ These unblock the most: almost every other entry gets smaller once they land.
   eye's real place at 100 uu per metre, no convergence, the lean from the eyes' centre at 1:1 forward, each eye through
   its own frustum in a window widened to hold both eyes (ME1's), pinned as their only configuration (`[MEVR-STEREO]`
   lines; `stereo.measure` or `[Debug] upstreamStereo = 1` brings upstream back for a measurement). ME2 measured +2 to
-  +7 px on far scenery, the HUD panel unchanged.
+  +7 px on far scenery, the HUD panel unchanged; ME3 +0.66 degrees per eye in a 2.8 m room (expected 0.65), in mode 1
+  while its game UI is still in the eyes (mode 2 follows once ME3's HUD panel takes the UI).
 - **Left:** the owner's headset check (depth, size, comfort, nothing popping at an eye's outer edge on an asymmetric
   headset, which the fake headset can't show); the wider culling window's cost (lane SP's levers).
 - **Closes when:** `stereo-check.py` reads parallel far scenery and a pistol at 0.5 m reads 0.5 m on each sequel, and the

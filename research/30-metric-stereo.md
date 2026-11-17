@@ -319,3 +319,20 @@ scenery (crossed +, divergent -; a few px crossed is right for scenery tens of m
 - No mesh missing between the eyes (the pair at yaw 0 looked at side by side; each pass culls with its own CPU window,
   which holds its frustum). With asymmetric eyes (a PS VR2) the culling edge is untested: the fake headset's eyes are
   symmetric, and no recording with per-eye FOVs was at hand.
+
+ME3, the renderer preview (`tools/le2-halcyon-run` `-RendererPreview`), Save 31 inside the Normandy (third person in the
+preview; the walls about 3 m away, so nothing is far: crossed disparity is right here). The preview's snapshots have no
+`-left-world.png`; the composited eyes are the world alone there (no layers of ours), copied to that name for the tool:
+
+| ME3 | yaw 0 | yaw 35 | yaw -40 |
+|---|---|---|---|
+| upstream | +112 px = +1.86 deg per eye | +113 px = +1.87 deg | +109 px = +1.81 deg |
+| life-size (mode 1) | +35.5 px = +0.66 deg | +39 px = +0.73 deg | +47.5 px = +0.89 deg |
+
+- Upstream's 1.86 degrees are its 1.53-degree crossed shift plus 3.2 cm eyes: the walls read about a metre away. The
+  same number puts them at 2.8 m, where life-size's 6.4 cm eyes should give 0.65 degrees per eye: measured 0.66.
+- ME3 stays in mode 1 (the plan line: `the symmetric window because the game's UI is in the eye images`): ME3's game UI
+  is still drawn into the eyes (the HUD panel isn't armed there), ME1's rule for that case; the window was widened (each
+  eye declares +-45 x +-48.4 degrees) and mode 2 follows once the panel takes the UI.
+- Each variant needs its own `prep.ps1` on the ME3 preview (the first run rewrote the renderer's config, and `launch.ps1`
+  then refuses with `Preview configuration changed since prep`).
