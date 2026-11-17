@@ -17,7 +17,7 @@
 #include "plugin/GalaxyHologram.hpp"
 #include "plugin/HudPanel.hpp"
 #include "plugin/HdrDisplayPolicy.hpp"
-#include "core/vr/InteractLabel.hpp"
+#include "core/vr/HudPieces.hpp"
 #include "core/vr/PowerWheel.hpp"
 #include "core/vr/SquadMenu.hpp"
 #include "plugin/EyeCopy.hpp"
@@ -122,7 +122,7 @@ Facts const& Get() noexcept {
         "halcyon le3 bridge",
         true,   // invalidViewAtOnce: the flat and menu paths stop the floor lock's pass without a last invalid view
         true,   // panelColour: the game's UI on the panel gets the eyes' correction, as on ME1 and ME2 (research/27 section 9)
-        0,      // hudLayout: no HUD pieces on ME3 yet (capability hudPieces)
+        static_cast<int>(vr::hud_pieces::Layout::Me3),  // ME3's HUD: its prompt's band (core/vr/HudPieces)
     };
     return facts;
 }
@@ -231,11 +231,10 @@ void OverlayBegin(MevrSeams::OverlayFrame const& /*frame*/, bool usable) noexcep
 #endif
 }
 
-// No LE1 crop is assumed. A measured explicit prompt crop opts into the shared HUD capture;
-// otherwise the complete native gameplay HUD stays in the eye images.
-bool OverlayLabel(OverlayContext const& /*context*/) noexcept {
-    auto const label = vr::interact::Latest();
-    return label.visible && vr::interact::ExplicitCrop(label).Valid();
+// As ME2's: the interaction prompt goes to the object whenever the gameplay HUD is on the panel (the shared band,
+// HudPieceLayers::Interaction), never while a screen of ours has the panel.
+bool OverlayLabel(OverlayContext const& context) noexcept {
+    return !context.worldUiOwns;
 }
 
 int OverlayReticleMode(OverlayContext const& context) noexcept {

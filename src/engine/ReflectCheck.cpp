@@ -2516,6 +2516,10 @@ void CheckFunctions() {
         "SFXGame.SFXGameModeDefault.StormOn",             // game/Sprint: one sprint for the trilogy
         "SFXGame.SFXGameModeDefault.StormOff",
         "Engine.Pawn.GetMaxSpeed",
+        // engine/SelectionGaze (research/40 section 6): ME2's no-parameter update and its target search, the search's body
+        // hooked as ME3's (0xAC0530, called from the update's body 0xACE8F0 and this function's thunk 0xB4AF70)
+        "SFXGame.BioPlayerSelection.UpdateSelection",
+        "SFXGame.BioPlayerSelection.FindCurrentSelectionTarget",
     };
     for (char const* function : functions) {
         CheckFunction(function);
@@ -2523,6 +2527,9 @@ void CheckFunctions() {
 }
 
 void CheckParams() {
+    // engine/SelectionGaze: both selection functions take nothing (the hook's void(this) signature, as ME3's)
+    CheckParmsSize("SFXGame.BioPlayerSelection.UpdateSelection", 0);
+    CheckParmsSize("SFXGame.BioPlayerSelection.FindCurrentSelectionTarget", 0);
     // game/Sights and game/ScopeParts (M3.3)
     PARAM(ASFXWeapon_execGetAimError_Parms, "SFXGame.SFXWeapon.GetAimError", Accuracy);
     PARAM(ASFXWeapon_execGetAimError_Parms, "SFXGame.SFXWeapon.GetAimError", ReturnValue);

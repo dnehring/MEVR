@@ -588,20 +588,20 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Waits for:** T02. **Who:** nobody yet.
 
 #### T40 Using things: selection by gaze, the label at the object [G27]
-- **State:** LE1 done · LE2 build · LE3 verify
+- **State:** LE1 done · LE2 verify · LE3 verify
 - **Lives in:** `engine/SelectionGaze`, `game/Interact`, `HudPieceLayers::Interaction`.
-- **Left, ME2:** no gaze hook (`kUpdateSelection = 0`; ME2's selection function has a different signature) and labels
-  need a hand-written `[Interact] crop`: M6 guide package A. **ME3:** gaze works (the War Terminal run); the label needs
-  a measured default crop.
+- **Left:** since 2026-11-16 (lane HU) ME2's gaze hooks its target search (`0xAC0530`, ME3's contract) and both sequels
+  show the label at the object by default with a band measured per game (research/40 section 6). Left on both: A's use
+  after a gaze pick in the same run, two usable objects in different head and body directions, a long name, the headset.
 - **Closes when:** with two usable objects in different head and body directions, the label and A agree, per game.
-- **Who:** nobody yet.
+- **Who:** HU (2026-11-16).
 
 #### T41 HUD pieces: the wrist status and the gun's panel [G28]
 - **State:** LE1 done · LE2 headset · LE3 build
 - **Lives in:** `game/HudPieces`, `plugin/HudPieceLayers`, `core/vr/HudPieces`.
 - **Left, ME3:** `setHudPieces` isn't served, and `HudPieces` compiles LE1 field names in its `#else`: ME3's native
   wrist crop (me3-overall-goal-handoff.md, L3-4).
-- **Waits for:** T14 on ME3. **Who:** GF (the latent default); the ME3 crop has nobody.
+- **Waits for:** T14 on ME3 (on since 2026-11-16) and ME3's combat HUD. **Who:** HU (2026-11-16).
 
 #### T42 The galaxy map and scanning [G25; Forks 3]
 - **State:** LE1 build · LE2 build · LE3 build

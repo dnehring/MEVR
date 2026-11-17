@@ -183,7 +183,8 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
         }
         // A failed copy leaves the prompt's band on the original panel. Never relocate dialogue or screen UI.
         XrCompositionLayerQuad const* const interactionLayer =
-            hpl::Interaction(pass.common, labelBase && panelReady && !panel.screenUi, panel.masks);
+            hpl::Interaction(pass.common, labelBase && panelReady && !panel.screenUi, panel.masks,
+                static_cast<mevr::vr::hud_pieces::Layout>(facts.hudLayout));
         XrCompositionLayerQuad const* const panelLayer = mevr::host::hud_panel::Layer(panel);
         if (caps.worldUi) {
             count = mevr::host::menus_le2::PanelLayers(frame, device, panelLayer, layersOut, count, capacity);  // or a screen's place

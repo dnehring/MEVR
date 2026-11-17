@@ -97,9 +97,15 @@ std::string Describe(Settings const& settings);
 // the bottom 12). Invalid (width 0) for an empty frame.
 // Whose HUD: ME1's (the bands above) or ME2's (its 1280x720 stage across a 16:9 frame: the squad's block at the bottom
 // middle, x 540..740, the bottom 110..2; the weapon panel at the bottom left, x 8..184, the bottom 108..3).
-enum class Layout : std::uint8_t { Me1, Me2 };
+// ME3's (its 1280x720 stage across a 16:9 frame): only its interaction prompt's band so far (DefaultLabelCrop); its wrist
+// and weapon bands are ME1's until measured.
+enum class Layout : std::uint8_t { Me1, Me2, Me3 };
 Rect DefaultWristCrop(std::uint32_t width, std::uint32_t height, Layout layout = Layout::Me1);
 Rect DefaultGunCrop(std::uint32_t width, std::uint32_t height, Layout layout = Layout::Me1);
+// The interaction prompt's band (vr::interact, the label at the object; research/40 section 6), stage pixels: ME1's
+// interact::DefaultCrop (x 384..896, y 30..100); ME2's x 448..832, y 30..100 (its box x 602..679, y 31..78; its power bar
+// reaches x 433); ME3's x 448..832, y 0..70 (its box starts at the stage's top: x 569..711, y 1..67).
+Rect DefaultLabelCrop(std::uint32_t width, std::uint32_t height, Layout layout);
 // The Mako's radar at the bottom right: x 1080..1222, the bottom 172..28 (stage pixels).
 Rect DefaultRadarCrop(std::uint32_t width, std::uint32_t height);
 // `crop` if it's valid, else the default for the frame.

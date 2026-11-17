@@ -9857,6 +9857,26 @@ void TestHudPieces() {
     CHECK(status.x == 805 || status.x == 806);
     CHECK(status.y >= 2089 && status.y <= 2091 && status.y + status.height >= 2345 && status.y + status.height <= 2347);
 
+    // The interaction prompt's band per game (research/40 section 6): ME1's is interact::DefaultCrop; ME2's holds its measured
+    // box (stage x 602..679, y 31..78 on a 16:9 frame) and stays clear of its power bar (x up to 433); ME3's starts at the top
+    // and holds its box (x 569..711, y 1..67, the name at y 5..33 that ME1's band cut off).
+    for (auto const [w, h] : {std::pair{1365u, 768u}, std::pair{1536u, 864u}, std::pair{3072u, 1728u}}) {
+        double const stage = w / 1280.0;  // frame px per stage px
+        auto const holds = [&](hp::Rect const& r, double x0, double y0, double x1, double y1) {
+            return r.x * w <= x0 * stage && (r.x + r.width) * w >= x1 * stage && r.y * h <= y0 * stage &&
+                (r.y + r.height) * h >= y1 * stage;
+        };
+        hp::Rect const me1 = hp::DefaultLabelCrop(w, h, hp::Layout::Me1);
+        hp::Rect const me2 = hp::DefaultLabelCrop(w, h, hp::Layout::Me2);
+        hp::Rect const me3 = hp::DefaultLabelCrop(w, h, hp::Layout::Me3);
+        hp::Rect const interact = mevr::vr::interact::DefaultCrop(w, h);
+        CHECK(me1.x == interact.x && me1.y == interact.y && me1.width == interact.width && me1.height == interact.height);
+        CHECK(holds(me2, 602.0, 31.0, 679.0, 78.0) && me2.x * 1280.0 > 433.0);
+        CHECK(holds(me3, 569.0, 1.0, 711.0, 67.0) && !holds(me1, 569.0, 1.0, 711.0, 67.0) && me3.x * 1280.0 > 433.0);
+        CHECK(close(me3.y, 0.0, 1e-6) && close(me3.height * h, 70.0 * stage, 0.01));
+    }
+    CHECK(!hp::DefaultLabelCrop(0, 100, hp::Layout::Me3).Valid());
+
     // A hand-set crop wins over the default.
     hp::Settings byHand;
     byHand.gunCrop = {0.1f, 0.8f, 0.2f, 0.1f};

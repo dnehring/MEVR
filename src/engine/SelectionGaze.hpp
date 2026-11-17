@@ -18,9 +18,9 @@ class Context;
 // A hook on that function lets the game choose from where the player looks: for the call's duration the camera's
 // cached Location and Rotation are the head's (in the world), then put back. The provider (game/Interact) decides per
 // call whether to, and where the POV and the gaze are. The hook runs on the game thread (the controller's tick).
-// LE3 uses the separate FindCurrentSelectionTarget body, void(this), and takes its
+// LE2 and LE3 use the separate FindCurrentSelectionTarget body, void(this), and take its
 // direction from Controller.Rotation instead of POV.Rotation. The same scoped swap
-// restores both sources after the search. No address is established for LE2 yet.
+// restores both sources after the search (research/40 section 6, research/le3-interaction-gaze.md).
 namespace mevr::engine::selection_gaze {
 
 // One call's swap: the POV's fields (in the camera) and the gaze to put there.

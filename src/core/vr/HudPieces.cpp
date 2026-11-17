@@ -41,6 +41,18 @@ constexpr float kMe2GunLeft = 8.0f;
 constexpr float kMe2GunRight = 184.0f;
 constexpr float kMe2GunAboveBottom = 108.0f;
 constexpr float kMe2GunBelowTop = 3.0f;
+// The sequels' interaction prompt (research/40 section 6), each game's stage across its 16:9 frame. ME2's box (Freedom's
+// Progress' door, 1365x768 HUD panel snapshots, alpha > 40) is x 602..679, y 31..78 like ME1's band's, but ME2's power bar at
+// the top left reaches x 433 (alpha > 5), inside ME1's band's x 384: the band starts at 448, as wide on the right. ME3's box
+// (the War Room's War Terminal, 1536x864 snapshots of a 3072x1728 frame) starts at the stage's very top, its name above the
+// action line (SFXSFHandler_PCHUD's TargetName at y 5..33, TargetStatus at y 35..63): x 569..711, y 1..67; ME1's band
+// starting at y 30 cut the name off.
+constexpr float kSequelLabelLeft = 448.0f;
+constexpr float kSequelLabelRight = 832.0f;
+constexpr float kMe2LabelTop = 30.0f;
+constexpr float kMe2LabelBottom = 100.0f;
+constexpr float kMe3LabelTop = 0.0f;
+constexpr float kMe3LabelBottom = 70.0f;
 // The Mako's radar, bottom right (measured 2026-11-03 on a 1172x1196 frame: x 1089..1214, the bottom 163..37 at alpha > 40).
 constexpr float kRadarLeft = 1080.0f;
 constexpr float kRadarRight = 1222.0f;
@@ -219,6 +231,26 @@ Rect DefaultGunCrop(std::uint32_t width, std::uint32_t height, Layout layout) {
         return BottomBand(width, height, kMe2GunLeft, kMe2GunRight, kMe2GunAboveBottom, kMe2GunBelowTop);
     }
     return BottomBand(width, height, kGunLeft, kGunRight, kGunAboveBottom, kGunBelowTop);
+}
+
+Rect DefaultLabelCrop(std::uint32_t width, std::uint32_t height, Layout layout) {
+    if (layout == Layout::Me1) {
+        return interact::DefaultCrop(width, height);
+    }
+    if (width == 0 || height == 0) {
+        return {};
+    }
+    // As ME1's: the stage across the frame's width, aligned to the top.
+    float const top = layout == Layout::Me3 ? kMe3LabelTop : kMe2LabelTop;
+    float const bottom = layout == Layout::Me3 ? kMe3LabelBottom : kMe2LabelBottom;
+    float const scale = static_cast<float>(width) / kStageWidth;
+    float const h = static_cast<float>(height);
+    Rect rect;
+    rect.x = kSequelLabelLeft / kStageWidth;
+    rect.width = (kSequelLabelRight - kSequelLabelLeft) / kStageWidth;
+    rect.y = std::min(top * scale / h, 1.0f);
+    rect.height = std::min((bottom - top) * scale / h, 1.0f - rect.y);
+    return rect;
 }
 
 Rect DefaultRadarCrop(std::uint32_t width, std::uint32_t height) {

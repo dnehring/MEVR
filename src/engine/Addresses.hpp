@@ -268,7 +268,11 @@ inline constexpr std::uint32_t kSoundSourceUpdate = 0;
 inline constexpr std::uint32_t kNameFromText = 0;
 inline constexpr std::uint32_t kTryAcquireCover = 0;
 inline constexpr std::uint32_t kCoverTrace = 0;
-inline constexpr std::uint32_t kUpdateSelection = 0;
+// BioPlayerSelection's target search, void(this), as ME3's (engine/SelectionGaze; research/40 section 6): called from the
+// update's body (0xACE8F0, behind execUpdateSelection 0xB4AFB0) and from execFindCurrentSelectionTarget (0xB4AF70). It
+// takes the cone's origin from the outer controller's PlayerCamera (+0x6A0) CameraCache.POV.Location (+0x464) and its axis
+// from the controller's Actor.Rotation (+0x124).
+inline constexpr std::uint32_t kUpdateSelection = 0xAC0530;
 inline constexpr std::uint32_t kConversationSetPositionRotator = 0;
 inline constexpr std::uint32_t kInterruptConversation = 0;
 inline constexpr std::uint32_t kMoveWithInterpMoveTrack = 0;
@@ -300,6 +304,8 @@ inline constexpr Entry kTable[] = {
     {"FViewportClient::Draw (end)", kViewportDrawEnd, Kind::End, nullptr, 0, 0, "mod (scene view)"},
     {"USkeletalMeshComponent::UpdateSkelPose", kUpdateSkelPose, Kind::Function,
         "48 8B C4 44 89 40 18 55 56 57 41 54 41 55 41 56 41 57 48 8D 68 A8 48 81", 0, 0, "mod (arm IK)"},
+    {"UBioPlayerSelection::FindCurrentSelectionTarget", kUpdateSelection, Kind::Function,
+        "48 8B C4 48 89 48 08 55 53 57 41 54 41 55 41 56", 0, 0, "mod (interaction gaze)"},
     // Our reflection layer's globals and the engine's allocator (ue3/Runtime has its own patterns too).
     {"GObjects", kGObjects, Kind::Data, "C9 74 5B EB F0 4C 8B 05 ?? ?? ?? ?? 4B 8B 04 06", 8, 0x9B24B,
         "mod (reflection), host (Halcyon LE2's game-thread queue)"},

@@ -98,3 +98,45 @@ Next native check uses a normal-loaded checkpoint with an unobstructed door or N
 measure its band, enable that crop, and compare the `label` layer with both eyes and the actor A actually uses.
 Include invalid/no target, range/occlusion, menu entry and a load transition. The render path is an offline-tested
 implementation candidate until that check. Default crop, head/body disagreement and headset legibility remain open.
+
+## 6. ME2's gaze, and the label at the object on ME2 and ME3 by default (2026-11-16, lane HU)
+
+**ME2's selection is ME3's.** The natives list (`%LOCALAPPDATA%\MEVR\dump\natives-LE2-60AEEFA5.csv`, `[Debug] dumpNatives`) names
+`BioPlayerSelection.FindCurrentSelectionTarget`'s thunk at `0xB4AF70` and `UpdateSelection`'s at `0xB4AFB0`. Ghidra on the LE2
+project (`tools\ghidra\decompile.ps1 -Game LE2 0xB4AF70 0xB4AFB0 0xAC0530`): the first thunk calls `0xAC0530`, the second calls the
+update body `0xACE8F0`, and `0xAC0530`'s only other caller is that body. `0xAC0530` is the target search, `void(this)`: it takes
+the selection's outer controller (`+0x40`), that controller's `PlayerCamera` (`+0x6A0`), the camera's `CameraCache.POV.Location`
+(`+0x464`) as the cone's origin, and the controller's own `Actor.Rotation` (`+0x124`, turned into a direction by `0x699C0`) as
+its axis: the same contract as ME3's `0xA9BF90` (research/le3-interaction-gaze.md). So ME2 takes ME3's branch of
+`engine/SelectionGaze` (the void(this) detour; `game/Interact` hands it the controller's rotation, swapped for the call only, put
+back in `__finally`, journalled). Address row `UBioPlayerSelection::FindCurrentSelectionTarget` in `engine/Addresses.hpp`'s LE2
+table, pattern `48 8B C4 48 89 48 08 55 53 57 41 54 41 55 41 56` (a .pdata start, unique in ME2's .text, `tools/rva-patterns.py`);
+ReflectCheck rows for both functions and their empty parameter lists (`CheckParmsSize ... 0`); ctest
+`mevr-selection-gaze-LE2` runs the detour's swap, restore and fault tests compiled for ME2.
+
+**Each game's prompt band.** Every game's prompt is its HUD's top-centre widget, the 1280x720 stage shown across the frame's
+width (measured on HUD panel snapshots, alpha > 40):
+
+| game | the prompt's box (stage px) | its neighbours | band (`vr::hud_pieces::DefaultLabelCrop`) |
+|---|---|---|---|
+| ME1 | name and action inside x 384..896, y 30..100 (section 2) | | x 384..896, y 30..100 (`interact::DefaultCrop`) |
+| ME2 | a hexagon x 602..679, y 31..78 (Freedom's Progress' `SFXDoor_0`, 1365x768 snapshots) | the power bar at the top left reaches x 433 (alpha > 5) | x 448..832, y 30..100 |
+| ME3 | one box x 569..711, y 1..67, its name above the action line (`SFXSFHandler_PCHUD.TargetName` y 5..33, `TargetStatus` y 35..63, `mevr guimouse hud`) | | x 448..832, y 0..70 |
+
+ME1's band left ME3's name on the HUD panel (it starts at y 30) and took the right end of ME2's power bar into ME2's label: hence
+a band per game, keyed by the bridge's `Facts::hudLayout` (ME2 `Layout::Me2`, ME3 `Layout::Me3`). `[Interact] crop` still
+overrides it. The label is on by default on both sequels, as on ME1 (`game/Interact` no longer requires a hand-set crop there),
+and ME3's bridge gates it as ME2's (`OverlayLabel`: not while a screen of ours has the panel).
+
+**In the game.**
+- ME2, Save 4 (session `20261116-221216-522-LE2-hu-me2a`): `hooked UBioPlayerSelection::FindCurrentSelectionTarget`, `reflect: 726 of
+  726 checks agree`; head ahead: `A would use SFXDoor BioD_ProFre_100SpacePort...SFXDoor_0, 13.4 m away (chosen from where you
+  look)`, every selection update from the gaze, the `label` layer up; head turned 60 degrees right or left: nothing selected, no
+  label; ahead again: the door and its label. The first label used ME1's band and showed the power bar's edge at its left: the
+  band above is the fix, built after this run.
+- ME3, Save 31 (session `20261116-215851-868-LE3-hu-me3c`, two runs): walked to the War Room table (`-1131, 6571, -29`), head 30
+  degrees left and 30 down: `SFXPointOfInterest_0` 1.35 m away, the `label` layer holding the whole box (War Terminal, A Use) at the
+  console, the HUD panel empty (the band cut out), the eyes' world layer without any of the prompt; head 70 degrees right: nothing,
+  no label; back: selected again.
+
+**Not verified:** a long name's box (wider than the bands?), combat targets (`[Interact] combatLabel`), legibility in a headset.
