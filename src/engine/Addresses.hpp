@@ -450,6 +450,10 @@ inline constexpr std::uint32_t kUmbraResolveStart = 0x189EC0C;
 inline constexpr std::uint32_t kUmbraIssueQueries = 0x3D8EB0;
 inline constexpr std::uint32_t kUmbraInstanceVisible = 0x3E3B00;
 inline constexpr std::uint32_t kUmbraReadResult = 0xE02430;
+// A dword command() tests first (`cmp dword ptr [rip+X], 0` at 0x3E8B98, its only reference) and does nothing for any code
+// while it is 0; LE1 and ME2 have no such gate (research/sequel-render-levers.md "ME3", difference 4). Read only, for the
+// log (plugin/RenderLeversTable's umbraCommandGate).
+inline constexpr std::uint32_t kUmbraCommandGate = 0x1767208;
 // FD3D11DynamicRHI::GetQueryData(this, query, out, size, bWait) (LE1 0x9A04B0) and the bound shader state's constructor
 // (LE1 0x9A89F0): both byte-identical to LE1's. The RHI's vtable is 0x12FC7A0 (LE1 0x120FF00), the same slots.
 inline constexpr std::uint32_t kGetQueryData = 0x9A7D10;
@@ -599,6 +603,9 @@ inline constexpr Entry kTable[] = {
         "40 53 55 56 57 41 54 41 56 41 57 48 81 EC A0 00 00 00 48 C7 44 24 48 FE", 0, 0, "render levers"},
     {"Umbra read of one query result", kUmbraReadResult, Kind::Leaf, "89 91 CC 01 00 00 BA 06 00 00 00 44 89 81 C8 01", 0, 0,
         "render levers"},
+    // Its only reference has an immediate after the displacement (tail 1): tools/rva-patterns.py ...=0x1767208:data+1.
+    {"Umbra command gate", kUmbraCommandGate, Kind::Data, "C4 48 89 44 24 70 83 3D ?? ?? ?? ?? 00 48 8B E9", 8, 0x3E8B92,
+        "render levers", 1},
     {"FD3D11DynamicRHI::GetQueryData", kGetQueryData, Kind::Function,
         "48 89 5C 24 10 48 89 6C 24 18 48 89 74 24 20 57 41 56 41 57 48 83 EC 60 48 8B F9 0F", 0, 0, "render levers"},
     {"FD3D11BoundShaderState constructor", kBoundShaderStateCtor, Kind::Function, "4C 8B DC 4D 89 4B 20 49 89 53 10 49 89 4B 08 55",

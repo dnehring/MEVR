@@ -74,6 +74,9 @@ inline constexpr char kCaptureScene[] = "scene capture's CaptureScene thunk";
 inline constexpr char kBeginBackBuffer[] = "FSceneRenderTargets::BeginRenderingBackBuffer";
 // The show flags' bits per word (32), a data global: eligibility for the kept-renderer and replay paths.
 inline constexpr char kShowFlagBitsPerWord[] = "show flags' bits per word";
+// ME3 only (Layout::umbraCommandGate): a dword the commander's command() tests first. Not in kRowNames: LE1 and ME2 have
+// no such gate, so their tables have no row of this name.
+inline constexpr char kUmbraCommandGate[] = "Umbra command gate";
 } // namespace row
 
 // Every row name the module asks for (the tests check each one is a row of LE1's table).
@@ -134,7 +137,8 @@ struct Layout {
     // render: the replay's tail is then marked only outside a capture. ME3: true (difference 2). ME1's captures never do.
     bool captureTakesUmbraBranch = false;
     // A dword the commander's command() checks first and does nothing while it is 0 (an RVA; 0: the game has no such
-    // gate). ME3: 0x1767208 (difference 4; not a table row: its only reference can't be expressed as one). Logged once.
+    // gate). ME3: 0x1767208 (difference 4), the table's "Umbra command gate" row (its reference has an immediate after the
+    // displacement: exe::Entry::tail). Read once under SEH, for the log.
     std::uintptr_t umbraCommandGate = 0;
     // The capture hooks (CaptureScene, BeginRenderingBackBuffer) are this module's to install. ME3: false while
     // plugin/Le3SceneCapture hooks the same two functions (two hooks would each bind the target; the ledger's Forks 9).
@@ -233,7 +237,7 @@ inline constexpr Layout kLayout = [] {
     l.ineligibleShowFlagCount = 4;
     l.instanceCallAlsoKeepsBooks = true;
     l.captureTakesUmbraBranch = true;
-    l.umbraCommandGate = 0x1767208;
+    l.umbraCommandGate = RowIn(engine::addresses::kTable, row::kUmbraCommandGate);
     l.ownsSceneCaptureHooks = false;
     // Ran in ME3 on 2026-11-16 (research/sequel-render-levers.md "ME3: the baseline and the A/Bs", session
     // 20261116-143006-726-LE3-pl-levers): the accounting and the commander's timing (the command gate read 1);

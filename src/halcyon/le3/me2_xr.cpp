@@ -1869,6 +1869,10 @@ void RunFrame() noexcept
         ? (!s_sfrNeedsFreshPair && ME2VR::D3DCapture::GetSfrPass0Texture() != nullptr)
         : (g_framesSinceSplit < kSbsHoldFrames);
     sbsFrame = stereoIntent && stereoSourceReady;
+    // [MEVR] life-size stereo (research/30 section 9.5): a frame shown flat (a menu, a flat cinematic, a stalled capture, the
+    // wait for a fresh pair) expires the plan, so the passes rendered meanwhile are from the eyes' centre, never one eye's
+    // off-centre frustum on the flat panel; the next stereo present publishes again.
+    if (sfrMode && !sbsFrame) ::MevrMetricView::Expire();
     {
         static int previous = -1;
         const int current = menuMono ? 1 : (flatCine ? 2 : (captureTopologyMono ? 4 : (sbsFrame ? 0 : 3)));

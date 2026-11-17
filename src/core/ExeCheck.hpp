@@ -42,6 +42,9 @@ struct Entry {
     // Data: where the pattern starts in this build (its RVA). Others: rva - offset (0 here means that).
     std::uint32_t site = 0;
     char const* user = "";  // who reads it ("host", "mod", "render levers"...), for the log
+    // Data: the referencing instruction's bytes after its displacement (an immediate: `cmp dword ptr [rip+X], 0` has 1),
+    // so the target is match + offset + 4 + tail + disp32. 0 for a mov or lea, whose instruction ends at the displacement.
+    std::uint8_t tail = 0;
 };
 
 enum class Status : std::uint8_t {

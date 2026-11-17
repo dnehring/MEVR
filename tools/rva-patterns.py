@@ -11,6 +11,8 @@ wildcarded byte only makes the pattern less specific, and uniqueness is checked)
     end       the last bytes before a function's end (offset = the pattern's length)
     data      an instruction that references the global RIP-relatively, with its displacement wildcarded
               (offset = the displacement's place; site = where the pattern starts)
+    data+N    the same through an instruction with an N-byte immediate after its displacement (`cmp dword ptr
+              [rip+X], 0` is data+1): the entry's tail = N
 
     python -I tools/rva-patterns.py <dump.text.bin> [--exe MassEffect1.exe] name=0x12DD20:function ...
 
@@ -114,15 +116,15 @@ def unique(text, start, max_len, forced=(), min_len=16):
     return None
 
 
-def data_sites(text, rva):
-    """Positions of disp32 fields whose instruction (ending right after them) targets `rva`."""
+def data_sites(text, rva, tail=0):
+    """Positions of disp32 fields whose instruction (ending `tail` bytes after them) targets `rva`."""
     import numpy as np
     raw = np.frombuffer(text.data, dtype=np.uint8).astype(np.int64)
     n = len(raw) - 3
     disp = raw[0:n] | (raw[1:n + 1] << 8) | (raw[2:n + 2] << 16) | (raw[3:n + 3] << 24)
     disp = np.where(disp >= 1 << 31, disp - (1 << 32), disp)
     positions = np.arange(n, dtype=np.int64) + text.rva
-    hits = np.nonzero(positions + 4 + disp == rva)[0]
+    hits = np.nonzero(positions + 4 + tail + disp == rva)[0]
     return [int(text.rva + p) for p in hits]
 
 
@@ -168,10 +170,11 @@ def main():
                     break
                 p = None
             print(f'{name}: rva=0x{rva:X} offset={length} site=0x{rva - length:X} [{note}] "{p}"')
-        elif kind == 'data':
+        elif kind == 'data' or kind.startswith('data+'):
+            tail = int(kind[5:]) if kind.startswith('data+') else 0
             best = None
             seen = set()
-            for site in data_sites(text, rva):
+            for site in data_sites(text, rva, tail):
                 forced = set(range(site, site + 4))
                 window = text.pattern(site - 16, 40, forced)
                 if window in seen:  # one of many identical sites (registration stubs): never unique
@@ -186,7 +189,8 @@ def main():
                 print(f'{name}: rva=0x{rva:X} data: no unique reference')
             else:
                 site, before, p = best
-                print(f'{name}: rva=0x{rva:X} offset={before} site=0x{site - before:X} "{p}"')
+                print(f'{name}: rva=0x{rva:X} offset={before} site=0x{site - before:X}' + (f' tail={tail}' if tail else '') +
+                      f' "{p}"')
         else:
             print(f'{name}: unknown kind {kind!r}')
 

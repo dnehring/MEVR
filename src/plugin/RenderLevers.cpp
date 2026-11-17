@@ -441,30 +441,62 @@ bool NearlySame(float const* a, float const* b) {
 
 std::atomic<std::uint64_t> gSecondEyeQueriesSkipped{0};
 std::atomic<std::uint64_t> gSecondEyeFakeResults{0};
+std::atomic<std::uint64_t> gUmbraMatrixFaults{0};
+
+// The commander's view and the matrices umbraEyeMatrix reads, copied out under SEH (render thread: a fault inside a hook
+// there ends the thread behind the engine's own handler and the game thread waits forever, CLAUDE.md's gotcha). False:
+// no view, its parameters already set this render, or a fault (counted).
+struct QueryView {
+    std::uint8_t* view = nullptr;
+    float V[16], TV[16], TVP[16], VP[16], pvt[3];
+};
+bool ReadQueryView(void* commander, QueryView* out) noexcept {
+    __try {
+        auto* const c = static_cast<std::uint8_t*>(commander);
+        auto* const view = *reinterpret_cast<std::uint8_t* const*>(c + kCommanderView);
+        if (view == nullptr || *reinterpret_cast<int const*>(c + kCommanderViewParamsSet) != 0) {
+            return false;
+        }
+        std::memcpy(out->V, view + kViewViewMatrix, sizeof(out->V));
+        std::memcpy(out->TV, view + kViewTranslatedViewMatrix, sizeof(out->TV));
+        std::memcpy(out->TVP, view + kViewTranslatedViewProj, sizeof(out->TVP));
+        std::memcpy(out->VP, view + kViewViewProj, sizeof(out->VP));
+        std::memcpy(out->pvt, view + kViewPreViewTranslation, sizeof(out->pvt));
+        out->view = view;
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        gUmbraMatrixFaults.fetch_add(1, std::memory_order_relaxed);
+        return false;
+    }
+}
+// FViewInfo +0x260 (ViewProjectionMatrix) written under SEH; false on a fault (counted).
+bool WriteViewProjection(std::uint8_t* view, float const* m) noexcept {
+    __try {
+        std::memcpy(view + kViewViewProj, m, sizeof(float) * 16);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        gUmbraMatrixFaults.fetch_add(1, std::memory_order_relaxed);
+        return false;
+    }
+}
 
 void UmbraIssueQueriesInner(void* commander) {
-    auto* const c = static_cast<std::uint8_t*>(commander);
     // umbraSharedVisibility = 2: the second eye issues no occluder queries (its visible set is the first eye's anyway);
     // the results read (command 6) then answers Umbra's pending queries as "visible" without touching the GPU.
     if (t_renderIndex == 1 && gUmbraSharedVisibility.load(std::memory_order_relaxed) >= 2) {
         gSecondEyeQueriesSkipped.fetch_add(1, std::memory_order_relaxed);
         return;
     }
-    auto* const view = Field<std::uint8_t*>(c, kCommanderView);
-    if (gUmbraEyeMatrix.load(std::memory_order_relaxed) == 0 || view == nullptr || Field<int>(c, kCommanderViewParamsSet) != 0) {
+    QueryView q;
+    if (gUmbraEyeMatrix.load(std::memory_order_relaxed) == 0 || !ReadQueryView(commander, &q)) {
         gUmbraIssueQueriesOrig(commander);
         return;
     }
-    auto* const V = reinterpret_cast<float const*>(view + kViewViewMatrix);
-    auto* const TV = reinterpret_cast<float const*>(view + kViewTranslatedViewMatrix);
-    auto* const TVP = reinterpret_cast<float const*>(view + kViewTranslatedViewProj);
-    auto* const pvt = reinterpret_cast<float const*>(view + kViewPreViewTranslation);
-    auto* const VP = reinterpret_cast<float*>(view + kViewViewProj);
     if (gTranslationSign == 0) {
         float plus[16], minus[16];
-        TranslateRows(TV, pvt, 1.0f, plus);
-        TranslateRows(TV, pvt, -1.0f, minus);
-        gTranslationSign = NearlySame(plus, V) ? 1 : (NearlySame(minus, V) ? -1 : 0);
+        TranslateRows(q.TV, q.pvt, 1.0f, plus);
+        TranslateRows(q.TV, q.pvt, -1.0f, minus);
+        gTranslationSign = NearlySame(plus, q.V) ? 1 : (NearlySame(minus, q.V) ? -1 : 0);
         log::Info("render levers: the view matrix is the translated one moved by {} the pre-view translation{}",
             gTranslationSign > 0 ? "plus" : (gTranslationSign < 0 ? "minus" : "neither"),
             gTranslationSign == 0 ? ": umbraEyeMatrix can't act this render" : "");
@@ -474,17 +506,18 @@ void UmbraIssueQueriesInner(void* commander) {
         }
     }
     float eye[16];
-    TranslateRows(TVP, pvt, static_cast<float>(gTranslationSign), eye);
-    if (NearlySame(eye, VP)) {
+    TranslateRows(q.TVP, q.pvt, static_cast<float>(gTranslationSign), eye);
+    if (NearlySame(eye, q.VP)) {
         gUmbraMatrixSame.fetch_add(1, std::memory_order_relaxed);  // mode 1: nothing to fix
         gUmbraIssueQueriesOrig(commander);
         return;
     }
-    float saved[16];
-    std::memcpy(saved, VP, sizeof(saved));
-    std::memcpy(VP, eye, sizeof(eye));
+    if (!WriteViewProjection(q.view, eye)) {
+        gUmbraIssueQueriesOrig(commander);
+        return;
+    }
     gUmbraIssueQueriesOrig(commander);
-    std::memcpy(VP, saved, sizeof(saved));
+    WriteViewProjection(q.view, q.VP);  // the original bytes back (the RHI copied the matrix into its constants at once)
     gUmbraMatrixFixed.fetch_add(1, std::memory_order_relaxed);
 }
 // research/37 (the shown columns): Umbra's query boxes rasterise over the whole window, never the eye's scissor.
@@ -1777,10 +1810,25 @@ bool FakeSecondEyeQueryResults(std::uint8_t* commander, int mode) {
 
 std::atomic<int> gCommandGateLogged{0};
 
+// A dword of the exe read under SEH (render thread); false on a fault.
+bool ReadExeDword(std::uintptr_t rva, std::uint32_t* out) noexcept {
+    __try {
+        *out = *At<std::uint32_t const*>(rva);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
 void CommandHook(void* commander, unsigned code) {
     if (Verified(kLayout.umbraCommandGate != 0) && gCommandGateLogged.exchange(1, std::memory_order_relaxed) == 0) {
         // ME3's command() does nothing for any code while this dword is 0: then no Umbra lever has anything to act on.
-        log::Info("render levers: Umbra's command gate is {}", *At<std::uint32_t*>(kLayout.umbraCommandGate));
+        std::uint32_t gate = 0;
+        if (ReadExeDword(kLayout.umbraCommandGate, &gate)) {
+            log::Info("render levers: Umbra's command gate is {}", gate);
+        } else {
+            log::Info("render levers: Umbra's command gate at 0x{:X} couldn't be read (SEH)", kLayout.umbraCommandGate);
+        }
     }
     LARGE_INTEGER begin{}, end{};
     QueryPerformanceCounter(&begin);
@@ -2079,8 +2127,11 @@ void LogStats(Snapshot const& now, Snapshot const& before) {
         }
         std::uint64_t const fixed = gUmbraMatrixFixed.exchange(0, std::memory_order_relaxed);
         std::uint64_t const same = gUmbraMatrixSame.exchange(0, std::memory_order_relaxed);
-        if (fixed != 0 || same != 0) {
-            share += std::format("; Umbra's queries with the eye's matrix: {} renders fixed, {} already right", fixed, same);
+        std::uint64_t const faults = gUmbraMatrixFaults.exchange(0, std::memory_order_relaxed);
+        if (fixed != 0 || same != 0 || faults != 0) {
+            share += std::format("; Umbra's queries with the eye's matrix: {} renders fixed, {} already right{}", fixed, same,
+                faults != 0 ? std::format(", {} view reads or writes faulted (SEH: the game's own matrix used)", faults)
+                            : std::string());
         }
         std::uint64_t const flushes = gFlushes.exchange(0, std::memory_order_relaxed);
         if (flushes != 0) {

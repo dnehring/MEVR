@@ -89,14 +89,14 @@ bool Matches(std::span<std::uint8_t const> bytes, ue3::pattern::Compiled const& 
     return true;
 }
 
-std::uint32_t RipTargetAt(Image const& image, std::uint32_t site, std::uint32_t offset) {
+std::uint32_t RipTargetAt(Image const& image, std::uint32_t site, std::uint32_t offset, std::uint32_t tail) {
     std::uint32_t const disp = site + offset;
     if (!InText(image, disp, 4)) {
         return 0;
     }
     std::int32_t rel = 0;
     std::memcpy(&rel, image.text.data() + (disp - image.textRva), sizeof(rel));
-    return static_cast<std::uint32_t>(static_cast<std::int64_t>(disp) + 4 + rel);
+    return static_cast<std::uint32_t>(static_cast<std::int64_t>(disp) + 4 + tail + rel);
 }
 
 } // namespace
@@ -175,7 +175,7 @@ Result Check(Image const& image, Entry const& e) {
         std::span<std::uint8_t const> const here = image.text.subspan(site - image.textRva, compiled->bytes.size());
         bool const startsAtFunction = (e.kind == Kind::Function || e.kind == Kind::Leaf) && e.offset == 0;
         std::size_t const jump = startsAtFunction ? HookJumpLength(here) : 0;
-        bool const target = e.kind != Kind::Data || RipTargetAt(image, site, e.offset) == e.rva;
+        bool const target = e.kind != Kind::Data || RipTargetAt(image, site, e.offset, e.tail) == e.rva;
         if (target && Matches(here, *compiled, 0)) {
             r.status = Status::AtRva;
             r.found = e.rva;
@@ -194,7 +194,7 @@ Result Check(Image const& image, Entry const& e) {
     bool agree = !hits.empty();
     for (std::size_t hit : hits) {
         std::uint32_t const at = image.textRva + static_cast<std::uint32_t>(hit);
-        std::uint32_t const address = e.kind == Kind::Data ? RipTargetAt(image, at, e.offset) : at + e.offset;
+        std::uint32_t const address = e.kind == Kind::Data ? RipTargetAt(image, at, e.offset, e.tail) : at + e.offset;
         if (found != 0 && address != found) {
             agree = false;
         }

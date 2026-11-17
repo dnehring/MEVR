@@ -1644,6 +1644,26 @@ if (MEVR_BUILD_TESTS)
     target_compile_options(mevr-render-levers-table-tests PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
     add_dependencies(mevr-tests mevr-render-levers-table-tests)
     add_test(NAME mevr-render-levers-table COMMAND mevr-render-levers-table-tests)
+    # The sequels' life-size stereo render side (src/halcyon/MevrMetricView.h, GPL): the latch, the submit's plan, mode 2's
+    # containment (research/30 section 9.5).
+    add_executable(mevr-metric-view-tests tests/MetricViewTests.cpp)
+    target_include_directories(mevr-metric-view-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_compile_definitions(mevr-metric-view-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_compile_options(mevr-metric-view-tests PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
+    add_dependencies(mevr-tests mevr-metric-view-tests)
+    add_test(NAME mevr-metric-view COMMAND mevr-metric-view-tests)
+    # The same, compiled as each sequel: its layout, lever defaults and verified groups pinned (and ME3's command gate row).
+    foreach(game LE2 LE3)
+        string(TOLOWER ${game} gameLower)
+        add_executable(mevr-${gameLower}-render-levers-table-tests tests/RenderLeversTableTests.cpp)
+        target_include_directories(mevr-${gameLower}-render-levers-table-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+        target_compile_definitions(mevr-${gameLower}-render-levers-table-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN
+            MEVR_GAME_${game})
+        target_compile_options(mevr-${gameLower}-render-levers-table-tests PRIVATE /W4 /WX /permissive- /utf-8
+            /Zc:__cplusplus)
+        add_dependencies(mevr-tests mevr-${gameLower}-render-levers-table-tests)
+        add_test(NAME mevr-${gameLower}-render-levers-table COMMAND mevr-${gameLower}-render-levers-table-tests)
+    endforeach()
     add_executable(mevr-system-settings-tests tests/SystemSettingsTests.cpp)
     target_include_directories(mevr-system-settings-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
     target_link_libraries(mevr-system-settings-tests PRIVATE OpenXR::headers)

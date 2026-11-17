@@ -289,8 +289,15 @@ These unblock the most: almost every other entry gets smaller once they land.
   lines; `stereo.measure` or `[Debug] upstreamStereo = 1` brings upstream back for a measurement). ME2 measured +2 to
   +7 px on far scenery, the HUD panel unchanged; ME3 +0.66 degrees per eye in a 2.8 m room (expected 0.65), in mode 1
   while its game UI is still in the eyes (mode 2 follows once ME3's HUD panel takes the UI).
-- **Left:** the owner's headset check (depth, size, comfort, nothing popping at an eye's outer edge on an asymmetric
-  headset, which the fake headset can't show); the wider culling window's cost (lane SP's levers).
+- **Done after the review (lane FXR, 2026-11-17, research/30 9.4):** no pass renders upstream's stereo any more (the
+  latch takes the last stereo plan or the eyes' centre, never mode 0; the cinema screen's last pair routed as rendered; a
+  frame shown flat expires the plan), a view whose CPU window can't hold the eyes renders on the symmetric window,
+  `umbraEyeMatrix` and ME3's command gate guarded on the render thread (the gate a table row), tests for all of it; the
+  PS VR2's eyes replayed on both sequels: ME2 parallel, nothing missing at the outer edges, LE1 unchanged at the same pose.
+- **Left:** ME3's lens flares in mode 2 (placed through the CPU's symmetric window: each lamp's flare off its lamp,
+  differently in each eye, on any headset whose eyes are asymmetric; owner question 12 below); `[DISTFIX]` in mode 2
+  unmeasured (no scene with distortion yet); the owner's headset check (depth, size, comfort, nothing popping at an
+  eye's outer edge); the wider culling window's cost (lane SP's levers).
 - **Closes when:** `stereo-check.py` reads parallel far scenery and a pistol at 0.5 m reads 0.5 m on each sequel, and the
   owner's headset check (notes/headset-checklist.md section 8).
 - **Waits for:** the owner's headset. **Who:** lane LS (2026-11-16).
@@ -979,6 +986,13 @@ Each is asked once. "Today" is what the build does if nobody answers; no default
     holster on the left side of the waist (only one of the two is shown when both are carried) and the shotgun at the lower
     back. The lower back is out of an inside-out headset's view (a lost controller's place is kept 0.75 s there) and a hand
     reaching it passes the pistol's right hip; the thigh is in view and clear of the pistol.
+12. **ME3's lens flares with each eye's own frustum** (T09; lane FXR, 2026-11-17, research/30 9.4 item 6). With a PS VR2's
+    eyes replayed, every lamp's flare in ME3 sits off its lamp, at the same pixel of both eye images (which look different
+    ways), so it can't fuse: the sprite is placed through the CPU's symmetric window while the image is the eye's own
+    off-centre frustum (mode 2). The fake headset's symmetric eyes hid it; ME2's lamps showed none; ME1 has the same
+    mechanism for the sun's sprite near the edges. Options: keep mode 2 and find where ME3 places the flare (Ghidra) to give
+    it the eye's matrix; or run ME3 in mode 1 (the eyes' union window, flares right, about 15% fewer pixels per degree on a
+    PS VR2) until then. Recommended: mode 1 on ME3 for its first headset test, the flare path as a lane.
 
 **Defaults waiting for a seen result and a yes** (not questions yet): `[SquadOrders] place` on the sequels (ME1's is on),
 `[Traversal] cue`, ME3's melee and traversal gestures, the galaxy projector replacing
