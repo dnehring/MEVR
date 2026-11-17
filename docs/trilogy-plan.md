@@ -264,15 +264,23 @@ These unblock the most: almost every other entry gets smaller once they land.
   the measuring).
 
 #### T09 Life-size stereo and each eye's own frustum [R23, R06]
-- **State:** LE1 done · LE2 check first · LE3 check first
-- **Lives in:** `plugin/MetricStereo`, `core/vr/MetricStereo`; on LE1 the seams are `PlanStereo`, `NoteStereoSubmit` and
-  `ApplyMetricFrustumSEH`.
-- **Left, ME2 and ME3:** both render at 50 units per metre with a convergence shift at submit (ME2 half eye 3.55,
-  convergence 0.025; ME3 1.6 and 0.03): the design research/30 measured as divergent on ME1. Measure far-scenery
-  disparity on a sequel snapshot pair with `tools/stereo-check.py`; the number sets the priority. Then a seam in each
-  SFR branch and a CalcSceneView seam for the frustum (the FSceneView offsets are the same in all three trees).
-- **Closes when:** `stereo-check.py` reads parallel far scenery and a pistol at 0.5 m reads 0.5 m on each sequel.
-- **Waits for:** nothing to measure; T01 for the seam. See [question 4](#open-owner-questions). **Who:** nobody yet.
+- **State:** LE1 done · LE2 headset · LE3 headset (both seen working by script on the fake headset, research/30 9.3)
+- **Lives in:** `plugin/MetricStereo`, `core/vr/MetricStereo` (all three hosts since 2026-11-16, lane LS); the common seams
+  `PlanStereo`, `NoteStereoSubmit`, `LifeSizeStereo` (`src/halcyon/MevrSeams.h`); render-side LE1's render_hook.cpp
+  (`ApplyMetricEyeOffset`, `ApplyMetricFrustumSEH`), the sequels' one header `src/halcyon/MevrMetricView.h`; per-game
+  facts in each tree's `MevrPlanStereo` (me2_xr.cpp) and the baselines (le2 `ApplyMevrBaseline`, le3 `LoadValues`).
+- **Done (research/30 section 9):** upstream on the sequels read, modelled and measured (ME2 -0.9 degrees per eye
+  divergent, as ME1's upstream; ME3's crossed shift put infinity near 1.2 m); both sequels now render each pass from its
+  eye's real place at 100 uu per metre, no convergence, the lean from the eyes' centre at 1:1 forward, each eye through
+  its own frustum in a window widened to hold both eyes (ME1's), pinned as their only configuration (`[MEVR-STEREO]`
+  lines; `stereo.measure` or `[Debug] upstreamStereo = 1` brings upstream back for a measurement). ME2 measured +2 to
+  +7 px on far scenery, the HUD panel unchanged; ME3 +0.66 degrees per eye in a 2.8 m room (expected 0.65), in mode 1
+  while its game UI is still in the eyes (mode 2 follows once ME3's HUD panel takes the UI).
+- **Left:** the owner's headset check (depth, size, comfort, nothing popping at an eye's outer edge on an asymmetric
+  headset, which the fake headset can't show); the wider culling window's cost (lane SP's levers).
+- **Closes when:** `stereo-check.py` reads parallel far scenery and a pistol at 0.5 m reads 0.5 m on each sequel, and the
+  owner's headset check (notes/headset-checklist.md section 8).
+- **Waits for:** the owner's headset. **Who:** lane LS (2026-11-16).
 
 #### T10 Frame pacing for streamed headsets [R24]
 - **State:** LE1 done · LE2 build · LE3 build

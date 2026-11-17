@@ -359,53 +359,8 @@ bool EyeUpscale(ID3D11DeviceContext* context, ID3D11ShaderResourceView* source, 
                 ID3D11Buffer* fillConstants, ID3D11RenderTargetView* eyeRtv, unsigned eyeWidth, unsigned eyeHeight,
                 const float fill[12], bool linearSource, int eye) noexcept;
 
-// ---- Life-size (metric) stereo (src/plugin/MetricStereo.cpp, core/vr/MetricStereo, research/30) ---------------
-// Halcyon's Stereo 2 renders both passes from the head centre +- sfr2HalfEyeUU along the body's right, with one
-// symmetric FOV, and shifts each finished image by sfr2Convergence at submit. With MELEVR.ini sfr2Metric on, each
-// pass renders from its eye's real position instead (the runtime's views, at the view's own units per metre), with
-// no convergence shift, and - where no screen-space UI is in the eye images - through that eye's own off-centre
-// frustum. Everything stays as upstream with it off.
-struct StereoPlanInput
-{
-    bool metric = false;            // sfr2Metric
-    bool eyeFrustum = false;        // sfr2MetricEyeFrustum
-    bool sfr2Active = false;        // Stereo 2 renders the world this frame (not the flat screen)
-    bool headValid = false;
-    bool viewFollowsHead = true;    // head look on: the rendered view turns with the head
-    bool uiInEyes = true;           // the game's screen-space UI would land in the eye images (no HUD panel)
-    bool fovOverride = false;       // Halcyon's render FOV override is on (vrFovFillEnabled, not the flat screen)
-    bool swapEyes = false;          // sfr2SwapEyes: pass 0 renders the right eye
-    float eyeOrientation[2][4] = {{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};   // the runtime's views
-    float eyePosition[2][3] = {};                                                         // (app space, metres)
-    float eyeFov[2][4] = {};                                                              // left, right, up, down
-    float viewOrientation[4] = {0.0f, 0.0f, 0.0f, 1.0f};   // the roll-removed head the view is built for
-    float fillH = 1.0f, fillV = 1.0f;                      // VR Fill (ClampVrFill'd)
-    float unitsPerMeter = 50.0f;                           // the view's scale (Halcyon's 50 x lean gain)
-    float depth = 1.0f;                                    // sfr2MetricDepth (x the cine separation scale)
-    // The CPU projection the render last used (RenderHook::GetRenderFovHalfAngles, radians; 0 = none seen yet): the
-    // culling window, which must hold each eye's own frustum in mode 2 (logged with the plan, warned when it doesn't).
-    float cpuHalfH = 0.0f, cpuHalfV = 0.0f;
-    // A cinematic on the 3D cinema screen (CineScreenWanted, research/52): mode 1 whatever `metric`, the two passes from
-    // parallel cameras on the director's camera, their separation from that render's own lens (cpuHalfH) and [Cinematics].
-    bool screen = false;
-};
-struct StereoPlan
-{
-    int mode = 0;                   // 0 upstream, 1 metric (symmetric window), 2 metric (each eye's own frustum)
-    int pass0Eye = 0;               // the eye render pass 0 is for (pass 1: the other)
-    float passOffsetUU[2][3] = {};  // per pass: camera right, up, forward from the lean's eye centre
-    float passTerms[2][4] = {};     // per pass, mode 2: p0, p5, p8, p9 (UE3's off-centre terms, w = z)
-    float passTan[2][4] = {};       // per pass, mode 2: the frustum's left, right, up, down tangents
-    float ipdM = 0.0f;              // the runtime's eye distance
-    float ipdUU = 0.0f;             // as rendered
-    // The 3D cinema screen (mode 1, research/52 "Cross-eyed"): the tangent of the lens half angle the offsets were planned
-    // for, and the largest one planned (kMaxLensHalfH). The render hook scales the offsets to the lens of the frame it
-    // draws (the plan only knows the previous frame's: a cut, or a scene's start from gameplay). 0: as planned.
-    float lensTan = 0.0f;
-    float lensTanMax = 0.0f;
-};
-// Present thread, once per frame with the view offset (RunFrame): the plan for the next game frame's passes.
-void PlanStereo(const StereoPlanInput& in, StereoPlan* out) noexcept;
+// ---- Life-size (metric) stereo: StereoPlanInput, StereoPlan, PlanStereo and NoteStereoSubmit are common seams now
+// (src/halcyon/MevrSeams.h, group 2; the sequels plan their passes through them too, research/30 section 9).
 
 // ---- Cinematics on a 3D cinema screen (src/plugin/CineScreen.cpp, core/vr/CineScreen, research/52) -------------------
 // A VR cine (cineVrConvo / cineVrCutscene on) can show on a screen fixed in the room instead: both Stereo 2 passes at the
@@ -467,10 +422,6 @@ void NoteCineScreenSubmit(bool conversation, float heightM) noexcept;
 // a ray lands on the menu where it is drawn: `placed` moved toward the eyes (`headPosition` in its space; the origin when
 // head-locked) and `width`/`height` scaled to match. Unchanged otherwise.
 void CineScreenPointerPlane(PanelPose* placed, float* width, float* height, float const headPosition[3]) noexcept;
-// Present thread, with the projection views: what this frame submits. `mode`: what the pair was rendered with
-// (0 upstream's, also the flat screen). Declared poses (position xyz, orientation xyzw) and FOVs per eye.
-void NoteStereoSubmit(int mode, float const declaredPosition[2][3], float const declaredOrientation[2][4],
-                      float const declaredFov[2][4]) noexcept;
 
 // [MENUVIS] One-shot diagnostics for Halcyon's Insert menu quad (Present thread): reads back
 // `texture` (the menu's ImGui texture, or the swapchain image right after the copy into it) a few

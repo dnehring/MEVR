@@ -24,7 +24,7 @@ They shared 18 names, and of those six differed in signature, so no host module 
 - The host implements a common seam **once for all games** in `src/plugin/Seams.cpp` when the answer is the same
   everywhere; otherwise in that game's bridge, in `namespace MevrSeams { ... }`.
 
-## The common seams (34)
+## The common seams (37)
 
 Signatures are in `src/halcyon/MevrSeams.h`; that header is the reference, with the thread each runs on. "Host" names
 where each game's definition is. `Seams.cpp` means one definition for all three.
@@ -41,6 +41,9 @@ where each game's definition is. `Seams.cpp` means one definition for all three.
 | view | `OnViewBuilt(worldView, headLook, headAim, lookYawUU, lookPitchUU, headOrientation[4], headPosition[3], offsetRightUU, offsetUpUU, offsetForwardUU, unitsPerMeter, floorWorld)` | HalcyonBridge.cpp | HalcyonSequelBridge.cpp | HalcyonSequelBridge.cpp | all |
 | view | `FloorViewTranslation(replay, rawCameraZ, rightZ, upZ, forwardZ, right*, up*, forward*)` | FloorLock.cpp | HalcyonSequelBridge.cpp | HalcyonSequelBridge.cpp | all |
 | view | `RecenterOrientation(head[4], automatic, orientation[4])` | RecenterTilt.cpp | RecenterTilt.cpp | RecenterTilt.cpp | all |
+| view | `PlanStereo(StereoPlanInput, StereoPlan*)` (moved from LE1's mevr_bridge.h, 2026-11-16, lane LS) | MetricStereo.cpp | MetricStereo.cpp | MetricStereo.cpp | all |
+| view | `NoteStereoSubmit(mode, declaredPosition[2][3], declaredOrientation[2][4], declaredFov[2][4])` (moved likewise) | MetricStereo.cpp | MetricStereo.cpp | MetricStereo.cpp | all |
+| view | `LifeSizeStereo()` returns int: life-size on (bit 0), the window widened to hold the eyes (bit 1, on with bit 0) | MetricStereo.cpp | MetricStereo.cpp | MetricStereo.cpp | LE2, LE3 |
 | eye image | `EyeImageSize(sourceW, sourceH, recommendedW, recommendedH, &w, &h)` | - | Seams.cpp | Seams.cpp | LE2, LE3 |
 | eye image | `OnEyeSource(eye, source)` | - | HalcyonLe2Bridge.cpp | HalcyonLe3Bridge.cpp | LE2, LE3 |
 | eye image | `CopyIntoImage(context, image, source, shiftX, eye)` | - | HalcyonLe2Bridge.cpp | HalcyonLe3Bridge.cpp | LE2, LE3 |
@@ -84,6 +87,11 @@ The ledger's audit recommended 26 functions. The code showed four places where i
    and the same body; leaving them out would have kept three declarations of each.
 4. **A perf group added (32)**, at lane PL's request: the frame-breakdown probe's steps on the sequels. Optional, behind
    capability `perfSeams`.
+5. **Life-size stereo's plan moved in (37 with lane EY's `EyeImageSize` and lane SP's `PerEyeViewState`)**, lane LS (2026-11-16, research/30 section 9): `PlanStereo` and
+   `NoteStereoSubmit` with their structs, moved from LE1's `mevr_bridge.h` unchanged but for one field
+   (`StereoPlanInput::windowHoldsEyes`, default true: LE1's window is the eyes' union), and `LifeSizeStereo` for the
+   sequels' baselines. The render-side edits of the sequels are one header both trees include
+   (`src/halcyon/MevrMetricView.h`), not a seam: they run inside the renderer on its own FSceneView.
 
 Three signatures needed a decision the audit did not make:
 

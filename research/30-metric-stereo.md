@@ -213,3 +213,126 @@ under crouch. This does not establish headset alignment, support height on slope
 that measurement live. A versioned per-frame valid/source/eyeHeight/sequence/time payload, replay-clock freshness mapping
 and substitution alongside recorded poses would supply a deterministic floor fixture; see research/58 section 6. No game,
 replay, deployment or headset run was performed for this change.
+
+## 9. The sequels (2026-11-16, lane LS)
+
+The owner, 2026-11-16: "It should always be life sized stereo for all games." Halcyon's ME2 and ME3 renderers
+(`src/halcyon/le2`, `le3`) shipped upstream's stereo; this section is what they did, read in the code, and what replaced
+it.
+
+### 9.1 Upstream on the sequels (read in the code)
+
+Both trees are the same design (ME3's is a port of ME2's); the functions have the same names in both.
+
+| | ME2 (`src/halcyon/le2`) | ME3 (`src/halcyon/le3`) | ME1's life-size path (sections 1-2) |
+|---|---|---|---|
+| Passes | `DrawDetour` (calcview_hook.cpp): the game's Draw is pass 0, a second `FViewportClient::Draw` is pass 1 (`t_replay`), each pass its own `FSceneViewState` (lane SP's block) | the same | two Draws (or one, sharePass 5) |
+| Eye offset | `ApplyEyeOffset(sv, -+HalfEyeUU)` along the game camera's right (ViewMatrix column 0) before head look: ViewOrigin, PreViewTranslation, `VM[12]`, both view-projections rebuilt. `SwapEyes` flips the sign and the routing together | the same | each eye's real offset from the eye centre (`xrLocateViews`), along right, up and forward, turned with the head |
+| Eye distance | `HalfEyeUU` 3.35 in the deployed `MELE2VR.ini` (code default 3.55): a fixed 6.7 cm at the view's scale | `HalfEyeUU` 1.6 (code default): 3.2 cm, half a real eye distance | the runtime's (6.3 cm on the fake headset) |
+| Scale (the lean) | `ApplyHeadPosition`: 50 x `PosScale` uu per metre, `PosScale` 2.00 deployed = 100 uu/m; forward x3 (`kFwdLeanEmphasis`) | 50 x `PosScale` 2.0 = 100 uu/m, forward x3 (also in the GUI marker's centre-eye camera) | 100 uu/m, forward x1 (`ForwardLeanEmphasis`: life-size movement only since 2026-11-06) |
+| Lean centre | `DriveHeadLook(views[0], ...)`: the LEFT eye's position, not the eyes' centre (research/le2-renderer-integration.md measured "exactly the left eye's lean") | the same | the eyes' centre (`headPos`, xr_session.cpp) |
+| Orientation | `ApplyHeadRotation`: the smoothed head's yaw and pitch, no roll | the same | the same (roll removed) |
+| Projection | `ApplyFov`: one symmetric window for both passes, written into the CPU projection and both products (`WidenProjection`) and pre-written as the camera's FOV (`[FILLSRC]`); the window is the left eye's vertical half angle with the horizontal from the eye's recommended aspect (`ApplyFovFill`, me2_xr.cpp), scaled up to cover both eyes only on Meta's runtime with `QuestFovMatch` (`[LINKFOV2]`). On the fake headset: +-41.6 x +-45 degrees for eyes of +-45 x +-45 (`[EYETAG2]`) | the same | mode 2: each eye's own off-centre frustum on the GPU matrix, the CPU window the eyes' union |
+| Convergence | at submit: each finished eye image shifted by `Convergence`/2 of its width, the sign bound to the pass (`CopyTextureToEyeFullFrame(..., +-convPx)`); `Convergence` 0.0197 with `SwapEyes` 1: **divergent**, as ME1's upstream | `SfrConvergence` 0.03 with `SwapEyes` 0: **crossed**, infinity pulled near | none |
+| Declared | each eye at its real position (the delayed pose tag), the symmetric window; SteamVR and Meta's runtime crop the rect to the runtime's frustum at submit | the same | each eye's own frustum in mode 2 |
+
+What a viewer reads, from the pair model of section 1 (`tests/MetricStereoSequelTests.cpp` keeps the facts as checks; the
+viewer's eyes 6.3 cm apart, the fake headset's window, tan 0.889 horizontally, a point straight ahead):
+
+| true | ME2 upstream | ME3 upstream | life-size |
+|---|---|---|---|
+| 0.2 m | 0.21 | 0.30 | 0.20 |
+| 0.5 m | 0.64 | 0.54 | 0.50 |
+| 1 m | 1.97 | 0.74 | 1.00 |
+| 2 m | beyond infinity | 0.91 | 2.00 |
+| 10 m | beyond infinity | 1.11 | 10.0 |
+| far | the eyes diverge 2.0 degrees | 1.18 m | far |
+
+On a PS VR2 (the window's tan about 1.18) ME2's far scenery needs 2.7 degrees of divergence and ME3's sits at 0.89 m.
+ME2 repeats ME1's upstream error (a pistol at 0.5 m reads 0.64 m: "the pistol looks huge"); ME3 squeezes everything from
+30 cm to infinity into 0.3-1.2 m and halves every disparity: a miniature world on a near plane.
+
+### 9.2 Life-size on the sequels: ME1's plan, one render-side header
+
+- **The plan is ME1's.** `plugin/MetricStereo` is compiled into all three hosts; `PlanStereo`, `NoteStereoSubmit` and
+  their structs moved from LE1's `mevr_bridge.h` into `src/halcyon/MevrSeams.h` (group 2) unchanged but for one input,
+  `windowHoldsEyes` (default true, LE1's case). The plan now also asks `hud_panel::Armed()` itself (LE1 already passed it
+  in: the same value). `MevrSeams::LifeSizeStereo()` is the sequels' switch.
+- **The per-game facts** (each tree's `MevrPlanStereo`, me2_xr.cpp, after `DriveHeadLook` and `ApplyFovFill` in the SFR
+  frame): the runtime's two views, head look as applied (`GetHeadLookApplied`), the roll-free smoothed head, the
+  units per metre (50 x `PosScale`), the window (the fill target), whether the window holds both eyes
+  (`core/vr/MetricStereo::WindowHolds`), whether the stereo renders the world (SFR, not the menu, a cinematic or the 3D
+  cinema screen, which keeps its own parallel cameras). The plan goes to `MevrMetricView::Publish`.
+- **The render side** is one header both trees include, `src/halcyon/MevrMetricView.h` (GPL, adapted from Halcyon's
+  `ApplyEyeOffset` and LE1's metric frustum): pass 0 latches the newest plan, pass 1 keeps it; `ApplyEyeOffset` moves
+  the camera by the pass's offset along the camera's right, up and forward (ViewOrigin, PreViewTranslation, the
+  ViewMatrix's translation row, both products) in place of Halcyon's half eye, before head look (both are translations
+  along the pre-look axes; the head rotation then turns the view about the eye's own place); `ApplyEyeFrustum` in mode 2
+  writes the eye's own off-centre frustum into the GPU matrix only, scaled by the renderer's zoom (ADS) so a zoom
+  magnifies alike in both modes, and logs whether the CPU window holds it. The pass after the cinema screen's branch
+  and lane SP's view-state block; with life-size off it is Halcyon's `ApplyEyeOffset` exactly.
+- **The lean** from the eyes' centre (upstream: the left eye) at 1:1 forward (upstream x3), in `ApplyHeadPosition`, the
+  view published to the mod (`OnViewBuilt`) and ME3's GUI marker camera alike; `PosScale` pinned to 2 (100 uu/m, the
+  scale both sequels' deploys already had, and the hands' and the floor lock's).
+- **The submit** routes a pair by the plan it was rendered with (`MevrMetricView::LatchedPlan`: pass 0 the left eye, no
+  swap), shifts nothing, and in mode 2 declares each eye's own frustum (a mono fallback, pass 1's image in both eyes,
+  declares pass 1's). `HalfEyeUU`, `Convergence`/`SfrConvergence` and `SwapEyes` stay in the renderers' inis, unused.
+- **The baseline**: ME2's `ApplyMevrBaseline` and ME3's `LoadValues` set it after every ini load, as ME1's
+  `ModernBaseline` pins `sfr2Metric` (the owner's rule is the yes). For a before/after measurement, `[Debug]
+  upstreamStereo = 1` in `ASI\<GAME>MEVR.ini`, or in a development build `%LOCALAPPDATA%\MEVR\stereo.measure` with
+  `[Stereo] mode = upstream` (the ME3 preview runner keeps LE3MEVR.ini exact), brings back upstream exactly; `mode =
+  nocover` (or `[Debug] stereoWindowCoversEyes = 0`) keeps the renderer's own window (below). Logs: `[MEVR-STEREO] life-size stereo: ...` at the start, then ME1's plan and submit lines
+  and the render side's `pass N (eye E) from its eye` and `pass N frustum` lines; the snapshot's `"stereo"` block on
+  the sequels too.
+
+**Each eye's own frustum, and the window.** The sequels' symmetric window is the left eye's vertical half angle with
+the horizontal from the eye's recommended aspect, not the eyes' union (ME1's): on the fake headset +-41.6 x +-45
+degrees for eyes of +-45 x +-45 (so 3.4 degrees of each eye's side were never shown), on a PS VR2 narrower than the
+eyes' outer edge too. An eye rendered through its own frustum in that window would be culled at its outer edge
+(objects popping in), so the plan uses mode 2 only where the window holds both eyes (`windowHoldsEyes`), and with
+life-size on the renderers widen their window on every runtime by the one uniform factor they already used on Meta's
+runtime (`[LINKFOV2]`), until it holds both eyes: ME1's union window. The worry was `[UIRATIO]` (the sequels scale the
+game's UI by tan(game) / tan(render) per axis); measured in 9.3, the HUD panel is pixel-identical with and without the
+widening. `[Debug] stereoWindowCoversEyes = 0` keeps the renderer's own window (mode 1 except on Meta's runtime).
+The widened window lets the CPU cull a wider window (vertically 1.125x on the fake headset, about 1.4x on a PS VR2):
+more objects pass, a cost lane SP's levers can measure; the GPU renders each eye's own frustum at the same size.
+
+### 9.3 Measured (fake headset, 2026-11-16)
+
+ME2, Save 4 (Freedom's Progress, standing in the open), the head held at 0, 35 and -40 degrees by replayed recordings
+(`tools/make-look-recording.py --yaw`), one snapshot each, `tools/stereo-check.py`'s median over its grid on far
+scenery (crossed +, divergent -; a few px crossed is right for scenery tens of metres away):
+
+| ME2 | yaw 0 | yaw 35 | yaw -40 |
+|---|---|---|---|
+| upstream (`stereo.measure mode = upstream`) | -72 px = -0.90 deg per eye | -60 px (1 match) | -79 px = -0.98 deg |
+| life-size, the renderer's window (mode 1) | +6 px = +0.07 deg | +5 px | +2 px |
+| life-size, the window holding the eyes (mode 2, now the default) | +2 px = +0.03 deg | +7 px | +5 px |
+
+- Upstream matches the model's 1.0 degree per eye of divergence (40 px of 4096 each).
+- Life-size: the plan line `stereo mode 2: life-size, each eye's own frustum; eye distance 0.0640 m = 6.40 uu at 100.0
+  uu/m`; the eyes turned with the head (at yaw 35 the left eye 1.84 uu forward); the declared eyes 6.4 cm apart; the
+  render side `pass 0 frustum: tan L -1.0000 R 1.0000 ...; the CPU window +-1.0000 x +-1.1250 holds it`; each eye
+  declares its own +-45 degrees (upstream +-41.6).
+- The HUD panel (`-hud.png`): life-size against upstream 0.4% of pixels apart by more than 32/255 (what animates);
+  mode 2 against mode 1 0.0%, the same bounding box and coverage.
+- No mesh missing between the eyes (the pair at yaw 0 looked at side by side; each pass culls with its own CPU window,
+  which holds its frustum). With asymmetric eyes (a PS VR2) the culling edge is untested: the fake headset's eyes are
+  symmetric, and no recording with per-eye FOVs was at hand.
+
+ME3, the renderer preview (`tools/le2-halcyon-run` `-RendererPreview`), Save 31 inside the Normandy (third person in the
+preview; the walls about 3 m away, so nothing is far: crossed disparity is right here). The preview's snapshots have no
+`-left-world.png`; the composited eyes are the world alone there (no layers of ours), copied to that name for the tool:
+
+| ME3 | yaw 0 | yaw 35 | yaw -40 |
+|---|---|---|---|
+| upstream | +112 px = +1.86 deg per eye | +113 px = +1.87 deg | +109 px = +1.81 deg |
+| life-size (mode 1) | +35.5 px = +0.66 deg | +39 px = +0.73 deg | +47.5 px = +0.89 deg |
+
+- Upstream's 1.86 degrees are its 1.53-degree crossed shift plus 3.2 cm eyes: the walls read about a metre away. The
+  same number puts them at 2.8 m, where life-size's 6.4 cm eyes should give 0.65 degrees per eye: measured 0.66.
+- ME3 stays in mode 1 (the plan line: `the symmetric window because the game's UI is in the eye images`): ME3's game UI
+  is still drawn into the eyes (the HUD panel isn't armed there), ME1's rule for that case; the window was widened (each
+  eye declares +-45 x +-48.4 degrees) and mode 2 follows once the panel takes the UI.
+- Each variant needs its own `prep.ps1` on the ME3 preview (the first run rewrote the renderer's config, and `launch.ps1`
+  then refuses with `Preview configuration changed since prep`).

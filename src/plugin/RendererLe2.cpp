@@ -52,6 +52,8 @@ Caps const& Capabilities() noexcept {
         c.worldUi = true;            // WorldUiOwnsGui
         c.screenReticleHide = true;  // the mod's game/ScreenReticle hides ME2's crosshair movie
         c.floorViewJournal = true;
+        c.metricStereo = true;       // MevrSeams::PlanStereo: each pass from its eye's real place (research/30 section 9)
+        c.perEyeFrustum = true;      // mode 2 where the window holds the eyes (src/halcyon/MevrMetricView.h)
         c.ownMenuRows = true;
         return c;
     }();

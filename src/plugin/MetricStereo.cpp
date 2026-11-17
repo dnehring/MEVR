@@ -1,14 +1,19 @@
 // SPDX-License-Identifier: MIT
-// Life-size (metric) stereo for Halcyon's Stereo 2 (research/30): MevrBridge::PlanStereo and NoteStereoSubmit
-// ([MEVR] seams in xr_session.cpp's RunFrame), the [MEVR-STEREO] log, the snapshot's "stereo" block.
+// Life-size (metric) stereo for Halcyon's two-pass stereo on all three games (research/30; the sequels: section 9):
+// MevrSeams::PlanStereo and NoteStereoSubmit (LE1: [MEVR] seams in xr_session.cpp's RunFrame; ME2 and ME3: their
+// me2_xr.cpp's SFR frame), MevrSeams::LifeSizeStereo, the [MEVR-STEREO] log, the snapshot's "stereo" block.
 
 #include "plugin/MetricStereo.hpp"
 #include "plugin/Renderer.hpp"
 #include "plugin/CineScreen.hpp"
+#include "plugin/HudPanel.hpp"
 #include "plugin/RenderLevers.hpp"
+#include "plugin/RenderLeversSeams.hpp"
 
-#include "halcyon/le1/mevr_bridge.h"
+#include "halcyon/MevrSeams.h"
 
+#include "core/DevChannels.hpp"
+#include "core/Ini.hpp"
 #include "core/Log.hpp"
 #include "core/vr/MetricStereo.hpp"
 
@@ -18,6 +23,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
 #include <format>
 #include <mutex>
 #include <string>
@@ -33,7 +39,7 @@ constexpr float kLifeSizeUnitsPerMeter = 100.0f;
 
 struct Status {
     bool planned = false;
-    MELEVR::MevrBridge::StereoPlan plan;
+    MevrSeams::StereoPlan plan;
     float unitsPerMeter = 0.0f;
     float depth = 1.0f;
     float eyeFov[2][4] = {};        // the runtime's, radians
@@ -103,7 +109,7 @@ std::string StatusJson() {
     if (!s.planned) {
         return "null";
     }
-    MELEVR::MevrBridge::StereoPlan const& p = s.plan;
+    MevrSeams::StereoPlan const& p = s.plan;
     std::string passes;
     for (int pass = 0; pass < 2; ++pass) {
         int const eye = pass == 0 ? p.pass0Eye : 1 - p.pass0Eye;
@@ -156,7 +162,7 @@ bool PassShownFraction(int pass, float out[4]) {
 
 } // namespace mevr::host::metric_stereo
 
-namespace MELEVR::MevrBridge {
+namespace MevrSeams {
 
 void PlanStereo(const StereoPlanInput& in, StereoPlan* out) noexcept {
     namespace ms = mevr::vr::metric_stereo;
@@ -227,8 +233,12 @@ void PlanStereo(const StereoPlanInput& in, StereoPlan* out) noexcept {
         // against the depth buffer) see only that render's frustum: an object inside the other eye's outer wedge
         // (18 degrees on a PS VR2) would stay "occluded" and never appear in the replayed eye. Both eyes then render
         // on the symmetric window, which holds both frusta, at that mode's angular resolution.
-        bool const oneDraw = g_oneDrawStereo.load(std::memory_order_relaxed) && mevr::host::render_levers::OneDrawWindow();
-        out->mode = (in.eyeFrustum && !in.uiInEyes && in.fovOverride && !oneDraw) ? 2 : 1;
+        bool const oneDraw = mevr::host::render_levers::seam::g_oneDrawStereo.load(std::memory_order_relaxed) &&
+                             mevr::host::render_levers::OneDrawWindow();
+        // The HUD panel taking the game's UI is the same question on every game (LE1 passes it in as well).
+        bool const uiInEyes = in.uiInEyes || !mevr::host::hud_panel::Armed();
+        // The sequels' window is aspect-derived and needn't hold the eyes (research/30 9.2): mode 2 only where it does.
+        out->mode = (in.eyeFrustum && !uiInEyes && in.fovOverride && in.windowHoldsEyes && !oneDraw) ? 2 : 1;
         for (int pass = 0; pass < 2; ++pass) {
             int const eye = pass == 0 ? out->pass0Eye : 1 - out->pass0Eye;
             out->passOffsetUU[pass][0] = offsets.body[eye].x;
@@ -294,7 +304,8 @@ void PlanStereo(const StereoPlanInput& in, StereoPlan* out) noexcept {
 
     // The [MEVR-STEREO] plan line: at the first plan and whenever the mode, the eye distance or the scale changes.
     float const scale = in.unitsPerMeter * in.depth;
-    bool const frustumWhy = in.eyeFrustum && in.uiInEyes;
+    bool const uiNow = in.uiInEyes || !mevr::host::hud_panel::Armed();
+    bool const frustumWhy = in.eyeFrustum && (uiNow || !in.windowHoldsEyes);
     bool const changed = out->mode != gLoggedMode || (metric && (std::fabs(out->ipdM - gLoggedIpd) > 0.0005f ||
                                                                  std::fabs(scale - gLoggedScale) > 0.01f)) ||
         (metric && frustumWhy != gLoggedFrustumWhy);
@@ -343,11 +354,16 @@ void PlanStereo(const StereoPlanInput& in, StereoPlan* out) noexcept {
                          : std::string("; the CPU window: no render seen yet");
     }
     if (out->mode == 1 && in.eyeFrustum) {
-        line += in.uiInEyes ? "; the symmetric window because the game's UI is in the eye images (no HUD panel: "
-                              "conversations, cutscenes, menus over the world)"
-            : (g_oneDrawStereo.load(std::memory_order_relaxed) && mevr::host::render_levers::OneDrawWindow())
+        line += uiNow ? "; the symmetric window because the game's UI is in the eye images (no HUD panel: "
+                        "conversations, cutscenes, menus over the world)"
+            : (mevr::host::render_levers::seam::g_oneDrawStereo.load(std::memory_order_relaxed) &&
+               mevr::host::render_levers::OneDrawWindow())
                 ? "; the symmetric window because one Draw a frame renders both eyes from the first render's visibility "
                   "(sharePass = 5, research/37: its occlusion tests see only its own frustum)"
+            : !in.windowHoldsEyes
+                ? "; the symmetric window because it doesn't hold the eyes' own frusta (the renderer's window is the left "
+                  "eye's height at the image's aspect: an eye's own frustum would be culled at its outer edge; research/30 "
+                  "section 9)"
                 : "; the symmetric window because Halcyon's FOV override is off";
     }
     if (std::fabs(in.unitsPerMeter - kLifeSizeUnitsPerMeter) > 1.0f) {
@@ -399,4 +415,36 @@ void NoteStereoSubmit(int mode, float const declaredPosition[2][3], float const 
         declaredOrientation[0][2], declaredOrientation[0][3]));
 }
 
-} // namespace MELEVR::MevrBridge
+int LifeSizeStereo() noexcept {
+    using namespace mevr::host::metric_stereo;
+    // Read once, at the renderer's first ini load: a measurement switch, not a player's setting.
+    static int const answer = [] {
+        namespace ini = mevr::ini;
+        ini::File const file = ini::Read(std::filesystem::path(mevr::host::SettingsPath())).file;
+        bool upstream = ini::GetNumber(file, "Debug", "upstreamStereo").value_or(0.0) != 0.0;
+        // The window holding both eyes is ME1's (its window is their union) and lets each eye render its own frustum (mode 2);
+        // measured on ME2 it leaves the HUD panel pixel for pixel (research/30 section 9.3). 0 keeps the renderer's
+        // aspect-derived window (mode 2 then only on Meta's runtime, where the renderer covers the eyes itself).
+        bool cover = ini::GetNumber(file, "Debug", "stereoWindowCoversEyes").value_or(1.0) != 0.0;
+        // A development build also takes %LOCALAPPDATA%\MEVR\stereo.measure ([Stereo] mode = upstream | nocover, read at
+        // start), for a run whose ini a runner keeps exact (tools/le2-halcyon-run's ME3 preview refuses an edited LE3MEVR.ini).
+        wchar_t appData[MAX_PATH] = {};
+        if (mevr::dev_channels::kDevelopmentBuild && GetEnvironmentVariableW(L"LOCALAPPDATA", appData, MAX_PATH) > 0) {
+            ini::Loaded const measure = ini::Read(std::filesystem::path(appData) / L"MEVR" / L"stereo.measure");
+            std::string const text = ini::Lower(ini::Trim(ini::Get(measure.file, "Stereo", "mode").value_or("")));
+            upstream = upstream || text == "upstream";
+            cover = cover && text != "nocover";
+        }
+        int const bits = upstream ? 0 : (1 | (cover ? 2 : 0));
+        LogBoth(bits == 0 ? std::string("[MEVR-STEREO] life-size stereo OFF for this run ([Debug] upstreamStereo = 1): the "
+                                        "renderer's upstream eye separation, convergence and lean")
+                          : std::format("[MEVR-STEREO] life-size stereo: each eye from its real place, no convergence, the "
+                                        "lean from the eyes' centre at 1:1 forward; {}",
+                                (bits & 2) != 0 ? "the render window widened to hold both eyes' frusta (each eye's own frustum)"
+                                                : "the renderer's own window ([Debug] stereoWindowCoversEyes = 0)"));
+        return bits;
+    }();
+    return answer;
+}
+
+} // namespace MevrSeams
