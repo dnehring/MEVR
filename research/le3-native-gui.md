@@ -204,11 +204,14 @@ returns false for the rest) and then gives a mouse event (moves 6/7, wheel 8/9, 
 view only if the movie's `m_bMouseVisibleWhenFocused` (`SFXGUIMovie` +0x2E8, bit 0x400) is set and a virtual check of its own
 (vtable +0x410; a `return 0` stub on these movies) passes. The mouse step itself (0xBB47A0) reads the viewport's mouse
 (`FViewport::GetMouseX/Y`: `GetCursorPos` and `ScreenToClient`, which the host answers with the pointer's point) and sends GFx
-the event at that point, unless an in-world render-to-texture movie took it first. `m_bMouseVisibleWhenFocused` follows the input
-device: with the motion controllers as Xbox pad 0 the game is in its pad mode (`SFXGUIMovie.bUsingGamepad` 1,
-`m_bMouseVisibleWhenFocused` 0), so every pointer event GuiKey sent was dropped before the mouse step and the movie's mouse
-stayed where the real cursor had left it (`mevr guimouse` read (1391, 450) of the 1280 x 720 stage through the whole A/B
-below). GuiKey's key path doesn't carry the mouse either: its table maps no key to the left button (0x13A7390: 11..29 only).
+the event at that point, unless an in-world render-to-texture movie took it first. `m_bMouseVisibleWhenFocused` follows the last
+input device: after any pad input (the motion controllers are Xbox pad 0: B, a stick) the game is in its pad mode
+(`SFXGUIMovie.bUsingGamepad` 1, `m_bMouseVisibleWhenFocused` 0) and every mouse event GuiKey sent was dropped before the mouse
+step, so the movie's mouse stayed where the real cursor had left it (`mevr guimouse` read (1391, 450) of the 1280 x 720 stage
+through the whole A/B below, which followed a B; lane OM2's Journal tries also followed a replayed B). A screen opened by
+`mevr omni` with no pad input since was in its mouse mode (1 and 0), and a GuiKey click flips it there too, but only after the
+press it carried had been dropped. GuiKey's key path doesn't carry the mouse either: its table maps no key to the left button
+(0x13A7390: 11..29 only).
 
 **The fix (`game/GuiCursor`, ME3 only).** `SFXGUIMovie.SendMouseEvent(nEventID)` (native exe+0xB67B00, body 0xBC9BF0) goes to
 the same mouse step for the focused movie without that gate; ME3's own scripts use it (the galaxy map's wheel in
@@ -258,6 +261,20 @@ the first 30 s). War Assets in the room (session `om3-me3c`, `01-52-14-382`): th
 clear, no sleeve or shoulder; its entries took the ray's clicks (Alien opened its list, then Shadow Broker Support Team was
 selected; `01-52-33-715`, `01-52-53-054`), B back to gameplay after closing the opened list first (two presses here, three in session `om3-me3b`: the game's own back-out, not ours). No `off the game
 thread`, stall or fault lines in either run; ME3 restored with `verification: 0 differences`.
+
+### ME1 unchanged
+
+LE1 compiles the hold's move (its `GalaxyViewSwapBegin` world-UI branch now calls `plugin/WorldUi`'s `HoldViewBegin`; its galaxy
+map and conversation branches untouched) and `game/GuiCursor` (the ME3 route is compiled out). The same-pose pair on the fake
+headset, lock held by hand, main 00912777's players' build against this lane's: sessions `2026-11-17_02-02-23-om3-le1-before`
+and `02-05-33-om3-le1-after`. The paused pose pixel for pixel (both eyes, their world layers, the HUD panel, the label and wrist
+pieces), the same `hostView` and layers. The journal on the wrist (`mevr omni journal`, the world running): the same screen, stack,
+placement and held view, the world layers pixel for pixel, the screen's place within 1 mm (it rides the omni-tool's drawn display),
+the HUD panel's image differing only in the journal's pulsing new entries (at most 12 levels). A ray and trigger on its
+Assignments tab: in the after run it landed on the tab, (1701, 1244) px of the 3840 x 3840 window, and the journal switched to its
+assignments; in the before run the screen hadn't settled where the snapshot it was aimed from had it (riding the drawn wrist) and
+the click landed above the tabs, at (2339, 1028), changing nothing, which is the replay's timing, not the code: ME1's pointer path
+is unchanged (the mod's GUI events, `SFXGameModeGUI.GuiKey(50)`, the host's `GetCursorPos` answer).
 
 ### ME2's game mode 10 after lane OM2's per-game modes
 
