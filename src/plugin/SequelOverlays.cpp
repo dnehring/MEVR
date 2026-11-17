@@ -212,7 +212,7 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
 
     // Traversal's cue at the obstacle and its blink (plugin/TraversalCue, research/le2-traversal.md): the blink over the
     // world's layers, under the menus. On any world frame: the mod sends a cue only on foot and a blink only through its own
-    // move outside authored scenes (game/Traversal, game/Le3Traversal), on both sequels.
+    // move outside authored scenes (game/Le2Traversal, game/Le3Traversal), on both sequels.
     if (count < capacity) {
         mevr::host::traversal_cue::Frame cue;
         cue.session = session;
