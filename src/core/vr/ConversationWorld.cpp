@@ -761,13 +761,24 @@ bool IsSetPiece(std::string_view name) {
     // person and had a place for the player (the scan's SEEN_IN_WORLD: the council hearing, the comm room with Anderson and
     // Nihlus, the approach to Ilos, the archive door, Wrex at Fist's): their cameras were all that was authored.
     // Since 2026-11-11 without Kirrahe's camp (the scan's STAGED_IN_WORLD: the owner wants it in first person, a staged scene).
+    // Since 2026-11-16 without the dancer's seat at Chora's Den (the scan's SEATED_IN_WORLD: IsSeatedScene).
     static constexpr std::string_view kSetPieces[] = {
         "end90_council_alive", "end90_council_dead", "end90_saren", "jug70_sovereign", "nor20_empty_locker",
         "nor20_ilos_open", "nor20_leaving_oculon", "nor20_start_kaidan", "nor20_start_liara", "prc1_cutscene_discovered",
-        "prc1_human_console", "sta60_scenicview", "sta60_stripperseat", "war30_trig_01_entry",
+        "prc1_human_console", "sta60_scenicview", "war30_trig_01_entry",
     };
     std::string const key = ConversationKey(name);
     return std::find(std::begin(kSetPieces), std::end(kSetPieces), key) != std::end(kSetPieces);
+}
+
+bool IsSeatedScene(std::string_view name) {
+    // The scan's SEATED_IN_WORLD (tools/conversation-scan.py). The dancer's seat at Chora's Den: the game fades, sits Shepard in
+    // front of the dancer (a gesture track) and lets him get up again.
+    static constexpr std::string_view kSeated[] = {
+        "sta60_stripperseat",
+    };
+    std::string const key = ConversationKey(name);
+    return std::find(std::begin(kSeated), std::end(kSeated), key) != std::end(kSeated);
 }
 
 std::string ConversationKey(std::string_view name) {

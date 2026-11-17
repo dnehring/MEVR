@@ -146,6 +146,10 @@ void TestSetPieces() {
     CHECK(!cw::IsSetPiece("sta60_wrex_at_fists"));
     // Kirrahe's camp plays in first person since 2026-11-11, staged (the owner's wish).
     CHECK(!cw::IsSetPiece("jug20_sal_captainkirrahe_dlg") && cw::IsStagedScene("jug20_sal_captainkirrahe_dlg"));
+    // The dancer's seat at Chora's Den: in first person, seated (the owner, 2026-11-16), no longer on the 3D screen.
+    CHECK(!cw::IsSetPiece("BioConversation sta60_stripperseat_D.sta60_stripperseat_dlg"));
+    CHECK(cw::IsSeatedScene("BioConversation sta60_stripperseat_D.sta60_stripperseat_dlg") && cw::IsSeatedScene("STA60_StripperSeat"));
+    CHECK(!cw::IsSeatedScene("sta60_scenicview") && !cw::IsSeatedScene("jug20_sal_captainkirrahe") && !cw::IsSeatedScene(""));
     CHECK(cw::IsStagedScene("sta90_council_saren") && cw::IsStagedScene("sta90_council_spectre_induction"));
     // The council shown as the walk with Anderson begins (research/69 item 36): by the moment's move track, its own matinee only.
     {

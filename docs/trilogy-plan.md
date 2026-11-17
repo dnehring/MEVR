@@ -627,8 +627,11 @@ These unblock the most: almost every other entry gets smaller once they land.
   down). ME1's is experimental and still being worked (ROADMAP "Now").
 - **Rules that carry over** (the owner, 2026-11-16, "this will be a bigger deal in me2"; research/69 items 41 and 42): the
   game's fade to black always moves the player with Shepard (curated walks excepted); what Shepard stands on carries the
-  player (lifts, trams, shuttles: `Engine.Actor.Base`); freedom of movement everywhere except seated scenes. ME2's lifts,
-  shuttle rides and cockpit scenes make these the port's first checks.
+  player (lifts, trams, shuttles: `Engine.Actor.Base`); freedom of movement everywhere except seated scenes, and every
+  sit-down supported in first person, the view sitting with Shepard's head (`StepSeat`, `cw::IsSeatedScene`; the owner: "any
+  of the types of sit down based interactions that happen across all three games"; research/69 item 43). ME2's lifts,
+  shuttle rides, cockpit chairs and bar and couch scenes make these the port's first checks; sits inside a matinee (no
+  conversation) are not covered yet.
 
 #### T50 Audio: two ears, and sounds placed where they are [G37, G38]
 - **State:** LE1 done · LE2 check first · LE3 check first

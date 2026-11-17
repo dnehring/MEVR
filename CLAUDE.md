@@ -725,7 +725,7 @@ switching frameworks.
   floor height where the player stood and his mesh settles 1.5 s before his head bone is read again; after such an opening
   his head bone no longer moves the view. An actor a matinee's move track moves is left to it (an authored walk; the
   summary's `trackWalks`), and a track's move of the player's own pawn is withheld in a first-person conversation
-  (`trackHeld`). **The set-piece list is 15** (`cw::IsSetPiece`): six framed conversations seen in first person with a place
+  (`trackHeld`). **The set-piece list is 13** (`cw::IsSetPiece`; the dancer's seat a seated scene since 2026-11-16): six framed conversations seen in first person with a place
   for the player are out of it (the scan's `SEEN_IN_WORLD`: the council hearing, the comm room with Anderson and Nihlus, the
   approach to Ilos, the archive door, Wrex at Fist's). **A walk-in nobody walks is guided** (`worldWalkInS` 5, 0 at once, -1 never; `cw::StepGuide`; the summary's `guidedM`):
   after five seconds without the stick the player is walked to Shepard's mark by the walk's own step (floor, walls, people,
@@ -802,7 +802,10 @@ switching frameworks.
   one spoken to moved, moments walked); **what Shepard stands on carries the player** (`RideBase`: his pawn's `Actor.Base`
   moving, a lift, moves the held view and every place the scene keeps; Therum's `lav70_trig04_elevator_ride` had left the view
   at the bottom of the shaft and `End` put Shepard back there; research/69 item 42), and **the stick walks everywhere but a
-  seat** (`PlayerSeated`: his animated head under 0.62 m above his place for 0.5 s, not crouched); the stances follow
+  seat** (`PlayerSeated`: his animated head under 0.62 m above his place for 0.5 s, not crouched); **the view sits with him**
+  (`StepSeat`, any conversation in the world: his head 15 cm under his standing height, the view follows it into the seat and
+  back up, 1 m/s, a 4 cm deadband, the legs the seat's), and the dancer's seat at Chora's Den is a seated scene
+  (`cw::IsSeatedScene`, the scan's `SEATED_IN_WORLD`: staged, no longer a set piece; research/69 item 43); the stances follow
   a whole scene (`begin`, after each dip and walk, whenever someone moved a metre or turned 40 degrees; bystanders as `others`);
   logs `convo: circle:`, `convo: squad:`, `convo: stance:`, `convo: eyes:`, `convo: steer:`;
   while it walks, his hidden (unposed) head bone never moves the view, nor for 1.5 s after he is shown again
