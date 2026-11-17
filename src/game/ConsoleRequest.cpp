@@ -1778,6 +1778,23 @@ std::optional<std::string> RunOursLe3(ue3::Object* pc, std::string const& line) 
         return verb == "melee" ? mod::gameplay_actions::MeleeCommand(rest) : mod::gameplay_actions::TraversalCommand(rest);
     }
     if (verb == "powerwheel") { std::string rest; std::getline(words, rest); return power_wheel::Console(rest); }
+    // The squad's lines as on ME2 (the same modules: research/le3-squad.md's checks, tools/le2-halcyon-run/place.ps1).
+    if (verb == "place") { std::string rest; std::getline(words, rest); return squad_place::Console(rest); }
+    if (verb == "squad") return squad_weapons::StatusJson();
+    if (verb == "say") { std::string rest; std::getline(words, rest); return squad_orders::Say(rest); }
+    if (verb == "order") {
+        std::string actionLine;
+        words >> actionLine;
+        auto const action = vr::squad_context::ParseLine(actionLine);
+        if (!action) return std::string("usage: mevr order WHO|WEAPON|POWER|ORDER|TARGET");
+        return squad_orders::Give(*action);
+    }
+    if (verb == "context") {
+        std::string word, ago;
+        words >> word >> ago;
+        if (word == "prefix") return squad_context::Prefix();
+        return squad_context::Block("", word, ini::Number(ago).value_or(0.5));
+    }
     if (verb == "weapon") { std::string which; words >> which; return holsters::DrawByName(which); }  // a carried weapon by family
     if (verb == "reload") { std::string rest; std::getline(words, rest); return reload::Command(rest); }
     if (verb == "omni") { std::string which; words >> which; return game_menu_request::Inject(which); }
@@ -1786,7 +1803,7 @@ std::optional<std::string> RunOursLe3(ue3::Object* pc, std::string const& line) 
         std::string rest; std::getline(words, rest);
         return verb == "guimouse" ? gui_cursor::Command(rest) : gui_cursor::KeyCommand(rest);
     }
-    return std::string("unknown on ME3: mevr load <career> <save name> <index> <type> | mevr savedesc | mevr state | mevr weaponprobe | mevr galaxy state | mevr melee | mevr traversal | mevr powerwheel | mevr weapon <family> | mevr reload | mevr omni | mevr omnitool | mevr guimouse | mevr guikey | mevr thespian");
+    return std::string("unknown on ME3: mevr load <career> <save name> <index> <type> | mevr savedesc | mevr state | mevr weaponprobe | mevr galaxy state | mevr melee | mevr traversal | mevr powerwheel | mevr place ... | mevr squad | mevr say ... | mevr order ... | mevr context | mevr weapon <family> | mevr reload | mevr omni | mevr omnitool | mevr guimouse | mevr guikey | mevr thespian");
 }
 #endif
 #endif // shared sequel save/state requests
@@ -1838,6 +1855,35 @@ std::string InstancesLe2(std::istringstream& words) {
         gFoundLe2.push_back(o);
     }
     return std::format("{} instances{}", total, out);
+}
+
+// "mevr setloc <n> X Y Z" on ME2: the n-th object `mevr instances` found moved there with its own Actor.SetLocation (one actor;
+// the console's `set` moves every instance of a class). The powers' check moves one drone the level's own factory made in front
+// of Shepard with it (tools/le2-halcyon-run/powers.ps1 -Drone).
+ue3::FunctionRef gLe2SetLocation{"Engine.Actor.SetLocation", ue3::kEveryGame};
+
+std::string SetLocationLe2(std::istringstream& words) {
+    std::size_t index = 0;
+    ue3::Vector to{};
+    if (!(words >> index >> to.x >> to.y >> to.z)) {
+        return "usage: mevr setloc <n> X Y Z (n from mevr instances)";
+    }
+    ue3::Reflection& r = ue3::runtime::Get();
+    ue3::Function* const fn = gLe2SetLocation.Get();
+    if (index >= gFoundLe2.size() || !r.IsAlive(gFoundLe2[index])) {
+        return std::format("mevr setloc: no object {} (mevr instances first)", index);
+    }
+    if (fn == nullptr) {
+        return "mevr setloc: Engine.Actor.SetLocation not found";
+    }
+    ue3::Object* const actor = gFoundLe2[index];
+    ue3::Params parms(r, fn);
+    parms.Set("NewLocation", to);
+    bool const called = ue3::runtime::Call(actor, fn, parms);
+    write_journal::Wrote("ConsoleRequest.SetLocation", actor, 0);
+    std::optional<ue3::Vector> const at = player::Location(actor);
+    return std::format("{}.SetLocation called {}, returned {}: now {:.0f} {:.0f} {:.0f}", r.FullName(actor), called,
+        parms.ReturnBool().value_or(false), at ? at->x : 0.0f, at ? at->y : 0.0f, at ? at->z : 0.0f);
 }
 
 std::string ActivateLe2(std::istringstream& words) {
@@ -1972,10 +2018,13 @@ std::optional<std::string> RunOursLe2(ue3::Object* pc, std::string const& line) 
     if (verb == "activate") {
         return ActivateLe2(words);
     }
-    return std::string("unknown on ME2: mevr load <career> <save name> <index> <type> | mevr savedesc | mevr state | "
+    if (verb == "setloc") {
+        return SetLocationLe2(words);
+    }
+    return std::string("unknown on ME2:mevr load <career> <save name> <index> <type> | mevr savedesc | mevr state | "
                        "mevr camera trace <seconds> [label] | mevr armik step ... | mevr omni <screen> | mevr guimouse | mevr guikey ... | mevr cover ... | "
                        "mevr traversal ... | mevr squad | mevr context | mevr order ... | mevr say ... | mevr voice ... | mevr thespian ... | "
-                       "mevr instances <Package.Class> [text] | mevr activate <n> [input] | mevr reload [status | try]");
+                       "mevr instances <Package.Class> [text] | mevr activate <n> [input] | mevr setloc <n> X Y Z | mevr reload [status | try]");
 }
 
 #endif

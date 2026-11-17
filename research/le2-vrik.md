@@ -502,6 +502,70 @@ ME1 has no SMG, so its game code switches the fifth off (`hand_calibration::Game
 - smaller than the hip's zone so a hand on its way to the pistol doesn't brush it.
 Not seen in the game: Save 4's Soldier carries no SMG. `[Holsters] thighRight` / `seatedThighRight` move it.
 
+## The SMG at the small of the back (lane SG, 2026-11-17; an option, the default the owner's choice)
+
+The owner (2026-11-16): "In mass effect, I think we need to add an option for the lower back on the rear as another option.
+Since I think that's where the holster position exists on the equipment menu." Built as `[Holsters] smgSlot = thighRight |
+lowerBack` (sequels only; **`thighRight` stays the default** until the owner chooses).
+
+**Where the sequels hang their weapons on Shepard**, read offline with Legendary Explorer's library (the nightly in
+`mod-manager/`, read only; a probe in the lane's scratch folder, its output game data, never committed): every class default
+and every archetype in all of ME2's 6,541 and ME3's 7,943 packages (DLC included) for `SFXWeapon.AttachSlot` and
+`BioPawn.AttachSlots`, and every human mesh's sockets (`BIOG_HM*`: 265 meshes in ME2, 332 in ME3, male and female) placed on
+the mesh's reference skeleton. Both games are the same: no archetype overrides a default, and every Shepard mesh has the same
+five sockets (within 1-3 cm on a few). Places are from Shepard's eyes (`Eye_Right`/`Eye_Left`, 1.716 m up in the reference
+pose), scaled to the holsters' 1.65 m eye height, as the slots are written (right, up, forward in metres):
+
+| attach slot (`EAttachSlot`) | the pawn's socket (`BioPawn.AttachSlots[i]`) | its bone | the place on Shepard | the weapons the game hangs there (`SFXWeapon.AttachSlot`) |
+|---|---|---|---|---|
+| 0 `EASlot_Holster` | `Socket_05` | `Chest` | -0.16, -0.52, -0.06: the left side of the waist | the pistol (ME2 `SFXWeapon_HeavyPistol`, ME3 `SFXWeapon_Pistol_Base`) **and the SMG** (ME2 `SFXWeapon_AutoPistol`, ME3 `SFXWeapon_SMG_Base`) |
+| 1 `EASlot_LowerBack` | `Socket_06` | `LowerBack` | 0.10, -0.60, -0.20: the small of the back, right of the spine | the shotgun (ME2 `SFXWeapon_Shotgun`, ME3 `SFXWeapon_Shotgun_Base`) |
+| 2 `EASlot_LeftShoulder` | `Socket_03` | `Chest2` | -0.05, -0.25, -0.24: high on the back, left | the sniper rifle |
+| 3 `EASlot_RightShoulder` | `Socket_04` | `Chest2` | 0.09, -0.38, -0.25: the back, right | the assault rifle (`SFXWeapon`'s own default) |
+| 4 `EASlot_CenterBack` | `Socket_07` | `Chest2` | 0.02, -0.50, -0.25: the middle of the back | heavy weapons (`SFXHeavyWeapon`) |
+
+The script, in words (`SFXWeapon.GivenTo`, `AssignToSlot`, `SFXInventoryManager.GetWeaponInSlot`, the end of the
+`WeaponPuttingDown` state, `SFXWeapon.AttachWeaponTo`): a weapon given to the pawn takes its family's slot only if no other
+weapon it carries has that slot; a put-down gun is hung on `AttachSlots[CharacterSlot]`, and a weapon without a slot is hung on
+no socket at all, so it isn't shown on the body while away. With a pistol and an SMG (every ME2 class but the Soldier) only the
+first one given is shown, at the left side of the waist, muzzle up and forward along the flank (the SMG's muzzle socket placed
+through `Socket_05`'s rotation); a gun on `Socket_06` lies flat across the small of the back, muzzle to the right.
+
+**So the games never carry the SMG at the lower back:** its holster is the pistol's, at the left side of the waist (a
+cross-draw), and the lower back is the shotgun's. A gun the owner remembers across the small of the back is the shotgun's
+place. The equipment screen itself was not looked at: no save on this machine has an SMG (Save 4's Soldier carries none), and
+the data above needed no game run.
+
+**`lowerBack`: right 0.00, up -0.60, forward -0.26 m, radius 0.12** (seated 0.30, -0.48, -0.24, r 0.20). From the game's
+`Socket_06` (0.10, -0.60, -0.20), moved onto the spine and 6 cm further back: the game's point and a hand flat on the back are
+inside the zone, and its centre is 0.29 m from the pistol's right hip (`hipRight`, 0.20, -0.62, -0.05, r 0.14). That is more
+than both radii (the zones never overlap, from a 1.50 m to a 1.95 m eye height: tested) but less than radii plus both exit
+margins (0.36 m, thighRight's rule): a lower back can't be 0.36 m from a right-hip pistol, so their hysteresis bands overlap
+as the two shoulders' zones do, and the machine takes the nearer by distance over radius. The other slots are unchanged.
+Seated, a chair's back covers the small of the back, so the seated place is beside it, behind the right hip: 0.42 m from the
+raised seated hip and 0.45 m from the seated right shoulder (all seated zones 0.20; none overlaps another or the grenade's).
+Tested (`tests/BodySlotsSmgTests.cpp`): a right hand swung back from hanging at the side, round under the pistol's hip zone to
+the small of the back, enters no other slot and ends in `lowerBack`, where a squeeze draws the SMG; the hand hanging, the low
+hip-fire hand, the belly rest and the shouldered aim point are clear of it.
+
+**A controller behind the back** drops out of an inside-out headset's view (the owner's Quest; the PS VR2's cameras): OpenXR
+then reports its pose not valid for a moment or keeps a frozen or IMU-predicted one. Before, a pose that wasn't valid turned
+the holsters off for that tick (`the right controller isn't tracked`), which reset the slots' machine and lost a squeeze made
+then. Now (`ik::body_slots::LostHand`, `KeepsLostHand`): while the tracked hand is in or near the `lowerBack` zone its place on
+the body (right, up, forward from the anchor) is remembered; when the pose stops being valid, that place counts as the hand for
+`[Holsters] lostHandHoldS` (0.75 s; 0 never), so the contact buzz goes on and a squeeze there draws, and the place moves with
+the body frame, not the room. Only that slot: a lost hand anywhere else (and every lost hand on ME1) turns the slots off as
+before. A pose the runtime still reports valid while it is frozen or drifting is taken as it is (the controllers' state has
+no "tracked" flag; adding one changes the host's services). Logs `holsters: the right controller lost tracking at lowerBack:
+its last place on the body is kept for up to 0.75 s`, `... is tracked again after N s`, `the grab at lowerBack came while the
+controller was untracked`, and the heartbeat's `lost behind the back N times`; the snapshot's holsters block has `smgSlot` and
+`lostHand` (the sequels only: ME1's lines, snapshot and ini are as before).
+
+**The risks** (notes/headset-checklist.md): with a pistol carried, the hand on its way round the right hip passes the pistol's
+zone (a buzz, no draw without a squeeze); behind the back the controller may be lost longer than 0.75 s or come back far from
+where it was lost; seated, the place beside the chair's back may be blocked by an armrest. Not seen in the game: no save here
+carries an SMG.
+
 ## The reload by hand: the game's side (lane WP, 2026-11-16)
 
 **Off by default since 2026-11-16** (the owner: "putting my left hand to the hip makes no sense ... So don't enable that

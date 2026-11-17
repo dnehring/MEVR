@@ -181,6 +181,10 @@ Controls GetControls();
 //                    weapon: pistol | shotgun | rifle | sniper | smg | none; meters from the eyes (held
 //                    upright), in the body's frame, at a 1.65 m eye height. thighRight is the sequels' SMG (ME1 has no
 //                    SMG: the slot is off there and its key isn't read)
+//   smgSlot          the sequels only: where the SMG's slot is: thighRight (default) | lowerBack (the small of the back;
+//                    its line `lowerBack = smg, ...` and `seatedLowerBack` give its place; lane SG, 2026-11-17)
+//   lostHandHoldS    the sequels only: seconds a right hand that lost tracking at the lowerBack slot keeps its last place
+//                    on the body (inside-out headsets can't see it there); 0: never
 // The game's default layout: core/ik/BodySlots' five slots, the SMG's switched off on ME1.
 inline ik::body_slots::Layout GameHolsterLayout() {
     ik::body_slots::Layout layout = ik::body_slots::DefaultLayout();
@@ -214,6 +218,9 @@ struct Holsters {
     // ME3 only ([Holsters] le3PutAway): a gun let go is put away by the game's own put-down into no weapon
     // (SFXInventoryManager.SetCurrentWeapon(None)); 0 (default until an ME3 combat fixture checks it): it stays in the hand.
     bool le3PutAway = false;
+    // The sequels ([Holsters] lostHandHoldS): a right hand lost behind the back at the SMG's lowerBack slot keeps its last
+    // place on the body this long (ik::body_slots::LostHand). Never on ME1 (no SMG slot there).
+    double lostHandHoldS = 0.75;
 };
 Holsters GetHolsters();
 // [Squad] (appended to an older file that lacks it; keys added later are appended with their defaults):
@@ -421,11 +428,7 @@ struct SquadOrders {
     std::string powerRoute = "tactical";
     // Placement by an arc (game/SquadPlace, 2026-11-05): hold the right B on foot, an arc from the right hand, let go: they move
     // where it lands. placeSpeedMS: the arc's launch speed (14: about 20 m at 45 degrees); placeRangeM: no farther than this.
-#if defined(MEVR_GAME_LE2)
-    bool place = false;  // opt in while the ME2 order path is being verified
-#else
-    bool place = true;
-#endif
+    bool place = true;  // ME1's default on every game (ME2's since its run on Save 4: research/54 "ME2 placement and orders on Save 4")
     double placeSpeedMS = 14.0;
     double placeRangeM = 30.0;
     double placeMinHoldS = 0.15;  // a shorter press of B is a blip

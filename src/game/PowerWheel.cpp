@@ -306,6 +306,16 @@ std::optional<Power> Le3Power(ue3::Object* object, bool includeUnlearned) {
     if (added) {
         text.label = label;
         text.name = known != nullptr ? known->name : label;
+        if (known == nullptr) {
+            // A power the table doesn't name (ME3's own, DLC's): its label split into words ("BioticCharge" showed as one
+            // word on Save 31's wheel), as the table's names read.
+            text.name.clear();
+            for (std::size_t i = 0; i < label.size(); ++i) {
+                bool const upper = label[i] >= 'A' && label[i] <= 'Z';
+                if (i > 0 && upper && label[i - 1] >= 'a' && label[i - 1] <= 'z') text.name += ' ';
+                text.name += label[i];
+            }
+        }
     }
     bool const ammo = ue3::IsA(object, le3_powers::ammoClass);
     auto const gesture = pw::NativeSelfGesture(ammo, revive, *type == 3, ue3::IsA(object, le3_powers::weaponBuffClass));
@@ -2130,14 +2140,15 @@ std::string StatusJson() {
     ue3::Object* const controller = ue3::runtime::Up() ? player::Controller() : nullptr;
     return std::format("{{\"on\": {}, \"why\": {}, \"open\": {}, \"toggled\": {}, \"serial\": {}, \"roster\": [{}], \"selected\": {}, "
                        "\"hand\": [{}, {}], \"pose\": [{}, {}, {}], \"equipped\": {}, \"mappedPower\": {}, \"last\": {}, \"opened\": {}, "
-                       "\"equips\": {}, \"cancels\": {}, \"picks\": {}, \"gestureTarget\": [{}, {}, {}], "
+                       "\"equips\": {}, \"cancels\": {}, \"picks\": {}, \"gesture\": {}, \"gestureTarget\": [{}, {}, {}], "
                        "\"lock\": {{\"why\": {}, \"target\": {}, \"automatic\": {}, \"seen\": {}, \"locks\": {}, "
         "\"pushes\": {}, \"casts\": {}, \"refused\": {}, \"lastCast\": {}}}}}",
         gSettings.on ? "true" : "false", json::JsonString(gWhy), gMachine.open ? "true" : "false", gMachine.toggled ? "true" : "false",
         gMachine.serial, roster, gMachine.selected, json::JsonNumber(gView.hand.x), json::JsonNumber(gView.hand.y),
         json::JsonNumber(gView.pose.position.x), json::JsonNumber(gView.pose.position.y), json::JsonNumber(gView.pose.position.z),
         json::JsonString(gEquipped), json::JsonString(MappedPower(controller)), json::JsonString(gLastEvent), gOpened, gEquips, gCancels,
-        gPicks, json::JsonNumber(gSelfView.target.x), json::JsonNumber(gSelfView.target.y), json::JsonNumber(gSelfView.target.z),
+        gPicks, json::JsonString(gEquipped.empty() ? "none" : pw::Name(pw::SelfGestureFor(gEquipped.c_str()))),
+        json::JsonNumber(gSelfView.target.x), json::JsonNumber(gSelfView.target.y), json::JsonNumber(gSelfView.target.z),
         json::JsonString(gLockWhy), json::JsonString(NameOf(gTarget)), gTarget != nullptr && gLock.automatic ? "true" : "false", gSeen.size(), gLocks, gPushes, gCastCount, gRefused,
         json::JsonString(gLastCast));
 }

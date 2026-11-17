@@ -842,6 +842,15 @@ stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs 
   with a class that carries an SMG (not the Soldier), reach down in front of the right thigh and squeeze: the SMG comes out;
   let go there and it goes back. Watch for: a hand hanging at your side or on its way to the pistol buzzing in it, a reach
   that feels too low or too far forward. `[Holsters] thighRight` (right, up, forward, radius) moves it.
+- [ ] The SMG at the small of the back (T25; research/le2-vrik.md "The SMG at the small of the back", lane SG 2026-11-17, the
+  owner's ask; then the owner picks the default): in `ASI\LE2MEVR.ini` (or LE3MEVR.ini) set `[Holsters] smgSlot = lowerBack`,
+  with a class that carries an SMG reach behind your back with the right hand, to the small of the back, and squeeze: the SMG
+  comes out; let go there and it goes back. Watch for: the draw failing or coming late when the headset loses the controller
+  behind you (the log's `holsters: the right controller lost tracking at lowerBack` and `the grab at lowerBack came while the
+  controller was untracked`; `[Holsters] lostHandHoldS`, 0.75 s, is how long its last place counts), the controller coming back
+  far from where it was lost, the pistol's right-hip buzz on the way round, a reach too high, too low or too far back
+  (`[Holsters] lowerBack`); seated, the place beside the chair's back (`seatedLowerBack`). Then thighRight against lowerBack:
+  which should be the default.
 - The reload by hand (T26): off by default on ME2 and ME3 since 2026-11-16 (the owner: a hand at the hip makes no sense);
   nothing to test until its gesture is redesigned with the owner. The game's own reload button and its automatic reload
   work as always.

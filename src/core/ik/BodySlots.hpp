@@ -44,15 +44,28 @@ struct Slot {
     double radius = 0.13;
 };
 
+// Where the SMG's slot is ([Holsters] smgSlot; research/le2-vrik.md "The SMG at the small of the back"): the front of the
+// right thigh (lane WP's, the default until the owner chooses) or the small of the back (the owner's ask, 2026-11-16: the
+// sequels' own lower-back attach slot, EASlot_LowerBack, where the game hangs the shotgun). One slot, kSmgSlot, either way.
+enum class SmgPlace : int { ThighRight = 0, LowerBack = 1 };
+char const* Name(SmgPlace place);  // "thighRight" / "lowerBack": the slot's name and its [Holsters] key
+// "thighRight" / "thigh", "lowerBack" / "back" (case-insensitive, spaces, '_' and '-' ignored); nullopt for anything else.
+std::optional<SmgPlace> ParseSmgPlace(std::string_view text);
+// The SMG's slot at that place, standing (at the reference eye height) and seated (fixed meters).
+Slot SmgSlot(SmgPlace place);
+Slot SeatedSmgSlot(SmgPlace place);
+
 struct Layout {
     std::array<Slot, kSlots> slots;
     double eyeHeight = kReferenceEyeHeight;  // the player's standing eye height: scales the offsets
     double exitMargin = 0.05;  // a hand leaves a slot this far past its radius; also the "near" margin
+    SmgPlace smgPlace = SmgPlace::ThighRight;  // which place slots[kSmgSlot] is (SeatedLayout follows it)
 };
 // The user's layout (research/19, "Default slots"): pistol at the right hip, assault rifle over the
 // right shoulder, shotgun at the left hip (a cross-draw; the belly until 2026-10-25), sniper rifle over the left shoulder,
-// the SMG at the front of the right thigh (lane WP, 2026-11-16: a recommendation until the owner's headset check).
-Layout DefaultLayout();
+// the SMG at the front of the right thigh (lane WP, 2026-11-16: a recommendation until the owner's headset check) or, with
+// `smg` LowerBack, at the small of the back.
+Layout DefaultLayout(SmgPlace smg = SmgPlace::ThighRight);
 // Seated reach points are fixed meters from the live neutral eye, independent of standing
 // height/avatar scale. Keep the standing layout's weapon assignments (including disabled slots).
 Layout SeatedLayout(Layout const& standing);
@@ -191,6 +204,34 @@ private:
 };
 // gripHolds: a let-go draw still on its way is waited for this long before the return gives up.
 inline constexpr double kReturnWaitForDrawSeconds = 2.0;
+
+// ---- A hand behind the back (lane SG, research/le2-vrik.md "The SMG at the small of the back") ----------------------
+// Inside-out headsets (Quest, PS VR2) can't see a controller behind the body: OpenXR then reports its pose not valid for a
+// moment (our controllers' gripValid false), which used to turn the slots off and lose the squeeze. A slot that keeps a lost
+// hand (today only the SMG's lowerBack: KeepsLostHand) lets the slots stay live with the hand's last valid place on the body
+// for a short while, so a squeeze there still draws. The place is kept in the body frame (right, up, forward from the
+// anchor), so it moves with the body, not the room.
+// The slot whose place keeps a lost hand: the SMG's at the small of the back, while it's on.
+bool KeepsLostHand(Layout const& layout, int slot);
+class LostHand {
+public:
+    // Before this tick's frame is known: with the pose not valid, may the slots stay live (a place kept, and `seconds`
+    // not used up by this tick's `deltaSeconds`)?
+    bool Keeps(double seconds, double deltaSeconds) const;
+    // The kept place in this tick's frame, the clock advanced (call only after Keeps said yes).
+    Vec3 Kept(Frame const& frame, double deltaSeconds);
+    // A valid pose: tracked again (the clock stops); `keep` (the hand is in or near a slot that keeps a lost hand)
+    // remembers its place on the body, else nothing is kept.
+    void Tracked(Vec3 hand, Frame const& frame, bool keep);
+    bool Holding() const { return lostSeconds_ >= 0.0; }
+    double LostSeconds() const { return lostSeconds_; }  // negative: tracked
+    void Reset();
+
+private:
+    bool have_ = false;
+    Vec3 body_{};  // the kept place: right, up, forward from the anchor (meters)
+    double lostSeconds_ = -1.0;
+};
 
 // ---- Contact haptics (research/19, "Haptics as contact") ----------------------------------------
 // Like a physical holster the hand bumps into: a continuous buzz while the hand overlaps a slot,

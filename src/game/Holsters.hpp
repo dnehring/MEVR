@@ -16,7 +16,8 @@
 // squeezing and releasing at the held gun's own slot holsters it, and the grip is RB elsewhere.
 // Slots, sizes and options: [Holsters] in <GAME>MEVR.ini (game/hand_calibration).
 //
-// Each tick, on foot with Halcyon's world view and a tracked right controller:
+// Each tick, on foot with Halcyon's world view and a tracked right controller (on the sequels a right hand that lost
+// tracking at the SMG's lowerBack slot keeps its last place on the body for [Holsters] lostHandHoldS: ik::body_slots::LostHand):
 //   - the body frame: arm IK's torso yaw (game/arm_ik), or our own lagging yaw from the head, held
 //     while the hand is in a slot; the anchor is the eye held upright over the neck pivot, its height
 //     smoothed; the offsets scale with the standing eye height measured from the floor (host v10,

@@ -993,6 +993,8 @@ void TestXOwnership() {
     CHECK(!fc::MigrateGrenades({}).button);
     CHECK(std::string(pw::kControlsCoach).find("X: power wheel") != std::string::npos);
     CHECK(std::string(pw::kControlsCoach).find("either hand at your left chest") != std::string::npos);
+    // The sequels have no physical grenade: their card names the wheel alone (ME2 Save 4's coach showed ME1's line).
+    CHECK(std::string(pw::kControlsCoachSequel) == "X: power wheel.");
 }
 
 void TestRosterPages() {

@@ -679,3 +679,36 @@ restoration verified with zero differences.
 
 Still to verify in game: target acquisition and a successful physical push against a hostile, hand or thumbstick
 tile selection, other weapon families, holstered casts, evolved powers and gesture feel in a physical headset.
+
+### The whole wheel on Save 4, by replayed controllers (lane SQ, 2026-11-17)
+
+Everything below ran on the fake headset with ME1's controls and ME1's defaults, driven only by replayed controllers
+(`tools/make-power-recording.py`) and the script `tools/le2-halcyon-run/powers.ps1` (session
+`20261117-001342-799-LE2-sq-powers`; its `powers-<time>\verdicts.txt`, `lines.txt`, `console.txt`). Nothing new had to
+be designed: every control is ME1's.
+
+| Check | What was seen |
+| --- | --- |
+| The wheel | X held 7 s: `opened #N at the left palm (-0.18, -0.14, -0.34) m, 0.42 m wide, with 4 power(s): Slam, Adrenaline Rush, Disruptor Ammo, No power` (Concussive Shot, Incendiary and Cryo Ammo are untrained on this save: not on it); let go untouched: `closed without a choice (nothing picked)`. The snapshot shows the four tiles with their icons over the omni-tool's light at the left hand. |
+| Picks | Tile 0 (Slam) and 2 (Disruptor Ammo) by the left hand's 7 cm travel toward them, tile 1 (Adrenaline Rush) and 3 (No power) by the left stick: each `equipped <power>`; No power leaves the selection `None`. |
+| Tap | X tapped 0.15 s stays open, the hand's travel picks, a pinch of the left trigger equips (`equipped Adrenaline Rush`). Under a 200 ms hitch the tap counted as a hold and closed (`nothing picked`): the tap is timed in game time. |
+| Chest | Adrenaline Rush with the rifle drawn: `gesture attempt: AdrenalineRush (the open hand on the chest) closest 0.000 m, entry 0.46 m/s, open true, gun drawn true: cast`, then `gesture target hidden: cooling down`. With the weapon put away first (`mevr omni holster`): `gun drawn false: cast`, the same cooldown: the game takes a holstered self-cast. |
+| Gun | Disruptor Ammo slapped onto the drawn rifle: `closest 0.025 m, entry 2.37 m/s ... cast`; with no gun its target hides (`it needs a weapon`). |
+| Lock and push | Save 4 has no hostile in reach. The level's own drone factory (`mevr instances SFXGame.SFXSeqAct_AIFactory Drone_Combat_A`, `mevr activate <n> 0`: BioD_ProFre_200Vorcha's `Drone_Combat_A`) makes an assault drone 80 m away behind the door, moved 10 m ahead with `mevr setloc <n> X Y Z` (new on ME2: one actor's `SetLocation`; the console's `set` moved every drone onto one spot, where they died). The left arm raised: `Slam locked on SFXPawn_AssaultDrone_0 (9.4 m, 5.1 deg from the left hand's ray, 3.8 from the gaze; pointed at)`, the marker 2.04 m across around the drone (snapshot `2026-11-17_00-37-16-848`); the push: `push: Slam at SFXPawn_AssaultDrone_0 (-1700, 20300, -11760): started` (the game's `ActivatePower` took it). A push with no hostile left: `cast refused: Slam needs a locked enemy`, ME1's refusal. The squad shoots a drone down within seconds, so `powers.ps1 -Drone` makes one right before each push; the factories run out (the third use of one made nothing), so the script tries each of the level's drone factories in turn. |
+
+The coach card (snapshot `2026-11-17_01-13-10-709`, the hands tracked): "DISRUPTOR AMMO equipped / Slap your open left hand
+onto the top of the gun in your right hand", where the wheel was. Its last line was ME1's "X: power wheel. Grenades: either
+hand at your left chest, grip, throw.": the sequels have no physical grenade, so their card says "X: power wheel." since
+(`kControlsCoachSequel`, host side). The scripted push (`powers.ps1 -Drone`) brings the drone in only once the push's replay
+runs (the squad shot it down while the scan waited): `PASS Slam by the lock and the push: locks 0 -> 1 ... 'Slam at
+SFXPawn_AssaultDrone_3 (-1734, 20287, -11769): started'`.
+
+ME3, Save 31 (the Normandy, a non-combat Vanguard, renderer preview): the roster reads Pull, Shockwave, Incendiary Ammo, Cryo
+Ammo, Biotic Charge, Discharge, Unity (disabled), Flare and No power; "BioticCharge", a label the table doesn't name, showed as
+one word until such labels were split into words. The wheel stays shut there: `powers can't be used here (combat is
+disabled)`, as ME1's. The combat save's checks: research/le3-combat-fixtures.md.
+
+Not established: the drone did not visibly move under Slam (a shielded drone; the effect is the game's), ME2's cooldown is
+not read (`roster` shows 0% while the game's own `IsEnabled` hides the target), evolved powers, pistols and shotguns for
+the ammo slap, and the feel in a headset. The machine was loaded by other lanes' builds: the game fell to 0.1-4 fps for 20-45 s three
+times, and checks that ran through such a stall failed and passed when repeated.
