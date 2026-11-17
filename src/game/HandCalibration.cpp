@@ -289,8 +289,14 @@ constexpr char const* kHolstersBlock =
     "hipLeft = shotgun, -0.20, -0.62, 0.00, 0.14\n"
     "shoulderLeft = sniper, -0.18, -0.08, -0.20, 0.20\n"
 #if !defined(MEVR_GAME_LE1)
-    "; The SMG at the front of the right thigh (a one-hander, clear of the pistol and of a hand hanging at your side).\n"
+    "; smgSlot: where the SMG is: thighRight = the front of the right thigh (a one-hander, clear of the pistol and of a hand\n"
+    "; hanging at your side); lowerBack = the small of the back (where the game hangs a gun on your lower back). Its line\n"
+    "; below gives the place. Behind your back the headset may lose sight of the controller: lostHandHoldS is how long\n"
+    "; its last place there still counts (seconds; 0 = not at all).\n"
+    "smgSlot = thighRight\n"
     "thighRight = smg, 0.08, -0.90, 0.15, 0.12\n"
+    "lowerBack = smg, 0.00, -0.60, -0.26, 0.12\n"
+    "lostHandHoldS = 0.75\n"
 #endif
     "; Seated only: right, up, forward, radius in FIXED meters from the neutral head.\n"
     "; Weapon assignments still come from the four slots above; standing is unchanged.\n"
@@ -300,6 +306,7 @@ constexpr char const* kHolstersBlock =
     "seatedShoulderLeft = -0.28, -0.04, -0.14, 0.20\n"
 #if !defined(MEVR_GAME_LE1)
     "seatedThighRight = 0.15, -0.60, 0.55, 0.20\n"
+    "seatedLowerBack = 0.30, -0.48, -0.24, 0.20\n"
 #endif
     "seatedGrenade = -0.10, -0.18, 0.08, 0.10\n"
 #if defined(MEVR_GAME_LE3)
@@ -1175,6 +1182,22 @@ Holsters ReadHolsters(Ini const& ini) {
     if (Number(ini, "Holsters", "le3PutAway", value)) {
         holsters.le3PutAway = value != 0.0;
     }
+#if !defined(MEVR_GAME_LE1)
+    // The SMG's place (lane SG): its slot takes the chosen place's name, so the loop below reads that place's line.
+    if (auto const s = ini.find("Holsters"); s != ini.end()) {
+        if (auto const k = s->second.find("smgSlot"); k != s->second.end()) {
+            if (auto const place = ik::body_slots::ParseSmgPlace(k->second)) {
+                holsters.layout.smgPlace = *place;
+                holsters.layout.slots[ik::body_slots::kSmgSlot] = ik::body_slots::SmgSlot(*place);
+            } else {
+                log::Warn("holsters: can't read smgSlot = {} (thighRight or lowerBack); thighRight kept", k->second);
+            }
+        }
+    }
+    if (Number(ini, "Holsters", "lostHandHoldS", value)) {
+        holsters.lostHandHoldS = std::clamp(value, 0.0, 3.0);
+    }
+#endif
     if (auto const s = ini.find("Holsters"); s != ini.end()) {
         if (auto const k = s->second.find("powerWheel"); k != s->second.end()) {
             std::string text = k->second;
@@ -1266,6 +1289,12 @@ std::string Describe(Holsters const& h) {
     }
     text += std::format(" grenade ({:.2f}, {:.2f}, {:.2f}) r {:.2f}", h.seatedGrenade.offset.x, h.seatedGrenade.offset.y,
         h.seatedGrenade.offset.z, h.seatedGrenade.radius);
+#if !defined(MEVR_GAME_LE1)
+    text += std::format("; the SMG at {} (smgSlot){}", ik::body_slots::Name(h.layout.smgPlace),
+        h.layout.smgPlace == ik::body_slots::SmgPlace::LowerBack
+            ? std::format(", a right hand lost there keeps its place {:.2f} s (lostHandHoldS)", h.lostHandHoldS)
+            : std::string());
+#endif
     return text;
 }
 
@@ -2984,6 +3013,10 @@ void Refresh() {
 #if !defined(MEVR_GAME_LE1)
         {L"thighRight", "thighRight", L"smg, 0.08, -0.90, 0.15, 0.12"},  // the SMG's slot, 2026-11-16 (lane WP)
         {L"seatedThighRight", "seatedThighRight", L"0.15, -0.60, 0.55, 0.20"},
+        {L"smgSlot", "smgSlot", L"thighRight"},  // the SMG's place, 2026-11-17 (lane SG): thighRight or lowerBack
+        {L"lowerBack", "lowerBack", L"smg, 0.00, -0.60, -0.26, 0.12"},
+        {L"seatedLowerBack", "seatedLowerBack", L"0.30, -0.48, -0.24, 0.20"},
+        {L"lostHandHoldS", "lostHandHoldS", L"0.75"},
 #endif
 #if defined(MEVR_GAME_LE3)
         {L"le3PutAway", "le3PutAway", L"0"},  // ME3's put-down into no weapon, off until a combat fixture checks it

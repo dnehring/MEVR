@@ -62,7 +62,50 @@ char const* Name(Action action) {
     return "?";
 }
 
-Layout DefaultLayout() {
+char const* Name(SmgPlace place) {
+    return place == SmgPlace::LowerBack ? "lowerBack" : "thighRight";
+}
+
+std::optional<SmgPlace> ParseSmgPlace(std::string_view text) {
+    std::string lower;
+    for (char c : text) {
+        if (c != ' ' && c != '\t' && c != '_' && c != '-') {
+            lower.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+        }
+    }
+    if (lower == "thighright" || lower == "thigh") return SmgPlace::ThighRight;
+    if (lower == "lowerback" || lower == "back" || lower == "smallofback") return SmgPlace::LowerBack;
+    return std::nullopt;
+}
+
+Slot SmgSlot(SmgPlace place) {
+    if (place == SmgPlace::LowerBack) {
+        // The small of the back (lane SG, 2026-11-17, research/le2-vrik.md "The SMG at the small of the back"). The sequels'
+        // own lower-back attach slot (EASlot_LowerBack: BioPawn.AttachSlots' Socket_06 on the LowerBack bone, the shotgun's in
+        // both games) sits on Shepard's reference skeleton 0.10 m right of the spine, 0.20 m behind and 0.60 m below the eyes
+        // (scaled to the 1.65 m eye height). Centred on the spine 6 cm further back, so that point and a hand flat on the
+        // back are inside the zone, and its centre is 0.29 m from the pistol's right hip (more than both radii: the zones
+        // never overlap; their exit margins do, as the two shoulders' zones do). Behind the body: a lost hand is kept here.
+        return {"lowerBack", Weapon::Smg, {0.00, -0.60, -0.26}, 0.12};
+    }
+    // The SMG (lane WP, 2026-11-16, research/le2-vrik.md "A body slot for the SMG"): a one-hander like the pistol, so low
+    // on the right side, but in front of the thigh: 0.36 m from the pistol's centre (both radii plus both exit margins),
+    // 0.25 m from a right hand hanging relaxed at the side, clear of the low hip-fire hand and the belly rest, in front of
+    // the body where inside-out headsets still track the controller. Smaller than the hip's zone so a hand passing to the
+    // pistol doesn't brush it.
+    return {"thighRight", Weapon::Smg, {0.08, -0.90, 0.15}, 0.12};
+}
+
+Slot SeatedSmgSlot(SmgPlace place) {
+    if (place == SmgPlace::LowerBack) {
+        // Seated a chair's back covers the small of the back: beside it, behind the right hip, 0.42 m from the raised
+        // seated hip slot and 0.45 m from the seated right shoulder (all seated zones 0.20).
+        return {"lowerBack", Weapon::Smg, {0.30, -0.48, -0.24}, 0.20};
+    }
+    return {"thighRight", Weapon::Smg, {0.15, -0.60, 0.55}, 0.20};  // over the right knee, in front of the raised hip slot
+}
+
+Layout DefaultLayout(SmgPlace smg) {
     Layout layout;
     layout.slots[0] = {"hipRight", Weapon::Pistol, {0.20, -0.62, -0.05}, 0.14};
     layout.slots[1] = {"shoulderRight", Weapon::AssaultRifle, {0.18, -0.08, -0.20}, 0.20};
@@ -70,12 +113,8 @@ Layout DefaultLayout() {
     // about 0.33 m from the pistol, and was entered a dozen times a session on the way to the hip.
     layout.slots[2] = {"hipLeft", Weapon::Shotgun, {-0.20, -0.62, 0.00}, 0.14};
     layout.slots[3] = {"shoulderLeft", Weapon::Sniper, {-0.18, -0.08, -0.20}, 0.20};
-    // The SMG (lane WP, 2026-11-16, research/le2-vrik.md "A body slot for the SMG"): a one-hander like the pistol, so low
-    // on the right side, but in front of the thigh: 0.36 m from the pistol's centre (both radii plus both exit margins),
-    // 0.25 m from a right hand hanging relaxed at the side, clear of the low hip-fire hand and the belly rest, in front of
-    // the body where inside-out headsets still track the controller (never the small of the back). Smaller than the hip's
-    // zone so a hand passing to the pistol doesn't brush it.
-    layout.slots[kSmgSlot] = {"thighRight", Weapon::Smg, {0.08, -0.90, 0.15}, 0.12};
+    layout.slots[kSmgSlot] = SmgSlot(smg);
+    layout.smgPlace = smg;
     return layout;
 }
 
@@ -86,7 +125,7 @@ Layout SeatedLayout(Layout const& standing) {
     layout.slots[2].offset = {-0.28, -0.42, 0.18};
     layout.slots[1].offset = {0.28, -0.04, -0.14};
     layout.slots[3].offset = {-0.28, -0.04, -0.14};
-    layout.slots[kSmgSlot].offset = {0.15, -0.60, 0.55};  // over the right knee, in front of the raised hip slot
+    layout.slots[kSmgSlot].offset = SeatedSmgSlot(standing.smgPlace).offset;
     for (Slot& slot : layout.slots) slot.radius = 0.20;
     return layout;
 }
@@ -341,6 +380,38 @@ Step Machine::Update(Input const& input) {
         armedWeapon_ = Weapon::None;
     }
     return step;
+}
+
+bool KeepsLostHand(Layout const& layout, int slot) {
+    return slot == kSmgSlot && layout.smgPlace == SmgPlace::LowerBack && layout.slots[kSmgSlot].weapon != Weapon::None &&
+        layout.slots[kSmgSlot].radius > 0.0;
+}
+
+bool LostHand::Keeps(double seconds, double deltaSeconds) const {
+    if (!have_ || !(seconds > 0.0)) {
+        return false;
+    }
+    return std::max(lostSeconds_, 0.0) + std::max(deltaSeconds, 0.0) <= seconds;
+}
+
+Vec3 LostHand::Kept(Frame const& frame, double deltaSeconds) {
+    lostSeconds_ = std::max(lostSeconds_, 0.0) + std::max(deltaSeconds, 0.0);
+    return frame.anchor + YawRight(frame.yaw) * body_.x + Vec3{0.0, body_.y, 0.0} + YawForward(frame.yaw) * body_.z;
+}
+
+void LostHand::Tracked(Vec3 hand, Frame const& frame, bool keep) {
+    lostSeconds_ = -1.0;
+    have_ = keep;
+    if (keep) {
+        Vec3 const d = hand - frame.anchor;
+        body_ = {Dot(d, YawRight(frame.yaw)), d.y, Dot(d, YawForward(frame.yaw))};
+    }
+}
+
+void LostHand::Reset() {
+    have_ = false;
+    body_ = {};
+    lostSeconds_ = -1.0;
 }
 
 namespace {

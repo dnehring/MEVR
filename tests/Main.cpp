@@ -12207,6 +12207,7 @@ int RunVoiceMenuTests();
 int RunSquadPlaceTests();
 int RunBodyScaleTests();
 int RunBodySlotsSeatedTests();
+int RunBodySlotsSmgTests();
 int RunFloorLockTests();
 int RunReloadGestureTests();
 int RunManualCalibrationTests();
@@ -12439,6 +12440,7 @@ int main() {
     gFailures += RunSquadPlaceTests();
     gFailures += RunBodyScaleTests();
     gFailures += RunBodySlotsSeatedTests();
+    gFailures += RunBodySlotsSmgTests();
     gFailures += RunFloorLockTests();
     gFailures += RunReloadGestureTests();
     gFailures += RunManualCalibrationTests();

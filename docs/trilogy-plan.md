@@ -448,7 +448,13 @@ These unblock the most: almost every other entry gets smaller once they land.
   trigger pulls with the weapon away refused, three vaults with the right grip holding the pistol; ME1 at the same pose
   unchanged. **The SMG's slot** (lane WP, 2026-11-16, research/le2-vrik.md "A body slot for the SMG"): `thighRight`, the
   front of the right thigh, a fifth `core/ik/BodySlots` slot (off on ME1, which has no SMG); the default, a recommendation
-  until the owner's headset check; not seen in the game (Save 4's Soldier carries none). **ME3** (lane WP, research/le2-vrik.md
+  until the owner's headset check; not seen in the game (Save 4's Soldier carries none). **The small of the back as the
+  other option** (lane SG, 2026-11-17, the owner's ask; research/le2-vrik.md "The SMG at the small of the back"):
+  `[Holsters] smgSlot = thighRight | lowerBack`, thighRight still the default (**the owner's question:** which default);
+  `lowerBack` from the games' own lower-back socket (`EASlot_LowerBack`, `Socket_06`: the shotgun's in both games; the
+  games hang the SMG at the pistol's `EASlot_Holster`, the left side of the waist, never at the lower back), and a right hand
+  lost there keeps its last place on the body for `lostHandHoldS` (0.75 s) so a squeeze while the headset can't see it still
+  draws. **ME3** (lane WP, research/le2-vrik.md
   "ME3's holsters, from its own script"): ME3 has no holstered state on a mission and its TryHolster only leaves cover, so
   TryHolster is never called there; the holster is the game's own put-down into no weapon
   (`SFXInventoryManager.SetCurrentWeapon(None)`) behind `[Holsters] le3PutAway`, **0 by default** (unverified: no ME3 save on
@@ -914,6 +920,12 @@ Each is asked once. "Today" is what the build does if nobody answers; no default
     ME1"). On every game our menu (and the running calibration) is the only quad of ours while it is drawn; the world stays
     under it. Keep the HUD panel, the ring and the wheels visible under it too? **Answered 2026-11-16, the owner: no; they
     stay hidden under our menu on all three games (today's behaviour).** Nothing to build.
+11. **The SMG's slot on the sequels** (T25; lane SG, 2026-11-17, research/le2-vrik.md "The SMG at the small of the back").
+    Both are built: the front of the right thigh (`[Holsters] smgSlot = thighRight`, today) and the small of the back
+    (`lowerBack`, the owner's ask). Which is the default? What the games themselves do: they hang the SMG at the pistol's
+    holster on the left side of the waist (only one of the two is shown when both are carried) and the shotgun at the lower
+    back. The lower back is out of an inside-out headset's view (a lost controller's place is kept 0.75 s there) and a hand
+    reaching it passes the pistol's right hip; the thigh is in view and clear of the pistol.
 
 **Defaults waiting for a seen result and a yes** (not questions yet): `[SquadOrders] place` on the sequels (ME1's is on),
 `[Traversal] cue`, ME3's melee and traversal gestures, ME3's no-snap (a diagnostic opt-in), the galaxy projector replacing
