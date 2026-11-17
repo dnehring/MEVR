@@ -3029,6 +3029,37 @@ void CheckLe3WorldUi() {
     PARAM(UGFxMovie_execGetVariableNumber_Parms, "GFxUI.GFxMovie.GetVariableNumber", ReturnValue);
 }
 
+// game/ScreenReticle's ME3 adapter (research/le3-hud-panel.md "The crosshair hidden"): the GUI manager's reticle movie, its
+// alpha (the legacy adapter's calls, ME1's and ME2's names), what it shows, and the weapon's zoom (the scope view stays the game's).
+void CheckLe3ScreenReticle() {
+    CheckClass<USFXGUIInteraction>("SFXGame.SFXGUIInteraction");
+    CheckField("SFXGame.SFXGUIInteraction", "MovieTag_Reticle", SDK_FIELD(USFXGUIInteraction, MovieTag_Reticle));
+    CheckFunction("SFXGame.SFXGUIInteraction.GetMovie");
+    PARAM(USFXGUIInteraction_execGetMovie_Parms, "SFXGame.SFXGUIInteraction.GetMovie", i_pOwningPlayer);
+    PARAM(USFXGUIInteraction_execGetMovie_Parms, "SFXGame.SFXGUIInteraction.GetMovie", nmMovieTag);
+    PARAM(USFXGUIInteraction_execGetMovie_Parms, "SFXGame.SFXGUIInteraction.GetMovie", ReturnValue);
+    PARMS(USFXGUIInteraction_execGetMovie_Parms, "SFXGame.SFXGUIInteraction.GetMovie");
+    CheckClass<USFXSFHandler_Reticle>("SFXGame.SFXSFHandler_Reticle");
+    CheckField("SFXGame.SFXSFHandler_Reticle", "m_oCurrentWeaponReticle", SDK_FIELD(USFXSFHandler_Reticle, m_oCurrentWeaponReticle));
+    CheckField("SFXGame.SFXSFHandler_Reticle", "m_bReticleVisible", SDK_BOOL(USFXSFHandler_Reticle, m_bReticleVisible));
+    CheckFunction("SFXGame.SFXGUIMovieLegacyAdapter.GetVariableFloat");
+    PARAM(USFXGUIMovieLegacyAdapter_execGetVariableFloat_Parms, "SFXGame.SFXGUIMovieLegacyAdapter.GetVariableFloat", sPath);
+    PARAM(USFXGUIMovieLegacyAdapter_execGetVariableFloat_Parms, "SFXGame.SFXGUIMovieLegacyAdapter.GetVariableFloat", ReturnValue);
+    PARMS(USFXGUIMovieLegacyAdapter_execGetVariableFloat_Parms, "SFXGame.SFXGUIMovieLegacyAdapter.GetVariableFloat");
+    CheckFunction("SFXGame.SFXGUIMovieLegacyAdapter.SetVariableFloat");
+    PARAM(USFXGUIMovieLegacyAdapter_execSetVariableFloat_Parms, "SFXGame.SFXGUIMovieLegacyAdapter.SetVariableFloat", sPath);
+    PARAM(USFXGUIMovieLegacyAdapter_execSetVariableFloat_Parms, "SFXGame.SFXGUIMovieLegacyAdapter.SetVariableFloat", fVar);
+    PARMS(USFXGUIMovieLegacyAdapter_execSetVariableFloat_Parms, "SFXGame.SFXGUIMovieLegacyAdapter.SetVariableFloat");
+    CheckFunction("SFXGame.SFXGUIMovie.GetVisible");
+    PARAM(USFXGUIMovie_execGetVisible_Parms, "SFXGame.SFXGUIMovie.GetVisible", ReturnValue);
+    PARMS(USFXGUIMovie_execGetVisible_Parms, "SFXGame.SFXGUIMovie.GetVisible");
+    CheckField("Engine.Pawn", "Weapon", SDK_FIELD(APawn, Weapon));
+    CheckClass<ASFXWeapon>("SFXGame.SFXWeapon");
+    CheckField("SFXGame.SFXWeapon", "GUIReticleClass", SDK_FIELD(ASFXWeapon, GUIReticleClass));
+    CheckField("SFXGame.SFXWeapon", "GUIZoomReticleClass", SDK_FIELD(ASFXWeapon, GUIZoomReticleClass));
+    CheckField("SFXGame.SFXWeapon_NativeBase", "bIsZoomed", SDK_BOOL(ASFXWeapon_NativeBase, bIsZoomed));
+}
+
 void CheckLe3PhysicalCover() {
     CheckClass<ACoverLink>("Engine.CoverLink");
     CheckClass<ASFXPawn_PlayerParty>("SFXGame.SFXPawn_PlayerParty");
@@ -3889,6 +3920,7 @@ bool Run(hook::Context& context) {
     CheckLe3ViewLevel();
     CheckLe3OmniTool();
     CheckLe3WorldUi();
+    CheckLe3ScreenReticle();
 #endif
 #if defined(MEVR_GAME_LE2)
     CheckTraversal();

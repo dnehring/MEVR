@@ -8,6 +8,7 @@
 
 #include "core/Log.hpp"
 #include "engine/SettingsFile.hpp"
+#include "plugin/ScreenReticleRequest.hpp"
 #include "halcyon/le3/calcview_hook.h"
 #include "halcyon/le3/d3d_capture.h"
 #include "halcyon/le3/engine_probe.h"
@@ -55,7 +56,10 @@ Caps const& Capabilities() noexcept {
         // The game's screens on the wrist and in the room, as ME1's and ME2's (research/le3-native-gui.md "The game's screens on
         // ME3"): d3d_capture.cpp's presentation decision stays out of MENU_MONO while MevrSeams::WorldUiOwnsGui (plugin/MenusLe2).
         c.worldUi = true;
-        // screenReticleHide false: the native LE3 crosshair's ownership has not been verified.
+        // The game's crosshair hidden while the hand reticle stands in for it, as ME1's and ME2's: the mod's game/ScreenReticle
+        // zeroes the alpha of ME3's reticle movie (SFXSFHandler_Reticle) on the game thread, the scope view left to the game
+        // (research/le3-hud-panel.md "The crosshair hidden").
+        c.screenReticleHide = true;
         return c;
     }();
     return caps;
@@ -149,7 +153,7 @@ HWND GameWindow() noexcept {
 
 HudSettings Hud() noexcept {
     // ME1's defaults: ME3's renderer keeps no HUD panel settings (the HUD panel on, as on ME1 and ME2). The shared ring draws
-    // only while the mod owns live hand aim; native crosshair suppression remains unavailable.
+    // only while the mod owns live hand aim; the game's crosshair is hidden whenever the hand reticle is on in gameplay.
     return {};
 }
 
@@ -161,9 +165,14 @@ float RecenterTiltDeg() noexcept {
     return 60.0f;  // ME1's default (vr_config.h recenterTiltDeg)
 }
 
-// [MEVR] No LE3 crosshair adapter is published yet.
-void SetScreenReticleHidden(bool) noexcept {}
-bool ScreenReticleHidden() noexcept { return false; }
+// The sequels' one request (plugin/ScreenReticleRequest.hpp, LE1's 500 ms rule): the mod's game/ScreenReticle hides ME3's
+// reticle movie on the game thread while it stands (HostServices hideScreenReticle).
+void SetScreenReticleHidden(bool hidden) noexcept {
+    screen_reticle_request::Set(hidden);
+}
+bool ScreenReticleHidden() noexcept {
+    return screen_reticle_request::Get();
+}
 
 // The HUD keeps the movie's own layout on our panel already: Halcyon ME3's per-element moves for a head-locked HUD
 // (hud_probe.cpp's baked [HUD] groups) never run in our host ([MEVR] in its Tick and SetEditorEnabled), so there is nothing to

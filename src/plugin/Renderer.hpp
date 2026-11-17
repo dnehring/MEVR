@@ -185,8 +185,9 @@ bool ModHandAim() noexcept;
 
 // ---- The game's own HUD, as the renderer handles it -------------------------------------------------------------------
 
-// The game's screen-centre crosshair hidden (the hand reticle replaces it in gameplay). LE1: Halcyon's PcHud. ME2: not yet
-// (its own PcHud has no such switch: M3), the setter a no-op and the getter false.
+// The game's screen-centre crosshair hidden (the hand reticle replaces it in gameplay). LE1: Halcyon's PcHud. ME2 and ME3:
+// a 500 ms request (plugin/ScreenReticleRequest.hpp) the mod's game/ScreenReticle carries out on the game thread
+// (HostServices hideScreenReticle): ME2's crosshair movie, ME3's reticle movie.
 void SetScreenReticleHidden(bool hidden) noexcept;
 bool ScreenReticleHidden() noexcept;
 // The HUD's authored layout (the HUD panel takes the game's UI as authored, not Halcyon's VR re-layout). LE1: PcHud's
