@@ -1142,7 +1142,9 @@ So in this scene the key alone changes nothing visible, either way: **the charac
 the dynamic shadows**, which the mod turns off on every game (ME1's value, a cost lever). With them on, each shadow lies
 under its owner in both eyes, shifted with the feet by the eyes' parallax (`dyn-on-left-right.png`): each eye is its own
 render. What `LightEnvironmentShadows` draws on ME2 (indoors, a character in a light environment's shadow) is not seen;
-whether to keep `DynamicShadows` off on the sequels is the owner's (docs/trilogy-plan.md question 10).
+whether to keep `DynamicShadows` off on the sequels follows the owner's answer of 2026-11-16 evening: settings may
+differ per game, ME1's second-eye logic breaks dynamic shadows, and lane SP measures each option with and without them
+(docs/trilogy-plan.md, "The second eye and dynamic shadows").
 
 ### One Draw a frame on the sequels: the recommendation
 

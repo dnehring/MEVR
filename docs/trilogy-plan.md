@@ -170,16 +170,21 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Waits for:** T01. **Who:** U2.
 
 #### T03 One eye-image pipeline: colour, tonemap, FSR, the HDR display answer [Forks 7, 8; R13, R14, R15, R16]
-- **State:** LE1 build · LE2 build · LE3 build
+- **State:** LE1 V (same pose identical) · LE2 V (colour, FSR) · LE3 V colour, FSR U (2026-11-16, lane EY: research/27
+  section 9)
 - **Lives in:** `core/vr/Colour`, `core/vr/Upscale`, `plugin/Colour`, `plugin/Upscale`, `plugin/EyeCopy`,
-  `plugin/HdrDisplayPolicy`. Today LE1 applies colour, FSR and the tonemap inside Halcyon's blit; the sequels apply colour
-  only, in EyeCopy's own shader, and answer the display query from a second module.
-- **Left:** one eye-image stage that owns colour, tonemap and FSR; LE1's blit calls it; LE1's HDR seam forwards to
-  `hdr_display` so the `hdrDisplay` migration lives in one place. **ME2, ME3:** eye swapchains at the headset's
-  recommended size so FSR has something to scale (they are at backbuffer size today).
-- **Closes when:** LE1's eye snapshots are unchanged; an ME2 and an ME3 colour-profile snapshot A/B shows the profile
-  applied; an eye rendered below the headset's size comes out FSR-scaled on each sequel; ctest `mevr-eye-copy-warp`,
-  `mevr-colour-shader` and `mevr-upscale-shader` pass on the one stage.
+  `plugin/HdrDisplayPolicy`, seam `MevrSeams::EyeImageSize`. One colour, tonemap and FSR core and one display-answer
+  policy in all three hosts; the sequels reach them from `EyeCopy` (`CopyIntoImage`), LE1 from its blit's own
+  `EyeColour*`/`EyeUpscale` seams (one core, two call shapes: research/27 9.3).
+- **Left:** **ME3:** FSR seen in a run with a backbuffer below the recommended eye (the preview's 3072x1728 is wider);
+  its HUD panel's colour once the panel is on. **LE1:** its FSR path in a run whose render is below the eye (the fake
+  headset's eye is smaller than LE1's render); optional, its blit onto `CopyIntoImage` with a fill argument after a
+  same-pose check of its four blit paths. **The sequels:** the render-size and Performance rows (greyed until the owner
+  has seen them). **The owner:** the picture defaults for dark scenes (research/27 9.6).
+- **Closes when:** LE1's eye snapshots are unchanged (they are, neutral and Quest); an ME2 and an ME3 colour-profile
+  snapshot A/B shows the profile applied (both: within one 8-bit step of the CPU reference); an eye rendered below the
+  headset's size comes out FSR-scaled on each sequel (ME2 yes, ME3 left); ctest `mevr-eye-copy-warp`, `mevr-colour-shader`
+  and `mevr-upscale-shader` pass on the one stage (they do: the WARP test runs the real FSR passes).
 - **Waits for:** T01. **Who:** EY.
 
 #### T04 Engine access on our reflection layer; no LExSDKv2 in a players' build [G52, G50, G55; G02's fallback]
@@ -279,7 +284,9 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Left:** ~~gate `LightEnvironmentShadows False` on the host's replay~~ done 2026-11-16 (GF2, HostServices v43
   `secondEyeIsReplay`; elsewhere the player's own value). On ME2 the key alone changed nothing visible at Freedom's
   Progress; the ground shadows there are `DynamicShadows`, which ME1's value keeps off on every game: the owner's
-  [question 10](#open-owner-questions). **ME3:** no receipt yet that `scale set` applies at all.
+  owner's answer of 2026-11-16 evening ("The second eye and dynamic shadows": lane SP measures each second-eye option
+  per game with and without them; with it on, ME2's shadows are right in both eyes, each eye being its own render).
+  **ME3:** no receipt yet that `scale set` applies at all.
 - **Closes when:** an ME2 and an ME3 snapshot show character shadows; ME3's log has the `system settings:` lines and an
   A/B of `DynamicShadows` changes the frame.
 - **Waits for:** nothing; once T08 brings the replay to a sequel the gate follows the capability. **Who:** GF.
@@ -770,6 +777,28 @@ about stutter or pacing in a real headset.
 
 Each is asked once. "Today" is what the build does if nobody answers; no default changes without a yes (rule 19).
 
+**Answered 2026-11-16 (evening)** (the owner's words in quotes; the questions below stay for the record):
+
+- **2, faster shield recharge in VR cover:** "Faster recharge behind cover, yes." Lane GR builds it; how "in cover" is judged
+  outside a shot is GR's reported choice.
+- **4, ME2's first release:** "It should always be life sized stereo for all games." T09 is required for every game's
+  release (lane LS); one-Draw (T08) is not required.
+- **5, ME3's release bar:** "Release is in alpha, so we'll be doing more work to get feature parity." ME3 ships as an
+  alpha on a subset like ME2, parity after.
+- **6, sprint:** "Unified sprint." One sprint rule for all games (lane GR).
+- **7, ME3's roll/evade input:** "I'm curious if the analog direction will allow vault and roll." Lane GR researches
+  whether the stick's direction can tell a vault from a roll; nothing is built before the owner reads the design.
+- **8, Thespian on the sequels:** "Thespian is experimental, same with first person." Offered as experimental on the
+  sequels, as on ME1, and first-person conversations too.
+- **10 (lane U3's), our quads under our menu:** keep them hidden on every game (today's behaviour).
+- **The second eye and dynamic shadows:** settings may differ per game ("I imagine we'd want to consider second-eye
+  settings per game if they are all so different"), and "With our me1 second eye logic it breaks the dynamic shadows.
+  So if we go down that path then we will need to disable dynamic shadows." Lane SP measures each option per game with
+  and without dynamic shadows.
+- **Earlier the same day:** the sequels' sights use ME1's systems for now; vaulting with a two-handed hold is allowed, with
+  one hand to be considered ("The controls could get sloppy"; lane C4 compares); the trigger never draws a holstered
+  weapon in any game; "Ideally I want everything consistent" (a per-game difference needs a reason the game forces).
+
 **Asked by the plans and never answered**
 
 1. **The picture defaults on ME2** (research/le2-picture.md section 5; the same question comes to ME3).
@@ -810,10 +839,6 @@ Each is asked once. "Today" is what the build does if nobody answers; no default
    greyed until the skip works?
 9. **Squad weapons' style on the sequels.** ME1's default is the game's own weapon wheel at the hand; both sequels run
    only our drawn menu. Is the drawn menu the sequels' style for good, or is the game's wheel at the hand still wanted?
-10. **`DynamicShadows` on the sequels.** ME1 keeps it off (`game/SystemSettings`, a cost lever: the scene renders twice a
-   frame), and the mod applies ME1's value on every game. On ME2 that removes every character's shadow on the ground
-   (Freedom's Progress, 2026-11-16, lane GF2: with it on, Miranda's and Jacob's shadows are right in both eyes, since each
-   eye is its own render). Keep ME1's value on the sequels, or price it (lane PL/SP's measurements) and turn it on there?
 
 **Defaults waiting for a seen result and a yes** (not questions yet): `[SquadOrders] place` on the sequels (ME1's is on),
 `[Traversal] cue`, ME3's melee and traversal gestures, ME3's no-snap (a diagnostic opt-in), the galaxy projector replacing

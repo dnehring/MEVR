@@ -122,7 +122,7 @@ Facts const& Get() noexcept {
         "halcyon le3 bridge",
         true,   // invalidViewAtOnce: the flat and menu paths stop the floor lock's pass without a last invalid view
         true,   // menusHideGameplay: one submit owner, no gameplay presentation under either menu or the calibration
-        false,  // panelColour: lane EY's pipeline decides it
+        true,   // panelColour: the game's UI on the panel gets the eyes' correction, as on ME1 and ME2 (research/27 section 9)
         true,   // weaponsNeedPublishedAim
         true,   // cueOnFootOnly: authored scenes own traversal
         0,      // hudLayout: no HUD pieces on ME3 yet (capability hudPieces)

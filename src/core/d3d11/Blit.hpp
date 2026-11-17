@@ -28,6 +28,20 @@ public:
     bool DrawWith(ID3D11DeviceContext* immediate, ID3D11Texture2D* source, ID3D11RenderTargetView* target,
         UINT targetWidth, UINT targetHeight, int shiftX, ID3D11PixelShader* pixelShader, ID3D11Buffer* constantsB1);
 
+    // Several passes of the caller's own (the eye upscale: plugin/Upscale): `source` is staged as for Draw, our pipeline
+    // state swapped in with the triangle list, no input layout and the default raster, blend and depth states, and
+    // `passes` draws with `stage` (it binds its own shaders, targets, viewports and constant buffers; `source` is the
+    // staged copy's view, `sampler` linear and clamping). Afterwards t0, the render targets and the pixel shader's
+    // b0..b2 are unbound and the game's state comes back. False when the stage couldn't be set up (nothing drawn) or
+    // `passes` returned false.
+    struct Stage {
+        ID3D11DeviceContext* context = nullptr;
+        ID3D11ShaderResourceView* source = nullptr;
+        ID3D11SamplerState* sampler = nullptr;
+    };
+    bool Run(ID3D11DeviceContext* immediate, ID3D11Texture2D* source, bool (*passes)(Stage const& stage, void* user),
+        void* user);
+
 private:
     bool DrawWithShader(ID3D11DeviceContext* immediate, ID3D11Texture2D* source, ID3D11RenderTargetView* target,
         UINT targetWidth, UINT targetHeight, int shiftX, ID3D11PixelShader* pixelShader, ID3D11Buffer* constantsB1);

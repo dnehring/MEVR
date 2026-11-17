@@ -169,6 +169,35 @@ Constants MakeConstants(unsigned srcW, unsigned srcH, unsigned dstW, unsigned ds
     return k;
 }
 
+Constants Shifted(Constants k, int shiftPx) {
+    if (shiftPx == 0) {
+        return k;
+    }
+    // Target pixel ip shows what ip - shift showed: source pixel = (ip - shift) * scale + offset.
+    float scale = 0.0f;
+    float offset = 0.0f;
+    std::memcpy(&scale, &k.con0[0], sizeof scale);
+    std::memcpy(&offset, &k.con0[2], sizeof offset);
+    k.con0[2] = Bits(offset - static_cast<float>(shiftPx) * scale);
+    return k;
+}
+
+Size EyeImageSize(Settings const& settings, unsigned srcW, unsigned srcH, unsigned recW, unsigned recH) {
+    Size const source{srcW, srcH};
+    if (settings.method != Method::Fsr || srcW == 0 || srcH == 0 || recW <= srcW || recH <= srcH) {
+        return source;
+    }
+    double const factor = std::min(static_cast<double>(recW) / srcW, static_cast<double>(recH) / srcH);
+    if (factor < 1.05) {
+        return source;  // nothing to gain over the runtime's own scale of a few percent
+    }
+    auto const even = [](double v) { return static_cast<unsigned>(std::lround(v / 2.0)) * 2u; };
+    Size size{even(srcW * factor), even(srcH * factor)};
+    size.width = std::max(size.width, srcW);
+    size.height = std::max(size.height, srcH);
+    return size;
+}
+
 std::string ShaderSource(std::string_view ffxA, std::string_view ffxFsr1) {
     std::string source;
     source.reserve(ffxA.size() + ffxFsr1.size() + sizeof kEntryPoints + 128);

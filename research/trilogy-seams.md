@@ -24,7 +24,7 @@ They shared 18 names, and of those six differed in signature, so no host module 
 - The host implements a common seam **once for all games** in `src/plugin/Seams.cpp` when the answer is the same
   everywhere; otherwise in that game's bridge, in `namespace MevrSeams { ... }`.
 
-## The common seams (32)
+## The common seams (33)
 
 Signatures are in `src/halcyon/MevrSeams.h`; that header is the reference, with the thread each runs on. "Host" names
 where each game's definition is. `Seams.cpp` means one definition for all three.
@@ -41,6 +41,7 @@ where each game's definition is. `Seams.cpp` means one definition for all three.
 | view | `OnViewBuilt(worldView, headLook, headAim, lookYawUU, lookPitchUU, headOrientation[4], headPosition[3], offsetRightUU, offsetUpUU, offsetForwardUU, unitsPerMeter, floorWorld)` | HalcyonBridge.cpp | HalcyonSequelBridge.cpp | HalcyonSequelBridge.cpp | all |
 | view | `FloorViewTranslation(replay, rawCameraZ, rightZ, upZ, forwardZ, right*, up*, forward*)` | FloorLock.cpp | HalcyonSequelBridge.cpp | HalcyonSequelBridge.cpp | all |
 | view | `RecenterOrientation(head[4], automatic, orientation[4])` | RecenterTilt.cpp | RecenterTilt.cpp | RecenterTilt.cpp | all |
+| eye image | `EyeImageSize(sourceW, sourceH, recommendedW, recommendedH, &w, &h)` | - | Seams.cpp | Seams.cpp | LE2, LE3 |
 | eye image | `OnEyeSource(eye, source)` | - | HalcyonLe2Bridge.cpp | HalcyonLe3Bridge.cpp | LE2, LE3 |
 | eye image | `CopyIntoImage(context, image, source, shiftX, eye)` | - | HalcyonLe2Bridge.cpp | HalcyonLe3Bridge.cpp | LE2, LE3 |
 | eye image | `OnEyeCopied(eye, image, index, acquired, waited)` | - | HalcyonLe2Bridge.cpp | HalcyonLe3Bridge.cpp | LE2, LE3 |
@@ -63,6 +64,10 @@ where each game's definition is. `Seams.cpp` means one definition for all three.
 
 A `-` means that game's host does not define the seam, because its renderer does not call it. Calling it there is a
 link error, which is the intended signal: define it in that game's bridge first.
+
+Added 2026-11-16 by lane EY (research/27 section 9): `EyeImageSize`, which the sequels' `EnsureAerSwapchains` asks for
+the eye images' size, so ME1's FSR upscale in `CopyIntoImage` has something to scale to. LE1 still calls none of the
+eye-image group: its blit keeps its own `EyeColour*`/`EyeUpscale` seams onto the same shared core (section 9.3 says why).
 
 ### What changed against the audit's list of 26, and why
 
