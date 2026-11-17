@@ -1459,18 +1459,23 @@ void* __fastcall CalcViewDetour(void* lp, void* family, void* loc, void* rot, vo
             InvMatScanTick(svu);             // [INVMAT] pristine-view scan (one-shot; must precede any edit)
             float he = g_halfEyeUU.load(std::memory_order_relaxed);
             if (g_swapEyes.load(std::memory_order_relaxed)) he = -he;
-            // [MEVR] Same lens-dependent, parallel-camera baseline as LE1/LE2; pass 0 remains left.
-            if (g_mevrCineScreen.load(std::memory_order_acquire)) {
+            // [MEVR] Same lens-dependent, parallel-camera baseline as LE1/LE2; pass 0 remains left. Read once: the Present
+            // thread may flip it mid-Draw.
+            const bool mevrScreen = g_mevrCineScreen.load(std::memory_order_acquire);
+            if (mevrScreen) {
                 he = ::ME2VR::MevrBridge::CineScreenHalfSeparationUU(MevrCinemaHalfFov(svu));
             }
             g_sfrCalcViews.fetch_add(1, std::memory_order_relaxed);   // [SFR2]
             // [MEVR] Life-size stereo (research/30 section 9): this pass from its eye's real place, our plan's offset along the
-            // camera's right, up and forward in place of the half eye; pass 0 takes the newest plan, pass 1 keeps it.
+            // camera's right, up and forward in place of the half eye; pass 0 latches (never upstream's mode 0 while
+            // life-size is on: research/30 section 9.5), pass 1 keeps it.
             const ::MevrMetricView::ViewFields mevrFields{kFsvViewMatrix, kFsvProjectionMatrix, kFsvTranslatedViewMatrix,
                 kFsvTranslatedViewProjMatrix, kFsvPreViewTranslation, kFsvViewProjectionMatrix, kFsvViewOrigin};
-            const ::MevrMetricView::Plan& mevrPlan = ::MevrMetricView::Latch(t_replay);
-            const bool mevrMetric = mevrPlan.mode != 0 && !g_mevrCineScreen.load(std::memory_order_acquire);
             auto mevrLog = [](const char* line) { ME2VR::Log::Line(line); };
+            const ::MevrMetricView::Plan& mevrPlan = ::MevrMetricView::Latch(t_replay,
+                mevrScreen ? ::MevrMetricView::Frame::CinemaScreen : ::MevrMetricView::Frame::World,
+                g_mevrLifeSize.load(std::memory_order_acquire), mevrLog);
+            const bool mevrMetric = mevrPlan.mode != 0 && !mevrScreen;
             const float signedUU = t_replay ? +he : -he;   // pass1 = right (+), pass0 = left (-)
             if (mevrMetric)
             {

@@ -1483,16 +1483,20 @@ void* __fastcall CalcViewDetour(void* lp, void* family, void* loc, void* rot, vo
 #if defined(MEVR_ASI)
             // [MEVR] ME1's 3D cinema screen (research/52): two parallel cameras on the director's camera, half our plan's
             // separation each side, planned from THIS view's own lens (proj[0] = 1/tan(halfH)); pass 0 always the left eye
-            // (the submit routes it so: no swap), no convergence.
-            if (g_mevrCineScreen.load(std::memory_order_acquire))
+            // (the submit routes it so: no swap), no convergence. Read once: the Present thread may flip it mid-Draw.
+            const bool mevrScreen = g_mevrCineScreen.load(std::memory_order_acquire);
+            if (mevrScreen)
                 he = ::ME2VR::MevrBridge::CineScreenHalfSeparationUU(MevrViewHalfFovH(svu));
             // [MEVR] Life-size stereo (research/30 section 9): this pass from its eye's real place, our plan's offset along the
-            // camera's right, up and forward in place of the half eye; pass 0 takes the newest plan, pass 1 keeps it.
+            // camera's right, up and forward in place of the half eye; pass 0 latches (never upstream's mode 0 while
+            // life-size is on: research/30 section 9.5), pass 1 keeps it.
             const ::MevrMetricView::ViewFields mevrFields{kFsvViewMatrix, kFsvProjectionMatrix, kFsvTranslatedViewMatrix,
                 kFsvTranslatedViewProjMatrix, kFsvPreViewTranslation, kFsvViewProjectionMatrix, kFsvViewOrigin};
-            const ::MevrMetricView::Plan& mevrPlan = ::MevrMetricView::Latch(t_replay);
-            const bool mevrMetric = mevrPlan.mode != 0 && !g_mevrCineScreen.load(std::memory_order_acquire);
             auto mevrLog = [](const char* line) { ME2VR::Log::Line(line); };
+            const ::MevrMetricView::Plan& mevrPlan = ::MevrMetricView::Latch(t_replay,
+                mevrScreen ? ::MevrMetricView::Frame::CinemaScreen : ::MevrMetricView::Frame::World,
+                g_mevrLifeSize.load(std::memory_order_acquire), mevrLog);
+            const bool mevrMetric = mevrPlan.mode != 0 && !mevrScreen;
             if (mevrMetric)
             {
                 EnsureConvoFpOrigin(svu);   // as ApplyEyeOffset does first

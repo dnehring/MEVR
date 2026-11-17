@@ -1935,6 +1935,11 @@ void RunFrame() noexcept
     // may select the head-locked quad. Everything else stays in an immersive projection.
     const bool flatPresentation = moviePlayback || ME2VR::D3DCapture::GetMenuMode() ||
                                   ME2VR::CalcViewHook::GetCinematic();
+#if defined(MEVR_ASI)
+    // [MEVR] life-size stereo (research/30 section 9.5): a frame shown flat expires the plan, so a pass the SFR branch still
+    // renders meanwhile (a loading movie's frames) is from the eyes' centre, never one eye's off-centre frustum.
+    if (flatPresentation) ::MevrMetricView::Expire();
+#endif
     const bool splitSourceFresh = g_framesSinceSplit < kSbsHoldFrames;
     const bool stereoMonoFallback = stereoMode && !splitSourceFresh && !flatPresentation;
     monoGameplay = (monoMode || stereoMonoFallback) && !flatPresentation;
