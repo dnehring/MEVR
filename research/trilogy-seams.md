@@ -343,9 +343,9 @@ So the change adds nothing to ME3's picture under the menu; it changes what the 
 ME2: the HUD panel stays armed (the game's UI no longer falls back into the eye images when the menu opens, where the
 menu's frosted backdrop and, in a conversation, the 3D screen under the menu showed it), the galaxy window keeps its
 captures (`plugin/GalaxyHologram`'s `Frame::menuOpen` is "Halcyon's menu (ours takes no frame here)"), and the sights and
-the ring keep their state. Keeping our own quads (the HUD, the ring, the wheels) visible under our menu, which the owner's
-"other elements stay open" may mean, would remove the two `count = 0` on all three games and needs SteamVR's quad sorting
-checked in a headset: held for the owner (the coordinator, 2026-11-16).
+the ring keep their state. Keeping our own quads (the HUD, the ring, the wheels) visible under our menu was put to the owner
+(it would remove the two `count = 0` on all three games): **no, the owner (2026-11-16): they stay hidden under our menu on
+all three games**, today's behaviour.
 
 ## One recenter rule
 

@@ -53,7 +53,7 @@ Each rule has who decided it, when, and where it was said. "The continuation pla
 | 17 | **Squad weapons stay on the left-trigger menu.** The weapon row inside the right-B placement wheel was built and reverted at the owner's request. | the owner, before 2026-11-15 | M6 guide B "Preserve the approved interaction" |
 | 18 | **The game stays the authority** for damage, ammo, inventory, cooldowns, resources and plot. VR asks the game to act through its own functions and keeps no writable second copy. A reload is done by hand but the game counts the ammo. | 2026-10-07; 2026-11-13 | [trilogy-design.md](trilogy-design.md) rule 3; le2-port-implementation-plan.md "Product decisions"; LE3 plan rule 5 |
 | 19 | **No new player-facing default without the owner's yes.** ME1's value is the default; a lane reports a recommendation instead of flipping one. | the owner, 2026-11-11; the lanes' rules, 2026-11-16 | research/le2-picture.md section 5 |
-| 20 | **Everything consistent.** "Ideally I want everything consistent. Me3 I'd prefer other elements stay open if it helps with immersion." A per-game difference in behaviour needs a reason the game forces; our menu treats the game's layers the same on every game (whether our own quads stay visible under it is the owner's open question). | the owner, 2026-11-16 | research/trilogy-seams.md "ME3 as ME1", "One recenter rule" |
+| 20 | **Everything consistent.** "Ideally I want everything consistent. Me3 I'd prefer other elements stay open if it helps with immersion." A per-game difference in behaviour needs a reason the game forces; our menu treats the game's layers the same on every game, and our own quads stay hidden under it on all three (the owner, 2026-11-16, question 10). | the owner, 2026-11-16 | research/trilogy-seams.md "ME3 as ME1", "One recenter rule" |
 
 ### How the work is done
 
@@ -812,9 +812,8 @@ Each is asked once. "Today" is what the build does if nobody answers; no default
    only our drawn menu. Is the drawn menu the sequels' style for good, or is the game's wheel at the hand still wanted?
 10. **Our own quads under our menu** (put to the owner by the coordinator, 2026-11-16; research/trilogy-seams.md "ME3 as
     ME1"). On every game our menu (and the running calibration) is the only quad of ours while it is drawn; the world stays
-    under it (today). Keep the HUD panel, the ring and the wheels visible under it too, for immersion? That is one change for
-    all three games (the `count = 0` in `plugin/MenusLe2` and `HalcyonOverlays`) with SteamVR's quad sorting to check in a
-    headset.
+    under it. Keep the HUD panel, the ring and the wheels visible under it too? **Answered 2026-11-16, the owner: no; they
+    stay hidden under our menu on all three games (today's behaviour).** Nothing to build.
 
 **Defaults waiting for a seen result and a yes** (not questions yet): `[SquadOrders] place` on the sequels (ME1's is on),
 `[Traversal] cue`, ME3's melee and traversal gestures, ME3's no-snap (a diagnostic opt-in), the galaxy projector replacing
