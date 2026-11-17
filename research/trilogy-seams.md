@@ -185,7 +185,7 @@ The adapter, and what each game does in it:
 | `SessionStopped` | nothing | the same resets as at creation, and the native panel's pointer flags |
 | `FrameBegun` | nothing | the galaxy table's session and space identity, `gMapTracked` (focused and tracked), the spoken-reply panel's focus |
 | `FramePublished` | nothing | `host_view::Reset()` off foot or under Halcyon's menu (those paths do not build a view) |
-| `Recentered` | forgets the galaxy table | also drops the published controllers, the floor lock's views, the interaction label, the traversal cue and this frame's cinema screen |
+| `Recentered` | forgets the galaxy table | resets the galaxy table and the native map's input lease, the spoken-reply context, the traversal presentation (its own state; until lane U3 also the shared drops, "One recenter rule") |
 | `PadKeeps` | false | the native map is up, or a traversal presentation runs |
 | `PadOrbitalTriggers` | the orbital scanner's mode | both map modes while the session owns the map |
 | `PadMerged` | the pull that picked a planet is kept from the scanner until let go (`gGalaxyTriggerLatch`) | the native map's input lease (`NativeMapInputLease::Apply`) |
@@ -194,7 +194,8 @@ The adapter, and what each game does in it:
 | `Overlay*` | see below | see below |
 
 `Facts`: `invalidViewAtOnce` (ME3 yes: `OnViewBuilt` publishes a view that is not the world's without waiting for the
-floor lock's 100 ms of quiet; ME2 waits), and five for the composition (below).
+floor lock's 100 ms of quiet; ME2 waits), and two for the composition (below). Lane U3 removed three (2026-11-16: "One
+overlay composition", "ME3 as ME1").
 
 **What changed in behaviour, by game.** The bodies were merged, not rewritten; where the two differed, the choice is
 listed here so a regression can be traced.
@@ -211,9 +212,7 @@ listed here so a regression can be traced.
   cleared it only at the end of `OverlayLayers`).
 - *`OnRecentered`: ME1's list for both* (`recenter_tilt::Committed`, `xr_host::NoteRecentered`, the squad's layers, the
   HUD panel, the world panels, our menus, the spoken-reply panel). ME3 gains `hud_panel::Recentered()` (ME1 and ME2
-  had it). ME3's extra drops stay ME3's, in its adapter: publishing "no controllers" and resetting the floor lock at
-  every recenter is not what ME1 or ME2 do, and the mod sees a frame without hands there. **Decision open:** adopt it for
-  all three or remove it from ME3 once ME3's recenter is seen in a headset.
+  had it). ME3's extra drops stayed ME3's, in its adapter, until lane U3 removed them ("One recenter rule").
 - *`MergeMotionControllers`: one skeleton.* The pad's lock is taken before the early return on both (ME2 took it
   after). The conversation triggers' dev log line (`conversation pad 0: LT .., RT ..`) is both games' now.
 - *`WrapSessionFunctions`:* the log line names the renderer (`halcyon-le2`, `halcyon-le3`); ME3 had none.
@@ -261,10 +260,7 @@ What only a game knows is in its adapter:
 
 | adapter | ME2 | ME3 |
 |---|---|---|
-| `Facts::menusHideGameplay` | no: the gameplay layers stay under our menu, as on LE1 | yes: our menu and the calibration hide them |
-| `Facts::panelColour` | yes: the panel's UI gets the colour correction, as LE1's | no (lane EY decides) |
-| `Facts::weaponsNeedPublishedAim` | no | yes: sights and ring only with the mod's published hand aim |
-| `Facts::cueOnFootOnly` | no | yes |
+| `Facts::panelColour` | yes: the panel's UI gets the colour correction, as LE1's | yes since lane EY (research/27 section 9) |
 | `Facts::hudLayout` | ME2's bands | unused (no pieces) |
 | `OverlayBegin` | releases the galaxy table's pointer surface when the table is gone | resets the map lease and the spoken-reply context on an unusable frame; releases a native panel's pointer surface |
 | `OverlayLabel` | no screen of ours has the panel | the mod's label is visible and has a measured crop |
@@ -330,6 +326,110 @@ started within 60 s. The title submits only the native panel's quad, no projecti
 to find there; it is untried in gameplay, which needs a loaded save.
 
 **LE1**: no line LE1 compiles changed (the new files are in the sequel hosts' source lists only), so no same-pose pair.
+
+## ME3 as ME1: the menu, the ring, the cue (lane U3)
+
+2026-11-16. The owner: "Ideally I want everything consistent. Me3 I'd prefer other elements stay open if it helps with
+immersion." Lane U2's merge had left facts only ME3 answered yes to, and ME3's own recenter drops ("One recenter rule"
+below). Each was traced to the commit that made it, then removed unless ME3's game forces it:
+
+| ME3's difference | where it came from | forced by ME3's game? | now |
+|---|---|---|---|
+| `menusHideGameplay`: our menu and the calibration hid the gameplay layers | `bc8d7922` (2026-11-15, "One submit owner. Suppress gameplay presentation under either menu or guided calibration"), `b4cecb55` the same for the calibration; written for the candidate host before the shared composition; no fault measured behind it | no | removed: the layers are given only the renderer's own menu, as on ME1 and ME2 |
+| `weaponsNeedPublishedAim`: the ring only with a fresh valid aim ray | `bc8d7922`, research/le3-dialogue-cinema.md "Shared gameplay overlay candidate": "simply connecting a controller does not claim working weapon aim" | no: the mod reports hand aim only when its aim works (`src/mod/Mod.cpp`, `aiming`) and sends an aim ray every tick it does (`PublishAimRay`), so the ring was already on the mod's valid ray; the fact differed only for a host and mod that don't match (the ring then follows the right controller's aim pose) | removed; both sequels take LE1's `ControllerAimActive` (the mod's hand aim and the right controller's aim tracked within 1 s: `sequel_bridge::ControllerAimActive`), which ME2 lacked too |
+| `cueOnFootOnly`: the traversal cue only in the on-foot mode | `62b84917` ("authored scenes own traversal") | no: `game/Le3Traversal` shows a cue only when its `Guard` passes (game mode 0, no authored seated scene, no menu) and a blink only through its own move outside authored scenes, as `game/Le2Traversal` does on ME2 | removed: the cue on any world frame, ME2's way |
+| `panelColour` | lane EY's eye-image pipeline | no | yes on ME3 too since lane EY (both games now answer yes: the fact could go; EY's call) |
+| `invalidViewAtOnce` | ME3's flat and menu paths stop calling the floor lock's pass without a last invalid view | yes (the renderer's own paths) | kept |
+
+**What a player sees under our menu, on every game:** our menu, or the running calibration, is the only quad of ours while
+it is drawn. `plugin/MenusLe2::Layers` (both sequels) and LE1's `HalcyonOverlays` drop everything composed before it
+(`count = 0`; LE1's comment: "SteamVR may sort quads by distance"), and Halcyon's projection (the world) stays under it.
+So the change adds nothing to ME3's picture under the menu; it changes what the modules are given there, as on ME1 and
+ME2: the HUD panel stays armed (the game's UI no longer falls back into the eye images when the menu opens, where the
+menu's frosted backdrop and, in a conversation, the 3D screen under the menu showed it), the galaxy window keeps its
+captures (`plugin/GalaxyHologram`'s `Frame::menuOpen` is "Halcyon's menu (ours takes no frame here)"), and the sights and
+the ring keep their state. Keeping our own quads (the HUD, the ring, the wheels) visible under our menu was put to the owner
+(it would remove the two `count = 0` on all three games): **no, the owner (2026-11-16): they stay hidden under our menu on
+all three games**, today's behaviour.
+
+## One recenter rule
+
+The same on all three games (lane U3, 2026-11-16). A recenter re-places what stands in the room (the HUD panel, the world
+panels and the 3D cinema screen, the squad's panel, our menu, the calibration, the spoken-reply panel; LE1 also its wheel
+quad) and raises the floor's recenter count (`xr_host::NoteRecentered`; the mod's body follow and Mako controls re-anchor on
+it, ME3's traversal presentation expires on it). Nothing published is dropped. A game's adapter resets only its own state
+placed in the old space: ME2 its galaxy table; ME3 its galaxy table and the native map's lease, the spoken-reply lease and
+the traversal presentation. LE1: `HalcyonOverlays.cpp`'s `OnRecentered`; the sequels: `HalcyonSequelBridge.cpp`'s.
+
+Until then ME3 also dropped the published controllers, the floor lock's views, the interaction label, the traversal cue and
+the frame's cinema screen ("old app-space poses must not mix with the new head space"); ME1 and ME2 never did.
+
+The decision, **inferred from the code and a host log line, not seen in a picture**:
+
+1. **The frame order is the same in all three Halcyons.** `OnFrameBegun` samples the controllers in the app space; the
+   recenter replaces the app space later in the same frame; the composition comes after it (LE1's `xr_session.cpp`
+   `RunFrame`: `OnFrameBegun`, then `DoRecenter`, then `OverlayLayers`; ME2's and ME3's `me2_xr.cpp`: `OnFrameBegun`, then
+   `RecenterAppSpace` at the top of the render path, then `CineScreenLayers` and `OverlayLayers`). So in a recenter's frame,
+   on every game, poses sampled in the old space are composed in the new one, for that frame; what the mod published from
+   them (the aim ray, the label, the cue, the HUD pieces) stays in the old space until its first tick after the next sample.
+   ME3's drop removed neither: the ring, the label and the cue come from the mod's last tick.
+2. **What the drop cost.** Until the next sample the mod read no controllers, which it takes as every held grip and trigger
+   let go: `game/SquadWeapons` (`gTrigger = controllers.active && ...`; a let-go gives the highlighted weapon),
+   `game/Throwables` (inactive controllers stand it down); the holsters keep a latch of their own for this. The sequels' recenter
+   gesture holds the left grip (Back is the left menu button with the left grip), so the drop read as a let-go and then a
+   new squeeze. The host's line below counts the engine ticks from the recenter to the first sample in the new space.
+3. **The other drops did nothing the frame needs.** The cinema screen is cleared at `OnFrameBegun` and placed by
+   `CineScreenLayers` after the recenter, so its reset was a no-op; the label and the cue are sent again by the mod every
+   tick; the floor lock's views are paired with a floor sample whose recenter count changes with the same sample.
+
+**Not measurable on the fake headset:** its head never moves and a replay's poses are app-space numbers, so a recenter there
+is the identity, and no snapshot can show a frame in the old space. In a headset it is one frame (11 ms at 90 Hz) of the
+hands' quads turned by the recenter's own turn, in the frame where the world turns by it too. ME1 has shipped with it and no
+report names it.
+
+The log line, once per recenter on both sequels (`HalcyonSequelBridge.cpp`, the first `OnFrameBegun` after a recenter):
+`halcyon le<n> bridge: recenter: that frame's controllers had been sampled X ms before it, in the old app space (A), and its
+layers went in the new one (B); the first sample in the new space came Y ms after it, N engine ticks later`.
+
+### Lane U3's checks
+
+On the fake headset, 2026-11-16, the merged branch (main `4c17807b` with lane EY's pipeline, plus this lane's commits), each
+stretch restored with `verification: 0 differences`. Both runs replayed `make-walk-recording.py --plan
+stand:10,back-button:0.12,stand:0.12,back-button:0.12,stand:25 --live-head --hands view` with its inputs (tracked hands, then
+Back twice within 400 ms with the left grip held: the sequels' recenter), then a looping hands-only replay, our menu opened
+and closed through `mainmenu.request`, and a snapshot at each step (the recordings and the script in
+`%LOCALAPPDATA%\MEVR\u3-lane`).
+
+**ME3** (renderer preview, Save 31 on the Normandy, session `20261116-173100-560-LE3-u3-le3`):
+- the recenter: `halcyon le3 bridge: recenter: that frame's controllers had been sampled 0.2 ms before it, in the old app
+  space (0x1349f290b10), and its layers went in the new one (0x1354a7e7080); the first sample in the new space came 19.2 ms
+  after it, 1 engine tick later`. Under ME3's former rule that tick read no controllers (the Back gesture's held left grip
+  let go and squeezed again).
+- the ring by LE1's rule: `the right controller aims weapons: the hand reticle is on its aim` with the replay's hands,
+  `controller aim stopped` when it ended. Snapshot `2026-11-16_17-35-38-801` has the `reticle` layer; the mod's aim ray was
+  1,093 ms old there (the game thread stalled after the Back double tap; that snapshot took 25 s), so the ring stood on the
+  right controller's aim pose: `plugin/HandReticle`'s fallback, the same on LE1 and ME2 ("Found" below).
+- our menu over gameplay: snapshot `2026-11-16_17-36-22-137` has the world (Shepard on the Normandy's deck) in both eyes and
+  the `mainmenu` layer alone of ours, as on ME1 and ME2; before (`17-36-07-831`) and after (`17-36-34-247`) the omni-tool's
+  wrist target is there. ME3 shows no HUD panel in on-foot gameplay yet (capability `hudPanelGameplay` off), so the armed
+  panel under the menu has nothing to show on this deck.
+
+**ME2** (Save 4, Freedom's Progress, session `20261116-174137-798-LE2-u3-le2`; `launch.ps1` could not adopt the game, the
+known two-process start: the shared notes' workaround, the save loaded with `mevr load`, the game stopped by its pid):
+- the recenter: `halcyon le2 bridge: recenter: ... sampled 1.8 ms before it, in the old app space (0x18e4920d8b0), and its
+  layers went in the new one (0x18e33c159c0); the first sample in the new space came 11.0 ms after it, 1 engine tick later`.
+- snapshots: `2026-11-16_17-44-15-358` the HUD panel; `17-44-41-268` with hands: the HUD panel, the wrist piece, the gun's
+  sight (the ring hides behind it, LE1's rule); `17-45-33-171` our menu alone over the world; `17-45-46-666` after it, the HUD
+  panel and the wrist piece again. ME2's behaviour is unchanged except the ring's one-second tracking hold.
+
+**LE1:** no line LE1 compiles changed in this lane (the files are in the sequel hosts' lists only), so no same-pose pair; its
+frame order is read from `src/halcyon/le1/xr_session.cpp` (`OnFrameBegun`, then `DoRecenter`, then `OverlayLayers`).
+
+**Found:** `plugin/HandReticle` falls back to the right controller's aim pose whenever the mod's aim ray is over 1 s old,
+also after the mod has published one: a stalled game thread in game mode 0 moves the ring from the gun's line to the
+controller's for the stall, on all three games (seen on ME3 above; ME3's removed `weaponsNeedPublishedAim` used to hide
+it). One shared fix, if wanted: fall back only before the mod's first ray (`sequence == 0`), else hide; it touches LE1's
+host, so it needs an LE1 same-pose pair.
 
 ## State
 
