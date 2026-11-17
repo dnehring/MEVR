@@ -8,6 +8,7 @@
 
 #include "core/Log.hpp"
 #include "engine/SettingsFile.hpp"
+#include "plugin/ScreenReticleRequest.hpp"
 #include "halcyon/le2/calcview_hook.h"
 #include "halcyon/le2/d3d_capture.h"
 #include "halcyon/le2/engine_probe.h"
@@ -157,19 +158,14 @@ float RecenterTiltDeg() noexcept {
     return 60.0f;  // ME1's default (vr_config.h recenterTiltDeg)
 }
 
-// As LE1's (pchud.cpp's [MEVR] SetCrosshairHidden): our layers ask each XR gameplay frame, the request lasts 500 ms, and
-// the mod's game/ScreenReticle hides ME2's crosshair movie on the game thread while it stands (HostServices
-// hideScreenReticle). Its expiry gives the movie back when VR frames stop.
-namespace {
-std::atomic<std::uint64_t> gHideCrosshairUntilMs{0};
-}
-
+// The sequels' one request (plugin/ScreenReticleRequest.hpp, LE1's 500 ms rule): the mod's game/ScreenReticle hides ME2's
+// crosshair movie on the game thread while it stands (HostServices hideScreenReticle).
 void SetScreenReticleHidden(bool hidden) noexcept {
-    gHideCrosshairUntilMs.store(hidden ? GetTickCount64() + 500 : 0, std::memory_order_release);
+    screen_reticle_request::Set(hidden);
 }
 
 bool ScreenReticleHidden() noexcept {
-    return GetTickCount64() < gHideCrosshairUntilMs.load(std::memory_order_acquire);
+    return screen_reticle_request::Get();
 }
 
 void SetAuthoredHudLayout(bool on) noexcept {

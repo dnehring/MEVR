@@ -346,10 +346,12 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Lives in:** `plugin/HudPanel`, `plugin/HandReticle`, `game/ScreenReticle`.
 - **Left, ME3:** the gameplay HUD is on the panel since 2026-11-16 (lane HU: `hudPanelGameplay`, ME1's `Hud()` defaults;
   the stereo plan in mode 2 by itself; research/le3-hud-panel.md); its combat HUD is unseen (no combat fixture). The crosshair
-  isn't hidden: `hideScreenReticle` isn't served and `ScreenReticle` stands down on ME3 (ME3 has no
-  `BioSFHandler_Reticule`), so in combat it would be drawn on the panel.
+  is hidden since lane CH (2026-11-17; research/le3-hud-panel.md "The crosshair hidden"): `screenReticleHide` on, the sequels'
+  one request (`plugin/ScreenReticleRequest.hpp`), `ScreenReticle`'s LE3 adapter zeroing the alpha of ME3's reticle movie
+  (`SFXSFHandler_Reticle`) in gameplay, the scope view left to the game. Unseen in combat: its check is the combat save's
+  (research/le3-combat-fixtures.md "The crosshair hidden").
 - **Closes when:** an ME3 gameplay snapshot has the HUD on the panel layer and clean eyes, with the ring and no crosshair.
-- **Waits for:** T02 for the layer order. **Who:** GF has `ScreenReticle`'s latent default; HU (2026-11-16) the ME3 HUD panel; ME3's crosshair has nobody.
+- **Waits for:** T02 for the layer order; the owner's ME3 combat save. **Who:** GF has `ScreenReticle`'s latent default; HU (2026-11-16) the ME3 HUD panel; CH (2026-11-17) ME3's crosshair.
 
 #### T15 The cinema screen, its backdrop, the fade, and interrupts [R21]
 - **State:** LE1 done · LE2 verify · LE3 verify

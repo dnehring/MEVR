@@ -343,3 +343,26 @@ What each must show (`powers-<time>\verdicts.txt` and `lines.txt`, `place-<time>
    <name>'s AI after the order: ...` says what each AI did with the order (state, queued orders, hold point). The move
    marker (`UpdateMoveToIndicator`, placed before every hold order) is ME3's too; a `the game's move marker ... wasn't placed`
    line is a failure to report.
+
+### The crosshair hidden on the first combat save (lane CH, 2026-11-17)
+
+ME3's crosshair is hidden under the hand reticle since lane CH (research/le3-hud-panel.md "The crosshair hidden"), but the
+Normandy has no weapon, so nobody has seen it go. In the same renderer-preview stretch as the weapon checks (`mevr weapon` draws
+one), with a gun in hand on foot:
+
+1. `tools\console.ps1 "mevr reticles"` must print `gameMode=0 gameplay=true VR suppression request=true`, a line `movie=...
+   SFXSFHandler_Reticle ...` with `_root._alpha=0 savedAlpha=<the game's, 100 or so>`, `reticle=SFXGUI_CrosshairReticle ...`
+   (the shotgun's or the heavy weapon's for those), `suppress=true scope=false`. The log has `[MEVR-CROSSHAIR] movie=...` with
+   the same values.
+2. `tools\snapshot.ps1 -Tag ch-crosshair`: the `-hud.png` layer has the HUD's weapon and health clips and **no crosshair at its
+   centre**; `-left.png` shows our ring at the hand's aim and nothing at the panel's centre. A crosshair still drawn there: the
+   game draws it from another movie; write down `mevr reticles`'s line and the snapshot, and report it.
+3. The A/B, the crosshair back: `tools\console.ps1 "mevr omni computer"` (the Mission Computer, GUI mode 9: the request ends)
+   then `"mevr reticles"`: `gameplay=false ... suppress=false`, `_root._alpha=<the saved value>`, and the log's
+   `[MEVR-CROSSHAIR] restore ... (no longer asked) ok=true`; `"mevr omni close"`, and the alpha is 0 again.
+4. The scope view: with a sniper rifle (`mevr weapon sniper`, if the save carries one) zoomed with the game's own zoom (LT on a
+   pad, if anything reaches it), `mevr reticles` says `zoomed=1 zoomReticle=SFXGUI_StandardSniperZoomReticle ... scope=true
+   suppress=false` and the alpha is the game's: the scope's picture shows on the panel as the game draws it. With no way to zoom
+   in VR, write that down instead.
+5. Anything else (a `restore` that never comes, `_root._alpha=?`, a fault in `GetVariableFloat`): set `screenReticleHide` back to
+   false in `plugin/RendererLe3.cpp` and report to the coordinator.

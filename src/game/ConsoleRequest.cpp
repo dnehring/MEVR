@@ -1802,12 +1802,13 @@ std::optional<std::string> RunOursLe3(ue3::Object* pc, std::string const& line) 
     if (verb == "weapon") { std::string which; words >> which; return holsters::DrawByName(which); }  // a carried weapon by family
     if (verb == "reload") { std::string rest; std::getline(words, rest); return reload::Command(rest); }
     if (verb == "omni") { std::string which; words >> which; return game_menu_request::Inject(which); }
+    if (verb == "reticles") return screen_reticle::Command();  // the crosshair's movie, what it shows, whether it is hidden
     if (verb == "omnitool") { std::string rest; std::getline(words, rest); return omni_tool::Console(rest); }  // on | off | display | state
     if (verb == "guimouse" || verb == "guikey") {
         std::string rest; std::getline(words, rest);
         return verb == "guimouse" ? gui_cursor::Command(rest) : gui_cursor::KeyCommand(rest);
     }
-    return std::string("unknown on ME3: mevr load <career> <save name> <index> <type> | mevr savedesc | mevr state | mevr weaponprobe | mevr galaxy state | mevr melee | mevr traversal | mevr powerwheel | mevr place ... | mevr squad | mevr say ... | mevr order ... | mevr context | mevr weapon <family> | mevr reload | mevr omni | mevr omnitool | mevr guimouse | mevr guikey | mevr thespian | mevr cover | mevr camera trace");
+    return std::string("unknown on ME3: mevr load <career> <save name> <index> <type> | mevr savedesc | mevr state | mevr weaponprobe | mevr galaxy state | mevr melee | mevr traversal | mevr powerwheel | mevr place ... | mevr squad | mevr say ... | mevr order ... | mevr context | mevr weapon <family> | mevr reload | mevr omni | mevr omnitool | mevr guimouse | mevr guikey | mevr thespian | mevr cover | mevr camera trace | mevr reticles");
 }
 #endif
 #endif // shared sequel save/state requests
@@ -2025,10 +2026,14 @@ std::optional<std::string> RunOursLe2(ue3::Object* pc, std::string const& line) 
     if (verb == "setloc") {
         return SetLocationLe2(words);
     }
+    if (verb == "reticles") {
+        return screen_reticle::Command();  // the crosshair's panels, what they show, whether they are hidden (as ME1's)
+    }
     return std::string("unknown on ME2:mevr load <career> <save name> <index> <type> | mevr savedesc | mevr state | "
                        "mevr camera trace <seconds> [label] | mevr armik step ... | mevr omni <screen> | mevr guimouse | mevr guikey ... | mevr cover ... | "
                        "mevr traversal ... | mevr squad | mevr context | mevr order ... | mevr say ... | mevr voice ... | mevr thespian ... | "
-                       "mevr instances <Package.Class> [text] | mevr activate <n> [input] | mevr setloc <n> X Y Z | mevr reload [status | try]");
+                       "mevr instances <Package.Class> [text] | mevr activate <n> [input] | mevr setloc <n> X Y Z | mevr reload [status | try] | "
+                       "mevr reticles");
 }
 
 #endif
