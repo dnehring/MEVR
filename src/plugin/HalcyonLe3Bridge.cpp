@@ -121,7 +121,7 @@ Facts const& Get() noexcept {
     static Facts const facts{
         "halcyon le3 bridge",
         true,   // invalidViewAtOnce: the flat and menu paths stop the floor lock's pass without a last invalid view
-        false,  // panelColour: lane EY's pipeline decides it
+        true,   // panelColour: the game's UI on the panel gets the eyes' correction, as on ME1 and ME2 (research/27 section 9)
         0,      // hudLayout: no HUD pieces on ME3 yet (capability hudPieces)
     };
     return facts;

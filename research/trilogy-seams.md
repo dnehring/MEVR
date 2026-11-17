@@ -24,7 +24,7 @@ They shared 18 names, and of those six differed in signature, so no host module 
 - The host implements a common seam **once for all games** in `src/plugin/Seams.cpp` when the answer is the same
   everywhere; otherwise in that game's bridge, in `namespace MevrSeams { ... }`.
 
-## The common seams (32)
+## The common seams (33)
 
 Signatures are in `src/halcyon/MevrSeams.h`; that header is the reference, with the thread each runs on. "Host" names
 where each game's definition is. `Seams.cpp` means one definition for all three.
@@ -41,6 +41,7 @@ where each game's definition is. `Seams.cpp` means one definition for all three.
 | view | `OnViewBuilt(worldView, headLook, headAim, lookYawUU, lookPitchUU, headOrientation[4], headPosition[3], offsetRightUU, offsetUpUU, offsetForwardUU, unitsPerMeter, floorWorld)` | HalcyonBridge.cpp | HalcyonSequelBridge.cpp | HalcyonSequelBridge.cpp | all |
 | view | `FloorViewTranslation(replay, rawCameraZ, rightZ, upZ, forwardZ, right*, up*, forward*)` | FloorLock.cpp | HalcyonSequelBridge.cpp | HalcyonSequelBridge.cpp | all |
 | view | `RecenterOrientation(head[4], automatic, orientation[4])` | RecenterTilt.cpp | RecenterTilt.cpp | RecenterTilt.cpp | all |
+| eye image | `EyeImageSize(sourceW, sourceH, recommendedW, recommendedH, &w, &h)` | - | Seams.cpp | Seams.cpp | LE2, LE3 |
 | eye image | `OnEyeSource(eye, source)` | - | HalcyonLe2Bridge.cpp | HalcyonLe3Bridge.cpp | LE2, LE3 |
 | eye image | `CopyIntoImage(context, image, source, shiftX, eye)` | - | HalcyonLe2Bridge.cpp | HalcyonLe3Bridge.cpp | LE2, LE3 |
 | eye image | `OnEyeCopied(eye, image, index, acquired, waited)` | - | HalcyonLe2Bridge.cpp | HalcyonLe3Bridge.cpp | LE2, LE3 |
@@ -63,6 +64,10 @@ where each game's definition is. `Seams.cpp` means one definition for all three.
 
 A `-` means that game's host does not define the seam, because its renderer does not call it. Calling it there is a
 link error, which is the intended signal: define it in that game's bridge first.
+
+Added 2026-11-16 by lane EY (research/27 section 9): `EyeImageSize`, which the sequels' `EnsureAerSwapchains` asks for
+the eye images' size, so ME1's FSR upscale in `CopyIntoImage` has something to scale to. LE1 still calls none of the
+eye-image group: its blit keeps its own `EyeColour*`/`EyeUpscale` seams onto the same shared core (section 9.3 says why).
 
 ### What changed against the audit's list of 26, and why
 
@@ -255,7 +260,7 @@ What only a game knows is in its adapter:
 
 | adapter | ME2 | ME3 |
 |---|---|---|
-| `Facts::panelColour` | yes: the panel's UI gets the colour correction, as LE1's | no (lane EY decides) |
+| `Facts::panelColour` | yes: the panel's UI gets the colour correction, as LE1's | yes since lane EY (research/27 section 9) |
 | `Facts::hudLayout` | ME2's bands | unused (no pieces) |
 | `OverlayBegin` | releases the galaxy table's pointer surface when the table is gone | resets the map lease and the spoken-reply context on an unusable frame; releases a native panel's pointer surface |
 | `OverlayLabel` | no screen of ours has the panel | the mod's label is visible and has a measured crop |
@@ -333,7 +338,7 @@ below). Each was traced to the commit that made it, then removed unless ME3's ga
 | `menusHideGameplay`: our menu and the calibration hid the gameplay layers | `bc8d7922` (2026-11-15, "One submit owner. Suppress gameplay presentation under either menu or guided calibration"), `b4cecb55` the same for the calibration; written for the candidate host before the shared composition; no fault measured behind it | no | removed: the layers are given only the renderer's own menu, as on ME1 and ME2 |
 | `weaponsNeedPublishedAim`: the ring only with a fresh valid aim ray | `bc8d7922`, research/le3-dialogue-cinema.md "Shared gameplay overlay candidate": "simply connecting a controller does not claim working weapon aim" | no: the mod reports hand aim only when its aim works (`src/mod/Mod.cpp`, `aiming`) and sends an aim ray every tick it does (`PublishAimRay`), so the ring was already on the mod's valid ray; the fact differed only for a host and mod that don't match (the ring then follows the right controller's aim pose) | removed; both sequels take LE1's `ControllerAimActive` (the mod's hand aim and the right controller's aim tracked within 1 s: `sequel_bridge::ControllerAimActive`), which ME2 lacked too |
 | `cueOnFootOnly`: the traversal cue only in the on-foot mode | `62b84917` ("authored scenes own traversal") | no: `game/Le3Traversal` shows a cue only when its `Guard` passes (game mode 0, no authored seated scene, no menu) and a blink only through its own move outside authored scenes, as `game/Traversal` does on ME2 | removed: the cue on any world frame, ME2's way |
-| `panelColour` | lane EY's eye-image pipeline | lane EY decides | kept, EY's |
+| `panelColour` | lane EY's eye-image pipeline | no | yes on ME3 too since lane EY (both games now answer yes: the fact could go; EY's call) |
 | `invalidViewAtOnce` | ME3's flat and menu paths stop calling the floor lock's pass without a last invalid view | yes (the renderer's own paths) | kept |
 
 **What a player sees under our menu, on every game:** our menu, or the running calibration, is the only quad of ours while

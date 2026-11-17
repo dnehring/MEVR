@@ -53,8 +53,8 @@ rows the change touches.
 
 | game | shared | adapted | forked | missing | n/a | present and verified (V) | present, unverified (U) |
 |---|---|---|---|---|---|---|---|
-| LE2 | 13 | 44 | 3 | 29 | 4 | 42 | 18 |
-| LE3 | 13 | 44 | 5 | 25 | 6 | 22 | 40 |
+| LE2 | 13 | 47 | 2 | 27 | 4 | 43 | 19 |
+| LE3 | 13 | 47 | 4 | 23 | 6 | 23 | 41 |
 <!-- /parity:totals -->
 
 LE1 is the reference, so it has no cells. A few LE1 systems are themselves n/a under Halcyon's renderer: the reflection
@@ -118,9 +118,10 @@ These are ordered by wasted or blocked work. Each is detailed under [Forks](#for
      (research/34 section 6.4; the generated module table has no "LExSDKv2" note left). Seen in the game: ME2 development
      `reflect: 637 of 637`, ME2 monolithic to gameplay, ME3's engine probe `621 of 621`; a monolithic ME3 run is left.
    - What is left for M7.2 (ME2) and L3-10 (ME3) is an install of each on the real game and the owner's word to offer one.
-10. **The eye-image pipeline is forked and incomplete on the sequels** (Forks 7, 8; R11, R13-R16).
-    - The sequels apply colour in `plugin/EyeCopy`'s own shader, without the tonemap and without FSR.
-    - The HDR answer is a second module (`plugin/HdrDisplayPolicy`).
+10. **The eye-image pipeline. One core since 2026-11-16 (lane EY, research/27 section 9)** (Forks 7, 8; R11, R13-R16).
+    - The sequels get ME1's FSR (`plugin/Upscale`) and tonemap (`MEVR_TONE`) in `plugin/EyeCopy`, on eye images
+      `MevrSeams::EyeImageSize` makes larger than the backbuffer; the HDR answer is one policy for the three.
+    - LE1 keeps its own call shape (its blit's `EyeColour*`/`EyeUpscale` seams) onto the same core.
     - `LightEnvironmentShadows False`, a workaround for LE1's replay, is applied on both sequels, which have no replay.
 
 The deferred first-person conversations (G36, G38) are the largest gap by line count: about 10,000 `Ready()`-gated
@@ -149,10 +150,10 @@ The [technique groups](#renderer-techniques-by-group) summary follows the table.
 | R10 | Motion-blur guard (`plugin/MotionBlurGuard.cpp`: MotionBlurProxy vtable swap, LE1 5 pairs, installed in `Entry.cpp`) | 2 (3 on LE1: settings re-enabled the blur, research/62) | **missing**: blur is off only through R12's `MotionBlur False`; `motionBlurProtected` not served | **adapted** V: 7 audited ME3 proxy pairs (`Addresses.hpp` LE3 `kMotionBlurProxyPairs`); a different reason (a null velocity buffer crashed the recenter); run `20261115-180239-899`, 2,825 guarded conversions, 0 unknown (research/le3-recenter-transition-failure.md) | LE2: a head-turn snapshot pair looking for one-eye smear (LE1's symptom) before porting. |
 | R11 | `LightEnvironmentShadows False` while the second eye is a replay (`game/SystemSettings.cpp` `Wanted()`) | 3 (our replay's workaround) | **shared** U: **applied without a replay**. An empty `[Performance] sharePass` reads as 5, so ME2 loses character shadows for nothing: with them on, the contact shadows sit under the squadmates' feet in both eyes alike (run `20261116-141434-005-LE2-pl-levers`, research/sequel-render-levers.md "Character shadows") | **shared** U: same by the code; the Normandy fixture was too dark to tell in a picture | Gate it on the host's second eye being a replay (a host flag, not `#if LE1`: a sequel that takes one-Draw needs it back). Lane GF. |
 | R12 | SystemSettings applied by the mod (`game/SystemSettings`: `scale set` after each level change, each boolean through its opposite) | 1 | **adapted** V: `#if MEVR_GAME_LE2` waits 3 s into gameplay; A/B runs A–J 2026-11-14 (research/le2-renderer-integration "The first-gameplay-frame fault", 87af915d) | **shared** U: no receipt that `scale set` applies on LE3 | LE3: the `system settings:` log lines in a protected run, plus an A/B of DynamicShadows. |
-| R13 | FSR 1 eye upscale (`plugin/Upscale`, `core/vr/Upscale`; seam `EyeUpscale` in BlitTextureToEyeWithFill) | 1 + seam | **missing**: eye swapchains at backbuffer size (le2 me2_xr.cpp `g_aerSwapW = g_bbW`) | **missing** | Run `core/vr/Upscale` inside `plugin/EyeCopy` (the sequels' `CopyIntoImage`), with eye swapchains at the headset's recommended size. |
-| R14 | Colour per headset (`plugin/Colour`, `core/vr/Colour`; LE1 seams `EyeColourShaders/Shader/Done` in Halcyon's eye blit) | 1 | **adapted** V: the same core in `plugin/EyeCopy`'s corrected shader (`MEVR_EYE_OUT`); research/le2-picture.md | **adapted** U: same path; headset set in `HalcyonLe3Bridge::OnSessionCreated` | LE3: a colour-profile snapshot A/B. Unify the call site (Forks 8). |
-| R15 | HDR tonemap (`MEVR_TONE` in le1 xr_session.cpp `ToEye`; `[Colour] tonemap`, `toneHue`) | 1 + seam | **missing**: EyeCopy's shader never calls `MevrTone` | **missing** | Moot while `hdrDisplay = -1`, the default on all three. Add it to EyeCopy with R13. |
-| R16 | HDR display answer (LE1 `HalcyonBridge.cpp` `HdrDisplayDesc`, through Halcyon LE1's GetDesc1 patch) and the float frame copied into the eyes | 1 | **forked** V: `plugin/HdrDisplayPolicy` (its own IDXGIOutput6::GetDesc1 hook from `OnFactory`) + `plugin/EyeCopy`; answered SDR, format 28 (research/le2-hdr.md) | **forked** V: same modules; 8-bit backbuffer in run `20261115-162209-606`; ctest `mevr-eye-copy-warp` | Unify: LE1's seam calls `hdr_display` (Forks 7). |
+| R13 | FSR 1 eye upscale (`plugin/Upscale`, `core/vr/Upscale`; seam `EyeUpscale` in BlitTextureToEyeWithFill) | 1 + seam | **adapted** V: the same module and passes (`upscale::Passes`) from `plugin/EyeCopy` (`upscale::Copy` inside `Blit::Run`); eye images larger than the backbuffer through the new seam `MevrSeams::EyeImageSize` in `EnsureAerSwapchains`; at 1280x720 the eyes were 1912x1076, FSR-scaled, twice the bilinear fill's gradient energy at the same mean luma, 0.08 ms of GPU per eye, session `20261116-155924-548-LE2-ey-picture` (research/27 9.5) | **adapted** U: same path; not engaged in the preview (its 3072x1728 backbuffer is wider than the recommended eye); ctest `mevr-eye-copy-warp` | LE3: a run with a backbuffer below the recommended size. The sequels' render-size row in the menu (research/27 9.4). |
+| R14 | Colour per headset (`plugin/Colour`, `core/vr/Colour`; LE1 seams `EyeColourShaders/Shader/Done` in Halcyon's eye blit) | 1 | **adapted** V: the same core in `plugin/EyeCopy`'s corrected shader (`MEVR_EYE_OUT`); research/le2-picture.md; 2026-11-16 Quest and a custom grade 100% within one step of the CPU reference, neutral the raw copy bit for bit (research/27 9.5) | **adapted** V: same path; headset set in `HalcyonSequelBridge`'s `OnSessionCreated`; Quest and the custom grade 100% within one step of the CPU reference, neutral bit for bit, session `20261116-161710-117-LE3-ey-me3`; the HUD panel's colour hooks on since 2026-11-16 (`panelColour`), unseen (the preview's panel is off) | LE1 keeps its own call shape onto the shared core (research/27 9.3). |
+| R15 | HDR tonemap (`MEVR_TONE` in le1 xr_session.cpp `ToEye`; `[Colour] tonemap`, `toneHue`) | 1 + seam | **adapted** U: `MEVR_TONE` in EyeCopy's corrected `PSPlain` (the identity for an 8-bit source); without LE1's SDR-white scale (`colorScale.x`) and without the clip in the neutral profile (research/27 9.2) | **adapted** U: same | Moot while `hdrDisplay = -1`, the default on all three; the white scale only if the owner brings HDR back. |
+| R16 | HDR display answer (LE1 `HalcyonBridge.cpp` `HdrDisplayDesc`, through Halcyon LE1's GetDesc1 patch) and the float frame copied into the eyes | 1 | **adapted** V: one policy, `hdr_display::Answer` in `plugin/HdrDisplayPolicy`, which LE1's seam forwards to (with LE1's one-time move of 0 to -1) and the sequels' own GetDesc1 hook (from `OnFactory`) calls; + `plugin/EyeCopy`; answered SDR, format 28 (research/le2-hdr.md) | **adapted** V: same modules; 8-bit backbuffer in run `20261115-162209-606`; ctest `mevr-eye-copy-warp` | The answer's log line in the next run of each game (`hdr display: ... answered`). |
 | R17 | Swapchain budget (`plugin/Swapchains`, `core/vr/SwapchainBudget`) | 1 | **shared** V: `swapchains: gun status ... made` (stretch `20261114-212412-lane-b2-layers`) | **shared** U | LE3: a `[Debug] swapchainCap = N` run, as LE1's of 2026-11-06. |
 | R18 | HUD panel (`plugin/HudPanel`; LE1 has 11 `HudPanel*` seams in d3d_capture.cpp via HalcyonOverlays) | 1 (core) / 2 (UI-draw classification) | **adapted** V: one `MevrHudPanelDraw` seam in le2 d3d_capture.cpp's three draw hooks, `PcHud::SetAuthoredLayout`; stretch `20261114-2152..2206-lane-b3-hud` (e03a7364) | **adapted** U: one `HudPanelDraw` site, but `RendererLe3::Hud().hudPanel = false`: only cinema UI and measured label crops leave the eyes, and the gameplay HUD stays in the eye images | LE3: measure the HUD's draw batches and crops (research/le3-shared-presentation "crop gates"), then turn `hudPanel` on. |
 | R19 | Hand reticle, with the game's crosshair hidden (`plugin/HandReticle`; `game/ScreenReticle`, `hideScreenReticle`) | 1 | **adapted** V: crosshair `_alpha=0` (stretch `20261115-001659-lane-b4-m2`, 30902fc6) | **adapted** U: ring through `SequelWeaponLayers`. Crosshair hide missing: `hideScreenReticle = nullptr` in BuildServices, and ScreenReticle compiles LE1 field names in its `#else` | LE3: a ScreenReticle LE3 branch (ME3's SDK list has no `BioSFHandler_Reticule`, see the generated names). |
@@ -281,7 +282,7 @@ These are not ME1 systems, so the [totals](#totals) don't count them. Their form
 | sequel-only | LE2 | LE3 | notes |
 |---|---|---|---|
 | Traversal, vault (`game/Traversal`, `plugin/TraversalCue`, `core/vr/Traversal`; ME1 has no vault) | origin V: research/le2-traversal.md "Measured (fake headset, 2026-11-14)" | forked U: `game/Le3Traversal.cpp` | Forks 4. |
-| The float frame into the eyes (`plugin/EyeCopy`) | V (R16) | V (R16) | Halcyon ME2/ME3 assumed an 8-bit swap chain. |
+| The float frame into the eyes (`plugin/EyeCopy`) | V (R16) | V (R16) | Halcyon ME2/ME3 assumed an 8-bit swap chain. Since 2026-11-16 the same module also upscales (R13) and tonemaps (R15). |
 | CIC residency during the map (`game/Le3GalaxyRetention`) | — | V: 541/541, run `20261115-214310-005` | ME1's map doesn't unload the CIC. |
 | Native GUI accessors (`game/Le3Gui`) | — | adapter | ME3's GUI is SFXGUIMovie, not BioSFManager. |
 | Diagnostic host (`MEVR_LE2_DIAGNOSTIC`: `engine/Le2DiagnosticHost`, `Le2ControlHost`, `core/qa`) | test-only host | — | Forks 10. |
@@ -372,15 +373,18 @@ Each item: the copies, then what unifying would take. Line counts are as of `cca
    - Now: `game/SequelPowers.hpp` (`sequel_powers::ForEach`, and ME2's `Learned`/`Enabled`/`Seconds` over one set of
      `SFXPower` handles), beside `game/Le3Powers.hpp`, whose `State` stays ME3's per-instance read. Both consumers keep
      their own filters (the wheel shows a power the game won't state as dim; the squad leaves it out).
-7. **The HDR display answer.**
-   - Copies: LE1 `plugin/HalcyonBridge.cpp` `HdrDisplayDesc`, reached through Halcyon LE1's GetDesc1 patch; the sequels
-     `plugin/HdrDisplayPolicy.cpp`, which installs its own `GetDesc1` hook from `OnFactory`.
-   - **To unify:** LE1's seam forwards to `hdr_display`. The `hdrDisplay` migration (0 → −1) lives in one place.
-8. **The eye-image pipeline.**
-   - LE1 applies colour, upscale and the tonemap in Halcyon's blit, through `EyeColour*`/`EyeUpscale` seams and
-     `MEVR_TONE`. The sequels apply colour only, in `plugin/EyeCopy.cpp`'s `kCorrectedShader`.
-   - **To unify:** one eye-image stage (`CopyIntoImage`-style) that owns colour, tonemap and FSR for all three. LE1's
-     blit calls it. FSR and the tonemap then reach the sequels for free (R13, R15).
+7. **The HDR display answer. Unified 2026-11-16 (lane EY).**
+   - Was: LE1 `plugin/HalcyonBridge.cpp` `HdrDisplayDesc` and the sequels' `plugin/HdrDisplayPolicy.cpp`, two copies of
+     one policy (the sequels' read the key as an integer and gave no luminance with an HDR10 answer).
+   - Now: `hdr_display::Answer(desc, moveOldDefault)` in `plugin/HdrDisplayPolicy.cpp`; LE1's seam forwards to it, the
+     sequels' GetDesc1 hook calls it. The `hdrDisplay` migration (0 to -1) is LE1's flag on that one function.
+8. **The eye-image pipeline. One core, two call shapes since 2026-11-16 (lane EY).**
+   - Was: LE1 applied colour, upscale and the tonemap in Halcyon's blit; the sequels colour only, in
+     `plugin/EyeCopy.cpp`'s `kCorrectedShader`.
+   - Now: `plugin/Upscale` is in all three hosts, its passes one function; the sequels reach it from `EyeCopy`, LE1 from
+     `EyeUpscale`. `EyeCopy`'s corrected pass runs `MEVR_TONE`. The colour core was already one.
+   - Left: LE1's blit onto `CopyIntoImage` needs a fill argument (`fillUv`, `imageRect`, the white scale) and a same-pose
+     check of its four paths (research/27 9.3).
 9. **Scene-capture hook scope.**
    - Copies: `plugin/Le3SceneCapture.cpp` (CaptureHook, RenderScoped, BackbufferHook) re-implements RenderLevers'
      capture-depth and thread-local scope. The target logic is already shared (`plugin/SceneCaptureTarget.hpp`,
@@ -544,7 +548,7 @@ These are concrete, each with its check. None was fixed here (read-only audit).
 
 - **The sequels turn character shadows off for nothing (R11).** `game/SystemSettings.cpp` reads an empty
   `[Performance] sharePass` as 5 on every game.
-- **EyeCopy has no tonemap (R15).** It is harmless while `hdrDisplay = -1`.
+- **EyeCopy had no tonemap (R15).** Fixed 2026-11-16 (lane EY): `MEVR_TONE` in its corrected pass.
 - **`umbraSecondEyeClearBits = 2` does nothing at the shipped defaults (LE1).** RenderLevers applies it only when
   `umbraSharedVisibility != 0`.
 - **Latent "not LE2 means LE1" defaults on LE3. Fixed 2026-11-16 (lane GF).**
@@ -582,9 +586,9 @@ defined in the tool's header:
 <!-- parity:summary -->
 | game | renderer | host plugin files | host core files | services served | src/game + src/engine modules by status | common seams called | own seams |
 |---|---|---|---|---|---|---|---|
-| LE1 | halcyon-le1 | 72 | 71 | 57 | run 67, out 4, ungated 23, unbuilt 4 | 20 of 32 | 91 |
-| LE2 | halcyon-le2 | 66 | 55 | 48 | run 41, ready 10, out 20, ungated 21, unreferenced 2, unbuilt 4 | 30 of 32 | 4 |
-| LE3 | halcyon-le3 | 69 | 55 | 48 | run 42, ready 10, out 19, ungated 22, unreferenced 2, unbuilt 3 | 30 of 32 | 2 |
+| LE1 | halcyon-le1 | 73 | 71 | 57 | run 67, out 4, ungated 23, unbuilt 4 | 20 of 33 | 91 |
+| LE2 | halcyon-le2 | 67 | 56 | 48 | run 41, ready 10, out 20, ungated 21, unreferenced 2, unbuilt 4 | 31 of 33 | 4 |
+| LE3 | halcyon-le3 | 70 | 56 | 48 | run 42, ready 10, out 19, ungated 22, unreferenced 2, unbuilt 3 | 31 of 33 | 2 |
 <!-- /parity:summary -->
 
 ### Host plugin files per game
@@ -619,7 +623,7 @@ defined in the tool's header:
 | `HalcyonOverlays` | yes | - | - |
 | `HalcyonSequelBridge` | - | yes | yes |
 | `HandReticle` | yes | yes | yes |
-| `HdrDisplayPolicy` | - | yes | yes |
+| `HdrDisplayPolicy` | yes | yes | yes |
 | `HudPanel` | yes | yes | yes |
 | `HudPieceLayers` | yes | yes | yes |
 | `KeptLocks` | yes | - | - |
@@ -674,7 +678,7 @@ defined in the tool's header:
 | `TransitionFade` | yes | yes | yes |
 | `TraversalCue` | - | yes | yes |
 | `UiWorldFigure` | yes | - | - |
-| `Upscale` | yes | - | - |
+| `Upscale` | yes | yes | yes |
 | `Vignette` | yes | yes | yes |
 | `Voice` | yes | yes | yes |
 | `VoiceModel` | yes | yes | yes |
@@ -692,7 +696,7 @@ defined in the tool's header:
 ### Host core files per game
 
 <!-- parity:core -->
-In all three hosts (53): `Exe`, `ExeCheck`, `Hook`, `Hotkey`, `Ini`, `Json`, `Log`, `PngFile`, `Version`, `Window`, `d3d11/ShaderReflect`, `gfx/Raster`, `gfx/Swf`, `gfx/SwfFont`, `voice/ScriptMatch`, `vr/AimRay`, `vr/Calibration`, `vr/CineScreen`, `vr/Colour`, `vr/Comfort`, `vr/Controllers`, `vr/ConversationWorld`, `vr/FloorLock`, `vr/FrameProbe`, `vr/GalaxyHologram`, `vr/GalaxyMap`, `vr/GameMenuRequest`, `vr/GamePointer`, `vr/GuiEvents`, `vr/Haptics`, `vr/HostView`, `vr/HudPieces`, `vr/ImageConvert`, `vr/InteractLabel`, `vr/LayerComposite`, `vr/MenuPointer`, `vr/OmniRail`, `vr/OverlayPlacement`, `vr/PoseRecording`, `vr/PowerWheel`, `vr/Recenter`, `vr/ScopeArt`, `vr/ScopeCapture`, `vr/ScreenMatrix`, `vr/Sights`, `vr/SquadMenu`, `vr/SquadPlace`, `vr/TestRequest`, `vr/Thespian`, `vr/TransitionFade`, `vr/WorldUi`, `xr/Floor`, `xr/Input`.
+In all three hosts (54): `Exe`, `ExeCheck`, `Hook`, `Hotkey`, `Ini`, `Json`, `Log`, `PngFile`, `Version`, `Window`, `d3d11/ShaderReflect`, `gfx/Raster`, `gfx/Swf`, `gfx/SwfFont`, `voice/ScriptMatch`, `vr/AimRay`, `vr/Calibration`, `vr/CineScreen`, `vr/Colour`, `vr/Comfort`, `vr/Controllers`, `vr/ConversationWorld`, `vr/FloorLock`, `vr/FrameProbe`, `vr/GalaxyHologram`, `vr/GalaxyMap`, `vr/GameMenuRequest`, `vr/GamePointer`, `vr/GuiEvents`, `vr/Haptics`, `vr/HostView`, `vr/HudPieces`, `vr/ImageConvert`, `vr/InteractLabel`, `vr/LayerComposite`, `vr/MenuPointer`, `vr/OmniRail`, `vr/OverlayPlacement`, `vr/PoseRecording`, `vr/PowerWheel`, `vr/Recenter`, `vr/ScopeArt`, `vr/ScopeCapture`, `vr/ScreenMatrix`, `vr/Sights`, `vr/SquadMenu`, `vr/SquadPlace`, `vr/TestRequest`, `vr/Thespian`, `vr/TransitionFade`, `vr/Upscale`, `vr/WorldUi`, `xr/Floor`, `xr/Input`.
 
 | src/core (host) | LE1 | LE2 | LE3 |
 |---|---|---|---|
@@ -714,7 +718,6 @@ In all three hosts (53): `Exe`, `ExeCheck`, `Hook`, `Hotkey`, `Ini`, `Json`, `Lo
 | `vr/SquadRetreat` | yes | - | - |
 | `vr/SquadStanding` | yes | - | - |
 | `vr/Traversal` | - | yes | yes |
-| `vr/Upscale` | yes | - | - |
 | `vr/WheelCrop` | yes | - | - |
 <!-- /parity:core -->
 
@@ -907,6 +910,7 @@ The common vocabulary (`namespace MevrSeams`, `src/halcyon/MevrSeams.h`): `yes` 
 | `CineScreenLayers` | - | yes | yes |
 | `CineScreenWanted` | yes | yes | yes |
 | `CopyIntoImage` | - | yes | yes |
+| `EyeImageSize` | - | yes | yes |
 | `FloorViewTranslation` | yes | yes | yes |
 | `HudPanelDraw` | - | yes | yes |
 | `KeyDown` | yes | yes | yes |

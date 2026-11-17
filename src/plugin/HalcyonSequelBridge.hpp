@@ -74,8 +74,8 @@ struct Facts {
     bool invalidViewAtOnce;
     // OverlayLayers (what our menu, the ring and the traversal cue do is ME1's on both sequels: no fact for them,
     // research/trilogy-seams.md "One overlay composition"):
-    // The game's UI on the HUD panel gets the eyes' colour correction (plugin/Colour), as LE1's. ME2: yes. ME3: not yet
-    // (lane EY's one eye-image pipeline decides it).
+    // The game's UI on the HUD panel gets the eyes' colour correction (plugin/Colour), as LE1's. ME2 and ME3: yes (lane EY,
+    // research/27 section 9).
     bool panelColour;
     // The HUD's own layout for the wrist and gun pieces (capability hudPieces): 0 ME1's, 1 ME2's (vr::hud_pieces::Layout).
     int hudLayout;
