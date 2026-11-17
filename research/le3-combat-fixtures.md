@@ -242,3 +242,51 @@ weapon identity before treating it as a fixture. Make a native save outside the
 range, preserve a private copy before restoration (an overwritten QuickSave is
 restored to its original bytes), decode it and verify a normal reload. Only then
 prepare bounded resource variants with the existing independent oracle flow.
+
+## Every ME3 save on the machine, by level (lane WP, 2026-11-16)
+
+Looking for a save that loads on a mission with a weapon in hand (for the holsters' put-away, research/le2-vrik.md "ME3's
+holsters, from its own script"), every `.pcsav` under the profile's `Save\ME3`, `%LOCALAPPDATA%\MEVR` (session backups and
+retained native saves) and `local-tools` was hashed and the 19 distinct files decoded read-only (`tools/le3-save.py
+inventory`, copies in a scratch folder; no save was written). There is still one career, John_12_Vanguard. Its six saves and
+the navigation runs' retained ones (`cic-quick-save`, `galaxy-console-quick-save`, `pax-auto-save` and ten `native-saves`
+AutoSave/LegendSave copies of 2026-11-15) are all `BioP_Nor` with a `SFXPawn_PlayerVanguardNonCombat` pawn and no weapon
+records; the chapter save is `Biop_End001` (London, the injured Shepard's mode) and the NG+ save the ending. So there is
+**no ME3 combat fixture on this machine yet**: the Citadel range route and the LegendSave audit above stay the next step, and
+every ME3 weapon check (holsters, the put-away, only holsters draw, the reload by hand) waits for it.
+
+### The weapon checks to run on the first combat save (lane WP's list)
+
+The owner makes an ME3 save in combat (2026-11-17). With it, in one renderer-preview stretch (`<career>` and `<file>` the
+new save's; `$h` your holder):
+
+```powershell
+$t = 'tools\le2-halcyon-run'
+& "$t\prep.ps1" -Holder $h -Game LE3 -RendererPreview -Tag me3-weapons
+& "$t\launch.ps1" -Holder $h -Game LE3 -RendererPreview
+& "$t\load.ps1" -Holder $h -Game LE3 -RendererPreview -Save "<career>\<file>.pcsav"
+# 1. holsters with the default (le3PutAway = 0): a grab at a slot switches weapons; letting go leaves the gun in the hand
+& "$t\holsters.ps1" -Holder $h -Game LE3
+# 2. the reload by hand: one shot, the gesture, a full magazine refused, the held-grip shot
+& "$t\reload.ps1" -Holder $h -Game LE3
+& "$t\launch.ps1" -Holder $h -Game LE3 -RendererPreview -Stop
+& "$t\restore.ps1" -Holder $h -Game LE3 -RendererPreview
+```
+
+What each must show (`holsters-<time>\lines.txt`, `reload-<time>\lines.txt` and `console.txt` in the stretch's folder):
+1. `holsters: the player carries:` lists the save's weapons with their families; `grab at shoulderRight: drawing the assault rifle
+   (BioPlayerController.SwitchWeapon; was ...)` and `the assault rifle is in hand after N s` (if the save carries one; else the
+   pistol at `hipRight`); letting go there does nothing (the session's one line `holsters: a gun let go stays in the hand: ME3
+   keeps a gun out on a mission ...`), never a `TryHolster` line; with no weapon away the four trigger pulls fire (no `refused`).
+2. `reload.ps1`: `mevr weapon pistol` draws it (or use the family the save carries: edit the script's `mevr weapon` line),
+   `mevr reload status` before (`magazine M, used 0, spare S`), after the shot (`M-1, 1, S`), after the gesture
+   (`reload: reloaded after N s: magazine M, used 0, spare S-1`, or ME3's own numbers if its pistol counts differently); the full
+   magazine: `a squeeze at the pouch: no clip`; the held-grip shot fires (`used 1`).
+3. **The put-away** (`le3PutAway = 1`): the preview's ini is protected during a stretch, so this needs its own stretch whose
+   `ASI\LE3MEVR.ini` carries `[Holsters] le3PutAway = 1` from prep (or a headset session). Then `holsters.ps1 -Game LE3` must show
+   `let go at shoulderRight: the assault rifle goes back in its holster (SFXInventoryManager.SetCurrentWeapon(None): ME3's own
+   put-down, ...)`, `the assault rifle is holstered after N s` (Pawn.Weapon None), the four trigger pulls each `holsters: the game
+   wanted to draw your weapon (Function SFXGame.SFXGameModeBase.FireWeapon): refused`, the gun still away after them (`mevr reload
+   status`: `no gun`), the hip grab drawing the pistol again (`drawing the pistol (BioPlayerController.SwitchWeapon; was holstered)`,
+   `in hand after N s`), and no stuck state: a power cast, a melee, cover and a reload with the gun away and after, the HUD's weapon
+   panel back. Only then make `le3PutAway = 1` ME3's default (ME1's behaviour) and note it in docs/trilogy-plan.md T25.

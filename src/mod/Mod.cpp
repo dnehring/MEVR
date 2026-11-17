@@ -112,6 +112,7 @@
 #include "game/Le3Traversal.hpp"
 #include "game/Melee.hpp"
 #include "game/Vent.hpp"
+#include "game/Reload.hpp"
 #include "game/ViewAnchor.hpp"
 #include "game/ViewLevel.hpp"
 #include "game/Weapon.hpp"
@@ -364,6 +365,7 @@ void TryInstallScriptHooks() {
     game::squad_weapons::TryStartup();  // likewise for the squad weapon menu
     game::throwables::TryStartup();  // and physical grenades and melee (registers its launch handlers)
     game::vent::TryStartup();  // and the physical vent of a hot gun (research/45)
+    game::reload::TryStartup();  // the sequels' reload by hand (research/le2-vrik.md; ME1: n/a, it has the vent)
     game::posture::TryStartup();  // and physical cover and crouch
     game::vr_cover::TryStartup();  // the game's cover protection for a VR player (research/23 section 6: answer handlers, before the hook)
     gHandAimAvailable = game::hand_aim::TryStartup();
@@ -970,6 +972,22 @@ mevr::game::vent::Link VentLink() {
     return link;
 }
 
+// Host renderer: the sequels' reload by hand: the controller pulses (v9, and the frequency where the host has it).
+mevr::game::reload::Link ReloadLink() {
+    using namespace mevr;
+    game::reload::Link link;
+    if (!gHostOwnsVr) {
+        return link;
+    }
+    if (gHost->version >= 9) {
+        link.haptic = gHost->hapticPulse;
+    }
+    if (MEVR_HOST_HAS(hapticPulseHz)) {
+        link.hapticHz = gHost->hapticPulseHz;
+    }
+    return link;
+}
+
 // The level camera (game/view_level, research/24): what it needs from the host this tick.
 mevr::game::view_level::Link ViewLevelLink() {
     using namespace mevr;
@@ -1037,7 +1055,8 @@ bool ActionHandFree(int hand) {
     using namespace mevr;
     if (hand < 0 || hand > 1 || game::support_grip::Held() || game::squad_place::Holding() ||
         game::power_wheel::OwnsLeftHand()) return false;
-    if (hand == 0) return !game::throwables::ClaimedLeft() && !game::vent::ClaimedLeft() && !game::voice::ClaimedLeft();
+    if (hand == 0) return !game::throwables::ClaimedLeft() && !game::vent::ClaimedLeft() && !game::voice::ClaimedLeft() &&
+        !game::reload::ClaimedLeft();
     return !game::throwables::RightHandBusy() && !game::throwables::ClaimedRight() &&
         !game::holsters::RightHandInSlot() && game::holsters::SecondsSinceDraw() >= 0.3;
 }
@@ -1327,7 +1346,7 @@ void PublishStatus() {
         "\"armIk\": {{\"enabled\": {}, \"status\": {}, \"handSource\": {}, \"rightHandAimsGun\": {}, \"supportRequested\": {}, \"hands\": {}}}, "
         "\"handAim\": {{\"enabled\": {}, \"toldHost\": {}, \"shots\": {}}}, "
         "\"weapon\": {{\"type\": {}, \"key\": \"0x{:X}\", \"status\": {}}}, "
-        "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}, \"squad\": {}, \"sights\": {}, \"scopeCapture\": {}, \"throwables\": {}, \"vent\": {}, "
+        "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}, \"squad\": {}, \"sights\": {}, \"scopeCapture\": {}, \"throwables\": {}, \"vent\": {}, \"reload\": {}, "
         "\"posture\": {}, \"viewLevel\": {}, \"gunKick\": {}, \"calibration\": {}, \"menuPause\": {}, \"gameMenu\": {}, \"torso\": {}, \"comfort\": {}, \"stance\": {}, \"interact\": {}, "
         "\"fingers\": {}, \"hudPieces\": {}, \"mako\": {}, \"makoGunner\": {}, \"cockpitProbe\": {}, \"makoControls\": {}, \"spectator\": {}, \"galaxyMap\": {}, \"worldUi\": {}, \"squadContext\": {}, \"squadOrders\": {}, \"squadAck\": {}, \"voice\": {}, \"powerWheel\": {}, \"guiCursor\": {}, \"vrCover\": {}, \"squadPlace\": {}, \"bodyScale\": {}, \"conversationWorld\": {}, \"sprint\": {}, \"soundPlace\": {}, \"cameraCollision\": {}, \"cameraShake\": {}}}",
         json::JsonString(__DATE__ " " __TIME__), gHooked ? "true" : "false", mode ? std::to_string(*mode) : std::string("null"),
@@ -1337,7 +1356,7 @@ void PublishStatus() {
         gHandAimReported ? "true" : "false", game::hand_aim::StatusJson(), json::JsonString(type), static_cast<unsigned long long>(game::weapon::Key()),
         json::JsonString(game::weapon::Status()), game::support_grip::Held() ? "true" : "false",
         json::JsonNumber(game::support_grip::Blend()), game::holsters::StatusJson(), game::squad_weapons::StatusJson(),
-        game::sights::StatusJson(), game::scope_capture::StatusJson(), game::throwables::StatusJson(), game::vent::StatusJson(), game::posture::StatusJson(),
+        game::sights::StatusJson(), game::scope_capture::StatusJson(), game::throwables::StatusJson(), game::vent::StatusJson(), game::reload::StatusJson(), game::posture::StatusJson(),
         game::view_level::StatusJson(), game::gun_kick::StatusJson(), game::body_calibration::StatusJson(), game::menu_pause::StatusJson(), game::game_menu_request::StatusJson(),
         game::body_follow::StatusJson(), game::comfort::StatusJson(), game::combat_stance::StatusJson(),
         game::interact::StatusJson(), game::fingers::StatusJson(), game::hud_pieces::StatusJson(), game::mako::StatusJson(), game::mako_gunner::StatusJson(), game::cockpit_probe::StatusJson(), game::mako_controls::StatusJson(),
@@ -1490,6 +1509,7 @@ void Heartbeat() {
         game::cockpit_probe::LogStats();
         game::throwables::LogStats();
         game::vent::LogStats();
+        game::reload::LogStats();
         game::posture::LogStats();
         game::vr_cover::LogStats();
         game::view_level::LogStats();
@@ -1784,6 +1804,8 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         game::squad_weapons::Tick(deltaSeconds, SquadLink());
         game::throwables::Tick(deltaSeconds, throwablesLink);
         game::vent::Tick(deltaSeconds, ventLink);
+        // The reload by hand (the sequels): a left squeeze at the clip pouch nothing above claimed, carried into the receiver.
+        game::reload::Tick(deltaSeconds, ReloadLink());
         // Physical cover and crouch (research/23): the cover test's hook goes in once noCover is wanted.
         EnsureCoverHook();
         game::posture::Link postureLink;
@@ -2046,6 +2068,7 @@ MEVR_MOD_API void MevrModShutdown() {
     game::squad_ack::Shutdown();
     game::voice::Shutdown();
     game::vent::Shutdown();
+    game::reload::Shutdown();
     game::weapon::Shutdown();
     game::camera_probe::Shutdown();
     game::sprint::Shutdown();  // the run speed back

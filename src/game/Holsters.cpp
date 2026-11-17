@@ -103,7 +103,12 @@ ue3::Function* gExitPowerWheel = nullptr;
 // while a power or an animated transition runs); drawn is BioPawn.ActionState == 1 (ActionState_Combat); mid-switch is the
 // weapon's state WeaponEquipping / WeaponPuttingDown (Object.GetStateName), which ME2's NextWeapon tests too. ME3 has no
 // action state (BioPawn.ActionState, m_oBehavior and SetActionState aren't in its script): its gun is out whenever one is
-// equipped, so there the draw is the switch alone [verify in the game: what ME3's TryHolster does on a mission].
+// equipped, so there the draw is the switch alone. ME3's own script (read 2026-11-16, lane WP): SFXGameModeDefault.TryHolster
+// only breaks the player out of cover (it must never be called for a holster there), and a weapon is put down only inside a
+// switch; but the put-down state handles a switch to no weapon (InvManager.PendingWeapon None), and with Pawn.Weapon None
+// BioPawn.HandleWeaponFiring returns at once (the trigger fires nothing). So ME3's holster is the game's own put-down into
+// no weapon, SFXInventoryManager.SetCurrentWeapon(None), behind [Holsters] le3PutAway (0 by default until a combat fixture
+// has checked it in the game; with 0 a let-go gun stays in the hand and nothing is called).
 ue3::ClassRef gGameModeDefault{"SFXGame.SFXGameModeDefault", ue3::kEveryGame};
 ue3::FieldRef gGameModeManager{"SFXGame.BioPlayerController", engine::adapter::kGameModeManager, ue3::kEveryGame};
 ue3::FieldRef gGameModes{"SFXGame.SFXGameModeManager", "GameModes", ue3::kEveryGame};
@@ -116,6 +121,13 @@ ue3::FieldRef gActionState{"SFXGame.BioPawn", "ActionState", ue3::kEveryGame};
 ue3::FunctionRef gSetActionStateFn{"SFXGame.BioPawnBehavior.SetActionState", ue3::kEveryGame};
 ue3::Function* gSetActionState = nullptr;
 constexpr std::uint8_t kActionStateCombat = 1;  // EActionState.ActionState_Combat
+#elif defined(MEVR_GAME_LE3)
+// ME3's holster (above): the inventory manager's own SetCurrentWeapon with no weapon, which puts the held one down through
+// its WeaponPuttingDown state (the holster animation, CustomAction 11) and leaves Pawn.Weapon None.
+ue3::FunctionRef gSetCurrentWeaponFn{"SFXGame.SFXInventoryManager.SetCurrentWeapon", ue3::kEveryGame};
+ue3::Function* gSetCurrentWeapon = nullptr;
+bool gPutAway = false;          // this tick's [Holsters] le3PutAway
+bool gToldNoPutAway = false;    // said once: a let-go gun stays in the hand
 #endif
 ue3::Function* gSwitchWeapon = nullptr;
 ue3::Function* gTryHolster = nullptr;
@@ -127,7 +139,9 @@ ue3::Function* gGetStateName = nullptr;
 // begins `if (BioPlayerInput(Outer.PlayerInput).IsCombatEnabled() == FALSE) return;`, and IsCombatEnabled has no parameters:
 // answered false for that one call (engine/call_function's answer handler, by the calling function) while the weapon is
 // away, the button does nothing, as ME1's refused draw. Powers and the game's own combat start are other routes: let
-// through, as ME1 lets medi-gel and powers draw. ME3 keeps no holstered state on foot: nothing to refuse there.
+// through, as ME1 lets medi-gel and powers draw. ME3's five begin with the same test (its script, 2026-11-16): there the
+// weapon is away when the pawn carries weapons but has none equipped (le3PutAway's put-down), and the same answer refuses
+// the button. ME3's trigger would fire nothing anyway with no weapon (HandleWeaponFiring); the answer makes it one rule.
 ue3::FunctionRef gIsCombatEnabledFn{"SFXGame.BioPlayerInput.IsCombatEnabled", ue3::kEveryGame};
 ue3::FunctionRef gFireWeaponFn{"SFXGame.SFXGameModeBase.FireWeapon", ue3::kEveryGame};
 ue3::FunctionRef gTightAimFn{"SFXGame.SFXGameModeDefault.TightAim", ue3::kEveryGame};
@@ -152,8 +166,15 @@ double gYaw = 0.0;
 bool gYawValid = false;
 char const* gYawSource = "none";
 slots::Frame gFrame;
+double gScaleNow = 1.0;  // this tick's slot scale (game/reload's pouch uses the same)
 std::array<ik::Vec3, slots::kSlots> gCenters{};
-std::array<double, slots::kSlots> gDistances{-1.0, -1.0, -1.0, -1.0};
+std::array<double, slots::kSlots> gDistances = [] {
+    std::array<double, slots::kSlots> d{};
+    d.fill(-1.0);
+    return d;
+}();
+// The slots this game uses: ME1's four quick-slot types, the sequels' five weapon families (hand_calibration).
+constexpr int kUsed = hand_calibration::kGameHolsterSlots;
 bool gNear = false;
 bool gActive = false;          // this tick's conditions held
 std::string gWhy = "not started";
@@ -211,8 +232,8 @@ bool gRefusedBuzz = false;        // a draw was refused since the last tick: the
 // What the player carries, re-read each tick; the type map is rebuilt when the slots change.
 struct Carried {
     std::array<std::uintptr_t, slots::kSlots> weapons{};  // compared by address only
-    std::array<int, slots::kSlots> typeOfSlot{-1, -1, -1, -1};
-    std::array<int, slots::kSlots> slotOfType{-1, -1, -1, -1};
+    std::array<int, slots::kSlots> typeOfSlot{-1, -1, -1, -1, -1};
+    std::array<int, slots::kSlots> slotOfType{-1, -1, -1, -1, -1};
     int current = -1;     // m_eQuickSlotCurrent
     bool drawn = false;   // IsInCombatActionState
     bool switching = false;
@@ -452,7 +473,7 @@ ue3::Object* QuickSlot(Game const& game, int i) {
 
 void ReadCarried(Game const& game) {
     std::array<std::uintptr_t, slots::kSlots> weapons{};
-    for (int i = 0; i < slots::kSlots; ++i) {
+    for (int i = 0; i < kUsed; ++i) {
         weapons[i] = reinterpret_cast<std::uintptr_t>(QuickSlot(game, i));
     }
     if (weapons != gCarried.weapons) {
@@ -460,7 +481,7 @@ void ReadCarried(Game const& game) {
         gCarried.typeOfSlot.fill(-1);
         gCarried.slotOfType.fill(-1);
         std::string text;
-        for (int i = 0; i < slots::kSlots; ++i) {
+        for (int i = 0; i < kUsed; ++i) {
             ue3::Object* const weapon = QuickSlot(game, i);
             int const type = RangedType(weapon);
             gCarried.typeOfSlot[i] = type;
@@ -484,7 +505,7 @@ void ReadCarried(Game const& game) {
 
 #else  // the sequels
 
-// The carried weapon of a family (0..3: body_slots::Weapon; the SMG, family 4, has no body slot yet), found fresh: the
+// The carried weapon of a family (0..4: body_slots::Weapon, the SMG's thighRight the fifth), found fresh: the
 // inventory chain is the game's, never a pointer of ours kept across ticks.
 ue3::Object* CarriedOfFamily(ue3::Object* pawn, int family) {
     for (ue3::Object* const item : le2_squad::Weapons(pawn)) {
@@ -509,13 +530,11 @@ std::string WeaponState(ue3::Object* weapon) {
 void ReadCarried(Game const& game) {
     std::array<std::uintptr_t, slots::kSlots> weapons{};
     std::string text;
-    bool smg = false;
     for (ue3::Object* const item : le2_squad::Weapons(game.pawn)) {
         int const family = le2_squad::WeaponType(item);
         if (family >= 0 && family < slots::kSlots && weapons[family] == 0) {
             weapons[family] = reinterpret_cast<std::uintptr_t>(item);
         }
-        smg = smg || family == 4;
         text += std::format(" {} ({});", ue3::runtime::FullName(item), le2_squad::WeaponLabel(family));
     }
     if (weapons != gCarried.weapons) {
@@ -524,8 +543,7 @@ void ReadCarried(Game const& game) {
             gCarried.typeOfSlot[i] = weapons[i] != 0 ? i : -1;  // a family is its own "slot" here
             gCarried.slotOfType[i] = weapons[i] != 0 ? i : -1;
         }
-        log::Info("holsters: the player carries:{}{}", text.empty() ? std::string(" nothing") : text,
-            smg ? " (the SMG has no body slot yet: the game's own weapon switch draws it)" : "");
+        log::Info("holsters: the player carries:{}", text.empty() ? std::string(" nothing") : text);
     }
     ue3::Object* const held = le2_squad::equippedWeapon.Read<ue3::Object*>(game.pawn).value_or(nullptr);
     int const family = held != nullptr ? le2_squad::WeaponType(held) : -1;
@@ -605,9 +623,25 @@ void Holster(Game const& game, Weapon weapon, std::string const& why, Link const
         log::Info("holsters: {}: the {} is already put away", why, slots::Name(weapon));
         return;
     }
+#if defined(MEVR_GAME_LE3)
+    // Never TryHolster here: ME3's only breaks the player out of cover. The put-down into no weapon instead (above).
+    ue3::Object* const manager = le2_squad::inventoryManager.Read<ue3::Object*>(game.pawn).value_or(nullptr);
+    if (!gPutAway || gSetCurrentWeapon == nullptr || !ue3::runtime::IsAlive(manager)) {
+        log::Info("holsters: {}: the {} stays in the hand ({})", why, slots::Name(weapon),
+            !gPutAway ? "ME3 keeps a gun out on a mission; [Holsters] le3PutAway = 1 puts it away"
+                      : gSetCurrentWeapon == nullptr ? "SFXInventoryManager.SetCurrentWeapon not found" : "the pawn has no inventory manager");
+        return;
+    }
+    ue3::Params parms(ue3::runtime::Get(), gSetCurrentWeapon);
+    parms.Set("DesiredWeapon", static_cast<ue3::Object*>(nullptr));
+    log::Info("holsters: {}: the {} goes back in its holster (SFXInventoryManager.SetCurrentWeapon(None): ME3's own put-down, "
+              "[Holsters] le3PutAway = 1)", why, slots::Name(weapon));
+    ue3::runtime::Call(manager, gSetCurrentWeapon, parms);  // the game thread, through our reflection layer
+#else
     ue3::Params parms(ue3::runtime::Get(), gTryHolster);
     log::Info("holsters: {}: the {} goes back in its holster (SFXGameModeDefault.TryHolster)", why, slots::Name(weapon));
     ue3::runtime::Call(game.mode, gTryHolster, parms);  // directly: never a generated wrapper
+#endif
     gPending = {slots::Action::Holster, weapon, 0.0};
     ++gHolsters;
     Pulse(link, slots::HolsterClick(strength));
@@ -730,11 +764,10 @@ char const* SlotOf(hand_calibration::Holsters const& settings, Weapon weapon) {
     return "its holster";
 }
 
-#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)  // ME3 keeps no holstered state on foot: nothing to refuse
 // ---- Only holsters draw: one rule for every game ----
 // How the game itself came to want the weapon out. Each game's hook names the route: ME1's skip handler of
-// SFXPawn_Player.DrawPrimaryWeapon by its caller, ME2's answer to BioPlayerInput.IsCombatEnabled inside the buttons' own
-// functions (above).
+// SFXPawn_Player.DrawPrimaryWeapon by its caller, ME2's and ME3's answer to BioPlayerInput.IsCombatEnabled inside the
+// buttons' own functions (above).
 enum class DrawRoute {
     Trigger,           // the trigger (ME2: the aim trigger too): refused without a buzz (a pull with an empty hand is a fist)
     Button,            // any other route: refused, and the right hand buzzes
@@ -768,7 +801,6 @@ bool RefuseGameDraw(ue3::Object* pawn, DrawRoute route, ue3::Function* caller) {
         silent ? "; trigger or seated wheel entry, so no buzz" : "");
     return true;
 }
-#endif
 
 #if defined(MEVR_GAME_LE1)
 // engine/call_function's skip handler for SFXPawn_Player.DrawPrimaryWeapon (game thread: the script VM's).
@@ -790,7 +822,19 @@ bool OnDrawPrimaryWeapon(ue3::Object* context, ue3::Function* /*function*/, ue3:
     }
     return RefuseGameDraw(context, route, caller);
 }
-#elif defined(MEVR_GAME_LE2)
+#else
+// The player's weapon is away in the sense the game's own buttons would draw it: ME2, the pawn's action state isn't combat;
+// ME3, the pawn carries weapons but has none equipped (a non-combat pawn, the Normandy's, carries none: nothing to refuse).
+// Unknown counts as out (the button's ordinary work).
+bool WeaponAway(ue3::Object* pawn) {
+#if defined(MEVR_GAME_LE2)
+    return gActionState.Read<std::uint8_t>(pawn).value_or(kActionStateCombat) != kActionStateCombat;
+#else
+    std::optional<ue3::Object*> const held = le2_squad::equippedWeapon.Read<ue3::Object*>(pawn);
+    return held && *held == nullptr && !le2_squad::Weapons(pawn).empty();
+#endif
+}
+
 // engine/call_function's answer handler for BioPlayerInput.IsCombatEnabled (game thread: the script VM's): false for the
 // one call a draw route makes while the player's weapon is away. With the weapon out the buttons do their ordinary work.
 bool OnIsCombatEnabled(ue3::Object* /*context*/, ue3::Function* /*function*/, ue3::Function* caller, std::uint8_t* /*callerLocals*/,
@@ -802,7 +846,7 @@ bool OnIsCombatEnabled(ue3::Object* /*context*/, ue3::Function* /*function*/, ue
     if (at == gDrawRoutes.end()) {
         return false;
     }
-    if (gActionState.Read<std::uint8_t>(gBlockPawn).value_or(kActionStateCombat) == kActionStateCombat) {
+    if (!WeaponAway(gBlockPawn)) {
         return false;  // the weapon is out (or can't be told): the button's own work
     }
     bool const trigger = static_cast<std::size_t>(at - gDrawRoutes.begin()) < kTriggerRoutes;
@@ -839,7 +883,7 @@ bool SeatedWeaponWheel() {
 std::string DrawByName(std::string_view name) {
     std::optional<Weapon> const weapon = slots::ParseWeapon(name);
     if (!weapon || *weapon == Weapon::None) {
-        return "usage: mevr weapon pistol|shotgun|assault|sniper";
+        return kUsed > slots::kSmgSlot ? "usage: mevr weapon pistol|shotgun|assault|sniper|smg" : "usage: mevr weapon pistol|shotgun|assault|sniper";
     }
     if (!gStarted) {
         return "the holsters aren't started (no script functions yet)";
@@ -930,6 +974,11 @@ bool TryStartup() {
 #else
     bool const actionState = true;
     char const* const actionText = "none in this game: an equipped gun is out";
+    gSetCurrentWeapon = gSetCurrentWeaponFn.Get();
+    log::Info("holsters: ME3's holster is {} (TryHolster is never called here: it only leaves cover)",
+        gSetCurrentWeapon != nullptr ? "the game's own put-down into no weapon, SFXInventoryManager.SetCurrentWeapon(None), with "
+                                       "[Holsters] le3PutAway = 1 (0 by default: a let-go gun stays in the hand)"
+                                     : "MISSING (SFXInventoryManager.SetCurrentWeapon not found): a let-go gun stays in the hand");
 #endif
     gStarted = gSwitchWeapon != nullptr && gTryHolster != nullptr && classes && actionState;
     log::Info("holsters: script functions {} (BioPlayerController.SwitchWeapon {}, SFXGameModeDefault.TryHolster {}, the "
@@ -944,7 +993,6 @@ bool TryStartup() {
     }
     gDrawSkipReady = false;
     ue3::Function* const enabled = gIsCombatEnabledFn.Get();
-#if defined(MEVR_GAME_LE2)
     // Only for a function whose one parameter is its bool return value (the answer handler's rule).
     ue3::Reflection& reflection = ue3::runtime::Get();
     bool const answerable = enabled != nullptr && reflection.Parameters(enabled).size() == 1 && reflection.ParmsSize(enabled) == 4;
@@ -953,13 +1001,15 @@ bool TryStartup() {
         gDrawSkipReady = true;
     }
     log::Info("holsters: the game's own draws with the weapon away {} ([Holsters] onlyHolstersDraw): BioPlayerInput.IsCombatEnabled "
-              "{} inside {}; the first two (the triggers) without a buzz. Powers and the game's combat start still draw",
+              "{} inside {}; the first two (the triggers) without a buzz. Powers and the game's combat start still draw{}",
         gDrawSkipReady ? "can be refused" : "can't be refused: the game may still draw by itself",
-        answerable ? "is answered false" : enabled != nullptr ? "has parameters" : "wasn't found", routes);
+        answerable ? "is answered false" : enabled != nullptr ? "has parameters" : "wasn't found", routes,
+#if defined(MEVR_GAME_LE3)
+        " (the weapon is away only after le3PutAway's put-down)"
 #else
-    log::Info("holsters: nothing to refuse here ([Holsters] onlyHolstersDraw): this game keeps no holstered state on foot "
-              "(BioPlayerInput.IsCombatEnabled {}; the buttons' functions: {})", enabled != nullptr ? "found" : "not found", routes);
+        ""
 #endif
+    );
     log::Info("holsters: the right stick click is plain RB here (the game's own hold and tap)");
     return gStarted;
 #endif
@@ -1115,6 +1165,7 @@ void Tick(double deltaSeconds, Link const& link) {
     slots::Layout layout = settings.layout;
     layout.eyeHeight = gEyeHeight;
     double const scale = slots::Scale(layout);
+    gScaleNow = scale;
     ik::Vec3 const hand{right.grip.position.x, right.grip.position.y, right.grip.position.z};
     slots::Input input;
     input.exitMargin = settings.layout.exitMargin;
@@ -1147,6 +1198,20 @@ void Tick(double deltaSeconds, Link const& link) {
     input.held = Held();
     input.switching = gCarried.switching;
     input.holster = settings.holster;
+#if defined(MEVR_GAME_LE3)
+    // Without the put-down ME3 can't put a gun away: no holster at all then (a let-go gun stays in the hand, no grace runs).
+    gPutAway = settings.le3PutAway;
+    if (!gPutAway || gSetCurrentWeapon == nullptr) {
+        input.holster = slots::Holster::Off;
+        if (!gToldNoPutAway) {
+            gToldNoPutAway = true;
+            log::Info("holsters: a gun let go stays in the hand: ME3 keeps a gun out on a mission ([Holsters] le3PutAway = 1 puts "
+                      "it away with the game's own put-down: unverified, no ME3 combat fixture yet)");
+        }
+    } else {
+        gToldNoPutAway = false;
+    }
+#endif
     input.gripHolds = gHolds;
     input.releaseGrace = settings.releaseGrace;
     input.deltaSeconds = deltaSeconds;
@@ -1185,7 +1250,11 @@ void Tick(double deltaSeconds, Link const& link) {
         break;
     case slots::Action::Unavailable:
         ++gRefusals;
+#if defined(MEVR_GAME_LE1)
         log::Info("holsters: grab at {}: you carry no {} (its quick slot is empty)", name(step.slot), slots::Name(step.weapon));
+#else
+        log::Info("holsters: grab at {}: you carry no {}", name(step.slot), slots::Name(step.weapon));
+#endif
         Pulse(link, slots::Refused(strength));
         break;
     case slots::Action::AlreadyHeld:
@@ -1260,6 +1329,25 @@ double EyeHeight() {
         ? slots::kReferenceEyeHeight : gEyeHeight;
 }
 
+std::optional<BodyFrame> SlotFrame() {
+    if (!gActive) {
+        return std::nullopt;
+    }
+    BodyFrame frame;
+    frame.anchor[0] = gFrame.anchor.x;
+    frame.anchor[1] = gFrame.anchor.y;
+    frame.anchor[2] = gFrame.anchor.z;
+    frame.yaw = gFrame.yaw;
+    frame.scale = gScaleNow;
+    return frame;
+}
+
+void* DefaultGameMode() {
+    std::string why;
+    std::optional<Game> const game = ReadGame(why);
+    return game ? game->mode : nullptr;
+}
+
 bool RightHandInSlot() {
     return gActive && gMachine.InSlot() >= 0;
 }
@@ -1272,7 +1360,7 @@ std::string StatusJson() {
     namespace json = vr::test_request;
     hand_calibration::Holsters const settings = hand_calibration::GetHolsters();
     std::string list;
-    for (int i = 0; i < slots::kSlots; ++i) {
+    for (int i = 0; i < kUsed; ++i) {
         slots::Slot const& slot = settings.layout.slots[i];
         int const type = static_cast<int>(slot.weapon);
         bool const carried = type >= 0 && type < slots::kSlots && gCarried.slotOfType[type] >= 0;
@@ -1310,7 +1398,7 @@ void LogStats() {
     hand_calibration::Holsters const settings = hand_calibration::GetHolsters();
     std::string where;
     if (gActive) {
-        for (int i = 0; i < slots::kSlots; ++i) {
+        for (int i = 0; i < kUsed; ++i) {
             where += std::format(" {} {} hand {:.2f} m;", settings.layout.slots[i].name, V(gCenters[i] - gFrame.anchor), gDistances[i]);
         }
     }
@@ -1389,6 +1477,10 @@ void Shutdown() {
     gDrawRoutes.fill(nullptr);
 #if defined(MEVR_GAME_LE2)
     gSetActionState = nullptr;
+#elif defined(MEVR_GAME_LE3)
+    gSetCurrentWeapon = nullptr;
+    gPutAway = false;
+    gToldNoPutAway = false;
 #endif
 #endif
     gPowerHold = {};

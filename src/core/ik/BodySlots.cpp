@@ -23,6 +23,7 @@ char const* Name(Weapon weapon) {
     case Weapon::Shotgun: return "shotgun";
     case Weapon::AssaultRifle: return "assault rifle";
     case Weapon::Sniper: return "sniper rifle";
+    case Weapon::Smg: return "SMG";
     case Weapon::None: break;
     }
     return "none";
@@ -39,6 +40,7 @@ std::optional<Weapon> ParseWeapon(std::string_view text) {
     if (lower == "shotgun") return Weapon::Shotgun;
     if (lower == "rifle" || lower == "assault" || lower == "assaultrifle" || lower == "ar") return Weapon::AssaultRifle;
     if (lower == "sniper" || lower == "sniperrifle") return Weapon::Sniper;
+    if (lower == "smg" || lower == "submachinegun") return Weapon::Smg;
     if (lower == "none" || lower == "off") return Weapon::None;
     return std::nullopt;
 }
@@ -68,6 +70,12 @@ Layout DefaultLayout() {
     // about 0.33 m from the pistol, and was entered a dozen times a session on the way to the hip.
     layout.slots[2] = {"hipLeft", Weapon::Shotgun, {-0.20, -0.62, 0.00}, 0.14};
     layout.slots[3] = {"shoulderLeft", Weapon::Sniper, {-0.18, -0.08, -0.20}, 0.20};
+    // The SMG (lane WP, 2026-11-16, research/le2-vrik.md "A body slot for the SMG"): a one-hander like the pistol, so low
+    // on the right side, but in front of the thigh: 0.36 m from the pistol's centre (both radii plus both exit margins),
+    // 0.25 m from a right hand hanging relaxed at the side, clear of the low hip-fire hand and the belly rest, in front of
+    // the body where inside-out headsets still track the controller (never the small of the back). Smaller than the hip's
+    // zone so a hand passing to the pistol doesn't brush it.
+    layout.slots[kSmgSlot] = {"thighRight", Weapon::Smg, {0.08, -0.90, 0.15}, 0.12};
     return layout;
 }
 
@@ -78,6 +86,7 @@ Layout SeatedLayout(Layout const& standing) {
     layout.slots[2].offset = {-0.28, -0.42, 0.18};
     layout.slots[1].offset = {0.28, -0.04, -0.14};
     layout.slots[3].offset = {-0.28, -0.04, -0.14};
+    layout.slots[kSmgSlot].offset = {0.15, -0.60, 0.55};  // over the right knee, in front of the raised hip slot
     for (Slot& slot : layout.slots) slot.radius = 0.20;
     return layout;
 }

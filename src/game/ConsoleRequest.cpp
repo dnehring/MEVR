@@ -48,6 +48,7 @@
 #include "game/Throwables.hpp"
 #include "game/Traversal.hpp"
 #include "game/Vent.hpp"
+#include "game/Reload.hpp"
 #include "core/WriteJournal.hpp"
 #include "mod/GameplayActions.hpp"
 
@@ -1601,6 +1602,11 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         std::getline(words, rest);
         return vent::Command(rest);  // the vent's tests without the controllers: heat, the visible rack (research/45)
     }
+    if (verb == "reload") {
+        std::string rest;
+        std::getline(words, rest);
+        return reload::Command(rest);  // the sequels' reload by hand: the ammo, the game's own reload (`try`)
+    }
     if (verb == "spectator") {
         std::string rest;
         std::getline(words, rest);
@@ -1772,13 +1778,15 @@ std::optional<std::string> RunOursLe3(ue3::Object* pc, std::string const& line) 
         return verb == "melee" ? mod::gameplay_actions::MeleeCommand(rest) : mod::gameplay_actions::TraversalCommand(rest);
     }
     if (verb == "powerwheel") { std::string rest; std::getline(words, rest); return power_wheel::Console(rest); }
+    if (verb == "weapon") { std::string which; words >> which; return holsters::DrawByName(which); }  // a carried weapon by family
+    if (verb == "reload") { std::string rest; std::getline(words, rest); return reload::Command(rest); }
     if (verb == "omni") { std::string which; words >> which; return game_menu_request::Inject(which); }
     if (verb == "omnitool") { std::string rest; std::getline(words, rest); return omni_tool::Console(rest); }  // on | off | display | state
     if (verb == "guimouse" || verb == "guikey") {
         std::string rest; std::getline(words, rest);
         return verb == "guimouse" ? gui_cursor::Command(rest) : gui_cursor::KeyCommand(rest);
     }
-    return std::string("unknown on ME3: mevr load <career> <save name> <index> <type> | mevr savedesc | mevr state | mevr weaponprobe | mevr galaxy state | mevr melee | mevr traversal | mevr powerwheel | mevr omni | mevr omnitool | mevr guimouse | mevr guikey | mevr thespian");
+    return std::string("unknown on ME3: mevr load <career> <save name> <index> <type> | mevr savedesc | mevr state | mevr weaponprobe | mevr galaxy state | mevr melee | mevr traversal | mevr powerwheel | mevr weapon <family> | mevr reload | mevr omni | mevr omnitool | mevr guimouse | mevr guikey | mevr thespian");
 }
 #endif
 #endif // shared sequel save/state requests
@@ -1938,6 +1946,11 @@ std::optional<std::string> RunOursLe2(ue3::Object* pc, std::string const& line) 
         return InstancesLe2(words);  // a scene's Kismet start, for the cinema screen's checks (research/le2-cinema.md)
     }
     if (verb == "squad") return squad_weapons::StatusJson();
+    if (verb == "reload") {
+        std::string rest;
+        std::getline(words, rest);
+        return reload::Command(rest);  // the reload by hand: the ammo, the game's own reload (`try`)
+    }
     if (verb == "say") {
         std::string rest;
         std::getline(words, rest);
@@ -1962,7 +1975,7 @@ std::optional<std::string> RunOursLe2(ue3::Object* pc, std::string const& line) 
     return std::string("unknown on ME2: mevr load <career> <save name> <index> <type> | mevr savedesc | mevr state | "
                        "mevr camera trace <seconds> [label] | mevr armik step ... | mevr omni <screen> | mevr guimouse | mevr guikey ... | mevr cover ... | "
                        "mevr traversal ... | mevr squad | mevr context | mevr order ... | mevr say ... | mevr voice ... | mevr thespian ... | "
-                       "mevr instances <Package.Class> [text] | mevr activate <n> [input]");
+                       "mevr instances <Package.Class> [text] | mevr activate <n> [input] | mevr reload [status | try]");
 }
 
 #endif

@@ -669,6 +669,8 @@ set(MEVR_MOD_SOURCES
     src/game/Throwables.hpp
     src/game/Vent.cpp
     src/game/Vent.hpp
+    src/game/Reload.cpp
+    src/game/Reload.hpp
     src/game/ViewAnchor.cpp
     src/game/ViewAnchor.hpp
     src/game/ViewLevel.cpp

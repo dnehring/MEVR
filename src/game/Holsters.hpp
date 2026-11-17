@@ -73,6 +73,16 @@ void AdjustPad(gamepad::Options& options);
 double EyeHeight();
 bool RightHandInSlot();
 double SecondsSinceDraw();
+// For game/reload's clip pouch (a body slot for the LEFT hand): the body frame the slots hang from this tick (the smoothed
+// neutral eye, the body yaw, OpenXR LOCAL meters) and the slots' scale, while the holsters are active (nullopt otherwise).
+struct BodyFrame {
+    double anchor[3] = {0.0, 0.0, 0.0};
+    double yaw = 0.0;
+    double scale = 1.0;
+};
+std::optional<BodyFrame> SlotFrame();
+// The player controller's SFXGameModeDefault (the buttons' exec functions live there), or null. Game thread.
+void* DefaultGameMode();
 // [Holsters] onlyHolstersDraw (default 1): only a grab at a holster draws. The game's own draws with the weapon away
 // (SFXPawn_Player.DrawPrimaryWeapon, from melee and grenade buttons, the weapon wheel, the holster key's toggle) are
 // skipped on foot in VR with tracked controllers (a refused one buzzes the right hand). Medi-gel (UseFirstAid) and

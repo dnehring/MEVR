@@ -4,20 +4,23 @@
 # rifle: a switch), let go there (the holster); the trigger pulled with the weapon away (refused); at the right hip (the pistol from its holster), let go there; at the hip again,
 # let go in front of the chest (it goes back after [Holsters] releaseGrace). A snapshot while the pistol is held. Results go
 # to the stretch's session folder, holsters-<time>\ (the recordings, the snapshot's name, the mod's `holsters:` lines).
+# ME3 (-Game LE3, a renderer-preview stretch): the same replays; ME3 keeps a gun out on a mission, so a let-go gun goes
+# away only with [Holsters] le3PutAway = 1 (0 by default: the release grace then never runs).
 #
-#   tools\le2-halcyon-run\holsters.ps1 -Holder <you>
-param([Parameter(Mandatory)][string]$Holder)
+#   tools\le2-halcyon-run\holsters.ps1 -Holder <you> [-Game LE3]
+param([Parameter(Mandatory)][string]$Holder, [ValidateSet('LE2', 'LE3')][string]$Game = 'LE2')
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\..\common.ps1"
 $W = (Resolve-Path "$PSScriptRoot\..\..").Path
-$current = Join-Path $env:LOCALAPPDATA 'MEVR\sessions\le2-current.json'
-if (-not (Test-Path -LiteralPath $current)) { throw 'no ME2 stretch is open: prep.ps1, launch.ps1, load.ps1 first' }
+$name = if ($Game -eq 'LE3') { 'ME3' } else { 'ME2' }
+$current = Join-Path $env:LOCALAPPDATA ("MEVR\sessions\{0}-current.json" -f $Game.ToLowerInvariant())
+if (-not (Test-Path -LiteralPath $current)) { throw "no $name stretch is open: prep.ps1, launch.ps1, load.ps1 first" }
 $open = Get-Content -LiteralPath $current -Raw | ConvertFrom-Json
-if ($open.holder -ne $Holder) { throw "the open ME2 stretch is held by '$($open.holder)', not '$Holder'" }
-if (-not (Get-Process MassEffect2 -ErrorAction SilentlyContinue)) { throw 'ME2 is not running' }
+if ($open.holder -ne $Holder) { throw "the open $name stretch is held by '$($open.holder)', not '$Holder'" }
+if (-not (Get-Process ("MassEffect" + $Game.Substring(2)) -ErrorAction SilentlyContinue)) { throw "$name is not running" }
 $out = Join-Path $open.session ('holsters-' + (Get-Date -Format 'HHmmss'))
 New-Item -ItemType Directory -Force $out | Out-Null
-$log = Join-Path (Get-MELEBinDir (Find-MELEInstall).Root 'LE2') 'Logs\LE2MEVR.log'
+$log = Join-Path (Get-MELEBinDir (Find-MELEInstall).Root $Game) ("Logs\{0}MEVR.log" -f $Game)
 
 function Ask([string]$command) {
     $text = & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $W 'tools\console.ps1') $command -TimeoutSeconds 10 2>$null

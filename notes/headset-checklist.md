@@ -838,6 +838,14 @@ stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs 
   the sprint as ME1's faster run on all three games since 2026-11-16 (lane GR, research/trilogy-sprint.md; on ME1 it never
   ran before, the game's storm did): A held with the stick forward runs faster with the gun up, no storm posture or camera,
   its speed comfortable, the release back to the run; the same with a weapon drawn.
+- [ ] The SMG's body slot (T25; research/le2-vrik.md "A body slot for the SMG", lane WP 2026-11-16, a recommendation):
+  with a class that carries an SMG (not the Soldier), reach down in front of the right thigh and squeeze: the SMG comes out;
+  let go there and it goes back. Watch for: a hand hanging at your side or on its way to the pistol buzzing in it, a reach
+  that feels too low or too far forward. `[Holsters] thighRight` (right, up, forward, radius) moves it.
+- [ ] The reload by hand (T26; research/le2-vrik.md "The reload by hand: the game's side"): fire a few shots, squeeze the left
+  grip at the left hip (the pouch), bring the hand over the gun just behind your right hand and push in: the game reloads,
+  the ammo as the game's own reload counts it. Watch for: the pouch's place, the receiver too small or too far, a two-handed
+  grip that turns into a clip, the reload's sound and animation; a full magazine buzzes no.
 - [ ] ME2's faster shield recharge behind cover (T31, research/23 section 7.5): crouched behind a crate with every enemy
   hidden, the shields come back sooner than standing in the open; a flanking enemy in view takes it away.
 - [ ] Powers (T44; research/55 "Mass Effect 2"): the push at a hostile, the chest and gun gestures' targets, the coach card.
@@ -856,6 +864,17 @@ stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs 
 - [ ] Hands and the gun (T21, T22; research/le3-body-pose.md): the raw controller against Shepard's hand (place, twist,
   reach), the gun in the grip, the two-handed support, standing and seated.
 - [ ] Sights (T24): the eye box of the dot and the scope per weapon and optic mod.
+- [ ] Holsters, and putting a gun away (T25; research/le2-vrik.md "ME3's holsters, from its own script", lane WP
+  2026-11-16; unverified: no ME3 save here loads on a mission with a weapon): on a mission a grab at a slot switches to that
+  weapon (the pistol at the right hip, the rifle at the right shoulder, the shotgun at the left hip, the sniper rifle at the
+  left shoulder, the SMG at the front of the right thigh). By default a gun you let go stays in your hand (ME3 has no
+  holstered state). To try ME1's behaviour, set `le3PutAway = 1` under `[Holsters]` in `ASI\LE3MEVR.ini` (the mod reads it
+  within a second): letting go at its slot, or anywhere for 0.2 s, puts the gun away with the game's own holster animation.
+  Watch for: the gun really gone from the hand and the HUD's weapon panel, the trigger doing nothing while it's away (four
+  pulls: the log says `holsters: the game wanted to draw your weapon (...FireWeapon): refused` each time), a grab at a slot
+  drawing it again, no stuck state (powers, melee, cover, a reload, a conversation and a cutscene with the gun away), and
+  no error dialog or crash. Report what you see; it becomes ME3's default only once it works.
+- [ ] The reload by hand (T26): as ME2's line, on a mission (unverified on ME3: no combat save here).
 - [ ] Menus (T37-T39; research/le3-native-gui.md): our menu, calibration, the rail and wrist projection, the game's
   screens and the pointer.
 - [ ] Cinema (T15; research/le3-dialogue-cinema.md): the screen fixed in the room, the reply wheel and subtitles readable,
