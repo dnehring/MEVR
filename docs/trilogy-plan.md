@@ -446,25 +446,35 @@ These unblock the most: almost every other entry gets smaller once they land.
   the weapon cycling refused with the weapon away, `BioPlayerInput.IsCombatEnabled` answered false for their call).
   Seen by script: the assault rifle at the right shoulder and the pistol at the right hip drawn and holstered, four
   trigger pulls with the weapon away refused, three vaults with the right grip holding the pistol; ME1 at the same pose
-  unchanged. **Left, ME2:** the release grace (a gun let go away from its slot) on a quiet machine; the SMG's body slot
-  (`SFXWeapon_AutoPistol_Base` has none: the game's own switch draws it). **ME3:** its adapter is built (no action state:
-  an equipped gun is out, nothing to refuse) and its names resolve; its draw and holster need the combat fixture.
+  unchanged. **The SMG's slot** (lane WP, 2026-11-16, research/le2-vrik.md "A body slot for the SMG"): `thighRight`, the
+  front of the right thigh, a fifth `core/ik/BodySlots` slot (off on ME1, which has no SMG); the default, a recommendation
+  until the owner's headset check; not seen in the game (Save 4's Soldier carries none). **ME3** (lane WP, research/le2-vrik.md
+  "ME3's holsters, from its own script"): ME3 has no holstered state on a mission and its TryHolster only leaves cover, so
+  TryHolster is never called there; the holster is the game's own put-down into no weapon
+  (`SFXInventoryManager.SetCurrentWeapon(None)`) behind `[Holsters] le3PutAway`, **0 by default** (unverified: no ME3 save on
+  the machine loads on a mission with a weapon), and only holsters draw is ME2's rule with "away" = weapons carried, none
+  equipped. ME2's release grace seen since (back after 0.20 s, holstered after 0.93 s). **Left, ME2:** the SMG's slot with a
+  class that carries one. **ME3:** the combat fixture, then holsters.ps1 -Game LE3
+  with `le3PutAway = 1`: draw, put away, draw again, four trigger pulls with the gun away, no stuck state; then its default.
 - **Closes when:** a replayed grip at the hip slot draws the pistol and letting go there holsters it, on each sequel.
-- **Waits for:** T05's ME3 combat fixture. Part of ME2's first release (M3.4). **Who:** C4.
+- **Waits for:** T05's ME3 combat fixture. Part of ME2's first release (M3.4). **Who:** WP (after C4).
 
 #### T26 The reload by hand [G41]
-- **State:** LE1 n/a · LE2 build · LE3 build
-- **Lives in:** `core/vr/PhysicalReloadRequest.hpp` (the coordinator, 18 tests) and `core/vr/ReloadGesture` (the gesture:
+- **State:** LE1 n/a · LE2 verify · LE3 build
+- **Lives in:** `game/Reload` (the adapter), `core/vr/PhysicalReloadRequest.hpp` (the coordinator, 18 tests) and `core/vr/ReloadGesture` (the gesture:
   the pouch, the clip held, the receiver entered from outside, Overlord's contact invariants; unit-tested with the
   coordinator, 2026-11-16, research/le2-vrik.md "The reload by hand: the gesture's core"), with `core/ik/BodySlots` for
   the clip pouch and `core/ik/Vent`'s receiver zone. ME1 has heat, not clips: its counterpart is the vent.
-- **Left:** the game's side, `game/Reload` (the research section's five steps), with an ME2 and an ME3 adapter: the native admission, automatic reload, ammo
-  transfer, animation end and cancel (`Reloading.CancelReload` commits ammo when `bEarlyReload` is set), then contact
-  geometry from Overlord's reviewed pieces (research/le2-overlord-reload-reuse.md). An assisted native reload stays for
-  unsupported weapons.
+- **Built** (lane WP, 2026-11-16, research/le2-vrik.md "The reload by hand: the game's side"): `game/Reload`, one module for
+  both sequels (off on ME1): the pouch a left-hand body slot (`[Reload] pouch`, the left hip), the receiver `[Vent]`'s zone, the
+  coordinator's identities and grant, the request through the button's own `SFXGameModeDefault.TryReload` (state-aware, never
+  DoReload or R), the game's ammo observed for the feedback. **Seen on ME2** (Save 4): 12/0/60 -> one shot 11/1/60 -> the
+  replayed gesture 12/0/59 (`reloaded after 1.50 s`), a full magazine refused; the game's R and automatic reload stay.
+- **Left:** empty, no-reserve and cancelled reloads; contact geometry from Overlord's reviewed pieces (research/
+  le2-overlord-reload-reuse.md); ME3's run with a combat fixture.
 - **Closes when:** the Freedom's Progress pistol baseline (12/0/60, 11/1/60, 12/0/59) is reproduced by a replayed
   gesture instead of `R`; empty, partial, no-reserve and cancelled reloads conserve ammo; ME3 the same with its fixture.
-- **Waits for:** nothing on ME2 (T25 is in: the right grip holds the gun). Part of ME2's first release (M3.5). **Who:** C4.
+- **Waits for:** T05's ME3 combat fixture for ME3. Part of ME2's first release (M3.5). **Who:** WP (after C4).
 
 #### T27 Guided calibration and hand calibration [G16]
 - **State:** LE1 done · LE2 headset · LE3 headset

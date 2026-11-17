@@ -21,14 +21,17 @@
 // SeatedLayout supplies a separate fixed-meter reach layout; it never uses the standing scale.
 namespace mevr::ik::body_slots {
 
-inline constexpr int kSlots = 4;
+inline constexpr int kSlots = 5;
+// The SMG's slot (the sequels' fifth weapon family; ME1 has no SMG: its game code switches the slot off).
+inline constexpr int kSmgSlot = 4;
 // The eye height the default offsets are written for (meters, standing).
 inline constexpr double kReferenceEyeHeight = 1.65;
 
-// The game's ranged weapon types (LE1 EBioItemWeaponRangedType = ESwitchToWeapon = quick slot).
-enum class Weapon : int { None = -1, Pistol = 0, Shotgun = 1, AssaultRifle = 2, Sniper = 3 };
+// The game's ranged weapon types (LE1 EBioItemWeaponRangedType = ESwitchToWeapon = quick slot; the sequels' weapon families,
+// game/Le2Squad WeaponType: the SMG is ME2's SFXWeapon_AutoPistol_Base, ME3's SFXWeapon_SMG_Base).
+enum class Weapon : int { None = -1, Pistol = 0, Shotgun = 1, AssaultRifle = 2, Sniper = 3, Smg = 4 };
 char const* Name(Weapon weapon);
-// "pistol", "shotgun", "rifle" / "assault" / "assaultrifle", "sniper", "none" / "off"
+// "pistol", "shotgun", "rifle" / "assault" / "assaultrifle", "sniper", "smg" / "submachinegun", "none" / "off"
 // (case-insensitive); nullopt for anything else.
 std::optional<Weapon> ParseWeapon(std::string_view text);
 
@@ -47,7 +50,8 @@ struct Layout {
     double exitMargin = 0.05;  // a hand leaves a slot this far past its radius; also the "near" margin
 };
 // The user's layout (research/19, "Default slots"): pistol at the right hip, assault rifle over the
-// right shoulder, shotgun at the left hip (a cross-draw; the belly until 2026-10-25), sniper rifle over the left shoulder.
+// right shoulder, shotgun at the left hip (a cross-draw; the belly until 2026-10-25), sniper rifle over the left shoulder,
+// the SMG at the front of the right thigh (lane WP, 2026-11-16: a recommendation until the owner's headset check).
 Layout DefaultLayout();
 // Seated reach points are fixed meters from the live neutral eye, independent of standing
 // height/avatar scale. Keep the standing layout's weapon assignments (including disabled slots).
@@ -93,9 +97,9 @@ enum class Holster {
 
 struct Input {
     // The hand's distance from each slot's center (meters); negative or not finite: the slot is off.
-    std::array<double, kSlots> distance{-1.0, -1.0, -1.0, -1.0};
+    std::array<double, kSlots> distance{-1.0, -1.0, -1.0, -1.0, -1.0};
     std::array<double, kSlots> radius{};
-    std::array<Weapon, kSlots> weapon{Weapon::None, Weapon::None, Weapon::None, Weapon::None};
+    std::array<Weapon, kSlots> weapon{Weapon::None, Weapon::None, Weapon::None, Weapon::None, Weapon::None};
     std::array<bool, kSlots> available{};  // the player carries a weapon of the slot's type
     double exitMargin = 0.05;
     bool tracked = true;     // the hand's pose is valid (false: it's in no slot)

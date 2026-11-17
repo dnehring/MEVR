@@ -276,7 +276,11 @@ constexpr char const* kHolstersBlock =
     "eyeHeightM = 1.65\n"
     "; hapticAmplitude: how strong the holster haptics are, 0..1 (0.5 as designed, 0 = no vibration).\n"
     "hapticAmplitude = 0.5\n"
-    "; Each slot: weapon, right, up, forward, radius. weapon: pistol, shotgun, rifle, sniper or none.\n"
+    "; Each slot: weapon, right, up, forward, radius. weapon: pistol, shotgun, rifle, sniper"
+#if !defined(MEVR_GAME_LE1)
+    ", smg"
+#endif
+    " or none.\n"
     "; Meters from your eyes (as if the head were upright), in your body's frame (it turns with you, not\n"
     "; with every glance), for a 1.65 m eye height: right is + to the right, up is + up, forward is +\n"
     "; ahead and - behind. radius: how close the hand must come (shoulders are bigger: you can't see them).\n"
@@ -284,13 +288,25 @@ constexpr char const* kHolstersBlock =
     "shoulderRight = rifle, 0.18, -0.08, -0.20, 0.20\n"
     "hipLeft = shotgun, -0.20, -0.62, 0.00, 0.14\n"
     "shoulderLeft = sniper, -0.18, -0.08, -0.20, 0.20\n"
+#if !defined(MEVR_GAME_LE1)
+    "; The SMG at the front of the right thigh (a one-hander, clear of the pistol and of a hand hanging at your side).\n"
+    "thighRight = smg, 0.08, -0.90, 0.15, 0.12\n"
+#endif
     "; Seated only: right, up, forward, radius in FIXED meters from the neutral head.\n"
     "; Weapon assignments still come from the four slots above; standing is unchanged.\n"
     "seatedHipRight = 0.28, -0.42, 0.18, 0.20\n"
     "seatedHipLeft = -0.28, -0.42, 0.18, 0.20\n"
     "seatedShoulderRight = 0.28, -0.04, -0.14, 0.20\n"
     "seatedShoulderLeft = -0.28, -0.04, -0.14, 0.20\n"
+#if !defined(MEVR_GAME_LE1)
+    "seatedThighRight = 0.15, -0.60, 0.55, 0.20\n"
+#endif
     "seatedGrenade = -0.10, -0.18, 0.08, 0.10\n"
+#if defined(MEVR_GAME_LE3)
+    "; le3PutAway: 1 = a gun you let go is put away (ME3 keeps a gun out on a mission; this is the game's own\n"
+    "; put-down into no weapon, not yet checked in combat); 0 = it stays in your hand.\n"
+    "le3PutAway = 0\n"
+#endif
     "; 1 keeps the weapon wheel available seated and lets it draw even with onlyHolstersDraw.\n"
     "; Controls > Left trigger must be Weapon wheel; select Shepard, then a weapon and release.\n"
     "seatedWeaponWheel = 1\n";
@@ -638,6 +654,27 @@ constexpr char const* kVoiceBlock =
     "earlyDispatch = 1\n"
     "settleMs = 250\n"
     "deicticLagS = 0.3\n";
+#if !defined(MEVR_GAME_LE1)
+// Appended to a settings file that has no [Reload] yet (and part of a new file): the sequels only.
+constexpr char const* kReloadBlock =
+    "\n"
+    "[Reload]\n"
+    "; The reload by hand: with a gun in your right hand, squeeze the left grip at the clip pouch on your left hip,\n"
+    "; carry the clip to the gun and push it into the receiver (over and just behind your right hand: the [Vent]\n"
+    "; zone). The game then reloads as with its own button, which still works, as does its automatic reload.\n"
+    "enabled = 1\n"
+    "; pouch: right, up, forward, radius, meters from your eyes in your body's frame for a 1.65 m eye height.\n"
+    "; seatedPouch: the same in fixed meters when you play seated.\n"
+    "pouch = -0.20, -0.60, 0.02, 0.13\n"
+    "seatedPouch = -0.28, -0.42, 0.18, 0.20\n"
+    "; holdTimeoutS: a clip held this long without reaching the gun is dropped. maxStepM: a hand that jumps further\n"
+    "; than this in one tick (tracking lost and found) has to leave the receiver and come back.\n"
+    "holdTimeoutS = 8\n"
+    "maxStepM = 0.20\n"
+    "; hapticAmplitude: 0..1 (0.5 as designed, 0 = none).\n"
+    "hapticAmplitude = 0.5\n";
+#endif
+
 // Appended to a settings file that has no [Vent] yet (and part of a new file).
 constexpr char const* kVentBlock =
     "\n"
@@ -1135,6 +1172,9 @@ Holsters ReadHolsters(Ini const& ini) {
     if (Number(ini, "Holsters", "hapticAmplitude", value)) {
         holsters.hapticAmplitude = std::clamp(value, 0.0, 1.0);
     }
+    if (Number(ini, "Holsters", "le3PutAway", value)) {
+        holsters.le3PutAway = value != 0.0;
+    }
     if (auto const s = ini.find("Holsters"); s != ini.end()) {
         if (auto const k = s->second.find("powerWheel"); k != s->second.end()) {
             std::string text = k->second;
@@ -1153,7 +1193,8 @@ Holsters ReadHolsters(Ini const& ini) {
                 log::Warn("holsters: can't read powerWheel = {} (r3, y, x, b or none); r3 kept", k->second);
             }
         }
-        for (ik::body_slots::Slot& slot : holsters.layout.slots) {
+        for (int index = 0; index < kGameHolsterSlots; ++index) {
+            ik::body_slots::Slot& slot = holsters.layout.slots[index];
             auto k = s->second.find(slot.name);
             // The shotgun's slot was "belly" until 2026-10-25: a belly line with its old default values is ignored (the
             // new hipLeft default applies), one the player changed is kept.
@@ -1191,7 +1232,8 @@ Holsters ReadHolsters(Ini const& ini) {
         return true;
     };
     if (auto const s = ini.find("Holsters"); s != ini.end()) {
-        for (auto& slot : holsters.seatedLayout.slots) {
+        for (int index = 0; index < kGameHolsterSlots; ++index) {
+            auto& slot = holsters.seatedLayout.slots[index];
             std::string key = "seated" + std::string(slot.name);
             key[6] = static_cast<char>(std::toupper(static_cast<unsigned char>(key[6])));
             if (auto const k = s->second.find(key); k != s->second.end() && !reach(k->second, slot))
@@ -1212,13 +1254,16 @@ std::string Describe(Holsters const& h) {
         h.enabled ? "on" : "off", grip, h.weaponWheel ? "kept (LB)" : "off", static_cast<int>(h.holster),
         h.onlyHolstersDraw ? "only holsters draw" : "the game may draw",
         h.eyeHeightFromFloor ? "from the floor" : "from the setting", h.layout.eyeHeight, h.hapticAmplitude);
-    for (ik::body_slots::Slot const& slot : h.layout.slots) {
+    for (int index = 0; index < kGameHolsterSlots; ++index) {
+        ik::body_slots::Slot const& slot = h.layout.slots[index];
         text += std::format(" {} {} ({:.2f}, {:.2f}, {:.2f}) r {:.2f};", slot.name, ik::body_slots::Name(slot.weapon), slot.offset.x,
             slot.offset.y, slot.offset.z, slot.radius);
     }
     text += std::format(" seated wheel {}; fixed-meter seated slots:", h.seatedWeaponWheel ? "draws" : "off");
-    for (auto const& slot : h.seatedLayout.slots)
+    for (int index = 0; index < kGameHolsterSlots; ++index) {
+        auto const& slot = h.seatedLayout.slots[index];
         text += std::format(" {} ({:.2f}, {:.2f}, {:.2f}) r {:.2f};", slot.name, slot.offset.x, slot.offset.y, slot.offset.z, slot.radius);
+    }
     text += std::format(" grenade ({:.2f}, {:.2f}, {:.2f}) r {:.2f}", h.seatedGrenade.offset.x, h.seatedGrenade.offset.y,
         h.seatedGrenade.offset.z, h.seatedGrenade.radius);
     return text;
@@ -1835,6 +1880,39 @@ std::string Describe(Vent const& v) {
 
 Vent gVent;
 std::string gVentText;
+
+Reload ReadReload(Ini const& ini) {
+    Reload r;
+    double value = 0.0;
+    if (Number(ini, "Reload", "enabled", value)) r.enabled = value != 0.0;
+    if (Number(ini, "Reload", "holdTimeoutS", value)) r.holdTimeoutS = std::clamp(value, 1.0, 60.0);
+    if (Number(ini, "Reload", "maxStepM", value)) r.maxStepM = std::clamp(value, 0.05, 1.0);
+    if (Number(ini, "Reload", "hapticAmplitude", value)) r.hapticAmplitude = std::clamp(value, 0.0, 1.0);
+    if (auto const s = ini.find("Reload"); s != ini.end()) {
+        for (ik::body_slots::Slot* slot : {&r.pouch, &r.seatedPouch}) {
+            if (auto const k = s->second.find(slot->name); k != s->second.end()) {
+                ik::body_slots::Slot parsed = *slot;
+                if (ReadSlot("pistol, " + k->second, parsed)) {
+                    slot->offset = parsed.offset;
+                    slot->radius = parsed.radius;
+                } else {
+                    log::Warn("reload: can't read {} = {} (right, up, forward, radius); default kept", slot->name, k->second);
+                }
+            }
+        }
+    }
+    return r;
+}
+
+std::string Describe(Reload const& r) {
+    return std::format("{}: the pouch ({:.2f}, {:.2f}, {:.2f}) r {:.2f}, seated ({:.2f}, {:.2f}, {:.2f}) r {:.2f}; a clip held at most {:.0f} s; "
+                       "a jump past {:.2f} m re-arms; haptics {:.2f}; the receiver is [Vent]'s zone",
+        r.enabled ? "on" : "off", r.pouch.offset.x, r.pouch.offset.y, r.pouch.offset.z, r.pouch.radius, r.seatedPouch.offset.x,
+        r.seatedPouch.offset.y, r.seatedPouch.offset.z, r.seatedPouch.radius, r.holdTimeoutS, r.maxStepM, r.hapticAmplitude);
+}
+
+Reload gReload;
+std::string gReloadText;
 
 // [Hud] (research/41): the shared reader (core/vr/HudPieces), its complaints logged here.
 vr::hud_pieces::Settings ReadHud(Ini const& ini) {
@@ -2734,6 +2812,10 @@ Voice GetVoice() {
     return gVoice;
 }
 
+Reload GetReload() {
+    return gReload;
+}
+
 Vent GetVent() {
     return gVent;
 }
@@ -2839,7 +2921,11 @@ void Refresh() {
         {
             std::ofstream out(path);
             out << kDefaultFile << kControlsBlock << kHolstersBlock << kSquadBlock << kSightsBlock << kThrowablesBlock
-                << kComfortBlock << kInteractBlock << kVentBlock << kHudBlock << kMakoBlock << kCockpitBlock << kGalaxyBlock << kWorldUiBlock << kGameBlock;
+                << kComfortBlock << kInteractBlock << kVentBlock << kHudBlock << kMakoBlock << kCockpitBlock << kGalaxyBlock << kWorldUiBlock << kGameBlock
+#if !defined(MEVR_GAME_LE1)
+                << kReloadBlock
+#endif
+                ;
             out.close();
             static bool warned = false;
             if (!out || !fs::exists(path, ec)) {
@@ -2866,7 +2952,11 @@ void Refresh() {
     for (auto const& [name, block] : {std::pair{"Controls", kControlsBlock}, std::pair{"Holsters", kHolstersBlock},
              std::pair{"Squad", kSquadBlock}, std::pair{"Throwables", kThrowablesBlock}, std::pair{"Comfort", kComfortBlock},
              std::pair{"Sights", kSightsBlock}, std::pair{"Interact", kInteractBlock}, std::pair{"Vent", kVentBlock}, std::pair{"Hud", kHudBlock}, std::pair{"Mako", kMakoBlock},
-             std::pair{"Cockpit", kCockpitBlock}, std::pair{"Galaxy", kGalaxyBlock}, std::pair{"WorldUi", kWorldUiBlock}, std::pair{"Game", kGameBlock}, std::pair{"SquadContext", kSquadContextBlock}, std::pair{"SquadOrders", kSquadOrdersBlock}, std::pair{"Voice", kVoiceBlock}}) {
+             std::pair{"Cockpit", kCockpitBlock}, std::pair{"Galaxy", kGalaxyBlock}, std::pair{"WorldUi", kWorldUiBlock}, std::pair{"Game", kGameBlock}, std::pair{"SquadContext", kSquadContextBlock}, std::pair{"SquadOrders", kSquadOrdersBlock}, std::pair{"Voice", kVoiceBlock}
+#if !defined(MEVR_GAME_LE1)
+             , std::pair{"Reload", kReloadBlock}
+#endif
+         }) {
         if (ini.find(name) == ini.end() && AppendBlock(path, block, name)) {  // an older file: show the new settings
             ini = ReadIni(path);
             stamp = fs::last_write_time(path, ec);
@@ -2891,6 +2981,13 @@ void Refresh() {
         {L"seatedShoulderLeft", "seatedShoulderLeft", L"-0.28, -0.04, -0.14, 0.20"},
         {L"seatedGrenade", "seatedGrenade", L"-0.10, -0.18, 0.08, 0.10"},
         {L"seatedWeaponWheel", "seatedWeaponWheel", L"1"},
+#if !defined(MEVR_GAME_LE1)
+        {L"thighRight", "thighRight", L"smg, 0.08, -0.90, 0.15, 0.12"},  // the SMG's slot, 2026-11-16 (lane WP)
+        {L"seatedThighRight", "seatedThighRight", L"0.15, -0.60, 0.55, 0.20"},
+#endif
+#if defined(MEVR_GAME_LE3)
+        {L"le3PutAway", "le3PutAway", L"0"},  // ME3's put-down into no weapon, off until a combat fixture checks it
+#endif
     };
     std::string added;
     for (NewKey const& k : kNewHolsterKeys) {
@@ -3416,6 +3513,13 @@ void Refresh() {
         gSquadOrdersText = text;
         log::Info("squad orders: settings: {}", text);
     }
+    gReload = ReadReload(ini);
+#if !defined(MEVR_GAME_LE1)
+    if (std::string const text = Describe(gReload); text != gReloadText) {
+        gReloadText = text;
+        log::Info("reload: settings: {}", text);
+    }
+#endif
     gVent = ReadVent(ini);
     if (std::string const text = Describe(gVent); text != gVentText) {
         gVentText = text;

@@ -281,7 +281,7 @@ retains ownership and a receipt for stop/restore.
 Renderer-preview launch then waits up to 30 seconds for compiled settings initialization.
 Fresh `hands: calibration pitch` and `colour: profile` markers must appear in the
 same host log (the game `Logs/LE3MEVR.log`, or its `%LOCALAPPDATA%/MEVR` fallback).
-The effective ini must remain unchanged for 1.25 seconds and contain all 20 known,
+The effective ini must remain unchanged for 1.25 seconds and contain all 21 known ([Reload] since 2026-11-16),
 populated default sections. Suffix parsing waits for stable text so a readable
 half-written append is not mistaken for corruption. Every poll still verifies
 process/lock ownership, the exact protected prefix, renderer ini and runtime binaries.

@@ -242,3 +242,15 @@ weapon identity before treating it as a fixture. Make a native save outside the
 range, preserve a private copy before restoration (an overwritten QuickSave is
 restored to its original bytes), decode it and verify a normal reload. Only then
 prepare bounded resource variants with the existing independent oracle flow.
+
+## Every ME3 save on the machine, by level (lane WP, 2026-11-16)
+
+Looking for a save that loads on a mission with a weapon in hand (for the holsters' put-away, research/le2-vrik.md "ME3's
+holsters, from its own script"), every `.pcsav` under the profile's `Save\ME3`, `%LOCALAPPDATA%\MEVR` (session backups and
+retained native saves) and `local-tools` was hashed and the 19 distinct files decoded read-only (`tools/le3-save.py
+inventory`, copies in a scratch folder; no save was written). There is still one career, John_12_Vanguard. Its six saves and
+the navigation runs' retained ones (`cic-quick-save`, `galaxy-console-quick-save`, `pax-auto-save` and ten `native-saves`
+AutoSave/LegendSave copies of 2026-11-15) are all `BioP_Nor` with a `SFXPawn_PlayerVanguardNonCombat` pawn and no weapon
+records; the chapter save is `Biop_End001` (London, the injured Shepard's mode) and the NG+ save the ending. So there is
+**no ME3 combat fixture on this machine yet**: the Citadel range route and the LegendSave audit above stay the next step, and
+every ME3 weapon check (holsters, the put-away, only holsters draw, the reload by hand) waits for it.

@@ -149,6 +149,7 @@
     "game/Posture",
     "game/PowerWheel",
     "game/Reflections",
+    "game/Reload",
     "game/SceneCaptureRig",
     "game/ScopeCapture",
     "game/ScopeParts",
@@ -395,6 +396,7 @@
     "game/Posture",
     "game/PowerWheel",
     "game/Reflections",
+    "game/Reload",
     "game/SceneCaptureRig",
     "game/ScopeCapture",
     "game/ScopeParts",
@@ -640,6 +642,7 @@
     "game/Posture",
     "game/PowerWheel",
     "game/Reflections",
+    "game/Reload",
     "game/SceneCaptureRig",
     "game/ScopeCapture",
     "game/ScopeParts",
@@ -2406,6 +2409,29 @@
     }
    },
    "namespace": "game::reflections"
+  },
+  "game/Reload": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    }
+   },
+   "namespace": "game::reload"
   },
   "game/SceneCaptureRig": {
    "games": {

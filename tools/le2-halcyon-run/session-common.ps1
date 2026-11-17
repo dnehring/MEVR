@@ -665,7 +665,7 @@ function Get-PreviewMissingDefaultSections([string]$Text) {
     $prefix = Get-PreviewModConfig
     if (-not $Text.StartsWith($prefix, [StringComparison]::Ordinal)) { throw 'Protected preview configuration changed during startup' }
     $allowed = @('Colour','Controls','Holsters','Squad','Throwables','Comfort','Sights','Interact','Vent','Hud',
-        'Mako','Cockpit','Galaxy','WorldUi','Game','SquadContext','SquadOrders','Voice','PowerWheel','Cover')
+        'Mako','Cockpit','Galaxy','WorldUi','Game','SquadContext','SquadOrders','Voice','PowerWheel','Cover','Reload')
     $seen = @{}; $section = ''
     foreach ($line in ($text.Substring($prefix.Length) -split '\r?\n')) {
         $value = $line.Trim()

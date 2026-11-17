@@ -394,7 +394,10 @@ ME2, Save 4, the pistol out; stretch `20261116-191210-770-LE2-lane-c4-holsters`,
   hand after 0.03 s; let go there, holstered after 0.91 s; the snapshot with it held (`2026-11-16_19-15-22-885`).
 - the hip, let go in front of the chest (the release grace): not seen: the head-tracked view went invalid three times for a few
   frames during that replay (`holsters: no head-tracked world view`), which resets the slots' machine, and the pistol stayed out.
-  [verify] again on a quiet machine.
+  **Seen since** (lane WP, stretch `20261116-224515-586-LE2-wp-weapons`, the same replays): `let go of the pistol away from its
+  slot: it goes back in 0.20 s unless you squeeze again`, `let go 0.20 s ago away from hipRight: the pistol goes back in its
+  holster (SFXGameModeDefault.TryHolster)`, `the pistol is holstered after 0.93 s`; the rifle at the shoulder (in hand after 0.62
+  s, holstered after 1.13 s), the pistol at the hip (0.03 s, 0.92 s) and the four refused trigger pulls as before.
 - `vault.ps1 -Runs 3 -Mode tap -Grip` (the right grip holding the pistol through the vault): three vaults admitted, every tick's
   wrists within 0.15 m (left 0.11, right 0.08 m at most). `-Grip -Support` (both hands on the gun): the game refuses the vault, as
   before (the two-handed hold: research/le2-traversal.md "What is left").
@@ -443,6 +446,114 @@ request per insertion, nothing retried while one is uncertain) its three signal 
    `tools/make-reload-recording.py` (the model: `tools/make-rack-recording.py`).
 5. The check: Save 4's pistol 12 / 0 / 60 (magazine, used, spare); one shot 11 / 1 / 60; the replayed gesture 12 / 0 / 59; a
    full clip refused; ME1 untouched (n/a there: it has heat and the vent).
+
+## ME3's holsters, from its own script (lane WP, 2026-11-16)
+
+Read with the private LegendaryExplorerCore scanner (`local-tools/le2-le3-optics-survey/scanner`, `MEVR_OPTICS_PRIVATE_LE3=1`,
+`--script SFXGameModeDefault.TryHolster` and greps over `SFXGame.pcc`; the decompiled text stays in the lane's scratch folder).
+In words:
+- **ME3 has no holstered state on a mission.** `SFXGameModeDefault.TryHolster` only breaks the player out of cover (when not
+  reloading, not in combat, not using a power or in a transition); it never puts the weapon away. The cheat manager's
+  `HolsterWeapon` likewise only leaves cover. A weapon is put down only inside a switch: `SFXWeapon`'s `WeaponPuttingDown`
+  state plays the holster custom action (11), waits for its end, re-attaches the gun to its slot and calls
+  `InvManager.ChangedWeapon`. That state's begin handles a switch to **no** weapon (`InvManager.PendingWeapon == None`: the
+  pawn's weapon animations are set up for none).
+- **The trigger can't draw a weapon that isn't equipped.** `SFXGameModeBase.FireWeapon` only sets the controller's `bFire`
+  after `BioPlayerInput.IsCombatEnabled()`; the pawn's `BioPawn.HandleWeaponFiring` returns at once when `Pawn.Weapon` is
+  None. `NextWeapon`/`PrevWeapon` return with no weapon; `TightAim` and `TryReload` (the button's) begin with the same
+  `IsCombatEnabled` test as ME2's.
+- So **ME1's holster is reachable on ME3 through the game's own put-down into no weapon**: `SFXInventoryManager.SetCurrentWeapon
+  (None)` (the base `InternalSetCurrentWeapon` sets no pending weapon and calls the held gun's `TryPutDown`). The draw from no
+  weapon is `BioPlayerController.SwitchWeapon(oWpn)` (`SetWeaponIfAvailable` -> `SetCurrentWeapon(gun)`: with no current
+  weapon `ChangedWeapon` at once, the equip animation).
+
+Built (`game/Holsters`' ME3 adapter): **TryHolster is never called on ME3** (it pulled a player out of cover each time a gun
+was let go). The holster is `SFXInventoryManager.SetCurrentWeapon(None)` behind `[Holsters] le3PutAway` (file-only, **0 by
+default**: no ME3 save on this machine loads on a mission with a weapon, so the put-down is unverified; with 0 a let-go gun
+stays in the hand and the release grace never runs: `holster` is Off for the machine). Only holsters draw is the same rule
+as ME2's: `IsCombatEnabled` answered false inside FireWeapon, TightAim, TryReload, Next/PrevWeapon while the weapon is
+away, which on ME3 means the pawn carries weapons and has none equipped (the Normandy's non-combat pawn carries none: nothing
+is refused there). ReflectCheck rows: `SFXInventoryManager.SetCurrentWeapon` `DesiredWeapon`, `IsCombatEnabled` `ReturnValue`.
+
+**The ME3 saves on this machine** (every career folder and every retained session copy, decoded read-only with
+`tools/le3-save.py inventory`; 19 distinct files by hash): Save 31, AutoSave, QuickSave, LegendSave and the navigation
+lanes' retained autosaves are all `BioP_Nor` with a `VanguardNonCombat` pawn and no weapons; the chapter save is London's
+`Biop_End001/2` (the injured Shepard's own game mode) and the NG+ save the ending. So ME3's draw, put-away and trigger checks
+still wait for a combat fixture (research/le3-combat-fixtures.md, docs/trilogy-plan.md T05).
+
+## A body slot for the SMG (lane WP, 2026-11-16; a recommendation until the owner's headset check)
+
+The sequels' fifth weapon family (ME2's `SFXWeapon_AutoPistol_Base`, ME3's `SFXWeapon_SMG_Base`) had no slot: the game's own
+switch drew it. Every ME2 class but the Soldier carries both the heavy pistol and the SMG, and ME3 lets any class carry
+both, so the SMG needs its own place, not the pistol's. `core/ik/BodySlots` has five slots now (`kSmgSlot`, `Weapon::Smg`);
+ME1 has no SMG, so its game code switches the fifth off (`hand_calibration::GameHolsterLayout`, its key isn't read and ME1's
+`holsters:` lines and snapshot list the same four slots as before).
+
+**`thighRight`: right 0.08, up -0.90, forward 0.15 m from the eyes at a 1.65 m eye height, radius 0.12** (seated: 0.15,
+-0.60, 0.55, r 0.20, over the right knee). The same reasoning as research/19's "Default slots":
+- a one-hander like the pistol, so low on the right side, as the thigh holsters for one-handers in the survey (The Walking
+  Dead: Saints & Sinners) and GoldenEye VR's hip pair;
+- 0.36 m from the pistol's centre: more than both radii plus both exit margins (0.14 + 0.12 + 2 x 0.05), the rule the shotgun's
+  move to the left hip set (the belly slot at 0.29 m was "reliably too close"); 0.42 m from the shotgun's cross-draw;
+- 0.25 m from a right hand hanging relaxed at the side (no contact buzz while walking), 0.48 m from the low hip-fire hand and
+  0.35 m from the belly rest (both tested);
+- in front of the body, where an inside-out headset (the owner's Quest) still sees the controller: the small of the back,
+  one of the sequels' own attach slots (`EAttachSlot.EASlot_LowerBack`), is out of the cameras' view;
+- smaller than the hip's zone so a hand on its way to the pistol doesn't brush it.
+Not seen in the game: Save 4's Soldier carries no SMG. `[Holsters] thighRight` / `seatedThighRight` move it.
+
+## The reload by hand: the game's side (lane WP, 2026-11-16)
+
+`game/Reload` (MIT; the sequels only: on ME1 `TryStartup` is false and nothing runs) over `core/vr/ReloadGesture` and
+`vr::reload::Coordinator`, the five steps above:
+1. **The pouch** is a body slot for the LEFT hand on the holsters' body frame and scale (`holsters::SlotFrame`: the smoothed
+   neutral eye, the body yaw, the standing eye height's scale; fixed metres seated): `[Reload] pouch = -0.20, -0.60, 0.02,
+   0.13` (the left hip; the shotgun's cross-draw is the RIGHT hand's, so the two never compete), `seatedPouch = -0.28, -0.42,
+   0.18, 0.20`. 0.28 m from the grenade slot (either hand, at the left chest). The left hand in the gun's frame is
+   `engine::bone_pose::LatestSupport()` as `game/Vent` reads it; **the receiver is the vent's own zone** (`[Vent] zone*`: one
+   receiver for the vent and the reload, ME1's keys and defaults). A squeeze the grenades, the vent, the support grip, the
+   voice radio or the power wheel took is not the reload's (`squeezeClaimed`); the reload's held clip is in `ActionHandFree`.
+2. **The coordinator's frame**: identities from the world (the pawn's `WorldInfo` and the pawn), the held weapon object and the
+   on-foot context (a new generation each time the module becomes active); the grant is the left hand while no support grip
+   holds it (a new lease each time). `eligible` = the weapon's own `CanReload()` (its class's function) while the game isn't
+   reloading; `supportedFiniteReserve` = not `bInfiniteAmmo` and `bWeaponCanBeReloaded`.
+3. **The request** is the button's own route, `SFXGameModeDefault.TryReload` on the player controller's default game mode
+   (`holsters::DefaultGameMode`), through `ue3::runtime::Call` on the game thread: it calls `Weapon.TryReload()` through the
+   script VM, so the weapon's state decides (ME2's `StartReload`/`Reloading` states ignore a second one; calling
+   `SFXWeapon.TryReload` by ProcessEvent would have bypassed them). Never `DoReload`, never an R press; the game's R and its
+   automatic reload stay. **Feedback**: accepted when `BioPlayerController.IsReloading()` turns true (or the weapon is in
+   `Reloading`/`StartReload`), finished when it ends with the magazine's count up (or the used or spare count down), aborted
+   when it ends with the counts unchanged, rejected when nothing began within 0.6 s, aborted when the gun changes; each one
+   reconciled for the coordinator.
+4. ReflectCheck rows (LE2: `SFXWeapon.CanReload`, `GetAmmoCountInMagazine`, `BioPlayerController.IsReloading` with their
+   parameters, `bInfiniteAmmo`, `bWeaponCanBeReloaded`, `SFXGameModeDefault.TryReload`'s parameter block; LE3 had them);
+   `[Reload]` appended to `ASI\LE2MEVR.ini` / `LE3MEVR.ini` (the ME3 preview runner's allowed sections list it); logs
+   `reload:`; snapshot `"mod"."reload"`; `mevr reload [status | try]` (`try`: the same request outside the coordinator);
+   `tools/make-reload-recording.py` and `tools/le2-halcyon-run/reload.ps1 -Holder <you> [-Game LE3]`.
+5. **In the game** (ME2, Save 4, the fake headset; stretch `20261116-224515-586-LE2-wp-weapons`, restored with `verification: 0
+   differences`; `reload.ps1`): startup `reload: the reload by hand is ready (SFXGameModeDefault.TryReload true, SFXWeapon.CanReload
+   true, GetAmmoCountInMagazine true, AmmoUsedCount and CurrentSpareAmmo true, BioPlayerController.IsReloading true, ...)`, `reflect:
+   733 of 733 checks agree`. The pistol drawn: `magazine 12, used 0, spare 60`; one replayed trigger pull: `magazine 11, used 1,
+   spare 60`; the replayed gesture: `the left hand is at the clip pouch (0.13 m from its centre)`, `the left hand took a clip from
+   the pouch`, `the clip went into the receiver (0.04 m along the gun, 0.05 above, -0.08 beside)`, `SFXGameModeDefault.TryReload,
+   the game's own reload (request 1; ...)`, `the game reloads (0.01 s after the request ...)`, `reloaded after 1.50 s: magazine 12,
+   used 0, spare 59 (was magazine 11, used 1, spare 60)`: **12 / 0 / 60 -> 11 / 1 / 60 -> 12 / 0 / 59**, no R pressed. The same
+   gesture with the magazine full: `a squeeze at the pouch: no clip (nothing to reload now ...; magazine 12, used 0, spare 59)`, a
+   refusal buzz, the ammo unchanged. ME3 (Save 31, the Normandy's non-combat pawn): the names resolve (`reflect: 710 of 710 checks
+   agree`), `mevr reload status`: `no gun`; its reload waits for a combat fixture.
+6. **Found on the way:** a replay whose right grip is already closed on its first frame keeps that squeeze as RB (the pad
+   mapping decides a squeeze's meaning when it begins, before the mod had published that the grip holds the gun): that
+   squeeze was RB, ME2's power-wheel button, and the trigger fired nothing. `make-reload-recording.py --grip-held` closes the grip
+   at 0.5 s instead, and then the shot fires with the grip held (`magazine 11, used 1, spare 59`, stretch
+   `20261116-230334-332-LE2-wp-weapons`, which also repeated the reload: `reloaded after 1.50 s`). Whether a
+   player's squeeze held through a load or a menu does the same until it is let go once is [verify].
+
+**Next (not built): the replay STAGE-eye gap.** Replays don't drive the floor lock's eye height: the host's floor sample
+(`plugin/XrHost` `MeasureFloor`) reads the runtime's real head over STAGE while the replay substitutes the recorded head, so a
+recorded crouch or a taller recorded head never reaches the body scale or the holsters' slots. The minimal fix (lane C4's
+idea): while a replay runs, add the replayed head's height change (its LOCAL head Y minus the runtime's) to the sample in
+`MeasureFloor`; the full one is research/58's per-frame floor payload in the recording format. Shared host code: it needs an
+LE1 same-pose pair before and after.
 
 ## What M3 still needs from the host (lane B2)
 

@@ -2224,6 +2224,9 @@ void CheckFields() {
     CheckField("SFXGame.SFXWeapon", "CurrentSpareAmmo", SDK_FIELD(ASFXWeapon, CurrentSpareAmmo));
     CheckField("SFXGame.SFXWeapon", "MagSize", SDK_FIELD(ASFXWeapon, MagSize));
     CheckField("SFXGame.SFXWeapon", "bEarlyReload", SDK_BOOL(ASFXWeapon, bEarlyReload));
+    // the reload by hand (game/Reload): a gun that reloads at all, and a finite reserve
+    CheckField("SFXGame.SFXWeapon", "bInfiniteAmmo", SDK_BOOL(ASFXWeapon, bInfiniteAmmo));
+    CheckField("SFXGame.SFXWeapon", "bWeaponCanBeReloaded", SDK_BOOL(ASFXWeapon, bWeaponCanBeReloaded));
     // M3 (research/le2-vrik.md): the body (game/Player, engine/skeleton, engine/BonePose, the skeleton and camera probes)
     CheckField("Engine.Pawn", "Mesh", SDK_FIELD(APawn, Mesh));
     CheckField("Engine.Actor", "Velocity", SDK_FIELD(AActor, Velocity));
@@ -2437,6 +2440,9 @@ void CheckFunctions() {
     char const* const functions[] = {
         "SFXGame.SFXWeapon.GetAimError",                  // game/Sights: a scope's aimed fire (ME1's GetPlayerAimError(Accuracy))
         "SFXGame.BioPlayerController.SwitchWeapon",       // game/Holsters' sequel draw (a holster grab, `mevr weapon <family>`)
+        "SFXGame.SFXWeapon.CanReload",                    // game/Reload: whether the game would reload (the gesture's eligibility)
+        "SFXGame.SFXWeapon.GetAmmoCountInMagazine",       // ... the magazine's count, before and after
+        "SFXGame.BioPlayerController.IsReloading",        // ... the game took the request (accepted) and finished it
         "SFXGame.BioPawnBehavior.SetActionState",         // ... the weapon out of its holster (combat), as FireWeapon does first
         "Core.Object.GetStateName",                       // ... the weapon's state: mid-switch (WeaponEquipping, WeaponPuttingDown)
         "SFXGame.BioPlayerInput.IsCombatEnabled",         // ... only holsters draw: answered false inside the buttons' draws
@@ -2527,6 +2533,14 @@ void CheckParams() {
     PARAM(ASFXWeapon_execGetAimError_Parms, "SFXGame.SFXWeapon.GetAimError", Accuracy);
     PARAM(ASFXWeapon_execGetAimError_Parms, "SFXGame.SFXWeapon.GetAimError", ReturnValue);
     PARAM(ABioPlayerController_eventSwitchWeapon_Parms, "SFXGame.BioPlayerController.SwitchWeapon", oWpn);
+    // game/Reload
+    PARAM(ASFXWeapon_execCanReload_Parms, "SFXGame.SFXWeapon.CanReload", ReturnValue);
+    PARMS(ASFXWeapon_execCanReload_Parms, "SFXGame.SFXWeapon.CanReload");
+    PARAM(ASFXWeapon_execGetAmmoCountInMagazine_Parms, "SFXGame.SFXWeapon.GetAmmoCountInMagazine", ReturnValue);
+    PARMS(ASFXWeapon_execGetAmmoCountInMagazine_Parms, "SFXGame.SFXWeapon.GetAmmoCountInMagazine");
+    PARAM(ABioPlayerController_execIsReloading_Parms, "SFXGame.BioPlayerController.IsReloading", ReturnValue);
+    PARMS(ABioPlayerController_execIsReloading_Parms, "SFXGame.BioPlayerController.IsReloading");
+    PARMS(USFXGameModeDefault_execTryReload_Parms, "SFXGame.SFXGameModeDefault.TryReload");
     PARAM(UBioPawnBehavior_execSetActionState_Parms, "SFXGame.BioPawnBehavior.SetActionState", eState);
     PARAM(UObject_execGetStateName_Parms, "Core.Object.GetStateName", ReturnValue);
     PARAM(USkeletalMeshComponent_execHideBone_Parms, "Engine.SkeletalMeshComponent.HideBone", BoneIndex);
@@ -3257,6 +3271,9 @@ void CheckFields() {
     CheckField("SFXGame.SFXWeapon", "MagSize", SDK_FIELD(ASFXWeapon, MagSize));
     CheckField("SFXGame.SFXWeapon", "AmmoUsedCount", SDK_FIELD(ASFXWeapon, AmmoUsedCount));
     CheckField("SFXGame.SFXWeapon", "CurrentSpareAmmo", SDK_FIELD(ASFXWeapon, CurrentSpareAmmo));
+    // game/Reload names them where ME3 declares them
+    CheckField("SFXGame.SFXWeapon_NativeBase", "AmmoUsedCount", SDK_FIELD(ASFXWeapon_NativeBase, AmmoUsedCount));
+    CheckField("SFXGame.SFXWeapon_NativeBase", "CurrentSpareAmmo", SDK_FIELD(ASFXWeapon_NativeBase, CurrentSpareAmmo));
     CheckField("SFXGame.SFXWeapon", "bWeaponCanBeReloaded", SDK_BOOL(ASFXWeapon, bWeaponCanBeReloaded));
     CheckField("SFXGame.SFXWeapon", "bInfiniteAmmo", SDK_BOOL(ASFXWeapon, bInfiniteAmmo));
     CheckField("Engine.Inventory", "InvManager", SDK_FIELD(AInventory, InvManager));
@@ -3374,9 +3391,12 @@ void CheckFunctions() {
     PARAM(ASFXWeapon_execGetPlayerAimError_Parms, "SFXGame.SFXWeapon.GetPlayerAimError", ReturnValue);
     CheckFunction("SFXGame.BioPlayerController.SwitchWeapon");  // game/Holsters' sequel draw (a holster grab, `mevr weapon <family>`)
     PARAM(ABioPlayerController_eventSwitchWeapon_Parms, "SFXGame.BioPlayerController.SwitchWeapon", oWpn);
-    CheckFunction("SFXGame.SFXGameModeDefault.TryHolster");     // ... its holster (ME3 has no action state: research/le2-vrik.md)
+    CheckFunction("SFXGame.SFXGameModeDefault.TryHolster");     // ... resolved, never called on ME3 (it only leaves cover)
+    CheckFunction("SFXGame.SFXInventoryManager.SetCurrentWeapon");  // ... ME3's holster: the put-down into no weapon (le3PutAway)
+    CheckParam("SFXGame.SFXInventoryManager.SetCurrentWeapon", "DesiredWeapon", SDK_AT(0, 8));
     CheckFunction("Core.Object.GetStateName");                  // ... the weapon's state: mid-switch
-    CheckFunction("SFXGame.BioPlayerInput.IsCombatEnabled");    // ... only holsters draw: resolved; ME3 has no holstered state
+    CheckFunction("SFXGame.BioPlayerInput.IsCombatEnabled");    // ... only holsters draw: answered false with the weapon put away
+    CheckParam("SFXGame.BioPlayerInput.IsCombatEnabled", "ReturnValue", SDK_AT(0, 4));
     CheckFunction("SFXGame.SFXGameModeBase.FireWeapon");
     CheckFunction("SFXGame.SFXGameModeDefault.TightAim");
     CheckFunction("SFXGame.SFXGameModeDefault.TryReload");

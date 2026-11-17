@@ -3439,6 +3439,23 @@ void TestBodySlotGeometry() {
             CHECK(Length(resting - SlotCenter(frame, slot, 1.0)) > slot.radius);
         }
     }
+    // The SMG's slot (the sequels' fifth family) at the front of the right thigh: clear of the pistol by both radii and both
+    // exit margins, of the shotgun's cross-draw, and of a right hand hanging relaxed at the side (which touches no slot).
+    {
+        Slot const& pistol = DefaultLayout().slots[0];
+        Slot const& shotgun = DefaultLayout().slots[2];
+        Slot const& smg = DefaultLayout().slots[kSmgSlot];
+        CHECK(smg.weapon == Weapon::Smg && std::string_view(smg.name) == "thighRight");
+        double const margins = 2.0 * DefaultLayout().exitMargin;
+        CHECK(Length(SlotCenter(frame, pistol, 1.0) - SlotCenter(frame, smg, 1.0)) > pistol.radius + smg.radius + margins);
+        CHECK(Length(SlotCenter(frame, shotgun, 1.0) - SlotCenter(frame, smg, 1.0)) > shotgun.radius + smg.radius + margins);
+        Vec3 const hanging = frame.anchor + Vec3{0.25, -0.85, 0.03};  // the right hand hanging at the side
+        Vec3 const hipFire = frame.anchor + Vec3{0.15, -0.45, -0.30};  // a low hip-fire hand
+        for (Slot const& slot : DefaultLayout().slots) {
+            CHECK(Length(hanging - SlotCenter(frame, slot, 1.0)) > slot.radius);
+            CHECK(Length(hipFire - SlotCenter(frame, slot, 1.0)) > slot.radius + DefaultLayout().exitMargin);
+        }
+    }
 
     // The anchor's height follows with a time constant; its horizontal position at once.
     Anchor anchor(0.08);
@@ -3456,6 +3473,8 @@ void TestBodySlotGeometry() {
     CHECK(ParseWeapon(" rifle ") == Weapon::AssaultRifle);
     CHECK(ParseWeapon("assault_rifle") == Weapon::AssaultRifle);
     CHECK(ParseWeapon("SNIPER") == Weapon::Sniper);
+    CHECK(ParseWeapon("SMG") == Weapon::Smg);
+    CHECK(ParseWeapon("sub-machine gun") == Weapon::Smg);
     CHECK(ParseWeapon("off") == Weapon::None);
     CHECK(!ParseWeapon("rocket"));
 }
