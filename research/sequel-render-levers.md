@@ -1336,6 +1336,10 @@ deploy) was copied aside first and put back after (robocopy `/MIR`, the voice mo
 
 ### The second eye per game: the recommendation
 
+**Superseded by "The batch before the headset test" below** (a quiet machine, after lane LS's life-size stereo): ME2's
+recommendation there is `umbraShareResults=1` with `sfrReplayRetry=0`, not `umbraQueryWait=0`; ME3's stands. The table
+here is lane SP's, kept as its record.
+
 The owner's rule (2026-11-16): an option that breaks dynamic shadows in an eye carries `DynamicShadows` off with it.
 
 | game | today | recommended | why | shadows |
@@ -1385,3 +1389,156 @@ until lane RN's fix lands `launch.ps1` adopts neither game (both start twice): l
    MotionBlur False, FoliageDrawRadiusMultiplier 0.5, LightEnvironmentShadows False` at each level; whether `scale set`
    takes effect on ME3 is still unshown).
 5. Render resolution with FSR (lane EY's): one A/B per sequel at its heavy fixture, GPU side.
+
+### The batch before the headset test
+
+Lane SP2, 2026-11-16 20:10-20:31: items 1 and 3 of the batch above, on a machine given to this lane alone (no other
+lane building; **0 compilers at the start and the end of every capture**), after lane LS's life-size stereo (main
+4e7fe15f: each SFR pass from its eye's real place; ME2 gameplay renders each eye's own frustum, mode 2, ME3 stays in
+mode 1; the render window widened to hold both eyes, so the CPU culls a window 12.5% taller on the fake headset). These
+numbers replace SP's above as the sequels' baseline. A try build of 4e7fe15f (`-DMEVR_RENDER_LEVERS_TRY=ON`), every
+combination on top of `keepBoundShaderStates=1;minScreenRadiusPx=0` (the landed configuration), life-size on (no
+`stereo.measure`). Scripts and run data (never in the repository): `%LOCALAPPDATA%\MEVR\sp2-lane\scripts`
+(`me2-batch.ps1`, `me3-batch.ps1`: one protected stretch each through `tools/le2-halcyon-run`, still pairs first with the
+world paused, then the moving matrix; `batch-table.py` makes the tables below from `tools/perf-matrix.py`'s summary;
+`still-compare.py` the picture comparisons) and `...\sp2-lane\runs\LE2-20261116-201015`, `LE3-20261116-202316`. Both
+stretches restored with `verification: 0 differences`.
+
+Names: **A** today (`umbraQueryWait=1`, ME2's retry on); **B** `umbraQueryWait=0`; **S** `umbraShareResults=1` (with
+`umbraQueryWait=1`); **R0** `sfrReplayRetry=0`; **DS** `[SystemSettings] DynamicShadows=True` (applied by
+`game/SystemSettings` within a second; the log's `system settings: scale set DynamicShadows True ...`).
+
+**ME2's load and the settings file.** `load.ps1` refused the first try (`Save or runtime artifact changed during load`):
+the mod appends its first-run sections to `ASI\LE2MEVR.ini` some seconds after the launch, and the load had started 20 s
+after it. `me2-batch.ps1` now waits until that file has stood still for 15 s before it loads.
+
+#### ME2, Freedom's Progress (Save 4), moving
+
+Two rounds of 20 s under the 10 s head turn; the median over the rounds, render work's [lowest..highest]; ms:
+
+| combination | frame p90 / p99 | render work median / p90 / p99 | over 11.1 ms | GPU | `#0` / `#1` (its results read) | third renders | visible |
+|---|---|---|---|---|---|---|---|
+| A (today) | 14.98 / 21.39 | 11.03 [10.87..11.20] / 14.20 / 17.42 | 50% | 4.28 | 2.15 / 6.27 (4.25) | 2% | 406 |
+| B | 13.16 / 19.28 | 5.66 [5.41..5.90] / 11.48 / 15.88 | 9% | 4.21 | 2.66 / 2.40 (0.06) | 1% | 568 |
+| B + R0 | 14.34 / 20.35 | 6.21 [6.11..6.31] / 13.04 / 18.39 | 17% | 4.19 | 3.11 / 2.80 (0.07) | 0 | 536 |
+| S | 12.99 / 18.43 | 6.19 [6.18..6.19] / 11.91 / 17.10 | 13% | 4.41 | 2.92 / 2.55 (0.26) | 1% | 444 |
+| **S + R0** | **11.75 / 14.30** | **5.81** [5.73..5.90] / **10.64 / 13.74** | **6%** | 4.26 | 2.45 / 2.15 (0.30) | 0 | 478 |
+| B + R0 + DS | 13.13 / 19.44 | 6.10 [5.60..6.59] / 12.14 / 15.84 | 11% | 4.69 | 2.80 / 2.58 (0.06) | 0 | 562 |
+| S + R0 + DS | 12.32 / 16.39 | 6.43 [5.84..7.02] / 11.21 / 15.04 | 9% | 4.66 | 2.83 / 2.40 (0.23) | 0 | 449 |
+
+The frame interval's median is 11.15-11.26 ms for every option, 12.43 today.
+
+1. **Every option removes the second eye's wait** (render work 11.0 -> 5.7-6.4 ms median, frames over the period 50% ->
+   6-17%).
+2. Between the options the medians lie within one combination's round-to-round spread (up to 0.5 ms, more with DS:
+   the scene is not the same in every round). The tails tell them apart: **S + R0 is the only one that was good in both
+   rounds** (render p90 10.63 and 10.64, frame p99 14.08 and 14.52); the others had a render p90 of 11.8-14.0 ms and a
+   frame p99 of 17-26 ms in at least one round (B and both DS combinations in one, S and B + R0 in both). B + R0 behind
+   B is the same scatter: in round 1 their renders were alike (`#0` 2.9-3.0 ms, `#1` 2.6-2.7), in round 2 B's were
+   lighter (2.3 / 2.1 against 3.3 / 3.0); the retry does not change a render's own cost.
+3. **S keeps the second eye occluded on ME2 too**: 444-478 visible instances against today's 406 and B's 536-568.
+4. **The retry, moving:** a third scene render on 1-3% of the frames this time (SP saw 4-20% with the old stereo).
+   **With the world paused it fires on 94-98% of the frames**: in the still phase the levers' 10 s windows read
+   `3 (x669)` of 705 frames, the third render 6.2-10.4 ms each, the render work 12.4-12.9 ms a frame with the retry on
+   against 2.5-3.3 ms with R0 (the still captures: A 13.77 ms median, 95% of the frames over the period; B + R0 + DS
+   3.91, 0%; S + R0 + DS 4.14, 1%; S + DS, retry on, 13.73, 95%). Paused, pass 1's game-thread `Draw` returns in under
+   100 us and every such retry renders. ME2 pauses the world while its weapon and power wheels are up, and our menu
+   pauses it (`[Menu] pause`): with the retry on, the frame rate drops exactly while the player picks a power. SP's
+   "the world paused raises both renders on both sequels" was this retry on ME2 (ME3's paused rise below is something
+   else: it has no retry). No frame lost its second eye with R0: every snapshot, moving and still, has both eyes
+   rendered and distinct (|left - right| 12-14 of 255, 6-8% identical pixels), none black.
+5. **DS costs 0.4 ms of GPU** (S + R0: 4.26 -> 4.66) and render work within the spread (S + R0 +0.6 ms median; B + R0
+   none).
+
+#### ME2, still pairs: yaw 150, pitch -20, the world paused (Miranda in view, Jacob at the right edge)
+
+GF2's pose (`%LOCALAPPDATA%\MEVR\recordings\still-yaw150-p20.mevrrec`), two snapshots a second apart per combination,
+compared per eye with `tools/perf-picture-diff.py`'s measure (pixels whose largest channel moved more than 24 of 255;
+`still-compare.py`, difference images in `fp-still\diffs`):
+
+| pair | left | right | what |
+|---|---|---|---|
+| A against A + DS | 0.80% (39 cells) | 0.47% (26 cells) | the shadows: Miranda's and her gun's on the snow beside her, on her body and on Shepard's shoulder, each eye at its own place (`diffs\0-vs-1-left.png`, `-right.png`) |
+| A + DS against B + R0 + DS | **0.000%** | **0.000%** | the same picture, shadows included |
+| A + DS against S + R0 + DS | **0.000%** | **0.000%** | the same picture, shadows included |
+| A + DS against S + DS | 0.09% (5 cells) | 0.10% (6 cells) | only HUD cells (the ammo panel, the squad's power bar) that also differ between A + DS's own two snapshots |
+| one combination's two snapshots | 0.000% (A + DS: 0.09%, the same HUD cells) | 0.000% | |
+| left against right, every combination | 22.8-23.0% | | parallax; 2.4-2.8% identical pixels |
+
+So with each option the dynamic shadows are right in both eyes and the picture is today's: none of them replays an eye.
+
+#### ME3, the Normandy (Save 31, renderer preview), moving
+
+Eye images 3072x1536 now (the widened window). Two rounds of 20 s; ms:
+
+| combination | frame p90 / p99 | render work median / p90 / p99 | over 11.1 ms | GPU | `#0` / `#1` (its results read) | visible |
+|---|---|---|---|---|---|---|
+| A (today) | 14.49 / 15.52 | 11.53 [11.43..11.64] / 14.06 / 14.93 | 52% | 2.96 | 1.96 / 6.52 (4.74) | 667 |
+| B | 12.32 / 16.53 | 4.81 [4.71..4.91] / 11.77 / 15.91 | 15% | 2.94 | 2.47 / 2.23 (0.05) | 850 |
+| **S** | **12.32 / 15.95** | **4.83** [4.72..4.95] / **11.66 / 15.35** | **12%** | 2.97 | 2.33 / 2.21 (0.32) | **686** |
+| A + DS | 14.72 / 17.55 | 12.75 [12.63..12.86] / 14.23 / 16.99 | 53% | 3.07 | 2.27 / 6.73 (4.62) | 632 |
+| S + DS | 12.84 / 16.72 | 5.21 [5.18..5.23] / 12.36 / 16.13 | 13% | 3.05 | 2.67 / 2.55 (0.33) | 676 |
+
+The frame interval's median is 11.16 ms for every option, 12.15 today (13.51 with DS).
+
+1. SP's result holds on a quiet machine with life-size stereo: **S matches B's render work (4.8 ms against today's 11.5)
+   with the second eye still occluded** (686 visible instances against today's 667 and B's 850), so its p90 and p99 are
+   B's or better.
+2. The options' p99 (15.4-15.9 ms) is about today's (14.9): today is slow in most frames, the options only in the
+   heaviest.
+3. **DS costs 0.4 ms of render work** (median; p90 +0.7) on S and 0.1 ms of GPU here.
+
+#### ME3, still pairs: yaw 0, the world paused (Shepard on the lit grating before the door frame)
+
+The preview's third-person view; an occluder (the door frame) with the room beyond it seen through the door at both of
+its edges.
+
+| pair | left | right | what |
+|---|---|---|---|
+| A against S | 0.009% (0 cells) | 0.011% (0 cells) | noise: one combination's own two snapshots differ by 0.009-0.013%; nothing at the door frame's edges |
+| A against A + DS | 0.81% (21 cells) | 0.83% (21 cells) | Shepard's shadow on the grating behind his feet, in each eye (`nor-still\diffs\0-vs-2-left.png`, `-right.png`) |
+| A + DS against S + DS | 0.012% | 0.012% | noise |
+| left against right, every combination | 17.6-17.7% | | parallax; 2.5-2.8% identical pixels |
+
+This is **the first receipt that `scale set` acts on ME3** (docs/trilogy-plan.md T11, the ledger's R12): the log's
+`system settings: scale set DynamicShadows True, MotionBlur False, FoliageDrawRadiusMultiplier 0.5 ... (the file's
+values changed)` and the frame changes in both eyes. (`MotionBlur` and `FoliageDrawRadiusMultiplier` on ME3 are still
+unshown.) Paused, ME3's renders rise in every combination (A 12.8 ms render work, S 10.8), as SP saw; there is no retry
+on ME3, so that is not ME2's cause: paused captures are for pictures only.
+
+#### The recommendation (the owner decides; nothing switched)
+
+| game | second eye | `sfrReplayRetry` | dynamic shadows | why |
+|---|---|---|---|---|
+| ME2 | **`umbraShareResults=1`** (with `umbraQueryWait` 1) | **0** | right in both eyes with it: the owner's choice on cost (0.4 ms GPU here) | render work 11.0 -> 5.8 ms, render p90 14.2 -> 10.6, frame p90 15.0 -> 11.8 and p99 21.4 -> 14.3, frames over the period 50% -> 6%; the only option good in both rounds; the second eye stays occluded; the same picture as today's; the retry would cost a third render on nearly every paused frame |
+| ME3 | **`umbraShareResults=1`** | (no such lever) | right in both eyes with it: the owner's choice on cost (0.4 ms render work here) | render work 11.5 -> 4.8 ms, frames over the period 52% -> 12%, frame p90 14.5 -> 12.3; the second eye stays occluded; no difference at the door frame's edges at a still pose |
+
+Neither option replays an eye, so the owner's rule (dynamic shadows off where ME1's second-eye logic breaks them) does
+not force them off on the sequels: each eye draws its own shadows. ME1's value (off) stays the default until the owner
+says otherwise. `perEyeViewState` stays 1 on both.
+
+**The prepared change** (unlanded: branch `sp2-second-eye-defaults`, for the headset-test build if the owner says
+yes): `RenderLeversTable.hpp`'s `Layout` gets two per-game defaults read by `RenderLevers.cpp`,
+`umbraShareResultsDefault` (0) and `sfrReplayRetryDefault` (1); LE1's `static_assert` pins its 0; then one line per
+game's `kLayout`:
+
+- ME2: `l.umbraSharedVerified = true; l.umbraShareResultsDefault = 1; l.sfrReplayRetryDefault = 0;`
+- ME3: `l.umbraSharedVerified = true; l.umbraShareResultsDefault = 1;`
+
+`umbraSharedVerified` also admits `umbraSharedVisibility`, which stays at its 0 (never set it: research/35 attempt 46).
+An absent or empty `[Performance]` key then means the game's default; a player's file can still say 0 or 1.
+
+**Switching it off and on in such a build, no rebuild and no restart:** `plugin/RenderLevers`' `Tick` re-reads
+`[Performance]` in `ASI\LE2MEVR.ini` / `ASI\LE3MEVR.ini` once a second in every build (development and players'), so
+`umbraShareResults = 0` (both sequels) and `sfrReplayRetry = 1` (ME2) bring today's behaviour back within a second,
+and deleting the keys (or `= 1` / `= 0`) brings the recommendation back. The log says which is in force:
+`render levers: each eye waits for its own Umbra query results (the game's own) ([Performance] umbraShareResults = 0)`
+or `... answered with the first eye's results ... = 1`, and `render levers: a pass 1 Draw that returned in under 100 us
+is drawn again ... ([Performance] sfrReplayRetry = 1)` or `a pass 1 Draw is never drawn again ... = 0`. No menu row has
+them.
+
+**Not verified:** a real headset; asymmetric eyes (a PS VR2's culling edge, mode 2 on ME2); a heavy fixture (Omega,
+combat, ME3's lit scene: items 2 and 4); the first eye's results standing in at an occluder's edge while the head turns
+fast (a still pose cannot show a one-frame cull, and the moving snapshots are not same-pose); the prepared change in
+the game (it builds; a run would read `umbraShareResults = 1` and `sfrReplayRetry = 0` in the levers' lines with no key
+in the file).

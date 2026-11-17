@@ -260,6 +260,11 @@ These unblock the most: almost every other entry gets smaller once they land.
   branch, a skip of the second Draw) with the replay's `Record*` seams (R03). Then find out whether the sequels run Umbra
   at all (R07) before `umbraEyeMatrix`, `umbraQueryWait` and `minScreenRadiusPx` (R09), and whether their shaders take
   `ScreenToShadowMatrix`/`ScreenToWorld` (R04).
+- **The second eye (2026-11-16, lanes SP and SP2):** the second eye's 4-5 ms is Umbra's results read spinning for
+  queries that are never ready; on a quiet machine after life-size stereo the recommendation is ME2
+  `umbraShareResults=1` with `sfrReplayRetry=0`, ME3 `umbraShareResults=1` (render work 11.0 -> 5.8 and 11.5 -> 4.8 ms,
+  the second eye still occluded, the pictures today's), prepared unlanded on branch `sp2-second-eye-defaults` for the
+  owner's yes (research/sequel-render-levers.md "The batch before the headset test"). One-Draw stays "not now".
 - **Closes when:** an A/B under a replayed head at one heavy fixture per game (`tools/measure-levers.ps1`) shows each
   lever's cost and a correct second eye (`tools/eye-diff.ps1`).
 - **Waits for:** T07 to measure; R2 and R3 for the addresses. **Who:** R2 and R3 (addresses), PL (the shared module and
@@ -293,16 +298,19 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Waits for:** T01, T07. **Who:** nobody yet.
 
 #### T11 The engine's settings, applied by the mod [R11, R12]
-- **State:** LE1 done · LE2 verify · LE3 build
+- **State:** LE1 done · LE2 done · LE3 done (2026-11-16, lane SP2: the close condition below met)
 - **Lives in:** `game/SystemSettings` (`scale set` after each level change, each boolean through its opposite).
 - **Left:** ~~gate `LightEnvironmentShadows False` on the host's replay~~ done 2026-11-16 (GF2, HostServices v43
   `secondEyeIsReplay`; elsewhere the player's own value). On ME2 the key alone changed nothing visible at Freedom's
   Progress; the ground shadows there are `DynamicShadows`, which ME1's value keeps off on every game: the owner's
-  owner's answer of 2026-11-16 evening ("The second eye and dynamic shadows": lane SP measures each second-eye option
-  per game with and without them; with it on, ME2's shadows are right in both eyes, each eye being its own render).
-  **ME3:** no receipt yet that `scale set` applies at all.
+  answer of 2026-11-16 evening ("The second eye and dynamic shadows"). ~~Lane SP measures each second-eye option per
+  game with and without them~~ done (lane SP2, research/sequel-render-levers.md "The batch before the headset test"):
+  with each recommended option the shadows are right in both eyes on both sequels (Miranda's and her gun's at Freedom's
+  Progress, Shepard's on the Normandy), about 0.4 ms; on or off is the owner's call. ~~ME3: no receipt yet that `scale
+  set` applies at all~~: it does (the log's `system settings: scale set DynamicShadows True ...` and the frame changes in
+  both eyes). Still unshown on ME3: `MotionBlur` and `FoliageDrawRadiusMultiplier` (the ledger's R12).
 - **Closes when:** an ME2 and an ME3 snapshot show character shadows; ME3's log has the `system settings:` lines and an
-  A/B of `DynamicShadows` changes the frame.
+  A/B of `DynamicShadows` changes the frame. Met on both (stretches `LE2-20261116-201015`, `LE3-20261116-202316`).
 - **Waits for:** nothing; once T08 brings the replay to a sequel the gate follows the capability. **Who:** GF.
 
 #### T12 The motion-blur guard [R10]
