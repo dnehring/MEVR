@@ -4012,7 +4012,43 @@ of movement except for seated scenes. This will be a bigger deal in me2."
    guards (walls, ledges over 0.6 m, people).
 
 Check on the fake headset: John02_92, Liara freed, the lift ride with the stick pushed (the view goes up with the lift, no
-`End` put-back at the bottom); a seated scene (none known in LE1 for Shepard: ME2's shuttle and cockpit scenes are the cases).
+`End` put-back at the bottom); a seated scene (item 43).
+
+The owner, the same day: "I think we can keep both" (the boundary and the trigger stop).
+
+### Sitting down in first person (2026-11-16; item 43)
+
+**The owner, 2026-11-16:** "when we sit down in front of one of the dancers in the club on the Citadel, we need to ensure that
+that also is supported under the first person viewing experience. And this would go for any of the types of sit down based
+interactions that happen across all three games."
+
+1. **The scene:** `sta60_stripperseat` (`BIOA_STA60_05women_DSG_LOC_INT`, Chora's Den; the scan: framed, 3 entries, no
+   speakers, every reply `REPLY_STANDARD`, its matinees `Conversation` groups with `BioEvtSysTrackGesture` (the sit) and
+   director groups with `InterpTrackFade`). It was a set piece, so it always played on the 3D screen.
+2. **A seated scene is a kind of its own:** the scan's `SEATED_IN_WORLD` (`tools/conversation-scan.py`, verdict `seated`, kept
+   out of the flow list as staged scenes are) and `cw::IsSeatedScene` (`core/vr/ConversationWorld`, unit-tested), the seat
+   taken out of `cw::IsSetPiece` (13 left). In the game (`Begin`): `gC.seated`, and a seated scene is staged (the game's own
+   placement stands under a dip, no circle, no squad gathering). Its fades are the game's fade to black, so item 41's rule
+   moves the player with Shepard.
+3. **The view sits with him, by rule, in any conversation in the world** (`StepSeat`, called with `RideBase` each tick after
+   the opening): his animated head (`MarkHeadOf`) against his pawn's place; standing (at least 0.70 m above it, not crouched)
+   it learns his standing height (`standH`, smoothed) and his head's place; 15 cm under that (or under 0.62 m without a standing
+   sample in the scene) he sits: the held view follows his head from where it last stood, at up to 1 m/s, outside a 4 cm
+   deadband (breathing and idle sway stay the player's real head); 8 cm from standing again he gets up and the view comes up
+   with him. An opening cut to him already seated is at his head already: only later moves are followed. His head follower's
+   anchors are kept on his head meanwhile (no "jump"). While he sits: no walk (`MovePlayer` gate, with `PlayerSeated`), the
+   legs keep the seat's animation (`BodyAway`'s `legsStand` 0). Logs `convo: at N s Shepard sits down ...: the view goes with
+   his head`, `... Shepard gets up ...: the view comes up with him, X m followed`.
+4. **Not covered:** a sit inside a moment (a matinee in the cinematic mode, no conversation: ME2's and ME3's shuttle rides and
+   cockpit chairs will be these); the player's real posture (a player sitting at home in "I play seated" keeps the standing
+   body reference, so the view goes down by Shepard's drop either way). [verify] the thresholds on Shepard's skeleton (his
+   standing head above his place, his seated one) and the scene's own flow in the game (its fades, where it puts him).
+5. **Sit-downs elsewhere in LE1:** the scan names none; finding them needs the gesture names on `BioEvtSysTrackGesture`
+   (sit, chair, bench, couch), which the scan doesn't record yet. For ME2 and ME3 the list starts from their scans (T49).
+
+Check on the fake headset: Chora's Den (`conversation-launch.ps1 sta60_stripperseat -World on -Snapshot`): the opening a cut
+under the fade, `Shepard sits down`, a snapshot from the seat facing the dancer, the stick doesn't walk, `Shepard gets up` at the
+end.
 
 ## To check in the game
 
