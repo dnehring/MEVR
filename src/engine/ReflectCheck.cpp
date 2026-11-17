@@ -2938,6 +2938,27 @@ void CheckLe3EngineAccess() {
     PARMS(APlayerController_eventGetFOVAngle_Parms, "Engine.PlayerController.GetFOVAngle");
 }
 
+// game/OmniTool's ME3 adapter: the omni-tool is ME3's client effect, started and stopped through its manager. No row for
+// ParticleSystemComponent.Template (LExSDKv2's particle headers were 8 bytes early on LE2; the adapter checks the template's
+// name it reads instead).
+void CheckLe3OmniTool() {
+    CheckClass<URvrClientEffectManager>("SFXGame.RvrClientEffectManager");
+    CheckClass<URvrClientEffectMulti>("SFXGame.RvrClientEffectMulti");
+    CheckClass<UParticleSystemComponent>("Engine.ParticleSystemComponent");
+    CheckField("Engine.ActorComponent", "Owner", SDK_FIELD(UActorComponent, Owner));
+    CheckFunction("SFXGame.RvrClientEffectManager.GetClientEffectManager");
+    PARAM(URvrClientEffectManager_execGetClientEffectManager_Parms, "SFXGame.RvrClientEffectManager.GetClientEffectManager", ReturnValue);
+    CheckFunction("SFXGame.RvrClientEffectManager.Start");
+    PARAM(URvrClientEffectManager_execStart_Parms, "SFXGame.RvrClientEffectManager.Start", pEffect);
+    PARAM(URvrClientEffectManager_execStart_Parms, "SFXGame.RvrClientEffectManager.Start", pInstigator);
+    PARAM(URvrClientEffectManager_execStart_Parms, "SFXGame.RvrClientEffectManager.Start", ReturnValue);
+    PARMS(URvrClientEffectManager_execStart_Parms, "SFXGame.RvrClientEffectManager.Start");
+    CheckFunction("SFXGame.RvrClientEffectManager.Stop");
+    PARAM(URvrClientEffectManager_execStop_Parms, "SFXGame.RvrClientEffectManager.Stop", pEffect);
+    PARAM(URvrClientEffectManager_execStop_Parms, "SFXGame.RvrClientEffectManager.Stop", Id);
+    PARMS(URvrClientEffectManager_execStop_Parms, "SFXGame.RvrClientEffectManager.Stop");
+}
+
 void CheckLe3PhysicalCover() {
     CheckClass<ACoverLink>("Engine.CoverLink");
     CheckClass<ASFXPawn_PlayerParty>("SFXGame.SFXPawn_PlayerParty");
@@ -3771,6 +3792,7 @@ bool Run(hook::Context& context) {
     CheckLe3PhysicalCover();
     CheckLe3EngineAccess();
     CheckLe3ViewLevel();
+    CheckLe3OmniTool();
 #endif
 #if defined(MEVR_GAME_LE2)
     CheckTraversal();
