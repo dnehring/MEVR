@@ -181,6 +181,10 @@ Controls GetControls();
 //                    weapon: pistol | shotgun | rifle | sniper | smg | none; meters from the eyes (held
 //                    upright), in the body's frame, at a 1.65 m eye height. thighRight is the sequels' SMG (ME1 has no
 //                    SMG: the slot is off there and its key isn't read)
+//   smgSlot          the sequels only: where the SMG's slot is: thighRight (default) | lowerBack (the small of the back;
+//                    its line `lowerBack = smg, ...` and `seatedLowerBack` give its place; lane SG, 2026-11-17)
+//   lostHandHoldS    the sequels only: seconds a right hand that lost tracking at the lowerBack slot keeps its last place
+//                    on the body (inside-out headsets can't see it there); 0: never
 // The game's default layout: core/ik/BodySlots' five slots, the SMG's switched off on ME1.
 inline ik::body_slots::Layout GameHolsterLayout() {
     ik::body_slots::Layout layout = ik::body_slots::DefaultLayout();
@@ -214,6 +218,9 @@ struct Holsters {
     // ME3 only ([Holsters] le3PutAway): a gun let go is put away by the game's own put-down into no weapon
     // (SFXInventoryManager.SetCurrentWeapon(None)); 0 (default until an ME3 combat fixture checks it): it stays in the hand.
     bool le3PutAway = false;
+    // The sequels ([Holsters] lostHandHoldS): a right hand lost behind the back at the SMG's lowerBack slot keeps its last
+    // place on the body this long (ik::body_slots::LostHand). Never on ME1 (no SMG slot there).
+    double lostHandHoldS = 0.75;
 };
 Holsters GetHolsters();
 // [Squad] (appended to an older file that lacks it; keys added later are appended with their defaults):
@@ -492,14 +499,16 @@ Vent GetVent();
 // [Reload] (the sequels: ME2 and ME3 reload thermal clips; ME1 has heat and the vent instead; research/le2-vrik.md "The reload
 // by hand"): the LEFT hand takes a clip at the pouch (a body slot, the left hip, on the holsters' body frame and scale) and
 // pushes it into the gun's receiver ([Vent]'s zone*: one receiver for the vent and the reload). The game's own reload then runs.
-//   enabled          1 (default on the sequels): the reload by hand; the game's R and its automatic reload stay
+//   enabled          0 (the default since 2026-11-16, the owner: off until its gesture is redesigned with the owner; an
+//                    older file's 1 moves to 0 once, marker enabledMoved): the reload by hand; the game's R and its automatic
+//                    reload stay either way
 //   pouch            right, up, forward, radius: meters from the eyes in the body's frame at a 1.65 m eye height
 //   seatedPouch      the same, fixed meters from the neutral head when seated
 //   holdTimeoutS     a clip held this long without reaching the receiver is dropped
 //   maxStepM         a hand step larger than this in one tick (the gun's frame) is a jump: leave the receiver and come back
 //   hapticAmplitude  0..1 (0.5 as designed, 0 = none)
 struct Reload {
-    bool enabled = true;
+    bool enabled = false;
     ik::body_slots::Slot pouch{"pouch", ik::body_slots::Weapon::None, {-0.20, -0.60, 0.02}, 0.13};
     ik::body_slots::Slot seatedPouch{"seatedPouch", ik::body_slots::Weapon::None, {-0.28, -0.42, 0.18}, 0.20};
     double holdTimeoutS = 8.0;

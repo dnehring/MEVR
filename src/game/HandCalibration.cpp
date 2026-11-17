@@ -289,8 +289,14 @@ constexpr char const* kHolstersBlock =
     "hipLeft = shotgun, -0.20, -0.62, 0.00, 0.14\n"
     "shoulderLeft = sniper, -0.18, -0.08, -0.20, 0.20\n"
 #if !defined(MEVR_GAME_LE1)
-    "; The SMG at the front of the right thigh (a one-hander, clear of the pistol and of a hand hanging at your side).\n"
+    "; smgSlot: where the SMG is: thighRight = the front of the right thigh (a one-hander, clear of the pistol and of a hand\n"
+    "; hanging at your side); lowerBack = the small of the back (where the game hangs a gun on your lower back). Its line\n"
+    "; below gives the place. Behind your back the headset may lose sight of the controller: lostHandHoldS is how long\n"
+    "; its last place there still counts (seconds; 0 = not at all).\n"
+    "smgSlot = thighRight\n"
     "thighRight = smg, 0.08, -0.90, 0.15, 0.12\n"
+    "lowerBack = smg, 0.00, -0.60, -0.26, 0.12\n"
+    "lostHandHoldS = 0.75\n"
 #endif
     "; Seated only: right, up, forward, radius in FIXED meters from the neutral head.\n"
     "; Weapon assignments still come from the four slots above; standing is unchanged.\n"
@@ -300,6 +306,7 @@ constexpr char const* kHolstersBlock =
     "seatedShoulderLeft = -0.28, -0.04, -0.14, 0.20\n"
 #if !defined(MEVR_GAME_LE1)
     "seatedThighRight = 0.15, -0.60, 0.55, 0.20\n"
+    "seatedLowerBack = 0.30, -0.48, -0.24, 0.20\n"
 #endif
     "seatedGrenade = -0.10, -0.18, 0.08, 0.10\n"
 #if defined(MEVR_GAME_LE3)
@@ -657,8 +664,11 @@ constexpr char const* kReloadBlock =
     "[Reload]\n"
     "; The reload by hand: with a gun in your right hand, squeeze the left grip at the clip pouch on your left hip,\n"
     "; carry the clip to the gun and push it into the receiver (over and just behind your right hand: the [Vent]\n"
-    "; zone). The game then reloads as with its own button, which still works, as does its automatic reload.\n"
-    "enabled = 1\n"
+    "; zone). The game then reloads as with its own button. Off (enabled = 0) until its gesture is redesigned with the\n"
+    "; owner (2026-11-16: a hand at the hip makes no sense); the game's own reload button and its automatic reload work\n"
+    "; as always. enabledMoved: an older file's enabled = 1 (the first default) moved to 0 once.\n"
+    "enabled = 0\n"
+    "enabledMoved = 1\n"
     "; pouch: right, up, forward, radius, meters from your eyes in your body's frame for a 1.65 m eye height.\n"
     "; seatedPouch: the same in fixed meters when you play seated.\n"
     "pouch = -0.20, -0.60, 0.02, 0.13\n"
@@ -1171,6 +1181,22 @@ Holsters ReadHolsters(Ini const& ini) {
     if (Number(ini, "Holsters", "le3PutAway", value)) {
         holsters.le3PutAway = value != 0.0;
     }
+#if !defined(MEVR_GAME_LE1)
+    // The SMG's place (lane SG): its slot takes the chosen place's name, so the loop below reads that place's line.
+    if (auto const s = ini.find("Holsters"); s != ini.end()) {
+        if (auto const k = s->second.find("smgSlot"); k != s->second.end()) {
+            if (auto const place = ik::body_slots::ParseSmgPlace(k->second)) {
+                holsters.layout.smgPlace = *place;
+                holsters.layout.slots[ik::body_slots::kSmgSlot] = ik::body_slots::SmgSlot(*place);
+            } else {
+                log::Warn("holsters: can't read smgSlot = {} (thighRight or lowerBack); thighRight kept", k->second);
+            }
+        }
+    }
+    if (Number(ini, "Holsters", "lostHandHoldS", value)) {
+        holsters.lostHandHoldS = std::clamp(value, 0.0, 3.0);
+    }
+#endif
     if (auto const s = ini.find("Holsters"); s != ini.end()) {
         if (auto const k = s->second.find("powerWheel"); k != s->second.end()) {
             std::string text = k->second;
@@ -1262,6 +1288,12 @@ std::string Describe(Holsters const& h) {
     }
     text += std::format(" grenade ({:.2f}, {:.2f}, {:.2f}) r {:.2f}", h.seatedGrenade.offset.x, h.seatedGrenade.offset.y,
         h.seatedGrenade.offset.z, h.seatedGrenade.radius);
+#if !defined(MEVR_GAME_LE1)
+    text += std::format("; the SMG at {} (smgSlot){}", ik::body_slots::Name(h.layout.smgPlace),
+        h.layout.smgPlace == ik::body_slots::SmgPlace::LowerBack
+            ? std::format(", a right hand lost there keeps its place {:.2f} s (lostHandHoldS)", h.lostHandHoldS)
+            : std::string());
+#endif
     return text;
 }
 
@@ -2293,7 +2325,11 @@ vr::world_ui::Settings ReadWorldUi(Ini const& ini) {
             std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
             if (lower == "all") {
                 bits = 0xFFFFFFFFu;
+#if defined(MEVR_GAME_LE3)
+            } else if (vr::world_ui::Screen const screen = vr::world_ui::FromMe3Tag(w); screen != vr::world_ui::Screen::None) {
+#else
             } else if (vr::world_ui::Screen const screen = vr::world_ui::FromTag(w); screen != vr::world_ui::Screen::None) {
+#endif
                 bits |= vr::world_ui::Bit(screen);
             } else if (!w.empty() && lower != "none") {
                 log::Warn("world ui: [WorldUi] {}: '{}' isn't one of the game's screens we place (research/53)", key, w);
@@ -2980,6 +3016,10 @@ void Refresh() {
 #if !defined(MEVR_GAME_LE1)
         {L"thighRight", "thighRight", L"smg, 0.08, -0.90, 0.15, 0.12"},  // the SMG's slot, 2026-11-16 (lane WP)
         {L"seatedThighRight", "seatedThighRight", L"0.15, -0.60, 0.55, 0.20"},
+        {L"smgSlot", "smgSlot", L"thighRight"},  // the SMG's place, 2026-11-17 (lane SG): thighRight or lowerBack
+        {L"lowerBack", "lowerBack", L"smg, 0.00, -0.60, -0.26, 0.12"},
+        {L"seatedLowerBack", "seatedLowerBack", L"0.30, -0.48, -0.24, 0.20"},
+        {L"lostHandHoldS", "lostHandHoldS", L"0.75"},
 #endif
 #if defined(MEVR_GAME_LE3)
         {L"le3PutAway", "le3PutAway", L"0"},  // ME3's put-down into no weapon, off until a combat fixture checks it
@@ -3264,6 +3304,26 @@ void Refresh() {
         ini = ReadIni(path);
         stamp = fs::last_write_time(path, ec);
     }
+#if !defined(MEVR_GAME_LE1)
+    // [Reload] since 2026-11-16 (the owner: "putting my left hand to the hip makes no sense"): the reload by hand is off until
+    // its gesture is redesigned with the owner. A file without the marker enabledMoved whose enabled still holds the first
+    // default 1 gets 0; the marker is written only after that, so a later reload retries a failed write and a later 1 stays.
+    if (auto const s = ini.find("Reload"); s != ini.end() && s->second.find("enabledMoved") == s->second.end()) {
+        auto const k = s->second.find("enabled");
+        bool const old = k != s->second.end() && k->second == "1";
+        bool const saved = !old || WritePrivateProfileStringW(L"Reload", L"enabled", L"0", path.wstring().c_str()) != 0;
+        if (saved && WritePrivateProfileStringW(L"Reload", L"enabledMoved", L"1", path.wstring().c_str()) != 0) {
+            if (old) {
+                log::Info("hands: [Reload] enabled 1 -> 0 (moved once): the reload by hand is off until its gesture is "
+                          "redesigned; the game's reload button and its automatic reload work as always, in {}", ini::Utf8(path));
+            } else if (k != s->second.end()) {
+                log::Info("hands: [Reload] enabled = {} kept (your choice; the default is 0)", k->second);
+            }
+        }
+        ini = ReadIni(path);
+        stamp = fs::last_write_time(path, ec);
+    }
+#endif
     // [Mako] since 2026-11-02 (research/48 section 22): the controls' grips are the cockpit models' on the seat's armrests and
     // the throttle travels the model's slot. A file holding all three old defaults exactly gets the new ones; any other
     // value is the player's and kept.

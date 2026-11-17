@@ -54,7 +54,7 @@ rows the change touches.
 | game | shared | adapted | forked | missing | n/a | present and verified (V) | present, unverified (U) |
 |---|---|---|---|---|---|---|---|
 | LE2 | 14 | 50 | 2 | 23 | 4 | 51 | 15 |
-| LE3 | 14 | 49 | 4 | 20 | 6 | 30 | 37 |
+| LE3 | 14 | 50 | 4 | 19 | 6 | 31 | 37 |
 <!-- /parity:totals -->
 
 LE1 is the reference, so it has no cells. A few LE1 systems are themselves n/a under Halcyon's renderer: the reflection
@@ -227,7 +227,7 @@ The [technique groups](#renderer-techniques-by-group) summary follows the table.
 | G05 | Support grip, two-handed (`game/SupportGrip`, `plugin/PadMerge` v7/v11) | **shared** U: ctest `mevr-pad-merge` only | **shared** U | A replay with the left grip in the zone, then snapshot `supportGrip`. |
 | G06 | Sights: red dot, holo, ADS, alignment assist (`game/Sights`, `plugin/SightLayers`, `core/vr/Ads`) | **shared** V: one path with ME1 since lane C2's step 2 (the sight line's trace, convergence, the assist, a scope's aimed fire through `SFXWeapon.GetAimError` with `SFXWeapon_NativeBase.bIsZoomed` set for the call; `SFXWeapon.ZoomFOV`). Run on the fake headset 2026-11-16 (the pistol's dot in the right eye, shots on what the sight line hits; the sniper rifle's ADS, scope picture and aimed fire 10.0 -> 0.0): research/le2-vrik.md. The headset is the checklist's | **shared** U: the same path (`SFXWeapon.GetPlayerAimError(Accuracy)`); zoom steps (`AimModes`) not read; the SMG borrows the rifle profile | ME2: `tools/le2-halcyon-run/sights.ps1` (run 2026-11-16, LE1 at the same pose unchanged). ME3: a weapon fixture, then the same script's steps. research/le2-le3-vr-optics.md steps 1–3. |
 | G07 | Scope: picture-in-picture, virtual eyepiece, scope parts, scope capture (`game/ScopeParts`, `game/ScopeCapture`, `plugin/ScopeCaptureSource`) | **adapted** U: picture from the eye copy. `ScopeParts` shared (HideBone on every game; U); `ScopeCapture` is `out`; ScopeCaptureSource is linked but `setScopeCapture` isn't served | **adapted** U: same | A sniper-rifle fixture per game. Then ScopeCapture (it needs R31 on LE2). |
-| G08 | Holsters and "only holsters draw" (`game/Holsters`, `core/ik/BodySlots`) | **adapted** V: one module, ME2's names in its adapter (the inventory chain by family, `SwitchWeapon` + `SetActionState(1)`, `TryHolster`, `ActionState`); only holsters draw by one rule (`RefuseGameDraw`: `IsCombatEnabled` answered false inside FireWeapon, TightAim, TryReload, Next/PrevWeapon). Run 2026-11-16: the rifle at the shoulder and the pistol at the hip drawn and holstered, four trigger pulls with the weapon away refused, the right grip holding the gun through three vaults (research/le2-vrik.md "Holsters on the sequels"); ME1 at the same pose unchanged. Since 2026-11-16 (lane WP): the release grace seen (back after 0.20 s, holstered after 0.93 s); the SMG's slot `thighRight` (a fifth `BodySlots` slot, off on ME1; not run: Save 4's Soldier carries no SMG) | **adapted** U: no holstered state on a mission (its script): TryHolster never called (it only leaves cover); the holster is the game's put-down into no weapon (`SFXInventoryManager.SetCurrentWeapon(None)`) behind `[Holsters] le3PutAway`, 0 by default; only holsters draw is ME2's rule with "away" = weapons carried, none equipped; Save 31 run: names resolve (`reflect: 710 of 710`), the non-combat pawn carries nothing, nothing drawn or refused | LE2: the SMG with a class that carries one. LE3: a combat fixture (none on the machine: research/le3-combat-fixtures.md), then `holsters.ps1 -Game LE3` with `le3PutAway = 1`, then its default. |
+| G08 | Holsters and "only holsters draw" (`game/Holsters`, `core/ik/BodySlots`) | **adapted** V: one module, ME2's names in its adapter (the inventory chain by family, `SwitchWeapon` + `SetActionState(1)`, `TryHolster`, `ActionState`); only holsters draw by one rule (`RefuseGameDraw`: `IsCombatEnabled` answered false inside FireWeapon, TightAim, TryReload, Next/PrevWeapon). Run 2026-11-16: the rifle at the shoulder and the pistol at the hip drawn and holstered, four trigger pulls with the weapon away refused, the right grip holding the gun through three vaults (research/le2-vrik.md "Holsters on the sequels"); ME1 at the same pose unchanged. Since 2026-11-16 (lane WP): the release grace seen (back after 0.20 s, holstered after 0.93 s); the SMG's slot `thighRight` (a fifth `BodySlots` slot, off on ME1; not run: Save 4's Soldier carries no SMG). Since 2026-11-17 (lane SG): `[Holsters] smgSlot = lowerBack` the other place, from the games' own lower-back socket (`EASlot_LowerBack`, the shotgun's; the games hang the SMG at the pistol's holster, the left side of the waist), a right hand lost there kept 0.75 s; `thighRight` the default until the owner chooses (research/le2-vrik.md "The SMG at the small of the back") | **adapted** U: no holstered state on a mission (its script): TryHolster never called (it only leaves cover); the holster is the game's put-down into no weapon (`SFXInventoryManager.SetCurrentWeapon(None)`) behind `[Holsters] le3PutAway`, 0 by default; only holsters draw is ME2's rule with "away" = weapons carried, none equipped; Save 31 run: names resolve (`reflect: 710 of 710`), the non-combat pawn carries nothing, nothing drawn or refused | LE2: the SMG with a class that carries one, at `thighRight` and at `lowerBack`. LE3: a combat fixture (none on the machine: research/le3-combat-fixtures.md), then `holsters.ps1 -Game LE3` with `le3PutAway = 1`, then its default. |
 | G09 | Gun kick (`game/GunKick`, `core/ik/GunKick`) | **adapted** V: recoil from `SFXWeapon.GetWeaponRecoil`; `gun kick: first kick` (le2-vrik) | **adapted** U: ME2's branch (`SFXWeapon.GetWeaponRecoil`, the shots from ViewLevel's `SetWeaponRecoil` handler) since 2026-11-16; builds, ReflectCheck rows (`CheckLe3ViewLevel`); not run in ME3 | LE3: a combat fixture with shots (research/le3-combat-fixtures.md): `reflect:` agrees on the new rows, `view level: first shot seen`, `gun kick: first kick`. |
 | G10 | View level, aim assist zeroed (`game/ViewLevel`) | **adapted** V: pitch held in 4,723 of 4,723 ticks, yaw kick removed (le2-vrik); the aim-assist zeroing unmeasured | **adapted** U: the same handlers as ME1 and ME2 since 2026-11-16 (PlayerTick, `SFXInventoryManager.SetWeaponRecoil`, aim assist's `ViewFriction`/`ViewAdhesion`), ME2's yaw-kick removal; ME3 has all 29 names; builds, ReflectCheck rows; not run in ME3 | LE3: the same fixture: `view level: handlers on ...`, the pitch held while shooting (the heartbeat's `view level:` line), whether ME3 queues a yaw kick, and which PlayerTick functions it found (none: it levels a frame late from the mod's tick). |
 | G11 | Camera shakes off (`game/CameraShake`) | **adapted** V: ME2's branch sets `CameraModifier.bDisabled`; modifiers off in the run. Which gun shakes exist is [verify] | **adapted** U: ME2's branch since 2026-11-16 (`SFXPlayerCamera.ScreenShakeModifier`, `Camera.CameraShakeCamMod`, `SFXCameraMode.bIsCameraShakeEnabled`: all in ME3's SDK); builds, ReflectCheck rows; not run in ME3 | LE3: `camera shake: ... off in VR` names each modifier it found; `mevr shake` in a combat fixture. |
@@ -240,12 +240,12 @@ The [technique groups](#renderer-techniques-by-group) summary follows the table.
 | G18 | Weapon drawn like exploring: explore stance, constant eye, linear walk and stick, draw rate (`game/CombatStance`, `core/vr/CombatStance`, seam `ConstantFpEye`) | **missing**: `out`; ME2 lacks `BioPawnBehavior`'s ramp fields (research/le2-vrik-audit.md) | **missing** | Port per item. The linear walk and stick is the one players notice (research/38). Decide per game what stands in for the ramp fields. |
 | G19 | Our main menu (`plugin/MainMenu`, `MainMenuSettings`, `src/plugin/menu`, `assets/menu`) | **shared** V: run `20261114-222813-lane-d-menu` (f9809ed3); unported rows greyed | **shared** V: menu open and resume, run `20261115-183117-290` | notes/headset-checklist.md §5. |
 | G20 | Menu pause (`game/MenuPause`) | **adapted** V: `WorldInfo.bPlayersOnly` (same run) | **adapted** U: `BioWorldInfo.PauseGame` through `UnambiguousMethod` (research/le3-menu-pause.md) | — |
-| G21 | Game menu and Holster buttons (`game/GameMenuRequest`) | **adapted** V: Game menu opened the Mission Computer; Holster not exercised | **adapted** V (pages): squad, journal, map and Close checked on Save 31 (lane OM, 2026-11-16: ME3's screens act on B's release, so every back-out sends B and its release); Holster missing (`#if !LE3`, waits for lane WP's ME3 holster call) | — |
+| G21 | Game menu and Holster buttons (`game/GameMenuRequest`) | **adapted** V: Game menu opened the Mission Computer; Holster not exercised | **adapted** V (pages): squad, journal, map and Close checked on Save 31 (lane OM, 2026-11-16: ME3's screens act on B's release, so every back-out sends B and its release); Holster greyed on ME3's menu bar (`main.rml`: "Not on ME3 yet"; lane OM2, 2026-11-16) until lane WP's `holsters::PutAway()` and `[Holsters] le3PutAway` on by default; the back-outs 12 ticks apart on ME3 (the map page answered B after about a second) | — |
 | G22 | Omni-tool rail, wrist tap, gauntlet (`plugin/OmniToolRail`, `RailArt`, `game/OmniTool`, `game/GameArt`) | **adapted** V: run `20261114-234544-lane-d2-rail` (1a8d3b39). `GameArt` LE1-only (ME1's art cache, recoloured) | **adapted** V: rail shared, in ME3's Mission Computer colours (theme `me3`, never ME1's art); the gauntlet is ME3's own client effect (`RvrClientEffectManager.Start` of `OmniTool_LeftFull_VCFX_M`), seen on Shepard's forearm on Save 31 (lane OM, 2026-11-16). `GameArt` stays LE1-only: ME3's frames and tabs are bitmap fills and its font library isn't a live object | LE3: research/le3-native-gui "The omni-tool on ME3". |
-| G23 | Game screens in the room and on the wrist; the UI-world figure (`game/WorldUi`, `plugin/WorldUi`, `game/UiWorldFigure`) | **adapted** V: `SetMovieVisibility`; runs `20261115-043419-wrist-visual` and the Save 4 pointer run (827cd3af). UiWorldFigure missing | **missing**: no `setWorldUi`. The whole native GUI frame goes on a `WorldPanels` quad (`PlaceNativePanel`) | LE3: research/le3-native-gui gates 1–4. |
+| G23 | Game screens in the room and on the wrist; the UI-world figure (`game/WorldUi`, `plugin/WorldUi`, `game/UiWorldFigure`) | **adapted** V: `SetMovieVisibility`; runs `20261115-043419-wrist-visual` and the Save 4 pointer run (827cd3af). UiWorldFigure missing | **adapted** V: `setWorldUi` served (lane OM2, 2026-11-16, Save 31): the Mission Computer and map on the wrist, War Assets in the room toward the War Terminal, the squad record (3D Shepard) on the native panel; ME3's adapter reads the focused `SFXGUIMovie` and turns its UI world off (`SetRequiresUIWorld(false)`) while ours stand; ME3's `d3d_capture` stays out of MENU_MONO (`MevrSeams::WorldUiOwnsGui`). UiWorldFigure missing; behind a screen the eye is the GUI camera's (no render hold) | LE3: research/le3-native-gui "The game's screens on ME3" (its "Not right yet"). |
 | G24 | Omni pad for the bypass minigame (`plugin/OmniPad`, `core/vr/OmniPad`) | **missing**: ME2's hack and bypass minigames are different games (docs/le2-validation-coverage.md "Hacking and bypass") | **n/a**: ME3 has no bypass minigame (game knowledge, not checked in its data) | — |
 | G25 | Galaxy map: hologram, stereo window, projector (`game/GalaxyMap`, `plugin/GalaxyHologram`, `game/SceneCaptureRig`) | **forked** U: `HalcyonLe2Bridge::PlaceGalaxyPanel` + `vr::galaxy_map::NativeTablePanel`, opt-in `[Galaxy] nativeTable = 1`. GalaxyMap and GalaxyHologram aren't on LE2 | **forked** V: `Le3GalaxyCapture` (re-implements GalaxyMap's `StepWindow`), `PlaceNativePanel` (a copy of LE2's), `Le3GalaxyRetention`, `NativeMapInputLease`. Navigation run `20261115-194205-273`, retention `20261115-214310-005`, raw eye captures `20261115-220823-943`; the post-effect fix never ran (`20261115-221710-284` timed out) | docs/galaxy-projector-handoff.md "Remaining work" 1–5; Forks 3. |
-| G26 | Game pointer and GUI events (`plugin/GamePointer`, `game/GuiCursor`, `core/vr/GuiEvents`) | **adapted** V: the Save 4 pointer run, 2026-11-15 (research/le2-menus.md "Game screens and pointer") | **adapted** V: pointer on the native GUI quad; `takeGuiEvents` served on LE3 (`WithMenus`): a replayed ray click on the Mission Computer's Squad went in as `SFXGameModeGUI.GuiKey(31)` and opened the squad record, no SendInput (lane OM, Save 31, 2026-11-16) | LE3: on the wrist with G23. |
+| G26 | Game pointer and GUI events (`plugin/GamePointer`, `game/GuiCursor`, `core/vr/GuiEvents`) | **adapted** V: the Save 4 pointer run, 2026-11-15 (research/le2-menus.md "Game screens and pointer") | **adapted** V: pointer on the native GUI quad; `takeGuiEvents` served on LE3 (`WithMenus`): a replayed ray click on the Mission Computer's Squad went in as `SFXGameModeGUI.GuiKey(31)` and opened the squad record, no SendInput (lane OM, Save 31, 2026-11-16). On a world screen (wrist or room) the clicks reach the right pixel as GUI events but ME3's movie mouse doesn't move (lane OM2) | LE3: the movie mouse on world screens (research/le3-native-gui "The game's screens on ME3"). |
 | G27 | Interaction: selection by gaze, label at the object (`engine/SelectionGaze`, `game/Interact`, `HudPieceLayers::Interaction`) | **adapted** V: gaze at `0xAC0530` (ME3's void(this) search); a band per game (`hp::DefaultLabelCrop` `Me2`), on by default; Save 4: the door selected ahead, nothing at 60 degrees, its label (research/40 section 6, lane HU) | **adapted** V: gaze at `0xA9BF90`; run `20261115-190610-153` (A opens War Assets); band `Me3`; Save 31: War Terminal 1.35 m, the label at the console, nothing at 70 degrees (research/40 section 6) | Both: A's use after a gaze pick in the same run, a long name, combat targets, the headset. |
 | G28 | HUD pieces: wrist status, gun panel (`game/HudPieces`, `plugin/HudPieceLayers`) | **adapted** V: `Layout::Me2` crops; run `20261115-002101-lane-b4-m2b` (f71e7a71); ammo mount 2a108759 | **missing**: `setHudPieces` not served (`#if !defined(MEVR_WITH_HALCYON_LE3)` in ModLoader.cpp); `game/HudPieces` stands down by name on ME3 (no fall-back to ME1's placement) | LE3: docs/me3-overall-goal-handoff.md L3-4 "native wrist crop". |
 | G29 | Power wheel at the left hand, lock and push, self-cast gestures, coach (`game/PowerWheel`, `plugin/PowerWheel`) | **adapted** V: ME2 roster (`SFXPowerManager`); the whole wheel on Save 4 by replayed controllers, 2026-11-17 (lane SQ, `tools/le2-halcyon-run/powers.ps1`, research/55 "The whole wheel on Save 4"): every tile by the hand's travel or the stick, the tap, No power, the coach card, Adrenaline Rush on the chest (also with the weapon away), Disruptor Ammo slapped onto the rifle, Slam locked on a hostile drone from the level's own factory (`-Drone`) and pushed (`ActivatePower` took it). The coach's controls line was ME1's grenade throw: the sequels' card names the wheel alone since. Not seen: Slam's effect on the target, evolved powers, other weapons, the headset | **adapted** U: `game/Le3Powers.hpp` (`SFXPowerCustomActionBase`). Save 31 (the Normandy, a non-combat Vanguard, 2026-11-17): the roster reads Pull, Shockwave, Incendiary and Cryo Ammo, Biotic Charge (an unnamed label split into words since), Discharge, Unity (disabled), Flare; the wheel stays shut where combat is disabled, as ME1's. Nothing cast yet | ME3: the combat save's checks in research/le3-combat-fixtures.md (`powers.ps1 -Game LE3`); ME2: research/55 "The whole wheel on Save 4"'s "Not established"; L3-6. |
@@ -260,7 +260,7 @@ The [technique groups](#renderer-techniques-by-group) summary follows the table.
 | G38 | Sound placement: voices, people near, the gun (`game/SoundPlace`, `engine/VoicePlace` on ISACT `0x7BA90`) | **missing**: `ready`; `kSoundSourceUpdate = 0` | **missing** | Wwise needs a placement hook of its own. |
 | G39 | No cover snapping, VR cover (`engine/CoverAcquire`, `game/VrCover`, `core/vr/VrCover`) | **adapted** V: `FindPlayerCover` post-handler; VrCover on `SFXGame.ModifyDamage`; research/23 §7.4, 2026-11-14 (61705db8). The shields' faster recharge behind cover (ME2's own rule, the owner's yes 2026-11-16): `SFXShield_Base.Tick`'s two questions answered while the head is hidden from every awake hostile (`vr::cover::Shelter`), V on the fake headset: the 5.00 s wait 3.51 s behind cover, 5.02 s with the rule off or in the open; research/23 §7.5 | **adapted** U: `game/Le3Cover.inc` (ModifyDamage on SFXPawn_PlayerParty); no-snap only as a diagnostic opt-in. ME3 (and ME1) have no faster recharge in cover: n/a | M6 table, cover/crouch/sprint row; L3-8. |
 | G40 | Physical crouch (`game/Posture`, `core/ik/Posture`) | **adapted** V: `Engine.Pawn.ShouldCrouch`; research/23 §7.4 step 1 | **adapted** U: LE3 native admission | — |
-| G41 | Vent, weapon heat (`game/Vent`, `core/ik/Vent`); the sequels' counterpart, the reload by hand (`game/Reload`, `core/vr/ReloadGesture`, `PhysicalReloadRequest`) | **n/a** for the vent (thermal clips); the reload by hand **adapted** V: the pouch a left-hand body slot, the vent's receiver zone, the coordinator, the button's own `SFXGameModeDefault.TryReload`; run 2026-11-16 (lane WP): 12/0/60 -> one shot 11/1/60 -> the replayed gesture 12/0/59, a full magazine refused (research/le2-vrik.md "The reload by hand: the game's side") | **n/a** for the vent; the reload **adapted** U: the same module, ME3's ammo fields on `SFXWeapon_NativeBase`; names resolve on Save 31 (no gun there) | LE2: empty, no-reserve and cancelled reloads. LE3: a combat fixture, then `reload.ps1 -Game LE3`. |
+| G41 | Vent, weapon heat (`game/Vent`, `core/ik/Vent`); the sequels' counterpart, the reload by hand (`game/Reload`, `core/vr/ReloadGesture`, `PhysicalReloadRequest`) | **n/a** for the vent (thermal clips); the reload by hand **adapted** V: the pouch a left-hand body slot, the vent's receiver zone, the coordinator, the button's own `SFXGameModeDefault.TryReload`; run 2026-11-16 (lane WP): 12/0/60 -> one shot 11/1/60 -> the replayed gesture 12/0/59, a full magazine refused (research/le2-vrik.md "The reload by hand: the game's side"). **Off by default** since 2026-11-16 (the owner: "don't enable that flow"; `[Reload] enabled = 0`, an older file's 1 moved once), the gesture to be redesigned with the owner | **n/a** for the vent; the reload **adapted** U: the same module, ME3's ammo fields on `SFXWeapon_NativeBase`; names resolve on Save 31 (no gun there); off by default as on ME2 | The gesture's redesign with the owner first (off until then). Nothing is seen yet: the clip in the hand and the gesture's options for the owner, research/thermal-clips.md. Then LE2: empty, no-reserve and cancelled reloads; LE3: a combat fixture, then `reload.ps1 -Game LE3` (with `enabled = 1`). |
 | G42 | Physical grenades (`game/Throwables`, `core/ik/Throwing`) | **n/a**: ME2 has no grenades | **n/a**: ME3's grenades are powers (research/le3-powers.md) | — |
 | G43 | Melee gesture (`game/Throwables` `RouteMelee`, the fist) | **missing** | **forked** U: `game/Melee` (LE3-only) on `core/ik/Throwing`, a second gesture-to-dispatch path; opt-in | Forks 12; research/le3-melee-audit.md; L3-7. |
 | G44 | The Mako: aim, controls, cockpit, gunner, panel, hazard (`game/Mako*`, `game/Cockpit*`, `core/vr/MakoControls`) | **missing**: the Hammerhead, with ME1's Mako controls and cockpit, has its own later pass (continuation plan M6) | **n/a**: no player vehicle; the Atlas has no adapter (LE3 plan: "safe fallback") | — |
@@ -490,8 +490,9 @@ and 2 (the overlay composition and the sequel bridges).
 - LE1 (about 90): the performance work (one-Draw's `Record*`, the perf points, Quest pacing), the HUD panel's draw
   seams, metric stereo, the galaxy view swaps, conversations in the world, the front end, the eye blit's colour and
   upscale, Halcyon's own menu.
-- LE2: `JournalFloorViewWrite`, `CineScreenHalfSeparationUU`, `OnSwapChainPresent`, `WorldUiOwnsGui`, and the inline
-  `HotkeyDown`.
+- LE2: `JournalFloorViewWrite`, `CineScreenHalfSeparationUU`, `OnSwapChainPresent`, and the inline `HotkeyDown` and
+  `WorldUiOwnsGui` (the common `MevrSeams::WorldUiOwnsGui` since ME3 took it, lane OM2, 2026-11-16; defined in
+  `plugin/MenusLe2.cpp` for both sequel hosts).
 - LE3: `CineScreenHalfSeparationUU`, `OnPresent`.
 
 **State of the migration (2026-11-16).** Done: the header, the host's definitions in `namespace MevrSeams`,
@@ -601,9 +602,9 @@ defined in the tool's header:
 <!-- parity:summary -->
 | game | renderer | host plugin files | host core files | services served | src/game + src/engine modules by status | common seams called | own seams |
 |---|---|---|---|---|---|---|---|
-| LE1 | halcyon-le1 | 73 | 71 | 58 | run 67, out 4, ungated 25, unbuilt 4 | 22 of 37 | 89 |
-| LE2 | halcyon-le2 | 68 | 57 | 49 | run 44, ready 10, out 19, ungated 21, unreferenced 2, unbuilt 4 | 35 of 37 | 5 |
-| LE3 | halcyon-le3 | 71 | 57 | 50 | run 44, ready 10, out 18, ungated 23, unreferenced 2, unbuilt 3 | 35 of 37 | 2 |
+| LE1 | halcyon-le1 | 73 | 71 | 58 | run 67, out 4, ungated 25, unbuilt 4 | 22 of 38 | 89 |
+| LE2 | halcyon-le2 | 68 | 57 | 49 | run 44, ready 10, out 19, ungated 21, unreferenced 2, unbuilt 4 | 36 of 38 | 4 |
+| LE3 | halcyon-le3 | 71 | 57 | 54 | run 44, ready 10, out 18, ungated 23, unreferenced 2, unbuilt 3 | 36 of 38 | 2 |
 <!-- /parity:summary -->
 
 ### Host plugin files per game
@@ -758,13 +759,13 @@ Helpers applied, in order:
 | `hideScreenReticle` | WithRenderer | WithRenderer | WithRenderer |
 | `keepLoaded` | BaseServices | BaseServices | BaseServices |
 | `leftGripAway` | WithPadMerge | WithPadMerge | WithPadMerge |
-| `logWorldUiStats` | WithWorldUi | WithMenus | - |
+| `logWorldUiStats` | WithWorldUi | WithMenus | WithMenus |
 | `mainMenu` | WithLe1Modules | WithMenus | WithMenus |
 | `motionBlurProtected` | WithLe1ExtraUi | - | BuildServices |
 | `processExiting` | BaseServices | BaseServices | BaseServices |
 | `publishCameraOffset` | WithLe1ExtraUi | - | - |
 | `recordWrite` | WithCrashBreadcrumbs | WithCrashBreadcrumbs | WithCrashBreadcrumbs |
-| `reserveWorldUi` | WithWorldUi | WithMenus | - |
+| `reserveWorldUi` | WithWorldUi | WithMenus | WithMenus |
 | `rightGripFree` | WithPadMerge | WithPadMerge | WithPadMerge |
 | `secondEyeIsReplay` | WithRenderer | WithRenderer | WithRenderer |
 | `setAimRay` | WithRenderer | WithRenderer | WithRenderer |
@@ -793,13 +794,13 @@ Helpers applied, in order:
 | `setVoiceKeyterms` | WithVoice | WithVoice | WithVoice |
 | `setVoiceListen` | WithVoice | WithVoice | WithVoice |
 | `setWheelPanel` | WithLe1Modules | - | - |
-| `setWorldUi` | WithWorldUi | WithMenus | - |
+| `setWorldUi` | WithWorldUi | WithMenus | WithMenus |
 | `sightView` | WithSights | WithSights | WithSights |
 | `statusWanted` | WithRenderer | WithRenderer | WithRenderer |
 | `supportGripHeld` | WithPadMerge | WithPadMerge | WithPadMerge |
 | `takeGalaxyPick` | WithGalaxyHologram | - | WithGalaxyHologram |
 | `takeGameMenuRequest` | WithGameMenuRequest | WithMenus | WithMenus |
-| `takeGameUiRequest` | WithWorldUi | WithMenus | - |
+| `takeGameUiRequest` | WithWorldUi | WithMenus | WithMenus |
 | `takeGuiEvents` | WithLe1ExtraUi | WithMenus | WithMenus |
 | `takeVoiceLine` | WithVoice | WithVoice | WithVoice |
 | `takeVoiceModelAnswer` | WithVoice | WithVoice | WithVoice |
@@ -958,12 +959,13 @@ The common vocabulary (`namespace MevrSeams`, `src/halcyon/MevrSeams.h`): `yes` 
 | `RecenterOrientation` | yes | yes | yes |
 | `StaticXrGetInstanceProcAddr` | yes | yes | yes |
 | `TransitionFadeLayer` | yes | yes | yes |
+| `WorldUiOwnsGui` | - | yes | yes |
 | `WrapSessionFunctions` | yes | yes | yes |
 | `XrRuntimeIsSteamVr` | - | yes | yes |
 
 Old names still forwarded to the common seams (inline, in the tree's `mevr_bridge.h`; removed once nobody calls them):
 
-- LE2: `HotkeyDown`
+- LE2: `HotkeyDown`, `WorldUiOwnsGui`
 
 Each renderer's own seams (`MevrBridge`, its tree's `mevr_bridge.h`): the per-renderer extensions.
 
@@ -1061,7 +1063,6 @@ Each renderer's own seams (`MevrBridge`, its tree's `mevr_bridge.h`): the per-re
 | `WorldUiActive` | yes | - | - |
 | `WorldUiHoldFrame` | yes | - | - |
 | `WorldUiOwnership` | yes | - | - |
-| `WorldUiOwnsGui` | - | yes | - |
 | `WorldUiPresent` | yes | - | - |
 <!-- /parity:seams -->
 

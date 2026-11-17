@@ -23,7 +23,9 @@ namespace gh = galaxy_holo;
 constexpr std::array<char const*, static_cast<std::size_t>(Screen::Count)> kTags = {
     "None", "shop", "Loot", "Inventory", "XMods", "CharacterRecord", "Specialization", "Journal", "Codex", "Map", "PartySelect",
     "MenuBrowser", "Options", "Save", "Load", "MessageBox", "Achievement", "AdditionalContent", "SkillGame", "DesignerUI", "GameOver",
+    "WarAssets",
 };
+constexpr std::size_t kLastMe1Me2 = static_cast<std::size_t>(Screen::GameOver);  // FromTag's: ME1's and ME2's tags only
 
 bool SameText(std::string_view a, std::string_view b) {
     return a.size() == b.size() && std::equal(a.begin(), a.end(), b.begin(), [](char x, char y) {
@@ -39,7 +41,7 @@ std::uint64_t gSequence = 0;
 } // namespace
 
 Screen FromTag(std::string_view tag) {
-    for (std::size_t i = 1; i < kTags.size(); ++i) {
+    for (std::size_t i = 1; i <= kLastMe1Me2; ++i) {
         if (SameText(tag, kTags[i])) {
             return static_cast<Screen>(i);
         }
@@ -50,6 +52,20 @@ Screen FromTag(std::string_view tag) {
         return Screen::Map;
     }
     return Screen::None;
+}
+
+Screen FromMe3Tag(std::string_view tag) {
+    // ME3's Mission Computer pages (research/le3-native-gui.md "The omni-tool on ME3": MenuBrowser, SquadRecord, Journal, the
+    // map's AreaMap) and its dialogs keep ME1's names; the squad record is ME1's character record.
+    if (SameText(tag, "SquadRecord")) {
+        return Screen::CharacterRecord;
+    }
+    for (std::size_t i = kLastMe1Me2 + 1; i < kTags.size(); ++i) {
+        if (SameText(tag, kTags[i])) {
+            return static_cast<Screen>(i);
+        }
+    }
+    return FromTag(tag);
 }
 
 bool Opening::Begin(std::uint32_t request, Screen screen, game_menu::Origin origin, std::uint64_t nowMs) {
@@ -75,6 +91,10 @@ bool Opening::Expire(std::uint64_t nowMs) {
     return Pending() && (nowMs < sinceMs_ || nowMs - sinceMs_ >= kTimeoutMs) && Cancel(0);
 }
 
+bool Opening::Eligible(int mode) const {
+    return Pending() && GuiMode(mode);
+}
+
 bool Opening::Matches(std::uint32_t request, std::uint32_t visibleScreens) const {
     return Pending() && request == request_ && (visibleScreens & Bit(screen_)) != 0;
 }
@@ -95,7 +115,7 @@ bool UseAnchor(game_menu::Origin origin) {
 }
 
 game_menu::Origin OpeningSource::Observe(int mode, Screen base, std::uint32_t visibleScreens) {
-    if (mode != 7 || (base != Screen::None && !RailPanel(base))) {
+    if (!GuiMode(mode) || (base != Screen::None && !RailPanel(base))) {
         Clear();
     } else if (expected_ != Screen::None) {
         if ((visibleScreens & Bit(expected_)) != 0) expected_ = Screen::None;

@@ -2994,6 +2994,17 @@ void CheckLe3OmniTool() {
     PARMS(URvrClientEffectManager_execStop_Parms, "SFXGame.RvrClientEffectManager.Stop");
 }
 
+// game/WorldUi's ME3 adapter (research/le3-native-gui.md "The game's screens on ME3"): the focused movie's tag (game/Le3Gui)
+// and whether it shows the game's UI world (such a screen keeps the native panel).
+void CheckLe3WorldUi() {
+    CheckClass<USFXGUIMovie>("SFXGame.SFXGUIMovie");
+    CheckField("SFXGame.SFXGUIMovie", "nmTag", SDK_FIELD(USFXGUIMovie, nmTag));
+    CheckField("SFXGame.SFXGUIMovie", "m_bRequiresUIWorld", SDK_BOOL(USFXGUIMovie, m_bRequiresUIWorld));
+    CheckFunction("SFXGame.SFXGUIMovie.SetRequiresUIWorld");
+    PARAM(USFXGUIMovie_execSetRequiresUIWorld_Parms, "SFXGame.SFXGUIMovie.SetRequiresUIWorld", bUIWorldRequired);
+    PARMS(USFXGUIMovie_execSetRequiresUIWorld_Parms, "SFXGame.SFXGUIMovie.SetRequiresUIWorld");
+}
+
 void CheckLe3PhysicalCover() {
     CheckClass<ACoverLink>("Engine.CoverLink");
     CheckClass<ASFXPawn_PlayerParty>("SFXGame.SFXPawn_PlayerParty");
@@ -3840,6 +3851,7 @@ bool Run(hook::Context& context) {
     CheckLe3EngineAccess();
     CheckLe3ViewLevel();
     CheckLe3OmniTool();
+    CheckLe3WorldUi();
 #endif
 #if defined(MEVR_GAME_LE2)
     CheckTraversal();

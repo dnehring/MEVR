@@ -32,11 +32,13 @@ float CineScreenHalfSeparationUU(float halfH) noexcept;
 // the host's per-Present work (the test loop, voice, our menu closing itself when nobody can see it).
 void OnSwapChainPresent(void* swapChain, void* capturedSwapChain) noexcept;
 
-// One of the game's screens stands on the wrist or in the room (plugin/WorldUi, the mod's game/WorldUi; plugin/MenusLe2,
-// research/le2-menus.md "ME2's screens on the wrist"), or is being opened (the mod reserved it): the GUI mode `mode` (7) is
-// then not flat (d3d_capture.cpp's GetMenuMode answers false: the world in stereo behind the screen, its UI on our HUD
-// panel), as LE1's MevrBridge::WorldUiOwnership in xr_session.cpp's decision. Any thread.
-bool WorldUiOwnsGui(int mode) noexcept;
+// One of the game's screens stands on the wrist or in the room (research/le2-menus.md "ME2's screens on the wrist"): the
+// common seam MevrSeams::WorldUiOwnsGui since ME3 took it (2026-11-16); ME2's name forwards to it (d3d_capture.cpp's
+// GetMenuMode answers false for it, me2_menu.cpp's MenuOwnsLook keeps the stick the menu's).
+inline bool WorldUiOwnsGui(int mode) noexcept
+{
+    return ::MevrSeams::WorldUiOwnsGui(mode);
+}
 
 // Game thread, calcview_hook.cpp's DrawDetour: whether a pass-1 Draw that returned in under 100 us is drawn again in the
 // same frame ([NOOPRETRY]; [Performance] sfrReplayRetry, 1 by default: upstream's behaviour). Such a Draw usually did

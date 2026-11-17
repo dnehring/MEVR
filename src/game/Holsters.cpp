@@ -176,6 +176,12 @@ std::array<double, slots::kSlots> gDistances = [] {
 // The slots this game uses: ME1's four quick-slot types, the sequels' five weapon families (hand_calibration).
 constexpr int kUsed = hand_calibration::kGameHolsterSlots;
 bool gNear = false;
+// A right hand lost behind the back at the SMG's lowerBack slot (lane SG): its last place on the body, kept
+// [Holsters] lostHandHoldS (never on ME1: no SMG slot), and the heartbeat's counts.
+slots::LostHand gLostHand;
+unsigned gLostHolds = 0;       // holds begun this period
+unsigned gLostDraws = 0;       // draws made at a kept place this period
+double gLostLongest = 0.0;     // the longest hold this period (seconds)
 bool gActive = false;          // this tick's conditions held
 std::string gWhy = "not started";
 std::string gLoggedWhy;
@@ -676,6 +682,7 @@ void Inactive(std::string why, Link const& link) {
     }
     gMachine.Reset();
     gAnchor.Reset();
+    gLostHand.Reset();
     gOwnYawActive = false;
     gYawValid = false;
     gNear = false;
@@ -1120,8 +1127,16 @@ void Tick(double deltaSeconds, Link const& link) {
         Inactive("no head-tracked world view (menu, flat screen or VR off)", link);
         return;
     }
-    if (!controllers.active || !right.gripValid || body_calibration::Calibrating()) {
-        Inactive("the right controller isn't tracked", link);
+    // A right hand lost behind the back at the SMG's lowerBack slot (inside-out headsets can't see it there) keeps its last
+    // place on the body for [Holsters] lostHandHoldS: the slots stay live and a squeeze there still draws. Never on ME1
+    // (no SMG slot) nor at any other slot: there a lost hand turns the slots off as always.
+    bool const keptLost = controllers.active && !right.gripValid && !body_calibration::Calibrating() &&
+        gLostHand.Keeps(settings.lostHandHoldS, deltaSeconds);
+    if (!controllers.active || (!right.gripValid && !keptLost) || body_calibration::Calibrating()) {
+        Inactive(gLostHand.Holding() ? std::format("the right controller isn't tracked (its last place at {} was kept {:.2f} s)",
+                                           slots::Name(settings.layout.smgPlace), gLostHand.LostSeconds())
+                                     : std::string("the right controller isn't tracked"),
+            link);
         return;
     }
     std::string why;
@@ -1166,7 +1181,20 @@ void Tick(double deltaSeconds, Link const& link) {
     layout.eyeHeight = gEyeHeight;
     double const scale = slots::Scale(layout);
     gScaleNow = scale;
-    ik::Vec3 const hand{right.grip.position.x, right.grip.position.y, right.grip.position.z};
+    double const lostBefore = gLostHand.LostSeconds();
+    ik::Vec3 const hand = keptLost ? gLostHand.Kept(gFrame, deltaSeconds)
+                                   : ik::Vec3{right.grip.position.x, right.grip.position.y, right.grip.position.z};
+    if (keptLost && lostBefore < 0.0) {
+        ++gLostHolds;
+        log::Info("holsters: the right controller lost tracking at {}: its last place on the body is kept for up to {:.2f} s "
+                  "([Holsters] lostHandHoldS)", slots::Name(settings.layout.smgPlace), settings.lostHandHoldS);
+    } else if (!keptLost && lostBefore >= 0.0) {
+        log::Info("holsters: the right controller is tracked again after {:.2f} s (its last place at {} was kept meanwhile)",
+            lostBefore, slots::Name(settings.layout.smgPlace));
+    }
+    if (keptLost) {
+        gLostLongest = std::max(gLostLongest, gLostHand.LostSeconds());
+    }
     slots::Input input;
     input.exitMargin = settings.layout.exitMargin;
     for (int i = 0; i < slots::kSlots; ++i) {
@@ -1218,6 +1246,19 @@ void Tick(double deltaSeconds, Link const& link) {
     input.gripKept = gOwnGrip && link.rightGrip && (*link.rightGrip & 1u) != 0;
     slots::Step const step = gMachine.Update(input);
     gNear = step.nearby;
+    if (!keptLost) {
+        // Tracked: remember the hand's place on the body while it's in or near a slot that keeps a lost hand.
+        bool keep = false;
+        for (int i = 0; i < slots::kSlots; ++i) {
+            keep = keep || (slots::KeepsLostHand(settings.layout, i) && input.distance[i] >= 0.0 &&
+                               input.distance[i] <= input.radius[i] + input.exitMargin);
+        }
+        gLostHand.Tracked(hand, gFrame, keep);
+    } else if (step.action == slots::Action::Draw) {
+        ++gLostDraws;
+        log::Info("holsters: the grab at {} came while the controller was untracked ({:.2f} s): taken at its last place",
+            settings.layout.slots[step.slot].name, gLostHand.LostSeconds());
+    }
     double const strength = settings.hapticAmplitude;
 
     auto const name = [&settings](int slot) { return slot >= 0 ? settings.layout.slots[slot].name : "-"; };
@@ -1376,10 +1417,18 @@ std::string StatusJson() {
     case slots::Phase::HolsterArmed: phase = "holster armed"; break;
     case slots::Phase::Returning: phase = "returning"; break;
     }
+    // The sequels: where the SMG is and a lost hand kept there (ME1's snapshot unchanged: no SMG slot).
+#if defined(MEVR_GAME_LE1)
+    std::string const smg;
+#else
+    std::string const smg = std::format(", \"smgSlot\": {}, \"lostHand\": {{\"holdS\": {}, \"lostFor\": {}}}",
+        json::JsonString(slots::Name(settings.layout.smgPlace)), json::JsonNumber(settings.lostHandHoldS),
+        json::JsonNumber(gLostHand.LostSeconds()));
+#endif
     return std::format("{{\"enabled\": {}, \"active\": {}, \"why\": {}, \"gripHolds\": {}, \"rbSource\": {}, \"inSlot\": {}, "
                        "\"phase\": {}, \"returnLeft\": {}, \"near\": {}, \"contact\": {}, \"yawSource\": {}, \"yaw\": {}, "
                        "\"anchor\": [{}, {}, {}], \"eyeHeight\": {}, \"eyeHeightSource\": {}, \"floorEyeHeight\": {}, "
-                       "\"held\": {}, \"drawn\": {}, \"powerHold\": {{\"on\": {}, \"opened\": {}}}, \"slots\": [{}]}}",
+                       "\"held\": {}, \"drawn\": {}, \"powerHold\": {{\"on\": {}, \"opened\": {}}}{}, \"slots\": [{}]}}",
         gEnabled ? "true" : "false", gActive ? "true" : "false", json::JsonString(gWhy), gHolds ? "true" : "false",
         json::JsonString(gamepad::Name(gRbSource)),
         gMachine.InSlot() >= 0 ? json::JsonString(settings.layout.slots[gMachine.InSlot()].name) : std::string("null"),
@@ -1388,7 +1437,7 @@ std::string StatusJson() {
         json::JsonNumber(gFrame.anchor.x), json::JsonNumber(gFrame.anchor.y), json::JsonNumber(gFrame.anchor.z),
         json::JsonNumber(gEyeHeight), json::JsonString(gEyeSource), json::JsonNumber(gFloorNow),
         json::JsonString(slots::Name(Held())),
-        gCarried.drawn ? "true" : "false", gPowerHoldOn ? "true" : "false", gPowerOpened ? "true" : "false", list);
+        gCarried.drawn ? "true" : "false", gPowerHoldOn ? "true" : "false", gPowerOpened ? "true" : "false", smg, list);
 }
 
 void LogStats() {
@@ -1402,8 +1451,12 @@ void LogStats() {
             where += std::format(" {} {} hand {:.2f} m;", settings.layout.slots[i].name, V(gCenters[i] - gFrame.anchor), gDistances[i]);
         }
     }
+    // A lost hand kept behind the back (the sequels' lowerBack SMG slot only): said only when it happened.
+    std::string const lost = gLostHolds == 0 ? std::string()
+        : std::format("; the right controller lost behind the back {} times (kept up to {:.2f} s), {} draws at its kept place",
+              gLostHolds, gLostLongest, gLostDraws);
     log::Info("    holsters: {}; {}; yaw from {}; in {}; this period: {} entries, {} draws, {} holsters, {} refusals, {} game draws refused, "
-              "nearest {}, strongest contact buzz {:.2f}; eye height {:.2f} m from {}{}{}",
+              "nearest {}, strongest contact buzz {:.2f}; eye height {:.2f} m from {}{}{}{}",
         gWhy, gHolds ? std::format("the grip holds the gun ({})", gPowerHoldOn
                                        ? std::format("the right stick click's hold opens the power wheel: {} opened, {} refused",
                                              gPowerOpens, gPowerRefused)
@@ -1413,7 +1466,9 @@ void LogStats() {
         gHolsters, gRefusals, gRefusedDraws,
         gNearestSlot >= 0 ? std::format("{:.2f} m outside {}", gNearest, settings.layout.slots[gNearestSlot].name) : std::string("-"),
         gContactPeak, gEyeHeight, gEyeSource, gFloorNow >= 0.0 ? std::format(" (head now {:.2f} m above the floor)", gFloorNow) : std::string(),
-        where.empty() ? std::string() : std::format("; slots from the anchor:{}", where));
+        where.empty() ? std::string() : std::format("; slots from the anchor:{}", where), lost);
+    gLostHolds = gLostDraws = 0;
+    gLostLongest = 0.0;
     gEntries = gDraws = gHolsters = gRefusals = gRefusedDraws = 0;
     gPowerOpens = gPowerRefused = 0;
     gNearest = 1e9;
@@ -1424,6 +1479,7 @@ void LogStats() {
 void Shutdown() {
     gMachine.Reset();
     gAnchor.Reset();
+    gLostHand.Reset();
     gOwnYawActive = false;
     gYawValid = false;
     gNear = false;

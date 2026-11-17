@@ -24,7 +24,7 @@ They shared 18 names, and of those six differed in signature, so no host module 
 - The host implements a common seam **once for all games** in `src/plugin/Seams.cpp` when the answer is the same
   everywhere; otherwise in that game's bridge, in `namespace MevrSeams { ... }`.
 
-## The common seams (37)
+## The common seams (38)
 
 Signatures are in `src/halcyon/MevrSeams.h`; that header is the reference, with the thread each runs on. "Host" names
 where each game's definition is. `Seams.cpp` means one definition for all three.
@@ -57,6 +57,7 @@ where each game's definition is. `Seams.cpp` means one definition for all three.
 | composition | `CineScreenLayers(CineScreenFrame, layersOut, capacity)` | - | HalcyonSequelBridge.cpp | HalcyonSequelBridge.cpp | LE2, LE3 |
 | composition | `TransitionFadeLayer(session, viewSpace, context, view)` | TransitionFade.cpp | HalcyonSequelBridge.cpp | HalcyonSequelBridge.cpp | all |
 | composition | `PlacePanel(kind, OverlayFrame, viewPosition[3], widthM, heightM, imageReady)` returns `PanelPose` | WorldPanels.cpp | HalcyonLe2Bridge.cpp | HalcyonLe3Bridge.cpp | all |
+| composition | `WorldUiOwnsGui(mode)`: a game screen of ours stands in the GUI mode, which then stays in stereo (moved from ME2's mevr_bridge.h, 2026-11-16, lane OM2) | - | MenusLe2.cpp | MenusLe2.cpp | LE2, LE3 |
 | input | `MergeMotionControllers(index, state, result)` | HalcyonBridge.cpp | HalcyonSequelBridge.cpp | HalcyonSequelBridge.cpp | all |
 | input | `KeyDown(vk)` | Seams.cpp | Seams.cpp | Seams.cpp | all (LE2 through its inline `HotkeyDown`) |
 | input | `OnMenuKey(ownMenuOpen)` returns bool | Seams.cpp | Seams.cpp | Seams.cpp | all |

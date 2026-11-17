@@ -1461,6 +1461,7 @@ if (MEVR_BUILD_TESTS)
         tests/SquadPlaceTests.cpp
         tests/BodyScaleTests.cpp
         tests/BodySlotsSeatedTests.cpp
+        tests/BodySlotsSmgTests.cpp
         tests/FloorLockTests.cpp
         tests/ReloadGestureTests.cpp
         tests/ManualCalibrationTests.cpp

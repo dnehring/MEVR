@@ -9,6 +9,9 @@
 #include "core/vr/WorldViewHold.hpp"
 #include "game/CockpitProbe.hpp"
 #include "game/HandCalibration.hpp"
+#if defined(MEVR_GAME_LE3)
+#include "game/Le3Gui.hpp"
+#endif
 #include "game/OmniTool.hpp"
 #include "game/Player.hpp"
 #include "game/UiWorldFigure.hpp"
@@ -33,6 +36,14 @@ namespace {
 
 namespace wu = vr::world_ui;
 
+// A screen's tag as this game names it: ME1's and ME2's GUI library tags, ME3's movie tags (core/vr/WorldUi's FromMe3Tag).
+wu::Screen ScreenOf(std::string_view tag) {
+#if defined(MEVR_GAME_LE3)
+    return wu::FromMe3Tag(tag);
+#else
+    return wu::FromTag(tag);
+#endif
+}
 
 // The GUI manager (the player controller's cached one) and its panels: each open screen is a BioSFPanel tagged with its library
 // tag (the shop's: nmTag "shop", bFullScreen, m_DefaultHandler its BioSFHandler_Shop; measured 2026-11-04).
@@ -176,11 +187,6 @@ Status gS;
 std::mutex gStatusMutex;
 std::string gStatusJson = "{\"open\": false}";
 
-bool Resolved() {
-    return gCachedManager.Get() != nullptr && gPanels.Get() != nullptr && gFocusPanel.Get() != nullptr && gPanelTag.Get() != nullptr &&
-           gPanelFullScreen.Get() != nullptr && gPanelHandler.Get() != nullptr;
-}
-
 struct OpenPanel {
     ue3::Object* panel = nullptr;
     std::string tag;
@@ -188,7 +194,79 @@ struct OpenPanel {
     bool visible = false;
     bool focus = false;
     ue3::Object* handler = nullptr;
+    bool uiWorld = false;  // ME3: the movie shows the game's UI world (SFXGUIMovie.m_bRequiresUIWorld)
 };
+
+#if defined(MEVR_GAME_LE3)
+// ME3's adapter (research/le3-native-gui.md "The game's screens on ME3"): no BioSFManager and no list of open movies to read
+// (SFXGUIInteraction.GetAllMovies returned none through ProcessEvent), so the screen is the movie the GUI interaction has in
+// focus (SFXGUIInteraction.GetFocusMovieForPlayerController, game/Le3Gui), its nmTag ME3's movie tag. A message box over one of
+// ours stands on that screen's place, as ME1's does over its parent (the parent is the last screen of ours in focus this GUI
+// stretch). A movie that shows the game's UI world (m_bRequiresUIWorld: the squad record's Shepard) keeps Halcyon's native
+// panel until ME1's figure (game/UiWorldFigure) is ported.
+ue3::FieldRef gRequiresUiWorld{"SFXGame.SFXGUIMovie", "m_bRequiresUIWorld", ue3::kEveryGame};
+OpenPanel gLe3Parent;  // game thread; cleared when the GUI mode ends
+
+// Every Mission Computer page and the War Terminal's War Assets ask for the UI world (SFXGUIInteraction's script calls
+// SetRequiresUIWorld(TRUE) as it opens them), and while one does the game renders the UI world's dark backdrop instead of the
+// level: the screen stood in a dark void, not the room (2026-11-16, Save 31). So, as ME1's bFullScreen (RestoreFullScreen),
+// our screens without a squad member in it are told the game's own way (the native setter, never a raw write) that they don't
+// need it while they stand in the room, and told again that they do when ours goes down.
+ue3::FunctionRef gSetRequiresUiWorld{"SFXGame.SFXGUIMovie.SetRequiresUIWorld", ue3::kEveryGame};
+std::vector<ue3::Object*> gUiWorldCleared;  // game thread
+
+bool SetRequiresUiWorld(ue3::Object* movie, bool required) {
+    ue3::Function* const fn = gSetRequiresUiWorld.Get();
+    if (fn == nullptr || !ue3::runtime::IsAlive(movie)) return false;
+    ue3::Params p(ue3::runtime::Get(), fn);
+    return p.SetBool("bUIWorldRequired", required) && ue3::runtime::Call(movie, fn, p);
+}
+
+void RestoreUiWorld() {
+    int restored = 0;
+    for (ue3::Object* const movie : gUiWorldCleared) {
+        if (SetRequiresUiWorld(movie, true)) ++restored;
+    }
+    if (restored > 0) {
+        log::Info("world ui: {} of the game's screens ask for its UI world again (SFXGUIMovie.SetRequiresUIWorld(true))", restored);
+    }
+    gUiWorldCleared.clear();
+}
+
+bool Resolved() {
+    return gRequiresUiWorld.Get() != nullptr;  // game/Le3Gui's handles answer per call (no movie: no screen of ours)
+}
+
+std::vector<OpenPanel> OpenPanels(ue3::Object* /*controller*/) {
+    std::vector<OpenPanel> open;
+    ue3::Object* const focus = le3_gui::FocusMovie();
+    if (focus == nullptr) {
+        return open;
+    }
+    OpenPanel top;
+    top.panel = focus;
+    top.handler = focus;
+    top.tag = le3_gui::Tag(focus);
+    top.visible = true;
+    top.focus = true;
+    top.uiWorld = gRequiresUiWorld.ReadBool(focus).value_or(false);
+    wu::Screen const screen = ScreenOf(top.tag);
+    bool const dialog = screen == wu::FromTag("MessageBox");  // avoid Windows.h's MessageBox macro at the enum's use site
+    if (dialog && gLe3Parent.panel != nullptr && gLe3Parent.panel != focus && ue3::runtime::IsAlive(gLe3Parent.panel)) {
+        OpenPanel parent = gLe3Parent;
+        parent.focus = false;
+        open.push_back(parent);
+    } else if (!dialog && screen != wu::Screen::None) {
+        gLe3Parent = top;
+    }
+    open.push_back(std::move(top));
+    return open;
+}
+#else
+bool Resolved() {
+    return gCachedManager.Get() != nullptr && gPanels.Get() != nullptr && gFocusPanel.Get() != nullptr && gPanelTag.Get() != nullptr &&
+           gPanelFullScreen.Get() != nullptr && gPanelHandler.Get() != nullptr;
+}
 
 // The GUI manager's open panels, in its order (the HUD's, the reticule's... and the screens).
 std::vector<OpenPanel> OpenPanels(ue3::Object* controller) {
@@ -218,6 +296,7 @@ std::vector<OpenPanel> OpenPanels(ue3::Object* controller) {
     }
     return open;
 }
+#endif
 
 // The vendor: the BioShop actor names no one, but it's placed at its vendor (the Normandy's requisitions officer 68 units from
 // his), so the nearest pawn other than the player's within kVendorUnits of it; found once per opening.
@@ -285,7 +364,7 @@ std::optional<ue3::Vector> AnchorOf(wu::Screen screen, ue3::Object* handler, ue3
         }
     }
     bool const usedScreen = screen == wu::Screen::SkillGame || screen == wu::Screen::DesignerUI || screen == wu::Screen::PartySelect ||
-        screen == wu::Screen::Specialization || screen == wu::Screen::Loot ||
+        screen == wu::Screen::Specialization || screen == wu::Screen::Loot || screen == wu::Screen::WarAssets ||
         ((screen == wu::Screen::Inventory || screen == wu::Screen::XMods) && !fromWheel);
     if (usedScreen && gUsedAtOpening.target != nullptr && ue3::runtime::IsAlive(gUsedAtOpening.target)) {
         if (gAnchorLogged != opening) {
@@ -386,6 +465,9 @@ void Down(Link const& link, char const* why) {
 #if defined(MEVR_GAME_LE2)
     RestoreBrowsers();
 #endif
+#if defined(MEVR_GAME_LE3)
+    RestoreUiWorld();
+#endif
     omni_tool::Tick(gRailOmniTool);  // the rail alone on the wrist still wears it
     // ... and stands at its display, as the screens are projected from it (the rendered arm can fall short of the controller):
     // an inactive state carrying only the emitter (the host shows no screen for it).
@@ -455,7 +537,7 @@ std::uint32_t BeginOpening(Link const& link, vr::game_menu::Action action, vr::g
     std::uint32_t const required = wu::Bit(screen) | ((action == Action::Squad || action == Action::Map) ? wu::Bit(wu::Screen::MenuBrowser) : 0u);
     auto const mode = player::GameMode(player::Controller());
     if (link.setState == nullptr || link.reserve == nullptr || !settings.on || !Resolved() ||
-        (settings.screens & required) != required || !mode || *mode > 4 || (!gCockpit.valid && (!gHold.haveView || !gHold.footFrame))) {
+        (settings.screens & required) != required || !mode || !wu::PlayMode(*mode) || (!gCockpit.valid && (!gHold.haveView || !gHold.footFrame))) {
         return 0;
     }
     if (++gRequestSerial == 0) ++gRequestSerial;
@@ -513,6 +595,9 @@ void Tick(Link const& link) {
         if (!gS.stack.empty()) {
             gS.stack.clear();
         }
+#if defined(MEVR_GAME_LE3)
+        gLe3Parent = {};  // a message box of a later GUI stretch never stands where this one's screen stood
+#endif
         Down(link, link.setState == nullptr ? "an older host" : !settings.on ? "[WorldUi] on = 0" : "the game left its GUI and minigame modes");
         return;
     }
@@ -520,8 +605,13 @@ void Tick(Link const& link) {
         CancelOpening(link);
         if (!gS.loggedMissing) {
             gS.loggedMissing = true;
+#if defined(MEVR_GAME_LE3)
+            log::Warn("world ui: SFXGUIMovie.m_bRequiresUIWorld wasn't found through our reflection layer: ME3's screens stay on "
+                      "Halcyon's native panel");
+#else
             log::Warn("world ui: the GUI manager's panels (BioSFManager.m_lstPanels, BioSFPanel.nmTag...) weren't found through our "
                       "reflection layer: the game's screens stay on Halcyon's panel");
+#endif
         }
         return;
     }
@@ -534,9 +624,9 @@ void Tick(Link const& link) {
     OpenPanel const* browserPage = nullptr;
 #endif
     for (OpenPanel const& o : panels) {
-        stack += std::format("{}{}{}{}{}", stack.empty() ? "" : ", ", o.tag, o.fullScreen ? " (full screen)" : "", o.focus ? " (focus)" : "",
-                             o.visible ? "" : " (hidden)");
-        if (base == nullptr && o.visible && wu::FromTag(o.tag) != wu::Screen::None) {
+        stack += std::format("{}{}{}{}{}{}", stack.empty() ? "" : ", ", o.tag, o.fullScreen ? " (full screen)" : "", o.focus ? " (focus)" : "",
+                             o.visible ? "" : " (hidden)", o.uiWorld ? " (UI world)" : "");
+        if (base == nullptr && o.visible && ScreenOf(o.tag) != wu::Screen::None) {
             base = &o;
         }
 #if defined(MEVR_GAME_LE2)
@@ -565,10 +655,10 @@ void Tick(Link const& link) {
         log::Info("world ui: the game's open panels: {}", stack.empty() ? "none" : stack);
         gS.stack = stack;
     }
-    wu::Screen const screen = base != nullptr ? wu::FromTag(base->tag) : wu::Screen::None;
+    wu::Screen const screen = base != nullptr ? ScreenOf(base->tag) : wu::Screen::None;
     std::uint32_t visibleScreens = 0;
     for (OpenPanel const& o : panels) {
-        if (o.visible && wu::FromTag(o.tag) != wu::Screen::None) visibleScreens |= wu::Bit(wu::FromTag(o.tag));
+        if (o.visible && ScreenOf(o.tag) != wu::Screen::None) visibleScreens |= wu::Bit(ScreenOf(o.tag));
     }
     if (screen == wu::Screen::None) {
         (void)gOpeningSource.Observe(*mode, screen, visibleScreens);
@@ -578,9 +668,17 @@ void Tick(Link const& link) {
     // Every one of ours open must be listed: a screen that shows a 3D model of its own in the game's UI world (the equipment's
     // squadmate, the character record's Shepard) keeps Halcyon's panel, and the main wheel it opened from with it.
     for (OpenPanel const& o : panels) {
-        if (wu::Screen const s = wu::FromTag(o.tag); o.visible && s != wu::Screen::None && (settings.screens & wu::Bit(s)) == 0) {
+        if (wu::Screen const s = ScreenOf(o.tag); o.visible && s != wu::Screen::None && (settings.screens & wu::Bit(s)) == 0) {
             CancelOpening(link);
             Down(link, "not one of [WorldUi] screens");
+            return;
+        }
+        // ME3: a screen whose squad member stands in the game's UI world (the squad record's Shepard; m_bRequiresUIWorld, which
+        // every Mission Computer page sets, measured 2026-11-16) keeps the native panel, as ME1's did before its figure
+        // (game/UiWorldFigure, LE1 only so far).
+        if (o.visible && o.uiWorld && wu::ShowsFigure(ScreenOf(o.tag))) {
+            CancelOpening(link);
+            Down(link, "it shows the game's UI world (a 3D model behind it): Halcyon's native panel");
             return;
         }
     }
@@ -609,10 +707,20 @@ void Tick(Link const& link) {
         return std::none_of(panels.begin(), panels.end(), [&](OpenPanel const& o) { return o.panel == p; });  // closed since
     });
     for (OpenPanel const& o : panels) {
-        if (o.fullScreen && wu::FromTag(o.tag) != wu::Screen::None && gPanelFullScreen.WriteBool(o.panel, false)) {
+        if (o.fullScreen && ScreenOf(o.tag) != wu::Screen::None && gPanelFullScreen.WriteBool(o.panel, false)) {
             gClearedPanels.push_back(o.panel);
             log::Info("world ui: the {} screen isn't full screen any more: the level renders behind it, not the game's UI world", o.tag);
         }
+#if defined(MEVR_GAME_LE3)
+        // ME3's way of the same (the squad record's movie never gets here: it keeps the native panel above).
+        if (o.uiWorld && ScreenOf(o.tag) != wu::Screen::None &&
+            std::find(gUiWorldCleared.begin(), gUiWorldCleared.end(), o.panel) == gUiWorldCleared.end() &&
+            SetRequiresUiWorld(o.panel, false)) {
+            gUiWorldCleared.push_back(o.panel);
+            log::Info("world ui: the {} screen doesn't ask for the game's UI world any more (SFXGUIMovie.SetRequiresUIWorld(false)): the "
+                      "level renders behind it", o.tag);
+        }
+#endif
     }
     if (matched || !gS.open || gS.screen != wu::Name(screen)) {
         if (gS.open) {
@@ -635,7 +743,7 @@ void Tick(Link const& link) {
     state.distanceM = settings.distanceM;
     state.belowM = settings.belowM;
     state.backdrop = settings.backdrop;
-    bool const fromWheel = std::any_of(panels.begin(), panels.end(), [](OpenPanel const& o) { return o.visible && wu::FromTag(o.tag) == wu::Screen::MenuBrowser; });
+    bool const fromWheel = std::any_of(panels.begin(), panels.end(), [](OpenPanel const& o) { return o.visible && ScreenOf(o.tag) == wu::Screen::MenuBrowser; });
     if (!wu::UseAnchor(origin)) {
         state.anchored = 0;  // explicit rail provenance: neither a remembered selection nor a handler owns this opening
     } else if (inCockpit) {
@@ -769,7 +877,7 @@ bool WristScreenUp() {
 
 std::optional<engine::TrackingFrame> WristTrackingFrame() {
     auto const mode = player::GameMode(player::Controller());
-    return gWristUp && view_anchor::Held() && gHold.haveView && mode && (*mode == 7 || *mode == 10) ? gHold.footFrame : std::nullopt;
+    return gWristUp && view_anchor::Held() && gHold.haveView && mode && wu::ScreenMode(*mode) ? gHold.footFrame : std::nullopt;
 }
 
 bool PuzzlePlaying() {

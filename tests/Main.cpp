@@ -8101,6 +8101,18 @@ void TestWorldUi() {
     CHECK(wu::FromTag("Inventory") == wu::Screen::Inventory && wu::FromTag("MainMenu") == wu::Screen::None);
     CHECK(wu::FromTag("AreaMap") == wu::Screen::Map && std::string(wu::Name(wu::Screen::Map)) == "Map");  // ME2's map page
     CHECK(std::string(wu::Name(wu::Screen::Loot)) == "Loot" && std::string(wu::Name(wu::Screen::None)) == "None");
+    // ME3's movie tags (research/le3-native-gui.md): ME1's screens under ME3's names, ME3's own only through FromMe3Tag.
+    CHECK(wu::FromMe3Tag("SquadRecord") == wu::Screen::CharacterRecord && wu::FromMe3Tag("squadrecord") == wu::Screen::CharacterRecord);
+    CHECK(wu::FromMe3Tag("MenuBrowser") == wu::Screen::MenuBrowser && wu::FromMe3Tag("AreaMap") == wu::Screen::Map);
+    CHECK(wu::FromMe3Tag("Journal") == wu::Screen::Journal && wu::FromMe3Tag("MessageBox") == wu::FromTag("MessageBox"));
+    CHECK(wu::FromMe3Tag("WarAssets") == wu::Screen::WarAssets && std::string(wu::Name(wu::Screen::WarAssets)) == "WarAssets");
+    CHECK(wu::FromTag("WarAssets") == wu::Screen::None && wu::FromTag("SquadRecord") == wu::Screen::None);  // ME1 and ME2 unchanged
+    CHECK(wu::FromMe3Tag("MainMenu") == wu::Screen::None && wu::FromMe3Tag("HUD") == wu::Screen::None);
+    CHECK(!wu::RailPanel(wu::Screen::WarAssets) && !wu::OnWrist(wu::Settings{}, wu::Screen::WarAssets, false));  // stands by its console
+    // The modes (ME1's numbers here: this test builds without a game): the GUI mode 7 and the minigame 10 stand screens; an
+    // opening is reserved from a play mode (0..4).
+    CHECK(wu::ScreenMode(7) && wu::ScreenMode(10) && !wu::ScreenMode(9) && !wu::ScreenMode(0) && !wu::ScreenMode(-1));
+    CHECK(wu::GuiMode(7) && !wu::GuiMode(10) && wu::PlayMode(0) && wu::PlayMode(4) && !wu::PlayMode(5) && !wu::PlayMode(-1));
     // The stage in the shop's window (2344 x 2392, measured: rows 537..1855): letterboxed 16:9.
     wu::Rect const stage = wu::Stage(2344.0f, 2392.0f);
     CHECK(NearD(stage.u0, 0.0, 1e-6) && NearD(stage.u1, 1.0, 1e-6));
@@ -12207,6 +12219,7 @@ int RunVoiceMenuTests();
 int RunSquadPlaceTests();
 int RunBodyScaleTests();
 int RunBodySlotsSeatedTests();
+int RunBodySlotsSmgTests();
 int RunFloorLockTests();
 int RunReloadGestureTests();
 int RunManualCalibrationTests();
@@ -12439,6 +12452,7 @@ int main() {
     gFailures += RunSquadPlaceTests();
     gFailures += RunBodyScaleTests();
     gFailures += RunBodySlotsSeatedTests();
+    gFailures += RunBodySlotsSmgTests();
     gFailures += RunFloorLockTests();
     gFailures += RunReloadGestureTests();
     gFailures += RunManualCalibrationTests();

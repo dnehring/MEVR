@@ -76,8 +76,14 @@ constexpr std::uint8_t kGuiEventBRelease = 37;
 #else
 constexpr std::uint8_t kGuiEventB = 13;  // BIOGUI_EVENT_BUTTON_B (Engine.EBioGuiEvent; ME2's BioSFSharedBase.BioGuiEvents too)
 #endif
+#if defined(MEVR_GAME_LE3)
+// ME3's map page took about a second to answer B (six back-outs 4 ticks apart left it up, 2026-11-16, Save 31).
+constexpr int kBackOutWaitTicks = 12;
+constexpr int kMaxBackOuts = 8;
+#else
 constexpr int kBackOutWaitTicks = 4;     // after a B, the ticks to let the screen go before looking again
 constexpr int kMaxBackOuts = 6;          // a screen over the main wheel takes two
+#endif
 
 // EGameModes (research/13): the modes whose object is known by class. Others (conversation, GUI...) go by bIsActive.
 ue3::ClassRef* ClassForMode(std::uint8_t mode) {
