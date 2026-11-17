@@ -54,7 +54,7 @@ rows the change touches.
 | game | shared | adapted | forked | missing | n/a | present and verified (V) | present, unverified (U) |
 |---|---|---|---|---|---|---|---|
 | LE2 | 14 | 50 | 2 | 23 | 4 | 50 | 16 |
-| LE3 | 14 | 49 | 4 | 20 | 6 | 30 | 37 |
+| LE3 | 14 | 50 | 4 | 19 | 6 | 31 | 37 |
 <!-- /parity:totals -->
 
 LE1 is the reference, so it has no cells. A few LE1 systems are themselves n/a under Halcyon's renderer: the reflection
@@ -240,12 +240,12 @@ The [technique groups](#renderer-techniques-by-group) summary follows the table.
 | G18 | Weapon drawn like exploring: explore stance, constant eye, linear walk and stick, draw rate (`game/CombatStance`, `core/vr/CombatStance`, seam `ConstantFpEye`) | **missing**: `out`; ME2 lacks `BioPawnBehavior`'s ramp fields (research/le2-vrik-audit.md) | **missing** | Port per item. The linear walk and stick is the one players notice (research/38). Decide per game what stands in for the ramp fields. |
 | G19 | Our main menu (`plugin/MainMenu`, `MainMenuSettings`, `src/plugin/menu`, `assets/menu`) | **shared** V: run `20261114-222813-lane-d-menu` (f9809ed3); unported rows greyed | **shared** V: menu open and resume, run `20261115-183117-290` | notes/headset-checklist.md §5. |
 | G20 | Menu pause (`game/MenuPause`) | **adapted** V: `WorldInfo.bPlayersOnly` (same run) | **adapted** U: `BioWorldInfo.PauseGame` through `UnambiguousMethod` (research/le3-menu-pause.md) | — |
-| G21 | Game menu and Holster buttons (`game/GameMenuRequest`) | **adapted** V: Game menu opened the Mission Computer; Holster not exercised | **adapted** V (pages): squad, journal, map and Close checked on Save 31 (lane OM, 2026-11-16: ME3's screens act on B's release, so every back-out sends B and its release); Holster missing (`#if !LE3`, waits for lane WP's ME3 holster call) | — |
+| G21 | Game menu and Holster buttons (`game/GameMenuRequest`) | **adapted** V: Game menu opened the Mission Computer; Holster not exercised | **adapted** V (pages): squad, journal, map and Close checked on Save 31 (lane OM, 2026-11-16: ME3's screens act on B's release, so every back-out sends B and its release); Holster greyed on ME3's menu bar (`main.rml`: "Not on ME3 yet"; lane OM2, 2026-11-16) until lane WP's `holsters::PutAway()` and `[Holsters] le3PutAway` on by default; the back-outs 12 ticks apart on ME3 (the map page answered B after about a second) | — |
 | G22 | Omni-tool rail, wrist tap, gauntlet (`plugin/OmniToolRail`, `RailArt`, `game/OmniTool`, `game/GameArt`) | **adapted** V: run `20261114-234544-lane-d2-rail` (1a8d3b39). `GameArt` LE1-only (ME1's art cache, recoloured) | **adapted** V: rail shared, in ME3's Mission Computer colours (theme `me3`, never ME1's art); the gauntlet is ME3's own client effect (`RvrClientEffectManager.Start` of `OmniTool_LeftFull_VCFX_M`), seen on Shepard's forearm on Save 31 (lane OM, 2026-11-16). `GameArt` stays LE1-only: ME3's frames and tabs are bitmap fills and its font library isn't a live object | LE3: research/le3-native-gui "The omni-tool on ME3". |
-| G23 | Game screens in the room and on the wrist; the UI-world figure (`game/WorldUi`, `plugin/WorldUi`, `game/UiWorldFigure`) | **adapted** V: `SetMovieVisibility`; runs `20261115-043419-wrist-visual` and the Save 4 pointer run (827cd3af). UiWorldFigure missing | **missing**: no `setWorldUi`. The whole native GUI frame goes on a `WorldPanels` quad (`PlaceNativePanel`) | LE3: research/le3-native-gui gates 1–4. |
+| G23 | Game screens in the room and on the wrist; the UI-world figure (`game/WorldUi`, `plugin/WorldUi`, `game/UiWorldFigure`) | **adapted** V: `SetMovieVisibility`; runs `20261115-043419-wrist-visual` and the Save 4 pointer run (827cd3af). UiWorldFigure missing | **adapted** V: `setWorldUi` served (lane OM2, 2026-11-16, Save 31): the Mission Computer and map on the wrist, War Assets in the room toward the War Terminal, the squad record (3D Shepard) on the native panel; ME3's adapter reads the focused `SFXGUIMovie` and turns its UI world off (`SetRequiresUIWorld(false)`) while ours stand; ME3's `d3d_capture` stays out of MENU_MONO (`MevrSeams::WorldUiOwnsGui`). UiWorldFigure missing; behind a screen the eye is the GUI camera's (no render hold) | LE3: research/le3-native-gui "The game's screens on ME3" (its "Not right yet"). |
 | G24 | Omni pad for the bypass minigame (`plugin/OmniPad`, `core/vr/OmniPad`) | **missing**: ME2's hack and bypass minigames are different games (docs/le2-validation-coverage.md "Hacking and bypass") | **n/a**: ME3 has no bypass minigame (game knowledge, not checked in its data) | — |
 | G25 | Galaxy map: hologram, stereo window, projector (`game/GalaxyMap`, `plugin/GalaxyHologram`, `game/SceneCaptureRig`) | **forked** U: `HalcyonLe2Bridge::PlaceGalaxyPanel` + `vr::galaxy_map::NativeTablePanel`, opt-in `[Galaxy] nativeTable = 1`. GalaxyMap and GalaxyHologram aren't on LE2 | **forked** V: `Le3GalaxyCapture` (re-implements GalaxyMap's `StepWindow`), `PlaceNativePanel` (a copy of LE2's), `Le3GalaxyRetention`, `NativeMapInputLease`. Navigation run `20261115-194205-273`, retention `20261115-214310-005`, raw eye captures `20261115-220823-943`; the post-effect fix never ran (`20261115-221710-284` timed out) | docs/galaxy-projector-handoff.md "Remaining work" 1–5; Forks 3. |
-| G26 | Game pointer and GUI events (`plugin/GamePointer`, `game/GuiCursor`, `core/vr/GuiEvents`) | **adapted** V: the Save 4 pointer run, 2026-11-15 (research/le2-menus.md "Game screens and pointer") | **adapted** V: pointer on the native GUI quad; `takeGuiEvents` served on LE3 (`WithMenus`): a replayed ray click on the Mission Computer's Squad went in as `SFXGameModeGUI.GuiKey(31)` and opened the squad record, no SendInput (lane OM, Save 31, 2026-11-16) | LE3: on the wrist with G23. |
+| G26 | Game pointer and GUI events (`plugin/GamePointer`, `game/GuiCursor`, `core/vr/GuiEvents`) | **adapted** V: the Save 4 pointer run, 2026-11-15 (research/le2-menus.md "Game screens and pointer") | **adapted** V: pointer on the native GUI quad; `takeGuiEvents` served on LE3 (`WithMenus`): a replayed ray click on the Mission Computer's Squad went in as `SFXGameModeGUI.GuiKey(31)` and opened the squad record, no SendInput (lane OM, Save 31, 2026-11-16). On a world screen (wrist or room) the clicks reach the right pixel as GUI events but ME3's movie mouse doesn't move (lane OM2) | LE3: the movie mouse on world screens (research/le3-native-gui "The game's screens on ME3"). |
 | G27 | Interaction: selection by gaze, label at the object (`engine/SelectionGaze`, `game/Interact`, `HudPieceLayers::Interaction`) | **adapted** V: gaze at `0xAC0530` (ME3's void(this) search); a band per game (`hp::DefaultLabelCrop` `Me2`), on by default; Save 4: the door selected ahead, nothing at 60 degrees, its label (research/40 section 6, lane HU) | **adapted** V: gaze at `0xA9BF90`; run `20261115-190610-153` (A opens War Assets); band `Me3`; Save 31: War Terminal 1.35 m, the label at the console, nothing at 70 degrees (research/40 section 6) | Both: A's use after a gaze pick in the same run, a long name, combat targets, the headset. |
 | G28 | HUD pieces: wrist status, gun panel (`game/HudPieces`, `plugin/HudPieceLayers`) | **adapted** V: `Layout::Me2` crops; run `20261115-002101-lane-b4-m2b` (f71e7a71); ammo mount 2a108759 | **missing**: `setHudPieces` not served (`#if !defined(MEVR_WITH_HALCYON_LE3)` in ModLoader.cpp); `game/HudPieces` stands down by name on ME3 (no fall-back to ME1's placement) | LE3: docs/me3-overall-goal-handoff.md L3-4 "native wrist crop". |
 | G29 | Power wheel at the left hand, lock and push, self-cast gestures, coach (`game/PowerWheel`, `plugin/PowerWheel`) | **adapted** V: ME2 roster (`SFXPowerManager`); chest Adrenaline Rush and rifle Disruptor Ammo, 2026-11-15 05:25 (483ac2fb; research/55 "Mass Effect 2") | **adapted** U: `game/Le3Powers.hpp` (`SFXPowerCustomActionBase`); metadata only | research/55 "Still to verify"; L3-6. |
@@ -490,8 +490,9 @@ and 2 (the overlay composition and the sequel bridges).
 - LE1 (about 90): the performance work (one-Draw's `Record*`, the perf points, Quest pacing), the HUD panel's draw
   seams, metric stereo, the galaxy view swaps, conversations in the world, the front end, the eye blit's colour and
   upscale, Halcyon's own menu.
-- LE2: `JournalFloorViewWrite`, `CineScreenHalfSeparationUU`, `OnSwapChainPresent`, `WorldUiOwnsGui`, and the inline
-  `HotkeyDown`.
+- LE2: `JournalFloorViewWrite`, `CineScreenHalfSeparationUU`, `OnSwapChainPresent`, and the inline `HotkeyDown` and
+  `WorldUiOwnsGui` (the common `MevrSeams::WorldUiOwnsGui` since ME3 took it, lane OM2, 2026-11-16; defined in
+  `plugin/MenusLe2.cpp` for both sequel hosts).
 - LE3: `CineScreenHalfSeparationUU`, `OnPresent`.
 
 **State of the migration (2026-11-16).** Done: the header, the host's definitions in `namespace MevrSeams`,
@@ -601,9 +602,9 @@ defined in the tool's header:
 <!-- parity:summary -->
 | game | renderer | host plugin files | host core files | services served | src/game + src/engine modules by status | common seams called | own seams |
 |---|---|---|---|---|---|---|---|
-| LE1 | halcyon-le1 | 73 | 71 | 58 | run 67, out 4, ungated 25, unbuilt 4 | 22 of 37 | 89 |
-| LE2 | halcyon-le2 | 68 | 57 | 49 | run 44, ready 10, out 19, ungated 21, unreferenced 2, unbuilt 4 | 35 of 37 | 5 |
-| LE3 | halcyon-le3 | 71 | 57 | 50 | run 44, ready 10, out 18, ungated 23, unreferenced 2, unbuilt 3 | 35 of 37 | 2 |
+| LE1 | halcyon-le1 | 73 | 71 | 58 | run 67, out 4, ungated 25, unbuilt 4 | 22 of 38 | 89 |
+| LE2 | halcyon-le2 | 68 | 57 | 49 | run 44, ready 10, out 19, ungated 21, unreferenced 2, unbuilt 4 | 36 of 38 | 4 |
+| LE3 | halcyon-le3 | 71 | 57 | 54 | run 44, ready 10, out 18, ungated 23, unreferenced 2, unbuilt 3 | 36 of 38 | 2 |
 <!-- /parity:summary -->
 
 ### Host plugin files per game
@@ -758,13 +759,13 @@ Helpers applied, in order:
 | `hideScreenReticle` | WithRenderer | WithRenderer | WithRenderer |
 | `keepLoaded` | BaseServices | BaseServices | BaseServices |
 | `leftGripAway` | WithPadMerge | WithPadMerge | WithPadMerge |
-| `logWorldUiStats` | WithWorldUi | WithMenus | - |
+| `logWorldUiStats` | WithWorldUi | WithMenus | WithMenus |
 | `mainMenu` | WithLe1Modules | WithMenus | WithMenus |
 | `motionBlurProtected` | WithLe1ExtraUi | - | BuildServices |
 | `processExiting` | BaseServices | BaseServices | BaseServices |
 | `publishCameraOffset` | WithLe1ExtraUi | - | - |
 | `recordWrite` | WithCrashBreadcrumbs | WithCrashBreadcrumbs | WithCrashBreadcrumbs |
-| `reserveWorldUi` | WithWorldUi | WithMenus | - |
+| `reserveWorldUi` | WithWorldUi | WithMenus | WithMenus |
 | `rightGripFree` | WithPadMerge | WithPadMerge | WithPadMerge |
 | `secondEyeIsReplay` | WithRenderer | WithRenderer | WithRenderer |
 | `setAimRay` | WithRenderer | WithRenderer | WithRenderer |
@@ -793,13 +794,13 @@ Helpers applied, in order:
 | `setVoiceKeyterms` | WithVoice | WithVoice | WithVoice |
 | `setVoiceListen` | WithVoice | WithVoice | WithVoice |
 | `setWheelPanel` | WithLe1Modules | - | - |
-| `setWorldUi` | WithWorldUi | WithMenus | - |
+| `setWorldUi` | WithWorldUi | WithMenus | WithMenus |
 | `sightView` | WithSights | WithSights | WithSights |
 | `statusWanted` | WithRenderer | WithRenderer | WithRenderer |
 | `supportGripHeld` | WithPadMerge | WithPadMerge | WithPadMerge |
 | `takeGalaxyPick` | WithGalaxyHologram | - | WithGalaxyHologram |
 | `takeGameMenuRequest` | WithGameMenuRequest | WithMenus | WithMenus |
-| `takeGameUiRequest` | WithWorldUi | WithMenus | - |
+| `takeGameUiRequest` | WithWorldUi | WithMenus | WithMenus |
 | `takeGuiEvents` | WithLe1ExtraUi | WithMenus | WithMenus |
 | `takeVoiceLine` | WithVoice | WithVoice | WithVoice |
 | `takeVoiceModelAnswer` | WithVoice | WithVoice | WithVoice |
@@ -958,12 +959,13 @@ The common vocabulary (`namespace MevrSeams`, `src/halcyon/MevrSeams.h`): `yes` 
 | `RecenterOrientation` | yes | yes | yes |
 | `StaticXrGetInstanceProcAddr` | yes | yes | yes |
 | `TransitionFadeLayer` | yes | yes | yes |
+| `WorldUiOwnsGui` | - | yes | yes |
 | `WrapSessionFunctions` | yes | yes | yes |
 | `XrRuntimeIsSteamVr` | - | yes | yes |
 
 Old names still forwarded to the common seams (inline, in the tree's `mevr_bridge.h`; removed once nobody calls them):
 
-- LE2: `HotkeyDown`
+- LE2: `HotkeyDown`, `WorldUiOwnsGui`
 
 Each renderer's own seams (`MevrBridge`, its tree's `mevr_bridge.h`): the per-renderer extensions.
 
@@ -1061,7 +1063,6 @@ Each renderer's own seams (`MevrBridge`, its tree's `mevr_bridge.h`): the per-re
 | `WorldUiActive` | yes | - | - |
 | `WorldUiHoldFrame` | yes | - | - |
 | `WorldUiOwnership` | yes | - | - |
-| `WorldUiOwnsGui` | - | yes | - |
 | `WorldUiPresent` | yes | - | - |
 <!-- /parity:seams -->
 

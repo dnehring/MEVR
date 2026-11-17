@@ -111,3 +111,65 @@ its arming is the shared `hud_panel` frame, `panel.gameplay || ctx.worldUiOwns`)
 draws flat whenever `GetMenuMode()` is true); ME3's GUI mode 9 in `vr::world_ui::ScreenMode` and `game/WorldUi`'s mode
 checks (raw 7/10 today); a `game/WorldUi` ME3 adapter for the open movies (focus via `le3_gui::FocusMovie`, tags above,
 `m_bRequiresUIWorld` movies kept on the native panel); then each screen's crop measured on the panel image.
+
+## The game's screens on ME3 (lane OM2, 2026-11-16)
+
+ME1's world UI (`game/WorldUi`, `plugin/WorldUi`, `core/vr/WorldUi`, `plugin/MenusLe2`'s panel glue) now serves ME3: the
+Mission Computer and its pages project from the left wrist, the War Terminal's War Assets stands in the room toward the
+terminal, the squad record (its 3D Shepard) keeps Halcyon's native panel. Run on the fake headset, renderer preview, Save 31,
+holder `OM2`, sessions `20261116-*-LE3-om2-me3*` (the last two, `om2-me3f` and `om2-me3g`, are the evidence); restored with
+`verification: 0 differences`; `reflect: ... checks agree` with the new rows.
+
+**What was built (the steps of "The omni-tool on ME3" above):**
+1. `plugin/RendererLe3.cpp`: `caps.worldUi = true`; `plugin/ModLoader.cpp`'s `WithMenus` serves `setWorldUi`,
+   `reserveWorldUi`, `logWorldUiStats` and `takeGameUiRequest` (the rail's origin) on LE3 as on LE2.
+2. The seam: `MevrSeams::WorldUiOwnsGui(mode)` (moved from ME2's `mevr_bridge.h`, whose name now forwards; defined in
+   `plugin/MenusLe2.cpp`). ME3's `d3d_capture.cpp` `UpdatePresentationState`: `demand = manual ? Manual : (menuInputOwner &&
+   !worldUiOwns) ? InputOwner : galaxy ? Galaxy : Gameplay` (`[MEVR]`), so the GUI mode stays in stereo while a screen of ours
+   owns it; the galaxy's demand is untouched.
+3. `core/vr/WorldUi.hpp`: the modes per game (`kGuiMode` 9 on ME3, 7 on ME1 and ME2; ME1's minigame 10 only on ME1, where
+   ME2's 10 is the planet scan; `PlayMode`: an opening is reserved from modes 0..4, ME3's 0..6), used by `Opening::Eligible`,
+   `OpeningSource::Observe`, the host's `Ownership`/`HoldFrame`, `game/WorldUi`'s `BeginOpening` and `WristTrackingFrame`.
+   ME1's numbers without a game define (the tests).
+4. `game/WorldUi`'s ME3 adapter: the screen is the focused `SFXGUIMovie` (`le3_gui::FocusMovie`; `GetAllMovies` returns none
+   through ProcessEvent), its `nmTag` through `FromMe3Tag` (`SquadRecord` is ME1's `CharacterRecord`, `Areamap` its `Map`,
+   `warAssets` ME3's own new `WarAssets`, which stands by what was used); a message box stands on the last screen of ours in
+   focus this GUI stretch (ME1's rule over its parent).
+5. **The UI world.** Every Mission Computer page and War Assets set `m_bRequiresUIWorld` (SFXGUIInteraction's script calls
+   `SetRequiresUIWorld(TRUE)` as it opens them), and while one does the game renders the UI world's dark nebula instead of
+   the level: the first wrist screens stood in a dark void (snapshot `2026-11-16_23-51-21-086`). ME1 has the same in
+   `bFullScreen`. So while ours stand, a screen without a squad member in it is told `SFXGUIMovie.SetRequiresUIWorld(false)`
+   (the game's native setter, never a raw write) and `SetRequiresUIWorld(true)` again when ours goes down (if the movie still
+   lives); the level then renders behind (`2026-11-17_00-01-16-685`: the Normandy's floor, the gauntlet, the Mission Computer
+   on the wrist; `00-03-11-853`: War Assets over the War Room). A screen whose squad member is in the UI world
+   (`ShowsFigure`: the squad record) keeps the native panel: `world ui: MenuBrowser down (it shows the game's UI world ...)`.
+6. Crops: ME3's movies fill the 16:9 window (1280 x 720 stages; the panel image is the whole window at 3072 x 1728), so every
+   screen shows its whole stage (`DefaultCrop`'s default, as ME1's journal, codex and map): the Mission Computer and the map
+   0.70 x 0.39 m on the wrist, War Assets 1.20 x 0.68 m in the room. No tighter crop was measured worth taking.
+7. `game/GameMenuRequest` on ME3: back-outs 12 ticks apart, at most 8 (the map page took about a second to answer B; six
+   back-outs 4 ticks apart left it up).
+
+**In the game (Save 31):** a replayed wrist tap (`make-wrist-recording.py ... 4 0 wrist`) opened the rail, standing on the
+omni-tool's display; a fingertip press on its Squad entry 6 s into `make-rail-press-recording.py` (the rail rides Shepard's
+drawn display, which the recording's rising wrist moves: a press at 2 s missed) opened the Mission Computer and its squad
+record (`picks 1, last squad`; the record on the native panel); the player's B (replayed with `-Inputs`) went back to the
+Mission Computer, projected from the wrist with the rail beside it and the fan of light; `mevr omni map` opened the map on
+the wrist; Close returned to game mode 0. At the War Room table (walked as lane HU did, head 30 degrees left and down) A
+opened War Assets (`warAssets`): `the WarAssets screen opened by using SFXPointOfInterest_0`, `stands in the room ... toward
+what it belongs to`; B closed it; the War Terminal's label was back at the console in first person.
+
+**Not right yet (for the next lane):**
+- **The pointer's clicks don't reach ME3's movie mouse on a world screen.** The ray's and the fingertip's clicks land on the
+  right pixel and go in as ME3's GUI events (`game pointer: the trigger clicked the game's menu at (1213, 743) px (native GUI
+  events)`, the Mission Computer's Journal button), but `mevr guimouse` shows the movie's own mouse unmoved at (1130, 600) of
+  its 1280 x 720 stage, so the page didn't open (three tries: two touches, one ray). `plugin/GamePointer`'s mod-steered path
+  posts no window messages and answers `GetCursorPos`; ME3's viewport may take the mouse from window messages instead
+  [verify]. The rail's entries and `mevr omni` do open the pages.
+- **Behind a screen the eye is the GUI camera's, not first person's.** Halcyon ME3's first person writes only in game mode 0
+  (`engine_probe.cpp`'s `fpWriteContext`), so in the GUI mode the camera returns to the game's own offset and Shepard's body
+  fills part of the view (`00-03-11-853`). Allowing mode 9 there while `WorldUiOwnsGui` stalled the game thread for seconds
+  (run `om2-me3g`: snapshots 30 s late, the presentation flipping MENU_MONO/stereo, B ignored) and was reverted. ME1 holds
+  Shepard's on-foot view at render time (`MevrBridge::GalaxyViewSwapBegin`'s world-UI branch, `State::holdRender`); ME3 has
+  no such seam yet.
+- The galaxy console was not reached from Save 31 (the CIC is beyond the doors the earlier navigation runs stopped at); the
+  galaxy map's own path is untouched by this change (its demand and modes 11/12 aren't the world UI's).

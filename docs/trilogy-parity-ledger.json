@@ -3165,6 +3165,7 @@
     "RecenterOrientation",
     "StaticXrGetInstanceProcAddr",
     "TransitionFadeLayer",
+    "WorldUiOwnsGui",
     "WrapSessionFunctions",
     "XrRuntimeIsSteamVr"
    ],
@@ -3409,6 +3410,7 @@
     "RecenterOrientation",
     "StaticXrGetInstanceProcAddr",
     "TransitionFadeLayer",
+    "WorldUiOwnsGui",
     "WrapSessionFunctions",
     "XrRuntimeIsSteamVr"
    ],
@@ -3446,6 +3448,7 @@
     "RecenterOrientation",
     "StaticXrGetInstanceProcAddr",
     "TransitionFadeLayer",
+    "WorldUiOwnsGui",
     "WrapSessionFunctions",
     "XrRuntimeIsSteamVr"
    ],
@@ -3454,18 +3457,17 @@
     "CineScreenHalfSeparationUU",
     "JournalFloorViewWrite",
     "OnSwapChainPresent",
-    "SfrReplayRetry",
-    "WorldUiOwnsGui"
+    "SfrReplayRetry"
    ],
    "forwarders": [
-    "HotkeyDown"
+    "HotkeyDown",
+    "WorldUiOwnsGui"
    ],
    "used": [
     "CineScreenHalfSeparationUU",
     "JournalFloorViewWrite",
     "OnSwapChainPresent",
-    "SfrReplayRetry",
-    "WorldUiOwnsGui"
+    "SfrReplayRetry"
    ],
    "usedUndeclared": []
   },
@@ -3506,6 +3508,7 @@
     "RecenterOrientation",
     "StaticXrGetInstanceProcAddr",
     "TransitionFadeLayer",
+    "WorldUiOwnsGui",
     "WrapSessionFunctions",
     "XrRuntimeIsSteamVr"
    ],
@@ -3543,6 +3546,7 @@
     "RecenterOrientation",
     "StaticXrGetInstanceProcAddr",
     "TransitionFadeLayer",
+    "WorldUiOwnsGui",
     "WrapSessionFunctions",
     "XrRuntimeIsSteamVr"
    ],
@@ -3725,10 +3729,12 @@
     "hideScreenReticle": "WithRenderer",
     "keepLoaded": "BaseServices",
     "leftGripAway": "WithPadMerge",
+    "logWorldUiStats": "WithMenus",
     "mainMenu": "WithMenus",
     "motionBlurProtected": "BuildServices",
     "processExiting": "BaseServices",
     "recordWrite": "WithCrashBreadcrumbs",
+    "reserveWorldUi": "WithMenus",
     "rightGripFree": "WithPadMerge",
     "secondEyeIsReplay": "WithRenderer",
     "setAimRay": "WithRenderer",
@@ -3751,11 +3757,13 @@
     "setVignette": "WithVignette",
     "setVoiceKeyterms": "WithVoice",
     "setVoiceListen": "WithVoice",
+    "setWorldUi": "WithMenus",
     "sightView": "WithSights",
     "statusWanted": "WithRenderer",
     "supportGripHeld": "WithPadMerge",
     "takeGalaxyPick": "WithGalaxyHologram",
     "takeGameMenuRequest": "WithMenus",
+    "takeGameUiRequest": "WithMenus",
     "takeGuiEvents": "WithMenus",
     "takeVoiceLine": "WithVoice",
     "takeVoiceModelAnswer": "WithVoice",

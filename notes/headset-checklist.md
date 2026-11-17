@@ -877,6 +877,12 @@ stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs 
 - [ ] The reload by hand (T26): as ME2's line, on a mission (unverified on ME3: no combat save here).
 - [ ] Menus (T37-T39; research/le3-native-gui.md): our menu, calibration, the rail and wrist projection, the game's
   screens and the pointer.
+- [ ] The game's screens on the wrist and in the room (T39; research/le3-native-gui.md "The game's screens on ME3", lane OM2
+  2026-11-16): the Mission Computer and the map projected from the left wrist with the rail beside them, the War Terminal's
+  War Assets standing toward the console, the Normandy visible behind them (not the dark nebula), the squad record still on
+  the flat panel. Known on the fake headset: a pointer click on a world screen doesn't open the page yet (use the rail's
+  entries), and Shepard's body may fill part of the view behind a screen (the GUI camera's eye). Report legibility, reach,
+  and whether the screen's place feels right.
 - [ ] Cinema (T15; research/le3-dialogue-cinema.md): the screen fixed in the room, the reply wheel and subtitles readable,
   the interrupt prompt and its triggers.
 - [ ] Melee and traversal (T34, T33; research/le3-melee-audit.md, research/le3-traversal-adapter.md): no accidental
