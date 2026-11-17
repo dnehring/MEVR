@@ -46,7 +46,12 @@ Ask 'mevr state' | Write-Output
 # The pistol out first (after holsters.ps1 it may be away): the replay's right grip then holds it.
 Ask 'mevr weapon pistol' | Write-Output
 Start-Sleep -Seconds 3
-"before: " + (Ask 'mevr reload status')
+$status = Ask 'mevr reload status'
+"before: " + $status
+if ($status -match '"enabled":\s*false') {
+    # Off by default since 2026-11-16 (the owner), until the gesture is redesigned with the owner.
+    Write-Warning "the reload by hand is off ([Reload] enabled = 0, the default): set enabled = 1 in ASI\${Game}MEVR.ini to check it"
+}
 
 $runs = @(
     @{ name = 'reload'; args = @(); checks = @(@{ at = 2.6; label = 'after the shot' }, @{ at = 9.5; label = 'after the reload' }) },

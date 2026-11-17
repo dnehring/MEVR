@@ -661,8 +661,11 @@ constexpr char const* kReloadBlock =
     "[Reload]\n"
     "; The reload by hand: with a gun in your right hand, squeeze the left grip at the clip pouch on your left hip,\n"
     "; carry the clip to the gun and push it into the receiver (over and just behind your right hand: the [Vent]\n"
-    "; zone). The game then reloads as with its own button, which still works, as does its automatic reload.\n"
-    "enabled = 1\n"
+    "; zone). The game then reloads as with its own button. Off (enabled = 0) until its gesture is redesigned with the\n"
+    "; owner (2026-11-16: a hand at the hip makes no sense); the game's own reload button and its automatic reload work\n"
+    "; as always. enabledMoved: an older file's enabled = 1 (the first default) moved to 0 once.\n"
+    "enabled = 0\n"
+    "enabledMoved = 1\n"
     "; pouch: right, up, forward, radius, meters from your eyes in your body's frame for a 1.65 m eye height.\n"
     "; seatedPouch: the same in fixed meters when you play seated.\n"
     "pouch = -0.20, -0.60, 0.02, 0.13\n"
@@ -3272,6 +3275,26 @@ void Refresh() {
         ini = ReadIni(path);
         stamp = fs::last_write_time(path, ec);
     }
+#if !defined(MEVR_GAME_LE1)
+    // [Reload] since 2026-11-16 (the owner: "putting my left hand to the hip makes no sense"): the reload by hand is off until
+    // its gesture is redesigned with the owner. A file without the marker enabledMoved whose enabled still holds the first
+    // default 1 gets 0; the marker is written only after that, so a later reload retries a failed write and a later 1 stays.
+    if (auto const s = ini.find("Reload"); s != ini.end() && s->second.find("enabledMoved") == s->second.end()) {
+        auto const k = s->second.find("enabled");
+        bool const old = k != s->second.end() && k->second == "1";
+        bool const saved = !old || WritePrivateProfileStringW(L"Reload", L"enabled", L"0", path.wstring().c_str()) != 0;
+        if (saved && WritePrivateProfileStringW(L"Reload", L"enabledMoved", L"1", path.wstring().c_str()) != 0) {
+            if (old) {
+                log::Info("hands: [Reload] enabled 1 -> 0 (moved once): the reload by hand is off until its gesture is "
+                          "redesigned; the game's reload button and its automatic reload work as always, in {}", ini::Utf8(path));
+            } else if (k != s->second.end()) {
+                log::Info("hands: [Reload] enabled = {} kept (your choice; the default is 0)", k->second);
+            }
+        }
+        ini = ReadIni(path);
+        stamp = fs::last_write_time(path, ec);
+    }
+#endif
     // [Mako] since 2026-11-02 (research/48 section 22): the controls' grips are the cockpit models' on the seat's armrests and
     // the throttle travels the model's slot. A file holding all three old defaults exactly gets the new ones; any other
     // value is the player's and kept.
