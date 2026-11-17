@@ -16,27 +16,207 @@
 #include <type_traits>
 #include <vector>
 
+#if defined(MEVR_GAME_LE3)
+#include "engine/GameAdapter.hpp"
+#include "game/Le3Gui.hpp"
+#include "ue3/Params.hpp"
+#include "ue3/Runtime.hpp"
+#endif
+
 namespace mevr::game::screen_reticle {
 #if defined(MEVR_GAME_LE3)
-// ME3 stands down, explicitly (docs/trilogy-parity-ledger.md "Found while auditing"): its HUD is SFXGUIMovie (game/Le3Gui),
-// not BioSFManager's panels, and the LE3 host serves no hideScreenReticle. None of ME1's or ME2's panel and handler names
-// are compiled into this build; ME3's crosshair gets its own handles (and ReflectCheck rows) when it gets an adapter.
+// ME3's crosshair (research/le3-hud-panel.md "The crosshair hidden"): not a BioSFManager panel but a movie of its own, which
+// the GUI manager (SFXGUIInteraction, game/Le3Gui) keeps under its MovieTag_Reticle: SFXSFHandler_Reticle, an
+// SFXGUIMovieLegacyAdapter, which keeps ME1's and ME2's panel calls by name (GetVariableFloat, SetVariableFloat on a path).
+// It draws the held weapon's reticle (m_oCurrentWeaponReticle, what its GetWeaponReticleClass answers: the weapon's
+// GUIReticleClass, zoomed its GUIZoomReticleClass) and the hit markers. ME1's rule (vr::screen_reticle) with ME3's gameplay
+// modes: while the host asks (the hand reticle on, VR gameplay) the movie's `_root._alpha` is 0 and only our zero is given
+// back. The scope view stays the game's, as ME1's sniper mode and ME2's sniper crosshair: a zoomed weapon whose zoom reticle
+// is a class of its own (a sniper rifle's SFXGUI_StandardSniperZoomReticle), shown or still loading.
 namespace {
-constexpr char kStandDown[] =
-    "reticles: no crosshair adapter on ME3 yet (its HUD is SFXGUIMovie, not BioSFPanel; nothing is hidden or read)";
-bool gToldStandDown = false;
+ue3::ClassRef gInteraction{"SFXGame.SFXGUIInteraction", ue3::kEveryGame};
+ue3::FieldRef gReticleTag{"SFXGame.SFXGUIInteraction", "MovieTag_Reticle", ue3::kEveryGame};
+ue3::FunctionRef gGetMovie{"SFXGame.SFXGUIInteraction.GetMovie", ue3::kEveryGame};
+ue3::ClassRef gReticleMovie{"SFXGame.SFXSFHandler_Reticle", ue3::kEveryGame};
+ue3::FieldRef gCurrentReticle{"SFXGame.SFXSFHandler_Reticle", "m_oCurrentWeaponReticle", ue3::kEveryGame};
+ue3::FieldRef gReticleShown{"SFXGame.SFXSFHandler_Reticle", "m_bReticleVisible", ue3::kEveryGame};
+ue3::FunctionRef gGetFloat{"SFXGame.SFXGUIMovieLegacyAdapter.GetVariableFloat", ue3::kEveryGame};
+ue3::FunctionRef gSetFloat{"SFXGame.SFXGUIMovieLegacyAdapter.SetVariableFloat", ue3::kEveryGame};
+ue3::FunctionRef gGetVisible{"SFXGame.SFXGUIMovie.GetVisible", ue3::kEveryGame};
+ue3::FieldRef gPawnWeapon{"Engine.Pawn", "Weapon", ue3::kEveryGame};
+ue3::ClassRef gWeapon{"SFXGame.SFXWeapon", ue3::kEveryGame};
+ue3::FieldRef gReticleClass{"SFXGame.SFXWeapon", "GUIReticleClass", ue3::kEveryGame};
+ue3::FieldRef gZoomReticleClass{"SFXGame.SFXWeapon", "GUIZoomReticleClass", ue3::kEveryGame};
+ue3::FieldRef gZoomed{"SFXGame.SFXWeapon_NativeBase", "bIsZoomed", ue3::kEveryGame};
+
+ue3::Object* gOwnedMovie = nullptr;  // the reticle movie whose alpha we zeroed
+float gOwnedAlpha = 100.0f;          // the game's alpha before our zero
+std::string gLogged;
+bool gRequested = false;
+bool gToldMissing = false;
+
+// The GUI manager's reticle movie for the local player, or nullptr (not open, the GUI manager not up, a lookup failed).
+ue3::Object* ReticleMovie(ue3::Object* pc, std::string* why) {
+    ue3::Object* const manager = le3_gui::Manager();
+    if (manager == nullptr || !ue3::IsA(manager, gInteraction)) {
+        if (why != nullptr) *why = "no GUI manager (BioPlayerController.GetSFXUIController)";
+        return nullptr;
+    }
+    auto const tag = gReticleTag.Read<ue3::Name>(manager);
+    ue3::Function* const fn = gGetMovie.Get();
+    if (!tag || fn == nullptr) {
+        if (why != nullptr) *why = "SFXGUIInteraction.MovieTag_Reticle or GetMovie didn't resolve";
+        return nullptr;
+    }
+    ue3::Params p(ue3::runtime::Get(), fn);
+    if (!p.Valid() || !p.Set("i_pOwningPlayer", pc) || !p.Set("nmMovieTag", *tag) || !ue3::runtime::Call(manager, fn, p)) {
+        if (why != nullptr) *why = "SFXGUIInteraction.GetMovie failed";
+        return nullptr;
+    }
+    ue3::Object* const movie = p.Return<ue3::Object*>().value_or(nullptr);
+    if (!ue3::runtime::IsAlive(movie)) {
+        if (why != nullptr) *why = std::format("no movie open under {}", ue3::runtime::NameText(*tag));
+        return nullptr;
+    }
+    if (!ue3::IsA(movie, gReticleMovie)) {
+        if (why != nullptr) *why = std::format("{}'s movie {} isn't an SFXSFHandler_Reticle: left alone",
+            ue3::runtime::NameText(*tag), ue3::runtime::FullName(movie));
+        return nullptr;
+    }
+    return movie;
+}
+
+std::optional<float> Alpha(ue3::Object* movie) {
+    ue3::Params p(ue3::runtime::Get(), gGetFloat.Get());
+    ue3::memory::OwnedString path(L"_root._alpha");  // engine allocation, never a stack-backed FString
+    if (!p.Valid() || !path.Valid() || !p.Set("sPath", path.Get()) || !ue3::runtime::Call(movie, gGetFloat.Get(), p)) {
+        return std::nullopt;
+    }
+    auto const value = p.Return<float>();
+    return value && std::isfinite(*value) ? value : std::nullopt;
+}
+
+bool SetAlpha(ue3::Object* movie, float alpha) {
+    ue3::Params p(ue3::runtime::Get(), gSetFloat.Get());
+    ue3::memory::OwnedString path(L"_root._alpha");
+    return p.Valid() && path.Valid() && p.Set("sPath", path.Get()) && p.Set("fVar", alpha) &&
+           ue3::runtime::Call(movie, gSetFloat.Get(), p);
+}
+
+std::optional<bool> MovieVisible(ue3::Object* movie) {
+    ue3::Params p(ue3::runtime::Get(), gGetVisible.Get());
+    if (!p.Valid() || !ue3::runtime::Call(movie, gGetVisible.Get(), p)) return std::nullopt;
+    return p.ReturnBool();
+}
+
+// What the movie draws now: whether that is readable (else nothing is hidden), whether it is the scope view, and the words
+// for the log.
+struct Shown {
+    bool known = false;
+    bool scope = false;
+    std::string text;
+};
+Shown ReadShown(ue3::Object* pc, ue3::Object* movie) {
+    auto& r = ue3::runtime::Get();
+    Shown out;
+    auto const current = gCurrentReticle.Read<ue3::Object*>(movie);
+    out.known = current.has_value();
+    ue3::Object* const reticle = current.value_or(nullptr);
+    ue3::Object* weapon = gPawnWeapon.Read<ue3::Object*>(player::Pawn(pc)).value_or(nullptr);
+    if (!r.IsAlive(weapon) || !ue3::IsA(weapon, gWeapon)) weapon = nullptr;
+    auto* const normal = weapon != nullptr ? gReticleClass.Read<ue3::Class*>(weapon).value_or(nullptr) : nullptr;
+    auto* const zoom = weapon != nullptr ? gZoomReticleClass.Read<ue3::Class*>(weapon).value_or(nullptr) : nullptr;
+    auto const zoomed = weapon != nullptr ? gZoomed.ReadBool(weapon) : std::nullopt;
+    bool const zoomShown = zoom != nullptr && r.IsAlive(reticle) && r.IsA(reticle, zoom);
+    // A scope of its own: zoomed (its reticle may still be loading: GetWeaponReticleClass already answers it), or showing it.
+    out.scope = zoom != nullptr && zoom != normal && (zoomed == true || zoomShown);
+    auto const shown = gReticleShown.ReadBool(movie);
+    out.text = std::format("reticle={} weapon={} zoomed={} zoomReticle={} reticleVisible={}",
+        r.IsAlive(reticle) ? r.FullName(reticle) : "None", weapon != nullptr ? r.FullName(weapon) : "None",
+        zoomed ? (*zoomed ? "1" : "0") : "?", zoom != nullptr ? r.NameText(zoom) : "None",
+        shown ? (*shown ? "1" : "0") : "?");
+    return out;
+}
+
+void Restore(char const* why) {
+    // Only our zero: an alpha the game wrote since then is already the game's.
+    if (gOwnedMovie != nullptr && ue3::runtime::IsAlive(gOwnedMovie) && ue3::IsA(gOwnedMovie, gReticleMovie) &&
+        Alpha(gOwnedMovie) == 0.0f) {
+        bool const ok = SetAlpha(gOwnedMovie, gOwnedAlpha);
+        log::Info("[MEVR-CROSSHAIR] restore {} alpha {} ({}) ok={}", ue3::runtime::FullName(gOwnedMovie), gOwnedAlpha, why, ok);
+    }
+    gOwnedMovie = nullptr;
+}
+
+std::string Observe(bool apply) {
+    if (!ue3::runtime::Up()) return "reticles: reflection unavailable";
+    ue3::Object* const pc = player::Controller();
+    int const gameMode = player::GameMode(pc).value_or(255);
+    bool const gameplay = engine::adapter::IsHudGameplayMode(gameMode);
+    std::string report = std::format("reticles: gameMode={} gameplay={} VR suppression request={} (independent of aim ray)",
+        gameMode, gameplay, gRequested);
+    std::string why;
+    ue3::Object* const movie = pc != nullptr ? ReticleMovie(pc, &why) : nullptr;
+    if (movie == nullptr) {
+        if (pc == nullptr) why = "no player controller";
+        report += "\n  ME3's reticle movie: " + why;
+        if (apply) {
+            if (gOwnedMovie != nullptr) Restore("its movie is gone");
+            if (gRequested && !gToldMissing) {
+                gToldMissing = true;
+                log::Info("[MEVR-CROSSHAIR] the host asks to hide the crosshair; ME3's reticle movie: {}", why);
+            }
+        }
+        return report;
+    }
+    if (apply && gOwnedMovie != nullptr && gOwnedMovie != movie) Restore("another reticle movie took its place");
+    Shown const shown = ReadShown(pc, movie);
+    auto alpha = Alpha(movie);
+    bool const hide = vr::screen_reticle::HideInGameplay(gRequested, gameplay, !shown.known ? -1 : shown.scope ? 2 : 1);
+    if (apply) {
+        if (hide && alpha) {
+            // Keep the latest nonzero game-authored alpha. Never change the movie's visibility.
+            if (*alpha != 0.0f) {
+                float const before = *alpha;
+                if (SetAlpha(movie, 0.0f)) {
+                    gOwnedMovie = movie;
+                    gOwnedAlpha = before;
+                    alpha = Alpha(movie);
+                }
+            }
+        } else if (gOwnedMovie == movie) {
+            Restore(hide ? "its alpha is unreadable" : shown.scope ? "the scope view is the game's" : "no longer asked");
+            alpha = Alpha(movie);
+        }
+    }
+    auto const visible = MovieVisible(movie);
+    std::string const line = std::format("movie={} GetVisible={} _root._alpha={} savedAlpha={} {} suppress={} scope={}",
+        ue3::runtime::FullName(movie), visible ? (*visible ? "1" : "0") : "?", alpha ? std::format("{:g}", *alpha) : "?",
+        gOwnedMovie == movie ? std::format("{:g}", gOwnedAlpha) : "-", shown.text, hide, shown.scope);
+    report += "\n  " + line;
+    if (apply && line != gLogged) {
+        log::Info("[MEVR-CROSSHAIR] {}", line);
+        gLogged = line;
+    }
+    return report;
+}
 } // namespace
 
 void Tick(bool requested) {
-    if (requested && !gToldStandDown) {
-        gToldStandDown = true;
-        log::Warn("[MEVR-CROSSHAIR] the host asked to hide the game's crosshair, but {}", kStandDown);
-    }
+    if (requested != gRequested) log::Info("[MEVR-CROSSHAIR] VR hand-reticle suppression request={}", requested);
+    gRequested = requested;
+    (void)Observe(true);
 }
 
-std::string Command() { return kStandDown; }
+std::string Command() { return Observe(false); }
 
-void Shutdown(bool) { gToldStandDown = false; }
+void Shutdown(bool exiting) {
+    if (!exiting && ue3::runtime::Up()) Restore("shutdown");
+    gOwnedMovie = nullptr;
+    gLogged.clear();
+    gRequested = false;
+    gToldMissing = false;
+}
 #else
 namespace {
 // ME1's and ME2's Scaleform panels (the same names in both): the player's GUI manager, its panels, each panel's handlers.

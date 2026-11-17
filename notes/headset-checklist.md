@@ -877,6 +877,10 @@ stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs 
 - [ ] No cover snapping (T31; research/le3-combat-fixtures.md "First on the combat save"): on a mission next to cover, A
   doesn't snap Shepard into it; crouching behind it, hits from beyond it don't hurt, standing in the open they do. The
   game's "take cover" prompt may still show (not hidden on ME3 yet): report it if it does.
+- [ ] The game's crosshair hidden (T14; research/le3-hud-panel.md "The crosshair hidden", lane CH 2026-11-17; unseen: the
+  Normandy has no weapon): on a mission with a gun drawn, no crosshair in the middle of the HUD panel, only our ring where the
+  hand aims, as on ME1 and ME2; no crosshair flashing at a hitch; the game's own sniper scope still shows when zoomed (if the
+  game's zoom can be reached); the crosshair back on the flat game when VR stops.
 - [ ] Hands and the gun (T21, T22; research/le3-body-pose.md): the raw controller against Shepard's hand (place, twist,
   reach), the gun in the grip, the two-handed support, standing and seated.
 - [ ] Sights (T24): the eye box of the dot and the scope per weapon and optic mod.
