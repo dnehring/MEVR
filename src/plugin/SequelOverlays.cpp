@@ -72,7 +72,10 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
     ctx.device = device;
     ctx.onFoot = mevr::engine::adapter::GameMode(frame.gameMode) == mevr::engine::adapter::Mode::OnFoot;
     ctx.lastGameMode = lastGameMode;
-    ctx.menuOpen = frame.menuOpen || (facts.menusHideGameplay && (MainMenuOpen() || mevr::host::menus_le2::PadWanted()));
+    // The layers stand down for the renderer's own menu only, as LE1's: under ours or the calibration they're composed as
+    // always, and plugin/MenusLe2 submits the menu (or the calibration) alone while it's drawn (LE1's HalcyonOverlays the
+    // same). ME3 hid them too until 2026-11-16 (the owner: everything consistent; research/trilogy-seams.md).
+    ctx.menuOpen = frame.menuOpen;
     bool const anyMenu = ctx.menuOpen || ownMenus;  // a menu of the renderer's or ours, or the calibration
 
     // The comfort vignette (research/31): head-locked, under all of ours.
@@ -198,22 +201,25 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
     // The sights and the hand reticle (plugin/SequelWeaponLayers: LE1's SightLayers and HandReticle).
     OverlayFrame gameplay = frame;
     gameplay.menuOpen = ctx.menuOpen;
+    // The ring while the right controller aims weapons, LE1's rule on both sequels (ME3 also wanted a fresh aim ray until
+    // 2026-11-16: the mod sends one every tick it reports hand aim, so that only differed with a host and mod that don't match).
     count = mevr::host::sequel_weapon_layers::Layers(gameplay, device, sb::game::OverlayReticleMode(ctx), layersOut, count,
-        capacity, facts.weaponsNeedPublishedAim);
+        capacity, sb::ControllerAimActive());
     // The game's own crosshair hidden where the ring replaces it (capability screenReticleHide; a no-op without it). Native
     // hiding stays each renderer's verified adapter, separate from the shared ring's drawing.
     mevr::host::renderer::SetScreenReticleHidden(
         mevr::host::renderer::Hud().handReticle && lastGameMode >= 0 && lastGameMode <= 4);
 
     // Traversal's cue at the obstacle and its blink (plugin/TraversalCue, research/le2-traversal.md): the blink over the
-    // world's layers, under the menus.
+    // world's layers, under the menus. On any world frame: the mod sends a cue only on foot and a blink only through its own
+    // move outside authored scenes (game/Le2Traversal, game/Le3Traversal), on both sequels.
     if (count < capacity) {
         mevr::host::traversal_cue::Frame cue;
         cue.session = session;
         cue.appSpace = appSpace;
         cue.context = frame.context;
         cue.device = device;
-        cue.worldFrame = frame.worldFrame && (ctx.onFoot || !facts.cueOnFootOnly);
+        cue.worldFrame = frame.worldFrame;
         cue.menuOpen = ctx.menuOpen;
         cue.headValid = frame.headValid;
         cue.head = headPosition;

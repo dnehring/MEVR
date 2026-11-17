@@ -2728,6 +2728,19 @@ void CheckLe2Squad() {
     CheckFunction("SFXGame.SFXPower.IsEnabled");
     CheckFunction("SFXGame.SFXPower.GetCooldownRemaining");
     CheckFunction("SFXGame.SFXPowerManager.HasPowerBeenEvolved");
+    // The roster's names (game/Le2Squad.hpp ActorName): the pawn's PrettyName as text through the game info.
+    CheckField("Engine.WorldInfo", "Game", SDK_FIELD(AWorldInfo, Game));
+    CheckFunction("SFXGame.SFXPawn.GetPrettyName");
+    PARAM(ASFXPawn_execGetPrettyName_Parms, "SFXGame.SFXPawn.GetPrettyName", ReturnValue);
+    PARMS(ASFXPawn_execGetPrettyName_Parms, "SFXGame.SFXPawn.GetPrettyName");
+    CheckFunction("SFXGame.SFXGame.GetSimpleString");
+    PARAM(ASFXGame_execGetSimpleString_Parms, "SFXGame.SFXGame.GetSimpleString", StrRef);
+    PARAM(ASFXGame_execGetSimpleString_Parms, "SFXGame.SFXGame.GetSimpleString", bParse);
+    PARAM(ASFXGame_execGetSimpleString_Parms, "SFXGame.SFXGame.GetSimpleString", ReturnValue);
+    PARMS(ASFXGame_execGetSimpleString_Parms, "SFXGame.SFXGame.GetSimpleString");
+    CheckFunction("SFXGame.BioActorBehavior.GetActorGameName");
+    PARAM(UBioActorBehavior_eventGetActorGameName_Parms, "SFXGame.BioActorBehavior.GetActorGameName", ReturnValue);
+    PARMS(UBioActorBehavior_eventGetActorGameName_Parms, "SFXGame.BioActorBehavior.GetActorGameName");
 }
 
 void CheckTraversal() {

@@ -547,6 +547,8 @@ set(MEVR_MOD_SOURCES
     src/game/Thespian.hpp
     # Vaulting and climbing (research/le2-traversal.md): ME2's own move on the double A, measured and presented.
     src/game/Traversal.cpp
+    src/game/Le2Traversal.cpp
+    src/game/Le2Traversal.hpp
     src/game/Le3Traversal.cpp
     src/game/Traversal.hpp
     src/core/vr/Traversal.cpp
@@ -872,6 +874,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/plugin/OpenAlSoft.cpp
     src/plugin/OpenAlSoft.hpp
     src/plugin/HalcyonBridge.cpp
+    src/plugin/HdrDisplayPolicy.cpp
+    src/plugin/HdrDisplayPolicy.hpp
     src/plugin/Seams.cpp
     src/halcyon/MevrSeams.h
     src/plugin/PadMerge.cpp
@@ -1063,6 +1067,9 @@ function(mevr_add_plugin game)
             # correction in that copy (plugin/Colour, core/vr/Colour; research/le2-picture.md).
             src/plugin/EyeCopy.cpp src/plugin/EyeCopy.hpp src/core/d3d11/Blit.cpp src/core/d3d11/Blit.hpp
             src/plugin/Colour.cpp src/plugin/Colour.hpp src/core/vr/Colour.cpp src/core/vr/Colour.hpp
+            # ME1's eye upscale in that copy (plugin/Upscale, core/vr/Upscale: FSR 1; research/27 "One eye-image pipeline").
+            src/plugin/Upscale.cpp src/plugin/Upscale.hpp src/core/vr/Upscale.cpp src/core/vr/Upscale.hpp
+            src/core/Embedded.hpp ${MEVR_FSR_EMBEDDED}
             # Our layers at xrEndFrame (MevrBridge::OverlayLayers): the swapchain budget and the modules that run on LE2.
             src/plugin/Swapchains.cpp src/plugin/Swapchains.hpp
             src/core/vr/SwapchainBudget.hpp src/plugin/Vignette.cpp src/plugin/Vignette.hpp src/core/vr/Comfort.cpp
@@ -1128,6 +1135,7 @@ function(mevr_add_plugin game)
             src/plugin/HdrDisplayPolicy.cpp src/plugin/HdrDisplayPolicy.hpp
             src/plugin/GameThreadCalls.cpp src/plugin/XrHost.cpp src/plugin/FloorLock.cpp src/plugin/PadMerge.cpp
             src/plugin/TestLoop.cpp src/plugin/Swapchains.cpp src/plugin/EyeCopy.cpp src/plugin/Colour.cpp
+            src/plugin/Upscale.cpp src/plugin/Upscale.hpp src/core/vr/Upscale.cpp src/core/vr/Upscale.hpp ${MEVR_FSR_EMBEDDED}
             src/game/GamepadMapping.cpp src/core/vr/Controllers.cpp src/core/xr/Input.cpp src/core/xr/Floor.cpp
             src/core/vr/Haptics.cpp src/core/vr/FloorLock.cpp src/core/vr/Calibration.cpp src/core/vr/Comfort.cpp
             src/core/vr/AimRay.cpp src/core/vr/HostView.cpp src/core/vr/ImageConvert.cpp src/core/vr/LayerComposite.cpp
@@ -1362,6 +1370,7 @@ if (MEVR_BUILD_TESTS)
     add_test(NAME mevr-call-scope COMMAND mevr-call-scope-tests)
     add_executable(mevr-eye-copy-warp-tests tests/EyeCopyWarpTests.cpp
         src/plugin/EyeCopy.cpp src/core/d3d11/Blit.cpp src/core/vr/Colour.cpp
+        src/plugin/Upscale.cpp src/core/vr/Upscale.cpp src/core/vr/TestRequest.cpp ${MEVR_FSR_EMBEDDED}
         src/core/Ini.cpp src/core/Log.cpp)
     target_include_directories(mevr-eye-copy-warp-tests PRIVATE src)
     target_compile_features(mevr-eye-copy-warp-tests PRIVATE cxx_std_20)

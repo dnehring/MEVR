@@ -35,8 +35,10 @@ sequel_cinema::State& Screen() noexcept;
 // takes it for whatever of its own the pad hooks below read (ME2's galaxy trigger latch, ME3's native map lease).
 std::mutex& PadMutex() noexcept;
 
-// The floor lock's last pass is forgotten: the next OnViewBuilt publishes its view itself (after a reset of the floor lock).
-void ForgetFloorPass() noexcept;
+// The right controller aims weapons, LE1's ControllerAimActive (plugin/HalcyonBridge.cpp): the mod says it aims
+// (HostServices::setHandAim, renderer::ModHandAim) and the right controller's aim pose was tracked within the last second.
+// The hand reticle's condition on both sequels. Present thread.
+bool ControllerAimActive() noexcept;
 
 // [Galaxy] nativeTable and the table's geometry in our settings file (ME1's table, both sequels' native map image on it),
 // read at most once a second. Opt in until the presentation and the native input are checked in each game. Present thread.
@@ -52,7 +54,10 @@ GalaxyTable const& GalaxyTableSettings() noexcept;
 struct OverlayContext {
     MevrSeams::OverlayFrame const* frame = nullptr;
     ID3D11Device* device = nullptr;
-    bool menuOpen = false;     // the gameplay layers stand down: the renderer's menu (and, by Facts, ours and the calibration)
+    // The gameplay layers stand down: the renderer's own menu, as LE1's. Ours and the calibration don't change what the
+    // layers are given; while one is drawn plugin/MenusLe2 submits it alone, as LE1's HalcyonOverlays (research/trilogy-seams.md
+    // "One overlay composition": the owner's rule, every game the same).
+    bool menuOpen = false;
     bool onFoot = false;       // this frame's game mode is on-foot gameplay
     int lastGameMode = -1;     // the last readable game mode
     bool worldUiOwns = false;  // a game screen of ours has the HUD panel (capability worldUi)
@@ -67,17 +72,11 @@ struct Facts {
     // OnViewBuilt publishes a view that is not the world's at once, instead of waiting for the floor lock to have been
     // quiet 100 ms. ME3: yes (its flat and menu paths stop calling the floor lock's pass without a last invalid view).
     bool invalidViewAtOnce;
-    // OverlayLayers:
-    // Our main menu and the calibration hide the gameplay layers (vignette, HUD panel, weapon layers, the cue), as the
-    // renderer's own menu does. ME3: yes. ME2: no, they stay under our menu as on LE1.
-    bool menusHideGameplay;
-    // The game's UI on the HUD panel gets the eyes' colour correction (plugin/Colour), as LE1's. ME2: yes. ME3: not yet
-    // (lane EY's one eye-image pipeline decides it).
+    // OverlayLayers (what our menu, the ring and the traversal cue do is ME1's on both sequels: no fact for them,
+    // research/trilogy-seams.md "One overlay composition"):
+    // The game's UI on the HUD panel gets the eyes' colour correction (plugin/Colour), as LE1's. ME2 and ME3: yes (lane EY,
+    // research/27 section 9).
     bool panelColour;
-    // The sights and the ring need the mod's published hand aim (ME3; ME2's ring shows by the game mode, as LE1's).
-    bool weaponsNeedPublishedAim;
-    // The traversal cue only on foot (ME3: authored scenes own traversal). ME2: on any world frame.
-    bool cueOnFootOnly;
     // The HUD's own layout for the wrist and gun pieces (capability hudPieces): 0 ME1's, 1 ME2's (vr::hud_pieces::Layout).
     int hudLayout;
 };
@@ -92,7 +91,9 @@ void SessionStopped() noexcept;
 void FrameBegun(void* session, void* space, bool focused, bool tracked) noexcept;
 // After the frame's controllers were published.
 void FramePublished() noexcept;
-// The renderer recentred. Before the shared part.
+// The renderer recentred: the game's own state that was placed in the old app space (ME2's galaxy table; ME3's galaxy
+// table, its spoken-reply lease and its traversal presentation). Before the shared part. Nothing published is dropped here:
+// every game's recenter is the one rule of research/trilogy-seams.md "One recenter rule".
 void Recentered() noexcept;
 
 // MergeMotionControllers, all four with PadMutex() held.

@@ -26,6 +26,7 @@
 #include "core/vr/InteractLabel.hpp"
 #include "engine/GameAdapter.hpp"
 #include "plugin/Colour.hpp"
+#include "plugin/CrashBreadcrumbs.hpp"
 #include "plugin/EyeCopy.hpp"
 #include "plugin/FloorLock.hpp"
 #include "plugin/HudPieceLayers.hpp"
@@ -52,6 +53,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <filesystem>
@@ -74,7 +76,38 @@ sequel_cinema::State gScreen;
 GalaxyTable gGalaxy;
 std::uint64_t gGalaxyRead = 0;
 
+// LE1's ControllerAimActive (plugin/HalcyonBridge.cpp): when the right controller's aim pose was last tracked.
+constexpr std::uint64_t kControllerAimHoldMs = 1000;
+std::atomic<std::uint64_t> gRightAimTrackedMs{0};
+bool gControllerAim = false;  // Present thread: the last answer, for its log line
+
+// The recenter's one log line (research/trilogy-seams.md "One recenter rule"), Present thread: a recenter replaces the app
+// space after the frame's controllers were sampled in the old one (OnFrameBegun comes first in every Halcyon), so that
+// frame's layers go in the new space with poses of the old; the next OnFrameBegun samples them in the new one. The line
+// says how old the sample was and how many engine ticks (the mod's) began in between: what a drop of the controllers at the
+// recenter (ME3's rule until 2026-11-16) would have shown the mod as no controllers.
+using Clock = std::chrono::steady_clock;
+Clock::time_point gSampledAt{};       // the last OnFrameBegun's sample
+void* gSampledSpace = nullptr;        // the app space it was located in
+bool gRecenterPending = false;
+double gRecenterSampleAgeMs = 0.0;    // the sample's age at the recenter
+void* gRecenterOldSpace = nullptr;
+Clock::time_point gRecenteredAt{};
+std::uint64_t gRecenterTicks = 0;     // crash::gGameTicks at the recenter
+bool gRecenterHadSample = false;
+
 } // namespace
+
+bool ControllerAimActive() noexcept {
+    std::uint64_t const tracked = gRightAimTrackedMs.load(std::memory_order_relaxed);
+    bool const on = renderer::ModHandAim() && tracked != 0 && GetTickCount64() - tracked < kControllerAimHoldMs;
+    if (on != gControllerAim) {
+        gControllerAim = on;
+        mevr::log::Info("{}: {}", game::Get().log, on ? "the right controller aims weapons: the hand reticle is on its aim"
+                                                : "controller aim stopped: no hand reticle");
+    }
+    return on;
+}
 
 sequel_cinema::State& Screen() noexcept {
     return gScreen;
@@ -82,10 +115,6 @@ sequel_cinema::State& Screen() noexcept {
 
 std::mutex& PadMutex() noexcept {
     return gPadMutex;
-}
-
-void ForgetFloorPass() noexcept {
-    gFloorTranslatedMs.store(0, std::memory_order_relaxed);
 }
 
 GalaxyTable const& GalaxyTableSettings() noexcept {
@@ -151,7 +180,7 @@ void OnSessionCreated(void* instance, void* session) noexcept {
     mevr::host::floor_lock::Reset();
     mevr::vr::controllers::Publish({});
     mevr::host::pad_merge::Reset();
-    sb::ForgetFloorPass();
+    sb::gFloorTranslatedMs.store(0, std::memory_order_relaxed);  // the next OnViewBuilt publishes its view itself
     bool const attached = mevr::host::xr_host::OnSessionCreated(xrInstance, xrSession);
     mevr::log::Info("{}: our controller actions are {} Halcyon's session", sb::game::Get().log,
         attached ? "attached to" : "not available on");
@@ -210,6 +239,9 @@ void OnFrameBegun(void* session, void* space, std::int64_t predictedDisplayTime)
     mevr::vr::controllers::State const live = state;  // the player's own, before a replay's takes its place
     // The test loop records the live sample, or replaces it with a recording's (plugin/TestLoop), as on LE1.
     mevr::host::testloop::OnFrameBegun(xrSession, xrSpace, time, focused, state);
+    if (state.active && state.right.aimValid) {
+        sb::gRightAimTrackedMs.store(GetTickCount64(), std::memory_order_relaxed);  // LE1's, after the test loop's sample
+    }
     // Our main menu and the guided calibration take the controllers while they're up (plugin/MenusLe2, M4). An inactive
     // sample is published too: it must replace the last active one (focus lost, a controller unplugged, a replay's end).
     mevr::vr::controllers::Publish(mevr::host::menus_le2::OnFrameBegun(xrSession, xrSpace, time, live, state, focused));
@@ -218,6 +250,20 @@ void OnFrameBegun(void* session, void* space, std::int64_t predictedDisplayTime)
         mevr::log::Info("{}: first controller sync (session {}focused)", sb::game::Get().log, focused ? "" : "not ");
     }
     sb::game::FramePublished();
+    sb::Clock::time_point const sampledAt = sb::Clock::now();
+    if (sb::gRecenterPending) {
+        sb::gRecenterPending = false;
+        std::uint64_t const ticks = mevr::host::crash::gGameTicks.load(std::memory_order_relaxed) - sb::gRecenterTicks;
+        double const sinceMs = std::chrono::duration<double, std::milli>(sampledAt - sb::gRecenteredAt).count();
+        if (sb::gRecenterHadSample) {
+            mevr::log::Info("{}: recenter: that frame's controllers had been sampled {:.1f} ms before it, in the old app space "
+                            "({}), and its layers went in the new one ({}); the first sample in the new space came {:.1f} ms after "
+                            "it, {} engine tick{} later (ticks that would have seen no controllers had the recenter dropped them)",
+                sb::game::Get().log, sb::gRecenterSampleAgeMs, sb::gRecenterOldSpace, space, sinceMs, ticks, ticks == 1 ? "" : "s");
+        }
+    }
+    sb::gSampledAt = sampledAt;
+    sb::gSampledSpace = space;
 }
 
 void OnViewBuilt(bool worldView, bool headLook, bool headAim, int lookYawUU, int lookPitchUU, float const headQ[4],
@@ -264,6 +310,18 @@ float FloorViewTranslation(bool replay, float rawCameraZ, float rightZ, float up
 }
 
 void OnRecentered() noexcept {
+    // The one recenter rule (research/trilogy-seams.md "One recenter rule", as LE1's HalcyonOverlays): what is placed in the
+    // room is placed again and the floor's recenter count goes up (xr_host::NoteRecentered: the mod's body follow and Mako
+    // controls re-anchor on it); nothing published is dropped. The next frame's sample is in the new space.
+    {
+        sb::Clock::time_point const now = sb::Clock::now();
+        sb::gRecenterHadSample = sb::gSampledSpace != nullptr;
+        sb::gRecenterSampleAgeMs = std::chrono::duration<double, std::milli>(now - sb::gSampledAt).count();
+        sb::gRecenterOldSpace = sb::gSampledSpace;
+        sb::gRecenteredAt = now;
+        sb::gRecenterTicks = mevr::host::crash::gGameTicks.load(std::memory_order_relaxed);
+        sb::gRecenterPending = true;
+    }
     sb::game::Recentered();
     mevr::host::recenter_tilt::Committed();  // the orientation RecenterOrientation chose is the app space's now
     mevr::host::xr_host::NoteRecentered();

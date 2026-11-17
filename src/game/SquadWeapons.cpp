@@ -237,16 +237,30 @@ void ReadLe2Members(double deltaSeconds, std::optional<std::uint8_t> mode) {
         member.name = le2_squad::ActorName(pawn);
         member.nameSource = member.name.empty() ? "pawn class" : "GetActorGameName";
 #else
-        auto* const behavior = gLe2Behavior.Read<ue3::Object*>(pawn).value_or(nullptr);
-        auto const* const label = ue3::runtime::IsAlive(behavior) ? gLe2Name.In<ue3::FString>(behavior) : nullptr;
-        member.name = label != nullptr ? ue3::memory::Narrow(*label) : std::string();
-        member.nameSource = member.name.empty() ? "pawn class" : "ActorGameName";
+        le2_squad::NameRead const read = le2_squad::ActorName(pawn);
+        member.name = read.name;
+        member.nameSource = read.source;
 #endif
         if (member.name.empty()) {
             member.name = r.NameText(r.ClassOf(pawn));
             constexpr std::string_view prefix = "SFXPawn_";
             if (member.name.starts_with(prefix)) member.name.erase(0, prefix.size());
         }
+#if !defined(MEVR_GAME_LE3)
+        {
+            // Once per squadmate and name (as ME1's ReadName): where the name came from, and what the other sources said.
+            static std::map<std::uintptr_t, std::string> told;
+            if (told[member.key] != member.name) {
+                told[member.key] = member.name;
+                auto* const behavior = gLe2Behavior.Read<ue3::Object*>(pawn).value_or(nullptr);
+                auto const* const label = ue3::runtime::IsAlive(behavior) ? gLe2Name.In<ue3::FString>(behavior) : nullptr;
+                log::Info("squad: squadmate 0x{:X}: \"{}\" from {} (PrettyName {} = \"{}\", the behaviour's GetActorGameName \"{}\", its "
+                          "ActorGameName field \"{}\", {})",
+                    member.key, member.name, member.nameSource, read.prettyRef, read.prettyText, read.behaviorText,
+                    label != nullptr ? ue3::memory::Narrow(*label) : std::string(), ue3::runtime::FullName(pawn));
+            }
+        }
+#endif
         // A stable session identity comes from the member name, with collision-free letters in the roster.
         static std::map<std::string, int> identities;
         auto found = identities.find(member.name);
