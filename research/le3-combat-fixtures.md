@@ -263,7 +263,8 @@ VR cover's damage rule is on by default too (`game/Le3Cover.inc`: it answers `Is
 Neither was seen in a fight: Save 31 is the Normandy, with no hostile and (the run's `mevr cover links`) no reachable cover
 (research/trilogy-first-person.md). ME3 has no synthetic hit (`mevr cover hit` says so): the check takes real enemy fire. In
 the same renderer-preview stretch, before anything else, with a replay that holds tracked hands (`make-walk-recording.py
---hands view --plan stand:600`, `replay.ps1 -Inputs`: the refusal needs the host's controls fresh):
+--hands view --plan stand:600`, `replay.ps1 -Inputs`; since lane FX3 the refusal needs only VR on foot, as ME1's and ME2's, but
+the A presses and the crouch below are the replay's):
 
 1. `mevr cover links 6`: an authored cover within a few metres; walk there (`set` the pawn's place or a stick plan).
 2. Next to it: `mevr cover acquire wide` must answer `TryAcquireCover(wide, test only) returned FALSE (FindCover refused 1
@@ -277,6 +278,28 @@ the same renderer-preview stretch, before anything else, with a replay that hold
    qualified` is the game's full damage: note where it stood.
 4. Any fault, a `call function:` warning, damage taken while the line says TRUE, or no damage in the open: make the rule
    opt-in again (Le3AnswerCover's gate) and report to the coordinator before anything else.
+
+### The cover checks lane FX3 added (2026-11-17), in the same stretch
+
+Lane FX3 made the refusal one rule for the three games (`ik::posture::RefuseCoverSnap`: VR on foot with `[Hands] noCover`,
+decided each tick and kept until the next; research/trilogy-first-person.md section 2), hid ME3's "take cover" prompt as ME2's,
+and pinned ME3's renderer to first person in cover. None of them could be seen on Save 31 (no cover on the Normandy). At the
+cover found in step 1 above:
+
+5. **No snap while anything else is up.** With the hand power wheel open (X held: `mevr powerwheel open`), then with the squad
+   wheel open (the left trigger held in the replay, or `mevr place aim 0` for the arc), then at the end of a roll (a replayed
+   B or the game's evade) and a cast (`mevr powerwheel push`): each time `mevr cover acquire wide` returns FALSE with `FindCover
+   refused 1 times`, and a replayed A next to the cover leaves `mevr cover where` at `in cover no`. Before FX3 each of these
+   let the snap through (the refusal also asked for the host's controls, no menu or wheel and no custom action).
+6. **The prompt.** Standing next to the cover with the snapping refused, the HUD panel (`-hud.png` of a snapshot) shows no
+   take-cover prompt, the log has `posture: the HUD's cover prompt (the game's ShowCoverWidget) is hidden again with its own
+   HideCoverWidget while the snapping is refused (SFXGUIInteraction ...)` once and the heartbeat `posture: this period the
+   HUD's cover prompt shown N times, hidden again N times`. With `mevr cover snap on` the prompt comes back (the A/B). If the
+   heartbeat counts no prompt at all next to cover, ME3 shows it from script (a CallFunction the ProcessEvent handler doesn't
+   see): report it.
+7. **First person in cover.** `mevr cover snap on`, A next to the cover (Shepard snaps): the eyes stay first person (a
+   snapshot; MELE3VR_Log has `[MEVR-BASELINE] ... first person in cover (CoverThirdPerson)` only if the ini asked for third
+   person, and no `[COVEROFFSET] ... released to game (cover)` line). `mevr cover snap auto` afterwards.
 
 ### The weapon checks to run on the first combat save (lane WP's list)
 

@@ -107,4 +107,19 @@ private:
     int tries_ = 0;
 };
 
+// ---- No cover snapping ----------------------------------------------------------------------------
+
+// One rule for the three games (research/23; [Hands] noCover, the owner 2026-11-14: "We won't snap to cover for VR"): the
+// game's cover acquisition is refused for the player whenever VR is on foot, decided once a game tick and kept until the next
+// (ME1's native cover test, ME2's FindPlayerCover and ME3's FindCover answers read it). Nothing else lifts it: not a hand
+// wheel, a screen on the wrist, a held view, the end of a roll or a cast, the host's controls or a late tick (ME3's refusal
+// had asked for those and failed open: a cover press then snapped Shepard in, 2026-11-17).
+struct CoverSnapInput {
+    bool noCover = false;      // [Hands] noCover (or `mevr cover snap`)
+    bool onFoot = false;       // the game's on-foot mode (0) with the player's pawn
+    bool headTracked = false;  // a head-tracked world view: VR is on
+    bool calibrating = false;  // the guided calibration runs (the game sees a neutral pad)
+};
+bool RefuseCoverSnap(CoverSnapInput const& in);
+
 } // namespace mevr::ik::posture

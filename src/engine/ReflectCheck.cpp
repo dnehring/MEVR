@@ -3052,6 +3052,14 @@ void CheckLe3PhysicalCover() {
     PARMS(ABioPawn_execIsInCover_Parms, "SFXGame.BioPawn.IsInCover");
     PARAM(ABioPawn_execIsInCoverLeaning_Parms, "SFXGame.BioPawn.IsInCoverLeaning", ReturnValue);
     PARMS(ABioPawn_execIsInCoverLeaning_Parms, "SFXGame.BioPawn.IsInCoverLeaning");
+    // game/Posture: the HUD's "take cover" prompt hidden again while the snapping is refused (ME2's ShowCoverWidget follow-up).
+    CheckClass<USFXGUIInteraction>("SFXGame.SFXGUIInteraction");
+    CheckFunction("SFXGame.SFXGUIInteraction.ShowCoverWidget");
+    PARAM(USFXGUIInteraction_eventShowCoverWidget_Parms, "SFXGame.SFXGUIInteraction.ShowCoverWidget", oPlayerController);
+    PARMS(USFXGUIInteraction_eventShowCoverWidget_Parms, "SFXGame.SFXGUIInteraction.ShowCoverWidget");
+    CheckFunction("SFXGame.SFXGUIInteraction.HideCoverWidget");
+    PARAM(USFXGUIInteraction_eventHideCoverWidget_Parms, "SFXGame.SFXGUIInteraction.HideCoverWidget", oPlayerController);
+    PARMS(USFXGUIInteraction_eventHideCoverWidget_Parms, "SFXGame.SFXGUIInteraction.HideCoverWidget");
     struct Member { char const* name; Sdk layout; ue3::Kind kind; };
     Member const members[] = {
         {"Link", SDK_FIELD(FCovPosInfo, Link), ue3::Kind::Object},

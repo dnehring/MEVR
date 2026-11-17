@@ -90,9 +90,24 @@ found 0 CoverLinks, and `mevr cover acquire [wide]` returned FALSE with the hand
 non-combat pawn `TryAcquireCover` returns before it asks FindCover. So neither the refusal nor VR cover's answers were
 seen in the game; research/le3-combat-fixtures.md "First on the combat save" is the check, before anything else there.
 
-**Not ported:** ME2 hides the HUD's cover prompt again after every `ShowCoverWidget` (A offers nothing). ME3's prompt is
-`SFXGUIInteraction.ShowCoverWidget(PlayerController)` / `HideCoverWidget(PlayerController)`: a ProcessEvent post-handler on
-the first calling the second with the same controller would do it; not built, since no save here shows a prompt.
+**Lane FX3 (2026-11-17): one rule, the prompt, first person in cover.** An adversarial review found the refusal above failed
+open: it also asked for the host's controls (a link under 100 ms old, focused, `!menuOpen`, `controlsAllowed`) and ME3's
+native movement admission (walking, no custom action, alive), and `menuOpen` counts the hand power wheel, the squad wheel, a
+held view and wrist screens, so a cover press during one of those, at a roll's or a cast's end, or after a 100 ms hitch
+snapped Shepard in. ME1's (`engine/cover_acquire` for the player's pawn) and ME2's (`FindPlayerCover`'s answer for the
+player's controller) refuse whenever VR is on foot: game mode 0, a head-tracked view, not calibrating, `[Hands] noCover`,
+decided in the mod's tick and kept until the next. That is now one function for the three, `ik::posture::RefuseCoverSnap`
+(`core/ik/Posture`, unit-tested in `tests/PostureOwnershipTests.cpp`), which ME1's and ME2's branches call with the same
+inputs as before (their behaviour unchanged) and ME3's turns into the player's mode to refuse (`gLe3RefusedMode`, as ME2's
+`gRefusedController`); `OnLe3FindCover` asks nothing else. The physical crouch keeps ME3's own admission (host controls and
+native movement), which is the crouch's, not the refusal's. **The prompt** is hidden as ME2's: a ProcessEvent post-handler on
+`SFXGUIInteraction.ShowCoverWidget` (and overrides in the interaction's subclasses only) calls the game's own
+`HideCoverWidget(oPlayerController)` for the local player while the snapping is refused (ReflectCheck rows for both and their
+parameter); the heartbeat counts shown and hidden as ME2's. **First person in cover:** upstream ME3's renderer handed the
+camera back to the game's third person in cover (`[VR] CoverThirdPerson`, default 1, `engine_probe.cpp`'s `coverTp`); the
+renderer's `ApplyMevrBaseline` now pins it off (`first person in cover (CoverThirdPerson)` in its `[MEVR-BASELINE]` line),
+as ME1 and ME2 never leave first person there. None of the three can be seen on Save 31 (no cover):
+research/le3-combat-fixtures.md "The cover checks lane FX3 added".
 
 ## 3. The camera's collision in first person (G12)
 

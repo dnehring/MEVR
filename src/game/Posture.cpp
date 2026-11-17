@@ -141,6 +141,9 @@ ue3::FunctionRef gLe3FindCover{"SFXGame.SFXGameModeDefault.FindCover", ue3::kEve
 ue3::FunctionRef gLe3AcquireCover{"SFXGame.SFXGameModeDefault.TryAcquireCover", ue3::kEveryGame};
 bool gLe3NoSnapReady = false;
 bool gLe3NoCover = true;  // this tick's [Hands] noCover (or `mevr cover snap`): FindCover's answer inside TryAcquireCover
+// The player's SFXGameModeDefault while its cover acquisition is refused (game thread): set each tick by the one rule
+// (ik::posture::RefuseCoverSnap), kept until the next, as ME2's gRefusedController.
+ue3::Object* gLe3RefusedMode = nullptr;
 unsigned gLe3Looked = 0;                // FindCover answers inside TryAcquireCover that had found nothing anyway (heartbeat)
 std::uint64_t gLe3LastRefusalMs = 0;
 std::uint64_t gLe3LastRefusalLogMs = 0;
@@ -167,6 +170,27 @@ ue3::Function* gIsInCover = nullptr;
 ue3::Function* gLeaveCover = nullptr;
 bool gToldNoCrouchParam = false;
 
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+// The HUD's "take cover" prompt. ME2: BioPlayerController::UpdateCover (0xACE2A0, the controller's native tick) finds cover
+// through FindPlayerCover's implementation (a C++ call the refusal never sees) and ProcessEvents the GUI manager's
+// ShowCoverWidget or HideCoverWidget each tick. ME3: the same event on its GUI interaction, for a player controller
+// (SFXGUIInteraction.ShowCoverWidget(oPlayerController) / HideCoverWidget(oPlayerController)). While the snapping is refused, a
+// ShowCoverWidget is followed at once by the game's own HideCoverWidget (a ProcessEvent post-handler: before anything is drawn),
+// so no prompt offers what A won't do. The climb/mantle prompt (ShowClimbMantleWidget, shown only in cover) is untouched.
+#if defined(MEVR_GAME_LE2)
+ue3::FunctionRef gHideCoverWidgetRef{"SFXGame.MassEffectGuiManager.HideCoverWidget", ue3::kEveryGame};
+#else
+ue3::FunctionRef gShowCoverWidgetRef{"SFXGame.SFXGUIInteraction.ShowCoverWidget", ue3::kEveryGame};
+ue3::FunctionRef gHideCoverWidgetRef{"SFXGame.SFXGUIInteraction.HideCoverWidget", ue3::kEveryGame};
+ue3::FieldRef gShowCoverWidgetPc{gShowCoverWidgetRef, "oPlayerController"};
+#endif
+unsigned gPromptsShown = 0;   // ShowCoverWidget calls seen (heartbeat)
+unsigned gPromptsHidden = 0;  // ... of which hidden again
+std::uint64_t gPromptsHiddenTotal = 0;
+bool gToldPrompt = false;
+bool gPromptHandlerAdded = false;
+#endif
+
 #if defined(MEVR_GAME_LE2)
 // No cover snapping on ME2 (research/23 section 7; the owner, 2026-11-14: "We won't snap to cover for VR"). ME2 takes cover
 // only through BioPlayerController.TryAcquireCover (the A button's exec through ProcessEvent, and CheckStormToCover from a
@@ -182,17 +206,6 @@ ue3::FieldRef gCurrentLink{"SFXGame.BioPawn", "CurrentLink", ue3::kEveryGame};
 ue3::FieldRef gCurrentSlotIdx{"SFXGame.BioPawn", "CurrentSlotIdx", ue3::kEveryGame};
 ue3::FieldRef gEnableStormToCover{"SFXGame.BioPlayerController", "m_bEnableStormToCover", ue3::kEveryGame};
 ue3::ClassRef gCoverLinkClass{"Engine.CoverLink", ue3::kEveryGame};
-// The HUD's "take cover" prompt: BioPlayerController::UpdateCover (0xACE2A0, the controller's native tick) finds cover through
-// FindPlayerCover's implementation (a C++ call the block above never sees) and ProcessEvents the GUI manager's
-// ShowCoverWidget or HideCoverWidget each tick. While the snapping is refused, a ShowCoverWidget is followed at once by the
-// game's own HideCoverWidget (a ProcessEvent post-handler: before anything is drawn), so no prompt offers what A won't do.
-// The climb/mantle prompt (ShowClimbMantleWidget, shown only in cover) is untouched.
-ue3::FunctionRef gHideCoverWidgetRef{"SFXGame.MassEffectGuiManager.HideCoverWidget", ue3::kEveryGame};
-unsigned gPromptsShown = 0;   // ShowCoverWidget calls seen (heartbeat)
-unsigned gPromptsHidden = 0;  // ... of which hidden again
-std::uint64_t gPromptsHiddenTotal = 0;
-bool gToldPrompt = false;
-bool gPromptHandlerAdded = false;
 ue3::Object* gRefusedController = nullptr;  // the player's controller while its cover acquisition is refused (game thread)
 bool gRefusalHandlerAdded = false;
 unsigned gAcquireLooked = 0;       // FindPlayerCover answers inside TryAcquireCover that had found nothing anyway (heartbeat)
@@ -297,11 +310,12 @@ bool HostMovement() {
         gLink.runtimeOwned && gLink.focused && !gLink.menuOpen && !gLink.calibrating &&
         gLink.sceneGeneration && gLink.controlsAllowed && gLink.controlsAllowed();
 }
+// SFXGameModeDefault.FindCover returned (a script call): inside the player's mode's TryAcquireCover while the one rule refuses
+// the snapping (TickCover's gLe3RefusedMode), its "found" is made false. No other gate: the host's controls, a wheel, a wrist
+// screen, a custom action's end or a late tick never let a press through (they had, 2026-11-17's review).
 void OnLe3FindCover(ue3::Object* context, ue3::Function*, ue3::Function* caller, std::uint8_t*, void* result) {
-    if (!gLe3NoCover || !gLe3NoSnapReady || !HostMovement() || caller != gLe3AcquireCover.Get() || !result) return;
-    std::string why;
-    auto const game = ReadGame(why);
-    if (!game || context != game->mode || !NativeMovement(*game)) return;
+    ue3::Object* const refused = gLe3RefusedMode;
+    if (refused == nullptr || context != refused || caller == nullptr || caller != gLe3AcquireCover.Get() || !result) return;
     auto* const found = static_cast<std::uint32_t*>(result);
     if (*found == 0) { ++gLe3Looked; return; }
     *found = 0;
@@ -314,7 +328,9 @@ void OnLe3FindCover(ue3::Object* context, ue3::Function*, ue3::Function* caller,
     ++gRefusedTotal;
     if (now - gLe3LastRefusalLogMs > 2000) {  // a sprint against cover asks again and again: the heartbeat counts the rest
         gLe3LastRefusalLogMs = now;
-        std::optional<ue3::Vector> const at = gLocation.Read<ue3::Vector>(game->pawn);
+        std::string why;
+        auto const game = ReadGame(why);
+        std::optional<ue3::Vector> const at = game ? gLocation.Read<ue3::Vector>(game->pawn) : std::nullopt;
         log::Info("posture: refused a cover entry: SFXGameModeDefault.FindCover found cover for TryAcquireCover (A, or a sprint "
                   "into cover), answered false ([Hands] noCover: no snapping in VR); Shepard stays at ({:.0f}, {:.0f}, {:.0f}){}",
             at ? at->x : 0.0f, at ? at->y : 0.0f, at ? at->z : 0.0f,
@@ -417,54 +433,69 @@ void FollowProbe(ue3::Object* pawn, double deltaSeconds) {
     }
 }
 
-#if defined(MEVR_GAME_LE2)
-// MassEffectGuiManager.ShowCoverWidget ran (ProcessEvent): hidden again while the snapping is refused.
-void OnShowCoverWidget(ue3::Object* context, ue3::Function* /*function*/, void* /*parms*/, void* /*result*/) {
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+// ShowCoverWidget ran (ProcessEvent; ME2's MassEffectGuiManager, ME3's SFXGUIInteraction): hidden again while the snapping is
+// refused.
+void OnShowCoverWidget(ue3::Object* context, ue3::Function* /*function*/, void* parms, void* /*result*/) {
     ++gPromptsShown;
     ue3::Function* const hide = gHideCoverWidgetRef.Get();
     if (!gRefusingCover || context == nullptr || hide == nullptr) {
         return;
     }
+#if defined(MEVR_GAME_LE3)
+    // ME3 shows it for a player controller (its parameter) and hides it the same way: only the local player's.
+    ue3::Object* const pc = parms != nullptr ? gShowCoverWidgetPc.Read<ue3::Object*>(parms).value_or(nullptr) : nullptr;
+    if (pc == nullptr || pc != ue3::runtime::LocalPlayerController()) {
+        return;
+    }
+    ue3::Params hideParms(ue3::runtime::Get(), hide);
+    if (!hideParms.Set("oPlayerController", pc) || !ue3::runtime::Call(context, hide, hideParms)) {
+        return;
+    }
+#else
+    (void)parms;
     CallVoid(context, hide);
+#endif
     ++gPromptsHidden;
     ++gPromptsHiddenTotal;
     if (!gToldPrompt) {
         gToldPrompt = true;
-        log::Info("posture: the HUD's cover prompt (BioPlayerController::UpdateCover's ShowCoverWidget) is hidden again with "
-                  "MassEffectGuiManager.HideCoverWidget while the snapping is refused ({})", ue3::runtime::Get().FullName(context));
+        log::Info("posture: the HUD's cover prompt (the game's ShowCoverWidget) is hidden again with its own HideCoverWidget while "
+                  "the snapping is refused ({})", ue3::runtime::Get().FullName(context));
     }
 }
 #endif
 
-// The cover side, each tick with a game.
-void TickCover(Game const& game, bool active, bool noCover, double deltaSeconds) {
+// The cover side, each tick with a game. `refuse`: the one rule (ik::posture::RefuseCoverSnap) says the snapping is refused.
+void TickCover(Game const& game, bool refuse, double deltaSeconds) {
 #if defined(MEVR_GAME_LE3)
     (void)deltaSeconds;
     // No cover snapping in VR, ME1's and ME2's [Hands] noCover (the owner, 2026-11-14: "We won't snap to cover for VR"):
     // FindCover answered false inside the player's mode's TryAcquireCover (OnLe3FindCover, a CallFunction handler: Mod.cpp
     // puts the hook in while RefusingCover()). VR cover (game/vr_cover, Le3Cover.inc) judges the player's cover meanwhile.
-    gRefusingCover = active && noCover && gLe3NoSnapReady;
+    gRefusingCover = refuse && gLe3NoSnapReady;
+    gLe3RefusedMode = gRefusingCover ? game.mode : nullptr;
     gInCover = InCover(game.pawn);
     return; // Existing native cover is never forcibly exited; acquire refusal acts before new entry.
 #endif
-    gRefusingCover = active && noCover;  // kept out of cover either way: refused, or left at once without the hook
+    gRefusingCover = refuse;  // kept out of cover either way: refused, or left at once without the hook
 #if defined(MEVR_GAME_LE2)
     // ME2: TryAcquireCover's FindPlayerCover answered false (a script call: the CallFunction hook, which Mod.cpp puts in while
     // RefusingCover()).
     bool const hooked = gRefusalHandlerAdded && engine::call_function::Installed();
-    gRefusedController = active && noCover && hooked ? game.controller : nullptr;
-    if (active && noCover && !gRefusalHandlerAdded && !gToldNoHook) {
+    gRefusedController = refuse && hooked ? game.controller : nullptr;
+    if (refuse && !gRefusalHandlerAdded && !gToldNoHook) {
         gToldNoHook = true;
         log::Warn("posture: BioPlayerController.FindPlayerCover or TryAcquireCover wasn't found: the game still takes cover on A, "
                   "and Shepard leaves it at once");
     }
 #else
-    bool const refuse = active && noCover && engine::cover_acquire::Installed();
-    engine::cover_acquire::Refuse(refuse ? game.pawn : nullptr);
-    if (!refuse) {
+    bool const hooked = refuse && engine::cover_acquire::Installed();
+    engine::cover_acquire::Refuse(hooked ? game.pawn : nullptr);
+    if (!hooked) {
         gLoggedRefusal = 0;
     }
-    if (active && noCover && !engine::cover_acquire::Installed() && !gToldNoHook) {
+    if (refuse && !engine::cover_acquire::Installed() && !gToldNoHook) {
         gToldNoHook = true;
         log::Warn("posture: the cover test hook isn't in: the game still takes cover, and Shepard leaves it at once");
     }
@@ -489,7 +520,7 @@ void TickCover(Game const& game, bool active, bool noCover, double deltaSeconds)
         }
         return;
     }
-    if (!(active && noCover)) {
+    if (!refuse) {
         return;
     }
 #if defined(MEVR_GAME_LE2)
@@ -741,6 +772,24 @@ bool TryStartup() {
             gLe3NoSnapReady = true;
         }
     }
+    // The cover prompt (ME2's way, ME3's names): SFXGUIInteraction.ShowCoverWidget and its overrides in the interaction's
+    // subclasses only (another class's ShowCoverWidget takes other parameters), each a ProcessEvent post-handler registered
+    // before the ProcessEvent hook goes in; its oPlayerController read where the base function has it.
+    if (gStarted && !gPromptHandlerAdded && gHideCoverWidgetRef.Get() != nullptr && gShowCoverWidgetRef.Get() != nullptr &&
+        gShowCoverWidgetPc.Get() != nullptr) {
+        ue3::Reflection& r = ue3::runtime::Get();
+        auto* const base = static_cast<ue3::Struct const*>(r.OuterOf(gShowCoverWidgetRef.Get()));
+        for (ue3::Function* const show : r.FindFunctionsNamed("ShowCoverWidget")) {
+            auto* const owner = static_cast<ue3::Struct const*>(r.OuterOf(show));
+            if (base != nullptr && owner != nullptr && r.IsChildOf(owner, base)) {
+                engine::process_event::AddPostHandler(show, &OnShowCoverWidget);
+                gPromptHandlerAdded = true;
+            }
+        }
+    }
+    if (!gPromptHandlerAdded) {
+        missing += std::format("{}SFXGUIInteraction.ShowCoverWidget/HideCoverWidget (the cover prompt stays)", missing.empty() ? "" : ", ");
+    }
 #endif
 #if defined(MEVR_GAME_LE2)
     // The refusal of ME2's cover acquisition (a CallFunction handler: registered before the hook goes in).
@@ -817,6 +866,9 @@ void Tick(double deltaSeconds, Link const& link) {
 #if defined(MEVR_GAME_LE2)
         gRefusedController = nullptr;
 #endif
+#if defined(MEVR_GAME_LE3)
+        gLe3RefusedMode = nullptr;
+#endif
         SetWhy(ue3::runtime::Up() ? std::string("waiting for the script functions")
                                   : std::format("waiting for our reflection layer ({})", ue3::runtime::Status()));
         return;
@@ -827,6 +879,9 @@ void Tick(double deltaSeconds, Link const& link) {
         engine::cover_acquire::Refuse(nullptr);
 #if defined(MEVR_GAME_LE2)
         gRefusedController = nullptr;
+#endif
+#if defined(MEVR_GAME_LE3)
+        gLe3RefusedMode = nullptr;
 #endif
         gActive = false;
         SetWhy(why);
@@ -863,6 +918,8 @@ void Tick(double deltaSeconds, Link const& link) {
     }
     auto const mode = head_tracking::GameMode();
     vr::host_view::State const view = vr::host_view::Latest();
+    // No cover snapping: the one rule for the three games (VR on foot with noCover), whatever the physical crouch's admission.
+    bool const refuseSnap = pz::RefuseCoverSnap({noCover, mode && *mode == 0, view.valid, body_calibration::Calibrating()});
     if (!mode || *mode != 0) {
         gActive = false;
         SetWhy(std::format("not on foot (game mode {})", mode ? std::to_string(*mode) : std::string("unknown")));
@@ -882,7 +939,7 @@ void Tick(double deltaSeconds, Link const& link) {
         gActive = true;
         SetWhy("active");
     }
-    TickCover(*game, gActive, noCover, deltaSeconds);
+    TickCover(*game, refuseSnap, deltaSeconds);
     TickCrouch(*game, link, view, gActive,
         vr::calibration::PhysicalCrouch(body_calibration::Position(), settings.physicalCrouch), deltaSeconds);
 #else
@@ -930,10 +987,11 @@ void LogStats() {
     gPromptsShown = gPromptsHidden = gAcquireLooked = 0;
 #endif
 #if defined(MEVR_GAME_LE3)
-    if (gLe3Looked > 0) {
-        log::Info("    posture: this period TryAcquireCover's FindCover found nothing {} times", gLe3Looked);
+    if (gPromptsShown > 0 || gLe3Looked > 0) {
+        log::Info("    posture: this period the HUD's cover prompt shown {} times, hidden again {} times; TryAcquireCover's FindCover "
+                  "found nothing {} times", gPromptsShown, gPromptsHidden, gLe3Looked);
     }
-    gLe3Looked = 0;
+    gPromptsShown = gPromptsHidden = gLe3Looked = 0;
 #endif
     gRefusedTests = gRefusedEntries = gExits = gCrouches = gStands = gExternal = 0;
 }
@@ -991,9 +1049,14 @@ void Shutdown(bool processExiting) {
     gToldPrompt = false;
 #endif
 #if defined(MEVR_GAME_LE3)
+    gLe3RefusedMode = nullptr;
     gLe3Looked = 0;
     gLe3LastRefusalMs = gLe3LastRefusalLogMs = 0;
     gLe3ToldRefusal = false;
+    gPromptHandlerAdded = false;  // its ProcessEvent table goes with the mod (engine::process_event::ClearHandlers)
+    gPromptsShown = gPromptsHidden = 0;
+    gPromptsHiddenTotal = 0;
+    gToldPrompt = false;
 #endif
 #if !defined(MEVR_GAME_LE3)
     if (!processExiting && gArbiter.Owns() && gShouldCrouch != nullptr && ue3::runtime::Up()) {
@@ -1062,8 +1125,8 @@ std::string CoverConsole(std::string_view args) {
             return "usage: mevr cover snap on|off|auto";
         }
 #if defined(MEVR_GAME_LE3)
-        return std::format("posture LE3: the game's cover snapping {} until the mod reloads (refused only on foot with the host's "
-                           "controls fresh; cover already taken is left to the game); VR cover's real-slot damage rule follows it",
+        return std::format("posture LE3: the game's cover snapping {} until the mod reloads (refused whenever VR is on foot, as ME1's "
+                           "and ME2's; cover already taken is left to the game); VR cover's real-slot damage rule follows it",
             gNoCoverOverride ? (*gNoCoverOverride ? "refused" : "allowed") : "as [Hands] noCover says");
 #endif
         return std::format("posture: the game's cover snapping {} until the mod reloads", gNoCoverOverride ? (*gNoCoverOverride ? "refused" : "allowed")

@@ -470,7 +470,8 @@ void SaveFpStates(const std::wstring& path) noexcept
 #if defined(MEVR_ASI)
 // [MEVR] MEVR's one supported configuration on ME3's keys, ME2's ApplyMevrBaseline (le2 me2_menu.cpp) and LE1's
 // MevrBridge::ModernBaseline (plugin/HalcyonBridge.cpp): stereo, the Quest image fix, the view filled, lean, look speed 1,
-// flat menus, first person with the head hidden (upstream ME3 starts in third person: g_fpEnabled false, K only), no head
+// flat menus, first person with the head hidden (upstream ME3 starts in third person: g_fpEnabled false, K only) and kept in
+// cover (upstream's CoverThirdPerson went third person there; ME1 and ME2 never do), no head
 // aim, the stick doesn't tilt the view, conversations and cutscenes on the native flat screen, no profile hotkeys (ME3's 1-4
 // are its power keys), no recenter on R (ME3's reload; double-tapping Back, the menu's Recenter view and opening the menu
 // still recenter) and ME1's menu key \. Run after every load of the ini (LoadValues), so an old, upstream or hand-edited
@@ -494,6 +495,10 @@ void ApplyMevrBaseline() noexcept
         ME2VR::CalcViewHook::SetLookSensitivity(1.0f);
     if (note(!ME2VR::D3DCapture::GetMonoMenus(), "flat menus (MonoMenus)")) ME2VR::D3DCapture::SetMonoMenus(true);
     if (note(!ME2VR::EngineProbe::GetFirstPerson(), "first person (K)")) ME2VR::EngineProbe::SetFirstPerson(true);
+    // First person in cover too (upstream ME3 hands the camera back to the game's third person while Shepard is in cover;
+    // ME1 and ME2 never do, and the mod refuses cover snapping in VR anyway: [Hands] noCover).
+    if (note(ME2VR::EngineProbe::GetCoverThirdPerson(), "first person in cover (CoverThirdPerson)"))
+        ME2VR::EngineProbe::SetCoverThirdPerson(false);
     bool headShown = false;
     for (int i = 0; i < ME2VR::EngineProbe::FpStateCount(); ++i)
     {
