@@ -210,13 +210,26 @@ Class* Reflection::FindClassNamed(std::string_view name, std::string_view packag
         }
         auto const [begin, end] = classes_.equal_range(key);
         Class* other = nullptr;
+        bool stale = false;
         for (auto it = begin; it != end; ++it) {
+            // The index outlives a level: a level's own class (ME2's SFXPawn_AssaultDrone lives in its level's package) is
+            // freed with it and its slot reused while the object count stays put, so an entry that is no longer that class
+            // (not alive, or another object now: not a class, another name) is skipped and the index rebuilt (the console's
+            // `mevr instances` faulted in PathName on one after a save's reload, 2026-11-17; gotchas/stale-class-index).
+            if (!IsAlive(it->second) || ClassOf(it->second) != ClassClass() || Lower(NameText(it->second)) != key) {
+                stale = true;
+                continue;
+            }
             if (package.empty() || NameIs(OuterOf(it->second), package)) {
                 return it->second;
             }
             if (other == nullptr) {
                 other = it->second;
             }
+        }
+        if (stale && pass == 0) {
+            indexedCount_ = -1;  // rebuilt on the next pass, whatever the object count says
+            continue;
         }
         if (other != nullptr) {
             notes_.push_back(std::format("class {}.{} not found; using {}", package, name, PathName(other)));
@@ -430,6 +443,11 @@ void Reflection::Forget() {
     indexedCount_ = -1;
     kinds_.clear();
     properties_.clear();
+}
+
+void Reflection::ForgetClassIndex() {
+    classes_.clear();
+    indexedCount_ = -1;
 }
 
 std::vector<std::string> Reflection::TakeNotes() {

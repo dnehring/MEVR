@@ -148,6 +148,9 @@ public:
 
     // Drops every cache (e.g. after GObjects was found again).
     void Forget();
+    // Drops the classes-by-name index (rebuilt by the next FindClass): a new world can free a level's classes and reuse their
+    // slots while GObjects' count stays put (runtime::NoteWorld; gotchas/stale-class-index). Core's classes stay.
+    void ForgetClassIndex();
     // Things worth logging once (a class found in another package...). Cleared by TakeNotes.
     std::vector<std::string> TakeNotes();
 
@@ -168,7 +171,8 @@ private:
     Class* functionClass_ = nullptr;
     Class* propertyClass_ = nullptr;
     Class* structClass_ = nullptr;
-    // Classes by lower-case name; rebuilt when a lookup misses and GObjects grew.
+    // Classes by lower-case name; rebuilt when a lookup misses and GObjects grew, when an entry found is no longer that class,
+    // and after a world change (ForgetClassIndex).
     std::unordered_multimap<std::string, Class*> classes_;
     std::int32_t indexedCount_ = -1;
     std::unordered_map<Class const*, Kind> kinds_;
