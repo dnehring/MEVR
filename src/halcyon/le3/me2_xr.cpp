@@ -1355,7 +1355,7 @@ void ApplyFovFill(const XrView* views) noexcept
     const float fv = g_vrFillV.load(std::memory_order_relaxed);
     float tV = atanf(tanf(headVHalf) * fv);
     float tH = atanf(tanf(tV) * aspect * (fh / (fv > 1e-4f ? fv : 1.0f)));
-    // [MEVR] [Debug] stereoWindowCoversEyes (a measurement, research/30 section 9): the same cover on every runtime, so the
+    // [MEVR] life-size stereo (research/30 section 9; [Debug] stereoWindowCoversEyes = 0 turns it off): the same cover on every runtime, so the
     // window holds both eyes' own frusta and life-size stereo's mode 2 can run
     const bool mevrCover = (::MevrSeams::LifeSizeStereo() & 2) != 0;
     // [LINKFOV2] On the Meta runtime the fill must also COVER the runtime's asymmetric per-eye frustum:

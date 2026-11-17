@@ -421,25 +421,27 @@ int LifeSizeStereo() noexcept {
     static int const answer = [] {
         namespace ini = mevr::ini;
         ini::File const file = ini::Read(std::filesystem::path(mevr::host::SettingsPath())).file;
-        auto on = [&](char const* key) { return ini::GetNumber(file, "Debug", key).value_or(0.0) != 0.0; };
-        bool upstream = on("upstreamStereo"), cover = on("stereoWindowCoversEyes");
-        // A development build also takes %LOCALAPPDATA%\MEVR\stereo.measure ([Stereo] mode = upstream | cover, read at start), for a
-        // run whose ini a runner keeps exact (tools/le2-halcyon-run's ME3 preview refuses an edited LE3MEVR.ini).
+        bool upstream = ini::GetNumber(file, "Debug", "upstreamStereo").value_or(0.0) != 0.0;
+        // The window holding both eyes is ME1's (its window is their union) and lets each eye render its own frustum (mode 2);
+        // measured on ME2 it leaves the HUD panel pixel for pixel (research/30 section 9.3). 0 keeps the renderer's
+        // aspect-derived window (mode 2 then only on Meta's runtime, where the renderer covers the eyes itself).
+        bool cover = ini::GetNumber(file, "Debug", "stereoWindowCoversEyes").value_or(1.0) != 0.0;
+        // A development build also takes %LOCALAPPDATA%\MEVR\stereo.measure ([Stereo] mode = upstream | nocover, read at
+        // start), for a run whose ini a runner keeps exact (tools/le2-halcyon-run's ME3 preview refuses an edited LE3MEVR.ini).
         wchar_t appData[MAX_PATH] = {};
         if (mevr::dev_channels::kDevelopmentBuild && GetEnvironmentVariableW(L"LOCALAPPDATA", appData, MAX_PATH) > 0) {
             ini::Loaded const measure = ini::Read(std::filesystem::path(appData) / L"MEVR" / L"stereo.measure");
             std::string const text = ini::Lower(ini::Trim(ini::Get(measure.file, "Stereo", "mode").value_or("")));
             upstream = upstream || text == "upstream";
-            cover = cover || text == "cover";
+            cover = cover && text != "nocover";
         }
         int const bits = upstream ? 0 : (1 | (cover ? 2 : 0));
         LogBoth(bits == 0 ? std::string("[MEVR-STEREO] life-size stereo OFF for this run ([Debug] upstreamStereo = 1): the "
                                         "renderer's upstream eye separation, convergence and lean")
                           : std::format("[MEVR-STEREO] life-size stereo: each eye from its real place, no convergence, the "
-                                        "lean from the eyes' centre at 1:1 forward{}",
-                                (bits & 2) != 0 ? "; [Debug] stereoWindowCoversEyes = 1: the render window widened to hold "
-                                                  "both eyes' frusta (a measurement)"
-                                                : ""));
+                                        "lean from the eyes' centre at 1:1 forward; {}",
+                                (bits & 2) != 0 ? "the render window widened to hold both eyes' frusta (each eye's own frustum)"
+                                                : "the renderer's own window ([Debug] stereoWindowCoversEyes = 0)"));
         return bits;
     }();
     return answer;

@@ -203,7 +203,7 @@ void ApplyFovFill(const XrView* views, float aspect) noexcept
     float tV = atanf(tanf(headVHalf) * fv);
     float tH = atanf(tanf(tV) * aspect * (fh / (fv > 1e-4f ? fv : 1.0f)));
 #if defined(MEVR_ASI)
-    // [MEVR] [Debug] stereoWindowCoversEyes (a measurement, research/30 section 9): the same cover on every runtime, so the
+    // [MEVR] life-size stereo (research/30 section 9; [Debug] stereoWindowCoversEyes = 0 turns it off): the same cover on every runtime, so the
     // window holds both eyes' own frusta and life-size stereo's mode 2 can run
     const bool mevrCover = (::MevrSeams::LifeSizeStereo() & 2) != 0;
 #else

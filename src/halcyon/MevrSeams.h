@@ -248,9 +248,10 @@ void NoteStereoSubmit(int mode, float const declaredPosition[2][3], float const 
 // Any thread, read once: life-size stereo is the sequels' only configuration (the owner, 2026-11-16: "It should always
 // be life sized stereo for all games"; ME1's ModernBaseline pins sfr2Metric). Bit 0 set: life-size (the default). 0 only
 // with `[Debug] upstreamStereo = 1` in ASI\<GAME>MEVR.ini: the renderer's upstream stereo, for a before/after
-// measurement. Bit 1 (`[Debug] stereoWindowCoversEyes = 1`, a measurement): the renderer's window widened by one uniform
-// factor until it holds both eyes' frusta, as its Meta-runtime path does, so mode 2 can run. A development build also
-// reads %LOCALAPPDATA%\MEVR\stereo.measure (`[Stereo] mode = upstream | cover`) for runs whose ini must stay exact.
+// measurement. Bit 1 (the default with bit 0; `[Debug] stereoWindowCoversEyes = 0` clears it): the renderer's window
+// widened by one uniform factor until it holds both eyes' frusta, as its Meta-runtime path does and as ME1's union
+// window is, so each eye renders its own frustum (mode 2). A development build also reads
+// %LOCALAPPDATA%\MEVR\stereo.measure (`[Stereo] mode = upstream | nocover`) for runs whose ini must stay exact.
 // Not called by LE1.
 int LifeSizeStereo() noexcept;
 
