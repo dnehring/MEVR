@@ -389,3 +389,38 @@ one), with a gun in hand on foot:
    in VR, write that down instead.
 5. Anything else (a `restore` that never comes, `_root._alpha=?`, a fault in `GetVariableFloat`): set `screenReticleHide` back to
    false in `plugin/RendererLe3.cpp` and report to the coordinator.
+
+### Melee on the first combat save (lane MEL, 2026-11-17)
+
+ME3's melee moved onto the trilogy's one path (research/20 "The trilogy's one path", `game/Melee`): its native admission,
+`TryMelee`/`TryHeavyMelee` and the action's observation are ME3's adapter under ME1's dispatcher, its staged gesture rules
+(neutral priming, the heavy chamber) are `ik::melee::Gestures`' `Staged` rules. It stays opt-in (the owner's question 7), and B is
+kept from the game on foot on ME3 as on ME1 and ME2 (the owner, 2026-11-17), so **ME3 has no melee on foot by default** until the
+owner says yes. New for ME3 with the move: ME1's enemy in reach (`[Throwables] meleeNeedsEnemy`, `meleeReachM` 2.0) and the shared
+cooldown (`meleeCooldownS`); no punch with the weapon away (`ME3 has no melee with the weapon away yet`). Save 31 (the Normandy)
+can show only the refusals and B's state. On the combat save, a gun out, a hostile within 2 m:
+
+```powershell
+$t = 'tools\le2-halcyon-run'
+# (prep, launch, load as above)
+& "$t\melee-b.ps1" -Holder $h -Game LE3        # B double-tapped and held: no TryMelee; the canary (meleeButton = 1): TryMelee
+tools\console.ps1 "mevr melee"                  # requests false; gestures false; ... B kept from the game (squad placement's)
+tools\console.ps1 "mevr melee requests on" "mevr calltrace 20 melee"
+tools\console.ps1 "mevr melee light"            # TryMelee (light request dispatched ...), then the log's `melee: observed requested family action ...`
+tools\console.ps1 "mevr melee heavy"            # TryHeavyMelee; the observed action of SFXCustomAction_PlayerHeavyMeleeBase's family
+tools\console.ps1 "mevr melee punch"            # the right hand's light request (ME3 has no fist route): as `light`
+tools\console.ps1 "mevr melee gestures on"      # then a replay: python tools\make-power-recording.py x.mevrrec 'rgrip:0.2:2.8' 'lpunch:1.2' 'lrest:1.7:2.3'
+tools\console.ps1 "mevr melee requests off" "mevr melee gestures off"
+```
+
+What each must show:
+1. `melee-b.ps1`: `PASS B double-tapped and held on foot: no TryMelee` and `PASS the canary ...: TryMelee in the trace` (the
+   canary proves the trace sees ME3's B binding; Save 31 already shows both).
+2. `light` with nobody within 2 m: `refused: no enemy within 2.0 m ...; the nearest hostile is ...`; within reach:
+   `TryMelee (...)` and an observed action of the requested family within 0.35 s; `heavy` the same with the heavy family. A
+   `different family` line, `dispatched; no action start observed`, or a refusal by ME3's admission (`native action or
+   unresolved admission pending`, `reload or zoom blocks melee`, `weapon not ready`) names what to look at.
+3. The replayed open left hand stroke with the gun in the right hand: one `melee: stroke N hand 0: ...` line (staged rules: the
+   hand must have been neutral first, the replay's rest is). With the right grip squeezed (the gun held) the right hand never
+   strikes on ME3 (its staged availability wants every control released): a difference from ME1 to put to the owner with
+   question 7.

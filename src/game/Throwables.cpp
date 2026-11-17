@@ -16,6 +16,7 @@
 #include "game/HandCalibration.hpp"
 #include "game/HeadTracking.hpp"
 #include "game/Holsters.hpp"
+#include "game/Melee.hpp"
 #include "game/Player.hpp"
 #include "game/SupportGrip.hpp"
 #include "game/ViewAnchor.hpp"
@@ -45,19 +46,14 @@ constexpr int kRight = thr::kRight;
 // Grip latch and trigger, as the pad mapping's (game/gamepad_mapping).
 constexpr float kGripOn = 0.6f;
 constexpr float kGripOff = 0.4f;
-constexpr float kTriggerOn = 0.5f;
 // The continuous buzzes are asked for again each tick and last this long unasked (the host stops them).
 constexpr float kContinuousSeconds = 0.15f;
 // A throw the game hasn't launched by then is given up (its animation takes about half a second).
 constexpr double kPendingSeconds = 3.0;
 // A throw waiting for the weapon to come out (ME1 throws only with a weapon out) waits this long.
 constexpr double kDrawWaitSeconds = 2.0;
-// A melee's damage is looked for this long after TryMelee.
-constexpr double kHitWatchSeconds = 1.2;
-// A hand that just let go of a grenade (a throw is a fast forward stroke) can't melee for this long.
+// A hand that just let go of a grenade (a throw is a fast forward stroke) can't melee for this long (game/Melee).
 constexpr double kNoMeleeAfterRelease = 0.5;
-// ...nor the right hand after a draw from a holster (a fast reach).
-constexpr double kNoMeleeAfterDraw = 0.5;
 // The arc traced for where a throw lands: its step, how long, how far down.
 constexpr double kArcStepSeconds = 0.05;
 constexpr double kArcSeconds = 4.0;
@@ -100,10 +96,8 @@ std::string gWhy = "not started";
 std::string gLoggedWhy;
 
 thr::GrenadeMachine gMachine;
-std::array<thr::SwingDetector, 2> gSwing;
 thr::SampleClock gClock;
 double gTime = 0.0;            // the newest controller sample's time
-Link gLink;                    // the host's offer at the last tick (`mevr melee` strikes with it)
 slots::Anchor gAnchor;
 ik::BodyYaw gOwnYaw;
 bool gOwnYawActive = false;
@@ -168,19 +162,6 @@ struct LastThrow {
 };
 LastThrow gLastThrow;
 
-// A melee's target, watched for damage.
-struct HitWatch {
-    bool active = false;
-    int hand = -1;
-    double age = 0.0;
-    std::uintptr_t target = 0;
-    double health = 0.0;
-    std::string name;
-};
-HitWatch gHitWatch;
-double gMeleeReadyAt = 0.0;
-std::string gLastMelee = "none";
-
 // Heartbeat counters.
 unsigned gGrabs = 0;
 unsigned gThrows = 0;
@@ -188,10 +169,6 @@ unsigned gCancels = 0;
 unsigned gRefusals = 0;
 unsigned gLaunches = 0;
 unsigned gAimed = 0;
-unsigned gStrikes = 0;
-unsigned gHits = 0;
-unsigned gStrokeRefusals = 0;
-unsigned gMeleeRefusals = 0;
 int gGrenadesLeft = -1;
 
 void SetWhy(std::string why) {
@@ -262,14 +239,10 @@ ue3::FieldRef gStorming{"SFXGame.BioPlayerController", "bStorming"};
 ue3::FieldRef gGameModeManager{"SFXGame.BioPlayerController", engine::adapter::kGameModeManager};
 ue3::FieldRef gGameModes{"SFXGame.SFXGameModeManager", "GameModes"};
 ue3::FieldRef gBehavior{"SFXGame.BioPawn", "m_oBehavior"};
-ue3::FieldRef gEquipment{"SFXGame.BioPawnBehavior", "m_oEquipment"};
-ue3::FieldRef gQuickSlotCurrent{"SFXGame.BioEquipment", "m_eQuickSlotCurrent"};
 ue3::FieldRef gWorldInfo{"Engine.Actor", "WorldInfo"};
 ue3::FieldRef gOwner{"Engine.Actor", "Owner"};
 ue3::FieldRef gInstigator{"Engine.Actor", "Instigator"};
-ue3::FieldRef gPawnList{"Engine.WorldInfo", "PawnList"};
 ue3::FieldRef gWorldGravityZ{"Engine.WorldInfo", "WorldGravityZ"};
-ue3::FieldRef gNextPawn{"Engine.Pawn", "NextPawn"};
 ue3::FieldRef gProjectileSpeed{"Engine.Projectile", "Speed"};
 ue3::FieldRef gClsProjectile{"SFXGame.BioGrenade", "m_clsProjectile"};
 ue3::FieldRef gIntendedTargetLocation{"SFXGame.BioGrenadeProjectileFrisbee", "m_vIntendedTargetLocation"};
@@ -278,7 +251,6 @@ ue3::FieldRef gHeatSeekTarget{"SFXGame.BioGrenadeProjectileFrisbee", "m_oHeatSee
 ue3::FieldRef gStartLocation{"SFXGame.BioGrenadeProjectileFrisbee", "m_vStartLocation"};
 
 ue3::FunctionRef gUseGrenadeFn{"SFXGame.SFXGameModeDefault.UseGrenade"};
-ue3::FunctionRef gTryMeleeFn{"SFXGame.SFXGameModeDefault.TryMelee"};
 ue3::FunctionRef gIsInCombatActionStateFn{"SFXGame.BioPawn.IsInCombatActionState"};
 ue3::FunctionRef gIsSwitchingWeaponsFn{"SFXGame.BioPawn.IsSwitchingWeapons"};
 ue3::FunctionRef gIsThrowingGrenadeFn{"SFXGame.BioPawn.IsThrowingGrenade"};
@@ -288,19 +260,9 @@ ue3::FunctionRef gLaunchAtPointFn{"SFXGame.BioGrenade.LaunchGrenadeAtPoint"};
 ue3::FunctionRef gTraceFn{"Engine.Actor.Trace"};
 ue3::FunctionRef gLaunchAtActorFn{"SFXGame.BioGrenade.LaunchGrenadeAtActor"};
 ue3::FunctionRef gLaunchGrenadeFn{"SFXGame.BioGrenade.LaunchGrenade"};
-ue3::FunctionRef gIsUsingPowerFn{"SFXGame.BioPawn.IsUsingPower"};
 ue3::FunctionRef gGetGrenadesFn{"SFXGame.BioPawnBehavior.GetGrenades"};
-ue3::FunctionRef gIsHostileFn{"SFXGame.BioPawn.IsHostile"};
-ue3::FunctionRef gIsDeadFn{"SFXGame.BioPawn.IsDead"};
-ue3::FunctionRef gGetPercentHealthFn{"SFXGame.BioEpicPawnBehavior.GetPercentHealth"};
 ue3::FunctionRef gSetLocationFn{"Engine.Actor.SetLocation"};
 ue3::FunctionRef gDestroyFn{"Engine.Actor.Destroy"};
-// The melee powers (research/20 section 2: Pistol_Whip, Rifle_Butt), read live for their cooldown, and the right fist's punch
-// with the weapon away: the pistol whip power through the engine's own "cast this" (research/55 section 2).
-ue3::FieldRef gPowers{"SFXGame.BioEpicPawnBehavior", "m_powers"};
-ue3::FieldRef gPowerName{"SFXGame.BioPower", "m_nmPower"};
-ue3::FieldRef gCooldownRemaining{"SFXGame.BioPower", "m_fCooldownRemaining"};
-ue3::FunctionRef gActivatePowerFn{"SFXGame.BioPlayerInput.ActivatePower"};
 // The launch post-handlers read their own blocks (the engine's): each function's parameters.
 ue3::FieldRef gAtPointTarget{gLaunchAtPointFn, "vTarget"};
 ue3::FieldRef gAtPointReturn{gLaunchAtPointFn, "ReturnValue"};
@@ -310,15 +272,10 @@ ue3::FieldRef gLaunchVelocity{gLaunchGrenadeFn, "vVelocity"};
 ue3::FieldRef gLaunchReturn{gLaunchGrenadeFn, "ReturnValue"};
 
 ue3::Function* gUseGrenade = nullptr;
-ue3::Function* gTryMelee = nullptr;
 ue3::Function* gGetGrenades = nullptr;
 ue3::Function* gIsInCombatActionState = nullptr;
 ue3::Function* gIsSwitchingWeapons = nullptr;
 ue3::Function* gIsThrowingGrenade = nullptr;
-ue3::Function* gIsUsingPower = nullptr;
-ue3::Function* gIsHostile = nullptr;
-ue3::Function* gIsDead = nullptr;
-ue3::Function* gGetPercentHealth = nullptr;
 ue3::Function* gIsCombatEnabled = nullptr;
 ue3::Function* gTrace = nullptr;
 ue3::Function* gSetLocation = nullptr;
@@ -426,16 +383,6 @@ bool Drawn(Game const& game) {
     return CallBool(game.pawn, gIsInCombatActionState);
 }
 
-bool UsingPower(Game const& game) {
-    if (gIsUsingPower == nullptr) {
-        return false;
-    }
-    ue3::Params parms(ue3::runtime::Get(), gIsUsingPower);
-    parms.SetBool("bIgnoreWeaponPowers", false);
-    ue3::runtime::Call(game.pawn, gIsUsingPower, parms);
-    return parms.ReturnBool().value_or(false);
-}
-
 int GrenadesLeft(Game const& game) {
     if (gGetGrenades == nullptr) {
         return -1;
@@ -443,16 +390,6 @@ int GrenadesLeft(Game const& game) {
     ue3::Params parms(ue3::runtime::Get(), gGetGrenades);
     ue3::runtime::Call(game.behavior, gGetGrenades, parms);
     return parms.Return<std::int32_t>().value_or(-1);
-}
-
-double Health(ue3::Object* pawn) {
-    ue3::Object* const behavior = ObjectOf(gBehavior, pawn);
-    if (pawn == nullptr || behavior == nullptr || gGetPercentHealth == nullptr) {
-        return -1.0;
-    }
-    ue3::Params parms(ue3::runtime::Get(), gGetPercentHealth);
-    ue3::runtime::Call(behavior, gGetPercentHealth, parms);
-    return parms.Return<float>().value_or(-1.0f);
 }
 
 // Why the game would refuse a grenade now (empty: it wouldn't).
@@ -701,203 +638,6 @@ void OnLaunch(ue3::Object* context, ue3::Function* function, void* parms, void* 
     gPending = {};
 }
 
-// The enemy a melee would hit: the nearest living hostile in reach and in front of the body.
-struct Enemy {
-    ue3::Object* pawn = nullptr;  // a BioPawn
-    double meters = 1e9;
-    double degrees = 0.0;
-};
-
-Enemy FindEnemy(Game const& game, engine::TrackingFrame const& frame, ik::Vec3 headTracking, double reachMeters, double coneDegrees,
-    Enemy& nearestHostile) {
-    Enemy best;
-    ue3::Object* const world = ObjectOf(gWorldInfo, game.pawn);
-    if (world == nullptr || gIsHostile == nullptr) {
-        return best;
-    }
-    // The body's front in the world (horizontal).
-    ik::Vec3 const fwd = slots::YawForward(gFrame.yaw);
-    XrVector3f const a{static_cast<float>(headTracking.x), static_cast<float>(headTracking.y), static_cast<float>(headTracking.z)};
-    XrVector3f const b{static_cast<float>(headTracking.x + fwd.x), static_cast<float>(headTracking.y + fwd.y),
-        static_cast<float>(headTracking.z + fwd.z)};
-    engine::UnrealVector front = Sub(engine::ToWorld(frame, b), engine::ToWorld(frame, a));
-    front.z = 0.0;
-    double const frontLength = std::max(Len(front), 1e-6);
-    double const upm = frame.unitsPerMeter > 0.0 ? frame.unitsPerMeter : engine::kUnitsPerMeter;
-    engine::UnrealVector const me = LocationOf(game.pawn);
-    int guard = 0;
-    for (ue3::Object* p = ObjectOf(gPawnList, world); p != nullptr && guard < 512; p = ObjectOf(gNextPawn, p), ++guard) {
-        if (p == game.pawn || !player::IsBioPawn(p)) {
-            continue;
-        }
-        ue3::Object* const other = p;
-        if (CallBool(other, gIsDead)) {
-            continue;
-        }
-        ue3::Params hostile(ue3::runtime::Get(), gIsHostile);
-        hostile.Set("Other", other);
-        ue3::runtime::Call(game.pawn, gIsHostile, hostile);
-        if (!hostile.ReturnBool().value_or(false)) {
-            continue;
-        }
-        engine::UnrealVector const d = Sub(LocationOf(other), me);
-        double const flat = std::sqrt(d.x * d.x + d.y * d.y);
-        double const meters = flat / upm;
-        double const cosine = flat > 1e-6 ? (d.x * front.x + d.y * front.y) / (flat * frontLength) : 1.0;
-        double const degrees = std::acos(std::clamp(cosine, -1.0, 1.0)) * 180.0 / std::numbers::pi;
-        if (meters < nearestHostile.meters) {
-            nearestHostile = {other, meters, degrees};
-        }
-        if (meters <= reachMeters && degrees <= coneDegrees && std::abs(d.z) / upm < 2.0 && meters < best.meters) {
-            best = {other, meters, degrees};
-        }
-    }
-    return best;
-}
-
-// The quick slot in hand (BioEquipment.m_eQuickSlotCurrent; 0 the pistol), if there's equipment.
-std::optional<std::uint8_t> CurrentQuickSlot(Game const& game) {
-    ue3::Object* const equipment = ObjectOf(gEquipment, game.behavior);
-    return equipment != nullptr ? gQuickSlotCurrent.Read<std::uint8_t>(equipment) : std::nullopt;
-}
-
-// One of the player's melee powers, by its 2DA label, with its live cooldown.
-struct MeleePower {
-    ue3::Object* power = nullptr;  // a BioPower; nullptr: the player has none of that name
-    ue3::Name name{};
-    float cooldown = 0.0f;         // seconds left
-};
-
-MeleePower FindMeleePower(Game const& game, std::string_view label) {
-    MeleePower out;
-    auto const list = gPowers.ElementsOf(game.behavior);
-    for (std::int32_t i = 0; list && i < list->count && i < 64; ++i) {
-        void* const slot = list->At(i);
-        ue3::Object* const power = slot != nullptr ? *static_cast<ue3::Object**>(slot) : nullptr;
-        if (power == nullptr || !ue3::runtime::IsAlive(power)) {
-            continue;
-        }
-        ue3::Name const name = gPowerName.Read<ue3::Name>(power).value_or(ue3::Name{});
-        if (ue3::runtime::NameText(name) == label) {
-            out.power = power;
-            out.name = name;
-            out.cooldown = std::max(0.0f, gCooldownRemaining.Read<float>(power).value_or(0.0f));
-            return out;
-        }
-    }
-    return out;
-}
-
-// A stroke that passed the gesture's own rules (ik::throwing::SwingDetector) becomes the game's melee here, or is refused
-// (logged, counted, no haptic). Gesture only since 2026-11-05 (research/20 "Gesture only"): with the weapon drawn either hand's
-// stroke is TryMelee (the B button's exec: pistol whip or rifle butt); with it away (TryMelee would only draw it) the right
-// hand's FIST (grip and trigger held) is the pistol whip power through BioPlayerInput.ActivatePower. No spamming: both hands
-// share one cooldown (meleeCooldownS) and wait out the game's own melee cooldown, read live from the power, so every strike
-// the gesture makes is one the game swings; a stroke refused for it is spent (the next one needs a new stroke).
-void Strike(Link const& link, Game const& game, int hand, thr::SwingStep const& stroke,
-    hand_calibration::Throwables const& settings, engine::TrackingFrame const& frame, ik::Vec3 headTracking, bool fist,
-    double coneDegrees) {
-    std::string const what = std::format("the {} hand's {:.1f} m/s stroke ({:.2f} m, {:.2f} toward the front{})", HandName(hand),
-        stroke.speed, stroke.travel, stroke.forward, fist ? ", a fist" : "");
-    auto const refuse = [&](std::string const& why) {
-        ++gMeleeRefusals;
-        gLastMelee = std::format("refused: {}", why);
-        log::Info("throwables: melee: {}: no strike ({})", what, why);
-    };
-    if (!settings.melee) {
-        return;
-    }
-    if (!CombatEnabled(game)) {
-        return refuse("combat is disabled here");
-    }
-    bool const drawn = Drawn(game);
-    thr::MeleeRoute const route = thr::RouteMelee(drawn, hand == kRight, fist, settings.meleeFist);
-    if (char const* const no = thr::Refusal(route)) {
-        return refuse(no);
-    }
-    if (Storming(game)) {
-        return refuse("sprinting");
-    }
-    if (CallBool(game.pawn, gIsSwitchingWeapons) || UsingPower(game) || CallBool(game.pawn, gIsThrowingGrenade)) {
-        return refuse("switching weapons, using a power or throwing a grenade");
-    }
-    std::optional<std::uint8_t> const slot = CurrentQuickSlot(game);
-    bool const whip = !drawn || (slot && *slot == 0);  // TryMelee's choice: the pistol whip for slot 0, the rifle butt otherwise
-    char const* const label = whip ? "Pistol_Whip" : "Rifle_Butt";
-    MeleePower const power = FindMeleePower(game, label);
-    if (double const wait = thr::MeleeWait(gTime, gMeleeReadyAt, power.cooldown); wait > 0.0) {
-        return refuse(std::format("cooldown, {:.2f} s left ({})", wait,
-            power.cooldown > gMeleeReadyAt - gTime ? std::format("the game's {}", label) : std::string("meleeCooldownS")));
-    }
-    Enemy nearest;
-    Enemy const enemy = FindEnemy(game, frame, headTracking, settings.meleeReach, coneDegrees, nearest);
-    if (settings.meleeNeedsEnemy && enemy.pawn == nullptr) {
-        return refuse(nearest.pawn != nullptr
-            ? std::format("no enemy within {:.1f} m and {:.0f} degrees; the nearest hostile is {} at {:.1f} m, {:.0f} degrees",
-                  settings.meleeReach, coneDegrees, FullName(nearest.pawn), nearest.meters, nearest.degrees)
-            : std::string("no hostile around"));
-    }
-    std::string how;
-    if (drawn) {
-        CallVoid(game.mode, gTryMelee);  // the B button's exec: directly, never a generated wrapper
-        how = std::format("SFXGameModeDefault.TryMelee ({})", whip ? "pistol whip" : "rifle butt");
-    } else {
-        ue3::Object* const input = ObjectOf(gPlayerInput, game.controller);
-        ue3::Function* const activate = gActivatePowerFn.Get();
-        if (power.power == nullptr || input == nullptr || activate == nullptr) {
-            return refuse(power.power == nullptr ? "the player has no Pistol_Whip power to punch with"
-                                                 : "no BioPlayerInput.ActivatePower to punch through");
-        }
-        ue3::Params parms(ue3::runtime::Get(), activate);
-        parms.Set("nmPower", power.name);
-        if (enemy.pawn != nullptr) {
-            parms.Set("oTarget", enemy.pawn);
-            parms.Set("vTargetLocation", ToF(LocationOf(enemy.pawn)));
-        }
-        ue3::runtime::Call(input, activate, parms);  // directly: never a generated wrapper
-        if (!parms.ReturnBool().value_or(false)) {
-            return refuse("the game refused the punch (BioPlayerInput.ActivatePower(Pistol_Whip) returned false)");
-        }
-        how = "BioPlayerInput.ActivatePower(Pistol_Whip) (a punch, the weapon away)";
-    }
-    gMeleeReadyAt = gTime + settings.meleeCooldown;
-    ++gStrikes;
-    Pulse(link, hand, thr::StrikeTick(settings.hapticAmplitude));
-    std::string const target = enemy.pawn != nullptr
-        ? std::format("{} at {:.1f} m, {:.0f} degrees, health {:.0f}%", FullName(enemy.pawn), enemy.meters, enemy.degrees,
-              100.0 * Health(enemy.pawn))
-        : std::string("no enemy in reach (meleeNeedsEnemy = 0)");
-    gLastMelee = std::format("{} -> {}; {}", what, how, target);
-    log::Info("throwables: melee: {} -> {}; target {}", what, how, target);
-    if (enemy.pawn != nullptr) {
-        gHitWatch = {true, hand, 0.0, reinterpret_cast<std::uintptr_t>(enemy.pawn), Health(enemy.pawn), FullName(enemy.pawn)};
-    }
-}
-
-void WatchHit(Link const& link, double deltaSeconds, double strength) {
-    if (!gHitWatch.active) {
-        return;
-    }
-    gHitWatch.age += deltaSeconds;
-    auto* const pawn = reinterpret_cast<ue3::Object*>(gHitWatch.target);
-    bool const alive = ue3::runtime::IsAlive(pawn) && player::IsBioPawn(pawn);
-    double const health = alive ? Health(pawn) : -1.0;
-    bool const dead = alive && CallBool(pawn, gIsDead);
-    if (alive && (dead || (health >= 0.0 && health < gHitWatch.health - 1e-4))) {
-        ++gHits;
-        Pulse(link, gHitWatch.hand, thr::HitThump(strength));
-        log::Info("throwables: melee: hit {} after {:.2f} s (health {:.0f}% -> {:.0f}%{})", gHitWatch.name, gHitWatch.age,
-            100.0 * gHitWatch.health, 100.0 * std::max(health, 0.0), dead ? ", dead" : "");
-        gLastMelee += std::format("; hit ({:.0f}% -> {:.0f}%)", 100.0 * gHitWatch.health, 100.0 * std::max(health, 0.0));
-        gHitWatch = {};
-    } else if (!alive || gHitWatch.age > kHitWatchSeconds) {
-        log::Info("throwables: melee: no damage seen on {} within {:.1f} s (a miss, out of the game's 60-degree cone, or blocked)",
-            gHitWatch.name, kHitWatchSeconds);
-        gLastMelee += "; no damage seen";
-        gHitWatch = {};
-    }
-}
-
 void CallUseGrenade(Game const& game) {
     CallVoid(game.mode, gUseGrenade);  // the X button's exec: directly, never a generated wrapper
     gPending.called = true;
@@ -1013,9 +753,13 @@ void Inactive(std::string why, Link const& link) {
         log::Info("throwables: the grenade in the {} hand goes back ({})", HandName(gMachine.Holder()), why);
     }
     gMachine.Reset();
-    for (thr::SwingDetector& s : gSwing) {
-        s.Reset();
-    }
+#if defined(MEVR_GAME_LE1)
+    // The physical melee's strokes start over, and B is the game's again (game/Melee: ME1 feeds it from here).
+    melee::Physical tick;
+    tick.haptics = {link.haptic, link.hapticHz};
+    tick.buttonFlags = link.buttonFlags;
+    melee::StepPhysical(tick);
+#endif
     gAnchor.Reset();
     gOwnYawActive = false;
     gYawValid = false;
@@ -1039,7 +783,6 @@ bool TryStartup() {
     };
     Want const wants[] = {
         {&gUseGrenade, &gUseGrenadeFn, true},
-        {&gTryMelee, &gTryMeleeFn, true},
         {&gIsInCombatActionState, &gIsInCombatActionStateFn, true},
         {&gIsSwitchingWeapons, &gIsSwitchingWeaponsFn, true},
         {&gIsThrowingGrenade, &gIsThrowingGrenadeFn, true},
@@ -1049,11 +792,7 @@ bool TryStartup() {
         {&gTrace, &gTraceFn, true},
         {&gLaunchAtActor, &gLaunchAtActorFn, false},
         {&gLaunchGrenade, &gLaunchGrenadeFn, false},
-        {&gIsUsingPower, &gIsUsingPowerFn, false},
         {&gGetGrenades, &gGetGrenadesFn, false},
-        {&gIsHostile, &gIsHostileFn, false},
-        {&gIsDead, &gIsDeadFn, false},
-        {&gGetPercentHealth, &gGetPercentHealthFn, false},
         {&gSetLocation, &gSetLocationFn, false},
         {&gDestroy, &gDestroyFn, false},
     };
@@ -1139,7 +878,6 @@ bool RightHandBusy() {
 
 void Tick(double deltaSeconds, Link const& link) {
     hand_calibration::Throwables const settings = hand_calibration::GetThrowables();
-    gLink = link;
     gEnabled = settings.enabled;
     gButtonFlags = link.buttonFlags;
     for (double& s : gSinceRelease) {
@@ -1149,7 +887,7 @@ void Tick(double deltaSeconds, Link const& link) {
     std::string why;
     auto const game = gStarted ? ReadGame(why) : std::nullopt;
     FollowPending(game ? &*game : nullptr, deltaSeconds);
-    WatchHit(link, deltaSeconds, settings.hapticAmplitude);
+    melee::WatchHit(deltaSeconds, {link.haptic, link.hapticHz});
     if (!settings.enabled) {
         Inactive("off ([Throwables] enabled = 0)", link);
         return;
@@ -1306,42 +1044,23 @@ void Tick(double deltaSeconds, Link const& link) {
         case thr::Event::None:
             break;
         }
+    }
 
-        // Melee: each hand's stroke relative to the head.
-        bool const drawn = Drawn(*game);
+    // Melee (game/Melee, the trilogy's one path): each hand's stroke relative to the head on this tick's new sample, in this
+    // body frame; a hand holding a grenade, or just after a throw, doesn't strike.
+    {
+        melee::Physical tick;
+        tick.active = true;
+        tick.sampleTime = sampleTime;
+        tick.head = headPosition;
+        tick.bodyYaw = gFrame.yaw;
         for (int h = 0; h < 2; ++h) {
-            thr::SwingInput swing;
-            swing.now = gTime;
-            swing.tracked = hands[h]->gripValid;
-            swing.position = FromXr(hands[h]->grip.position) - headPosition;
-            swing.bodyForward = slots::YawForward(gFrame.yaw);
-            // A throw moves the whole body: neither hand strikes just after one.
-            bool suppressed = gMachine.Holder() == h || std::min(gSinceRelease[kLeft], gSinceRelease[kRight]) < kNoMeleeAfterRelease;
-            if (h == kRight) {
-                // The trigger held is firing only with the weapon out; with it away it's half of the fist that punches.
-                suppressed = suppressed || (drawn && hands[h]->trigger >= kTriggerOn) || holsters::RightHandInSlot() ||
-                    holsters::SecondsSinceDraw() < kNoMeleeAfterDraw;
-            } else {
-                suppressed = suppressed || support_grip::Held();
-            }
-            swing.suppressed = suppressed;
-            thr::SwingParams params;
-            params.minSpeed = h == kRight && drawn ? settings.meleeGunSpeed : settings.meleeSpeed;
-            params.minTravel = settings.meleeTravel;
-            params.cooldown = settings.meleeCooldown;
-            thr::SwingStep const stroke = gSwing[h].Update(swing, params);
-            if (!settings.melee) {
-                continue;
-            }
-            if (stroke.strike) {
-                bool const fist = hands[h]->squeeze >= kGripOn && hands[h]->trigger >= kTriggerOn;
-                Strike(link, *game, h, stroke, settings, *frame, headPosition, fist, settings.meleeConeDeg);
-            } else if (stroke.refused != nullptr) {
-                ++gStrokeRefusals;
-                log::Info("throwables: melee: the {} hand's {:.1f} m/s stroke ({:.2f} m) isn't a strike: {}", HandName(h), stroke.speed,
-                    stroke.travel, stroke.refused);
-            }
+            tick.suppressed[static_cast<std::size_t>(h)] =
+                gMachine.Holder() == h || std::min(gSinceRelease[kLeft], gSinceRelease[kRight]) < kNoMeleeAfterRelease;
         }
+        tick.haptics = {link.haptic, link.hapticHz};
+        tick.buttonFlags = link.buttonFlags;
+        melee::StepPhysical(tick);
     }
 
     // Haptics each tick: the slot's contact buzz (as a holster's), or the held grenade's faint buzz.
@@ -1367,14 +1086,13 @@ void AdjustPad(gamepad::Options& options) {
         return;
     }
     hand_calibration::Throwables const settings = hand_calibration::GetThrowables();
-    if (gActive && (!settings.meleeButton || !settings.grenadeButton)) {
+    if (gActive && !settings.grenadeButton) {
         if (!gButtonFlags && !gToldNoButtons) {
             gToldNoButtons = true;
-            log::Warn("throwables: meleeButton/grenadeButton = 0 needs the redeployed host (services v14): until then B and X still "
-                      "reach the game; close the game and redeploy the host");
+            log::Warn("throwables: grenadeButton = 0 needs the redeployed host (services v14): until then X still reaches the game; "
+                      "close the game and redeploy the host");
         }
-        options.meleeButton = options.meleeButton && settings.meleeButton;
-        options.grenadeButton = options.grenadeButton && settings.grenadeButton;
+        options.grenadeButton = false;
     }
     if (gActive && gNearRight && settings.rightHand && gMachine.Holder() < 0) {
         options.rightGripFree = true;  // a new right squeeze at the grenade slot isn't RB (gripHolds 0)
@@ -1394,40 +1112,30 @@ std::string StatusJson() {
         : std::string("null");
     return std::format("{{\"enabled\": {}, \"active\": {}, \"why\": {}, \"slot\": {{\"center\": [{}, {}, {}], \"radius\": {}, \"scale\": {}}}, "
                        "\"distance\": [{}, {}], \"inSlot\": [{}, {}], \"holder\": {}, \"keepGunOut\": {}, \"grenadesLeft\": {}, "
-                       "\"pending\": {}, \"lastThrow\": {}, \"melee\": {{\"enabled\": {}, \"peakSpeed\": [{}, {}], \"last\": {}, "
-                       "\"cooldownLeft\": {}}}, \"flight\": {}}}",
+                       "\"pending\": {}, \"lastThrow\": {}, \"melee\": {}, \"flight\": {}}}",
         gEnabled ? "true" : "false", gActive ? "true" : "false", json::JsonString(gWhy), json::JsonNumber(gCenter.x),
         json::JsonNumber(gCenter.y), json::JsonNumber(gCenter.z), json::JsonNumber(settings.slot.radius), json::JsonNumber(gScale),
         json::JsonNumber(gDistance[kLeft]), json::JsonNumber(gDistance[kRight]), gMachine.InSlot(kLeft) ? "true" : "false",
         gMachine.InSlot(kRight) ? "true" : "false", gMachine.Holder() >= 0 ? json::JsonString(HandName(gMachine.Holder())) : std::string("null"),
         gKeepGunOut ? "true" : "false", gGrenadesLeft, gPending.active ? (gPending.waitingForDraw ? "\"waiting for the draw\"" : "\"awaiting the launch\"")
                                                                        : "null",
-        last, settings.melee ? "true" : "false", json::JsonNumber(gSwing[kLeft].PeakSpeed()), json::JsonNumber(gSwing[kRight].PeakSpeed()),
-        json::JsonString(gLastMelee), json::JsonNumber(std::max(gMeleeReadyAt - gTime, 0.0)), json::JsonString(settings.arc ? "arc" : "disc"));
+        last, melee::StatusJson(), json::JsonString(settings.arc ? "arc" : "disc"));
 }
 
 void LogStats() {
-    if (!gEnabled && gGrabs == 0 && gStrikes == 0) {
+    if (!gEnabled && gGrabs == 0) {
         return;
     }
     log::Info("    throwables: {}; grenade slot {} from the anchor (scale {:.2f}), hands {:.2f} / {:.2f} m from it; holder {}; this period: "
-              "{} grabs, {} throws, {} put back, {} refused, {} launches ({} re-aimed); melee: {} strikes, {} hits, {} refused at the "
-              "game, {} strokes refused; peak hand speeds (head-relative) {:.1f} / {:.1f} m/s; grenades left {}",
+              "{} grabs, {} throws, {} put back, {} refused, {} launches ({} re-aimed); grenades left {}",
         gWhy, V(gCenter - gFrame.anchor), gScale, gDistance[kLeft], gDistance[kRight],
-        gMachine.Holder() >= 0 ? HandName(gMachine.Holder()) : "none", gGrabs, gThrows, gCancels, gRefusals, gLaunches, gAimed, gStrikes,
-        gHits, gMeleeRefusals, gStrokeRefusals, gSwing[kLeft].PeakSpeed(), gSwing[kRight].PeakSpeed(),
+        gMachine.Holder() >= 0 ? HandName(gMachine.Holder()) : "none", gGrabs, gThrows, gCancels, gRefusals, gLaunches, gAimed,
         gGrenadesLeft >= 0 ? std::to_string(gGrenadesLeft) : std::string("?"));
-    gGrabs = gThrows = gCancels = gRefusals = gLaunches = gAimed = gStrikes = gHits = gStrokeRefusals = gMeleeRefusals = 0;
-    gSwing[kLeft].ResetPeak();
-    gSwing[kRight].ResetPeak();
+    gGrabs = gThrows = gCancels = gRefusals = gLaunches = gAimed = 0;
 }
 
 void Shutdown() {
     gMachine.Reset();
-    for (thr::SwingDetector& s : gSwing) {
-        s.Reset();
-        s.ResetPeak();
-    }
     gClock.Reset();
     gAnchor.Reset();
     gOwnYawActive = false;
@@ -1448,54 +1156,15 @@ void Shutdown() {
     gInLaunch = false;
     gLoggedGameThrow = false;
     gLastThrow = {};
-    gHitWatch = {};
-    gMeleeReadyAt = 0.0;
-    gLastMelee = "none";
     gGrenadesLeft = -1;
     gStarted = false;
     gWhy = "not started";
     gLoggedWhy.clear();
 #if defined(MEVR_GAME_LE1)
-    gUseGrenade = gTryMelee = gGetGrenades = gIsInCombatActionState = gIsSwitchingWeapons = gIsThrowingGrenade = gIsUsingPower = nullptr;
-    gIsHostile = gIsDead = gGetPercentHealth = gIsCombatEnabled = gTrace = gSetLocation = gDestroy = gSetVelocity = nullptr;
+    gUseGrenade = gGetGrenades = gIsInCombatActionState = gIsSwitchingWeapons = gIsThrowingGrenade = nullptr;
+    gIsCombatEnabled = gTrace = gSetLocation = gDestroy = gSetVelocity = nullptr;
     gLaunchGrenade = gLaunchAtPoint = gLaunchAtActor = nullptr;
     gLoggedTracePath = false;
-#endif
-}
-
-std::string Console(std::string_view args) {
-#if defined(MEVR_GAME_LE1)
-    std::string verb(args);
-    verb.erase(0, verb.find_first_not_of(' '));
-    verb.erase(verb.find_last_not_of(' ') + 1);
-    if (verb != "punch" && verb != "strike") {
-        return std::format("mevr melee punch|strike: the right hand's strike now, as a fast stroke would make it (punch: a fist, "
-                           "strike: an open hand), through the same rules; the last melee: {}", gLastMelee);
-    }
-    if (!gStarted) {
-        return "melee: the script functions aren't found yet";
-    }
-    std::string why;
-    std::optional<Game> const game = ReadGame(why);
-    std::optional<engine::TrackingFrame> const frame = view_anchor::Current();
-    vr::host_view::State const view = vr::host_view::Latest();
-    if (!game || !frame || !view.valid) {
-        return std::format("melee: no strike: {}", !game ? why : "no head-tracked view (needs VR on foot)");
-    }
-    gTime = std::max(gTime, SteadySeconds());  // no controller samples without tracked controllers: the clock moves on anyway
-    thr::SwingStep stroke;
-    stroke.strike = true;
-    stroke.speed = 4.0;
-    stroke.travel = 0.20;
-    stroke.forward = 1.0;
-    ik::Vec3 const head{view.head.position.x, view.head.position.y, view.head.position.z};
-    hand_calibration::Throwables const settings = hand_calibration::GetThrowables();
-    // Any direction: the body's front (gFrame.yaw) is only kept while the controllers are tracked.
-    Strike(gLink, *game, kRight, stroke, settings, *frame, head, verb == "punch", 180.0);
-    return std::format("melee: {}", gLastMelee);
-#else
-    (void)args;
-    return "melee: LE1 only";
 #endif
 }
 

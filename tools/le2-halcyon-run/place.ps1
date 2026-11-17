@@ -72,7 +72,9 @@ function Play([string]$tag, [string[]]$events, [double]$seconds, [double]$snapAt
 function ReadLog {
     $stream = [IO.File]::Open($log, 'Open', 'Read', 'ReadWrite')
     $reader = New-Object IO.StreamReader($stream)
-    try { return ($reader.ReadToEnd() -split "`r?`n") } finally { $reader.Close() }
+    # Whole lines only: the file ends with a newline, and an empty last element counted as a line made a `Skip` of the old
+    # count skip the first new line (the canary's `call trace: on for` was missed, 2026-11-17).
+    try { return @($reader.ReadToEnd() -split "`r?`n" | Where-Object { $_ -ne '' }) } finally { $reader.Close() }
 }
 $verdicts = New-Object System.Collections.Generic.List[string]
 function Verdict([string]$what, [bool]$ok, [string]$detail) {
@@ -86,6 +88,12 @@ function Placed([object]$s) {
 
 $from = (ReadLog).Count
 Ask 'mevr state' | Write-Output
+# B is squad placement's on every game (the owner, 2026-11-17): it never reaches the game as its melee on foot (ME2's
+# Console_Melee: TryExitCover | TryMelee | LeaveWorld). Every call whose path holds TryMelee is traced while B is held and
+# double-tapped below; none may come (game/Melee keeps B from the game: gamepad::kFlagNoMeleeButton).
+$traceFrom = (ReadLog).Count
+$traceOn = Ask 'mevr calltrace 90 trymelee'
+"call trace: $traceOn"
 $s = Status
 $members = @($s.squad).Count
 "squad ($members): $(Placed $s)"
@@ -124,16 +132,35 @@ if ($Only -contains 'double') {
     Verdict 'B double-tapped: the squad back to Shepard' ($after.regroups -gt $before.regroups) (
         "regroups $($before.regroups) -> $($after.regroups), last '$($after.last)'; $(Placed $after)")
 }
+if ($Only -contains 'wheel' -or $Only -contains 'one' -or $Only -contains 'double') {
+    # Judged once B's steps are over (the trace runs on; its own lines say when it began and ended).
+    $traced = @((ReadLog) | Select-Object -Skip $traceFrom)
+    $began = @($traced | Where-Object { $_ -match 'call trace: on for' })
+    $melee = @($traced | Where-Object { $_ -match 'call trace: (script|event)\s+\S*TryMelee' })
+    $kept = @($traced | Where-Object { $_ -match 'melee: meleeButton = 0 needs the redeployed host' -or $_ -match 'squad place: off while B reaches' })
+    Verdict 'B held and double-tapped: no TryMelee (the game''s melee) in the call trace' ($began.Count -gt 0 -and $melee.Count -eq 0 -and $kept.Count -eq 0) (
+        $(if ($began.Count -eq 0) { "the call trace never began: '$traceOn'" }
+          elseif ($melee.Count -gt 0) { "$($melee.Count) TryMelee call(s): $($melee[0])" }
+          elseif ($kept.Count -gt 0) { "B reached the game: $($kept[0])" }
+          else { 'none while the call trace ran' }))
+}
 if ($Only -contains 'gesture') {
     # ME1's flat order: a left grip squeeze nobody else claims, the left hand's ray on the floor past followWithinM, let go.
     $context = Ask 'mevr context'
     $before = Status
+    $gestureFrom = (ReadLog).Count
     Play 'gesture' @('lgrip:1.0:3.0', 'lhand:0.5:0.9:-0.25,-0.20,-0.45', 'lpitch:0.5:0.9:-30') 4.0 2.0
     Start-Sleep -Seconds $SettleS
     $after = Status
     $orders = Ask 'mevr say status'
-    Verdict 'the left grip pointed at the floor and let go: a move order (squad orders)' $true (
-        "see lines.txt's 'squad orders:' lines; $(Placed $after)")
+    # Judged from the squad orders' own lines (until 2026-11-17 this verdict was a hard-coded PASS): the squeeze pointed an
+    # order, its let-go landed on the ground and gave it; nothing was called off.
+    $said = @((ReadLog) | Select-Object -Skip $gestureFrom | Where-Object { $_ -match 'squad orders: (pointing an order|let go on|called off)' })
+    $pointed = @($said | Where-Object { $_ -match 'pointing an order' })
+    $ground = @($said | Where-Object { $_ -match 'let go on (the )?ground' })
+    $off = @($said | Where-Object { $_ -match 'called off' })
+    Verdict 'the left grip pointed at the floor and let go: a move order (squad orders)' ($pointed.Count -gt 0 -and $ground.Count -gt 0 -and $off.Count -eq 0) (
+        "$(if ($said.Count) { $said -join ' | ' } else { 'no squad orders line: the squeeze pointed nothing' }); $(Placed $after)")
 }
 
 $lines = ReadLog

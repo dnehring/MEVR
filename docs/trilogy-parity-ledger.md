@@ -53,8 +53,8 @@ rows the change touches.
 
 | game | shared | adapted | forked | missing | n/a | present and verified (V) | present, unverified (U) |
 |---|---|---|---|---|---|---|---|
-| LE2 | 14 | 50 | 2 | 22 | 5 | 51 | 15 |
-| LE3 | 14 | 50 | 4 | 18 | 7 | 33 | 35 |
+| LE2 | 14 | 51 | 2 | 21 | 5 | 52 | 15 |
+| LE3 | 14 | 51 | 3 | 18 | 7 | 33 | 35 |
 <!-- /parity:totals -->
 
 LE1 is the reference, so it has no cells. A few LE1 systems are themselves n/a under Halcyon's renderer: the reflection
@@ -251,7 +251,7 @@ The [technique groups](#renderer-techniques-by-group) summary follows the table.
 | G29 | Power wheel at the left hand, lock and push, self-cast gestures, coach (`game/PowerWheel`, `plugin/PowerWheel`) | **adapted** V: ME2 roster (`SFXPowerManager`); the whole wheel on Save 4 by replayed controllers, 2026-11-17 (lane SQ, `tools/le2-halcyon-run/powers.ps1`, research/55 "The whole wheel on Save 4"): every tile by the hand's travel or the stick, the tap, No power, the coach card, Adrenaline Rush on the chest (also with the weapon away), Disruptor Ammo slapped onto the rifle, Slam locked on a hostile drone from the level's own factory (`-Drone`) and pushed (`ActivatePower` took it). The coach's controls line was ME1's grenade throw: the sequels' card names the wheel alone since. Not seen: Slam's effect on the target, evolved powers, other weapons, the headset | **adapted** U: `game/Le3Powers.hpp` (`SFXPowerCustomActionBase`). Save 31 (the Normandy, a non-combat Vanguard, 2026-11-17): the roster reads Pull, Shockwave, Incendiary and Cryo Ammo, Biotic Charge (an unnamed label split into words since), Discharge, Unity (disabled), Flare; the wheel stays shut where combat is disabled, as ME1's. Nothing cast yet | ME3: the combat save's checks in research/le3-combat-fixtures.md (`powers.ps1 -Game LE3`); ME2: research/55 "The whole wheel on Save 4"'s "Not established"; L3-6. |
 | G30 | Squad weapons wheel (`game/SquadWeapons`, `plugin/SquadPanel`) | **adapted** U: ME1's menu tick (`TickCustom`: gates, pointing, cards by standing side, haptics, logs) over ME2's `native` adapter (`game/Le2SquadMenu.inc`: a paged inventory, `OrderWeaponSwitch`, `Pawn.Weapon`); custom style only. **V on ME2 for one tile** (lane GF2, session `20261116-153741-665-LE2-gf2-run2`, Freedom's Progress, Save 4): six replayed pulls with a flick down, `squad: menu #1 opened ... cards: left Jacob, right Miranda`, `menu #1 confirmed (trigger let go): Miranda gets the pistol`, `Miranda: requested weapon observed equipped` (SMG to pistol), 6 of 6. The names are ME2's own since then (`SFXPawn.GetPrettyName` through the game info's `GetSimpleString`, `game/Le2Squad.hpp` `ActorName`; the behaviour's `ActorGameName` is the class default "BioPawn"). Not shown: Jacob, a second tile, pointing at a squadmate, the page tile. The fake headset's view and controllers drop out under machine load (91 stand-down lines in one run, 182 in the next, when a pull's menu closed before the flick) | **adapted** U: the same adapter with ME3's roster and input-method parameter | A replayed left-trigger pull with two squadmates (ME2: Freedom's Progress): `squad: menu #1 opened ... cards: left .., right ..`, a right-stick flick, the release, then `requested weapon observed equipped`. |
 | G31 | Squad context and gesture orders (`game/SquadContext`, `game/SquadOrders`, `core/vr/Squad*`) | **adapted** U: `game/Le2Squad.hpp` (`HenchmanOrderAttackTarget`, `SquadOrderUsePower`); the flat move order by the left grip seen dispatched on Save 4 (2026-11-17), with placement's move marker since; attack and power orders not seen | **adapted** U | M6 C; L3-6. |
-| G32 | Squad placement by an arc (`game/SquadPlace`, `plugin/SquadPlaceDraw`) | **adapted** V: on by default as ME1's (`[SquadOrders] place = 1`) since 2026-11-17 (lane SQ, `tools/le2-halcyon-run/place.ps1`, research/54 "ME2 placement and orders on Save 4"): the squad wheel at the right hand, the arc and its named ring, Miranda 0.38 m and Jacob 0.27 m from the ring and holding, Miranda alone by the left tile (0.22 m), a double B calls both back. The hold order needs the squadmate's move marker placed first (`BioPlayerController.UpdateMoveToIndicator`, `le2_squad::PlaceMoveIndicator`): without it nobody moved | **adapted** U: the same order path with the marker; the squad's console lines (`mevr place`, `squad`, `order`, `say`, `context`) on ME3 since 2026-11-17; no squad on Save 31 | ME3: `place.ps1 -Game LE3` on the combat save (research/le3-combat-fixtures.md). |
+| G32 | Squad placement by an arc (`game/SquadPlace`, `plugin/SquadPlaceDraw`) | **adapted** V: on by default as ME1's (`[SquadOrders] place = 1`) since 2026-11-17 (lane SQ, `tools/le2-halcyon-run/place.ps1`, research/54 "ME2 placement and orders on Save 4"): the squad wheel at the right hand, the arc and its named ring, Miranda 0.38 m and Jacob 0.27 m from the ring and holding, Miranda alone by the left tile (0.22 m), a double B calls both back. The hold order needs the squadmate's move marker placed first (`BioPlayerController.UpdateMoveToIndicator`, `le2_squad::PlaceMoveIndicator`): without it nobody moved. Until 2026-11-17 B also reached the game (`Console_Melee`: every hold and double tap was a `TryMelee`); since lane MEL `game/Melee` keeps B from the game on foot in VR on every game, as on ME1, and placement stands down only while B really reaches the game (`melee::BIsGameButton`, no longer the ini key alone); `place.ps1` judges a TryMelee call trace and its flat-order verdict (a hard-coded PASS until then) | **adapted** U: the same order path with the marker; the squad's console lines (`mevr place`, `squad`, `order`, `say`, `context`) on ME3 since 2026-11-17; no squad on Save 31; B kept from the game as on ME2 (`melee-b.ps1 -Game LE3`) | ME3: `place.ps1 -Game LE3` on the combat save (research/le3-combat-fixtures.md). |
 | G33 | Voice orders, the model tier, the Voice page (`game/Voice`, `plugin/Voice`, `plugin/VoiceModel`) | **shared** U: the protected voice run timed out | **shared** U: the model tier compiles into LE3 wherever its host compiles `plugin/VoiceModel.cpp` (until 2026-11-16 only when LE2 was built too) | A microphone run, or `voice.request wav`, per game. |
 | G34 | Squad acknowledgement (`game/SquadAck`) | **missing**: `ready`; ME2's AI answers orders itself (`SFXGame.TriggerVocalizationEvent`: follow 8, move 7, take cover 9, from `SFXAI_Henchman`'s order states), so the port listens for ME2's vocalization (research/54 "ME2 placement and orders on Save 4") | **missing**: `ready` | Port with G31. `SquadHandleChatterEvent` and `PlaySoundSet` are in neither sequel's SDK list (generated names). |
 | G35 | Thespian mode (`game/Thespian`, `plugin/Thespian`, `core/voice/ScriptMatch`) | **adapted** U: replies by native slot; no mute or `SkipNode` on ME2 (research/70 "ME2 cinema adapter") | **adapted** V: reader on three native wheels, run `20261115-203330-839`. Spoken selection unverified | M6 E; L3-4. |
@@ -262,7 +262,7 @@ The [technique groups](#renderer-techniques-by-group) summary follows the table.
 | G40 | Physical crouch (`game/Posture`, `core/ik/Posture`) | **adapted** V: `Engine.Pawn.ShouldCrouch`; research/23 §7.4 step 1 | **adapted** U: LE3 native admission | — |
 | G41 | Vent, weapon heat (`game/Vent`, `core/ik/Vent`); the sequels' counterpart, the reload by hand (`game/Reload`, `core/vr/ReloadGesture`, `PhysicalReloadRequest`) | **n/a** for the vent (thermal clips); the reload by hand **adapted** V: the pouch a left-hand body slot, the vent's receiver zone, the coordinator, the button's own `SFXGameModeDefault.TryReload`; run 2026-11-16 (lane WP): 12/0/60 -> one shot 11/1/60 -> the replayed gesture 12/0/59, a full magazine refused (research/le2-vrik.md "The reload by hand: the game's side"). **Off by default** since 2026-11-16 (the owner: "don't enable that flow"; `[Reload] enabled = 0`, an older file's 1 moved once), the gesture to be redesigned with the owner | **n/a** for the vent; the reload **adapted** U: the same module, ME3's ammo fields on `SFXWeapon_NativeBase`; names resolve on Save 31 (no gun there); off by default as on ME2 | The gesture's redesign with the owner first (off until then). Nothing is seen yet: the clip in the hand and the gesture's options for the owner, research/thermal-clips.md. Then LE2: empty, no-reserve and cancelled reloads; LE3: a combat fixture, then `reload.ps1 -Game LE3` (with `enabled = 1`). |
 | G42 | Physical grenades (`game/Throwables`, `core/ik/Throwing`) | **n/a**: ME2 has no grenades | **n/a**: ME3's grenades are powers (research/le3-powers.md) | — |
-| G43 | Melee gesture (`game/Throwables` `RouteMelee`, the fist) | **missing** | **forked** U: `game/Melee` (LE3-only) on `core/ik/Throwing`, a second gesture-to-dispatch path; opt-in | Forks 12; research/le3-melee-audit.md; L3-7. |
+| G43 | Melee gesture (`game/Melee` `Strike`, `core/ik/Melee` `Gestures`; ME1's feed in `game/Throwables`) | **adapted** V: ME1's rules and defaults since 2026-11-17 (lane MEL, the owner: melee is ME1's fist gesture; research/20 "The trilogy's one path"): fed by `melee::Tick`; the adapter `TryMelee` (the held weapon's `MeleePowerName`, Pistol_Whip on the heavy pistol) and its BioPower's cooldown. Seen on Save 4 (`tools/le2-halcyon-run/melee.ps1`): a strike with the pistol out hit an assault drone (100% -> 5%); a replayed open left hand with the right grip on the pistol: `TryMelee`, the game's melee script run; a replayed right fist with the pistol out refused (the trigger fires the gun, ME1's rule). **Forced by the game:** no punch with the weapon away (holstered, ME2 holds no weapon and its melee is the held weapon's); the fist is refused by name. B kept from the game (`melee-b.ps1`, with its canary) | **adapted** U: the same dispatcher and gesture core since 2026-11-17 (Forks 12 closed): ME3's native admission and `TryMelee`/`TryHeavyMelee` as its adapter, its staged rules (neutral priming, the heavy chamber) kept and opt-in (question 7); new for ME3: ME1's enemy in reach and the shared cooldown; no punch with the weapon away | ME3: research/le3-combat-fixtures.md "Melee on the first combat save". |
 | G44 | The Mako: aim, controls, cockpit, gunner, panel, hazard (`game/Mako*`, `game/Cockpit*`, `core/vr/MakoControls`) | **missing**: the Hammerhead, with ME1's Mako controls and cockpit, has its own later pass (continuation plan M6) | **n/a**: no player vehicle; the Atlas has no adapter (LE3 plan: "safe fallback") | — |
 | G45 | Focus pause off (`game/FocusPause`) | **missing** | **missing** | First check whether ME2/ME3 freeze without window focus (`bPlayersOnly`). |
 | G46 | Our ASI loader (`src/loader`) | **adapted** U: `LoaderCore.cpp` maps MassEffect2.exe, but every ME2 run used LEBinkProxy | **adapted** U: maps MassEffect3.exe | A run with our `bink2w64.dll` in that game's Binaries. |
@@ -422,9 +422,12 @@ Each item: the copies, then what unifying would take. Line counts are as of `cca
       session's; only `Guard` changed).
     - LE2 could use it too: the names need `python tools/le2-name-audit.py --game LE2` first (ME2's custom action is on
       the controller, `SFXPlayerController.CurrentCustomAction`).
-12. **Melee routing.** `game/Melee.cpp` (LE3) and `game/Throwables` `ik::throwing::RouteMelee` (LE1) are two
-    gesture-to-dispatch paths over the same swing detector. **To unify:** LE1 moves onto `ik::melee::Gestures` with a
-    per-game dispatch.
+12. **Melee routing. Unified 2026-11-17 (lane MEL; research/20 "The trilogy's one path").** Until then `game/Melee.cpp`
+    (LE3) and `game/Throwables` `ik::throwing::RouteMelee` (LE1) were two gesture-to-dispatch paths over the same swing
+    detector, and ME2 had none. Now `ik::melee::Gestures` is the one gesture core (rules `Physical`: ME1's two detectors
+    exactly, compared in `tests/MeleeTests.cpp`; `Staged`: ME3's opt-in rules) and `game/Melee` the one dispatcher
+    (`Strike`: ME1's order of reasons) over a per-game adapter; `game/Throwables` keeps only ME1's feed (its body frame, the
+    grenade hand suppressed). ME3 keeps its staged rules until the owner answers question 7 (docs/trilogy-plan.md).
 13. **Menu glue.** `plugin/MenusLe2.cpp` (LE2 and LE3) says in its header that it is LE1's menu glue: the
     `HalcyonBridge` `OnFrameBegun`/`OnMenuKey`/merge parts, plus HalcyonOverlays' layer composition. **To unify:**
     `HalcyonBridge` calls `MenusLe2` (renamed `Menus`).
@@ -558,6 +561,11 @@ The plans and handoffs this draws on (none was changed):
 
 These are concrete, each with its check. None was fixed here (read-only audit).
 
+- **The reflection's class index outlived a load (every game). Fixed 2026-11-17 (lane MEL):** ME2 crashed in the console's
+  `mevr instances` after a save's reload: `FindClass` fell back to a level's freed class kept in the by-name index (rebuilt only
+  when GObjects' count changed). Entries are checked (alive, a class, that name) and the index dropped on every world change
+  (`ue3::runtime::NoteWorld`); `TestStaleClassIndex`; gotcha `stale-class-index`.
+
 - **The sequels turned character shadows off for nothing (R11). Fixed 2026-11-16 (lane GF2):** the entry follows the
   host's `secondEyeIsReplay` (HostServices v43), and elsewhere the player's own value is put back. On ME2 the key alone
   showed no visible change in the one scene tried; the ground shadows there are `DynamicShadows` (off on every game).
@@ -617,8 +625,8 @@ defined in the tool's header:
 <!-- parity:summary -->
 | game | renderer | host plugin files | host core files | services served | src/game + src/engine modules by status | common seams called | own seams |
 |---|---|---|---|---|---|---|---|
-| LE1 | halcyon-le1 | 73 | 71 | 58 | run 67, out 4, ungated 25, unbuilt 4 | 22 of 42 | 89 |
-| LE2 | halcyon-le2 | 68 | 57 | 49 | run 44, ready 10, out 19, ungated 21, unreferenced 2, unbuilt 4 | 36 of 42 | 4 |
+| LE1 | halcyon-le1 | 73 | 71 | 58 | run 68, out 3, ungated 25, unbuilt 4 | 22 of 42 | 89 |
+| LE2 | halcyon-le2 | 68 | 57 | 49 | run 45, ready 10, out 18, ungated 21, unreferenced 2, unbuilt 4 | 36 of 42 | 4 |
 | LE3 | halcyon-le3 | 71 | 57 | 54 | run 46, ready 10, out 16, ungated 23, unreferenced 2, unbuilt 3 | 40 of 42 | 2 |
 <!-- /parity:summary -->
 
@@ -895,7 +903,7 @@ Helpers applied, in order:
 | `game/Mako` | run | out | out |
 | `game/MakoControls` | run | out | out |
 | `game/MakoGunner` | run | out | out |
-| `game/Melee` | out | out | run |
+| `game/Melee` | run | run | run |
 | `game/MenuPause` | run | run | run |
 | `game/OmniTool` | run | run | run |
 | `game/Player` | run | run (ME1-only handles) | run (ME1-only handles) |

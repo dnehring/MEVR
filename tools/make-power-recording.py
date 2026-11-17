@@ -28,6 +28,11 @@ EVENTs (repeatable, any order):
   rrest:A:B           the right hand back to its rest and level between A and B
   walk:A:B:X,Y        the left stick held at X,Y (-1..1; Y forward) from A to B: Shepard walks (with the wheel closed)
   a:A:B               the right A (primary) held from A to B: the game's use
+  rtrigger:A:B        the right trigger pulled from A to B (with the weapon out it fires; repeat it to empty a magazine)
+  rgrip:A:B           the right grip squeezed from A to B (with rtrigger: a fist, game/Melee's punch with the weapon away)
+  rpunch:A            the right hand thrust 0.32 m forward (-Z) in 0.08 s from A (4 m/s): a melee stroke (research/20); add
+                      rrest after it to bring the hand back
+  lpunch:A            the same for the left hand (back with lrest)
 --yaw DEG turns the whole recording (head and hands) about the vertical axis by DEG (positive: to the left), to face a target
 the view's yaw doesn't. --seconds: the length (default 12)."""
 import math
@@ -107,7 +112,7 @@ def parse(args):
         parts = a.split(":")
         kind = parts[0]
         nums = parts[1:]
-        if kind in ("x", "ltrigger", "lgrip", "rb", "lrest", "rrest", "a") and len(nums) == 2:
+        if kind in ("x", "ltrigger", "lgrip", "rb", "lrest", "rrest", "a", "rtrigger", "rgrip") and len(nums) == 2:
             events.append((kind, float(nums[0]), float(nums[1])))
         elif kind in ("wheel", "stick") and len(nums) == 4:
             events.append((kind, float(nums[0]), float(nums[1]), int(nums[2]), int(nums[3])))
@@ -115,7 +120,7 @@ def parse(args):
             events.append((kind, float(nums[0]), float(nums[1]), tuple(float(v) for v in nums[2].split(","))))
         elif kind in ("rpitch", "lpitch") and len(nums) == 3:
             events.append((kind, float(nums[0]), float(nums[1]), float(nums[2])))
-        elif kind == "push" and len(nums) == 1:
+        elif kind in ("push", "rpunch", "lpunch") and len(nums) == 1:
             events.append((kind, float(nums[0])))
         else:
             raise SystemExit(f"can't read {a!r} (see --help)")
@@ -143,6 +148,7 @@ def main():
             right_pitch = left_pitch = 0.0
             lb = rb = VALID
             ltrig = lgrip = 0.0
+            rtrig = rgrip = 0.0
             sx = sy = 0.0
             for e in ordered:
                 kind, start = e[0], e[1]
@@ -156,6 +162,10 @@ def main():
                     rb |= SECONDARY
                 elif kind == "a" and start <= t < e[2]:
                     rb |= PRIMARY
+                elif kind == "rtrigger" and start <= t < e[2]:
+                    rtrig = 1.0
+                elif kind == "rgrip" and start <= t < e[2]:
+                    rgrip = 1.0
                 elif kind == "walk" and start <= t < e[2]:
                     sx, sy = e[3][0], e[3][1]
                 elif kind == "wheel":
@@ -181,6 +191,10 @@ def main():
                     left = lerp(left, LEFT_REST, weight(t, start, e[2]))
                 elif kind == "push" and t >= start:
                     left = lerp(left, (left[0] + 0.10, left[1], left[2] - 0.28), weight(t, start, start + 0.115))
+                elif kind == "rpunch" and t >= start:
+                    right = lerp(right, (right[0], right[1], right[2] - 0.32), weight(t, start, start + 0.08))
+                elif kind == "lpunch" and t >= start:
+                    left = lerp(left, (left[0], left[1], left[2] - 0.32), weight(t, start, start + 0.08))
                 elif kind == "rhand" and t >= start:
                     right = lerp(right, e[3], weight(t, start, e[2]))
                 elif kind == "rrest" and t >= start:
@@ -197,7 +211,7 @@ def main():
             rpose = (*quat_yaw_pitch(yaw, right_pitch), *turn(right, yaw))
             f.write(FRAME.pack(int(t * 1e9), 3, *eyes[0], *fov, *eyes[1], *fov,
                                lb, ltrig, lgrip, sx, sy, *lpose, *lpose,
-                               rb, 0.0, 0.0, 0.0, 0.0, *rpose, *rpose))
+                               rb, rtrig, rgrip, 0.0, 0.0, *rpose, *rpose))
     print(f"{out}: {n} frames at {HZ:g} Hz ({seconds:g} s), turned {yaw_deg:g} deg; events: "
           + ", ".join(":".join(str(v) for v in e) for e in events))
     return 0

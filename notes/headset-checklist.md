@@ -869,6 +869,12 @@ stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs 
   hidden, the shields come back sooner than standing in the open; a flanking enemy in view takes it away.
 - [ ] Powers (T44; research/55 "Mass Effect 2"): the push at a hostile, the chest and gun gestures' targets, the coach card.
 - [ ] Squad (T45, T46): the weapon menu at the left hand, the placement ring and arc, a hold and a call back.
+- [ ] Melee by gesture and B (T34; research/20 "The trilogy's one path", lane MEL 2026-11-17; seen on the fake headset): ME1's
+  rules on ME2. With the gun out, a fast stroke of either hand near an enemy (within 2 m) is the game's melee (the pistol whip) and
+  hurts it; the right hand with its finger on the trigger fires instead. With the weapon away there is no melee on ME2 (the game's
+  melee is the held weapon's, and a holstered Shepard holds none): a fist does nothing there. B never melees on foot any more: holding B
+  is squad placement's arc and a double B calls the squad back, and neither swings. Flailing gives at most one strike a second or
+  so; aiming, firing and reaching for a holster never strike by themselves. Say whether 2 m and the punch's speed feel right.
 - [ ] Voice and Thespian (T47, T48): a real microphone at the ear; the reply panel's place and legibility on the cinema
   screen.
 - [ ] Galaxy map (T42; docs/le2-m6-implementation-guide.md G): table or projector alignment, labels in both eyes, seated
@@ -926,7 +932,10 @@ stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs 
 - [ ] Cinema (T15; research/le3-dialogue-cinema.md): the screen fixed in the room, the reply wheel and subtitles readable,
   the interrupt prompt and its triggers.
 - [ ] Melee and traversal (T34, T33; research/le3-melee-audit.md, research/le3-traversal-adapter.md): no accidental
-  strike while handling the gun; the horizon and heading through a ladder, a vault and a roll.
+  strike while handling the gun; the horizon and heading through a ladder, a vault and a roll. ME3's melee is opt-in until the
+  owner answers question 7 (`mevr melee requests on`, `gestures on`), and B is squad placement's on ME3 too since 2026-11-17
+  (lane MEL): by default ME3 has no melee on foot. Once on: the checks of research/le3-combat-fixtures.md "Melee on the first
+  combat save", then the feel.
 - [ ] Galaxy projector (T42; docs/galaxy-projector-handoff.md step 4): alignment with the physical projector, legibility,
   comfort, GPU cost.
 - [ ] Performance (T07, T10; docs/me3-overall-goal-handoff.md section 4): frame pacing in a real headset; the desktop
