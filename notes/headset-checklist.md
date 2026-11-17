@@ -822,8 +822,9 @@ stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs 
   resume; no doubled or swimming scenery.
 - [ ] Life-size stereo (T09; research/30 section 9, lane LS 2026-11-16): the world at its real size and depth (a squadmate
   at arm's length reads at arm's length, a doorway its height, the pistol in the hand not "huge"), far scenery relaxed at
-  infinity, leaning forward 1:1, comfortable after ten minutes; on a Quest (mode 2, each eye's own frustum) nothing pops
-  in at the outer edge of either eye.
+  infinity, leaning forward 1:1, comfortable after ten minutes; each eye now renders its own frustum in a wider window:
+  nothing pops in at the outer edge of either eye (a PS VR2's and a Quest's eyes are asymmetric, the fake headset's not),
+  and the view reaches each eye's full width.
 - [ ] Floor lock and height (T21; research/le2-renderer-integration.md "What is left of M2"): the eye height standing,
   seated and physically crouched; the calibration's manual height once it is wired.
 - [ ] Guided calibration (T27): the whole run with each controller type; the fake headset has no interaction profile, so

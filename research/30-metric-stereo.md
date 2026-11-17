@@ -269,7 +269,8 @@ ME2 repeats ME1's upstream error (a pistol at 0.5 m reads 0.64 m: "the pistol lo
   ViewMatrix's translation row, both products) in place of Halcyon's half eye, before head look (both are translations
   along the pre-look axes; the head rotation then turns the view about the eye's own place); `ApplyEyeFrustum` in mode 2
   writes the eye's own off-centre frustum into the GPU matrix only, scaled by the renderer's zoom (ADS) so a zoom
-  magnifies alike in both modes, and logs whether the CPU window holds it.
+  magnifies alike in both modes, and logs whether the CPU window holds it. The pass after the cinema screen's branch
+  and lane SP's view-state block; with life-size off it is Halcyon's `ApplyEyeOffset` exactly.
 - **The lean** from the eyes' centre (upstream: the left eye) at 1:1 forward (upstream x3), in `ApplyHeadPosition`, the
   view published to the mod (`OnViewBuilt`) and ME3's GUI marker camera alike; `PosScale` pinned to 2 (100 uu/m, the
   scale both sequels' deploys already had, and the hands' and the floor lock's).
@@ -280,17 +281,41 @@ ME2 repeats ME1's upstream error (a pistol at 0.5 m reads 0.64 m: "the pistol lo
   `ModernBaseline` pins `sfr2Metric` (the owner's rule is the yes). For a before/after measurement, `[Debug]
   upstreamStereo = 1` in `ASI\<GAME>MEVR.ini`, or in a development build `%LOCALAPPDATA%\MEVR\stereo.measure` with
   `[Stereo] mode = upstream` (the ME3 preview runner keeps LE3MEVR.ini exact), brings back upstream exactly; `mode =
-  cover` (or `[Debug] stereoWindowCoversEyes = 1`) widens the window on every runtime as ME2/ME3 already do on Meta's,
-  for mode 2's measurement. Logs: `[MEVR-STEREO] life-size stereo: ...` at the start, then ME1's plan and submit lines
+  nocover` (or `[Debug] stereoWindowCoversEyes = 0`) keeps the renderer's own window (below). Logs: `[MEVR-STEREO] life-size stereo: ...` at the start, then ME1's plan and submit lines
   and the render side's `pass N (eye E) from its eye` and `pass N frustum` lines; the snapshot's `"stereo"` block on
   the sequels too.
 
 **Each eye's own frustum, and the window.** The sequels' symmetric window is the left eye's vertical half angle with
 the horizontal from the eye's recommended aspect, not the eyes' union (ME1's): on the fake headset +-41.6 x +-45
-degrees for eyes of +-45 x +-45, on a PS VR2 narrower than the eyes' outer edge too. An eye rendered through its own
-frustum in that window would be culled at its outer edge (objects popping in), so the plan uses mode 2 only where the
-window holds both eyes, which is where the renderers already cover the eyes by one uniform factor (Meta's runtime with
-`QuestFovMatch`, pinned on by ME2's baseline: a Quest gets mode 2). Elsewhere mode 1, with the plan line saying why.
-Covering the eyes everywhere would be ME1's behaviour, but the sequels' `[UIRATIO]` scales the game's UI by
-tan(game) / tan(render) per axis, so a window widened by k shrinks the HUD on the panel by 1/k (1.125 on the fake
-headset, about 1.4 on a PS VR2): an owner decision, measured in 9.3.
+degrees for eyes of +-45 x +-45 (so 3.4 degrees of each eye's side were never shown), on a PS VR2 narrower than the
+eyes' outer edge too. An eye rendered through its own frustum in that window would be culled at its outer edge
+(objects popping in), so the plan uses mode 2 only where the window holds both eyes (`windowHoldsEyes`), and with
+life-size on the renderers widen their window on every runtime by the one uniform factor they already used on Meta's
+runtime (`[LINKFOV2]`), until it holds both eyes: ME1's union window. The worry was `[UIRATIO]` (the sequels scale the
+game's UI by tan(game) / tan(render) per axis); measured in 9.3, the HUD panel is pixel-identical with and without the
+widening. `[Debug] stereoWindowCoversEyes = 0` keeps the renderer's own window (mode 1 except on Meta's runtime).
+The widened window lets the CPU cull a wider window (vertically 1.125x on the fake headset, about 1.4x on a PS VR2):
+more objects pass, a cost lane SP's levers can measure; the GPU renders each eye's own frustum at the same size.
+
+### 9.3 Measured (fake headset, 2026-11-16)
+
+ME2, Save 4 (Freedom's Progress, standing in the open), the head held at 0, 35 and -40 degrees by replayed recordings
+(`tools/make-look-recording.py --yaw`), one snapshot each, `tools/stereo-check.py`'s median over its grid on far
+scenery (crossed +, divergent -; a few px crossed is right for scenery tens of metres away):
+
+| ME2 | yaw 0 | yaw 35 | yaw -40 |
+|---|---|---|---|
+| upstream (`stereo.measure mode = upstream`) | -72 px = -0.90 deg per eye | -60 px (1 match) | -79 px = -0.98 deg |
+| life-size, the renderer's window (mode 1) | +6 px = +0.07 deg | +5 px | +2 px |
+| life-size, the window holding the eyes (mode 2, now the default) | +2 px = +0.03 deg | +7 px | +5 px |
+
+- Upstream matches the model's 1.0 degree per eye of divergence (40 px of 4096 each).
+- Life-size: the plan line `stereo mode 2: life-size, each eye's own frustum; eye distance 0.0640 m = 6.40 uu at 100.0
+  uu/m`; the eyes turned with the head (at yaw 35 the left eye 1.84 uu forward); the declared eyes 6.4 cm apart; the
+  render side `pass 0 frustum: tan L -1.0000 R 1.0000 ...; the CPU window +-1.0000 x +-1.1250 holds it`; each eye
+  declares its own +-45 degrees (upstream +-41.6).
+- The HUD panel (`-hud.png`): life-size against upstream 0.4% of pixels apart by more than 32/255 (what animates);
+  mode 2 against mode 1 0.0%, the same bounding box and coverage.
+- No mesh missing between the eyes (the pair at yaw 0 looked at side by side; each pass culls with its own CPU window,
+  which holds its frustum). With asymmetric eyes (a PS VR2) the culling edge is untested: the fake headset's eyes are
+  symmetric, and no recording with per-eye FOVs was at hand.
