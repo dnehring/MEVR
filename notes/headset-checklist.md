@@ -887,9 +887,13 @@ stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs 
 - [ ] The game's screens on the wrist and in the room (T39; research/le3-native-gui.md "The game's screens on ME3", lane OM2
   2026-11-16): the Mission Computer and the map projected from the left wrist with the rail beside them, the War Terminal's
   War Assets standing toward the console, the Normandy visible behind them (not the dark nebula), the squad record still on
-  the flat panel. Known on the fake headset: a pointer click on a world screen doesn't open the page yet (use the rail's
-  entries), and Shepard's body may fill part of the view behind a screen (the GUI camera's eye). Report legibility, reach,
-  and whether the screen's place feels right.
+  the flat panel. Since lane OM3 (2026-11-17; research/le3-native-gui.md "The movie's mouse and the view behind a
+  screen"): a ray and trigger or a fingertip press on a button of the Mission Computer opens its page, War Assets' entries
+  take clicks, and with a screen up your view stays where you stood (your arm on the wrist screens; at the War Terminal
+  Shepard's body is hidden while War Assets stands, or his arm on the console would cover it). Check: clicks land where the
+  dot is, after pressing B too (the game switches between its pad and mouse modes); nothing of Shepard in front of War
+  Assets; no jump of the view as a screen opens or closes. Report legibility, reach, and whether the screen's place feels
+  right.
 - [ ] Cinema (T15; research/le3-dialogue-cinema.md): the screen fixed in the room, the reply wheel and subtitles readable,
   the interrupt prompt and its triggers.
 - [ ] Melee and traversal (T34, T33; research/le3-melee-audit.md, research/le3-traversal-adapter.md): no accidental
