@@ -290,3 +290,33 @@ What each must show (`holsters-<time>\lines.txt`, `reload-<time>\lines.txt` and 
    status`: `no gun`), the hip grab drawing the pistol again (`drawing the pistol (BioPlayerController.SwitchWeapon; was holstered)`,
    `in hand after N s`), and no stuck state: a power cast, a melee, cover and a reload with the gun away and after, the HUD's weapon
    panel back. Only then make `le3PutAway = 1` ME3's default (ME1's behaviour) and note it in docs/trilogy-plan.md T25.
+
+### The powers and the squad on the first combat save (lane SQ, 2026-11-17)
+
+ME1's power wheel, the lock and push, the self-cast gestures, the squad's placement by an arc and the flat squad order
+run on ME3 through the same scripts as on ME2 (`tools/le2-halcyon-run/powers.ps1`, `place.ps1`, recordings from
+`tools/make-power-recording.py`; research/55 "The whole wheel on Save 4", research/54 "ME2 placement and orders on Save 4"). In the same
+renderer-preview stretch as the weapon checks above (after them, or in a stretch of its own):
+
+```powershell
+$t = 'tools\le2-halcyon-run'
+# (prep, launch, load as above)
+& "$t\powers.ps1" -Holder $h -Game LE3                       # the wheel, every tile, the tap, the coach, every self-cast, every push
+& "$t\place.ps1" -Holder $h -Game LE3                        # the squad wheel, the arc to the ring, one squadmate, double B, the left grip
+tools\console.ps1 "mevr squad" "mevr context" "mevr powerwheel roster"
+```
+
+What each must show (`powers-<time>\verdicts.txt` and `lines.txt`, `place-<time>\verdicts.txt` and `lines.txt`):
+1. `roster on the wheel (N)`: the save's class powers that ME3's HUD shows, `No power` last; `PASS the wheel opens on X`.
+2. `PASS tile i (<power>) by the hand|stick` for every tile; the coach's snapshot (`snapshots.txt`, `coach`) shows the card
+   where the wheel was.
+3. Self-casts (ME3's buffs on the chest, ammo powers on the drawn gun, Unity raised above the head: `SelfGestureFor`):
+   `PASS <power> by the open hand ...`, the log's `gesture attempt: ... cast` and then `gesture target hidden: cooling down`.
+4. Every targeted power: `aiming at <pawn>, N m`, then `PASS <power> by the lock and the push` with the log's `<power> locked
+   on <pawn>` and `push: <power> at <pawn> ...: native request accepted`. With no hostile in range the push is refused by
+   name (`needs a locked enemy`). `-Drone` is Freedom's Progress's fixture only: on ME3 stand in sight of a hostile.
+5. `place.ps1`: `PASS B held, the squad picked up, the arc let go: both go to the ring` (each `fromPointM` under 1.5; ME1
+   measured 0.6 m), `PASS the hand moved left: the first squadmate alone`, `PASS B double-tapped`; the log's `squad place:
+   <name>'s AI after the order: ...` says what each AI did with the order (state, queued orders, hold point). The move
+   marker (`UpdateMoveToIndicator`, placed before every hold order) is ME3's too; a `the game's move marker ... wasn't placed`
+   line is a failure to report.

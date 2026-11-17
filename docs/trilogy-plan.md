@@ -639,12 +639,15 @@ These unblock the most: almost every other entry gets smaller once they land.
 ### Powers, the squad, voice, conversations
 
 #### T44 Powers at the left hand [G29; Forks 6]
-- **State:** LE1 done · LE2 verify · LE3 verify
+- **State:** LE1 done · LE2 headset · LE3 verify
 - **Lives in:** `game/PowerWheel`, `core/vr/PowerWheel`, `plugin/PowerWheel`; ME3's facts in `game/Le3Powers.hpp`.
 - **Left:** one sequel power reader (ME2's roster is read twice: `le2_squad::Powers` and `PowerWheel`'s own).
-  **ME2:** a push that lands on a hostile, controller selection, evolved powers, other weapons (research/55 "Still to
-  verify"). **ME3:** everything past the metadata: a cast, its target, its cooldown, a grenade refusal.
-- **Waits for:** T05's fixtures. **Who:** GF (the reader); the checks have nobody.
+  **ME2:** seen by script on Save 4, 2026-11-17 (lane SQ, `tools/le2-halcyon-run/powers.ps1 -Drone`: every tile by the
+  hand and the stick, the tap, the coach, chest and gun self-casts, the lock and the push at a drone; research/55 "The
+  whole wheel on Save 4"); left: Slam's effect on its target, evolved powers, other weapons, the headset. **ME3:** the
+  roster read on Save 31; everything past it waits for the combat save (`powers.ps1 -Game LE3`,
+  research/le3-combat-fixtures.md).
+- **Waits for:** T05's fixtures (ME3). **Who:** GF (the reader); the checks: SQ.
 
 #### T45 The squad's weapons wheel [G30, G57; Forks 5]
 - **State:** LE1 build · LE2 build · LE3 build
@@ -659,12 +662,18 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Who:** GF.
 
 #### T46 Squad orders, placement by an arc, the squad's answer [G31, G32, G34]
-- **State:** LE1 done · LE2 build · LE3 build
+- **State:** LE1 done · LE2 verify · LE3 build
 - **Lives in:** `game/SquadContext`, `game/SquadOrders`, `game/SquadPlace`, `game/SquadAck`, `core/vr/Squad*`; ME2's
   facts in `game/Le2Squad.hpp`.
-- **Left, ME2 and ME3:** none of it has an in-game result. The acknowledgement doesn't exist on either
-  (`SquadHandleChatterEvent` and `PlaySoundSet` are in neither game). Placement is opt-in (`[SquadOrders] place = 1`)
-  where ME1's is on: flipping it is the owner's yes after a seen result (rule 19). **ME3 adds** healing and revive.
+- **Done 2026-11-17 (lane SQ):** ME2's placement seen on Save 4 (`tools/le2-halcyon-run/place.ps1`): the squad wheel,
+  the arc, both squadmates holding 0.27-0.38 m from the ring, one alone, the double B back; the hold order needed the
+  squadmate's move marker placed first (`BioPlayerController.UpdateMoveToIndicator`, `le2_squad::PlaceMoveIndicator`,
+  ME3's too). Placement is on by default on ME2 as on ME1 (rule 19: ME1's value). research/54 "ME2 placement and orders
+  on Save 4".
+- **Left, ME2 and ME3:** attack and power orders in combat; ME3's everything (the combat save: `place.ps1 -Game LE3`).
+  The acknowledgement (G34): ME2's AI already answers through `SFXGame.TriggerVocalizationEvent` (follow 8, move 7, take
+  cover 9); the port of `game/SquadAck` listens for that instead of ME1's `SquadHandleChatterEvent`. **ME3 adds** healing
+  and revive.
 - **Closes when:** each living squadmate is seen to attack the target given, cast the power given, walk to the ring and
   hold, and come back on a double tap. Detail for ME2: [M6 guide](le2-m6-implementation-guide.md) package C and
   [le2-m6-squad-implementation.md](le2-m6-squad-implementation.md); for ME3: research/le3-squad.md.
@@ -984,7 +993,7 @@ Each with both sides and the side this page takes.
 | 12 | Vehicles and the galaxy "on a cinema screen / panel to start"; "physical heat-sink reload everywhere", ME1 included; one holster layout with the SMG at the left hip (trilogy-design) | ME1 shipped a cockpit, a projector hologram, the vent instead of a reload, and the shotgun at the left hip | what ME1 shipped is the reference (rule 1); trilogy-design is historical |
 | 13 | "Do not enable the current non-LE2 Thespian branch: it contains LE1 assumptions" (LE3 plan "Cinema and dialogue") | the ME3 handoff and the ledger record ME3's own Thespian adapter reading three native wheels | the later one: the adapter replaced that branch |
 | 14 | "M6 follows the first ME2 release", and that release has M3, which includes holsters (M3.4) and the reload (M3.5) (continuation plan M6, M7) | on 2026-11-15 the owner authorized M6's parity work in parallel and its packages A-G were built; holsters are still missing and the reload is linked into nothing (ledger G08, G41) | both stand: M6's code is on main, and T25 and T26 are still owed to ME2's first release |
-| 15 | Squad placement is on by default (ME1) | opt-in on both sequels | not a disagreement to settle here: an unseen feature stays off until seen (rules 15, 19) |
+| 15 | Squad placement is on by default (ME1) | opt-in on both sequels | settled 2026-11-17: on by default on ME2 once seen working on Save 4 (T46; ME3's code default was already on) |
 
 ## Dropped, with reasons
 
