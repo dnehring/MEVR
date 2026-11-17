@@ -1666,7 +1666,7 @@ if (MEVR_BUILD_TESTS)
     target_compile_options(mevr-floor-lock-host-tests PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
     add_dependencies(mevr-tests mevr-floor-lock-host-tests)
     add_test(NAME mevr-floor-lock-host COMMAND mevr-floor-lock-host-tests)
-    foreach(selection_game IN ITEMS LE1 LE3)
+    foreach(selection_game IN ITEMS LE1 LE2 LE3)
         add_executable(mevr-selection-gaze-${selection_game}-tests tests/SelectionGazeTests.cpp)
         target_include_directories(mevr-selection-gaze-${selection_game}-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
         target_compile_definitions(mevr-selection-gaze-${selection_game}-tests PRIVATE

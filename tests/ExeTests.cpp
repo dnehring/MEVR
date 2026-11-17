@@ -204,8 +204,8 @@ void TestTables() {
     }
     namespace a2 = engine::addresses::le2;
     for (std::uint32_t rva : {a2::kProcessEvent, a2::kCallFunction, a2::kGameEngineTick, a2::kCalcSceneView,
-             a2::kViewportDraw, a2::kViewportDrawEnd, a2::kGObjects, a2::kNamePools, a2::kGMalloc, a2::kAppMalloc, a2::kAppFree,
-             a2::kGNatives}) {
+             a2::kViewportDraw, a2::kViewportDrawEnd, a2::kUpdateSelection, a2::kGObjects, a2::kNamePools, a2::kGMalloc,
+             a2::kAppMalloc, a2::kAppFree, a2::kGNatives}) {
         CHECK(listed(a2::kTable, rva));
     }
     // plugin/RenderLevers finds each of its addresses by the row's name, and the names are LE1's (research/
@@ -225,7 +225,7 @@ void TestTables() {
     }
     namespace a3 = engine::addresses::le3;
     for (std::uint32_t rva : {a3::kProcessEvent, a3::kCallFunction, a3::kGameEngineTick, a3::kCalcSceneView,
-             a3::kViewportDraw, a3::kViewportDrawEnd, a3::kUpdateSkelPose, a3::kGObjects, a3::kNamePools,
+             a3::kViewportDraw, a3::kViewportDrawEnd, a3::kUpdateSkelPose, a3::kUpdateSelection, a3::kGObjects, a3::kNamePools,
              a3::kGMalloc, a3::kAppMalloc, a3::kAppFree, a3::kGNatives}) {
         CHECK(listed(a3::kTable, rva));
     }

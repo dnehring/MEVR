@@ -94,13 +94,15 @@ void ForgetSession() {
     gInteractionSwapchain.Forget();
 }
 
-XrCompositionLayerQuad const* Interaction(Common const& c, bool wanted, hud_panel::Masks& masks) {
+XrCompositionLayerQuad const* Interaction(Common const& c, bool wanted, hud_panel::Masks& masks, hp::Layout layout) {
     namespace il = vr::interact;
     il::Label const label = il::Latest();
     if (!wanted || label.size != sizeof(il::Label) || !label.visible || gInteractionSwapchain.Refused()) return nullptr;
-    // LE1's top-centre band is not ME2's layout. Require a measured band supplied by the operator until the native
-    // ME2 prompt is captured and its default is verified. The native HUD remains intact without it.
-    il::Rect const rect = il::ExplicitCrop(label);
+    // The band by hand ([Interact] crop), else the game's measured one: each game's prompt is its HUD's top-centre widget
+    // (the stage across the frame's width), each band measured per game (hp::DefaultLabelCrop, research/40 section 6).
+    il::Rect const explicitRect = il::ExplicitCrop(label);
+    il::Rect const rect = explicitRect.Valid() ? explicitRect
+                                               : hp::DefaultLabelCrop(hud_panel::Width(), hud_panel::Height(), layout);
     if (!rect.Valid()) return nullptr;
     il::Pixels const px = il::ToPixels(rect, hud_panel::Width(), hud_panel::Height());
     if (px.width == 0 || px.height == 0) return nullptr;

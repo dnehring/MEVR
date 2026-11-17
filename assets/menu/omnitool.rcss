@@ -216,3 +216,47 @@ body.art .entry.on:hover { decorator: image(mevr:me1-tab-selected-hover); }
 	}
 	.entry.close .ico { color: #E1B57C; }
 }
+
+/* ME3's look (research/le3-native-gui.md "The rail in ME3's look"), sampled from ME3's own Mission Computer in the game (its
+ * pause menu, Save 31, 2026-11-16): buttons a teal-blue gradient (#04567F into #04213C) with a bright cyan edge (#12A8D4,
+ * #0591C5) and near-white type (#DEF5FE) over deep navy (#091024 into #040819); the selected entry deep red (#3E0516 into
+ * #960C0D, its edge #B60504) with gold type (#FFCA65). ME3's frames and tabs are bitmap fills and its fonts a library the
+ * game doesn't keep as an object, so the rail keeps its own shapes and fonts in these colours. */
+@media (theme: me3) {
+	body {
+		--rail-label: #DEF5FE;
+		--rail-art-label: #DEF5FE;
+		--rail-title: #FFFFFF;
+		--rail-glow: rgba(18,168,212,40%);
+		--rail-ring: #9EE6FA;
+		--rail-ring-fill: rgba(18,168,212,28%);
+	}
+	.panel { decorator: bevel(30dp rgba(9,16,36,94%) rgba(4,8,25,94%) #0591C5 2dp rgba(18,168,212,32%) 8dp); }
+	.sub { color: #7FBFD8; }
+	.rule { background-color: rgba(18,168,212,40%); }
+	.entry { decorator: slant(16dp rgba(4,86,127,95%) rgba(4,33,60,95%) #12A8D4 #0591C5 2dp transparent 0dp); }
+	.entry:hover {
+		color: #FFFFFF;
+		decorator: slant(16dp rgba(8,120,170,97%) rgba(5,52,90,97%) #7FE0FA #22B4E0 2dp rgba(18,168,212,35%) 6dp);
+	}
+	.entry:active { decorator: slant(16dp #0C8CC4 #05406E #C8F4FF #48C8EE 2dp rgba(60,200,240,40%) 8dp); }
+	.entry.on {
+		color: #FFCA65;
+		font-effect: glow(1dp 4dp 0dp 0dp rgba(255,150,60,45%));
+		decorator: slant(16dp #3E0516 #960C0D #E0140C #8A0409 2dp rgba(200,16,10,40%) 9dp);
+	}
+	.box { decorator: chamfer(7dp rgba(4,33,60,85%) rgba(4,8,25,85%) rgba(18,168,212,75%) rgba(5,145,197,60%) 1.5dp); }
+	.entry.on .box { decorator: chamfer(7dp rgba(255,202,101,18%) rgba(255,202,101,6%) #FFCA65 #E89A3A 1.5dp); }
+	.ico { color: #6FD2F2; }
+	.entry:hover .ico { color: #DEF5FE; }
+	.entry.on .ico { color: #FFCA65; }
+	.entry.close {
+		color: #7FBFD8;
+		decorator: slant(12dp rgba(4,40,68,92%) rgba(4,14,32,92%) #0A7EAE #054A70 1.5dp transparent 0dp);
+	}
+	.entry.close:hover {
+		color: #FFFFFF;
+		decorator: slant(12dp rgba(8,100,150,94%) rgba(5,40,72,94%) #5CCDF2 #1A93C2 1.5dp transparent 0dp);
+	}
+	.entry.close .ico { color: #7FBFD8; }
+}

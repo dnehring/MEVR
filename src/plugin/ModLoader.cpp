@@ -566,17 +566,20 @@ std::uint32_t HostTakeGameMenuRequest() {
 }
 #if defined(MEVR_WITH_HALCYON_LE2)
 // M4.3 (research/le2-menus.md "ME2's screens on the wrist"): the game's screens on the wrist, as LE1's WithWorldUi gives them
-// (v27 setWorldUi, v34 reserveWorldUi, the rail's requests with their origin), and the game pointer's GUI events (v30).
+// (v27 setWorldUi, v34 reserveWorldUi, the rail's requests with their origin).
 void HostSetWorldUi(vr::world_ui::State const* state) {
     world_ui::Publish(state);
 }
 std::uint32_t HostTakeGameUiRequest() {
     return main_menu::TakeGameRequestValue();
 }
+#endif
+// The game pointer's input as the game's own GUI events (v30, research/57 section 6), on both sequels: the mod's
+// game/GuiCursor translates the shared queue into each game's BioGuiEvents (ME3: research/le3-native-gui.md) and polls it
+// only while its native GuiKey contract is ready, so a missing consumer keeps GamePointer's SendInput fallback.
 std::uint32_t HostTakeGuiEvents(std::uint8_t* events, std::uint32_t capacity) {
     return game_pointer::TakeGuiEvents(events, capacity);
 }
-#endif
 HostServices WithMenus(HostServices services) {
     services.calibrationStateSize = static_cast<std::uint32_t>(sizeof(vr::calibration::HostState));
     services.calibration = &HostCalibration;
@@ -588,8 +591,8 @@ HostServices WithMenus(HostServices services) {
     services.takeGameUiRequest = &HostTakeGameUiRequest;
     services.reserveWorldUi = &world_ui::Reserve;
     services.logWorldUiStats = &world_ui::LogStats;
-    services.takeGuiEvents = &HostTakeGuiEvents;
 #endif
+    services.takeGuiEvents = &HostTakeGuiEvents;
     return services;
 }
 #endif

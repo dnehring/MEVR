@@ -70,6 +70,9 @@ ue3::FieldRef gPanelTag{"Engine.BioSFPanel", "nmTag", ue3::kEveryGame};
 ue3::FieldRef gPanelHandler{"Engine.BioSFPanel", "m_DefaultHandler", ue3::kEveryGame};
 #if defined(MEVR_GAME_LE3)
 constexpr std::uint8_t kGuiEventB = 16;
+// ME3's screens act on B's release (BIOGUI_EVENT_BUTTON_B_RELEASE): B alone left the squad record up, B then its release
+// went back to the Mission Computer, and again closed it (measured 2026-11-16, Save 31). Every back-out sends both.
+constexpr std::uint8_t kGuiEventBRelease = 37;
 #else
 constexpr std::uint8_t kGuiEventB = 13;  // BIOGUI_EVENT_BUTTON_B (Engine.EBioGuiEvent; ME2's BioSFSharedBase.BioGuiEvents too)
 #endif
@@ -410,6 +413,11 @@ void StepSwitch(Link const& link) {
             ue3::Params parms(r, guiKey);
             parms.Set("Event", kGuiEventB);
             ue3::runtime::Call(mode, guiKey, parms);  // the player's B: the GUI manager offers it to the whole stack
+#if defined(MEVR_GAME_LE3)
+            ue3::Params release(r, guiKey);
+            release.Set("Event", kGuiEventBRelease);
+            ue3::runtime::Call(mode, guiKey, release);
+#endif
         } else {
             ue3::Params parms(r, gHandleInputEvent.Get());
             parms.Set("Event", kGuiEventB);
@@ -545,7 +553,11 @@ void StepPage(Link const& link) {
             gLast = std::format("{}: the browser did not take focus", gm::Name(action));
             log::Warn("omni-tool: {} not opened: the focused page is '{}'", gm::Name(action), focus.tag);
             gPage = {};
-        } else if (!gPage.asked && !focus.tag.empty() && GuiKey(kGuiEventB, why)) {
+        } else if (!gPage.asked && !focus.tag.empty() && GuiKey(kGuiEventB, why)
+#if defined(MEVR_GAME_LE3)
+                   && GuiKey(kGuiEventBRelease, why)
+#endif
+        ) {
             ++gPage.backOuts;
             gPage.wait = kBackOutWaitTicks;
             log::Info("omni-tool: returning from '{}' to the browser before opening {}", focus.tag, gm::Name(action));

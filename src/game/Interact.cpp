@@ -27,7 +27,7 @@ ue3::ClassRef gSelectionClass{"SFXGame.BioPlayerSelection", ue3::kEveryGame};
 ue3::FieldRef gPlayerSelection{"SFXGame.BioPlayerController", "m_oPlayerSelection", ue3::kEveryGame};
 ue3::FieldRef gCurrentTarget{"SFXGame.BioPlayerSelection", "m_oCurrentSelectionTarget", ue3::kEveryGame};
 ue3::FieldRef gIsCombatTarget{"SFXGame.BioPlayerSelection", "m_bCurrentSelectionIsCombatTarget", ue3::kEveryGame};
-#if defined(MEVR_GAME_LE3)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 ue3::FieldRef gControllerRotation{"Engine.Actor", "Rotation", ue3::kEveryGame};
 #endif
 ue3::FieldRef gCollision{"Engine.Actor", "CollisionComponent", ue3::kEveryGame};
@@ -175,7 +175,7 @@ void Tick(float /*deltaSeconds*/, bool hooked, Link const& link) {
             gGaze.controller = controller;
             gGaze.povLocation = pov->location;
             gGaze.povRotation = pov->rotation;
-#if defined(MEVR_GAME_LE3)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
             // The audited native search reads camera-cache location but Actor.Rotation
             // on the owning controller. Swap only for that search, never head-aim combat.
             gGaze.povRotation = gControllerRotation.In<ue3::Rotator>(controller);
@@ -218,11 +218,9 @@ void Tick(float /*deltaSeconds*/, bool hooked, Link const& link) {
             label.combat = combat;
             label.visible = link.publish != nullptr && gSettings.label && onFoot && (!combat || gSettings.combatLabel) &&
                 std::isfinite(meters);
-#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
-            // Each sequel's prompt band awaits a measured default. A configured crop enables the shared label renderer;
-            // otherwise the game's own prompt stays on its HUD and the snapshot accurately reports no replacement.
-            label.visible = label.visible && il::ExplicitCrop(label).Valid();
-#endif
+            // Every game's prompt is its HUD's top-centre widget, cut out by a band measured per game (the host's
+            // vr::hud_pieces::DefaultLabelCrop, research/40 section 6): the label is on by default everywhere, as ME1's;
+            // `[Interact] crop` still overrides the band.
         }
     }
     NoteTarget(target, combat, meters);

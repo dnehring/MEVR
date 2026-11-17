@@ -2522,6 +2522,10 @@ void CheckFunctions() {
         "SFXGame.SFXGameModeDefault.StormOn",             // game/Sprint: one sprint for the trilogy
         "SFXGame.SFXGameModeDefault.StormOff",
         "Engine.Pawn.GetMaxSpeed",
+        // engine/SelectionGaze (research/40 section 6): ME2's no-parameter update and its target search, the search's body
+        // hooked as ME3's (0xAC0530, called from the update's body 0xACE8F0 and this function's thunk 0xB4AF70)
+        "SFXGame.BioPlayerSelection.UpdateSelection",
+        "SFXGame.BioPlayerSelection.FindCurrentSelectionTarget",
     };
     for (char const* function : functions) {
         CheckFunction(function);
@@ -2529,6 +2533,9 @@ void CheckFunctions() {
 }
 
 void CheckParams() {
+    // engine/SelectionGaze: both selection functions take nothing (the hook's void(this) signature, as ME3's)
+    CheckParmsSize("SFXGame.BioPlayerSelection.UpdateSelection", 0);
+    CheckParmsSize("SFXGame.BioPlayerSelection.FindCurrentSelectionTarget", 0);
     // game/Sights and game/ScopeParts (M3.3)
     PARAM(ASFXWeapon_execGetAimError_Parms, "SFXGame.SFXWeapon.GetAimError", Accuracy);
     PARAM(ASFXWeapon_execGetAimError_Parms, "SFXGame.SFXWeapon.GetAimError", ReturnValue);
@@ -2950,6 +2957,27 @@ void CheckLe3EngineAccess() {
     PARMS(APlayerController_eventGetPlayerViewPoint_Parms, "Engine.PlayerController.GetPlayerViewPoint");
     PARAM(APlayerController_eventGetFOVAngle_Parms, "Engine.PlayerController.GetFOVAngle", ReturnValue);
     PARMS(APlayerController_eventGetFOVAngle_Parms, "Engine.PlayerController.GetFOVAngle");
+}
+
+// game/OmniTool's ME3 adapter: the omni-tool is ME3's client effect, started and stopped through its manager. No row for
+// ParticleSystemComponent.Template (LExSDKv2's particle headers were 8 bytes early on LE2; the adapter checks the template's
+// name it reads instead).
+void CheckLe3OmniTool() {
+    CheckClass<URvrClientEffectManager>("SFXGame.RvrClientEffectManager");
+    CheckClass<URvrClientEffectMulti>("SFXGame.RvrClientEffectMulti");
+    CheckClass<UParticleSystemComponent>("Engine.ParticleSystemComponent");
+    CheckField("Engine.ActorComponent", "Owner", SDK_FIELD(UActorComponent, Owner));
+    CheckFunction("SFXGame.RvrClientEffectManager.GetClientEffectManager");
+    PARAM(URvrClientEffectManager_execGetClientEffectManager_Parms, "SFXGame.RvrClientEffectManager.GetClientEffectManager", ReturnValue);
+    CheckFunction("SFXGame.RvrClientEffectManager.Start");
+    PARAM(URvrClientEffectManager_execStart_Parms, "SFXGame.RvrClientEffectManager.Start", pEffect);
+    PARAM(URvrClientEffectManager_execStart_Parms, "SFXGame.RvrClientEffectManager.Start", pInstigator);
+    PARAM(URvrClientEffectManager_execStart_Parms, "SFXGame.RvrClientEffectManager.Start", ReturnValue);
+    PARMS(URvrClientEffectManager_execStart_Parms, "SFXGame.RvrClientEffectManager.Start");
+    CheckFunction("SFXGame.RvrClientEffectManager.Stop");
+    PARAM(URvrClientEffectManager_execStop_Parms, "SFXGame.RvrClientEffectManager.Stop", pEffect);
+    PARAM(URvrClientEffectManager_execStop_Parms, "SFXGame.RvrClientEffectManager.Stop", Id);
+    PARMS(URvrClientEffectManager_execStop_Parms, "SFXGame.RvrClientEffectManager.Stop");
 }
 
 void CheckLe3PhysicalCover() {
@@ -3791,6 +3819,7 @@ bool Run(hook::Context& context) {
     CheckLe3PhysicalCover();
     CheckLe3EngineAccess();
     CheckLe3ViewLevel();
+    CheckLe3OmniTool();
 #endif
 #if defined(MEVR_GAME_LE2)
     CheckTraversal();

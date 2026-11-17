@@ -24,7 +24,9 @@ No CMake, ModLoader, Entry or GameAdapter edits are included in this lane.
 
 ## Remaining native adapters and evidence gates
 
-- Native screen identifiers/open-close dispatch, crop rectangles, HUD draw redirect/order and wrist projection must be verified for each LE3 screen. No LE2 crop or `WorldUiOwnsGui` override was enabled here. The rail's requested native actions require that game-side adapter before being accepted as functional buttons.
+- The gameplay HUD's draw redirect and order are measured and on since 2026-11-16 ([ME3's HUD panel](le3-hud-panel.md)); the
+  interaction prompt's crop too (research/40 section 6).
+- Native screen identifiers/open-close dispatch, crop rectangles and wrist projection must be verified for each LE3 screen. No LE2 crop or `WorldUiOwnsGui` override was enabled here. The rail's requested native actions require that game-side adapter before being accepted as functional buttons.
 - True 3D cinema needs the existing `CineScreen::PlanFrame` separation applied to LE3's authored camera stereo passes, actual separate eye images, and a verified UI capture/crop path. Then reuse `CineScreen`, `CinemaBackdrop` and `TransitionFade`; do not claim native mono duplication has depth. This increment deliberately keeps the native flat cinematic path.
 - Spoken replies require a verified LE3 conversation/text/slot adapter. No native reply selection, voice suppression or first-person scene camera is added here. Authored seated conversations still prohibit traversal.
 - Palette choice remains the existing shared blue rail for LE3; this is provisional and has not been sampled/approved against LE3 native menus. ME2 keeps its amber palette.

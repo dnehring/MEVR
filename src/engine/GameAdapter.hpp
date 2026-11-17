@@ -72,6 +72,18 @@ inline constexpr bool IsConversationMode(int mode) { return GameMode(mode) == Mo
 inline constexpr bool IsGalaxyMode(int mode) { return GameMode(mode) == Mode::Galaxy; }
 inline constexpr bool IsOrbitalMode(int mode) { return GameMode(mode) == Mode::Orbital; }
 inline constexpr bool IsMapMode(int mode) { return IsGalaxyMode(mode) || IsOrbitalMode(mode); }
+// Gameplay whose HUD goes on the body-locked HUD panel (ME1's rule, plugin/HudPanel): on foot, the vehicle, the power and
+// weapon wheels, the squad command, and ME3's Atlas and injured Shepard; not conversations, cinematics, GUI screens, movies,
+// the maps or a minigame. ME1's and ME2's numbers 0..4 exactly.
+inline constexpr bool IsHudGameplayMode(int mode) {
+    switch (GameMode(mode)) {
+    case Mode::OnFoot: case Mode::Vehicle: case Mode::Atlas: case Mode::PowerWheel: case Mode::WeaponWheel:
+    case Mode::Command: case Mode::Injured:
+        return true;
+    default:
+        return false;
+    }
+}
 inline constexpr bool IsWristMenuMode(int mode) {
     auto const context = GameMode(mode);
     return context == Mode::OnFoot || context == Mode::Gui || context == Mode::Minigame;

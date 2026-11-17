@@ -36,7 +36,7 @@ void ObserveNative(void* object) {
     ++calls;
     if (nativeFault) RaiseException(0xE0424243, 0, 0, nullptr);
 }
-#if defined(MEVR_GAME_LE3)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 void Native(void* object) { ObserveNative(object); }
 void Call(void* object) { gaze::UpdateSelectionHook(object); }
 #else

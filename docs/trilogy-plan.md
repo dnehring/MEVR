@@ -330,14 +330,14 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Waits for:** T01 (the seam is in its view group). **Who:** U1 brings the seam; the call in each sequel has nobody yet.
 
 #### T14 The HUD panel, the hand reticle, the game's crosshair hidden [R18, R19]
-- **State:** LE1 done · LE2 headset · LE3 build
+- **State:** LE1 done · LE2 headset · LE3 verify
 - **Lives in:** `plugin/HudPanel`, `plugin/HandReticle`, `game/ScreenReticle`.
-- **Left, ME3:** the gameplay HUD still draws into the eyes (`RendererLe3::Hud().hudPanel = false`): measure the HUD's
-  draw batches and crops (research/le3-shared-presentation.md "crop gates"), then turn the panel on. The crosshair isn't
-  hidden: `hideScreenReticle` isn't served and `ScreenReticle` compiles LE1 field names in its `#else` (ME3 has no
-  `BioSFHandler_Reticule`).
+- **Left, ME3:** the gameplay HUD is on the panel since 2026-11-16 (lane HU: `hudPanelGameplay`, ME1's `Hud()` defaults;
+  the stereo plan in mode 2 by itself; research/le3-hud-panel.md); its combat HUD is unseen (no combat fixture). The crosshair
+  isn't hidden: `hideScreenReticle` isn't served and `ScreenReticle` stands down on ME3 (ME3 has no
+  `BioSFHandler_Reticule`), so in combat it would be drawn on the panel.
 - **Closes when:** an ME3 gameplay snapshot has the HUD on the panel layer and clean eyes, with the ring and no crosshair.
-- **Waits for:** T02 for the layer order. **Who:** GF has `ScreenReticle`'s latent default; the ME3 HUD panel has nobody.
+- **Waits for:** T02 for the layer order. **Who:** GF has `ScreenReticle`'s latent default; HU (2026-11-16) the ME3 HUD panel; ME3's crosshair has nobody.
 
 #### T15 The cinema screen, its backdrop, the fade, and interrupts [R21]
 - **State:** LE1 done · LE2 verify · LE3 verify
@@ -578,11 +578,14 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Waits for:** T25 for Holster. **Who:** nobody yet.
 
 #### T38 The omni-tool: the rail, the wrist tap, the gauntlet [G22]
-- **State:** LE1 done · LE2 headset · LE3 build
+- **State:** LE1 done · LE2 headset · LE3 headset
 - **Lives in:** `plugin/OmniToolRail`, `plugin/RailArt`, `game/OmniTool`, `game/GameArt`.
-- **Left, ME3:** the rail is shared, but the gauntlet (`game/OmniTool`) and the art cache are compiled out
-  (research/le3-native-gui.md "Crop and art gates").
-- **Who:** nobody yet.
+- **Done, ME3 (lane OM, 2026-11-16):** the gauntlet is ME3's own client effect on Shepard's forearm; the rail in ME3's
+  Mission Computer colours; the entries switch pages and Close returns to gameplay (B and its release). ME3's own frames,
+  tabs and fonts are not read (bitmap fills, a font library that isn't a live object): research/le3-native-gui.md "The
+  omni-tool on ME3".
+- **Left, ME3:** the headset look; Holster on our menu's top bar (G21, after lane WP's ME3 holster call).
+- **Who:** lane OM.
 
 #### T39 The game's screens in the room and on the wrist, the pointer, the minigames [G23, G26, G24]
 - **State:** LE1 done · LE2 build · LE3 build
@@ -591,27 +594,28 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Left, ME2:** the squad member in the equipment screens (`UiWorldFigure`); ME2's hack and bypass minigames are
   different games from ME1's and have no VR treatment ([le2-validation-coverage.md](le2-validation-coverage.md) "Hacking
   and bypass"); research and loadout screens. **ME3:** `setWorldUi` isn't served: the whole native GUI frame sits on one
-  quad (research/le3-native-gui.md gates 1-4); `takeGuiEvents` is served only on ME2, so ME3's clicks take the
-  `SendInput` fallback. ME3 has no bypass minigame.
+  quad (research/le3-native-gui.md gates 1-4, measured there: "The omni-tool on ME3"); it builds on lane HU's ME3 UI
+  redirect to the HUD panel. `takeGuiEvents` is served on both sequels (ME3's clicks are its own GUI events since lane OM,
+  2026-11-16). ME3 has no bypass minigame.
 - **Closes when:** a replayed wrist tap opens the rail, an entry opens the game's screen on the wrist, a ray click and a
   fingertip press land where they point, and B returns to gameplay, on each sequel.
 - **Waits for:** T02. **Who:** nobody yet.
 
 #### T40 Using things: selection by gaze, the label at the object [G27]
-- **State:** LE1 done · LE2 build · LE3 verify
+- **State:** LE1 done · LE2 verify · LE3 verify
 - **Lives in:** `engine/SelectionGaze`, `game/Interact`, `HudPieceLayers::Interaction`.
-- **Left, ME2:** no gaze hook (`kUpdateSelection = 0`; ME2's selection function has a different signature) and labels
-  need a hand-written `[Interact] crop`: M6 guide package A. **ME3:** gaze works (the War Terminal run); the label needs
-  a measured default crop.
+- **Left:** since 2026-11-16 (lane HU) ME2's gaze hooks its target search (`0xAC0530`, ME3's contract) and both sequels
+  show the label at the object by default with a band measured per game (research/40 section 6). Left on both: A's use
+  after a gaze pick in the same run, two usable objects in different head and body directions, a long name, the headset.
 - **Closes when:** with two usable objects in different head and body directions, the label and A agree, per game.
-- **Who:** nobody yet.
+- **Who:** HU (2026-11-16).
 
 #### T41 HUD pieces: the wrist status and the gun's panel [G28]
 - **State:** LE1 done · LE2 headset · LE3 build
 - **Lives in:** `game/HudPieces`, `plugin/HudPieceLayers`, `core/vr/HudPieces`.
 - **Left, ME3:** `setHudPieces` isn't served, and `HudPieces` compiles LE1 field names in its `#else`: ME3's native
   wrist crop (me3-overall-goal-handoff.md, L3-4).
-- **Waits for:** T14 on ME3. **Who:** GF (the latent default); the ME3 crop has nobody.
+- **Waits for:** T14 on ME3 (on since 2026-11-16) and ME3's combat HUD. **Who:** HU (2026-11-16).
 
 #### T42 The galaxy map and scanning [G25; Forks 3]
 - **State:** LE1 build · LE2 build · LE3 build

@@ -54,7 +54,8 @@ struct Rect {
 // and the action line; measured 2026-10-30 on 2344x2392 HUD frames: text at y 0.034..0.063 of the height).
 Rect DefaultCrop(std::uint32_t width, std::uint32_t height);
 
-// Explicit per-game crop. Invalid or out-of-frame rectangles return empty. LE2 uses this until its prompt band is measured.
+// The band by hand ([Interact] crop). Invalid or out-of-frame rectangles return empty: then the game's measured band holds
+// (DefaultCrop on ME1, vr::hud_pieces::DefaultLabelCrop per game on the sequels; research/40 section 6).
 Rect ExplicitCrop(Label const& label);
 
 // The crop as whole pixels of a width x height frame (at least 8x8, inside the frame).

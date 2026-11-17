@@ -63,9 +63,10 @@ struct Common {
 XrCompositionLayerQuad const* Wrist(Common const& common, Piece const& piece);
 XrCompositionLayerQuad const* Gun(Common const& common, Piece const& piece);
 
-// ME2's selected-object prompt, using InteractLabel's placement and this module's shared HUD blit.
-// Call before drawing the panel. Adds its mask only after a successful copy. Requires an explicit [Interact] crop.
-XrCompositionLayerQuad const* Interaction(Common const& common, bool wanted, hud_panel::Masks& masks);
+// The sequels' selected-object prompt at the object, using InteractLabel's placement and this module's shared HUD blit:
+// the band `[Interact] crop`, else the game's measured one (hp::DefaultLabelCrop for `layout`, research/40 section 6).
+// Call before drawing the panel. Adds its mask only after a successful copy.
+XrCompositionLayerQuad const* Interaction(Common const& common, bool wanted, hud_panel::Masks& masks, hp::Layout layout);
 
 // ---- ME2's frame (LE1's rules without the wheels, labels, world screens and the cockpit) --------------------------------
 // Before the HUD panel is drawn: which pieces show (on foot, a head-tracked world frame with the HUD on the panel, the
