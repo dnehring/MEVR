@@ -409,6 +409,41 @@ identical but for 0.007% of the pistol's, the eyes 0.08% apart. Every `holsters:
 grip:` line of the after build (numbers masked) is in the before build's log; only arm IK's timing-dependent first write after the
 replay's restart and one `weapon: grip moved` line differ.
 
+## The reload by hand: the gesture's core (lane C4, 2026-11-16; the game's side not built yet)
+
+`core/vr/ReloadGesture` (MIT, unit-tested in `tests/ReloadGestureTests.cpp`) is the plan's step 1, game-independent: it qualifies
+the gesture and gives `vr::reload::Coordinator` (`core/vr/PhysicalReloadRequest.hpp`, the P0 contract: one correlated native
+request per insertion, nothing retried while one is uncertain) its three signal levels.
+- **Take a clip:** a NEW left squeeze (the pad mapping's latch, 0.6 on, 0.4 off) that no other feature claimed
+  (`Input::squeezeClaimed`: grenades, the support grip, the vent) within `pouchRadiusM` (0.13) of the pouch's centre, with a gun in
+  the right hand and the game willing (`Input::reloadable`). `eject` goes high on that tick (ME2's clip ejects in its own
+  animation), `acquire` on the next (the coordinator takes one edge a tick). No gun, or nothing to reload: `Refused` with a reason.
+- **Insert:** the hand, grip still closed, ENTERS the receiver (`core/ik/Vent`'s box in the gun's frame, the same numbers as the
+  vent's) from outside it: `insert` high for that tick, then everything low (the coordinator re-arms only after a full release).
+- **Overlord's contact invariants** (research/le2-overlord-reload-reuse.md, translated, no code copied): a clip taken with the hand
+  already in the receiver, a step past `maxStepM` (0.20 m) in one tick, or the gun's frame lost and found again needs the hand
+  to leave the receiver and come back; a held contact inserts once; a grip let go before the receiver is `Dropped`, a hand that
+  loses tracking `Lost` (the adapter then calls `Coordinator::CancelGesture`), a clip held past `holdTimeoutS` (8 s) is dropped.
+- Tested with the coordinator: one gesture gives Ejected, Acquired, Requested; a second gesture while the request is pending gets
+  WaitingNative; after `Finished` (reconciled) the next gesture asks again; a dropped clip asks nothing.
+
+**What the game's side (`game/Reload`, the adapter) still has to do**, ME2 first (the names are the plan section's, above):
+1. Each tick on foot in VR with a gun in the right hand: the pouch's centre from `core/ik/BodySlots` (a fifth slot, the left hip,
+   `[Reload] pouch*` keys, scaled with the standing eye like the holsters' slots), the left hand's place in the gun's frame from
+   `engine::bone_pose::LatestSupport()` (as `game/Vent` reads it), the left grip, and the claim (`throwables::Claim`,
+   `support_grip`, `vent` run first in Mod.cpp's tick). `reloadable` = `SFXWeapon.CanReload()` (ME2:
+   `bWeaponCanBeReloaded && AmmoUsedCount > 0 && HasSpareAmmo()`).
+2. The coordinator's frame: identity generations from the world, the held weapon's object and the context (on foot, not a menu);
+   the grant = the left hand while no support grip is held (a new lease each time it is granted again).
+3. On the coordinator's `request`: `SFXWeapon.TryReload()` through `ue3::runtime::Call` on the game thread, never `DoReload`, never
+   an `R` press. Feedback: `Accepted` when `BioPawn.IsReloading(true)` turns true, `Finished` (reconciled) when `AmmoUsedCount` is
+   back to 0 with `CurrentSpareAmmo` down, `Aborted` when `IsReloading` goes false with the counts unchanged.
+4. ReflectCheck rows for every name, a `[Reload]` block in `ASI\<GAME>MEVR.ini` (ME1's keys and defaults where ME1 has them: the
+   vent's zone), logs `reload:`, a snapshot block `"mod"."reload"`, `mevr reload ...` console lines, and
+   `tools/make-reload-recording.py` (the model: `tools/make-rack-recording.py`).
+5. The check: Save 4's pistol 12 / 0 / 60 (magazine, used, spare); one shot 11 / 1 / 60; the replayed gesture 12 / 0 / 59; a
+   full clip refused; ME1 untouched (n/a there: it has heat and the vent).
+
 ## What M3 still needs from the host (lane B2)
 
 The mod's side of hand aim, arm IK, the torso, the fingers, the gun in the hand and the gun kick runs on ME2. What

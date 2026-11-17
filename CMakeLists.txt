@@ -387,6 +387,8 @@ set(MEVR_MOD_SOURCES
     src/core/vr/Ads.hpp
     src/core/ik/Vent.cpp
     src/core/ik/Vent.hpp
+    src/core/vr/ReloadGesture.cpp
+    src/core/vr/ReloadGesture.hpp
     src/core/vr/AimRay.cpp
     src/core/vr/AimRay.hpp
     src/core/vr/Calibration.cpp
@@ -1458,6 +1460,7 @@ if (MEVR_BUILD_TESTS)
         tests/BodyScaleTests.cpp
         tests/BodySlotsSeatedTests.cpp
         tests/FloorLockTests.cpp
+        tests/ReloadGestureTests.cpp
         tests/ManualCalibrationTests.cpp
         tests/CalibrationWeaponTests.cpp
         tests/CameraDiagnosticTests.cpp
@@ -1531,6 +1534,7 @@ if (MEVR_BUILD_TESTS)
         src/core/ik/TwoHand.cpp
         src/core/vr/Ads.cpp
         src/core/ik/Vent.cpp
+        src/core/vr/ReloadGesture.cpp
         src/core/vr/Calibration.cpp
         src/core/vr/Comfort.cpp
         src/core/vr/CombatStance.cpp

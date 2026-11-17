@@ -454,16 +454,17 @@ These unblock the most: almost every other entry gets smaller once they land.
 
 #### T26 The reload by hand [G41]
 - **State:** LE1 n/a · LE2 build · LE3 build
-- **Lives in:** `core/vr/PhysicalReloadRequest.hpp` (18 tests, linked into nothing), with `core/ik/BodySlots` for the
-  clip pouch and `core/ik/Vent`'s gesture-in-the-gun's-frame pattern. ME1 has heat, not clips: its counterpart is the
-  vent.
-- **Left:** one production state machine with an ME2 and an ME3 adapter: the native admission, automatic reload, ammo
+- **Lives in:** `core/vr/PhysicalReloadRequest.hpp` (the coordinator, 18 tests) and `core/vr/ReloadGesture` (the gesture:
+  the pouch, the clip held, the receiver entered from outside, Overlord's contact invariants; unit-tested with the
+  coordinator, 2026-11-16, research/le2-vrik.md "The reload by hand: the gesture's core"), with `core/ik/BodySlots` for
+  the clip pouch and `core/ik/Vent`'s receiver zone. ME1 has heat, not clips: its counterpart is the vent.
+- **Left:** the game's side, `game/Reload` (the research section's five steps), with an ME2 and an ME3 adapter: the native admission, automatic reload, ammo
   transfer, animation end and cancel (`Reloading.CancelReload` commits ammo when `bEarlyReload` is set), then contact
   geometry from Overlord's reviewed pieces (research/le2-overlord-reload-reuse.md). An assisted native reload stays for
   unsupported weapons.
 - **Closes when:** the Freedom's Progress pistol baseline (12/0/60, 11/1/60, 12/0/59) is reproduced by a replayed
   gesture instead of `R`; empty, partial, no-reserve and cancelled reloads conserve ammo; ME3 the same with its fixture.
-- **Waits for:** T22, T25 for hand ownership. Part of ME2's first release (M3.5). **Who:** C2.
+- **Waits for:** nothing on ME2 (T25 is in: the right grip holds the gun). Part of ME2's first release (M3.5). **Who:** C4.
 
 #### T27 Guided calibration and hand calibration [G16]
 - **State:** LE1 done · LE2 headset · LE3 headset
