@@ -207,6 +207,32 @@ struct OpenPanel {
 ue3::FieldRef gRequiresUiWorld{"SFXGame.SFXGUIMovie", "m_bRequiresUIWorld", ue3::kEveryGame};
 OpenPanel gLe3Parent;  // game thread; cleared when the GUI mode ends
 
+// Every Mission Computer page and the War Terminal's War Assets ask for the UI world (SFXGUIInteraction's script calls
+// SetRequiresUIWorld(TRUE) as it opens them), and while one does the game renders the UI world's dark backdrop instead of the
+// level: the screen stood in a dark void, not the room (2026-11-16, Save 31). So, as ME1's bFullScreen (RestoreFullScreen),
+// our screens without a squad member in it are told the game's own way (the native setter, never a raw write) that they don't
+// need it while they stand in the room, and told again that they do when ours goes down.
+ue3::FunctionRef gSetRequiresUiWorld{"SFXGame.SFXGUIMovie.SetRequiresUIWorld", ue3::kEveryGame};
+std::vector<ue3::Object*> gUiWorldCleared;  // game thread
+
+bool SetRequiresUiWorld(ue3::Object* movie, bool required) {
+    ue3::Function* const fn = gSetRequiresUiWorld.Get();
+    if (fn == nullptr || !ue3::runtime::IsAlive(movie)) return false;
+    ue3::Params p(ue3::runtime::Get(), fn);
+    return p.SetBool("bUIWorldRequired", required) && ue3::runtime::Call(movie, fn, p);
+}
+
+void RestoreUiWorld() {
+    int restored = 0;
+    for (ue3::Object* const movie : gUiWorldCleared) {
+        if (SetRequiresUiWorld(movie, true)) ++restored;
+    }
+    if (restored > 0) {
+        log::Info("world ui: {} of the game's screens ask for its UI world again (SFXGUIMovie.SetRequiresUIWorld(true))", restored);
+    }
+    gUiWorldCleared.clear();
+}
+
 bool Resolved() {
     return gRequiresUiWorld.Get() != nullptr;  // game/Le3Gui's handles answer per call (no movie: no screen of ours)
 }
@@ -439,6 +465,9 @@ void Down(Link const& link, char const* why) {
 #if defined(MEVR_GAME_LE2)
     RestoreBrowsers();
 #endif
+#if defined(MEVR_GAME_LE3)
+    RestoreUiWorld();
+#endif
     omni_tool::Tick(gRailOmniTool);  // the rail alone on the wrist still wears it
     // ... and stands at its display, as the screens are projected from it (the rendered arm can fall short of the controller):
     // an inactive state carrying only the emitter (the host shows no screen for it).
@@ -644,9 +673,10 @@ void Tick(Link const& link) {
             Down(link, "not one of [WorldUi] screens");
             return;
         }
-        // ME3: a movie of ours that shows the game's UI world (the squad record's Shepard, m_bRequiresUIWorld) keeps the native
-        // panel, as ME1's did before its figure (game/UiWorldFigure, LE1 only so far).
-        if (o.visible && o.uiWorld && ScreenOf(o.tag) != wu::Screen::None) {
+        // ME3: a screen whose squad member stands in the game's UI world (the squad record's Shepard; m_bRequiresUIWorld, which
+        // every Mission Computer page sets, measured 2026-11-16) keeps the native panel, as ME1's did before its figure
+        // (game/UiWorldFigure, LE1 only so far).
+        if (o.visible && o.uiWorld && wu::ShowsFigure(ScreenOf(o.tag))) {
             CancelOpening(link);
             Down(link, "it shows the game's UI world (a 3D model behind it): Halcyon's native panel");
             return;
@@ -681,6 +711,16 @@ void Tick(Link const& link) {
             gClearedPanels.push_back(o.panel);
             log::Info("world ui: the {} screen isn't full screen any more: the level renders behind it, not the game's UI world", o.tag);
         }
+#if defined(MEVR_GAME_LE3)
+        // ME3's way of the same (the squad record's movie never gets here: it keeps the native panel above).
+        if (o.uiWorld && ScreenOf(o.tag) != wu::Screen::None &&
+            std::find(gUiWorldCleared.begin(), gUiWorldCleared.end(), o.panel) == gUiWorldCleared.end() &&
+            SetRequiresUiWorld(o.panel, false)) {
+            gUiWorldCleared.push_back(o.panel);
+            log::Info("world ui: the {} screen doesn't ask for the game's UI world any more (SFXGUIMovie.SetRequiresUIWorld(false)): the "
+                      "level renders behind it", o.tag);
+        }
+#endif
     }
     if (matched || !gS.open || gS.screen != wu::Name(screen)) {
         if (gS.open) {

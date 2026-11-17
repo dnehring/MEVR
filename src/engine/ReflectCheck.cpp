@@ -2972,6 +2972,9 @@ void CheckLe3WorldUi() {
     CheckClass<USFXGUIMovie>("SFXGame.SFXGUIMovie");
     CheckField("SFXGame.SFXGUIMovie", "nmTag", SDK_FIELD(USFXGUIMovie, nmTag));
     CheckField("SFXGame.SFXGUIMovie", "m_bRequiresUIWorld", SDK_BOOL(USFXGUIMovie, m_bRequiresUIWorld));
+    CheckFunction("SFXGame.SFXGUIMovie.SetRequiresUIWorld");
+    PARAM(USFXGUIMovie_execSetRequiresUIWorld_Parms, "SFXGame.SFXGUIMovie.SetRequiresUIWorld", bUIWorldRequired);
+    PARMS(USFXGUIMovie_execSetRequiresUIWorld_Parms, "SFXGame.SFXGUIMovie.SetRequiresUIWorld");
 }
 
 void CheckLe3PhysicalCover() {

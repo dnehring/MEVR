@@ -39,6 +39,7 @@ The existing schedule opens the native browser first, waits for its focus, and s
 
 The already-integrated host places the complete uncropped native GUI frame in the room and maps pointer UVs against that whole frame. That is the only accepted source-to-panel geometry in this increment. It is not a cropped wrist projection.
 
+(Superseded 2026-11-16 by "The game's screens on ME3" below, which took these gates in the game; kept as the record.)
 `game/WorldUi` still expects LE1/LE2 panel lists, focus/full-screen flags, camera hold and HUD redirect ownership. LE3 uses `SFXGUIMovie.m_bRequiresUIWorld` and a different GFx rendering path. Do not publish `setWorldUi`, reserve a wrist opening, clear that native flag, or enable `MenusLe2::BeforePanel` capture ownership until the following are verified together:
 
 1. Native movie UI draws captured into a separate texture, without a second native panel or stale background.
