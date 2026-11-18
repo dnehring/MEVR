@@ -33,8 +33,8 @@ window and the retention end, the projector shows again. Snapshots: the session 
   (ME3's calcview hook, galaxy first, then the world UI); `MevrSeams::WorldViewHeld` answers 2 for the galaxy (Shepard's
   head and body hidden at the held eyes); new seam `MevrSeams::GalaxyOwnsPresentation(mode)` in ME3's `d3d_capture.cpp`
   (`[MEVR]`): no galaxy or input-owner mono while the map is held. `plugin/SequelOverlays` composes the window under the
-  panel and puts the panel on the disc (`hud_panel::Frame::screenUi` at `UiPanelPose`, the window's whole frame wide) and
-  the pointer on it (`Facts::galaxyUiSteered`: ME3's movie takes the GUI events).
+  panel and puts the panel on the disc (`hud_panel::Frame::screenUi` at `UiPanelPose`, the window's whole frame wide); the
+  panel is the game pointer's surface where a game's map is picked by clicking (`Facts::galaxyUiPointer`; none on ME3).
 - **The post-process chain leaves ME3's captures black**, any chain (the player's, `Engine.DefaultPostProcess`,
   `DefaultUIScenePostProcess`), although `plugin/Le3SceneCapture` logs the final post effect binding the capture's own target;
   without a chain the map looks as the game shows it (gx2's `map-on-raw` snapshot). ME3 captures without a chain by default
@@ -42,7 +42,14 @@ window and the retention end, the projector shows again. Snapshots: the session 
   below: 0x3D2D60/0x3D1F80 choose 0x36DA30, 0x36DAC0 or 0x36D760 by the family's +0x48, the effect's final flag and the
   upscale test at 0x3B1EC0; the finish 0x3534B0 draws scene color into the target unless the view's +0x4B4 is set).
 
-**Not done on ME3** (in order): the pointer's picks on the map (gx3 below), travel and its movie, orbit (mode 12) and
+**ME3's map is flown, not picked.** Its system map moves the Normandy with the left stick (or mouse deltas:
+`PC_GalaxyMouseMovement`/`Strafe`), A travels or buys fuel, LT scans, X exits. With the panel as the pointer's surface the
+movie took the pointer's mouse (`GalaxyMap.SendMouseEvent(6)` at the answered cursor) and the trigger clicked, but a click
+on the Pax label (`gx4`) or on Exit (`gx5`) changed nothing, and a ray on the panel kept LT from the map (the pointer owns
+the triggers). So ME3 keeps its own controls on the projector and the panel is no pointer surface
+(`Facts::galaxyUiPointer` 0). Whether the ray should steer the ship (a new interaction) is the owner's call.
+
+**Not done on ME3** (in order): travel and its movie, orbit (mode 12) and
 the scan, the opening and closing transitions (a frame of the native presentation before the hold publishes is
 possible: not measured), recenter and session changes inside the map, save reload, then the headset.
 **ME2**: nothing yet; step 5 below, with what this flow needs from ME2 (its seams, its capture target, its projector).
@@ -265,10 +272,9 @@ existing native fallback rather than leaving a frozen room or blank screen.
 
 **Status 2026-11-17 (GX):** the window on the measured disc (ME1's `windowScale` 0.7, round, backdrop 0.8), the Flash UI on
 the HUD panel on the same disc (labels on their objects in `gx2`'s raw snapshot), the room's GalaxyMapProxy and its emitter
-hidden; the pointer is the movie's mouse there (`gx4`: the trigger on the Pax label went to `GalaxyMap.SendMouseEvent`;
-nothing changed: ME3's system map isn't picked by clicking a label, the ship flies with the left stick or mouse deltas,
-`PC_GalaxyMouseMovement`/`Strafe`). Which Flash buttons a click works (Exit, Scan, buying fuel, a relay's travel) is `gx5`
-below. Not decided (the owner): whether the ray should steer the ship (a new interaction) or ME3's own stick stays.
+hidden. Picks: none on ME3 (its map is flown with the stick; `gx4`/`gx5` clicked a label and Exit through the movie's mouse
+to no effect; the top section). Not decided (the owner): whether the ray should steer the ship (a new interaction) or ME3's
+own controls stay, as now.
 
 Use the live measured projector's centre, plane, orientation and radius.
 Check the round mask against rectangular capture aspect: current displayed

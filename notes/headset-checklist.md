@@ -963,7 +963,8 @@ stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs 
 - [ ] Galaxy projector (T42; docs/galaxy-projector-handoff.md "2026-11-17", lane GX): at the CIC's console press A: the map
   opens as a disc lying on the projector (the CIC around it in stereo, no flat screen), the system's names and the Exit/Scan
   prompts on the same disc; look around and lean; the map's depth (the planets above or below the disc), the labels on their
-  objects in both eyes, legibility at the console, comfort, GPU cost (two captures). The trigger on a label (the pointer is
-  the map's mouse), X back to the room. Not yet: travel, orbit and the scan through it.
+  objects in both eyes, legibility at the console, comfort, GPU cost (two captures). The map's own controls on the
+  projector (the left stick flies the Normandy, LT scans, A at a relay), X back to the room. Not yet: travel, orbit and the
+  scan through it.
 - [ ] Performance (T07, T10; docs/me3-overall-goal-handoff.md section 4): frame pacing in a real headset; the desktop
   mirror's cadence and the null driver's rate say nothing about it.

@@ -123,7 +123,10 @@ Facts const& Get() noexcept {
         true,   // invalidViewAtOnce: the flat and menu paths stop the floor lock's pass without a last invalid view
         true,   // panelColour: the game's UI on the panel gets the eyes' correction, as on ME1 and ME2 (research/27 section 9)
         static_cast<int>(vr::hud_pieces::Layout::Me3),  // ME3's HUD: its prompt's band (core/vr/HudPieces)
-        true,   // galaxyUiSteered: the map's movie reads the viewport's mouse (game/GuiCursor's SendMouseEvent)
+        // galaxyUiPointer: none. ME3's map is flown with the stick (or mouse deltas: PC_GalaxyMouseMovement/Strafe), not
+        // picked: the movie took the pointer's mouse (GalaxyMap.SendMouseEvent) but a click on a planet's label or on Exit
+        // did nothing (runs gx4, gx5, docs/galaxy-projector-handoff.md), and a ray on the panel kept LT (the scan) from it.
+        0,
     };
     return facts;
 }

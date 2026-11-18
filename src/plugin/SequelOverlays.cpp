@@ -232,9 +232,9 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
         // HalcyonOverlays galaxy panel).
 #if defined(MEVR_WITH_MAIN_MENU)
         static bool galaxyPointer = false;  // Present thread
-        if (galaxyUi && panelLayer != nullptr && !anyMenu) {
+        if (galaxyUi && panelLayer != nullptr && !anyMenu && facts.galaxyUiPointer != 0) {
             mevr::host::game_pointer::NoteGameUiQuad(panelLayer->pose, panelLayer->size.width, panelLayer->size.height,
-                facts.galaxyUiSteered ? mevr::host::game_pointer::PanelKind::GameMenu : mevr::host::game_pointer::PanelKind::GalaxyMap);
+                facts.galaxyUiPointer == 2 ? mevr::host::game_pointer::PanelKind::GameMenu : mevr::host::game_pointer::PanelKind::GalaxyMap);
             galaxyPointer = true;
         } else if (galaxyPointer) {
             mevr::host::game_pointer::ForgetGameUiQuad();

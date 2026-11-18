@@ -1234,14 +1234,7 @@ bool GuiInputReady() {
     auto const modes = ReadModes(why);
     if (!modes || !modes->current) return false;
     auto const context = engine::adapter::GameMode(*modes->current);
-#if defined(MEVR_GAME_LE3)
-    // ME3's galaxy map over the CIC's projector: its Flash movie takes the pointer as a screen's does (the host notes its UI
-    // panel as a game menu only while the map is held there: game/Le3GalaxyCapture, plugin/SequelOverlays).
-    bool const mapScreen = engine::adapter::IsMapMode(*modes->current);
-#else
-    bool const mapScreen = false;
-#endif
-    if (context != engine::adapter::Mode::Gui && context != engine::adapter::Mode::Minigame && !mapScreen) return false;
+    if (context != engine::adapter::Mode::Gui && context != engine::adapter::Mode::Minigame) return false;
     auto* mode = ActiveMode(*modes, why);
     auto* fn = mode && gGuiKey.Get() ? ue3::runtime::Get().FindFunction(ue3::runtime::Get().ClassOf(mode), "GuiKey") : nullptr;
     if (!fn) return false;

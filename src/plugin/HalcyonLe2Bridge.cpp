@@ -86,7 +86,7 @@ Facts const& Get() noexcept {
         false,  // invalidViewAtOnce: an invalid view waits for the floor lock's quiet like any other
         true,   // panelColour
         static_cast<int>(vr::hud_pieces::Layout::Me2),  // ME2's own HUD: its bands (core/vr/HudPieces)
-        false,  // galaxyUiSteered: ME2's map has no projector flow yet (its opt-in table takes posted messages)
+        0,      // galaxyUiPointer: ME2's map has no projector flow yet (its opt-in table takes posted messages)
     };
     return facts;
 }

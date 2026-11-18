@@ -352,8 +352,16 @@ read-only, its hash unchanged), `tools/le2-halcyon-run/galaxy.ps1` (the head tur
 5. **X** (`gx1`): mode 0; the window down, the retention released (`left-map`), the projector shown again, the view the
    game's (`the map closed`); armed again near the projector.
 
-Open (in order): the pointer's picks on the map's UI (the panel is a steered game-menu surface since `gx4`, the mod's GUI
-events allowed in the map modes); travel and its movie; orbit (12) and the scan; the opening and closing frames (a native
+6. **The pointer** (`gx4`, `gx5`, the panel as a game-menu surface for the test): the right ray at the Pax label, then at
+   Exit, the trigger pulled: `gui cursor: ME3's movie takes the pointer's mouse through its own SendMouseEvent
+   (GalaxyMap.SendMouseEvent(6))`, `game pointer: the trigger clicked the game's menu at (1981, 831) px`; the map unchanged
+   both times (the camera state, the system, the mode 11; the capture images alike). ME3's map is flown: its bindings
+   (`mevr galaxy state`) are `PC_GalaxyMouseMovement`/`PC_GalaxyMouseStrafe` on the mouse's axes, `PC_GalaxySystemScan` on
+   the right button, the pad's stick, A (`Console_BuyFuel`), LT (`Console_GalaxySystemScan`), LB/RB (`Console_GalaxyTab*`).
+   A ray on the panel also took the triggers from the map (`game_pointer::OwnsTriggers`). The panel is no pointer surface on
+   ME3 since (`Facts::galaxyUiPointer` 0); ME3's own controls drive the map on the projector.
+
+Open (in order): travel and its movie; orbit (12) and the scan; the opening and closing frames (a native
 mono frame before the hold publishes is possible, not measured); recenter and session changes inside the map; save reload;
 the headset (alignment, legibility, comfort, GPU cost).
 
