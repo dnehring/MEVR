@@ -26,7 +26,7 @@ seams, and ME1's hold rules (`core/vr/PresentationHold`) are not in the LE3 host
    its allow-list into a deny-list for that reason; our gate put an allow-list back. A cinematic the camera test accepts
    in another mode goes to the flat panel, because Halcyon's VR cines are pinned off. How many scenes that is was never
    measured.
-2. **The flat panel is 2.2 m away and 3.2 m wide** (ME1 1.4 m and 2.35 m), upstream ME3's defaults, unpinned; it is what
+2. **The flat panel is 2.2 m away and 3.2 m wide** (ME1 1.4 m and 2.35 m), upstream ME3's defaults, unpinned (**fixed, lane AU1, 6abedb31: ME1's numbers as code and ini defaults**); it is what
    the title, the main menu, loads, movies, the squad record and every unknown screen use.
 3. **No front end and no entry hold**, as on ME2, and **the menu disagrees with the renderer**: the host shows the 3D
    screen by default while the Comfort page on ME3 offers Flat screen only and refuses every `cine_*` write.
@@ -84,7 +84,7 @@ defaults. Reading only.
 | PRS-15 | unknown | upstream classifies by camera class at every mode, not only while the byte is unreadable | whether that latches a cine wrongly at start-up was not read. A start-up log's `[CINEVR]` lines settle it | le3 `me2_xr.cpp:1700-1703` |
 | PRS-16 | same | `MevrSeams::TransitionFadeLayer`, the frame's last layer; the view kinds from the frame (screen, world, a cinematic's flat movie, other flat) | "a cinematic's flat" is again `gm == 7 or 8` | le3 `me2_xr.cpp:2841-2846` |
 | PRS-17 | missing | none | no first-person conversation; the seam never passes `cut` | PRS-23 |
-| PRS-18 | same core, other inputs | Halcyon's flat quad re-placed by `MevrSeams::PlacePanel` through `world_panels::Place`: fixed where the head was, at its height and heading, follow and gap rules ME1's | 2.2 m and 3.2 m (ME1 1.4 m and 2.35 m); a cutscene's width times `CineScreenZoom`; conversations and cutscenes never follow | le3 `me2_xr.cpp:93-95`, `:1949-1966`, `:2813-2828`; `HalcyonLe3Bridge.cpp:315-361` |
+| PRS-18 | same core, other inputs | Halcyon's flat quad re-placed by `MevrSeams::PlacePanel` through `world_panels::Place`: fixed where the head was, at its height and heading, follow and gap rules ME1's | 2.2 m and 3.2 m (ME1 1.4 m and 2.35 m; **ME1's since lane AU1, 6abedb31**); a cutscene's width times `CineScreenZoom`; conversations and cutscenes never follow | le3 `me2_xr.cpp:93-95`, `:1949-1966`, `:2813-2828`; `HalcyonLe3Bridge.cpp:315-361` |
 | PRS-19 | adapter | modes 9 and 10 and an unearned 8 are upstream's flat sources; a stalled capture is `CAPTURE_STALL_MONO` | upstream's comment names 9 "galaxy map" and 10 "title/orbital" where `GameAdapter.hpp` says GUI and movie: the test is right under both readings, the comment is a trap for the next edit | le3 `me2_xr.cpp:1738-1746` |
 | PRS-20 | adapter | `MevrSeams::WorldUiOwnsGui(mode)` in `d3d_capture.cpp`'s presentation decision keeps the GUI mode out of `MENU_MONO` | an opening the game starts itself is flat for one tick; under a stalled mod (400 ms) ME3 entered `MENU_MONO` twice in a run; an outgoing cinematic's latch is not cleared explicitly | le3 `d3d_capture.cpp:5643-5650`; research/le3-native-gui lane FX3 |
 | PRS-21 | same core, other inputs | `world_ui::Ownership` bits; a clean-eye hold (`WorldUiHoldFrame`) for a reserved opening | play modes are ME3's 0..6, and the Atlas and injured Shepard reserve nothing (`FootViewMode`). A run counted 0 flat-panel frames during reservation | `MenusLe2.cpp:203-205`; le3 `me2_xr.cpp:2295-2299`; `WorldUi.hpp:216-240` |
