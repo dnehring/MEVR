@@ -169,10 +169,22 @@ constexpr std::uintptr_t kPawnMesh = 0x3F4;         // APawn.Mesh (body)
 
 struct FpStateDef { const char* cls; const char* label; ME2VR::EngineProbe::FpStateCfg def; };
 const FpStateDef g_fpDefs[] = {
+    // [MEVR] The eye at Shepard's face, as ME1's and ME2's (the owner, 2026-11-18: "Me3 eyes should match behavior from
+    // other games"): x -35 puts it 35 units AHEAD of the hook bone, as ME2's table does; upstream's 35 put it 35 behind,
+    // 34-38 units behind Shepard's head bone (53 in the combat pose, past arm IK's first person). The height is the floor
+    // lock's. Under the constant eye (MevrSeams::ConstantFpEye) only Explore's row counts. research/38 "The sequels'
+    // constant eye"; LoadFpStates (me2_menu.cpp) moves a saved upstream default.
+#if defined(MEVR_ASI)
+    { "SFXCameraMode_Explore",      "Explore (unarmed)",   { true, true, false, false, -35.0f, 0.0f, 65.0f } },
+    { "SFXCameraMode_ExploreStorm", "Explore sprint",      { true, true, false, false, -35.0f, 0.0f, 65.0f } },
+    { "SFXCameraMode_Combat",       "Combat (weapon out)", { true, true, false, false, -35.0f, 0.0f, 65.0f } },
+    { "SFXCameraMode_CombatStorm",  "Combat sprint",       { true, true, false, false, -35.0f, 0.0f, 65.0f } },
+#else
     { "SFXCameraMode_Explore",      "Explore (unarmed)",   { true, true, false, false, 35.0f, 0.0f, 65.0f } },
     { "SFXCameraMode_ExploreStorm", "Explore sprint",      { true, true, false, false, 35.0f, 0.0f, 65.0f } },
     { "SFXCameraMode_Combat",       "Combat (weapon out)", { true, true, false, false, 35.0f, 0.0f, 65.0f } },
     { "SFXCameraMode_CombatStorm",  "Combat sprint",       { true, true, false, false, 35.0f, 0.0f, 65.0f } },
+#endif
     // Aim down sights. ME2 has this state and ME3 never got it, which is why there were no ADS
     // controls in the menu at all. LE3 keeps the mode name Combat while aiming (ADS is a zoom, not a
     // separate camera), so this entry exists for the transition target and for its own sliders.

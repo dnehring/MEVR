@@ -449,6 +449,16 @@ void LoadFpStates(const std::wstring& path) noexcept
         swprintf_s(k, L"S%d_x", i);        s->x = ClampF(IniGetF(path, k, d.x), -200.0f, 400.0f, d.x);
         swprintf_s(k, L"S%d_y", i);        s->y = ClampF(IniGetF(path, k, d.y), -100.0f, 100.0f, d.y);
         swprintf_s(k, L"S%d_z", i);        s->z = ClampF(IniGetF(path, k, d.z), -100.0f, 200.0f, d.z);
+#if defined(MEVR_ASI)
+        // [MEVR] A standing state saved at upstream's default (35, 0, 65: the eye 35 units behind the hook bone) takes the
+        // new one, the eye at Shepard's face as ME1's and ME2's (engine_probe.cpp's table, the owner 2026-11-18).
+        if (i < 4 && s->x == 35.0f && s->y == 0.0f && s->z == 65.0f && d.x != 35.0f)
+        {
+            s->x = d.x; s->y = d.y; s->z = d.z;
+            ME2VR::Log::Line(std::string("[MEVR-FP] ") + ME2VR::EngineProbe::FpStateLabel(i) +
+                             ": upstream's saved offset (35, 0, 65) moved to the eye at Shepard's face (-35, 0, 65)");
+        }
+#endif
     }
 }
 void SaveFpStates(const std::wstring& path) noexcept
