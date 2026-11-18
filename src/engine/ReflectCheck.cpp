@@ -309,6 +309,27 @@ std::wstring Widen(std::string_view text) {
     return std::wstring(text.begin(), text.end());  // ASCII names
 }
 
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+// Every function of that name, ours against the SDK's (state functions included: PlayerWalking's own).
+void CheckFunctionsNamed(char const* name) {
+    Guard("function", std::format("{} (all)", name), [name] {
+        std::vector<std::string> ours;
+        for (ue3::Function* f : R().FindFunctionsNamed(name)) {
+            ours.push_back(R().FullName(f));
+        }
+        std::vector<std::string> sdk;
+        std::wstring const wide(name, name + std::strlen(name));
+        for (UFunction* f : SdkFunctionsNamed(wide.c_str())) {
+            sdk.push_back(SdkFullName(f));
+        }
+        std::sort(ours.begin(), ours.end());
+        std::sort(sdk.begin(), sdk.end());
+        Add("function", std::format("{} (all)", name), !ours.empty() && ours == sdk, std::format("{} functions", ours.size()),
+            std::format("{} functions", sdk.size()));
+    });
+}
+#endif
+
 void CheckFunction(char const* path) {
     Guard("function", path, [path] {
         ue3::Function* const ours = R().FindFunction(path);
@@ -2989,6 +3010,15 @@ void CheckSequelWalk() {
     CheckFunction("SFXGame.BioPawn.GetWalkingSpeedMode");
     CheckParam("SFXGame.BioPawn.GetWalkingSpeedMode", "ReturnValue", SDK_AT(0, 1));
     CheckFunction("Engine.Pawn.CreateInventory");  // `mevr give` (game/ConsoleRequest), a test fixture's weapon
+    // The speed from the push (game/CombatStance, research/38): ME2's move function, its output and the push it reads.
+    CheckFunctionsNamed("PlayerMoveCombatOrExplore");
+    CheckField("SFXGame.BioPawn", "fMoveMag", SDK_FIELD(ABioPawn, fMoveMag));
+    CheckField("Engine.PlayerInput", "RawJoyUp", SDK_FIELD(UPlayerInput, RawJoyUp));
+    CheckField("Engine.PlayerInput", "RawJoyRight", SDK_FIELD(UPlayerInput, RawJoyRight));
+    CheckField("SFXGame.BioPlayerController", "MoveStickWalkThreshold", SDK_FIELD(ABioPlayerController, MoveStickWalkThreshold));
+    CheckField("SFXGame.BioPlayerController", "MoveStickRunThreshold", SDK_FIELD(ABioPlayerController, MoveStickRunThreshold));
+    CheckField("Engine.Pawn", "bIsWalking", SDK_BOOL(APawn, bIsWalking));
+    CheckField("Engine.Actor", "Acceleration", SDK_FIELD(AActor, Acceleration));
 }
 
 // The galaxy map over the CIC's projector (game/GalaxyProjectorFlow, ME2's adapter game/Le2GalaxyCapture): the shared
@@ -3183,6 +3213,17 @@ void CheckSequelWalk() {
     CheckField("SFXGame.BioPawn", "m_fAnimMoveStartSpeedSnapshot", SDK_FIELD(ABioPawn, m_fAnimMoveStartSpeedSnapshot));
     CheckField("SFXGame.BioPawn", "m_fWalkStopDistance", SDK_FIELD(ABioPawn, m_fWalkStopDistance));
     CheckField("SFXGame.BioPawn", "m_fRunStopDistance", SDK_FIELD(ABioPawn, m_fRunStopDistance));
+    // The speed from the push (game/CombatStance, research/38): ME3's move functions, their output and the push they read.
+    CheckFunctionsNamed("PlayerMoveExplore");
+    CheckFunctionsNamed("PlayerMoveCombat");
+    CheckField("Engine.PlayerInput", "RawJoyUp", SDK_FIELD(UPlayerInput, RawJoyUp));
+    CheckField("Engine.PlayerInput", "RawJoyRight", SDK_FIELD(UPlayerInput, RawJoyRight));
+    CheckField("Engine.PlayerController", "bIgnoreMoveInput", SDK_FIELD(APlayerController, bIgnoreMoveInput));
+    CheckField("SFXGame.BioPlayerController", "MoveStickIdleThreshold", SDK_FIELD(ABioPlayerController, MoveStickIdleThreshold));
+    CheckField("SFXGame.BioPlayerController", "MoveStickWalkThreshold", SDK_FIELD(ABioPlayerController, MoveStickWalkThreshold));
+    CheckField("SFXGame.BioPlayerController", "MoveStickRunThreshold", SDK_FIELD(ABioPlayerController, MoveStickRunThreshold));
+    CheckField("Engine.Pawn", "bIsWalking", SDK_BOOL(APawn, bIsWalking));
+    CheckField("Engine.Actor", "Acceleration", SDK_FIELD(AActor, Acceleration));
     CheckField("SFXGame.BioPawn", "m_fDesiredMaxSpeed", SDK_FIELD(ABioPawn, m_fDesiredMaxSpeed));
     CheckField("SFXGame.BioPawn", "fMoveMag", SDK_FIELD(ABioPawn, fMoveMag));
 }

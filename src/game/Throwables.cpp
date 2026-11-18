@@ -109,6 +109,13 @@ ik::Vec3 gCenter;
 double gScale = 1.0;
 std::array<double, 2> gDistance{-1.0, -1.0};
 bool gNearRight = false;       // the right hand near the grenade slot: a new right squeeze isn't RB
+#if !defined(MEVR_GAME_LE1)
+// The sequels have no grenade slot (ME2: no grenades; ME3: its grenades are powers), but ME1's place for it stays held: a new
+// left squeeze at the left chest claims nothing, so it never falls through to the radio or a squad order (the owner,
+// 2026-11-18: no haptic cue at the chest on ME2; the ME2 audit's mechanism 4). No buzz, no action.
+bool gReserve = false;         // this tick's conditions held (on foot, view, controllers): the chest is held
+unsigned gReserved = 0;        // squeezes held this period
+#endif
 
 // Squeezes.
 std::array<bool, 2> gClaimed{};      // this tick's new squeeze takes a grenade
@@ -748,6 +755,41 @@ void Throw(Link const& link, Game const& game, int hand, thr::Release const& rel
 
 #endif  // MEVR_GAME_LE1
 
+// The body frame, as the holsters': arm IK's torso yaw (else our own lagging one), held while a hand
+// is in the slot or holds a grenade; the anchor is the eye held upright over the neck, its height
+// smoothed; offsets scaled by the standing eye height (the holsters' measurement). Every game: ME1's grenade slot, the
+// sequels' reserved chest (ReserveChest).
+__forceinline void PlaceSlot(vr::host_view::State const& view, vr::controllers::State const& controllers,
+    hand_calibration::Throwables const& settings, double deltaSeconds) {
+    XrPosef const& head = view.head;
+    ik::Quat const headRotation{head.orientation.x, head.orientation.y, head.orientation.z, head.orientation.w};
+    ik::Vec3 const headPosition{head.position.x, head.position.y, head.position.z};
+    double const headYaw = ik::YawOf(headRotation.x, headRotation.y, headRotation.z, headRotation.w);
+    if (!gOwnYawActive) {
+        gOwnYaw.Reset(headYaw);
+        gOwnYawActive = true;
+    }
+    double const ownYaw = gOwnYaw.Update(headYaw, deltaSeconds);
+    bool const busy = gMachine.Holder() >= 0 || gMachine.InSlot(kLeft) || gMachine.InSlot(kRight);
+    if (!gYawValid || !busy) {
+        std::optional<double> const torso = arm_ik::TorsoYaw();
+        gYaw = torso ? *torso : ownYaw;
+        gYawValid = true;
+    }
+    gFrame.yaw = gYaw;
+    gFrame.anchor = gAnchor.Update(slots::NeutralEye(headPosition, headRotation), deltaSeconds);
+    slots::Layout layout;
+    layout.eyeHeight = holsters::EyeHeight();
+    gScale = slots::Scale(layout);
+    gCenter = slots::SlotCenter(gFrame, settings.slot, gScale);
+    gFrameValid = true;
+    std::array<vr::controllers::Hand const*, 2> const hands{&controllers.left, &controllers.right};
+    for (int h = 0; h < 2; ++h) {
+        gDistance[h] = hands[h]->gripValid ? ik::Length(FromXr(hands[h]->grip.position) - gCenter) : -1.0;
+    }
+    gNearRight = gDistance[kRight] >= 0.0 && gDistance[kRight] <= settings.slot.radius + 0.05;
+}
+
 void Inactive(std::string why, Link const& link) {
     if (gMachine.Holder() >= 0) {
         log::Info("throwables: the grenade in the {} hand goes back ({})", HandName(gMachine.Holder()), why);
@@ -821,7 +863,45 @@ bool TryStartup() {
 #endif
 }
 
+#if !defined(MEVR_GAME_LE1)
+namespace {
+// The sequels: a new left squeeze within the grenade slot's radius is held (gClaimed) and goes nowhere.
+void ClaimChest(Link const& link) {
+    gClaimed = {false, false};
+    hand_calibration::Refresh();  // at most once a second
+    hand_calibration::Throwables const settings = hand_calibration::GetThrowables();
+    vr::controllers::State const controllers = vr::controllers::Latest();
+    bool const was = gOwnGrip[kLeft];
+    gOwnGrip[kLeft] = controllers.active && (gOwnGrip[kLeft] ? controllers.left.squeeze > kGripOff : controllers.left.squeeze >= kGripOn);
+    bool fresh = false;
+    if (link.leftGrip) {
+        // The host's count of left squeezes that began away from the gun, as ME1's.
+        std::uint32_t const count = *link.leftGrip >> 1;
+        fresh = gHaveCount[kLeft] && count != gLastCount[kLeft] && (*link.leftGrip & 1u) != 0;
+        gLastCount[kLeft] = count;
+        gHaveCount[kLeft] = true;
+    } else {
+        fresh = gOwnGrip[kLeft] && !was && !support_grip::Held();
+    }
+    if (!fresh || !gReserve || !gFrameValid || !settings.enabled || !settings.leftHand || !controllers.left.gripValid) {
+        return;
+    }
+    double const distance = ik::Length(FromXr(controllers.left.grip.position) - gCenter);
+    if (distance <= settings.slot.radius) {
+        gClaimed[kLeft] = true;
+        ++gReserved;
+        log::Info("throwables: a left squeeze at the left chest ({:.2f} m from the grenade slot's centre, radius {:.2f}): this game has no "
+                  "grenade slot; held, so it is no squad order (no action, no buzz)",
+            distance, settings.slot.radius);
+    }
+}
+} // namespace
+#endif
+
 void Claim(Link const& link) {
+#if !defined(MEVR_GAME_LE1)
+    ClaimChest(link);
+#else
     gClaimed = {false, false};
     hand_calibration::Refresh();  // at most once a second
     hand_calibration::Throwables const settings = hand_calibration::GetThrowables();
@@ -862,6 +942,7 @@ void Claim(Link const& link) {
     if (fresh[kRight] && !gClaimed[kRight] && gKeepGunOut) {
         gKeepGunOut = false;
     }
+#endif
 }
 
 bool ClaimedLeft() {
@@ -923,36 +1004,9 @@ void Tick(double deltaSeconds, Link const& link) {
     gActive = true;
     SetWhy("active");
 
-    // The body frame, as the holsters': arm IK's torso yaw (else our own lagging one), held while a hand
-    // is in the slot or holds a grenade; the anchor is the eye held upright over the neck, its height
-    // smoothed; offsets scaled by the standing eye height (the holsters' measurement).
-    XrPosef const& head = view.head;
-    ik::Quat const headRotation{head.orientation.x, head.orientation.y, head.orientation.z, head.orientation.w};
-    ik::Vec3 const headPosition{head.position.x, head.position.y, head.position.z};
-    double const headYaw = ik::YawOf(headRotation.x, headRotation.y, headRotation.z, headRotation.w);
-    if (!gOwnYawActive) {
-        gOwnYaw.Reset(headYaw);
-        gOwnYawActive = true;
-    }
-    double const ownYaw = gOwnYaw.Update(headYaw, deltaSeconds);
-    bool const busy = gMachine.Holder() >= 0 || gMachine.InSlot(kLeft) || gMachine.InSlot(kRight);
-    if (!gYawValid || !busy) {
-        std::optional<double> const torso = arm_ik::TorsoYaw();
-        gYaw = torso ? *torso : ownYaw;
-        gYawValid = true;
-    }
-    gFrame.yaw = gYaw;
-    gFrame.anchor = gAnchor.Update(slots::NeutralEye(headPosition, headRotation), deltaSeconds);
-    slots::Layout layout;
-    layout.eyeHeight = holsters::EyeHeight();
-    gScale = slots::Scale(layout);
-    gCenter = slots::SlotCenter(gFrame, settings.slot, gScale);
-    gFrameValid = true;
+    PlaceSlot(view, controllers, settings, deltaSeconds);
+    ik::Vec3 const headPosition{view.head.position.x, view.head.position.y, view.head.position.z};
     std::array<vr::controllers::Hand const*, 2> const hands{&controllers.left, &controllers.right};
-    for (int h = 0; h < 2; ++h) {
-        gDistance[h] = hands[h]->gripValid ? ik::Length(FromXr(hands[h]->grip.position) - gCenter) : -1.0;
-    }
-    gNearRight = gDistance[kRight] >= 0.0 && gDistance[kRight] <= settings.slot.radius + 0.05;
 
     // The machines run on new controller samples only (their velocities need real time steps).
     auto const sampleTime = gClock.Update(controllers.sequence, SteadySeconds());
@@ -1076,8 +1130,21 @@ void Tick(double deltaSeconds, Link const& link) {
         }
     }
 #else
-    (void)deltaSeconds;
-    Inactive("LE1 only", link);
+    // The sequels: no grenades, the chest held (ClaimChest). The gate is the sequels' physical controls' (game/Melee's).
+    std::string why;
+    if (!settings.enabled || !settings.leftHand) {
+        gReserve = false;
+        Inactive(!settings.enabled ? "off ([Throwables] enabled = 0)" : "[Throwables] hands = right: the left chest isn't held", link);
+        return;
+    }
+    if (!melee::PhysicalControlsOnFoot(why)) {
+        gReserve = false;
+        Inactive(why, link);
+        return;
+    }
+    PlaceSlot(vr::host_view::Latest(), vr::controllers::Latest(), settings, deltaSeconds);
+    gReserve = true;
+    SetWhy("no grenades on this game: the left chest (ME1's grenade slot) is held, so a left squeeze there gives no squad order");
 #endif
 }
 
@@ -1132,6 +1199,12 @@ void LogStats() {
         gMachine.Holder() >= 0 ? HandName(gMachine.Holder()) : "none", gGrabs, gThrows, gCancels, gRefusals, gLaunches, gAimed,
         gGrenadesLeft >= 0 ? std::to_string(gGrenadesLeft) : std::string("?"));
     gGrabs = gThrows = gCancels = gRefusals = gLaunches = gAimed = 0;
+#if !defined(MEVR_GAME_LE1)
+    if (gReserved != 0) {
+        log::Info("    throwables: {} left squeeze(s) at the left chest held this period (no grenade slot on this game)", gReserved);
+        gReserved = 0;
+    }
+#endif
 }
 
 void Shutdown() {
@@ -1149,6 +1222,10 @@ void Shutdown() {
     gOwnGrip = {false, false};
     gHaveCount = {false, false};
     gKeepGunOut = false;
+#if !defined(MEVR_GAME_LE1)
+    gReserve = false;
+    gReserved = 0;
+#endif
     gSinceRelease = {1e9, 1e9};
     gContinuous = {0.0f, 0.0f};
     gToldNoHaptics = gToldNoContinuous = gToldNoButtons = gToldOldGrip = false;

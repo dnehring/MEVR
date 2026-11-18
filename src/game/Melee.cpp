@@ -1104,6 +1104,12 @@ void Le3Tick(Link const& link) {
 
 } // namespace
 
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+bool PhysicalControlsOnFoot(std::string& why) {
+    return SequelOnFoot(why);
+}
+#endif
+
 bool TryStartup() {
     std::string missing;
 #if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)

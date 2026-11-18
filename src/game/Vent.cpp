@@ -14,6 +14,9 @@
 #include "game/ArmIk.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/HeadTracking.hpp"
+#if !defined(MEVR_GAME_LE1)
+#include "game/Melee.hpp"  // the sequels' on-foot gate (PhysicalControlsOnFoot)
+#endif
 #include "game/Player.hpp"
 #include "game/SupportGrip.hpp"
 #include "game/Throwables.hpp"
@@ -64,6 +67,14 @@ bool gOnGunValid = false;
 
 // Squeezes.
 bool gClaimed = false;     // this tick's new left squeeze is the vent's
+#if !defined(MEVR_GAME_LE1)
+// The sequels have no weapon heat (thermal clips), so no vent, but ME1's receiver zone stays held: a new left squeeze over the
+// receiver that the support grip didn't take claims nothing, so it never falls through to the radio or a squad order (the ME2
+// audit's mechanism 4; ME1 refuses a cool gun's vent there). No buzz, no action.
+bool gReserve = false;        // this tick's conditions held (on foot, view, controllers, a gun in the right hand)
+bool gInReserveZone = false;  // the left hand over the receiver (the vent's zone, its hysteresis)
+unsigned gReserved = 0;       // squeezes held this period
+#endif
 bool gClaimQueue = false;  // ...until the machine has seen it
 bool gOwnGrip = false;
 bool gHaveCount = false;
@@ -589,10 +600,71 @@ bool TryStartup() {
 #endif
 }
 
+#if !defined(MEVR_GAME_LE1)
+namespace {
+// The sequels: a new left squeeze over the receiver (the vent's zone) that the grenade slot's hold and the support grip didn't
+// take is held (gClaimed) and goes nowhere.
+void ClaimReceiver(Link const& link, vr::controllers::State const& controllers) {
+    bool const was = gOwnGrip;
+    gOwnGrip = controllers.active && (gOwnGrip ? controllers.left.squeeze > kGripOff : controllers.left.squeeze >= kGripOn);
+    bool fresh = false;
+    if (link.leftGrip) {
+        std::uint32_t const count = *link.leftGrip >> 1;
+        fresh = gHaveCount && count != gLastCount && (*link.leftGrip & 1u) != 0;
+        gLastCount = count;
+        gHaveCount = true;
+    } else {
+        fresh = gOwnGrip && !was && !support_grip::Held();
+    }
+    if (!fresh || !gReserve || !gInReserveZone || throwables::ClaimedLeft() || support_grip::Held() || !controllers.left.gripValid) {
+        return;
+    }
+    gClaimed = true;
+    ++gReserved;
+    log::Info("vent: a left squeeze over the receiver ({:.2f} m along the gun, {:.2f} above, {:.2f} beside): this game has no weapon "
+              "heat; held, so it is no squad order (no action, no buzz)",
+        gOnGun.along, gOnGun.up, gOnGun.side);
+}
+
+// The sequels' tick: where the left hand is on the gun (as ME1's vent reads it), nothing else.
+void TickReceiver(hand_calibration::Vent const& settings) {
+    std::string why;
+    if (!settings.enabled) {
+        gReserve = gInReserveZone = false;
+        Inactive("off ([Vent] enabled = 0)");
+        return;
+    }
+    if (!melee::PhysicalControlsOnFoot(why)) {
+        gReserve = gInReserveZone = false;
+        Inactive(why);
+        return;
+    }
+    vr::controllers::State const controllers = vr::controllers::Latest();
+    if (weapon::HeldObject() == nullptr) {
+        gReserve = gInReserveZone = false;
+        Inactive("no ranged weapon in the right hand (holstered, or not verified yet)");
+        return;
+    }
+    auto const sample = arm_ik::SupportRequested() ? engine::bone_pose::LatestSupport() : std::nullopt;
+    gOnGunValid = sample && sample->gunFrame && sample->distanceMeters >= 0.0 && sample->distanceMeters < kCrossedMeters &&
+        controllers.left.gripValid;
+    if (gOnGunValid) {
+        gOnGun = {sample->alongMeters, sample->upMeters, sample->sideMeters};
+    }
+    gInReserveZone = gOnGunValid && vnt::InZone(gOnGun, settings.zone, gInReserveZone ? 0.02 : 0.0);  // the machine's hysteresis
+    gReserve = true;
+    SetWhy("no weapon heat on this game: the receiver (ME1's vent zone) is held, so a left squeeze there gives no squad order");
+}
+} // namespace
+#endif
+
 void Claim(Link const& link) {
     gClaimed = false;
     hand_calibration::Refresh();  // at most once a second
     vr::controllers::State const controllers = vr::controllers::Latest();
+#if !defined(MEVR_GAME_LE1)
+    ClaimReceiver(link, controllers);
+#else
     bool const was = gOwnGrip;
     gOwnGrip = controllers.active && (gOwnGrip ? controllers.left.squeeze > kGripOff : controllers.left.squeeze >= kGripOn);
     bool fresh = false;
@@ -619,6 +691,7 @@ void Claim(Link const& link) {
         gClaimed = true;
         gClaimQueue = true;
     }
+#endif
 }
 
 bool ClaimedLeft() {
@@ -773,7 +846,7 @@ void Tick(double deltaSeconds, Link const& link) {
     }
 #else
     (void)link;
-    Inactive("LE1 only");
+    TickReceiver(settings);
 #endif
 }
 
@@ -822,7 +895,12 @@ void LogStats() {
     }
     log::Info("    vent: {}; heat {} (raw {:.3f}{}; max seen {:.3f}); the left hand {} the receiver{}; this period: {} grabs, {} vents, {} refused, "
               "{} slow, {} lapsed; last: {}",
-        gWhy, Percent(gHeat), gHeatRaw, gOverheated ? ", overheated" : "", gMaxHeatSeen, gMachine.InZone() ? "at" : "off",
+        gWhy, Percent(gHeat), gHeatRaw, gOverheated ? ", overheated" : "", gMaxHeatSeen,
+#if defined(MEVR_GAME_LE1)
+        gMachine.InZone() ? "at" : "off",
+#else
+        gInReserveZone ? "at" : "off",  // the sequels: the held receiver zone
+#endif
         gOnGunValid ? std::format(" ({:.2f} along, {:.2f} above, {:.2f} beside)", gOnGun.along, gOnGun.up, gOnGun.side) : std::string(" (no gun frame)"),
         gGrabs, gVents, gRefusals, gSlow, gLapsed, gLast);
     gGrabs = gVents = gRefusals = gSlow = gLapsed = 0;
@@ -832,6 +910,12 @@ void LogStats() {
         gRackWhy, gRackStrokes, gRackStrokesTotal, gRackLast, stage.calls, stage.written, stage.stale, stage.rejected,
         stage.lastReject != nullptr ? std::format(" (last: {})", stage.lastReject) : std::string(), stage.broken ? ", STOPPED after a fault" : "");
     gRackStrokes = 0;
+#if !defined(MEVR_GAME_LE1)
+    if (gReserved != 0) {
+        log::Info("    vent: {} left squeeze(s) over the receiver held this period (no weapon heat on this game)", gReserved);
+        gReserved = 0;
+    }
+#endif
 }
 
 void PutPartBack(bool exiting) {

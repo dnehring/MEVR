@@ -68,6 +68,12 @@ struct Link {
 
 // Finds the game's functions (each game's own). False until the script packages have loaded.
 bool TryStartup();
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+// The sequels' gate of the physical controls on foot (the strokes, the held chest and receiver of game/Throwables and
+// game/Vent): [Throwables] enabled, our reflection layer up, game mode 0 with a pawn, a head-tracked view, active controllers
+// (not calibrating) and a view anchor. False with the reason in `why`. Game thread.
+bool PhysicalControlsOnFoot(std::string& why);
+#endif
 // Each tick after game/Throwables: ME2 feeds the physical rules itself; ME3 runs its staged rules; ME1's strokes come through
 // game/Throwables (StepPhysical), so here it does nothing.
 void Tick(double deltaSeconds, Link const&);

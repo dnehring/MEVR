@@ -41,6 +41,11 @@ std::string StatusJson();
 void LogStats();
 // Puts the game's speed ramp and animation rates back (where the objects are still the player's), and stops the
 // pre-stage.
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+// `mevr animtree [text]`: logs the player's AnimTree node by node (class, NodeName, children; sequences' AnimSeqName, Rate,
+// playing), only lines holding `text`; returns a summary. Game thread.
+std::string DumpAnimTree(std::string const& filter);
+#endif
 void Shutdown();
 
 } // namespace mevr::game::combat_stance

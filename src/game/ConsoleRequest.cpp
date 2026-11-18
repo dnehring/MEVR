@@ -33,6 +33,7 @@
 #include "game/GalaxyMap.hpp"
 #include "game/GameMenuRequest.hpp"
 #include "game/GunKick.hpp"
+#include "game/CombatStance.hpp"
 #include "game/Holsters.hpp"
 #include "game/Melee.hpp"
 #include "game/OmniTool.hpp"
@@ -1969,6 +1970,7 @@ std::optional<std::string> RunOursLe3(ue3::Object* pc, std::string const& line) 
     if (verb == "cover") { std::string rest; std::getline(words, rest); return vr_cover::Console(rest); }
     if (verb == "camera") { std::string rest; std::getline(words, rest); return camera_probe::Command(rest); }
     if (verb == "weapon") { std::string which; words >> which; return holsters::DrawByName(which); }  // a carried weapon by family
+    if (verb == "animtree") { std::string rest; std::getline(words, rest); return combat_stance::DumpAnimTree(rest.empty() ? rest : rest.substr(1)); }
     if (verb == "give") return Give(pc, words);  // a test fixture's weapon (Engine.Pawn.CreateInventory)
     if (verb == "loadout") return LoadoutLe3(words);  // the Weapon Loadout screen's own pick (a fixture's sniper rifle)
     if (verb == "loco") return LocomotionLe3(pc, words);  // ME3's start and stop steps' timers (read; `set` for a test)
@@ -2133,6 +2135,11 @@ std::optional<std::string> RunOursLe2(ue3::Object* pc, std::string const& line) 
         std::string which;
         words >> which;
         return holsters::DrawByName(which);  // a carried weapon by family (BioPlayerController.SwitchWeapon), for the sights' checks
+    }
+    if (verb == "animtree") {  // the player's AnimTree node by node (game/CombatStance; the draw's nodes, research/38 D)
+        std::string rest;
+        std::getline(words, rest);
+        return combat_stance::DumpAnimTree(rest.empty() ? rest : rest.substr(1));
     }
     if (verb == "cover") {
         std::string rest;

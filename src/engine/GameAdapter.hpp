@@ -349,6 +349,16 @@ inline constexpr bool kWalkSpeedRamps = true;
 inline constexpr bool kWalkSpeedRamps = false;
 #endif
 
+// The draw and holster animations (game/CombatStance section D, research/38 "The draw rate on the sequels"): ME1 plays them
+// in its AnimTree's WeaponEquip node (children Draw and Holster), ME2 in four BioAnimNodeBlendByWeaponEquip nodes of the same
+// form (WeaponEquip-NoCoverStand, -NoCoverCrouch, -HighCover, -LowCover), ME3 in AnimNodeSlot channels (Custom_Std_Upper,
+// Custom_Std_Idle_Lower, Custom_Crouching_Upper...); the sequence's AnimSeqName is the draw's: these prefixes (their crouch and
+// cover variants included: CB_Draw_Crouch, CB_Holster_Cover_Mid). Seen in the player's tree on both (`mevr animtree draw`).
+#if !defined(MEVR_GAME_LE1)
+inline constexpr char const* kDrawSequencePrefix = "CB_Draw";
+inline constexpr char const* kHolsterSequencePrefix = "CB_Holster";
+#endif
+
 // Where the layer finds the engine's globals: an RVA (fast; right for 2.0.0.48602) and a byte
 // pattern of code that references the global (survives a patch that moves it). Each pattern names
 // the RIP-relative instruction inside it: where it starts, where its displacement is, its length.
