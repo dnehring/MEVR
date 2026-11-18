@@ -377,11 +377,14 @@ void CheckKey() {
 void UpdateKey() {
     std::string key = gProfile.empty() ? std::string() : cal::ProfileKey(gProfile, gSystem);
     std::string label = gProfile.empty() ? std::string() : cal::ProfileLabel(gProfile, gSystem);
-    if (std::string const dev = DevKey(); !dev.empty() && key != dev) {
-        log::Info("calibration: [Debug] calibrationKey {} stands in for the runtime's controller type ({})", dev,
-            key.empty() ? std::string("none named") : key);
+    std::string const runtime = key;
+    if (std::string const dev = DevKey(); !dev.empty()) {
         key = dev;
         label = "[Debug] calibrationKey";
+    }
+    if (key != gKey && key != runtime) {  // the sequels' hosts call SetSystem every frame: once per change
+        log::Info("calibration: [Debug] calibrationKey {} stands in for the runtime's controller type ({})", key,
+            runtime.empty() ? std::string("none named") : runtime);
     }
     if (key != gKey) {
         if (gRunning.exchange(false)) {

@@ -153,7 +153,9 @@ and that ME3's conversations are on the native flat screen (the 3D screen shows 
    rows (-35, 0, 65), forward 34 units of the head bone exploring and 26 in combat, arm IK first person in a fight; the scope
    capture then seen on ME3 at 3.5x and 7x.
 
-ME2's questions 1 (LT from the support grip) and 4 (one calibration) apply to ME3 unchanged.
+ME2's questions 1 (LT from the support grip) and 4 (one calibration) apply to ME3 unchanged. Question 4 is built for the
+three games (2026-11-18, lane AU7, 88e9a775; research/25 section 17.1): ME3's host and mod read the same shared file, not
+run on ME3.
 
 # What to do
 

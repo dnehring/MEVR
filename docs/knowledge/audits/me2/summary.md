@@ -134,6 +134,8 @@ Not applied, still to check:
 4. One calibration for the trilogy, or one per game?
    **Answered 2026-11-18:** shared, unless a game's VRIK approach differs; then one per game. The
    [body audit](body-and-ik.md) rates ME2's arm IK as ME1's shared code, so ME2 should read ME1's calibration.
+   **Built 2026-11-18 (lane AU7, 88e9a775):** `%LOCALAPPDATA%\MEVR\calibration.ini` for the three games, taken once from the
+   games' own inis; on Save 4 ME2 applied ME1's values with no prompt (research/25 section 17.1, BOD-36).
 5. Should ME2's sniper show ME2's own magnification (8x by its FOV) or ME1's feel?
    **Answered 2026-11-18:** "sniper zoom is unified": one rule for the trilogy, read as ME1's.
 6. Halcyon ME2's `VehicleHeadMode = 3` and `ConvoFirstPerson`: pin both off in the baseline?

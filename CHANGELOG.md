@@ -7,6 +7,11 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## Unreleased
 
+- **One calibration for the trilogy.** Your body calibration (heights, arms, gun stances, the manual offsets) is now one
+  file for Mass Effect 1, 2 and 3, `%LOCALAPPDATA%\MEVR\calibration.ini`: calibrate once in any game and the others use it,
+  with no prompt to calibrate again. The first launch after the update takes your existing calibration from the game you
+  calibrated in (the newest one per controller type); nothing to do. Uninstall keeps it unless you tick "Also delete the
+  mod's diagnostics"; a problem report includes it.
 - **More useful startup reports.** Setup distinguishes an installed mod from a headset check. Launch logs record the
   runtime and process startup, and reports can identify an OpenXR instance creation that started without returning.
 

@@ -567,8 +567,15 @@ These unblock the most: almost every other entry gets smaller once they land.
 
 #### T27 Guided calibration and hand calibration [G16]
 - **State:** LE1 done · LE2 headset · LE3 headset
-- **Lives in:** `plugin/Calibration`, `game/BodyCalibration`, `game/HandCalibration`.
-- **Left:** a headset run on each sequel: the fake headset has no interaction profile, so nothing by script can show it.
+- **Lives in:** `plugin/Calibration`, `game/BodyCalibration`, `game/HandCalibration`; the measurements in one file for the
+  three games, `core/vr/CalibrationFile` (`%LOCALAPPDATA%\MEVR\calibration.ini`).
+- **Done (lane AU7, 2026-11-18, 88e9a775; research/25 section 17.1):** one calibration for the trilogy (the owner's answer to
+  the ME2 audit's question 4): the host takes each controller type once from the newest of the three games' inis at attach,
+  every game reads and writes the shared file; `[Calibration] use`, `eye`, `grabOffset` stay per game; a
+  `[Calibration.<key>.<GAME>]` section overrides keys for one game. Fake headset: ME1 applied the same values before and after
+  (147 of 147 values copied identical), ME2 on Save 4 applied ME1's, no first-run prompt.
+- **Left:** a headset run on each sequel: the fake headset has no interaction profile, so nothing by script can show it
+  (`[Debug] calibrationKey` stands in for the key in dev builds); ME3's read of the shared file on Save 31.
 
 #### T28 The game's camera collision off in first person [G12]
 - **State:** LE1 done · LE2 n/a · LE3 n/a
@@ -1114,7 +1121,7 @@ me3/summary.md; the owner's words in quotes):
   eye": the renderer's standing rows (-35, 0, 65), the eye 35 units ahead of the hook bone as ME2's (lane AU6, dadb7461): forward
   34 units of Shepard's head bone exploring, 26 in combat (ME2 24-29), arm IK first person in a fight.
 - **Earlier the same day** (the ME2 audit): no haptic cue at the chest on ME2 (no grenade slot there); one calibration for
-  the trilogy unless a game's VRIK differs; the shouldered gun's accuracy without the game's zoom (the proposal in
+  the trilogy unless a game's VRIK differs (built: T27); the shouldered gun's accuracy without the game's zoom (the proposal in
   docs/knowledge/audits/me2/weapons-and-sights.md, not built).
 
 **Answered 2026-11-17** (lane REV's review of 57ae5b4e raised both):

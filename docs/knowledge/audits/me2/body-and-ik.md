@@ -25,15 +25,16 @@ Line numbers are that commit's.
   comes out (Halcyon ME2's explore and combat offsets differ by 25 units back), walking has the game's ramp and start
   steps, and a draw or holster takes the game's 0.6 to 1.1 s where ME1 ships 0.16 s. The ledger says "missing" (G18);
   nothing schedules it.
-- **Finding 3: the calibration is per game.** It is stored in `ASI\LE2MEVR.ini`, so a player calibrated in ME1 is
-  uncalibrated in ME2 and gets the first-run prompt again (BOD-36). Nothing forces that.
+- **Finding 3 (fixed 2026-11-18, lane AU7, 88e9a775: one calibration for the trilogy, research/25 section 17).** Was: the
+  calibration is per game. It is stored in `ASI\LE2MEVR.ini`, so a player calibrated in ME1 is uncalibrated in ME2 and gets
+  the first-run prompt again (BOD-36). Nothing forces that.
 - The ledger's G14 cell ("body scale: shared, unverified") is where this audit disagrees: shared code, but its input
   is dead on ME2.
 
 | rating | count | ids |
 |---|---|---|
-| same | 21 | BOD-02 04 05 06 07 08 09 10 11 15 19 20 21 30 31 32 33 34 35 37 39 |
-| same core, other inputs | 3 | BOD-03 16 36 |
+| same | 22 | BOD-02 04 05 06 07 08 09 10 11 15 19 20 21 30 31 32 33 34 35 36 37 39 (36 since 2026-11-18) |
+| same core, other inputs | 2 | BOD-03 16 |
 | adapter | 3 | BOD-01 28 29 |
 | reinvented | 0 | |
 | partial | 3 | BOD-12 14 17 |
@@ -87,7 +88,7 @@ reading alone. Nothing here was seen in a headset on ME2.
 | BOD-33 | same | The same. | — | unit tests |
 | BOD-34 | same | The same; `handPitch` 90 is the shipped default on every game. | Whether ME2's hand model sits 90 degrees off the grip as ME1's does: not checked in a headset. | — |
 | BOD-35 | same | `game/BodyCalibration`, ungated. | The SMG (ME2's fifth family) has no stance of its own; which stance it borrows was not traced. | ledger G16 |
-| BOD-36 | same core, other inputs | `[Calibration.<key>]` and the host's save counter. | The section lives in `ASI\LE2MEVR.ini`: ME1's calibration is not read, and ME2 prompts again. | CLAUDE.md "Our settings file is `<exe dir>\ASI\<GAME>MEVR.ini`" |
+| BOD-36 | same | `[Calibration.<key>]` in `%LOCALAPPDATA%\MEVR\calibration.ini`, one file for the three games (`core/vr/CalibrationFile`, since 2026-11-18, lane AU7, 88e9a775), and the host's save counter. V: on Save 4 ME2's host took ME1's sections from `LE1MEVR.ini` at attach and the mod applied ME1's values character for character, no first-run prompt. | A real controller type and a save made in ME2: not seen (the fake headset names no profile; `[Debug] calibrationKey` stood in). Was: the section lived in `ASI\LE2MEVR.ini`, ME1's calibration not read, ME2 prompting again. | research/25 section 17.1 |
 | BOD-37 | same | `PlayPosition` in the shared core; the sample's `seated` is `kEveryGame`. | Not run. | Player.cpp:140-141 |
 | BOD-38 | missing | `kSkelUpdateBounds` and `kPrimitiveUmbraBounds` are 0 on ME2; the module stands down. | By decision: "port it only if ME2 culls the player's body". ME2's two addresses are found and verified (`0x798350`, `0x3146C0`). | Addresses.hpp:265-270 |
 | BOD-39 | same | `bConsiderAllBodiesForBounds` through `kEveryGame` handles. | Nothing. | ArmIk.cpp:181-210 |
@@ -127,7 +128,7 @@ reading alone. Nothing here was seen in a headset on ME2.
 - The eye moving on a draw (BOD-22).
 - The speed from the push, the start and stop steps, the draw and holster rates (BOD-25, 26, 27): no game fact is
   recorded against them; they were never looked up.
-- The calibration stored per game (BOD-36).
+- The calibration stored per game (BOD-36): fixed 2026-11-18 (one file for the three games).
 - The manual height trim not wired (BOD-12).
 - Body bounds off (BOD-38): a decision, with the addresses ready.
 
@@ -149,8 +150,9 @@ Ordered by what a player sees. Parity work and questions only.
 4. **Speed from the push and the start steps** (BOD-25, 26): `python tools/le2-name-audit.py game/CombatStance`, then
    `mevr calltrace` for the move functions. The ledger calls this "the one players notice". Closes with `movement:
    response:` lines on ME2.
-5. **Ask the owner: one calibration for the trilogy?** (BOD-36). A player's body and controllers are the same in each
-   game; the gun stances may not be. No code before the answer.
+5. **Done 2026-11-18: one calibration for the trilogy** (BOD-36; the owner: shared unless a game's VRIK differs; lane AU7,
+   88e9a775, research/25 section 17.1). `[Calibration.<key>.<GAME>]` in the shared file overrides keys for one game if a
+   game's gun stances ever need their own.
 6. **Wire the manual height trim** on the sequel bridge (BOD-12), as the ledger's G15 already lists.
 7. **Run the unrun rows**: fingers (snapshot `mod.fingers` under a replayed trigger and grip), the wrist-screen hold
    (BOD-13), a calibration in a headset (BOD-28, 29, 34).

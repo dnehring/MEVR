@@ -870,6 +870,11 @@ stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs 
   seated and physically crouched; the calibration's manual height once it is wired.
 - [ ] Guided calibration (T27): the whole run with each controller type; the fake headset has no interaction profile, so
   only a headset can show it.
+- [ ] One calibration for the trilogy (T27, research/25 section 17, since 2026-11-18): the first launch of any game after the
+  update says `calibration: [Calibration.<key>] taken from LE1MEVR.ini` once per controller type (LE1MEVR.log or
+  LE2MEVR.log), then ME2 (or ME3) with the same controllers shows "Calibrated <ME1's date>" in Body & calibration, no
+  first-run prompt, and the guns sit in the hand as in ME1. A calibration saved in ME2 is ME1's next launch's too. (On the
+  fake headset 2026-11-18 with `[Debug] calibrationKey`: ME1 same values before and after, ME2 the same values, no prompt.)
 - [ ] Wrist status and the gun's panel (T41; research/41 "ME2's ammo display"): readable on small and large guns, after a
   weapon swap and after an ammo power.
 - [ ] Sights (T24; research/le2-vrik.md "The sights on the sequels, mod side"; seen on ME2's fake headset 2026-11-16, LE1 at

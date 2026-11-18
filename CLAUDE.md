@@ -408,8 +408,16 @@ switching frameworks.
   default's (a thumbs-up rule rolled hands palm up); `handTrimLeft`/`handTrimRight`; arm IK's empty hand is grip * trim, the
   `[Hands]` hand angle a fine trim around its 90/0/0 default, `hand_calibration::FineTrim`). A save keeps the last calibration's
   groups this run didn't measure (gun stances, eye, hands).
-  Saved per controller type (interaction profile + headset) as `[Calibration.<key>]` in `ASI\LE1MEVR.ini`;
-  `game/BodyCalibration` applies it: the barrel follows grip * trim (not the aim pose), the gun's sight is
+  Saved per controller type (interaction profile + headset) as `[Calibration.<key>]` (and the manual offsets'
+  `[ManualCalibration.<key>]`, `[Calibration] prompted`/`last`) in **`%LOCALAPPDATA%\MEVR\calibration.ini`, one file for the
+  three games** (since 2026-11-18, research/25 section 17, `core/vr/CalibrationFile`; `engine::CalibrationFile()`): a save is one
+  `.tmp` moved over it, refused for the session if it was there but unreadable; `[Calibration.<key>.<GAME>]` there overrides only
+  the keys it names; `[Calibration] use`, `eye`, `grabOffset` stay in `ASI\<GAME>MEVR.ini`. At host attach, before the mod
+  (`plugin/ModLoader`), a controller type the file lacks is taken from the newest of the three games' `ASI\LE{n}MEVR.ini` (its
+  `time`; this game's first on a tie) and the game's ini marked `[Calibration] shared = 1` (its old sections stay; a marked ini is
+  not read again while the shared file exists). Log `calibration: [Calibration.<key>] taken from ...`. Dev builds: `[Debug]
+  calibrationKey = <key>` in the game's ini stands in for the controller type (the fake headset names none). Setup's report
+  includes the file; uninstall deletes it only with the `%LOCALAPPDATA%\MEVR` box. `game/BodyCalibration` applies it: the barrel follows grip * trim (not the aim pose), the gun's sight is
   moved onto the calibrated line (`gunShift`, the assist on top), the foregrip point takes the left grip,
   two-hand aim keeps the calibrated hands line, the shoulder zone, the crouch thresholds, the holsters'
   eye height. While it runs the game sees a neutral pad and the mod no controllers. `[Calibration] use = 0`

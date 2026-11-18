@@ -44,8 +44,8 @@ fixture ([research/le3-combat-fixtures.md](../../../../research/le3-combat-fixtu
 
 | rating | count | ids |
 |---|---|---|
-| same | 20 | BOD-02 04 05 06 07 08 09 10 11 19 20 21 30 31 32 33 34 35 37 39 |
-| same core, other inputs | 3 | BOD-03 16 36 |
+| same | 21 | BOD-02 04 05 06 07 08 09 10 11 19 20 21 30 31 32 33 34 35 36 37 39 (36 since 2026-11-18) |
+| same core, other inputs | 2 | BOD-03 16 |
 | adapter | 3 | BOD-01 28 29 |
 | reinvented | 1 | BOD-22 |
 | partial | 3 | BOD-12 14 17 |
@@ -100,7 +100,7 @@ Files: [ArmIk.cpp](../../../../src/game/ArmIk.cpp), [BodyFollow.cpp](../../../..
 | BOD-33 | same | The same. | - | unit tests |
 | BOD-34 | same | The same; `handPitch` 90 on every game. | Whether ME3's hand model sits 90 degrees off the grip: not checked in a headset. | - |
 | BOD-35 | same | `game/BodyCalibration`, ungated. | ME3's SMG borrows the rifle's calibration and default sight (`PresentationProfile`); ME3's sights keep the assist, convergence and aimed-fire overrides off. Both are in the sights category, noted here because the calibration feeds them. | le3-body-pose "Reuse and implemented differences" |
-| BOD-36 | same core, other inputs | `[Calibration.<key>]` and the host's save counter. | The section lives in `ASI\LE3MEVR.ini`: a player calibrated in ME1 or ME2 is prompted again. The owner answered on 2026-11-18: shared unless a game's VRIK differs. | [ME2 summary](../me2/summary.md) question 4 |
+| BOD-36 | same | `[Calibration.<key>]` in `%LOCALAPPDATA%\MEVR\calibration.ini`, one file for the three games (`core/vr/CalibrationFile`, since 2026-11-18, lane AU7, 88e9a775; the owner: shared unless a game's VRIK differs), and the host's save counter. | Not run on ME3 (ME1 and ME2 were, research/25 section 17.1); ME3's host and mod take the same code. Was: the section lived in `ASI\LE3MEVR.ini`, a player calibrated in ME1 or ME2 prompted again. | [ME2 summary](../me2/summary.md) question 4 |
 | BOD-37 | same | `PlayPosition` in the shared core; the sample's `seated` is `kEveryGame`. | Not run. ME3 keeps "physically seated play" apart from "an authored seated scene" (the second refuses traversal and gestures, the first does not). | Player.cpp:140-141; [Mod.cpp](../../../../src/mod/Mod.cpp):1067-1076 |
 | BOD-38 | missing | `kSkelUpdateBounds` and `kPrimitiveUmbraBounds` are 0 on ME3; the module stands down. | By decision ("ported only if the bug shows"). ME3's two addresses are found and verified (`0x793850`, `0x32EC10`). ME3's camera is 35 units from the pawn's centre, about the size of ME1's 43-unit offset, so the bug's cause may be present; no snapshot looked for a culled body at steep head angles. | Addresses.hpp:466-471, 493-494 |
 | BOD-39 | same | `bConsiderAllBodiesForBounds` through `kEveryGame` handles. | Nothing. | ArmIk.cpp |
@@ -118,7 +118,7 @@ hidden head (pinned by `ApplyMevrBaseline`, with the body shown in every state s
 | Nothing saved per mesh (ME2 BOD-18) | Same. |
 | The eye moves on a draw: no constant-eye seam (ME2 BOD-22) | **Different**: no seam either, but Halcyon ME3's table has the same offset for all four standing states, so the default result is ME1's. The transient cameras are ME3's own gap. |
 | Explore stance, ramp, speed from the push, start and stop steps, draw rate missing (ME2 BOD-23 to 27) | Same. ME2 has one recorded fact (no ramp fields); ME3 has none. |
-| Calibration stored per game (ME2 BOD-36) | Same. |
+| Calibration stored per game (ME2 BOD-36) | Same; fixed for both 2026-11-18 (one file for the three games). |
 | Manual height trim not wired (ME2 BOD-12) | Same. |
 | `cameraOwned` by ME1's name rule (ME2 BOD-12) | Same mechanism, wider effect: ME2's states are all explore or combat names; ME3 adds action cameras. |
 | Constant-eye flag and `crouchDrop` read by ME1's host only (ME2 BOD-14) | Same. |
@@ -178,7 +178,7 @@ hidden head (pinned by `ApplyMevrBaseline`, with the body shown in every state s
 - First person and the floor lock dropping in the action cameras (BOD-03, 12, 22): a state row and a name in a list.
 - The eye table left unpinned (BOD-22).
 - The linear walk, the speed from the push, the start and stop steps (BOD-24 to 26): never looked up on ME3.
-- The calibration stored per game (BOD-36): the owner has answered "shared".
+- The calibration stored per game (BOD-36): the owner has answered "shared"; built 2026-11-18 (88e9a775).
 - The manual height trim not wired (BOD-12).
 - Body bounds off (BOD-38): a decision, with the addresses ready.
 - The `Interpolate` object's collision flag left set (BOD-40): ME2's branch clears it.
@@ -202,9 +202,10 @@ missing, so item 0 comes first.
    is 0 and the reference can settle there; in a mission either accept the seeded value from the ship or measure the
    combat stance's head drop (ME1: 16 cm). Closes with `body scale: ... auto: fixed standing references` and a
    `[Body.Shepard]` line in `LE3MEVR.ini` after a minute standing on the Normandy.
-3. **One calibration for the trilogy** (BOD-36): the owner said shared. Read `[Calibration.<key>]` from one place for
-   the three games (`game/BodyCalibration` `Load`, `plugin/Calibration`'s save, `engine/SettingsFile`); keep the gun
-   stances shareable only where the sights agree. Closes when a section written by ME1 is used on ME3 without a prompt.
+3. **One calibration for the trilogy** (BOD-36): the owner said shared. **Built 2026-11-18** (lane AU7, 88e9a775; research/25
+   section 17.1): `%LOCALAPPDATA%\MEVR\calibration.ini` for the three games, a `[Calibration.<key>.LE3]` override if ME3's gun
+   stances ever need their own. Seen on ME1 and ME2; closes for ME3 when a section written by ME1 is used on ME3 without a
+   prompt (Save 31 with `[Debug] calibrationKey`).
 4. **Speed from the push and the start steps** (BOD-24 to 26): look the names up on ME3 (`mevr props` on the pawn's
    behaviour, `mevr calltrace` for the move functions), then `game/CombatStance`'s walk part behind an adapter for both
    sequels at once. Closes with `movement: response:` lines on ME3.
