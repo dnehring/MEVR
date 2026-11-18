@@ -301,11 +301,13 @@ struct FpStateDef { const char* cls; const char* label; ME2VR::EngineProbe::FpSt
 // per-frame reads and writes it needed were a crash source. Do not reintroduce it. Indices 0-4 are unchanged
 // so saved MELE2VR.ini values (S0..S4) still load; older S5..S15 cover keys are ignored.
 // Baked 2026-07-26 from a tuned + saved ini (struct order: on, hideHead, hideBody, hideWeapon, x, y, z).
+// [MEVR] hideBody false in every state (ME1's first person, VRIK; me2_menu.cpp's ApplyMevrBaseline pins it): upstream hid
+// the body unarmed and sprinting, and the owner's VRIK body vanished with the weapon away (2026-11-17).
 const FpStateDef g_fpDefs[] = {
-    { "SFXCameraMode_Explore",      "Explore (unarmed)",   { true, true, true,  true,  -35.0f, -0.0f, 35.0f } },  // 0
-    { "SFXCameraMode_ExploreStorm", "Explore sprint",      { true, true, true,  true,  -40.0f,  0.0f, 35.0f } },  // 1
+    { "SFXCameraMode_Explore",      "Explore (unarmed)",   { true, true, false, true,  -35.0f, -0.0f, 35.0f } },  // 0
+    { "SFXCameraMode_ExploreStorm", "Explore sprint",      { true, true, false, true,  -40.0f,  0.0f, 35.0f } },  // 1
     { "SFXCameraMode_Combat",       "Combat (weapon out)", { true, true, false, false, -60.0f,  5.0f, 25.0f } },  // 2
-    { "SFXCameraMode_CombatStorm",  "Combat sprint",       { true, true, true,  false, -70.0f,  5.0f, 25.0f } },  // 3
+    { "SFXCameraMode_CombatStorm",  "Combat sprint",       { true, true, false, false, -70.0f,  5.0f, 25.0f } },  // 3
     { "SFXCameraMode_TightAim",     "Aim down sights",     { true, true, false, false, -30.0f,  5.0f, 20.0f } },  // 4
 };
 constexpr int kFpCount = static_cast<int>(sizeof(g_fpDefs) / sizeof(g_fpDefs[0]));
