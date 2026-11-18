@@ -43,4 +43,4 @@
 ## 2026-11-18
 * **Create**: [How to catalog a system and audit a port against it](how-to-catalog.md), and [ME1 as numbered contracts](me1/index.md): thirteen categories, 458 contracts, after the owner found that the port to ME2 and ME3 lost where menus sit, the rifles' zoom and what gestures do.
 * **Create**: [ME2 against ME1](audits/me2/index.md): thirteen audits and [a summary](audits/me2/summary.md), read at main 940a75c6 with no game run: 250 contracts on the shared rule, 1 reinvented, 124 missing (65 of them the two deferred systems), 62 on the shared rule with untranslated inputs.
-
+* **Create**: [ME3 against ME1](audits/me3/index.md): thirteen audits and [a summary](audits/me3/summary.md), read at main 583591c6 with no game run: 244 contracts on the shared rule, 3 reinvented, 93 missing, 66 n/a; most of ME2's findings recur through the shared sequel host, and ME3 adds its own (no HUD pieces, the 3D screen gated to two modes, a gun never put away).
