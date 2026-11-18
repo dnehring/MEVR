@@ -725,10 +725,16 @@ These unblock the most: almost every other entry gets smaller once they land.
   (`MevrSeams::WorldUiHoldFrame`, LE1's guard); the Atlas and injured Shepard hold no view on foot (research/le3-native-gui.md
   "Room changes, the UI world coming back, the first frame and the omni-tool's display"; seen on Save 31 but the Atlas). An opening the game starts itself
   still shows one MENU_MONO frame on ME3, as on ME1.
-- **Left, ME2:** the squad member in the equipment screens (`UiWorldFigure`); ME2's hack and bypass minigames are
-  different games from ME1's and have no VR treatment ([le2-validation-coverage.md](le2-validation-coverage.md) "Hacking
-  and bypass"); research and loadout screens. **ME3:** the squad member (`UiWorldFigure`); the headset. ME3 has no bypass
-  minigame.
+- **Built, ME2 and ME3 (lane AU1, 2026-11-18):** the sequels' own screens by their GUI libraries' tags (research/le2-menus.md
+  "The sequels' own screens"): ME2's choice screen (research terminal, weapon lockers, stores, bonus power, the mission's
+  completion) and ME3's in the room toward what was used (new `ChoiceGUI`); ME2's bypass and hacking minigames as ME1's
+  `SkillGame` on the wrist, their whole stage; ME3's stores as ME1's shop, its weapon bench as ME1's equipment, its
+  accomplishments, message boxes, private terminal, mail and elevator (new `Terminal`) in the room; ME1's crops kept to ME1's
+  movies; ME3's flat panel at ME1's 1.4 m and 2.35 m. Not run in the game: each tag's mode and anchor is [verify].
+- **Left, ME2:** the squad member in the equipment screens (`UiWorldFigure`) and the armour locker (`Personalization`, its
+  Shepard the UI world's: Halcyon's panel); the game check of the screens above ([le2-validation-coverage.md](le2-validation-coverage.md)
+  "Hacking and bypass": the minigames are other games than ME1's). **ME3:** the squad member (`UiWorldFigure`), the armour
+  locker; the game check; the headset. ME3 has no bypass minigame.
 - **Closes when:** a replayed wrist tap opens the rail, an entry opens the game's screen on the wrist, a ray click and a
   fingertip press land where they point, and B returns to gameplay, on each sequel.
 - **Waits for:** T02. **Who:** nobody yet.

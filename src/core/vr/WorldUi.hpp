@@ -47,11 +47,22 @@ enum class Screen : std::uint8_t {
     // ME3's own (FromMe3Tag; ME1 and ME2 never name them): the War Terminal's War Assets (the War Room's console, research/
     // le3-native-gui.md "The game's screens on ME3").
     WarAssets,
+#if !defined(MEVR_GAME_LE1)
+    // The sequels' own (their GUI libraries, research/le2-menus.md "The sequels' own screens"; ME1 names none of them, so ME1's
+    // build keeps its table): ME2's and ME3's choice screen (BioSFHandler_PCChoiceGUI: ME2's research terminal, weapon lockers
+    // and stores, the bonus power; the mission's completion), and ME3's terminals (the private terminal, its mail, the
+    // Normandy's elevator). Both stand in the room toward what was used, as ME1's shop by its vendor.
+    ChoiceGUI,
+    Terminal,
+#endif
     Count
 };
-Screen FromTag(std::string_view tag);  // case-insensitive; ME1's and ME2's tags (never an ME3-only screen)
+// Case-insensitive; ME1's and ME2's tags (never an ME3-only screen). ME2's own screens map to ME1's where ME1 has one (its
+// AreaMap is ME1's Map, its hacking and bypass minigames ME1's SkillGame), else to the sequels' ChoiceGUI.
+Screen FromTag(std::string_view tag);
 // ME3's movie tags (SFXGUIInteraction.MovieTag_*, SFXGUIMovie.nmTag): ME1's screen where ME1 has it (ME3's squad record is ME1's
-// character record, its AreaMap ME1's map), else ME3's own (WarAssets). Only game/WorldUi's ME3 adapter and the ini on ME3 ask.
+// character record, its AreaMap ME1's map, its Store ME1's shop, its WeaponSelect ME1's equipment, its Accomplishments ME1's
+// achievements), else ME3's own (WarAssets, the terminals). Only game/WorldUi's ME3 adapter and the ini on ME3 ask.
 Screen FromMe3Tag(std::string_view tag);
 char const* Name(Screen screen);       // its library tag ("None" for None)
 inline constexpr std::uint32_t Bit(Screen screen) { return 1u << static_cast<unsigned>(screen); }

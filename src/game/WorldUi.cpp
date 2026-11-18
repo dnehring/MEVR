@@ -396,9 +396,18 @@ std::optional<ue3::Vector> AnchorOf(wu::Screen screen, ue3::Object* handler, ue3
             return player::Location(owner);
         }
     }
+#if defined(MEVR_GAME_LE1)
     bool const usedScreen = screen == wu::Screen::SkillGame || screen == wu::Screen::DesignerUI || screen == wu::Screen::PartySelect ||
         screen == wu::Screen::Specialization || screen == wu::Screen::Loot || screen == wu::Screen::WarAssets ||
         ((screen == wu::Screen::Inventory || screen == wu::Screen::XMods) && !fromWheel);
+#else
+    // The sequels' shops have no BioSFHandler_Shop (below): theirs stand toward what was used (the store's terminal or vendor),
+    // as their choice screens (research terminal, lockers) and terminals do.
+    bool const usedScreen = screen == wu::Screen::SkillGame || screen == wu::Screen::DesignerUI || screen == wu::Screen::PartySelect ||
+        screen == wu::Screen::Specialization || screen == wu::Screen::Loot || screen == wu::Screen::WarAssets ||
+        screen == wu::Screen::Shop || screen == wu::Screen::ChoiceGUI || screen == wu::Screen::Terminal ||
+        ((screen == wu::Screen::Inventory || screen == wu::Screen::XMods) && !fromWheel);
+#endif
     if (usedScreen && gUsedAtOpening.target != nullptr && ue3::runtime::IsAlive(gUsedAtOpening.target)) {
         if (gAnchorLogged != opening) {
             gAnchorLogged = opening;
