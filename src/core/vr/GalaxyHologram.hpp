@@ -66,6 +66,10 @@ struct GameCamera {
     std::uint8_t pad[3] = {};
 };
 
+// Scene::holdPad[kOpeningCue] (a spare byte, the struct's size unchanged): the sequels' table reserved on foot at the projector,
+// whose next cinematic is the map's opening; the host holds it before the mod's next tick sees it (game/GalaxyProjectorFlow).
+inline constexpr int kOpeningCue = 0;
+
 struct Scene {
     std::uint32_t sequence = 0;
     std::uint8_t level = 0;  // Level
@@ -115,7 +119,7 @@ struct Scene {
     // view there for the main view's CalcSceneView alone ([MEVR] seam MevrBridge::GalaxyViewSwapBegin/End), putting the map
     // camera back right after. The addresses are the POV's fields in engine memory (game thread).
     std::uint8_t holdRender = 0;
-    std::uint8_t holdPad[3] = {};
+    std::uint8_t holdPad[3] = {};  // [kOpeningCue]: the sequels' on-foot reservation at the projector (game/GalaxyProjectorFlow)
     float holdLocation[3] = {};
     std::int32_t holdRotation[3] = {};  // pitch, yaw, roll (Unreal units)
     float holdFov = 0.0f;

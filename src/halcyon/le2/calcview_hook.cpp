@@ -1313,14 +1313,16 @@ void* __fastcall CalcViewDetour(void* lp, void* family, void* loc, void* rot, vo
     // of the flat branch above while the mod holds it): the map's camera is the galaxy's, so Shepard's view on foot goes into the
     // player camera's POV for this build only, as LE1's GalaxyViewSwapBegin and ME3's held view, and back after it (declared
     // before the FOV guard below, so put back after that guard's restore). docs/galaxy-projector-handoff.md step 5. Only in the
-    // map's modes (9 galaxy, 10 orbit): ME2's GUI mode keeps the gameplay camera, so its screens of ours need no held view.
+    // map's modes (9 galaxy, 10 orbit): ME2's GUI mode keeps the gameplay camera, so its screens of ours need no held view. And
+    // in the map's opening and closing cinematic (6) while the mod holds it (MevrSeams::GalaxyOwnsPresentation: me2_xr.cpp keeps
+    // the cinematic presentation down then; ME1's rule, lane GX4).
     const int mevrMode = isP1 ? ME2VR::EngineProbe::ReadGameModeSEH() : -1;
+    const bool mevrMapMode = mevrMode == 9 || mevrMode == 10 || (mevrMode == 6 && ::MevrSeams::GalaxyOwnsPresentation(6));
     struct MevrHeldView
     {
         bool on;
         ~MevrHeldView() { if (on) ::MevrSeams::WorldViewHoldEnd(); }
-    } const mevrHeldView{g_vrEnabled.load(std::memory_order_acquire) && isP1 && (mevrMode == 9 || mevrMode == 10) &&
-                         ::MevrSeams::WorldViewHoldBegin()};
+    } const mevrHeldView{g_vrEnabled.load(std::memory_order_acquire) && isP1 && mevrMapMode && ::MevrSeams::WorldViewHoldBegin()};
 #endif
 
     // ---- [FILLSRC] gameplay fill at the SOURCE --------------------------------------------------

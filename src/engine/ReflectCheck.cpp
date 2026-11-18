@@ -3054,6 +3054,34 @@ void CheckLe2CaptureRig() {
     CheckClass<UBioSFHandler_GalaxyMap>("SFXGame.BioSFHandler_GalaxyMap");
     CheckFunction("SFXGame.BioSFHandler_GalaxyMap.CloseGalaxyMap");
     CheckParmsSize("SFXGame.BioSFHandler_GalaxyMap.CloseGalaxyMap", 0);
+    // The flow's rules from ME3's adapter (lane GX4): the projector's lens flare hidden with it, `mevr galaxy capture flares`
+    // and `ship` (the map's ship, camera, relay and selectors for galaxy-steps.ps1's steer), the opening's probe and the
+    // GalaxyMap sequence's opening wait (BioSeqAct_Delay_0's Duration, shortened in the CIC as ME1's).
+    CheckClass<ALensFlareSource>("Engine.LensFlareSource");
+    CheckField("Engine.Actor", "LastRenderTime", SDK_FIELD(AActor, LastRenderTime));
+    CheckField("Engine.WorldInfo", "TimeSeconds", SDK_FIELD(AWorldInfo, TimeSeconds));
+    CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_pCameraObject", SDK_FIELD(UBioCameraBehaviorGalaxy, m_pCameraObject));
+    CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_pSelectedObject", SDK_FIELD(UBioCameraBehaviorGalaxy, m_pSelectedObject));
+    CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_pCrossHairObject", SDK_FIELD(UBioCameraBehaviorGalaxy, m_pCrossHairObject));
+    CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_pMassRelayObject", SDK_FIELD(UBioCameraBehaviorGalaxy, m_pMassRelayObject));
+    CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_nCurrentState", SDK_FIELD(UBioCameraBehaviorGalaxy, m_nCurrentState));
+    CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_pCurrentSystem", SDK_FIELD(UBioCameraBehaviorGalaxy, m_pCurrentSystem));
+    CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_pCurrentPlanet", SDK_FIELD(UBioCameraBehaviorGalaxy, m_pCurrentPlanet));
+    for (char const* selectors : {"m_GalaxySelectors", "m_ClusterSelectors", "m_SystemSelectors"}) {
+        CheckElement("SFXGame.BioCameraBehaviorGalaxy", selectors, sizeof(FSFXGalaxyMapSelector));
+        CheckPath("SFXGame.BioCameraBehaviorGalaxy", {selectors, "m_actor"},
+            SDK_AT(offsetof(FSFXGalaxyMapSelector, m_actor), sizeof(FSFXGalaxyMapSelector::m_actor)));
+    }
+    CheckClass<USeqAct_Interp>("Engine.SeqAct_Interp");
+    CheckField("Engine.SeqAct_Interp", "Position", SDK_FIELD(USeqAct_Interp, Position));
+    CheckClass<USeqAct_Delay>("Engine.SeqAct_Delay");
+    CheckField("Engine.SeqAct_Delay", "Duration", SDK_FIELD(USeqAct_Delay, Duration));
+    CheckField("Engine.SeqAct_Delay", "RemainingTime", SDK_FIELD(USeqAct_Delay, RemainingTime));
+    // `mevr galaxy capture tab-left|tab-right` (ME2's: the map's own LB/RB, a test's way to pick a cluster).
+    CheckFunction("SFXGame.SFXGameModeGalaxy.TabLeft");
+    CheckParmsSize("SFXGame.SFXGameModeGalaxy.TabLeft", 0);
+    CheckFunction("SFXGame.SFXGameModeGalaxy.TabRight");
+    CheckParmsSize("SFXGame.SFXGameModeGalaxy.TabRight", 0);
     // `mevr galaxy place` (a test fixture: Shepard put at the CIC's console from another deck).
     CheckFunction("Engine.Controller.ClientSetLocation");
     PARAM(AController_execClientSetLocation_Parms, "Engine.Controller.ClientSetLocation", NewLocation);
@@ -3158,6 +3186,7 @@ void CheckLe3CaptureRig() {
     CheckClass<USeqAct_Delay>("Engine.SeqAct_Delay");
     CheckField("Engine.SeqAct_Delay", "Duration", SDK_FIELD(USeqAct_Delay, Duration));
     CheckField("Engine.SeqAct_Delay", "RemainingTime", SDK_FIELD(USeqAct_Delay, RemainingTime));
+    // (`mevr galaxy capture ship`'s m_nCurrentState, m_pCurrentSystem and m_pCurrentPlanet: CheckFields' rows.)
 }
 
 

@@ -355,7 +355,8 @@ bool WorldUiOwnsGui(int mode) noexcept;
 // stands while the GUI mode's own camera (ME3's third-person one) keeps serving the game. True: held, call WorldViewHoldEnd
 // right after the build (it puts the camera's own view back). plugin/WorldUi's HoldViewBegin/End, one for every game.
 // Not called by LE1: its GalaxyViewSwapBegin/End (src/halcyon/le1/mevr_bridge.h) has the same contract and calls the same
-// hold for its world UI (and also holds the galaxy map in the CIC and conversations in the world). Not called by LE2 yet.
+// hold for its world UI (and also holds the galaxy map in the CIC and conversations in the world). LE2 calls it in the
+// galaxy map's modes and its held opening and closing cinematic (calcview_hook.cpp).
 // The galaxy map open over the CIC's projector holds the view at Shepard's the same way, first (plugin/GalaxyHologram's
 // HoldViewBegin: the mod's galaxy scene with its render hold, game/GalaxyProjector), as LE1's GalaxyViewSwapBegin.
 bool WorldViewHoldBegin() noexcept;
@@ -363,7 +364,9 @@ void WorldViewHoldEnd() noexcept;
 // Any thread: the galaxy map is open over the CIC's projector in game mode `mode` (the mod's galaxy scene fresh, in the world:
 // game/GalaxyProjector, ME1's research/51 section 8.1): the map's modes are then no flat presentation (the room in stereo, the
 // game's map as a stereo window on the projector, its UI on our panel there). LE1's MevrBridge::GalaxyHeld is the same rule.
-// ME3's d3d_capture.cpp presentation decision. Not called by LE2 yet.
+// The map's opening and closing cinematics are held the same way (the mod publishes the table unsuspended then: game/
+// GalaxyProjectorFlow's bridge). ME3's d3d_capture.cpp presentation decision and me2_xr.cpp's cinematic one; ME2's d3d_capture.cpp
+// GetMenuMode, me2_xr.cpp's cinematic decision, calcview_hook.cpp's and engine_probe.cpp's held view.
 bool GalaxyOwnsPresentation(int mode) noexcept;
 // Any thread: whether the hold above is in force for game mode `mode` (a screen of ours up in it, the mod's held view fresh):
 // 0 no; 1 held for a screen on the wrist (arm IK keeps the body under the view: the renderer keeps its first person's mesh

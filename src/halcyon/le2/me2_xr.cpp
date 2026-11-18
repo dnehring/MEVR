@@ -1896,10 +1896,15 @@ void RunFrame() noexcept
         // [Cinematics] sends to the screen renders as a VR cine (both SFR passes: the replay's gate refuses only menus and
         // the flat cine) and is shown on a screen fixed in the room. Prerendered movies stay flat (they read as 8 here);
         // Halcyon's own first-person conversation, when armed, keeps its conversation (one presentation owner).
-        const bool mevrScreen = sfrMode && recognizedCine && s_fovCine && !moviePlayback && !s_convoVrLatch &&
+        // [MEVR] the galaxy map's opening and closing cinematics in the CIC are the map's (MevrSeams::GalaxyOwnsPresentation:
+        // the mod holds Shepard's view through them, ME1's rule, as ME3's; lane GX4): no cinematic presentation, the room stays
+        // in stereo (calcview_hook.cpp holds the view then).
+        const bool mevrGalaxyHeld = gm == 6 && ::MevrSeams::GalaxyOwnsPresentation(gm);
+        const bool mevrScreen = !mevrGalaxyHeld && sfrMode && recognizedCine && s_fovCine && !moviePlayback && !s_convoVrLatch &&
                                 ::MevrSeams::CineScreenWanted(gm == 5);
         ME2VR::CalcViewHook::SetMevrCineScreen(mevrScreen);
-        const bool renderCineInVr = renderCineInVrHalcyon || mevrScreen;
+        const bool renderCineInVr = !mevrGalaxyHeld && (renderCineInVrHalcyon || mevrScreen);
+        if (mevrGalaxyHeld) s_fovCine = false;  // the cinematic's flat panel stays down while the mod holds it
 #else
         const bool renderCineInVr = (gm == 5 && (ME2VR::CalcViewHook::GetCineVrConvo() ||
                                                  s_convoVrLatch)) ||

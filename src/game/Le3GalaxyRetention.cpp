@@ -163,18 +163,6 @@ bool CicArtVisible(ue3::Object* pc) {
     return level != nullptr && Object(level, "Engine.LevelStreaming", "LoadedLevel") != nullptr &&
         ReadBool(level, "Engine.LevelStreaming", "bIsVisible") == true;
 }
-bool MapLevelLoaded(ue3::Object* pc) {
-    auto* const level = LevelNamed(Object(pc, "Engine.Actor", "WorldInfo"), "bioa_nor_203agalaxymap");
-    return level != nullptr && Object(level, "Engine.LevelStreaming", "LoadedLevel") != nullptr;
-}
-bool MapLevelVisible(ue3::Object* pc) {
-    auto* const level = LevelNamed(Object(pc, "Engine.Actor", "WorldInfo"), "bioa_nor_203agalaxymap");
-    return level != nullptr && ReadBool(level, "Engine.LevelStreaming", "bIsVisible") == true;
-}
-bool MapLevelRequested(ue3::Object* pc) {
-    auto* const level = LevelNamed(Object(pc, "Engine.Actor", "WorldInfo"), "bioa_nor_203agalaxymap");
-    return level != nullptr && shouldLoad.ReadBool(level) == true;
-}
 std::string Arm(ue3::Object* pc, bool production) {
     if (lease.deadline) {
         // A lease that ran out before the map opened is spent (nothing was written): armed again while the player still stands
@@ -194,6 +182,43 @@ std::string Arm(ue3::Object* pc, bool production) {
     lease.production = production;
     holds = rebuilds = 0; last = "armed-waiting-for-native-map-entry";
     return {};
+}
+std::string ArmInMap(ue3::Object* pc) {
+    if (lease.deadline) {
+        if (lease.mapSeen && SameLevel()) return "already armed";
+        Release("re-armed for a map open after a load");
+    }
+    auto const mode = player::GameMode(pc);
+    if (!installed || !mode || !engine::adapter::IsMapMode(*mode)) return "requires the installed hook, in the map's mode";
+    auto* const world = Object(pc, "Engine.Actor", "WorldInfo");
+    auto* const level = CicLevel(world);
+    if (!level || !Object(level, "Engine.LevelStreaming", "LoadedLevel") || ReadBool(level, "Engine.LevelStreaming", "bIsVisible") != true)
+        return "CIC art is not loaded and visible in the map's mode";
+    auto const load = shouldLoad.ReadBool(level);
+    auto const show = shouldShow.ReadBool(level);
+    if (!load || !show) return "the CIC art's request fields are unavailable";
+    lease = {Token::Of(pc), Token::Of(player::Pawn(pc)), Token::Of(world), Token::Of(level), GetCurrentThreadId(), ~0ull};
+    lease.production = true;
+    lease.mapSeen = true;
+    lease.nativeLoad = *load;
+    lease.nativeShow = *show;
+    holds = rebuilds = 0;
+    last = "armed-in-the-map-after-a-load";
+    if (!(*load && *show)) {
+        lease.owned = true;
+        if (!Write(shouldLoad, true) || !Write(shouldShow, true)) {
+            Release("request-write-failed");
+            return "the CIC art's request couldn't be written";
+        }
+        ++holds;
+        last = "cic-art-requested-in-the-map";
+    }
+    log::Info("galaxy retention: armed for a map open after a load (CIC art natively load {}, show {}{})", *load, *show,
+        lease.owned ? ": requested" : "");
+    return {};
+}
+void Refresh() {
+    if (lease.deadline && lease.production && !lease.mapSeen && SameLevel()) lease.deadline = GetTickCount64() + 20000;
 }
 bool Active() { return Armed() && lease.mapSeen && engine::adapter::IsMapMode(player::GameMode(lease.pc.object).value_or(255)); }
 bool Kept() {
@@ -233,9 +258,6 @@ bool CicArtVisible(ue3::Object*) { return false; }
 std::string Arm(ue3::Object*, bool) { return "LE3 only"; }
 bool Active() { return false; }
 bool Kept() { return false; }
-bool MapLevelRequested(ue3::Object*) { return false; }
-bool MapLevelLoaded(ue3::Object*) { return false; }
-bool MapLevelVisible(ue3::Object*) { return false; }
 bool Shutdown(hook::Context&, bool) { return true; }
 std::string Command(ue3::Object*, std::string const&) { return "galaxy retention: LE3 only"; }
 }

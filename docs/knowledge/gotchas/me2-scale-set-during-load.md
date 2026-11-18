@@ -17,6 +17,7 @@ bitten: [2026-11-14, 2026-11-17]
 | `first-chance access violation 0xC0000005 on thread <not the game's> at MassEffect2.exe+0x98C25D (reading 0x1C)` | `Logs\LE2MEVR.log`, 15-25 ms after Halcyon's `[VRSTATE] gm 0 live alive -> VR` |
 | the heartbeat stops, the process uses no CPU but its window still "responds"; `crash-firstchance.txt` names a stack of `MassEffect2.exe` frames only | `%LOCALAPPDATA%\MEVR` |
 | "the galaxy map's first held frames fault the render thread", the same `+0x98C25D` 50-70 ms after `the view held at Shepard's` (a post effect's texture parameter null, the effect at 0x3A9FE0) | ME2's galaxy projector flow, 2026-11-17 (lane GX2): with or without captures; `scale set DepthOfField False` before the map: none |
+| "ME2 hung as the map closed after a hot reload", the same `+0x98C25D` 0.2 s after `mevr galaxy exit` | lane GX4, 2026-11-17: the mod rebuilt (hot reload) with ME2's map open; the old generation's unload put the depth of field back on, and the map's closing cinematic faulted |
 
 It looked like first person, the eye size, the body hides, the HUD transforms and the UI scale in turn; none of them was
 it (research/le2-renderer-integration.md's run table).
@@ -43,7 +44,9 @@ lines) or `DisableDof=1` in `MELE2VR.ini` each make the fault go away.
 gameplay (mode 0-4) for `kSettleApplyAt[0]` (3 s). LE1 still applies at the world change (its motion blur needs it,
 [motion blur in stereo](motion-blur-in-stereo.md)). If it comes back, look for another `scale set` or console line sent
 during a load on LE2. The galaxy map's opening (2026-11-17): `game/GalaxyProjectorFlow` turns the depth of field off near the
-CIC's projector on foot, 3 s into gameplay (`flow::Adapter::depthOfFieldOff`, `game/DepthOfFieldHold`), and back away from it.
+CIC's projector on foot, 3 s into gameplay (`flow::Adapter::depthOfFieldOff`, `game/DepthOfFieldHold`), and back away from it;
+the flow's unload (a hot reload) puts it back only on foot (2026-11-17, lane GX4: `flow::Shutdown`), never in the map or its
+cinematics.
 
 # Citations
 

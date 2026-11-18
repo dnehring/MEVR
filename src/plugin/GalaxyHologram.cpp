@@ -960,13 +960,27 @@ bool TableHeld(int gameMode, bool ownsTable, bool suspended) {
     return ownsTable && (ga::IsMapMode(gameMode) || (!suspended && (context == ga::Mode::OnFoot || context == ga::Mode::Cinematic)));
 #endif
 }
+#if !defined(MEVR_GAME_LE1)
+// The sequels: a cinematic is also held while the mod still publishes its table reserved on foot at the projector with the
+// opening's cue (Scene::holdPad[kOpeningCue], game/GalaxyProjectorFlow): the console's use began the map's opening and the
+// mod's next tick hasn't published its bridge yet (2-7 frames of the cinema screen before, ME2 and ME3; lane GX4).
+bool SequelTableHeld(gh::Scene const& scene, int gameMode, bool ownsTable) {
+    bool const cue = ownsTable && scene.suspended != 0 && scene.holdPad[gh::kOpeningCue] != 0 &&
+        engine::adapter::GameMode(gameMode) == engine::adapter::Mode::Cinematic;
+    return cue || TableHeld(gameMode, ownsTable, scene.suspended != 0);
+}
+#endif
 } // namespace
 
 bool HoldViewBegin(int gameMode, bool& wanted) noexcept {
     wanted = false;
     gHoldSwap.active = false;
     auto const scene = gh::Latest(500);
+#if defined(MEVR_GAME_LE1)
     if (!scene || !TableHeld(gameMode, scene->inWorld != 0 && scene->onFoot == 0, scene->suspended != 0) || scene->holdRender == 0 ||
+#else
+    if (!scene || !SequelTableHeld(*scene, gameMode, scene->inWorld != 0 && scene->onFoot == 0) || scene->holdRender == 0 ||
+#endif
         scene->povLocationAddress == 0 || scene->povRotationAddress == 0 || scene->povFovAddress == 0) {
         return false;
     }
@@ -993,7 +1007,11 @@ void HoldViewEnd() noexcept {
 
 bool Holds(int gameMode) noexcept {
     auto const scene = gh::Latest(500);
+#if defined(MEVR_GAME_LE1)
     return scene && TableHeld(gameMode, scene->inWorld != 0 && scene->anchorValid != 0 && scene->onFoot == 0, scene->suspended != 0);
+#else
+    return scene && SequelTableHeld(*scene, gameMode, scene->inWorld != 0 && scene->anchorValid != 0 && scene->onFoot == 0);
+#endif
 }
 
 } // namespace mevr::host::galaxy_hologram

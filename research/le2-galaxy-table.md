@@ -86,6 +86,40 @@ Stretch `%LOCALAPPDATA%\MEVR\sessions61117-192445-759-LE2-gx2` (John's `Save_0
 - The reflection's `SceneCapture2DComponent.bUpdateMatrices` is at +0x174 mask 1 (as the generated header's comment says);
   the compiled LE2 SDK struct is four bytes late, as ME3's: a documented-layout row in `CheckLe2CaptureRig`.
 
+### The flow's rules on ME2, the opening's wait (lane GX4, 2026-11-17)
+
+Since lane GX4 ME3's adapter runs on the same flow, so ME2 has ME3's rules too (the on-foot reservation, the opening and closing
+bridges, the interlude, the recenter kept in the map, the projector's lens flare hidden with it) and ME1's opening wait cut
+(research/le3-galaxy.md "One flow for both sequels"). ME2's facts:
+
+- **The opening, read offline** (`tools/conversation-scan --game LE2 --sequence BioD_Nor_103CIC:GalaxyMap`, output kept private):
+  `SeqEvent_Used_0` (the console, `SFXPointOfInterest_6`) -> `SeqAct_Gate_6` ("Don't allow second selection until exit", opened
+  again by the close path's `BioToggleCinematicMode_2`) -> `DealWithGlobals` -> `Pre_GalaxyMap_Dialogs` -> `BioToggleCinematicMode_8`
+  (the cinematic mode: game mode 6) -> `BioSeqAct_SetStreamingState_4` (`stream_inGalaxyMap` on) and the camera's matinee
+  `SeqAct_Interp_1`; the streaming state starts **`GalaxyMap.BioSeqAct_Delay_0`, 2.5 s, "Min intro scene time"**, and
+  `LastOfTwo` waits for it and the map level's streaming. ME1's `BioSeqAct_Delay_0` exactly (the same comment, the same 2.5 s).
+- **Measured with the wait cut to 0.05 s** (session `%LOCALAPPDATA%\MEVR\sessions\20261117-212856-914-LE2-gx4-me2`, Save 36 read
+  only, `galaxy-open1`): `the map's opening: game modes 0 -> 6 -> 9 in 0.19 s; the map's level loaded at 0.12 s, visible at 0.12 s`
+  (`BioA_Nor_103aGalaxyMap`, loaded but hidden on foot: the flow's cue is its request changing from what it was on foot), the
+  opening's 6 held at Shepard's (`[VRSTATE] gm 6 ... -> VR` after 77 ms of `3D screen (MEVR)`: the frames before the mod's bridge,
+  since then the reservation's opening cue), then 9 held with the window on the disc; all five verdicts PASS.
+- **The closing** is 9 -> 0 -> 6 (0.12 s) -> 0; the map's level is no longer requested by then, so the closing's 6 is held by
+  ME1's rule now (a cinematic within 2 s of the held map's end), not by the opening's cue.
+- **The map's buttons are GUI events.** In the map a replayed A did nothing at the relay ("Plot Mass Relay Jump" on the panel)
+  while `mevr guikey 12` (`BIOGUI_EVENT_BUTTON_A`) took it to the galaxy view at once (state 1); the stick moves the ship by the
+  pad. In the galaxy view the stick moved the cursor 144 units once, then not at all (30 units short of `Cluster11`, nothing
+  selected): the relay jump and its `GLO_01_Relay` movie (`GalaxyMap.TravelScene`, inside a cinematic toggle) weren't reached.
+  `mevr galaxy capture tab-left|tab-right` (the map's own LB/RB) is there for the next try; `mevr galaxy capture ship` lists ME2's
+  selectors by level (`system`, `cluster`, `galaxy`). ME2 autosaves on a cluster or system transition (`SFXSeqAct_SaveGame_0`
+  behind `Gate_4`/`Gate_5`).
+- **Not explained:** after a relaunch (launch 2 of the stretch) the console's A selected `SFXPointOfInterest_6` ("A would use ...
+  2.3 m away") and was pressed (`traversal: A pressed ... A uses the selected object first`) five times without opening the map
+  (mode stayed 0), with and without the reservation's opening cue; the projector stood raised (3166, 92) at first, then at its rest
+  place (3146.5, 47.0) after a further load. Launch 1 opened it three times the same way. Not a flow change (nothing of ours runs at
+  the use); open.
+- A hot reload of the mod with the map open put the depth of field back on and the closing then faulted the render thread
+  (gotchas/me2-scale-set-during-load); the flow's unload now puts it back only on foot.
+
 ### Retired: the opt-in flat table
 
 `HalcyonLe2Bridge::PlacePanel`'s table (`vr::galaxy_map::NativeTablePanel`, `[Galaxy] nativeTable`, off by default) placed the

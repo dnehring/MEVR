@@ -1778,7 +1778,7 @@
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "unreferenced"
+     "status": "run"
     }
    },
    "namespace": "game::galaxy_projector::flow"
@@ -2203,19 +2203,19 @@
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "ungated"
     },
     "LE2": {
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "ungated"
     },
     "LE3": {
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "run"
+     "status": "ungated"
     }
    },
    "namespace": "game::le3_galaxy_capture"

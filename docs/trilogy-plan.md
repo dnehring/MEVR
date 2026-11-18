@@ -744,8 +744,8 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **State:** LE1 build · LE2 verify · LE3 verify
 - **Lives in:** `game/GalaxyProjector` (every game: the held view, the render hold, the stereo window), ME1's adapter
   `game/GalaxyMap`, `plugin/GalaxyHologram` (the window, the held view `HoldViewBegin/End`, `Holds`), `game/SceneCaptureRig`,
-  `core/vr/GalaxyHologram`; the sequels' flow `game/GalaxyProjectorFlow` with ME2's adapter `game/Le2GalaxyCapture`; ME3's
-  adapter `game/Le3GalaxyCapture` (+ `Le3GalaxyRetention`, `Le3GalaxyProjector`), to move onto the flow.
+  `core/vr/GalaxyHologram`; the sequels' one flow `game/GalaxyProjectorFlow` with its adapters `game/Le2GalaxyCapture` (ME2)
+  and `game/Le3GalaxyCapture` (ME3, + `Le3GalaxyRetention`; `Le3GalaxyProjector` is the read-only diagnostic).
 - **Done 2026-11-17 (lane GX):** ME3 opens its map over the CIC's projector: the view held at Shepard's, the CIC in stereo,
   the map a stereo disc on the projector, its Flash UI on the panel there, X back to the room (galaxy-projector-handoff.md
   "2026-11-17"). ME1's `StepWindow` and the held view are the shared `galaxy_projector` code ME3 calls.
@@ -759,14 +759,25 @@ These unblock the most: almost every other entry gets smaller once they land.
   `game/Le2GalaxyCapture`): A at the console, the CIC in stereo, the map a stereo disc on the projector with its UI, X back
   to the room; the depth of field off near the projector (ME2's render thread faulted with it on); no pointer (the map's own
   controls); ME2's opt-in flat table retired (galaxy-projector-handoff.md "2026-11-17: ME2's").
-- **Left:** ME3's adapter onto `GalaxyProjectorFlow` (carrying GX3's interlude rule, the opening and closing bridges, the
-  on-foot reservation and the re-armed retention into the flow, so ME2 gets ME1's travel rule too); ME3's system scan (a
-  replayed LT started none), orbit (mode 12) and the probe (no scannable planet in the fixture's reach), the captures'
-  post-process chain, ME3's picks (the owner's question), the headset; on ME2 travel, orbit and the scanner in the window
-  (its probes and mining: one launch per press), the headset; `vr::galaxy_map::ReadTableSettings` and one input lease for ME3.
+- **Done 2026-11-17 (lane GX4):** ME3 on the sequels' one flow (its adapter about 55 lines; every GX3 rule is the flow's, so
+  ME2 has them); ME1's opening-wait cut on both (the GalaxyMap sequence's own 2.5 s delay to 0.05 s in the CIC: ME3 opens in
+  0.11 s, ME2 in 0.19 s, ME3's first map frame as shipped); ME3's room lease refreshed through the shorter opening (it ran out
+  inside it); ME3 travel and arrival re-run on the flow; a reload in the map reported (the save loads with the CIC's art neither
+  loaded nor requested: no projector, the flat panel until X); the opening's first cinematic frames held by a cue the host reads
+  (built, not yet seen); ME2's map buttons found to be GUI events; `mevr galaxy capture tab-left|tab-right|opening-keep|
+  opening-cut` (galaxy-projector-handoff.md "GX4").
+- **Left:** ME2's travel and arrival through the flow (a relay jump: `tab-right`, then `mevr guikey 12`), ME2's console that
+  stopped opening the map in a relaunch (open, not the flow), the opening cue seen on both; ME3's system scan (a replayed LT
+  started none), orbit (mode 12) and the probe (no scannable planet in the fixture's reach), the captures' post-process chain,
+  the headset; on ME2 orbit and the scanner in the window (its probes and mining: one launch per press);
+  `vr::galaxy_map::ReadTableSettings` and one input lease for ME3; ray picking and ME2's scanner by ray (the next lane).
+- **The owner, 2026-11-17 (night)** ("whichever gives us the great approximate experience to what we have on me1"): ME3's
+  map over the projector **stays on by default**; the **depth of field off near the projector is accepted** (ME2's, forced by
+  its render fault). Ray picking on both maps and ray aiming of ME2's scanner come next, from a lane after GX4 (the flow's
+  `flow::Adapter::pointAt` is the hook for it: a hit on the window as a map position plus a select; not built).
 - **Closes when:** the native map shows over the physical projector with the CIC in stereo around it, on each sequel;
   one probe becomes zero after exactly one launch on ME2.
-- **Waits for:** T16. **Who:** GX (ME3), GX3 (ME3's remaining steps), GX2 (ME2), 2026-11-17.
+- **Waits for:** T16. **Who:** GX (ME3), GX3 (ME3's remaining steps), GX2 (ME2), GX4 (one flow), 2026-11-17.
 
 #### T43 Controller input [G49]
 - **State:** LE1 done · LE2 headset · LE3 headset
