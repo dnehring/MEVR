@@ -27,6 +27,16 @@ function(mevr_pdb_name_only target)
     target_link_options(${target} PRIVATE "/PDBALTPATH:$<TARGET_PDB_FILE_NAME:${target}>")
 endfunction()
 
+# Every source compiles in parallel, inside each project too (lane BLD, 2026-11-17). Without this, MSBuild hands all of a
+# project's sources to one cl.exe, which compiles them one after the other: a cold build-trilogy spent 10 minutes with 3-6
+# of 24 cores busy while the three mods' 190 files went through one at a time. MSBuild's multi-tool task gives every
+# source its own cl.exe, at most one per logical processor across all the projects the build runs at once. The compiler
+# gets the same options for each file (the task adds /FS, so the processes share a project's PDB, and drops /MP), so the
+# objects are the same. Set before any target is defined, so the external projects (LExSDKv2, RmlUi...) get it too.
+if (CMAKE_GENERATOR MATCHES "^Visual Studio")
+    list(APPEND CMAKE_VS_GLOBALS "UseMultiToolTask=true" "EnforceProcessCountAcrossBuilds=true")
+endif ()
+
 # One source tree, one ASI per game (docs/trilogy-design.md). LE1 first.
 option(MEVR_BUILD_LE1 "Build LE1MEVR.asi" ON)
 option(MEVR_BUILD_LE2 "Build LE2MEVR.asi" OFF)
@@ -57,58 +67,26 @@ endif ()
 set(MEVR_LE1_LINKS_LESDK ${MEVR_LE1_LESDK})
 set(MEVR_LE3_LINKS_LESDK ${MEVR_LE3_LESDK})
 
-# LExSDKv2 honors these as normal variables (CMP0077).
+# The third-party libraries (tools/cmake/ThirdParty.cmake: their settings, and the prebuilt cache a fresh worktree takes
+# them from, MEVR_THIRDPARTY_CACHE): LExSDKv2 for the games that link it, only when something does (a release build of
+# any game configures and builds without the unlicensed submodule checked out: docs/release-checklist.md section 1;
+# research/34 stage 6; T04); the OpenXR loader; with the main menu, FreeType and RmlUi.
+option(MEVR_MAIN_MENU "Build our VR main menu (RmlUi) into the LE1 and LE2 hosts" ON)
+set(MEVR_LESDK_GAMES "")
 foreach (game LE1 LE2 LE3)
     if (MEVR_BUILD_${game} AND MEVR_${game}_LINKS_LESDK)
-        set(LESDK_WITH_${game} ON)
-    else ()
-        set(LESDK_WITH_${game} OFF)
+        list(APPEND MEVR_LESDK_GAMES ${game})
     endif ()
 endforeach ()
-set(LESDK_WITH_LEL OFF)
-set(LESDK_WITH_SAMPLES OFF)
-set(LESDK_WITH_TESTS OFF)
-# Only when something links it: a release build of any game configures and builds without the unlicensed submodule
-# checked out (docs/release-checklist.md section 1; research/34 stage 6; T04).
-if (LESDK_WITH_LE1 OR LESDK_WITH_LE2 OR LESDK_WITH_LE3)
-    add_subdirectory(external/LExSDKv2)
-endif ()
+include(tools/cmake/ThirdParty.cmake)
+mevr_third_party("${MEVR_LESDK_GAMES}" ${MEVR_MAIN_MENU})
 # The loader's test ASI is built against LExSDKv2's own SPI header (an outside plugin's view), when the submodule is there.
 set(MEVR_HAVE_LESDK_SPI OFF)
 if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/LExSDKv2/External")
     set(MEVR_HAVE_LESDK_SPI ON)
 endif ()
 
-# Khronos OpenXR loader (Apache-2.0), linked statically into the mod.
-set(DYNAMIC_LOADER OFF)
-set(BUILD_API_LAYERS OFF)
-set(BUILD_TESTS OFF)
-set(BUILD_CONFORMANCE_TESTS OFF)
-set(BUILD_SDK_TESTS OFF)
-set(BUILD_ALL_EXTENSIONS OFF)
-add_subdirectory(external/OpenXR-SDK EXCLUDE_FROM_ALL)
-
-# The main menu's UI library (research/28): RmlUi (MIT) with its FreeType font engine (FreeType: FTL), both
-# static, built only for what links them (the LE1 host and the menu preview). Their own warning levels.
-option(MEVR_MAIN_MENU "Build our VR main menu (RmlUi) into the LE1 and LE2 hosts" ON)
 if (MEVR_MAIN_MENU)
-    set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
-    set(FT_DISABLE_ZLIB ON CACHE BOOL "" FORCE)
-    set(FT_DISABLE_BZIP2 ON CACHE BOOL "" FORCE)
-    set(FT_DISABLE_PNG ON CACHE BOOL "" FORCE)
-    set(FT_DISABLE_HARFBUZZ ON CACHE BOOL "" FORCE)
-    set(FT_DISABLE_BROTLI ON CACHE BOOL "" FORCE)
-    add_subdirectory(external/freetype EXCLUDE_FROM_ALL)
-    add_library(Freetype::Freetype ALIAS freetype)
-    # RmlUi looks for FreeType with find_package; the target above is the one it links.
-    set(CMAKE_DISABLE_FIND_PACKAGE_Freetype TRUE)
-    set(RMLUI_FONT_ENGINE "freetype" CACHE STRING "" FORCE)
-    set(RMLUI_SAMPLES OFF CACHE BOOL "" FORCE)
-    set(RMLUI_LUA_BINDINGS OFF CACHE BOOL "" FORCE)
-    set(RMLUI_SVG_PLUGIN OFF CACHE BOOL "" FORCE)
-    set(RMLUI_LOTTIE_PLUGIN OFF CACHE BOOL "" FORCE)
-    set(RMLUI_WARNINGS_AS_ERRORS OFF CACHE BOOL "" FORCE)
-    add_subdirectory(external/RmlUi EXCLUDE_FROM_ALL)
     # RmlUi's own Direct3D 11 renderer (Backends, MIT), wrapped by src/plugin/menu/MenuRenderer for the game's device.
     add_library(rmlui-d3d11 STATIC external/RmlUi/Backends/RmlUi_Renderer_DX11.cpp)
     target_include_directories(rmlui-d3d11 PUBLIC external/RmlUi/Backends)
