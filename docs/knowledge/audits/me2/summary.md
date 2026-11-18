@@ -121,6 +121,10 @@ Not applied, still to check:
 # Questions for the owner
 
 1. Should the support grip at the shoulder send LT on ME2 at all, given LT is ME2's zoom?
+   **2026-11-18:** the owner asked for the accuracy without the zoom's side effects. The proposal is written in the
+   [weapons audit](weapons-and-sights.md) ("Proposal: the shouldered gun's accuracy without the game's zoom"): no LT,
+   and the existing one-call zoomed aim error opened for the shouldered grip. Not built; what else ME2's zoom state
+   changes is untraced.
 2. What should a left-grip squeeze at the chest do on ME2, where there is no grenade slot?
    **Answered 2026-11-18:** no haptic cue at the chest on ME2. Read as: the chest is not a slot there, so it gives no
    buzz and takes no action (the lead's reading; whether the squeeze may still fall through to a squad order is open).
