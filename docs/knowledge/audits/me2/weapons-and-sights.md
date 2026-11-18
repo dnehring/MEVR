@@ -146,6 +146,49 @@ not "aimed fire", it is the game's zoom.
    panel (WPN-06 to 08, 18, 23, 24, 31, 34), by a replay with the left grip in the zone and snapshots.
 6. A heavy weapon in hand: say in the log and to the owner that it has no sight, or map it to a profile.
 
+# Proposal: the shouldered gun's accuracy without the game's zoom
+
+Recorded 2026-11-18 at the owner's request ("find a way to not introduce the negative side effects of the zoom, since it
+likely has an impact on accuracy as well"). A proposal from reading the code: not built, not run in the game.
+
+**The problem (WPN-09).** Both hands on a long gun at the shoulder set `options.supportAims`
+([SupportGrip.cpp](../../../../src/game/SupportGrip.cpp), the "Aimed fire" lines), which forces LT to 255. On ME1 LT is
+the game's aimed fire and nothing shows. On ME2 LT is `SFXGameModeDefault.TightAim`, which calls `SetZoomed(true)`: the
+weapon enters the game's zoomed state. The renderer keeps the picture from zooming since 2222cdee, but the state itself
+stays on, with whatever else it changes.
+
+**What exists already (WPN-22).** The spread of a shot is one call. On ME2 it is `SFXWeapon.GetAimError(Accuracy)`,
+which lerps a range that `SFXWeapon.GetWeaponAimErrorRange` picks by `bIsZoomed`: `MinZoomAimError`/`MaxZoomAimError`
+when set, `MinAimError`/`MaxAimError` otherwise (research/le2-vrik.md, "The sights"). `OnAimError` in
+[Sights.cpp](../../../../src/game/Sights.cpp) is a post-handler on that call. It finds the accuracy the unzoomed answer
+was made from, then asks `weapon::ZoomedAimError` ([Weapon.cpp](../../../../src/game/Weapon.cpp)) for the same
+accuracy with `bIsZoomed` set for that one call (`WithFlagSet`: journalled, put back in a `__finally`), and writes the
+zoomed answer into the result. The camera and the rest of the game never see the flag. It runs on ME2 today, but only
+while a scope's picture is up (`gScopeUp && gAimedFire`).
+
+**The change.**
+
+1. On ME2, do not send LT from the shouldered support grip (`options.supportAims` false there, or the flag kept from the
+   pad). The game never enters `TightAim` from the gesture.
+2. Open `OnAimError`'s gate for the same condition that sends LT today: the support grip held and the gun at the shoulder
+   (`AtShoulder()`), for every weapon type the grip aims with (not the sniper rifle, which has the scope's route).
+   `support_grip` publishes the condition; `sights` reads it beside `gScopeUp`.
+
+The shot then gets ME2's zoomed spread and the weapon is never zoomed.
+
+**What this does not carry over.** Anything else ME2's zoomed state changes besides the spread range. What
+`SetZoomed(true)` touches on ME2 has not been traced: recoil, damage, movement speed and a sniper rifle's time dilation
+are the candidates. A slowdown is a loss the owner would want; a recoil bonus would need its own one-call route. Trace
+it before building (Ghidra or the script: `SFXWeapon.SetZoomed`, `StartZoom`, and every reader of `bIsZoomed`).
+
+**ME1.** The same change would work there (its handler is the same code on `BioWeaponRanged.GetPlayerAimError`), and
+both games would then shoulder the same way. It changes ME1's behaviour, so it waits for the owner's word.
+
+**The check that closes it.** On the fake headset with replayed hands at the shoulder
+(`tools/make-walk-recording.py --hands`, a recording with the left grip in the support zone): the log's
+`support grip: aimed fire on` without the weapon's `bIsZoomed` going on, `sights: first scoped shot with aimed fire:
+aim error a -> b` with b below a for a rifle, and `mevr calltrace 10 tightaim setzoomed` printing nothing while shouldered.
+
 # Citations
 
 - [The catalog file](../../me1/weapons-and-sights.md); [the parity ledger](../../../trilogy-parity-ledger.md) rows G02
