@@ -195,12 +195,14 @@ function(mevr_third_party_build_entry group with_menu entry key_text out_ok)
         return()
     endif ()
     # As many jobs as the caller's build would take: CMAKE_BUILD_PARALLEL_LEVEL, else all; CL_MPCount, if the caller set
-    # it, caps the compilers as in the main build (both inherited, as is an Idle priority class).
+    # it, caps the compilers as in the main build. Fresh MSBuild nodes (no reuse), so they and their compilers inherit
+    # this configure's priority class (Idle, for a build started with `start /low` while a game runs) and none stays.
     set(jobs --parallel)
     if (NOT "$ENV{CMAKE_BUILD_PARALLEL_LEVEL}" STREQUAL "")
         list(APPEND jobs "$ENV{CMAKE_BUILD_PARALLEL_LEVEL}")
     endif ()
     execute_process(COMMAND "${CMAKE_COMMAND}" --build "${entry}" --config Release ${jobs} --target mevr-thirdparty
+            -- -nodeReuse:false
         OUTPUT_FILE "${entry}/mevr-build.log" ERROR_FILE "${entry}/mevr-build.err" RESULT_VARIABLE result)
     if (NOT result EQUAL 0)
         message(WARNING "Third-party cache: building ${group} failed (${entry}/mevr-build.*); building it from source")
