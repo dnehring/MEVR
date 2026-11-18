@@ -576,3 +576,54 @@ labelled known-good; emulated interaction-profile names alone are not enough to 
 including raw-reference transforms and preservation of source opacity through projection. Inspected both eye
 reference images, live-panel legend and selected-hand baseline row under `scratch/controller-guides-2026-11-12/`.
 The menu preview reported no binding/style errors. No deployment or physical-headset acceptance was performed.
+
+## 17. One calibration for the trilogy (proposal, 2026-11-18; not built)
+
+The owner (2026-11-18, the ME2 audit's question 4): one calibration for the three games, unless a game's VRIK differs.
+Lane AU2's proposal; nothing below is built.
+
+**Today.** Each game keeps its own: the host (`plugin/Calibration.cpp`, the writer and the first-run prompt's `[Calibration]
+prompted` list; `plugin/MainMenuSettings.cpp`, the position and manual rows) and the mod (`game/BodyCalibration.cpp`
+`ReadValues`, its path from `engine::SettingsFile()`) read and write `[Calibration.<ProfileKey>]`
+(`vr::calibration::ProfileKey(interaction profile, headset)`) in `<exe dir>\ASI\<GAME>MEVR.ini`. A player who calibrated in ME1
+starts uncalibrated in ME2 and ME3, and is prompted again.
+
+**What the section holds is the player's, not the game's.** Eye heights standing and crouched, the seated choice, arm length,
+the shoulder zone, each gun stance's frame in the right grip's frame, its foregrip and stock, the left trim, the empty hands'
+trims, the manual offsets: metres in tracking space and rotations in the controllers' frames. Nothing in it depends on a game's
+models (each gun's sight is read from its model by game/Sights, not calibrated). The sequels run ME1's arm IK, body slots and
+sights (ledger G01-G10), so today no game's VRIK differs: one section serves all three.
+
+**Where it lives: `%LOCALAPPDATA%\MEVR\calibration.ini`**, the same `[Calibration.<ProfileKey>]` sections and keys, and the
+`prompted` list. Why there: the mod's per-user data root already (test loop, game art, saved Shepard heights, crash files); the
+same for every game and install folder; outside the game folders the installer restores byte for byte. Rejected: the sequels
+reading `Game\ME1\Binaries\Win64\ASI\LE1MEVR.ini` (ME1 may not be installed or modded, and a sequel would write into another
+game's folder and manifest).
+
+**How the code changes (one path, every game).**
+1. `engine::CalibrationFile()` beside `engine::SettingsFile()`, and the host's twin through `MevrBridge`/HostServices (the host
+   writes, the mod reads: both must name the same file). Every `[Calibration*]` read and write goes through it:
+   `game/BodyCalibration`, `plugin/Calibration` (the save and the prompt's list), `plugin/MainMenuSettings` (position, manual
+   rows), `core/vr/ManualCalibration`'s callers.
+2. Writes as the host's MELEVR.ini save: a `.tmp` moved over the file, refused for the session if the file existed but could not
+   be read at start (never defaults over a calibration). One game runs at a time: no cross-process lock.
+3. The mod re-reads it when its time stamp changes, as it does the game's ini.
+4. `[Calibration] use` stays per game in `<GAME>MEVR.ini`: a setting, not a measurement.
+
+**Migration, once, on first read in any game.** If the shared file has no section for the current `ProfileKey`, look in the
+three games' `ASI\<GAME>MEVR.ini` under the same install root (this game's first) and copy the section with the newest `time`;
+merge the `prompted` lists. The per-game sections stay (an older build still finds its own) and are not read again once the
+shared file has the key (marker `[Calibration] shared = 1` in the game's ini). Log `calibration: [Calibration.<key>] taken from
+<GAME>MEVR.ini (calibrated <time>) into calibration.ini`.
+
+**If a game's VRIK ever differs** (the owner's exception): `[Calibration.<key>.<GAME>]` in the shared file overrides only the
+keys it names, read after the common section.
+
+**Installer and reports.** Uninstall keeps `calibration.ini` unless `%LOCALAPPDATA%\MEVR` is ticked (as now); the problem report
+adds it (redacted as the inis are). Unit tests in `core/vr/Calibration`: the migration's choice (newest `time`, this game first on
+a tie, merged `prompted`) and the override's merge; `tools/setup/test-fake-game.ps1 -Games LE1,LE2` calibrates on LE1's fake
+install and reads it on LE2's.
+
+**The check that closes it.** On the fake headset: calibrate in ME1 (a replayed calibration, sections 9-10), launch ME2 on Save 4:
+no first-run prompt, `calibration: ... taken from` once, the same values in the mod's `calibration:` line as ME1's; ME1 at the
+same pose unchanged (it reads the same numbers from the new file).
