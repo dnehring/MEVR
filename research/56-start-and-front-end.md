@@ -154,6 +154,9 @@ Snapshots from launch through a load on each sequel (`%LOCALAPPDATA%\MEVR\fe\LE2
 - **[Cinematics] frontEnd** is ME1's key and default (1) on every game; `0` keeps the front end on the flat panel.
 - The load's tail counts as the load's movie for the dip from black (TransitionFade's view 2), so the world after a load comes up
   from black as on ME1 and ME3.
+- **The front end's screen is the game pointer's** (`plugin/SequelOverlays.cpp`, as LE1's `CineScreenPointerPlane`): the whole
+  game window on the UI layer's plane, wider and taller by the part the screen leaves out, so a controller's ray and trigger
+  work the title and its menus (ME3's flat GUI panel had the pointer before; ME2's flat menu panel never had).
 
 ### After (fake headset, 2026-11-18)
 
@@ -174,6 +177,11 @@ Launch, the title, A replayed at the title (`tools/make-interrupt-recording.py p
   snapshot `2026-11-18_01-41-37-177`), the load `MENU_MONO enter: front end` (the 3.2 x 2.3 m flat panel), the level after 0.1 s of
   Halcyon's `CAPTURE_STALL_MONO`. The title read mode 9 (`mevr state`) this time. A replayed at ME3's title didn't pass "PRESS
   ANY KEY", so ME3's main menu was not reached by script; it is the same front end (GUI or Movie mode over the same scene).
+- **The last two changes, ME2 again** (`%LOCALAPPDATA%\MEVR\fe\LE2-v2-*`, 01:59): the same sequence of views; with the replayed hands
+  held ahead, `game pointer: the flat screen is up (the game's menus, 2.51 x 1.41 m, fixed in the room)` and `the right
+  controller's ray is on the game's menus at (2194, 1282) px of the 4096x2304 window, 2.75 m away` (the hand 0.09 m right and
+  0.08 m under the eyes: 147 and 131 px off the centre, exact); after the load `transition fade: a cinematic's flat panel ->
+  the world: from black`.
 
 ### LE1 unchanged, by its compiled code
 
@@ -185,8 +193,7 @@ comparison of the PE files). No same-pose pair was needed.
 
 ### Not done
 
-- The game pointer on the screen's UI layer (ME1's CNV contract on the sequels, unchanged): on ME3 the flat panel took the ray in
-  its GUI mode, now the front end's screen takes the pad only, as ME2's flat panel did.
+- The game pointer on the 3D screen's UI layer outside the front end (conversations): unchanged, ME1's CNV contract on the sequels.
 - `HoldPlainVr` (plain VR after another view waits 100 ms) is wired on neither sequel: no blip of a gameplay mode was seen in
   their front ends (ME1's came from the title's camera flight).
 
