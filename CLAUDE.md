@@ -261,6 +261,15 @@ switching frameworks.
 
 - Configure: `cmake -S . -B build -G "Visual Studio 17 2022" -A x64`. Build:
   `cmake --build build --config Release --target MEVR-LE1`, producing `build/Release/LE1MEVR.asi`.
+- **Cold builds** (lane BLD, 2026-11-17): every project compiles its sources in parallel (MSBuild's multi-tool task,
+  `CMAKE_VS_GLOBALS` at the top of `CMakeLists.txt`; before, each project's files went through one cl.exe in turn), and
+  the third-party libraries (LExSDKv2's SDKs, the OpenXR loader, FreeType, RmlUi) come from a prebuilt cache in
+  `%LOCALAPPDATA%\MEVR\build-cache` (`tools/cmake/ThirdParty.cmake`: keyed by the submodules' commits, never with local
+  changes, the compiler, Windows SDK, flags and those settings; a configure without an entry builds it once, about a
+  minute, under a lock; `-DMEVR_THIRDPARTY_CACHE=OFF`, Release only otherwise, and CI build them from source). Same
+  binaries (sizes, sections, exports). A fresh worktree's cold build-trilogy: BLD_TRI; build-mono: BLD_MONO. While a game runs,
+  build at Idle priority on half the cores: `$env:CL_MPCount=8; cmd /c start "" /b /low /wait cmake --build <dir> --config
+  Release --parallel 4 -- -nodeReuse:false` (a reused MSBuild node keeps Normal priority).
 - Deploy: `tools/deploy-asi.ps1 -Game LE1` (needs the ME3MM ASI loader). The log is at
   `<Win64>/Logs/LE1MEVR.log` or `%LOCALAPPDATA%/MEVR/`.
 - **Hot reload (default build):** `LE1MEVR.asi` is a small host; the code lives in

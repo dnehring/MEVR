@@ -132,9 +132,13 @@ function(mevr_third_party_key group with_menu out_key out_why)
         endif ()
         string(APPEND text "${module}=${head}\n")
     endforeach ()
-    file(SHA256 "${MEVR_THIRDPARTY_CMAKE_DIR}/ThirdParty.cmake" own)
-    file(SHA256 "${MEVR_THIRDPARTY_CMAKE_DIR}/thirdparty/CMakeLists.txt" nested)
-    string(APPEND text "ThirdParty.cmake=${own}\nthirdparty/CMakeLists.txt=${nested}\n")
+    foreach (settings ThirdParty.cmake thirdparty/CMakeLists.txt)
+        # The text, whatever line ends this checkout has (git gives CRLF or LF by the clone's autocrlf).
+        file(READ "${MEVR_THIRDPARTY_CMAKE_DIR}/${settings}" content)
+        string(REPLACE "\r\n" "\n" content "${content}")
+        string(SHA256 hash "${content}")
+        string(APPEND text "${settings}=${hash}\n")
+    endforeach ()
     foreach (var CMAKE_VERSION CMAKE_GENERATOR CMAKE_GENERATOR_PLATFORM CMAKE_GENERATOR_TOOLSET CMAKE_VS_PLATFORM_TOOLSET
             CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION CMAKE_C_COMPILER CMAKE_C_COMPILER_VERSION CMAKE_CXX_COMPILER
             CMAKE_CXX_COMPILER_VERSION ${MEVR_TP_FORWARDED})
