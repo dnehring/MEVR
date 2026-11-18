@@ -144,7 +144,7 @@ and that ME3's conversations are on the native flat screen (the 3D screen shows 
    **Answered 2026-11-18:** "That's fine for now."
 7. During a roll or hit reaction with snap turn chosen: should the mod keep the turn, or should nobody turn?
    **2026-11-18:** the owner doesn't yet know how a roll should look in VR; a proposal went back (first person, the view
-   level and sliding with the body, the turn the player's). Not answered yet.
+   level and sliding with the body, the turn the player's). The owner: "For roll we'll do your recommendation."
 8. Which magnification should a sniper rifle show across the trilogy (ME1 3.5x and 7x, ME2 8.0x, ME3 4.0x today)?
    **Answered 2026-11-18:** "sniper zoom is unified": one rule, read as ME1's.
 

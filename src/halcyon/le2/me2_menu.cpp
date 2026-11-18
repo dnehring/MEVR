@@ -524,6 +524,15 @@ void ApplyMevrBaseline() noexcept
     if (note(ME2VR::CalcViewHook::GetCineVrConvo(), "conversations in VR (CineVrConvo)")) ME2VR::CalcViewHook::SetCineVrConvo(false);
     if (note(ME2VR::CalcViewHook::GetCineVrCutscene(), "cutscenes in VR (CineVrCutscene)"))
         ME2VR::CalcViewHook::SetCineVrCutscene(false);
+    // No head aim in the Hammerhead either (the owner, 2026-11-18: "vehicle head mode likely shouldn't be on"; ME1's
+    // makoHeadAim = 0): free look, the head turns the view and the stick aims the cannon, until the Hammerhead gets the
+    // Mako's controls and a first-person cockpit. Upstream ships 3, the head aiming the cannon.
+    if (note(ME2VR::EngineProbe::GetVehicleHeadMode() != 1, "the Hammerhead's free look (VehicleHeadMode 1)"))
+        ME2VR::EngineProbe::SetVehicleHeadMode(1);
+    // One first-person conversation for the trilogy: ME1's (game/ConversationWorld), deferred on the sequels. Upstream's
+    // own (convo_fp.cpp) stays off whatever the file or the classic menu says, as LE3's host forces it at its setter.
+    if (note(ME2VR::ConvoFp::GetEnabled(), "upstream's first-person conversations (ConvoFirstPerson)"))
+        ME2VR::ConvoFp::SetEnabled(false);
     if (note(g_profileHotkeys, "profile hotkeys (ProfileHotkeys)")) g_profileHotkeys = false;
     if (note(g_recenterKey == 'R', "the recenter key R (RecenterKey)")) g_recenterKey = 0;  // rk > 0 gates it
     // The menu key is ME1's \ (our deploy's on ME1: it opens our main menu, Ctrl or Shift + \ this one), not upstream's

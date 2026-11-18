@@ -137,7 +137,9 @@ Not applied, still to check:
    **Answered 2026-11-18:** "sniper zoom is unified": one rule for the trilogy, read as ME1's.
 6. Halcyon ME2's `VehicleHeadMode = 3` and `ConvoFirstPerson`: pin both off in the baseline?
    **2026-11-18:** explained to the owner (mode 3 is head aim for the Hammerhead's cannon; `ConvoFirstPerson` is upstream's
-   own first-person conversation, off in the ini but not pinned); not answered yet.
+   own first-person conversation, off in the ini but not pinned). The owner: "vehicle head mode likely shouldn't be on.
+   We'll be building out the models for first person default." Both pinned by the baseline: `VehicleHeadMode = 1` (free
+   look), `ConvoFirstPerson` off.
 
 # What to do
 

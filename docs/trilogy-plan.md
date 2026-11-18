@@ -1040,10 +1040,14 @@ me3/summary.md; the owner's words in quotes):
   The hand holding a gun never strikes; an empty hand's fist brings out the omni-blade, and the strokes strike with it.
 - **ME3, the left-hand push with a grenade equipped:** "Yes": it throws the grenade.
 - **ME3, the omni-tool rail's Squad entry greyed until its figure is ported:** "That's fine for now."
-- **Halcyon ME2's `VehicleHeadMode = 3` and `ConvoFirstPerson`:** explained to the owner 2026-11-18, not answered yet.
-- **ME3, a roll or hit reaction with snap turn on:** "I'm not sure, since I don't know how rolls should appear in VR." A
-  proposal went to the owner 2026-11-18 (the view stays first person and level and slides with the body, the turn stays
-  the player's); not answered yet.
+- **Halcyon ME2's `VehicleHeadMode = 3`** (the head aims the Hammerhead's cannon): "vehicle head mode likely shouldn't be
+  on. We'll be building out the models for first person default." Pinned to 1 by ME2's baseline (free look: the head turns
+  the view, the stick aims; ME1's `makoHeadAim = 0`) until the Hammerhead gets the Mako's controls and a first-person
+  cockpit. Upstream's own **`ConvoFirstPerson`** pinned off with it (one first-person conversation for the trilogy, ME1's).
+- **ME3, a roll or hit reaction with snap turn on:** "I'm not sure, since I don't know how rolls should appear in VR," then
+  "For roll we'll do your recommendation": a roll (and melee, a hit reaction, a cover entry) stays first person, the view
+  level (never tumbling) and sliding with the body to where the move ends, the floor held, the snap turn still the
+  player's, an optional vignette (as ME2's vault).
 - **Earlier the same day** (the ME2 audit): no haptic cue at the chest on ME2 (no grenade slot there); one calibration for
   the trilogy unless a game's VRIK differs; the shouldered gun's accuracy without the game's zoom (the proposal in
   docs/knowledge/audits/me2/weapons-and-sights.md, not built).
