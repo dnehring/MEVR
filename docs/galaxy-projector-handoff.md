@@ -8,6 +8,39 @@
 Updated 2026-11-17 (lane GX). The 2026-11-15 checkpoint (0f02fd38, landed as ccc9325d) is on main; its worktree is gone.
 This is a resumption document, not a release or acceptance claim.
 
+## 2026-11-17 (night): one flow for both sequels, the opening's wait cut (lane GX4)
+
+research/le3-galaxy.md "One flow for both sequels" and research/le2-galaxy-table.md "The flow's rules on ME2" have the runs:
+- **ME3 is on `game/GalaxyProjectorFlow`**, its adapter `game/Le3GalaxyCapture` (about 55 lines: the CIC's art, the retention's
+  calls, the map's level). Every GX3 rule is the flow's now, so ME2 has them: the interlude, the on-foot reservation, the opening
+  and closing bridges, the recenter kept inside the map, the lens flare, the opening's probe, `ship`/`flares`. A cinematic straight
+  from the map that outlasts the closing's 3 s becomes the map's interlude (ME1's RememberTable after its ClosingHold); the closing
+  is held by ME1's rule (a cinematic within 2 s of the held map's end), whatever the map's level.
+- **The opening's 2.5 s wait is cut as ME1's**: the GalaxyMap sequence's own longest delay (ME3 `SeqAct_Delay_1`, ME2
+  `BioSeqAct_Delay_0`, both 2.5 s) written to 0.05 s in the CIC, journalled, put back away from it and on unload
+  (`mevr galaxy capture opening-keep|opening-cut`). ME3 opens in 0.11-0.12 s (was 2.56), ME2 in 0.19 s; the map camera's first
+  frame on ME3 is the same as shipped (snapshots 0.27 s and 0.32 s in). Every ME3 opening held (0 unheld main views).
+- **Found by the move:** ME3's room lease (20 s from arming) ran out inside the now 0.1 s opening when armed 20 s before the use;
+  it now waits from the player's last moment at the projector and through the opening (`le3_galaxy_retention::Refresh`).
+- **ME3 travel and arrival** on the shared flow as GX3 saw them (relay movie alone, arrival on the disc); 12 unheld main views in
+  23,532, all in multi-second game-thread stalls under another lane's cold builds (the host's 500 ms freshness).
+- **ME3 reload with the map open** (ME3 autosaves 2 s after a travel's A, in the map): the save loads into mode 11 with the CIC's
+  art (`BioA_Nor_210CIC`) neither loaded nor requested, so there is no projector to re-arm on: the flat panel until X (ME1's rule),
+  logged once with the world's streaming levels. The flow carries the old room's disc and view and re-arms from them if the
+  CIC's art is there after a load (`flow::Adapter::armRetentionInMap`); it wasn't.
+- **The opening's first 2-7 frames were a cinematic** (the 3D cinema screen) on both sequels until the mod's bridge published; the
+  on-foot reservation now carries an opening cue the host holds (`Scene::holdPad[kOpeningCue]`, `plugin/GalaxyHologram`). Built,
+  not yet seen in the game.
+- **ME2**: the map's A and B are GUI events (`mevr guikey 12` worked where a replayed A didn't); the galaxy view's cursor stuck
+  short of a cluster, so the relay jump wasn't reached (`mevr galaxy capture tab-left|tab-right` added for it). In a relaunch the
+  console stopped opening the map at all (A on the selected console, mode 0): open, not ours. A hot reload with ME2's map open
+  faulted the render thread (the depth of field restored on unload): the flow restores it only on foot now.
+- The owner (2026-11-17 night): ME3 on by default; DOF off near the projector accepted; ray picking and ME2's scanner by ray are
+  the next lane's (`flow::Adapter::pointAt`, not built).
+
+Left: ME2's travel and arrival (a relay jump; `tab-right` then `mevr guikey 12`), the opening cue seen on both sequels, ME2's
+console that wouldn't open after a relaunch, ME3's scan and orbit, the captures' post-process chain, the headset.
+
 ## 2026-11-17 (later): travel, the opening and closing, the band, reload, recenter (lane GX3)
 
 research/le3-galaxy.md "Travel, the opening and closing, the band" has the runs and the facts; in short, on ME3:

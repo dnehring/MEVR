@@ -18,7 +18,7 @@ using Publish = void (*)(vr::galaxy_holo::Scene const*);
 void TryStartup();
 void Tick(Publish publish, std::optional<vr::floor::State> const& floor);
 void Shutdown(bool exiting);
-// `mevr galaxy state | projector | capture on|on-post|on-default|on-ui|off|state` on ME2.
+// `mevr galaxy state | projector | capture <action> (game/GalaxyProjectorFlow's Command) | place X Y Z yawDeg | exit` on ME2.
 std::string Command(ue3::Object* pc, std::string const& line);
 std::string StatusJson();
 } // namespace mevr::game::le2_galaxy_capture

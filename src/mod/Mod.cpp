@@ -393,7 +393,7 @@ void TryInstallScriptHooks() {
     game::conversation_world::TryStartup();  // ... and the one that holds it through a conversation in the world (research/59)
 #endif
 #if defined(MEVR_GAME_LE3)
-    game::le3_galaxy_capture::TryStartup();  // ME3's: the same hold over the CIC's projector (game/GalaxyProjector)
+    game::le3_galaxy_capture::TryStartup();  // ME3's: the sequels' flow over the CIC's projector (game/GalaxyProjectorFlow)
 #elif defined(MEVR_GAME_LE2)
     game::le2_galaxy_capture::TryStartup();  // ME2's: the sequels' flow over the CIC's projector (game/GalaxyProjectorFlow)
 #else
@@ -1397,6 +1397,7 @@ void PublishStatus() {
         full.pop_back();
 #if defined(MEVR_GAME_LE3)
         full += ", \"melee\": " + vr::test_request::JsonString(game::melee::Status());
+        full += ", \"galaxyProjector\": " + game::le3_galaxy_capture::StatusJson();  // the sequels' flow (game/GalaxyProjectorFlow)
 #endif
 #if defined(MEVR_GAME_LE2)
         full += ", \"galaxyProjector\": " + game::le2_galaxy_capture::StatusJson();  // the sequels' flow (game/GalaxyProjectorFlow)

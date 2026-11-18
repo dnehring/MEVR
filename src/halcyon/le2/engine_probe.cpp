@@ -1185,8 +1185,11 @@ void ApplyFirstPerson() noexcept
     {
         static bool s_fpHead = false, s_fpBody = false;
         if (active) { s_fpHead = hideHead; s_fpBody = hideBody; }
-        const int mevrMode = ReadGameModeSEH();  // the map's modes only (calcview_hook.cpp holds the view only there)
-        const int mevrHeld = (active || (mevrMode != 9 && mevrMode != 10)) ? 0 : ::MevrSeams::WorldViewHeld(mevrMode);
+        // The map's modes only (calcview_hook.cpp holds the view only there), and the map's opening or closing cinematic (6)
+        // while the mod holds it (MevrSeams::GalaxyOwnsPresentation, ME1's rule; lane GX4).
+        const int mevrMode = ReadGameModeSEH();
+        const bool mevrMapMode = mevrMode == 9 || mevrMode == 10 || (mevrMode == 6 && ::MevrSeams::GalaxyOwnsPresentation(6));
+        const int mevrHeld = (active || !mevrMapMode) ? 0 : ::MevrSeams::WorldViewHeld(mevrMode);
         static int s_prevHeld = 0;
         if (mevrHeld != s_prevHeld)
         {

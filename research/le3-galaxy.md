@@ -441,6 +441,54 @@ it (snapshot `19-08-42-048`: no band).
 - *Saves:* ME3 wrote `AutoSave.pcsav` once, during the X exits (20:25:49); the restore put the original back (hash checked).
 - The map's main views: every opening `N held at Shepard's, 0 from the map's camera (0 of them before the first held one)`.
 
+## One flow for both sequels, the opening's wait cut, a reload in the map (lane GX4, 2026-11-17)
+
+**ME3 runs the sequels' one flow** (`game/GalaxyProjectorFlow`, as ME2): `game/Le3GalaxyCapture` is now only ME3's adapter
+(`flow::Adapter`: the CIC's art `BioA_Nor_210CIC` visible, the retention's arm, armed, active, kept, refresh and arm-in-map, the
+map's level `bioa_nor_203agalaxymap`); every rule lane GX3 built for ME3 is the flow's, so ME2 has them too: the interlude
+(`MapInterlude`), the on-foot reservation, the opening and closing bridges, the recenter kept inside the map, the projector's lens
+flare hidden with it, the opening's probe, `mevr galaxy capture ship|flares` (and `tab-left|tab-right`, the map's own LB/RB). The
+retention's map-level helpers went with them (the flow reads the map's level itself). Session
+`%LOCALAPPDATA%\MEVR\sessions\20261117-205840-548-LE3-gx4-me3` (the original AutoSave, read only; restored, hash checked):
+
+- **A race the move found:** the room's lease waits 20 s for the map from its arming; the flow armed it once near the projector,
+  and with the opening down to 0.1 s (below) the lease armed 20.0 s before the console's use ran out inside the opening's
+  cinematic (`galaxy retention: released (expired-or-no-mode)`): the map opened without the room (run `galaxy-open1`). The lease's
+  wait now runs from the player's last moment at the projector and through the opening's cinematic (`le3_galaxy_retention::
+  Refresh`, the adapter's `refreshRetention`).
+- **The opening's wait cut as ME1's:** the GalaxyMap sequence's own longest delay, found as ME1 finds its own (a `SeqAct_Delay`
+  whose outer is the sequence `GalaxyMap` under a Normandy level's `Main_Sequence`): `biod_nor_203cic ... GalaxyMap.SeqAct_Delay_1`
+  (2.50 s), written to 0.05 s while the flow's disc is measured (in the CIC), journalled (`GalaxyProjectorFlow.openingWait`), put
+  back on a world change, the flow's unload and `mevr galaxy capture opening-keep`. Measured: **0 -> 8 -> 11 in 0.11-0.12 s** (the
+  map's level loaded and visible at 0.09 s; as shipped 2.56 s, loaded 0.06 s, visible 2.52 s). The camera's matinee
+  `GalaxyMap.SeqAct_Interp_1` was at 0.10-0.11 of its 2.53 s when the map's mode began; it moves the opening's camera only: the
+  map's mode has its own camera. The first map frame is the same either way: snapshots 0.27 s after the 11 with the wait cut
+  (`2026-11-17_21-06-48-238`) and 0.32 s after it as shipped (`2026-11-17_21-13-58-572`) show the map camera's same framing
+  (Anadius, the ship on its orbit arc, the planet at the left edge); 1.3 s in, it has settled as GX3's. Every opening held:
+  `2730 held at Shepard's, 0 from the map's camera`, `2184 / 0`, `1434 / 0`, `3882 / 0`.
+- **Travel and arrival on the shared flow** (`galaxy-steps-travel-211515`, GX3's steps): Anadius -> Pax -> the relay -> Cluster18 ->
+  Utopia; the relay's movie alone in the eyes (the window down), the arrival on the disc (snapshot `2026-11-17_21-19-17-444`:
+  Utopia, Asgard, the relay labelled on the projector), X 11 -> 0. 23532 main views held, **12 from the map's camera**: all during
+  game-thread stalls of seconds while another lane's cold builds took the machine (0.1-0.3 fps; the host's scene goes stale after
+  500 ms, so a frame after a long stall is the map's camera; GX3's run had none). A second travel (Utopia -> the relay -> Cluster12)
+  likewise; **ME3 autosaves 2 s after a travel's A** (in the map's mode: that is the save a reload opens in the map).
+- **A reload with the map open** (that autosave, `mevr load ... AutoSave`): the world changes with the map held, the flow carries
+  the room (its disc, Shepard's view there) for a map the load opens in the same CIC. **The room isn't there after the load:**
+  the save loads into mode 11 with `BioA_Nor_210CIC` not loaded and not requested (`bShouldBeLoaded` false; loaded: `BioA_Nor`,
+  `BioA_Nor_200`, `BioA_Nor_203aGalaxyMap`, `BioA_Nor_204aSecurity`, `BioD_Nor`, `BioD_Nor_200`, `biod_nor_203agalaxymap`,
+  `biod_nor_203bgalaxymapobjs`, `biod_nor_203cic` (the console's design: its point of interest, no projector), `BioP_Global_NC`),
+  so no projector is found (`0 projector and 1 console candidates`) and the map is the renderer's flat panel (ME1's rule: no room,
+  no hold), logged once: `the map is open after a load, not on the projector: the CIC's art isn't loaded and visible in the new
+  world (...)`. X goes 11 -> 8 -> 0 and the next A opens it on the projector. Taking it there would mean requesting the CIC's art
+  in the map's mode (the retention's `ArmInMap` does when the art is loaded; it never is): not done.
+- **The opening's first frames** (found in the renderer's log, both sequels): the cinematic (ME3's 8, ME2's 6) showed for 2-7 frames
+  as a cinematic (the 3D cinema screen: `stereo mode 0 ... the 3D screen's UI`, then held) before the flow's next tick published its
+  bridge; GX3's count covered only the map's modes. The on-foot reservation now carries an opening cue (`Scene::holdPad[kOpeningCue]`,
+  a spare byte) and the host holds a cinematic while it is published (`plugin/GalaxyHologram`'s `SequelTableHeld`). Built after
+  this stretch (a host change) and **not yet seen in the game**: ME2's relaunch with it couldn't open its map at all
+  (research/le2-galaxy-table.md "The flow's rules on ME2"), ME3's next stretch waits for the owner's ME2 test. The check: an
+  opening's `[VRSTATE]`/`[MEVR-STEREO]` lines show no cinema-screen frame before `the view held at Shepard's`.
+
 ## Native adapter reuse boundary
 
 ME1 `game/GalaxyMap` is a native camera/projector/table adapter for ME1. Its mode 9, Normandy

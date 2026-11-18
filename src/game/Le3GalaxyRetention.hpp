@@ -18,11 +18,14 @@ bool Active(); // current map, same live scope; game thread only
 // The map has been seen and the game is in it or in one of its interludes (galaxy_projector::MapInterlude: the travel's movie,
 // a call, a question, a load): the production lease keeps the CIC's art through them (research/51 section 8.4). Game thread.
 bool Kept();
-// The galaxy map's own level (BioA_Nor_203aGalaxyMap) is requested by the native streaming: the console's use has begun the
-// map's opening (its cinematic before the map's mode). Game thread.
-bool MapLevelRequested(ue3::Object* controller);
-bool MapLevelLoaded(ue3::Object* controller);   // its LoadedLevel is there
-bool MapLevelVisible(ue3::Object* controller);  // and shown (bIsVisible)
+// The projector's lease for a map already open (a reload with the map open loads straight into its mode): armed as if the map
+// had been seen, if the CIC's art is loaded and visible in the map's mode; the native requests are taken over at once if they
+// would unload it (journalled; put back as Release does). Empty: armed, else why not. Game thread.
+std::string ArmInMap(ue3::Object* controller);
+// The projector's lease, armed and still waiting for the map, waits 20 s from now: the player still stands at the projector,
+// or the map's opening has begun. Its 20 s ran out in the opening's cinematic once the opening was 0.1 s long (lane GX4: the
+// lease armed 20.0 s before the console's use was released in the 0.1 s cinematic; the map opened without the room).
+void Refresh();
 bool Shutdown(hook::Context& hooks, bool exiting);
 std::string Command(ue3::Object* controller, std::string const& action);
 }
