@@ -122,6 +122,7 @@
     "game/GalaxyMap",
     "game/GalaxyProjector",
     "game/GalaxyProjectorFlow",
+    "game/GalaxyRay",
     "game/GameArt",
     "game/GameMenuRequest",
     "game/GamepadBridge",
@@ -331,7 +332,8 @@
     "MEVR_WITH_MAIN_MENU"
    ],
    "modExtra": [
-    "core/Json"
+    "core/Json",
+    "core/vr/GalaxyRay"
    ],
    "modModules": [
     "engine/BodyBounds",
@@ -375,6 +377,7 @@
     "game/GalaxyMap",
     "game/GalaxyProjector",
     "game/GalaxyProjectorFlow",
+    "game/GalaxyRay",
     "game/GameArt",
     "game/GameMenuRequest",
     "game/GamepadBridge",
@@ -582,6 +585,7 @@
    ],
    "modExtra": [
     "core/Json",
+    "core/vr/GalaxyRay",
     "game/Le3Gui"
    ],
    "modModules": [
@@ -626,6 +630,7 @@
     "game/GalaxyMap",
     "game/GalaxyProjector",
     "game/GalaxyProjectorFlow",
+    "game/GalaxyRay",
     "game/GameArt",
     "game/GameMenuRequest",
     "game/GamepadBridge",
@@ -1782,6 +1787,29 @@
     }
    },
    "namespace": "game::galaxy_projector::flow"
+  },
+  "game/GalaxyRay": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    }
+   },
+   "namespace": "game::galaxy_projector::ray"
   },
   "game/GameArt": {
    "games": {

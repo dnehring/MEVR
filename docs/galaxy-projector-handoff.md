@@ -8,6 +8,58 @@
 Updated 2026-11-17 (lane GX). The 2026-11-15 checkpoint (0f02fd38, landed as ccc9325d) is on main; its worktree is gone.
 This is a resumption document, not a release or acceptance claim.
 
+## 2026-11-18: the map picked by the right controller's ray, ME2's scanner aimed by it (lane GXR)
+
+The owner (2026-11-17, ~20:45): "whichever gives us the great approximate experience to what we have on me1": the ray picks on
+both sequels' maps (ME1's way), the stick stays the game's, the ray aims ME2's scanner. Built as one shared core and one sequel
+module, no per-game copy:
+- `core/vr/GalaxyRay` (unit-tested, `TestGalaxyRay`): the UI panel on the disc as the host draws it (`PanelOnDisc`:
+  `galaxy_holo::DiscPose`, width = the window's / (1 - crop), height = width / the game window's aspect), the ray's point on it
+  (`PanelHit`: the game's screen, u and v from its top left), the map camera's ray through a screen point (`ScreenRay`, the
+  inverse of `galaxy_holo::ToGameScreen`), a sphere hit with a graze margin (`SphereHit`), the nearest object on the screen
+  (`Nearest`, aspect-correct, a share of the screen's height) and UE3 rotator helpers (`ToRotator`, `ToLocal`).
+- `game/GalaxyRay` (ME2 and ME3; called by `game/GalaxyProjectorFlow` every tick the map is held on the projector):
+  - **Picks** (the map's galaxy, cluster and system views): the right controller's ray (left if the right isn't tracked) on the
+    panel; the map's selectable objects at the level shown (ME2: `BioCameraBehaviorGalaxy.m_GalaxySelectors`, `m_ClusterSelectors`,
+    `m_SystemSelectors` by `m_nCurrentState` 1, 2, 3; ME3: `m_aSelectableActors`) projected through the map camera; the nearest
+    within 0.06 of the screen's height is hovered (a 12 ms tick in the hand), the trigger (0.6 down, 0.4 up: `galaxy_holo::Pointer`)
+    picks it.
+  - **The pick, as the game's own controls would make it.** Where the map's cursor (`m_pCrossHairObject`) is a cursor (an
+    `InterpActor`: ME2's galaxy view) it is put on the object (`Actor.SetLocation`, ME1's `StartPick`), and once the game has
+    selected it (`m_pSelectedObject`, the zoom `m_fZoomTime` done) the map's A goes as its GUI event (`SFXGameModeBase.GuiKey`:
+    ME2 `BIOGUI_EVENT_BUTTON_A` 12 then its release 33; ME3 15 and 36), so the game zooms, enters or asks itself. Where the
+    cursor is the Normandy (ME2's cluster and system views: `SkeletalMeshActorMAT_1`, run gx4-me2's `ship` lines) it is **never
+    moved by us** (that would skip the flight and its fuel): it is flown there with the map's own stick (the handler's
+    `BioSFHandler_GalaxyMap.m_fLeftStickX/Y`, what its GUI axis events set), the direction on the screen from the ship to the
+    object, full stick far away and gentler close in; arrived and selected by the game: the stick let go and A. The player's own
+    left stick past 0.35 takes the ship back (the flight given up); 30 s at most.
+  - **ME2's orbit (mode 10, `flow::Adapter::orbitMode`):** where the ray (through the map camera) meets the planet is where the
+    scanner's reticle goes: `SFXGameModeOrbital.ReticleRot` (yaw and pitch, inside `ReticleRotMinClamp/MaxClamp`) written from the
+    hit's direction from the reticle effect's owner, in that owner's frame (checked once against the effect's own place: the log
+    says which frame matched, or that neither did and the ray stands down). The game's LT scans and RT launches a probe there, as
+    before (the orbit never takes the pointer's triggers).
+  - `[Galaxy] rayPick`, `rayScan` (1, 1; read every 2 s); console `mevr galaxy ray [state | pick on|off | scan on|off | screen |
+    orbit | stick x y | steer-sign x y | mouse on|off]` (ME3: `mevr galaxy ray ...` too). `screen` lists each selectable object's
+    place on the game's screen (a test's aim for `tools/make-galaxy-pick-recording.py --panel-uv`); `mouse` tells the map's movie
+    the player uses the mouse or the pad (`BioSFPanel`/`SFXGUIMovie.bUsingGamepad`, `HandleButtonRefresh`): a diagnostic of the
+    PC map's own mouse controls below. Logs `galaxy ray:`.
+- **The PC map's own mouse controls** (read offline, `tools/conversation-scan --script`, output private): ME2's and ME3's
+  `BioSFHandler_PCGalaxyMap.HandleInputEvent` ignore the mouse while `oPanel.bUsingGamepad` (ME3) or the mouse is hidden (ME2's
+  `OnPanelAdded`/`HandleButtonRefresh`: `SetMouseShown(!usingGamepad)`); in the mouse mode the left button held in the cluster or
+  system view sets `bMoveToMouse` (the ship flies toward the mouse) and B backs out. With our controllers as pad 0 the map is in
+  the pad mode, which is why the GX lanes' clicks through the game pointer did nothing. Not used by the ray (it would need the
+  host's cursor answer and the pad mode switched per frame); `[Pointer] galaxyMap = 0|1|2` (host, ME2/ME3 only, a test key read
+  live: none, ME1's window messages, the steered game cursor) puts the game pointer on the map's panel to try it.
+- **ME1 unchanged by its compiled code:** every change LE1 compiles is either `#if !defined(MEVR_GAME_LE1)` (the host's
+  `[Pointer] galaxyMap`) or in sequel-only files and blocks; `core/vr/GalaxyRay` is in the sequels' mods only.
+- **Not yet seen in the game** (2026-11-18 01:00-01:15: two ME2 launches ended at Steam's EA hand-off, the EA app never started
+  the game; restored, nothing ran): the picks, the flight, the scanner's frame. To check, ME2 (Save 36, `galaxy.ps1 -Game LE2
+  -Place '0 3360 160 -90' -NoExit`): `mevr galaxy ray screen`, then a replayed ray at an object's u, v with the trigger
+  (`make-galaxy-pick-recording.py --panel-uv`), `mevr galaxy ray state` and the log's `galaxy ray:` lines; a planet picked in the
+  system view enters orbit, where the ray aims the reticle (`mevr galaxy ray orbit`). If the ship doesn't move on the written
+  stick (the GUI's axis events may overwrite it each frame), `mevr galaxy ray stick 1 0` answers it; `steer-sign` flips an axis.
+  ME3: AutoSave of `John_12_Vanguard`, `-Game LE3 -RendererPreview`.
+
 ## 2026-11-17 (night): one flow for both sequels, the opening's wait cut (lane GX4)
 
 research/le3-galaxy.md "One flow for both sequels" and research/le2-galaxy-table.md "The flow's rules on ME2" have the runs:
