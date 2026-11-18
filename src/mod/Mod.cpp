@@ -77,6 +77,9 @@
 #if defined(MEVR_GAME_LE2)
 #include "game/Le2GalaxyCapture.hpp"
 #endif
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+#include "game/GalaxyProjectorFlow.hpp"  // the ray's haptics (game/GalaxyRay)
+#endif
 #include "game/Mako.hpp"
 #include "game/Holsters.hpp"
 #include "game/CockpitProbe.hpp"
@@ -1904,6 +1907,9 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
                                   gHost->hideScreenReticle());
         // The spectator camera (research/49): after everything that moves the head, the pawn and the cockpit this tick.
         game::spectator::Tick(deltaSeconds, SpectatorLink());
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+        game::galaxy_projector::flow::SetHaptic(gHostOwnsVr ? gHost->hapticPulse : nullptr);  // the ray's hover and pick
+#endif
 #if defined(MEVR_GAME_LE3)
         game::le3_galaxy_capture::Tick(GalaxyMapLink().setScene, HostFloor());
 #elif defined(MEVR_GAME_LE2)

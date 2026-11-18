@@ -4,9 +4,9 @@ title: EA's launcher refuses to start the game from inside a job object
 description: EASteamLauncher creates MassEffectLauncher with breakaway; when its parent chain sits in a Windows job object without breakaway (our shell, or the EA app itself), CreateProcess fails with "Access is denied" and the scripted launch times out.
 tags: [launch, ea-app, steam, test-loop]
 status: stable
-timestamp: 2026-11-04T02:20:00Z
+timestamp: 2026-11-18T09:35:00Z
 generated: { by: claude-code/fable-5.1, at: 2026-10-30T19:53:43Z }
-bitten: [2026-10-24, 2026-10-28, 2026-10-31, 2026-11-03]
+bitten: [2026-10-24, 2026-10-28, 2026-10-31, 2026-11-03, 2026-11-18]
 ---
 
 # Symptom
@@ -15,6 +15,8 @@ bitten: [2026-10-24, 2026-10-28, 2026-10-31, 2026-11-03]
 (`%LOCALAPPDATA%\Electronic Arts\EA Desktop\Logs\EADesktopVerbose.log`) says ErrorCreatingProcess, LaunchFailed,
 "Access is denied" (0x5). EASteamLauncher.log: `GameRunStatus received ... with error code [ErrorCreatingProcess]`,
 `[PROCESS] Create Process: Access is denied. | exe=[...\MassEffectLauncher.exe]` (2026-11-03).
+The ME2/ME3 runner (`tools/le2-halcyon-run/launch.ps1`): `No MassEffect2 within 240 seconds` (2026-11-18), Steam's
+console_log showing the `steam2ea://launchgame` request "Completed" and EASteamAuthHelper gone 4-6 s later.
 
 # Cause
 
@@ -24,11 +26,18 @@ breakaway, CreateProcess is denied. Two ways in:
 
 1. The game started from the harness's shell, whose job object the EA app inherits (2026-10-24).
 2. The EA app itself (EADesktop.exe, EALocalHostSvc) inside a job, which persists until the EA app is restarted
-   (2026-10-28). steam.exe is never in one, so Play in Steam works.
+   (2026-10-28).
+3. **steam.exe itself inside a job** (2026-11-18): a session had started Steam from its shell (11-16), and its
+   children (the `steam2ea://` handler, EASteamLauncher) inherit the job. Launches worked for a day and a half, then from
+   00:54 every `breakaway=[true]` CreateProcess of MassEffectLauncher.exe was denied, with no change in Steam's log;
+   the job's breakaway allowance apparently went away with the session that owned it. Quitting the EA app made it worse:
+   Steam's helper restarted it inside the same job.
 
 # Check
 
-Whether EADesktop.exe is in a job object (IsProcessInJob). The EA log's launch error.
+Whether steam.exe and EADesktop.exe are in a job object (`IsProcessInJob(OpenProcess(0x1000, ...), NULL)` from
+PowerShell's Add-Type). The launch error in `EASteamLauncherVerbose.log` (`Create Process: Access is denied`, the
+`breakaway=[true]` on the createProcess line) and `EADesktopVerbose.log` (`ErrorCreatingProcess`, `LaunchFailed`).
 
 # What does NOT get the EA app out of its job (2026-10-31, 01:14-01:30, three tries, each "Access is denied" again)
 
@@ -43,6 +52,13 @@ the only known routes stayed a Play in Steam by a person or computer use, then `
 same way: Task Scheduler runs its tasks in a job object too.
 
 # Fix in place
+
+**Steam in a job (2026-11-18): restart Steam through Explorer.** `steam.exe -shutdown`, wait for it to exit, open a
+folder window (`explorer.exe "C:\Program Files (x86)\Steam"`: the main Explorer hosts it), then
+`(New-Object -ComObject Shell.Application).Windows()` -> that window's `Document.Application.ShellExecute(steam.exe)`:
+Explorer itself starts Steam, so it sits in no job (checked with IsProcessInJob), logs on by itself, and the next
+launch worked (ME2, 01:28). Never start Steam from a harness shell or a scheduled task. Do not quit the EA app while
+Steam is in a job.
 
 Never start the game from the harness's shell: `tools/launch-game.ps1` runs Link2EA from a scheduled task. If the EA
 app itself is in a job, **`tools/launch-game.ps1 -Steam`** (2026-11-03): it asks the running Steam for the game

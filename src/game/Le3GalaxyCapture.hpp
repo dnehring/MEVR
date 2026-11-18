@@ -17,5 +17,7 @@ void Tick(Publish publish, std::optional<vr::floor::State> const& floor);
 void Shutdown(bool exiting);
 // `mevr galaxy capture <action>` (game/GalaxyProjectorFlow's Command).
 std::string Command(ue3::Object* pc, std::string const& action);
+// `mevr galaxy ray ...` (game/GalaxyRay).
+std::string RayCommand(ue3::Object* pc, std::string const& args);
 std::string StatusJson();
 }

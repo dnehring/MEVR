@@ -230,8 +230,6 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
         } else if (panelLayer != nullptr && count < capacity) {
             layersOut[count++] = panelLayer;
         }
-        // The map's UI on the projector is the game pointer's (a controller's ray and trigger: the game's cursor; LE1's
-        // HalcyonOverlays galaxy panel), in the galaxy's mode only: orbit keeps the scanner's own triggers (ME2's LT and RT).
 #if defined(MEVR_WITH_MAIN_MENU)
         // The front end on ME1's 3D cinema screen (research/56 "The sequels"): its UI layer is the game pointer's, as LE1's
         // CineScreenPointerPlane: the whole game window on the layer's plane, wider and taller by the part the screen leaves out
@@ -249,11 +247,13 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
             mevr::host::game_pointer::ForgetGameUiQuad();
             frontEndPointer = false;
         }
+        // The map's UI on the projector is the game pointer's (a controller's ray and trigger: the game's cursor; LE1's
+        // HalcyonOverlays galaxy panel), in the galaxy's mode only: orbit keeps the scanner's own triggers (ME2's LT and RT).
         static bool galaxyPointer = false;  // Present thread
-        if (galaxyUi && panelLayer != nullptr && !anyMenu && facts.galaxyUiPointer != 0 &&
-            mevr::engine::adapter::IsGalaxyMode(frame.gameMode)) {
+        int const galaxyKind = mevr::host::game_pointer::GalaxyMapPointer(facts.galaxyUiPointer);
+        if (galaxyUi && panelLayer != nullptr && !anyMenu && galaxyKind != 0 && mevr::engine::adapter::IsGalaxyMode(frame.gameMode)) {
             mevr::host::game_pointer::NoteGameUiQuad(panelLayer->pose, panelLayer->size.width, panelLayer->size.height,
-                facts.galaxyUiPointer == 2 ? mevr::host::game_pointer::PanelKind::GameMenu : mevr::host::game_pointer::PanelKind::GalaxyMap);
+                galaxyKind == 2 ? mevr::host::game_pointer::PanelKind::GameMenu : mevr::host::game_pointer::PanelKind::GalaxyMap);
             galaxyPointer = true;
         } else if (galaxyPointer) {
             mevr::host::game_pointer::ForgetGameUiQuad();

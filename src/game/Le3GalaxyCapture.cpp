@@ -39,6 +39,10 @@ std::string Command(ue3::Object* pc, std::string const& action) {
     return galaxy_projector::flow::Command(pc, action);
 }
 
+std::string RayCommand(ue3::Object* pc, std::string const& args) {
+    return galaxy_projector::flow::RayCommand(pc, args);
+}
+
 std::string StatusJson() {
     return galaxy_projector::flow::StatusJson();
 }

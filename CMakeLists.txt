@@ -654,6 +654,8 @@ set(MEVR_MOD_SOURCES
     src/game/Le3GalaxyCapture.hpp
     src/game/GalaxyProjectorFlow.cpp
     src/game/GalaxyProjectorFlow.hpp
+    src/game/GalaxyRay.cpp
+    src/game/GalaxyRay.hpp
     src/game/DepthOfFieldHold.cpp
     src/game/DepthOfFieldHold.hpp
     src/game/Le2GalaxyCapture.cpp
@@ -1045,6 +1047,9 @@ function(mevr_add_plugin game)
     endif ()
     if (game STREQUAL "LE2")
         list(APPEND mod_sources src/core/Json.cpp src/core/Json.hpp)  # game/GalaxyProjectorFlow's status (the sequels' galaxy flow)
+    endif ()
+    if (game STREQUAL "LE2" OR game STREQUAL "LE3")
+        list(APPEND mod_sources src/core/vr/GalaxyRay.cpp src/core/vr/GalaxyRay.hpp)  # game/GalaxyRay: the map picked by a ray
     endif ()
     if (MEVR_LE2_DIAGNOSTIC AND game STREQUAL "LE2")
         list(APPEND mod_sources src/engine/Le2DiagnosticHost.cpp src/engine/Le2DiagnosticHost.hpp
@@ -1594,6 +1599,7 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/ScopeArt.cpp
         src/core/vr/GalaxyHologram.cpp
         src/core/vr/GalaxyMap.cpp
+        src/core/vr/GalaxyRay.cpp
         src/core/vr/WorldUi.cpp
         src/core/vr/ConversationWorld.cpp
         src/core/vr/SoundPlace.cpp

@@ -51,17 +51,18 @@ struct Adapter {
     // (MassEffect2.exe+0x98C25D, gotchas/me2-scale-set-during-load's signature; research/le2-galaxy-table.md). The owner
     // accepted it (2026-11-17).
     bool depthOfFieldOff = false;
-    // Not built (the owner, 2026-11-17: ray picking on both maps and ray aiming of ME2's scanner are the next lane's): a
-    // controller ray's hit on the map's window, as a place on the game's map (u, v across the window's picture, 0..1 from its
-    // top left, the captures' crop already taken out) and whether the trigger selects there. The flow will find the hit from
-    // the scene it publishes (the disc's pose and the window's camera) and call this on the game thread; each game moves its
-    // own cursor (ME2's and ME3's BioCameraBehaviorGalaxy.m_pCrossHairObject) and selects with its own call. False: refused.
-    bool (*pointAt)(ue3::Object* pc, float u, float v, bool select) = nullptr;
+    // The map's orbit mode (ME2's 10): the ray aims the planet scanner's reticle there (game/GalaxyRay); -1: none (ME3's orbit
+    // has no reticle of its own). The ray's picks in the map's other modes need no per-game fact beyond game/GalaxyRay's.
+    int orbitMode = -1;
 };
 
 // The Camera.UpdateCamera post-handler (before the ProcessEvent hook goes in). The adapter is copied.
 void TryStartup(Adapter const& adapter);
 void Tick(Publish publish, std::optional<vr::floor::State> const& floor);
+// The host's haptic pulse (HostServices::hapticPulse) for the ray's hover and pick (game/GalaxyRay), or null.
+void SetHaptic(void (*haptic)(int hand, float seconds, float amplitude));
+// `mevr galaxy ray ...` (game/GalaxyRay's Command, with the map as the flow sees it now).
+std::string RayCommand(ue3::Object* pc, std::string const& args);
 void Shutdown(bool exiting);
 // `mevr galaxy capture <action>`: on (or on-raw) the captures without a post-process chain (the default: ME3's chains leave
 // them black, ME2 the same), on-post with the player's chain, on-default the engine's DefaultPostProcess, on-ui its

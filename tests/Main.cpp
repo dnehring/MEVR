@@ -56,6 +56,7 @@
 #include "core/vr/TransitionFade.hpp"
 #include "core/vr/GalaxyHologram.hpp"
 #include "core/vr/GalaxyMap.hpp"
+#include "core/vr/GalaxyRay.hpp"
 #include "core/vr/OmniRail.hpp"
 #include "core/vr/WorldUi.hpp"
 #include "core/vr/Spectator.hpp"
@@ -8420,6 +8421,65 @@ void TestGalaxyHologram() {
     CHECK(NearD(flatX.x, 1.0, 1e-5) && flatY.z < -0.99f);
 }
 
+// The sequels' galaxy map picked by a ray (core/vr/GalaxyRay, lane GXR).
+void TestGalaxyRay() {
+    namespace gr = mevr::vr::galaxy_ray;
+    namespace holo = mevr::vr::galaxy_holo;
+    // The ray's point on the panel: the game's screen from its top left.
+    gr::Panel panel;
+    panel.pose.position = {0.0f, 1.0f, -1.0f};
+    panel.widthM = 2.0f;
+    panel.heightM = 1.0f;
+    auto hit = gr::PanelHit({0.5f, 1.25f, 0.0f}, {0.0f, 0.0f, -1.0f}, panel);
+    CHECK(hit && NearD(hit->u, 0.75) && NearD(hit->v, 0.25) && NearD(hit->distanceM, 1.0));
+    CHECK(!gr::PanelHit({1.5f, 1.0f, 0.0f}, {0.0f, 0.0f, -1.0f}, panel));   // beside it
+    CHECK(!gr::PanelHit({0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, panel));    // pointing away
+    CHECK(!gr::PanelHit({0.0f, 1.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, panel));    // along it
+    // The panel on a disc: the window's crop widened back to the whole frame, the height by the game's aspect.
+    gr::Panel const disc = gr::PanelOnDisc({0.0f, 1.0f, -1.0f}, {0.0f, 0.92f, 0.40f}, {0.0f, 1.7f, 0.0f}, 2.64f, 0.02f, 16.0f / 9.0f);
+    CHECK(NearD(disc.widthM, 2.64 / 0.98) && NearD(disc.heightM, 2.64 / 0.98 * 9.0 / 16.0));
+    // The screen ray is ToGameScreen's inverse.
+    holo::GameCamera camera;
+    camera.location[0] = 100.0f, camera.location[1] = 200.0f, camera.location[2] = 300.0f;
+    camera.pitch = -0.3f, camera.yaw = 1.0f, camera.roll = 0.1f;
+    camera.fovXDeg = 70.0f;
+    camera.aspect = 16.0f / 9.0f;
+    camera.valid = 1;
+    auto const ray = gr::ScreenRay(camera, 0.3f, 0.6f);
+    CHECK(ray.has_value());
+    if (ray) {
+        float const p[3] = {ray->origin[0] + 500.0f * ray->direction[0], ray->origin[1] + 500.0f * ray->direction[1],
+            ray->origin[2] + 500.0f * ray->direction[2]};
+        auto const uv = holo::ToGameScreen(camera, p);
+        CHECK(uv && NearD((*uv)[0], 0.3, 1e-4) && NearD((*uv)[1], 0.6, 1e-4));
+    }
+    holo::GameCamera none;
+    CHECK(!gr::ScreenRay(none, 0.5f, 0.5f));
+    // The planet: the near side, and a ray grazing past the rim lands on it.
+    gr::WorldRay along;
+    along.direction = {1.0f, 0.0f, 0.0f};
+    auto on = gr::SphereHit(along, {10.0f, 0.0f, 0.0f}, 2.0f);
+    CHECK(on && NearD((*on)[0], 8.0) && NearD((*on)[1], 0.0));
+    CHECK(!gr::SphereHit(along, {10.0f, 2.2f, 0.0f}, 2.0f));
+    on = gr::SphereHit(along, {10.0f, 2.2f, 0.0f}, 2.0f, 1.2f);
+    CHECK(on && NearD((*on)[0], 10.0) && NearD((*on)[1], 0.2));
+    CHECK(!gr::SphereHit(along, {-10.0f, 0.0f, 0.0f}, 2.0f));  // behind
+    // The nearest object on the screen, aspect-correct, within the tolerance.
+    gr::Candidate const objects[] = {{0.5f, 0.5f, true}, {0.6f, 0.5f, true}, {0.58f, 0.5f, false}};
+    CHECK(gr::Nearest(objects, 0.58f, 0.5f, 16.0f / 9.0f, 0.06f) == 1);
+    CHECK(gr::Nearest(objects, 0.52f, 0.51f, 16.0f / 9.0f, 0.06f) == 0);
+    CHECK(gr::Nearest(objects, 0.9f, 0.9f, 16.0f / 9.0f, 0.06f) == -1);
+    // Rotators: Vector(rotator) and back; a world direction into a rotator's frame.
+    auto const yp = gr::ToRotator({0.0f, 1.0f, 0.0f});
+    CHECK(yp.yaw == 16384 && yp.pitch == 0);
+    auto const up = gr::ToRotator({0.0f, 0.0f, 1.0f});
+    CHECK(up.pitch == 16384);
+    auto const local = gr::ToLocal({0.0f, 1.0f, 0.0f}, 0, 16384, 0);  // the frame turned 90 degrees: +Y is its forward
+    CHECK(NearD(local[0], 1.0, 1e-4) && NearD(local[1], 0.0, 1e-4) && NearD(local[2], 0.0, 1e-4));
+    auto const back = gr::ToRotator(gr::ToLocal({0.6f, 0.0f, 0.8f}, 0, 0, 0));
+    CHECK(Near(back.pitch, static_cast<int>(std::lround(std::atan2(0.8, 0.6) * 32768.0 / 3.14159265358979)), 1) && back.yaw == 0);
+}
+
 void TestGalaxyMap() {
     // Projector geometry is measured in world space, not from the use prompt or
     // the map camera. A tilted/thick square must retain its in-plane radius.
@@ -12576,6 +12636,7 @@ int main() {
     TestSceneCaptureScope();
     TestSpectator();
     TestGalaxyMap();
+    TestGalaxyRay();
     TestGalaxyHologram();
     TestOmniRail();
     TestWorldUi();

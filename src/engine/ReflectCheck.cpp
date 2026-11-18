@@ -3094,6 +3094,31 @@ void CheckLe2CaptureRig() {
     PARMS(AController_execClientSetLocation_Parms, "Engine.Controller.ClientSetLocation");
 }
 
+// game/GalaxyRay on ME2 (lane GXR): the ray's pick (the map's cursor put on an object, its selection and zoom), the movie's
+// mouse diagnostic, and the orbit's scanner reticle aimed by the ray.
+void CheckLe2GalaxyRay() {
+    CheckFunction("Engine.Actor.SetLocation");
+    PARAM(AActor_execSetLocation_Parms, "Engine.Actor.SetLocation", NewLocation);
+    CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_fZoomTime", SDK_FIELD(UBioCameraBehaviorGalaxy, m_fZoomTime));
+    CheckClass<UBioSFHandler_PCGalaxyMap>("SFXGame.BioSFHandler_PCGalaxyMap");
+    CheckField("SFXGame.BioSFHandler_GalaxyMap", "m_fLeftStickX", SDK_FIELD(UBioSFHandler_GalaxyMap, m_fLeftStickX));
+    CheckField("SFXGame.BioSFHandler_GalaxyMap", "m_fLeftStickY", SDK_FIELD(UBioSFHandler_GalaxyMap, m_fLeftStickY));
+    CheckClass<AInterpActor>("Engine.InterpActor");
+    CheckField("Engine.BioSFHandler", "oPanel", SDK_FIELD(UBioSFHandler, oPanel));
+    CheckField("Engine.BioSFPanel", "bUsingGamepad", SDK_BOOL(UBioSFPanel, bUsingGamepad));
+    CheckClass<USFXGameModeOrbital>("SFXGame.SFXGameModeOrbital");
+    CheckField("SFXGame.SFXGameModeOrbital", "ReticleRot", SDK_FIELD(USFXGameModeOrbital, ReticleRot));
+    CheckField("SFXGame.SFXGameModeOrbital", "ReticleRotMinClamp", SDK_FIELD(USFXGameModeOrbital, ReticleRotMinClamp));
+    CheckField("SFXGame.SFXGameModeOrbital", "ReticleRotMaxClamp", SDK_FIELD(USFXGameModeOrbital, ReticleRotMaxClamp));
+    CheckField("SFXGame.SFXGameModeOrbital", "ReticleEffect", SDK_FIELD(USFXGameModeOrbital, ReticleEffect));
+    CheckField("SFXGame.SFXGameModeOrbital", "ProbeActive", SDK_BOOL(USFXGameModeOrbital, ProbeActive));
+    CheckField("SFXGame.BioPlayerController", "GameModeManager2", SDK_FIELD(ABioPlayerController, GameModeManager2));
+    CheckField("SFXGame.SFXGameModeManager", "GameModes", SDK_FIELD(USFXGameModeManager, GameModes));
+    CheckField("Engine.ActorComponent", "Owner", SDK_FIELD(UActorComponent, Owner));
+    CheckField("Engine.PrimitiveComponent", "LocalToWorld", SDK_FIELD(UPrimitiveComponent, LocalToWorld), true);
+    CheckField("Engine.Actor", "Rotation", SDK_FIELD(AActor, Rotation));
+}
+
 #elif defined(MEVR_GAME_LE3)
 // Shared SceneCaptureRig, checked against LE3 metadata before native use.
 void CheckLe3CaptureRig() {
@@ -3201,6 +3226,23 @@ void CheckLe3CaptureRig() {
 // (Their other pieces have rows in the tables below: Camera.CameraCache and its POV, Controller.Pawn, the game mode
 // manager, SceneCaptureComponent.FrameRate and SetFrameRate's block in CheckLe3CaptureRig, ConsoleCommand's block.)
 // The param names are the ones the modules ask for; LExSDKv2's LE3 generator lower-cased out_Rotation.
+// game/GalaxyRay on ME3 (lane GXR): the ray's pick and the movie's mouse diagnostic.
+void CheckLe3GalaxyRay() {
+    CheckFunction("Engine.Actor.SetLocation");
+    PARAM(AActor_execSetLocation_Parms, "Engine.Actor.SetLocation", NewLocation);
+    CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_aSelectableActors", SDK_FIELD(UBioCameraBehaviorGalaxy, m_aSelectableActors));
+    CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_pSelectedObject", SDK_FIELD(UBioCameraBehaviorGalaxy, m_pSelectedObject));
+    CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_pCrossHairObject", SDK_FIELD(UBioCameraBehaviorGalaxy, m_pCrossHairObject));
+    CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_nCurrentState", SDK_FIELD(UBioCameraBehaviorGalaxy, m_nCurrentState));
+    CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_fZoomTime", SDK_FIELD(UBioCameraBehaviorGalaxy, m_fZoomTime));
+    CheckClass<UBioSFHandler_PCGalaxyMap>("SFXGame.BioSFHandler_PCGalaxyMap");
+    CheckField("SFXGame.BioSFHandler_GalaxyMap", "m_fLeftStickX", SDK_FIELD(UBioSFHandler_GalaxyMap, m_fLeftStickX));
+    CheckField("SFXGame.BioSFHandler_GalaxyMap", "m_fLeftStickY", SDK_FIELD(UBioSFHandler_GalaxyMap, m_fLeftStickY));
+    CheckClass<AInterpActor>("Engine.InterpActor");
+    CheckField("SFXGame.SFXGUIMovieLegacyAdapter", "oPanel", SDK_FIELD(USFXGUIMovieLegacyAdapter, oPanel));
+    CheckField("SFXGame.SFXGUIMovie", "bUsingGamepad", SDK_BOOL(USFXGUIMovie, bUsingGamepad));
+}
+
 void CheckLe3EngineAccess() {
     CheckClass<APlayerController>("Engine.PlayerController");
     CheckClass<ACamera>("Engine.Camera");
@@ -3526,6 +3568,7 @@ void CheckLe3Dialogue() {
 
 void CheckFields() {
     CheckLe3CaptureRig();
+    CheckLe3GalaxyRay();
     CheckField("Engine.LocalPlayer", "NearClipPlane", SDK_FIELD(ULocalPlayer, NearClipPlane));  // game/Sights: the scope's pull
     CheckField("Engine.SkeletalMeshComponent", "SkeletalMesh", SDK_FIELD(USkeletalMeshComponent, SkeletalMesh));
     // L3 menu pause: native override owns admission; this bit is observed, never forced.
@@ -4212,6 +4255,7 @@ bool Run(hook::Context& context) {
     CheckThespian();
     CheckLe2Squad();
     CheckLe2CaptureRig();
+    CheckLe2GalaxyRay();
 #endif
 #if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     CheckLeave();
