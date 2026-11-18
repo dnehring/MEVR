@@ -18,7 +18,9 @@ was run.
 
 - ME2 runs ME1's sight code, not a copy: `game/Sights`, `core/vr/Ads`, `core/vr/Sights` and the host's `SightLayers`
   are the same files, with ME1's defaults. 22 of 34 contracts are `same` or `adapter`.
-- **The sniper rifle zooms 8.0x on ME2 where ME1 shows 3.5x, and from an enlarged eye image, not a zoomed render.**
+- **Fixed in part 2026-11-18 (lane AU2, the owner's "sniper zoom is unified"): ME1's 3.5x, then 7x after a flick, on ME2 and
+  ME3; the zoomed render is still ME1's only.** Was: the sniper rifle zooms 8.0x on ME2 where ME1 shows 3.5x, and from an
+  enlarged eye image, not a zoomed render.
   ME2's one `ZoomFOV` (10 degrees on the Mantis) is put against ME1's 70 degree base FOV, which nobody checked for ME2,
   and scope capture does not exist there. Nothing steps the zoom.
 - **Until 2026-11-17 the game's own aim zoom magnified the whole view** whenever the support grip sent LT (assault

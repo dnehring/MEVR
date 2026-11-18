@@ -843,18 +843,29 @@ void ReadGameZoom(int type) {
                                                                       "it", gZoom.game.zoom[1])
                                                         : std::string())
                              : std::string());
-#elif defined(MEVR_GAME_LE2)
+#else
+    // ME2 and ME3: the trilogy's one sniper scope (the owner, 2026-11-18: "sniper zoom is unified", read as ME1's): ME1's
+    // sniper rifle's two aim modes, 3.5x and 7x after a flick of the right stick (research/21 section 16), whatever the
+    // sequel's own zoom (ME2's ZoomFOV read against ME1's 70-degree camera showed 8.0x; ME3's none: the 4.0x fallback).
+    // The magnifications go in as the FOVs that give them at the combat camera's FOV, as ME1's AimModes do.
     ue3::Object* const held = weapon::HeldObject();
     if (held != nullptr && type == static_cast<int>(weapon::RangedType::Sniper)) {
-        float const fov = gZoomFov.Read<float>(held).value_or(0.0f);
-        sv::AddAimMode(gZoom.game, fov, true);
-        if (gZoom.game.count != 0) {
-            gZoom.stats = ue3::runtime::FullName(held);
-            log::Info("sights: {} ZoomFOV {:.1f} degrees, {:.1f}x", gZoom.stats, fov, gZoom.game.zoom[0]);
+        constexpr float kTrilogySniperZoom[] = {3.5f, 7.0f};
+        constexpr float kHalfRadians = 3.14159265f / 360.0f;
+        for (float const zoom : kTrilogySniperZoom) {
+            float const fov = 2.0f * std::atan(std::tan(sv::kGameCombatFovDeg * kHalfRadians) / zoom) / (2.0f * kHalfRadians);
+            sv::AddAimMode(gZoom.game, fov, true);
         }
-    }
+        gZoom.stats = ue3::runtime::FullName(held);
+#if defined(MEVR_GAME_LE2)
+        float const own = gZoomFov.Read<float>(held).value_or(0.0f);
+        std::string const game = std::format("; the game's own ZoomFOV {:.1f} degrees ({:.1f}x) not used", own, sv::ZoomFromFov(own));
 #else
-    (void)type;
+        std::string const game;
+#endif
+        log::Info("sights: {}: the trilogy's sniper scope, ME1's {:.1f}x and {:.1f}x after a flick of the right stick while aiming "
+                  "down it{}", gZoom.stats, sv::ZoomAt(gZoom.game, 0), sv::ZoomAt(gZoom.game, 1), game);
+    }
 #endif
 }
 

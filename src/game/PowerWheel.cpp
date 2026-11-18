@@ -37,6 +37,7 @@
 #include <format>
 #include <fstream>
 #include <map>
+#include <string_view>
 #include <optional>
 #include <sstream>
 #include <vector>
@@ -348,6 +349,37 @@ bool CallBool(ue3::Object* object, ue3::FunctionRef& ref) {
 }
 
 #if defined(MEVR_GAME_LE2)
+// A power ME2's table doesn't name (Singularity, Shockwave, Charge, Combat Drone, Unity, the bonus powers...): it keeps its
+// tile, as on ME3 (the ME2 audit's PWR-02, lane AU2 2026-11-18: an Adept, Vanguard or Engineer lost class powers from the
+// wheel). Its words from its base name, a generic icon, aimed at a place (the push casts it where the ray lands, or at the
+// locked enemy the game's own targeting takes).
+struct Le2Label {
+    std::string label;
+    std::string name;
+    pw::PowerInfo info{};
+};
+std::map<std::string, Le2Label> gLe2Labels;
+
+pw::PowerInfo const* Le2UnknownPower(std::string const& label) {
+    auto [entry, added] = gLe2Labels.try_emplace(label);
+    Le2Label& text = entry->second;
+    if (added) {
+        text.label = label;
+        // "SFXPower_Shockwave" or "Shockwave": the words of the base name ("CombatDrone" -> "Combat Drone").
+        std::string_view words = text.label;
+        if (auto const underscore = words.rfind('_'); underscore != std::string_view::npos) words.remove_prefix(underscore + 1);
+        for (std::size_t i = 0; i < words.size(); ++i) {
+            bool const upper = words[i] >= 'A' && words[i] <= 'Z';
+            if (i > 0 && upper && words[i - 1] >= 'a' && words[i - 1] <= 'z') text.name += ' ';
+            text.name += words[i];
+        }
+        text.info = {text.label.c_str(), text.name.c_str(), std::uint8_t{2}, 0, pw::Aim::Place};
+        log::Info("power wheel: ME2's {} isn't in the power table: on the wheel as '{}', aimed at a place, a generic icon", label,
+            text.name);
+    }
+    return &text.info;
+}
+
 std::optional<Power> Le2Power(ue3::Object* object, bool includeUnlearned) {
     auto& r = ue3::runtime::Get();
     if (!r.IsAlive(object) || !gLe2Visible.ReadBool(object).value_or(false)) return std::nullopt;
@@ -356,7 +388,7 @@ std::optional<Power> Le2Power(ue3::Object* object, bool includeUnlearned) {
     auto const base = gLe2BaseName.Read<ue3::Name>(object).value_or(ue3::Name{});
     auto const* info = pw::FindLe2Power(r.ToString(base).c_str());
     if (info == nullptr) info = pw::FindLe2Power(r.ToString(name).c_str());
-    if (info == nullptr) return std::nullopt;
+    if (info == nullptr) info = Le2UnknownPower(r.ToString(base.Key() != 0 ? base : name));
     bool const learned = sequel_powers::Learned(object);
     if (!learned && !includeUnlearned) return std::nullopt;
     Power p;

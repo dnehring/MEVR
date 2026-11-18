@@ -1036,7 +1036,9 @@ me3/summary.md; the owner's words in quotes):
 
 - **ME2's fifth reach zone, the SMG at the right thigh** (on by default): "Right thigh may work for now." Kept.
 - **The sniper's magnification:** "sniper zoom is unified." One rule for the three games, read as ME1's (3.5x, then 7x
-  after a flick, from a real zoomed render; rule 1). Today ME2 shows 8.0x and ME3 4.0x.
+  after a flick, from a real zoomed render; rule 1). Today ME2 shows 8.0x and ME3 4.0x. **Lane AU2, 2026-11-18:** the levels
+  are ME1's on both sequels (3.5x, 7x after a flick; game/Sights `ReadGameZoom`); the zoomed render (scope capture's host
+  source on the sequels) is not ported yet: the sequels still enlarge the other eye's image.
 - **ME3's default for conversations and cutscenes:** "Likely yes if it's default for the other two games." It is: ME1's 3D
   cinema screen is ME3's default, and ME3's menu (which offers Flat only and calls the screen "not available yet") is to
   offer it as ME1's and ME2's do.
