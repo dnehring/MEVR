@@ -253,8 +253,11 @@
 			<div class="hint" data-if="le2">Not available in {{game_title}} yet.</div>
 			<div class="row"><div class="rl"><div class="rlab">Throttle lever and drive stick</div><div class="rdesc">Drive with a lever by your left side and a stick by your right: grab them with the grips (the Controller guide has the details). Off: the game's own Mako controls.</div></div>
 				<button class="tog" data-class-on="mako_controls" data-event-click="toggle('mako_controls')"><div class="knob"/></button></div>
-			<div class="row"><div class="rl"><div class="rlab">Sit in the cockpit</div><div class="rdesc">In the Mako you sit in its cockpit, the outside view on the screen ahead. Off: the game's camera behind the Mako.</div></div>
+			<div class="row"><div class="rl"><div class="rlab">Sit in the cockpit</div><div class="rdesc">Sit inside the Mako while driving. Turn this off for the chase camera.</div></div>
 				<button class="tog" data-class-on="cockpit" data-event-click="toggle('cockpit')"><div class="knob"/></button></div>
+			<div class="row"><div class="rl"><div class="rlab">Mako seat position</div><div class="rdesc">Choose the seat for the next time you enter the Mako with Sit in the cockpit enabled.</div>
+				<div class="note" data-if="!mako_bottom_available">Bottom requires the V2 cockpit package.</div></div>
+				<div class="seg"><button class="segb" data-class-on="mako_seat == 'top'" data-event-click="pick('mako_seat','top')">Top (V1)</button><button class="segb" data-if="mako_bottom_available" data-class-on="mako_seat == 'bottom'" data-event-click="pick('mako_seat','bottom')">Bottom (V2)</button></div></div>
 		</div>
 	</div>
 

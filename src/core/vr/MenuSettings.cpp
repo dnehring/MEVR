@@ -144,6 +144,8 @@ std::vector<Field> const& Schema() {
         {"vent", Type::Flag, 1},           // [Vent] enabled (research/45)
         {"mako_controls", Type::Flag, 1},  // [Mako] controls: the lever and the stick (research/46)
         {"cockpit", Type::Flag, 1},        // [Cockpit] enabled (research/47)
+        {"mako_seat", Type::Choice, 0, "top"},
+        {"mako_bottom_available", Type::Flag, 0, "", 0, 1, F::None, true},
         // The controller guide's texts (core/vr/MenuSettings GuideTexts; "<id>" the drawing's label, "<id>_how" the list's line).
         {"guide_lt", Type::Text, 0, ""},
         {"guide_lt_how", Type::Text, 0, ""},

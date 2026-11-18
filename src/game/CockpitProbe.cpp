@@ -39,6 +39,7 @@
 #include <format>
 #include <fstream>
 #include <initializer_list>
+#include <numbers>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -103,6 +104,7 @@ ue3::FunctionRef gGetNumElements{"Engine.MeshComponent.GetNumElements"};
 ue3::FunctionRef gGetUnscaledBounds{"Engine.MeshComponent.GetUnscaledBounds"};
 ue3::FunctionRef gCreateMic{"Engine.MeshComponent.CreateAndSetMaterialInstanceConstant"};
 ue3::FunctionRef gSetParent{"Engine.MaterialInstanceConstant.SetParent"};
+ue3::FunctionRef gSetScalarParameter{"Engine.MaterialInstanceConstant.SetScalarParameterValue"};
 ue3::FunctionRef gSetTextureParameter{"Engine.MaterialInstanceConstant.SetTextureParameterValue"};
 ue3::FunctionRef gGetTextureParameter{"Engine.MaterialInterface.GetTextureParameterValue"};
 ue3::FunctionRef gLightEnvironmentSetEnabled{"Engine.LightEnvironmentComponent.SetEnabled"};
@@ -138,6 +140,17 @@ ue3::FieldRef gPawnMesh{"Engine.Pawn", "Mesh"};
 ue3::FieldRef gOwnerField{"Engine.Actor", "Owner"};
 ue3::FieldRef gCameraViewTarget{"Engine.Camera", "ViewTarget"};
 ue3::FieldRef gCameraViewTargetActor{gCameraViewTarget, "Target"};
+ue3::FieldRef gCameraHiddenActors{"Engine.PlayerController", "HiddenActors"};
+ue3::ClassRef gVehicleScope{"SFXGame.SFXCameraMode_VehicleTightAim"};
+ue3::ClassRef gVehicleScopeEx{"SFXGame.SFXCameraMode_VehicleTightAimEx"};
+ue3::ClassRef gCameraBlend{"SFXGame.SFXCameraMode_Interpolate"};
+ue3::FieldRef gCameraMode{"SFXGame.SFXCameraNativeBase", "CurrentCameraMode"};
+ue3::FieldRef gCameraBlendTo{"SFXGame.SFXCameraMode_Interpolate", "To"};
+ue3::FieldRef gModePov{"SFXGame.SFXCameraMode", "m_pov"};
+ue3::FieldRef gModeFov{gModePov, "FOV"};
+ue3::FieldRef gScalarValues{"Engine.MaterialInstanceConstant", "ScalarParameterValues"};
+ue3::FieldRef gScalarValueName{gScalarValues, "ParameterName"};
+ue3::FieldRef gScalarValue{gScalarValues, "ParameterValue"};
 ue3::FieldRef gParent{"Engine.MaterialInstance", "Parent"};
 ue3::FieldRef gStaticPermutation{"Engine.MaterialInstance", "bHasStaticPermutationResource"};
 ue3::FieldRef gTextureValues{"Engine.MaterialInstanceConstant", "TextureParameterValues"};
@@ -395,6 +408,7 @@ HudLayout gHudLayout;
 // grips (left, right), the lever's at neutral.
 struct SeatLayout {
     bool set = false;
+    bool lockHip = false;
     engine::UnrealVector hipM{};
     std::array<engine::UnrealVector, 2> kneeM{};
     std::array<engine::UnrealVector, 2> heelM{};
@@ -409,8 +423,8 @@ SeatLayout gSeatLayout;
 // `panel button R F U in R F U travel M lever R F U axis R F U grip R F U pull DEG lamps FIRST COUNT FIRST COUNT`: the repair
 // button's cap top and its press (a unit direction into it), the cap's travel; the extraction lever's hinge, its axis (unit; a
 // turn by + swings the handle out), the handle's grip at rest and how far it swings; which of Repair_Base's elements are the
-// ring's health lamps and the plate's progress squares. Points from the cockpit's eye, metres (right, forward, up); place.py
-// --script writes it from the hull manifest's panels (research/48 section 27, game/CockpitPanel).
+// ring's health lamps and the plate's progress squares. A cockpit with just the handle uses `panel lever ... axis ... grip ... pull ...`.
+// Points from the cockpit's eye, metres (right, forward, up).
 struct PanelLayout {
     bool set = false;
     engine::UnrealVector buttonM{};
@@ -452,9 +466,11 @@ struct SeatedDriver {
     std::vector<std::pair<ue3::Object*, bool>> head;       // the head's meshes and their HiddenGame before
     std::vector<std::pair<ue3::Object*, ue3::Object*>> lit;  // each primitive lit by the vehicle's light environment, and its own
     bool haveHips = false;
+    bool hipsPlaced = false;
     ik::Vec3 hips{};  // the hips' midpoint in the mesh's component space (game/arm_ik)
     bool haveHeadBone = false;
     ik::Vec3 headBone{};  // the head bone there
+    std::optional<int> reclinePitch;  // the locked seat's pitch relative to the rover, chosen at entry
     double slideBackM = 0.0;  // how far PlaceDriver slid the body back of the H-point for the head
     // Shown only while arm IK poses it seated (its last NoteSeatHips within 0.5 s): without tracked controllers arm IK is off and
     // the animation would stand Shepard up through the cockpit's eye (2026-11-03, BIOA_UNC52 with no replay).
@@ -490,8 +506,47 @@ struct AimScreen {
     float traceExtent = 0.0f;     // `aimreticle ... extent N`: a box trace (level meshes may block only those)
     float rangeM = 200.0f;        // `aimreticle ... range M`: how far the trace looks, and where the reticle sits on a miss
     float pitchDeg = 0.0f;        // `aimreticle ... pitch DEG`: the stand-in aim tilted from the head's view (up positive)
+    bool optics = false;         // V2's deployable FWD OPTICS instead of the V1 console screen
+    bool hideTurret = false;     // the tall driving film overlaps the stock turret in the seated view
+    struct ScopeView {
+        ue3::Vector location;
+        ue3::Rotator rotation;
+        float fov;
+    };
+    std::optional<ScopeView> nativeScope;
+    float padZoom = 0.0f;        // R3's zoom for the cockpit controls
+    float drivingFov = 90.0f;
+    float closedHeight = 0.26f;
+    float extension = 0.0f;
+    float lightFade = 0.0f;
+    float appliedFade = 0.0f;
+    double movedAt = -1.0;
+    bool pictureReady = false;
+    bool showingPicture = false;
+    ue3::Object* driveTarget = nullptr;
+    bool capturingDrive = false;
+    bool driveReady = false;
+    struct FadeMaterial {
+        ue3::Object* instance;
+        ue3::Name parameter;
+        float driving;
+        float aiming;
+    };
+    std::vector<FadeMaterial> fadeMaterials;
 };
 AimScreen gAim;
+// The capture can see the stock turret housing. Clip it out of the V2 picture
+// without moving the optical axis or changing the weapon's aim.
+constexpr float kOpticsNearUnits = 500.0f;
+// The forward camera is ahead of the stock body's nose (155 units from the
+// vehicle origin in BIOG_VEH_ROV_MDL). It looks out independently of the driver's eye.
+constexpr float kDriveLensForward = 205.0f;
+constexpr float kDriveLensUp = 80.0f;
+constexpr float kDriveLensFov = 82.0f;
+constexpr float kDriveLensNear = 8.0f;
+constexpr float kDriveCaptureRate = 20.0f;
+void ApplyOpticsLighting(float fade);
+void SetActorHidden(ue3::Object* actor, bool hidden);
 void ClearAim(char const* why);
 void HideFromCaptures();
 std::string MapName(ue3::Object* controller);
@@ -663,6 +718,7 @@ void Refresh() {
     }
     if (gState.world != engine::World()) {
         log::Info("cockpit probe: a new level: forgot what it spawned (its objects went with the old level)");
+        ApplyOpticsLighting(0.0f);
         gState = State{};
         gAim = AimScreen{};
         return;
@@ -1102,6 +1158,8 @@ struct Part {
     // The repair button's cap goes in along its press, the extraction handle swings about its hinge (game/CockpitPanel,
     // research/48 section 27).
     enum class Motion { None, Lever, Stick, Press, Hinge } motion = Motion::None;
+    enum class Optics { None, Film, FilmHeader, FilmSeal, DriveFeed, ScopeOnly, Brow } optics = Optics::None;
+    bool ScopeOnly() const { return optics == Optics::ScopeOnly || optics == Optics::Brow; }
 };
 std::vector<Part> gParts;
 
@@ -1208,8 +1266,16 @@ std::string DoPart(std::istringstream& words) {
     Call(part.component, gSetStaticMesh, set);
     part.mesh = mesh;
     std::string const meshName = Lower(R().NameText(mesh));
+    bool const extraction = meshName == "extraction_handle" || meshName == "v2_extractionhandle";
     part.motion = meshName == "throttle_handle" ? Part::Motion::Lever : meshName == "joystick_grip" ? Part::Motion::Stick
-        : meshName == "repair_cap" ? Part::Motion::Press : meshName == "extraction_handle" ? Part::Motion::Hinge : Part::Motion::None;
+        : meshName == "repair_cap" ? Part::Motion::Press : extraction ? Part::Motion::Hinge : Part::Motion::None;
+    part.optics = meshName == "v2_visiondeployfilm" ? Part::Optics::Film :
+        meshName == "v2_visionfilmheader" ? Part::Optics::FilmHeader :
+        meshName == "v2_visionapertureseal" ? Part::Optics::FilmSeal :
+        meshName == "v2_visiondrivefeed" ? Part::Optics::DriveFeed :
+        meshName == "v2_visionscopereticle" ? Part::Optics::ScopeOnly :
+        meshName.starts_with("v2_opticsbrow") ? Part::Optics::Brow : Part::Optics::None;
+    if (part.ScopeOnly() || part.optics == Part::Optics::DriveFeed) SetActorHidden(part.actor, true);
     PlacePart(part);
     gParts.push_back(part);
     HideFromCaptures();
@@ -1986,7 +2052,7 @@ void HideVehicle(ue3::Object* vehicle) {
     gRide.vehicle = vehicle;
     // The turret stays in view over the cabin ([Cockpit] showTurret; research/47 "The cannon over the cabin"): the cockpit's eye sits
     // under it, so its barrels show at the top of the windshield and the shots come from there.
-    bool const keepTurret = hand_calibration::GetCockpit().turret;
+    bool const keepTurret = hand_calibration::GetCockpit().turret && !gAim.hideTurret;
     ue3::Object* const mesh = gPawnMesh.Read<ue3::Object*>(vehicle).value_or(nullptr);
     int kept = 0;
     for (std::int32_t i = 0; i < components->count; ++i) {
@@ -2164,10 +2230,13 @@ void SeatTick(ue3::Object* vehicle) {
         ShowDriver(vehicle);
     }
     if (gSeated.pawn != nullptr) {
-        bool const posed = gSeated.posedAt >= 0.0 && Now() - gSeated.posedAt < 0.5;
-        if (posed != gSeated.visible) {
+        bool const posed = gSeated.posedAt >= 0.0 && Now() - gSeated.posedAt < 0.5 &&
+            (!gSeatLayout.lockHip || gSeated.hipsPlaced);
+        if (posed != gSeated.visible || (gAim.optics && gHiddenField.ReadBool(gSeated.pawn) == posed)) {
             SetActorHidden(gSeated.pawn, !posed);
             FlushActor(gSeated.pawn, false);
+        }
+        if (posed != gSeated.visible) {
             gSeated.visible = posed;
             log::Info("cockpit probe: seat: Shepard {}", posed ? "in view, posed seated by arm IK" : "hidden again: arm IK isn't posing the seat (no tracked controllers, or arm IK off)");
         }
@@ -2181,6 +2250,8 @@ void SeatTick(ue3::Object* vehicle) {
 // furthest the seated body slides back of the seat's H-point to get it there.
 constexpr double kHeadBoneBehindEyeM = 0.10;
 constexpr double kSeatSlideBackM = 0.25;
+constexpr double kLockedSeatHeadBehindEyeM = 0.16;
+constexpr double kMaxSeatReclineDeg = 35.0;
 
 void PlaceDriver(engine::Basis const& frame, engine::UnrealVector const& eye, double upm, ue3::Rotator const& turn) {
     ue3::Object* const driver = gSeated.pawn;
@@ -2203,25 +2274,46 @@ void PlaceDriver(engine::Basis const& frame, engine::UnrealVector const& eye, do
             return engine::Apply(engine::Inverse(was), {w.x - atField->x, w.y - atField->y, w.z - atField->z});
         };
         local = fromActor(gSeated.hips);
-        if (gSeated.haveHeadBone) {
+        if (gSeated.haveHeadBone && (!gSeatLayout.lockHip || !gSeated.reclinePitch)) {
             headLocal = fromActor(gSeated.headBone);
         }
     }
-    // The actor from the cockpit's eye, along the vehicle's axes: the hips on the seat's H-point; along forward, with the head
-    // bone known, slid back until it sits kHeadBoneBehindEyeM behind the eye (a head's bone is behind its eyes), at most
-    // kSeatSlideBackM behind the H-point and never forward of it.
-    engine::UnrealVector offset{gSeatLayout.hipM.y * upm - local.x, gSeatLayout.hipM.x * upm - local.y, gSeatLayout.hipM.z * upm - local.z};
-    if (headLocal) {
-        double const byHead = -kHeadBoneBehindEyeM * upm - headLocal->x;
-        offset.x = std::clamp(byHead, offset.x - kSeatSlideBackM * upm, offset.x);
-        gSeated.slideBackM = (gSeatLayout.hipM.y * upm - local.x - offset.x) / upm;
+    engine::UnrealVector hipTarget{gSeatLayout.hipM.y * upm, gSeatLayout.hipM.x * upm, gSeatLayout.hipM.z * upm};
+    gSeated.slideBackM = 0.0;
+    if (headLocal && gSeatLayout.lockHip) {
+        // Rotate around the H-point once at entry so the neck stays behind the view.
+        // The knee and ankle targets remain in the vehicle's frame.
+        double const forward = headLocal->x - local.x;
+        double const up = headLocal->z - local.z;
+        double const radius = std::hypot(forward, up);
+        if (radius > 1.0) {
+            double const wanted = (-kLockedSeatHeadBehindEyeM * upm - hipTarget.x) / radius;
+            double const pitch = std::atan2(forward, up) - std::asin(std::clamp(wanted, -1.0, 1.0));
+            double const degrees = std::clamp(pitch * 180.0 / std::numbers::pi, 0.0, kMaxSeatReclineDeg);
+            gSeated.reclinePitch = static_cast<int>(std::lround(degrees * 65536.0 / 360.0));
+            log::Info("cockpit probe: seat: locked hips, body reclined {:.1f} degrees at entry", degrees);
+        }
+    } else if (headLocal) {
+        double const byHead = -kHeadBoneBehindEyeM * upm - headLocal->x + local.x;
+        double const slid = std::clamp(byHead, hipTarget.x - kSeatSlideBackM * upm, hipTarget.x);
+        gSeated.slideBackM = (hipTarget.x - slid) / upm;
+        hipTarget.x = slid;
     }
-    engine::UnrealVector const placed = engine::Apply(frame, offset);
-    *atField = {static_cast<float>(eye.x + placed.x), static_cast<float>(eye.y + placed.y), static_cast<float>(eye.z + placed.z)};
-    write_journal::Wrote("CockpitProbe.driverLocation", atField, sizeof(*atField));
+    engine::Basis bodyFrame = frame;
     *turnField = turn;
+    if (gSeatLayout.lockHip && gSeated.reclinePitch.value_or(0) != 0) {
+        bodyFrame = engine::Compose(frame, engine::ToBasis(engine::UnrealRotation{*gSeated.reclinePitch, 0, 0}));
+        engine::UnrealRotation const reclined = engine::BasisRotation(bodyFrame);
+        *turnField = {reclined.pitch, reclined.yaw, reclined.roll};
+    }
+    engine::UnrealVector const worldTarget = engine::Apply(frame, hipTarget);
+    engine::UnrealVector const worldHips = engine::Apply(bodyFrame, local);
+    *atField = {static_cast<float>(eye.x + worldTarget.x - worldHips.x), static_cast<float>(eye.y + worldTarget.y - worldHips.y),
+        static_cast<float>(eye.z + worldTarget.z - worldHips.z)};
+    write_journal::Wrote("CockpitProbe.driverLocation", atField, sizeof(*atField));
     write_journal::Wrote("CockpitProbe.driverRotation", turnField, sizeof(*turnField));
     FlushActor(driver, true);
+    gSeated.hipsPlaced = gSeated.haveHips;
     ++gSeated.placements;
 }
 
@@ -2241,6 +2333,9 @@ std::string DoSeat(std::istringstream& words) {
             ok = read(layout.heelM[0]) && read(layout.heelM[1]);
         } else if (name == "grips") {
             ok = read(layout.gripM[0]) && read(layout.gripM[1]);
+        } else if (name == "lockhip") {
+            layout.lockHip = true;
+            continue;
         } else if (name == "axes") {
             ok = read(layout.axisM[0]) && read(layout.axisM[1]);
             for (engine::UnrealVector& a : layout.axisM) {
@@ -2256,7 +2351,7 @@ std::string DoSeat(std::istringstream& words) {
             }
         }
         if (!ok) {
-            return "usage: mevr cockpit seat hip R F U knees R F U R F U heels R F U R F U grips R F U R F U [axes R F U R F U] (metres from the "
+            return "usage: mevr cockpit seat hip R F U knees R F U R F U heels R F U R F U grips R F U R F U [axes R F U R F U] [lockhip] (metres from the "
                    "cockpit's eye: right, forward, up; left then right; the grips are the lever's and the stick's, the axes their handles')";
         }
         ++found;
@@ -2267,9 +2362,10 @@ std::string DoSeat(std::istringstream& words) {
     layout.set = true;
     gSeatLayout = layout;
     std::string const report = std::format("seat: the hips at ({:.2f} {:.2f} {:.2f}), the heels at ({:.2f} {:.2f} {:.2f}) and ({:.2f} {:.2f} {:.2f}) m from the eye; "
-                                           "Shepard sits there while riding ([Cockpit] seated = {})",
+                                           "Shepard sits there while riding ([Cockpit] seated = {}){}",
         layout.hipM.x, layout.hipM.y, layout.hipM.z, layout.heelM[0].x, layout.heelM[0].y, layout.heelM[0].z, layout.heelM[1].x, layout.heelM[1].y,
-        layout.heelM[1].z, hand_calibration::GetCockpit().seated ? 1 : 0);
+        layout.heelM[1].z, hand_calibration::GetCockpit().seated ? 1 : 0,
+        layout.lockHip ? ", hip anchor locked" : "");
     if (layout.haveAxes) {
         log::Info("cockpit probe: seat: the held hands wrap the lever's axis ({:.2f} {:.2f} {:.2f}) and the stick's ({:.2f} {:.2f} {:.2f})",
             layout.axisM[0].x, layout.axisM[0].y, layout.axisM[0].z, layout.axisM[1].x, layout.axisM[1].y, layout.axisM[1].z);
@@ -2282,12 +2378,13 @@ std::string DoSeat(std::istringstream& words) {
 std::string DoPanel(std::istringstream& words) {
     std::string first;
     std::streampos const start = words.tellg();
-    if (!(words >> first) || first != "button") {
+    if (!(words >> first) || (first != "button" && first != "lever")) {
         std::string rest;
         std::getline(words, rest);
         return cockpit_panel::Command(first + rest);
     }
     words.seekg(start);
+    bool const leverOnly = first == "lever";
     PanelLayout layout;
     auto const read = [&](engine::UnrealVector& v) { return static_cast<bool>(words >> v.x >> v.y >> v.z); };
     auto const unit = [](engine::UnrealVector& v) {
@@ -2302,11 +2399,11 @@ std::string DoPanel(std::istringstream& words) {
     int found = 0;
     while (words >> name) {
         bool ok = false;
-        if (name == "button") {
+        if (name == "button" && !leverOnly) {
             ok = read(layout.buttonM);
-        } else if (name == "in") {
+        } else if (name == "in" && !leverOnly) {
             ok = read(layout.buttonInM) && unit(layout.buttonInM);
-        } else if (name == "travel") {
+        } else if (name == "travel" && !leverOnly) {
             ok = static_cast<bool>(words >> layout.travelM) && layout.travelM > 0.0f;
         } else if (name == "lever") {
             ok = read(layout.hingeM);
@@ -2316,19 +2413,19 @@ std::string DoPanel(std::istringstream& words) {
             ok = read(layout.gripM);
         } else if (name == "pull") {
             ok = static_cast<bool>(words >> layout.pullDeg) && layout.pullDeg > 0.0f;
-        } else if (name == "lamps") {
+        } else if (name == "lamps" && !leverOnly) {
             ok = static_cast<bool>(words >> layout.healthFirst >> layout.healthCount >> layout.progressFirst >> layout.progressCount) &&
                  layout.healthFirst >= 0 && layout.progressFirst >= 0 && layout.healthCount >= 0 && layout.progressCount >= 0 &&
                  layout.healthFirst + layout.healthCount <= 32 && layout.progressFirst + layout.progressCount <= 32;
         }
         if (!ok) {
-            return "usage: mevr cockpit panel button R F U in R F U travel M lever R F U axis R F U grip R F U pull DEG lamps FIRST COUNT FIRST COUNT "
-                   "(metres from the cockpit's eye: right, forward, up), or mevr cockpit panel [repair|extract]";
+            return "usage: mevr cockpit panel [button R F U in R F U travel M] lever R F U axis R F U grip R F U pull DEG [lamps FIRST COUNT FIRST COUNT]";
         }
         ++found;
     }
-    if (found != 8) {
-        return Refuse("panel: button, in, travel, lever, axis, grip, pull and lamps are all needed");
+    if (found != (leverOnly ? 4 : 8)) {
+        return Refuse(leverOnly ? "panel: lever, axis, grip and pull are needed" :
+            "panel: button, in, travel, lever, axis, grip, pull and lamps are all needed");
     }
     if (std::abs(layout.hingeAxisM.x) < 0.9) {
         return Refuse("panel: the handle's hinge must run along the seat's right (its model swings about it)");
@@ -2347,10 +2444,13 @@ std::string DoPanel(std::istringstream& words) {
     layout.set = true;
     gPanelLayout = layout;
     gPanelLamps.component = nullptr;  // the lamps are set afresh
-    std::string const report = std::format("panel: the repair button {:.2f} {:.2f} {:.2f} and the extraction handle {:.2f} {:.2f} {:.2f} m from the eye "
-                                           "(right, forward, up), a {:.1f} mm press and a {:.0f}-degree pull; {} lamps from element {}, {} squares from {}",
-        layout.buttonM.x, layout.buttonM.y, layout.buttonM.z, layout.gripM.x, layout.gripM.y, layout.gripM.z, layout.travelM * 1000.0f, layout.pullDeg,
-        layout.healthCount, layout.healthFirst, layout.progressCount, layout.progressFirst);
+    std::string report = std::format("panel: the extraction handle {:.2f} {:.2f} {:.2f} m from the eye (right, forward, up), a {:.0f}-degree pull",
+        layout.gripM.x, layout.gripM.y, layout.gripM.z, layout.pullDeg);
+    if (!leverOnly) {
+        report += std::format("; repair button {:.2f} {:.2f} {:.2f} with a {:.1f} mm press, {} lamps from element {}, {} squares from {}",
+            layout.buttonM.x, layout.buttonM.y, layout.buttonM.z, layout.travelM * 1000.0f,
+            layout.healthCount, layout.healthFirst, layout.progressCount, layout.progressFirst);
+    }
     log::Info("cockpit probe: {}", report);
     return report;
 }
@@ -2359,6 +2459,13 @@ std::string DoPanel(std::istringstream& words) {
 engine::Basis StickTilt(mako_controls::Pose const& pose) {
     auto const units = [](float degrees) { return static_cast<int>(std::lround(degrees * 65536.0 / 360.0)); };
     return engine::ToBasis(engine::UnrealRotation{units(-pose.tiltForwardDeg), 0, units(pose.tiltRightDeg)});
+}
+
+engine::Basis StickRotation(mako_controls::Pose const& pose, double neutralYawDeg = 0.0) {
+    // The neutral grip point and axis in the layout already include the part's authored yaw.
+    double const yawDeg = neutralYawDeg + (pose.tilt ? -static_cast<double>(pose.twistDeg) : static_cast<double>(pose.steer * pose.lockDeg));
+    engine::Basis const yaw = engine::ToBasis(engine::UnrealRotation{0, static_cast<int>(std::lround(yawDeg * 65536.0 / 360.0)), 0});
+    return pose.tilt ? engine::Compose(StickTilt(pose), yaw) : yaw;
 }
 
 // A part in the vehicle's frame: its offset from the eye along the vehicle's axes, its yaw on top of the vehicle's rotation.
@@ -2371,19 +2478,17 @@ void PlacePartIn(Part const& part, engine::Basis const& frame, engine::UnrealVec
         offsetM = {offsetM.x + gPanelLayout.buttonInM.x * in, offsetM.y + gPanelLayout.buttonInM.y * in, offsetM.z + gPanelLayout.buttonInM.z * in};
     }
     double const forwardM = offsetM.y + (part.motion == Part::Motion::Lever ? static_cast<double>(pose.lever * pose.travelM) : 0.0);
-    bool const stick = part.motion == Part::Motion::Stick;
-    // Twisting, the stick turns by its steering; tilting, it turns about its tilted axis by the hand's twist (the user, 2026-11-05:
-    // the twist steered, the model never turned). A twist counter-clockwise from above is a negative UE yaw.
-    double const yawDeg = part.yawDeg + (!stick ? 0.0 : pose.tilt ? -static_cast<double>(pose.twistDeg) : static_cast<double>(pose.steer * pose.lockDeg));
     engine::UnrealVector const offset = engine::Apply(frame, {forwardM * upm, offsetM.x * upm, offsetM.z * upm});
-    engine::Basis tilted = stick && pose.tilt ? engine::Compose(frame, StickTilt(pose)) : frame;
+    engine::Basis parent = frame;
     if (part.motion == Part::Motion::Hinge && gPanelLayout.set && panel.pullDeg != 0.0f) {
         // The hinge runs along the seat's right (the hull's x): a turn about it is a pitch in the vehicle's frame, forward tipping
         // up for + about +x as in the hull's right-handed axes.
         double const degrees = panel.pullDeg * (gPanelLayout.hingeAxisM.x >= 0.0 ? 1.0 : -1.0);
-        tilted = engine::Compose(frame, engine::ToBasis(engine::UnrealRotation{static_cast<int>(std::lround(degrees * 65536.0 / 360.0)), 0, 0}));
+        parent = engine::Compose(frame, engine::ToBasis(engine::UnrealRotation{static_cast<int>(std::lround(degrees * 65536.0 / 360.0)), 0, 0}));
     }
-    engine::UnrealRotation const turned = engine::BasisRotation(engine::Compose(tilted, engine::ToBasis(engine::UnrealRotation{0, static_cast<int>(std::lround(yawDeg * 65536.0 / 360.0)), 0})));
+    engine::Basis const local = part.motion == Part::Motion::Stick ? StickRotation(pose, part.yawDeg) :
+        engine::ToBasis(engine::UnrealRotation{0, static_cast<int>(std::lround(part.yawDeg * 65536.0 / 360.0)), 0});
+    engine::UnrealRotation const turned = engine::BasisRotation(engine::Compose(parent, local));
     if (ue3::Vector* const atField = gActorLocation.In<ue3::Vector>(part.actor)) {
         *atField = {static_cast<float>(eye.x + offset.x), static_cast<float>(eye.y + offset.y), static_cast<float>(eye.z + offset.z)};
         write_journal::Wrote("CockpitProbe.rideLocation", atField, sizeof(*atField));
@@ -2400,6 +2505,79 @@ void PlacePartIn(Part const& part, engine::Basis const& frame, engine::UnrealVec
 // research/48 section 27); game/WorldUi puts the screen at the cockpit's windshield then.
 bool RideMode(std::optional<std::uint8_t> mode) {
     return mode && (*mode == 1 || *mode == 7);
+}
+
+void KeepScopeDriverVisible(ue3::Object* controller) {
+    if (!gAim.nativeScope || !gSeated.visible || gSeated.world != engine::World() ||
+        !ue3::runtime::IsAlive(gSeated.pawn)) return;
+
+    auto const elements = gCameraHiddenActors.ElementsOf(controller, 512);
+    auto* const list = gCameraHiddenActors.In<ue3::TArray<ue3::Object*>>(controller);
+    if (!elements || elements->stride != static_cast<std::int32_t>(sizeof(ue3::Object*)) || list == nullptr ||
+        list->count == 0 || list->count > list->max) return;
+
+    // Stock zoom hides the party in the player view. V2 still renders the
+    // seated cabin there. Keep every other entry, and use the current
+    // game-thread array without allocating or keeping its buffer.
+    auto* const end = list->end();
+    auto* const kept = std::remove(list->begin(), end, gSeated.pawn);
+    if (kept == end) return;
+    std::fill(kept, end, nullptr);
+    list->count = static_cast<std::int32_t>(kept - list->begin());
+    write_journal::Wrote("CockpitProbe.scopeHiddenActors", &list->count);
+}
+
+void UpdateOptics(ue3::Object* camera, player::Pov const& pov, bool driving) {
+    if (!gAim.optics || gAim.parked || gAim.mic == nullptr) return;
+
+    ue3::Object* mode = gCameraMode.Read<ue3::Object*>(camera).value_or(nullptr);
+    if (ue3::IsA(mode, gCameraBlend)) {
+        mode = gCameraBlendTo.Read<ue3::Object*>(mode).value_or(nullptr);
+    }
+    bool const zoomed = ue3::IsA(mode, gVehicleScope) || ue3::IsA(mode, gVehicleScopeEx);
+    gAim.nativeScope.reset();
+    if (zoomed && driving) {
+        float const fov = gModeFov.Read<float>(gModePov.Address(mode)).value_or(0.0f);
+        if (fov > 1.0f && fov < 65.0f) {
+            gAim.nativeScope = AimScreen::ScopeView{*pov.location, *pov.rotation, fov};
+            gAim.padZoom = 0.0f;
+        }
+    }
+    if (!zoomed && gAim.extension == 0.0f && pov.fov != nullptr && *pov.fov > 65.0f && *pov.fov < 170.0f) {
+        gAim.drivingFov = *pov.fov;
+    }
+    if ((zoomed || gAim.extension > 0.0f) && pov.fov != nullptr) {
+        *pov.fov = gAim.drivingFov;
+        write_journal::Wrote("CockpitProbe.drivingFov", pov.fov);
+    }
+
+    double const now = Now();
+    float const dt = gAim.movedAt < 0.0 ? 0.0f : static_cast<float>(std::clamp(now - gAim.movedAt, 0.0, 0.06));
+    gAim.movedAt = now;
+    bool const aiming = driving && (gAim.nativeScope || gAim.padZoom > 0.0f);
+    float const direction = aiming ? 1.0f : -1.0f;
+    gAim.extension = std::clamp(gAim.extension + direction * dt / 0.42f, 0.0f, 1.0f);
+    gAim.lightFade = std::clamp(gAim.lightFade + direction * dt / 0.60f, 0.0f, 1.0f);
+    float const fade = gAim.lightFade;
+    ApplyOpticsLighting(fade * fade * (3.0f - 2.0f * fade));
+    // Extend the translucent film first. Once it reaches full travel, the
+    // same pane and border show the live picture. Retract as film again.
+    gAim.showingPicture = aiming && gAim.extension >= 1.0f && gAim.pictureReady;
+    for (Part const& part : gParts) {
+        bool const scope = part.actor == gState.actor;
+        bool const film = part.optics == Part::Optics::Film || part.optics == Part::Optics::FilmHeader || part.optics == Part::Optics::FilmSeal;
+        if ((!scope && part.optics == Part::Optics::None) || !PartAlive(part)) continue;
+        bool const driveFeed = part.optics == Part::Optics::DriveFeed;
+        bool const hidden = driveFeed ? gAim.showingPicture || !gAim.driveReady :
+            film ? gAim.showingPicture : !gAim.showingPicture;
+        if (gHiddenField.ReadBool(part.actor) != hidden) SetActorHidden(part.actor, hidden);
+        if (part.optics == Part::Optics::Film) {
+            float const t = gAim.extension;
+            float const eased = t * t * (3.0f - 2.0f * t);
+            // The mesh's origin is its upper edge. Z scale moves the lower edge only.
+            WriteField(gDrawScale3D, part.actor, ue3::Vector{1.0f, 1.0f, std::lerp(gAim.closedHeight, 1.0f, eased)}, "CockpitProbe.opticsExtension");
+        }
+    }
 }
 
 // After the camera's update (the vehicle has moved for this frame; the view isn't built yet).
@@ -2423,6 +2601,7 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
     gRide.chaseLocation = *pov->location;
     gRide.chaseRotation = *pov->rotation;
     gRide.chaseValid = true;
+    UpdateOptics(camera, *pov, mode == 1);
     engine::Basis const frame = engine::ToBasis(engine::UnrealRotation{turn->pitch, turn->yaw, turn->roll});
     double const upm = gAnchor.set ? gAnchor.unitsPerMeter : engine::kUnitsPerMeter;
     engine::UnrealVector const lift = engine::Apply(frame, {gRide.eyeM.y * upm, gRide.eyeM.x * upm, gRide.eyeM.z * upm});
@@ -2435,6 +2614,7 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
     }
     if (gSeated.pawn != nullptr && gSeated.vehicle == pawn) {
         PlaceDriver(frame, eye, upm, *turn);
+        KeepScopeDriverVisible(controller);
     }
     if (!gRide.seated) {
         // Until the seat is kept it follows the head, so the eye stays on the cockpit's. It's kept once the host's view has
@@ -2554,9 +2734,10 @@ std::string DoRide(std::istringstream& words) {
             gRide.on ? "on" : "off", gRide.eyeM.x, gRide.eyeM.y, gRide.eyeM.z, gRide.cameraTicks, gRide.partPlacements, gRide.riding, gRide.hidden.size(),
             at ? at->x : 0.0f, at ? at->y : 0.0f, at ? at->z : 0.0f, turn ? deg(turn->pitch) : 0.0, turn ? deg(turn->yaw) : 0.0, turn ? deg(turn->roll) : 0.0,
             gRide.chaseLocation.x, gRide.chaseLocation.y, gRide.chaseLocation.z, deg(gRide.chaseRotation.pitch), deg(gRide.chaseRotation.yaw), deg(gRide.chaseRotation.roll)) +
-            std::format("\n  seat: {}{}, {} placements, the hips {}", gSeatLayout.set ? "" : "no layout; ",
+            std::format("\n  seat: {}{}, {} placements, the hips {}; visible {}, anchor {}, slide back {:.3f} m", gSeatLayout.set ? "" : "no layout; ",
                 gSeated.pawn != nullptr ? ue3::runtime::FullName(gSeated.pawn) + " shown" : std::string("nobody shown"), gSeated.placements,
-                gSeated.haveHips ? std::format("at ({:.1f} {:.1f} {:.1f}) in the mesh", gSeated.hips.x, gSeated.hips.y, gSeated.hips.z) : std::string("not sampled yet"));
+                gSeated.haveHips ? std::format("at ({:.1f} {:.1f} {:.1f}) in the mesh", gSeated.hips.x, gSeated.hips.y, gSeated.hips.z) : std::string("not sampled yet"),
+                gSeated.visible, gSeatLayout.lockHip ? "locked" : "head-aligned", gSeated.slideBackM);
     }
     // Three numbers are the eye's place (and on); a lone 0 or `off` stops, a lone 1 or `on` starts.
     engine::UnrealVector eye{};
@@ -2589,13 +2770,33 @@ std::string DoRide(std::istringstream& words) {
 
 // ---- The aim screen -------------------------------------------------------------------------------------------------
 
+bool PointOpticsDrive() {
+    ue3::Object* const vehicle = player::Pawn(player::Controller());
+    auto const at = player::Location(vehicle);
+    auto const turn = player::Rotation(vehicle);
+    if (!gRide.riding || !at || !turn) return false;
+    engine::Basis const basis = engine::ToBasis(engine::UnrealRotation{turn->pitch, turn->yaw, turn->roll});
+    auto const lens = engine::Apply(basis, {kDriveLensForward, 0, kDriveLensUp});
+    ue3::Params view = ParamsOf(gCaptureSetView);
+    view.Set("NewLocation", ue3::Vector{static_cast<float>(at->x + lens.x), static_cast<float>(at->y + lens.y), static_cast<float>(at->z + lens.z)});
+    view.Set("NewRotation", *turn);
+    return Call(gAim.captureComponent, gCaptureSetView, view) && FlushActor(gAim.captureActor, true);
+}
+
 // On foot, the stand-in for the Mako's aim: from the head along its view. The capture's centre is the aim point.
 void PointAim() {
     if (!vr::screen_reticle::AimCaptureActive(gAim.parked)) return;
+    if (gAim.optics && !gCaptureEnabled.ReadBool(gAim.captureComponent).value_or(false)) return;
+    if (gAim.capturingDrive) {
+        if (PointOpticsDrive()) gAim.driveReady = true;
+        gAim.lastPointed = Now();
+        return;
+    }
     std::optional<Eye> eye = HeadNow();
+    std::optional<mako::TurretAim> const turret = gRide.riding ? mako::CurrentTurretAim() : std::nullopt;
     if (gRide.riding) {
         // In the Mako: along the turret's aim (game/mako), else straight ahead of the vehicle from about the turret.
-        if (auto const turret = mako::CurrentTurretAim()) {
+        if (turret) {
             eye = Eye{turret->from, turret->direction, engine::kUnitsPerMeter};
         } else if (ue3::Object* const vehicle = player::Pawn(player::Controller())) {
             auto const at = player::Location(vehicle);
@@ -2605,6 +2806,13 @@ void PointAim() {
                 eye = Eye{{at->x + frame.up.x * 150.0, at->y + frame.up.y * 150.0, at->z + frame.up.z * 150.0}, frame.forward, engine::kUnitsPerMeter};
             }
         }
+    }
+    if (gAim.optics && gAim.nativeScope && !turret) {
+        auto const& scope = *gAim.nativeScope;
+        // With motion controllers the shot follows the same hand-driven turret ray as V1.
+        // Otherwise the stock scope supplies its own viewpoint and aim.
+        auto const dir = engine::ToBasis(engine::UnrealRotation{scope.rotation.pitch, scope.rotation.yaw, scope.rotation.roll}).forward;
+        eye = Eye{{scope.location.x, scope.location.y, scope.location.z}, dir, engine::kUnitsPerMeter};
     }
     if (!eye || gAim.captureComponent == nullptr) {
         return;
@@ -2620,6 +2828,7 @@ void PointAim() {
     view.Set("NewRotation", ue3::Rotator{look.pitch, look.yaw, look.roll});
     if (Call(gAim.captureComponent, gCaptureSetView, view) && FlushActor(gAim.captureActor, true)) {
         ++gAim.pointedTicks;
+        gAim.pictureReady = true;
     }
     gAim.lastPointed = Now();
     if (gAim.reticle == nullptr || !Still(gAim.reticle, gActorClass)) {
@@ -2782,6 +2991,9 @@ std::string DoAimReticle(std::istringstream& words) {
     ue3::Params noSee = ParamsOf(gSetOwnerNoSee);
     noSee.SetBool("bNewOwnerNoSee", !eyes);
     Call(gAim.reticleComponent, gSetOwnerNoSee, noSee);
+    if (gAim.optics && !gCaptureEnabled.ReadBool(gAim.captureComponent).value_or(false)) {
+        SetActorHidden(gAim.reticle, true);
+    }
     FlushActor(gAim.reticle, false);
     PointAim();
     std::string const report = std::format("aim reticle {} at the aim point ({:.1f} m out), {:.1f} degrees wide in the aim picture; {}; the trace: {}",
@@ -2790,7 +3002,65 @@ std::string DoAimReticle(std::istringstream& words) {
     return report;
 }
 
+void SetMaterialScalar(ue3::Object* material, ue3::Name parameter, float value) {
+    ue3::Params p = ParamsOf(gSetScalarParameter);
+    p.Set("ParameterName", parameter);
+    p.Set("Value", value);
+    Call(material, gSetScalarParameter, p);
+}
+
+void ApplyOpticsLighting(float fade) {
+    fade = std::round(fade * 48.0f) / 48.0f;
+    if (gAim.appliedFade == fade) return;
+    for (auto const& material : gAim.fadeMaterials) {
+        if (ue3::runtime::IsAlive(material.instance) && ue3::IsA(material.instance, gMic)) {
+            SetMaterialScalar(material.instance, material.parameter, std::lerp(material.driving, material.aiming, fade));
+        }
+    }
+    gAim.appliedFade = fade;
+}
+
+void FindOpticsLighting() {
+    for (Part const& part : gParts) {
+        if (!PartAlive(part)) continue;
+        ue3::Params count = ParamsOf(gGetNumElements);
+        Call(part.component, gGetNumElements, count);
+        int const elements = count.Return<int>().value_or(0);
+        for (int index = 0; index < elements; ++index) {
+            ue3::Params get = ParamsOf(gGetMaterial);
+            get.Set("ElementIndex", index);
+            Call(part.component, gGetMaterial, get);
+            ue3::Object* const instance = get.Return<ue3::Object*>().value_or(nullptr);
+            if (!ue3::IsA(instance, gMic) || std::any_of(gAim.fadeMaterials.begin(), gAim.fadeMaterials.end(),
+                    [instance](auto const& known) { return known.instance == instance; })) continue;
+            std::string const path = Lower(R().PathName(instance));
+            if (!path.starts_with("biog_mevr_cockpitv2.")) continue;
+            bool const glass = path == "biog_mevr_cockpitv2.v2_upperglass_mic" || path == "biog_mevr_cockpitv2.v2_lowerglass_mic";
+            bool const lamp = path.find("_lamp_") != std::string::npos && path.ends_with("_glow_mic");
+            bool const cabinFill = path.ends_with("_fill_mic");
+            if (!glass && !lamp && !cabinFill) continue;
+            if (auto const values = gScalarValues.ElementsOf(instance)) {
+                for (int i = 0; i < values->count; ++i) {
+                    void* const entry = values->At(i);
+                    auto const name = gScalarValueName.Read<ue3::Name>(entry);
+                    auto const value = gScalarValue.Read<float>(entry);
+                    if (name && value && ue3::runtime::NameText(*name) == (glass ? "VSR_Opacity" : "LightmapBrightness")) {
+                        // The visor's Fresnel term reduces the effective opacity head-on.
+                        float const aiming = glass ? 1.25f : *value * (cabinFill ? 1.32f : 0.22f);
+                        float const driving = glass ? 0.0f : *value;
+                        gAim.fadeMaterials.push_back({instance, *name, driving, aiming});
+                        if (glass && *value != driving) SetMaterialScalar(instance, *name, driving);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    log::Info("cockpit: FWD OPTICS found {} canopy and cabin-light material instances", gAim.fadeMaterials.size());
+}
+
 void ClearAim(char const* why) {
+    ApplyOpticsLighting(0.0f);
     if (Still(gAim.captureComponent, gCaptureComponent)) {
         ue3::Params off = ParamsOf(gCaptureSetEnabled);
         off.SetBool("bEnable", false);
@@ -2805,6 +3075,33 @@ void ClearAim(char const* why) {
     gAim = AimScreen{};
 }
 
+ue3::Object* BindAimPicture(ue3::Object* component, int slot, ue3::Object* target) {
+    ue3::Params get = ParamsOf(gGetMaterial);
+    get.Set("ElementIndex", slot);
+    Call(component, gGetMaterial, get);
+    ue3::Object* const own = get.Return<ue3::Object*>().value_or(nullptr);
+    MaterialRow const row = own != nullptr ? Analyze(own) : MaterialRow{};
+    auto const parameter = row.object != nullptr ? PickParameter(row) : std::nullopt;
+    if (row.base == nullptr || !parameter) return nullptr;
+
+    ue3::Params plain = ParamsOf(gSetMaterial);
+    plain.Set("ElementIndex", slot);
+    plain.Set("Material", row.base);
+    Call(component, gSetMaterial, plain);
+    ue3::Params create = ParamsOf(gCreateMic);
+    create.Set("ElementIndex", slot);
+    Call(component, gCreateMic, create);
+    ue3::Object* const mic = create.Return<ue3::Object*>().value_or(nullptr);
+    if (!ue3::IsA(mic, gMic)) return nullptr;
+    ue3::Params parent = ParamsOf(gSetParent);
+    parent.Set("NewParent", own);
+    Call(mic, gSetParent, parent);
+    ue3::Params value = ParamsOf(gSetTextureParameter);
+    value.Set("ParameterName", *parameter);
+    value.Set("Value", target);
+    return Call(mic, gSetTextureParameter, value) ? mic : nullptr;
+}
+
 // `aimscreen [W H] [fov DEG]`: the screen part's slot `gAim.element` (Hull_Console's right screen) shows a capture along the aim.
 std::string DoAimScreen(std::istringstream& words) {
     if (auto const missing = MissingFunction({&gCreateTarget, &gCaptureSetEnabled, &gCaptureSetFrameRate, &gCaptureSetView, &gCaptureSetParameters, &gForceUpdate,
@@ -2817,7 +3114,24 @@ std::string DoAimScreen(std::istringstream& words) {
     int width = gAim.width;
     int height = gAim.height;
     float fov = gAim.fovDeg;
+    bool optics = false;
+    bool hideTurret = false;
+    int driveHeight = 0;
     for (std::string word; words >> word;) {
+        if (word == "optics") {
+            optics = true;
+            continue;
+        }
+        if (word == "hideturret") {
+            hideTurret = true;
+            continue;
+        }
+        if (word == "drivefeed") {
+            if (!(words >> driveHeight) || driveHeight < 16 || driveHeight > 640) {
+                return "usage: mevr cockpit aimscreen [W H] [fov DEG] [slot N] [optics drivefeed HEIGHT]";
+            }
+            continue;
+        }
         if (word == "fov") {
             if (!(words >> fov) || !(fov > 1.0f) || fov > 170.0f) {
                 return "usage: mevr cockpit aimscreen [W H] [fov DEG] [slot N]";
@@ -2853,6 +3167,9 @@ std::string DoAimScreen(std::istringstream& words) {
         gAim.height = height;
     }
     gAim.fovDeg = fov;
+    gAim.optics = optics;
+    gAim.hideTurret = optics && hideTurret;
+    gAim.capturingDrive = false;
     if (gAim.captureActor == nullptr) {
         ue3::Object* const actor = SpawnActor(controller, gCaptureActor.Get(), player::Location(controller).value_or(ue3::Vector{}));
         ue3::Object* const component = ue3::IsA(actor, gCaptureActor) ? gSceneCapture.Read<ue3::Object*>(actor).value_or(nullptr) : nullptr;
@@ -2876,51 +3193,65 @@ std::string DoAimScreen(std::istringstream& words) {
     ue3::Params parameters = ParamsOf(gCaptureSetParameters);
     parameters.Set("NewTextureTarget", gAim.target);
     parameters.Set("NewFOV", fov);
-    parameters.Set("NewNearPlane", 20.0f);
+    parameters.Set("NewNearPlane", gAim.optics ? kOpticsNearUnits : 20.0f);
     parameters.Set("NewFarPlane", 0.0f);
     Call(gAim.captureComponent, gCaptureSetParameters, parameters);
     ue3::Params rate = ParamsOf(gCaptureSetFrameRate);
     rate.Set("NewFrameRate", gSettings.captureRate);
     Call(gAim.captureComponent, gCaptureSetFrameRate, rate);
     WriteField(gFrameRate, gAim.captureComponent, gSettings.captureRate, "CockpitProbe.AimFrameRate");
-    if (!gCaptureEnabled.ReadBool(gAim.captureComponent).value_or(false)) {
+    if (!gAim.optics && !gCaptureEnabled.ReadBool(gAim.captureComponent).value_or(false)) {
         ue3::Params on = ParamsOf(gCaptureSetEnabled);
         on.SetBool("bEnable", true);
         Call(gAim.captureComponent, gCaptureSetEnabled, on);
     }
-    PointAim();
+    if (gAim.optics) {
+        ue3::Params off = ParamsOf(gCaptureSetEnabled);
+        off.SetBool("bEnable", false);
+        Call(gAim.captureComponent, gCaptureSetEnabled, off);
+    } else {
+        PointAim();
+    }
     FlushActor(gAim.captureActor, false);
     // Our instance over the slot's own (Hull_Console_Aim_MIC), its texture parameter the render target. As EnsureMic: the
     // slot gets the plain Material under it first, so CreateAndSetMaterialInstanceConstant makes a new instance.
     if (gAim.mic == nullptr || !ue3::runtime::IsAlive(gAim.mic)) {
-        ue3::Params get = ParamsOf(gGetMaterial);
-        get.Set("ElementIndex", gAim.element);
-        Call(gState.component, gGetMaterial, get);
-        ue3::Object* const own = get.Return<ue3::Object*>().value_or(nullptr);
-        MaterialRow const row = own != nullptr ? Analyze(own) : MaterialRow{};
-        std::optional<ue3::Name> const parameter = row.object != nullptr ? PickParameter(row) : std::nullopt;
-        if (row.base == nullptr || !parameter) {
-            return Refuse(std::format("slot {} shows {}, which has no texture parameter to put the picture on", gAim.element, ue3::runtime::FullName(own)));
+        gAim.mic = BindAimPicture(gState.component, gAim.element, gAim.target);
+        if (gAim.mic == nullptr) return Refuse(std::format("cannot bind the aim picture to slot {}", gAim.element));
+    }
+    if (gAim.optics) {
+        ue3::Object* const film = LoadObject("BIOG_MEVR_CockpitV2.V2_Vision_MIC", gMic.Get());
+        if (!ue3::IsA(film, gMic)) {
+            SetActorHidden(gState.actor, true);
+            ClearAim("the driving film material is missing");
+            return Refuse("the V2 driving film material is missing");
         }
-        ue3::Params plain = ParamsOf(gSetMaterial);
-        plain.Set("ElementIndex", gAim.element);
-        plain.Set("Material", row.base);
-        Call(gState.component, gSetMaterial, plain);
-        ue3::Params create = ParamsOf(gCreateMic);
-        create.Set("ElementIndex", gAim.element);
-        Call(gState.component, gCreateMic, create);
-        ue3::Object* const mic = create.Return<ue3::Object*>().value_or(nullptr);
-        if (!ue3::IsA(mic, gMic)) {
-            return Refuse(std::format("CreateAndSetMaterialInstanceConstant returned {}", ue3::runtime::FullName(mic)));
+        SetActorHidden(gState.actor, true);
+        FindOpticsLighting();
+        if (driveHeight > 0 && gAim.driveTarget == nullptr) {
+            auto const part = std::find_if(gParts.begin(), gParts.end(), [](Part const& candidate) {
+                return candidate.optics == Part::Optics::DriveFeed && PartAlive(candidate);
+            });
+            ue3::Object* const target = part == gParts.end() ? nullptr : CreateTarget(640, driveHeight, true, {0.018f, 0.065f, 0.12f, 1.0f});
+            if (target != nullptr && BindAimPicture(part->component, 0, target) != nullptr) {
+                gAim.driveTarget = target;
+            } else {
+                log::Warn("cockpit: FWD OPTICS could not bind the exterior feed");
+            }
         }
-        ue3::Params parent = ParamsOf(gSetParent);
-        parent.Set("NewParent", own);
-        Call(mic, gSetParent, parent);
-        gAim.mic = mic;
-        ue3::Params value = ParamsOf(gSetTextureParameter);
-        value.Set("ParameterName", *parameter);
-        value.Set("Value", gAim.target);
-        Call(mic, gSetTextureParameter, value);
+        for (Part const& part : gParts) {
+            if (!PartAlive(part)) continue;
+            if (part.ScopeOnly()) SetActorHidden(part.actor, true);
+            if (part.optics != Part::Optics::Film && part.optics != Part::Optics::FilmHeader) continue;
+            ue3::Params material = ParamsOf(gSetMaterial);
+            material.Set("ElementIndex", 0);
+            material.Set("Material", film);
+            Call(part.component, gSetMaterial, material);
+            if (part.optics == Part::Optics::Film) {
+                WriteField(gDrawScale3D, part.actor, ue3::Vector{1.0f, 1.0f, gAim.closedHeight}, "CockpitProbe.opticsExtension");
+            }
+            FlushActor(part.actor, false);
+        }
     }
     FlushActor(gState.actor, false);
     HideFromCaptures();
@@ -4045,12 +4376,9 @@ std::string VehicleCommand(std::string const& line) {
 // image as DiffuseTexture, a 4x4 render target cleared red as LightTexture (a render target nothing draws into shows its clear
 // colour), and the beacon's brightness each tick. The lamps flash bright red, the rest of the cabin washes red with them. When
 // the alarm ends, each element gets its own material back.
-ue3::FunctionRef gSetScalarParameter{"Engine.MaterialInstanceConstant.SetScalarParameterValue"};
 ue3::FunctionRef gHealthAndShields{"SFXGame.BioEpicPawnBehavior.GetHealthAndShieldsScaled"};
 ue3::FieldRef gPawnAttributes{"SFXGame.BioEpicPawnBehavior", "m_PawnAttributes"};
 ue3::FieldRef gHealthCurrent{"SFXGame.BioAttributesEpicPawn", "m_HealthCurrent"};
-ue3::FieldRef gScalarValues{"Engine.MaterialInstanceConstant", "ScalarParameterValues"};
-ue3::FieldRef gScalarValueName{gScalarValues, "ParameterName"};
 constexpr char const* kGlowParentPath = "EngineBuildings.ProcBuildingSimpleMaterial";
 
 struct HazardElement {
@@ -4185,10 +4513,7 @@ ue3::Object* ElementTexture(ue3::Object* material) {
 }
 
 void SetBrightness(ue3::Object* mic, float value) {
-    ue3::Params p = ParamsOf(gSetScalarParameter);
-    p.Set("ParameterName", gHazard.brightnessName);
-    p.Set("Value", value);
-    Call(mic, gSetScalarParameter, p);
+    SetMaterialScalar(mic, gHazard.brightnessName, value);
 }
 
 void SetTextureParameter(ue3::Object* mic, ue3::Name name, ue3::Object* texture) {
@@ -4480,6 +4805,27 @@ std::string Command(std::string const& line) {
     if (verb == "screenpart") {
         return DoScreenPart(Rest(words));
     }
+    if (verb == "opticsfold") {
+        float height = 0.0f;
+        if (!gState.part || !(words >> height) || !(height > 0.0f && height <= 1.0f)) {
+            return "usage: mevr cockpit opticsfold FRACTION, after screenpart and before aimscreen";
+        }
+        gAim.closedHeight = height;
+        return std::format("FWD OPTICS folded height {:.3f}", height);
+    }
+    if (verb == "optics") {
+        int brow = 0;
+        int browVisible = 0;
+        for (Part const& part : gParts) {
+            if (part.optics != Part::Optics::Brow || !PartAlive(part)) continue;
+            ++brow;
+            if (gHiddenField.ReadBool(part.actor) == false) ++browVisible;
+        }
+        return std::format("FWD OPTICS configured {}, native zoom {}, R3 zoom {:.1f}, capture {}, field {:.1f}, extension {:.3f}, tint {:.3f}, picture {}, materials {}, views {}, brow {}/{}, exterior feed {}",
+            gAim.optics, gAim.nativeScope.has_value(), gAim.padZoom, gCaptureEnabled.ReadBool(gAim.captureComponent).value_or(false),
+            gAim.fovDeg, gAim.extension, gAim.appliedFade, gAim.showingPicture, gAim.fadeMaterials.size(), gAim.pointedTicks, browVisible, brow,
+            gAim.driveTarget == nullptr ? "unconfigured" : gAim.capturingDrive ? "active" : "parked");
+    }
     if (verb == "variant") {
         return DoVariant(Rest(words));
     }
@@ -4688,6 +5034,7 @@ std::string Command(std::string const& line) {
 struct Auto {
     ue3::Object* vehicle = nullptr;
     void const* world = nullptr;
+    std::string script;
     bool ran = false;
     bool failed = false;
     bool parked = false;
@@ -4697,21 +5044,32 @@ bool gLoggedNoScript = false;
 
 void ShowCockpit(bool show) {
     gAim.parked = !show;
+    if (gAim.optics) {
+        ApplyOpticsLighting(0.0f);
+        gAim.nativeScope.reset();
+        gAim.padZoom = 0.0f;
+        gAim.extension = 0.0f;
+        gAim.lightFade = 0.0f;
+        gAim.movedAt = -1.0;
+        gAim.pictureReady = false;
+        gAim.showingPicture = false;
+        gAim.driveReady = false;
+    }
     if (Still(gAim.reticle, gActorClass)) {
-        SetActorHidden(gAim.reticle, !show);
+        SetActorHidden(gAim.reticle, !show || gAim.optics);
         FlushActor(gAim.reticle, false);
     }
     for (Part const& part : gParts) {
         if (PartAlive(part)) {
             ue3::Params hide = ParamsOf(gSetHidden);
-            hide.SetBool("bNewHidden", !show);
+            hide.SetBool("bNewHidden", !show || part.ScopeOnly() || part.optics == Part::Optics::DriveFeed || (gAim.optics && part.actor == gState.actor));
             Call(part.actor, gSetHidden, hide);
         }
     }
     for (ue3::Object* const capture : {gState.captureComponent, gAim.captureComponent}) {
         if (Still(capture, gCaptureComponent)) {
             ue3::Params enable = ParamsOf(gCaptureSetEnabled);
-            enable.SetBool("bEnable", show);
+            enable.SetBool("bEnable", show && (!gAim.optics || capture != gAim.captureComponent));
             Call(capture, gCaptureSetEnabled, enable);
         }
     }
@@ -4795,9 +5153,20 @@ void AutoTick() {
     }
     gAuto.vehicle = pawn;
     gAuto.world = engine::World();
-    if (Unpark()) {
+    if (gAuto.script == settings.script && Unpark()) {
         return;
     }
+    if (gAuto.parked && gAuto.script != settings.script) {
+        HazardRestore("the cockpit seat changed");
+        ClearAll("the cockpit seat changed");
+        ClearParts("the cockpit seat changed");
+        gHudLayout = {};
+        gSeatLayout = {};
+        gPanelLayout = {};
+        gRide = {};
+        gLoggedNoScript = false;
+    }
+    gAuto.script = settings.script;
     bool const ok = RunScript(engine::SettingsFile().parent_path() / std::filesystem::path(std::u8string(settings.script.begin(), settings.script.end())));
     gAuto.ran = ok;
     gAuto.failed = !ok;
@@ -4816,6 +5185,18 @@ bool TryStartup() {
 
 bool Riding() {
     return gRide.on && gRide.riding;
+}
+
+bool OpticsScopeVisible() {
+    return OpticsAiming() || (Riding() && gAim.optics && gAim.mic != nullptr && gAim.extension > 0.0f);
+}
+
+bool OpticsAiming() {
+    return Riding() && gAim.optics && gAim.mic != nullptr && (gAim.nativeScope || gAim.padZoom > 0.0f);
+}
+
+bool FixedSeatPoseActive() {
+    return gSeatLayout.lockHip && gSeated.mesh != nullptr && Riding() && gRide.haveEye && gSeated.world == engine::World();
 }
 
 
@@ -4837,19 +5218,24 @@ std::optional<Seat> CurrentSeat() {
     seat.eye = gRide.eyeWorld;
     for (int side : {0, 1}) {
         seat.knee[side] = at(gSeatLayout.kneeM[static_cast<std::size_t>(side)]);
-        seat.heel[side] = at(gSeatLayout.heelM[static_cast<std::size_t>(side)]);
+        engine::UnrealVector const heel = gSeatLayout.heelM[static_cast<std::size_t>(side)];
+        seat.heel[side] = at(heel);
+        if (gSeatLayout.lockHip) {
+            seat.fixedAnkle[side] = at({heel.x, heel.y, heel.z + kAnkleAboveHeelM});
+        }
         engine::UnrealVector grip = gSeatLayout.gripM[static_cast<std::size_t>(side)];
         engine::UnrealVector axis = gSeatLayout.axisM[static_cast<std::size_t>(side)];  // right, forward, up
         if (side == 0) {
             grip.y += static_cast<double>(pose.lever * pose.travelM);  // the lever's grip travels with it, as its model
-        } else if (pose.tilt) {
-            // The stick's grip and axis tilt about the stick model's pivot, as its model does.
+        } else {
+            // Apply the rendered stick's complete rotation about its pivot to the grip and its axis.
+            engine::Basis const rotation = StickRotation(pose);
             for (Part const& part : gParts) {
                 if (part.motion == Part::Motion::Stick) {
                     engine::UnrealVector const p = part.offsetM;
-                    engine::UnrealVector const turned = engine::Apply(StickTilt(pose), {grip.y - p.y, grip.x - p.x, grip.z - p.z});
+                    engine::UnrealVector const turned = engine::Apply(rotation, {grip.y - p.y, grip.x - p.x, grip.z - p.z});
                     grip = {p.x + turned.y, p.y + turned.x, p.z + turned.z};
-                    engine::UnrealVector const axisTurned = engine::Apply(StickTilt(pose), {axis.y, axis.x, axis.z});
+                    engine::UnrealVector const axisTurned = engine::Apply(rotation, {axis.y, axis.x, axis.z});
                     axis = {axisTurned.y, axisTurned.x, axisTurned.z};
                     break;
                 }
@@ -5035,24 +5421,70 @@ void FillHud(vr::hud_pieces::Pieces& pieces) {
 
 // R3 (the right stick's click) steps the aiming screen's zoom while riding: its field 30, 12, 5 degrees and round again
 // (docs/mako-cockpit-goal.md item 4). Read from the controllers, so it works whether or not the game takes the pad.
+bool SetAimProjection(ue3::Object* target, float fov, float nearPlane) {
+    ue3::Params parameters = ParamsOf(gCaptureSetParameters);
+    parameters.Set("NewTextureTarget", target);
+    parameters.Set("NewFOV", fov);
+    parameters.Set("NewNearPlane", nearPlane);
+    parameters.Set("NewFarPlane", 0.0f);
+    return Call(gAim.captureComponent, gCaptureSetParameters, parameters);
+}
+
+void SetAimField(float fov) {
+    if (SetAimProjection(gAim.target, fov, gAim.optics ? kOpticsNearUnits : 20.0f)) gAim.fovDeg = fov;
+}
+
 void ZoomTick() {
     static bool wasDown = false;
     bool const down = vr::controllers::Latest().active && vr::controllers::Latest().right.stickClick;
     bool const pressed = down && !wasDown;
     wasDown = down;
-    if (!pressed || !gRide.riding || !Still(gAim.captureComponent, gCaptureComponent) || gAim.target == nullptr) {
+    if (!gRide.riding || gAim.parked || !Still(gAim.captureComponent, gCaptureComponent) || gAim.target == nullptr) return;
+
+    constexpr std::array<float, 3> kFields{30.0f, 12.0f, 5.0f};
+    float const current = gAim.optics ? gAim.padZoom : gAim.fovDeg;
+    auto const next = std::find_if(kFields.begin(), kFields.end(), [current](float f) { return f < current - 0.5f; });
+    if (!gAim.optics) {
+        if (pressed) {
+            SetAimField(next != kFields.end() ? *next : kFields.front());
+            log::Info("cockpit: R3: the aiming screen's field is {:.0f} degrees", gAim.fovDeg);
+        }
         return;
     }
-    constexpr std::array<float, 3> kFields{30.0f, 12.0f, 5.0f};
-    auto const next = std::find_if(kFields.begin(), kFields.end(), [](float f) { return f < gAim.fovDeg - 0.5f; });
-    gAim.fovDeg = next != kFields.end() ? *next : kFields.front();
-    ue3::Params parameters = ParamsOf(gCaptureSetParameters);
-    parameters.Set("NewTextureTarget", gAim.target);
-    parameters.Set("NewFOV", gAim.fovDeg);
-    parameters.Set("NewNearPlane", 20.0f);
-    parameters.Set("NewFarPlane", 0.0f);
-    Call(gAim.captureComponent, gCaptureSetParameters, parameters);
-    log::Info("cockpit: R3: the aiming screen's field is {:.0f} degrees", gAim.fovDeg);
+    bool const driving = player::GameMode(player::Controller()) == 1;
+    if (pressed && driving && !gAim.nativeScope) {
+        gAim.padZoom = current == 0.0f ? kFields.front() : next != kFields.end() ? *next : 0.0f;
+    }
+    float const fov = gAim.nativeScope ? gAim.nativeScope->fov : gAim.padZoom;
+    bool const scope = driving && fov > 0.0f;
+    bool const feed = driving && !scope && Still(gAim.driveTarget, gTargetClass);
+    bool const switched = (feed || scope) && gAim.capturingDrive != feed;
+    if (switched) {
+        if (!SetAimProjection(feed ? gAim.driveTarget : gAim.target, feed ? kDriveLensFov : fov,
+                feed ? kDriveLensNear : kOpticsNearUnits)) return;
+        gAim.capturingDrive = feed;
+        if (scope) gAim.fovDeg = fov;
+        float const hz = feed ? std::min(gSettings.captureRate, kDriveCaptureRate) : gSettings.captureRate;
+        ue3::Params rate = ParamsOf(gCaptureSetFrameRate);
+        rate.Set("NewFrameRate", hz);
+        Call(gAim.captureComponent, gCaptureSetFrameRate, rate);
+        gAim.lastPointed = -1.0;
+    } else if (scope && std::abs(fov - gAim.fovDeg) > 0.05f) {
+        SetAimField(fov);
+    }
+    bool const active = gAim.mic != nullptr && (scope || feed);
+    bool const enabled = gCaptureEnabled.ReadBool(gAim.captureComponent).value_or(false);
+    if (enabled != active) {
+        ue3::Params enable = ParamsOf(gCaptureSetEnabled);
+        enable.SetBool("bEnable", active);
+        Call(gAim.captureComponent, gCaptureSetEnabled, enable);
+    }
+    if (switched || enabled != active) {
+        if (Still(gAim.reticle, gActorClass)) SetActorHidden(gAim.reticle, !scope);
+        gAim.pictureReady = false;
+        log::Info("cockpit: FWD OPTICS {} at {:.1f} degrees", scope ? "scope capture active" : feed ? "exterior feed active" : "capture parked",
+            feed ? kDriveLensFov : gAim.fovDeg);
+    }
 }
 
 void Tick(std::optional<std::uint32_t> recenters) {
@@ -5100,7 +5532,9 @@ void Tick(std::optional<std::uint32_t> recenters) {
         PointCapture();
         pointed = true;
     }
-    if (!pointed && gAim.captureActor != nullptr && gSettings.captureRate > 0.0f && Now() - gAim.lastPointed >= 1.0 / static_cast<double>(gSettings.captureRate)) {
+    float const aimRate = gAim.capturingDrive ? std::min(gSettings.captureRate, kDriveCaptureRate) : gSettings.captureRate;
+    if (!pointed && gAim.captureActor != nullptr && (!gAim.optics || gCaptureEnabled.ReadBool(gAim.captureComponent).value_or(false)) &&
+        aimRate > 0.0f && Now() - gAim.lastPointed >= 1.0 / static_cast<double>(aimRate)) {
         PointAim();
     }
 }
@@ -5168,17 +5602,19 @@ void Shutdown(bool exiting) {
     gLoggedMoveFailure = gLoggedFirstPlace = gLoggedFlatFallback = false;
     for (ue3::ClassRef* const c : {&gActorClass, &gPawnClassRef, &gInterpActor, &gKActor, &gKActorSpawnable, &gStaticMeshActor, &gDynamicSmActor, &gStaticMesh, &gStaticMeshComponent,
              &gMaterial, &gMaterialInstance, &gMic, &gTextureParameterExpression, &gCaptureActor, &gCaptureComponent, &gTargetClass, &gTexture, &gTexture2D, &gVehicleBase, &gBioPawn,
-             &gBioController, &gSaveGame, &gRemoteEvent, &gPartySelection, &gPrimitiveComponent, &gGameModeVehicle}) {
+             &gBioController, &gSaveGame, &gRemoteEvent, &gPartySelection, &gPrimitiveComponent, &gGameModeVehicle,
+             &gVehicleScope, &gVehicleScopeEx, &gCameraBlend}) {
         c->Reset();
     }
     for (ue3::FunctionRef* const f : {&gDynamicLoadObject, &gSpawn, &gDestroy, &gSetLocation, &gSetRotation, &gSetDrawScale, &gSetPhysics, &gSetCollision, &gSetHidden, &gSetBase, &gSetHardAttach,
              &gForceUpdate, &gSetActorCollision, &gSetBlockRigidBody, &gSetTraceBlocking, &gSetStaticMesh, &gGetMaterial, &gSetMaterial, &gGetNumElements, &gGetUnscaledBounds,
-             &gCreateMic, &gSetParent, &gSetTextureParameter, &gGetTextureParameter, &gLightEnvironmentSetEnabled, &gCreateTarget, &gCaptureSetEnabled, &gCaptureSetFrameRate,
+             &gCreateMic, &gSetParent, &gSetScalarParameter, &gSetTextureParameter, &gGetTextureParameter, &gLightEnvironmentSetEnabled, &gCreateTarget, &gCaptureSetEnabled, &gCaptureSetFrameRate,
              &gCaptureSetView, &gCaptureSetParameters, &gEnterVehicle, &gFindClosestVehicle, &gCheckActivate, &gFinalizeParty, &gUpdateCamera, &gTryExitVehicle, &gBioExitVehicle, &gFastTrace, &gPlaceExitingDriver, &gFireCannon, &gStopFiringCannon,
              &gPrimitiveSetHidden, &gSetLightEnvironment, &gTakeDamage, &gReactToDeath, &gGameOverEvent, &gSetAngVel}) {
         f->Reset();
     }
-    for (ue3::FieldRef* const f : {&gStatic, &gDeleteMe, &gNoDelete, &gMovable, &gRole, &gPhysics, &gBase, &gDynamicComponent, &gDynamicLightEnvironment, &gStaticActorComponent, &gComponentMesh,
+    for (ue3::FieldRef* const f : {&gCameraHiddenActors, &gCameraMode, &gCameraBlendTo, &gModePov, &gModeFov, &gScalarValues, &gScalarValueName, &gScalarValue,
+             &gStatic, &gDeleteMe, &gNoDelete, &gMovable, &gRole, &gPhysics, &gBase, &gDynamicComponent, &gDynamicLightEnvironment, &gStaticActorComponent, &gComponentMesh,
              &gBounds, &gParent, &gStaticPermutation, &gTextureValues, &gTextureValueName, &gExpressions, &gEmissive, &gEmissiveExpression, &gBlendMode, &gLightingModel,
              &gUsedStaticLighting, &gUsedLightEnvironments, &gExpressionParameterName, &gSceneCapture, &gCaptureEnabled, &gEnablePostProcess, &gUseMainPostProcess,
              &gSkipUsersOccluded, &gSkipOwnerOccluded, &gMaxUpdateDist, &gMaxViewDistance, &gPostProcess, &gFrameRate, &gSizeX, &gSizeY, &gPlayer, &gPlayerPostProcess, &gDefaultPostProcess, &gUpdateMatrices,
@@ -5207,6 +5643,18 @@ bool TryStartup() {
 }
 
 bool Riding() {
+    return false;
+}
+
+bool OpticsScopeVisible() {
+    return false;
+}
+
+bool OpticsAiming() {
+    return false;
+}
+
+bool FixedSeatPoseActive() {
     return false;
 }
 

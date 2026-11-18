@@ -2,6 +2,7 @@
 // What each row of our main menu drives (plugin/MainMenuSettings.hpp, research/28 section 4).
 
 #include "plugin/MainMenuSettings.hpp"
+#include "core/vr/MakoSeat.hpp"
 
 // One menu for both games (docs/le2-continuation-plan.md M4.1, research/le2-menus.md): LE1's host has Halcyon's LE1 renderer
 // (its VrConfig, profiles and render size) and the LE1 host's modules the rows drive (the colour, the voice, OpenAL Soft, the
@@ -391,6 +392,11 @@ void Settings::Read(menu::Values& v) {
     flag("vent", ini.Num("Vent", "enabled", 1.0f) != 0.0f);
     flag("mako_controls", ini.Num("Mako", "controls", 1.0f) != 0.0f);
     flag("cockpit", ini.Num("Cockpit", "enabled", 1.0f) != 0.0f);
+    bool const bottomAvailable = vr::mako_seat::BottomAvailable(File().parent_path());
+    auto const seat = vr::mako_seat::Parse(ini.Text("Cockpit", "seatPosition", ""))
+        .value_or(vr::mako_seat::FromScript(ini.Text("Cockpit", "script", vr::mako_seat::kTopScript)));
+    flag("mako_bottom_available", bottomAvailable);
+    v.texts["mako_seat"] = bottomAvailable && seat == vr::mako_seat::Position::Bottom ? "bottom" : "top";
     {
         // The controller guide: what each button does with these settings (core/vr/MenuSettings GuideTexts).
         ms::GuideInput g;
@@ -949,6 +955,9 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
         Put("Mako", "controls", onOff("mako_controls"), true);
     } else if (key == "cockpit") {
         Put("Cockpit", "enabled", onOff("cockpit"), true);
+    } else if (key == "mako_seat") {
+        bool const bottom = v.Text("mako_seat") == "bottom" && vr::mako_seat::BottomAvailable(File().parent_path());
+        Put("Cockpit", "seatPosition", bottom ? "bottom" : "top", true);
     } else if (key == "wrist_status") {
         Put("Hud", "wristStatus", onOff("wrist_status"), true);
     } else if (key == "gun_status") {

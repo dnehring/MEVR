@@ -32,6 +32,7 @@ ue3::FieldRef gDriver{"Engine.Vehicle", "Driver"};
 ue3::FieldRef gPawnWeapon{"Engine.Pawn", "Weapon"};
 ue3::FieldRef gCylinder{"Engine.Pawn", "CylinderComponent"};
 ue3::FieldRef gCollisionRadius{"Engine.CylinderComponent", "CollisionRadius"};
+ue3::FieldRef gCollisionHeight{"Engine.CylinderComponent", "CollisionHeight"};
 ue3::FieldRef gGameModeManager{"SFXGame.BioPlayerController", engine::adapter::kGameModeManager};
 ue3::FieldRef gGameModes{"SFXGame.SFXGameModeManager", "GameModes"};
 ue3::FunctionRef gIsHostile{"SFXGame.BioPawn.IsHostile"};
@@ -61,6 +62,7 @@ struct Found {
     mg::Candidate candidate;
     std::string name;
     engine::UnrealVector at{};
+    float aimUp = 0.0f;
 };
 
 struct State {
@@ -75,8 +77,8 @@ struct State {
     double targetDistanceM = 0.0;
     bool targetBig = false;
     bool targetCannon = false;   // the cannon for it: big or in a crowd
-    int targetNeighbours = 0;
     int targetSerial = 0;         // a new target, a new id for the fire schedule
+    float targetAimUp = 0.0f;
     ue3::Object* gameMode = nullptr;
     bool mgHeld = false;
     double cannonReleaseAt = -1.0;
@@ -169,6 +171,14 @@ engine::UnrealVector Muzzle(ue3::Object* vehicle) {
     return {at.x + up.x * 150.0, at.y + up.y * 150.0, at.z + up.z * 150.0};
 }
 
+bool VisibleFromMuzzle(ue3::Object* vehicle, engine::UnrealVector const& muzzle, ue3::Vector const& end) {
+    if (gFastTrace.Get() == nullptr) return false;
+    ue3::Params trace(ue3::runtime::Get(), gFastTrace.Get());
+    trace.Set("TraceEnd", end);
+    trace.Set("TraceStart", ue3::Vector{static_cast<float>(muzzle.x), static_cast<float>(muzzle.y), static_cast<float>(muzzle.z)});
+    return ue3::runtime::Call(vehicle, gFastTrace.Get(), trace) && trace.ReturnBool().value_or(false);
+}
+
 // The hostiles the gunner could take, read from the world.
 void Scan(Inputs const& in, mg::Settings const& settings) {
     gState.found.clear();
@@ -215,18 +225,19 @@ void Scan(Inputs const& in, mg::Settings const& settings) {
         f.candidate.id = static_cast<int>(gState.found.size());
         f.candidate.distanceM = meters;
         f.at = ToUnreal(*at);
-        if (gFastTrace.Get() != nullptr) {
-            ue3::Params trace(ue3::runtime::Get(), gFastTrace.Get());
-            trace.Set("TraceEnd", *at);
-            trace.Set("TraceStart", ue3::Vector{static_cast<float>(muzzle.x), static_cast<float>(muzzle.y), static_cast<float>(muzzle.z)});
-            ue3::runtime::Call(in.vehicle, gFastTrace.Get(), trace);
-            f.candidate.visible = trace.ReturnBool().value_or(false);
-        }
+        f.candidate.visible = VisibleFromMuzzle(in.vehicle, muzzle, *at);
         // No cone test: BioVehicleBehaviorBase.IsWorldLocationWithinTurretCone answered false for a target dead ahead at 30 m
         // (measured 2026-11-04), and the Mako's turret turns all the way round; its own pitch limits stop the rest.
         f.candidate.inCone = true;
         if (ue3::Object* const cylinder = gCylinder.Read<ue3::Object*>(p).value_or(nullptr)) {
             f.candidate.radiusM = gCollisionRadius.Read<float>(cylinder).value_or(0.0f) / kUnitsPerMeter;
+            float const upper = gCollisionHeight.Read<float>(cylinder).value_or(0.0f) * 0.55f;
+            // From a ridge the terrain can hide a pawn's centre while its upper body is still exposed.
+            if (!f.candidate.visible && upper > 0.0f && upper < 200.0f &&
+                VisibleFromMuzzle(in.vehicle, muzzle, {at->x, at->y, at->z + upper})) {
+                f.candidate.visible = true;
+                f.aimUp = upper;
+            }
         }
         gState.found.push_back(std::move(f));
     }
@@ -284,6 +295,30 @@ bool PointsOut(Inputs const& in) {
     double const pitch = std::atan2(local.z, std::hypot(local.x, local.y)) * 180.0 / 3.14159265358979323846;
     return std::abs(yaw) <= 80.0 && pitch >= -25.0;
 }
+
+void RefreshTarget(Inputs const& in, mg::Settings const& settings, double now) {
+    if (now - gState.lastScan < kScanEveryS) return;
+    gState.lastScan = now;
+    Scan(in, settings);
+    int current = -1;
+    std::vector<mg::Candidate> candidates;
+    candidates.reserve(gState.found.size());
+    for (Found const& f : gState.found) {
+        if (f.pawn == gState.target) current = f.candidate.id;
+        candidates.push_back(f.candidate);
+    }
+    int const chosen = mg::Choose(candidates, current, settings);
+    Found const* const target = chosen >= 0 ? &gState.found[static_cast<std::size_t>(chosen)] : nullptr;
+    ue3::Object* const next = target != nullptr ? target->pawn : nullptr;
+    if (next != gState.target) ++gState.targetSerial;
+    gState.target = next;
+    if (target == nullptr) return;
+    gState.targetName = target->name;
+    gState.targetDistanceM = target->candidate.distanceM;
+    gState.targetBig = mg::IsBig(target->candidate, settings);
+    gState.targetCannon = mg::UseCannon(target->candidate, settings);
+    gState.targetAimUp = target->aimUp;
+}
 #endif
 
 } // namespace
@@ -294,6 +329,29 @@ Result Tick(double deltaSeconds, Inputs const& in) {
     double const now = Now();
     mg::Settings const settings = hand_calibration::GetMako().gunner;
     bool const active = settings.on && in.riding && in.vehicle != nullptr && ue3::runtime::IsAlive(in.vehicle);
+    if (!active) {
+        ReleaseTriggers(in.controller);
+        gState.target = nullptr;
+        gState.found.clear();
+        gState.fire = {};
+        gState.why = !settings.on ? "off ([Mako] gunner = 0)" : !in.riding ? "not riding in the cockpit" : "no vehicle";
+        gState.loggedControlSet = false;
+        gState.wasActive = false;
+        return result;
+    }
+    if (!gState.wasActive) {
+        gState.control = {};
+        gState.lastScan = -1e9;
+    }
+    gState.wasActive = true;
+    int const previousTarget = gState.targetSerial;
+    if (!in.scopeAiming) RefreshTarget(in, settings, now);
+    if (gState.target != nullptr && (!ue3::runtime::IsAlive(gState.target) || CallBool(gState.target, gIsDead) ||
+            gHidden.ReadBool(gState.target).value_or(false) || !gCollideActors.ReadBool(gState.target).value_or(true))) {
+        gState.target = nullptr;
+        gState.lastScan = -1e9;
+    }
+    auto const targetLocation = gState.target != nullptr ? player::Location(gState.target) : std::nullopt;
     // The player's hands.
     mg::Hands hands;
     if (in.controllers != nullptr && in.controllers->active) {
@@ -303,19 +361,16 @@ Result Tick(double deltaSeconds, Inputs const& in) {
         hands.thumbY = right.stickY;
         hands.handFree = right.aimValid && !in.stickHeld;
         hands.handIntent = (right.triggerTouchKnown && right.triggerTouch) || right.trigger > 0.05f;
-        hands.handPointsOut = active && PointsOut(in);
+        hands.handPointsOut = PointsOut(in);
     }
     hands.busy = in.panelBusy;
-    mg::Settings rules = settings;
-    rules.on = active;  // off: the old rules (the stick while held, else the hand)
-    if (active && !gState.wasActive) {
-        gState.control = {};  // riding again: the gunner's at once, not after a handback
-    }
-    gState.wasActive = active;
+    hands.scopeAiming = in.scopeAiming;
+    hands.hasTarget = !in.scopeAiming && targetLocation.has_value() &&
+        gFireWeapon.Get() != nullptr && VehicleGameMode(in.controller) != nullptr;
     mg::Control const before = gState.control.control;
-    mg::Control const control = mg::Step(gState.control, hands, now, rules);
+    mg::Control const control = mg::Step(gState.control, hands, now, settings);
     result.control = control;
-    if (active && (!gState.loggedControlSet || control != gState.loggedControl)) {
+    if (!gState.loggedControlSet || control != gState.loggedControl) {
         if (gState.loggedControlSet && before == mg::Control::Gunner && control != mg::Control::Gunner) {
             ++gState.takeovers;
         }
@@ -323,92 +378,30 @@ Result Tick(double deltaSeconds, Inputs const& in) {
         gState.loggedControl = control;
         log::Info("mako gunner: {} aims the turret{}", mg::Name(control), hands.busy ? " (a hand works the cockpit's panel)" : "");
     }
-    if (!active) {
-        ReleaseTriggers(in.controller);
-        gState.target = nullptr;
-        gState.found.clear();
-        gState.fire = {};
-        gState.why = !settings.on ? "off ([Mako] gunner = 0)" : !in.riding ? "not riding in the cockpit" : "no vehicle";
-        gState.loggedControlSet = false;
-        return result;
-    }
     if (control != mg::Control::Gunner) {
         ReleaseTriggers(in.controller);
         gState.fire = {};
         gState.manualSeconds += deltaSeconds;
-        result.holdHand = control == mg::Control::Hand && !mg::HandAims(hands);
-        gState.why = std::format("{} has the gun", mg::Name(control));
+        result.holdHand = control == mg::Control::Hand && (hands.busy || !mg::HandAims(hands));
+        gState.why = std::format("{} has the gun{}", mg::Name(control),
+            !in.scopeAiming && !hands.hasTarget ? " (no eligible target)" : "");
         return result;
     }
     // The gunner: who to shoot.
     gState.gunnerSeconds += deltaSeconds;
-    if (now - gState.lastScan >= kScanEveryS) {
-        gState.lastScan = now;
-        Scan(in, settings);
-        int current = -1;
-        for (Found const& f : gState.found) {
-            if (f.pawn == gState.target) {
-                current = f.candidate.id;
-            }
-        }
-        std::vector<mg::Candidate> candidates;
-        for (Found const& f : gState.found) {
-            candidates.push_back(f.candidate);
-        }
-        int const chosen = mg::Choose(candidates, current, settings);
-        ue3::Object* const next = chosen >= 0 ? gState.found[static_cast<std::size_t>(chosen)].pawn : nullptr;
-        if (next != gState.target) {
-            gState.target = next;
-            ++gState.targetSerial;
-            if (next != nullptr) {
-                Found const& f = gState.found[static_cast<std::size_t>(chosen)];
-                gState.targetName = f.name;
-                gState.targetDistanceM = f.candidate.distanceM;
-                gState.targetBig = mg::IsBig(f.candidate, settings);
-                gState.targetCannon = mg::UseCannon(f.candidate, settings);
-                gState.targetNeighbours = f.candidate.neighbours;
-                ++gState.targetsTaken;
-                log::Info("mako gunner: targets {} {:.0f} m away ({}; {:.1f} m wide, {} other{} within {:.0f} m; {} hostile{} in range)", f.name,
-                    f.candidate.distanceM,
-                    !gState.targetCannon ? "the machine gun"
-                        : gState.targetBig ? "the cannon too: a heavy target"
-                                           : "the cannon too: a crowd",
-                    f.candidate.radiusM * 2.0, f.candidate.neighbours, f.candidate.neighbours == 1 ? "" : "s", settings.crowdRadiusM,
-                    gState.found.size(), gState.found.size() == 1 ? "" : "s");
-            } else {
-                log::Info("mako gunner: no target ({} hostile{} in range, none seen in the turret's reach)", gState.found.size(),
-                    gState.found.size() == 1 ? "" : "s");
-            }
-        } else if (next != nullptr) {
-            for (Found const& f : gState.found) {
-                if (f.pawn == next) {
-                    gState.targetDistanceM = f.candidate.distanceM;
-                    // A crowd gathers or thins around the same target: the cannon follows it.
-                    bool const cannon = mg::UseCannon(f.candidate, settings);
-                    if (cannon != gState.targetCannon) {
-                        log::Info("mako gunner: {} {}", f.name, cannon ? "is in a crowd now: the cannon too" : "is alone now: the machine gun");
-                    }
-                    gState.targetCannon = cannon;
-                    gState.targetNeighbours = f.candidate.neighbours;
-                }
-            }
-        }
+    if (before != mg::Control::Gunner || gState.targetSerial != previousTarget) {
+        ++gState.targetsTaken;
+        log::Info("mako gunner: engaging {} {:.0f} m away{}{}", gState.targetName, gState.targetDistanceM,
+            gState.targetCannon ? " with the cannon and machine gun" : " with the machine gun",
+            gState.targetAimUp > 0.0f ? " (upper body visible above cover)" : "");
     }
-    if (gState.target != nullptr && (!ue3::runtime::IsAlive(gState.target) || CallBool(gState.target, gIsDead))) {
-        gState.target = nullptr;
-        ++gState.targetSerial;
-        gState.lastScan = -1e9;  // look again at once
-    }
-    if (gState.target != nullptr) {
-        if (auto const at = player::Location(gState.target)) {
-            result.target = ToUnreal(*at);
-            result.what = gState.targetName;
-        }
-    }
+    result.target = ToUnreal(*targetLocation);
+    result.target->z += gState.targetAimUp;
+    result.what = gState.targetName;
     result.gunner = true;
-    gState.why = result.target ? std::format("the gunner aims at {}", gState.targetName) : std::string("the gunner looks for a target");
+    gState.why = std::format("the gunner aims at {}", gState.targetName);
     // Fire.
-    mg::Orders const orders = mg::Fire(gState.fire, now, result.target ? gState.targetSerial : -1, gState.targetCannon, settings);
+    mg::Orders const orders = mg::Fire(gState.fire, now, gState.targetSerial, gState.targetCannon, settings);
     // The player's own trigger (the stick's, as RT) fires the machine gun where the gunner aims: the gunner neither starts nor
     // stops it then, or its pauses would cut the player's fire.
     bool const playerFiring = in.controllers != nullptr && in.controllers->active && in.controllers->right.trigger > 0.1f;

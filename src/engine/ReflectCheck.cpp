@@ -609,6 +609,8 @@ void CheckClasses() {
     CheckClass<ASFXCameraNativeBase>("SFXGame.SFXCameraNativeBase");
     CheckClass<USFXCameraMode>("SFXGame.SFXCameraMode");
     CheckClass<USFXCameraMode_Interpolate>("SFXGame.SFXCameraMode_Interpolate");
+    CheckClass<USFXCameraMode_VehicleTightAim>("SFXGame.SFXCameraMode_VehicleTightAim");
+    CheckClass<USFXCameraMode_VehicleTightAimEx>("SFXGame.SFXCameraMode_VehicleTightAimEx");
     CheckClass<USFXCameraInput>("SFXGame.SFXCameraInput");
     CheckClass<ASFXInventoryManager>("SFXGame.SFXInventoryManager");
     CheckClass<USFXModule_AimAssist>("SFXGame.SFXModule_AimAssist");
@@ -879,6 +881,8 @@ void CheckFields() {
     CheckField("Engine.PlayerController", "PlayerCamera", SDK_FIELD(APlayerController, PlayerCamera));
     CheckField("Engine.PlayerController", "PlayerInput", SDK_FIELD(APlayerController, PlayerInput));
     CheckField("Engine.PlayerController", "m_oCachedScaleFormManager", SDK_FIELD(APlayerController, m_oCachedScaleFormManager));
+    CheckField("Engine.PlayerController", "HiddenActors", SDK_FIELD(APlayerController, HiddenActors));
+    CheckElement("Engine.PlayerController", "HiddenActors", sizeof(AActor*));
     CheckField("Engine.Camera", "CameraCache", SDK_FIELD(ACamera, CameraCache));
     CheckField("Engine.Camera", "PCOwner", SDK_FIELD(ACamera, PCOwner));
     CheckField("Engine.Camera", "bEnableFading", SDK_BOOL(ACamera, bEnableFading));  // a matinee's fade in a held moment (game/ConversationWorld)
@@ -1294,6 +1298,7 @@ void CheckPaths() {
         SDK_AT(offsetof(ACamera, CameraCache) + offsetof(FTCameraCache, POV) + offsetof(FTPOV, FOV), sizeof(float)));
     CheckPath("SFXGame.SFXCameraMode", {"m_pov", "Location"}, SDK_AT(offsetof(USFXCameraMode, m_pov) + offsetof(FTPOV, Location), sizeof(FVector)));
     CheckPath("SFXGame.SFXCameraMode", {"m_pov", "Rotation"}, SDK_AT(offsetof(USFXCameraMode, m_pov) + offsetof(FTPOV, Rotation), sizeof(FRotator)));
+    CheckPath("SFXGame.SFXCameraMode", {"m_pov", "FOV"}, SDK_AT(offsetof(USFXCameraMode, m_pov) + offsetof(FTPOV, FOV), sizeof(float)));
     CheckPath("SFXGame.SFXCameraInput", {"CameraSensitivity", "X"},
         SDK_AT(offsetof(USFXCameraInput, CameraSensitivity) + offsetof(FVector2D, X), 4));
     CheckPath("SFXGame.SFXCameraInput", {"CameraSensitivity", "Y"},

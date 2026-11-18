@@ -395,11 +395,16 @@ bool CreateInstance()
     info.enabledExtensionCount = extensionCount;   // [MEVR]
     info.enabledExtensionNames = extensions;
 
-    const XrResult r = reinterpret_cast<PFN_xrCreateInstance>(createInstanceFn)(&info, &g_instance);
-    LogLine(std::string("[XR] xrCreateInstance (XR_KHR_D3D11_enable") +
+    // [MEVR] Keep the call entry in the log even when a runtime or API layer never returns.
+    const std::string createLabel = std::string("[XR] xrCreateInstance (XR_KHR_D3D11_enable") +
             (g_hasRefreshRateExt ? " + XR_FB_display_refresh_rate" : "") +
-            (g_mevrHasPerformanceExt ? " + XR_EXT_performance_settings" : "") + // [MEVR]
-            (mevrHasHpControllerExt ? " + XR_EXT_hp_mixed_reality_controller" : "") + "): " + FmtXr(r));   // [MEVR]
+            (g_mevrHasPerformanceExt ? " + XR_EXT_performance_settings" : "") +
+            (mevrHasHpControllerExt ? " + XR_EXT_hp_mixed_reality_controller" : "") + ")";
+    LogLine(createLabel + " starting (pid " + std::to_string(GetCurrentProcessId()) +
+            ", tid " + std::to_string(GetCurrentThreadId()) + ").");
+    const ULONGLONG createStart = GetTickCount64();
+    const XrResult r = reinterpret_cast<PFN_xrCreateInstance>(createInstanceFn)(&info, &g_instance);
+    LogLine(createLabel + ": " + FmtXr(r) + " after " + std::to_string(GetTickCount64() - createStart) + " ms");
     if (!XrSucceeded(r) || g_instance == nullptr)
         return false;
 
