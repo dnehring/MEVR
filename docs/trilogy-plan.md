@@ -616,8 +616,15 @@ These unblock the most: almost every other entry gets smaller once they land.
   146 on ME3, was 75), ME2's stop at once exploring (the move function's 0.5 s blend skipped: 0 in 65 ms, was 0.5 s), the draw
   rate on both (ME2's rifle in hand 0.16 s, was 0.62; holstered 0.16 s, was 1.13 on ME2 and 0.66-0.95 on ME3). Research/38
   "The sequels' walk and draw".
-- **Left:** ME3's explore start (its limiter unread; the owner's question on ME3's walk start); ME3's exploring stop measured;
-  the stance (off on ME1 too).
+- **Done (lane AU9, 2026-11-18):** ME3's exploring start and stop (the owner's option A): the limiter is the explore tree's
+  `BioAnimNodeLocomotionStart` nodes asking the pawn for their animation's root motion as acceleration (RMM_Accel) for the
+  start's first ~0.25 s, and `BioAnimNodeLocomotionStop` the same after a let-go; ME1's `[Hands] startStopAnims = 0` answers both
+  with RMM_Ignore in VR on foot (`UpdateStartSteps`). Exploring on the Normandy a full push runs at 0.1 s (0, 389, 389 u/s at
+  0, 0.1, 0.2 s; was 0, 3-12, 152-253), half a push 189 at once; the stop stays a stop (the stop animation had walked the pawn
+  on 16-38 units over 0.5 s). The response's per-tick trace (`movement: response ticks`) and `mevr loco start game|on`.
+  research/38 "ME3's exploring start and stop".
+- **Left:** the stance (off on ME1 too); a sideways slip at the end of a push after a 180-degree explore turn on ME3 (with and
+  without the fix; research/38 item 5).
 - **Closes when:** `movement: response:` shows a run within 0.1 s of the push and half a push walking, on each sequel.
 - **Waits for:** nothing. **Who:** AU3 (the walk), AU5 (the constant eye); the rest nobody yet.
 
