@@ -688,8 +688,9 @@ void App::UpdateHero() {
         heroButton_ = "Apply them";
         heroEnabled_ = true;
     } else if (installed_) {
-        heroTitle_ = "Ready for VR";
-        heroText_ = "The mod is installed. " + launchAdvice_ + " In game, " + menuKey_ + " or both sticks held opens the VR menu.";
+        heroTitle_ = "MEVR installed";
+        heroText_ = launchAdvice_ + " Use Settings > Detect to check whether OpenXR can see your headset. In game, " + menuKey_ +
+            " or both sticks held opens the VR menu.";
         heroAction_ = "launch";
         heroButton_ = "Launch";
         heroEnabled_ = true;

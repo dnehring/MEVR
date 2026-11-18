@@ -94,6 +94,7 @@ struct LogFacts {
     std::string colourProfile;       // "auto (= neutral) for 'SteamVR/OpenXR : null' [Colour.steamvr_openxr_null]"
     std::string eyeSize;             // the headset's recommended eye image, "2824x2880"
     std::string renderSize;          // what the game renders per eye, "2118x2160"
+    bool xrCreateInstancePending = false;  // the latest renderer log records the call but no result
 };
 LogFacts ReadLogFacts(std::string_view modLog, std::string_view halcyonLog);
 
@@ -179,7 +180,7 @@ struct Bundle {
 
 // Pure: REPORT.md for a bundle (kept under kReportMdBudget).
 std::string BuildReportMd(Bundle const& bundle);
-// "Crash: 0xC0000005 ... at ntdll.dll+0x1A12D", the first error, the first warning, or a line saying there were none.
+// The crash, first error, missing OpenXR instance result, first warning, or a line saying there were none.
 std::string Headline(Bundle const& bundle);
 // The non-personal summary (versions, Windows, GPU, runtime, headset, controllers, the headline): for the issue form.
 std::string IssueSummary(Bundle const& bundle);

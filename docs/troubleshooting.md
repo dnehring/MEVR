@@ -31,6 +31,8 @@ evidence, not a mistake on the player's side.
 | `LE1MEVR.prev.log` | same folder | The run before. If the problem was in an earlier session (or the game crashed and was restarted), it's here. |
 | `MELEVR_Log.txt` | `%LOCALAPPDATA%\MELEVR\` | Halcyon's renderer: the OpenXR session (`[XR]` lines), the stereo target, its settings file, its crash handler. **It grows across runs** (it isn't cleared at start): use the timestamps, and read from the last `[XR] starting OpenXR session thread` line. The bundle may hold only its tail. |
 | `MEVRLoader.log` | `Game\ME1\Binaries\Win64\Logs\` | Our ASI loader (`bink2w64.dll`): did it run, did it find and attach `LE1MEVR.asi`. Missing if ME3Tweaks' LEBinkProxy is the loader (its log is `bink2w64_proxy.log`). |
+| `SetupLaunch.log` | `%LOCALAPPDATA%\MEVR\` | Setup's runtime checks and game launch requests. Compare the EA child PID with the PID in `LE1MEVR.log` to see whether the process Setup created loaded MEVR. |
+| `MEVRLauncherLoader.log` | `Game\Launcher\Logs\MEVRLoader.log` | The MEVR loader's log from the Legendary Edition picker, when available. |
 | `crash-breadcrumbs.txt` | `%LOCALAPPDATA%\MEVR\` | Written once when the game crashes: the exception, the native stack, the script frames, the last 128 script events, the mod's handler calls and the mod's writes into engine memory. Its time stamp says which crash it is. |
 | `reflect-check.json` | `%LOCALAPPDATA%\MEVR\` | The mod's self-check of its engine access (`mismatches` should be 0). |
 | `LE1MEVR.ini` | `Game\ME1\Binaries\Win64\ASI\` | The mod's settings, and the calibration (`[Calibration.<controllers>]`). |
@@ -116,7 +118,8 @@ A good bring-up in `MELEVR_Log.txt`:
 ```
 [XR] starting OpenXR session thread (game device captured, backbuffer WxH fmt N).
 [XR] using the statically linked OpenXR loader (MEVR).
-[XR] xrCreateInstance (XR_KHR_D3D11_enable ...): XrResult 0
+[XR] xrCreateInstance (XR_KHR_D3D11_enable ...) starting (pid 123, tid 456).
+[XR] xrCreateInstance (XR_KHR_D3D11_enable ...): XrResult 0 after 99 ms
 [XRRUNTIME] name='SteamVR/OpenXR' ...
 [XR] xrGetSystem (HMD): XrResult 0
 [XR] recommended eye image WxH; ...
@@ -136,6 +139,7 @@ play), 6 stopping, 7 loss pending, 8 exiting. The renderer runs frames from 2 to
 | Symptom | Confirm with | Cause | Fix |
 |---------|--------------|-------|-----|
 | The game runs flat, the headset shows the runtime's home | No `[XR] starting OpenXR session thread` line for this run | The renderer never captured the game's D3D11 device. | Check [2.1](#21-the-mod-doesnt-load) first (the mod has to load). Then report it. |
+| Same | `xrCreateInstance` has a starting line but no result in the report | OpenXR instance creation did not record a return before the log was collected. | With the game closed and the headset awake, try Setup > Settings > Detect. Include what Detect reports and a fresh problem report after retrying. |
 | Same | `[XR] xrCreateInstance (...): XrResult -51` (runtime unavailable), or another negative result, then `[XR] session bring-up FAILED - see the [XR] line above for the failing call.` | No active OpenXR runtime, or it didn't start. | Set your headset's runtime as the active OpenXR runtime (SteamVR: Settings > OpenXR > Set SteamVR as OpenXR runtime; Meta app: Settings > General > OpenXR runtime). Start it, then the game. |
 | Same | `[XR] xrGetSystem (HMD): XrResult -35` (form factor unavailable) | The runtime is up but sees no headset (not connected, asleep, Link/Steam Link not connected). | Connect and wake the headset, then restart the game. |
 | `[XRRUNTIME] name='...'` names a runtime you didn't expect | That line | Windows' active OpenXR runtime isn't the one the headset uses (e.g. Meta's while you play over SteamVR). | Make the right runtime active (above). |
