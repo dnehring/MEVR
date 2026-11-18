@@ -49,6 +49,11 @@ on the Pax label (`gx4`) or on Exit (`gx5`) changed nothing, and a ray on the pa
 the triggers). So ME3 keeps its own controls on the projector and the panel is no pointer surface
 (`Facts::galaxyUiPointer` 0). Whether the ray should steer the ship (a new interaction) is the owner's call.
 
+**Seen and not explained:** with the map open a blue horizontal light band crosses the pit at the disc's height in the eye
+images (`gx1`..`gx5`, `-left-world.png`: the world layer itself), not there on foot; the room's GalaxyMapProxy and its emitter
+are hidden then, so it is something else the map's mode shows (the map level's own flare or effect seen from the CIC?
+[verify] with `mevr find` near the projector while the map is open).
+
 **Not done on ME3** (in order): travel and its movie, orbit (mode 12) and
 the scan, the opening and closing transitions (a frame of the native presentation before the hold publishes is
 possible: not measured), recenter and session changes inside the map, save reload, then the headset.
