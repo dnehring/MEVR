@@ -10,6 +10,7 @@
 #include <Windows.h>
 
 #include <atomic>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -1677,6 +1678,53 @@ bool InDrivableVehicle(std::uintptr_t* pawnOut) noexcept
     char nm[96] = {};
     if (!ClassNameOf(pawn, nm, sizeof(nm)) || std::strstr(nm, "Vehicle") == nullptr) return false;
     if (pawnOut) *pawnOut = pawn;
+    return true;
+}
+
+static std::atomic_bool g_skycarFirstPerson{false};
+
+void SetSkycarFirstPersonEnabled(bool enabled) noexcept
+{
+    g_skycarFirstPerson.store(enabled, std::memory_order_release);
+}
+
+bool GetSkycarSeatPose(SkycarSeatPose& pose) noexcept
+{
+    if (!g_skycarFirstPerson.load(std::memory_order_acquire)) return false;
+
+    std::uintptr_t pawn = 0;
+    if (!InDrivableVehicle(&pawn)) return false;
+    char className[96]{};
+    if (!ClassNameOf(pawn, className, sizeof(className)) ||
+        std::strcmp(className, "SFXVehicleHover_TaxiCab") != 0) return false;
+
+    float position[3]{};
+    int pitchUU = 0, yawUU = 0, rollUU = 0;
+    __try {
+        auto* location = reinterpret_cast<const volatile float*>(pawn + 0x118);   // AActor.Location
+        position[0] = location[0]; position[1] = location[1]; position[2] = location[2];
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+    constexpr std::uintptr_t rotation = 0x124;   // AActor.Rotation (Pitch, Yaw, Roll)
+    if (!SafeReadInt(pawn + rotation, &pitchUU) || !SafeReadInt(pawn + rotation + 4, &yawUU) ||
+        !SafeReadInt(pawn + rotation + 8, &rollUU) ||
+        !std::isfinite(position[0]) || !std::isfinite(position[1]) || !std::isfinite(position[2])) return false;
+
+    constexpr float scale = 6.28318530718f / 65536.0f;
+    const float pitch = static_cast<std::int16_t>(pitchUU) * scale;
+    const float yaw = static_cast<std::int16_t>(yawUU) * scale;
+    const float roll = static_cast<std::int16_t>(rollUU) * scale;
+    const float cp = std::cos(pitch), sp = std::sin(pitch);
+    const float cy = std::cos(yaw), sy = std::sin(yaw);
+    const float cr = std::cos(roll), sr = std::sin(roll);
+
+    // Driver eye from the v013 cabin, registered to the playable taxi's mesh frame (seat.json).
+    constexpr float forward = 157.8481f, right = -54.9559f, up = 189.9834f;
+    pose.x = position[0] + forward * cp * cy + right * (sr * sp * cy - cr * sy) - up * (cr * sp * cy + sr * sy);
+    pose.y = position[1] + forward * cp * sy + right * (sr * sp * sy + cr * cy) + up * (sr * cy - cr * sp * sy);
+    pose.z = position[2] + forward * sp - right * sr * cp + up * cr * cp;
+    // Keep the viewing horizon level as the taxi banks. The seat itself banks with the vehicle.
+    pose.yawDeg = static_cast<std::int16_t>(yawUU) * (360.0f / 65536.0f);
     return true;
 }
 
