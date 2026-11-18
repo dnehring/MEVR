@@ -112,8 +112,8 @@ constexpr char const* kEnterPowerWheelName = "SFXGameModeDefault.EnterPowerWheel
 // only breaks the player out of cover (it must never be called for a holster there), and a weapon is put down only inside a
 // switch; but the put-down state handles a switch to no weapon (InvManager.PendingWeapon None), and with Pawn.Weapon None
 // BioPawn.HandleWeaponFiring returns at once (the trigger fires nothing). So ME3's holster is the game's own put-down into
-// no weapon, SFXInventoryManager.SetCurrentWeapon(None), behind [Holsters] le3PutAway (0 by default until a combat fixture
-// has checked it in the game; with 0 a let-go gun stays in the hand and nothing is called).
+// no weapon, SFXInventoryManager.SetCurrentWeapon(None), behind [Holsters] le3PutAway (1 by default since 2026-11-18, checked
+// on the combat fixture: research/le3-combat-fixtures.md; with 0 a let-go gun stays in the hand and nothing is called).
 ue3::ClassRef gGameModeDefault{"SFXGame.SFXGameModeDefault", ue3::kEveryGame};
 ue3::FieldRef gGameModeManager{"SFXGame.BioPlayerController", engine::adapter::kGameModeManager, ue3::kEveryGame};
 ue3::FieldRef gGameModes{"SFXGame.SFXGameModeManager", "GameModes", ue3::kEveryGame};
@@ -1144,7 +1144,7 @@ bool TryStartup() {
     gSetCurrentWeapon = gSetCurrentWeaponFn.Get();
     log::Info("holsters: ME3's holster is {} (TryHolster is never called here: it only leaves cover)",
         gSetCurrentWeapon != nullptr ? "the game's own put-down into no weapon, SFXInventoryManager.SetCurrentWeapon(None), with "
-                                       "[Holsters] le3PutAway = 1 (0 by default: a let-go gun stays in the hand)"
+                                       "[Holsters] le3PutAway = 1 (the default; 0: a let-go gun stays in the hand)"
                                      : "MISSING (SFXInventoryManager.SetCurrentWeapon not found): a let-go gun stays in the hand");
 #endif
     gStarted = gSwitchWeapon != nullptr && gTryHolster != nullptr && classes && actionState;
@@ -1400,8 +1400,8 @@ void Tick(double deltaSeconds, Link const& link) {
         input.holster = slots::Holster::Off;
         if (!gToldNoPutAway) {
             gToldNoPutAway = true;
-            log::Info("holsters: a gun let go stays in the hand: ME3 keeps a gun out on a mission ([Holsters] le3PutAway = 1 puts "
-                      "it away with the game's own put-down: unverified, no ME3 combat fixture yet)");
+            log::Info("holsters: a gun let go stays in the hand: ME3 keeps a gun out on a mission ([Holsters] le3PutAway = 0; 1, "
+                      "the default, puts it away with the game's own put-down)");
         }
     } else {
         gToldNoPutAway = false;

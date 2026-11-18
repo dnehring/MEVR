@@ -8,6 +8,7 @@
 #include "ue3/Handles.hpp"
 #include "ue3/Memory.hpp"
 #include "ue3/Runtime.hpp"
+#include "engine/GameAdapter.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -39,7 +40,7 @@ inline ue3::ClassRef weaponTypes[] = {
     ue3::ClassRef{"SFXGame.SFXWeapon_AutoPistol_Base", ue3::kEveryGame},
 #endif
 };
-inline ue3::FunctionRef isHostile{"SFXGame.BioPawn.IsHostile", ue3::kEveryGame};
+inline ue3::FunctionRef isHostile{engine::adapter::kIsHostileFunction, ue3::kEveryGame};  // ME3: Engine.Pawn's
 inline ue3::FunctionRef isDead{"Engine.Pawn.IsDead", ue3::kEveryGame};
 inline ue3::FunctionRef combatEnabled{"SFXGame.BioPlayerInput.IsCombatEnabled", ue3::kEveryGame};
 inline ue3::FunctionRef orderWeapon{"SFXGame.BioPlayerController.OrderWeaponSwitch", ue3::kEveryGame};

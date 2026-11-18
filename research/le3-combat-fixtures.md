@@ -243,6 +243,54 @@ range, preserve a private copy before restoration (an overwritten QuickSave is
 restored to its original bytes), decode it and verify a normal reload. Only then
 prepare bounded resource variants with the existing independent oracle flow.
 
+## A combat fixture by console (lane AU2, 2026-11-18)
+
+**Every check below that waits for "the first combat save" can run now, without a save.** From Save 31 on the Normandy the
+console opens an N7 map and the game's own screens lead into an ordinary fight in about two minutes. Session
+`%LOCALAPPDATA%\MEVR\sessions\20261118-090535-499-LE3-me3-fixture` (restore: 0 differences).
+
+1. A renderer-preview stretch as usual: `prep.ps1 -Holder <you> -Game LE3 -RendererPreview`, `launch.ps1 ...`, `load.ps1 ...
+   -Save John_12_Vanguard_021024_46e6e39\Save_0031.pcsav`.
+2. `tools\le2-halcyon-run\me3-combat.ps1 -Holder <you>` does the rest by console, step by step:
+   - `open BioP_SPDish` (the single-player copy of Firebase Dagger, an N7 mission; the other `BioP_SP*` maps are the same kind).
+     After about 40 s: `mevr state` says world `Biop_SPDish`, pawn `SFXPawn_PlayerSoldier` (the map's own class, not the
+     career's Vanguard), game mode 9: ME3's Squad Selection screen.
+   - `mevr omni party`: the screen's own A on its confirmation, `SFXGUI_TeamSelect.FinalizeParty(true, 0)` (ME3's handler of the
+     PartySelect panel; ME2's is `BioSFHandler_PartySelection`). Shepard alone (nobody was picked). Then the Weapon Loadout screen.
+   - `mevr omni close`: B on the loadout keeps the map's loadout. The shuttle's intro plays on the 3D screen (game mode 7, then 8),
+     about 20 s.
+   - Game mode 0: Shepard on foot with an **Avenger assault rifle** drawn (magazine 30, spare 210) and a **Predator pistol**;
+     Cerberus **troopers, a centurion, a gunner and its turret** within 1 to 17 m, firing at once. The script turns on `god`.
+3. The map's start autosaves into the career's folder (`AutoSave.pcsav`, 36 KB); the stretch's restore puts the career back.
+   A `QuickSave` there was kept privately (`%LOCALAPPDATA%\MEVR\AU2\fixtures`, never in the repository); loading it is not
+   checked (the console route is shorter and edits nothing).
+
+What the fixture showed at once (all fixed in the same landing, and seen after the fix in the same game):
+- **ME3's BioPawn has no `IsHostile`**: the hand power wheel's lock, the squad context, VR cover's shooters and the squad's
+  orders asked `SFXGame.BioPawn.IsHostile`, found nothing and saw no hostile at all (`mevr context` listed only cover; `mevr cover
+  pawns`: "BioPawn.IsHostile, IsDead or Actor.Trace wasn't found"; the lock's scan returned before its loop). The question is
+  `Engine.Pawn.IsHostile` on ME3 (game/Melee already used it): one name per game, `engine::adapter::kIsHostileFunction`. After:
+  `mevr context` lists `E1 assault trooper x1 | behind near level`, `E2 turret x2`, `E5 centurion x1 ... hidden`; `mevr cover
+  pawns` six hostiles, each exposed or behind cover.
+- **The put-away works** (`[Holsters] le3PutAway = 1`, `holsters.ps1 -Game LE3`, `holsters-092405\lines.txt`): `let go at
+  shoulderRight: the assault rifle goes back in its holster (SFXInventoryManager.SetCurrentWeapon(None) ...)`, `holstered after
+  0.95 s`; four trigger pulls each `the game wanted to draw your weapon (Function SFXGame.SFXGameModeBase.FireWeapon): refused`;
+  `grab at hipRight: drawing the pistol (BioPlayerController.SwitchWeapon; was holstered)`, `in hand after 0.06 s`; let go at the
+  hip `holstered after 0.66 s`; let go in front of the chest, back after the 0.20 s grace. **`le3PutAway = 1` is ME3's default
+  since** (the owner's answer of 2026-11-18); an old file's `0` moves to 1 once (marker `le3PutAwayMoved`, seen in the game:
+  `hands: [Holsters] le3PutAway 0 -> 1`). The menu's Holster button on ME3 stays greyed until the owner has seen it.
+- **A roll** (a replayed `forward+a`, `make-walk-recording.py --plan stand:1.5,forward+a:0.2,forward:0.6,stand:4`): ME3 plays
+  `SFXCustomAction_PlayerEvadeForward` and the camera goes `SFXCameraMode_Interpolate` to `SFXCameraMode_Roll` for 2 s. The view
+  stayed first person and level (camera pitch and roll 0 throughout, `mevr camera trace`; with `slomo 0.15` a snapshot mid-roll
+  shows the level horizon with Shepard's rolling back and legs below the eyes), but: the traversal module reported the evade as a
+  traversal move, so the floor lock's MoveHold followed the game's camera down with the body (the eye ended 49 units lower and
+  stepped up to 16 units a frame); view level, the snap turn and the camera shakes stood down (Roll isn't one of ME1's five camera
+  names). Fixed by the owner's choice for rolls (docs/trilogy-plan.md "Answered 2026-11-18"): an evade is no floor move
+  (`traversal::FloorMoving`), and ME3's action cameras (`vr::IsActionCamera`: Roll, Melee, HitReaction, EnterCover) count as
+  the body's (`engine::adapter::kActionCameras`, ME3 only). After: `floor lock: raw camera Z -181.2 ... final eye 1.7526 m`, then
+  `-190.8 ... final eye 1.7526 m` through the roll (the eye at the player's height, the correction taking the camera's dip), no
+  `traversal move began`, and view level holding through it. Not seen yet: a melee's, a hit reaction's or a cover entry's camera.
+
 ## Every ME3 save on the machine, by level (lane WP, 2026-11-16)
 
 Looking for a save that loads on a mission with a weapon in hand (for the holsters' put-away, research/le2-vrik.md "ME3's

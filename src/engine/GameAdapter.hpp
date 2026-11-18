@@ -276,6 +276,32 @@ inline constexpr bool kVrCharacterShadowsOff = false;
 inline constexpr bool kVrCharacterShadowsOff = true;
 #endif
 
+// Who is an enemy and who is down (the hand power wheel's lock, the squad context, VR cover's shooters, the squad's orders,
+// melee's enemy in reach): ME1's and ME2's BioPawn answers IsHostile itself; ME3's BioPawn has none, so its question is
+// Engine.Pawn's (as game/Melee found; with BioPawn's name ME3's lock, squad context and VR cover saw no hostile at all,
+// lane AU2 on the combat fixture, 2026-11-18). The death question: ME1's BioPawn.IsDead, the sequels' Engine.Pawn.IsDead.
+// Both take `Other` / nothing and return a bool on every game.
+#if defined(MEVR_GAME_LE3)
+inline constexpr char const* kIsHostileFunction = "Engine.Pawn.IsHostile";
+#else
+inline constexpr char const* kIsHostileFunction = "SFXGame.BioPawn.IsHostile";
+#endif
+#if defined(MEVR_GAME_LE1)
+inline constexpr char const* kIsDeadFunction = "SFXGame.BioPawn.IsDead";
+#else
+inline constexpr char const* kIsDeadFunction = "Engine.Pawn.IsDead";
+#endif
+
+// ME3's transient action cameras (SFXCameraMode_Roll, _Melee, _HitReaction, _EnterCover; vr::IsActionCamera): the game
+// swaps to one for about half a second on a roll, a melee, a hit or a cover entry. The owner (2026-11-18, docs/trilogy-plan.md
+// "Answered 2026-11-18"): the player stays in first person there, the view level and sliding with the body, the floor held,
+// the snap turn still the player's, the camera shakes off. ME1 and ME2 have no such cameras (no such classes).
+#if defined(MEVR_GAME_LE3)
+inline constexpr bool kActionCameras = true;
+#else
+inline constexpr bool kActionCameras = false;
+#endif
+
 // Where the layer finds the engine's globals: an RVA (fast; right for 2.0.0.48602) and a byte
 // pattern of code that references the global (survives a patch that moves it). Each pattern names
 // the RIP-relative instruction inside it: where it starts, where its displacement is, its length.

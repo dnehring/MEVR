@@ -312,8 +312,8 @@ constexpr char const* kHolstersBlock =
     "seatedGrenade = -0.10, -0.18, 0.08, 0.10\n"
 #if defined(MEVR_GAME_LE3)
     "; le3PutAway: 1 = a gun you let go is put away (ME3 keeps a gun out on a mission; this is the game's own\n"
-    "; put-down into no weapon, not yet checked in combat); 0 = it stays in your hand.\n"
-    "le3PutAway = 0\n"
+    "; put-down into no weapon); 0 = it stays in your hand.\n"
+    "le3PutAway = 1\n"
 #endif
     "; 1 keeps the weapon wheel available seated and lets it draw even with onlyHolstersDraw.\n"
     "; Controls > Left trigger must be Weapon wheel; select Shepard, then a weapon and release.\n"
@@ -3029,7 +3029,7 @@ void Refresh() {
         {L"lostHandHoldS", "lostHandHoldS", L"0.75"},
 #endif
 #if defined(MEVR_GAME_LE3)
-        {L"le3PutAway", "le3PutAway", L"0"},  // ME3's put-down into no weapon, off until a combat fixture checks it
+        {L"le3PutAway", "le3PutAway", L"1"},  // ME3's put-down into no weapon (on since 2026-11-18, the owner)
 #endif
     };
     std::string added;
@@ -3292,6 +3292,26 @@ void Refresh() {
             }
         }
     }
+#if defined(MEVR_GAME_LE3)
+    // [Holsters] 2026-11-18 (the owner: "Obviously yes, that should be default"; checked on ME3's combat fixture by lane AU2):
+    // a gun let go is put away on ME3. A file without the marker le3PutAwayMoved that holds the old default 0 gets 1 once;
+    // the marker is written only after the change succeeded, so a later choice of 0 is the player's and stays.
+    if (auto const s = ini.find("Holsters"); s != ini.end() && s->second.find("le3PutAwayMoved") == s->second.end()) {
+        auto const k = s->second.find("le3PutAway");
+        bool moved = true;
+        if (k != s->second.end() && k->second == "0") {
+            moved = WritePrivateProfileStringW(L"Holsters", L"le3PutAway", L"1", path.wstring().c_str()) != 0;
+            if (moved) {
+                log::Info("hands: [Holsters] le3PutAway 0 -> 1: a gun you let go is put away (the owner's default since 2026-11-18) in {}",
+                    ini::Utf8(path));
+            }
+        }
+        if (moved && WritePrivateProfileStringW(L"Holsters", L"le3PutAwayMoved", L"1", path.wstring().c_str()) != 0) {
+            ini = ReadIni(path);
+            stamp = fs::last_write_time(path, ec);
+        }
+    }
+#endif
     // [Throwables] 2026-11-07: X is the hand power wheel only; either hand's grip at the left chest takes a grenade.
     // The marker is written only after successful changes, so a later reload retries failed writes and later choices stay.
     if (ini::Get(ini, "Throwables", "powerWheelX") == std::nullopt && ini.find("Throwables") != ini.end()) {

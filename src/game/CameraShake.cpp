@@ -11,6 +11,8 @@
 #include "game/Weapon.hpp"
 #include "ue3/Handles.hpp"
 #include "ue3/Runtime.hpp"
+#include "core/vr/ActionCamera.hpp"
+#include "engine/GameAdapter.hpp"
 
 #include <Windows.h>
 
@@ -289,6 +291,11 @@ bool FirstPersonClass(std::string_view name) {
     if (name.find("Vehicle") != std::string_view::npos || name.find("Sniper") != std::string_view::npos ||
         name.find("HipAim") != std::string_view::npos) {
         return false;
+    }
+    if constexpr (engine::adapter::kActionCameras) {
+        if (vr::IsActionCamera(name)) {
+            return true;
+        }  // ME3's roll, melee and hit cameras: first person too (the owner, 2026-11-18: no shakes there)
     }
     return name.find("Explore") != std::string_view::npos || name.find("Combat") != std::string_view::npos ||
            name.find("TightAim") != std::string_view::npos;

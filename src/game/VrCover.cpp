@@ -65,7 +65,7 @@ ue3::FieldRef gHitLocation{gDamageFn, "HitLocation"};
 ue3::FunctionRef gIsInCoverFn{"SFXGame.BioPawn.IsInCover", ue3::kEveryGame};
 ue3::FunctionRef gIsInCoverLeaningFn{"SFXGame.BioPawn.IsInCoverLeaning", ue3::kEveryGame};
 ue3::FunctionRef gTraceFn{"Engine.Actor.Trace", ue3::kEveryGame};
-ue3::FunctionRef gIsHostileFn{"SFXGame.BioPawn.IsHostile", ue3::kEveryGame};
+ue3::FunctionRef gIsHostileFn{engine::adapter::kIsHostileFunction, ue3::kEveryGame};  // ME3: Engine.Pawn's
 ue3::FieldRef gControllerPawn{"Engine.Controller", "Pawn", ue3::kEveryGame};
 ue3::FieldRef gLocation{"Engine.Actor", "Location", ue3::kEveryGame};
 ue3::FieldRef gEyeHeight{"Engine.Pawn", "EyeHeight", ue3::kEveryGame};
@@ -713,6 +713,7 @@ void OnGetSlotRotation(ue3::Object* /*context*/, ue3::Function* /*function*/, ue
 
 #if defined(MEVR_GAME_LE3)
 #include "game/Le3Cover.inc"
+#include "engine/GameAdapter.hpp"
 #endif
 
 #if defined(MEVR_VR_COVER) && !defined(MEVR_GAME_LE3)

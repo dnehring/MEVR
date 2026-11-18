@@ -17,6 +17,8 @@
 #include "game/SquadPlace.hpp"
 #include "game/ViewAnchor.hpp"
 #include "ue3/Handles.hpp"
+#include "core/vr/ActionCamera.hpp"
+#include "engine/GameAdapter.hpp"
 
 #include <Windows.h>
 
@@ -190,6 +192,17 @@ ue3::Object* CameraMode(ue3::Object* controller) {
     return mode;
 }
 
+// The camera modes where the player's own turn applies: view level's, and ME3's action cameras (a roll, a melee, a hit:
+// the owner, 2026-11-18, the snap turn stays the player's through them).
+bool TurnCameraAllows(std::string const& name) {
+    if constexpr (engine::adapter::kActionCameras) {
+        if (vr::IsActionCamera(name)) {
+            return true;
+        }
+    }
+    return vl::CameraModeAllows(name);
+}
+
 // The game's own stick turn in this camera mode (BioPlayerInput.ComputeStickResponse reads the mode's SFXCameraInput):
 // logged once per mode, so a session tells what "the game's turn rate" is.
 void LogGameTurnRate(ue3::Object* mode) {
@@ -323,7 +336,7 @@ void Tick(double deltaSeconds, Link const& link) {
         why = Why::Cover;
     } else if (ladder) {
         why = Why::Ladder;
-    } else if (mode == nullptr || !vl::CameraModeAllows(gModeName)) {
+    } else if (mode == nullptr || !TurnCameraAllows(gModeName)) {
         why = Why::CameraMode;
     } else if (squad) {
         why = Why::SquadMenu;

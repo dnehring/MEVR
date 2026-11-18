@@ -12,6 +12,8 @@
 #include "game/HeadTracking.hpp"
 #include "game/SupportGrip.hpp"
 #include "ue3/Handles.hpp"
+#include "core/vr/ActionCamera.hpp"
+#include "engine/GameAdapter.hpp"
 
 #include <Windows.h>
 
@@ -190,8 +192,14 @@ ModeEntry const& Mode(ue3::Class* cls) {
         }
     }
     std::string name = cls != nullptr ? ue3::runtime::Get().NameText(cls) : std::string("none");
-    bool const allowed = vl::CameraModeAllows(name);
-    bool const assistOff = vl::CameraModeRemovesAssist(name);
+    bool allowed = vl::CameraModeAllows(name);
+    bool assistOff = vl::CameraModeRemovesAssist(name);
+    if constexpr (engine::adapter::kActionCameras) {
+        // ME3's action cameras (a roll, a melee, a hit reaction): the body owns them as Combat (core/vr/ActionCamera.hpp).
+        if (vr::IsActionCamera(name)) {
+            allowed = assistOff = true;
+        }
+    }
     gModes.push_back({cls, std::move(name), allowed, assistOff});
     return gModes.back();
 }

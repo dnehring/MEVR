@@ -216,8 +216,13 @@ struct Holsters {
     bool seatedWeaponWheel = true;  // permit deliberate wheel draws while seated
     double hapticAmplitude = 0.5;
     // ME3 only ([Holsters] le3PutAway): a gun let go is put away by the game's own put-down into no weapon
-    // (SFXInventoryManager.SetCurrentWeapon(None)); 0 (default until an ME3 combat fixture checks it): it stays in the hand.
-    bool le3PutAway = false;
+    // (SFXInventoryManager.SetCurrentWeapon(None)); the default since 2026-11-18 (the owner; checked on the combat fixture).
+    // 0: it stays in the hand.
+#if defined(MEVR_GAME_LE3)
+    bool le3PutAway = true;
+#else
+    bool le3PutAway = false;  // read only on ME3
+#endif
     // The sequels ([Holsters] lostHandHoldS): a right hand lost behind the back at the SMG's lowerBack slot keeps its last
     // place on the body this long (ik::body_slots::LostHand). Never on ME1 (no SMG slot there).
     double lostHandHoldS = 0.75;

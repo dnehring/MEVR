@@ -21,7 +21,10 @@ fixture ([research/le3-combat-fixtures.md](../../../../research/le3-combat-fixtu
 - The IK is ME1's on ME3: the writer, arm IK, the body follower, fingers and the calibration's rules are the shared code
   with one address, ME3's skeleton layout and a few names swapped. 26 of 40 contracts are `same`, `same core, other
   inputs` or `adapter`. No second IK solver exists.
-- **Finding 1: first person, the floor lock and the body's anchor are tied to four camera-mode names, and ME3 changes
+- **Finding 1 (fixed for the floor lock, view level, the turn and the shakes 2026-11-18, lane AU2: ME3's action cameras count
+  as the body's, `vr::IsActionCamera` behind `engine::adapter::kActionCameras`, and an evade is no floor move; a roll seen on the
+  combat fixture, research/le3-combat-fixtures.md "A combat fixture by console").** Was: first person, the floor lock and the
+  body's anchor are tied to four camera-mode names, and ME3 changes
   camera mode constantly in a fight (reading alone).** Halcyon ME3 has first-person states only for `Explore`,
   `ExploreStorm`, `Combat`, `CombatStorm` and `TightAim`; the floor lock's `cameraOwned` is ME1's name rule (contains
   `Explore`, `Combat` or `TightAim`). ME3's own `SFXCameraMode_Melee`, `_Roll`, `_HitReaction`, `_EnterCover` and `_Atlas`

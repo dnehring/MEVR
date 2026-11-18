@@ -3221,7 +3221,6 @@
   },
   "game/PowerWheel": {
    "LE3": [
-    "SFXGame.BioPawn.IsHostile",
     "SFXGame.BioPawn:m_oBehavior"
    ]
   },
@@ -3231,7 +3230,6 @@
    ],
    "LE3": [
     "SFXGame.BioActorBehavior:ActorGameName",
-    "SFXGame.BioPawn.IsHostile",
     "SFXGame.BioPawn.IsInCombatActionState",
     "SFXGame.BioPawn:m_oBehavior"
    ]
@@ -3251,11 +3249,6 @@
     "SFXGame.BioConversation.GetEntryText",
     "SFXGame.BioConversation.GetReplyText",
     "SFXGame.BioWorldInfo.EndCurrentConversation"
-   ]
-  },
-  "game/VrCover": {
-   "LE3": [
-    "SFXGame.BioPawn.IsHostile"
    ]
   },
   "game/WorldUi": {

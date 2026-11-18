@@ -462,6 +462,7 @@ set(MEVR_MOD_SOURCES
     src/core/vr/TestRequest.hpp
     src/core/vr/ViewLevel.cpp
     src/core/vr/ViewLevel.hpp
+    src/core/vr/ActionCamera.hpp
     src/core/vr/ViewSync.cpp
     src/core/vr/ViewSync.hpp
     src/core/xr/Input.cpp

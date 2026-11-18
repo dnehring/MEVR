@@ -86,9 +86,9 @@ swap chain.
 | 1 | No wrist or gun HUD pieces: health and ammo stay on the HUD panel 1.5 m ahead. Behind that, the omni-tool's wrist tap never learns a weapon is drawn, so it fires where ME1 refuses it, and its target sits at the controller, not on the drawn forearm | [menus](menus-and-game-screens.md) | no |
 | 2 | The 3D cinema screen is admitted only in game modes 7 and 8 (re-read, le3 `me2_xr.cpp:1761`); a cinematic in any other mode goes flat. How many scenes that affects is unmeasured | [presentation](presentation-modes.md) | no: upstream removed its mode list, our gate put one back |
 | 3 | The menu's Comfort page offers Flat only and says the 3D screen is "not available yet", while the renderer shows it by default; the menu also refuses writes for voice, the microphone and the wrist screens, which work | [presentation](presentation-modes.md), [settings](settings-and-defaults.md) | no |
-| 4 | A gun let go is never put away (`[Holsters] le3PutAway = 0`, re-read: "off until a combat fixture checks it"). "The trigger never draws", "the fist punches" and "only holsters draw" have no weapon-away state to act in | [holsters](holsters-throwables-melee.md), [input](gestures-and-input.md) | partly: ME3 keeps a gun out on a mission |
+| 4 | **Fixed 2026-11-18 (lane AU2): `le3PutAway = 1` by default, run on the combat fixture.** Was: a gun let go is never put away (`[Holsters] le3PutAway = 0`, re-read: "off until a combat fixture checks it"). "The trigger never draws", "the fist punches" and "only holsters draw" have no weapon-away state to act in | [holsters](holsters-throwables-melee.md), [input](gestures-and-input.md) | partly: ME3 keeps a gun out on a mission |
 | 5 | Melee is another rule set: the striking hand must have every control released, so the hand holding the gun never strikes and there is no fist; ME1's speed and travel keys are ignored | [input](gestures-and-input.md), [holsters](holsters-throwables-melee.md) | partly: ME3 has light and heavy melee; the owner approved "stroke melee as on ME1 and ME2" |
-| 6 | The view probably goes third person for about 0.5 s on a roll, melee, hit reaction, cover entry or in the Atlas: first person and the floor lock are tied to five camera-mode names | [body](body-and-ik.md) | no |
+| 6 | **Fixed 2026-11-18 (lane AU2, the roll seen on the combat fixture: first person and level, now the floor lock, view level, the snap turn and no shakes through ME3's action cameras; melee, hit and cover-entry cameras not seen yet).** Was: the view probably goes third person for about 0.5 s on a roll, melee, hit reaction, cover entry or in the Atlas: first person and the floor lock are tied to five camera-mode names | [body](body-and-ik.md) | no |
 | 7 | An equipped grenade is thrown by the left-hand push | [powers](powers-and-squad.md) | grenades are powers on ME3; no owner answer covers the gesture |
 | 8 | A standing squad order never ends as "calm" on a mission: `scene.combat` means "a gun is held" | [powers](powers-and-squad.md) | no |
 | 9 | In the Atlas the player may have neither crosshair nor ring | [vehicles](vehicles.md) | no |
@@ -154,8 +154,9 @@ ME2's questions 1 (LT from the support grip) and 4 (one calibration) apply to ME
 
 Parity work only. Each audit's own list has the files and the closing check.
 
-1. Get a combat fixture for ME3 first (research/le3-combat-fixtures.md). Until one exists, six categories cannot be
-   checked at all, and every fix below is unverifiable on ME3.
+1. Get a combat fixture for ME3 first (research/le3-combat-fixtures.md). **Done 2026-11-18 (lane AU2):** `open BioP_SPDish`
+   from Save 31, `tools/le2-halcyon-run/me3-combat.ps1`; it found ME3's lock, squad context and VR cover blind (no
+   `BioPawn.IsHostile` on ME3; fixed: `engine::adapter::kIsHostileFunction`).
 2. Do ME2's step 1 (the sweep of gates written in ME1's terms) for both sequels at once; ME3 adds `SystemSettings.cpp:183`,
    `CameraShake.cpp:288` and the screen's 7/8.
 3. Fix in the shared sequel host what both games lack: the wheel panel, the presentation hold, the world-UI tag list, the

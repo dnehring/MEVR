@@ -4038,6 +4038,11 @@ void CheckLeave() {
     CheckFunction("SFXGame.SFXGameModeBase.LeaveWorld");
     CheckFunction("SFXGame.SFXGRI.InCombat");
     PARAM(ASFXGRI_eventInCombat_Parms, "SFXGame.SFXGRI.InCombat", ReturnValue);
+    // `mevr omni party`: the squad selection's own A, for a map the console opens (lane AU2's combat fixture, BioP_SPDish)
+    CheckClass<USFXGUI_TeamSelect>("SFXGame.SFXGUI_TeamSelect");
+    CheckFunction("SFXGame.SFXGUI_TeamSelect.FinalizeParty");
+    PARAM(USFXGUI_TeamSelect_execFinalizeParty_Parms, "SFXGame.SFXGUI_TeamSelect.FinalizeParty", bAPressed);
+    PARAM(USFXGUI_TeamSelect_execFinalizeParty_Parms, "SFXGame.SFXGUI_TeamSelect.FinalizeParty", nContext);
 }
 
 #endif  // per-game metadata tables

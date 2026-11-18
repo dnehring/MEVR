@@ -18,7 +18,7 @@ internal static class Program
     {
         if (args.Length < 2)
         {
-            Console.Error.WriteLine("conversation-scan <CookedPCConsole> <out.jsonl> [--game LE1|LE2] [--lex-dir <Legendary Explorer nightly>] [--only <text>]");
+            Console.Error.WriteLine("conversation-scan <CookedPCConsole> <out.jsonl> [--game LE1|LE2|LE3 (LE3: --script and --class-dump only)] [--lex-dir <Legendary Explorer nightly>] [--only <text>]");
             Console.Error.WriteLine("conversation-scan <CookedPCConsole> <out.jsonl> --wheels [--only <file text>] [--isb <ISACT folder>]  every line as text (Thespian mode, research/70)");
             Console.Error.WriteLine("conversation-scan <ISACT folder> <out folder> --vo-extract <list.tsv>  lines' recordings as WAV (Thespian mode's bench, research/70)");
             Console.Error.WriteLine("conversation-scan <CookedPCConsole> <out> --state-events <id,id,...> [--game LE2 --only <package>]   direct serialized state-transition elements");
@@ -30,13 +30,18 @@ internal static class Program
         int gameIndex = Array.IndexOf(args, "--game");
         if (gameIndex >= 0)
         {
-            if (gameIndex + 1 >= args.Length || (args[gameIndex + 1] != "LE1" && args[gameIndex + 1] != "LE2")
+            if (gameIndex + 1 >= args.Length || (args[gameIndex + 1] != "LE1" && args[gameIndex + 1] != "LE2" && args[gameIndex + 1] != "LE3")
                 || args.Count(a => a == "--game") != 1)
             {
-                Console.Error.WriteLine("--game requires exactly one LE1 or LE2 value.");
+                Console.Error.WriteLine("--game requires exactly one LE1, LE2 or LE3 value.");
                 return 2;
             }
             GameName = args[gameIndex + 1];
+        }
+        if (GameName == "LE3" && !args.Any(a => a is "--script" or "--class-dump"))
+        {
+            Console.Error.WriteLine("LE3 reads only scripts and classes (--script, --class-dump): its conversations, sequences and state events are not implemented.");
+            return 2;
         }
         if (GameName == "LE2" && args.Any(a => a is "--wheels" or "--vo-extract" or "--references"))
         {
@@ -90,14 +95,14 @@ internal static class Program
         {
             return InspectionTests.Run();
         }
-        if (GameName == "LE2")
+        if (GameName is "LE2" or "LE3")
         {
             string source = Path.GetFullPath(args[0]).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
             string output = Path.GetFullPath(args[1]);
             if (File.Exists(output) || Directory.Exists(output)
                 || output.Equals(source, StringComparison.OrdinalIgnoreCase)
                 || output.StartsWith(source + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
-                throw new IOException("LE2 inspection requires a new output file outside the input package directory.");
+                throw new IOException("LE2 and LE3 inspection require a new output file outside the input package directory.");
         }
         string voExtract = args.SkipWhile(a => a != "--vo-extract").Skip(1).FirstOrDefault();
         if (voExtract != null)
