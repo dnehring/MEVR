@@ -219,8 +219,10 @@ authored seated scenes (such as shuttles) must reject traversal while retaining 
 
 `docs/development-approach.md`: build on Halcyon and own the VRIK; let Claude see the game through
 the test loop (eye snapshots, pose recording and replay); read the engine with Ghidra
-(`tools/ghidra`, GhidraMCP) instead of by hand; parallel agents in worktrees, merged only after all
-three builds and the tests pass.
+(`tools/ghidra`, GhidraMCP) instead of by hand; parallel agents in worktrees (at most two at a time), merged only after
+`build-trilogy` (it contains the LE1-only `build`) and `build-mono` build and the tests pass; inside a game run, iterate by hot
+reload rather than relaunching, and show ME1 unchanged by its compiled code before running a same-pose pair (the owner,
+2026-11-17: the process was much too slow).
 
 ## Before each VR milestone
 
