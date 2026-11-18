@@ -22,7 +22,7 @@ ME2's renderer keeps no settings for them and the host answers ME1's code defaul
 
 1. **Screens the tag list does not know fall to Halcyon's flat panel, and that panel is not ME1's.** ME2's shop,
    research, lockers, loadout, squad selection and both minigames are not in `core/vr/WorldUi`'s list, so they show flat,
-   1.6 m away and 2.2 m wide (ME1: 1.4 m, 2.35 m), with no game pointer on them: the pad only.
+   1.6 m away and 2.2 m wide (ME1: 1.4 m, 2.35 m; **ME1's since lane AU4, b7cd8eec**), with no game pointer on them: the pad only.
 2. **The game's wheels never come to the hand, and the hand reticle's vehicle gate reads ME1's mode number.** `setWheelPanel`
    is LE1-only, so ME2's weapon and power wheels stay on the HUD panel 1.5 m ahead; `HandReticle` tests `gameMode == 1`
    (ME1's Mako), which on ME2 is the power wheel, and the Hammerhead is mode 4.
@@ -61,7 +61,7 @@ The owner's first complaint. Distances from the eyes unless said; "as ME1" means
 | The wrist-tap target | as ME1: Shepard's drawn forearm, 30% from the wrist | `MenusLe2.cpp:358-361` | the same once the mod's HUD pieces reach the host; otherwise the controllers |
 | The bypass d-pad | absent | `plugin/OmniPad` is not in the LE2 host's list (`CMakeLists.txt:1222` is LE1's) | ME2's hacking and bypass are other games (ledger G24); they play on the flat panel with the pad |
 | The game pointer's dot | on a wrist or room screen, as ME1 | `MenusLe2.cpp:377-394` | nothing registers the flat panel or the cinema UI layer as a pointer surface on ME2 (no `game_pointer` call in the sequels' bridge or `SequelCinema.cpp`) |
-| The flat panel (fallback) | fixed in the room where it appears, at head height | 1.6 m and 2.2 m: `me2_xr.cpp:92-93`; placed by `world_panels::Place` (`HalcyonLe2Bridge.cpp:354-373`) | upstream's defaults, not ME1's 1.4 m and 2.35 m; a cutscene's width is also multiplied by `CineScreenZoom`. In the room only since e580550c (2026-11-17) |
+| The flat panel (fallback) | fixed in the room where it appears, at head height | 1.6 m and 2.2 m: `me2_xr.cpp:92-93`; placed by `world_panels::Place` (`HalcyonLe2Bridge.cpp:354-373`) | upstream's defaults, not ME1's 1.4 m and 2.35 m (**fixed in code, lane AU4, b7cd8eec: ME1's numbers as code and shipped ini defaults, upstream's exact pair moved once**); a cutscene's width is also multiplied by `CineScreenZoom`. In the room only since e580550c (2026-11-17) |
 | The galaxy map's window | on the CIC projector's disc, as ME1 | `galaxy_hologram::WindowLayers` (`SequelOverlays.cpp:100-117`) | the mod side is another flow (`game/GalaxyProjectorFlow` with `Le2GalaxyCapture`), not `game/GalaxyMap` |
 | The galaxy map's UI | on the projector's disc, 1.50 m frame | `UiPanelWidthM(1.50f)` (`SequelOverlays.cpp:176`) | no pointer: `galaxyUiPointer` 0 (`HalcyonLe2Bridge.cpp:81-84`); the map keeps its own stick and buttons. Orbit and scan (mode 10) keep LT and RT |
 | The cinema screen's UI layer | 0.5 m in front of the 3D screen, scaled to the same angle | `sequel_cinema::FillUi` (`SequelCinema.cpp:127-148`), `cs::PlaceUi` | placed as ME1; not a pointer surface (`CineScreenPointerPlane` is called only on LE1) |
@@ -126,7 +126,7 @@ map and orbit when the mod's projector flow does not hold them. Reading only: th
 | `plugin/SequelOverlays.cpp` `OverlayLayers`, `plugin/MenusLe2.cpp` `Layers`, `BeforePanel`, `PanelLayers`, `FilterPad`, `OnFrameBegun` | `plugin/HalcyonOverlays.cpp` `OverlayLayers`, `plugin/HalcyonBridge.cpp` (`OnFrameBegun`, `OnMenuKey`, the pad merge) | the same order and rules written twice; the sequels' copy asks capabilities, LE1's reads Halcyon LE1's state at a dozen places. LE1 alone has the wheel panel, the convo UI, the pad and the UI-world figure | move LE1 onto `SequelOverlays` behind capabilities (research/trilogy-seams "One overlay composition" lists what must move first); until then a parity test that both compositions emit the same layer order for the same frame facts |
 | `game/GalaxyProjectorFlow.cpp` (sequels) | `game/GalaxyMap.cpp` (ME1) | two flows for one behaviour; the sequels' has ME3's reservation and bridges, ME1's has the pick and travel-return rules | one flow with three adapters, as the ledger's G25 notes plan |
 | `hud_piece_layers::Interaction` for the label | the label block in `HalcyonOverlays.cpp` | the same core (`core/vr/InteractLabel`), two callers | LE1 calls `Interaction` |
-| `ApplyMevrBaseline`'s menu key and Halcyon ME2's flat panel distance and width | LE1's deploy values and `WorldPanels` | 1.6 m / 2.2 m against 1.4 m / 2.35 m | pin them in the baseline or hand `PlacePanel` ME1's numbers (below) |
+| `ApplyMevrBaseline`'s menu key and Halcyon ME2's flat panel distance and width | LE1's deploy values and `WorldPanels` | 1.6 m / 2.2 m against 1.4 m / 2.35 m | pin them in the baseline or hand `PlacePanel` ME1's numbers (below); **the panel's numbers fixed in code, lane AU4, b7cd8eec** |
 
 # Rediscovered problems
 
@@ -151,7 +151,7 @@ map and orbit when the mod's projector flow does not hold them. Reading only: th
 
 # Not forced
 
-- The flat panel's 1.6 m and 2.2 m.
+- The flat panel's 1.6 m and 2.2 m (fixed in code, b7cd8eec).
 - No game pointer on the flat panel or the cinema UI layer.
 - The game's wheels not at the hand (the HUD panel's draws are already captured; the crop and the quad are host code).
 - `HandReticle`'s raw `gameMode == 1`.

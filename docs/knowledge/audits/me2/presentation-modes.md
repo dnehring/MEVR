@@ -61,7 +61,7 @@ with `[MEVR]` seams, and ME1's hold rules (`core/vr/PresentationHold`) are not i
 | PRS-15 | unknown | upstream | whether ME2's renderer latches a cine by camera name at all was not read | a start-up log with `[VRSTATE]` lines |
 | PRS-16 | same | `MevrSeams::TransitionFadeLayer`, the frame's last layer | none in the rule; a note records the 0.35 s fade back to mode 0 | `me2_xr.cpp:3058-3062`; research/le2-cinema |
 | PRS-17 | missing | none | no first-person conversation | PRS-23 |
-| PRS-18 | same core, other inputs | Halcyon's flat quad, re-placed by `MevrSeams::PlacePanel` through `world_panels::Place` | 1.6 m and 2.2 m (ME1 1.4 m and 2.35 m); a cutscene's width times `CineScreenZoom`; follow and gap rules ME1's | `me2_xr.cpp:92-93`, `:2020-2033`, `:3041-3050`; `HalcyonLe2Bridge.cpp:354-373` |
+| PRS-18 | same core, other inputs | Halcyon's flat quad, re-placed by `MevrSeams::PlacePanel` through `world_panels::Place` | 1.6 m and 2.2 m (ME1 1.4 m and 2.35 m; **ME1's since lane AU4, b7cd8eec**); a cutscene's width times `CineScreenZoom`; follow and gap rules ME1's | `me2_xr.cpp:92-93`, `:2020-2033`, `:3041-3050`; `HalcyonLe2Bridge.cpp:354-373` |
 | PRS-19 | adapter | `moviePlayback` from upstream's decoder and loading detection keeps a movie flat | not the mode byte's 8 | `me2_xr.cpp:1901-1903`, `:1917` |
 | PRS-20 | adapter | `MevrSeams::WorldUiOwnsGui(mode)` keeps the GUI mode out of the flat branch | whether an outgoing cinematic's latch is cleared (ME1's landing party screen case) is not handled explicitly | `MenusLe2.cpp:550-558` |
 | PRS-21 | same | `world_ui::Ownership` bits: active, or a reservation pending in a play mode | none | `MenusLe2.cpp:203-205` |
@@ -104,7 +104,7 @@ with `[MEVR]` seams, and ME1's hold rules (`core/vr/PresentationHold`) are not i
 # Not forced
 
 - No front-end hold and no entry hold: the rules are game-independent code that is simply not linked.
-- The flat panel's 1.6 m and 2.2 m.
+- The flat panel's 1.6 m and 2.2 m (fixed in code, b7cd8eec).
 - No pointer on the flat panel or the UI layer.
 - The meaning of `conversations = 0`.
 - `ConvoFirstPerson` unpinned.

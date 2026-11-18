@@ -734,7 +734,8 @@ These unblock the most: almost every other entry gets smaller once they land.
   completion) and ME3's in the room toward what was used (new `ChoiceGUI`); ME2's bypass and hacking minigames as ME1's
   `SkillGame` on the wrist, their whole stage; ME3's stores as ME1's shop, its weapon bench as ME1's equipment, its
   accomplishments, message boxes, private terminal, mail and elevator (new `Terminal`) in the room; ME1's crops kept to ME1's
-  movies; ME3's flat panel at ME1's 1.4 m and 2.35 m. Not run in the game: each tag's mode and anchor is [verify].
+  movies; ME3's flat panel at ME1's 1.4 m and 2.35 m (ME2's too since lane AU4, b7cd8eec: code and shipped ini, upstream's
+  exact 1.6 m / 2.2 m moved once). Not run in the game: each tag's mode and anchor is [verify].
 - **Left, ME2:** the squad member in the equipment screens (`UiWorldFigure`) and the armour locker (`Personalization`, its
   Shepard the UI world's: Halcyon's panel); the game check of the screens above ([le2-validation-coverage.md](le2-validation-coverage.md)
   "Hacking and bypass": the minigames are other games than ME1's). **ME3:** the squad member (`UiWorldFigure`), the armour
