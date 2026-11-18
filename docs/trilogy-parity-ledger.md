@@ -53,8 +53,8 @@ rows the change touches.
 
 | game | shared | adapted | forked | missing | n/a | present and verified (V) | present, unverified (U) |
 |---|---|---|---|---|---|---|---|
-| LE2 | 14 | 52 | 1 | 21 | 5 | 53 | 14 |
-| LE3 | 14 | 52 | 2 | 18 | 7 | 33 | 35 |
+| LE2 | 15 | 52 | 1 | 20 | 5 | 54 | 14 |
+| LE3 | 15 | 52 | 2 | 17 | 7 | 34 | 35 |
 <!-- /parity:totals -->
 
 LE1 is the reference, so it has no cells. A few LE1 systems are themselves n/a under Halcyon's renderer: the reflection
@@ -164,7 +164,7 @@ The [technique groups](#renderer-techniques-by-group) summary follows the table.
 | R19 | Hand reticle, with the game's crosshair hidden (`plugin/HandReticle`; `game/ScreenReticle`, `hideScreenReticle`) | 1 | **adapted** V: crosshair `_alpha=0` (stretch `20261115-001659-lane-b4-m2`, 30902fc6) | **adapted** U: ring through `SequelWeaponLayers`, on LE1's `ControllerAimActive` since lane U3 (seen on the replayed hands, 2026-11-16). Crosshair hidden since lane CH (2026-11-17): `screenReticleHide` on, the sequels' one 500 ms request (`plugin/ScreenReticleRequest.hpp`), and ScreenReticle's LE3 adapter zeroes `_root._alpha` of the GUI manager's `MovieTag_Reticle` movie (`SFXSFHandler_Reticle`), the scope view left to the game (research/le3-hud-panel.md "The crosshair hidden"). On Save 31 the movie was found, zeroed in mode 0 and given back in mode 9 (session `20261117-080352-885-LE3-ch-crosshair`), but the Normandy has no weapon, so no crosshair was seen go: U | LE3: the combat save's check in research/le3-combat-fixtures.md ("The crosshair hidden"): a drawn gun with no crosshair on the `hud` layer, back with `mevr reticles` after the request ends, a sniper's scope kept. |
 | R20 | Overlay layer composition (`plugin/HalcyonOverlays.cpp` OverlayLayers) | 1 (modules) | **adapted** V: `plugin/SequelOverlays.cpp` OverlayLayers (one composition for both sequels: capabilities + ME2's adapter in `HalcyonLe2Bridge.cpp`) + `SequelWeaponLayers`/`SequelSquadLayers`/`MenusLe2`; stretch `20261116-150654-945-LE2-u2-le2` (Save 4: both eyes, the `hud` layer, every seam group in the log) | **adapted** U: the same `SequelOverlays.cpp` with ME3's adapter in `HalcyonLe3Bridge.cpp`; ran to the title on the native panel (preview `20261116-151138-682-LE3-u2-le3`), no save loaded since the merge | Forks 1: LE1's own composition is the remaining copy. |
 | R21 | Cinema screen, its backdrop and the transition fade (`plugin/CineScreen`, `core/vr/CineScreen`, `CinemaBackdrop`, `TransitionFade`; LE1 seams in xr_session.cpp and PlanStereo's screen branch) | 1 + seams | **adapted** V: `plugin/SequelCinema` through `CineScreenWanted`/`HalfSeparationUU`/`Layers`/`TransitionFadeLayer`; run `20261115-042015-m5-cinema` (research/le2-cinema.md, 1834c240) | **adapted** U: the same seams wired (le3 me2_xr.cpp), Halcyon's own VR cine forced off; no separate-eye cinema acceptance | LE3: snapshots in a mode-7 conversation (the LE2 run's script). |
-| R22 | Front end and presentation hold (`plugin/PresentationHold`; seams `FrontEndHold`, `HoldPlainVr`, `FrontEndOnScreen`, `FrontEndBeforeTitle`) | 3 | **missing**: Halcyon ME2's flat panel (MonoMenus) | **missing** | Check first whether the sequels flip between views at start-up: snapshots from launch to the title. Port only if they do. |
+| R22 | Front end and presentation hold (`plugin/PresentationHold`; seams `FrontEndHold`, `HoldPlainVr`, `FrontEndOnScreen`, `FrontEndBeforeTitle`) | 3 | **shared** V: the same module through the common seams (`MevrSeams::FrontEndHold` ... in me2_xr.cpp, `GetMenuMode` answering its state); the title on ME1's 3D screen, the boot and loads flat, plus `HoldLoadTail` (ME2's loads end in 0.3 s of mode 6, shown before as a black 3D screen); lane FE, research/56 "The sequels" | **shared** V: the same, decided first in `d3d_capture.cpp UpdatePresentationState` (`MENU_MONO enter: front end` for its flat part); ME3's title is its Movie mode over a live scene, the front end's GUI by its adapter; the screen's submit doesn't wait for a captured pair | The owner's headset look (launch, title, main menu, a load). `HoldPlainVr` is called by neither sequel: no gameplay blip seen in their front ends. |
 | R23 | Metric (life-size) stereo (`plugin/MetricStereo`, `core/vr/MetricStereo`, `PlanStereo`, `NoteStereoSubmit`; `sfr2Metric`) | 2 (seam) on a group-1 core | **adapted** V: the same `plugin/MetricStereo` and core in the host, the common seams `PlanStereo`/`NoteStereoSubmit`/`LifeSizeStereo`; the facts in me2_xr.cpp `MevrPlanStereo`, pinned in `ApplyMevrBaseline` (PosScale 2, the lean from the eyes' centre at 1:1). Fake headset, Save 4: upstream -72 px (-0.90 deg per eye divergent), life-size +2 to +6 px (research/30 9.3, lane LS 2026-11-16) | **adapted** V: the same, pinned in le3 `LoadValues`. Renderer preview, Save 31: upstream +1.86 deg per eye crossed (the walls at a metre), life-size +0.66 (0.65 expected at 2.8 m) (research/30 9.3) | The owner's headset check (notes/headset-checklist.md section 8). |
 | R24 | Frame pacing (`plugin/QuestPacing`; seams `EarlyFrameWait`, `FullFrameLoop`, `QuestPacing*`; `pacingRecovery`) | 1 (core) + 2 | **missing**: upstream StereoFramePacing | **missing**: upstream PaceDisplayLocked | Needs an xrWaitFrame seam in each sequel RunFrame (le2 me2_xr.cpp ~1587, le3 ~1395). Test on a streamed Quest. |
 | R25 | Test loop: snapshots, recording, replay (`plugin/TestLoop`, seam `WrapSessionFunctions`) | 1 + seam | **adapted** V: run `20261114-191506-lane-b-testloop` (04fa43a2); waitFrame/beginFrame not wrapped | **adapted** V: every protected run, e.g. `20261115-182253-344` (14 captures) | — |
@@ -208,7 +208,8 @@ The [technique groups](#renderer-techniques-by-group) summary follows the table.
 
 **Group 3 (Halcyon ME1's bugs or our LE1 workarounds): port only if the bug shows.**
 - **The presentation hold.** Halcyon ME1's unreadable mode byte, logos movie and title camera-flight cine latch. The
-  sequels classify views their own way; whether they flip is not determined.
+  sequels showed it too (lane FE, 2026-11-18): ME2's start began in VR for 0.2 s and its loads ended on a black 3D screen, and
+  neither put its title on the 3D screen. Ported: R22.
 - **`LightEnvironmentShadows False`.** Our replay's workaround; on the sequels only if one ever replays an eye (R11,
   fixed 2026-11-16).
 - **The body-bounds padding.** Caused by Halcyon LE1's GPU-only view offset of 0.43 m back.
@@ -630,9 +631,9 @@ defined in the tool's header:
 <!-- parity:summary -->
 | game | renderer | host plugin files | host core files | services served | src/game + src/engine modules by status | common seams called | own seams |
 |---|---|---|---|---|---|---|---|
-| LE1 | halcyon-le1 | 73 | 71 | 58 | run 68, out 4, ungated 26, unreferenced 3, unbuilt 4 | 22 of 43 | 89 |
-| LE2 | halcyon-le2 | 69 | 57 | 52 | run 49, ready 10, out 17, ungated 23, unreferenced 2, unbuilt 4 | 40 of 43 | 4 |
-| LE3 | halcyon-le3 | 72 | 58 | 55 | run 48, ready 10, out 16, ungated 25, unreferenced 3, unbuilt 3 | 41 of 43 | 2 |
+| LE1 | halcyon-le1 | 73 | 71 | 58 | run 68, out 4, ungated 26, unreferenced 3, unbuilt 4 | 22 of 48 | 89 |
+| LE2 | halcyon-le2 | 70 | 58 | 52 | run 49, ready 10, out 17, ungated 23, unreferenced 2, unbuilt 4 | 44 of 48 | 4 |
+| LE3 | halcyon-le3 | 73 | 59 | 55 | run 48, ready 10, out 16, ungated 25, unreferenced 3, unbuilt 3 | 44 of 48 | 2 |
 <!-- /parity:summary -->
 
 ### Host plugin files per game
@@ -692,7 +693,7 @@ defined in the tool's header:
 | `PowerWheel` | yes | yes | yes |
 | `PowerWheelDraw` | yes | yes | yes |
 | `PresentHook` | yes | yes | yes |
-| `PresentationHold` | yes | - | - |
+| `PresentationHold` | yes | yes | yes |
 | `ProcessEventHook` | yes | yes | yes |
 | `QuadSwapchain` | yes | yes | yes |
 | `QuestPacing` | yes | - | - |
@@ -742,7 +743,7 @@ defined in the tool's header:
 ### Host core files per game
 
 <!-- parity:core -->
-In all three hosts (55): `Exe`, `ExeCheck`, `Hook`, `Hotkey`, `Ini`, `Json`, `Log`, `PngFile`, `Version`, `Window`, `d3d11/ShaderReflect`, `gfx/Raster`, `gfx/Swf`, `gfx/SwfFont`, `voice/ScriptMatch`, `vr/AimRay`, `vr/Calibration`, `vr/CineScreen`, `vr/Colour`, `vr/Comfort`, `vr/Controllers`, `vr/ConversationWorld`, `vr/FloorLock`, `vr/FrameProbe`, `vr/GalaxyHologram`, `vr/GalaxyMap`, `vr/GameMenuRequest`, `vr/GamePointer`, `vr/GuiEvents`, `vr/Haptics`, `vr/HostView`, `vr/HudPieces`, `vr/ImageConvert`, `vr/InteractLabel`, `vr/LayerComposite`, `vr/MenuPointer`, `vr/MetricStereo`, `vr/OmniRail`, `vr/OverlayPlacement`, `vr/PoseRecording`, `vr/PowerWheel`, `vr/Recenter`, `vr/ScopeArt`, `vr/ScopeCapture`, `vr/ScreenMatrix`, `vr/Sights`, `vr/SquadMenu`, `vr/SquadPlace`, `vr/TestRequest`, `vr/Thespian`, `vr/TransitionFade`, `vr/Upscale`, `vr/WorldUi`, `xr/Floor`, `xr/Input`.
+In all three hosts (56): `Exe`, `ExeCheck`, `Hook`, `Hotkey`, `Ini`, `Json`, `Log`, `PngFile`, `Version`, `Window`, `d3d11/ShaderReflect`, `gfx/Raster`, `gfx/Swf`, `gfx/SwfFont`, `voice/ScriptMatch`, `vr/AimRay`, `vr/Calibration`, `vr/CineScreen`, `vr/Colour`, `vr/Comfort`, `vr/Controllers`, `vr/ConversationWorld`, `vr/FloorLock`, `vr/FrameProbe`, `vr/GalaxyHologram`, `vr/GalaxyMap`, `vr/GameMenuRequest`, `vr/GamePointer`, `vr/GuiEvents`, `vr/Haptics`, `vr/HostView`, `vr/HudPieces`, `vr/ImageConvert`, `vr/InteractLabel`, `vr/LayerComposite`, `vr/MenuPointer`, `vr/MetricStereo`, `vr/OmniRail`, `vr/OverlayPlacement`, `vr/PoseRecording`, `vr/PowerWheel`, `vr/PresentationHold`, `vr/Recenter`, `vr/ScopeArt`, `vr/ScopeCapture`, `vr/ScreenMatrix`, `vr/Sights`, `vr/SquadMenu`, `vr/SquadPlace`, `vr/TestRequest`, `vr/Thespian`, `vr/TransitionFade`, `vr/Upscale`, `vr/WorldUi`, `xr/Floor`, `xr/Input`.
 
 | src/core (host) | LE1 | LE2 | LE3 |
 |---|---|---|---|
@@ -754,7 +755,6 @@ In all three hosts (55): `Exe`, `ExeCheck`, `Hook`, `Hotkey`, `Ini`, `Json`, `Lo
 | `vr/MakoControls` | yes | - | - |
 | `vr/MakoGunner` | yes | - | - |
 | `vr/OmniPad` | yes | - | - |
-| `vr/PresentationHold` | yes | - | - |
 | `vr/QuestPacing` | yes | - | - |
 | `vr/Spectator` | yes | - | - |
 | `vr/Sprint` | yes | - | - |
@@ -967,7 +967,12 @@ The common vocabulary (`namespace MevrSeams`, `src/halcyon/MevrSeams.h`): `yes` 
 | `CopyIntoImage` | - | yes | yes |
 | `EyeImageSize` | - | yes | yes |
 | `FloorViewTranslation` | yes | yes | yes |
+| `FrontEndBeforeTitle` | - | yes | yes |
+| `FrontEndHold` | - | yes | yes |
+| `FrontEndOnScreen` | - | yes | yes |
 | `GalaxyOwnsPresentation` | - | yes | yes |
+| `HoldLoadTail` | - | yes | - |
+| `HoldPlainVr` | - | - | - |
 | `HudPanelDraw` | - | yes | yes |
 | `KeyDown` | yes | yes | yes |
 | `LifeSizeStereo` | - | yes | yes |

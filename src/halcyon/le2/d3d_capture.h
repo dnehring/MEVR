@@ -39,6 +39,11 @@ void SetMenuMode(bool on) noexcept;    // manual flat toggle
 bool GetMenuModeManual() noexcept;     // the manual flag alone (for the checkbox UI)
 void SetAutoGameMode(int mode) noexcept;   // [AUTOMENU] engine EGameModes byte, published per frame
 int  GetAutoGameMode() noexcept;
+// [MEVR] research/56 (T18): the front end's hold, published per frame from me2_xr (MevrSeams::FrontEndHold): 0 none,
+// 1 its flat panel (the boot before the title, a load from the menus), 2 ME1's 3D cinema screen (the title and its menus,
+// rendered in stereo). GetMenuMode answers it first (after the manual toggle). Any thread reads it.
+void SetMevrFrontEnd(int state) noexcept;
+int  GetMevrFrontEnd() noexcept;
 int  GetMirrorPresentEvery() noexcept;    void SetMirrorPresentEvery(int n) noexcept;   // [MIRRORREC]
 bool GetMonoMenus() noexcept;          // ME1-style bool: mono menus/map (default) vs VR menus
 void SetMonoMenus(bool on) noexcept;

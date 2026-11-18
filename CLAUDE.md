@@ -978,6 +978,10 @@ switching frameworks.
   `DecideCine`/`CineFinishDecision`, the second-eye gate as 6), head look parked, the title in stereo on a fixed screen; the boot
   before the title flat with head look parked (`FrontEnd::BeforeTitle`, `frontEndBoot`), movies flat at once, the load from the
   menus flat from its first frame. Checked on the fake headset. research/56 "The front end on the 3D screen".
+  **ME2 and ME3 since 2026-11-18** (T18, research/56 "The sequels"): the same module through the common seams
+  (`MevrSeams::FrontEndHold` ..., the game's mode mapped by `engine/GameAdapter.hpp`): the title on the 3D screen, the boot and
+  loads flat; ME2's loads end in 0.3 s of mode 6, kept as the load (`HoldLoadTail`; it was a black 3D screen); ME3's title is
+  its Movie mode over a live scene (its adapter in `d3d_capture.cpp UpdatePresentationState`). LE1's compiled code unchanged.
 - LE1 HUD (Halcyon's renderer, Stereo 2): the game's UI draws go to a body-locked HUD panel quad,
   and a hand reticle on the aim ray replaces the crosshair (`src/plugin/HalcyonOverlays.cpp`,
   [research/15](research/15-hud.md)). Scaleform's non-"over" blend modes (multiply...) go there too,

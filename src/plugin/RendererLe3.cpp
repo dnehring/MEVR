@@ -62,6 +62,9 @@ Caps const& Capabilities() noexcept {
         // zeroes the alpha of ME3's reticle movie (SFXSFHandler_Reticle) on the game thread, the scope view left to the game
         // (research/le3-hud-panel.md "The crosshair hidden").
         c.screenReticleHide = true;
+        // ME1's front end (research/56 "The sequels"): d3d_capture.cpp's presentation decision calls MevrSeams::FrontEndHold
+        // first, its title (the Movie mode over a live scene) on the 3D cinema screen.
+        c.frontEnd = true;
         return c;
     }();
     return caps;

@@ -406,10 +406,17 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Waits for:** T03 (FSR), T08. **Who:** nobody yet.
 
 #### T18 The front end and the presentation hold [R22]
-- **State:** LE1 done · LE2 check first · LE3 check first
-- **Lives in:** `plugin/PresentationHold`. A fix for Halcyon ME1's start-up flips; port only if the sequels flip.
-- **Left:** snapshots from launch to the title on each sequel.
-- **Waits for:** nothing. **Who:** nobody yet.
+- **State:** LE1 done · LE2 done · LE3 done (fake headset; the owner's headset check open)
+- **Lives in:** `plugin/PresentationHold` and `core/vr/PresentationHold` for all three games (the sequels through the common seams
+  `FrontEndHold`, `FrontEndOnScreen`, `FrontEndBeforeTitle`, `HoldPlainVr`, `HoldLoadTail`; the game's mode mapped by
+  `engine/GameAdapter.hpp`); the sequels' renderers call it in `me2_xr.cpp` (ME2) and `d3d_capture.cpp UpdatePresentationState`
+  (ME3). research/56 "The sequels".
+- **Done (lane FE, 2026-11-18):** the owner's "the menus are not reliably using our theater viewer" (ME2, 2026-11-17). Before:
+  ME2's title on the flat panel and every load's end 0.27 s on a black 3D screen; ME3's title on Halcyon's flat cine panel. Now
+  the title and its menus on ME1's 3D cinema screen on both, the boot and loads flat, ME2's load tail kept as the load.
+  `[Cinematics] frontEnd` is ME1's key and default.
+- **Left:** the owner's headset look at launch, title, main menu and a load on ME2 and ME3 (notes/headset-checklist.md).
+- **Waits for:** nothing. **Who:** done (lane FE).
 
 #### T19 The body's bounds for the culling camera [R29]
 - **State:** LE1 done · LE2 check first · LE3 check first
