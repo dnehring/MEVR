@@ -298,7 +298,7 @@ blits in the panel's `beforeClear`, as the HUD pieces. The wheel up is the game'
 (`wheel_panel::WheelOf`: ME1's 2 and 3, ME2's 1 and 2, ME3's 3 and 4). LE1's conversation in the world keeps sharing its
 swapchain (`wheel_panel::Swapchain`, `Quad`, `Place`). [verify] on each sequel: the wheel's measured place on their 16:9 HUD
 (`[MEVR-WHEEL] measured: ...`; until then `WheelCrop::DefaultCrop`'s guess for a 1280x720 stage), the quad at the left hand
-(`-wheel.png`), and the power wheel left on the HUD panel by default (`powerWheelAt`, ME1's).
+(`-wheel.png`), and the power wheel left on the HUD panel by default (`powerWheelAt`, ME1's). **ME1 unchanged** (the move, the cinema capability, the gates in each game's terms, placement through the dispatcher; sessions `2026-11-18_09-48-02-au1-before2` on main 0f47a370 and `_09-43-42-au1-after2` on 57fe6dc8): at the paused pose `hostView`, the layers and every PNG identical; with the journal on the wrist the world images identical and the HUD panel differing as much as it does between two moments of one run (its own animation); `mevr-menu-preview`'s 91 pictures identical. A first `before` run once submitted 29.26-degree eye views in the journal snapshot, not seen again in three runs of either build. The open wheel's path itself was not exercised (no console route opens the game's wheel on ME1).
 
 ### The sequels' own screens (lane AU1, 2026-11-18)
 
