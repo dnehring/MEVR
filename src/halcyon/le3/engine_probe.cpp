@@ -2879,9 +2879,44 @@ void ApplyFirstPerson() noexcept
                 s_prevHeld = mevrHeld;
             }
         }
+        // [MEVR] Shepard's body and head hidden while a roll lasts (the owner, 2026-11-18, "Yes for now"; MevrSeams::
+        // HideBodyForAction: the roll's camera, or a blend into or out of it). Gameplay only; the next frames show them again.
+        bool mevrActionHide = false;
+#if defined(MEVR_ASI)
+        if (fpWriteContext && !convoFpOwnsMesh)
+        {
+            char fromCls[64] = {}, toCls[64] = {};
+            if (std::strcmp(modeName, "SFXCameraMode_Interpolate") == 0 && mode >= 0x10000)
+            {
+                std::uintptr_t end = 0;
+                if (g_interpFromOff != 0 && SafeReadPtr(mode + g_interpFromOff, &end) && end >= 0x10000) ClassNameOf(end, fromCls, sizeof(fromCls));
+                if (g_interpToOff != 0 && SafeReadPtr(mode + g_interpToOff, &end) && end >= 0x10000) ClassNameOf(end, toCls, sizeof(toCls));
+            }
+            mevrActionHide = ::MevrSeams::HideBodyForAction(modeName, fromCls, toCls);
+        }
+        // The gun in hand too (a snapshot mid-roll showed it floating 2 m ahead with the body gone): Pawn.Weapon (+0x41C, LE3
+        // SDK; next to kPawnMesh) -> Weapon.Mesh (+0x380), hidden from the owner while the roll lasts and shown again after.
+        {
+            static std::uintptr_t s_hiddenGun = 0;
+            if (mevrActionHide && s_hiddenGun == 0 && pawn >= 0x10000)
+            {
+                std::uintptr_t weapon = 0, gun = 0;
+                if (SafeReadPtr(pawn + 0x41C, &weapon) && weapon >= 0x10000 && SafeReadPtr(weapon + 0x380, &gun) && gun >= 0x10000)
+                {
+                    FpSetOwnerNoSee(gun, true);
+                    s_hiddenGun = gun;
+                }
+            }
+            else if (!mevrActionHide && s_hiddenGun != 0)
+            {
+                FpSetOwnerNoSee(s_hiddenGun, false);
+                s_hiddenGun = 0;
+            }
+        }
+#endif
         const bool wantedHead = convoFpOwnsMesh ? ME2VR::ConvoFp::GetHideHead()
-                                                : (fpWriteContext ? hideHead : (mevrHeld == 2 ? true : mevrHeld == 1 ? s_fpHead : false));
-        const bool wantedBody = convoFpOwnsMesh ? false : (fpWriteContext ? hideBody : (mevrHeld == 2 ? true : mevrHeld == 1 ? s_fpBody : false));
+                                                : (fpWriteContext ? (hideHead || mevrActionHide) : (mevrHeld == 2 ? true : mevrHeld == 1 ? s_fpHead : false));
+        const bool wantedBody = convoFpOwnsMesh ? false : (fpWriteContext ? (hideBody || mevrActionHide) : (mevrHeld == 2 ? true : mevrHeld == 1 ? s_fpBody : false));
         if (due || pawn != s_hidPawn || wantedHead != s_prevHead || wantedBody != s_prevBody)
         {
             FpHideMeshes(pawn, wantedHead, wantedBody);

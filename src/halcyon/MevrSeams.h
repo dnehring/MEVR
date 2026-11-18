@@ -414,6 +414,12 @@ bool GalaxyOwnsPresentation(int mode) noexcept;
 // for the screen, e.g. both hands on the War Terminal, which put his arm and shoulder in front of the held eyes: the renderer
 // hides his body as well as his head). Not called by LE1 nor LE2 yet.
 int WorldViewHeld(int mode) noexcept;
+// Present thread, each frame the renderer decides its first-person hides in gameplay (ME3's engine_probe.cpp): true while
+// Shepard's body and head are hidden from the eyes for one of the game's own actions, whatever the first-person state says:
+// a roll (the owner, 2026-11-18, "Yes for now"; vr::HidesBodyForAction: SFXCameraMode_Roll, or a blend into or out of it).
+// `fromClass`/`toClass`: the blend's endpoints when `modeClass` is SFXCameraMode_Interpolate (else empty). [Hands]
+// rollHidesBody = 0 turns it off. Not called by LE1 nor LE2 (no roll camera).
+bool HideBodyForAction(char const* modeClass, char const* fromClass, char const* toClass) noexcept;
 // Present thread, once a frame before the eye images are filled: true while an opening of ours is reserved and its screen not
 // yet shown on our panel (plugin/WorldUi's clean-eye guard, research/57): the renderer then keeps the last clean eyes (no copy
 // into the eye images, the last released images submitted with their own tags), so neither the GUI mode's own camera nor its

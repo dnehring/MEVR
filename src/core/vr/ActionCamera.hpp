@@ -24,4 +24,19 @@ inline bool IsActionCamera(std::string_view className) {
     return std::find(std::begin(kActionCameras), std::end(kActionCameras), className) != std::end(kActionCameras);
 }
 
+// Shepard's body hidden from the eyes during a roll (the owner, 2026-11-18: "Yes for now", docs/trilogy-plan.md "Answered
+// 2026-11-18, later"): the roll's camera (SFXCameraMode_Roll, about 2 s), or the game's blend into or out of it (Interpolate,
+// whose From or To is the roll's). The renderer's first-person hides take it (MevrSeams::HideBodyForAction, ME3's
+// engine_probe.cpp). `fromClass`/`toClass`: the blend's endpoints when `modeClass` is the Interpolate mode (else empty).
+// Not in ME1's build (no roll camera; its objects stay as they were: the literals of an unused inline function still land).
+#if !defined(MEVR_GAME_LE1)
+inline bool HidesBodyForAction(std::string_view modeClass, std::string_view fromClass, std::string_view toClass) {
+    constexpr std::string_view kRoll = "SFXCameraMode_Roll";
+    if (modeClass == kRoll) {
+        return true;
+    }
+    return modeClass == "SFXCameraMode_Interpolate" && (fromClass == kRoll || toClass == kRoll);
+}
+#endif
+
 }  // namespace mevr::vr
