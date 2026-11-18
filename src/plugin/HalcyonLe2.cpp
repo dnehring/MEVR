@@ -25,6 +25,12 @@
 #include <filesystem>
 #include <string>
 
+// [Hands] constantEye (plugin/HalcyonSequelBridge.cpp; its header brings the OpenXR SDK's names, which Halcyon's
+// mevr_bridge.h defines too).
+namespace mevr::host::sequel_bridge {
+void RefreshConstantEye() noexcept;
+}
+
 namespace mevr::host::halcyon_le2 {
 namespace {
 
@@ -95,6 +101,7 @@ void AfterTick(float deltaSeconds) {
     if (ULONGLONG const now = GetTickCount64(); now >= nextReadMs) {
         nextReadMs = now + 1000;
         floor_lock::RefreshSettings();
+        sequel_bridge::RefreshConstantEye();  // [Hands] constantEye and crouchDrop, as LE1's RefreshCameraSettings
     }
 }
 

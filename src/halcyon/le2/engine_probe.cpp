@@ -391,6 +391,8 @@ bool LookupVanilla(const char* cls, float* x, float* y, float* z) noexcept
 constexpr std::uintptr_t kModeCollision = 0x214;          // USFXCameraMode flag dword
 constexpr std::uint32_t  kModeCollisionEnabled = 0x02u;   // bCollisionEnabled (gates DoCameraCollision)
 
+constexpr std::uintptr_t kModeHookOffset = 0x1A8;        // [MEVR] USFXCameraMode.HookOffset (FVector; LE2 SDK, ReflectCheck)
+
 bool FpApplyOffset(std::uintptr_t mode, bool on, float x, float y, float z, const char* cls) noexcept
 {
     if (mode < 0x10000) return false;
@@ -400,6 +402,17 @@ bool FpApplyOffset(std::uintptr_t mode, bool on, float x, float y, float z, cons
         volatile std::uint32_t* coll = reinterpret_cast<volatile std::uint32_t*>(mode + kModeCollision);
         if (on)
         {
+#if defined(MEVR_ASI)
+            // [MEVR] The constant eye (research/38 B, MevrSeams::ConstantFpEye): a standing mode's Offset is its own HookOffset
+            // minus the explore eye, so a draw (Combat hooks (-30, 0, 100) against Explore's (0, 0, 120)) leaves the eye in place.
+            {
+                const volatile float* hookAt = reinterpret_cast<const volatile float*>(mode + kModeHookOffset);
+                const float hook[3] = {hookAt[0], hookAt[1], hookAt[2]};
+                const float explore[3] = {g_fpStates[0].x, g_fpStates[0].y, g_fpStates[0].z};
+                float want[3] = {x, y, z};
+                if (::MevrSeams::ConstantFpEye(cls, hook, explore, want)) { x = want[0]; y = want[1]; z = want[2]; }
+            }
+#endif
             CaptureVanilla(cls, off[0], off[1], off[2]);   // first sight = real vanilla (before the mod writes)
             MarkVanillaWritten(cls);                       // [COVSTOMP] restore is armed ONLY by a real write
             off[0] = x; off[1] = y; off[2] = z;            // reassert each frame (picks up live menu tuning)

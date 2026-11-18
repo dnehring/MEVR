@@ -7,11 +7,16 @@
 # drawn, Cerberus troopers firing at him within a few metres. No save is written or edited; the map's own autosave lands in
 # the career's folder, which the stretch's restore puts back. Results in the stretch's session folder, me3-combat-<time>\.
 #
-#   tools\le2-halcyon-run\me3-combat.ps1 -Holder <you> [-Map BioP_SPDish] [-NoGod]
+#   tools\le2-halcyon-run\me3-combat.ps1 -Holder <you> [-Map BioP_SPDish] [-NoGod] [-Loadout '2 1 all']
+#
+# -Loadout: before the loadout's B, `mevr loadout <type> [steps] [all]` picks a category's next weapon with the screen's own
+# script (type 2: sniper rifles; `all` lists every weapon of the type, not only the career's), so Shepard carries it too: the
+# sniper rifle for the scope capture's check (lane AU5).
 param(
     [Parameter(Mandatory)][string]$Holder,
     [string]$Map = 'BioP_SPDish',
-    [switch]$NoGod
+    [switch]$NoGod,
+    [string]$Loadout = ''
 )
 $ErrorActionPreference = 'Stop'
 $W = (Resolve-Path "$PSScriptRoot\..\..").Path
@@ -51,6 +56,10 @@ Write-Output ("{0} open: {1}, game mode {2}" -f $Map, $s.pawn, $s.mode)
 Start-Sleep -Seconds 3
 Write-Output (Ask 'mevr omni party')
 Start-Sleep -Seconds 6
+if ($Loadout) {
+    Write-Output (Ask "mevr loadout $Loadout")
+    Start-Sleep -Seconds 2
+}
 Write-Output (Ask 'mevr omni close')  # the weapon loadout: B keeps the loadout the map gave
 $s = WaitFor { param($s) $s.mode -eq 0 } 180 'gameplay after the intro (game mode 0)'
 if (-not $NoGod) { Ask 'god' | Out-Null }

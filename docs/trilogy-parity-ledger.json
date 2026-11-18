@@ -289,6 +289,7 @@
     "vr/Calibration",
     "vr/CineScreen",
     "vr/Colour",
+    "vr/CombatStance",
     "vr/Comfort",
     "vr/Controllers",
     "vr/ConversationWorld",
@@ -546,6 +547,7 @@
     "vr/Calibration",
     "vr/CineScreen",
     "vr/Colour",
+    "vr/CombatStance",
     "vr/Comfort",
     "vr/Controllers",
     "vr/ConversationWorld",
@@ -1449,7 +1451,7 @@
     },
     "LE3": {
      "legacy": false,
-     "me1OnlyHandles": false,
+     "me1OnlyHandles": true,
      "part": false,
      "status": "run"
     }
@@ -1588,7 +1590,7 @@
     "LE3": {
      "legacy": false,
      "me1OnlyHandles": false,
-     "part": true,
+     "part": false,
      "status": "run"
     }
    },
@@ -3276,6 +3278,7 @@
     "CineScreenFullRate",
     "CineScreenLayers",
     "CineScreenWanted",
+    "ConstantFpEye",
     "CopyIntoImage",
     "EyeImageSize",
     "FloorViewTranslation",
@@ -3532,6 +3535,7 @@
     "CineScreenFullRate",
     "CineScreenLayers",
     "CineScreenWanted",
+    "ConstantFpEye",
     "CopyIntoImage",
     "EyeImageSize",
     "FloorViewTranslation",
@@ -3583,6 +3587,7 @@
     "CineScreenFullRate",
     "CineScreenLayers",
     "CineScreenWanted",
+    "ConstantFpEye",
     "CopyIntoImage",
     "EyeImageSize",
     "FloorViewTranslation",
@@ -3650,6 +3655,7 @@
     "CineScreenFullRate",
     "CineScreenLayers",
     "CineScreenWanted",
+    "ConstantFpEye",
     "CopyIntoImage",
     "EyeImageSize",
     "FloorViewTranslation",
@@ -3701,6 +3707,7 @@
     "CineScreenFullRate",
     "CineScreenLayers",
     "CineScreenWanted",
+    "ConstantFpEye",
     "CopyIntoImage",
     "EyeImageSize",
     "FloorViewTranslation",

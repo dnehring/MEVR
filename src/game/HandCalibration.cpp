@@ -2675,11 +2675,23 @@ std::string Describe(vr::scope_capture::Settings const& s) {
     if (!s.enabled) {
         return "off ([Sights] scopeCapture = 0): the scope magnifies the other eye's picture";
     }
+#if defined(MEVR_GAME_LE1)
     return std::format("on: {} px {} render target, {:.0f} renders a second at most, post process {}, field margin {:.0f}%, near plane "
                        "{:.0f} units past the muzzle, far plane {}, kept on {:.1f} s after the eye leaves",
         s.size, s.floatTarget ? "float (FloatRGB)" : "8-bit (A8R8G8B8)", s.rate,
         s.postProcess ? "on (known issue: a black speckle in dark areas, research/39 section 12)" : "off", s.margin * 100.0f,
         s.nearUnits, s.farUnits > 0.0f ? std::format("{:.0f} units", s.farUnits) : std::string("the engine's (0)"), s.holdSeconds);
+#else
+    // The sequels' captures take no post-process chain, whatever scopeCapturePost says (engine::adapter::kCapturePostProcess,
+    // game/ScopeCapture): the line said "on" there (lane AU5).
+    char const* const postProcess = !s.postProcess ? "off"
+        : engine::adapter::kCapturePostProcess     ? "on"
+                                                   : "off on this game (its captures take no post-process chain)";
+    return std::format("on: {} px {} render target, {:.0f} renders a second at most, post process {}, field margin {:.0f}%, near plane "
+                       "{:.0f} units past the muzzle, far plane {}, kept on {:.1f} s after the eye leaves",
+        s.size, s.floatTarget ? "float (FloatRGB)" : "8-bit (A8R8G8B8)", s.rate, postProcess, s.margin * 100.0f,
+        s.nearUnits, s.farUnits > 0.0f ? std::format("{:.0f} units", s.farUnits) : std::string("the engine's (0)"), s.holdSeconds);
+#endif
 }
 
 vr::scope_capture::Settings gScopeCapture;

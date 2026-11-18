@@ -159,6 +159,7 @@ constexpr std::uintptr_t kPcGameModeManager  = 0xC38;   // -> SFXGameModeManager
 constexpr std::uintptr_t kGmmCurrentMode     = 0x0A8;   // USFXGameModeManager.CurrentMode (byte)
 constexpr std::uintptr_t kCamCurrentMode = 0x558;   // ASFXCameraNativeBase.CurrentCameraMode
 constexpr std::uintptr_t kModeOffset     = 0xB4;    // USFXCameraMode.Offset (FVector)
+constexpr std::uintptr_t kModeHookOffset = 0xC0;    // [MEVR] USFXCameraMode.HookOffset (FVector; LE3 SDK, ReflectCheck)
 constexpr std::uintptr_t kModeCollision  = 0x11C;   // USFXCameraMode flag dword
 constexpr std::uintptr_t kPcIgnoreMove = 0x781;   // APlayerController.bIgnoreMoveInput (LE3 SDK)
 constexpr std::uintptr_t kPcIgnoreLook = 0x782;   // APlayerController.bIgnoreLookInput (LE3 SDK)
@@ -237,6 +238,19 @@ bool FpApplyOffset(std::uintptr_t mode, bool on, float x, float y, float z, cons
     {
         volatile float* off = reinterpret_cast<volatile float*>(mode + kModeOffset);
         volatile std::uint32_t* coll = reinterpret_cast<volatile std::uint32_t*>(mode + kModeCollision);
+#if defined(MEVR_ASI)
+        // [MEVR] The constant eye (research/38 B, MevrSeams::ConstantFpEye): a standing mode's Offset is its own HookOffset minus
+        // the explore eye. ME3's Combat hooks (-30, 20, 90) against Explore's (0, 0, 120): the one Offset of this table put the
+        // eye 0.7 m behind Shepard's head as soon as a weapon was drawn (lane AU5, 2026-11-18).
+        if (on)
+        {
+            const volatile float* hookAt = reinterpret_cast<const volatile float*>(mode + kModeHookOffset);
+            const float hook[3] = {hookAt[0], hookAt[1], hookAt[2]};
+            const float explore[3] = {g_fpStates[0].x, g_fpStates[0].y, g_fpStates[0].z};
+            float want[3] = {x, y, z};
+            if (::MevrSeams::ConstantFpEye(cls, hook, explore, want)) { x = want[0]; y = want[1]; z = want[2]; }
+        }
+#endif
         if (on) { CaptureVanilla(cls, off[0], off[1], off[2]); off[0] = x; off[1] = y; off[2] = z; MarkLastWrite(cls, x, y, z); *coll &= ~kModeCollisionEnabled; }
         else { float vx = 0, vy = 0, vz = 0; if (LookupVanilla(cls, &vx, &vy, &vz)) { off[0] = vx; off[1] = vy; off[2] = vz; *coll |= kModeCollisionEnabled; } }
         return true;

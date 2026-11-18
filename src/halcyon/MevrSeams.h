@@ -197,6 +197,18 @@ float FloorViewTranslation(bool replay, float rawCameraZ, float rightZ, float up
 // when tracking starts (never corrected). OnRecentered confirms it took.
 void RecenterOrientation(float const head[4], bool automatic, float orientation[4]) noexcept;
 
+// The constant eye (research/38 B, ME1's [Hands] constantEye and crouchDrop): Present thread, where the renderer writes a
+// standing on-foot camera mode's first-person Offset (LE2/LE3 engine_probe.cpp FpApplyOffset). The game's camera is the hook
+// bone + HookOffset - Offset (turned by the view), so one Offset for every mode puts the eye wherever each mode's HookOffset
+// does: ME3's Combat mode hooks (-30, 20, 90) against Explore's (0, 0, 120), and its renderer's one Offset put the eye 0.7 m
+// behind Shepard's head as soon as a weapon was drawn; ME2's moved it 7 cm. The rule (core/vr/CombatStance): the explore eye
+// is the Explore mode's HookOffset minus the renderer's explore Offset, and a standing mode's Offset is its own HookOffset
+// minus that eye. `modeClass` the mode's class name ("SFXCameraMode_Combat"), `hookOffset` its HookOffset (read by the
+// renderer next to its Offset), `exploreOffset` the renderer's Offset for its explore state; `offset` in: the renderer's
+// Offset for this mode, out: the constant eye's. True when it was replaced (false: off, a crouch mode, a mode not standing on
+// foot, an implausible hook). Not called by LE1: its head_aim.cpp asks MevrBridge::ConstantFpEye (the same rule, its reads).
+bool ConstantFpEye(char const* modeClass, float const hookOffset[3], float const exploreOffset[3], float offset[3]) noexcept;
+
 // ---- Life-size (metric) stereo (plugin/MetricStereo over core/vr/MetricStereo; research/30, "The sequels" section 9) ----
 // Halcyon's stereo renders both passes from the head centre +- a half eye along the body's right, with one symmetric FOV,
 // and shifts each finished image by a convergence at submit. Life-size: each pass renders from its eye's real place (the

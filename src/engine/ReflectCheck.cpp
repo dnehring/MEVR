@@ -3151,6 +3151,27 @@ void CheckSequelWalk() {
     CheckFunction("SFXGame.BioPawn.GetWalkingSpeedMode");
     CheckParam("SFXGame.BioPawn.GetWalkingSpeedMode", "ReturnValue", SDK_AT(0, 1));
     CheckFunction("Engine.Pawn.CreateInventory");  // `mevr give` (game/ConsoleRequest), a test fixture's weapon
+    // `mevr loadout` (game/ConsoleRequest): the Weapon Loadout screen's own pick, a test fixture's sniper rifle.
+    CheckClass<USFXGUI_WeaponSelection>("SFXGame.SFXGUI_WeaponSelection");
+    CheckFunction("SFXGame.SFXGUI_WeaponSelection.SwitchToWeaponSelection");
+    CheckFunction("SFXGame.SFXGUI_WeaponSelection.SelectNextWeapon");
+    CheckFunction("SFXGame.SFXGUI_WeaponSelection.SwitchToWeaponLoadout");
+    CheckField("SFXGame.SFXGUI_WeaponSelection", "ShowAllWeapons", SDK_BOOL(USFXGUI_WeaponSelection, ShowAllWeapons));
+    CheckField("SFXGame.SFXGUI_WeaponSelection", "CurrentLoadoutWeapons", SDK_FIELD(USFXGUI_WeaponSelection, CurrentLoadoutWeapons));
+    CheckField("SFXGame.SFXGUI_WeaponSelection", "CurrentInventoryWeapons", SDK_FIELD(USFXGUI_WeaponSelection, CurrentInventoryWeapons));
+    // `mevr loco` (game/ConsoleRequest): ME3's start and stop steps on the player's BioPawn (a test's reads and writes).
+    CheckField("SFXGame.BioPawn", "m_bEnableStartRootMotion", SDK_BOOL(ABioPawn, m_bEnableStartRootMotion));
+    CheckField("SFXGame.BioPawn", "m_bEnableStopRootMotion", SDK_BOOL(ABioPawn, m_bEnableStopRootMotion));
+    CheckField("SFXGame.BioPawn", "bCanPlayMoveStopAnims", SDK_BOOL(ABioPawn, bCanPlayMoveStopAnims));
+    CheckField("SFXGame.BioPawn", "m_fAnimStartTime", SDK_FIELD(ABioPawn, m_fAnimStartTime));
+    CheckField("SFXGame.BioPawn", "m_fMoveStartElapsedTime", SDK_FIELD(ABioPawn, m_fMoveStartElapsedTime));
+    CheckField("SFXGame.BioPawn", "m_fMoveStopElapsedTime", SDK_FIELD(ABioPawn, m_fMoveStopElapsedTime));
+    CheckField("SFXGame.BioPawn", "m_fAnimMoveSpeedSnapshot", SDK_FIELD(ABioPawn, m_fAnimMoveSpeedSnapshot));
+    CheckField("SFXGame.BioPawn", "m_fAnimMoveStartSpeedSnapshot", SDK_FIELD(ABioPawn, m_fAnimMoveStartSpeedSnapshot));
+    CheckField("SFXGame.BioPawn", "m_fWalkStopDistance", SDK_FIELD(ABioPawn, m_fWalkStopDistance));
+    CheckField("SFXGame.BioPawn", "m_fRunStopDistance", SDK_FIELD(ABioPawn, m_fRunStopDistance));
+    CheckField("SFXGame.BioPawn", "m_fDesiredMaxSpeed", SDK_FIELD(ABioPawn, m_fDesiredMaxSpeed));
+    CheckField("SFXGame.BioPawn", "fMoveMag", SDK_FIELD(ABioPawn, fMoveMag));
 }
 
 // Shared SceneCaptureRig, checked against LE3 metadata before native use.
@@ -3700,6 +3721,11 @@ void CheckFields() {
     CheckClass<USFXCameraMode_Interpolate>("SFXGame.SFXCameraMode_Interpolate");
     CheckField("SFXGame.SFXCameraMode", "bCollisionEnabled", SDK_BOOL(USFXCameraMode, bCollisionEnabled));
     CheckField("SFXGame.SFXCameraMode", "Input", SDK_FIELD(USFXCameraMode, Input));
+    // game/CameraProbe's mode line on ME3 too (lane AU5: the eye on a draw, the constant eye's facts).
+    CheckField("SFXGame.SFXCameraMode", "m_pov", SDK_FIELD(USFXCameraMode, m_pov));
+    CheckField("SFXGame.SFXCameraMode", "Offset", SDK_FIELD(USFXCameraMode, Offset));
+    CheckField("SFXGame.SFXCameraMode", "HookOffset", SDK_FIELD(USFXCameraMode, HookOffset));
+    CheckField("SFXGame.SFXCameraMode", "HookName", SDK_FIELD(USFXCameraMode, HookName));
     CheckField("SFXGame.SFXCameraInput", "MaxCameraRotationSpeed", SDK_FIELD(USFXCameraInput, MaxCameraRotationSpeed));
     CheckField("SFXGame.SFXCameraInput", "CameraSensitivity", SDK_FIELD(USFXCameraInput, CameraSensitivity));
     CheckField("SFXGame.SFXCameraInput", "TimeToReachFullSpeed", SDK_FIELD(USFXCameraInput, TimeToReachFullSpeed));

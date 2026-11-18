@@ -571,6 +571,35 @@ walk and run cycles by speed), and whether a real stick's full push reads past 0
 **The conversation walk** (`worldMoveSpeedMS`, research/69) was already linear (the mod's own step: the speed follows the push
 past a 0.15 dead zone, no ramp); its speed is 1.4 m/s again (the owner: "we can increase the speed for the dialogue").
 
+### The sequels' constant eye (2026-11-18, lane AU5)
+
+ME1's rule B on ME2 and ME3 through one seam, `MevrSeams::ConstantFpEye` (src/halcyon/MevrSeams.h), implemented once for both
+sequels in `plugin/HalcyonSequelBridge.cpp` over `core/vr/CombatStance` (`ExploreEye`, `ConstantEyeOffset`, `ConstantEyeApplies`,
+`IsExploreMode`) and asked by each renderer's `FpApplyOffset` (src/halcyon/le2 and le3 `engine_probe.cpp`, `[MEVR]`) before it
+writes a standing state's Offset: the renderer reads the mode's `HookOffset` next to its `Offset` (ME2 +0x1A8 / +0x19C, ME3
++0xC0 / +0xB4, both checked by engine/ReflectCheck) and passes its own explore state's Offset. `[Hands] constantEye` and
+`crouchDrop` are read once a second on the game thread (each sequel's `AfterTick`). LE1 keeps its own `MevrBridge::ConstantFpEye`
+(the same rule; moving it onto the shared seam would change ME1's compiled code).
+
+What the game showed (ME3, fake headset, `camera: mode` lines from game/CameraProbe, now on ME3 too):
+1. The game's camera is the hook bone + HookOffset - Offset on ME3 as on ME1: the formula landed on the game camera to 0.0 units.
+2. ME3's Explore hooks (0, 0, 120) (the Normandy, Save 31), its Combat mode (-30, 20, 90), ME1's numbers. Halcyon ME3 gives every
+   standing state the Offset (35, 0, 65), so with a weapon drawn the camera stood 65 units behind and 20 right of the Camera bone
+   (the pawn's place), 0.7 m behind the explore eye: the eye snapshot showed Shepard's back, his head hidden, and arm IK fell to
+   its third-person anchor (`view 77 units from Shepard's animated head bone`). Every ME3 combat view since the renderer came in.
+3. After: `constant eye: SFXCameraMode_Combat: HookOffset (-30.0, 20.0, 90.0) -> Offset (5.0, 20.0, 35.0): the eye (-35.0, 0.0,
+   55.0) from the hook bone`; the camera 35 behind and 55 above the hook bone in Combat as in Explore; the snapshot first person
+   with the Black Widow ahead. Explore's Offset unchanged (35, 0, 65).
+4. Left (not this rule): ME3's explore eye itself sits 34-38 units behind Shepard's head bone on the Normandy (arm IK's
+   `first person camera vs Shepard's head bone: forward -37`) and 53 units in the combat pose, past arm IK's 45-unit first-person
+   entry, so in combat the hands stay at the third-person anchor (`mod.armIk.hands.firstPerson` false, the right hand 0.47 m off
+   its controller) and ADS is never reached. ME2's explore eye is 35 ahead of the hook (its Offset x -35), ME3's 35 behind (+35):
+   the same number with the other sign. Options for the owner: put ME3's explore eye at Shepard's eyes as ME1's and ME2's are
+   (Offset (-35, 0, 65), a renderer default: needs a headset look), or let arm IK enter first person further from the head on ME3.
+5. ME2: built, not run yet. Its eye moved 7 cm on a draw (AU3: from 35 ahead, 0, 85 up of the pawn to 30 ahead, 5 left, 75 up),
+   which the same code answers once it has seen the Explore mode's hook ((0, 0, 120) by default, ME2's measured eye with its
+   explore Offset).
+
 ## D. The draw and holster delay
 
 ### What plays and what gates it

@@ -1085,6 +1085,7 @@ function(mevr_add_plugin game)
             # The floor lock (plugin/FloorLock, LE1's): the view's centre at the player's eye height over the pawn's floor.
             src/plugin/FloorLock.cpp src/plugin/FloorLock.hpp src/core/vr/FloorLock.cpp src/core/vr/FloorLock.hpp
             src/core/vr/Calibration.cpp src/core/vr/Calibration.hpp
+            src/core/vr/CombatStance.cpp src/core/vr/CombatStance.hpp   # the constant eye (MevrSeams::ConstantFpEye, research/38 B)
             # The game's float swap chain drawn into the eye images (plugin/EyeCopy over core/d3d11/Blit), and ME1's colour
             # correction in that copy (plugin/Colour, core/vr/Colour; research/le2-picture.md).
             src/plugin/EyeCopy.cpp src/plugin/EyeCopy.hpp src/core/d3d11/Blit.cpp src/core/d3d11/Blit.hpp
@@ -1170,6 +1171,7 @@ function(mevr_add_plugin game)
             src/plugin/Upscale.cpp src/plugin/Upscale.hpp src/core/vr/Upscale.cpp src/core/vr/Upscale.hpp ${MEVR_FSR_EMBEDDED}
             src/game/GamepadMapping.cpp src/core/vr/Controllers.cpp src/core/xr/Input.cpp src/core/xr/Floor.cpp
             src/core/vr/Haptics.cpp src/core/vr/FloorLock.cpp src/core/vr/Calibration.cpp src/core/vr/Comfort.cpp
+            src/core/vr/CombatStance.cpp   # the constant eye (MevrSeams::ConstantFpEye, research/38 B)
             src/core/vr/AimRay.cpp src/core/vr/HostView.cpp src/core/vr/ImageConvert.cpp src/core/vr/LayerComposite.cpp
             src/core/vr/PoseRecording.cpp src/core/vr/Colour.cpp src/core/d3d11/Blit.cpp src/core/PngFile.cpp
             src/core/Hotkey.cpp src/core/vr/TestRequest.cpp

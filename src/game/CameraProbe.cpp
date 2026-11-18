@@ -134,7 +134,7 @@ void TraceTick() {
 
 #endif
 
-#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 
 // Our reflection layer (research/34): the fields research/18 read from the code (CalculateOffsetHook
 // 0xCAEF50, GetCameraLocation 0xCB2240): PlayerController.PlayerCamera +0x6B0,
@@ -277,6 +277,7 @@ void Tick() {
     TickLe1();
 #elif defined(MEVR_GAME_LE3)
     TraceTick();
+    TickLe1();  // the mode's hook and offsets on ME3 too (lane AU5: the eye on a draw)
 #endif
 }
 

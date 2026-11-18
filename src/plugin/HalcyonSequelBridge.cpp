@@ -21,10 +21,12 @@
 #include "core/DevChannels.hpp"
 #include "core/Ini.hpp"
 #include "core/Log.hpp"
+#include "core/vr/CombatStance.hpp"
 #include "core/vr/Controllers.hpp"
 #include "core/vr/HostView.hpp"
 #include "core/vr/InteractLabel.hpp"
 #include "engine/GameAdapter.hpp"
+#include "game/GamepadMapping.hpp"
 #include "plugin/Colour.hpp"
 #include "plugin/CrashBreadcrumbs.hpp"
 #include "plugin/EyeCopy.hpp"
@@ -96,6 +98,54 @@ Clock::time_point gRecenteredAt{};
 std::uint64_t gRecenterTicks = 0;     // crash::gGameTicks at the recenter
 bool gRecenterHadSample = false;
 
+// The constant eye (MevrSeams::ConstantFpEye; LE1's in plugin/HalcyonBridge.cpp): the settings, read on the game thread
+// (RefreshConstantEye), and the explore mode's HookOffset, remembered on the Present thread. (0, 0, 120) until an Explore
+// mode is seen: ME1's package default, ME3's Explore (read 2026-11-18 on the Normandy, lane AU5) and ME2's (its measured eye
+// with the renderer's explore Offset).
+std::atomic<bool> gConstantEyeOn{true};
+std::atomic<bool> gCrouchDropOn{false};
+std::mutex gConstantEyeMutex;  // the renderer's writers (the active mode, the blend's endpoints, ME2's prewarm)
+mevr::vr::combat_stance::Vec gExploreHook{0.0, 0.0, 120.0};
+// What was last logged per mode class (the renderer writes every frame, ME2's prewarm every mode): a line only on a change.
+struct ConstantEyeLogged {
+    char cls[64] = {};
+    float hook[3] = {};
+    float offset[3] = {};
+    bool crouch = false;
+};
+ConstantEyeLogged gConstantEyeLogged[24];
+int gConstantEyeLoggedCount = 0;
+
+// True when this class's values differ from what was last logged for it (and remembers them).
+bool ConstantEyeChanged(char const* cls, float const hook[3], float const offset[3], bool crouch) noexcept {
+    ConstantEyeLogged* entry = nullptr;
+    for (int i = 0; i < gConstantEyeLoggedCount; ++i) {
+        if (std::strcmp(gConstantEyeLogged[i].cls, cls) == 0) {
+            entry = &gConstantEyeLogged[i];
+            break;
+        }
+    }
+    if (entry == nullptr) {
+        if (gConstantEyeLoggedCount >= static_cast<int>(std::size(gConstantEyeLogged))) {
+            return false;  // more classes than the table holds: the rest go unlogged
+        }
+        entry = &gConstantEyeLogged[gConstantEyeLoggedCount++];
+        strncpy_s(entry->cls, cls, _TRUNCATE);
+    } else {
+        bool same = entry->crouch == crouch;
+        for (int i = 0; i < 3 && same; ++i) {
+            same = std::fabs(entry->hook[i] - hook[i]) <= 0.05f && std::fabs(entry->offset[i] - offset[i]) <= 0.05f;
+        }
+        if (same) {
+            return false;
+        }
+    }
+    std::copy(hook, hook + 3, entry->hook);
+    std::copy(offset, offset + 3, entry->offset);
+    entry->crouch = crouch;
+    return true;
+}
+
 } // namespace
 
 bool ControllerAimActive() noexcept {
@@ -136,6 +186,21 @@ GalaxyTable const& GalaxyTableSettings() noexcept {
     return gGalaxy;
 }
 
+void RefreshConstantEye() noexcept {
+    std::wstring const& path = SettingsPath();
+    bool const on = path.empty() || GetPrivateProfileIntW(L"Hands", L"constantEye", 1, path.c_str()) != 0;
+    bool const drop = !path.empty() && GetPrivateProfileIntW(L"Hands", L"crouchDrop", 0, path.c_str()) != 0;
+    static bool logged = false;
+    if (!logged || on != gConstantEyeOn.load(std::memory_order_relaxed) || drop != gCrouchDropOn.load(std::memory_order_relaxed)) {
+        logged = true;
+        mevr::log::Info("constant eye: {} ([Hands] constantEye = {}, research/38 B); a physical crouch {} ([Hands] crouchDrop = {})",
+            on ? "on: every standing on-foot camera mode puts the eye where exploring does" : "off: the renderer's per-mode offsets",
+            on ? 1 : 0, drop ? "also gets the game's lower crouch camera" : "lowers the view by the real head only", drop ? 1 : 0);
+    }
+    gConstantEyeOn.store(on, std::memory_order_relaxed);
+    gCrouchDropOn.store(drop, std::memory_order_relaxed);
+}
+
 } // namespace mevr::host::sequel_bridge
 
 namespace MevrSeams {
@@ -144,6 +209,44 @@ namespace sb = mevr::host::sequel_bridge;
 
 void* StaticXrGetInstanceProcAddr() noexcept {
     return reinterpret_cast<void*>(&xrGetInstanceProcAddr);
+}
+
+// The constant eye (research/38 B; LE1's MevrBridge::ConstantFpEye, the same rule in core/vr/CombatStance): each standing
+// on-foot mode's Offset is its own HookOffset minus the explore eye, so a draw, aimed fire or a sprint leaves the eye in place.
+bool ConstantFpEye(char const* modeClass, float const hookOffset[3], float const exploreOffset[3], float offset[3]) noexcept {
+    namespace cs = mevr::vr::combat_stance;
+    if (modeClass == nullptr || hookOffset == nullptr || exploreOffset == nullptr || offset == nullptr ||
+        !sb::gConstantEyeOn.load(std::memory_order_relaxed)) {
+        return false;
+    }
+    cs::Vec const hook{hookOffset[0], hookOffset[1], hookOffset[2]};
+    if (!cs::PlausibleHook(hook)) {
+        return false;
+    }
+    // The mod's physical crouch (kFlagPhysicalCrouch, with the pad options each tick): the crouch modes keep the eye too.
+    bool const physicalCrouch = !sb::gCrouchDropOn.load(std::memory_order_relaxed) &&
+        (mevr::host::pad_merge::FreshFlags(GetTickCount64()) & mevr::game::gamepad::kFlagPhysicalCrouch) != 0;
+    bool const applies = cs::ConstantEyeApplies(modeClass, "", physicalCrouch);
+    std::lock_guard lock(sb::gConstantEyeMutex);
+    if (cs::IsExploreMode(modeClass, "")) {
+        sb::gExploreHook = hook;
+    }
+    cs::Vec const eye = cs::ExploreEye(sb::gExploreHook, {exploreOffset[0], exploreOffset[1], exploreOffset[2]});
+    cs::Vec const given{offset[0], offset[1], offset[2]};
+    cs::Vec const want = applies ? cs::ConstantEyeOffset(hook, eye) : given;
+    float const out[3] = {static_cast<float>(want.x), static_cast<float>(want.y), static_cast<float>(want.z)};
+    // Once per class and values: the `camera: mode` lines then read the same eye.
+    if (sb::ConstantEyeChanged(modeClass, hookOffset, out, physicalCrouch)) {
+        auto const v = [](cs::Vec x) { return std::format("({:.1f}, {:.1f}, {:.1f})", x.x, x.y, x.z); };
+        mevr::log::Info("constant eye: {}: HookOffset {} -> Offset {}{}: the eye {} from the hook bone, as exploring (the renderer's "
+                        "Offset {}){}", modeClass, v(hook), v(want), applies ? "" : " kept (not a standing mode)", v(eye), v(given),
+            physicalCrouch ? "; you are physically crouched: only your real head lowers the view" : "");
+    }
+    if (!applies) {
+        return false;
+    }
+    std::copy(out, out + 3, offset);
+    return true;
 }
 
 void WrapSessionFunctions(void** acquireSwapchainImage, void** waitSwapchainImage, void** releaseSwapchainImage,

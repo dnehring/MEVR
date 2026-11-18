@@ -11861,6 +11861,12 @@ void TestCombatStance() {
     CHECK(std::fabs(aim.x + 80.1) < 1e-9 && std::fabs(aim.z + 14.9) < 1e-9);
     cs::Vec const explore = cs::ConstantEyeOffset({0, 0, 120}, eye);  // explore itself: fpExplore again
     CHECK(std::fabs(explore.x + 50.1) < 1e-9 && std::fabs(explore.z - 25.1) < 1e-9);
+    // The sequels (MevrSeams::ConstantFpEye, lane AU5): ME3's renderer gives every standing state the Offset (35, 0, 65), and
+    // its Combat mode hooks (-30, 20, 90) as ME1's (read in the game, 2026-11-18): the eye 65 units behind and 20 right of
+    // the Camera bone, 0.7 m behind the explore eye. The rule gives Combat (5, 20, 35): the explore eye again.
+    cs::Vec const me3Eye = cs::ExploreEye({0, 0, 120}, {35, 0, 65});
+    cs::Vec const me3Combat = cs::ConstantEyeOffset({-30, 20, 90}, me3Eye);
+    CHECK(std::fabs(me3Combat.x - 5.0) < 1e-9 && std::fabs(me3Combat.y - 20.0) < 1e-9 && std::fabs(me3Combat.z - 35.0) < 1e-9);
     CHECK(cs::ConstantEyeApplies("SFXCameraMode_Combat", "CombatCam0"));
     CHECK(cs::ConstantEyeApplies("SFXCameraMode_CombatStorm", "Default__SFXCameraMode_CombatStorm"));
     CHECK(cs::ConstantEyeApplies("SFXCameraMode_TightAim", "CombatTightAim0"));
