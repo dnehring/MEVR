@@ -6,6 +6,7 @@
 #include "core/WriteJournal.hpp"
 #include "core/vr/OverlayPlacement.hpp"
 #include "halcyon/MevrSeams.h"
+#include "plugin/GalaxyHologram.hpp"
 #include "plugin/Renderer.hpp"
 #if defined(MEVR_WITH_HALCYON)
 #include "halcyon/le1/mevr_bridge.h"
@@ -429,15 +430,31 @@ int HoldsView(int gameMode) noexcept {
 namespace MevrSeams {
 
 bool WorldViewHoldBegin() noexcept {
-    return mevr::host::world_ui::HoldViewBegin(mevr::host::renderer::GameMode());
+    // The galaxy map in the CIC first (as LE1's GalaxyViewSwapBegin): wanted but not written, no other hold takes the view.
+    int const mode = mevr::host::renderer::GameMode();
+    bool galaxyWanted = false;
+    bool const galaxyHeld = mevr::host::galaxy_hologram::HoldViewBegin(mode, galaxyWanted);
+    if (galaxyWanted) {
+        return galaxyHeld;
+    }
+    return mevr::host::world_ui::HoldViewBegin(mode);
 }
 
 void WorldViewHoldEnd() noexcept {
+    mevr::host::galaxy_hologram::HoldViewEnd();
     mevr::host::world_ui::HoldViewEnd();
 }
 
 int WorldViewHeld(int mode) noexcept {
+    // Held for the galaxy map: Shepard stands at the console, his head and body hidden at the held eyes (2, a screen in the room).
+    if (mevr::host::galaxy_hologram::Holds(mode)) {
+        return 2;
+    }
     return mevr::host::world_ui::HoldsView(mode);
+}
+
+bool GalaxyOwnsPresentation(int mode) noexcept {
+    return mevr::host::galaxy_hologram::Holds(mode);
 }
 
 bool WorldUiHoldFrame(int mode) noexcept {

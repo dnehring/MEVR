@@ -79,6 +79,10 @@ struct Facts {
     bool panelColour;
     // The HUD's own layout for the wrist and gun pieces (capability hudPieces): 0 ME1's, 1 ME2's (vr::hud_pieces::Layout).
     int hudLayout;
+    // The galaxy map's Flash UI over the CIC's projector takes the game pointer as the game's screens do (GetCursorPos
+    // answered, the clicks as GUI events through the mod: game_pointer::PanelKind::GameMenu; ME3, whose movie reads the
+    // viewport's mouse, research/le3-native-gui.md "The movie's mouse"), else as ME1's map level 1-3 (posted mouse messages).
+    bool galaxyUiSteered;
 };
 Facts const& Get() noexcept;
 

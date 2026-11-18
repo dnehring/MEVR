@@ -5,6 +5,7 @@
 #include "core/Log.hpp"
 #include "core/WriteJournal.hpp"
 #include "core/vr/CineScreen.hpp"
+#include "game/GalaxyProjector.hpp"
 #include "game/SceneCaptureRig.hpp"
 #include "engine/ProcessEvent.hpp"
 #include "engine/XrToUnreal.hpp"
@@ -141,15 +142,10 @@ bool gSeenAtTable = false;  // this opening: the head was seen near the table; o
 std::uint64_t gLastExitMs = 0;
 
 // In-world ([Galaxy] inWorld): the last on-foot view, held while the game is in its map mode so the player stays in the CIC.
-struct Hold {
+// The view itself (haveView: an on-foot view was seen; footFrame: the CIC mapping, saved before the map/cinematic camera takes
+// over) is the shared galaxy_projector::HeldView.
+struct Hold : galaxy_projector::HeldView {
     bool active = false;     // the map is open in-world: the camera handler holds the view
-    bool haveView = false;   // an on-foot view was seen
-    ue3::Vector location{};
-    ue3::Rotator rotation{};
-    float fov = 90.0f;
-    float rawZ = 0.0f;
-    vr::host_view::State floorView;
-    std::optional<engine::TrackingFrame> footFrame; // CIC mapping, saved before the map/cinematic camera takes over
     std::uint64_t cameraTicks = 0;
     std::uint64_t lastHideMs = 0;
     int hides = 0;
@@ -163,24 +159,12 @@ void ShortenOpening(bool shorten);
 
 // The game's own map as a stereo window over the table (research/51 section 8): the untouched map camera after UpdateCamera,
 // and two captures from it, side by side. The CIC hold is applied only inside the main view's CalcSceneView.
-struct MapPov {
-    bool valid = false;
-    ue3::Vector location{};
-    ue3::Rotator rotation{};
-    float fovDeg = 0.0f;
-    std::uint64_t ms = 0;
-};
+using MapPov = galaxy_projector::MapPov;
 MapPov gMapPov;
 
 struct Window {
-    capture_rig::Rig eyes[2];
-    bool on = false;          // enabled and pointed this tick
+    galaxy_projector::StereoWindow window;  // the two captures (on: enabled and pointed this tick)
     bool flashShown = false;  // the map's Flash movie shown for it (the window carries the game's labels)
-    std::uint64_t failedMs = 0;
-    float baselineUU = 0.0f;
-    float crop = 0.0f;
-    float convergeUU = 0.0f;
-    unsigned pointed = 0;
 };
 Window gWindow;
 
@@ -197,13 +181,7 @@ bool gHoldWrites = true;  // `mevr galaxy hold 0`: no held view (research)
 
 // The held view at render time only: the player camera's POV fields (the host writes the held view there for the main view's
 // CalcSceneView and puts the map camera back; research/51 section 8).
-struct RenderHold {
-    bool on = false;
-    ue3::Vector* location = nullptr;
-    ue3::Rotator* rotation = nullptr;
-    float* fov = nullptr;
-    std::uint64_t ms = 0;
-};
+using RenderHold = galaxy_projector::RenderHold;
 RenderHold gRenderHold;
 
 // The galaxy map's live Flash handler, found again only when it goes (a scan of every object; not every tick).
@@ -361,31 +339,7 @@ void ReadRoutes(ue3::Object* behavior) {
     log::Info("galaxy hologram: {} relay routes between {} clusters from the tables", gS.routes.size(), byRow.size());
 }
 
-// The game's window: this process's largest visible top-level window.
-HWND GameWindow() {
-    struct Search {
-        DWORD process = 0;
-        HWND best = nullptr;
-        long area = 0;
-    } search{GetCurrentProcessId(), nullptr, 0};
-    EnumWindows(
-        [](HWND window, LPARAM context) -> BOOL {
-            auto* const s = reinterpret_cast<Search*>(context);
-            DWORD process = 0;
-            GetWindowThreadProcessId(window, &process);
-            RECT rc{};
-            if (process == s->process && IsWindowVisible(window) && GetClientRect(window, &rc)) {
-                long const area = (rc.right - rc.left) * (rc.bottom - rc.top);
-                if (area > s->area) {
-                    s->area = area;
-                    s->best = window;
-                }
-            }
-            return TRUE;
-        },
-        reinterpret_cast<LPARAM>(&search));
-    return search.best;
-}
+using galaxy_projector::GameWindow;  // the game's window (shared with the sequels' projector)
 
 // The map's model, live.
 std::optional<gh::MapModel> ReadModel(ue3::Object* behavior, ue3::Object* controller, ue3::Object* game, HWND window) {
@@ -577,17 +531,7 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
     }
     if (!gHold.active) {
         if (gRoomReference.Remember(mode.value_or(255), player::FloorLockSample().cameraOwned, false)) {
-            gHold.location = *pov->location;
-            gHold.rotation = *pov->rotation;
-            // Carry the corrected on-foot base into the hold; the renderer still adds its common offsets once.
-            auto const view = vr::host_view::Latest();
-            gHold.rawZ = pov->location->z;
-            gHold.floorView = view;
-            auto const basis = engine::ToBasis(engine::UnrealRotation{gHold.rotation.pitch, gHold.rotation.yaw, gHold.rotation.roll});
-            gHold.location.z = static_cast<float>(vr::host_view::HoldBaseZ(view, pov->location->z,
-                basis.right.z, basis.up.z, basis.forward.z));
-            gHold.fov = *pov->fov;
-            gHold.haveView = true;
+            galaxy_projector::Remember(gHold, *pov->location, *pov->rotation, *pov->fov);
         }
     }
     if (!gHold.haveView) {
@@ -812,12 +756,8 @@ bool ObserveRoom(ue3::Object* controller) {
     gS.routesBehavior = nullptr;
     gS.routesRead = false;
     gRowsRead = false;
-    for (auto& eye : gWindow.eyes) {
-        if (eye.Alive()) eye.Destroy("the player/world changed"); // same-world controller replacement
-        eye.Forget(); // otherwise the actors went with the old world
-    }
-    gWindow.on = gWindow.flashShown = false;
-    gWindow.failedMs = 0;
+    gWindow.window.Reset("the player/world changed");
+    gWindow.flashShown = false;
     return true;
 }
 
@@ -1029,17 +969,8 @@ bool SetFlashVisible(bool visible) {
 }
 
 void PauseWindow() {
-    for (capture_rig::Rig& eye : gWindow.eyes) {
-        if (eye.Alive() && eye.Enabled()) {
-            eye.SetEnabled(false);
-        }
-    }
-    if (gWindow.on) {
-        log::Info("galaxy window: paused ({} ticks pointed)", gWindow.pointed);
-    }
-    gWindow.on = false;
+    gWindow.window.Pause();
     gWindow.flashShown = false;
-    gWindow.pointed = 0;
 }
 
 // The game's own map as a stereo window over the table (research/51 section 8): two captures from the game's map camera, its
@@ -1058,112 +989,20 @@ bool StepWindow(vr::galaxy_map::Settings const& settings, bool held, ue3::Object
         PauseWindow();
         return false;
     }
-    for (int e = 0; e < 2; ++e) {
-        capture_rig::Rig& eye = gWindow.eyes[e];
-        if (eye.Alive()) {
-            continue;
-        }
-        eye.Forget();
-        if (gWindow.failedMs != 0 && now - gWindow.failedMs < 5000) {
-            PauseWindow();
-            return false;
-        }
-        // About the UI panel's resolution (half the window) at the window's aspect, both multiples of 8 (a 1172x1196 target's
-        // texture wasn't found behind its resource; the spectator's 1920x1080 is).
-        capture_rig::Options options;
-        double const aspect = static_cast<double>(client.right) / static_cast<double>(client.bottom);
-        int bestW = 1024, bestH = 1024;
-        double bestError = 1e9;
-        for (int w = 512; w <= 2048; w += 8) {
-            int const h = static_cast<int>(std::lround(w / aspect / 8.0)) * 8;
-            double const error = std::fabs(static_cast<double>(w) / h - aspect) + 1e-5 * std::abs(w - static_cast<int>(client.right) / 2);
-            if (h >= 256 && h <= 2048 && error < bestError) {
-                bestError = error;
-                bestW = w;
-                bestH = h;
-            }
-        }
-        options.width = bestW;
-        options.height = bestH;
-        options.fovDeg = gMapPov.fovDeg;
-        options.nearUnits = 10.0f;
-        options.postProcess = true;
-        if (!eye.Create(e == 0 ? "galaxy left" : "galaxy right", options, gMapPov.location)) {
-            log::Warn("galaxy window: the {} capture failed ({}); the table UI stays, retry in 5 s", e == 0 ? "left" : "right", eye.Failure());
-            gWindow.failedMs = now;
-            PauseWindow();
-            return false;
-        }
-    }
-    // The stereo: parallel cameras on the game's, the map's centre on the window's plane, infinity `depth` of the width behind.
-    float const yaw = static_cast<float>(gMapPov.rotation.yaw) * 6.2831853f / 65536.0f;
-    float const pitch = static_cast<float>(gMapPov.rotation.pitch) * 6.2831853f / 65536.0f;
-    ue3::Vector const forward{std::cos(pitch) * std::cos(yaw), std::cos(pitch) * std::sin(yaw), std::sin(pitch)};
-    ue3::Vector const right{-std::sin(yaw), std::cos(yaw), 0.0f};
-    float converge = 5000.0f;
-    if (auto const c = player::Location(ObjectField(gCenterObject, behavior))) {
-        float const along = (c->x - gMapPov.location.x) * forward.x + (c->y - gMapPov.location.y) * forward.y +
-            (c->z - gMapPov.location.z) * forward.z;
-        if (along > 100.0f) {
-            converge = along;
-        }
-    }
     // On the hologram the window is its diameter wide (the disc found on foot, frozen while the view is held).
-    float const widthM = settings.windowOnHologram && gLastAnchor.disc && gLastAnchor.discRadiusM > 0.1f
+    galaxy_projector::WindowLook look;
+    look.widthM = settings.windowOnHologram && gLastAnchor.disc && gLastAnchor.discRadiusM > 0.1f
         ? 2.0f * gLastAnchor.discRadiusM * settings.windowScale : settings.windowWidthM;
-    float const depth = std::min(settings.windowDepth, vr::cine_screen::MaxDepth(widthM, vr::cine_screen::kDefaultIpdM));
-    float const crop = vr::cine_screen::CropFraction(depth);
-    float const halfH = gMapPov.fovDeg * 0.5f * 0.01745329f;
-    float const baseline = vr::cine_screen::BaselineUU(crop, converge, halfH);
-    for (int e = 0; e < 2; ++e) {
-        capture_rig::Rig& eye = gWindow.eyes[e];
-        float const side = (e == 0 ? -0.5f : 0.5f) * baseline;
-        ue3::Vector const at{gMapPov.location.x + right.x * side, gMapPov.location.y + right.y * side, gMapPov.location.z + right.z * side};
-        if (!eye.SetFov(gMapPov.fovDeg) || (!eye.Enabled() && !eye.SetEnabled(true)) || !eye.Point(at, gMapPov.rotation)) {
-            log::Warn("galaxy window: pointing the {} capture failed; the table UI stays while it retries", e == 0 ? "left" : "right");
-            gWindow.failedMs = now;
-            PauseWindow();
-            return false;
-        }
-        eye.Tick();
-    }
-    if (!gWindow.on) {
-        log::Info("galaxy window: the game's own map over the table: two {}x{} captures from the map camera ({:.1f} degrees), {:.0f} units "
-                  "apart, the map's centre {:.0f} units away on the window, infinity {:.1f}% of its width behind",
-            gWindow.eyes[0].Width(), gWindow.eyes[0].Height(), gMapPov.fovDeg, baseline, converge, depth * 100.0f);
+    look.depth = settings.windowDepth;
+    look.round = settings.windowRound;
+    look.backdrop = settings.windowBackdrop;
+    if (!gWindow.window.Step(gMapPov, player::Location(ObjectField(gCenterObject, behavior)), client.right, client.bottom, look, scene)) {
+        gWindow.flashShown = false;
+        return false;
     }
     if (!gWindow.flashShown) {
         gWindow.flashShown = SetFlashVisible(true);  // the game's labels, title and buttons, on the host's UI panel
     }
-    gWindow.on = true;
-    gWindow.baselineUU = baseline;
-    gWindow.crop = crop;
-    gWindow.convergeUU = converge;
-    ++gWindow.pointed;
-    // The host's label-projecting CalcSceneView uses exactly the POV just sent to these captures. The ordinary
-    // player POV can advance before the next end-of-tick Point (especially while easing/zooming).
-    constexpr float kUnitToRad = 6.2831853f / 65536.0f;
-    scene.camera.location[0] = gMapPov.location.x;
-    scene.camera.location[1] = gMapPov.location.y;
-    scene.camera.location[2] = gMapPov.location.z;
-    scene.camera.pitch = static_cast<float>(gMapPov.rotation.pitch) * kUnitToRad;
-    scene.camera.yaw = static_cast<float>(gMapPov.rotation.yaw) * kUnitToRad;
-    scene.camera.roll = static_cast<float>(gMapPov.rotation.roll) * kUnitToRad;
-    scene.camera.fovXDeg = gMapPov.fovDeg;
-    scene.camera.aspect = static_cast<float>(gWindow.eyes[0].Width()) / static_cast<float>(gWindow.eyes[0].Height());
-    scene.camera.valid = 1;
-    scene.windowOn = 1;
-    scene.windowFloat = 0;
-    scene.windowRound = settings.windowRound ? 1 : 0;
-    scene.windowBackdrop = static_cast<std::uint8_t>(std::lround(std::clamp(settings.windowBackdrop, 0.0f, 1.0f) * 100.0f));
-    scene.windowWidth = static_cast<std::uint32_t>(gWindow.eyes[0].Width());
-    scene.windowHeight = static_cast<std::uint32_t>(gWindow.eyes[0].Height());
-    scene.windowTicks = std::min(gWindow.eyes[0].EnabledTicks(), gWindow.eyes[1].EnabledTicks());
-    scene.windowResource[0] = gWindow.eyes[0].Resource();
-    scene.windowResource[1] = gWindow.eyes[1].Resource();
-    scene.windowGeneration = gWindow.eyes[0].Generation() * 1000003ull + gWindow.eyes[1].Generation();
-    scene.windowCrop = crop;
-    scene.windowWidthM = widthM;
     return true;
 }
 
@@ -1230,18 +1069,7 @@ void Forget(Link const& link, char const* why) {
 }
 
 void PutRenderHold(gh::Scene& scene) {
-    if (!gHold.haveView || !gRenderHold.on || !gHoldWrites || GetTickCount64() - gRenderHold.ms >= 500) return;
-    scene.holdRender = 1;
-    scene.holdLocation[0] = gHold.location.x;
-    scene.holdLocation[1] = gHold.location.y;
-    scene.holdLocation[2] = gHold.location.z;
-    scene.holdRotation[0] = gHold.rotation.pitch;
-    scene.holdRotation[1] = gHold.rotation.yaw;
-    scene.holdRotation[2] = gHold.rotation.roll;
-    scene.holdFov = gHold.fov;
-    scene.povLocationAddress = reinterpret_cast<std::uint64_t>(gRenderHold.location);
-    scene.povRotationAddress = reinterpret_cast<std::uint64_t>(gRenderHold.rotation);
-    scene.povFovAddress = reinterpret_cast<std::uint64_t>(gRenderHold.fov);
+    galaxy_projector::PutRenderHold(gHold, gRenderHold, gHoldWrites, scene);
 }
 
 } // namespace
@@ -1305,7 +1133,7 @@ void Tick(Link const& link) {
             log::Info("galaxy hologram: the view is the game's again ({} camera updates held)", gHold.cameraTicks);
         }
     }
-    if (holding && mode && *mode == kGalaxyMode && !settings.window && !gWindow.on) {
+    if (holding && mode && *mode == kGalaxyMode && !settings.window && !gWindow.window.On()) {
         HideFlashMap();
     }
     if (inWorld && gS.published && gRoomReference.Available() && gHold.footFrame && gS.scene.inWorld != 0 && gS.scene.onFoot == 0 &&
@@ -1547,12 +1375,7 @@ std::string StatusJson() {
 void Shutdown(Link const& link, bool exiting) {
     ShortenOpening(false);
     Forget(link, "the mod is unloading");
-    for (capture_rig::Rig& eye : gWindow.eyes) {
-        if (!exiting) {
-            eye.Destroy("the mod is unloading");
-        }
-        eye.Forget();
-    }
+    gWindow.window.Shutdown(exiting);
     gS = State{};
 }
 

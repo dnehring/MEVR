@@ -55,6 +55,7 @@ ue3::FieldRef gFormat{"Engine.TextureRenderTarget2D", "Format", kCaptureReach};
 ue3::FieldRef gPlayer{"Engine.PlayerController", "Player", kCaptureReach};
 ue3::FieldRef gPlayerPostProcess{"Engine.LocalPlayer", "PlayerPostProcess", kCaptureReach};
 ue3::FieldRef gDefaultPostProcess{"Engine.Engine", "DefaultPostProcess", kCaptureReach};
+ue3::FieldRef gUiScenePostProcess{"Engine.Engine", "DefaultUIScenePostProcess", kCaptureReach};
 
 constexpr std::uint64_t kClassDefaultFlag = 0x200;  // EObjectFlags: RF_ClassDefaultObject
 constexpr float kMaxUpdateDist = 10000000.0f;       // never stopped by distance (research/39 section 2)
@@ -128,6 +129,19 @@ ue3::Object* PostProcessChain(ue3::Object* controller) {
 #endif
 
 } // namespace
+
+ue3::Object* EngineChain(bool uiScene) {
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE3)
+    if (ue3::Object* const engine = ue3::runtime::GameEngine()) {
+        if (auto const chain = (uiScene ? gUiScenePostProcess : gDefaultPostProcess).Read<ue3::Object*>(engine); chain && *chain != nullptr) {
+            return *chain;
+        }
+    }
+#else
+    (void)uiScene;
+#endif
+    return nullptr;
+}
 
 #if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE3)
 

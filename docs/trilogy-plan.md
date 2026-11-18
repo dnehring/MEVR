@@ -741,18 +741,19 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Waits for:** T14 on ME3 (on since 2026-11-16) and ME3's combat HUD. **Who:** HU (2026-11-16).
 
 #### T42 The galaxy map and scanning [G25; Forks 3]
-- **State:** LE1 build · LE2 build · LE3 build
-- **Lives in:** `game/GalaxyMap`, `plugin/GalaxyHologram`, `game/SceneCaptureRig`, `core/vr/GalaxyHologram`; ME3's
-  `game/Le3GalaxyCapture`, `Le3GalaxyRetention`, `Le3GalaxyProjector`; ME2's opt-in flat table in its bridge.
-- **Left:** [galaxy-projector-handoff.md](galaxy-projector-handoff.md) "Remaining work" 1-5, in its order: validate ME3's
-  final-target fix; hold the main view in the CIC; projector composition, labels and pointer; lifecycle and native
-  gameplay (ME3's scan pulse, Reaper pursuit, retrieval); then the same flow on ME2 with its own adapter (its probes and
-  mining: one launch per press). The shared pieces to make on the way: `vr::galaxy_map::ReadTableSettings`, one input
-  lease for both sequels, one `capture_rig::StereoWindow::Step` that ME1's `StepWindow` and ME3's capture both call (the
-  LE1 part).
+- **State:** LE1 build · LE2 build · LE3 verify
+- **Lives in:** `game/GalaxyProjector` (every game: the held view, the render hold, the stereo window), ME1's adapter
+  `game/GalaxyMap`, `plugin/GalaxyHologram` (the window, the held view `HoldViewBegin/End`, `Holds`), `game/SceneCaptureRig`,
+  `core/vr/GalaxyHologram`; ME3's adapter `game/Le3GalaxyCapture` (+ `Le3GalaxyRetention`, `Le3GalaxyProjector`); ME2's
+  opt-in flat table in its bridge.
+- **Done 2026-11-17 (lane GX):** ME3 opens its map over the CIC's projector: the view held at Shepard's, the CIC in stereo,
+  the map a stereo disc on the projector, its Flash UI on the panel there, X back to the room (galaxy-projector-handoff.md
+  "2026-11-17"). ME1's `StepWindow` and the held view are the shared `galaxy_projector` code ME3 calls.
+- **Left:** the handoff's steps 3 (picks), 4 (lifecycle, travel, orbit and scan, the headset) on ME3; step 5 on ME2 (its
+  probes and mining: one launch per press); `vr::galaxy_map::ReadTableSettings` and one input lease for both sequels.
 - **Closes when:** the native map shows over the physical projector with the CIC in stereo around it, on each sequel;
   one probe becomes zero after exactly one launch on ME2.
-- **Waits for:** T16. **Who:** the other session (ME3, then ME2).
+- **Waits for:** T16. **Who:** GX (2026-11-17; ME3, then ME2).
 
 #### T43 Controller input [G49]
 - **State:** LE1 done · LE2 headset · LE3 headset
@@ -896,7 +897,7 @@ rest in the order players would notice.
 | 9 | T52 Setup for ME2 | built 2026-11-16 for all three, not offered (the owner's switch); left: a real-game install | T52 lane, done |
 | 10 | T05 one runner, and ME3's combat fixture | every ME3 combat check waits for the fixture | nobody |
 | 11 | T45, T44, T33, T11, T14: the game-side forks and defects | small, already taken | GF |
-| 12 | T42 the galaxy projector | already running | the other session |
+| 12 | T42 the galaxy projector | ME3 running (2026-11-17), then ME2 | GX |
 | 13 | T21 arm IK across root-motion steps; T22, T23 on ME3 | ME3's first bounded proof: body, pistol, firing | C2 |
 | 14 | T09 measure the sequels' stereo, then T13, T12, T18, T19, T28, T36, T50, T53 | cheap checks that decide whether work exists | nobody |
 | 15 | T29 linear walking, T30 comfort, T31 cover | what a player feels in the first minute | nobody |

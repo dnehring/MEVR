@@ -34,8 +34,8 @@ segment holds the stick still with the head (and the hands) --crouch-drop metres
 crouchBelow's 0.75 of a 1.65 m standing eye height), the physical crouch's check (research/23 section 7):
 `--plan stand:8,crouch:4,stand:8`.
 The plan also accepts `back-button` (left menu with left grip, mapped to pad Back), `start-button` (left menu alone:
-pad Start, the game's own pause menu) and `r3`
-(right stick click). For ME2/ME3's existing Back double-tap recenter use
+pad Start, the game's own pause menu), `r3` (right stick click), `x` (the left primary: pad X; ME3's system map binds
+Exit to it) and `b` (the right secondary: pad B; ME3's orbit backs out with it). For ME2/ME3's existing Back double-tap recenter use
 `--plan stand:2,back-button:0.12,stand:0.12,back-button:0.12,stand:12 --live-head` with replay `-Inputs`.
 ME1's double-tap uses `r3` instead. These are actual mapped inputs, not a direct recenter
 request; native button side effects still apply. `--live-head` leaves head tracking to
@@ -59,7 +59,7 @@ SEGMENTS = [("forward", 0.0, 1.0), ("strafe right", 1.0, 0.0), ("back", 0.0, -1.
             ("stand", 0.0, 0.0)]
 # Plan-only segments (not in the default loop): the head lowered, the stick still.
 EXTRA = [("crouch", 0.0, 0.0), ("a", 0.0, 0.0), ("sprint", 0.0, 1.0),
-         ("back-button", 0.0, 0.0), ("start-button", 0.0, 0.0), ("r3", 0.0, 0.0)]
+         ("back-button", 0.0, 0.0), ("start-button", 0.0, 0.0), ("r3", 0.0, 0.0), ("x", 0.0, 0.0), ("b", 0.0, 0.0)]
 
 
 def head_orientation(yaw_deg, pitch_deg):
@@ -146,9 +146,9 @@ def main():
             e0, e1, lh, rh = lowered(eyes[0]), lowered(eyes[1]), lowered(left_hand), lowered(right_hand)
             flags = (0 if live_head else 1) | (0 if tracking == "none" else 2)
             f.write(FRAME.pack(int(t * 1e9), flags, *e0, *fov, *e1, *fov,
-                               (valid if tracking in ("both", "left") else 0) | (8 if name in ("back-button", "start-button") else 0), 0.0,
+                               (valid if tracking in ("both", "left") else 0) | (8 if name in ("back-button", "start-button") else 0) | (2 if name == "x" else 0), 0.0,
                                1.0 if name == "back-button" else 0.0, sx * stick, sy * stick, *lh, *lh,
-                               (valid if tracking in ("both", "right") else 0) | (2 if name in ("a", "sprint") else 0) | (1 if name == "r3" else 0),
+                               (valid if tracking in ("both", "right") else 0) | (2 if name in ("a", "sprint") else 0) | (1 if name == "r3" else 0) | (4 if name == "b" else 0),
                                trigger, grip, 0.0, 0.0, *rh, *rh))
     starts = [sum(seconds for _, seconds in steps[:k]) for k in range(len(steps))]
     plan = ", ".join(f"{seg[0]} {start:g}-{start + seconds:g} s" for (seg, seconds), start in zip(steps, starts))

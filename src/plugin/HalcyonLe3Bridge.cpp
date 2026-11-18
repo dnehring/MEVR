@@ -123,6 +123,7 @@ Facts const& Get() noexcept {
         true,   // invalidViewAtOnce: the flat and menu paths stop the floor lock's pass without a last invalid view
         true,   // panelColour: the game's UI on the panel gets the eyes' correction, as on ME1 and ME2 (research/27 section 9)
         static_cast<int>(vr::hud_pieces::Layout::Me3),  // ME3's HUD: its prompt's band (core/vr/HudPieces)
+        true,   // galaxyUiSteered: the map's movie reads the viewport's mouse (game/GuiCursor's SendMouseEvent)
     };
     return facts;
 }
@@ -241,22 +242,10 @@ int OverlayReticleMode(OverlayContext const& context) noexcept {
     return context.onFoot ? 0 : -1;
 }
 
-// The shared ME1 stereo map window; LE3's native adapter supplies measured
-// projector geometry and its own map captures. Explicit diagnostic only.
-unsigned OverlayGameLayers(OverlayContext const& context, hud_panel::Frame const& panel, void const** layersOut,
-    unsigned count, unsigned capacity) noexcept {
-    if (capacity - count >= 2) {
-        MevrSeams::OverlayFrame const& frame = *context.frame;
-        galaxy_hologram::Frame galaxy;
-        galaxy.session = static_cast<XrSession>(frame.session);
-        galaxy.appSpace = static_cast<XrSpace>(frame.appSpace);
-        galaxy.context = frame.context; galaxy.device = context.device;
-        galaxy.gameMode = frame.gameMode; galaxy.menuOpen = context.menuOpen;
-        galaxy.headValid = frame.headValid; galaxy.head = panel.head;
-        XrCompositionLayerBaseHeader const* layers[2]{};
-        int const n = galaxy_hologram::WindowLayers(galaxy, layers);
-        for (int i = 0; i < n; ++i) layersOut[count++] = layers[i];
-    }
+// Nothing of ME3's own: the galaxy map's stereo window on the CIC's projector is the shared composition's (plugin/
+// SequelOverlays, under the map's UI on the panel; LE3's native adapter, game/Le3GalaxyCapture, sends the captures).
+unsigned OverlayGameLayers(OverlayContext const& /*context*/, hud_panel::Frame const& /*panel*/, void const** /*layersOut*/,
+    unsigned count, unsigned /*capacity*/) noexcept {
     return count;
 }
 

@@ -322,6 +322,41 @@ The LE3 main-view hook already checks both the native caller and primary local
 player; retain both checks when inserting the scoped hold. Native map camera
 state must remain intact for selection, labels and independent map captures.
 
+## The projector flow (lane GX, 2026-11-17)
+
+ME1's design on ME3, on one copy of ME1's code (`game/GalaxyProjector`; docs/galaxy-projector-handoff.md "2026-11-17").
+Runs on the fake headset, renderer preview, the career's original AutoSave (Shepard at the console, (-2, 3389, 131); loaded
+read-only, its hash unchanged), `tools/le2-halcyon-run/galaxy.ps1` (the head turned 10 degrees right and 20 down, one A):
+
+1. **On foot** (`gx1`): the projector measured as before (centre (-0.48, 3166.42, 92.20), radius 188.2 units; tracking
+   (-0.03, -1.26, -2.57) m, normal (0.01, 0.92, 0.40): 24 degrees off flat, 1.88 m); the room's retention armed near it
+   (`galaxy retention` waits 20 s for the map and is armed again while the player stays near).
+2. **A at the console:** mode 11 in about 4 s; `LE3 galaxy projector: the map is open in the CIC: the view held at Shepard's
+   (-3, 3424, 218; floor lock true, raw Z 186.2)`, the room's GalaxyMapProxy and its emitter hidden (2 actors), `galaxy
+   retention: CIC art requested after native streaming evaluation (load false, show false)` (the native evaluation dropped
+   the CIC; the lease kept it), `galaxy hologram: the view held at Shepard's for the main view's build only`.
+3. **The eyes:** the CIC around the galaxy map's pit in stereo (no `MENU_MONO`: `MevrSeams::GalaxyOwnsPresentation`), the
+   map's window a disc on the projector (`galaxy window: up: the game's map 2.64 x 1.94 m (a disc) ... facing (0.01, 0.92,
+   0.40)`), two 1552x1120 captures (the game window's aspect, 3072x2216), the map's Flash UI on the HUD panel on the same
+   disc (`hud` layer 2.69 x 1.94 m: Anadius, Pax, Scan, Exit, Cronos Station's card, labels on their objects).
+4. **The captures' post-process:** with the player's chain, `Engine.DefaultPostProcess` or `DefaultUIScenePostProcess` both
+   window layers are black (`gx1`, `gx2`'s `map-on-default`, `map-on-ui`), although `LE3 scene capture: final post effect
+   bound its own 1552x1120 target` is logged; without a chain (`gx2`'s `map-on-raw`) the starfield, the nebula band, the orbit
+   arc, the Normandy and its reticle, at a normal exposure (the 2026-11-15 raw image at 1024x576 was overexposed: not seen
+   again). ME3's captures go without a chain by default (`mevr galaxy capture on-post|on-default|on-ui` for the
+   diagnosis). Ghidra (LE3, read-only): the final effects 0x3D2D60 and 0x3D1F80 bind scene color (0x36DA30) when the
+   family's +0x48 is 0, the LDR scene color (0x36DAC0) when the effect isn't the final one or the upscale test 0x3B1EC0
+   (GSystemSettings: a screen percentage under 100) passes, else the backbuffer (0x36D760, the hooked one) and set the view's
+   +0x4B4; the finish 0x3534B0 draws scene color into the family's target through 0x3520F0 unless +0x4B4 is set. Where the
+   chain's picture is lost is open.
+5. **X** (`gx1`): mode 0; the window down, the retention released (`left-map`), the projector shown again, the view the
+   game's (`the map closed`); armed again near the projector.
+
+Open (in order): the pointer's picks on the map's UI (the panel is a steered game-menu surface since `gx4`, the mod's GUI
+events allowed in the map modes); travel and its movie; orbit (12) and the scan; the opening and closing frames (a native
+mono frame before the hold publishes is possible, not measured); recenter and session changes inside the map; save reload;
+the headset (alignment, legibility, comfort, GPU cost).
+
 ## Native adapter reuse boundary
 
 ME1 `game/GalaxyMap` is a native camera/projector/table adapter for ME1. Its mode 9, Normandy

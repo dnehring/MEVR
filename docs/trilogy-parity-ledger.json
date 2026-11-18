@@ -119,6 +119,7 @@
     "game/FocusPause",
     "game/GalaxyDump",
     "game/GalaxyMap",
+    "game/GalaxyProjector",
     "game/GameArt",
     "game/GameMenuRequest",
     "game/GamepadBridge",
@@ -366,6 +367,7 @@
     "game/FocusPause",
     "game/GalaxyDump",
     "game/GalaxyMap",
+    "game/GalaxyProjector",
     "game/GameArt",
     "game/GameMenuRequest",
     "game/GamepadBridge",
@@ -444,6 +446,7 @@
     "Entry",
     "EyeCopy",
     "FloorLock",
+    "GalaxyHologram",
     "GalaxyHologramDraw",
     "GamePointer",
     "GameThreadCalls",
@@ -612,6 +615,7 @@
     "game/FocusPause",
     "game/GalaxyDump",
     "game/GalaxyMap",
+    "game/GalaxyProjector",
     "game/GameArt",
     "game/GameMenuRequest",
     "game/GamepadBridge",
@@ -1699,6 +1703,29 @@
    },
    "namespace": "game::galaxy_map"
   },
+  "game/GalaxyProjector": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    }
+   },
+   "namespace": "game::galaxy_projector"
+  },
   "game/GameArt": {
    "games": {
     "LE1": {
@@ -2096,19 +2123,19 @@
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "ungated"
+     "status": "out"
     },
     "LE2": {
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "ungated"
+     "status": "out"
     },
     "LE3": {
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "ungated"
+     "status": "run"
     }
    },
    "namespace": "game::le3_galaxy_capture"
@@ -3138,6 +3165,7 @@
     "CopyIntoImage",
     "EyeImageSize",
     "FloorViewTranslation",
+    "GalaxyOwnsPresentation",
     "HudPanelDraw",
     "KeyDown",
     "LifeSizeStereo",
@@ -3387,6 +3415,7 @@
     "CopyIntoImage",
     "EyeImageSize",
     "FloorViewTranslation",
+    "GalaxyOwnsPresentation",
     "HudPanelDraw",
     "KeyDown",
     "LifeSizeStereo",
@@ -3489,6 +3518,7 @@
     "CopyIntoImage",
     "EyeImageSize",
     "FloorViewTranslation",
+    "GalaxyOwnsPresentation",
     "HudPanelDraw",
     "KeyDown",
     "LifeSizeStereo",
@@ -3533,6 +3563,7 @@
     "CopyIntoImage",
     "EyeImageSize",
     "FloorViewTranslation",
+    "GalaxyOwnsPresentation",
     "HudPanelDraw",
     "KeyDown",
     "LifeSizeStereo",

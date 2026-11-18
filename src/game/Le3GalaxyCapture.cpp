@@ -1,37 +1,81 @@
 // SPDX-License-Identifier: MIT
+// ME3's galaxy map over the CIC's projector: ME3's adapter of the shared flow (game/Le3GalaxyCapture.hpp).
 #include "game/Le3GalaxyCapture.hpp"
 #if defined(MEVR_GAME_LE3)
+#include "game/GalaxyProjector.hpp"
+#include "game/HandCalibration.hpp"
 #include "game/Le3GalaxyProjector.hpp"
 #include "game/Le3GalaxyRetention.hpp"
-#include "game/SceneCaptureRig.hpp"
-#include "core/vr/CineScreen.hpp"
+#include "game/ViewAnchor.hpp"
 #include "core/Log.hpp"
+#include "core/vr/GalaxyMap.hpp"
+#include "core/vr/WorldViewHold.hpp"
+#include "engine/ProcessEvent.hpp"
+#include "ue3/Params.hpp"
 #include <Windows.h>
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
 namespace mevr::game::le3_galaxy_capture {
 namespace {
 using namespace le3_galaxy;
-capture_rig::Rig eyes[2];
+namespace gp = galaxy_projector;
+namespace gh = vr::galaxy_holo;
+
+ue3::FunctionRef gUpdateCamera{"Engine.Camera.UpdateCamera", ue3::kEveryGame};
+ue3::FunctionRef gSetHidden{"Engine.Actor.SetHidden", ue3::kEveryGame};
+ue3::ClassRef gEmitterClass{"Engine.Emitter", ue3::kEveryGame};
+ue3::ClassRef gInterpClass{"Engine.InterpActor", ue3::kEveryGame};
+ue3::FieldRef gTag{"Engine.Actor", "Tag", ue3::kEveryGame};
+ue3::FieldRef gWorldInfo{"Engine.Actor", "WorldInfo", ue3::kEveryGame};
+
+constexpr float kNearProjectorUU = 900.0f;  // ME1's "near the console": the room's retention is armed within this, on foot
+
+struct Token {
+    ue3::Object* object = nullptr;
+    int index = -1;
+    static Token Of(ue3::Object* o) { return {o, ue3::runtime::Get().IndexOf(o)}; }
+    bool Alive() const { return ue3::runtime::IsAlive(object) && ue3::runtime::Get().IndexOf(object) == index; }
+};
+
+// The projector's disc as Shepard's view on foot maps it (tracking space), and in the world; measured on foot only (in the
+// map the player camera is the map's, which can't say where the room is), in the floor's session and recenter epoch.
+struct Disc {
+    bool valid = false;
+    float centre[3] = {};
+    float normal[3] = {};
+    float radiusM = 0.0f;
+    ue3::Vector centreUU{};
+    float radiusUU = 0.0f;
+    std::uint32_t sessions = 0, recenters = 0;
+};
+
 Publish publishScene = nullptr;
 std::optional<vr::floor::State> currentFloor;
-vr::floor::State epoch;
-vr::galaxy_holo::Scene scene;
-bool armed = false;
-bool postProcess = true;
-std::string reason = "off";
-unsigned frames = 0;
-float convergence = 0, baseline = 0;
+vr::world_view::Reference room;
+gp::HeldView held;
+gp::RenderHold render;
+gp::MapPov mapPov;
+gp::StereoWindow window;
+Disc disc;
+bool handlerOn = false;
+bool off = false;          // `mevr galaxy capture off`
+// ME3's captures without the post-process chain: with any chain (the player's, the engine's default, its UI scene's) their
+// pictures came out black although the final post effect bound the capture's own target (plugin/Le3SceneCapture), while
+// without one the scene and the finish's gamma pass gave the map as the game shows it (run 20261117-*-LE3-gx2,
+// research/le3-galaxy.md "The projector flow"). `mevr galaxy capture on-post` (the player's chain), on-default, on-ui: the
+// diagnostics.
+bool postProcess = false;
+int chainChoice = 0;       // 0 the player's chain, 1 Engine.DefaultPostProcess, 2 DefaultUIScenePostProcess (diagnostics)
+bool holding = false;
+bool published = false;
+std::vector<Token> hidden;  // the room's own projector hologram, hidden while the window lies on it
+std::uint64_t lastProbeMs = 0;
+std::string armRefused;
+std::string reason = "idle";
+unsigned frames = 0, openings = 0;
 
-void Stop(char const* why, bool exiting = false) {
-    if (publishScene) publishScene(nullptr);
-    for (auto& eye : eyes) {
-        if (exiting) eye.Forget(); else eye.Destroy(why);
-    }
-    if (armed) log::Info("LE3 galaxy captures: stopped ({})", why);
-    armed = false; reason = why;
-}
 bool Vector(json::Value const& v, float out[3]) {
     if (!v.IsArray() || v.Items().size() != 3) return false;
     for (int i = 0; i < 3; ++i) {
@@ -40,96 +84,281 @@ bool Vector(json::Value const& v, float out[3]) {
     }
     return true;
 }
+
+void Unpublish() {
+    if (published && publishScene) publishScene(nullptr);
+    published = false;
+}
+
+void ShowProjector() {
+    ue3::Function* const f = gSetHidden.Get();
+    int shown = 0;
+    for (Token const& t : hidden) {
+        if (f == nullptr || !t.Alive()) continue;  // the room's art rebuilt on the way out: a new actor, never hidden by us
+        ue3::Params p(ue3::runtime::Get(), f);
+        if (p.Valid() && p.SetBool("bNewHidden", false) && ue3::runtime::Call(t.object, f, p)) ++shown;
+    }
+    if (!hidden.empty()) log::Info("LE3 galaxy projector: the room's own projector hologram shown again ({} of {} actors)", shown, hidden.size());
+    hidden.clear();
+}
+
+// The GalaxyMapProxy mesh and the emitters over it (the decorative systems), in the player's world.
+void HideProjector(ue3::Object* pc) {
+    ue3::Function* const f = gSetHidden.Get();
+    if (f == nullptr || !hidden.empty() || !disc.valid) return;
+    auto& r = ue3::runtime::Get();
+    ue3::Object* const world = Object(pc, "Engine.Actor", "WorldInfo");
+    for (int i = 0, n = r.ObjectCount(); world != nullptr && i < n; ++i) {
+        ue3::Object* const o = r.ObjectAt(i);
+        if (o == nullptr || !r.IsAlive(o) || (!ue3::IsA(o, gInterpClass) && !ue3::IsA(o, gEmitterClass)) ||
+            r.NameText(o).starts_with("Default__") || Object(o, "Engine.Actor", "WorldInfo") != world) continue;
+        bool wanted = false;
+        if (ue3::IsA(o, gInterpClass)) {
+            auto const tag = gTag.Read<ue3::Name>(o);
+            wanted = tag && r.ToString(*tag) == "GalaxyMapProxy";
+        } else if (auto const at = player::Location(o)) {
+            float const dx = at->x - disc.centreUU.x, dy = at->y - disc.centreUU.y, dz = at->z - disc.centreUU.z;
+            wanted = std::sqrt(dx * dx + dy * dy + dz * dz) < 1.5f * disc.radiusUU;
+        }
+        if (wanted) hidden.push_back(Token::Of(o));
+    }
+    int done = 0;
+    for (Token const& t : hidden) {
+        ue3::Params p(r, f);
+        if (p.Valid() && p.SetBool("bNewHidden", true) && ue3::runtime::Call(t.object, f, p)) ++done;
+    }
+    log::Info("LE3 galaxy projector: the room's own projector hologram hidden while the map's window lies on it ({} of {} actors)",
+        done, hidden.size());
+}
+
+void Stop(char const* why) {
+    Unpublish();
+    window.Pause();
+    ShowProjector();
+    if (holding) log::Info("LE3 galaxy projector: the view is the game's again ({})", why);
+    holding = false;
+    reason = why;
+}
+
+// A new player or world: every reference of the old one goes (its actors went with it).
+void ObserveRoom(ue3::Object* pc) {
+    ue3::Object* const world = gWorldInfo.Read<ue3::Object*>(pc).value_or(nullptr);
+    if (!room.Observe({reinterpret_cast<std::uintptr_t>(world), reinterpret_cast<std::uintptr_t>(pc)})) return;
+    Unpublish();
+    window.Reset("the player/world changed");
+    hidden.clear();
+    held = {};
+    render = {};
+    mapPov = {};
+    disc = {};
+    holding = false;
+    lastProbeMs = 0;
+}
+
+void MeasureDisc(ue3::Object* pc) {
+    auto const probe = ObserveProjector(pc);
+    if (!probe.Bool("trackingAvailable") || !currentFloor || !currentFloor->valid) return;
+    Disc d;
+    float centreUU[3]{};
+    if (!Vector(probe.Get("trackingCentreM"), d.centre) || !Vector(probe.Get("trackingNormal"), d.normal) ||
+        !Vector(probe.Get("centreUU"), centreUU)) return;
+    d.radiusM = static_cast<float>(probe.Number("trackingRadiusM"));
+    d.radiusUU = static_cast<float>(probe.Number("radiusUU"));
+    if (!(d.radiusM > 0.1f && d.radiusM < 10.0f) || !(d.radiusUU > 10.0f)) return;
+    d.centreUU = {centreUU[0], centreUU[1], centreUU[2]};
+    d.sessions = currentFloor->sessions;
+    d.recenters = currentFloor->recenters;
+    d.valid = true;
+    float const moved = disc.valid ? std::hypot(d.centre[0] - disc.centre[0], d.centre[1] - disc.centre[1], d.centre[2] - disc.centre[2]) : 1e9f;
+    if (moved > 0.05f) {
+        log::Info("LE3 galaxy projector: the CIC's projector measured on foot: a disc at ({:.2f}, {:.2f}, {:.2f}) m, its normal "
+                  "({:.2f}, {:.2f}, {:.2f}) ({:.0f} degrees off vertical), {:.2f} m in radius",
+            d.centre[0], d.centre[1], d.centre[2], d.normal[0], d.normal[1], d.normal[2],
+            std::acos(std::clamp(std::fabs(d.normal[1]), 0.0f, 1.0f)) * 57.29578f, d.radiusM);
+    }
+    disc = d;
+}
+
+bool NearProjector(ue3::Object* pc) {
+    auto const at = player::Location(player::Pawn(pc));
+    return at && disc.valid && std::hypot(at->x - disc.centreUU.x, at->y - disc.centreUU.y) < kNearProjectorUU;
+}
+
+// Camera.UpdateCamera, after the game's: Shepard's view on foot remembered, the map camera's POV and where the POV lives
+// (the host swaps the held view in around the main view's CalcSceneView only; the game keeps its map camera).
+void OnUpdateCamera(ue3::Object* playerCamera, ue3::Function* /*function*/, void* /*parms*/, void* /*result*/) {
+    ue3::Object* const pc = player::Controller();
+    if (playerCamera == nullptr || pc == nullptr || player::CameraOwner(playerCamera) != pc) return;
+    ObserveRoom(pc);
+    auto const pov = player::CameraPov(playerCamera);
+    if (!pov || pov->location == nullptr || pov->rotation == nullptr || pov->fov == nullptr) return;
+    std::uint64_t const now = GetTickCount64();
+    render = gp::RenderHold{true, pov->location, pov->rotation, pov->fov, now};
+    auto const mode = player::GameMode(pc);
+    if (!holding && room.Remember(mode.value_or(255), player::FloorLockSample().cameraOwned, false)) {
+        gp::Remember(held, *pov->location, *pov->rotation, *pov->fov);
+    }
+    if (mode && engine::adapter::IsMapMode(*mode)) {
+        mapPov = gp::MapPov{true, *pov->location, *pov->rotation, *pov->fov, now};
+    }
+}
+}
+
+void TryStartup() {
+    ue3::Function* const update = ue3::runtime::Up() ? gUpdateCamera.Get() : nullptr;
+    if (update == nullptr) {
+        log::Warn("LE3 galaxy projector: Engine.Camera.UpdateCamera not found: the map stays on the native panel");
+        return;
+    }
+    engine::process_event::AddPostHandler(update, &OnUpdateCamera);
+    handlerOn = true;
 }
 
 void Tick(Publish publish, std::optional<vr::floor::State> const& floor) {
-    publishScene = publish; currentFloor = floor;
-    if (!armed) return;
-    auto* pc = player::Controller();
-    if (!publish || !floor || !floor->valid || floor->sessions != epoch.sessions || floor->recenters != epoch.recenters ||
-        !le3_galaxy_retention::Armed()) { Stop("lease-or-space-ended"); return; }
-    if (!le3_galaxy_retention::Active()) return; // waiting for normal entry
-    auto const context = Capture(pc);
-    auto* cameraObject = player::Camera(pc);
-    auto const pov = player::CameraPov(cameraObject);
-    if (!context || !pov || player::CameraOwner(cameraObject) != pc) { Stop("native-camera-unavailable"); return; }
-    auto const centre = player::Location(Object(context->camera, kCamera, "m_pCenterObject"));
-    if (!centre || !std::isfinite(*pov->fov) || *pov->fov <= 1 || *pov->fov >= 179) {
-        Stop("native-map-centre-or-lens-unavailable"); return;
+    publishScene = publish;
+    currentFloor = floor;
+    ue3::Object* const pc = player::Controller();
+    if (pc == nullptr) { Stop("no player"); return; }
+    ObserveRoom(pc);
+    vr::galaxy_map::Settings const settings = hand_calibration::GetGalaxy();
+    bool const enabled = !off && handlerOn && publish != nullptr && settings.hologram && settings.inWorld && settings.window;
+    auto const mode = player::GameMode(pc);
+    std::uint64_t const now = GetTickCount64();
+    bool const onFoot = mode && *mode == 0;
+    bool const map = mode && engine::adapter::IsMapMode(*mode);
+    if (onFoot && !holding && room.Available() && player::FloorLockSample().cameraOwned) {
+        if (auto const frame = view_anchor::Current()) held.footFrame = frame;
     }
-    auto const basis = engine::ToBasis(engine::UnrealRotation{pov->rotation->pitch, pov->rotation->yaw, pov->rotation->roll});
-    convergence = static_cast<float>((centre->x - pov->location->x) * basis.forward.x +
-        (centre->y - pov->location->y) * basis.forward.y + (centre->z - pov->location->z) * basis.forward.z);
-    if (!std::isfinite(convergence) || convergence < 100) { Stop("native-map-centre-behind-camera"); return; }
-    // Same parallel-camera/crop policy as ME1 StepWindow. No guessed centre distance.
-    float const depth = std::min(0.01f, vr::cine_screen::MaxDepth(scene.windowWidthM, vr::cine_screen::kDefaultIpdM));
-    scene.windowCrop = vr::cine_screen::CropFraction(depth);
-    baseline = vr::cine_screen::BaselineUU(scene.windowCrop, convergence, *pov->fov * 0.00872664626f);
-    for (int e = 0; e < 2; ++e) {
-        auto& eye = eyes[e];
-        if (!eye.Alive()) {
-            capture_rig::Options options;
-            options.width = 1024; options.height = 576; options.fovDeg = *pov->fov;
-            options.postProcess = postProcess;
-            if (!eye.Create(e == 0 ? "LE3 galaxy left" : "LE3 galaxy right", options, *pov->location)) {
-                log::Warn("LE3 galaxy capture creation: {}", eye.Failure());
-                Stop("capture-create-failed"); return;
-            }
-        }
-        float const side = (e == 0 ? -0.5f : 0.5f) * baseline;
-        ue3::Vector const at{static_cast<float>(pov->location->x + basis.right.x * side),
-            static_cast<float>(pov->location->y + basis.right.y * side),
-            static_cast<float>(pov->location->z + basis.right.z * side)};
-        if (!eye.SetFov(*pov->fov) || (!eye.Enabled() && !eye.SetEnabled(true)) || !eye.Point(at, *pov->rotation)) {
-            Stop("capture-point-failed"); return;
-        }
-        eye.Tick();
-        scene.windowResource[e] = eye.Resource();
+    // The projector, measured on foot on the CIC's deck (every 2 s): its disc is where the map's window lies.
+    if (enabled && onFoot && !holding && now - lastProbeMs >= 2000 && le3_galaxy_retention::CicArtVisible(pc)) {
+        lastProbeMs = now;
+        MeasureDisc(pc);
     }
-    ++frames;
-    scene.sequence = frames;
-    scene.windowTicks = std::min(eyes[0].EnabledTicks(), eyes[1].EnabledTicks());
-    scene.windowWidth = eyes[0].Width(); scene.windowHeight = eyes[0].Height();
-    scene.windowGeneration = std::max(eyes[0].Generation(), eyes[1].Generation());
+    bool const epoch = floor && floor->valid && disc.valid && floor->sessions == disc.sessions && floor->recenters == disc.recenters;
+    // Near the projector the room's art is kept through the map's opening (the native streaming unloads it).
+    if (enabled && onFoot && epoch && NearProjector(pc) && !le3_galaxy_retention::Armed()) {
+        std::string const refused = le3_galaxy_retention::Arm(pc, true);
+        if (refused != armRefused) {
+            log::Info("LE3 galaxy projector: the room's retention {}", refused.empty() ? "armed near the projector" : "not armed: " + refused);
+            armRefused = refused;
+        }
+    }
+    bool const want = enabled && map && epoch && held.haveView && held.footFrame && le3_galaxy_retention::Active();
+    if (want != holding) {
+        if (!want) {
+            Stop(!enabled ? "off" : !map ? "the map closed" : !epoch ? "the room's tracking changed (recenter or session)"
+                : !le3_galaxy_retention::Active() ? "the room's retention ended" : "no view on foot");
+            return;
+        }
+        holding = true;
+        ++openings;
+        auto const& v = held.floorView;
+        log::Info("LE3 galaxy projector: the map is open in the CIC: the view held at Shepard's ({:.0f}, {:.0f}, {:.0f}; floor lock {}, "
+                  "raw Z {:.1f}), the map's window on the projector", held.location.x, held.location.y, held.location.z, v.floorLocked, held.rawZ);
+        HideProjector(pc);
+    }
+    if (!holding) {
+        Unpublish();
+        window.Pause();
+        reason = !enabled ? "off" : map ? "map without the room (no retention, view or tracking)" : onFoot ? "on foot" : "not the map";
+        return;
+    }
+    gh::Scene scene;
+    scene.sequence = ++frames;
+    scene.inWorld = 1;
+    scene.anchorValid = 1;
+    scene.onFoot = 0;
+    for (int i = 0; i < 3; ++i) {
+        scene.anchor[i] = disc.centre[i];
+        scene.discCentre[i] = disc.centre[i];
+        scene.discNormal[i] = disc.normal[i];
+    }
+    scene.windowDisc = 1;
+    scene.discRadiusM = disc.radiusM * settings.windowScale;
+    gp::WindowLook look;
+    look.widthM = 2.0f * scene.discRadiusM;
+    look.depth = settings.windowDepth;
+    look.round = settings.windowRound;
+    look.backdrop = settings.windowBackdrop;
+    look.postProcess = postProcess;
+    look.postProcessChain = chainChoice != 0 ? capture_rig::EngineChain(chainChoice == 2) : nullptr;
+    // Presentation does not depend on the captures' readiness: the window's layout and UI panel stand while they warm up.
+    scene.windowOn = 1;
+    scene.windowWidthM = look.widthM;
+    bool const fresh = mapPov.valid && now - mapPov.ms < 500 && mapPov.fovDeg > 1.0f && mapPov.fovDeg < 179.0f;
+    HWND const gameWindow = gp::GameWindow();
+    RECT client{};
+    if (fresh && gameWindow != nullptr && GetClientRect(gameWindow, &client) && client.right >= 64 && client.bottom >= 64) {
+        auto const context = Capture(pc);
+        std::optional<ue3::Vector> const centre = context ? player::Location(Object(context->camera, kCamera, "m_pCenterObject")) : std::nullopt;
+        window.Step(mapPov, centre, client.right, client.bottom, look, scene);
+    } else {
+        window.Pause();
+    }
+    gp::PutRenderHold(held, render, true, scene);
     publish(&scene);
-    reason = "capture-window-published-room-view-pending";
+    published = true;
+    reason = window.On() ? "held, the window on the projector" : "held, the window warming up";
 }
 
-void Shutdown(bool exiting) { Stop("shutdown", exiting); publishScene = nullptr; currentFloor.reset(); }
+void Shutdown(bool exiting) {
+    if (!exiting) {
+        Unpublish();
+        ShowProjector();
+    }
+    window.Shutdown(exiting);
+    publishScene = nullptr;
+    currentFloor.reset();
+    holding = published = false;
+    hidden.clear();
+}
 
-std::string Command(ue3::Object* pc, std::string const& action) {
-    if (action == "off") { Stop("command-off"); le3_galaxy_retention::Command(pc, "off"); }
-    else if (action == "on" || action == "on-raw") {
-        if (armed || le3_galaxy_retention::Armed()) return "galaxy capture: use capture off before rearming";
-        auto const probe = ObserveProjector(pc);
-        if (!publishScene || !currentFloor || !currentFloor->valid || !probe.Bool("trackingAvailable"))
-            return "galaxy capture: requires host publication, floor epoch and measured on-foot projector";
-        scene = {};
-        if (!Vector(probe.Get("trackingCentreM"), scene.discCentre) || !Vector(probe.Get("trackingNormal"), scene.discNormal))
-            return "galaxy capture: invalid measured projector";
-        scene.discRadiusM = static_cast<float>(probe.Number("trackingRadiusM"));
-        if (!(scene.discRadiusM > 0.1f && scene.discRadiusM < 10)) return "galaxy capture: invalid radius";
-        le3_galaxy_retention::Command(pc, "on");
-        if (!le3_galaxy_retention::Armed()) return "galaxy capture: retention admission failed";
-        scene.inWorld = scene.anchorValid = scene.windowOn = scene.windowDisc = scene.windowRound = 1;
-        scene.windowWidthM = 2 * scene.discRadiusM;
-        postProcess = action != "on-raw"; // Diagnostic isolation of the native post-process target path.
-        epoch = *currentFloor; armed = true; frames = 0; reason = "waiting-for-native-map";
-    } else if (action != "state" && !action.empty()) return "usage: mevr galaxy capture on|on-raw|off|state";
+std::string StatusJson() {
     auto out = json::Value::Object();
-    out["armed"] = armed; out["reason"] = reason; out["frames"] = static_cast<int>(frames);
-    out["leftResource"] = std::format("0x{:X}", eyes[0].Resource());
-    out["rightResource"] = std::format("0x{:X}", eyes[1].Resource());
-    out["convergenceUU"] = convergence; out["baselineUU"] = baseline;
+    out["holding"] = holding;
+    out["published"] = published;
+    out["reason"] = reason;
+    out["openings"] = static_cast<int>(openings);
+    out["frames"] = static_cast<int>(frames);
+    out["discValid"] = disc.valid;
+    out["discRadiusM"] = disc.radiusM;
+    out["haveView"] = held.haveView;
+    out["footFrame"] = held.footFrame.has_value();
+    out["windowOn"] = window.On();
+    out["baselineUU"] = window.BaselineUU();
+    out["convergeUU"] = window.ConvergeUU();
+    out["captureWidth"] = window.Eye(0).Width();
+    out["captureHeight"] = window.Eye(0).Height();
     out["postProcess"] = postProcess;
-    out["presentationVerified"] = false; out["roomViewHeld"] = false;
-    return "galaxy capture: " + json::Write(out, 0);
+    out["chain"] = chainChoice == 1 ? "engine default" : chainChoice == 2 ? "engine UI scene" : "the player's";
+    out["projectorHidden"] = static_cast<int>(hidden.size());
+    out["retentionArmed"] = le3_galaxy_retention::Armed();
+    out["retentionActive"] = le3_galaxy_retention::Active();
+    out["off"] = off;
+    return json::Write(out, 0);
+}
+
+std::string Command(ue3::Object* /*pc*/, std::string const& action) {
+    if (action == "off") {
+        off = true;
+        Stop("command-off");
+    } else if (action == "on" || action == "on-raw" || action == "on-post" || action == "on-default" || action == "on-ui") {
+        off = false;
+        postProcess = action == "on-post" || action == "on-default" || action == "on-ui";  // diagnostics of the post path
+        chainChoice = action == "on-default" ? 1 : action == "on-ui" ? 2 : 0;
+        window.Reset("the capture's options changed");
+    } else if (action != "state" && !action.empty()) {
+        return "usage: mevr galaxy capture on|on-post|on-default|on-ui|off|state";
+    }
+    return "galaxy capture: " + StatusJson();
 }
 }
 #else
 namespace mevr::game::le3_galaxy_capture {
+void TryStartup() {}
 void Tick(Publish, std::optional<vr::floor::State> const&) {}
 void Shutdown(bool) {}
 std::string Command(ue3::Object*, std::string const&) { return "galaxy capture: LE3 only"; }
+std::string StatusJson() { return "{}"; }
 }
 #endif

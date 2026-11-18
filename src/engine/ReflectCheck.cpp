@@ -1066,6 +1066,7 @@ void CheckFields() {
     CheckField("Engine.PlayerController", "Player", SDK_FIELD(APlayerController, Player));
     CheckField("Engine.LocalPlayer", "PlayerPostProcess", SDK_FIELD(ULocalPlayer, PlayerPostProcess));
     CheckField("Engine.Engine", "DefaultPostProcess", SDK_FIELD(UEngine, DefaultPostProcess));
+    CheckField("Engine.Engine", "DefaultUIScenePostProcess", SDK_FIELD(UEngine, DefaultUIScenePostProcess));
     CheckField("Engine.Engine", "GamePlayers", SDK_FIELD(UEngine, GamePlayers));
     CheckField("Engine.Player", "Actor", SDK_FIELD(UPlayer, Actor));
     CheckField("Engine.BioSFHandler", "oPanel", SDK_FIELD(UBioSFHandler, oPanel));
@@ -2991,6 +2992,7 @@ void CheckLe3CaptureRig() {
     CheckField("Engine.PlayerController", "Player", SDK_FIELD(APlayerController, Player));
     CheckField("Engine.LocalPlayer", "PlayerPostProcess", SDK_FIELD(ULocalPlayer, PlayerPostProcess));
     CheckField("Engine.Engine", "DefaultPostProcess", SDK_FIELD(UEngine, DefaultPostProcess));
+    CheckField("Engine.Engine", "DefaultUIScenePostProcess", SDK_FIELD(UEngine, DefaultUIScenePostProcess));
     CheckFunction("Engine.Actor.Spawn");
     PARAM(AActor_execSpawn_Parms, "Engine.Actor.Spawn", SpawnClass);
     PARAM(AActor_execSpawn_Parms, "Engine.Actor.Spawn", SpawnOwner);
@@ -3029,6 +3031,12 @@ void CheckLe3CaptureRig() {
     PARAM(USceneCapture2DComponent_execSetCaptureParameters_Parms, "Engine.SceneCapture2DComponent.SetCaptureParameters", NewNearPlane);
     PARAM(USceneCapture2DComponent_execSetCaptureParameters_Parms, "Engine.SceneCapture2DComponent.SetCaptureParameters", NewFarPlane);
     PARMS(USceneCapture2DComponent_execSetCaptureParameters_Parms, "Engine.SceneCapture2DComponent.SetCaptureParameters");
+    // The CIC's own projector hologram (its GalaxyMapProxy InterpActor and the emitters over it), hidden while the map's window
+    // lies on it (game/Le3GalaxyCapture).
+    CheckClass<AEmitter>("Engine.Emitter");
+    CheckFunction("Engine.Actor.SetHidden");
+    PARAM(AActor_execSetHidden_Parms, "Engine.Actor.SetHidden", bNewHidden);
+    PARMS(AActor_execSetHidden_Parms, "Engine.Actor.SetHidden");
 }
 
 

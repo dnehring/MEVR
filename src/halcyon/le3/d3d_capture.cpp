@@ -5640,10 +5640,14 @@ void UpdatePresentationState() noexcept
         }
         else s_suppressRun = 0;
     }
-    const bool galaxy = autoMenus && !fpConvo && ME2VR::EngineProbe::IsGalaxyMapOpen();
+    // [MEVR] the galaxy map open over the CIC's projector (MevrSeams::GalaxyOwnsPresentation: the mod holds Shepard's view on
+    // foot and shows the game's map as a stereo window on the projector, ME1's design): the map's modes are no flat
+    // presentation; the room stays in stereo and the map's UI goes to our HUD panel there. docs/galaxy-projector-handoff.md.
+    const bool galaxyHeld = ::MevrSeams::GalaxyOwnsPresentation(gmNow);
+    const bool galaxy = autoMenus && !fpConvo && ME2VR::EngineProbe::IsGalaxyMapOpen() && !galaxyHeld;
     // [MEVR] a game screen of ours stands on the wrist or in the room (or is being opened): the GUI mode's input owner is
     // not a menu presentation; the world stays in stereo and the screen's UI goes to our HUD panel (as ME2's GetMenuMode).
-    const bool worldUiOwns = ::MevrSeams::WorldUiOwnsGui(gmNow);
+    const bool worldUiOwns = ::MevrSeams::WorldUiOwnsGui(gmNow) || galaxyHeld;
     const int demand = manual ? Manual : (menuInputOwner && !worldUiOwns) ? InputOwner : galaxy ? Galaxy : Gameplay;
     const bool wasMenu = g_menuPresentation.load(std::memory_order_acquire);
 

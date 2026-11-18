@@ -37,6 +37,7 @@ struct Lease {
     DWORD thread{};
     ULONGLONG deadline{};
     bool mapSeen{}, owned{}, nativeLoad{}, nativeShow{};
+    bool production{};  // the projector's own lease (game/Le3GalaxyCapture): no time cap once the map is open
 } lease;
 unsigned holds = 0, rebuilds = 0;
 std::string last = "not-armed";
@@ -95,7 +96,9 @@ void AfterReevaluate(bool nativeRebuilt) {
     if (!map) return;
     if (!lease.mapSeen) {
         lease.mapSeen = true;
-        lease.deadline = GetTickCount64() + 120000;
+        // The projector's lease lasts as long as the map (it still ends on leaving it, a world, player or level change, and
+        // the mod's unload); the diagnostic's at most 120 seconds.
+        lease.deadline = lease.production ? ~0ull : GetTickCount64() + 120000;
     }
     if (nativeRebuilt) { lease.owned = false; ++rebuilds; }
     if (!lease.owned) {
@@ -150,6 +153,26 @@ void Startup(hook::Context& hooks) {
     installed = hook::Install(hooks, kHook, at, &Detour, original);
 }
 bool Armed() { return lease.deadline != 0 && GetTickCount64() < lease.deadline && SameLevel(); }
+bool CicArtVisible(ue3::Object* pc) {
+    auto* const level = CicLevel(Object(pc, "Engine.Actor", "WorldInfo"));
+    return level != nullptr && Object(level, "Engine.LevelStreaming", "LoadedLevel") != nullptr &&
+        ReadBool(level, "Engine.LevelStreaming", "bIsVisible") == true;
+}
+std::string Arm(ue3::Object* pc, bool production) {
+    if (lease.deadline) return "already armed";
+    if (!installed || player::GameMode(pc) != 0) return "requires the installed hook, on foot";
+    auto* const world = Object(pc, "Engine.Actor", "WorldInfo");
+    auto* const level = CicLevel(world);
+    if (!level || !Object(level, "Engine.LevelStreaming", "LoadedLevel") ||
+        ReadBool(level, "Engine.LevelStreaming", "bIsVisible") != true ||
+        shouldLoad.ReadBool(level) != true || shouldShow.ReadBool(level) != true)
+        return "CIC art is not natively loaded and visible";
+    lease = {Token::Of(pc), Token::Of(player::Pawn(pc)), Token::Of(world), Token::Of(level),
+        GetCurrentThreadId(), GetTickCount64() + 20000};
+    lease.production = production;
+    holds = rebuilds = 0; last = "armed-waiting-for-native-map-entry";
+    return {};
+}
 bool Active() { return Armed() && lease.mapSeen && engine::adapter::IsMapMode(player::GameMode(lease.pc.object).value_or(255)); }
 bool Shutdown(hook::Context& hooks, bool exiting) {
     if (!exiting) Release("shutdown"); else lease = {};
@@ -165,15 +188,7 @@ std::string Command(ue3::Object* pc, std::string const& action) {
         auto const probe = ObserveProjector(pc);
         if (!installed || !probe.Bool("available") || !probe.Bool("trackingAvailable") || player::GameMode(pc) != 0)
             return "galaxy retention: requires installed hook and a measured on-foot CIC projector";
-        auto* const world = Object(pc, "Engine.Actor", "WorldInfo");
-        auto* const level = CicLevel(world);
-        if (!level || !Object(level, "Engine.LevelStreaming", "LoadedLevel") ||
-            ReadBool(level, "Engine.LevelStreaming", "bIsVisible") != true ||
-            shouldLoad.ReadBool(level) != true || shouldShow.ReadBool(level) != true)
-            return "galaxy retention: CIC art is not natively loaded and visible";
-        lease = {Token::Of(pc), Token::Of(player::Pawn(pc)), Token::Of(world), Token::Of(level),
-            GetCurrentThreadId(), GetTickCount64() + 20000};
-        holds = rebuilds = 0; last = "armed-waiting-for-native-map-entry";
+        if (auto const refused = Arm(pc, false); !refused.empty()) return "galaxy retention: " + refused;
     } else if (!action.empty() && action != "state") return "usage: mevr galaxy retain on|off|state";
     auto out = json::Value::Object();
     out["installed"] = installed; out["armed"] = lease.deadline != 0;
@@ -187,6 +202,8 @@ std::string Command(ue3::Object* pc, std::string const& action) {
 namespace mevr::game::le3_galaxy_retention {
 void Startup(hook::Context&) {}
 bool Armed() { return false; }
+bool CicArtVisible(ue3::Object*) { return false; }
+std::string Arm(ue3::Object*, bool) { return "LE3 only"; }
 bool Active() { return false; }
 bool Shutdown(hook::Context&, bool) { return true; }
 std::string Command(ue3::Object*, std::string const&) { return "galaxy retention: LE3 only"; }

@@ -649,6 +649,8 @@ set(MEVR_MOD_SOURCES
     src/game/MakoGunner.hpp
     src/game/Spectator.cpp
     src/game/SceneCaptureRig.cpp
+    src/game/GalaxyProjector.cpp
+    src/game/GalaxyProjector.hpp
     src/game/Le3GalaxyRetention.cpp
     src/game/Le3GalaxyRetention.hpp
     src/game/Le3GalaxyCapture.cpp
@@ -1095,6 +1097,8 @@ function(mevr_add_plugin game)
             src/plugin/PowerWheel.cpp src/plugin/PowerWheelDraw.cpp src/plugin/PowerIcons.cpp src/plugin/Glow.cpp
             src/plugin/SquadPlaceDraw.cpp src/plugin/GalaxyHologramDraw.cpp
             src/core/vr/SquadMenu.cpp src/plugin/SquadPanel.cpp src/plugin/SquadPanelDraw.cpp
+            # The galaxy map's window and view hold over the CIC's projector (ME1's, every game: game/GalaxyProjector).
+            src/plugin/GalaxyHologram.cpp src/plugin/GalaxyHologram.hpp src/plugin/PovSwap.hpp
             src/core/vr/GalaxyHologram.cpp src/core/vr/GalaxyHologram.hpp
             src/core/vr/GalaxyMap.cpp src/core/vr/GalaxyMap.hpp
             # ME1's 3D cinema screen for conversations and cutscenes, its floor and horizon, the dip from black and the

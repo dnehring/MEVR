@@ -391,6 +391,8 @@ void TryInstallScriptHooks() {
 #endif
 #if !defined(MEVR_GAME_LE3)
     game::galaxy_map::TryStartup();  // the camera-update handler holding the view in the CIC while the map is open in-world
+#else
+    game::le3_galaxy_capture::TryStartup();  // ME3's: the same hold over the CIC's projector (game/GalaxyProjector)
 #endif
     if (gHostOwnsVr && gHost->version >= 36 && gHost->floorLockSampleSize == sizeof(vr::floor_lock::PawnSample)) {
         game::player::PublishFloorLockOnCamera(gHost->setFloorLockSample);

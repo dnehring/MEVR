@@ -18,6 +18,8 @@
 #include "core/vr/SquadMenu.hpp"
 #include "engine/GameAdapter.hpp"
 #include "plugin/Colour.hpp"
+#include "plugin/GalaxyHologram.hpp"
+#include "plugin/GamePointer.hpp"
 #include "plugin/HudPanel.hpp"
 #include "plugin/HudPieceLayers.hpp"
 #include "plugin/MenusLe2.hpp"
@@ -93,6 +95,25 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
         }
     }
 
+    // The game's own galaxy map as a stereo window on the CIC's projector (plugin/GalaxyHologram, the mod's captures: ME1's
+    // research/51 section 8.1), under the map's UI on the panel below (LE1's HalcyonOverlays order).
+    if (capacity - count >= 2) {
+        mevr::host::galaxy_hologram::Frame galaxy;
+        galaxy.session = session;
+        galaxy.appSpace = appSpace;
+        galaxy.context = frame.context;
+        galaxy.device = device;
+        galaxy.gameMode = frame.gameMode;
+        galaxy.menuOpen = ctx.menuOpen;
+        galaxy.headValid = frame.headValid;
+        galaxy.head = {headOrientation, headPosition};
+        XrCompositionLayerBaseHeader const* window[2]{};
+        int const n = mevr::host::galaxy_hologram::WindowLayers(galaxy, window);
+        for (int i = 0; i < n; ++i) {
+            layersOut[count++] = window[i];
+        }
+    }
+
     // The body-locked HUD panel (plugin/HudPanel, LE1's way): the game's UI, which the renderer's draw hooks sent there
     // instead of the eyes (MevrSeams::HudPanelDraw), on a quad in front of the body. Also clears the panel and arms the
     // next frame's redirect. Capability hudPanelGameplay: the whole gameplay HUD; without it only the interaction label's
@@ -145,6 +166,22 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
         // interrupt prompt) on a layer of its own just in front of it ([Cinematics] uiLayer, uiForwardM; research/52
         // "Cross-eyed"), the part of the window the screen shows, as large to the eye as on the screen.
         mevr::host::sequel_cinema::FillUi(sb::Screen(), frame.headPosition, panel);
+        // The galaxy map open over the CIC's projector (ME1's research/51 section 8.1; LE1's HalcyonOverlays galaxyUi): the map's
+        // UI (its labels, title, buttons, the travel question) goes to the panel, which lies on the projector's disc over the
+        // map's window, the window's whole frame wide, and is the game pointer's there.
+        bool const galaxyUi = mevr::engine::adapter::IsMapMode(frame.gameMode) && mevr::host::galaxy_hologram::Holds(frame.gameMode);
+        if (galaxyUi) {
+            float const uiWidth = mevr::host::galaxy_hologram::UiPanelWidthM(1.50f);  // LE1's kGalaxyUiWidthM before the window
+            panel.gameplay = true;
+            panel.screenUi = true;
+            panel.screenSpace = appSpace;
+            panel.screenPose = mevr::host::galaxy_hologram::UiPanelPose(headPosition);
+            panel.screenSize = {uiWidth, uiWidth * static_cast<float>(mevr::host::hud_panel::Height()) /
+                static_cast<float>(std::max(1u, mevr::host::hud_panel::Width()))};
+            panel.screenPart[0] = panel.screenPart[1] = 0.0f;
+            panel.screenPart[2] = panel.screenPart[3] = 1.0f;
+            panel.screenForwardM = 0.0f;
+        }
         // The HUD keeps the movie's own layout on the panel (Halcyon's per-element HUD moves stand down), as LE1's.
         mevr::host::renderer::SetAuthoredHudLayout(panel.enabled && panel.stereo && mevr::host::hud_panel::Usable());
         bool const panelReady = panel.enabled && panel.stereo && mevr::host::hud_panel::Ready() && device != nullptr;
@@ -186,11 +223,24 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
             hpl::Interaction(pass.common, labelBase && panelReady && !panel.screenUi, panel.masks,
                 static_cast<mevr::vr::hud_pieces::Layout>(facts.hudLayout));
         XrCompositionLayerQuad const* const panelLayer = mevr::host::hud_panel::Layer(panel);
-        if (caps.worldUi) {
+        if (caps.worldUi && !galaxyUi) {
             count = mevr::host::menus_le2::PanelLayers(frame, device, panelLayer, layersOut, count, capacity);  // or a screen's place
         } else if (panelLayer != nullptr && count < capacity) {
             layersOut[count++] = panelLayer;
         }
+        // The map's UI on the projector is the game pointer's (a controller's ray and trigger: the game's cursor; LE1's
+        // HalcyonOverlays galaxy panel).
+#if defined(MEVR_WITH_MAIN_MENU)
+        static bool galaxyPointer = false;  // Present thread
+        if (galaxyUi && panelLayer != nullptr && !anyMenu) {
+            mevr::host::game_pointer::NoteGameUiQuad(panelLayer->pose, panelLayer->size.width, panelLayer->size.height,
+                facts.galaxyUiSteered ? mevr::host::game_pointer::PanelKind::GameMenu : mevr::host::game_pointer::PanelKind::GalaxyMap);
+            galaxyPointer = true;
+        } else if (galaxyPointer) {
+            mevr::host::game_pointer::ForgetGameUiQuad();
+            galaxyPointer = false;
+        }
+#endif
         // A failed panel leaves the original native prompt unclaimed: never a detached label alone.
         if (interactionLayer != nullptr && panelLayer != nullptr && count < capacity) {
             layersOut[count++] = interactionLayer;
