@@ -58,27 +58,27 @@ shared and verified. The frame's cost is not ME1's: both eyes are full engine re
 | REN-13 | missing | hooked in a try build, left off | 73-81 of 520-585 instances under 8 px, no measurable gain; the menu's chips and the Performance bundle do nothing on ME2 | `RenderLeversTable.hpp:225`; ledger R09 |
 | REN-14 | same core, other inputs | the same levers with per-game defaults | ME2: `perEyeViewState` 1, `umbraShareResults` 1, `sfrReplayRetry` 0, `umbraQueryWait` 1. ME1's catalog says the first two "must stay" 0: on ME2 they are 1 by measurement (lane SP, SP2) and the owner's yes for `sfrReplayRetry` | `RenderLeversTable.hpp:218-231`; ledger R01, R07 |
 | REN-15 | missing | upstream's `StereoFramePacing` and `FullRefreshPacing` | `plugin/QuestPacing` is LE1-only; whether a streamed Quest sticks at half rate after a load on ME2 is unmeasured | `CMakeLists.txt:936-937`; ledger R24 |
-| REN-16 | missing | none | `FirstStartEyeSize` is empty off LE1; the fresh file's 4096x2304 for every headset; `vr-game-settings.ps1 -Game LE2` mirrors that size | ledger R35; `vr-game-settings.ps1:131-132` |
+| REN-16 | missing | none | `FirstStartEyeSize` is empty off LE1; the fresh file's 4096x2304 for every headset; `vr-game-settings.ps1 -Game LE2` mirrors that size **Fixed in code, lane AU4 (b1fb0c50): the first VR start writes 0.85 of the eye, at least 16:9 (ME2 draws no HUD on a near-square frame), for the next launch; seen 4096x2304 -> 2944x1656 with the whole HUD (research/le3-flares-and-window.md section 6).** | ledger R35; `vr-game-settings.ps1:131-132` |
 | REN-17 | same core, other inputs | `upscale::Copy` inside `plugin/EyeCopy`; the eye images take the headset's size through `MevrSeams::EyeImageSize` | the same passes and keys; the source is ME2's 16:9 backbuffer, so "below the eye size" depends on a size nothing sets (REN-16). The menu's Upscale row is greyed | `Seams.cpp:41-51`; ledger R13 |
 | REN-18 | same core, other inputs | `plugin/Colour` in `EyeCopy`'s shader and on the HUD panel (`panelColour`) | the same core and profiles; the menu's Colour rows work on ME2 | `HalcyonLe2Bridge.cpp:79`, `SequelOverlays.cpp:126-135`; ledger R14 |
 | REN-19 | same | in the same shader | | ledger R14 |
 | REN-20 | same | `colour::HoldCompare` from the shared menu | | research/le2-menus "The rows on ME2" |
 | REN-21 | same | one policy, `hdr_display::Answer`, from the sequels' own `GetDesc1` hook | found the hard way: black or stale eyes on the float swap chain first | `HalcyonLe2Bridge.cpp:271-273`; ledger R16 |
 | REN-22 | adapter | `MEVR_TONE` in `EyeCopy`'s shader | without LE1's SDR-white scale and without the clip in the neutral profile; unverified | ledger R15 |
-| REN-23 | missing | none | the Display group is greyed | ledger R35 |
+| REN-23 | missing | none | the Display group is greyed **Render resolution and Upscale un-greyed, lane AU4 (b1fb0c50); Performance and Steady cutscenes stay greyed.** | ledger R35 |
 | REN-24 | same core, other inputs | `game/SystemSettings` | ME2 waits until a level has been in gameplay 3 s (a `scale set` during the load hung the game); the same shadows and blur values since 9f556c1a | `SystemSettings.cpp:237`; ledger R12 |
 | REN-25 | missing | none | blur is off only through the mod's `scale set`; ME3's host has the guard, ME2's does not | `CMakeLists.txt:942-943`, `:1171`; `Entry.cpp:314-317`; ledger R10 |
 | REN-26 | adapter | `vr-game-settings.ps1 -Game LE2`; Setup's `GameSpec` | Setup's LE2 spec lags the tool (settings-and-defaults.md, SET-22) | `vr-game-settings.ps1:130-144` |
 | REN-27 | same | `MevrSeams::RecenterOrientation` to `plugin/RecenterTilt`; 60 degrees | R is not a recenter key on ME2 (its reload); the correction itself was never seen on ME2 (the fake headset gives no tilt) | `RendererLe2.cpp:157-159`; ledger R28 |
-| REN-28 | missing | none (the addresses are found, not wired) | `kSkelUpdateBounds` and `kPrimitiveUmbraBounds` are 0 on ME2 although lane R2 found both functions (0x798350, 0x3146C0) | `BodyBounds.cpp:28-33`; ledger R29 |
-| REN-29 | partial | ArmIk's flag part runs | without REN-28's pad | ledger R29 |
+| REN-28 | missing | none (the addresses are found, not wired) | `kSkelUpdateBounds` and `kPrimitiveUmbraBounds` are 0 on ME2 although lane R2 found both functions (0x798350, 0x3146C0) **Fixed in code, lane AU4 (b1fb0c50): both RVAs in, the module on `runtime::Up()`; seen padded (150 units) on Save 4 with replayed hands.** | `BodyBounds.cpp:28-33`; ledger R29 |
+| REN-29 | partial | ArmIk's flag part runs | without REN-28's pad **With REN-28's pad since lane AU4 (b1fb0c50).** | ledger R29 |
 | REN-30 | n/a | Halcyon ME2's first person clears `bCollisionEnabled` itself | measured: the flag 0 every tick, the camera 30 uu ahead while pressed into geometry | ledger G12 |
 | REN-31 | n/a | no first-person conversation holds a view | becomes a contract when CNV is ported | conversations-and-scenes.md |
 | REN-32 | adapter | `plugin/FloorLock` with ME2's journal seam and the traversal hold | contracts in body-and-ik.md | `CMakeLists.txt:1097-1098` |
 | REN-33 | same | `plugin/Swapchains` | | ledger R17 |
 | REN-34 | same | `plugin/GameThreadCalls` | "stereo and the queue work", first run 2026-11-14 | ledger R34 |
 | REN-35 | adapter | `MevrBridge::HotkeyDown`; `\` pinned | unverified in a run | ledger R33 |
-| REN-36 | partial | the ExitProcess hook is every host's | `kept_locks::Install` is under `MEVR_GAME_LE1`: whether ME2's teardown deletes a lock in use is not recorded either way | `Entry.cpp:310-317`; ledger G48 |
+| REN-36 | partial | the ExitProcess hook is every host's | `kept_locks::Install` is under `MEVR_GAME_LE1`: whether ME2's teardown deletes a lock in use is not recorded either way **Fixed, lane AU4 (b1fb0c50): `kept_locks` in the host, and `[EXITKILL]` hands the quit to ours (`MevrSeams::HostEndsProcess`); console quits: 41 deletions skipped, no `crash-exit.txt`.** | `Entry.cpp:310-317`; ledger G48 |
 
 # Reinvented
 

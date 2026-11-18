@@ -70,8 +70,8 @@ The numbers are ME2's summary's.
 | 9. Third-person walk, slow draws, the eye moving on a draw | recurs (`game/CombatStance` is LE1-only); the constant-eye rule is reinvented in Halcyon ME3's own table |
 | 10. Snap turn may stand down | recurs, with a known trigger: ME3 leaves the five listed camera modes for about 0.5 s on a roll, melee, hit reaction or cover entry |
 | 11. No start-up or entry hold | recurs (`plugin/PresentationHold` is in LE1's source list only, re-read) |
-| 12. No owner for the render size | recurs: a fixed 3072x2216 for every headset |
-| 13. Guards not installed | partly: the motion-blur guard is installed on ME3; the culling pad (both functions found, constants left 0) and the kept locks are not |
+| 12. No owner for the render size | recurs: a fixed 3072x2216 for every headset; **fixed in code, lane AU4 (b1fb0c50): the first VR start sizes it from the headset (multiples of 8)** |
+| 13. Guards not installed | partly: the motion-blur guard is installed on ME3; the culling pad (both functions found, constants left 0) and the kept locks are not; **both fixed in code, lane AU4 (b1fb0c50)** |
 | 14. Calibration per game file | recurs; the owner answered "shared unless the VRIK differs" on 2026-11-18, not applied |
 | 15. Placement bypasses the dispatcher, no squad answer | recurs |
 

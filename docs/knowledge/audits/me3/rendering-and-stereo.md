@@ -58,27 +58,27 @@ mode 2 for its lens flares (`plugin/FlareWindow`).
 | REN-13 | missing | hooked in a try build, left off | 102-219 of 315-911 instances under 8 px, no measurable gain; `umbraInstanceVerified` false | `RenderLeversTable.hpp:255-256`; ledger R09 |
 | REN-14 | same core, other inputs | the same levers with per-game defaults | ME3: `perEyeViewState` 1, `umbraShareResults` 1; `sfrReplayRetry` keeps the code's 1 (ME2 has 0). ME1's "must stay 0" list does not hold on a tree with a view state per pass | `RenderLeversTable.hpp:243`, `:258-260` |
 | REN-15 | missing | upstream's `PaceDisplayLocked` | `plugin/QuestPacing` is LE1-only; a streamed Quest after a load on ME3 is unmeasured | `CMakeLists.txt:914-915`; le3 `me2_xr.cpp:1475`; ledger R24 |
-| REN-16 | missing | none | 3072x2216 from the code default and the installed ini, for every headset; `FirstStartEyeSize` empty off LE1; the classic menu's ladder is upstream's | le3 `me2_menu.cpp:1353-1354`; `runtime/MELE3VR.ini`; ledger R35 |
+| REN-16 | missing | none | 3072x2216 from the code default and the installed ini, for every headset; `FirstStartEyeSize` empty off LE1; the classic menu's ladder is upstream's **Fixed in code, lane AU4 (b1fb0c50): the first VR start writes 0.85 of the eye in multiples of 8 for the next launch; 1624x1656 seen with the whole HUD in the combat fixture; the write itself not run on ME3 (the preview pins `eyeSizeSet`).** | le3 `me2_menu.cpp:1353-1354`; `runtime/MELE3VR.ini`; ledger R35 |
 | REN-17 | same core, other inputs | `upscale::Copy` inside `plugin/EyeCopy`; eye images at the headset's size through `MevrSeams::EyeImageSize` | the same passes and keys; the source is a fixed size nothing ties to the headset (REN-16). A run: each eye 19.2 x 14.6 px per degree with a PS VR2's eyes replayed | `Seams.cpp:41-51`; le3 `me2_xr.cpp:1164`; ledger R06, R13 |
 | REN-18 | same core, other inputs | `plugin/Colour` in `EyeCopy`'s shader and on the HUD panel (`panelColour` true) | the same core and profiles | `HalcyonLe3Bridge.cpp:124`; `SequelOverlays.cpp:126-135`; ledger R14 |
 | REN-19 | same | in the same shader | | ledger R14 |
 | REN-20 | same | `colour::HoldCompare` from the shared menu | | shared menu |
 | REN-21 | same | `hdr_display::Answer` from the sequels' `GetDesc1` hook (`OnFactory`) | | `HalcyonLe3Bridge.cpp:285-287`; research/le3-hdr-eye-copy-test |
 | REN-22 | adapter | `MEVR_TONE` in `EyeCopy`'s shader; the flat panel's copy converts too | as ME2: without LE1's SDR-white scale; unverified | le3 `me2_xr.cpp:1241`, `:1933`; ledger R15 |
-| REN-23 | missing | none | the Display group is greyed | ledger R35 |
+| REN-23 | missing | none | the Display group is greyed **Render resolution and Upscale un-greyed, lane AU4 (b1fb0c50); Performance and Steady cutscenes stay greyed.** | ledger R35 |
 | REN-24 | same core, other inputs | `game/SystemSettings` | no 3 s wait (the guard is LE2-only); the "not in gameplay" test is `mode > 4`, ME1's range, while ME3's gameplay runs to 6 (squad command and injured Shepard count as not gameplay); a run showed `scale set` acting on ME3 **Fixed in code, lane AU1 (2026-11-18, not run in the game):** `engine::adapter::IsHudGameplayMode` instead of `mode > 4` (and ME2's settle guard). | `SystemSettings.cpp:183`, `:237-243`; ledger R12 |
 | REN-25 | adapter | `plugin/MotionBlurGuard` with 7 audited ME3 proxy pairs | installed for another reason than ME1's (a null velocity buffer crashed the recenter); 2,825 guarded conversions, 0 unknown in a run. ME2 has none | `Entry.cpp:138-140`, `:320-321`; ledger R10; research/le3-recenter-transition-failure |
 | REN-26 | adapter | `vr-game-settings.ps1 -Game LE3`; the deploy installs `runtime/MELE3VR.ini` when there is none | Setup's LE3 spec lags the tool (settings-and-defaults.md) | `tools/vr-game-settings.ps1`; `runtime/MELE3VR.ini` |
 | REN-27 | same | `MevrSeams::RecenterOrientation` to `plugin/RecenterTilt`; 60 degrees | R is ME3's reload, not a recenter; the correction itself unseen (no tilt on the fake headset) | `RendererLe3.cpp:166-168`; le3 `me2_xr.cpp:765-782` |
-| REN-28 | missing | none | `kSkelUpdateBounds` and `kPrimitiveUmbraBounds` are 0 for ME3 although both functions were found (0x793850, 0x32EC10). The file's comment says the pad answers Halcyon LE1's view offset; whether ME3's first person draws the eye away from the culling camera was not measured | `Addresses.hpp:468-471`; ledger R29 |
-| REN-29 | partial | ArmIk's flag part | without the pad; reading only | ledger R29 |
+| REN-28 | missing | none | `kSkelUpdateBounds` and `kPrimitiveUmbraBounds` are 0 for ME3 although both functions were found (0x793850, 0x32EC10). The file's comment says the pad answers Halcyon LE1's view offset; whether ME3's first person draws the eye away from the culling camera was not measured **Fixed in code, lane AU4 (b1fb0c50): both RVAs in, the module on `runtime::Up()`; the hook not reached in a run yet (no tracked hands in the combat fixture).** | `Addresses.hpp:468-471`; ledger R29 |
+| REN-29 | partial | ArmIk's flag part | without the pad; reading only **With REN-28's pad since lane AU4 (b1fb0c50).** | ledger R29 |
 | REN-30 | n/a | Halcyon ME3's first person clears `bCollisionEnabled` on the modes it owns and sets it back | not measured on ME3 as it was on ME2 | le3 `engine_probe.cpp:165`, `:240-241`, `:266` |
 | REN-31 | n/a | no first-person conversation holds a view | | conversations-and-scenes.md |
 | REN-32 | adapter | `plugin/FloorLock` in the LE3 host | contracts in body-and-ik | `CMakeLists.txt:1153` |
 | REN-33 | same | `plugin/Swapchains` | no `swapchainCap` run on ME3 (ledger R17 "U") | `CMakeLists.txt:1154` |
 | REN-34 | same | `plugin/GameThreadCalls`; ME3's first-person hides are queued | the off-thread count in a run log is unread (ledger R34 "U") | `CMakeLists.txt:1153` |
 | REN-35 | adapter | `KeyDown` in le3 `d3d_capture.cpp`; `\` pinned | unverified in a run (ledger R33) | le3 `me2_menu.cpp:528-530` |
-| REN-36 | partial | the ExitProcess hook is every host's | `kept_locks::Install` is under `MEVR_GAME_LE1`; whether ME3's teardown faults at quit is not recorded | `Entry.cpp:314-321`; ledger G48 |
+| REN-36 | partial | the ExitProcess hook is every host's | `kept_locks::Install` is under `MEVR_GAME_LE1`; whether ME3's teardown faults at quit is not recorded **Fixed, lane AU4 (b1fb0c50): `kept_locks` in the host, `[EXITKILL]` hands the quit to ours after its `[VRRES] exit` write; console quits: 47 deletions skipped.** | `Entry.cpp:314-321`; ledger G48 |
 
 # Against ME2
 

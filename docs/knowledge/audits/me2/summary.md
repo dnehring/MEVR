@@ -78,8 +78,8 @@ without any of our code asking.
 | 9 | Walking is the third-person walk (ramps, start and stop steps); draws take 0.62 s; the eye point moves on a draw | [body](body-and-ik.md), [movement](comfort-and-movement.md) | no: `game/CombatStance` is LE1-only |
 | 10 | Snap turn may stand down silently | [movement](comfort-and-movement.md) | no |
 | 11 | No hold at start-up or on entering VR: possible flashes of the world | [presentation](presentation-modes.md) | no |
-| 12 | Every headset renders 4096x2304; the menu's Display group is greyed | [rendering](rendering-and-stereo.md), [settings](settings-and-defaults.md) | no |
-| 13 | No motion-blur guard, no kept locks at quit, no body culling pad | [rendering](rendering-and-stereo.md) | no (ME3's host has the first) |
+| 12 | Every headset renders 4096x2304; the menu's Display group is greyed | [rendering](rendering-and-stereo.md), [settings](settings-and-defaults.md) | no; **fixed in code, lane AU4 (b1fb0c50): the first VR start sizes it from the headset, at least 16:9; Render resolution and Upscale un-greyed** |
+| 13 | No motion-blur guard, no kept locks at quit, no body culling pad | [rendering](rendering-and-stereo.md) | no (ME3's host has the first); **kept locks and the culling pad fixed in code, lane AU4 (b1fb0c50); the motion-blur guard still missing** |
 | 14 | A player calibrated in ME1 is uncalibrated in ME2 | [body](body-and-ik.md) | no: an owner question |
 | 15 | A placed squad hold gets no standing order and no answer | [powers](powers-and-squad.md) | no: `GiveLe2Order` duplicates `Le2Order` |
 
