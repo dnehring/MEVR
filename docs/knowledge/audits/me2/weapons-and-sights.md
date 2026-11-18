@@ -183,6 +183,31 @@ The shot then gets ME2's zoomed spread and the weapon is never zoomed.
 are the candidates. A slowdown is a loss the owner would want; a recoil bonus would need its own one-call route. Trace
 it before building (Ghidra or the script: `SFXWeapon.SetZoomed`, `StartZoom`, and every reader of `bIsZoomed`).
 
+**The trace (2026-11-18, lane AU2; ME2's and ME3's SFXGame scripts read with `tools/conversation-scan --script grep:bIsZoomed`
+and `grep:IsZoomed(`, `--game LE2|LE3`; natives not traced).** The zoomed state changes much more than the spread's range, so the
+proposal above carries only part of the zoom's accuracy and none of its other effects. What reads it:
+- *Accuracy itself* (both): the inventory manager's per-tick `UpdatePlayerAccuracy` starts from a zoomed base inaccuracy
+  (`Base_Acc_Zoom` instead of `Base_Acc_Standing`) and uses the weapon's zoomed fire penalty and recovery (`ZoomAccFirePenalty`,
+  `ZoomAccFireInterpSpeed`). That `Accuracy` is what `GetAimError(Accuracy)` lerps, so the one-call route (the range only) leaves
+  the shouldered shot with the hip's accuracy. The crosshair's size follows it too (`GetPlayerCrosshairValue`).
+- *Recoil* (both): `GetWeaponRecoil` (`ZoomRecoil`), `SetWeaponRecoil` (a yaw bias and `ZoomRecoilCap`), `UpdateKickbackFade`
+  (`RecoilZoomFadeSpeed`). Recoil goes into the view rotation, which the hand aim and view level make moot in VR.
+- *ME3 only:* **a sniper rifle fired unzoomed deals less damage** (`SFXWeapon_SniperRifle_Base.GetFireModeBaseDamage` multiplies
+  by `SniperRifleDamagePenalty` when not zoomed): every VR sniper shot on ME3 is penalized today, scope picture or not. The
+  shotgun's pellet cone narrows past 5 m when zoomed (`PollLatentFire`, `ZoomAccuracyBonus`). `SetZoomed` also sets the audio's
+  player position (an RTPC) and a scope mod's zoom sound.
+- *Sniper extras* (both): scope sway when zoomed with a sniper camera (`ApplySniperDrift`, a loss) and ME2's Infiltrator-style
+  slowed time (`SFXGameEffect_SniperTimeDilation`, a gain), both keyed on zoomed + a sniper rifle.
+- *Admission* (both): `TryMelee` and `TryHeavyMelee` do nothing while zoomed; ME3's `TryRoll`/`TryForwardRoll` and cover moves
+  ask it too; aim assist's friction runs only while zoomed (`PreProcessInput`).
+- Not found in script: a movement-speed change (natives not traced).
+Options for the owner (none built): (A) the proposal as written (the range only); (B) the shot's own calls zoomed for their
+duration only while shouldered or scoped (`bIsZoomed` set around `UpdatePlayerAccuracy`, `GetWeaponAimErrorRange`, ME3's
+`GetFireModeBaseDamage` and `PollLatentFire`, journalled and put back in a `__finally`, as `weapon::ZoomedAimError` does for one
+call): the accuracy and ME3's sniper damage carried over, the camera, sway, time dilation and the melee/roll refusals never
+seen; (C) as B plus the sniper's time dilation (a class gain the game ties to the scope). Recommendation: B, and on ME3 the
+sniper's damage call zoomed whenever the scope's picture is up, which fixes a loss that exists today.
+
 **ME1.** The same change would work there (its handler is the same code on `BioWeaponRanged.GetPlayerAimError`), and
 both games would then shoulder the same way. It changes ME1's behaviour, so it waits for the owner's word.
 
