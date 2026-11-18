@@ -1710,8 +1710,9 @@ switching frameworks.
   `MotionBlur False`, `FoliageDrawRadiusMultiplier 0.5` (and `LightEnvironmentShadows False` while
   the second eye is a replay, sharePass 2/3/5: the right eye drew character shadows where the left eye sees them, research/37
   2026-11-13; **the host says whether it is**, HostServices v43 `secondEyeIsReplay` = `render_levers::SecondEyeIsReplay()`,
-  false on a game where sharePass stands down, so ME2 and ME3 keep their character shadows: there the mod puts the player's
-  own `GamerSettings.ini` value back, since the game had written our earlier False into `BIOEngine.ini`; a host before v43:
+  false on a game where sharePass stands down: there the mod puts the player's own `GamerSettings.ini` value back, since
+  the game had written our earlier False into `BIOEngine.ini`, except on ME2 and ME3, whose character shadows are off
+  always (`kVrCharacterShadowsOff`, above); a host before v43:
   the file's `sharePass` rule on LE1 only, `engine::adapter::kOlderHostReplaysSecondEye`) through the local player's console
   once a player exists, **again after every level change, each boolean through its opposite first** (research/35
   attempt 49, 2026-10-28: the save's level rendered with the blur although the ini and the title's `scale set` said

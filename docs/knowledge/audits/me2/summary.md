@@ -129,11 +129,15 @@ Not applied, still to check:
    **Answered 2026-11-18:** no haptic cue at the chest on ME2. Read as: the chest is not a slot there, so it gives no
    buzz and takes no action (the lead's reading; whether the squeeze may still fall through to a squad order is open).
 3. Is the fifth reach zone (the SMG at the right thigh), on by default, approved?
+   **Answered 2026-11-18:** "Right thigh may work for now." Kept.
 4. One calibration for the trilogy, or one per game?
    **Answered 2026-11-18:** shared, unless a game's VRIK approach differs; then one per game. The
    [body audit](body-and-ik.md) rates ME2's arm IK as ME1's shared code, so ME2 should read ME1's calibration.
 5. Should ME2's sniper show ME2's own magnification (8x by its FOV) or ME1's feel?
+   **Answered 2026-11-18:** "sniper zoom is unified": one rule for the trilogy, read as ME1's.
 6. Halcyon ME2's `VehicleHeadMode = 3` and `ConvoFirstPerson`: pin both off in the baseline?
+   **2026-11-18:** explained to the owner (mode 3 is head aim for the Hammerhead's cannon; `ConvoFirstPerson` is upstream's
+   own first-person conversation, off in the ini but not pinned); not answered yet.
 
 # What to do
 

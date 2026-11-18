@@ -130,13 +130,23 @@ and that ME3's conversations are on the native flat screen (the 3D screen shows 
 # Questions for the owner
 
 1. Is the 3D cinema screen meant to be ME3's default today? The code says yes; the menu and `CLAUDE.md` say no.
+   **Answered 2026-11-18:** "Likely yes if it's default for the other two games": yes; the menu is to agree.
 2. Does 3072x2216 stand for every headset, or was it a stand-in until the headset rule?
+   **Answered 2026-11-18:** "Follows headset like me1."
 3. Should a gun let go be put away on ME3 (`le3PutAway`)? Three ME1 rules depend on it.
+   **Answered 2026-11-18:** "Obviously yes, that should be default."
 4. Is ME3's melee rule set (no strike from the gun hand, no fist) what "stroke melee as on ME1 and ME2" meant?
+   **Answered 2026-11-18:** "Me3 melee will require letting go of the guns and doing a fist to summon the Omni blade for
+   strikes."
 5. Should the left-hand push throw an equipped grenade?
+   **Answered 2026-11-18:** yes.
 6. Should the rail's Squad entry be greyed on ME3 until its figure is ported, as Holster is?
+   **Answered 2026-11-18:** "That's fine for now."
 7. During a roll or hit reaction with snap turn chosen: should the mod keep the turn, or should nobody turn?
+   **2026-11-18:** the owner doesn't yet know how a roll should look in VR; a proposal went back (first person, the view
+   level and sliding with the body, the turn the player's). Not answered yet.
 8. Which magnification should a sniper rifle show across the trilogy (ME1 3.5x and 7x, ME2 8.0x, ME3 4.0x today)?
+   **Answered 2026-11-18:** "sniper zoom is unified": one rule, read as ME1's.
 
 ME2's questions 1 (LT from the support grip) and 4 (one calibration) apply to ME3 unchanged.
 

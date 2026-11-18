@@ -1023,6 +1023,31 @@ about stutter or pacing in a real headset.
 
 Each is asked once. "Today" is what the build does if nobody answers; no default changes without a yes (rule 19).
 
+**Answered 2026-11-18** (the questions of the ME2 and ME3 audits, docs/knowledge/audits/me2/summary.md and
+me3/summary.md; the owner's words in quotes):
+
+- **ME2's fifth reach zone, the SMG at the right thigh** (on by default): "Right thigh may work for now." Kept.
+- **The sniper's magnification:** "sniper zoom is unified." One rule for the three games, read as ME1's (3.5x, then 7x
+  after a flick, from a real zoomed render; rule 1). Today ME2 shows 8.0x and ME3 4.0x.
+- **ME3's default for conversations and cutscenes:** "Likely yes if it's default for the other two games." It is: ME1's 3D
+  cinema screen is ME3's default, and ME3's menu (which offers Flat only and calls the screen "not available yet") is to
+  offer it as ME1's and ME2's do.
+- **ME3's render size:** "Follows headset like me1." The render target from the headset's eye size (ME1: 0.85 of it,
+  FSR on), not a fixed 3072x2216; this replaces question 17 (c)'s answer of 2026-11-17. ME2's fixed 4096x2304 follows the
+  same rule (rule 1; the ME2 audit's finding 12).
+- **ME3, a gun let go is put away:** "Obviously yes, that should be default." `[Holsters] le3PutAway = 1` by default.
+- **ME3's melee:** "Me3 melee will require letting go of the guns and doing a fist to summon the Omni blade for strikes."
+  The hand holding a gun never strikes; an empty hand's fist brings out the omni-blade, and the strokes strike with it.
+- **ME3, the left-hand push with a grenade equipped:** "Yes": it throws the grenade.
+- **ME3, the omni-tool rail's Squad entry greyed until its figure is ported:** "That's fine for now."
+- **Halcyon ME2's `VehicleHeadMode = 3` and `ConvoFirstPerson`:** explained to the owner 2026-11-18, not answered yet.
+- **ME3, a roll or hit reaction with snap turn on:** "I'm not sure, since I don't know how rolls should appear in VR." A
+  proposal went to the owner 2026-11-18 (the view stays first person and level and slides with the body, the turn stays
+  the player's); not answered yet.
+- **Earlier the same day** (the ME2 audit): no haptic cue at the chest on ME2 (no grenade slot there); one calibration for
+  the trilogy unless a game's VRIK differs; the shouldered gun's accuracy without the game's zoom (the proposal in
+  docs/knowledge/audits/me2/weapons-and-sights.md, not built).
+
 **Answered 2026-11-17** (lane REV's review of 57ae5b4e raised both):
 
 - **B on the sequels** (ME2's B is `Console_Melee`: `TryExitCover 1 | TryMelee | LeaveWorld`; placement's hold and double tap
@@ -1064,7 +1089,9 @@ Each is asked once. "Today" is what the build does if nobody answers; no default
   eye's defaults per game as lane SP2 measured them (ME2 `umbraShareResults = 1` and `sfrReplayRetry = 0`, ME3
   `umbraShareResults = 1`, ME1 unchanged: `plugin/RenderLeversTable.hpp`); dynamic shadows **on** on ME2 and ME3 (0.2-0.3 ms,
   each eye its own render) and off on ME1 (`engine::adapter::kVrDynamicShadows`; `vr-game-settings.ps1` and Setup write
-  False for LE1 only; a player's `[SystemSettings] DynamicShadows` still wins).
+  False for LE1 only; a player's `[SystemSettings] DynamicShadows` still wins). **Superseded the same night** by the
+  owner's ME2 headset test ("disable the shadows entirely for both eyes": they differed between the eyes): dynamic and
+  character shadows off on ME2 and ME3 (`kVrDynamicShadows` false for every game, `kVrCharacterShadowsOff`; 9f556c1a).
 - **Earlier the same day:** the sequels' sights use ME1's systems for now; vaulting with a two-handed hold is allowed, with
   one hand to be considered ("The controls could get sloppy"; lane C4 compares); the trigger never draws a holstered
   weapon in any game; "Ideally I want everything consistent" (a per-game difference needs a reason the game forces).
