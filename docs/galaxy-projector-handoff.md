@@ -66,6 +66,18 @@ module, no per-game copy:
   ME3 not run yet (its fixture: AutoSave of `John_12_Vanguard`, `-Game LE3 -RendererPreview`). Before it: three ME2 launches
   (00:54-01:22) ended at Steam's EA hand-off (EA's launcher denied CreateProcess inside steam.exe's job; the coordinator
   restarted Steam through Explorer).
+- **In the game (ME3, fake headset, renderer preview, the AutoSave of `John_12_Vanguard` read only; stretch
+  `%LOCALAPPDATA%\MEVR\sessions\*-LE3-gxr-me3`, 2026-11-18 01:43-02:05; `galaxy.ps1 -Game LE3 -NoExit`):** the map opened in
+  Anadius's system view (state 3; the cursor the Normandy, `SkeletalMeshActorMAT_3`; selectables Cronos Station `500425_0` and
+  Pax `Planet02_1`). A ray pick on Cronos Station flew the Normandy there (0.5-1.1 s), the game selected it, and the map's A took
+  it to the station's orbit view (state 4, "Enter Orbit"): **ME3's A is not a GUI event** (GuiKey(15) and the PC handler's
+  `PerformPrimaryAction`, whose mouse action is none, did nothing), it is the map's own select,
+  `BioSFHandler_GalaxyMap.SelectGalaxyItem` (traced: `ValidLevelTransition`, `ExecuteTravel`), which `SendA` calls on ME3. Pax
+  is selected the same way but has no orbit (A does nothing there, as with the pad). B goes from the orbit view back to the
+  system; out of the system the ship is flown with the stick (the game's own control, the fallback) to the cluster view (state
+  2: four systems); there a ray pick flew the Normandy into the system `598865` and the game entered it (state 3) on its way.
+  The flight aims at the object brought to the ship's height (the cluster's systems stand above or below the ship's plane: aimed
+  at their own place on the screen the ship stopped short of being selected), and ends when the map moves on to another level.
 - **Next:** a fixture in the galaxy view (a save on another system, or `tab-right` from a system view to the relay, then A) for
   the cursor pick; a scannable planet for the orbit (`mevr galaxy ray orbit` prints the reticle's rotator, clamps, owner and the
   frame check); ME3's pick (its A as GUI event 15 is unverified; where its cursor is the Normandy the same flight applies).
