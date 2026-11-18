@@ -11951,6 +11951,10 @@ void TestCombatStance() {
         CHECK(!cs::Differs(cs::WantedRamp(game, false, false, 0.1), game));
         cs::WalkRamp const unset{0.0f, 1.5f, 3.0f, 2.0f, 1500.0f};
         CHECK(!cs::Differs(cs::WantedRamp(unset, true, true, 0.1), unset));
+        // The sequels' walk (the pawn's acceleration only): the same 6000 for a 0.1 s run, never slower, the game's when off.
+        CHECK(std::fabs(cs::WantedAccelRate(1500.0f, true, 0.1) - 6000.0f) < 1e-2f);
+        CHECK(cs::WantedAccelRate(9000.0f, true, 0.1) == 9000.0f && cs::WantedAccelRate(1500.0f, false, 0.1) == 1500.0f);
+        CHECK(cs::WantedAccelRate(0.0f, true, 0.1) == 0.0f);
         CHECK(cs::ClampLinearWalkS(0.0) == 0.03 && cs::ClampLinearWalkS(5.0) == 1.0 &&
               cs::ClampLinearWalkS(std::numeric_limits<double>::quiet_NaN()) == cs::kDefaultLinearWalkS);
     }

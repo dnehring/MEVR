@@ -156,6 +156,17 @@ double ClampLinearWalkS(double seconds);  // [0.03, 1]; NaN: the default
 // The values the walk should have, from the game's own: unchanged when any of the game's is unusable (not set yet).
 WalkRamp WantedRamp(WalkRamp const& game, bool exploreRamp, bool linear, double linearS);
 bool Differs(WalkRamp const& a, WalkRamp const& b);
+// The same rule where the game has only the pawn's acceleration (ME2 and ME3: no m_fMaxDesSpd ramps; engine::adapter::
+// kWalkSpeedRamps): linear, the fastest run within `linearS` from a standstill, never slower than the game's; the game's own
+// when it is unusable (not set yet) or the walk isn't linear. Inline: only the sequels' builds use it.
+inline float WantedAccelRate(float gameAccelRate, bool linear, double linearS) {
+    bool const usable = gameAccelRate > 0.0f && gameAccelRate < 1.0e6f;  // false for NaN too
+    if (!usable || !linear) {
+        return gameAccelRate;
+    }
+    float const top = static_cast<float>(kLinearTopSpeed / ClampLinearWalkS(linearS));
+    return gameAccelRate > top ? gameAccelRate : top;
+}
 
 // The speed from the push (research/38 "Linear walking", 2026-11-13; the owner: "a half analog click should likely do walking",
 // the convention of VR games: the speed in proportion to the push). The game's own (BioPlayerController.PlayerWalking's

@@ -302,6 +302,40 @@ inline constexpr bool kActionCameras = true;
 inline constexpr bool kActionCameras = false;
 #endif
 
+// Our own scene captures (the scope's zoomed render, game/ScopeCapture) with the player's post-process chain. ME1: yes
+// ([Sights] scopeCapturePost = 1 by default; the host's RenderLevers binds a capture's final pass to its own target,
+// research/39). The sequels: never, whatever the setting says: ME3's captures came out black with any chain (lane GX3,
+// research/le3-galaxy.md), and ME2's final pass has no hook yet that keeps it off the eye (the parity ledger's R31), so
+// their galaxy captures run without one too (game/GalaxyProjectorFlow).
+#if defined(MEVR_GAME_LE1)
+inline constexpr bool kCapturePostProcess = true;
+#else
+inline constexpr bool kCapturePostProcess = false;
+#endif
+
+// The walk's fields (game/CombatStance section C, research/38 "Linear walking"; the ME2 and ME3 audits' MOV-14 to MOV-16).
+// kWalkOwnerClass: the class whose object holds the move control's state (m_eAnimStartState, m_eAnimStopState,
+// m_eAnimSkidState and, where they exist, the m_bEnable{Start,Stop,Skid}Anim flags): ME1's and ME2's pawn behaviour
+// (BioPawn.m_oBehavior), ME3's pawn itself (its locomotion moved onto BioPawn and SFXModule_Locomotion).
+// kWalkStepFlags: the game has ME1's three flags that turn its start, stop and skid steps off (ME1, ME2; ME3 has none of them,
+// its start and stop are SFXModule_Locomotion's states). kWalkSpeedRamps: ME1's four m_fMaxDesSpd ramps on the behaviour (ME2
+// and ME3 have none: only Engine.Pawn.AccelRate follows the linear walk there).
+// (ME1's own handles spell its class out: the constant is the sequels'.)
+#if defined(MEVR_GAME_LE3)
+inline constexpr char const* kWalkOwnerClass = "SFXGame.BioPawn";
+inline constexpr bool kWalkStepFlags = false;
+#elif defined(MEVR_GAME_LE2)
+inline constexpr char const* kWalkOwnerClass = "SFXGame.BioPawnBehavior";
+inline constexpr bool kWalkStepFlags = true;
+#else
+inline constexpr bool kWalkStepFlags = true;
+#endif
+#if defined(MEVR_GAME_LE1)
+inline constexpr bool kWalkSpeedRamps = true;
+#else
+inline constexpr bool kWalkSpeedRamps = false;
+#endif
+
 // Where the layer finds the engine's globals: an RVA (fast; right for 2.0.0.48602) and a byte
 // pattern of code that references the global (survives a patch that moves it). Each pattern names
 // the RIP-relative instruction inside it: where it starts, where its displacement is, its length.

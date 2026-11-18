@@ -5,6 +5,7 @@
 #include "core/WriteJournal.hpp"
 #include "core/vr/TestRequest.hpp"
 #include "engine/Engine.hpp"
+#include "engine/GameAdapter.hpp"
 #include "engine/XrToUnreal.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/Player.hpp"
@@ -30,44 +31,52 @@ std::string gStatus = "off";
 std::string gLoggedStatus;
 sc::Capture gLast{};
 
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 
-// Our reflection layer (research/34). Every one of these has a row in engine/ReflectCheck.
-ue3::ClassRef gActorClass{"Engine.SceneCapture2DActor"};
-ue3::ClassRef gComponentClass{"Engine.SceneCapture2DComponent"};
-ue3::ClassRef gTargetClass{"Engine.TextureRenderTarget2D"};
-ue3::FunctionRef gSpawn{"Engine.Actor.Spawn"};
-ue3::FunctionRef gDestroy{"Engine.Actor.Destroy"};
-ue3::FunctionRef gForceUpdate{"Engine.Actor.ForceUpdateComponents"};
-ue3::FunctionRef gCreate{"Engine.TextureRenderTarget2D.Create"};
-ue3::FunctionRef gSetEnabled{"Engine.SceneCaptureComponent.SetEnabled"};
-ue3::FunctionRef gSetFrameRate{"Engine.SceneCaptureComponent.SetFrameRate"};
-ue3::FunctionRef gSetView{"Engine.SceneCapture2DComponent.SetView"};
-ue3::FunctionRef gSetParameters{"Engine.SceneCapture2DComponent.SetCaptureParameters"};
-ue3::FieldRef gSceneCapture{"Engine.SceneCaptureActor", "SceneCapture"};
-ue3::FieldRef gStatic{"Engine.Actor", "bStatic"};
-ue3::FieldRef gNoDelete{"Engine.Actor", "bNoDelete"};
-ue3::FieldRef gLocation{"Engine.Actor", "Location"};
-ue3::FieldRef gEnabled{"Engine.SceneCaptureComponent", "bEnabled"};
-ue3::FieldRef gEnablePostProcess{"Engine.SceneCaptureComponent", "bEnablePostProcess"};
-ue3::FieldRef gEnableFog{"Engine.SceneCaptureComponent", "bEnableFog"};
-ue3::FieldRef gEnableParticles{"Engine.SceneCaptureComponent", "bEnableParticles"};
-ue3::FieldRef gUseMainPostProcess{"Engine.SceneCaptureComponent", "bUseMainScenePostProcessSettings"};
-ue3::FieldRef gSkipUsersOccluded{"Engine.SceneCaptureComponent", "bSkipUpdateIfTextureUsersOccluded"};
-ue3::FieldRef gSkipOwnerOccluded{"Engine.SceneCaptureComponent", "bSkipUpdateIfOwnerOccluded"};
-ue3::FieldRef gMaxUpdateDist{"Engine.SceneCaptureComponent", "MaxUpdateDist"};
-ue3::FieldRef gPostProcess{"Engine.SceneCaptureComponent", "PostProcess"};
-ue3::FieldRef gFrameRate{"Engine.SceneCaptureComponent", "FrameRate"};
-ue3::FieldRef gTextureTarget{"Engine.SceneCapture2DComponent", "TextureTarget"};
-ue3::FieldRef gFieldOfView{"Engine.SceneCapture2DComponent", "FieldOfView"};
-ue3::FieldRef gUpdateMatrices{"Engine.SceneCapture2DComponent", "bUpdateMatrices"};
-ue3::FieldRef gResource{"Engine.Texture", "Resource"};
-ue3::FieldRef gSizeX{"Engine.TextureRenderTarget2D", "SizeX"};
-ue3::FieldRef gSizeY{"Engine.TextureRenderTarget2D", "SizeY"};
-ue3::FieldRef gFormat{"Engine.TextureRenderTarget2D", "Format"};
-ue3::FieldRef gPlayer{"Engine.PlayerController", "Player"};
-ue3::FieldRef gPlayerPostProcess{"Engine.LocalPlayer", "PlayerPostProcess"};
-ue3::FieldRef gDefaultPostProcess{"Engine.Engine", "DefaultPostProcess"};
+// Our reflection layer (research/34). Every one of these has a row in engine/ReflectCheck (the sequels': CheckLe2CaptureRig,
+// CheckLe3CaptureRig, the classes game/SceneCaptureRig uses too).
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+constexpr auto kCaptureReach = ue3::kEveryGame;
+#else
+constexpr auto kCaptureReach = ue3::Reach::Modules;
+#endif
+ue3::ClassRef gActorClass{"Engine.SceneCapture2DActor", kCaptureReach};
+ue3::ClassRef gComponentClass{"Engine.SceneCapture2DComponent", kCaptureReach};
+ue3::ClassRef gTargetClass{"Engine.TextureRenderTarget2D", kCaptureReach};
+ue3::FunctionRef gSpawn{"Engine.Actor.Spawn", kCaptureReach};
+ue3::FunctionRef gDestroy{"Engine.Actor.Destroy", kCaptureReach};
+ue3::FunctionRef gForceUpdate{"Engine.Actor.ForceUpdateComponents", kCaptureReach};
+ue3::FunctionRef gCreate{"Engine.TextureRenderTarget2D.Create", kCaptureReach};
+ue3::FunctionRef gSetEnabled{"Engine.SceneCaptureComponent.SetEnabled", kCaptureReach};
+ue3::FunctionRef gSetFrameRate{"Engine.SceneCaptureComponent.SetFrameRate", kCaptureReach};
+ue3::FunctionRef gSetView{"Engine.SceneCapture2DComponent.SetView", kCaptureReach};
+ue3::FunctionRef gSetParameters{"Engine.SceneCapture2DComponent.SetCaptureParameters", kCaptureReach};
+ue3::FieldRef gSceneCapture{"Engine.SceneCaptureActor", "SceneCapture", kCaptureReach};
+ue3::FieldRef gStatic{"Engine.Actor", "bStatic", kCaptureReach};
+ue3::FieldRef gNoDelete{"Engine.Actor", "bNoDelete", kCaptureReach};
+ue3::FieldRef gLocation{"Engine.Actor", "Location", kCaptureReach};
+ue3::FieldRef gEnabled{"Engine.SceneCaptureComponent", "bEnabled", kCaptureReach};
+ue3::FieldRef gEnablePostProcess{"Engine.SceneCaptureComponent", "bEnablePostProcess", kCaptureReach};
+ue3::FieldRef gEnableFog{"Engine.SceneCaptureComponent", "bEnableFog", kCaptureReach};
+#if defined(MEVR_GAME_LE1)  // ME2 and ME3 have no bEnableParticles
+ue3::FieldRef gEnableParticles{"Engine.SceneCaptureComponent", "bEnableParticles", kCaptureReach};
+#endif
+ue3::FieldRef gUseMainPostProcess{"Engine.SceneCaptureComponent", "bUseMainScenePostProcessSettings", kCaptureReach};
+ue3::FieldRef gSkipUsersOccluded{"Engine.SceneCaptureComponent", "bSkipUpdateIfTextureUsersOccluded", kCaptureReach};
+ue3::FieldRef gSkipOwnerOccluded{"Engine.SceneCaptureComponent", "bSkipUpdateIfOwnerOccluded", kCaptureReach};
+ue3::FieldRef gMaxUpdateDist{"Engine.SceneCaptureComponent", "MaxUpdateDist", kCaptureReach};
+ue3::FieldRef gPostProcess{"Engine.SceneCaptureComponent", "PostProcess", kCaptureReach};
+ue3::FieldRef gFrameRate{"Engine.SceneCaptureComponent", "FrameRate", kCaptureReach};
+ue3::FieldRef gTextureTarget{"Engine.SceneCapture2DComponent", "TextureTarget", kCaptureReach};
+ue3::FieldRef gFieldOfView{"Engine.SceneCapture2DComponent", "FieldOfView", kCaptureReach};
+ue3::FieldRef gUpdateMatrices{"Engine.SceneCapture2DComponent", "bUpdateMatrices", kCaptureReach};
+ue3::FieldRef gResource{"Engine.Texture", "Resource", kCaptureReach};
+ue3::FieldRef gSizeX{"Engine.TextureRenderTarget2D", "SizeX", kCaptureReach};
+ue3::FieldRef gSizeY{"Engine.TextureRenderTarget2D", "SizeY", kCaptureReach};
+ue3::FieldRef gFormat{"Engine.TextureRenderTarget2D", "Format", kCaptureReach};
+ue3::FieldRef gPlayer{"Engine.PlayerController", "Player", kCaptureReach};
+ue3::FieldRef gPlayerPostProcess{"Engine.LocalPlayer", "PlayerPostProcess", kCaptureReach};
+ue3::FieldRef gDefaultPostProcess{"Engine.Engine", "DefaultPostProcess", kCaptureReach};
 
 // EObjectFlags: RF_ClassDefaultObject.
 constexpr std::uint64_t kClassDefaultFlag = 0x200;
@@ -283,16 +292,29 @@ void ConfigureComponent(ue3::Object* controller, sc::Settings const& settings) {
     WriteBool(gSkipOwnerOccluded, c, false, "ScopeCapture.bSkipUpdateIfOwnerOccluded");        // nor the invisible actor
     WriteField(gMaxUpdateDist, c, kMaxUpdateDist, "ScopeCapture.MaxUpdateDist");
     WriteBool(gEnableFog, c, true, "ScopeCapture.bEnableFog");
+#if defined(MEVR_GAME_LE1)
     WriteBool(gEnableParticles, c, true, "ScopeCapture.bEnableParticles");
     ue3::Object* const chain = settings.postProcess ? PlayerPostProcessChain(controller) : nullptr;
+#else
+    // The sequels' captures render without a post-process chain, whatever [Sights] scopeCapturePost says
+    // (engine::adapter::kCapturePostProcess: ME3's came out black with any chain, ME2's final pass would take an eye).
+    ue3::Object* const chain = settings.postProcess && engine::adapter::kCapturePostProcess ? PlayerPostProcessChain(controller) : nullptr;
+#endif
     WriteBool(gEnablePostProcess, c, chain != nullptr, "ScopeCapture.bEnablePostProcess");
     WriteBool(gUseMainPostProcess, c, chain != nullptr, "ScopeCapture.bUseMainScenePostProcessSettings");
     WriteField(gPostProcess, c, chain, "ScopeCapture.PostProcess");
     WriteField(gFrameRate, c, settings.rate, "ScopeCapture.FrameRate");
     gState.postProcess = chain != nullptr;
+#if defined(MEVR_GAME_LE1)
     log::Info("scope capture: post process {}", chain != nullptr ? std::format("on, the player's chain {}", ue3::runtime::FullName(chain))
                                                                  : settings.postProcess ? std::string("off: no post-process chain found")
                                                                                         : std::string("off ([Sights] scopeCapturePost = 0)"));
+#else
+    log::Info("scope capture: post process {}", chain != nullptr ? std::format("on, the player's chain {}", ue3::runtime::FullName(chain))
+        : !settings.postProcess                    ? std::string("off ([Sights] scopeCapturePost = 0)")
+        : !engine::adapter::kCapturePostProcess    ? std::string("off on this game (its captures take no post-process chain)")
+                                                   : std::string("off: no post-process chain found"));
+#endif
 }
 
 bool NewTarget(sc::Settings const& settings) {
@@ -314,7 +336,11 @@ bool NewTarget(sc::Settings const& settings) {
 void Destroy(char const* why);
 
 bool Create(sc::Settings const& settings, ue3::Vector const& at, float fovDeg, float nearUnits) {
+#if defined(MEVR_GAME_LE1)
     if (!ue3::runtime::Ready()) {
+#else
+    if (!ue3::runtime::Up()) {  // the sequels' modules ask Up() (research/le2-engine-access-discovery.md)
+#endif
         Fail("our reflection layer is off (see the 'reflect:' lines)");
         return false;
     }
@@ -463,7 +489,7 @@ void PublishOff(Link const& link) {
 } // namespace
 
 void Tick(float deltaSeconds, sv::Sight const& sight, vr::aim_ray::Ray const& ray, std::uint32_t hostView, Link const& link) {
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     gClockS += std::clamp(static_cast<double>(deltaSeconds), 0.0, 0.25);
     sc::Settings const settings = hand_calibration::GetScopeCapture();
     std::string status;
@@ -587,13 +613,13 @@ void Tick(float deltaSeconds, sv::Sight const& sight, vr::aim_ray::Ray const& ra
     (void)ray;
     (void)hostView;
     PublishOff(link);
-    gStatus = "off (LE1 only)";
+    gStatus = "off (no game)";
 #endif
 }
 
 std::string StatusJson() {
     namespace json = vr::test_request;
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     return std::format("{{\"status\": {}, \"state\": {}, \"actor\": {}, \"enabled\": {}, \"enabledTicks\": {}, \"size\": [{}, {}], "
                        "\"format\": {}, \"resource\": \"0x{:X}\", \"generation\": {}, \"fovDeg\": {}, \"nearUnits\": {}, \"tanHalf\": {}, "
                        "\"postProcess\": {}, \"enables\": {}, \"capturingTicks\": {}, \"created\": {}, \"pose\": {{\"position\": [{}, {}, {}], "
@@ -610,7 +636,7 @@ std::string StatusJson() {
 }
 
 void LogStats() {
-#if defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     if (gState.actor != nullptr || gFailed) {
         log::Info("    scope capture: {}; enabled {} times since the last heartbeat ({} in all), {} ticks capturing in all", gStatus,
             gEnablesSinceStats, gEnables, gCapturingTicks);
@@ -620,8 +646,12 @@ void LogStats() {
 }
 
 void Shutdown(bool exiting) {
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 #if defined(MEVR_GAME_LE1)
     if (!exiting && gState.actor != nullptr && ue3::runtime::Ready()) {
+#else
+    if (!exiting && gState.actor != nullptr && ue3::runtime::Up()) {  // the sequels' modules ask Up()
+#endif
         Destroy("the mod shuts down");
     }
     gState = State{};
@@ -640,7 +670,10 @@ void Shutdown(bool exiting) {
         f->Reset();
     }
     for (ue3::FieldRef* f : {&gSceneCapture, &gStatic, &gNoDelete, &gLocation, &gEnabled, &gEnablePostProcess, &gEnableFog,
-             &gEnableParticles, &gUseMainPostProcess, &gSkipUsersOccluded, &gSkipOwnerOccluded, &gMaxUpdateDist, &gPostProcess, &gFrameRate,
+#if defined(MEVR_GAME_LE1)
+             &gEnableParticles,
+#endif
+             &gUseMainPostProcess, &gSkipUsersOccluded, &gSkipOwnerOccluded, &gMaxUpdateDist, &gPostProcess, &gFrameRate,
              &gTextureTarget, &gFieldOfView, &gUpdateMatrices, &gResource, &gSizeX, &gSizeY, &gFormat, &gPlayer, &gPlayerPostProcess, &gDefaultPostProcess}) {
         f->Reset();
     }

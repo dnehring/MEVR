@@ -487,15 +487,17 @@ These unblock the most: almost every other entry gets smaller once they land.
   sights on the sequels, mod side"): the alignment assist, the shots' convergence, a scope's aimed fire, ADS and the
   lens part's hide. Seen on ME2 by script (`tools/le2-halcyon-run/sights.ps1`, Save 4, 2026-11-16): the pistol's dot in
   the right eye and the shots on what the sight line hits; the sniper rifle's ADS, its picture over the scope, its
-  `Scope_Eye` sight bone and aimed fire 10.0 -> 0.0. Left: the scope's picture comes from the eye copy (`ScopeCapture`
-  is compiled out and `setScopeCapture` isn't served: T16); per-model optic profiles (ME1's `vr::sights::OpticFor` is
+  `Scope_Eye` sight bone and aimed fire 10.0 -> 0.0. **The scope capture on both sequels since 0601ef40** (lane AU3, ME1's
+  module, the sequel hosts serve `setScopeCapture`; no post-process chain there, `engine::adapter::kCapturePostProcess`): on
+  ME2's Save 4 the picture came from the capture at 3.5x and 7x (`sights.pictureSource`); ME3's not seen yet. Left: per-model
+  optic profiles (ME1's `vr::sights::OpticFor` is
   keyed by mesh name, and ME2 reuses ME1's names for other models: its Mantis is `WPN_SNPa_MDL`) need a game key and
   measured numbers per model; on the fake headset ME2's pistol ring stands a hand's width left of the gun (the eyes take
   the monitor's shape there: a headset check). **ME3:** all of it in a game; aim modes and installed optic mods change
   the profile.
 - **Closes when:** a scoped shot hits the sight line and the `sights:` lines name the game's own sight bones, with a
   sniper-rifle fixture per game (ME2's: done 2026-11-16, but for the scope capture).
-- **Waits for:** T16 for the scope capture on ME2; T05's ME3 fixture. **Who:** C4.
+- **Waits for:** a sniper rifle in ME3's combat fixture (the scope capture's check there). **Who:** C4; the capture AU3.
 
 #### T25 Holsters, and only holsters draw [G08]
 - **State:** LE1 done · LE2 verify · LE3 build
@@ -580,10 +582,15 @@ These unblock the most: almost every other entry gets smaller once they land.
 #### T29 Weapon drawn like exploring: the constant eye, linear walking, the draw rate [G18]
 - **State:** LE1 done · LE2 build · LE3 build
 - **Lives in:** `game/CombatStance`, `core/vr/CombatStance`, seam `ConstantFpEye`.
-- **Left, ME2 and ME3:** port per item, the linear walk and stick first (the one players notice: research/38). ME2 lacks
-  `BioPawnBehavior`'s ramp fields: decide per game what stands in for them.
+- **Done (0601ef40, lane AU3):** section C on both sequels: the pawn's acceleration by ME1's rule (`cs::WantedAccelRate`;
+  neither sequel has the four speed ramps), ME2's start/stop/skid flags off (ME3 has none), `movement: response:` measured.
+  ME2's Save 4: a straight full push 0, 398, 400 u/s at 0, 0.1, 0.2 s (was 0, 49, 122). ME3 not measured yet.
+- **Left, ME2 and ME3:** ME2's stop (374 -> 158 u/s in 0.1 s, ~60 still at 0.8 s, before and after: its lever unread); the
+  speed from the push (half a push walks at the game's 75 u/s; the move functions unfound: `mevr calltrace`); the constant
+  eye (ME2's camera moves ~7 cm on a draw, and its modes' hooks differ, so a seam in `FpApplyOffset` asking ME1's rule, not a
+  table pin); the draw rate (each game's WeaponEquip node); ME3's start and stop are `SFXModule_Locomotion`'s.
 - **Closes when:** `movement: response:` shows a run within 0.1 s of the push and half a push walking, on each sequel.
-- **Waits for:** nothing. No plan covered this on ME2 before this page. **Who:** nobody yet.
+- **Waits for:** nothing. **Who:** AU3 (the walk); the rest nobody yet.
 
 ### Movement
 
@@ -1057,8 +1064,8 @@ me3/summary.md; the owner's words in quotes):
 - **ME2's fifth reach zone, the SMG at the right thigh** (on by default): "Right thigh may work for now." Kept.
 - **The sniper's magnification:** "sniper zoom is unified." One rule for the three games, read as ME1's (3.5x, then 7x
   after a flick, from a real zoomed render; rule 1). Today ME2 shows 8.0x and ME3 4.0x. **Lane AU2, 2026-11-18:** the levels
-  are ME1's on both sequels (3.5x, 7x after a flick; game/Sights `ReadGameZoom`); the zoomed render (scope capture's host
-  source on the sequels) is not ported yet: the sequels still enlarge the other eye's image.
+  are ME1's on both sequels (3.5x, 7x after a flick; game/Sights `ReadGameZoom`). **Lane AU3, 0601ef40:** the zoomed
+  render is ME1's scope capture on both sequels (seen on ME2 at 3.5x and 7x; ME3 not yet).
 - **ME3's default for conversations and cutscenes:** "Likely yes if it's default for the other two games." It is: ME1's 3D
   cinema screen is ME3's default, and ME3's menu (which offers Flat only and calls the screen "not available yet") is to
   offer it as ME1's and ME2's do.
