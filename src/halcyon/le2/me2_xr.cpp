@@ -2007,16 +2007,12 @@ void RunFrame() noexcept
                 const float mdist = g_monoQuadDistanceM.load(std::memory_order_relaxed);
                 float mw          = g_monoQuadWidthM.load(std::memory_order_relaxed);
                 // [CINEFLAT] cutscene/conversation screen = ME1's model: world-locked (head tracking;
-                // Insert recenters), zoom slider on top. Menus stay head-locked exactly as before.
+                // Insert recenters), zoom slider on top.
+                // [MEVR] Menus are world-locked too (the owner, 2026-11-17: the menus followed the face; ME1's
+                // flat screens stand in the room, and ME3's menus already share this world-locked panel).
+                monoQuad.space = g_localSpace;
                 if (ME2VR::CalcViewHook::GetCinematic())
-                {
-                    monoQuad.space = g_localSpace;
                     mw *= g_cineScreenZoom.load(std::memory_order_relaxed);
-                }
-                else
-                {
-                    monoQuad.space = g_viewSpace;
-                }
                 monoQuad.pose.position.z = -mdist;
                 monoQuad.size.width = mw;
                 monoQuad.size.height = mw * aspect;
