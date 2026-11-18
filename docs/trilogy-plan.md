@@ -1089,6 +1089,26 @@ about stutter or pacing in a real headset.
 
 Each is asked once. "Today" is what the build does if nobody answers; no default changes without a yes (rule 19).
 
+**Answered 2026-11-18, later** (the questions the audit lanes AU2-AU7 raised; the owner's words in quotes):
+
+- **The shouldered gun on ME2 and ME3** (lane AU2's trace, docs/knowledge/audits/me2/weapons-and-sights.md): "Your
+  recommendation": option B. No LT from the support grip; each shouldered shot's own calculations (accuracy, spread, ME3's
+  sniper damage and shotgun cone) are made as zoomed for their duration only; the camera zoom, the scope sway and the
+  melee/roll admission blocks never apply. ME2's sniper time dilation not included (option C).
+- **ME3's omni-blade with the gun put away:** "Option A": a fist stroke calls ME3's heavy melee action directly (the class's
+  own heavy melee; biotic for Vanguards and Adepts), once a check shows it plays with no weapon equipped.
+- **Shepard's body during a roll:** "Yes for now": hidden while the roll lasts.
+- **ME2's render shape (question 18):** "Not sure, whichever leads to the better user experience": the lane measures both
+  (cost, and every ME2 screen, the HUD, menus, the conversation wheel and the room screens at 4:3) and picks 4:3 only if
+  nothing breaks, else keeps 16:9.
+- **The sequels' eye distance** (26-34 units ahead of Shepard's head bone, ME1's about 4): "Need to validate in headset,
+  whatever gets us closest to feeling like we are attached to the body." A headset A/B, prepared by a lane
+  (notes/headset-checklist.md); today's value stands until then.
+- **ME3's exploring start** (about 0.2 s to most of a run, ME1's 0.1 s): "Option A": the mod speeds it up, once the
+  limiter is found (not `SFXModule_Locomotion`, which the player pawn lacks).
+- **The VR hands tab's arm sample (`[Arms] armLengthM`):** "Your recommendation": it stays per game; the guided
+  calibration's arm length is already shared.
+
 **Answered 2026-11-18** (the questions of the ME2 and ME3 audits, docs/knowledge/audits/me2/summary.md and
 me3/summary.md; the owner's words in quotes):
 
