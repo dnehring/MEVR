@@ -222,6 +222,12 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   over; tutorial pop-ups. (research/53 section 3)
 
 ### Galaxy map, conversations (session: VR mod for Mass Effect Legendary Edition)
+- [ ] 2026-11-17 ME3's map on the CIC's projector (lane GX3; docs/galaxy-projector-handoff.md "travel, the opening and closing"):
+  from the Normandy's CIC console, A: the camera's flight into the map should not show (the CIC stays, 2.5 s), then the map on
+  the projector with no blue band over the pit. Fly to the Pax system's Mass Relay, travel to another cluster: the relay's movie
+  flat, with no disc or labels beside it, then the new system on the projector at once. Recenter with the map open (Back
+  twice): the disc should stay on the projector. Is the map readable from the console, and is the stick's flight comfortable?
+  X back to the room.
 - [ ] The hitches at the conversation director's cuts (research/69 item 24, "Frame timing at the director's cuts"): play the
   council hearing in first person (`conversations = world`) with a frame capture running (menu: Advanced > Diagnostics >
   Measure frame timing, or `tools/perf-probe.ps1 -Seconds 110` as it begins), turning the head now and then. The fake headset

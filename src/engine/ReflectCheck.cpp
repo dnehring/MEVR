@@ -787,7 +787,6 @@ void CheckFields() {
     CheckField("Engine.PrimitiveComponent", "bIgnoreOwnerHidden", SDK_BOOL(UPrimitiveComponent, bIgnoreOwnerHidden));
     CheckField("Engine.PrimitiveComponent", "bIgnoreHiddenActorsMembership", SDK_BOOL(UPrimitiveComponent, bIgnoreHiddenActorsMembership));
     CheckField("Engine.PrimitiveComponent", "LastRenderTime", SDK_FIELD(UPrimitiveComponent, LastRenderTime));
-    CheckField("Engine.PlayerController", "HiddenActors", SDK_FIELD(APlayerController, HiddenActors));
     CheckClass<UBioCameraBehaviorConversation>("SFXGame.BioCameraBehaviorConversation");
     CheckField("SFXGame.BioCameraBehaviorConversation", "m_fNearPlane", SDK_FIELD(UBioCameraBehaviorConversation, m_fNearPlane));
     CheckField("SFXGame.BioCameraBehaviorConversation", "CAMERA_FOV", SDK_FIELD(UBioCameraBehaviorConversation, CAMERA_FOV));
@@ -3037,6 +3036,17 @@ void CheckLe3CaptureRig() {
     CheckFunction("Engine.Actor.SetHidden");
     PARAM(AActor_execSetHidden_Parms, "Engine.Actor.SetHidden", bNewHidden);
     PARMS(AActor_execSetHidden_Parms, "Engine.Actor.SetHidden");
+    // The map scene's lens flares, hidden while the view is held in the CIC (the blue band over the
+    // pit), and `mevr galaxy capture flares` / `ship` (lane GX3).
+    CheckClass<ALensFlareSource>("Engine.LensFlareSource");
+    CheckField("Engine.Actor", "LastRenderTime", SDK_FIELD(AActor, LastRenderTime));
+    CheckField("Engine.WorldInfo", "TimeSeconds", SDK_FIELD(AWorldInfo, TimeSeconds));
+    CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_pCameraObject", SDK_FIELD(UBioCameraBehaviorGalaxy, m_pCameraObject));
+    CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_pSelectedObject", SDK_FIELD(UBioCameraBehaviorGalaxy, m_pSelectedObject));
+    CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_pMassRelayObject", SDK_FIELD(UBioCameraBehaviorGalaxy, m_pMassRelayObject));
+    CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_aSelectableActors", SDK_FIELD(UBioCameraBehaviorGalaxy, m_aSelectableActors));
+    CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_pCrossHairObject", SDK_FIELD(UBioCameraBehaviorGalaxy, m_pCrossHairObject));
+    CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_pMapCurrentObject", SDK_FIELD(UBioCameraBehaviorGalaxy, m_pMapCurrentObject));
 }
 
 

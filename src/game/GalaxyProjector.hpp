@@ -22,6 +22,12 @@ namespace mevr::game::galaxy_projector {
 // The game's window: this process's largest visible top-level window (the captures take its client area's aspect).
 HWND__* GameWindow();
 
+// An interlude inside the open map on a sequel (ME1's vr::galaxy_map::RememberTable in each game's own modes, research/51
+// section 8.4): a travel movie, a cinematic, a conversation (a call), a GUI screen (a question) or a mode that can't be read
+// (a load) keep the table reserved (the room kept, the captures paused, no hold, no window); the map's own modes resume it,
+// on foot (the map closed) or any other gameplay mode ends it. ME1 keeps its own rule (game/GalaxyMap).
+bool MapInterlude(std::optional<int> mode);
+
 // Shepard's view on foot (the last update of the player's own camera in the on-foot mode), held while the map is open: the
 // host swaps it into the player camera's POV for the main view's build only. The corrected on-foot base (floor lock) comes
 // with it, so the renderer adds its common offsets once (vr::host_view::HoldBaseZ).

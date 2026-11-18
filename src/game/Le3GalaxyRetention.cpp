@@ -2,6 +2,7 @@
 #include "game/Le3GalaxyRetention.hpp"
 
 #if defined(MEVR_GAME_LE3)
+#include "game/GalaxyProjector.hpp"
 #include "game/Le3GalaxyProjector.hpp"
 #include "core/Hook.hpp"
 #include "core/Ini.hpp"
@@ -42,7 +43,7 @@ struct Lease {
 unsigned holds = 0, rebuilds = 0;
 std::string last = "not-armed";
 
-ue3::Object* CicLevel(ue3::Object* world) {
+ue3::Object* LevelNamed(ue3::Object* world, char const* package) {
     auto const list = levels.ElementsOf(world, 4096);
     if (!list || list->stride != sizeof(ue3::Object*)) return nullptr;
     ue3::Object* found = nullptr;
@@ -50,13 +51,14 @@ ue3::Object* CicLevel(ue3::Object* world) {
         auto* const o = *static_cast<ue3::Object**>(list->At(i));
         if (!ue3::runtime::IsAlive(o) || !ue3::IsA(o, streamingClass)) continue;
         auto const name = Read<ue3::Name>(o, "Engine.LevelStreaming", "PackageName");
-        if (name && ini::Lower(ue3::runtime::NameText(*name)) == "bioa_nor_210cic") {
+        if (name && ini::Lower(ue3::runtime::NameText(*name)) == package) {
             if (found) return nullptr;
             found = o;
         }
     }
     return found;
 }
+ue3::Object* CicLevel(ue3::Object* world) { return LevelNamed(world, "bioa_nor_210cic"); }
 bool SameWorld() {
     return lease.world.Alive() && lease.pc.Alive() && lease.pawn.Alive() &&
         player::Controller() == lease.pc.object && player::Pawn(lease.pc.object) == lease.pawn.object &&
@@ -86,14 +88,17 @@ void AfterReevaluate(bool nativeRebuilt) {
     if (!lease.deadline || GetCurrentThreadId() != lease.thread) return;
     if (!SameLevel()) { Release("world-player-or-level-changed"); return; }
     auto const mode = player::GameMode(lease.pc.object);
-    if (!mode || GetTickCount64() >= lease.deadline) {
+    // The projector's lease keeps the room through the map's interludes (the travel's movie, a call, a question, a load whose
+    // mode can't be read: galaxy_projector::MapInterlude, ME1's rule); the diagnostic's ends at any of them as before.
+    bool const interlude = lease.production && lease.mapSeen && galaxy_projector::MapInterlude(mode);
+    if ((!mode && !interlude) || GetTickCount64() >= lease.deadline) {
         Release("expired-or-no-mode", nativeRebuilt); return;
     }
-    bool const map = engine::adapter::IsMapMode(*mode);
-    if (lease.mapSeen && !map) { Release("left-map", nativeRebuilt); return; }
+    bool const map = mode && engine::adapter::IsMapMode(*mode);
+    if (lease.mapSeen && !map && !interlude) { Release("left-map", nativeRebuilt); return; }
     // Wait up to 20 seconds for normal console entry; no camera or story action
     // is initiated here. Once entered, the diagnostic lasts at most 120 seconds.
-    if (!map) return;
+    if (!map && !interlude) return;
     if (!lease.mapSeen) {
         lease.mapSeen = true;
         // The projector's lease lasts as long as the map (it still ends on leaving it, a world, player or level change, and
@@ -158,8 +163,17 @@ bool CicArtVisible(ue3::Object* pc) {
     return level != nullptr && Object(level, "Engine.LevelStreaming", "LoadedLevel") != nullptr &&
         ReadBool(level, "Engine.LevelStreaming", "bIsVisible") == true;
 }
+bool MapLevelRequested(ue3::Object* pc) {
+    auto* const level = LevelNamed(Object(pc, "Engine.Actor", "WorldInfo"), "bioa_nor_203agalaxymap");
+    return level != nullptr && shouldLoad.ReadBool(level) == true;
+}
 std::string Arm(ue3::Object* pc, bool production) {
-    if (lease.deadline) return "already armed";
+    if (lease.deadline) {
+        // A lease that ran out before the map opened is spent (nothing was written): armed again while the player still stands
+        // at the projector. Until 2026-11-17 it stayed "armed" past its 20 s and the map opened without the room (run gx3a).
+        if (lease.mapSeen || GetTickCount64() < lease.deadline || lease.owned) return "already armed";
+        lease = {};
+    }
     if (!installed || player::GameMode(pc) != 0) return "requires the installed hook, on foot";
     auto* const world = Object(pc, "Engine.Actor", "WorldInfo");
     auto* const level = CicLevel(world);
@@ -174,6 +188,11 @@ std::string Arm(ue3::Object* pc, bool production) {
     return {};
 }
 bool Active() { return Armed() && lease.mapSeen && engine::adapter::IsMapMode(player::GameMode(lease.pc.object).value_or(255)); }
+bool Kept() {
+    if (!Armed() || !lease.mapSeen) return false;
+    auto const mode = player::GameMode(lease.pc.object);
+    return (mode && engine::adapter::IsMapMode(*mode)) || (lease.production && galaxy_projector::MapInterlude(mode));
+}
 bool Shutdown(hook::Context& hooks, bool exiting) {
     if (!exiting) Release("shutdown"); else lease = {};
     if (installed && !hook::Uninstall(hooks, kHook)) return false;
@@ -205,6 +224,8 @@ bool Armed() { return false; }
 bool CicArtVisible(ue3::Object*) { return false; }
 std::string Arm(ue3::Object*, bool) { return "LE3 only"; }
 bool Active() { return false; }
+bool Kept() { return false; }
+bool MapLevelRequested(ue3::Object*) { return false; }
 bool Shutdown(hook::Context&, bool) { return true; }
 std::string Command(ue3::Object*, std::string const&) { return "galaxy retention: LE3 only"; }
 }
