@@ -662,6 +662,54 @@ findings only) and measured on the fake headset (ME2's Save 4, ME3's combat fixt
    node by node on the sequels (how these were found). Measured (`holsters.ps1`): ME2 the rifle in hand after 0.16 s (was
    0.62), holstered after 0.16 s (was 1.13); ME3 holstered after 0.16 s (was 0.66-0.95), in hand after 0.06 s as before.
 
+### ME3's exploring start and stop (2026-11-18, lane AU9)
+
+The owner's answer (docs/trilogy-plan.md "Answered 2026-11-18, later", option A): ME3's exploring start sped up to ME1's (a
+run within 0.1 s of the push), once the limiter is found. Found in the game, not in Ghidra (the static search was the long way:
+LE3's Ghidra project has no physics names; `m_fDesiredMaxSpeed` turned out to be only `GetMaxSpeed() * fMoveMag / GroundSpeed
+* DesiredSpeedMultiplier`, written each walking tick by BioPawn's physics override at RVA 0xA97000 from its vtable slot +0xA48,
+and read by animation nodes).
+
+1. **How it was found.** A per-tick trace of the response (`movement: response ticks (...)`, sequels only, `game/CombatStance`
+   `StepStartTrace`): each tick of the 0.8 s after a push or a let-go, the speed and the acceleration with their directions
+   against the facing, the facing wanted, `fMoveMag`, ME3's `m_fDesiredMaxSpeed`, the mesh's `RootMotionMode` and the pawn's
+   `BioPawn.RootMotionOverrides` (each animation node's root motion request), and the nodes named once
+   (`movement: response: the animation nodes that asked for root motion: ...`). Exploring on the Normandy (Save 31) the move
+   function asked for its acceleration (6000 u/s^2 along the push) from the first tick, but `Acceleration` read 0, 0, 0, 145,
+   438, 2133, 5083 ... and `RootMotionMode` went 2 (RMM_Ignore) -> 3 (RMM_Accel) for the first ~0.25 s, with one to three
+   requests from `BioAnimNodeLocomotionStart` nodes in the player's AnimTree (`ExploreLocomotion-Start-Idle`, `-Walk`,
+   `-Run`, each `RMMode` 3). So the start animation's own root motion is the pawn's acceleration while the start plays (its
+   first steps barely move), and the stick's acceleration only once the node lets go. The combat tree has no such node (350 u/s
+   at 0.1 s already). The native side: `BioPawn.RootMotionOverride(Node, RMMode, RMRMode)` adds an entry (0xA93220, from the
+   node's TickAnim, e.g. 0x9F8170), the pawn's tick puts the entry with the highest node weight on the mesh (0xA95F30), and
+   `RootMotionRelease` takes it out (0xA93360). The stop the same way: `ExploreLocomotion-Stop-Walk` (a
+   `BioAnimNodeLocomotionStop`) asks for RMM_Accel 0.1 s after a let-go.
+2. **The lever.** In VR on foot with `[Hands] startStopAnims = 0` (ME1's key and default), `UpdateStartSteps` answers every
+   request of a start or stop node with RMM_Ignore: the entry's `RMMode` written 2 each tick it holds another mode (journalled
+   `CombatStance.stepRootMotion`), the node's own mode remembered and given back if the setting goes off, the pawn changes or
+   the mod unloads while the entry is still there. The animations still play on the legs; only their root motion no longer
+   moves the pawn. Log `movement: <node> asked for its animation's root motion (RootMotionMode 3): answered with RMM_Ignore`.
+   `mevr loco start game|on` switches it for a test. **Not a lever:** the node's `BlendOutRelPos` (per direction: Idle 1.0,
+   Walk 0.5, Run 0.35-0.60) written 0: the start blended out at once and the pawn did not move at all (with the root motion
+   lever too: 147 at 0.1 s).
+3. **Measured** (fake headset, Save 31, out-and-back replays `forward:0.7, back:0.7, stick@0@0.6, stick@180@0.6`, each push a
+   180-degree turn of the pawn; `movement: response:`):
+
+   | | 0 s | 0.1 s | 0.2 s | 0.4 s |
+   |---|---|---|---|---|
+   | the game's, full push (6 starts) | 0 | 3-12 | 152-253 | 361-461 |
+   | the game's, half a push | 0 | 4-11 | 27-44 | 122-374 |
+   | the fix, full push (8 starts) | 0 | 389 | 389 | 374-389 |
+   | the fix, half a push | 0 | 189 | 189 | 189 |
+
+   Pushes without a turn (forward after forward): the game's 0, 4-15, 108-243, 389; the fix 0, 389, 389, 389.
+4. **ME3's exploring stop, measured** (`response ticks (the stick let go ...)` and `mevr camera trace`): the walk stops at once
+   (lane AU6's `fMoveMag` write), then the stop node's root motion walks the pawn on at 50-110 u/s for about 0.5 s (16-38 units);
+   with the fix the speed stays 0 from the let-go (six let-gos, 0 u/s through 0.43 s each).
+5. **Seen, not this change:** in the last ~0.25 s of a push after a 180-degree explore turn the pawn's speed dropped to 155-250
+   u/s and its velocity turned about 70 degrees off its facing while the acceleration stayed on it, with and without the fix (no
+   root motion request then). Cause unread.
+
 ## D. The draw and holster delay
 
 ### What plays and what gates it

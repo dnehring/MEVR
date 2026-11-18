@@ -1139,6 +1139,109 @@ void StepResponse(double speed, double yawDeg, ue3::Object* behavior) {
     r.lastStick = stick;
 }
 
+#if !defined(MEVR_GAME_LE1)
+// The response's first ticks on the sequels, one line per push and per let-go (research/38 "ME3's exploring start and stop"):
+// what the pawn's walk had each tick (its speed and acceleration with their directions against the pawn's facing, the facing it
+// turns to, the fraction of the run, ME3's m_fDesiredMaxSpeed, the mesh's root motion mode and ME3's animation nodes' root motion
+// requests): where a slow start or a slide after a stop comes from.
+ue3::FieldRef gTraceDesiredRotation{"Engine.Pawn", "DesiredRotation", ue3::kEveryGame};
+ue3::FieldRef gTraceAcceleration{"Engine.Actor", "Acceleration", ue3::kEveryGame};
+ue3::FieldRef gTraceMoveMag{"SFXGame.BioPawn", "fMoveMag", ue3::kEveryGame};
+ue3::FieldRef gTraceRootMotionMode{"Engine.SkeletalMeshComponent", "RootMotionMode", ue3::kEveryGame};
+#if defined(MEVR_GAME_LE3)
+ue3::FieldRef gTraceDesiredMaxSpeed{"SFXGame.BioPawn", "m_fDesiredMaxSpeed", ue3::kEveryGame};
+// ME3's animation nodes ask the pawn for a root motion mode while they play (BioPawn.RootMotionOverride): the entries.
+ue3::FieldRef gTraceOverrides{"SFXGame.BioPawn", "RootMotionOverrides", ue3::kEveryGame};
+ue3::FieldRef gTraceOverrideNode{gTraceOverrides, "Node"};
+ue3::FieldRef gTraceOverrideMode{gTraceOverrides, "RMMode"};
+ue3::FieldRef gTraceNodeName{"Engine.AnimNode", "NodeName", ue3::kEveryGame};
+std::string gStartTraceNodes;
+#endif
+constexpr double kStartTraceSeconds = 0.8;
+constexpr std::size_t kStartTraceTicks = 64;
+std::string gStartTrace;
+std::size_t gStartTraceTicks = 0;
+struct TraceWindow {
+    bool open = false;
+    bool start = false;  // a push (else a let-go)
+    double since = 0.0;
+    double lastStick = 0.0;
+};
+TraceWindow gTraceWindow;
+
+void StepStartTrace(ue3::Object* pawn, double yawDeg) {
+    // Its own window: from a push (the stick from under 0.2 to 0.3 or more) or a let-go (back under 0.2), whatever the speed.
+    vr::controllers::State const controllers = vr::controllers::Latest();
+    double const stick = controllers.active ? std::hypot(controllers.left.stickX, controllers.left.stickY) : 0.0;
+    TraceWindow& w = gTraceWindow;
+    bool const pushed = w.lastStick < 0.2 && stick >= 0.3;
+    bool const letGo = w.lastStick >= 0.3 && stick < 0.2;
+    w.lastStick = stick;
+    if (w.open && (pushed || letGo || gNow - w.since > kStartTraceSeconds)) {
+        w.open = false;
+        log::Info("movement: response ticks ({}; t s: speed u/s @ its direction from the facing, acceleration u/s^2 @ its direction, the "
+                  "facing wanted, fMoveMag, m_fDesiredMaxSpeed, root motion mode, the nodes' root motion requests):{}",
+            w.start ? "the stick pushed" : "the stick let go", gStartTrace);
+        gStartTrace.clear();
+        gStartTraceTicks = 0;
+#if defined(MEVR_GAME_LE3)
+        if (!gStartTraceNodes.empty()) {
+            log::Info("movement: response: the animation nodes that asked for root motion:{}", gStartTraceNodes);
+            gStartTraceNodes.clear();
+        }
+#endif
+    }
+    if (pushed || letGo) {
+        w.open = true;
+        w.start = pushed;
+        w.since = gNow;
+    }
+    if (!w.open || gStartTraceTicks >= kStartTraceTicks) {
+        return;
+    }
+    auto const relative = [yawDeg](double yaw) { return std::remainder(yaw - yawDeg, 360.0); };
+    auto const direction = [&relative](std::optional<ue3::Vector> const& v, double size) {
+        return v && size > 1.0 ? relative(std::atan2(v->y, v->x) * 180.0 / 3.14159265358979) : 0.0;
+    };
+    std::optional<ue3::Vector> const velocity = gVelocity.Read<ue3::Vector>(pawn);
+    std::optional<ue3::Vector> const accel = gTraceAcceleration.Read<ue3::Vector>(pawn);
+    double const accelSize = accel ? std::hypot(static_cast<double>(accel->x), static_cast<double>(accel->y)) : -1.0;
+    std::optional<ue3::Rotator> const wanted = gTraceDesiredRotation.Read<ue3::Rotator>(pawn);
+    double const wantedYaw = wanted ? relative(static_cast<double>(wanted->yaw) * 360.0 / 65536.0) : 0.0;
+    float const moveMag = gTraceMoveMag.Read<float>(pawn).value_or(-1.0f);
+#if defined(MEVR_GAME_LE3)
+    float const desiredMax = gTraceDesiredMaxSpeed.Read<float>(pawn).value_or(-1.0f);
+#else
+    float const desiredMax = -1.0f;
+#endif
+    ue3::Object* const mesh = player::Mesh(pawn);
+    int const rmm = mesh != nullptr ? gTraceRootMotionMode.Read<std::uint8_t>(mesh).value_or(255) : 255;
+    std::string overrides;
+#if defined(MEVR_GAME_LE3)
+    if (std::optional<ue3::Elements> const entries = gTraceOverrides.ElementsOf(pawn, 64)) {
+        ue3::Reflection& reflection = ue3::runtime::Get();
+        for (std::int32_t i = 0; i < entries->count; ++i) {
+            void* const entry = entries->At(i);
+            ue3::Object* const node = gTraceOverrideNode.Read<ue3::Object*>(entry).value_or(nullptr);
+            int const mode = gTraceOverrideMode.Read<std::uint8_t>(entry).value_or(255);
+            overrides += std::format("{}{}", overrides.empty() ? "" : "/", mode);
+            if (node != nullptr && ue3::runtime::IsAlive(node)) {
+                std::optional<ue3::Name> const name = gTraceNodeName.Read<ue3::Name>(node);
+                std::string const text = std::format(" {} ({}, mode {})", reflection.FullName(node),
+                    name ? reflection.ToString(*name) : std::string("?"), mode);
+                if (gStartTraceNodes.find(text) == std::string::npos) {
+                    gStartTraceNodes += text;
+                }
+            }
+        }
+    }
+#endif
+    gStartTrace += std::format(" | {:.2f}: {:.0f} @{:+.0f}, {:.0f} @{:+.0f}, {:+.0f}, {:.2f}, {:.2f}, {}, [{}]", gNow - w.since, gSpeed,
+        direction(velocity, gSpeed), accelSize, direction(accel, accelSize), wantedYaw, moveMag, desiredMax, rmm, overrides);
+    ++gStartTraceTicks;
+}
+#endif
+
 // The walking mode and speed, once per change (research/38 C: the zoomed walk).
 void UpdateWalk(ue3::Object* pawn, Link const& link) {
     int const mode = CallByte(pawn, gGetWalkingSpeedMode);
@@ -1150,6 +1253,7 @@ void UpdateWalk(ue3::Object* pawn, Link const& link) {
         gBehavior.Read<ue3::Object*>(pawn).value_or(nullptr));
 #else
     StepResponse(gSpeed, rotation ? static_cast<double>(rotation->yaw) * 360.0 / 65536.0 : 0.0, WalkOwner(pawn));
+    StepStartTrace(pawn, rotation ? static_cast<double>(rotation->yaw) * 360.0 / 65536.0 : 0.0);
 #endif
     if (mode == gWalkMode) {
         gWalkTop = std::max(gWalkTop, gSpeed);
@@ -1643,6 +1747,121 @@ void UpdateSteps(Link const& link, ue3::Object* pawn, bool onFoot) {
 }
 
 #endif  // the steps (ME1, ME2)
+#if defined(MEVR_GAME_LE3)
+
+// ME3's start and stop steps (research/38 "ME3's exploring start and stop"; the owner's option A, 2026-11-18): ME3 has none of
+// ME1's three flags. Exploring, the player's AnimTree starts every walk with a BioAnimNodeLocomotionStart node
+// (ExploreLocomotion-Start-Idle, -Walk, -Run) and ends it with a BioAnimNodeLocomotionStop node, each playing its animation and,
+// while it plays, asking the pawn for the animation's root motion (BioPawn.RootMotionOverride: an entry in
+// BioPawn.RootMotionOverrides; the start's RMM_Accel, the mesh's RootMotionMode 2 -> 3). So for a start's first ~0.25 s the
+// pawn moved as the start animation's root does, not as the stick asks (0, 7, 147, 389 u/s at 0, 0.1, 0.2, 0.4 s exploring;
+// combat has no such node: 350 at 0.1), and after a stop the stop animation walked it on about 0.35 m. ME1's rule ([Hands]
+// startStopAnims = 0, in VR on foot: no start or stop step moving Shepard): each such request is answered with RMM_Ignore (the
+// entry's RMMode written 2, journalled), so the move function's acceleration moves the pawn from the first tick and the stop
+// stays a stop; the animations still play on the legs. Making the start node blend out at once (BlendOutRelPos 0) is not a
+// lever: the pawn then didn't move at all. Requests we answered that are still there when this stands down get their own mode
+// back. Game thread.
+ue3::ClassRef gLocomotionStart{"SFXGame.BioAnimNodeLocomotionStart", ue3::kEveryGame};
+ue3::ClassRef gLocomotionStop{"SFXGame.BioAnimNodeLocomotionStop", ue3::kEveryGame};
+ue3::FieldRef gPawnOverrides{"SFXGame.BioPawn", "RootMotionOverrides", ue3::kEveryGame};
+ue3::FieldRef gPawnOverrideNode{gPawnOverrides, "Node"};
+ue3::FieldRef gPawnOverrideMode{gPawnOverrides, "RMMode"};
+constexpr std::uint8_t kRootMotionIgnore = 2;  // ERootMotionMode RMM_Ignore
+
+struct Answered {
+    ue3::Object* node = nullptr;
+    std::uint8_t mode = 0;  // what the node asked for
+};
+struct StartSteps {
+    ue3::Object* pawn = nullptr;
+    std::vector<Answered> answered;  // the requests we answer now
+    std::uint64_t starts = 0;        // requests answered
+    std::uint64_t stops = 0;
+    bool on = true;                  // a test's switch (`mevr loco start game|on`)
+    bool loggedStart = false;
+    bool loggedStop = false;
+};
+StartSteps gStart;
+
+// Gives the requests we answered that are still in the pawn's list their own mode back.
+void RestoreStarts(char const* why) {
+    std::size_t restored = 0;
+    if (gStart.pawn != nullptr && !gStart.answered.empty() && ue3::runtime::IsAlive(gStart.pawn)) {
+        if (std::optional<ue3::Elements> const entries = gPawnOverrides.ElementsOf(gStart.pawn, 64)) {
+            for (std::int32_t i = 0; i < entries->count; ++i) {
+                void* const entry = entries->At(i);
+                ue3::Object* const node = gPawnOverrideNode.Read<ue3::Object*>(entry).value_or(nullptr);
+                std::uint8_t* const mode = gPawnOverrideMode.In<std::uint8_t>(entry);
+                auto const ours = std::find_if(gStart.answered.begin(), gStart.answered.end(), [node](Answered const& a) { return a.node == node; });
+                if (ours != gStart.answered.end() && mode != nullptr && *mode == kRootMotionIgnore) {
+                    *mode = ours->mode;
+                    write_journal::Wrote("CombatStance.stepRootMotion(restore)", mode, 1);
+                    ++restored;
+                }
+            }
+        }
+    }
+    if (restored > 0) {
+        log::Info("movement: the game's start and stop steps as it has them again ({}): {} root motion request{} given back", why,
+            restored, restored == 1 ? "" : "s");
+    }
+    gStart.answered.clear();
+}
+
+void UpdateStartSteps(Link const& link, ue3::Object* pawn, bool onFoot) {
+    hand_calibration::CombatStance const settings = hand_calibration::GetCombatStance();
+    char const* const why = settings.startStopAnims ? "[Hands] startStopAnims = 1"
+                          : !gStart.on              ? "the game's start and stop steps (mevr loco start game)"
+                          : !link.headTrackedView   ? "no head-tracked view"
+                          : !onFoot                 ? "not on foot"
+                          : pawn == nullptr         ? "no player pawn"
+                                                    : nullptr;
+    gSteps.why = why != nullptr ? why
+                                : "the start and stop steps' root motion ignored in VR on foot (BioAnimNodeLocomotionStart, -Stop)";
+    if (pawn != gStart.pawn) {
+        RestoreStarts("the pawn changed");
+        gStart.pawn = pawn;
+    }
+    if (why != nullptr) {
+        RestoreStarts(why);
+        return;
+    }
+    std::optional<ue3::Elements> const entries = gPawnOverrides.ElementsOf(pawn, 64);
+    if (!entries) {
+        gStart.answered.clear();
+        return;
+    }
+    std::vector<Answered> present;  // a request the node released is gone from the list (nothing to give back)
+    for (std::int32_t i = 0; i < entries->count; ++i) {
+        void* const entry = entries->At(i);
+        ue3::Object* const node = gPawnOverrideNode.Read<ue3::Object*>(entry).value_or(nullptr);
+        std::uint8_t* const mode = gPawnOverrideMode.In<std::uint8_t>(entry);
+        bool const start = node != nullptr && ue3::IsA(node, gLocomotionStart);
+        if (mode == nullptr || (!start && (node == nullptr || !ue3::IsA(node, gLocomotionStop)))) {
+            continue;
+        }
+        auto const known = std::find_if(gStart.answered.begin(), gStart.answered.end(), [node](Answered const& a) { return a.node == node; });
+        Answered a{node, known != gStart.answered.end() ? known->mode : *mode};
+        if (*mode != kRootMotionIgnore) {
+            a.mode = *mode;  // the node's request (again, or a new one)
+            *mode = kRootMotionIgnore;
+            write_journal::Wrote("CombatStance.stepRootMotion", mode, 1);
+            ++(start ? gStart.starts : gStart.stops);
+            bool& logged = start ? gStart.loggedStart : gStart.loggedStop;
+            if (!logged) {
+                logged = true;
+                log::Info("movement: {} asked for its animation's root motion (RootMotionMode {}): answered with RMM_Ignore in VR on foot "
+                          "(the stick moves the pawn; [Hands] startStopAnims = 0)", TreeNodeName(node), a.mode);
+            }
+        }
+        if (a.mode != kRootMotionIgnore) {
+            present.push_back(a);
+        }
+    }
+    gStart.answered = std::move(present);
+}
+
+#endif  // ME3's start step
 #if defined(MEVR_GAME_LE1)
 
 // ---- D ------------------------------------------------------------------------------------------------------------
@@ -1912,7 +2131,7 @@ void Tick(double deltaSeconds, Link const& link) {
 #if defined(MEVR_GAME_LE2)
     UpdateSteps(link, pawn, onFoot);
 #else
-    gSteps.why = "this game has no start, stop and skid flags (ME3's steps are SFXModule_Locomotion's states)";
+    UpdateStartSteps(link, pawn, onFoot);
 #endif
     if (onFoot && pawn != nullptr) {
         UpdateWalk(pawn, link);
@@ -1980,6 +2199,19 @@ void LogStats() {
     gRateWrites = 0;
     gStick.moves = gStick.applied = gStick.kept = 0;
 }
+
+#if defined(MEVR_GAME_LE3)
+std::string StartLevers(std::string const& which) {
+    if (which == "game") {
+        gStart.on = false;
+    } else if (which == "on") {
+        gStart.on = true;
+    }
+    return std::format("mevr loco start: {} (root motion requests answered with RMM_Ignore: {} start{}, {} stop{}; {})",
+        gStart.on ? "the start and stop steps' root motion ignored" : "the game's start and stop steps", gStart.starts,
+        gStart.starts == 1 ? "" : "s", gStart.stops, gStart.stops == 1 ? "" : "s", gSteps.why);
+}
+#endif
 
 #if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 std::string DumpAnimTree(std::string const& filter) {
@@ -2059,6 +2291,8 @@ void Shutdown() {
         RestoreRamp("the mod unloads", true);
 #if defined(MEVR_GAME_LE2)
         RestoreSteps("the mod unloads");
+#else
+        RestoreStarts("the mod unloads");
 #endif
         for (RateWrite const& w : gRates) {
             if (ue3::runtime::IsAlive(w.sequence)) {

@@ -3013,6 +3013,9 @@ void CheckSequelWalk() {
     // The speed from the push (game/CombatStance, research/38): ME2's move function, its output and the push it reads.
     CheckFunctionsNamed("PlayerMoveCombatOrExplore");
     CheckField("SFXGame.BioPawn", "fMoveMag", SDK_FIELD(ABioPawn, fMoveMag));
+    // The response's first ticks (game/CombatStance StepStartTrace): the facing the pawn turns to and the mesh's root motion mode.
+    CheckField("Engine.Pawn", "DesiredRotation", SDK_FIELD(APawn, DesiredRotation));
+    CheckField("Engine.SkeletalMeshComponent", "RootMotionMode", SDK_FIELD(USkeletalMeshComponent, RootMotionMode));
     CheckField("Engine.PlayerInput", "RawJoyUp", SDK_FIELD(UPlayerInput, RawJoyUp));
     CheckField("Engine.PlayerInput", "RawJoyRight", SDK_FIELD(UPlayerInput, RawJoyRight));
     CheckField("SFXGame.BioPlayerController", "MoveStickWalkThreshold", SDK_FIELD(ABioPlayerController, MoveStickWalkThreshold));
@@ -3226,6 +3229,17 @@ void CheckSequelWalk() {
     CheckField("Engine.Actor", "Acceleration", SDK_FIELD(AActor, Acceleration));
     CheckField("SFXGame.BioPawn", "m_fDesiredMaxSpeed", SDK_FIELD(ABioPawn, m_fDesiredMaxSpeed));
     CheckField("SFXGame.BioPawn", "fMoveMag", SDK_FIELD(ABioPawn, fMoveMag));
+    // The response's first ticks (game/CombatStance StepStartTrace): the facing the pawn turns to and the mesh's root motion mode.
+    CheckField("Engine.Pawn", "DesiredRotation", SDK_FIELD(APawn, DesiredRotation));
+    CheckField("Engine.SkeletalMeshComponent", "RootMotionMode", SDK_FIELD(USkeletalMeshComponent, RootMotionMode));
+    // ... and the animation nodes' root motion requests (BioPawn.RootMotionOverride's list).
+    CheckField("SFXGame.BioPawn", "RootMotionOverrides", SDK_FIELD(ABioPawn, RootMotionOverrides));
+    CheckElement("SFXGame.BioPawn", "RootMotionOverrides", sizeof(FRootMotionOverrideEntry));
+    CheckPath("SFXGame.BioPawn", {"RootMotionOverrides", "Node"}, SDK_AT(offsetof(FRootMotionOverrideEntry, Node), 8));
+    CheckPath("SFXGame.BioPawn", {"RootMotionOverrides", "RMMode"}, SDK_AT(offsetof(FRootMotionOverrideEntry, RMMode), 1));
+    // ME3's start and stop steps' root motion ignored in VR on foot (game/CombatStance UpdateStartSteps): the nodes asking for it.
+    CheckClass<UBioAnimNodeLocomotionStart>("SFXGame.BioAnimNodeLocomotionStart");
+    CheckClass<UBioAnimNodeLocomotionStop>("SFXGame.BioAnimNodeLocomotionStop");
 }
 
 // game/SquadAck on the sequels (the AI's own answer to an order, a vocalization event) and game/SquadContext's "a fight is

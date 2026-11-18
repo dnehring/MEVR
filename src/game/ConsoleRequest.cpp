@@ -1805,6 +1805,9 @@ std::string LocomotionLe3(ue3::Object* pc, std::istringstream& words) {
     std::string sub, field;
     double value = 0.0;
     words >> sub >> field >> value;
+    if (sub == "start") {  // ME3's start step's levers (game/CombatStance, research/38 "ME3's exploring start")
+        return combat_stance::StartLevers(field);
+    }
     std::string out;
     if (sub == "set") {
         bool found = false;
