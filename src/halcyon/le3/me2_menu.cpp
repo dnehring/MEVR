@@ -572,9 +572,9 @@ void LoadValues() noexcept
         g_profileKey[i] = ClampI(GetPrivateProfileIntW(L"VR", kn, 0x31 + i, path.c_str()), 0x08, 0xFE, 0x31 + i);
     }
     { wchar_t cb[64] = {};
-      GetPrivateProfileStringW(L"VR", L"MenuScreenDist", L"2.20", cb, 64, path.c_str());
+      GetPrivateProfileStringW(L"VR", L"MenuScreenDist", L"1.40", cb, 64, path.c_str());  // [MEVR] ME1's flat panel: 1.4 m, 2.35 m wide (upstream 2.2, 3.2)
       ME2VR::Me2Xr::SetMenuScreenDist(static_cast<float>(_wtof(cb)));
-      GetPrivateProfileStringW(L"VR", L"MenuScreenSize", L"3.20", cb, 64, path.c_str());
+      GetPrivateProfileStringW(L"VR", L"MenuScreenSize", L"2.35", cb, 64, path.c_str());  // [MEVR]
       ME2VR::Me2Xr::SetMenuScreenSize(static_cast<float>(_wtof(cb)));
       GetPrivateProfileStringW(L"VR", L"MenuPanelDist", L"1.50", cb, 64, path.c_str());
       ME2VR::Me2Xr::SetMenuPanelDist(static_cast<float>(_wtof(cb)));

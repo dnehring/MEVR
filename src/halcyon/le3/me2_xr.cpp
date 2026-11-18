@@ -90,8 +90,8 @@ unsigned g_dibrFullFrames = 0, g_dibrFallbackFrames = 0, g_dibrBlackFrames = 0;
 ULONGLONG g_dibrSubStatMs = 0;
 // [COMFORT] Panel placement, runtime-tunable (ME2 parity). Were fixed constants; the cine/mono
 // screen and the Insert panel both needed moving per-person, which is what the Comfort tab is for.
-std::atomic<float> g_monoQuadDistanceM{2.2f};   // meters in front of the face
-std::atomic<float> g_monoQuadWidthM{3.2f};      // meters wide
+std::atomic<float> g_monoQuadDistanceM{1.4f};   // meters in front of the face ([MEVR] ME1's flat panel, docs/knowledge/me1 PRS-18; upstream 2.2)
+std::atomic<float> g_monoQuadWidthM{2.35f};     // meters wide ([MEVR] ME1's 2.35; upstream 3.2)
 std::atomic<float> g_cineScreenZoom{1.0f};      // [VRCINE] flat cine screen zoom, ME2 range 0.5-3
 std::atomic<float> g_menuQuadDistanceM{1.5f};
 std::atomic<float> g_menuQuadWidthM{1.4f};

@@ -8130,6 +8130,18 @@ void TestWorldUi() {
     CHECK(wu::FromMe3Tag("WarAssets") == wu::Screen::WarAssets && std::string(wu::Name(wu::Screen::WarAssets)) == "WarAssets");
     CHECK(wu::FromTag("WarAssets") == wu::Screen::None && wu::FromTag("SquadRecord") == wu::Screen::None);  // ME1 and ME2 unchanged
     CHECK(wu::FromMe3Tag("MainMenu") == wu::Screen::None && wu::FromMe3Tag("HUD") == wu::Screen::None);
+    // The sequels' own screens (research/le2-menus.md "The sequels' own screens"): ME2's choice screen and minigames, ME3's store,
+    // weapon bench, accomplishments, message boxes and terminals, ME1's screen where ME1 has one.
+    CHECK(wu::FromTag("ChoiceGUI") == wu::Screen::ChoiceGUI && wu::FromTag("MissionCompletion") == wu::Screen::ChoiceGUI);
+    CHECK(wu::FromTag("SkillGameBypass") == wu::Screen::SkillGame && wu::FromTag("skillgamedecryption") == wu::Screen::SkillGame);
+    CHECK(std::string(wu::Name(wu::Screen::ChoiceGUI)) == "ChoiceGUI" && std::string(wu::Name(wu::Screen::Terminal)) == "Terminal");
+    CHECK(wu::FromMe3Tag("Store") == wu::Screen::Shop && wu::FromMe3Tag("WeaponSelect") == wu::Screen::Inventory);
+    CHECK(wu::FromMe3Tag("Accomplishments") == wu::Screen::Achievement && wu::FromMe3Tag("ChoiceGUI") == wu::Screen::ChoiceGUI);
+    CHECK(wu::FromMe3Tag("HintBox") == wu::FromTag("MessageBox") && wu::FromMe3Tag("QueuedMessageBox") == wu::FromTag("MessageBox"));
+    CHECK(wu::FromMe3Tag("Terminal") == wu::Screen::Terminal && wu::FromMe3Tag("Mail") == wu::Screen::Terminal &&
+          wu::FromMe3Tag("Elevator") == wu::Screen::Terminal && wu::FromMe3Tag("MissionCompletion") == wu::Screen::ChoiceGUI);
+    CHECK(wu::FromTag("Store") == wu::Screen::None && wu::FromTag("Terminal") == wu::Screen::None);  // ME3's only through FromMe3Tag
+    CHECK(wu::FromMe3Tag("Personalization") == wu::Screen::None);  // the armour locker's Shepard is the UI world's: Halcyon's panel
     CHECK(!wu::RailPanel(wu::Screen::WarAssets) && !wu::OnWrist(wu::Settings{}, wu::Screen::WarAssets, false));  // stands by its console
     // The modes (ME1's numbers here: this test builds without a game): the GUI mode 7 and the minigame 10 stand screens; an
     // opening is reserved from a play mode (0..4).

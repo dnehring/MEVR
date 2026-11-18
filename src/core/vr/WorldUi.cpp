@@ -24,6 +24,9 @@ constexpr std::array<char const*, static_cast<std::size_t>(Screen::Count)> kTags
     "None", "shop", "Loot", "Inventory", "XMods", "CharacterRecord", "Specialization", "Journal", "Codex", "Map", "PartySelect",
     "MenuBrowser", "Options", "Save", "Load", "MessageBox", "Achievement", "AdditionalContent", "SkillGame", "DesignerUI", "GameOver",
     "WarAssets",
+#if !defined(MEVR_GAME_LE1)
+    "ChoiceGUI", "Terminal",
+#endif
 };
 constexpr std::size_t kLastMe1Me2 = static_cast<std::size_t>(Screen::GameOver);  // FromTag's: ME1's and ME2's tags only
 
@@ -51,6 +54,17 @@ Screen FromTag(std::string_view tag) {
     if (SameText(tag, "AreaMap")) {
         return Screen::Map;
     }
+#if !defined(MEVR_GAME_LE1)
+    // ME2's own screens (BIOUI.ini's HandlerLibrary in its Coalesced_INT.bin, research/le2-menus.md "The sequels' own
+    // screens"): the choice screen (research, the weapon lockers, the stores, the bonus power) and the mission's completion
+    // (the same handler, BioSFHandler_PCChoiceGUI); the hacking and bypass minigames, ME1's omni-tool minigame.
+    if (SameText(tag, "ChoiceGUI") || SameText(tag, "MissionCompletion")) {
+        return Screen::ChoiceGUI;
+    }
+    if (SameText(tag, "SkillGameBypass") || SameText(tag, "SkillGameDecryption")) {
+        return Screen::SkillGame;
+    }
+#endif
     return Screen::None;
 }
 
@@ -60,6 +74,16 @@ Screen FromMe3Tag(std::string_view tag) {
     if (SameText(tag, "SquadRecord")) {
         return Screen::CharacterRecord;
     }
+#if !defined(MEVR_GAME_LE1)
+    // ME3's other screens (BioUI's movie library in its Coalesced.bin, research/le2-menus.md "The sequels' own screens"):
+    // the stores are ME1's shop, the weapon bench's selection ME1's equipment, the accomplishments ME1's achievements, its two
+    // other message boxes ME1's; the private terminal's mail and the elevator's deck list are its terminals.
+    if (SameText(tag, "Store")) return Screen::Shop;
+    if (SameText(tag, "WeaponSelect")) return Screen::Inventory;
+    if (SameText(tag, "Accomplishments")) return Screen::Achievement;
+    if (SameText(tag, "HintBox") || SameText(tag, "QueuedMessageBox")) return FromTag("MessageBox");
+    if (SameText(tag, "Mail") || SameText(tag, "Elevator")) return Screen::Terminal;
+#endif
     for (std::size_t i = kLastMe1Me2 + 1; i < kTags.size(); ++i) {
         if (SameText(tag, kTags[i])) {
             return static_cast<Screen>(i);
@@ -186,6 +210,12 @@ Rect InWindow(Rect const& stage, Rect const& part) {
 }
 
 Rect DefaultCrop(Screen screen) {
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+    // The crops below are ME1's movies measured; the sequels' screens of the same kind (ME3's store, ME2's minigames) are other
+    // movies: their whole stage until measured.
+    (void)screen;
+    return {};
+#else
     switch (screen) {
     case Screen::Shop:
         // Measured 2026-11-04 (the Normandy's requisitions officer): the item picture, the item card and the lists span stage
@@ -200,6 +230,7 @@ Rect DefaultCrop(Screen screen) {
     default:
         return {};  // the whole stage until measured (research/53)
     }
+#endif
 }
 
 float RoomWidth(Screen screen, float widthM) {
@@ -211,9 +242,11 @@ float RoomWidth(Screen screen, float widthM) {
 }
 
 Rect WristCrop(Screen screen) {
+#if !defined(MEVR_GAME_LE2) && !defined(MEVR_GAME_LE3)  // ME1's minigame frame; the sequels' minigames show their whole stage
     if (screen == Screen::SkillGame) {
         return {0.21f, 0.10f, 0.79f, 0.87f};  // its frame (measured above) with a little margin: the projector shows only the box
     }
+#endif
     return DefaultCrop(screen);
 }
 
@@ -226,7 +259,12 @@ bool OnWrist(Settings const& settings, Screen screen, bool anchored, game_menu::
 }
 
 float WristWidth(Settings const& settings, Screen screen) {
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+    (void)screen;  // ME2's minigames fill their stage (wristWidthM is ME1's minigame frame): a whole screen's width
+    return settings.wristMenuWidthM;
+#else
     return screen == Screen::SkillGame ? settings.wristWidthM : settings.wristMenuWidthM;
+#endif
 }
 
 std::string ScreenList(std::uint32_t bits) {
