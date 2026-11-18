@@ -262,12 +262,11 @@ inline constexpr std::uint32_t kViewportDrawEnd = 0x6D2C99;
 // M3 (research/le2-vrik.md "The skeleton"): execForceSkelUpdate (0x77D750) calls it as (this, 0, 1), as LE1's does; it
 // sizes SpaceBases (+0x2B8) and LocalAtoms (+0x2C8) to the RefSkeleton with 0x20-byte FBoneAtoms, as LE1's 0x592440.
 inline constexpr std::uint32_t kUpdateSkelPose = 0x79B8A0;
-// engine/BodyBounds is not ported to ME2 (parity ledger R29: port it only if ME2 culls the player's body), so these two
-// stay 0 and the module stands down. Their ME2 addresses are found and are rows of the table below
-// ("USkeletalMeshComponent::UpdateBounds" 0x798350, "UPrimitiveComponent::UpdateUmbraBounds" 0x3146C0; research/
-// sequel-render-levers.md "Body bounds"): setting these two to those values is the whole port.
-inline constexpr std::uint32_t kSkelUpdateBounds = 0;
-inline constexpr std::uint32_t kPrimitiveUmbraBounds = 0;
+// engine/BodyBounds' two functions in ME2 (LE1 0x58EEC0, 0x25CFE0; research/sequel-render-levers.md "Body bounds"), rows of
+// the table below: ME1's culling pad on every game since lane AU4 (2026-11-18; the audits' REN-28, docs/trilogy-plan.md
+// rule 1), the body's boxes grown by the host's view offset wherever the game's camera culls ahead of the drawn eye.
+inline constexpr std::uint32_t kSkelUpdateBounds = 0x798350;
+inline constexpr std::uint32_t kPrimitiveUmbraBounds = 0x3146C0;
 inline constexpr std::uint32_t kSoundSourceUpdate = 0;
 inline constexpr std::uint32_t kNameFromText = 0;
 inline constexpr std::uint32_t kTryAcquireCover = 0;
@@ -390,11 +389,11 @@ inline constexpr Entry kTable[] = {
     // is the literal 0x164C720 in RenderLevers.cpp and has no row of its own.
     {"show flags' bits per word", 0x1618A30, Kind::Data, "41 B8 33 00 00 00 41 8B C0 44 8B 0D ?? ?? ?? ?? 41 F7 F1 8B", 12,
         0x34C060, "render levers"},
-    // engine/BodyBounds' two functions in ME2 (kSkelUpdateBounds and kPrimitiveUmbraBounds above stay 0 until it is ported).
-    {"USkeletalMeshComponent::UpdateBounds", 0x798350, Kind::Function, "40 55 53 48 8D AC 24 08 FF FF FF 48 81 EC F8 01", 0,
-        0, "mod (body bounds, not ported)"},
-    {"UPrimitiveComponent::UpdateUmbraBounds", 0x3146C0, Kind::Function, "40 53 48 81 EC C0 00 00 00 48 8B 01 48 8B D9 FF", 0,
-        0, "mod (body bounds, not ported)"},
+    // engine/BodyBounds' two functions in ME2 (kSkelUpdateBounds and kPrimitiveUmbraBounds above).
+    {"USkeletalMeshComponent::UpdateBounds", kSkelUpdateBounds, Kind::Function, "40 55 53 48 8D AC 24 08 FF FF FF 48 81 EC F8 01", 0,
+        0, "mod (body bounds)"},
+    {"UPrimitiveComponent::UpdateUmbraBounds", kPrimitiveUmbraBounds, Kind::Function, "40 53 48 81 EC C0 00 00 00 48 8B 01 48 8B D9 FF", 0,
+        0, "mod (body bounds)"},
 };
 
 } // le2
@@ -464,9 +463,9 @@ inline constexpr std::uint32_t kGetQueryData = 0x9A7D10;
 inline constexpr std::uint32_t kBoundShaderStateCtor = 0x9B0270;
 // The capture's Umbra camera thunk (LE1 0x7526C0; a leaf, called once from 0x35F090).
 inline constexpr std::uint32_t kCaptureUmbraCamera = 0x34D750;
-// USkeletalMeshComponent::UpdateBounds and the primitive's hand-over of its Bounds to Umbra (LE1 0x58EEC0, 0x25CFE0). Found
-// and verified, but engine/BodyBounds stays off on ME3 (kSkelUpdateBounds = 0 below): the padding answers Halcyon LE1's view
-// offset (the ledger's group 3), so it is ported only if the bug shows. To port: set the two constants below to these.
+// USkeletalMeshComponent::UpdateBounds and the primitive's hand-over of its Bounds to Umbra (LE1 0x58EEC0, 0x25CFE0): ME1's
+// culling pad on every game since lane AU4 (2026-11-18; the audits' REN-28, docs/trilogy-plan.md rule 1), kSkelUpdateBounds
+// and kPrimitiveUmbraBounds below.
 inline constexpr std::uint32_t kSkelUpdateBoundsNative = 0x793850;
 inline constexpr std::uint32_t kPrimitiveUmbraBoundsNative = 0x32EC10;
 
@@ -490,8 +489,8 @@ inline constexpr std::uint32_t kCalcSceneViewPrimaryReturn = 0;  // not pinned y
 inline constexpr std::uint32_t kViewportDraw = 0x6D1E30;
 inline constexpr std::uint32_t kViewportDrawEnd = 0x6D40DB;
 inline constexpr std::uint32_t kUpdateSkelPose = 0x796EB0;
-inline constexpr std::uint32_t kSkelUpdateBounds = 0;
-inline constexpr std::uint32_t kPrimitiveUmbraBounds = 0;
+inline constexpr std::uint32_t kSkelUpdateBounds = kSkelUpdateBoundsNative;
+inline constexpr std::uint32_t kPrimitiveUmbraBounds = kPrimitiveUmbraBoundsNative;
 inline constexpr std::uint32_t kSoundSourceUpdate = 0;
 inline constexpr std::uint32_t kNameFromText = 0;
 inline constexpr std::uint32_t kTryAcquireCover = 0;
@@ -627,9 +626,9 @@ inline constexpr Entry kTable[] = {
     {"scene capture's Umbra camera thunk", kCaptureUmbraCamera, Kind::Leaf, "4C 8B D2 48 8B D1 48 8B 09 48 85 C9 74 18 48 8B", 0, 0,
         "render levers"},
     {"USkeletalMeshComponent::UpdateBounds", kSkelUpdateBoundsNative, Kind::Function,
-        "40 55 53 48 8D AC 24 08 FF FF FF 48 81 EC F8 01", 0, 0, "body bounds (not used on ME3)"},
+        "40 55 53 48 8D AC 24 08 FF FF FF 48 81 EC F8 01", 0, 0, "mod (body bounds)"},
     {"UPrimitiveComponent::UpdateUmbraBounds", kPrimitiveUmbraBoundsNative, Kind::Function,
-        "40 53 48 81 EC C0 00 00 00 48 83 B9 14 02 00 00", 0, 0, "body bounds (not used on ME3)"},
+        "40 53 48 81 EC C0 00 00 00 48 83 B9 14 02 00 00", 0, 0, "mod (body bounds)"},
     {"GSceneRenderTargets", kSceneRenderTargets, Kind::Data, "33 DB 39 59 38 48 8D 0D ?? ?? ?? ?? 0F 95 C3 8D", 8, 0x163CA2,
         "render levers"},
     {"scene frame counter", kSceneFrame, Kind::Data, "C4 20 5B C3 CC 48 8D 05 ?? ?? ?? ?? C3 CC CC CC", 8, 0x36111B,

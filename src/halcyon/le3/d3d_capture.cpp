@@ -393,6 +393,9 @@ void WINAPI ExitProcessHook(UINT uExitCode) noexcept
                       wrote ? "written to GamerSettings.ini after the game's own flush" : "already correct / write FAILED");
         ME2VR::Log::Line(l);
     }
+    // [MEVR] our host's ExitProcess hook sits under this one and ends the process itself after its exit line (the kept
+    // locks, crash::NoteProcessExit): hand it the call; it never returns either.
+    if (::MevrSeams::HostEndsProcess() && g_origExitProcess != nullptr) g_origExitProcess(uExitCode);
     TerminateProcess(GetCurrentProcess(), uExitCode);   // never returns; skips the hanging detach chain
 }
 ID3D11DeviceContext* g_gameContext = nullptr;      // immediate context for the warp pass (grabbed lazily)
@@ -5837,6 +5840,46 @@ void ArmResolutionSpoof() noexcept
                   g_dispqRealPrimaryW, g_dispqRealPrimaryH, wantW, wantH, haveWant ? 1 : 0,
                   DispqSpoofActive() ? "ARMED" : "off", g_dispqSpoofW, g_dispqSpoofH);
     ME2VR::Log::Line(line);
+}
+
+// [MEVR] the render target for our host (plugin/RendererLe3.cpp RenderTarget): MELE3VR.ini's RenderW/RenderH, which
+// ArmResolutionSpoof above writes into GamerSettings.ini at attach (its 3072x2216 when the keys are missing).
+namespace
+{
+std::wstring MevrRendererIni() noexcept
+{
+    wchar_t exePath[MAX_PATH] = {};
+    if (GetModuleFileNameW(nullptr, exePath, MAX_PATH) == 0) return L"";
+    std::wstring ini(exePath);
+    const size_t slash = ini.find_last_of(L'\\');
+    return slash == std::wstring::npos ? std::wstring() : ini.substr(0, slash + 1) + L"MELE3VR.ini";
+}
+}
+
+void MevrRenderTarget(unsigned* fileW, unsigned* fileH, unsigned* liveW, unsigned* liveH) noexcept
+{
+    const std::wstring ini = MevrRendererIni();
+    if (fileW) *fileW = ini.empty() ? 0u : static_cast<unsigned>(GetPrivateProfileIntW(L"VR", L"RenderW", 3072, ini.c_str()));
+    if (fileH) *fileH = ini.empty() ? 0u : static_cast<unsigned>(GetPrivateProfileIntW(L"VR", L"RenderH", 2216, ini.c_str()));
+    if (liveW) *liveW = g_backbufferWidth;
+    if (liveH) *liveH = g_backbufferHeight;
+}
+
+bool MevrSetRenderTarget(unsigned w, unsigned h) noexcept
+{
+    const std::wstring ini = MevrRendererIni();
+    if (ini.empty() || w < 640 || h < 360) return false;   // ArmResolutionSpoof's own bounds
+    wchar_t v[32] = {};
+    swprintf_s(v, L"%u", w);
+    bool ok = WritePrivateProfileStringW(L"VR", L"RenderW", v, ini.c_str()) != 0;
+    swprintf_s(v, L"%u", h);
+    ok = WritePrivateProfileStringW(L"VR", L"RenderH", v, ini.c_str()) != 0 && ok;
+    const bool wrote = DispqWriteRes(w, h);   // and now, as attach would at the next launch
+    g_vrresW = w; g_vrresH = h;               // what the exit hook writes back after the engine's own flush
+    ME2VR::Log::Line("[VRRES] [MEVR] next launch " + std::to_string(w) + "x" + std::to_string(h) +
+                     (ok ? " -> MELE3VR.ini" : " -> MELE3VR.ini write FAILED") +
+                     (wrote ? ", GamerSettings.ini" : ", GamerSettings.ini already correct / untouched"));
+    return ok;
 }
 
 // Installed from the worker thread, ahead of the game's D3D init - no race with ArmResolutionSpoof

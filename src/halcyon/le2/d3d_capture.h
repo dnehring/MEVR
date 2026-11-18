@@ -17,6 +17,11 @@ void TryInstallFactoryHooks(void* factory, const IID& riid) noexcept;
 // runs from the worker thread, before the game's D3D init.
 void ArmResolutionSpoof() noexcept;
 void InstallDisplayQueryHooks() noexcept;
+// [MEVR] the render target for our host's menu and its first-VR-start rule (plugin/Renderer.hpp RenderTarget): the
+// file's RenderW/RenderH (0 when missing: the game's own resolution) and the live backbuffer (0 before the first frame);
+// MevrSetRenderTarget writes both MELE2VR.ini and GamerSettings.ini for the next launch.
+void MevrRenderTarget(unsigned* fileW, unsigned* fileH, unsigned* liveW, unsigned* liveH) noexcept;
+bool MevrSetRenderTarget(unsigned w, unsigned h) noexcept;
 
 // Retained references to the game's D3D11 device + swapchain (captured at first present).
 // Null until the swapchain is created. Used by the OpenXR bridge (me2_xr). Not AddRef'd for caller.

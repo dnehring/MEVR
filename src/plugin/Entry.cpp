@@ -40,6 +40,10 @@
 #include "plugin/GameThreadCalls.hpp"
 #include "plugin/HalcyonLe2.hpp"
 #endif
+#if defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
+#include "halcyon/MevrSeams.h"  // HostEndsProcess, below
+#include "plugin/KeptLocks.hpp"
+#endif
 #if defined(MEVR_WITH_HALCYON_LE3)
 #include "plugin/MotionBlurGuard.hpp"
 #include "plugin/GameThreadCalls.hpp"
@@ -187,7 +191,7 @@ void WINAPI ExitProcessHook(UINT exitCode) {
     QueryPerformanceCounter(&end);
     mevr::log::Info("game exiting (code {}); the hook's work took {:.3f} ms; the process ends now{}", exitCode,
         1000.0 * static_cast<double>(end.QuadPart - begin.QuadPart) / static_cast<double>(frequency.QuadPart),
-#if defined(MEVR_WITH_HALCYON) && defined(MEVR_GAME_LE1)
+#if (defined(MEVR_WITH_HALCYON) && defined(MEVR_GAME_LE1)) || defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
         "; kept locks: " + mevr::host::kept_locks::Summary());
 #else
         "");
@@ -228,6 +232,14 @@ bool ExeGate() {
 }
 
 } // namespace
+
+#if defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
+// The sequels' renderers hook ExitProcess after us ([EXITKILL], on top of ours) and used to terminate before our hook ran:
+// no exit line, no kept locks' summary, no NoteProcessExit. They hand us the call when our hook is in.
+bool MevrSeams::HostEndsProcess() noexcept {
+    return gExitProcessOrig != nullptr;
+}
+#endif
 
 extern "C" __declspec(dllexport) bool SpiOnAttach(spi::Interface* InterfacePtr) {
     mevr::log::Open(MEVR_GAME_NAME_W L"MEVR.log");
@@ -316,6 +328,11 @@ extern "C" __declspec(dllexport) bool SpiOnAttach(spi::Interface* InterfacePtr) 
     mevr::host::render_levers::Install(init);  // research/22: the render thread's levers and accounting
     mevr::host::motion_blur_guard::Install(init);
     mevr::host::ui_world_figure::Install(init);  // research/57 section 7: no Umbra query for the UI world's capture
+#endif
+#if defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
+    // As LE1's (research/36 "The fault at quit"): the game's static critical sections are never deleted, so a teardown that
+    // destroys a lock its worker still takes can't fault the quit. No per-game address: any lock inside the exe's image.
+    mevr::host::kept_locks::Install(init);
 #endif
 #if defined(MEVR_WITH_HALCYON_LE3)
     if (!gEngineProbe) mevr::host::motion_blur_guard::Install(init);

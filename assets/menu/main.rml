@@ -445,12 +445,14 @@
 				</div>
 			</div>
 		</div>
-		<div class="group" data-class-disabled="le2">
+		<div class="group">
 			<div class="gtitle"><span>Image quality</span><div class="gline"/></div>
-			<div class="hint" data-if="le2">Not available in {{game_title}} yet.</div>
+			<!-- The sequels (le2): the render resolution follows the headset as ME1's and the upscale is ME1's; the Performance modes
+			     (ME1's render levers) and the cutscene cap aren't theirs yet. -->
+			<div class="hint" data-if="le2">Performance modes and steady cutscenes aren't available in {{game_title}} yet.</div>
 			<!-- One choice for the frame rate (research/60): each mode sets the render resolution and the levers in Advanced >
 			     Performance; any of them changed by hand shows Custom. -->
-			<div class="row"><div class="rl"><div class="rlab">Performance</div><div class="rdesc">{{perf_desc}}</div><div class="note">{{perf_note}}</div></div>
+			<div class="row" data-class-disabled="le2"><div class="rl"><div class="rlab">Performance</div><div class="rdesc">{{perf_desc}}</div><div class="note">{{perf_note}}</div></div>
 				<div class="seg"><button class="segb" data-class-on="perf_mode == 'quality'" data-event-click="pick('perf_mode','quality')">Quality</button><button class="segb" data-class-on="perf_mode == 'balanced'" data-event-click="pick('perf_mode','balanced')">Balanced</button><button class="segb" data-class-on="perf_mode == 'performance'" data-event-click="pick('perf_mode','performance')">Performance</button><button class="segb on shown" data-if="perf_mode == 'custom'">Custom</button></div></div>
 			<div class="row"><div class="rl"><div class="rlab">Render resolution</div><div class="rdesc">Now {{quality_text}} per eye · {{quality_note}}</div><div class="rdesc">{{headset_text}}</div></div>
 				<div class="seg"><button class="segb disabled" data-if="!headset_known">Headset (unknown until VR starts)</button><button class="segb" data-if="headset_known" data-class-on="quality == 'headset'" data-event-click="pick('quality','headset')">Headset</button><button class="segb" data-if="headset_known" data-class-on="quality == 'headset85'" data-event-click="pick('quality','headset85')">Headset × 0.85</button><button class="segb" data-if="headset_known" data-class-on="quality == 'headset75'" data-event-click="pick('quality','headset75')">Headset × 0.75</button></div></div>
@@ -458,7 +460,7 @@
 				<div class="seg"><button class="segb" data-class-on="upscale == 'off'" data-event-click="pick('upscale','off')">Off</button><button class="segb" data-class-on="upscale == 'fsr'" data-event-click="pick('upscale','fsr')">FSR</button></div></div>
 			<div class="row" id="steamvr-smoothing-row" data-if="steamvr_runtime"><div class="rl"><div class="rlab">Motion smoothing (SteamVR)</div><div class="rdesc">SteamVR fills in frames the game misses by warping older ones. Off shows only real frames. For the Steam version of the game.</div><div class="note">{{steamvr_smoothing_note}}</div></div>
 				<div class="seg"><button class="segb" data-class-on="steamvr_smoothing == 'steamvr'" data-event-click="cmd('steamvr_smoothing','steamvr')">SteamVR decides</button><button class="segb" data-class-on="steamvr_smoothing == 'off'" data-event-click="cmd('steamvr_smoothing','off')">Off</button></div></div>
-			<div class="row"><div class="rl"><div class="rlab">Steady cutscenes</div><div class="rdesc">Caps cutscenes to a frame rate the headset can hold</div></div>
+			<div class="row" data-class-disabled="le2"><div class="rl"><div class="rlab">Steady cutscenes</div><div class="rdesc">Caps cutscenes to a frame rate the headset can hold</div></div>
 				<button class="tog" data-class-on="steady_cine" data-event-click="toggle('steady_cine')"><div class="knob"/></button></div>
 		</div>
 		<div class="group" data-class-disabled="le2">

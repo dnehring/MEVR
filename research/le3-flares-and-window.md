@@ -306,3 +306,65 @@ differences):
   targets' own flags) to the same text as before (ME3's build of `Mod.cpp` differs, the canary); the deploy and
   `vr-game-settings.ps1` changes are LE3 branches; Setup's LE1 and LE2 paths are unchanged (`GameSpec`'s new fields are 0
   there; the setup tests pass).
+
+## 6. The render size from the headset, ME2 and ME3 (lane AU4, 2026-11-18)
+
+The owner (docs/trilogy-plan.md "Answered 2026-11-18"): "Follows headset like me1". ME1's rule: at the first VR start the
+render target becomes 0.85 of the runtime's recommended eye size (FSR on), written for the next launch, once
+(`[Display] eyeSizeSet`). Section 5's fixed 3072x2216 (and ME2's 4096x2304) is the stand-in that rule replaces.
+
+**What each game renders.** In mode 2 every game renders each eye's own field into the whole target: ME1's `sfr2ResX/Y`, the
+sequels' backbuffer (the projection layer's image rect is `[0, 0, W, H]` at that eye's own FOV, section 5). So 0.85 of the
+eye covers on a sequel exactly what it covers on ME1; only the engine's constraints on the target differ. (Mode 1, the shared
+symmetric window, crops each eye out of a larger window and gets fewer pixels from the same size; it is opt-in on ME3 and the
+rule does not compensate for it.)
+
+**The constraints, measured on the fake headset** (SteamVR's null driver at its auto resolution recommends 1912x1952; 0.85 of
+it is 1624x1656):
+- **ME3** draws everything at a near-square size: 1624x1656 in the combat fixture (`me3-combat.ps1`, Cerberus troopers) gave
+  the whole HUD on the panel (172 UI draws a frame: power bar, weapon, health arc, damage arcs), stereo, FSR from 1624x1656 to
+  the 1912x1950 eye images. Sides in multiples of 8 (section 3's `FSceneRenderTargets::Allocate`).
+- **ME2** renders any multiple of 8 (1624x1656, 2208x1656, 2944x1656 all made their swap chain, the scene targets and the
+  pass-0 capture; the eyes differ, mode 2), **but draws no HUD on a near-square frame**: at 1624x1656 the HUD panel stayed
+  empty (`[UIGATE] ui=30` in 4 s, and no HUD in the eyes either), at 4:3 (2208x1656) 13,710 and at 16:9 (2944x1656) 14,910
+  UI draws in 4 s, the HUD complete and laid out by its edges. So ME2's target is at least 16:9 (`plugin/RendererLe2.cpp`
+  `minAspect`), widened at 0.85 of the eye's height; 4:3 is enough for the HUD and is the owner's choice to make (below).
+- **The engine writes its in-memory ResX/ResY back at exit** (ME2: GamerSettings said 4096x2304 after the first launch's quit
+  although the rule had written 1624x1656 during it). `ArmResolutionSpoof`'s attach-time write of the renderer's
+  `RenderW/RenderH` lands before the engine reads its settings in our host (the second launch rendered 1624x1656 with
+  GamerSettings saying 4096x2304 at its start); ME3's exit hook writes the new size too (`g_vrresW/H`).
+
+**The rule** (`core/vr/RenderTarget`, unit-tested; `plugin/MainMenuSettings` `FirstStartEyeSize` and `SetResolution` for the
+sequels; `renderer::GetRenderTarget`/`SetRenderTarget` over the trees' `[MEVR]` `MevrRenderTarget`/`MevrSetRenderTarget`, which
+write `MELE2VR.ini`/`MELE3VR.ini` and GamerSettings.ini): no setup's choice to wait for (MEVR Setup leaves a sequel's size to
+its renderer), once per install. Logs `first VR start:` and Halcyon's `[VRRES] [MEVR] next launch WxH`. The menu's Display >
+Render resolution and Upscale rows work on the sequels; Performance and Steady cutscenes stay greyed (ME1's levers, Halcyon
+LE1's cap). The runner pins `[Display] eyeSizeSet = 1` (ME2's prep unless `-FirstVrStart`, ME3's preview always), so a
+stretch's launches keep one size.
+
+| headset (recommended eye) | ME1 | ME3 | ME2 (at least 16:9) | ME2 at 4:3 |
+|---|---|---|---|---|
+| PS VR2 (2824x2880) | 2400x2448 | 2400x2448 | 4352x2448 (10.7 MP; today 9.4) | 3264x2448 (8.0 MP) |
+| Quest 3 over Link (2064x2208) | 1754x1876 | 1752x1880 | 3344x1880 (6.3 MP) | 2504x1880 (4.7 MP) |
+| the fake headset (1912x1952) | 1626x1660 | 1624x1656 | 2944x1656 (4.9 MP) | 2208x1656 (3.7 MP) |
+
+**Cost** (`tools/perf-probe.ps1`, 20 s, medians; the fake headset's SteamVR holds the game at a third of 90 Hz, so these are
+the work per frame, not the rate):
+
+| game, place | size | render thread | GPU (at most) | game thread |
+|---|---|---|---|---|
+| ME2, Save 4 standing | 4096x2304 (before) | 10.02 ms (p90 11.99) | 8.72 ms (p90 9.02) | 2.48 ms |
+| ME2, Save 4 standing | 2944x1656 (the rule) | 8.08 ms (p90 10.52) | 6.13 ms (p90 6.43) | 2.36 ms |
+| ME3, the combat fixture | 3072x2216 (before) | 25.73 ms (p90 33.37) | 6.53 ms (p90 7.84) | 3.52 ms |
+| ME3, the combat fixture | 1624x1656 (the rule) | 15.81 ms (p90 19.06) | 7.12 ms (p90 11.56) | 2.09 ms |
+
+ME3's two captures are of a fight that moves (not the same pose): the render thread's drop is mostly the scene, and the GPU's
+"at most" is no lower; read them as "no regression", not as a gain. ME2's are the same standing pose. Sessions
+`20261118-103825-020-LE2-au4`, `20261118-105802-821-LE3-au4`, `20261118-110207-456-LE3-au4sq`.
+
+**Not verified:** a real headset; the PS VR2's own size on either sequel (the fake headset recommends SteamVR's auto size);
+ME2's screens other than the HUD at a widened 16:9 (the menus, the conversation wheel, the GUI screens: all seen at 16:9
+before); ME3's GUI screens and our measured crops at a near-square frame; ME2's FSR (a 16:9 target wider than the eye is
+copied, not upscaled: `EyeImageSize` scales only a picture smaller on both axes). **For the owner:** ME2 at 16:9 (every ME2
+screen has been seen at that shape; on the PS VR2 it renders 13% more pixels than today's 4096x2304) or at 4:3 (the HUD
+checked; 25% fewer pixels than 16:9).

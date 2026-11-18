@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
-// The game's static locks kept from deletion (research/36 "The fault at quit"; LE1). During its teardown the game
+// The game's static locks kept from deletion (research/36 "The fault at quit"; LE1, and ME2's and ME3's hosts since lane
+// AU4, 2026-11-18: no per-game address, the guard covers the exe's image whatever the game). During its teardown the game
 // destroys a thread library's global mutex (exe+0x1BA22C0: DeleteCriticalSection through the library's destroy, which
 // leaves its own "initialized" byte set) while that library's worker still runs; the worker's next lock enters the
 // zeroed critical section, contends, and RtlpWaitOnCriticalSection writes through its freed DebugInfo: an AV at
@@ -15,7 +16,7 @@ namespace mevr::hook { class Context; }
 
 namespace mevr::host::kept_locks {
 
-// At attach (LE1), before the game can tear anything down.
+// At attach (every game's host), before the game can tear anything down.
 bool Install(hook::Context& context);
 // For the exit line: how many deletions were skipped, where, and how long before now the first one came.
 std::string Summary();

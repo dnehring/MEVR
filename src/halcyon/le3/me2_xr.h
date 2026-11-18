@@ -7,6 +7,8 @@ namespace ME2VR::Me2Xr
 // [COMFORT] panel placement.
 float GetMenuScreenDist() noexcept;  void SetMenuScreenDist(float m) noexcept;
 float GetMenuScreenSize() noexcept;  void SetMenuScreenSize(float m) noexcept;
+// [MEVR] the runtime's recommended eye size (xrEnumerateViewConfigurationViews), 0 until the session is made.
+void MevrRecommendedEyeSize(unsigned* w, unsigned* h) noexcept;
 float GetCineScreenZoom() noexcept; void SetCineScreenZoom(float z) noexcept;   // [VRCINE]
 float GetMenuPanelDist() noexcept;   void SetMenuPanelDist(float m) noexcept;
 float GetMenuPanelSize() noexcept;   void SetMenuPanelSize(float m) noexcept;

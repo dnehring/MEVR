@@ -313,6 +313,7 @@
     "vr/PowerWheel",
     "vr/PresentationHold",
     "vr/Recenter",
+    "vr/RenderTarget",
     "vr/ScopeArt",
     "vr/ScopeCapture",
     "vr/ScreenMatrix",
@@ -472,6 +473,7 @@
     "HdrDisplayPolicy",
     "HudPanel",
     "HudPieceLayers",
+    "KeptLocks",
     "MainMenu",
     "MainMenuSettings",
     "MenusLe2",
@@ -569,6 +571,7 @@
     "vr/PowerWheel",
     "vr/PresentationHold",
     "vr/Recenter",
+    "vr/RenderTarget",
     "vr/ScopeArt",
     "vr/ScopeCapture",
     "vr/ScreenMatrix",
@@ -731,6 +734,7 @@
     "HdrDisplayPolicy",
     "HudPanel",
     "HudPieceLayers",
+    "KeptLocks",
     "Le3SceneCapture",
     "MainMenu",
     "MainMenuSettings",
@@ -797,13 +801,13 @@
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "ready"
+     "status": "run"
     },
     "LE3": {
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "ready"
+     "status": "run"
     }
    },
    "namespace": "engine::body_bounds"
@@ -3281,6 +3285,7 @@
     "GalaxyOwnsPresentation",
     "HoldLoadTail",
     "HoldPlainVr",
+    "HostEndsProcess",
     "HudPanelDraw",
     "KeyDown",
     "LifeSizeStereo",
@@ -3536,6 +3541,7 @@
     "GalaxyOwnsPresentation",
     "HoldLoadTail",
     "HoldPlainVr",
+    "HostEndsProcess",
     "HudPanelDraw",
     "KeyDown",
     "LifeSizeStereo",
@@ -3585,6 +3591,7 @@
     "FrontEndOnScreen",
     "GalaxyOwnsPresentation",
     "HoldLoadTail",
+    "HostEndsProcess",
     "HudPanelDraw",
     "KeyDown",
     "LifeSizeStereo",
@@ -3652,6 +3659,7 @@
     "GalaxyOwnsPresentation",
     "HoldLoadTail",
     "HoldPlainVr",
+    "HostEndsProcess",
     "HudPanelDraw",
     "KeyDown",
     "LifeSizeStereo",
@@ -3700,6 +3708,7 @@
     "FrontEndHold",
     "FrontEndOnScreen",
     "GalaxyOwnsPresentation",
+    "HostEndsProcess",
     "HudPanelDraw",
     "KeyDown",
     "LifeSizeStereo",

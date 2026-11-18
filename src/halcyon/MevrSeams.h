@@ -161,6 +161,12 @@ void OnRecentered() noexcept;
 // headset), else the machine's active runtime. Any thread. Not called by LE1.
 bool XrRuntimeIsSteamVr() noexcept;
 
+// The host's own ExitProcess hook (plugin/Entry.cpp) is in, under the renderer's [EXITKILL] hook, and ends the process
+// itself (TerminateProcess) after its exit line: the kept locks' summary and crash::NoteProcessExit (a fault from then on
+// is the quit's). The renderer's hook then hands it the call instead of terminating first. Any thread. Not called by LE1
+// (its renderer installs no such hook).
+bool HostEndsProcess() noexcept;
+
 // =====================================================================================================================
 // 2. View
 // =====================================================================================================================

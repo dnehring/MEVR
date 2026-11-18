@@ -842,6 +842,12 @@ Headset checks the ME2 and ME3 plans named that had no line here (ME3 had none a
 [docs/trilogy-plan.md](../docs/trilogy-plan.md) "Headset-only checks"; T-numbers are its features. ME2's earlier lines
 stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs the feature seen working by script first.
 
+### The sequels' render size from the headset (lane AU4, 2026-11-18; research/le3-flares-and-window.md section 6)
+
+- [ ] ME2 and ME3 after a first VR start on the PS VR2: the second launch renders ME3 at 2400x2448 and ME2 at 4352x2448 (16:9,
+  its HUD isn't drawn narrower); both sharp and smooth, ME2's HUD, menus, wheel and room screens whole. Then the owner's 16:9
+  or 4:3 for ME2 (docs/trilogy-plan.md question 18).
+
 ### ME2
 - [ ] The game's start (T18, research/56 "The sequels", lane FE, seen on the fake headset 2026-11-18): as ME1's line in "The
   game's start": the logos flat, the "PRESS ANY KEY" title and the main menu on the 3D cinema screen at head height, fixed in

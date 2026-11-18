@@ -14,10 +14,12 @@ param(
     [ValidatePattern('^\d{4}x\d{4}$')][string]$PreviewRenderSize = '3072x2216',   # RenderW x RenderH and ResX/ResY (ME3's default)
     [ValidatePattern('^[A-Za-z0-9_-]+$')][string]$Tag = 'halcyon',
     [string]$BuildDir,
-    [switch]$Diagnostics
+    [switch]$Diagnostics,
+    [switch]$FirstVrStart                                    # LE2: let the host's first-VR-start rule size the render target
 )
 $ErrorActionPreference = 'Stop'
 if ($PreviewEyeFrustum -and $PreviewSharedWindow) { throw 'Give -PreviewEyeFrustum (the default) or -PreviewSharedWindow, not both' }
+if ($FirstVrStart -and $Game -ne 'LE2') { throw '-FirstVrStart is for LE2 runs (the LE3 preview fixes its size with -PreviewRenderSize)' }
 $eyeFrustum = -not $PreviewSharedWindow   # ME3's default since 2026-11-17: mode 2 (research/le3-flares-and-window.md)
 . "$PSScriptRoot\session-common.ps1"
 Assert-RunMode $Game ([bool]$DesktopDump) ([bool]$EngineProbe) ([bool]$EngineRequests) ([bool]$RendererPreview)
@@ -142,7 +144,11 @@ if ($RendererPreview) {
 & powershell -NoProfile -ExecutionPolicy Bypass -File "$W\tools\vr-game-settings.ps1" -Game $Game | Select-String 'Borderless|Fullscreen|Applied'
 if ($LASTEXITCODE -ne 0) { throw 'VR game settings failed' }
 $steamvr = 'C:\Program Files (x86)\Steam\steamapps\common\SteamVR\steamxr_win64.json'
-[IO.File]::WriteAllText("$b\ASI\${Game}MEVR.ini", "[Debug]`r`nopenxrRuntime = $steamvr`r`n")
+# [Display] eyeSizeSet = 1: the host's first-VR-start rule (the render target from the headset's eye size, written for the
+# next launch: plugin/MainMenuSettings FirstStartEyeSize) stands down, so every launch of a stretch renders at MELE2VR.ini's
+# RenderW/RenderH; -FirstVrStart leaves it out to run the rule.
+$firstStart = if ($FirstVrStart) { '' } else { "[Display]`r`neyeSizeSet = 1`r`n" }
+[IO.File]::WriteAllText("$b\ASI\${Game}MEVR.ini", "[Debug]`r`nopenxrRuntime = $steamvr`r`n$firstStart")
 $ini = Join-Path $b 'MELE2VR.ini'
 if ($Diagnostics -and (Test-Path -LiteralPath $ini)) {
     $t = [IO.File]::ReadAllText($ini) -replace '(?m)^Diagnostics=0', 'Diagnostics=1'

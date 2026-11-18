@@ -159,8 +159,13 @@ authored seated scenes (such as shuttles) must reject traversal while retaining 
   docs/trilogy-plan.md question 17, 2026-11-17): `MELE3VR.ini [VR] MetricEyeFrustum` (LE1's `sfr2MetricEyeFrustum`), 1 by
   default (0: the shared symmetric window, mode 1), not pinned by the baseline, with the host's flare fix on by default
   (`plugin/FlareWindow`, `ASI\LE3MEVR.ini [Stereo] flareWindow`: ME3's lens-flare reflections unprojected through the CPU's
-  own window, else every lamp's flare lands off its lamp, differently per eye; research/le3-flares-and-window.md). ME3
-  renders 3072x2216 by default (`MELE3VR.ini [VR] RenderW/RenderH`, the code default when missing; multiples of 8);
+  own window, else every lamp's flare lands off its lamp, differently per eye; research/le3-flares-and-window.md). **The
+  sequels' render size follows the headset as ME1's** (the owner, 2026-11-18; research/le3-flares-and-window.md section 6):
+  at the first VR start `FirstStartEyeSize` writes 0.85 of the recommended eye (ME3: sides in multiples of 8; ME2: at least
+  16:9, its HUD isn't drawn on a near-square frame) into `MELE2VR.ini`/`MELE3VR.ini [VR] RenderW/RenderH` and GamerSettings
+  for the next launch, once (`[Display] eyeSizeSet`; `core/vr/RenderTarget`, `renderer::SetRenderTarget`); the runner pins
+  it (`prep.ps1 -FirstVrStart` runs it on ME2). ME3's shipped stand-in is 3072x2216 (the code default when the keys are
+  missing), ME2's 4096x2304;
   `tools/deploy-asi.ps1 -Game LE3` installs `src/halcyon/le3/runtime/MELE3VR.ini` (the runner's preview without diagnostics)
   when there is none, `vr-game-settings.ps1 -Game LE3` writes its size. `[Stereo] windowEyes` stays 0 until a HUD check.
   Use the existing protected desktop/engine-request routes in
@@ -179,7 +184,8 @@ authored seated scenes (such as shuttles) must reject traversal while retaining 
   (`MevrBridge::HotkeyDown`). **ME2 continues ME1** (the owner, 2026-11-14): ME1's systems and defaults, deviating only
   where ME2 forces it; the order (the host's services, then VRIK fast-tracked, then menus, then the cinema screen) is
   docs/le2-from-le1.md sections 0 and 4;
-  the deploy installs upstream's `MELE2VR.ini` (eyes 2048x2304 with `vr-game-settings.ps1 -Game LE2`'s borderless window).
+  the deploy installs upstream's `MELE2VR.ini` (4096x2304 until the first VR start sizes it from the headset, above; the
+  flat panel at ME1's 1.4 m / 2.35 m) with `vr-game-settings.ps1 -Game LE2`'s borderless window.
   **On LE2 `game/SystemSettings` waits until a level has been in gameplay for 3 s**: a `scale set` during the load with the
   game's depth of field on faulted the rendering thread in the first gameplay frame, the game hung (9 of 9 runs;
   "Defaults from ME1" there, gotchas/me2-scale-set-during-load).

@@ -19,6 +19,12 @@ void TryInstallFactoryHooks(void* factory, const IID& riid) noexcept;
 // runs from the worker thread, before the game's D3D init.
 void ArmResolutionSpoof() noexcept;
 void InstallDisplayQueryHooks() noexcept;
+// [MEVR] the render target for our host's menu and its first-VR-start rule (plugin/Renderer.hpp RenderTarget): the
+// file's RenderW/RenderH (ME3's 3072x2216 when missing, as ArmResolutionSpoof) and the live backbuffer (0 before the first
+// frame); MevrSetRenderTarget writes MELE3VR.ini and GamerSettings.ini for the next launch, and the size the exit hook
+// writes back.
+void MevrRenderTarget(unsigned* fileW, unsigned* fileH, unsigned* liveW, unsigned* liveH) noexcept;
+bool MevrSetRenderTarget(unsigned w, unsigned h) noexcept;
 
 // Per-eye UI duplication master toggle (heuristic can false-positive on full-screen effect passes ->
 // translucent half-size ghost; toggle to isolate/disable).

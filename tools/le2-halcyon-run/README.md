@@ -14,7 +14,7 @@ driving ME2 by hand): leave it alone and wait.
 
 ```powershell
 tools\le2-halcyon-run\run-lock.ps1 -Status
-tools\le2-halcyon-run\prep.ps1 -Holder <session name> [-Tag what] [-Diagnostics]   # once per stretch: backups, loader, deploy, fake headset
+tools\le2-halcyon-run\prep.ps1 -Holder <session name> [-Tag what] [-Diagnostics] [-FirstVrStart]   # once per stretch: backups, loader, deploy, fake headset
 tools\le2-halcyon-run\launch.ps1 -Holder <session name> [-Kill]                                           # each run: Steam's -game 2, waits for the XR session
 tools\le2-halcyon-run\load.ps1 -Holder <session name> [-Save <career>\<file>.pcsav]   # default LE2: Freedom's Progress
 # ... the run: logs in ME2\Binaries\Win64\Logs\LE2MEVR.log and %LOCALAPPDATA%\MELE2VR\MELE2VR_Log.txt
@@ -38,7 +38,7 @@ tools\le2-halcyon-run\restore.ps1 -Holder <session name>                        
   lines. Needs a development build (the console request).
 - **The mod's first-run settings are waited out at launch** (since 2026-11-17; gotcha
   [mod-settings-appended-after-xr-ready](../../docs/knowledge/gotchas/mod-settings-appended-after-xr-ready.md)): every
-  prep leaves only `[Debug] openxrRuntime` in `ASI\LE2MEVR.ini`, and the mod appends its default blocks on its first tick,
+  prep leaves only `[Debug] openxrRuntime` (and `[Display] eyeSizeSet = 1`, below) in `ASI\LE2MEVR.ini`, and the mod appends its default blocks on its first tick,
   about 2 s after the XR marker at the title (a block the busy file refused about a second later). `load.ps1` hashes that
   file with the save and the binaries before its first request, so a load started at once was refused as `Save or runtime
   artifact changed during load` although the save had loaded. After the XR marker `launch.ps1` now waits for this
@@ -53,6 +53,11 @@ tools\le2-halcyon-run\restore.ps1 -Holder <session name>                        
   held 0.3 s dumps the camera graph).
 - Never run anything that takes the game slot (`tools/game-slot.ps1`) while a stretch is open, and never `return` a
   slot without asking the owner.
+- **The render size of a stretch is `MELE2VR.ini`'s** (since 2026-11-18, lane AU4): prep writes `[Display] eyeSizeSet = 1`
+  into `ASI\LE2MEVR.ini`, so the host's first-VR-start rule (the render target from the headset's eye size, as ME1's:
+  `plugin/MainMenuSettings` `FirstStartEyeSize`) stands down and every launch renders at the same size. `-FirstVrStart`
+  leaves the key out: the first launch's VR start writes 0.85 of the eye (sides in multiples of 8) into `MELE2VR.ini` and
+  `GamerSettings.ini` (log `first VR start:`, `[VRRES] [MEVR] next launch`), the next launch renders at it.
 - **A launch shows two processes, and the first one ends** (since 2026-11-16; gotcha
   [ea-steam-launcher-starts-the-launcher-suspended](../../docs/knowledge/gotchas/ea-steam-launcher-starts-the-launcher-suspended.md)):
   Steam hands `-applaunch 1328670` to EA's `EASteamLauncher.exe`, which creates `MassEffectLauncher.exe` **suspended**
@@ -229,8 +234,9 @@ try {
 }
 ```
 
-Prep writes a small `ASI/LE3MEVR.ini` with `[Debug] requests=1` and a process-only
-SteamVR OpenXR manifest override. It writes the actual renderer file,
+Prep writes a small `ASI/LE3MEVR.ini` with `[Debug] requests=1`, a process-only
+SteamVR OpenXR manifest override and `[Display] eyeSizeSet = 1` (the host's first-VR-start rule, which would write the
+headset's size into `MELE3VR.ini` for the next launch, stands down: `-PreviewRenderSize` decides). It writes the actual renderer file,
 `Binaries/Win64/MELE3VR.ini` (over the one `deploy-asi.ps1 -Game LE3` installs when there is none,
 `src/halcyon/le3/runtime/MELE3VR.ini`: this preview's defaults without the Diagnostics line). The candidate selects
 source mode 4 (SFR2), ME3's default render size 3072x2216, each eye's own frustum, head look, head aim off, native
