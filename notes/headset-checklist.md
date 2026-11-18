@@ -843,6 +843,11 @@ Headset checks the ME2 and ME3 plans named that had no line here (ME3 had none a
 stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs the feature seen working by script first.
 
 ### ME2
+- [ ] The game's start (T18, research/56 "The sequels", lane FE, seen on the fake headset 2026-11-18): as ME1's line in "The
+  game's start": the logos flat, the "PRESS ANY KEY" title and the main menu on the 3D cinema screen at head height, fixed in
+  the room with the floor and horizon around it, the scene with depth, the picture still while the head turns; no change of
+  view at the key; the load flat from its first frame and no black 3D screen at its end, then the level in VR. The controller's
+  ray on the menu moves the game's cursor and the trigger clicks (the front end's screen is the game pointer's now).
 - [ ] Stereo (T06; research/sequel-eye-pose-tags.md): both eyes fuse while still and while turning, through menu and
   resume; no doubled or swimming scenery.
 - [ ] Life-size stereo (T09; research/30 section 9, lane LS 2026-11-16): the world at its real size and depth (a squadmate
@@ -920,6 +925,10 @@ stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs 
 - [ ] A streamed Quest (T10): full rate after a load, with no runtime setting changed.
 
 ### ME3
+- [ ] The game's start (T18, research/56 "The sequels", lane FE, seen on the fake headset 2026-11-18): the title (the Earth from
+  orbit) and the main menu on the 3D cinema screen in stereo, at head height and fixed in the room, the start's first second
+  flat; the load flat, then the level in VR. Not reached by script: the main menu after "PRESS ANY KEY" (a replayed A didn't pass
+  it) and the ray on it.
 - [ ] Stereo (T06; research/sequel-eye-pose-tags.md, research/le3-renderer-preview-evidence.md): both eyes fuse while
   still and turning, through menu, recenter and a reload.
 - [ ] Life-size stereo (T09; research/30 section 9): as ME2's line; upstream ME3 squeezed everything into the first metre,
