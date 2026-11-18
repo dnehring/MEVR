@@ -120,7 +120,7 @@ non-combat pawn that carries no weapon) recorded in the ledger or the trilogy pl
 | B on foot | never melee | never melee, never heavy melee, no leave | The binding is the game's | approved, question 16 |
 | X on foot | power wheel | power wheel; no reload, no weapon swap | The clash is ours | "automatic reload for now" |
 | right stick click, tap | nothing; R3 reaches the game | nothing; R3 kept (no area map, no cover turn) | Partly | approved, question 14 |
-| left grip at the left chest | takes a grenade | falls through to the radio's and the squad order's tests | Yes: grenades are powers | — |
+| left grip at the left chest | takes a grenade | held: nothing, no buzz (lane AU6, c8f6987e) | Yes: grenades are powers | ME2's answer |
 | left grip at the left hip, then the receiver | nothing | the reload by hand, off by default (`[Reload] enabled = 0`) | No | rejected 2026-11-16, off until redesigned |
 | A, twice | nothing of ours | ME3's traversal (the vault lane's; outside this category) | — | double A approved for ME2 (2026-11-14) |
 

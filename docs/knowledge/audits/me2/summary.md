@@ -71,11 +71,11 @@ without any of our code asking.
 | 2 | The game's weapon and power wheels stay on the HUD panel 1.5 m ahead, never at the hand | [menus](menus-and-game-screens.md) | no |
 | 3 | The sniper scope shows 8.0x from an enlarged eye image; no zoomed render, no second step | [weapons](weapons-and-sights.md) | partly: ME2 has one `ZoomFOV`, but the base FOV and the capture are ours |
 | 4 | The support grip at the shoulder makes the game enter its own zoom | [weapons](weapons-and-sights.md) | the binding is ME2's; sending LT is ours |
-| 5 | A left-grip squeeze where ME1 has the grenade slot or the vent gives a squad order | [input](gestures-and-input.md) | no |
+| 5 | **Fixed 2026-11-18 (lane AU6, c8f6987e): the zones are held, a squeeze there does nothing (no buzz).** Was: a left-grip squeeze where ME1 has the grenade slot or the vent gives a squad order | [input](gestures-and-input.md) | no |
 | 6 | No recenter from the controllers (ME1: double-click the right stick) | [input](gestures-and-input.md) | no |
 | 7 | Adept, Vanguard and Engineer powers missing from the hand wheel | [powers](powers-and-squad.md) | no |
 | 8 | **Addressed 2026-11-18 (lane AU2): the crouch handle is every game's (it was ME1's only); not seen settling in the game yet.** Was: the body probably stays at scale 1 whatever the player's height | [body](body-and-ik.md) | no |
-| 9 | Walking is the third-person walk (ramps, start and stop steps); draws take 0.62 s; the eye point moves on a draw | [body](body-and-ik.md), [movement](comfort-and-movement.md) | no: `game/CombatStance` is LE1-only |
+| 9 | **Fixed 2026-11-18 (lanes AU3, AU5, AU6): the start (AccelRate), the constant eye, the speed from the push (half a push 167 u/s), the stop at once exploring, the draw rate (0.16 s); AU6 c8f6987e.** Was: walking is the third-person walk (ramps, start and stop steps); draws take 0.62 s; the eye point moves on a draw | [body](body-and-ik.md), [movement](comfort-and-movement.md) | no |
 | 10 | Snap turn may stand down silently | [movement](comfort-and-movement.md) | no |
 | 11 | No hold at start-up or on entering VR: possible flashes of the world | [presentation](presentation-modes.md) | no |
 | 12 | Every headset renders 4096x2304; the menu's Display group is greyed | [rendering](rendering-and-stereo.md), [settings](settings-and-defaults.md) | no; **fixed in code, lane AU4 (b1fb0c50): the first VR start sizes it from the headset, at least 16:9; Render resolution and Upscale un-greyed** |
@@ -127,7 +127,8 @@ Not applied, still to check:
    changes is untraced.
 2. What should a left-grip squeeze at the chest do on ME2, where there is no grenade slot?
    **Answered 2026-11-18:** no haptic cue at the chest on ME2. Read as: the chest is not a slot there, so it gives no
-   buzz and takes no action (the lead's reading; whether the squeeze may still fall through to a squad order is open).
+   buzz and takes no action (the lead's reading). **Built 2026-11-18 (lane AU6, c8f6987e):** the chest and the receiver are held,
+   a squeeze there gives no squad order (seen on Save 4).
 3. Is the fifth reach zone (the SMG at the right thigh), on by default, approved?
    **Answered 2026-11-18:** "Right thigh may work for now." Kept.
 4. One calibration for the trilogy, or one per game?

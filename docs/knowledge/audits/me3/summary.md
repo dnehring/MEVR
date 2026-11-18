@@ -63,11 +63,11 @@ The numbers are ME2's summary's.
 | 2. The game's wheels never come to the hand | recurs (`setWheelPanel` is LE1-only) |
 | 3. Sniper zoom wrong | different: a fixed 4.0x. `ReadGameZoom` has an ME1 and an ME2 branch and none for ME3 (re-read), so the fallback answers and the stick flick can never step. ME1 3.5x then 7x, ME2 8.0x, ME3 4.0x: none of the three was chosen |
 | 4. The support grip's LT is the game's zoom | recurs. [ME2's proposal](../me2/weapons-and-sights.md) carries over: the same one-call route exists on `SFXWeapon.GetPlayerAimError` |
-| 5. A left-grip squeeze at the chest or receiver becomes a squad order | recurs |
+| 5. A left-grip squeeze at the chest or receiver becomes a squad order | **fixed 2026-11-18 (lane AU6, c8f6987e)**: held, as on ME2 |
 | 6. No recenter from the controllers | recurs |
 | 7. Powers missing from the hand wheel | fine: ME3's roster comes from the game. But every aimed power is `Aim::Place` (re-read, `PowerWheel.cpp:323-324`), so ME1's "needs a locked enemy" refusal never happens |
 | 8. Body scale cannot settle | recurs, twice over: `player::Crouched` is ME1's handle, and the reference needs "holstered", which ME3 never is. **Both addressed 2026-11-18 (lane AU2): the crouch handle is every game's, and with `le3PutAway = 1` a gun let go is away; not seen settling in the game yet** |
-| 9. Third-person walk, slow draws, the eye moving on a draw | recurs (`game/CombatStance` is LE1-only); the constant-eye rule is reinvented in Halcyon ME3's own table |
+| 9. Third-person walk, slow draws, the eye moving on a draw | **mostly fixed 2026-11-18 (lanes AU5, AU6)**: the constant eye through the shared seam, the explore eye at Shepard's face (dadb7461, the owner's answer), the speed from the push (half a push 146 u/s) and the draw rate (holstered 0.16 s) (c8f6987e); the explore start is still the game's (owner question) |
 | 10. Snap turn may stand down | recurs, with a known trigger: ME3 leaves the five listed camera modes for about 0.5 s on a roll, melee, hit reaction or cover entry |
 | 11. No start-up or entry hold | recurs (`plugin/PresentationHold` is in LE1's source list only, re-read) |
 | 12. No owner for the render size | recurs: a fixed 3072x2216 for every headset; **fixed in code, lane AU4 (b1fb0c50): the first VR start sizes it from the headset (multiples of 8)** |
@@ -147,6 +147,11 @@ and that ME3's conversations are on the native flat screen (the 3D screen shows 
    level and sliding with the body, the turn the player's). The owner: "For roll we'll do your recommendation."
 8. Which magnification should a sniper rifle show across the trilogy (ME1 3.5x and 7x, ME2 8.0x, ME3 4.0x today)?
    **Answered 2026-11-18:** "sniper zoom is unified": one rule, read as ME1's.
+
+9. Should ME3's explore eye sit at Shepard's face as ME1's and ME2's do (research/38 "The sequels' constant eye")?
+   **Answered 2026-11-18:** "Me3 eyes should match behavior from other games." Built (lane AU6, dadb7461): the renderer's standing
+   rows (-35, 0, 65), forward 34 units of the head bone exploring and 26 in combat, arm IK first person in a fight; the scope
+   capture then seen on ME3 at 3.5x and 7x.
 
 ME2's questions 1 (LT from the support grip) and 4 (one calibration) apply to ME3 unchanged.
 

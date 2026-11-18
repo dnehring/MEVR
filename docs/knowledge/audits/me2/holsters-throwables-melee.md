@@ -108,7 +108,7 @@ What the owner asked for by name: every case where a hand or a button does on ME
 | X on foot | power wheel; the grenade is physical | power wheel; **no reload button** | The clash is ours (X) | "automatic reload for now" |
 | right stick click, tap | nothing; R3 reaches the game (harmless) | nothing; R3 kept from the game (no area map) | Partly: ME2 binds R3 to the map | approved (question 14) |
 | aim trigger (LT route `TightAim`), weapon away | n/a (LT is the squad wheel) | silently refused | Yes: it draws on ME2 | covered by "only holsters draw" |
-| left grip at the left chest | takes a grenade | falls through to the voice radio's and squad orders' tests, like any unclaimed squeeze | Yes: no grenades | — |
+| left grip at the left chest | takes a grenade | held: nothing, no buzz (lane AU6, c8f6987e; before: fell through to the radio's and the squad orders' tests) | Yes: no grenades | the owner, 2026-11-18: no haptic cue at the chest |
 | left grip at the left hip, then to the receiver | nothing (the vent is at the receiver, hot gun only) | the reload by hand, **off by default** (`[Reload] enabled = 0`) | No | rejected 2026-11-16; off until redesigned |
 | weapon wheel pick, weapon away | the entry's draw refused | not refused: unknown whether it draws | No | not asked |
 

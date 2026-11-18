@@ -96,7 +96,7 @@ binding line; those cells are marked "(game knowledge)" and are the first thing 
 | INP-09 | missing | no fist: the staged rules need trigger and grip under 0.15 | partly forced (no weapon-away state by default), partly the rule set | [Mod.cpp](../../../../src/mod/Mod.cpp):1091-1098 |
 | INP-10 | same core, other inputs | the same trigger latch | our drawn menu, never the game's wheel; taken in mode 0 only (ME1: on foot and in both wheel modes) | [SquadWeapons.cpp](../../../../src/game/SquadWeapons.cpp):1693-1701 |
 | INP-11 | same core, other inputs | `leftTrigger = lb`; LT from the support grip | the trigger IS LT in conversations, the galaxy map and orbital scanning; LT from the grip is ME3's zoom | [PadMerge.cpp](../../../../src/plugin/PadMerge.cpp):129-155; weapons audit WPN-09 |
-| INP-12 | partial | the same order in `Mod.cpp`, two claimants absent | no grenade slot, no vent: a squeeze at the chest or over the receiver goes on to the radio and the squad order (a follow if let go on nothing). The reload's claim is not asked by orders or voice (dormant while reload is off) | [Mod.cpp](../../../../src/mod/Mod.cpp):1837-1894; powers audit |
+| INP-12 | adapter (fixed) | the same order in `Mod.cpp`; the two absent claimants' zones held (lane AU6, c8f6987e) | No grenade slot and no vent, but their zones are kept. A new left squeeze within the grenade slot's radius (`game/Throwables` `ClaimChest`, its body frame `PlaceSlot` shared with ME1's) or over the receiver (ME1's vent zone, `game/Vent` `ClaimReceiver`, where the support grip didn't take it) is claimed and does nothing: no buzz (the owner: no haptic cue at the chest on ME2), no radio, no squad order. The reload's claim is still not asked by orders or voice (dormant while reload is off). V on the combat fixture: `throwables: a left squeeze at the left chest ... held` and `vent: a left squeeze over the receiver (-0.05 m along the gun, 0.13 above, 0.08 beside) ... held` (no squad on the fixture to order) | [Throwables.cpp](../../../../src/game/Throwables.cpp) `ClaimChest`; [Vent.cpp](../../../../src/game/Vent.cpp) `ClaimReceiver` |
 | INP-13 | same | host mapping on a new squeeze | the hot-receiver exception does not exist | [Vent.cpp](../../../../src/game/Vent.cpp):184 |
 | INP-14 | same core, other inputs | A passes | ME3's A is a context button; the mod refuses only the cover snap. The traversal double tap is compiled and off | [Posture.cpp](../../../../src/game/Posture.cpp):139-145; [Mod.cpp](../../../../src/mod/Mod.cpp):202, 1215 |
 | INP-15 | same | `melee::AdjustPad`, every game | ME3 loses what it binds to B; traced on ME2 only (`melee-b.ps1`), never on ME3 | [SupportGrip.cpp](../../../../src/game/SupportGrip.cpp):284; holsters audit HOL-38 |
@@ -136,7 +136,7 @@ binding line; those cells are marked "(game knowledge)" and are the first thing 
 |---|---|---|---|
 | A with the stick pushed / held | roll, sprint (the game's own context button) | yes | not asked; ME1's sprint is the game's too, the roll is new |
 | triggers in a conversation and the maps | interrupts, scanning | yes | approved (rule 11) |
-| left grip at the left chest or over the receiver | radio test, then a squad order | no: what remains when the grenade and vent claims are absent | not asked (open from the ME2 audit) |
+| left grip at the left chest or over the receiver | nothing: the zones are held (lane AU6, c8f6987e) | no: ME1's zones kept with nothing in them | ME2's answer (no haptic cue at the chest) |
 | support grip at the shoulder | LT, which zooms the weapon | LT's meaning is the game's; sending it is ours | complained 2026-11-17; the picture fixed, the cause open |
 | open left hand pushed with a grenade equipped | throws it where the ray lands | grenades as powers: yes; throwing by the push: no | not asked |
 | open left hand pushed with no lock | casts a target power at the ray's landing point | no (ME3's adapter marks every aimed power a place power) | not asked |
@@ -158,7 +158,7 @@ binding line; those cells are marked "(game knowledge)" and are the first thing 
 | letting the gun go at its slot holsters it | never, by default | partly |
 | the trigger never draws; a right fist punches with the weapon away | no weapon-away state for either | partly (follows from the row above) |
 | a fast stroke of any hand is melee | only a hand with every control released | no |
-| a left squeeze is a grenade or a vent before anything else | neither exists | yes; what the squeeze becomes is not forced |
+| a left squeeze is a grenade or a vent before anything else | neither exists; their zones are held (no action) | yes; that the squeeze does nothing there is ours (lane AU6) |
 | a push without a lock does not cast a target power | it casts at the ray's end | no |
 | the right stick double-click recenters | does nothing | no |
 | the weapon wheel is the game's own, steered at the hand | our drawn menu | not established as forced |
@@ -169,7 +169,7 @@ binding line; those cells are marked "(game knowledge)" and are the first thing 
 
 | ME2 finding | on ME3 |
 |---|---|
-| left-grip squeezes at the chest and receiver become squad orders | same defect |
+| left-grip squeezes at the chest and receiver become squad orders | **fixed (lane AU6, c8f6987e)**: held on both sequels |
 | LT from the support grip is the game's zoom | same defect |
 | recentering needs a menu button; the R3 double-click does nothing | same defect (the same upstream code in `src/halcyon/le3`) |
 | X reserved hides the game's reload | same defect |

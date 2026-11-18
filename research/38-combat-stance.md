@@ -599,7 +599,68 @@ What the game showed (ME3, fake headset, `camera: mode` lines from game/CameraPr
 5. ME2 (Save 4): Seen on Save 4 (lane AU5, 2026-11-18): Explore hooks (0, 0, 120), Combat and CombatStorm (-30, 0, 100), TightAim (0, 0, 80); their Offsets now (-35, 0, 35), (-65, 0, 15), (-65, 0, 15), (-35, 0, -5) (the renderer's (-60, 5, 25), (-70, 5, 25), (-30, 5, 20)), and the camera 35 ahead and 85 above the hook bone in Explore and in Combat alike (`camera: mode`). Its eye had moved 7 cm on a draw (AU3).
 6. The speed from the push, ME2 (traced the same run): its move function is `BioPlayerController.PlayerWalking.
    PlayerMoveCombatOrExplore`, asking `Pawn.GetMaxSpeed` and `BioPawn.GetWalkingSpeedMode` each tick (no `SetDesiredSpeed`);
-   ME3's `BioPawn` has `SetDesiredSpeed(fSpeedScaling)`. Not built.
+   ME3's `BioPawn` has `SetDesiredSpeed(fSpeedScaling)`. Not built. **Built since: the next section.**
+7. **ME3's explore eye at Shepard's face** (the owner, 2026-11-18: "Me3 eyes should match behavior from other games"; option (a)
+   of item 4, lane AU6, dadb7461): Halcyon ME3's standing rows (`engine_probe.cpp` `g_fpDefs`, `[MEVR]`) are (-35, 0, 65), ME2's
+   sign: the eye 35 units ahead of the hook bone, (35, 0, 55) from it; a `MELE3VR.ini` that saved upstream's (35, 0, 65) moves once
+   (`LoadFpStates`, log `[MEVR-FP]`). The height stays the floor lock's (its correction absorbs the offset's z). Measured (`arm IK:
+   first person camera vs Shepard's head bone`, a replayed pose at eye height 0):
+
+   | | forward | up (units) | arm IK |
+   |---|---|---|---|
+   | ME3 exploring, the Normandy (Save 31), before | -37 | -15 | first person |
+   | ME3 exploring, after | +34 | +5 | first person |
+   | ME3 combat (fixture, assault rifle), before | (53 units off the head) | | third person, the right hand 0.47 m off its controller |
+   | ME3 combat, after | +26 | +29 | first person, the right hand 0.07 m off |
+   | ME2 (Save 4) | +24..29 | +25 | first person |
+   | ME1 | +3..5 | +14.5 | first person |
+
+   The sniper's scope capture was then seen on ME3 for the first time: the Black Widow under a replayed ADS hold, ADS on,
+   `sights.pictureSource = capture` at 3.5x and at 7x after the stick's flick (snapshots `2026-11-18_13-07-38-864`,
+   `2026-11-18_13-07-51-023`). [verify] in the headset: the eye on the face, the body below it, on ME3 as on ME2. ME1's own eye
+   sits nearer the head bone (+4); bringing both sequels there is a renderer default each (their x), not tried.
+
+### The sequels' walk and draw (2026-11-18, lane AU6, c8f6987e)
+
+Read from the sequels' scripts (`tools/conversation-scan <cooked> <out> --game LE2|LE3 --script grep:<name> --only SFXGame`,
+findings only) and measured on the fake headset (ME2's Save 4, ME3's combat fixture), all in `game/CombatStance`:
+
+1. **The speed from the push.** ME2's move function `BioPlayerController.PlayerWalking.PlayerMoveCombatOrExplore` and ME3's
+   `PlayerWalking.PlayerMoveExplore` / `PlayerMoveCombat` (ME1's names) compute ME1's own rule (a crawl under
+   `MoveStickWalkThreshold` 0.65, `WalkSpeed / GroundSpeed` at it, the run past `MoveStickRunThreshold` 0.70; ME2's idle a local
+   0.01, ME3's the field) and write it into `BioPawn.fMoveMag`, the fraction of the top speed the pawn walks at (no
+   `SetDesiredSpeed`: ME3's is only `PlayerFlying`'s). A CallFunction post on each (`OnSequelMove`) writes `cs::LinearSpeed
+   (MoveMag)` there (journalled; the game writes its own again every tick), the game's cases kept: no push, no acceleration or
+   `bIgnoreMoveInput`, `bIsWalking`, `bIsCrouched`, `CoverType`/`CoverAction`, ME2's `bStorming` (its function runs the storm too;
+   ME3's `PlayerMoveStorming` isn't hooked). MoveMag is ME1's |RawJoyUp, RawJoyRight| (0.87 at a 0.9 push on both, ME1's 0.875).
+
+   | push (stick) | ME2 linear | ME2 the game's | ME3 linear | ME3 the game's |
+   |---|---|---|---|---|
+   | 0.9 | 389 u/s | 400 | 340 | 350 |
+   | 0.68 | 267 | 120 | 233 | 120 |
+   | 0.5 | 167 (1.7 m/s) | 75 | 146 | 75 |
+
+   (`movement: response:`, a weapon out, out-and-back replays; ME3's top speed is 350 there, so 42% is 146.) The run comes within
+   0.1 s of the push on both (ME2: 0, 194, 389 at 0, 0.1, 0.2 s).
+2. **The stop (ME2's "quick stop").** Exploring, both move functions blend a lower fraction in over `MoveWalkModifierBlendTime`
+   (0.5 s: `if MoveWalkModifier < fMoveMag`, alpha = dt / 0.5), and the pawn walks at it with no acceleration: the let-go's
+   tail. With `[Hands] linearWalk` the same post writes the blend's target, 0, at once when the stick is let go (only while
+   0 < fMoveMag < 1: ignored input writes 1, and the scripts' own walks with it). ME2, exploring, `mevr camera trace` under a
+   replayed walk: the game's let-go 398 -> 250 (33 ms) -> 112 (0.3 s) -> 4 u/s (0.5 s); now 388 -> 180 -> 0 in 65 ms. With a
+   weapon out the game stopped at once already (no blend; `movement: response:` logs no let-go there: the speed is under 20 u/s
+   on the first tick). `BioPawnBehavior.m_fPawnStopDecelTime`, `PawnMoveStopTimerThreshold` and `m_fMoveStopDSDecelRate` were
+   not needed. ME3's exploring stop (the same blend in its `PlayerMoveExplore`) is not measured. Log `movement: the stick let go:
+   the walk stops at once`.
+3. **The draw rate.** ME1's rule (`[Hands] drawRate` 6, `holsterRate` 15 while the sequence plays; every notify still fires:
+   both sequels' `SFXWeapon.WeaponEquipping` state waits for the `EquipFinished` notify, a 3 s timeout behind it). ME2 plays the
+   draw as ME1 does, in four `BioAnimNodeBlendByWeaponEquip` nodes (`WeaponEquip-NoCoverStand`, `-NoCoverCrouch`, `-HighCover`,
+   `-LowCover`) with Draw and Holster children (`CB_Draw`, `CB_Draw_Crouch`, `CB_Draw_Cover`, `CB_Draw_Cover_Mid`, the same for
+   `CB_Holster`); ME3 in `AnimNodeSlot` channels (`Custom_Std_Upper`, `Custom_Std_Idle_Lower`, `Custom_Crouching_Upper`; its draw
+   is custom action 12), a channel playing one animation then another. So `UpdateSequelRates` finds the sequences by name
+   (`engine::adapter::kDrawSequencePrefix` `CB_Draw`, `kHolsterSequencePrefix` `CB_Holster`) among the slot channels and the
+   tree's sequences, and writes the rate while one plays (its own back after). `mevr animtree [text]` logs the player's tree
+   node by node on the sequels (how these were found). Measured (`holsters.ps1`): ME2 the rifle in hand after 0.16 s (was
+   0.62), holstered after 0.16 s (was 1.13); ME3 holstered after 0.16 s (was 0.66-0.95), in hand after 0.06 s as before.
 
 ## D. The draw and holster delay
 

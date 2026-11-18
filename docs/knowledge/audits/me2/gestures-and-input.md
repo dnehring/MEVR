@@ -87,7 +87,7 @@ vehicle, 10 orbital); shared code asks `engine::adapter::GameMode`
 | INP-09 | missing | no punch with the weapon away | forced: ME2's melee belongs to the held weapon | CLAUDE.md "One melee for the trilogy"; holsters audit HOL-33 |
 | INP-10 | same core, other inputs | the same trigger latch opens the squad menu | our drawn menu, never the game's wheel; taken in mode 0 only (ME1: 0, 2, 3) | [SquadWeapons.cpp](../../../../src/game/SquadWeapons.cpp):1693-1701 |
 | INP-11 | same core, other inputs | `leftTrigger = lb`; LT from the support grip | the trigger IS LT in conversations and orbital scanning (the owner's rule 11). LT from the grip is ME2's zoom, not only aimed fire | [PadMerge.cpp](../../../../src/plugin/PadMerge.cpp):129-142; weapons audit WPN-09 |
-| INP-12 | partial | the same order in `Mod.cpp`, with two claimants absent | no grenade slot, no vent: a squeeze at the chest or over the receiver goes on to the radio and the squad order. The reload's claim is not asked by orders or voice (dormant while reload is off) | [Mod.cpp](../../../../src/mod/Mod.cpp):1838-1894; powers audit |
+| INP-12 | adapter (fixed) | the same order in `Mod.cpp`; the two absent claimants' zones held (lane AU6, c8f6987e) | No grenade slot and no vent, but their zones are kept. A new left squeeze within the grenade slot's radius (`game/Throwables` `ClaimChest`, its body frame `PlaceSlot` shared with ME1's) or over the receiver (ME1's vent zone, `game/Vent` `ClaimReceiver`, where the support grip didn't take it) is claimed and does nothing: no buzz (the owner: no haptic cue at the chest on ME2), no radio, no squad order. The reload's claim is still not asked by orders or voice (dormant while reload is off). V on Save 4: `throwables: a left squeeze at the left chest ... held, so it is no squad order` and no `squad orders:` line; with `[Throwables] hands = right` the same replay pointed and gave `ALL|-|-|move|-` | [Throwables.cpp](../../../../src/game/Throwables.cpp) `ClaimChest`; [Vent.cpp](../../../../src/game/Vent.cpp) `ClaimReceiver` |
 | INP-13 | same | host mapping on a new squeeze | the hot-receiver exception does not exist | [Vent.cpp](../../../../src/game/Vent.cpp):184 |
 | INP-14 | same core, other inputs | A passes | ME2 adds the double A vault (0.45 s between presses; within 0.39 m of the slot, facing within 45 degrees, gun drawn); cover snap on A refused | [Traversal.hpp](../../../../src/core/vr/Traversal.hpp):70-130; CLAUDE.md "ME2's vault" |
 | INP-15 | same | `melee::AdjustPad`, every game | ME2 loses `TryExitCover` and `LeaveWorld` with it; the menu's Leave entry replaces the second. Traced on ME2 (`melee-b.ps1`) | CLAUDE.md; holsters audit HOL-38 |
@@ -127,7 +127,7 @@ vehicle, 10 orbital); shared code asks `engine::adapter::GameMode`
 |---|---|---|---|
 | double A at an obstacle | vault | yes: ME2 vaults, ME1 does not | approved 2026-11-14 |
 | triggers in a conversation | Paragon / Renegade interrupts | yes | approved (rule 11) |
-| left grip at the left chest or over the gun's receiver | radio test, then a squad order (a follow for the whole squad if let go on nothing) | no: it is what remains when the grenade and vent claims are absent | not asked |
+| left grip at the left chest or over the gun's receiver | nothing: the zones are held (lane AU6, c8f6987e) | no: ME1's zones kept with nothing in them | the owner, 2026-11-18: no haptic cue at the chest |
 | support grip at the shoulder | LT, which on ME2 zooms the weapon (view magnified until 2026-11-17) | LT's meaning is the game's; sending it is our choice | complained 2026-11-17; the picture fixed, the cause not asked |
 | right grip at the front of the right thigh | draws the SMG | ME2 has SMGs; the place is ours | "until the owner chooses" (ledger G08) |
 | left grip at the hip pouch | reload by hand | no | turned off 2026-11-16 |
@@ -144,7 +144,7 @@ vehicle, 10 orbital); shared code asks `engine::adapter::GameMode`
 | nothing uses a controller menu button | recentering does | no |
 | R3 still reaches the game | never | yes (approved) |
 | a right fist punches with the weapon away | does not | yes |
-| a left squeeze is a grenade or a vent before anything else | neither exists | yes; what the squeeze becomes instead is not forced |
+| a left squeeze is a grenade or a vent before anything else | neither exists; their zones are held (no action) | yes; that the squeeze does nothing there is ours (lane AU6) |
 | the right stick double-click recenters | does nothing | no |
 | the weapon wheel is the game's own, steered at the hand | our drawn menu | not established as forced (powers audit) |
 | a flick under ADS steps the zoom | no second step | yes |

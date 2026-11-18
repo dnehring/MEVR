@@ -602,9 +602,14 @@ These unblock the most: almost every other entry gets smaller once they land.
   `PlayerWalking.PlayerMoveCombatOrExplore` (traced; for the speed from the push).
   ME3's start: its player pawn has no `SFXModule_Locomotion` (`mevr loco`), the root-motion flags are 0; AU3's slow start
   included a turn (the replay reversed the stick); exploring 0, 12, 230, 400 u/s at 0..0.4 s, combat 350 within 0.1 s.
-- **Left:** ME3's explore eye 34-38 units behind Shepard's head bone (53 in the combat pose: arm IK stays third person in
-  fights, ADS never reached; owner question in research/38); the speed from the push; ME2's
-  stop; the draw rate; ME3's explore start (its limiter unread).
+- **Done (lane AU6, 2026-11-18):** ME3's explore eye at Shepard's face (dadb7461; the owner's answer below): forward 34 units of
+  the head bone exploring, 26 in combat, arm IK first person in a fight, and the sniper's scope capture seen on ME3 (3.5x, 7x).
+  The speed from the push on both sequels (c8f6987e: `BioPawn.fMoveMag` after their move functions; half a push 167 u/s on ME2,
+  146 on ME3, was 75), ME2's stop at once exploring (the move function's 0.5 s blend skipped: 0 in 65 ms, was 0.5 s), the draw
+  rate on both (ME2's rifle in hand 0.16 s, was 0.62; holstered 0.16 s, was 1.13 on ME2 and 0.66-0.95 on ME3). Research/38
+  "The sequels' walk and draw".
+- **Left:** ME3's explore start (its limiter unread; the owner's question on ME3's walk start); ME3's exploring stop measured;
+  the stance (off on ME1 too).
 - **Closes when:** `movement: response:` shows a run within 0.1 s of the push and half a push walking, on each sequel.
 - **Waits for:** nothing. **Who:** AU3 (the walk), AU5 (the constant eye); the rest nobody yet.
 
@@ -1104,6 +1109,9 @@ me3/summary.md; the owner's words in quotes):
   "For roll we'll do your recommendation": a roll (and melee, a hit reaction, a cover entry) stays first person, the view
   level (never tumbling) and sliding with the body to where the move ends, the floor held, the snap turn still the
   player's, an optional vignette (as ME2's vault).
+- **ME3's explore eye:** "Me3 eyes should match behavior from other games." Option (a) of research/38 "The sequels' constant
+  eye": the renderer's standing rows (-35, 0, 65), the eye 35 units ahead of the hook bone as ME2's (lane AU6, dadb7461): forward
+  34 units of Shepard's head bone exploring, 26 in combat (ME2 24-29), arm IK first person in a fight.
 - **Earlier the same day** (the ME2 audit): no haptic cue at the chest on ME2 (no grenade slot there); one calibration for
   the trilogy unless a game's VRIK differs; the shouldered gun's accuracy without the game's zoom (the proposal in
   docs/knowledge/audits/me2/weapons-and-sights.md, not built).
