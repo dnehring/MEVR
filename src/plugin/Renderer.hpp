@@ -67,7 +67,8 @@ struct Caps {
                                       // crop of it, the rest stays in the eyes)
     bool hudPieces = false;           // the HUD's pieces on the wrist and the gun are cut out of the panel
     bool worldUi = false;             // the game's GUI screens can stand in the room (the GUI mode not flat)
-    bool galaxyWindow = false;        // the galaxy map's view swaps (GalaxyViewSwap*, GalaxyHologram, GalaxyHeld)
+    bool galaxyWindow = false;        // the galaxy map's view swaps (LE1: GalaxyViewSwap*, GalaxyHologram, GalaxyHeld; the
+                                      // sequels: MevrSeams::WorldViewHoldBegin in the calcview hook, GalaxyOwnsPresentation)
     bool frontEnd = false;            // the front end's presentation holds (FrontEnd*, HoldPlainVr)
     bool conversationWorld = false;   // a conversation shown in the world (ConversationInWorld ...)
     bool eyeColourInBlit = false;     // colour, tonemap and FSR inside the renderer's blit (EyeColour*, EyeUpscale)

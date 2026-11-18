@@ -361,7 +361,7 @@ HostServices WithVoice(HostServices services) {
 }
 #endif
 
-#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE3)
+#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
 // v26: the galaxy hologram (core/vr/GalaxyHologram, plugin/GalaxyHologram, research/51 section 8).
 void HostSetGalaxyHologram(vr::galaxy_holo::Scene const* scene) {
     if (scene != nullptr) {
@@ -634,6 +634,7 @@ HostServices BuildServices() {
 #endif
 #if defined(MEVR_WITH_HALCYON_LE2)
     services = WithTraversal(services);
+    services = WithGalaxyHologram(services);  // the galaxy map over the CIC's projector (game/GalaxyProjectorFlow, the shared host)
 #endif
 #if defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
     services.interactLabelSize = static_cast<std::uint32_t>(sizeof(vr::interact::Label));

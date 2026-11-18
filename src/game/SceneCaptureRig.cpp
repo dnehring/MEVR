@@ -14,10 +14,10 @@
 namespace mevr::game::capture_rig {
 namespace {
 
-#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE3)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 
-#if defined(MEVR_GAME_LE3)
-constexpr auto kCaptureReach = ue3::kEveryGame;
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+constexpr auto kCaptureReach = ue3::kEveryGame;  // the sequels' rows: engine/ReflectCheck's CheckLe2CaptureRig, CheckLe3CaptureRig
 #else
 constexpr auto kCaptureReach = ue3::Reach::Modules;
 #endif
@@ -131,7 +131,7 @@ ue3::Object* PostProcessChain(ue3::Object* controller) {
 } // namespace
 
 ue3::Object* EngineChain(bool uiScene) {
-#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE3)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     if (ue3::Object* const engine = ue3::runtime::GameEngine()) {
         if (auto const chain = (uiScene ? gUiScenePostProcess : gDefaultPostProcess).Read<ue3::Object*>(engine); chain && *chain != nullptr) {
             return *chain;
@@ -143,7 +143,7 @@ ue3::Object* EngineChain(bool uiScene) {
     return nullptr;
 }
 
-#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE3)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 
 bool Rig::Alive() const {
     return actor_ != nullptr && world_ == engine::World() && ue3::runtime::IsAlive(actor_) && ue3::IsA(actor_, gActorClass) &&
@@ -254,7 +254,7 @@ bool Rig::Create(char const* tag, Options const& options, ue3::Vector const& at)
     WriteField(gMaxUpdateDist, component_, kMaxUpdateDist, "CaptureRig.MaxUpdateDist");
     gEnableFog.WriteBool(component_, true);
 #if defined(MEVR_GAME_LE1)
-    gEnableParticles.WriteBool(component_, true); // LE3 has no corresponding flag
+    gEnableParticles.WriteBool(component_, true); // LE2 and LE3 have no corresponding flag
 #endif
     ue3::Object* const chain = !options.postProcess ? nullptr
         : options.postProcessChain != nullptr       ? options.postProcessChain
