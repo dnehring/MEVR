@@ -181,6 +181,25 @@ if (MEVR_MAIN_MENU)
     mevr_pdb_name_only(MEVR-Setup)
 endif ()
 
+# An experimental, separately launched SteamVR picker. Not shipped by the release packager.
+option(MEVR_VR_LAUNCHER "Build the experimental SteamVR launcher overlay" OFF)
+if (MEVR_VR_LAUNCHER AND MEVR_MAIN_MENU)
+    add_executable(MEVR-VRLauncher tools/vr-launcher/Main.cpp src/core/PngFile.cpp)
+    target_include_directories(MEVR-VRLauncher PRIVATE src third_party/openvr)
+    target_link_libraries(MEVR-VRLauncher PRIVATE mevr-menu mevr-install windowscodecs ole32 d3d11 dxgi)
+    target_compile_definitions(MEVR-VRLauncher PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
+    target_compile_options(MEVR-VRLauncher PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus /Zi)
+    target_link_options(MEVR-VRLauncher PRIVATE /DEBUG /DEPENDENTLOADFLAG:0x800)
+    mevr_pdb_name_only(MEVR-VRLauncher)
+    add_custom_command(TARGET MEVR-VRLauncher POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/assets/menu" "$<TARGET_FILE_DIR:MEVR-VRLauncher>/vr-launcher/menu"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/third_party/fonts" "$<TARGET_FILE_DIR:MEVR-VRLauncher>/vr-launcher/fonts")
+    add_executable(mevr-launcher-tests tools/vr-launcher/HandoffTests.cpp)
+    target_compile_options(mevr-launcher-tests PRIVATE /W4 /WX /permissive- /utf-8)
+    enable_testing()
+    add_test(NAME mevr-launcher-tests COMMAND mevr-launcher-tests)
+endif ()
+
 # MinHook (BSD-2, third_party/minhook): one static library for every target that hooks with it: our loader, core/Hook's
 # fallback when no SPI loader attached us (host and mod), and Halcyon's renderer (so the LE1 host has one MinHook).
 add_library(mevr-minhook STATIC

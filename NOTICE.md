@@ -37,8 +37,10 @@ Code it contains from other projects keeps its own license and notices:
 [OpenVR openvr.h](https://github.com/ValveSoftware/openvr/blob/master/headers/openvr.h): the first seven
 IVRSettings_003 slots and the dynamically loaded initialization entry points. Copyright (c) 2015, Valve
 Corporation. BSD-3-Clause; the full notice, conditions and disclaimer are retained in
-[LICENSES/BSD-3-Clause-Valve.txt](LICENSES/BSD-3-Clause-Valve.txt). No OpenVR SDK or binary is bundled;
+[LICENSES/BSD-3-Clause-Valve.txt](LICENSES/BSD-3-Clause-Valve.txt). No OpenVR binary is bundled;
 MEVR Setup loads the user's installed SteamVR API. The implementation surrounding the ABI is original MIT code.
+The optional launcher prototype also uses the unmodified OpenVR v2.5.1 header in `third_party/openvr/`, under
+BSD-3-Clause (Valve Corporation; the full license is beside it). It loads the installed API and bundles no OpenVR binary.
 
 | Code | Where | License |
 |------|-------|---------|
