@@ -234,10 +234,10 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
         // HalcyonOverlays galaxy panel), in the galaxy's mode only: orbit keeps the scanner's own triggers (ME2's LT and RT).
 #if defined(MEVR_WITH_MAIN_MENU)
         static bool galaxyPointer = false;  // Present thread
-        if (galaxyUi && panelLayer != nullptr && !anyMenu && facts.galaxyUiPointer != 0 &&
-            mevr::engine::adapter::IsGalaxyMode(frame.gameMode)) {
+        int const galaxyKind = mevr::host::game_pointer::GalaxyMapPointer(facts.galaxyUiPointer);
+        if (galaxyUi && panelLayer != nullptr && !anyMenu && galaxyKind != 0 && mevr::engine::adapter::IsGalaxyMode(frame.gameMode)) {
             mevr::host::game_pointer::NoteGameUiQuad(panelLayer->pose, panelLayer->size.width, panelLayer->size.height,
-                facts.galaxyUiPointer == 2 ? mevr::host::game_pointer::PanelKind::GameMenu : mevr::host::game_pointer::PanelKind::GalaxyMap);
+                galaxyKind == 2 ? mevr::host::game_pointer::PanelKind::GameMenu : mevr::host::game_pointer::PanelKind::GalaxyMap);
             galaxyPointer = true;
         } else if (galaxyPointer) {
             mevr::host::game_pointer::ForgetGameUiQuad();

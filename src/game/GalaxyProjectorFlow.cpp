@@ -16,6 +16,7 @@
 #include "engine/XrToUnreal.hpp"
 #include "game/DepthOfFieldHold.hpp"
 #include "game/GalaxyProjector.hpp"
+#include "game/GalaxyRay.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/Player.hpp"
 #include "game/ViewAnchor.hpp"
@@ -350,6 +351,8 @@ bool reservedOnFoot = false;  // the last tick published the on-foot reservation
 std::uint64_t heldEndMs = 0;  // when the view was last released: ME3's X closes 11 -> 0 -> 8 (0.66 s) -> 0 (run gx3b)
 std::uint32_t lastRecenters = 0;
 LevelRequest footMapLevel;    // the map's level as it was last on foot (its opening's request is a change from this)
+void (*hapticPulse)(int hand, float seconds, float amplitude) = nullptr;
+gh::Scene lastScene;  // the scene published last while the map was held (the ray's console line reads its panel)
 OpeningProbe probe;
 OpeningWait wait;
 Carry carry;
@@ -432,6 +435,7 @@ void HideProjector(ue3::Object* pc) {
 }
 
 void Stop(char const* why) {
+    ray::Stop(why);
     Unpublish();
     window.Pause();
     ShowProjector();
@@ -733,6 +737,22 @@ ue3::Object* GalaxyMode(ue3::Object* pc) {
 ue3::Object* GalaxyCamera(ue3::Object* pc) {
     ue3::Object* const camera = ObjectField(gGalaxyCam, GalaxyMode(pc));
     return camera != nullptr && ue3::IsA(camera, gGalaxyCameraClass) ? camera : nullptr;
+}
+
+// The map as the ray sees it this tick (game/GalaxyRay): its camera, mode and the scene published for the window.
+ray::Frame RayFrame(ue3::Object* pc, gh::Scene const* scene) {
+    ray::Frame f;
+    f.pc = pc;
+    f.camera = GalaxyCamera(pc);
+    auto const mode = player::GameMode(pc);
+    f.gameMode = mode ? static_cast<int>(*mode) : -1;
+    f.orbit = adapter.orbitMode >= 0 && f.gameMode == adapter.orbitMode;
+    f.scene = scene;
+    f.pov = mapPov;
+    RECT client{};
+    if (HWND const w = GameWindow(); w != nullptr && GetClientRect(w, &client)) f.clientW = client.right, f.clientH = client.bottom;
+    f.haptic = hapticPulse;
+    return f;
 }
 
 #if defined(MEVR_GAME_LE2)
@@ -1079,9 +1099,24 @@ void Tick(Publish publish, std::optional<vr::floor::State> const& floor) {
         window.Pause();
     }
     PutRenderHold(held, render, true, scene);
+    // The right controller's ray on the map (ME1's way of picking it): its objects picked, ME2's scanner aimed (game/GalaxyRay).
+    if (fresh) {
+        lastScene = scene;
+        ray::Tick(RayFrame(pc, &scene));
+    } else {
+        ray::Stop("the map camera isn't fresh");
+    }
     publish(&scene);
     published = true;
     reason = window.On() ? "held, the window on the projector" : "held, the window warming up";
+}
+
+void SetHaptic(void (*haptic)(int hand, float seconds, float amplitude)) {
+    hapticPulse = haptic;
+}
+
+std::string RayCommand(ue3::Object* pc, std::string const& args) {
+    return ray::Command(RayFrame(pc, holding ? &lastScene : nullptr), args);
 }
 
 void Shutdown(bool exiting) {

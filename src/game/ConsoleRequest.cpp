@@ -1771,6 +1771,11 @@ std::optional<std::string> RunOursLe3(ue3::Object* pc, std::string const& line) 
             return "mevr galaxy: " + json::Write(le3_galaxy::Observe(pc), 0);
         if (action == "projector" && !(words >> extra))
             return "mevr galaxy projector: " + json::Write(le3_galaxy::ObserveProjector(pc), 0);
+        if (action == "ray") {
+            std::string rest;
+            std::getline(words, rest);
+            return le3_galaxy_capture::RayCommand(pc, rest);
+        }
         if (action == "retain" || action == "capture") {
             std::string option, trailing;
             words >> option;
