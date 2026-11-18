@@ -2975,6 +2975,7 @@ void CheckSequelWalk() {
     CheckField("SFXGame.BioPawnBehavior", "m_bEnableSkidAnim", SDK_BOOL(UBioPawnBehavior, m_bEnableSkidAnim));
     CheckFunction("SFXGame.BioPawn.GetWalkingSpeedMode");
     CheckParam("SFXGame.BioPawn.GetWalkingSpeedMode", "ReturnValue", SDK_AT(0, 1));
+    CheckFunction("Engine.Pawn.CreateInventory");  // `mevr give` (game/ConsoleRequest), a test fixture's weapon
 }
 
 // The galaxy map over the CIC's projector (game/GalaxyProjectorFlow, ME2's adapter game/Le2GalaxyCapture): the shared
@@ -3149,6 +3150,7 @@ void CheckSequelWalk() {
     CheckField("SFXGame.BioPawn", "m_eAnimSkidState", SDK_FIELD(ABioPawn, m_eAnimSkidState));
     CheckFunction("SFXGame.BioPawn.GetWalkingSpeedMode");
     CheckParam("SFXGame.BioPawn.GetWalkingSpeedMode", "ReturnValue", SDK_AT(0, 1));
+    CheckFunction("Engine.Pawn.CreateInventory");  // `mevr give` (game/ConsoleRequest), a test fixture's weapon
 }
 
 // Shared SceneCaptureRig, checked against LE3 metadata before native use.

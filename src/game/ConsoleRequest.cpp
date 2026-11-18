@@ -1740,6 +1740,35 @@ std::string State(ue3::Object* pc) {
     return text;
 }
 
+// "mevr give <Package.Class>": an inventory item of a loaded class into the player's pawn (Engine.Pawn.CreateInventory, the
+// pawn's own event; the game's GiveWeapon cheat does nothing in the shipped game): a test fixture's weapon, e.g. ME3's
+// combat fixture's sniper rifle for the scope capture (`mevr give SFXGameContent.SFXWeapon_SniperRifle_Mantis`, then
+// `mevr weapon sniper`). Rows: engine/ReflectCheck's CheckSequelWalk (Engine.Pawn.CreateInventory).
+ue3::FunctionRef gCreateInventory{"Engine.Pawn.CreateInventory", ue3::kEveryGame};
+// Only a class already loaded: ME3 loads each weapon's package (SFXWeapon_X.pcc, class SFXGameContent.X) for the loadout
+// only, and Core.Object.DynamicLoadObject by either path did not load the Mantis in the combat fixture (lane AU3, 2026-11-18).
+std::string Give(ue3::Object* pc, std::istringstream& words) {
+    std::string path;
+    words >> path;
+    ue3::Reflection& r = ue3::runtime::Get();
+    ue3::Class* const cls = path.empty() ? nullptr : r.FindClass(path.c_str());
+    ue3::Object* const pawn = player::Pawn(pc);
+    ue3::Function* const fn = gCreateInventory.Get();
+    if (cls == nullptr || pawn == nullptr || fn == nullptr) {
+        return std::format("mevr give: {}", path.empty() ? "usage: mevr give <Package.Class>"
+                                            : cls == nullptr ? "no loaded class " + path
+                                            : pawn == nullptr ? std::string("no player pawn")
+                                                              : std::string("Engine.Pawn.CreateInventory not found"));
+    }
+    ue3::Params parms(r, fn);
+    parms.Set("NewInvClass", cls);
+    parms.SetBool("bDoNotActivate", true);
+    bool const called = ue3::runtime::Call(pawn, fn, parms);
+    write_journal::Wrote("ConsoleRequest.Give", pawn, 0);
+    return std::format("mevr give: CreateInventory({}) called {}: {}", path, called,
+        ue3::runtime::FullName(parms.Return<ue3::Object*>().value_or(nullptr)));
+}
+
 #if defined(MEVR_GAME_LE3)
 // L3-1 scalar cross-check on the actual loaded weapon. No pose/weapon modules or writes.
 std::string WeaponProbeLe3(ue3::Object* pc) {
@@ -1810,6 +1839,7 @@ std::optional<std::string> RunOursLe3(ue3::Object* pc, std::string const& line) 
     if (verb == "cover") { std::string rest; std::getline(words, rest); return vr_cover::Console(rest); }
     if (verb == "camera") { std::string rest; std::getline(words, rest); return camera_probe::Command(rest); }
     if (verb == "weapon") { std::string which; words >> which; return holsters::DrawByName(which); }  // a carried weapon by family
+    if (verb == "give") return Give(pc, words);  // a test fixture's weapon (Engine.Pawn.CreateInventory)
     if (verb == "reload") { std::string rest; std::getline(words, rest); return reload::Command(rest); }
     if (verb == "omni") { std::string which; words >> which; return game_menu_request::Inject(which); }
     if (verb == "reticles") return screen_reticle::Command();  // the crosshair's movie, what it shows, whether it is hidden
@@ -1950,6 +1980,7 @@ std::optional<std::string> RunOursLe2(ue3::Object* pc, std::string const& line) 
     if (verb == "savedesc") {
         return CurrentSave(ue3::runtime::GameEngine());
     }
+    if (verb == "give") return Give(pc, words);  // a test fixture's weapon (Engine.Pawn.CreateInventory)
     if (verb == "state") {
         return State(pc);
     }
