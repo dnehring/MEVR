@@ -52,13 +52,23 @@ module, no per-game copy:
   live: none, ME1's window messages, the steered game cursor) puts the game pointer on the map's panel to try it.
 - **ME1 unchanged by its compiled code:** every change LE1 compiles is either `#if !defined(MEVR_GAME_LE1)` (the host's
   `[Pointer] galaxyMap`) or in sequel-only files and blocks; `core/vr/GalaxyRay` is in the sequels' mods only.
-- **Not yet seen in the game** (2026-11-18 01:00-01:15: two ME2 launches ended at Steam's EA hand-off, the EA app never started
-  the game; restored, nothing ran): the picks, the flight, the scanner's frame. To check, ME2 (Save 36, `galaxy.ps1 -Game LE2
-  -Place '0 3360 160 -90' -NoExit`): `mevr galaxy ray screen`, then a replayed ray at an object's u, v with the trigger
-  (`make-galaxy-pick-recording.py --panel-uv`), `mevr galaxy ray state` and the log's `galaxy ray:` lines; a planet picked in the
-  system view enters orbit, where the ray aims the reticle (`mevr galaxy ray orbit`). If the ship doesn't move on the written
-  stick (the GUI's axis events may overwrite it each frame), `mevr galaxy ray stick 1 0` answers it; `steer-sign` flips an axis.
-  ME3: AutoSave of `John_12_Vanguard`, `-Game LE3 -RendererPreview`.
+- **In the game (ME2, fake headset, stretch `%LOCALAPPDATA%\MEVR\sessions\20261118-012745-525-LE2-gxr-me2`, Save 36 read
+  only; `galaxy.ps1 -Game LE2 -Place '0 3360 160 -90' -Yaw 0 -Pitch -25 -NoExit`):** the map opened in the system view (state
+  3, Omega's system; the cursor `SkeletalMeshActorMAT_1`, the Normandy); `mevr galaxy ray screen` put its 12 selectable objects on
+  the screen; a replayed right ray at the planet `180769_0`'s (0.308, 0.390) with the trigger (`make-galaxy-pick-recording.py
+  --panel-uv`): the mod measured the ray's point at exactly (0.308, 0.390), 1.85 m away (the panel's math matches the host's);
+  `picked '180769_0' (state 3): the Normandy flies there on the map's stick`; `the Normandy reached '180769_0' after 2266 ms, the
+  game selected it: the map's A sent`: the planet's view (state 4) with Omega's panel and its Dock button (snapshot
+  `2026-11-18_01-30-24-049-hud.png`). The written stick moves the ship while it is written every tick (a single console write did
+  nothing). **Not reached:** the galaxy view's cursor pick and the orbit's scanner: the map then reopened in Omega's planet view
+  every time (it remembers the selection), where B (a GUI event, ME2's 13/34) closes the whole map and a replayed pad B doesn't
+  reach the movie; a replayed A at the console with the head turned elsewhere uses Shepard's private terminal instead (mode 7).
+  ME3 not run yet (its fixture: AutoSave of `John_12_Vanguard`, `-Game LE3 -RendererPreview`). Before it: three ME2 launches
+  (00:54-01:22) ended at Steam's EA hand-off (EA's launcher denied CreateProcess inside steam.exe's job; the coordinator
+  restarted Steam through Explorer).
+- **Next:** a fixture in the galaxy view (a save on another system, or `tab-right` from a system view to the relay, then A) for
+  the cursor pick; a scannable planet for the orbit (`mevr galaxy ray orbit` prints the reticle's rotator, clamps, owner and the
+  frame check); ME3's pick (its A as GUI event 15 is unverified; where its cursor is the Normandy the same flight applies).
 
 ## 2026-11-17 (night): one flow for both sequels, the opening's wait cut (lane GX4)
 
