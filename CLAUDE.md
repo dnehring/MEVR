@@ -266,8 +266,11 @@ switching frameworks.
   the third-party libraries (LExSDKv2's SDKs, the OpenXR loader, FreeType, RmlUi) come from a prebuilt cache in
   `%LOCALAPPDATA%\MEVR\build-cache` (`tools/cmake/ThirdParty.cmake`: keyed by the submodules' commits, never with local
   changes, the compiler, Windows SDK, flags and those settings; a configure without an entry builds it once, about a
-  minute, under a lock; `-DMEVR_THIRDPARTY_CACHE=OFF`, Release only otherwise, and CI build them from source). Same
-  binaries (sizes, sections, exports). A fresh worktree's cold build-trilogy: BLD_TRI; build-mono: BLD_MONO. While a game runs,
+  minute, under a lock; Release only: `-DMEVR_THIRDPARTY_CACHE=OFF`, and CI, build them from source). The binaries are
+  the same (sizes, sections, exports compared). A fresh worktree's cold configure and build, quiet machine: build-trilogy 610 s
+  before, 384 s with the parallel compiles, 324 s with the cache too (392 s when its configure first builds the entries);
+  build-mono about 600 s, 183 s, 165 s. The rest is our own sources compiled per game (about 40% of the compiler's time
+  is second and later compiles of a file); it is CPU-bound now (about 19 compiles at once on 24 threads). While a game runs,
   build at Idle priority on half the cores: `$env:CL_MPCount=8; cmd /c start "" /b /low /wait cmake --build <dir> --config
   Release --parallel 4 -- -nodeReuse:false` (a reused MSBuild node keeps Normal priority).
 - Deploy: `tools/deploy-asi.ps1 -Game LE1` (needs the ME3MM ASI loader). The log is at
