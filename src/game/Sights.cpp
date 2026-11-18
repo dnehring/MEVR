@@ -18,6 +18,9 @@
 #include "game/ScopeParts.hpp"
 #include "game/ViewAnchor.hpp"
 #include "game/Weapon.hpp"
+#if !defined(MEVR_GAME_LE1)
+#include "game/ZoomedShots.hpp"
+#endif
 #include "ue3/Handles.hpp"
 
 #include <algorithm>
@@ -240,6 +243,16 @@ std::vector<std::string> gHideList;
 void OnAimError(ue3::Object* context, ue3::Function* /*function*/, void* result) {
     gAimErrorCalls.fetch_add(1, std::memory_order_relaxed);
     static bool inside = false;  // the game thread: our own calls of the function below never come back here
+#if !defined(MEVR_GAME_LE1)
+    // The sequels (game/ZoomedShots): with the scope's picture up or the gun shouldered, the spread's range is already the
+    // zoomed one inside this call (GetWeaponAimErrorRange made as zoomed); the rewrite below would compute the same answer.
+    if (!inside && result != nullptr && context != nullptr && reinterpret_cast<std::uintptr_t>(context) == weapon::Key()) {
+        zoomed_shots::NoteAimError(*static_cast<float const*>(result));
+    }
+    if (zoomed_shots::Active()) {
+        return;
+    }
+#endif
     if (inside || result == nullptr || !gScopeUp || !gAimedFire || context == nullptr ||
         reinterpret_cast<std::uintptr_t>(context) != weapon::Key()) {
         return;
@@ -1013,6 +1026,7 @@ bool TryStartup() {
     }
     engine::call_function::AddPostHandler(gAimErrorFunction, &OnAimError);
 #if !defined(MEVR_GAME_LE1)
+    zoomed_shots::TryStartup();  // the shouldered or scoped shot's own calls as zoomed (scoped handlers, before the hook)
     log::Info("sights: shots converge on the sight line (Actor.Trace {}) and a scope's shots take the zoomed aim error ({})",
         gTraceFunction != nullptr ? "found" : "missing", kAimErrorName);
 #endif
@@ -1285,6 +1299,16 @@ float RaisedWeight() {
     return std::isfinite(weight) ? std::clamp(weight, 0.0f, 1.0f) : 0.0f;
 }
 
+#if !defined(MEVR_GAME_LE1)
+bool ScopedAimedFire() {
+    return gScopeUp && gAimedFire;
+}
+
+bool AimedFire() {
+    return gAimedFire;
+}
+#endif
+
 void SetHostView(std::uint32_t view) {
     gHostView = view;
     // Under ADS only, when the picture waits for it (research/21 section 15): the lens part hides and aimed fire applies
@@ -1333,10 +1357,17 @@ std::string GameJson() {
     for (int i = 0; i < gZoom.game.count; ++i) {
         zooms += std::format("{}{}", i == 0 ? "" : ", ", json::JsonNumber(gZoom.game.zoom[i]));
     }
+#if defined(MEVR_GAME_LE1)
     return std::format("{{\"mesh\": {}, \"optic\": {}, \"zooms\": [{}], \"zoomLevel\": {}, \"stats\": {}, \"art\": {{\"state\": {}, "
                        "\"generation\": {}}}}}",
         json::JsonString(gModel.mesh), gModel.opticApplies ? "true" : "false", zooms, gZoom.level, json::JsonString(gZoom.stats),
         json::JsonString(gArt.text), gArt.generation);
+#else
+    return std::format("{{\"mesh\": {}, \"optic\": {}, \"zooms\": [{}], \"zoomLevel\": {}, \"stats\": {}, \"art\": {{\"state\": {}, "
+                       "\"generation\": {}}}, \"zoomedShots\": {}}}",
+        json::JsonString(gModel.mesh), gModel.opticApplies ? "true" : "false", zooms, gZoom.level, json::JsonString(gZoom.stats),
+        json::JsonString(gArt.text), gArt.generation, zoomed_shots::StatusJson());
+#endif
 }
 
 } // namespace
@@ -1406,10 +1437,16 @@ void LogStats() {
     gAdsOnsHeartbeat = 0;
     gAdsTicksHeartbeat = 0;
     gAdsEyeSumHeartbeat = 0.0;
+#if !defined(MEVR_GAME_LE1)
+    zoomed_shots::LogStats();
+#endif
 }
 
 void Shutdown(bool exiting) {
     scope_parts::Shutdown(exiting);  // the hidden lens comes back before the mod goes (game thread: the host's tick)
+#if !defined(MEVR_GAME_LE1)
+    zoomed_shots::Shutdown();
+#endif
     gPull = {};
     gNearUnits = kDefaultNearUnits;
     gNearRead = false;
