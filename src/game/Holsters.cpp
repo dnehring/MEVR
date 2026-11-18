@@ -1042,6 +1042,20 @@ bool SeatedWeaponWheel() {
 }
 
 std::string DrawByName(std::string_view name) {
+#if defined(MEVR_GAME_LE3)
+    // `mevr weapon away`: ME3's put-down of the held gun (as a let-go at its slot), for what needs the weapon away (the
+    // omni-blade's fist, game/Melee).
+    if (name == "away") {
+        std::string why;
+        std::optional<Game> const game = gStarted ? ReadGame(why) : std::nullopt;
+        if (!game) {
+            return gStarted ? why : std::string("the holsters aren't started (no script functions yet)");
+        }
+        ReadCarried(*game);
+        Holster(*game, Held(), "the console", Link{}, 0.0);
+        return "putting the weapon away (the 'holsters:' log line says how)";
+    }
+#endif
     std::optional<Weapon> const weapon = slots::ParseWeapon(name);
     if (!weapon || *weapon == Weapon::None) {
         return kUsed > slots::kSmgSlot ? "usage: mevr weapon pistol|shotgun|assault|sniper|smg" : "usage: mevr weapon pistol|shotgun|assault|sniper";

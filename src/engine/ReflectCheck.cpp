@@ -3940,6 +3940,12 @@ void CheckFunctions() {
     CheckFunction("SFXGame.SFXWeapon.GetWeaponAimErrorRange");
     CheckFunction("SFXGame.SFXWeapon_SniperRifle_Base.GetFireModeBaseDamage");
     CheckField("SFXGame.SFXPlayerInventoryManager", "Accuracy", SDK_FIELD(ASFXPlayerInventoryManager, Accuracy));
+    // game/Melee: the omni-blade with the weapon away, the class's heavy melee action started as TryHeavyMelee starts it
+    CheckFunction("SFXGame.BioPlayerController.StartCustomActionWithSyncPartner");
+    PARAM(ABioPlayerController_execStartCustomActionWithSyncPartner_Parms, "SFXGame.BioPlayerController.StartCustomActionWithSyncPartner",
+        NewAction);
+    PARAM(ABioPlayerController_execStartCustomActionWithSyncPartner_Parms, "SFXGame.BioPlayerController.StartCustomActionWithSyncPartner",
+        ReturnValue);
     CheckFunction("SFXGame.BioPlayerController.SwitchWeapon");  // game/Holsters' sequel draw (a holster grab, `mevr weapon <family>`)
     PARAM(ABioPlayerController_eventSwitchWeapon_Parms, "SFXGame.BioPlayerController.SwitchWeapon", oWpn);
     CheckFunction("SFXGame.SFXGameModeDefault.TryHolster");     // ... resolved, never called on ME3 (it only leaves cover)

@@ -558,6 +558,12 @@ ue3::FunctionRef gReloading{"SFXGame.BioPlayerController.IsReloading", ue3::kEve
 ue3::FunctionRef gZoomed{"SFXGame.BioPlayerController.IsZoomed", ue3::kEveryGame};
 ue3::FunctionRef gState{"Core.Object.GetStateName", ue3::kEveryGame};
 ue3::FunctionRef gHeavy{"SFXGame.SFXGameModeDefault.TryHeavyMelee", ue3::kEveryGame};
+// The omni-blade with the weapon away (docs/trilogy-plan.md "Answered 2026-11-18, later", option A): TryHeavyMelee does nothing
+// without a weapon (its first test is Pawn.Weapon), and with one it starts the pawn's custom action 58 through this function
+// (the class's own heavy melee: SFXCustomAction_PlayerHeavyMeleeBase's subclass, the biotic one for Vanguards and Adepts). The
+// fist starts the same action itself.
+ue3::FunctionRef gStartSynced{"SFXGame.BioPlayerController.StartCustomActionWithSyncPartner", ue3::kEveryGame};
+constexpr std::int32_t kHeavyMeleeAction = 58;  // TryHeavyMelee's own, out of cover, not storming, not aiming back
 struct Context {
     ue3::Object* world = nullptr;
     ue3::Object* pc = nullptr;
@@ -651,6 +657,7 @@ char const* Refusal(Link const& link, int hand) {
     if (!current || *current != nullptr || gAwaiting || gObserved != nullptr) return "native action or unresolved admission pending";
     if (Bool(gContext.pc, gReloading) != false || Bool(gContext.pc, gZoomed) != false) return "reload or zoom blocks melee";
     auto* weapon = Live(gWeapon, gContext.pawn);
+    if (weapon == nullptr && hand == kRight) return nullptr;  // the weapon away: the right fist's omni-blade (DispatchFist)
     if (!ue3::IsA(weapon, gWeaponClass)) return "no supported drawn weapon";
     auto* fn = gState.Get();
     ue3::Params params(ue3::runtime::Get(), fn);
@@ -759,8 +766,41 @@ std::optional<std::string> DispatchWeapon(Game const&, MeleePower const&, Intent
 }
 
 std::optional<std::string> DispatchFist(Game const&, MeleePower const&, Enemy const&, std::string& why) {
-    why = "ME3 has no melee with the weapon away yet (research/le3-melee-audit.md)";
-    return std::nullopt;
+    Link const& link = *gLink;
+    // Same-thread final ownership/mode check (as DispatchWeapon's); the weapon must still be away.
+    if (!(ReadContext(link) == gContext) || link.allowRequest == nullptr || !link.allowRequest(kRight)) {
+        why = "context changed before dispatch";
+        return std::nullopt;
+    }
+    if (gContext.weapon != nullptr) {
+        why = "a weapon came into the hand";
+        return std::nullopt;
+    }
+    auto* fn = gStartSynced.Get();
+    ue3::Params params(ue3::runtime::Get(), fn);
+    if (!params.Valid() || !params.Set("NewAction", kHeavyMeleeAction)) {
+        why = "unexpected StartCustomActionWithSyncPartner signature";
+        return std::nullopt;
+    }
+    gIntent = Intent::Heavy;
+    gAwaiting = true;
+    gDeadline = Now() + 0.35;
+    if (!ue3::runtime::Call(gContext.pc, fn, params)) {
+        gAwaiting = false;
+        why = "dispatch failed";
+        return std::nullopt;
+    }
+    bool const started = params.ReturnBool().value_or(false);
+    SetStatus(std::format("the omni-blade's heavy melee (custom action {}) {} with the weapon away", kHeavyMeleeAction,
+        started ? "started" : "refused by the game"));
+    Observe();
+    if (!started) {
+        gAwaiting = false;
+        why = std::format("the game refused custom action {} (StartCustomActionWithSyncPartner returned false)", kHeavyMeleeAction);
+        return std::nullopt;
+    }
+    return std::format("BioPlayerController.StartCustomActionWithSyncPartner({}): the omni-blade, the weapon away ({})",
+        kHeavyMeleeAction, gStatus);
 }
 
 double Health(ue3::Object*) {
@@ -774,7 +814,7 @@ bool StartupNatives(std::string& missing) {
         if (cls->Get() == nullptr) missing = "a class";
     for (auto* field : {&gWorld, &gWeapon, &gPlayerInput, &gCurrentAction, &gActionPawn})
         if (field->Get() == nullptr) missing = "a field";
-    for (auto* fn : {&gGetMode, &gGetAction, &gReloading, &gZoomed, &gIsCombatEnabledFn, &gState, &gTryMeleeFn, &gHeavy})
+    for (auto* fn : {&gGetMode, &gGetAction, &gReloading, &gZoomed, &gIsCombatEnabledFn, &gState, &gTryMeleeFn, &gHeavy, &gStartSynced})
         if (fn->Get() == nullptr) missing = "a function";
     if (!missing.empty()) return false;
     // Parameter/type guards in addition to named block construction. No guessed offsets. The movement facts' names and
@@ -785,6 +825,14 @@ bool StartupNatives(std::string& missing) {
     for (auto* fn : {&gReloading, &gZoomed, &gIsCombatEnabledFn})
         if (!ReturnShape(*fn, ue3::Kind::Bool, 4)) return false;
     if (!ReturnShape(gGetMode, ue3::Kind::Object, 8) || !ReturnShape(gState, ue3::Kind::Name, 8)) return false;
+    {
+        ue3::Params synced(ue3::runtime::Get(), gStartSynced.Get());
+        auto const* action = synced.Find("NewAction");
+        auto const* started = synced.ReturnSpec();
+        if (!synced.Valid() || action == nullptr || action->kind != ue3::Kind::Int || started == nullptr ||
+            started->kind != ue3::Kind::Bool)
+            return false;
+    }
     ue3::Params actionParams(ue3::runtime::Get(), gGetAction.Get());
     auto const* actionOut = actionParams.Find("pAction");
     auto const* actionReturn = actionParams.ReturnSpec();
@@ -1091,8 +1139,8 @@ void Le3Tick(Link const& link) {
         std::optional<Game> const game = ReadGame(why);
         if (game) {
             gTime = std::max(gTime, SteadySeconds());
-            Strike(*game, request->hand, strokes.hands[static_cast<std::size_t>(h)], gSettings, frame ? &*frame : nullptr, head, false,
-                gSettings.meleeConeDeg, request->intent);
+            Strike(*game, request->hand, strokes.hands[static_cast<std::size_t>(h)], gSettings, frame ? &*frame : nullptr, head,
+                FistAway(request->hand), gSettings.meleeConeDeg, request->intent);
         } else {
             gLast = "refused: " + why;
         }
@@ -1218,6 +1266,46 @@ bool Busy() {
     return false;
 #endif
 }
+
+#if defined(MEVR_GAME_LE3)
+bool FistAway(int hand) {
+    if (hand != kRight || !gStarted || !ue3::runtime::Up()) {
+        return false;
+    }
+    vr::controllers::Hand const& right = vr::controllers::Latest().right;
+    if (right.squeeze < kGripOn || right.trigger < kTriggerOn || right.primary || right.secondary || right.menu || right.stickClick) {
+        return false;
+    }
+    ue3::Object* const pawn = player::BioPawn(player::Controller());
+    return pawn != nullptr && Live(gWeapon, pawn) == nullptr;
+}
+
+std::string Punch(Link const& link) {
+    if (!gStarted || !ue3::runtime::Up()) return "melee: adapter not ready";
+    gLink = &link;
+    gHaptics = {link.haptic, link.hapticHz};
+    gSettings = hand_calibration::GetThrowables();
+    std::string why;
+    std::optional<Game> const game = ReadGame(why);
+    if (!game) {
+        gLink = nullptr;
+        return "melee: refused: " + why;
+    }
+    thr::SwingStep stroke;
+    stroke.strike = true;
+    stroke.speed = 4.0;
+    stroke.travel = 0.20;
+    stroke.forward = 1.0;
+    std::optional<engine::TrackingFrame> const frame = view_anchor::Current();
+    vr::host_view::State const view = vr::host_view::Latest();
+    ik::Vec3 const head{view.head.position.x, view.head.position.y, view.head.position.z};
+    gTime = std::max(gTime, SteadySeconds());
+    // A fist (the console's: no controllers), any direction: the enemy within meleeReachM.
+    Strike(*game, kRight, stroke, gSettings, frame ? &*frame : nullptr, head, true, 180.0, Intent::Light);
+    gLink = nullptr;
+    return "melee: " + gLast;
+}
+#endif
 
 std::string Request(Intent intent, int hand, Link const& link) {
 #if defined(MEVR_GAME_LE3)

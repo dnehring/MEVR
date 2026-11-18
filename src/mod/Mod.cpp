@@ -1096,8 +1096,15 @@ bool ActionControlsReleased(mevr::vr::controllers::Hand const& hand) {
 }
 bool AllowMeleeGesture(int hand) {
     auto const state = mevr::vr::controllers::Latest();
+#if defined(MEVR_GAME_LE3)
+    // ME3's omni-blade: the right fist with the weapon away counts as released controls (game/Melee's FistAway).
+    return ActionSceneAllowed() && state.active && ActionHandFree(hand) &&
+        (ActionControlsReleased(hand == 0 ? state.left : state.right) || mevr::game::melee::FistAway(hand)) &&
+        !mevr::game::traversal::Moving();
+#else
     return ActionSceneAllowed() && state.active && ActionHandFree(hand) &&
         ActionControlsReleased(hand == 0 ? state.left : state.right) && !mevr::game::traversal::Moving();
+#endif
 }
 bool AllowMeleeDiagnostic(int hand) {
     auto const state = mevr::vr::controllers::Latest();
@@ -1174,7 +1181,11 @@ mevr::game::melee::Link MeleeLink(bool diagnostic = false) {
         auto& out = link.input.hands[static_cast<std::size_t>(hand)];
         auto const& source = *hands[hand];
         out.available = link.allowRequest(hand);
+#if defined(MEVR_GAME_LE3)
+        out.neutral = ActionControlsReleased(source) || game::melee::FistAway(hand);
+#else
         out.neutral = ActionControlsReleased(source);
+#endif
         // The shared optional chamber hold supplies heavy intent after fresh native admission.
         // Controls remain released: no fire, grip, squad, power or menu binding is stolen.
         out.heavy = false;
@@ -1608,9 +1619,12 @@ std::string MeleeCommand(std::string const& args) {
     if ((verb == "light" || verb == "heavy") && (value.empty() || value == "left" || value == "right") && extra.empty())
         return game::melee::Request(verb == "heavy" ? ik::melee::Intent::Heavy : ik::melee::Intent::Light,
             value == "left" ? 0 : 1, MeleeLink(true));
-    // ME1's test verbs on ME3's staged adapter: the right hand's light request (ME3 has no punch with the weapon away).
-    if ((verb == "punch" || verb == "strike") && value.empty())
+    // ME1's test verbs on ME3's staged adapter: strike, the right hand's light request; punch, the right fist (with the weapon
+    // away: the omni-blade, game/Melee's DispatchFist; `mevr weapon away` first).
+    if (verb == "strike" && value.empty())
         return game::melee::Request(ik::melee::Intent::Light, 1, MeleeLink(true));
+    if (verb == "punch" && value.empty())
+        return game::melee::Punch(MeleeLink(true));
     return "melee: status | requests on/off | gestures on/off | heavy-gestures on/off (right chamber hold then strike) | light [left/right] | heavy [left/right] | punch | strike";
 #else
     return game::melee::Console(args);  // `mevr melee punch|strike` (ME1 and ME2 reach game/Melee from game/ConsoleRequest)
