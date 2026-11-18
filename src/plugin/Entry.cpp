@@ -233,6 +233,29 @@ bool ExeGate() {
     return true;
 }
 
+// One calibration for the trilogy (research/25 section 17): the controller types the shared file lacks are taken from the
+// three games' own ASI\<GAME>MEVR.ini, once per launch, before the mod first reads the file (core/vr/CalibrationFile).
+#if !defined(MEVR_LE2_DIAGNOSTIC)
+void PrepareCalibrationFile() {
+    namespace cf = mevr::vr::calibration_file;
+    std::filesystem::path const path = mevr::engine::CalibrationFile();
+    cf::Migration const m = cf::Migrate(path, mevr::engine::CalibrationSources());
+    for (std::string const& line : m.lines) {
+        if (m.refused || !m.error.empty()) {
+            mevr::log::Warn("calibration: {}", line);
+        } else {
+            mevr::log::Info("calibration: {}", line);
+        }
+    }
+    int types = 0;
+    for (auto const& [name, section] : mevr::ini::Read(path).file) {
+        types += cf::KeyOf(name, cf::kMeasuredPrefix).empty() ? 0 : 1;
+    }
+    mevr::log::Info("calibration: one file for the three games, {} ({} controller type{})", mevr::ini::Utf8(path), types,
+        types == 1 ? "" : "s");
+}
+#endif
+
 } // namespace
 
 #if defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
@@ -307,6 +330,10 @@ extern "C" __declspec(dllexport) bool SpiOnAttach(spi::Interface* InterfacePtr) 
         mevr::log::Error("ProcessEvent hook failed; script-level features off");
     }
 
+#if !defined(MEVR_LE2_DIAGNOSTIC)
+    // The shared calibration file before the mod reads it (research/25 section 17).
+    PrepareCalibrationFile();
+#endif
     // Load the mod before the tick hook goes live, so its first tick sees a started mod.
     mevr::host::Start(InterfacePtr);
 

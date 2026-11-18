@@ -330,6 +330,9 @@ $who = "C:\Users\$env:USERNAME\AppData\Local\MEVR on $env:COMPUTERNAME, mail $en
     "==== MEVR crash breadcrumbs ====`r`n2026-10-26 00:11:26.458  pid 1`r`nexception 0xC0000005 (access violation) at LE1MEVR.asi+0x1234, reading 0x0`r`n`r`nnative stack (unwound from the fault):`r`n  [0] LE1MEVR.asi+0x1234  (rsp 0x1)`r`n`r`n$who`r`n")
 [IO.File]::WriteAllText((Join-Path $fakeLocal 'snapshots\2026-10-26_01-00-00-000.json'), "{`"note`": `"$($who -replace '\\', '\\')`"}")
 [IO.File]::WriteAllBytes((Join-Path $fakeLocal 'snapshots\2026-10-26_01-00-00-000-left.png'), [byte[]](137, 80, 78, 71))
+# The calibration the three games share (research/25 section 17): in the zip, redacted as the rest.
+[IO.File]::WriteAllText((Join-Path $fakeLocal 'calibration.ini'),
+    "[Calibration.oculus_touch_controller__meta_quest_3]`r`nlabel=Touch Controller`r`nnote=$who`r`ntime=2026-11-18 10:00`r`n")
 $beforeReport = Snapshot
 Check ((Run-Setup @('--report', '--snapshot', '--report-dir', $reportOut, '--local', $fakeLocal)) -eq 0) 'report'
 $zipFile = Get-ChildItem (Join-Path $reportOut 'MEVR-report-*.zip') | Select-Object -First 1
@@ -349,6 +352,7 @@ if ($zipFile) {
     Check (($names -contains 'logs/LE1MEVR.log') -and ($names -contains 'logs/crash-breadcrumbs.txt') -and ($names -contains 'settings/MELEVR.ini') -and
         ($names -contains 'settings/MEVR-install.json') -and ($names -contains 'system/folders.txt')) 'report: logs, settings, listing'
     Check (($names -contains 'snapshot/2026-10-26_01-00-00-000.json') -and ($names -contains 'snapshot/2026-10-26_01-00-00-000-left.png')) 'report: the snapshot'
+    Check (($names -contains 'settings/calibration.ini') -and ($texts['settings/calibration.ini'] -match '\[Calibration\.oculus_touch_controller__meta_quest_3\]')) 'report: the shared calibration'
     $leak = $texts.Keys | Where-Object { $_ -notlike '*.png' -and ($texts[$_] -match [regex]::Escape($env:COMPUTERNAME) -or
         $texts[$_] -match ('\b' + [regex]::Escape($env:USERNAME) + '\b') -or $texts[$_] -match 'test@example\.com') }
     Check (-not $leak) "report: no user name, computer name or e-mail left ($($leak -join ', '))"

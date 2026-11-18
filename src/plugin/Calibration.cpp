@@ -5,6 +5,8 @@
 #include "core/Ini.hpp"
 
 #include "core/Log.hpp"
+#include "core/vr/CalibrationFile.hpp"
+#include "engine/SettingsFile.hpp"
 #include "core/vr/Floor.hpp"
 #include "core/vr/MenuPointer.hpp"
 #include "core/vr/TestRequest.hpp"
@@ -217,7 +219,107 @@ std::wstring Wide(std::string const& text) {
     return std::wstring(text.begin(), text.end());  // ASCII keys and numbers only
 }
 
+// The player's measurements: %LOCALAPPDATA%\MEVR\calibration.ini, one file for the three games (core/vr/CalibrationFile,
+// research/25 section 17). Read through one snapshot, re-read when the file's time changes; written as a whole edit moved
+// over the file; refused for the session if the file was there but couldn't be read at the first use.
+namespace shared {
+namespace cf = vr::calibration_file;
+
+std::mutex gMutex;
+ini::File gFile;
+std::filesystem::file_time_type gStamp{};
+bool gLoaded = false;
+bool gProbed = false;
+bool gRefused = false;
+bool gToldRefused = false;
+
+std::filesystem::path const& Path() {
+    static std::filesystem::path const path = engine::CalibrationFile();
+    return path;
+}
+
+void Refresh() {  // under gMutex
+    if (!gProbed) {
+        gProbed = true;
+        if (cf::Probe(Path()) == cf::Access::Unreadable) {
+            gRefused = true;
+            log::Warn("calibration: {} is there but couldn't be read: no calibration is saved this session (never a new file "
+                      "over the player's)", ini::Utf8(Path()));
+        }
+    }
+    std::error_code ec;
+    auto const stamp = std::filesystem::last_write_time(Path(), ec);
+    if (ec) {
+        gFile = {};
+        gLoaded = false;
+        return;
+    }
+    if (!gLoaded || stamp != gStamp) {
+        gFile = ini::Read(Path()).file;
+        gStamp = stamp;
+        gLoaded = true;
+    }
+}
+
+std::optional<std::string> Get(std::string const& section, std::string const& key) {
+    std::lock_guard lock(gMutex);
+    Refresh();
+    return cf::Get(gFile, MEVR_GAME_NAME_A, section, key);
+}
+
+ini::Section Section(std::string const& section) {
+    std::lock_guard lock(gMutex);
+    Refresh();
+    return cf::Merged(gFile, MEVR_GAME_NAME_A, section);
+}
+
+bool Write(std::vector<cf::Edit> const& edits, char const* what) {
+    std::lock_guard lock(gMutex);
+    Refresh();
+    if (gRefused) {
+        if (!gToldRefused) {
+            gToldRefused = true;
+            log::Warn("calibration: {} not saved: {} couldn't be read at start", what, ini::Utf8(Path()));
+        }
+        return false;
+    }
+    std::string const error = cf::Apply(Path(), edits);
+    gLoaded = false;  // ours or not, read again
+    if (!error.empty()) {
+        log::Warn("calibration: {} not saved to {}: {}", what, ini::Utf8(Path()), error);
+        return false;
+    }
+    return true;
+}
+
+} // namespace shared
+
+// [Debug] calibrationKey (development builds only): the controller type's key when the runtime names none (the fake
+// headset has no interaction profile), so a run can apply a calibration section by script.
+std::string DevKey() {
+#if defined(MEVR_MONOLITHIC)
+    return {};
+#else
+    static std::string const key = [] {
+        std::wstring const& path = mevr::host::SettingsPath();
+        wchar_t text[128]{};
+        if (!path.empty()) {
+            GetPrivateProfileStringW(L"Debug", L"calibrationKey", L"", text, 128, path.c_str());
+        }
+        std::string out;
+        for (wchar_t const* c = text; *c != L'\0'; ++c) {
+            out.push_back(*c < 128 ? static_cast<char>(*c) : '?');
+        }
+        return ini::Trim(out);
+    }();
+    return key;
+#endif
+}
+
 std::string ReadIni(std::string const& section, char const* key, char const* fallback = "") {
+    if (shared::cf::Shared(section, key)) {
+        return shared::Get(section, key).value_or(fallback);
+    }
     std::wstring const& path = mevr::host::SettingsPath();
     if (path.empty()) {
         return fallback;
@@ -241,6 +343,10 @@ std::string ReadIni(std::string const& section, char const* key, char const* fal
 }
 
 void WriteIni(std::string const& section, char const* key, std::string const& value) {
+    if (shared::cf::Shared(section, key)) {
+        shared::Write({shared::cf::Set(section, key, value)}, "a calibration value");
+        return;
+    }
     std::wstring const& path = mevr::host::SettingsPath();
     if (!path.empty()) {
         WritePrivateProfileStringW(Wide(section).c_str(), Wide(key).c_str(), Wide(value).c_str(), path.c_str());
@@ -263,19 +369,27 @@ void CheckKey() {
     gKeyCalibrated = !ReadIni(Section(gKey), "time").empty();
     gKeyPrompted = cal::ListHas(ReadIni("Calibration", "prompted"), gKey);
     std::string const when = ReadIni(Section(gKey), "time");
-    log::Info("calibration: controllers {} (section [{}]): {}{}", gLabel, Section(gKey),
-        gKeyCalibrated ? "calibrated " + when : std::string("not calibrated"), gKeyPrompted ? ", prompted before" : "");
+    log::Info("calibration: controllers {} (section [{}] in {}, the three games' one): {}{}", gLabel, Section(gKey),
+        vr::calibration_file::kFileName, gKeyCalibrated ? "calibrated " + when : std::string("not calibrated"),
+        gKeyPrompted ? ", prompted before" : "");
 }
 
 void UpdateKey() {
-    std::string const key = gProfile.empty() ? std::string() : cal::ProfileKey(gProfile, gSystem);
+    std::string key = gProfile.empty() ? std::string() : cal::ProfileKey(gProfile, gSystem);
+    std::string label = gProfile.empty() ? std::string() : cal::ProfileLabel(gProfile, gSystem);
+    if (std::string const dev = DevKey(); !dev.empty() && key != dev) {
+        log::Info("calibration: [Debug] calibrationKey {} stands in for the runtime's controller type ({})", dev,
+            key.empty() ? std::string("none named") : key);
+        key = dev;
+        label = "[Debug] calibrationKey";
+    }
     if (key != gKey) {
         if (gRunning.exchange(false)) {
             gPaused.store(false);
             log::Info("calibration: cancelled: controller type changed; start again for the new controllers");
         }
         gKey = key;
-        gLabel = gProfile.empty() ? std::string() : cal::ProfileLabel(gProfile, gSystem);
+        gLabel = label;
         gKeyChecked = false;
         std::lock_guard lock(gStateMutex);
         std::snprintf(gHost.key, sizeof gHost.key, "%s", gKey.c_str());
@@ -1216,22 +1330,29 @@ void StepBody(XrPosef const& head, float dt) {
 
 // ---- Saving ------------------------------------------------------------------------------------------------
 
-void WriteStance(std::string const& section, char const* prefix, cal::Stance const& s, std::string const& note) {
+// A save's lines, written to the shared file in one move (shared::Write).
+struct SaveEdits {
+    std::string section;
+    std::vector<vr::calibration_file::Edit> edits;
+    void Put(std::string const& key, std::string const& value) { edits.push_back(vr::calibration_file::Set(section, key, value)); }
+};
+
+void WriteStance(SaveEdits& out, char const* prefix, cal::Stance const& s, std::string const& note) {
     std::string const p = prefix;
-    WriteIni(section, (p + "Trim").c_str(), cal::FormatRotation(s.trim));
-    WriteIni(section, (p + "Aims").c_str(), std::to_string(s.samples));  // 2: one aim left out after two tries
+    out.Put(p + "Trim", cal::FormatRotation(s.trim));
+    out.Put(p + "Aims", std::to_string(s.samples));  // 2: one aim left out after two tries
     if (!note.empty()) {
-        WriteIni(section, (p + "Note").c_str(), note);
+        out.Put(p + "Note", note);
     }
-    WriteIni(section, (p + "Line").c_str(), cal::FormatVector(s.line));
-    WriteIni(section, (p + "SpreadDeg").c_str(), Fixed(s.spreadDeg, 2));
-    WriteIni(section, (p + "EyeReliefM").c_str(), Fixed(s.eyeRelief));
+    out.Put(p + "Line", cal::FormatVector(s.line));
+    out.Put(p + "SpreadDeg", Fixed(s.spreadDeg, 2));
+    out.Put(p + "EyeReliefM", Fixed(s.eyeRelief));
     if (s.hasLeft) {
-        WriteIni(section, (p + "Foregrip").c_str(), cal::FormatVector(s.foregrip));
-        WriteIni(section, (p + "LeftTrim").c_str(), cal::FormatRotation(s.leftTrim));
-        WriteIni(section, (p + "HandsLine").c_str(), cal::FormatVector(s.handsLine));
-        WriteIni(section, (p + "HandsSpreadDeg").c_str(), Fixed(s.handsSpreadDeg, 2));
-        WriteIni(section, (p + "Stock").c_str(), cal::FormatVector(s.stock));
+        out.Put(p + "Foregrip", cal::FormatVector(s.foregrip));
+        out.Put(p + "LeftTrim", cal::FormatRotation(s.leftTrim));
+        out.Put(p + "HandsLine", cal::FormatVector(s.handsLine));
+        out.Put(p + "HandsSpreadDeg", Fixed(s.handsSpreadDeg, 2));
+        out.Put(p + "Stock", cal::FormatVector(s.stock));
     }
 }
 
@@ -1267,66 +1388,53 @@ void Save() {
         return;
     }
     std::string const section = Section(gKey);
-    std::wstring const& path = mevr::host::SettingsPath();
     // What this run didn't measure keeps the last calibration's (2026-11-06: a run whose aiming board couldn't be shown saved
-    // without the gun stances and erased the player's): its lines, read before the section is cleared, by group.
-    std::vector<std::pair<std::wstring, std::wstring>> previous;
-    if (!path.empty()) {
-        std::wstring buffer(32768, L'\0');
-        DWORD const n = GetPrivateProfileSectionW(Wide(section).c_str(), buffer.data(), static_cast<DWORD>(buffer.size()), path.c_str());
-        for (std::size_t at = 0; at < n;) {
-            std::wstring const line(buffer.c_str() + at);
-            at += line.size() + 1;
-            if (auto const eq = line.find(L'='); eq != std::wstring::npos && !line.empty()) {
-                previous.emplace_back(line.substr(0, eq), line.substr(eq + 1));
-            }
-        }
-    }
-    if (!path.empty()) {
-        WritePrivateProfileStringW(Wide(section).c_str(), nullptr, nullptr, path.c_str());  // a calibration is a whole
-    }
+    // without the gun stances and erased the player's): its lines, read before the section is cleared, by group. The section
+    // is the shared file's (research/25 section 17): the same calibration in the three games.
+    std::vector<std::pair<std::wstring, std::wstring>> const previous = vr::calibration_file::SectionLines(shared::Path(), section);
+    SaveEdits out{section, {vr::calibration_file::RemoveSection(section)}};  // a calibration is a whole
     SYSTEMTIME t{};
     GetLocalTime(&t);
-    WriteIni(section, "profile", gProfile);
-    WriteIni(section, "system", gSystem);
-    WriteIni(section, "label", gLabel);
-    WriteIni(section, "position", gRun.seated ? "seated" : "standing");
+    out.Put("profile", gProfile);
+    out.Put("system", gSystem);
+    out.Put("label", gLabel);
+    out.Put("position", gRun.seated ? "seated" : "standing");
     if (gRun.haveStand) {
-        WriteIni(section, "heading", Fixed(gRun.anchor.yaw * 57.29578f, 1));
+        out.Put("heading", Fixed(gRun.anchor.yaw * 57.29578f, 1));
     }
     if (gRun.standEye) {
-        WriteIni(section, "standEyeM", Fixed(*gRun.standEye));
+        out.Put("standEyeM", Fixed(*gRun.standEye));
     }
     if (gRun.crouchEye) {
-        WriteIni(section, "crouchEyeM", Fixed(*gRun.crouchEye));
+        out.Put("crouchEyeM", Fixed(*gRun.crouchEye));
     }
     if (gRun.crouchDrop) {
-        WriteIni(section, "crouchDropM", Fixed(*gRun.crouchDrop));
+        out.Put("crouchDropM", Fixed(*gRun.crouchDrop));
     }
     if (gRun.haveT) {
-        WriteIni(section, "tPoseSpanM", Fixed(gRun.tSpan));
+        out.Put("tPoseSpanM", Fixed(gRun.tSpan));
     }
     if (gRun.shoulderWidth) {
-        WriteIni(section, "shoulderWidthM", Fixed(*gRun.shoulderWidth));
+        out.Put("shoulderWidthM", Fixed(*gRun.shoulderWidth));
     }
     if (gRun.armLength) {
-        WriteIni(section, "armLengthM", Fixed(*gRun.armLength));
+        out.Put("armLengthM", Fixed(*gRun.armLength));
     }
     for (int side : {0, 1}) {
         if (gRun.handTrim[side]) {
-            WriteIni(section, side == 0 ? "handTrimLeft" : "handTrimRight", cal::FormatRotation(*gRun.handTrim[side]));
+            out.Put(side == 0 ? "handTrimLeft" : "handTrimRight", cal::FormatRotation(*gRun.handTrim[side]));
         }
     }
     cal::Stance const& any = gRun.pistol.valid ? gRun.pistol : gRun.rifle;
     if (any.valid) {
-        WriteIni(section, "eye", any.eye == 0 ? "left" : "right");
-        WriteIni(section, "eyeMeasured", any.eyeMeasured ? "1" : "0");
+        out.Put("eye", any.eye == 0 ? "left" : "right");
+        out.Put("eyeMeasured", any.eyeMeasured ? "1" : "0");
     }
     if (gRun.pistol.valid) {
-        WriteStance(section, "pistol", gRun.pistol, gRun.pistolNote);
+        WriteStance(out, "pistol", gRun.pistol, gRun.pistolNote);
     }
     if (gRun.rifle.valid) {
-        WriteStance(section, "rifle", gRun.rifle, gRun.rifleNote);
+        WriteStance(out, "rifle", gRun.rifle, gRun.rifleNote);
     }
     {
         auto const starts = [](std::wstring const& key, wchar_t const* prefix) { return key.rfind(prefix, 0) == 0; };
@@ -1340,7 +1448,7 @@ void Save() {
             bool const eye = keepEye && (key == L"eye" || key == L"eyeMeasured");
             bool const hand = (key == L"handTrimLeft" && !gRun.handTrim[0]) || (key == L"handTrimRight" && !gRun.handTrim[1]);
             if (pistol || rifle || eye || hand) {
-                WritePrivateProfileStringW(Wide(section).c_str(), key.c_str(), value.c_str(), path.c_str());
+                out.edits.push_back({Wide(section), key, value});
                 std::string const group = pistol ? "pistol" : rifle ? "rifle" : eye ? "eye" : "neutral hands";
                 if (kept.find(group) == std::string::npos) {
                     kept += (kept.empty() ? "" : ", ") + group;
@@ -1351,8 +1459,12 @@ void Save() {
             log::Info("calibration: kept from the last calibration (not measured this time): {}", kept);
         }
     }    // The time last: the mod reads a section with a time as a calibration.
-    WriteIni(section, "time", std::format("{:04}-{:02}-{:02} {:02}:{:02}", t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute));
-    WriteIni("Calibration", "last", gKey);
+    out.Put("time", std::format("{:04}-{:02}-{:02} {:02}:{:02}", t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute));
+    out.edits.push_back(vr::calibration_file::Set("Calibration", "last", gKey));
+    if (!shared::Write(out.edits, "the calibration")) {
+        Say("The calibration couldn't be saved (the log says why).", true);
+        return;
+    }
     if (ReadIni("Calibration", "use").empty()) {
         WriteIni("Calibration", "use", "1");
     }
@@ -1370,7 +1482,7 @@ void Save() {
         std::lock_guard lock(gStateMutex);
         ++gHost.saves;
     }
-    log::Info("calibration: saved to [{}] ({}): {}", section, gLabel, ResultsLine());
+    log::Info("calibration: saved to [{}] in {} ({}): {}", section, ini::Utf8(shared::Path()), gLabel, ResultsLine());
 }
 
 // ---- The panel's buttons --------------------------------------------------------------------------------------
@@ -2063,6 +2175,22 @@ std::string StatusJson() {
         json::JsonNumber(gRun.held), anchor, json::JsonString(gKey), gRun.pistolAims.Count(), gRun.rifleAims.Count(),
         stance(gRun.pistol), stance(gRun.rifle), gRun.rightHeld ? "true" : "false", gRun.leftHeld ? "true" : "false",
         gPrompt.shown ? "true" : "false", gRun.weaponVisible ? "true" : "false");
+}
+
+std::map<std::string, std::string> SharedSection(std::string const& section) {
+    std::map<std::string, std::string> out;
+    for (auto const& [key, value] : shared::Section(section)) {
+        out.emplace(ini::Lower(key), value);
+    }
+    return out;
+}
+
+bool WriteShared(std::string const& section, std::string const& key, std::string const& value) {
+    bool const ok = shared::Write({vr::calibration_file::Set(section, key, value)}, "a calibration value");
+    if (ok && vr::calibration_file::SharedSection(section)) {
+        gManualDirty = true;  // ManualAdjustments reads it again
+    }
+    return ok;
 }
 
 std::string const& ProfileKey() { return gKey; }

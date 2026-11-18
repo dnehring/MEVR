@@ -35,6 +35,7 @@
 
 #include "core/Ini.hpp"
 #include "core/Log.hpp"
+#include "core/vr/CalibrationFile.hpp"
 #include "core/vr/CineScreen.hpp"
 #include "core/vr/ConversationWorld.hpp"
 #include "core/vr/PerformanceModes.hpp"
@@ -440,8 +441,8 @@ void Settings::Read(menu::Values& v) {
     flag("cal_running", cal.running);
     flag("manual_ready", !cal.key.empty() && !cal.running);
     std::string const manualSection = vr::manual_calibration::Section(cal.key);
-    if (!path.empty() && !cal.key.empty()) {
-        ini.sections[manualSection] = ReadSection(path, Wide(manualSection).c_str());
+    if (!cal.key.empty()) {
+        ini.sections[manualSection] = calibration::SharedSection(manualSection);  // the three games' one file (research/25 section 17)
     }
     for (auto const& f : vr::manual_calibration::kFields) {
         v.numbers[f.menu] = cal.key.empty() ? 0.0f
@@ -774,6 +775,13 @@ void Settings::Flush(bool all) {
     std::wstring const& path = mevr::host::SettingsPath();
     std::uint64_t const now = Now();
     for (ms::PendingWrites::Edit const& edit : pending_.TakeDue(now, all)) {
+        if (vr::calibration_file::Shared(edit.section, edit.key)) {
+            // The player's calibration (the play position, the manual offsets): the three games' one file, research/25 section 17.
+            bool const ok = calibration::WriteShared(edit.section, edit.key, edit.value);
+            log::Info("main menu: [{}] {} = {} in {}{}", edit.section, edit.key, edit.value, vr::calibration_file::kFileName,
+                ok ? "" : " (NOT saved)");
+            continue;
+        }
         if (path.empty()) {
             continue;
         }

@@ -1291,6 +1291,10 @@ Bundle Collect(Options const& options, Redactor const& redactor) {
     addFile("logs/reflect-check.json", {local / L"reflect-check.json"}, 0, 0);
 
     // ---- Settings.
+    // The player's calibration, one file for the three games since 2026-11-18 (research/25 section 17); redacted as the rest.
+    if (std::error_code exists; fs::exists(local / L"calibration.ini", exists)) {
+        addFile("settings/calibration.ini", {local / L"calibration.ini"}, 0, 0);
+    }
     if (game) {
         addFile(modIniName, {layout.Full(p.modIni)}, 0, 0);
         addFile(rendererIniName, {layout.Full(p.rendererIni)}, 0, 0);

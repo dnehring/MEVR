@@ -12377,6 +12377,7 @@ int RunBodySlotsSmgTests();
 int RunFloorLockTests();
 int RunReloadGestureTests();
 int RunManualCalibrationTests();
+int RunCalibrationFileTests();
 int RunCalibrationWeaponTests();
 int RunCameraDiagnosticTests();
 int RunLandmarkTests();
@@ -12616,6 +12617,7 @@ int main() {
     gFailures += RunFloorLockTests();
     gFailures += RunReloadGestureTests();
     gFailures += RunManualCalibrationTests();
+    gFailures += RunCalibrationFileTests();
     gFailures += RunCalibrationWeaponTests();
     gFailures += RunCameraDiagnosticTests();
     gFailures += RunLandmarkTests();

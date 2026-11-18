@@ -825,7 +825,8 @@ Outcome Uninstall(Layout const& layout, bool keepUserData, fs::path const& runni
         if (!local.empty() && fs::exists(local, ec)) {
             fs::remove_all(local, ec);
             tx.Note(ec ? "warning: couldn't delete all of " + detect::Utf8(local.wstring()) + " (" + ec.message() + ")"
-                       : "deleted " + detect::Utf8(local.wstring()) + " (snapshots, recordings, frame timing, crash reports, downloads)");
+                       : "deleted " + detect::Utf8(local.wstring()) +
+                             " (the calibration the three games share, snapshots, recordings, frame timing, crash reports, downloads)");
         }
     }
     return Finish(tx, ok);

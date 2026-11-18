@@ -1497,6 +1497,7 @@ if (MEVR_BUILD_TESTS)
         tests/FloorLockTests.cpp
         tests/ReloadGestureTests.cpp
         tests/ManualCalibrationTests.cpp
+        tests/CalibrationFileTests.cpp
         tests/CalibrationWeaponTests.cpp
         tests/CameraDiagnosticTests.cpp
         tests/LandmarkTests.cpp
