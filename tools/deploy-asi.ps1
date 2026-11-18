@@ -81,6 +81,17 @@ if ($hotReload) {
     $mod = Join-Path $out "${name}_mod.dll"
     [IO.File]::WriteAllText($modPathFile, $mod)
     Write-Output "Hot reload: $name.modpath -> $mod"
+    # Without the .modpath the host loads ASI\<GAME>MEVR_mod.dll, so that copy must match the host too: on 2026-11-17 a
+    # Nov 9 mod left there ran under a new host once the .modpath had gone (Thespian and the voice orders off, sizes unequal).
+    $asiMod = Join-Path $asiDir "${name}_mod.dll"
+    try {
+        Copy-Item $mod $asiMod -Force
+        $modPdb = [IO.Path]::ChangeExtension($mod, '.pdb')
+        if (Test-Path $modPdb) { Copy-Item $modPdb ([IO.Path]::ChangeExtension($asiMod, '.pdb')) -Force }
+        Write-Output "Mod fallback: $asiMod (the same build)"
+    } catch {
+        Write-Warning "Couldn't refresh $asiMod (locked while the game runs?): without the .modpath the host would load that older copy"
+    }
 } elseif (Test-Path $modPathFile) {
     Remove-Item $modPathFile -Confirm:$false
 }

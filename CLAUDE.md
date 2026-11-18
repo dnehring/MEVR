@@ -1697,8 +1697,9 @@ switching frameworks.
   **BIOEngine.ini's `[SystemSettings]` wins over GamerSettings'** for `DynamicShadows` and `MotionBlur` (measured
   2026-10-23, research/35), and the game rewrites that file (after every `scale set`; a launch put the defaults
   back once), so **the mod applies the VR values itself** (`game/SystemSettings`, hot-reloaded): `scale set
-  DynamicShadows False` on ME1 (its cost lever; **ME2 and ME3 `True`** since 2026-11-17, the owner: 0.2-0.3 ms there and each
-  eye a render of its own, `engine::adapter::kVrDynamicShadows`; `vr-game-settings.ps1` and Setup write False for LE1 only),
+  DynamicShadows False` on every game (ME1's cost lever; on ME2 and ME3 since the owner's ME2 test of 2026-11-17 night: the
+  shadows differed between the eyes, "disable the shadows entirely for both eyes"; there `LightEnvironmentShadows False`
+  always too, `engine::adapter::kVrDynamicShadows`, `kVrCharacterShadowsOff`; Setup's sequel path still writes the game's),
   `MotionBlur False`, `FoliageDrawRadiusMultiplier 0.5` (and `LightEnvironmentShadows False` while
   the second eye is a replay, sharePass 2/3/5: the right eye drew character shadows where the left eye sees them, research/37
   2026-11-13; **the host says whether it is**, HostServices v43 `secondEyeIsReplay` = `render_levers::SecondEyeIsReplay()`,

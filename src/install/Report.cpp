@@ -769,6 +769,9 @@ LogFacts ReadLogFacts(std::string_view modLog, std::string_view halcyonLog) {
     });
     std::string halcyonRuntime, halcyonSystem;
     Lines(halcyonLog, [&](std::string_view line) {
+        if (line.find(" | [XR] xrCreateInstance (") != std::string_view::npos) {
+            f.xrCreateInstancePending = line.find(") starting (pid ") != std::string_view::npos;
+        }
         if (line.find("[XR] recommended eye image ") != std::string_view::npos) {
             std::string_view v = line.substr(line.find("[XR] recommended eye image ") + 27);
             f.eyeSize = std::string(v.substr(0, v.find(';')));
@@ -918,6 +921,9 @@ std::string Headline(Bundle const& b) {
         }
         return "Crash: " + e;
     }
+    if (b.facts.xrCreateInstancePending && (b.problems.items.empty() || b.problems.items.front().level != "error")) {
+        return "OpenXR instance creation has no result in the renderer log";
+    }
     for (Problem const& p : b.problems.items) {
         return (p.level == "error" ? "Error: " : "Warning: ") + Cut(p.text, 160);
     }
@@ -983,6 +989,9 @@ std::string BuildWith(Bundle const& b, std::size_t problemLimit, std::size_t dif
     md += "\n";
 
     md += "## What went wrong\n\n";
+    if (x.facts.xrCreateInstancePending) {
+        md += "The latest renderer log records the start of `xrCreateInstance` and has no result for that call. See logs/MELEVR_Log.txt.\n\n";
+    }
     if (x.crash.present) {
         md += x.crash.stale ? "### An earlier crash (before the last two sessions: maybe not this problem)\n\n" : "### The game crashed\n\n";
         md += std::format("- When: {}\n- Exception: {}\n- Faulting module+offset: {}\n", Or(x.crash.when), x.crash.exception, Or(x.crash.location));
@@ -1053,8 +1062,9 @@ std::string BuildWith(Bundle const& b, std::size_t problemLimit, std::size_t dif
         md += ".\n";
     }
     md += "\nFor an assistant reading the zip: logs/LE1MEVR.log is the mod's own log of this session (lines \"[time] [level] text\"); "
-          "logs/SetupLaunch.log records Setup's Steam launch attempts and Windows errors; "
+          "logs/SetupLaunch.log records Setup's runtime check and game launch attempts; "
           "logs/MELEVR_Log.txt is the renderer's (Halcyon's) log of its last session; logs/MEVRLoader.log (or LEBinkProxy's bink2w64_proxy.log) is the ASI loader's; "
+          "logs/MEVRLauncherLoader.log (if included) comes from the Legendary Edition picker; "
           "perf/ (if included) is a frame-timing capture: tools/perf-probe.py in the repository reads it; "
           "system/folders.txt lists the game's Win64 and ASI folders (other mods' DLLs there can conflict).\n\n";
     if (x.game != GameId::LE1) {
@@ -1260,6 +1270,10 @@ Bundle Collect(Options const& options, Redactor const& redactor) {
         }
         if (proxy) {
             addFile("logs/bink2w64_proxy.log", {logs / L"bink2w64_proxy.log"}, 0, 0);
+        }
+        fs::path const launcherLog = layout.Full(paths::kLauncherLoaderLog);
+        if (fs::exists(launcherLog, exists)) {
+            addFile("logs/MEVRLauncherLoader.log", {launcherLog}, 0, 256u << 10);
         }
     } else {
         b.missing.push_back("logs/MEVRLoader.log");

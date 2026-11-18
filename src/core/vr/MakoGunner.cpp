@@ -32,17 +32,20 @@ Control Step(ControlState& state, Hands const& hands, double now, Settings const
         return state.control;
     }
     if (hands.busy) {
-        state.control = Control::Gunner;  // the hand on the panel isn't aiming, and its grip or trigger isn't a takeover
+        state.control = hands.hasTarget && !hands.scopeAiming ? Control::Gunner : Control::Hand;
         return state.control;
     }
-    if (StickAims(hands, settings)) {
+    if (StickAims(hands, settings) || (hands.scopeAiming && hands.stickHeld)) {
         state.control = Control::Stick;
         state.lastManual = now;
-    } else if (HandAims(hands)) {
+    } else if (HandAims(hands) || (hands.scopeAiming && hands.handFree)) {
         state.control = Control::Hand;
         state.lastManual = now;
-    } else if (state.control != Control::Gunner && now - state.lastManual >= settings.handbackS) {
+    } else if (hands.hasTarget && !hands.scopeAiming &&
+               (state.control == Control::Gunner || now - state.lastManual >= settings.handbackS)) {
         state.control = Control::Gunner;
+    } else if (!hands.hasTarget || state.control == Control::Gunner || (state.control == Control::Stick && !hands.stickHeld)) {
+        state.control = hands.stickHeld ? Control::Stick : Control::Hand;
     }
     return state.control;
 }
@@ -144,8 +147,8 @@ std::string Describe(Settings const& s) {
     if (!s.on) {
         return "no gunner: you aim the turret ([Mako] gunner = 0)";
     }
-    return std::format("a gunner aims at hostiles within {:.0f} m and fires the machine gun{}; your thumbstick or your aiming right hand takes "
-                       "the gun, the gunner's again {:.1f} s after",
+    return std::format("a gunner engages visible hostiles within {:.0f} m with the machine gun{} after {:.1f} s without manual aim; "
+                       "the player keeps control while scoped or when no target is visible",
         s.rangeM, s.cannon ? std::format(" and the cannon at targets {:.1f} m wide or {} together within {:.0f} m", s.bigRadiusM * 2.0f,
                                          s.crowdCount, s.crowdRadiusM) : std::string(), s.handbackS);
 }

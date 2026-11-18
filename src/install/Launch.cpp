@@ -310,7 +310,8 @@ Result StartGame(fs::path const& gameRoot, GameId game, bool steam) {
     r.started = true;
     r.pid = process.dwProcessId;
     r.message = "Started Mass Effect (" + detect::Utf8(Le1Arguments(config)) + ")";
-    LogLaunch(r.message);
+    LogLaunch("Windows created MassEffect1.exe pid=" + std::to_string(r.pid) +
+        " (compare with the PID in LE1MEVR.log to trace the handoff)");
     CloseHandle(process.hThread);
     CloseHandle(process.hProcess);
     if (game != GameId::LE1) {
@@ -474,30 +475,36 @@ Result StartLe1WithVr(std::filesystem::path const& gameRoot, bool steam, std::st
             hooks.progress(step, percent);
         }
     };
-    auto post = [&](std::string const& line, bool warning) {
+    auto postRuntime = [&](std::string const& line, bool warning) {
+        LogLaunch(line);
         if (hooks.post) {
             hooks.post(line, warning);
         }
     };
     auto cancelled = [&] { return hooks.cancelled && hooks.cancelled(); };
     rs::Plan const plan = rs::PlanFor(runtimeKind, runtimeManifest);
-    if (plan.action == rs::Action::StartSteamVr && !rs::SteamVrRunning()) {
+    LogLaunch("OpenXR runtime selected by Setup: " + std::string(runtimeKind.empty() ? "none" : runtimeKind));
+    bool const steamVrRunning = plan.action == rs::Action::StartSteamVr && rs::SteamVrRunning();
+    if (steamVrRunning) {
+        LogLaunch("SteamVR's server and compositor were already running (process check).");
+    } else if (plan.action == rs::Action::StartSteamVr) {
         progress("Starting SteamVR", 0);
         if (!rs::StartSteamVr(plan)) {
-            post("Couldn't start SteamVR: starting the game anyway. If VR stays off, start SteamVR yourself, quit the game and Launch again.", true);
+            postRuntime("Couldn't start SteamVR: starting the game anyway. If VR stays off, start SteamVR yourself, quit the game and Launch again.", true);
         } else {
-            post("Started SteamVR; waiting for it (at most " + std::to_string(static_cast<int>(rs::kSteamVrWaitS)) + " s).", false);
+            postRuntime("Asked SteamVR to start. Waiting for its server and compositor (at most " +
+                    std::to_string(static_cast<int>(rs::kSteamVrWaitS)) + " s).", false);
             auto const t0 = std::chrono::steady_clock::now();
             for (;;) {
                 double const waited = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
                 rs::Gate const gate = rs::Step(rs::SteamVrRunning(), waited);
                 if (gate == rs::Gate::Go) {
-                    post("SteamVR is up.", false);
+                    postRuntime("SteamVR's server and compositor are running (process check).", false);
                     break;
                 }
                 bool const stop = cancelled();
                 if (gate == rs::Gate::GoTimedOut || stop) {
-                    post(stop ? "Stopped waiting for SteamVR: starting the game now. If VR stays off, quit the game once SteamVR is up and Launch again."
+                    postRuntime(stop ? "Stopped waiting for SteamVR: starting the game now. If VR stays off, quit the game once SteamVR is up and Launch again."
                               : "SteamVR isn't up after a minute (is the headset on and connected?): starting the game anyway. If VR stays off, quit the "
                                 "game once SteamVR shows the headset and Launch again.",
                         true);
@@ -509,7 +516,9 @@ Result StartLe1WithVr(std::filesystem::path const& gameRoot, bool steam, std::st
         }
     }
     Result const r = StartLe1(gameRoot, steam);
-    post(r.message, !r.started);
+    if (hooks.post) {
+        hooks.post(r.message, !r.started);
+    }
     return r;
 }
 

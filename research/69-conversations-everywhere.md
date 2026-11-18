@@ -4046,6 +4046,27 @@ interactions that happen across all three games."
 5. **Sit-downs elsewhere in LE1:** the scan names none; finding them needs the gesture names on `BioEvtSysTrackGesture`
    (sit, chair, bench, couch), which the scan doesn't record yet. For ME2 and ME3 the list starts from their scans (T49).
 
+### The eyes at the player's height in a held conversation (2026-11-17; item 44)
+
+**The owner, 2026-11-17, in the headset at the council hearing (save 80, build 6f1eb30):** "my height is closer, but I'm still
+floating above where I should be" (at the podium). Measured live: Shepard's pawn at z 62151 with a cylinder of 88 units, so the
+podium's floor at 62063; the drawn eye centre (snapshot `floorLock.centreZ`, the held camera plus the host's offset, which carries
+the head's own pose) at 62253: 1.90 m, against the player's calibrated 1.84 m (live STAGE eye 1.82): 6-8 cm high. The staged
+opening takes the hold from his head bone (`FinishOpening`, `MarkHeadOf` scaled about the floor), whose height follows the
+hearing's pose; the floor lock stands down in mode 5 (`active: false`). In the talk with Anderson after it the same rule left the
+eyes 1.73 m over the traced floor (8 cm low).
+
+**The fix, `StepEyeHeight`** (each tick of a conversation in the world, before the frame is built): while the view stands at
+Shepard's pawn (not detached, not seated), the host's drawn centre (`view.centreZ`) is brought to his cylinder floor
+(`Location.z - CollisionHeight`, the floor lock's) plus the live standing eye (`view.stageEyeM`, else `gFloorNow`): 1 m/s in the
+opening's first 1.5 s, 0.3 m/s after, nothing within 1 cm; `gC.follow.place` moves with it. Logs `convo: at N s the drawn eyes
+are X m over the floor under Shepard, the player's Y m: the view goes up|down by Z m` and at the end `convo: the eyes' height was
+brought to the player's ...`. Not in moments yet (`TickMoment`). [verify] in the headset: the podium.
+
+**The same session's frame rate:** the game renders a 3840x3840 window for a 2688x2880 eye at 120 Hz; the GPU averages 11.1 ms
+(Halcyon's `[GPU]`; the probe `2026-11-17_22-54-03-council-convo`) against 8.33 ms, so frames are reprojected (the parallax that
+"doesn't feel quite correct"). The menu's Display > Performance > Balanced (0.85 of the eye, FSR) after a restart.
+
 Check on the fake headset: Chora's Den (`conversation-launch.ps1 sta60_stripperseat -World on -Snapshot`): the opening a cut
 under the fade, `Shepard sits down`, a snapshot from the seat facing the dancer, the stick doesn't walk, `Shepard gets up` at the
 end.

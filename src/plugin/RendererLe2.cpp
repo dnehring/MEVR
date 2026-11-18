@@ -57,6 +57,7 @@ Caps const& Capabilities() noexcept {
         c.metricStereo = true;       // MevrSeams::PlanStereo: each pass from its eye's real place (research/30 section 9)
         c.perEyeFrustum = true;      // mode 2 where the window holds the eyes (src/halcyon/MevrMetricView.h)
         c.ownMenuRows = true;
+        c.panelsInRoom = true;       // MevrSeams::PlacePanel places every flat panel (plugin/WorldPanels), as ME1 and ME3
         return c;
     }();
     return caps;

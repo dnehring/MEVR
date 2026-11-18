@@ -39,6 +39,7 @@ namespace
 constexpr std::uintptr_t kCalcSceneViewRva = 0x4C5300;
 constexpr std::uintptr_t kFViewportClientDrawRva = 0x4C71A0;
 constexpr std::uintptr_t kFViewportClientDrawEndRva = 0x4C9434;
+constexpr std::uintptr_t kDesignerUiUpdateTimerRva = 0x9FAD70;
 constexpr std::uintptr_t kGameplayCalcSceneViewReturnRva = 0x4C7A4E;
 // [MEVR] research/51 8.3: native player world-to-pixel helper (0xCBB830), used by the map's label update (0xC40B10).
 constexpr std::uintptr_t kWorldToPixelCalcSceneViewReturnRva = 0xCBB9F0;
@@ -2948,6 +2949,46 @@ unsigned long SfrGuardedReplay(void* self, void* viewport, void* canvas, int* st
     return code;
 }
 
+using DesignerUiUpdateTimerFn = void(__fastcall*)(void*, int, float);
+DesignerUiUpdateTimerFn g_origDesignerUiUpdateTimer = nullptr;
+
+void __fastcall HookDesignerUiUpdateTimer(void* handler, int modal, float deltaSeconds) noexcept
+{
+    // [MEVR] Draw ticks BioSFManager at 0x4C8360 with the frame's delta. It reaches
+    // the Designer UI's modal and passive timers through the panel tick. An actual
+    // second-eye Draw would subtract the same delta again and end the Ilos run early.
+    if (!t_fvcReplay)
+        g_origDesignerUiUpdateTimer(handler, modal, deltaSeconds);
+}
+
+void InstallDesignerUiTimerGuard(BYTE* base) noexcept
+{
+    constexpr BYTE entry[] = {0x40, 0x57, 0x48, 0x83, 0xEC, 0x50, 0x48, 0xC7, 0x44, 0x24, 0x20,
+                              0xFE, 0xFF, 0xFF, 0xFF, 0x48, 0x89, 0x5C, 0x24, 0x60};
+    if (!RvaRangeValid(kDesignerUiUpdateTimerRva, sizeof(entry), ModuleImageSize(base)) ||
+        std::memcmp(base + kDesignerUiUpdateTimerRva, entry, sizeof(entry)) != 0)
+    {
+        LogLine("[SFR] Designer UI timer guard skipped: unexpected native entry");
+        return;
+    }
+    void* target = base + kDesignerUiUpdateTimerRva;
+    const MH_STATUS create = MH_CreateHook(target, reinterpret_cast<void*>(&HookDesignerUiUpdateTimer),
+                                           reinterpret_cast<void**>(&g_origDesignerUiUpdateTimer));
+    if (create != MH_OK)
+    {
+        LogLine("[SFR] Designer UI timer guard create failed: " + std::to_string(static_cast<int>(create)));
+        return;
+    }
+    const MH_STATUS enable = MH_EnableHook(target);
+    if (enable != MH_OK)
+    {
+        MH_RemoveHook(target);
+        LogLine("[SFR] Designer UI timer guard enable failed: " + std::to_string(static_cast<int>(enable)));
+        return;
+    }
+    LogLine("[SFR] Designer UI timers advance on the primary draw only");
+}
+
 void __fastcall HookFViewportClientDraw(void* self, void* viewport, void* canvas) noexcept
 {
     const uint64_t seq = g_fvcDrawSeq.fetch_add(1, std::memory_order_acq_rel) + 1;
@@ -3143,6 +3184,7 @@ bool Install() noexcept
         return false;
     }
 
+    InstallDesignerUiTimerGuard(base);
     const bool fvcProbes = MarkerEnabled(L"MELEVR_ENABLE_FVC_PROBES.txt");
     g_fvcProbeHooksEnabled.store(fvcProbes, std::memory_order_release);
     // [SFR] Stereo 2 rides the FViewportClient::Draw detour, and the mode can be switched on at any

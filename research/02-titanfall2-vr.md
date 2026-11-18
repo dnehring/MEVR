@@ -1,5 +1,9 @@
 # 02: Titanfall 2 VR (CircuitLord)
 
+Later launch investigation (2026-11-08): [research/64](64-vr-launch-continuity.md#ea-owned-launch-follow-up-titanfall-reports-and-source-trace)
+traces EA-owned installs through the public installer and its pinned Northstar launcher, with related issue reports.
+The original survey below retains its October findings.
+
 ## Status and licensing
 
 - **Public release:** 30 Sep 2026, per a ResetEra thread edit. Earlier coverage called it an alpha.

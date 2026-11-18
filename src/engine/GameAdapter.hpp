@@ -259,17 +259,21 @@ inline constexpr bool kOlderHostReplaysSecondEye = false;
 #endif
 
 // The engine's dynamic shadows in VR (game/SystemSettings' built-in `DynamicShadows`; a player's [SystemSettings]
-// DynamicShadows still wins). A per-game cost decision, not the second eye's: ME1 keeps them off, its cost lever since
-// research/35 (366 shadow draws and 0.6 ms a frame; with the grass radius the render thread at a heavy Eden Prime spot
-// went from 9.35 to 6.88 ms), whatever sharePass says; tying them to the replay would turn them on for an ME1 player
-// with sharePass 0, which no one chose. The sequels keep them on (the owner, 2026-11-17): measured at 0.2-0.3 ms of render
-// work on ME2 and nothing measurable on ME3 (research/sequel-render-levers.md, "DynamicShadows True costs 0.2-0.3 ms"),
-// and each of their eyes is a render of its own, so the shadows lie under their owners in both eyes (the same research,
-// lane GF2's same-pose pair at Freedom's Progress).
-#if defined(MEVR_GAME_LE1)
+// DynamicShadows still wins). Off on every game. ME1: its cost lever since research/35 (366 shadow draws and 0.6 ms a
+// frame; with the grass radius the render thread at a heavy Eden Prime spot went from 9.35 to 6.88 ms), whatever sharePass
+// says. The sequels had them on from the morning of 2026-11-17 (0.2-0.3 ms on ME2, each eye a render of its own:
+// research/sequel-render-levers.md) until the owner's headset test the same night: the shadows differed between the left
+// and the right eye on ME2, as ME1's did, and the owner asked for them off in both eyes.
 inline constexpr bool kVrDynamicShadows = false;
+
+// The light environments' character shadows (game/SystemSettings' `LightEnvironmentShadows`; a player's [SystemSettings]
+// value still wins). ME1 turns them off only while the host's second eye is a replay (HostServices v43); the sequels
+// always (the owner, 2026-11-17: "disable the shadows entirely for both eyes"; DynamicShadows False alone left ME1's
+// character shadows drawn, research/37 2026-11-13).
+#if defined(MEVR_GAME_LE1)
+inline constexpr bool kVrCharacterShadowsOff = false;
 #else
-inline constexpr bool kVrDynamicShadows = true;
+inline constexpr bool kVrCharacterShadowsOff = true;
 #endif
 
 // Where the layer finds the engine's globals: an RVA (fast; right for 2.0.0.48602) and a byte

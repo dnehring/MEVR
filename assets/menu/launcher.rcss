@@ -1,0 +1,27 @@
+/* SPDX-License-Identifier: MIT */
+body { decorator: none; background-color: #0c1723; border: 1dp #4c7389; }
+.brand { width: 300dp; }
+.picker { padding: 38dp 48dp 20dp 48dp; flex: 1; }
+.eyebrow { color: #7CCBF2; font-family: Rajdhani; font-weight: 600; font-size: 17dp; letter-spacing: 0.22em; }
+.headline { font-family: Rajdhani; font-weight: 700; font-size: 52dp; margin-top: 3dp; }
+.intro { color: #AEB4B9; font-size: 21dp; margin-top: 4dp; }
+.games { display: flex; gap: 24dp; margin-top: 28dp; }
+.game { width: 400dp; height: 340dp; padding: 20dp 26dp; border: 1dp #365064; background-color: #102131; }
+.available { border-color: #7CCBF2; background-color: #172f43; }
+.number { font-family: Rajdhani; font-size: 60dp; font-weight: 700; color: #7CCBF2; line-height: 62dp; }
+.game-name { font-family: Rajdhani; font-weight: 700; font-size: 30dp; margin-top: 6dp; letter-spacing: 0.04em; }
+.game-note { color: #AEB4B9; font-size: 17dp; }
+.rule { height: 1dp; background-color: #365064; margin: 18dp 0dp; }
+.game-copy { height: 60dp; font-size: 18dp; line-height: 26dp; color: #c4cbd1; }
+.game .btn { margin-top: 22dp; width: auto; height: 56dp; justify-content: center; display: flex; }
+.unavailable { opacity: 0.5; }
+.unavailable-label { margin-top: 36dp; font-size: 18dp; }
+.launch-status { margin-top: 24dp; padding: 16dp 22dp; background-color: #152737; border-left: 3dp #7CCBF2; }
+.launch-status.warning { border-left-color: #FF8F3F; }
+.status-title { font-size: 23dp; font-family: Rajdhani; font-weight: 600; }
+.status-detail { font-size: 18dp; color: #c4cbd1; margin-top: 4dp; }
+.launcher-footer { display: flex; justify-content: space-between; padding: 18dp 48dp; border-top: 1dp #365064; color: #AEB4B9; font-size: 17dp; }
+/* Once the game renders, only a passive note remains. Do not draw buttons after releasing their input. */
+body.passive { background-color: transparent; border-width: 0dp; }
+.passive .top, .passive .picker, .passive .launcher-footer { display: none; }
+.passive-notice { position: absolute; left: 180dp; top: 680dp; width: 1020dp; padding: 24dp 30dp; background-color: #102131; border: 1dp #4c7389; }

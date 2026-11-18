@@ -7,6 +7,9 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## Unreleased
 
+- **More useful startup reports.** Setup distinguishes an installed mod from a headset check. Launch logs record the
+  runtime and process startup, and reports can identify an OpenXR instance creation that started without returning.
+
 ## 0.3.2 (2026-11-15)
 
 - **First-person conversations (experimental): no more floating at the Council.** With a body scale above 1, opening the

@@ -121,7 +121,7 @@ std::string GamersValue(fs::path const& settingsFile, wchar_t const* key) {
 }
 
 // The built-in values, then the file's section over them (a key the file sets replaces the built-in one; apply = 0
-// returns nothing). DynamicShadows is the game's (engine::adapter::kVrDynamicShadows): off on ME1, on on the sequels.
+// returns nothing). DynamicShadows is the game's (engine::adapter::kVrDynamicShadows): off on every game.
 std::vector<Setting> Wanted(fs::path const& path, bool secondEyeIsReplay) {
     std::vector<Setting> wanted{
         {"DynamicShadows", engine::adapter::kVrDynamicShadows ? "True" : "False"},
@@ -138,7 +138,9 @@ std::vector<Setting> Wanted(fs::path const& path, bool secondEyeIsReplay) {
     // player's own value (GamerSettings.ini's) is put back, since the game wrote our earlier False into BIOEngine.ini's
     // [SystemSettings], which wins over GamerSettings' at the next launch (research/35), so leaving the key alone would
     // leave the workaround in force for good. No value of the player's: the key isn't touched.
-    if (secondEyeIsReplay) {
+    // The sequels keep them off whatever the second eye is (engine::adapter::kVrCharacterShadowsOff: the owner, 2026-11-17,
+    // the shadows differed between the eyes on ME2).
+    if (secondEyeIsReplay || engine::adapter::kVrCharacterShadowsOff) {
         wanted.push_back({"LightEnvironmentShadows", "False"});
     } else if (std::string const own = GamersValue(path, L"LightEnvironmentShadows"); SameKey(own, "True") || SameKey(own, "False")) {
         wanted.push_back({"LightEnvironmentShadows", SameKey(own, "True") ? "True" : "False"});
@@ -188,7 +190,8 @@ void ObserveMode(std::optional<unsigned char> mode) {
 void Poll(float elapsed, std::optional<unsigned char> mode, bool motionBlurProtected,
           fs::path const& path, void const* world, std::optional<bool> hostSecondEyeIsReplay = std::nullopt) {
     bool const secondEyeIsReplay = hostSecondEyeIsReplay ? *hostSecondEyeIsReplay : ReplayByFile(path);
-    bool const replayChanged = gApplied && gReplayKnown && secondEyeIsReplay != gSecondEyeIsReplay;
+    bool const replayChanged = !engine::adapter::kVrCharacterShadowsOff && gApplied && gReplayKnown &&
+        secondEyeIsReplay != gSecondEyeIsReplay;  // a game whose character shadows are always off: nothing changes
     if (!gGuardPolicyKnown || gMotionBlurProtected != motionBlurProtected) {
         gGuardFallbackPending = gGuardFallbackPending || (gMotionBlurProtected && !motionBlurProtected);
         gGuardPolicyKnown = true;

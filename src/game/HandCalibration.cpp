@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "game/HandCalibration.hpp"
+#include "core/vr/MakoSeat.hpp"
 #include "game/BodyCalibration.hpp"
 
 #include "core/Ini.hpp"
@@ -823,6 +824,7 @@ constexpr char const* kCockpitBlock =
     "; past it by 0.10); hazardWash: 1 = the whole cabin goes red with the lamps, 0 = only the lamps.\n"
     "enabled = 1\n"
     "script = cockpit\\cockpit.txt\n"
+    "; seatPosition = top selects V1, bottom selects V2. Leave it unset to use the script above.\n"
     "followCamera = 1\n"
     "seated = 1\n"
     "hazard = 1\n"
@@ -2114,6 +2116,11 @@ Cockpit ReadCockpit(Ini const& ini) {
     }
     if (auto const text = ini::Get(ini, "Cockpit", "script"); text && !Strip(*text).empty()) {
         c.script = Strip(*text);
+    }
+    if (auto const seat = vr::mako_seat::Parse(ini::Get(ini, "Cockpit", "seatPosition").value_or(""))) {
+        c.script = *seat == vr::mako_seat::Position::Bottom && vr::mako_seat::BottomAvailable(engine::SettingsFile().parent_path())
+            ? vr::mako_seat::kBottomScript
+            : vr::mako_seat::kTopScript;
     }
     if (Number(ini, "Cockpit", "followCamera", value)) {
         c.followCamera = value != 0.0;

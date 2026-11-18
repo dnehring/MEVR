@@ -642,12 +642,18 @@ void EnsureConvoFpOrigin(std::uintptr_t sv) noexcept
     // engine's CULL frustum -- but the final view matrix does not come out where those parameters say.
     // A build that disabled this in favour of the source write turned first-person conversations off
     // entirely (log: applied=0 skipped=0, the signature of this early return firing every frame).
-    if (!ME2VR::ConvoFp::IsArmed()) { g_convoFpSkips.fetch_add(1, std::memory_order_relaxed); return; }
-    // No CineVrConvo gate here any more. me2_xr now derives renderCineInVr from ConvoFp being enabled,
-    // so VR presentation is guaranteed whenever the mod is armed -- and gating on a toggle that only the
-    // checkbox handler ever set is exactly what made a fresh boot need an off/on cycle to come alive.
     ME2VR::ConvoFp::EyePose pose{};
-    if (!ME2VR::ConvoFp::GetEyePose(&pose)) { g_convoFpSkips.fetch_add(1, std::memory_order_relaxed); return; }
+    ME2VR::EngineProbe::SkycarSeatPose seat{};
+    const bool inSkycar = ME2VR::EngineProbe::GetSkycarSeatPose(seat);
+    if (inSkycar)
+    {
+        pose.x = seat.x; pose.y = seat.y; pose.z = seat.z; pose.baseYawDeg = seat.yawDeg;
+    }
+    else if (!ME2VR::ConvoFp::IsArmed() || !ME2VR::ConvoFp::GetEyePose(&pose))
+    {
+        g_convoFpSkips.fetch_add(1, std::memory_order_relaxed);
+        return;
+    }
 
     float cam[9] = {};   // camera axes in world space: right(0..2), up(3..5), forward(6..8)
     __try
@@ -692,7 +698,7 @@ void EnsureConvoFpOrigin(std::uintptr_t sv) noexcept
     // the destination is absolute (level, no roll, facing baseYaw), the director's framing cannot leak
     // in at all -- the result is bit-identical across every shot, so cuts cannot move the view.
     float yawRad = pose.baseYawDeg * (3.14159265358979f / 180.0f);
-    if (g_convoFpInvertFacing.load(std::memory_order_relaxed)) yawRad += 3.14159265358979f;
+    if (!inSkycar && g_convoFpInvertFacing.load(std::memory_order_relaxed)) yawRad += 3.14159265358979f;
     const float cy = std::cos(yawRad), sy = std::sin(yawRad);
     // UE3: X forward, Y right, Z up. Level camera => up is world up, right = up x forward.
     const float des[9] = { -sy, cy, 0.0f,      // right
@@ -724,7 +730,7 @@ void EnsureConvoFpOrigin(std::uintptr_t sv) noexcept
     }
     __except (EXCEPTION_EXECUTE_HANDLER) { return; }
 
-    g_convoFpApplies.fetch_add(1, std::memory_order_relaxed);
+    if (!inSkycar) g_convoFpApplies.fetch_add(1, std::memory_order_relaxed);
 }
 
 // Positional 6DOF: translate the camera by the head's physical movement (XR meters, relative to recenter),
@@ -1011,7 +1017,14 @@ void ApplyFov(std::uintptr_t sv) noexcept
     // gameplay untouched) and shrinks proportionally as the game zooms in below rest (ADS/sniper), so the
     // world MAGNIFIES into the fill. Because the render FOV tracks the game's zoom blend continuously, there
     // is NO pop/flash crossing into ADS. The submitted FOV is constant (headset), so the eye never jumps.
+    // [MEVR] No aim zoom in VR (the owner, 2026-11-17: aiming down an assault rifle or a shotgun magnified the whole view,
+    // "really disorienting ... should be thoroughly disabled"; ME1 never zooms the view, its scopes are a picture at the
+    // eyepiece, research/21): the render keeps the headset's window whatever the game's aim FOV.
+#if defined(MEVR_ASI)
+    const float frac = 1.0f;   (void)rest;
+#else
     const float frac = (gh < rest) ? (gh / rest) : 1.0f;   // 1.0 at rest, <1 zoomed in
+#endif
     const float renderH = th * frac;
     const float renderV = tv * frac;
     WidenProjection(sv, renderH, renderV);
@@ -1245,7 +1258,12 @@ void* __fastcall CalcViewDetour(void* lp, void* family, void* loc, void* rot, vo
     // Standing rule in this codebase: hook where the engine WRITES the value, not where it is
     // read. EnsureConvoFpOrigin still runs afterwards and simply finds nothing left to do (its deltas
     // go to zero), so it costs nothing and stays as a backstop if a path ever bypasses this.
-    if (isP1 && ME2VR::ConvoFp::IsArmed() && loc != nullptr && rot != nullptr)
+    ME2VR::EngineProbe::SkycarSeatPose skycarSeat{};
+    if (isP1 && loc != nullptr && rot != nullptr && ME2VR::EngineProbe::GetSkycarSeatPose(skycarSeat))
+    {
+        ConvoFpWriteSourcePose(loc, rot, skycarSeat.x, skycarSeat.y, skycarSeat.z, skycarSeat.yawDeg, 0.0f);
+    }
+    else if (isP1 && ME2VR::ConvoFp::IsArmed() && loc != nullptr && rot != nullptr)
     {
         ME2VR::ConvoFp::EyePose pose{};
         if (ME2VR::ConvoFp::GetEyePose(&pose))
@@ -1369,7 +1387,14 @@ void* __fastcall CalcViewDetour(void* lp, void* family, void* loc, void* rot, vo
             if (rest < 0.45f) rest = 0.61f;
             if (!(gh < 0.59f && !weaponOut))   // narrow + no weapon stays raw -> mono/cinematic detection intact
             {
+                // [MEVR] No aim zoom in VR (the owner, 2026-11-17: aiming down an assault rifle or a shotgun magnified the whole view,
+                // "really disorienting ... should be thoroughly disabled"; ME1 never zooms the view, its scopes are a picture at the
+                // eyepiece, research/21): the render keeps the headset's window whatever the game's aim FOV.
+#if defined(MEVR_ASI)
+                const float frac = 1.0f;   (void)rest;   // as ApplyFov
+#else
                 const float frac = (gh < rest) ? (gh / rest) : 1.0f;   // ADS zoom-fill, same as ApplyFov
+#endif
                 const float renderH = th * frac;
                 float deg = 2.0f * renderH * (180.0f / 3.14159265358979f);
                 if (deg > 170.0f) deg = 170.0f; else if (deg < 10.0f) deg = 10.0f;

@@ -860,9 +860,6 @@ void LogAnchor(hand_targets::Targets const& targets) {
         targets.body.unitsPerMeter);
 }
 
-// The ankle above the seat layout's heel point (on the floor), in metres.
-constexpr double kAnkleAboveHeelM = 0.08;
-
 // The Mako's seated driver (research/47 "Shepard in the seat"): game/cockpit_probe shows the driver and puts its hips on the
 // chair; here the legs reach the heels with the knees toward the layout's knees, and the hands go where the controllers are,
 // on a held control's grip. The torso keeps the animation's.
@@ -873,7 +870,7 @@ constexpr double kFistAlongKnuckle = 0.8;
 constexpr double kFistPalmward = 0.35;
 constexpr float kHeldIndexCurl = 0.5f;  // a held handle's index: at least this much of the trigger's curl
 
-void DriveSeated(cockpit_probe::Seat const& seat) {
+void DriveSeated(cockpit_probe::Seat const& seat, bool poseHands = true) {
     ue3::Object* const mesh = seat.mesh;
     if (player::SkeletalMesh(mesh) == nullptr || engine::skeleton::PoseParent(mesh) != nullptr) {
         return Stop("seated: the driver's mesh isn't usable");
@@ -934,15 +931,15 @@ void DriveSeated(cockpit_probe::Seat const& seat) {
         leg.keys[0] = info->bones.keys[chain->upper];
         leg.keys[1] = info->bones.keys[chain->fore];
         leg.keys[2] = info->bones.keys[chain->hand];
-        double const ankleUnits = kAnkleAboveHeelM * engine::kUnitsPerMeter;
-        leg.ankle = toComponent(seat.heel[side]) + up * ankleUnits;
+        double const ankleUnits = cockpit_probe::kAnkleAboveHeelM * engine::kUnitsPerMeter;
+        leg.ankle = seat.fixedAnkle[side] ? toComponent(*seat.fixedAnkle[side]) : toComponent(seat.heel[side]) + up * ankleUnits;
         leg.knee = toComponent(seat.knee[side]);
     }
     if (request.legs[kLeft].enabled || request.legs[kRight].enabled) {
         driven = "legs seated";
     }
     // The hands: the view's frame (the controllers where the player sees them), a held control's grip instead of the controller.
-    hand_targets::Targets const targets = hand_targets::Current(std::nullopt, true);
+    hand_targets::Targets const targets = poseHands ? hand_targets::Current(std::nullopt, true) : hand_targets::Targets{};
     vr::controllers::State const controllers = vr::controllers::Latest();
     gSource = targets.source;
     if (targets.source == hand_targets::Source::Controllers) {
@@ -1059,6 +1056,7 @@ void DriveSeated(cockpit_probe::Seat const& seat) {
         for (int side : {kLeft, kRight}) {
             vr::controllers::Hand& h = side == kLeft ? fingerState.left : fingerState.right;
             if (seat.held[side]) {
+                h.squeeze = 1.0f;
                 h.trigger = std::max(h.trigger, kHeldIndexCurl);
                 h.triggerTouch = true;  // round the handle, never lifted off it to point
             } else if (seat.pointing[side]) {
@@ -1555,6 +1553,14 @@ void Tick(float deltaSeconds, OverlayMenu const& menu) {
     gGunAimed = false;
     if (!gEnabled) {
         gGunAimedAndWritten = false;
+        if (engine::bone_pose::Installed() && cockpit_probe::FixedSeatPoseActive()) {
+            if (auto const seat = cockpit_probe::CurrentSeat()) {
+                DriveSeated(*seat, false);
+                LogStatusChange();
+                engine::bone_pose::LogFirstWrite();
+                return;
+            }
+        }
         if (gStatus != "off") {
             Stop("off");
             LogStatusChange();

@@ -7,8 +7,8 @@
 // The Mako's gunner (research/47 "The gunner", 2026-11-04): riding in the cockpit, a squadmate runs the turret: it picks the
 // nearest hostile it can see, aims, fires the machine gun in bursts and the cannon at big targets. The player takes the gun at
 // once by deflecting the stick's thumbstick (the turret by the stick, as before) or by aiming with the free right hand (off the
-// stick, the index finger on the trigger or pulling it, the ray out through the front); the gunner takes it back after
-// `handbackS` without either. The rules, engine-agnostic and unit-tested; game/mako_gunner reads the world and fires.
+// stick, the index finger on the trigger or pulling it, the ray out through the front). The gunner takes it back after
+// `handbackS` without either if it has a target. The scope keeps manual control. game/mako_gunner reads the world and fires.
 namespace mevr::vr::mako_gunner {
 
 struct Settings {
@@ -40,16 +40,17 @@ struct Hands {
     bool handIntent = false;    // its index finger on the trigger (the touch sensor) or pulling it
     bool handPointsOut = false;  // its ray leaves through the front (not at the floor or the seat)
     bool busy = false;          // a hand works the cockpit's panel (the repair button, the extraction handle): the gunner keeps the gun
+    bool scopeAiming = false;   // the player has the V2 scope open
+    bool hasTarget = false;     // a live hostile is visible to the gunner
 };
 
 struct ControlState {
-    Control control = Control::Gunner;
+    Control control = Control::Hand;
     double lastManual = -1e9;  // when the player last aimed
 };
 
-// Who aims this tick (`now` in seconds). Manual input wins at once; the gunner's again after `handbackS` without any. While the
-// hands are `busy` the gunner has it at once, whatever they do (the user, 2026-11-05: repairing or pulling the extraction handle,
-// "the aim should remain in auto mode"); afterwards the next manual input takes it again.
+// Manual input wins at once. The gunner needs a target and an idle player, or a target while the player works the panel.
+// The scope reserves aim for the player through pauses in input.
 Control Step(ControlState& state, Hands const& hands, double now, Settings const& settings);
 // The hand aims: free, intent, out through the front. The thumbstick aims: held and past the dead zone.
 bool HandAims(Hands const& hands);

@@ -294,6 +294,21 @@ void TestLogs() {
     RCHECK(f.interactionProfile == "left /interaction_profiles/sony/vr2_controller, right /interaction_profiles/sony/vr2_controller");
     RCHECK(f.eyeSize == "2824x2880");
     RCHECK(f.renderSize == "2400x2448");
+    RCHECK(!f.xrCreateInstancePending);
+
+    std::string const start =
+        "2026-10-26 01:40:44.601 | [XR] xrCreateInstance (XR_KHR_D3D11_enable) starting (pid 123, tid 456).\n";
+    report::Bundle xr;
+    xr.problems = report::ExtractProblems("[01:40:45.000] [warn] first-chance access violation\n");
+    xr.facts = report::ReadLogFacts({}, start + "2026-10-26 01:41:00.000 | desktop frames continue\n");
+    RCHECK(xr.facts.xrCreateInstancePending);
+    RCHECK(report::Headline(xr) == "OpenXR instance creation has no result in the renderer log");
+    RCHECK(Has(report::BuildReportMd(xr), "records the start of `xrCreateInstance` and has no result"));
+    for (std::string const result : {"XrResult 0", "XrResult -51"}) {
+        std::string const end = "2026-10-26 01:40:44.700 | [XR] xrCreateInstance (XR_KHR_D3D11_enable): " + result + " after 99 ms\n";
+        RCHECK(!report::ReadLogFacts({}, start + end).xrCreateInstancePending);
+    }
+    RCHECK(!report::ReadLogFacts({}, report::LastHalcyonSession(start + halcyon)).xrCreateInstancePending);
 }
 
 std::string const kCrash =

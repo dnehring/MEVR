@@ -1021,7 +1021,14 @@ void ApplyFov(std::uintptr_t sv) noexcept
     // shape outright, NOT to the game's FOV scaled uniformly. A uniform scale preserves the game's
     // 16:9 aspect, which can never match a near-square headset FOV - that mismatch was the letterbox,
     // and no resolution change could ever have fixed it.
+    // [MEVR] No aim zoom in VR (the owner, 2026-11-17: aiming down an assault rifle or a shotgun magnified the whole view,
+    // "really disorienting ... should be thoroughly disabled"; ME1 never zooms the view, its scopes are a picture at the
+    // eyepiece, research/21): the render keeps the headset's window whatever the game's aim FOV.
+#if defined(MEVR_ASI)
+    const float frac = 1.0f;   (void)rest;
+#else
     const float frac = (gh < rest) ? (gh / rest) : 1.0f;   // 1.0 at rest, <1 zoomed in
+#endif
     const float renderH = th * frac;
     const float renderV = tv * frac;
     WidenProjection(sv, renderH, renderV);
@@ -1406,7 +1413,14 @@ void* __fastcall CalcViewDetour(void* lp, void* family, void* loc, void* rot, vo
             }
             else if (gh >= 0.01f)
             {
+                // [MEVR] No aim zoom in VR (the owner, 2026-11-17: aiming down an assault rifle or a shotgun magnified the whole view,
+                // "really disorienting ... should be thoroughly disabled"; ME1 never zooms the view, its scopes are a picture at the
+                // eyepiece, research/21): the render keeps the headset's window whatever the game's aim FOV.
+#if defined(MEVR_ASI)
+                const float frac = 1.0f;   (void)rest;   // as ApplyFov
+#else
                 const float frac = (gh < rest) ? (gh / rest) : 1.0f;   // mirror gameplay zoom-fill
+#endif
                 renderH = th * frac;
             }
             if (renderH > 0.01f)

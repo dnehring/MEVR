@@ -22,6 +22,7 @@
 #include "plugin/Renderer.hpp"
 #include "plugin/TestLoop.hpp"
 #include "plugin/Voice.hpp"
+#include "plugin/WorldPanels.hpp"
 
 #include <openxr/openxr.h>
 
@@ -343,12 +344,32 @@ void OnSwapChainPresent(void* swapChain, void* capturedSwapChain) noexcept {
 } // namespace ME2VR::MevrBridge
 namespace MevrSeams {
 
-// ME2's PlacePanel: every flat panel keeps the renderer's own placement (`placed` false; capability panelsInRoom is ME3's).
-// The galaxy map isn't a flat panel while the mod holds it over the CIC's projector (MevrSeams::GalaxyOwnsPresentation in
-// d3d_capture.cpp's GetMenuMode); otherwise (no room, tracking or view) it is the renderer's flat panel, as on ME1.
-PanelPose PlacePanel(PanelKind /*kind*/, OverlayFrame const& /*frame*/, float const /*viewPosition*/[3], float /*widthM*/,
-    float /*heightM*/, bool /*imageReady*/) noexcept {
-    return PanelPose{};
+// ME2's PlacePanel: every flat panel in the room as on ME1 and ME3 (capability panelsInRoom; plugin/WorldPanels): the start
+// screens, the loading movies, the game's menus and the flat cine panel stand at the head's height and heading where they
+// appear, conversations and cutscenes one showing. The renderer's own pose was (0, 0, -d) in its LOCAL space, which until
+// a recenter is the runtime's LOCAL origin (on SteamVR often near the floor): the owner, 2026-11-17, "the menus will just
+// be at the floor", and opening one felt like rising 5 feet. The galaxy map isn't a flat panel while the mod holds it over
+// the CIC's projector (MevrSeams::GalaxyOwnsPresentation in d3d_capture.cpp's GetMenuMode); otherwise (no room, tracking
+// or view) it is this flat panel, as on ME1.
+PanelPose PlacePanel(PanelKind /*kind*/, OverlayFrame const& frame, float const viewPosition[3], float widthM, float heightM,
+    bool /*imageReady*/) noexcept {
+    namespace wp = mevr::host::world_panels;
+    namespace ga = mevr::engine::adapter;
+    auto const mode = ga::GameMode(frame.gameMode);
+    auto const kind = mode == ga::Mode::Conversation ? wp::Kind::Conversation :
+        mode == ga::Mode::Cinematic ? wp::Kind::Cutscene :
+        mode == ga::Mode::Galaxy || mode == ga::Mode::Orbital ? wp::Kind::GalaxyMap : wp::Kind::GameMenu;
+    wp::Pose const placed = wp::Place(kind, viewPosition, frame.viewSpace, frame.appSpace, frame.headValid,
+        frame.headOrientation, frame.headPosition);
+    PanelPose out;
+    out.placed = true;
+    out.space = placed.space;
+    std::memcpy(out.orientation, placed.orientation, sizeof out.orientation);
+    std::memcpy(out.position, placed.position, sizeof out.position);
+    out.headLocked = placed.headLocked;
+    out.widthM = widthM;
+    out.heightM = heightM;
+    return out;
 }
 
 } // namespace MevrSeams

@@ -506,12 +506,18 @@ void ApplyMevrBaseline() noexcept
     if (note(!ME2VR::D3DCapture::GetMonoMenus(), "flat menus (MonoMenus)")) ME2VR::D3DCapture::SetMonoMenus(true);
     if (note(!ME2VR::EngineProbe::GetFirstPerson(), "first person ([FirstPerson] Enabled)")) ME2VR::EngineProbe::SetFirstPerson(true);
     bool headShown = false;
+    bool bodyHidden = false;
     for (int i = 0; i < ME2VR::EngineProbe::FpStateCount(); ++i)
     {
         ME2VR::EngineProbe::FpStateCfg* s = ME2VR::EngineProbe::GetFpStateCfg(i);
         if (s != nullptr && !s->hideHead) { s->hideHead = true; headShown = true; }
+        // ME1's first person draws the body (VRIK: the arms on the controllers, the body under the player) in every state;
+        // upstream's ME2 hid it unarmed and sprinting (the owner, 2026-11-17: "unless I have a weapon equipped, my VRIK
+        // body just completely disappears").
+        if (s != nullptr && s->hideBody) { s->hideBody = false; bodyHidden = true; }
     }
     note(headShown, "Shepard's head hidden ([FirstPerson] S*_hideHead)");
+    note(bodyHidden, "Shepard's body shown ([FirstPerson] S*_hideBody)");
     if (note(ME2VR::EngineProbe::GetHeadAimEnabled(), "head aim (HeadAim)")) ME2VR::EngineProbe::SetHeadAimEnabled(false);
     if (note(!g_decoupledPitch.load(std::memory_order_relaxed), "the stick's pitch (DecoupledPitch)"))
         g_decoupledPitch.store(true, std::memory_order_relaxed);

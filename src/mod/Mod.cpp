@@ -380,7 +380,7 @@ void TryInstallScriptHooks() {
     game::posture::TryStartup();  // and physical cover and crouch
     game::vr_cover::TryStartup();  // the game's cover protection for a VR player (research/23 section 6: answer handlers, before the hook)
     gHandAimAvailable = game::hand_aim::TryStartup();
-    game::mako::TryStartup();  // the Mako's turret aimed by the controller (research/44: the vehicle's Tick and shot-start handlers)
+    game::mako::TryStartup(*gInit);  // the turret's aim and the firing weapon's muzzle
     game::mako_controls::TryStartup();  // the Mako's physical lever and stick (research/46: the SetInputs handlers)
     game::cockpit_probe::TryStartup();  // the cockpit riding in the Mako (research/47: a camera-update handler, inert until asked)
     game::focus_pause::TryStartup();  // [Game] pauseUnfocused (research/47: a BioWorldInfo.Tick handler)
@@ -1827,6 +1827,9 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         game::comfort::Tick(deltaSeconds, ComfortLink());
         // A shot's kick of the gun model (research/24 section 8): this tick's, for arm IK's request.
         game::gun_kick::Tick(deltaSeconds);
+        if (game::cockpit_probe::FixedSeatPoseActive()) {
+            EnsureBonePoseHook();
+        }
         game::arm_ik::Tick(deltaSeconds, BodyOverlayMenu());
         // Holsters, the squad menu and the grenades before the support grip: it publishes the pad flags,
         // theirs among them. A squeeze at the grenade slot is claimed first, so neither holsters nor the
@@ -2004,6 +2007,9 @@ MEVR_MOD_API void MevrModShutdown() {
     if (gInit) removed(game::le3_galaxy_retention::Shutdown(*gInit, exiting), "the CIC streaming hook couldn't be removed");
     if (gInit && gHooked) {
         removed(engine::process_event::Uninstall(*gInit), "the ProcessEvent hook couldn't be removed");
+    }
+    if (gInit) {
+        removed(game::mako::UninstallFireHook(*gInit, !exiting), "the ranged fire hook couldn't be removed, or a call was still inside it");
     }
     if (gInit && gSceneViewHooked) {
         removed(engine::scene_view::Uninstall(*gInit), "the CalcSceneView hook couldn't be removed");
