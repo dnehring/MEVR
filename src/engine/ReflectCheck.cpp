@@ -2961,6 +2961,22 @@ void CheckLeave() {
     PARAM(UBioSFHandler_PartySelection_execFinalizeParty_Parms, "SFXGame.BioSFHandler_PartySelection.FinalizeParty", nContext);
 }
 
+// game/CombatStance's walk on ME2 (section C; engine::adapter::kWalkOwnerClass, kWalkStepFlags): the pawn's speed and
+// acceleration, its behaviour's move control (the start, stop and skid steps and their flags), the walking mode.
+void CheckSequelWalk() {
+    CheckField("Engine.Actor", "Velocity", SDK_FIELD(AActor, Velocity));
+    CheckField("Engine.Pawn", "AccelRate", SDK_FIELD(APawn, AccelRate));
+    CheckField("SFXGame.BioPawn", "m_oBehavior", SDK_FIELD(ABioPawn, m_oBehavior));
+    CheckField("SFXGame.BioPawnBehavior", "m_eAnimStartState", SDK_FIELD(UBioPawnBehavior, m_eAnimStartState));
+    CheckField("SFXGame.BioPawnBehavior", "m_eAnimStopState", SDK_FIELD(UBioPawnBehavior, m_eAnimStopState));
+    CheckField("SFXGame.BioPawnBehavior", "m_eAnimSkidState", SDK_FIELD(UBioPawnBehavior, m_eAnimSkidState));
+    CheckField("SFXGame.BioPawnBehavior", "m_bEnableStartAnim", SDK_BOOL(UBioPawnBehavior, m_bEnableStartAnim));
+    CheckField("SFXGame.BioPawnBehavior", "m_bEnableStopAnim", SDK_BOOL(UBioPawnBehavior, m_bEnableStopAnim));
+    CheckField("SFXGame.BioPawnBehavior", "m_bEnableSkidAnim", SDK_BOOL(UBioPawnBehavior, m_bEnableSkidAnim));
+    CheckFunction("SFXGame.BioPawn.GetWalkingSpeedMode");
+    CheckParam("SFXGame.BioPawn.GetWalkingSpeedMode", "ReturnValue", SDK_AT(0, 1));
+}
+
 // The galaxy map over the CIC's projector (game/GalaxyProjectorFlow, ME2's adapter game/Le2GalaxyCapture): the shared
 // SceneCaptureRig's classes, fields and functions (CheckLe3CaptureRig's list, ME2's SDK), the projector's actor and mesh, the
 // console's point of interest, the streaming levels, the galaxy game mode's camera and its centre object, SetHidden.
@@ -2991,6 +3007,9 @@ void CheckLe2CaptureRig() {
     });
     CheckField("Engine.Texture", "Resource", SDK_FIELD(UTexture, Resource));
     CheckField("Engine.TextureRenderTarget2D", "Format", SDK_FIELD(UTextureRenderTarget2D, Format));
+    // game/ScopeCapture reads its render target's size too (the scope's zoomed render on ME2, research/39).
+    CheckField("Engine.TextureRenderTarget2D", "SizeX", SDK_FIELD(UTextureRenderTarget2D, SizeX));
+    CheckField("Engine.TextureRenderTarget2D", "SizeY", SDK_FIELD(UTextureRenderTarget2D, SizeY));
     CheckField("Engine.PlayerController", "Player", SDK_FIELD(APlayerController, Player));
     CheckField("Engine.LocalPlayer", "PlayerPostProcess", SDK_FIELD(ULocalPlayer, PlayerPostProcess));
     CheckField("Engine.Engine", "DefaultPostProcess", SDK_FIELD(UEngine, DefaultPostProcess));
@@ -3120,6 +3139,18 @@ void CheckLe2GalaxyRay() {
 }
 
 #elif defined(MEVR_GAME_LE3)
+// game/CombatStance's walk on ME3 (section C; engine::adapter::kWalkOwnerClass): the pawn's speed and acceleration, the
+// pawn's own move control states (ME3 keeps them on BioPawn and has no flags for them), the walking mode.
+void CheckSequelWalk() {
+    CheckField("Engine.Actor", "Velocity", SDK_FIELD(AActor, Velocity));
+    CheckField("Engine.Pawn", "AccelRate", SDK_FIELD(APawn, AccelRate));
+    CheckField("SFXGame.BioPawn", "m_eAnimStartState", SDK_FIELD(ABioPawn, m_eAnimStartState));
+    CheckField("SFXGame.BioPawn", "m_eAnimStopState", SDK_FIELD(ABioPawn, m_eAnimStopState));
+    CheckField("SFXGame.BioPawn", "m_eAnimSkidState", SDK_FIELD(ABioPawn, m_eAnimSkidState));
+    CheckFunction("SFXGame.BioPawn.GetWalkingSpeedMode");
+    CheckParam("SFXGame.BioPawn.GetWalkingSpeedMode", "ReturnValue", SDK_AT(0, 1));
+}
+
 // Shared SceneCaptureRig, checked against LE3 metadata before native use.
 void CheckLe3CaptureRig() {
     CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_pCenterObject", SDK_FIELD(UBioCameraBehaviorGalaxy, m_pCenterObject));
@@ -3151,6 +3182,9 @@ void CheckLe3CaptureRig() {
     });
     CheckField("Engine.Texture", "Resource", SDK_FIELD(UTexture, Resource));
     CheckField("Engine.TextureRenderTarget2D", "Format", SDK_FIELD(UTextureRenderTarget2D, Format));
+    // game/ScopeCapture reads its render target's size too (the scope's zoomed render on ME3, research/39).
+    CheckField("Engine.TextureRenderTarget2D", "SizeX", SDK_FIELD(UTextureRenderTarget2D, SizeX));
+    CheckField("Engine.TextureRenderTarget2D", "SizeY", SDK_FIELD(UTextureRenderTarget2D, SizeY));
     CheckField("Engine.PlayerController", "Player", SDK_FIELD(APlayerController, Player));
     CheckField("Engine.LocalPlayer", "PlayerPostProcess", SDK_FIELD(ULocalPlayer, PlayerPostProcess));
     CheckField("Engine.Engine", "DefaultPostProcess", SDK_FIELD(UEngine, DefaultPostProcess));
@@ -4263,6 +4297,9 @@ bool Run(hook::Context& context) {
     CheckLe2Squad();
     CheckLe2CaptureRig();
     CheckLe2GalaxyRay();
+#endif
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+    CheckSequelWalk();
 #endif
 #if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     CheckLeave();

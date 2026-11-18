@@ -11,6 +11,9 @@
 #include "core/vr/TestRequest.hpp"
 #include "engine/BonePose.hpp"
 #include "engine/CallFunction.hpp"
+#if !defined(MEVR_GAME_LE1)
+#include "engine/GameAdapter.hpp"  // the sequels' walk (engine::adapter::kWalk*)
+#endif
 #include "engine/ProcessEvent.hpp"
 #include "engine/Skeleton.hpp"
 #include "game/ArmIk.hpp"
@@ -90,6 +93,32 @@ ue3::FieldRef gInterpolateTo{"SFXGame.SFXCameraMode_Interpolate", "To"};
 ue3::FunctionRef gIsInCombatActionStateFn{"SFXGame.BioPawn.IsInCombatActionState"};
 ue3::FunctionRef gIsSwitchingWeaponsFn{"SFXGame.BioPawn.IsSwitchingWeapons"};
 ue3::FunctionRef gGetWalkingSpeedModeFn{"SFXGame.BioPawn.GetWalkingSpeedMode"};
+#endif
+
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+// The walk on the sequels (section C: ME1's rules on each game's fields, engine::adapter::kWalkOwnerClass, kWalkStepFlags,
+// kWalkSpeedRamps; the ME2 and ME3 audits' MOV-14 to MOV-16). Their rows: engine/ReflectCheck's CheckSequelWalk.
+ue3::FieldRef gVelocity{"Engine.Actor", "Velocity", ue3::kEveryGame};
+ue3::FieldRef gPawnAccelRate{"Engine.Pawn", "AccelRate", ue3::kEveryGame};
+#if defined(MEVR_GAME_LE2)
+ue3::FieldRef gBehavior{"SFXGame.BioPawn", "m_oBehavior", ue3::kEveryGame};
+ue3::FieldRef gEnableStartAnim{engine::adapter::kWalkOwnerClass, "m_bEnableStartAnim", ue3::kEveryGame};
+ue3::FieldRef gEnableStopAnim{engine::adapter::kWalkOwnerClass, "m_bEnableStopAnim", ue3::kEveryGame};
+ue3::FieldRef gEnableSkidAnim{engine::adapter::kWalkOwnerClass, "m_bEnableSkidAnim", ue3::kEveryGame};
+#endif
+ue3::FieldRef gAnimStartState{engine::adapter::kWalkOwnerClass, "m_eAnimStartState", ue3::kEveryGame};
+ue3::FieldRef gAnimStopState{engine::adapter::kWalkOwnerClass, "m_eAnimStopState", ue3::kEveryGame};
+ue3::FieldRef gAnimSkidState{engine::adapter::kWalkOwnerClass, "m_eAnimSkidState", ue3::kEveryGame};
+ue3::FunctionRef gGetWalkingSpeedModeFn{"SFXGame.BioPawn.GetWalkingSpeedMode", ue3::kEveryGame};
+
+// The object holding the move control's state (engine::adapter::kWalkOwnerClass): ME2's pawn behaviour, ME3's pawn.
+ue3::Object* WalkOwner(ue3::Object* pawn) {
+#if defined(MEVR_GAME_LE2)
+    return pawn != nullptr ? gBehavior.Read<ue3::Object*>(pawn).value_or(nullptr) : nullptr;
+#else
+    return pawn;
+#endif
+}
 #endif
 
 bool gStarted = false;
@@ -237,8 +266,13 @@ std::string StepsJson() {
 }
 
 // The walking mode (EWalkingSpeedMode) and speed.
+#if defined(MEVR_GAME_LE1)
 constexpr char const* kWalkModes[] = {"ExploreRun", "ExploreWalk", "ExploreStorming", "ExploreCrouched", "CombatRun", "CombatWalk",
     "CombatStorming", "CombatCrouched", "CombatZoomed", "CoverMove", "CoverCrouched"};
+#else
+constexpr char const* kWalkModes[] = {"ExploreRun", "ExploreWalk", "ExploreStorming", "ExploreCrouched", "CombatRun", "CombatWalk",
+    "CombatStorming", "CombatCrouched", "CombatSniping", "CombatZoomed", "CoverMove", "CoverCrouched", "Crawling"};
+#endif
 int gWalkMode = -1;
 double gWalkModeSince = 0.0;
 double gWalkTop = 0.0;
@@ -300,9 +334,13 @@ char const* WeaponName(weapon::RangedType type) {
     return weapon::Key() != 0 ? "unknown weapon" : "none";
 }
 
+#endif
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 ue3::Function* gIsInCombatActionState = nullptr;
 ue3::Function* gIsSwitchingWeapons = nullptr;
 ue3::Function* gGetWalkingSpeedMode = nullptr;
+#endif
+#if defined(MEVR_GAME_LE1)
 
 bool CallBool(ue3::Object* object, ue3::Function* function) {
     if (object == nullptr || function == nullptr) {
@@ -313,6 +351,8 @@ bool CallBool(ue3::Object* object, ue3::Function* function) {
     return parms.ReturnBool().value_or(false);
 }
 
+#endif
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 int CallByte(ue3::Object* object, ue3::Function* function) {
     if (object == nullptr || function == nullptr) {
         return -1;
@@ -322,6 +362,9 @@ int CallByte(ue3::Object* object, ue3::Function* function) {
     std::optional<std::uint8_t> const value = parms.Return<std::uint8_t>();
     return value ? static_cast<int>(*value) : -1;
 }
+
+#endif
+#if defined(MEVR_GAME_LE1)
 
 std::string NodeName(ue3::Object const* node) {
     std::optional<ue3::Name> const name = gNodeName.Read<ue3::Name>(node);
@@ -812,15 +855,23 @@ void UpdateStance(double deltaSeconds, Link const& link, ue3::Object* controller
     }
 }
 
+#endif  // MEVR_GAME_LE1 (A)
+
 // ---- C ------------------------------------------------------------------------------------------------------------
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 
 bool IsPlayersBehavior(ue3::Object* behavior) {
     ue3::Object* const pc = player::Controller();
     ue3::Object* const pawn = pc != nullptr ? player::BioPawn(pc) : nullptr;
+#if defined(MEVR_GAME_LE1)
     return behavior != nullptr && pawn != nullptr && gBehavior.Read<ue3::Object*>(pawn).value_or(nullptr) == behavior &&
         ue3::runtime::IsAlive(behavior);
+#else
+    return behavior != nullptr && pawn != nullptr && WalkOwner(pawn) == behavior && ue3::runtime::IsAlive(behavior);
+#endif
 }
 
+#if defined(MEVR_GAME_LE1)
 struct RampFields {
     float* accel = nullptr;
     float* decel = nullptr;
@@ -843,12 +894,28 @@ RampFields FieldsOf(ue3::Object* behavior, ue3::Object* pawn) {
     f.accelRate = gPawnAccelRate.In<float>(pawn);
     return f;
 }
+#else
+// The sequels' walk has only the pawn's acceleration (engine::adapter::kWalkSpeedRamps).
+struct RampFields {
+    float* accelRate = nullptr;
+    bool Ok() const { return accelRate != nullptr; }
+};
+
+RampFields FieldsOf(ue3::Object* /*owner*/, ue3::Object* pawn) {
+    RampFields f;
+    if (pawn != nullptr) {
+        f.accelRate = gPawnAccelRate.In<float>(pawn);
+    }
+    return f;
+}
+#endif
 
 void Put(float* field, float value, char const* what) {
     *field = value;
     write_journal::Wrote(what, field, sizeof(float));
 }
 
+#if defined(MEVR_GAME_LE1)
 // Puts the game's walk back, each value only if it is still ours (the game may have set its own since).
 void RestoreRamp(char const* why, bool playerCheck) {
     if (gRamp.behavior == nullptr || !gRamp.written) {
@@ -936,6 +1003,73 @@ void UpdateRamp(Link const& link, ue3::Object* pawn, bool onFoot) {
     }
 }
 
+#else
+// The sequels: the pawn's acceleration back, if it is still ours.
+void RestoreRamp(char const* why, bool playerCheck) {
+    if (gRamp.pawn == nullptr || !gRamp.written) {
+        gRamp = {};
+        return;
+    }
+    bool restored = false;
+    if ((!playerCheck || IsPlayersBehavior(gRamp.behavior)) && ue3::runtime::IsAlive(gRamp.pawn)) {
+        if (float* const rate = gPawnAccelRate.In<float>(gRamp.pawn); rate != nullptr) {
+            if (*rate == gRamp.wrote.accelRate) {
+                Put(rate, gRamp.saved.accelRate, "CombatStance.accelRate(restore)");
+            }
+            restored = true;
+        }
+    }
+    log::Info("movement: walking as the game has it again ({}){}", why,
+        restored ? std::format(": acceleration {:.0f} u/s^2", gRamp.saved.accelRate) : std::string(" (left as it was)"));
+    gRamp = {};
+}
+
+// The walk linear to the stick on the sequels ([Hands] linearWalk): the pawn's acceleration takes the fastest run within
+// linearWalkS (cs::WantedAccelRate, ME1's rule); the game's value kept and put back.
+void UpdateRamp(Link const& link, ue3::Object* pawn, bool onFoot) {
+    hand_calibration::CombatStance const settings = hand_calibration::GetCombatStance();
+    ue3::Object* const owner = WalkOwner(pawn);
+    char const* why = !settings.linearWalk  ? "[Hands] linearWalk = 0"
+                    : !link.headTrackedView ? "no head-tracked view"
+                    : !onFoot               ? "not on foot"
+                    : owner == nullptr      ? "no player pawn"
+                                            : nullptr;
+    gRampWhy = why != nullptr ? why : "linear to the stick (the pawn's acceleration: this game has no speed ramps)";
+    if (why != nullptr) {
+        RestoreRamp(why, true);
+        return;
+    }
+    if (owner != gRamp.behavior || pawn != gRamp.pawn) {
+        RestoreRamp("the pawn changed", true);
+        gRamp.behavior = owner;
+        gRamp.pawn = pawn;
+    }
+    RampFields const f = FieldsOf(owner, pawn);
+    if (!f.Ok()) {
+        gRampWhy = "fields not found";
+        return;
+    }
+    float const now = *f.accelRate;
+    if (!gRamp.written || now != gRamp.wrote.accelRate) {
+        gRamp.saved.accelRate = now;  // the game's: the first time, and whenever it set its own since our write
+    }
+    float const want = cs::WantedAccelRate(gRamp.saved.accelRate, true, settings.linearWalkS);
+    if (std::fabs(now - want) <= 1e-4f * std::max(1.0f, std::fabs(want))) {
+        return;
+    }
+    Put(f.accelRate, want, "CombatStance.accelRate");
+    ++gRamp.writes;
+    bool const changed = !gRamp.written || gRamp.wrote.accelRate != want;
+    gRamp.written = true;
+    gRamp.wrote.accelRate = want;
+    if (changed) {
+        log::Info("movement: walking follows the stick within {:.2f} s: acceleration {:.0f} u/s^2 (the game's: {:.0f}; this game has no "
+                  "speed ramps; written {} time{})",
+            cs::ClampLinearWalkS(settings.linearWalkS), want, gRamp.saved.accelRate, gRamp.writes, gRamp.writes == 1 ? "" : "s");
+    }
+}
+#endif
+
 // The walk's response, measured (research/38 "Linear walking"): from the left stick pushed to 0.3 or more (from under 0.2) or let
 // go (while moving), the pawn's speed then and 0.1, 0.2, 0.4 and 0.8 s later, logged once the last is in.
 struct Response {
@@ -1002,8 +1136,12 @@ void UpdateWalk(ue3::Object* pawn, Link const& link) {
     std::optional<ue3::Vector> const velocity = gVelocity.Read<ue3::Vector>(pawn);
     gSpeed = velocity ? std::sqrt(static_cast<double>(velocity->x) * velocity->x + static_cast<double>(velocity->y) * velocity->y) : 0.0;
     std::optional<ue3::Rotator> const rotation = player::Rotation(pawn);
+#if defined(MEVR_GAME_LE1)
     StepResponse(gSpeed, rotation ? static_cast<double>(rotation->yaw) * 360.0 / 65536.0 : 0.0,
         gBehavior.Read<ue3::Object*>(pawn).value_or(nullptr));
+#else
+    StepResponse(gSpeed, rotation ? static_cast<double>(rotation->yaw) * 360.0 / 65536.0 : 0.0, WalkOwner(pawn));
+#endif
     if (mode == gWalkMode) {
         gWalkTop = std::max(gWalkTop, gSpeed);
         return;
@@ -1012,15 +1150,25 @@ void UpdateWalk(ue3::Object* pawn, Link const& link) {
         return;  // flapping: the next tick tries again
     }
     auto const name = [](int m) { return m >= 0 && m < static_cast<int>(std::size(kWalkModes)) ? kWalkModes[m] : "unknown"; };
+#if defined(MEVR_GAME_LE1)
     log::Info("movement: walking mode {} ({}{}), speed {:.0f} u/s{}", name(mode), gDrawn ? "drawn" : "holstered",
         link.supportHeld ? ", the support grip holds the gun (LT)" : "", gSpeed,
         gWalkMode >= 0 ? std::format("; {} held {:.1f} s, top speed {:.0f} u/s", name(gWalkMode), gNow - gWalkModeSince, gWalkTop)
                        : std::string());
+#else
+    log::Info("movement: walking mode {} ({}), speed {:.0f} u/s{}", name(mode), mode >= 4 ? "weapon out" : "exploring", gSpeed,
+        gWalkMode >= 0 ? std::format("; {} held {:.1f} s, top speed {:.0f} u/s", name(gWalkMode), gNow - gWalkModeSince, gWalkTop)
+                       : std::string());
+    (void)link;
+#endif
     gLastMoveLog = gNow;
     gWalkMode = mode;
     gWalkModeSince = gNow;
     gWalkTop = gSpeed;
 }
+
+#endif  // every game (C: the ramp and the response)
+#if defined(MEVR_GAME_LE1)
 
 // ---- C: the speed from the push; the start and stop steps (research/38 "Linear walking", 2026-11-13) --------------
 
@@ -1142,6 +1290,9 @@ void UpdateStick(Link const& link, ue3::Object* pawn, bool onFoot) {
     }
 }
 
+#endif  // MEVR_GAME_LE1 (the speed from the push)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)  // engine::adapter::kWalkStepFlags
+
 std::array<ue3::FieldRef*, 3> const kStepFlags{&gEnableStartAnim, &gEnableStopAnim, &gEnableSkidAnim};
 
 void RestoreSteps(char const* why) {
@@ -1165,7 +1316,11 @@ void RestoreSteps(char const* why) {
 
 void UpdateSteps(Link const& link, ue3::Object* pawn, bool onFoot) {
     hand_calibration::CombatStance const settings = hand_calibration::GetCombatStance();
+#if defined(MEVR_GAME_LE1)
     ue3::Object* const behavior = pawn != nullptr ? gBehavior.Read<ue3::Object*>(pawn).value_or(nullptr) : nullptr;
+#else
+    ue3::Object* const behavior = WalkOwner(pawn);
+#endif
     char const* const why = settings.startStopAnims ? "[Hands] startStopAnims = 1"
                           : !link.headTrackedView   ? "no head-tracked view"
                           : !onFoot                 ? "not on foot"
@@ -1205,6 +1360,9 @@ void UpdateSteps(Link const& link, ue3::Object* pawn, bool onFoot) {
         }
     }
 }
+
+#endif  // the steps (ME1, ME2)
+#if defined(MEVR_GAME_LE1)
 
 // ---- D ------------------------------------------------------------------------------------------------------------
 
@@ -1389,6 +1547,15 @@ bool TryStartup() {
     log::Info("movement: the speed from the push: {} PlayerMoveExplore, {} PlayerMoveCombat, {} PlayerTick, SetDesiredSpeed {}",
         gMoveExplore.size(), gMoveCombat.size(), gStickTicks.size(), gSetDesiredSpeed != nullptr ? "found" : "MISSING");
     return gStarted;
+#elif defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+    // The sequels: section C's ramp, steps and response (the stance, the speed from the push and the draw rates are ME1's
+    // still: the audits' MOV-15, BOD-23, BOD-27).
+    gGetWalkingSpeedMode = gGetWalkingSpeedModeFn.Get();
+    gStarted = ue3::runtime::Up();
+    log::Info("movement: the walk on this game: the pawn's acceleration linear to the stick{}, the response measured (GetWalkingSpeedMode {}); "
+              "the speed from the push, the stance and the draw rates are ME1's only",
+        engine::adapter::kWalkStepFlags ? ", the start, stop and skid steps off" : "", gGetWalkingSpeedMode != nullptr ? "found" : "MISSING");
+    return gStarted;
 #else
     return false;
 #endif
@@ -1433,6 +1600,23 @@ void Tick(double deltaSeconds, Link const& link) {
     bool const rateWanted = (rate > 1.0005 || holsterRate > 1.0005) && link.headTrackedView && onFoot && mesh != nullptr &&
         gAnimations.Read<ue3::Object*>(mesh).value_or(nullptr) == gTree.tree && gTree.tree != nullptr;
     UpdateRates(rateWanted, rate, holsterRate);
+#elif defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+    if (!gStarted || !ue3::runtime::Up()) {
+        gRampWhy = "not started";
+        return;
+    }
+    ue3::Object* const controller = player::Controller();
+    ue3::Object* const pawn = controller != nullptr && player::IsBioPlayerController(controller) ? player::BioPawn(controller) : nullptr;
+    bool const onFoot = head_tracking::OnFoot();
+    UpdateRamp(link, pawn, onFoot);
+#if defined(MEVR_GAME_LE2)
+    UpdateSteps(link, pawn, onFoot);
+#else
+    gSteps.why = "this game has no start, stop and skid flags (ME3's steps are SFXModule_Locomotion's states)";
+#endif
+    if (onFoot && pawn != nullptr) {
+        UpdateWalk(pawn, link);
+    }
 #else
     (void)link;
 #endif
@@ -1513,6 +1697,15 @@ void Shutdown() {
     gMoveCombat.clear();
     gStickTicks.clear();
     gStick = {};
+    gSteps = {};
+#elif defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+    if (ue3::runtime::Up()) {
+        RestoreRamp("the mod unloads", true);
+#if defined(MEVR_GAME_LE2)
+        RestoreSteps("the mod unloads");
+#endif
+    }
+    gGetWalkingSpeedMode = nullptr;
     gSteps = {};
 #endif
     gRamp = {};

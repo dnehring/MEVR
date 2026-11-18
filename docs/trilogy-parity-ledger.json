@@ -1528,13 +1528,13 @@
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "run"
     },
     "LE3": {
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "run"
     }
    },
    "namespace": "game::combat_stance"
@@ -2609,13 +2609,13 @@
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "run"
     },
     "LE3": {
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "run"
     }
    },
    "namespace": "game::scope_capture"
@@ -3859,6 +3859,7 @@
     "setPowerLock": "WithPowerWheel",
     "setPowerWheel": "WithPowerWheel",
     "setProcessEventCallback": "BaseServices",
+    "setScopeCapture": "WithScopeCapture",
     "setSight": "WithSights",
     "setSquadMenu": "BuildServices",
     "setSquadPlace": "BuildServices",
@@ -3896,6 +3897,7 @@
     "WithPowerWheel",
     "WithTraversal",
     "WithGalaxyHologram",
+    "WithScopeCapture",
     "WithMenus"
    ]
   },
@@ -3931,6 +3933,7 @@
     "setPowerLock": "WithPowerWheel",
     "setPowerWheel": "WithPowerWheel",
     "setProcessEventCallback": "BaseServices",
+    "setScopeCapture": "WithScopeCapture",
     "setSight": "WithSights",
     "setSquadMenu": "BuildServices",
     "setSquadPlace": "BuildServices",
@@ -3969,6 +3972,7 @@
     "WithFloorLock",
     "WithTraversal",
     "WithVoice",
+    "WithScopeCapture",
     "WithPowerWheel",
     "WithMenus"
    ]
