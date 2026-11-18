@@ -110,6 +110,29 @@ void SaveOwnSettings(char const* why) noexcept {
     log::Info("main menu: the renderer's settings saved to MELE3VR.ini ({})", why != nullptr ? why : "?");
 }
 
+RenderTarget GetRenderTarget() noexcept {
+    RenderTarget t;
+    t.settable = true;
+    unsigned fileW = 0, fileH = 0, liveW = 0, liveH = 0, recW = 0, recH = 0;
+    ME2VR::D3DCapture::MevrRenderTarget(&fileW, &fileH, &liveW, &liveH);
+    ME2VR::Me2Xr::MevrRecommendedEyeSize(&recW, &recH);
+    t.width = static_cast<int>(fileW);
+    t.height = static_cast<int>(fileH);
+    t.liveWidth = static_cast<int>(liveW);
+    t.liveHeight = static_cast<int>(liveH);
+    t.recommendedWidth = static_cast<int>(recW);
+    t.recommendedHeight = static_cast<int>(recH);
+    // FSceneRenderTargets::Allocate (0x36CDC0) rounds its buffers up to a multiple of 8, and a backbuffer of another width
+    // never matched the scene's depth target: no pass-0 capture, mono (research/le3-flares-and-window.md section 3).
+    t.multiple = 8;
+    return t;
+}
+
+bool SetRenderTarget(int width, int height) noexcept {
+    return width > 0 && height > 0 &&
+           ME2VR::D3DCapture::MevrSetRenderTarget(static_cast<unsigned>(width), static_cast<unsigned>(height));
+}
+
 void LogLine(std::string const& line) noexcept {
     ME2VR::Log::Line(line);
 }

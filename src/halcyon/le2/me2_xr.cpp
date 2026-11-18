@@ -3121,6 +3121,7 @@ float GetMenuScreenDist() noexcept { return g_monoQuadDistanceM.load(std::memory
 void  SetMenuScreenDist(float m) noexcept { g_monoQuadDistanceM.store((m < 0.4f) ? 0.4f : (m > 6.0f ? 6.0f : m), std::memory_order_relaxed); }
 float GetMenuScreenSize() noexcept { return g_monoQuadWidthM.load(std::memory_order_relaxed); }
 void  SetMenuScreenSize(float m) noexcept { g_monoQuadWidthM.store((m < 0.8f) ? 0.8f : (m > 6.0f ? 6.0f : m), std::memory_order_relaxed); }
+void  MevrRecommendedEyeSize(unsigned* w, unsigned* h) noexcept { if (w) *w = g_mevrRecommendedW; if (h) *h = g_mevrRecommendedH; }   // [MEVR]
 float GetCineScreenZoom() noexcept { return g_cineScreenZoom.load(std::memory_order_relaxed); }
 void  SetCineScreenZoom(float z) noexcept { g_cineScreenZoom.store((z < 0.5f) ? 0.5f : (z > 3.0f ? 3.0f : z), std::memory_order_relaxed); }
 // [COMFORT] Insert-menu panel placement (ME1's Comfort tab).

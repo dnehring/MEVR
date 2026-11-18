@@ -2879,6 +2879,7 @@ float GetMenuScreenDist() noexcept { return g_monoQuadDistanceM.load(std::memory
 void  SetMenuScreenDist(float m) noexcept { g_monoQuadDistanceM.store((m < 0.4f) ? 0.4f : (m > 6.0f ? 6.0f : m), std::memory_order_relaxed); }
 float GetMenuScreenSize() noexcept { return g_monoQuadWidthM.load(std::memory_order_relaxed); }
 void  SetMenuScreenSize(float m) noexcept { g_monoQuadWidthM.store((m < 0.8f) ? 0.8f : (m > 6.0f ? 6.0f : m), std::memory_order_relaxed); }
+void  MevrRecommendedEyeSize(unsigned* w, unsigned* h) noexcept { if (w) *w = g_mevrRecommendedW; if (h) *h = g_mevrRecommendedH; }   // [MEVR]
 float GetMenuPanelDist() noexcept { return g_menuQuadDistanceM.load(std::memory_order_relaxed); }
 void  SetMenuPanelDist(float m) noexcept { g_menuQuadDistanceM.store((m < 0.8f) ? 0.8f : (m > 4.0f ? 4.0f : m), std::memory_order_relaxed); }
 float GetMenuPanelSize() noexcept { return g_menuQuadWidthM.load(std::memory_order_relaxed); }

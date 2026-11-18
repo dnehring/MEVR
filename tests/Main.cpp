@@ -45,6 +45,7 @@
 #include "core/vr/LayerComposite.hpp"
 #include "core/vr/MenuPointer.hpp"
 #include "core/vr/MenuSettings.hpp"
+#include "core/vr/RenderTarget.hpp"
 #include "core/vr/MetricStereo.hpp"
 #include "core/vr/OverlayPlacement.hpp"
 #include "core/vr/PoseRecording.hpp"
@@ -10681,6 +10682,7 @@ void TestCalibration() {
 // between rows and settings, and its edits of an ini file (key by key, the rest of the file untouched).
 void TestMenuSettings() {
     namespace ms = mevr::vr::menu_settings;
+    namespace rt = mevr::vr::render_target;
     // The schema: unique, well-formed keys; numbers' defaults inside their ranges.
     std::vector<std::string> keys;
     for (ms::Field const& f : ms::Schema()) {
@@ -10787,6 +10789,29 @@ void TestMenuSettings() {
     CHECK(ms::ResolutionChoice(4096, 4250, 2824, 2880) == "balanced");
     CHECK(ms::ResolutionChoice(3072, 3072, 3072, 3072) == "headset");  // a headset chip wins a tie with the ladder
     CHECK(ms::ResolutionChoice(3000, 3112, 2824, 2880).empty());
+    // The sequels' target at their own shape (the owner, 2026-11-18: "Follows headset like me1"): sides in multiples of 8
+    // (ME3's scene targets), 0.85 of the eye at the first VR start.
+    rt::Shape const eights{8, 0.0f};
+    CHECK(rt::RoundToMultiple(2400.4f, 8) == 2400 && rt::RoundToMultiple(1754.4f, 8) == 1752 && rt::RoundToMultiple(3.0f, 8) == 8);
+    CHECK(rt::RoundToMultiple(2401.2f, 2) == ms::RoundEven(2401.2f));
+    CHECK((rt::HeadsetSize(eights, "headset85", 2824, 2880) == ms::Size{2400, 2448}));  // the PS VR2: ME1's size
+    CHECK((rt::HeadsetSize(eights, "headset", 2017, 2161) == ms::Size{2016, 2160}));   // "headset" rounded too
+    CHECK((rt::HeadsetSize(eights, "headset75", 2824, 2880) == ms::Size{2120, 2160}));
+    CHECK((rt::FirstStartSize(eights, false, {3072, 2216}, 2824, 2880) == ms::Size{2400, 2448}));  // ME3's fixed size replaced
+    CHECK((rt::FirstStartSize(eights, false, {4096, 2304}, 2064, 2208) == ms::Size{1752, 1880}));  // a Quest 3 over Link
+    CHECK((rt::FirstStartSize(eights, true, {3072, 2216}, 2824, 2880) == ms::Size{}));             // done once already
+    CHECK((rt::FirstStartSize(eights, false, {2400, 2448}, 2824, 2880) == ms::Size{}));            // that size already
+    CHECK((rt::FirstStartSize(eights, false, {3072, 2216}, 0, 0) == ms::Size{}));                  // no recommendation yet
+    // ME2 draws no HUD on a near-square frame: at least 16:9, widened at 0.85 of the eye's height (lane AU4, 2026-11-18).
+    rt::Shape const wide{8, 16.0f / 9.0f};
+    CHECK((rt::HeadsetSize(wide, "headset85", 2824, 2880) == ms::Size{4352, 2448}));  // the PS VR2
+    CHECK((rt::HeadsetSize(wide, "headset85", 1912, 1952) == ms::Size{2944, 1656}));  // the fake headset's SteamVR size
+    CHECK((rt::HeadsetSize(wide, "headset85", 2064, 2208) == ms::Size{3344, 1880}));  // a Quest 3 over Link
+    CHECK((rt::HeadsetSize(wide, "headset85", 4000, 1000) == ms::Size{3400, 848}));   // a wider eye than 16:9: as it is
+    CHECK(rt::ResolutionChoice(eights, 2400, 2448, 2824, 2880) == "headset85");
+    CHECK(rt::ResolutionChoice(eights, 3072, 2216, 2824, 2880).empty());              // the shipped fixed size: no chip
+    CHECK(rt::HeadsetSizesText(eights, 2824, 2880) ==
+          "Headset 2824 \xC3\x97 2880 \xC2\xB7 \xC3\x97 0.85: 2400 \xC3\x97 2448 \xC2\xB7 \xC3\x97 0.75: 2120 \xC3\x97 2160");
     CHECK(ms::SizeText(2824, 2880) == "2824 \xC3\x97 2880");
     CHECK(ms::HeadsetSizesText(2824, 2880) ==
           "Headset 2824 \xC3\x97 2880 \xC2\xB7 \xC3\x97 0.85: 2400 \xC3\x97 2448 \xC2\xB7 \xC3\x97 0.75: 2118 \xC3\x97 2160");

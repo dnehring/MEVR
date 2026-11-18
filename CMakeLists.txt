@@ -1003,6 +1003,7 @@ set(MEVR_FSR_EMBEDDED ${MEVR_EMBEDDED_FFX_A} ${MEVR_EMBEDDED_FFX_FSR1})
 # Shared sequel menu, calibration and wrist presentation. Native capture/input are separate service gates.
 set(MEVR_SEQUEL_MENU_SOURCES
 src/plugin/MainMenu.cpp src/plugin/MainMenu.hpp src/plugin/MainMenuSettings.cpp
+                src/core/vr/RenderTarget.cpp src/core/vr/RenderTarget.hpp   # the render target from the headset (ME1's rule)
                 src/plugin/MainMenuSettings.hpp src/plugin/Calibration.cpp src/plugin/Calibration.hpp src/plugin/CalibrationDraw.cpp
                 src/plugin/CalibrationDraw.hpp src/plugin/ArmSample.cpp src/plugin/ArmSample.hpp src/core/vr/MenuPointer.cpp src/core/vr/MenuPointer.hpp src/core/vr/GameMenuRequest.cpp
                 src/core/vr/GameMenuRequest.hpp src/core/vr/CineScreen.cpp src/core/vr/CineScreen.hpp
@@ -1069,6 +1070,7 @@ function(mevr_add_plugin game)
     if (MEVR_HALCYON AND game STREQUAL "LE2" AND NOT MEVR_LE2_DIAGNOSTIC)
         set(with_halcyon_le2 ON)
         list(APPEND host_sources src/plugin/HalcyonLe2.cpp src/plugin/HalcyonLe2.hpp src/plugin/HalcyonLe2Bridge.cpp
+            src/plugin/KeptLocks.cpp src/plugin/KeptLocks.hpp   # the quit-time lock guard, as LE1's (research/36)
             src/plugin/HalcyonSequelBridge.cpp src/plugin/HalcyonSequelBridge.hpp src/plugin/SequelOverlays.cpp
             src/plugin/Seams.cpp src/halcyon/MevrSeams.h src/plugin/RecenterTilt.cpp src/plugin/RecenterTilt.hpp
             src/core/vr/Recenter.cpp src/core/vr/Recenter.hpp
@@ -1156,6 +1158,7 @@ function(mevr_add_plugin game)
         set(with_halcyon_le3 ON)
         # One shared controller/floor/input/capture implementation. Gameplay/UI service ports are separate gates.
         list(APPEND host_sources src/plugin/HalcyonLe3.cpp src/plugin/HalcyonLe3.hpp src/plugin/Seams.cpp src/halcyon/MevrSeams.h
+            src/plugin/KeptLocks.cpp src/plugin/KeptLocks.hpp   # the quit-time lock guard, as LE1's (research/36)
             src/plugin/RecenterTilt.cpp src/plugin/RecenterTilt.hpp src/core/vr/Recenter.cpp src/core/vr/Recenter.hpp
             src/plugin/Le3SceneCapture.cpp src/plugin/Le3SceneCapture.hpp src/plugin/SceneCaptureTarget.hpp
             src/plugin/MotionBlurGuard.cpp src/plugin/MotionBlurGuard.hpp
@@ -1591,6 +1594,7 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/LayerComposite.cpp
         src/core/vr/MenuPointer.cpp
         src/core/vr/MenuSettings.cpp
+        src/core/vr/RenderTarget.cpp
         src/core/vr/PerformanceModes.cpp
         src/core/vr/CineScreen.cpp
         src/core/vr/PresentationHold.cpp
@@ -2132,6 +2136,7 @@ if (MEVR_BUILD_TESTS AND MEVR_MAIN_MENU)
         src/core/vr/WorldUi.cpp
         src/core/vr/OverlayPlacement.cpp
         src/core/vr/GalaxyHologram.cpp
+        src/core/vr/RenderTarget.cpp   # the sequels' Display rows (le2-section-display-*.png)
         src/core/PngFile.cpp
         src/plugin/RailArt.cpp
         src/core/gfx/Raster.cpp

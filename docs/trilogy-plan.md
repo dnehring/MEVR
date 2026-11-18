@@ -404,9 +404,16 @@ These unblock the most: almost every other entry gets smaller once they land.
   them; the unifying step has nobody yet.
 
 #### T17 Performance modes and the first start's eye size [R35]
-- **State:** LE1 done · LE2 build · LE3 build
-- **Lives in:** `core/vr/PerformanceModes`, `plugin/MainMenuSettings`, `main_menu::FirstStartEyeSize`.
-- **Left, ME2 and ME3:** the rows stay greyed (rule 15) until the levers they bundle exist there.
+- **State:** LE1 done · LE2 eye size done, modes build · LE3 eye size done, modes build
+- **Lives in:** `core/vr/PerformanceModes`, `plugin/MainMenuSettings`, `main_menu::FirstStartEyeSize`; the sequels' target rule
+  `core/vr/RenderTarget`, their renderers' `renderer::GetRenderTarget`/`SetRenderTarget`.
+- **Done (lane AU4, 2026-11-18):** the render size follows the headset as ME1's (the owner's "Follows headset like me1"): at the
+  first VR start 0.85 of the eye, ME3 in multiples of 8, ME2 at least 16:9 (it draws no HUD on a near-square frame), written to
+  `MELE2VR.ini`/`MELE3VR.ini` and GamerSettings for the next launch; Display's Render resolution and Upscale rows work on both.
+  Seen on the fake headset: ME2 4096x2304 -> 2944x1656 (render thread 10.0 -> 8.1 ms, GPU 8.7 -> 6.1 ms), its HUD whole;
+  ME3 at 1624x1656 in the combat fixture with its whole HUD. research/le3-flares-and-window.md section 6.
+- **Left, ME2 and ME3:** the Performance modes stay greyed (rule 15) until the levers they bundle exist there; the owner's
+  choice of 16:9 or 4:3 for ME2 (question 18 below); the PS VR2's size in a headset.
 - **Waits for:** T03 (FSR), T08. **Who:** nobody yet.
 
 #### T18 The front end and the presentation hold [R22]
@@ -423,11 +430,13 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Waits for:** nothing. **Who:** done (lane FE).
 
 #### T19 The body's bounds for the culling camera [R29]
-- **State:** LE1 done · LE2 check first · LE3 check first
+- **State:** LE1 done · LE2 done (pad seen) · LE3 built
 - **Lives in:** `engine/BodyBounds`. Its cause on LE1 is Halcyon LE1's view offset; ArmIk's bounds flag already runs
   everywhere.
+- **Done (lane AU4, 2026-11-18, the ME2 audit's REN-28):** the pad on every game (lane R2's and R3's addresses, the module on
+  `runtime::Up()`); ME2's Save 4 with replayed hands: the hook in, the body's two meshes padded by 150 units.
 - **Left:** LE1's repro on each sequel: look down with the head turned
-  ([the gotcha](knowledge/gotchas/culling-camera-ahead-of-the-eye.md)). Port only if the body drops out.
+  ([the gotcha](knowledge/gotchas/culling-camera-ahead-of-the-eye.md)); ME3's hook reached with tracked hands.
 - **Waits for:** T21 on ME3 for a body to look at. **Who:** nobody yet.
 
 #### T20 The spectator mirror [R30]
@@ -927,10 +936,12 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Waits for:** T51 (Launch without the picker); T04 landed 2026-11-16 (a monolithic sequel build links no LExSDKv2). **Who:** the campaign pass: nobody yet.
 
 #### T53 Crash reports and a safe quit [G48]
-- **State:** LE1 done · LE2 check first · LE3 check first
+- **State:** LE1 done · LE2 done · LE3 done
 - **Lives in:** `plugin/CrashBreadcrumbs`, `plugin/KeptLocks`, the ExitProcess hook.
-- **Left:** breadcrumbs are in every host. Check whether ME2 and ME3 fault at quit as LE1 did
-  ([the gotcha](knowledge/gotchas/quit-time-fault-in-a-deleted-lock.md)); `KeptLocks` is LE1-only.
+- **Done (lane AU4, 2026-11-18):** `KeptLocks` in every host; the sequels' `[EXITKILL]` hook hands the quit to ours
+  (`MevrSeams::HostEndsProcess`: before, it terminated first and our exit line, `NoteProcessExit` and the kept locks' summary
+  never ran). Console quits: ME2 `41 deletion(s) of the game's static locks skipped`, ME3 `47`, no `crash-exit.txt`.
+  ([the gotcha](knowledge/gotchas/quit-time-fault-in-a-deleted-lock.md))
 
 ### Closed (checks only)
 
@@ -1053,7 +1064,8 @@ me3/summary.md; the owner's words in quotes):
   offer it as ME1's and ME2's do.
 - **ME3's render size:** "Follows headset like me1." The render target from the headset's eye size (ME1: 0.85 of it,
   FSR on), not a fixed 3072x2216; this replaces question 17 (c)'s answer of 2026-11-17. ME2's fixed 4096x2304 follows the
-  same rule (rule 1; the ME2 audit's finding 12).
+  same rule (rule 1; the ME2 audit's finding 12). **Built by lane AU4 (2026-11-18, T17):** the first VR start's rule on both
+  sequels; ME2's target at least 16:9 (it draws no HUD on a near-square frame: question 18).
 - **ME3, a gun let go is put away:** "Obviously yes, that should be default." `[Holsters] le3PutAway = 1` by default.
 - **ME3's melee:** "Me3 melee will require letting go of the guns and doing a fist to summon the Omni blade for strikes."
   The hand holding a gun never strikes; an empty hand's fist brings out the omni-blade, and the strokes strike with it.
@@ -1253,6 +1265,12 @@ me3/summary.md; the owner's words in quotes):
     Seen on the fake headset with the PS VR2's eyes replayed (Save 31, run `def2-lane\runs\LE3-20261117-144209`): mode 2, each
     eye 19.2 x 14.6 px/deg from a 3072x2216 target, the lamps' flares on their lamps in both eyes (a canary with `flareWindow
     = 0` put them off again), life-size as before (research/le3-flares-and-window.md section 5).
+18. **ME2's render shape** (T17; lane AU4, 2026-11-18, research/le3-flares-and-window.md section 6). ME2 renders any size
+    whose sides are multiples of 8, but draws no HUD on a near-square frame (0.85 of a PS VR2 eye is 2400x2448): at 4:3 and
+    16:9 the HUD is whole. The first VR start now widens ME2's target to at least **16:9** (every ME2 screen has been seen at
+    that shape; on a PS VR2 4352x2448, 13% more pixels than today's 4096x2304; a Quest 3 over Link 3344x1880). **4:3** would
+    be 3264x2448 / 2504x1880, 25% fewer pixels than 16:9; only the HUD was checked at it. Recommendation: 4:3 after a look
+    at ME2's menus, conversation wheel and room screens at that shape; 16:9 until then.
 
 **Defaults waiting for a seen result and a yes** (not questions yet): `[SquadOrders] place` on the sequels (ME1's is on),
 `[Traversal] cue`, ME3's heavy melee and traversal gestures (its stroke melee is on by default since 2026-11-17), the

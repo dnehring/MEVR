@@ -104,6 +104,31 @@ void SaveOwnSettings(char const* why) noexcept {
     log::Info("main menu: the renderer's settings saved to MELE2VR.ini ({})", why != nullptr ? why : "?");
 }
 
+RenderTarget GetRenderTarget() noexcept {
+    RenderTarget t;
+    t.settable = true;
+    unsigned fileW = 0, fileH = 0, liveW = 0, liveH = 0, recW = 0, recH = 0;
+    ME2VR::D3DCapture::MevrRenderTarget(&fileW, &fileH, &liveW, &liveH);
+    ME2VR::Me2Xr::MevrRecommendedEyeSize(&recW, &recH);
+    t.width = static_cast<int>(fileW);
+    t.height = static_cast<int>(fileH);
+    t.liveWidth = static_cast<int>(liveW);
+    t.liveHeight = static_cast<int>(liveH);
+    t.recommendedWidth = static_cast<int>(recW);
+    t.recommendedHeight = static_cast<int>(recH);
+    t.multiple = 8;  // ME3's scene targets are allocated in multiples of 8; ME2's are the same engine code
+    // ME2 draws no HUD at all on a near-square backbuffer (1624x1656: 30 UI draws in 4 s; 4:3 2208x1656 and 16:9 2944x1656:
+    // the whole HUD, ~14,000), so its target is at least 16:9, the shape every ME2 screen has been seen in (lane AU4,
+    // 2026-11-18; 4:3 is the cheaper choice the owner may take: docs/trilogy-plan.md T09's render-size note).
+    t.minAspect = 16.0f / 9.0f;
+    return t;
+}
+
+bool SetRenderTarget(int width, int height) noexcept {
+    return width > 0 && height > 0 &&
+           ME2VR::D3DCapture::MevrSetRenderTarget(static_cast<unsigned>(width), static_cast<unsigned>(height));
+}
+
 void LogLine(std::string const& line) noexcept {
     ME2VR::Log::Line(line);
 }

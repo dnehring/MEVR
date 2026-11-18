@@ -23,6 +23,7 @@
 #include "plugin/SteamVrSmoothingRequest.hpp"
 #include "plugin/Voice.hpp"
 #else
+#include "core/vr/RenderTarget.hpp"  // the sequels' render target from the headset (FirstStartEyeSize, SetResolution)
 #include "plugin/ArmSample.hpp"
 #include "plugin/MenusLe2.hpp"
 #endif
@@ -61,6 +62,9 @@ namespace mevr::host::main_menu {
 namespace {
 
 namespace ms = vr::menu_settings;
+#if !defined(MEVR_MENU_LE1)
+namespace rt = vr::render_target;
+#endif
 namespace cv = vr::colour;
 
 constexpr std::uint64_t kSliderRestMs = 300;    // a slider's value is written once it has rested this long
@@ -533,10 +537,24 @@ void Settings::Read(menu::Values& v) {
     v.numbers["panel_follow"] = c.hudPanelFollowDeg;
     flag("reticle", c.handReticle);
 #else
-    // ME2: no render size or performance levers of ours on its renderer yet; their group is greyed out until the owner has
-    // seen it there. ME1's upscale runs on the sequels since 2026-11-16 (research/27 section 9), so its greyed row at least
-    // shows the shared [Upscale] method it reads. The HUD panel's values are ME1's defaults (renderer::Hud(); lane B's HUD
-    // panel on ME2).
+    // The sequels: the render size follows the headset as ME1's (the renderer's RenderW/RenderH, renderer::RenderTarget, at
+    // the game's own shape; the owner, 2026-11-18) and ME1's upscale runs on them (research/27 section 9), so those two rows
+    // work; the Performance modes and the other rows of the group (ME1's render levers, SteamVR's smoothing request,
+    // Halcyon LE1's cutscene cap) stay greyed. The HUD panel's values are ME1's defaults (renderer::Hud()).
+    {
+        renderer::RenderTarget const target = renderer::GetRenderTarget();
+        rt::Shape const shape{target.multiple, target.minAspect};
+        v.texts["quality"] = rt::ResolutionChoice(shape, target.width, target.height, target.recommendedWidth,
+            target.recommendedHeight);
+        v.texts["quality_text"] = target.width > 0 && target.height > 0 ? ms::SizeText(target.width, target.height)
+                                                                         : std::string("the game's own size");
+        bool const pendingSize = target.liveWidth > 0 && (target.liveWidth != target.width || target.liveHeight != target.height);
+        v.texts["quality_note"] = pendingSize ? std::format("applies after a restart (now rendering {})",
+                                                    ms::SizeText(target.liveWidth, target.liveHeight))
+                                              : std::string("applies after a restart");
+        flag("headset_known", target.recommendedWidth > 0 && target.recommendedHeight > 0);
+        v.texts["headset_text"] = rt::HeadsetSizesText(shape, target.recommendedWidth, target.recommendedHeight);
+    }
     v.texts["upscale"] = ms::UpscaleChoice(ini.Text("Upscale", "method", "fsr"));
     renderer::HudSettings const hud = renderer::Hud();
     v.numbers["hud_distance"] = hud.hudPanelDistanceM;
@@ -798,8 +816,26 @@ void Settings::SaveHalcyon(char const* why) {
 
 #if !defined(MEVR_MENU_LE1)
 bool Settings::SetResolution(std::string const& choice) {
-    log::Info("main menu: render resolution {}: not on Mass Effect 2 yet (its renderer takes the game window's size)", choice);
-    return false;
+    // A headset chip at the game's own shape (core/vr/RenderTarget Shape): the renderer's RenderW/RenderH and
+    // GamerSettings.ini for the next launch (renderer::SetRenderTarget). The sequels have no ladder.
+    renderer::RenderTarget const target = renderer::GetRenderTarget();
+    if (!target.settable) {
+        log::Info("main menu: render resolution {}: this renderer's size isn't ours to set", choice);
+        return false;
+    }
+    ms::Size const size = rt::HeadsetSize({target.multiple, target.minAspect}, choice, target.recommendedWidth,
+        target.recommendedHeight);
+    if (size.width <= 0) {
+        log::Warn("main menu: render resolution {}: no size for it (the headset's isn't known before VR starts)", choice);
+        return false;
+    }
+    if (size.width == target.width && size.height == target.height) {
+        return true;
+    }
+    bool const ok = renderer::SetRenderTarget(size.width, size.height);
+    log::Info("main menu: render resolution {} ({}x{}, was {}x{}): {}", choice, size.width, size.height, target.width,
+        target.height, ok ? "applies after a restart" : "not written (see the renderer's log)");
+    return ok;
 }
 #else
 bool Settings::SetResolution(std::string const& choice) {
@@ -1090,6 +1126,8 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
         }
         renderer::SetMenuRows(rows);
         HalcyonChanged(false);  // saved 2 s after the last change, and when the menu closes
+    } else if (key == "quality") {
+        SetResolution(v.Text("quality"));
     } else {
         log::Warn("main menu: no Mass Effect 2 setting behind '{}' yet (its row is greyed out)", key);
     }
@@ -1502,7 +1540,48 @@ After Settings::TakeAfter() {
 
 #if !defined(MEVR_MENU_LE1)
 void FirstStartEyeSize() {
-    // ME2: MEVR Setup doesn't install Mass Effect 2 yet (M7.2), so nothing asks for the headset's eye size at a first start.
+    // ME2 and ME3 follow the headset as ME1 does (the owner, 2026-11-18: "Follows headset like me1"): at the first VR start
+    // the renderer's fixed size (ME2 4096x2304, ME3 3072x2216 as installed) becomes 0.85 of the headset's eye size at the
+    // game's shape, FSR scaling it up to the eye, for the next launch; once ([Display] eyeSizeSet, ME1's key). No setup's
+    // choice to wait for: MEVR Setup leaves a sequel's size to its renderer (install::GameSpec::stereoTarget).
+    static bool done = false;
+    if (done) {
+        return;
+    }
+    renderer::RenderTarget const target = renderer::GetRenderTarget();
+    if (!target.settable) {
+        done = true;
+        return;
+    }
+    if (target.recommendedWidth <= 0 || target.recommendedHeight <= 0) {
+        return;  // VR hasn't started yet: the runtime's recommendation comes with the session
+    }
+    done = true;
+    std::wstring const& path = mevr::host::SettingsPath();
+    bool const already = GetPrivateProfileIntW(L"Display", L"eyeSizeSet", 0, path.c_str()) != 0;
+    if (already) {
+        return;
+    }
+    ms::Size const size = rt::FirstStartSize({target.multiple, target.minAspect}, already, {target.width, target.height},
+        target.recommendedWidth, target.recommendedHeight);
+    if (size.width > 0) {
+        bool const ok = renderer::SetRenderTarget(size.width, size.height);
+        log::Info("first VR start: the render resolution is now 0.85 of your headset's eye size ({}x{}), {}x{} at this game's "
+                  "shape (sides in multiples of {}{}), which FSR scales up to it; was {}x{}{}: it applies from the next launch "
+                  "([Display] eyeSizeSet = 1)",
+            target.recommendedWidth, target.recommendedHeight, size.width, size.height, target.multiple,
+            target.minAspect > 0.0f ? std::format(", at least {:.2f}:1 wide", target.minAspect) : std::string(),
+            target.width, target.height, ok ? "" : " (NOT written: see the renderer's log)");
+        if (!ok) {
+            return;  // the next launch tries again
+        }
+    } else {
+        log::Info("first VR start: the render resolution {}x{} is already 0.85 of your headset's eye size ([Display] eyeSizeSet = 1)",
+            target.width, target.height);
+    }
+    if (WritePrivateProfileStringW(L"Display", L"eyeSizeSet", L"1", path.c_str()) == 0) {
+        log::Warn("first VR start: couldn't write [Display] eyeSizeSet to {}: the next VR start checks again", ini::Utf8(std::filesystem::path(path)));
+    }
 }
 #else
 void FirstStartEyeSize() {

@@ -171,13 +171,13 @@ The [technique groups](#renderer-techniques-by-group) summary follows the table.
 | R26 | Perf probe (`plugin/PerfProbe`, `core/vr/FrameProbe`; seams `PerfPresentScope`, `PerfPass0Captured`, `PerfPoint`) | 1 (core) + seams | **adapted** V: the same `plugin/PerfProbe.cpp` with the sequels' adapter (`PerfProbeSequel.cpp`); 10 captures in run `20261116-141434-005-LE2-pl-levers` (frames bounded by xrEndFrame, GPU timestamps, ticks). With lane U1's `MevrSeams::Perf*` calls (run `LE2-pl-seams`, 14:54): frames bounded by Present, 961 draws a frame; `PerfFirstEyeCaptured` comes 61 draws before Present, so it doesn't split the eyes yet | **adapted** V: same; 10 captures in run `20261116-143006-726-LE3-pl-levers`. With lane U1's seams a capture never started (the Present seam gives no device context); the probe now falls back to the context it finds itself, not yet run in the game | ME3: a run with the probe's context fallback. ME2: `PerfFirstEyeCaptured` at the pass boundary (research/sequel-render-levers.md "The landed configuration with lane U1's seams"). |
 | R27 | Delayed per-eye pose history (LE1: Halcyon's EYETAG code in xr_session.cpp; sequels: `core/vr/StereoPoseTag.hpp`, `core/vr/EyePublication`) | 1 + seams | **adapted** V: run `20261115-165553-786` (research/sequel-eye-pose-tags.md) | **adapted** V: runs `20261115-165123-287`, `20261115-174634-476` | Physical fusion. |
 | R28 | Recenter: yaw-only, plus a removed tilt (seam `RecenterOrientation` → `plugin/RecenterTilt`, `core/vr/Recenter`) | 1 + seam | **shared** V: `RecenterAppSpace` asks `MevrSeams::RecenterOrientation` (`plugin/RecenterTilt` in the LE2 host, lane U1). The seam ran in session `20261116-123754-740-LE2-u1-le2` (`[MEVR-RECENTER] yaw-only recenter (upstream), automatic`). The correction itself needs a tilted base space, which the fake headset does not give: ME1 code, unseen on ME2 | **shared** U: `RecenterAppSpace` asks `MevrSeams::RecenterOrientation` (`plugin/RecenterTilt` in the LE3 host, lane U1, 2026-11-16). Built; no run since (the yaw-only recenter ran in `20261115-180239-899`) | Call `RecenterOrientation` in each sequel's `RecenterAppSpace`. SteamVR's upside-down start reaches every game (docs/le2-from-le1.md 3.1). |
-| R29 | Body bounds for the culling camera (`engine/BodyBounds`: post-hook `0x58EEC0`, Umbra hand-over `0x25CFE0`; ArmIk's `bConsiderAllBodiesForBounds`) | 2 + 3 (cause: Halcyon LE1's GPU-only view offset) | **missing**: `ready`; `kSkelUpdateBounds`/`kPrimitiveUmbraBounds` are 0 (lane R2 found both functions, `0x798350` and `0x3146C0`: rows of ME2's table). ArmIk's flag part runs | **missing**: same; lane R3 found ME3's two (`0x793850`, `0x32EC10`) | First check whether the sequels cull the body at all. LE1's repro: look down with the head turned (gotchas/culling-camera-ahead-of-the-eye). |
+| R29 | Body bounds for the culling camera (`engine/BodyBounds`: post-hook `0x58EEC0`, Umbra hand-over `0x25CFE0`; ArmIk's `bConsiderAllBodiesForBounds`) | 2 + 3 (cause: Halcyon LE1's GPU-only view offset) | **shared** V (lane AU4, 2026-11-18): `kSkelUpdateBounds`/`kPrimitiveUmbraBounds` are lane R2's `0x798350` and `0x3146C0`, the module on `runtime::Up()`; Save 4 with replayed hands: `hooked USkeletalMeshComponent::UpdateBounds`, both body meshes flagged, `padded by 150 units` (the cap: the sequel host's view offset up is 175 units). Whether ME2 culled the body without it was not checked | **shared** U: lane R3's `0x793850`, `0x32EC10`; the table's rows at their RVAs at attach; the hook not reached in the runs (no tracked hands in the combat fixture) | A look down at the feet with the head turned on each sequel (gotchas/culling-camera-ahead-of-the-eye). |
 | R30 | Spectator mirror (`game/Spectator`, `plugin/Spectator`, seam `SpectatorMirror`) | 1 (host draw) + 2 | **missing** | **missing** | — |
 | R31 | Scene-capture plumbing (RenderLevers CaptureSceneHook `0x742C80`, BeginBackBufferHook `0x773D30`; UiWorldFigure's Umbra skip `0x7526C0`) | 2 | **missing**: the rows are in ME2's table (`0x329B90`, `0x354570`; lane R2), the hooks stand down (`sceneCaptureVerified`: where ME2's final pass gets its viewport is unread), and nothing in ME2 makes a capture | **forked** V: `plugin/Le3SceneCapture` (its own RVAs; shares `plugin/SceneCaptureTarget.hpp`, `core/vr/SceneCaptureScope`); raw map captures in run `20261115-220823-943` (research/le3-galaxy.md) | Forks 9. |
 | R32 | Pinned renderer baseline (LE1 `MevrBridge::ModernBaseline`: stereo, flat menus, first person, no head aim) | per renderer | **adapted** V: `ApplyMevrBaseline` (le2 me2_menu.cpp) after every ini load; first run 2026-11-14 (research/le2-renderer-integration) | **adapted** V: `ApplyMevrBaseline` (le3 me2_menu.cpp) after every ini load since 2026-11-17 (lane FP3), ME2's list: stereo, the Quest image fix, the view filled, lean, look speed 1, flat menus, first person with the head hidden (upstream ME3 started in third person; `engine_probe.cpp`'s first person now on from the start), no head aim, no stick pitch, no VR conversations or cutscenes, no profile hotkeys, no R recenter, the menu key `\`; K still toggles first person; since lane FX3 (2026-11-17) also first person in cover (upstream's `CoverThirdPerson`, default 1, went third person there; U: no cover on Save 31). Run on Save 31: `[MEVR-BASELINE] 3 setting(s) ...` (the preview's ini already had the rest), first person in every snapshot (research/trilogy-first-person.md). The upstream experimental controls stay compiled out (`#if !defined(MEVR_ASI)`) | Per renderer by nature. |
 | R33 | Hotkeys only with the game in front (`MevrBridge::KeyDown`) | 1 | **adapted** U: `MevrBridge::HotkeyDown` (le2 mevr_bridge.h) | **adapted** U: `KeyDown` in le3 d3d_capture.cpp | Type the key in another window during a run; nothing should toggle. |
 | R34 | Halcyon's script calls queued to the game thread (seam `QueueProcessEvent`, `plugin/GameThreadCalls`; research/36) | 3 (Halcyon's Present-thread ProcessEvents; the sequels have the same pattern) | **shared** V: "stereo and the queue work", first run 2026-11-14 (CLAUDE.md) | **shared** U: le3 engine_probe.cpp:282 queues | LE3: the host's `process event: off the game thread:` count in a run log. |
-| R35 | Performance modes and the first start's eye size (`core/vr/PerformanceModes`, `MainMenuSettings` Display > Performance, `FirstStartEyeSize`) | menu | **missing**: `FirstStartEyeSize` is empty off LE1 (`#if !defined(MEVR_MENU_LE1)`), and the levers it bundles don't exist there | **missing** | After R08 and R13. |
+| R35 | Performance modes and the first start's eye size (`core/vr/PerformanceModes`, `MainMenuSettings` Display > Performance, `FirstStartEyeSize`) | menu | **adapted** V for the eye size (lane AU4, 2026-11-18): `FirstStartEyeSize` writes 0.85 of the eye at ME2's shape (`core/vr/RenderTarget`: sides in multiples of 8, at least 16:9, ME2 draws no HUD on a near-square frame) into `MELE2VR.ini` and GamerSettings for the next launch (`renderer::SetRenderTarget`); seen: 1912x1952 recommended -> 2944x1656, the next launch rendered it with the whole HUD; Display's Render resolution and Upscale rows work. **missing**: the Performance modes (ME1's levers) | **adapted** U: the same rule, sides in multiples of 8 (ME3 draws its HUD at 1624x1656, combat fixture); its write through `MevrSetRenderTarget` not run (the preview pins `eyeSizeSet`); the size itself seen. **missing**: the modes | The PS VR2's size in a headset; the owner's 16:9 or 4:3 for ME2 (research/le3-flares-and-window.md section 6). |
 
 ### Renderer techniques by group
 
@@ -270,7 +270,7 @@ The [technique groups](#renderer-techniques-by-group) summary follows the table.
 | G45 | Focus pause off (`game/FocusPause`) | **missing** | **missing** | First check whether ME2/ME3 freeze without window focus (`bPlayersOnly`). |
 | G46 | Our ASI loader (`src/loader`) | **adapted** U: `LoaderCore.cpp` maps MassEffect2.exe, but every ME2 run used LEBinkProxy | **adapted** U: maps MassEffect3.exe | A run with our `bink2w64.dll` in that game's Binaries. |
 | G47 | Installer, report a problem, release packaging (`MEVR-Setup`, `src/install`, `plugin/ReportRequest`, `tools/package-release.ps1`) | **adapted** U: one installer, the game a parameter (`install/Game.hpp`'s `GameSpec`: folder, exe, `-game 2`, `MELE2VR.ini` next to the exe, its GamerSettings keys; its own `ASI\MEVR-install.json`); install, "verify files" and Repair, the settings and their Restore, the report (`LE2MEVR.log`, `MELE2VR_Log.txt`), uninstall byte for byte pass on the fake game (`tools/setup/test-fake-game.ps1 -Games LE2`, 2026-11-16) and in `mevr-tests` (`TestGames`); `ReportRequest` in the host. Never installed into the real game; **not offered** (MEVR-Setup.ini `[Setup] games`, `package-release.ps1 -Games`); the players' build links no LExSDKv2 since T04 and the package refuses one that does; our loader in the launcher starts only ME1 (the picker shows) | **adapted** U: the same by the same code (`-Games LE3`); no release `MELE3VR.ini` (the renderer writes its own); its players' build links no LExSDKv2 since T04 | One install, repair and uninstall of each on the real game; T51 (the launcher's `-game 2`/`3`: `launch::GameArguments`, `kOurLauncherBoots`); the owner's word to offer one (`-Games`). M7.1, M7.2; L3-10. |
-| G48 | Crash breadcrumbs, first-chance report, quit safety (`plugin/CrashBreadcrumbs`, `plugin/KeptLocks`, the ExitProcess hook) | **adapted** V: breadcrumbs in every host; a first-chance report in an ME2 log (research/le2-menus "The checks"). KeptLocks LE1-only | **adapted** U: same | Check whether ME2/ME3 fault at quit (LE1: a deleted lock at exe+0x1BA22C0). |
+| G48 | Crash breadcrumbs, first-chance report, quit safety (`plugin/CrashBreadcrumbs`, `plugin/KeptLocks`, the ExitProcess hook) | **shared** V: breadcrumbs in every host; a first-chance report in an ME2 log (research/le2-menus "The checks"); KeptLocks in every host since lane AU4 (2026-11-18), and the renderer's `[EXITKILL]` hands the quit to the host's hook (`MevrSeams::HostEndsProcess`), which before never ran: each console quit since, `kept locks: 41 deletion(s) of the game's static locks skipped`, no `crash-exit.txt` | **shared** V: the same; two quits, `47 deletion(s) ... skipped` after its `[VRRES] exit` write | Whether the deleted locks were ever taken after deletion on the sequels (no fault was seen before either). |
 | G49 | Controller input: Touch as pad 0, profiles, our actions, haptics (`plugin/PadMerge`, `game/GamepadMapping`, `plugin/XrHost`, `core/xr/Input`) | **adapted** V: `MergeMotionControllers` (conversation and orbital triggers, R3 gate, R3 kept while the mod owns the click: `Renderer::keepPowerClick`, 2026-11-17, ME1's R3 unchanged); stretch `20261115-001659-lane-b4-m2`; ctest `mevr-pad-merge` | **adapted** V: semantic modes, map lease, traversal yaw; replayed controllers in run `20261115-182253-344` | Headset: the L3+R3 hold. |
 | G50 | Head tracking and the view anchor (`game/HeadTracking`, `game/ViewAnchor`) | **adapted** V: `hostView.valid` and the replayed turn (le2-vrik). Stands down when the layer is off (no LExSDKv2 fallback since T04) | **adapted** V: head look in the pose-tag runs (through `engine::legacy` then). On our layer since T04: its rows agree in the engine probe (`CheckLe3EngineAccess`, 621 of 621), not yet seen in a renderer run | LE3: a renderer run on the T04 code. |
 | G51 | Reflection (mirror) fix (`game/Reflections`) | **n/a**: stands down whenever the host owns VR (`src/mod/Mod.cpp`), as on LE1 under Halcyon | **n/a** | — |
@@ -631,9 +631,9 @@ defined in the tool's header:
 <!-- parity:summary -->
 | game | renderer | host plugin files | host core files | services served | src/game + src/engine modules by status | common seams called | own seams |
 |---|---|---|---|---|---|---|---|
-| LE1 | halcyon-le1 | 74 | 71 | 58 | run 68, out 4, ungated 26, unreferenced 3, unbuilt 4 | 22 of 48 | 89 |
-| LE2 | halcyon-le2 | 71 | 59 | 52 | run 49, ready 10, out 17, ungated 23, unreferenced 2, unbuilt 4 | 44 of 48 | 4 |
-| LE3 | halcyon-le3 | 74 | 60 | 55 | run 48, ready 10, out 16, ungated 25, unreferenced 3, unbuilt 3 | 44 of 48 | 2 |
+| LE1 | halcyon-le1 | 74 | 71 | 58 | run 68, out 4, ungated 26, unreferenced 3, unbuilt 4 | 22 of 49 | 89 |
+| LE2 | halcyon-le2 | 72 | 60 | 52 | run 50, ready 9, out 17, ungated 23, unreferenced 2, unbuilt 4 | 45 of 49 | 4 |
+| LE3 | halcyon-le3 | 75 | 61 | 55 | run 49, ready 9, out 16, ungated 25, unreferenced 3, unbuilt 3 | 45 of 49 | 2 |
 <!-- /parity:summary -->
 
 ### Host plugin files per game
@@ -672,7 +672,7 @@ defined in the tool's header:
 | `HdrDisplayPolicy` | yes | yes | yes |
 | `HudPanel` | yes | yes | yes |
 | `HudPieceLayers` | yes | yes | yes |
-| `KeptLocks` | yes | - | - |
+| `KeptLocks` | yes | yes | yes |
 | `Le3SceneCapture` | - | - | yes |
 | `MainMenu` | yes | yes | yes |
 | `MainMenuSettings` | yes | yes | yes |
@@ -757,6 +757,7 @@ In all three hosts (57): `Exe`, `ExeCheck`, `Hook`, `Hotkey`, `Ini`, `Json`, `Lo
 | `vr/MakoGunner` | yes | - | - |
 | `vr/OmniPad` | yes | - | - |
 | `vr/QuestPacing` | yes | - | - |
+| `vr/RenderTarget` | - | yes | yes |
 | `vr/Spectator` | yes | - | - |
 | `vr/Sprint` | yes | - | - |
 | `vr/SquadContext` | yes | - | - |
@@ -847,7 +848,7 @@ Helpers applied, in order:
 <!-- parity:modules -->
 | module | LE1 | LE2 | LE3 |
 |---|---|---|---|
-| `engine/BodyBounds` | run | ready | ready |
+| `engine/BodyBounds` | run | run | run |
 | `engine/BonePose` | run | run | run |
 | `engine/CallFunction` | ungated | ungated | ungated |
 | `engine/CodeDump` | ungated | ungated | ungated |
@@ -973,6 +974,7 @@ The common vocabulary (`namespace MevrSeams`, `src/halcyon/MevrSeams.h`): `yes` 
 | `GalaxyOwnsPresentation` | - | yes | yes |
 | `HoldLoadTail` | - | yes | - |
 | `HoldPlainVr` | - | - | - |
+| `HostEndsProcess` | - | yes | yes |
 | `HudPanelDraw` | - | yes | yes |
 | `KeyDown` | yes | yes | yes |
 | `LifeSizeStereo` | - | yes | yes |

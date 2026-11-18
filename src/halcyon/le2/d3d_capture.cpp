@@ -1291,6 +1291,9 @@ void TryInstallBinkHooks() noexcept
 bool g_mhOMSetRTInstalled = false;   // [RTVDURABLE] inline hook replaces the vtable patch
 void WINAPI ExitProcessHook(UINT uExitCode) noexcept
 {
+    // [MEVR] our host's ExitProcess hook sits under this one and ends the process itself after its exit line (the kept
+    // locks, crash::NoteProcessExit): hand it the call; it never returns either.
+    if (::MevrSeams::HostEndsProcess() && g_origExitProcess != nullptr) g_origExitProcess(uExitCode);
     TerminateProcess(GetCurrentProcess(), uExitCode);   // never returns; skips the hanging detach chain
 }
 
@@ -4327,6 +4330,33 @@ void ArmResolutionSpoof() noexcept
                   g_dispqRealPrimaryW, g_dispqRealPrimaryH, wantW, wantH, haveWant ? 1 : 0,
                   DispqSpoofActive() ? "ARMED" : "off", g_dispqSpoofW, g_dispqSpoofH);
     ME2VR::Log::Line(line);
+}
+
+// [MEVR] the render target for our host (plugin/RendererLe2.cpp RenderTarget): the size the next launch renders at is
+// MELE2VR.ini's RenderW/RenderH, which ArmResolutionSpoof above writes into GamerSettings.ini at attach.
+void MevrRenderTarget(unsigned* fileW, unsigned* fileH, unsigned* liveW, unsigned* liveH) noexcept
+{
+    const std::wstring ini = DispqOurIniPath();
+    if (fileW) *fileW = ini.empty() ? 0u : static_cast<unsigned>(GetPrivateProfileIntW(L"VR", L"RenderW", 0, ini.c_str()));
+    if (fileH) *fileH = ini.empty() ? 0u : static_cast<unsigned>(GetPrivateProfileIntW(L"VR", L"RenderH", 0, ini.c_str()));
+    if (liveW) *liveW = g_backbufferWidth;
+    if (liveH) *liveH = g_backbufferHeight;
+}
+
+bool MevrSetRenderTarget(unsigned w, unsigned h) noexcept
+{
+    const std::wstring ini = DispqOurIniPath();
+    if (ini.empty() || w < 1024 || h < 576) return false;   // ArmResolutionSpoof's own bounds
+    wchar_t v[32] = {};
+    swprintf_s(v, L"%u", w);
+    bool ok = WritePrivateProfileStringW(L"VR", L"RenderW", v, ini.c_str()) != 0;
+    swprintf_s(v, L"%u", h);
+    ok = WritePrivateProfileStringW(L"VR", L"RenderH", v, ini.c_str()) != 0 && ok;
+    const bool wrote = DispqWriteRes(w, h);   // and now, as attach would at the next launch
+    ME2VR::Log::Line("[VRRES] [MEVR] next launch " + std::to_string(w) + "x" + std::to_string(h) +
+                     (ok ? " -> MELE2VR.ini" : " -> MELE2VR.ini write FAILED") +
+                     (wrote ? ", GamerSettings.ini" : ", GamerSettings.ini untouched"));
+    return ok;
 }
 
 // Installed from the worker thread, well ahead of the game's D3D init (which happens after DllMain

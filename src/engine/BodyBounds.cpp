@@ -24,7 +24,7 @@ constexpr char const* kHookName = "USkeletalMeshComponent::UpdateBounds";
 
 // research/69 (Ghidra on the LE1 project): 0x58EEC0 is the skeletal mesh component's UpdateBounds (its vtable's slot +0x368;
 // it calls the physics asset's box of the bodies, 0x638E20, which tests bConsiderAllBodiesForBounds) and writes the
-// component's Bounds: Origin, BoxExtent, SphereRadius. LE1 only (engine/Addresses.hpp).
+// component's Bounds: Origin, BoxExtent, SphereRadius. Every game: ME2 0x798350, ME3 0x793850 (engine/Addresses.hpp).
 constexpr std::uint32_t kUpdateBoundsRva = addresses::kSkelUpdateBounds;
 // 0x25CFE0: UpdateBounds' last call. With an Umbra object behind the component (+0x210) it makes the object's matrix from
 // Bounds (a unit box scaled to the extents at the origin) and gives it to Umbra (0xD43030). Umbra culls by that box, not by
@@ -52,7 +52,7 @@ float gLast[kMaxMeshes][7] = {};
 std::int32_t gBoundsOffset = -1;
 
 void ResolveFields() {
-    if (!ue3::runtime::Ready()) {
+    if (!ue3::runtime::Up()) {  // every game since lane AU4 (ME2 0x798350, ME3 0x793850)
         return;
     }
     ue3::Reflection& r = ue3::runtime::Get();

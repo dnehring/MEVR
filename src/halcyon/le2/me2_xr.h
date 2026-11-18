@@ -15,6 +15,8 @@ void Recenter() noexcept;
 // in the Insert menu, persisted by me2_menu.
 float GetMenuScreenDist() noexcept;   void SetMenuScreenDist(float m) noexcept;
 float GetMenuScreenSize() noexcept;   void SetMenuScreenSize(float m) noexcept;
+// [MEVR] the runtime's recommended eye size (xrEnumerateViewConfigurationViews), 0 until the session is made.
+void MevrRecommendedEyeSize(unsigned* w, unsigned* h) noexcept;
 // [CINEFLAT] ME1-style zoom for the world-locked cutscene/conversation screen (menus unaffected).
 float GetCineScreenZoom() noexcept;   void SetCineScreenZoom(float z) noexcept;
 // [COMFORT] placement of the Insert menu's OWN panel (not the game-menu screen above).
