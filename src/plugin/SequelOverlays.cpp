@@ -233,6 +233,22 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
         // The map's UI on the projector is the game pointer's (a controller's ray and trigger: the game's cursor; LE1's
         // HalcyonOverlays galaxy panel), in the galaxy's mode only: orbit keeps the scanner's own triggers (ME2's LT and RT).
 #if defined(MEVR_WITH_MAIN_MENU)
+        // The front end on ME1's 3D cinema screen (research/56 "The sequels"): its UI layer is the game pointer's, as LE1's
+        // CineScreenPointerPlane: the whole game window on the layer's plane, wider and taller by the part the screen leaves out
+        // (centred: the eyes' opposite crops, the band's rows), so a ray maps onto the window's pixel. ME3's flat GUI panel had
+        // the pointer before the title moved to the screen. Before the galaxy's: forgetting must not undo its note.
+        static bool frontEndPointer = false;  // Present thread
+        float const partW = panel.screenPart[2] - panel.screenPart[0];
+        float const partH = panel.screenPart[3] - panel.screenPart[1];
+        if (!galaxyUi && panel.screenUi && panelLayer != nullptr && !anyMenu && partW > 0.05f && partH > 0.05f &&
+            ::MevrSeams::FrontEndOnScreen()) {
+            mevr::host::game_pointer::NoteGameUiQuad(panel.screenPose, panel.screenSize.width / partW,
+                panel.screenSize.height / partH, mevr::host::game_pointer::PanelKind::GameMenu);
+            frontEndPointer = true;
+        } else if (frontEndPointer) {
+            mevr::host::game_pointer::ForgetGameUiQuad();
+            frontEndPointer = false;
+        }
         static bool galaxyPointer = false;  // Present thread
         if (galaxyUi && panelLayer != nullptr && !anyMenu && facts.galaxyUiPointer != 0 &&
             mevr::engine::adapter::IsGalaxyMode(frame.gameMode)) {

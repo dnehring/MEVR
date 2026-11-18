@@ -3092,7 +3092,7 @@ void RunFrame() noexcept
         // movie (plugin/TransitionFade, research/52): the frame's last layer. 0 the world, 1 the screen, 2 a cinematic on the
         // flat panel (Halcyon's flat cine, a movie inside a scene), 3 another flat panel (menus, loads), -1 none.
         const int mevrView = rendered ? 0 : mevrScreenLayerCount > 0 ? 1
-                           : haveMono ? ((ME2VR::CalcViewHook::GetCinematic() || binkFullscreen) ? 2 : 3) : -1;
+                           : haveMono ? ((ME2VR::CalcViewHook::GetCinematic() || binkFullscreen || mevrLoadTail) ? 2 : 3) : -1;   // the load's tail is its movie (T18)
         if (layerCount < kMevrMaxLayers)
             if (const void* fade = ::MevrSeams::TransitionFadeLayer(g_session, g_viewSpace, g_ctx, mevrView))
                 layers[layerCount++] = static_cast<const XrCompositionLayerBaseHeader*>(fade);
