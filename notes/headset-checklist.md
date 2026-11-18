@@ -56,6 +56,26 @@
   should still persist. Fake-headset validation checks publication and automatic-write removal; it does
   not certify the user's alignment or physical headset comfort. The private QA binary is restored after testing.
 
+- [ ] 2026-11-08 Normandy pacing (research/63): repeat the fixed-save sweep under physical SteamVR
+  and VDXR after frame-aligned instrumentation or a diagnostic-write candidate is ready. Local
+  SteamVR null-headset runs at 2284x2448 and 3072x3188 expose periodic game-thread hitches but
+  do not reproduce the 30-60 ms submission stalls; the fake session runs faster than its nominal
+  90 Hz. Confirm the actual installed build includes conditional menu-return reset suppression.
+
+- [ ] 2026-11-08 motion-blur guard (research/62): on a planet where nearby assets previously smeared or
+  disappeared, pan slowly with AA and One Draw enabled. Check after a cinematic if one occurs naturally;
+  finding a cutscene is not required for the native re-enable test, which already passed in Normandy.
+  The installed guard passed forced native restore and navigator-conversation return instrumentation
+  under Quest/VDXR; the owner could not judge the planetary symptom from that scene. Visual acceptance
+  remains open. The combined candidate retains startup/load protection and restores the menu-return
+  fallback if the guard is unavailable or sees an unknown effect.
+
+- [ ] 2026-11-08 combined menu/VDXR/blur candidate (research/57 and research/62): launch through VD,
+  confirm the rail slides to the screen's right and the omni-tool lights up, then open/close menus
+  and return from a crew conversation. Confirm `skipped menu-return reapply` in the log while the
+  guard is healthy, AA and sharePass 5 remain active, and compare the return hitch and slow pan.
+  Combined headset QA remains pending; the earlier guard-only run did not contain the new rail.
+
 - [ ] 2026-11-08 Virtual Desktop replay rejection (research/61): with the guarded-rearm build and automatic
   unsupported-call diagnostics, reproduce the player's natural front-end/Normandy failure on Quest + VDXR.
   Capture the normal report without changing graphics settings first; inspect caller stack and context identity
