@@ -1011,7 +1011,14 @@ void ApplyFov(std::uintptr_t sv) noexcept
     // gameplay untouched) and shrinks proportionally as the game zooms in below rest (ADS/sniper), so the
     // world MAGNIFIES into the fill. Because the render FOV tracks the game's zoom blend continuously, there
     // is NO pop/flash crossing into ADS. The submitted FOV is constant (headset), so the eye never jumps.
+    // [MEVR] No aim zoom in VR (the owner, 2026-11-17: aiming down an assault rifle or a shotgun magnified the whole view,
+    // "really disorienting ... should be thoroughly disabled"; ME1 never zooms the view, its scopes are a picture at the
+    // eyepiece, research/21): the render keeps the headset's window whatever the game's aim FOV.
+#if defined(MEVR_ASI)
+    const float frac = 1.0f;   (void)rest;
+#else
     const float frac = (gh < rest) ? (gh / rest) : 1.0f;   // 1.0 at rest, <1 zoomed in
+#endif
     const float renderH = th * frac;
     const float renderV = tv * frac;
     WidenProjection(sv, renderH, renderV);
@@ -1369,7 +1376,14 @@ void* __fastcall CalcViewDetour(void* lp, void* family, void* loc, void* rot, vo
             if (rest < 0.45f) rest = 0.61f;
             if (!(gh < 0.59f && !weaponOut))   // narrow + no weapon stays raw -> mono/cinematic detection intact
             {
+                // [MEVR] No aim zoom in VR (the owner, 2026-11-17: aiming down an assault rifle or a shotgun magnified the whole view,
+                // "really disorienting ... should be thoroughly disabled"; ME1 never zooms the view, its scopes are a picture at the
+                // eyepiece, research/21): the render keeps the headset's window whatever the game's aim FOV.
+#if defined(MEVR_ASI)
+                const float frac = 1.0f;   (void)rest;   // as ApplyFov
+#else
                 const float frac = (gh < rest) ? (gh / rest) : 1.0f;   // ADS zoom-fill, same as ApplyFov
+#endif
                 const float renderH = th * frac;
                 float deg = 2.0f * renderH * (180.0f / 3.14159265358979f);
                 if (deg > 170.0f) deg = 170.0f; else if (deg < 10.0f) deg = 10.0f;
