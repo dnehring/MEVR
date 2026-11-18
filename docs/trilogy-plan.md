@@ -597,11 +597,13 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Done (lane AU5, 2026-11-18):** the constant eye on both sequels, one seam `MevrSeams::ConstantFpEye` in
   `plugin/HalcyonSequelBridge.cpp` asked by le2's and le3's `FpApplyOffset` (research/38 "The sequels' constant eye"). Seen on
   ME3: its Combat mode hooks (-30, 20, 90) against Explore's (0, 0, 120), and the renderer's one Offset had put the eye 0.7 m
-  behind Shepard's head in every fight; now Combat's Offset is (5, 20, 35), the eye where exploring has it. ME2 built, not run.
+  behind Shepard's head in every fight; now Combat's Offset is (5, 20, 35), the eye where exploring has it. Seen on ME2 too
+  (Save 4: Combat hooks (-30, 0, 100), Offset now (-65, 0, 15), the camera where exploring has it). ME2's move function is
+  `PlayerWalking.PlayerMoveCombatOrExplore` (traced; for the speed from the push).
   ME3's start: its player pawn has no `SFXModule_Locomotion` (`mevr loco`), the root-motion flags are 0; AU3's slow start
   included a turn (the replay reversed the stick); exploring 0, 12, 230, 400 u/s at 0..0.4 s, combat 350 within 0.1 s.
 - **Left:** ME3's explore eye 34-38 units behind Shepard's head bone (53 in the combat pose: arm IK stays third person in
-  fights, ADS never reached; owner question in research/38); ME2's constant eye in the game; the speed from the push; ME2's
+  fights, ADS never reached; owner question in research/38); the speed from the push; ME2's
   stop; the draw rate; ME3's explore start (its limiter unread).
 - **Closes when:** `movement: response:` shows a run within 0.1 s of the push and half a push walking, on each sequel.
 - **Waits for:** nothing. **Who:** AU3 (the walk), AU5 (the constant eye); the rest nobody yet.

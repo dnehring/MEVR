@@ -596,9 +596,10 @@ What the game showed (ME3, fake headset, `camera: mode` lines from game/CameraPr
    its controller) and ADS is never reached. ME2's explore eye is 35 ahead of the hook (its Offset x -35), ME3's 35 behind (+35):
    the same number with the other sign. Options for the owner: put ME3's explore eye at Shepard's eyes as ME1's and ME2's are
    (Offset (-35, 0, 65), a renderer default: needs a headset look), or let arm IK enter first person further from the head on ME3.
-5. ME2: built, not run yet. Its eye moved 7 cm on a draw (AU3: from 35 ahead, 0, 85 up of the pawn to 30 ahead, 5 left, 75 up),
-   which the same code answers once it has seen the Explore mode's hook ((0, 0, 120) by default, ME2's measured eye with its
-   explore Offset).
+5. ME2 (Save 4): Seen on Save 4 (lane AU5, 2026-11-18): Explore hooks (0, 0, 120), Combat and CombatStorm (-30, 0, 100), TightAim (0, 0, 80); their Offsets now (-35, 0, 35), (-65, 0, 15), (-65, 0, 15), (-35, 0, -5) (the renderer's (-60, 5, 25), (-70, 5, 25), (-30, 5, 20)), and the camera 35 ahead and 85 above the hook bone in Explore and in Combat alike (`camera: mode`). Its eye had moved 7 cm on a draw (AU3).
+6. The speed from the push, ME2 (traced the same run): its move function is `BioPlayerController.PlayerWalking.
+   PlayerMoveCombatOrExplore`, asking `Pawn.GetMaxSpeed` and `BioPawn.GetWalkingSpeedMode` each tick (no `SetDesiredSpeed`);
+   ME3's `BioPawn` has `SetDesiredSpeed(fSpeedScaling)`. Not built.
 
 ## D. The draw and holster delay
 
