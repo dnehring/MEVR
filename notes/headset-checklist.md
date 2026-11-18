@@ -845,8 +845,23 @@ stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs 
 ### The sequels' render size from the headset (lane AU4, 2026-11-18; research/le3-flares-and-window.md section 6)
 
 - [ ] ME2 and ME3 after a first VR start on the PS VR2: the second launch renders ME3 at 2400x2448 and ME2 at 4352x2448 (16:9,
-  its HUD isn't drawn narrower); both sharp and smooth, ME2's HUD, menus, wheel and room screens whole. Then the owner's 16:9
-  or 4:3 for ME2 (docs/trilogy-plan.md question 18).
+  its HUD isn't drawn narrower); both sharp and smooth, ME2's HUD, menus, wheel and room screens whole. (ME2's 16:9 against
+  4:3 was settled on the fake headset by lane AU9: 16:9; research/le3-flares-and-window.md section 6.1.)
+
+### The sequels' eye distance, an A/B (lane AU9, 2026-11-18; research/38 "The sequels' eye distance, an A/B")
+
+The owner: "Need to validate in headset, whatever gets us closest to feeling like we are attached to the body." Today's eye
+sits 24-34 units (cm) ahead of Shepard's head bone on ME2 and ME3; ME1's about 4. One session, both games, no file to edit:
+- [ ] On ME2 (any on-foot save) and then ME3, recenter standing straight, open our menu (both sticks held), Advanced >
+  Tracking > Eye position (headset test), and try each of **Today**, **Between** and **At the face** (it applies within a
+  second; close the menu after each pick). At each: look straight down at the chest and the belt (the body should be under you,
+  not behind you), hold both hands out and bring them to the face (the drawn hands should meet the real ones without the arms
+  looking short or bent back), walk forward and turn your head left and right (no body or shoulder in front of the eyes, no
+  neck or collar in view), draw a gun and raise it to the eye. Note which feels most attached to the body, per game, and
+  anything that pokes into the view (the collar, the hood, hair) at Between or At the face.
+- [ ] Say which one becomes the default per game (today's stays until then). The log line `constant eye: the first-person eye
+  ...` names the one in use; `arm IK: first person camera vs Shepard's head bone: forward N` the distance (fake headset: ME2
+  29 today, 18 Between, 4 At the face; ME3 29-32, 17-20, about 3).
 
 ### ME2
 - [ ] The game's start (T18, research/56 "The sequels", lane FE, seen on the fake headset 2026-11-18): as ME1's line in "The

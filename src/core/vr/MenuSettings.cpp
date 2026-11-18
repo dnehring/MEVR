@@ -141,6 +141,7 @@ std::vector<Field> const& Schema() {
         {"aim_assist", Type::Flag, 0},
         {"explore_stance", Type::Flag, 0},  // [Hands] exploreStance (research/38 A; off by default since 2026-10-25)
         {"constant_eye", Type::Flag, 1},    // [Hands] constantEye (B, the host)
+        {"eye_test", Type::Choice, 0, "today"},  // [Hands] eyeTest: the sequels' first-person eye, a headset A/B (the host)
         {"draw_rate", Type::Number, 6, "", 1, 10, F::Times1},  // [Hands] drawRate (D)
         {"gun_kick", Type::Flag, 1},       // [Hands] gunKick (research/24 section 8)
         {"fingers", Type::Flag, 1},        // [Hands] fingers (research/43)

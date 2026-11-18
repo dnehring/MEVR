@@ -162,7 +162,8 @@ authored seated scenes (such as shuttles) must reject traversal while retaining 
   own window, else every lamp's flare lands off its lamp, differently per eye; research/le3-flares-and-window.md). **The
   sequels' render size follows the headset as ME1's** (the owner, 2026-11-18; research/le3-flares-and-window.md section 6):
   at the first VR start `FirstStartEyeSize` writes 0.85 of the recommended eye (ME3: sides in multiples of 8; ME2: at least
-  16:9, its HUD isn't drawn on a near-square frame) into `MELE2VR.ini`/`MELE3VR.ini [VR] RenderW/RenderH` and GamerSettings
+  16:9, its HUD isn't drawn on a near-square frame, and at 4:3 the power wheel at the hand cuts out the wrong band for 5% less
+  GPU: kept at 16:9, section 6.1) into `MELE2VR.ini`/`MELE3VR.ini [VR] RenderW/RenderH` and GamerSettings
   for the next launch, once (`[Display] eyeSizeSet`; `core/vr/RenderTarget`, `renderer::SetRenderTarget`); the runner pins
   it (`prep.ps1 -FirstVrStart` runs it on ME2). ME3's shipped stand-in is 3072x2216 (the code default when the keys are
   missing), ME2's 4096x2304;

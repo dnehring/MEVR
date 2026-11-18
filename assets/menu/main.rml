@@ -539,6 +539,13 @@
 					<button class="tog" data-class-on="recenter_key" data-event-click="toggle('recenter_key')"><div class="knob"/></button></div>
 				<div class="srow d"><div class="sl"><div class="slab">Smoothing</div><div class="rdesc">Steadies the picture while your head is still; more feels laggy</div></div><input type="range" min="0" max="0.9" step="0.05" data-value="look_smooth"/><div class="sval">{{look_smooth_text}}</div></div>
 			</div>
+			<!-- The sequels' first-person eye, a headset A/B ([Hands] eyeTest, plugin/HalcyonSequelBridge, research/38): today's eye
+			     sits 24-34 units ahead of Shepard's head bone, ME1's about 4. Not on ME1 (its eye is ME1's). -->
+			<div class="group" data-if="le2">
+				<div class="gtitle"><span>Eye position (headset test)</span><div class="gline"/></div>
+				<div class="row"><div class="rl"><div class="rlab">First-person eye</div><div class="rdesc">How far ahead of Shepard's face your eyes sit: today's, halfway, or at the face as in Mass Effect 1. Look down at the body and keep the one that feels most like your own.</div></div>
+					<div class="seg"><button class="segb" data-class-on="eye_test == 'today'" data-event-click="pick('eye_test','today')">Today</button><button class="segb" data-class-on="eye_test == 'between'" data-event-click="pick('eye_test','between')">Between</button><button class="segb" data-class-on="eye_test == 'me1'" data-event-click="pick('eye_test','me1')">At the face</button></div></div>
+			</div>
 			<div class="group">
 				<div class="gtitle"><span>Flat screens</span><div class="gline"/></div>
 				<div class="hint">Conversations and cutscenes are on the Comfort page.</div>

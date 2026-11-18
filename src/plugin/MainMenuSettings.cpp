@@ -389,6 +389,11 @@ void Settings::Read(menu::Values& v) {
     // The weapon drawn, like exploring (research/38): the mod reads exploreStance and drawRate, the host constantEye.
     flag("explore_stance", ini.Num("Hands", "exploreStance", 0.0f) != 0.0f);
     flag("constant_eye", ini.Num("Hands", "constantEye", 1.0f) != 0.0f);
+    {
+        // The sequels' first-person eye, the headset A/B (plugin/HalcyonSequelBridge, research/38): 0 today's, 1 between, 2 ME1's.
+        float const step = ini.Num("Hands", "eyeTest", 0.0f);
+        v.texts["eye_test"] = step >= 1.5f ? "me1" : step >= 0.5f ? "between" : "today";
+    }
     v.numbers["draw_rate"] = std::clamp(ini.Num("Hands", "drawRate", 6.0f), 1.0f, 10.0f);
     flag("gun_kick", ini.Num("Hands", "gunKick", 1.0f) != 0.0f);  // the mod reads it (game/gun_kick, research/24 section 8)
     // Features on by default with no row until 2026-11-04 (the release checklist's file-only list): the mod's defaults are on.
@@ -1054,6 +1059,9 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
         Put("Hands", "exploreStance", onOff("explore_stance"), true);
     } else if (key == "constant_eye") {
         Put("Hands", "constantEye", onOff("constant_eye"), true);
+    } else if (key == "eye_test") {
+        std::string const step = v.Text("eye_test");
+        Put("Hands", "eyeTest", step == "me1" ? "2" : step == "between" ? "1" : "0", true);
     } else if (key == "draw_rate") {
         Put("Hands", "drawRate", fixed(v.Number("draw_rate"), 1), final);
     } else if (key == "gun_kick") {

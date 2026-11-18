@@ -710,6 +710,32 @@ and read by animation nodes).
    u/s and its velocity turned about 70 degrees off its facing while the acceleration stayed on it, with and without the fix (no
    root motion request then). Cause unread.
 
+### The sequels' eye distance, an A/B (2026-11-18, lane AU9)
+
+The owner (docs/trilogy-plan.md "Answered 2026-11-18, later"): "Need to validate in headset, whatever gets us closest to
+feeling like we are attached to the body." Today's default stands until then. Built so the owner compares in one session
+without editing a file:
+
+1. **The switch.** `[Hands] eyeTest` in `ASI\LE2MEVR.ini` / `LE3MEVR.ini`: 0 today's eye, 1 between, 2 about where ME1's
+   sits. Our menu's Advanced > Tracking > **Eye position (headset test)** (Today / Between / At the face; shown on ME2 and ME3
+   only, `data-if="le2"`) writes it; the host reads it once a second with `[Hands] constantEye` (`plugin/HalcyonSequelBridge`
+   `RefreshConstantEye`) and moves the explore eye that many units back along Shepard's facing in the constant-eye seam
+   (`MevrSeams::ConstantFpEye`), so every standing mode (exploring, a weapon drawn, aimed fire, the sprint) follows: ME2 0,
+   12.5, 25 units; ME3 0, 13.5, 27. Log `constant eye: the first-person eye ... ([Hands] eyeTest = N: M units back ...)` on each
+   change, and the per-mode `constant eye: SFXCameraMode_Explore: HookOffset ... -> Offset ...` lines show the new Offset.
+2. **Measured on ME3** (Save 31, the Normandy, exploring, a replayed standing head; `arm IK: first person camera vs Shepard's
+   head bone`, every 5 s): today 29.1-32.3 units forward of the head bone; Between (15 back) 17.1-19.7; 30 back -2.8..+2.0
+   (so 27, the shipped step, puts it about 3 ahead, ME1's +3..5). Explore's Offset (-35, 0, 65) -> (-20, 0, 65) -> (-5, 0, 65).
+   Snapshots looking down (`au9-le3-eye0-down`, `-eye2-down`): the hands on the controllers both times, the chest further under
+   the view at 2; no part of the head in view (it is hidden).
+3. **Measured on ME2** (Save 4, Freedom's Progress, exploring): today 28.8-29.3 units forward of the head bone (up 25.3, the
+   floor lock's height; ME1's up is 14.5); Between (11 back) 17.7-18.3; 22 back 7.2; **25 back (the shipped step) 3.8-4.4,
+   ME1's**. Explore's Offset (-35, 0, 35) -> (-24, 0, 35) -> (-10, 0, 35). Snapshots `au9-le2-eye*-ahead`, `-down`.
+4. **Left for the headset** (notes/headset-checklist.md "The sequels' eye distance, an A/B"): which step feels attached to the
+   body on each game; nothing pokes into the view at Between or At the face (the collar, the hood, hair: the head is hidden but
+   the neck and collar are not); then that step becomes the default (each renderer's explore row, `g_fpDefs` in le3
+   `engine_probe.cpp`, ME2's in its table) and the A/B row goes.
+
 ## D. The draw and holster delay
 
 ### What plays and what gates it

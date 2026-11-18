@@ -367,4 +367,31 @@ ME2's screens other than the HUD at a widened 16:9 (the menus, the conversation 
 before); ME3's GUI screens and our measured crops at a near-square frame; ME2's FSR (a 16:9 target wider than the eye is
 copied, not upscaled: `EyeImageSize` scales only a picture smaller on both axes). **For the owner:** ME2 at 16:9 (every ME2
 screen has been seen at that shape; on the PS VR2 it renders 13% more pixels than today's 4096x2304) or at 4:3 (the HUD
-checked; 25% fewer pixels than 16:9).
+checked; 25% fewer pixels than 16:9). **Answered by measurement, 6.1: 16:9.**
+
+### 6.1 ME2's shape, 4:3 against 16:9 (lane AU9, 2026-11-18)
+
+The owner (question 18): "Not sure, whichever leads to the better user experience": 4:3 only if nothing breaks and it is
+cheaper. Both shapes at the PS VR2's height on the fake headset (its null driver now reports the PS VR2's 2824x2880, so the
+rule's 0.85 gives the table above): 4:3 3264x2448 and 16:9 4352x2448, `MELE2VR.ini [VR] RenderW/RenderH` per launch
+(`[VRRES] override ... -> wrote GamerSettings.ini`), Save 4 (Freedom's Progress) and Save 36 (the Normandy), stretch
+`20261118-161753-390-LE2-au9-me2`; snapshots tagged `au9-43-*` and `au9-169-*`.
+
+| | 4:3 (3264x2448) | 16:9 (4352x2448) |
+|---|---|---|
+| The HUD (power bar, weapon panel; the status on the wrist) | whole, by the frame's edges | whole |
+| Our menu (Comfort, Advanced) | whole | whole |
+| The game's pause menu (Mission Computer, `press game-menu`) | whole, the same layout | whole |
+| Room and wrist screens (`mevr omni squad`, `journal`, `map`) | whole | whole |
+| A conversation on the 3D cinema screen (Joker's, `mevr activate`), its wheel on the panel | whole | (seen at 16:9 before) |
+| The galaxy map over the projector (`galaxy.ps1 -Place`, five verdicts) | all PASS, the window and its UI on the disc | (lane GX2) |
+| **The game's power wheel at the right hand (R3 held)** | **wrong: the cut-out shows the frame's top band (the 1-8 hotkey bar, a "Door Open" prompt); the wheel's row of powers and squad portraits sits at the frame's bottom, outside it** | right: the powers and both squad portraits |
+| Render thread, Save 4 standing (median, `perf-probe`) | 9.41 ms (p90 11.37) | 9.68 ms (p90 11.34) |
+| GPU spans, left eye / right eye + UI (median) | 3.92 / 4.14 ms | 4.11 / 4.30 ms |
+
+**Decision: ME2 stays at least 16:9** (`plugin/RendererLe2.cpp` `minAspect`, unchanged). 4:3 breaks the wheel at the hand
+(`plugin/WheelPanel`'s cut-out is placed for a 16:9 frame; at 4:3 the game draws its wheel in rows 1060-1220 of the frame's
+1224) and saves only about 5% of the GPU (0.4 ms) and 0.3 ms of render thread at this pose: the scene's cost here is mostly
+per draw, not per pixel (2,500-4,100 draws). A cut-out that follows the frame's shape would remove the break; with a saving
+this small it isn't worth a second shape to keep working. Not checked at 4:3: a store or research terminal (`ChoiceGUI`), and
+the game's weapon wheel (ME2's left trigger opens our squad menu, a quad of ours).

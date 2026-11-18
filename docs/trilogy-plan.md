@@ -413,8 +413,12 @@ These unblock the most: almost every other entry gets smaller once they land.
   `MELE2VR.ini`/`MELE3VR.ini` and GamerSettings for the next launch; Display's Render resolution and Upscale rows work on both.
   Seen on the fake headset: ME2 4096x2304 -> 2944x1656 (render thread 10.0 -> 8.1 ms, GPU 8.7 -> 6.1 ms), its HUD whole;
   ME3 at 1624x1656 in the combat fixture with its whole HUD. research/le3-flares-and-window.md section 6.
-- **Left, ME2 and ME3:** the Performance modes stay greyed (rule 15) until the levers they bundle exist there; the owner's
-  choice of 16:9 or 4:3 for ME2 (question 18 below); the PS VR2's size in a headset.
+- **Done (lane AU9, 2026-11-18):** ME2's shape measured at 4:3 and 16:9 (question 18): it stays at least 16:9. At 4:3
+  (3264x2448) every screen checked was whole (HUD, our menu, the pause menu, room screens, a conversation on the 3D screen,
+  the galaxy map) except the game's power wheel at the hand (the cut-out took the frame's top band), for about 5% less GPU
+  (0.4 ms) and 0.3 ms of render thread. research/le3-flares-and-window.md section 6.1.
+- **Left, ME2 and ME3:** the Performance modes stay greyed (rule 15) until the levers they bundle exist there; the PS VR2's
+  size in a headset.
 - **Waits for:** T03 (FSR), T08. **Who:** nobody yet.
 
 #### T18 The front end and the presentation hold [R22]
@@ -1107,10 +1111,14 @@ Each is asked once. "Today" is what the build does if nobody answers; no default
 - **Shepard's body during a roll:** "Yes for now": hidden while the roll lasts.
 - **ME2's render shape (question 18):** "Not sure, whichever leads to the better user experience": the lane measures both
   (cost, and every ME2 screen, the HUD, menus, the conversation wheel and the room screens at 4:3) and picks 4:3 only if
-  nothing breaks, else keeps 16:9.
+  nothing breaks, else keeps 16:9. **Lane AU9: 16:9 kept** (at 4:3 the power wheel at the hand showed the wrong part of the
+  frame, for a 5% GPU saving; research/le3-flares-and-window.md section 6.1).
 - **The sequels' eye distance** (26-34 units ahead of Shepard's head bone, ME1's about 4): "Need to validate in headset,
   whatever gets us closest to feeling like we are attached to the body." A headset A/B, prepared by a lane
-  (notes/headset-checklist.md); today's value stands until then.
+  (notes/headset-checklist.md); today's value stands until then. **Lane AU9: built**: our menu's Advanced > Tracking > Eye
+  position (headset test), Today / Between / At the face (`[Hands] eyeTest` 0/1/2, live): on the fake headset the eye 29, 18
+  and 4 units ahead of Shepard's head bone on ME2, 29-32, 17-20 and about 3 on ME3 (research/38 "The sequels' eye distance,
+  an A/B").
 - **ME3's exploring start** (about 0.2 s to most of a run, ME1's 0.1 s): "Option A": the mod speeds it up, once the
   limiter is found (not `SFXModule_Locomotion`, which the player pawn lacks).
 - **The VR hands tab's arm sample (`[Arms] armLengthM`):** "Your recommendation": it stays per game; the guided
@@ -1338,7 +1346,9 @@ me3/summary.md; the owner's words in quotes):
     16:9 the HUD is whole. The first VR start now widens ME2's target to at least **16:9** (every ME2 screen has been seen at
     that shape; on a PS VR2 4352x2448, 13% more pixels than today's 4096x2304; a Quest 3 over Link 3344x1880). **4:3** would
     be 3264x2448 / 2504x1880, 25% fewer pixels than 16:9; only the HUD was checked at it. Recommendation: 4:3 after a look
-    at ME2's menus, conversation wheel and room screens at that shape; 16:9 until then.
+    at ME2's menus, conversation wheel and room screens at that shape; 16:9 until then. **Answered 2026-11-18 ("whichever
+    leads to the better user experience"), measured by lane AU9: 16:9** (4:3 broke the power wheel at the hand and saved
+    about 5% of the GPU; research/le3-flares-and-window.md section 6.1).
 
 **Defaults waiting for a seen result and a yes** (not questions yet): `[SquadOrders] place` on the sequels (ME1's is on),
 `[Traversal] cue`, ME3's heavy melee and traversal gestures (its stroke melee is on by default since 2026-11-17), the

@@ -104,6 +104,20 @@ bool gRecenterHadSample = false;
 // with the renderer's explore Offset).
 std::atomic<bool> gConstantEyeOn{true};
 std::atomic<bool> gCrouchDropOn{false};
+// The headset A/B of the first-person eye's distance from Shepard's face (the owner, 2026-11-18: "Need to validate in headset,
+// whatever gets us closest to feeling like we are attached to the body"; research/38 "The sequels' eye distance, an A/B"):
+// [Hands] eyeTest 0 today's eye (the renderer's explore row: ME2's 24-29 units ahead of Shepard's head bone, ME3's 34), 1
+// halfway, 2 about where ME1's sits (3-5 ahead). The explore eye moves back by that many units along Shepard's facing, and
+// through the constant eye every standing mode's with it. The menu's Advanced > Tracking row "Eye position (headset test)".
+std::atomic<int> gEyeTest{0};
+#if defined(MEVR_WITH_HALCYON_LE3)
+constexpr double kEyeTestFullBack = 27.0;  // ME3: 29-34 units ahead of the head bone exploring (lanes AU6, AU9) -> about 4
+#else
+constexpr double kEyeTestFullBack = 25.0;  // ME2: 24-29 ahead (lanes AU6, AU9: 29 on Save 4) -> about 4
+#endif
+double EyeTestBack(int step) noexcept {
+    return step >= 2 ? kEyeTestFullBack : step == 1 ? kEyeTestFullBack / 2.0 : 0.0;
+}
 std::mutex gConstantEyeMutex;  // the renderer's writers (the active mode, the blend's endpoints, ME2's prewarm)
 mevr::vr::combat_stance::Vec gExploreHook{0.0, 0.0, 120.0};
 // What was last logged per mode class (the renderer writes every frame, ME2's prewarm every mode): a line only on a change.
@@ -199,6 +213,16 @@ void RefreshConstantEye() noexcept {
     }
     gConstantEyeOn.store(on, std::memory_order_relaxed);
     gCrouchDropOn.store(drop, std::memory_order_relaxed);
+    int const eyeTest = path.empty() ? 0 : std::clamp(static_cast<int>(GetPrivateProfileIntW(L"Hands", L"eyeTest", 0, path.c_str())), 0, 2);
+    static int loggedEyeTest = -1;
+    if (eyeTest != loggedEyeTest) {
+        loggedEyeTest = eyeTest;
+        char const* const names[] = {"today's", "halfway to ME1's", "about where ME1's sits"};
+        mevr::log::Info("constant eye: the first-person eye {} ([Hands] eyeTest = {}: {:.0f} units back toward Shepard's head from the "
+                        "renderer's explore eye; the headset A/B, research/38){}", names[eyeTest], eyeTest, EyeTestBack(eyeTest),
+            on ? "" : "; the constant eye is off, so it doesn't apply");
+    }
+    gEyeTest.store(eyeTest, std::memory_order_relaxed);
 }
 
 } // namespace mevr::host::sequel_bridge
@@ -231,7 +255,8 @@ bool ConstantFpEye(char const* modeClass, float const hookOffset[3], float const
     if (cs::IsExploreMode(modeClass, "")) {
         sb::gExploreHook = hook;
     }
-    cs::Vec const eye = cs::ExploreEye(sb::gExploreHook, {exploreOffset[0], exploreOffset[1], exploreOffset[2]});
+    cs::Vec eye = cs::ExploreEye(sb::gExploreHook, {exploreOffset[0], exploreOffset[1], exploreOffset[2]});
+    eye.x -= sb::EyeTestBack(sb::gEyeTest.load(std::memory_order_relaxed));  // the headset A/B ([Hands] eyeTest)
     cs::Vec const given{offset[0], offset[1], offset[2]};
     cs::Vec const want = applies ? cs::ConstantEyeOffset(hook, eye) : given;
     float const out[3] = {static_cast<float>(want.x), static_cast<float>(want.y), static_cast<float>(want.z)};
