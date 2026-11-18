@@ -139,7 +139,8 @@ unchanged. `src/halcyon/SequelPresentation.h` only includes `MevrSeams.h` now.
 | `hudPanelGameplay` | yes | yes | - | the whole gameplay HUD goes to the panel |
 | `hudPieces` | yes | yes | - | the wrist and gun pieces |
 | `worldUi` | yes | yes | - | GUI screens can stand in the room |
-| `galaxyWindow`, `frontEnd`, `conversationWorld`, `eyeColourInBlit`, `headArmSequence` | yes | - | - | LE1's extensions |
+| `galaxyWindow`, `conversationWorld`, `eyeColourInBlit`, `headArmSequence` | yes | - | - | LE1's extensions |
+| `frontEnd` | yes | yes | yes | the front end's holds (research/56 "The sequels": the sequels since 2026-11-18, lane FE) |
 | `screenReticleHide` | yes | yes | - | the game's crosshair can be hidden |
 | `floorViewJournal` | yes | yes | - | `JournalFloorViewWrite` |
 | `ownMenuRows` | - | yes | - | `GetMenuRows` answers |
