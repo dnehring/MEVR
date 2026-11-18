@@ -2469,13 +2469,13 @@
     },
     "LE2": {
      "legacy": false,
-     "me1OnlyHandles": true,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE3": {
      "legacy": false,
-     "me1OnlyHandles": true,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     }

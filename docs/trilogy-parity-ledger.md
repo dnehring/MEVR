@@ -920,7 +920,7 @@ Helpers applied, in order:
 | `game/Melee` | run | run | run |
 | `game/MenuPause` | run | run | run |
 | `game/OmniTool` | run | run | run |
-| `game/Player` | run | run (ME1-only handles) | run (ME1-only handles) |
+| `game/Player` | run | run | run |
 | `game/Posture` | run | run | run |
 | `game/PowerWheel` | run | run (ME1-only handles) | run (ME1-only handles) |
 | `game/Reflections` | run | run | run |

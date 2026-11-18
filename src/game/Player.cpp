@@ -39,7 +39,13 @@ ue3::FieldRef gSkeletalMesh{"Engine.SkeletalMeshComponent", "SkeletalMesh", ue3:
 // (research/le2-renderer-integration.md "Step 8: the floor lock on ME2").
 ue3::FieldRef gCylinder{"Engine.Pawn", "CylinderComponent", ue3::kEveryGame};
 ue3::FieldRef gCollisionHeight{"Engine.CylinderComponent", "CollisionHeight", ue3::kEveryGame};
+// The game's crouch (Crouched): every game's Engine.Pawn field. It was ME1's handle only, so on the sequels body scale's
+// standing reference read "crouched" for good and never settled (the ME2 and ME3 audits' finding 8, lane AU2 2026-11-18).
+#if defined(MEVR_GAME_LE1)
 ue3::FieldRef gCrouched{"Engine.Pawn", "bIsCrouched"};
+#else
+ue3::FieldRef gCrouched{"Engine.Pawn", "bIsCrouched", ue3::kEveryGame};
+#endif
 ue3::FieldRef gCoverType{"SFXGame.BioPawn", "CoverType", ue3::kEveryGame};
 ue3::FieldRef gCoverAction{"SFXGame.BioPawn", "CoverAction", ue3::kEveryGame};
 ue3::ClassRef gCameraNative{"SFXGame.SFXCameraNativeBase", ue3::kEveryGame};

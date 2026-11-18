@@ -66,7 +66,7 @@ The numbers are ME2's summary's.
 | 5. A left-grip squeeze at the chest or receiver becomes a squad order | recurs |
 | 6. No recenter from the controllers | recurs |
 | 7. Powers missing from the hand wheel | fine: ME3's roster comes from the game. But every aimed power is `Aim::Place` (re-read, `PowerWheel.cpp:323-324`), so ME1's "needs a locked enemy" refusal never happens |
-| 8. Body scale cannot settle | recurs, twice over: `player::Crouched` is ME1's handle, and the reference needs "holstered", which ME3 never is |
+| 8. Body scale cannot settle | recurs, twice over: `player::Crouched` is ME1's handle, and the reference needs "holstered", which ME3 never is. **Both addressed 2026-11-18 (lane AU2): the crouch handle is every game's, and with `le3PutAway = 1` a gun let go is away; not seen settling in the game yet** |
 | 9. Third-person walk, slow draws, the eye moving on a draw | recurs (`game/CombatStance` is LE1-only); the constant-eye rule is reinvented in Halcyon ME3's own table |
 | 10. Snap turn may stand down | recurs, with a known trigger: ME3 leaves the five listed camera modes for about 0.5 s on a roll, melee, hit reaction or cover entry |
 | 11. No start-up or entry hold | recurs (`plugin/PresentationHold` is in LE1's source list only, re-read) |
