@@ -3241,6 +3241,8 @@ void CheckLe3GalaxyRay() {
     CheckClass<AInterpActor>("Engine.InterpActor");
     CheckField("SFXGame.SFXGUIMovieLegacyAdapter", "oPanel", SDK_FIELD(USFXGUIMovieLegacyAdapter, oPanel));
     CheckField("SFXGame.SFXGUIMovie", "bUsingGamepad", SDK_BOOL(USFXGUIMovie, bUsingGamepad));
+    CheckFunction("SFXGame.BioSFHandler_GalaxyMap.SelectGalaxyItem");  // the map's A (game/GalaxyRay's SendA on ME3)
+    CheckParmsSize("SFXGame.BioSFHandler_GalaxyMap.SelectGalaxyItem", 0);
 }
 
 void CheckLe3EngineAccess() {

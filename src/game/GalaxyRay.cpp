@@ -91,6 +91,7 @@ struct Pending {
     // cursor): never put on it (that would skip the flight and its fuel), it is flown there with the map's own stick.
     bool steer = false;
     std::uint64_t arrivedMs = 0;
+    int state = -1;  // the map's level when picked (ME3's cluster view enters a system as the ship flies into it)
 };
 
 Settings gSettings;
@@ -187,11 +188,29 @@ std::optional<gr::Hit> RayHit(Frame const& f, int& hand, float& trigger) {
     return gr::PanelHit(origin, direction, panel);
 }
 
+ue3::Object* Handler();
+
+// The map's A. ME2: its GUI event (the handler's A, BIOGUI_EVENT_BUTTON_A, then its release; `mevr guikey 12` took ME2's map on).
+// ME3: the pad's A is the galaxy mode's input binding, not a GUI event (GuiKey(15) did nothing at a selected planet, nor did the
+// PC handler's PerformPrimaryAction, whose mouse action was none; run gxr-me3), so the map's own select,
+// BioSFHandler_GalaxyMap.SelectGalaxyItem (ValidLevelTransition, ExecuteTravel: "Enter Orbit" took the map to its state 4); the
+// release is nothing.
 bool SendA(std::uint8_t event, char const* what) {
+#if defined(MEVR_GAME_LE3)
+    if (event == kButtonARelease) return true;
+    ue3::Reflection& r = ue3::runtime::Get();
+    ue3::Object* const handler = Handler();
+    ue3::Function* const f = handler != nullptr ? r.FindFunction(r.ClassOf(handler), "SelectGalaxyItem") : nullptr;
+    ue3::Params p(r, f);
+    bool const called = f != nullptr && p.Valid() && ue3::runtime::Call(handler, f, p);
+    if (!called) log::Warn("galaxy ray: the map's {} not sent: {}", what, handler == nullptr ? "no map handler" : "SelectGalaxyItem wasn't called");
+    return called;
+#else
     std::string why;
     bool const sent = game_menu_request::GuiKey(event, why);
     if (!sent) log::Warn("galaxy ray: the map's {} not sent: {}", what, why);
     return sent;
+#endif
 }
 
 ue3::Object* Handler() {
@@ -204,9 +223,8 @@ ue3::Object* Handler() {
     for (int i = 0, n = r.ObjectCount(); i < n; ++i) {
         ue3::Object* const o = r.ObjectAt(i);
         if (o == nullptr || !r.IsAlive(o) || !ue3::IsA(o, gPcHandlerClass) || r.NameText(o).starts_with("Default__")) continue;
-        gHandler = o;
+        gHandler = o;  // the newest (a map opened again leaves the old handler alive for a while)
         gHandlerIndex = r.IndexOf(o);
-        break;
     }
     return gHandler;
 }
@@ -240,7 +258,16 @@ void StepSteer(Frame const& f, Pending& p, std::uint64_t now) {
     ue3::Object* const ship = ObjectField(gCrossHairObject, f.camera);
     vr::controllers::State const pad = vr::controllers::Latest();
     bool const stickUsed = pad.active && std::hypot(pad.left.stickX, pad.left.stickY) > 0.35f;
-    auto const from = ScreenOf(f, ship), to = ScreenOf(f, p.target);
+    // The object brought to the ship's height (the ship flies in the map's plane; a cluster's systems stand above or below it,
+    // so their own place on the screen is not where the ship must be to have them selected: ME3's cluster view, run gxr-me3).
+    auto const from = ScreenOf(f, ship);
+    std::optional<std::array<float, 2>> to;
+    if (auto const shipAt = player::Location(ship)) {
+        if (auto const targetAt = player::Location(p.target)) {
+            float const level[3] = {targetAt->x, targetAt->y, shipAt->z};
+            to = gh::ToGameScreen(CameraOf(f), level);
+        }
+    }
     bool const selected = ObjectField(gSelectedObject, f.camera) == p.target;
     float const aspect = f.clientH > 0 ? static_cast<float>(f.clientW) / static_cast<float>(f.clientH) : 1.0f;
     float dx = 0.0f, dy = 0.0f, distance = 0.0f;
@@ -248,6 +275,12 @@ void StepSteer(Frame const& f, Pending& p, std::uint64_t now) {
         dx = ((*to)[0] - (*from)[0]) * aspect;
         dy = (*from)[1] - (*to)[1];  // up on the screen
         distance = std::hypot(dx, dy);
+    }
+    if (int const state = gCurrentState.Read<int>(f.camera).value_or(-1); state != p.state) {
+        log::Info("galaxy ray: the flight to '{}' ends: the map went on to its state {} ({} ms)", p.label, state, now - p.startedMs);
+        EndSteer();
+        gPending.reset();
+        return;
     }
     if (stickUsed || !from || !to || now - p.startedMs > kSteerMaxMs) {
         ++gAbandoned;
@@ -315,6 +348,7 @@ void StartPick(Frame const& f, ue3::Object* target) {
             gCurrentState.Read<int>(f.camera).value_or(-1), NameOf(crosshair));
         Pending pending{target, gLastPick, GetTickCount64(), 0};
         pending.steer = true;
+        pending.state = gCurrentState.Read<int>(f.camera).value_or(-1);
         gPending = pending;
         return;
     }
@@ -527,6 +561,7 @@ std::string Command(Frame const& f, std::string const& args) {
     std::string verb, option;
     words >> verb >> option;
     if (verb == "mouse") return Mouse(option != "off");
+    if (verb == "a") return std::format("galaxy ray: the map's A {}", SendA(kButtonA, "A") ? "sent" : "not sent");
     if (verb == "steer-sign") {
         float y = 1.0f;
         words >> y;
