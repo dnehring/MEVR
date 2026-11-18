@@ -2800,15 +2800,15 @@
     },
     "LE2": {
      "legacy": false,
-     "me1OnlyHandles": false,
+     "me1OnlyHandles": true,
      "part": false,
-     "status": "ready"
+     "status": "run"
     },
     "LE3": {
      "legacy": false,
-     "me1OnlyHandles": false,
+     "me1OnlyHandles": true,
      "part": false,
-     "status": "ready"
+     "status": "run"
     }
    },
    "namespace": "game::squad_ack"

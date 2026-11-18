@@ -53,8 +53,8 @@ rows the change touches.
 
 | game | shared | adapted | forked | missing | n/a | present and verified (V) | present, unverified (U) |
 |---|---|---|---|---|---|---|---|
-| LE2 | 18 | 52 | 1 | 16 | 5 | 57 | 14 |
-| LE3 | 18 | 52 | 2 | 13 | 7 | 36 | 36 |
+| LE2 | 18 | 53 | 1 | 15 | 5 | 58 | 14 |
+| LE3 | 18 | 53 | 2 | 12 | 7 | 36 | 37 |
 
 Cells not in the ledger's form (`**kind** V|U ...`):
 
@@ -261,7 +261,7 @@ The [technique groups](#renderer-techniques-by-group) summary follows the table.
 | G31 | Squad context and gesture orders (`game/SquadContext`, `game/SquadOrders`, `core/vr/Squad*`) | **adapted** U: `game/Le2Squad.hpp` (`HenchmanOrderAttackTarget`, `SquadOrderUsePower`); the flat move order by the left grip seen dispatched on Save 4 (2026-11-17), with placement's move marker since; attack and power orders not seen | **adapted** U | M6 C; L3-6. |
 | G32 | Squad placement by an arc (`game/SquadPlace`, `plugin/SquadPlaceDraw`) | **adapted** V: on by default as ME1's (`[SquadOrders] place = 1`) since 2026-11-17 (lane SQ, `tools/le2-halcyon-run/place.ps1`, research/54 "ME2 placement and orders on Save 4"): the squad wheel at the right hand, the arc and its named ring, Miranda 0.38 m and Jacob 0.27 m from the ring and holding, Miranda alone by the left tile (0.22 m), a double B calls both back. The hold order needs the squadmate's move marker placed first (`BioPlayerController.UpdateMoveToIndicator`, `le2_squad::PlaceMoveIndicator`): without it nobody moved. Until 2026-11-17 B also reached the game (`Console_Melee`: every hold and double tap was a `TryMelee`); since lane MEL `game/Melee` keeps B from the game on foot in VR on every game, as on ME1, and placement stands down only while B really reaches the game (`melee::BIsGameButton`, no longer the ini key alone); `place.ps1` judges a TryMelee call trace and its flat-order verdict (a hard-coded PASS until then) Lane AU1 (2026-11-18, not run): placement through the one dispatcher (`squad_orders::Give`/`GiveAt`; `GiveLe2Order` gone): a placed hold is a standing order, counted. | **adapted** U: the same order path with the marker; the squad's console lines (`mevr place`, `squad`, `order`, `say`, `context`) on ME3 since 2026-11-17; no squad on Save 31; B kept from the game as on ME2 (`melee-b.ps1 -Game LE3`) Lane AU1 (2026-11-18, not run): the same. | ME3: `place.ps1 -Game LE3` on the combat save (research/le3-combat-fixtures.md). |
 | G33 | Voice orders, the model tier, the Voice page (`game/Voice`, `plugin/Voice`, `plugin/VoiceModel`) | **shared** U: the protected voice run timed out | **shared** U: the model tier compiles into LE3 wherever its host compiles `plugin/VoiceModel.cpp` (until 2026-11-16 only when LE2 was built too) | A microphone run, or `voice.request wav`, per game. |
-| G34 | Squad acknowledgement (`game/SquadAck`) | **missing**: `ready`; ME2's AI answers orders itself (`SFXGame.TriggerVocalizationEvent`: follow 8, move 7, take cover 9, from `SFXAI_Henchman`'s order states), so the port listens for ME2's vocalization (research/54 "ME2 placement and orders on Save 4") | **missing**: `ready` | Port with G31. `SquadHandleChatterEvent` and `PlaySoundSet` are in neither sequel's SDK list (generated names). |
+| G34 | Squad acknowledgement (`game/SquadAck`) | **adapted** V (lane AU4, 2026-11-18): the AI's own answer heard (`TriggerVocalizationEvent`, its parameters or the calling frame's Locals; ReceivedOrder 2..10), no line of ours played, a 3 s window; Save 4: moves answered with 7 after 1.0-1.5 s, follows with 8, 4 of 4 (research/54 "The squad's answer on the sequels") | **adapted** U: the same listener, ME3's functions found and hooked; no squad in its fixtures | ME3: a squad order on a save with a squad. ME1's chatter functions are in neither sequel. |
 | G35 | Thespian mode (`game/Thespian`, `plugin/Thespian`, `core/voice/ScriptMatch`) | **adapted** U: replies by native slot; no mute or `SkipNode` on ME2 (research/70 "ME2 cinema adapter") | **adapted** V: reader on three native wheels, run `20261115-203330-839`. Spoken selection unverified | M6 E; L3-4. |
 | G36 | Conversations in the world: flow, moments, keep-in-place (`game/ConversationWorld`, `ConversationFlow`, `AuthoredMoment`, `engine/ConversationHooks`, `plugin/ConversationWorld`) | **missing**: deferred by the owner 2026-11-15; `ready` | **missing**: deferred; `convo_fp` hard-off | M6 F (deferred); LE3 plan "remain deferred". |
 | G37 | Two-ear audio: OpenAL Soft with HRTF (`plugin/OpenAlSoft`) | **n/a**: ME2 plays through Wwise, not ISACT/OpenAL (research/69's audio note; [verify] the exe's imports) | **n/a**: same | Check `MassEffect2.exe`/`MassEffect3.exe` imports for OpenAL32 before closing the row. |
@@ -637,8 +637,8 @@ defined in the tool's header:
 | game | renderer | host plugin files | host core files | services served | src/game + src/engine modules by status | common seams called | own seams |
 |---|---|---|---|---|---|---|---|
 | LE1 | halcyon-le1 | 74 | 71 | 58 | run 68, out 4, ungated 26, unreferenced 3, unbuilt 4 | 22 of 49 | 89 |
-| LE2 | halcyon-le2 | 72 | 60 | 53 | run 52, ready 9, out 15, ungated 23, unreferenced 2, unbuilt 4 | 45 of 49 | 4 |
-| LE3 | halcyon-le3 | 75 | 61 | 56 | run 51, ready 9, out 14, ungated 25, unreferenced 3, unbuilt 3 | 45 of 49 | 2 |
+| LE2 | halcyon-le2 | 72 | 60 | 53 | run 53, ready 8, out 15, ungated 23, unreferenced 2, unbuilt 4 | 45 of 49 | 4 |
+| LE3 | halcyon-le3 | 75 | 61 | 56 | run 52, ready 8, out 14, ungated 25, unreferenced 3, unbuilt 3 | 45 of 49 | 2 |
 <!-- /parity:summary -->
 
 ### Host plugin files per game
@@ -940,7 +940,7 @@ Helpers applied, in order:
 | `game/SoundPlace` | run | ready | ready |
 | `game/Spectator` | run | out | out |
 | `game/Sprint` | run | run | run |
-| `game/SquadAck` | run | ready | ready |
+| `game/SquadAck` | run | run (ME1-only handles) | run (ME1-only handles) |
 | `game/SquadContext` | run | run (ME1-only handles) | run (ME1-only handles) |
 | `game/SquadOrders` | run | run (ME1-only handles) | run (ME1-only handles) |
 | `game/SquadPlace` | run | run | run |
