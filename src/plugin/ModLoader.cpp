@@ -12,6 +12,9 @@
 #include "plugin/ProcessEventHook.hpp"
 #include "engine/SettingsFile.hpp"
 
+#if defined(MEVR_WITH_HALCYON_LE2)
+#include "plugin/MotionBlurGuard.hpp"
+#endif
 #if defined(MEVR_WITH_HALCYON_LE3)
 #include "plugin/HalcyonLe3.hpp"
 #include "plugin/MotionBlurGuard.hpp"
@@ -640,6 +643,7 @@ HostServices BuildServices() {
     };
 #endif
 #if defined(MEVR_WITH_HALCYON_LE2)
+    services.motionBlurProtected = &motion_blur_guard::ProtectsGameplay;  // the menu-return reapply stands down while it protects
     services = WithTraversal(services);
     services = WithGalaxyHologram(services);  // the galaxy map over the CIC's projector (game/GalaxyProjectorFlow, the shared host)
     services = WithScopeCapture(services);    // the scope's zoomed render (game/ScopeCapture), as LE1's and LE3's

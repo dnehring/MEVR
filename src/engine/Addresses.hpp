@@ -291,6 +291,20 @@ inline constexpr std::uint32_t kAppMalloc = 0x9C900;
 inline constexpr std::uint32_t kAppFree = 0x9C8C0;
 inline constexpr std::uint32_t kGNatives = 0x16A99B0;
 
+// ME2's counterparts of LE1's combined post-process guard (plugin/MotionBlurGuard; research/62, ME2's audit in
+// research/le2-motion-blur-guard.md): the blur and no-blur render bodies (the same six argument slots; the blur body alone binds
+// the blur's shader parameters) and five vtable pairs whose constructors differ only in the vtable they assign: three base
+// constructors and one extended factory's four branches (0xF8 bytes each, over the base pair 2).
+inline constexpr std::uint32_t kMotionBlurProxyRender = 0x3A9FE0;
+inline constexpr std::uint32_t kNoBlurProxyRender = 0x3AAE40;
+inline constexpr le1::MotionBlurProxyPair kMotionBlurProxyPairs[] = {
+    {0x10916F8, 0x1091608, 0xBFC71FCE68229650ull, 0x52E76B8A421260FCull},
+    {0x1091748, 0x1091658, 0xCE1E0C8FBBC5C108ull, 0x21030D6CD55FEDF1ull},
+    {0x1091798, 0x10916A8, 0x13C2B4294DA71338ull, 0x50E1AB55D374BD01ull},
+    {0x10931A8, 0x1093108, 0xA48F5C1ED1E104C0ull, 0xAA81D23F6690FEA1ull},
+    {0x10931F8, 0x1093158, 0x2723B679797B8B86ull, 0x21761A01E2EB112Full},
+};
+
 inline constexpr Entry kTable[] = {
     // The host's hooks.
     {"UObject::ProcessEvent", kProcessEvent, Kind::Function, "40 55 41 56 41 57 48 81 EC 90 00 00 00 48 8D 6C 24 20 48 C7", 0, 0,
@@ -394,6 +408,19 @@ inline constexpr Entry kTable[] = {
         0, "mod (body bounds)"},
     {"UPrimitiveComponent::UpdateUmbraBounds", kPrimitiveUmbraBounds, Kind::Function, "40 53 48 81 EC C0 00 00 00 48 8B 01 48 8B D9 FF", 0,
         0, "mod (body bounds)"},
+    // plugin/MotionBlurGuard (ME1's and ME3's; the pairs above).
+    {"MotionBlurProxy::Render", kMotionBlurProxyRender, Kind::Function, "48 8B C4 48 89 48 08 55 56 57 41 54 41 55 41 56 41 57 48 8D 6C 24 90", 0, 0, "motion blur guard"},
+    {"NoBlurProxy::Render", kNoBlurProxyRender, Kind::Function, "48 8B C4 48 89 48 08 55 56 57 41 54 41 55 41 56 41 57 48 8D 6C 24 90", 0, 0, "motion blur guard"},
+    {"MotionBlurProxy.Pair1.Blur", 0x10916F8, Kind::Data, "48 8D 05 ?? ?? ?? ?? 48 89 03 48 85 FF 74 0A F3", 3, 0x3ACA94, "motion blur guard"},
+    {"MotionBlurProxy.Pair1.Sharp", 0x1091608, Kind::Data, "48 8D 05 ?? ?? ?? ?? 48 89 03 48 85 FF 74 0A F3", 3, 0x3AD6F4, "motion blur guard"},
+    {"MotionBlurProxy.Pair2.Blur", 0x1091748, Kind::Data, "48 8D 05 ?? ?? ?? ?? 48 89 03 48 85 FF 74 0A F3", 3, 0x3AC601, "motion blur guard"},
+    {"MotionBlurProxy.Pair2.Sharp", 0x1091658, Kind::Data, "48 8D 05 ?? ?? ?? ?? 48 89 03 48 85 FF 74 0A F3", 3, 0x3AD261, "motion blur guard"},
+    {"MotionBlurProxy.Pair3.Blur", 0x1091798, Kind::Data, "48 8D 05 ?? ?? ?? ?? 48 89 03 48 85 FF 74 0A F3", 3, 0x3AC214, "motion blur guard"},
+    {"MotionBlurProxy.Pair3.Sharp", 0x10916A8, Kind::Data, "48 8D 05 ?? ?? ?? ?? 48 89 03 48 85 FF 74 0A F3", 3, 0x3ACE74, "motion blur guard"},
+    {"MotionBlurProxy.Pair4.Blur", 0x10931A8, Kind::Data, "48 8D 05 ?? ?? ?? ?? 48 89 07 45 8B C5 B8 01 00", 3, 0x3B2387, "motion blur guard"},
+    {"MotionBlurProxy.Pair4.Sharp", 0x1093108, Kind::Data, "48 8D 05 ?? ?? ?? ?? 48 89 07 45 8B C5 B8 01 00", 3, 0x3B2145, "motion blur guard"},
+    {"MotionBlurProxy.Pair5.Blur", 0x10931F8, Kind::Data, "48 8D 05 ?? ?? ?? ?? 48 89 07 45 8B C5 B8 01 00", 3, 0x3B24A4, "motion blur guard"},
+    {"MotionBlurProxy.Pair5.Sharp", 0x1093158, Kind::Data, "48 8D 05 ?? ?? ?? ?? 48 89 07 45 8B C5 B8 01 00", 3, 0x3B2262, "motion blur guard"},
 };
 
 } // le2

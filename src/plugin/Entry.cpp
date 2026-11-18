@@ -39,6 +39,7 @@
 #if defined(MEVR_WITH_HALCYON_LE2)
 #include "plugin/GameThreadCalls.hpp"
 #include "plugin/HalcyonLe2.hpp"
+#include "plugin/MotionBlurGuard.hpp"
 #endif
 #if defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
 #include "halcyon/MevrSeams.h"  // HostEndsProcess, below
@@ -138,6 +139,7 @@ void GameEngineTickHook(void* self, float deltaSeconds) {
 #endif
 #if defined(MEVR_WITH_HALCYON_LE2)
     mevr::host::halcyon_le2::AfterTick(deltaSeconds);
+    mevr::host::motion_blur_guard::Tick();
 #endif
 #if defined(MEVR_WITH_HALCYON_LE3)
     mevr::host::halcyon_le3::AfterTick(deltaSeconds);
@@ -333,6 +335,9 @@ extern "C" __declspec(dllexport) bool SpiOnAttach(spi::Interface* InterfacePtr) 
     // As LE1's (research/36 "The fault at quit"): the game's static critical sections are never deleted, so a teardown that
     // destroys a lock its worker still takes can't fault the quit. No per-game address: any lock inside the exe's image.
     mevr::host::kept_locks::Install(init);
+#endif
+#if defined(MEVR_WITH_HALCYON_LE2)
+    mevr::host::motion_blur_guard::Install(init);  // ME1's and ME3's guard (research/le2-motion-blur-guard.md)
 #endif
 #if defined(MEVR_WITH_HALCYON_LE3)
     if (!gEngineProbe) mevr::host::motion_blur_guard::Install(init);

@@ -1071,6 +1071,7 @@ function(mevr_add_plugin game)
         set(with_halcyon_le2 ON)
         list(APPEND host_sources src/plugin/HalcyonLe2.cpp src/plugin/HalcyonLe2.hpp src/plugin/HalcyonLe2Bridge.cpp
             src/plugin/KeptLocks.cpp src/plugin/KeptLocks.hpp   # the quit-time lock guard, as LE1's (research/36)
+            src/plugin/MotionBlurGuard.cpp src/plugin/MotionBlurGuard.hpp   # ME1's and ME3's (research/le2-motion-blur-guard.md)
             src/plugin/HalcyonSequelBridge.cpp src/plugin/HalcyonSequelBridge.hpp src/plugin/SequelOverlays.cpp
             src/plugin/Seams.cpp src/halcyon/MevrSeams.h src/plugin/RecenterTilt.cpp src/plugin/RecenterTilt.hpp
             src/core/vr/Recenter.cpp src/core/vr/Recenter.hpp
@@ -1674,6 +1675,14 @@ if (MEVR_BUILD_TESTS)
     target_compile_options(mevr-le3-motion-blur-guard-tests PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
     add_dependencies(mevr-tests mevr-le3-motion-blur-guard-tests)
     add_test(NAME mevr-le3-motion-blur-guard COMMAND mevr-le3-motion-blur-guard-tests)
+
+    add_executable(mevr-le2-motion-blur-guard-tests tests/MotionBlurGuardTests.cpp)
+    target_include_directories(mevr-le2-motion-blur-guard-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(mevr-le2-motion-blur-guard-tests PRIVATE OpenXR::headers)
+    target_compile_definitions(mevr-le2-motion-blur-guard-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN MEVR_GAME_LE2)
+    target_compile_options(mevr-le2-motion-blur-guard-tests PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
+    add_dependencies(mevr-tests mevr-le2-motion-blur-guard-tests)
+    add_test(NAME mevr-le2-motion-blur-guard COMMAND mevr-le2-motion-blur-guard-tests)
     # plugin/RenderLevers finds its addresses by row name in engine/Addresses.hpp: the names it asks for against all three tables.
     add_executable(mevr-render-levers-table-tests tests/RenderLeversTableTests.cpp)
     target_include_directories(mevr-render-levers-table-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
