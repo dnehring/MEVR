@@ -22,7 +22,7 @@ ME2's renderer keeps no settings for them and the host answers ME1's code defaul
 
 1. **Screens the tag list does not know fall to Halcyon's flat panel, and that panel is not ME1's.** ME2's shop,
    research, lockers, loadout, squad selection and both minigames are not in `core/vr/WorldUi`'s list, so they show flat,
-   1.6 m away and 2.2 m wide (ME1: 1.4 m, 2.35 m), with no game pointer on them: the pad only.
+   1.6 m away and 2.2 m wide (ME1: 1.4 m, 2.35 m; **ME1's since lane AU4, b7cd8eec**), with no game pointer on them: the pad only.
 2. **The game's wheels never come to the hand, and the hand reticle's vehicle gate reads ME1's mode number.** `setWheelPanel`
    is LE1-only, so ME2's weapon and power wheels stay on the HUD panel 1.5 m ahead; `HandReticle` tests `gameMode == 1`
    (ME1's Mako), which on ME2 is the power wheel, and the Hammerhead is mode 4.
@@ -61,7 +61,7 @@ The owner's first complaint. Distances from the eyes unless said; "as ME1" means
 | The wrist-tap target | as ME1: Shepard's drawn forearm, 30% from the wrist | `MenusLe2.cpp:358-361` | the same once the mod's HUD pieces reach the host; otherwise the controllers |
 | The bypass d-pad | absent | `plugin/OmniPad` is not in the LE2 host's list (`CMakeLists.txt:1222` is LE1's) | ME2's hacking and bypass are other games (ledger G24); they play on the flat panel with the pad |
 | The game pointer's dot | on a wrist or room screen, as ME1 | `MenusLe2.cpp:377-394` | nothing registers the flat panel or the cinema UI layer as a pointer surface on ME2 (no `game_pointer` call in the sequels' bridge or `SequelCinema.cpp`) |
-| The flat panel (fallback) | fixed in the room where it appears, at head height | 1.6 m and 2.2 m: `me2_xr.cpp:92-93`; placed by `world_panels::Place` (`HalcyonLe2Bridge.cpp:354-373`) | upstream's defaults, not ME1's 1.4 m and 2.35 m; a cutscene's width is also multiplied by `CineScreenZoom`. In the room only since e580550c (2026-11-17) |
+| The flat panel (fallback) | fixed in the room where it appears, at head height | 1.6 m and 2.2 m: `me2_xr.cpp:92-93`; placed by `world_panels::Place` (`HalcyonLe2Bridge.cpp:354-373`) | upstream's defaults, not ME1's 1.4 m and 2.35 m (**fixed in code, lane AU4, b7cd8eec: ME1's numbers as code and shipped ini defaults, upstream's exact pair moved once**); a cutscene's width is also multiplied by `CineScreenZoom`. In the room only since e580550c (2026-11-17) |
 | The galaxy map's window | on the CIC projector's disc, as ME1 | `galaxy_hologram::WindowLayers` (`SequelOverlays.cpp:100-117`) | the mod side is another flow (`game/GalaxyProjectorFlow` with `Le2GalaxyCapture`), not `game/GalaxyMap` |
 | The galaxy map's UI | on the projector's disc, 1.50 m frame | `UiPanelWidthM(1.50f)` (`SequelOverlays.cpp:176`) | no pointer: `galaxyUiPointer` 0 (`HalcyonLe2Bridge.cpp:81-84`); the map keeps its own stick and buttons. Orbit and scan (mode 10) keep LT and RT |
 | The cinema screen's UI layer | 0.5 m in front of the 3D screen, scaled to the same angle | `sequel_cinema::FillUi` (`SequelCinema.cpp:127-148`), `cs::PlaceUi` | placed as ME1; not a pointer surface (`CineScreenPointerPlane` is called only on LE1) |
@@ -80,7 +80,7 @@ map and orbit when the mod's projector flow does not hold them. Reading only: th
 |---|---|---|---|---|
 | SCR-01 | same core, other inputs | `UpdateStickChord` on the player's own sample; the key through `MevrSeams::OnMenuKey`; `\` pinned over upstream's Insert | R3 is also held back on ME2's pad path (`gateRightClick`), since ME2's R3 is a game button; the glue is a second copy of LE1's | `MenusLe2.cpp:169-186`, `Seams.cpp:53`, `me2_menu.cpp:531` |
 | SCR-02 | same | `main_menu::Layer` | none in the numbers; legibility in the headset is on the checklist | `MenusLe2.cpp:398-443` |
-| SCR-03 | adapter | `game/MenuPause` writes `WorldInfo.bPlayersOnly`, as ME2's weapon wheel does | ME2 has no `PauseGame`; in the Hammerhead: not recorded | `MenuPause.cpp:65-99`, research/le2-menus "The pause on ME2" |
+| SCR-03 | adapter | `game/MenuPause` writes `WorldInfo.bPlayersOnly`, as ME2's weapon wheel does | ME2 has no `PauseGame`; in the Hammerhead: not recorded **Fixed in code, lane AU1 (2026-11-18, not run in the game):** `MenuPause` pauses on foot, in a vehicle or ME3's Atlas through the adapter on every game (ME2's raw 1 was its power wheel). | `MenuPause.cpp:65-99`, research/le2-menus "The pause on ME2" |
 | SCR-04 | same | `gamepad::CloseLatch` in `FilterPad` | none | `MenusLe2.cpp:501-529` |
 | SCR-05 | same | the module's own pointer and pad | none | `MenusLe2.cpp:157-159`, `:504-505` |
 | SCR-06 | same | `main_menu::OnPresent` from ME2's Present seam | none | `HalcyonLe2Bridge.cpp:303` |
@@ -89,8 +89,8 @@ map and orbit when the mod's projector flow does not hold them. Reading only: th
 | SCR-09 | same core, other inputs | `plugin/HudPanel` fed by one `MevrHudPanelDraw` seam; the gate is `IsHudGameplayMode`, translated per game | ME1's numbers but fixed (no keys, rows greyed); ME2's wheels and squad command are on the panel too; the HUD is drawn twice a frame and the later batch wins | `SequelOverlays.cpp:123-166`, `RendererLe2.cpp:153-155`, `GameAdapter.hpp:84-87` |
 | SCR-10 | same | the panel's tint texture is in the shared module | reading only: that ME2's one draw seam routes non-"over" blends to the tint was not traced; a snapshot of ME2's wheel on the panel settles it | `HudPanel.cpp:40-56` |
 | SCR-11 | partial | wrist, gun and label masks through `hpl::Decide` and `Interaction` | no wheel mask: there is no wheel panel | `SequelOverlays.cpp:207-226` |
-| SCR-12 | same core, other inputs | `HandReticle` with `OverlayReticleMode` = the raw game mode; the crosshair hidden by `game/ScreenReticle` (`_alpha = 0`) | `gameMode == 1` is ME1's Mako and ME2's power wheel; the Hammerhead is 4 and gets no ring. Until a host matched the mod, ME3 also asked for a fresh ray (unified 2026-11-16) | `HandReticle.cpp:142-143`, `HalcyonLe2Bridge.cpp:147-149`, `GameAdapter.hpp:51-53` |
-| SCR-13 | missing | none | the weapon wheel stays on the HUD panel; `setWheelPanel`, `WheelCrop` and the measured crop are LE1-only | ledger G57 |
+| SCR-12 | same core, other inputs | `HandReticle` with `OverlayReticleMode` = the raw game mode; the crosshair hidden by `game/ScreenReticle` (`_alpha = 0`) | `gameMode == 1` is ME1's Mako and ME2's power wheel; the Hammerhead is 4 and gets no ring. Until a host matched the mod, ME3 also asked for a fresh ray (unified 2026-11-16) **Fixed in code, lane AU1 (2026-11-18, not run in the game):** the vehicle gate through `engine::adapter::GameMode` (`Mode::Vehicle`). | `HandReticle.cpp:142-143`, `HalcyonLe2Bridge.cpp:147-149`, `GameAdapter.hpp:51-53` |
+| SCR-13 | missing | none | the weapon wheel stays on the HUD panel; `setWheelPanel`, `WheelCrop` and the measured crop are LE1-only. **Fixed in code, lane AU1 (2026-11-18, not run in the game):** `plugin/WheelPanel`, LE1's code shared, composed by `SequelOverlays.cpp` | ledger G57 |
 | SCR-14 | partial | the power wheel stays on the HUD panel because its mode is HUD gameplay | `powerWheelAt = right, left, front` do nothing on ME2 | `GameAdapter.hpp:84-87` |
 | SCR-15 | same core, other inputs | `HudPieceLayers` with `Layout::Me2` | ME2's band (x 540..740, 110..2 px above the bottom); place and width ME1's | `HudPieces.cpp:36-39`, `:223-224`; `HalcyonLe2Bridge.cpp:80` |
 | SCR-16 | same core, other inputs | the same, with ME2's band and its ammo mount | band x 8..184, 108..3 px; the raised-gun hand-over is the mod's shared rule (not re-read here) | `HudPieces.cpp:40-43`, `:230-231`; `game/HudPieces.cpp:37-38` |
@@ -126,7 +126,7 @@ map and orbit when the mod's projector flow does not hold them. Reading only: th
 | `plugin/SequelOverlays.cpp` `OverlayLayers`, `plugin/MenusLe2.cpp` `Layers`, `BeforePanel`, `PanelLayers`, `FilterPad`, `OnFrameBegun` | `plugin/HalcyonOverlays.cpp` `OverlayLayers`, `plugin/HalcyonBridge.cpp` (`OnFrameBegun`, `OnMenuKey`, the pad merge) | the same order and rules written twice; the sequels' copy asks capabilities, LE1's reads Halcyon LE1's state at a dozen places. LE1 alone has the wheel panel, the convo UI, the pad and the UI-world figure | move LE1 onto `SequelOverlays` behind capabilities (research/trilogy-seams "One overlay composition" lists what must move first); until then a parity test that both compositions emit the same layer order for the same frame facts |
 | `game/GalaxyProjectorFlow.cpp` (sequels) | `game/GalaxyMap.cpp` (ME1) | two flows for one behaviour; the sequels' has ME3's reservation and bridges, ME1's has the pick and travel-return rules | one flow with three adapters, as the ledger's G25 notes plan |
 | `hud_piece_layers::Interaction` for the label | the label block in `HalcyonOverlays.cpp` | the same core (`core/vr/InteractLabel`), two callers | LE1 calls `Interaction` |
-| `ApplyMevrBaseline`'s menu key and Halcyon ME2's flat panel distance and width | LE1's deploy values and `WorldPanels` | 1.6 m / 2.2 m against 1.4 m / 2.35 m | pin them in the baseline or hand `PlacePanel` ME1's numbers (below) |
+| `ApplyMevrBaseline`'s menu key and Halcyon ME2's flat panel distance and width | LE1's deploy values and `WorldPanels` | 1.6 m / 2.2 m against 1.4 m / 2.35 m | pin them in the baseline or hand `PlacePanel` ME1's numbers (below); **the panel's numbers fixed in code, lane AU4, b7cd8eec** |
 
 # Rediscovered problems
 
@@ -151,7 +151,7 @@ map and orbit when the mod's projector flow does not hold them. Reading only: th
 
 # Not forced
 
-- The flat panel's 1.6 m and 2.2 m.
+- The flat panel's 1.6 m and 2.2 m (fixed in code, b7cd8eec).
 - No game pointer on the flat panel or the cinema UI layer.
 - The game's wheels not at the hand (the HUD panel's draws are already captured; the crop and the quad are host code).
 - `HandReticle`'s raw `gameMode == 1`.

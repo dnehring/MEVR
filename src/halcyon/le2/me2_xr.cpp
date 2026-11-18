@@ -89,8 +89,8 @@ ULONGLONG g_dibrSubStatMs = 0;
 int g_dibrSubEmitted = 0;   // stop after a bounded number of ~2s windows - health-check on launch, not forever
 // Menu/flat-screen quad placement - tunable in the Insert menu (Tracking tab), persisted to the ini.
 // Defaults: closer + bigger than the old constants (2.6m/2.3m read "too small and far" in-headset).
-std::atomic<float> g_monoQuadDistanceM{1.6f};   // meters in front of the face
-std::atomic<float> g_monoQuadWidthM{2.2f};      // meters wide (~69deg at 1.6m)
+std::atomic<float> g_monoQuadDistanceM{1.4f};   // meters in front of the face ([MEVR] ME1's flat panel, docs/knowledge/me1 PRS-18; upstream 1.6)
+std::atomic<float> g_monoQuadWidthM{2.35f};     // meters wide ([MEVR] ME1's 2.35; upstream 2.2, ~69deg at 1.6m)
 // [CINEFLAT] ME1-parity cutscene/conversation screen: the flat cine panel is WORLD-locked (LOCAL space,
 // so head tracking lets you look around it and Insert recenters it) and gets its own zoom on top of the
 // menu screen's dist/size. Menus keep the head-locked quad above untouched.

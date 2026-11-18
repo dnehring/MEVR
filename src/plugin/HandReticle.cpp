@@ -7,6 +7,7 @@
 #include "core/vr/AimRay.hpp"
 #include "core/vr/Controllers.hpp"
 #include "core/vr/OverlayPlacement.hpp"
+#include "engine/GameAdapter.hpp"
 #include "plugin/Renderer.hpp"
 #include "plugin/TestLoop.hpp"
 
@@ -139,7 +140,9 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) noexcept {
                                                     : "the mod's aim ray stopped coming (its game thread stalls): its last ray was "
                                                       "no aim, so no ring");
     }
-    bool const makoRay = frame.gameMode == 1 && producer && ray.valid;
+    // A vehicle's ray (ME1's Mako, mode 1; ME2's 1 is its power wheel, its Hammerhead 4: engine/GameAdapter.hpp's table).
+    bool const makoRay = mevr::engine::adapter::GameMode(frame.gameMode) == mevr::engine::adapter::Mode::Vehicle && producer &&
+        ray.valid;
     bool const reticleMode = frame.enabled && frame.handAim && (frame.gameMode == 0 || makoRay);
     XrVector3f origin{};
     XrVector3f direction{};

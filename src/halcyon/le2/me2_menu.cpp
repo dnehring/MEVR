@@ -673,8 +673,23 @@ void LoadValues() noexcept
         ME2VR::CalcViewHook::SetCineVrCutscene(false);
         ME2VR::Log::Line("[CINEXCL] ini had BOTH first-person conversations and VR cine on -> kept first-person, VR cine off");
     }
-    GetPrivateProfileStringW(L"VR", L"MenuScreenDist", L"1.6", buf, 64, path.c_str()); ME2VR::Me2Xr::SetMenuScreenDist(static_cast<float>(_wtof(buf)));
-    GetPrivateProfileStringW(L"VR", L"MenuScreenSize", L"2.2", buf, 64, path.c_str()); ME2VR::Me2Xr::SetMenuScreenSize(static_cast<float>(_wtof(buf)));
+    GetPrivateProfileStringW(L"VR", L"MenuScreenDist", L"1.4", buf, 64, path.c_str()); ME2VR::Me2Xr::SetMenuScreenDist(static_cast<float>(_wtof(buf)));
+    GetPrivateProfileStringW(L"VR", L"MenuScreenSize", L"2.35", buf, 64, path.c_str()); ME2VR::Me2Xr::SetMenuScreenSize(static_cast<float>(_wtof(buf)));
+    // [MEVR] ME1's flat panel (1.4 m away, 2.35 m wide; docs/trilogy-plan.md rule 1), upstream's 1.6 m / 2.2 m before. A
+    // file still holding upstream's exact pair (its shipped MELE2VR.ini) moves once; a size the player chose stays.
+    if (GetPrivateProfileIntW(L"VR", L"FlatPanelMe1", 0, path.c_str()) == 0)
+    {
+        const float d = ME2VR::Me2Xr::GetMenuScreenDist(), w = ME2VR::Me2Xr::GetMenuScreenSize();
+        if (d > 1.599f && d < 1.601f && w > 2.199f && w < 2.201f)
+        {
+            ME2VR::Me2Xr::SetMenuScreenDist(1.4f);
+            ME2VR::Me2Xr::SetMenuScreenSize(2.35f);
+            WritePrivateProfileStringW(L"VR", L"MenuScreenDist", L"1.400", path.c_str());
+            WritePrivateProfileStringW(L"VR", L"MenuScreenSize", L"2.350", path.c_str());
+            ME2VR::Log::Line("[MEVR] the flat panel moved to ME1's 1.4 m / 2.35 m (MELE2VR.ini held upstream's 1.6 m / 2.2 m)");
+        }
+        WritePrivateProfileStringW(L"VR", L"FlatPanelMe1", L"1", path.c_str());
+    }
     // [SFR-UI] HUD master transform (tuned in the HUD tab). ONE-TIME MIGRATION at the [UIRATIO]
     // switch: pre-ratio inis carry a manual un-stretch (HudScaleX ~0.55) that would now double-shrink
     // on top of the automatic tan-ratio - reset the trims to neutral once, marked by UiRatioMigrated.

@@ -152,7 +152,9 @@ authored seated scenes (such as shuttles) must reject traversal while retaining 
   native reflection now passes the protected 259-row probe and ordinary Normandy save loading/reloading is verified.
   Body/UI outcomes and VR acceptance remain pending. ME3's renderer pins ME2's baseline after every ini load (`[MEVR]`
   `ApplyMevrBaseline` in le3 me2_menu.cpp since 2026-11-17: first person with the head hidden, no head aim, no stick pitch,
-  flat menus, cinematic conversations, no profile hotkeys or R recenter, `\`; K still toggles first person).
+  flat menus, cinematic conversations, no profile hotkeys or R recenter, `\`; K still toggles first person). Its
+  conversations and cutscenes go on ME1's 3D cinema screen by default, every corroborated cinematic whatever its mode, and
+  our menu offers it (`renderer::Caps::cineScreen`, 2026-11-18, the owner: the default as on ME1 and ME2).
   ME3's life-size stereo renders each eye through its own frustum (mode 2, as ME1 and ME2; the owner's answer to
   docs/trilogy-plan.md question 17, 2026-11-17): `MELE3VR.ini [VR] MetricEyeFrustum` (LE1's `sfr2MetricEyeFrustum`), 1 by
   default (0: the shared symmetric window, mode 1), not pinned by the baseline, with the host's flare fix on by default
@@ -172,8 +174,8 @@ authored seated scenes (such as shuttles) must reject traversal while retaining 
   stereo and the queue work, first person is off until that ini has `[FirstPerson] Enabled=1` (K toggles it), the eyes
   take the monitor's shape; research/le2-renderer-integration.md "The first run on the fake headset"). **ME1's choices on
   ME2's keys:** `[MEVR]` `ApplyMevrBaseline` in `me2_menu.cpp` after every ini load (stereo, flat menus, no profile
-  hotkeys, no recenter on R, ME2's reload, first person, no head aim (nor in the Hammerhead: `VehicleHeadMode 1`, free look), no stick pitch, upstream's first-person conversations off, conversations and cutscenes on
-  Halcyon's flat cine panel until ME1's 3D cinema screen is ported), its hotkeys only with the game in front
+  hotkeys, no recenter on R, ME2's reload, first person, no head aim (nor in the Hammerhead: `VehicleHeadMode 1`, free look), no stick pitch, upstream's first-person conversations off; conversations and cutscenes
+  on ME1's 3D cinema screen, `plugin/SequelCinema`), its hotkeys only with the game in front
   (`MevrBridge::HotkeyDown`). **ME2 continues ME1** (the owner, 2026-11-14): ME1's systems and defaults, deviating only
   where ME2 forces it; the order (the host's services, then VRIK fast-tracked, then menus, then the cinema screen) is
   docs/le2-from-le1.md sections 0 and 4;

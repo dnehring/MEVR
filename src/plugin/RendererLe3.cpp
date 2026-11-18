@@ -41,6 +41,7 @@ Caps const& Capabilities() noexcept {
     static Caps const caps = [] {
         Caps c;
         c.name = "halcyon-le3";
+        c.cineScreen = true;         // ME1's 3D cinema screen for conversations and cutscenes (research/52)
         c.eyeImageSeams = true;
         c.hudPanelDraw = true;
         c.hostCineScreen = true;

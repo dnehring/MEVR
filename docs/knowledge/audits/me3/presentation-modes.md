@@ -68,7 +68,7 @@ defaults. Reading only.
 | id | rating | how ME3 gets it | where it differs | evidence |
 |---|---|---|---|---|
 | PRS-01 | adapter | Halcyon ME3's own decision each frame, logged `[CINEVR] <state> (gm, convoCam, gameplayCam, sceneAlive, paused, fov)` on every flip, with two states for our screen | not `DecideCine` / `CineFinishDecision`; the inputs are upstream's camera-class and scene-alive tests plus our seams | le3 `me2_xr.cpp:1700-1790` |
-| PRS-02 | same core, other inputs | `mevrScreen` = not the galaxy's, SFR on, a cine field of view, `vrEligible`, no menu latch, `gm == 7 or 8`, and `MevrSeams::CineScreenWanted(gm == 7)` | two raw mode numbers (right for ME3 today) where upstream deliberately has none; Halcyon's own VR cines pinned off, where ME1 requires them on; the menu offers Flat screen only | le3 `me2_xr.cpp:1755-1766`; le3 `me2_menu.cpp:519-521`; `Seams.cpp:79-81`; `main.rml:187-190` |
+| PRS-02 | same core, other inputs | `mevrScreen` = not the galaxy's, SFR on, a cine field of view, `vrEligible`, no menu latch, `gm == 7 or 8`, and `MevrSeams::CineScreenWanted(gm == 7)` | two raw mode numbers (right for ME3 today) where upstream deliberately has none; Halcyon's own VR cines pinned off, where ME1 requires them on; the menu offers Flat screen only **Fixed in code, lane AU1 (2026-11-18, not run in the game):** the mode list gone (ME2's and ME1's rule); the menu offers the screen (`renderer::Caps::cineScreen`). | le3 `me2_xr.cpp:1755-1766`; le3 `me2_menu.cpp:519-521`; `Seams.cpp:79-81`; `main.rml:187-190` |
 | PRS-03 | same | `cine_screen::QuadsNow` and `world_panels::Place` | none: 2.9 m, 3.5 m, 16:9 | `SequelCinema.cpp`; le3 `me2_xr.cpp:2327` |
 | PRS-04 | same | `wp::Kind::Conversation` / `Cutscene` take `ScreenPanelSettings` | none | `WorldPanels.cpp:100-102` |
 | PRS-05 | same core, other inputs | the same crop per eye | ME3's eye images are its 3072x2216 render (about 1.39:1), neither ME1's headset shape nor ME2's 16:9; `tools/cine-screen-check.py` was never run on them | `SequelCinema.cpp`; `runtime/MELE3VR.ini` |
@@ -96,7 +96,7 @@ defaults. Reading only.
 | PRS-27 | partial | the pointer on world UI panels and on the flat GUI panel | not on the screen's UI layer, not on the galaxy map; flat conversations excluded as ME1 | `HalcyonLe3Bridge.cpp:348-356`, `:126-129` |
 | PRS-28 | same | `menus_le2::Layers` puts the menu alone on top; `OnPresent` from ME3's Present | the pause is ME3's native `BioWorldInfo.PauseGame`, unverified in a run | `MenusLe2.cpp:396-443`; `HalcyonLe3Bridge.cpp:305-311` |
 | PRS-29 | missing | `game/DepthOfFieldHold` on the sequels serves the galaxy flow only | no conversation hold | `DepthOfFieldHold.cpp:5` |
-| PRS-30 | same core, other inputs | the screen takes every cine its gate admits; Halcyon's VR cines pinned off; `ConvoFp::SetEnabled` forces false under `MEVR_ASI` | a cine outside modes 7 and 8 gets neither the screen nor a VR cine: flat | le3 `me2_xr.cpp:1761-1766`, `me2_menu.cpp:519-521` |
+| PRS-30 | same core, other inputs | the screen takes every cine its gate admits; Halcyon's VR cines pinned off; `ConvoFp::SetEnabled` forces false under `MEVR_ASI` | a cine outside modes 7 and 8 gets neither the screen nor a VR cine: flat **Fixed in code, lane AU1 (2026-11-18, not run in the game):** every corroborated cine reaches the screen, whatever its mode. | le3 `me2_xr.cpp:1761-1766`, `me2_menu.cpp:519-521` |
 
 # Against ME2
 

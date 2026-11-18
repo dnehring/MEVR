@@ -77,31 +77,6 @@ bool Le2Living(squad_weapons::MemberView const& member) {
 #endif
 }
 
-std::string GiveLe2Order(ue3::Object* controller, std::vector<squad_weapons::MemberView> const& members, int selected,
-    std::optional<engine::UnrealVector> point) {
-    auto* const fn = point ? gLe2Hold.Get() : gLe2Follow.Get();
-    if (fn == nullptr || !le2_squad::CanOrder()) return "order unavailable";
-    unsigned called = 0;
-    for (int i = 0; i < static_cast<int>(members.size()); ++i) {
-        if (selected >= 0 && selected != i) continue;
-        auto const& member = members[static_cast<std::size_t>(i)];
-        if (!Le2Living(member)) continue;
-        ue3::Params args(ue3::runtime::Get(), fn);
-        if (!args.Set("oHenchman", member.pawn) || !le2_squad::BindInputMethod(args)) continue;
-        ue3::Vector const at = point ? ue3::Vector{static_cast<float>(point->x), static_cast<float>(point->y), static_cast<float>(point->z)}
-                                     : ue3::Vector{};
-        if (point && !args.Set("vLocation", at)) continue;
-        // The marker first: the hold order's AI walks to it (le2_squad::PlaceMoveIndicator).
-        if (point && !le2_squad::PlaceMoveIndicator(controller, member.pawn, at)) {
-            log::Info("squad place: the game's move marker for {} wasn't placed (UpdateMoveToIndicator refused the point)", member.name);
-        }
-        if (ue3::runtime::Call(controller, fn, args)) ++called;
-#if defined(MEVR_GAME_LE2)
-        log::Info("squad place: {}'s AI after the order: {}", member.name, le2_squad::OrderState(member.pawn));
-#endif
-    }
-    return std::format("{} called for {} squadmate(s)", point ? "HenchmanOrderHoldPosition" : "HenchmanOrderFollow", called);
-}
 #else
 // The squadmate's own AI walked to the point (2026-11-05): the HOLD formation's hold position keeps them where they stand and
 // QuickCommandMoveTo picks its point from the camera's view, so neither brings them to the ring.
@@ -476,14 +451,11 @@ void Tick(double deltaSeconds, Link const& link) {
     }
     if (step.regroup) {
         ++gRegroups;
-#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
-        std::string const outcome = GiveLe2Order(controller, members, -1, std::nullopt);
-#else
+        // Every game through the one dispatcher (game/SquadOrders; the sequels' HenchmanOrderFollow in its adapter).
         sc::Action action;
         action.who.kind = sc::Who::All;
         action.order = sc::Order::Follow;
         std::string const outcome = squad_orders::Give(action);
-#endif
         gLast = std::format("B double-tapped: the squad back to Shepard: {}", outcome);
         log::Info("squad place: {}", gLast);
         if (link.haptic != nullptr) link.haptic(kRight, 0.12f, 0.8f);
@@ -499,10 +471,9 @@ void Tick(double deltaSeconds, Link const& link) {
     }
     if (step.given) {
         ++gGiven;
-#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
-        auto const point = step.order == sp::Order::Follow ? std::nullopt : std::optional(gArc.point);
-        std::string const outcome = GiveLe2Order(controller, members, step.member, point);
-#else
+        // Every game through the one dispatcher, as the grip's and the voice's orders (the ME2 and ME3 audits' PWR-30): a hold
+        // kept until called back is a standing order there, counted and answered; the sequels' adapter places the game's move
+        // marker and calls HenchmanOrderHoldPosition (game/SquadOrders' Le2Order).
         sc::Action action;
         action.who.kind = sc::Who::All;
         if (step.member >= 0 && step.member < static_cast<int>(members.size())) {
@@ -518,9 +489,10 @@ void Tick(double deltaSeconds, Link const& link) {
             // along the camera's view (2026-11-05: a point 5 m off sent Ashley 30 m ahead, whatever Rotation said).
             action.order = sc::Order::Hold;
             outcome = squad_orders::GiveAt(action, gArc.point, true);
-            outcome += "; " + WalkThere(step.member, gArc.point);
-        }
+#if !defined(MEVR_GAME_LE2) && !defined(MEVR_GAME_LE3)
+            outcome += "; " + WalkThere(step.member, gArc.point);  // ME1: the AI walks there (the sequels' hold walks to its marker)
 #endif
+        }
         gGivenPoint = step.order == sp::Order::Follow ? std::nullopt : std::optional(gArc.point);
         gGivenMember = step.member;
         gLast = std::format("{} for {}, {:.1f} m from Shepard at ({:.0f}, {:.0f}, {:.0f}): {}", sp::Name(step.order),

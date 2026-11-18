@@ -50,6 +50,8 @@ struct Caps {
                                       // the same colour correction and upscale through the EyeColour* and EyeUpscale
                                       // seams below; research/27 section 9 says why it keeps that call shape)
     bool hudPanelDraw = false;        // MevrSeams::HudPanelDraw from its draw hooks (LE1: its own HudPanel* seams)
+    bool cineScreen = false;          // conversations and cutscenes can go on ME1's 3D cinema screen (research/52): our menu
+                                      // offers it and MevrSeams::CineScreenWanted may answer yes (one fact for both)
     bool hostCineScreen = false;      // the host composes the 3D cinema screen (CineScreenLayers); false: the renderer
                                       // does (LE1's xr_session.cpp, with CineScreenQuadsNow and PlanStereo's screen branch)
     bool recenterTilt = false;        // its recenter asks RecenterOrientation (a tilted base space corrected)

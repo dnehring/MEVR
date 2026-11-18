@@ -179,13 +179,11 @@ void Tick(Link const& link) {
         // controllers go to the menu) and the game comes back to mode 0, which tried nothing until 2026-11-06 and left
         // the game running behind the menu (Codex review, gameM#3).
         std::optional<unsigned char> const mode = head_tracking::GameMode();
-#if defined(MEVR_GAME_LE3)
+        // On foot or in a vehicle (ME1's 0 and 1), ME3's Atlas too, through each game's table (ME2's 1 is its power wheel,
+        // its Hammerhead 4: engine/GameAdapter.hpp).
         bool const controllable = mode && (engine::adapter::GameMode(*mode) == engine::adapter::Mode::OnFoot ||
             engine::adapter::GameMode(*mode) == engine::adapter::Mode::Vehicle ||
             engine::adapter::GameMode(*mode) == engine::adapter::Mode::Atlas);
-#else
-        bool const controllable = mode && (*mode == 0 || *mode == 1);
-#endif
         if (controllable) {
             gPaused = Pause(true, "the main menu is open");
             gWasOpen = true;  // tried: a failed call isn't repeated every tick

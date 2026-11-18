@@ -1762,8 +1762,11 @@ void RunFrame() noexcept
         // both eyes on it), head look parked; its flat panel (the boot, a load from the menus) is the menu presentation. No
         // other cinematic presentation of Halcyon's while the front end holds.
         const int mevrFrontEnd = ME2VR::D3DCapture::GetMevrFrontEnd();
+        // [MEVR] ME1's and ME2's rule (the owner, 2026-11-18: the 3D screen is ME3's default as on the other two): every
+        // corroborated cinematic whatever its mode (vrEligible already leaves out the measured flat sources: the galaxy map, the
+        // title, an unearned movie). It was admitted in modes 7 and 8 only until then, a cinematic in any other mode flat.
         const bool mevrScreen = (mevrFrontEnd == 2 && sfrMode) ||
-            (mevrFrontEnd == 0 && !mevrGalaxyHeld && sfrMode && cine && vrEligible && !menuMono && (gm == 7 || gm == 8) &&
+            (mevrFrontEnd == 0 && !mevrGalaxyHeld && sfrMode && cine && vrEligible && !menuMono &&
              ::MevrSeams::CineScreenWanted(gm == 7));
         ME2VR::CalcViewHook::SetMevrCineScreen(mevrScreen);
         const bool renderCineInVr = !mevrGalaxyHeld && (mevrScreen || (mevrFrontEnd == 0 && cine && vrEligible &&

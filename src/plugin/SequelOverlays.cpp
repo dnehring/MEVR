@@ -30,6 +30,7 @@
 #include "plugin/SequelWeaponLayers.hpp"
 #include "plugin/TraversalCue.hpp"
 #include "plugin/Vignette.hpp"
+#include "plugin/WheelPanel.hpp"
 #if defined(MEVR_WITH_MAIN_MENU)
 #include "plugin/Thespian.hpp"
 #endif
@@ -121,6 +122,7 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
     // next frame's redirect. Capability hudPanelGameplay: the whole gameplay HUD; without it only the interaction label's
     // measured crop is captured and the native gameplay HUD stays in the eye images.
     mevr::host::hud_panel::Frame panel;
+    XrCompositionLayerQuad const* gameWheelLayer = nullptr;  // the game's wheel at the hand (below)
     {
         mevr::host::renderer::HudSettings const cfg = mevr::host::renderer::Hud();
         if (facts.panelColour) {
@@ -196,6 +198,10 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
             hpl::Plan plan;
             void const* layers[2] = {};
             unsigned count = 0;
+            mevr::host::wheel_panel::Common wheelCommon;
+            mevr::host::wheel_panel::Plan wheelPlan;
+            bool onFoot = false;
+            XrCompositionLayerQuad const* wheelLayer = nullptr;
         } pass;
         pass.common.session = session;
         pass.common.appSpace = appSpace;
@@ -204,6 +210,28 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
         pass.common.head = headPosition;
         pass.common.nowMs = GetTickCount64();
         pass.common.options.colourSeed = 3;  // a quad of ours, not the panel (LE1's overlays' options for a piece)
+        // The game's weapon and power wheels on a panel of their own at the hand (plugin/WheelPanel, LE1's; HostServices
+        // setWheelPanel): their part of the UI cut out of the panel while one is up, blitted before the panel is cleared.
+        namespace wp = mevr::host::wheel_panel;
+        pass.wheelPlan = wp::Decide(frame.context, frame.gameMode, caps.hudPanelGameplay && panelReady && panel.gameplay &&
+            !panel.screenUi && !ctx.worldUiOwns && frame.worldFrame && !anyMenu);
+        if (pass.wheelPlan.wanted) {
+            panel.masks.Add(pass.wheelPlan.px.x, pass.wheelPlan.px.y, pass.wheelPlan.px.width, pass.wheelPlan.px.height);
+        }
+        pass.wheelCommon.session = session;
+        pass.wheelCommon.appSpace = appSpace;
+        pass.wheelCommon.context = frame.context;
+        pass.wheelCommon.device = device;
+        pass.wheelCommon.head = {headOrientation, headPosition};
+        pass.wheelCommon.whiteScale = panel.whiteScale;
+        pass.wheelCommon.nowMs = pass.common.nowMs;
+        pass.wheelCommon.options = pass.common.options;
+        pass.onFoot = ctx.onFoot;
+        panel.user = &pass;
+        panel.beforeClear = [](void* user, bool shown) {
+            auto& p = *static_cast<PiecesPass*>(user);
+            p.wheelLayer = wp::Layer(p.wheelCommon, p.wheelPlan, shown, p.onFoot);
+        };
         if (caps.hudPieces) {
             hpl::Frame pieceFrame;
             pieceFrame.gameplayOnFoot = lastGameMode == 0;
@@ -217,6 +245,7 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
             panel.user = &pass;
             panel.beforeClear = [](void* user, bool shown) {
                 auto& p = *static_cast<PiecesPass*>(user);
+                p.wheelLayer = wp::Layer(p.wheelCommon, p.wheelPlan, shown, p.onFoot);
                 p.count = hpl::Layers(p.common, p.plan, shown, p.layers, 0, 2);
             };
         }
@@ -267,6 +296,7 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
         for (unsigned i = 0; i < pass.count && count < capacity; ++i) {
             layersOut[count++] = pass.layers[i];
         }
+        gameWheelLayer = pass.wheelLayer;
     }
 
     // The sights and the hand reticle (plugin/SequelWeaponLayers: LE1's SightLayers and HandReticle).
@@ -342,6 +372,11 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
     }
 #endif
 
+    // The game's wheel at the hand: on top of the gameplay layers (LE1's order), under the game's own part and our menus.
+    if (gameWheelLayer != nullptr && count < capacity) {
+        layersOut[count++] = gameWheelLayer;
+        mevr::host::wheel_panel::Submitted();
+    }
     count = sb::game::OverlayGameLayers(ctx, panel, layersOut, count, capacity);
     // Our main menu and the guided calibration (plugin/MenusLe2, M4): over the rest, alone while they're up.
     count = mevr::host::menus_le2::Layers(frame, device, layersOut, count, capacity);
