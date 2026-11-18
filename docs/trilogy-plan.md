@@ -489,7 +489,8 @@ These unblock the most: almost every other entry gets smaller once they land.
   the right eye and the shots on what the sight line hits; the sniper rifle's ADS, its picture over the scope, its
   `Scope_Eye` sight bone and aimed fire 10.0 -> 0.0. **The scope capture on both sequels since 0601ef40** (lane AU3, ME1's
   module, the sequel hosts serve `setScopeCapture`; no post-process chain there, `engine::adapter::kCapturePostProcess`): on
-  ME2's Save 4 the picture came from the capture at 3.5x and 7x (`sights.pictureSource`); ME3's not seen yet. Left: per-model
+  ME2's Save 4 the picture came from the capture at 3.5x and 7x (`sights.pictureSource`); ME3's not seen yet (its fixture has
+  no sniper; `mevr give <class>` needs the class loaded, and ME3 loads a weapon's package for the loadout only). Left: per-model
   optic profiles (ME1's `vr::sights::OpticFor` is
   keyed by mesh name, and ME2 reuses ME1's names for other models: its Mantis is `WPN_SNPa_MDL`) need a game key and
   measured numbers per model; on the fake headset ME2's pistol ring stands a hand's width left of the gun (the eyes take
@@ -584,11 +585,15 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Lives in:** `game/CombatStance`, `core/vr/CombatStance`, seam `ConstantFpEye`.
 - **Done (0601ef40, lane AU3):** section C on both sequels: the pawn's acceleration by ME1's rule (`cs::WantedAccelRate`;
   neither sequel has the four speed ramps), ME2's start/stop/skid flags off (ME3 has none), `movement: response:` measured.
-  ME2's Save 4: a straight full push 0, 398, 400 u/s at 0, 0.1, 0.2 s (was 0, 49, 122). ME3 not measured yet.
+  ME2's Save 4: a straight full push 0, 398, 400 u/s at 0, 0.1, 0.2 s (was 0, 49, 122). ME3's Save 31: no change (its start
+  is `SFXModule_Locomotion`'s timers, not the acceleration).
 - **Left, ME2 and ME3:** ME2's stop (374 -> 158 u/s in 0.1 s, ~60 still at 0.8 s, before and after: its lever unread); the
   speed from the push (half a push walks at the game's 75 u/s; the move functions unfound: `mevr calltrace`); the constant
   eye (ME2's camera moves ~7 cm on a draw, and its modes' hooks differ, so a seam in `FpApplyOffset` asking ME1's rule, not a
   table pin); the draw rate (each game's WeaponEquip node); ME3's start and stop are `SFXModule_Locomotion`'s.
+  The constant eye's seam needs no new game fact: `SFXCameraMode.HookOffset` is at +0x1A8 on ME2 (`Offset` +0x19C) and at
+  ME1's +0xC0 on ME3 (`Offset` +0xB4), so one `MevrSeams::ConstantFpEye` (ME1's `HalcyonBridge` body, its mode read per game)
+  called where le2's and le3's `FpApplyOffset` write a standing state's offset gives every game ME1's rule.
 - **Closes when:** `movement: response:` shows a run within 0.1 s of the push and half a push walking, on each sequel.
 - **Waits for:** nothing. **Who:** AU3 (the walk); the rest nobody yet.
 
