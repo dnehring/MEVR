@@ -1754,18 +1754,21 @@ void RunFrame() noexcept
         const bool menuMono = ME2VR::D3DCapture::GetMenuMode();
         // [MEVR] Only corroborated native conversation/cinematic sources enter the shared screen.
         // Movie and GUI sources retain the complete native mono panel. No first-person relocation.
-        const bool mevrScreen = sfrMode && cine && vrEligible && !menuMono && (gm == 7 || gm == 8) &&
+        // [MEVR] the galaxy map's opening and closing cinematics in the CIC are the map's (MevrSeams::GalaxyOwnsPresentation:
+        // the mod holds Shepard's view through them, ME1's rule): no cinematic presentation, the room stays in stereo.
+        const bool mevrGalaxyHeld = ::MevrSeams::GalaxyOwnsPresentation(gm);
+        const bool mevrScreen = !mevrGalaxyHeld && sfrMode && cine && vrEligible && !menuMono && (gm == 7 || gm == 8) &&
             ::MevrSeams::CineScreenWanted(gm == 7);
         ME2VR::CalcViewHook::SetMevrCineScreen(mevrScreen);
-        const bool renderCineInVr = mevrScreen || (cine && vrEligible && (!menuMono || fpConvo) &&
+        const bool renderCineInVr = !mevrGalaxyHeld && (mevrScreen || (cine && vrEligible && (!menuMono || fpConvo) &&
                                     (fpConvo || (convoLike ? ME2VR::CalcViewHook::GetCineVrConvo()
-                                                          : ME2VR::CalcViewHook::GetCineVrCutscene())));
+                                                          : ME2VR::CalcViewHook::GetCineVrCutscene()))));
         ME2VR::CalcViewHook::SetVrCineActive(renderCineInVr);
-        ME2VR::CalcViewHook::SetCinematic(cine && !renderCineInVr);
+        ME2VR::CalcViewHook::SetCinematic(cine && !renderCineInVr && !mevrGalaxyHeld);
         // [CINEVR] one line per presentation flip: this is what verifies (or corrects) the LE3
         // convo/cutscene mapping from a single play session.
         static int s_prevCineState = -1;
-        const int cineState = !cine ? 0 : mevrScreen ? (convoLike ? 4 : 5) : (renderCineInVr ? (convoLike ? 2 : 3) : 1);
+        const int cineState = (!cine || mevrGalaxyHeld) ? 0 : mevrScreen ? (convoLike ? 4 : 5) : (renderCineInVr ? (convoLike ? 2 : 3) : 1);
         static const char* kNames[6] = { "none", "FLAT panel", "VR conversation", "VR cutscene",
             "3D conversation screen", "3D cutscene screen" };
         if (cineState != s_prevCineState)

@@ -15,6 +15,7 @@
 #include <Windows.h>
 #include <algorithm>
 #include <cmath>
+#include <format>
 #include <vector>
 
 namespace mevr::game::le3_galaxy_capture {
@@ -29,6 +30,9 @@ ue3::ClassRef gEmitterClass{"Engine.Emitter", ue3::kEveryGame};
 ue3::ClassRef gInterpClass{"Engine.InterpActor", ue3::kEveryGame};
 ue3::FieldRef gTag{"Engine.Actor", "Tag", ue3::kEveryGame};
 ue3::FieldRef gWorldInfo{"Engine.Actor", "WorldInfo", ue3::kEveryGame};
+ue3::ClassRef gLensFlareClass{"Engine.LensFlareSource", ue3::kEveryGame};
+ue3::FieldRef gLastRenderTime{"Engine.Actor", "LastRenderTime", ue3::kEveryGame};
+ue3::FieldRef gTimeSeconds{"Engine.WorldInfo", "TimeSeconds", ue3::kEveryGame};
 
 constexpr float kNearProjectorUU = 900.0f;  // ME1's "near the console": the room's retention is armed within this, on foot
 
@@ -69,12 +73,27 @@ bool off = false;          // `mevr galaxy capture off`
 bool postProcess = false;
 int chainChoice = 0;       // 0 the player's chain, 1 Engine.DefaultPostProcess, 2 DefaultUIScenePostProcess (diagnostics)
 bool holding = false;
+// The map's interlude (galaxy_projector::MapInterlude: the travel's relay movie, a call, a question, a load): the table stays
+// reserved (the room kept, the captures paused, no hold, no window) until the map's own modes come back, which re-open it from
+// the saved on-foot measurement at once (ME1's rule, research/51 section 8.4).
+bool suspended = false;
+std::uint64_t suspendedMs = 0;
 bool published = false;
 std::vector<Token> hidden;  // the room's own projector hologram, hidden while the window lies on it
 std::uint64_t lastProbeMs = 0;
 std::string armRefused;
 std::string reason = "idle";
-unsigned frames = 0, openings = 0;
+unsigned frames = 0, openings = 0, interludes = 0, recentersKept = 0;
+int lastMode = -2;         // the mode log's last game mode (-1: unreadable)
+// The map's opening and closing cinematics (0 -> 8 -> 11 and 11 -> 8 -> 0, run gx3a) are the game's camera flying between the
+// CIC and the map's scene: Shepard's view stays held through them, as ME1's opening and closing (vr::galaxy_map::ClosingHold);
+// no window, the renderer's cinematic presentation stands down (MevrSeams::GalaxyOwnsPresentation in its decision).
+enum class Bridge { None, Opening, Closing };
+Bridge bridge = Bridge::None;
+std::uint64_t bridgeFromMs = 0, bridgeUntilMs = 0;
+bool reservedOnFoot = false;  // the last tick published the on-foot reservation (at the armed projector)
+constexpr std::uint64_t kOpeningMs = 6000, kClosingMs = 3000;
+std::uint32_t lastRecenters = 0;
 
 bool Vector(json::Value const& v, float out[3]) {
     if (!v.IsArray() || v.Items().size() != 3) return false;
@@ -102,21 +121,58 @@ void ShowProjector() {
     hidden.clear();
 }
 
+// `mevr galaxy capture flares`: the lens flares in the player's world nearest the projector, where they are and when they were
+// last drawn. The blue band over the pit with the map open was the projector's own flare (BioA_Nor_210CIC's LensFlareSource_31,
+// 5 cm from the disc's centre), which the hologram's mesh hides on foot; it is hidden with the hologram now (HideProjector).
+std::string FlareList(ue3::Object* pc) {
+    struct Row { double distance; json::Value value; };
+    std::vector<Row> rows;
+    auto& r = ue3::runtime::Get();
+    ue3::Object* const world = Object(pc, "Engine.Actor", "WorldInfo");
+    float const now = world != nullptr ? gTimeSeconds.Read<float>(world).value_or(0.0f) : 0.0f;
+    for (int i = 0, n = r.ObjectCount(); world != nullptr && gLensFlareClass.Get() && i < n; ++i) {
+        ue3::Object* const o = r.ObjectAt(i);
+        if (o == nullptr || !r.IsAlive(o) || !ue3::IsA(o, gLensFlareClass) || r.NameText(o).starts_with("Default__") ||
+            Object(o, "Engine.Actor", "WorldInfo") != world) continue;
+        auto row = json::Value::Object();
+        row["path"] = r.PathName(o);
+        double distance = 1e9;
+        if (auto const at = player::Location(o)) {
+            row["at"] = std::format("{:.0f} {:.0f} {:.0f}", at->x, at->y, at->z);
+            if (disc.valid) {
+                distance = std::hypot(at->x - disc.centreUU.x, at->y - disc.centreUU.y, at->z - disc.centreUU.z) / 100.0;
+                row["fromDiscM"] = distance;
+            }
+        }
+        if (auto const drawn = gLastRenderTime.Read<float>(o)) row["drawnAgoS"] = now - *drawn;
+        bool mine = false;
+        for (Token const& t : hidden) mine = mine || t.object == o;
+        row["hiddenByUs"] = mine;
+        rows.push_back({distance, std::move(row)});
+    }
+    std::sort(rows.begin(), rows.end(), [](Row const& a, Row const& b) { return a.distance < b.distance; });
+    auto out = json::Value::Array();
+    for (std::size_t k = 0; k < rows.size() && k < 24; ++k) out.Push(std::move(rows[k].value));
+    return json::Write(out, 0);
+}
+
 // The GalaxyMapProxy mesh and the emitters over it (the decorative systems), in the player's world.
 void HideProjector(ue3::Object* pc) {
     ue3::Function* const f = gSetHidden.Get();
+    // A return from the map's interlude: still hidden, unless the room's art was rebuilt meanwhile (new actors, ours gone).
+    std::erase_if(hidden, [](Token const& t) { return !t.Alive(); });
     if (f == nullptr || !hidden.empty() || !disc.valid) return;
     auto& r = ue3::runtime::Get();
     ue3::Object* const world = Object(pc, "Engine.Actor", "WorldInfo");
     for (int i = 0, n = r.ObjectCount(); world != nullptr && i < n; ++i) {
         ue3::Object* const o = r.ObjectAt(i);
-        if (o == nullptr || !r.IsAlive(o) || (!ue3::IsA(o, gInterpClass) && !ue3::IsA(o, gEmitterClass)) ||
+        if (o == nullptr || !r.IsAlive(o) || (!ue3::IsA(o, gInterpClass) && !ue3::IsA(o, gEmitterClass) && !ue3::IsA(o, gLensFlareClass)) ||
             r.NameText(o).starts_with("Default__") || Object(o, "Engine.Actor", "WorldInfo") != world) continue;
         bool wanted = false;
         if (ue3::IsA(o, gInterpClass)) {
             auto const tag = gTag.Read<ue3::Name>(o);
             wanted = tag && r.ToString(*tag) == "GalaxyMapProxy";
-        } else if (auto const at = player::Location(o)) {
+        } else if (auto const at = player::Location(o)) {  // its emitters, and its lens flare (BioA_Nor_210CIC's LensFlareSource_31)
             float const dx = at->x - disc.centreUU.x, dy = at->y - disc.centreUU.y, dz = at->z - disc.centreUU.z;
             wanted = std::sqrt(dx * dx + dy * dy + dz * dz) < 1.5f * disc.radiusUU;
         }
@@ -135,8 +191,8 @@ void Stop(char const* why) {
     Unpublish();
     window.Pause();
     ShowProjector();
-    if (holding) log::Info("LE3 galaxy projector: the view is the game's again ({})", why);
-    holding = false;
+    if (holding || suspended) log::Info("LE3 galaxy projector: the view is the game's again ({})", why);
+    holding = suspended = false;
     reason = why;
 }
 
@@ -146,7 +202,11 @@ void ObserveRoom(ue3::Object* pc) {
     if (!room.Observe({reinterpret_cast<std::uintptr_t>(world), reinterpret_cast<std::uintptr_t>(pc)})) return;
     Unpublish();
     window.Reset("the player/world changed");
+    if (holding || suspended) log::Info("LE3 galaxy projector: the player or the world changed with the map {}: everything of the old room forgotten",
+        holding ? "open" : "in an interlude");
     hidden.clear();
+    suspended = false;
+    bridge = Bridge::None;
     held = {};
     render = {};
     mapPov = {};
@@ -177,6 +237,22 @@ void MeasureDisc(ue3::Object* pc) {
             std::acos(std::clamp(std::fabs(d.normal[1]), 0.0f, 1.0f)) * 57.29578f, d.radiusM);
     }
     disc = d;
+}
+
+// The table's place in the room (the disc measured on foot) and the window's layout, for the held map and its reservations.
+void FillTable(gh::Scene& scene, vr::galaxy_map::Settings const& settings) {
+    scene.inWorld = 1;
+    scene.anchorValid = 1;
+    scene.onFoot = 0;
+    for (int i = 0; i < 3; ++i) {
+        scene.anchor[i] = disc.centre[i];
+        scene.discCentre[i] = disc.centre[i];
+        scene.discNormal[i] = disc.normal[i];
+    }
+    scene.windowDisc = 1;
+    scene.discRadiusM = disc.radiusM * settings.windowScale;
+    scene.windowOn = 1;  // the layout reserved (the UI panel's width) even before the captures are up
+    scene.windowWidthM = 2.0f * scene.discRadiusM;
 }
 
 bool NearProjector(ue3::Object* pc) {
@@ -234,7 +310,29 @@ void Tick(Publish publish, std::optional<vr::floor::State> const& floor) {
         lastProbeMs = now;
         MeasureDisc(pc);
     }
-    bool const epoch = floor && floor->valid && disc.valid && floor->sessions == disc.sessions && floor->recenters == disc.recenters;
+    // The disc is measured in the room's tracking space: a new XR session drops it (measured again on foot). A recenter on foot
+    // waits for the next measurement (2 s); inside the map it keeps the disc, since the held view and the app space move together
+    // (the window and the room shift as one: plugin/HalcyonLe3Bridge's Recentered, docs/galaxy-projector-handoff.md "Recenter").
+    bool const inside = holding || suspended;
+    bool const epoch = floor && floor->valid && disc.valid && floor->sessions == disc.sessions &&
+        (inside || floor->recenters == disc.recenters);
+    if (floor && floor->valid && floor->recenters != lastRecenters) {
+        if (inside && disc.valid && floor->sessions == disc.sessions) {
+            ++recentersKept;
+            log::Info("LE3 galaxy projector: a recenter with the map {}: the disc kept in the room's space (the held view moves with it)",
+                holding ? "open" : "in an interlude");
+        }
+        lastRecenters = floor->recenters;
+    }
+    int const modeNumber = mode ? static_cast<int>(*mode) : -1;
+    if (modeNumber != lastMode) {
+        if (inside || le3_galaxy_retention::Armed()) {
+            log::Info("LE3 galaxy projector: game mode {} -> {} ({}; the map's level {})", lastMode, modeNumber,
+                holding ? "the map held" : suspended ? "the table reserved" : "on foot, armed",
+                le3_galaxy_retention::MapLevelRequested(pc) ? "requested" : "not requested");
+        }
+        lastMode = modeNumber;
+    }
     // Near the projector the room's art is kept through the map's opening (the native streaming unloads it).
     if (enabled && onFoot && epoch && NearProjector(pc) && !le3_galaxy_retention::Armed()) {
         std::string const refused = le3_galaxy_retention::Arm(pc, true);
@@ -243,48 +341,112 @@ void Tick(Publish publish, std::optional<vr::floor::State> const& floor) {
             armRefused = refused;
         }
     }
-    bool const want = enabled && map && epoch && held.haveView && held.footFrame && le3_galaxy_retention::Active();
-    if (want != holding) {
-        if (!want) {
-            Stop(!enabled ? "off" : !map ? "the map closed" : !epoch ? "the room's tracking changed (recenter or session)"
+    bool const haveRoom = epoch && held.haveView && held.footFrame;
+    // The opening and closing cinematics, held at Shepard's (ME1's rule).
+    bool const cinematic = mode && engine::adapter::GameMode(*mode) == engine::adapter::Mode::Cinematic;
+    if (bridge != Bridge::None && (!cinematic || now >= bridgeUntilMs || !enabled || !haveRoom)) {
+        log::Info("LE3 galaxy projector: the map's {} cinematic held at Shepard's for {:.1f} s ({})", bridge == Bridge::Opening ? "opening" : "closing",
+            static_cast<double>(now - bridgeFromMs) / 1000.0, !cinematic ? "it ended" : now >= bridgeUntilMs ? "past its bound: the view is the game's" : "the room went");
+        bridge = Bridge::None;
+    }
+    if (enabled && haveRoom && cinematic && bridge == Bridge::None) {
+        if (holding) {
+            bridge = Bridge::Closing;
+            holding = false;
+            window.Pause();
+            ShowProjector();
+        } else if (!suspended && reservedOnFoot && le3_galaxy_retention::Armed() && le3_galaxy_retention::MapLevelRequested(pc)) {
+            bridge = Bridge::Opening;
+        }
+        if (bridge != Bridge::None) {
+            bridgeFromMs = now;
+            bridgeUntilMs = now + (bridge == Bridge::Opening ? kOpeningMs : kClosingMs);
+            log::Info("LE3 galaxy projector: the map's {} cinematic: the view held at Shepard's through it", bridge == Bridge::Opening ? "opening" : "closing");
+        }
+    }
+    reservedOnFoot = false;
+    if (bridge != Bridge::None) {
+        gh::Scene scene;
+        scene.sequence = ++frames;
+        FillTable(scene, settings);
+        gp::PutRenderHold(held, render, true, scene);
+        publish(&scene);
+        published = true;
+        reason = bridge == Bridge::Opening ? "the map's opening cinematic held" : "the map's closing cinematic held";
+        return;
+    }
+    bool const want = enabled && map && haveRoom && le3_galaxy_retention::Active();
+    // The map's interlude (the relay's movie, a call, a question, a load): the table reserved, the captures paused, no hold.
+    if (enabled && !map && inside && haveRoom && gp::MapInterlude(mode) && le3_galaxy_retention::Kept()) {
+        if (!suspended) {
+            suspended = true;
+            suspendedMs = now;
+            ++interludes;
+            log::Info("LE3 galaxy projector: the map's interlude (game mode {}): the table reserved, the captures paused, the view the "
+                      "game's until the map comes back", modeNumber);
+        }
+        holding = false;
+        window.Pause();
+        gh::Scene scene;
+        scene.sequence = ++frames;
+        FillTable(scene, settings);
+        scene.suspended = 1;
+        gp::PutRenderHold(held, render, true, scene);  // the host holds it only in the map's modes
+        publish(&scene);
+        published = true;
+        reason = "the map's interlude: the table reserved";
+        return;
+    }
+    if (!want) {
+        if (inside) {
+            Stop(!enabled ? "off" : !map ? "the map closed" : !epoch ? "the room's tracking changed (a new session)"
                 : !le3_galaxy_retention::Active() ? "the room's retention ended" : "no view on foot");
+        }
+        window.Pause();
+        // On foot at the armed projector: the table reserved before the map opens, so its very first frame is held in the CIC
+        // and never falls to the renderer's flat galaxy panel (ME1's reservation, research/51 section 8.4).
+        if (enabled && onFoot && haveRoom && le3_galaxy_retention::Armed() && NearProjector(pc)) {
+            gh::Scene scene;
+            scene.sequence = ++frames;
+            FillTable(scene, settings);
+            scene.suspended = 1;
+            gp::PutRenderHold(held, render, true, scene);
+            publish(&scene);
+            published = true;
+            reservedOnFoot = true;
+            reason = "on foot at the projector: the table reserved for the map's first frame";
             return;
         }
-        holding = true;
-        ++openings;
-        auto const& v = held.floorView;
-        log::Info("LE3 galaxy projector: the map is open in the CIC: the view held at Shepard's ({:.0f}, {:.0f}, {:.0f}; floor lock {}, "
-                  "raw Z {:.1f}), the map's window on the projector", held.location.x, held.location.y, held.location.z, v.floorLocked, held.rawZ);
-        HideProjector(pc);
-    }
-    if (!holding) {
         Unpublish();
-        window.Pause();
         reason = !enabled ? "off" : map ? "map without the room (no retention, view or tracking)" : onFoot ? "on foot" : "not the map";
         return;
     }
+    if (!holding) {
+        holding = true;
+        auto const& v = held.floorView;
+        if (suspended) {
+            log::Info("LE3 galaxy projector: the map is back after its interlude ({:.1f} s): the view held at Shepard's again, the "
+                      "window on the disc measured on foot", static_cast<double>(now - suspendedMs) / 1000.0);
+        } else {
+            ++openings;
+            log::Info("LE3 galaxy projector: the map is open in the CIC: the view held at Shepard's ({:.0f}, {:.0f}, {:.0f}; floor "
+                      "lock {}, raw Z {:.1f}), the map's window on the projector", held.location.x, held.location.y, held.location.z,
+                v.floorLocked, held.rawZ);
+        }
+        suspended = false;
+        HideProjector(pc);
+    }
     gh::Scene scene;
     scene.sequence = ++frames;
-    scene.inWorld = 1;
-    scene.anchorValid = 1;
-    scene.onFoot = 0;
-    for (int i = 0; i < 3; ++i) {
-        scene.anchor[i] = disc.centre[i];
-        scene.discCentre[i] = disc.centre[i];
-        scene.discNormal[i] = disc.normal[i];
-    }
-    scene.windowDisc = 1;
-    scene.discRadiusM = disc.radiusM * settings.windowScale;
+    FillTable(scene, settings);
     gp::WindowLook look;
-    look.widthM = 2.0f * scene.discRadiusM;
+    look.widthM = scene.windowWidthM;
     look.depth = settings.windowDepth;
     look.round = settings.windowRound;
     look.backdrop = settings.windowBackdrop;
     look.postProcess = postProcess;
     look.postProcessChain = chainChoice != 0 ? capture_rig::EngineChain(chainChoice == 2) : nullptr;
     // Presentation does not depend on the captures' readiness: the window's layout and UI panel stand while they warm up.
-    scene.windowOn = 1;
-    scene.windowWidthM = look.widthM;
     bool const fresh = mapPov.valid && now - mapPov.ms < 500 && mapPov.fovDeg > 1.0f && mapPov.fovDeg < 179.0f;
     HWND const gameWindow = gp::GameWindow();
     RECT client{};
@@ -309,7 +471,8 @@ void Shutdown(bool exiting) {
     window.Shutdown(exiting);
     publishScene = nullptr;
     currentFloor.reset();
-    holding = published = false;
+    holding = suspended = published = false;
+    bridge = Bridge::None;
     hidden.clear();
 }
 
@@ -334,11 +497,73 @@ std::string StatusJson() {
     out["projectorHidden"] = static_cast<int>(hidden.size());
     out["retentionArmed"] = le3_galaxy_retention::Armed();
     out["retentionActive"] = le3_galaxy_retention::Active();
+    out["retentionKept"] = le3_galaxy_retention::Kept();
+    out["suspended"] = suspended;
+    out["bridge"] = bridge == Bridge::Opening ? "opening" : bridge == Bridge::Closing ? "closing" : "none";
+    out["interludes"] = static_cast<int>(interludes);
+    out["recentersKept"] = static_cast<int>(recentersKept);
     out["off"] = off;
     return json::Write(out, 0);
 }
 
-std::string Command(ue3::Object* /*pc*/, std::string const& action) {
+// `mevr galaxy capture ship`: where the map's ship, its camera and its relay stand (the map's own world units) and the map
+// camera's yaw, so a test script can steer with the stick (tools/le2-halcyon-run/galaxy-steps.ps1). Read only.
+std::string ShipJson(ue3::Object* pc) {
+    auto out = json::Value::Object();
+    auto const context = Capture(pc);
+    out["available"] = context.has_value();
+    if (!context) return json::Write(out, 0);
+    auto& r = ue3::runtime::Get();
+    auto const put = [&](char const* key, ue3::Object* o) {
+        auto row = json::Value::Object();
+        row["name"] = o != nullptr ? r.PathName(o) : std::string("none");
+        if (auto const at = o != nullptr ? player::Location(o) : std::nullopt) {
+            row["x"] = at->x;
+            row["y"] = at->y;
+            row["z"] = at->z;
+        }
+        out[key] = std::move(row);
+    };
+    out["state"] = context->cameraState;
+    out["mode"] = context->modeNumber;
+    out["activeWorld"] = context->activeWorld;
+    put("centre", Object(context->camera, kCamera, "m_pCenterObject"));
+    put("cameraObject", Object(context->camera, kCamera, "m_pCameraObject"));
+    put("selected", Object(context->camera, kCamera, "m_pSelectedObject"));
+    put("crosshair", Object(context->camera, kCamera, "m_pCrossHairObject"));
+    put("mapCurrent", Object(context->camera, kCamera, "m_pMapCurrentObject"));
+    put("relay", Object(context->camera, kCamera, "m_pMassRelayObject"));
+    out["system"] = context->system != nullptr ? r.PathName(context->system) : std::string("none");
+    out["planet"] = context->planet != nullptr ? r.PathName(context->planet) : std::string("none");
+    if (mapPov.valid) {
+        out["cameraYaw"] = mapPov.rotation.yaw;
+        out["cameraPitch"] = mapPov.rotation.pitch;
+        out["cameraAt"] = std::format("{:.0f} {:.0f} {:.0f}", mapPov.location.x, mapPov.location.y, mapPov.location.z);
+    }
+    auto selectable = json::Value::Array();
+    ue3::FieldRef actors{kCamera, "m_aSelectableActors", ue3::kEveryGame};
+    if (auto const list = actors.ElementsOf(context->camera, 256); list && list->stride == sizeof(ue3::Object*)) {
+        for (int i = 0; i < list->count && i < 48; ++i) {
+            ue3::Object* const a = *static_cast<ue3::Object**>(list->At(i));
+            if (!r.IsAlive(a)) continue;
+            auto row = json::Value::Object();
+            row["name"] = r.NameText(a);
+            if (auto const tag = gTag.Read<ue3::Name>(a)) row["tag"] = r.ToString(*tag);
+            if (auto const at = player::Location(a)) {
+                row["x"] = at->x;
+                row["y"] = at->y;
+                row["z"] = at->z;
+            }
+            selectable.Push(std::move(row));
+        }
+    }
+    out["selectable"] = std::move(selectable);
+    return json::Write(out, 0);
+}
+
+std::string Command(ue3::Object* pc, std::string const& action) {
+    if (action == "ship") return "galaxy ship: " + ShipJson(pc);
+    if (action == "flares") return "galaxy flares: " + FlareList(pc);
     if (action == "off") {
         off = true;
         Stop("command-off");
@@ -348,7 +573,7 @@ std::string Command(ue3::Object* /*pc*/, std::string const& action) {
         chainChoice = action == "on-default" ? 1 : action == "on-ui" ? 2 : 0;
         window.Reset("the capture's options changed");
     } else if (action != "state" && !action.empty()) {
-        return "usage: mevr galaxy capture on|on-post|on-default|on-ui|off|state";
+        return "usage: mevr galaxy capture on|on-post|on-default|on-ui|off|state|ship|flares";
     }
     return "galaxy capture: " + StatusJson();
 }

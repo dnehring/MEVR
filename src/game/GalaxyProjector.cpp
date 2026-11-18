@@ -4,6 +4,7 @@
 
 #include "core/Log.hpp"
 #include "core/vr/CineScreen.hpp"
+#include "engine/GameAdapter.hpp"
 
 #include <Windows.h>
 
@@ -36,6 +37,17 @@ HWND GameWindow() {
         },
         reinterpret_cast<LPARAM>(&search));
     return search.best;
+}
+
+bool MapInterlude(std::optional<int> mode) {
+    if (!mode) return true;  // unreadable (a load inside travel)
+    namespace ga = engine::adapter;
+    switch (ga::GameMode(*mode)) {
+    case ga::Mode::Unknown: case ga::Mode::Conversation: case ga::Mode::Cinematic: case ga::Mode::Gui: case ga::Mode::Movie:
+        return true;
+    default:
+        return false;
+    }
 }
 
 void Remember(HeldView& held, ue3::Vector const& location, ue3::Rotator const& rotation, float fov) {

@@ -8,6 +8,26 @@
 Updated 2026-11-17 (lane GX). The 2026-11-15 checkpoint (0f02fd38, landed as ccc9325d) is on main; its worktree is gone.
 This is a resumption document, not a release or acceptance claim.
 
+## 2026-11-17 (later): travel, the opening and closing, the band, reload, recenter (lane GX3)
+
+research/le3-galaxy.md "Travel, the opening and closing, the band" has the runs and the facts; in short, on ME3:
+- **Travel works on the projector.** The relay's travel stays in game mode 11: ME3 plays its relay movie over the map, which the
+  renderer shows flat; the hold and the window never dropped (97,116 main views held at Shepard's, none from the map camera) and
+  the arrival showed the new system on the disc at once. The window is now drawn only over a world frame (it stood beside the
+  flat movie with old captures). The map's interludes that do change the mode (a conversation, a cinematic, a GUI question, a
+  movie mode, a load) keep the table reserved and re-open it from the measured disc: ME1's rule (research/51 section 8.4) in
+  `galaxy_projector::MapInterlude` and the retention's `Kept()`.
+- **No flat or wrong-camera frame at the opening**: the opening's cinematic (0 -> 8 -> 11, 2.5 s) is held at Shepard's view and the
+  first map frame is held (an on-foot reservation); `galaxy hologram: the map's main views ...` counts them (0 unheld in five
+  openings). X closes 11 -> 0; a closing cinematic would be held 3 s (ME1's ClosingHold).
+- **The blue band was the projector's own lens flare**, uncovered when its hologram mesh is hidden: hidden with it now.
+- **The retention re-arms** when its 20 s for the map ran out at the console (the map opened without the room before).
+- Tools: `galaxy-steps.ps1` (the map's controls replayed, `steer` to a target), `mevr galaxy capture ship|flares`,
+  `make-walk-recording.py`'s `lt`, `rt`, `stick@DEG` and `+` combinations.
+
+Left on ME3: orbit (mode 12) and the probe (the late-game fixture has no scannable planet in reach; the code treats 12 as 11),
+the captures' post-process chain ("Remaining work" 1 below), the headset (alignment, legibility, comfort, GPU cost).
+
 ## 2026-11-17: ME3's projector flow, on ME1's shared code (lane GX)
 
 **What runs now on ME3** (renderer preview on the fake headset, the career's original AutoSave at the CIC console, loaded

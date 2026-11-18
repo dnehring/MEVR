@@ -749,14 +749,19 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Done 2026-11-17 (lane GX):** ME3 opens its map over the CIC's projector: the view held at Shepard's, the CIC in stereo,
   the map a stereo disc on the projector, its Flash UI on the panel there, X back to the room (galaxy-projector-handoff.md
   "2026-11-17"). ME1's `StepWindow` and the held view are the shared `galaxy_projector` code ME3 calls.
+- **Done 2026-11-17 (lane GX3):** ME3's relay travel and arrival on the projector (the relay movie stays in mode 11: the
+  window is drawn only over world frames now), the opening's cinematic held at Shepard's (no flat or wrong-camera frame: 0
+  unheld main views in five openings), ME1's interlude rule for the map's mode changes, the retention re-armed after 20 s,
+  the blue band (the projector's own lens flare) hidden with the hologram (galaxy-projector-handoff.md "GX3").
 - **Done 2026-11-17 (lane GX2):** ME2 the same, on the sequels' one flow (`game/GalaxyProjectorFlow`, ME2's adapter
   `game/Le2GalaxyCapture`): A at the console, the CIC in stereo, the map a stereo disc on the projector with its UI, X back
   to the room; the depth of field off near the projector (ME2's render thread faulted with it on); no pointer (the map's own
   controls); ME2's opt-in flat table retired (galaxy-projector-handoff.md "2026-11-17: ME2's").
-- **Left:** ME3's adapter onto `GalaxyProjectorFlow` (with GX3's interlude and on-foot reservation in the flow); the handoff's
-  steps 3 (picks), 4 (lifecycle, travel, orbit and scan, the headset) on ME3; on ME2 travel, orbit and the scanner in the
-  window (its probes and mining: one launch per press), the headset; `vr::galaxy_map::ReadTableSettings` and one input
-  lease for ME3.
+- **Left:** ME3's adapter onto `GalaxyProjectorFlow` (carrying GX3's interlude rule and re-armed retention into the flow, so
+  ME2 gets ME1's travel rule too); orbit (mode 12) and the probe on ME3 (no scannable planet in the fixture's reach), the
+  captures' post-process chain, ME3's picks (the owner's question), the headset; on ME2 travel, orbit and the scanner in the
+  window (its probes and mining: one launch per press), the headset; `vr::galaxy_map::ReadTableSettings` and one input lease
+  for ME3.
 - **Closes when:** the native map shows over the physical projector with the CIC in stereo around it, on each sequel;
   one probe becomes zero after exactly one launch on ME2.
 - **Waits for:** T16. **Who:** GX (ME3), GX3 (ME3's remaining steps), GX2 (ME2), 2026-11-17.

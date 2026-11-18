@@ -5,6 +5,7 @@
 #include "core/Log.hpp"
 #include "core/WriteJournal.hpp"
 #include "core/vr/OverlayPlacement.hpp"
+#include "engine/GameAdapter.hpp"
 #include "halcyon/MevrSeams.h"
 #include "plugin/GalaxyHologram.hpp"
 #include "plugin/Renderer.hpp"
@@ -427,6 +428,36 @@ int HoldsView(int gameMode) noexcept {
 } // namespace mevr::host::world_ui
 
 // ---- The held view's seams (src/halcyon/MevrSeams.h): ME3's renderer; LE1's GalaxyViewSwapBegin calls HoldViewBegin itself ----
+namespace {
+// The map's main views on a sequel, held at Shepard's or not (the game's map camera: the opening's or a return's wrong-camera
+// frames), counted per stay in the map's modes and logged when it ends (docs/galaxy-projector-handoff.md "Opening and closing").
+struct MapViews {
+    bool inMap = false;
+    std::uint64_t held = 0, unheld = 0, beforeFirstHeld = 0;
+};
+MapViews gMapViews;  // game thread (CalcSceneView)
+
+void NoteMapView(int mode, bool held) noexcept {
+    bool const map = mevr::engine::adapter::IsMapMode(mode);
+    MapViews& v = gMapViews;
+    if (map) {
+        v.inMap = true;
+        if (held) {
+            ++v.held;
+        } else {
+            ++v.unheld;
+            if (v.held == 0) ++v.beforeFirstHeld;
+        }
+        return;
+    }
+    if (v.inMap && (v.held != 0 || v.unheld != 0)) {
+        mevr::log::Info("galaxy hologram: the map's main views (game mode {} now): {} held at Shepard's, {} from the map's camera "
+                        "({} of them before the first held one)", mode, v.held, v.unheld, v.beforeFirstHeld);
+    }
+    v = {};
+}
+}  // namespace
+
 namespace MevrSeams {
 
 bool WorldViewHoldBegin() noexcept {
@@ -434,6 +465,7 @@ bool WorldViewHoldBegin() noexcept {
     int const mode = mevr::host::renderer::GameMode();
     bool galaxyWanted = false;
     bool const galaxyHeld = mevr::host::galaxy_hologram::HoldViewBegin(mode, galaxyWanted);
+    NoteMapView(mode, galaxyHeld);
     if (galaxyWanted) {
         return galaxyHeld;
     }

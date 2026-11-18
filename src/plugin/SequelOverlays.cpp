@@ -104,7 +104,9 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
         galaxy.context = frame.context;
         galaxy.device = device;
         galaxy.gameMode = frame.gameMode;
-        galaxy.menuOpen = ctx.menuOpen;
+        // Only over the world in the eyes: ME3 plays the relay's travel movie inside the map's mode (11), shown flat by the
+        // renderer (CAPTURE_STALL_MONO), and the window stood beside it with stale captures (run gx3a).
+        galaxy.menuOpen = ctx.menuOpen || !frame.worldFrame;
         galaxy.headValid = frame.headValid;
         galaxy.head = {headOrientation, headPosition};
         XrCompositionLayerBaseHeader const* window[2]{};
