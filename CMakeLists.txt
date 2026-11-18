@@ -899,6 +899,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/plugin/HudPanel.hpp
     src/plugin/HudPieceLayers.cpp
     src/plugin/HudPieceLayers.hpp
+    src/plugin/WheelPanel.cpp
+    src/plugin/WheelPanel.hpp
     src/plugin/QuadSwapchain.cpp
     src/plugin/QuadSwapchain.hpp
     src/plugin/MevrMenu.hpp
@@ -1097,6 +1099,8 @@ function(mevr_add_plugin game)
             src/core/vr/OverlayPlacement.cpp src/core/vr/OverlayPlacement.hpp
             # The HUD pieces on the body (plugin/HudPieceLayers, LE1's): the status at the wrist, the weapon panel on the gun.
             src/plugin/HudPieceLayers.cpp src/plugin/HudPieceLayers.hpp src/core/vr/HudPieces.cpp src/core/vr/HudPieces.hpp
+            # The game's wheels at the hand (plugin/WheelPanel, LE1's).
+            src/plugin/WheelPanel.cpp src/plugin/WheelPanel.hpp src/core/vr/WheelCrop.cpp src/core/vr/WheelCrop.hpp
             src/core/vr/InteractLabel.cpp src/core/vr/InteractLabel.hpp
             # The gun's sights and the scope (plugin/SightLayers, LE1's).
             src/core/vr/ScopeArt.cpp src/core/vr/ScopeCapture.cpp src/core/vr/Sights.cpp
@@ -1178,6 +1182,7 @@ function(mevr_add_plugin game)
             src/plugin/TransitionFade.cpp src/core/vr/TransitionFade.cpp
             src/plugin/HudPanel.cpp src/plugin/QuadSwapchain.cpp
             src/plugin/HudPieceLayers.cpp src/core/vr/HudPieces.cpp
+            src/plugin/WheelPanel.cpp src/core/vr/WheelCrop.cpp
             src/plugin/Vignette.cpp src/plugin/HandReticle.cpp
             src/plugin/TraversalCue.cpp src/core/vr/Traversal.cpp
             src/core/vr/ScopeArt.cpp src/core/vr/ScopeCapture.cpp src/core/vr/Sights.cpp

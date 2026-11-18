@@ -383,6 +383,10 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **State:** LE1 done · LE2 verify · LE3 verify
 - **Lives in:** `plugin/CineScreen`, `core/vr/CineScreen`, `plugin/CinemaBackdrop`, `plugin/TransitionFade`,
   `plugin/SequelCinema`; interrupts through `PadMerge::ConversationTriggers`.
+- **ME3 (lane AU1, 2026-11-18):** the 3D screen is ME3's default as on ME1 and ME2 (the owner): every corroborated cinematic,
+  whatever its game mode (it was admitted in modes 7 and 8 only), and our menu offers it (one capability,
+  `renderer::Caps::cineScreen`, read by the menu and by `MevrSeams::CineScreenWanted`; the menu's "not available yet" gone).
+  Not run in the game.
 - **Left, ME2:** the timed interrupt at Veetor's door: a replayed trigger inside the prompt's window takes it and one
   outside doesn't. It needs a save that normal-loads before Veetor (research/le2-interrupt-acquisition.md). **ME3:** no
   separate-eye cinema acceptance yet: snapshots in a conversation with ME2's run script, then its interrupt windows.
@@ -831,8 +835,12 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Done 2026-11-16:** one tick for all three games (GF, Forks 5); ME2's names from `SFXPawn.GetPrettyName` and an
   equip seen on ME2 (GF2: Miranda's pistol, 6 of 6 pulls; ledger G30).
 - **Left:** one `Tick` over a per-game roster and equip adapter (today `Le2SquadMenu.inc` re-implements LE1's `Tick` for
-  both sequels; the LE1 part is a refactor). The sequels run the drawn "custom" style only; ME1's default is the game's
-  own wheel cut onto a hand quad (`setWheelPanel`, LE1-only): port it or name the game fact that rules it out.
+  both sequels; the LE1 part is a refactor). The sequels run the drawn "custom" style only.
+- **Built 2026-11-18 (lane AU1):** the game's weapon and power wheels on their own quad at the hand on every game: LE1's code
+  moved unchanged out of `HalcyonOverlays.cpp` into `plugin/WheelPanel` (the crop's measurement, the mod's `setWheelPanel`
+  settings, the placement, the quad, its log lines), composed by LE1's overlays and by `SequelOverlays.cpp` (before the HUD
+  panel is cleared, as the HUD pieces); the wheel's mode through `engine/GameAdapter.hpp` (ME2's 1 and 2, ME3's 3 and 4).
+  Not seen in a sequel yet: `[MEVR-WHEEL]` lines and a `wheel` layer in a snapshot with a wheel up.
 - **Closes when:** with two squadmates, every carried weapon can be given and the recipient's equipped weapon is seen to
   change; LE1's same-pose check passes. Detail for ME2: [M6 guide](le2-m6-implementation-guide.md) package B.
 - **Who:** GF.

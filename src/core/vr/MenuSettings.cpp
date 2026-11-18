@@ -98,6 +98,9 @@ std::vector<Field> const& Schema() {
         // Mass Effect 2's host (research/le2-menus.md): the document greys out the rows ME2 doesn't have yet. 0 on LE1.
         {"le2", Type::Flag, 0, "", 0, 1, F::None, true},
         {"le3", Type::Flag, 0, "", 0, 1, F::None, true},
+        // The renderer has no 3D cinema screen (renderer::Caps::cineScreen false): the menu offers the flat screen only. 0 on
+        // every game's renderer since ME3's got it (2026-11-18).
+        {"cine_flat_only", Type::Flag, 0, "", 0, 1, F::None, true},
         {"game_title", Type::Text, 0, "Mass Effect 1", 0, 0, F::None, true},
         // The top bar's Leave (ME2 and ME3, research/28 "Leave"): shown while the mod says LeaveWorld would act. 0 on LE1.
         {"can_leave", Type::Flag, 0, "", 0, 1, F::None, true},
@@ -898,7 +901,7 @@ std::map<std::string, std::string> ParseSection(std::string_view lines) {
 
 // LE3 presentation foundation: reject unsupported writes even if an old document or queued event requests one.
 bool UnavailableInLe3Presentation(std::string_view key) {
-    return key.starts_with("cine_") || key.starts_with("thespian_") || key.starts_with("voice_") ||
+    return key.starts_with("thespian_") || key.starts_with("voice_") ||
         key.starts_with("mic") || key == "world_ui" || key == "wrist_screen" || key == "wrist_width" || key == "galaxy_holo";
 }
 

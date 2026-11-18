@@ -180,7 +180,9 @@ std::vector<Setting> Wanted(fs::path const& path, bool secondEyeIsReplay) {
 }
 
 void ObserveMode(std::optional<unsigned char> mode) {
-    if (mode && *mode > 4) {
+    // Out of gameplay: a conversation, a cinematic, a screen, a movie, a map (ME1's and ME2's modes past 4; ME3's gameplay runs
+    // to 6: its Atlas and injured Shepard), through each game's table.
+    if (mode && !engine::adapter::IsHudGameplayMode(*mode)) {
         gLeftGameplay = true;  // read every tick: a short cinematic between two polls still counts
         gLeftMode = *mode;
     }
@@ -240,7 +242,7 @@ void Poll(float elapsed, std::optional<unsigned char> mode, bool motionBlurProte
     // renderer, 9 of 9 runs; the same settings 3 s into gameplay didn't (research/le2-renderer-integration.md "Defaults
     // from ME1"). A new level's settings wait until it has been in gameplay for the first settle time; the retry is
     // every poll, since newLevel stays true until they go.
-    if (newLevel && (gSinceWorldChange < kSettleApplyAt[0] || !mode || *mode > 4)) {
+    if (newLevel && (gSinceWorldChange < kSettleApplyAt[0] || !mode || !engine::adapter::IsHudGameplayMode(*mode))) {
         return;
     }
 #endif

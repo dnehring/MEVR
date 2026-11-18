@@ -287,6 +287,19 @@ The captures show the Mission Computer artwork behind its active
 child page. Physical-headset reach, pointing comfort and readability
 still need a pass.
 
+### The game's wheels at the hand (lane AU1, 2026-11-18)
+
+ME1 cuts the game's weapon and power wheels out of the HUD panel onto a quad at the hand (`[Squad] wheelPanel`,
+`weaponWheelAt`, `powerWheelAt`; HostServices v12 `setWheelPanel`, which every host served while only LE1's overlays drew it).
+LE1's code moved unchanged into `plugin/WheelPanel` (its grid measurement of where the wheel is, `core/vr/WheelCrop`; the
+mod's settings; `Place`; the quad; the `[MEVR-WHEEL]` lines word for word); LE1's `HalcyonOverlays.cpp` calls it where the
+code was, and `plugin/SequelOverlays.cpp` decides before the HUD panel is drawn (the wheel's band cut out of the panel) and
+blits in the panel's `beforeClear`, as the HUD pieces. The wheel up is the game's mode through `engine/GameAdapter.hpp`
+(`wheel_panel::WheelOf`: ME1's 2 and 3, ME2's 1 and 2, ME3's 3 and 4). LE1's conversation in the world keeps sharing its
+swapchain (`wheel_panel::Swapchain`, `Quad`, `Place`). [verify] on each sequel: the wheel's measured place on their 16:9 HUD
+(`[MEVR-WHEEL] measured: ...`; until then `WheelCrop::DefaultCrop`'s guess for a 1280x720 stage), the quad at the left hand
+(`-wheel.png`), and the power wheel left on the HUD panel by default (`powerWheelAt`, ME1's).
+
 ### The sequels' own screens (lane AU1, 2026-11-18)
 
 Until now `core/vr/WorldUi`'s tag list knew ME1's GUI library and the sequels' pause-menu pages, so ME2's research terminal,

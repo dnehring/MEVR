@@ -31,6 +31,7 @@ Caps const& Capabilities() noexcept {
     static Caps const caps = [] {
         Caps c;
         c.name = "halcyon-le1";
+        c.cineScreen = true;         // ME1's 3D cinema screen for conversations and cutscenes (research/52)
         c.recenterTilt = true;
         c.panelsInRoom = true;
         c.perfSeams = true;          // LE1's own names (PerfPresentScope, g_perfDraws ...), plugin/PerfProbe

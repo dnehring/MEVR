@@ -288,6 +288,8 @@ void Settings::Read(menu::Values& v) {
     auto flag = [&](char const* key, bool value) { v.numbers[key] = value ? 1.0f : 0.0f; };
     // The top bar's Leave (ME2 and ME3, research/28 "Leave"): only while the mod says the level's way out would act here.
     flag("can_leave", (GameMenuOffers() & vr::game_menu::kOfferLeave) != 0);
+    // A renderer without ME1's 3D cinema screen offers only the flat screen (renderer::Caps::cineScreen; every game's has it).
+    flag("cine_flat_only", !mevr::host::renderer::Capabilities().cineScreen);
 
     // Comfort.
 #if defined(MEVR_MENU_LE1)
@@ -346,9 +348,6 @@ void Settings::Read(menu::Values& v) {
         cineDefaults.conversations ? cw::Mode::Screen : cw::Mode::Vr);
     v.texts["cine_convo"] = convo == cw::Mode::Vr ? "flat" : "screen";
     v.texts["cine_cut"] = ini.Num("Cinematics", "cutscenes", cineDefaults.cutscenes ? 1.0f : 0.0f) != 0.0f ? "screen" : "flat";
-#endif
-#if defined(MEVR_WITH_HALCYON_LE3)
-    v.texts["cine_convo"] = v.texts["cine_cut"] = "flat";
 #endif
     v.numbers["cine_width"] = std::clamp(ini.Num("Cinematics", "widthM", 2.9f), 1.5f, 8.0f);
     v.numbers["cine_distance"] = std::clamp(ini.Num("Cinematics", "distanceM", 3.5f), 1.0f, 6.0f);
