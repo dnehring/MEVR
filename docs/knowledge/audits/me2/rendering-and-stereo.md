@@ -67,7 +67,7 @@ shared and verified. The frame's cost is not ME1's: both eyes are full engine re
 | REN-22 | adapter | `MEVR_TONE` in `EyeCopy`'s shader | without LE1's SDR-white scale and without the clip in the neutral profile; unverified | ledger R15 |
 | REN-23 | missing | none | the Display group is greyed **Render resolution and Upscale un-greyed, lane AU4 (b1fb0c50); Performance and Steady cutscenes stay greyed.** | ledger R35 |
 | REN-24 | same core, other inputs | `game/SystemSettings` | ME2 waits until a level has been in gameplay 3 s (a `scale set` during the load hung the game); the same shadows and blur values since 9f556c1a | `SystemSettings.cpp:237`; ledger R12 |
-| REN-25 | missing | none | blur is off only through the mod's `scale set`; ME3's host has the guard, ME2's does not | `CMakeLists.txt:942-943`, `:1171`; `Entry.cpp:314-317`; ledger R10 |
+| REN-25 | adapter (fixed) | ME1's and ME3's `plugin/MotionBlurGuard` on ME2 (lane AU6, d9ba2593): ME2's render bodies `0x3A9FE0`/`0x3AAE40` and five audited proxy pairs (`Addresses.hpp` LE2 `kMotionBlurProxyPairs`), `motionBlurProtected` served | Seen on Save 4: installed, 81 proxies converted in 40 s, 0 unknown; the menu-return reapply stands down while healthy. One-eye smear in the headset not checked | [research/le2-motion-blur-guard.md](../../../../research/le2-motion-blur-guard.md); ledger R10 |
 | REN-26 | adapter | `vr-game-settings.ps1 -Game LE2`; Setup's `GameSpec` | Setup's LE2 spec lags the tool (settings-and-defaults.md, SET-22) | `vr-game-settings.ps1:130-144` |
 | REN-27 | same | `MevrSeams::RecenterOrientation` to `plugin/RecenterTilt`; 60 degrees | R is not a recenter key on ME2 (its reload); the correction itself was never seen on ME2 (the fake headset gives no tilt) | `RendererLe2.cpp:157-159`; ledger R28 |
 | REN-28 | missing | none (the addresses are found, not wired) | `kSkelUpdateBounds` and `kPrimitiveUmbraBounds` are 0 on ME2 although lane R2 found both functions (0x798350, 0x3146C0) **Fixed in code, lane AU4 (b1fb0c50): both RVAs in, the module on `runtime::Up()`; seen padded (150 units) on Save 4 with replayed hands.** | `BodyBounds.cpp:28-33`; ledger R29 |
@@ -121,8 +121,8 @@ shared and verified. The frame's cost is not ME1's: both eyes are full engine re
 1. **Give the render size an owner.** Make `main_menu::FirstStartEyeSize` and `SetResolution` write `MELE2VR.ini`'s
    `RenderW` / `RenderH` (0.85 of the headset's eye width at 16:9, or measure which shape ME2 should render), un-grey
    Display's size and Upscale rows. Check: `first VR start:` in the log and the eye-copy line's source size.
-2. **Install the motion-blur guard on ME2** (ME3's rows show the way; `plugin/MotionBlurGuard.cpp` is already in LE3's
-   list). Check: `mevr-motion-blur-guard-tests` for LE2 and the guard's "healthy" line after a level change.
+2. **Done 2026-11-18 (lane AU6, d9ba2593):** the motion-blur guard on ME2 (research/le2-motion-blur-guard.md): ctest
+   `mevr-le2-motion-blur-guard`, installed and healthy on Save 4.
 3. **Wire the body's culling pad**: put lane R2's two RVAs in `engine/Addresses.hpp` with patterns. Check: `body
    bounds: the body's boxes are padded` and a snapshot looking down at the feet at the head angles ME1 failed at.
 4. **Decide the quit guard**: one quit of ME2 with the first-chance handler's `crash-exit.txt` read; install

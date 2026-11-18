@@ -352,10 +352,11 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Waits for:** nothing; once T08 brings the replay to a sequel the gate follows the capability. **Who:** GF.
 
 #### T12 The motion-blur guard [R10]
-- **State:** LE1 done · LE2 check first · LE3 verify
+- **State:** LE1 done · LE2 verify · LE3 verify
 - **Lives in:** `plugin/MotionBlurGuard`, with a per-game proxy-pair table in `engine/Addresses.hpp`.
-- **Left, ME2:** blur is off only through T11's `MotionBlur False`. Take a head-turn snapshot pair looking for one-eye
-  smear before porting anything. **ME3:** seven proxy pairs guard the recenter; other scenes and the stale-copy case are
+- **Done, ME2 (lane AU6, 2026-11-18, d9ba2593):** five audited proxy pairs, installed and healthy on Save 4 (81 conversions in
+  40 s, 0 unknown), the menu-return reapply standing down (research/le2-motion-blur-guard.md). **Left:** the headset (no
+  one-eye smear on a fast turn); **ME3:** seven proxy pairs guard the recenter; other scenes and the stale-copy case are
   open (research/le3-recenter-transition-failure.md).
 - **Waits for:** nothing. **Who:** nobody yet.
 
