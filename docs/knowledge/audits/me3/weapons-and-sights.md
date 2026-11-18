@@ -23,6 +23,8 @@ the Normandy with a non-combat pawn ([research/le3-combat-fixtures.md](../../../
 - **A scope's magnification is not the weapon's on ME3: every sniper rifle shows a fixed 4.0x.** `ReadGameZoom` has an ME1
   branch (`Stats.AimModes`) and an ME2 branch (`SFXWeapon.ZoomFOV`) and nothing for ME3; the fallback constant answers.
   ME1 shows 3.5x then 7x, ME2 8.0x, ME3 4.0x: three games, three numbers, none of them chosen. The stick flick never steps.
+  **Fixed in part 2026-11-18 (lane AU2): ME1's 3.5x and 7x (the flick steps) on both sequels; not seen in the game (the
+  combat fixture's Soldier carries no sniper rifle); the zoomed render still ME1's only.**
 - **The support grip at the shoulder sends LT, which on ME3 (as on ME2) is the game's zoom**, for every gun but a sniper
   rifle. The renderer pins the picture (2222cdee, both sequels); the weapon's zoomed state still starts. ME2's proposal
   (the last section of [its audit](../me2/weapons-and-sights.md)) applies to ME3 with the same route.

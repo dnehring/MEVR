@@ -508,11 +508,13 @@ These unblock the most: almost every other entry gets smaller once they land.
   draws. **ME3** (lane WP, research/le2-vrik.md
   "ME3's holsters, from its own script"): ME3 has no holstered state on a mission and its TryHolster only leaves cover, so
   TryHolster is never called there; the holster is the game's own put-down into no weapon
-  (`SFXInventoryManager.SetCurrentWeapon(None)`) behind `[Holsters] le3PutAway`, **0 by default** (unverified: no ME3 save on
-  the machine loads on a mission with a weapon), and only holsters draw is ME2's rule with "away" = weapons carried, none
+  (`SFXInventoryManager.SetCurrentWeapon(None)`) behind `[Holsters] le3PutAway`, **1 by default since 2026-11-18** (the owner;
+  lane AU2 ran `holsters.ps1 -Game LE3` on the combat fixture: put away at the shoulder in 0.95 s, four trigger pulls refused,
+  the pistol drawn at the hip and put away again, the release grace; research/le3-combat-fixtures.md "A combat fixture by
+  console"; an old file's 0 moves once, marker `le3PutAwayMoved`), and only holsters draw is ME2's rule with "away" = weapons carried, none
   equipped. ME2's release grace seen since (back after 0.20 s, holstered after 0.93 s). **Left, ME2:** the SMG's slot with a
-  class that carries one. **ME3:** the combat fixture, then holsters.ps1 -Game LE3
-  with `le3PutAway = 1`: draw, put away, draw again, four trigger pulls with the gun away, no stuck state; then its default.
+  class that carries one. **ME3:** done (above); left: a power cast, cover and a reload with the gun away and after, and the
+  menu's Holster button (greyed on ME3 until the owner has seen the put-away).
   **The review of 57ae5b4e** (lane FX2, 2026-11-17, research/le2-vrik.md "The sequels' controls after the review of
   57ae5b4e"): ME1's power wheel hold on both sequels (an R3 tap quick-cast power 2 on ME2); a grab where the game allows no
   combat refused (`IsCombatEnabled`); ME2's refused holster felt as a refusal; `ZoomedAimError`'s flag put back in a
@@ -1042,7 +1044,9 @@ me3/summary.md; the owner's words in quotes):
 
 - **ME2's fifth reach zone, the SMG at the right thigh** (on by default): "Right thigh may work for now." Kept.
 - **The sniper's magnification:** "sniper zoom is unified." One rule for the three games, read as ME1's (3.5x, then 7x
-  after a flick, from a real zoomed render; rule 1). Today ME2 shows 8.0x and ME3 4.0x.
+  after a flick, from a real zoomed render; rule 1). Today ME2 shows 8.0x and ME3 4.0x. **Lane AU2, 2026-11-18:** the levels
+  are ME1's on both sequels (3.5x, 7x after a flick; game/Sights `ReadGameZoom`); the zoomed render (scope capture's host
+  source on the sequels) is not ported yet: the sequels still enlarge the other eye's image.
 - **ME3's default for conversations and cutscenes:** "Likely yes if it's default for the other two games." It is: ME1's 3D
   cinema screen is ME3's default, and ME3's menu (which offers Flat only and calls the screen "not available yet") is to
   offer it as ME1's and ME2's do.

@@ -74,7 +74,7 @@ without any of our code asking.
 | 5 | A left-grip squeeze where ME1 has the grenade slot or the vent gives a squad order | [input](gestures-and-input.md) | no |
 | 6 | No recenter from the controllers (ME1: double-click the right stick) | [input](gestures-and-input.md) | no |
 | 7 | Adept, Vanguard and Engineer powers missing from the hand wheel | [powers](powers-and-squad.md) | no |
-| 8 | The body probably stays at scale 1 whatever the player's height | [body](body-and-ik.md) | no |
+| 8 | **Addressed 2026-11-18 (lane AU2): the crouch handle is every game's (it was ME1's only); not seen settling in the game yet.** Was: the body probably stays at scale 1 whatever the player's height | [body](body-and-ik.md) | no |
 | 9 | Walking is the third-person walk (ramps, start and stop steps); draws take 0.62 s; the eye point moves on a draw | [body](body-and-ik.md), [movement](comfort-and-movement.md) | no: `game/CombatStance` is LE1-only |
 | 10 | Snap turn may stand down silently | [movement](comfort-and-movement.md) | no |
 | 11 | No hold at start-up or on entering VR: possible flashes of the world | [presentation](presentation-modes.md) | no |

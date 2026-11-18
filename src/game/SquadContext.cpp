@@ -18,6 +18,7 @@
 #include "ue3/Handles.hpp"
 #include "ue3/Memory.hpp"
 #include "ue3/Runtime.hpp"
+#include "engine/GameAdapter.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -53,7 +54,7 @@ ue3::FieldRef gNextPawn{"Engine.Pawn", "NextPawn", ue3::kEveryGame};
 ue3::FieldRef gLastRenderTime{"Engine.Actor", "LastRenderTime", ue3::kEveryGame};
 ue3::FieldRef gTimeSeconds{"Engine.WorldInfo", "TimeSeconds", ue3::kEveryGame};
 
-ue3::FunctionRef gIsHostileFn{"SFXGame.BioPawn.IsHostile", ue3::kEveryGame};
+ue3::FunctionRef gIsHostileFn{engine::adapter::kIsHostileFunction, ue3::kEveryGame};  // ME3: Engine.Pawn's
 #if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 ue3::FunctionRef gIsDeadFn{"Engine.Pawn.IsDead", ue3::kEveryGame};
 #else

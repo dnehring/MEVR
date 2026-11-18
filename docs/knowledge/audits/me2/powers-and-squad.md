@@ -17,7 +17,9 @@ Audited against [the ME1 catalog](../../me1/powers-and-squad.md) by reading code
 
 - Most of this category really is ME1's code on ME2: 27 of 39 contracts run the shared rule (same, other inputs, or a thin
   adapter). The hand power wheel, the lock, the push, placement's arc and the voice gesture have no ME2 copy.
-- **The hand wheel drops every ME2 power its 26-row table does not name** (Singularity, Shockwave, Charge, Combat Drone,
+- **Fixed 2026-11-18 (lane AU2, not run: Save 4's Soldier has none): a power the table doesn't name keeps its tile, as on
+  ME3, its words from its base name, aimed at a place.** Was: the hand wheel drops every ME2 power its 26-row table does not
+  name (Singularity, Shockwave, Charge, Combat Drone,
   Unity, the grenade powers): an Adept, Vanguard or Engineer loses class powers from the wheel. ME3 keeps unknown powers;
   ME2 returns nothing for them. Read from code; the only wheel seen in the game was a Soldier's.
 - **Squad placement on ME2 does not go through the one dispatcher** (PWR-30): it calls `HenchmanOrderHoldPosition` itself,

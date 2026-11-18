@@ -2474,13 +2474,13 @@
     },
     "LE2": {
      "legacy": false,
-     "me1OnlyHandles": true,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE3": {
      "legacy": false,
-     "me1OnlyHandles": true,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     }
@@ -3226,7 +3226,6 @@
   },
   "game/PowerWheel": {
    "LE3": [
-    "SFXGame.BioPawn.IsHostile",
     "SFXGame.BioPawn:m_oBehavior"
    ]
   },
@@ -3236,7 +3235,6 @@
    ],
    "LE3": [
     "SFXGame.BioActorBehavior:ActorGameName",
-    "SFXGame.BioPawn.IsHostile",
     "SFXGame.BioPawn.IsInCombatActionState",
     "SFXGame.BioPawn:m_oBehavior"
    ]
@@ -3256,11 +3254,6 @@
     "SFXGame.BioConversation.GetEntryText",
     "SFXGame.BioConversation.GetReplyText",
     "SFXGame.BioWorldInfo.EndCurrentConversation"
-   ]
-  },
-  "game/VrCover": {
-   "LE3": [
-    "SFXGame.BioPawn.IsHostile"
    ]
   },
   "game/WorldUi": {

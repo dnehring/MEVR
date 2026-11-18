@@ -1029,12 +1029,17 @@ void StepOffers(Link const& link) {
     link.offer(gOffers);
 }
 
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+// `mevr omni party` (a test fixture's way past the sequels' squad selection, lane LV: a map opened by the console starts with it):
+// the screen's own A on its confirmation, FinalizeParty(true, 0), on the focused PartySelect panel's handler, with the party it
+// has selected (none: no squad). ME2's handler is BioSFHandler_PartySelection, ME3's SFXGUI_TeamSelect (the same function).
 #if defined(MEVR_GAME_LE2)
-// `mevr omni party` (a test fixture's way past ME2's squad selection, lane LV: a map opened by the console starts with it): the
-// screen's own A on its confirmation, BioSFHandler_PartySelection.FinalizeParty(true, 0), on the focused PartySelect panel's
-// handler, with the party it has selected (none: no squad).
 ue3::ClassRef gPartySelection{"SFXGame.BioSFHandler_PartySelection", ue3::kEveryGame};
 ue3::FunctionRef gFinalizeParty{"SFXGame.BioSFHandler_PartySelection.FinalizeParty", ue3::kEveryGame};
+#else
+ue3::ClassRef gPartySelection{"SFXGame.SFXGUI_TeamSelect", ue3::kEveryGame};
+ue3::FunctionRef gFinalizeParty{"SFXGame.SFXGUI_TeamSelect.FinalizeParty", ue3::kEveryGame};
+#endif
 
 std::string FinalizeParty() {
     Focus const focus = FocusedPanel();
@@ -1199,7 +1204,7 @@ std::string Inject(std::string const& which) {
     if (which == "offers") {
         return LeaveStatus();
     }
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     if (which == "party") {
         return FinalizeParty();
     }

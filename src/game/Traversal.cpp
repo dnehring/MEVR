@@ -132,6 +132,16 @@ bool Moving() {
 #endif
 }
 
+bool FloorMoving() {
+#if defined(MEVR_GAME_LE3)
+    return le3::FloorMoving();
+#elif defined(MEVR_GAME_LE2)
+    return le2::Moving();
+#else
+    return false;
+#endif
+}
+
 std::string StatusJson() {
 #if defined(MEVR_GAME_LE3)
     return le3::StatusJson();

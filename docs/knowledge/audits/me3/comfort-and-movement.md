@@ -146,7 +146,8 @@ feels like the third-person game" would be ME1's of 2026-11-12 a third time ([re
    `src/game/CombatStance.cpp` (the ramp and stick section split from the LE1 stance code; per-game names in
    `src/engine/GameAdapter.hpp`), ReflectCheck rows. Check: `movement: response:` under a
    `make-walk-recording.py -Inputs` replay: a run within 0.1 s of the push, half a push near 1.7 m/s.
-2. **Decide the turn's gate for ME3's transient cameras** (MOV-06). Files: `src/core/vr/ViewLevel.cpp:71` (a per-game
+2. **Decided and built 2026-11-18 (lane AU2; the owner: the snap turn stays the player's through a roll):** `TurnCameraAllows`
+   in game/Comfort takes ME3's action cameras too. Was: **decide the turn's gate for ME3's transient cameras** (MOV-06). Files: `src/core/vr/ViewLevel.cpp:71` (a per-game
    list). Check: the run named in MOV-06's row; no `comfort: ... camera mode` line while a snap-turn player is hit.
    **Owner question:** during a roll or a hit reaction, should the mod keep the turn, or should nobody turn?
 3. **Pin `MoveFollowsHead`** (MOV-12), with the settings audit's step 4.

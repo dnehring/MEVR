@@ -20,7 +20,9 @@ seen in a fight on ME3, so every row below is from reading unless it says "run".
 
 - The slots, the grab machine, the frame and the haptics are ME1's code on ME3 (10 `same`, 8 `same core, other
   inputs`, 4 `adapter` of the 28 contracts that apply). The ten grenade contracts are `n/a`: ME3's grenades are powers.
-- **Finding 1: on ME3 the holsters draw but do not holster.** `[Holsters] le3PutAway = 0` ships, so letting go of the
+- **Finding 1 (fixed 2026-11-18, lane AU2: `le3PutAway = 1` by default after the owner's answer, run on the combat fixture;
+  research/le3-combat-fixtures.md "A combat fixture by console").** Was: on ME3 the holsters draw but do not holster.
+  `[Holsters] le3PutAway = 0` shipped, so letting go of the
   right grip does nothing, at the slot or away from it. ME1's central contract (HOL-11: the grip holds the gun, let go
   and it goes back) is half there, and "only holsters draw" (HOL-15, HOL-16) has no state to act in: a grab at a slot
   is a weapon switch, not a draw. Forced in part (ME3 has no holstered state on a mission); the put-down that would
