@@ -65,7 +65,7 @@ headset, 2026-11-16); none was seen in a headset.
 | WPN-06 | same | `game/SupportGrip` has no game guards; the host merge is ME1's | none in code. In ME2 only the take was logged (during a vault run); the zone's size was never checked against ME2's guns | [SupportGrip.cpp](../../../../src/game/SupportGrip.cpp); research/le2-vrik.md:211; ledger G05 "U" |
 | WPN-07 | same | same code | not run on ME2 | as WPN-06 |
 | WPN-08 | same core, other inputs | same code | needs ME2's own calibration (WPN-05) | as WPN-06 |
-| WPN-09 | same core, other inputs | the same flag forces LT 255 | ME2's LT is `SFXGameModeDefault.TightAim`, which calls `SetZoomed(true)`: the gun zooms. It magnified the whole view until 2026-11-17, and it made the game refuse the vault until lane C4 cleared the flag for that call. `weapon::Zoomed()` answers nothing on ME2 | [SupportGrip.cpp](../../../../src/game/SupportGrip.cpp):278-292; [Weapon.cpp](../../../../src/game/Weapon.cpp):1006-1017; [calcview_hook.cpp](../../../../src/halcyon/le2/calcview_hook.cpp):1020-1027; research/le2-vrik.md:211-226 |
+| WPN-09 | adapter (fixed, lane AU8, be1a47ba) | no LT on the sequels (`engine::adapter::kSupportGripHoldsLt`); the shouldered shot's own calls made as zoomed by `game/ZoomedShots` (option B): measured 1.25 -> 0.375 aim error per pistol shot on Save 4, no TightAim or SetZoomed in a call trace (research/le2-vrik.md "The shouldered gun on the sequels") | was: the same flag forced LT 255. ME2's LT is `SFXGameModeDefault.TightAim`, which calls `SetZoomed(true)`: the gun zooms. It magnified the whole view until 2026-11-17, and it made the game refuse the vault until lane C4 cleared the flag for that call. `weapon::Zoomed()` answers nothing on ME2 | [SupportGrip.cpp](../../../../src/game/SupportGrip.cpp):278-292; [Weapon.cpp](../../../../src/game/Weapon.cpp):1006-1017; [calcview_hook.cpp](../../../../src/halcyon/le2/calcview_hook.cpp):1020-1027; research/le2-vrik.md:211-226 |
 | WPN-10 | same core, other inputs | the same `[Sights]` block and defaults | five weapon families on four profiles: the SMG takes the rifle's; a heavy weapon has no family and gets "none (the held weapon's type is unknown)" | [HandCalibration.cpp](../../../../src/game/HandCalibration.cpp):425-426; [Weapon.cpp](../../../../src/game/Weapon.cpp):448-460; [Sights.cpp](../../../../src/game/Sights.cpp):1026 |
 | WPN-11 | partial | sight bone by name (`Scope_Eye` found on the Mantis), else the bones' top, else the typical place | `OpticFor` (the measured eyepieces and housings) is called on ME1 only; no ME2 mesh has a profile, so eyepiece offsets and lens radii are generic | [Sights.cpp](../../../../src/game/Sights.cpp):414-422 |
 | WPN-12 | same | host `SightLayers`, unchanged | none. Seen: `dotEye: right` on the pistol | [SequelWeaponLayers.cpp](../../../../src/plugin/SequelWeaponLayers.cpp):12-37 |
@@ -210,6 +210,9 @@ sniper's damage call zoomed whenever the scope's picture is up, which fixes a lo
 
 **ME1.** The same change would work there (its handler is the same code on `BioWeaponRanged.GetPlayerAimError`), and
 both games would then shoulder the same way. It changes ME1's behaviour, so it waits for the owner's word.
+
+**Built 2026-11-18 (lane AU8, be1a47ba): option B**, the owner's answer (research/le2-vrik.md "The shouldered gun on the
+sequels"). A real support grip at the shoulder is the headset's check (the fake headset has no hands to shoulder with).
 
 **The check that closes it.** On the fake headset with replayed hands at the shoulder
 (`tools/make-walk-recording.py --hands`, a recording with the left grip in the support zone): the log's

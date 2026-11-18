@@ -1105,10 +1105,13 @@ Each is asked once. "Today" is what the build does if nobody answers; no default
 - **The shouldered gun on ME2 and ME3** (lane AU2's trace, docs/knowledge/audits/me2/weapons-and-sights.md): "Your
   recommendation": option B. No LT from the support grip; each shouldered shot's own calculations (accuracy, spread, ME3's
   sniper damage and shotgun cone) are made as zoomed for their duration only; the camera zoom, the scope sway and the
-  melee/roll admission blocks never apply. ME2's sniper time dilation not included (option C).
+  melee/roll admission blocks never apply. ME2's sniper time dilation not included (option C). **Built (lane AU8, be1a47ba):**
+  `game/ZoomedShots`; not the shotgun cone (a timer's ProcessEvent: research/le2-vrik.md "The shouldered gun on the sequels").
 - **ME3's omni-blade with the gun put away:** "Option A": a fist stroke calls ME3's heavy melee action directly (the class's
-  own heavy melee; biotic for Vanguards and Adepts), once a check shows it plays with no weapon equipped.
-- **Shepard's body during a roll:** "Yes for now": hidden while the roll lasts.
+  own heavy melee; biotic for Vanguards and Adepts), once a check shows it plays with no weapon equipped. **Built (lane AU8,
+  2c549a7a):** it plays (research/le3-combat-fixtures.md "The omni-blade with the gun put away").
+- **Shepard's body during a roll:** "Yes for now": hidden while the roll lasts. **Built (lane AU8, e4d35c24):** the body, head and
+  gun in hand, `[Hands] rollHidesBody`.
 - **ME2's render shape (question 18):** "Not sure, whichever leads to the better user experience": the lane measures both
   (cost, and every ME2 screen, the HUD, menus, the conversation wheel and the room screens at 4:3) and picks 4:3 only if
   nothing breaks, else keeps 16:9. **Lane AU9: 16:9 kept** (at 4:3 the power wheel at the hand showed the wrong part of the

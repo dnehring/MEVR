@@ -22,6 +22,11 @@
 #include "game/Vent.hpp"
 #include "game/ViewAnchor.hpp"
 #include "game/Weapon.hpp"
+#if !defined(MEVR_GAME_LE1)
+#include "engine/GameAdapter.hpp"
+#include "game/Sights.hpp"
+#include "game/ZoomedShots.hpp"
+#endif
 
 #include <algorithm>
 #include <atomic>
@@ -275,8 +280,16 @@ void Tick(double deltaSeconds, bool requested) {
     options.gripShoulder = controls.gripLB || !controls.supportGrip;
     // Aimed fire: both hands on the gun and, unless turned off, the gun at the shoulder.
     bool const shouldered = AtShoulder();
+#if defined(MEVR_GAME_LE1)
     options.supportAims = (controls.sniperAims || weapon::Type() != weapon::RangedType::Sniper) &&
                           (!controls.aimAtShoulder || shouldered);
+#else
+    // The sequels hold no LT (engine::adapter::kSupportGripHoldsLt: their LT is the game's zoom, the camera's and the rest's);
+    // the shot's own calculations are zoomed instead (game/ZoomedShots), a sniper rifle's too (ME1 left it out because its
+    // LT is the game's scope camera).
+    options.supportAims = engine::adapter::kSupportGripHoldsLt;
+    bool const shoulderedAim = !controls.aimAtShoulder || shouldered;
+#endif
     holsters::AdjustPad(options);  // RB kept off a squeeze at a holster; the wheel's LB if turned off
     squad_weapons::AdjustPad(options);  // the squad menu's controls while it's open; no LB from a left grip away
     power_wheel::AdjustPad(options);  // X is the power wheel's on foot; the left hand its own while it's open (research/55)
@@ -289,15 +302,26 @@ void Tick(double deltaSeconds, bool requested) {
     options.cockpitLook = cockpit_probe::Riding();  // the head looks round the cockpit in the Mako (research/47)
     options.physicalCrouch = posture::PhysicallyCrouched();  // the host's crouch camera keeps the real head's height
     gFlags.store(gamepad::ToFlags(options), std::memory_order_relaxed);
+#if defined(MEVR_GAME_LE1)
     bool const aiming = options.supportAims && gHeld.load(std::memory_order_relaxed) && requested;
+#else
+    bool const aiming = shoulderedAim && gHeld.load(std::memory_order_relaxed) && requested;
+    zoomed_shots::Update(aiming, sights::ScopedAimedFire(), sights::AimedFire());
+#endif
     std::optional<bool> const zoomed = weapon::Zoomed();
     auto const zoomText = [&zoomed] {
         return zoomed ? std::format("the weapon's bIsZoomed is {}", *zoomed ? "on" : "off") : std::string("no ranged weapon");
     };
     if (aiming != gLoggedAiming) {
         gLoggedAiming = aiming;
+#if defined(MEVR_GAME_LE1)
         log::Info("support grip: aimed fire {}; {}", aiming ? "on (both hands, the gun at the shoulder): the game sees LT held"
                                                             : "off (hip fire)", zoomText());
+#else
+        log::Info("support grip: aimed fire {}; {}", aiming ? "on (both hands, the gun at the shoulder): no LT, the shot's own "
+                                                              "calculations zoomed (game/ZoomedShots)"
+                                                            : "off (hip fire)", zoomText());
+#endif
     }
     // The game's own answer: bIsZoomed follows LT through BioPlayerInput.bWantsToZoom a tick or so
     // later (forced off while switching weapons or overheated).
@@ -307,7 +331,11 @@ void Tick(double deltaSeconds, bool requested) {
         char const* const why = aiming || !gHeld.load(std::memory_order_relaxed) ? ""
             : !requested                                                      ? ": held, but arm IK isn't asking for the grip"
                                                                               : ": held, but not at the shoulder (or a sniper rifle)";
+#if defined(MEVR_GAME_LE1)
         log::Info("support grip: {} (our grip {} LT{})", zoomText(), aiming ? "forces" : "doesn't force", why);
+#else
+        log::Info("support grip: {} (our grip never holds LT on this game{})", zoomText(), why);
+#endif
     }
 
     bool const held = gHeld.load(std::memory_order_relaxed) && requested;

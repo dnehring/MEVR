@@ -315,6 +315,41 @@ inline constexpr bool kActionCameras = true;
 inline constexpr bool kActionCameras = false;
 #endif
 
+// The shouldered gun (game/SupportGrip, game/ZoomedShots; the ME2 and ME3 audits' WPN-09, docs/trilogy-plan.md "Answered
+// 2026-11-18, later": option B). kSupportGripHoldsLt: both hands on the gun at the shoulder hold LT, the game's own aimed fire
+// (ME1: its accuracy, no camera of its own on a rifle). The sequels' LT is SFXGameModeDefault.TightAim -> SFXWeapon.SetZoomed
+// (true): the camera's zoom, a sniper's sway, ME2's sniper time dilation and the refusals of melee and the roll; there the grip
+// holds no LT, and the shot's own calculations below are made as zoomed instead, each for its own call only.
+// kZoomedCalls: those calculations, script functions a script calls (engine/CallFunction's scoped handlers): the per-tick
+// accuracy (UpdatePlayerAccuracy: the zoomed base inaccuracy, fire penalty and recovery; its object the player's inventory
+// manager), the spread's range (GetWeaponAimErrorRange) and ME3's sniper damage (unzoomed, SniperRifleDamagePenalty). ME3's
+// shotgun cone (SFXWeapon_Shotgun_Base.PollLatentFire's ZoomAccuracyBonus) is a timer's call, which ProcessEvent makes: no
+// CallFunction call to bracket (research/le2-vrik.md "The shouldered gun on the sequels").
+#if defined(MEVR_GAME_LE1)
+inline constexpr bool kSupportGripHoldsLt = true;
+#else
+inline constexpr bool kSupportGripHoldsLt = false;
+struct ZoomedCall {
+    char const* function;
+    bool onWeapon;  // the call's object is the weapon (else the player's inventory manager: the held weapon's flag)
+};
+// kAccuracyOwner: the class whose `Accuracy` UpdatePlayerAccuracy writes (the measurement of a shouldered shot's accuracy).
+#if defined(MEVR_GAME_LE3)
+inline constexpr ZoomedCall kZoomedCalls[] = {
+    {"SFXGame.SFXPlayerInventoryManager.UpdatePlayerAccuracy", false},
+    {"SFXGame.SFXWeapon.GetWeaponAimErrorRange", true},
+    {"SFXGame.SFXWeapon_SniperRifle_Base.GetFireModeBaseDamage", true},
+};
+inline constexpr char const* kAccuracyOwner = "SFXGame.SFXPlayerInventoryManager";
+#else
+inline constexpr ZoomedCall kZoomedCalls[] = {
+    {"SFXGame.SFXInventoryManager.UpdatePlayerAccuracy", false},
+    {"SFXGame.SFXWeapon.GetWeaponAimErrorRange", true},
+};
+inline constexpr char const* kAccuracyOwner = "SFXGame.SFXInventoryManager";
+#endif
+#endif
+
 // Our own scene captures (the scope's zoomed render, game/ScopeCapture) with the player's post-process chain. ME1: yes
 // ([Sights] scopeCapturePost = 1 by default; the host's RenderLevers binds a capture's final pass to its own target,
 // research/39). The sequels: never, whatever the setting says: ME3's captures came out black with any chain (lane GX3,

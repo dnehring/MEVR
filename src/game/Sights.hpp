@@ -71,6 +71,11 @@ std::optional<ShotAim> ShotAlongSight(weapon::Muzzle const& muzzle);
 // The host's report for the latest frame (vr::sights::View bits), each tick. Also hides the held gun's [Sights]
 // <type>Hide bones while its scope's picture is up under ADS (game/scope_parts).
 void SetHostView(std::uint32_t view);
+#if !defined(MEVR_GAME_LE1)
+// The sequels' zoomed shots (game/ZoomedShots): a scope's picture is up with aimed fire on; [Sights] aimedFire itself.
+bool ScopedAimedFire();
+bool AimedFire();
+#endif
 // The host's haptic pulse (HostServices v9), or null: the detent of a magnification step (research/21 section 16).
 void SetHaptic(void (*pulse)(int hand, float seconds, float amplitude));
 // What the sight line's trace hit this tick (the gun's target, for the squad context); null when nothing or no trace.

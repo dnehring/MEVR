@@ -23,7 +23,8 @@ fixture ([research/le3-combat-fixtures.md](../../../../research/le3-combat-fixtu
   inputs` or `adapter`. No second IK solver exists.
 - **Finding 1 (fixed for the floor lock, view level, the turn and the shakes 2026-11-18, lane AU2: ME3's action cameras count
   as the body's, `vr::IsActionCamera` behind `engine::adapter::kActionCameras`, and an evade is no floor move; a roll seen on the
-  combat fixture, research/le3-combat-fixtures.md "A combat fixture by console").** Was: first person, the floor lock and the
+  combat fixture, research/le3-combat-fixtures.md "A combat fixture by console"; Shepard's body, head and gun hidden while a roll
+  lasts, lane AU8, e4d35c24; the melee camera seen third person on the fixture, open).** Was: first person, the floor lock and the
   body's anchor are tied to four camera-mode names, and ME3 changes
   camera mode constantly in a fight (reading alone).** Halcyon ME3 has first-person states only for `Explore`,
   `ExploreStorm`, `Combat`, `CombatStorm` and `TightAim`; the floor lock's `cameraOwned` is ME1's name rule (contains

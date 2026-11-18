@@ -181,7 +181,8 @@
     "game/Voice",
     "game/VrCover",
     "game/Weapon",
-    "game/WorldUi"
+    "game/WorldUi",
+    "game/ZoomedShots"
    ],
    "other": [
     "engine/CodeDump",
@@ -441,7 +442,8 @@
     "game/Voice",
     "game/VrCover",
     "game/Weapon",
-    "game/WorldUi"
+    "game/WorldUi",
+    "game/ZoomedShots"
    ],
    "other": [
     "engine/CodeDump",
@@ -703,7 +705,8 @@
     "game/Voice",
     "game/VrCover",
     "game/Weapon",
-    "game/WorldUi"
+    "game/WorldUi",
+    "game/ZoomedShots"
    ],
    "other": [
     "engine/CodeDump",
@@ -3206,6 +3209,29 @@
     }
    },
    "namespace": "game::world_ui"
+  },
+  "game/ZoomedShots": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "unreferenced"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    }
+   },
+   "namespace": "game::zoomed_shots"
   }
  },
  "names": {
@@ -3287,6 +3313,7 @@
     "FrontEndHold",
     "FrontEndOnScreen",
     "GalaxyOwnsPresentation",
+    "HideBodyForAction",
     "HoldLoadTail",
     "HoldPlainVr",
     "HostEndsProcess",
@@ -3544,6 +3571,7 @@
     "FrontEndHold",
     "FrontEndOnScreen",
     "GalaxyOwnsPresentation",
+    "HideBodyForAction",
     "HoldLoadTail",
     "HoldPlainVr",
     "HostEndsProcess",
@@ -3664,6 +3692,7 @@
     "FrontEndHold",
     "FrontEndOnScreen",
     "GalaxyOwnsPresentation",
+    "HideBodyForAction",
     "HoldLoadTail",
     "HoldPlainVr",
     "HostEndsProcess",
@@ -3716,6 +3745,7 @@
     "FrontEndHold",
     "FrontEndOnScreen",
     "GalaxyOwnsPresentation",
+    "HideBodyForAction",
     "HostEndsProcess",
     "HudPanelDraw",
     "KeyDown",

@@ -2212,6 +2212,8 @@ void CheckFields() {
     CheckField("Engine.PlayerController", "Player", SDK_FIELD(APlayerController, Player));
     CheckField("Engine.LocalPlayer", "NearClipPlane", SDK_FIELD(ULocalPlayer, NearClipPlane));
     CheckField("SFXGame.SFXWeapon_NativeBase", "bIsZoomed", SDK_BOOL(ASFXWeapon_NativeBase, bIsZoomed));
+    // game/ZoomedShots: the shouldered shot's accuracy, measured after each zoomed update
+    CheckField("SFXGame.SFXInventoryManager", "Accuracy", SDK_FIELD(ASFXInventoryManager, Accuracy));
     // game/Holsters' sequel adapter (research/le2-vrik.md "Holsters and the reload on the sequels"): drawn is the action
     // state, and the draw raises it through the pawn's behavior
     CheckField("SFXGame.BioPawn", "m_oBehavior", SDK_FIELD(ABioPawn, m_oBehavior));
@@ -2471,6 +2473,8 @@ void CheckSkeleton() {
 void CheckFunctions() {
     char const* const functions[] = {
         "SFXGame.SFXWeapon.GetAimError",                  // game/Sights: a scope's aimed fire (ME1's GetPlayerAimError(Accuracy))
+        "SFXGame.SFXInventoryManager.UpdatePlayerAccuracy",  // game/ZoomedShots: the shouldered shot's calls made as zoomed
+        "SFXGame.SFXWeapon.GetWeaponAimErrorRange",
         "SFXGame.BioPlayerController.SwitchWeapon",       // game/Holsters' sequel draw (a holster grab, `mevr weapon <family>`)
         "SFXGame.SFXWeapon.CanReload",                    // game/Reload: whether the game would reload (the gesture's eligibility)
         "SFXGame.SFXWeapon.GetAmmoCountInMagazine",       // ... the magazine's count, before and after
@@ -3945,6 +3949,17 @@ void CheckFunctions() {
     CheckFunction("SFXGame.SFXWeapon.GetPlayerAimError");
     PARAM(ASFXWeapon_execGetPlayerAimError_Parms, "SFXGame.SFXWeapon.GetPlayerAimError", Accuracy);
     PARAM(ASFXWeapon_execGetPlayerAimError_Parms, "SFXGame.SFXWeapon.GetPlayerAimError", ReturnValue);
+    // game/ZoomedShots: the shouldered shot's own calls made as zoomed (the accuracy, the spread, the sniper's damage)
+    CheckFunction("SFXGame.SFXPlayerInventoryManager.UpdatePlayerAccuracy");
+    CheckFunction("SFXGame.SFXWeapon.GetWeaponAimErrorRange");
+    CheckFunction("SFXGame.SFXWeapon_SniperRifle_Base.GetFireModeBaseDamage");
+    CheckField("SFXGame.SFXPlayerInventoryManager", "Accuracy", SDK_FIELD(ASFXPlayerInventoryManager, Accuracy));
+    // game/Melee: the omni-blade with the weapon away, the class's heavy melee action started as TryHeavyMelee starts it
+    CheckFunction("SFXGame.BioPlayerController.StartCustomActionWithSyncPartner");
+    PARAM(ABioPlayerController_execStartCustomActionWithSyncPartner_Parms, "SFXGame.BioPlayerController.StartCustomActionWithSyncPartner",
+        NewAction);
+    PARAM(ABioPlayerController_execStartCustomActionWithSyncPartner_Parms, "SFXGame.BioPlayerController.StartCustomActionWithSyncPartner",
+        ReturnValue);
     CheckFunction("SFXGame.BioPlayerController.SwitchWeapon");  // game/Holsters' sequel draw (a holster grab, `mevr weapon <family>`)
     PARAM(ABioPlayerController_eventSwitchWeapon_Parms, "SFXGame.BioPlayerController.SwitchWeapon", oWpn);
     CheckFunction("SFXGame.SFXGameModeDefault.TryHolster");     // ... resolved, never called on ME3 (it only leaves cover)

@@ -664,6 +664,8 @@ set(MEVR_MOD_SOURCES
     src/game/Spectator.hpp
     src/game/Sights.cpp
     src/game/Sights.hpp
+    src/game/ZoomedShots.cpp
+    src/game/ZoomedShots.hpp
     src/game/SkeletonProbe.cpp
     src/game/SkeletonProbe.hpp
     src/game/SquadWeapons.cpp

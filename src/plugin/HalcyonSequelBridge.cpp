@@ -21,6 +21,7 @@
 #include "core/DevChannels.hpp"
 #include "core/Ini.hpp"
 #include "core/Log.hpp"
+#include "core/vr/ActionCamera.hpp"
 #include "core/vr/CombatStance.hpp"
 #include "core/vr/Controllers.hpp"
 #include "core/vr/HostView.hpp"
@@ -118,6 +119,10 @@ constexpr double kEyeTestFullBack = 25.0;  // ME2: 24-29 ahead (lanes AU6, AU9: 
 double EyeTestBack(int step) noexcept {
     return step >= 2 ? kEyeTestFullBack : step == 1 ? kEyeTestFullBack / 2.0 : 0.0;
 }
+// MevrSeams::HideBodyForAction's [Hands] rollHidesBody (1 by default: the owner's "Yes for now"), read with the constant eye's,
+// and what it last answered (a log line on each change).
+std::atomic<bool> gRollHidesBody{true};
+std::atomic<bool> gActionHidden{false};
 std::mutex gConstantEyeMutex;  // the renderer's writers (the active mode, the blend's endpoints, ME2's prewarm)
 mevr::vr::combat_stance::Vec gExploreHook{0.0, 0.0, 120.0};
 // What was last logged per mode class (the renderer writes every frame, ME2's prewarm every mode): a line only on a change.
@@ -223,6 +228,11 @@ void RefreshConstantEye() noexcept {
             on ? "" : "; the constant eye is off, so it doesn't apply");
     }
     gEyeTest.store(eyeTest, std::memory_order_relaxed);
+    bool const rollHides = path.empty() || GetPrivateProfileIntW(L"Hands", L"rollHidesBody", 1, path.c_str()) != 0;
+    if (rollHides != gRollHidesBody.exchange(rollHides, std::memory_order_relaxed)) {
+        mevr::log::Info("roll: Shepard's body is {} while a roll lasts ([Hands] rollHidesBody = {})", rollHides ? "hidden" : "shown",
+            rollHides ? 1 : 0);
+    }
 }
 
 } // namespace mevr::host::sequel_bridge
@@ -272,6 +282,19 @@ bool ConstantFpEye(char const* modeClass, float const hookOffset[3], float const
     }
     std::copy(out, out + 3, offset);
     return true;
+}
+
+// Shepard's body hidden during a roll (vr::HidesBodyForAction; the owner, 2026-11-18): the renderer's first-person hides take it.
+bool HideBodyForAction(char const* modeClass, char const* fromClass, char const* toClass) noexcept {
+    bool const hide = modeClass != nullptr && sb::gRollHidesBody.load(std::memory_order_relaxed) &&
+        mevr::vr::HidesBodyForAction(modeClass, fromClass != nullptr ? fromClass : "", toClass != nullptr ? toClass : "");
+    if (hide != sb::gActionHidden.exchange(hide, std::memory_order_relaxed)) {
+        mevr::log::Info("roll: Shepard's body {} ({}{}{})", hide ? "hidden from the eyes" : "shown again",
+            modeClass != nullptr ? modeClass : "no camera mode", fromClass != nullptr && *fromClass != 0 ? ", from " : "",
+            fromClass != nullptr && *fromClass != 0 ? std::string(fromClass) + " to " + (toClass != nullptr ? toClass : "")
+                                                    : std::string());
+    }
+    return hide;
 }
 
 void WrapSessionFunctions(void** acquireSwapchainImage, void** waitSwapchainImage, void** releaseSwapchainImage,

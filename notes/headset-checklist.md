@@ -949,6 +949,10 @@ sits 24-34 units (cm) ahead of Shepard's head bone on ME2 and ME3; ME1's about 4
   Exit prompt on the same disc; look around and lean; the map's depth, legibility, comfort, GPU cost (two captures). The map's
   own controls (the stick, A, Y probes, LB/RB tabs), X back to the room. Not yet: travel, orbit and the scan through it.
 - [ ] A streamed Quest (T10): full rate after a load, with no runtime setting changed.
+- [ ] The shouldered gun (lane AU8, option B; research/le2-vrik.md "The shouldered gun on the sequels"), ME2 and ME3: both
+  hands on a rifle at the shoulder: the view never zooms, the shots group tighter than from the hip (the heartbeat's
+  `zoomed shots:` aim error), a melee stroke and (ME3) a roll still work while shouldered; on ME3 a shouldered sniper shot
+  hits twice as hard as before.
 
 ### ME3
 - [ ] The game's start (T18, research/56 "The sequels", lane FE, seen on the fake headset 2026-11-18): the title (the Earth from
@@ -1029,5 +1033,10 @@ sits 24-34 units (cm) ahead of Shepard's head bone on ME2 and ME3; ME1's about 4
   objects in both eyes, legibility at the console, comfort, GPU cost (two captures). The map's own controls on the
   projector (the left stick flies the Normandy, LT scans, A at a relay), X back to the room. Not yet: travel, orbit and the
   scan through it.
+- [ ] The omni-blade and the roll (lane AU8; research/le3-combat-fixtures.md "The omni-blade with the gun put away"): put the gun
+  away (let go of it), make a fist with the right hand (grip and trigger) and strike at a trooper: the class's heavy melee
+  (the Soldier's omni-blade punch, a Vanguard's or Adept's biotic one) hits it; an open hand doesn't. Known: the game's melee
+  camera is third person for that second. A roll (forward and A): Shepard's body and the gun in hand vanish from view for
+  the roll and come back after it; say whether that, or the body seen rolling, is better.
 - [ ] Performance (T07, T10; docs/me3-overall-goal-handoff.md section 4): frame pacing in a real headset; the desktop
   mirror's cadence and the null driver's rate say nothing about it.

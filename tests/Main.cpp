@@ -74,6 +74,7 @@
 #include "core/vr/FrameProbe.hpp"
 #include "core/vr/TestRequest.hpp"
 #include "core/vr/ViewLevel.hpp"
+#include "core/vr/ActionCamera.hpp"
 #include "core/vr/ViewSync.hpp"
 #include "core/vr/WheelCrop.hpp"
 #include "engine/XrToUnreal.hpp"
@@ -8864,6 +8865,14 @@ void TestViewLevel() {
              "SFXCameraMode_PhotoFree", "SFXCameraMode_Cinematic", "SFXCameraMode_Interpolate", "none", ""}) {
         CHECK(!vl::CameraModeAllows(mode));
     }
+    // ME3's roll hides Shepard's body (the owner, 2026-11-18): the roll's camera and the blends into and out of it only.
+    CHECK(mevr::vr::HidesBodyForAction("SFXCameraMode_Roll", "", ""));
+    CHECK(mevr::vr::HidesBodyForAction("SFXCameraMode_Interpolate", "SFXCameraMode_Combat", "SFXCameraMode_Roll"));
+    CHECK(mevr::vr::HidesBodyForAction("SFXCameraMode_Interpolate", "SFXCameraMode_Roll", "SFXCameraMode_Explore"));
+    CHECK(!mevr::vr::HidesBodyForAction("SFXCameraMode_Interpolate", "SFXCameraMode_Combat", "SFXCameraMode_Explore"));
+    CHECK(!mevr::vr::HidesBodyForAction("SFXCameraMode_Melee", "", ""));
+    CHECK(!mevr::vr::HidesBodyForAction("SFXCameraMode_Combat", "SFXCameraMode_Roll", "SFXCameraMode_Roll"));
+    CHECK(!mevr::vr::HidesBodyForAction("SFXCameraMode_RollEx", "", ""));
 
     // The window: a minute of one-second buckets. 30 seconds of rifle fire, a 0.1-degree kick per shot
     // (18 units) put back each tick: the game moved the pitch +540 units, the hold put back -540.

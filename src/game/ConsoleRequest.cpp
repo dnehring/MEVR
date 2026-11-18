@@ -55,6 +55,7 @@
 #include "game/Traversal.hpp"
 #include "game/Vent.hpp"
 #include "game/Reload.hpp"
+#include "game/ZoomedShots.hpp"
 #include "core/WriteJournal.hpp"
 #include "mod/GameplayActions.hpp"
 
@@ -1951,6 +1952,8 @@ std::optional<std::string> RunOursLe3(ue3::Object* pc, std::string const& line) 
         return verb == "melee" ? mod::gameplay_actions::MeleeCommand(rest) : mod::gameplay_actions::TraversalCommand(rest);
     }
     if (verb == "powerwheel") { std::string rest; std::getline(words, rest); return power_wheel::Console(rest); }
+    // The shouldered gun's zoomed calculations (game/ZoomedShots): `mevr zoomshots [on|off|auto]`.
+    if (verb == "zoomshots") { std::string rest; std::getline(words, rest); return zoomed_shots::Console(rest); }
     // The squad's lines as on ME2 (the same modules: research/le3-squad.md's checks, tools/le2-halcyon-run/place.ps1).
     if (verb == "place") { std::string rest; std::getline(words, rest); return squad_place::Console(rest); }
     if (verb == "squad") return squad_weapons::StatusJson();
@@ -2182,6 +2185,11 @@ std::optional<std::string> RunOursLe2(ue3::Object* pc, std::string const& line) 
         std::string rest;
         std::getline(words, rest);
         return squad_place::Console(rest);
+    }
+    if (verb == "zoomshots") {
+        std::string rest;
+        std::getline(words, rest);
+        return zoomed_shots::Console(rest);  // the shouldered gun's zoomed calculations (game/ZoomedShots)
     }
     if (verb == "melee") {
         // `mevr melee punch|strike`: ME1's melee by gesture on ME2 (game/Melee), the right hand's strike now through its rules.

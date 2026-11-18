@@ -309,6 +309,63 @@ The whole check as one script: `tools\le2-halcyon-run\sights.ps1 -Holder <you>` 
 the standing replay with the hands in view, `pause`, two snapshots; then the pistol and the assault rifle drawn by `mevr
 weapon`, each raised and fired by `make-ads-recording.py ... --no-support`'s replay, a snapshot under `pause`). Three sessions of a build of main b8fbb98c (`2026-11-16_13-37-51-c3-le1-before`, `..._14-03-25-c3-le1-before2`, `..._14-26-12-c3-le1-before3`) against one of this step (`..._13-53-39-c3-le1-after`): the standing pose has an identical `hostView` (-43.3 / -4.1 / -18.1 uu), the same six layers at the same places (the omni-tool target 0.2 mm apart), the HUD panel, label, wrist piece and target identical pixel for pixel, the eyes 0.03 to 0.19% of pixels apart by more than 32/255; with the assault rifle raised (before3 against after) the `hostView` is identical again, the layers the same, the eyes 0.003% apart, the dot in the right eye in both, the sight on the `Scope` bone 42.1 / 9.7 against 41.8 / 9.6 units; the pistol has no sight in the owner's settings (`pistol = none`) and logs the same lines. Every `sights:`, `hand aim:` and holster draw line of the new build (numbers masked) is in the build of main's log. before2 ran while other lanes built (the game hitched: `the right controller isn't tracked` every second, a draw in 0.95 s instead of 0.13) and is kept only as that: a same-pose run needs a quiet machine.
 
+## The shouldered gun on the sequels (lane AU8, 2026-11-18)
+
+The owner's answer of 2026-11-18 (docs/trilogy-plan.md "Answered 2026-11-18, later": option B of lane AU2's trace in
+docs/knowledge/audits/me2/weapons-and-sights.md, "Proposal: the shouldered gun's accuracy without the game's zoom"). ME1
+keeps its behaviour: both hands on a long gun at the shoulder hold LT, the game's own aimed fire.
+
+**What changed on ME2 and ME3.**
+1. The support grip holds no LT (`engine::adapter::kSupportGripHoldsLt` false; `game/SupportGrip` sends no
+   `gamepad::kFlagSupportAims`). The sequels' LT is `SFXGameModeDefault.TightAim` -> `SFXWeapon.SetZoomed(true)`: the camera's
+   zoom, a sniper's sway (`SFXInventoryManager.ApplySniperDrift`), ME2's sniper time dilation
+   (`SFXGameEffect_SniperTimeDilation`), the zoomed recoil and the refusals of `TryMelee`, `TryHeavyMelee`, ME3's `TryRoll`,
+   `TryForwardRoll` and cover moves. None of them is reached now: the game's zoom state never starts from the grip.
+2. **`game/ZoomedShots`** (new, the sequels only; ME1 compiles nothing in it): while the gun is shouldered (the grip held,
+   the right grip at the calibrated shoulder unless `[Controls] aimAtShoulder = 0`: the rule that sent LT, without ME1's
+   sniper exclusion, which was LT's scope camera) or a scope's picture is up, both with `[Sights] aimedFire`, each call in
+   `engine::adapter::kZoomedCalls` runs with the held weapon's `SFXWeapon_NativeBase.bIsZoomed` set for that call only: an
+   `engine::call_function` scoped handler (`AddScopedHandler`) sets it on the way in when the game hasn't (journalled
+   `ZoomedShots.bIsZoomed (one call)`) and clears it in the hook's `__finally` if the weapon still lives. The calls:
+   - `SFXInventoryManager.UpdatePlayerAccuracy` (ME2) / `SFXPlayerInventoryManager.UpdatePlayerAccuracy` (ME3), each tick from
+     the manager's `Tick` for the human player: the zoomed base inaccuracy (`Base_Acc_Zoom`, not `Base_Acc_Standing`), the
+     weapon's `ZoomAccFirePenalty` and `ZoomAccFireInterpSpeed`. Its object is the inventory manager; the flag is the held
+     weapon's (`Pawn.Weapon`). The `Accuracy` it writes is what each shot's aim error lerps.
+   - `SFXWeapon.GetWeaponAimErrorRange` (both): `MinZoomAimError`/`MaxZoomAimError`, from `GetAimError` (ME2) or
+     `GetPlayerAimError` (ME3) at each shot.
+   - `SFXWeapon_SniperRifle_Base.GetFireModeBaseDamage` (ME3 only): no `SniperRifleDamagePenalty` (ME3 multiplies an unzoomed
+     player's sniper damage by it; every VR sniper shot was penalized before, scope or not).
+   Nothing else reads the flag in those calls but what the zoom should change: `UpdatePlayerAccuracy` also asks
+   `GetPlayerViewPoint` (the camera's cached view, no FOV) and the weapon's rate of fire.
+3. `game/Sights`' one-call rewrite of the aim error (ME1's route, which the sequels used for a scope's picture) stands down
+   on the sequels while the zoomed calls are on: the range is already the zoomed one inside the call.
+
+**Not carried over: ME3's shotgun cone.** `SFXWeapon_Shotgun_Base.PollLatentFire` narrows the pellets past 5 m when zoomed
+(`ZoomAccuracyBonus` against `AccuracyBonus`, with a selected target over 500 units away), but it runs from a timer
+(`FirePellets` sets `SetTimer(..., 'PollLatentFire')`), which the engine calls through ProcessEvent: no script call for the
+CallFunction hook to bracket, and the host's ProcessEvent hook runs the mod's handlers only after the call. Options, for the
+owner: (A) a ProcessEvent bracket in the host (a HostServices entry: the mod's enter and leave around the call for the
+functions it names; host and mod deploy together), then `PollLatentFire` joins the list; (B) leave the cone as the hip's
+(its narrowing applies only to a selected target past 5 m).
+
+`mevr zoomshots [on|off|auto]` forces the rule (a test without hands at the shoulder); the heartbeat's `zoomed shots:` line
+and the snapshot's `"mod"."sights"."game"."zoomedShots"` give the accuracy and each shot's aim error, zoomed against plain,
+the last spread range and (ME3) the last sniper damage of each.
+
+**In the game (fake headset, 2026-11-18; the rule forced with `mevr zoomshots on`, shots by a replayed right trigger; sessions
+`%LOCALAPPDATA%\MEVR\sessions\20261118-155608-952-LE3-au8-me3` and `...-161504-261-LE2-au8-me2`; scripts in the lane's scratch).**
+- ME3's combat fixture (`me3-combat.ps1 -Loadout '2 1 all'`), the Avenger: each shot's aim error 3.63 hip (17 shots) -> 0.40
+  zoomed (41), the spread range 3.0-9.3 -> 0.3-1.5. The Black Widow: 3.15 -> 0.30, the range 2.4-4.65 -> 0-0, and **its base
+  damage 257.0 hip -> 514.1 zoomed** (`SniperRifleDamagePenalty` 0.5 not applied).
+- ME2's Save 4, the pistol: the aim error 1.25 (23 shots) -> 0.375 (21), the range 1.25-6.875 -> 0.375-1.875.
+- `mevr calltrace` of `tightaim`/`setzoomed` through the zoomed firing: no call on either game; on ME3 the camera's
+  `GetStandingCombatCamera`, the reticle, `PostProcessInput`, `PlayHit` and the recoil's `SetWeaponRecoil` asked `IsZoomed`
+  outside the brackets (false) and only `UpdatePlayerAccuracy`'s own question saw it on. The support grip's heartbeat
+  said `bIsZoomed off` throughout; the eyes' FOVs in the snapshots unchanged.
+- Not run: a real support grip at the shoulder (the fake headset has no hands to shoulder a gun: the rule that opens the
+  gate is the unchanged `AtShoulder` one), and melee or the roll in the same seconds (by construction the game's
+  `IsZoomed` never saw the flag outside our calls).
+
 ## Holsters and the reload on the sequels: the plan (the holsters built 2026-11-16: the next section)
 
 `plugin/PadMerge` with the grip flags is in both sequel hosts (f71e7a71), so the mod's side is what is missing. Both are
