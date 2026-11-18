@@ -324,6 +324,7 @@ std::string Observe(bool apply) {
     int const gameMode = player::GameMode(pc).value_or(255);
     ue3::Object* const manager = gManager.Read<ue3::Object*>(pc).value_or(nullptr);
     auto const panels = gPanels.ElementsOf(manager, 64);
+    bool const opticsScope = gameMode == 1 && cockpit_probe::OpticsScopeVisible();
     std::string report = std::format("reticles: gameMode={} VR suppression request={} (independent of aim ray)", gameMode, gRequested);
     std::map<ue3::Object*, std::string> observed;
     std::vector<ue3::Object*> kept;
@@ -366,7 +367,7 @@ std::string Observe(bool apply) {
 #endif
 
         auto alpha = ReadVariable<float>(panel, gGetFloat, L"_root._alpha");
-        bool const hide = reticule && vr::screen_reticle::Hide(gRequested, gameMode, !modeKnown ? -1 : sniper ? 2 : 1);
+        bool const hide = reticule && (opticsScope || vr::screen_reticle::Hide(gRequested, gameMode, !modeKnown ? -1 : sniper ? 2 : 1));
         if (apply) {
             auto owned = gOwned.find(panel);
             if (owned != gOwned.end() && !SameMovie(panel, owned->second)) {

@@ -9,6 +9,10 @@
 #include <optional>
 #include <string>
 
+namespace mevr::hook {
+class Context;
+}
+
 // The Mako in VR (research/44; LE1, game mode 1, the host's renderer; [Mako] in ASI\LE1MEVR.ini):
 // - The turret aims where the right controller points. Each tick the controller's aim ray (or a saved pistol
 //   calibration's line) is mapped into the world through the view anchor and traced (Actor.Trace on the vehicle,
@@ -32,9 +36,10 @@ struct Link {
     mako_controls::Link controls;  // the physical lever and stick (research/46)
 };
 
-// Registers the ProcessEvent post-handlers (the vehicle's Tick and its shot-start query); call before the hooks go
-// in. False until the script packages are loaded.
-bool TryStartup();
+// Registers the vehicle Tick and shot-start handlers and tracks which weapon is firing during the native fire tick.
+// Call before ProcessEvent is installed. False until the script packages are loaded.
+bool TryStartup(hook::Context& init);
+bool UninstallFireHook(hook::Context& init, bool waitForCalls);
 // Each mod tick, before game/comfort (which reads Motion()) and before game/hand_aim's tick.
 void Tick(double deltaSeconds, Link const& link);
 

@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: MIT
 #include "game/Mako.hpp"
 
+#include "core/Hook.hpp"
 #include "core/Log.hpp"
 #include "core/WriteJournal.hpp"
 #include "core/vr/Calibration.hpp"
 #include "core/vr/Comfort.hpp"
 #include "core/vr/Controllers.hpp"
 #include "core/vr/TestRequest.hpp"
+#include "engine/Addresses.hpp"
 #include "engine/BonePose.hpp"
 #include "engine/ProcessEvent.hpp"
 #include "engine/XrToUnreal.hpp"
@@ -33,6 +35,7 @@
 #include <format>
 #include <optional>
 #include <string>
+#include <utility>
 
 namespace mevr::game::mako {
 namespace {
@@ -78,9 +81,32 @@ ue3::FunctionRef gVehicleTick{"SFXGame.BioVehicleWheeled.Tick"};
 ue3::FunctionRef gVehicleStartTrace{"SFXGame.BioVehicleWheeled.GetWeaponStartTraceLocation"};
 ue3::FieldRef gVehicleStartReturn{gVehicleStartTrace, "ReturnValue"};
 ue3::FieldRef gVehicleStartWeapon{gVehicleStartTrace, "CurrentWeapon"};
-ue3::FieldRef gMakoPawnWeapon{"Engine.Pawn", "Weapon"};
-ue3::FunctionRef gMuzzleLoc{"SFXGame.BioWeaponRanged.GetMuzzleLoc"};
+ue3::ClassRef gRangedWeapon{"SFXGame.BioWeaponRanged"};
+ue3::FieldRef gInstigator{"Engine.Actor", "Instigator"};
+ue3::FieldRef gWeaponMesh{"SFXGame.BioWeapon", "SkelMeshComp"};
+ue3::FieldRef gMuzzleSocket{"SFXGame.BioWeaponRanged", "m_MuzzleSocketName"};
+ue3::FunctionRef gSocketWorld{"Engine.SkeletalMeshComponent.GetSocketWorldLocationAndRotation"};
 ue3::FunctionRef gTrace{"Engine.Actor.Trace"};
+
+constexpr char kFireHook[] = "ABioWeaponRanged::TickFire";
+using TickFire = void(ue3::Object*, float);
+TickFire* gTickFireOrig = nullptr;
+bool gFireHooked = false;
+std::atomic<unsigned> gFireInFlight{0};
+struct FireContext {
+    ue3::Object* weapon;
+    bool hasStart = false;
+};
+thread_local FireContext* gFire = nullptr;
+
+void TickFireHook(ue3::Object* weapon, float dt) {
+    ++gFireInFlight;
+    FireContext context{weapon};
+    FireContext* const previous = std::exchange(gFire, &context);
+    gTickFireOrig(weapon, dt);
+    gFire = previous;
+    --gFireInFlight;
+}
 #endif
 
 enum class Why {
@@ -157,7 +183,6 @@ std::string gVehicleName;
 Aim gAim;
 Start gStart;
 bool gGunnerAims = false;  // this tick's aim is the gunner's
-bool gToldMuzzle = false;
 std::uint64_t gMuzzleShots = 0;  // shot starts moved to the gun's muzzle (riding in the cockpit)
 vr::comfort::VehicleMotion gMotion;
 Motion gMotionNow;
@@ -542,10 +567,24 @@ void OnVehicleTick(ue3::Object* context, ue3::Function* /*function*/, void* /*pa
     AimTurrets(gVehicleBehavior, Seam::PawnTick);
 }
 
-// The vehicle's answer for where a shot starts (its native, asked through ProcessEvent just before the shot's aim
-// query): remembered, so the shot's direction can run from there toward the aim point. Riding in the cockpit with [Cockpit]
-// showTurret it is the firing gun's own muzzle (BioWeaponRanged.GetMuzzleLoc; research/47 "The cannon over the cabin"): the game's
-// start is the camera's, at the eye's height, so the shots came out of the middle of the windshield.
+// GetMuzzleLoc falls back to the instigator's location when the socket is unavailable.
+// Query the firing gun's socket directly so an invalid socket keeps the game's original start.
+std::optional<ue3::Vector> MuzzleSocket(ue3::Object* weapon, ue3::Object* vehicle) {
+    if (!ue3::IsA(weapon, gRangedWeapon) || gInstigator.Read<ue3::Object*>(weapon).value_or(nullptr) != vehicle) return std::nullopt;
+    auto const name = gMuzzleSocket.Read<ue3::Name>(weapon);
+    ue3::Object* const mesh = gWeaponMesh.Read<ue3::Object*>(weapon).value_or(nullptr);
+    ue3::Function* const socket = gSocketWorld.Get();
+    if (!name || mesh == nullptr || !ue3::runtime::IsAlive(mesh) || socket == nullptr) return std::nullopt;
+    ue3::Params query(ue3::runtime::Get(), socket);
+    query.Set("InSocketName", *name);
+    if (!ue3::runtime::Call(mesh, socket, query) || !query.ReturnBool().value_or(false)) return std::nullopt;
+    auto const at = query.Get<ue3::Vector>("OutLocation");
+    if (!at || !std::isfinite(at->x) || !std::isfinite(at->y) || !std::isfinite(at->z)) return std::nullopt;
+    return at;
+}
+
+// Native TickFire asks for the start with CurrentWeapon empty even while the cannon fires.
+// The scoped fire context identifies the gun independently of the pawn's selected Weapon.
 void OnVehicleStartTrace(ue3::Object* context, ue3::Function* /*function*/, void* parms, void* /*result*/) {
     if (context == nullptr || context != gVehicle) {
         return;
@@ -554,38 +593,18 @@ void OnVehicleStartTrace(ue3::Object* context, ue3::Function* /*function*/, void
     if (at == nullptr) {
         return;
     }
-    // Which gun: the query's own CurrentWeapon (the native passes none: measured 2026-11-04), else the vehicle's active weapon,
-    // else the last of its weapons' info (the machine gun; the cannon's muzzle is 10 cm from it).
-    char const* from = "CurrentWeapon";
-    ue3::Object* weapon = gVehicleStartWeapon.Read<ue3::Object*>(parms).value_or(nullptr);
-    if (weapon == nullptr) {
-        from = "the vehicle's Weapon";
-        weapon = gMakoPawnWeapon.Read<ue3::Object*>(context).value_or(nullptr);
-    }
-    if (weapon == nullptr && gVehicleBehavior != nullptr && ue3::runtime::IsAlive(gVehicleBehavior)) {
-        from = "the vehicle's last weapon";
-        if (auto const infos = gWeaponInfo.ElementsOf(gVehicleBehavior, 16); infos && infos->count > 0) {
-            weapon = gInfoWeapon.Read<ue3::Object*>(infos->At(infos->count - 1)).value_or(nullptr);
-        }
-    }
-    if (weapon != nullptr && gMuzzleLoc.Get() != nullptr && cockpit_probe::Riding() && hand_calibration::GetCockpit().turret &&
-        ue3::runtime::IsAlive(weapon)) {
-        ue3::Params muzzle(ue3::runtime::Get(), gMuzzleLoc.Get());
-        if (ue3::runtime::Call(weapon, gMuzzleLoc.Get(), muzzle)) {
-            if (std::optional<ue3::Vector> const tip = muzzle.Return<ue3::Vector>()) {
-                if (!gToldMuzzle) {
-                    gToldMuzzle = true;
-                    log::Info("mako: riding in the cockpit, shots start at the gun's muzzle ({:.0f}, {:.0f}, {:.0f}; the gun from {}), not the "
-                              "game's ({:.0f}, {:.0f}, {:.0f}): {:.2f} m apart", tip->x, tip->y, tip->z, from, at->x, at->y, at->z,
-                        std::sqrt((tip->x - at->x) * (tip->x - at->x) + (tip->y - at->y) * (tip->y - at->y) + (tip->z - at->z) * (tip->z - at->z)) /
-                            engine::kUnitsPerMeter);
-                }
-                *at = *tip;
-                write_journal::Wrote("Mako.muzzleStart", at, sizeof(*at));
-                ++gMuzzleShots;
+    ue3::Object* const weapon = gFire != nullptr ? gFire->weapon : gVehicleStartWeapon.Read<ue3::Object*>(parms).value_or(nullptr);
+    if (weapon != nullptr && cockpit_probe::Riding() && hand_calibration::GetCockpit().turret) {
+        if (auto const tip = MuzzleSocket(weapon, context)) {
+            if (gMuzzleShots++ < kShotLines) {
+                log::Info("mako: {} muzzle start ({:.1f}, {:.1f}, {:.1f}), game start ({:.1f}, {:.1f}, {:.1f})",
+                    ue3::runtime::FullName(weapon), tip->x, tip->y, tip->z, at->x, at->y, at->z);
             }
+            *at = *tip;
+            write_journal::Wrote("Mako.muzzleStart", at, sizeof(*at));
         }
     }
+    if (gFire != nullptr) gFire->hasStart = true;
     gStart.valid = true;
     gStart.atMs = GetTickCount64();
     gStart.at = {at->x, at->y, at->z};
@@ -609,7 +628,7 @@ void LogShot(engine::UnrealVector const& start, bool fromStart, double offDegree
 
 } // namespace
 
-bool TryStartup() {
+bool TryStartup(hook::Context& init) {
 #if defined(MEVR_GAME_LE1)
     if (!ue3::runtime::Ready()) {
         return false;
@@ -623,13 +642,34 @@ bool TryStartup() {
     if (ue3::Function* const start = gVehicleStartTrace.Get()) {
         engine::process_event::AddPostHandler(start, &OnVehicleStartTrace);
         gStartTraceHandled = true;
+        auto* const fire = init.ResolveTyped<TickFire>(engine::addresses::kRangedTickFire);
+        if (fire != nullptr && hook::Install(init, kFireHook, fire, &TickFireHook, gTickFireOrig)) {
+            gFireHooked = true;
+        } else {
+            log::Warn("mako: fire tick unavailable; muzzle correction needs an explicit weapon in the start query");
+        }
     } else {
         log::Warn("mako: BioVehicleWheeled.GetWeaponStartTraceLocation not found: shots in the Mako run parallel to the controller's "
                   "ray from the game's own start");
     }
     return true;
 #else
+    (void)init;
     return false;
+#endif
+}
+
+bool UninstallFireHook(hook::Context& init, bool waitForCalls) {
+#if defined(MEVR_GAME_LE1)
+    if (!gFireHooked) return true;
+    if (!hook::Uninstall(init, kFireHook)) return false;
+    gFireHooked = false;
+    for (int i = 0; waitForCalls && i < 200 && gFireInFlight.load() > 0; ++i) Sleep(1);
+    return !waitForCalls || gFireInFlight.load() == 0;
+#else
+    (void)init;
+    (void)waitForCalls;
+    return true;
 #endif
 }
 
@@ -775,6 +815,7 @@ void Tick(double deltaSeconds, Link const& link) {
     gunnerIn.riding = cockpit_probe::Riding() && gSettings.handAim && link.headTrackedView && !link.mainMenuOpen;
     gunnerIn.controllers = &controllers;
     gunnerIn.stickHeld = stickAim.valid;
+    gunnerIn.scopeAiming = cockpit_probe::OpticsAiming();
     {
         // Repairing or pulling the extraction handle, the gunner keeps the gun (the user, 2026-11-05); the right hand at the handle
         // counts already, since reaching up its ray points out through the windshield.
@@ -806,7 +847,7 @@ void Tick(double deltaSeconds, Link const& link) {
         why = Why::NoView;
     } else if (link.mainMenuOpen) {
         why = Why::MainMenu;
-    } else if (!controllers.active || !controllers.right.aimValid) {
+    } else if (!stickAim.valid && (!controllers.active || !controllers.right.aimValid)) {
         why = Why::NoControllers;
     } else if (!(frame = view_anchor::Current())) {
         why = Why::NoAnchor;
@@ -822,7 +863,7 @@ void Tick(double deltaSeconds, Link const& link) {
     }
     XrPosef aim = controllers.right.aim;
     bool calibrated = false;
-    if (gSettings.calibratedLine && controllers.right.gripValid) {
+    if (!stickAim.valid && gSettings.calibratedLine && controllers.right.gripValid) {
         // The guided calibration's pistol line (research/25): where the player's grip points, not the runtime's aim pose.
         if (auto const stance = body_calibration::StanceFor(static_cast<int>(weapon::RangedType::Pistol))) {
             aim.position = vr::calibration::SightLine(controllers.right.grip, *stance).point;
@@ -834,8 +875,8 @@ void Tick(double deltaSeconds, Link const& link) {
     next.valid = true;
     next.atMs = GetTickCount64();
     next.calibrated = calibrated;
-    next.origin = engine::ToWorld(*frame, aim.position);
-    next.direction = engine::OrientationToWorld(*frame, aim.orientation).forward;
+    next.origin = stickAim.valid ? stickAim.origin : engine::ToWorld(*frame, aim.position);
+    next.direction = stickAim.valid ? stickAim.direction : engine::OrientationToWorld(*frame, aim.orientation).forward;
     double const length = Len(next.direction);
     if (!(length > 0.0) || !std::isfinite(next.origin.x) || !std::isfinite(next.origin.y) || !std::isfinite(next.origin.z)) {
         gAim.valid = false;
@@ -845,11 +886,6 @@ void Tick(double deltaSeconds, Link const& link) {
     next.direction = Times(next.direction, 1.0 / length);
     next.trackOrigin = aim.position;
     next.trackDirection = engine::DirectionToTracking(*frame, next.direction);
-    if (stickAim.valid) {
-        next.origin = stickAim.origin;
-        next.direction = stickAim.direction;
-        next.calibrated = false;
-    }
     TraceAim(pawn, next, static_cast<double>(gSettings.aimRangeM) * engine::kUnitsPerMeter);
     if (stickAim.valid) {
         // The reticle: on the line from the head to what the thumbstick's ray hits, so it sits on the target at any distance.
@@ -920,7 +956,7 @@ bool ShotRotation(ue3::Rotator const& game, ue3::Rotator& out) {
     if (!gAim.valid || now - gAim.atMs > kAimFreshMs || gVehicle == nullptr) {
         return false;
     }
-    bool const fromStart = gStart.valid && now - gStart.atMs <= kStartFreshMs;
+    bool const fromStart = gStart.valid && now - gStart.atMs <= kStartFreshMs && (gFire == nullptr || gFire->hasStart);
     engine::UnrealVector const start = fromStart ? gStart.at : gAim.origin;
     engine::UnrealVector direction = Sub(gAim.target, start);
     double const length = Len(direction);

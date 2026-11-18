@@ -11002,23 +11002,39 @@ void TestMakoGunner() {
     // Who aims: the gunner until a manual input, the manual one at once, the gunner again handbackS after the last.
     mg::ControlState state;
     mg::Hands idle;
+    CHECK(mg::Step(state, idle, 0.0, s) == mg::Control::Hand);
+    idle.hasTarget = true;
     CHECK(mg::Step(state, idle, 0.0, s) == mg::Control::Gunner);
     mg::Hands thumb;
     thumb.stickHeld = true;
     thumb.thumbX = 0.6f;
+    thumb.hasTarget = true;
     CHECK(mg::Step(state, thumb, 1.0, s) == mg::Control::Stick);
     mg::Hands holding;
     holding.stickHeld = true;  // the stick held, the thumb at rest
+    holding.hasTarget = true;
     CHECK(mg::Step(state, holding, 3.5, s) == mg::Control::Stick);   // 2.5 s after: still the player's
     CHECK(mg::Step(state, holding, 4.01, s) == mg::Control::Gunner);  // 3 s after: the gunner's
     mg::Hands tiny = thumb;
     tiny.thumbX = 0.1f;  // inside the dead zone: no takeover
     CHECK(mg::Step(state, tiny, 5.0, s) == mg::Control::Gunner);
+    mg::ControlState scoped;
+    holding.scopeAiming = true;
+    CHECK(mg::Step(scoped, holding, 5.0, s) == mg::Control::Stick);
+    CHECK(mg::Step(scoped, holding, 12.0, s) == mg::Control::Stick);
+    holding.scopeAiming = false;
+    CHECK(mg::Step(scoped, holding, 12.1, s) == mg::Control::Stick);
+    CHECK(mg::Step(scoped, holding, 15.1, s) == mg::Control::Gunner);
+    mg::Hands noTarget = holding;
+    noTarget.hasTarget = false;
+    CHECK(mg::Step(scoped, noTarget, 15.2, s) == mg::Control::Stick);
+    CHECK(mg::Step(scoped, noTarget, 60.0, s) == mg::Control::Stick);
     // The free hand aims only with intent and pointing out the front.
     mg::Hands hand;
     hand.handFree = true;
     hand.handIntent = true;
     hand.handPointsOut = true;
+    hand.hasTarget = true;
     CHECK(mg::HandAims(hand) && mg::Step(state, hand, 6.0, s) == mg::Control::Hand);
     mg::Hands lap = hand;
     lap.handPointsOut = false;  // resting in the lap, the finger on the trigger: not aiming
@@ -11026,6 +11042,11 @@ void TestMakoGunner() {
     mg::Hands relaxed = hand;
     relaxed.handIntent = false;  // pointing out, the finger off the trigger: not aiming
     CHECK(!mg::HandAims(relaxed));
+    relaxed.scopeAiming = true;
+    CHECK(mg::Step(scoped, relaxed, 16.0, s) == mg::Control::Hand);
+    CHECK(mg::Step(scoped, relaxed, 20.0, s) == mg::Control::Hand);
+    relaxed.busy = true;
+    CHECK(mg::Step(scoped, relaxed, 20.1, s) == mg::Control::Hand);
     CHECK(mg::Step(state, lap, 8.0, s) == mg::Control::Hand);      // within the handback
     CHECK(mg::Step(state, lap, 9.01, s) == mg::Control::Gunner);
     // The thumbstick wins over the hand when both aim; the setting off keeps the old rules (stick while held, else the hand).

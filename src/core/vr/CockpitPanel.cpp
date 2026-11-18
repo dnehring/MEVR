@@ -67,7 +67,7 @@ Output Panel::Step(Input const& in, Settings const& s) {
     bool usable[2]{};
     for (int h = 0; h < 2; ++h) {
         Hand const& hand = in.hands[h];
-        if (!hand.tracked) {
+        if (!hand.tracked || layout.travelM <= 0.0f) {
             continue;
         }
         XrVector3f const d = Sub(hand.tip, layout.buttonTop);
