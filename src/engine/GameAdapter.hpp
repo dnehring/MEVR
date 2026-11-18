@@ -292,6 +292,19 @@ inline constexpr char const* kIsDeadFunction = "SFXGame.BioPawn.IsDead";
 inline constexpr char const* kIsDeadFunction = "Engine.Pawn.IsDead";
 #endif
 
+// The game's own "a fight is on" (its combat music and AI state): what a standing squad order's "calm" waits out
+// (game/SquadContext's scene.combat, core/vr/SquadStanding; the ME3 audit's PWR-31). ME1 asks BioPawn.IsInCombatActionState
+// (the weapon drawn, which ME1 does in every fight). ME2 has no such function and ME3 keeps a gun in the hand on a mission,
+// so the sequels read the flag the game keeps: ME2's on its GameInfo (WorldInfo.Game, SFXGame.SFXGame.bInCombat), ME3's on its
+// replication info (WorldInfo.GRI, SFXGame.SFXGRI.bInCombat).
+#if defined(MEVR_GAME_LE3)
+inline constexpr char const* kInCombatClass = "SFXGame.SFXGRI";
+inline constexpr char const* kInCombatHolder = "GRI";
+#elif defined(MEVR_GAME_LE2)
+inline constexpr char const* kInCombatClass = "SFXGame.SFXGame";
+inline constexpr char const* kInCombatHolder = "Game";
+#endif
+
 // ME3's transient action cameras (SFXCameraMode_Roll, _Melee, _HitReaction, _EnterCover; vr::IsActionCamera): the game
 // swaps to one for about half a second on a roll, a melee, a hit or a cover entry. The owner (2026-11-18, docs/trilogy-plan.md
 // "Answered 2026-11-18"): the player stays in first person there, the view level and sliding with the body, the floor held,

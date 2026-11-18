@@ -10,6 +10,7 @@
 #include "ue3/Runtime.hpp"
 
 #include <algorithm>
+#include <cstring>
 #include <format>
 #include <vector>
 
@@ -138,13 +139,117 @@ std::string HookAll(char const* name, engine::process_event::Handler onEvent, en
     return names;
 }
 
+#if !defined(MEVR_GAME_LE1)
+// ME2 and ME3 (the audits' PWR-37; research/54 "ME2 placement and orders on Save 4"): ME1's chatter functions don't exist;
+// the squadmate's AI answers an order itself by a vocalization event (ESFXVocalizationEventID, the same numbers on both:
+// ReceivedOrder_Attack 2..5, _Move 7, _Follow 8, _TakeCover 9, _Hold 10), through the game's TriggerVocalizationEvent (ME2's
+// SFXGame, ME3's SFXGRI: VocalizationID, InstigatedBy) and the vocalization manager's (SFXVocalizationManager: Id,
+// InInstigator). A script call's handler sees no parameters, so the answer is read from a frame that holds them: the event's
+// own when native code raises it (ProcessEvent's parameters), else the calling function's Locals when one of them calls the
+// other (a frame post-handler on each). Who the instigator is decides whose order it answers; nothing is played in its place.
+struct VocalArgs {
+    ue3::Function* function = nullptr;
+    std::int32_t id = -1;          // the byte's offset in the function's frame, -1: none
+    std::int32_t instigator = -1;  // the pawn pointer's offset
+};
+std::vector<VocalArgs> gVocalArgs;
+unsigned gVocalHeard = 0;
+
+VocalArgs const* ArgsOf(ue3::Function* function) {
+    for (VocalArgs const& a : gVocalArgs) {
+        if (a.function == function) return &a;
+    }
+    return nullptr;
+}
+
+char const* VocalName(int id) {
+    switch (id) {
+    case 2: return "ReceivedOrder_Attack";
+    case 3: return "ReceivedOrder_Attack_TargetValid";
+    case 4: return "ReceivedOrder_Attack_MovingFirst";
+    case 5: return "ReceivedOrder_Attack_KilledTarget";
+    case 6: return "ReceivedOrder_ChangeWeapon";
+    case 7: return "ReceivedOrder_Move";
+    case 8: return "ReceivedOrder_Follow";
+    case 9: return "ReceivedOrder_TakeCover";
+    case 10: return "ReceivedOrder_Hold";
+    default: return "another vocalization";
+    }
+}
+
+void Vocalized(ue3::Function* frameFunction, std::uint8_t const* frame, char const* how) {
+    VocalArgs const* const a = frame != nullptr ? ArgsOf(frameFunction) : nullptr;
+    if (a == nullptr || gCalling) return;
+    int const id = frame[a->id];
+    ue3::Object* instigator = nullptr;
+    std::memcpy(&instigator, frame + a->instigator, sizeof(instigator));
+    ++gVocalHeard;
+    auto it = std::find_if(gExpected.begin(), gExpected.end(), [&](Expectation const& e) { return e.pawn == instigator; });
+    if (!gExpected.empty() && gVocalHeard <= 40 && (it == gExpected.end() || id < 2 || id > 10)) {
+        // While an order waits: every other vocalization, so a run's log says what the AI did say (40 at most).
+        log::Info("squad orders: vocalization {} ({}) by {} ({}), not an answer to a pending order", id, VocalName(id),
+            instigator != nullptr && ue3::runtime::IsAlive(instigator) ? ue3::runtime::Get().FullName(instigator) : std::string("nobody"), how);
+    }
+    if (id < 2 || id > 10 || instigator == nullptr) return;  // not an order's answer
+    if (it == gExpected.end()) return;
+    ++gAnswered;
+    gLastSet = id;
+    gLastDelayS = gClock - it->given;
+    gLast = std::format("{} answered the {} with vocalization {} ({}) after {:.2f} s ({})", it->name, OrderName(it->order), id,
+        VocalName(id), gLastDelayS, how);
+    log::Info("squad orders: {}", gLast);
+    gExpected.erase(it);
+}
+
+void OnVocalEvent(ue3::Object* /*object*/, ue3::Function* function, void* parms, void* /*result*/) {
+    Vocalized(function, static_cast<std::uint8_t const*>(parms), "the vocalization event");
+}
+
+void OnVocalFrame(ue3::Object* /*context*/, ue3::Function* /*function*/, ue3::Function* caller, std::uint8_t* callerLocals,
+    void* /*result*/) {
+    Vocalized(caller, callerLocals, "the vocalization event's frame");
+}
+
+std::string InstallVocalization() {
+    std::string names;
+    ue3::Reflection& reflection = ue3::runtime::Get();
+    for (ue3::Function* function : reflection.FindFunctionsNamed("TriggerVocalizationEvent")) {
+        std::string const full = reflection.FullName(function);
+        if (!full.starts_with("Function ")) continue;
+        VocalArgs a{function};
+        for (char const* name : {"VocalizationID", "Id"}) {
+            if (auto const p = reflection.PropertyOf(function, name)) a.id = p->offset;
+        }
+        for (char const* name : {"InstigatedBy", "InInstigator"}) {
+            if (auto const p = reflection.PropertyOf(function, name)) a.instigator = p->offset;
+        }
+        ue3::runtime::FlushNotes();
+        if (a.id < 0 || a.instigator < 0) continue;
+        gVocalArgs.push_back(a);
+        engine::process_event::AddPostHandler(function, &OnVocalEvent);
+        engine::call_function::AddFramePostHandler(function, &OnVocalFrame);
+        names += std::format("{}{}", names.empty() ? "" : ", ", full.substr(9));
+    }
+    return names;
+}
+#endif
+
 void Install() {
+#if defined(MEVR_GAME_LE1)
     if (gInstalled || !ue3::runtime::Ready()) return;
+#else
+    if (gInstalled || !ue3::runtime::Up()) return;
+    std::string const vocal = InstallVocalization();
+    log::Info("squad orders: acknowledgements heard from the AI's vocalization events: {}", vocal.empty() ? "none found" : vocal);
+#endif
     std::string const chatter = HookAll("SquadHandleChatterEvent", &OnChatter, nullptr);
     std::string const play = HookAll("PlaySoundSet", &OnPlaySoundSetEvent, &OnPlaySoundSetCall);
     std::string const played = HookAll("OnChatterLinePlayed", &OnChatterLinePlayed, nullptr);
     HookAll("HandleChatterEvent", nullptr, &OnHandleChatterCall);
     gInstalled = true;
+#if !defined(MEVR_GAME_LE1)
+    if (chatter.empty() && play.empty() && played.empty()) return;  // the sequels: ME1's functions aren't there
+#endif
     if (chatter.empty() && play.empty() && played.empty()) {
         if (!gToldMissing) {
             gToldMissing = true;
@@ -179,7 +284,13 @@ void Tick(double clock, Settings const& s) {
     gClock = clock;
     Install();
     for (auto it = gExpected.begin(); it != gExpected.end();) {
+#if defined(MEVR_GAME_LE1)
         if (clock - it->given < s.fallbackS) {
+#else
+        // No line of ours to play on the sequels (ME1's PlaySoundSet isn't there), so the window only waits for the AI's own
+        // answer, which ME2's gives 1.0-1.5 s after a move order (lane AU4, 2026-11-18): at least 3 s.
+        if (clock - it->given < std::max(s.fallbackS, 3.0)) {
+#endif
             ++it;
             continue;
         }
