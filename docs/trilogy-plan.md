@@ -888,9 +888,11 @@ These unblock the most: almost every other entry gets smaller once they land.
   ME3's too). Placement is on by default on ME2 as on ME1 (rule 19: ME1's value). research/54 "ME2 placement and orders
   on Save 4".
 - **Left, ME2 and ME3:** attack and power orders in combat; ME3's everything (the combat save: `place.ps1 -Game LE3`).
-  The acknowledgement (G34): ME2's AI already answers through `SFXGame.TriggerVocalizationEvent` (follow 8, move 7, take
-  cover 9); the port of `game/SquadAck` listens for that instead of ME1's `SquadHandleChatterEvent`. **ME3 adds** healing
-  and revive.
+  **ME3 adds** healing and revive.
+- **Done (lane AU4, 2026-11-18):** the acknowledgement (G34): `game/SquadAck` hears the AI's own `TriggerVocalizationEvent` on
+  both sequels (ME2's Save 4: moves 7, follows 8, 4 of 4 in a 3 s window); a standing order's "calm" reads the game's own
+  combat flag on both (ME3's was "a gun is held"); research/54 "The squad's answer and calm on the sequels". Not seen: ME3's
+  answer (no squad in its fixtures), the combat flag true in a real fight.
 - **Closes when:** each living squadmate is seen to attack the target given, cast the power given, walk to the ring and
   hold, and come back on a double tap. Detail for ME2: [M6 guide](le2-m6-implementation-guide.md) package C and
   [le2-m6-squad-implementation.md](le2-m6-squad-implementation.md); for ME3: research/le3-squad.md.

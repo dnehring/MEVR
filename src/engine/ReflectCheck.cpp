@@ -2845,6 +2845,19 @@ void CheckLe2Squad() {
     CheckField("SFXGame.SFXAI_Core", "m_RequestedActorToFollow", SDK_FIELD(ASFXAI_Core, m_RequestedActorToFollow));
 }
 
+// game/SquadAck on the sequels (the AI's own answer to an order, a vocalization event) and game/SquadContext's "a fight is
+// on" (engine::adapter::kInCombatClass): ME2's on its GameInfo.
+void CheckSequelSquadAck() {
+    CheckField("Engine.WorldInfo", "Game", SDK_FIELD(AWorldInfo, Game));
+    CheckField("SFXGame.SFXGame", "bInCombat", SDK_BOOL(ASFXGame, bInCombat));
+    CheckFunction("SFXGame.SFXGame.TriggerVocalizationEvent");
+    PARAM(ASFXGame_eventTriggerVocalizationEvent_Parms, "SFXGame.SFXGame.TriggerVocalizationEvent", VocalizationID);
+    PARAM(ASFXGame_eventTriggerVocalizationEvent_Parms, "SFXGame.SFXGame.TriggerVocalizationEvent", InstigatedBy);
+    CheckFunction("SFXGame.SFXVocalizationManager.TriggerVocalizationEvent");
+    PARAM(ASFXVocalizationManager_execTriggerVocalizationEvent_Parms, "SFXGame.SFXVocalizationManager.TriggerVocalizationEvent", Id);
+    PARAM(ASFXVocalizationManager_execTriggerVocalizationEvent_Parms, "SFXGame.SFXVocalizationManager.TriggerVocalizationEvent", InInstigator);
+}
+
 void CheckTraversal() {
     CheckClass<ACoverLink>("Engine.CoverLink");
     CheckClass<ASFXPlayerController>("SFXGame.SFXPlayerController");
@@ -3172,6 +3185,19 @@ void CheckSequelWalk() {
     CheckField("SFXGame.BioPawn", "m_fRunStopDistance", SDK_FIELD(ABioPawn, m_fRunStopDistance));
     CheckField("SFXGame.BioPawn", "m_fDesiredMaxSpeed", SDK_FIELD(ABioPawn, m_fDesiredMaxSpeed));
     CheckField("SFXGame.BioPawn", "fMoveMag", SDK_FIELD(ABioPawn, fMoveMag));
+}
+
+// game/SquadAck on the sequels (the AI's own answer to an order, a vocalization event) and game/SquadContext's "a fight is
+// on" (engine::adapter::kInCombatClass): ME3's on its replication info.
+void CheckSequelSquadAck() {
+    CheckField("Engine.WorldInfo", "GRI", SDK_FIELD(AWorldInfo, GRI));
+    CheckField("SFXGame.SFXGRI", "bInCombat", SDK_BOOL(ASFXGRI, bInCombat));
+    CheckFunction("SFXGame.SFXGRI.TriggerVocalizationEvent");
+    PARAM(ASFXGRI_eventTriggerVocalizationEvent_Parms, "SFXGame.SFXGRI.TriggerVocalizationEvent", VocalizationID);
+    PARAM(ASFXGRI_eventTriggerVocalizationEvent_Parms, "SFXGame.SFXGRI.TriggerVocalizationEvent", instigatedBy);
+    CheckFunction("SFXGame.SFXVocalizationManager.TriggerVocalizationEvent");
+    PARAM(ASFXVocalizationManager_execTriggerVocalizationEvent_Parms, "SFXGame.SFXVocalizationManager.TriggerVocalizationEvent", Id);
+    PARAM(ASFXVocalizationManager_execTriggerVocalizationEvent_Parms, "SFXGame.SFXVocalizationManager.TriggerVocalizationEvent", inInstigator);
 }
 
 // Shared SceneCaptureRig, checked against LE3 metadata before native use.
@@ -4328,6 +4354,7 @@ bool Run(hook::Context& context) {
 #endif
 #if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     CheckSequelWalk();
+    CheckSequelSquadAck();
 #endif
 #if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     CheckLeave();

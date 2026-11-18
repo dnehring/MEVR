@@ -980,7 +980,7 @@ void Tick(double deltaSeconds, Link const& link) {
     if (s.enabled && onFoot && !link.menuOpen && !squad_weapons::IsOpen()) {
         TickStandings(deltaSeconds, s);
     }
-    if (ue3::runtime::Ready()) {
+    if (ue3::runtime::Up()) {  // every game: the sequels hear the AI's vocalization (game/SquadAck)
         squad_ack::Settings ack;
         ack.fallback = s.ackFallback;
         ack.fallbackS = s.ackFallbackS;

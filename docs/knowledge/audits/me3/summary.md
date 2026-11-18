@@ -90,7 +90,7 @@ swap chain.
 | 5 | Melee is another rule set: the striking hand must have every control released, so the hand holding the gun never strikes and there is no fist; ME1's speed and travel keys are ignored | [input](gestures-and-input.md), [holsters](holsters-throwables-melee.md) | partly: ME3 has light and heavy melee; the owner approved "stroke melee as on ME1 and ME2" |
 | 6 | **Fixed 2026-11-18 (lane AU2, the roll seen on the combat fixture: first person and level, now the floor lock, view level, the snap turn and no shakes through ME3's action cameras; melee, hit and cover-entry cameras not seen yet).** Was: the view probably goes third person for about 0.5 s on a roll, melee, hit reaction, cover entry or in the Atlas: first person and the floor lock are tied to five camera-mode names | [body](body-and-ik.md) | no |
 | 7 | An equipped grenade is thrown by the left-hand push | [powers](powers-and-squad.md) | grenades are powers on ME3; no owner answer covers the gesture |
-| 8 | A standing squad order never ends as "calm" on a mission: `scene.combat` means "a gun is held" | [powers](powers-and-squad.md) | no |
+| 8 | A standing squad order never ends as "calm" on a mission: `scene.combat` means "a gun is held" | [powers](powers-and-squad.md) | no; **fixed in code, lane AU4 (690b632f): the game's own combat flag** |
 | 9 | In the Atlas the player may have neither crosshair nor ring | [vehicles](vehicles.md) | no |
 | 10 | The per-level engine settings test `mode > 4` (re-read, `SystemSettings.cpp:183`) while ME3's gameplay modes run to 6 | [rendering](rendering-and-stereo.md) | no |
 | 11 | A cover already taken is never left; where ME3's admission fails, the game's own sprint runs | [movement](comfort-and-movement.md) | no |
