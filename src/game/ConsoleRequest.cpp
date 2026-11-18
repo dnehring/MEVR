@@ -43,6 +43,9 @@
 #include "game/Le3GalaxyProjector.hpp"
 #include "game/Le3GalaxyRetention.hpp"
 #include "game/Le3GalaxyCapture.hpp"
+#if defined(MEVR_GAME_LE2)
+#include "game/Le2GalaxyCapture.hpp"
+#endif
 #include "game/PowerWheel.hpp"
 #include "game/SoundPlace.hpp"
 #include "game/Spectator.hpp"
@@ -1930,6 +1933,12 @@ std::optional<std::string> RunOursLe2(ue3::Object* pc, std::string const& line) 
         std::getline(words, rest);
         return thespian::Command(rest);
     }
+    if (verb == "galaxy") {
+        // The galaxy map over the CIC's projector (game/Le2GalaxyCapture): state, the projector and streaming, the flow's captures.
+        std::string rest;
+        std::getline(words, rest);
+        return le2_galaxy_capture::Command(pc, rest);
+    }
     if (verb == "load") {
         return LoadSave(ue3::runtime::GameEngine(), words);
     }
@@ -2038,7 +2047,7 @@ std::optional<std::string> RunOursLe2(ue3::Object* pc, std::string const& line) 
     if (verb == "reticles") {
         return screen_reticle::Command();  // the crosshair's panels, what they show, whether they are hidden (as ME1's)
     }
-    return std::string("unknown on ME2:mevr load <career> <save name> <index> <type> | mevr savedesc | mevr state | "
+    return std::string("unknown on ME2:mevr load <career> <save name> <index> <type> | mevr savedesc | mevr state | mevr galaxy state|projector|capture ... | "
                        "mevr camera trace <seconds> [label] | mevr armik step ... | mevr omni <screen> | mevr guimouse | mevr guikey ... | mevr cover ... | "
                        "mevr traversal ... | mevr squad | mevr context | mevr order ... | mevr say ... | mevr voice ... | mevr thespian ... | "
                        "mevr instances <Package.Class> [text] | mevr activate <n> [input] | mevr setloc <n> X Y Z | mevr reload [status | try] | "

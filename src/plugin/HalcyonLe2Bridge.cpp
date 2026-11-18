@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // ME2's part of the sequels' bridge (plugin/HalcyonSequelBridge.cpp has the common seams, plugin/SequelOverlays.cpp the
-// layer composition): the adapter for what ME2 alone has (its galaxy table as the pointer's surface, the pull that picks a
-// planet kept from the orbital scanner, its UI draws' order for the log), its PlacePanel, the eye-image seams (lane EY's)
+// layer composition): the adapter for what ME2 alone has (the pull that picks a planet kept from the orbital scanner, its UI
+// draws' order for the log), its PlacePanel, the eye-image seams (lane EY's)
 // and ME2's own seams (src/halcyon/le2/mevr_bridge.h: the floor view's journal, the swap chain's Present). Separate from
 // plugin/HalcyonLe2.cpp: the OpenXR SDK's headers and Halcyon's xr_types.h define the same names.
 
@@ -9,7 +9,6 @@
 
 #include "core/Breadcrumbs.hpp"
 #include "core/Log.hpp"
-#include "core/vr/GalaxyMap.hpp"
 #include "core/vr/HudPieces.hpp"
 #include "engine/GameAdapter.hpp"
 #include "game/GamepadMapping.hpp"
@@ -36,11 +35,8 @@
 
 namespace {
 
-// The native galaxy and orbit image on ME1's table ([Galaxy] nativeTable): Present thread.
-mevr::vr::galaxy_map::NativeTablePanel gGalaxyTable;
-void* gGalaxySpace = nullptr;
-std::optional<mevr::vr::galaxy_map::Screen> gGalaxyPanel;
-bool gGalaxyPointerShown = false;
+// ME2's galaxy map is ME1's projector flow (game/GalaxyProjectorFlow, plugin/SequelOverlays) since 2026-11-17 (lane GX2): the
+// opt-in flat table that stood here ([Galaxy] nativeTable, NativeTablePanel) is retired (research/le2-galaxy-table.md "Retired").
 // The pull that picked a planet must end before it can operate the orbital scanner: under sequel_bridge::PadMutex().
 int gGalaxyInputMode = -1;
 mevr::game::gamepad::CloseLatch gGalaxyTriggerLatch;
@@ -70,11 +66,6 @@ UiTrace gUiTrace;
 void* gBackbuffer = nullptr;   // identity only: this present's backbuffer
 unsigned gUiTracePresents = 0;
 
-void ForgetGalaxyTable() {
-    gGalaxyTable.Reset();
-    gGalaxyPanel.reset();
-}
-
 } // namespace
 
 // ---- ME2's adapter (plugin/HalcyonSequelBridge.hpp) ----------------------------------------------------------------------
@@ -86,18 +77,15 @@ Facts const& Get() noexcept {
         false,  // invalidViewAtOnce: an invalid view waits for the floor lock's quiet like any other
         true,   // panelColour
         static_cast<int>(vr::hud_pieces::Layout::Me2),  // ME2's own HUD: its bands (core/vr/HudPieces)
-        0,      // galaxyUiPointer: ME2's map has no projector flow yet (its opt-in table takes posted messages)
+        // galaxyUiPointer: none, as ME3's. ME2's map keeps its own controls (the stick moves the Normandy, A selects, X exits, Y
+        // buys probes, LB/RB the tabs): a ray click on the map's Exit prompt through the game screens' GUI events
+        // (SFXGameModeGalaxy.GuiKey) changed nothing (run galaxy-final-201028, research/le2-galaxy-table.md "The projector flow").
+        0,
     };
     return facts;
 }
 
 void SessionCreated(void* /*instance*/, void* /*session*/) noexcept {
-    ForgetGalaxyTable();
-    gGalaxySpace = nullptr;
-    if (gGalaxyPointerShown) {
-        game_pointer::ForgetGameUiQuad();
-    }
-    gGalaxyPointerShown = false;
     std::lock_guard lock(PadMutex());
     gGalaxyInputMode = -1;
     gGalaxyTriggerLatch = {};
@@ -107,9 +95,7 @@ void SessionStopped() noexcept {}
 void FrameBegun(void* /*session*/, void* /*space*/, bool /*focused*/, bool /*tracked*/) noexcept {}
 void FramePublished() noexcept {}
 
-void Recentered() noexcept {
-    ForgetGalaxyTable();
-}
+void Recentered() noexcept {}
 
 bool PadKeeps(int /*gameMode*/) noexcept {
     return false;
@@ -151,13 +137,7 @@ void UiDraw(ID3D11DeviceContext* context, bool afterLeftEye) noexcept {
     }
 }
 
-void OverlayBegin(MevrSeams::OverlayFrame const& frame, bool /*usable*/) noexcept {
-    // Release the old table before another screen publishes its pointer surface this frame.
-    if (gGalaxyPointerShown && (!gGalaxyPanel || !engine::adapter::IsGalaxyMode(frame.gameMode))) {
-        game_pointer::ForgetGameUiQuad();
-        gGalaxyPointerShown = false;
-    }
-}
+void OverlayBegin(MevrSeams::OverlayFrame const& /*frame*/, bool /*usable*/) noexcept {}
 
 bool OverlayLabel(OverlayContext const& context) noexcept {
     return !context.worldUiOwns;  // never while a screen of ours has the panel
@@ -167,18 +147,10 @@ int OverlayReticleMode(OverlayContext const& context) noexcept {
     return context.lastGameMode;  // ME2's numbers are the hand reticle's: 0 on foot
 }
 
-unsigned OverlayGameLayers(OverlayContext const& context, hud_panel::Frame const& /*panel*/, void const** /*layersOut*/,
+// Nothing of ME2's own: the galaxy map's stereo window on the CIC's projector, its UI on the panel there and the pointer's
+// surface are the shared composition's (plugin/SequelOverlays).
+unsigned OverlayGameLayers(OverlayContext const& /*context*/, hud_panel::Frame const& /*panel*/, void const** /*layersOut*/,
     unsigned count, unsigned /*capacity*/) noexcept {
-    // The galaxy table's submitted image is the pointer's surface for picking. Orbit keeps its native scan and probe controls.
-    MevrSeams::OverlayFrame const& frame = *context.frame;
-    if (gGalaxyPanel && engine::adapter::IsGalaxyMode(frame.gameMode) && !frame.menuOpen && !renderer::OwnMenuOpen() &&
-        !menus_le2::PadWanted()) {
-        game_pointer::NoteGameUiQuad(gGalaxyPanel->pose, gGalaxyPanel->width, gGalaxyPanel->height);
-        gGalaxyPointerShown = true;
-    } else if (gGalaxyPointerShown) {
-        game_pointer::ForgetGameUiQuad();
-        gGalaxyPointerShown = false;
-    }
     return count;
 }
 
@@ -371,36 +343,12 @@ void OnSwapChainPresent(void* swapChain, void* capturedSwapChain) noexcept {
 } // namespace ME2VR::MevrBridge
 namespace MevrSeams {
 
-// ME2's PlacePanel: only the native galaxy/orbital image, on ME1's table geometry ([Galaxy] nativeTable); every other flat
-// panel keeps the renderer's own placement (`placed` false; capability panelsInRoom is ME3's). Called every frame, before
-// OverlayLayers.
-PanelPose PlacePanel(PanelKind kind, OverlayFrame const& frame, float const viewPosition[3], float widthM, float heightM,
-    bool imageReady) noexcept {
-    (void)kind;  // ByGameMode: the table follows frame.gameMode
-    (void)viewPosition;
-    float const aspect = widthM > 0 ? heightM / widthM : 0;
-    PanelPose out;
-    auto const& table = mevr::host::sequel_bridge::GalaxyTableSettings();
-    if (frame.appSpace != gGalaxySpace) {
-        gGalaxySpace = frame.appSpace;
-        gGalaxyTable.Reset();
-    }
-    XrPosef const head{{frame.headOrientation[0], frame.headOrientation[1], frame.headOrientation[2], frame.headOrientation[3]},
-        {frame.headPosition[0], frame.headPosition[1], frame.headPosition[2]}};
-    gGalaxyPanel = gGalaxyTable.Update(mevr::engine::adapter::IsMapMode(frame.gameMode), table.enabled && frame.appSpace != nullptr,
-        imageReady && frame.headValid, head, aspect, table.settings);
-    if (!gGalaxyPanel) return out;
-    auto const& p = gGalaxyPanel->pose;
-    out.placed = true;
-    out.space = frame.appSpace;
-    out.headLocked = false;
-    out.orientation[0] = p.orientation.x; out.orientation[1] = p.orientation.y;
-    out.orientation[2] = p.orientation.z; out.orientation[3] = p.orientation.w;
-    out.position[0] = p.position.x; out.position[1] = p.position.y; out.position[2] = p.position.z;
-    out.widthM = gGalaxyPanel->width;
-    out.heightM = gGalaxyPanel->height;
-    out.nativeMap = true;
-    return out;
+// ME2's PlacePanel: every flat panel keeps the renderer's own placement (`placed` false; capability panelsInRoom is ME3's).
+// The galaxy map isn't a flat panel while the mod holds it over the CIC's projector (MevrSeams::GalaxyOwnsPresentation in
+// d3d_capture.cpp's GetMenuMode); otherwise (no room, tracking or view) it is the renderer's flat panel, as on ME1.
+PanelPose PlacePanel(PanelKind /*kind*/, OverlayFrame const& /*frame*/, float const /*viewPosition*/[3], float /*widthM*/,
+    float /*heightM*/, bool /*imageReady*/) noexcept {
+    return PanelPose{};
 }
 
 } // namespace MevrSeams

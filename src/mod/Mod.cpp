@@ -74,6 +74,9 @@
 #include "game/Interact.hpp"
 #include "game/Le3GalaxyRetention.hpp"
 #include "game/Le3GalaxyCapture.hpp"
+#if defined(MEVR_GAME_LE2)
+#include "game/Le2GalaxyCapture.hpp"
+#endif
 #include "game/Mako.hpp"
 #include "game/Holsters.hpp"
 #include "game/CockpitProbe.hpp"
@@ -389,10 +392,12 @@ void TryInstallScriptHooks() {
 #if !defined(MEVR_GAME_LE3)
     game::conversation_world::TryStartup();  // ... and the one that holds it through a conversation in the world (research/59)
 #endif
-#if !defined(MEVR_GAME_LE3)
-    game::galaxy_map::TryStartup();  // the camera-update handler holding the view in the CIC while the map is open in-world
-#else
+#if defined(MEVR_GAME_LE3)
     game::le3_galaxy_capture::TryStartup();  // ME3's: the same hold over the CIC's projector (game/GalaxyProjector)
+#elif defined(MEVR_GAME_LE2)
+    game::le2_galaxy_capture::TryStartup();  // ME2's: the sequels' flow over the CIC's projector (game/GalaxyProjectorFlow)
+#else
+    game::galaxy_map::TryStartup();  // the camera-update handler holding the view in the CIC while the map is open in-world
 #endif
     if (gHostOwnsVr && gHost->version >= 36 && gHost->floorLockSampleSize == sizeof(vr::floor_lock::PawnSample)) {
         game::player::PublishFloorLockOnCamera(gHost->setFloorLockSample);
@@ -1393,6 +1398,9 @@ void PublishStatus() {
 #if defined(MEVR_GAME_LE3)
         full += ", \"melee\": " + vr::test_request::JsonString(game::melee::Status());
 #endif
+#if defined(MEVR_GAME_LE2)
+        full += ", \"galaxyProjector\": " + game::le2_galaxy_capture::StatusJson();  // the sequels' flow (game/GalaxyProjectorFlow)
+#endif
         full += ", \"traversal\": " + game::traversal::StatusJson() + "}";
     }
     gHost->setStatus(full.c_str());
@@ -1892,10 +1900,12 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
                                   gHost->hideScreenReticle());
         // The spectator camera (research/49): after everything that moves the head, the pawn and the cockpit this tick.
         game::spectator::Tick(deltaSeconds, SpectatorLink());
-#if !defined(MEVR_GAME_LE3)
-        game::galaxy_map::Tick(GalaxyMapLink());
-#else
+#if defined(MEVR_GAME_LE3)
         game::le3_galaxy_capture::Tick(GalaxyMapLink().setScene, HostFloor());
+#elif defined(MEVR_GAME_LE2)
+        game::le2_galaxy_capture::Tick(GalaxyMapLink().setScene, HostFloor());
+#else
+        game::galaxy_map::Tick(GalaxyMapLink());
 #endif
         game::world_ui::Tick(WorldUiLink());
         // Conversations (research/59): measured always; in the world, Shepard's view held (after world_ui: its Hold is ours in mode 5).
@@ -1987,6 +1997,9 @@ MEVR_MOD_API void MevrModShutdown() {
     // The host has already detached the present callback, so the render thread is out.
     vr::output::Shutdown();
     game::le3_galaxy_capture::Shutdown(exiting);
+#if defined(MEVR_GAME_LE2)
+    game::le2_galaxy_capture::Shutdown(exiting);
+#endif
     if (gInit) removed(game::le3_galaxy_retention::Shutdown(*gInit, exiting), "the CIC streaming hook couldn't be removed");
     if (gInit && gHooked) {
         removed(engine::process_event::Uninstall(*gInit), "the ProcessEvent hook couldn't be removed");

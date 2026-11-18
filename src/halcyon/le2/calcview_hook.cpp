@@ -1308,6 +1308,21 @@ void* __fastcall CalcViewDetour(void* lp, void* family, void* loc, void* rot, vo
         return sv;
     }
 
+#if defined(MEVR_ASI)
+    // [MEVR] The galaxy map open over the CIC's projector (MevrSeams::WorldViewHoldBegin; GetMenuMode keeps the map's modes out
+    // of the flat branch above while the mod holds it): the map's camera is the galaxy's, so Shepard's view on foot goes into the
+    // player camera's POV for this build only, as LE1's GalaxyViewSwapBegin and ME3's held view, and back after it (declared
+    // before the FOV guard below, so put back after that guard's restore). docs/galaxy-projector-handoff.md step 5. Only in the
+    // map's modes (9 galaxy, 10 orbit): ME2's GUI mode keeps the gameplay camera, so its screens of ours need no held view.
+    const int mevrMode = isP1 ? ME2VR::EngineProbe::ReadGameModeSEH() : -1;
+    struct MevrHeldView
+    {
+        bool on;
+        ~MevrHeldView() { if (on) ::MevrSeams::WorldViewHoldEnd(); }
+    } const mevrHeldView{g_vrEnabled.load(std::memory_order_acquire) && isP1 && (mevrMode == 9 || mevrMode == 10) &&
+                         ::MevrSeams::WorldViewHoldBegin()};
+#endif
+
     // ---- [FILLSRC] gameplay fill at the SOURCE --------------------------------------------------
     // The glass/refraction smear was bisected to the FOV fill. Fill worked by overwriting
     // proj[0]/proj[5] AFTER the engine had built the view (WidenProjection), so distortion-class

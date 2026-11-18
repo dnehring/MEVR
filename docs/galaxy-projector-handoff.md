@@ -94,7 +94,34 @@ are hidden then, so it is something else the map's mode shows (the map level's o
 **Not done on ME3** (in order): travel and its movie, orbit (mode 12) and
 the scan, the opening and closing transitions (a frame of the native presentation before the hold publishes is
 possible: not measured), recenter and session changes inside the map, save reload, then the headset.
-**ME2**: nothing yet; step 5 below, with what this flow needs from ME2 (its seams, its capture target, its projector).
+**ME2**: since 2026-11-17 (lane GX2) the same flow; the next section.
+
+## 2026-11-17: ME2's projector flow, on the sequels' one flow (lane GX2)
+
+**What runs on ME2** (fake headset, John's `Save_0036` read only, stretch `20261117-192445-759-LE2-gx2`, runs `galaxy-full1-200157`
+and `galaxy-final-201028`; research/le2-galaxy-table.md "The projector flow"): Shepard put at the CIC's elevator arrival streams
+the CIC in, at the console A opens the map (mode 9), the view stays Shepard's with the CIC in stereo, the game's map is a stereo
+disc on the projector (2.64 m across, 24 degrees off flat), its Flash UI on the panel on the same disc, the room's hologram
+hidden; X exits and the view is the game's again. The map's opening keeps the CIC loaded (no retention on ME2).
+
+**The code is one flow for the sequels** (Forks 3): `game/GalaxyProjectorFlow` (the shape of ME3's first adapter, lifted with a
+per-game `flow::Adapter`: the CIC's art visible, an optional retention, the depth of field) and ME2's adapter
+`game/Le2GalaxyCapture` (`BioA_Nor_110`; the projector and console have ME3's tag and mesh, so the finder is one rule).
+**ME3's `Le3GalaxyCapture` moves onto it next** (after lane GX3's interlude and on-foot reservation land: carry both into the
+flow so ME2 gets ME1's travel rule too). ME2's renderer: `GetMenuMode` not flat in modes 9/10 while
+`GalaxyOwnsPresentation`, `WorldViewHoldBegin/End` in `calcview_hook.cpp` (map modes only), the first person's hides at the
+held eyes (`WorldViewHeld` 2). The capture rig runs on LE2 without any capture hook (no post-process chain, as ME3's).
+
+**ME2-only finding:** with the game's depth of field on (upstream's `MELE2VR.ini`), the first held frames faulted the render
+thread at `MassEffect2.exe+0x98C25D` (the game hangs), with or without captures; the flow turns DOF off near the projector on
+foot and back away from it (`depthOfFieldOff`, `game/DepthOfFieldHold`; gotcha me2-scale-set-during-load).
+
+**No pointer** on ME2's map UI (`galaxyUiPointer` 0): a GUI-event click on Exit did nothing; the map keeps its own controls.
+ME2's opt-in flat table is retired.
+
+**Left on ME2:** travel (a relay's movie mid-map, ME1's 8.4 rule: GX3's interlude), orbit (mode 10) and the scanner in the
+window (the scanner's own stick and triggers: one probe a press), a briefing interrupting the map, recenter inside it, the
+headset; ray-aimed scanning is the owner's question (not built).
 
 The user requested the 2026-11-15 checkpoint to preserve work before usage runs out; its record follows.
 
@@ -349,6 +376,8 @@ legibility, comfort and GPU cost. The null driver cannot establish real headset
 frame pacing, motion comfort or intuitive physical interaction.
 
 ### 5. Apply the same shared flow to ME2 with its own native adapter
+
+**Status 2026-11-17 (GX2):** items 1-4 done (the section "2026-11-17: ME2's projector flow"); item 5 (orbit and the scan) left.
 
 **What ME2 needs, after GX's ME3 work (2026-11-17)** (the shared parts exist: `game/GalaxyProjector`, the host's
 `galaxy_hologram::HoldViewBegin/Holds`, `plugin/SequelOverlays`' window and disc panel, ME2's host compiles them already):

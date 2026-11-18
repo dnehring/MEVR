@@ -4215,6 +4215,12 @@ bool GetMenuMode() noexcept
     if (g_menuMode.load(std::memory_order_acquire)) return true;
     if (!g_monoMenus.load(std::memory_order_acquire)) return false;
     const int m = g_autoGameMode.load(std::memory_order_acquire);
+#if defined(MEVR_ASI)
+    // [MEVR] the galaxy map open over the CIC's projector (MevrSeams::GalaxyOwnsPresentation: the mod holds Shepard's view on
+    // foot and shows the game's map as a stereo window on the projector, ME1's design): the map's modes are no flat
+    // presentation; the room stays in stereo and the map's UI goes to our HUD panel there. docs/galaxy-projector-handoff.md.
+    if ((m == 9 || m == 10) && ::MevrSeams::GalaxyOwnsPresentation(m)) return false;
+#endif
     if (m == 8 || m == 9 || m == 10) return true;   // Movie / Galaxy / Orbital - genuinely flat, no depth exists
     if (m != 7) return false;                       // gameplay (and - 1 unreadable) -> fail OPEN to VR
 #if defined(MEVR_ASI)

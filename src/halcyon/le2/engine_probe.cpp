@@ -1174,9 +1174,33 @@ void ApplyFirstPerson() noexcept
     // [HEADDELAY] count consecutive first-person frames; the head hide waits for the blend to land.
     if (active) { if (g_fpActiveFrames < 100000) ++g_fpActiveFrames; } else g_fpActiveFrames = 0;
     const bool headDelayMet = g_fpActiveFrames > g_fpHeadHideDelay.load(std::memory_order_relaxed);
-    const bool hideHead = (active && st->hideHead && headDelayMet) || meshOverride;
-    const bool hideBody = active && st->hideBody;
+    bool hideHead = (active && st->hideHead && headDelayMet) || meshOverride;
+    bool hideBody = active && st->hideBody;
     const bool hideWeapon = active && st->hideWeapon;
+#if defined(MEVR_ASI)
+    // [MEVR] While the galaxy map holds Shepard's view on foot (MevrSeams::WorldViewHeld, calcview_hook.cpp's held view: the
+    // eyes at his head in the CIC while the game's camera is the map's), first person's hides stay as gameplay last wanted them
+    // (1) instead of the head coming back outside first person; for a hold standing in the room (2: the galaxy map, as on ME3)
+    // his head and body are hidden at the held eyes.
+    {
+        static bool s_fpHead = false, s_fpBody = false;
+        if (active) { s_fpHead = hideHead; s_fpBody = hideBody; }
+        const int mevrMode = ReadGameModeSEH();  // the map's modes only (calcview_hook.cpp holds the view only there)
+        const int mevrHeld = (active || (mevrMode != 9 && mevrMode != 10)) ? 0 : ::MevrSeams::WorldViewHeld(mevrMode);
+        static int s_prevHeld = 0;
+        if (mevrHeld != s_prevHeld)
+        {
+            char hb[200] = {};
+            sprintf_s(hb, "[MEVR-HELDVIEW] %s", mevrHeld == 2 ? "Shepard's view on foot held in the room: his head and body hidden"
+                      : mevrHeld == 1 ? "Shepard's view on foot held: first person's hides kept (head hidden)"
+                                      : "the held view ended: first person's hides follow the camera mode again");
+            ME2VR::Log::Line(hb);
+            s_prevHeld = mevrHeld;
+        }
+        if (mevrHeld == 2) { hideHead = true; hideBody = true; }
+        else if (mevrHeld == 1) { hideHead = s_fpHead; hideBody = s_fpBody; }
+    }
+#endif
 
     int weaponComps = 0;
     if (!stable)

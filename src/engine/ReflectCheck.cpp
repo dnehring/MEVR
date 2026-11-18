@@ -2956,6 +2956,111 @@ void CheckLeave() {
     PARAM(UBioSFHandler_PartySelection_execFinalizeParty_Parms, "SFXGame.BioSFHandler_PartySelection.FinalizeParty", nContext);
 }
 
+// The galaxy map over the CIC's projector (game/GalaxyProjectorFlow, ME2's adapter game/Le2GalaxyCapture): the shared
+// SceneCaptureRig's classes, fields and functions (CheckLe3CaptureRig's list, ME2's SDK), the projector's actor and mesh, the
+// console's point of interest, the streaming levels, the galaxy game mode's camera and its centre object, SetHidden.
+void CheckLe2CaptureRig() {
+    CheckClass<UTextureRenderTarget2D>("Engine.TextureRenderTarget2D");
+    CheckClass<USceneCapture2DComponent>("Engine.SceneCapture2DComponent");
+    CheckClass<ASceneCapture2DActor>("Engine.SceneCapture2DActor");
+    CheckField("Engine.SceneCaptureActor", "SceneCapture", SDK_FIELD(ASceneCaptureActor, SceneCapture));
+    CheckField("Engine.Actor", "bStatic", SDK_BOOL(AActor, bStatic));
+    CheckField("Engine.Actor", "bNoDelete", SDK_BOOL(AActor, bNoDelete));
+    CheckField("Engine.SceneCaptureComponent", "bEnabled", SDK_BOOL(USceneCaptureComponent, bEnabled));
+    CheckField("Engine.SceneCaptureComponent", "bEnablePostProcess", SDK_BOOL(USceneCaptureComponent, bEnablePostProcess));
+    CheckField("Engine.SceneCaptureComponent", "bEnableFog", SDK_BOOL(USceneCaptureComponent, bEnableFog));
+    CheckField("Engine.SceneCaptureComponent", "bUseMainScenePostProcessSettings",
+        SDK_BOOL(USceneCaptureComponent, bUseMainScenePostProcessSettings));
+    CheckField("Engine.SceneCaptureComponent", "bSkipUpdateIfTextureUsersOccluded",
+        SDK_BOOL(USceneCaptureComponent, bSkipUpdateIfTextureUsersOccluded));
+    CheckField("Engine.SceneCaptureComponent", "bSkipUpdateIfOwnerOccluded", SDK_BOOL(USceneCaptureComponent, bSkipUpdateIfOwnerOccluded));
+    CheckField("Engine.SceneCaptureComponent", "MaxUpdateDist", SDK_FIELD(USceneCaptureComponent, MaxUpdateDist));
+    CheckField("Engine.SceneCaptureComponent", "PostProcess", SDK_FIELD(USceneCaptureComponent, PostProcess));
+    CheckField("Engine.SceneCaptureComponent", "FrameRate", SDK_FIELD(USceneCaptureComponent, FrameRate));
+    // The generated header documents 0x174 mask 1 (its generator read the game's reflection); the compiled struct places the
+    // bitfield four bytes late, as ME3's (CheckLe3CaptureRig). Compare with the documented offset, not the compiled one.
+    Guard("native-layout", "SceneCapture2DComponent.bUpdateMatrices", [&] {
+        auto const info = R().PropertyOf(R().FindClass("Engine.SceneCapture2DComponent"), "bUpdateMatrices");
+        Add("native-layout", "SceneCapture2DComponent.bUpdateMatrices", info && Matches(*info, info->offset, Sdk{0x174, 1, 4}), Ours(info),
+            "LE2 SDK header: +0x174 mask 1 (the compiled struct is 4 bytes late)");
+    });
+    CheckField("Engine.Texture", "Resource", SDK_FIELD(UTexture, Resource));
+    CheckField("Engine.TextureRenderTarget2D", "Format", SDK_FIELD(UTextureRenderTarget2D, Format));
+    CheckField("Engine.PlayerController", "Player", SDK_FIELD(APlayerController, Player));
+    CheckField("Engine.LocalPlayer", "PlayerPostProcess", SDK_FIELD(ULocalPlayer, PlayerPostProcess));
+    CheckField("Engine.Engine", "DefaultPostProcess", SDK_FIELD(UEngine, DefaultPostProcess));
+    CheckField("Engine.Engine", "DefaultUIScenePostProcess", SDK_FIELD(UEngine, DefaultUIScenePostProcess));
+    CheckFunction("Engine.Actor.Spawn");
+    PARAM(AActor_execSpawn_Parms, "Engine.Actor.Spawn", SpawnClass);
+    PARAM(AActor_execSpawn_Parms, "Engine.Actor.Spawn", SpawnOwner);
+    PARAM(AActor_execSpawn_Parms, "Engine.Actor.Spawn", SpawnLocation);
+    PARAM(AActor_execSpawn_Parms, "Engine.Actor.Spawn", bNoCollisionFail);
+    PARAM(AActor_execSpawn_Parms, "Engine.Actor.Spawn", ReturnValue);
+    PARMS(AActor_execSpawn_Parms, "Engine.Actor.Spawn");
+    CheckFunction("Engine.Actor.Destroy");
+    PARAM(AActor_execDestroy_Parms, "Engine.Actor.Destroy", ReturnValue);
+    PARMS(AActor_execDestroy_Parms, "Engine.Actor.Destroy");
+    CheckFunction("Engine.Actor.ForceUpdateComponents");
+    PARAM(AActor_execForceUpdateComponents_Parms, "Engine.Actor.ForceUpdateComponents", bCollisionUpdate);
+    PARAM(AActor_execForceUpdateComponents_Parms, "Engine.Actor.ForceUpdateComponents", bTransformOnly);
+    PARMS(AActor_execForceUpdateComponents_Parms, "Engine.Actor.ForceUpdateComponents");
+    CheckFunction("Engine.TextureRenderTarget2D.Create");
+    PARAM(UTextureRenderTarget2D_execCreate_Parms, "Engine.TextureRenderTarget2D.Create", InSizeX);
+    PARAM(UTextureRenderTarget2D_execCreate_Parms, "Engine.TextureRenderTarget2D.Create", InSizeY);
+    PARAM(UTextureRenderTarget2D_execCreate_Parms, "Engine.TextureRenderTarget2D.Create", InFormat);
+    PARAM(UTextureRenderTarget2D_execCreate_Parms, "Engine.TextureRenderTarget2D.Create", InClearColor);
+    PARAM(UTextureRenderTarget2D_execCreate_Parms, "Engine.TextureRenderTarget2D.Create", bOnlyRenderOnce);
+    PARAM(UTextureRenderTarget2D_execCreate_Parms, "Engine.TextureRenderTarget2D.Create", ReturnValue);
+    PARMS(UTextureRenderTarget2D_execCreate_Parms, "Engine.TextureRenderTarget2D.Create");
+    CheckFunction("Engine.SceneCaptureComponent.SetEnabled");
+    PARAM(USceneCaptureComponent_execSetEnabled_Parms, "Engine.SceneCaptureComponent.SetEnabled", bEnable);
+    PARMS(USceneCaptureComponent_execSetEnabled_Parms, "Engine.SceneCaptureComponent.SetEnabled");
+    CheckFunction("Engine.SceneCaptureComponent.SetFrameRate");
+    PARAM(USceneCaptureComponent_execSetFrameRate_Parms, "Engine.SceneCaptureComponent.SetFrameRate", NewFrameRate);
+    PARMS(USceneCaptureComponent_execSetFrameRate_Parms, "Engine.SceneCaptureComponent.SetFrameRate");
+    CheckFunction("Engine.SceneCapture2DComponent.SetView");
+    PARAM(USceneCapture2DComponent_execSetView_Parms, "Engine.SceneCapture2DComponent.SetView", NewLocation);
+    PARAM(USceneCapture2DComponent_execSetView_Parms, "Engine.SceneCapture2DComponent.SetView", NewRotation);
+    PARMS(USceneCapture2DComponent_execSetView_Parms, "Engine.SceneCapture2DComponent.SetView");
+    CheckFunction("Engine.SceneCapture2DComponent.SetCaptureParameters");
+    PARAM(USceneCapture2DComponent_execSetCaptureParameters_Parms, "Engine.SceneCapture2DComponent.SetCaptureParameters", NewTextureTarget);
+    PARAM(USceneCapture2DComponent_execSetCaptureParameters_Parms, "Engine.SceneCapture2DComponent.SetCaptureParameters", NewFOV);
+    PARAM(USceneCapture2DComponent_execSetCaptureParameters_Parms, "Engine.SceneCapture2DComponent.SetCaptureParameters", NewNearPlane);
+    PARAM(USceneCapture2DComponent_execSetCaptureParameters_Parms, "Engine.SceneCapture2DComponent.SetCaptureParameters", NewFarPlane);
+    PARMS(USceneCapture2DComponent_execSetCaptureParameters_Parms, "Engine.SceneCapture2DComponent.SetCaptureParameters");
+    // The projector, the console and the CIC's art level (game/GalaxyProjectorFlow's FindProjector, ProjectorJson).
+    CheckClass<AInterpActor>("Engine.InterpActor");
+    CheckClass<ASFXPointOfInterest>("SFXGame.SFXPointOfInterest");
+    CheckClass<ULevelStreaming>("Engine.LevelStreaming");
+    CheckField("Engine.Actor", "Tag", SDK_FIELD(AActor, Tag));
+    CheckField("Engine.DynamicSMActor", "StaticMeshComponent", SDK_FIELD(ADynamicSMActor, StaticMeshComponent));
+    CheckField("Engine.PrimitiveComponent", "Bounds", SDK_FIELD(UPrimitiveComponent, Bounds), true);
+    CheckField("Engine.WorldInfo", "StreamingLevels", SDK_FIELD(AWorldInfo, StreamingLevels));
+    CheckField("Engine.LevelStreaming", "PackageName", SDK_FIELD(ULevelStreaming, PackageName));
+    CheckField("Engine.LevelStreaming", "LoadedLevel", SDK_FIELD(ULevelStreaming, LoadedLevel));
+    CheckField("Engine.LevelStreaming", "bIsVisible", SDK_BOOL(ULevelStreaming, bIsVisible));
+    CheckField("Engine.LevelStreaming", "bShouldBeLoaded", SDK_BOOL(ULevelStreaming, bShouldBeLoaded));
+    CheckField("Engine.LevelStreaming", "bShouldBeVisible", SDK_BOOL(ULevelStreaming, bShouldBeVisible));
+    // The map camera's centre (MapCentre): the galaxy game mode's GalaxyCam.
+    CheckClass<USFXGameModeGalaxy>("SFXGame.SFXGameModeGalaxy");
+    CheckClass<UBioCameraBehaviorGalaxy>("SFXGame.BioCameraBehaviorGalaxy");
+    CheckField("SFXGame.SFXGameModeGalaxy", "GalaxyCam", SDK_FIELD(USFXGameModeGalaxy, GalaxyCam));
+    CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_pCenterObject", SDK_FIELD(UBioCameraBehaviorGalaxy, m_pCenterObject));
+    // The room's own projector hologram hidden while the map's window lies on it.
+    CheckFunction("Engine.Actor.SetHidden");
+    PARAM(AActor_execSetHidden_Parms, "Engine.Actor.SetHidden", bNewHidden);
+    PARMS(AActor_execSetHidden_Parms, "Engine.Actor.SetHidden");
+    // `mevr galaxy exit` (the map's own close for a test).
+    CheckClass<UBioSFHandler_GalaxyMap>("SFXGame.BioSFHandler_GalaxyMap");
+    CheckFunction("SFXGame.BioSFHandler_GalaxyMap.CloseGalaxyMap");
+    CheckParmsSize("SFXGame.BioSFHandler_GalaxyMap.CloseGalaxyMap", 0);
+    // `mevr galaxy place` (a test fixture: Shepard put at the CIC's console from another deck).
+    CheckFunction("Engine.Controller.ClientSetLocation");
+    PARAM(AController_execClientSetLocation_Parms, "Engine.Controller.ClientSetLocation", NewLocation);
+    PARAM(AController_execClientSetLocation_Parms, "Engine.Controller.ClientSetLocation", NewRotation);
+    PARMS(AController_execClientSetLocation_Parms, "Engine.Controller.ClientSetLocation");
+}
+
 #elif defined(MEVR_GAME_LE3)
 // Shared SceneCaptureRig, checked against LE3 metadata before native use.
 void CheckLe3CaptureRig() {
@@ -4072,6 +4177,7 @@ bool Run(hook::Context& context) {
     CheckTraversal();
     CheckThespian();
     CheckLe2Squad();
+    CheckLe2CaptureRig();
 #endif
 #if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     CheckLeave();

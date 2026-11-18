@@ -741,11 +741,11 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Waits for:** T14 on ME3 (on since 2026-11-16) and ME3's combat HUD. **Who:** HU (2026-11-16).
 
 #### T42 The galaxy map and scanning [G25; Forks 3]
-- **State:** LE1 build · LE2 build · LE3 verify
+- **State:** LE1 build · LE2 verify · LE3 verify
 - **Lives in:** `game/GalaxyProjector` (every game: the held view, the render hold, the stereo window), ME1's adapter
   `game/GalaxyMap`, `plugin/GalaxyHologram` (the window, the held view `HoldViewBegin/End`, `Holds`), `game/SceneCaptureRig`,
-  `core/vr/GalaxyHologram`; ME3's adapter `game/Le3GalaxyCapture` (+ `Le3GalaxyRetention`, `Le3GalaxyProjector`); ME2's
-  opt-in flat table in its bridge.
+  `core/vr/GalaxyHologram`; the sequels' flow `game/GalaxyProjectorFlow` with ME2's adapter `game/Le2GalaxyCapture`; ME3's
+  adapter `game/Le3GalaxyCapture` (+ `Le3GalaxyRetention`, `Le3GalaxyProjector`), to move onto the flow.
 - **Done 2026-11-17 (lane GX):** ME3 opens its map over the CIC's projector: the view held at Shepard's, the CIC in stereo,
   the map a stereo disc on the projector, its Flash UI on the panel there, X back to the room (galaxy-projector-handoff.md
   "2026-11-17"). ME1's `StepWindow` and the held view are the shared `galaxy_projector` code ME3 calls.
@@ -755,13 +755,18 @@ These unblock the most: almost every other entry gets smaller once they land.
   the blue band (the projector's own lens flare) hidden with the hologram (galaxy-projector-handoff.md "GX3").
   Second run: the relay movie alone in the eyes, recenter inside the map keeps the hold, a reload in the map falls back to the
   flat native map until X (ME3 loads into the map's mode), the opening's 2.5 s measured as a Kismet delay (owner's choice).
-- **Left:** move ME3's adapter onto GX2's `game/GalaxyProjectorFlow` (these rules into it); ME3's system scan (a replayed LT
-  started none), orbit (mode 12) and the probe (no scannable planet in the fixture's reach), the captures' post-process
-  chain, ME3's picks (the owner's question), the headset; step 5 on ME2 (its probes and mining: one launch per press);
-  `vr::galaxy_map::ReadTableSettings` and one input lease for both sequels.
+- **Done 2026-11-17 (lane GX2):** ME2 the same, on the sequels' one flow (`game/GalaxyProjectorFlow`, ME2's adapter
+  `game/Le2GalaxyCapture`): A at the console, the CIC in stereo, the map a stereo disc on the projector with its UI, X back
+  to the room; the depth of field off near the projector (ME2's render thread faulted with it on); no pointer (the map's own
+  controls); ME2's opt-in flat table retired (galaxy-projector-handoff.md "2026-11-17: ME2's").
+- **Left:** ME3's adapter onto `GalaxyProjectorFlow` (carrying GX3's interlude rule, the opening and closing bridges, the
+  on-foot reservation and the re-armed retention into the flow, so ME2 gets ME1's travel rule too); ME3's system scan (a
+  replayed LT started none), orbit (mode 12) and the probe (no scannable planet in the fixture's reach), the captures'
+  post-process chain, ME3's picks (the owner's question), the headset; on ME2 travel, orbit and the scanner in the window
+  (its probes and mining: one launch per press), the headset; `vr::galaxy_map::ReadTableSettings` and one input lease for ME3.
 - **Closes when:** the native map shows over the physical projector with the CIC in stereo around it, on each sequel;
   one probe becomes zero after exactly one launch on ME2.
-- **Waits for:** T16. **Who:** GX (2026-11-17; ME3, then ME2).
+- **Waits for:** T16. **Who:** GX (ME3), GX3 (ME3's remaining steps), GX2 (ME2), 2026-11-17.
 
 #### T43 Controller input [G49]
 - **State:** LE1 done · LE2 headset · LE3 headset

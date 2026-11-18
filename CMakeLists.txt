@@ -655,6 +655,12 @@ set(MEVR_MOD_SOURCES
     src/game/Le3GalaxyRetention.hpp
     src/game/Le3GalaxyCapture.cpp
     src/game/Le3GalaxyCapture.hpp
+    src/game/GalaxyProjectorFlow.cpp
+    src/game/GalaxyProjectorFlow.hpp
+    src/game/DepthOfFieldHold.cpp
+    src/game/DepthOfFieldHold.hpp
+    src/game/Le2GalaxyCapture.cpp
+    src/game/Le2GalaxyCapture.hpp
     src/game/Spectator.hpp
     src/game/Sights.cpp
     src/game/Sights.hpp
@@ -1039,6 +1045,9 @@ function(mevr_add_plugin game)
     set(mod_sources ${MEVR_MOD_SOURCES})
     if (game STREQUAL "LE3")
         list(APPEND mod_sources src/game/Le3Gui.cpp src/game/Le3Gui.hpp src/core/Json.cpp src/core/Json.hpp)
+    endif ()
+    if (game STREQUAL "LE2")
+        list(APPEND mod_sources src/core/Json.cpp src/core/Json.hpp)  # game/GalaxyProjectorFlow's status (the sequels' galaxy flow)
     endif ()
     if (MEVR_LE2_DIAGNOSTIC AND game STREQUAL "LE2")
         list(APPEND mod_sources src/engine/Le2DiagnosticHost.cpp src/engine/Le2DiagnosticHost.hpp

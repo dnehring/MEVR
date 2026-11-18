@@ -231,10 +231,11 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
             layersOut[count++] = panelLayer;
         }
         // The map's UI on the projector is the game pointer's (a controller's ray and trigger: the game's cursor; LE1's
-        // HalcyonOverlays galaxy panel).
+        // HalcyonOverlays galaxy panel), in the galaxy's mode only: orbit keeps the scanner's own triggers (ME2's LT and RT).
 #if defined(MEVR_WITH_MAIN_MENU)
         static bool galaxyPointer = false;  // Present thread
-        if (galaxyUi && panelLayer != nullptr && !anyMenu && facts.galaxyUiPointer != 0) {
+        if (galaxyUi && panelLayer != nullptr && !anyMenu && facts.galaxyUiPointer != 0 &&
+            mevr::engine::adapter::IsGalaxyMode(frame.gameMode)) {
             mevr::host::game_pointer::NoteGameUiQuad(panelLayer->pose, panelLayer->size.width, panelLayer->size.height,
                 facts.galaxyUiPointer == 2 ? mevr::host::game_pointer::PanelKind::GameMenu : mevr::host::game_pointer::PanelKind::GalaxyMap);
             galaxyPointer = true;

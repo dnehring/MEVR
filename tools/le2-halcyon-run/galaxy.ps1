@@ -4,11 +4,12 @@
 # stands at it), this reads the mod's projector flow (`mevr galaxy projector`, `mevr galaxy capture state`), takes a snapshot on
 # foot, replays an A press at the console (tools/make-walk-recording.py: the head turned -Yaw and pitched -Pitch, the plan
 # -Plan, replayed with its inputs), waits for the map's mode, takes snapshots in the map (the eyes, the window's layers, the
-# UI panel), then replays the map's exit (X on ME3's system map, B in orbit) and checks that the view is the game's again.
-# Results in the stretch's session folder, galaxy-<tag>-<time>\.
+# UI panel), then replays the map's exit (X on the system map, B in orbit) and checks that the view is the game's
+# again. Results in the stretch's session folder, galaxy-<tag>-<time>\.
 #
 #   tools\le2-halcyon-run\galaxy.ps1 -Holder <you> [-Game LE3] [-Yaw 10] [-Pitch -20] [-Plan stand:2,a:0.25,stand:60]
-#       [-MapSeconds 12] [-Tag what] [-NoExit] [-Variants on-raw,on-default,on]
+#       [-MapSeconds 12] [-Tag what] [-NoExit] [-Variants on-raw,on-default,on] [-Place 'X Y Z yawDeg']
+# -Place (ME2): first `mevr galaxy place X Y Z yawDeg`, Shepard put at the CIC's console (from a Normandy save on another deck).
 # -Variants: in the map, each `mevr galaxy capture <variant>` in turn (the captures made again with it), a snapshot after each.
 # -PickUv U,V: then the right controller's ray at that point of the map's UI panel (the snapshot's `hud` quad; U, V of its
 # -hud.png) and its trigger pulled once (tools/make-galaxy-pick-recording.py --panel-uv), the game pointer's click there.
@@ -22,7 +23,8 @@ param(
     [ValidatePattern('^[A-Za-z0-9_-]*$')][string]$Tag = 'cic',
     [switch]$NoExit,
     [ValidatePattern('^[a-z,-]*$')][string]$Variants = '',
-    [ValidatePattern('^([0-9.]+,[0-9.]+)?$')][string]$PickUv = ''
+    [ValidatePattern('^([0-9.]+,[0-9.]+)?$')][string]$PickUv = '',
+    [ValidatePattern('^(-?[0-9.]+ -?[0-9.]+ -?[0-9.]+ -?[0-9.]+)?$')][string]$Place = ''
 )
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\..\common.ps1"
@@ -38,6 +40,7 @@ New-Item -ItemType Directory -Force $out | Out-Null
 $bin = Get-MELEBinDir (Find-MELEInstall).Root $Game
 $log = Join-Path $bin ("Logs\{0}MEVR.log" -f $Game)
 $mapModes = if ($Game -eq 'LE3') { '1[12]' } else { '9|10' }
+$exitButtons = @('x', 'b', 'x')  # ME3's system map and ME2's map exit with X (ME2's prompt: Exit X); orbit backs out with B
 
 function Ask([string]$command, [int]$timeout = 10) {
     $text = & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $W 'tools\console.ps1') $command -TimeoutSeconds $timeout 2>$null
@@ -76,11 +79,16 @@ function Verdict([string]$what, [bool]$ok, [string]$detail) {
 
 $from = (ReadLog).Count
 "state: " + (Ask 'mevr state')
+if ($Place) {
+    "place: " + (Ask "mevr galaxy place $Place")
+    Start-Sleep -Seconds 4  # the CIC's streaming and the pawn's settle
+}
 "projector: " + (Ask 'mevr galaxy projector')
 Start-Sleep -Seconds 3  # the flow measures the projector every 2 s on foot
 $onFoot = Ask 'mevr galaxy capture state'
 "on foot: $onFoot"
-Verdict 'the projector measured on foot, the room retention armed' ($onFoot -match '"discValid":\s*true' -and $onFoot -match '"retentionArmed":\s*true') $onFoot
+Verdict 'the projector measured on foot, the room retention armed' ($onFoot -match '"discValid":\s*true' -and
+    ($onFoot -match '"retentionArmed":\s*true' -or $onFoot -match '"retentionNeeded":\s*false')) $onFoot
 Snapshot 'foot'
 
 Replay $Plan 'use.mevrrec'
@@ -122,11 +130,16 @@ if ($PickUv) {
 }
 
 if (-not $NoExit) {
-    foreach ($button in 'x', 'b', 'x') {
+    foreach ($button in $exitButtons) {
         if ((Mode) -notmatch "^($mapModes)$") { break }
         Replay "stand:1,$($button):0.25,stand:4" ("exit-" + $button + ".mevrrec")
         Start-Sleep -Seconds 6
         StopReplay
+    }
+    if ($Game -eq 'LE2' -and (Mode) -match "^($mapModes)$") {
+        # A replayed B reaches ME2's map movie only with the game window in front: the map's own close (its Exit button's).
+        "exit: " + (Ask 'mevr galaxy exit')
+        Start-Sleep -Seconds 6
     }
     $deadline = (Get-Date).AddSeconds(20)
     do { Start-Sleep -Seconds 1; $mode = Mode } until ($mode -eq 0 -or (Get-Date) -gt $deadline)
