@@ -58,6 +58,7 @@ Caps const& Capabilities() noexcept {
         c.perEyeFrustum = true;      // mode 2 where the window holds the eyes (src/halcyon/MevrMetricView.h)
         c.ownMenuRows = true;
         c.panelsInRoom = true;       // MevrSeams::PlacePanel places every flat panel (plugin/WorldPanels), as ME1 and ME3
+        c.frontEnd = true;           // MevrSeams::FrontEndHold ...: ME1's front end on the 3D screen (research/56, T18)
         return c;
     }();
     return caps;

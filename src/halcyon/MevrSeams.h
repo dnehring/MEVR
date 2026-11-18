@@ -324,6 +324,28 @@ bool CineScreenFullRate() noexcept;
 // Not called by LE1: its xr_session.cpp composes the screen itself (CineScreenQuadsNow, CinemaBackdropLayer, PlacePanel).
 unsigned CineScreenLayers(CineScreenFrame const& frame, void const** layersOut, unsigned capacity) noexcept;
 
+// The front end on one presentation (research/56, T18; plugin/PresentationHold, rules core/vr/PresentationHold): from
+// start-up until the first load from the menus or the first gameplay, the title and its menus on the 3D cinema screen
+// ([Cinematics] frontEnd, ME1's default 1), the boot before the title and every movie flat, the load from the menus the flat
+// panel from its first frame, and no plain VR between them. Present thread, every frame before the renderer's presentation
+// decision. `gameMode`: the game's own number as the renderer reads it (-1 unreadable); the host maps it to ME1's rules by
+// the game's adapter (engine/GameAdapter.hpp). True while this frame is the front end's.
+// Not called by LE1: its xr_session.cpp calls the same functions by their LE1 names (MELEVR::MevrBridge::FrontEndHold ...).
+bool FrontEndHold(int gameMode) noexcept;
+// After FrontEndHold: the front end goes on the 3D cinema screen (the setting, before the first load from the menus).
+bool FrontEndOnScreen() noexcept;
+// After FrontEndHold: the start-up's boot before the title (its unreadable mode, the logos' movie): flat, as a movie.
+bool FrontEndBeforeTitle() noexcept;
+// Each frame, after the decision: `plainVr` this frame's decision is plain VR (the world filling the view). True: show the
+// previous presentation instead (plain VR after another view waits 100 ms, so a blip of a gameplay mode between two other
+// views never puts the world in the view). `worldUi`: an authorized hand-over to a screen of ours (accepted at once).
+bool HoldPlainVr(bool plainVr, int gameMode, bool worldUi) noexcept;
+// Each frame, before the renderer decides from its movie signal: `movie` that signal (a load's movie or a prerendered one),
+// `gameMode` the game's own number. True: show this frame as the movie (its flat panel) although it no longer is one: the
+// sequels' loads end in a cinematic mode for 0.3 s (ME2's, the picture black), kept as the load until it has lasted 0.5 s
+// (core/vr/PresentationHold's LoadTail). Not called by LE1 (its loads have no such tail).
+bool HoldLoadTail(bool movie, int gameMode) noexcept;
+
 // Present thread, the frame's last layer: this frame's view (0 the world, 1 the 3D cinema screen, 2 a cinematic on the
 // flat panel, 3 another flat panel, -1 none submitted); a head-locked black quad (an XrCompositionLayerQuad*) to submit
 // last, or null (plugin/TransitionFade).

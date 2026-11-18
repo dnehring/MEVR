@@ -7813,6 +7813,27 @@ void TestPresentationHold() {
         CHECK(v.Hold(true, 510));
         CHECK(!v.Hold(true, 400));
     }
+    {   // The sequels' load tail (research/56 "The sequels"): ME2's load ends in 0.3 s of mode 6 after its movie.
+        pr::LoadTail t;
+        CHECK(!t.Hold(false, false, 0));       // gameplay: nothing to hold
+        CHECK(!t.Hold(false, true, 10));       // a cinematic without a movie before it: the game's, at once
+        CHECK(!t.Hold(true, false, 20));       // the load's movie
+        CHECK(!t.Hold(true, true, 30));        // still the movie (its mode already 6)
+        CHECK(t.Hold(false, true, 40));        // the movie ended, mode 6 remains: kept as the movie
+        CHECK(t.Hold(false, true, 339));
+        CHECK(!t.Hold(false, false, 340));     // gameplay after 0.3 s: the tail was never shown
+        CHECK(t.Covered() == 1);
+        CHECK(!t.Hold(false, true, 400));      // a later cinematic, no movie before it: shown at once
+        CHECK(!t.Hold(true, false, 1000));     // a movie, then a real cutscene that lasts
+        CHECK(t.Hold(false, true, 1010));
+        CHECK(t.Hold(false, true, 1509));
+        CHECK(!t.Hold(false, true, 1510));     // 0.5 s: the game's own, shown as it is
+        CHECK(!t.Hold(false, true, 1600));
+        CHECK(!t.Hold(false, false, 1700) && t.Covered() == 1);
+        CHECK(!t.Hold(true, false, 2000));     // a clock that went back ends the hold
+        CHECK(t.Hold(false, true, 2010));
+        CHECK(!t.Hold(false, true, 1900));
+    }
 }
 
 void TestCineScreen() {

@@ -36,6 +36,10 @@ unsigned GetBackbufferHeight() noexcept;
 // be presented MONO (no stereo split, UI shown full-width to both eyes) - 2D menus aren't stereo.
 bool GetMenuMode() noexcept;
 void UpdatePresentationState() noexcept; // once per Present: sole owner of MENU_MONO entry/exit
+// [MEVR] research/56 "The sequels" (T18): ME1's front end, decided by UpdatePresentationState (MevrSeams::FrontEndHold) and
+// read by me2_xr's cinematic decision the same Present: 0 none, 1 its flat panel (MENU_MONO "front end": the boot before
+// the title, a load from the menus), 2 ME1's 3D cinema screen (the title and its menus; in mono while no scene renders).
+int GetMevrFrontEnd() noexcept;
 bool GetMenuModeManual() noexcept;    // [AUTOMENU] the manual toggle alone, without the auto modes
 // [XSTATE] record one VR-cine (VrCineActive) edge for the per-window transition counter in
 // [FRAMETIME]. Caller takes the QueryPerformanceCounter pair around the edge itself.

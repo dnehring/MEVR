@@ -1110,6 +1110,8 @@ function(mevr_add_plugin game)
             # ME1's 3D cinema screen for conversations and cutscenes, its floor and horizon, the dip from black and the
             # world-locked placement (research/52, research/le2-cinema.md): LE1's modules, shared.
             src/plugin/CineScreen.cpp src/plugin/CineScreen.hpp src/core/vr/CineScreen.cpp src/core/vr/CineScreen.hpp
+            # ME1's front end on one presentation (research/56, T18): the title on the 3D screen, no flips at start-up.
+            src/plugin/PresentationHold.cpp src/core/vr/PresentationHold.cpp src/core/vr/PresentationHold.hpp
             # Life-size stereo (research/30 section 9): ME1's plan, shared; the render-side edits in src/halcyon/MevrMetricView.h.
             src/plugin/MetricStereo.cpp src/plugin/MetricStereo.hpp src/core/vr/MetricStereo.cpp src/core/vr/MetricStereo.hpp
             src/halcyon/MevrMetricView.h
@@ -1163,6 +1165,7 @@ function(mevr_add_plugin game)
             src/plugin/SequelWeaponLayers.cpp src/plugin/SequelWeaponLayers.hpp
             src/plugin/SequelSquadLayers.cpp src/plugin/SequelSquadLayers.hpp
             src/plugin/CineScreen.cpp src/core/vr/CineScreen.cpp
+            src/plugin/PresentationHold.cpp src/core/vr/PresentationHold.cpp   # ME1's front end (research/56, T18)
             src/plugin/MetricStereo.cpp src/core/vr/MetricStereo.cpp src/halcyon/MevrMetricView.h   # life-size stereo (research/30 section 9)
             # Lens flares' reflections in mode 2 through the CPU's own window (research/30 section 9.6): ME3's only.
             src/plugin/FlareWindow.cpp src/plugin/FlareWindow.hpp src/core/vr/FlareWindow.cpp src/core/vr/FlareWindow.hpp

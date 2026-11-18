@@ -1757,18 +1757,26 @@ void RunFrame() noexcept
         // [MEVR] the galaxy map's opening and closing cinematics in the CIC are the map's (MevrSeams::GalaxyOwnsPresentation:
         // the mod holds Shepard's view through them, ME1's rule): no cinematic presentation, the room stays in stereo.
         const bool mevrGalaxyHeld = ::MevrSeams::GalaxyOwnsPresentation(gm);
-        const bool mevrScreen = !mevrGalaxyHeld && sfrMode && cine && vrEligible && !menuMono && (gm == 7 || gm == 8) &&
-            ::MevrSeams::CineScreenWanted(gm == 7);
+        // [MEVR] research/56 "The sequels" (T18): ME1's front end (d3d_capture.cpp's UpdatePresentationState decided it this
+        // Present): the title and its menus on ME1's 3D cinema screen (in stereo where a scene renders, else the backbuffer in
+        // both eyes on it), head look parked; its flat panel (the boot, a load from the menus) is the menu presentation. No
+        // other cinematic presentation of Halcyon's while the front end holds.
+        const int mevrFrontEnd = ME2VR::D3DCapture::GetMevrFrontEnd();
+        const bool mevrScreen = (mevrFrontEnd == 2 && sfrMode) ||
+            (mevrFrontEnd == 0 && !mevrGalaxyHeld && sfrMode && cine && vrEligible && !menuMono && (gm == 7 || gm == 8) &&
+             ::MevrSeams::CineScreenWanted(gm == 7));
         ME2VR::CalcViewHook::SetMevrCineScreen(mevrScreen);
-        const bool renderCineInVr = !mevrGalaxyHeld && (mevrScreen || (cine && vrEligible && (!menuMono || fpConvo) &&
+        const bool renderCineInVr = !mevrGalaxyHeld && (mevrScreen || (mevrFrontEnd == 0 && cine && vrEligible &&
+                                    (!menuMono || fpConvo) &&
                                     (fpConvo || (convoLike ? ME2VR::CalcViewHook::GetCineVrConvo()
                                                           : ME2VR::CalcViewHook::GetCineVrCutscene()))));
         ME2VR::CalcViewHook::SetVrCineActive(renderCineInVr);
-        ME2VR::CalcViewHook::SetCinematic(cine && !renderCineInVr && !mevrGalaxyHeld);
+        ME2VR::CalcViewHook::SetCinematic(cine && !renderCineInVr && !mevrGalaxyHeld && mevrFrontEnd == 0);
         // [CINEVR] one line per presentation flip: this is what verifies (or corrects) the LE3
         // convo/cutscene mapping from a single play session.
         static int s_prevCineState = -1;
-        const int cineState = (!cine || mevrGalaxyHeld) ? 0 : mevrScreen ? (convoLike ? 4 : 5) : (renderCineInVr ? (convoLike ? 2 : 3) : 1);
+        const int cineState = ((!cine && !mevrScreen) || mevrGalaxyHeld) ? 0 :   // [MEVR] the front end's screen counts
+            mevrScreen ? (convoLike ? 4 : 5) : (renderCineInVr ? (convoLike ? 2 : 3) : 1);
         static const char* kNames[6] = { "none", "FLAT panel", "VR conversation", "VR cutscene",
             "3D conversation screen", "3D cutscene screen" };
         if (cineState != s_prevCineState)
@@ -1880,8 +1888,12 @@ void RunFrame() noexcept
         else if (s_sfrNeedsFreshPair && ME2VR::D3DCapture::SfrCaptureAgePresents() <= 1)
             s_sfrNeedsFreshPair = false;
     }
+    // [MEVR] research/56 "The sequels" (T18): the front end's 3D cinema screen needs no captured pair: ME3's title renders no
+    // scene (no CalcSceneView of the player's), so the stereo submit shows the live frame in both eyes on the screen
+    // (stereoSource false there: no disparity is made up) until a pair is captured.
+    const bool mevrFrontEndScreen = sfrMode && ME2VR::D3DCapture::GetMevrFrontEnd() == 2 && ME2VR::CalcViewHook::GetMevrCineScreen();
     const bool stereoSourceReady = sfrMode
-        ? (!s_sfrNeedsFreshPair && ME2VR::D3DCapture::GetSfrPass0Texture() != nullptr)
+        ? ((!s_sfrNeedsFreshPair && ME2VR::D3DCapture::GetSfrPass0Texture() != nullptr) || mevrFrontEndScreen)
         : (g_framesSinceSplit < kSbsHoldFrames);
     sbsFrame = stereoIntent && stereoSourceReady;
     // [MEVR] life-size stereo (research/30 section 9.5): a frame shown flat (a menu, a flat cinematic, a stalled capture, the

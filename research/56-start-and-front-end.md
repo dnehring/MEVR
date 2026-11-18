@@ -105,6 +105,61 @@ picture moved 20 px) and the screen stayed where it was in the room. Both eyes c
 scene (a planet from orbit) is all far away, so its 3D is that depth, not a near/far spread. The screen is the eye's shape (3.00 x
 3.11 m at 2.6 m), not 16:9. Not yet seen by a person in the headset.
 
+## The sequels (2026-11-18, lane FE, T18)
+
+The owner, testing ME2 in the headset (2026-11-17): "the menus are not reliably using our almost like theater viewer system, and
+the menus will just be at the floor ... This is for the starting and loading menus." The floor was fixed the same night
+(e580550c: ME2's flat panels through `plugin/WorldPanels` at head height). This section is the rest: ME1's front end above on ME2
+and ME3, one implementation.
+
+### Before (main d6740ebe, fake headset)
+
+Snapshots from launch through a load on each sequel (`%LOCALAPPDATA%\MEVR\fe\LE2-before-20261118-004640`,
+`LE3-before3-20261118-004952`; the snapshots' JSON in `%LOCALAPPDATA%\MEVR\snapshots`, tags `boot-before*`, `load-before*`):
+
+- **ME2** (`[VRSTATE]`, MELE2VR_Log.txt): the logos `gm 8 ... BINK -> FLAT menu panel`, the title `gm 7 live alive -> FLAT menu
+  panel` (the "PRESS ANY KEY" screen over a live 3D scene of a sun and wreckage, a world-locked panel 1.6 m away: never the 3D
+  screen), the load `gm -1 (eff 8 LOADMOVIE)` and its movie on the flat panel, then **`gm 6 live alive -> 3D screen (MEVR)` for
+  0.27 s** and `gm 0 -> VR`. Every ME2 load ends so (four in the logs since 2026-11-17: 0.27-0.30 s of mode 6 after the movie);
+  the screen's picture was black (snapshot `2026-11-18_00-48-00-855`), with the cinema's floor and horizon around it and two dips
+  from black (`transition fade: a cinematic's flat panel -> the 3D cinema screen`, then `the 3D cinema screen -> the world`). A
+  launch at 23:33 the evening before began `gm -1 live dead -> VR` for 0.2 s (ME1's "full view" start, short).
+- **ME3** (`[PRESENTATION] submit=`, ME3PassiveDxgiProbe.log): from the first frame to the level `CINEMATIC_MONO`, Halcyon's
+  flat cine panel (3.2 m wide, 2.2 m away), the title's "PRESS ANY KEY" over the Earth from orbit; a load from the title showed
+  the title until the level came, in VR. No flips, but no 3D screen either. The title is ME3's Movie mode (10) over a live scene
+  (older runs' `[CINEVR] FLAT panel (gm 10, gameplayCam 0, sceneAlive 1, fov 42)`, with blips of its GUI mode 9), which ME1's
+  rules would have taken for a movie.
+
+### What changed
+
+- **One implementation** (`plugin/PresentationHold`, rules `core/vr/PresentationHold`): the sequels call it through the common
+  seams `MevrSeams::FrontEndHold`, `FrontEndOnScreen`, `FrontEndBeforeTitle`, `HoldPlainVr` (research/trilogy-seams.md), with
+  their own mode numbers, mapped to ME1's rules by `engine/GameAdapter.hpp` (`Me1Mode`). LE1's renderer calls the same functions
+  by their LE1 names; its compiled code is unchanged (below).
+- **ME2** (`me2_xr.cpp`, `d3d_capture.cpp`, `[MEVR]`): `FrontEndHold(gmRaw)` each frame; while it holds, the title and its menus
+  (the GUI mode over a live scene) are ME1's 3D cinema screen (`mevrScreen`, head look parked, both SFR passes) and everything
+  else of the front end is the flat panel (`GetMenuMode` answers the published state first: also the start's unreadable mode,
+  which failed open to VR). Halcyon's own cinematic presentations stand down while the front end holds. `[VRSTATE]` marks it
+  `frontend`.
+- **ME2's load tail** (`MevrSeams::HoldLoadTail`, core `LoadTail`): a conversation or cinematic mode right after a movie is kept
+  as the movie (the flat panel) until it has lasted 0.5 s; gameplay first ends it unseen (`presentation: game mode 6 (a load's
+  tail) right after a movie was kept as the movie for 0.28 s, then mode 0: never shown as the 3D screen`); a real cutscene after
+  a movie keeps its first 0.5 s on the flat panel (ME1's `[DEADVETO]` lead-in is the same idea). `[VRSTATE]` says `LOADTAIL`.
+- **ME3** (`d3d_capture.cpp UpdatePresentationState`, `me2_xr.cpp`): the hold is decided first each Present with the raw mode
+  read (the sticky mode hides the unreadable ones). ME3's adapter: its Movie mode over a live scene is the front end's GUI (ME1's
+  7, the title), its Movie mode without a scene inside the front end ME1's unreadable mode (the boot's logos, or the load from
+  the menus). The flat part is a menu presentation of its own (`[PRESENTATION] MENU_MONO enter: front end`); the 3D screen's
+  part keeps the menu presentation off and its SFR submit does not wait for a captured pair (the live frame in both eyes on the
+  screen, `stereoSource` false, until one is captured).
+- **[Cinematics] frontEnd** is ME1's key and default (1) on every game; `0` keeps the front end on the flat panel.
+
+### LE1 unchanged
+
+The LE1-visible changes are declarations (`MevrSeams.h`), an inline class LE1 never calls (`LoadTail`) and sequel-only code
+(`#if !defined(MEVR_WITH_HALCYON)` in `plugin/PresentationHold.cpp`). LE1's mod (build-trilogy) is identical section for section
+to main's; the host's differences are the dirty-tree commit string (`d6740ebefc-dirty`, 16 characters, which no longer fits
+std::string's inline buffer: 16 bytes more code in one function and everything after it moved). [the clean comparison below]
+
 ## Left as it is
 
 - An in-game load (`gm 0 -> -1`) still shows its first 0.4 s as plain VR. That's the last frame of the old level, frozen

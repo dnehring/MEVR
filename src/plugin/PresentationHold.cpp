@@ -103,3 +103,81 @@ bool HoldPlainVr(bool plainVr, int gameMode, bool worldUi) noexcept {
 }
 
 } // namespace MELEVR::MevrBridge
+
+#if !defined(MEVR_WITH_HALCYON)
+// The sequels (T18, research/56 "The sequels"): the same holds and the same log through the common seams
+// (src/halcyon/MevrSeams.h), one implementation above for the three games. A renderer passes its game's own mode number;
+// the rules are written in ME1's, so the game's adapter (engine/GameAdapter.hpp) maps it: the gameplay family to ME1's 0..4
+// (ME3's Atlas and injured Shepard are on foot), the conversation, cinematic, GUI, movie and galaxy modes to 5..9, the
+// orbit and minigame to 10, anything else to -1 (unreadable). LE1's renderer calls the functions above by their LE1 names.
+#include "engine/GameAdapter.hpp"
+
+namespace {
+
+int Me1Mode(int gameMode) noexcept {
+    namespace ga = mevr::engine::adapter;
+    switch (ga::GameMode(gameMode)) {
+    case ga::Mode::OnFoot: case ga::Mode::Atlas: case ga::Mode::Injured: return 0;
+    case ga::Mode::Vehicle: return 1;
+    case ga::Mode::PowerWheel: return 2;
+    case ga::Mode::WeaponWheel: return 3;
+    case ga::Mode::Command: return 4;
+    case ga::Mode::Conversation: return 5;
+    case ga::Mode::Cinematic: return 6;
+    case ga::Mode::Gui: return 7;
+    case ga::Mode::Movie: return 8;
+    case ga::Mode::Galaxy: return 9;
+    case ga::Mode::Orbital: case ga::Mode::Minigame: return 10;
+    case ga::Mode::Unknown: break;
+    }
+    return -1;
+}
+
+mevr::vr::presentation::LoadTail gLoadTail;
+bool gLoadTailHeld = false;
+std::uint64_t gLoadTailSinceMs = 0;
+int gLoadTailMode = -1;
+constexpr unsigned kMaxTailLogs = 20;
+unsigned gTailLogs = 0;
+
+} // namespace
+
+namespace MevrSeams {
+
+bool FrontEndHold(int gameMode) noexcept {
+    return MELEVR::MevrBridge::FrontEndHold(Me1Mode(gameMode));
+}
+
+bool FrontEndOnScreen() noexcept {
+    return MELEVR::MevrBridge::FrontEndOnScreen();
+}
+
+bool FrontEndBeforeTitle() noexcept {
+    return MELEVR::MevrBridge::FrontEndBeforeTitle();
+}
+
+bool HoldPlainVr(bool plainVr, int gameMode, bool worldUi) noexcept {
+    return MELEVR::MevrBridge::HoldPlainVr(plainVr, Me1Mode(gameMode), worldUi);
+}
+
+bool HoldLoadTail(bool movie, int gameMode) noexcept {
+    int const me1 = Me1Mode(gameMode);
+    unsigned const coveredBefore = gLoadTail.Covered();
+    std::uint64_t const now = GetTickCount64();
+    bool const held = gLoadTail.Hold(movie, me1 == 5 || me1 == 6, now);
+    if (held && !gLoadTailHeld) {
+        gLoadTailSinceMs = now;
+        gLoadTailMode = gameMode;
+    } else if (!held && gLoadTailHeld && gTailLogs < kMaxTailLogs) {
+        ++gTailLogs;
+        mevr::log::Info("presentation: game mode {} ({}) right after a movie was kept as the movie for {:.2f} s, then mode {}: {}",
+            gLoadTailMode, gLoadTail.Covered() != coveredBefore ? "a load's tail" : "a cinematic",
+            static_cast<double>(now - gLoadTailSinceMs) / 1000.0, gameMode,
+            gLoadTail.Covered() != coveredBefore ? "never shown as the 3D screen" : "it lasted: the game's own, shown as it is");
+    }
+    gLoadTailHeld = held;
+    return held;
+}
+
+} // namespace MevrSeams
+#endif
