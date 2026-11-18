@@ -22,10 +22,19 @@ research/le3-galaxy.md "Travel, the opening and closing, the band" has the runs 
   openings). X closes 11 -> 0; a closing cinematic would be held 3 s (ME1's ClosingHold).
 - **The blue band was the projector's own lens flare**, uncovered when its hologram mesh is hidden: hidden with it now.
 - **The retention re-arms** when its 20 s for the map ran out at the console (the map opened without the room before).
+- **Recenter inside the map keeps the hold and the disc** (the held view and the app space move together); it went flat before.
+  The null headset's recenter moves nothing, so the disc's place after a real one is the headset's check.
+- **A reload with the map open** forgets the old room; ME3 loads the save into the map's mode, which the renderer then shows
+  flat (no on-foot view in the new world: ME1's rule); X goes to the room and A opens the projector map again.
+- **The opening's 2.5 s are a Kismet delay** (`biod_nor_203cic` `Main_Sequence.GalaxyMap.SeqAct_Delay_1`, Duration 2.50), not
+  loading: the map's level is loaded 0.06-0.11 s in and made visible as the delay ends. A journalled `Duration` write (ME1 cut
+  its `BioSeqAct_Delay_0` to 0.05 s) would shorten it: the owner's choice, not done.
+- ME3 autosaved once during these runs (on an X exit); the runner's restore put the save back.
 - Tools: `galaxy-steps.ps1` (the map's controls replayed, `steer` to a target), `mevr galaxy capture ship|flares`,
-  `make-walk-recording.py`'s `lt`, `rt`, `stick@DEG` and `+` combinations.
+  `make-walk-recording.py`'s `lt`, `rt`, `stick@DEG` and `+` combinations, the read-only opening probe's log line.
 
-Left on ME3: orbit (mode 12) and the probe (the late-game fixture has no scannable planet in reach; the code treats 12 as 11),
+Left on ME3: the system scan (a replayed LT started none: the trigger's route on the fake headset is open), orbit (mode 12) and the probe (the late-game fixture has no scannable planet in reach;
+the code treats 12 as 11), moving ME3's adapter onto GX2's shared `game/GalaxyProjectorFlow` (with these rules in it),
 the captures' post-process chain ("Remaining work" 1 below), the headset (alignment, legibility, comfort, GPU cost).
 
 ## 2026-11-17: ME3's projector flow, on ME1's shared code (lane GX)

@@ -7,6 +7,7 @@
 #include "game/Le3GalaxyProjector.hpp"
 #include "game/Le3GalaxyRetention.hpp"
 #include "game/ViewAnchor.hpp"
+#include "core/Ini.hpp"
 #include "core/Log.hpp"
 #include "core/vr/GalaxyMap.hpp"
 #include "core/vr/WorldViewHold.hpp"
@@ -33,6 +34,11 @@ ue3::FieldRef gWorldInfo{"Engine.Actor", "WorldInfo", ue3::kEveryGame};
 ue3::ClassRef gLensFlareClass{"Engine.LensFlareSource", ue3::kEveryGame};
 ue3::FieldRef gLastRenderTime{"Engine.Actor", "LastRenderTime", ue3::kEveryGame};
 ue3::FieldRef gTimeSeconds{"Engine.WorldInfo", "TimeSeconds", ue3::kEveryGame};
+ue3::ClassRef gInterpActionClass{"Engine.SeqAct_Interp", ue3::kEveryGame};
+ue3::FieldRef gInterpPosition{"Engine.SeqAct_Interp", "Position", ue3::kEveryGame};
+ue3::ClassRef gDelayClass{"Engine.SeqAct_Delay", ue3::kEveryGame};
+ue3::FieldRef gDelayDuration{"Engine.SeqAct_Delay", "Duration", ue3::kEveryGame};
+ue3::FieldRef gDelayRemaining{"Engine.SeqAct_Delay", "RemainingTime", ue3::kEveryGame};
 
 constexpr float kNearProjectorUU = 900.0f;  // ME1's "near the console": the room's retention is armed within this, on foot
 
@@ -92,6 +98,7 @@ enum class Bridge { None, Opening, Closing };
 Bridge bridge = Bridge::None;
 std::uint64_t bridgeFromMs = 0, bridgeUntilMs = 0;
 bool reservedOnFoot = false;  // the last tick published the on-foot reservation (at the armed projector)
+std::uint64_t heldEndMs = 0;  // when the view was last released: X closes 11 -> 0 -> 8 (0.66 s) -> 0 (run gx3b)
 constexpr std::uint64_t kOpeningMs = 6000, kClosingMs = 3000;
 std::uint32_t lastRecenters = 0;
 
@@ -192,6 +199,7 @@ void Stop(char const* why) {
     window.Pause();
     ShowProjector();
     if (holding || suspended) log::Info("LE3 galaxy projector: the view is the game's again ({})", why);
+    if (holding) heldEndMs = GetTickCount64();
     holding = suspended = false;
     reason = why;
 }
@@ -237,6 +245,71 @@ void MeasureDisc(ue3::Object* pc) {
             std::acos(std::clamp(std::fabs(d.normal[1]), 0.0f, 1.0f)) * 57.29578f, d.radiusM);
     }
     disc = d;
+}
+
+// ---- What the map's opening waits for (the owner's question, 2026-11-17; read only) ----
+// From the 0 -> 8 at the console to the map's mode: when the map's level (BioA_Nor_203aGalaxyMap) is loaded and visible, and
+// which of the Normandy's matinees (SeqAct_Interp: Position moves) and delays (SeqAct_Delay: RemainingTime moves) ran meanwhile.
+struct OpeningProbe {
+    bool on = false;
+    std::uint64_t fromMs = 0;
+    double loadedS = -1.0, visibleS = -1.0;
+    struct Op { Token token; bool delay = false; float start = 0.0f, last = 0.0f, duration = 0.0f; };
+    std::vector<Op> ops;
+} probe;
+
+void ProbeBegin(ue3::Object* pc, std::uint64_t now) {
+    probe = {};
+    probe.on = true;
+    probe.fromMs = now;
+    auto& r = ue3::runtime::Get();
+    for (int i = 0, n = r.ObjectCount(); i < n && probe.ops.size() < 4096; ++i) {
+        ue3::Object* const o = r.ObjectAt(i);
+        if (o == nullptr || !r.IsAlive(o)) continue;
+        bool const interp = gInterpActionClass.Get() && ue3::IsA(o, gInterpActionClass);
+        bool const delay = !interp && gDelayClass.Get() && ue3::IsA(o, gDelayClass);
+        if (!interp && !delay) continue;
+        std::string const path = r.PathName(o);
+        if (path.starts_with("Default__") || ini::Lower(path).find("_nor") == std::string::npos) continue;  // the Normandy's levels
+        OpeningProbe::Op op;
+        op.token = Token::Of(o);
+        op.delay = delay;
+        op.start = op.last = (delay ? gDelayRemaining : gInterpPosition).Read<float>(o).value_or(0.0f);
+        if (delay) op.duration = gDelayDuration.Read<float>(o).value_or(0.0f);
+        probe.ops.push_back(op);
+    }
+    (void)pc;
+}
+
+void ProbeTick(ue3::Object* pc, std::uint64_t now) {
+    if (!probe.on) return;
+    double const t = static_cast<double>(now - probe.fromMs) / 1000.0;
+    if (probe.loadedS < 0.0 && le3_galaxy_retention::MapLevelLoaded(pc)) probe.loadedS = t;
+    if (probe.visibleS < 0.0 && le3_galaxy_retention::MapLevelVisible(pc)) probe.visibleS = t;
+    for (auto& op : probe.ops) {
+        if (op.token.Alive()) op.last = (op.delay ? gDelayRemaining : gInterpPosition).Read<float>(op.token.object).value_or(op.last);
+    }
+}
+
+void ProbeEnd(ue3::Object* pc, std::uint64_t now, int modeNow) {
+    if (!probe.on) return;
+    ProbeTick(pc, now);
+    probe.on = false;
+    std::string ran;
+    int count = 0;
+    for (auto const& op : probe.ops) {
+        if (!op.token.Alive() || std::fabs(op.last - op.start) < 0.01f || count >= 8) continue;
+        ++count;
+        ran += std::format("{}{} {} ({} {:.2f} -> {:.2f}{})", ran.empty() ? "" : "; ", op.delay ? "delay" : "matinee",
+            ue3::runtime::Get().PathName(op.token.object), op.delay ? "remaining" : "position", op.start, op.last,
+            op.delay ? std::format(", duration {:.2f}", op.duration) : std::string());
+    }
+    log::Info("LE3 galaxy projector: the map's opening: game mode 8 for {:.2f} s (then {}); the map's level loaded at {}, visible at {}; "
+              "ran meanwhile ({} watched): {}",
+        static_cast<double>(now - probe.fromMs) / 1000.0, modeNow,
+        probe.loadedS < 0.0 ? std::string("never") : std::format("{:.2f} s", probe.loadedS),
+        probe.visibleS < 0.0 ? std::string("never") : std::format("{:.2f} s", probe.visibleS), probe.ops.size(),
+        ran.empty() ? std::string("no matinee or delay moved") : ran);
 }
 
 // The table's place in the room (the disc measured on foot) and the window's layout, for the held map and its reservations.
@@ -325,6 +398,10 @@ void Tick(Publish publish, std::optional<vr::floor::State> const& floor) {
         lastRecenters = floor->recenters;
     }
     int const modeNumber = mode ? static_cast<int>(*mode) : -1;
+    ProbeTick(pc, now);
+    if (modeNumber != lastMode && lastMode == 0 && modeNumber == 8 && le3_galaxy_retention::Armed() && NearProjector(pc)) ProbeBegin(pc, now);
+    if (modeNumber != lastMode && probe.on && modeNumber != 8) ProbeEnd(pc, now, modeNumber);
+    if (probe.on && now - probe.fromMs > 10000) ProbeEnd(pc, now, modeNumber);
     if (modeNumber != lastMode) {
         if (inside || le3_galaxy_retention::Armed()) {
             log::Info("LE3 galaxy projector: game mode {} -> {} ({}; the map's level {})", lastMode, modeNumber,
@@ -356,7 +433,7 @@ void Tick(Publish publish, std::optional<vr::floor::State> const& floor) {
             window.Pause();
             ShowProjector();
         } else if (!suspended && reservedOnFoot && le3_galaxy_retention::Armed() && le3_galaxy_retention::MapLevelRequested(pc)) {
-            bridge = Bridge::Opening;
+            bridge = now - heldEndMs < 2000 ? Bridge::Closing : Bridge::Opening;  // the closing's 8 comes after a brief 0
         }
         if (bridge != Bridge::None) {
             bridgeFromMs = now;

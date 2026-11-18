@@ -753,7 +753,10 @@ These unblock the most: almost every other entry gets smaller once they land.
   window is drawn only over world frames now), the opening's cinematic held at Shepard's (no flat or wrong-camera frame: 0
   unheld main views in five openings), ME1's interlude rule for the map's mode changes, the retention re-armed after 20 s,
   the blue band (the projector's own lens flare) hidden with the hologram (galaxy-projector-handoff.md "GX3").
-- **Left:** orbit (mode 12) and the probe on ME3 (no scannable planet in the fixture's reach), the captures' post-process
+  Second run: the relay movie alone in the eyes, recenter inside the map keeps the hold, a reload in the map falls back to the
+  flat native map until X (ME3 loads into the map's mode), the opening's 2.5 s measured as a Kismet delay (owner's choice).
+- **Left:** move ME3's adapter onto GX2's `game/GalaxyProjectorFlow` (these rules into it); ME3's system scan (a replayed LT
+  started none), orbit (mode 12) and the probe (no scannable planet in the fixture's reach), the captures' post-process
   chain, ME3's picks (the owner's question), the headset; step 5 on ME2 (its probes and mining: one launch per press);
   `vr::galaxy_map::ReadTableSettings` and one input lease for both sequels.
 - **Closes when:** the native map shows over the physical projector with the CIC in stereo around it, on each sequel;

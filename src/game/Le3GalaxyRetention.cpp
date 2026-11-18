@@ -163,6 +163,14 @@ bool CicArtVisible(ue3::Object* pc) {
     return level != nullptr && Object(level, "Engine.LevelStreaming", "LoadedLevel") != nullptr &&
         ReadBool(level, "Engine.LevelStreaming", "bIsVisible") == true;
 }
+bool MapLevelLoaded(ue3::Object* pc) {
+    auto* const level = LevelNamed(Object(pc, "Engine.Actor", "WorldInfo"), "bioa_nor_203agalaxymap");
+    return level != nullptr && Object(level, "Engine.LevelStreaming", "LoadedLevel") != nullptr;
+}
+bool MapLevelVisible(ue3::Object* pc) {
+    auto* const level = LevelNamed(Object(pc, "Engine.Actor", "WorldInfo"), "bioa_nor_203agalaxymap");
+    return level != nullptr && ReadBool(level, "Engine.LevelStreaming", "bIsVisible") == true;
+}
 bool MapLevelRequested(ue3::Object* pc) {
     auto* const level = LevelNamed(Object(pc, "Engine.Actor", "WorldInfo"), "bioa_nor_203agalaxymap");
     return level != nullptr && shouldLoad.ReadBool(level) == true;
@@ -226,6 +234,8 @@ std::string Arm(ue3::Object*, bool) { return "LE3 only"; }
 bool Active() { return false; }
 bool Kept() { return false; }
 bool MapLevelRequested(ue3::Object*) { return false; }
+bool MapLevelLoaded(ue3::Object*) { return false; }
+bool MapLevelVisible(ue3::Object*) { return false; }
 bool Shutdown(hook::Context&, bool) { return true; }
 std::string Command(ue3::Object*, std::string const&) { return "galaxy retention: LE3 only"; }
 }

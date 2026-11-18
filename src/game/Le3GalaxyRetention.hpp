@@ -21,6 +21,8 @@ bool Kept();
 // The galaxy map's own level (BioA_Nor_203aGalaxyMap) is requested by the native streaming: the console's use has begun the
 // map's opening (its cinematic before the map's mode). Game thread.
 bool MapLevelRequested(ue3::Object* controller);
+bool MapLevelLoaded(ue3::Object* controller);   // its LoadedLevel is there
+bool MapLevelVisible(ue3::Object* controller);  // and shown (bIsVisible)
 bool Shutdown(hook::Context& hooks, bool exiting);
 std::string Command(ue3::Object* controller, std::string const& action);
 }

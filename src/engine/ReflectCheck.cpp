@@ -3047,6 +3047,12 @@ void CheckLe3CaptureRig() {
     CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_aSelectableActors", SDK_FIELD(UBioCameraBehaviorGalaxy, m_aSelectableActors));
     CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_pCrossHairObject", SDK_FIELD(UBioCameraBehaviorGalaxy, m_pCrossHairObject));
     CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_pMapCurrentObject", SDK_FIELD(UBioCameraBehaviorGalaxy, m_pMapCurrentObject));
+    // What the map's opening waits for (game/Le3GalaxyCapture's opening probe, read only).
+    CheckClass<USeqAct_Interp>("Engine.SeqAct_Interp");
+    CheckField("Engine.SeqAct_Interp", "Position", SDK_FIELD(USeqAct_Interp, Position));
+    CheckClass<USeqAct_Delay>("Engine.SeqAct_Delay");
+    CheckField("Engine.SeqAct_Delay", "Duration", SDK_FIELD(USeqAct_Delay, Duration));
+    CheckField("Engine.SeqAct_Delay", "RemainingTime", SDK_FIELD(USeqAct_Delay, RemainingTime));
 }
 
 

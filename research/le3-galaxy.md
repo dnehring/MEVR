@@ -416,6 +416,31 @@ own flares hidden (from the main view through `PlayerController.HiddenActors`, t
 hologram now (`HideProjector`: the GalaxyMapProxy mesh, its emitters and its lens flare within 1.5 radii), and shown again with
 it (snapshot `19-08-42-048`: no band).
 
+**The second run** (session `20261117-201314-972-LE3-gx3b`, one launch; the opening probe and the closing label hot-reloaded):
+- *The relay's movie:* the window went down as the movie began (`galaxy window: down`, 20:17:50.2) and came back with the
+  arrival 9.2 s later, the movie alone in the eyes now.
+- *Recenter in the map* (the Back double tap replayed with the runtime's head): `[MEVR-RECENTER] yaw-only recenter`, then `a
+  recenter with the map open: the disc kept in the room's space`; the map stayed held on the projector (it went flat before:
+  the old rule dropped the hold on any recenter). The null headset's head is at the base space's origin, so this recenter moves
+  nothing: whether the disc stays on the projector after a real one is the headset's check.
+- *Reload with the map open* (`load.ps1`, the AutoSave): the world changed (`everything of the old room forgotten`, the
+  retention released); **ME3 loads the save into the map's mode** (game mode 11 in the new world, the map still at Utopia, the
+  system it showed before the load), so `load.ps1`'s acceptance, which waits for on-foot play, timed out. With no on-foot view
+  in the new world the map is the renderer's flat panel then (ME1's rule: a new world discards the saved room); X went to the
+  room, and the next A opened it on the projector again (three times).
+- *What the opening waits for* (the owner's question; the read-only opening probe, five openings): game mode 8 lasts 2.53-2.56 s;
+  `BioA_Nor_203aGalaxyMap` is loaded 0.06-0.11 s after the 8 begins and made visible at 2.50-2.52 s, right as
+  `biod_nor_203cic`'s `Main_Sequence.GalaxyMap.SeqAct_Delay_1` (Duration 2.50) runs out; the camera's flight is the matinee
+  `Main_Sequence.GalaxyMap.SeqAct_Interp_1`, playing alongside (position 0 -> 2.53). So the 2.5 s are a Kismet delay, not the
+  level's loading: the same kind as ME1's `BioSeqAct_Delay_0` (cut to 0.05 s there), and a journalled write of its `Duration`
+  would shorten it (the matinee cut short under the held view). Not done: the owner's choice.
+- *The closing:* X goes 11 -> 0 -> 8 (0.66 s) -> 0; that 8 is held at Shepard's view (now named the closing in the log).
+- *The system scan:* LT replayed for 0.3 s in the Anadius system started no scan (`m_fSystemScanCooldown` kept falling, -26 to
+  -49; `m_bCanDoSystemScan` true, alert 0). Open: whether the replayed left trigger reaches the map (the bridge's native-map input
+  lease passes the triggers only while the session is focused and tracked) or the scan wants a longer hold.
+- *Saves:* ME3 wrote `AutoSave.pcsav` once, during the X exits (20:25:49); the restore put the original back (hash checked).
+- The map's main views: every opening `N held at Shepard's, 0 from the map's camera (0 of them before the first held one)`.
+
 ## Native adapter reuse boundary
 
 ME1 `game/GalaxyMap` is a native camera/projector/table adapter for ME1. Its mode 9, Normandy
