@@ -2978,7 +2978,13 @@ void CheckLe2CaptureRig() {
     CheckField("Engine.SceneCaptureComponent", "MaxUpdateDist", SDK_FIELD(USceneCaptureComponent, MaxUpdateDist));
     CheckField("Engine.SceneCaptureComponent", "PostProcess", SDK_FIELD(USceneCaptureComponent, PostProcess));
     CheckField("Engine.SceneCaptureComponent", "FrameRate", SDK_FIELD(USceneCaptureComponent, FrameRate));
-    CheckField("Engine.SceneCapture2DComponent", "bUpdateMatrices", SDK_BOOL(USceneCapture2DComponent, bUpdateMatrices));
+    // The generated header documents 0x174 mask 1 (its generator read the game's reflection); the compiled struct places the
+    // bitfield four bytes late, as ME3's (CheckLe3CaptureRig). Compare with the documented offset, not the compiled one.
+    Guard("native-layout", "SceneCapture2DComponent.bUpdateMatrices", [&] {
+        auto const info = R().PropertyOf(R().FindClass("Engine.SceneCapture2DComponent"), "bUpdateMatrices");
+        Add("native-layout", "SceneCapture2DComponent.bUpdateMatrices", info && Matches(*info, info->offset, Sdk{0x174, 1, 4}), Ours(info),
+            "LE2 SDK header: +0x174 mask 1 (the compiled struct is 4 bytes late)");
+    });
     CheckField("Engine.Texture", "Resource", SDK_FIELD(UTexture, Resource));
     CheckField("Engine.TextureRenderTarget2D", "Format", SDK_FIELD(UTextureRenderTarget2D, Format));
     CheckField("Engine.PlayerController", "Player", SDK_FIELD(APlayerController, Player));
@@ -3045,6 +3051,10 @@ void CheckLe2CaptureRig() {
     CheckFunction("Engine.Actor.SetHidden");
     PARAM(AActor_execSetHidden_Parms, "Engine.Actor.SetHidden", bNewHidden);
     PARMS(AActor_execSetHidden_Parms, "Engine.Actor.SetHidden");
+    // `mevr galaxy exit` (the map's own close for a test).
+    CheckClass<UBioSFHandler_GalaxyMap>("SFXGame.BioSFHandler_GalaxyMap");
+    CheckFunction("SFXGame.BioSFHandler_GalaxyMap.CloseGalaxyMap");
+    CheckParmsSize("SFXGame.BioSFHandler_GalaxyMap.CloseGalaxyMap", 0);
     // `mevr galaxy place` (a test fixture: Shepard put at the CIC's console from another deck).
     CheckFunction("Engine.Controller.ClientSetLocation");
     PARAM(AController_execClientSetLocation_Parms, "Engine.Controller.ClientSetLocation", NewLocation);

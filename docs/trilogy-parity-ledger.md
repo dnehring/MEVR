@@ -53,7 +53,7 @@ rows the change touches.
 
 | game | shared | adapted | forked | missing | n/a | present and verified (V) | present, unverified (U) |
 |---|---|---|---|---|---|---|---|
-| LE2 | 14 | 51 | 2 | 21 | 5 | 52 | 15 |
+| LE2 | 14 | 52 | 1 | 21 | 5 | 53 | 14 |
 | LE3 | 14 | 52 | 2 | 18 | 7 | 33 | 35 |
 <!-- /parity:totals -->
 
@@ -73,13 +73,14 @@ These are ordered by wasted or blocked work. Each is detailed under [Forks](#for
    frame, view, recenter and controller-merge seams, the galaxy settings and the cinema screen once;
    `HalcyonLe2Bridge.cpp` and `HalcyonLe3Bridge.cpp` are each game's adapter, its `PlacePanel` and the eye-image seams.
    ME2 ran with a save; ME3 to its title.
-3. **The galaxy map has three designs** (Forks 3, G25).
-   - ME1: projector hologram and stereo window (`game/GalaxyMap`, `plugin/GalaxyHologram`).
-   - ME2: an opt-in flat table (`NativeTablePanel` via `PlaceGalaxyPanel`).
-   - ME3: since 2026-11-17 (lane GX) ME1's flow through the shared `game/GalaxyProjector` (`Le3GalaxyCapture` is its
-     adapter); still a copy of LE2's table placement and its own input lease.
-
-   `docs/galaxy-projector-handoff.md` "5. Apply the same shared flow to ME2" is the plan, still to do.
+3. **The galaxy map: one design, two flows left to join** (Forks 3, G25).
+   - ME1: projector hologram and stereo window (`game/GalaxyMap`, `plugin/GalaxyHologram`) on the shared
+     `game/GalaxyProjector`.
+   - ME2: since 2026-11-17 (lane GX2) ME1's flow through the sequels' `game/GalaxyProjectorFlow` (ME2's adapter
+     `game/Le2GalaxyCapture`); its opt-in flat table (`NativeTablePanel` via `PlaceGalaxyPanel`) retired.
+   - ME3: since 2026-11-17 (lane GX) ME1's flow through `game/GalaxyProjector` with its own copy of the flow in
+     `Le3GalaxyCapture`, which moves onto `GalaxyProjectorFlow` next; still a copy of LE2's table placement and its own input
+     lease.
 4. **The sequels have only the first of ME1's renderer performance work** (R02-R09, R13, R23, R24).
    - Since 2026-11-16 the render levers, the draw replay and the perf probe are **one module in all three hosts**
      (`plugin/RenderLevers`, `DrawReplay`, `PerfProbe`), each lever reading its addresses from the game's rows of
@@ -244,7 +245,7 @@ The [technique groups](#renderer-techniques-by-group) summary follows the table.
 | G22 | Omni-tool rail, wrist tap, gauntlet (`plugin/OmniToolRail`, `RailArt`, `game/OmniTool`, `game/GameArt`) | **adapted** V: run `20261114-234544-lane-d2-rail` (1a8d3b39). `GameArt` LE1-only (ME1's art cache, recoloured) | **adapted** V: rail shared, in ME3's Mission Computer colours (theme `me3`, never ME1's art); the gauntlet is ME3's own client effect (`RvrClientEffectManager.Start` of `OmniTool_LeftFull_VCFX_M`), seen on Shepard's forearm on Save 31 (lane OM, 2026-11-16); since lane FX3 (2026-11-17) the display the screens project from is the player's own live `OmniHand_Loop` (not a pooled, stopped or squadmate's one). `GameArt` stays LE1-only: ME3's frames and tabs are bitmap fills and its font library isn't a live object | LE3: research/le3-native-gui "The omni-tool on ME3". |
 | G23 | Game screens in the room and on the wrist; the UI-world figure (`game/WorldUi`, `plugin/WorldUi`, `game/UiWorldFigure`) | **adapted** V: `SetMovieVisibility`; runs `20261115-043419-wrist-visual` and the Save 4 pointer run (827cd3af). UiWorldFigure missing | **adapted** V: `setWorldUi` served (lane OM2, 2026-11-16, Save 31): the Mission Computer and map on the wrist, War Assets in the room toward the War Terminal, the squad record (3D Shepard) on the native panel; ME3's adapter reads the focused `SFXGUIMovie` and turns its UI world off (`SetRequiresUIWorld(false)`) while ours stand; ME3's `d3d_capture` stays out of MENU_MONO (`MevrSeams::WorldUiOwnsGui`). Shepard's view on foot held at render time behind them (ME1's hold, shared: `plugin/WorldUi` `HoldViewBegin`, `MevrSeams::WorldViewHoldBegin/End`; the head hidden, the body too for a room screen: `WorldViewHeld`; lane OM3, 2026-11-17). Lane FX3 (2026-11-17): a room change forgets the old room's movies without a call (every kept movie or panel checked for its class first, every game), a movie whose script asks for the UI world again is told again, the first state of an opening already holds the view (every game) and ME3's renderer keeps the last clean eyes while an opening is reserved (`MevrSeams::WorldUiHoldFrame`, LE1's guard), and the Atlas and injured Shepard hold no view on foot (`FootViewMode`); seen on Save 31 except the Atlas (a load with the Mission Computer up, the A/B of the first state's hold; ME1 same-pose unchanged). UiWorldFigure missing | LE3: research/le3-native-gui "The movie's mouse and the view behind a screen". |
 | G24 | Omni pad for the bypass minigame (`plugin/OmniPad`, `core/vr/OmniPad`) | **missing**: ME2's hack and bypass minigames are different games (docs/le2-validation-coverage.md "Hacking and bypass") | **n/a**: ME3 has no bypass minigame (game knowledge, not checked in its data) | — |
-| G25 | Galaxy map: hologram, stereo window, projector (`game/GalaxyMap`, `game/GalaxyProjector`, `plugin/GalaxyHologram`, `game/SceneCaptureRig`) | **forked** U: `HalcyonLe2Bridge::PlaceGalaxyPanel` + `vr::galaxy_map::NativeTablePanel`, opt-in `[Galaxy] nativeTable = 1`. The projector flow isn't on LE2 yet (its host compiles `plugin/GalaxyHologram` since 2026-11-17, unused: ME2's calcview hook doesn't call `MevrSeams::WorldViewHoldBegin`, its capture target and projector are unread) | **adapted** V: ME1's flow, one copy since 2026-11-17 (lane GX): `game/GalaxyProjector` (the held view, the render hold, ME1's `StepWindow` as `StereoWindow`) with ME3's adapter `game/Le3GalaxyCapture` (the measured projector, `Le3GalaxyRetention`'s lease for the map's length, modes 11/12, hiding the room's projector); the host's hold through `MevrSeams::WorldViewHoldBegin`, `GalaxyOwnsPresentation` in ME3's presentation decision, the window and the UI panel on the disc in `plugin/SequelOverlays`. Runs `20261117-174710-211-LE3-gx1`, `-175453-896-LE3-gx2` (AutoSave at the console): A opens the map with the CIC in stereo, the map a stereo disc on the projector, its Flash UI on the panel there, X back to the room. Captures without the post-process chain (any chain left them black). Not seen: picks, travel, orbit and scan, the headset | docs/galaxy-projector-handoff.md "2026-11-17" and steps 3-5; Forks 3. |
+| G25 | Galaxy map: hologram, stereo window, projector (`game/GalaxyMap`, `game/GalaxyProjector`, `plugin/GalaxyHologram`, `game/SceneCaptureRig`) | **adapted** V: ME1's flow on the sequels' one flow since 2026-11-17 (lane GX2): `game/GalaxyProjectorFlow` with ME2's adapter `game/Le2GalaxyCapture` (`BioA_Nor_110`; the projector and console have ME3's tag and mesh); ME2's renderer: `GetMenuMode` not flat in modes 9/10 while `GalaxyOwnsPresentation`, `WorldViewHoldBegin/End` in its calcview hook, the hides at the held eyes; the depth of field off near the projector (with it on the map's opening faulted the render thread, exe+0x98C25D); no pointer (the map's own controls: a GUI-event click on Exit did nothing); the opt-in flat table retired. Runs `20261117-192445-759-LE2-gx2` (`galaxy-full1`, `galaxy-final`, Save 36 read only): A opens the map with the CIC in stereo, the map a stereo disc on the projector, its UI on the panel there, X back to the room. Not seen: travel, orbit and scan, the headset | **adapted** V: ME1's flow, one copy since 2026-11-17 (lane GX): `game/GalaxyProjector` (the held view, the render hold, ME1's `StepWindow` as `StereoWindow`) with ME3's adapter `game/Le3GalaxyCapture` (the measured projector, `Le3GalaxyRetention`'s lease for the map's length, modes 11/12, hiding the room's projector); the host's hold through `MevrSeams::WorldViewHoldBegin`, `GalaxyOwnsPresentation` in ME3's presentation decision, the window and the UI panel on the disc in `plugin/SequelOverlays`. Runs `20261117-174710-211-LE3-gx1`, `-175453-896-LE3-gx2` (AutoSave at the console): A opens the map with the CIC in stereo, the map a stereo disc on the projector, its Flash UI on the panel there, X back to the room. Captures without the post-process chain (any chain left them black). Not seen: picks, travel, orbit and scan, the headset; its adapter moves onto `game/GalaxyProjectorFlow` | docs/galaxy-projector-handoff.md "2026-11-17" and steps 3-5; Forks 3. |
 | G26 | Game pointer and GUI events (`plugin/GamePointer`, `game/GuiCursor`, `core/vr/GuiEvents`) | **adapted** V: the Save 4 pointer run, 2026-11-15 (research/le2-menus.md "Game screens and pointer") | **adapted** V: pointer on the native GUI quad; `takeGuiEvents` served on LE3 (`WithMenus`): a replayed ray click on the Mission Computer's Squad went in as `SFXGameModeGUI.GuiKey(31)` and opened the squad record, no SendInput (lane OM, Save 31, 2026-11-16). On a world screen (wrist or room) the pointer's moves, clicks and wheel go to the focused movie through `SFXGUIMovie.SendMouseEvent` (GuiKey's mouse is dropped in the pad mode): a ray and a fingertip opened the Journal from the Mission Computer, War Assets' entries respond (lane OM3, Save 31, 2026-11-17) | LE3: research/le3-native-gui "The movie's mouse and the view behind a screen". |
 | G27 | Interaction: selection by gaze, label at the object (`engine/SelectionGaze`, `game/Interact`, `HudPieceLayers::Interaction`) | **adapted** V: gaze at `0xAC0530` (ME3's void(this) search); a band per game (`hp::DefaultLabelCrop` `Me2`), on by default; Save 4: the door selected ahead, nothing at 60 degrees, its label (research/40 section 6, lane HU) | **adapted** V: gaze at `0xA9BF90`; run `20261115-190610-153` (A opens War Assets); band `Me3`; Save 31: War Terminal 1.35 m, the label at the console, nothing at 70 degrees (research/40 section 6) | Both: A's use after a gaze pick in the same run, a long name, combat targets, the headset. |
 | G28 | HUD pieces: wrist status, gun panel (`game/HudPieces`, `plugin/HudPieceLayers`) | **adapted** V: `Layout::Me2` crops; run `20261115-002101-lane-b4-m2b` (f71e7a71); ammo mount 2a108759 | **missing**: `setHudPieces` not served (`#if !defined(MEVR_WITH_HALCYON_LE3)` in ModLoader.cpp); `game/HudPieces` stands down by name on ME3 (no fall-back to ME1's placement) | LE3: docs/me3-overall-goal-handoff.md L3-4 "native wrist crop". |
@@ -627,9 +628,9 @@ defined in the tool's header:
 <!-- parity:summary -->
 | game | renderer | host plugin files | host core files | services served | src/game + src/engine modules by status | common seams called | own seams |
 |---|---|---|---|---|---|---|---|
-| LE1 | halcyon-le1 | 73 | 71 | 58 | run 68, out 4, ungated 25, unbuilt 4 | 22 of 43 | 89 |
-| LE2 | halcyon-le2 | 69 | 57 | 50 | run 45, ready 10, out 19, ungated 21, unreferenced 2, unbuilt 4 | 36 of 43 | 4 |
-| LE3 | halcyon-le3 | 72 | 58 | 55 | run 47, ready 10, out 16, ungated 23, unreferenced 2, unbuilt 3 | 41 of 43 | 2 |
+| LE1 | halcyon-le1 | 73 | 71 | 58 | run 68, out 4, ungated 25, unreferenced 3, unbuilt 4 | 22 of 43 | 89 |
+| LE2 | halcyon-le2 | 69 | 57 | 52 | run 48, ready 10, out 18, ungated 22, unreferenced 2, unbuilt 4 | 40 of 43 | 4 |
+| LE3 | halcyon-le3 | 72 | 58 | 55 | run 47, ready 10, out 16, ungated 24, unreferenced 4, unbuilt 3 | 41 of 43 | 2 |
 <!-- /parity:summary -->
 
 ### Host plugin files per game
@@ -732,6 +733,7 @@ defined in the tool's header:
 - LE1: also `engine/CodeDump`, `game/GamepadMapping`, `ue3/Pattern`, `ue3/SafeNames`
 - LE2: also `engine/CodeDump`, `game/GamepadMapping`, `ue3/Pattern`, `ue3/SafeNames`
 - LE3: also `engine/CodeDump`, `game/GamepadMapping`, `ue3/Pattern`, `ue3/SafeNames`
+- LE2 mod extras: `core/Json`
 - LE3 mod extras: `core/Json`, `game/Le3Gui`
 <!-- /parity:hosts -->
 
@@ -769,7 +771,7 @@ In all three hosts (55): `Exe`, `ExeCheck`, `Hook`, `Hotkey`, `Ini`, `Json`, `Lo
 Helpers applied, in order:
 
 - LE1: `BaseServices`, `WithCrashBreadcrumbs`, `WithRenderer`, `WithVignette`, `WithSights`, `WithPadMerge`, `WithHudPieces`, `WithFloorLock`, `WithVoice`, `WithPowerWheel`, `WithLe1Modules`, `WithGameMenuRequest`, `WithScopeCapture`, `WithInteractLabel`, `WithMakoControls`, `WithSpectator`, `WithGalaxyMap`, `WithGalaxyHologram`, `WithWorldUi`, `WithLe1ExtraUi`
-- LE2: `BaseServices`, `WithCrashBreadcrumbs`, `WithRenderer`, `WithVignette`, `WithSights`, `WithPadMerge`, `WithHudPieces`, `WithFloorLock`, `WithVoice`, `WithPowerWheel`, `WithTraversal`, `WithMenus`
+- LE2: `BaseServices`, `WithCrashBreadcrumbs`, `WithRenderer`, `WithVignette`, `WithSights`, `WithPadMerge`, `WithHudPieces`, `WithFloorLock`, `WithVoice`, `WithPowerWheel`, `WithTraversal`, `WithGalaxyHologram`, `WithMenus`
 - LE3: `BaseServices`, `WithCrashBreadcrumbs`, `WithGalaxyHologram`, `WithRenderer`, `WithVignette`, `WithSights`, `WithPadMerge`, `WithHudPieces`, `WithFloorLock`, `WithTraversal`, `WithVoice`, `WithPowerWheel`, `WithMenus`
 
 | HostServices field | LE1 | LE2 | LE3 |
@@ -798,7 +800,7 @@ Helpers applied, in order:
 | `setAimRay` | WithRenderer | WithRenderer | WithRenderer |
 | `setConversationWorld` | WithLe1ExtraUi | - | - |
 | `setFloorLockSample` | WithFloorLock | WithFloorLock | WithFloorLock |
-| `setGalaxyHologram` | WithGalaxyHologram | - | WithGalaxyHologram |
+| `setGalaxyHologram` | WithGalaxyHologram | WithGalaxyHologram | WithGalaxyHologram |
 | `setGalaxyMap` | WithGalaxyMap | - | - |
 | `setGameMenuOffers` | - | WithMenus | WithMenus |
 | `setHandAim` | WithRenderer | WithRenderer | WithRenderer |
@@ -826,7 +828,7 @@ Helpers applied, in order:
 | `sightView` | WithSights | WithSights | WithSights |
 | `statusWanted` | WithRenderer | WithRenderer | WithRenderer |
 | `supportGripHeld` | WithPadMerge | WithPadMerge | WithPadMerge |
-| `takeGalaxyPick` | WithGalaxyHologram | - | WithGalaxyHologram |
+| `takeGalaxyPick` | WithGalaxyHologram | WithGalaxyHologram | WithGalaxyHologram |
 | `takeGameMenuRequest` | WithGameMenuRequest | WithMenus | WithMenus |
 | `takeGameUiRequest` | WithWorldUi | WithMenus | WithMenus |
 | `takeGuiEvents` | WithLe1ExtraUi | WithMenus | WithMenus |
@@ -877,14 +879,16 @@ Helpers applied, in order:
 | `game/CockpitProbe` | run | out | out |
 | `game/CombatStance` | run | out | out |
 | `game/Comfort` | run | run | run |
-| `game/ConsoleRequest` | run | run (part) | run (part) |
+| `game/ConsoleRequest` | run | run | run (part) |
 | `game/ConversationFlow` | run | ready | ready |
 | `game/ConversationWorld` | run | ready | ready |
+| `game/DepthOfFieldHold` | unreferenced | ungated | ungated |
 | `game/Fingers` | ungated | ungated | ungated |
 | `game/FocusPause` | run | out | out |
 | `game/GalaxyDump` | run | ready | ready |
 | `game/GalaxyMap` | run | ready | ready |
 | `game/GalaxyProjector` | ungated | ungated | ungated |
+| `game/GalaxyProjectorFlow` | unreferenced | run | unreferenced |
 | `game/GameArt` | run | out | out |
 | `game/GameMenuRequest` | run | run (ME1-only handles) | run (ME1-only handles) |
 | `game/GamepadBridge` | ungated | ungated | ungated |
@@ -901,6 +905,7 @@ Helpers applied, in order:
 | `game/HudPieces` | ungated | run | ungated |
 | `game/Interact` | run | run | run |
 | `game/InventoryProbe` | run | unreferenced | unreferenced |
+| `game/Le2GalaxyCapture` | unreferenced | run | unreferenced |
 | `game/Le2Traversal` | out | run | out |
 | `game/Le3GalaxyCapture` | out | out | run |
 | `game/Le3GalaxyRetention` | out | out | run |
@@ -917,7 +922,7 @@ Helpers applied, in order:
 | `game/PowerWheel` | run | run (ME1-only handles) | run (ME1-only handles) |
 | `game/Reflections` | run | run | run |
 | `game/Reload` | ungated | run | run |
-| `game/SceneCaptureRig` | run | out | run |
+| `game/SceneCaptureRig` | run | run | run |
 | `game/ScopeCapture` | run | out | out |
 | `game/ScopeParts` | run | run | run |
 | `game/ScreenReticle` | run | run | run |
@@ -959,7 +964,7 @@ The common vocabulary (`namespace MevrSeams`, `src/halcyon/MevrSeams.h`): `yes` 
 | `CopyIntoImage` | - | yes | yes |
 | `EyeImageSize` | - | yes | yes |
 | `FloorViewTranslation` | yes | yes | yes |
-| `GalaxyOwnsPresentation` | - | - | yes |
+| `GalaxyOwnsPresentation` | - | yes | yes |
 | `HudPanelDraw` | - | yes | yes |
 | `KeyDown` | yes | yes | yes |
 | `LifeSizeStereo` | - | yes | yes |
@@ -991,9 +996,9 @@ The common vocabulary (`namespace MevrSeams`, `src/halcyon/MevrSeams.h`): `yes` 
 | `TransitionFadeLayer` | yes | yes | yes |
 | `WorldUiHoldFrame` | - | - | yes |
 | `WorldUiOwnsGui` | - | yes | yes |
-| `WorldViewHeld` | - | - | yes |
-| `WorldViewHoldBegin` | - | - | yes |
-| `WorldViewHoldEnd` | - | - | yes |
+| `WorldViewHeld` | - | yes | yes |
+| `WorldViewHoldBegin` | - | yes | yes |
+| `WorldViewHoldEnd` | - | yes | yes |
 | `WrapSessionFunctions` | yes | yes | yes |
 | `XrRuntimeIsSteamVr` | - | yes | yes |
 

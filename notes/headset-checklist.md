@@ -887,8 +887,10 @@ stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs 
   `BioP_N7Mine`): finish an assignment, choose to stay on the planet, then open our menu on foot: Leave is there next to Game menu
   and Holster and asks "return to the Normandy?" as B did. Elsewhere (a hub, the Normandy, in combat, in a conversation) it is
   not on the bar. Known: during an unfinished assignment it shows but the game's script answers nothing (plot state 4849).
-- [ ] Galaxy map (T42; docs/le2-m6-implementation-guide.md G): table or projector alignment, labels in both eyes, seated
-  reach, scanning comfort.
+- [ ] Galaxy projector (T42; docs/galaxy-projector-handoff.md "2026-11-17: ME2's", lane GX2): at the CIC's console press A:
+  the map opens as a disc lying on the projector (the CIC around it in stereo, no flat screen), the system's name and the
+  Exit prompt on the same disc; look around and lean; the map's depth, legibility, comfort, GPU cost (two captures). The map's
+  own controls (the stick, A, Y probes, LB/RB tabs), X back to the room. Not yet: travel, orbit and the scan through it.
 - [ ] A streamed Quest (T10): full rate after a load, with no runtime setting changed.
 
 ### ME3

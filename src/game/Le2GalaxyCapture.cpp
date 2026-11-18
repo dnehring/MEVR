@@ -2,25 +2,21 @@
 // ME2's galaxy map over the CIC's projector: ME2's adapter of the sequels' flow (game/Le2GalaxyCapture.hpp).
 #include "game/Le2GalaxyCapture.hpp"
 
+#if defined(MEVR_GAME_LE2)  // ME2's adapter only (ME1 and ME3 compile nothing of it)
 #include "game/GalaxyProjectorFlow.hpp"
-
-#if defined(MEVR_GAME_LE2)
 #include "core/WriteJournal.hpp"
 #include "game/Player.hpp"
 #include "ue3/Handles.hpp"
 #include "ue3/Params.hpp"
 #include "ue3/Runtime.hpp"
 
-#include <format>
-
 #include <algorithm>
 #include <cctype>
+#include <format>
 #include <sstream>
-#endif
 
 namespace mevr::game::le2_galaxy_capture {
 
-#if defined(MEVR_GAME_LE2)
 namespace {
 
 ue3::FieldRef gWorldInfo{"Engine.Actor", "WorldInfo", ue3::kEveryGame};
@@ -30,6 +26,25 @@ ue3::FieldRef gLoadedLevel{"Engine.LevelStreaming", "LoadedLevel", ue3::kEveryGa
 ue3::FieldRef gIsVisible{"Engine.LevelStreaming", "bIsVisible", ue3::kEveryGame};
 
 ue3::FunctionRef gClientSetLocation{"Engine.Controller.ClientSetLocation", ue3::kEveryGame};
+ue3::ClassRef gGalaxyHandler{"SFXGame.BioSFHandler_GalaxyMap", ue3::kEveryGame};
+ue3::FunctionRef gCloseGalaxyMap{"SFXGame.BioSFHandler_GalaxyMap.CloseGalaxyMap", ue3::kEveryGame};
+
+// `mevr galaxy exit`: the map's own close (BioSFHandler_GalaxyMap.CloseGalaxyMap, what its Exit button does) on every live
+// handler: a test's way out of the map, as the pad's B is the player's (a replayed B reaches the map's movie only with the game
+// window in front).
+std::string Exit() {
+    ue3::Function* const f = gCloseGalaxyMap.Get();
+    if (f == nullptr || gGalaxyHandler.Get() == nullptr) return "mevr galaxy exit: BioSFHandler_GalaxyMap.CloseGalaxyMap not found";
+    ue3::Reflection& r = ue3::runtime::Get();
+    int called = 0;
+    for (int i = 0, n = r.ObjectCount(); i < n; ++i) {
+        ue3::Object* const o = r.ObjectAt(i);
+        if (o == nullptr || !r.IsAlive(o) || !ue3::IsA(o, gGalaxyHandler) || r.NameText(o).starts_with("Default__")) continue;
+        ue3::Params p(r, f);
+        if (p.Valid() && ue3::runtime::Call(o, f, p)) ++called;
+    }
+    return std::format("mevr galaxy exit: CloseGalaxyMap called on {} handler(s)", called);
+}
 
 constexpr char kCicArt[] = "bioa_nor_110";  // the CIC's art level (its GalaxyMapProxy projector)
 
@@ -77,6 +92,7 @@ void TryStartup() {
     galaxy_projector::flow::Adapter adapter;
     adapter.name = "LE2 galaxy projector";
     adapter.roomVisible = &CicArtVisible;
+    adapter.depthOfFieldOff = true;  // the map's entry with ME2's depth of field on faulted the rendering thread (2026-11-17)
     galaxy_projector::flow::TryStartup(adapter);
 }
 
@@ -102,6 +118,9 @@ std::string Command(ue3::Object* pc, std::string const& line) {
     if (sub == "capture") {
         return galaxy_projector::flow::Command(pc, option);
     }
+    if (sub == "exit") {
+        return Exit();
+    }
     if (sub == "place") {
         std::istringstream rest(line);
         std::string skip;
@@ -112,17 +131,8 @@ std::string Command(ue3::Object* pc, std::string const& line) {
         return "mevr galaxy: " + galaxy_projector::flow::StatusJson() + " cic art visible " + (CicArtVisible(pc) ? "1" : "0") +
             ", game mode " + std::to_string(static_cast<int>(player::GameMode(pc).value_or(255)));
     }
-    return "usage: mevr galaxy state | projector | capture on|on-post|on-default|on-ui|off|state | place X Y Z yawDeg";
+    return "usage: mevr galaxy state | projector | capture on|on-post|on-default|on-ui|hold-only|off|state | place X Y Z yawDeg | exit";
 }
 
-#else
-
-void TryStartup() {}
-void Tick(Publish, std::optional<vr::floor::State> const&) {}
-void Shutdown(bool) {}
-std::string StatusJson() { return "{}"; }
-std::string Command(ue3::Object*, std::string const&) { return "galaxy: LE2 only"; }
-
-#endif
-
 } // namespace mevr::game::le2_galaxy_capture
+#endif

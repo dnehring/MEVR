@@ -77,9 +77,10 @@ Facts const& Get() noexcept {
         false,  // invalidViewAtOnce: an invalid view waits for the floor lock's quiet like any other
         true,   // panelColour
         static_cast<int>(vr::hud_pieces::Layout::Me2),  // ME2's own HUD: its bands (core/vr/HudPieces)
-        // galaxyUiPointer: the map's UI on the projector takes the game pointer's ray and trigger as ME2's game screens do (the
-        // GUI events through the mod, GetCursorPos answered), in the galaxy's mode only (orbit keeps the scanner's triggers).
-        2,
+        // galaxyUiPointer: none, as ME3's. ME2's map keeps its own controls (the stick moves the Normandy, A selects, X exits, Y
+        // buys probes, LB/RB the tabs): a ray click on the map's Exit prompt through the game screens' GUI events
+        // (SFXGameModeGalaxy.GuiKey) changed nothing (run galaxy-final-201028, research/le2-galaxy-table.md "The projector flow").
+        0,
     };
     return facts;
 }

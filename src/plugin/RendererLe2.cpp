@@ -47,7 +47,8 @@ Caps const& Capabilities() noexcept {
         c.hostCineScreen = true;
         c.perfSeams = true;          // MevrSeams' Perf* group and the wait/begin frame slots
         c.recenterTilt = true;       // ME1's tilt-correcting recenter (RecenterAppSpace)
-        c.galaxyWindow = true;       // the galaxy map over the CIC's projector: WorldViewHoldBegin, GalaxyOwnsPresentation
+        c.galaxyWindow = true;       // the galaxy map over the CIC's projector: the sequels' seams MevrSeams::WorldViewHoldBegin
+                                     // (calcview_hook.cpp) and GalaxyOwnsPresentation (d3d_capture.cpp's GetMenuMode)
         c.hudPanelGameplay = true;
         c.hudPieces = true;
         c.worldUi = true;            // WorldUiOwnsGui

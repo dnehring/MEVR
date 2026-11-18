@@ -74,7 +74,9 @@
 #include "game/Interact.hpp"
 #include "game/Le3GalaxyRetention.hpp"
 #include "game/Le3GalaxyCapture.hpp"
+#if defined(MEVR_GAME_LE2)
 #include "game/Le2GalaxyCapture.hpp"
+#endif
 #include "game/Mako.hpp"
 #include "game/Holsters.hpp"
 #include "game/CockpitProbe.hpp"
@@ -1995,7 +1997,9 @@ MEVR_MOD_API void MevrModShutdown() {
     // The host has already detached the present callback, so the render thread is out.
     vr::output::Shutdown();
     game::le3_galaxy_capture::Shutdown(exiting);
+#if defined(MEVR_GAME_LE2)
     game::le2_galaxy_capture::Shutdown(exiting);
+#endif
     if (gInit) removed(game::le3_galaxy_retention::Shutdown(*gInit, exiting), "the CIC streaming hook couldn't be removed");
     if (gInit && gHooked) {
         removed(engine::process_event::Uninstall(*gInit), "the ProcessEvent hook couldn't be removed");

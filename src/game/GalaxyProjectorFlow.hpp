@@ -31,6 +31,10 @@ struct Adapter {
     std::string (*armRetention)(ue3::Object* pc) = nullptr;
     bool (*retentionArmed)() = nullptr;
     bool (*retentionActive)() = nullptr;
+    // The engine's depth of field off near the projector (on foot, 3 s into gameplay, never during a load) and back away from
+    // it (game/DepthOfFieldHold): ME2's map entry with it on faulted the rendering thread in the first held frame
+    // (MassEffect2.exe+0x98C25D, gotchas/me2-scale-set-during-load's signature; research/le2-galaxy-table.md).
+    bool depthOfFieldOff = false;
 };
 
 // The Camera.UpdateCamera post-handler (before the ProcessEvent hook goes in). The adapter is copied.

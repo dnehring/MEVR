@@ -657,6 +657,8 @@ set(MEVR_MOD_SOURCES
     src/game/Le3GalaxyCapture.hpp
     src/game/GalaxyProjectorFlow.cpp
     src/game/GalaxyProjectorFlow.hpp
+    src/game/DepthOfFieldHold.cpp
+    src/game/DepthOfFieldHold.hpp
     src/game/Le2GalaxyCapture.cpp
     src/game/Le2GalaxyCapture.hpp
     src/game/Spectator.hpp

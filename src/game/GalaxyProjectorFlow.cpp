@@ -11,6 +11,7 @@
 #include "engine/GameAdapter.hpp"
 #include "engine/ProcessEvent.hpp"
 #include "engine/XrToUnreal.hpp"
+#include "game/DepthOfFieldHold.hpp"
 #include "game/GalaxyProjector.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/Player.hpp"
@@ -64,6 +65,7 @@ constexpr char kProjectorTag[] = "GalaxyMapProxy";
 constexpr char kProjectorMesh[] = "BIOA_GalaxyMap_S.GalaxyMapProxy";
 constexpr char kUseTag[] = "placu_galaxyMap";
 constexpr float kNearProjectorUU = 900.0f;  // ME1's "near the console": the room's retention is armed within this, on foot
+constexpr std::uint64_t kSettledOnFootMs = 3000;  // a `scale set` only this long into gameplay (gotchas/me2-scale-set-during-load)
 
 struct Token {
     ue3::Object* object = nullptr;
@@ -201,6 +203,7 @@ bool handlerOn = false;
 bool off = false;           // `mevr galaxy capture off`
 bool postProcess = false;   // the captures without a post-process chain (ME3: any chain left them black; ME2 the same default)
 int chainChoice = 0;        // 0 the player's chain, 1 Engine.DefaultPostProcess, 2 DefaultUIScenePostProcess (diagnostics)
+bool holdOnly = false;      // `mevr galaxy capture hold-only`: the view held and the UI panel on the disc, no captures (a diagnostic)
 bool holding = false;
 bool published = false;
 std::vector<Token> hidden;  // the room's own projector hologram, hidden while the window lies on it
@@ -209,6 +212,8 @@ std::string armRefused;
 std::string reason = "idle";
 std::string lastMeasure = "not measured";
 unsigned frames = 0, openings = 0;
+std::uint64_t onFootSinceMs = 0;
+depth_of_field::Hold dof{"galaxy projector"};
 
 bool RetentionNeeded() {
     return adapter.armRetention != nullptr && adapter.retentionArmed != nullptr && adapter.retentionActive != nullptr;
@@ -285,6 +290,7 @@ void ObserveRoom(ue3::Object* pc) {
     disc = {};
     holding = false;
     lastProbeMs = 0;
+    onFootSinceMs = 0;
 }
 
 void MeasureDisc(ue3::Object* pc) {
@@ -406,6 +412,16 @@ void Tick(Publish publish, std::optional<vr::floor::State> const& floor) {
         lastProbeMs = now;
         MeasureDisc(pc);
     }
+    // The depth of field off near the projector before the map opens, back away from it (the adapter's; on foot and settled only).
+    onFootSinceMs = !onFoot ? 0 : onFootSinceMs != 0 ? onFootSinceMs : now;
+    if (adapter.depthOfFieldOff && onFoot && now - onFootSinceMs >= kSettledOnFootMs) {
+        bool const atConsole = enabled && disc.valid && NearProjector(pc);
+        if (atConsole) {
+            dof.Off("near the CIC's projector: the map's opening with it on faults this game's rendering thread");
+        } else {
+            dof.Back("away from the projector");
+        }
+    }
     bool const epoch = floor && floor->valid && disc.valid && floor->sessions == disc.sessions && floor->recenters == disc.recenters;
     // Near the projector the room's art is kept through the map's opening where the game would unload it (the adapter's).
     if (RetentionNeeded() && enabled && onFoot && epoch && NearProjector(pc) && !adapter.retentionArmed()) {
@@ -461,7 +477,8 @@ void Tick(Publish publish, std::optional<vr::floor::State> const& floor) {
     bool const fresh = mapPov.valid && now - mapPov.ms < 500 && mapPov.fovDeg > 1.0f && mapPov.fovDeg < 179.0f;
     HWND const gameWindow = GameWindow();
     RECT client{};
-    if (fresh && gameWindow != nullptr && GetClientRect(gameWindow, &client) && client.right >= 64 && client.bottom >= 64) {
+    if (!holdOnly && fresh && gameWindow != nullptr && GetClientRect(gameWindow, &client) && client.right >= 64 &&
+        client.bottom >= 64) {
         window.Step(mapPov, MapCentre(pc), client.right, client.bottom, look, scene);
     } else {
         window.Pause();
@@ -476,6 +493,7 @@ void Shutdown(bool exiting) {
     if (!exiting) {
         Unpublish();
         ShowProjector();
+        dof.Back("the mod unloads");
     }
     window.Shutdown(exiting);
     publishScene = nullptr;
@@ -508,6 +526,8 @@ std::string StatusJson() {
     out["retentionArmed"] = RetentionNeeded() ? adapter.retentionArmed() : false;
     out["retentionActive"] = RetentionNeeded() ? adapter.retentionActive() : false;
     out["off"] = off;
+    out["holdOnly"] = holdOnly;
+    out["depthOfFieldOff"] = dof.IsOff();
     return json::Write(out, 0);
 }
 
@@ -515,13 +535,18 @@ std::string Command(ue3::Object* /*pc*/, std::string const& action) {
     if (action == "off") {
         off = true;
         Stop("command-off");
+    } else if (action == "hold-only") {
+        off = false;
+        holdOnly = true;
+        window.Reset("the captures are off (hold-only)");
     } else if (action == "on" || action == "on-raw" || action == "on-post" || action == "on-default" || action == "on-ui") {
         off = false;
+        holdOnly = false;
         postProcess = action == "on-post" || action == "on-default" || action == "on-ui";  // diagnostics of the post path
         chainChoice = action == "on-default" ? 1 : action == "on-ui" ? 2 : 0;
         window.Reset("the capture's options changed");
     } else if (action != "state" && !action.empty()) {
-        return "usage: mevr galaxy capture on|on-post|on-default|on-ui|off|state";
+        return "usage: mevr galaxy capture on|on-post|on-default|on-ui|hold-only|off|state";
     }
     return "galaxy capture: " + StatusJson();
 }
