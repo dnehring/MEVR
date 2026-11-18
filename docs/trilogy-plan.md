@@ -766,8 +766,9 @@ These unblock the most: almost every other entry gets smaller once they land.
   loaded nor requested: no projector, the flat panel until X); the opening's first cinematic frames held by a cue the host reads
   (built, not yet seen); ME2's map buttons found to be GUI events; `mevr galaxy capture tab-left|tab-right|opening-keep|
   opening-cut` (galaxy-projector-handoff.md "GX4").
-- **Built 2026-11-18 (lane GXR); in the game: ME2's system view (a planet picked, the Normandy flown there on the map's stick,
-  selected, A) and ME3's system and cluster views (a station picked into its orbit view; a system flown into from the cluster
+- **Built 2026-11-18 (lane GXR); in the game: ME2's system and galaxy views (a planet and the relay picked, the Normandy flown
+  there on the map's stick, selected, A; a cluster picked in the galaxy view, the map's cursor put on it, the relay jump) and
+  ME3's system and cluster views (a station picked into its orbit view; a system flown into from the cluster
   view; ME3's A is the map's own `SelectGalaxyItem`, not a GUI event):** the right controller's ray picks on both sequels' maps (ME1's
   way), the stick stays the game's: `core/vr/GalaxyRay` (unit-tested) and `game/GalaxyRay` (one module for ME2 and ME3, called by
   the flow): the map's selectable objects projected through the map camera, the nearest to the ray's point on the map's panel
@@ -776,8 +777,9 @@ These unblock the most: almost every other entry gets smaller once they land.
   and its fuel stay the game's) and A on arrival; in ME2's orbit the ray aims the scanner's reticle where it meets the planet
   (`SFXGameModeOrbital.ReticleRot`), the game's LT and RT scan and probe there. `[Galaxy] rayPick`, `rayScan`; `mevr galaxy ray
   ...` (galaxy-projector-handoff.md "2026-11-18"). The PC map's own mouse mode was read offline: it ignores the mouse in the pad
-  mode, which is why the earlier pointer clicks did nothing. Left: the galaxy view's cursor pick and the orbit's scanner on ME2
-  (the fixture reopened in the planet view), ME3's galaxy view (galaxy-projector-handoff.md "2026-11-18").
+  mode, which is why the earlier pointer clicks did nothing. Left: ME2's orbit scanner by ray (the planet view's "Start Scanning"
+  wasn't reached by script: GUI A and `HandleSelectPlanet` didn't start it), ME3's galaxy view (galaxy-projector-handoff.md
+  "2026-11-18").
 - **Left:** ME2's travel and arrival through the flow (a relay jump: `tab-right`, then `mevr guikey 12`), ME2's console that
   stopped opening the map in a relaunch (open, not the flow), the opening cue seen on both; ME3's system scan (a replayed LT
   started none), orbit (mode 12) and the probe (no scannable planet in the fixture's reach), the captures' post-process chain,

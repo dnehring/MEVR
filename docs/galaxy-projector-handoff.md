@@ -78,9 +78,17 @@ module, no per-game copy:
   2: four systems); there a ray pick flew the Normandy into the system `598865` and the game entered it (state 3) on its way.
   The flight aims at the object brought to the ship's height (the cluster's systems stand above or below the ship's plane: aimed
   at their own place on the screen the ship stopped short of being selected), and ends when the map moves on to another level.
-- **Next:** a fixture in the galaxy view (a save on another system, or `tab-right` from a system view to the relay, then A) for
-  the cursor pick; a scannable planet for the orbit (`mevr galaxy ray orbit` prints the reticle's rotator, clamps, owner and the
-  frame check); ME3's pick (its A as GUI event 15 is unverified; where its cursor is the Normandy the same flight applies).
+- **ME2, second stretch (`%LOCALAPPDATA%\MEVR\sessions\*-LE2-gxr-me2b`, Save 36 again, 02:10-02:25): the whole way by ray.**
+  In Omega's system the ray picked the mass relay (`SkeletalMeshActorMAT_0`): the Normandy flew there (1.5 s), the game selected
+  it, A: the galaxy view (state 1, the cursor `InterpActor_17`, 20 clusters on the screen). A ray pick on the cluster `191609`:
+  the map's cursor put on it, selected by the game 31 ms later, A: the relay jump into that cluster's relay system (state 3). There
+  a ray pick on the planet `327298_2` (Mizraim) flew the ship there (3.4 s), selected, A: its planet view with "Start Scanning".
+- **The orbit's scanner is not reached by script:** in ME2's planet view (state 4) neither the map's GUI A (`GuiKey` 12/33) nor
+  the camera's own `HandleSelectPlanet` (returned false) starts the scan (mode 10), and a replayed pad A doesn't reach ME2's map
+  movie without the game window in front. So the ray's aim of the reticle (`StepScan`; `mevr galaxy ray orbit`) is still unrun.
+  Next: find what "Start Scanning" calls (a call trace filtered to the galaxy handler's functions only: the broad trace drowns in
+  the HUD's per-frame calls), or the player's A in the headset; then the frame check's log line says whether the reticle's
+  frame is its owner's.
 
 ## 2026-11-17 (night): one flow for both sequels, the opening's wait cut (lane GX4)
 

@@ -562,6 +562,15 @@ std::string Command(Frame const& f, std::string const& args) {
     words >> verb >> option;
     if (verb == "mouse") return Mouse(option != "off");
     if (verb == "a") return std::format("galaxy ray: the map's A {}", SendA(kButtonA, "A") ? "sent" : "not sent");
+    if (verb == "select-planet") {
+        // `mevr galaxy ray select-planet`: the map camera's own HandleSelectPlanet (what the planet view's button does; a test's
+        // way into ME2's orbit where the GUI's A doesn't press "Start Scanning").
+        ue3::Reflection& r = ue3::runtime::Get();
+        ue3::Function* const fn = f.camera != nullptr ? r.FindFunction(r.ClassOf(f.camera), "HandleSelectPlanet") : nullptr;
+        ue3::Params p(r, fn);
+        bool const called = fn != nullptr && p.Valid() && ue3::runtime::Call(f.camera, fn, p);
+        return std::format("galaxy ray: HandleSelectPlanet called {}, returned {}", called, p.ReturnBool().value_or(false));
+    }
     if (verb == "steer-sign") {
         float y = 1.0f;
         words >> y;
