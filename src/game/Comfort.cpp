@@ -193,8 +193,8 @@ ue3::Object* CameraMode(ue3::Object* controller) {
 }
 
 // The camera modes where the player's own turn applies: view level's, and ME3's action cameras (a roll, a melee, a hit:
-// the owner, 2026-11-18, the snap turn stays the player's through them).
-bool TurnCameraAllows(std::string const& name) {
+// the owner, 2026-11-18, the snap turn stays the player's through them). Inlined: ME1 compiles view level's test alone.
+__forceinline bool TurnCameraAllows(std::string const& name) {
     if constexpr (engine::adapter::kActionCameras) {
         if (vr::IsActionCamera(name)) {
             return true;
