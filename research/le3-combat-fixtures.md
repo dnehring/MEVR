@@ -291,6 +291,33 @@ What the fixture showed at once (all fixed in the same landing, and seen after t
   `-190.8 ... final eye 1.7526 m` through the roll (the eye at the player's height, the correction taking the camera's dip), no
   `traversal move began`, and view level holding through it. Not seen yet: a melee's, a hit reaction's or a cover entry's camera.
 
+### The omni-blade with the gun put away, and the body hidden in a roll (lane AU8, 2026-11-18)
+
+The owner's answers of 2026-11-18 (docs/trilogy-plan.md "Answered 2026-11-18, later"). Session
+`%LOCALAPPDATA%\MEVR\sessions\20261118-155608-952-LE3-au8-me3` (restore: 0 differences).
+- **The class's heavy melee plays with no weapon in hand.** `TryHeavyMelee` returns at once without one (its first test is
+  `Pawn.Weapon`); with one it starts the pawn's custom action 58 through `BioPlayerController.StartCustomActionWithSyncPartner`
+  (out of cover, not storming, not aiming back). `game/Melee`'s ME3 adapter now starts action 58 itself for the right fist with
+  the weapon away (`DispatchFist`; the admission `Refusal` lets the right hand through with no weapon, every other check kept;
+  Mod.cpp's hand availability counts the fist, grip and trigger held with nothing else, as released controls on ME3,
+  `melee::FistAway`). Seen: after `mevr weapon away` (the put-down, `SetCurrentWeapon(None)`), `mevr melee punch` ->
+  `StartCustomActionWithSyncPartner(58)` returned true and the observed action was `SFXCustomAction_SoldierPunch` (the
+  Soldier's own heavy melee, the heavy family); the omni-blade drawn on Shepard's forearm (snapshot `16-07-19-890`); with a
+  trooper 0.6 m ahead (14 degrees) its `MeleeImpact` gave `SFXPawn_Trooper_0` `TakeDamage` through `ImpactWithPower` and the
+  trooper was gone from `mevr cover pawns` after. A second punch at once was refused by the game's own admission while the
+  first action ran ("movement ignored"); the shared cooldown (`[Throwables] meleeCooldownS`) is Strike's for every route.
+  **The camera was the game's third-person melee camera during it** (`SFXCameraMode_Melee`: the snapshot shows Shepard's back):
+  the renderer's first-person states cover Explore, Combat and TightAim only. Not this lane's to change; the action cameras'
+  first person (the owner's answer for rolls and melees) is open. The console's diagnostics need the game window in front
+  (`ActionForeground`); a replayed fist stroke reached nothing on the fake headset (no `melee:` line; why is open).
+- **The body hidden in a roll** (`[Hands] rollHidesBody`, 1 by default): the renderer's first-person hides take
+  `MevrSeams::HideBodyForAction` (`vr::HidesBodyForAction`: `SFXCameraMode_Roll` or a blend into or out of it): the body and
+  head, and the gun in hand (Pawn.Weapon's Mesh, owner-no-see), which a first snapshot mid-roll showed floating 2 m ahead with
+  the body gone. Seen with AU2's replayed forward A under `slomo 0.15`: `roll: Shepard's body hidden from the eyes
+  (SFXCameraMode_Interpolate, from SFXCameraMode_Combat to SFXCameraMode_Roll)`, then `shown again (SFXCameraMode_Combat)` when
+  the camera came back; mid-roll the view level with no body and no rifle; the holstered pistol still shows (a small piece about
+  2 m ahead, on the rolling hip: not Pawn.Weapon).
+
 ## Every ME3 save on the machine, by level (lane WP, 2026-11-16)
 
 Looking for a save that loads on a mission with a weapon in hand (for the holsters' put-away, research/le2-vrik.md "ME3's
