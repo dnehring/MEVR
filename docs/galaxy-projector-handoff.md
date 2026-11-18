@@ -42,6 +42,14 @@ window and the retention end, the projector shows again. Snapshots: the session 
   below: 0x3D2D60/0x3D1F80 choose 0x36DA30, 0x36DAC0 or 0x36D760 by the family's +0x48, the effect's final flag and the
   upscale test at 0x3B1EC0; the finish 0x3534B0 draws scene color into the target unless the view's +0x4B4 is set).
 
+**ME1 unchanged** (the same-pose check, fake headset, sessions `2026-11-17_18-22-02-gx-mine2` and
+`2026-11-17_18-25-42-gx-base2`, main 1b1b702c against this change: `open BIOA_NOR00`, Shepard put at the CIC's console,
+`mevr galaxy use`, `exitGalaxyMap`): every layer's pose, `hostView`, `galaxyHologram` and `gamePointer` equal; on foot and after
+the exit both eyes and the HUD pixel for pixel; with the map open the eyes within 0.12 of 255 on average (no pixel over 8),
+the HUD 0.13% of pixels, the window's captures 4% (the map's opening still moving); `mevr-galaxy-preview`'s twelve PNGs byte
+for byte. Saves unchanged in all sessions. (`open BIOA_NOR10`, which tools/launch-game.ps1 names, opens nothing: NOR00 is
+the Normandy's persistent level.)
+
 **ME3's map is flown, not picked.** Its system map moves the Normandy with the left stick (or mouse deltas:
 `PC_GalaxyMouseMovement`/`Strafe`), A travels or buys fuel, LT scans, X exits. With the panel as the pointer's surface the
 movie took the pointer's mouse (`GalaxyMap.SendMouseEvent(6)` at the answered cursor) and the trigger clicked, but a click
