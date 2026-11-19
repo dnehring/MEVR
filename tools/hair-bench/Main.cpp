@@ -5,6 +5,9 @@
 //   mevr-hair-bench --clip <name.mevrclip.json> --skeleton <mesh.tsv> [--fps 72] [--seconds 8] [--hold 2]
 //                   [--stiffness 0.06,0.15] [--damping 0.1,0.2] [--inertia 1,0.6] [--bend 50] [--gravity 0]
 //                   [--rates 30,72,120] [--csv out.csv]
+//   mevr-hair-bench --jiggle 1 --clip ... --skeleton ... [--intensity 0.5,1] [--rates 30,60,120] [--trace out.csv]
+//                   soft-tissue jiggle (core/ik/Jiggle) on stand-in bones instead: per bone the offset's range per axis,
+//                   the peak, the settle after the clip stops, clamp hits, the RMS difference between frame rates
 //
 // The body walks the clip's loop for --seconds (travel included: the root moves forward at the clip's own pace), then stands
 // still in its last pose for --hold seconds. Per parameter set: the strands' mean and peak swing while walking, the time to
@@ -16,6 +19,7 @@
 #include "core/ik/Clip.hpp"
 #include "core/ik/HairChain.hpp"
 #include "core/ik/HandContact.hpp"
+#include "core/ik/Jiggle.hpp"
 #include "core/ik/Rigid.hpp"
 
 #include <algorithm>
@@ -180,6 +184,177 @@ Run Simulate(Skeleton const& sk, ik::clip::Clip const& clip, hair::Settings cons
     return run;
 }
 
+// ---- Jiggle (research/trilogy-jiggle.md): stand-in bones on the body, springs over the clip --------------------------
+
+namespace jiggle = mevr::ik::jiggle;
+
+// A stand-in jiggle bone: its parent, its pivot at rest in component space (game units), the frame's turn from the body's
+// axes (a glute's depth axis points backward: 180 degrees about up), which settings.
+struct StandIn {
+    char const* name;
+    char const* parent;
+    ik::Vec3 pivotRest;
+    double yawDeg;
+    bool glute;
+};
+constexpr StandIn kStandIns[] = {
+    {"BreastLeft", "Chest2", {4.0, -9.0, 129.0}, 0.0, false},
+    {"BreastRight", "Chest2", {4.0, 9.0, 129.0}, 0.0, false},
+    {"GluteLeft", "Pelvis", {-7.0, -8.0, 88.0}, 180.0, true},
+    {"GluteRight", "Pelvis", {-7.0, 8.0, 88.0}, 180.0, true},
+};
+
+struct JiggleRun {
+    // Per stand-in: the shown offset's range per axis (cm) while the clip plays, its peak (cm), the time to settle within 5%
+    // of that peak after the clip stops (s), clamp hits, the vertical offset per step (the rate check), the whole trace.
+    std::vector<ik::Vec3> lo, hi;
+    std::vector<double> peak, settle;
+    std::vector<int> clampHits;
+    std::vector<std::vector<double>> vertical;
+    std::vector<std::vector<ik::Vec3>> trace;
+};
+
+JiggleRun SimulateJiggle(Skeleton const& sk, ik::clip::Clip const& clip, double intensity, double fps, double seconds, double hold) {
+    std::map<std::string, int> index;
+    for (std::size_t i = 0; i < sk.names.size(); ++i) {
+        index[sk.names[i]] = static_cast<int>(i);
+    }
+    std::vector<int> mapped;
+    for (std::string const& b : clip.bones) {
+        mapped.push_back(index.count(b) ? index[b] : -1);
+    }
+    int const root = index.count("Root") ? index["Root"] : -1;
+    double const pace = clip.LoopSeconds() > 0 ? clip.TravelPerLoop() / clip.LoopSeconds() : 0.0;
+    // Rest: each stand-in's pivot in its parent's frame, and the frame's turn relative to the parent's rest rotation.
+    std::vector<ik::Transform> rest(sk.names.size());
+    for (std::size_t i = 0; i < sk.names.size(); ++i) {
+        int const p = sk.parents[i];
+        rest[i] = p >= 0 ? ik::Compose(sk.rest[i], rest[static_cast<std::size_t>(p)]) : sk.rest[i];
+    }
+    std::size_t const n = std::size(kStandIns);
+    std::vector<int> parent(n);
+    std::vector<ik::Vec3> pivotLocal(n);
+    std::vector<ik::Quat> align(n);
+    std::vector<jiggle::State> states(n);
+    std::vector<jiggle::Settings> settings(n);
+    for (std::size_t j = 0; j < n; ++j) {
+        parent[j] = index.at(kStandIns[j].parent);
+        ik::Transform const& pr = rest[static_cast<std::size_t>(parent[j])];
+        pivotLocal[j] = ik::Rotate(ik::Conjugate(pr.rotation), (kStandIns[j].pivotRest - pr.translation) * 0.01);
+        double const half = kStandIns[j].yawDeg * 3.14159265358979323846 / 360.0;
+        align[j] = ik::Conjugate(pr.rotation) * ik::Quat{0.0, 0.0, std::sin(half), std::cos(half)};
+        settings[j] = kStandIns[j].glute ? jiggle::Glute() : jiggle::Breast();
+        settings[j].intensity = intensity;
+    }
+    JiggleRun run;
+    run.lo.assign(n, {1e9, 1e9, 1e9});
+    run.hi.assign(n, {-1e9, -1e9, -1e9});
+    run.peak.assign(n, 0.0);
+    run.settle.assign(n, 0.0);
+    run.clampHits.assign(n, 0);
+    run.vertical.assign(n, {});
+    run.trace.assign(n, {});
+    double const dt = 1.0 / fps;
+    int const steps = static_cast<int>(std::lround((seconds + hold) * fps));
+    std::vector<ik::Transform> local, world(sk.names.size());
+    std::vector<double> lastBig(n, 0.0);
+    for (int k = 0; k <= steps; ++k) {
+        double const t = k * dt;
+        double const walkT = std::min(t, seconds);
+        ik::clip::Sample const sample = ik::clip::At(clip, walkT);
+        local = sk.rest;
+        for (std::size_t m = 0; m < mapped.size(); ++m) {
+            if (mapped[m] >= 0) {
+                local[static_cast<std::size_t>(mapped[m])].rotation = sample.locals[m];
+            }
+        }
+        for (std::size_t i = 0; i < sk.names.size(); ++i) {
+            int const p = sk.parents[i];
+            world[i] = p >= 0 ? ik::Compose(local[i], world[static_cast<std::size_t>(p)]) : local[i];
+            if (static_cast<int>(i) == root) {
+                world[i].translation = {sample.root.x + pace * walkT, world[i].translation.y + sample.root.y, sample.root.z};
+                local[i] = p >= 0 ? ik::Relative(world[i], world[static_cast<std::size_t>(p)]) : world[i];
+            }
+        }
+        for (std::size_t j = 0; j < n; ++j) {
+            ik::Transform const& pw = world[static_cast<std::size_t>(parent[j])];
+            jiggle::Input in;
+            in.frame.rotation = ik::Normalize(pw.rotation * align[j]);
+            in.frame.translation = pw.translation * 0.01 + ik::Rotate(pw.rotation, pivotLocal[j]);
+            in.dt = k == 0 ? 0.0 : dt;
+            jiggle::Output const out = jiggle::Step(states[j], settings[j], in);
+            ik::Vec3 const cm = out.shown * 100.0;
+            run.trace[j].push_back(cm);
+            run.vertical[j].push_back(cm.z);
+            if (t <= seconds) {
+                run.lo[j] = {std::min(run.lo[j].x, cm.x), std::min(run.lo[j].y, cm.y), std::min(run.lo[j].z, cm.z)};
+                run.hi[j] = {std::max(run.hi[j].x, cm.x), std::max(run.hi[j].y, cm.y), std::max(run.hi[j].z, cm.z)};
+            }
+            double const mag = ik::Length(cm);
+            run.peak[j] = std::max(run.peak[j], mag);
+            if (t > seconds && mag > 0.05 * run.peak[j]) {
+                lastBig[j] = t;
+            }
+        }
+    }
+    for (std::size_t j = 0; j < n; ++j) {
+        run.settle[j] = lastBig[j] > 0 ? lastBig[j] - seconds : 0.0;
+        run.clampHits[j] = states[j].clampHits;
+    }
+    return run;
+}
+
+int JiggleReport(Skeleton const& sk, ik::clip::Clip const& clip, std::map<std::string, std::string>& a) {
+    double const fps = std::stod(a["--fps"]), seconds = std::stod(a["--seconds"]), hold = std::stod(a["--hold"]);
+    std::vector<double> const rates = List(a["--rates"]);
+    for (double intensity : List(a["--intensity"])) {
+        JiggleRun const r = SimulateJiggle(sk, clip, intensity, fps, seconds, hold);
+        std::vector<JiggleRun> others;
+        for (double rate : rates) {
+            others.push_back(SimulateJiggle(sk, clip, intensity, rate, seconds, hold));
+        }
+        std::printf("intensity %.2f, %.0f Hz:\n%12s | %8s %8s %8s | %7s %8s %7s %9s\n", intensity, fps, "bone", "depth cm", "side cm",
+                    "up cm", "peak cm", "settle s", "clamps", "rate rms%");
+        for (std::size_t j = 0; j < std::size(kStandIns); ++j) {
+            // Frame rates: the vertical offset at common tenths of a second, RMS against the first rate, in % of its peak.
+            double rms = -1;
+            if (others.size() >= 2) {
+                double sum = 0, peakRef = 1e-9;
+                int count = 0;
+                for (int tenth = 0; tenth <= static_cast<int>((seconds + hold) * 10); ++tenth) {
+                    std::size_t const i0 = static_cast<std::size_t>(std::lround(tenth / 10.0 * rates[0]));
+                    if (i0 >= others[0].vertical[j].size()) {
+                        continue;
+                    }
+                    peakRef = std::max(peakRef, std::abs(others[0].vertical[j][i0]));
+                    for (std::size_t o = 1; o < others.size(); ++o) {
+                        std::size_t const io = static_cast<std::size_t>(std::lround(tenth / 10.0 * rates[o]));
+                        if (io < others[o].vertical[j].size()) {
+                            double const d = others[o].vertical[j][io] - others[0].vertical[j][i0];
+                            sum += d * d;
+                            ++count;
+                        }
+                    }
+                }
+                rms = count ? std::sqrt(sum / count) / peakRef * 100 : -1;
+            }
+            std::printf("%12s | %8.2f %8.2f %8.2f | %7.2f %8.2f %7d %9.1f\n", kStandIns[j].name, r.hi[j].x - r.lo[j].x,
+                        r.hi[j].y - r.lo[j].y, r.hi[j].z - r.lo[j].z, r.peak[j], r.settle[j], r.clampHits[j], rms);
+        }
+        if (a.count("--trace")) {
+            std::ofstream out(a["--trace"]);
+            out << "t,bone,depth,side,up\n";
+            for (std::size_t j = 0; j < std::size(kStandIns); ++j) {
+                for (std::size_t k = 0; k < r.trace[j].size(); ++k) {
+                    out << k / fps << ',' << kStandIns[j].name << ',' << r.trace[j][k].x << ',' << r.trace[j][k].y << ','
+                        << r.trace[j][k].z << '\n';
+                }
+            }
+        }
+    }
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -206,6 +381,13 @@ int main(int argc, char** argv) {
     if (!clip) {
         std::fprintf(stderr, "%s: %s\n", a["--clip"].c_str(), error.c_str());
         return 1;
+    }
+    if (a.count("--jiggle")) {
+        if (!a.count("--intensity")) {
+            a["--intensity"] = "0.5";
+        }
+        std::printf("%s: jiggle on stand-in bones (breasts on Chest2, glutes on Pelvis); loop %.2f s\n", clip->name.c_str(), clip->LoopSeconds());
+        return JiggleReport(sk, *clip, a);
     }
     std::vector<hair::Chain> const chains = hair::Discover(sk.names, sk.parents);
     std::printf("%s on %zu bones, %zu hair chains; loop %.2f s, %.2f m/s\n", clip->name.c_str(), sk.names.size(), chains.size(),

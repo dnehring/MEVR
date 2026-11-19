@@ -365,6 +365,8 @@ set(MEVR_MOD_SOURCES
     src/core/ik/Clip.hpp
     src/core/ik/HairChain.cpp
     src/core/ik/HairChain.hpp
+    src/core/ik/Jiggle.cpp
+    src/core/ik/Jiggle.hpp
     src/core/ik/Melee.cpp
     src/core/ik/GunKick.cpp
     src/core/ik/GunKick.hpp
@@ -1553,6 +1555,7 @@ if (MEVR_BUILD_TESTS)
         tests/HandContactTests.cpp
         tests/ClipTests.cpp
     tests/HairChainTests.cpp
+    tests/JiggleTests.cpp
         tests/GameMenuBackOutTests.cpp
         tests/GameMenuLeaveTests.cpp
         tests/TraversalPresentationTests.cpp
@@ -1588,6 +1591,7 @@ if (MEVR_BUILD_TESTS)
         src/core/ik/HandContact.cpp
         src/core/ik/Clip.cpp
         src/core/ik/HairChain.cpp
+        src/core/ik/Jiggle.cpp
         src/core/ik/Melee.cpp
     src/core/ik/GunKick.cpp
         src/core/ik/Ik.cpp
@@ -2093,6 +2097,7 @@ if (MEVR_BUILD_TESTS)
         src/core/ik/TwoHand.cpp
         src/core/ik/Ik.cpp
         src/core/ik/BoneNames.cpp
+        src/core/ik/Jiggle.cpp
     )
     target_include_directories(mevr-hair-bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
     target_compile_definitions(mevr-hair-bench PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
