@@ -7,13 +7,13 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## Unreleased
 
+- **Your squad moves only when you place it.** A squeeze of the left grip no longer sends the squad somewhere (it did on
+  every game when nothing else took the squeeze, and on ME2 it kept happening in fights): place them with the right hand's
+  B arc, or by voice.
 - **Crouching behind low cover protects you, seated players too.** In all three games, while Shepard is crouched (by your
   own crouch, or by the left stick click, the way seated players crouch), the cover rule judges from Shepard's crouched head
   instead of your real eyes: behind a low wall you count as in cover even when your real eyes stay above it. Standing,
   nothing changes.
-- **Your squad moves only when you place it.** A squeeze of the left grip no longer sends the squad somewhere (it did on
-  every game when nothing else took the squeeze, and on ME2 it kept happening in fights): place them with the right hand's
-  B arc, or by voice.
 - **Vaulting works from where you stand** (Mass Effect 2). The game lets Shepard vault only from about half a metre in
   front of the obstacle, facing it squarely, so a double A at a barrier often did nothing. Now a double A within about
   1.5 m of something you can vault, roughly facing it, walks Shepard up to it and vaults; push your own stick to stop him.
