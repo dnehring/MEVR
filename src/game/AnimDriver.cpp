@@ -2,7 +2,10 @@
 #include "game/AnimDriver.hpp"
 
 #include "core/Log.hpp"
+#include "core/Json.hpp"
 #include "core/WriteJournal.hpp"
+#include "core/ik/Clip.hpp"
+#include "engine/ClipPose.hpp"
 #include "engine/XrToUnreal.hpp"
 #include "game/Player.hpp"
 #include "ue3/Handles.hpp"
@@ -15,6 +18,9 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <memory>
 #include <format>
 #include <optional>
 #include <sstream>
@@ -75,6 +81,7 @@ struct Driven {
     int direction = 1;
     bool paused = false;
     int turns = 0;
+    std::shared_ptr<ik::clip::Clip const> clip;  // a generated clip played by engine/ClipPose (no node, no animation sets)
 };
 std::optional<Driven> gDriven;
 ue3::Object const* gWorld = nullptr;
@@ -220,6 +227,9 @@ void PutBack(char const* why) {
     }
     Driven& d = *gDriven;
     ue3::Reflection& r = ue3::runtime::Get();
+    if (d.clip != nullptr) {
+        engine::clip_pose::Stop();
+    }
     if (d.node != nullptr && r.IsAlive(d.node)) {
         CallNode(gStopAnim, d.node, nullptr, nullptr);
     }
@@ -353,6 +363,91 @@ std::string Play(std::istringstream& words) {
         d.walkMS > 0.0 ? std::format(", walking {:.2f} m/s back and forth over {:.1f} m", d.walkMS, d.rangeM) : std::string());
 }
 
+// The clip files: tools/motion/ardy-clip.py writes <motion>/<name>/<name>.mevrclip.json (MEVR_MOTION_DIR, else
+// %LOCALAPPDATA%\MEVR\motion); a path to a .mevrclip.json works too.
+std::filesystem::path ClipFile(std::string const& name) {
+    std::filesystem::path const direct(name);
+    if (direct.extension() == ".json" && std::filesystem::exists(direct)) {
+        return direct;
+    }
+    char buffer[MAX_PATH] = {};
+    std::filesystem::path root;
+    if (GetEnvironmentVariableA("MEVR_MOTION_DIR", buffer, MAX_PATH) > 0) {
+        root = buffer;
+    } else if (GetEnvironmentVariableA("LOCALAPPDATA", buffer, MAX_PATH) > 0) {
+        root = std::filesystem::path(buffer) / "MEVR" / "motion";
+    }
+    return root / name / (name + ".mevrclip.json");
+}
+
+std::string PlayClip(std::istringstream& words) {
+    std::string who, name, walkText;
+    double rate = 1.0, range = 3.0;
+    words >> who >> name;
+    if (!(words >> rate)) {
+        rate = 1.0;
+    }
+    words >> walkText;
+    if (!(words >> range)) {
+        range = 3.0;
+    }
+    if (who.empty() || name.empty()) {
+        return "mevr anim clip <who> <clip name or .mevrclip.json> [rate] [walk m/s | auto] [range m]";
+    }
+    ue3::Object* const world = PlayerWorld();
+    if (world == nullptr) {
+        return "no player in a world";
+    }
+    PutBack("a new play");
+    std::filesystem::path const file = ClipFile(name);
+    std::ifstream in(file, std::ios::binary);
+    if (!in) {
+        return "no clip file " + file.string() + " (tools/motion/ardy-clip.py retarget writes it)";
+    }
+    std::string const text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    std::string error;
+    std::optional<json::Value> const parsed = json::Parse(text, &error);
+    std::optional<ik::clip::Clip> loaded = parsed ? ik::clip::Load(*parsed, &error) : std::nullopt;
+    if (!loaded) {
+        return file.string() + ": " + error;
+    }
+    ue3::Object* const actor = FindActor(who, world);
+    ue3::Object* const body = actor != nullptr ? gStuntBody.Read<ue3::Object*>(actor).value_or(nullptr) : nullptr;
+    if (body == nullptr) {
+        return "no stunt actor in this world holds '" + who + "' (only ME3's conversation characters for now)";
+    }
+    auto const clip = std::make_shared<ik::clip::Clip const>(std::move(*loaded));
+    double const pace = clip->LoopSeconds() > 0.0 ? clip->TravelPerLoop() / engine::kUnitsPerMeter / clip->LoopSeconds() : 0.0;
+    double walk = 0.0;
+    if (walkText == "auto") {
+        walk = pace * rate;
+    } else if (!walkText.empty()) {
+        try {
+            walk = std::stod(walkText);
+        } catch (...) {
+            walk = 0.0;
+        }
+    }
+    engine::clip_pose::Play(body, clip, rate);
+    Driven d;
+    d.actor = actor;
+    d.body = body;
+    d.clip = clip;
+    d.sequence = "clip " + clip->name;
+    d.rate = rate;
+    d.walkMS = std::max(0.0, walk);
+    d.rangeM = std::max(0.5, range);
+    d.origin = player::Location(actor).value_or(ue3::Vector{});
+    d.yaw = static_cast<double>(player::Rotation(actor).value_or(ue3::Rotator{}).yaw) * (2.0 * kPi / 65536.0);
+    gDriven = d;
+    gWorld = world;
+    log::Info("anim driver: {} plays the clip {} ({} frames, loop {}..{}, {:.2f} m/s in the clip), rate {:.2f}, walk {:.2f} m/s",
+        PathOf(actor), file.string(), clip->frames, clip->loopStart, clip->loopEnd, pace, rate, d.walkMS);
+    return std::format("{} plays the clip {} (loop {}..{}, {:.2f} s; the clip walks {:.2f} m/s){}", PathOf(actor), clip->name,
+        clip->loopStart, clip->loopEnd, clip->LoopSeconds(), pace,
+        d.walkMS > 0.0 ? std::format(", walking {:.2f} m/s back and forth over {:.1f} m", d.walkMS, d.rangeM) : std::string());
+}
+
 void Place(Driven& d) {
     ue3::Function* const setLocation = gSetLocation.Get();
     ue3::Function* const setRotation = gSetRotation.Get();
@@ -390,6 +485,9 @@ std::string Command(std::string const& args) {
     if (verb == "play") {
         return Play(words);
     }
+    if (verb == "clip") {
+        return PlayClip(words);
+    }
     if (verb == "stop") {
         if (!gDriven) {
             return "nothing is driven";
@@ -399,9 +497,27 @@ std::string Command(std::string const& args) {
     }
     if (!gDriven) {
         return verb.empty() || verb == "status" ? "nothing is driven"
-                                                : "mevr anim [list <text> | play <who> <sequence> [rate] [walk m/s] [range m] | at <s> | pause | resume | stop | status]";
+                                                : "mevr anim [list <text> | play <who> <sequence> [rate] [walk m/s] [range m] | clip <who> <clip> [rate] [walk m/s | auto] [range m] | at <s> | pause | resume | stop | status]";
     }
     Driven& d = *gDriven;
+    if (d.clip != nullptr && verb != "status" && !verb.empty()) {
+        if (verb == "pause" || verb == "resume") {
+            d.paused = verb == "pause";
+            engine::clip_pose::Play(d.body, d.paused ? d.clip : d.clip, d.paused ? 0.0 : d.rate);
+            return d.paused ? "paused (the walk holds too)" : "resumed from the loop's start";
+        }
+        return "a clip plays: mevr anim pause | resume | stop | status";
+    }
+    if (d.clip != nullptr) {
+        engine::clip_pose::Stats const st = engine::clip_pose::GetStats();
+        return std::format("{} plays {} at {:.2f} s{}; {} pose updates, {} written, {} of the clip's bones found{}{}; walk {:.2f} m/s, "
+                           "{:.2f} m along, {} turn(s)", PathOf(d.actor), d.sequence, st.seconds, d.paused ? " (paused)" : "", st.calls,
+            st.written, st.mappedFound, st.lastReject != nullptr ? std::string(", last refusal: ") + st.lastReject : std::string(),
+            st.broken ? ", the stage STOPPED after an access violation" : "", d.walkMS, d.along, d.turns) +
+               std::format("\n  root before ({:.1f}, {:.1f}, {:.1f}), after ({:.1f}, {:.1f}, {:.1f}); pelvis before ({:.1f}, {:.1f}, {:.1f})",
+                   st.rootBefore.x, st.rootBefore.y, st.rootBefore.z, st.rootAfter.x, st.rootAfter.y, st.rootAfter.z,
+                   st.pelvisBefore.x, st.pelvisBefore.y, st.pelvisBefore.z);
+    }
     if (verb == "pause" || verb == "resume") {
         d.paused = verb == "pause";
         float const rate = d.paused ? 0.0f : static_cast<float>(d.rate);
@@ -428,7 +544,7 @@ std::string Command(std::string const& args) {
         return std::format("{} plays {} at {:.2f} s{}, rate {:.2f}; walk {:.2f} m/s, {:.2f} m along, {} turn(s)", PathOf(d.actor), d.sequence,
             gNodeTime.Read<float>(d.node).value_or(-1.0f), d.paused ? " (paused)" : "", d.rate, d.walkMS, d.along, d.turns);
     }
-    return "mevr anim [list <text> | play <who> <sequence> [rate] [walk m/s] [range m] | at <s> | pause | resume | stop | status]";
+    return "mevr anim [list <text> | play <who> <sequence> [rate] [walk m/s] [range m] | clip <who> <clip> [rate] [walk m/s | auto] [range m] | at <s> | pause | resume | stop | status]";
 }
 
 void Tick(double deltaSeconds) {
@@ -437,7 +553,10 @@ void Tick(double deltaSeconds) {
     }
     ue3::Reflection& r = ue3::runtime::Get();
     Driven& d = *gDriven;
-    if (PlayerWorld() != gWorld || !r.IsAlive(d.actor) || !r.IsAlive(d.body) || !r.IsAlive(d.node)) {
+    if (PlayerWorld() != gWorld || !r.IsAlive(d.actor) || !r.IsAlive(d.body) || (d.clip == nullptr && !r.IsAlive(d.node))) {
+        if (d.clip != nullptr) {
+            engine::clip_pose::Stop();
+        }
         gDriven.reset();  // a new level: its objects are gone (nothing of ours to put back in them)
         log::Info("anim driver: the driven character is gone (a level change)");
         return;

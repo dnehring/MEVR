@@ -361,6 +361,8 @@ set(MEVR_MOD_SOURCES
     src/core/ik/GoalStep.hpp
     src/core/ik/HandContact.cpp
     src/core/ik/HandContact.hpp
+    src/core/ik/Clip.cpp
+    src/core/ik/Clip.hpp
     src/core/ik/HairChain.cpp
     src/core/ik/HairChain.hpp
     src/core/ik/Melee.cpp
@@ -475,6 +477,8 @@ set(MEVR_MOD_SOURCES
     src/core/xr/Session.hpp
     src/engine/BonePose.cpp
     src/engine/BonePose.hpp
+    src/engine/ClipPose.cpp
+    src/engine/ClipPose.hpp
     src/engine/HairPose.cpp
     src/engine/HairPose.hpp
     src/engine/CallFunction.cpp
@@ -1062,6 +1066,9 @@ function(mevr_add_plugin game)
     if (game STREQUAL "LE2")
         list(APPEND mod_sources src/core/Json.cpp src/core/Json.hpp)  # game/GalaxyProjectorFlow's status (the sequels' galaxy flow)
     endif ()
+    if (game STREQUAL "LE1")
+        list(APPEND mod_sources src/core/Json.cpp src/core/Json.hpp)  # game/AnimDriver's generated clips (tools/motion)
+    endif ()
     if (game STREQUAL "LE2" OR game STREQUAL "LE3")
         list(APPEND mod_sources src/core/vr/GalaxyRay.cpp src/core/vr/GalaxyRay.hpp)  # game/GalaxyRay: the map picked by a ray
     endif ()
@@ -1544,7 +1551,8 @@ if (MEVR_BUILD_TESTS)
         tests/TraversalTests.cpp
         tests/GoalStepTests.cpp
         tests/HandContactTests.cpp
-        tests/HairChainTests.cpp
+        tests/ClipTests.cpp
+    tests/HairChainTests.cpp
         tests/GameMenuBackOutTests.cpp
         tests/GameMenuLeaveTests.cpp
         tests/TraversalPresentationTests.cpp
@@ -1578,6 +1586,7 @@ if (MEVR_BUILD_TESTS)
         src/core/ik/Fingers.cpp
         src/core/ik/GoalStep.cpp
         src/core/ik/HandContact.cpp
+        src/core/ik/Clip.cpp
         src/core/ik/HairChain.cpp
         src/core/ik/Melee.cpp
     src/core/ik/GunKick.cpp

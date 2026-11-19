@@ -237,7 +237,9 @@ def retarget(G, P, names, parents, pos, quat):
         shift = (M @ P[t, CI["Hips"]]) * 100.0 * scale - points[index["Pelvis"]]
         points = points + shift
         points_per_frame.append(points)
-        frames.append({"root": (pos[index["Root"]] + shift).tolist(), "local": [r.as_quat().tolist() for r in local]})
+        # The Root bone's position in component space (not its local offset: Root hangs from God, which needn't sit at the
+        # origin; a local offset here sank Miranda to her hips in the game, 2026-11-19).
+        frames.append({"root": points[index["Root"]].tolist(), "local": [r.as_quat().tolist() for r in local]})
     worst = 0.0
     for t, points in enumerate(points_per_frame):
         for me, cj, cc, mc in MAP:
@@ -387,7 +389,7 @@ def cmd_self_test(a) -> int:
                 pj = CI[parent]
                 G[t, j] = G[t, pj] @ local.as_matrix(); P[t, j] = P[t, pj] + G[t, pj] @ np.array(off[name])
     # The ME-named skeleton: UE axes, cm, an A pose, random rest rotations (the retarget must not care).
-    world_points = {"God": [0, 0, 0], "Root": [0, 0, 100], "Pelvis": [0, 0, 100], "LowerBack": [0, 0, 105], "Chest": [0, 0, 115],
+    world_points = {"God": [0, 0, 90], "Root": [0, 0, 100], "Pelvis": [0, 0, 100], "LowerBack": [0, 0, 105], "Chest": [0, 0, 115],
                     "Chest1": [0, 0, 125], "Chest2": [0, 0, 135], "Neck": [0, 0, 150], "Head": [0, 0, 160],
                     "RightCollar": [0, 5, 145], "RightShoulder": [0, 16, 145], "RightElbow": [0, 34, 125], "RightWrist": [0, 50, 108],
                     "RightMiddleFinger": [0, 56, 102], "LeftCollar": [0, -5, 145], "LeftShoulder": [0, -16, 145],
@@ -415,8 +417,13 @@ def cmd_self_test(a) -> int:
     M = ardy_to_ue(P[0])
     hips_error = max(float(np.linalg.norm(points[t][names.index("Pelvis")] - (M @ P[t, CI["Hips"]]) * 100 * scale)) for t in range(T))
     rest_ok = abs(scale - 100 / 95) < 1e-6
-    ok = worst < 0.01 and hips_error < 1e-6 and rest_ok and len(frames) == T and len(frames[0]["local"]) == len(names)
-    print(f"self-test: worst direction error {worst:.4f} deg, hips error {hips_error:.2e} units, hips scale {scale:.4f}: "
+    # The clip's root is the Root bone's component-space position (God sits at 90 here, Root at 100 at rest).
+    root_error = max(float(np.linalg.norm(np.array(frames[t]["root"]) - points[t][names.index("Root")])) for t in range(T))
+    root_height_ok = abs(frames[0]["root"][2] - (points[0][names.index("Pelvis")][2])) < 1e-6
+    ok = (worst < 0.01 and hips_error < 1e-6 and rest_ok and root_error < 1e-9 and root_height_ok and len(frames) == T
+          and len(frames[0]["local"]) == len(names))
+    print(f"self-test: worst direction error {worst:.4f} deg, hips error {hips_error:.2e} units, root error {root_error:.2e}, "
+          f"hips scale {scale:.4f}: "
           + ("PASS" if ok else "FAIL"))
     return 0 if ok else 1
 

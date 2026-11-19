@@ -62,8 +62,22 @@ hips scale, worst direction error), and `clip`: per frame `root` (the Root bone'
 bone's local rotation, xyzw as the package stores it). Bone order is the skeleton's: a player matches by name and refuses a
 skeleton whose mapped bones are missing.
 
-Not yet: the in-game player (the mod posing a body from a clip through the bone hook the hair simulation uses, and
-`mevr anim play` taking clips), and a compact binary form if clips ship.
+`root` is the Root bone's position in component space (not its local offset: Root hangs from God, which needn't sit at the
+origin; the first clip carried the local offset and sank Miranda to her hips in the game; the self-test now puts God at 90).
+
+## Playing a clip in the game
+
+`mevr anim clip <who> <clip> [rate] [walk m/s | auto] [range m]` (game/AnimDriver; `<clip>` a clip folder's name under the
+motion folder, or a path to a `.mevrclip.json`, read again at every play): the core (`core/ik/Clip`, unit-tested in
+`tests/ClipTests.cpp`) samples the loop (frames slerped; the root's straight travel taken out, its sway and bob kept), and
+the stage (`engine/ClipPose`) poses the body right after the engine's own pose update and before the hair stage: the map's
+bones take the clip's local rotations, Root its height and sway, every other bone (face, fingers, twists, hair) the game's
+animation; the game's bone lengths stay. `auto` walks the character back and forth at the loop's own pace. `mevr anim
+status` gives the pose updates, the bones found and Root before and after the clip. Today the character must be an ME3
+conversation character (`SFXStuntActor`); checked 2026-11-19 with `walk-sway` on Miranda: 21 of 21 bones, written on every
+update, her hair swinging 4-7 cm with the walk.
+
+Not yet: other characters than stunt actors (pawns), a blend in and out, and a compact binary form if clips ship.
 
 ## Licences and data
 
