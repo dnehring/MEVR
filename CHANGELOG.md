@@ -15,6 +15,11 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
   (`[HandContact]` in the mod's ini; `on = 0` turns it off). Nobody is pushed.
 - **The shoulder lock takes both hands.** A gun at your shoulder snaps the sight on only with both hands on a two-handed
   gun (an assault rifle, a shotgun or a sniper rifle); held one-handed it no longer locks in.
+- **No more pull toward cover when you crouch.** In all three games, crouching behind something (or standing up again) could
+  make Shepard's body snap half a metre to where the game had him and back, which felt like being pulled into cover: the
+  body now stays under you through the crouch, and your hands stay on your controllers.
+- **Running no longer drops the body.** In and right after a run (most of all when backing up on ME2), Shepard's body could
+  sink 12-18 cm with bent knees while you stood straight; it now goes down only as far as your own head does.
 - **One set of settings for all three games.** What you change in our menu in ME1, ME2 or ME3 now applies to the other two
   as well. The settings live in `%LOCALAPPDATA%\MEVR\settings.ini` (next to your calibration); the first start after the
   update makes it from your ME1 settings and adds what only ME2's or ME3's had. Where a game had a different value of its

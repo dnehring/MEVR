@@ -27,6 +27,7 @@
 #include "game/HandTargets.hpp"
 #include "game/MenuBodyHold.hpp"
 #include "game/Player.hpp"
+#include "game/Posture.hpp"
 #include "core/vr/HostView.hpp"
 #include "game/Sights.hpp"
 #include "game/SupportGrip.hpp"
@@ -715,6 +716,9 @@ namespace cal = vr::calibration;
 
 // The calibrated sight line moves the gun at most this far (tracking meters) to put its sight on it.
 constexpr double kMaxStanceShiftMeters = 0.20;
+// The body down to the head (TorsoGoal::crouchMaxDrop): this much deeper than the player's own head went down, for the
+// skeleton's own differences from the neck model (research/29 "A run never lowers the body").
+constexpr double kCrouchDropMarginMeters = 0.02;
 // A left hand that takes hold this close to where it sat on the rifle when calibrating (tracking meters) holds
 // the gun at the calibrated relation to the hands' line; elsewhere the grab's own line is kept (no swing).
 constexpr double kCalibratedGrabMeters = 0.08;
@@ -855,9 +859,14 @@ void LogAnchor(hand_targets::Targets const& targets) {
     }
     gLoggedAnchor = targets.anchor;
     gLoggedScale = targets.body.unitsPerMeter;
-    log::Info("arm IK: body anchor: {}, view {} from Shepard's animated head bone, {:.1f} units per meter",
+    // With the view's height the player's own (the floor lock, a crouch on foot), only the horizontal distance decides
+    // (ik::FirstPersonAnchor, research/29 "The crouch that went third person").
+    log::Info("arm IK: body anchor: {}, view {} from Shepard's animated head bone{}, {:.1f} units per meter",
         hand_targets::Name(targets.anchor),
         targets.viewToHeadBone >= 0.0 ? std::format("{:.0f} units", targets.viewToHeadBone) : std::string("(no head bone)"),
+        targets.viewHeightIsPlayers && targets.anchorGap >= 0.0
+            ? std::format(" ({:.0f} across: the view's height is your own head's, so only the horizontal distance counts)", targets.anchorGap)
+            : std::string(),
         targets.body.unitsPerMeter);
 }
 
@@ -1183,7 +1192,25 @@ void Drive(double deltaSeconds) {
 #else
     bool const bodyAway = false;
 #endif
-    hand_targets::Targets const targets = hand_targets::Current(headBone, bodyAway, headOnlyEligible);
+    // The view's height is the player's own head (research/29 "The crouch that went third person", 2026-11-18): the host's
+    // floor lock puts the eye at the pawn's floor plus the headset's height in ordinary first person on foot (never in third
+    // person, cover, the Mako, cinematics or menus); without it (no floor from the runtime, `[Body] floorLock = 0`), a crouch
+    // on foot out of cover: the physical one lowers the view by the real head only (constant eye), the button's crouch camera
+    // goes down with him. Then the vertical gap to Shepard's animated head is how the
+    // player stands against the animation: the game's crouch (which the physical crouch asks for) put his head 45-60 units
+    // under a player who crouched less or was already standing up, the view went 75 units from it, arm IK fell to its
+    // third-person anchor and the drawn body jumped 0.5-0.76 m back to where the game had the pawn, against the barrier
+    // ("almost magnetic", the owner's ME2 session). Only the horizontal distance decides then; a third-person camera is still
+    // a metre or more behind him.
+    bool viewHeightIsPlayers = false;
+    {
+        vr::host_view::State const hostView = vr::host_view::Latest();
+        bool const floorLocked = hostView.valid && hostView.floorLocked && !view_anchor::Held();
+        vr::floor_lock::PawnSample const pawnSample = player::FloorLockSample();
+        bool const crouched = posture::PhysicallyCrouched() || player::Crouched(body->pawn).value_or(false);
+        viewHeightIsPlayers = floorLocked || (crouched && pawnSample.onFoot && !pawnSample.cover);
+    }
+    hand_targets::Targets const targets = hand_targets::Current(headBone, bodyAway, headOnlyEligible, viewHeightIsPlayers);
     gFirstPersonMs = targets.source == hand_targets::Source::Controllers && targets.anchor == hand_targets::Anchor::View ? GetTickCount64() : 0;
     gSource = targets.source;
     engine::bone_pose::Request request;
@@ -1294,11 +1321,13 @@ void Drive(double deltaSeconds) {
                 auto const hostView = view_anchor::FloorReference();
                 std::optional<double> shepardEyeM;
                 double pivotZ = unscaled->floorZ;
+                bool worldReference = false;  // Shepard's standing eye height in metres of world units (else component units)
                 if (hostView.valid && hostView.floorLocked && targets.body.unitsPerMeter > 0.0) {
                     auto const eyeWorld = ik::TransformPoint(componentToWorld, unscaled->eye);
                     shepardEyeM = (eyeWorld.z - hostView.pawnFloorZ) / targets.body.unitsPerMeter;
                     pivotZ = ik::TransformPoint(*worldToComponent,
                         {targets.headWorld.x, targets.headWorld.y, hostView.pawnFloorZ}).z;
+                    worldReference = true;
                 } else if (body_calibration::Position() == vr::calibration::PlayPosition::Seated && targets.body.unitsPerMeter > 0.0) {
                     // Bootstrap the unscaled standing Shepard reference before a seated floor lock is possible.
                     auto const pawn = player::FloorLockSample();
@@ -1306,11 +1335,26 @@ void Drive(double deltaSeconds) {
                         auto const eyeWorld = ik::TransformPoint(componentToWorld, unscaled->eye);
                         shepardEyeM = (eyeWorld.z - pawn.floorZ) / targets.body.unitsPerMeter;
                         pivotZ = ik::TransformPoint(*worldToComponent, {targets.headWorld.x, targets.headWorld.y, pawn.floorZ}).z;
+                        worldReference = true;
                     }
                 }
                 bodyScale = body_scale::Step(view.z - unscaled->floorZ, targets.body.unitsPerMeter, deltaSeconds,
                     shepardEyeM, reinterpret_cast<std::uintptr_t>(info->asset));
                 request.bodyScale = {bodyScale, {view.x, view.y, pivotZ}};
+                // The body goes down to the head no deeper than the player's own head went down (research/29 "A run never
+                // lowers the body", 2026-11-18): the torso measures its gap on this tick's animated pose, and ME2's run and
+                // the steps after it hold Shepard's head 13-15 cm higher than his standing pose, so with the player's eyes at
+                // standing height the body went down 14-17 cm, the knees bent, mid-run. The limit is the gap a standing
+                // Shepard would show: his standing eyes above the floor (body_scale's frozen reference), scaled as drawn,
+                // over the same floor, against the player's head pivot (the goal's head).
+                if (request.torso.enabled && request.torso.goal.crouch && targets.body.unitsPerMeter > 0.0) {
+                    if (auto const standingM = body_scale::ShepardStandingEyeM()) {
+                        double const perMeter = targets.body.unitsPerMeter * (worldReference ? ComponentScale(*worldToComponent) : 1.0);
+                        ik::TorsoGoal& goal = request.torso.goal;
+                        goal.crouchMaxDrop = ik::CrouchDropLimit(pivotZ + bodyScale * *standingM * perMeter, goal.neckDown, goal.head.z,
+                            kCrouchDropMarginMeters * perMeter);
+                    }
+                }
                 if (view_anchor::Held() && !gHoldScaleLogged) {
                     gHoldScaleLogged = true;
                     log::Info("floor lock: IK hold start: live locked {}, saved locked {}, floor Z {:.3f}, "

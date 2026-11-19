@@ -548,7 +548,9 @@ under the view (`torso: third person: the hips turn ... body shift 0.0 units`): 
 crouched pawn is, against the barrier. At 20:49:10 the game stood Shepard up while the player stayed down (`posture: Shepard's crouch
 changed without us`), and the anchor stayed third person for 17 s. The owner turned the physical crouch off in our menu at 20:50:16
 (`main menu: [Hands] physicalCrouch = 0`). The crouch, its threshold and the anchor are lane M2W's: section 8 (the lean
-guard, the crouch that follows the player). **The owner's question:** was the pull felt while crouching behind a barrier, or while walking up
+guard, the crouch that follows the player). **The anchor is fixed since lane ANC** (2026-11-18, every game): with the floor lock
+the view's height is the player's own, so only the horizontal distance to the animated head decides first or third person
+(research/29 "The crouch that went third person"). **The owner's question:** was the pull felt while crouching behind a barrier, or while walking up
 to one standing?
 
 **Built, so the next run names whatever it is: the cover watch** (game/Posture, ME2, while the snapping is refused): `posture: cover
@@ -625,7 +627,8 @@ Shepard as best we can."
 - **The torso's own "crouching with you"** (`[Hands] crouchBody`, research/29 "The eyes inside the body"): 3-4 cm at the reach
   (the head 4 cm too high), and 14-17 cm three times within a second of a full-speed run (20:37:01.9, 20:37:02.9, 20:39:21.8) with
   the eyes at 1.84 m: while running, the gap the torso measures is the run pose's, not a crouch. Not this lane's rule; told in the
-  report.
+  report. Fixed by lane ANC (2026-11-18): the body goes down no deeper than the player's own head (research/29 "A run never
+  lowers the body").
 - **Built, on by default since the owner's yes** (2026-11-18, question 20, every game; `core/ik/Posture`, unit-tested in
   `tests/PostureOwnershipTests.cpp`):
   - `[Hands] crouchMinDropM` (0.25 by default; 0 = off): `ik::posture::WithMinimumDrop` moves the crouch threshold down until the

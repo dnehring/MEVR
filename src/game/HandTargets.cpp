@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "game/HandTargets.hpp"
 
+#include "core/ik/BodyFollow.hpp"
 #include "core/vr/Controllers.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/ViewAnchor.hpp"
@@ -14,11 +15,10 @@ namespace {
 // along a held object's barrel, so the wrist is behind it along +Z (UE-style grip axes: -X).
 // Shepard's units, not the player's: it's his hand. [verify in headset]
 constexpr double kWristBehindGripUnits = 7.0;
-// First person: the view this close to Shepard's head bone (Unreal units); third person again
-// beyond the second (hysteresis). Halcyon's first-person eye sits near the head; its third-person
-// camera is a metre or more behind. [verify: the log's "body anchor" line gives the distance]
-constexpr double kFirstPersonEnterUnits = 45.0;
-constexpr double kFirstPersonLeaveUnits = 75.0;
+// First person: the view within 45 units of Shepard's head bone (Unreal units); third person again beyond 75 (hysteresis):
+// ik::AnchorSettings. Halcyon's first-person eye sits near the head; its third-person camera is a metre or more behind. With
+// the view's height the player's own (the floor lock, a crouch on foot), only the horizontal distance counts
+// (ik::FirstPersonAnchor; research/29 "The crouch that went third person").
 
 bool gDesktopTest = false;
 bool gFirstPerson = false;
@@ -29,7 +29,7 @@ double Distance(engine::UnrealVector const& a, engine::UnrealVector const& b) {
 
 } // namespace
 
-Targets Current(std::optional<engine::UnrealVector> const& animatedHead, bool inView, bool allowHeadOnly) {
+Targets Current(std::optional<engine::UnrealVector> const& animatedHead, bool inView, bool allowHeadOnly, bool viewHeightIsPlayers) {
     Targets targets;
     if (gDesktopTest) {
         targets.source = Source::DesktopTest;
@@ -58,12 +58,13 @@ Targets Current(std::optional<engine::UnrealVector> const& animatedHead, bool in
         targets.viewFromHeadBone = {anchor->headWorld.x - animatedHead->x, anchor->headWorld.y - animatedHead->y,
             anchor->headWorld.z - animatedHead->z};
     }
-    if (animatedHead) {
-        gFirstPerson = gFirstPerson ? targets.viewToHeadBone <= kFirstPersonLeaveUnits
-                                    : targets.viewToHeadBone <= kFirstPersonEnterUnits;
-    } else {
-        gFirstPerson = false;
-    }
+    ik::AnchorInput anchorIn;
+    anchorIn.haveHead = animatedHead.has_value();
+    anchorIn.viewFromHead = {targets.viewFromHeadBone.x, targets.viewFromHeadBone.y, targets.viewFromHeadBone.z};
+    anchorIn.playerHeight = viewHeightIsPlayers;
+    targets.viewHeightIsPlayers = viewHeightIsPlayers;
+    targets.anchorGap = ik::AnchorGap(anchorIn);
+    gFirstPerson = ik::FirstPersonAnchor(gFirstPerson, anchorIn);
     if (inView || gFirstPerson) {
         // The view's own frame, scaled about the live head: the controllers exactly where the
         // player sees them.

@@ -580,6 +580,7 @@ void Write(Mesh* self, float deltaTime) {
         goal.maxBodyShift = bs::UnscaleLength(scale, goal.maxBodyShift);
         goal.neckDown = bs::UnscaleLength(scale, goal.neckDown);
         goal.crouchSlack = bs::UnscaleLength(scale, goal.crouchSlack);
+        goal.crouchMaxDrop = bs::UnscaleLength(scale, goal.crouchMaxDrop);
         // The support grip's left-controller meters become fewer unscaled units; its foregrip, barrel and muzzle are in the
         // hand bone's own axes, already without the bone's scale (game/weapon divides it out); the calibrated span is in
         // drawn component units.
@@ -1479,7 +1480,7 @@ std::string DescribeTorso(TorsoSample const& sample) {
         Format(r.oldShoulders), Format(r.newShoulders), Format(r.wantedShoulders), ik::Length(r.newShoulders - r.wantedShoulders),
         r.limited ? ", limited" : "", r.twistDegrees, r.bendDegrees, r.bodyTurnDegrees, r.wantedTurnDegrees, ik::Length(r.bodyShift),
         r.shiftLimited ? std::format(" (wanted {:.1f}: capped)", ik::Length(r.wantedBodyShift)) : std::string(), r.bodyLift,
-        r.crouchGap, r.liftLimited ? ", held by the legs" : "",
+        r.crouchGap, r.liftByHead ? ", held at the player's own head drop" : r.liftLimited ? ", held by the legs" : "",
         ik::Length(r.newReference - r.goalReference), sample.collars[0], sample.collars[1], sample.stretch[0], sample.stretch[1],
         r.bonesWritten);
 }

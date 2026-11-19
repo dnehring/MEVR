@@ -532,3 +532,139 @@ The owner, ME2 in the headset: "Walking backwards, my avatar does a side strafe 
 3 and 4 need the AnimTree read in the game first: `tools/le2-halcyon-run/posture-walk.ps1 -Phases tree` logs the locomotion
 nodes (`mevr animtree Locomotion`, `Directional`, `Combat`, `Storm`) and a backing-up replay with the head pitched down
 (`--pitch -60`) under a camera trace.
+
+## The crouch that went third person (2026-11-18, lane ANC)
+
+The owner, ME2 in the headset (Freedom's Progress from Save 4, the run 20:34-20:51 of 2026-11-18, MEVR 0.3.2 at 237aeb1b, its
+`LE2MEVR.log`): "almost like clicks and moves Shepard to be behind cover, where it's almost magnetic". Lane CV2 found that ME2's own
+cover was never entered (research/23 section 7.6); lane M2W saw arm IK fall to its third-person anchor once the game crouched
+Shepard (research/23 section 8.1). This section is the cause and the fix.
+
+### What the log shows (each a `grep` on the run's log)
+
+- **Every crouch behind a barrier left first person**, 7 times: `arm IK: body anchor: third person (tracking origin at Shepard's
+  animated head), view 75 units from Shepard's animated head bone` at 20:37:12.747, 20:37:20.108, 20:46:24.515, 20:46:40.436,
+  20:47:53.783, 20:48:38.851, 20:49:11.281 (75 or 76 units each time: the 75-unit exit), each after `posture: crouch request
+  accepted ... Engine.Pawn.ShouldCrouch(true)`. Each came back (`body anchor: first person (the view's frame), view 44 units`)
+  0.5-1.2 s later, when the game stood him up; at 20:49:11 the game had stood him while the player stayed down, 17 s.
+- **The late ones fell as the player stood up again**: the anchor at 20:46:24.515, `posture: physical stand: eyes 1.77 m` at
+  20:46:25.427 (after the stand's 0.2 s dwell), first person at 20:46:25.664; the same at 20:46:40.436, 40.886, 41.153. The view
+  rose with the player's head (the floor lock keeps the eye at the pawn's floor plus the headset's height: `floor lock: ...
+  STAGE eye N m`) while Shepard was still crouched, so the vertical gap to his head grew. The first (20:37:12.7) came 0.3 s
+  after a crouch at 1.69 m (0.91 of standing): the game's crouch takes his head much lower than a player who crouched 17 cm.
+- **Crouched and still in first person the view was 41 units across from his head and 35 up** (`arm IK: first person camera vs
+  Shepard's head bone: forward 35.2, right 20.5, up 34.9 units`, 20:46:19.732); standing it is 20-35 forward, 0-25 up.
+- **In the third person the body stops following the view**: `torso: third person: the hips turn ... slid 0.00 of 0.00 m` (the
+  heartbeat at 20:37:13.539) against `the view 0.24 m from where the game put Shepard, body slid 0.24 m` a quarter second before.
+  So the drawn body jumped from under the player's eyes back to where the game had the pawn (0.24-0.76 m), and forward again a
+  second later. Crouched behind a barrier the player leans toward it: the body clicking to the barrier and back.
+
+### The cause
+
+`game/HandTargets` chose the frame by the 3D distance between the view and Shepard's animated head bone (scaled as drawn,
+`game/ArmIk`'s `headBone`): first person within 45 units, third person past 75. That distance has two parts that mean different
+things. Across, it says where the camera is against Shepard (Halcyon's third-person camera is a metre or more behind him; its
+first-person eye 20-40 units from the head bone). Up, with the floor lock on, it says only how the player stands against the
+animation: the view's height is the player's own head. ME2's crouch lowers his head 45-60 units (scaled 1.095), the physical
+crouch asks for it with the player's eyes only 15-35 cm down (research/23 section 8.1: the owner's calibrated threshold), and a
+player standing up rises before the game stands Shepard: 30-60 units up and 41 across made 75. ME1 has the same rule and the same
+crouch: the owner's "weapons very low" after a crouch (2026-11-09, gotchas/arm-ik-third-person-anchor) was this too.
+
+### The fix (every game; `core/ik/BodyFollow`, `game/HandTargets`, `game/ArmIk`)
+
+1. `core/ik/BodyFollow.hpp`: `struct AnchorSettings { enterUnits = 45; leaveUnits = 75; }`, `struct AnchorInput { bool haveHead;
+   Vec3 viewFromHead; bool playerHeight; }` (world axes, Unreal units, +Z up), `double AnchorGap(AnchorInput)` (the whole
+   length, or `hypot(x, y)` with `playerHeight`; -1 without a head or for a non-finite gap) and `bool FirstPersonAnchor(bool
+   wasFirstPerson, AnchorInput, AnchorSettings = {})` (the old hysteresis on that gap: stay within `leaveUnits`, enter within
+   `enterUnits`; never without a head).
+2. `game/ArmIk.cpp` `Drive`, just before `hand_targets::Current`: `viewHeightIsPlayers` is true when the host's view is
+   floor-locked (`vr::host_view::Latest()`: `valid && floorLocked`, and not `view_anchor::Held()`), or, without the floor lock
+   (no floor from the runtime, `[Body] floorLock = 0`), when Shepard crouches (`posture::PhysicallyCrouched()` or
+   `player::Crouched(pawn)`) on foot out of cover (`player::FloorLockSample()`: `onFoot && !cover`).
+3. `game/HandTargets::Current(animatedHead, inView, allowHeadOnly, viewHeightIsPlayers)` puts it in the `AnchorInput` and keeps
+   the result's `anchorGap` and `viewHeightIsPlayers` in `Targets` for the log.
+4. The log line: `arm IK: body anchor: first person (the view's frame), view N units from Shepard's animated head bone (M across:
+   the view's height is your own head's, so only the horizontal distance counts), 100.0 units per meter`.
+
+**Why this and not a larger threshold or the crouched head's expected place.** The floor lock already says the view's height is
+the player's whatever the animation does, so the vertical gap carries nothing about the camera: excusing it covers the game's
+crouch, a squat with the game standing, the weapon-drawn stance's lower head and the player standing up first, with no number to
+tune. The horizontal limit stays 75 units, so a view that steps far from him still leaves, and a third-person camera (100-200
+units behind) is never first person: Halcyon's K view and cover are never floor-locked (`vr::floor_lock::Applies`), and the
+crouch excuse asks for no cover.
+
+**Tests** (`tests/CrouchAnchorTests.cpp`, `RunCrouchAnchorTests`): the owner's crouch and stand-up as ticks of view offsets from
+the log (standing (24, 8, -1); crouched (35, 20, 35); rising (35, 20, 55-66); stood (25, 5, 36)): the old rule leaves first person
+while he rises, the new one never; a squat 70 units under his head with the game standing; third-person cameras (-150, 40, 30),
+(-110, 35, 10), (-80, 0, 0) third person either way; the hysteresis across (76 leaves, 74 stays, 50 doesn't enter, 44 does); no
+head and non-finite offsets.
+
+**On ME1** the same: a crouch (physical or L3) or a squat keeps the body under the view and the hands at the controllers.
+
+**Left.** A backing-up turn still swings his animated head across: the explore run turns the pawn 160-180 degrees and the head
+bone with it (`forward 70.3, right 21.1, up 3.0`, 20:37:47.717), third person for 1.2 s at 20:37:51.288. That is horizontal, not
+this rule's: "Backing up on the sequels" above (question 19). [verify] in the game: `tools/le2-halcyon-run/crouch-anchor.ps1
+-Phases button,physical` (not run); the headset: notes/headset-checklist.md.
+
+## A run never lowers the body (2026-11-18, lane ANC)
+
+The same run: `torso: crouching with you: the body down 17 cm to your head (Shepard's head 17 cm too high)` at 20:37:01.851 and
+20:37:02.949, `14 cm (17)` at 20:39:21.753, and so on: 13 lines of 12-18 cm, most within a second of a run (`movement:
+response: the stick pushed ... speed 0, 400, 400 ...; the pawn turned 156-180 deg meanwhile`: mostly the owner backing up, the
+explore run turning the pawn round), with the eyes at 1.73-1.84 m (`floor lock: ... STAGE eye`) against 1.87 m standing. The legs
+bent under a body that went down mid-run.
+
+### What the log shows
+
+- **The animation stands higher in and after ME2's run.** The heartbeat's `arm IK torso (component space)` line at 20:37:03.534,
+  with the legs settling after a run (`legs: settling (0 u/s, holstered, weight 0.27)`): the animated shoulders at z 152.9 against
+  the idle's 145.5-146.6, `body lift -13.4 units (gap 15.7)`; at 20:51:14.818, shoulders 153.3, `lift -9.4 (gap 12.3)`. At idle
+  the same player's gap was 4 cm (`Shepard's head 4 cm too high`, the lift 3 cm, dozens of lines).
+- **The slack doesn't cover it.** `TorsoGoal::crouchSlack` (6 cm, game/BodyFollow's `kCrouchSlackMeters`) leaves the run's bob
+  alone by the legs' weight (`crouchLoose`, `ik::LegsFollow`'s blend, 4 a second). ME2 reaches 400 u/s in 0.1 s and stops as fast,
+  so in the first and last steps of a run the weight is near 0 while the pose is already, or still, the run's; and the gap (15-19
+  cm) is three times the slack anyway.
+
+### The cause
+
+The crouch's gap ("The eyes inside the body" above) is measured on this tick's animated pose: how far his head bone would stand
+above its target with the spine pointed straight at it, the target being the player's head pivot raised by the neck model. That
+equals the player's own head drop only while the animation stands as he stands idle. A pose that holds his head higher than
+standing (ME2's run and the steps after it) reads as the player crouching, and the body went down to it.
+
+### The fix (every game; `core/ik/TorsoPose`, `game/ArmIk`, `engine/BonePose`)
+
+1. `TorsoGoal::crouchMaxDrop` (component units, infinity by default): `PoseTorso`'s crouch takes the drop as `min(maxDrop (the legs'
+   room), crouchMaxDrop)`; `TorsoResult::liftByHead` says the head's limit held it (`liftLimited` is set too).
+2. `ik::CrouchDropLimit(standingEyesZ, neckDown, pivotZ, margin)` = `max(0, standingEyesZ - neckDown - pivotZ) + margin` (infinity
+   for a non-finite input): how far the player's head pivot is below where it is when the player stands straight at the body's
+   scale. That is the gap a standing Shepard shows: his head bone stands at `standingEyesZ - e` (`e`: his eyes over the head
+   bone), the target at `pivotZ + neckDown - e`.
+3. `game/ArmIk` fills it right after `request.bodyScale` is set, when the torso is enabled and crouches: `standingEyesZ = pivotZ +
+   bodyScale * body_scale::ShepardStandingEyeM() * perMeter` (`pivotZ` the scale's floor under the view; `perMeter` the units per
+   metre times the component's scale when the reference is in world units: the floor-locked and seated branches set
+   `worldReference`), `goal.neckDown`, `goal.head.z` (the pivot, drawn), margin `kCrouchDropMarginMeters` 0.02 m. No standing
+   reference yet: no limit (the old behaviour).
+4. `engine/BonePose` unscales it with the goal's other lengths (`bs::UnscaleLength`), before the solve on the unscaled pose.
+5. Logs: `torso: crouching with you: ... (held at your own head's drop: the animation stands higher than standing)`, the writer's
+   `arm IK torso` line `body lift N units (gap N, held at the player's own head drop)`, the torso's off line `held at your own
+   head's drop`; snapshot `mod.torso.result.liftByHead`.
+
+So a run with the player standing lowers the body by at most the margin below what standing still gives; the player's own crouch
+still lowers it as far as the head went (a 20 cm squat under the run's high pose: 20 cm, not 33). Because the limit is measured at
+the head pivot (as the gap is), a head looking down, whose eyes sit lower over the pivot, doesn't open it. At the top of such a pose
+the eyes sit low in Shepard's neck, as before crouchBody (the test's 13-unit pose: the eyes 12.6 cm under his drawn face, 0.5
+cm clear of the modelled armour, so within the near plane): the run's own bob, which the slack was for. The other way (the
+body down to the eyes) is what bent the knees mid-run in the owner's session.
+
+**Tests** (`tests/EyesInBodyTests.cpp`): `Options::raised` raises LowerBack's subtree (the spine, collars, arms, head, eyes) 13
+units, the run's pose; standing, without the limit the body goes down 12 cm (the slack off) or 6 cm (the slack on), with it at most
+2.5 cm; squats of 10, 20, 30 cm under that pose go down the head's own drop (within 2.5 cm), the feet on the floor; every earlier
+case (squats, bends, leans, the game's crouch, a short player) runs with the limit and passes unchanged; `CrouchDropLimit`'s values;
+the solve holding a 30-unit gap at a limit of 8 with `liftByHead`, and a limit of 50 changing nothing. `MEVR_EYES_IN_BODY_REPORT=1`
+prints the two "ME2's run" tables.
+
+**On ME1** the same rule; squats, bends and the game's crouch are unchanged (the tests), and a pose of ME1's that stands higher
+than his idle (a run's bob past the slack, an idle fidget) no longer lowers the body below the player's head. [verify] in the game:
+`tools/le2-halcyon-run/crouch-anchor.ps1 -Phases run` (ME2, not run): no `crouching with you: the body down N cm` past 3 cm while
+running and backing up with the head standing.

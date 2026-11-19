@@ -46,6 +46,9 @@ struct Targets {
     engine::UnrealVector headWorld;  // the headset (the eyes' midpoint) in the world
     double viewToHeadBone = -1.0;    // units between the view and Shepard's head bone (-1: no bone)
     engine::UnrealVector viewFromHeadBone;  // the view minus Shepard's animated head bone (world)
+    // What the first-person test compared (ik::AnchorGap: the horizontal distance when the view's height is the player's).
+    double anchorGap = -1.0;
+    bool viewHeightIsPlayers = false;
 };
 
 // Game thread, once per tick: the motion controllers' grip poses, placed in the world through
@@ -53,8 +56,9 @@ struct Targets {
 // headset.
 // - Scale: the view's own units per meter (Halcyon's: 50), or [Hands] trackingScale: the scale at
 //   which the player sees the world, so a hand lands where the player sees the controller.
-// - First person (the view within about 45 units of Shepard's animated head bone, leaving at 75):
-//   the view's own frame. Third person: tracking space's origin (the head at the start or the
+// - First person (the view within about 45 units of Shepard's animated head bone, leaving at 75; with
+//   `viewHeightIsPlayers`, horizontally: ik::FirstPersonAnchor): the view's own frame. Third person: tracking space's
+//   origin (the head at the start or the
 //   last recenter) at `animatedHead`, the head bone as the animation left it (not after our spine
 //   writes, which move it), so the hands go around Shepard, not the camera, and leaning moves the
 //   view, not the hands. Without a head bone, where the view puts the origin.
@@ -62,7 +66,11 @@ struct Targets {
 // `inView`: the view's own frame whatever the head bone (the Mako's seated driver: the hands where the controllers are).
 // HeadOnly is opt-in after the caller's ordinary-gameplay/body-ownership gates.
 // It additionally requires a fresh host view and rejects held anchors/third person.
-Targets Current(std::optional<engine::UnrealVector> const& animatedHead, bool inView = false, bool allowHeadOnly = false);
+// `viewHeightIsPlayers`: the view's height is the player's own head (game/ArmIk: the host's floor lock, or a crouch on foot
+// out of cover), so the vertical gap to the animated head is the player's posture, not a third-person camera: only the
+// horizontal distance decides (research/29 "The crouch that went third person").
+Targets Current(std::optional<engine::UnrealVector> const& animatedHead, bool inView = false, bool allowHeadOnly = false,
+    bool viewHeightIsPlayers = false);
 void ResetTracking(); // discard first-person hysteresis on owner/reference-space changes
 
 // Set by the mod every tick: true while there's no headset to follow (our renderer: no VR session;

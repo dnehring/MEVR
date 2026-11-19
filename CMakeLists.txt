@@ -1499,6 +1499,7 @@ if (MEVR_BUILD_TESTS)
         tests/SquadPlaceTests.cpp
         tests/BodyScaleTests.cpp
         tests/EyesInBodyTests.cpp
+        tests/CrouchAnchorTests.cpp
         tests/BodySlotsSeatedTests.cpp
         tests/BodySlotsSmgTests.cpp
         tests/FloorLockTests.cpp
@@ -1743,7 +1744,7 @@ if (MEVR_BUILD_TESTS)
         add_test(NAME mevr-${gameLower}-system-settings COMMAND mevr-${gameLower}-system-settings-tests)
     endforeach()
     add_executable(mevr-hand-targets-tests tests/HandTargetsTests.cpp
-        src/engine/XrToUnreal.cpp src/core/ik/Rigid.cpp src/core/ik/Ik.cpp)
+        src/engine/XrToUnreal.cpp src/core/ik/Rigid.cpp src/core/ik/Ik.cpp src/core/ik/BodyFollow.cpp)
     target_include_directories(mevr-hand-targets-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
     target_link_libraries(mevr-hand-targets-tests PRIVATE OpenXR::headers)
     target_compile_definitions(mevr-hand-targets-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)

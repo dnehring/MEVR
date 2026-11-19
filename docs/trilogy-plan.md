@@ -467,6 +467,13 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Shared since 2026-11-18:** hand contact with other characters (`game/HandContact`, `[HandContact]`, research/73, ledger
   G59; the owner's design): the drawn hand stops at a person's body and slides along it while the controller goes on, a buzz
   on contact, nobody pushed; every game, on by default, built and unit-tested, not yet run in a game.
+- **Shared since 2026-11-18 (lane ANC, the owner's ME2 session's "almost magnetic" cover):** a crouch keeps first person
+  (`ik::FirstPersonAnchor`: with the floor lock, or a crouch on foot out of cover, only the horizontal distance to Shepard's
+  animated head decides; ME2's crouch had put his head 75 units from the view and arm IK's third-person anchor dropped the drawn
+  body 0.5-0.76 m back to the pawn at every crouch) and a run never lowers the body (`TorsoGoal::crouchMaxDrop`: no deeper than
+  the player's own head went; ME2's run had the body down 12-18 cm with the player standing): research/29 "The crouch that went
+  third person" and "A run never lowers the body"; unit-tested (`tests/CrouchAnchorTests.cpp`, `tests/EyesInBodyTests.cpp`),
+  ME1 too; in the game `tools/le2-halcyon-run/crouch-anchor.ps1` (not run).
 - **Backing up with the weapon away** (lane M2W, 2026-11-18): the legs run 120 degrees off the motion on ME1 and ME2 (no
   backward run exploring): [question 19](#open-owner-questions), research/29 "Backing up on the sequels".
 - **Closes when:** snapshot `mod.armIk.hands` puts each wrist on its controller through a vault; `mod.fingers` follows
@@ -670,7 +677,7 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Left, ME2:** recheck crouch, protection and the vault on the current build with standing and seated calibration.
   **The owner's headset run, 2026-11-18** (lane CV2, research/23 sections 7.6 and 7.7): "almost magnetic" cover: the run's log
   shows no cover entry of the game's (IsInCover never true, both A presses at cover refused); the drawn body's jump at each
-  crouch (arm IK's third-person anchor) is lane M2W's; a cover watch (`posture: cover watch:`) names whatever moves Shepard
+  crouch (arm IK's third-person anchor) is fixed since lane ANC (2026-11-18, T21: a crouch keeps first person); a cover watch (`posture: cover watch:`) names whatever moves Shepard
   near cover next time. Protection: 0 of 164 hits covered: the eye line was open over the barriers to hovering drones; **the
   level look** (the game's own cone ignores the shooter's height) on ME2 and ME3, `[Cover] judge = either` by default, and
   every hit's detail logged. Not run (the owner in the headset).

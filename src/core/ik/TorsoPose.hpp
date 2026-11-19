@@ -5,6 +5,7 @@
 #include "core/ik/Rigid.hpp"
 
 #include <array>
+#include <limits>
 #include <optional>
 #include <span>
 #include <string>
@@ -109,7 +110,19 @@ struct TorsoGoal {
     double maxRise = 0.0;
     double crouchSlack = 0.0;
     double crouchLoose = 0.0;
+    // The deepest the body may go down for the player's head, whatever the gap (units; CrouchDropLimit; research/29 "A run
+    // never lowers the body", 2026-11-18): the gap is measured on the animation's pose of this tick, and a pose that holds
+    // Shepard's head higher than his standing one (ME2's run and the steps after it: his shoulders 6-7 units over the idle's,
+    // the gap 15-19 cm with the player's eyes at standing height) is not the player crouching. Infinity (or NaN): no limit.
+    double crouchMaxDrop = std::numeric_limits<double>::infinity();
 };
+
+// TorsoGoal::crouchMaxDrop: how far the player's head pivot (`pivotZ`, the goal's `head`) is below where it is when the
+// player stands straight at the body's scale (`standingEyesZ`: the floor under the view plus Shepard's standing eye height
+// above his floor, scaled as drawn, which is the player's standing eye height; less `neckDown`, the goal's), plus `margin`
+// (all along the body's up, component units). That is the gap a standing Shepard's pose would show, so the body never goes
+// lower than the player's own head went down. Not finite inputs: infinity (no limit). Never below `margin`.
+double CrouchDropLimit(double standingEyesZ, double neckDown, double pivotZ, double margin);
 
 struct TorsoResult {
     bool ok = false;
@@ -139,6 +152,7 @@ struct TorsoResult {
     double bodyLift = 0.0;
     double crouchGap = 0.0;
     bool liftLimited = false;
+    bool liftByHead = false;  // TorsoGoal::crouchMaxDrop held the drop (the animation's head higher than standing)
     // The legs (TorsoGoal::legsWeight): the turn the standing rule alone would have made, and how far the animation had
     // turned the shoulders from the legs (`body.forward`) before anything moved (a combat stance's turn into the gun).
     double standingTurnDegrees = 0.0;

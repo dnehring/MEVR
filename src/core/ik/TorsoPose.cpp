@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <initializer_list>
+#include <limits>
 #include <numbers>
 #include <string_view>
 
@@ -370,11 +371,17 @@ TorsoResult PoseTorso(std::span<Transform> pose, std::span<int const> parents, T
             // move grows from zero past it (no step).
             double const deadband = spine * kCrouchDeadbandFraction;
             wanted = std::abs(wanted) > deadband ? std::copysign(std::abs(wanted) - deadband, wanted) : 0.0;
-            double const maxDrop = std::isfinite(goal.maxDrop) ? std::max(0.0, goal.maxDrop) : 0.0;
+            double const legsDrop = std::isfinite(goal.maxDrop) ? std::max(0.0, goal.maxDrop) : 0.0;
+            // No deeper than the player's own head went down (TorsoGoal::crouchMaxDrop: a pose higher than standing, as ME2's
+            // run holds him, is the animation's, not the player crouching).
+            double const headDrop = std::isnan(goal.crouchMaxDrop) ? std::numeric_limits<double>::infinity()
+                                                                    : std::max(0.0, goal.crouchMaxDrop);
+            double const maxDrop = std::min(legsDrop, headDrop);
             double const maxRise = std::isfinite(goal.maxRise) ? std::max(0.0, goal.maxRise) : 0.0;
             double const lift = std::clamp(-wanted, -maxDrop, maxRise);
             result.crouchGap = gap;
             result.liftLimited = lift != -wanted;
+            result.liftByHead = wanted > headDrop && headDrop < legsDrop;
             if (std::isfinite(lift) && lift != 0.0) {
                 for (int i = goal.body; i < count; ++i) {
                     if (IsAncestor(parents, goal.body, i)) {
@@ -472,6 +479,13 @@ TorsoResult PoseTorso(std::span<Transform> pose, std::span<int const> parents, T
     result.bendDegrees = Angle(swing) * kDegrees;
     result.bonesWritten = bones;
     return result;
+}
+
+double CrouchDropLimit(double standingEyesZ, double neckDown, double pivotZ, double margin) {
+    if (!std::isfinite(standingEyesZ) || !std::isfinite(neckDown) || !std::isfinite(pivotZ) || !std::isfinite(margin)) {
+        return std::numeric_limits<double>::infinity();
+    }
+    return std::max(0.0, standingEyesZ - neckDown - pivotZ) + std::max(0.0, margin);
 }
 
 LegRoom LegsRoom(std::span<Transform const> pose, std::span<ArmChain const> legs, Vec3 up, double foldFraction,

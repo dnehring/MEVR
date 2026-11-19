@@ -921,6 +921,17 @@ sits 24-34 units (cm) ahead of Shepard's head bone on ME2 and ME3; ME1's about 4
   since 2026-11-18): no crouch, and the log's `posture: a lean, not a crouch`; a real crouch still crouches.
 - [ ] Walk backwards with the weapon away (question 19): today the legs run sideways; say which option to build.
 
+### The crouch and the run, the body under you (lane ANC, 2026-11-18; research/29 "The crouch that went third person", "A run never lowers the body")
+
+- [ ] ME2 (then ME1): crouch for real behind a barrier until Shepard crouches, peek over it, stay a few seconds, stand up.
+  What you should feel: the body stays under you the whole time, no click toward the barrier and back (the owner's "almost
+  magnetic" pull), the hands on the controllers. The log has no `arm IK: body anchor: third person` through the crouch; an
+  anchor line reads `... (N across: the view's height is your own head's ...)`.
+- [ ] The same with the left stick click (the game's crouch while you stand): the body stays under you, your hands with it.
+- [ ] Run forward and back a few times standing straight (weapon away, then drawn), and stop: the body never sinks or bends its
+  knees (before: 12-18 cm mid-run). The log's `torso: crouching with you: the body down N cm` stays at 3 cm or less while
+  running; a real squat still takes the body down with you.
+
 ### ME2
 - [ ] The game's start (T18, research/56 "The sequels", lane FE, seen on the fake headset 2026-11-18): as ME1's line in "The
   game's start": the logos flat, the "PRESS ANY KEY" title and the main menu on the 3D cinema screen at head height, fixed in

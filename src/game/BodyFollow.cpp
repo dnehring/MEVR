@@ -188,7 +188,8 @@ struct Off {
     double shouldersFromLegs = 0.0;  // how far the animation had turned the shoulders from the legs (degrees)
     double lift = 0.0;               // meters the body went up (+) or down (-) to the head (TorsoGoal::crouch)
     double gap = 0.0;                // meters Shepard's head stood too high (+) or low (-) before it
-    bool liftLimited = false;        // the legs held the lift short
+    bool liftLimited = false;        // the legs (or the player's own head drop) held the lift short
+    bool liftByHead = false;         // ...the player's own head drop (TorsoGoal::crouchMaxDrop: the animation stood higher)
 };
 
 std::optional<Off> LastOff(double unitsPerMeter) {
@@ -212,6 +213,7 @@ std::optional<Off> LastOff(double unitsPerMeter) {
     off.lift = r.bodyLift / unitsPerMeter;
     off.gap = r.crouchGap / unitsPerMeter;
     off.liftLimited = r.liftLimited;
+    off.liftByHead = r.liftByHead;
     return off;
 }
 
@@ -269,7 +271,8 @@ void NoteCrouch() {
             log::Info("torso: crouching with you: the body {} {:.0f} cm to your head (Shepard's head {:.0f} cm too {}), the knees "
                       "bending, the feet on the floor{}",
                 lift < 0.0 ? "down" : "up", std::abs(lift) * 100.0, std::abs(off->gap) * 100.0, off->gap > 0.0 ? "high" : "low",
-                off->liftLimited ? " (held short by the legs)" : "");
+                off->liftByHead ? " (held at your own head's drop: the animation stands higher than standing)"
+                : off->liftLimited ? " (held short by the legs)" : "");
         }
     }
     if (!gCrouching) {
@@ -277,7 +280,7 @@ void NoteCrouch() {
     }
     gCrouchDeepest = std::min(gCrouchDeepest, lift);
     gCrouchHighest = std::max(gCrouchHighest, lift);
-    if (off && off->liftLimited) {
+    if (off && off->liftLimited && !off->liftByHead) {
         ++gCrouchHeld;
     }
     if (std::abs(lift) < 0.5 * kCrouchLogMeters) {
@@ -331,7 +334,7 @@ void LogIfOff() {
         off->twist, off->yawGap, off->bend, off->wantedShift, off->shift,
         off->shiftCapped ? " (capped: [Hands] bodyMoveMaxM; recenter with R to bring the view back over him)" : "",
         off->referenceGap, std::hypot(s.lean.x, s.lean.z), s.pivot.x, s.pivot.z, s.feet.x, s.feet.z, off->lift, off->gap,
-        off->liftLimited ? ", held by the legs" : "", LegsText());
+        off->liftByHead ? ", held at your own head's drop" : off->liftLimited ? ", held by the legs" : "", LegsText());
 }
 
 } // namespace
@@ -552,12 +555,12 @@ std::string StatusJson() {
         result = std::format("{{\"wantedTurnDeg\": {}, \"bodyTurnDeg\": {}, \"standingTurnDeg\": {}, \"spineTwistDeg\": {}, "
                              "\"shouldersFromLegsDeg\": {}, \"yawGapDeg\": {}, \"bendDeg\": {}, "
                              "\"viewFromBodyM\": {}, \"bodySlideM\": {}, \"slideCapped\": {}, \"headFromPivotM\": {}, "
-                             "\"bodyLiftM\": {}, \"crouchGapM\": {}, \"liftLimited\": {}}}",
+                             "\"bodyLiftM\": {}, \"crouchGapM\": {}, \"liftLimited\": {}, \"liftByHead\": {}}}",
             json::JsonNumber(off->wantedTurn), json::JsonNumber(off->bodyTurn), json::JsonNumber(off->standingTurn), json::JsonNumber(off->twist),
             json::JsonNumber(off->shouldersFromLegs), json::JsonNumber(off->yawGap),
             json::JsonNumber(off->bend), json::JsonNumber(off->wantedShift), json::JsonNumber(off->shift),
             off->shiftCapped ? "true" : "false", json::JsonNumber(off->referenceGap), json::JsonNumber(off->lift),
-            json::JsonNumber(off->gap), off->liftLimited ? "true" : "false");
+            json::JsonNumber(off->gap), off->liftLimited ? "true" : "false", off->liftByHead ? "true" : "false");
     }
     std::string legs = "null";
     if (gLast.legsUsed) {

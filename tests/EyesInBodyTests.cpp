@@ -20,6 +20,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <functional>
+#include <limits>
 #include <numbers>
 #include <optional>
 #include <string>
@@ -216,7 +217,30 @@ struct Options {
     double gameCrouch = 0.0;  // the animation's own crouch: Shepard's body this many units lower, his knees bent
     double moving = 0.0;      // the legs keeping the run (LegsState::weight): the gap within the slack is the run's
     bool up = true;           // [Hands] crouchBodyUp: the body also comes up to a head above it
+    bool headLimit = true;    // game/ArmIk's TorsoGoal::crouchMaxDrop: no deeper than the player's own head went down
+    double raised = 0.0;      // the animation's upper body this many units higher than standing (ME2's run, research/29)
 };
+
+// game/ArmIk's margin for TorsoGoal::crouchMaxDrop (research/29 "A run never lowers the body").
+constexpr double kCrouchDropMarginMeters = 0.02;
+
+// A pose that holds Shepard's head higher than his standing one, as ME2's run and the steps after it do (the owner's log of
+// 2026-11-18: his shoulders 6-7 units over the idle's, the gap 15-19 cm with the eyes at standing height): everything from
+// the spine's bottom joint up (LowerBack's subtree: the spine, the collars, the arms, the head and the eyes) `units` higher.
+std::vector<Transform> Raised(Le1Rig const& rig, std::vector<Transform> pose, double units) {
+    if (units == 0.0) {
+        return pose;
+    }
+    for (int b = 0; b < Le1Rig::Count; ++b) {
+        for (int a = b; a >= 0; a = rig.parents[a]) {
+            if (a == Le1Rig::LowerBack) {
+                pose[b].translation.z += units;
+                break;
+            }
+        }
+    }
+    return pose;
+}
 
 // Shepard's pose as the game's crouch would have it, roughly: the whole body (Root's subtree) `units` lower, the feet where
 // they stood and the knees bent forward (the rig's legs solved to their ankles).
@@ -275,7 +299,7 @@ Run Simulate(Scenario const& scenario, Player const& player, Options const& opti
     double const shepardEye = 0.5 * (rig.pose[Le1Rig::EyeLeft].translation.z + rig.pose[Le1Rig::EyeRight].translation.z);
     double const s = options.bodyScale > 0.0 ? options.bodyScale
                                              : std::clamp(player.eyeHeight * kUnitsPerMeter / shepardEye, bs::kMin, bs::kMax);
-    std::vector<Transform> const animated = GameCrouched(rig, options.gameCrouch);
+    std::vector<Transform> const animated = Raised(rig, GameCrouched(rig, options.gameCrouch), options.raised);
     BodyFollow follow;
     BodyFrame const body;
     int const ticks = static_cast<int>(scenario.seconds / kDt);
@@ -309,6 +333,10 @@ Run Simulate(Scenario const& scenario, Player const& player, Options const& opti
             goal.neckDown = NeckModel{}.down * kUnitsPerMeter;
             goal.crouchSlack = kCrouchSlackMeters * kUnitsPerMeter;
             goal.crouchLoose = options.moving;
+            if (options.headLimit) {
+                // game/ArmIk: the gap a standing Shepard would show (his standing eyes at the drawn scale over the floor at 0).
+                goal.crouchMaxDrop = CrouchDropLimit(s * shepardEye, goal.neckDown, goal.head.z, kCrouchDropMarginMeters * kUnitsPerMeter);
+            }
         }
 
         // engine/BonePose: the goals through the scale's inverse, the solves, the scale.
@@ -319,6 +347,7 @@ Run Simulate(Scenario const& scenario, Player const& player, Options const& opti
         goal.maxBodyShift = bs::UnscaleLength(scale, goal.maxBodyShift);
         goal.neckDown = bs::UnscaleLength(scale, goal.neckDown);
         goal.crouchSlack = bs::UnscaleLength(scale, goal.crouchSlack);
+        goal.crouchMaxDrop = bs::UnscaleLength(scale, goal.crouchMaxDrop);
         std::vector<Transform> pose = animated;
         std::array<ArmChain, 2> const legs{*leftLeg, *rightLeg};
         if (options.crouch) {
@@ -455,6 +484,10 @@ int RunEyesInBodyTests() {
         Report("After, the game's crouch with the player standing (the button; crouchBodyUp 1)", owner, {true, 0.0, 45.0}, {Stand()});
         Report("After, moving (the run's bob of up to 6 cm left alone)", owner, {true, 0.0, 0.0, 1.0},
             {Stand(), Squat(0.10), Squat(0.20), Squat(0.40)});
+        Report("ME2's run: the head 13 units over standing, without the head's limit (the bug)", owner,
+            {true, 0.0, 0.0, 0.0, false, false, 13.0}, {Stand(), Squat(0.10), Squat(0.20)});
+        Report("ME2's run: the head 13 units over standing, the body no deeper than the player's head", owner,
+            {true, 0.0, 0.0, 0.0, false, true, 13.0}, {Stand(), Squat(0.10), Squat(0.20)});
         Player const short_{1.50, 0.80};
         Report("Before, a player with 1.50 m eyes", short_, {false, 0.0}, {Stand(), Squat(0.20), Bend(45.0)});
         Report("After, a player with 1.50 m eyes", short_, {true, 0.0}, {Stand(), Squat(0.20), Bend(45.0)});
@@ -527,6 +560,61 @@ int RunEyesInBodyTests() {
     CHECK(runStand.ok && runStand.last.lift == 0.0);
     Run const runSquat = Simulate(Squat(0.20), owner, moving);
     CHECK(runSquat.ok && NearlyLifted(runSquat.last.lift, -(20.0 - kCrouchSlackMeters * 100.0), 2.5) && runSquat.worst.depth < 0.0);
+
+    // A run never lowers the body (research/29 "A run never lowers the body", 2026-11-18): ME2's run and the steps after it
+    // hold Shepard's head higher than standing. Without the limit a player standing straight had the body go down for it (the
+    // owner's 14-17 cm mid-run, the knees bent), in the run (the slack) and after it (no slack); with it, at most the margin.
+    for (double const weight : {0.0, 1.0}) {
+        Options bug{true, 0.0, 0.0, weight, false, false, 13.0};
+        Run const without = Simulate(Stand(), owner, bug);
+        CHECK(without.ok && without.last.lift < (weight > 0.0 ? -4.0 : -10.0));
+        bug.headLimit = true;
+        Run const with = Simulate(Stand(), owner, bug);
+        CHECK(with.ok && with.last.lift <= 0.0 && with.last.lift > -(kCrouchDropMarginMeters * 100.0 + 0.5));
+        CHECK(std::abs(with.last.ankleLift) < 0.5);
+    }
+    // ...and the player's own crouch still takes the body down with the head, as far as the head went.
+    for (double const d : {0.10, 0.20, 0.30}) {
+        Run const r = Simulate(Squat(d), owner, {true, 0.0, 0.0, 0.0, false, true, 13.0});
+        CHECK(r.ok && NearlyLifted(r.last.lift, -d * 100.0, 2.5) && std::abs(r.last.ankleLift) < 0.5);
+    }
+    // The limit is the gap a standing Shepard shows: it binds nowhere above (every squat, bend and the game's crouch above
+    // ran with it); an unknown standing height is no limit; never below the margin.
+    CHECK(CrouchDropLimit(184.0, 10.0, 174.0, 2.0) == 2.0);
+    CHECK(CrouchDropLimit(184.0, 10.0, 154.0, 2.0) == 22.0);
+    CHECK(CrouchDropLimit(184.0, 10.0, 190.0, 2.0) == 2.0);
+    CHECK(std::isinf(CrouchDropLimit(std::numeric_limits<double>::quiet_NaN(), 10.0, 174.0, 2.0)));
+    {
+        // In the solve: a gap past the limit is held at it and says so; within it, nothing changes.
+        Le1Rig rig;
+        auto const left = FindArmChain(rig.names, rig.parents, 0);
+        auto const right = FindArmChain(rig.names, rig.parents, 1);
+        auto const chain = FindTorsoChain(rig.names, rig.parents, *left, *right);
+        CHECK(chain.has_value());
+        TorsoGoal goal;
+        goal.reference = {Le1Rig::Head, -1};
+        goal.head = rig.pose[Le1Rig::Head].translation - Vec3{0, 0, 30};
+        goal.forward = {1, 0, 0};
+        goal.body = Le1Rig::Root;
+        goal.bodyMoves = true;
+        goal.bodyAt = rig.pose[Le1Rig::Root].translation;
+        goal.maxBodyShift = 75.0;
+        goal.crouch = true;
+        goal.eyes = {Le1Rig::EyeLeft, Le1Rig::EyeRight};
+        goal.neckDown = 10.0;
+        goal.maxDrop = 60.0;
+        goal.crouchMaxDrop = 8.0;
+        std::vector<Transform> pose = rig.pose;
+        TorsoResult const held = PoseTorso(pose, rig.parents, *chain, *left, *right, BodyFrame{}, goal);
+        CHECK(held.ok && NearlyLifted(held.bodyLift, -8.0, 1e-9) && held.liftLimited && held.liftByHead);
+        goal.crouchMaxDrop = 50.0;
+        pose = rig.pose;
+        TorsoResult const free = PoseTorso(pose, rig.parents, *chain, *left, *right, BodyFrame{}, goal);
+        goal.crouchMaxDrop = std::numeric_limits<double>::infinity();
+        pose = rig.pose;
+        TorsoResult const none = PoseTorso(pose, rig.parents, *chain, *left, *right, BodyFrame{}, goal);
+        CHECK(free.ok && none.ok && !free.liftByHead && free.bodyLift < -20.0 && free.bodyLift == none.bodyLift);
+    }
 
     // The parts. The room the legs give: standing, (nearly) no rise and a deep drop; crouched, room both ways.
     {

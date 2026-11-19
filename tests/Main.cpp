@@ -12422,6 +12422,8 @@ int RunSquadPlaceTests();
 int RunBodyScaleTests();
 // tests/EyesInBodyTests.cpp: the eyes inside the body (core/ik/TorsoPose's crouch, research/29).
 int RunEyesInBodyTests();
+// tests/CrouchAnchorTests.cpp: the crouch that went third person (core/ik/BodyFollow's FirstPersonAnchor, research/29).
+int RunCrouchAnchorTests();
 int RunBodySlotsSeatedTests();
 int RunBodySlotsSmgTests();
 int RunFloorLockTests();
@@ -12666,6 +12668,7 @@ int main() {
     gFailures += RunSquadPlaceTests();
     gFailures += RunBodyScaleTests();
     gFailures += RunEyesInBodyTests();
+    gFailures += RunCrouchAnchorTests();
     gFailures += RunBodySlotsSeatedTests();
     gFailures += RunBodySlotsSmgTests();
     gFailures += RunFloorLockTests();

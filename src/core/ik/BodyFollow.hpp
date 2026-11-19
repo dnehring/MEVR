@@ -83,6 +83,32 @@ private:
     FollowState last_;
 };
 
+// Which frame the controllers and the body follow (game/HandTargets; research/29 "The crouch that went third person",
+// 2026-11-18). First person (the view's own frame: the body slides under the view) while the view is within `enterUnits`
+// of Shepard's animated head bone (scaled as drawn), until it is past `leaveUnits`; else third person (tracking space hung
+// on that head bone: the body stays where the game animates him). Halcyon's third-person camera is a metre or more behind
+// him, its first-person eye 20-40 units from the head bone. The test measures the whole distance, except when the view's
+// height is known to be the player's own head (`playerHeight`: the host's floor lock put the eye at the pawn's floor plus
+// the headset's height, or a crouch on foot out of cover, where the host lowers the view by the real head only): then
+// the vertical part is how the player stands against the animation (the game's crouch puts his head 45-60 units lower
+// while the player crouches less or is already rising; a squat with the game standing; the weapon-drawn stance's lower
+// head), not the camera's place, and only the horizontal part counts. World axes, Unreal units, +Z up.
+struct AnchorSettings {
+    double enterUnits = 45.0;
+    double leaveUnits = 75.0;
+};
+
+struct AnchorInput {
+    bool haveHead = false;     // Shepard's animated head bone is known
+    Vec3 viewFromHead;         // the view (the eyes' midpoint) minus that head bone
+    bool playerHeight = false; // the view's height is the player's own head (see above)
+};
+
+// The distance the hysteresis compares: the whole gap, or its horizontal part with `playerHeight`. Negative without a head.
+double AnchorGap(AnchorInput const& in);
+// The next tick's anchor: true for first person. Without a head bone, never.
+bool FirstPersonAnchor(bool wasFirstPerson, AnchorInput const& in, AnchorSettings const& settings = {});
+
 // The legs under a moving body (research/29 "The legs keep the run", 2026-11-04). The game's run animations point
 // where the pawn faces: an explore-mode Shepard faces where he runs, a combat one strafes and backpedals against his
 // own facing. Turning the hips with the body toward the view while the pawn moves shows the legs running one way while

@@ -161,6 +161,23 @@ int main() {
     HeadOnly(ht::Current(Animated(40), false, true));
     CHECK(ht::Current(Animated(80), false, true).source == ht::Source::None);
 
+    // The game's crouch under a floor-locked view (research/29 "The crouch that went third person"): his animated head 68
+    // units under the view and 35 ahead of it (76 in all). The whole distance leaves first person; with the view's height
+    // the player's own only the 35 across counts, and a third-person camera 110 units away across still leaves.
+    Reset();
+    TrackedHands();
+    auto crouched = Animated(35);
+    crouched.z -= 68;
+    CHECK(ht::Current(Animated(30)).anchor == ht::Anchor::View);
+    targets = ht::Current(crouched);
+    CHECK(targets.anchor == ht::Anchor::HeadBone && !targets.viewHeightIsPlayers && targets.anchorGap > 75);
+    ht::ResetTracking();
+    CHECK(ht::Current(Animated(30), false, false, true).anchor == ht::Anchor::View);
+    targets = ht::Current(crouched, false, false, true);
+    CHECK(targets.anchor == ht::Anchor::View && targets.viewHeightIsPlayers && Near(targets.anchorGap, 35));
+    CHECK(Near(targets.viewToHeadBone, std::hypot(35.0, 68.0)));
+    CHECK(ht::Current(Animated(110), false, false, true).anchor == ht::Anchor::HeadBone);
+
     // The explicit desktop-test source is unchanged and never borrows stale VR hands.
     Reset();
     sampleAnchor.reset();

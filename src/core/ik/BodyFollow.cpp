@@ -79,6 +79,23 @@ FollowState BodyFollow::Update(FollowInput const& in) {
     return out;
 }
 
+double AnchorGap(AnchorInput const& in) {
+    if (!in.haveHead) {
+        return -1.0;
+    }
+    Vec3 const d = in.viewFromHead;
+    double const gap = in.playerHeight ? std::hypot(d.x, d.y) : Length(d);
+    return std::isfinite(gap) ? gap : -1.0;
+}
+
+bool FirstPersonAnchor(bool wasFirstPerson, AnchorInput const& in, AnchorSettings const& settings) {
+    double const gap = AnchorGap(in);
+    if (gap < 0.0) {
+        return false;
+    }
+    return gap <= (wasFirstPerson ? settings.leaveUnits : settings.enterUnits);
+}
+
 double LegsTurn(double facing, double limit) {
     if (!std::isfinite(facing) || !std::isfinite(limit)) {
         return 0.0;
