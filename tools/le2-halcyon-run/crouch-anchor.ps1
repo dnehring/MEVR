@@ -98,7 +98,21 @@ function Play([string]$plan, [string]$file, [string[]]$extra = @(), [double[]]$s
     }
     $left = $seconds + 0.6 - ((Get-Date) - $started).TotalSeconds
     if ($left -gt 0) { Start-Sleep -Milliseconds ([int]($left * 1000)) }
-    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $W 'tools\replay.ps1') -Stop | Out-Null
+    HoldStanding
+}
+# Between plays: at the owner's height, a standing replay looped (the next play replaces it), so the eyes don't drop back to
+# the null driver's 1.75 m between phases (the posture's standing reference and the floor lock stay at his height); without
+# his calibration, no replay.
+function HoldStanding {
+    if ($script:standEye.Count -eq 0) {
+        & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $W 'tools\replay.ps1') -Stop | Out-Null
+        return
+    }
+    if (-not $script:standPath) {
+        $script:standPath = Join-Path $out 'hold-standing.mevrrec'
+        & python (Join-Path $W 'tools\make-walk-recording.py') $script:standPath --plan 'stand:10' --pitch -20 --hands view @script:standEye | Out-Null
+    }
+    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $W 'tools\replay.ps1') -Path $script:standPath -Loop -Inputs | Out-Null
 }
 # What a snapshot's JSON says about the body and the eyes (copied into the session folder): the floor lock's eye (the replayed
 # head's height), the torso's crouch (the body down with the head: research/29 "The eyes inside the body"), the posture's eyes.
@@ -124,10 +138,13 @@ function Hands([string]$key, [string]$value) {
 
 # The owner's calibration: the key in use (a relaunch if not yet), the replays' floor samples at his standing eye height.
 $script:standEye = @()
+$script:standPath = $null
 if ($OwnerCalibration) {
     . (Join-Path $W 'tools\owner-calibration.ps1')
     $cal = Use-OwnerCalibrationLe2 -Holder $Holder
     $script:standEye = @('--stand-eye', $cal.StandEyeM.ToString([Globalization.CultureInfo]::InvariantCulture), '--ease', '0.4')
+    HoldStanding
+    Start-Sleep -Seconds 6  # the posture's standing reference rises toward a higher eye with a 2 s time constant
 }
 $from = (ReadLog).Count
 Note ("crouch-anchor {0}: phases {1}; {2}" -f $Tag, ($Phases -join ','), (Ask 'mevr state'))
@@ -168,6 +185,7 @@ try {
             Note ("[Hands] {0} back to {1}" -f $key, $(if ($null -eq $handsBefore[$key]) { '(absent)' } else { $handsBefore[$key] }))
         }
     }
+    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $W 'tools\replay.ps1') -Stop | Out-Null
 }
 Start-Sleep -Seconds 2
 $lines = @(ReadLog)

@@ -72,7 +72,21 @@ function Play([string]$plan, [string]$file, [string[]]$extra = @()) {
     foreach ($part in $plan -split ',') { $seconds += [double]($part.Substring($part.LastIndexOf(':') + 1)) }
     & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $W 'tools\replay.ps1') -Path $path -Inputs | Out-Null
     Start-Sleep -Milliseconds ([int](($seconds + 0.6) * 1000))
-    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $W 'tools\replay.ps1') -Stop | Out-Null
+    HoldStanding
+}
+# Between plays: at the owner's height, a standing replay looped (the next play replaces it), so the eyes don't drop back to
+# the null driver's 1.75 m between cases (the posture's standing reference and the floor lock stay at his height); without
+# his calibration, no replay.
+function HoldStanding {
+    if ($script:standEye.Count -eq 0) {
+        & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $W 'tools\replay.ps1') -Stop | Out-Null
+        return
+    }
+    if (-not $script:standPath) {
+        $script:standPath = Join-Path $out 'hold-standing.mevrrec'
+        & python (Join-Path $W 'tools\make-walk-recording.py') $script:standPath --plan 'stand:10' --pitch -20 --hands view @script:standEye | Out-Null
+    }
+    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $W 'tools\replay.ps1') -Path $script:standPath -Loop -Inputs | Out-Null
 }
 function Hands([string]$key, [string]$value) {
     [void][Mevr.Profile]::WritePrivateProfileString('Hands', $key, $value, $ini)
@@ -82,10 +96,13 @@ function Hands([string]$key, [string]$value) {
 
 # The owner's calibration: the key in use (a relaunch if not yet), the replays' floor samples at his standing eye height.
 $script:standEye = @()
+$script:standPath = $null
 if ($OwnerCalibration) {
     . (Join-Path $W 'tools\owner-calibration.ps1')
     $cal = Use-OwnerCalibrationLe2 -Holder $Holder
     $script:standEye = @('--stand-eye', $cal.StandEyeM.ToString([Globalization.CultureInfo]::InvariantCulture), '--ease', '0.4')
+    HoldStanding
+    Start-Sleep -Seconds 6  # the posture's standing reference rises toward a higher eye with a 2 s time constant
 }
 $from = (ReadLog).Count
 Note ("posture-walk {0}: phases {1}; {2}" -f $Tag, ($Phases -join ','), (Ask 'mevr state'))
@@ -130,6 +147,7 @@ if ($Phases -contains 'l3') {
     Play 'stand:1,l3:0.06,stand:1.5,l3:0.06,stand:1.5,l3:0.5,stand:1.5,l3:0.06,stand:1.5' 'l3.mevrrec'
 }
 Start-Sleep -Seconds 2
+& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $W 'tools\replay.ps1') -Stop | Out-Null
 $lines = @(ReadLog)
 $mine = @($lines | Select-Object -Skip $from)
 Set-Content -LiteralPath (Join-Path $out 'log.txt') -Value $mine -Encoding utf8
