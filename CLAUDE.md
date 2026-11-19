@@ -292,7 +292,10 @@ switching frameworks.
   build-mono about 600 s, 183 s, 165 s. The rest is our own sources compiled per game (about 40% of the compiler's time
   is second and later compiles of a file); it is CPU-bound now (about 19 compiles at once on 24 threads). While a game runs,
   build at Idle priority on half the cores: `$env:CL_MPCount=8; cmd /c start "" /b /low /wait cmake --build <dir> --config
-  Release --parallel 4 -- -nodeReuse:false` (a reused MSBuild node keeps Normal priority).
+  Release --parallel 4 -- -nodeReuse:false -p:EnforceProcessCountAcrossBuilds=false` (a reused MSBuild node keeps Normal
+  priority). **Every `cmake --build` passes `-p:EnforceProcessCountAcrossBuilds=false`**: a build killed mid-compile leaks
+  the machine-wide compile slots that property shares, and every later build hangs with no cl.exe running
+  (gotchas/msbuild-cross-build-semaphore).
 - Deploy: `tools/deploy-asi.ps1 -Game LE1` (needs the ME3MM ASI loader). The log is at
   `<Win64>/Logs/LE1MEVR.log` or `%LOCALAPPDATA%/MEVR/`.
 - **Hot reload (default build):** `LE1MEVR.asi` is a small host; the code lives in

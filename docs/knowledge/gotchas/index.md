@@ -44,6 +44,7 @@
 
 # Code and tooling
 
+* [A build killed mid-compile leaks MSBuild's machine-wide compile slots, and every later build waits forever](msbuild-cross-build-semaphore.md) - `EnforceProcessCountAcrossBuilds=true` in CMakeLists.txt makes every cl.exe take a slot from one named semaphore; a killed build never gives its slots back, and later builds hang with no cl.exe running (six for 14 hours); pass `-p:EnforceProcessCountAcrossBuilds=false`, stop the stuck trees; bitten 2026-11-18 and 2026-11-19.
 * [Settings code: one ini reader, no C-locale number functions, no path.string()](ini-numbers-paths-and-locale.md) - A decimal-comma locale breaks `strtod`, a Cyrillic folder throws from `path.string()`, and the host and the mod must read one file one way.
 * [A library's ONNX Runtime session runs on every core and spins unless told otherwise](recognizer-on-every-core.md) - Moonshine passes no thread count to ONNX Runtime; each partial transcript took every core for 200-300 ms and the game lost 2 s of frames per spoken order; `MOONSHINE_ORT_SINGLE_THREAD` in the DLL's CRT environment, set before the models load; bitten 2026-11-06.
 * [A file just written is busy for a moment, so the next rename of it fails now and then](fresh-file-busy-for-a-moment.md) - mevr-tests failed 3 runs in about 80 on the installer's record (`MEVR-install.json`, error 5) and passed on a rerun; antivirus holds fresh files; the installer retries busy files, tests write under `mevr::tests::TempRoot()`; bitten 2026-11-06.
