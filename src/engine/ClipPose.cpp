@@ -115,6 +115,12 @@ void Play(ue3::Object* body, std::shared_ptr<ik::clip::Clip const> clip, double 
     gWanted.store(body != nullptr && gClip != nullptr && !gBroken.load() ? body : nullptr);
 }
 
+void Seek(double seconds, double rate) {
+    gSeconds = seconds;
+    gRate = rate;
+    gStats.seconds = seconds;
+}
+
 void Stop() {
     gWanted.store(nullptr);
     gBody = nullptr;

@@ -540,10 +540,18 @@ std::string Command(std::string const& args) {
     if (d.clip != nullptr && verb != "status" && !verb.empty()) {
         if (verb == "pause" || verb == "resume") {
             d.paused = verb == "pause";
-            engine::clip_pose::Play(d.body, d.paused ? d.clip : d.clip, d.paused ? 0.0 : d.rate);
-            return d.paused ? "paused (the walk holds too)" : "resumed from the loop's start";
+            engine::clip_pose::Seek(engine::clip_pose::GetStats().seconds, d.paused ? 0.0 : d.rate);
+            return d.paused ? "paused (the walk holds too)" : "resumed";
         }
-        return "a clip plays: mevr anim pause | resume | stop | status";
+        if (verb == "at") {
+            double seconds = 0.0;
+            words >> seconds;
+            d.paused = true;
+            engine::clip_pose::Seek(seconds, 0.0);
+            return std::format("held at {:.2f} s into the loop (frame {:.1f}); `mevr anim resume` plays on", seconds,
+                d.clip->loopStart + seconds * d.clip->fps);
+        }
+        return "a clip plays: mevr anim at <s> | pause | resume | stop | status";
     }
     if (d.clip != nullptr) {
         engine::clip_pose::Stats const st = engine::clip_pose::GetStats();

@@ -21,6 +21,8 @@ namespace mevr::engine::clip_pose {
 // From the next pose update on; `rate` 1 is the clip's speed. Stop: the body is the game's again.
 void Play(ue3::Object* body, std::shared_ptr<ik::clip::Clip const> clip, double rate);
 void Stop();
+// Scrub and hold: the clip's time set to `seconds` into its loop, and its rate (0 holds that pose).
+void Seek(double seconds, double rate);
 bool Wants(ue3::Object const* component);
 void AfterPose(ue3::Object* component, float deltaTime);
 
