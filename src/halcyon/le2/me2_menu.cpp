@@ -506,18 +506,33 @@ void ApplyMevrBaseline() noexcept
     if (note(!ME2VR::D3DCapture::GetMonoMenus(), "flat menus (MonoMenus)")) ME2VR::D3DCapture::SetMonoMenus(true);
     if (note(!ME2VR::EngineProbe::GetFirstPerson(), "first person ([FirstPerson] Enabled)")) ME2VR::EngineProbe::SetFirstPerson(true);
     bool headShown = false;
+    bool bodyHidden = false;
     for (int i = 0; i < ME2VR::EngineProbe::FpStateCount(); ++i)
     {
         ME2VR::EngineProbe::FpStateCfg* s = ME2VR::EngineProbe::GetFpStateCfg(i);
         if (s != nullptr && !s->hideHead) { s->hideHead = true; headShown = true; }
+        // ME1's first person draws the body (VRIK: the arms on the controllers, the body under the player) in every state;
+        // upstream's ME2 hid it unarmed and sprinting (the owner, 2026-11-17: "unless I have a weapon equipped, my VRIK
+        // body just completely disappears").
+        if (s != nullptr && s->hideBody) { s->hideBody = false; bodyHidden = true; }
     }
     note(headShown, "Shepard's head hidden ([FirstPerson] S*_hideHead)");
+    note(bodyHidden, "Shepard's body shown ([FirstPerson] S*_hideBody)");
     if (note(ME2VR::EngineProbe::GetHeadAimEnabled(), "head aim (HeadAim)")) ME2VR::EngineProbe::SetHeadAimEnabled(false);
     if (note(!g_decoupledPitch.load(std::memory_order_relaxed), "the stick's pitch (DecoupledPitch)"))
         g_decoupledPitch.store(true, std::memory_order_relaxed);
     if (note(ME2VR::CalcViewHook::GetCineVrConvo(), "conversations in VR (CineVrConvo)")) ME2VR::CalcViewHook::SetCineVrConvo(false);
     if (note(ME2VR::CalcViewHook::GetCineVrCutscene(), "cutscenes in VR (CineVrCutscene)"))
         ME2VR::CalcViewHook::SetCineVrCutscene(false);
+    // No head aim in the Hammerhead either (the owner, 2026-11-18: "vehicle head mode likely shouldn't be on"; ME1's
+    // makoHeadAim = 0): free look, the head turns the view and the stick aims the cannon, until the Hammerhead gets the
+    // Mako's controls and a first-person cockpit. Upstream ships 3, the head aiming the cannon.
+    if (note(ME2VR::EngineProbe::GetVehicleHeadMode() != 1, "the Hammerhead's free look (VehicleHeadMode 1)"))
+        ME2VR::EngineProbe::SetVehicleHeadMode(1);
+    // One first-person conversation for the trilogy: ME1's (game/ConversationWorld), deferred on the sequels. Upstream's
+    // own (convo_fp.cpp) stays off whatever the file or the classic menu says, as LE3's host forces it at its setter.
+    if (note(ME2VR::ConvoFp::GetEnabled(), "upstream's first-person conversations (ConvoFirstPerson)"))
+        ME2VR::ConvoFp::SetEnabled(false);
     if (note(g_profileHotkeys, "profile hotkeys (ProfileHotkeys)")) g_profileHotkeys = false;
     if (note(g_recenterKey == 'R', "the recenter key R (RecenterKey)")) g_recenterKey = 0;  // rk > 0 gates it
     // The menu key is ME1's \ (our deploy's on ME1: it opens our main menu, Ctrl or Shift + \ this one), not upstream's
@@ -658,8 +673,23 @@ void LoadValues() noexcept
         ME2VR::CalcViewHook::SetCineVrCutscene(false);
         ME2VR::Log::Line("[CINEXCL] ini had BOTH first-person conversations and VR cine on -> kept first-person, VR cine off");
     }
-    GetPrivateProfileStringW(L"VR", L"MenuScreenDist", L"1.6", buf, 64, path.c_str()); ME2VR::Me2Xr::SetMenuScreenDist(static_cast<float>(_wtof(buf)));
-    GetPrivateProfileStringW(L"VR", L"MenuScreenSize", L"2.2", buf, 64, path.c_str()); ME2VR::Me2Xr::SetMenuScreenSize(static_cast<float>(_wtof(buf)));
+    GetPrivateProfileStringW(L"VR", L"MenuScreenDist", L"1.4", buf, 64, path.c_str()); ME2VR::Me2Xr::SetMenuScreenDist(static_cast<float>(_wtof(buf)));
+    GetPrivateProfileStringW(L"VR", L"MenuScreenSize", L"2.35", buf, 64, path.c_str()); ME2VR::Me2Xr::SetMenuScreenSize(static_cast<float>(_wtof(buf)));
+    // [MEVR] ME1's flat panel (1.4 m away, 2.35 m wide; docs/trilogy-plan.md rule 1), upstream's 1.6 m / 2.2 m before. A
+    // file still holding upstream's exact pair (its shipped MELE2VR.ini) moves once; a size the player chose stays.
+    if (GetPrivateProfileIntW(L"VR", L"FlatPanelMe1", 0, path.c_str()) == 0)
+    {
+        const float d = ME2VR::Me2Xr::GetMenuScreenDist(), w = ME2VR::Me2Xr::GetMenuScreenSize();
+        if (d > 1.599f && d < 1.601f && w > 2.199f && w < 2.201f)
+        {
+            ME2VR::Me2Xr::SetMenuScreenDist(1.4f);
+            ME2VR::Me2Xr::SetMenuScreenSize(2.35f);
+            WritePrivateProfileStringW(L"VR", L"MenuScreenDist", L"1.400", path.c_str());
+            WritePrivateProfileStringW(L"VR", L"MenuScreenSize", L"2.350", path.c_str());
+            ME2VR::Log::Line("[MEVR] the flat panel moved to ME1's 1.4 m / 2.35 m (MELE2VR.ini held upstream's 1.6 m / 2.2 m)");
+        }
+        WritePrivateProfileStringW(L"VR", L"FlatPanelMe1", L"1", path.c_str());
+    }
     // [SFR-UI] HUD master transform (tuned in the HUD tab). ONE-TIME MIGRATION at the [UIRATIO]
     // switch: pre-ratio inis carry a manual un-stretch (HudScaleX ~0.55) that would now double-shrink
     // on top of the automatic tan-ratio - reset the trims to neutral once, marked by UiRatioMigrated.

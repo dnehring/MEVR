@@ -79,15 +79,13 @@ int main() {
     auto contains = [](std::string const& command) {
         return std::find(commands.begin(), commands.end(), command) != commands.end();
     };
-    // The built-in dynamic shadows (engine::adapter::kVrDynamicShadows): ME1's cost lever keeps them off; the sequels keep
-    // them on (the owner, 2026-11-17: 0.2-0.3 ms on ME2, nothing measurable on ME3, each eye its own render).
-#if defined(MEVR_GAME_LE1)
+    // The built-in dynamic shadows (engine::adapter::kVrDynamicShadows): off on every game (ME1's cost lever; on ME2 they
+    // differed between the eyes, the owner 2026-11-17). The sequels' character shadows are always off too
+    // (kVrCharacterShadowsOff): one more boolean key, two more commands, in every full application.
     std::string const builtInShadows = "False";
     std::string const otherShadows = "True";
-#else
-    std::string const builtInShadows = "True";
-    std::string const otherShadows = "False";
-#endif
+    constexpr bool kCharacterOff = mevr::engine::adapter::kVrCharacterShadowsOff;
+    std::size_t const fullApply = kCharacterOff ? 7 : 5;
 #if defined(MEVR_GAME_LE1)
     // ME1's guard and settling sequence (LE2 holds a new level's settings for 3 s; the sequels' runs are below).
     int firstWorld = 1, nextWorld = 2;
@@ -163,9 +161,14 @@ int main() {
     };
     write("[Performance]\nsharePass=5\n[SystemSettings]\n");
     CHECK(has(settings::Wanted(file, true), "LightEnvironmentShadows", "False"));
-    CHECK(!names(settings::Wanted(file, false), "LightEnvironmentShadows"));  // no replay, no value of the player's: untouched
+    if (kCharacterOff) {
+        CHECK(has(settings::Wanted(file, false), "LightEnvironmentShadows", "False"));  // the sequels: off with no replay
+    } else {
+        CHECK(!names(settings::Wanted(file, false), "LightEnvironmentShadows"));  // no replay, no value of the player's: untouched
+    }
     writeGamer("[SystemSettings]\nLightEnvironmentShadows=True\n");
-    CHECK(has(settings::Wanted(file, false), "LightEnvironmentShadows", "True"));   // the player's own value put back
+    // The player's own value put back on ME1; the sequels keep theirs off.
+    CHECK(has(settings::Wanted(file, false), "LightEnvironmentShadows", kCharacterOff ? "False" : "True"));
     CHECK(has(settings::Wanted(file, true), "LightEnvironmentShadows", "False"));   // the replay still wins over it
     writeGamer("[SystemSettings]\nLightEnvironmentShadows=False\n");
     CHECK(has(settings::Wanted(file, false), "LightEnvironmentShadows", "False"));
@@ -214,7 +217,9 @@ int main() {
         commands.clear();
         settings::Poll(1.0f, static_cast<unsigned char>(0), true, file, world, false);
         CHECK(commands.size() == 7);
-        CHECK(commands.back() == "scale set LightEnvironmentShadows True");  // through its opposite, the wanted value last
+        // Through its opposite, the wanted value last.
+        CHECK(commands.back() == (kCharacterOff ? "scale set LightEnvironmentShadows False"
+                                                : "scale set LightEnvironmentShadows True"));
         // The game's dynamic shadows, first and through their opposite.
         CHECK(commands.size() >= 2 && commands[0] == "scale set DynamicShadows " + otherShadows &&
               commands[1] == "scale set DynamicShadows " + builtInShadows);
@@ -222,12 +227,20 @@ int main() {
         settings::Poll(1.0f, static_cast<unsigned char>(0), true, file, world, false);
         CHECK(commands.empty());
         settings::Poll(1.0f, static_cast<unsigned char>(0), true, file, world, true);
-        CHECK(!commands.empty() && commands.back() == "scale set LightEnvironmentShadows False");
+        if (kCharacterOff) {
+            CHECK(commands.empty());  // the sequels: always off, the host's answer changes nothing
+        } else {
+            CHECK(!commands.empty() && commands.back() == "scale set LightEnvironmentShadows False");
+        }
         commands.clear();
         settings::Poll(1.0f, static_cast<unsigned char>(0), true, file, world, true);
         CHECK(commands.empty());
         settings::Poll(1.0f, static_cast<unsigned char>(0), true, file, world, false);
-        CHECK(!commands.empty() && commands.back() == "scale set LightEnvironmentShadows True");
+        if (kCharacterOff) {
+            CHECK(commands.empty());
+        } else {
+            CHECK(!commands.empty() && commands.back() == "scale set LightEnvironmentShadows True");
+        }
         commands.clear();
         writeGamer("[SystemSettings]\n");  // no value of the player's and no replay: the key is not sent at all
         int plainWorld = 6;
@@ -238,8 +251,12 @@ int main() {
         CHECK(commands.empty());
         settings::Poll(3.0f, static_cast<unsigned char>(0), true, file, world, false);
 #endif
-        CHECK(commands.size() == 5 && !contains("scale set LightEnvironmentShadows True") &&
-              !contains("scale set LightEnvironmentShadows False"));
+        if (kCharacterOff) {
+            CHECK(commands.size() == fullApply && commands.back() == "scale set LightEnvironmentShadows False");
+        } else {
+            CHECK(commands.size() == 5 && !contains("scale set LightEnvironmentShadows True") &&
+                  !contains("scale set LightEnvironmentShadows False"));
+        }
         commands.clear();
     }
     // Dynamic shadows: the game's built-in value, and a player's [SystemSettings] DynamicShadows over it, either way.
@@ -250,12 +267,12 @@ int main() {
         CHECK(has(settings::Wanted(file, false), "DynamicShadows", otherShadows.c_str()) &&
               !has(settings::Wanted(file, false), "DynamicShadows", builtInShadows.c_str()));
         settings::Poll(1.0f, static_cast<unsigned char>(0), true, file, world, false);
-        CHECK(commands.size() == 5 && commands[0] == "scale set DynamicShadows " + builtInShadows &&
+        CHECK(commands.size() == fullApply && commands[0] == "scale set DynamicShadows " + builtInShadows &&
               commands[1] == "scale set DynamicShadows " + otherShadows);
         commands.clear();
         write("[SystemSettings]\n");   // the player's key removed: the built-in value again
         settings::Poll(1.0f, static_cast<unsigned char>(0), true, file, world, false);
-        CHECK(commands.size() == 5 && commands[0] == "scale set DynamicShadows " + otherShadows &&
+        CHECK(commands.size() == fullApply && commands[0] == "scale set DynamicShadows " + otherShadows &&
               commands[1] == "scale set DynamicShadows " + builtInShadows);
         commands.clear();
     }

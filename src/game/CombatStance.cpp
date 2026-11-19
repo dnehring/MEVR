@@ -11,6 +11,9 @@
 #include "core/vr/TestRequest.hpp"
 #include "engine/BonePose.hpp"
 #include "engine/CallFunction.hpp"
+#if !defined(MEVR_GAME_LE1)
+#include "engine/GameAdapter.hpp"  // the sequels' walk (engine::adapter::kWalk*)
+#endif
 #include "engine/ProcessEvent.hpp"
 #include "engine/Skeleton.hpp"
 #include "game/ArmIk.hpp"
@@ -90,6 +93,32 @@ ue3::FieldRef gInterpolateTo{"SFXGame.SFXCameraMode_Interpolate", "To"};
 ue3::FunctionRef gIsInCombatActionStateFn{"SFXGame.BioPawn.IsInCombatActionState"};
 ue3::FunctionRef gIsSwitchingWeaponsFn{"SFXGame.BioPawn.IsSwitchingWeapons"};
 ue3::FunctionRef gGetWalkingSpeedModeFn{"SFXGame.BioPawn.GetWalkingSpeedMode"};
+#endif
+
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+// The walk on the sequels (section C: ME1's rules on each game's fields, engine::adapter::kWalkOwnerClass, kWalkStepFlags,
+// kWalkSpeedRamps; the ME2 and ME3 audits' MOV-14 to MOV-16). Their rows: engine/ReflectCheck's CheckSequelWalk.
+ue3::FieldRef gVelocity{"Engine.Actor", "Velocity", ue3::kEveryGame};
+ue3::FieldRef gPawnAccelRate{"Engine.Pawn", "AccelRate", ue3::kEveryGame};
+#if defined(MEVR_GAME_LE2)
+ue3::FieldRef gBehavior{"SFXGame.BioPawn", "m_oBehavior", ue3::kEveryGame};
+ue3::FieldRef gEnableStartAnim{engine::adapter::kWalkOwnerClass, "m_bEnableStartAnim", ue3::kEveryGame};
+ue3::FieldRef gEnableStopAnim{engine::adapter::kWalkOwnerClass, "m_bEnableStopAnim", ue3::kEveryGame};
+ue3::FieldRef gEnableSkidAnim{engine::adapter::kWalkOwnerClass, "m_bEnableSkidAnim", ue3::kEveryGame};
+#endif
+ue3::FieldRef gAnimStartState{engine::adapter::kWalkOwnerClass, "m_eAnimStartState", ue3::kEveryGame};
+ue3::FieldRef gAnimStopState{engine::adapter::kWalkOwnerClass, "m_eAnimStopState", ue3::kEveryGame};
+ue3::FieldRef gAnimSkidState{engine::adapter::kWalkOwnerClass, "m_eAnimSkidState", ue3::kEveryGame};
+ue3::FunctionRef gGetWalkingSpeedModeFn{"SFXGame.BioPawn.GetWalkingSpeedMode", ue3::kEveryGame};
+
+// The object holding the move control's state (engine::adapter::kWalkOwnerClass): ME2's pawn behaviour, ME3's pawn.
+ue3::Object* WalkOwner(ue3::Object* pawn) {
+#if defined(MEVR_GAME_LE2)
+    return pawn != nullptr ? gBehavior.Read<ue3::Object*>(pawn).value_or(nullptr) : nullptr;
+#else
+    return pawn;
+#endif
+}
 #endif
 
 bool gStarted = false;
@@ -207,6 +236,15 @@ struct Stick {
     bool loggedThresholds = false;
 };
 Stick gStick;
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+// The sequels' let-go (OnSequelMove): [Hands] linearWalk in VR on foot skips the move functions' 0.5 s blend down.
+struct Stop {
+    bool wanted = false;
+    std::uint64_t stops = 0;  // let-goes stopped at once
+    bool logged = false;
+};
+Stop gStop;
+#endif
 
 // The start, stop and skid steps: the game's flags kept to put back, each only if still ours.
 struct Steps {
@@ -237,8 +275,13 @@ std::string StepsJson() {
 }
 
 // The walking mode (EWalkingSpeedMode) and speed.
+#if defined(MEVR_GAME_LE1)
 constexpr char const* kWalkModes[] = {"ExploreRun", "ExploreWalk", "ExploreStorming", "ExploreCrouched", "CombatRun", "CombatWalk",
     "CombatStorming", "CombatCrouched", "CombatZoomed", "CoverMove", "CoverCrouched"};
+#else
+constexpr char const* kWalkModes[] = {"ExploreRun", "ExploreWalk", "ExploreStorming", "ExploreCrouched", "CombatRun", "CombatWalk",
+    "CombatStorming", "CombatCrouched", "CombatSniping", "CombatZoomed", "CoverMove", "CoverCrouched", "Crawling"};
+#endif
 int gWalkMode = -1;
 double gWalkModeSince = 0.0;
 double gWalkTop = 0.0;
@@ -300,9 +343,13 @@ char const* WeaponName(weapon::RangedType type) {
     return weapon::Key() != 0 ? "unknown weapon" : "none";
 }
 
+#endif
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 ue3::Function* gIsInCombatActionState = nullptr;
 ue3::Function* gIsSwitchingWeapons = nullptr;
 ue3::Function* gGetWalkingSpeedMode = nullptr;
+#endif
+#if defined(MEVR_GAME_LE1)
 
 bool CallBool(ue3::Object* object, ue3::Function* function) {
     if (object == nullptr || function == nullptr) {
@@ -313,6 +360,8 @@ bool CallBool(ue3::Object* object, ue3::Function* function) {
     return parms.ReturnBool().value_or(false);
 }
 
+#endif
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 int CallByte(ue3::Object* object, ue3::Function* function) {
     if (object == nullptr || function == nullptr) {
         return -1;
@@ -322,6 +371,9 @@ int CallByte(ue3::Object* object, ue3::Function* function) {
     std::optional<std::uint8_t> const value = parms.Return<std::uint8_t>();
     return value ? static_cast<int>(*value) : -1;
 }
+
+#endif
+#if defined(MEVR_GAME_LE1)
 
 std::string NodeName(ue3::Object const* node) {
     std::optional<ue3::Name> const name = gNodeName.Read<ue3::Name>(node);
@@ -812,15 +864,23 @@ void UpdateStance(double deltaSeconds, Link const& link, ue3::Object* controller
     }
 }
 
+#endif  // MEVR_GAME_LE1 (A)
+
 // ---- C ------------------------------------------------------------------------------------------------------------
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 
 bool IsPlayersBehavior(ue3::Object* behavior) {
     ue3::Object* const pc = player::Controller();
     ue3::Object* const pawn = pc != nullptr ? player::BioPawn(pc) : nullptr;
+#if defined(MEVR_GAME_LE1)
     return behavior != nullptr && pawn != nullptr && gBehavior.Read<ue3::Object*>(pawn).value_or(nullptr) == behavior &&
         ue3::runtime::IsAlive(behavior);
+#else
+    return behavior != nullptr && pawn != nullptr && WalkOwner(pawn) == behavior && ue3::runtime::IsAlive(behavior);
+#endif
 }
 
+#if defined(MEVR_GAME_LE1)
 struct RampFields {
     float* accel = nullptr;
     float* decel = nullptr;
@@ -843,12 +903,28 @@ RampFields FieldsOf(ue3::Object* behavior, ue3::Object* pawn) {
     f.accelRate = gPawnAccelRate.In<float>(pawn);
     return f;
 }
+#else
+// The sequels' walk has only the pawn's acceleration (engine::adapter::kWalkSpeedRamps).
+struct RampFields {
+    float* accelRate = nullptr;
+    bool Ok() const { return accelRate != nullptr; }
+};
+
+RampFields FieldsOf(ue3::Object* /*owner*/, ue3::Object* pawn) {
+    RampFields f;
+    if (pawn != nullptr) {
+        f.accelRate = gPawnAccelRate.In<float>(pawn);
+    }
+    return f;
+}
+#endif
 
 void Put(float* field, float value, char const* what) {
     *field = value;
     write_journal::Wrote(what, field, sizeof(float));
 }
 
+#if defined(MEVR_GAME_LE1)
 // Puts the game's walk back, each value only if it is still ours (the game may have set its own since).
 void RestoreRamp(char const* why, bool playerCheck) {
     if (gRamp.behavior == nullptr || !gRamp.written) {
@@ -936,6 +1012,73 @@ void UpdateRamp(Link const& link, ue3::Object* pawn, bool onFoot) {
     }
 }
 
+#else
+// The sequels: the pawn's acceleration back, if it is still ours.
+void RestoreRamp(char const* why, bool playerCheck) {
+    if (gRamp.pawn == nullptr || !gRamp.written) {
+        gRamp = {};
+        return;
+    }
+    bool restored = false;
+    if ((!playerCheck || IsPlayersBehavior(gRamp.behavior)) && ue3::runtime::IsAlive(gRamp.pawn)) {
+        if (float* const rate = gPawnAccelRate.In<float>(gRamp.pawn); rate != nullptr) {
+            if (*rate == gRamp.wrote.accelRate) {
+                Put(rate, gRamp.saved.accelRate, "CombatStance.accelRate(restore)");
+            }
+            restored = true;
+        }
+    }
+    log::Info("movement: walking as the game has it again ({}){}", why,
+        restored ? std::format(": acceleration {:.0f} u/s^2", gRamp.saved.accelRate) : std::string(" (left as it was)"));
+    gRamp = {};
+}
+
+// The walk linear to the stick on the sequels ([Hands] linearWalk): the pawn's acceleration takes the fastest run within
+// linearWalkS (cs::WantedAccelRate, ME1's rule); the game's value kept and put back.
+void UpdateRamp(Link const& link, ue3::Object* pawn, bool onFoot) {
+    hand_calibration::CombatStance const settings = hand_calibration::GetCombatStance();
+    ue3::Object* const owner = WalkOwner(pawn);
+    char const* why = !settings.linearWalk  ? "[Hands] linearWalk = 0"
+                    : !link.headTrackedView ? "no head-tracked view"
+                    : !onFoot               ? "not on foot"
+                    : owner == nullptr      ? "no player pawn"
+                                            : nullptr;
+    gRampWhy = why != nullptr ? why : "linear to the stick (the pawn's acceleration: this game has no speed ramps)";
+    if (why != nullptr) {
+        RestoreRamp(why, true);
+        return;
+    }
+    if (owner != gRamp.behavior || pawn != gRamp.pawn) {
+        RestoreRamp("the pawn changed", true);
+        gRamp.behavior = owner;
+        gRamp.pawn = pawn;
+    }
+    RampFields const f = FieldsOf(owner, pawn);
+    if (!f.Ok()) {
+        gRampWhy = "fields not found";
+        return;
+    }
+    float const now = *f.accelRate;
+    if (!gRamp.written || now != gRamp.wrote.accelRate) {
+        gRamp.saved.accelRate = now;  // the game's: the first time, and whenever it set its own since our write
+    }
+    float const want = cs::WantedAccelRate(gRamp.saved.accelRate, true, settings.linearWalkS);
+    if (std::fabs(now - want) <= 1e-4f * std::max(1.0f, std::fabs(want))) {
+        return;
+    }
+    Put(f.accelRate, want, "CombatStance.accelRate");
+    ++gRamp.writes;
+    bool const changed = !gRamp.written || gRamp.wrote.accelRate != want;
+    gRamp.written = true;
+    gRamp.wrote.accelRate = want;
+    if (changed) {
+        log::Info("movement: walking follows the stick within {:.2f} s: acceleration {:.0f} u/s^2 (the game's: {:.0f}; this game has no "
+                  "speed ramps; written {} time{})",
+            cs::ClampLinearWalkS(settings.linearWalkS), want, gRamp.saved.accelRate, gRamp.writes, gRamp.writes == 1 ? "" : "s");
+    }
+}
+#endif
+
 // The walk's response, measured (research/38 "Linear walking"): from the left stick pushed to 0.3 or more (from under 0.2) or let
 // go (while moving), the pawn's speed then and 0.1, 0.2, 0.4 and 0.8 s later, logged once the last is in.
 struct Response {
@@ -996,14 +1139,122 @@ void StepResponse(double speed, double yawDeg, ue3::Object* behavior) {
     r.lastStick = stick;
 }
 
+#if !defined(MEVR_GAME_LE1)
+// The response's first ticks on the sequels, one line per push and per let-go (research/38 "ME3's exploring start and stop"):
+// what the pawn's walk had each tick (its speed and acceleration with their directions against the pawn's facing, the facing it
+// turns to, the fraction of the run, ME3's m_fDesiredMaxSpeed, the mesh's root motion mode and ME3's animation nodes' root motion
+// requests): where a slow start or a slide after a stop comes from.
+ue3::FieldRef gTraceDesiredRotation{"Engine.Pawn", "DesiredRotation", ue3::kEveryGame};
+ue3::FieldRef gTraceAcceleration{"Engine.Actor", "Acceleration", ue3::kEveryGame};
+ue3::FieldRef gTraceMoveMag{"SFXGame.BioPawn", "fMoveMag", ue3::kEveryGame};
+ue3::FieldRef gTraceRootMotionMode{"Engine.SkeletalMeshComponent", "RootMotionMode", ue3::kEveryGame};
+#if defined(MEVR_GAME_LE3)
+ue3::FieldRef gTraceDesiredMaxSpeed{"SFXGame.BioPawn", "m_fDesiredMaxSpeed", ue3::kEveryGame};
+// ME3's animation nodes ask the pawn for a root motion mode while they play (BioPawn.RootMotionOverride): the entries.
+ue3::FieldRef gTraceOverrides{"SFXGame.BioPawn", "RootMotionOverrides", ue3::kEveryGame};
+ue3::FieldRef gTraceOverrideNode{gTraceOverrides, "Node"};
+ue3::FieldRef gTraceOverrideMode{gTraceOverrides, "RMMode"};
+ue3::FieldRef gTraceNodeName{"Engine.AnimNode", "NodeName", ue3::kEveryGame};
+std::string gStartTraceNodes;
+#endif
+constexpr double kStartTraceSeconds = 0.8;
+constexpr std::size_t kStartTraceTicks = 64;
+std::string gStartTrace;
+std::size_t gStartTraceTicks = 0;
+struct TraceWindow {
+    bool open = false;
+    bool start = false;  // a push (else a let-go)
+    double since = 0.0;
+    double lastStick = 0.0;
+};
+TraceWindow gTraceWindow;
+
+void StepStartTrace(ue3::Object* pawn, double yawDeg) {
+    // Its own window: from a push (the stick from under 0.2 to 0.3 or more) or a let-go (back under 0.2), whatever the speed.
+    vr::controllers::State const controllers = vr::controllers::Latest();
+    double const stick = controllers.active ? std::hypot(controllers.left.stickX, controllers.left.stickY) : 0.0;
+    TraceWindow& w = gTraceWindow;
+    bool const pushed = w.lastStick < 0.2 && stick >= 0.3;
+    bool const letGo = w.lastStick >= 0.3 && stick < 0.2;
+    w.lastStick = stick;
+    if (w.open && (pushed || letGo || gNow - w.since > kStartTraceSeconds)) {
+        w.open = false;
+        log::Info("movement: response ticks ({}; t s: speed u/s @ its direction from the facing, acceleration u/s^2 @ its direction, the "
+                  "facing wanted, fMoveMag, m_fDesiredMaxSpeed, root motion mode, the nodes' root motion requests):{}",
+            w.start ? "the stick pushed" : "the stick let go", gStartTrace);
+        gStartTrace.clear();
+        gStartTraceTicks = 0;
+#if defined(MEVR_GAME_LE3)
+        if (!gStartTraceNodes.empty()) {
+            log::Info("movement: response: the animation nodes that asked for root motion:{}", gStartTraceNodes);
+            gStartTraceNodes.clear();
+        }
+#endif
+    }
+    if (pushed || letGo) {
+        w.open = true;
+        w.start = pushed;
+        w.since = gNow;
+    }
+    if (!w.open || gStartTraceTicks >= kStartTraceTicks) {
+        return;
+    }
+    auto const relative = [yawDeg](double yaw) { return std::remainder(yaw - yawDeg, 360.0); };
+    auto const direction = [&relative](std::optional<ue3::Vector> const& v, double size) {
+        return v && size > 1.0 ? relative(std::atan2(v->y, v->x) * 180.0 / 3.14159265358979) : 0.0;
+    };
+    std::optional<ue3::Vector> const velocity = gVelocity.Read<ue3::Vector>(pawn);
+    std::optional<ue3::Vector> const accel = gTraceAcceleration.Read<ue3::Vector>(pawn);
+    double const accelSize = accel ? std::hypot(static_cast<double>(accel->x), static_cast<double>(accel->y)) : -1.0;
+    std::optional<ue3::Rotator> const wanted = gTraceDesiredRotation.Read<ue3::Rotator>(pawn);
+    double const wantedYaw = wanted ? relative(static_cast<double>(wanted->yaw) * 360.0 / 65536.0) : 0.0;
+    float const moveMag = gTraceMoveMag.Read<float>(pawn).value_or(-1.0f);
+#if defined(MEVR_GAME_LE3)
+    float const desiredMax = gTraceDesiredMaxSpeed.Read<float>(pawn).value_or(-1.0f);
+#else
+    float const desiredMax = -1.0f;
+#endif
+    ue3::Object* const mesh = player::Mesh(pawn);
+    int const rmm = mesh != nullptr ? gTraceRootMotionMode.Read<std::uint8_t>(mesh).value_or(255) : 255;
+    std::string overrides;
+#if defined(MEVR_GAME_LE3)
+    if (std::optional<ue3::Elements> const entries = gTraceOverrides.ElementsOf(pawn, 64)) {
+        ue3::Reflection& reflection = ue3::runtime::Get();
+        for (std::int32_t i = 0; i < entries->count; ++i) {
+            void* const entry = entries->At(i);
+            ue3::Object* const node = gTraceOverrideNode.Read<ue3::Object*>(entry).value_or(nullptr);
+            int const mode = gTraceOverrideMode.Read<std::uint8_t>(entry).value_or(255);
+            overrides += std::format("{}{}", overrides.empty() ? "" : "/", mode);
+            if (node != nullptr && ue3::runtime::IsAlive(node)) {
+                std::optional<ue3::Name> const name = gTraceNodeName.Read<ue3::Name>(node);
+                std::string const text = std::format(" {} ({}, mode {})", reflection.FullName(node),
+                    name ? reflection.ToString(*name) : std::string("?"), mode);
+                if (gStartTraceNodes.find(text) == std::string::npos) {
+                    gStartTraceNodes += text;
+                }
+            }
+        }
+    }
+#endif
+    gStartTrace += std::format(" | {:.2f}: {:.0f} @{:+.0f}, {:.0f} @{:+.0f}, {:+.0f}, {:.2f}, {:.2f}, {}, [{}]", gNow - w.since, gSpeed,
+        direction(velocity, gSpeed), accelSize, direction(accel, accelSize), wantedYaw, moveMag, desiredMax, rmm, overrides);
+    ++gStartTraceTicks;
+}
+#endif
+
 // The walking mode and speed, once per change (research/38 C: the zoomed walk).
 void UpdateWalk(ue3::Object* pawn, Link const& link) {
     int const mode = CallByte(pawn, gGetWalkingSpeedMode);
     std::optional<ue3::Vector> const velocity = gVelocity.Read<ue3::Vector>(pawn);
     gSpeed = velocity ? std::sqrt(static_cast<double>(velocity->x) * velocity->x + static_cast<double>(velocity->y) * velocity->y) : 0.0;
     std::optional<ue3::Rotator> const rotation = player::Rotation(pawn);
+#if defined(MEVR_GAME_LE1)
     StepResponse(gSpeed, rotation ? static_cast<double>(rotation->yaw) * 360.0 / 65536.0 : 0.0,
         gBehavior.Read<ue3::Object*>(pawn).value_or(nullptr));
+#else
+    StepResponse(gSpeed, rotation ? static_cast<double>(rotation->yaw) * 360.0 / 65536.0 : 0.0, WalkOwner(pawn));
+    StepStartTrace(pawn, rotation ? static_cast<double>(rotation->yaw) * 360.0 / 65536.0 : 0.0);
+#endif
     if (mode == gWalkMode) {
         gWalkTop = std::max(gWalkTop, gSpeed);
         return;
@@ -1012,15 +1263,25 @@ void UpdateWalk(ue3::Object* pawn, Link const& link) {
         return;  // flapping: the next tick tries again
     }
     auto const name = [](int m) { return m >= 0 && m < static_cast<int>(std::size(kWalkModes)) ? kWalkModes[m] : "unknown"; };
+#if defined(MEVR_GAME_LE1)
     log::Info("movement: walking mode {} ({}{}), speed {:.0f} u/s{}", name(mode), gDrawn ? "drawn" : "holstered",
         link.supportHeld ? ", the support grip holds the gun (LT)" : "", gSpeed,
         gWalkMode >= 0 ? std::format("; {} held {:.1f} s, top speed {:.0f} u/s", name(gWalkMode), gNow - gWalkModeSince, gWalkTop)
                        : std::string());
+#else
+    log::Info("movement: walking mode {} ({}), speed {:.0f} u/s{}", name(mode), mode >= 4 ? "weapon out" : "exploring", gSpeed,
+        gWalkMode >= 0 ? std::format("; {} held {:.1f} s, top speed {:.0f} u/s", name(gWalkMode), gNow - gWalkModeSince, gWalkTop)
+                       : std::string());
+    (void)link;
+#endif
     gLastMoveLog = gNow;
     gWalkMode = mode;
     gWalkModeSince = gNow;
     gWalkTop = gSpeed;
 }
+
+#endif  // every game (C: the ramp and the response)
+#if defined(MEVR_GAME_LE1)
 
 // ---- C: the speed from the push; the start and stop steps (research/38 "Linear walking", 2026-11-13) --------------
 
@@ -1142,6 +1403,281 @@ void UpdateStick(Link const& link, ue3::Object* pawn, bool onFoot) {
     }
 }
 
+#endif  // MEVR_GAME_LE1 (the speed from the push)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+
+// ---- C: the speed from the push on the sequels (the audits' MOV-15; research/38 "The speed from the push on the sequels") --
+
+// ME1's rule (cs::LinearSpeed, [Hands] linearStick and linearFullAt) on each sequel's own output. Their move functions (ME2
+// BioPlayerController.PlayerWalking.PlayerMoveCombatOrExplore; ME3 PlayerMoveExplore and PlayerMoveCombat, as ME1's; each
+// called by PlayerMove from script) end by writing the run's fraction into BioPawn.fMoveMag (the game's own rule ME1's: a crawl
+// under MoveStickWalkThreshold, the walk at it, the run past MoveStickRunThreshold; no SetDesiredSpeed), the fraction of the
+// pawn's top speed it walks at. A CallFunction post on each writes LinearSpeed(MoveMag) there (journalled; the game writes its
+// own again every tick) unless the game's own case stands: no push, ignored input (no acceleration, or bIgnoreMoveInput), the
+// walk toggle, a crouch, cover, the sprint (ME2's function runs the storm too; ME3's is PlayerMoveStorming, not hooked). MoveMag
+// is ME1's |RawJoyUp, RawJoyRight| (ComputeMovementStickAngle's: the stick past its dead zone).
+ue3::FieldRef gPlayerInput{"Engine.PlayerController", "PlayerInput", ue3::kEveryGame};
+ue3::FieldRef gRawJoyUp{"Engine.PlayerInput", "RawJoyUp", ue3::kEveryGame};
+ue3::FieldRef gRawJoyRight{"Engine.PlayerInput", "RawJoyRight", ue3::kEveryGame};
+ue3::FieldRef gIgnoreMoveInput{"Engine.PlayerController", "bIgnoreMoveInput", ue3::kEveryGame};
+ue3::FieldRef gWalkThreshold{"SFXGame.BioPlayerController", "MoveStickWalkThreshold", ue3::kEveryGame};
+ue3::FieldRef gRunThreshold{"SFXGame.BioPlayerController", "MoveStickRunThreshold", ue3::kEveryGame};
+ue3::FieldRef gIsWalking{"Engine.Pawn", "bIsWalking", ue3::kEveryGame};
+ue3::FieldRef gIsCrouched{"Engine.Pawn", "bIsCrouched", ue3::kEveryGame};
+ue3::FieldRef gAcceleration{"Engine.Actor", "Acceleration", ue3::kEveryGame};
+ue3::FieldRef gCoverType{"SFXGame.BioPawn", "CoverType", ue3::kEveryGame};
+ue3::FieldRef gCoverAction{"SFXGame.BioPawn", "CoverAction", ue3::kEveryGame};
+ue3::FieldRef gMoveMagField{"SFXGame.BioPawn", "fMoveMag", ue3::kEveryGame};
+#if defined(MEVR_GAME_LE2)
+ue3::FieldRef gStormingSequel{"SFXGame.BioPlayerController", "bStorming", ue3::kEveryGame};  // PlayerMove passes it (bIsStorming)
+constexpr float kGameIdle = 0.01f;  // PlayerMoveCombatOrExplore's MoveMagIdle (a local constant; ME2 has no idle field)
+constexpr char const* kMoveFunctions[] = {"PlayerMoveCombatOrExplore"};
+#else
+ue3::FieldRef gIdleThreshold{"SFXGame.BioPlayerController", "MoveStickIdleThreshold", ue3::kEveryGame};
+constexpr char const* kMoveFunctions[] = {"PlayerMoveExplore", "PlayerMoveCombat"};
+#endif
+std::vector<ue3::Function*> gMoveFunctions;  // the BioPlayerController's (each state's)
+
+void OnSequelMove(ue3::Object* context, ue3::Function* /*function*/, void* /*result*/) {
+    if ((!gStick.wanted && !gStop.wanted) || context == nullptr || context != ue3::runtime::LocalPlayerController()) {
+        return;
+    }
+    ue3::Object* const pawn = player::BioPawn(context);
+    ue3::Object* const input = gPlayerInput.Read<ue3::Object*>(context).value_or(nullptr);
+    float* const fraction = pawn != nullptr ? gMoveMagField.In<float>(pawn) : nullptr;
+    if (pawn == nullptr || input == nullptr || fraction == nullptr) {
+        return;
+    }
+    ++gStick.moves;
+    double const up = gRawJoyUp.Read<float>(input).value_or(0.0f);
+    double const right = gRawJoyRight.Read<float>(input).value_or(0.0f);
+    gStick.moveMag = std::hypot(up, right);
+#if defined(MEVR_GAME_LE2)
+    float const idle = kGameIdle;
+#else
+    float const idle = gIdleThreshold.Read<float>(context).value_or(0.01f);
+#endif
+    if (!gStick.loggedThresholds) {
+        gStick.loggedThresholds = true;
+        log::Info("movement: the game's stick thresholds: idle {:.2f}, walk {:.2f}, run {:.2f} (of MoveMag, the push past its dead zone)", idle,
+            gWalkThreshold.Read<float>(context).value_or(-1.0f), gRunThreshold.Read<float>(context).value_or(-1.0f));
+    }
+    std::optional<ue3::Vector> const accel = gAcceleration.Read<ue3::Vector>(pawn);
+    bool const accelerating = accel && (std::fabs(accel->x) + std::fabs(accel->y)) > 1.0f;
+    bool const ignored = gIgnoreMoveInput.Read<std::uint8_t>(context).value_or(1) != 0;
+    // The let-go (ME1's linear walk stops at once, research/38 "Linear walking"; item "ME2's quick stop"): exploring, both
+    // sequels' move functions blend a lower fraction in over MoveWalkModifierBlendTime (0.5 s), so with the stick let go the
+    // pawn kept walking (ME2: 374 -> 158 u/s in 0.1 s, about 60 at 0.8 s). The blend's target is 0 there: written at once.
+    // Only while the game is blending (0 < fMoveMag < 1: ignored input writes 1, the scripts' own walks with it).
+    if (gStop.wanted && !accelerating && !ignored && gStick.moveMag <= idle && *fraction > 0.0f && *fraction < 1.0f) {
+        float const was = *fraction;
+        *fraction = 0.0f;
+        write_journal::Wrote("CombatStance.fMoveMag(stop)", fraction, sizeof(float));
+        ++gStop.stops;
+        if (!gStop.logged) {
+            gStop.logged = true;
+            log::Info("movement: the stick let go: the walk stops at once (BioPawn.fMoveMag {:.2f} -> 0; the game blends it down over 0.5 s "
+                      "exploring)", was);
+        }
+    }
+    if (!gStick.wanted) {
+        return;
+    }
+    bool const keepGame = !accelerating || ignored ||
+        gIsWalking.ReadBool(pawn).value_or(true) || gIsCrouched.ReadBool(pawn).value_or(true) ||
+        gCoverType.Read<std::uint8_t>(pawn).value_or(1) != 0 || gCoverAction.Read<std::uint8_t>(pawn).value_or(1) != 0
+#if defined(MEVR_GAME_LE2)
+        || gStormingSequel.ReadBool(context).value_or(true)
+#endif
+        ;
+    std::optional<double> const speed = keepGame ? std::nullopt : cs::LinearSpeed(gStick.moveMag, idle, gStick.fullAt);
+    if (!speed) {
+        ++gStick.kept;
+        gStick.fraction = -1.0;
+        return;
+    }
+    gStick.gameTarget = *fraction;  // the game's own fraction, just written
+    float const want = static_cast<float>(*speed);
+    if (*fraction != want) {
+        *fraction = want;
+        write_journal::Wrote("CombatStance.fMoveMag", fraction, sizeof(float));
+    }
+    ++gStick.applied;
+    gStick.fraction = *speed;
+    if (!gStick.loggedFirst) {
+        gStick.loggedFirst = true;
+        log::Info("movement: the speed follows the push: MoveMag {:.2f} -> {:.0f}% of the run (BioPawn.fMoveMag; the game's own was {:.2f})",
+            gStick.moveMag, *speed * 100.0, gStick.gameTarget);
+    }
+}
+
+void UpdateStick(Link const& link, ue3::Object* pawn, bool onFoot) {
+    hand_calibration::CombatStance const settings = hand_calibration::GetCombatStance();
+    char const* const why = !settings.linearStick                  ? "[Hands] linearStick = 0"
+                          : gMoveFunctions.empty()                  ? "the game's move functions not found"
+                          : !engine::call_function::Installed()     ? "no CallFunction hook"
+                          : !link.headTrackedView                   ? "no head-tracked view"
+                          : !onFoot                                 ? "not on foot"
+                          : pawn == nullptr                         ? "no player pawn"
+                                                                    : nullptr;
+    bool const wanted = why == nullptr;
+    gStick.fullAt = cs::ClampLinearFullAt(settings.linearFullAt);
+    std::string const now = why != nullptr ? std::string(why) : std::format("in proportion to the push, the run at {:.2f}", gStick.fullAt);
+    if (wanted != gStick.wanted || now != gStick.why) {
+        log::Info("movement: the walk's speed {}", wanted ? now : "as the game has it (" + now + ")");
+    }
+    gStick.wanted = wanted;
+    gStick.why = now;
+    bool const stop = settings.linearWalk && !gMoveFunctions.empty() && engine::call_function::Installed() && link.headTrackedView && onFoot &&
+        pawn != nullptr;
+    if (stop != gStop.wanted) {
+        log::Info("movement: the let-go {}", stop ? "stops the walk at once ([Hands] linearWalk)" : "is the game's (its 0.5 s blend exploring)");
+    }
+    gStop.wanted = stop;
+}
+
+// `mevr animtree [text]`: the player's AnimTree, node by node (class, NodeName, children's names; a sequence's AnimSeqName,
+// Rate and whether it plays), to the log; only nodes whose line holds `text` (any case). How a sequel's draw and holster nodes
+// were found (research/38 D on the sequels). Game thread.
+ue3::FieldRef gTreeAnimations{"Engine.SkeletalMeshComponent", "Animations", ue3::kEveryGame};
+ue3::FieldRef gTreeNodeName{"Engine.AnimNode", "NodeName", ue3::kEveryGame};
+ue3::FieldRef gTreeChildren{"Engine.AnimNodeBlendBase", "Children", ue3::kEveryGame};
+ue3::FieldRef gTreeChildName{gTreeChildren, "Name"};
+ue3::FieldRef gTreeChildAnim{gTreeChildren, "Anim"};
+ue3::FieldRef gTreeSeqName{"Engine.AnimNodeSequence", "AnimSeqName", ue3::kEveryGame};
+ue3::FieldRef gTreeSeqRate{"Engine.AnimNodeSequence", "Rate", ue3::kEveryGame};
+ue3::FieldRef gTreeSeqPlaying{"Engine.AnimNodeSequence", "bPlaying", ue3::kEveryGame};
+ue3::ClassRef gTreeBlendBase{"Engine.AnimNodeBlendBase", ue3::kEveryGame};
+ue3::ClassRef gTreeSequence{"Engine.AnimNodeSequence", ue3::kEveryGame};
+
+std::string LowerText(std::string_view text) {
+    std::string out;
+    for (char c : text) {
+        out.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+    }
+    return out;
+}
+
+std::string TreeNodeName(ue3::Object const* node) {
+    std::optional<ue3::Name> const name = gTreeNodeName.Read<ue3::Name>(node);
+    return name ? ue3::runtime::NameText(*name) : std::string();
+}
+
+// ---- D: the draw rate on the sequels (research/38 "The draw rate on the sequels") -------------------------------------
+
+// ME1's rule ([Hands] drawRate, holsterRate; cs::ClampDrawRate, RateNeedsWrite): while the player's draw or holster sequence
+// plays in VR on foot it plays at that rate (every notify still fires: the weapon's EquipFinished ends the draw), its own rate
+// back once it stops. ME2 plays them as ME1 does, in BioAnimNodeBlendByWeaponEquip nodes' Draw and Holster children (four:
+// standing, crouching, high and low cover); ME3 in AnimNodeSlot channels. So the sequences are found by name
+// (engine::adapter::kDrawSequencePrefix, kHolsterSequencePrefix), every slot channel's read again each tick (a channel plays one
+// animation, then another).
+ue3::ClassRef gTreeSlot{"Engine.AnimNodeSlot", ue3::kEveryGame};
+std::vector<ue3::Object*> gSlotSequences;  // every AnimNodeSequence in a slot's channel
+void const* gSlotTree = nullptr;
+double gSlotWalked = -1e9;
+std::string gDrawLogged;  // the sequences whose first write was logged (once per tree)
+
+void WalkSlots(ue3::Object* node, std::vector<ue3::Object const*>& visited) {
+    if (node == nullptr || visited.size() >= static_cast<std::size_t>(kMaxNodes) ||
+        std::find(visited.begin(), visited.end(), node) != visited.end()) {
+        return;
+    }
+    visited.push_back(node);
+    if (!ue3::IsA(node, gTreeBlendBase)) {
+        return;
+    }
+    std::optional<ue3::Elements> const children = gTreeChildren.ElementsOf(node, kMaxChildren);
+    if (!children) {
+        return;
+    }
+    bool const slot = ue3::IsA(node, gTreeSlot);
+    for (std::int32_t i = 0; i < children->count; ++i) {
+        ue3::Object* const child = gTreeChildAnim.Read<ue3::Object*>(children->At(i)).value_or(nullptr);
+        bool take = false;
+        if (child != nullptr && ue3::IsA(child, gTreeSequence)) {
+            // ME3: channel i of a slot (0 is its Source), whatever it plays now; ME2: a sequence that is a draw or a holster (its
+            // BioAnimNodeBlendByWeaponEquip nodes' Draw and Holster children, ME1's WeaponEquip node's form).
+            std::optional<ue3::Name> const seqName = gTreeSeqName.Read<ue3::Name>(child);
+            std::string const name = seqName ? ue3::runtime::NameText(*seqName) : std::string();
+            take = (slot && i > 0) || name.starts_with(engine::adapter::kDrawSequencePrefix) ||
+                name.starts_with(engine::adapter::kHolsterSequencePrefix);
+        }
+        if (take && std::find(gSlotSequences.begin(), gSlotSequences.end(), child) == gSlotSequences.end()) {
+            gSlotSequences.push_back(child);
+        }
+        WalkSlots(child, visited);
+    }
+}
+
+void RestoreSequelRate(RateWrite const& w) {
+    float* const rate = gTreeSeqRate.In<float>(w.sequence);
+    if (rate != nullptr && *rate == w.wrote) {
+        *rate = w.original;
+        write_journal::Wrote("CombatStance.drawRate(restore)", rate, sizeof(float));
+    }
+}
+
+void UpdateSequelRates(bool wanted, double drawRate, double holsterRate, ue3::Object* mesh) {
+    ue3::Object* const root = mesh != nullptr ? gTreeAnimations.Read<ue3::Object*>(mesh).value_or(nullptr) : nullptr;
+    if (root != gSlotTree) {
+        gRates.clear();  // a tree going away: dropped, not restored (its nodes may be gone)
+        gSlotSequences.clear();
+        gSlotTree = root;
+        gSlotWalked = -1e9;
+        gDrawLogged.clear();
+    }
+    if (root != nullptr && gNow - gSlotWalked >= kRewalkSeconds) {
+        std::vector<ue3::Object*> before = gSlotSequences;
+        gSlotSequences.clear();
+        std::vector<ue3::Object const*> visited;
+        visited.reserve(512);
+        WalkSlots(root, visited);
+        gSlotWalked = gNow;
+        if (gSlotSequences.size() != before.size()) {
+            log::Info("draw: the player's AnimTree ({} nodes): {} sequences where the draw ({}*) and the holster ({}*) play (slot "
+                      "channels, the WeaponEquip nodes' Draw and Holster)", visited.size(), gSlotSequences.size(), engine::adapter::kDrawSequencePrefix,
+                engine::adapter::kHolsterSequencePrefix);
+        }
+    }
+    for (ue3::Object* const seq : gSlotSequences) {
+        auto const written = std::find_if(gRates.begin(), gRates.end(), [seq](RateWrite const& w) { return w.sequence == seq; });
+        bool const playing = gTreeSeqPlaying.ReadBool(seq).value_or(false);
+        float* const rate = gTreeSeqRate.In<float>(seq);
+        double want = 0.0;
+        std::string name;
+        if (playing && rate != nullptr) {
+            std::optional<ue3::Name> const seqName = gTreeSeqName.Read<ue3::Name>(seq);
+            name = seqName ? ue3::runtime::NameText(*seqName) : std::string();
+            want = name.starts_with(engine::adapter::kDrawSequencePrefix)      ? drawRate
+                 : name.starts_with(engine::adapter::kHolsterSequencePrefix) ? holsterRate
+                                                                              : 0.0;
+        }
+        if (wanted && want > 1.0005 && cs::RateNeedsWrite(*rate, want)) {
+            float const original = written != gRates.end() && *rate == written->wrote ? written->original : *rate;
+            *rate = static_cast<float>(want);
+            write_journal::Wrote("CombatStance.drawRate", rate, sizeof(float));
+            ++gRateWrites;
+            if (written != gRates.end()) {
+                written->original = original;
+                written->wrote = *rate;
+            } else {
+                gRates.push_back({seq, original, *rate});
+            }
+            if (gDrawLogged.find("|" + name + "|") == std::string::npos) {
+                gDrawLogged += "|" + name + "|";
+                log::Info("draw: {} plays at rate {:.2f} (the game's {:.2f}; [Hands] {} {:.1f})", name, want, original,
+                    name.starts_with(engine::adapter::kDrawSequencePrefix) ? "drawRate" : "holsterRate", want);
+            }
+        } else if (written != gRates.end() && (want <= 1.0005 || !wanted)) {
+            RestoreSequelRate(*written);
+            gRates.erase(written);
+        }
+    }
+}
+
+#endif  // the sequels (the speed from the push)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)  // engine::adapter::kWalkStepFlags
+
 std::array<ue3::FieldRef*, 3> const kStepFlags{&gEnableStartAnim, &gEnableStopAnim, &gEnableSkidAnim};
 
 void RestoreSteps(char const* why) {
@@ -1165,7 +1701,11 @@ void RestoreSteps(char const* why) {
 
 void UpdateSteps(Link const& link, ue3::Object* pawn, bool onFoot) {
     hand_calibration::CombatStance const settings = hand_calibration::GetCombatStance();
+#if defined(MEVR_GAME_LE1)
     ue3::Object* const behavior = pawn != nullptr ? gBehavior.Read<ue3::Object*>(pawn).value_or(nullptr) : nullptr;
+#else
+    ue3::Object* const behavior = WalkOwner(pawn);
+#endif
     char const* const why = settings.startStopAnims ? "[Hands] startStopAnims = 1"
                           : !link.headTrackedView   ? "no head-tracked view"
                           : !onFoot                 ? "not on foot"
@@ -1205,6 +1745,124 @@ void UpdateSteps(Link const& link, ue3::Object* pawn, bool onFoot) {
         }
     }
 }
+
+#endif  // the steps (ME1, ME2)
+#if defined(MEVR_GAME_LE3)
+
+// ME3's start and stop steps (research/38 "ME3's exploring start and stop"; the owner's option A, 2026-11-18): ME3 has none of
+// ME1's three flags. Exploring, the player's AnimTree starts every walk with a BioAnimNodeLocomotionStart node
+// (ExploreLocomotion-Start-Idle, -Walk, -Run) and ends it with a BioAnimNodeLocomotionStop node, each playing its animation and,
+// while it plays, asking the pawn for the animation's root motion (BioPawn.RootMotionOverride: an entry in
+// BioPawn.RootMotionOverrides; the start's RMM_Accel, the mesh's RootMotionMode 2 -> 3). So for a start's first ~0.25 s the
+// pawn moved as the start animation's root does, not as the stick asks (0, 7, 147, 389 u/s at 0, 0.1, 0.2, 0.4 s exploring;
+// combat has no such node: 350 at 0.1), and after a stop the stop animation walked it on about 0.35 m. ME1's rule ([Hands]
+// startStopAnims = 0, in VR on foot: no start or stop step moving Shepard): each such request is answered with RMM_Ignore (the
+// entry's RMMode written 2, journalled), so the move function's acceleration moves the pawn from the first tick and the stop
+// stays a stop; the animations still play on the legs. Making the start node blend out at once (BlendOutRelPos 0) is not a
+// lever: the pawn then didn't move at all. Requests we answered that are still there when this stands down get their own mode
+// back. Game thread.
+ue3::ClassRef gLocomotionStart{"SFXGame.BioAnimNodeLocomotionStart", ue3::kEveryGame};
+ue3::ClassRef gLocomotionStop{"SFXGame.BioAnimNodeLocomotionStop", ue3::kEveryGame};
+ue3::FieldRef gPawnOverrides{"SFXGame.BioPawn", "RootMotionOverrides", ue3::kEveryGame};
+ue3::FieldRef gPawnOverrideNode{gPawnOverrides, "Node"};
+ue3::FieldRef gPawnOverrideMode{gPawnOverrides, "RMMode"};
+constexpr std::uint8_t kRootMotionIgnore = 2;  // ERootMotionMode RMM_Ignore
+
+struct Answered {
+    ue3::Object* node = nullptr;
+    std::uint8_t mode = 0;  // what the node asked for
+};
+struct StartSteps {
+    ue3::Object* pawn = nullptr;
+    std::vector<Answered> answered;  // the requests we answer now
+    std::uint64_t starts = 0;        // requests answered
+    std::uint64_t stops = 0;
+    bool on = true;                  // a test's switch (`mevr loco start game|on`)
+    bool loggedStart = false;
+    bool loggedStop = false;
+};
+StartSteps gStart;
+
+// Gives the requests we answered that are still in the pawn's list their own mode back.
+void RestoreStarts(char const* why) {
+    std::size_t restored = 0;
+    if (gStart.pawn != nullptr && !gStart.answered.empty() && ue3::runtime::IsAlive(gStart.pawn)) {
+        if (std::optional<ue3::Elements> const entries = gPawnOverrides.ElementsOf(gStart.pawn, 64)) {
+            for (std::int32_t i = 0; i < entries->count; ++i) {
+                void* const entry = entries->At(i);
+                ue3::Object* const node = gPawnOverrideNode.Read<ue3::Object*>(entry).value_or(nullptr);
+                std::uint8_t* const mode = gPawnOverrideMode.In<std::uint8_t>(entry);
+                auto const ours = std::find_if(gStart.answered.begin(), gStart.answered.end(), [node](Answered const& a) { return a.node == node; });
+                if (ours != gStart.answered.end() && mode != nullptr && *mode == kRootMotionIgnore) {
+                    *mode = ours->mode;
+                    write_journal::Wrote("CombatStance.stepRootMotion(restore)", mode, 1);
+                    ++restored;
+                }
+            }
+        }
+    }
+    if (restored > 0) {
+        log::Info("movement: the game's start and stop steps as it has them again ({}): {} root motion request{} given back", why,
+            restored, restored == 1 ? "" : "s");
+    }
+    gStart.answered.clear();
+}
+
+void UpdateStartSteps(Link const& link, ue3::Object* pawn, bool onFoot) {
+    hand_calibration::CombatStance const settings = hand_calibration::GetCombatStance();
+    char const* const why = settings.startStopAnims ? "[Hands] startStopAnims = 1"
+                          : !gStart.on              ? "the game's start and stop steps (mevr loco start game)"
+                          : !link.headTrackedView   ? "no head-tracked view"
+                          : !onFoot                 ? "not on foot"
+                          : pawn == nullptr         ? "no player pawn"
+                                                    : nullptr;
+    gSteps.why = why != nullptr ? why
+                                : "the start and stop steps' root motion ignored in VR on foot (BioAnimNodeLocomotionStart, -Stop)";
+    if (pawn != gStart.pawn) {
+        RestoreStarts("the pawn changed");
+        gStart.pawn = pawn;
+    }
+    if (why != nullptr) {
+        RestoreStarts(why);
+        return;
+    }
+    std::optional<ue3::Elements> const entries = gPawnOverrides.ElementsOf(pawn, 64);
+    if (!entries) {
+        gStart.answered.clear();
+        return;
+    }
+    std::vector<Answered> present;  // a request the node released is gone from the list (nothing to give back)
+    for (std::int32_t i = 0; i < entries->count; ++i) {
+        void* const entry = entries->At(i);
+        ue3::Object* const node = gPawnOverrideNode.Read<ue3::Object*>(entry).value_or(nullptr);
+        std::uint8_t* const mode = gPawnOverrideMode.In<std::uint8_t>(entry);
+        bool const start = node != nullptr && ue3::IsA(node, gLocomotionStart);
+        if (mode == nullptr || (!start && (node == nullptr || !ue3::IsA(node, gLocomotionStop)))) {
+            continue;
+        }
+        auto const known = std::find_if(gStart.answered.begin(), gStart.answered.end(), [node](Answered const& a) { return a.node == node; });
+        Answered a{node, known != gStart.answered.end() ? known->mode : *mode};
+        if (*mode != kRootMotionIgnore) {
+            a.mode = *mode;  // the node's request (again, or a new one)
+            *mode = kRootMotionIgnore;
+            write_journal::Wrote("CombatStance.stepRootMotion", mode, 1);
+            ++(start ? gStart.starts : gStart.stops);
+            bool& logged = start ? gStart.loggedStart : gStart.loggedStop;
+            if (!logged) {
+                logged = true;
+                log::Info("movement: {} asked for its animation's root motion (RootMotionMode {}): answered with RMM_Ignore in VR on foot "
+                          "(the stick moves the pawn; [Hands] startStopAnims = 0)", TreeNodeName(node), a.mode);
+            }
+        }
+        if (a.mode != kRootMotionIgnore) {
+            present.push_back(a);
+        }
+    }
+    gStart.answered = std::move(present);
+}
+
+#endif  // ME3's start step
+#if defined(MEVR_GAME_LE1)
 
 // ---- D ------------------------------------------------------------------------------------------------------------
 
@@ -1389,6 +2047,33 @@ bool TryStartup() {
     log::Info("movement: the speed from the push: {} PlayerMoveExplore, {} PlayerMoveCombat, {} PlayerTick, SetDesiredSpeed {}",
         gMoveExplore.size(), gMoveCombat.size(), gStickTicks.size(), gSetDesiredSpeed != nullptr ? "found" : "MISSING");
     return gStarted;
+#elif defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+    // The sequels: section C's ramp, steps and response (the stance, the speed from the push and the draw rates are ME1's
+    // still: the audits' MOV-15, BOD-23, BOD-27).
+    gGetWalkingSpeedMode = gGetWalkingSpeedModeFn.Get();
+    gStarted = ue3::runtime::Up();
+    gMoveFunctions.clear();
+    if (gStarted) {
+        ue3::Reflection& reflection = ue3::runtime::Get();
+        for (char const* name : kMoveFunctions) {
+            for (ue3::Function* function : reflection.FindFunctionsNamed(name)) {
+                if (reflection.FullName(function).starts_with("Function SFXGame.BioPlayerController.")) {
+                    gMoveFunctions.push_back(function);
+                }
+            }
+        }
+        if (gMoveMagField.Get() == nullptr || gPlayerInput.Get() == nullptr || gRawJoyUp.Get() == nullptr || gRawJoyRight.Get() == nullptr) {
+            gMoveFunctions.clear();  // the speed from the push stands down (UpdateStick says why)
+        }
+        for (ue3::Function* function : gMoveFunctions) {
+            engine::call_function::AddPostHandler(function, &OnSequelMove);
+        }
+    }
+    log::Info("movement: the walk on this game: the pawn's acceleration linear to the stick{}, the speed from the push ({} move "
+              "function{} found: BioPawn.fMoveMag), the response measured (GetWalkingSpeedMode {}); the stance and the draw rates are ME1's only",
+        engine::adapter::kWalkStepFlags ? ", the start, stop and skid steps off" : "", gMoveFunctions.size(),
+        gMoveFunctions.size() == 1 ? "" : "s", gGetWalkingSpeedMode != nullptr ? "found" : "MISSING");
+    return gStarted;
 #else
     return false;
 #endif
@@ -1433,6 +2118,29 @@ void Tick(double deltaSeconds, Link const& link) {
     bool const rateWanted = (rate > 1.0005 || holsterRate > 1.0005) && link.headTrackedView && onFoot && mesh != nullptr &&
         gAnimations.Read<ue3::Object*>(mesh).value_or(nullptr) == gTree.tree && gTree.tree != nullptr;
     UpdateRates(rateWanted, rate, holsterRate);
+#elif defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+    if (!gStarted || !ue3::runtime::Up()) {
+        gRampWhy = "not started";
+        return;
+    }
+    ue3::Object* const controller = player::Controller();
+    ue3::Object* const pawn = controller != nullptr && player::IsBioPlayerController(controller) ? player::BioPawn(controller) : nullptr;
+    bool const onFoot = head_tracking::OnFoot();
+    UpdateRamp(link, pawn, onFoot);
+    UpdateStick(link, pawn, onFoot);
+#if defined(MEVR_GAME_LE2)
+    UpdateSteps(link, pawn, onFoot);
+#else
+    UpdateStartSteps(link, pawn, onFoot);
+#endif
+    if (onFoot && pawn != nullptr) {
+        UpdateWalk(pawn, link);
+    }
+    hand_calibration::CombatStance const settings = hand_calibration::GetCombatStance();
+    double const rate = cs::ClampDrawRate(settings.drawRate);
+    double const holsterRate = cs::ClampHolsterRate(settings.holsterRate);
+    bool const rateWanted = (rate > 1.0005 || holsterRate > 1.0005) && link.headTrackedView && onFoot && pawn != nullptr;
+    UpdateSequelRates(rateWanted, rate, holsterRate, pawn != nullptr ? player::Mesh(pawn) : nullptr);
 #else
     (void)link;
 #endif
@@ -1492,6 +2200,70 @@ void LogStats() {
     gStick.moves = gStick.applied = gStick.kept = 0;
 }
 
+#if defined(MEVR_GAME_LE3)
+std::string StartLevers(std::string const& which) {
+    if (which == "game") {
+        gStart.on = false;
+    } else if (which == "on") {
+        gStart.on = true;
+    }
+    return std::format("mevr loco start: {} (root motion requests answered with RMM_Ignore: {} start{}, {} stop{}; {})",
+        gStart.on ? "the start and stop steps' root motion ignored" : "the game's start and stop steps", gStart.starts,
+        gStart.starts == 1 ? "" : "s", gStart.stops, gStart.stops == 1 ? "" : "s", gSteps.why);
+}
+#endif
+
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+std::string DumpAnimTree(std::string const& filter) {
+    ue3::Object* const controller = player::Controller();
+    ue3::Object* const pawn = controller != nullptr ? player::BioPawn(controller) : nullptr;
+    ue3::Object* const mesh = pawn != nullptr ? player::Mesh(pawn) : nullptr;
+    ue3::Object* const root = mesh != nullptr ? gTreeAnimations.Read<ue3::Object*>(mesh).value_or(nullptr) : nullptr;
+    if (root == nullptr) {
+        return "mevr animtree: no player AnimTree (no pawn, mesh or Animations)";
+    }
+    std::string const want = LowerText(filter);
+    std::vector<ue3::Object const*> visited;
+    int printed = 0;
+    auto const walk = [&](auto const& self, ue3::Object* node, int depth, std::string const& via) -> void {
+        if (node == nullptr || visited.size() >= static_cast<std::size_t>(kMaxNodes) ||
+            std::find(visited.begin(), visited.end(), node) != visited.end()) {
+            return;
+        }
+        visited.push_back(node);
+        ue3::Reflection& reflection = ue3::runtime::Get();
+        std::string line = std::format("{} {} '{}' (via '{}')", depth, reflection.NameText(reflection.ClassOf(node)), TreeNodeName(node), via);
+        std::optional<ue3::Elements> const children = ue3::IsA(node, gTreeBlendBase) ? gTreeChildren.ElementsOf(node, kMaxChildren) : std::nullopt;
+        if (ue3::IsA(node, gTreeSequence)) {
+            std::optional<ue3::Name> const seq = gTreeSeqName.Read<ue3::Name>(node);
+            line += std::format(" seq {} rate {:.2f}{}", seq ? ue3::runtime::NameText(*seq) : std::string("?"),
+                gTreeSeqRate.Read<float>(node).value_or(-1.0f), gTreeSeqPlaying.ReadBool(node).value_or(false) ? " playing" : "");
+        }
+        if (children) {
+            line += " children:";
+            for (std::int32_t i = 0; i < children->count; ++i) {
+                std::optional<ue3::Name> const childName = gTreeChildName.Read<ue3::Name>(children->At(i));
+                line += std::format(" {}", childName ? ue3::runtime::NameText(*childName) : std::string("?"));
+            }
+        }
+        if (want.empty() || LowerText(line).find(want) != std::string::npos) {
+            log::Info("animtree: {}", line);
+            ++printed;
+        }
+        if (children) {
+            for (std::int32_t i = 0; i < children->count; ++i) {
+                std::optional<ue3::Name> const childName = gTreeChildName.Read<ue3::Name>(children->At(i));
+                self(self, gTreeChildAnim.Read<ue3::Object*>(children->At(i)).value_or(nullptr), depth + 1,
+                    childName ? ue3::runtime::NameText(*childName) : std::string("?"));
+            }
+        }
+    };
+    walk(walk, root, 0, "root");
+    return std::format("mevr animtree: {} nodes walked, {} logged (`animtree:` lines in the log){}", visited.size(), printed,
+        want.empty() ? "" : " matching '" + filter + "'");
+}
+#endif
+
 void Shutdown() {
     engine::bone_pose::ClearStance();
 #if defined(MEVR_GAME_LE1)
@@ -1513,6 +2285,29 @@ void Shutdown() {
     gMoveCombat.clear();
     gStickTicks.clear();
     gStick = {};
+    gSteps = {};
+#elif defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+    if (ue3::runtime::Up()) {
+        RestoreRamp("the mod unloads", true);
+#if defined(MEVR_GAME_LE2)
+        RestoreSteps("the mod unloads");
+#else
+        RestoreStarts("the mod unloads");
+#endif
+        for (RateWrite const& w : gRates) {
+            if (ue3::runtime::IsAlive(w.sequence)) {
+                RestoreSequelRate(w);
+            }
+        }
+    }
+    gSlotSequences.clear();
+    gSlotTree = nullptr;
+    gSlotWalked = -1e9;
+    gDrawLogged.clear();
+    gGetWalkingSpeedMode = nullptr;
+    gMoveFunctions.clear();
+    gStick = {};
+    gStop = {};
     gSteps = {};
 #endif
     gRamp = {};

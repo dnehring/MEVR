@@ -246,9 +246,11 @@ quit, for the voice orders as for texture packs.
 
 Run `MEVR-Setup.exe` (or the copy in `Game\ME1\Binaries\Win64\ASI`) and use **Uninstall**. It removes what it added,
 puts back what it replaced, and returns your game settings, except any you changed yourself since. It also deletes
-your VR settings, calibration and the mod's logs in the game folder, unless you choose **Keep my VR settings** (for a
-later reinstall). **Also delete the mod's diagnostics** (off by default) deletes `%LOCALAPPDATA%\MEVR` as well:
-snapshots, recordings, frame-timing captures, crash reports and the downloaded Mass Effect Modder.
+your VR settings and the mod's logs in the game folder, unless you choose **Keep my VR settings** (for a later
+reinstall). Your calibration is one file for the three games, `%LOCALAPPDATA%\MEVR\calibration.ini`: it stays unless
+you tick **Also delete the mod's diagnostics** (off by default), which deletes `%LOCALAPPDATA%\MEVR`: the calibration,
+snapshots, recordings, frame-timing captures, crash reports and the downloaded Mass Effect Modder (only once no other
+game of the trilogy still has the mod).
 
 If your `GamerSettings.ini` is read-only, the install goes ahead without the VR game settings and says so: untick
 Read-only in the file's Properties, then use **Settings > Apply**.

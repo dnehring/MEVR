@@ -309,6 +309,27 @@ std::wstring Widen(std::string_view text) {
     return std::wstring(text.begin(), text.end());  // ASCII names
 }
 
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+// Every function of that name, ours against the SDK's (state functions included: PlayerWalking's own).
+void CheckFunctionsNamed(char const* name) {
+    Guard("function", std::format("{} (all)", name), [name] {
+        std::vector<std::string> ours;
+        for (ue3::Function* f : R().FindFunctionsNamed(name)) {
+            ours.push_back(R().FullName(f));
+        }
+        std::vector<std::string> sdk;
+        std::wstring const wide(name, name + std::strlen(name));
+        for (UFunction* f : SdkFunctionsNamed(wide.c_str())) {
+            sdk.push_back(SdkFullName(f));
+        }
+        std::sort(ours.begin(), ours.end());
+        std::sort(sdk.begin(), sdk.end());
+        Add("function", std::format("{} (all)", name), !ours.empty() && ours == sdk, std::format("{} functions", ours.size()),
+            std::format("{} functions", sdk.size()));
+    });
+}
+#endif
+
 void CheckFunction(char const* path) {
     Guard("function", path, [path] {
         ue3::Function* const ours = R().FindFunction(path);
@@ -609,6 +630,8 @@ void CheckClasses() {
     CheckClass<ASFXCameraNativeBase>("SFXGame.SFXCameraNativeBase");
     CheckClass<USFXCameraMode>("SFXGame.SFXCameraMode");
     CheckClass<USFXCameraMode_Interpolate>("SFXGame.SFXCameraMode_Interpolate");
+    CheckClass<USFXCameraMode_VehicleTightAim>("SFXGame.SFXCameraMode_VehicleTightAim");
+    CheckClass<USFXCameraMode_VehicleTightAimEx>("SFXGame.SFXCameraMode_VehicleTightAimEx");
     CheckClass<USFXCameraInput>("SFXGame.SFXCameraInput");
     CheckClass<ASFXInventoryManager>("SFXGame.SFXInventoryManager");
     CheckClass<USFXModule_AimAssist>("SFXGame.SFXModule_AimAssist");
@@ -879,6 +902,8 @@ void CheckFields() {
     CheckField("Engine.PlayerController", "PlayerCamera", SDK_FIELD(APlayerController, PlayerCamera));
     CheckField("Engine.PlayerController", "PlayerInput", SDK_FIELD(APlayerController, PlayerInput));
     CheckField("Engine.PlayerController", "m_oCachedScaleFormManager", SDK_FIELD(APlayerController, m_oCachedScaleFormManager));
+    CheckField("Engine.PlayerController", "HiddenActors", SDK_FIELD(APlayerController, HiddenActors));
+    CheckElement("Engine.PlayerController", "HiddenActors", sizeof(AActor*));
     CheckField("Engine.Camera", "CameraCache", SDK_FIELD(ACamera, CameraCache));
     CheckField("Engine.Camera", "PCOwner", SDK_FIELD(ACamera, PCOwner));
     CheckField("Engine.Camera", "bEnableFading", SDK_BOOL(ACamera, bEnableFading));  // a matinee's fade in a held moment (game/ConversationWorld)
@@ -1294,6 +1319,7 @@ void CheckPaths() {
         SDK_AT(offsetof(ACamera, CameraCache) + offsetof(FTCameraCache, POV) + offsetof(FTPOV, FOV), sizeof(float)));
     CheckPath("SFXGame.SFXCameraMode", {"m_pov", "Location"}, SDK_AT(offsetof(USFXCameraMode, m_pov) + offsetof(FTPOV, Location), sizeof(FVector)));
     CheckPath("SFXGame.SFXCameraMode", {"m_pov", "Rotation"}, SDK_AT(offsetof(USFXCameraMode, m_pov) + offsetof(FTPOV, Rotation), sizeof(FRotator)));
+    CheckPath("SFXGame.SFXCameraMode", {"m_pov", "FOV"}, SDK_AT(offsetof(USFXCameraMode, m_pov) + offsetof(FTPOV, FOV), sizeof(float)));
     CheckPath("SFXGame.SFXCameraInput", {"CameraSensitivity", "X"},
         SDK_AT(offsetof(USFXCameraInput, CameraSensitivity) + offsetof(FVector2D, X), 4));
     CheckPath("SFXGame.SFXCameraInput", {"CameraSensitivity", "Y"},
@@ -2186,6 +2212,8 @@ void CheckFields() {
     CheckField("Engine.PlayerController", "Player", SDK_FIELD(APlayerController, Player));
     CheckField("Engine.LocalPlayer", "NearClipPlane", SDK_FIELD(ULocalPlayer, NearClipPlane));
     CheckField("SFXGame.SFXWeapon_NativeBase", "bIsZoomed", SDK_BOOL(ASFXWeapon_NativeBase, bIsZoomed));
+    // game/ZoomedShots: the shouldered shot's accuracy, measured after each zoomed update
+    CheckField("SFXGame.SFXInventoryManager", "Accuracy", SDK_FIELD(ASFXInventoryManager, Accuracy));
     // game/Holsters' sequel adapter (research/le2-vrik.md "Holsters and the reload on the sequels"): drawn is the action
     // state, and the draw raises it through the pawn's behavior
     CheckField("SFXGame.BioPawn", "m_oBehavior", SDK_FIELD(ABioPawn, m_oBehavior));
@@ -2445,6 +2473,8 @@ void CheckSkeleton() {
 void CheckFunctions() {
     char const* const functions[] = {
         "SFXGame.SFXWeapon.GetAimError",                  // game/Sights: a scope's aimed fire (ME1's GetPlayerAimError(Accuracy))
+        "SFXGame.SFXInventoryManager.UpdatePlayerAccuracy",  // game/ZoomedShots: the shouldered shot's calls made as zoomed
+        "SFXGame.SFXWeapon.GetWeaponAimErrorRange",
         "SFXGame.BioPlayerController.SwitchWeapon",       // game/Holsters' sequel draw (a holster grab, `mevr weapon <family>`)
         "SFXGame.SFXWeapon.CanReload",                    // game/Reload: whether the game would reload (the gesture's eligibility)
         "SFXGame.SFXWeapon.GetAmmoCountInMagazine",       // ... the magazine's count, before and after
@@ -2840,6 +2870,19 @@ void CheckLe2Squad() {
     CheckField("SFXGame.SFXAI_Core", "m_RequestedActorToFollow", SDK_FIELD(ASFXAI_Core, m_RequestedActorToFollow));
 }
 
+// game/SquadAck on the sequels (the AI's own answer to an order, a vocalization event) and game/SquadContext's "a fight is
+// on" (engine::adapter::kInCombatClass): ME2's on its GameInfo.
+void CheckSequelSquadAck() {
+    CheckField("Engine.WorldInfo", "Game", SDK_FIELD(AWorldInfo, Game));
+    CheckField("SFXGame.SFXGame", "bInCombat", SDK_BOOL(ASFXGame, bInCombat));
+    CheckFunction("SFXGame.SFXGame.TriggerVocalizationEvent");
+    PARAM(ASFXGame_eventTriggerVocalizationEvent_Parms, "SFXGame.SFXGame.TriggerVocalizationEvent", VocalizationID);
+    PARAM(ASFXGame_eventTriggerVocalizationEvent_Parms, "SFXGame.SFXGame.TriggerVocalizationEvent", InstigatedBy);
+    CheckFunction("SFXGame.SFXVocalizationManager.TriggerVocalizationEvent");
+    PARAM(ASFXVocalizationManager_execTriggerVocalizationEvent_Parms, "SFXGame.SFXVocalizationManager.TriggerVocalizationEvent", Id);
+    PARAM(ASFXVocalizationManager_execTriggerVocalizationEvent_Parms, "SFXGame.SFXVocalizationManager.TriggerVocalizationEvent", InInstigator);
+}
+
 void CheckTraversal() {
     CheckClass<ACoverLink>("Engine.CoverLink");
     CheckClass<ASFXPlayerController>("SFXGame.SFXPlayerController");
@@ -2956,6 +2999,35 @@ void CheckLeave() {
     PARAM(UBioSFHandler_PartySelection_execFinalizeParty_Parms, "SFXGame.BioSFHandler_PartySelection.FinalizeParty", nContext);
 }
 
+// game/CombatStance's walk on ME2 (section C; engine::adapter::kWalkOwnerClass, kWalkStepFlags): the pawn's speed and
+// acceleration, its behaviour's move control (the start, stop and skid steps and their flags), the walking mode.
+void CheckSequelWalk() {
+    CheckField("Engine.Actor", "Velocity", SDK_FIELD(AActor, Velocity));
+    CheckField("Engine.Pawn", "AccelRate", SDK_FIELD(APawn, AccelRate));
+    CheckField("SFXGame.BioPawn", "m_oBehavior", SDK_FIELD(ABioPawn, m_oBehavior));
+    CheckField("SFXGame.BioPawnBehavior", "m_eAnimStartState", SDK_FIELD(UBioPawnBehavior, m_eAnimStartState));
+    CheckField("SFXGame.BioPawnBehavior", "m_eAnimStopState", SDK_FIELD(UBioPawnBehavior, m_eAnimStopState));
+    CheckField("SFXGame.BioPawnBehavior", "m_eAnimSkidState", SDK_FIELD(UBioPawnBehavior, m_eAnimSkidState));
+    CheckField("SFXGame.BioPawnBehavior", "m_bEnableStartAnim", SDK_BOOL(UBioPawnBehavior, m_bEnableStartAnim));
+    CheckField("SFXGame.BioPawnBehavior", "m_bEnableStopAnim", SDK_BOOL(UBioPawnBehavior, m_bEnableStopAnim));
+    CheckField("SFXGame.BioPawnBehavior", "m_bEnableSkidAnim", SDK_BOOL(UBioPawnBehavior, m_bEnableSkidAnim));
+    CheckFunction("SFXGame.BioPawn.GetWalkingSpeedMode");
+    CheckParam("SFXGame.BioPawn.GetWalkingSpeedMode", "ReturnValue", SDK_AT(0, 1));
+    CheckFunction("Engine.Pawn.CreateInventory");  // `mevr give` (game/ConsoleRequest), a test fixture's weapon
+    // The speed from the push (game/CombatStance, research/38): ME2's move function, its output and the push it reads.
+    CheckFunctionsNamed("PlayerMoveCombatOrExplore");
+    CheckField("SFXGame.BioPawn", "fMoveMag", SDK_FIELD(ABioPawn, fMoveMag));
+    // The response's first ticks (game/CombatStance StepStartTrace): the facing the pawn turns to and the mesh's root motion mode.
+    CheckField("Engine.Pawn", "DesiredRotation", SDK_FIELD(APawn, DesiredRotation));
+    CheckField("Engine.SkeletalMeshComponent", "RootMotionMode", SDK_FIELD(USkeletalMeshComponent, RootMotionMode));
+    CheckField("Engine.PlayerInput", "RawJoyUp", SDK_FIELD(UPlayerInput, RawJoyUp));
+    CheckField("Engine.PlayerInput", "RawJoyRight", SDK_FIELD(UPlayerInput, RawJoyRight));
+    CheckField("SFXGame.BioPlayerController", "MoveStickWalkThreshold", SDK_FIELD(ABioPlayerController, MoveStickWalkThreshold));
+    CheckField("SFXGame.BioPlayerController", "MoveStickRunThreshold", SDK_FIELD(ABioPlayerController, MoveStickRunThreshold));
+    CheckField("Engine.Pawn", "bIsWalking", SDK_BOOL(APawn, bIsWalking));
+    CheckField("Engine.Actor", "Acceleration", SDK_FIELD(AActor, Acceleration));
+}
+
 // The galaxy map over the CIC's projector (game/GalaxyProjectorFlow, ME2's adapter game/Le2GalaxyCapture): the shared
 // SceneCaptureRig's classes, fields and functions (CheckLe3CaptureRig's list, ME2's SDK), the projector's actor and mesh, the
 // console's point of interest, the streaming levels, the galaxy game mode's camera and its centre object, SetHidden.
@@ -2986,6 +3058,9 @@ void CheckLe2CaptureRig() {
     });
     CheckField("Engine.Texture", "Resource", SDK_FIELD(UTexture, Resource));
     CheckField("Engine.TextureRenderTarget2D", "Format", SDK_FIELD(UTextureRenderTarget2D, Format));
+    // game/ScopeCapture reads its render target's size too (the scope's zoomed render on ME2, research/39).
+    CheckField("Engine.TextureRenderTarget2D", "SizeX", SDK_FIELD(UTextureRenderTarget2D, SizeX));
+    CheckField("Engine.TextureRenderTarget2D", "SizeY", SDK_FIELD(UTextureRenderTarget2D, SizeY));
     CheckField("Engine.PlayerController", "Player", SDK_FIELD(APlayerController, Player));
     CheckField("Engine.LocalPlayer", "PlayerPostProcess", SDK_FIELD(ULocalPlayer, PlayerPostProcess));
     CheckField("Engine.Engine", "DefaultPostProcess", SDK_FIELD(UEngine, DefaultPostProcess));
@@ -3089,7 +3164,101 @@ void CheckLe2CaptureRig() {
     PARMS(AController_execClientSetLocation_Parms, "Engine.Controller.ClientSetLocation");
 }
 
+// game/GalaxyRay on ME2 (lane GXR): the ray's pick (the map's cursor put on an object, its selection and zoom), the movie's
+// mouse diagnostic, and the orbit's scanner reticle aimed by the ray.
+void CheckLe2GalaxyRay() {
+    CheckFunction("Engine.Actor.SetLocation");
+    PARAM(AActor_execSetLocation_Parms, "Engine.Actor.SetLocation", NewLocation);
+    CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_fZoomTime", SDK_FIELD(UBioCameraBehaviorGalaxy, m_fZoomTime));
+    CheckClass<UBioSFHandler_PCGalaxyMap>("SFXGame.BioSFHandler_PCGalaxyMap");
+    CheckField("SFXGame.BioSFHandler_GalaxyMap", "m_fLeftStickX", SDK_FIELD(UBioSFHandler_GalaxyMap, m_fLeftStickX));
+    CheckField("SFXGame.BioSFHandler_GalaxyMap", "m_fLeftStickY", SDK_FIELD(UBioSFHandler_GalaxyMap, m_fLeftStickY));
+    CheckClass<AInterpActor>("Engine.InterpActor");
+    CheckField("Engine.BioSFHandler", "oPanel", SDK_FIELD(UBioSFHandler, oPanel));
+    CheckField("Engine.BioSFPanel", "bUsingGamepad", SDK_BOOL(UBioSFPanel, bUsingGamepad));
+    CheckClass<USFXGameModeOrbital>("SFXGame.SFXGameModeOrbital");
+    CheckField("SFXGame.SFXGameModeOrbital", "ReticleRot", SDK_FIELD(USFXGameModeOrbital, ReticleRot));
+    CheckField("SFXGame.SFXGameModeOrbital", "ReticleRotMinClamp", SDK_FIELD(USFXGameModeOrbital, ReticleRotMinClamp));
+    CheckField("SFXGame.SFXGameModeOrbital", "ReticleRotMaxClamp", SDK_FIELD(USFXGameModeOrbital, ReticleRotMaxClamp));
+    CheckField("SFXGame.SFXGameModeOrbital", "ReticleEffect", SDK_FIELD(USFXGameModeOrbital, ReticleEffect));
+    CheckField("SFXGame.SFXGameModeOrbital", "ProbeActive", SDK_BOOL(USFXGameModeOrbital, ProbeActive));
+    CheckField("SFXGame.BioPlayerController", "GameModeManager2", SDK_FIELD(ABioPlayerController, GameModeManager2));
+    CheckField("SFXGame.SFXGameModeManager", "GameModes", SDK_FIELD(USFXGameModeManager, GameModes));
+    CheckField("Engine.ActorComponent", "Owner", SDK_FIELD(UActorComponent, Owner));
+    CheckField("Engine.PrimitiveComponent", "LocalToWorld", SDK_FIELD(UPrimitiveComponent, LocalToWorld), true);
+    CheckField("Engine.Actor", "Rotation", SDK_FIELD(AActor, Rotation));
+}
+
 #elif defined(MEVR_GAME_LE3)
+// game/CombatStance's walk on ME3 (section C; engine::adapter::kWalkOwnerClass): the pawn's speed and acceleration, the
+// pawn's own move control states (ME3 keeps them on BioPawn and has no flags for them), the walking mode.
+void CheckSequelWalk() {
+    CheckField("Engine.Actor", "Velocity", SDK_FIELD(AActor, Velocity));
+    CheckField("Engine.Pawn", "AccelRate", SDK_FIELD(APawn, AccelRate));
+    CheckField("SFXGame.BioPawn", "m_eAnimStartState", SDK_FIELD(ABioPawn, m_eAnimStartState));
+    CheckField("SFXGame.BioPawn", "m_eAnimStopState", SDK_FIELD(ABioPawn, m_eAnimStopState));
+    CheckField("SFXGame.BioPawn", "m_eAnimSkidState", SDK_FIELD(ABioPawn, m_eAnimSkidState));
+    CheckFunction("SFXGame.BioPawn.GetWalkingSpeedMode");
+    CheckParam("SFXGame.BioPawn.GetWalkingSpeedMode", "ReturnValue", SDK_AT(0, 1));
+    CheckFunction("Engine.Pawn.CreateInventory");  // `mevr give` (game/ConsoleRequest), a test fixture's weapon
+    // `mevr loadout` (game/ConsoleRequest): the Weapon Loadout screen's own pick, a test fixture's sniper rifle.
+    CheckClass<USFXGUI_WeaponSelection>("SFXGame.SFXGUI_WeaponSelection");
+    CheckFunction("SFXGame.SFXGUI_WeaponSelection.SwitchToWeaponSelection");
+    CheckFunction("SFXGame.SFXGUI_WeaponSelection.SelectNextWeapon");
+    CheckFunction("SFXGame.SFXGUI_WeaponSelection.SwitchToWeaponLoadout");
+    CheckField("SFXGame.SFXGUI_WeaponSelection", "ShowAllWeapons", SDK_BOOL(USFXGUI_WeaponSelection, ShowAllWeapons));
+    CheckField("SFXGame.SFXGUI_WeaponSelection", "CurrentLoadoutWeapons", SDK_FIELD(USFXGUI_WeaponSelection, CurrentLoadoutWeapons));
+    CheckField("SFXGame.SFXGUI_WeaponSelection", "CurrentInventoryWeapons", SDK_FIELD(USFXGUI_WeaponSelection, CurrentInventoryWeapons));
+    // `mevr loco` (game/ConsoleRequest): ME3's start and stop steps on the player's BioPawn (a test's reads and writes).
+    CheckField("SFXGame.BioPawn", "m_bEnableStartRootMotion", SDK_BOOL(ABioPawn, m_bEnableStartRootMotion));
+    CheckField("SFXGame.BioPawn", "m_bEnableStopRootMotion", SDK_BOOL(ABioPawn, m_bEnableStopRootMotion));
+    CheckField("SFXGame.BioPawn", "bCanPlayMoveStopAnims", SDK_BOOL(ABioPawn, bCanPlayMoveStopAnims));
+    CheckField("SFXGame.BioPawn", "m_fAnimStartTime", SDK_FIELD(ABioPawn, m_fAnimStartTime));
+    CheckField("SFXGame.BioPawn", "m_fMoveStartElapsedTime", SDK_FIELD(ABioPawn, m_fMoveStartElapsedTime));
+    CheckField("SFXGame.BioPawn", "m_fMoveStopElapsedTime", SDK_FIELD(ABioPawn, m_fMoveStopElapsedTime));
+    CheckField("SFXGame.BioPawn", "m_fAnimMoveSpeedSnapshot", SDK_FIELD(ABioPawn, m_fAnimMoveSpeedSnapshot));
+    CheckField("SFXGame.BioPawn", "m_fAnimMoveStartSpeedSnapshot", SDK_FIELD(ABioPawn, m_fAnimMoveStartSpeedSnapshot));
+    CheckField("SFXGame.BioPawn", "m_fWalkStopDistance", SDK_FIELD(ABioPawn, m_fWalkStopDistance));
+    CheckField("SFXGame.BioPawn", "m_fRunStopDistance", SDK_FIELD(ABioPawn, m_fRunStopDistance));
+    // The speed from the push (game/CombatStance, research/38): ME3's move functions, their output and the push they read.
+    CheckFunctionsNamed("PlayerMoveExplore");
+    CheckFunctionsNamed("PlayerMoveCombat");
+    CheckField("Engine.PlayerInput", "RawJoyUp", SDK_FIELD(UPlayerInput, RawJoyUp));
+    CheckField("Engine.PlayerInput", "RawJoyRight", SDK_FIELD(UPlayerInput, RawJoyRight));
+    CheckField("Engine.PlayerController", "bIgnoreMoveInput", SDK_FIELD(APlayerController, bIgnoreMoveInput));
+    CheckField("SFXGame.BioPlayerController", "MoveStickIdleThreshold", SDK_FIELD(ABioPlayerController, MoveStickIdleThreshold));
+    CheckField("SFXGame.BioPlayerController", "MoveStickWalkThreshold", SDK_FIELD(ABioPlayerController, MoveStickWalkThreshold));
+    CheckField("SFXGame.BioPlayerController", "MoveStickRunThreshold", SDK_FIELD(ABioPlayerController, MoveStickRunThreshold));
+    CheckField("Engine.Pawn", "bIsWalking", SDK_BOOL(APawn, bIsWalking));
+    CheckField("Engine.Actor", "Acceleration", SDK_FIELD(AActor, Acceleration));
+    CheckField("SFXGame.BioPawn", "m_fDesiredMaxSpeed", SDK_FIELD(ABioPawn, m_fDesiredMaxSpeed));
+    CheckField("SFXGame.BioPawn", "fMoveMag", SDK_FIELD(ABioPawn, fMoveMag));
+    // The response's first ticks (game/CombatStance StepStartTrace): the facing the pawn turns to and the mesh's root motion mode.
+    CheckField("Engine.Pawn", "DesiredRotation", SDK_FIELD(APawn, DesiredRotation));
+    CheckField("Engine.SkeletalMeshComponent", "RootMotionMode", SDK_FIELD(USkeletalMeshComponent, RootMotionMode));
+    // ... and the animation nodes' root motion requests (BioPawn.RootMotionOverride's list).
+    CheckField("SFXGame.BioPawn", "RootMotionOverrides", SDK_FIELD(ABioPawn, RootMotionOverrides));
+    CheckElement("SFXGame.BioPawn", "RootMotionOverrides", sizeof(FRootMotionOverrideEntry));
+    CheckPath("SFXGame.BioPawn", {"RootMotionOverrides", "Node"}, SDK_AT(offsetof(FRootMotionOverrideEntry, Node), 8));
+    CheckPath("SFXGame.BioPawn", {"RootMotionOverrides", "RMMode"}, SDK_AT(offsetof(FRootMotionOverrideEntry, RMMode), 1));
+    // ME3's start and stop steps' root motion ignored in VR on foot (game/CombatStance UpdateStartSteps): the nodes asking for it.
+    CheckClass<UBioAnimNodeLocomotionStart>("SFXGame.BioAnimNodeLocomotionStart");
+    CheckClass<UBioAnimNodeLocomotionStop>("SFXGame.BioAnimNodeLocomotionStop");
+}
+
+// game/SquadAck on the sequels (the AI's own answer to an order, a vocalization event) and game/SquadContext's "a fight is
+// on" (engine::adapter::kInCombatClass): ME3's on its replication info.
+void CheckSequelSquadAck() {
+    CheckField("Engine.WorldInfo", "GRI", SDK_FIELD(AWorldInfo, GRI));
+    CheckField("SFXGame.SFXGRI", "bInCombat", SDK_BOOL(ASFXGRI, bInCombat));
+    CheckFunction("SFXGame.SFXGRI.TriggerVocalizationEvent");
+    PARAM(ASFXGRI_eventTriggerVocalizationEvent_Parms, "SFXGame.SFXGRI.TriggerVocalizationEvent", VocalizationID);
+    PARAM(ASFXGRI_eventTriggerVocalizationEvent_Parms, "SFXGame.SFXGRI.TriggerVocalizationEvent", instigatedBy);
+    CheckFunction("SFXGame.SFXVocalizationManager.TriggerVocalizationEvent");
+    PARAM(ASFXVocalizationManager_execTriggerVocalizationEvent_Parms, "SFXGame.SFXVocalizationManager.TriggerVocalizationEvent", Id);
+    PARAM(ASFXVocalizationManager_execTriggerVocalizationEvent_Parms, "SFXGame.SFXVocalizationManager.TriggerVocalizationEvent", inInstigator);
+}
+
 // Shared SceneCaptureRig, checked against LE3 metadata before native use.
 void CheckLe3CaptureRig() {
     CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_pCenterObject", SDK_FIELD(UBioCameraBehaviorGalaxy, m_pCenterObject));
@@ -3121,6 +3290,9 @@ void CheckLe3CaptureRig() {
     });
     CheckField("Engine.Texture", "Resource", SDK_FIELD(UTexture, Resource));
     CheckField("Engine.TextureRenderTarget2D", "Format", SDK_FIELD(UTextureRenderTarget2D, Format));
+    // game/ScopeCapture reads its render target's size too (the scope's zoomed render on ME3, research/39).
+    CheckField("Engine.TextureRenderTarget2D", "SizeX", SDK_FIELD(UTextureRenderTarget2D, SizeX));
+    CheckField("Engine.TextureRenderTarget2D", "SizeY", SDK_FIELD(UTextureRenderTarget2D, SizeY));
     CheckField("Engine.PlayerController", "Player", SDK_FIELD(APlayerController, Player));
     CheckField("Engine.LocalPlayer", "PlayerPostProcess", SDK_FIELD(ULocalPlayer, PlayerPostProcess));
     CheckField("Engine.Engine", "DefaultPostProcess", SDK_FIELD(UEngine, DefaultPostProcess));
@@ -3196,6 +3368,25 @@ void CheckLe3CaptureRig() {
 // (Their other pieces have rows in the tables below: Camera.CameraCache and its POV, Controller.Pawn, the game mode
 // manager, SceneCaptureComponent.FrameRate and SetFrameRate's block in CheckLe3CaptureRig, ConsoleCommand's block.)
 // The param names are the ones the modules ask for; LExSDKv2's LE3 generator lower-cased out_Rotation.
+// game/GalaxyRay on ME3 (lane GXR): the ray's pick and the movie's mouse diagnostic.
+void CheckLe3GalaxyRay() {
+    CheckFunction("Engine.Actor.SetLocation");
+    PARAM(AActor_execSetLocation_Parms, "Engine.Actor.SetLocation", NewLocation);
+    CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_aSelectableActors", SDK_FIELD(UBioCameraBehaviorGalaxy, m_aSelectableActors));
+    CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_pSelectedObject", SDK_FIELD(UBioCameraBehaviorGalaxy, m_pSelectedObject));
+    CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_pCrossHairObject", SDK_FIELD(UBioCameraBehaviorGalaxy, m_pCrossHairObject));
+    CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_nCurrentState", SDK_FIELD(UBioCameraBehaviorGalaxy, m_nCurrentState));
+    CheckField("SFXGame.BioCameraBehaviorGalaxy", "m_fZoomTime", SDK_FIELD(UBioCameraBehaviorGalaxy, m_fZoomTime));
+    CheckClass<UBioSFHandler_PCGalaxyMap>("SFXGame.BioSFHandler_PCGalaxyMap");
+    CheckField("SFXGame.BioSFHandler_GalaxyMap", "m_fLeftStickX", SDK_FIELD(UBioSFHandler_GalaxyMap, m_fLeftStickX));
+    CheckField("SFXGame.BioSFHandler_GalaxyMap", "m_fLeftStickY", SDK_FIELD(UBioSFHandler_GalaxyMap, m_fLeftStickY));
+    CheckClass<AInterpActor>("Engine.InterpActor");
+    CheckField("SFXGame.SFXGUIMovieLegacyAdapter", "oPanel", SDK_FIELD(USFXGUIMovieLegacyAdapter, oPanel));
+    CheckField("SFXGame.SFXGUIMovie", "bUsingGamepad", SDK_BOOL(USFXGUIMovie, bUsingGamepad));
+    CheckFunction("SFXGame.BioSFHandler_GalaxyMap.SelectGalaxyItem");  // the map's A (game/GalaxyRay's SendA on ME3)
+    CheckParmsSize("SFXGame.BioSFHandler_GalaxyMap.SelectGalaxyItem", 0);
+}
+
 void CheckLe3EngineAccess() {
     CheckClass<APlayerController>("Engine.PlayerController");
     CheckClass<ACamera>("Engine.Camera");
@@ -3521,6 +3712,7 @@ void CheckLe3Dialogue() {
 
 void CheckFields() {
     CheckLe3CaptureRig();
+    CheckLe3GalaxyRay();
     CheckField("Engine.LocalPlayer", "NearClipPlane", SDK_FIELD(ULocalPlayer, NearClipPlane));  // game/Sights: the scope's pull
     CheckField("Engine.SkeletalMeshComponent", "SkeletalMesh", SDK_FIELD(USkeletalMeshComponent, SkeletalMesh));
     // L3 menu pause: native override owns admission; this bit is observed, never forced.
@@ -3614,6 +3806,11 @@ void CheckFields() {
     CheckClass<USFXCameraMode_Interpolate>("SFXGame.SFXCameraMode_Interpolate");
     CheckField("SFXGame.SFXCameraMode", "bCollisionEnabled", SDK_BOOL(USFXCameraMode, bCollisionEnabled));
     CheckField("SFXGame.SFXCameraMode", "Input", SDK_FIELD(USFXCameraMode, Input));
+    // game/CameraProbe's mode line on ME3 too (lane AU5: the eye on a draw, the constant eye's facts).
+    CheckField("SFXGame.SFXCameraMode", "m_pov", SDK_FIELD(USFXCameraMode, m_pov));
+    CheckField("SFXGame.SFXCameraMode", "Offset", SDK_FIELD(USFXCameraMode, Offset));
+    CheckField("SFXGame.SFXCameraMode", "HookOffset", SDK_FIELD(USFXCameraMode, HookOffset));
+    CheckField("SFXGame.SFXCameraMode", "HookName", SDK_FIELD(USFXCameraMode, HookName));
     CheckField("SFXGame.SFXCameraInput", "MaxCameraRotationSpeed", SDK_FIELD(USFXCameraInput, MaxCameraRotationSpeed));
     CheckField("SFXGame.SFXCameraInput", "CameraSensitivity", SDK_FIELD(USFXCameraInput, CameraSensitivity));
     CheckField("SFXGame.SFXCameraInput", "TimeToReachFullSpeed", SDK_FIELD(USFXCameraInput, TimeToReachFullSpeed));
@@ -3752,6 +3949,17 @@ void CheckFunctions() {
     CheckFunction("SFXGame.SFXWeapon.GetPlayerAimError");
     PARAM(ASFXWeapon_execGetPlayerAimError_Parms, "SFXGame.SFXWeapon.GetPlayerAimError", Accuracy);
     PARAM(ASFXWeapon_execGetPlayerAimError_Parms, "SFXGame.SFXWeapon.GetPlayerAimError", ReturnValue);
+    // game/ZoomedShots: the shouldered shot's own calls made as zoomed (the accuracy, the spread, the sniper's damage)
+    CheckFunction("SFXGame.SFXPlayerInventoryManager.UpdatePlayerAccuracy");
+    CheckFunction("SFXGame.SFXWeapon.GetWeaponAimErrorRange");
+    CheckFunction("SFXGame.SFXWeapon_SniperRifle_Base.GetFireModeBaseDamage");
+    CheckField("SFXGame.SFXPlayerInventoryManager", "Accuracy", SDK_FIELD(ASFXPlayerInventoryManager, Accuracy));
+    // game/Melee: the omni-blade with the weapon away, the class's heavy melee action started as TryHeavyMelee starts it
+    CheckFunction("SFXGame.BioPlayerController.StartCustomActionWithSyncPartner");
+    PARAM(ABioPlayerController_execStartCustomActionWithSyncPartner_Parms, "SFXGame.BioPlayerController.StartCustomActionWithSyncPartner",
+        NewAction);
+    PARAM(ABioPlayerController_execStartCustomActionWithSyncPartner_Parms, "SFXGame.BioPlayerController.StartCustomActionWithSyncPartner",
+        ReturnValue);
     CheckFunction("SFXGame.BioPlayerController.SwitchWeapon");  // game/Holsters' sequel draw (a holster grab, `mevr weapon <family>`)
     PARAM(ABioPlayerController_eventSwitchWeapon_Parms, "SFXGame.BioPlayerController.SwitchWeapon", oWpn);
     CheckFunction("SFXGame.SFXGameModeDefault.TryHolster");     // ... resolved, never called on ME3 (it only leaves cover)
@@ -3988,6 +4196,11 @@ void CheckLeave() {
     CheckFunction("SFXGame.SFXGameModeBase.LeaveWorld");
     CheckFunction("SFXGame.SFXGRI.InCombat");
     PARAM(ASFXGRI_eventInCombat_Parms, "SFXGame.SFXGRI.InCombat", ReturnValue);
+    // `mevr omni party`: the squad selection's own A, for a map the console opens (lane AU2's combat fixture, BioP_SPDish)
+    CheckClass<USFXGUI_TeamSelect>("SFXGame.SFXGUI_TeamSelect");
+    CheckFunction("SFXGame.SFXGUI_TeamSelect.FinalizeParty");
+    PARAM(USFXGUI_TeamSelect_execFinalizeParty_Parms, "SFXGame.SFXGUI_TeamSelect.FinalizeParty", bAPressed);
+    PARAM(USFXGUI_TeamSelect_execFinalizeParty_Parms, "SFXGame.SFXGUI_TeamSelect.FinalizeParty", nContext);
 }
 
 #endif  // per-game metadata tables
@@ -4207,6 +4420,11 @@ bool Run(hook::Context& context) {
     CheckThespian();
     CheckLe2Squad();
     CheckLe2CaptureRig();
+    CheckLe2GalaxyRay();
+#endif
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+    CheckSequelWalk();
+    CheckSequelSquadAck();
 #endif
 #if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     CheckLeave();

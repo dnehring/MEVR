@@ -515,6 +515,8 @@ void Write(Mesh* self, float deltaTime) {
         goal.head = goal.relative ? bs::UnscaleVector(scale, goal.head) : bs::Unscale(scale, goal.head);
         goal.bodyAt = bs::Unscale(scale, goal.bodyAt);
         goal.maxBodyShift = bs::UnscaleLength(scale, goal.maxBodyShift);
+        goal.neckDown = bs::UnscaleLength(scale, goal.neckDown);
+        goal.crouchSlack = bs::UnscaleLength(scale, goal.crouchSlack);
         // The support grip's left-controller meters become fewer unscaled units; its foregrip, barrel and muzzle are in the
         // hand bone's own axes, already without the bone's scale (game/weapon divides it out); the calibrated span is in
         // drawn component units.
@@ -588,7 +590,17 @@ void Write(Mesh* self, float deltaTime) {
             Reject("skeleton changed (spine bone names)");
         } else {
             torso.valid = true;
-            torso.result = ik::PoseTorso(pose, request.parents, t.chain, request.arms[0].chain, request.arms[1].chain, body, t.goal);
+            // The body down to the player's head (TorsoGoal::crouch, research/29 "The eyes inside the body"): only as far as
+            // both legs, posed below, keep the feet on the floor; without both legs in the request, not at all.
+            ik::TorsoGoal goal = t.goal;
+            goal.maxDrop = goal.maxRise = 0.0;
+            if (goal.crouch && request.legs[0].enabled && request.legs[1].enabled) {
+                std::array<ik::ArmChain, 2> const legChains{request.legs[0].chain, request.legs[1].chain};
+                ik::LegRoom const room = ik::LegsRoom(pose, legChains, body.up);
+                goal.maxDrop = room.drop;
+                goal.maxRise = goal.crouchUp ? room.rise : 0.0;
+            }
+            torso.result = ik::PoseTorso(pose, request.parents, t.chain, request.arms[0].chain, request.arms[1].chain, body, goal);
             if (!torso.result.ok) {
                 Reject(torso.result.error);
             } else {
@@ -729,17 +741,22 @@ void Write(Mesh* self, float deltaTime) {
             double const floor = std::isfinite(animatedFloorZ) ? animatedFloorZ + shiftZ + leg.floorUp : hip.z - length * 0.98;
             ik::Vec3 const stood{hip.x, hip.y, (std::max)(floor, hip.z - length * 0.995)};
             double const w = std::clamp(leg.weight, 0.0, 1.0);
-            goal.wrist = animated + (stood - animated) * w;
+            // The animation's foot on its floor: the body's lift down to the player's head (TorsoGoal::crouch) undone.
+            double const lift = torso.valid && torso.result.ok ? torso.result.bodyLift : 0.0;
+            ik::Vec3 const walked = animated - body.up * lift;
+            goal.wrist = walked + (stood - walked) * w;
             goal.pole = body.forward;
         } else if (leg.planted) {
             // Planted: the foot goes back where the idle animation planted it (the body's slide under the view carried it
-            // with the animation's sway), the knee bending toward its place moved the same way.
-            ik::Vec3 const correction = torso.valid && torso.result.ok ? torso.result.feetCorrection : ik::Vec3{};
-            if (ik::Length(correction) < 0.01) {
+            // with the animation's sway) and down to the floor the body was lifted off or lowered into (the body down to the
+            // player's head, TorsoGoal::crouch), its angle to the floor kept, the knee bending the way it bends.
+            bool const solved = torso.valid && torso.result.ok;
+            ik::Vec3 const move = solved ? torso.result.feetCorrection - body.up * torso.result.bodyLift : ik::Vec3{};
+            auto const under = ik::LegUnderBody(pose, leg.chain, move, body);
+            if (!under) {
                 continue;   // nothing to correct: the leg as animated
             }
-            goal.wrist = pose[leg.chain.hand].translation + correction;
-            goal.pole = (pose[leg.chain.fore].translation + correction) - pose[leg.chain.upper].translation;
+            goal = *under;
         }
         ik::ArmResult const result = ik::PoseArm(pose, request.parents, leg.chain, side, body, goal);
         if (!result.ok) {
@@ -1377,11 +1394,12 @@ std::string DescribeTorso(TorsoSample const& sample) {
         return std::format("not written ({})", r.error != nullptr ? r.error : "?");
     }
     return std::format("shoulders {} -> {} (wanted {}, {:.1f} short{}), twist {:.0f} deg, bend {:.0f} deg, body turn {:.0f} of {:.0f} deg, "
-                       "body shift {:.1f} units{}, reference {:.1f} from its goal, clavicles {:.0f}/{:.0f} deg, arm stretch {:.2f}/{:.2f}, "
-                       "{} bones",
+                       "body shift {:.1f} units{}, body lift {:.1f} units (gap {:.1f}{}), reference {:.1f} from its goal, clavicles "
+                       "{:.0f}/{:.0f} deg, arm stretch {:.2f}/{:.2f}, {} bones",
         Format(r.oldShoulders), Format(r.newShoulders), Format(r.wantedShoulders), ik::Length(r.newShoulders - r.wantedShoulders),
         r.limited ? ", limited" : "", r.twistDegrees, r.bendDegrees, r.bodyTurnDegrees, r.wantedTurnDegrees, ik::Length(r.bodyShift),
-        r.shiftLimited ? std::format(" (wanted {:.1f}: capped)", ik::Length(r.wantedBodyShift)) : std::string(),
+        r.shiftLimited ? std::format(" (wanted {:.1f}: capped)", ik::Length(r.wantedBodyShift)) : std::string(), r.bodyLift,
+        r.crouchGap, r.liftLimited ? ", held by the legs" : "",
         ik::Length(r.newReference - r.goalReference), sample.collars[0], sample.collars[1], sample.stretch[0], sample.stretch[1],
         r.bonesWritten);
 }

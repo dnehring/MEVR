@@ -17,7 +17,7 @@ class Context;
 // Bounds before the transform update sends it to the scene) is post-hooked: for the meshes named here the box and the sphere
 // grow by the pad on every side, so a box the eye's frustum reaches is one the culling frustum reaches too.
 //
-// The hook runs wherever the engine updates a skeletal mesh's bounds (the game thread). LE1 only; no address for LE2/LE3.
+// The hook runs wherever the engine updates a skeletal mesh's bounds (the game thread). Every game (ME2 and ME3 since lane AU4, 2026-11-18).
 namespace mevr::engine::body_bounds {
 
 bool Install(hook::Context& init);

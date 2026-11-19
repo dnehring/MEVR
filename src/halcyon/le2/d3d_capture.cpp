@@ -165,6 +165,7 @@ std::atomic_bool g_menuMode{false};         // MANUAL flat-mode toggle (checkbox
 // menu: pause/inventory/squad/journal/map), 8 (movie), 9 (galaxy map), 10 (orbital/planet scan) force
 // mono automatically when g_monoMenus is on (the ME1 "mono or VR menus" bool). -1 = unreadable = VR.
 std::atomic<int>  g_autoGameMode{-1};
+std::atomic<int>  g_mevrFrontEnd{0};        // [MEVR] research/56 (T18): 0 none, 1 the front end's flat panel, 2 its 3D screen
 std::atomic_bool  g_monoMenus{true};        // ME1-style bool: true = menus/map flat mono (default), false = VR menus
 // [GM7PAUSE] Mode 7 (GUI) is NOT only full-screen menus - ME2 also reports it during live gameplay while
 // HUD elements are up (objective display, tutorial popups, aiming), which dropped all of COMBAT to a mono
@@ -1290,6 +1291,9 @@ void TryInstallBinkHooks() noexcept
 bool g_mhOMSetRTInstalled = false;   // [RTVDURABLE] inline hook replaces the vtable patch
 void WINAPI ExitProcessHook(UINT uExitCode) noexcept
 {
+    // [MEVR] our host's ExitProcess hook sits under this one and ends the process itself after its exit line (the kept
+    // locks, crash::NoteProcessExit): hand it the call; it never returns either.
+    if (::MevrSeams::HostEndsProcess() && g_origExitProcess != nullptr) g_origExitProcess(uExitCode);
     TerminateProcess(GetCurrentProcess(), uExitCode);   // never returns; skips the hanging detach chain
 }
 
@@ -4213,6 +4217,9 @@ unsigned GetBackbufferHeight() noexcept { return g_backbufferHeight; }
 bool GetMenuMode() noexcept
 {
     if (g_menuMode.load(std::memory_order_acquire)) return true;
+    // [MEVR] research/56 (T18): ME1's front end: its flat panel (the boot, a load from the menus: an unreadable mode included,
+    // which would otherwise fail open to VR) or ME1's 3D cinema screen (the title and its menus in stereo: no menu frame).
+    if (const int fe = g_mevrFrontEnd.load(std::memory_order_acquire); fe != 0) return fe == 1;
     if (!g_monoMenus.load(std::memory_order_acquire)) return false;
     const int m = g_autoGameMode.load(std::memory_order_acquire);
 #if defined(MEVR_ASI)
@@ -4234,6 +4241,8 @@ bool GetMenuMode() noexcept
 void SetMenuMode(bool on) noexcept { g_menuMode.store(on, std::memory_order_release); }
 bool GetMenuModeManual() noexcept { return g_menuMode.load(std::memory_order_acquire); }
 void SetAutoGameMode(int mode) noexcept { g_autoGameMode.store(mode, std::memory_order_release); }
+void SetMevrFrontEnd(int state) noexcept { g_mevrFrontEnd.store(state, std::memory_order_release); }   // [MEVR] T18
+int  GetMevrFrontEnd() noexcept { return g_mevrFrontEnd.load(std::memory_order_acquire); }          // [MEVR] T18
 int  GetAutoGameMode() noexcept { return g_autoGameMode.load(std::memory_order_acquire); }
 int  GetMirrorPresentEvery() noexcept { return static_cast<int>(g_mirrorPresentEvery.load(std::memory_order_relaxed)); }
 void SetMirrorPresentEvery(int n) noexcept
@@ -4321,6 +4330,33 @@ void ArmResolutionSpoof() noexcept
                   g_dispqRealPrimaryW, g_dispqRealPrimaryH, wantW, wantH, haveWant ? 1 : 0,
                   DispqSpoofActive() ? "ARMED" : "off", g_dispqSpoofW, g_dispqSpoofH);
     ME2VR::Log::Line(line);
+}
+
+// [MEVR] the render target for our host (plugin/RendererLe2.cpp RenderTarget): the size the next launch renders at is
+// MELE2VR.ini's RenderW/RenderH, which ArmResolutionSpoof above writes into GamerSettings.ini at attach.
+void MevrRenderTarget(unsigned* fileW, unsigned* fileH, unsigned* liveW, unsigned* liveH) noexcept
+{
+    const std::wstring ini = DispqOurIniPath();
+    if (fileW) *fileW = ini.empty() ? 0u : static_cast<unsigned>(GetPrivateProfileIntW(L"VR", L"RenderW", 0, ini.c_str()));
+    if (fileH) *fileH = ini.empty() ? 0u : static_cast<unsigned>(GetPrivateProfileIntW(L"VR", L"RenderH", 0, ini.c_str()));
+    if (liveW) *liveW = g_backbufferWidth;
+    if (liveH) *liveH = g_backbufferHeight;
+}
+
+bool MevrSetRenderTarget(unsigned w, unsigned h) noexcept
+{
+    const std::wstring ini = DispqOurIniPath();
+    if (ini.empty() || w < 1024 || h < 576) return false;   // ArmResolutionSpoof's own bounds
+    wchar_t v[32] = {};
+    swprintf_s(v, L"%u", w);
+    bool ok = WritePrivateProfileStringW(L"VR", L"RenderW", v, ini.c_str()) != 0;
+    swprintf_s(v, L"%u", h);
+    ok = WritePrivateProfileStringW(L"VR", L"RenderH", v, ini.c_str()) != 0 && ok;
+    const bool wrote = DispqWriteRes(w, h);   // and now, as attach would at the next launch
+    ME2VR::Log::Line("[VRRES] [MEVR] next launch " + std::to_string(w) + "x" + std::to_string(h) +
+                     (ok ? " -> MELE2VR.ini" : " -> MELE2VR.ini write FAILED") +
+                     (wrote ? ", GamerSettings.ini" : ", GamerSettings.ini untouched"));
+    return ok;
 }
 
 // Installed from the worker thread, well ahead of the game's D3D init (which happens after DllMain

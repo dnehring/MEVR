@@ -77,6 +77,9 @@
 #if defined(MEVR_GAME_LE2)
 #include "game/Le2GalaxyCapture.hpp"
 #endif
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+#include "game/GalaxyProjectorFlow.hpp"  // the ray's haptics (game/GalaxyRay)
+#endif
 #include "game/Mako.hpp"
 #include "game/Holsters.hpp"
 #include "game/CockpitProbe.hpp"
@@ -380,7 +383,7 @@ void TryInstallScriptHooks() {
     game::posture::TryStartup();  // and physical cover and crouch
     game::vr_cover::TryStartup();  // the game's cover protection for a VR player (research/23 section 6: answer handlers, before the hook)
     gHandAimAvailable = game::hand_aim::TryStartup();
-    game::mako::TryStartup();  // the Mako's turret aimed by the controller (research/44: the vehicle's Tick and shot-start handlers)
+    game::mako::TryStartup(*gInit);  // the turret's aim and the firing weapon's muzzle
     game::mako_controls::TryStartup();  // the Mako's physical lever and stick (research/46: the SetInputs handlers)
     game::cockpit_probe::TryStartup();  // the cockpit riding in the Mako (research/47: a camera-update handler, inert until asked)
     game::focus_pause::TryStartup();  // [Game] pauseUnfocused (research/47: a BioWorldInfo.Tick handler)
@@ -1093,8 +1096,15 @@ bool ActionControlsReleased(mevr::vr::controllers::Hand const& hand) {
 }
 bool AllowMeleeGesture(int hand) {
     auto const state = mevr::vr::controllers::Latest();
+#if defined(MEVR_GAME_LE3)
+    // ME3's omni-blade: the right fist with the weapon away counts as released controls (game/Melee's FistAway).
+    return ActionSceneAllowed() && state.active && ActionHandFree(hand) &&
+        (ActionControlsReleased(hand == 0 ? state.left : state.right) || mevr::game::melee::FistAway(hand)) &&
+        !mevr::game::traversal::Moving();
+#else
     return ActionSceneAllowed() && state.active && ActionHandFree(hand) &&
         ActionControlsReleased(hand == 0 ? state.left : state.right) && !mevr::game::traversal::Moving();
+#endif
 }
 bool AllowMeleeDiagnostic(int hand) {
     auto const state = mevr::vr::controllers::Latest();
@@ -1171,7 +1181,11 @@ mevr::game::melee::Link MeleeLink(bool diagnostic = false) {
         auto& out = link.input.hands[static_cast<std::size_t>(hand)];
         auto const& source = *hands[hand];
         out.available = link.allowRequest(hand);
+#if defined(MEVR_GAME_LE3)
+        out.neutral = ActionControlsReleased(source) || game::melee::FistAway(hand);
+#else
         out.neutral = ActionControlsReleased(source);
+#endif
         // The shared optional chamber hold supplies heavy intent after fresh native admission.
         // Controls remain released: no fire, grip, squad, power or menu binding is stolen.
         out.heavy = false;
@@ -1605,9 +1619,12 @@ std::string MeleeCommand(std::string const& args) {
     if ((verb == "light" || verb == "heavy") && (value.empty() || value == "left" || value == "right") && extra.empty())
         return game::melee::Request(verb == "heavy" ? ik::melee::Intent::Heavy : ik::melee::Intent::Light,
             value == "left" ? 0 : 1, MeleeLink(true));
-    // ME1's test verbs on ME3's staged adapter: the right hand's light request (ME3 has no punch with the weapon away).
-    if ((verb == "punch" || verb == "strike") && value.empty())
+    // ME1's test verbs on ME3's staged adapter: strike, the right hand's light request; punch, the right fist (with the weapon
+    // away: the omni-blade, game/Melee's DispatchFist; `mevr weapon away` first).
+    if (verb == "strike" && value.empty())
         return game::melee::Request(ik::melee::Intent::Light, 1, MeleeLink(true));
+    if (verb == "punch" && value.empty())
+        return game::melee::Punch(MeleeLink(true));
     return "melee: status | requests on/off | gestures on/off | heavy-gestures on/off (right chamber hold then strike) | light [left/right] | heavy [left/right] | punch | strike";
 #else
     return game::melee::Console(args);  // `mevr melee punch|strike` (ME1 and ME2 reach game/Melee from game/ConsoleRequest)
@@ -1827,6 +1844,9 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         game::comfort::Tick(deltaSeconds, ComfortLink());
         // A shot's kick of the gun model (research/24 section 8): this tick's, for arm IK's request.
         game::gun_kick::Tick(deltaSeconds);
+        if (game::cockpit_probe::FixedSeatPoseActive()) {
+            EnsureBonePoseHook();
+        }
         game::arm_ik::Tick(deltaSeconds, BodyOverlayMenu());
         // Holsters, the squad menu and the grenades before the support grip: it publishes the pad flags,
         // theirs among them. A squeeze at the grenade slot is claimed first, so neither holsters nor the
@@ -1901,6 +1921,9 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
                                   gHost->hideScreenReticle());
         // The spectator camera (research/49): after everything that moves the head, the pawn and the cockpit this tick.
         game::spectator::Tick(deltaSeconds, SpectatorLink());
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+        game::galaxy_projector::flow::SetHaptic(gHostOwnsVr ? gHost->hapticPulse : nullptr);  // the ray's hover and pick
+#endif
 #if defined(MEVR_GAME_LE3)
         game::le3_galaxy_capture::Tick(GalaxyMapLink().setScene, HostFloor());
 #elif defined(MEVR_GAME_LE2)
@@ -2004,6 +2027,9 @@ MEVR_MOD_API void MevrModShutdown() {
     if (gInit) removed(game::le3_galaxy_retention::Shutdown(*gInit, exiting), "the CIC streaming hook couldn't be removed");
     if (gInit && gHooked) {
         removed(engine::process_event::Uninstall(*gInit), "the ProcessEvent hook couldn't be removed");
+    }
+    if (gInit) {
+        removed(game::mako::UninstallFireHook(*gInit, !exiting), "the ranged fire hook couldn't be removed, or a call was still inside it");
     }
     if (gInit && gSceneViewHooked) {
         removed(engine::scene_view::Uninstall(*gInit), "the CalcSceneView hook couldn't be removed");

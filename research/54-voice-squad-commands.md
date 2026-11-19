@@ -1066,3 +1066,35 @@ is `scratch/voice-model/runs/run2/model-q8_0.gguf`.
 **Next, in order:** the generator: no description that fits two groups (or a gold that names both), no hold with a group as
 its point, and its talk and ASR noise widened; then real transcripts from the headset into the training data; a shorter
 block for the prefill (the baseline's levers). A hyperparameter sweep is not where the next point is.
+
+## The squad's answer and "calm" on the sequels (lane AU4, 2026-11-18)
+
+**The answer** (`game/SquadAck`, the audits' PWR-37). ME1's `SquadHandleChatterEvent`, `PlaySoundSet`, `OnChatterLinePlayed`
+and `HandleChatterEvent` exist in neither sequel. Their henchman AI answers an order itself with a vocalization event
+(`ESFXVocalizationEventID`, the same numbers on both: `ReceivedOrder_Attack` 2 (3, 4, 5 its variants), `_ChangeWeapon` 6,
+`_Move` 7, `_Follow` 8, `_TakeCover` 9, `_Hold` 10), raised through the game's `TriggerVocalizationEvent` (ME2
+`SFXGame.SFXGame`, ME3 `SFXGame.SFXGRI`: `VocalizationID`, `InstigatedBy`) and the vocalization manager's
+(`SFXGame.SFXVocalizationManager`: `Id`, `InInstigator`, script with locals). A CallFunction post-handler sees no parameters,
+so the module hooks every function of that name twice: a ProcessEvent post-handler (the event's own parameters when native code
+raises it) and a frame post-handler (the calling function's Locals when one of them calls the other); the offsets come from our
+reflection by name, so both games' spellings work (`instigatedBy` on ME3). The instigator decides whose order it answers; an id
+outside 2..10 is no answer. Nothing is played in its place (ME1's fallback is `PlaySoundSet`, absent), so the window only
+waits for the AI: at least 3 s on the sequels (ME1's `ackFallbackS` 1 s stays ME1's).
+
+Seen on ME2's Save 4 (Freedom's Progress, Jacob and Miranda; `mevr say go left`, `mevr say follow me`, `go right`): with ME1's
+1 s window the follows were answered (8, after 0.03-0.4 s) and the moves were not; with 8 s every move was answered with 7
+after 0.99-1.48 s; with the sequels' 3 s: 4 of 4 (`squad orders: Jacob answered the move with vocalization 7
+(ReceivedOrder_Move) after 1.05 s (the vocalization event's frame)`). The frame path is the one that heard them. ME3: the
+listener hooked `SFXGame.SFXVocalizationManager.TriggerVocalizationEvent` and `SFXGame.SFXGRI.TriggerVocalizationEvent`
+(`squad orders: acknowledgements heard from the AI's vocalization events: ...`); no ME3 fixture has a squad yet.
+`game/SquadOrders` runs the module on every game (`runtime::Up()`).
+
+**Calm** (`core/vr/SquadStanding`: no hostile near the point and no combat; the ME3 audit's PWR-31). ME1's `scene.combat` is
+`BioPawn.IsInCombatActionState` (the weapon drawn, which ME1 does in every fight). ME3 keeps a gun in the hand on a mission
+(it was "a gun is held and combat is enabled", so a standing order never ended as calm) and ME2 has no such function (combat was
+never true there). The sequels now read the flag the game keeps for its own combat (`engine::adapter::kInCombatClass`: ME2
+`SFXGame.SFXGame.bInCombat` on `WorldInfo.Game`, ME3 `SFXGame.SFXGRI.bInCombat` on `WorldInfo.GRI`; ReflectCheck rows,
+879 of 879 agree on ME3). `mevr context` said `NOW explore` on ME2's Save 4, ME3's Save 31 and, with shots fired, in ME3's
+console combat fixture (`me3-combat.ps1`), where the game's own `SFXGRI.InCombat()` (the Leave entry's log) said false too:
+the map opened by console doesn't start the game's combat state. **Not seen:** the flag true in a real fight, and a standing
+order ending when it falls.

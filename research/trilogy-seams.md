@@ -58,6 +58,8 @@ where each game's definition is. `Seams.cpp` means one definition for all three.
 | composition | `TransitionFadeLayer(session, viewSpace, context, view)` | TransitionFade.cpp | HalcyonSequelBridge.cpp | HalcyonSequelBridge.cpp | all |
 | composition | `PlacePanel(kind, OverlayFrame, viewPosition[3], widthM, heightM, imageReady)` returns `PanelPose` | WorldPanels.cpp | HalcyonLe2Bridge.cpp | HalcyonLe3Bridge.cpp | all |
 | composition | `WorldUiOwnsGui(mode)`: a game screen of ours stands in the GUI mode, which then stays in stereo (moved from ME2's mevr_bridge.h, 2026-11-16, lane OM2) | - | MenusLe2.cpp | MenusLe2.cpp | LE2, LE3 |
+| composition | `FrontEndHold(gameMode)`, `FrontEndOnScreen()`, `FrontEndBeforeTitle()`, `HoldPlainVr(plainVr, gameMode, worldUi)`: ME1's front end (research/56 "The sequels", lane FE, 2026-11-18; the game's own mode numbers, mapped to ME1's by `engine/GameAdapter.hpp`) | PresentationHold.cpp (LE1's tree calls the same functions by its `MELEVR::MevrBridge` names) | PresentationHold.cpp | PresentationHold.cpp | LE2, LE3 (`HoldPlainVr` by none yet) |
+| composition | `HoldLoadTail(movie, gameMode)`: a cinematic mode right after a movie kept as the movie for 0.5 s (ME2's loads end in 0.3 s of mode 6; core `LoadTail`) | - | PresentationHold.cpp | PresentationHold.cpp | LE2 |
 | view | `WorldViewHoldBegin()`, `WorldViewHoldEnd()`: game thread, around the primary player's view build in CalcSceneView: Shepard's view on foot in the camera's POV while a game screen of ours stands (added 2026-11-17, lane OM3; LE1's `GalaxyViewSwapBegin/End` is the same contract and calls the same hold for its world UI) | WorldUi.cpp | WorldUi.cpp | WorldUi.cpp | LE3 |
 | view | `WorldViewHeld(mode)` returns int: 0 no hold, 1 a wrist screen's (first person's hides kept), 2 a room screen's (the body hidden too) (added 2026-11-17, lane OM3) | WorldUi.cpp | WorldUi.cpp | WorldUi.cpp | LE3 |
 | input | `MergeMotionControllers(index, state, result)` | HalcyonBridge.cpp | HalcyonSequelBridge.cpp | HalcyonSequelBridge.cpp | all |
@@ -137,7 +139,8 @@ unchanged. `src/halcyon/SequelPresentation.h` only includes `MevrSeams.h` now.
 | `hudPanelGameplay` | yes | yes | - | the whole gameplay HUD goes to the panel |
 | `hudPieces` | yes | yes | - | the wrist and gun pieces |
 | `worldUi` | yes | yes | - | GUI screens can stand in the room |
-| `galaxyWindow`, `frontEnd`, `conversationWorld`, `eyeColourInBlit`, `headArmSequence` | yes | - | - | LE1's extensions |
+| `galaxyWindow`, `conversationWorld`, `eyeColourInBlit`, `headArmSequence` | yes | - | - | LE1's extensions |
+| `frontEnd` | yes | yes | yes | the front end's holds (research/56 "The sequels": the sequels since 2026-11-18, lane FE) |
 | `screenReticleHide` | yes | yes | - | the game's crosshair can be hidden |
 | `floorViewJournal` | yes | yes | - | `JournalFloorViewWrite` |
 | `ownMenuRows` | - | yes | - | `GetMenuRows` answers |

@@ -91,6 +91,24 @@ struct TorsoGoal {
     double plantWeight = 0.0;
     Vec3 bodyRest;
     double maxPlant = 0.0;
+    // The body down to the player's head (research/29 "The eyes inside the body", 2026-11-18). The slide keeps the body at
+    // its animated height and the lean keeps the spine's length, so a head lower than the spine reaches from there (a squat
+    // or a bend above the game's crouch, a kneel below it) put the player's eyes inside Shepard's neck or chest, under the
+    // near plane: the owner's "I could clip and look into my own body". With `crouch` (and `bodyMoves`, an absolute goal)
+    // the whole body also moves along its up so the reference reaches the goal: the reference's target is `head` raised
+    // by how far it sits above Shepard's own pivot (`neckDown`, the neck model's drop under the eyes, less his `eyes`'
+    // height above it), which is where it is when the player stands straight at the body's scale, so standing nothing
+    // moves; the move at most `maxDrop` down and `maxRise` up (what the legs allow, LegsRoom: the feet stay on the floor).
+    // `crouchLoose` (0..1: the legs keeping the run) leaves the gap within `crouchSlack` alone, the run's own bob. The
+    // lean then aims at that target. The legs stand the body on the floor after it (LegUnderBody).
+    bool crouch = false;
+    bool crouchUp = true;  // false: down only (the writer then gives no maxRise)
+    std::array<int, 2> eyes{-1, -1};
+    double neckDown = 0.0;
+    double maxDrop = 0.0;
+    double maxRise = 0.0;
+    double crouchSlack = 0.0;
+    double crouchLoose = 0.0;
 };
 
 struct TorsoResult {
@@ -116,6 +134,11 @@ struct TorsoResult {
     // animated horizontal offset from its rest before the weight and the cap (the animation's sway).
     Vec3 feetCorrection;
     double bodySway = 0.0;
+    // The body down to the head (TorsoGoal::crouch): its move along the up (units, + up), the gap before the caps and the
+    // slack (+: Shepard's head was that much too high for the player's), and whether a cap held it.
+    double bodyLift = 0.0;
+    double crouchGap = 0.0;
+    bool liftLimited = false;
     // The legs (TorsoGoal::legsWeight): the turn the standing rule alone would have made, and how far the animation had
     // turned the shoulders from the legs (`body.forward`) before anything moved (a combat stance's turn into the gun).
     double standingTurnDegrees = 0.0;
@@ -137,6 +160,24 @@ TorsoResult PoseTorso(std::span<Transform> pose, std::span<int const> parents, T
 // the degrees turned (0: not needed or not possible).
 double PoseCollar(std::span<Transform> pose, std::span<int const> parents, int collar, ArmChain const& arm, Vec3 wrist,
     double reachFraction = 0.85, double fraction = 0.5, double maxDegrees = 15.0);
+
+// How far the whole body may go down (`drop`) and up (`rise`) along `up` with both feet staying where the pose has them
+// (TorsoGoal::maxDrop, maxRise): each leg's hip to ankle may shorten to `foldFraction` of the leg's length (a deep squat)
+// and lengthen to `straightFraction` of it (a straight leg); the lesser of the legs. Units; 0 for a leg that isn't one
+// (FindLegChain: hip, knee, ankle) or has no length. A standing leg has (nearly) no rise.
+struct LegRoom {
+    double drop = 0.0;
+    double rise = 0.0;
+};
+LegRoom LegsRoom(std::span<Transform const> pose, std::span<ArmChain const> legs, Vec3 up, double foldFraction = 0.25,
+    double straightFraction = 0.98);
+
+// The leg's two-bone goal (ik::PoseArm on the leg chain) that keeps its foot where it stood after the torso moved the body:
+// the ankle back by `ankleMove` (component units: the lift undone, -up * TorsoResult::bodyLift, plus the planted feet's
+// TorsoResult::feetCorrection), its rotation as the pose has it (the foot keeps its angle to the floor), the knee bending
+// the way it already bends, toward the body's forward if the leg is straight. Nullopt: nothing to move (the leg as
+// posed).
+std::optional<ArmGoal> LegUnderBody(std::span<Transform const> pose, ArmChain const& leg, Vec3 ankleMove, BodyFrame const& body);
 
 // A fraction of a rotation (the same axis, `fraction` of the angle), for spreading one turn over
 // several joints.

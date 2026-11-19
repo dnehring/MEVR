@@ -152,13 +152,21 @@ authored seated scenes (such as shuttles) must reject traversal while retaining 
   native reflection now passes the protected 259-row probe and ordinary Normandy save loading/reloading is verified.
   Body/UI outcomes and VR acceptance remain pending. ME3's renderer pins ME2's baseline after every ini load (`[MEVR]`
   `ApplyMevrBaseline` in le3 me2_menu.cpp since 2026-11-17: first person with the head hidden, no head aim, no stick pitch,
-  flat menus, cinematic conversations, no profile hotkeys or R recenter, `\`; K still toggles first person).
+  flat menus, cinematic conversations, no profile hotkeys or R recenter, `\`; K still toggles first person). Its
+  conversations and cutscenes go on ME1's 3D cinema screen by default, every corroborated cinematic whatever its mode, and
+  our menu offers it (`renderer::Caps::cineScreen`, 2026-11-18, the owner: the default as on ME1 and ME2).
   ME3's life-size stereo renders each eye through its own frustum (mode 2, as ME1 and ME2; the owner's answer to
   docs/trilogy-plan.md question 17, 2026-11-17): `MELE3VR.ini [VR] MetricEyeFrustum` (LE1's `sfr2MetricEyeFrustum`), 1 by
   default (0: the shared symmetric window, mode 1), not pinned by the baseline, with the host's flare fix on by default
   (`plugin/FlareWindow`, `ASI\LE3MEVR.ini [Stereo] flareWindow`: ME3's lens-flare reflections unprojected through the CPU's
-  own window, else every lamp's flare lands off its lamp, differently per eye; research/le3-flares-and-window.md). ME3
-  renders 3072x2216 by default (`MELE3VR.ini [VR] RenderW/RenderH`, the code default when missing; multiples of 8);
+  own window, else every lamp's flare lands off its lamp, differently per eye; research/le3-flares-and-window.md). **The
+  sequels' render size follows the headset as ME1's** (the owner, 2026-11-18; research/le3-flares-and-window.md section 6):
+  at the first VR start `FirstStartEyeSize` writes 0.85 of the recommended eye (ME3: sides in multiples of 8; ME2: at least
+  16:9, its HUD isn't drawn on a near-square frame, and at 4:3 the power wheel at the hand cuts out the wrong band for 5% less
+  GPU: kept at 16:9, section 6.1) into `MELE2VR.ini`/`MELE3VR.ini [VR] RenderW/RenderH` and GamerSettings
+  for the next launch, once (`[Display] eyeSizeSet`; `core/vr/RenderTarget`, `renderer::SetRenderTarget`); the runner pins
+  it (`prep.ps1 -FirstVrStart` runs it on ME2). ME3's shipped stand-in is 3072x2216 (the code default when the keys are
+  missing), ME2's 4096x2304;
   `tools/deploy-asi.ps1 -Game LE3` installs `src/halcyon/le3/runtime/MELE3VR.ini` (the runner's preview without diagnostics)
   when there is none, `vr-game-settings.ps1 -Game LE3` writes its size. `[Stereo] windowEyes` stays 0 until a HUD check.
   Use the existing protected desktop/engine-request routes in
@@ -172,12 +180,13 @@ authored seated scenes (such as shuttles) must reject traversal while retaining 
   stereo and the queue work, first person is off until that ini has `[FirstPerson] Enabled=1` (K toggles it), the eyes
   take the monitor's shape; research/le2-renderer-integration.md "The first run on the fake headset"). **ME1's choices on
   ME2's keys:** `[MEVR]` `ApplyMevrBaseline` in `me2_menu.cpp` after every ini load (stereo, flat menus, no profile
-  hotkeys, no recenter on R, ME2's reload, first person, no head aim, no stick pitch, conversations and cutscenes on
-  Halcyon's flat cine panel until ME1's 3D cinema screen is ported), its hotkeys only with the game in front
+  hotkeys, no recenter on R, ME2's reload, first person, no head aim (nor in the Hammerhead: `VehicleHeadMode 1`, free look), no stick pitch, upstream's first-person conversations off; conversations and cutscenes
+  on ME1's 3D cinema screen, `plugin/SequelCinema`), its hotkeys only with the game in front
   (`MevrBridge::HotkeyDown`). **ME2 continues ME1** (the owner, 2026-11-14): ME1's systems and defaults, deviating only
   where ME2 forces it; the order (the host's services, then VRIK fast-tracked, then menus, then the cinema screen) is
   docs/le2-from-le1.md sections 0 and 4;
-  the deploy installs upstream's `MELE2VR.ini` (eyes 2048x2304 with `vr-game-settings.ps1 -Game LE2`'s borderless window).
+  the deploy installs upstream's `MELE2VR.ini` (4096x2304 until the first VR start sizes it from the headset, above; the
+  flat panel at ME1's 1.4 m / 2.35 m) with `vr-game-settings.ps1 -Game LE2`'s borderless window.
   **On LE2 `game/SystemSettings` waits until a level has been in gameplay for 3 s**: a `scale set` during the load with the
   game's depth of field on faulted the rendering thread in the first gameplay frame, the game hung (9 of 9 runs;
   "Defaults from ME1" there, gotchas/me2-scale-set-during-load).
@@ -261,6 +270,18 @@ switching frameworks.
 
 - Configure: `cmake -S . -B build -G "Visual Studio 17 2022" -A x64`. Build:
   `cmake --build build --config Release --target MEVR-LE1`, producing `build/Release/LE1MEVR.asi`.
+- **Cold builds** (lane BLD, 2026-11-17): every project compiles its sources in parallel (MSBuild's multi-tool task,
+  `CMAKE_VS_GLOBALS` at the top of `CMakeLists.txt`; before, each project's files went through one cl.exe in turn), and
+  the third-party libraries (LExSDKv2's SDKs, the OpenXR loader, FreeType, RmlUi) come from a prebuilt cache in
+  `%LOCALAPPDATA%\MEVR\build-cache` (`tools/cmake/ThirdParty.cmake`: keyed by the submodules' commits, never with local
+  changes, the compiler, Windows SDK, flags and those settings; a configure without an entry builds it once, about a
+  minute, under a lock; Release only: `-DMEVR_THIRDPARTY_CACHE=OFF`, and CI, build them from source). The binaries are
+  the same (sizes, sections, exports compared). A fresh worktree's cold configure and build, quiet machine: build-trilogy 610 s
+  before, 384 s with the parallel compiles, 324 s with the cache too (392 s when its configure first builds the entries);
+  build-mono about 600 s, 183 s, 165 s. The rest is our own sources compiled per game (about 40% of the compiler's time
+  is second and later compiles of a file); it is CPU-bound now (about 19 compiles at once on 24 threads). While a game runs,
+  build at Idle priority on half the cores: `$env:CL_MPCount=8; cmd /c start "" /b /low /wait cmake --build <dir> --config
+  Release --parallel 4 -- -nodeReuse:false` (a reused MSBuild node keeps Normal priority).
 - Deploy: `tools/deploy-asi.ps1 -Game LE1` (needs the ME3MM ASI loader). The log is at
   `<Win64>/Logs/LE1MEVR.log` or `%LOCALAPPDATA%/MEVR/`.
 - **Hot reload (default build):** `LE1MEVR.asi` is a small host; the code lives in
@@ -388,8 +409,16 @@ switching frameworks.
   default's (a thumbs-up rule rolled hands palm up); `handTrimLeft`/`handTrimRight`; arm IK's empty hand is grip * trim, the
   `[Hands]` hand angle a fine trim around its 90/0/0 default, `hand_calibration::FineTrim`). A save keeps the last calibration's
   groups this run didn't measure (gun stances, eye, hands).
-  Saved per controller type (interaction profile + headset) as `[Calibration.<key>]` in `ASI\LE1MEVR.ini`;
-  `game/BodyCalibration` applies it: the barrel follows grip * trim (not the aim pose), the gun's sight is
+  Saved per controller type (interaction profile + headset) as `[Calibration.<key>]` (and the manual offsets'
+  `[ManualCalibration.<key>]`, `[Calibration] prompted`/`last`) in **`%LOCALAPPDATA%\MEVR\calibration.ini`, one file for the
+  three games** (since 2026-11-18, research/25 section 17, `core/vr/CalibrationFile`; `engine::CalibrationFile()`): a save is one
+  `.tmp` moved over it, refused for the session if it was there but unreadable; `[Calibration.<key>.<GAME>]` there overrides only
+  the keys it names; `[Calibration] use`, `eye`, `grabOffset` stay in `ASI\<GAME>MEVR.ini`. At host attach, before the mod
+  (`plugin/ModLoader`), a controller type the file lacks is taken from the newest of the three games' `ASI\LE{n}MEVR.ini` (its
+  `time`; this game's first on a tie) and the game's ini marked `[Calibration] shared = 1` (its old sections stay; a marked ini is
+  not read again while the shared file exists). Log `calibration: [Calibration.<key>] taken from ...`. Dev builds: `[Debug]
+  calibrationKey = <key>` in the game's ini stands in for the controller type (the fake headset names none). Setup's report
+  includes the file; uninstall deletes it only with the `%LOCALAPPDATA%\MEVR` box. `game/BodyCalibration` applies it: the barrel follows grip * trim (not the aim pose), the gun's sight is
   moved onto the calibrated line (`gunShift`, the assist on top), the foregrip point takes the left grip,
   two-hand aim keeps the calibrated hands line, the shoulder zone, the crouch thresholds, the holsters'
   eye height. While it runs the game sees a neutral pad and the mod no controllers. `[Calibration] use = 0`
@@ -440,6 +469,14 @@ switching frameworks.
   backing up (`legsFollowMotion = 0`: the old rule; log `torso: legs:`, snapshot `torso.legs`; replay
   `tools/make-walk-recording.py`'s walk with `-Inputs`). Room-scale (the pawn following real steps past the cap) is
   designed there, not built.
+  **Squatting or bending, the body goes down to the head** (research/29 "The eyes inside the body", 2026-11-18, the owner's
+  "I could clip and look into my own body"; `[Hands] crouchBody = 1`, every game): the slide kept the animated height and
+  the lean the spine's length, so a squat of 20 cm or more, a bend or a kneel below the game's crouch put the eyes inside
+  the collar and chest (`tests/EyesInBodyTests.cpp`, LE1's skeleton); `TorsoGoal::crouch` moves `Root`'s subtree along its
+  up until the head bone is where it sits under the eyes standing (up too only with `crouchBodyUp = 1`, off until the
+  owner's yes), as far as both legs allow (`ik::LegsRoom`), and the planted legs keep the feet on the floor with the knees
+  bent (`ik::LegUnderBody`). Logs
+  `torso: crouching with you`; snapshot `mod.torso.result.bodyLiftM`; run `tools\eyes-in-body.ps1`.
   **Standing still, the feet planted** (research/72, the skeleton audit, 2026-11-14; `[Hands] steadyIdle`, off by default until
   the headset check): the idle animation moves `Root` (hip height) 2-3 cm in the mesh's space, 16 cm in a fidget, over planted
   feet; the slide pins `Root` under the view, so the feet slid; the torso's `feetCorrection` (`Root`'s animated offset from the
@@ -966,6 +1003,10 @@ switching frameworks.
   `DecideCine`/`CineFinishDecision`, the second-eye gate as 6), head look parked, the title in stereo on a fixed screen; the boot
   before the title flat with head look parked (`FrontEnd::BeforeTitle`, `frontEndBoot`), movies flat at once, the load from the
   menus flat from its first frame. Checked on the fake headset. research/56 "The front end on the 3D screen".
+  **ME2 and ME3 since 2026-11-18** (T18, research/56 "The sequels"): the same module through the common seams
+  (`MevrSeams::FrontEndHold` ..., the game's mode mapped by `engine/GameAdapter.hpp`): the title on the 3D screen, the boot and
+  loads flat; ME2's loads end in 0.3 s of mode 6, kept as the load (`HoldLoadTail`; it was a black 3D screen); ME3's title is
+  its Movie mode over a live scene (its adapter in `d3d_capture.cpp UpdatePresentationState`). LE1's compiled code unchanged.
 - LE1 HUD (Halcyon's renderer, Stereo 2): the game's UI draws go to a body-locked HUD panel quad,
   and a hand reticle on the aim ray replaces the crosshair (`src/plugin/HalcyonOverlays.cpp`,
   [research/15](research/15-hud.md)). Scaleform's non-"over" blend modes (multiply...) go there too,
@@ -1688,13 +1729,15 @@ switching frameworks.
   **BIOEngine.ini's `[SystemSettings]` wins over GamerSettings'** for `DynamicShadows` and `MotionBlur` (measured
   2026-10-23, research/35), and the game rewrites that file (after every `scale set`; a launch put the defaults
   back once), so **the mod applies the VR values itself** (`game/SystemSettings`, hot-reloaded): `scale set
-  DynamicShadows False` on ME1 (its cost lever; **ME2 and ME3 `True`** since 2026-11-17, the owner: 0.2-0.3 ms there and each
-  eye a render of its own, `engine::adapter::kVrDynamicShadows`; `vr-game-settings.ps1` and Setup write False for LE1 only),
+  DynamicShadows False` on every game (ME1's cost lever; on ME2 and ME3 since the owner's ME2 test of 2026-11-17 night: the
+  shadows differed between the eyes, "disable the shadows entirely for both eyes"; there `LightEnvironmentShadows False`
+  always too, `engine::adapter::kVrDynamicShadows`, `kVrCharacterShadowsOff`; Setup's sequel path still writes the game's),
   `MotionBlur False`, `FoliageDrawRadiusMultiplier 0.5` (and `LightEnvironmentShadows False` while
   the second eye is a replay, sharePass 2/3/5: the right eye drew character shadows where the left eye sees them, research/37
   2026-11-13; **the host says whether it is**, HostServices v43 `secondEyeIsReplay` = `render_levers::SecondEyeIsReplay()`,
-  false on a game where sharePass stands down, so ME2 and ME3 keep their character shadows: there the mod puts the player's
-  own `GamerSettings.ini` value back, since the game had written our earlier False into `BIOEngine.ini`; a host before v43:
+  false on a game where sharePass stands down: there the mod puts the player's own `GamerSettings.ini` value back, since
+  the game had written our earlier False into `BIOEngine.ini`, except on ME2 and ME3, whose character shadows are off
+  always (`kVrCharacterShadowsOff`, above); a host before v43:
   the file's `sharePass` rule on LE1 only, `engine::adapter::kOlderHostReplaysSecondEye`) through the local player's console
   once a player exists, **again after every level change, each boolean through its opposite first** (research/35
   attempt 49, 2026-10-28: the save's level rendered with the blur although the ini and the title's `scale set` said

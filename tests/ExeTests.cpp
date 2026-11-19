@@ -280,9 +280,26 @@ void TestAgainstLe2Dump() {
         ++patterned;
         auto const compiled = ue3::pattern::Compile(e.pattern);
         auto const hits = ue3::pattern::FindAll(image.text, *compiled, 16);
-        CHECK(e.kind == Kind::Data ? !hits.empty() : hits.size() == 1);
+        // As LE1's and LE3's: the motion-blur guard's paired render bodies share a prologue (exact sites and full vtable
+        // fingerprints guard it instead).
+        CHECK(e.kind == Kind::Data || std::strcmp(e.user, "motion blur guard") == 0 ? !hits.empty() : hits.size() == 1);
     }
-    std::printf("exe tests: %d LE2 patterns checked against the dump\n", patterned);
+    std::vector<std::uint8_t> shifted(text.size() + 0x40, 0xCC);
+    std::memcpy(shifted.data() + 0x40, text.data(), text.size());
+    exe::Image patched;
+    patched.textRva = 0x1000;
+    patched.text = shifted;
+    int guardRefused = 0;
+    for (exe::Entry const& e : engine::addresses::le2::kTable) {
+        if (std::strcmp(e.user, "motion blur guard") != 0) continue;
+        exe::Result const r = exe::Check(patched, e);
+        CHECK(r.status == Status::Moved || r.status == Status::BytesDiffer);
+        CHECK(r.status != Status::AtRva);
+        ++guardRefused;
+    }
+    CHECK(guardRefused == 12);
+    std::printf("exe tests: %d LE2 patterns checked against the dump (%d strict guard entries refused after shifting)\n", patterned,
+        guardRefused);
 }
 
 // The same captured-code gate for the newly admitted ME3 native adapter.

@@ -26,7 +26,8 @@
 #                     1440p monitor a 2048x2048 target rendered gameplay at 2009x1421, and
 #                     Halcyon's left-eye capture (which needs the scene to fill the backbuffer)
 #                     never fired, so both eyes got the same image (2026-10-08).
-#   DynamicShadows=False  LE1 only (LE2 and LE3 keep the game's: the mod turns them on there). Halcyon's default; the
+#   DynamicShadows=False  Every game (the sequels since the owner's ME2 test, 2026-11-17: the shadows differed between the
+#                     eyes; there LightEnvironmentShadows=False too, as the mod sets it). Halcyon's default; the
 #                     scene renders twice per frame. Written to BIOEngine.ini too: its
 #                     [SystemSettings] value wins over GamerSettings' (measured 2026-10-23: with False in GamerSettings and
 #                     True in BIOEngine.ini the game still drew 366 shadow draws a frame, 0.6 ms; research/35).
@@ -134,10 +135,11 @@ if ($Game -in @('LE1', 'LE2', 'LE3')) {
     $wanted['SystemSettings']['BorderlessWindow'] = 'True'
     $wanted['SystemSettings']['Fullscreen'] = 'False'
 }
-if ($Game -eq 'LE1') {
-    # ME1's cost lever. The sequels keep the game's own (the owner, 2026-11-17: 0.2-0.3 ms on ME2, nothing measurable on
-    # ME3, each eye a render of its own; the mod's built-in is True there, engine::adapter::kVrDynamicShadows).
-    $wanted['SystemSettings']['DynamicShadows'] = 'False'
+# ME1's cost lever; on the sequels the shadows differed between the eyes (the owner, 2026-11-17; the mod's built-in is
+# False on every game, engine::adapter::kVrDynamicShadows, and the sequels' character shadows off, kVrCharacterShadowsOff).
+$wanted['SystemSettings']['DynamicShadows'] = 'False'
+if ($Game -ne 'LE1') {
+    $wanted['SystemSettings']['LightEnvironmentShadows'] = 'False'
 }
 if ($Game -in @('LE1', 'LE2')) {
     $wanted['SystemSettings']['FoliageDrawRadiusMultiplier'] = '0.5'

@@ -200,7 +200,7 @@ std::optional<float> ArmLength(float tPoseSpan, float shoulderWidth);
 XrQuaternionf DefaultHandFrame();
 // The arm's direction in the grip's own axes (unit); nullopt for a zero arm.
 std::optional<XrVector3f> FingersInGrip(XrQuaternionf const& grip, XrVector3f const& shoulderToGrip);
-// `base` turned the least way so its fingers point along `fingersInGrip` as seen in the palm's plane (research/25 section 17,
+// `base` turned the least way so its fingers point along `fingersInGrip` as seen in the palm's plane (research/25 section 18,
 // 2026-11-17): the grip's X is the palm's normal, and a straight wrist can't point the fingers out of that plane, so the
 // measured direction's X is dropped first. A Quest 3 calibration measured 29 degrees toward the palm (the arm's line is not
 // the hand's): rolled flat the fingers dipped unseen, held upright both hands swung 30 degrees inward. A direction along the

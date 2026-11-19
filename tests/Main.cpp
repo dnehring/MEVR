@@ -45,6 +45,7 @@
 #include "core/vr/LayerComposite.hpp"
 #include "core/vr/MenuPointer.hpp"
 #include "core/vr/MenuSettings.hpp"
+#include "core/vr/RenderTarget.hpp"
 #include "core/vr/MetricStereo.hpp"
 #include "core/vr/OverlayPlacement.hpp"
 #include "core/vr/PoseRecording.hpp"
@@ -56,6 +57,7 @@
 #include "core/vr/TransitionFade.hpp"
 #include "core/vr/GalaxyHologram.hpp"
 #include "core/vr/GalaxyMap.hpp"
+#include "core/vr/GalaxyRay.hpp"
 #include "core/vr/OmniRail.hpp"
 #include "core/vr/WorldUi.hpp"
 #include "core/vr/Spectator.hpp"
@@ -72,6 +74,7 @@
 #include "core/vr/FrameProbe.hpp"
 #include "core/vr/TestRequest.hpp"
 #include "core/vr/ViewLevel.hpp"
+#include "core/vr/ActionCamera.hpp"
 #include "core/vr/ViewSync.hpp"
 #include "core/vr/WheelCrop.hpp"
 #include "engine/XrToUnreal.hpp"
@@ -7813,6 +7816,27 @@ void TestPresentationHold() {
         CHECK(v.Hold(true, 510));
         CHECK(!v.Hold(true, 400));
     }
+    {   // The sequels' load tail (research/56 "The sequels"): ME2's load ends in 0.3 s of mode 6 after its movie.
+        pr::LoadTail t;
+        CHECK(!t.Hold(false, false, 0));       // gameplay: nothing to hold
+        CHECK(!t.Hold(false, true, 10));       // a cinematic without a movie before it: the game's, at once
+        CHECK(!t.Hold(true, false, 20));       // the load's movie
+        CHECK(!t.Hold(true, true, 30));        // still the movie (its mode already 6)
+        CHECK(t.Hold(false, true, 40));        // the movie ended, mode 6 remains: kept as the movie
+        CHECK(t.Hold(false, true, 339));
+        CHECK(!t.Hold(false, false, 340));     // gameplay after 0.3 s: the tail was never shown
+        CHECK(t.Covered() == 1);
+        CHECK(!t.Hold(false, true, 400));      // a later cinematic, no movie before it: shown at once
+        CHECK(!t.Hold(true, false, 1000));     // a movie, then a real cutscene that lasts
+        CHECK(t.Hold(false, true, 1010));
+        CHECK(t.Hold(false, true, 1509));
+        CHECK(!t.Hold(false, true, 1510));     // 0.5 s: the game's own, shown as it is
+        CHECK(!t.Hold(false, true, 1600));
+        CHECK(!t.Hold(false, false, 1700) && t.Covered() == 1);
+        CHECK(!t.Hold(true, false, 2000));     // a clock that went back ends the hold
+        CHECK(t.Hold(false, true, 2010));
+        CHECK(!t.Hold(false, true, 1900));
+    }
 }
 
 void TestCineScreen() {
@@ -8108,6 +8132,18 @@ void TestWorldUi() {
     CHECK(wu::FromMe3Tag("WarAssets") == wu::Screen::WarAssets && std::string(wu::Name(wu::Screen::WarAssets)) == "WarAssets");
     CHECK(wu::FromTag("WarAssets") == wu::Screen::None && wu::FromTag("SquadRecord") == wu::Screen::None);  // ME1 and ME2 unchanged
     CHECK(wu::FromMe3Tag("MainMenu") == wu::Screen::None && wu::FromMe3Tag("HUD") == wu::Screen::None);
+    // The sequels' own screens (research/le2-menus.md "The sequels' own screens"): ME2's choice screen and minigames, ME3's store,
+    // weapon bench, accomplishments, message boxes and terminals, ME1's screen where ME1 has one.
+    CHECK(wu::FromTag("ChoiceGUI") == wu::Screen::ChoiceGUI && wu::FromTag("MissionCompletion") == wu::Screen::ChoiceGUI);
+    CHECK(wu::FromTag("SkillGameBypass") == wu::Screen::SkillGame && wu::FromTag("skillgamedecryption") == wu::Screen::SkillGame);
+    CHECK(std::string(wu::Name(wu::Screen::ChoiceGUI)) == "ChoiceGUI" && std::string(wu::Name(wu::Screen::Terminal)) == "Terminal");
+    CHECK(wu::FromMe3Tag("Store") == wu::Screen::Shop && wu::FromMe3Tag("WeaponSelect") == wu::Screen::Inventory);
+    CHECK(wu::FromMe3Tag("Accomplishments") == wu::Screen::Achievement && wu::FromMe3Tag("ChoiceGUI") == wu::Screen::ChoiceGUI);
+    CHECK(wu::FromMe3Tag("HintBox") == wu::FromTag("MessageBox") && wu::FromMe3Tag("QueuedMessageBox") == wu::FromTag("MessageBox"));
+    CHECK(wu::FromMe3Tag("Terminal") == wu::Screen::Terminal && wu::FromMe3Tag("Mail") == wu::Screen::Terminal &&
+          wu::FromMe3Tag("Elevator") == wu::Screen::Terminal && wu::FromMe3Tag("MissionCompletion") == wu::Screen::ChoiceGUI);
+    CHECK(wu::FromTag("Store") == wu::Screen::None && wu::FromTag("Terminal") == wu::Screen::None);  // ME3's only through FromMe3Tag
+    CHECK(wu::FromMe3Tag("Personalization") == wu::Screen::None);  // the armour locker's Shepard is the UI world's: Halcyon's panel
     CHECK(!wu::RailPanel(wu::Screen::WarAssets) && !wu::OnWrist(wu::Settings{}, wu::Screen::WarAssets, false));  // stands by its console
     // The modes (ME1's numbers here: this test builds without a game): the GUI mode 7 and the minigame 10 stand screens; an
     // opening is reserved from a play mode (0..4).
@@ -8397,6 +8433,65 @@ void TestGalaxyHologram() {
     XrVector3f const flatX = mevr::vr::overlay::Rotate(flat.orientation, {1.0f, 0.0f, 0.0f});
     XrVector3f const flatY = mevr::vr::overlay::Rotate(flat.orientation, {0.0f, 1.0f, 0.0f});
     CHECK(NearD(flatX.x, 1.0, 1e-5) && flatY.z < -0.99f);
+}
+
+// The sequels' galaxy map picked by a ray (core/vr/GalaxyRay, lane GXR).
+void TestGalaxyRay() {
+    namespace gr = mevr::vr::galaxy_ray;
+    namespace holo = mevr::vr::galaxy_holo;
+    // The ray's point on the panel: the game's screen from its top left.
+    gr::Panel panel;
+    panel.pose.position = {0.0f, 1.0f, -1.0f};
+    panel.widthM = 2.0f;
+    panel.heightM = 1.0f;
+    auto hit = gr::PanelHit({0.5f, 1.25f, 0.0f}, {0.0f, 0.0f, -1.0f}, panel);
+    CHECK(hit && NearD(hit->u, 0.75) && NearD(hit->v, 0.25) && NearD(hit->distanceM, 1.0));
+    CHECK(!gr::PanelHit({1.5f, 1.0f, 0.0f}, {0.0f, 0.0f, -1.0f}, panel));   // beside it
+    CHECK(!gr::PanelHit({0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, panel));    // pointing away
+    CHECK(!gr::PanelHit({0.0f, 1.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, panel));    // along it
+    // The panel on a disc: the window's crop widened back to the whole frame, the height by the game's aspect.
+    gr::Panel const disc = gr::PanelOnDisc({0.0f, 1.0f, -1.0f}, {0.0f, 0.92f, 0.40f}, {0.0f, 1.7f, 0.0f}, 2.64f, 0.02f, 16.0f / 9.0f);
+    CHECK(NearD(disc.widthM, 2.64 / 0.98) && NearD(disc.heightM, 2.64 / 0.98 * 9.0 / 16.0));
+    // The screen ray is ToGameScreen's inverse.
+    holo::GameCamera camera;
+    camera.location[0] = 100.0f, camera.location[1] = 200.0f, camera.location[2] = 300.0f;
+    camera.pitch = -0.3f, camera.yaw = 1.0f, camera.roll = 0.1f;
+    camera.fovXDeg = 70.0f;
+    camera.aspect = 16.0f / 9.0f;
+    camera.valid = 1;
+    auto const ray = gr::ScreenRay(camera, 0.3f, 0.6f);
+    CHECK(ray.has_value());
+    if (ray) {
+        float const p[3] = {ray->origin[0] + 500.0f * ray->direction[0], ray->origin[1] + 500.0f * ray->direction[1],
+            ray->origin[2] + 500.0f * ray->direction[2]};
+        auto const uv = holo::ToGameScreen(camera, p);
+        CHECK(uv && NearD((*uv)[0], 0.3, 1e-4) && NearD((*uv)[1], 0.6, 1e-4));
+    }
+    holo::GameCamera none;
+    CHECK(!gr::ScreenRay(none, 0.5f, 0.5f));
+    // The planet: the near side, and a ray grazing past the rim lands on it.
+    gr::WorldRay along;
+    along.direction = {1.0f, 0.0f, 0.0f};
+    auto on = gr::SphereHit(along, {10.0f, 0.0f, 0.0f}, 2.0f);
+    CHECK(on && NearD((*on)[0], 8.0) && NearD((*on)[1], 0.0));
+    CHECK(!gr::SphereHit(along, {10.0f, 2.2f, 0.0f}, 2.0f));
+    on = gr::SphereHit(along, {10.0f, 2.2f, 0.0f}, 2.0f, 1.2f);
+    CHECK(on && NearD((*on)[0], 10.0) && NearD((*on)[1], 0.2));
+    CHECK(!gr::SphereHit(along, {-10.0f, 0.0f, 0.0f}, 2.0f));  // behind
+    // The nearest object on the screen, aspect-correct, within the tolerance.
+    gr::Candidate const objects[] = {{0.5f, 0.5f, true}, {0.6f, 0.5f, true}, {0.58f, 0.5f, false}};
+    CHECK(gr::Nearest(objects, 0.58f, 0.5f, 16.0f / 9.0f, 0.06f) == 1);
+    CHECK(gr::Nearest(objects, 0.52f, 0.51f, 16.0f / 9.0f, 0.06f) == 0);
+    CHECK(gr::Nearest(objects, 0.9f, 0.9f, 16.0f / 9.0f, 0.06f) == -1);
+    // Rotators: Vector(rotator) and back; a world direction into a rotator's frame.
+    auto const yp = gr::ToRotator({0.0f, 1.0f, 0.0f});
+    CHECK(yp.yaw == 16384 && yp.pitch == 0);
+    auto const up = gr::ToRotator({0.0f, 0.0f, 1.0f});
+    CHECK(up.pitch == 16384);
+    auto const local = gr::ToLocal({0.0f, 1.0f, 0.0f}, 0, 16384, 0);  // the frame turned 90 degrees: +Y is its forward
+    CHECK(NearD(local[0], 1.0, 1e-4) && NearD(local[1], 0.0, 1e-4) && NearD(local[2], 0.0, 1e-4));
+    auto const back = gr::ToRotator(gr::ToLocal({0.6f, 0.0f, 0.8f}, 0, 0, 0));
+    CHECK(Near(back.pitch, static_cast<int>(std::lround(std::atan2(0.8, 0.6) * 32768.0 / 3.14159265358979)), 1) && back.yaw == 0);
 }
 
 void TestGalaxyMap() {
@@ -8770,6 +8865,14 @@ void TestViewLevel() {
              "SFXCameraMode_PhotoFree", "SFXCameraMode_Cinematic", "SFXCameraMode_Interpolate", "none", ""}) {
         CHECK(!vl::CameraModeAllows(mode));
     }
+    // ME3's roll hides Shepard's body (the owner, 2026-11-18): the roll's camera and the blends into and out of it only.
+    CHECK(mevr::vr::HidesBodyForAction("SFXCameraMode_Roll", "", ""));
+    CHECK(mevr::vr::HidesBodyForAction("SFXCameraMode_Interpolate", "SFXCameraMode_Combat", "SFXCameraMode_Roll"));
+    CHECK(mevr::vr::HidesBodyForAction("SFXCameraMode_Interpolate", "SFXCameraMode_Roll", "SFXCameraMode_Explore"));
+    CHECK(!mevr::vr::HidesBodyForAction("SFXCameraMode_Interpolate", "SFXCameraMode_Combat", "SFXCameraMode_Explore"));
+    CHECK(!mevr::vr::HidesBodyForAction("SFXCameraMode_Melee", "", ""));
+    CHECK(!mevr::vr::HidesBodyForAction("SFXCameraMode_Combat", "SFXCameraMode_Roll", "SFXCameraMode_Roll"));
+    CHECK(!mevr::vr::HidesBodyForAction("SFXCameraMode_RollEx", "", ""));
 
     // The window: a minute of one-second buckets. 30 seconds of rifle fire, a 0.1-degree kick per shot
     // (18 units) put back each tick: the game moved the pitch +540 units, the hold put back -540.
@@ -10457,7 +10560,7 @@ void TestCalibration() {
             CHECK(cal::DirectionAngleDeg(cal::Rotate(hand, {0, 0, -1}), cal::Rotate(grip, inPlane)) < 0.01f);
             CHECK(std::abs(cal::Rotate(neutral, {0, 0, -1}).x) < 1e-5f);
         }
-        // The palm's plane (research/25 section 17, 2026-11-17): a measured direction tilted 29 degrees toward the palm (the
+        // The palm's plane (research/25 section 18, 2026-11-17): a measured direction tilted 29 degrees toward the palm (the
         // Quest 3 calibration that turned both upright hands inward) gives the same trim as its untilted direction, and a saved
         // trim with that tilt comes back into the plane with the tilt reported.
         {
@@ -10607,6 +10710,7 @@ void TestCalibration() {
 // between rows and settings, and its edits of an ini file (key by key, the rest of the file untouched).
 void TestMenuSettings() {
     namespace ms = mevr::vr::menu_settings;
+    namespace rt = mevr::vr::render_target;
     // The schema: unique, well-formed keys; numbers' defaults inside their ranges.
     std::vector<std::string> keys;
     for (ms::Field const& f : ms::Schema()) {
@@ -10713,6 +10817,29 @@ void TestMenuSettings() {
     CHECK(ms::ResolutionChoice(4096, 4250, 2824, 2880) == "balanced");
     CHECK(ms::ResolutionChoice(3072, 3072, 3072, 3072) == "headset");  // a headset chip wins a tie with the ladder
     CHECK(ms::ResolutionChoice(3000, 3112, 2824, 2880).empty());
+    // The sequels' target at their own shape (the owner, 2026-11-18: "Follows headset like me1"): sides in multiples of 8
+    // (ME3's scene targets), 0.85 of the eye at the first VR start.
+    rt::Shape const eights{8, 0.0f};
+    CHECK(rt::RoundToMultiple(2400.4f, 8) == 2400 && rt::RoundToMultiple(1754.4f, 8) == 1752 && rt::RoundToMultiple(3.0f, 8) == 8);
+    CHECK(rt::RoundToMultiple(2401.2f, 2) == ms::RoundEven(2401.2f));
+    CHECK((rt::HeadsetSize(eights, "headset85", 2824, 2880) == ms::Size{2400, 2448}));  // the PS VR2: ME1's size
+    CHECK((rt::HeadsetSize(eights, "headset", 2017, 2161) == ms::Size{2016, 2160}));   // "headset" rounded too
+    CHECK((rt::HeadsetSize(eights, "headset75", 2824, 2880) == ms::Size{2120, 2160}));
+    CHECK((rt::FirstStartSize(eights, false, {3072, 2216}, 2824, 2880) == ms::Size{2400, 2448}));  // ME3's fixed size replaced
+    CHECK((rt::FirstStartSize(eights, false, {4096, 2304}, 2064, 2208) == ms::Size{1752, 1880}));  // a Quest 3 over Link
+    CHECK((rt::FirstStartSize(eights, true, {3072, 2216}, 2824, 2880) == ms::Size{}));             // done once already
+    CHECK((rt::FirstStartSize(eights, false, {2400, 2448}, 2824, 2880) == ms::Size{}));            // that size already
+    CHECK((rt::FirstStartSize(eights, false, {3072, 2216}, 0, 0) == ms::Size{}));                  // no recommendation yet
+    // ME2 draws no HUD on a near-square frame: at least 16:9, widened at 0.85 of the eye's height (lane AU4, 2026-11-18).
+    rt::Shape const wide{8, 16.0f / 9.0f};
+    CHECK((rt::HeadsetSize(wide, "headset85", 2824, 2880) == ms::Size{4352, 2448}));  // the PS VR2
+    CHECK((rt::HeadsetSize(wide, "headset85", 1912, 1952) == ms::Size{2944, 1656}));  // the fake headset's SteamVR size
+    CHECK((rt::HeadsetSize(wide, "headset85", 2064, 2208) == ms::Size{3344, 1880}));  // a Quest 3 over Link
+    CHECK((rt::HeadsetSize(wide, "headset85", 4000, 1000) == ms::Size{3400, 848}));   // a wider eye than 16:9: as it is
+    CHECK(rt::ResolutionChoice(eights, 2400, 2448, 2824, 2880) == "headset85");
+    CHECK(rt::ResolutionChoice(eights, 3072, 2216, 2824, 2880).empty());              // the shipped fixed size: no chip
+    CHECK(rt::HeadsetSizesText(eights, 2824, 2880) ==
+          "Headset 2824 \xC3\x97 2880 \xC2\xB7 \xC3\x97 0.85: 2400 \xC3\x97 2448 \xC2\xB7 \xC3\x97 0.75: 2120 \xC3\x97 2160");
     CHECK(ms::SizeText(2824, 2880) == "2824 \xC3\x97 2880");
     CHECK(ms::HeadsetSizesText(2824, 2880) ==
           "Headset 2824 \xC3\x97 2880 \xC2\xB7 \xC3\x97 0.85: 2400 \xC3\x97 2448 \xC2\xB7 \xC3\x97 0.75: 2118 \xC3\x97 2160");
@@ -11021,23 +11148,39 @@ void TestMakoGunner() {
     // Who aims: the gunner until a manual input, the manual one at once, the gunner again handbackS after the last.
     mg::ControlState state;
     mg::Hands idle;
+    CHECK(mg::Step(state, idle, 0.0, s) == mg::Control::Hand);
+    idle.hasTarget = true;
     CHECK(mg::Step(state, idle, 0.0, s) == mg::Control::Gunner);
     mg::Hands thumb;
     thumb.stickHeld = true;
     thumb.thumbX = 0.6f;
+    thumb.hasTarget = true;
     CHECK(mg::Step(state, thumb, 1.0, s) == mg::Control::Stick);
     mg::Hands holding;
     holding.stickHeld = true;  // the stick held, the thumb at rest
+    holding.hasTarget = true;
     CHECK(mg::Step(state, holding, 3.5, s) == mg::Control::Stick);   // 2.5 s after: still the player's
     CHECK(mg::Step(state, holding, 4.01, s) == mg::Control::Gunner);  // 3 s after: the gunner's
     mg::Hands tiny = thumb;
     tiny.thumbX = 0.1f;  // inside the dead zone: no takeover
     CHECK(mg::Step(state, tiny, 5.0, s) == mg::Control::Gunner);
+    mg::ControlState scoped;
+    holding.scopeAiming = true;
+    CHECK(mg::Step(scoped, holding, 5.0, s) == mg::Control::Stick);
+    CHECK(mg::Step(scoped, holding, 12.0, s) == mg::Control::Stick);
+    holding.scopeAiming = false;
+    CHECK(mg::Step(scoped, holding, 12.1, s) == mg::Control::Stick);
+    CHECK(mg::Step(scoped, holding, 15.1, s) == mg::Control::Gunner);
+    mg::Hands noTarget = holding;
+    noTarget.hasTarget = false;
+    CHECK(mg::Step(scoped, noTarget, 15.2, s) == mg::Control::Stick);
+    CHECK(mg::Step(scoped, noTarget, 60.0, s) == mg::Control::Stick);
     // The free hand aims only with intent and pointing out the front.
     mg::Hands hand;
     hand.handFree = true;
     hand.handIntent = true;
     hand.handPointsOut = true;
+    hand.hasTarget = true;
     CHECK(mg::HandAims(hand) && mg::Step(state, hand, 6.0, s) == mg::Control::Hand);
     mg::Hands lap = hand;
     lap.handPointsOut = false;  // resting in the lap, the finger on the trigger: not aiming
@@ -11045,6 +11188,11 @@ void TestMakoGunner() {
     mg::Hands relaxed = hand;
     relaxed.handIntent = false;  // pointing out, the finger off the trigger: not aiming
     CHECK(!mg::HandAims(relaxed));
+    relaxed.scopeAiming = true;
+    CHECK(mg::Step(scoped, relaxed, 16.0, s) == mg::Control::Hand);
+    CHECK(mg::Step(scoped, relaxed, 20.0, s) == mg::Control::Hand);
+    relaxed.busy = true;
+    CHECK(mg::Step(scoped, relaxed, 20.1, s) == mg::Control::Hand);
     CHECK(mg::Step(state, lap, 8.0, s) == mg::Control::Hand);      // within the handback
     CHECK(mg::Step(state, lap, 9.01, s) == mg::Control::Gunner);
     // The thumbstick wins over the hand when both aim; the setting off keeps the old rules (stick while held, else the hand).
@@ -11741,6 +11889,12 @@ void TestCombatStance() {
     CHECK(std::fabs(aim.x + 80.1) < 1e-9 && std::fabs(aim.z + 14.9) < 1e-9);
     cs::Vec const explore = cs::ConstantEyeOffset({0, 0, 120}, eye);  // explore itself: fpExplore again
     CHECK(std::fabs(explore.x + 50.1) < 1e-9 && std::fabs(explore.z - 25.1) < 1e-9);
+    // The sequels (MevrSeams::ConstantFpEye, lane AU5): ME3's renderer gives every standing state the Offset (35, 0, 65), and
+    // its Combat mode hooks (-30, 20, 90) as ME1's (read in the game, 2026-11-18): the eye 65 units behind and 20 right of
+    // the Camera bone, 0.7 m behind the explore eye. The rule gives Combat (5, 20, 35): the explore eye again.
+    cs::Vec const me3Eye = cs::ExploreEye({0, 0, 120}, {35, 0, 65});
+    cs::Vec const me3Combat = cs::ConstantEyeOffset({-30, 20, 90}, me3Eye);
+    CHECK(std::fabs(me3Combat.x - 5.0) < 1e-9 && std::fabs(me3Combat.y - 20.0) < 1e-9 && std::fabs(me3Combat.z - 35.0) < 1e-9);
     CHECK(cs::ConstantEyeApplies("SFXCameraMode_Combat", "CombatCam0"));
     CHECK(cs::ConstantEyeApplies("SFXCameraMode_CombatStorm", "Default__SFXCameraMode_CombatStorm"));
     CHECK(cs::ConstantEyeApplies("SFXCameraMode_TightAim", "CombatTightAim0"));
@@ -11831,6 +11985,10 @@ void TestCombatStance() {
         CHECK(!cs::Differs(cs::WantedRamp(game, false, false, 0.1), game));
         cs::WalkRamp const unset{0.0f, 1.5f, 3.0f, 2.0f, 1500.0f};
         CHECK(!cs::Differs(cs::WantedRamp(unset, true, true, 0.1), unset));
+        // The sequels' walk (the pawn's acceleration only): the same 6000 for a 0.1 s run, never slower, the game's when off.
+        CHECK(std::fabs(cs::WantedAccelRate(1500.0f, true, 0.1) - 6000.0f) < 1e-2f);
+        CHECK(cs::WantedAccelRate(9000.0f, true, 0.1) == 9000.0f && cs::WantedAccelRate(1500.0f, false, 0.1) == 1500.0f);
+        CHECK(cs::WantedAccelRate(0.0f, true, 0.1) == 0.0f);
         CHECK(cs::ClampLinearWalkS(0.0) == 0.03 && cs::ClampLinearWalkS(5.0) == 1.0 &&
               cs::ClampLinearWalkS(std::numeric_limits<double>::quiet_NaN()) == cs::kDefaultLinearWalkS);
     }
@@ -12242,11 +12400,14 @@ int RunMetricStereoSequelTests();
 int RunVoiceMenuTests();
 int RunSquadPlaceTests();
 int RunBodyScaleTests();
+// tests/EyesInBodyTests.cpp: the eyes inside the body (core/ik/TorsoPose's crouch, research/29).
+int RunEyesInBodyTests();
 int RunBodySlotsSeatedTests();
 int RunBodySlotsSmgTests();
 int RunFloorLockTests();
 int RunReloadGestureTests();
 int RunManualCalibrationTests();
+int RunCalibrationFileTests();
 int RunCalibrationWeaponTests();
 int RunCameraDiagnosticTests();
 int RunLandmarkTests();
@@ -12481,11 +12642,13 @@ int main() {
     gFailures += RunVoiceMenuTests();
     gFailures += RunSquadPlaceTests();
     gFailures += RunBodyScaleTests();
+    gFailures += RunEyesInBodyTests();
     gFailures += RunBodySlotsSeatedTests();
     gFailures += RunBodySlotsSmgTests();
     gFailures += RunFloorLockTests();
     gFailures += RunReloadGestureTests();
     gFailures += RunManualCalibrationTests();
+    gFailures += RunCalibrationFileTests();
     gFailures += RunCalibrationWeaponTests();
     gFailures += RunCameraDiagnosticTests();
     gFailures += RunLandmarkTests();
@@ -12553,6 +12716,7 @@ int main() {
     TestSceneCaptureScope();
     TestSpectator();
     TestGalaxyMap();
+    TestGalaxyRay();
     TestGalaxyHologram();
     TestOmniRail();
     TestWorldUi();

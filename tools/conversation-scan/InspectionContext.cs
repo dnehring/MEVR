@@ -10,7 +10,8 @@ namespace Mevr.ConversationScan;
 internal static class InspectionContext
 {
     internal static bool IsLe2 => Program.GameName == "LE2";
-    internal static MEGame Game => IsLe2 ? MEGame.LE2 : MEGame.LE1;
+    internal static bool IsLe3 => Program.GameName == "LE3";
+    internal static MEGame Game => IsLe2 ? MEGame.LE2 : IsLe3 ? MEGame.LE3 : MEGame.LE1;
 
     internal static void Initialize() => LegendaryExplorerCoreLib.InitLib(TaskScheduler.Default,
         s => Console.Error.WriteLine("LEC: " + s), null, new[] { Game });

@@ -644,7 +644,9 @@ function Get-PreviewModConfig {
     # Reuse the existing local-only native symbol dumper for this explicit LE3
     # research route. Keep it in the exact prep/launch contract, not an ini edit
     # after preparation. It writes once and makes no engine mutations.
-    "[Debug]`r`nrequests = 1`r`ndumpNatives = 1`r`nopenxrRuntime = C:\Program Files (x86)\Steam\steamapps\common\SteamVR\steamxr_win64.json`r`n[Pointer]`r`nsetCursor = 0`r`n"
+    # [Display] eyeSizeSet = 1: the host's first-VR-start rule (the render target from the headset, written into MELE3VR.ini
+    # for the next launch) stands down, so the renderer file stays the exact preview text and -PreviewRenderSize decides.
+    "[Debug]`r`nrequests = 1`r`ndumpNatives = 1`r`nopenxrRuntime = C:\Program Files (x86)\Steam\steamapps\common\SteamVR\steamxr_win64.json`r`n[Pointer]`r`nsetCursor = 0`r`n[Display]`r`neyeSizeSet = 1`r`n"
 }
 function Assert-PreviewConfig([string]$Bin, [ValidateSet(0, 2, 4)][int]$Mode = 4, [bool]$Diagnostics = $false,
     [ValidateSet(1, 2, 4, 8)][int]$MirrorEvery = 8, [bool]$EyeFrustum = $true, [string]$RenderSize = '3072x2216') {

@@ -7,7 +7,7 @@ namespace mevr::hook { class Context; }
 
 namespace mevr::host::motion_blur_guard {
 
-// LE1/LE3 host lifetime. Forces the engine's combined post-process proxies to their matching
+// The host's lifetime, every game (ME2's since lane AU6). Forces the engine's combined post-process proxies to their matching
 // no-blur specializations before rendering, including proxies cached across cinematics.
 // [Performance] motionBlurGuard = 0 disables installation for diagnosis; restart required.
 bool Install(hook::Context& context);

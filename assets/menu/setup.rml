@@ -283,7 +283,7 @@
 		<div class="sdesc">Undoes the install from its record: removes what it added, puts back what it replaced, and returns your game settings.</div>
 		<div class="group">
 			<div class="row"><div class="rl"><div class="rlab">What will change</div><div class="rdesc">{{uninstall_text}}</div></div></div>
-			<div class="row"><div class="rl"><div class="rlab">Keep my VR settings</div><div class="rdesc">Your renderer profiles and calibration stay in the ASI folder for a later reinstall</div></div>
+			<div class="row"><div class="rl"><div class="rlab">Keep my VR settings</div><div class="rdesc">Your renderer profiles and settings stay in the ASI folder for a later reinstall (the calibration stays anyway: the three games share it)</div></div>
 				<button class="tog" data-class-on="keep_settings" data-event-click="keep_settings = !keep_settings"><div class="knob"/></button></div>
 			<div class="row"><div class="rl"><div class="rlab">Also delete the mod's diagnostics</div><div class="rdesc">{{local_text}}</div></div>
 				<button class="tog" data-class-on="remove_local" data-event-click="remove_local = !remove_local"><div class="knob"/></button></div>

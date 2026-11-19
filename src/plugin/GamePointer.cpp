@@ -92,6 +92,13 @@ struct Settings {
     // (hooked at attach), and each move sends a one-count SendInput move and back, with the game's window in front, so the game
     // reads it before the click that follows.
     bool gameCursor = true;
+    // The sequels' galaxy map (lane GXR): -1 the game's own fact (plugin/HalcyonLe2Bridge's or HalcyonLe3Bridge's
+    // galaxyUiPointer), 0 no pointer on the map's UI, 1 the map's mouse by window messages and SetCursorPos (ME1's), 2 the game's
+    // cursor steered (GetCursorPos answered, the mod's GUI events). A file-only test key, read live. Not on ME1 (its map's pointer
+    // is HalcyonOverlays').
+#if !defined(MEVR_GAME_LE1)
+    int galaxyMap = -1;
+#endif
     bool operator==(Settings const&) const = default;
 };
 
@@ -239,6 +246,9 @@ void RefreshSettings(std::uint64_t now) {
         s.touchPressM = std::clamp(ReadFloat(L"touchPressM", s.touchPressM, path), -0.05f, 0.05f);
         s.touchReleaseM = std::clamp(ReadFloat(L"touchReleaseM", s.touchReleaseM, path), s.touchPressM + 0.002f, 0.1f);
         s.gameCursor = readBool(L"gameCursor", s.gameCursor);
+#if !defined(MEVR_GAME_LE1)
+        s.galaxyMap = std::clamp(static_cast<int>(GetPrivateProfileIntW(L"Pointer", L"galaxyMap", s.galaxyMap, path.c_str())), -1, 2);
+#endif
     }
     if (!gSettingsLogged || !(s == gSettings)) {
         gSettingsLogged = true;
@@ -611,6 +621,13 @@ bool Step(Frame const& frame, Dot& dot) {
     gOwnsWheel.store(pointing && gSettings.wheel && gSettings.wheelPerSecond > 0.0f, std::memory_order_release);
     return pointing;
 }
+
+#if !defined(MEVR_GAME_LE1)
+int GalaxyMapPointer(int gameFact) {
+    RefreshSettings(GetTickCount64());
+    return gSettings.galaxyMap >= 0 ? gSettings.galaxyMap : gameFact;
+}
+#endif
 
 std::uint32_t TakeGuiEvents(std::uint8_t* events, std::uint32_t capacity) {
     gModTookMs.store(GetTickCount64(), std::memory_order_release);

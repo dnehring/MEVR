@@ -48,6 +48,10 @@ struct GalaxyTable {
 };
 GalaxyTable const& GalaxyTableSettings() noexcept;
 
+// [Hands] constantEye and crouchDrop (MevrSeams::ConstantFpEye, ME1's keys and defaults): read from our settings file on the
+// game thread, once a second from each game's AfterTick (plugin/HalcyonLe2.cpp, HalcyonLe3.cpp), used on the Present thread.
+void RefreshConstantEye() noexcept;
+
 // ---- The overlay composition (plugin/SequelOverlays.cpp): MevrSeams::OverlayLayers for both sequels ---------------------
 // One function, ME1's order (plugin/HalcyonOverlays.cpp), driven by renderer::Capabilities(); what only a game knows is in
 // its adapter's Overlay* functions and Facts below.

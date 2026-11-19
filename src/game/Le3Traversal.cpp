@@ -561,6 +561,7 @@ void Tick(Link const& link, tv::Settings const& settings) {
 #endif
 }
 bool Moving() { return gLife.Busy() || (gLife.action != 0 && !gRecovered); }
+bool FloorMoving() { return Moving() && gLife.kind != tv::Kind::Evade; }
 std::string StatusJson() {
     namespace json = vr::test_request;
     auto const sample = gRecord.Current();

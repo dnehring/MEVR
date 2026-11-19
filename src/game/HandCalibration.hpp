@@ -38,6 +38,10 @@
 //           legsFollowMotion, legsTwistDeg 1 (default): while the pawn moves its legs keep its facing (the run
 //                                         animation's) and the spine twists toward the view up to legsTwistDeg
 //                                         (30..90, default 60) from them; 0: the hips turn with the view moving too
+//           crouchBody                    1 (default): the whole body down (or up) to the head, the feet on the floor
+//                                         and the knees bent, so a squat or a bend never puts the eyes inside the
+//                                         neck or chest (research/29 "The eyes inside the body"); 0: the game's height
+//           crouchBodyUp                  0 (default for now): only down; 1: up to a head above it too, the legs straightening
 //           armStretch                    1-1.25: how far the arms may stretch to reach
 //           trackingScale                 Unreal units per meter for hands and head; 0: the view's
 //           noCover, physicalCrouch, crouchBelow, standAbove, crouchDwellS: physical cover and
@@ -93,6 +97,8 @@ struct BodyMove {
     bool legsFollowMotion = true;    // moving, the legs keep the pawn's facing (where its run animation points)
     double legsTwistDegrees = 60.0;  // ...and the spine twists at most this far from them (30..90)
     bool steadyIdle = false;         // standing still, the feet planted where the idle animation put them
+    bool crouchBody = true;          // the body down to the player's head, the knees bending (research/29)
+    bool crouchBodyUp = false;       // ...and up to a head above it (the game's crouch while standing, the drawn stance)
 };
 BodyMove GetBodyMove();
 // [Hands] levelCamera: keep the game camera level while the hand aims (game/view_level).
@@ -216,8 +222,13 @@ struct Holsters {
     bool seatedWeaponWheel = true;  // permit deliberate wheel draws while seated
     double hapticAmplitude = 0.5;
     // ME3 only ([Holsters] le3PutAway): a gun let go is put away by the game's own put-down into no weapon
-    // (SFXInventoryManager.SetCurrentWeapon(None)); 0 (default until an ME3 combat fixture checks it): it stays in the hand.
-    bool le3PutAway = false;
+    // (SFXInventoryManager.SetCurrentWeapon(None)); the default since 2026-11-18 (the owner; checked on the combat fixture).
+    // 0: it stays in the hand.
+#if defined(MEVR_GAME_LE3)
+    bool le3PutAway = true;
+#else
+    bool le3PutAway = false;  // read only on ME3
+#endif
     // The sequels ([Holsters] lostHandHoldS): a right hand lost behind the back at the SMG's lowerBack slot keeps its last
     // place on the body this long (ik::body_slots::LostHand). Never on ME1 (no SMG slot there).
     double lostHandHoldS = 0.75;

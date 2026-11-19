@@ -65,6 +65,9 @@ void GetAimSeedRem(int* yawUU, int* pitchUU) noexcept;
 // aim on stick), 2=camera-aim (head drives DriverViewYaw/Pitch = the chase camera).
 bool DriveVehicleAim(float headYawDeg, float headPitchDeg) noexcept;   // mode 2 write; true if it wrote
 bool IsInDrivableVehicle() noexcept;                                   // true while driving a vehicle
+struct SkycarSeatPose { float x, y, z, yawDeg; };
+void SetSkycarFirstPersonEnabled(bool enabled) noexcept;
+bool GetSkycarSeatPose(SkycarSeatPose& pose) noexcept;
 int  GetVehicleHeadMode() noexcept;
 void SetVehicleHeadMode(int m) noexcept;
 // [VEHDIAG] pure-read: log ControlRotation vs DriverViewYaw/Pitch while driving (find the fire source).

@@ -202,6 +202,7 @@ ID3D11ShaderResourceView* g_uiOverlaySRV = nullptr;
 std::atomic<unsigned long long> g_overlayClearedFrame{0xFFFFFFFFFFFFFFFFull};
 std::atomic_bool g_overlayHasContent{false};
 std::atomic_bool g_menuPresentation{false}; // authoritative MENU_MONO state
+std::atomic<int> g_mevrFrontEnd{0};          // [MEVR] T18: 0 none, 1 the front end's flat panel, 2 its 3D cinema screen
 std::atomic_int g_menuPresentationReason{0};
 // EGameModes is retained as cinematic telemetry only. It does not own menu presentation.
 std::atomic<int>  g_autoGameMode{-1};
@@ -392,6 +393,9 @@ void WINAPI ExitProcessHook(UINT uExitCode) noexcept
                       wrote ? "written to GamerSettings.ini after the game's own flush" : "already correct / write FAILED");
         ME2VR::Log::Line(l);
     }
+    // [MEVR] our host's ExitProcess hook sits under this one and ends the process itself after its exit line (the kept
+    // locks, crash::NoteProcessExit): hand it the call; it never returns either.
+    if (::MevrSeams::HostEndsProcess() && g_origExitProcess != nullptr) g_origExitProcess(uExitCode);
     TerminateProcess(GetCurrentProcess(), uExitCode);   // never returns; skips the hanging detach chain
 }
 ID3D11DeviceContext* g_gameContext = nullptr;      // immediate context for the warp pass (grabbed lazily)
@@ -5527,7 +5531,29 @@ unsigned GetBackbufferWidth() noexcept { return g_backbufferWidth; }
 unsigned GetBackbufferHeight() noexcept { return g_backbufferHeight; }
 void UpdatePresentationState() noexcept
 {
-    enum : int { Gameplay = 0, Manual = 1, InputOwner = 2, Galaxy = 3 };
+    enum : int { Gameplay = 0, Manual = 1, InputOwner = 2, Galaxy = 3, FrontEnd = 4 };
+
+    // [MEVR] research/56 "The sequels" (T18): ME1's front end, once a Present, before anything reads it (MevrSeams::
+    // FrontEndHold with the raw mode read: -1 is the start-up's and a load's unreadable mode, which the sticky mode hides).
+    // The title and its menus go on ME1's 3D cinema screen (me2_xr.cpp's cinematic decision; no menu presentation); the
+    // boot before the title and a load from the menus are the flat panel, a menu presentation of their own.
+    // ME3's title and main menu are its Movie mode (10) over a live scene (the Earth from orbit: [CINEVR] "gm 10, gameplayCam
+    // 0, sceneAlive 1, fov 42" at every start, with blips of its GUI mode 9): there they are the front end's GUI, as ME1's title
+    // (its 7). The Movie mode without a scene inside the front end (the logos before the title, a load from the menus) is ME1's
+    // unreadable mode there: the boot's, or the load from the menus that ends the start-up; elsewhere a movie stays one. The
+    // scene's liveness is the player view's CalcSceneView sequence, as me2_xr.cpp's cinematic decision measures it (stale for
+    // more than 4 Presents: dead).
+    static uint64_t s_mevrCalcSeq = 0;
+    static int s_mevrCalcStale = 1000;
+    if (const uint64_t seq = ME2VR::CalcViewHook::GetP1CalcSeq(); seq != s_mevrCalcSeq) { s_mevrCalcSeq = seq; s_mevrCalcStale = 0; }
+    else if (s_mevrCalcStale < 1000) ++s_mevrCalcStale;
+    const int mevrModeRead = ME2VR::EngineProbe::ReadGameMode();
+    const int mevrFrontEndMode = mevrModeRead != 10 ? mevrModeRead : s_mevrCalcStale <= 4 ? 9 :
+        g_mevrFrontEnd.load(std::memory_order_acquire) != 0 ? -1 : 10;
+    const bool mevrFrontEnd = ::MevrSeams::FrontEndHold(mevrFrontEndMode);
+    const bool mevrFrontEndScreen = mevrFrontEnd && ME2VR::CalcViewHook::GetVrMode() == 4 &&
+                                    ::MevrSeams::FrontEndOnScreen() && !::MevrSeams::FrontEndBeforeTitle();
+    g_mevrFrontEnd.store(mevrFrontEnd ? (mevrFrontEndScreen ? 2 : 1) : 0, std::memory_order_release);
 
     const bool manual = g_manualFlat.load(std::memory_order_acquire);
     const bool autoMenus = g_monoMenus.load(std::memory_order_acquire);
@@ -5648,7 +5674,8 @@ void UpdatePresentationState() noexcept
     // [MEVR] a game screen of ours stands on the wrist or in the room (or is being opened): the GUI mode's input owner is
     // not a menu presentation; the world stays in stereo and the screen's UI goes to our HUD panel (as ME2's GetMenuMode).
     const bool worldUiOwns = ::MevrSeams::WorldUiOwnsGui(gmNow) || galaxyHeld;
-    const int demand = manual ? Manual : (menuInputOwner && !worldUiOwns) ? InputOwner : galaxy ? Galaxy : Gameplay;
+    const int demand = manual ? Manual : mevrFrontEnd ? (mevrFrontEndScreen ? Gameplay : FrontEnd) :   // [MEVR] T18
+        (menuInputOwner && !worldUiOwns) ? InputOwner : galaxy ? Galaxy : Gameplay;
     const bool wasMenu = g_menuPresentation.load(std::memory_order_acquire);
 
     static int previousInput = -1;
@@ -5673,7 +5700,7 @@ void UpdatePresentationState() noexcept
         {
             LARGE_INTEGER xt0; QueryPerformanceCounter(&xt0);   // [XSTATE]
             g_menuPresentation.store(true, std::memory_order_release);
-            static const char* names[] = { "gameplay", "manual", "input owner", "galaxy owner" };
+            static const char* names[] = { "gameplay", "manual", "input owner", "galaxy owner", "front end" };   // [MEVR] T18
             // Log the deciding signals with the transition. Attributing a mono episode to a SCREEN
             // previously meant correlating this line against [GUICEN] timestamps by hand, or asking
             // the player to remember what they opened - and most screens (map, photo mode, ambience,
@@ -5716,6 +5743,7 @@ void UpdatePresentationState() noexcept
     XsNoteTransition(xt0, xt1, false);
 }
 bool GetMenuMode() noexcept { return g_menuPresentation.load(std::memory_order_acquire); }
+int GetMevrFrontEnd() noexcept { return g_mevrFrontEnd.load(std::memory_order_acquire); }   // [MEVR] T18
 void NoteCineTransition(const LARGE_INTEGER& t0, const LARGE_INTEGER& t1) noexcept { XsNoteTransition(t0, t1, true); }
 bool GetMenuModeManual() noexcept { return g_manualFlat.load(std::memory_order_acquire); }
 void SetAutoGameMode(int mode) noexcept { g_autoGameMode.store(mode, std::memory_order_release); }
@@ -5812,6 +5840,46 @@ void ArmResolutionSpoof() noexcept
                   g_dispqRealPrimaryW, g_dispqRealPrimaryH, wantW, wantH, haveWant ? 1 : 0,
                   DispqSpoofActive() ? "ARMED" : "off", g_dispqSpoofW, g_dispqSpoofH);
     ME2VR::Log::Line(line);
+}
+
+// [MEVR] the render target for our host (plugin/RendererLe3.cpp RenderTarget): MELE3VR.ini's RenderW/RenderH, which
+// ArmResolutionSpoof above writes into GamerSettings.ini at attach (its 3072x2216 when the keys are missing).
+namespace
+{
+std::wstring MevrRendererIni() noexcept
+{
+    wchar_t exePath[MAX_PATH] = {};
+    if (GetModuleFileNameW(nullptr, exePath, MAX_PATH) == 0) return L"";
+    std::wstring ini(exePath);
+    const size_t slash = ini.find_last_of(L'\\');
+    return slash == std::wstring::npos ? std::wstring() : ini.substr(0, slash + 1) + L"MELE3VR.ini";
+}
+}
+
+void MevrRenderTarget(unsigned* fileW, unsigned* fileH, unsigned* liveW, unsigned* liveH) noexcept
+{
+    const std::wstring ini = MevrRendererIni();
+    if (fileW) *fileW = ini.empty() ? 0u : static_cast<unsigned>(GetPrivateProfileIntW(L"VR", L"RenderW", 3072, ini.c_str()));
+    if (fileH) *fileH = ini.empty() ? 0u : static_cast<unsigned>(GetPrivateProfileIntW(L"VR", L"RenderH", 2216, ini.c_str()));
+    if (liveW) *liveW = g_backbufferWidth;
+    if (liveH) *liveH = g_backbufferHeight;
+}
+
+bool MevrSetRenderTarget(unsigned w, unsigned h) noexcept
+{
+    const std::wstring ini = MevrRendererIni();
+    if (ini.empty() || w < 640 || h < 360) return false;   // ArmResolutionSpoof's own bounds
+    wchar_t v[32] = {};
+    swprintf_s(v, L"%u", w);
+    bool ok = WritePrivateProfileStringW(L"VR", L"RenderW", v, ini.c_str()) != 0;
+    swprintf_s(v, L"%u", h);
+    ok = WritePrivateProfileStringW(L"VR", L"RenderH", v, ini.c_str()) != 0 && ok;
+    const bool wrote = DispqWriteRes(w, h);   // and now, as attach would at the next launch
+    g_vrresW = w; g_vrresH = h;               // what the exit hook writes back after the engine's own flush
+    ME2VR::Log::Line("[VRRES] [MEVR] next launch " + std::to_string(w) + "x" + std::to_string(h) +
+                     (ok ? " -> MELE3VR.ini" : " -> MELE3VR.ini write FAILED") +
+                     (wrote ? ", GamerSettings.ini" : ", GamerSettings.ini already correct / untouched"));
+    return ok;
 }
 
 // Installed from the worker thread, ahead of the game's D3D init - no race with ArmResolutionSpoof

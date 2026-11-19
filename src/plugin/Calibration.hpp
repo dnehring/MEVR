@@ -8,6 +8,7 @@
 #include <openxr/openxr.h>
 
 #include <cstdint>
+#include <map>
 #include <string>
 
 struct ID3D11Device;
@@ -32,11 +33,18 @@ struct ID3D11DeviceContext;
 // grenades, melee, the squad trigger, the support grip and the physical crouch stand down. Its quads replace
 // ours (HUD panel, reticle, sights, squad menu, wheel) and are laid out world-locked in the app space.
 //
-// Results: [Calibration.<key>] in <GAME>MEVR.ini, one section per controller type (interaction profile and
-// headset: vr::calibration::ProfileKey), read by the mod (game/body_calibration). Present thread unless noted.
+// Results: [Calibration.<key>] in %LOCALAPPDATA%\MEVR\calibration.ini, one file for the three games (research/25 section 17;
+// core/vr/CalibrationFile), one section per controller type (interaction profile and headset: vr::calibration::ProfileKey),
+// read by the mod (game/body_calibration). [Calibration] use, eye and grabOffset stay in the game's <GAME>MEVR.ini. Present
+// thread unless noted.
 namespace mevr::host::calibration {
 
 // ---- Any thread -----------------------------------------------------------------------------------------
+// The shared calibration file's sections (vr::calibration_file::Shared names which): a section with this game's override
+// on top, keys lower-cased (the main menu's manual rows); a key written to it (one move over the file). False: not saved
+// (logged), e.g. the file was there but couldn't be read at start.
+std::map<std::string, std::string> SharedSection(std::string const& section);
+bool WriteShared(std::string const& section, std::string const& key, std::string const& value);
 // The sequence runs and isn't paused (Halcyon's menu closed): the game must see no pad, the mod no controllers.
 bool Active();
 // The first-run prompt is up with a controller pointing at it: the triggers aren't the game's.

@@ -13,6 +13,7 @@
 #if defined(MEVR_WITH_MAIN_MENU)
 #include "plugin/MainMenu.hpp"
 #endif
+#include "plugin/Renderer.hpp"
 #include "plugin/Upscale.hpp"
 
 #include <algorithm>
@@ -77,7 +78,8 @@ bool MainMenuOpen() noexcept {
 }
 
 bool CineScreenWanted(bool conversation) noexcept {
-    return mevr::host::cine_screen::Wanted(conversation);
+    // The renderer has the screen (the same capability our menu reads to offer it) and the player chose it.
+    return mevr::host::renderer::Capabilities().cineScreen && mevr::host::cine_screen::Wanted(conversation);
 }
 
 bool CineScreenFullRate() noexcept {

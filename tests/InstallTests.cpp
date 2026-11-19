@@ -2178,12 +2178,21 @@ void TestGames() {
         ro.halcyonLog = base / L"local" / L"MELE2VR_Log.txt";
         ro.store = "Steam";
         Write(ro.halcyonLog, "2026-11-16 01:00:00.000 | [XR] session started\r\n2026-11-16 01:00:01.000 | [D3D] present failed\r\n");
-        report::Bundle const bundle = report::Collect(ro, report::Redactor());
+        // The calibration the three games share (research/25 section 17): in the zip, redacted as the rest.
+        Write(base / L"local" / L"calibration.ini", "[Calibration.touch__quest]\r\nlabel=Touch\r\nnote=C:\\Users\\someone\\x\r\n"
+                                                    "time=2026-11-18 10:00\r\n");
+        report::Bundle const bundle = report::Collect(ro, report::Redactor({"someone"}, {}, {}));
         auto const has = [&](char const* name) {
             return std::any_of(bundle.files.begin(), bundle.files.end(), [&](report::File const& f) { return f.name == name; });
         };
         ICHECK(bundle.game == GameId::LE2 && has("logs/LE2MEVR.log") && has("logs/MELE2VR_Log.txt") && has("settings/MELE2VR.ini") &&
-               has("settings/MEVR-install.json") && has("system/folders.txt"));
+               has("settings/MEVR-install.json") && has("system/folders.txt") && has("settings/calibration.ini"));
+        for (report::File const& f : bundle.files) {
+            if (f.name == "settings/calibration.ini") {
+                ICHECK(f.bytes.find("[Calibration.touch__quest]") != std::string::npos && f.bytes.find("someone") == std::string::npos);
+            }
+        }
+        fs::remove(base / L"local" / L"calibration.ini", ec);
         ICHECK(!has("logs/LE1MEVR.log") && !has("settings/MELEVR.ini"));
         ICHECK(bundle.problems.errors == 1 && bundle.rendererProblems.errors == 1 && bundle.system.resolution.find("4096x2304") != std::string::npos);
         std::string const md = report::BuildReportMd(bundle);

@@ -46,6 +46,10 @@ constexpr double kBigTurnDegrees = 60.0;
 constexpr double kBigShiftMeters = 0.35;
 // The legs' `torso: legs keep the run` line while the pawn moves: at most this often.
 constexpr std::uint64_t kLegsLogEveryMs = 5000;
+// The body down to the head (TorsoGoal::crouch): moving, a gap within this (metres) is the run's bob, left alone.
+constexpr double kCrouchSlackMeters = 0.06;
+// The `torso: crouching with you` lines: a lift past this (metres) begins a crouch, under half of it ends one.
+constexpr double kCrouchLogMeters = 0.03;
 
 // The pawn's speed (the legs keep the run while it moves). engine/ReflectCheck has its row on every game (LE3's since
 // L3-3; declared there since T04, docs/trilogy-plan.md).
@@ -63,6 +67,14 @@ unsigned gLegsStarts = 0;       // moves begun (standing -> moving) since the la
 unsigned gLegsMovingTicks = 0;  // ticks the legs kept the run since the last heartbeat
 std::uint64_t gNextLegsLogMs = 0;
 bool gToldNoSpeed = false;
+// The body down to the head (research/29 "The eyes inside the body"): a crouch with the player under way, its deepest drop
+// and highest rise (metres), the ticks the legs held it, and how many began since the heartbeat.
+bool gCrouching = false;
+double gCrouchDeepest = 0.0;
+double gCrouchHighest = 0.0;
+unsigned gCrouchHeld = 0;
+unsigned gCrouches = 0;
+std::uint64_t gNextCrouchLogMs = 0;
 
 // This tick's inputs, for the log and the snapshot (world yaws in degrees, UE: + turns right).
 struct Last {
@@ -87,6 +99,7 @@ struct Last {
     double legsTwistDeg = 60.0;
     double plantWeight = 0.0;   // the feet planted standing still (1 standing; research/72)
     bool weaponDrawn = false;
+    bool crouch = false;        // the body goes down to the head ([Hands] crouchBody; research/29)
 };
 Last gLast;
 
@@ -173,6 +186,9 @@ struct Off {
     double bend = 0.0;
     double standingTurn = 0.0;       // the turn the standing rule alone would have made (degrees)
     double shouldersFromLegs = 0.0;  // how far the animation had turned the shoulders from the legs (degrees)
+    double lift = 0.0;               // meters the body went up (+) or down (-) to the head (TorsoGoal::crouch)
+    double gap = 0.0;                // meters Shepard's head stood too high (+) or low (-) before it
+    bool liftLimited = false;        // the legs held the lift short
 };
 
 std::optional<Off> LastOff(double unitsPerMeter) {
@@ -193,6 +209,9 @@ std::optional<Off> LastOff(double unitsPerMeter) {
     off.shiftCapped = r.shiftLimited;
     off.standingTurn = r.standingTurnDegrees;
     off.shouldersFromLegs = r.shouldersFromLegsDegrees;
+    off.lift = r.bodyLift / unitsPerMeter;
+    off.gap = r.crouchGap / unitsPerMeter;
+    off.liftLimited = r.liftLimited;
     return off;
 }
 
@@ -234,6 +253,44 @@ void NoteLegs(ik::LegsState const& legs) {
             : std::string());
 }
 
+// The body down to the head (TorsoGoal::crouch): a line when a crouch with the player begins (the lift past 3 cm) and when
+// it ends (under half of that), with its deepest drop, at most once a second each.
+void NoteCrouch() {
+    auto const off = gLast.crouch ? LastOff(gLast.unitsPerMeter) : std::nullopt;
+    double const lift = off ? off->lift : 0.0;
+    std::uint64_t const now = GetTickCount64();
+    if (!gCrouching && std::abs(lift) > kCrouchLogMeters) {
+        gCrouching = true;
+        gCrouchDeepest = gCrouchHighest = 0.0;
+        gCrouchHeld = 0;
+        ++gCrouches;
+        if (now >= gNextCrouchLogMs) {
+            gNextCrouchLogMs = now + 1000;
+            log::Info("torso: crouching with you: the body {} {:.0f} cm to your head (Shepard's head {:.0f} cm too {}), the knees "
+                      "bending, the feet on the floor{}",
+                lift < 0.0 ? "down" : "up", std::abs(lift) * 100.0, std::abs(off->gap) * 100.0, off->gap > 0.0 ? "high" : "low",
+                off->liftLimited ? " (held short by the legs)" : "");
+        }
+    }
+    if (!gCrouching) {
+        return;
+    }
+    gCrouchDeepest = std::min(gCrouchDeepest, lift);
+    gCrouchHighest = std::max(gCrouchHighest, lift);
+    if (off && off->liftLimited) {
+        ++gCrouchHeld;
+    }
+    if (std::abs(lift) < 0.5 * kCrouchLogMeters) {
+        gCrouching = false;
+        if (now >= gNextCrouchLogMs) {
+            gNextCrouchLogMs = now + 1000;
+            log::Info("torso: back to the game's height after a crouch with you: at most {:.0f} cm down, {:.0f} cm up; {} ticks held "
+                      "short by the legs",
+                -gCrouchDeepest * 100.0, gCrouchHighest * 100.0, gCrouchHeld);
+        }
+    }
+}
+
 void LogAnchor(ik::FollowState const& state) {
     ++gAnchors;
     std::uint64_t const now = GetTickCount64();
@@ -266,14 +323,15 @@ void LogIfOff() {
     log::Info("torso: {}{}{}{} ({}): head yaw {:.0f} (world {:.0f}), body yaw {:.0f} (world {:.0f}), pawn {:.0f}, "
               "ControlRotation {:.0f}, camera {:.0f} deg; turn wanted {:.0f} = body {:.0f} + spine {:.0f} (short {:.0f}), bend {:.0f} deg; "
               "the view {:.2f} m from where the game put Shepard, body slid {:.2f} m{}; Shepard's head {:.2f} m from the head's pivot; "
-              "lean {:.2f} m (head pivot ({:.2f}, {:.2f}), feet ({:.2f}, {:.2f}) m); {}",
+              "lean {:.2f} m (head pivot ({:.2f}, {:.2f}), feet ({:.2f}, {:.2f}) m); body lift {:.2f} m (gap {:.2f}{}); {}",
         yawOff ? "shoulders turned off the player's" : "", headOff ? (yawOff ? ", head off the view" : "head off the view") : "",
         off->shiftCapped ? (yawOff || headOff ? ", body slide capped" : "body slide capped") : "",
         !yawOff && !headOff && !off->shiftCapped ? "large correction" : "", gLast.mode, gLast.headYaw, gLast.worldHead,
         gLast.state.yaw * kDegrees, gLast.worldBody, gLast.pawnYaw, gLast.controlYaw, gLast.cameraYaw, off->wantedTurn, off->bodyTurn,
         off->twist, off->yawGap, off->bend, off->wantedShift, off->shift,
         off->shiftCapped ? " (capped: [Hands] bodyMoveMaxM; recenter with R to bring the view back over him)" : "",
-        off->referenceGap, std::hypot(s.lean.x, s.lean.z), s.pivot.x, s.pivot.z, s.feet.x, s.feet.z, LegsText());
+        off->referenceGap, std::hypot(s.lean.x, s.lean.z), s.pivot.x, s.pivot.z, s.feet.x, s.feet.z, off->lift, off->gap,
+        off->liftLimited ? ", held by the legs" : "", LegsText());
 }
 
 } // namespace
@@ -334,6 +392,17 @@ bool Fill(hand_targets::Targets const& targets, ik::Affine const& worldToCompone
         goal.bodyAt = ToComponent(worldToComponent, engine::ToWorld(targets.body, f));
         goal.maxBodyShift = move.maxMeters * targets.body.unitsPerMeter * scale;
         goal.maxTwistDegrees = kSpineTwistWithBodyDegrees;
+        // The body down (or up) to the player's head (research/29 "The eyes inside the body", 2026-11-18): the spine keeps
+        // its length, so a squat or a bend above the game's crouch left the eyes inside Shepard's neck or chest. The torso
+        // moves the whole body along its up until his head bone sits where it sits under his eyes when the player stands
+        // straight; the writer bends the knees with the feet on the floor (only as far as both legs allow).
+        if (move.crouchBody && bones.eyes[0] >= 0 && bones.eyes[1] >= 0) {
+            goal.crouch = true;
+            goal.crouchUp = move.crouchBodyUp;
+            goal.eyes = bones.eyes;
+            goal.neckDown = ik::NeckModel{}.down * targets.body.unitsPerMeter * scale;
+            goal.crouchSlack = kCrouchSlackMeters * targets.body.unitsPerMeter * scale;
+        }
         gLast.mode = "first person: the whole body under the view";
 #if defined(MEVR_GAME_LE1)
         // The view is away from Shepard's pawn (a scripted walk, a walk-in by the view: research/69 "The body stays with
@@ -408,6 +477,10 @@ bool Fill(hand_targets::Targets const& targets, ik::Affine const& worldToCompone
     } else {
         gLegs.Reset();
     }
+    // Moving, the run's own bob (Root 9 cm up and down, research/72) is left to the animation: the body follows the head only
+    // past it.
+    goal.crouchLoose = gLast.legsUsed ? std::clamp(gLast.legs.weight, 0.0, 1.0) : 0.0;
+    gLast.crouch = goal.crouch;
 
     // Standing still, the feet planted (research/72, 2026-11-14): LE1's idle animation moves Shepard's Root (at hip height)
     // 2-3 cm in the mesh's space, 16 cm in an idle fidget, with his feet planted (measured at the Presidium, `mevr camera
@@ -450,6 +523,7 @@ bool Fill(hand_targets::Targets const& targets, ik::Affine const& worldToCompone
     auto const pov = player::CameraPov(player::Camera(controller));
     gLast.cameraYaw = pov ? UnitsToDegrees(pov->rotation->yaw) : 0.0;
     LogIfOff();
+    NoteCrouch();
     return true;
 }
 
@@ -477,11 +551,13 @@ std::string StatusJson() {
     if (auto const off = LastOff(gLast.unitsPerMeter)) {
         result = std::format("{{\"wantedTurnDeg\": {}, \"bodyTurnDeg\": {}, \"standingTurnDeg\": {}, \"spineTwistDeg\": {}, "
                              "\"shouldersFromLegsDeg\": {}, \"yawGapDeg\": {}, \"bendDeg\": {}, "
-                             "\"viewFromBodyM\": {}, \"bodySlideM\": {}, \"slideCapped\": {}, \"headFromPivotM\": {}}}",
+                             "\"viewFromBodyM\": {}, \"bodySlideM\": {}, \"slideCapped\": {}, \"headFromPivotM\": {}, "
+                             "\"bodyLiftM\": {}, \"crouchGapM\": {}, \"liftLimited\": {}}}",
             json::JsonNumber(off->wantedTurn), json::JsonNumber(off->bodyTurn), json::JsonNumber(off->standingTurn), json::JsonNumber(off->twist),
             json::JsonNumber(off->shouldersFromLegs), json::JsonNumber(off->yawGap),
             json::JsonNumber(off->bend), json::JsonNumber(off->wantedShift), json::JsonNumber(off->shift),
-            off->shiftCapped ? "true" : "false", json::JsonNumber(off->referenceGap));
+            off->shiftCapped ? "true" : "false", json::JsonNumber(off->referenceGap), json::JsonNumber(off->lift),
+            json::JsonNumber(off->gap), off->liftLimited ? "true" : "false");
     }
     std::string legs = "null";
     if (gLast.legsUsed) {
@@ -495,14 +571,14 @@ std::string StatusJson() {
     return std::format("{{\"driven\": true, \"mode\": {}, \"lastAnchor\": {}, \"anchors\": {}, \"offLines\": {}, \"recenters\": {}, "
                        "\"headYawDeg\": {}, \"facingYawDeg\": {}, \"bodyYawDeg\": {}, \"worldYawDeg\": {{\"head\": {}, \"body\": {}, "
                        "\"pawn\": {}, \"controlRotation\": {}, \"camera\": {}}}, \"pivot\": [{}, {}, {}], \"feet\": [{}, {}], "
-                       "\"leanM\": {}, \"unitsPerMeter\": {}, \"legs\": {}, \"result\": {}}}",
+                       "\"leanM\": {}, \"unitsPerMeter\": {}, \"crouchBody\": {}, \"crouches\": {}, \"legs\": {}, \"result\": {}}}",
         json::JsonString(gLast.mode), json::JsonString(ik::Name(gLast.lastAnchor)), gAnchors, gOffLines,
         gLast.haveRecenters ? std::to_string(gLast.recenters) : std::string("null"), json::JsonNumber(gLast.headYaw),
         json::JsonNumber(gLast.facingYaw), json::JsonNumber(s.yaw * kDegrees), json::JsonNumber(gLast.worldHead),
         json::JsonNumber(gLast.worldBody), json::JsonNumber(gLast.pawnYaw), json::JsonNumber(gLast.controlYaw),
         json::JsonNumber(gLast.cameraYaw), json::JsonNumber(s.pivot.x), json::JsonNumber(s.pivot.y), json::JsonNumber(s.pivot.z),
         json::JsonNumber(s.feet.x), json::JsonNumber(s.feet.z), json::JsonNumber(std::hypot(s.lean.x, s.lean.z)),
-        json::JsonNumber(gLast.unitsPerMeter), legs, result);
+        json::JsonNumber(gLast.unitsPerMeter), gLast.crouch ? "true" : "false", gCrouches, legs, result);
 }
 
 void LogStats() {
@@ -514,10 +590,13 @@ void LogStats() {
               "pawn {:.0f} vs body {:.0f} deg (world); {} (moves begun: {}, ticks keeping the run: {}){}",
         gLast.mode, gAnchors, ik::Name(gLast.lastAnchor), gOffLines, gLast.state.yaw * kDegrees, gLast.headYaw, gLast.pawnYaw,
         gLast.worldBody, LegsText(), gLegsStarts, gLegsMovingTicks,
-        off ? std::format("; last write: hips {:.0f} (standing rule {:.0f}) + spine {:.0f} of {:.0f} deg, slid {:.2f} of {:.2f} m, head {:.2f} m off",
-                  off->bodyTurn, off->standingTurn, off->twist, off->wantedTurn, off->shift, off->wantedShift, off->referenceGap)
+        off ? std::format("; last write: hips {:.0f} (standing rule {:.0f}) + spine {:.0f} of {:.0f} deg, slid {:.2f} of {:.2f} m, head {:.2f} m off, "
+                          "lifted {:+.2f} m{}",
+                  off->bodyTurn, off->standingTurn, off->twist, off->wantedTurn, off->shift, off->wantedShift, off->referenceGap, off->lift,
+                  gLast.crouch ? std::format(" (crouchBody: {} crouches with you since the last line)", gCrouches) : std::string(" (crouchBody off)"))
             : std::string());
     gOffLines = 0;
+    gCrouches = 0;
     gLegsStarts = 0;
     gLegsMovingTicks = 0;
 }
@@ -532,8 +611,12 @@ void Shutdown() {
     gOffLines = 0;
     gLegsStarts = 0;
     gLegsMovingTicks = 0;
-    gNextLogMs = gNextAnchorLogMs = gNextLegsLogMs = 0;
+    gNextLogMs = gNextAnchorLogMs = gNextLegsLogMs = gNextCrouchLogMs = 0;
     gToldNoSpeed = false;
+    gCrouching = false;
+    gCrouchDeepest = gCrouchHighest = 0.0;
+    gCrouchHeld = 0;
+    gCrouches = 0;
 }
 
 } // namespace mevr::game::body_follow

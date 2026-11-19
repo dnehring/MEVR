@@ -206,7 +206,7 @@ std::string NotReadyForHands(Frame const& frame) {
 }
 
 // The hands while Advanced calibration is open (the owner, 2026-11-17: "just see my hands while making these
-// adjustments"; research/25 section 17): as live adjustment does, the mod gets the poses without buttons, the world runs so
+// adjustments"; research/25 section 18): as live adjustment does, the mod gets the poses without buttons, the world runs so
 // arm IK poses Shepard, and the sliders' values reach the hands as they're written. Not on the rest of the menu.
 void TickHandsPreview(Frame const& frame) {
     bool const wanted = gOpen.load() && !LiveAdjusting() && g.model->Get().Text("section") == "body" && g.model->Get().Flag("manual_expanded");

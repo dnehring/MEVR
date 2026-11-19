@@ -38,7 +38,7 @@ namespace mevr::host::main_menu {
 bool IsOpen();
 // Live editing reserves input but keeps corrected hand poses and floor lock visible.
 bool LiveAdjusting();
-// Shepard's hands while Advanced calibration is open (research/25 section 17): poses without buttons reach the mod and the
+// Shepard's hands while Advanced calibration is open (research/25 section 18): poses without buttons reach the mod and the
 // world runs, as in live adjustment, but the whole menu stays up. HandsShown: either of the two.
 bool HandsPreview();
 bool HandsShown();

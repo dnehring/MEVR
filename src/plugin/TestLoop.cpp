@@ -13,7 +13,7 @@
 #include "plugin/Renderer.hpp"
 #include "engine/GameAdapter.hpp"
 #include "plugin/SightLayers.hpp"
-#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE3)
+#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
 #include "plugin/MotionBlurGuard.hpp"
 #endif
 #if defined(MEVR_WITH_HALCYON_LE3)
@@ -854,7 +854,7 @@ struct ModuleBlocks {
 ModuleBlocks ModuleStatus() {
     ModuleBlocks m;
     m.sights = sight_layers::StatusJson();
-#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE3)
+#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
     m.motionBlurGuard = motion_blur_guard::StatsJson();
 #endif
 #if defined(MEVR_WITH_HALCYON_LE3)

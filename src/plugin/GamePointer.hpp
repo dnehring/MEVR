@@ -79,6 +79,9 @@ void ForgetGameUiQuad();
 // second after the last no quad of the game's is a pointer target (the world UI's or Halcyon's flat panel, which a hitch can bring
 // back for a frame) and GetCursorPos isn't answered: any cursor off its centre turns the puzzle's marker. Present thread.
 void HoldOffForPuzzle();
+// The pointer on the sequels' galaxy map UI (Facts::galaxyUiPointer: 0 none, 1 window messages, 2 the game's cursor steered),
+// or `[Pointer] galaxyMap` in the settings file when it is 0..2 (a test key, read live). Present thread.
+int GalaxyMapPointer(int gameFact);
 void NoteGameUiQuad(XrPosef const& pose, float width, float height, PanelKind kind = PanelKind::GalaxyMap,
     float const* touchArea = nullptr, int projectingHand = -1);
 

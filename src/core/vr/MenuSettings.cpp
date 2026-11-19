@@ -98,6 +98,9 @@ std::vector<Field> const& Schema() {
         // Mass Effect 2's host (research/le2-menus.md): the document greys out the rows ME2 doesn't have yet. 0 on LE1.
         {"le2", Type::Flag, 0, "", 0, 1, F::None, true},
         {"le3", Type::Flag, 0, "", 0, 1, F::None, true},
+        // The renderer has no 3D cinema screen (renderer::Caps::cineScreen false): the menu offers the flat screen only. 0 on
+        // every game's renderer since ME3's got it (2026-11-18).
+        {"cine_flat_only", Type::Flag, 0, "", 0, 1, F::None, true},
         {"game_title", Type::Text, 0, "Mass Effect 1", 0, 0, F::None, true},
         // The top bar's Leave (ME2 and ME3, research/28 "Leave"): shown while the mod says LeaveWorld would act. 0 on LE1.
         {"can_leave", Type::Flag, 0, "", 0, 1, F::None, true},
@@ -138,12 +141,15 @@ std::vector<Field> const& Schema() {
         {"aim_assist", Type::Flag, 0},
         {"explore_stance", Type::Flag, 0},  // [Hands] exploreStance (research/38 A; off by default since 2026-10-25)
         {"constant_eye", Type::Flag, 1},    // [Hands] constantEye (B, the host)
+        {"eye_test", Type::Choice, 0, "today"},  // [Hands] eyeTest: the sequels' first-person eye, a headset A/B (the host)
         {"draw_rate", Type::Number, 6, "", 1, 10, F::Times1},  // [Hands] drawRate (D)
         {"gun_kick", Type::Flag, 1},       // [Hands] gunKick (research/24 section 8)
         {"fingers", Type::Flag, 1},        // [Hands] fingers (research/43)
         {"vent", Type::Flag, 1},           // [Vent] enabled (research/45)
         {"mako_controls", Type::Flag, 1},  // [Mako] controls: the lever and the stick (research/46)
         {"cockpit", Type::Flag, 1},        // [Cockpit] enabled (research/47)
+        {"mako_seat", Type::Choice, 0, "top"},
+        {"mako_bottom_available", Type::Flag, 0, "", 0, 1, F::None, true},
         // The controller guide's texts (core/vr/MenuSettings GuideTexts; "<id>" the drawing's label, "<id>_how" the list's line).
         {"guide_lt", Type::Text, 0, ""},
         {"guide_lt_how", Type::Text, 0, ""},
@@ -896,7 +902,7 @@ std::map<std::string, std::string> ParseSection(std::string_view lines) {
 
 // LE3 presentation foundation: reject unsupported writes even if an old document or queued event requests one.
 bool UnavailableInLe3Presentation(std::string_view key) {
-    return key.starts_with("cine_") || key.starts_with("thespian_") || key.starts_with("voice_") ||
+    return key.starts_with("thespian_") || key.starts_with("voice_") ||
         key.starts_with("mic") || key == "world_ui" || key == "wrist_screen" || key == "wrist_width" || key == "galaxy_holo";
 }
 

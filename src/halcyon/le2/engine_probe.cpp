@@ -10,6 +10,7 @@
 #include <Windows.h>
 
 #include <atomic>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -301,11 +302,13 @@ struct FpStateDef { const char* cls; const char* label; ME2VR::EngineProbe::FpSt
 // per-frame reads and writes it needed were a crash source. Do not reintroduce it. Indices 0-4 are unchanged
 // so saved MELE2VR.ini values (S0..S4) still load; older S5..S15 cover keys are ignored.
 // Baked 2026-07-26 from a tuned + saved ini (struct order: on, hideHead, hideBody, hideWeapon, x, y, z).
+// [MEVR] hideBody false in every state (ME1's first person, VRIK; me2_menu.cpp's ApplyMevrBaseline pins it): upstream hid
+// the body unarmed and sprinting, and the owner's VRIK body vanished with the weapon away (2026-11-17).
 const FpStateDef g_fpDefs[] = {
-    { "SFXCameraMode_Explore",      "Explore (unarmed)",   { true, true, true,  true,  -35.0f, -0.0f, 35.0f } },  // 0
-    { "SFXCameraMode_ExploreStorm", "Explore sprint",      { true, true, true,  true,  -40.0f,  0.0f, 35.0f } },  // 1
+    { "SFXCameraMode_Explore",      "Explore (unarmed)",   { true, true, false, true,  -35.0f, -0.0f, 35.0f } },  // 0
+    { "SFXCameraMode_ExploreStorm", "Explore sprint",      { true, true, false, true,  -40.0f,  0.0f, 35.0f } },  // 1
     { "SFXCameraMode_Combat",       "Combat (weapon out)", { true, true, false, false, -60.0f,  5.0f, 25.0f } },  // 2
-    { "SFXCameraMode_CombatStorm",  "Combat sprint",       { true, true, true,  false, -70.0f,  5.0f, 25.0f } },  // 3
+    { "SFXCameraMode_CombatStorm",  "Combat sprint",       { true, true, false, false, -70.0f,  5.0f, 25.0f } },  // 3
     { "SFXCameraMode_TightAim",     "Aim down sights",     { true, true, false, false, -30.0f,  5.0f, 20.0f } },  // 4
 };
 constexpr int kFpCount = static_cast<int>(sizeof(g_fpDefs) / sizeof(g_fpDefs[0]));
@@ -388,6 +391,8 @@ bool LookupVanilla(const char* cls, float* x, float* y, float* z) noexcept
 constexpr std::uintptr_t kModeCollision = 0x214;          // USFXCameraMode flag dword
 constexpr std::uint32_t  kModeCollisionEnabled = 0x02u;   // bCollisionEnabled (gates DoCameraCollision)
 
+constexpr std::uintptr_t kModeHookOffset = 0x1A8;        // [MEVR] USFXCameraMode.HookOffset (FVector; LE2 SDK, ReflectCheck)
+
 bool FpApplyOffset(std::uintptr_t mode, bool on, float x, float y, float z, const char* cls) noexcept
 {
     if (mode < 0x10000) return false;
@@ -397,6 +402,17 @@ bool FpApplyOffset(std::uintptr_t mode, bool on, float x, float y, float z, cons
         volatile std::uint32_t* coll = reinterpret_cast<volatile std::uint32_t*>(mode + kModeCollision);
         if (on)
         {
+#if defined(MEVR_ASI)
+            // [MEVR] The constant eye (research/38 B, MevrSeams::ConstantFpEye): a standing mode's Offset is its own HookOffset
+            // minus the explore eye, so a draw (Combat hooks (-30, 0, 100) against Explore's (0, 0, 120)) leaves the eye in place.
+            {
+                const volatile float* hookAt = reinterpret_cast<const volatile float*>(mode + kModeHookOffset);
+                const float hook[3] = {hookAt[0], hookAt[1], hookAt[2]};
+                const float explore[3] = {g_fpStates[0].x, g_fpStates[0].y, g_fpStates[0].z};
+                float want[3] = {x, y, z};
+                if (::MevrSeams::ConstantFpEye(cls, hook, explore, want)) { x = want[0]; y = want[1]; z = want[2]; }
+            }
+#endif
             CaptureVanilla(cls, off[0], off[1], off[2]);   // first sight = real vanilla (before the mod writes)
             MarkVanillaWritten(cls);                       // [COVSTOMP] restore is armed ONLY by a real write
             off[0] = x; off[1] = y; off[2] = z;            // reassert each frame (picks up live menu tuning)
@@ -1677,6 +1693,53 @@ bool InDrivableVehicle(std::uintptr_t* pawnOut) noexcept
     char nm[96] = {};
     if (!ClassNameOf(pawn, nm, sizeof(nm)) || std::strstr(nm, "Vehicle") == nullptr) return false;
     if (pawnOut) *pawnOut = pawn;
+    return true;
+}
+
+static std::atomic_bool g_skycarFirstPerson{false};
+
+void SetSkycarFirstPersonEnabled(bool enabled) noexcept
+{
+    g_skycarFirstPerson.store(enabled, std::memory_order_release);
+}
+
+bool GetSkycarSeatPose(SkycarSeatPose& pose) noexcept
+{
+    if (!g_skycarFirstPerson.load(std::memory_order_acquire)) return false;
+
+    std::uintptr_t pawn = 0;
+    if (!InDrivableVehicle(&pawn)) return false;
+    char className[96]{};
+    if (!ClassNameOf(pawn, className, sizeof(className)) ||
+        std::strcmp(className, "SFXVehicleHover_TaxiCab") != 0) return false;
+
+    float position[3]{};
+    int pitchUU = 0, yawUU = 0, rollUU = 0;
+    __try {
+        auto* location = reinterpret_cast<const volatile float*>(pawn + 0x118);   // AActor.Location
+        position[0] = location[0]; position[1] = location[1]; position[2] = location[2];
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+    constexpr std::uintptr_t rotation = 0x124;   // AActor.Rotation (Pitch, Yaw, Roll)
+    if (!SafeReadInt(pawn + rotation, &pitchUU) || !SafeReadInt(pawn + rotation + 4, &yawUU) ||
+        !SafeReadInt(pawn + rotation + 8, &rollUU) ||
+        !std::isfinite(position[0]) || !std::isfinite(position[1]) || !std::isfinite(position[2])) return false;
+
+    constexpr float scale = 6.28318530718f / 65536.0f;
+    const float pitch = static_cast<std::int16_t>(pitchUU) * scale;
+    const float yaw = static_cast<std::int16_t>(yawUU) * scale;
+    const float roll = static_cast<std::int16_t>(rollUU) * scale;
+    const float cp = std::cos(pitch), sp = std::sin(pitch);
+    const float cy = std::cos(yaw), sy = std::sin(yaw);
+    const float cr = std::cos(roll), sr = std::sin(roll);
+
+    // Driver eye from the v013 cabin, registered to the playable taxi's mesh frame (seat.json).
+    constexpr float forward = 157.8481f, right = -54.9559f, up = 189.9834f;
+    pose.x = position[0] + forward * cp * cy + right * (sr * sp * cy - cr * sy) - up * (cr * sp * cy + sr * sy);
+    pose.y = position[1] + forward * cp * sy + right * (sr * sp * sy + cr * cy) + up * (sr * cy - cr * sp * sy);
+    pose.z = position[2] + forward * sp - right * sr * cp + up * cr * cp;
+    // Keep the viewing horizon level as the taxi banks. The seat itself banks with the vehicle.
+    pose.yawDeg = static_cast<std::int16_t>(yawUU) * (360.0f / 65536.0f);
     return true;
 }
 

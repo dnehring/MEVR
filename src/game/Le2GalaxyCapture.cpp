@@ -93,6 +93,7 @@ void TryStartup() {
     adapter.name = "LE2 galaxy projector";
     adapter.roomVisible = &CicArtVisible;
     adapter.mapLevel = "bioa_nor_103agalaxymap";  // loaded but hidden on foot; stream_inGalaxyMap shows it at the console's use
+    adapter.orbitMode = 10;  // the planet scanner's orbit: the ray aims its reticle (game/GalaxyRay)
     adapter.depthOfFieldOff = true;  // the map's entry with ME2's depth of field on faulted the rendering thread (2026-11-17)
     galaxy_projector::flow::TryStartup(adapter);
 }
@@ -122,6 +123,11 @@ std::string Command(ue3::Object* pc, std::string const& line) {
     if (sub == "exit") {
         return Exit();
     }
+    if (sub == "ray") {
+        std::string rest;
+        std::getline(words, rest);
+        return galaxy_projector::flow::RayCommand(pc, option + rest);
+    }
     if (sub == "place") {
         std::istringstream rest(line);
         std::string skip;
@@ -132,7 +138,7 @@ std::string Command(ue3::Object* pc, std::string const& line) {
         return "mevr galaxy: " + galaxy_projector::flow::StatusJson() + " cic art visible " + (CicArtVisible(pc) ? "1" : "0") +
             ", game mode " + std::to_string(static_cast<int>(player::GameMode(pc).value_or(255)));
     }
-    return "usage: mevr galaxy state | projector | capture <action> (on|on-post|on-default|on-ui|hold-only|off|opening-keep|opening-cut|ship|flares|state) | place X Y Z yawDeg | exit";
+    return "usage: mevr galaxy state | projector | capture <action> (on|on-post|on-default|on-ui|hold-only|off|opening-keep|opening-cut|ship|flares|state) | place X Y Z yawDeg | exit | ray [state|pick on|off|scan on|off|mouse on|off|screen|orbit]";
 }
 
 } // namespace mevr::game::le2_galaxy_capture

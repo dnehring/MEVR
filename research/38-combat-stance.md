@@ -571,6 +571,171 @@ walk and run cycles by speed), and whether a real stick's full push reads past 0
 **The conversation walk** (`worldMoveSpeedMS`, research/69) was already linear (the mod's own step: the speed follows the push
 past a 0.15 dead zone, no ramp); its speed is 1.4 m/s again (the owner: "we can increase the speed for the dialogue").
 
+### The sequels' constant eye (2026-11-18, lane AU5)
+
+ME1's rule B on ME2 and ME3 through one seam, `MevrSeams::ConstantFpEye` (src/halcyon/MevrSeams.h), implemented once for both
+sequels in `plugin/HalcyonSequelBridge.cpp` over `core/vr/CombatStance` (`ExploreEye`, `ConstantEyeOffset`, `ConstantEyeApplies`,
+`IsExploreMode`) and asked by each renderer's `FpApplyOffset` (src/halcyon/le2 and le3 `engine_probe.cpp`, `[MEVR]`) before it
+writes a standing state's Offset: the renderer reads the mode's `HookOffset` next to its `Offset` (ME2 +0x1A8 / +0x19C, ME3
++0xC0 / +0xB4, both checked by engine/ReflectCheck) and passes its own explore state's Offset. `[Hands] constantEye` and
+`crouchDrop` are read once a second on the game thread (each sequel's `AfterTick`). LE1 keeps its own `MevrBridge::ConstantFpEye`
+(the same rule; moving it onto the shared seam would change ME1's compiled code).
+
+What the game showed (ME3, fake headset, `camera: mode` lines from game/CameraProbe, now on ME3 too):
+1. The game's camera is the hook bone + HookOffset - Offset on ME3 as on ME1: the formula landed on the game camera to 0.0 units.
+2. ME3's Explore hooks (0, 0, 120) (the Normandy, Save 31), its Combat mode (-30, 20, 90), ME1's numbers. Halcyon ME3 gives every
+   standing state the Offset (35, 0, 65), so with a weapon drawn the camera stood 65 units behind and 20 right of the Camera bone
+   (the pawn's place), 0.7 m behind the explore eye: the eye snapshot showed Shepard's back, his head hidden, and arm IK fell to
+   its third-person anchor (`view 77 units from Shepard's animated head bone`). Every ME3 combat view since the renderer came in.
+3. After: `constant eye: SFXCameraMode_Combat: HookOffset (-30.0, 20.0, 90.0) -> Offset (5.0, 20.0, 35.0): the eye (-35.0, 0.0,
+   55.0) from the hook bone`; the camera 35 behind and 55 above the hook bone in Combat as in Explore; the snapshot first person
+   with the Black Widow ahead. Explore's Offset unchanged (35, 0, 65).
+4. Left (not this rule): ME3's explore eye itself sits 34-38 units behind Shepard's head bone on the Normandy (arm IK's
+   `first person camera vs Shepard's head bone: forward -37`) and 53 units in the combat pose, past arm IK's 45-unit first-person
+   entry, so in combat the hands stay at the third-person anchor (`mod.armIk.hands.firstPerson` false, the right hand 0.47 m off
+   its controller) and ADS is never reached. ME2's explore eye is 35 ahead of the hook (its Offset x -35), ME3's 35 behind (+35):
+   the same number with the other sign. Options for the owner: put ME3's explore eye at Shepard's eyes as ME1's and ME2's are
+   (Offset (-35, 0, 65), a renderer default: needs a headset look), or let arm IK enter first person further from the head on ME3.
+5. ME2 (Save 4): Seen on Save 4 (lane AU5, 2026-11-18): Explore hooks (0, 0, 120), Combat and CombatStorm (-30, 0, 100), TightAim (0, 0, 80); their Offsets now (-35, 0, 35), (-65, 0, 15), (-65, 0, 15), (-35, 0, -5) (the renderer's (-60, 5, 25), (-70, 5, 25), (-30, 5, 20)), and the camera 35 ahead and 85 above the hook bone in Explore and in Combat alike (`camera: mode`). Its eye had moved 7 cm on a draw (AU3).
+6. The speed from the push, ME2 (traced the same run): its move function is `BioPlayerController.PlayerWalking.
+   PlayerMoveCombatOrExplore`, asking `Pawn.GetMaxSpeed` and `BioPawn.GetWalkingSpeedMode` each tick (no `SetDesiredSpeed`);
+   ME3's `BioPawn` has `SetDesiredSpeed(fSpeedScaling)`. Not built. **Built since: the next section.**
+7. **ME3's explore eye at Shepard's face** (the owner, 2026-11-18: "Me3 eyes should match behavior from other games"; option (a)
+   of item 4, lane AU6, dadb7461): Halcyon ME3's standing rows (`engine_probe.cpp` `g_fpDefs`, `[MEVR]`) are (-35, 0, 65), ME2's
+   sign: the eye 35 units ahead of the hook bone, (35, 0, 55) from it; a `MELE3VR.ini` that saved upstream's (35, 0, 65) moves once
+   (`LoadFpStates`, log `[MEVR-FP]`). The height stays the floor lock's (its correction absorbs the offset's z). Measured (`arm IK:
+   first person camera vs Shepard's head bone`, a replayed pose at eye height 0):
+
+   | | forward | up (units) | arm IK |
+   |---|---|---|---|
+   | ME3 exploring, the Normandy (Save 31), before | -37 | -15 | first person |
+   | ME3 exploring, after | +34 | +5 | first person |
+   | ME3 combat (fixture, assault rifle), before | (53 units off the head) | | third person, the right hand 0.47 m off its controller |
+   | ME3 combat, after | +26 | +29 | first person, the right hand 0.07 m off |
+   | ME2 (Save 4) | +24..29 | +25 | first person |
+   | ME1 | +3..5 | +14.5 | first person |
+
+   The sniper's scope capture was then seen on ME3 for the first time: the Black Widow under a replayed ADS hold, ADS on,
+   `sights.pictureSource = capture` at 3.5x and at 7x after the stick's flick (snapshots `2026-11-18_13-07-38-864`,
+   `2026-11-18_13-07-51-023`). [verify] in the headset: the eye on the face, the body below it, on ME3 as on ME2. ME1's own eye
+   sits nearer the head bone (+4); bringing both sequels there is a renderer default each (their x), not tried.
+
+### The sequels' walk and draw (2026-11-18, lane AU6, c8f6987e)
+
+Read from the sequels' scripts (`tools/conversation-scan <cooked> <out> --game LE2|LE3 --script grep:<name> --only SFXGame`,
+findings only) and measured on the fake headset (ME2's Save 4, ME3's combat fixture), all in `game/CombatStance`:
+
+1. **The speed from the push.** ME2's move function `BioPlayerController.PlayerWalking.PlayerMoveCombatOrExplore` and ME3's
+   `PlayerWalking.PlayerMoveExplore` / `PlayerMoveCombat` (ME1's names) compute ME1's own rule (a crawl under
+   `MoveStickWalkThreshold` 0.65, `WalkSpeed / GroundSpeed` at it, the run past `MoveStickRunThreshold` 0.70; ME2's idle a local
+   0.01, ME3's the field) and write it into `BioPawn.fMoveMag`, the fraction of the top speed the pawn walks at (no
+   `SetDesiredSpeed`: ME3's is only `PlayerFlying`'s). A CallFunction post on each (`OnSequelMove`) writes `cs::LinearSpeed
+   (MoveMag)` there (journalled; the game writes its own again every tick), the game's cases kept: no push, no acceleration or
+   `bIgnoreMoveInput`, `bIsWalking`, `bIsCrouched`, `CoverType`/`CoverAction`, ME2's `bStorming` (its function runs the storm too;
+   ME3's `PlayerMoveStorming` isn't hooked). MoveMag is ME1's |RawJoyUp, RawJoyRight| (0.87 at a 0.9 push on both, ME1's 0.875).
+
+   | push (stick) | ME2 linear | ME2 the game's | ME3 linear | ME3 the game's |
+   |---|---|---|---|---|
+   | 0.9 | 389 u/s | 400 | 340 | 350 |
+   | 0.68 | 267 | 120 | 233 | 120 |
+   | 0.5 | 167 (1.7 m/s) | 75 | 146 | 75 |
+
+   (`movement: response:`, a weapon out, out-and-back replays; ME3's top speed is 350 there, so 42% is 146.) The run comes within
+   0.1 s of the push on both (ME2: 0, 194, 389 at 0, 0.1, 0.2 s).
+2. **The stop (ME2's "quick stop").** Exploring, both move functions blend a lower fraction in over `MoveWalkModifierBlendTime`
+   (0.5 s: `if MoveWalkModifier < fMoveMag`, alpha = dt / 0.5), and the pawn walks at it with no acceleration: the let-go's
+   tail. With `[Hands] linearWalk` the same post writes the blend's target, 0, at once when the stick is let go (only while
+   0 < fMoveMag < 1: ignored input writes 1, and the scripts' own walks with it). ME2, exploring, `mevr camera trace` under a
+   replayed walk: the game's let-go 398 -> 250 (33 ms) -> 112 (0.3 s) -> 4 u/s (0.5 s); now 388 -> 180 -> 0 in 65 ms. With a
+   weapon out the game stopped at once already (no blend; `movement: response:` logs no let-go there: the speed is under 20 u/s
+   on the first tick). `BioPawnBehavior.m_fPawnStopDecelTime`, `PawnMoveStopTimerThreshold` and `m_fMoveStopDSDecelRate` were
+   not needed. ME3's exploring stop (the same blend in its `PlayerMoveExplore`) is not measured. Log `movement: the stick let go:
+   the walk stops at once`.
+3. **The draw rate.** ME1's rule (`[Hands] drawRate` 6, `holsterRate` 15 while the sequence plays; every notify still fires:
+   both sequels' `SFXWeapon.WeaponEquipping` state waits for the `EquipFinished` notify, a 3 s timeout behind it). ME2 plays the
+   draw as ME1 does, in four `BioAnimNodeBlendByWeaponEquip` nodes (`WeaponEquip-NoCoverStand`, `-NoCoverCrouch`, `-HighCover`,
+   `-LowCover`) with Draw and Holster children (`CB_Draw`, `CB_Draw_Crouch`, `CB_Draw_Cover`, `CB_Draw_Cover_Mid`, the same for
+   `CB_Holster`); ME3 in `AnimNodeSlot` channels (`Custom_Std_Upper`, `Custom_Std_Idle_Lower`, `Custom_Crouching_Upper`; its draw
+   is custom action 12), a channel playing one animation then another. So `UpdateSequelRates` finds the sequences by name
+   (`engine::adapter::kDrawSequencePrefix` `CB_Draw`, `kHolsterSequencePrefix` `CB_Holster`) among the slot channels and the
+   tree's sequences, and writes the rate while one plays (its own back after). `mevr animtree [text]` logs the player's tree
+   node by node on the sequels (how these were found). Measured (`holsters.ps1`): ME2 the rifle in hand after 0.16 s (was
+   0.62), holstered after 0.16 s (was 1.13); ME3 holstered after 0.16 s (was 0.66-0.95), in hand after 0.06 s as before.
+
+### ME3's exploring start and stop (2026-11-18, lane AU9)
+
+The owner's answer (docs/trilogy-plan.md "Answered 2026-11-18, later", option A): ME3's exploring start sped up to ME1's (a
+run within 0.1 s of the push), once the limiter is found. Found in the game, not in Ghidra (the static search was the long way:
+LE3's Ghidra project has no physics names; `m_fDesiredMaxSpeed` turned out to be only `GetMaxSpeed() * fMoveMag / GroundSpeed
+* DesiredSpeedMultiplier`, written each walking tick by BioPawn's physics override at RVA 0xA97000 from its vtable slot +0xA48,
+and read by animation nodes).
+
+1. **How it was found.** A per-tick trace of the response (`movement: response ticks (...)`, sequels only, `game/CombatStance`
+   `StepStartTrace`): each tick of the 0.8 s after a push or a let-go, the speed and the acceleration with their directions
+   against the facing, the facing wanted, `fMoveMag`, ME3's `m_fDesiredMaxSpeed`, the mesh's `RootMotionMode` and the pawn's
+   `BioPawn.RootMotionOverrides` (each animation node's root motion request), and the nodes named once
+   (`movement: response: the animation nodes that asked for root motion: ...`). Exploring on the Normandy (Save 31) the move
+   function asked for its acceleration (6000 u/s^2 along the push) from the first tick, but `Acceleration` read 0, 0, 0, 145,
+   438, 2133, 5083 ... and `RootMotionMode` went 2 (RMM_Ignore) -> 3 (RMM_Accel) for the first ~0.25 s, with one to three
+   requests from `BioAnimNodeLocomotionStart` nodes in the player's AnimTree (`ExploreLocomotion-Start-Idle`, `-Walk`,
+   `-Run`, each `RMMode` 3). So the start animation's own root motion is the pawn's acceleration while the start plays (its
+   first steps barely move), and the stick's acceleration only once the node lets go. The combat tree has no such node (350 u/s
+   at 0.1 s already). The native side: `BioPawn.RootMotionOverride(Node, RMMode, RMRMode)` adds an entry (0xA93220, from the
+   node's TickAnim, e.g. 0x9F8170), the pawn's tick puts the entry with the highest node weight on the mesh (0xA95F30), and
+   `RootMotionRelease` takes it out (0xA93360). The stop the same way: `ExploreLocomotion-Stop-Walk` (a
+   `BioAnimNodeLocomotionStop`) asks for RMM_Accel 0.1 s after a let-go.
+2. **The lever.** In VR on foot with `[Hands] startStopAnims = 0` (ME1's key and default), `UpdateStartSteps` answers every
+   request of a start or stop node with RMM_Ignore: the entry's `RMMode` written 2 each tick it holds another mode (journalled
+   `CombatStance.stepRootMotion`), the node's own mode remembered and given back if the setting goes off, the pawn changes or
+   the mod unloads while the entry is still there. The animations still play on the legs; only their root motion no longer
+   moves the pawn. Log `movement: <node> asked for its animation's root motion (RootMotionMode 3): answered with RMM_Ignore`.
+   `mevr loco start game|on` switches it for a test. **Not a lever:** the node's `BlendOutRelPos` (per direction: Idle 1.0,
+   Walk 0.5, Run 0.35-0.60) written 0: the start blended out at once and the pawn did not move at all (with the root motion
+   lever too: 147 at 0.1 s).
+3. **Measured** (fake headset, Save 31, out-and-back replays `forward:0.7, back:0.7, stick@0@0.6, stick@180@0.6`, each push a
+   180-degree turn of the pawn; `movement: response:`):
+
+   | | 0 s | 0.1 s | 0.2 s | 0.4 s |
+   |---|---|---|---|---|
+   | the game's, full push (6 starts) | 0 | 3-12 | 152-253 | 361-461 |
+   | the game's, half a push | 0 | 4-11 | 27-44 | 122-374 |
+   | the fix, full push (8 starts) | 0 | 389 | 389 | 374-389 |
+   | the fix, half a push | 0 | 189 | 189 | 189 |
+
+   Pushes without a turn (forward after forward): the game's 0, 4-15, 108-243, 389; the fix 0, 389, 389, 389.
+4. **ME3's exploring stop, measured** (`response ticks (the stick let go ...)` and `mevr camera trace`): the walk stops at once
+   (lane AU6's `fMoveMag` write), then the stop node's root motion walks the pawn on at 50-110 u/s for about 0.5 s (16-38 units);
+   with the fix the speed stays 0 from the let-go (six let-gos, 0 u/s through 0.43 s each).
+5. **Seen, not this change:** in the last ~0.25 s of a push after a 180-degree explore turn the pawn's speed dropped to 155-250
+   u/s and its velocity turned about 70 degrees off its facing while the acceleration stayed on it, with and without the fix (no
+   root motion request then). Cause unread.
+
+### The sequels' eye distance, an A/B (2026-11-18, lane AU9)
+
+The owner (docs/trilogy-plan.md "Answered 2026-11-18, later"): "Need to validate in headset, whatever gets us closest to
+feeling like we are attached to the body." Today's default stands until then. Built so the owner compares in one session
+without editing a file:
+
+1. **The switch.** `[Hands] eyeTest` in `ASI\LE2MEVR.ini` / `LE3MEVR.ini`: 0 today's eye, 1 between, 2 about where ME1's
+   sits. Our menu's Advanced > Tracking > **Eye position (headset test)** (Today / Between / At the face; shown on ME2 and ME3
+   only, `data-if="le2"`) writes it; the host reads it once a second with `[Hands] constantEye` (`plugin/HalcyonSequelBridge`
+   `RefreshConstantEye`) and moves the explore eye that many units back along Shepard's facing in the constant-eye seam
+   (`MevrSeams::ConstantFpEye`), so every standing mode (exploring, a weapon drawn, aimed fire, the sprint) follows: ME2 0,
+   12.5, 25 units; ME3 0, 13.5, 27. Log `constant eye: the first-person eye ... ([Hands] eyeTest = N: M units back ...)` on each
+   change, and the per-mode `constant eye: SFXCameraMode_Explore: HookOffset ... -> Offset ...` lines show the new Offset.
+2. **Measured on ME3** (Save 31, the Normandy, exploring, a replayed standing head; `arm IK: first person camera vs Shepard's
+   head bone`, every 5 s): today 29.1-32.3 units forward of the head bone; Between (15 back) 17.1-19.7; 30 back -2.8..+2.0
+   (so 27, the shipped step, puts it about 3 ahead, ME1's +3..5). Explore's Offset (-35, 0, 65) -> (-20, 0, 65) -> (-5, 0, 65).
+   Snapshots looking down (`au9-le3-eye0-down`, `-eye2-down`): the hands on the controllers both times, the chest further under
+   the view at 2; no part of the head in view (it is hidden).
+3. **Measured on ME2** (Save 4, Freedom's Progress, exploring): today 28.8-29.3 units forward of the head bone (up 25.3, the
+   floor lock's height; ME1's up is 14.5); Between (11 back) 17.7-18.3; 22 back 7.2; **25 back (the shipped step) 3.8-4.4,
+   ME1's**. Explore's Offset (-35, 0, 35) -> (-24, 0, 35) -> (-10, 0, 35). Snapshots `au9-le2-eye*-ahead`, `-down`.
+4. **Left for the headset** (notes/headset-checklist.md "The sequels' eye distance, an A/B"): which step feels attached to the
+   body on each game; nothing pokes into the view at Between or At the face (the collar, the hood, hair: the head is hidden but
+   the neck and collar are not); then that step becomes the default (each renderer's explore row, `g_fpDefs` in le3
+   `engine_probe.cpp`, ME2's in its table) and the A/B row goes.
+
 ## D. The draw and holster delay
 
 ### What plays and what gates it

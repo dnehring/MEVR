@@ -56,6 +56,26 @@
   should still persist. Fake-headset validation checks publication and automatic-write removal; it does
   not certify the user's alignment or physical headset comfort. The private QA binary is restored after testing.
 
+- [ ] 2026-11-08 Normandy pacing (research/63): repeat the fixed-save sweep under physical SteamVR
+  and VDXR after frame-aligned instrumentation or a diagnostic-write candidate is ready. Local
+  SteamVR null-headset runs at 2284x2448 and 3072x3188 expose periodic game-thread hitches but
+  do not reproduce the 30-60 ms submission stalls; the fake session runs faster than its nominal
+  90 Hz. Confirm the actual installed build includes conditional menu-return reset suppression.
+
+- [ ] 2026-11-08 motion-blur guard (research/62): on a planet where nearby assets previously smeared or
+  disappeared, pan slowly with AA and One Draw enabled. Check after a cinematic if one occurs naturally;
+  finding a cutscene is not required for the native re-enable test, which already passed in Normandy.
+  The installed guard passed forced native restore and navigator-conversation return instrumentation
+  under Quest/VDXR; the owner could not judge the planetary symptom from that scene. Visual acceptance
+  remains open. The combined candidate retains startup/load protection and restores the menu-return
+  fallback if the guard is unavailable or sees an unknown effect.
+
+- [ ] 2026-11-08 combined menu/VDXR/blur candidate (research/57 and research/62): launch through VD,
+  confirm the rail slides to the screen's right and the omni-tool lights up, then open/close menus
+  and return from a crew conversation. Confirm `skipped menu-return reapply` in the log while the
+  guard is healthy, AA and sharePass 5 remain active, and compare the return hitch and slow pan.
+  Combined headset QA remains pending; the earlier guard-only run did not contain the new rail.
+
 - [ ] 2026-11-08 Virtual Desktop replay rejection (research/61): with the guarded-rearm build and automatic
   unsupported-call diagnostics, reproduce the player's natural front-end/Normandy failure on Quest + VDXR.
   Capture the normal report without changing graphics settings first; inspect caller stack and context identity
@@ -616,6 +636,14 @@ Turn it on: the menu's Voice page > Thespian mode > Speak Shepard's lines (or `[
   (research/14 "Two-handed grip")
 - [ ] Turn your real body 90 degrees, step, lean, walk sideways and backward: chest and hips face your way, Shepard steps
   under you; any moonwalking legs, neck stump looking steeply down, or view judder? (research/29)
+- [ ] 2026-11-18 the eyes inside the body (research/29 "The eyes inside the body"; `[Hands] crouchBody = 1`, on by default,
+  read live): squat a little (10-30 cm, not deep enough for the game's crouch), bend at the waist to look at the floor, and
+  look straight down at your chest, standing and squatting. You should see Shepard's chest and legs below you with his
+  knees bent and his feet on the floor, never the inside of his collar or armour; the body follows smoothly down and back
+  up. Compare with `crouchBody = 0` (the old way: the eyes sink into his neck). A kneel on the floor and looking straight
+  down at the collar are the known leftovers: say whether they show. Then decide `crouchBodyUp` (off by default): with it 1,
+  crouch deep enough for the game's crouch and come halfway up, press the crouch button standing and draw a weapon: his body
+  comes up to your head (legs straightened) instead of hanging below your view. Better, or should it stay off?
 - [ ] Holsters: draw from every slot (the right shoulder without hitting your head; the left-hip shotgun doesn't catch a
   resting hand). Hold the gun through a long fight: grip fatigue, slips, the 0.3 s grace. (research/19 sections 3, 5)
 - [ ] With the weapon away, melee, a grenade, the weapon wheel, the holster key and the trigger don't draw it (a buzz,
@@ -822,7 +850,33 @@ Headset checks the ME2 and ME3 plans named that had no line here (ME3 had none a
 [docs/trilogy-plan.md](../docs/trilogy-plan.md) "Headset-only checks"; T-numbers are its features. ME2's earlier lines
 stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs the feature seen working by script first.
 
+### The sequels' render size from the headset (lane AU4, 2026-11-18; research/le3-flares-and-window.md section 6)
+
+- [ ] ME2 and ME3 after a first VR start on the PS VR2: the second launch renders ME3 at 2400x2448 and ME2 at 4352x2448 (16:9,
+  its HUD isn't drawn narrower); both sharp and smooth, ME2's HUD, menus, wheel and room screens whole. (ME2's 16:9 against
+  4:3 was settled on the fake headset by lane AU9: 16:9; research/le3-flares-and-window.md section 6.1.)
+
+### The sequels' eye distance, an A/B (lane AU9, 2026-11-18; research/38 "The sequels' eye distance, an A/B")
+
+The owner: "Need to validate in headset, whatever gets us closest to feeling like we are attached to the body." Today's eye
+sits 24-34 units (cm) ahead of Shepard's head bone on ME2 and ME3; ME1's about 4. One session, both games, no file to edit:
+- [ ] On ME2 (any on-foot save) and then ME3, recenter standing straight, open our menu (both sticks held), Advanced >
+  Tracking > Eye position (headset test), and try each of **Today**, **Between** and **At the face** (it applies within a
+  second; close the menu after each pick). At each: look straight down at the chest and the belt (the body should be under you,
+  not behind you), hold both hands out and bring them to the face (the drawn hands should meet the real ones without the arms
+  looking short or bent back), walk forward and turn your head left and right (no body or shoulder in front of the eyes, no
+  neck or collar in view), draw a gun and raise it to the eye. Note which feels most attached to the body, per game, and
+  anything that pokes into the view (the collar, the hood, hair) at Between or At the face.
+- [ ] Say which one becomes the default per game (today's stays until then). The log line `constant eye: the first-person eye
+  ...` names the one in use; `arm IK: first person camera vs Shepard's head bone: forward N` the distance (fake headset: ME2
+  29 today, 18 Between, 4 At the face; ME3 29-32, 17-20, about 3).
+
 ### ME2
+- [ ] The game's start (T18, research/56 "The sequels", lane FE, seen on the fake headset 2026-11-18): as ME1's line in "The
+  game's start": the logos flat, the "PRESS ANY KEY" title and the main menu on the 3D cinema screen at head height, fixed in
+  the room with the floor and horizon around it, the scene with depth, the picture still while the head turns; no change of
+  view at the key; the load flat from its first frame and no black 3D screen at its end, then the level in VR. The controller's
+  ray on the menu moves the game's cursor and the trigger clicks (the front end's screen is the game pointer's now).
 - [ ] Stereo (T06; research/sequel-eye-pose-tags.md): both eyes fuse while still and while turning, through menu and
   resume; no doubled or swimming scenery.
 - [ ] Life-size stereo (T09; research/30 section 9, lane LS 2026-11-16): the world at its real size and depth (a squadmate
@@ -839,6 +893,11 @@ stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs 
   seated and physically crouched; the calibration's manual height once it is wired.
 - [ ] Guided calibration (T27): the whole run with each controller type; the fake headset has no interaction profile, so
   only a headset can show it.
+- [ ] One calibration for the trilogy (T27, research/25 section 17, since 2026-11-18): the first launch of any game after the
+  update says `calibration: [Calibration.<key>] taken from LE1MEVR.ini` once per controller type (LE1MEVR.log or
+  LE2MEVR.log), then ME2 (or ME3) with the same controllers shows "Calibrated <ME1's date>" in Body & calibration, no
+  first-run prompt, and the guns sit in the hand as in ME1. A calibration saved in ME2 is ME1's next launch's too. (On the
+  fake headset 2026-11-18 with `[Debug] calibrationKey`: ME1 same values before and after, ME2 the same values, no prompt.)
 - [ ] Wrist status and the gun's panel (T41; research/41 "ME2's ammo display"): readable on small and large guns, after a
   weapon swap and after an ammo power.
 - [ ] Sights (T24; research/le2-vrik.md "The sights on the sequels, mod side"; seen on ME2's fake headset 2026-11-16, LE1 at
@@ -898,8 +957,16 @@ stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs 
   Exit prompt on the same disc; look around and lean; the map's depth, legibility, comfort, GPU cost (two captures). The map's
   own controls (the stick, A, Y probes, LB/RB tabs), X back to the room. Not yet: travel, orbit and the scan through it.
 - [ ] A streamed Quest (T10): full rate after a load, with no runtime setting changed.
+- [ ] The shouldered gun (lane AU8, option B; research/le2-vrik.md "The shouldered gun on the sequels"), ME2 and ME3: both
+  hands on a rifle at the shoulder: the view never zooms, the shots group tighter than from the hip (the heartbeat's
+  `zoomed shots:` aim error), a melee stroke and (ME3) a roll still work while shouldered; on ME3 a shouldered sniper shot
+  hits twice as hard as before.
 
 ### ME3
+- [ ] The game's start (T18, research/56 "The sequels", lane FE, seen on the fake headset 2026-11-18): the title (the Earth from
+  orbit) and the main menu on the 3D cinema screen in stereo, at head height and fixed in the room, the start's first second
+  flat; the load flat, then the level in VR. Not reached by script: the main menu after "PRESS ANY KEY" (a replayed A didn't pass
+  it) and the ray on it.
 - [ ] Stereo (T06; research/sequel-eye-pose-tags.md, research/le3-renderer-preview-evidence.md): both eyes fuse while
   still and turning, through menu, recenter and a reload.
 - [ ] Life-size stereo (T09; research/30 section 9): as ME2's line; upstream ME3 squeezed everything into the first metre,
@@ -974,5 +1041,10 @@ stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs 
   objects in both eyes, legibility at the console, comfort, GPU cost (two captures). The map's own controls on the
   projector (the left stick flies the Normandy, LT scans, A at a relay), X back to the room. Not yet: travel, orbit and the
   scan through it.
+- [ ] The omni-blade and the roll (lane AU8; research/le3-combat-fixtures.md "The omni-blade with the gun put away"): put the gun
+  away (let go of it), make a fist with the right hand (grip and trigger) and strike at a trooper: the class's heavy melee
+  (the Soldier's omni-blade punch, a Vanguard's or Adept's biotic one) hits it; an open hand doesn't. Known: the game's melee
+  camera is third person for that second. A roll (forward and A): Shepard's body and the gun in hand vanish from view for
+  the roll and come back after it; say whether that, or the body seen rolling, is better.
 - [ ] Performance (T07, T10; docs/me3-overall-goal-handoff.md section 4): frame pacing in a real headset; the desktop
   mirror's cadence and the null driver's rate say nothing about it.

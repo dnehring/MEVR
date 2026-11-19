@@ -161,6 +161,12 @@ void OnRecentered() noexcept;
 // headset), else the machine's active runtime. Any thread. Not called by LE1.
 bool XrRuntimeIsSteamVr() noexcept;
 
+// The host's own ExitProcess hook (plugin/Entry.cpp) is in, under the renderer's [EXITKILL] hook, and ends the process
+// itself (TerminateProcess) after its exit line: the kept locks' summary and crash::NoteProcessExit (a fault from then on
+// is the quit's). The renderer's hook then hands it the call instead of terminating first. Any thread. Not called by LE1
+// (its renderer installs no such hook).
+bool HostEndsProcess() noexcept;
+
 // =====================================================================================================================
 // 2. View
 // =====================================================================================================================
@@ -190,6 +196,18 @@ float FloorViewTranslation(bool replay, float rawCameraZ, float rightZ, float up
 // recenterTiltDeg for 1.5 s), when it becomes the head's full orientation. `automatic`: the renderer's own first recenter
 // when tracking starts (never corrected). OnRecentered confirms it took.
 void RecenterOrientation(float const head[4], bool automatic, float orientation[4]) noexcept;
+
+// The constant eye (research/38 B, ME1's [Hands] constantEye and crouchDrop): Present thread, where the renderer writes a
+// standing on-foot camera mode's first-person Offset (LE2/LE3 engine_probe.cpp FpApplyOffset). The game's camera is the hook
+// bone + HookOffset - Offset (turned by the view), so one Offset for every mode puts the eye wherever each mode's HookOffset
+// does: ME3's Combat mode hooks (-30, 20, 90) against Explore's (0, 0, 120), and its renderer's one Offset put the eye 0.7 m
+// behind Shepard's head as soon as a weapon was drawn; ME2's moved it 7 cm. The rule (core/vr/CombatStance): the explore eye
+// is the Explore mode's HookOffset minus the renderer's explore Offset, and a standing mode's Offset is its own HookOffset
+// minus that eye. `modeClass` the mode's class name ("SFXCameraMode_Combat"), `hookOffset` its HookOffset (read by the
+// renderer next to its Offset), `exploreOffset` the renderer's Offset for its explore state; `offset` in: the renderer's
+// Offset for this mode, out: the constant eye's. True when it was replaced (false: off, a crouch mode, a mode not standing on
+// foot, an implausible hook). Not called by LE1: its head_aim.cpp asks MevrBridge::ConstantFpEye (the same rule, its reads).
+bool ConstantFpEye(char const* modeClass, float const hookOffset[3], float const exploreOffset[3], float offset[3]) noexcept;
 
 // ---- Life-size (metric) stereo (plugin/MetricStereo over core/vr/MetricStereo; research/30, "The sequels" section 9) ----
 // Halcyon's stereo renders both passes from the head centre +- a half eye along the body's right, with one symmetric FOV,
@@ -324,6 +342,28 @@ bool CineScreenFullRate() noexcept;
 // Not called by LE1: its xr_session.cpp composes the screen itself (CineScreenQuadsNow, CinemaBackdropLayer, PlacePanel).
 unsigned CineScreenLayers(CineScreenFrame const& frame, void const** layersOut, unsigned capacity) noexcept;
 
+// The front end on one presentation (research/56, T18; plugin/PresentationHold, rules core/vr/PresentationHold): from
+// start-up until the first load from the menus or the first gameplay, the title and its menus on the 3D cinema screen
+// ([Cinematics] frontEnd, ME1's default 1), the boot before the title and every movie flat, the load from the menus the flat
+// panel from its first frame, and no plain VR between them. Present thread, every frame before the renderer's presentation
+// decision. `gameMode`: the game's own number as the renderer reads it (-1 unreadable); the host maps it to ME1's rules by
+// the game's adapter (engine/GameAdapter.hpp). True while this frame is the front end's.
+// Not called by LE1: its xr_session.cpp calls the same functions by their LE1 names (MELEVR::MevrBridge::FrontEndHold ...).
+bool FrontEndHold(int gameMode) noexcept;
+// After FrontEndHold: the front end goes on the 3D cinema screen (the setting, before the first load from the menus).
+bool FrontEndOnScreen() noexcept;
+// After FrontEndHold: the start-up's boot before the title (its unreadable mode, the logos' movie): flat, as a movie.
+bool FrontEndBeforeTitle() noexcept;
+// Each frame, after the decision: `plainVr` this frame's decision is plain VR (the world filling the view). True: show the
+// previous presentation instead (plain VR after another view waits 100 ms, so a blip of a gameplay mode between two other
+// views never puts the world in the view). `worldUi`: an authorized hand-over to a screen of ours (accepted at once).
+bool HoldPlainVr(bool plainVr, int gameMode, bool worldUi) noexcept;
+// Each frame, before the renderer decides from its movie signal: `movie` that signal (a load's movie or a prerendered one),
+// `gameMode` the game's own number. True: show this frame as the movie (its flat panel) although it no longer is one: the
+// sequels' loads end in a cinematic mode for 0.3 s (ME2's, the picture black), kept as the load until it has lasted 0.5 s
+// (core/vr/PresentationHold's LoadTail). Not called by LE1 (its loads have no such tail).
+bool HoldLoadTail(bool movie, int gameMode) noexcept;
+
 // Present thread, the frame's last layer: this frame's view (0 the world, 1 the 3D cinema screen, 2 a cinematic on the
 // flat panel, 3 another flat panel, -1 none submitted); a head-locked black quad (an XrCompositionLayerQuad*) to submit
 // last, or null (plugin/TransitionFade).
@@ -374,6 +414,12 @@ bool GalaxyOwnsPresentation(int mode) noexcept;
 // for the screen, e.g. both hands on the War Terminal, which put his arm and shoulder in front of the held eyes: the renderer
 // hides his body as well as his head). Not called by LE1 nor LE2 yet.
 int WorldViewHeld(int mode) noexcept;
+// Present thread, each frame the renderer decides its first-person hides in gameplay (ME3's engine_probe.cpp): true while
+// Shepard's body and head are hidden from the eyes for one of the game's own actions, whatever the first-person state says:
+// a roll (the owner, 2026-11-18, "Yes for now"; vr::HidesBodyForAction: SFXCameraMode_Roll, or a blend into or out of it).
+// `fromClass`/`toClass`: the blend's endpoints when `modeClass` is SFXCameraMode_Interpolate (else empty). [Hands]
+// rollHidesBody = 0 turns it off. Not called by LE1 nor LE2 (no roll camera).
+bool HideBodyForAction(char const* modeClass, char const* fromClass, char const* toClass) noexcept;
 // Present thread, once a frame before the eye images are filled: true while an opening of ours is reserved and its screen not
 // yet shown on our panel (plugin/WorldUi's clean-eye guard, research/57): the renderer then keeps the last clean eyes (no copy
 // into the eye images, the last released images submitted with their own tags), so neither the GUI mode's own camera nor its

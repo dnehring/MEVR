@@ -352,10 +352,11 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Waits for:** nothing; once T08 brings the replay to a sequel the gate follows the capability. **Who:** GF.
 
 #### T12 The motion-blur guard [R10]
-- **State:** LE1 done · LE2 check first · LE3 verify
+- **State:** LE1 done · LE2 verify · LE3 verify
 - **Lives in:** `plugin/MotionBlurGuard`, with a per-game proxy-pair table in `engine/Addresses.hpp`.
-- **Left, ME2:** blur is off only through T11's `MotionBlur False`. Take a head-turn snapshot pair looking for one-eye
-  smear before porting anything. **ME3:** seven proxy pairs guard the recenter; other scenes and the stale-copy case are
+- **Done, ME2 (lane AU6, 2026-11-18, d9ba2593):** five audited proxy pairs, installed and healthy on Save 4 (81 conversions in
+  40 s, 0 unknown), the menu-return reapply standing down (research/le2-motion-blur-guard.md). **Left:** the headset (no
+  one-eye smear on a fast turn); **ME3:** seven proxy pairs guard the recenter; other scenes and the stale-copy case are
   open (research/le3-recenter-transition-failure.md).
 - **Waits for:** nothing. **Who:** nobody yet.
 
@@ -383,6 +384,10 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **State:** LE1 done · LE2 verify · LE3 verify
 - **Lives in:** `plugin/CineScreen`, `core/vr/CineScreen`, `plugin/CinemaBackdrop`, `plugin/TransitionFade`,
   `plugin/SequelCinema`; interrupts through `PadMerge::ConversationTriggers`.
+- **ME3 (lane AU1, 2026-11-18):** the 3D screen is ME3's default as on ME1 and ME2 (the owner): every corroborated cinematic,
+  whatever its game mode (it was admitted in modes 7 and 8 only), and our menu offers it (one capability,
+  `renderer::Caps::cineScreen`, read by the menu and by `MevrSeams::CineScreenWanted`; the menu's "not available yet" gone).
+  Not run in the game.
 - **Left, ME2:** the timed interrupt at Veetor's door: a replayed trigger inside the prompt's window takes it and one
   outside doesn't. It needs a save that normal-loads before Veetor (research/le2-interrupt-acquisition.md). **ME3:** no
   separate-eye cinema acceptance yet: snapshots in a conversation with ME2's run script, then its interrupt windows.
@@ -400,23 +405,43 @@ These unblock the most: almost every other entry gets smaller once they land.
   them; the unifying step has nobody yet.
 
 #### T17 Performance modes and the first start's eye size [R35]
-- **State:** LE1 done · LE2 build · LE3 build
-- **Lives in:** `core/vr/PerformanceModes`, `plugin/MainMenuSettings`, `main_menu::FirstStartEyeSize`.
-- **Left, ME2 and ME3:** the rows stay greyed (rule 15) until the levers they bundle exist there.
+- **State:** LE1 done · LE2 eye size done, modes build · LE3 eye size done, modes build
+- **Lives in:** `core/vr/PerformanceModes`, `plugin/MainMenuSettings`, `main_menu::FirstStartEyeSize`; the sequels' target rule
+  `core/vr/RenderTarget`, their renderers' `renderer::GetRenderTarget`/`SetRenderTarget`.
+- **Done (lane AU4, 2026-11-18):** the render size follows the headset as ME1's (the owner's "Follows headset like me1"): at the
+  first VR start 0.85 of the eye, ME3 in multiples of 8, ME2 at least 16:9 (it draws no HUD on a near-square frame), written to
+  `MELE2VR.ini`/`MELE3VR.ini` and GamerSettings for the next launch; Display's Render resolution and Upscale rows work on both.
+  Seen on the fake headset: ME2 4096x2304 -> 2944x1656 (render thread 10.0 -> 8.1 ms, GPU 8.7 -> 6.1 ms), its HUD whole;
+  ME3 at 1624x1656 in the combat fixture with its whole HUD. research/le3-flares-and-window.md section 6.
+- **Done (lane AU9, 2026-11-18):** ME2's shape measured at 4:3 and 16:9 (question 18): it stays at least 16:9. At 4:3
+  (3264x2448) every screen checked was whole (HUD, our menu, the pause menu, room screens, a conversation on the 3D screen,
+  the galaxy map) except the game's power wheel at the hand (the cut-out took the frame's top band), for about 5% less GPU
+  (0.4 ms) and 0.3 ms of render thread. research/le3-flares-and-window.md section 6.1.
+- **Left, ME2 and ME3:** the Performance modes stay greyed (rule 15) until the levers they bundle exist there; the PS VR2's
+  size in a headset.
 - **Waits for:** T03 (FSR), T08. **Who:** nobody yet.
 
 #### T18 The front end and the presentation hold [R22]
-- **State:** LE1 done · LE2 check first · LE3 check first
-- **Lives in:** `plugin/PresentationHold`. A fix for Halcyon ME1's start-up flips; port only if the sequels flip.
-- **Left:** snapshots from launch to the title on each sequel.
-- **Waits for:** nothing. **Who:** nobody yet.
+- **State:** LE1 done · LE2 done · LE3 done (fake headset; the owner's headset check open)
+- **Lives in:** `plugin/PresentationHold` and `core/vr/PresentationHold` for all three games (the sequels through the common seams
+  `FrontEndHold`, `FrontEndOnScreen`, `FrontEndBeforeTitle`, `HoldPlainVr`, `HoldLoadTail`; the game's mode mapped by
+  `engine/GameAdapter.hpp`); the sequels' renderers call it in `me2_xr.cpp` (ME2) and `d3d_capture.cpp UpdatePresentationState`
+  (ME3). research/56 "The sequels".
+- **Done (lane FE, 2026-11-18):** the owner's "the menus are not reliably using our theater viewer" (ME2, 2026-11-17). Before:
+  ME2's title on the flat panel and every load's end 0.27 s on a black 3D screen; ME3's title on Halcyon's flat cine panel. Now
+  the title and its menus on ME1's 3D cinema screen on both, the boot and loads flat, ME2's load tail kept as the load.
+  `[Cinematics] frontEnd` is ME1's key and default.
+- **Left:** the owner's headset look at launch, title, main menu and a load on ME2 and ME3 (notes/headset-checklist.md).
+- **Waits for:** nothing. **Who:** done (lane FE).
 
 #### T19 The body's bounds for the culling camera [R29]
-- **State:** LE1 done · LE2 check first · LE3 check first
+- **State:** LE1 done · LE2 done (pad seen) · LE3 built
 - **Lives in:** `engine/BodyBounds`. Its cause on LE1 is Halcyon LE1's view offset; ArmIk's bounds flag already runs
   everywhere.
+- **Done (lane AU4, 2026-11-18, the ME2 audit's REN-28):** the pad on every game (lane R2's and R3's addresses, the module on
+  `runtime::Up()`); ME2's Save 4 with replayed hands: the hook in, the body's two meshes padded by 150 units.
 - **Left:** LE1's repro on each sequel: look down with the head turned
-  ([the gotcha](knowledge/gotchas/culling-camera-ahead-of-the-eye.md)). Port only if the body drops out.
+  ([the gotcha](knowledge/gotchas/culling-camera-ahead-of-the-eye.md)); ME3's hook reached with tracked hands.
 - **Waits for:** T21 on ME3 for a body to look at. **Who:** nobody yet.
 
 #### T20 The spectator mirror [R30]
@@ -436,6 +461,9 @@ These unblock the most: almost every other entry gets smaller once they land.
   vault"; arm IK across the steps is on main since dc7c6f98); the calibration's manual height isn't wired; fingers and
   body scale have no in-game check. **ME3:** "the legs keep the run" is off (no Velocity read: declare the handle `kEveryGame`); fingers, body scale
   unverified. **Both:** body scale needs a recorded floor fixture (the fake headset's floor is at its head).
+- **Shared since 2026-11-18:** the body down (or up) to the head (`[Hands] crouchBody`, `TorsoGoal::crouch`, research/29 "The
+  eyes inside the body"): squats and bends no longer put the eyes inside the body, on every game whose skeleton has both eye
+  bones and both legs; measured offline on LE1's skeleton, the in-game run `tools/eyes-in-body.ps1` (ME1) not yet run.
 - **Closes when:** snapshot `mod.armIk.hands` puts each wrist on its controller through a vault; `mod.fingers` follows
   a replayed trigger and grip; the ME3 null-height run's script passes on ME2's Save 4.
 - **Waits for:** nothing (T04 declared the ME3 Velocity handle, 2026-11-16: see it in a walk). **Who:** C4 (C2's successor).
@@ -467,15 +495,18 @@ These unblock the most: almost every other entry gets smaller once they land.
   sights on the sequels, mod side"): the alignment assist, the shots' convergence, a scope's aimed fire, ADS and the
   lens part's hide. Seen on ME2 by script (`tools/le2-halcyon-run/sights.ps1`, Save 4, 2026-11-16): the pistol's dot in
   the right eye and the shots on what the sight line hits; the sniper rifle's ADS, its picture over the scope, its
-  `Scope_Eye` sight bone and aimed fire 10.0 -> 0.0. Left: the scope's picture comes from the eye copy (`ScopeCapture`
-  is compiled out and `setScopeCapture` isn't served: T16); per-model optic profiles (ME1's `vr::sights::OpticFor` is
+  `Scope_Eye` sight bone and aimed fire 10.0 -> 0.0. **The scope capture on both sequels since 0601ef40** (lane AU3, ME1's
+  module, the sequel hosts serve `setScopeCapture`; no post-process chain there, `engine::adapter::kCapturePostProcess`): on
+  ME2's Save 4 the picture came from the capture at 3.5x and 7x (`sights.pictureSource`); ME3's not seen yet (its fixture has
+  no sniper; `mevr give <class>` needs the class loaded, and ME3 loads a weapon's package for the loadout only). Left: per-model
+  optic profiles (ME1's `vr::sights::OpticFor` is
   keyed by mesh name, and ME2 reuses ME1's names for other models: its Mantis is `WPN_SNPa_MDL`) need a game key and
   measured numbers per model; on the fake headset ME2's pistol ring stands a hand's width left of the gun (the eyes take
   the monitor's shape there: a headset check). **ME3:** all of it in a game; aim modes and installed optic mods change
   the profile.
 - **Closes when:** a scoped shot hits the sight line and the `sights:` lines name the game's own sight bones, with a
   sniper-rifle fixture per game (ME2's: done 2026-11-16, but for the scope capture).
-- **Waits for:** T16 for the scope capture on ME2; T05's ME3 fixture. **Who:** C4.
+- **Waits for:** a sniper rifle in ME3's combat fixture (the scope capture's check there). **Who:** C4; the capture AU3.
 
 #### T25 Holsters, and only holsters draw [G08]
 - **State:** LE1 done · LE2 verify · LE3 build
@@ -497,11 +528,13 @@ These unblock the most: almost every other entry gets smaller once they land.
   draws. **ME3** (lane WP, research/le2-vrik.md
   "ME3's holsters, from its own script"): ME3 has no holstered state on a mission and its TryHolster only leaves cover, so
   TryHolster is never called there; the holster is the game's own put-down into no weapon
-  (`SFXInventoryManager.SetCurrentWeapon(None)`) behind `[Holsters] le3PutAway`, **0 by default** (unverified: no ME3 save on
-  the machine loads on a mission with a weapon), and only holsters draw is ME2's rule with "away" = weapons carried, none
+  (`SFXInventoryManager.SetCurrentWeapon(None)`) behind `[Holsters] le3PutAway`, **1 by default since 2026-11-18** (the owner;
+  lane AU2 ran `holsters.ps1 -Game LE3` on the combat fixture: put away at the shoulder in 0.95 s, four trigger pulls refused,
+  the pistol drawn at the hip and put away again, the release grace; research/le3-combat-fixtures.md "A combat fixture by
+  console"; an old file's 0 moves once, marker `le3PutAwayMoved`), and only holsters draw is ME2's rule with "away" = weapons carried, none
   equipped. ME2's release grace seen since (back after 0.20 s, holstered after 0.93 s). **Left, ME2:** the SMG's slot with a
-  class that carries one. **ME3:** the combat fixture, then holsters.ps1 -Game LE3
-  with `le3PutAway = 1`: draw, put away, draw again, four trigger pulls with the gun away, no stuck state; then its default.
+  class that carries one. **ME3:** done (above); left: a power cast, cover and a reload with the gun away and after, and the
+  menu's Holster button (greyed on ME3 until the owner has seen the put-away).
   **The review of 57ae5b4e** (lane FX2, 2026-11-17, research/le2-vrik.md "The sequels' controls after the review of
   57ae5b4e"): ME1's power wheel hold on both sequels (an R3 tap quick-cast power 2 on ME2); a grab where the game allows no
   combat refused (`IsCombatEnabled`); ME2's refused holster felt as a refusal; `ZoomedAimError`'s flag put back in a
@@ -541,8 +574,15 @@ These unblock the most: almost every other entry gets smaller once they land.
 
 #### T27 Guided calibration and hand calibration [G16]
 - **State:** LE1 done · LE2 headset · LE3 headset
-- **Lives in:** `plugin/Calibration`, `game/BodyCalibration`, `game/HandCalibration`.
-- **Left:** a headset run on each sequel: the fake headset has no interaction profile, so nothing by script can show it.
+- **Lives in:** `plugin/Calibration`, `game/BodyCalibration`, `game/HandCalibration`; the measurements in one file for the
+  three games, `core/vr/CalibrationFile` (`%LOCALAPPDATA%\MEVR\calibration.ini`).
+- **Done (lane AU7, 2026-11-18, 88e9a775; research/25 section 17.1):** one calibration for the trilogy (the owner's answer to
+  the ME2 audit's question 4): the host takes each controller type once from the newest of the three games' inis at attach,
+  every game reads and writes the shared file; `[Calibration] use`, `eye`, `grabOffset` stay per game; a
+  `[Calibration.<key>.<GAME>]` section overrides keys for one game. Fake headset: ME1 applied the same values before and after
+  (147 of 147 values copied identical), ME2 on Save 4 applied ME1's, no first-run prompt.
+- **Left:** a headset run on each sequel: the fake headset has no interaction profile, so nothing by script can show it
+  (`[Debug] calibrationKey` stands in for the key in dev builds); ME3's read of the shared file on Save 31.
 
 #### T28 The game's camera collision off in first person [G12]
 - **State:** LE1 done · LE2 n/a · LE3 n/a
@@ -558,10 +598,42 @@ These unblock the most: almost every other entry gets smaller once they land.
 #### T29 Weapon drawn like exploring: the constant eye, linear walking, the draw rate [G18]
 - **State:** LE1 done · LE2 build · LE3 build
 - **Lives in:** `game/CombatStance`, `core/vr/CombatStance`, seam `ConstantFpEye`.
-- **Left, ME2 and ME3:** port per item, the linear walk and stick first (the one players notice: research/38). ME2 lacks
-  `BioPawnBehavior`'s ramp fields: decide per game what stands in for them.
+- **Done (0601ef40, lane AU3):** section C on both sequels: the pawn's acceleration by ME1's rule (`cs::WantedAccelRate`;
+  neither sequel has the four speed ramps), ME2's start/stop/skid flags off (ME3 has none), `movement: response:` measured.
+  ME2's Save 4: a straight full push 0, 398, 400 u/s at 0, 0.1, 0.2 s (was 0, 49, 122). ME3's Save 31: no change (its start
+  is `SFXModule_Locomotion`'s timers, not the acceleration).
+- **Left, ME2 and ME3:** ME2's stop (374 -> 158 u/s in 0.1 s, ~60 still at 0.8 s, before and after: its lever unread); the
+  speed from the push (half a push walks at the game's 75 u/s; the move functions unfound: `mevr calltrace`); the constant
+  eye (ME2's camera moves ~7 cm on a draw, and its modes' hooks differ, so a seam in `FpApplyOffset` asking ME1's rule, not a
+  table pin); the draw rate (each game's WeaponEquip node); ME3's start and stop are `SFXModule_Locomotion`'s.
+  The constant eye's seam needs no new game fact: `SFXCameraMode.HookOffset` is at +0x1A8 on ME2 (`Offset` +0x19C) and at
+  ME1's +0xC0 on ME3 (`Offset` +0xB4), so one `MevrSeams::ConstantFpEye` (ME1's `HalcyonBridge` body, its mode read per game)
+  called where le2's and le3's `FpApplyOffset` write a standing state's offset gives every game ME1's rule.
+- **Done (lane AU5, 2026-11-18):** the constant eye on both sequels, one seam `MevrSeams::ConstantFpEye` in
+  `plugin/HalcyonSequelBridge.cpp` asked by le2's and le3's `FpApplyOffset` (research/38 "The sequels' constant eye"). Seen on
+  ME3: its Combat mode hooks (-30, 20, 90) against Explore's (0, 0, 120), and the renderer's one Offset had put the eye 0.7 m
+  behind Shepard's head in every fight; now Combat's Offset is (5, 20, 35), the eye where exploring has it. Seen on ME2 too
+  (Save 4: Combat hooks (-30, 0, 100), Offset now (-65, 0, 15), the camera where exploring has it). ME2's move function is
+  `PlayerWalking.PlayerMoveCombatOrExplore` (traced; for the speed from the push).
+  ME3's start: its player pawn has no `SFXModule_Locomotion` (`mevr loco`), the root-motion flags are 0; AU3's slow start
+  included a turn (the replay reversed the stick); exploring 0, 12, 230, 400 u/s at 0..0.4 s, combat 350 within 0.1 s.
+- **Done (lane AU6, 2026-11-18):** ME3's explore eye at Shepard's face (dadb7461; the owner's answer below): forward 34 units of
+  the head bone exploring, 26 in combat, arm IK first person in a fight, and the sniper's scope capture seen on ME3 (3.5x, 7x).
+  The speed from the push on both sequels (c8f6987e: `BioPawn.fMoveMag` after their move functions; half a push 167 u/s on ME2,
+  146 on ME3, was 75), ME2's stop at once exploring (the move function's 0.5 s blend skipped: 0 in 65 ms, was 0.5 s), the draw
+  rate on both (ME2's rifle in hand 0.16 s, was 0.62; holstered 0.16 s, was 1.13 on ME2 and 0.66-0.95 on ME3). Research/38
+  "The sequels' walk and draw".
+- **Done (lane AU9, 2026-11-18):** ME3's exploring start and stop (the owner's option A): the limiter is the explore tree's
+  `BioAnimNodeLocomotionStart` nodes asking the pawn for their animation's root motion as acceleration (RMM_Accel) for the
+  start's first ~0.25 s, and `BioAnimNodeLocomotionStop` the same after a let-go; ME1's `[Hands] startStopAnims = 0` answers both
+  with RMM_Ignore in VR on foot (`UpdateStartSteps`). Exploring on the Normandy a full push runs at 0.1 s (0, 389, 389 u/s at
+  0, 0.1, 0.2 s; was 0, 3-12, 152-253), half a push 189 at once; the stop stays a stop (the stop animation had walked the pawn
+  on 16-38 units over 0.5 s). The response's per-tick trace (`movement: response ticks`) and `mevr loco start game|on`.
+  research/38 "ME3's exploring start and stop".
+- **Left:** the stance (off on ME1 too); a sideways slip at the end of a push after a 180-degree explore turn on ME3 (with and
+  without the fix; research/38 item 5).
 - **Closes when:** `movement: response:` shows a run within 0.1 s of the push and half a push walking, on each sequel.
-- **Waits for:** nothing. No plan covered this on ME2 before this page. **Who:** nobody yet.
+- **Waits for:** nothing. **Who:** AU3 (the walk), AU5 (the constant eye); the rest nobody yet.
 
 ### Movement
 
@@ -716,10 +788,17 @@ These unblock the most: almost every other entry gets smaller once they land.
   (`MevrSeams::WorldUiHoldFrame`, LE1's guard); the Atlas and injured Shepard hold no view on foot (research/le3-native-gui.md
   "Room changes, the UI world coming back, the first frame and the omni-tool's display"; seen on Save 31 but the Atlas). An opening the game starts itself
   still shows one MENU_MONO frame on ME3, as on ME1.
-- **Left, ME2:** the squad member in the equipment screens (`UiWorldFigure`); ME2's hack and bypass minigames are
-  different games from ME1's and have no VR treatment ([le2-validation-coverage.md](le2-validation-coverage.md) "Hacking
-  and bypass"); research and loadout screens. **ME3:** the squad member (`UiWorldFigure`); the headset. ME3 has no bypass
-  minigame.
+- **Built, ME2 and ME3 (lane AU1, 2026-11-18):** the sequels' own screens by their GUI libraries' tags (research/le2-menus.md
+  "The sequels' own screens"): ME2's choice screen (research terminal, weapon lockers, stores, bonus power, the mission's
+  completion) and ME3's in the room toward what was used (new `ChoiceGUI`); ME2's bypass and hacking minigames as ME1's
+  `SkillGame` on the wrist, their whole stage; ME3's stores as ME1's shop, its weapon bench as ME1's equipment, its
+  accomplishments, message boxes, private terminal, mail and elevator (new `Terminal`) in the room; ME1's crops kept to ME1's
+  movies; ME3's flat panel at ME1's 1.4 m and 2.35 m (ME2's too since lane AU4, b7cd8eec: code and shipped ini, upstream's
+  exact 1.6 m / 2.2 m moved once). Not run in the game: each tag's mode and anchor is [verify].
+- **Left, ME2:** the squad member in the equipment screens (`UiWorldFigure`) and the armour locker (`Personalization`, its
+  Shepard the UI world's: Halcyon's panel); the game check of the screens above ([le2-validation-coverage.md](le2-validation-coverage.md)
+  "Hacking and bypass": the minigames are other games than ME1's). **ME3:** the squad member (`UiWorldFigure`), the armour
+  locker; the game check; the headset. ME3 has no bypass minigame.
 - **Closes when:** a replayed wrist tap opens the rail, an entry opens the game's screen on the wrist, a ray click and a
   fingertip press land where they point, and B returns to gameplay, on each sequel.
 - **Waits for:** T02. **Who:** nobody yet.
@@ -766,11 +845,26 @@ These unblock the most: almost every other entry gets smaller once they land.
   loaded nor requested: no projector, the flat panel until X); the opening's first cinematic frames held by a cue the host reads
   (built, not yet seen); ME2's map buttons found to be GUI events; `mevr galaxy capture tab-left|tab-right|opening-keep|
   opening-cut` (galaxy-projector-handoff.md "GX4").
+- **Built 2026-11-18 (lane GXR); in the game: ME2's system and galaxy views (a planet and the relay picked, the Normandy flown
+  there on the map's stick, selected, A; a cluster picked in the galaxy view, the map's cursor put on it, the relay jump) and
+  ME3's system and cluster views (a station picked into its orbit view; a system flown into from the cluster
+  view; ME3's A is the map's own `SelectGalaxyItem`, not a GUI event):** the right controller's ray picks on both sequels' maps (ME1's
+  way), the stick stays the game's: `core/vr/GalaxyRay` (unit-tested) and `game/GalaxyRay` (one module for ME2 and ME3, called by
+  the flow): the map's selectable objects projected through the map camera, the nearest to the ray's point on the map's panel
+  hovered, the trigger picks it: the galaxy view's cursor put on it and the map's A (its GUI event), or, where the map's cursor
+  is the Normandy (ME2's cluster and system views), the ship flown there on the map's own stick (never moved by us: the flight
+  and its fuel stay the game's) and A on arrival; in ME2's orbit the ray aims the scanner's reticle where it meets the planet
+  (`SFXGameModeOrbital.ReticleRot`), the game's LT and RT scan and probe there. `[Galaxy] rayPick`, `rayScan`; `mevr galaxy ray
+  ...` (galaxy-projector-handoff.md "2026-11-18"). The PC map's own mouse mode was read offline: it ignores the mouse in the pad
+  mode, which is why the earlier pointer clicks did nothing. Left: ME2's orbit scanner by ray (the planet view's "Start Scanning"
+  wasn't reached by script: GUI A and `HandleSelectPlanet` didn't start it), ME3's galaxy view (galaxy-projector-handoff.md
+  "2026-11-18").
 - **Left:** ME2's travel and arrival through the flow (a relay jump: `tab-right`, then `mevr guikey 12`), ME2's console that
   stopped opening the map in a relaunch (open, not the flow), the opening cue seen on both; ME3's system scan (a replayed LT
   started none), orbit (mode 12) and the probe (no scannable planet in the fixture's reach), the captures' post-process chain,
   the headset; on ME2 orbit and the scanner in the window (its probes and mining: one launch per press);
-  `vr::galaxy_map::ReadTableSettings` and one input lease for ME3; ray picking and ME2's scanner by ray (the next lane).
+  `vr::galaxy_map::ReadTableSettings` and one input lease for ME3; ray picking and ME2's scanner by ray in the game (GXR's
+  code, above: the flight on the written stick, the scanner's frame, ME3's A as a GUI event are the open questions).
 - **The owner, 2026-11-17 (night)** ("whichever gives us the great approximate experience to what we have on me1"): ME3's
   map over the projector **stays on by default**; the **depth of field off near the projector is accepted** (ME2's, forced by
   its render fault). Ray picking on both maps and ray aiming of ME2's scanner come next, from a lane after GX4 (the flow's
@@ -803,8 +897,12 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Done 2026-11-16:** one tick for all three games (GF, Forks 5); ME2's names from `SFXPawn.GetPrettyName` and an
   equip seen on ME2 (GF2: Miranda's pistol, 6 of 6 pulls; ledger G30).
 - **Left:** one `Tick` over a per-game roster and equip adapter (today `Le2SquadMenu.inc` re-implements LE1's `Tick` for
-  both sequels; the LE1 part is a refactor). The sequels run the drawn "custom" style only; ME1's default is the game's
-  own wheel cut onto a hand quad (`setWheelPanel`, LE1-only): port it or name the game fact that rules it out.
+  both sequels; the LE1 part is a refactor). The sequels run the drawn "custom" style only.
+- **Built 2026-11-18 (lane AU1):** the game's weapon and power wheels on their own quad at the hand on every game: LE1's code
+  moved unchanged out of `HalcyonOverlays.cpp` into `plugin/WheelPanel` (the crop's measurement, the mod's `setWheelPanel`
+  settings, the placement, the quad, its log lines), composed by LE1's overlays and by `SequelOverlays.cpp` (before the HUD
+  panel is cleared, as the HUD pieces); the wheel's mode through `engine/GameAdapter.hpp` (ME2's 1 and 2, ME3's 3 and 4).
+  Not seen in a sequel yet: `[MEVR-WHEEL]` lines and a `wheel` layer in a snapshot with a wheel up.
 - **Closes when:** with two squadmates, every carried weapon can be given and the recipient's equipped weapon is seen to
   change; LE1's same-pose check passes. Detail for ME2: [M6 guide](le2-m6-implementation-guide.md) package B.
 - **Who:** GF.
@@ -819,9 +917,11 @@ These unblock the most: almost every other entry gets smaller once they land.
   ME3's too). Placement is on by default on ME2 as on ME1 (rule 19: ME1's value). research/54 "ME2 placement and orders
   on Save 4".
 - **Left, ME2 and ME3:** attack and power orders in combat; ME3's everything (the combat save: `place.ps1 -Game LE3`).
-  The acknowledgement (G34): ME2's AI already answers through `SFXGame.TriggerVocalizationEvent` (follow 8, move 7, take
-  cover 9); the port of `game/SquadAck` listens for that instead of ME1's `SquadHandleChatterEvent`. **ME3 adds** healing
-  and revive.
+  **ME3 adds** healing and revive.
+- **Done (lane AU4, 2026-11-18):** the acknowledgement (G34): `game/SquadAck` hears the AI's own `TriggerVocalizationEvent` on
+  both sequels (ME2's Save 4: moves 7, follows 8, 4 of 4 in a 3 s window); a standing order's "calm" reads the game's own
+  combat flag on both (ME3's was "a gun is held"); research/54 "The squad's answer and calm on the sequels". Not seen: ME3's
+  answer (no squad in its fixtures), the combat flag true in a real fight.
 - **Closes when:** each living squadmate is seen to attack the target given, cast the power given, walk to the ring and
   hold, and come back on a double tap. Detail for ME2: [M6 guide](le2-m6-implementation-guide.md) package C and
   [le2-m6-squad-implementation.md](le2-m6-squad-implementation.md); for ME3: research/le3-squad.md.
@@ -888,10 +988,12 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Waits for:** T51 (Launch without the picker); T04 landed 2026-11-16 (a monolithic sequel build links no LExSDKv2). **Who:** the campaign pass: nobody yet.
 
 #### T53 Crash reports and a safe quit [G48]
-- **State:** LE1 done · LE2 check first · LE3 check first
+- **State:** LE1 done · LE2 done · LE3 done
 - **Lives in:** `plugin/CrashBreadcrumbs`, `plugin/KeptLocks`, the ExitProcess hook.
-- **Left:** breadcrumbs are in every host. Check whether ME2 and ME3 fault at quit as LE1 did
-  ([the gotcha](knowledge/gotchas/quit-time-fault-in-a-deleted-lock.md)); `KeptLocks` is LE1-only.
+- **Done (lane AU4, 2026-11-18):** `KeptLocks` in every host; the sequels' `[EXITKILL]` hook hands the quit to ours
+  (`MevrSeams::HostEndsProcess`: before, it terminated first and our exit line, `NoteProcessExit` and the kept locks' summary
+  never ran). Console quits: ME2 `41 deletion(s) of the game's static locks skipped`, ME3 `47`, no `crash-exit.txt`.
+  ([the gotcha](knowledge/gotchas/quit-time-fault-in-a-deleted-lock.md))
 
 ### Closed (checks only)
 
@@ -1001,6 +1103,68 @@ about stutter or pacing in a real headset.
 
 Each is asked once. "Today" is what the build does if nobody answers; no default changes without a yes (rule 19).
 
+**Answered 2026-11-18, later** (the questions the audit lanes AU2-AU7 raised; the owner's words in quotes):
+
+- **The shouldered gun on ME2 and ME3** (lane AU2's trace, docs/knowledge/audits/me2/weapons-and-sights.md): "Your
+  recommendation": option B. No LT from the support grip; each shouldered shot's own calculations (accuracy, spread, ME3's
+  sniper damage and shotgun cone) are made as zoomed for their duration only; the camera zoom, the scope sway and the
+  melee/roll admission blocks never apply. ME2's sniper time dilation not included (option C). **Built (lane AU8, be1a47ba):**
+  `game/ZoomedShots`; not the shotgun cone (a timer's ProcessEvent: research/le2-vrik.md "The shouldered gun on the sequels").
+- **ME3's omni-blade with the gun put away:** "Option A": a fist stroke calls ME3's heavy melee action directly (the class's
+  own heavy melee; biotic for Vanguards and Adepts), once a check shows it plays with no weapon equipped. **Built (lane AU8,
+  2c549a7a):** it plays (research/le3-combat-fixtures.md "The omni-blade with the gun put away").
+- **Shepard's body during a roll:** "Yes for now": hidden while the roll lasts. **Built (lane AU8, e4d35c24):** the body, head and
+  gun in hand, `[Hands] rollHidesBody`.
+- **ME2's render shape (question 18):** "Not sure, whichever leads to the better user experience": the lane measures both
+  (cost, and every ME2 screen, the HUD, menus, the conversation wheel and the room screens at 4:3) and picks 4:3 only if
+  nothing breaks, else keeps 16:9. **Lane AU9: 16:9 kept** (at 4:3 the power wheel at the hand showed the wrong part of the
+  frame, for a 5% GPU saving; research/le3-flares-and-window.md section 6.1).
+- **The sequels' eye distance** (26-34 units ahead of Shepard's head bone, ME1's about 4): "Need to validate in headset,
+  whatever gets us closest to feeling like we are attached to the body." A headset A/B, prepared by a lane
+  (notes/headset-checklist.md); today's value stands until then. **Lane AU9: built**: our menu's Advanced > Tracking > Eye
+  position (headset test), Today / Between / At the face (`[Hands] eyeTest` 0/1/2, live): on the fake headset the eye 29, 18
+  and 4 units ahead of Shepard's head bone on ME2, 29-32, 17-20 and about 3 on ME3 (research/38 "The sequels' eye distance,
+  an A/B").
+- **ME3's exploring start** (about 0.2 s to most of a run, ME1's 0.1 s): "Option A": the mod speeds it up, once the
+  limiter is found (not `SFXModule_Locomotion`, which the player pawn lacks).
+- **The VR hands tab's arm sample (`[Arms] armLengthM`):** "Your recommendation": it stays per game; the guided
+  calibration's arm length is already shared.
+
+**Answered 2026-11-18** (the questions of the ME2 and ME3 audits, docs/knowledge/audits/me2/summary.md and
+me3/summary.md; the owner's words in quotes):
+
+- **ME2's fifth reach zone, the SMG at the right thigh** (on by default): "Right thigh may work for now." Kept.
+- **The sniper's magnification:** "sniper zoom is unified." One rule for the three games, read as ME1's (3.5x, then 7x
+  after a flick, from a real zoomed render; rule 1). Today ME2 shows 8.0x and ME3 4.0x. **Lane AU2, 2026-11-18:** the levels
+  are ME1's on both sequels (3.5x, 7x after a flick; game/Sights `ReadGameZoom`). **Lane AU3, 0601ef40:** the zoomed
+  render is ME1's scope capture on both sequels (seen on ME2 at 3.5x and 7x; ME3 not yet).
+- **ME3's default for conversations and cutscenes:** "Likely yes if it's default for the other two games." It is: ME1's 3D
+  cinema screen is ME3's default, and ME3's menu (which offers Flat only and calls the screen "not available yet") is to
+  offer it as ME1's and ME2's do.
+- **ME3's render size:** "Follows headset like me1." The render target from the headset's eye size (ME1: 0.85 of it,
+  FSR on), not a fixed 3072x2216; this replaces question 17 (c)'s answer of 2026-11-17. ME2's fixed 4096x2304 follows the
+  same rule (rule 1; the ME2 audit's finding 12). **Built by lane AU4 (2026-11-18, T17):** the first VR start's rule on both
+  sequels; ME2's target at least 16:9 (it draws no HUD on a near-square frame: question 18).
+- **ME3, a gun let go is put away:** "Obviously yes, that should be default." `[Holsters] le3PutAway = 1` by default.
+- **ME3's melee:** "Me3 melee will require letting go of the guns and doing a fist to summon the Omni blade for strikes."
+  The hand holding a gun never strikes; an empty hand's fist brings out the omni-blade, and the strokes strike with it.
+- **ME3, the left-hand push with a grenade equipped:** "Yes": it throws the grenade.
+- **ME3, the omni-tool rail's Squad entry greyed until its figure is ported:** "That's fine for now."
+- **Halcyon ME2's `VehicleHeadMode = 3`** (the head aims the Hammerhead's cannon): "vehicle head mode likely shouldn't be
+  on. We'll be building out the models for first person default." Pinned to 1 by ME2's baseline (free look: the head turns
+  the view, the stick aims; ME1's `makoHeadAim = 0`) until the Hammerhead gets the Mako's controls and a first-person
+  cockpit. Upstream's own **`ConvoFirstPerson`** pinned off with it (one first-person conversation for the trilogy, ME1's).
+- **ME3, a roll or hit reaction with snap turn on:** "I'm not sure, since I don't know how rolls should appear in VR," then
+  "For roll we'll do your recommendation": a roll (and melee, a hit reaction, a cover entry) stays first person, the view
+  level (never tumbling) and sliding with the body to where the move ends, the floor held, the snap turn still the
+  player's, an optional vignette (as ME2's vault).
+- **ME3's explore eye:** "Me3 eyes should match behavior from other games." Option (a) of research/38 "The sequels' constant
+  eye": the renderer's standing rows (-35, 0, 65), the eye 35 units ahead of the hook bone as ME2's (lane AU6, dadb7461): forward
+  34 units of Shepard's head bone exploring, 26 in combat (ME2 24-29), arm IK first person in a fight.
+- **Earlier the same day** (the ME2 audit): no haptic cue at the chest on ME2 (no grenade slot there); one calibration for
+  the trilogy unless a game's VRIK differs (built: T27); the shouldered gun's accuracy without the game's zoom (the proposal in
+  docs/knowledge/audits/me2/weapons-and-sights.md, not built).
+
 **Answered 2026-11-17** (lane REV's review of 57ae5b4e raised both):
 
 - **B on the sequels** (ME2's B is `Console_Melee`: `TryExitCover 1 | TryMelee | LeaveWorld`; placement's hold and double tap
@@ -1042,7 +1206,9 @@ Each is asked once. "Today" is what the build does if nobody answers; no default
   eye's defaults per game as lane SP2 measured them (ME2 `umbraShareResults = 1` and `sfrReplayRetry = 0`, ME3
   `umbraShareResults = 1`, ME1 unchanged: `plugin/RenderLeversTable.hpp`); dynamic shadows **on** on ME2 and ME3 (0.2-0.3 ms,
   each eye its own render) and off on ME1 (`engine::adapter::kVrDynamicShadows`; `vr-game-settings.ps1` and Setup write
-  False for LE1 only; a player's `[SystemSettings] DynamicShadows` still wins).
+  False for LE1 only; a player's `[SystemSettings] DynamicShadows` still wins). **Superseded the same night** by the
+  owner's ME2 headset test ("disable the shadows entirely for both eyes": they differed between the eyes): dynamic and
+  character shadows off on ME2 and ME3 (`kVrDynamicShadows` false for every game, `kVrCharacterShadowsOff`; 9f556c1a).
 - **Earlier the same day:** the sequels' sights use ME1's systems for now; vaulting with a two-handed hold is allowed, with
   one hand to be considered ("The controls could get sloppy"; lane C4 compares); the trigger never draws a holstered
   weapon in any game; "Ideally I want everything consistent" (a per-game difference needs a reason the game forces).
@@ -1181,6 +1347,14 @@ Each is asked once. "Today" is what the build does if nobody answers; no default
     Seen on the fake headset with the PS VR2's eyes replayed (Save 31, run `def2-lane\runs\LE3-20261117-144209`): mode 2, each
     eye 19.2 x 14.6 px/deg from a 3072x2216 target, the lamps' flares on their lamps in both eyes (a canary with `flareWindow
     = 0` put them off again), life-size as before (research/le3-flares-and-window.md section 5).
+18. **ME2's render shape** (T17; lane AU4, 2026-11-18, research/le3-flares-and-window.md section 6). ME2 renders any size
+    whose sides are multiples of 8, but draws no HUD on a near-square frame (0.85 of a PS VR2 eye is 2400x2448): at 4:3 and
+    16:9 the HUD is whole. The first VR start now widens ME2's target to at least **16:9** (every ME2 screen has been seen at
+    that shape; on a PS VR2 4352x2448, 13% more pixels than today's 4096x2304; a Quest 3 over Link 3344x1880). **4:3** would
+    be 3264x2448 / 2504x1880, 25% fewer pixels than 16:9; only the HUD was checked at it. Recommendation: 4:3 after a look
+    at ME2's menus, conversation wheel and room screens at that shape; 16:9 until then. **Answered 2026-11-18 ("whichever
+    leads to the better user experience"), measured by lane AU9: 16:9** (4:3 broke the power wheel at the hand and saved
+    about 5% of the GPU; research/le3-flares-and-window.md section 6.1).
 
 **Defaults waiting for a seen result and a yes** (not questions yet): `[SquadOrders] place` on the sequels (ME1's is on),
 `[Traversal] cue`, ME3's heavy melee and traversal gestures (its stroke melee is on by default since 2026-11-17), the

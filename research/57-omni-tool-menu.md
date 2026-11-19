@@ -520,6 +520,12 @@ LOCALAPPDATA were redirected inside this worktree, so the optional native dump c
 preview exited 0 and produced all five rail PNGs plus the valid placement SVG; the touch canvas was visually inspected
 (fallback art, no game-art cache supplied). SPDX passed; OKF passed (27 files); `git diff --check` passed. No game launch,
 deployment, commit or changes outside this worktree.
+
+2026-11-08 combined test handoff: the committed rail/power-up change is now included in the
+installed menu/VDXR/blur-guard candidate described in [research/62](62-motion-blur-and-menu-pacing.md).
+The combined LE1 build and selected tests pass; installation and matching runtime assets are verified.
+The new menu-return reset policy is conditional on the native blur guard's health. The earlier
+physical blur test used the old rail; combined rail/power-up headset acceptance is still pending.
 ### 2026-11-09: headset report, edge reveal and drawn-finger touch
 
 This supersedes the 2026-11-08 motion and cache-only brightness attempt above (commit 6d38cbc). The player's report:

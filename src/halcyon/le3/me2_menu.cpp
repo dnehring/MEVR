@@ -449,6 +449,16 @@ void LoadFpStates(const std::wstring& path) noexcept
         swprintf_s(k, L"S%d_x", i);        s->x = ClampF(IniGetF(path, k, d.x), -200.0f, 400.0f, d.x);
         swprintf_s(k, L"S%d_y", i);        s->y = ClampF(IniGetF(path, k, d.y), -100.0f, 100.0f, d.y);
         swprintf_s(k, L"S%d_z", i);        s->z = ClampF(IniGetF(path, k, d.z), -100.0f, 200.0f, d.z);
+#if defined(MEVR_ASI)
+        // [MEVR] A standing state saved at upstream's default (35, 0, 65: the eye 35 units behind the hook bone) takes the
+        // new one, the eye at Shepard's face as ME1's and ME2's (engine_probe.cpp's table, the owner 2026-11-18).
+        if (i < 4 && s->x == 35.0f && s->y == 0.0f && s->z == 65.0f && d.x != 35.0f)
+        {
+            s->x = d.x; s->y = d.y; s->z = d.z;
+            ME2VR::Log::Line(std::string("[MEVR-FP] ") + ME2VR::EngineProbe::FpStateLabel(i) +
+                             ": upstream's saved offset (35, 0, 65) moved to the eye at Shepard's face (-35, 0, 65)");
+        }
+#endif
     }
 }
 void SaveFpStates(const std::wstring& path) noexcept
@@ -500,12 +510,18 @@ void ApplyMevrBaseline() noexcept
     if (note(ME2VR::EngineProbe::GetCoverThirdPerson(), "first person in cover (CoverThirdPerson)"))
         ME2VR::EngineProbe::SetCoverThirdPerson(false);
     bool headShown = false;
+    bool bodyHidden = false;
     for (int i = 0; i < ME2VR::EngineProbe::FpStateCount(); ++i)
     {
         ME2VR::EngineProbe::FpStateCfg* s = ME2VR::EngineProbe::GetFpStateCfg(i);
         if (s != nullptr && !s->hideHead) { s->hideHead = true; headShown = true; }
+        // ME1's first person draws the body (VRIK: the arms on the controllers, the body under the player) in every state;
+        // upstream's ME2 hid it unarmed and sprinting (the owner, 2026-11-17: "unless I have a weapon equipped, my VRIK
+        // body just completely disappears").
+        if (s != nullptr && s->hideBody) { s->hideBody = false; bodyHidden = true; }
     }
     note(headShown, "Shepard's head hidden ([FirstPerson] S*_hideHead)");
+    note(bodyHidden, "Shepard's body shown ([FirstPerson] S*_hideBody)");
     if (note(ME2VR::EngineProbe::GetHeadAimEnabled(), "head aim (HeadAim)")) ME2VR::EngineProbe::SetHeadAimEnabled(false);
     if (note(!g_decoupledPitch.load(std::memory_order_relaxed), "the stick's pitch (DecoupledPitch)"))
         g_decoupledPitch.store(true, std::memory_order_relaxed);
@@ -566,9 +582,9 @@ void LoadValues() noexcept
         g_profileKey[i] = ClampI(GetPrivateProfileIntW(L"VR", kn, 0x31 + i, path.c_str()), 0x08, 0xFE, 0x31 + i);
     }
     { wchar_t cb[64] = {};
-      GetPrivateProfileStringW(L"VR", L"MenuScreenDist", L"2.20", cb, 64, path.c_str());
+      GetPrivateProfileStringW(L"VR", L"MenuScreenDist", L"1.40", cb, 64, path.c_str());  // [MEVR] ME1's flat panel: 1.4 m, 2.35 m wide (upstream 2.2, 3.2)
       ME2VR::Me2Xr::SetMenuScreenDist(static_cast<float>(_wtof(cb)));
-      GetPrivateProfileStringW(L"VR", L"MenuScreenSize", L"3.20", cb, 64, path.c_str());
+      GetPrivateProfileStringW(L"VR", L"MenuScreenSize", L"2.35", cb, 64, path.c_str());  // [MEVR]
       ME2VR::Me2Xr::SetMenuScreenSize(static_cast<float>(_wtof(cb)));
       GetPrivateProfileStringW(L"VR", L"MenuPanelDist", L"1.50", cb, 64, path.c_str());
       ME2VR::Me2Xr::SetMenuPanelDist(static_cast<float>(_wtof(cb)));

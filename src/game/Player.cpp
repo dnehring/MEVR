@@ -8,6 +8,7 @@
 #include "game/BodyCalibration.hpp"
 #include "game/BodyScale.hpp"
 #include "game/Traversal.hpp"
+#include "core/vr/ActionCamera.hpp"
 
 #include <Windows.h>
 #include <cmath>
@@ -38,7 +39,13 @@ ue3::FieldRef gSkeletalMesh{"Engine.SkeletalMeshComponent", "SkeletalMesh", ue3:
 // (research/le2-renderer-integration.md "Step 8: the floor lock on ME2").
 ue3::FieldRef gCylinder{"Engine.Pawn", "CylinderComponent", ue3::kEveryGame};
 ue3::FieldRef gCollisionHeight{"Engine.CylinderComponent", "CollisionHeight", ue3::kEveryGame};
+// The game's crouch (Crouched): every game's Engine.Pawn field. It was ME1's handle only, so on the sequels body scale's
+// standing reference read "crouched" for good and never settled (the ME2 and ME3 audits' finding 8, lane AU2 2026-11-18).
+#if defined(MEVR_GAME_LE1)
 ue3::FieldRef gCrouched{"Engine.Pawn", "bIsCrouched"};
+#else
+ue3::FieldRef gCrouched{"Engine.Pawn", "bIsCrouched", ue3::kEveryGame};
+#endif
 ue3::FieldRef gCoverType{"SFXGame.BioPawn", "CoverType", ue3::kEveryGame};
 ue3::FieldRef gCoverAction{"SFXGame.BioPawn", "CoverAction", ue3::kEveryGame};
 ue3::ClassRef gCameraNative{"SFXGame.SFXCameraNativeBase", ue3::kEveryGame};
@@ -142,7 +149,13 @@ vr::floor_lock::PawnSample FloorLockSample() {
     auto* const pc = Controller();
     if (pc == nullptr) return out;
     out.onFoot = GameMode(pc) == 0;
-    out.traversalMove = traversal::Moving();  // a native vault or climb: the host holds its correction (MoveHold)
+    // A native vault or climb: the host holds its correction (MoveHold). Not ME3's roll: the pawn's floor doesn't move
+    // there, and following the game's camera dipped the eye 0.5 m with the body (lane AU2, 2026-11-18).
+    if constexpr (engine::adapter::kActionCameras) {
+        out.traversalMove = traversal::FloorMoving();
+    } else {
+        out.traversalMove = traversal::Moving();
+    }
     auto* const pawn = BioPawn(pc);
     out.pawn = pawn != nullptr;
     if (!out.onFoot || !out.pawn) return out;
@@ -162,6 +175,10 @@ vr::floor_lock::PawnSample FloorLockSample() {
             auto& reflection = ue3::runtime::Get();
             out.cameraOwned = vr::combat_stance::ConstantEyeApplies(reflection.NameText(reflection.ClassOf(mode)),
                 reflection.NameText(mode), true); // both crouch modes qualify; no synthetic extra drop
+            if constexpr (engine::adapter::kActionCameras) {
+                // ME3's action cameras (a roll, a melee, a hit reaction) are the body's too: the floor stays locked through them.
+                out.cameraOwned = out.cameraOwned || vr::IsActionCamera(reflection.NameText(reflection.ClassOf(mode)));
+            }
         }
     }
     return out;

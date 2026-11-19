@@ -129,6 +129,10 @@ the arms and its reach, and the grab point.
 
 ## 4. Where it goes: `[Calibration]` in `ASI\LE1MEVR.ini`
 
+**Since 2026-11-18 the measurements are in `%LOCALAPPDATA%\MEVR\calibration.ini`, one file for the three games** (section
+17): the `[Calibration.<key>]` sections below, `[ManualCalibration.<key>]`, `prompted` and `last` live there; `use`,
+`grabOffset` and `eye` stay in the game's `ASI\<GAME>MEVR.ini`. The layout below is unchanged otherwise.
+
 ```
 [Calibration]
 use = 1                 ; 0: the mod ignores it (everything as before)
@@ -577,7 +581,118 @@ including raw-reference transforms and preservation of source opacity through pr
 reference images, live-panel legend and selected-hand baseline row under `scratch/controller-guides-2026-11-12/`.
 The menu preview reported no binding/style errors. No deployment or physical-headset acceptance was performed.
 
-## 17. The hands in the palm's plane; the hands under Advanced calibration (2026-11-17)
+## 17. One calibration for the trilogy (built 2026-11-18)
+
+The owner (2026-11-18, the ME2 audit's question 4): one calibration for the three games, unless a game's VRIK differs.
+Lane AU2's proposal, below as it was written; lane AU7 built it the same day (17.1, with what differs from the proposal and
+the checks).
+
+**Today.** Each game keeps its own: the host (`plugin/Calibration.cpp`, the writer and the first-run prompt's `[Calibration]
+prompted` list; `plugin/MainMenuSettings.cpp`, the position and manual rows) and the mod (`game/BodyCalibration.cpp`
+`ReadValues`, its path from `engine::SettingsFile()`) read and write `[Calibration.<ProfileKey>]`
+(`vr::calibration::ProfileKey(interaction profile, headset)`) in `<exe dir>\ASI\<GAME>MEVR.ini`. A player who calibrated in ME1
+starts uncalibrated in ME2 and ME3, and is prompted again.
+
+**What the section holds is the player's, not the game's.** Eye heights standing and crouched, the seated choice, arm length,
+the shoulder zone, each gun stance's frame in the right grip's frame, its foregrip and stock, the left trim, the empty hands'
+trims, the manual offsets: metres in tracking space and rotations in the controllers' frames. Nothing in it depends on a game's
+models (each gun's sight is read from its model by game/Sights, not calibrated). The sequels run ME1's arm IK, body slots and
+sights (ledger G01-G10), so today no game's VRIK differs: one section serves all three.
+
+**Where it lives: `%LOCALAPPDATA%\MEVR\calibration.ini`**, the same `[Calibration.<ProfileKey>]` sections and keys, and the
+`prompted` list. Why there: the mod's per-user data root already (test loop, game art, saved Shepard heights, crash files); the
+same for every game and install folder; outside the game folders the installer restores byte for byte. Rejected: the sequels
+reading `Game\ME1\Binaries\Win64\ASI\LE1MEVR.ini` (ME1 may not be installed or modded, and a sequel would write into another
+game's folder and manifest).
+
+**How the code changes (one path, every game).**
+1. `engine::CalibrationFile()` beside `engine::SettingsFile()`, and the host's twin through `MevrBridge`/HostServices (the host
+   writes, the mod reads: both must name the same file). Every `[Calibration*]` read and write goes through it:
+   `game/BodyCalibration`, `plugin/Calibration` (the save and the prompt's list), `plugin/MainMenuSettings` (position, manual
+   rows), `core/vr/ManualCalibration`'s callers.
+2. Writes as the host's MELEVR.ini save: a `.tmp` moved over the file, refused for the session if the file existed but could not
+   be read at start (never defaults over a calibration). One game runs at a time: no cross-process lock.
+3. The mod re-reads it when its time stamp changes, as it does the game's ini.
+4. `[Calibration] use` stays per game in `<GAME>MEVR.ini`: a setting, not a measurement.
+
+**Migration, once, on first read in any game.** If the shared file has no section for the current `ProfileKey`, look in the
+three games' `ASI\<GAME>MEVR.ini` under the same install root (this game's first) and copy the section with the newest `time`;
+merge the `prompted` lists. The per-game sections stay (an older build still finds its own) and are not read again once the
+shared file has the key (marker `[Calibration] shared = 1` in the game's ini). Log `calibration: [Calibration.<key>] taken from
+<GAME>MEVR.ini (calibrated <time>) into calibration.ini`.
+
+**If a game's VRIK ever differs** (the owner's exception): `[Calibration.<key>.<GAME>]` in the shared file overrides only the
+keys it names, read after the common section.
+
+**Installer and reports.** Uninstall keeps `calibration.ini` unless `%LOCALAPPDATA%\MEVR` is ticked (as now); the problem report
+adds it (redacted as the inis are). Unit tests in `core/vr/Calibration`: the migration's choice (newest `time`, this game first on
+a tie, merged `prompted`) and the override's merge; `tools/setup/test-fake-game.ps1 -Games LE1,LE2` calibrates on LE1's fake
+install and reads it on LE2's.
+
+**The check that closes it.** On the fake headset: calibrate in ME1 (a replayed calibration, sections 9-10), launch ME2 on Save 4:
+no first-run prompt, `calibration: ... taken from` once, the same values in the mod's `calibration:` line as ME1's; ME1 at the
+same pose unchanged (it reads the same numbers from the new file).
+
+### 17.1 Built (2026-11-18, lane AU7, commit 88e9a775 and the log fix after it)
+
+**Where things are.**
+- `src/core/vr/CalibrationFile.hpp` (header-only, so every target that compiles `core/Ini` uses it without a CMake list):
+  `Shared(section, key)` says which keys are the player's (`Calibration.<key>`, `ManualCalibration.<key>`, their
+  `.<GAME>` overrides, `[Calibration] prompted` and `last`); `Get`/`Merged` read a snapshot with this game's override
+  first; `Apply` writes a batch of edits to `calibration.ini.tmp` through Win32's profile API (the copy keeps the names'
+  case and order) and moves it over the file (`MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH`, a few tries for a busy
+  file), refusing when the file is there but unreadable (`Probe`); `Choose` and `Migrate` are the migration.
+- `engine::CalibrationFile()` and `engine::CalibrationSources()` (`engine/SettingsFile.hpp`): one path for host and mod,
+  and the three games' `ASI\LE{n}MEVR.ini` under this install, this game's first.
+- Host: `plugin/Entry.cpp` `PrepareCalibrationFile()` runs the migration in `SpiOnAttach` just before `host::Start` (the mod
+  loads), every game's host (not the LE2 diagnostic host). `plugin/Calibration.cpp` routes `ReadIni`/`WriteIni` by
+  `Shared()` to a cached snapshot of the shared file (`shared::Get`, re-read when its time changes) and to `shared::Write`
+  (refused for the session after a failed first probe); the save is one batch (the old section removed, every key, the
+  kept groups, `time`, `[Calibration] last`); `use` still goes to the game's ini. `SharedSection`/`WriteShared` serve the
+  menu: `plugin/MainMenuSettings` reads the manual rows from the shared file and its `Flush` sends a shared key there.
+- Mod: `game/BodyCalibration.cpp` reads the measurements from one snapshot of the shared file (`Shared::Get`, the game's
+  override first), `[Calibration] use` from the game's ini, and re-reads when either file's time changes or the host says.
+- Dev builds only: `[Debug] calibrationKey = <key>` in the game's ini stands in for the controller type (`DevKey()`; the fake
+  headset names no interaction profile, so without it no section is ever applied by script). Logged once per change.
+- Setup: `install/Report` adds `settings/calibration.ini` when there is one (redacted as the rest); the uninstall rule is
+  unchanged (`%LOCALAPPDATA%\MEVR` goes only with its box, and only once no other game has the mod), its note and Setup's
+  texts now say the calibration lives there.
+
+**Where it differs from the proposal.**
+- The migration runs once per launch over every controller type the sources name, not only the current one (the key is
+  only known after the XR session starts, later than the mod's first read). A type is taken whole: the measured section
+  from the newest `time` (an untimed section, a play position chosen only, is older than any timed one; this game's first on
+  a tie), the manual offsets from the same game, else the first game that has them. Nothing is merged key by key.
+- A game's ini is marked `shared = 1` only when it has calibration sections and all of them are in the shared file; a marked
+  ini is skipped while the shared file exists. If the shared file is lost (deleted by hand), the markers no longer count and
+  the games' own sections are taken again (`tests/CalibrationFileTests.cpp`).
+- The host's path is `engine::CalibrationFile()` itself (the host includes `engine/SettingsFile.hpp`), not a HostServices
+  entry: no HostServices change, so host and mod of different builds still agree on the file.
+- The unit tests are `tests/CalibrationFileTests.cpp`, not `core/vr/Calibration`'s; `test-fake-game.ps1` checks the report's
+  copy (a fake game runs no mod, so it can't calibrate on one game and read on another: the game runs below do).
+
+**The checks (fake headset, 2026-11-18).**
+- ME1 before and after in one launch (session `2026-11-18_14-36-02-au7-me1`): this branch's host with main's mod first
+  (`.modpath` at a copy of main's `LE1MEVR_mod.dll`), then this branch's mod by hot reload; `[Debug] calibrationKey =
+  oculus_touch_controller__meta_quest_3` (the owner's newest section). At attach the host took the owner's five types from
+  `LE1MEVR.ini` (`calibration: [Calibration.oculus_touch_controller__meta_quest_3] taken from LE1MEVR.ini (calibrated
+  2026-11-17 22:50), [ManualCalibration...] from LE1MEVR.ini into calibration.ini`, then the Quest Pro, ivry, oculus and PS VR2
+  sections), merged `prompted` and marked `LE1MEVR.ini`. Main's mod (reading `LE1MEVR.ini`) and this branch's (reading
+  `calibration.ini`) logged the same `calibration: position standing; [Calibration.oculus_touch_controller__meta_quest_3] ...`
+  line character for character (eye, both stance trims and sight lines, spreads, foregrip, eyes 1.84/1.53 m, arms 0.66 m,
+  shoulders 0.43 m, both neutral hands). The six copied sections against the owner's untouched `LE1MEVR.ini`, read through
+  Win32: 147 of 147 values identical. No first-run prompt.
+- ME2 on Save 4 (session `20261118-143830-538-LE2-au7-me2`), the shared file deleted first and `LE1MEVR.ini` back to the
+  owner's (unmarked): ME2's host took the five types from ME1's `LE1MEVR.ini`, ME2's ini (no sections of its own) was not
+  marked, the host logged `controllers ... (section [...] in calibration.ini, the three games' one): calibrated 2026-11-17
+  22:50, prompted before`, the mod's `calibration: position ...` line was ME1's character for character, the snapshot's
+  `calibration` block `loaded: true`, the host's `prompt: false`; no first-run prompt line.
+- That ME2 run showed the dev key's "stands in" line logged every frame (the host's `Layers` calls `UpdateKey` each frame):
+  now once per change.
+- Not run: ME3 (its host and mod take the same code paths); a save in the headset writing the shared file (the save's batch
+  is the old save's keys in one move; `tests/CalibrationFileTests.cpp` covers `Apply`); a real controller type.
+
+## 18. The hands in the palm's plane; the hands under Advanced calibration (2026-11-17)
 
 **The owner's report:** with the controllers held flat Shepard's hands matched, held upright both hands turned in toward
 his body. The snapshots of 2026-11-17 22:35 and 22:49 (Quest 3 over Virtual Desktop) measured the drawn wrists 7-9 cm from

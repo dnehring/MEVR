@@ -21,6 +21,7 @@
 #include "../MevrMetricView.h"              // [MEVR] the plan published to calcview_hook.cpp, the latched routing
 
 #include <atomic>
+#include <algorithm>
 #include <cmath>
 #include <string>
 #include <vector>
@@ -88,8 +89,8 @@ ULONGLONG g_dibrSubStatMs = 0;
 int g_dibrSubEmitted = 0;   // stop after a bounded number of ~2s windows - health-check on launch, not forever
 // Menu/flat-screen quad placement - tunable in the Insert menu (Tracking tab), persisted to the ini.
 // Defaults: closer + bigger than the old constants (2.6m/2.3m read "too small and far" in-headset).
-std::atomic<float> g_monoQuadDistanceM{1.6f};   // meters in front of the face
-std::atomic<float> g_monoQuadWidthM{2.2f};      // meters wide (~69deg at 1.6m)
+std::atomic<float> g_monoQuadDistanceM{1.4f};   // meters in front of the face ([MEVR] ME1's flat panel, docs/knowledge/me1 PRS-18; upstream 1.6)
+std::atomic<float> g_monoQuadWidthM{2.35f};     // meters wide ([MEVR] ME1's 2.35; upstream 2.2, ~69deg at 1.6m)
 // [CINEFLAT] ME1-parity cutscene/conversation screen: the flat cine panel is WORLD-locked (LOCAL space,
 // so head tracking lets you look around it and Insert recenters it) and gets its own zoom on top of the
 // menu screen's dist/size. Menus keep the head-locked quad above untouched.
@@ -921,6 +922,19 @@ void DriveHeadLook(const XrView& centerView, XrView const* stereoViews = nullptr
     //   mode 0 OFF        = head does nothing in the vehicle.
     if (ME2VR::EngineProbe::IsInDrivableVehicle())
     {
+        ME2VR::EngineProbe::SkycarSeatPose seat{};
+        if (ME2VR::EngineProbe::GetSkycarSeatPose(seat))
+        {
+            // Cabin view uses the headset for looking and the original controls for driving.
+            const float sensitivity = ME2VR::CalcViewHook::GetLookSensitivity();
+            const float yawSign = ME2VR::CalcViewHook::GetInvertLookYaw() ? 1.0f : -1.0f;
+            const float pitchSign = ME2VR::CalcViewHook::GetInvertLookPitch() ? -1.0f : 1.0f;
+            constexpr float unitsPerDegree = 65536.0f / 360.0f;
+            const float pitch = std::clamp(pitchSign * pitchDeg * sensitivity, -85.0f, 85.0f);
+            ME2VR::CalcViewHook::SetHeadLook(static_cast<int>(yawSign * WrapDeg(yawDeg) * sensitivity * unitsPerDegree),
+                                           static_cast<int>(pitch * unitsPerDegree), true);
+            return;
+        }
         ME2VR::EngineProbe::ProbeVehicleFields();   // [VEHDIAG] pure-read: which field tracks the crosshair/fire?
         const int vmode = ME2VR::EngineProbe::GetVehicleHeadMode();
         if (vmode == 2 || vmode == 3) { ME2VR::EngineProbe::DriveVehicleAim(yawDeg, pitchDeg); ME2VR::CalcViewHook::SetHeadLook(0, 0, false); return; }
@@ -1723,7 +1737,17 @@ void RunFrame() noexcept
     const bool loadMoviePlaying = loadMovieState == 1;
     const bool binkRecentlyActive = ME2VR::D3DCapture::LastBinkFrameAgeMs() < 250ull;
     const bool binkFullscreen = binkRecentlyActive && gmRaw >= 5 && gmRaw <= 8;
+#if defined(MEVR_ASI)
+    // [MEVR] research/56 "The sequels" (T18): every load ends in mode 6 for 0.3 s with a black picture, which went to ME1's 3D
+    // cinema screen between the load's flat panel and the world; kept as the load's movie until it has lasted 0.5 s.
+    const bool mevrLoadTail = ::MevrSeams::HoldLoadTail(loadMoviePlaying || binkFullscreen, gmRaw);
+    const bool moviePlayback = loadMoviePlaying || binkFullscreen || mevrLoadTail;
+    // [MEVR] ME1's front end (research/56): from start-up to the first load from the menus or the first gameplay, the title
+    // and its menus on the 3D cinema screen, the boot (an unreadable mode: VR for 0.2 s before) and movies flat.
+    const bool mevrFrontEnd = ::MevrSeams::FrontEndHold(gmRaw);
+#else
     const bool moviePlayback = loadMoviePlaying || binkFullscreen;
+#endif
     // [MOVIEOWNER] Real decoder/loading activity outranks ambiguous engine mode 8. With that
     // ground truth available, every non-movie mode-8 scene is an in-engine cinematic.
     const int gmEff = moviePlayback ? 8 : (gmRaw == 8 ? 6 : gmRaw);
@@ -1900,10 +1924,21 @@ void RunFrame() noexcept
         // the mod holds Shepard's view through them, ME1's rule, as ME3's; lane GX4): no cinematic presentation, the room stays
         // in stereo (calcview_hook.cpp holds the view then).
         const bool mevrGalaxyHeld = gm == 6 && ::MevrSeams::GalaxyOwnsPresentation(gm);
-        const bool mevrScreen = !mevrGalaxyHeld && sfrMode && recognizedCine && s_fovCine && !moviePlayback && !s_convoVrLatch &&
-                                ::MevrSeams::CineScreenWanted(gm == 5);
+        // [MEVR] research/56 "The sequels" (T18): ME1's front end (MevrSeams::FrontEndHold above). The title and its menus (the
+        // GUI mode over a live 3D scene) go on ME1's 3D cinema screen, rendered in stereo with head look parked; the boot
+        // before the title, a movie, a dead scene and a load from the menus on the flat panel (GetMenuMode answers the
+        // published state first). Nothing else of Halcyon's cinematic presentation runs while the front end holds.
+        const bool mevrFrontEndScreen = mevrFrontEnd && sfrMode && sceneAlive && !moviePlayback &&
+                                        ::MevrSeams::FrontEndOnScreen() && !::MevrSeams::FrontEndBeforeTitle();
+        ME2VR::D3DCapture::SetMevrFrontEnd(mevrFrontEnd ? (mevrFrontEndScreen ? 2 : 1) : 0);
+        static bool s_mevrFrontEndFov = false;   // the screen's cinematic latch was ours: given back when it ends
+        if (mevrFrontEndScreen) { s_fovCine = true; s_narrowStreak = 0; s_mevrFrontEndFov = true; }
+        else if (s_mevrFrontEndFov) { s_mevrFrontEndFov = false; if (!recognizedCine) { s_fovCine = false; s_narrowStreak = 0; } }
+        const bool mevrScreen = mevrFrontEndScreen ||
+                                (!mevrFrontEnd && !mevrGalaxyHeld && sfrMode && recognizedCine && s_fovCine && !moviePlayback &&
+                                 !s_convoVrLatch && ::MevrSeams::CineScreenWanted(gm == 5));
         ME2VR::CalcViewHook::SetMevrCineScreen(mevrScreen);
-        const bool renderCineInVr = !mevrGalaxyHeld && (renderCineInVrHalcyon || mevrScreen);
+        const bool renderCineInVr = !mevrGalaxyHeld && ((renderCineInVrHalcyon && !mevrFrontEnd) || mevrScreen);
         if (mevrGalaxyHeld) s_fovCine = false;  // the cinematic's flat panel stays down while the mod holds it
 #else
         const bool renderCineInVr = (gm == 5 && (ME2VR::CalcViewHook::GetCineVrConvo() ||
@@ -1911,7 +1946,11 @@ void RunFrame() noexcept
                                     (gm == 6 && ME2VR::CalcViewHook::GetCineVrCutscene());
 #endif
         ME2VR::CalcViewHook::SetVrCineActive(renderCineInVr && s_fovCine);
+#if defined(MEVR_ASI)
+        ME2VR::CalcViewHook::SetCinematic(s_fovCine && recognizedCine && !renderCineInVr && !mevrFrontEnd);   // [MEVR] T18
+#else
         ME2VR::CalcViewHook::SetCinematic(s_fovCine && recognizedCine && !renderCineInVr);
+#endif
 
         // [VRSTATE] one line per CHANGE of the whole flat/VR decision, UNCAPPED. The old capped logs
         // (4 frame-mode lines, 20 GM7PAUSE lines) burned their budget at boot and went silent for the
@@ -1930,12 +1969,19 @@ void RunFrame() noexcept
                                  (vrCine ? 1u<<18 : 0) | (paused ? 1u<<19 : 0) |
                                  (sceneAlive ? 1u<<20 : 0) | (loadMoviePlaying ? 1u<<21 : 0) | (binkFullscreen ? 1u<<22 : 0) |
                                  (screen3d ? 1u<<23 : 0);   // [MEVR]
-            if (key != s_lastKey)
+#if defined(MEVR_ASI)
+            const unsigned mevrKey = (mevrFrontEnd ? 1u<<24 : 0) | (mevrLoadTail ? 1u<<25 : 0);   // [MEVR] T18
+#else
+            const unsigned mevrKey = 0;
+#endif
+            if ((key | mevrKey) != s_lastKey)
             {
-                s_lastKey = key;
+                s_lastKey = key | mevrKey;
                 ME2VR::Log::Line(std::string("[VRSTATE] gm ") + std::to_string(gmRaw) +
                     (gmEff != gmRaw ? (" (eff " + std::to_string(gmEff) +
-                        (loadMoviePlaying ? " LOADMOVIE)" : (binkFullscreen ? " BINK)" : " ENGCINE)"))) : std::string()) +
+                        (loadMoviePlaying ? " LOADMOVIE)" : (binkFullscreen ? " BINK)" :
+                         ((mevrKey & (1u<<25)) != 0 ? " LOADTAIL)" : " ENGCINE)")))) : std::string()) +
+                    ((mevrKey & (1u<<24)) != 0 ? " frontend" : "") +
                     (paused ? " paused" : " live") + (sceneAlive ? " alive" : " dead") +
                     (binkFullscreen ? " BINK" : "") +
                     " -> " + (flatNow ? "FLAT menu panel" :
@@ -2007,16 +2053,12 @@ void RunFrame() noexcept
                 const float mdist = g_monoQuadDistanceM.load(std::memory_order_relaxed);
                 float mw          = g_monoQuadWidthM.load(std::memory_order_relaxed);
                 // [CINEFLAT] cutscene/conversation screen = ME1's model: world-locked (head tracking;
-                // Insert recenters), zoom slider on top. Menus stay head-locked exactly as before.
+                // Insert recenters), zoom slider on top.
+                // [MEVR] Menus are world-locked too (the owner, 2026-11-17: the menus followed the face; ME1's
+                // flat screens stand in the room, and ME3's menus already share this world-locked panel).
+                monoQuad.space = g_localSpace;
                 if (ME2VR::CalcViewHook::GetCinematic())
-                {
-                    monoQuad.space = g_localSpace;
                     mw *= g_cineScreenZoom.load(std::memory_order_relaxed);
-                }
-                else
-                {
-                    monoQuad.space = g_viewSpace;
-                }
                 monoQuad.pose.position.z = -mdist;
                 monoQuad.size.width = mw;
                 monoQuad.size.height = mw * aspect;
@@ -3050,7 +3092,7 @@ void RunFrame() noexcept
         // movie (plugin/TransitionFade, research/52): the frame's last layer. 0 the world, 1 the screen, 2 a cinematic on the
         // flat panel (Halcyon's flat cine, a movie inside a scene), 3 another flat panel (menus, loads), -1 none.
         const int mevrView = rendered ? 0 : mevrScreenLayerCount > 0 ? 1
-                           : haveMono ? ((ME2VR::CalcViewHook::GetCinematic() || binkFullscreen) ? 2 : 3) : -1;
+                           : haveMono ? ((ME2VR::CalcViewHook::GetCinematic() || binkFullscreen || mevrLoadTail) ? 2 : 3) : -1;   // the load's tail is its movie (T18)
         if (layerCount < kMevrMaxLayers)
             if (const void* fade = ::MevrSeams::TransitionFadeLayer(g_session, g_viewSpace, g_ctx, mevrView))
                 layers[layerCount++] = static_cast<const XrCompositionLayerBaseHeader*>(fade);
@@ -3079,6 +3121,7 @@ float GetMenuScreenDist() noexcept { return g_monoQuadDistanceM.load(std::memory
 void  SetMenuScreenDist(float m) noexcept { g_monoQuadDistanceM.store((m < 0.4f) ? 0.4f : (m > 6.0f ? 6.0f : m), std::memory_order_relaxed); }
 float GetMenuScreenSize() noexcept { return g_monoQuadWidthM.load(std::memory_order_relaxed); }
 void  SetMenuScreenSize(float m) noexcept { g_monoQuadWidthM.store((m < 0.8f) ? 0.8f : (m > 6.0f ? 6.0f : m), std::memory_order_relaxed); }
+void  MevrRecommendedEyeSize(unsigned* w, unsigned* h) noexcept { if (w) *w = g_mevrRecommendedW; if (h) *h = g_mevrRecommendedH; }   // [MEVR]
 float GetCineScreenZoom() noexcept { return g_cineScreenZoom.load(std::memory_order_relaxed); }
 void  SetCineScreenZoom(float z) noexcept { g_cineScreenZoom.store((z < 0.5f) ? 0.5f : (z > 3.0f ? 3.0f : z), std::memory_order_relaxed); }
 // [COMFORT] Insert-menu panel placement (ME1's Comfort tab).

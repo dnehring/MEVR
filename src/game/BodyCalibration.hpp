@@ -9,10 +9,15 @@
 #include <string>
 
 // The guided calibration's results, as the mod uses them (research/25; the host runs the sequence,
-// plugin/Calibration, and writes them). <GAME>MEVR.ini next to the host ASI:
+// plugin/Calibration, and writes them). Since 2026-11-18 one calibration for the three games (research/25 section 17,
+// core/vr/CalibrationFile): the measurements in %LOCALAPPDATA%\MEVR\calibration.ini, the settings in <GAME>MEVR.ini next
+// to the host ASI:
 //
-//   [Calibration]           use = 1 (0: ignore the calibration: everything as before it existed)
-//                           eye = auto | left | right (the next calibration's aiming eye), last, prompted
+//   <GAME>MEVR.ini [Calibration]   use = 1 (0: ignore the calibration: everything as before it existed)
+//                                  eye = auto | left | right (the next calibration's aiming eye), grabOffset,
+//                                  shared = 1 (this game's old sections were taken into calibration.ini)
+//   calibration.ini [Calibration]  last, prompted
+//   [Calibration.<key>.<GAME>]     (calibration.ini) overrides only the keys it names, for that game
 //   [Calibration.<key>]     one per controller type (the interaction profile and the headset,
 //                           vr::calibration::ProfileKey), written whole by each save; the host says which key is
 //                           current (HostServices v15), else [Calibration] last:

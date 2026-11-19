@@ -90,8 +90,8 @@ unsigned g_dibrFullFrames = 0, g_dibrFallbackFrames = 0, g_dibrBlackFrames = 0;
 ULONGLONG g_dibrSubStatMs = 0;
 // [COMFORT] Panel placement, runtime-tunable (ME2 parity). Were fixed constants; the cine/mono
 // screen and the Insert panel both needed moving per-person, which is what the Comfort tab is for.
-std::atomic<float> g_monoQuadDistanceM{2.2f};   // meters in front of the face
-std::atomic<float> g_monoQuadWidthM{3.2f};      // meters wide
+std::atomic<float> g_monoQuadDistanceM{1.4f};   // meters in front of the face ([MEVR] ME1's flat panel, docs/knowledge/me1 PRS-18; upstream 2.2)
+std::atomic<float> g_monoQuadWidthM{2.35f};     // meters wide ([MEVR] ME1's 2.35; upstream 3.2)
 std::atomic<float> g_cineScreenZoom{1.0f};      // [VRCINE] flat cine screen zoom, ME2 range 0.5-3
 std::atomic<float> g_menuQuadDistanceM{1.5f};
 std::atomic<float> g_menuQuadWidthM{1.4f};
@@ -1757,18 +1757,29 @@ void RunFrame() noexcept
         // [MEVR] the galaxy map's opening and closing cinematics in the CIC are the map's (MevrSeams::GalaxyOwnsPresentation:
         // the mod holds Shepard's view through them, ME1's rule): no cinematic presentation, the room stays in stereo.
         const bool mevrGalaxyHeld = ::MevrSeams::GalaxyOwnsPresentation(gm);
-        const bool mevrScreen = !mevrGalaxyHeld && sfrMode && cine && vrEligible && !menuMono && (gm == 7 || gm == 8) &&
-            ::MevrSeams::CineScreenWanted(gm == 7);
+        // [MEVR] research/56 "The sequels" (T18): ME1's front end (d3d_capture.cpp's UpdatePresentationState decided it this
+        // Present): the title and its menus on ME1's 3D cinema screen (in stereo where a scene renders, else the backbuffer in
+        // both eyes on it), head look parked; its flat panel (the boot, a load from the menus) is the menu presentation. No
+        // other cinematic presentation of Halcyon's while the front end holds.
+        const int mevrFrontEnd = ME2VR::D3DCapture::GetMevrFrontEnd();
+        // [MEVR] ME1's and ME2's rule (the owner, 2026-11-18: the 3D screen is ME3's default as on the other two): every
+        // corroborated cinematic whatever its mode (vrEligible already leaves out the measured flat sources: the galaxy map, the
+        // title, an unearned movie). It was admitted in modes 7 and 8 only until then, a cinematic in any other mode flat.
+        const bool mevrScreen = (mevrFrontEnd == 2 && sfrMode) ||
+            (mevrFrontEnd == 0 && !mevrGalaxyHeld && sfrMode && cine && vrEligible && !menuMono &&
+             ::MevrSeams::CineScreenWanted(gm == 7));
         ME2VR::CalcViewHook::SetMevrCineScreen(mevrScreen);
-        const bool renderCineInVr = !mevrGalaxyHeld && (mevrScreen || (cine && vrEligible && (!menuMono || fpConvo) &&
+        const bool renderCineInVr = !mevrGalaxyHeld && (mevrScreen || (mevrFrontEnd == 0 && cine && vrEligible &&
+                                    (!menuMono || fpConvo) &&
                                     (fpConvo || (convoLike ? ME2VR::CalcViewHook::GetCineVrConvo()
                                                           : ME2VR::CalcViewHook::GetCineVrCutscene()))));
         ME2VR::CalcViewHook::SetVrCineActive(renderCineInVr);
-        ME2VR::CalcViewHook::SetCinematic(cine && !renderCineInVr && !mevrGalaxyHeld);
+        ME2VR::CalcViewHook::SetCinematic(cine && !renderCineInVr && !mevrGalaxyHeld && mevrFrontEnd == 0);
         // [CINEVR] one line per presentation flip: this is what verifies (or corrects) the LE3
         // convo/cutscene mapping from a single play session.
         static int s_prevCineState = -1;
-        const int cineState = (!cine || mevrGalaxyHeld) ? 0 : mevrScreen ? (convoLike ? 4 : 5) : (renderCineInVr ? (convoLike ? 2 : 3) : 1);
+        const int cineState = ((!cine && !mevrScreen) || mevrGalaxyHeld) ? 0 :   // [MEVR] the front end's screen counts
+            mevrScreen ? (convoLike ? 4 : 5) : (renderCineInVr ? (convoLike ? 2 : 3) : 1);
         static const char* kNames[6] = { "none", "FLAT panel", "VR conversation", "VR cutscene",
             "3D conversation screen", "3D cutscene screen" };
         if (cineState != s_prevCineState)
@@ -1880,8 +1891,12 @@ void RunFrame() noexcept
         else if (s_sfrNeedsFreshPair && ME2VR::D3DCapture::SfrCaptureAgePresents() <= 1)
             s_sfrNeedsFreshPair = false;
     }
+    // [MEVR] research/56 "The sequels" (T18): the front end's 3D cinema screen needs no captured pair: ME3's title renders no
+    // scene (no CalcSceneView of the player's), so the stereo submit shows the live frame in both eyes on the screen
+    // (stereoSource false there: no disparity is made up) until a pair is captured.
+    const bool mevrFrontEndScreen = sfrMode && ME2VR::D3DCapture::GetMevrFrontEnd() == 2 && ME2VR::CalcViewHook::GetMevrCineScreen();
     const bool stereoSourceReady = sfrMode
-        ? (!s_sfrNeedsFreshPair && ME2VR::D3DCapture::GetSfrPass0Texture() != nullptr)
+        ? ((!s_sfrNeedsFreshPair && ME2VR::D3DCapture::GetSfrPass0Texture() != nullptr) || mevrFrontEndScreen)
         : (g_framesSinceSplit < kSbsHoldFrames);
     sbsFrame = stereoIntent && stereoSourceReady;
     // [MEVR] life-size stereo (research/30 section 9.5): a frame shown flat (a menu, a flat cinematic, a stalled capture, the
@@ -2864,6 +2879,7 @@ float GetMenuScreenDist() noexcept { return g_monoQuadDistanceM.load(std::memory
 void  SetMenuScreenDist(float m) noexcept { g_monoQuadDistanceM.store((m < 0.4f) ? 0.4f : (m > 6.0f ? 6.0f : m), std::memory_order_relaxed); }
 float GetMenuScreenSize() noexcept { return g_monoQuadWidthM.load(std::memory_order_relaxed); }
 void  SetMenuScreenSize(float m) noexcept { g_monoQuadWidthM.store((m < 0.8f) ? 0.8f : (m > 6.0f ? 6.0f : m), std::memory_order_relaxed); }
+void  MevrRecommendedEyeSize(unsigned* w, unsigned* h) noexcept { if (w) *w = g_mevrRecommendedW; if (h) *h = g_mevrRecommendedH; }   // [MEVR]
 float GetMenuPanelDist() noexcept { return g_menuQuadDistanceM.load(std::memory_order_relaxed); }
 void  SetMenuPanelDist(float m) noexcept { g_menuQuadDistanceM.store((m < 0.8f) ? 0.8f : (m > 4.0f ? 4.0f : m), std::memory_order_relaxed); }
 float GetMenuPanelSize() noexcept { return g_menuQuadWidthM.load(std::memory_order_relaxed); }

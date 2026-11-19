@@ -68,6 +68,12 @@ struct Link {
 
 // Finds the game's functions (each game's own). False until the script packages have loaded.
 bool TryStartup();
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+// The sequels' gate of the physical controls on foot (the strokes, the held chest and receiver of game/Throwables and
+// game/Vent): [Throwables] enabled, our reflection layer up, game mode 0 with a pawn, a head-tracked view, active controllers
+// (not calibrating) and a view anchor. False with the reason in `why`. Game thread.
+bool PhysicalControlsOnFoot(std::string& why);
+#endif
 // Each tick after game/Throwables: ME2 feeds the physical rules itself; ME3 runs its staged rules; ME1's strokes come through
 // game/Throwables (StepPhysical), so here it does nothing.
 void Tick(double deltaSeconds, Link const&);
@@ -82,6 +88,14 @@ bool Busy();
 // ME3's staged diagnostics: a light or heavy request now, from `hand`, through Strike's rules (a fresh Link: no retained
 // menu snapshot or queued command). Reports "dispatched" separately from observing an action; never impact or damage.
 std::string Request(ik::melee::Intent, int hand, Link const&);
+#if defined(MEVR_GAME_LE3)
+// ME3's omni-blade with the weapon away (docs/trilogy-plan.md "Answered 2026-11-18, later", option A): the right hand's fist
+// (grip and trigger held, nothing else) with no weapon in hand. Mod.cpp's hand availability counts it as released controls,
+// so a fist stroke reaches Strike, whose DispatchFist starts the class's heavy melee action itself.
+bool FistAway(int hand);
+// `mevr melee punch` on ME3: the right fist's strike now through the same rules (the weapon must be away: `mevr weapon away`).
+std::string Punch(Link const&);
+#endif
 // `mevr melee punch|strike` (tests, no tracked controllers needed): the right hand's strike now, through Strike's rules
 // (punch: a fist; any direction, the enemy within meleeReachM). Every game. Game thread.
 std::string Console(std::string_view args);

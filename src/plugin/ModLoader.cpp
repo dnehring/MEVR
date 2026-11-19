@@ -12,6 +12,9 @@
 #include "plugin/ProcessEventHook.hpp"
 #include "engine/SettingsFile.hpp"
 
+#if defined(MEVR_WITH_HALCYON_LE2)
+#include "plugin/MotionBlurGuard.hpp"
+#endif
 #if defined(MEVR_WITH_HALCYON_LE3)
 #include "plugin/HalcyonLe3.hpp"
 #include "plugin/MotionBlurGuard.hpp"
@@ -39,6 +42,7 @@
 #include "core/vr/SquadPlace.hpp"
 #include "core/vr/SquadMenu.hpp"
 #include "core/vr/Sights.hpp"
+#include "core/vr/ScopeCapture.hpp"
 #include "plugin/FloorLock.hpp"
 #include "plugin/PadMerge.hpp"
 #include "plugin/RenderLevers.hpp"
@@ -312,6 +316,7 @@ void ForgetRendererModState() {
     xr_host::ForgetHaptics();
 #if defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
     traversal_cue::Forget();
+    vr::scope_capture::Reset();  // the scope's picture goes back to the eye copy (LE1's: ForgetLe1ModState)
 #endif
 }
 #endif
@@ -418,7 +423,9 @@ HostServices WithGameMenuRequest(HostServices services) {
     services.takeGameMenuRequest = &HostTakeGameMenuRequest;
     return services;
 }
-// v20: the scope's real zoomed render (game/ScopeCapture, plugin/ScopeCaptureSource, research/39).
+#endif
+#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
+// v20: the scope's real zoomed render (game/ScopeCapture, plugin/ScopeCaptureSource, research/39), every game's host.
 void HostSetScopeCapture(vr::scope_capture::Capture const* capture) {
     if (capture != nullptr) {
         vr::scope_capture::Publish(*capture);
@@ -431,6 +438,8 @@ HostServices WithScopeCapture(HostServices services) {
     services.setScopeCapture = &HostSetScopeCapture;
     return services;
 }
+#endif
+#if defined(MEVR_WITH_HALCYON)
 void HostSetInteractLabel(vr::interact::Label const* label) {
     if (label != nullptr) {
         vr::interact::Publish(*label);
@@ -616,7 +625,8 @@ HostServices BuildServices() {
     services.traversalPresentationSize = static_cast<std::uint32_t>(sizeof(vr::traversal::Presentation));
     services.setTraversalPresentation = &halcyon_le3::SetTraversalPresentation;
     services.thespianInputBlocked = &halcyon_le3::ThespianInputBlocked;
-    // LE3 uses the shared eye-image scope tap. The native scene-capture producer remains unavailable.
+    // The scope's zoomed render (game/ScopeCapture): the mod's own scene capture, sampled by SightLayers; else the eye tap.
+    services = WithScopeCapture(services);
 #endif
 #if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2)
     services = WithVoice(WithFloorLock(WithHudPieces(WithPadMerge(WithSights(WithVignette(WithRenderer(services)))))));  // both renderers' modules
@@ -633,8 +643,10 @@ HostServices BuildServices() {
     };
 #endif
 #if defined(MEVR_WITH_HALCYON_LE2)
+    services.motionBlurProtected = &motion_blur_guard::ProtectsGameplay;  // the menu-return reapply stands down while it protects
     services = WithTraversal(services);
     services = WithGalaxyHologram(services);  // the galaxy map over the CIC's projector (game/GalaxyProjectorFlow, the shared host)
+    services = WithScopeCapture(services);    // the scope's zoomed render (game/ScopeCapture), as LE1's and LE3's
 #endif
 #if defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
     services.interactLabelSize = static_cast<std::uint32_t>(sizeof(vr::interact::Label));

@@ -30,6 +30,7 @@
 #include "core/PngFile.hpp"
 #include "core/vr/Colour.hpp"
 #include "core/vr/MenuSettings.hpp"
+#include "core/vr/RenderTarget.hpp"
 #include "core/vr/PerformanceModes.hpp"
 #include "core/vr/OmniRail.hpp"
 #include "core/vr/Thespian.hpp"
@@ -67,6 +68,7 @@ namespace {
 using Microsoft::WRL::ComPtr;
 namespace fs = std::filesystem;
 namespace ms = mevr::vr::menu_settings;
+namespace rt = mevr::vr::render_target;
 
 double gClock = 0.0;  // the time RmlUi animates with
 
@@ -489,7 +491,7 @@ int main(int argc, char** argv) {
     save("section-body-seated");
     model.SetText("play_position", "standing");
     model.SetText("t_crouch", "1.02");
-    auto scrolled = [&](char const* section) {
+    auto scrolled = [&](char const* section, char const* prefix = "section-") {
         model.SetText("section", section);
         frames(10);
         Rml::Element* const content = element("content");
@@ -501,7 +503,7 @@ int main(int argc, char** argv) {
         for (float top = page; top < content->GetScrollHeight() - 40.0f && n <= 4; top += page, ++n) {
             content->SetScrollTop(top);
             frames(10);
-            save(std::string("section-") + section + "-" + std::to_string(n));
+            save(std::string(prefix) + section + "-" + std::to_string(n));
         }
         content->SetScrollTop(0.0f);
     };
@@ -1188,6 +1190,17 @@ int main(int argc, char** argv) {
             model.SetText("section", section);
             frames(30);
             save(std::string("le2-section-") + section);
+        }
+        // Display's Image quality on a sequel (lane AU4): the render size follows the headset (0.85 of a PS VR2 eye at sides
+        // in multiples of 8) and the upscale works; the Performance modes and steady cutscenes stay greyed.
+        {
+            rt::Shape const eights{8, 0.0f};
+            model.SetNumber("headset_known", 1);
+            model.SetText("quality", rt::ResolutionChoice(eights, 2400, 2448, 2824, 2880));
+            model.SetText("quality_text", ms::SizeText(2400, 2448));
+            model.SetText("quality_note", "applies after a restart (now rendering " + ms::SizeText(4096, 2304) + ")");
+            model.SetText("headset_text", rt::HeadsetSizesText(eights, 2824, 2880));
+            scrolled("display", "le2-section-");
         }
         model.SetText("section", "advanced");
         for (char const* tab : {"tracking", "perf", "graphics", "hud", "profiles", "diag"}) {
