@@ -159,7 +159,7 @@ vr::controllers::State OnFrameBegun(XrSession session, XrSpace space, XrTime tim
     main_menu::NoteControllers(state);
     bool const focusedOrReplay = focused || testloop::ReplayDrivesInputs();
     calibration::NoteFocused(focusedOrReplay);  // the first-run prompt's clocks run only while it can be seen
-    bool const liveAdjustment = main_menu::LiveAdjusting();
+    bool const liveAdjustment = main_menu::HandsShown();  // live adjustment, or the hands under Advanced calibration
     auto const manual = main_menu::PreviewAdjustments(calibration::ManualAdjustments());
     vr::controllers::State published = calibration::Active() || (main_menu::IsOpen() && !liveAdjustment)
         ? calibration::Hidden(state) : vr::manual_calibration::Apply(state, manual);

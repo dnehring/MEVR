@@ -33,6 +33,7 @@ struct Values {
     std::optional<double> armLength;
     std::optional<double> shoulderWidth;
     std::optional<XrQuaternionf> handTrim[2];  // the neutral hand trims (0 left, 1 right), research/25 section 10
+    float handTiltRemovedDeg[2] = {0.0f, 0.0f};  // the saved trims' tilt out of the palm's plane, taken out at load
     std::optional<cal::Stance> pistol;
     std::optional<cal::Stance> rifle;
 };
@@ -139,6 +140,12 @@ Values ReadValues(fs::path const& path, std::string const& key) {
     v.shoulderWidth = Number(path, section, "shoulderWidthM", 0.15, 0.75);
     v.handTrim[0] = cal::ParseRotation(Read(path, section, "handTrimLeft"));
     v.handTrim[1] = cal::ParseRotation(Read(path, section, "handTrimRight"));
+    // A trim saved before 2026-11-17 may point the fingers out of the palm's plane (research/25 section 17): brought into it.
+    for (int side : {0, 1}) {
+        if (v.handTrim[side]) {
+            v.handTrim[side] = cal::PalmPlaneHandTrim(*v.handTrim[side], &v.handTiltRemovedDeg[side]);
+        }
+    }
     int const eye = Read(path, section, "eye") == "left" ? 0 : 1;
     v.pistol = ReadStance(path, section, "pistol", eye);
     v.rifle = ReadStance(path, section, "rifle", eye);
@@ -170,7 +177,12 @@ std::string Describe(Values const& v) {
             : !v.rifle       ? " (the long guns follow the controller's aim pose)"
                              : "",
         meters(v.standEye), meters(v.crouchEye), meters(v.armLength), meters(v.shoulderWidth),
-        v.handTrim[0] && v.handTrim[1] ? "both" : v.handTrim[0] ? "left only" : v.handTrim[1] ? "right only" : "none (the [Hands] hand angle)");
+        (v.handTrim[0] && v.handTrim[1] ? std::string("both") : v.handTrim[0] ? std::string("left only") : v.handTrim[1] ? std::string("right only")
+                                                                                                    : std::string("none (the [Hands] hand angle)")) +
+            (v.handTrim[0] || v.handTrim[1]
+                    ? std::format(" (in the palm's plane: {:.0f} deg of tilt taken out on the left, {:.0f} on the right)", v.handTiltRemovedDeg[0],
+                          v.handTiltRemovedDeg[1])
+                    : std::string()));
 }
 
 void Load(char const* why) {

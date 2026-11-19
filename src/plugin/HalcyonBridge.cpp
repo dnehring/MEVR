@@ -245,7 +245,7 @@ void OnFrameBegun(void* session, void* space, std::int64_t predictedDisplayTime)
     auto manual = mevr::host::calibration::ManualAdjustments();
     bool liveAdjustment = false;
 #if defined(MEVR_WITH_MAIN_MENU)
-    liveAdjustment = mevr::host::main_menu::LiveAdjusting();
+    liveAdjustment = mevr::host::main_menu::HandsShown();  // live adjustment, or the hands under Advanced calibration
     manual = mevr::host::main_menu::PreviewAdjustments(manual);
 #endif
     mevr::host::floor_lock::SetManualHeight(manual.Height());

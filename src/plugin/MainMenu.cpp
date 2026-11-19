@@ -84,6 +84,7 @@ constexpr float kDeadBandPx = 1.5f;
 // ---- Any thread -----------------------------------------------------------------------------------------------
 std::atomic<bool> gOpen{false};
 std::atomic<bool> gLiveAdjusting{false};
+std::atomic<bool> gHandsPreview{false};  // Shepard's hands under Advanced calibration (TickHandsPreview)
 std::atomic<bool> gPauseWanted{false};
 vr::game_menu::Slot gGameRequest;  // what the Game menu or Holster button asked the mod to do (HostServices v19), not yet taken
 vr::game_menu::Offers gGameOffers;  // what the mod says the game entries can do now (HostServices v44): Leave
@@ -161,6 +162,7 @@ struct State {
     double gpuMs = 0.0;
     int gpuSamples = 0;
     double lastCpuMs = -1.0, lastGpuMs = -1.0, lastRendersPerSecond = 0.0;
+    std::string handsPreviewRefused;  // the hands preview's last logged reason (logged once per reason)
 };
 State g;
 vr::live_calibration::Session gLiveEdit;
@@ -190,12 +192,48 @@ void EndLive(bool save, char const* reason) {
     log::Info("live calibration: {}", reason);
 }
 
+// Why live adjustment or the hands preview can't run now (empty: it can). The log names the first reason: a refused start
+// left no trace on 2026-11-17, and the owner saw no note either.
+std::string NotReadyForHands(Frame const& frame) {
+    if (!frame.worldFrame) return "the head-tracked world isn't on screen";
+    if (!frame.headValid) return "the headset isn't tracked";
+    if (frame.gameMode != 0) return std::format("not on foot (game mode {})", frame.gameMode);
+    if (!g.live.active || GetTickCount64() - g.live.timeMs > 250) return "no fresh controller sample";
+    if (!g.live.left.gripValid || !g.live.right.gripValid) return "a controller isn't tracked";
+    if (calibration::Running()) return "the guided calibration is running";
+    if (calibration::ProfileKey().empty()) return "no controller type known yet";
+    return {};
+}
+
+// The hands while Advanced calibration is open (the owner, 2026-11-17: "just see my hands while making these
+// adjustments"; research/25 section 17): as live adjustment does, the mod gets the poses without buttons, the world runs so
+// arm IK poses Shepard, and the sliders' values reach the hands as they're written. Not on the rest of the menu.
+void TickHandsPreview(Frame const& frame) {
+    bool const wanted = gOpen.load() && !LiveAdjusting() && g.model->Get().Text("section") == "body" && g.model->Get().Flag("manual_expanded");
+    std::string const why = wanted ? NotReadyForHands(frame) : std::string();
+    bool const on = wanted && why.empty();
+    if (wanted && !on && why != g.handsPreviewRefused) {
+        log::Info("main menu: Shepard's hands can't be shown under Advanced calibration: {}", why);
+    }
+    g.handsPreviewRefused = wanted ? why : std::string();
+    if (on == gHandsPreview.load()) return;
+    gHandsPreview.store(on);
+    bool const shown = on || LiveAdjusting();  // live adjustment keeps its own gates when it takes over from the preview
+    calibration::SetManualPreviewActive(shown);
+    gPauseWanted.store(!shown && g.settings->PauseWanted());
+    log::Info("main menu: Shepard's hands {} (Advanced calibration {}; the game {} behind the menu)", on ? "shown" : "hidden",
+        on ? "open" : "closed", on ? "runs" : g.settings->PauseWanted() ? "pauses" : "runs");
+}
+
 void BeginLive(Frame const& frame) {
-    if (!frame.worldFrame || !frame.headValid || frame.gameMode != 0 || !g.live.active || GetTickCount64() - g.live.timeMs > 250 ||
-        !g.live.left.gripValid || !g.live.right.gripValid || calibration::Running() || calibration::ProfileKey().empty()) {
-        g.model->SetText("manual_live_note", "Start on foot with the headset and both controllers tracked.");
+    if (std::string const why = NotReadyForHands(frame); !why.empty()) {
+        g.model->SetText("manual_live_note", std::format("Can't adjust live: {}.", why));
+        g.model->Refresh();
+        g.needRender = true;
+        log::Info("live calibration: refused: {}", why);
         return;
     }
+    log::Info("live calibration: started on the {} hand", g.model->Get().Text("manual_hand") == "left" ? "left" : "right");
     g.settings->Closed(); // flush any sliders before taking the rollback baseline
     calibration::InvalidateManualAdjustments();
     gLiveProfile = calibration::ProfileKey();
@@ -946,6 +984,8 @@ bool IsOpen() {
 }
 
 bool LiveAdjusting() { return gLiveAdjusting.load(std::memory_order_relaxed); }
+bool HandsPreview() { return gHandsPreview.load(std::memory_order_relaxed); }
+bool HandsShown() { return LiveAdjusting() || HandsPreview(); }
 
 vr::manual_calibration::Settings PreviewAdjustments(vr::manual_calibration::Settings const& saved) {
     return LiveAdjusting() && gLiveProfile == calibration::ProfileKey() ? gLiveEdit.draft : saved;
@@ -961,7 +1001,7 @@ std::uint32_t ModFlags() {
     if (!gOpen.load(std::memory_order_relaxed)) {
         return rail;
     }
-    return kMainMenuOpen | (!LiveAdjusting() && gPauseWanted.load(std::memory_order_relaxed) ? kMainMenuPause : 0u) | rail;
+    return kMainMenuOpen | (!HandsShown() && gPauseWanted.load(std::memory_order_relaxed) ? kMainMenuPause : 0u) | rail;
 }
 
 void SetOpen(bool open, char const* why) {
@@ -1010,6 +1050,11 @@ void SetOpen(bool open, char const* why) {
         if (g.model != nullptr) {
             g.model->SetNumber("first_run", 0.0f);  // the welcome line is for that one opening
         }
+        if (gHandsPreview.exchange(false)) {
+            calibration::SetManualPreviewActive(false);
+            log::Info("main menu: Shepard's hands hidden (the menu closed)");
+        }
+        g.handsPreviewRefused.clear();
         gPauseWanted.store(false);
     }
     log::Info("main menu: {} ({})", open ? "opened" : "closed", why != nullptr ? why : "?");
@@ -1129,7 +1174,7 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
     if (now - g.lastRefreshMs >= kRefreshEveryMs) {
         g.lastRefreshMs = now;
         g.model->Refresh();
-        gPauseWanted.store(!LiveAdjusting() && g.settings->PauseWanted());
+        gPauseWanted.store(!HandsShown() && g.settings->PauseWanted());
     }
     if (now - g.lastLevelMs >= 33 && g.model->Get().Text("section") == "voice") {
         // The microphone's level (research/54 "The menu's Voice page"): a meter's quick rise and slow fall, in whole percents
@@ -1145,6 +1190,7 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) {
     }
 
     g.settings->Tick(g.live, frame.headValid, frame.head.position);
+    TickHandsPreview(frame);
     if (LiveAdjusting()) {
         TickLive(frame, dt);
     } else {

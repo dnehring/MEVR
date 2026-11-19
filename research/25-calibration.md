@@ -576,3 +576,37 @@ labelled known-good; emulated interaction-profile names alone are not enough to 
 including raw-reference transforms and preservation of source opacity through projection. Inspected both eye
 reference images, live-panel legend and selected-hand baseline row under `scratch/controller-guides-2026-11-12/`.
 The menu preview reported no binding/style errors. No deployment or physical-headset acceptance was performed.
+
+## 17. The hands in the palm's plane; the hands under Advanced calibration (2026-11-17)
+
+**The owner's report:** with the controllers held flat Shepard's hands matched, held upright both hands turned in toward
+his body. The snapshots of 2026-11-17 22:35 and 22:49 (Quest 3 over Virtual Desktop) measured the drawn wrists 7-9 cm from
+the grips (`mod.armIk.hands.fromGripM`), the wrist offset as built, so the place was right and the hands' direction wrong.
+
+**The cause, measured:** the neutral trim saved on 2026-11-07 (`[Calibration.oculus_touch_controller__meta_quest_3]`
+`handTrimLeft`/`handTrimRight`) put the fingers about 29 degrees out of the palm's plane, toward the palm on both hands (the
+grip's +X is the palm's normal; the fingers in grip axes: left (+0.48, -0.87, -0.12), right (-0.42, -0.86, -0.28); the
+default (0, -1, 0); the PS VR2 calibration of October about 9 degrees). Flat, palms down, the tilt points the fingers down,
+unseen; upright, palms facing, it swings both hands 30 degrees inward (in the upright shot the controllers' aim pointed
+20 degrees outward, the drawn fingers inward). Section 10's solve put the fingers along the shoulder-to-grip line, which a
+bent or cocked wrist (a Touch controller held naturally) moves off the hand's own line; nothing kept it in the palm.
+
+**The fix:** `cal::NeutralHandTrim` drops the measured direction's X (the palm's normal) before the least turn, so a solve
+turns the hand only within the palm's plane (its roll the default's, as before); `cal::PalmPlaneHandTrim` brings a saved trim
+into the plane, and `game/BodyCalibration` applies it at load, so calibrations saved before need no new run. The log's
+`calibration:` line says how much it took out (`neutral hands both (in the palm's plane: N deg of tilt taken out ...)`).
+Tests: `tests/Main.cpp` (the Quest 3 trim: 25-33 degrees taken out, the result in the plane; a tilted measurement gives the
+untilted one's trim). **[verify] in the headset:** upright hands no longer turn inward; flat ones unchanged.
+
+**The hands under Advanced calibration** (the owner: "just see my hands while making these adjustments, so we don't have to
+get into some sort of specialized mode"; only Advanced calibration, not the guided run or the weapon aims): while the menu
+shows Body & calibration with Advanced calibration expanded, on foot with both controllers tracked, the host does what live
+adjustment does without its compact panel (`main_menu::HandsPreview`, `HandsShown`): the mod gets the poses without
+buttons (`live_calibration::PosesOnly`), the menu's pause is lifted so arm IK poses Shepard, and the calibration flag holds
+the pose-driven interactions off (`calibration::SetManualPreviewActive`). The sliders' offsets reach the hands as they are
+written to the file. Logs `main menu: Shepard's hands shown|hidden (...)`, and once per reason `main menu: Shepard's hands
+can't be shown under Advanced calibration: <why>`. The game runs behind the menu while it shows them.
+
+**Live adjustment's refusals are named:** a refused Adjust live had left no log line and, by the owner's account, no note
+(two presses at 22:49:44 and :49). The refusal now says why on the panel (`Can't adjust live: <why>.`) and in the log
+(`live calibration: refused: <why>`; `started on the <hand> hand` otherwise). [verify] the reason in the next session.

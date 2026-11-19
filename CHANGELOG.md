@@ -7,6 +7,12 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## Unreleased
 
+- **Hands no longer turn inward when you hold the controllers upright.** A calibration could tilt Shepard's hands out of
+  your palm's line; saved calibrations are corrected when the game loads them, no new calibration needed.
+- **See Shepard's hands while you fine-tune them.** With Body & calibration > Advanced calibration open, your hands stay
+  visible and follow the controllers (the game runs behind the menu there), so every offset shows its effect at once.
+  Adjust live now says why when it can't start.
+
 ## 0.3.2 (2026-11-15)
 
 - **First-person conversations (experimental): no more floating at the Council.** With a body scale above 1, opening the
