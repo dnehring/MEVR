@@ -24,6 +24,7 @@ ue3::Object* gBody = nullptr;
 std::shared_ptr<ik::clip::Clip const> gClip;
 double gRate = 1.0;
 double gSeconds = 0.0;
+double gTimeScale = 1.0;
 LARGE_INTEGER gLastCall{};
 std::atomic<bool> gBroken{false};
 Stats gStats;
@@ -115,6 +116,10 @@ void Play(ue3::Object* body, std::shared_ptr<ik::clip::Clip const> clip, double 
     gWanted.store(body != nullptr && gClip != nullptr && !gBroken.load() ? body : nullptr);
 }
 
+void SetTimeScale(double scale) {
+    gTimeScale = std::clamp(scale, 0.0, 4.0);
+}
+
 void Seek(double seconds, double rate) {
     gSeconds = seconds;
     gRate = rate;
@@ -147,7 +152,7 @@ void AfterPose(ue3::Object* component, float deltaTime) {
         dt = static_cast<double>(now.QuadPart - gLastCall.QuadPart) / static_cast<double>(freq.QuadPart);
     }
     gLastCall = now;
-    gSeconds += std::clamp(dt, 0.0, 0.1) * gRate;
+    gSeconds += std::clamp(dt, 0.0, 0.1) * gRate * gTimeScale;
     gStats.seconds = gSeconds;
 
     Binding const* const binding = Bind(component);

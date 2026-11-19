@@ -189,3 +189,21 @@ run after the copy from the parent.
   taxi conversation; `mevr hair call bioconversationcontroller QueueReply nReply=5` ("No thanks", a position in the wheel);
   `mevr hair stream biod_cithub_miranda` (then `stream mirandat2 off`): her level's "level is live" event starts her
   conversation at her apartment, Shepard on his mark facing her. `mevr hair fire <op>` and `bring` are the other tools.
+
+## Footage: how it looks walking (2026-11-19, fourth run)
+
+`tools/footage.ps1` (tools/motion/README.md "Footage"): Miranda outside her apartment walking the generated `walk-sway` clip
+in place, side-on (`mevr anim clip miranda walk-sway 1 0 0 90`), slowed 100x, 73 snapshots = 26 frames per second of motion
+over two loops; then 37 more with `mevr hair off` for an A/B at the same pose and crop (the GIFs stay local: game images).
+
+- **It reads as one sheet, not strands.** The simulation moves the back panel of the hair: it trails out behind the neck and
+  swings back with the step, visibly more than the game's own (off: the hair is rigid with the head). It never parts or
+  separates: the mesh is a shell of cards over 13 bones in short chains, so each bone carries a whole region, and there is
+  nothing between them to move on its own. More bones along the same chains (the re-rig route, docs/trilogy-hair-plan.md
+  section 3) would let the panel bend in more places; strand-level motion needs another hair model altogether (cards with
+  their own bones per clump, or a strand renderer), which the owner's papers may speak to.
+- **The swing is small and settles fast** (stiffness 0.06, damping 0.10): at walking pace a few centimetres at the ends. Softer
+  settings would show more, at the risk of the panel looking loose; that's for the headset.
+- **A walk out of the camera's view**: with a walk and turn 90 she walked along the corridor out of the fixed first-person
+  view; footage walks in place. Each range end of a walk is a 180-degree turn, which resets the hair chains (136 resets in
+  one run): a walk for hair should turn smoothly.

@@ -85,7 +85,30 @@ The clips of 2026-11-19 (seed 23): `walk-sway`, `jump-place` (a 0.25 s jump, hip
 window `--loop 24:64`: the loop finder picks the quiet end), `jump-forward`, `run` (its best loop isn't seamless: a seam at each
 wrap), `turn-walk`. `mevr-hair-bench` (tools/hair-bench) plays any of them offline for the hair or `--jiggle`.
 
+`mevr anim clip <who> <clip> [rate] [walk] [range] [turn deg]`: `turn` faces the character that many degrees from where it
+stood (90 with walk 0: walking in place side-on to the camera, the angle for judging hair); with a walk it also walks her
+out of a fixed camera's view, so for footage walk in place. `mevr anim slowmo <f>` slows our motion only (the clip, the hair
+simulation, the driver's walk) by f; the world's `TimeDilation` didn't reach a conversation character's pose updates.
+
 Not yet: a blend in and out, playing a clip once (no loop), and a compact binary form if clips ship.
+
+## Footage
+
+Snapshots are 3-4 s apart, so motion can't be judged from them at full speed. `tools/footage.ps1` slows our motion (`mevr
+anim slowmo`), takes snapshots at a steady interval, puts the speed back and crops the frames into a GIF timed at the
+motion's real rate (each frame lasts its capture gap times the slow motion):
+
+```powershell
+# Miranda in front, then walking in place side-on (look at one snapshot first: is she in the crop?).
+tools/console.ps1 "mevr hair bring miranda 0" "mevr anim clip miranda walk-sway 1 0 0 90"
+tools/footage.ps1 -Frames 80 -Dilation 0.01 -Crop '0.30,0.42,0.40,0.58' -Scale 0.4 -Out miranda-walk.gif
+```
+
+`-Dilation 0.01` with the snapshots' ~3.8 s gives about 26 frames per second of motion; 80 frames take five minutes and show
+two loops of the walk. The physics takes the same steps as at full speed, only spread out; the game's own animation (the
+face, idle gestures) is not slowed. For an A/B, record the same again after `mevr hair off` (`auto` after). Output and
+frames: `%LOCALAPPDATA%\MEVR\footage\<stamp>` (game images: local only). First run 2026-11-19, ME3's Miranda outside her
+apartment (research/trilogy-hair.md "Footage").
 
 ## Licences and data
 

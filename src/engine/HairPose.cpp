@@ -33,6 +33,7 @@ Request gRequest;
 DWORD gThread = 0;
 ULONGLONG gTimeMs = 0;
 std::atomic<bool> gBroken{false};
+std::atomic<double> gTimeScale{1.0};
 std::uint64_t gRejected = 0;
 
 // One component's simulation (the game thread only).
@@ -334,6 +335,7 @@ void AfterPose(ue3::Object* component, float deltaTime) {
         ++sim.measuredSteps;
     }
     sim.lastCall = nowTicks;
+    stepSeconds *= gTimeScale.load(std::memory_order_relaxed);
 
     std::vector<hc::Capsule> body;
     AddCapsules(target.body, target.bodyParts, unitsPerMeter, body);
@@ -460,6 +462,10 @@ bool Kick(ue3::Object const* component, ik::Vec3 velocityMS) {
         }
     }
     return true;
+}
+
+void SetTimeScale(double scale) {
+    gTimeScale.store(std::clamp(scale, 0.0, 4.0));
 }
 
 void ResetPeriod() {

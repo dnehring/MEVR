@@ -71,6 +71,8 @@ Stats GetStats();
 // The per-tick trace: `seconds` > 0 writes every chain point and its animated place each call to `path` (CSV).
 void Trace(double seconds, std::string const& path);
 void ResetPeriod();
+// Slow motion for footage (`mevr anim slowmo`): every step's time multiplied by `scale` (1 is real time).
+void SetTimeScale(double scale);
 // A test flick (`mevr hair kick`): every simulated point of that component's chains given `velocityMS` (world, m/s) on its
 // next step. False if the component isn't simulated.
 bool Kick(ue3::Object const* component, ik::Vec3 velocityMS);

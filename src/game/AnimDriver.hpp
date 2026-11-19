@@ -13,10 +13,11 @@
 //   mevr anim play <who> <sequence text> [rate] [walk m/s] [range m]
 //                                                 <who>: part of a stunt actor's name or its hair/body mesh (ME3's Miranda:
 //                                                 `miranda`); the first sequence whose path holds the text, looping
-//   mevr anim clip <who> <clip> [rate] [walk m/s | auto] [range m]
+//   mevr anim clip <who> <clip> [rate] [walk m/s | auto] [range m] [turn deg]
 //                                                 one of our generated clips (tools/motion: ardy-clip.py's
 //                                                 <name>.mevrclip.json, by name) posing the body through engine/ClipPose;
-//                                                 `auto` walks the character at the clip's own pace
+//                                                 `auto` walks the character at the clip's own pace; turn: the
+//                                                 walk's direction from the character's facing (90: across the view)
 //   mevr anim at <seconds> | pause | resume      scrub, hold or go on
 //   mevr anim stop                                the character's own animation sets and gestures back, the walk ended
 //   mevr anim status

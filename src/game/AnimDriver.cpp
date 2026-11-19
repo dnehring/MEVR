@@ -6,6 +6,7 @@
 #include "core/WriteJournal.hpp"
 #include "core/ik/Clip.hpp"
 #include "engine/ClipPose.hpp"
+#include "engine/HairPose.hpp"
 #include "engine/XrToUnreal.hpp"
 #include "game/Player.hpp"
 #include "ue3/Handles.hpp"
@@ -89,6 +90,7 @@ struct Driven {
     std::shared_ptr<ik::clip::Clip const> clip;  // a generated clip played by engine/ClipPose (no node, no animation sets)
 };
 std::optional<Driven> gDriven;
+double gSlowmo = 1.0;  // `mevr anim slowmo`: our clip, hair and walk all at this share of real time (footage)
 ue3::Object const* gWorld = nullptr;
 
 std::string Lower(std::string s) {
@@ -418,9 +420,11 @@ std::filesystem::path ClipFile(std::string const& name) {
     return root / name / (name + ".mevrclip.json");
 }
 
+void Place(Driven& d);
+
 std::string PlayClip(std::istringstream& words) {
     std::string who, name, walkText;
-    double rate = 1.0, range = 3.0;
+    double rate = 1.0, range = 3.0, turnDeg = 0.0;
     words >> who >> name;
     if (!(words >> rate)) {
         rate = 1.0;
@@ -429,8 +433,11 @@ std::string PlayClip(std::istringstream& words) {
     if (!(words >> range)) {
         range = 3.0;
     }
+    if (!(words >> turnDeg)) {
+        turnDeg = 0.0;  // turned from the character's own facing before walking: 90 walks across the player's view
+    }
     if (who.empty() || name.empty()) {
-        return "mevr anim clip <who> <clip name or .mevrclip.json> [rate] [walk m/s | auto] [range m]";
+        return "mevr anim clip <who> <clip name or .mevrclip.json> [rate] [walk m/s | auto] [range m] [turn deg]";
     }
     ue3::Object* const world = PlayerWorld();
     if (world == nullptr) {
@@ -477,9 +484,12 @@ std::string PlayClip(std::istringstream& words) {
     d.walkMS = std::max(0.0, walk);
     d.rangeM = std::max(0.5, range);
     d.origin = player::Location(actor).value_or(ue3::Vector{});
-    d.yaw = static_cast<double>(player::Rotation(actor).value_or(ue3::Rotator{}).yaw) * (2.0 * kPi / 65536.0);
+    d.yaw = static_cast<double>(player::Rotation(actor).value_or(ue3::Rotator{}).yaw) * (2.0 * kPi / 65536.0) + turnDeg * kPi / 180.0;
     gDriven = d;
     gWorld = world;
+    if (turnDeg != 0.0) {
+        Place(*gDriven);  // faces the turned way at once
+    }
     log::Info("anim driver: {} plays the clip {} ({} frames, loop {}..{}, {:.2f} m/s in the clip), rate {:.2f}, walk {:.2f} m/s",
         PathOf(actor), file.string(), clip->frames, clip->loopStart, clip->loopEnd, pace, rate, d.walkMS);
     return std::format("{} plays the clip {} (loop {}..{}, {:.2f} s; the clip walks {:.2f} m/s){}", PathOf(actor), clip->name,
@@ -527,6 +537,14 @@ std::string Command(std::string const& args) {
     if (verb == "clip") {
         return PlayClip(words);
     }
+    if (verb == "slowmo") {
+        double scale = 1.0;
+        words >> scale;
+        gSlowmo = std::clamp(scale, 0.0, 4.0);
+        engine::clip_pose::SetTimeScale(gSlowmo);
+        engine::hair_pose::SetTimeScale(gSlowmo);
+        return std::format("our clip, hair and walk at {:.2f} of real time (the game's own animation isn't slowed)", gSlowmo);
+    }
     if (verb == "stop") {
         if (!gDriven) {
             return "nothing is driven";
@@ -536,7 +554,7 @@ std::string Command(std::string const& args) {
     }
     if (!gDriven) {
         return verb.empty() || verb == "status" ? "nothing is driven"
-                                                : "mevr anim [list <text> | play <who> <sequence> [rate] [walk m/s] [range m] | clip <who> <clip> [rate] [walk m/s | auto] [range m] | at <s> | pause | resume | stop | status]";
+                                                : "mevr anim [list <text> | play <who> <sequence> [rate] [walk m/s] [range m] | clip <who> <clip> [rate] [walk m/s | auto] [range m] [turn deg] | at <s> | pause | resume | stop | status]";
     }
     Driven& d = *gDriven;
     if (d.clip != nullptr && verb != "status" && !verb.empty()) {
@@ -591,7 +609,7 @@ std::string Command(std::string const& args) {
         return std::format("{} plays {} at {:.2f} s{}, rate {:.2f}; walk {:.2f} m/s, {:.2f} m along, {} turn(s)", PathOf(d.actor), d.sequence,
             gNodeTime.Read<float>(d.node).value_or(-1.0f), d.paused ? " (paused)" : "", d.rate, d.walkMS, d.along, d.turns);
     }
-    return "mevr anim [list <text> | play <who> <sequence> [rate] [walk m/s] [range m] | clip <who> <clip> [rate] [walk m/s | auto] [range m] | at <s> | pause | resume | stop | status]";
+    return "mevr anim [list <text> | play <who> <sequence> [rate] [walk m/s] [range m] | clip <who> <clip> [rate] [walk m/s | auto] [range m] [turn deg] | at <s> | pause | resume | stop | status]";
 }
 
 void Tick(double deltaSeconds) {
@@ -611,7 +629,7 @@ void Tick(double deltaSeconds) {
     if (d.paused || d.walkMS <= 0.0 || !(deltaSeconds > 0.0)) {
         return;
     }
-    d.along += d.direction * d.walkMS * std::min(deltaSeconds, 0.1);
+    d.along += d.direction * d.walkMS * std::min(deltaSeconds, 0.1) * gSlowmo;
     if (d.along > d.rangeM || d.along < 0.0) {
         d.along = std::clamp(d.along, 0.0, d.rangeM);
         d.direction = -d.direction;
@@ -630,6 +648,9 @@ std::string StatusJson() {
 }
 
 void Shutdown() {
+    gSlowmo = 1.0;
+    engine::clip_pose::SetTimeScale(1.0);
+    engine::hair_pose::SetTimeScale(1.0);
     PutBack("shutdown");
 }
 

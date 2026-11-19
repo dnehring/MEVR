@@ -23,6 +23,8 @@ void Play(ue3::Object* body, std::shared_ptr<ik::clip::Clip const> clip, double 
 void Stop();
 // Scrub and hold: the clip's time set to `seconds` into its loop, and its rate (0 holds that pose).
 void Seek(double seconds, double rate);
+// Slow motion for footage (`mevr anim slowmo`): the clip's step time multiplied by `scale`.
+void SetTimeScale(double scale);
 bool Wants(ue3::Object const* component);
 void AfterPose(ue3::Object* component, float deltaTime);
 
