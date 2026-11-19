@@ -173,13 +173,24 @@ Offline tests cover varied recenter heights, animated camera bones, modes, pitch
 midpoint, preserved stereo separation, all scope gates, invalid/stale floor and pawn inputs, and crouch changing view height
 without changing the settled body target. These are arithmetic/gate tests, not a game or headset result.
 
-**Replay limit:** existing .mevrrec recordings store recentered LOCAL eye/controller poses, not the matching floor sample.
-Replay still leaves core/xr/Floor live, so it cannot validate this invariant or recenter posture independence. No recording
-format was changed here. Add a versioned floor payload per frame: valid, source, eyeHeight, sequence and sample time relative
-to the recorded frame; record it beside the pose, substitute it at OnFrameBegun/MeasureFloor during replay, and remap freshness
-to the replay clock. Old recordings must explicitly report ?no floor fixture?, not silently claim a validation. Space-aware
-view substitution/recenter coverage is also required. A separately authorized headset/fake-headset run with that fixture is
-still needed for slopes/stairs, recenter while bent/standing, draw/holster/ADS, both crouches, holds and all excluded modes.
+**Replay limit (closed 2026-11-19, lane POS; research/le2-vrik.md "The replay STAGE-eye gap"):** until then .mevrrec
+recordings stored recentered LOCAL eye/controller poses without the matching floor sample, and replay left core/xr/Floor live,
+so it could not validate this invariant. Built since:
+- **The payload:** recording format version 2 (`core/vr/PoseRecording`): each 260-byte frame ends with the host's floor sample
+  that frame, u32 flags (bit 0 valid, bits 1-2 the source) and f32 eyeHeight. Sequence and sample time were left out: the
+  sample is measured at the frame's own predicted display time (`MeasureFloor(time)`, the frame's `xrLocateViews` time), and a
+  replayed sample is published fresh each frame (new sequence, `timeMs` now), so freshness needs no remapping. The samples sit
+  beside the frames (`Recording::floors`, `SampleFloor`, interpolated as the positions are), so the replay's per-frame code
+  kept its layout. The recorder takes `xr_host::Floor` right after `MeasureFloor` each frame (`NoteRecordedFloor`).
+- **The substitution:** while a replay runs, `MeasureFloor` publishes `MeasureReplayedFloor`'s sample: the recording's own
+  where it has one, else the live sample moved by the replayed head's LOCAL height over the live head's
+  (`vr::recording::ReplayedFloor`, `FloorSpace::HeadHeightIn`). A version 1 recording therefore still moves the eyes with its
+  head, from the live floor's height, and says so once a replay (`test loop: the replay drives the floor sample too: ...`);
+  `tools/mevrrec.py` prints `floor: no floor samples (version 1 ...)` for one, the eye range for a version 2.
+- **Synthetic fixtures:** `tools/make-walk-recording.py --stand-eye M` writes version 2 at a chosen standing eye height (the
+  posture scripts pass the owner's calibrated `standEyeM`), `--ease S` blends segments.
+Still open: recenter while bent (a recorded recenter is not replayed: the live LOCAL is never re-origined by a replay),
+slopes and stairs, and the headset run of the excluded modes.
 
 Verification on 2026-11-07: development MEVR-LE1 + MEVR-LE1-mod + mevr-tests and monolithic MEVR-LE1 built successfully;
 CTest Release passed all 7 tests (57.67 s); check-spdx.py and git diff --check passed. MSBuild's automatic SDK discovery

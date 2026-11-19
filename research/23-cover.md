@@ -520,7 +520,8 @@ The game's own rule is a 1.5x countdown while in cover: 0.5 s unsheltered (the t
 file's 1.2 put back after): on ME2's current main a replayed crouch no longer lowers the eyes (floor lock pins the eye at the live
 STAGE height, 1.7526 m, `floor lock: ... correction +102.261, final eye 1.7526 m` while the replay's head was 0.9 m down), so the
 head stayed at standing height and the crate's nearest point on the line to Jacob was 1.22-1.28 m away. That is a test-tool gap
-(replays don't stand in for the STAGE floor query), not the rule's: the lane that owns floor lock was told. Not measured: a
+(replays don't stand in for the STAGE floor query), not the rule's: the lane that owns floor lock was told (closed 2026-11-19:
+replays drive the floor sample, research/le2-vrik.md "The replay STAGE-eye gap"). Not measured: a
 hostile's own shots, several hostiles, a headset.
 
 ### 7.6 "Almost magnetic": what the owner's run shows (2026-11-18, lane CV2)

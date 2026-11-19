@@ -209,10 +209,10 @@ cover, third person, front end and menus are excluded; world holds carry the cor
 
 FloorLockTests exercises recenter origins, mode/bone/pitch/framing terms, metric separation, gates and frozen standing scale
 under crouch. This does not establish headset alignment, support height on slopes, or runtime reflection success.
-**Current replay cannot validate floor lock:** recordings lack the corresponding STAGE/LOCAL_FLOOR sample and replay leaves
-that measurement live. A versioned per-frame valid/source/eyeHeight/sequence/time payload, replay-clock freshness mapping
-and substitution alongside recorded poses would supply a deterministic floor fixture; see research/58 section 6. No game,
-replay, deployment or headset run was performed for this change.
+**Replay and floor lock (2026-11-19):** until then recordings lacked the STAGE/LOCAL_FLOOR sample and replay left that
+measurement live, so a replay could not validate floor lock; recordings carry it now (format version 2) and a replay drives
+the published sample (research/58 section 6 "Replay limit", research/le2-vrik.md "The replay STAGE-eye gap"). No game,
+replay, deployment or headset run was performed for the floor lock change itself.
 
 ## 9. The sequels (2026-11-16, lane LS)
 

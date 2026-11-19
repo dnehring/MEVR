@@ -1827,13 +1827,16 @@ Use it to check VR changes yourself instead of asking the user what they see
   squad state, every layer). The JSON
   is written last. Read the PNGs to look.
 - **Recording:** `tools/record.ps1 -Seconds N` (or `-Start` / `-Stop`) writes `record.request`;
-  frames go to `recordings\<stamp>.mevrrec` (head eye views, both controllers' poses and inputs).
+  frames go to `recordings\<stamp>.mevrrec` (head eye views, both controllers' poses and inputs, the floor sample).
   `python tools/mevrrec.py --latest [--csv out.csv]` summarizes or dumps one.
 - **Replay:** `tools/replay.ps1 [-Path f] [-Loop] [-Inputs] [-Fovs] [-Wait]` / `-Stop` writes
   `replay.request` (`<path|latest|stop> [loop=1] [inputs=1] [fovs=1]`). The recorded head (the runtime's
   FOVs kept, or the recorded per-eye FOVs with `-Fovs`: a PS VR2 recording's asymmetric projections on the
   fake headset, research/37) and controller poses stand in for the live ones; buttons and sticks only with
-  `-Inputs`. Replay + snapshot = look at a recorded pose: `tools/replay.ps1 -Loop`,
+  `-Inputs`. Since 2026-11-19 a replay drives the host's floor sample too (the recording's own, version 2, else the live
+  one moved by the replayed head's height), so a recorded crouch, lean or reach reaches posture, floor lock, body scale and
+  the holsters on the fake headset (`make-walk-recording.py --stand-eye`; gotchas/replay-leaves-the-floor-sample-live).
+  Replay + snapshot = look at a recorded pose: `tools/replay.ps1 -Loop`,
   `tools/snapshot.ps1 -Delay 2`, `tools/replay.ps1 -Stop`.
 - **Player triggers:** End = snapshot, Home = recording on/off (game focused); a quick tap of both
   stick clicks = snapshot (both down within 100 ms of each other and up within 300 ms of the first
