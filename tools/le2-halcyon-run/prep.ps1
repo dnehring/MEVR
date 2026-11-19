@@ -61,10 +61,17 @@ if (Test-Path -LiteralPath $other.current) { throw 'Another game stretch remains
 & powershell -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot\run-lock.ps1" -Take -Holder $Holder -Note "$Game runs ($Tag), desktopDump=$([bool]$DesktopDump)"
 if ($LASTEXITCODE -ne 0) { throw 'The run lock is not ours' }
 if (-not $open) {
-    if (Test-Path -LiteralPath "$b\bink2w64_original.dll") { throw 'An existing loader has no open stretch: not ours to replace' }
     $proxy = Get-Item -LiteralPath "$G\ME1\Binaries\Win64\bink2w64.dll"
     if ($proxy.VersionInfo.ProductName -notmatch 'LEBinkProxy') { throw "ME1's loader is not LEBinkProxy" }
-    if ((Get-Item -LiteralPath "$b\bink2w64.dll").VersionInfo.ProductName -ne 'Bink and Smacker') { throw 'Selected game does not have its stock Bink DLL' }
+    # The player's own install may carry LEBinkProxy in the selected game already (the owner plays ME2 with it since
+    # 2026-11-18): then the backup below holds both DLLs, nothing is renamed or copied, and restore.ps1 checks them hash for hash.
+    $loaderThere = Test-Path -LiteralPath "$b\bink2w64_original.dll"
+    if ($loaderThere) {
+        if ((Get-Item -LiteralPath "$b\bink2w64.dll").VersionInfo.ProductName -notmatch 'LEBinkProxy' -or
+            (Get-Item -LiteralPath "$b\bink2w64_original.dll").VersionInfo.ProductName -ne 'Bink and Smacker') {
+            throw 'An existing loader that is not LEBinkProxy over the stock Bink DLL has no open stretch: not ours to replace'
+        }
+    } elseif ((Get-Item -LiteralPath "$b\bink2w64.dll").VersionInfo.ProductName -ne 'Bink and Smacker') { throw 'Selected game does not have its stock Bink DLL' }
     $sessions = Join-Path $env:LOCALAPPDATA 'MEVR\sessions'
     $S = Resolve-RunChild $sessions ((Get-Date -Format 'yyyyMMdd-HHmmss-fff') + "-$Game-$Tag")
     if (Test-Path -LiteralPath $S) { throw 'Session directory already exists' }
@@ -89,8 +96,12 @@ if (-not $open) {
     if (Get-Process MassEffect1, MassEffect2, MassEffect3, MassEffectLauncher -ErrorAction SilentlyContinue) { throw 'A game started during backup; deployment refused' }
     Write-RunSession $open $current
     "Verified backups in $S"
-    Rename-Item -LiteralPath "$b\bink2w64.dll" -NewName 'bink2w64_original.dll'
-    Copy-Item -LiteralPath $proxy.FullName -Destination "$b\bink2w64.dll"
+    if ($loaderThere) {
+        'The selected game already has LEBinkProxy (the player''s install): kept as it is'
+    } else {
+        Rename-Item -LiteralPath "$b\bink2w64.dll" -NewName 'bink2w64_original.dll'
+        Copy-Item -LiteralPath $proxy.FullName -Destination "$b\bink2w64.dll"
+    }
 } else {
     $open = Read-RunSession $Holder $Game ([bool]$DesktopDump) ([bool]$EngineProbe) ([bool]$EngineRequests) ([bool]$RendererPreview)
     if (($open.install -and $open.install -ne $install) -or ($open.profile -and $open.profile -ne $docs)) { throw 'Install/profile changed since backup' }

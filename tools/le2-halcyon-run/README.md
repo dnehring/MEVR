@@ -72,6 +72,38 @@ tools\le2-halcyon-run\restore.ps1 -Holder <session name>                        
   printed and appended to the session's `launch-candidates.txt`. The recorded `gameProcess`/`launcherProcess` are as
   before, so `-Stop`, `-Kill`, `load.ps1` and `restore.ps1` are unchanged; the by-hand workaround (console `mevr load`,
   `Stop-Process`) is no longer needed.
+- **A player's install with LEBinkProxy already in ME2** (the owner plays ME2 with it since 2026-11-18) is accepted by
+  `prep.ps1` (lane SMOKE, 2026-11-19): `bink2w64.dll` LEBinkProxy over a stock `bink2w64_original.dll` is backed up with the
+  rest of `Binaries\Win64` and left as it is; restore checks it hash for hash. Any other loader there is still refused.
+- **A same-map reload** (the autosave of the level Shepard stands in) is accepted by `load.ps1` on ME2 when the player pawn's
+  object changes (`SFXPawn_PlayerSoldier_0` to `_1`): ME2's `mevr state` has no identities, and only another world counted.
+
+## Smoke runs on a mission's real path, and the session judge
+
+Our checks ran at fixtures; the owner's log of 2026-11-18 already showed what they then met on Freedom's Progress, and
+nothing read it. Two tools since lane SMOKE (2026-11-19):
+
+```powershell
+tools\le2-halcyon-run\smoke-owner-save.ps1 -Holder <you> [-God] [-Phases door,stairs,fight,letgo,cover,crouch,vault,barrier]
+python tools\session-judge.py --mod <Win64>\Logs\LE2MEVR.log [--halcyon %LOCALAPPDATA%\MELE2VR\MELE2VR_Log.txt] [--all]
+```
+
+- `smoke-owner-save.ps1` loads the owner's autosave (career `VR_31_Soldier_141126_336072f`, before Freedom's Progress's
+  drone stretch: SFXDoor_11, two flights of stairs, the courtyard) and plays it by script on the fake headset, its header
+  says each phase and the lines that pass it; results in the stretch's `smoke-<tag>-<time>\`, the judge's verdict last.
+- `tools\steer-common.ps1` walks Shepard by script on any game: short left-stick replays (`make-walk-recording.py`'s plan,
+  the last segment standing 10 minutes so the next replay takes over with no gap: the controllers never drop), his place
+  read back through the console (`mevr state`, ME1's `mevr loc`), the view turned exactly with the console's
+  `set <PlayerController class> Rotation (Pitch=0,Yaw=..,Roll=0)`. `Walk-To`, `Steer-Face`, `Steer-Play`, `Steer-Pawns`
+  (`mevr cover pawns` parsed: hostiles' places), `Steer-Snapshot`. `make-walk-recording.py`'s plan has `grip` (the right
+  grip for that segment), `turn@X` (the right stick) and `aim@YAW@PITCH` (the right controller pointed off the head) for it.
+- `session-judge.py` lists the known bad signs in a mod log (one table, `RULES`, and a few window rules, `AGGREGATES`): arm
+  IK's third-person anchor on foot, refused vaults at a slot, VR cover's covered share of a fight's hits, let-go guns that
+  stay out, unasked draws, the crouch flipping, the body lowered while not crouched, off-thread ProcessEvents, crash reports
+  and first-chance faults in our code, swapchain refusals, warnings by module, Halcyon's error lines. Its canary is the
+  owner's log of 2026-11-18 (kept out of git); its ctest `mevr-session-judge` runs synthetic lines.
+- The drones kill a Shepard who only walks down the stairs in about 7 s: `-God` (the console's `god`). Each load of the same
+  map in one process is a risk: the third crashed the game on 2026-11-19 (engine code under the tick, research to come).
 
 ## ME3 development dump only
 

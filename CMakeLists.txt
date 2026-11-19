@@ -1822,6 +1822,8 @@ if (MEVR_BUILD_TESTS)
         add_test(NAME mevr-conversation-sweep COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tests/ConversationSweepTests.py)
         # The rules over first-person scenes' stance records (tools/scene_audit.py, research/69 "Auditing scenes by rule").
         add_test(NAME mevr-scene-audit COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tests/SceneAuditTests.py)
+        # The known bad signs in a play session's log (tools/session-judge.py, lane SMOKE), over synthetic lines in the mod's wording.
+        add_test(NAME mevr-session-judge COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tests/SessionJudgeTests.py)
         # tools/land-on-main.py (deletions, renames, the main checkout's own edits, the roll-back) in scratch repositories.
         add_test(NAME mevr-land-on-main COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tests/LandOnMainTests.py)
         # The audit report's picture checks (tools/audit-report.py, research/69 "Obvious bugs, measured"), on made-up snapshots.

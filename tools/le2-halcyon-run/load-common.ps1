@@ -48,7 +48,9 @@ function Test-LoadTransition($Before, $Current, [string]$Game) {
         return [Convert]::ToUInt64($Before.worldId.Substring(2), 16) -ne [Convert]::ToUInt64($Current.worldId.Substring(2), 16) -or
             [Convert]::ToUInt64($Before.pawnId.Substring(2), 16) -ne [Convert]::ToUInt64($Current.pawnId.Substring(2), 16)
     }
-    return $Game -eq 'LE2' -and $Before.world -ne $Current.world
+    # LE2's state has no identities: another world, or the same map loaded again with a new player pawn object (the load of an
+    # autosave in the level it was written in names the pawn SFXPawn_PlayerSoldier_1 where it was _0; lane SMOKE, 2026-11-19).
+    return $Game -eq 'LE2' -and ($Before.world -ne $Current.world -or $Before.pawn -ne $Current.pawn)
 }
 function Assert-LoadMode($Session, [string]$Game, [bool]$RendererPreview = $false) {
     if ($RendererPreview) {
