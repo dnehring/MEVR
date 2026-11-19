@@ -74,14 +74,9 @@ function Play([string]$plan, [string]$file, [string[]]$extra = @()) {
     Start-Sleep -Milliseconds ([int](($seconds + 0.6) * 1000))
     HoldStanding
 }
-# Between plays: at the owner's height, a standing replay looped (the next play replaces it), so the eyes don't drop back to
-# the null driver's 1.75 m between cases (the posture's standing reference and the floor lock stay at his height); without
-# his calibration, no replay.
+# Between plays: a standing replay looped (the next play replaces it), so the eyes don't drop back to the null driver's 1.75 m
+# between cases at the owner's height (the posture's standing reference and the floor lock stay at his height).
 function HoldStanding {
-    if ($script:standEye.Count -eq 0) {
-        & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $W 'tools\replay.ps1') -Stop | Out-Null
-        return
-    }
     if (-not $script:standPath) {
         $script:standPath = Join-Path $out 'hold-standing.mevrrec'
         & python (Join-Path $W 'tools\make-walk-recording.py') $script:standPath --plan 'stand:10' --pitch -20 --hands view @script:standEye | Out-Null
@@ -97,13 +92,16 @@ function Hands([string]$key, [string]$value) {
 # The owner's calibration: the key in use (a relaunch if not yet), the replays' floor samples at his standing eye height.
 $script:standEye = @()
 $script:standPath = $null
+. (Join-Path $W 'tools\owner-calibration.ps1')
 if ($OwnerCalibration) {
-    . (Join-Path $W 'tools\owner-calibration.ps1')
     $cal = Use-OwnerCalibrationLe2 -Holder $Holder
     $script:standEye = @('--stand-eye', $cal.StandEyeM.ToString([Globalization.CultureInfo]::InvariantCulture), '--ease', '0.4')
-    HoldStanding
-    Start-Sleep -Seconds 6  # the posture's standing reference rises toward a higher eye with a 2 s time constant
 }
+# Tracked hands from here on; the first time in a stretch they open our main menu's controller guide, which pauses the game.
+HoldStanding
+Start-Sleep -Seconds 2
+if (Close-FirstRunMenuLe2 $out) { Note 'the first-run controller guide was open (the game paused): closed with B'; HoldStanding }
+Start-Sleep -Seconds 6  # the posture's standing reference rises toward a higher eye with a 2 s time constant
 $from = (ReadLog).Count
 Note ("posture-walk {0}: phases {1}; {2}" -f $Tag, ($Phases -join ','), (Ask 'mevr state'))
 if ($OwnerCalibration) {

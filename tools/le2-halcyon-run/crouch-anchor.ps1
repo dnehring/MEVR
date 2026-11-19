@@ -20,8 +20,8 @@
 #             crouchMinDropM 0 and crouchLeanRatio 0 so a 0.17 m drop crouches, a 0.17 m and a 0.40 m crouch, held, then
 #             standing up. Pass: `posture: physical crouch` for each (the replays drive the floor sample since 2026-11-19,
 #             research/le2-vrik.md "The replay STAGE-eye gap"), then as `button`, through the stand (the old rule fell to third
-#             person while the head rose before the game stood him); the snapshots' mod.torso and floorLock (summary.txt's
-#             `snapshot:` lines): the body down with the head, the final eye at the replayed head's height.
+#             person while the head rose before the game stood him); the snapshots' mod.posture and mod.torso (summary.txt's
+#             `snapshot:` lines) and `floor lock: ... final eye`: the body down with the head, the eye at the replayed head's.
 #   run       out-and-back runs exploring (each back a 180-degree explore turn, the owner's backing up), the head standing.
 #             Pass: no `torso: crouching with you: the body down N cm` with N above 3 (the margin and the idle's own); the
 #             heartbeat's `arm IK torso` lines may say `held at the player's own head drop` (the animation stood higher).
@@ -93,42 +93,39 @@ function Play([string]$plan, [string]$file, [string[]]$extra = @(), [double[]]$s
         if ($wait -gt 0) { Start-Sleep -Milliseconds ([int]($wait * 1000)) }
         $shotTag = "$Tag-" + [IO.Path]::GetFileNameWithoutExtension($file)
         $shot = & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $W 'tools\snapshot.ps1') -Tag $shotTag 2>$null
-        Note ("snapshot at {0:0.0} s of {1}: {2}" -f $at, $file, (($shot | Where-Object { $_ }) -join ' '))
-        Note (Describe-Snapshot $shotTag)
+        $shotText = ($shot | Where-Object { $_ }) -join ' '
+        Note ("snapshot at {0:0.0} s of {1}: {2}" -f $at, $file, $shotText)
+        Note (Describe-Snapshot $shotTag ([regex]::Match($shotText, '\S+\.json').Value))
     }
     $left = $seconds + 0.6 - ((Get-Date) - $started).TotalSeconds
     if ($left -gt 0) { Start-Sleep -Milliseconds ([int]($left * 1000)) }
     HoldStanding
 }
-# Between plays: at the owner's height, a standing replay looped (the next play replaces it), so the eyes don't drop back to
-# the null driver's 1.75 m between phases (the posture's standing reference and the floor lock stay at his height); without
-# his calibration, no replay.
+# Between plays: a standing replay looped (the next play replaces it), so the eyes don't drop back to the null driver's 1.75 m
+# between phases at the owner's height (the posture's standing reference and the floor lock stay at his height).
 function HoldStanding {
-    if ($script:standEye.Count -eq 0) {
-        & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $W 'tools\replay.ps1') -Stop | Out-Null
-        return
-    }
     if (-not $script:standPath) {
         $script:standPath = Join-Path $out 'hold-standing.mevrrec'
         & python (Join-Path $W 'tools\make-walk-recording.py') $script:standPath --plan 'stand:10' --pitch -20 --hands view @script:standEye | Out-Null
     }
     & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $W 'tools\replay.ps1') -Path $script:standPath -Loop -Inputs | Out-Null
 }
-# What a snapshot's JSON says about the body and the eyes (copied into the session folder): the floor lock's eye (the replayed
-# head's height), the torso's crouch (the body down with the head: research/29 "The eyes inside the body"), the posture's eyes.
-function Describe-Snapshot([string]$shotTag) {
-    $json = Get-ChildItem (Join-Path $env:LOCALAPPDATA 'MEVR\snapshots') -Filter "*-$shotTag.json" -ErrorAction SilentlyContinue |
-        Sort-Object LastWriteTime | Select-Object -Last 1
-    if (-not $json) { return "snapshot: ${shotTag}: no JSON" }
-    Copy-Item -LiteralPath $json.FullName -Destination $out
-    $j = Get-Content -LiteralPath $json.FullName -Raw | ConvertFrom-Json
+# What a snapshot's JSON (the path snapshot.ps1 printed) says about the body and the eyes, copied into the session folder with
+# its eye images: the posture's eyes (the replayed head's height) and Shepard's crouch, the torso's crouch (the body down with
+# the head: research/29 "The eyes inside the body"). The floor lock's eye is in the log (`floor lock: ... final eye`).
+function Describe-Snapshot([string]$shotTag, [string]$jsonPath) {
+    if (-not $jsonPath -or -not (Test-Path -LiteralPath $jsonPath)) { return "snapshot: ${shotTag}: no JSON" }
+    $stem = [IO.Path]::GetFileNameWithoutExtension($jsonPath)
+    Get-ChildItem (Split-Path $jsonPath) -Filter "$stem*" | Where-Object { $_.Name -match '\.json$|-(left|right)\.png$' } |
+        Copy-Item -Destination $out
+    $j = Get-Content -LiteralPath $jsonPath -Raw | ConvertFrom-Json
     $t = $j.mod.torso
     $r = if ($t) { $t.result } else { $null }
-    $fl = $j.floorLock
-    return ("snapshot: {0}: floor lock active {1}, STAGE eye {2} m, final eye {3} m; torso crouchBody {4}, body lifted {5} m, " +
-        "crouch gap {6} m, held by the legs {7}, Shepard's head {8} m from its goal; posture eyes {9} m of standing {10} m") -f $shotTag,
-        $fl.active, $fl.stageEyeM, $fl.finalEyeM, $t.crouchBody, $r.bodyLiftM, $r.crouchGapM, $r.liftLimited, $r.headFromPivotM,
-        $j.mod.posture.eyeHeight, $j.mod.posture.standingEyeHeight
+    $p = $j.mod.posture
+    return ("snapshot: {0} ({1}): posture eyes {2} m of standing {3} m, Shepard crouched {4} (the game's), physical {5}; torso " +
+        "crouchBody {6}, body lifted {7} m, crouch gap {8} m, held by the legs {9}, Shepard's head {10} m from its goal") -f $shotTag,
+        $stem, $p.eyeHeight, $p.standingEyeHeight, $p.gameCrouched, $p.physical, $t.crouchBody, $r.bodyLiftM, $r.crouchGapM,
+        $r.liftLimited, $r.headFromPivotM
 }
 function Hands([string]$key, [string]$value) {
     [void][Mevr.AncProfile]::WritePrivateProfileString('Hands', $key, $value, $ini)
@@ -139,13 +136,16 @@ function Hands([string]$key, [string]$value) {
 # The owner's calibration: the key in use (a relaunch if not yet), the replays' floor samples at his standing eye height.
 $script:standEye = @()
 $script:standPath = $null
+. (Join-Path $W 'tools\owner-calibration.ps1')
 if ($OwnerCalibration) {
-    . (Join-Path $W 'tools\owner-calibration.ps1')
     $cal = Use-OwnerCalibrationLe2 -Holder $Holder
     $script:standEye = @('--stand-eye', $cal.StandEyeM.ToString([Globalization.CultureInfo]::InvariantCulture), '--ease', '0.4')
-    HoldStanding
-    Start-Sleep -Seconds 6  # the posture's standing reference rises toward a higher eye with a 2 s time constant
 }
+# Tracked hands from here on; the first time in a stretch they open our main menu's controller guide, which pauses the game.
+HoldStanding
+Start-Sleep -Seconds 2
+if (Close-FirstRunMenuLe2 $out) { Note 'the first-run controller guide was open (the game paused): closed with B'; HoldStanding }
+Start-Sleep -Seconds 6  # the posture's standing reference rises toward a higher eye with a 2 s time constant
 $from = (ReadLog).Count
 Note ("crouch-anchor {0}: phases {1}; {2}" -f $Tag, ($Phases -join ','), (Ask 'mevr state'))
 if ($OwnerCalibration) {
@@ -156,7 +156,7 @@ try {
     if ($Phases -contains 'button') {
         Note (Ask "mevr camera trace 14 $Tag-button")
         # Standing, L3 (the game's crouch), held 5 s with the head standing, L3 again (the game stands him), standing.
-        Play 'stand:2,l3:0.06,stand:5,l3:0.06,stand:3' 'button.mevrrec' @() @(4.5)
+        Play 'stand:2,l3:0.06,stand:5,l3:0.06,stand:3' 'button.mevrrec' @() @(3.5)
         Start-Sleep -Seconds 1
     }
     if ($Phases -contains 'physical') {
@@ -168,7 +168,8 @@ try {
         Hands 'crouchLeanRatio' '0'
         foreach ($drop in @('0.17', '0.40')) {
             Note (Ask "mevr camera trace 12 $Tag-physical-$drop")
-            Play 'stand:2,crouch:4,stand:3' ("physical-{0}.mevrrec" -f $drop) @('--crouch-drop', $drop) @(4.0)
+            # The crouch held 6 s: the replay and the snapshot request each wait for the game's once-a-second poll.
+            Play 'stand:2,crouch:6,stand:3' ("physical-{0}.mevrrec" -f $drop) @('--crouch-drop', $drop) @(4.5)
             Start-Sleep -Seconds 1
         }
     }

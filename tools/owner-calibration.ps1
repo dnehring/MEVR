@@ -112,3 +112,29 @@ function Use-OwnerCalibrationLe2([string]$Holder, [string]$Save = '') {
     $cal | Add-Member -NotePropertyName Relaunched -NotePropertyValue $relaunched -Force
     return $cal
 }
+
+# Our main menu opens by itself the first time tracked controllers appear in a fresh settings file (the controller guide,
+# `[Menu] controlsShown`): a stretch's first replay with hands opened it, and the menu pauses the game, so a whole posture run
+# measured a frozen world (2026-11-19: the pawn rose 33 units with each crouch and stand, no physics to put him back). Closes it
+# with the right B (a replayed tap, as a player's B), if this launch's log shows it open. True if a menu was closed.
+function Close-FirstRunMenuLe2([string]$Session) {
+    . "$PSScriptRoot\common.ps1"
+    $log = Join-Path (Get-MELEBinDir (Find-MELEInstall).Root 'LE2') 'Logs\LE2MEVR.log'
+    $read = {
+        $stream = [IO.File]::Open($log, 'Open', 'Read', 'ReadWrite')
+        $reader = New-Object IO.StreamReader($stream)
+        try { @($reader.ReadToEnd() -split "`r?`n" | Where-Object { $_ -match 'main menu: (opened|closed)' }) } finally { $reader.Close() }
+    }
+    $events = @(& $read)
+    if ($events.Count -eq 0 -or $events[-1] -notmatch 'main menu: opened') { return $false }
+    Write-Host "the main menu is open ($($events[-1].Trim())): closing it with B"
+    $path = Join-Path $Session 'close-menu-b.mevrrec'
+    & python (Join-Path $PSScriptRoot 'make-walk-recording.py') $path --plan 'stand:1,b:0.15,stand:1.5' --pitch -20 --hands view | Out-Null
+    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'replay.ps1') -Path $path -Inputs | Out-Null
+    for ($i = 0; $i -lt 10; $i++) {
+        Start-Sleep -Seconds 1
+        $events = @(& $read)
+        if ($events[-1] -match 'main menu: closed') { return $true }
+    }
+    throw "the main menu is still open after a replayed B: $log"
+}

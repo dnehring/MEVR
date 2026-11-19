@@ -14,7 +14,7 @@ driving ME2 by hand): leave it alone and wait.
 
 ```powershell
 tools\le2-halcyon-run\run-lock.ps1 -Status
-tools\le2-halcyon-run\prep.ps1 -Holder <session name> [-Tag what] [-Diagnostics] [-FirstVrStart]   # once per stretch: backups, loader, deploy, fake headset
+tools\le2-halcyon-run\prep.ps1 -Holder <session name> [-Tag what] [-Diagnostics] [-FirstVrStart] [-CalibrationKey owner|<key>]   # once per stretch: backups, loader, deploy, fake headset
 tools\le2-halcyon-run\launch.ps1 -Holder <session name> [-Kill]                                           # each run: Steam's -game 2, waits for the XR session
 tools\le2-halcyon-run\load.ps1 -Holder <session name> [-Save <career>\<file>.pcsav]   # default LE2: Freedom's Progress
 # ... the run: logs in ME2\Binaries\Win64\Logs\LE2MEVR.log and %LOCALAPPDATA%\MELE2VR\MELE2VR_Log.txt
@@ -23,6 +23,16 @@ tools\le2-halcyon-run\launch.ps1 -Holder <session name> -Stop                   
 tools\le2-halcyon-run\restore.ps1 -Holder <session name>                          # once at the end of the task
 ```
 
+- **Posture runs at the owner's height and calibration** (since 2026-11-19, lane POS; gotcha
+  [replay-leaves-the-floor-sample-live](../../docs/knowledge/gotchas/replay-leaves-the-floor-sample-live.md)): a replay drives
+  the floor sample, so a replayed crouch, lean or reach lowers the eyes for posture, floor lock and the torso. `-CalibrationKey
+  owner` writes `[Debug] calibrationKey` (calibration.ini's `[Calibration] last`, read only) into the stretch's file, and
+  `posture-walk.ps1` / `crouch-anchor.ps1` (`-OwnerCalibration`, on by default) put it there themselves, relaunching once
+  if needed, with recordings at the owner's standing eye height (`make-walk-recording.py --stand-eye`). A stretch's first
+  replay with tracked hands opens our main menu's controller guide, which pauses the game: those scripts close it with a
+  replayed B (`tools/owner-calibration.ps1` `Close-FirstRunMenuLe2`); a script of your own must too, or it measures a frozen
+  world. Pass an array to `-Phases` in-process (`& .\posture-walk.ps1 -Phases @('crouch','l3')`): through `powershell -File`
+  a comma list arrives as one string.
 - **Backups once per task, not per run** (the owner, 2026-11-14): the first `prep.ps1` backs up the profile's saves and
   settings, ME2's `BioGame\Config` and `Binaries\Win64` with hash manifests into `%LOCALAPPDATA%\MEVR\sessions\<stamp>-<tag>`;
   later preps by the same holder only redeploy. `restore.ps1` copies changed files back, moves files the runs added aside

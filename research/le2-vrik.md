@@ -862,12 +862,87 @@ flow"): `[Reload] enabled = 0` in a new file and `hand_calibration::Reload::enab
    `20261116-230334-332-LE2-wp-weapons`, which also repeated the reload: `reloaded after 1.50 s`). Whether a
    player's squeeze held through a load or a menu does the same until it is let go once is [verify].
 
-**Next (not built): the replay STAGE-eye gap.** Replays don't drive the floor lock's eye height: the host's floor sample
-(`plugin/XrHost` `MeasureFloor`) reads the runtime's real head over STAGE while the replay substitutes the recorded head, so a
-recorded crouch or a taller recorded head never reaches the body scale or the holsters' slots. The minimal fix (lane C4's
-idea): while a replay runs, add the replayed head's height change (its LOCAL head Y minus the runtime's) to the sample in
-`MeasureFloor`; the full one is research/58's per-frame floor payload in the recording format. Shared host code: it needs an
-LE1 same-pose pair before and after.
+## The replay STAGE-eye gap (closed 2026-11-19, lane POS)
+
+**What it was:** replays didn't drive the floor sample. The host's floor sample (`plugin/XrHost` `MeasureFloor`: the VIEW space
+located in STAGE) read the runtime's real head while the replay substituted the recorded head, so on the fake headset (a still
+head, 1.7526 m over STAGE) a recorded crouch, lean or reach never reached posture, floor lock, body scale, the torso's crouch,
+the holsters or VR cover. It cost three lanes a conclusive check (research/23 section 7.5, posture-walk.ps1 and
+crouch-anchor.ps1 headed "only conclusive if ...", eyes-in-body.ps1 switching the floor lock off) and left the owner to find
+the physical crouch's bugs in the headset (gotchas/replay-leaves-the-floor-sample-live).
+
+**Built** (both of the two ideas above: the minimal one and research/58's payload):
+1. While a replay runs, `MeasureFloor` calls `MeasureReplayedFloor` (out of line) and returns: it publishes the recording's
+   own floor sample at the frame's time where the recording has one, else the live sample moved by the replayed head's LOCAL
+   height over the live head's (`vr::recording::ReplayedFloor`, `testloop::ReplayFloor`, `core/xr` `FloorSpace::HeadHeightIn`:
+   the floor space's VIEW located in Halcyon's app space). The first frame of a replay is the live one (the replay starts in
+   that frame's `OnFrameBegun`, after `MeasureFloor`), as its head is. Each replay logs once which rule it follows:
+   `test loop: the replay drives the floor sample too: the recording's own, 1.869 m over the floor (the live one 1.753 m,
+   valid)` or `... the live one moved by the replayed head's height over the live head's (-0.450 m now: 1.303 m)`.
+2. Recording format version 2 (`core/vr/PoseRecording.hpp`): each frame ends with the floor sample the host published that
+   frame (u32 flags: valid, source; f32 eye height; 260-byte frames), recorded right after `MeasureFloor`
+   (`NoteRecordedFloor`), kept beside the frames (`Recording::floors`, `SampleFloor`) so `ApplyReplay`, `SubstituteHead` and
+   `WrappedLocateViews` keep their compiled code. Version 1 files still play. `tools/mevrrec.py` reads both and prints the floor
+   range; `make-drive-recording.py` accepts the longer frames.
+3. `tools/make-walk-recording.py`: `reach` (the head 0.18 m down and 0.33 m ahead, the left hand with it, the right hand out to
+   a person's chest 0.80 m ahead and 0.48 m under the standing eyes, 10 degrees down; `--reach-drop`, `--reach-forward`,
+   `--reach-hand`), `--stand-eye M` (version 2 with floor samples at M standing plus the frame's drop), `--ease S` (each
+   segment's offsets blended in by smoothstep); its default output is byte for byte as before (checked on four plans).
+4. The owner's calibration in the runs: `tools/owner-calibration.ps1` (calibration.ini read only: `[Calibration] last`, the
+   Quest 3's section: standing 1.869 m, crouched 1.558 m), `prep.ps1 -CalibrationKey owner`, the posture scripts'
+   `-OwnerCalibration` (on by default: the key in the stretch's ini, ME2 relaunched once if needed, recordings at 1.869 m, a
+   standing replay held between plays so the eyes stay at his height).
+
+**ME1 unchanged, by its compiled code** (the owner's rule of 2026-11-17): MEVR-LE1's objects were built at b74b567c and with
+the change, in `build-trilogy` (the development host) and in `build-mono` (the players'), and compared function by function
+(`dumpbin /disasm`, addresses normalized). Of 116 (development) and 200 (players') objects, seven differ in each build, the
+same seven: `Entry.obj`, `Halcyon.obj` and `MainMenuSettings.obj` only by the build's commit string and `__TIME__`;
+`Floor.obj` by one added function (`HeadHeightIn`); `PoseRecording.obj` (the format: Encode/Decode/Sample/Writer, used only by
+recording and replay); `TestLoop.obj` (the recorder's `TickRecording`/`StopRecordingNow` after their `IsOpen` checks, `Replay`
+and `Recording` objects' construction and destruction, `StartReplay`, the `Recorder`'s one zeroed field more at start-up;
+`ApplyReplay`, `SubstituteHead`, `WrappedLocateViews` and `StartRecordingNow` identical); `XrHost.obj`: `MeasureFloor` is its
+old body with three instructions in front (`call testloop::Replaying`, `test al,al`, `je`) and the call into
+`MeasureReplayedFloor` behind the branch, no longer inlined into `OnFrameBegun` (which now calls it). Without a replay the
+floor sample is published from the same instructions as before. No same-pose pair was needed.
+
+**In the game** (ME2, Save 4, Freedom's Progress, the fake headset at the owner's calibration; stretch
+`%LOCALAPPDATA%\MEVR\sessions\20261119-081427-984-LE2-pos`, restored: `verification: 0 differences`; calibration.ini's hash
+unchanged, 37D558FE...). The standing reference rose with the replays to the owner's height (`posture: standing eye height
+1.86 m, from the floor (STAGE); Shepard crouches below 1.61 m ... (between your calibrated heights), at least 0.25 m under
+standing`): his calibrated line is 0.92 of standing (1.72 m), crouchMinDropM's 0.87 (1.62 m). posture-walk.ps1 `-Phases crouch`
+(folder `posture-walk-pos2-082413`), each case a lean (0.17 m down, 0.35 ahead), the reach and a 0.45 m squat:
+
+| [Hands] crouchLeanRatio / crouchMinDropM | lean (eyes 1.70 m) | reach (eyes 1.69 m) | squat (eyes 1.42-1.44 m) |
+|---|---|---|---|
+| 0 / 0 (before 2026-11-18) | `posture: physical crouch: eyes 1.70 m = 0.91 of the standing 1.87 m, below 0.92` | `physical crouch: eyes 1.69 m = 0.90 ...`: the owner's reach that crouched Shepard, reproduced | `physical crouch: 1.43 m = 0.77` |
+| 1 / 0 | `posture: a lean, not a crouch: ... the head went 0.13 m forward for 0.06 m down` | `a lean, not a crouch: ... 0.14 m forward for 0.08 m down` | `physical crouch: 1.44 m = 0.77` |
+| 0 / 0.25 | no crouch (the line at 0.87, 1.62 m) | no crouch | `physical crouch: 1.42 m = 0.76 ..., below 0.87` |
+| 1.0 / 0.25 (the defaults) | no crouch | no crouch | `physical crouch: 1.42 m = 0.76 ..., below 0.87` |
+
+The floor lock followed the replayed head in every case: `floor lock: ... STAGE eye 1.8690 m, ... final eye 1.8690 m`
+standing, `final eye 1.6990 m` in the lean, `1.6890 m` in the reach, `1.4190 m` in the squat (before the change the final eye
+stayed 1.7526 m whatever the replay did). The crouched walk: crouched at 1.42 m, stood at 1.87 m. No `arm IK: body anchor:
+third person` in either script. crouch-anchor.ps1 `-Phases button,physical` (folder `crouch-anchor-pos4-083003`, crouchMinDropM
+and crouchLeanRatio 0 so a 0.17 m drop crouches): the 0.17 m crouch `posture: physical crouch: eyes 1.70 m = 0.91 ...`, the 0.40
+m one `eyes 1.48 m = 0.79 ...`, the snapshots during them posture eyes 1.699 m and 1.469 m with Shepard crouched by the game,
+`third-person anchors 0`; the 0.40 m crouch's left eye shows the floor ahead and the hands, no collar or chest in view (the eyes
+not in the body). Shepard's pawn floor stayed -11996.85 through every crouch and stand.
+
+**Found on the way:**
+- A stretch's first replay with tracked hands opens our main menu's controller guide (`main menu: first run: on the
+  controller guide`, a fresh `[Menu] controlsShown`), which pauses ME2 (`menu pause: ... LE2 native pause`). The first run
+  (`posture-walk-pos1-081540`) measured a frozen world: the posture lines all came, but the native crouch and uncrouch with
+  physics paused raised the pawn 33 units a cycle (Location up at each stand, never down: 231 units after seven), the bones
+  never moved and the stick moved nobody. The scripts now close the guide with a replayed B (`Close-FirstRunMenuLe2`); any
+  script of a stretch's first replay must too. Not a player's bug (a player meets the guide in the headset and closes it), but
+  whether ME2's crouch called while paused leaves the pawn floating is worth knowing for menus opened mid-crouch [verify].
+- `python -I tools/session-judge.py` (lane SMOKE) on the run flags `posture-flip-flop` (the deliberate crouch cases) and
+  `crouchbody-drop-not-crouched` (6): `torso: crouching with you: the body down 4-6 cm` logged in the same tick as the
+  physical crouch, before the posture line, during the replay's 0.4 s eased descent: the judge reads the player as not yet
+  crouched; the torso follows the head down by design (research/29 "The eyes inside the body").
+- Still open: ME2's VR cover behind a low wall at the owner's crouch (SMOKE: his natural crouch 1.52 m, the walls about 1 m:
+  smoke-owner-save.ps1's cover phase can use the replayed floor now), a recorded recenter while bent, and an LE1 eyes-in-body
+  run with the floor lock on (`tools/eyes-in-body.ps1`, the session's `-CalibrationKey owner -BuildDir <development build>`).
 
 ## What M3 still needs from the host (lane B2)
 
