@@ -130,3 +130,34 @@ after A and B, if ever.
 1. A + ME3's Ashley and Jack: the core and the ME3 adapter, checked on the fake headset in a conversation with Ashley.
 2. Check LEX's import of a hair mesh with added bones (one LE2 Miranda chain set), then Miranda on ME2.
 3. B as a separate prototype: one hair pixel shader swapped, same-pose snapshots before and after.
+
+## The first runs in ME3 (2026-11-19, fake headset)
+
+Three runs (`tools/le2-halcyon-run`, `-Game LE3 -RendererPreview`, branch `hair-miranda`). What they showed:
+
+1. **ME3's Miranda is an `SFXStuntActor`, not a pawn** (`BioD_CitHub_Miranda`, `BioD_End001_436CRMiranda`; archetype
+   `char_henchmen.Archetypes.NonParty.Miranda.Miranda_Conversation`): `BodyMesh`, `HeadMesh`, `HairMesh` (`HairSMC`) of its
+   own, not on the world's pawn list. `game/Hair` scans for stunt actors once a second. Her Citadel level holds the actor at
+   (-8220, 18941, -184011) facing -X, a use module and her own `SFXSeqAct_StartConversation`.
+2. **The stand-in loads**: `DynamicLoadObject` found `HMF_HIR_PROMiranda_MDL_Old` and `SetSkeletalMesh` put it on her hair
+   (123 bones). Its 13 hair bones are **not two-bone chains**: the `...Top` bones hang from `Neck`/`Neck1`, the
+   `...Bottom` ones from `Chest2`/`LeftCollar`/`RightCollar` (13 one-bone chains).
+3. **A stunt actor's hair is posed only while something animates it**: in London outside her conversation (T pose, unlit)
+   no `UpdateSkelPose` call came for her hair; the Citadel docking officer in her arrival conversation got 6,152.
+4. **The rigged hair breaks on a body without hair bones, with our stage off too**: on the seated docking officer the
+   bangs sat on her head and the rest floated above and behind it (snapshots 2026-11-19_14-07-19 and 14-08-00). The hair
+   follows the body (`ParentAnimComponent`); bones the body lacks get nothing from it and stay at the mesh's reference pose
+   in the component's space (standing height), so a seated or moving character leaves them behind.
+5. **At `UpdateSkelPose`'s return the follower's `SpaceBases` aren't the drawn pose**: every bone of the hair read at the
+   component's origin, and what the stage wrote there never showed: the copy from the body comes later and replaces it.
+
+What it means for A1 (docs/trilogy-hair-plan.md 4.3):
+- The stage has to run **after the engine's copy from the parent** (find where LE3 fills a follower's SpaceBases from
+  `ParentAnimComponent`/`ParentBoneMap`: Ghidra, callers of 0x796EB0 and the component's transform update).
+- The hair bones' animated targets must be **built by us**: each hair bone's reference-pose local transform (RefSkeleton)
+  composed on its posed parent bone (Neck, Neck1, Chest2, collars), because the engine gives them nothing. With that, the
+  stand-in also works on bodies that lack the bones (every body).
+- Fixtures: a stunt actor in a conversation. `Save_0031` moved to `BioP_CitHub` by a scratch script on `tools/le3-save.py`'s
+  codec (base level, location, the hub's `levels`) loads into the Citadel's docking conversation (the saved place is
+  ignored); its officer is a ready test body. Never clone the player's pawn (`Actor.Spawn` with it as the template crashed
+  ME3 in the copy's first pose update, exe+0x9C44D4).
