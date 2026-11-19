@@ -15,13 +15,10 @@
 namespace mevr::game::menu_pause {
 
 struct Link {
-    bool squadPause = false; // sequel custom squad menus use this same pause owner
     std::uint32_t (*state)() = nullptr;  // HostServices::mainMenu (kMainMenuOpen, kMainMenuPause); null: no menu
 };
 
 void Tick(Link const& link);
-// Recompute the same owner immediately when a sequel squad panel opens/closes; preserve any main-menu pause.
-void SetSquadPause(bool pause);
 // The game is paused by the main menu now (we paused it and haven't unpaused yet): game/GameMenuRequest waits for it.
 bool Paused();
 // Unpauses if the menu paused the game (not while the process exits).

@@ -16,8 +16,7 @@
 //           armLengthM                     shown here if present: the mod's result (the arm-length
 //                                          calibration owns this key and how it's computed).
 //
-//   [Squad] style, wheelStick              squad weapons: the game's own wheel (native) or our menu
-//                                          (custom), and the stick that steers the game's wheel.
+//   [Squad] wheelStick                     squad weapons: the stick that steers the game's own wheel.
 //
 //   [Sights] pistol, shotgun, assaultRifle, sniperRifle, source
 //                                          gun sights: none | dot | holo | scope <zoom> per weapon type,
@@ -560,8 +559,8 @@ static void CalibrationSection() {
     }
 }
 
-// Squad weapons ([Squad] style and wheelStick): the game's own wheel or our menu, for A/B in the
-// headset (game/SquadWeapons re-reads the file within a second).
+// Squad weapons ([Squad] wheelStick): the stick that steers the game's own wheel, for A/B in the headset
+// (game/SquadWeapons re-reads the file within a second). Our drawn menu, its other style, is gone (2026-11-18).
 static std::string ReadText(wchar_t const* section, wchar_t const* key, wchar_t const* fallback) {
     wchar_t text[64]{};
     mevr::vr::settings_file::String(section, key, fallback, text, 64, Path().c_str());
@@ -577,34 +576,21 @@ static void SquadSection() {
     if (Path().empty()) {
         return;
     }
-    std::string const style = ReadText(L"Squad", L"style", L"native");
-    bool const native = style != "custom";
-    if (ImGui::RadioButton("The game's own weapon wheel", native) && !native) {
-        mevr::vr::settings_file::Write(L"Squad", L"style", L"native", Path().c_str());
-        mevr::log::Info("menu: squad weapons: the game's own wheel");
-    }
-    ImGui::SameLine();
-    if (ImGui::RadioButton("Our menu", !native) && native) {
-        mevr::vr::settings_file::Write(L"Squad", L"style", L"custom", Path().c_str());
-        mevr::log::Info("menu: squad weapons: our menu");
-    }
-    if (native) {
-        std::string const stick = ReadText(L"Squad", L"wheelStick", L"right");
-        ImGui::TextUnformatted("Steer the wheel with:");
-        struct Choice {
-            char const* label;
-            wchar_t const* value;
-            char const* key;
-        };
-        static constexpr Choice kChoices[] = {
-            {"right stick", L"right", "right"}, {"left stick", L"left", "left"}, {"either", L"either", "either"}};
-        for (Choice const& choice : kChoices) {
-            ImGui::SameLine();
-            bool const on = stick == choice.key;
-            if (ImGui::RadioButton(choice.label, on) && !on) {
-                mevr::vr::settings_file::Write(L"Squad", L"wheelStick", choice.value, Path().c_str());
-                mevr::log::Info("menu: squad weapons: the wheel is steered with {}", choice.key);
-            }
+    std::string const stick = ReadText(L"Squad", L"wheelStick", L"right");
+    ImGui::TextUnformatted("The game's own weapon wheel. Steer it with:");
+    struct Choice {
+        char const* label;
+        wchar_t const* value;
+        char const* key;
+    };
+    static constexpr Choice kChoices[] = {
+        {"right stick", L"right", "right"}, {"left stick", L"left", "left"}, {"either", L"either", "either"}};
+    for (Choice const& choice : kChoices) {
+        ImGui::SameLine();
+        bool const on = stick == choice.key;
+        if (ImGui::RadioButton(choice.label, on) && !on) {
+            mevr::vr::settings_file::Write(L"Squad", L"wheelStick", choice.value, Path().c_str());
+            mevr::log::Info("menu: squad weapons: the wheel is steered with {}", choice.key);
         }
     }
 }

@@ -50,7 +50,7 @@ Each rule has who decided it, when, and where it was said. "The continuation pla
 | 14 | **The galaxy map opens over the Normandy's projector, with the CIC around it**, as in ME1. A flat table placed from the head is an intermediate step, not parity. | the owner's correction, 2026-11-15 | [galaxy-projector-handoff.md](galaxy-projector-handoff.md) "Intended result"; LE3 plan "Galaxy" |
 | 15 | **Menu rows a game doesn't have yet stay greyed.** "Keep them greyed until I can see them." | the owner, 2026-11-14 | answer 8 |
 | 16 | **The stick-click hold first.** `\` stays the menu key; holding both stick clicks always wins and is named first in the controller guide. Nothing depends on a controller's menu or system button. | the owner, 2026-11-14 | answer 8; ROADMAP "Not planned" |
-| 17 | **Squad weapons stay on the left-trigger menu.** The weapon row inside the right-B placement wheel was built and reverted at the owner's request. | the owner, before 2026-11-15 | M6 guide B "Preserve the approved interaction" |
+| 17 | **Squad weapons stay on the left trigger, and the trigger is only ever the game's own weapon wheel**, with the left hand open and with both hands on the gun: no drawn menu of ours ("just remove the custom menu and just always default to the classic menu"). The weapon row inside the right-B placement wheel was built and reverted at the owner's request. | the owner, before 2026-11-15; 2026-11-18 | M6 guide B "Preserve the approved interaction"; T45 |
 | 18 | **The game stays the authority** for damage, ammo, inventory, cooldowns, resources and plot. VR asks the game to act through its own functions and keeps no writable second copy. A reload is done by hand but the game counts the ammo. | 2026-10-07; 2026-11-13 | [trilogy-design.md](trilogy-design.md) rule 3; le2-port-implementation-plan.md "Product decisions"; LE3 plan rule 5 |
 | 19 | **No new player-facing default without the owner's yes.** ME1's value is the default; a lane reports a recommendation instead of flipping one. | the owner, 2026-11-11; the lanes' rules, 2026-11-16 | research/le2-picture.md section 5 |
 | 32 | **Everything consistent.** "Ideally I want everything consistent. Me3 I'd prefer other elements stay open if it helps with immersion." A per-game difference in behaviour needs a reason the game forces; our menu treats the game's layers the same on every game, and our own quads stay hidden under it on all three (the owner, 2026-11-16, question 10). | the owner, 2026-11-16 | research/trilogy-seams.md "ME3 as ME1", "One recenter rule" |
@@ -943,18 +943,26 @@ These unblock the most: almost every other entry gets smaller once they land.
 
 #### T45 The squad's weapons wheel [G30, G57; Forks 5]
 - **State:** LE1 build · LE2 build · LE3 build
-- **Lives in:** `game/SquadWeapons`, `core/vr/SquadMenu`, `plugin/SquadPanel`, `core/vr/WheelCrop`.
+- **Lives in:** `game/SquadWeapons`, `core/vr/SquadMenu` (`RouteTrigger`), `plugin/WheelPanel`, `core/vr/WheelCrop`.
 - **Done 2026-11-16:** one tick for all three games (GF, Forks 5); ME2's names from `SFXPawn.GetPrettyName` and an
   equip seen on ME2 (GF2: Miranda's pistol, 6 of 6 pulls; ledger G30).
-- **Left:** one `Tick` over a per-game roster and equip adapter (today `Le2SquadMenu.inc` re-implements LE1's `Tick` for
-  both sequels; the LE1 part is a refactor). The sequels run the drawn "custom" style only.
+- **Done 2026-11-18 (the owner, in the headset on ME2: "just remove the custom menu and just always default to the classic
+  menu"; question 9):** our drawn menu is gone on every game (`TickCustom`, the paged inventory, `plugin/SquadPanel`,
+  `[Squad] style = custom`, which an old file moves to native once, `gamepad::kFlagSquadMenu`, HostServices v11's
+  `setSquadMenu`, retired). One rule says who a pull is (`squad_menu::RouteTrigger`, `TestTriggerRoute`): ME1 on foot with the
+  left hand off the gun opens the game's wheel itself (unchanged); everywhere else, the sequels always, the pull is the game's
+  own LB, whose hold opens the same wheel. The sequels keep the roster and `GiveWeapon` (`game/Le2SquadWeapons.inc`) for T46.
+- **Left:** the owner's check on ME2 and ME3 with the left hand open (notes/headset-checklist.md); whether ME1 with both
+  hands on the gun should also open the wheel itself (no 0.3 s hold, no tap that swaps Shepard's weapon) rather than through
+  the game's LB is not asked yet.
 - **Built 2026-11-18 (lane AU1):** the game's weapon and power wheels on their own quad at the hand on every game: LE1's code
   moved unchanged out of `HalcyonOverlays.cpp` into `plugin/WheelPanel` (the crop's measurement, the mod's `setWheelPanel`
   settings, the placement, the quad, its log lines), composed by LE1's overlays and by `SequelOverlays.cpp` (before the HUD
   panel is cleared, as the HUD pieces); the wheel's mode through `engine/GameAdapter.hpp` (ME2's 1 and 2, ME3's 3 and 4).
   Not seen in a sequel yet: `[MEVR-WHEEL]` lines and a `wheel` layer in a snapshot with a wheel up.
-- **Closes when:** with two squadmates, every carried weapon can be given and the recipient's equipped weapon is seen to
-  change; LE1's same-pose check passes. Detail for ME2: [M6 guide](le2-m6-implementation-guide.md) package B.
+- **Closes when:** with two squadmates, the left trigger opens only the game's weapon wheel at the hand (the left hand open
+  and on the gun), every carried weapon can be given from it and the recipient's equipped weapon is seen to change; LE1's
+  same-pose check passes. Detail for ME2: [M6 guide](le2-m6-implementation-guide.md) package B.
 - **Who:** GF.
 
 #### T46 Squad orders, placement by an arc, the squad's answer [G31, G32, G34]
@@ -1318,6 +1326,9 @@ me3/summary.md; the owner's words in quotes):
    greyed until the skip works?
 9. **Squad weapons' style on the sequels.** ME1's default is the game's own weapon wheel at the hand; both sequels run
    only our drawn menu. Is the drawn menu the sequels' style for good, or is the game's wheel at the hand still wanted?
+   **Answered 2026-11-18, the owner (in the headset on ME2): the game's wheel.** "I think we should just remove the custom
+   menu and just always default to the classic menu to change their weapons." Built (T45): the drawn menu is removed on all
+   three games.
 10. **Our own quads under our menu** (put to the owner by the coordinator, 2026-11-16; research/trilogy-seams.md "ME3 as
     ME1"). On every game our menu (and the running calibration) is the only quad of ours while it is drawn; the world stays
     under it. Keep the HUD panel, the ring and the wheels visible under it too? **Answered 2026-11-16, the owner: no; they

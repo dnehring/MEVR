@@ -676,7 +676,7 @@ set(MEVR_MOD_SOURCES
     src/game/SquadWeapons.hpp
     src/game/Le2Squad.hpp
     src/game/SequelPowers.hpp
-    src/game/Le2SquadMenu.inc
+    src/game/Le2SquadWeapons.inc
     src/game/SupportGrip.cpp
     src/game/SupportGrip.hpp
     src/game/Throwables.cpp
@@ -952,12 +952,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/plugin/SightPictures.hpp
     src/plugin/Spectator.cpp
     src/plugin/Spectator.hpp
-    src/plugin/SquadPanel.cpp
-    src/plugin/SquadPanel.hpp
     src/plugin/Upscale.cpp
     src/plugin/Upscale.hpp
-    src/plugin/SquadPanelDraw.cpp
-    src/plugin/SquadPanelDraw.hpp
     src/plugin/Glow.cpp
     src/plugin/Glow.hpp
     src/plugin/PowerIcons.cpp
@@ -1122,7 +1118,7 @@ function(mevr_add_plugin game)
             src/core/vr/PowerWheel.cpp src/core/vr/SquadPlace.cpp
             src/plugin/PowerWheel.cpp src/plugin/PowerWheelDraw.cpp src/plugin/PowerIcons.cpp src/plugin/Glow.cpp
             src/plugin/SquadPlaceDraw.cpp src/plugin/GalaxyHologramDraw.cpp
-            src/core/vr/SquadMenu.cpp src/plugin/SquadPanel.cpp src/plugin/SquadPanelDraw.cpp
+            src/core/vr/SquadMenu.cpp
             # The galaxy map's window and view hold over the CIC's projector (ME1's, every game: game/GalaxyProjector).
             src/plugin/GalaxyHologram.cpp src/plugin/GalaxyHologram.hpp src/plugin/PovSwap.hpp
             src/core/vr/GalaxyHologram.cpp src/core/vr/GalaxyHologram.hpp
@@ -1204,7 +1200,7 @@ function(mevr_add_plugin game)
             src/plugin/SquadPlaceDraw.cpp src/plugin/GalaxyHologramDraw.cpp src/core/vr/GalaxyHologram.cpp
             src/plugin/GalaxyHologram.cpp
             src/core/vr/GalaxyMap.cpp src/core/vr/GalaxyMap.hpp
-            src/core/vr/SquadMenu.cpp src/plugin/SquadPanel.cpp src/plugin/SquadPanelDraw.cpp
+            src/core/vr/SquadMenu.cpp
             src/plugin/PowerWheel.cpp src/plugin/PowerWheelDraw.cpp src/plugin/PowerIcons.cpp src/plugin/Glow.cpp
             src/core/vr/OverlayPlacement.cpp src/core/vr/OverlayPlacement.hpp
             ${MEVR_SEQUEL_RENDER_PERF_SOURCES})
@@ -2082,20 +2078,7 @@ if (MEVR_BUILD_TESTS)
         add_dependencies(mevr-test-programs mevr-loader-test)
     endif ()
 
-    # The squad weapon menu's look, offline (tools/squad-preview): PNGs of sample squads drawn with the
-    # host's own drawing code and ImGui's D3D11 backend (from the halcyon-le1 library).
     if (MEVR_HALCYON)
-        add_executable(mevr-squad-preview
-            tools/squad-preview/Main.cpp
-            src/core/PngFile.cpp
-            src/core/vr/SquadMenu.cpp
-            src/plugin/SquadPanelDraw.cpp
-        )
-        target_include_directories(mevr-squad-preview PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-        target_link_libraries(mevr-squad-preview PRIVATE halcyon-le1 OpenXR::headers windowscodecs ole32 d3d11)
-        target_compile_definitions(mevr-squad-preview PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
-        target_compile_options(mevr-squad-preview PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
-
         # The guided calibration's look, offline (tools/calibration-preview, research/25): the panel's screens, the
         # target board, the orbs and the check dot as PNGs, and eye views composited as the runtime shows them.
         add_executable(mevr-calibration-preview

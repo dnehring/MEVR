@@ -162,8 +162,7 @@ std::string ControllersLabel(std::string_view calibrationLabel);
 struct GuideInput {
     bool seated = false;                 // [Calibration.<key>] position (L3 only; physical crouch disabled)
     std::string leftTrigger = "lb";      // [Controls] leftTrigger: lb | lt | none
-    bool squad = true;                   // [Squad] enabled: the left trigger's pull is the squad's weapon wheel
-    std::string squadStyle = "native";   // [Squad] style: native | custom
+    bool squad = true;                   // [Squad] enabled: the left trigger's pull is the squad's weapon wheel (ME1)
     bool holsters = true;                // [Holsters] enabled
     bool gripHolds = true;               // [Holsters] gripHolds
     std::string powerWheel = "r3";       // [Holsters] powerWheel (with gripHolds): r3 | y | x | b | none

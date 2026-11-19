@@ -100,7 +100,7 @@ void ResetGalaxy() {
 }
 bool MapOwnersAllow() {
     if (mevr::host::renderer::OwnMenuOpen() || mevr::host::menus_le2::PadWanted() ||
-        mevr::vr::power_wheel::Latest().open || mevr::vr::squad_menu::Latest().open) return false;
+        mevr::vr::power_wheel::Latest().open) return false;
 #if defined(MEVR_WITH_MAIN_MENU)
     if (mevr::host::calibration::Active() || mevr::host::main_menu::IsOpen() ||
         mevr::host::omni_rail::Shown() || mevr::host::omni_rail::OwnsTriggers() ||

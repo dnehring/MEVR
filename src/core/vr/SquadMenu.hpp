@@ -5,12 +5,14 @@
 
 #include <cstdint>
 
-// The squad weapon menu (docs/squad-weapons-design.md, option A): pull the left trigger (pointing the
-// left hand at a squadmate preselects them), flick the right stick toward a weapon, let go. Since
-// 2026-10-22 the left trigger opens it, at once; the left grip is only the support grip (and grenades),
-// and never opens it. Engine-agnostic and pure
-// (unit-tested in tests/Main.cpp), except Publish/Latest, which carry the menu from the mod (game
-// thread: game/SquadWeapons) to the host's renderer (Present thread: plugin/SquadPanel).
+// The squad's weapons at the left trigger (docs/squad-weapons-design.md): on every game the left trigger's pull is the game's
+// own weapon wheel (the owner, 2026-11-18: "remove the custom menu and just always default to the classic menu"; our drawn
+// menu, [Squad] style = custom, plugin/SquadPanel, is gone). Who the pull is (RouteTrigger, below): on ME1 the squad opens
+// the wheel itself at once (SFXGameModeDefault.EnterWeaponWheel; pointing the left hand at a squadmate preselects them;
+// letting go gives the highlighted entry: wheel::Machine); elsewhere, and on ME1 with both hands on the gun, the pull reaches
+// the game as its own LB, whose hold opens the same wheel. Engine-agnostic and pure (unit-tested in tests/Main.cpp), except
+// PublishPanel/LatestPanel, which carry the wheel panel's settings from the mod (game thread: game/SquadWeapons) to the
+// host's renderer (Present thread: plugin/WheelPanel).
 //
 // Conventions: tracking space (OpenXR: meters, +X right, +Y up, -Z forward). Weapons are ME1's
 // quick-slot types (BioBaseSquad.ESwitchToWeapon): 0 pistol, 1 shotgun, 2 assault rifle, 3 sniper
@@ -20,31 +22,7 @@ namespace mevr::vr::squad_menu {
 inline constexpr int kWeapons = 4;
 inline constexpr int kMaxMembers = 2;  // ME1 takes two squadmates along
 
-// Native inventories may exceed the four visual tiles. Overflow pages reserve one tile for navigation.
-struct InventoryPage { int index = 0, pages = 1, first = 0, count = 0, more = -1; };
-InventoryPage PageInventory(int weaponCount, int requestedPage);
-
-// ---- The radial: four tiles, one per weapon type, at fixed places ----------------------------------
-
-enum class Direction : std::int8_t { None = -1, Up = 0, Left = 1, Right = 2, Down = 3 };
-
-// The fixed layout (muscle memory, like the body holsters): up the assault rifle, left the shotgun,
-// right the sniper rifle, down the pistol.
-int WeaponAt(Direction direction);
-Direction DirectionOf(int weapon);
 char const* WeaponName(int weapon);  // "pistol", "shotgun", "assault rifle", "sniper rifle", "none"
-char const* DirectionName(Direction direction);
-
-struct RadialSettings {
-    float deadZone = 0.55f;      // a tile is chosen once the stick is pushed past this ...
-    float release = 0.35f;       // ... and stays chosen until it comes back inside this
-    float hysteresisDeg = 12.0f; // a chosen tile keeps the stick this far past its 45-degree border
-};
-
-// Where a stick (x right, y up/forward, -1..1) points among the four tiles. `held`: the last answer
-// (None when the stick was centered): it is kept across a sector border by the hysteresis, and past
-// the dead zone only `release` applies.
-Direction Radial(float x, float y, Direction held, RadialSettings const& settings);
 
 // ---- Pointing at a squadmate ------------------------------------------------------------------------
 
@@ -65,132 +43,12 @@ int NearestToRay(XrVector3f const& origin, XrVector3f const& direction, Target c
 
 // ---- The panel at the hand ---------------------------------------------------------------------------
 
-// Where the menu's quad goes when it opens: `distance` meters from the hand, mostly up and a little
-// further out along the line from the head through the hand, so it sits above the hand and clear of
-// it; level, its front (+Z) facing the eyes (yaw and pitch toward the head, no roll).
+// Where the game's wheel's quad goes when it opens (plugin/WheelPanel): `distance` meters from the hand, mostly up and a
+// little further out along the line from the head through the hand, so it sits above the hand and clear of it; level, its
+// front (+Z) facing the eyes (yaw and pitch toward the head, no roll).
 XrPosef PlaceAtHand(XrVector3f const& hand, XrVector3f const& head, float distance);
 
-// ---- The open/choose/close machine ------------------------------------------------------------------
-
-struct Member {
-    std::uint8_t carried = 0;  // bit w: carries a weapon of type w
-    int current = -1;          // the type in hand (-1: none or unknown)
-    int more = -1;             // optional navigation tile; never a weapon order
-};
-
-struct Input {
-    float dt = 0.0f;              // seconds since the last step
-    bool usable = false;          // the menu may be open now (on foot, a world view, tracked, a squad)
-    bool triggerDown = false;     // the left trigger (latched)
-    bool newPull = false;         // a new left-trigger pull began this step (while the menu may open)
-    int pointed = -1;             // the member the left hand points at (within the cone), -1: none
-    int preferred = -1;           // who to preselect when not pointing (the last one used, or nearest the ray)
-    int memberCount = 0;          // 0..kMaxMembers, in card order (0 = the left card)
-    Member members[kMaxMembers];
-    float leftX = 0.0f;           // left stick: chooses the card
-    float leftY = 0.0f;
-    float rightX = 0.0f;          // right stick: chooses the tile
-    float rightY = 0.0f;
-    bool a = false;               // A (confirm), B (cancel): held state; the machine takes edges
-    bool b = false;
-    bool confirmOnRelease = true; // letting go of the trigger confirms (or cancels with nothing chosen)
-    float idleCloseSeconds = 15.0f;  // with confirmOnRelease off: closes by itself after this long untouched
-    RadialSettings radial;
-    float cardPush = 0.6f;        // the left stick past this left or right picks that card
-};
-
-enum class Phase : std::uint8_t {
-    Idle,
-    Open,
-};
-
-enum class Close : std::uint8_t {
-    None,
-    Confirmed,      // released with a tile chosen, or A
-    Released,       // released with nothing chosen
-    CancelButton,   // B
-    Repulled,       // confirmOnRelease off: the trigger pulled again
-    Unusable,       // the conditions stopped holding (mode, view, tracking, squad changed)
-    Idle,           // confirmOnRelease off: untouched for idleCloseSeconds
-};
-char const* CloseName(Close close);
-
-struct Step {
-    bool opened = false;
-    bool openedPointing = false;  // opened with the squadmate the hand pointed at (else `preferred`)
-    bool refused = false;         // a pull that would open it, with nobody in the squad
-    Close closed = Close::None;
-    bool cardChanged = false;
-    bool tileChanged = false;     // the highlight moved (to a tile or to none)
-    bool tileRefused = false;     // a flick toward a tile the member doesn't carry
-    bool pageChanged = false;     // confirmed navigation; member identifies whose page to advance
-    int member = -1;              // with Confirmed: the card index
-    int weapon = -1;              // with Confirmed: the weapon type
-};
-
-class Machine {
-public:
-    Step Update(Input const& input);
-    void Reset();
-
-    Phase CurrentPhase() const { return phase_; }
-    bool IsOpen() const { return phase_ == Phase::Open; }
-    int Selected() const { return selected_; }
-    int Highlighted() const { return highlighted_; }  // weapon type, -1: none
-
-private:
-    void OpenMenu(Input const& input, int member, Step& step);
-    void CloseMenu(Close why, Step& step);
-
-    Phase phase_ = Phase::Idle;
-    int selected_ = 0;
-    int highlighted_ = -1;
-    Direction rightHeld_ = Direction::None;  // the radial's last answer
-    int leftSide_ = 0;                       // the left stick's last card side (-1, 0, 1)
-    bool flickRefused_ = false;              // this flick already refused (one feedback per flick)
-    float idleFor_ = 0.0f;
-    bool triggerWasDown_ = false;
-    bool aWasDown_ = true;  // edges only from a press that began while open
-    bool bWasDown_ = true;
-    bool paging_ = false;
-};
-
-// ---- What the host draws -------------------------------------------------------------------------
-
-struct MemberView {
-    char name[24] = {};      // UTF-8, as shown ("GARRUS")
-    char role[24] = {};      // the class, as shown ("TURIAN AGENT")
-    char initials[4] = {};   // for the class badge
-    std::int8_t discipline = 0;  // badge colour: 0 combat, 1 tech, 2 biotic
-    std::int8_t current = -1;    // weapon type in hand
-    std::uint8_t carried = 0;    // bit per weapon type
-    std::uint8_t pointed = 0;    // the hand pointed at them when the menu opened
-    float health = -1.0f;        // 0..1; negative: unknown
-    std::int8_t icons[kWeapons] = {0, 1, 2, 3};
-    char labels[kWeapons][32] = {}; // optional per-slot labels for native inventories
-};
-
-struct View {
-    std::uint32_t size = sizeof(View);  // the mod's sizeof(View): the host draws only a matching one
-    std::uint32_t serial = 0;           // + 1 at each opening: the host places the panel anew
-    bool open = false;
-    bool confirmOnRelease = true;
-    std::int8_t count = 0;
-    std::int8_t selected = 0;           // card index
-    std::int8_t highlighted = -1;       // weapon type, -1: none
-    float distance = 0.27f;             // panel center from the hand, meters
-    float width = 0.40f;                // panel width, meters
-    MemberView members[kMaxMembers];
-    std::uint64_t sequence = 0;         // set by Publish
-    std::uint64_t timeMs = 0;           // set by Publish (GetTickCount64)
-};
-
-// Any thread. Latest: `open` forced false if older than `maxAgeMs` (the mod stalled or unloaded).
-void Publish(View const& view);
-View Latest(std::uint64_t maxAgeMs = 250);
-void Reset();
-
-// ---- The game's own weapon wheel ([Squad] style = native; docs/squad-weapons-design.md) -------------
+// ---- The game's own weapon wheel (docs/squad-weapons-design.md) --------------------------------------
 //
 // ME1's weapon wheel (SFXGameModeWeaponWheel, game mode 3) is one ring in the console HUD movie
 // (GUI_SF_HUD.ME_HUD): its angle picks a squad member and one of their four weapons together. The
@@ -223,8 +81,8 @@ int StickAngleOf(Entry entry);
 int WeaponOfSlot(int slot);
 int SlotOfWeapon(int weapon);
 
-// The open/steer/close machine for the game's wheel, opened like the custom menu: a new pull of the
-// left trigger opens it at once; letting go of the trigger gives the highlighted entry and closes it.
+// The open/steer/close machine for the game's wheel (TriggerRoute::OpensWheel): a new pull of the left trigger opens it at
+// once; letting go of the trigger gives the highlighted entry and closes it.
 struct Input {
     float dt = 0.0f;
     bool usable = false;          // it may open or stay open (a world view, tracked controllers, LE1 on foot or in the wheel)
@@ -318,16 +176,43 @@ void ResetPanel();
 
 } // namespace wheel
 
-// Who gets the left trigger (pure; unit-tested; both styles): the squad's wheel or menu (the mod reads
-// it and the game sees neither LB nor LT from it) or the game's own mapping ([Controls] leftTrigger).
-// Decided when the trigger goes down and kept until it's let go, so a mode change mid-pull never turns
-// it into an LB press or release the game would take as a tap (TrySwapWeapon) or its own wheel.
+// ---- Who the left trigger's pull is (pure; unit-tested) ------------------------------------------------
+//
+// Whatever the left hand does (open, or on the gun's foregrip), a pull opens only the game's own weapon wheel, one of two
+// ways (the owner, 2026-11-18):
+//   OpensWheel  the squad's: the mod opens the wheel itself at once (wheel::Machine: ME1's EnterWeaponWheel), pointing
+//               preselects, letting go gives the highlighted entry; the game sees neither LB nor LT from the trigger, so
+//               there is no 0.3 s hold and no tap's TrySwapWeapon (ME1's LB binding: OnHold 0.3 EnterWeaponWheel / OnTap
+//               0.3 TrySwapWeapon).
+//   GameButton  the game's: the pull reaches it through the pad mapping ([Controls] leftTrigger: lb, whose hold opens the
+//               same wheel by the game's own binding, which the host shows at the hand all the same: plugin/WheelPanel).
+//               ME2 and ME3 always (their wheels are other UIs: the mod can't open, steer or preselect them, and Halcyon's
+//               ME3 renderer knows its wheel by the pad's LB held); ME1 with both hands on the gun (since 2026-11-15), in
+//               the Mako (LB: boost), in menus, while the hand's power wheel has the left hand, or without [Squad] enabled.
+enum class TriggerRoute : std::uint8_t { GameButton, OpensWheel };
+char const* RouteName(TriggerRoute route);
+
+struct TriggerFacts {
+    bool enabled = true;         // [Squad] enabled
+    bool leftTriggerLB = true;   // [Controls] leftTrigger = lb (the weapon wheel's button)
+    bool opensWheel = false;     // this game's wheel can be opened by the mod (ME1: a v12 host, the script functions and the
+                                 // game's EnterWeaponWheel / ExitWeaponWheel found); never on ME2 or ME3
+    bool modeTakesIt = false;    // on foot or in the game's wheels (ME1's modes 0, 2, 3)
+    bool menuOpen = false;       // our main menu or the omni-tool's rail has the inputs
+    bool powerWheel = false;     // the hand's power wheel has the left hand (its pinch equips a power)
+    bool supportGrip = false;    // the left hand holds the gun's foregrip (both hands on the gun)
+};
+TriggerRoute RouteTrigger(TriggerFacts const& facts);
+
+// The route is decided when the trigger goes down and kept until it's let go, so a mode change mid-pull (or the left hand
+// leaving the foregrip) never turns it into an LB press or release the game would take as a tap (TrySwapWeapon) or its
+// own wheel.
 struct TriggerOwner {
     bool down = false;
     bool owned = false;
 };
-// One step: `pulled` the latched trigger now, `wanted` whether the squad may have it now (on foot or in
-// a wheel, the feature on). Returns whether it's the squad's this step.
+// One step: `pulled` the latched trigger now, `wanted` whether the squad may have it now (RouteTrigger says OpensWheel).
+// Returns whether it's the squad's this step.
 bool OwnTrigger(TriggerOwner& owner, bool pulled, bool wanted);
 
 } // namespace mevr::vr::squad_menu

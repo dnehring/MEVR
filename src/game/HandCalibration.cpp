@@ -346,17 +346,15 @@ constexpr char const* kHolstersBlock =
 constexpr char const* kSquadBlock =
     "\n"
     "[Squad]\n"
-    "; Squad weapons: pull the left trigger to open the weapon wheel above your left hand (at once); point your\n"
-    "; left hand at a squadmate as you pull to put it on their weapon. The left grip never opens it.\n"
+    "; Squad weapons: the left trigger is the game's own weapon wheel, above your left hand. ME1: pull to open it at\n"
+    "; once, point your left hand at a squadmate as you pull to put it on their weapon, the right stick highlights a\n"
+    "; weapon, letting go of the trigger gives it (A queues one too, B closes it without). ME2 and ME3 (and ME1 with\n"
+    "; both hands on the gun): the trigger is the game's own button, whose hold opens its wheel. The left grip never\n"
+    "; opens it. (Our own drawn menu, style = custom, is gone since 2026-11-18.)\n"
     "enabled = 1\n"
-    "; style: native = the game's own weapon wheel (ME1's look; it pauses the game like the flat game's wheel):\n"
-    "; the right stick highlights a weapon, letting go of the trigger gives it (A queues one too, B closes it\n"
-    "; without). custom = our drawn menu: the left stick picks the squadmate, a flick of the right stick a\n"
-    "; weapon; let go (or A) to give it, B cancels.\n"
-    "style = native\n"
-    "; wheelStick (native): the stick that steers the wheel: right (the game's own) | left | either.\n"
+    "; wheelStick (ME1): the stick that steers the wheel: right (the game's own) | left | either.\n"
     "wheelStick = right\n"
-    "; wheelPreselect (native): 1 = pointing at a squadmate when you pull puts the wheel on their weapon in hand.\n"
+    "; wheelPreselect (ME1): 1 = pointing at a squadmate when you pull puts the wheel on their weapon in hand.\n"
     "wheelPreselect = 1\n"
     "; wheelPanel: 1 = the game's weapon and power wheels show on a panel of their own (however they open);\n"
     "; weaponWheelAt / powerWheelAt: where: left (hand) | right | front | hud (stays on the HUD panel).\n"
@@ -371,16 +369,13 @@ constexpr char const* kSquadBlock =
     "pointConeDeg = 10\n"
     "pointMaxM = 40\n"
 
-    "; panelDistanceM: the menu's centre from your left hand (meters); panelWidthM: its width (meters).\n"
+    "; panelDistanceM: the wheel's centre from your hand (meters); panelWidthM: its width (meters).\n"
     "panelDistanceM = 0.27\n"
     "panelWidthM = 0.40\n"
-    "; confirmOnRelease: 1 = letting go of the trigger gives the chosen weapon (nothing chosen: cancels);\n"
-    "; 0 = the menu stays open when you let go: A gives it, B or a new pull cancels.\n"
+    "; confirmOnRelease (ME1): 1 = letting go of the trigger gives the highlighted weapon (nothing new: closes);\n"
+    "; 0 = letting go closes the wheel, only A (the game's own) gives a weapon.\n"
     "confirmOnRelease = 1\n"
-    "; pause (custom): 1 (the default) = the game pauses while the menu is open, like its own weapon wheel; 0 = it\n"
-    "; keeps running. The native wheel always pauses (it's the game's).\n"
-    "pause = 1\n"
-    "; hapticAmplitude: how strong the menu's ticks and clicks are, 0..1 (0.5 as designed, 0 = none).\n"
+    "; hapticAmplitude: how strong the wheel's ticks and clicks are, 0..1 (0.5 as designed, 0 = none).\n"
     "hapticAmplitude = 0.5\n";
 
 // Appended to a settings file that has no [Throwables] yet (and part of a new file).
@@ -1353,9 +1348,6 @@ Squad ReadSquad(Ini const& ini) {
     if (Number(ini, "Squad", "confirmOnRelease", value)) {
         squad.confirmOnRelease = value != 0.0;
     }
-    if (Number(ini, "Squad", "pause", value)) {
-        squad.pause = value != 0.0;
-    }
     if (Number(ini, "Squad", "hapticAmplitude", value)) {
         squad.hapticAmplitude = std::clamp(value, 0.0, 1.0);
     }
@@ -1378,15 +1370,6 @@ Squad ReadSquad(Ini const& ini) {
         std::transform(t.begin(), t.end(), t.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
         return t;
     };
-    if (auto const style = text("style")) {
-        if (*style == "native" || *style == "game") {
-            squad.native = true;
-        } else if (*style == "custom" || *style == "ours") {
-            squad.native = false;
-        } else {
-            log::Warn("squad: can't read style = {} (native or custom); native kept", *style);
-        }
-    }
     if (auto const stick = text("wheelStick")) {
         if (*stick == "right" || *stick == "r") {
             squad.wheelStick = gamepad::WheelStick::Right;
@@ -1451,13 +1434,10 @@ char const* PlaceName(int place) {
 }
 
 std::string Describe(Squad const& s) {
-    std::string const style = s.native
-        ? std::format("native (the game's wheel; {} steers it, {}{})", gamepad::Name(s.wheelStick),
-              s.confirmOnRelease ? "letting go of the trigger gives the highlighted weapon" : "A queues, letting go closes",
-              s.wheelPreselect ? ", pointing preselects" : "")
-        : std::format("custom (our menu; {}; the game {} while it's open)",
-              s.confirmOnRelease ? "letting go confirms" : "A confirms, letting go keeps it open", s.pause ? "pauses" : "keeps running");
-    return std::format("{}, the left trigger opens it, style {}; pointing within {:.0f} degrees and {:.0f} m preselects; the panel "
+    std::string const style = std::format("the game's own wheel ({} steers it, {}{})", gamepad::Name(s.wheelStick),
+        s.confirmOnRelease ? "letting go of the trigger gives the highlighted weapon" : "A queues, letting go closes",
+        s.wheelPreselect ? ", pointing preselects" : "");
+    return std::format("{}, the left trigger opens {}; pointing within {:.0f} degrees and {:.0f} m preselects; the panel "
                        "{:.2f} m from the hand, {:.2f} m wide; haptics {:.2f}; the game's wheels {} (weapon wheel at {}, power wheel at "
                        "{}, crop {})",
         s.enabled ? "on" : "off", style, s.pointConeDeg, s.pointMaxM, s.panelDistanceM, s.panelWidthM,
@@ -3094,7 +3074,6 @@ void Refresh() {
     }
     // Likewise [Squad]'s keys for the game's own wheel (2026-10-22).
     static constexpr NewKey kNewSquadKeys[] = {
-        {L"style", "style", L"native"},
         {L"wheelStick", "wheelStick", L"right"},
         {L"wheelPreselect", "wheelPreselect", L"1"},
         {L"wheelPanel", "wheelPanel", L"1"},
@@ -3323,6 +3302,21 @@ void Refresh() {
             } else if (k->second != "0.55") {
                 log::Info("hands: [WorldUi] wristMenuWidthM = {} kept (your choice; the default is 0.70)", k->second);
             }
+        }
+    }
+    // [Squad] since 2026-11-18 (the owner: "just remove the custom menu and just always default to the classic menu"): our
+    // drawn squad menu is gone, the left trigger is only ever the game's own weapon wheel. A file whose style still names the
+    // drawn menu (custom, ours) gets native, logged; once moved the key reads native and nothing happens again. (No marker:
+    // there is no other choice left to keep.)
+    if (auto const style = ini::Get(ini, "Squad", "style")) {
+        std::string lower = *style;
+        std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        if (lower != "native" && lower != "game" &&
+            mevr::vr::settings_file::Write(L"Squad", L"style", L"native", path.wstring().c_str()) != 0) {
+            log::Info("hands: [Squad] style {} -> native (moved once): our drawn squad menu is gone; the left trigger opens the "
+                      "game's own weapon wheel (2026-11-18) in {}", *style, ini::Utf8(path));
+            ini = ReadIni(path);
+            stamp = fs::last_write_time(path, ec);
         }
     }
     // [Throwables] since 2026-11-05 (research/20 "Gesture only"): melee is the gesture only, B no longer melees on foot. A file

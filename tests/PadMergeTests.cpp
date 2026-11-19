@@ -79,7 +79,7 @@ struct Reference {
             options.countKept = false;
         }
         XINPUT_GAMEPAD touch = gp::FromControllers(controllers, latches, options);
-        bool const owned = options.squadMenu || options.nativeWheel;
+        bool const owned = options.nativeWheel;
         Walk(touch, controllers, options.handWalk && !owned && !in.ownMenuOpen, in.headLook);
         XINPUT_GAMEPAD pad = gp::Merge(real, touch);
         leftReport = gp::LeftGripReport(latches);
@@ -145,7 +145,7 @@ void TestSameAsLe1Before() {
     std::uniform_int_distribution<int> look(-12000, 12000);
     // The flags the mod sends (game/GamepadMapping's kFlag...), drawn bit by bit, and the rbSource and wheel stick fields.
     std::uint32_t const bits[] = {gp::kFlagLeftTrigger, gp::kFlagSupportAims, gp::kFlagGripShoulder, gp::kFlagLeftTriggerShoulder,
-        gp::kFlagRightGripFree, gp::kFlagRightGripHolds, gp::kFlagSquadMenu, gp::kFlagNativeWheel, gp::kFlagWheelPressA,
+        gp::kFlagRightGripFree, gp::kFlagRightGripHolds, gp::kFlagNativeWheel, gp::kFlagWheelPressA,
         gp::kFlagNoMeleeButton, gp::kFlagNoGrenadeButton, gp::kFlagModTurns, gp::kFlagHandWalk, gp::kFlagMakoDrive,
         gp::kFlagMakoLever, gp::kFlagMakoStick, gp::kFlagPowerWheel, gp::kFlagModPowerHold, gp::kFlagSquadPlace,
         gp::kFlagHandPowerWheel};
@@ -487,7 +487,7 @@ void TestConversationTriggers() {
     // LE3's conversation wheel reads unrotated left-stick axes and A; X remains native skip.
     // A stale gameplay wheel/hand-walk setting must not steal or rotate this input.
     pm::Reset();
-    pm::SetSupportGrip(-1, 0.12f, 0.22f, gp::kFlagHandWalk | gp::kFlagSquadMenu | gp::kFlagNativeWheel |
+    pm::SetSupportGrip(-1, 0.12f, 0.22f, gp::kFlagHandWalk | gp::kFlagNativeWheel |
         gp::kFlagHandPowerWheel | gp::kFlagPowerWheel | gp::kFlagWheelPressA);
     State wheel = Controllers(7000);
     wheel.left.stickX = 0.75f;
@@ -574,7 +574,7 @@ void TestNativeMapLease() {
     pm::Renderer map;
     map.orbitalTriggers = true;
     // The host must keep native pursuit/reticle steering despite stale on-foot flags.
-    pm::SetSupportGrip(-1, 0.12f, 0.22f, gp::kFlagHandWalk | gp::kFlagSquadMenu |
+    pm::SetSupportGrip(-1, 0.12f, 0.22f, gp::kFlagHandWalk |
         gp::kFlagHandPowerWheel | gp::kFlagModTurns | gp::kFlagLeftTriggerShoulder);
     State hands = Controllers(1000);
     hands.left.trigger = hands.right.trigger = 1;

@@ -49,6 +49,7 @@ reasoning, not a source.
 | Contact haptics | A continuous buzz while the hand overlaps a slot, stronger and higher-pitched toward its middle, a firmer edge crossing in, a crisp click on a draw and a softer one on a holster. Played as short refreshed OpenXR vibrations that stop by themselves if the mod stops asking (section 7) |
 | Eye height | Measured by the host in an OpenXR `STAGE` space (`LOCAL_FLOOR` if listed; Halcyon's 1.0 instance doesn't enable it), taken at each recenter, then a slow-rising maximum; `eyeHeightM` is the fallback (section 8) |
 | The game's weapon wheel from VR | `SFXGameModeDefault.EnterWeaponWheel()` opens it (LB held), `SFXGameModeWeaponWheel.ExitWeaponWheel()` closes and applies it (LB let go). One ring in the console HUD movie: the right stick's angle (`BioSFHandler_HUD.nAngle`, kept while centred) picks a member and a weapon together; A queues the highlighted entry (section 10) |
+| The left trigger, every game (2026-11-18) | **Only ever the game's own weapon wheel**, the left hand open or on the gun: our drawn menu is removed (the owner). ME1 with the hand open opens it itself at once; otherwise, ME2 and ME3 always, the pull is the game's LB, whose hold opens it (`squad_menu::RouteTrigger`): section 13 |
 
 ## 1. How VR shooters do body slots
 
@@ -823,6 +824,7 @@ The game's weapon wheel stays on the left trigger as the fallback. The VR way, o
 2026-10-22 (`game/SquadWeapons`, `core/vr/SquadMenu`, the host's `plugin/SquadPanel`): point the
 left hand at a squadmate, squeeze the left grip away from the gun, flick the right stick toward a
 weapon, let go. The design doc's "As built" has the decisions; this section has what the game does.
+(That drawn menu was removed on 2026-11-18 on every game: the left trigger is only the game's own wheel, section 13.)
 
 ### How the weapon wheel applies a squad weapon (verified 2026-10-22)
 
@@ -1147,3 +1149,87 @@ The existing offline menu preview loaded the edited assets; standing/seated Body
 (`work/seated-holsters/menu-preview/section-body*.png`). The seated note fits and stays hidden standing.
 Owner must build, test INI reload/persistence, then compare seated chairs/armrests, all four draws, grenade precedence,
 wheel draws/cancel, leaning/look-down/recenter and a full standing regression. No deploy, native launch or commit here.
+
+## 13. The left trigger is only the game's wheel; our drawn menu removed (2026-11-18)
+
+**The owner, in the headset on ME2, 2026-11-18:** "We have what seems to be a custom menu for Miranda, Jacob, really the
+squad members, in ME2 and probably ME3, on which weapons they should be selecting. When I have both hands on a gun and I
+do the left trigger, it will open up the classic weapon selector. But when I have my left hand open and do left trigger,
+it does this new custom menu. I think we should just remove the custom menu and just always default to the classic menu
+to change their weapons." This answers docs/trilogy-plan.md question 9.
+
+### What the owner saw, from the code before the change (main 12a5d963)
+
+- `game/SquadWeapons.cpp` `Tick`: the squad took the left trigger for a pull (`squad_menu::OwnTrigger`) only when
+  `wanted` held, and `wanted` included `!support_grip::Held()` (added with the ME2 port, d7e2ffa0, 2026-11-15). So with
+  both hands on the gun the pull was never the squad's: the pad mapping sent it to the game as LB (`[Controls]
+  leftTrigger = lb`, `gamepad::Options::leftTriggerShoulder`), and the game's own LB binding opened its weapon wheel. That
+  is the "classic weapon selector".
+- With the left hand open the pull was the squad's. On ME1 that opened the same game wheel at once
+  (`SFXGameModeDefault.EnterWeaponWheel`, `[Squad] style = native`, section 10). On ME2 and ME3 there was no native style
+  (`gStyleNative = false`: "the sequels' own weapon wheels are different UIs"), so it opened `TickCustom`, our drawn menu
+  (`plugin/SquadPanel`): two cards and a radial of four tiles, the sequels' inventory in pages of three with a "more
+  weapons" tile (`squad_menu::PageInventory`, `game/Le2SquadMenu.inc`).
+
+### The rule now (one shared core, a per-game fact)
+
+`core/vr/SquadMenu` `RouteTrigger(TriggerFacts)` (unit-tested, `tests/Main.cpp` `TestTriggerRoute`) says who a pull is:
+
+| Facts | Route | What the player gets |
+|-------|-------|----------------------|
+| `enabled`, `leftTriggerLB`, `opensWheel`, `modeTakesIt`, not `menuOpen`, not `powerWheel`, not `supportGrip` | `OpensWheel` | the mod opens the game's wheel at once (section 10's `wheel::Machine`): pointing preselects, letting go gives the highlighted entry, the game sees neither LB nor LT from the trigger |
+| anything else | `GameButton` | the pull reaches the game through the pad mapping as LB; the game's hold opens the same wheel (ME1: `OnHold 0.3 EnterWeaponWheel / OnTap 0.3 TrySwapWeapon`) |
+
+- `opensWheel` is ME1's only: a v12 host that takes the wheel panel's settings (`HostServices::setWheelPanel` non-null and
+  `wheelPanelSize` matching), the script functions found, and the game's `EnterWeaponWheel`/`ExitWeaponWheel` found. On ME2
+  and ME3 it is always false: their wheels are other UIs (no `BioSFHandler_HUD.nAngle` ring the mod can read or preselect),
+  and Halcyon's ME3 renderer recognizes the native weapon wheel by the pad's LB held (`[WHEELVR]` in
+  `src/halcyon/le3/d3d_capture.cpp`, `ME2VR::Menu::PadLeftShoulderHeld`), which only the game's own LB gives.
+- `modeTakesIt`: ME1's game modes 0, 2 and 3 (on foot, the power wheel, the weapon wheel); the sequels' 0.
+- The route is decided at the press and kept until release (`OwnTrigger`), so the left hand reaching or leaving the
+  foregrip mid-pull never turns into an LB press or release.
+
+So, per game and hand state:
+
+| | Left hand open | Both hands on the gun |
+|-|----------------|-----------------------|
+| ME1 | `OpensWheel` (unchanged) | `GameButton` (unchanged since 2026-11-15) |
+| ME2 | `GameButton` (was our drawn menu) | `GameButton` (unchanged) |
+| ME3 | `GameButton` (was our drawn menu) | `GameButton` (unchanged) |
+
+### What was removed
+
+- The mod: `SquadWeapons.cpp` `TickCustom`, `Publish`, the cards, `[Squad] pause` (our menu's own pause; on the sequels
+  through `menu_pause::SetSquadPause`, removed with `Link::squadPause`), the `native` adapter's menu half (`Read`, `Pause`,
+  `Unpause`, `Stop`, `TileName`, `NextPage`) and the sequels' pages. `game/Le2SquadMenu.inc` became
+  `game/Le2SquadWeapons.inc`: `EquipLe2(member, weapon object)` and `FollowLe2`, which the squad orders' `GiveWeapon`
+  ("Miranda, your pistol", research/54) still uses.
+- The core: `squad_menu::Machine`, `Input`, `Step`, `Close`, `Radial`, `Direction`, `WeaponAt`, `InventoryPage`,
+  `PageInventory`, `MemberView`, `View`, `Publish`, `Latest`, `Reset`. Kept: `WeaponName`, the pointing (`AngleToRay`,
+  `PickPointed`, `NearestToRay`), `PlaceAtHand` (now `plugin/WheelPanel`'s), `wheel::*`, `OwnTrigger`.
+- The host: `plugin/SquadPanel` and `plugin/SquadPanelDraw` (the "squad" swapchain and snapshot layer), their calls in
+  `HalcyonOverlays.cpp` and `SequelSquadLayers.cpp`, `tools/squad-preview` (`mevr-squad-preview`).
+- The boundary: HostServices v11's `squadMenuSize`/`setSquadMenu` are now `retiredSquadMenuSize`/`retiredSetSquadMenu`
+  (kept so the later fields keep their offsets; the host serves 0 and null; host and mod deploy together as always).
+  `gamepad::kFlagSquadMenu` (bit 64 of `setSupportGrip`'s flags) and `Options::squadMenu` are gone; the bit is retired.
+  The mod's `Link::supported` is now "a v12 host" (`MEVR_HOST_HAS(setWheelPanel)`), so the sequels' hosts, which never served
+  `setWheelPanel`, still get the left grip's "never LB" guard (`AdjustPad`).
+- Settings: `[Squad] style` is no longer read or written into new files; a file whose `style` is anything but `native`
+  (or `game`) is rewritten to `native` once, logged `hands: [Squad] style custom -> native (moved once): ...`. The menu's
+  controller guide says "Hold for the game's weapon wheel at your hand" on the sequels; Halcyon's classic VR hands tab
+  keeps only the wheel's steering stick.
+
+### What to verify (no game run in this change: the owner was in the headset)
+
+1. ME2, on foot, two squadmates: the left trigger pulled with the left hand open opens ME2's own weapon wheel (held),
+   shown at the left hand (a `wheel` layer, `[MEVR-WHEEL]` lines); with both hands on the gun the same. The mod's log says
+   `squad: left trigger pulled: the game's own LB (this game's wheel is opened by its own button): ...` for each pull, and
+   never `squad: menu #`.
+2. The same on ME3 (Halcyon's `[WHEELOWNER] LB edge: qualified=1` in `MELE3VR_Log.txt`).
+3. ME1: the left hand open still opens the wheel at once (`squad: wheel #N: opening the game's weapon wheel`), pointing
+   preselects, letting go gives the entry; both hands on the gun still LB.
+4. A settings file with `[Squad] style = custom` (our settings file, `%LOCALAPPDATA%\MEVR\settings.ini` since the shared settings of 2026-11-18, or an old game's ini it takes over): the first launch logs the move and the file says `native`.
+
+A question left for the owner: on ME1 with both hands on the gun the pull is the game's LB (a quick pull is LB's tap,
+`TrySwapWeapon`, which swaps Shepard's weapon). The rule could open the wheel itself there too (drop `supportGrip` from
+`OpensWheel` on ME1); not changed without the owner's yes.

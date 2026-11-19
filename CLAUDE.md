@@ -132,7 +132,7 @@ authored seated scenes (such as shuttles) must reject traversal while retaining 
   was dead until we did) and our laser pointer (`src/plugin/MevrMenuPointer.cpp`: a controller's aim ray
   on the menu quad, world-locked by default (`worldLockedPanels`, `src/plugin/WorldPanels.cpp`), is the
   mouse, trigger clicks, right stick scrolls). Our tab there, "VR hands" (`src/plugin/MevrMenuTab.cpp`),
-  edits `[Hands]` and `[Squad] style` in `ASI\LE1MEVR.ini` (the mod re-reads it) and writes the arm-length
+  edits `[Hands]` and `[Squad] wheelStick` in our settings file (the mod re-reads it) and writes the arm-length
   sample (`[Arms] measureRequest` counter plus grip/head positions; `armLengthM` is shown if present).
 - **One seam vocabulary for the three renderers** (2026-11-16, research/trilogy-seams.md): a seam more than one renderer
   has is `MevrSeams::X` in `src/halcyon/MevrSeams.h` (one signature; implemented once in `plugin/Seams.cpp` where every game
@@ -1501,26 +1501,31 @@ switching frameworks.
   pair-arm latch in `render_hook.cpp` and `OverlayFrame::pairArm` in `xr_session.cpp`), else the eye copy as before; the
   reticle stays collimated. Logs `scope capture:`, `scope capture source:`; snapshots `"mod"."scopeCapture"`,
   `"sights"."pictureSource"`/`"capture"`; offline `mevr-sight-preview`'s `scope-capture-*.png`.
-- LE1 squad weapons ([docs/squad-weapons-design.md](docs/squad-weapons-design.md), research/19
-  sections 9-11): **pull the left trigger** (`[Controls] leftTrigger = lb`): the wheel opens at the left
-  hand at once; pointing the left hand at a squadmate preselects them; letting go of the trigger gives
-  the highlighted entry. The squad takes the trigger per pull on foot and in the wheels
-  (`squad_menu::OwnTrigger`: the game sees no LB then; the Mako keeps LB). **The left grip never opens
-  it** (since 2026-10-22): it's only the support grip (grab zone: a capsule along the gun,
-  `ik::MakeSupportZone`, `[Controls] supportZone`; the grab's line captured, `ik::CapturedSpan`) and
-  grenades. `[Squad] style = native` (default, HostServices v12): the GAME's weapon wheel
-  (`SFXGameModeDefault.EnterWeaponWheel` through ProcessEvent; it pauses the game itself), shown at
-  the left hand; the right stick steers it (`gamepad::kFlagNativeWheel`: the stick reaches the game
-  once centred), letting go sends A for the highlighted entry and then `ExitWeaponWheel`; pointing
-  preselects through the HUD's kept stick angle (`BioSFHandler_HUD.nLastAngle`). A wheel nobody holds is taken over
-  (`wheel::Step::adopted`): one that opens after the 0.6 s timeout (within 10 s), or any weapon wheel up at a new pull,
-  so letting go closes it. Shepard's weapon is put back after a holstered wheel only when the game drew it (not while
-  holsters refuse the game's draws, nor after a holster draw since). `style = custom`:
-  our drawn menu (left stick = squadmate, right stick flick = weapon, let go or A = give it, B =
-  cancel; `plugin/SquadPanel` draws it with its own ImGui context as the "squad" quad;
-  `gamepad::kFlagSquadMenu`, v11). `game/SquadWeapons` (mod) drives both; `core/vr/SquadMenu` is the
-  shared, unit-tested part (the native ring's tables in `squad_menu::wheel`). Settings: `[Squad]` in
-  `ASI\LE1MEVR.ini`.
+- Squad weapons, every game ([docs/squad-weapons-design.md](docs/squad-weapons-design.md), research/19
+  sections 9-11 and 13): **the left trigger is only ever the game's own weapon wheel**, whatever the left hand does
+  (the owner, 2026-11-18: "just remove the custom menu and just always default to the classic menu"; our drawn menu,
+  `[Squad] style = custom`, `plugin/SquadPanel`, `gamepad::kFlagSquadMenu` and the sequels' paged menu are gone; an old
+  file's `style = custom` moves to native once, logged `hands: [Squad] style custom -> native (moved once)`). Who a pull
+  is: `squad_menu::RouteTrigger` (unit-tested, `tests/Main.cpp` `TestTriggerRoute`), decided per pull
+  (`squad_menu::OwnTrigger`). **ME1, on foot and in the wheels, the left hand off the gun: the squad's**
+  (`[Controls] leftTrigger = lb`, HostServices v12): the GAME's weapon wheel opened at once
+  (`SFXGameModeDefault.EnterWeaponWheel` through ProcessEvent; it pauses the game itself), shown at the left hand
+  (`plugin/WheelPanel`); the right stick steers it (`gamepad::kFlagNativeWheel`: the stick reaches the game once
+  centred), letting go sends A for the highlighted entry and then `ExitWeaponWheel`; pointing preselects through the
+  HUD's kept stick angle (`BioSFHandler_HUD.nLastAngle`); the game sees no LB from the trigger (no 0.3 s hold, no tap's
+  `TrySwapWeapon`). A wheel nobody holds is taken over (`wheel::Step::adopted`): one that opens after the 0.6 s timeout
+  (within 10 s), or any weapon wheel up at a new pull, so letting go closes it. Shepard's weapon is put back after a
+  holstered wheel only when the game drew it (not while holsters refuse the game's draws, nor after a holster draw
+  since). **Everywhere else the pull is the game's own LB, whose hold opens the same wheel**: ME2 and ME3 always (their
+  wheels are other UIs the mod can't open, steer or preselect; Halcyon's ME3 renderer knows its wheel by LB held), ME1
+  with both hands on the gun (since 2026-11-15), the Mako (boost), menus; log `squad: left trigger pulled: the game's
+  own LB (...)`. **The left grip never opens it** (since 2026-10-22): it's only the support grip (grab zone: a capsule
+  along the gun, `ik::MakeSupportZone`, `[Controls] supportZone`; the grab's line captured, `ik::CapturedSpan`) and
+  grenades. On the sequels `game/SquadWeapons` reads the squad (each henchman's inventory chain) for squad context,
+  orders and voice, and `GiveWeapon` switches a squadmate's weapon with `BioPlayerController.OrderWeaponSwitch`
+  (`game/Le2SquadWeapons.inc`). `core/vr/SquadMenu` is the shared, unit-tested part (the routing, the pointing, the
+  native ring's tables in `squad_menu::wheel`). Settings: `[Squad]` in our settings file. HostServices v11's
+  `setSquadMenu` slot is retired (kept for the layout, served null); flag bit 64 too.
 - LE1 squad context ([research/54](research/54-voice-squad-commands.md), the voice and gesture squad orders' world; `core/vr/SquadContext`, unit-tested; `game/SquadContext`; `[SquadContext]` in `ASI\LE1MEVR.ini`): on foot the mod reads the scene every 0.25 s (the party with powers and cooldowns from `m_powers`, the living hostiles from the pawn list with a type word, the gun's sight-line hit and the gaze selection) and keeps a 4 s history of the head's and the hands' rays; the hostiles are clustered into groups whose E-ids stay through an encounter, each with egocentric words (left/ahead/right, near/mid/far, above/level/below, nearest, leftmost, biggest), "those" is resolved at the word's time from the history, and every order (a gesture, a spoken "name, power", a model's line `G|SR|-|attack|PT1`) becomes one `Action` validated against the scene. **Landmarks** (research/54 "Landmarks", 2026-11-05 evening): the level's own cover (`Engine.CoverLink` slots within `[SquadContext] landmarkRangeM` 25 m, read every 2 s) are `L<id>` lines with the groups' words; "get behind that crate", "take cover behind the wall on the left", "the nearest cover" are a hold at the slot on the cover's far side from the nearest group (`LandmarkPoint`; the rays score cover beside groups, so a look or a point picks one; an attack on cover is refused); every piece is "cover" until the mesh words are learned [verify]; `tests/LandmarkTests.cpp`. **The flat orders by gesture were removed 2026-11-18, every game** (the owner, after ME2's squad walked off on stray left-grip squeezes: "since we have our dedicated system of squad control I don't see why we'd want to support any other method"; the squad moves by the B arc below, voice and `mevr order`; `game/SquadOrders` still reads the left aim ray for the voice orders' "there"; `core/vr/SquadGesture` keeps only the pointer's types and its old tests). What it was: a LEFT grip squeeze that no other feature claimed (away from the gun's support zone, the grenade slot and a hot receiver) points an order with the left aim ray; letting go on an enemy group = attack, on the ground past `followWithinM` = move there, near Shepard, on a squadmate or on nothing = follow; the squadmate pointed at when the squeeze began gets it alone. The one dispatcher turns any validated `Action` into `BioPlayerController.QuickCommandAttackTarget(iSquadMember, pTarget)` / a move = the HOLD formation at the point plus the squadmate's AI `PushMoveToPoint` (since 2026-11-05 evening, the placement's way: `QuickCommandMoveTo` ignores the point in VR, 30 m along the head's facing whatever the controller's `Rotation` says; `holdFormation = 0` keeps the old call), held until it's calm, relieved or "stay there" / `QuickCommandFollowPlayer(iSquadMember)`; powers through `SquadOrderUsePower` + `ApplyTacticalOrders` (or the AI's `AddUsePower`, `powerRoute`). `mevr order ALL|-|-|attack|E1` gives a line through it. **The rule parser** (`core/vr/SquadParser`, unit-tested): a transcript becomes one `Action` per clause in a millisecond (fuzzy present names and their aliases, `squad_context::KnownAliases`: surnames, short forms, ranks, "Vakarian"/"Ash"/"Chief"; words under four letters only said exactly, the roster's power words, everyday order verbs, deictics as `PT n` with word positions, descriptions against the groups' words, AIM/GAZE/OTHER/LAST, corrections, cancels) with a confidence and the unresolved words a model would take over; `mevr say <words>` runs it against the live scene and dispatches (the typed stand-in for speech; below `[SquadOrders] minConfidence` it refuses and says what was unresolved). **Standing orders** (`core/vr/SquadStanding`, unit-tested; `[SquadOrders] standing`): a hold or an attack is kept per squadmate and re-asserted through the game's orders (back to the point when they drift past `holdRadiusM`, the group again every `reassertS`), ends when it's calm (`calmS` after the last hostile near the point and the last combat; then they follow unless "stay there"), when the group is gone, or "until I say so", and is given up with a follow when hurt (`retreatHealth`) or overwhelmed (`overwhelmCount` within 8 m) unless "no matter what"; follow/regroup and "belay that" drop them. A hold is the game's own HOLD formation (`SetMemberHoldPosition` + `SetSquadFollowFormation(HOLD, force, member)`, read back with `GetMemberFormation`; `holdFormation = 0` keeps the re-asserted move), released by the follow order. A retreat (hurt or overwhelmed) is a hold at cover between them and the threat (`core/vr/SquadRetreat`: a point `retreatM` back toward Shepard and away from the hostiles, the nearest `Engine.CoverLink` slot behind them within `coverSearchM`; `retreatToCover = 0` falls back to a follow). The parser also splits clauses at a squadmate's name (a vocative) and knows "target" and "support/cover/back up X" (X's standing target, else her point, else her last target, else her side); an equip dispatches through `squad_weapons::GiveWeapon`, and a weapon named with an order is equipped first ("sniper, those on the bridge"; "your sniper" is the gun, "that sniper" the enemy, 2026-11-09); the recognizer's past tenses and "-ing" forms ("rushed", "switched to", "took them out") match through `Lemmas`/`SameWord`, "yeah"/"mm" are stop words, and the key terms carry the powers' real names (research/54 "The recognizer's spelling", 2026-11-09). **The corpus** (`tests/SquadPhrasings.cpp`, run by `mevr-tests`): 196 lines a player would say, each with the line it must become or the reason it's refused; 173 of 173 orders parse as said, 18 of 18 pieces of talk and impossible orders ("hold fire", "medi-gel") are refused by name, 5 known gaps on record (research/54 "The corpus"); the parser knows phrasal verbs ("take them out"), directions (`Target::Direction`: "go left" is a point 8 m that way, never the group there), the implied owner of a power ("throw them" is Wrex), "stay on him" (attack) against "stay on the bridge" (hold), bare "cover the door" (a hold), two named squadmates (both), talk split into its own clause. LE1's squadmates voice only the follow order (`EBioSoundSetType.GiveCommandFollow`; attack and move sets are UNUSED), so re-asserted orders never chatter. Whether the AI stays put under HOLD, takes the cover slot, and accepts being re-ordered every few seconds, is [verify]. Built, not yet run in the game (the squad index base is [verify]). Log `squad orders:`; snapshot `"mod"."squadOrders"`. `mevr context [word [secondsAgo]]` prints the block; log `squad context:`; snapshot `"mod"."squadContext"`.
 - LE1 squad placement by an arc ([research/54](research/54-voice-squad-commands.md) "Placement by an arc", 2026-11-05; HostServices v32
   `setSquadPlace`; rules `core/vr/SquadPlace`, unit-tested; `game/SquadPlace`; host `plugin/SquadPlaceDraw`): **hold the right B on foot**:
@@ -1815,9 +1820,9 @@ Use it to check VR changes yourself instead of asking the user what they see
   inputs; saves, captures and run receipts stay in ignored scratch folders.
 - **Snapshots:** `tools/snapshot.ps1 [-Count N -Interval s -Delay s -Tag x]` writes
   `snapshot.request` and waits. Output in `snapshots\`: `<stamp>-left.png` / `-right.png` (what
-  each eye shows: the world plus our HUD panel, reticle, squad menu, the game's wheel and Halcyon's
+  each eye shows: the world plus our HUD panel, reticle, the game's wheel and Halcyon's
   menu, sight, scope, composited like the runtime does), `-left-world.png` (world layer alone), `-hud.png`,
-  `-squad.png`, `-wheel.png`, `-menu.png`, and `<stamp>.json` (head and eye poses/FOVs,
+  `-wheel.png`, `-menu.png`, and `<stamp>.json` (head and eye poses/FOVs,
   controllers, aim ray, host view, the mod's arm IK / hand aim / weapon / support grip / holsters /
   squad state, every layer). The JSON
   is written last. Read the PNGs to look.
@@ -1836,7 +1841,7 @@ Use it to check VR changes yourself instead of asking the user what they see
   `HalcyonBridge`; L3 is held back 100 ms so the tap is never a crouch, and R3 opens the power wheel only
   after 300 ms alone); our menu's Advanced > Diagnostics (Snapshot, Record) and the classic menu's VR
   hands tab ("Test loop": snapshot in 3 s, record, replay the last recording). There's no controller
-  chord for recording (both grips are the gun and the squad menu since 2026-10-22).
+  chord for recording (the left grip is the gun's support grip, the right holds the gun).
 - **Frame timing** ([research/22](research/22-performance-levers.md)): `tools/perf-probe.ps1 [-Seconds 20
   -Delay s -Tag x]` writes `perf.request` (or our menu's Diagnostics, or the VR hands tab: "Measure frame
   timing"); `plugin/PerfProbe`
@@ -1967,10 +1972,8 @@ Use it to check VR changes yourself instead of asking the user what they see
   WrapSessionFunctions`) wraps `xrAcquireSwapchainImage` / `xrReleaseSwapchainImage` (copy each
   image to staging before release, only while a snapshot is armed), `xrEndFrame` (the layers) and
   `xrLocateViews` (record the head; substitute it in a replay). Our quads report their images from
-  `HalcyonOverlays` (HUD, reticle, wheel) and `SquadPanel`. Staging copies are mapped 2+ frames later and converted on a
+  `HalcyonOverlays` (HUD, reticle, wheel). Staging copies are mapped 2+ frames later and converted on a
   worker thread.
-- The squad menu's look can be checked offline: `build\Release\mevr-squad-preview.exe <folder>`
-  renders sample squads to PNGs with the host's own drawing code (`src/plugin/SquadPanelDraw.cpp`).
 
 ## Gotchas
 

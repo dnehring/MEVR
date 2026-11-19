@@ -391,9 +391,6 @@ HostServices WithGalaxyHologram(HostServices services) {
 #endif
 
 #if defined(MEVR_WITH_HALCYON)
-void HostSetSquadMenu(vr::squad_menu::View const* view) {
-    vr::squad_menu::Publish(view != nullptr ? *view : vr::squad_menu::View{});
-}
 void HostSetWheelPanel(vr::squad_menu::wheel::Panel const* panel) {
     if (panel != nullptr) {
         vr::squad_menu::wheel::PublishPanel(*panel);
@@ -534,11 +531,9 @@ HostServices WithLe1ExtraUi(HostServices services) {
 #endif
     return services;
 }
-// LE1's host modules' own services (the squad menu and the wheel panel, the calibration, our main menu): LE1's host only
-// until the modules come over to LE2 (M3, M4).
+// LE1's host modules' own services (the wheel panel, the calibration, our main menu): LE1's host only until the modules
+// come over to LE2 (M3, M4).
 HostServices WithLe1Modules(HostServices services) {
-    services.squadMenuSize = static_cast<std::uint32_t>(sizeof(vr::squad_menu::View));
-    services.setSquadMenu = &HostSetSquadMenu;
     services.wheelPanelSize = static_cast<std::uint32_t>(sizeof(vr::squad_menu::wheel::Panel));
     services.setWheelPanel = &HostSetWheelPanel;
     services.calibrationStateSize = static_cast<std::uint32_t>(sizeof(vr::calibration::HostState));
@@ -546,12 +541,11 @@ HostServices WithLe1Modules(HostServices services) {
     services.mainMenu = &HostMainMenu;
     return services;
 }
-// A mod that's gone can't aim: the squad menu and the wheel panel settings go, the pad mapping forgets the two-handed grip
-// (the grip holding the gun, the squad menu's controls), the scope, prompt, HUD pieces, Mako controls, spectator and the
+// A mod that's gone can't aim: the wheel panel settings go, the pad mapping forgets the two-handed grip
+// (the grip holding the gun, the game's wheel's controls), the scope, prompt, HUD pieces, Mako controls, spectator and the
 // game's screens go back to the renderer's own (ForgetRendererModState: Halcyon's head aim back, no reticle, no vibration).
 void ForgetLe1ModState() {
     vr::camera_diagnostic::gCameraDiagnostic.Reset();
-    vr::squad_menu::Reset();
     vr::squad_menu::wheel::ResetPanel();
     vr::scope_capture::Reset();  // the scope's picture goes back to the eye copy
     vr::interact::Reset();  // no prompt at the object without the mod
@@ -632,10 +626,6 @@ HostServices BuildServices() {
     services = WithVoice(WithFloorLock(WithHudPieces(WithPadMerge(WithSights(WithVignette(WithRenderer(services)))))));  // both renderers' modules
 #endif
 #if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
-    services.squadMenuSize = static_cast<std::uint32_t>(sizeof(vr::squad_menu::View));
-    services.setSquadMenu = [](vr::squad_menu::View const* view) {
-        vr::squad_menu::Publish(view != nullptr && view->size == sizeof(vr::squad_menu::View) ? *view : vr::squad_menu::View{});
-    };
     services = WithPowerWheel(services);
     services.squadPlaceSize = static_cast<std::uint32_t>(sizeof(vr::squad_place::View));
     services.setSquadPlace = [](vr::squad_place::View const* view) {
@@ -677,7 +667,6 @@ void ForgetModState() {
     vr::power_wheel::Publish({});
     vr::power_wheel::PublishLock({});
     vr::squad_place::Publish({});
-    vr::squad_menu::Reset();
 #endif
 #if defined(MEVR_WITH_HALCYON)
     ForgetLe1ModState();

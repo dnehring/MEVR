@@ -161,7 +161,7 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
         namespace hpl = mevr::host::hud_piece_layers;
         bool const room = capacity - count >= (caps.hudPieces ? 4u : 2u);
         bool const labelBase = ctx.onFoot && frame.worldFrame && frame.headValid && !anyMenu && room &&
-            !mevr::vr::power_wheel::Latest().open && !mevr::vr::squad_menu::Latest().open && sb::game::OverlayLabel(ctx);
+            !mevr::vr::power_wheel::Latest().open && sb::game::OverlayLabel(ctx);
         // Gameplay as LE1's: not conversations, cutscenes or menus (on foot, the wheels, the squad command, the vehicle; ME3's
         // Atlas and injured Shepard: engine::adapter's IsHudGameplayMode), and a screen of ours.
         panel.gameplay = caps.hudPanelGameplay
@@ -345,12 +345,11 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
         }
     }
 
-    // The squad's placement arc and its panel (plugin/SequelSquadLayers).
+    // The squad's placement arc (plugin/SequelSquadLayers).
     OverlayFrame squadFrame = frame;
     squadFrame.worldFrame = frame.worldFrame && ctx.onFoot;
     squadFrame.menuOpen = anyMenu;
     count = mevr::host::sequel_squad_layers::Place(squadFrame, device, layersOut, count, capacity);
-    count = mevr::host::sequel_squad_layers::Panel(squadFrame, device, layersOut, count, capacity);
 
 #if defined(MEVR_WITH_MAIN_MENU)
     // The spoken-reply panel (Thespian): a conversation's overlay. A menu, the calibration, missing tracking, another mode

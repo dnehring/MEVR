@@ -2,7 +2,12 @@
 
 **Since the evening of 2026-10-22 the default is the game's own wheel** (`[Squad] style = native`,
 the next section): the user wanted ME1's actual UI, its pause and its rules rather than our drawing.
-Our drawn menu ("As built" below) stays as `style = custom`.
+**Since 2026-11-18 it is the only one, on every game** (the owner, in the headset on ME2: "just remove the custom menu
+and just always default to the classic menu"): our drawn menu (`style = custom`, the sections "Our drawn menu" and "As
+built" below, kept as the record) is removed, an old file's `custom` moves to `native` once, and the left trigger opens
+only the game's wheel, with the left hand open and with both hands on the gun. On ME1 with the hand open the mod opens it
+itself (below); otherwise, ME2 and ME3 always, the pull is the game's LB, whose hold opens it
+(`core/vr/SquadMenu` `RouteTrigger`; research/19 section 13).
 
 ## The left trigger opens it, never the grip (user, 2026-10-22, late; built, to test)
 
@@ -57,7 +62,7 @@ preselect; that nothing of the wheel stays in the eyes.
 **Not done:** a "point at the squadmate's arc" remap of the stick (the stick's direction picks the
 entry absolutely, as in the flat game, so the stick has to go to the squadmate's side of the ring).
 
-## Our drawn menu (style = custom)
+## Our drawn menu (style = custom; removed 2026-11-18)
 
 Shepard's own weapons now come from body holsters ([research/19](../research/19-body-holsters.md)).
 Squadmates' weapons needed the game's weapon wheel (the left trigger, LB). This note proposed a

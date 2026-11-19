@@ -108,7 +108,8 @@ These are ordered by wasted or blocked work. Each is detailed under [Forks](#for
    - All of this code exists for ME1; the sequels need adapters, not designs.
 6. **Squad weapons and the sequel power roster were forked** (Forks 5, 6). **Unified 2026-11-16 (lane GF):** one menu
    tick (`SquadWeapons.cpp` `TickCustom`) over a per-game `native` adapter, and one roster walk
-   (`game/SequelPowers.hpp`). What is left is the in-game check on each sequel (G30).
+   (`game/SequelPowers.hpp`). **Since 2026-11-18 there is no drawn menu at all** (the owner): the left trigger is the game's
+   own weapon wheel on every game (`squad_menu::RouteTrigger`); what is left is the in-game check on each sequel (G30).
 7. **Traversal and LE3's movement admission are forked** (Forks 4, 11).
    - LE2's native block in `game/Traversal.cpp` and `game/Le3Traversal.cpp` are two observers over one core. Still open.
    - LE3 copied the same movement-admission predicate six times (Comfort, ArmIk, Posture, Sprint, Melee, Le3Traversal).
@@ -257,7 +258,7 @@ The [technique groups](#renderer-techniques-by-group) summary follows the table.
 | G27 | Interaction: selection by gaze, label at the object (`engine/SelectionGaze`, `game/Interact`, `HudPieceLayers::Interaction`) | **adapted** V: gaze at `0xAC0530` (ME3's void(this) search); a band per game (`hp::DefaultLabelCrop` `Me2`), on by default; Save 4: the door selected ahead, nothing at 60 degrees, its label (research/40 section 6, lane HU) | **adapted** V: gaze at `0xA9BF90`; run `20261115-190610-153` (A opens War Assets); band `Me3`; Save 31: War Terminal 1.35 m, the label at the console, nothing at 70 degrees (research/40 section 6) | Both: A's use after a gaze pick in the same run, a long name, combat targets, the headset. |
 | G28 | HUD pieces: wrist status, gun panel (`game/HudPieces`, `plugin/HudPieceLayers`) | **adapted** V: `Layout::Me2` crops; run `20261115-002101-lane-b4-m2b` (f71e7a71); ammo mount 2a108759 | **missing**: `setHudPieces` not served (`#if !defined(MEVR_WITH_HALCYON_LE3)` in ModLoader.cpp); `game/HudPieces` stands down by name on ME3 (no fall-back to ME1's placement) | LE3: docs/me3-overall-goal-handoff.md L3-4 "native wrist crop". |
 | G29 | Power wheel at the left hand, lock and push, self-cast gestures, coach (`game/PowerWheel`, `plugin/PowerWheel`) | **adapted** V: ME2 roster (`SFXPowerManager`); the whole wheel on Save 4 by replayed controllers, 2026-11-17 (lane SQ, `tools/le2-halcyon-run/powers.ps1`, research/55 "The whole wheel on Save 4"): every tile by the hand's travel or the stick, the tap, No power, the coach card, Adrenaline Rush on the chest (also with the weapon away), Disruptor Ammo slapped onto the rifle, Slam locked on a hostile drone from the level's own factory (`-Drone`) and pushed (`ActivatePower` took it). The coach's controls line was ME1's grenade throw: the sequels' card names the wheel alone since. Not seen: Slam's effect on the target, evolved powers, other weapons, the headset | **adapted** U: `game/Le3Powers.hpp` (`SFXPowerCustomActionBase`). Save 31 (the Normandy, a non-combat Vanguard, 2026-11-17): the roster reads Pull, Shockwave, Incendiary and Cryo Ammo, Biotic Charge (an unnamed label split into words since), Discharge, Unity (disabled), Flare; the wheel stays shut where combat is disabled, as ME1's. Nothing cast yet | ME3: the combat save's checks in research/le3-combat-fixtures.md (`powers.ps1 -Game LE3`); ME2: research/55 "The whole wheel on Save 4"'s "Not established"; L3-6. |
-| G30 | Squad weapons wheel (`game/SquadWeapons`, `plugin/SquadPanel`) | **adapted** U: ME1's menu tick (`TickCustom`: gates, pointing, cards by standing side, haptics, logs) over ME2's `native` adapter (`game/Le2SquadMenu.inc`: a paged inventory, `OrderWeaponSwitch`, `Pawn.Weapon`); custom style only. **V on ME2 for one tile** (lane GF2, session `20261116-153741-665-LE2-gf2-run2`, Freedom's Progress, Save 4): six replayed pulls with a flick down, `squad: menu #1 opened ... cards: left Jacob, right Miranda`, `menu #1 confirmed (trigger let go): Miranda gets the pistol`, `Miranda: requested weapon observed equipped` (SMG to pistol), 6 of 6. The names are ME2's own since then (`SFXPawn.GetPrettyName` through the game info's `GetSimpleString`, `game/Le2Squad.hpp` `ActorName`; the behaviour's `ActorGameName` is the class default "BioPawn"). Not shown: Jacob, a second tile, pointing at a squadmate, the page tile. The fake headset's view and controllers drop out under machine load (91 stand-down lines in one run, 182 in the next, when a pull's menu closed before the flick) | **adapted** U: the same adapter with ME3's roster and input-method parameter | A replayed left-trigger pull with two squadmates (ME2: Freedom's Progress): `squad: menu #1 opened ... cards: left .., right ..`, a right-stick flick, the release, then `requested weapon observed equipped`. |
+| G30 | Squad weapons: the left trigger is the game's own weapon wheel (`game/SquadWeapons`, `core/vr/SquadMenu` `RouteTrigger`) | **adapted** U: the owner, 2026-11-18 ("just remove the custom menu and just always default to the classic menu"): our drawn menu at the hand, ME2's only style until then (`TickCustom` over `game/Le2SquadMenu.inc`'s paged inventory; V for one tile on 2026-11-16, lane GF2), is removed with `plugin/SquadPanel`; the left trigger is the game's own LB with the left hand open and with both hands on the gun (`RouteTrigger`: never `OpensWheel` on a sequel; `TestTriggerRoute`), whose hold opens ME2's weapon wheel, shown at the hand (G57). What stays: the roster (each henchman's inventory chain) for G31's squad context, orders and voice, and `GiveWeapon` (`OrderWeaponSwitch`, `game/Le2SquadWeapons.inc`). The owner saw the wheel from the trigger with both hands on the gun (2026-11-18); with the hand open not seen yet. ME1: unchanged by default (its pull opens the game's wheel itself, `EnterWeaponWheel`; with both hands on the gun the game's LB) | **adapted** U: the same rule; ME3's renderer knows its wheel by LB held (Halcyon's `[WHEELVR]`), which the game's LB gives | A pull of the left trigger on foot with the left hand open, then with both hands on the gun: `squad: left trigger pulled: the game's own LB (this game's wheel is opened by its own button)` each time, the game's weapon wheel up at the hand (a `wheel` layer), never a `squad` layer. |
 | G31 | Squad context and gesture orders (`game/SquadContext`, `game/SquadOrders`, `core/vr/Squad*`) | **adapted** U: `game/Le2Squad.hpp` (`HenchmanOrderAttackTarget`, `SquadOrderUsePower`); the flat move order by the left grip seen dispatched on Save 4 (2026-11-17), with placement's move marker since; attack and power orders not seen | **adapted** U | M6 C; L3-6. |
 | G32 | Squad placement by an arc (`game/SquadPlace`, `plugin/SquadPlaceDraw`) | **adapted** V: on by default as ME1's (`[SquadOrders] place = 1`) since 2026-11-17 (lane SQ, `tools/le2-halcyon-run/place.ps1`, research/54 "ME2 placement and orders on Save 4"): the squad wheel at the right hand, the arc and its named ring, Miranda 0.38 m and Jacob 0.27 m from the ring and holding, Miranda alone by the left tile (0.22 m), a double B calls both back. The hold order needs the squadmate's move marker placed first (`BioPlayerController.UpdateMoveToIndicator`, `le2_squad::PlaceMoveIndicator`): without it nobody moved. Until 2026-11-17 B also reached the game (`Console_Melee`: every hold and double tap was a `TryMelee`); since lane MEL `game/Melee` keeps B from the game on foot in VR on every game, as on ME1, and placement stands down only while B really reaches the game (`melee::BIsGameButton`, no longer the ini key alone); `place.ps1` judges a TryMelee call trace and its flat-order verdict (a hard-coded PASS until then) Lane AU1 (2026-11-18, not run): placement through the one dispatcher (`squad_orders::Give`/`GiveAt`; `GiveLe2Order` gone): a placed hold is a standing order, counted. | **adapted** U: the same order path with the marker; the squad's console lines (`mevr place`, `squad`, `order`, `say`, `context`) on ME3 since 2026-11-17; no squad on Save 31; B kept from the game as on ME2 (`melee-b.ps1 -Game LE3`) Lane AU1 (2026-11-18, not run): the same. | ME3: `place.ps1 -Game LE3` on the combat save (research/le3-combat-fixtures.md). |
 | G33 | Voice orders, the model tier, the Voice page (`game/Voice`, `plugin/Voice`, `plugin/VoiceModel`) | **shared** U: the protected voice run timed out | **shared** U: the model tier compiles into LE3 wherever its host compiles `plugin/VoiceModel.cpp` (until 2026-11-16 only when LE2 was built too) | A microphone run, or `voice.request wav`, per game. |
@@ -371,7 +372,12 @@ Each item: the copies, then what unifying would take. Line counts are as of `cca
      handler in `Traversal.cpp` that reads the sample once and hands it to the game's adapter; (3) ME2's begin and end
      through `ActionLifecycle` (`Request` at the commit, `Observe` from the poll), keeping its `Move` record as the
      report. `Le3Traversal.cpp` was another session's file while this lane ran, so only its `Guard` changed (Forks 11).
-5. **The squad weapons tick. Unified 2026-11-16 (lane GF).**
+5. **The squad weapons tick. Unified 2026-11-16 (lane GF); the drawn menu removed 2026-11-18** (the owner: "just remove the
+   custom menu and just always default to the classic menu"). `TickCustom`, the `native` adapter's menu half (`Read`,
+   `Pause`, `Unpause`, `Stop`, `TileName`, `NextPage`), the paged inventory and `plugin/SquadPanel` are gone; the left
+   trigger's pull goes through one rule, `core/vr/SquadMenu` `RouteTrigger` (ME1's direct open, or the game's own LB: the
+   sequels always), and the sequels keep only `EquipLe2`/`FollowLe2` for the squad orders' `GiveWeapon`
+   (`game/Le2SquadWeapons.inc`). The history below is the record of the unified tick.
    - Was: `game/Le2SquadMenu.inc` `TickLe2`/`EquipLe2` (LE2 and LE3, 116 lines) beside `game/SquadWeapons.cpp` `Tick`
      (LE1). The `.inc` re-implemented the pointing pre-selection (a world-space angle in place of
      `menu::PickPointed`), the input assembly, the haptics and the pending-weapon follow-up. They shared only `gMachine`.
@@ -637,9 +643,9 @@ defined in the tool's header:
 <!-- parity:summary -->
 | game | renderer | host plugin files | host core files | services served | src/game + src/engine modules by status | common seams called | own seams |
 |---|---|---|---|---|---|---|---|
-| LE1 | halcyon-le1 | 74 | 71 | 58 | run 69, out 4, ungated 26, unreferenced 4, unbuilt 4 | 22 of 51 | 89 |
-| LE2 | halcyon-le2 | 73 | 61 | 54 | run 55, ready 8, out 15, ungated 23, unreferenced 2, unbuilt 4 | 46 of 51 | 4 |
-| LE3 | halcyon-le3 | 75 | 62 | 56 | run 54, ready 8, out 14, ungated 25, unreferenced 3, unbuilt 3 | 47 of 51 | 2 |
+| LE1 | halcyon-le1 | 72 | 71 | 57 | run 69, out 4, ungated 26, unreferenced 4, unbuilt 4 | 22 of 51 | 89 |
+| LE2 | halcyon-le2 | 71 | 61 | 53 | run 55, ready 8, out 15, ungated 23, unreferenced 2, unbuilt 4 | 46 of 51 | 4 |
+| LE3 | halcyon-le3 | 73 | 62 | 55 | run 54, ready 8, out 14, ungated 25, unreferenced 3, unbuilt 3 | 47 of 51 | 2 |
 <!-- /parity:summary -->
 
 ### Host plugin files per game
@@ -720,8 +726,6 @@ defined in the tool's header:
 | `SightLayers` | yes | yes | yes |
 | `SightPictures` | yes | yes | yes |
 | `Spectator` | yes | - | - |
-| `SquadPanel` | yes | yes | yes |
-| `SquadPanelDraw` | yes | yes | yes |
 | `SquadPlaceDraw` | yes | yes | yes |
 | `SteamVrSmoothingRequest` | yes | - | - |
 | `Swapchains` | yes | yes | yes |
@@ -821,7 +825,6 @@ Helpers applied, in order:
 | `setScopeCapture` | WithScopeCapture | WithScopeCapture | WithScopeCapture |
 | `setSight` | WithSights | WithSights | WithSights |
 | `setSpectator` | WithSpectator | - | - |
-| `setSquadMenu` | WithLe1Modules | BuildServices | BuildServices |
 | `setSquadPlace` | BuildServices | BuildServices | BuildServices |
 | `setStatus` | WithRenderer | WithRenderer | WithRenderer |
 | `setSupportGrip` | WithPadMerge | WithPadMerge | WithPadMerge |

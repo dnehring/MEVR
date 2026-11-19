@@ -128,9 +128,9 @@ Every module below is compiled for LE1, LE2 and LE3 ([CMakeLists.txt](../../../C
 | the wheel in the game | [game/PowerWheel.cpp](../../../src/game/PowerWheel.cpp) | every game; LE1-only: `MappedPower` equip, `ReadEnabled`, the bolt (on), the unarmed release, the `ReleasePower` post-handler, `TryUseMappedPower` console cast |
 | wheel, lock marker, coach, squad wheel drawn | [plugin/PowerWheel.cpp](../../../src/plugin/PowerWheel.cpp), [PowerWheelDraw.cpp](../../../src/plugin/PowerWheelDraw.cpp), [PowerIcons.cpp](../../../src/plugin/PowerIcons.cpp), [Glow.cpp](../../../src/plugin/Glow.cpp) | host, every game; HostServices v28 `setPowerWheel`, v29 `setPowerLock` |
 | R3 hold | [game/GamepadMapping.hpp](../../../src/game/GamepadMapping.hpp), [game/Holsters.cpp](../../../src/game/Holsters.cpp) | every game (the sequels also keep the press from R3) |
-| squad menu rules, native wheel machine, trigger owner, panel | [core/vr/SquadMenu.hpp](../../../src/core/vr/SquadMenu.hpp), [WheelCrop.hpp](../../../src/core/vr/WheelCrop.hpp) | game-independent; the `wheel` namespace describes ME1's HUD ring |
-| squad weapons | [game/SquadWeapons.cpp](../../../src/game/SquadWeapons.cpp) | every game; the native wheel (`EnterWeaponWheel`, `nLastAngle`, names, quick slots) is LE1-only; the sequels run the custom menu over `Le2SquadMenu.inc` |
-| custom squad menu drawn | [plugin/SquadPanel.cpp](../../../src/plugin/SquadPanel.cpp) | host, every game; HostServices v11 (`kFlagSquadMenu`), v12 (`setWheelPanel`, `kFlagNativeWheel`) |
+| the left trigger's route, native wheel machine, trigger owner, panel placement | [core/vr/SquadMenu.hpp](../../../src/core/vr/SquadMenu.hpp), [WheelCrop.hpp](../../../src/core/vr/WheelCrop.hpp) | game-independent; `RouteTrigger` says who a pull is; the `wheel` namespace describes ME1's HUD ring |
+| squad weapons | [game/SquadWeapons.cpp](../../../src/game/SquadWeapons.cpp) | every game; the native wheel (`EnterWeaponWheel`, `nLastAngle`, names, quick slots) is LE1-only; on the sequels the left trigger is the game's LB and the module keeps the roster and `GiveWeapon` (`Le2SquadWeapons.inc`); our drawn menu (`plugin/SquadPanel`, v11 `kFlagSquadMenu`) removed 2026-11-18 (research/19 section 13) |
+| the game's wheel at the hand | [plugin/WheelPanel.cpp](../../../src/plugin/WheelPanel.cpp) | host, every game; HostServices v12 (`setWheelPanel`, LE1's host; `kFlagNativeWheel`) |
 | context, gesture, parser, standing, retreat | [SquadContext.hpp](../../../src/core/vr/SquadContext.hpp), [SquadGesture.hpp](../../../src/core/vr/SquadGesture.hpp), [SquadParser.hpp](../../../src/core/vr/SquadParser.hpp), [SquadStanding.hpp](../../../src/core/vr/SquadStanding.hpp), [SquadRetreat.hpp](../../../src/core/vr/SquadRetreat.hpp) | game-independent |
 | orders, context in the game | [game/SquadOrders.cpp](../../../src/game/SquadOrders.cpp), [game/SquadContext.cpp](../../../src/game/SquadContext.cpp) | every game with per-game branches (ME1's `QuickCommand*` calls are the LE1 branch) |
 | placement | [core/vr/SquadPlace.hpp](../../../src/core/vr/SquadPlace.hpp), [game/SquadPlace.cpp](../../../src/game/SquadPlace.cpp), [plugin/SquadPlaceDraw.cpp](../../../src/plugin/SquadPlaceDraw.cpp) | core independent; game and host every game; v32 `setSquadPlace` |
@@ -154,9 +154,9 @@ All in `ASI\LE1MEVR.ini`. Defaults are the code's.
 | PowerWheel | `autoLock`, `autoLockHandDeg`, `autoLockGazeDeg`, `selfGestures` | 1, 30, 20, 1 | mod | no |
 | Holsters | `powerWheel` | r3 | mod | [verify] |
 | Controls | `leftTrigger` | lb | mod | yes (Controls > Left trigger) |
-| Squad | `enabled`, `style` | 1, native | mod | yes (`squad`, `squadStyle` in `MenuSettings`) |
+| Squad | `enabled` | 1 | mod | yes (`squad` in `MenuSettings`'s guide); `style` is gone since 2026-11-18 (an old `custom` moves to `native` once) |
 | Squad | `wheelStick`, `wheelPreselect`, `wheelPanel`, `weaponWheelAt`, `powerWheelAt`, `wheelCrop` | right, 1, 1, left, hud, auto | mod, panel drawn by host | no |
-| Squad | `pointConeDeg`, `pointMaxM`, `panelDistanceM`, `panelWidthM`, `confirmOnRelease`, `pause`, `hapticAmplitude` | 10, 40, 0.27, 0.40, 1, 1, 0.5 | mod | no |
+| Squad | `pointConeDeg`, `pointMaxM`, `panelDistanceM`, `panelWidthM`, `confirmOnRelease`, `hapticAmplitude` | 10, 40, 0.27, 0.40, 1, 0.5 | mod | no |
 | SquadContext | `enabled`, `refreshS`, `joinM`, `splitAboveM`, `maxGroups`, `nearM`, `farM`, `landmarkRangeM`, `maxLandmarks` | 1, 0.25, 6, 2.5, 6, 10, 30, 25, 5 | mod | no |
 | SquadOrders | `enabled`, `gesture`, `followWithinM`, `enemyConeDeg`, `memberConeDeg`, `minHoldS`, `maxHoldS`, `minConfidence` | 1, 1, 2.0, 8, 12, 0.08, 8, 0.6 | mod | no |
 | SquadOrders | `standing`, `holdFormation`, `reassertS`, `holdRadiusM`, `calmS`, `retreatHealth`, `overwhelmCount`, `retreatToCover`, `retreatM`, `coverSearchM`, `retreatCooldownS` | 1, 1, 4, 4, 8, 0.3, 3, 1, 8, 10, 10 | mod | no |

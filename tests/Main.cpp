@@ -4424,7 +4424,7 @@ void TestRbFromStickClick() {
     CHECK((pad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) == 0);
 }
 
-// ---- The squad weapon menu (core/vr/SquadMenu, game/GamepadMapping's chord, gate and squad flag) ----
+// ---- The squad's weapons (core/vr/SquadMenu: the pointing, the wheel's panel; game/GamepadMapping's chord and gate) ----
 
 void TestSquadPointing() {
     using namespace mevr::vr::squad_menu;
@@ -4464,271 +4464,7 @@ void TestSquadPointing() {
     CHECK(NearestToRay(origin, ahead, targets, 2) == -1);
 }
 
-void TestSquadRadial() {
-    using namespace mevr::vr::squad_menu;
-    RadialSettings const s;  // dead zone 0.55, release 0.35, 12 degrees of hysteresis
-    // The fixed layout.
-    CHECK(WeaponAt(Direction::Up) == 2 && WeaponAt(Direction::Left) == 1 && WeaponAt(Direction::Right) == 3 &&
-          WeaponAt(Direction::Down) == 0 && WeaponAt(Direction::None) == -1);
-    for (int w = 0; w < kWeapons; ++w) {
-        CHECK(WeaponAt(DirectionOf(w)) == w);
-    }
-    // Inside the dead zone: nothing.
-    CHECK(Radial(0.0f, 0.5f, Direction::None, s) == Direction::None);
-    CHECK(Radial(0.3f, -0.3f, Direction::None, s) == Direction::None);
-    // Past it: the nearest of the four.
-    CHECK(Radial(0.0f, 0.9f, Direction::None, s) == Direction::Up);
-    CHECK(Radial(0.0f, -0.9f, Direction::None, s) == Direction::Down);
-    CHECK(Radial(-0.9f, 0.1f, Direction::None, s) == Direction::Left);
-    CHECK(Radial(0.9f, -0.2f, Direction::None, s) == Direction::Right);
-    // Just past the up/right diagonal (50 degrees): right, unless up is held (hysteresis to 57 degrees).
-    float const a50 = 50.0f * 3.14159265f / 180.0f;
-    CHECK(Radial(0.9f * std::sin(a50), 0.9f * std::cos(a50), Direction::None, s) == Direction::Right);
-    CHECK(Radial(0.9f * std::sin(a50), 0.9f * std::cos(a50), Direction::Up, s) == Direction::Up);
-    float const a60 = 60.0f * 3.14159265f / 180.0f;
-    CHECK(Radial(0.9f * std::sin(a60), 0.9f * std::cos(a60), Direction::Up, s) == Direction::Right);
-    // Held: it stays down to the release radius, not the dead zone.
-    CHECK(Radial(0.0f, 0.45f, Direction::Up, s) == Direction::Up);
-    CHECK(Radial(0.0f, 0.3f, Direction::Up, s) == Direction::None);
-    // Garbage in: nothing.
-    CHECK(Radial(std::nanf(""), 0.9f, Direction::None, s) == Direction::None);
-}
-
-void TestSquadMachine() {
-    using namespace mevr::vr::squad_menu;
-    Machine m;
-    Input in;
-    in.dt = 0.011f;
-    in.usable = true;
-    in.memberCount = 2;
-    in.members[0] = {0x0F, 2};  // carries all four, holds the assault rifle
-    in.members[1] = {0x05, 0};  // pistol and assault rifle only, holds the pistol
-    auto const step = [&]() { return m.Update(in); };
-
-    // Point at the right squadmate and pull the left trigger: open at once with that card.
-    in.pointed = 1;
-    in.triggerDown = true;
-    in.newPull = true;
-    Step s = step();
-    CHECK(s.opened && s.openedPointing && m.IsOpen() && m.Selected() == 1 && m.Highlighted() == -1);
-    in.newPull = false;
-    in.pointed = -1;
-    // Flick up: the assault rifle (carried) is highlighted; centring keeps it.
-    in.rightY = 0.9f;
-    s = step();
-    CHECK(s.tileChanged && m.Highlighted() == 2);
-    in.rightY = 0.0f;
-    s = step();
-    CHECK(!s.tileChanged && m.Highlighted() == 2);
-    // Flick right: the sniper rifle, which this one doesn't carry: refused, the highlight stays.
-    in.rightX = 0.9f;
-    s = step();
-    CHECK(s.tileRefused && !s.tileChanged && m.Highlighted() == 2);
-    s = step();
-    CHECK(!s.tileRefused);  // one refusal per flick
-    in.rightX = 0.0f;
-    step();
-    // Let go: confirmed, that card, that weapon.
-    in.triggerDown = false;
-    s = step();
-    CHECK(s.closed == Close::Confirmed && s.member == 1 && s.weapon == 2 && !m.IsOpen());
-
-    // Let go with nothing chosen: cancelled.
-    in.triggerDown = true;
-    in.newPull = true;
-    in.pointed = 0;
-    s = step();
-    CHECK(s.opened && m.Selected() == 0);
-    in.newPull = false;
-    in.triggerDown = false;
-    s = step();
-    CHECK(s.closed == Close::Released && s.weapon == -1);
-
-    // B cancels; A confirms only with something chosen; an A held when it opened doesn't count.
-    in.triggerDown = true;
-    in.newPull = true;
-    in.a = true;
-    s = step();
-    CHECK(s.opened);
-    in.newPull = false;
-    s = step();
-    CHECK(s.closed == Close::None);
-    in.a = false;
-    step();
-    in.a = true;
-    s = step();
-    CHECK(s.closed == Close::None && m.IsOpen());  // A with nothing chosen: nothing
-    in.a = false;
-    in.rightX = -0.9f;  // the shotgun
-    s = step();
-    CHECK(m.Highlighted() == 1);
-    in.rightX = 0.0f;
-    in.a = true;
-    s = step();
-    CHECK(s.closed == Close::Confirmed && s.member == 0 && s.weapon == 1);
-    in.a = false;
-    in.triggerDown = false;
-    step();
-    in.triggerDown = true;
-    in.newPull = true;
-    step();
-    in.newPull = false;
-    in.b = true;
-    s = step();
-    CHECK(s.closed == Close::CancelButton);
-    in.b = false;
-    in.triggerDown = false;
-    step();
-
-    // The left stick picks the card; a weapon the new one lacks is no longer chosen.
-    in.triggerDown = true;
-    in.newPull = true;
-    in.pointed = 0;
-    step();
-    in.newPull = false;
-    in.rightY = -0.9f;  // the pistol: both carry it
-    step();
-    in.rightY = 0.0f;
-    step();
-    CHECK(m.Highlighted() == 0);
-    in.leftX = 0.8f;
-    s = step();
-    CHECK(s.cardChanged && m.Selected() == 1 && m.Highlighted() == 0 && !s.tileChanged);
-    in.leftX = 0.0f;
-    step();
-    in.leftX = -0.8f;
-    s = step();
-    CHECK(s.cardChanged && m.Selected() == 0);
-    in.leftX = 0.0f;
-    in.rightX = -0.9f;  // the shotgun (card 0 carries it)
-    step();
-    in.rightX = 0.0f;
-    step();
-    CHECK(m.Highlighted() == 1);
-    in.leftX = 0.8f;  // card 1 has no shotgun
-    s = step();
-    CHECK(s.cardChanged && s.tileChanged && m.Highlighted() == -1);
-    in.leftX = 0.0f;
-    in.triggerDown = false;
-    s = step();
-    CHECK(s.closed == Close::Released);
-
-    // Sticks already pushed when it opens (walking, turning) choose nothing until they move on.
-    in.leftX = -0.9f;
-    in.rightY = 0.9f;
-    in.triggerDown = true;
-    in.newPull = true;
-    in.pointed = 1;
-    s = step();
-    CHECK(s.opened && m.Selected() == 1 && m.Highlighted() == -1);
-    in.newPull = false;
-    s = step();
-    CHECK(!s.cardChanged && !s.tileChanged && m.Selected() == 1 && m.Highlighted() == -1);
-    in.leftX = 0.0f;
-    in.rightY = 0.0f;
-    step();
-    in.rightY = 0.9f;
-    s = step();
-    CHECK(s.tileChanged && m.Highlighted() == 2);
-    in.rightY = 0.0f;
-    // It can't stay open where it can't be used.
-    in.usable = false;
-    s = step();
-    CHECK(s.closed == Close::Unusable && !m.IsOpen());
-    in.usable = true;
-    in.triggerDown = false;
-    step();
-
-    // Pointing at nobody: it opens at once (the trigger is deliberate) with the preferred card.
-    in.pointed = -1;
-    in.preferred = 1;
-    in.triggerDown = true;
-    in.newPull = true;
-    s = step();
-    CHECK(s.opened && !s.openedPointing && m.IsOpen() && m.Selected() == 1);
-    in.newPull = false;
-    in.triggerDown = false;
-    s = step();
-    CHECK(s.closed == Close::Released);
-    // No preferred one: the first card.
-    in.preferred = -1;
-    in.triggerDown = true;
-    in.newPull = true;
-    s = step();
-    CHECK(s.opened && m.Selected() == 0);
-    in.newPull = false;
-    in.triggerDown = false;
-    step();
-    // With no squad, a refusal.
-    in.memberCount = 0;
-    in.triggerDown = true;
-    in.newPull = true;
-    s = step();
-    CHECK(s.refused && !m.IsOpen());
-    in.memberCount = 2;
-    in.triggerDown = false;
-    in.newPull = false;
-    step();
-    // Not usable: a pull does nothing.
-    in.usable = false;
-    in.triggerDown = true;
-    in.newPull = true;
-    in.pointed = 0;
-    s = step();
-    CHECK(!s.opened && m.CurrentPhase() == Phase::Idle);
-    in.usable = true;
-    // A trigger held from before (no new pull) never opens it.
-    in.newPull = false;
-    s = step();
-    CHECK(!s.opened && !m.IsOpen());
-    in.triggerDown = false;
-    step();
-
-    // confirmOnRelease off: letting go keeps it open; A confirms; a new pull cancels; it times out.
-    in.confirmOnRelease = false;
-    in.idleCloseSeconds = 1.0f;
-    in.triggerDown = true;
-    in.newPull = true;
-    in.pointed = 0;
-    step();
-    in.newPull = false;
-    in.triggerDown = false;
-    s = step();
-    CHECK(s.closed == Close::None && m.IsOpen());
-    in.rightY = 0.9f;
-    step();
-    in.rightY = 0.0f;
-    in.a = true;
-    s = step();
-    CHECK(s.closed == Close::Confirmed && s.weapon == 2);
-    in.a = false;
-    in.triggerDown = true;
-    in.newPull = true;
-    step();
-    in.newPull = false;
-    in.triggerDown = false;
-    step();
-    in.triggerDown = true;
-    in.newPull = true;
-    s = step();
-    CHECK(s.closed == Close::Repulled);
-    in.triggerDown = false;
-    in.newPull = false;
-    step();
-    in.triggerDown = true;
-    in.newPull = true;
-    step();
-    in.newPull = false;
-    in.triggerDown = false;
-    in.dt = 0.4f;
-    s = step();
-    s = step();
-    CHECK(s.closed == Close::None);
-    s = step();
-    CHECK(s.closed == Close::Idle && !m.IsOpen());
-}
-
-void TestSquadPanelPlacement() {
+void TestWheelPanelPlacement() {
     using namespace mevr::vr::squad_menu;
     XrVector3f const head{0.0f, 1.6f, 0.0f};
     XrVector3f const hand{-0.2f, 1.1f, -0.4f};
@@ -5863,57 +5599,8 @@ void TestStickChordFirst() {
     CHECK(holds == 1 && !sawL3 && !sawR3);
 }
 
-void TestSquadPad() {
+void TestLeftGripReport() {
     using namespace mevr::game::gamepad;
-    // The flag crosses the boundary.
-    Options options;
-    options.squadMenu = true;
-    CHECK((ToFlags(options) & kFlagSquadMenu) != 0);
-    CHECK(FromFlags(-1.0f, 0.12f, 0.22f, ToFlags(options)).squadMenu);
-    CHECK(!FromFlags(-1.0f, 0.12f, 0.22f, kFlagLeftTrigger).squadMenu);
-
-    // While open: no sticks, no A, B or stick clicks; the triggers and X/Y still pass.
-    mevr::vr::controllers::State state;
-    state.active = true;
-    state.timeMs = 20000;
-    state.left.stickX = 0.8f;
-    state.right.stickY = 0.9f;
-    state.right.primary = true;
-    state.right.secondary = true;
-    state.left.secondary = true;
-    state.right.trigger = 1.0f;
-    state.left.stickClick = true;
-    Latches latches;
-    auto pad = FromControllers(state, latches, options);
-    CHECK(pad.sThumbLX == 0 && pad.sThumbLY == 0 && pad.sThumbRX == 0 && pad.sThumbRY == 0);
-    CHECK((pad.wButtons & (XINPUT_GAMEPAD_A | XINPUT_GAMEPAD_B | XINPUT_GAMEPAD_LEFT_THUMB | XINPUT_GAMEPAD_RIGHT_THUMB)) == 0);
-    CHECK((pad.wButtons & XINPUT_GAMEPAD_Y) != 0 && pad.bRightTrigger == 255);
-    // Closed: what was in use stays the menu's until released or centred...
-    options.squadMenu = false;
-    state.timeMs += 20;
-    pad = FromControllers(state, latches, options);
-    CHECK(pad.sThumbLX == 0 && pad.sThumbRY == 0 && (pad.wButtons & (XINPUT_GAMEPAD_A | XINPUT_GAMEPAD_B)) == 0);
-    // ...each on its own: A let go and pressed again is A; the right stick centred and pushed again turns.
-    state.right.primary = false;
-    state.right.stickY = 0.1f;
-    state.timeMs += 20;
-    pad = FromControllers(state, latches, options);
-    state.right.primary = true;
-    state.right.stickY = 0.9f;
-    state.timeMs += 20;
-    pad = FromControllers(state, latches, options);
-    CHECK((pad.wButtons & XINPUT_GAMEPAD_A) != 0 && pad.sThumbRY > 0);
-    CHECK(pad.sThumbLX == 0 && (pad.wButtons & XINPUT_GAMEPAD_B) == 0);  // still held from the menu
-    state.left.stickX = 0.0f;
-    state.right.secondary = false;
-    state.timeMs += 20;
-    FromControllers(state, latches, options);
-    state.left.stickX = 0.8f;
-    state.right.secondary = true;
-    state.timeMs += 20;
-    pad = FromControllers(state, latches, options);
-    CHECK(pad.sThumbLX > 0 && (pad.wButtons & XINPUT_GAMEPAD_B) != 0);
-
     // The left grip's report: squeezes away from the gun count; one on the foregrip doesn't.
     Latches grip;
     mevr::vr::controllers::State hands;
@@ -6225,7 +5912,8 @@ void TestNativeWheelPad() {
     options.wheelStick = WheelStick::Either;
     options.wheelPressA = true;
     Options const back = FromFlags(-1.0f, 0.12f, 0.22f, ToFlags(options));
-    CHECK(back.nativeWheel && back.wheelPressA && back.wheelStick == WheelStick::Either && !back.squadMenu);
+    CHECK(back.nativeWheel && back.wheelPressA && back.wheelStick == WheelStick::Either);
+    CHECK((ToFlags(back) & 64u) == 0);  // bit 6 (our drawn menu's kFlagSquadMenu) is retired: nothing sets it
     CHECK(FromFlags(-1.0f, 0.12f, 0.22f, kFlagLeftTrigger).wheelStick == WheelStick::Right);
     CHECK(FromFlags(-1.0f, 0.12f, 0.22f, 3u << kWheelStickShift).wheelStick == WheelStick::Right);  // unknown: right
 
@@ -9110,6 +8798,98 @@ void TestTriggerOwner() {
     CHECK((pad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) == 0 && pad.bLeftTrigger == 0);
 }
 
+// Who the left trigger's pull is (core/vr/SquadMenu RouteTrigger; the owner, 2026-11-18: "just remove the custom menu and
+// just always default to the classic menu"): on every game only the game's own weapon wheel, with the left hand open and with
+// both hands on the gun. ME1 opens it itself (the squad's pull: EnterWeaponWheel at once, pointing preselects); otherwise the
+// pull is the game's own LB, whose hold opens the same wheel.
+void TestTriggerRoute() {
+    namespace sm = mevr::vr::squad_menu;
+    using sm::TriggerRoute;
+    // ME1 on foot: a v12 host, the script functions and the game's Enter/ExitWeaponWheel found.
+    sm::TriggerFacts me1;
+    me1.opensWheel = true;
+    me1.modeTakesIt = true;
+    // The left hand open: the squad's (the game's wheel, opened at once).
+    CHECK(sm::RouteTrigger(me1) == TriggerRoute::OpensWheel);
+    // Both hands on the gun: the game's own LB (its hold opens the same wheel).
+    sm::TriggerFacts me1Gun = me1;
+    me1Gun.supportGrip = true;
+    CHECK(sm::RouteTrigger(me1Gun) == TriggerRoute::GameButton);
+    // ME2 and ME3: the game's own LB with the left hand open and with both hands on the gun; never our menu.
+    sm::TriggerFacts sequel = me1;
+    sequel.opensWheel = false;
+    CHECK(sm::RouteTrigger(sequel) == TriggerRoute::GameButton);
+    sm::TriggerFacts sequelGun = sequel;
+    sequelGun.supportGrip = true;
+    CHECK(sm::RouteTrigger(sequelGun) == TriggerRoute::GameButton);
+    // ME1's other cases are the game's button too: the Mako (not on foot or in a wheel), our menus, the hand power wheel's
+    // pinch, the feature off, the trigger not the wheel's button.
+    sm::TriggerFacts f = me1;
+    f.modeTakesIt = false;
+    CHECK(sm::RouteTrigger(f) == TriggerRoute::GameButton);
+    f = me1;
+    f.menuOpen = true;
+    CHECK(sm::RouteTrigger(f) == TriggerRoute::GameButton);
+    f = me1;
+    f.powerWheel = true;
+    CHECK(sm::RouteTrigger(f) == TriggerRoute::GameButton);
+    f = me1;
+    f.enabled = false;
+    CHECK(sm::RouteTrigger(f) == TriggerRoute::GameButton);
+    f = me1;
+    f.leftTriggerLB = false;
+    CHECK(sm::RouteTrigger(f) == TriggerRoute::GameButton);
+    CHECK(std::string(sm::RouteName(TriggerRoute::OpensWheel)).find("game's weapon wheel") != std::string::npos);
+
+    // Decided per pull: a pull begun with both hands on the gun stays the game's LB until let go, even if the left hand
+    // leaves the foregrip mid-pull (no squad wheel on top of the game's); one begun with the hand open stays the squad's
+    // if the hand reaches the foregrip mid-pull (no LB press from nowhere, which ME1 would take as a tap: TrySwapWeapon).
+    auto const squads = [](sm::TriggerFacts const& facts) { return sm::RouteTrigger(facts) == TriggerRoute::OpensWheel; };
+    sm::TriggerOwner owner;
+    CHECK(!sm::OwnTrigger(owner, false, squads(me1Gun)));  // up, the hand on the gun
+    CHECK(!sm::OwnTrigger(owner, true, squads(me1Gun)));   // pulled: the game's LB
+    CHECK(!sm::OwnTrigger(owner, true, squads(me1)));      // the hand leaves the gun mid-pull: still LB
+    CHECK(sm::OwnTrigger(owner, false, squads(me1)));      // let go with the hand open: the next pull is the squad's
+    CHECK(sm::OwnTrigger(owner, true, squads(me1)));       // pulled: the squad's
+    CHECK(sm::OwnTrigger(owner, true, squads(me1Gun)));    // the hand reaches the foregrip mid-pull: still the squad's
+    CHECK(!sm::OwnTrigger(owner, false, squads(me1Gun)));  // let go on the gun: the game's LB again
+    // The sequels: never the squad's, either hand state, at the press or mid-pull.
+    sm::TriggerOwner sequelOwner;
+    for (bool pulled : {false, true, true, false, true, true, false}) {
+        CHECK(!sm::OwnTrigger(sequelOwner, pulled, squads(pulled ? sequelGun : sequel)));
+    }
+
+    // What the game sees from a pulled trigger. The game's button (squad_weapons::AdjustPad leaves [Controls] leftTrigger =
+    // lb alone): LB, with the left hand open and with both hands on the gun (there the support grip's aimed LT too).
+    using namespace mevr::game::gamepad;
+    mevr::vr::controllers::State open;
+    open.active = true;
+    open.left.trigger = 1.0f;
+    Options button;
+    button.gripShoulder = false;
+    button.leftTriggerShoulder = true;
+    button.leftTrigger = false;
+    Latches openLatches;
+    auto pad = FromControllers(open, openLatches, button);
+    CHECK((pad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) != 0 && pad.bLeftTrigger == 0);
+    mevr::vr::controllers::State onGun = open;
+    onGun.left.squeeze = 1.0f;
+    Options gunButton = button;
+    gunButton.support = {0.05f, 0.12f, 0.22f};  // the left hand at the foregrip
+    Latches gunLatches;
+    pad = FromControllers(onGun, gunLatches, gunButton);
+    CHECK(gunLatches.left == LeftGrip::Support);
+    CHECK((pad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) != 0 && pad.bLeftTrigger == 255);
+    // The squad's pull (ME1, the hand open; AdjustPad clears both): neither LB nor LT, and the wheel's flag goes across.
+    Options squad = button;
+    squad.leftTriggerShoulder = false;
+    squad.nativeWheel = true;
+    Latches squadLatches;
+    pad = FromControllers(open, squadLatches, squad);
+    CHECK((pad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) == 0 && pad.bLeftTrigger == 0);
+    CHECK(FromFlags(-1.0f, 0.12f, 0.22f, ToFlags(squad)).nativeWheel);
+}
+
 // The support grip's grab zone: a capsule along the gun, the captured span (2026-10-22).
 void TestSupportZone() {
     using namespace mevr::ik;
@@ -10970,7 +10750,8 @@ void TestMenuSettings() {
         ms::GuideInput b = shipped;
         b.powerWheel = "b";
         CHECK(text(b, "guide_b") == "Powers");
-        // The left trigger's choices; the wheel without the squad is the game's own (hold, tap); the custom squad menu.
+        // The left trigger's choices; the wheel without the squad is the game's own (hold, tap); on the sequels it is the
+        // game's own button always (2026-11-18: our drawn squad menu is gone).
         ms::GuideInput lt = shipped;
         lt.leftTrigger = "lt";
         CHECK(text(lt, "guide_lt") == "Aim");
@@ -10980,9 +10761,11 @@ void TestMenuSettings() {
         ms::GuideInput noSquad = shipped;
         noSquad.squad = false;
         CHECK(text(noSquad, "guide_lt") == "Weapon wheel" && text(noSquad, "guide_lt_how").find("tap") != std::string::npos);
-        ms::GuideInput custom = shipped;
-        custom.squadStyle = "custom";
-        CHECK(text(custom, "guide_lt") == "Squad weapons");
+        CHECK(text(shipped, "guide_lt") == "Weapon wheel" && text(shipped, "guide_lt_how").find("Point at a squadmate") != std::string::npos);
+        ms::GuideInput sequelLt = shipped;
+        sequelLt.le2 = true;
+        CHECK(text(sequelLt, "guide_lt") == "Weapon wheel" && text(sequelLt, "guide_lt_how").rfind("Hold", 0) == 0);
+        CHECK(text(sequelLt, "guide_lt_how").find("Point") == std::string::npos);  // no pointing on the sequels
         // X and B kept from the game, no vent, grenades in the left hand, walking toward the hand, snap turns.
         ms::GuideInput kept = shipped;
         kept.grenadeButton = false;
@@ -12724,6 +12507,7 @@ int main() {
     TestAimAssist();
     TestRecenterTilt();
     TestTriggerOwner();
+    TestTriggerRoute();
     TestSupportZone();
     TestReachWeight();
     TestSightAssist();
@@ -12791,11 +12575,9 @@ int main() {
     TestSquadRetreat();
     TestCloseLatch();
     TestClickGate();
-    TestSquadPad();
+    TestLeftGripReport();
     TestSquadPointing();
-    TestSquadRadial();
-    TestSquadMachine();
-    TestSquadPanelPlacement();
+    TestWheelPanelPlacement();
     TestNativeWheelGeometry();
     TestNativeWheelMachine();
     TestNativeWheelPad();

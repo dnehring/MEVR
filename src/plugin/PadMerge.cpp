@@ -36,7 +36,6 @@ std::atomic<std::uint32_t> gLeftGripReport{0};
 
 std::mutex gMutex;  // the latches and the log state below (XInput is polled from any thread)
 gp::Latches gLatches;
-bool gSquadMenuLogged = false;    // whether the mod's flag says the squad menu is open (logged when it changes)
 bool gNativeWheelLogged = false;  // the mod holds the game's weapon wheel (v12)
 bool gWheelPressALogged = false;
 bool gConversationTriggersLogged = false;  // the renderer said the conversation mode's triggers are the interrupts' (ME2)
@@ -138,7 +137,7 @@ gp::Options ConversationTriggers(gp::Options options) {
     // Native UI directions and A/X must not inherit gameplay ownership from the last mod tick.
     // In particular, walking toward the hand rotates ME3's reply wheel selection unless disabled.
     options.handWalk = options.modTurns = false;
-    options.squadMenu = options.nativeWheel = options.wheelPressA = false;
+    options.nativeWheel = options.wheelPressA = false;
     options.handPowerWheel = options.squadPlace = false;
     options.meleeButton = options.grenadeButton = true;
     options.rbSource = gp::RbSource::None;
@@ -178,7 +177,7 @@ XINPUT_GAMEPAD Merge(XINPUT_GAMEPAD const& real, vr::controllers::State const& c
         log::Info("halcyon bridge: first left stick click kept from the game: it is the crouch toggle (the mod's, as ME1's L3), "
                   "so no L3 (the game's area map and objective locator stay on the omni-tool's Map entry)");
     }
-    bool const owned = options.squadMenu || options.nativeWheel;  // the squad menu or the game's wheel has the sticks
+    bool const owned = options.nativeWheel;  // the game's wheel held by the left trigger has the sticks
     WalkTowardHand(touch, controllers, options.handWalk && !owned && !renderer.ownMenuOpen, renderer, nowMs);
     if (options.modTurns != gModTurnsLogged && nowMs >= gModTurnsLogMs) {  // at most every 2 s (camera blends)
         gModTurnsLogged = options.modTurns;
@@ -189,16 +188,10 @@ XINPUT_GAMEPAD Merge(XINPUT_GAMEPAD const& real, vr::controllers::State const& c
     }
     XINPUT_GAMEPAD pad = gp::Merge(real, touch);
     gLeftGripReport.store(gp::LeftGripReport(gLatches), std::memory_order_relaxed);
-    if (options.squadMenu != gSquadMenuLogged) {
-        gSquadMenuLogged = options.squadMenu;
-        log::Info("halcyon bridge: squad menu {}", options.squadMenu
-            ? "open: the sticks, A, B and the stick clicks are its own (kept from the game until released)"
-            : "closed");
-    }
     if (options.nativeWheel != gNativeWheelLogged) {
         gNativeWheelLogged = options.nativeWheel;
         log::Info("halcyon bridge: the game's weapon wheel {}", options.nativeWheel
-            ? std::format("held by the left grip: {} steers it (once centred), A queues; the left stick, B and the stick "
+            ? std::format("held by the left trigger: {} steers it (once centred), A queues; the left stick, B and the stick "
                           "clicks are kept from the game", gp::Name(options.wheelStick))
             : std::string("let go (what was in use stays kept from the game until released or centred)"));
     }
@@ -256,7 +249,7 @@ void Reset() {
     gLoggedRightGripHolds.store(false);
     gLeftGripReport.store(0);
     gLatches = {};
-    gSquadMenuLogged = gNativeWheelLogged = gWheelPressALogged = false;
+    gNativeWheelLogged = gWheelPressALogged = false;
     gModTurnsLogged = false;
     gModTurnsLogMs = 0;
     gHandWalkLogged = false;

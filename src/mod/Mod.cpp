@@ -829,23 +829,19 @@ mevr::game::holsters::Link HolsterLink() {
     return link;
 }
 
-// Host renderer: the squad weapon menu (HostServices v11: drawing it, the left grip's report, the pad flag),
-// and the controller pulses (v9/v10).
+// Host renderer: the game's weapon wheel at the hand (HostServices v12: the wheel panel, the pad's native wheel flags), and
+// the controller pulses (v9/v10).
 mevr::game::squad_weapons::Link SquadLink() {
     using namespace mevr;
     game::squad_weapons::Link link;
     if (!gHostOwnsVr) {
-        return link;  // our own renderer draws no squad menu
+        return link;  // our own renderer shows no wheel panel
     }
-    if (MEVR_HOST_HAS(leftGripAway) && gHost->setSquadMenu != nullptr && gHost->leftGripAway != nullptr &&
-        gHost->squadMenuSize == sizeof(vr::squad_menu::View)) {
+    // v12: the pad's native wheel flags (every current host); the wheel panel's settings only where the host takes them
+    // (LE1's; the sequels' hosts show the game's wheel at the hand with the panel's defaults).
+    if (MEVR_HOST_HAS(setWheelPanel)) {
         link.supported = true;
-        link.setMenu = gHost->setSquadMenu;
-        link.leftGripAway = gHost->leftGripAway();
-        // v12: the game's own wheel at the hand (the wheel panel, the pad's native wheel flags).
-        if (MEVR_HOST_HAS(setWheelPanel) && gHost->setWheelPanel != nullptr &&
-            gHost->wheelPanelSize == sizeof(vr::squad_menu::wheel::Panel)) {
-            link.nativeSupported = true;
+        if (gHost->setWheelPanel != nullptr && gHost->wheelPanelSize == sizeof(vr::squad_menu::wheel::Panel)) {
             link.setWheelPanel = gHost->setWheelPanel;
         }
     }
@@ -1274,9 +1270,6 @@ mevr::game::body_calibration::Link BodyCalibrationLink() {
 // Host renderer (HostServices v16): our VR main menu's state, for its "pause while open" (research/28).
 mevr::game::menu_pause::Link MenuPauseLink() {
     mevr::game::menu_pause::Link link;
-#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
-    link.squadPause = mevr::game::squad_weapons::IsOpen() && mevr::game::hand_calibration::GetSquad().pause;
-#endif
     if (gHostOwnsVr && MEVR_HOST_HAS(mainMenu)) {
         link.state = gHost->mainMenu;
     }

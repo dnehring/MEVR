@@ -62,62 +62,7 @@ XrQuaternionf FromAxes(XrVector3f const& x, XrVector3f const& y, XrVector3f cons
     return n > 0.0f ? XrQuaternionf{q.x / n, q.y / n, q.z / n, q.w / n} : XrQuaternionf{0.0f, 0.0f, 0.0f, 1.0f};
 }
 
-float WrapDegrees(float degrees) {
-    while (degrees > 180.0f) {
-        degrees -= 360.0f;
-    }
-    while (degrees <= -180.0f) {
-        degrees += 360.0f;
-    }
-    return degrees;
-}
-
-// The stick angle each tile sits at: degrees clockwise from up.
-float CenterOf(Direction direction) {
-    switch (direction) {
-    case Direction::Up: return 0.0f;
-    case Direction::Right: return 90.0f;
-    case Direction::Down: return 180.0f;
-    case Direction::Left: return -90.0f;
-    case Direction::None: break;
-    }
-    return 0.0f;
-}
-
-// The card side a left stick points to: -1 left, +1 right, 0 neither.
-int SideOf(float x, float y, float push) {
-    if (std::abs(x) < push || std::abs(x) < std::abs(y)) {
-        return 0;
-    }
-    return x < 0.0f ? -1 : 1;
-}
-
-std::mutex gMutex;
-View gLatest;
-std::uint64_t gSequence = 0;
-
 } // namespace
-
-int WeaponAt(Direction direction) {
-    switch (direction) {
-    case Direction::Up: return 2;     // assault rifle
-    case Direction::Left: return 1;   // shotgun
-    case Direction::Right: return 3;  // sniper rifle
-    case Direction::Down: return 0;   // pistol
-    case Direction::None: break;
-    }
-    return -1;
-}
-
-Direction DirectionOf(int weapon) {
-    switch (weapon) {
-    case 0: return Direction::Down;
-    case 1: return Direction::Left;
-    case 2: return Direction::Up;
-    case 3: return Direction::Right;
-    default: return Direction::None;
-    }
-}
 
 char const* WeaponName(int weapon) {
     switch (weapon) {
@@ -127,41 +72,6 @@ char const* WeaponName(int weapon) {
     case 3: return "sniper rifle";
     default: return "none";
     }
-}
-
-char const* DirectionName(Direction direction) {
-    switch (direction) {
-    case Direction::Up: return "up";
-    case Direction::Left: return "left";
-    case Direction::Right: return "right";
-    case Direction::Down: return "down";
-    case Direction::None: break;
-    }
-    return "centre";
-}
-
-Direction Radial(float x, float y, Direction held, RadialSettings const& settings) {
-    if (!std::isfinite(x) || !std::isfinite(y)) {
-        return Direction::None;
-    }
-    float const magnitude = std::sqrt(x * x + y * y);
-    if (magnitude < (held != Direction::None ? settings.release : settings.deadZone)) {
-        return Direction::None;
-    }
-    float const angle = std::atan2(x, y) / kDeg;  // clockwise from up
-    if (held != Direction::None && std::abs(WrapDegrees(angle - CenterOf(held))) <= 45.0f + settings.hysteresisDeg) {
-        return held;
-    }
-    Direction best = Direction::Up;
-    float bestDiff = 1e9f;
-    for (Direction d : {Direction::Up, Direction::Left, Direction::Right, Direction::Down}) {
-        float const diff = std::abs(WrapDegrees(angle - CenterOf(d)));
-        if (diff < bestDiff) {
-            bestDiff = diff;
-            best = d;
-        }
-    }
-    return best;
 }
 
 float AngleToRay(XrVector3f const& origin, XrVector3f const& direction, XrVector3f const& point) {
@@ -231,176 +141,6 @@ XrPosef PlaceAtHand(XrVector3f const& hand, XrVector3f const& head, float distan
     pose.orientation = FromAxes(x, y, z);
     pose.position = center;
     return pose;
-}
-
-char const* CloseName(Close close) {
-    switch (close) {
-    case Close::Confirmed: return "confirmed";
-    case Close::Released: return "released with nothing chosen";
-    case Close::CancelButton: return "cancelled (B)";
-    case Close::Repulled: return "cancelled (trigger pulled again)";
-    case Close::Unusable: return "closed (it can't stay open here)";
-    case Close::Idle: return "closed (untouched)";
-    case Close::None: break;
-    }
-    return "-";
-}
-
-void Machine::Reset() {
-    *this = Machine{};
-}
-
-InventoryPage PageInventory(int weaponCount, int requestedPage) {
-    int const count = std::max(weaponCount, 0);
-    if (count <= kWeapons) return {0, 1, 0, count, -1};
-    int const pages = 1 + (count - 1) / (kWeapons - 1);
-    int const page = std::clamp(requestedPage, 0, pages - 1);
-    int const first = page * (kWeapons - 1);
-    return {page, pages, first, std::min(kWeapons - 1, count - first), kWeapons - 1};
-}
-
-void Machine::OpenMenu(Input const& input, int member, Step& step) {
-    phase_ = Phase::Open;
-    selected_ = std::clamp(member, 0, std::max(input.memberCount - 1, 0));
-    highlighted_ = -1;
-    // A stick already pushed when it opens (walking, turning) chooses nothing until it moves on.
-    rightHeld_ = Radial(input.rightX, input.rightY, Direction::None, input.radial);
-    flickRefused_ = true;
-    leftSide_ = SideOf(input.leftX, input.leftY, input.cardPush);
-    idleFor_ = 0.0f;
-    step.opened = true;
-    paging_ = false;
-}
-
-void Machine::CloseMenu(Close why, Step& step) {
-    if (why == Close::Confirmed) {
-        step.member = selected_;
-        step.weapon = highlighted_;
-    }
-    step.closed = why;
-    phase_ = Phase::Idle;
-    highlighted_ = -1;
-    rightHeld_ = Direction::None;
-    flickRefused_ = false;
-    idleFor_ = 0.0f;
-    paging_ = false;
-}
-
-Step Machine::Update(Input const& in) {
-    Step step;
-    bool const triggerReleased = !in.triggerDown && triggerWasDown_;
-    triggerWasDown_ = in.triggerDown;
-    bool const aPressed = in.a && !aWasDown_;
-    bool const bPressed = in.b && !bWasDown_;
-    aWasDown_ = in.a;
-    bWasDown_ = in.b;
-    int const count = std::clamp(in.memberCount, 0, kMaxMembers);
-    bool const pointed = in.pointed >= 0 && in.pointed < count;
-
-    switch (phase_) {
-    case Phase::Idle:
-        // A new pull opens it at once (the trigger is a deliberate input): with the squadmate the
-        // hand points at, else the preferred one.
-        if (!in.newPull || !in.usable) {
-            break;
-        }
-        if (count == 0) {
-            step.refused = true;
-        } else if (pointed) {
-            OpenMenu(in, in.pointed, step);
-            step.openedPointing = true;
-        } else {
-            OpenMenu(in, in.preferred >= 0 && in.preferred < count ? in.preferred : 0, step);
-        }
-        break;
-
-    case Phase::Open: {
-        if (!in.usable || count == 0 || selected_ >= count) {
-            CloseMenu(Close::Unusable, step);
-            break;
-        }
-        // The card: the left stick pushed left or right (a new push, not one held since it opened).
-        int const side = count > 1 ? SideOf(in.leftX, in.leftY, in.cardPush) : 0;
-        if (side != leftSide_) {
-            leftSide_ = side;
-            int const want = side < 0 ? 0 : side > 0 ? 1 : selected_;
-            if (want != selected_) {
-                selected_ = want;
-                step.cardChanged = true;
-                if (highlighted_ >= 0 && (in.members[selected_].carried & (1u << highlighted_)) == 0) {
-                    highlighted_ = -1;  // the new squadmate doesn't carry it
-                    step.tileChanged = true;
-                }
-            }
-        }
-        // The tile: a flick of the right stick into a new sector; centred, the choice stays.
-        Direction const d = Radial(in.rightX, in.rightY, rightHeld_, in.radial);
-        if (d != rightHeld_) {
-            rightHeld_ = d;
-            flickRefused_ = false;
-            if (d != Direction::None) {
-                int const weapon = WeaponAt(d);
-                if ((in.members[selected_].carried & (1u << weapon)) != 0) {
-                    if (weapon != highlighted_) {
-                        highlighted_ = weapon;
-                        step.tileChanged = true;
-                    }
-                } else {
-                    flickRefused_ = true;
-                    step.tileRefused = true;
-                }
-            }
-        }
-        bool const touched = d != Direction::None || side != 0 || in.triggerDown || aPressed || bPressed;
-        idleFor_ = touched ? 0.0f : idleFor_ + std::max(in.dt, 0.0f);
-        if (bPressed) {
-            CloseMenu(Close::CancelButton, step);
-        } else if ((aPressed || (triggerReleased && in.confirmOnRelease)) && highlighted_ >= 0 &&
-                   highlighted_ == in.members[selected_].more) {
-            step.pageChanged = true;
-            step.member = selected_;
-            highlighted_ = -1;
-            flickRefused_ = true;
-            idleFor_ = 0.0f;
-            paging_ = true;
-        } else if (aPressed && highlighted_ >= 0) {
-            CloseMenu(Close::Confirmed, step);
-        } else if (triggerReleased && in.confirmOnRelease) {
-            CloseMenu(highlighted_ >= 0 ? Close::Confirmed : Close::Released, step);
-        } else if (!in.confirmOnRelease && in.newPull) {
-            CloseMenu(Close::Repulled, step);
-        } else if ((!in.confirmOnRelease || paging_) && idleFor_ >= in.idleCloseSeconds) {
-            CloseMenu(Close::Idle, step);
-        }
-        break;
-    }
-    }
-    return step;
-}
-
-void Publish(View const& view) {
-    std::lock_guard lock(gMutex);
-    gLatest = view;
-    gLatest.size = sizeof(View);
-    gLatest.sequence = ++gSequence;
-    gLatest.timeMs = GetTickCount64();
-}
-
-View Latest(std::uint64_t maxAgeMs) {
-    View copy;
-    {
-        std::lock_guard lock(gMutex);
-        copy = gLatest;
-    }
-    if (copy.timeMs == 0 || GetTickCount64() - copy.timeMs > maxAgeMs) {
-        copy.open = false;
-    }
-    return copy;
-}
-
-void Reset() {
-    std::lock_guard lock(gMutex);
-    gLatest = View{};
 }
 
 // ---- The game's own weapon wheel ---------------------------------------------------------------------
@@ -634,6 +374,20 @@ void ResetPanel() {
 }
 
 } // namespace wheel
+
+char const* RouteName(TriggerRoute route) {
+    switch (route) {
+    case TriggerRoute::OpensWheel: return "the squad opens the game's weapon wheel";
+    case TriggerRoute::GameButton: break;
+    }
+    return "the game's own button";
+}
+
+TriggerRoute RouteTrigger(TriggerFacts const& f) {
+    bool const squads = f.enabled && f.leftTriggerLB && f.opensWheel && f.modeTakesIt && !f.menuOpen && !f.powerWheel &&
+        !f.supportGrip;
+    return squads ? TriggerRoute::OpensWheel : TriggerRoute::GameButton;
+}
 
 bool OwnTrigger(TriggerOwner& owner, bool pulled, bool wanted) {
     if (!pulled || !owner.down) {

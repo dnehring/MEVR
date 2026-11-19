@@ -933,6 +933,10 @@ sits 24-34 units (cm) ahead of Shepard's head bone on ME2 and ME3; ME1's about 4
   running; a real squat still takes the body down with you.
 
 ### ME2
+- [ ] 2026-11-18 squad weapons, the game's wheel only (research/19 section 13; built offline, not run in the game): on foot with
+  Miranda and Jacob, pull the left trigger with your left hand open: ME2's own weapon wheel at your left hand (hold the trigger
+  to keep it), never our cards-and-tiles menu; give a squadmate a weapon there and see it in their hands. The same with both
+  hands on the gun. ME3 (ME3 section) and ME1 (the hand open: the wheel at once, pointing preselects) likewise.
 - [ ] The game's start (T18, research/56 "The sequels", lane FE, seen on the fake headset 2026-11-18): as ME1's line in "The
   game's start": the logos flat, the "PRESS ANY KEY" title and the main menu on the 3D cinema screen at head height, fixed in
   the room with the floor and horizon around it, the scene with depth, the picture still while the head turns; no change of
@@ -1039,6 +1043,8 @@ sits 24-34 units (cm) ahead of Shepard's head bone on ME2 and ME3; ME1's about 4
   hits twice as hard as before.
 
 ### ME3
+- [ ] 2026-11-18 squad weapons, the game's wheel only (research/19 section 13): the left trigger with the left hand open and with
+  both hands on the gun opens ME3's own weapon wheel at the hand (Halcyon's `[WHEELOWNER] LB edge: qualified=1`), never our menu.
 - [ ] The game's start (T18, research/56 "The sequels", lane FE, seen on the fake headset 2026-11-18): the title (the Earth from
   orbit) and the main menu on the 3D cinema screen in stereo, at head height and fixed in the room, the start's first second
   flat; the load flat, then the level in VR. Not reached by script: the main menu after "PRESS ANY KEY" (a replayed A didn't pass

@@ -241,23 +241,21 @@ struct Holsters {
 Holsters GetHolsters();
 // [Squad] (appended to an older file that lacks it; keys added later are appended with their defaults):
 // squad weapons (game/squad_weapons, docs/squad-weapons-design.md).
-//   enabled           1: pull the left trigger ([Controls] leftTrigger = lb) to open the weapon wheel at the
-//                     left hand at once; pointing the left hand at a squadmate preselects them. (Until
-//                     2026-10-22 a left-grip squeeze away from the gun opened it; the grip never does now.)
-//   style             native (default): the game's own weapon wheel (ME1's look, pause and rules), shown on
-//                     a panel at the hand; custom: our drawn menu (the fallback)
+//   enabled           1: the left trigger ([Controls] leftTrigger = lb) is the game's own weapon wheel at the left
+//                     hand: on ME1 a pull opens it at once and pointing the left hand at a squadmate preselects
+//                     them; on the sequels (and ME1 with both hands on the gun) the trigger is the game's LB,
+//                     whose hold opens it. (Until 2026-10-22 a left-grip squeeze away from the gun opened it; the
+//                     grip never does now. `style`, our drawn menu's choice, is gone since 2026-11-18: an old
+//                     file's custom moves to native once.)
 //   pointConeDeg      how close to the left hand's aim ray a squadmate must be to be "pointed at"
 //   pointMaxM         ...and how far away at most (meters)
-//   panelDistanceM    the menu's (or wheel's) centre from the hand when it opens (meters)
+//   panelDistanceM    the wheel's centre from the hand when it opens (meters)
 //   panelWidthM       its width (meters)
-//   confirmOnRelease  1: letting go of the trigger gives the chosen weapon (nothing chosen: cancels);
-//                     0: custom: it stays open after letting go (A gives it, B or a new pull cancels);
-//                     native: letting go closes it, only A (the game's own) queues a weapon
-//   pause             custom only: 1 (default) the game pauses while it's open, as ME1's wheels do; 0 it runs.
-//                     (The native wheel always pauses: it's the game's.)
+//   confirmOnRelease  ME1: 1 = letting go of the trigger gives the highlighted weapon (nothing new: closes);
+//                     0 = letting go closes it, only A (the game's own) queues a weapon
 //   hapticAmplitude   0..1: its ticks and clicks (0.5 as designed; 0: none)
-//   wheelStick        native: the stick that steers the wheel: right (the game's) | left | either
-//   wheelPreselect    native: 1 = pointing at a squadmate puts the wheel on their weapon in hand
+//   wheelStick        ME1: the stick that steers the wheel: right (the game's) | left | either
+//   wheelPreselect    ME1: 1 = pointing at a squadmate puts the wheel on their weapon in hand
 //   wheelPanel        1: the game's weapon and power wheels show on a panel of their own (any way they open)
 //   weaponWheelAt     where that panel goes for the weapon wheel: left (hand) | right | front | hud
 //   powerWheelAt      ...for the power wheel (R3 held): right | left | front | hud (stays on the HUD panel)
@@ -265,13 +263,11 @@ Holsters GetHolsters();
 //                     as fractions of the frame
 struct Squad {
     bool enabled = true;
-    bool native = true;
     double pointConeDeg = 10.0;
     double pointMaxM = 40.0;
     double panelDistanceM = 0.27;
     double panelWidthM = 0.40;
     bool confirmOnRelease = true;
-    bool pause = true;
     double hapticAmplitude = 0.5;
     gamepad::WheelStick wheelStick = gamepad::WheelStick::Right;
     bool wheelPreselect = true;

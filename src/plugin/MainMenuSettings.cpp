@@ -414,7 +414,6 @@ void Settings::Read(menu::Values& v) {
         g.seated = cal.seated;
         g.leftTrigger = v.Text("left_trigger");
         g.squad = ini.Num("Squad", "enabled", 1.0f) != 0.0f;
-        g.squadStyle = Lower(ini.Text("Squad", "style", "native"));
         g.holsters = v.Flag("holsters");
         g.gripHolds = v.Flag("grip_holds");
         g.powerWheel = Lower(ini.Text("Holsters", "powerWheel", "r3"));

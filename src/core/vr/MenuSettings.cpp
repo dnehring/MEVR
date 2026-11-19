@@ -631,9 +631,9 @@ std::vector<std::pair<std::string, std::string>> GuideTexts(GuideInput const& in
     if (lt == "lt") {
         put("lt", "Aim", "The game's aim button: steadier, zoomed fire. Aimed fire also comes from holding the gun at your cheek "
                          "with both hands.");
-    } else if (lt == "lb" && in.squad && Lower(Trim(in.squadStyle)) == "custom") {
-        put("lt", "Squad weapons", "Pull for the squad weapon menu at your hand: the left stick picks a squadmate, a flick of the "
-                                   "right stick a weapon; let go to give it, B cancels.");
+    } else if (lt == "lb" && in.le2) {
+        // The sequels: the trigger is the game's own button (game/SquadWeapons, 2026-11-18: always the game's own wheel).
+        put("lt", "Weapon wheel", "Hold for the game's weapon wheel at your hand: your weapons and your squad's.");
     } else if (lt == "lb" && in.squad) {
         put("lt", "Weapon wheel", "Pull to open the weapon wheel at your hand. Point at a squadmate to arm them; the right stick "
                                   "picks a weapon; let go to choose it.");

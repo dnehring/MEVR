@@ -336,7 +336,7 @@ std::uint32_t ToFlags(Options const& options) {
     return (options.leftTrigger ? kFlagLeftTrigger : 0u) | (options.supportAims ? kFlagSupportAims : 0u) |
            (options.gripShoulder ? kFlagGripShoulder : 0u) | (options.leftTriggerShoulder ? kFlagLeftTriggerShoulder : 0u) |
            (options.rightGripFree ? kFlagRightGripFree : 0u) | (options.rightGripHolds ? kFlagRightGripHolds : 0u) |
-           (options.squadMenu ? kFlagSquadMenu : 0u) | (options.nativeWheel ? kFlagNativeWheel : 0u) |
+           (options.nativeWheel ? kFlagNativeWheel : 0u) |
            (options.wheelPressA ? kFlagWheelPressA : 0u) |
            (options.meleeButton ? 0u : kFlagNoMeleeButton) | (options.grenadeButton ? 0u : kFlagNoGrenadeButton) |
            (options.modTurns ? kFlagModTurns : 0u) | (options.handWalk ? kFlagHandWalk : 0u) |
@@ -357,7 +357,6 @@ Options FromFlags(float distance, float acquire, float release, std::uint32_t fl
     options.leftTriggerShoulder = (flags & kFlagLeftTriggerShoulder) != 0;
     options.rightGripFree = (flags & kFlagRightGripFree) != 0;
     options.rightGripHolds = (flags & kFlagRightGripHolds) != 0;
-    options.squadMenu = (flags & kFlagSquadMenu) != 0;
     options.nativeWheel = (flags & kFlagNativeWheel) != 0;
     options.wheelPressA = (flags & kFlagWheelPressA) != 0;
     options.meleeButton = (flags & kFlagNoMeleeButton) == 0;
@@ -387,15 +386,13 @@ XINPUT_GAMEPAD FromControllers(vr::controllers::State const& state, Latches& lat
 }
 
 XINPUT_GAMEPAD FromControllers(vr::controllers::State const& input, Latches& latches, Options const& options) {
-    // The squad menu's controls: everything in use while it's open stays the menu's until released or
-    // centred, so the flick that chose a weapon doesn't turn the view and the A that confirmed doesn't
-    // "use" whatever is in front once it closes.
+    // The game's weapon wheel held by the left trigger (nativeWheel): everything in use while it's held stays kept from the
+    // game until released or centred, so the stick that steered it doesn't turn the view once it closes.
     auto const pushed = [](float x, float y) { return x * x + y * y > kSquadStickCentred * kSquadStickCentred; };
     std::uint8_t const active = static_cast<std::uint8_t>((pushed(input.left.stickX, input.left.stickY) ? kSquadLeftStick : 0) |
         (pushed(input.right.stickX, input.right.stickY) ? kSquadRightStick : 0) | (input.right.primary ? kSquadA : 0) |
         (input.right.secondary ? kSquadB : 0) | (input.left.stickClick ? kSquadL3 : 0) | (input.right.stickClick ? kSquadR3 : 0));
-    bool const owning = options.squadMenu || options.nativeWheel;
-    latches.squadHeld = owning ? active : static_cast<std::uint8_t>(latches.squadHeld & active);
+    latches.squadHeld = options.nativeWheel ? active : static_cast<std::uint8_t>(latches.squadHeld & active);
     // The Mako's drive stick held: the thumbstick is the turret's, and stays so until centred after the hand lets go.
     if (options.makoStick && (active & kSquadRightStick) != 0) {
         latches.squadHeld = static_cast<std::uint8_t>(latches.squadHeld | kSquadRightStick);
@@ -419,9 +416,9 @@ XINPUT_GAMEPAD FromControllers(vr::controllers::State const& input, Latches& lat
         }
     }
     latches.wheelWas = options.nativeWheel;
-    std::uint8_t const block = options.squadMenu ? kSquadAll
-        : options.nativeWheel ? static_cast<std::uint8_t>(kSquadLeftStick | kSquadRightStick | kSquadB | kSquadL3 | kSquadR3)
-                              : latches.squadHeld;
+    std::uint8_t const block = options.nativeWheel
+        ? static_cast<std::uint8_t>(kSquadLeftStick | kSquadRightStick | kSquadB | kSquadL3 | kSquadR3)
+        : latches.squadHeld;
     vr::controllers::State state = input;
     if ((block & kSquadLeftStick) != 0) {
         state.left.stickX = state.left.stickY = 0.0f;
@@ -474,7 +471,7 @@ XINPUT_GAMEPAD FromControllers(vr::controllers::State const& input, Latches& lat
     pad.sThumbLY = ToAxis(l.stickY);
     pad.sThumbRX = ToAxis(r.stickX);
     pad.sThumbRY = ToAxis(r.stickY);
-    if (options.modTurns && !owning) {
+    if (options.modTurns && !options.nativeWheel) {
         pad.sThumbRX = 0;  // the mod turns the player (game/comfort): the game's own turn would add to it
     }
     if (options.makoDrive) {
@@ -493,7 +490,7 @@ XINPUT_GAMEPAD FromControllers(vr::controllers::State const& input, Latches& lat
     bool const leftGrip = Latch(latches.leftGrip, l.squeeze);
     LeftGrip const leftBefore = latches.left;
     latches.left = UpdateSupportGrip(latches.support, leftGrip, options.support);
-    // A new left squeeze away from the gun (not the support grip): the squad menu's (counted for the mod).
+    // A new left squeeze away from the gun (not the support grip): counted for the mod (grenades, the vent, squad orders).
     if (leftBefore == LeftGrip::Open && latches.left != LeftGrip::Open) {
         latches.leftAway = latches.left == LeftGrip::Shoulder;
         if (latches.leftAway && options.countKept) {

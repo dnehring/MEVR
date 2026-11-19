@@ -6,7 +6,6 @@
 //   and shared with LE2's host: plugin/HudPanel);
 // - the hand reticle: a small ring on the weapon's aim ray (or the right controller's aim pose
 //   until the mod publishes the ray), replacing the game's screen-centre crosshair (plugin/HandReticle, also LE2's);
-// - the squad weapon menu at the left hand while the mod has it open (plugin/SquadPanel.cpp);
 // - the game's own weapon or power wheel on a panel of its own at a hand while one is up: its part of
 //   the HUD panel texture (core/vr/WheelCrop: a default, then measured the first time a wheel opens),
 //   cut out of the HUD panel meanwhile so it shows once (docs/squad-weapons-design.md, "Native wheel");
@@ -36,7 +35,6 @@
 #include "core/vr/MakoControls.hpp"
 #include "core/vr/InteractLabel.hpp"
 #include "core/vr/OverlayPlacement.hpp"
-#include "core/vr/SquadMenu.hpp"
 #include "core/vr/WheelCrop.hpp"
 #include "plugin/Calibration.hpp"
 #include "plugin/CineScreen.hpp"
@@ -67,7 +65,6 @@
 #include "plugin/Spectator.hpp"
 #include "plugin/Swapchains.hpp"
 #include "plugin/PowerWheel.hpp"
-#include "plugin/SquadPanel.hpp"
 #include "plugin/TestLoop.hpp"
 #include "plugin/Vignette.hpp"
 #include "plugin/WristBeam.hpp"
@@ -590,7 +587,6 @@ void OnRecentered() noexcept {
     hud_panel::Recentered();
     wheel_panel::Recentered();  // an open wheel's panel is placed again
     RecenterWorldPanels();  // the world-locked flat panels too (plugin/WorldPanels.cpp)
-    mevr::host::squad_panel::Recentered();  // and an open squad menu
     mevr::host::calibration::Recentered();  // and the guided calibration's layout
 #if defined(MEVR_WITH_MAIN_MENU)
     mevr::host::main_menu::Recentered();  // and our open main menu
@@ -1376,22 +1372,6 @@ unsigned OverlayLayers(OverlayFrame const& frame, void const** layersOut, unsign
         int const n = mevr::host::power_wheel::Layers(wheel, wheelLayers, static_cast<int>(std::min<unsigned>(3u, capacity - count)));
         for (int i = 0; i < n; ++i) {
             layersOut[count++] = wheelLayers[i];
-        }
-    }
-    // ---- The squad weapon menu, at the left hand (plugin/SquadPanel): last, on top of ours ----
-    if (count < capacity) {
-        mevr::host::squad_panel::Frame squad;
-        squad.session = session;
-        squad.appSpace = static_cast<XrSpace>(frame.appSpace);
-        squad.context = context;
-        squad.device = device.Get();
-        squad.worldFrame = frame.worldFrame;
-        squad.menuOpen = frame.menuOpen;
-        squad.headValid = frame.headValid;
-        squad.head.orientation = ToQuat(frame.headOrientation);
-        squad.head.position = ToVec(frame.headPosition);
-        if (XrCompositionLayerQuad const* layer = mevr::host::squad_panel::Layer(squad)) {
-            layersOut[count++] = layer;
         }
     }
     // ---- The game's wheel at the hand: last, on top (the conversation's wheel likewise, research/59) ----

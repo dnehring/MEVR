@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "plugin/SequelSquadLayers.hpp"
-#include "plugin/SquadPanel.hpp"
 #include "plugin/SquadPlaceDraw.hpp"
-#include "core/vr/SquadMenu.hpp"
 #include "core/vr/SquadPlace.hpp"
 namespace mevr::host::sequel_squad_layers {
 unsigned Place(MevrSeams::OverlayFrame const& f, ID3D11Device* device,
@@ -22,26 +20,11 @@ unsigned Place(MevrSeams::OverlayFrame const& f, ID3D11Device* device,
     if (auto const* layer = squad_place_draw::Layer(place)) out[count++] = layer;
     return count;
 }
-unsigned Panel(MevrSeams::OverlayFrame const& f, ID3D11Device* device,
-    void const** out, unsigned count, unsigned capacity) noexcept {
-    if (!out || count >= capacity) return count;
-    squad_panel::Frame squad;
-    squad.session = static_cast<XrSession>(f.session); squad.appSpace = static_cast<XrSpace>(f.appSpace);
-    squad.context = f.context; squad.device = device;
-    squad.worldFrame = f.worldFrame; squad.menuOpen = f.menuOpen; squad.headValid = f.headValid;
-    squad.head = {{f.headOrientation[0], f.headOrientation[1], f.headOrientation[2], f.headOrientation[3]},
-        {f.headPosition[0], f.headPosition[1], f.headPosition[2]}};
-    if (auto const* layer = squad_panel::Layer(squad)) out[count++] = layer;
-    return count;
-}
 void Recentered() {
-    squad_panel::Recentered();
     vr::squad_place::Publish({}); // coordinates from the old app space cannot survive recenter
 }
 void ForgetSession() {
-    squad_panel::ForgetSession();
     squad_place_draw::ForgetSession();
     vr::squad_place::Publish({});
-    vr::squad_menu::Publish({});
 }
 }

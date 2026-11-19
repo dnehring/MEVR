@@ -72,11 +72,8 @@ namespace vr::power_wheel {
 struct View;
 struct LockView;
 }
-namespace vr::squad_menu {
-struct View;
-namespace wheel {
+namespace vr::squad_menu::wheel {
 struct Panel;
-}
 }
 namespace vr::squad_place {
 struct View;
@@ -208,14 +205,12 @@ struct HostServices {
     std::uint32_t floorStateSize = 0;
     void (*floor)(vr::floor::State* out) = nullptr;
 
-    // Version 11: the squad weapon menu (game/squad_weapons, docs/squad-weapons-design.md).
-    // setSupportGrip's flags also take gamepad::kFlagSquadMenu (a v10 host ignores it): while set, the
-    // sticks, A, B and the stick clicks are the menu's, and each stays kept from the game until released.
-    // The menu to draw (core/vr/SquadMenu.hpp), each tick while it's open and once when it closes; the
-    // host draws it at the left hand while it's fresh (250 ms). The mod calls it only if squadMenuSize
-    // matches its own sizeof(vr::squad_menu::View).
-    std::uint32_t squadMenuSize = 0;
-    void (*setSquadMenu)(vr::squad_menu::View const* view) = nullptr;
+    // Version 11: the squad weapon menu (game/squad_weapons, docs/squad-weapons-design.md). Our drawn menu was removed on
+    // 2026-11-18 (the owner: the left trigger is only ever the game's own wheel); its two fields stay as retired slots so
+    // the later fields keep their offsets: the host serves 0 and nullptr, and the mod reads neither. (Its pad flag, bit 6
+    // of setSupportGrip's flags, is retired too: never reuse it.)
+    std::uint32_t retiredSquadMenuSize = 0;
+    void (*retiredSetSquadMenu)(void const* view) = nullptr;
     // The pad mapping's left grip (gamepad::LeftGripReport): the count of squeezes that began away from
     // the gun's foregrip (not the support grip) shifted up one bit, and in bit 0 whether the current
     // squeeze is one. Squeezes while Halcyon's menu is open aren't counted.
