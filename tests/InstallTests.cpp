@@ -1326,12 +1326,20 @@ void TestFirstRunInstall() {
     ICHECK(Ok(ApplySettings(layout, fixed)) && !ReadStatus(root, "Folder").eyeSizeAtFirstStart);
     std::string const sizedModIni = "[Display]\r\neyeSizeSet=1\r\notherSetting=42\r\n";
     Write(layout.Full(paths::kModIni), sizedModIni);
+    // The three games' settings.ini (research/25 section 20; LOCALAPPDATA is the tests' own here): the marker is ME1's own.
+    fs::path const sharedSettings = LocalDataDir() / L"settings.ini";
+    std::string const sharedText = "[Display]\r\nsteamvrSmoothing=0\r\n[Display.LE1]\r\neyeSizeSet=1\r\n[Display.LE2]\r\neyeSizeSet=1\r\n";
+    Write(sharedSettings, sharedText);
     ICHECK(Ok(Install(layout, payload, options)));
     ICHECK(settings::Read(Read(layout.Full(paths::kGamerSettings))).resX == 3072);
     ICHECK(Read(layout.Full(paths::kModIni)) == sizedModIni);  // an update preserves the player's sizing
+    ICHECK(Read(sharedSettings) == sharedText);
     ICHECK(Ok(ApplySettings(layout, options.choices)));
     ICHECK(settings::Read(Read(layout.Full(paths::kGamerSettings))).resX == 2048 && ReadStatus(root, "Folder").eyeSizeAtFirstStart);
     ICHECK(Read(layout.Full(paths::kModIni)) == "[Display]\r\neyeSizeSet=0\r\notherSetting=42\r\n");
+    ICHECK(ini::Get(Read(sharedSettings), "Display.LE1", "eyeSizeSet") == std::optional<std::string>("0"));
+    ICHECK(ini::Get(Read(sharedSettings), "Display.LE2", "eyeSizeSet") == std::optional<std::string>("1"));  // ME2's own stays
+    fs::remove(sharedSettings, ec);
     // Restore: the game's own file again; nothing waits.
     ICHECK(Ok(RestoreSettings(layout)) && Read(layout.Full(paths::kGamerSettings)) == gamer && !ReadStatus(root, "Folder").pendingSettings);
     ICHECK(!ReadStatus(root, "Folder").eyeSizeAtFirstStart);
@@ -2265,6 +2273,17 @@ void TestGames() {
 
 void RunInstallTests(int& failures) {
     gInstallFailures = &failures;
+    // Never the player's own %LOCALAPPDATA%\MEVR (settings.ini, calibration.ini: an install's Automatic resets the shared
+    // first-start marker there): the tests' own folder for the whole run, the real one back at the end.
+    wchar_t realLocal[MAX_PATH]{};
+    DWORD const hadLocal = GetEnvironmentVariableW(L"LOCALAPPDATA", realLocal, MAX_PATH);
+    fs::path const testsLocal = mevr::tests::TempRoot() / L"local-appdata";
+    fs::create_directories(testsLocal);
+    SetEnvironmentVariableW(L"LOCALAPPDATA", testsLocal.c_str());
+    struct PutBack {
+        wchar_t const* value;
+        ~PutBack() { SetEnvironmentVariableW(L"LOCALAPPDATA", value); }
+    } const putBack{hadLocal > 0 && hadLocal < MAX_PATH ? realLocal : nullptr};
     TestJson();
     TestSteamVrSettings();
     TestIni();

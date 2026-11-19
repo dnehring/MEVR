@@ -44,7 +44,7 @@ void PinRuntime() {
     std::filesystem::path const settings = engine::SettingsFile();
     wchar_t manifest[1024] = {};
     if (!settings.empty() &&
-        GetPrivateProfileStringW(L"Debug", L"openxrRuntime", L"", manifest, 1024, settings.c_str()) > 0 && manifest[0] != 0) {
+        mevr::vr::settings_file::String(L"Debug", L"openxrRuntime", L"", manifest, 1024, settings.c_str()) > 0 && manifest[0] != 0) {
         if (GetFileAttributesW(manifest) != INVALID_FILE_ATTRIBUTES) {
             SetEnvironmentVariableW(L"XR_RUNTIME_JSON", manifest);
             log::Info("openxr runtime: this process uses the manifest [Debug] openxrRuntime names: {}",
@@ -65,7 +65,7 @@ void Attach() {
     PinRuntime();  // before its device hook asks which runtime this is (the SteamVR device-flag fix)
     const auto settings = engine::SettingsFile();
     const bool skycarFirstPerson = !settings.empty() &&
-        GetPrivateProfileIntW(L"Experimental", L"SkycarFirstPerson", 0, settings.c_str()) == 1;
+        mevr::vr::settings_file::Int(L"Experimental", L"SkycarFirstPerson", 0, settings.c_str()) == 1;
     ME2VR::EngineProbe::SetSkycarFirstPersonEnabled(skycarFirstPerson);
     if (skycarFirstPerson) log::Info("LE2 Skycar: experimental driver-seat camera enabled");
 

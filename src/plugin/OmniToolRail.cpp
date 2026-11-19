@@ -21,6 +21,7 @@
 #include "plugin/RailArt.hpp"
 #include "plugin/TestLoop.hpp"
 #include "plugin/Swapchains.hpp"
+#include "core/vr/SettingsFile.hpp"
 
 #include <RmlUi/Core.h>
 
@@ -216,13 +217,13 @@ void ReadSettings() {
         return;
     }
     Settings s;
-    s.enabled = GetPrivateProfileIntW(L"OmniTool", L"enabled", 1, path.c_str()) != 0;
-    s.tap = GetPrivateProfileIntW(L"OmniTool", L"tap", 1, path.c_str()) != 0;
-    s.tapOnBody = GetPrivateProfileIntW(L"OmniTool", L"tapOnBody", 1, path.c_str()) != 0;
+    s.enabled = mevr::vr::settings_file::Int(L"OmniTool", L"enabled", 1, path.c_str()) != 0;
+    s.tap = mevr::vr::settings_file::Int(L"OmniTool", L"tap", 1, path.c_str()) != 0;
+    s.tapOnBody = mevr::vr::settings_file::Int(L"OmniTool", L"tapOnBody", 1, path.c_str()) != 0;
     wchar_t text[32]{};
-    GetPrivateProfileStringW(L"OmniTool", L"railSide", L"right", text, 32, path.c_str());
+    mevr::vr::settings_file::String(L"OmniTool", L"railSide", L"right", text, 32, path.c_str());
     s.side = _wcsicmp(text, L"left") == 0 ? -1.0f : 1.0f;
-    GetPrivateProfileStringW(L"OmniTool", L"aloneHeightM", L"", text, 32, path.c_str());
+    mevr::vr::settings_file::String(L"OmniTool", L"aloneHeightM", L"", text, 32, path.c_str());
     if (auto const v = ini::Number(ini::Utf8(std::filesystem::path(text)))) {
         s.aloneHeightM = std::clamp(static_cast<float>(*v), 0.10f, 0.60f);
     }

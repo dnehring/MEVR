@@ -98,16 +98,17 @@ constexpr std::uint64_t kMeasureTimeoutMs = 30000;
 std::string gMeasureResult;
 
 std::wstring const& Path() {
-    // <exe dir>\ASI\LE1MEVR.ini, the file the mod reads (engine/SettingsFile), not <host ASI name>.ini: a renamed ASI
-    // kept the host and the mod on two different files. A function-local static: the game thread and the Present
-    // thread both ask first.
+    // The settings file the mod reads (engine/SettingsFile: the three games' settings.ini since research/25 section 20; a
+    // write goes through core/vr/SettingsFile, so a per-game key lands in this game's section), not <host ASI name>.ini: a
+    // renamed ASI kept the host and the mod on two different files. A function-local static: the game thread and the
+    // Present thread both ask first.
     static std::wstring const path = mevr::engine::SettingsFile().wstring();
     return path;
 }
 
 bool ReadNumber(wchar_t const* section, wchar_t const* key, float& out) {
     wchar_t text[64]{};
-    GetPrivateProfileStringW(section, key, L"", text, 64, Path().c_str());
+    mevr::vr::settings_file::String(section, key, L"", text, 64, Path().c_str());
     if (text[0] == L'\0') {
         return false;
     }
@@ -126,7 +127,7 @@ bool ReadNumber(wchar_t const* section, wchar_t const* key, float& out) {
 // `decimals` places, locale-independent (std::to_chars).
 void WriteNumber(wchar_t const* section, wchar_t const* key, double value, int decimals = 1) {
     std::string const text = mevr::ini::Fixed(value, decimals);
-    WritePrivateProfileStringW(section, key, std::wstring(text.begin(), text.end()).c_str(), Path().c_str());
+    mevr::vr::settings_file::Write(section, key, std::wstring(text.begin(), text.end()).c_str(), Path().c_str());
 }
 
 // Re-reads the file when it changed (by us, by the mod writing its defaults, or by hand).
@@ -548,13 +549,13 @@ static void CalibrationSection() {
         ImGui::SameLine();
         bool const on = chosen ? eye == choice.key : std::string(choice.key) == "auto";
         if (ImGui::RadioButton(choice.label, on) && !on) {
-            WritePrivateProfileStringW(L"Calibration", L"eye", choice.value, Path().c_str());
+            mevr::vr::settings_file::Write(L"Calibration", L"eye", choice.value, Path().c_str());
             mevr::log::Info("menu: calibration: aiming eye {} (next calibration)", choice.key);
         }
     }
     bool use = ReadText(L"Calibration", L"use", L"1") != "0";
     if (ImGui::Checkbox("Use the calibration (off: the guns follow the controller's aim pose, as before)", &use)) {
-        WritePrivateProfileStringW(L"Calibration", L"use", use ? L"1" : L"0", Path().c_str());
+        mevr::vr::settings_file::Write(L"Calibration", L"use", use ? L"1" : L"0", Path().c_str());
         mevr::log::Info("menu: calibration {}", use ? "used" : "not used");
     }
 }
@@ -563,7 +564,7 @@ static void CalibrationSection() {
 // headset (game/SquadWeapons re-reads the file within a second).
 static std::string ReadText(wchar_t const* section, wchar_t const* key, wchar_t const* fallback) {
     wchar_t text[64]{};
-    GetPrivateProfileStringW(section, key, fallback, text, 64, Path().c_str());
+    mevr::vr::settings_file::String(section, key, fallback, text, 64, Path().c_str());
     std::string out;
     for (wchar_t const* c = text; *c != L'\0'; ++c) {
         out.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(*c < 128 ? *c : '?'))));
@@ -579,12 +580,12 @@ static void SquadSection() {
     std::string const style = ReadText(L"Squad", L"style", L"native");
     bool const native = style != "custom";
     if (ImGui::RadioButton("The game's own weapon wheel", native) && !native) {
-        WritePrivateProfileStringW(L"Squad", L"style", L"native", Path().c_str());
+        mevr::vr::settings_file::Write(L"Squad", L"style", L"native", Path().c_str());
         mevr::log::Info("menu: squad weapons: the game's own wheel");
     }
     ImGui::SameLine();
     if (ImGui::RadioButton("Our menu", !native) && native) {
-        WritePrivateProfileStringW(L"Squad", L"style", L"custom", Path().c_str());
+        mevr::vr::settings_file::Write(L"Squad", L"style", L"custom", Path().c_str());
         mevr::log::Info("menu: squad weapons: our menu");
     }
     if (native) {
@@ -601,7 +602,7 @@ static void SquadSection() {
             ImGui::SameLine();
             bool const on = stick == choice.key;
             if (ImGui::RadioButton(choice.label, on) && !on) {
-                WritePrivateProfileStringW(L"Squad", L"wheelStick", choice.value, Path().c_str());
+                mevr::vr::settings_file::Write(L"Squad", L"wheelStick", choice.value, Path().c_str());
                 mevr::log::Info("menu: squad weapons: the wheel is steered with {}", choice.key);
             }
         }
@@ -659,7 +660,7 @@ static void SightsSection() {
                 std::string const number = " " + mevr::ini::Fixed(zoom, 1);  // locale-independent
                 text += std::wstring(number.begin(), number.end());
             }
-            WritePrivateProfileStringW(L"Sights", gun.key, text.c_str(), Path().c_str());
+            mevr::vr::settings_file::Write(L"Sights", gun.key, text.c_str(), Path().c_str());
             mevr::log::Info("menu: sights: {} = {}{}", gun.label, kKinds[chosen], chosen == 3 ? std::format(" {:.1f}x", zoom) : "");
         }
         ImGui::PopID();
@@ -668,12 +669,12 @@ static void SightsSection() {
     ImGui::TextUnformatted("A scope magnifies:");
     ImGui::SameLine();
     if (ImGui::RadioButton("the other eye's picture", source != "same") && source == "same") {
-        WritePrivateProfileStringW(L"Sights", L"source", L"other", Path().c_str());
+        mevr::vr::settings_file::Write(L"Sights", L"source", L"other", Path().c_str());
         mevr::log::Info("menu: sights: scopes magnify the other eye's picture");
     }
     ImGui::SameLine();
     if (ImGui::RadioButton("the aiming eye's", source == "same") && source != "same") {
-        WritePrivateProfileStringW(L"Sights", L"source", L"same", Path().c_str());
+        mevr::vr::settings_file::Write(L"Sights", L"source", L"same", Path().c_str());
         mevr::log::Info("menu: sights: scopes magnify the aiming eye's own picture");
     }
 }

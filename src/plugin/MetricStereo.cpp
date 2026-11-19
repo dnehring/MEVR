@@ -16,6 +16,7 @@
 #include "core/Ini.hpp"
 #include "core/Log.hpp"
 #include "core/vr/MetricStereo.hpp"
+#include "core/vr/SettingsFile.hpp"
 
 #include <Windows.h>
 
@@ -424,7 +425,7 @@ int LifeSizeStereo() noexcept {
     // Read once, at the renderer's first ini load: a measurement switch, not a player's setting.
     static int const answer = [] {
         namespace ini = mevr::ini;
-        ini::File const file = ini::Read(std::filesystem::path(mevr::host::SettingsPath())).file;
+        ini::File const file = mevr::vr::settings_file::Load(std::filesystem::path(mevr::host::SettingsPath())).file;
         bool upstream = ini::GetNumber(file, "Debug", "upstreamStereo").value_or(0.0) != 0.0;
         // The window holding both eyes is ME1's (its window is their union) and lets each eye render its own frustum (mode 2);
         // measured on ME2 it leaves the HUD panel pixel for pixel (research/30 section 9.3). 0 keeps the renderer's

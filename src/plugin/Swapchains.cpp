@@ -7,6 +7,7 @@
 #include "core/vr/SwapchainBudget.hpp"
 #include "plugin/Renderer.hpp"
 #include "plugin/TestLoop.hpp"
+#include "core/vr/SettingsFile.hpp"
 
 #include <Windows.h>
 #include <d3d11.h>
@@ -108,7 +109,7 @@ std::uint32_t TestCap() {
     }
     readMs = now;
     std::wstring const& path = mevr::host::SettingsPath();
-    std::uint32_t const value = path.empty() ? 0u : GetPrivateProfileIntW(L"Debug", L"swapchainCap", 0, path.c_str());
+    std::uint32_t const value = path.empty() ? 0u : mevr::vr::settings_file::Int(L"Debug", L"swapchainCap", 0, path.c_str());
     if (value != cap) {
         log::Info("swapchains: [Debug] swapchainCap = {}{}", value, value != 0 ? ": ours past it are refused as the runtime would" : " (off)");
         cap = value;

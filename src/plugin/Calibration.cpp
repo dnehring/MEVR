@@ -304,7 +304,7 @@ std::string DevKey() {
         std::wstring const& path = mevr::host::SettingsPath();
         wchar_t text[128]{};
         if (!path.empty()) {
-            GetPrivateProfileStringW(L"Debug", L"calibrationKey", L"", text, 128, path.c_str());
+            mevr::vr::settings_file::String(L"Debug", L"calibrationKey", L"", text, 128, path.c_str());
         }
         std::string out;
         for (wchar_t const* c = text; *c != L'\0'; ++c) {
@@ -327,7 +327,7 @@ std::string ReadIni(std::string const& section, char const* key, char const* fal
     // Grown until the value fits ([Calibration] prompted lists every controller type ever prompted).
     std::wstring text(1024, L'\0');
     for (;;) {
-        DWORD const got = GetPrivateProfileStringW(Wide(section).c_str(), Wide(key).c_str(), Wide(fallback).c_str(), text.data(),
+        DWORD const got = mevr::vr::settings_file::String(Wide(section).c_str(), Wide(key).c_str(), Wide(fallback).c_str(), text.data(),
             static_cast<DWORD>(text.size()), path.c_str());
         if (got + 1 < text.size() || text.size() >= 65536) {
             text.resize(got);
@@ -349,7 +349,7 @@ void WriteIni(std::string const& section, char const* key, std::string const& va
     }
     std::wstring const& path = mevr::host::SettingsPath();
     if (!path.empty()) {
-        WritePrivateProfileStringW(Wide(section).c_str(), Wide(key).c_str(), Wide(value).c_str(), path.c_str());
+        mevr::vr::settings_file::Write(Wide(section).c_str(), Wide(key).c_str(), Wide(value).c_str(), path.c_str());
     }
 }
 
@@ -491,7 +491,7 @@ bool EnsureGpu(ID3D11Device* device, ID3D11DeviceContext* context) {
     // Rajdhani and Titillium Web (SIL OFL) if dropped into ASI\fonts, else Windows' own.
     std::vector<std::filesystem::path> folders;
     if (!mevr::host::SettingsPath().empty()) {
-        folders.push_back(std::filesystem::path(mevr::host::SettingsPath()).parent_path() / L"fonts");
+        folders.push_back(mevr::engine::AsiDir() / L"fonts");
     }
     gGpu.fonts = draw::LoadFonts(io, folders, chosen);
     bool const ok = ImGui_ImplDX11_Init(device, context);

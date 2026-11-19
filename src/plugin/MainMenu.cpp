@@ -37,6 +37,8 @@
 #include "plugin/Swapchains.hpp"
 #include "plugin/XrHost.hpp"
 #include "mod/ModApi.hpp"
+#include "core/vr/SettingsFile.hpp"
+#include "engine/SettingsFile.hpp"
 
 #include <RmlUi/Core.h>
 
@@ -937,7 +939,7 @@ bool FirstRunWanted() {
             return false;
         }
         gFirstRun.checked = true;
-        gFirstRun.done = GetPrivateProfileIntW(L"Menu", L"controlsShown", 0, path.c_str()) != 0;
+        gFirstRun.done = mevr::vr::settings_file::Int(L"Menu", L"controlsShown", 0, path.c_str()) != 0;
         if (!gFirstRun.done) {
             log::Info("main menu: first run: the controller guide opens once by itself, on foot and after the calibration's prompt "
                       "([Menu] controlsShown isn't 1)");
@@ -951,7 +953,7 @@ void FirstRunShown(char const* why) {
     gFirstRun.done = true;
     gOpenOnGuide = true;
     std::wstring const& path = mevr::host::SettingsPath();
-    bool const wrote = !path.empty() && WritePrivateProfileStringW(L"Menu", L"controlsShown", L"1", path.c_str()) != 0;
+    bool const wrote = !path.empty() && mevr::vr::settings_file::Write(L"Menu", L"controlsShown", L"1", path.c_str()) != 0;
     log::Info("main menu: first run: on the controller guide ({}){}", why,
         wrote ? "" : "; [Menu] controlsShown couldn't be written, so it may show again next launch");
 }
@@ -1100,16 +1102,16 @@ std::filesystem::path AssetsFolder() {
     // As Settings::Assets: [Menu] assets when it holds main.rml, else ASI\menu.
     std::filesystem::path const file(mevr::host::SettingsPath());
     wchar_t assets[MAX_PATH]{};
-    GetPrivateProfileStringW(L"Menu", L"assets", L"", assets, MAX_PATH, file.c_str());
+    mevr::vr::settings_file::String(L"Menu", L"assets", L"", assets, MAX_PATH, file.c_str());
     std::error_code ec;
     if (assets[0] != L'\0' && std::filesystem::exists(std::filesystem::path(assets) / L"main.rml", ec)) {
         return assets;
     }
-    return file.parent_path() / L"menu";
+    return mevr::engine::AsiDir() / L"menu";
 }
 
 std::filesystem::path FontsFolder() {
-    return std::filesystem::path(mevr::host::SettingsPath()).parent_path() / L"fonts";
+    return mevr::engine::AsiDir() / L"fonts";
 }
 
 void NotePad(XINPUT_GAMEPAD const& pad) {

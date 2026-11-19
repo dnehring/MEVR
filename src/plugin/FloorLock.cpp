@@ -12,6 +12,7 @@
 #include "plugin/Renderer.hpp"
 #include "plugin/CrashBreadcrumbs.hpp"
 #include "core/Breadcrumbs.hpp"
+#include "core/vr/SettingsFile.hpp"
 
 #include <Windows.h>
 #include <algorithm>
@@ -71,7 +72,7 @@ void SetManualHeight(float meters) {
 void RefreshSettings() {
     auto const& path = mevr::host::SettingsPath();
     // Held world views carry the corrected base too; an explicit 0 keeps the legacy path.
-    bool const on = path.empty() || GetPrivateProfileIntW(L"Body", L"floorLock", 1, path.c_str()) != 0;
+    bool const on = path.empty() || mevr::vr::settings_file::Int(L"Body", L"floorLock", 1, path.c_str()) != 0;
     std::lock_guard lock(gMutex);
     gEnabled = on;
 }

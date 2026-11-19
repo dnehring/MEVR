@@ -106,7 +106,7 @@ void RefreshSettings() {
         return;
     }
     gSettingsMs = now;
-    ini::Loaded const loaded = ini::Read(engine::SettingsFile());
+    ini::Loaded const loaded = vr::settings_file::Load(engine::SettingsFile());
     Settings s;
     if (auto const v = ini::GetNumber(loaded.file, "Comfort", "screenShake")) {
         s.screen = static_cast<float>(std::clamp(*v, 0.0, 1.0));

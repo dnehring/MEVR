@@ -97,6 +97,9 @@ namespace {
 using tGameEngineTick = void(void* self, float deltaSeconds);  // UGameEngine::Tick
 tGameEngineTick* gGameEngineTickOrig = nullptr;
 bool gEngineProbe = false;
+#if !defined(MEVR_LE2_DIAGNOSTIC)
+void SettingsInbox(float deltaSeconds);
+#endif
 
 void GameEngineTickHook(void* self, float deltaSeconds) {
     if (gEngineProbe) {
@@ -145,6 +148,9 @@ void GameEngineTickHook(void* self, float deltaSeconds) {
     mevr::host::halcyon_le3::AfterTick(deltaSeconds);
     mevr::host::motion_blur_guard::Tick();
     mevr::host::flare_window::Tick();
+#endif
+#if !defined(MEVR_LE2_DIAGNOSTIC)
+    SettingsInbox(deltaSeconds);  // a key changed in this game's old settings file (research/25 section 20.5)
 #endif
     mevr::host::Tick(deltaSeconds);
     mevr::host::process_event::ReportOffThread();
@@ -256,6 +262,82 @@ void PrepareCalibrationFile() {
 }
 #endif
 
+#if !defined(MEVR_LE2_DIAGNOSTIC)
+// One settings file for the trilogy (research/25 section 20): before anything reads a setting, the three games' old
+// ASI\<GAME>MEVR.ini are taken into %LOCALAPPDATA%\MEVR\settings.ini (made from ME1's the first time), and the file in use
+// is decided once and handed to the mod (MEVR_SETTINGS_FILE). After that, a key changed in this game's old file (a tool's,
+// or the player's by hand) applies to this game: SettingsInbox checks the file's time every 2 s on the game thread.
+void LogSync(mevr::vr::settings_file::SyncResult const& r) {
+    for (std::string const& line : r.lines) {
+        if (r.refused || !r.error.empty()) {
+            mevr::log::Warn("settings: {}", line);
+        } else {
+            mevr::log::Info("settings: {}", line);
+        }
+    }
+}
+
+FILETIME gOldSettingsStamp{};
+std::uint64_t gOldSettingsSize = 0;
+float gSettingsInboxS = 0.0f;
+bool gSettingsShared = false;
+
+bool OldSettingsStamp(FILETIME& stamp, std::uint64_t& size) {
+    WIN32_FILE_ATTRIBUTE_DATA data{};
+    if (!GetFileAttributesExW(mevr::engine::GameSettingsFile().c_str(), GetFileExInfoStandard, &data)) {
+        return false;
+    }
+    stamp = data.ftLastWriteTime;
+    size = (static_cast<std::uint64_t>(data.nFileSizeHigh) << 32) | data.nFileSizeLow;
+    return true;
+}
+
+void PrepareSettingsFile() {
+    namespace sf = mevr::vr::settings_file;
+    // `[Debug] shared = 0` in this game's old file: this session uses that file alone, as before the shared one, and never
+    // reads or writes the shared file (the run scripts' minimal files: tools/le2-halcyon-run/prep.ps1; a rollback by hand).
+    std::filesystem::path const old = mevr::engine::GameSettingsFile();
+    if (GetPrivateProfileIntW(L"Debug", L"shared", 1, old.c_str()) == 0) {
+        SetEnvironmentVariableW(sf::kEnvironment, old.c_str());
+        gSettingsShared = false;
+        mevr::log::Info("settings: [Debug] shared = 0 in {}: this session uses that file alone; the three games' settings.ini "
+                        "isn't read or written", mevr::ini::Utf8(old));
+        return;
+    }
+    std::filesystem::path const shared = sf::DefaultPath();
+    sf::SyncResult const r = sf::Sync(shared, mevr::engine::SettingsSources(), MEVR_GAME_NAME_A);
+    LogSync(r);
+    std::filesystem::path const inUse = sf::Decide(shared, mevr::engine::GameSettingsFile());
+    SetEnvironmentVariableW(sf::kEnvironment, inUse.c_str());
+    gSettingsShared = sf::IsSharedPath(inUse);
+    OldSettingsStamp(gOldSettingsStamp, gOldSettingsSize);
+    if (gSettingsShared) {
+        mevr::log::Info("settings: one file for the three games, {}{}; {}'s own keys in its [<section>.{}] sections", mevr::ini::Utf8(inUse),
+            r.created ? " (made now)" : "", MEVR_GAME_NAME_A, MEVR_GAME_NAME_A);
+    } else {
+        mevr::log::Warn("settings: this session uses {} (the shared {} {}); nothing is written to the shared file",
+            mevr::ini::Utf8(inUse), mevr::ini::Utf8(shared), r.refused ? "is there but couldn't be read" : "isn't there");
+    }
+}
+
+void SettingsInbox(float deltaSeconds) {
+    gSettingsInboxS += deltaSeconds;
+    if (!gSettingsShared || gSettingsInboxS < 2.0f) {
+        return;
+    }
+    gSettingsInboxS = 0.0f;
+    FILETIME stamp{};
+    std::uint64_t size = 0;
+    if (!OldSettingsStamp(stamp, size) || (CompareFileTime(&stamp, &gOldSettingsStamp) == 0 && size == gOldSettingsSize)) {
+        return;
+    }
+    gOldSettingsStamp = stamp;
+    gOldSettingsSize = size;
+    namespace sf = mevr::vr::settings_file;
+    LogSync(sf::Sync(sf::DefaultPath(), mevr::engine::SettingsSources(), MEVR_GAME_NAME_A));
+}
+#endif
+
 } // namespace
 
 #if defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
@@ -279,6 +361,10 @@ extern "C" __declspec(dllexport) bool SpiOnAttach(spi::Interface* InterfacePtr) 
     if (!ExeGate()) {
         return true;
     }
+#if !defined(MEVR_LE2_DIAGNOSTIC)
+    // The settings file in use, before anything reads a setting (research/25 section 20).
+    PrepareSettingsFile();
+#endif
     // What touched the engine last, written out if the process crashes (research/36).
     mevr::host::crash::Install();
     // Research dump of the decrypted code, before our or Halcyon's hooks patch any of it.
@@ -286,7 +372,7 @@ extern "C" __declspec(dllexport) bool SpiOnAttach(spi::Interface* InterfacePtr) 
     mevr::engine::code_dump::SaveOnce();
 #if !defined(MEVR_MONOLITHIC)
     // Development-only diagnostic launch: dump before any renderer, tick or mod hooks.
-    if (GetPrivateProfileIntW(L"Debug", L"dumpOnly", 0, mevr::engine::SettingsFile().c_str()) != 0) {
+    if (mevr::vr::settings_file::Int(L"Debug", L"dumpOnly", 0, mevr::engine::SettingsFile().c_str()) != 0) {
         mevr::log::Info("dump-only: code dump attempted; renderer and hooks disabled");
         return true;
     }

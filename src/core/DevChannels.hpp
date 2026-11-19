@@ -11,6 +11,7 @@
 // The same build flavour sets what the diagnostics may keep on disk (core/DiskBudget): no limit while developing.
 
 #include "core/Log.hpp"
+#include "core/vr/SettingsFile.hpp"
 
 #include <Windows.h>
 
@@ -30,12 +31,13 @@ constexpr bool Resolve(int fileValue, bool developmentBuild) {
     return fileValue < 0 ? developmentBuild : fileValue != 0;
 }
 
-// `[Debug] <key>` as an integer, -1 when absent (Win32's profile API: the first section and key win, as core/Ini).
+// `[Debug] <key>` as an integer, -1 when absent (Win32's profile API: the first section and key win, as core/Ini). [Debug] is
+// per game in the three games' settings.ini: this game's [Debug.<GAME>] (core/vr/SettingsFile).
 inline int ReadDebugInt(std::filesystem::path const& settingsFile, wchar_t const* key) {
     if (settingsFile.empty()) {
         return -1;
     }
-    return static_cast<int>(GetPrivateProfileIntW(L"Debug", key, -1, settingsFile.c_str()));
+    return static_cast<int>(vr::settings_file::Int(L"Debug", key, -1, settingsFile.c_str()));
 }
 
 // Whether the request files are read. The file is read at most every 2 s; the answer is logged when it changes.

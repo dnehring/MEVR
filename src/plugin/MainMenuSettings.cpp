@@ -48,6 +48,8 @@
 
 #include "mevr/BuildInfo.hpp"  // MEVR_GIT_COMMIT, About (generated: tools/cmake/BuildInfo.cmake)
 #include "mevr/Version.hpp"    // MEVR_VERSION, About (generated from CMake's project(VERSION))
+#include "core/vr/SettingsFile.hpp"
+#include "engine/SettingsFile.hpp"
 
 #include <Windows.h>
 
@@ -98,7 +100,7 @@ std::string Narrow(std::wstring_view text) {
 
 std::map<std::string, std::string> ReadSection(std::wstring const& path, wchar_t const* section) {
     std::vector<wchar_t> buffer(16384);
-    DWORD const n = GetPrivateProfileSectionW(section, buffer.data(), static_cast<DWORD>(buffer.size()), path.c_str());
+    DWORD const n = mevr::vr::settings_file::Section(section, buffer.data(), static_cast<DWORD>(buffer.size()), path.c_str());
     std::string text;
     text.reserve(n);
     for (DWORD i = 0; i < n; ++i) {
@@ -245,11 +247,11 @@ std::filesystem::path Settings::Assets() const {
     if (!assets_.empty() && std::filesystem::exists(std::filesystem::path(assets_) / L"main.rml", ec)) {
         return assets_;
     }
-    return File().parent_path() / L"menu";
+    return mevr::engine::AsiDir() / L"menu";
 }
 
 std::filesystem::path Settings::Fonts() const {
-    return File().parent_path() / L"fonts";
+    return mevr::engine::AsiDir() / L"fonts";
 }
 
 void Settings::ReadMenuSection() {
@@ -261,10 +263,10 @@ void Settings::ReadMenuSection() {
     auto const menu = ReadSection(path, L"Menu");
     if (menu.find("pause") == menu.end()) {
         // The section the player may edit by hand: its keys written once, each on its own (never the whole file).
-        bool ok = WritePrivateProfileStringW(L"Menu", L"pause", L"1", path.c_str()) != 0;
-        ok = WritePrivateProfileStringW(L"Menu", L"distanceM", L"1.30", path.c_str()) != 0 && ok;
-        ok = WritePrivateProfileStringW(L"Menu", L"widthM", L"1.45", path.c_str()) != 0 && ok;
-        ok = WritePrivateProfileStringW(L"Menu", L"assets", L"", path.c_str()) != 0 && ok;
+        bool ok = mevr::vr::settings_file::Write(L"Menu", L"pause", L"1", path.c_str()) != 0;
+        ok = mevr::vr::settings_file::Write(L"Menu", L"distanceM", L"1.30", path.c_str()) != 0 && ok;
+        ok = mevr::vr::settings_file::Write(L"Menu", L"widthM", L"1.45", path.c_str()) != 0 && ok;
+        ok = mevr::vr::settings_file::Write(L"Menu", L"assets", L"", path.c_str()) != 0 && ok;
         Wrote(ok, "[Menu]'s defaults");
     }
     Ini ini;
@@ -401,7 +403,7 @@ void Settings::Read(menu::Values& v) {
     flag("vent", ini.Num("Vent", "enabled", 1.0f) != 0.0f);
     flag("mako_controls", ini.Num("Mako", "controls", 1.0f) != 0.0f);
     flag("cockpit", ini.Num("Cockpit", "enabled", 1.0f) != 0.0f);
-    bool const bottomAvailable = vr::mako_seat::BottomAvailable(File().parent_path());
+    bool const bottomAvailable = vr::mako_seat::BottomAvailable(mevr::engine::AsiDir());
     auto const seat = vr::mako_seat::Parse(ini.Text("Cockpit", "seatPosition", ""))
         .value_or(vr::mako_seat::FromScript(ini.Text("Cockpit", "script", vr::mako_seat::kTopScript)));
     flag("mako_bottom_available", bottomAvailable);
@@ -747,7 +749,7 @@ void Settings::WriteVoiceDevice(std::string const& name) {
         wide.resize(static_cast<std::size_t>(std::max(n, 0)));
         if (n > 0) MultiByteToWideChar(CP_UTF8, 0, name.data(), static_cast<int>(name.size()), wide.data(), n);
     }
-    bool const ok = WritePrivateProfileStringW(L"Voice", L"device", wide.c_str(), path.c_str()) != 0;
+    bool const ok = mevr::vr::settings_file::Write(L"Voice", L"device", wide.c_str(), path.c_str()) != 0;
     Wrote(ok, "[Voice] device");
     log::Info("main menu: [Voice] device = {}{}", name.empty() ? "(the default communications device)" : name, ok ? "" : " (NOT saved)");
     micPicked_ = name;
@@ -764,8 +766,8 @@ void Settings::Wrote(bool ok, std::string_view what) {
     if (ok) {
         log::Info("main menu: the settings file is writable again ({})", what);
     } else {
-        log::Warn("main menu: can't write {} to {} (error {}): the game's ASI folder or the file is read-only; the menu's "
-                  "changes apply for this session only", what, ini::Utf8(File()), error);
+        log::Warn("main menu: can't write {} to {} (error {}): the file or its folder is read-only, or another program holds "
+                  "it; the menu's changes apply for this session only", what, ini::Utf8(File()), error);
     }
 }
 
@@ -777,8 +779,14 @@ void Settings::Put(char const* section, char const* key, std::string const& valu
 }
 
 void Settings::Flush(bool all) {
+    namespace sf = vr::settings_file;
     std::wstring const& path = mevr::host::SettingsPath();
     std::uint64_t const now = Now();
+    // The settings' edits go in one write: the three games' settings.ini (research/25 section 20), a per-game key to this
+    // game's [<section>.<GAME>], every other key to [<section>] and so to the three games.
+    std::vector<sf::Edit> edits;
+    std::vector<std::string> said;
+    bool const shared = sf::IsSharedPath(std::filesystem::path(path));
     for (ms::PendingWrites::Edit const& edit : pending_.TakeDue(now, all)) {
         if (vr::calibration_file::Shared(edit.section, edit.key)) {
             // The player's calibration (the play position, the manual offsets): the three games' one file, research/25 section 17.
@@ -790,10 +798,18 @@ void Settings::Flush(bool all) {
         if (path.empty()) {
             continue;
         }
-        bool const ok =
-            WritePrivateProfileStringW(Wide(edit.section).c_str(), Wide(edit.key).c_str(), Wide(edit.value).c_str(), path.c_str()) != 0;
-        Wrote(ok, std::format("[{}] {}", edit.section, edit.key));
-        log::Info("main menu: [{}] {} = {}{}", edit.section, edit.key, edit.value, ok ? "" : " (NOT saved)");
+        edits.push_back({Wide(edit.section), Wide(edit.key), Wide(edit.value)});
+        char const* const own = shared ? sf::PerGame(edit.section, edit.key, edit.value) : nullptr;
+        said.push_back(std::format("[{}] {} = {}{}", edit.section, edit.key, edit.value,
+            !shared ? "" : own != nullptr ? std::format(" (" MEVR_GAME_NAME_A "'s own: {})", own) : std::string(" (the three games')")));
+    }
+    if (!edits.empty()) {
+        std::string const error = sf::Apply(std::filesystem::path(path), edits);
+        bool const ok = error.empty();
+        Wrote(ok, said.size() == 1 ? said.front() : std::format("{} settings", said.size()));
+        for (std::string const& line : said) {
+            log::Info("main menu: {}{}", line, ok ? "" : " (NOT saved: " + error + ")");
+        }
     }
     if (colourDirty_ && (all || now - colourChangedMs_ >= kColourRestMs)) {
         colourDirty_ = false;
@@ -896,7 +912,7 @@ void Settings::ClearCullTenths() {
         return;
     }
     wchar_t buffer[32]{};
-    if (GetPrivateProfileStringW(L"Performance", L"minScreenRadiusTenths", L"", buffer, 32, path.c_str()) > 0) {
+    if (mevr::vr::settings_file::String(L"Performance", L"minScreenRadiusTenths", L"", buffer, 32, path.c_str()) > 0) {
         Put("Performance", "minScreenRadiusTenths", "", true);
     }
 }
@@ -1004,7 +1020,7 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
     } else if (key == "cockpit") {
         Put("Cockpit", "enabled", onOff("cockpit"), true);
     } else if (key == "mako_seat") {
-        bool const bottom = v.Text("mako_seat") == "bottom" && vr::mako_seat::BottomAvailable(File().parent_path());
+        bool const bottom = v.Text("mako_seat") == "bottom" && vr::mako_seat::BottomAvailable(mevr::engine::AsiDir());
         Put("Cockpit", "seatPosition", bottom ? "bottom" : "top", true);
     } else if (key == "wrist_status") {
         Put("Hud", "wristStatus", onOff("wrist_status"), true);
@@ -1079,12 +1095,12 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
         // 1.5x unless it had another zoom.
         std::wstring const& path = mevr::host::SettingsPath();
         wchar_t previous[64]{};
-        GetPrivateProfileStringW(L"Sights", L"assaultRifle", L"dot", previous, 64, path.c_str());
+        mevr::vr::settings_file::String(L"Sights", L"assaultRifle", L"dot", previous, 64, path.c_str());
         Put("Sights", "assaultRifle", ms::SightValue(v.Text(key), Narrow(previous), 1.5f), true);
     } else if (key == "sight_sniper") {
         std::wstring const& path = mevr::host::SettingsPath();
         wchar_t previous[64]{};
-        GetPrivateProfileStringW(L"Sights", L"sniperRifle", L"scope auto", previous, 64, path.c_str());
+        mevr::vr::settings_file::String(L"Sights", L"sniperRifle", L"scope auto", previous, 64, path.c_str());
         Put("Sights", "sniperRifle", ms::SightValue(v.Text(key), Narrow(previous), 0.0f), true);
 #if defined(MEVR_MENU_LE1)
     } else if (key == "steamvr_smoothing") {
@@ -1574,7 +1590,7 @@ void FirstStartEyeSize() {
     }
     done = true;
     std::wstring const& path = mevr::host::SettingsPath();
-    bool const already = GetPrivateProfileIntW(L"Display", L"eyeSizeSet", 0, path.c_str()) != 0;
+    bool const already = mevr::vr::settings_file::Int(L"Display", L"eyeSizeSet", 0, path.c_str()) != 0;
     if (already) {
         return;
     }
@@ -1595,7 +1611,7 @@ void FirstStartEyeSize() {
         log::Info("first VR start: the render resolution {}x{} is already 0.85 of your headset's eye size ([Display] eyeSizeSet = 1)",
             target.width, target.height);
     }
-    if (WritePrivateProfileStringW(L"Display", L"eyeSizeSet", L"1", path.c_str()) == 0) {
+    if (mevr::vr::settings_file::Write(L"Display", L"eyeSizeSet", L"1", path.c_str()) == 0) {
         log::Warn("first VR start: couldn't write [Display] eyeSizeSet to {}: the next VR start checks again", ini::Utf8(std::filesystem::path(path)));
     }
 }
@@ -1614,7 +1630,7 @@ void FirstStartEyeSize() {
     }
     done = true;
     std::wstring const& path = mevr::host::SettingsPath();
-    bool const already = GetPrivateProfileIntW(L"Display", L"eyeSizeSet", 0, path.c_str()) != 0;
+    bool const already = mevr::vr::settings_file::Int(L"Display", L"eyeSizeSet", 0, path.c_str()) != 0;
     bool const wanted = setup_request::EyeSizeAtFirstStart();
     if (!wanted || already) {
         return;  // a developer deploy, a size the player chose in the setup, or done before
@@ -1640,7 +1656,7 @@ void FirstStartEyeSize() {
     } else {
         log::Info("first VR start: the render resolution {}x{} is already 0.85 of your headset's eye size ([Display] eyeSizeSet = 1)", oldW, oldH);
     }
-    if (WritePrivateProfileStringW(L"Display", L"eyeSizeSet", L"1", path.c_str()) == 0) {
+    if (mevr::vr::settings_file::Write(L"Display", L"eyeSizeSet", L"1", path.c_str()) == 0) {
         log::Warn("first VR start: couldn't write [Display] eyeSizeSet to {}: the next VR start checks again", ini::Utf8(std::filesystem::path(path)));
     }
 }

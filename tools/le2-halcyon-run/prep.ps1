@@ -110,7 +110,7 @@ if ($DesktopDump) {
     $modeKey = if ($EngineProbe) { 'engineProbe' } else { 'dumpOnly' }
     $requestLine = if ($EngineRequests) { "engineProbeRequests = 1`r`n" } else { '' }
     if ($EngineRequests) { Backup-RunConsole $open $current (Join-Path $env:LOCALAPPDATA 'MEVR') }
-    [IO.File]::WriteAllText("$b\ASI\${Game}MEVR.ini", "[Debug]`r`n$modeKey = 1`r`n$requestLine")
+    [IO.File]::WriteAllText("$b\ASI\${Game}MEVR.ini", "[Debug]`r`nshared = 0`r`n$modeKey = 1`r`n$requestLine")
     "Desktop $modeKey prepared: no fake headset or VR settings were invoked"
     exit 0
 }
@@ -148,7 +148,9 @@ $steamvr = 'C:\Program Files (x86)\Steam\steamapps\common\SteamVR\steamxr_win64.
 # next launch: plugin/MainMenuSettings FirstStartEyeSize) stands down, so every launch of a stretch renders at MELE2VR.ini's
 # RenderW/RenderH; -FirstVrStart leaves it out to run the rule.
 $firstStart = if ($FirstVrStart) { '' } else { "[Display]`r`neyeSizeSet = 1`r`n" }
-[IO.File]::WriteAllText("$b\ASI\${Game}MEVR.ini", "[Debug]`r`nopenxrRuntime = $steamvr`r`n$firstStart")
+# [Debug] shared = 0: the run reads this file alone, as before the three games' settings.ini (research/25 section 20): the
+# code's defaults and these keys, and nothing the run writes reaches the player's shared file.
+[IO.File]::WriteAllText("$b\ASI\${Game}MEVR.ini", "[Debug]`r`nshared = 0`r`nopenxrRuntime = $steamvr`r`n$firstStart")
 $ini = Join-Path $b 'MELE2VR.ini'
 if ($Diagnostics -and (Test-Path -LiteralPath $ini)) {
     $t = [IO.File]::ReadAllText($ini) -replace '(?m)^Diagnostics=0', 'Diagnostics=1'

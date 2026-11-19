@@ -5167,7 +5167,7 @@ void AutoTick() {
         gLoggedNoScript = false;
     }
     gAuto.script = settings.script;
-    bool const ok = RunScript(engine::SettingsFile().parent_path() / std::filesystem::path(std::u8string(settings.script.begin(), settings.script.end())));
+    bool const ok = RunScript(engine::AsiDir() / std::filesystem::path(std::u8string(settings.script.begin(), settings.script.end())));
     gAuto.ran = ok;
     gAuto.failed = !ok;
     gAuto.parked = false;

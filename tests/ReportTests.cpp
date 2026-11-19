@@ -356,6 +356,13 @@ void TestSettings() {
     // The template itself: nothing differs.
     RCHECK(report::DiffHalcyonIni(templateIni, templateIni).empty());
     RCHECK(report::DiffModIni("[Menu]\nassets=\n").empty());  // empty is the default, not a difference
+    // The three games' settings.ini (research/25 section 20): what the game reads, its own section first.
+    std::string const shared = "[Hands]\r\naimAssist=1\r\n[Hands.LE2]\r\naimAssist=0\r\n[Comfort.LE3]\r\nturn=snap\r\n";
+    auto const one = report::DiffSharedSettings(shared, mevr::install::GameId::LE1);
+    RCHECK(one.size() == 1 && one.front().file == "settings.ini" && one.front().section == "Hands" && one.front().key == "aimAssist");
+    RCHECK(report::DiffSharedSettings(shared, mevr::install::GameId::LE2).empty());
+    auto const three = report::DiffSharedSettings(shared, mevr::install::GameId::LE3);
+    RCHECK(three.size() == 2 && three.front().section == "Comfort.LE3" && three.front().value == "snap");
     std::string const halcyon = "[active]\nprofile=Custom 1\n[profile:Default]\nvrMode = 0\n[profile:Custom 1]\nvrMode = 2\nsfr2ResX = 2824\n";
     auto const h = report::DiffHalcyonIni(halcyon, templateIni);
     bool sawRes = false, sawMissing = false, sawMode = false;

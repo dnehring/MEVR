@@ -5,6 +5,8 @@
 #include "install/Packs.hpp"
 #include "install/Voice.hpp"
 #include "install/Updates.hpp"
+#include "core/Ini.hpp"
+#include "core/vr/SettingsFile.hpp"  // the three games' settings.ini: its per-game sections (research/25 section 20)
 
 #include <Windows.h>
 
@@ -223,6 +225,25 @@ bool EditUnlessReadOnly(Transaction& tx, std::string_view relative, char const* 
     return tx.EditIni(relative, edit);
 }
 
+// The render size's first-start marker in the three games' settings.ini (research/25 section 20): per game, so
+// [Display.<GAME>] eyeSizeSet = 0 when the player chose Automatic again, and only where the file has it (the mod sets it
+// to 1 at the first VR start; a missing key already means "not sized yet"). The player's data, never recorded for
+// uninstall (the same as calibration.ini); the old ASI\<GAME>MEVR.ini gets its own edit above, for an older build.
+void ResetSharedEyeSize(Transaction& tx, std::string_view game) {
+    namespace sf = vr::settings_file;
+    fs::path const shared = LocalDataDir() / sf::kFileName;
+    if (LocalDataDir().empty() || sf::Probe(shared) != sf::Access::Readable) {
+        return;
+    }
+    std::string const section = sf::GameSectionName("Display", game);
+    if (!mevr::ini::Get(mevr::ini::Read(shared).file, section, "eyeSizeSet")) {
+        return;
+    }
+    std::string const error = sf::Apply(shared, {sf::Set(section, "eyeSizeSet", "0")}, game);
+    tx.Note(error.empty() ? "settings.ini: [" + section + "] eyeSizeSet = 0: the render size follows the headset at the next VR start"
+                          : "warning: couldn't write [" + section + "] eyeSizeSet = 0 to " + detect::Utf8(shared.wstring()) + ": " + error);
+}
+
 // `gamerReadOnly`: set when GamerSettings.ini is read-only (nothing applied to it; the rest still is).
 bool ApplySettingsIn(Transaction& tx, settings::Choices const& choices, bool* gamerReadOnly = nullptr) {
     Layout const& layout = tx.Where();
@@ -271,6 +292,9 @@ bool ApplySettingsIn(Transaction& tx, settings::Choices const& choices, bool* ga
             }
             return std::string(text);
         });
+    }
+    if (ok && !gamerLocked && spec.stereoTarget && choices.eyeSizeAtFirstStart) {
+        ResetSharedEyeSize(tx, spec.key);
     }
     if (gamerReadOnly != nullptr) {
         *gamerReadOnly = gamerLocked;
@@ -826,7 +850,7 @@ Outcome Uninstall(Layout const& layout, bool keepUserData, fs::path const& runni
             fs::remove_all(local, ec);
             tx.Note(ec ? "warning: couldn't delete all of " + detect::Utf8(local.wstring()) + " (" + ec.message() + ")"
                        : "deleted " + detect::Utf8(local.wstring()) +
-                             " (the calibration the three games share, snapshots, recordings, frame timing, crash reports, downloads)");
+                             " (the settings and calibration the three games share, snapshots, recordings, frame timing, crash reports, downloads)");
         }
     }
     return Finish(tx, ok);

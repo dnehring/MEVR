@@ -435,7 +435,7 @@ void RefreshSettings() {
         return;
     }
     gSettingsMs = now;
-    ini::Loaded const loaded = ini::Read(engine::SettingsFile());
+    ini::Loaded const loaded = vr::settings_file::Load(engine::SettingsFile());
     Settings s;
     if (auto const text = ini::Get(loaded.file, "Cinematics", "conversations")) {
         s.mode = cw::ParseMode(text->c_str(), cw::Mode::Screen);
@@ -5765,7 +5765,7 @@ bool gDofWas = true;  // BIOEngine.ini's value read before we switched it (the g
 
 bool DofInIni() {
     // <exe dir>\..\..\BioGame\Config\BIOEngine.ini's [SystemSettings] (it wins over GamerSettings.ini, research/35).
-    std::filesystem::path const ini = engine::SettingsFile().parent_path().parent_path().parent_path().parent_path() / L"BioGame" /
+    std::filesystem::path const ini = engine::AsiDir().parent_path().parent_path().parent_path() / L"BioGame" /
         L"Config" / L"BIOEngine.ini";
     ini::Loaded const loaded = ini::Read(ini);
     auto const v = ini::Get(loaded.file, "SystemSettings", "DepthOfField");

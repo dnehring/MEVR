@@ -9,6 +9,7 @@
 #include "core/vr/Controllers.hpp"
 #include "core/vr/InteractLabel.hpp"
 #include "plugin/Renderer.hpp"
+#include "core/vr/SettingsFile.hpp"
 
 #include <cstdio>
 #include <filesystem>
@@ -62,7 +63,7 @@ hp::Settings const& Settings(std::uint64_t now) {
     }
     gHudSettingsStamp = data.ftLastWriteTime;
     gHudSettingsLoaded = true;
-    mevr::ini::Loaded const loaded = mevr::ini::Read(std::filesystem::path(path));
+    mevr::ini::Loaded const loaded = mevr::vr::settings_file::Load(std::filesystem::path(path));
     std::string problems;
     gHudSettings = hp::ReadSettings(loaded.file, &problems);
     if (!problems.empty()) {

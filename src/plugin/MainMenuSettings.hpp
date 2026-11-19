@@ -13,12 +13,14 @@
 #include <string>
 
 // What each row of our main menu drives (research/28), behind the data model (plugin/menu/MenuModel):
-//   - our settings: <GAME>MEVR.ini next to the host ASI, which the mod re-reads within a second ([Hands], [Holsters],
+//   - our settings: the three games' %LOCALAPPDATA%\MEVR\settings.ini (research/25 section 20; this game's old
+//     <GAME>MEVR.ini only while that can't be read), which the mod re-reads within a second ([Hands], [Holsters],
 //     [Controls], [Throwables], [Sights], [Comfort], [Cinematics], [WorldUi], [Galaxy], [Hud], [Interact], [Vent],
 //     [Mako], [Cockpit], [Upscale], and the menu's own [Menu]; Settings::Read's list names every section a row reads,
-//     or the row snaps back to its default after a write): written key by key with
-//     WritePrivateProfileString, as the VR hands tab does (a slider's value 300 ms after it last moved), never the
-//     whole file;
+//     or the row snaps back to its default after a write): a row's change goes to [<section>] and so to the three
+//     games, a per-game key's (core/vr/SettingsKeys PerGame: the performance levers, the first-start marker...) to this
+//     game's [<section>.<GAME>]; the due edits in one write (core/vr/SettingsFile Apply: a copy moved over the file), a
+//     slider's value 300 ms after it last moved, never the whole file;
 //   - Halcyon's: its live config (MELEVR::Config::Get()), as its own menu edits it, saved into the active profile
 //     with its own SaveProfile when the menu closes (or right away where its menu saves right away: the VR mode, the
 //     resolution, depth of field). Never a reset written over a profile: the menu's Reset is for this session only;
@@ -58,13 +60,13 @@ public:
     bool CancelPending();
     After TakeAfter();
 
-    // [Menu] in <GAME>MEVR.ini.
+    // [Menu] in the settings file.
     bool PauseWanted() const { return pause_; }
     float DistanceM() const { return distance_; }
     float WidthM() const { return width_; }
     std::filesystem::path Assets() const;   // the folder with main.rml: [Menu] assets, else ASI\menu
     std::filesystem::path Fonts() const;    // ASI\fonts
-    std::filesystem::path File() const;     // <GAME>MEVR.ini
+    std::filesystem::path File() const;     // the settings file in use (the three games' settings.ini)
 
     // The colour the Display page's adjusted strip shows (the live values, while a slider moves).
     vr::colour::Settings PreviewColour() const { return colour_; }

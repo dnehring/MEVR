@@ -11,6 +11,7 @@
 #include "core/Ini.hpp"
 #include "core/Log.hpp"
 #include "core/vr/ConversationWorld.hpp"
+#include "core/vr/SettingsFile.hpp"
 
 #include <Windows.h>
 
@@ -52,7 +53,7 @@ bool gCapLogged = false;
 
 float ReadFloat(wchar_t const* key, float fallback, std::wstring const& path) {
     wchar_t text[64] = {};
-    GetPrivateProfileStringW(L"Cinematics", key, L"", text, static_cast<DWORD>(std::size(text)), path.c_str());
+    mevr::vr::settings_file::String(L"Cinematics", key, L"", text, static_cast<DWORD>(std::size(text)), path.c_str());
     std::string narrow;
     for (wchar_t const* p = text; *p != L'\0' && *p < 128; ++p) {
         narrow.push_back(static_cast<char>(*p));
@@ -80,7 +81,7 @@ void RefreshSettings(std::uint64_t now) {
     if (!path.empty()) {
         {   // 0/vr, 1/screen, or world (research/59: the mod shows it in the world; what it leaves out, the set pieces, comes here)
             wchar_t text[32] = {};
-            GetPrivateProfileStringW(L"Cinematics", L"conversations", L"", text, static_cast<DWORD>(std::size(text)), path.c_str());
+            mevr::vr::settings_file::String(L"Cinematics", L"conversations", L"", text, static_cast<DWORD>(std::size(text)), path.c_str());
             std::string narrow;
             for (wchar_t const* p = text; *p != L'\0' && *p < 128; ++p) {
                 narrow.push_back(static_cast<char>(*p));
@@ -89,18 +90,18 @@ void RefreshSettings(std::uint64_t now) {
             cw::Mode const mode = cw::ParseMode(narrow.c_str(), s.conversations ? cw::Mode::Screen : cw::Mode::Vr);
             s.conversations = mode == cw::Mode::Screen || mode == cw::Mode::World;
         }
-        s.cutscenes = GetPrivateProfileIntW(L"Cinematics", L"cutscenes", s.cutscenes ? 1 : 0, path.c_str()) != 0;
-        s.frontEnd = GetPrivateProfileIntW(L"Cinematics", L"frontEnd", s.frontEnd ? 1 : 0, path.c_str()) != 0;
+        s.cutscenes = mevr::vr::settings_file::Int(L"Cinematics", L"cutscenes", s.cutscenes ? 1 : 0, path.c_str()) != 0;
+        s.frontEnd = mevr::vr::settings_file::Int(L"Cinematics", L"frontEnd", s.frontEnd ? 1 : 0, path.c_str()) != 0;
         s.distanceM = ReadFloat(L"distanceM", s.distanceM, path);
         s.widthM = ReadFloat(L"widthM", s.widthM, path);
         s.depth = ReadFloat(L"depth", s.depth, path);
         s.convergeM = ReadFloat(L"convergeM", s.convergeM, path);
         s.aspect = ReadFloat(L"aspect", s.aspect, path);
-        s.fullRate = GetPrivateProfileIntW(L"Cinematics", L"fullRate", s.fullRate ? 1 : 0, path.c_str()) != 0;
-        s.backdrop = GetPrivateProfileIntW(L"Cinematics", L"backdrop", s.backdrop ? 1 : 0, path.c_str()) != 0;
+        s.fullRate = mevr::vr::settings_file::Int(L"Cinematics", L"fullRate", s.fullRate ? 1 : 0, path.c_str()) != 0;
+        s.backdrop = mevr::vr::settings_file::Int(L"Cinematics", L"backdrop", s.backdrop ? 1 : 0, path.c_str()) != 0;
         s.backdropBrightness = ReadFloat(L"backdropBrightness", s.backdropBrightness, path);
         s.fadeS = ReadFloat(L"fadeS", s.fadeS, path);
-        s.uiLayer = GetPrivateProfileIntW(L"Cinematics", L"uiLayer", s.uiLayer ? 1 : 0, path.c_str()) != 0;
+        s.uiLayer = mevr::vr::settings_file::Int(L"Cinematics", L"uiLayer", s.uiLayer ? 1 : 0, path.c_str()) != 0;
         s.uiForwardM = ReadFloat(L"uiForwardM", s.uiForwardM, path);
     }
     s = cs::Clamped(s);

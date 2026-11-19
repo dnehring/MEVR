@@ -11,6 +11,7 @@
 #endif
 #include "halcyon/le1/mevr_bridge.h"
 #include "plugin/Renderer.hpp"
+#include "core/vr/SettingsFile.hpp"
 #include <Windows.h>
 #include <intrin.h>
 #include <openxr/openxr.h>
@@ -79,7 +80,7 @@ void Read(double now) {
     if (!readOnce || (!ec && stamp != lastWrite)) {
         readOnce = true;
         lastWrite = ec ? std::filesystem::file_time_type{} : stamp;
-        file = ini::Read(path).file;
+        file = mevr::vr::settings_file::Load(path).file;
     }
     gSetting = ini::Lower(ini::Trim(ini::Get(file, "Performance", "pacingRecovery").value_or("auto")));
     gActions = qp::Actions(gSetting, colour::StreamedHeadset());

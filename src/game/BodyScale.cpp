@@ -90,7 +90,7 @@ void SeedFromFile(std::uintptr_t skeleton) {
     g.meshKey = MeshKey(skeleton);
     g.savedEye.reset();
     if (g.meshKey.empty()) return;
-    ini::Loaded const loaded = ini::Read(engine::SettingsFile());
+    ini::Loaded const loaded = vr::settings_file::Load(engine::SettingsFile());
     g.savedEye = ini::GetNumber(loaded.file, kShepardSection, g.meshKey);
     if (g.savedEye) {
         g.standing.Seed(skeleton, *g.savedEye);
@@ -113,7 +113,7 @@ void SaveMeasured(std::uintptr_t skeleton) {
     }
     std::wstring const key(g.meshKey.begin(), g.meshKey.end());  // ASCII by MeshKey
     std::wstring const value = std::format(L"{:.4f}", *measured);
-    bool const ok = WritePrivateProfileStringW(L"Body.Shepard", key.c_str(), value.c_str(),
+    bool const ok = mevr::vr::settings_file::Write(L"Body.Shepard", key.c_str(), value.c_str(),
         engine::SettingsFile().wstring().c_str()) != 0;
     log::Info("body scale: measured Shepard's standing eye {:.3f} m for {}{}{}", *measured, g.meshKey,
         g.savedEye ? std::format(" (saved {:.3f})", *g.savedEye) : std::string(),
@@ -127,7 +127,7 @@ void ReadSettings() {
         return;
     }
     g.settingsMs = now;
-    ini::Loaded const loaded = ini::Read(engine::SettingsFile());
+    ini::Loaded const loaded = vr::settings_file::Load(engine::SettingsFile());
     Settings s;
     if (auto const text = ini::Get(loaded.file, "Body", "scale")) {
         std::string const value = ini::Lower(ini::Trim(*text));

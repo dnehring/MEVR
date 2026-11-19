@@ -5,6 +5,7 @@
 // plugin/EyeCopy, asks EyeConstants; research/le2-picture.md). The LE1-only parts are under MEVR_WITH_HALCYON.
 
 #include "plugin/Colour.hpp"
+#include "core/vr/SettingsFile.hpp"
 
 #if defined(MEVR_WITH_HALCYON)
 #include "halcyon/le1/mevr_bridge.h"
@@ -79,7 +80,7 @@ std::wstring SectionName() {
 
 cv::Section ReadSection(std::wstring const& path, std::wstring const& name) {
     std::vector<wchar_t> buffer(16384);
-    DWORD const n = GetPrivateProfileSectionW(name.c_str(), buffer.data(), static_cast<DWORD>(buffer.size()), path.c_str());
+    DWORD const n = mevr::vr::settings_file::Section(name.c_str(), buffer.data(), static_cast<DWORD>(buffer.size()), path.c_str());
     std::string text;
     text.reserve(n);
     for (DWORD i = 0; i < n; ++i) {
@@ -92,7 +93,7 @@ cv::Section ReadSection(std::wstring const& path, std::wstring const& name) {
 void WriteValue(wchar_t const* key, std::wstring const& value) {
     std::wstring const& path = mevr::host::SettingsPath();
     if (!path.empty()) {
-        WritePrivateProfileStringW(SectionName().c_str(), key, value.c_str(), path.c_str());
+        mevr::vr::settings_file::Write(SectionName().c_str(), key, value.c_str(), path.c_str());
     }
 }
 
@@ -158,9 +159,9 @@ void Refresh(bool force) {
         common = ReadSection(path, L"Colour");
         if (common.find("profile") == common.end()) {
             // The section the player edits by hand: written once (the mod writes the file on its first start).
-            WritePrivateProfileStringW(L"Colour", L"profile", L"auto", path.c_str());
-            WritePrivateProfileStringW(L"Colour", L"compare", L"0", path.c_str());
-            WritePrivateProfileStringW(L"Colour", L"dither", L"0.5", path.c_str());
+            mevr::vr::settings_file::Write(L"Colour", L"profile", L"auto", path.c_str());
+            mevr::vr::settings_file::Write(L"Colour", L"compare", L"0", path.c_str());
+            mevr::vr::settings_file::Write(L"Colour", L"dither", L"0.5", path.c_str());
             common = ReadSection(path, L"Colour");
             GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &data);
         }

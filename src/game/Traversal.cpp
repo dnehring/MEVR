@@ -55,7 +55,7 @@ void RefreshSettings() {
         return;
     }
     gSettingsMs = now;
-    ini::Loaded const loaded = ini::Read(engine::SettingsFile());
+    ini::Loaded const loaded = vr::settings_file::Load(engine::SettingsFile());
     tv::Settings s;
     auto const number = [&](char const* key) { return ini::GetNumber(loaded.file, "Traversal", key); };
     if (auto const v = number("enabled")) s.enabled = *v != 0.0;

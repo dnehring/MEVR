@@ -71,20 +71,14 @@ void RefreshSettings() {
     }
     gSettingsAtMs = now;
     std::filesystem::path const path = engine::SettingsFile();
-    ini::Loaded const loaded = ini::Read(path);
+    ini::Loaded const loaded = vr::settings_file::Load(path);
     if (loaded.exists && loaded.file.find("HandContact") == loaded.file.end() && !gTriedAppend) {
         gTriedAppend = true;
-        if (ini::IsUtf16(loaded.encoding)) {
-            log::Warn("hand contact: {} is saved as UTF-16: the [HandContact] defaults aren't appended to it; they apply", ini::Utf8(path));
+        // core/vr/SettingsFile Append: in the file's own encoding, one move; a per-game key to this game's section.
+        if (std::string const error = vr::settings_file::Append(path, kBlock); error.empty()) {
+            log::Info("hand contact: added the [HandContact] defaults to {}", ini::Utf8(path));
         } else {
-            std::ofstream out(path, std::ios::app);
-            out << kBlock;
-            out.close();
-            if (out) {
-                log::Info("hand contact: added the [HandContact] defaults to {}", ini::Utf8(path));
-            } else {
-                log::Warn("hand contact: couldn't add the [HandContact] defaults to {} (read-only?); they apply", ini::Utf8(path));
-            }
+            log::Warn("hand contact: couldn't add the [HandContact] defaults to {} ({}); they apply", ini::Utf8(path), error);
         }
     }
     Settings s;

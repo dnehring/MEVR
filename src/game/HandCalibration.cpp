@@ -963,7 +963,7 @@ using Ini = ini::File;
 ini::Encoding gEncoding = ini::Encoding::Narrow;  // the settings file's, as last read
 
 Ini ReadIni(fs::path const& path) {
-    ini::Loaded loaded = ini::Read(path);
+    ini::Loaded loaded = vr::settings_file::Load(path);
     gEncoding = loaded.encoding;
     return std::move(loaded.file);
 }
@@ -2145,7 +2145,7 @@ Cockpit ReadCockpit(Ini const& ini) {
         c.script = Strip(*text);
     }
     if (auto const seat = vr::mako_seat::Parse(ini::Get(ini, "Cockpit", "seatPosition").value_or(""))) {
-        c.script = *seat == vr::mako_seat::Position::Bottom && vr::mako_seat::BottomAvailable(engine::SettingsFile().parent_path())
+        c.script = *seat == vr::mako_seat::Position::Bottom && vr::mako_seat::BottomAvailable(engine::AsiDir())
             ? vr::mako_seat::kBottomScript
             : vr::mako_seat::kTopScript;
     }
@@ -2763,7 +2763,7 @@ Sample ReadSample(Ini const& ini) {
 
 bool WriteArmLength(double meters) {
     std::wstring const value = meters > 0.0 ? std::format(L"{:.3f}", meters) : std::wstring(L"0");
-    return WritePrivateProfileStringW(L"Arms", L"armLengthM", value.c_str(), FilePath().wstring().c_str()) != 0;
+    return mevr::vr::settings_file::Write(L"Arms", L"armLengthM", value.c_str(), FilePath().wstring().c_str()) != 0;
 }
 
 void (*gPublishCameraOffset)(double, double, double) = nullptr;
@@ -2982,23 +2982,12 @@ void ClearArmLength() {
     log::Info("hands: arm length cleared: reach is not scaled");
 }
 
-// Appends a block of defaults with plain narrow text, which only fits an ANSI or UTF-8 file: a UTF-16 one (saved so
-// by an editor; Win32 reads it) would get bytes it reads as garbage. Then the block is left out, once warned.
+// Appends a block of defaults (core/vr/SettingsFile Append: in the encoding the file is in, one move; in the three games'
+// file a per-game key goes to this game's [<section>.<GAME>]).
 bool AppendBlock(fs::path const& path, char const* block, char const* name) {
-    if (ini::IsUtf16(gEncoding)) {
-        static bool warned = false;
-        if (!warned) {
-            warned = true;
-            log::Warn("hands: {} is saved as UTF-16: new settings blocks ([{}] ...) aren't appended to it (save it as "
-                      "ANSI or UTF-8 to get them); their defaults apply", ini::Utf8(path), name);
-        }
-        return false;
-    }
-    std::ofstream out(path, std::ios::app);
-    out << block;
-    out.close();
-    if (!out) {
-        log::Warn("hands: couldn't add the [{}] defaults to {} (read-only?); they apply without it", name, ini::Utf8(path));
+    std::string const error = vr::settings_file::Append(path, block);
+    if (!error.empty()) {
+        log::Warn("hands: couldn't add the [{}] defaults to {} ({}); they apply without it", name, ini::Utf8(path), error);
         return false;
     }
     log::Info("hands: added the [{}] defaults to {}", name, ini::Utf8(path));
@@ -3017,16 +3006,15 @@ void Refresh() {
     std::error_code ec;
     if (!fs::exists(path, ec)) {
         {
-            std::ofstream out(path);
-            out << kDefaultFile << kControlsBlock << kHolstersBlock << kSquadBlock << kSightsBlock << kThrowablesBlock
-                << kComfortBlock << kInteractBlock << kVentBlock << kHudBlock << kMakoBlock << kCockpitBlock << kGalaxyBlock << kWorldUiBlock << kGameBlock
+            std::string text = std::string(kDefaultFile) + kControlsBlock + kHolstersBlock + kSquadBlock + kSightsBlock + kThrowablesBlock +
+                               kComfortBlock + kInteractBlock + kVentBlock + kHudBlock + kMakoBlock + kCockpitBlock + kGalaxyBlock +
+                               kWorldUiBlock + kGameBlock;
 #if !defined(MEVR_GAME_LE1)
-                << kReloadBlock
+            text += kReloadBlock;
 #endif
-                ;
-            out.close();
+            std::string const error = vr::settings_file::Append(path, text);  // a new file (the three games' one: its header first)
             static bool warned = false;
-            if (!out || !fs::exists(path, ec)) {
+            if (!error.empty() || !fs::exists(path, ec)) {
                 if (!warned) {
                     warned = true;
                     log::Warn("hands: can't create {} (is the game's ASI folder read-only?): the defaults apply, and nothing "
@@ -3095,7 +3083,7 @@ void Refresh() {
     for (NewKey const& k : kNewHolsterKeys) {
         auto const s = ini.find("Holsters");
         if (s != ini.end() && s->second.find(k.name) == s->second.end() &&
-            WritePrivateProfileStringW(L"Holsters", k.key, k.value, path.wstring().c_str()) != 0) {
+            mevr::vr::settings_file::Write(L"Holsters", k.key, k.value, path.wstring().c_str()) != 0) {
             added += std::format("{}{}", added.empty() ? "" : ", ", k.name);
         }
     }
@@ -3118,7 +3106,7 @@ void Refresh() {
     for (NewKey const& k : kNewSquadKeys) {
         auto const s = ini.find("Squad");
         if (s != ini.end() && s->second.find(k.name) == s->second.end() &&
-            WritePrivateProfileStringW(L"Squad", k.key, k.value, path.wstring().c_str()) != 0) {
+            mevr::vr::settings_file::Write(L"Squad", k.key, k.value, path.wstring().c_str()) != 0) {
             addedSquad += std::format("{}{}", addedSquad.empty() ? "" : ", ", k.name);
         }
     }
@@ -3144,15 +3132,15 @@ void Refresh() {
         double const release = old("supportReleaseM", 0.22);
         bool const defaults = std::abs(acquire - 0.12) < 1e-6 && std::abs(release - 0.22) < 1e-6;
         if (defaults) {
-            WritePrivateProfileStringW(L"Controls", L"supportAcquireM", L"0.18", file.c_str());
-            WritePrivateProfileStringW(L"Controls", L"supportReleaseM", L"0.26", file.c_str());
+            mevr::vr::settings_file::Write(L"Controls", L"supportAcquireM", L"0.18", file.c_str());
+            mevr::vr::settings_file::Write(L"Controls", L"supportReleaseM", L"0.26", file.c_str());
         }
-        WritePrivateProfileStringW(L"Controls", L"supportZone", L"capsule", file.c_str());
+        mevr::vr::settings_file::Write(L"Controls", L"supportZone", L"capsule", file.c_str());
         if (c->second.find("supportFrontM") == c->second.end()) {
-            WritePrivateProfileStringW(L"Controls", L"supportFrontM", L"0.10", file.c_str());
+            mevr::vr::settings_file::Write(L"Controls", L"supportFrontM", L"0.10", file.c_str());
         }
         if (c->second.find("supportPastMuzzleM") == c->second.end()) {
-            WritePrivateProfileStringW(L"Controls", L"supportPastMuzzleM", L"0.10", file.c_str());
+            mevr::vr::settings_file::Write(L"Controls", L"supportPastMuzzleM", L"0.10", file.c_str());
         }
         log::Info("hands: the two-handed grip's grab zone is a capsule along the gun now: {} in [Controls] of {}",
             defaults ? "supportAcquireM 0.12 -> 0.18 and supportReleaseM 0.22 -> 0.26 (the old defaults), supportZone, supportFrontM "
@@ -3172,7 +3160,7 @@ void Refresh() {
             auto const k = s->second.find(key);
             std::string value = k != s->second.end() ? k->second : std::string();
             std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-            if (value == "holo" && WritePrivateProfileStringW(L"Sights", wkey, L"dot", path.wstring().c_str()) != 0) {
+            if (value == "holo" && mevr::vr::settings_file::Write(L"Sights", wkey, L"dot", path.wstring().c_str()) != 0) {
                 moved += std::format("{}{}", moved.empty() ? "" : " and ", key);
             }
         }
@@ -3191,7 +3179,7 @@ void Refresh() {
         if (k != s->second.end()) {
             if (auto const back = vr::sights::MigrateAssaultRifle(k->second)) {
                 std::wstring const value(back->begin(), back->end());
-                if (WritePrivateProfileStringW(L"Sights", L"assaultRifle", value.c_str(), path.wstring().c_str()) != 0) {
+                if (mevr::vr::settings_file::Write(L"Sights", L"assaultRifle", value.c_str(), path.wstring().c_str()) != 0) {
                     log::Info("hands: [Sights] assaultRifle {} (section 14's default) -> {} (a red dot again; research/21 section 15) in {}",
                         k->second, *back, ini::Utf8(path));
                     ini = ReadIni(path);
@@ -3225,7 +3213,7 @@ void Refresh() {
             if (k == s->second.end()) {
                 continue;
             }
-            if (_stricmp(k->second.c_str(), m.old) == 0 && WritePrivateProfileStringW(L"Sights", m.key, m.now, path.wstring().c_str()) != 0) {
+            if (_stricmp(k->second.c_str(), m.old) == 0 && mevr::vr::settings_file::Write(L"Sights", m.key, m.now, path.wstring().c_str()) != 0) {
                 moved += std::format("{}{} {} -> {}", moved.empty() ? "" : ", ", m.name, m.old, ini::Utf8(fs::path(m.now)));
             } else {
                 kept += std::format("{}{} = {}", kept.empty() ? "" : ", ", m.name, k->second);
@@ -3244,7 +3232,7 @@ void Refresh() {
     // scopeCapturePost that still holds the old default scopeCapture = 0 gets 1; any other value is the player's and kept.
     if (auto const s = ini.find("Sights"); s != ini.end() && s->second.find("scopeCapturePost") == s->second.end()) {
         if (auto const k = s->second.find("scopeCapture"); k != s->second.end()) {
-            if (k->second == "0" && WritePrivateProfileStringW(L"Sights", L"scopeCapture", L"1", path.wstring().c_str()) != 0) {
+            if (k->second == "0" && mevr::vr::settings_file::Write(L"Sights", L"scopeCapture", L"1", path.wstring().c_str()) != 0) {
                 log::Info("hands: [Sights] scopeCapture 0 -> 1: the scope's zoomed render is on by default (research/39 section 12) in {}",
                     ini::Utf8(path));
                 ini = ReadIni(path);
@@ -3258,7 +3246,7 @@ void Refresh() {
     // sprint still holds the first default `game` (39dc8ac) gets `speed`; anything else is the player's.
     if (auto const h = ini.find("Hands"); h != ini.end() && h->second.find("sprintDefault") == h->second.end()) {
         if (auto const k = h->second.find("sprint"); k != h->second.end() && _stricmp(k->second.c_str(), "game") == 0 &&
-            WritePrivateProfileStringW(L"Hands", L"sprint", L"speed", path.wstring().c_str()) != 0) {
+            mevr::vr::settings_file::Write(L"Hands", L"sprint", L"speed", path.wstring().c_str()) != 0) {
             log::Info("hands: [Hands] sprint game -> speed: the sprint button is a faster run (game/sprint) in {}", ini::Utf8(path));
             ini = ReadIni(path);
             stamp = fs::last_write_time(path, ec);
@@ -3270,7 +3258,7 @@ void Refresh() {
         if (auto const s = ini.find("Holsters"); s != ini.end()) {
             if (auto const k = s->second.find("releaseGrace"); k != s->second.end()) {
                 if ((k->second == "0.3" || k->second == "0.30") &&
-                    WritePrivateProfileStringW(L"Holsters", L"releaseGrace", L"0.2", path.wstring().c_str()) != 0) {
+                    mevr::vr::settings_file::Write(L"Holsters", L"releaseGrace", L"0.2", path.wstring().c_str()) != 0) {
                     log::Info("hands: [Holsters] releaseGrace 0.3 -> 0.2: a gun let go away from its slot goes back sooner in {}",
                         ini::Utf8(path));
                     ini = ReadIni(path);
@@ -3284,7 +3272,7 @@ void Refresh() {
     if (auto const s = ini.find("Sights"); s != ini.end() && s->second.find("dotWindow") == s->second.end()) {
         if (auto const k = s->second.find("assistDotMaxM"); k != s->second.end()) {
             if ((k->second == "0.03" || k->second == "0.030") &&
-                WritePrivateProfileStringW(L"Sights", L"assistDotMaxM", L"0", path.wstring().c_str()) != 0) {
+                mevr::vr::settings_file::Write(L"Sights", L"assistDotMaxM", L"0", path.wstring().c_str()) != 0) {
                 log::Info("hands: [Sights] assistDotMaxM 0.03 -> 0: a red dot stays in your hand, no slide toward the eye "
                           "(research/21 section 17) in {}", ini::Utf8(path));
                 ini = ReadIni(path);
@@ -3299,7 +3287,7 @@ void Refresh() {
     if (auto const s = ini.find("Sights"); s != ini.end() && s->second.find("scopeAdsPushM") == s->second.end()) {
         if (auto const k = s->second.find("adsReachM"); k != s->second.end()) {
             if ((k->second == "0.4" || k->second == "0.40") &&
-                WritePrivateProfileStringW(L"Sights", L"adsReachM", L"0.55", path.wstring().c_str()) != 0) {
+                mevr::vr::settings_file::Write(L"Sights", L"adsReachM", L"0.55", path.wstring().c_str()) != 0) {
                 log::Info("hands: [Sights] adsReachM 0.40 -> 0.55: a scope's picture comes sooner as you raise the gun "
                           "(research/21 section 19) in {}", ini::Utf8(path));
                 ini = ReadIni(path);
@@ -3313,7 +3301,7 @@ void Refresh() {
         if (auto const k = s->second.find("wrist"); k != s->second.end()) {
             std::string const listText = vr::world_ui::ScreenList(vr::world_ui::Settings{}.wristScreens);
             std::wstring const list(listText.begin(), listText.end());  // the screens' tags are ASCII
-            if (_stricmp(k->second.c_str(), "SkillGame") == 0 && WritePrivateProfileStringW(L"WorldUi", L"wrist", list.c_str(), path.wstring().c_str()) != 0) {
+            if (_stricmp(k->second.c_str(), "SkillGame") == 0 && mevr::vr::settings_file::Write(L"WorldUi", L"wrist", list.c_str(), path.wstring().c_str()) != 0) {
                 log::Info("hands: [WorldUi] wrist SkillGame -> {}: the omni-tool's screens (research/57) in {}", listText,
                     ini::Utf8(path));
                 ini = ReadIni(path);
@@ -3328,7 +3316,7 @@ void Refresh() {
     // any other value is the player's and kept.
     if (auto const s = ini.find("WorldUi"); s != ini.end() && s->second.find("figure") == s->second.end()) {
         if (auto const k = s->second.find("wristMenuWidthM"); k != s->second.end()) {
-            if (k->second == "0.55" && WritePrivateProfileStringW(L"WorldUi", L"wristMenuWidthM", L"0.70", path.wstring().c_str()) != 0) {
+            if (k->second == "0.55" && mevr::vr::settings_file::Write(L"WorldUi", L"wristMenuWidthM", L"0.70", path.wstring().c_str()) != 0) {
                 log::Info("hands: [WorldUi] wristMenuWidthM 0.55 -> 0.70: the omni-tool's screens larger on the wrist in {}", ini::Utf8(path));
                 ini = ReadIni(path);
                 stamp = fs::last_write_time(path, ec);
@@ -3341,7 +3329,7 @@ void Refresh() {
     // without the marker meleeFist that still holds the old default meleeButton = 1 gets 0; any other value is the player's.
     if (auto const s = ini.find("Throwables"); s != ini.end() && s->second.find("meleeFist") == s->second.end()) {
         if (auto const k = s->second.find("meleeButton"); k != s->second.end()) {
-            if (k->second == "1" && WritePrivateProfileStringW(L"Throwables", L"meleeButton", L"0", path.wstring().c_str()) != 0) {
+            if (k->second == "1" && mevr::vr::settings_file::Write(L"Throwables", L"meleeButton", L"0", path.wstring().c_str()) != 0) {
                 log::Info("hands: [Throwables] meleeButton 1 -> 0: melee is the gesture only, B no longer melees on foot "
                           "(research/20 \"Gesture only\") in {}", ini::Utf8(path));
                 ini = ReadIni(path);
@@ -3359,13 +3347,13 @@ void Refresh() {
         auto const k = s->second.find("le3PutAway");
         bool moved = true;
         if (k != s->second.end() && k->second == "0") {
-            moved = WritePrivateProfileStringW(L"Holsters", L"le3PutAway", L"1", path.wstring().c_str()) != 0;
+            moved = mevr::vr::settings_file::Write(L"Holsters", L"le3PutAway", L"1", path.wstring().c_str()) != 0;
             if (moved) {
                 log::Info("hands: [Holsters] le3PutAway 0 -> 1: a gun you let go is put away (the owner's default since 2026-11-18) in {}",
                     ini::Utf8(path));
             }
         }
-        if (moved && WritePrivateProfileStringW(L"Holsters", L"le3PutAwayMoved", L"1", path.wstring().c_str()) != 0) {
+        if (moved && mevr::vr::settings_file::Write(L"Holsters", L"le3PutAwayMoved", L"1", path.wstring().c_str()) != 0) {
             ini = ReadIni(path);
             stamp = fs::last_write_time(path, ec);
         }
@@ -3377,12 +3365,12 @@ void Refresh() {
         auto const move = vr::foot_controls::MigrateGrenades(ini);
         bool saved = true;
         if (move.button) {
-            saved = WritePrivateProfileStringW(L"Throwables", L"grenadeButton", L"0", path.wstring().c_str()) != 0;
+            saved = mevr::vr::settings_file::Write(L"Throwables", L"grenadeButton", L"0", path.wstring().c_str()) != 0;
         }
         if (move.hands) {
-            saved = (WritePrivateProfileStringW(L"Throwables", L"hands", L"both", path.wstring().c_str()) != 0) && saved;
+            saved = (mevr::vr::settings_file::Write(L"Throwables", L"hands", L"both", path.wstring().c_str()) != 0) && saved;
         }
-        if (saved && WritePrivateProfileStringW(L"Throwables", L"powerWheelX", L"1", path.wstring().c_str()) != 0) {
+        if (saved && mevr::vr::settings_file::Write(L"Throwables", L"powerWheelX", L"1", path.wstring().c_str()) != 0) {
             log::Info("hands: [Throwables] grenadeButton {}, hands {} (moved once); X is the hand power wheel only "
                       "while on foot with [PowerWheel] on = 1; later choices are kept in {}",
                 move.button ? "1 -> 0" : "kept", move.hands ? "right -> both" : "kept", ini::Utf8(path));
@@ -3397,8 +3385,8 @@ void Refresh() {
     if (auto const s = ini.find("Reload"); s != ini.end() && s->second.find("enabledMoved") == s->second.end()) {
         auto const k = s->second.find("enabled");
         bool const old = k != s->second.end() && k->second == "1";
-        bool const saved = !old || WritePrivateProfileStringW(L"Reload", L"enabled", L"0", path.wstring().c_str()) != 0;
-        if (saved && WritePrivateProfileStringW(L"Reload", L"enabledMoved", L"1", path.wstring().c_str()) != 0) {
+        bool const saved = !old || mevr::vr::settings_file::Write(L"Reload", L"enabled", L"0", path.wstring().c_str()) != 0;
+        if (saved && mevr::vr::settings_file::Write(L"Reload", L"enabledMoved", L"1", path.wstring().c_str()) != 0) {
             if (old) {
                 log::Info("hands: [Reload] enabled 1 -> 0 (moved once): the reload by hand is off until its gesture is "
                           "redesigned; the game's reload button and its automatic reload work as always, in {}", ini::Utf8(path));
@@ -3431,7 +3419,7 @@ void Refresh() {
         if (allOld) {
             bool written = true;
             for (auto const& m : kMoved) {
-                written = WritePrivateProfileStringW(L"Mako", m.key, m.now, path.wstring().c_str()) != 0 && written;
+                written = mevr::vr::settings_file::Write(L"Mako", m.key, m.now, path.wstring().c_str()) != 0 && written;
             }
             if (written) {
                 log::Info("hands: [Mako] throttleTravelM, leverOffset, stickOffset: the old defaults -> the cockpit's grips (research/48 section 22) in {}",
@@ -3616,7 +3604,7 @@ void Refresh() {
     for (auto const& k : kNewKeys) {
         auto const s = ini.find(k.sectionName);
         if (s != ini.end() && s->second.find(k.name) == s->second.end() &&
-            WritePrivateProfileStringW(k.section, k.key, k.value, path.wstring().c_str()) != 0) {
+            mevr::vr::settings_file::Write(k.section, k.key, k.value, path.wstring().c_str()) != 0) {
             addedKeys += std::format("{}{}.{}", addedKeys.empty() ? "" : ", ", k.sectionName, k.name);
         }
     }

@@ -38,7 +38,7 @@ bool Requested() {
         return true;
     }
     std::filesystem::path const ini = SettingsFile();
-    return GetPrivateProfileIntW(L"Debug", L"dumpNatives", 0, ini.c_str()) == 1;
+    return mevr::vr::settings_file::Int(L"Debug", L"dumpNatives", 0, ini.c_str()) == 1;
 }
 
 std::filesystem::path DumpDirectory() {

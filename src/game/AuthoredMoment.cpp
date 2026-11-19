@@ -57,7 +57,7 @@ void RefreshSettings() {
         return;
     }
     gSettingsMs = now;
-    ini::Loaded const loaded = ini::Read(engine::SettingsFile());
+    ini::Loaded const loaded = vr::settings_file::Load(engine::SettingsFile());
     Settings s;
     if (auto const text = ini::Get(loaded.file, "Cinematics", "conversations")) {
         s.world = cw::ParseMode(text->c_str(), cw::Mode::Screen) == cw::Mode::World;

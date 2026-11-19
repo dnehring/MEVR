@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "core/DevChannels.hpp"
+#include "core/vr/SettingsFile.hpp"
 #include "plugin/RenderLevers.hpp"
 #include "plugin/RenderLeversSeams.hpp"
 #include "plugin/RenderLeversTable.hpp"
@@ -2451,7 +2452,7 @@ void Tick() {
                 return fallback;
             }
             wchar_t buffer[32]{};
-            DWORD const n = GetPrivateProfileStringW(L"Performance", key, L"", buffer, 32, path.c_str());
+            DWORD const n = mevr::vr::settings_file::String(L"Performance", key, L"", buffer, 32, path.c_str());
             if (n == 0) {
                 return fallback;
             }

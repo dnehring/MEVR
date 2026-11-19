@@ -80,6 +80,24 @@ function Put-Back([string]$session) {
             Copy-Item -LiteralPath $f.FullName -Destination $live -Force; Say "ini restored: $($f.Name)"
         }
     }
+    # The three games' settings.ini and the old files' taken copies (research/25 section 20): what the run's mod and host
+    # wrote there goes, as the ASI folder's inis do. A run that made them (the first launch after the update) leaves none.
+    $localKept = Join-Path $session 'backup\local'
+    $mevrLocal = Join-Path $env:LOCALAPPDATA 'MEVR'
+    if (Test-Path (Join-Path $localKept 'settings.ini')) {
+        $live = Join-Path $mevrLocal 'settings.ini'
+        if (-not (Test-Path $live) -or (Get-FileHash $live).Hash -ne (Get-FileHash (Join-Path $localKept 'settings.ini')).Hash) {
+            Copy-Item -LiteralPath (Join-Path $localKept 'settings.ini') -Destination $live -Force; Say 'settings.ini restored'
+        }
+    } elseif (Test-Path (Join-Path $localKept 'no-settings.txt')) {
+        if (Test-Path (Join-Path $mevrLocal 'settings.ini')) { Remove-Item -LiteralPath (Join-Path $mevrLocal 'settings.ini') -Force; Say 'settings.ini made by the run: removed' }
+    }
+    if (Test-Path (Join-Path $localKept 'settings-taken')) {
+        Remove-Item -Recurse -Force (Join-Path $mevrLocal 'settings-taken') -ErrorAction SilentlyContinue
+        Copy-Item -Recurse -Force (Join-Path $localKept 'settings-taken') (Join-Path $mevrLocal 'settings-taken')
+    } elseif (Test-Path (Join-Path $localKept 'no-settings-taken.txt')) {
+        Remove-Item -Recurse -Force (Join-Path $mevrLocal 'settings-taken') -ErrorAction SilentlyContinue
+    }
     if (Test-Path $log) { Copy-Item $log (Join-Path $session 'LE1MEVR.log') -Force }
     Say ('the ASI in the game: ' + (Get-Item (Join-Path $asi 'LE1MEVR.asi')).VersionInfo.ProductVersion)
 }
@@ -108,6 +126,14 @@ if ($mono -and -not (Select-String -Path (Join-Path $asi 'LE1MEVR.ini') -Pattern
 }
 Copy-Item -Recurse -Force (Join-Path $saves '*') (Join-Path $Session 'backup\Save')
 Copy-Item -Force (Join-Path $asi '*.ini') (Join-Path $Session 'backup\ASI')
+# The three games' settings.ini and the taken copies (research/25 section 20), put back by Put-Back.
+$localKept = Join-Path $Session 'backup\local'
+New-Item -ItemType Directory -Force $localKept | Out-Null
+$mevrLocal = Join-Path $env:LOCALAPPDATA 'MEVR'
+if (Test-Path (Join-Path $mevrLocal 'settings.ini')) { Copy-Item -Force (Join-Path $mevrLocal 'settings.ini') $localKept }
+else { Set-Content -LiteralPath (Join-Path $localKept 'no-settings.txt') -Value 'none before the run' }
+if (Test-Path (Join-Path $mevrLocal 'settings-taken')) { Copy-Item -Recurse -Force (Join-Path $mevrLocal 'settings-taken') (Join-Path $localKept 'settings-taken') }
+else { Set-Content -LiteralPath (Join-Path $localKept 'no-settings-taken.txt') -Value 'none before the run' }
 $Began = Get-Date -Format 'yyyy-MM-ddTHH:mm:ss'
 Say "began: $Began (backups in the session folder)"
 try {

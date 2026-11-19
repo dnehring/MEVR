@@ -18,6 +18,7 @@
 
 #include "imgui.h"
 #include "imgui_impl_dx11.h"
+#include "engine/SettingsFile.hpp"
 
 #include <Windows.h>
 #include <d3d11.h>
@@ -143,7 +144,7 @@ bool EnsureGpu(ID3D11Device* device, ID3D11DeviceContext* context) {
     io.DisplaySize = ImVec2(static_cast<float>(draw::kCanvas), static_cast<float>(draw::kCanvas));
     std::vector<std::filesystem::path> folders;
     if (!mevr::host::SettingsPath().empty()) {
-        folders.push_back(std::filesystem::path(mevr::host::SettingsPath()).parent_path() / L"fonts");
+        folders.push_back(mevr::engine::AsiDir() / L"fonts");
     }
     std::string chosen;
     gGpu.fonts = draw::LoadFonts(io, folders, chosen);

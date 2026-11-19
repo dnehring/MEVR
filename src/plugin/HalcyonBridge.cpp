@@ -49,6 +49,7 @@
 #include "plugin/TestLoop.hpp"
 #include "plugin/WorldPanels.hpp"
 #include "plugin/XrHost.hpp"
+#include "core/vr/SettingsFile.hpp"
 
 #include <dxgi1_6.h>   // [MEVR] research/27 7c: the HDR-display answer
 #include <openxr/openxr.h>
@@ -128,7 +129,7 @@ void* StaticXrGetInstanceProcAddr() noexcept {
         checked = true;
         std::wstring const& path = SettingsPath();
         wchar_t manifest[1024] = {};
-        if (!path.empty() && GetPrivateProfileStringW(L"Debug", L"openxrRuntime", L"", manifest, 1024, path.c_str()) > 0 && manifest[0] != 0) {
+        if (!path.empty() && mevr::vr::settings_file::String(L"Debug", L"openxrRuntime", L"", manifest, 1024, path.c_str()) > 0 && manifest[0] != 0) {
             if (GetFileAttributesW(manifest) != INVALID_FILE_ATTRIBUTES) {
                 SetEnvironmentVariableW(L"XR_RUNTIME_JSON", manifest);
                 mevr::log::Info("openxr runtime: this process uses the manifest [Debug] openxrRuntime names: {}", mevr::ini::Utf8(std::filesystem::path(manifest)));
@@ -686,7 +687,7 @@ void RefreshConstantEyeSetting() {
     static bool logged = false;
     {
         std::wstring const& path = SettingsPath();
-        bool const read = path.empty() || GetPrivateProfileIntW(L"Hands", L"constantEye", 1, path.c_str()) != 0;
+        bool const read = path.empty() || mevr::vr::settings_file::Int(L"Hands", L"constantEye", 1, path.c_str()) != 0;
         if (!logged || read != on) {
             logged = true;
             mevr::log::Info("constant eye: {} ([Hands] constantEye = {}, research/38 B)",
@@ -699,7 +700,7 @@ void RefreshConstantEyeSetting() {
     {
         static bool dropLogged = false;
         std::wstring const& path = SettingsPath();
-        bool const drop = !path.empty() && GetPrivateProfileIntW(L"Hands", L"crouchDrop", 0, path.c_str()) != 0;
+        bool const drop = !path.empty() && mevr::vr::settings_file::Int(L"Hands", L"crouchDrop", 0, path.c_str()) != 0;
         if (!dropLogged || drop != gCrouchDropOn.load(std::memory_order_relaxed)) {
             dropLogged = true;
             mevr::log::Info("constant eye: a physical crouch {} ([Hands] crouchDrop = {})",
@@ -808,7 +809,7 @@ void RefreshBlendFixSetting() {
     static bool logged = false;
     {
         std::wstring const& path = SettingsPath();
-        bool const read = path.empty() || GetPrivateProfileIntW(L"Hands", L"blendFix", 1, path.c_str()) != 0;
+        bool const read = path.empty() || mevr::vr::settings_file::Int(L"Hands", L"blendFix", 1, path.c_str()) != 0;
         if (!logged || read != on) {
             logged = true;
             mevr::log::Info("camera blend: {} ([Hands] blendFix = {}, research/38 B)",

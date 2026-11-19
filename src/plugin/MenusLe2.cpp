@@ -4,6 +4,7 @@
 // composition), for ME2's bridge. Kept beside it so that file (lane B's) only calls in.
 
 #include "plugin/MenusLe2.hpp"
+#include "core/vr/SettingsFile.hpp"
 
 #include "halcyon/MevrSeams.h"
 #include "engine/GameAdapter.hpp"
@@ -90,7 +91,7 @@ vr::hud_pieces::Settings const& HudSettings() {
     stamp = data.ftLastWriteTime;
     loaded = true;
     std::string problems;
-    settings = vr::hud_pieces::ReadSettings(ini::Read(std::filesystem::path(path)).file, &problems);
+    settings = vr::hud_pieces::ReadSettings(mevr::vr::settings_file::Load(std::filesystem::path(path)).file, &problems);
     if (!problems.empty()) {
         log::Warn("menus le2: [Hud] {}", problems);
     }

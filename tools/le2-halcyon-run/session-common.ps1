@@ -395,7 +395,7 @@ function Assert-RunDumpHost([string]$HostPath, [bool]$EngineProbe = $false) {
 function Assert-RunDesktopConfig([string]$Config, [bool]$EngineProbe, [bool]$EngineRequests = $false) {
     $key = if ($EngineProbe) { 'engineProbe' } else { 'dumpOnly' }
     $suffix = if ($EngineRequests -and $EngineProbe) { '\s+engineProbeRequests\s*=\s*1' } else { '' }
-    if (($EngineRequests -and -not $EngineProbe) -or $Config.Trim() -notmatch ('^\[Debug\]\s+' + $key + '\s*=\s*1' + $suffix + '$')) {
+    if (($EngineRequests -and -not $EngineProbe) -or $Config.Trim() -notmatch ('^\[Debug\]\s+(shared\s*=\s*0\s+)?' + $key + '\s*=\s*1' + $suffix + '$')) {
         throw 'Desktop diagnostic configuration changed since prep'
     }
 }
@@ -646,7 +646,8 @@ function Get-PreviewModConfig {
     # after preparation. It writes once and makes no engine mutations.
     # [Display] eyeSizeSet = 1: the host's first-VR-start rule (the render target from the headset, written into MELE3VR.ini
     # for the next launch) stands down, so the renderer file stays the exact preview text and -PreviewRenderSize decides.
-    "[Debug]`r`nrequests = 1`r`ndumpNatives = 1`r`nopenxrRuntime = C:\Program Files (x86)\Steam\steamapps\common\SteamVR\steamxr_win64.json`r`n[Pointer]`r`nsetCursor = 0`r`n[Display]`r`neyeSizeSet = 1`r`n"
+    # [Debug] shared = 0: this file alone, never the three games' settings.ini (research/25 section 20).
+    "[Debug]`r`nshared = 0`r`nrequests = 1`r`ndumpNatives = 1`r`nopenxrRuntime = C:\Program Files (x86)\Steam\steamapps\common\SteamVR\steamxr_win64.json`r`n[Pointer]`r`nsetCursor = 0`r`n[Display]`r`neyeSizeSet = 1`r`n"
 }
 function Assert-PreviewConfig([string]$Bin, [ValidateSet(0, 2, 4)][int]$Mode = 4, [bool]$Diagnostics = $false,
     [ValidateSet(1, 2, 4, 8)][int]$MirrorEvery = 8, [bool]$EyeFrustum = $true, [string]$RenderSize = '3072x2216') {

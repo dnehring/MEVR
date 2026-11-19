@@ -58,7 +58,7 @@ void SetDescribe(std::string text) {
 
 Mode ReadMode(std::filesystem::path const& settings) {
     wchar_t text[64] = {};
-    GetPrivateProfileStringW(L"Audio", L"spatial", L"hrtf", text, 64, settings.c_str());
+    mevr::vr::settings_file::String(L"Audio", L"spatial", L"hrtf", text, 64, settings.c_str());
     std::wstring value(text);
     for (wchar_t& c : value) {
         c = static_cast<wchar_t>(towlower(c));
@@ -205,7 +205,7 @@ std::unordered_map<std::uintptr_t, std::string> Exports(HMODULE module) {
 void Attach(hook::Context& init) {
     std::filesystem::path const settings = engine::SettingsFile();
     gMode = ReadMode(settings);
-    std::filesystem::path const dll = settings.parent_path() / L"audio" / L"soft_oal.dll";
+    std::filesystem::path const dll = engine::AsiDir() / L"audio" / L"soft_oal.dll";
     std::error_code ec;
     gInstalled.store(std::filesystem::exists(dll, ec));
     if (gMode == Mode::Game) {
@@ -236,7 +236,7 @@ void Attach(hook::Context& init) {
     // before it, so only volume-adjust is ours.
     {
         wchar_t text[32] = {};
-        GetPrivateProfileStringW(L"Audio", L"gainDb", L"3", text, 32, settings.c_str());
+        mevr::vr::settings_file::String(L"Audio", L"gainDb", L"3", text, 32, settings.c_str());
         if (auto const value = ini::Number(ini::Utf8(std::filesystem::path(text)))) {
             gGainDb = static_cast<float>(std::clamp(*value, -12.0, 12.0));
         }
@@ -336,7 +336,7 @@ void Attach(hook::Context& init) {
         return;
     }
     wchar_t trace[8] = {};
-    GetPrivateProfileStringW(L"Audio", L"trace", L"0", trace, 8, settings.c_str());
+    mevr::vr::settings_file::String(L"Audio", L"trace", L"0", trace, 8, settings.c_str());
     if (trace[0] == L'1') {
         HMODULE const kernelBase = GetModuleHandleW(L"KernelBase.dll");
         void* const target = kernelBase != nullptr ? reinterpret_cast<void*>(GetProcAddress(kernelBase, "LoadLibraryExW")) : nullptr;

@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 // The engine's depth of field off for a while (game/DepthOfFieldHold.hpp).
 #include "game/DepthOfFieldHold.hpp"
+#include "engine/SettingsFile.hpp"
 
 #if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)  // the sequels' galaxy flow's (ME1's conversation world keeps its own)
 #include "core/Ini.hpp"
 #include "core/Log.hpp"
-#include "engine/SettingsFile.hpp"
 #include "game/ConsoleRequest.hpp"
 
 #include <filesystem>
@@ -15,7 +15,7 @@ namespace {
 
 bool InIni() {
     // <exe dir>\..\..\BioGame\Config\BIOEngine.ini's [SystemSettings] (it wins over GamerSettings.ini, research/35).
-    std::filesystem::path const ini = engine::SettingsFile().parent_path().parent_path().parent_path().parent_path() / L"BioGame" /
+    std::filesystem::path const ini = engine::AsiDir().parent_path().parent_path().parent_path() / L"BioGame" /
         L"Config" / L"BIOEngine.ini";
     ini::Loaded const loaded = ini::Read(ini);
     auto const v = ini::Get(loaded.file, "SystemSettings", "DepthOfField");

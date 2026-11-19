@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "plugin/VoiceModel.hpp"
+#include "engine/SettingsFile.hpp"
+#include "core/vr/SettingsFile.hpp"
 
 #include "core/Ini.hpp"
 #include "core/Log.hpp"
@@ -68,13 +70,13 @@ std::wstring gSettingsPath;
 
 double ReadNumber(wchar_t const* key, double fallback) {
     wchar_t text[64]{};
-    GetPrivateProfileStringW(L"Voice", key, L"", text, static_cast<DWORD>(std::size(text)), gSettingsPath.c_str());
+    mevr::vr::settings_file::String(L"Voice", key, L"", text, static_cast<DWORD>(std::size(text)), gSettingsPath.c_str());
     return ini::Number(ini::Utf8(fs::path(text))).value_or(fallback);
 }
 
 std::wstring ReadPath(wchar_t const* key) {
     wchar_t text[1024]{};
-    GetPrivateProfileStringW(L"Voice", key, L"", text, static_cast<DWORD>(std::size(text)), gSettingsPath.c_str());
+    mevr::vr::settings_file::String(L"Voice", key, L"", text, static_cast<DWORD>(std::size(text)), gSettingsPath.c_str());
     return text;
 }
 
@@ -136,7 +138,7 @@ void Init() {
     }
     // [Voice] llmChat = 0: the raw prompt, for a model not fine-tuned in the chat template (core/voice/Llm's Settings).
     gChat = ReadNumber(L"llmChat", 1.0) != 0.0;
-    fs::path const asi = fs::path(gSettingsPath).parent_path();
+    fs::path const asi = mevr::engine::AsiDir();
     std::wstring const dirSetting = ReadPath(L"llmDir");
     fs::path const dir = dirSetting.empty() ? asi / L"voice" / L"llm" : fs::path(dirSetting);
     std::wstring const modelSetting = ReadPath(L"llmModel");

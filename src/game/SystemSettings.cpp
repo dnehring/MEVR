@@ -73,13 +73,13 @@ bool ReplayByFile(fs::path const& path) {
         return false;
     }
     wchar_t text[32] = {};
-    GetPrivateProfileStringW(L"Performance", L"sharePass", L"", text, 32, path.wstring().c_str());
+    vr::settings_file::String(L"Performance", L"sharePass", L"", text, 32, path.wstring().c_str());
     int const sharePass = text[0] == L'\0' ? 5 : _wtoi(text);   // empty is the default (RenderLevers' rule), not 0
     return sharePass == 2 || sharePass == 3 || sharePass == 5;
 }
 
 fs::path FilePath() {
-    return engine::SettingsFile();  // <exe dir>\ASI\<GAME>MEVR.ini, the host's file too
+    return engine::SettingsFile();  // the settings in use (the three games' settings.ini), the host's file too
 }
 
 std::string Narrow(std::wstring_view wide) {
@@ -119,7 +119,9 @@ std::string Opposite(std::string const& value) {
 // The player's own value of a key: GamerSettings.ini's [SystemSettings] (<game>\BioGame\Config, four folders up from
 // <game>\Binaries\Win64\ASI\<GAME>MEVR.ini). Empty if the file or the key isn't there.
 std::string GamersValue(fs::path const& settingsFile, wchar_t const* key) {
-    fs::path const gamer = settingsFile.parent_path().parent_path().parent_path().parent_path() /
+    // The three games' settings.ini lives in %LOCALAPPDATA%\MEVR: the walk starts at this game's old file then.
+    fs::path const asiFile = vr::settings_file::IsSharedPath(settingsFile) ? engine::GameSettingsFile() : settingsFile;
+    fs::path const gamer = asiFile.parent_path().parent_path().parent_path().parent_path() /
                            L"BioGame" / L"Config" / L"GamerSettings.ini";
     wchar_t text[32] = {};
     GetPrivateProfileStringW(L"SystemSettings", key, L"", text, 32, gamer.wstring().c_str());
@@ -153,7 +155,7 @@ std::vector<Setting> Wanted(fs::path const& path, bool secondEyeIsReplay) {
         wanted.push_back({"LightEnvironmentShadows", SameKey(own, "True") ? "True" : "False"});
     }
     std::vector<wchar_t> buffer(32768);
-    DWORD const n = GetPrivateProfileSectionW(L"SystemSettings", buffer.data(), static_cast<DWORD>(buffer.size()),
+    DWORD const n = vr::settings_file::Section(L"SystemSettings", buffer.data(), static_cast<DWORD>(buffer.size()),
                                               path.wstring().c_str());
     for (wchar_t const* line = buffer.data(); n > 0 && *line != L'\0'; line += wcslen(line) + 1) {
         std::string const text = Narrow(line);

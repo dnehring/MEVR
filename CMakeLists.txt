@@ -1505,6 +1505,7 @@ if (MEVR_BUILD_TESTS)
         tests/ReloadGestureTests.cpp
         tests/ManualCalibrationTests.cpp
         tests/CalibrationFileTests.cpp
+        tests/SettingsFileTests.cpp
         tests/CalibrationWeaponTests.cpp
         tests/CameraDiagnosticTests.cpp
         tests/LandmarkTests.cpp

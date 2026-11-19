@@ -11,6 +11,7 @@
 // the OpenXR SDK's headers and Halcyon's xr_types.h define the same names.
 
 #include "plugin/HalcyonSequelBridge.hpp"
+#include "core/vr/SettingsFile.hpp"
 
 #if defined(MEVR_WITH_HALCYON_LE2)
 #include "halcyon/le2/mevr_bridge.h"
@@ -192,7 +193,7 @@ GalaxyTable const& GalaxyTableSettings() noexcept {
         return gGalaxy;
     }
     gGalaxyRead = now;
-    auto const file = ini::Read(SettingsPath()).file;
+    auto const file = mevr::vr::settings_file::Load(SettingsPath()).file;
     gGalaxy.enabled = ini::GetNumber(file, "Galaxy", "nativeTable").value_or(0) != 0;
     auto number = [&](char const* key, float fallback, float lo, float hi) {
         auto const value = static_cast<float>(ini::GetNumber(file, "Galaxy", key).value_or(fallback));
@@ -207,8 +208,8 @@ GalaxyTable const& GalaxyTableSettings() noexcept {
 
 void RefreshConstantEye() noexcept {
     std::wstring const& path = SettingsPath();
-    bool const on = path.empty() || GetPrivateProfileIntW(L"Hands", L"constantEye", 1, path.c_str()) != 0;
-    bool const drop = !path.empty() && GetPrivateProfileIntW(L"Hands", L"crouchDrop", 0, path.c_str()) != 0;
+    bool const on = path.empty() || mevr::vr::settings_file::Int(L"Hands", L"constantEye", 1, path.c_str()) != 0;
+    bool const drop = !path.empty() && mevr::vr::settings_file::Int(L"Hands", L"crouchDrop", 0, path.c_str()) != 0;
     static bool logged = false;
     if (!logged || on != gConstantEyeOn.load(std::memory_order_relaxed) || drop != gCrouchDropOn.load(std::memory_order_relaxed)) {
         logged = true;
@@ -218,7 +219,7 @@ void RefreshConstantEye() noexcept {
     }
     gConstantEyeOn.store(on, std::memory_order_relaxed);
     gCrouchDropOn.store(drop, std::memory_order_relaxed);
-    int const eyeTest = path.empty() ? 0 : std::clamp(static_cast<int>(GetPrivateProfileIntW(L"Hands", L"eyeTest", 0, path.c_str())), 0, 2);
+    int const eyeTest = path.empty() ? 0 : std::clamp(static_cast<int>(mevr::vr::settings_file::Int(L"Hands", L"eyeTest", 0, path.c_str())), 0, 2);
     static int loggedEyeTest = -1;
     if (eyeTest != loggedEyeTest) {
         loggedEyeTest = eyeTest;
@@ -228,7 +229,7 @@ void RefreshConstantEye() noexcept {
             on ? "" : "; the constant eye is off, so it doesn't apply");
     }
     gEyeTest.store(eyeTest, std::memory_order_relaxed);
-    bool const rollHides = path.empty() || GetPrivateProfileIntW(L"Hands", L"rollHidesBody", 1, path.c_str()) != 0;
+    bool const rollHides = path.empty() || mevr::vr::settings_file::Int(L"Hands", L"rollHidesBody", 1, path.c_str()) != 0;
     if (rollHides != gRollHidesBody.exchange(rollHides, std::memory_order_relaxed)) {
         mevr::log::Info("roll: Shepard's body is {} while a roll lasts ([Hands] rollHidesBody = {})", rollHides ? "hidden" : "shown",
             rollHides ? 1 : 0);

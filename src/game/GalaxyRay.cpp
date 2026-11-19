@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // The sequels' galaxy map picked with a controller's ray (game/GalaxyRay.hpp).
 #include "game/GalaxyRay.hpp"
+#include "engine/SettingsFile.hpp"
 
 #if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 #include "core/Ini.hpp"
@@ -9,7 +10,6 @@
 #include "core/vr/Controllers.hpp"
 #include "core/vr/GalaxyRay.hpp"
 #include "core/vr/OverlayPlacement.hpp"
-#include "engine/SettingsFile.hpp"
 #include "game/GameMenuRequest.hpp"
 #include "game/Player.hpp"
 #include "ue3/Handles.hpp"
@@ -125,8 +125,8 @@ void ReadSettings(std::uint64_t now) {
     gSettingsMs = now;
     std::wstring const path = engine::SettingsFile().wstring();
     if (path.empty()) return;
-    gSettings.pick = GetPrivateProfileIntW(L"Galaxy", L"rayPick", 1, path.c_str()) != 0;
-    gSettings.scan = GetPrivateProfileIntW(L"Galaxy", L"rayScan", 1, path.c_str()) != 0;
+    gSettings.pick = mevr::vr::settings_file::Int(L"Galaxy", L"rayPick", 1, path.c_str()) != 0;
+    gSettings.scan = mevr::vr::settings_file::Int(L"Galaxy", L"rayScan", 1, path.c_str()) != 0;
 }
 
 std::string NameOf(ue3::Object* o) {

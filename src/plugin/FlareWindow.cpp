@@ -10,6 +10,7 @@
 #include "core/vr/FlareWindow.hpp"
 #include "engine/Addresses.hpp"
 #include "plugin/Renderer.hpp"
+#include "core/vr/SettingsFile.hpp"
 
 #include <Windows.h>
 
@@ -106,7 +107,7 @@ bool ReadEnabled() {
     bool enabled = true;
     std::wstring const& path = mevr::host::SettingsPath();
     if (!path.empty()) {
-        ini::File const file = ini::Read(std::filesystem::path(path)).file;
+        ini::File const file = mevr::vr::settings_file::Load(std::filesystem::path(path)).file;
         enabled = ini::GetNumber(file, "Stereo", "flareWindow").value_or(1.0) != 0.0;
     }
     wchar_t appData[MAX_PATH] = {};

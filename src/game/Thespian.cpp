@@ -715,7 +715,7 @@ void RefreshMode() {
         return;
     }
     gModeReadMs = now;
-    ini::Loaded const loaded = ini::Read(engine::SettingsFile());
+    ini::Loaded const loaded = vr::settings_file::Load(engine::SettingsFile());
     ModeSettings m;
     auto number = [&](char const* key, double fallback, double lo, double hi) {
         auto const v = ini::GetNumber(loaded.file, "Thespian", key);

@@ -572,7 +572,7 @@ void App::Refresh() {
     {
         fs::path const local = install::LocalDataDir();
         localText_ = local.empty() ? "Not found."
-                                   : detect::Utf8(local.wstring()) + ": your calibration (the three games share it), snapshots, recordings, "
+                                   : detect::Utf8(local.wstring()) + ": your settings and calibration (the three games share them), snapshots, recordings, "
                                      "frame-timing captures, crash reports, the downloaded Mass Effect Modder and texture-pack work files. "
                                      "Off: they stay.";
     }
@@ -1138,12 +1138,12 @@ void App::Act(std::string const& name, std::string const& arg) {
         }
         bool const keep = keepSettings_;
         bool const removeLocal = removeLocal_;
-        std::string text = keep ? "Removes the mod and its loader and puts back every file and game setting it changed. Your VR settings stay."
-                                : "Removes the mod and its loader, puts back every file and game setting it changed, and deletes this game's VR settings.";
+        std::string text = keep ? "Removes the mod and its loader and puts back every file and game setting it changed. This game's renderer profiles and old settings file stay."
+                                : "Removes the mod and its loader, puts back every file and game setting it changed, and deletes this game's renderer profiles and old settings file.";
         // The calibration is the player's, one file for the three games (research/25 section 17): only the box deletes it.
-        text += removeLocal ? " It also deletes your calibration (the three games share it) and the mod's diagnostics and downloads in "
+        text += removeLocal ? " It also deletes your settings and calibration (the three games share them) and the mod's diagnostics and downloads in "
                               "%LOCALAPPDATA%\\MEVR."
-                            : " Your calibration stays (the three games share it).";
+                            : " Your settings and calibration stay (the three games share them).";
         Confirm("Uninstall the VR mod?", text, "Uninstall", true, [this, layout, keep, removeLocal] {
             RunJob("Uninstalling", [this, layout, keep, removeLocal] { Apply(install::Uninstall(layout, keep, options_.exe, removeLocal)); });
         });
@@ -1664,8 +1664,8 @@ void App::Sample(std::string const& state) {
     }
     if (state == "confirm-uninstall") {
         Confirm("Uninstall the VR mod?",
-            "Removes the mod and its loader, puts back every file and game setting it changed, and deletes this game's VR settings. Your "
-            "calibration stays (the three games share it).",
+            "Removes the mod and its loader, puts back every file and game setting it changed, and deletes this game's renderer profiles and old settings file. Your "
+            "settings and calibration stay (the three games share them).",
             "Uninstall", true, {});
     }
     if (state == "confirm-pack") {

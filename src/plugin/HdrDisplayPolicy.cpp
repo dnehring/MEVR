@@ -7,6 +7,7 @@
 #include "plugin/Renderer.hpp"
 #include "core/Ini.hpp"
 #include "core/Log.hpp"
+#include "core/vr/SettingsFile.hpp"
 #include <dxgi1_6.h>
 #include <atomic>
 #include <string>
@@ -35,7 +36,7 @@ int Setting(bool moveOldDefault) {
         return kHdrDisplayDefault;
     }
     wchar_t text[32]{};
-    GetPrivateProfileStringW(L"Colour", L"hdrDisplay", L"", text, 32, path.c_str());
+    mevr::vr::settings_file::String(L"Colour", L"hdrDisplay", L"", text, 32, path.c_str());
     std::string narrow;
     for (wchar_t const c : text) {
         if (c == L'\0') {
@@ -48,13 +49,13 @@ int Setting(bool moveOldDefault) {
         return kHdrDisplayDefault;
     }
     int const want = *value > 0.5 ? 1 : (*value < -0.5 ? -1 : 0);
-    if (want != 0 || !moveOldDefault || GetPrivateProfileIntW(L"Colour", L"hdrDisplayMoved", 0, path.c_str()) != 0) {
+    if (want != 0 || !moveOldDefault || mevr::vr::settings_file::Int(L"Colour", L"hdrDisplayMoved", 0, path.c_str()) != 0) {
         return want;
     }
     static std::atomic<bool> moved{false};
     if (!moved.exchange(true)) {
-        WritePrivateProfileStringW(L"Colour", L"hdrDisplay", L"-1", path.c_str());
-        WritePrivateProfileStringW(L"Colour", L"hdrDisplayMoved", L"1", path.c_str());
+        mevr::vr::settings_file::Write(L"Colour", L"hdrDisplay", L"-1", path.c_str());
+        mevr::vr::settings_file::Write(L"Colour", L"hdrDisplayMoved", L"1", path.c_str());
         mevr::log::Info("hdr display: [Colour] hdrDisplay = 0 (the default before 2026-11-14) moved to -1 once: the game is "
                         "answered SDR on an HDR display; hdrDisplay = 0 again gives the display's own answer");
     }

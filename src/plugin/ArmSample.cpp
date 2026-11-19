@@ -6,6 +6,7 @@
 
 #include "core/Log.hpp"
 #include "plugin/Renderer.hpp"
+#include "core/vr/SettingsFile.hpp"
 
 #include <Windows.h>
 
@@ -19,7 +20,7 @@ namespace {
 bool Put(std::wstring const& path, wchar_t const* key, double value, int decimals) {
     std::string const text = std::format("{:.{}f}", value, decimals);
     std::wstring const wide(text.begin(), text.end());
-    return WritePrivateProfileStringW(L"Arms", key, wide.c_str(), path.c_str()) != 0;
+    return mevr::vr::settings_file::Write(L"Arms", key, wide.c_str(), path.c_str()) != 0;
 }
 
 } // namespace
@@ -31,7 +32,7 @@ void Write(XrVector3f const& l, XrVector3f const& r, XrVector3f const* head, cha
         return;
     }
     // The counter as the file has it now: the mod (or LE1's tab) may have raised it since.
-    long const request = static_cast<long>(GetPrivateProfileIntW(L"Arms", L"measureRequest", 0, path.c_str()));
+    long const request = static_cast<long>(mevr::vr::settings_file::Int(L"Arms", L"measureRequest", 0, path.c_str()));
     float const dx = r.x - l.x, dy = r.y - l.y, dz = r.z - l.z;
     float const span = std::sqrt(dx * dx + dy * dy + dz * dz);
     bool ok = Put(path, L"measureLeftX", l.x, 4) && Put(path, L"measureLeftY", l.y, 4) && Put(path, L"measureLeftZ", l.z, 4) &&

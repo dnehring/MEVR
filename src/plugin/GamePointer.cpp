@@ -35,6 +35,7 @@
 #include "core/vr/GamePointer.hpp"
 #include "core/vr/GuiEvents.hpp"
 #include "core/vr/OverlayPlacement.hpp"
+#include "core/vr/SettingsFile.hpp"
 
 #include <Windows.h>
 
@@ -210,7 +211,7 @@ bool KindWanted(PanelKind kind, Settings const& s) {
 
 float ReadFloat(wchar_t const* key, float fallback, std::wstring const& path) {
     wchar_t text[64] = {};
-    GetPrivateProfileStringW(L"Pointer", key, L"", text, static_cast<DWORD>(std::size(text)), path.c_str());
+    mevr::vr::settings_file::String(L"Pointer", key, L"", text, static_cast<DWORD>(std::size(text)), path.c_str());
     std::string narrow;
     for (wchar_t const* p = text; *p != L'\0' && *p < 128; ++p) {
         narrow.push_back(static_cast<char>(*p));
@@ -228,7 +229,7 @@ void RefreshSettings(std::uint64_t now) {
     std::wstring const& path = mevr::host::SettingsPath();
     if (!path.empty()) {
         auto readBool = [&](wchar_t const* key, bool fallback) {
-            return GetPrivateProfileIntW(L"Pointer", key, fallback ? 1 : 0, path.c_str()) != 0;
+            return mevr::vr::settings_file::Int(L"Pointer", key, fallback ? 1 : 0, path.c_str()) != 0;
         };
         s.gameMenus = readBool(L"gameMenus", s.gameMenus);
         s.flatCine = readBool(L"flatCine", s.flatCine);
@@ -247,7 +248,7 @@ void RefreshSettings(std::uint64_t now) {
         s.touchReleaseM = std::clamp(ReadFloat(L"touchReleaseM", s.touchReleaseM, path), s.touchPressM + 0.002f, 0.1f);
         s.gameCursor = readBool(L"gameCursor", s.gameCursor);
 #if !defined(MEVR_GAME_LE1)
-        s.galaxyMap = std::clamp(static_cast<int>(GetPrivateProfileIntW(L"Pointer", L"galaxyMap", s.galaxyMap, path.c_str())), -1, 2);
+        s.galaxyMap = std::clamp(static_cast<int>(mevr::vr::settings_file::Int(L"Pointer", L"galaxyMap", s.galaxyMap, path.c_str())), -1, 2);
 #endif
     }
     if (!gSettingsLogged || !(s == gSettings)) {

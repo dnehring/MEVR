@@ -7,6 +7,7 @@
 #include "core/WriteJournal.hpp"
 #include "engine/Addresses.hpp"
 #include "plugin/Renderer.hpp"
+#include "core/vr/SettingsFile.hpp"
 
 #include <Windows.h>
 
@@ -85,7 +86,7 @@ bool Verified(std::uint32_t rva) {
 
 bool Install(hook::Context& context) {
     if (gInstalled.load(std::memory_order_acquire)) return true;
-    if (GetPrivateProfileIntW(L"Performance", L"motionBlurGuard", 1,
+    if (mevr::vr::settings_file::Int(L"Performance", L"motionBlurGuard", 1,
                              mevr::host::SettingsPath().c_str()) == 0) {
         log::Info("motion blur guard: disabled at startup for diagnosis");
         return false;

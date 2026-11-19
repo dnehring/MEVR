@@ -16,6 +16,7 @@
 #endif
 #include "plugin/Colour.hpp"
 #include "plugin/Renderer.hpp"
+#include "core/vr/SettingsFile.hpp"
 
 #include <Windows.h>
 #include <d3d11.h>
@@ -62,8 +63,8 @@ void Tick() {
     wchar_t method[32]{};
     wchar_t sharpness[32]{};
     if (!path.empty()) {
-        GetPrivateProfileStringW(L"Upscale", L"method", L"fsr", method, 32, path.c_str());  // fsr by default since 2026-11-05
-        GetPrivateProfileStringW(L"Upscale", L"sharpness", L"0.9", sharpness, 32, path.c_str());
+        mevr::vr::settings_file::String(L"Upscale", L"method", L"fsr", method, 32, path.c_str());  // fsr by default since 2026-11-05
+        mevr::vr::settings_file::String(L"Upscale", L"sharpness", L"0.9", sharpness, 32, path.c_str());
     }
     std::string narrowMethod;
     for (wchar_t const* p = method; *p != L'\0'; ++p) {

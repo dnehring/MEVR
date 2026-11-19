@@ -24,6 +24,7 @@
 #include "halcyon/le1/mevr_bridge.h"
 #include "halcyon/le1/vr_config.h"
 #include "halcyon/le1/xr_session.h"
+#include "core/vr/SettingsFile.hpp"
 
 #include <Windows.h>
 
@@ -85,7 +86,7 @@ bool EarlyFrameWait() noexcept {
         // dropped and recovered. The PS VR2 needed the early wait to reach 90 (research/22, 2026-10-22).
         wchar_t text[16] = L"";
         if (!path.empty()) {
-            GetPrivateProfileStringW(L"Performance", L"earlyFrameWait", L"auto", text, static_cast<DWORD>(std::size(text)), path.c_str());
+            mevr::vr::settings_file::String(L"Performance", L"earlyFrameWait", L"auto", text, static_cast<DWORD>(std::size(text)), path.c_str());
         }
         bool const automatic = text[0] == L'\0' || _wcsicmp(text, L"auto") == 0;
         bool const streamed = mevr::host::colour::StreamedHeadset();

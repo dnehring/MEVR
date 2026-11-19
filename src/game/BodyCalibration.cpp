@@ -76,7 +76,7 @@ std::string Read(fs::path const& path, std::string const& section, char const* k
     std::wstring const s(section.begin(), section.end());
     std::string const k(key);
     std::wstring const wk(k.begin(), k.end());
-    GetPrivateProfileStringW(s.c_str(), wk.c_str(), L"", text, 256, path.wstring().c_str());
+    mevr::vr::settings_file::String(s.c_str(), wk.c_str(), L"", text, 256, path.wstring().c_str());
     std::string out;
     for (wchar_t const* c = text; *c != L'\0'; ++c) {
         out.push_back(*c < 128 ? static_cast<char>(*c) : '?');

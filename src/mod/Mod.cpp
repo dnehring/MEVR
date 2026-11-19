@@ -1700,7 +1700,7 @@ MEVR_MOD_API bool MevrModStartup(mevr::loader::spi::Interface* spi, mevr::HostSe
     }
     gEngineProbe = engine::DevelopmentEngineProbe();
     if (gEngineProbe) {
-        gEngineRequests = GetPrivateProfileIntW(L"Debug", L"engineProbeRequests", 0, engine::SettingsFile().c_str()) != 0;
+        gEngineRequests = mevr::vr::settings_file::Int(L"Debug", L"engineProbeRequests", 0, engine::SettingsFile().c_str()) != 0;
         gEngineProbePassed = false;
         gActive = true;
         log::Info("engine-probe: renderer and gameplay disabled; waiting for reflection");

@@ -203,20 +203,14 @@ void RefreshSettings() {
     }
     gSettingsAtMs = now;
     std::filesystem::path const path = engine::SettingsFile();
-    ini::Loaded const loaded = ini::Read(path);
+    ini::Loaded const loaded = vr::settings_file::Load(path);
     if (loaded.exists && loaded.file.find("Cover") == loaded.file.end() && !gTriedAppend) {
         gTriedAppend = true;
-        if (ini::IsUtf16(loaded.encoding)) {
-            log::Warn("vr cover: {} is saved as UTF-16: the [Cover] defaults aren't appended to it; they apply", ini::Utf8(path));
+        // core/vr/SettingsFile Append: in the file's own encoding, one move; a per-game key to this game's section.
+        if (std::string const error = vr::settings_file::Append(path, kBlock); error.empty()) {
+            log::Info("vr cover: added the [Cover] defaults to {}", ini::Utf8(path));
         } else {
-            std::ofstream out(path, std::ios::app);
-            out << kBlock;
-            out.close();
-            if (out) {
-                log::Info("vr cover: added the [Cover] defaults to {}", ini::Utf8(path));
-            } else {
-                log::Warn("vr cover: couldn't add the [Cover] defaults to {} (read-only?); they apply", ini::Utf8(path));
-            }
+            log::Warn("vr cover: couldn't add the [Cover] defaults to {} ({}); they apply", ini::Utf8(path), error);
         }
     }
     vc::Settings s;

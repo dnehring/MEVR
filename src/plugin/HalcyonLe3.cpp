@@ -43,7 +43,7 @@ void PinRuntime() {
     std::filesystem::path const settings = engine::SettingsFile();
     wchar_t manifest[1024] = {};
     if (!settings.empty() &&
-        GetPrivateProfileStringW(L"Debug", L"openxrRuntime", L"", manifest, 1024, settings.c_str()) > 0 && manifest[0] != 0) {
+        mevr::vr::settings_file::String(L"Debug", L"openxrRuntime", L"", manifest, 1024, settings.c_str()) > 0 && manifest[0] != 0) {
         if (GetFileAttributesW(manifest) != INVALID_FILE_ATTRIBUTES) {
             SetEnvironmentVariableW(L"XR_RUNTIME_JSON", manifest);
             log::Info("openxr runtime: this process uses the manifest [Debug] openxrRuntime names: {}",

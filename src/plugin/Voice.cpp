@@ -9,6 +9,8 @@
 #include "core/Window.hpp"
 #include "plugin/VoiceModel.hpp"
 #include "voice/VoiceApi.h"
+#include "core/vr/SettingsFile.hpp"
+#include "engine/SettingsFile.hpp"
 
 #include <Windows.h>
 
@@ -113,14 +115,14 @@ std::string Narrow(std::wstring const& w) {
 
 std::string ReadText(wchar_t const* key, char const* fallback) {
     wchar_t text[1024]{};
-    GetPrivateProfileStringW(L"Voice", key, L"", text, static_cast<DWORD>(std::size(text)), gSettingsPath.c_str());
+    mevr::vr::settings_file::String(L"Voice", key, L"", text, static_cast<DWORD>(std::size(text)), gSettingsPath.c_str());
     std::string const narrow = Narrow(text);
     return narrow.empty() ? std::string(fallback) : narrow;
 }
 
 double ReadNumber(wchar_t const* key, double fallback) {
     wchar_t text[64]{};
-    GetPrivateProfileStringW(L"Voice", key, L"", text, static_cast<DWORD>(std::size(text)), gSettingsPath.c_str());
+    mevr::vr::settings_file::String(L"Voice", key, L"", text, static_cast<DWORD>(std::size(text)), gSettingsPath.c_str());
     return ini::Number(Narrow(text)).value_or(fallback);  // never strtod (the C locale)
 }
 
@@ -145,9 +147,9 @@ void ReadSettings() {
         gSettings.model = "tiny";
     }
     wchar_t text[1024]{};
-    GetPrivateProfileStringW(L"Voice", L"modelDir", L"", text, static_cast<DWORD>(std::size(text)), gSettingsPath.c_str());
+    mevr::vr::settings_file::String(L"Voice", L"modelDir", L"", text, static_cast<DWORD>(std::size(text)), gSettingsPath.c_str());
     gSettings.modelDir = text;
-    GetPrivateProfileStringW(L"Voice", L"dll", L"", text, static_cast<DWORD>(std::size(text)), gSettingsPath.c_str());
+    mevr::vr::settings_file::String(L"Voice", L"dll", L"", text, static_cast<DWORD>(std::size(text)), gSettingsPath.c_str());
     gSettings.dll = text;
     gSettings.device = ReadText(L"device", "");
     gSettings.key = static_cast<int>(ReadNumber(L"key", 0.0));
@@ -409,7 +411,7 @@ void Init() {
         SetWhyOff("no settings file path");
         return;
     }
-    gAsiDir = fs::path(gSettingsPath).parent_path();
+    gAsiDir = mevr::engine::AsiDir();
     ReadSettings();
     Post(true, false, {});  // the worker reads them again and starts (or says why not)
 }

@@ -67,7 +67,7 @@ void RefreshSettings() {
         return;
     }
     gSettingsMs = now;
-    ini::Loaded const loaded = ini::Read(engine::SettingsFile());
+    ini::Loaded const loaded = vr::settings_file::Load(engine::SettingsFile());
     Settings s;
     if (auto const text = ini::Get(loaded.file, "Audio", "overheard")) {
         s.overheard = sp::ParseOnOff(*text, s.overheard);

@@ -131,6 +131,8 @@ std::vector<IniDefault> const& ModIniDefaults();
 std::vector<SettingDiff> DiffModIni(std::string_view text);
 // The same for a sequel's <key>MEVR.ini, named so in each row ("ME2 continues ME1": the defaults are Mass Effect 1's).
 std::vector<SettingDiff> DiffModIni(std::string_view text, GameId game);
+// The same over the three games' settings.ini (research/25 section 20): what `game` reads, its [<section>.<GAME>] first.
+std::vector<SettingDiff> DiffSharedSettings(std::string_view text, GameId game);
 // MELEVR.ini's active profile against the first profile of `templateText` (the release file the setup installs,
 // ini::HalcyonReleaseIni): only the template's keys.
 std::vector<SettingDiff> DiffHalcyonIni(std::string_view text, std::string_view templateText);

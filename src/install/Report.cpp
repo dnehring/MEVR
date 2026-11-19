@@ -874,6 +874,24 @@ std::vector<SettingDiff> DiffModIni(std::string_view text, GameId game) {
     return out;
 }
 
+std::vector<SettingDiff> DiffSharedSettings(std::string_view text, GameId game) {
+    // The three games' settings.ini (research/25 section 20): this game's [<section>.<GAME>] first, then [<section>].
+    std::string const key = Spec(game).key;
+    std::vector<SettingDiff> out;
+    for (IniDefault const& d : ModIniDefaults()) {
+        std::string const own = std::string(d.section) + "." + key;
+        auto v = ini::Get(text, own, d.key);
+        std::string const section = v ? own : std::string(d.section);
+        if (!v) {
+            v = ini::Get(text, d.section, d.key);
+        }
+        if (v && !SameValue(*v, d.value)) {
+            out.push_back({"settings.ini", section, d.key, *v, d.value});
+        }
+    }
+    return out;
+}
+
 std::vector<SettingDiff> DiffHalcyonIni(std::string_view text, std::string_view templateText) {
     std::vector<SettingDiff> out;
     std::string templateSection;
@@ -1295,6 +1313,11 @@ Bundle Collect(Options const& options, Redactor const& redactor) {
     if (std::error_code exists; fs::exists(local / L"calibration.ini", exists)) {
         addFile("settings/calibration.ini", {local / L"calibration.ini"}, 0, 0);
     }
+    // The settings, one file for the three games since 2026-11-18 (research/25 section 20); the game's old file still comes
+    // too (an older build's, and what is changed in it applies to that game).
+    if (std::error_code exists; fs::exists(local / L"settings.ini", exists)) {
+        addFile("settings/settings.ini", {local / L"settings.ini"}, 0, 0);
+    }
     if (game) {
         addFile(modIniName, {layout.Full(p.modIni)}, 0, 0);
         addFile(rendererIniName, {layout.Full(p.rendererIni)}, 0, 0);
@@ -1386,7 +1409,8 @@ Bundle Collect(Options const& options, Redactor const& redactor) {
         b.crash.stale = crashTime && prevTime && *crashTime + 60s < *prevTime;
     }
     b.facts = ReadLogFacts(text(modLogName).empty() ? text(modPrevLogName) : text(modLogName), halcyonSession);
-    b.diffs = DiffModIni(text(modIniName), options.game);
+    b.diffs = !text("settings/settings.ini").empty() ? DiffSharedSettings(text("settings/settings.ini"), options.game)
+                                                     : DiffModIni(text(modIniName), options.game);
     if (options.game == GameId::LE1) {  // the sequels' renderer keeps another file ([VR] keys, no profiles): in the zip as it is
         for (SettingDiff& d : DiffHalcyonIni(text("settings/MELEVR.ini"), ini::HalcyonReleaseIni())) {
             if (!text("settings/MELEVR.ini").empty()) {

@@ -12,6 +12,7 @@
 #include "plugin/TestLoop.hpp"
 #include "plugin/Swapchains.hpp"
 #include "plugin/menu/StateGuard.hpp"
+#include "engine/SettingsFile.hpp"
 
 #include <Windows.h>
 #include <d3d11.h>
@@ -175,7 +176,7 @@ bool EnsureRenderer(ID3D11Device* device) {
     std::filesystem::path font;
     std::wstring const& settings = mevr::host::SettingsPath();
     if (!settings.empty()) {
-        font = std::filesystem::path(settings).parent_path() / L"fonts" / L"Rajdhani-SemiBold.ttf";
+        font = mevr::engine::AsiDir() / L"fonts" / L"Rajdhani-SemiBold.ttf";
     }
     std::string error;
     bool const ok = gRenderer.Init(device, font, &error);
