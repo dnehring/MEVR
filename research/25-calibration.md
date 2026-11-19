@@ -694,6 +694,13 @@ same pose unchanged (it reads the same numbers from the new file).
 
 ## 18. The hands in the palm's plane; the hands under Advanced calibration (2026-11-17)
 
+**Reverted 2026-11-18 (the owner): the palm-plane change below is no longer in the code.** It took the tilt out of the
+saved trims and the solve, but the owner's headset test showed the hands still turning inward when the wrists turn in: the
+remaining fault is where the open hand is placed against the handle (the wrist 7 cm straight behind the grip, the hand opened
+from there, so the handle's centre lies on the hand's outer edge; snapshots 2026-11-18 19:47:28 and 19:48:57 with the
+controllers marked). A calibration saved between 2026-11-18 19:36 and the revert (the owner's 20:04 run) was solved without
+the tilt. The hands under Advanced calibration and the named live-adjust refusals stay.
+
 **The owner's report:** with the controllers held flat Shepard's hands matched, held upright both hands turned in toward
 his body. The snapshots of 2026-11-17 22:35 and 22:49 (Quest 3 over Virtual Desktop) measured the drawn wrists 7-9 cm from
 the grips (`mod.armIk.hands.fromGripM`), the wrist offset as built, so the place was right and the hands' direction wrong.

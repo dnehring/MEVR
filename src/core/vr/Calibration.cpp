@@ -519,12 +519,7 @@ std::optional<XrVector3f> FingersInGrip(XrQuaternionf const& grip, XrVector3f co
 
 XrQuaternionf NeutralHandTrim(XrVector3f const& fingersInGrip, XrQuaternionf const& base) {
     V const from = From(Rotate(Normalize(base), {0.0f, 0.0f, -1.0f}));
-    V inPlane = From(fingersInGrip);
-    inPlane.x = 0.0;  // the palm's normal: no straight wrist points the fingers along it
-    if (std::abs(inPlane.y) + std::abs(inPlane.z) < 1e-4) {
-        return Normalize(base);
-    }
-    auto const to = Unit(inPlane);
+    auto const to = Unit(From(fingersInGrip));
     if (!to) {
         return Normalize(base);
     }
@@ -539,15 +534,6 @@ XrQuaternionf NeutralHandTrim(XrVector3f const& fingersInGrip, XrQuaternionf con
         turn = Normalize({static_cast<float>(c.x), static_cast<float>(c.y), static_cast<float>(c.z), static_cast<float>(1.0 + d)});
     }
     return Normalize(Multiply(turn, Normalize(base)));
-}
-
-XrQuaternionf PalmPlaneHandTrim(XrQuaternionf const& saved, float* removedDeg) {
-    XrVector3f const fingers = Rotate(Normalize(saved), {0.0f, 0.0f, -1.0f});
-    XrQuaternionf const fixed = NeutralHandTrim(fingers, DefaultHandFrame());
-    if (removedDeg != nullptr) {
-        *removedDeg = DirectionAngleDeg(fingers, Rotate(fixed, {0.0f, 0.0f, -1.0f}));
-    }
-    return fixed;
 }
 
 XrVector3f ShoulderPoint(XrVector3f const& head, XrVector3f const& right, float shoulderWidth, float shoulderHeight, int side) {

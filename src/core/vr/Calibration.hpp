@@ -200,15 +200,8 @@ std::optional<float> ArmLength(float tPoseSpan, float shoulderWidth);
 XrQuaternionf DefaultHandFrame();
 // The arm's direction in the grip's own axes (unit); nullopt for a zero arm.
 std::optional<XrVector3f> FingersInGrip(XrQuaternionf const& grip, XrVector3f const& shoulderToGrip);
-// `base` turned the least way so its fingers point along `fingersInGrip` as seen in the palm's plane (research/25 section 18,
-// 2026-11-17): the grip's X is the palm's normal, and a straight wrist can't point the fingers out of that plane, so the
-// measured direction's X is dropped first. A Quest 3 calibration measured 29 degrees toward the palm (the arm's line is not
-// the hand's): rolled flat the fingers dipped unseen, held upright both hands swung 30 degrees inward. A direction along the
-// palm's normal alone (no plane part) leaves `base` as it is.
+// `base` turned the least way so its fingers point along `fingersInGrip`.
 XrQuaternionf NeutralHandTrim(XrVector3f const& fingersInGrip, XrQuaternionf const& base);
-// A saved neutral trim brought into the palm's plane: the default hand frame turned onto the trim's fingers without their
-// tilt toward or away from the palm (calibrations saved before 2026-11-17 kept it). Also the angle removed, in degrees.
-XrQuaternionf PalmPlaneHandTrim(XrQuaternionf const& saved, float* removedDeg = nullptr);
 // A shoulder for the neutral trim: the T pose's grip height (the arms along the shoulder line), above the head's floor
 // position, half the shoulder width to the side (`right` horizontal, unit; `side` 0 left, 1 right).
 XrVector3f ShoulderPoint(XrVector3f const& head, XrVector3f const& right, float shoulderWidth, float shoulderHeight, int side);

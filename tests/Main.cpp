@@ -10555,26 +10555,7 @@ void TestCalibration() {
             CHECK(cal::DirectionAngleDeg(cal::Rotate(grip, *fingers), arm) < 0.01f);
             XrQuaternionf const neutral = cal::NeutralHandTrim(*fingers, base);
             XrQuaternionf const hand = cal::Normalize(cal::Multiply(grip, neutral));
-            // The fingers along the arm as seen in the palm's plane (the grip's y-z plane; 2026-11-17).
-            XrVector3f const inPlane{0.0f, fingers->y, fingers->z};
-            CHECK(cal::DirectionAngleDeg(cal::Rotate(hand, {0, 0, -1}), cal::Rotate(grip, inPlane)) < 0.01f);
-            CHECK(std::abs(cal::Rotate(neutral, {0, 0, -1}).x) < 1e-5f);
-        }
-        // The palm's plane (research/25 section 18, 2026-11-17): a measured direction tilted 29 degrees toward the palm (the
-        // Quest 3 calibration that turned both upright hands inward) gives the same trim as its untilted direction, and a saved
-        // trim with that tilt comes back into the plane with the tilt reported.
-        {
-            float const tilt = 0.5061455f;  // 29 degrees
-            XrVector3f const leaning{std::sin(tilt), -std::cos(tilt) * 0.97f, -std::cos(tilt) * 0.243f};
-            XrVector3f const flat{0.0f, leaning.y, leaning.z};
-            CHECK(cal::AngleDeg(cal::NeutralHandTrim(leaning, base), cal::NeutralHandTrim(flat, base)) < 0.1f);
-            XrQuaternionf const quest3Left{-0.639280f, -0.173701f, 0.173701f, 0.728682f};  // as saved on 2026-11-07
-            float removed = 0.0f;
-            XrQuaternionf const fixed = cal::PalmPlaneHandTrim(quest3Left, &removed);
-            CHECK(std::abs(cal::Rotate(fixed, {0, 0, -1}).x) < 1e-5f);
-            CHECK(removed > 25.0f && removed < 33.0f);
-            CHECK(cal::AngleDeg(cal::PalmPlaneHandTrim(base), base) < 0.1f);  // the default is already in the plane
-            CHECK(cal::AngleDeg(cal::NeutralHandTrim({1.0f, 0.0f, 0.0f}, base), base) < 0.1f);  // along the normal alone: unchanged
+            CHECK(cal::DirectionAngleDeg(cal::Rotate(hand, {0, 0, -1}), arm) < 0.01f);  // the fingers along the arm
         }
         // Fingers measured 30 degrees from the default's, tilted forward: the trim turns 30 degrees, the thumb side tilts with
         // the fingers in their common plane and gains no roll.
