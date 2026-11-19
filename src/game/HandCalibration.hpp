@@ -411,9 +411,10 @@ SquadContext GetSquadContext();
 // [SquadOrders] (research/54, game/SquadOrders): the flat squad orders by gesture. enabled; gesture: the left-grip gesture
 // (0: `mevr order` only); followWithinM: a point this close to Shepard is "on me"; enemyConeDeg / memberConeDeg: the
 // ray within this of an enemy / a squadmate picks it; minHoldS: a shorter squeeze is a blip; maxHoldS: held longer, called off.
+// gesture is off by default since 2026-11-18 (the owner: the squad moves only by the right hand's B arc, squad placement).
 struct SquadOrders {
     bool enabled = true;
-    bool gesture = true;
+    bool gesture = false;
     double followWithinM = 2.0;
     double enemyConeDeg = 8.0;
     double memberConeDeg = 12.0;

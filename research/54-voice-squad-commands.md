@@ -1098,3 +1098,13 @@ never true there). The sequels now read the flag the game keeps for its own comb
 console combat fixture (`me3-combat.ps1`), where the game's own `SFXGRI.InCombat()` (the Leave entry's log) said false too:
 the map opened by console doesn't start the game's combat state. **Not seen:** the flag true in a real fight, and a standing
 order ending when it falls.
+
+## The left-grip gesture off by default (2026-11-18)
+
+The owner, on ME2 in the headset: squadmates moved to places they hadn't been sent; "squad mates only move when we use our
+menu on the right stick". ME2's log of that run (`Game\ME2\Binaries\Win64\Logs\LE2MEVR.log`, 20:35-20:51) had
+`squad orders: let go on the ground 8.8 m away` ten times: the flat orders' left-grip gesture (a squeeze nothing else claimed,
+let go on the ground farther than `followWithinM`) giving a move. `[SquadOrders] gesture` defaults to 0 on every game since
+then (`game/HandCalibration`: the block, `SquadOrders::gesture`, and a one-time move of an old file's 1 to 0, marker
+`gestureOffMoved`, written only after the change succeeded). Squad placement by the right hand's B arc, the voice orders
+(the left grip at the ear and speech) and `mevr order` are unchanged.
