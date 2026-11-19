@@ -863,6 +863,23 @@ stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs 
   its HUD isn't drawn narrower); both sharp and smooth, ME2's HUD, menus, wheel and room screens whole. (ME2's 16:9 against
   4:3 was settled on the fake headset by lane AU9: 16:9; research/le3-flares-and-window.md section 6.1.)
 
+### Tonight's fixes and ME2's hacking games (2026-11-18, session "VR mod for Mass Effect Legendary Edition")
+
+- [ ] Squad moves only by the B arc (b3b7f95a, every game): in a fight on ME1, ME2 and ME3, squeeze and release the left grip
+  anywhere away from the gun while pointing at the ground: nobody moves. Then place the squad with the right hand's B arc
+  and call them back with a double B: they go and come back. The log has no `squad orders: let go on the ground` lines any
+  more.
+- [ ] ME2's bypass and hacking minigames by the right fingertip on the left-wrist screen (the owner's choice, 2026-11-18; not
+  fixed yet: this run diagnoses it). Freedom's Progress has a bypass panel at the Vorcha (`BioD_ProFre_200Vorcha`
+  `SFXPointOfInterest_0`). Open it, then: hover the right index fingertip over a node without touching (does the node reveal
+  its symbol, and does it reveal the node under the fingertip or one beside it?), press a node (does it select?), and try the
+  right controller's ray and trigger the same way. Note how far off the highlight is from the fingertip, in which direction,
+  and how late it follows. Take a snapshot (both sticks tapped) with the fingertip on a node. Do the same at a hacking
+  (decryption) panel if one is near. What Claude reads afterwards: the log's `game pointer:` lines (the screen's size at
+  opening read 0.42 x 0.00 m on 2026-11-18, then 1,174 mouse moves at the window's right edge and 0 clicks), whether any
+  `gui cursor:` line appears (the game's own mouse route; none on 2026-11-18, only window messages), and the snapshot's
+  `gamePointer` and `mod.guiCursor`.
+
 ### The sequels' eye distance, an A/B (lane AU9, 2026-11-18; research/38 "The sequels' eye distance, an A/B")
 
 The owner: "Need to validate in headset, whatever gets us closest to feeling like we are attached to the body." Today's eye
