@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""Writes a synthetic .mevrrec (src/core/vr/PoseRecording.hpp v1, see tools/mevrrec.py) of a player standing still in the
+"""Writes a synthetic .mevrrec (src/core/vr/PoseRecording.hpp v1, v2 with --stand-eye; see tools/mevrrec.py) of a player standing still in the
 room and walking Shepard with the left stick: forward, strafing right, backing up, strafing left, then standing, each for
 `segment` seconds, in a loop. The head looks ahead (or turned --yaw degrees in the room, as after turning in place) and
 can look down (--pitch) so the eye snapshots show the legs; both hands are held in front of the chest (--hands view: up in
@@ -9,13 +9,19 @@ keeping the run (research/29 "The legs keep the run"): replay it with its inputs
 
     python tools/make-walk-recording.py out.mevrrec [segment] [hz] [--yaw DEG] [--pitch DEG] [--eye-height M] [--stick S] [--grip]
         [--plan forward:14,stand:600] [--hands chest|view] [--hand-yaw DEG] [--fire EVERY[:HOLD]] [--crouch-drop M]
-        [--lean-drop M] [--lean-forward M]
+        [--lean-drop M] [--lean-forward M] [--reach-drop M] [--reach-forward M] [--reach-hand AHEAD,DOWN]
+        [--stand-eye M] [--ease S]
         [--tracking both|left|right|none]
     tools/replay.ps1 -Path out.mevrrec -Loop -Inputs
 
 segment: seconds per stick direction (default 3). --yaw: the head (and the hands) turned DEG degrees right in the room.
 --pitch: the head pitched DEG degrees (+ up; -60 shows the legs). --eye-height: the head's height in tracking space
-(default 0 relative to the recentered head; the null headset's STAGE height is separately 1.7526 m). --stick: the stick's deflection (default 0.9, a run: above the
+(default 0 relative to the recentered head). The eyes' height over the floor follows the replayed head (since
+2026-11-19, research/le2-vrik.md "The replay STAGE-eye gap"): without --stand-eye the live floor sample (the null headset's
+STAGE height, 1.7526 m) moved by the replayed head's height over the live head's; --stand-eye M writes a v2 recording whose
+frames carry their own floor sample, M standing plus the head's drop (the owner's calibrated standEyeM, so a posture check
+runs at the owner's real height and thresholds). --ease: each segment's head and hand offsets (a crouch, lean, reach)
+blended in over S seconds from the one before (smoothstep; default 0: a step, as before). --stick: the stick's deflection (default 0.9, a run: above the
 game's 0.70). --grip: the right grip held all the way (a gun drawn with `mevr weapon pistol` stays in the hand). --plan: the
 segments by name and seconds instead of the loop of five (forward, strafe right, back, strafe left, stand): `stand:600` is a
 player standing with tracked hands (an audit run's hands, tools/conversation-audit.ps1); `forward:14,stand:600` one who walks
@@ -35,6 +41,10 @@ segment holds the stick still with the head (and the hands) --crouch-drop metres
 crouchBelow's 0.75 of a 1.65 m standing eye height), the physical crouch's check (research/23 section 7):
 `--plan stand:8,crouch:4,stand:8`. A `lean` segment holds the head (and the hands) --lean-drop metres lower (default 0.17)
 and --lean-forward metres ahead (default 0.35): a reach toward someone, not a crouch (research/23 "A lean is not a crouch").
+A `reach` segment is the owner's reach toward someone (the one that crouched Shepard before [Hands] crouchMinDropM and
+crouchLeanRatio, 2026-11-18): the head --reach-drop metres lower (default 0.18) and --reach-forward ahead (default 0.33), the
+left hand moving with it, the right hand stretched out to a person's chest, --reach-hand AHEAD,DOWN metres from the standing
+eyes (default 0.80,0.48), pointing ahead 10 degrees down.
 The plan also accepts `l3` (the left stick click: the crouch toggle on foot), `back-button` (left menu with left grip, mapped to pad Back), `start-button` (left menu alone:
 pad Start, the game's own pause menu), `r3` (right stick click), `x` (the left primary: pad X; ME3's system map binds
 Exit to it) and `b` (the right secondary: pad B; ME3's orbit backs out with it). For ME2/ME3's existing Back double-tap recenter use
@@ -65,12 +75,16 @@ MAGIC = b"MEVRREC\0"
 HEADER = struct.Struct("<8sIIIIq")
 POSE = "7f"
 FRAME = struct.Struct("<qI" + (POSE + "4f") * 2 + ("I4f" + POSE + POSE) * 2)
+# Version 2 (--stand-eye): each frame then ends with its floor sample, u32 flags (bit 0 valid, bits 1-2 the source: 1 STAGE)
+# and f32 the eyes' height over the floor.
+FLOOR = struct.Struct("<If")
+FLOOR_STAGE = 1 | (1 << 1)
 
 # The left stick per segment (x right, y forward).
 SEGMENTS = [("forward", 0.0, 1.0), ("strafe right", 1.0, 0.0), ("back", 0.0, -1.0), ("strafe left", -1.0, 0.0),
             ("stand", 0.0, 0.0)]
 # Plan-only segments (not in the default loop): the head lowered, the stick still.
-EXTRA = [("crouch", 0.0, 0.0), ("lean", 0.0, 0.0), ("a", 0.0, 0.0), ("sprint", 0.0, 1.0),
+EXTRA = [("crouch", 0.0, 0.0), ("lean", 0.0, 0.0), ("reach", 0.0, 0.0), ("a", 0.0, 0.0), ("sprint", 0.0, 1.0),
          ("back-button", 0.0, 0.0), ("start-button", 0.0, 0.0), ("r3", 0.0, 0.0), ("l3", 0.0, 0.0), ("x", 0.0, 0.0),
          ("b", 0.0, 0.0)]
 
@@ -88,6 +102,20 @@ def head_orientation(yaw_deg, pitch_deg):
 
 def option(name, default):
     return float(sys.argv[sys.argv.index(name) + 1]) if name in sys.argv else default
+
+
+def nlerp(a, b, w):
+    """Normalized lerp of two xyzw quaternions along the shorter arc."""
+    if sum(x * y for x, y in zip(a, b)) < 0:
+        b = tuple(-x for x in b)
+    q = tuple(x + (y - x) * w for x, y in zip(a, b))
+    n = math.sqrt(sum(x * x for x in q))
+    return tuple(x / n for x in q) if n > 1e-9 else a
+
+
+def smoothstep(x):
+    x = min(max(x, 0.0), 1.0)
+    return x * x * (3.0 - 2.0 * x)
 
 
 def main():
@@ -109,11 +137,18 @@ def main():
     crouch_drop = option("--crouch-drop", 0.6)
     lean_drop = option("--lean-drop", 0.17)
     lean_forward = option("--lean-forward", 0.35)
+    reach_drop = option("--reach-drop", 0.18)
+    reach_forward = option("--reach-forward", 0.33)
+    reach_hand_text = sys.argv[sys.argv.index("--reach-hand") + 1] if "--reach-hand" in sys.argv else "0.80,0.48"
+    reach_hand_ahead, reach_hand_down = (float(v) for v in reach_hand_text.split(","))
+    stand_eye = option("--stand-eye", 0.0)
+    ease = option("--ease", 0.0)
     if hands not in ("chest", "view"):
         print("--hands chest|view")
         return 2
     taken = {i + 1 for i, a in enumerate(sys.argv) if a in ("--yaw", "--pitch", "--eye-height", "--stick", "--plan", "--hands", "--hand-yaw", "--fire",
-                                                             "--crouch-drop", "--lean-drop", "--lean-forward", "--tracking")}
+                                                             "--crouch-drop", "--lean-drop", "--lean-forward", "--tracking",
+                                                             "--reach-drop", "--reach-forward", "--reach-hand", "--stand-eye", "--ease")}
     args = [a for i, a in enumerate(sys.argv) if i > 0 and not a.startswith("--") and i not in taken]
     if not args:
         print(__doc__)
@@ -136,6 +171,8 @@ def main():
     side_m, down, ahead_m = (0.09, 0.08, 0.25) if hands == "view" else (0.15, 0.35, 0.30)
     left_hand = (*hand_q, *at(-side_m, -down, ahead_m))
     right_hand = (*head_orientation(yaw + hand_yaw, 0.0), *at(side_m, -down, ahead_m))
+    # A reach's right hand: stretched out to a person's chest, from the standing eyes (not moved with the head).
+    reach_hand = (*head_orientation(yaw + hand_yaw, -10.0), *at(side_m, -reach_hand_down, reach_hand_ahead))
     valid = (1 << 4) | (1 << 5)  # gripValid, aimValid
     by_name = {name: (name, sx, sy) for name, sx, sy in SEGMENTS + EXTRA + [("lt", 0.0, 0.0), ("rt", 0.0, 0.0)]}
 
@@ -161,21 +198,36 @@ def main():
         steps = [(segment_of(name), float(seconds)) for name, seconds in (part.rsplit(":", 1) for part in plan_text.split(","))]
     else:
         steps = [(seg, segment) for seg in SEGMENTS]
-    frames = []  # the segment of each frame
-    for seg, seconds in steps:
-        frames += [seg] * int(seconds * hz)
+    def offsets(parts):
+        """A segment's head offset (metres down as a negative dy, df ahead) and its reach weight (the right hand out)."""
+        if "crouch" in parts:
+            return -crouch_drop, 0.0, 0.0
+        if "lean" in parts:
+            return -lean_drop, lean_forward, 0.0
+        if "reach" in parts:
+            return -reach_drop, reach_forward, 1.0
+        return 0.0, 0.0, 0.0
+
+    frames = []  # the segment of each frame, its index in the plan and the seconds since it began
+    for k, (seg, seconds) in enumerate(steps):
+        frames += [(seg, k, j / hz) for j in range(int(seconds * hz))]
     n = len(frames)
+    floor_payload = stand_eye > 0.0
+    frame_size = FRAME.size + (FLOOR.size if floor_payload else 0)
     with open(out, "wb") as f:
-        f.write(HEADER.pack(MAGIC, 1, HEADER.size, FRAME.size, 0, int(time.time() * 1000)))
+        f.write(HEADER.pack(MAGIC, 2 if floor_payload else 1, HEADER.size, frame_size, 0, int(time.time() * 1000)))
         for i in range(n):
             t = i / hz
-            name, sx, sy = frames[i]
+            (name, sx, sy), k, since = frames[i]
             parts = set(name.split("+"))
             trigger = 1.0 if (fire_every > 0 and t >= 2.0 and (t - 2.0) % fire_every < fire_hold) or "rt" in parts else 0.0
-            dy = -crouch_drop if "crouch" in parts else -lean_drop if "lean" in parts else 0.0
-            df = lean_forward if "lean" in parts else 0.0
+            dy, df, w = offsets(parts)
+            if ease > 0.0 and k > 0 and since < ease:  # blended in from the segment before
+                py, pf, pw = offsets(set(steps[k - 1][0][0].split("+")))
+                s = smoothstep(since / ease)
+                dy, df, w = py + (dy - py) * s, pf + (df - pf) * s, pw + (w - pw) * s
 
-            def lowered(pose):  # xyzw then xyz: the position's y lowered by dy, moved df ahead (a lean)
+            def lowered(pose):  # xyzw then xyz: the position's y lowered by dy, moved df ahead (a lean, a reach)
                 return (*pose[:4], pose[4] + df * ahead[0], pose[5] + dy, pose[6] + df * ahead[2])
 
             seg_grip = grip if grip else (1.0 if "grip" in parts else 0.0)
@@ -189,6 +241,8 @@ def main():
                     aim_pitch = float(fields[2]) if len(fields) > 2 else 0.0
                     hand = (*head_orientation(yaw + hand_yaw + float(fields[1]), aim_pitch), *right_hand[4:])
             e0, e1, lh, rh = lowered(eyes[0]), lowered(eyes[1]), lowered(left_hand), lowered(hand)
+            if w > 0.0:  # the right hand out toward the person
+                rh = (*nlerp(rh[:4], reach_hand[:4], w), *(a + (b - a) * w for a, b in zip(rh[4:], reach_hand[4:])))
             flags = (0 if live_head else 1) | (0 if tracking == "none" else 2)
             f.write(FRAME.pack(int(t * 1e9), flags, *e0, *fov, *e1, *fov,
                                (valid if tracking in ("both", "left") else 0) | (8 if parts & {"back-button", "start-button"} else 0) | (2 if "x" in parts else 0)
@@ -197,11 +251,15 @@ def main():
                                1.0 if "back-button" in parts else 0.0, sx * stick, sy * stick, *lh, *lh,
                                (valid if tracking in ("both", "right") else 0) | (2 if parts & {"a", "sprint"} else 0) | (1 if "r3" in parts else 0) | (4 if "b" in parts else 0),
                                trigger, seg_grip, turn_x, 0.0, *rh, *rh))
+            if floor_payload:  # the eyes over the floor: standing plus this frame's drop
+                f.write(FLOOR.pack(FLOOR_STAGE, stand_eye + dy))
     starts = [sum(seconds for _, seconds in steps[:k]) for k in range(len(steps))]
     plan = ", ".join(f"{seg[0]} {start:g}-{start + seconds:g} s" for (seg, seconds), start in zip(steps, starts))
     print(f"{out}: {n} frames at {hz:g} Hz: {plan}; head yaw {yaw:g}, pitch {pitch:g}, stick {stick:g}, hands {hands}"
           f"; tracking {tracking}{', live runtime head' if live_head else ''}{', right grip held' if grip else ''}{f', right hand turned {hand_yaw:g}' if hand_yaw else ''}"
-          f"{f', trigger {fire_hold:g} s every {fire_every:g} s' if fire_every else ''}")
+          f"{f', trigger {fire_hold:g} s every {fire_every:g} s' if fire_every else ''}"
+          f"{f', eyes {stand_eye:g} m over the floor standing (v2 floor samples)' if floor_payload else ''}"
+          f"{f', segments eased in over {ease:g} s' if ease > 0 else ''}")
     return 0
 
 

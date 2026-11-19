@@ -12207,6 +12207,8 @@ int RunBodyScaleTests();
 int RunEyesInBodyTests();
 // tests/CrouchAnchorTests.cpp: the crouch that went third person (core/ik/BodyFollow's FirstPersonAnchor, research/29).
 int RunCrouchAnchorTests();
+// tests/ReplayFloorTests.cpp: a replay drives the floor sample (vr::recording::ReplayedFloor, the format's version 2).
+int RunReplayFloorTests();
 int RunBodySlotsSeatedTests();
 int RunBodySlotsSmgTests();
 int RunFloorLockTests();
@@ -12452,6 +12454,7 @@ int main() {
     gFailures += RunBodyScaleTests();
     gFailures += RunEyesInBodyTests();
     gFailures += RunCrouchAnchorTests();
+    gFailures += RunReplayFloorTests();
     gFailures += RunBodySlotsSeatedTests();
     gFailures += RunBodySlotsSmgTests();
     gFailures += RunFloorLockTests();

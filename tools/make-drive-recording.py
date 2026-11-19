@@ -66,7 +66,7 @@ def hands_from(path):
     with open(path, "rb") as f:
         data = f.read()
     magic, _, header_size, frame_size, _, _ = HEADER.unpack_from(data, 0)
-    if magic != MAGIC or frame_size != FRAME.size:
+    if magic != MAGIC or frame_size < FRAME.size:  # version 2's frames carry a floor sample after the v1 fields
         raise SystemExit(f"{path}: not a pose recording of this layout")
     sums = [[0.0] * 4, [0.0] * 4]
     for at in range(header_size, len(data) - frame_size + 1, frame_size):

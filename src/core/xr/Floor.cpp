@@ -104,4 +104,18 @@ std::optional<float> FloorSpace::EyeHeight(XrTime time) const {
     return location.pose.position.y;
 }
 
+std::optional<float> FloorSpace::HeadHeightIn(XrSpace space, XrTime time) const {
+    if (view_ == XR_NULL_HANDLE || space == XR_NULL_HANDLE || time <= 0) {
+        return std::nullopt;
+    }
+    XrSpaceLocation location{XR_TYPE_SPACE_LOCATION};
+    if (XR_FAILED(xrLocateSpace(view_, space, time, &location))) {
+        return std::nullopt;
+    }
+    if ((location.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT) == 0) {
+        return std::nullopt;
+    }
+    return location.pose.position.y;
+}
+
 } // namespace mevr::xr

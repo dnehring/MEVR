@@ -25,6 +25,11 @@ constexpr std::uint32_t kThumbTouch = 1u << 7;
 constexpr std::uint32_t kTriggerTouchKnown = 1u << 8;
 constexpr std::uint32_t kThumbTouchKnown = 1u << 9;
 
+// Version 2's floor flags: bit 0 valid, bits 1-2 the source.
+constexpr std::uint32_t kFloorValid = 1u << 0;
+constexpr unsigned kFloorSourceShift = 1;
+constexpr std::uint32_t kFloorSourceMask = 3u;
+
 // Little-endian on every Windows target; memcpy keeps it alignment-safe.
 template <typename T>
 void Put(std::vector<std::uint8_t>& out, T value) {
@@ -131,6 +136,10 @@ void EncodeHeader(std::int64_t createdUnixMs, std::vector<std::uint8_t>& out) {
 }
 
 void EncodeFrame(Frame const& frame, std::vector<std::uint8_t>& out) {
+    EncodeFrame(frame, FloorSample{}, out);
+}
+
+void EncodeFrame(Frame const& frame, FloorSample const& floor, std::vector<std::uint8_t>& out) {
     Put(out, frame.timeNs);
     std::uint32_t const flags = (frame.headValid ? kHeadValid : 0u) | (frame.controllersActive ? kControllersActive : 0u);
     Put(out, flags);
@@ -154,6 +163,10 @@ void EncodeFrame(Frame const& frame, std::vector<std::uint8_t>& out) {
         PutPose(out, hand.grip);
         PutPose(out, hand.aim);
     }
+    std::uint32_t const floorFlags = (floor.valid ? kFloorValid : 0u) |
+        ((static_cast<std::uint32_t>(floor.source) & kFloorSourceMask) << kFloorSourceShift);
+    Put(out, floorFlags);
+    Put(out, floor.eyeHeight);
 }
 
 bool Decode(std::uint8_t const* data, std::size_t size, Recording& out, std::string* error, bool* truncated) {
@@ -176,11 +189,12 @@ bool Decode(std::uint8_t const* data, std::size_t size, Recording& out, std::str
     std::uint32_t const frameBytes = header.Get<std::uint32_t>();
     header.Skip(sizeof(std::uint32_t));
     std::int64_t const created = header.Get<std::int64_t>();
-    if (version != kVersion) {
+    if (version != 1 && version != kVersion) {
         return fail("unsupported recording version");
     }
-    // Later versions may only grow the header and the frames; version 1 reads what it knows.
-    if (headerBytes < kHeaderBytes || frameBytes < kFrameBytes || headerBytes > size) {
+    // Later versions may only grow the header and the frames; each reads what it knows (version 1: no floor sample).
+    std::size_t const known = version == 1 ? kFrameBytesV1 : kFrameBytes;
+    if (headerBytes < kHeaderBytes || frameBytes < known || headerBytes > size) {
         return fail("bad header or frame size");
     }
     std::size_t const body = size - headerBytes;
@@ -194,6 +208,10 @@ bool Decode(std::uint8_t const* data, std::size_t size, Recording& out, std::str
     out.createdUnixMs = created;
     out.frames.clear();
     out.frames.reserve(count);
+    out.floors.clear();
+    if (version >= 2) {
+        out.floors.reserve(count);
+    }
     for (std::size_t i = 0; i < count; ++i) {
         Reader r(data + headerBytes + i * frameBytes, frameBytes);
         Frame frame;
@@ -227,6 +245,16 @@ bool Decode(std::uint8_t const* data, std::size_t size, Recording& out, std::str
             hand.grip = r.GetPose();
             hand.aim = r.GetPose();
         }
+        if (version >= 2) {
+            std::uint32_t const floorFlags = r.Get<std::uint32_t>();
+            FloorSample sample;
+            sample.eyeHeight = r.Get<float>();
+            std::uint32_t const source = (floorFlags >> kFloorSourceShift) & kFloorSourceMask;
+            sample.source = source <= static_cast<std::uint32_t>(floor::Source::LocalFloor) ? static_cast<floor::Source>(source)
+                                                                                           : floor::Source::None;
+            sample.valid = (floorFlags & kFloorValid) != 0 && std::isfinite(sample.eyeHeight);
+            out.floors.push_back(sample);
+        }
         out.frames.push_back(frame);
     }
     return true;
@@ -244,14 +272,25 @@ bool Load(std::filesystem::path const& path, Recording& out, std::string* error)
     return Decode(bytes.data(), bytes.size(), out, error);
 }
 
-bool Sample(Recording const& recording, std::int64_t timeNs, bool loop, Frame& out) {
+namespace {
+
+// Where `timeNs` falls: frame `a`, and `b` with the blend `f` toward it (b == a: frame a alone), the recording's time `t`.
+struct Span {
+    std::size_t a = 0;
+    std::size_t b = 0;
+    float f = 0.0f;
+    std::int64_t t = 0;
+    bool inRange = true;
+};
+
+bool FindSpan(Recording const& recording, std::int64_t timeNs, bool loop, Span& span) {
     auto const& frames = recording.frames;
     if (frames.empty()) {
         return false;
     }
     std::int64_t const start = frames.front().timeNs;
     std::int64_t const duration = recording.DurationNs();
-    bool inRange = true;
+    span.inRange = true;
     if (timeNs < 0) {
         timeNs = 0;
     }
@@ -259,26 +298,50 @@ bool Sample(Recording const& recording, std::int64_t timeNs, bool loop, Frame& o
         if (loop && duration > 0) {
             timeNs %= duration;
         } else {
-            inRange = false;
+            span.inRange = false;
             timeNs = duration;
         }
     }
-    std::int64_t const t = start + timeNs;
+    span.t = start + timeNs;
     // The first frame after t; the one before it is the earlier sample.
-    auto const next = std::upper_bound(frames.begin(), frames.end(), t,
+    auto const next = std::upper_bound(frames.begin(), frames.end(), span.t,
         [](std::int64_t value, Frame const& frame) { return value < frame.timeNs; });
     if (next == frames.begin()) {
-        out = frames.front();
-        return inRange;
+        span.a = span.b = 0;
+        span.f = 0.0f;
+        return true;
     }
-    Frame const& a = *(next - 1);
+    span.a = static_cast<std::size_t>(next - 1 - frames.begin());
     if (next == frames.end()) {
-        out = a;
-        return inRange;
+        span.b = span.a;
+        span.f = 0.0f;
+        return true;
     }
-    Frame const& b = *next;
-    float const span = static_cast<float>(b.timeNs - a.timeNs);
-    float const f = span > 0.0f ? std::clamp(static_cast<float>(t - a.timeNs) / span, 0.0f, 1.0f) : 0.0f;
+    span.b = span.a + 1;
+    Frame const& a = frames[span.a];
+    Frame const& b = frames[span.b];
+    float const width = static_cast<float>(b.timeNs - a.timeNs);
+    span.f = width > 0.0f ? std::clamp(static_cast<float>(span.t - a.timeNs) / width, 0.0f, 1.0f) : 0.0f;
+    return true;
+}
+
+} // namespace
+
+bool Sample(Recording const& recording, std::int64_t timeNs, bool loop, Frame& out) {
+    Span span;
+    if (!FindSpan(recording, timeNs, loop, span)) {
+        return false;
+    }
+    auto const& frames = recording.frames;
+    Frame const& a = frames[span.a];
+    if (span.b == span.a) {
+        out = a;
+        return span.inRange;
+    }
+    Frame const& b = frames[span.b];
+    float const f = span.f;
+    std::int64_t const t = span.t;
+    bool const inRange = span.inRange;
 
     out = a;  // inputs and flags held from the earlier frame
     out.timeNs = t;
@@ -301,6 +364,46 @@ bool Sample(Recording const& recording, std::int64_t timeNs, bool loop, Frame& o
     return inRange;
 }
 
+FloorSample SampleFloor(Recording const& recording, std::int64_t timeNs, bool loop) {
+    Span span;
+    if (recording.floors.size() != recording.frames.size() || !FindSpan(recording, timeNs, loop, span)) {
+        return {};  // a version 1 recording: no floor samples
+    }
+    FloorSample const& a = recording.floors[span.a];
+    FloorSample const& b = recording.floors[span.b];
+    if (a.valid && b.valid) {
+        FloorSample out = a;
+        out.eyeHeight = Lerp(a.eyeHeight, b.eyeHeight, span.f);
+        return out;
+    }
+    return a.valid ? a : b;
+}
+
+float HeadHeight(Frame const& frame) {
+    return 0.5f * (frame.views[0].pose.position.y + frame.views[1].pose.position.y);
+}
+
+FloorSample ReplayedFloor(Frame const& replayed, FloorSample const& recorded, FloorSample const& live,
+                          std::optional<float> liveHeadY) {
+    if (recorded.valid) {
+        FloorSample out = recorded;
+        if (out.source == floor::Source::None) {  // a file that says valid without a source: the live one's kind, else STAGE
+            out.source = live.source != floor::Source::None ? live.source : floor::Source::Stage;
+        }
+        return out;
+    }
+    if (!live.valid || !replayed.headValid || !liveHeadY || !std::isfinite(*liveHeadY)) {
+        return live;
+    }
+    float const moved = live.eyeHeight + (HeadHeight(replayed) - *liveHeadY);
+    if (!std::isfinite(moved)) {
+        return live;
+    }
+    FloorSample out = live;
+    out.eyeHeight = moved;
+    return out;
+}
+
 bool Writer::Open(std::filesystem::path const& path, std::int64_t createdUnixMs) {
     Close();
     std::error_code ec;
@@ -316,12 +419,12 @@ bool Writer::Open(std::filesystem::path const& path, std::int64_t createdUnixMs)
     return std::fwrite(scratch_.data(), 1, scratch_.size(), file_) == scratch_.size();
 }
 
-bool Writer::Append(Frame const& frame) {
+bool Writer::Append(Frame const& frame, FloorSample const& floor) {
     if (file_ == nullptr) {
         return false;
     }
     scratch_.clear();
-    EncodeFrame(frame, scratch_);
+    EncodeFrame(frame, floor, scratch_);
     if (std::fwrite(scratch_.data(), 1, scratch_.size(), file_) != scratch_.size()) {
         return false;
     }

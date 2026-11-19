@@ -73,6 +73,7 @@
 #include "core/vr/PoseRecording.hpp"
 #include "core/vr/TestRequest.hpp"
 #include "engine/SettingsFile.hpp"
+#include "plugin/XrHost.hpp"
 
 #include <Windows.h>
 #include <d3d11.h>
@@ -262,6 +263,7 @@ struct Replay {
     bool fovs = false;   // the recorded per-eye FOVs too (a PS VR2 recording on the fake headset: research/37)
     bool started = false;
     XrTime start = 0;
+    bool floorTold = false;  // ReplayFloor logged which floor this replay drives (last: the fields before keep their places)
 };
 
 std::mutex gControlMutex;
@@ -355,6 +357,7 @@ struct Recorder {
     bool pending = false;
     rec::Frame frame;
     double maxSeconds = 0.0;
+    rec::FloorSample floor;  // the frame's floor sample (format version 2; last: the fields before keep their places)
 };
 // Never destroyed: at process exit a thread killed inside a write could hold the stream (frames are
 // flushed every 90 instead, so an exit loses at most about a second).
@@ -1270,12 +1273,22 @@ void TickCapture() {
 
 // ---- Recording and replay (Present thread) -----------------------------------------------------------
 
+// The floor sample plugin/XrHost published this frame (measured right before OnFrameBegun) goes with the recorded frame
+// (format version 2): a replay stands in with it, so the player's own height over their floor comes back with the poses.
+__declspec(noinline) void NoteRecordedFloor() {
+    vr::floor::State floor;
+    xr_host::Floor(&floor);
+    gRecorder.floor.valid = floor.valid;
+    gRecorder.floor.source = floor.source;
+    gRecorder.floor.eyeHeight = floor.eyeHeight;
+}
+
 void StopRecordingNow(char const* why) {
     if (!gRecorder.writer.IsOpen()) {
         return;
     }
     if (gRecorder.pending) {
-        gRecorder.writer.Append(gRecorder.frame);
+        gRecorder.writer.Append(gRecorder.frame, gRecorder.floor);
         gRecorder.pending = false;
     }
     std::size_t const frames = gRecorder.writer.Frames();
@@ -1332,7 +1345,7 @@ void TickRecording(XrTime displayTime, vr::controllers::State const& live) {
     if (!gRecorder.writer.IsOpen()) {
         return;
     }
-    if (gRecorder.pending && !gRecorder.writer.Append(gRecorder.frame)) {
+    if (gRecorder.pending && !gRecorder.writer.Append(gRecorder.frame, gRecorder.floor)) {
         log::Error("test loop: writing {} failed; recording stopped", Utf8(gRecorder.path));
         gRecorder.pending = false;
         StopRecordingNow("write failed");
@@ -1348,6 +1361,7 @@ void TickRecording(XrTime displayTime, vr::controllers::State const& live) {
     f.controllersActive = live.active;
     f.hands[0] = live.left;
     f.hands[1] = live.right;
+    NoteRecordedFloor();
     gRecorder.pending = true;  // the head is added when Halcyon locates it this frame
     if (gRecorder.maxSeconds > 0.0 && static_cast<double>(f.timeNs) * 1e-9 >= gRecorder.maxSeconds) {
         StopRecordingNow("time is up");
@@ -1856,6 +1870,33 @@ void NoteMenuQuad(float const position[3], bool headLocked, float width, float h
 
 bool Replaying() {
     return gReplayActive.load(std::memory_order_relaxed);
+}
+
+bool ReplayFloor(XrTime displayTime, rec::FloorSample const& live, std::optional<float> liveHeadY, rec::FloorSample& out) {
+    // The replay is the frame thread's (ApplyReplay, SubstituteHead); plugin/XrHost asks from there, before this frame's
+    // OnFrameBegun, so a replay started this frame begins next frame, as its head does.
+    if (gReplay == nullptr || !gReplay->started || !OnPresentThread()) {
+        return false;
+    }
+    std::int64_t const t = static_cast<std::int64_t>(displayTime - gReplay->start);
+    rec::Frame f;
+    if (!rec::Sample(*gReplay->recording, t, gReplay->loop, f)) {
+        return false;  // past the end: ApplyReplay ends it this frame, and the live head and floor are back together
+    }
+    rec::FloorSample const recorded = rec::SampleFloor(*gReplay->recording, t, gReplay->loop);
+    out = rec::ReplayedFloor(f, recorded, live, liveHeadY);
+    if (!gReplay->floorTold) {  // once a replay: which rule its floor follows
+        gReplay->floorTold = true;
+        log::Info("test loop: the replay drives the floor sample too: {} (the live one {:.3f} m, {}); research/le2-vrik.md "
+                  "\"The replay STAGE-eye gap\"",
+            recorded.valid ? std::format("the recording's own, {:.3f} m over the floor", recorded.eyeHeight)
+            : live.valid && f.headValid && liveHeadY
+                ? std::format("the live one moved by the replayed head's height over the live head's ({:+.3f} m now: {:.3f} m)",
+                      rec::HeadHeight(f) - *liveHeadY, out.eyeHeight)
+                : std::string("the live one unchanged (no replayed head, live head height or live floor)"),
+            live.eyeHeight, live.valid ? "valid" : "not valid");
+    }
+    return true;
 }
 
 bool ReplayDrivesInputs() {

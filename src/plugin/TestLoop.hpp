@@ -6,10 +6,14 @@
 #include <openxr/openxr.h>
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
 struct ID3D11Texture2D;
+namespace mevr::vr::recording {
+struct FloorSample;  // core/vr/PoseRecording.hpp
+}
 
 // The headset test loop (CLAUDE.md, "Test loop"): lets Claude check VR changes without the player
 // describing what they see. LE1 and LE2, with Halcyon's renderer in the host.
@@ -26,7 +30,10 @@ struct ID3D11Texture2D;
 // to %LOCALAPPDATA%\MEVR\recordings\<stamp>.mevrrec (core/vr/PoseRecording), and back as if they were
 // live: the controllers where our actions are synced (HalcyonBridge's OnFrameBegun), the head where
 // Halcyon locates its views (the wrapped xrLocateViews, keeping the runtime's FOVs). Replayed buttons
-// and sticks only when asked (inputs=1), so a replay doesn't fire weapons by default.
+// and sticks only when asked (inputs=1), so a replay doesn't fire weapons by default. Since 2026-11-19 a recording
+// also carries the host's floor sample (the eyes over the floor, plugin/XrHost), and a replay drives that sample too
+// (ReplayFloor): the recorded one, or for an older or synthetic recording the live one moved by the replayed head's
+// height, so a recorded crouch, lean or reach reaches posture, floor lock, body scale and the holsters.
 //
 // Triggers: End (snapshot) and Home (recording on/off) while the game has focus; both stick clicks
 // tapped together (snapshot: down and up within 300 ms; held 400 ms they open Halcyon's menu instead,
@@ -61,6 +68,12 @@ void OnSessionCreated(XrSession session);
 void OnPresent();
 void OnFrameBegun(XrSession session, XrSpace appSpace, XrTime displayTime, bool focused,
                   vr::controllers::State& state);
+// While a replay runs (Replaying()), the floor sample plugin/XrHost publishes for `displayTime`, the frame's (its MeasureFloor,
+// the same thread, right before OnFrameBegun): `out` the replayed frame's own floor where the recording has one, else `live`
+// moved by the replayed head's height in the app space over the live head's `liveHeadY` (vr::recording::ReplayedFloor). False
+// (`out` untouched) when no replay has started, or it ends this frame: the live sample stands.
+bool ReplayFloor(XrTime displayTime, vr::recording::FloorSample const& live, std::optional<float> liveHeadY,
+                 vr::recording::FloorSample& out);
 // Our own quads (HalcyonOverlays), right before a swapchain image is released: Halcyon's go through
 // the wrapped xrReleaseSwapchainImage instead.
 void OnImageWritten(XrSwapchain swapchain, ID3D11Texture2D* image);

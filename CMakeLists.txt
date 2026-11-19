@@ -1496,6 +1496,7 @@ if (MEVR_BUILD_TESTS)
         tests/BodyScaleTests.cpp
         tests/EyesInBodyTests.cpp
         tests/CrouchAnchorTests.cpp
+        tests/ReplayFloorTests.cpp
         tests/BodySlotsSeatedTests.cpp
         tests/BodySlotsSmgTests.cpp
         tests/FloorLockTests.cpp

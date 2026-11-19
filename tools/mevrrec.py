@@ -5,7 +5,9 @@
     python tools/mevrrec.py <file.mevrrec> --csv out   every frame as CSV ('-' for stdout)
     python tools/mevrrec.py --latest                   the newest in %LOCALAPPDATA%\\MEVR\\recordings
 
-Poses are in Halcyon's recentered LOCAL app space (meters, +Y up, -Z forward); quaternions xyzw.
+Poses are in Halcyon's recentered LOCAL app space (meters, +Y up, -Z forward); quaternions xyzw. Version 2 (the game's
+recordings since 2026-11-19, make-walk-recording.py --stand-eye) adds each frame's floor sample: the eyes' height over the
+floor (STAGE or LOCAL_FLOOR) as the host measured it, which a replay stands in with; version 1 has none ("no floor").
 """
 import argparse
 import csv
@@ -18,6 +20,8 @@ MAGIC = b"MEVRREC\0"
 HEADER = struct.Struct("<8sIIIIq")
 POSE = "7f"
 FRAME = struct.Struct("<qI" + (POSE + "4f") * 2 + ("I4f" + POSE + POSE) * 2)
+FLOOR = struct.Struct("<If")  # version 2: flags (bit 0 valid, bits 1-2 the source), the eyes over the floor (m)
+FLOOR_SOURCES = {0: "none", 1: "STAGE", 2: "LOCAL_FLOOR"}
 BUTTONS = ["stickClick", "primary", "secondary", "menu", "gripValid", "aimValid", "triggerTouch", "thumbTouch",
            "triggerTouchKnown", "thumbTouchKnown"]
 
@@ -28,7 +32,7 @@ def read(path):
     magic, version, header_bytes, frame_bytes, _, created = HEADER.unpack_from(data, 0)
     if magic != MAGIC:
         raise SystemExit(f"{path}: not a .mevrrec recording")
-    if version != 1 or frame_bytes < FRAME.size:
+    if version not in (1, 2) or frame_bytes < FRAME.size or (version == 2 and frame_bytes < FRAME.size + FLOOR.size):
         raise SystemExit(f"{path}: unsupported version {version} / frame size {frame_bytes}")
     frames = []
     count = (len(data) - header_bytes) // frame_bytes
@@ -48,6 +52,10 @@ def read(path):
             f[hand + ".grip"] = v[k + 5:k + 12]
             f[hand + ".aim"] = v[k + 12:k + 19]
             k += 19
+        f["floorValid"], f["floorSource"], f["floorEyeM"] = False, "none", 0.0
+        if version >= 2:
+            flags, eye = FLOOR.unpack_from(data, header_bytes + i * frame_bytes + FRAME.size)
+            f["floorValid"], f["floorSource"], f["floorEyeM"] = bool(flags & 1), FLOOR_SOURCES.get((flags >> 1) & 3, "?"), eye
         frames.append(f)
     return created, frames
 
@@ -82,6 +90,10 @@ def summary(path, created, frames):
         for axis, name in enumerate("xyz"):
             values = [c[axis] for c in centers]
             print(f"  head {name}: {min(values):+.3f} .. {max(values):+.3f} m")
+        floors = [f["floorEyeM"] for f in frames if f["floorValid"]]
+        print(f"  floor: eyes {min(floors):.3f} .. {max(floors):.3f} m over the floor ({frames[0]['floorSource']}) in "
+              f"{len(floors)} frames" if floors else "  floor: no floor samples (version 1: a replay moves the live sample "
+              "by the replayed head's height instead)")
         yaws = [yaw_pitch(f["leftEye"][:4]) for f in heads]
         print(f"  head yaw {min(y for y, _ in yaws):+.1f} .. {max(y for y, _ in yaws):+.1f} deg, "
               f"pitch {min(p for _, p in yaws):+.1f} .. {max(p for _, p in yaws):+.1f} deg")
@@ -93,7 +105,7 @@ def summary(path, created, frames):
 
 
 def write_csv(frames, out):
-    columns = ["timeS", "headValid", "controllersActive"]
+    columns = ["timeS", "headValid", "controllersActive", "floorValid", "floorEyeM"]
     for eye in ("left", "right"):
         columns += [f"{eye}Eye.{c}" for c in ("qx", "qy", "qz", "qw", "x", "y", "z")]
         columns += [f"{eye}Fov.{c}" for c in ("left", "right", "up", "down")]
@@ -105,7 +117,7 @@ def write_csv(frames, out):
     writer = csv.writer(out, lineterminator="\n")
     writer.writerow(columns)
     for f in frames:
-        row = [f"{f['timeS']:.6f}", int(f["headValid"]), int(f["controllersActive"])]
+        row = [f"{f['timeS']:.6f}", int(f["headValid"]), int(f["controllersActive"]), int(f["floorValid"]), f"{f['floorEyeM']:.4f}"]
         for eye in ("left", "right"):
             row += [f"{v:.6f}" for v in f[eye + "Eye"]] + [f"{v:.6f}" for v in f[eye + "Fov"]]
         for hand in ("left", "right"):

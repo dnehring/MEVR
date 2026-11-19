@@ -6,8 +6,10 @@
 
 #include "core/Log.hpp"
 #include "core/vr/Haptics.hpp"
+#include "core/vr/PoseRecording.hpp"
 #include "core/xr/Floor.hpp"
 #include "core/xr/Input.hpp"
+#include "plugin/TestLoop.hpp"
 
 #include <Windows.h>
 
@@ -72,8 +74,38 @@ void ApplyPendingHaptics() {
     }
 }
 
+// MeasureFloor while a replay stands in for the head (plugin/TestLoop): the floor sample follows the replayed head, so a
+// recorded crouch, lean or reach lowers the eyes over the floor for every reader (posture, floor lock, body scale, holsters,
+// VR cover), not the runtime's still head's (research/le2-vrik.md "The replay STAGE-eye gap"). The same publication as
+// MeasureFloor's with the replay's sample; out of line, so MeasureFloor itself is as it was without a replay.
+__declspec(noinline) void MeasureReplayedFloor(XrTime time) {
+    std::optional<float> const measured = gFloor.EyeHeight(time);
+    vr::recording::FloorSample live;
+    live.valid = measured.has_value();
+    live.eyeHeight = measured.value_or(0.0f);
+    live.source = gFloor.Source();
+    vr::recording::FloorSample sample = live;
+    testloop::ReplayFloor(time, live, gFloor.HeadHeightIn(gTarget.base, time), sample);  // false: `sample` stays the live one
+    {
+        std::lock_guard lock(gFloorMutex);
+        gFloorState.valid = sample.valid;
+        if (sample.valid) {
+            gFloorState.eyeHeight = sample.eyeHeight;
+        }
+        gFloorState.source = sample.source;
+        gFloorState.recenters = gRecenters.load(std::memory_order_relaxed);
+        gFloorState.sessions = gSessions.load(std::memory_order_relaxed);
+        ++gFloorState.sequence;
+        gFloorState.timeMs = GetTickCount64();
+    }
+}
+
 // The floor height for this frame (frame thread, after the sync).
 void MeasureFloor(XrTime time) {
+    if (testloop::Replaying()) {
+        MeasureReplayedFloor(time);
+        return;
+    }
     std::optional<float> const height = gFloor.EyeHeight(time);
     {
         std::lock_guard lock(gFloorMutex);

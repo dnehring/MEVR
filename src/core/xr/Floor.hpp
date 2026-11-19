@@ -27,6 +27,9 @@ public:
     void Forget();
     // The VIEW origin's height above the floor at `time` (meters), if located.
     std::optional<float> EyeHeight(XrTime time) const;
+    // The VIEW origin's height in `space` at `time` (its +Y, meters), if located: the live head a replay's head is
+    // measured against (plugin/XrHost while plugin/TestLoop replays).
+    std::optional<float> HeadHeightIn(XrSpace space, XrTime time) const;
     vr::floor::Source Source() const { return source_; }
 
 private:
