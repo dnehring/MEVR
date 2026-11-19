@@ -9,7 +9,7 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 - **Your squad moves only when you place it.** A squeeze of the left grip no longer sends the squad somewhere (it did on
   every game when nothing else took the squeeze, and on ME2 it kept happening in fights): place them with the right hand's
-  B arc. `[SquadOrders] gesture = 1` brings the left-grip orders back.
+  B arc, or by voice.
 - **Your hands stop at other people.** In all three games Shepard's hand no longer passes through a squadmate, an NPC or an
   enemy: it stops at their body and slides along it while your controller goes on, and the controller buzzes on contact
   (`[HandContact]` in the mod's ini; `on = 0` turns it off). Nobody is pushed.

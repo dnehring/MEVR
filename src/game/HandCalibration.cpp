@@ -586,15 +586,11 @@ constexpr char const* kSquadContextBlock =
 constexpr char const* kSquadOrdersBlock =
     "\n"
     "[SquadOrders]\n"
-    "; The game's squad orders by gesture (research/54): with gesture = 1, squeeze the LEFT grip with the hand away from the\n"
-    "; gun and the grenade slot, point, let go: on an enemy the squad attacks it; on the ground farther than followWithinM\n"
-    "; they move there; near you, on a squadmate or on nothing they regroup. Off by default since 2026-11-18: the squad\n"
-    "; moves only when you place it with the right hand's B arc (place, below); gesture = 0 keeps the console's `mevr order`.\n"
-    "; enemyConeDeg / memberConeDeg: how close the ray must pass.\n"
+    "; The squad's orders (research/54): you place the squad with the right hand's B arc (place, below) or by voice. A\n"
+    "; point closer than followWithinM to you is a regroup. enemyConeDeg / memberConeDeg: how close the left hand's ray must\n"
+    "; pass to an enemy or a squadmate for a spoken \"that one\" or \"there\".\n"
     "; minHoldS: a shorter squeeze is a blip. maxHoldS: held longer, the order is called off.\n"
     "enabled = 1\n"
-    "gesture = 0\n"
-    "gestureOffMoved = 1\n"
     "followWithinM = 2\n"
     "enemyConeDeg = 8\n"
     "memberConeDeg = 12\n"
@@ -1680,9 +1676,6 @@ SquadOrders ReadSquadOrders(Ini const& ini) {
     if (Number(ini, "SquadOrders", "enabled", value)) {
         s.enabled = value != 0.0;
     }
-    if (Number(ini, "SquadOrders", "gesture", value)) {
-        s.gesture = value != 0.0;
-    }
     if (Number(ini, "SquadOrders", "followWithinM", value)) {
         s.followWithinM = std::clamp(value, 0.0, 20.0);
     }
@@ -1776,7 +1769,7 @@ SquadOrders ReadSquadOrders(Ini const& ini) {
 std::string Describe(SquadOrders const& s) {
     return !s.enabled ? std::string("off")
          : std::format("{}; follow within {:.1f} m; cones {:.0f} deg (enemy) / {:.0f} deg (squadmate); hold {:.2f}..{:.0f} s",
-               s.gesture ? "the left-grip gesture" : "the console only", s.followWithinM, s.enemyConeDeg, s.memberConeDeg, s.minHoldS, s.maxHoldS);
+               "the B arc, voice and the console (no left-grip gesture)", s.followWithinM, s.enemyConeDeg, s.memberConeDeg, s.minHoldS, s.maxHoldS);
 }
 
 SquadOrders gSquadOrders;
@@ -3331,25 +3324,6 @@ void Refresh() {
             } else if (k->second != "1") {
                 log::Info("hands: [Throwables] meleeButton = {} kept (your choice; the default is 0)", k->second);
             }
-        }
-    }
-    // [SquadOrders] 2026-11-18 (the owner, after ME2's squad walked off on a left-grip squeeze: "squad mates only move when we
-    // use our menu on the right stick"): the left-grip gesture orders off, every game. A file without the marker
-    // gestureOffMoved that holds the old default 1 gets 0 once; the marker is written only after the change succeeded, so a
-    // later choice of 1 is the player's and stays.
-    if (auto const s = ini.find("SquadOrders"); s != ini.end() && s->second.find("gestureOffMoved") == s->second.end()) {
-        auto const k = s->second.find("gesture");
-        bool moved = true;
-        if (k != s->second.end() && k->second == "1") {
-            moved = WritePrivateProfileStringW(L"SquadOrders", L"gesture", L"0", path.wstring().c_str()) != 0;
-            if (moved) {
-                log::Info("hands: [SquadOrders] gesture 1 -> 0: the left grip no longer orders the squad; place it with the right "
-                          "hand's B arc (the owner's default since 2026-11-18) in {}", ini::Utf8(path));
-            }
-        }
-        if (moved && WritePrivateProfileStringW(L"SquadOrders", L"gestureOffMoved", L"1", path.wstring().c_str()) != 0) {
-            ini = ReadIni(path);
-            stamp = fs::last_write_time(path, ec);
         }
     }
 #if defined(MEVR_GAME_LE3)

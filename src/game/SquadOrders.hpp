@@ -8,12 +8,10 @@
 #include <optional>
 #include <string>
 
-// The flat squad orders in VR (research/54 "The flat orders"; the user: the game's own orders must work without voice)
-// and the one dispatcher every order path ends in. The gesture (rules in core/vr/SquadGesture): a LEFT grip squeeze
-// that no other feature claimed (the host counts the squeezes that began away from the support grip's zone;
-// game/throwables and game/vent claim theirs first) points an order with the left aim ray; letting go gives it: on
-// an enemy group, attack; on the ground farther than followWithinM, move there; near Shepard, on a squadmate, or on
-// nothing, follow. A squadmate the ray pointed at when the squeeze began gets the order alone. The game's calls, on
+// The one dispatcher every squad order path ends in (research/54): squad placement's B arc (game/SquadPlace), the voice
+// orders (game/Voice) and `mevr order`. The left-grip gesture orders that were the first path (a squeeze pointed with the left
+// aim ray) are gone since 2026-11-18 (the owner: "since we have our dedicated system of squad control I don't see why we'd
+// want to support any other method"); the left aim ray is still read each tick for the voice orders' "there". The game's calls, on
 // the game thread: `BioPlayerController.QuickCommandAttackTarget(iSquadMember, pTarget)`, `QuickCommandMoveTo
 // (iSquadMember)` with the controller's Rotation turned toward the point for the call (the native drops the point
 // along the controller's facing: research/54's trace), `QuickCommandFollowPlayer(iSquadMember)`; the squad index
@@ -23,14 +21,14 @@ namespace mevr::game::squad_orders {
 
 struct Link {
     bool menuOpen = false; // main menu or wrist rail owns inputs
-    // HostServices::leftGripAway (v11): nullopt with an older host (our own latch of the grip stands in).
+    // Unused since the left-grip gesture orders went (2026-11-18); kept so the callers' links stay as they are.
     std::optional<std::uint32_t> leftGrip;
     void (*haptic)(int hand, float seconds, float amplitude) = nullptr;
 };
 
 // Game thread, each tick after the squad context's.
 void Tick(double deltaSeconds, Link const& link);
-// Refresh before voice callbacks this tick; gestures still run after voice claims its squeeze.
+// Refresh before voice callbacks this tick.
 void SetMenuOpen(bool open);
 
 // Any order: validated against the squad context's scene, resolved, called. The outcome in words (the log's).

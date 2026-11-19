@@ -48,8 +48,6 @@ bool LayerReady() {
 #endif
 }
 
-constexpr float kGripOn = 0.6f;
-constexpr float kGripOff = 0.4f;
 constexpr double kTraceRangeM = 100.0;
 constexpr double kChestUnits = 50.0;
 constexpr std::size_t kHistory = 3;
@@ -82,22 +80,18 @@ ue3::FieldRef gCoverDisabled{"Engine.CoverLink", "bDisabled", ue3::kEveryGame};
 constexpr std::uint8_t kFormationFollow = 1;  // BioBaseSquad.EFollowFormation
 constexpr std::uint8_t kFormationHold = 2;
 
-sg::Machine gMachine;
 std::vector<sc::Command> gHistory;
 std::vector<ss::Standing> gStandings;  // at most one per squadmate
 void const* gWorld = nullptr;  // the world the standings and the history were given in
-bool gOwnGrip = false;
 bool gMenuOpen = false;
-std::uint32_t gLastCount = 0;
-bool gHaveCount = false;
-bool gToldOldGrip = false;
 bool gToldNoFunctions = false;
 double gClock = 0.0;
 double gUpm = engine::kUnitsPerMeter;
 std::string gLast;  // the last order's outcome
-unsigned gStarted = 0, gGiven = 0, gCancelled = 0, gReasserted = 0, gEnded = 0;
+unsigned gReasserted = 0, gEnded = 0;
 
-// This tick's pointer: the left aim ray and what it ends on.
+// This tick's pointer: the left aim ray and what it ends on (the voice orders' "there"; the left-grip gesture orders that
+// also used it are gone since 2026-11-18, the owner: the squad moves only by squad placement's B arc).
 struct Pointer {
     bool valid = false;
     engine::UnrealVector origin{};
@@ -886,85 +880,16 @@ void Tick(double deltaSeconds, Link const& link) {
     gClock += deltaSeconds;
     hand_calibration::SquadOrders const s = hand_calibration::GetSquadOrders();
     vr::controllers::State const controllers = vr::controllers::Latest();
-    bool const was = gOwnGrip;
-    gOwnGrip = controllers.active && (gOwnGrip ? controllers.left.squeeze > kGripOff : controllers.left.squeeze >= kGripOn);
-    bool fresh = false;
-    bool squeezed = gOwnGrip;
-    if (link.leftGrip) {
-        std::uint32_t const count = *link.leftGrip >> 1;
-        bool const current = (*link.leftGrip & 1u) != 0;
-        fresh = gHaveCount && count != gLastCount && current;
-        squeezed = current;
-        gLastCount = count;
-        gHaveCount = true;
-    } else {
-        fresh = gOwnGrip && !was;
-        if (!gToldOldGrip && s.enabled && s.gesture) {
-            gToldOldGrip = true;
-            log::Warn("squad orders: the host doesn't report the left grip (services older than v11): the gesture follows our own "
-                      "reading of the grip; close the game and redeploy the host");
-        }
-    }
-    bool const unclaimed = fresh && !link.menuOpen && !power_wheel::OwnsLeftHand() && !support_grip::Held() && !squad_weapons::IsOpen() && !throwables::ClaimedLeft() && !vent::ClaimedLeft() && !voice::ClaimedLeft();
     ue3::Object* const controller = LayerReady() ? player::Controller() : nullptr;
     std::optional<std::uint8_t> const mode = controller != nullptr ? player::GameMode(controller) : std::nullopt;
     ue3::Object* const pawn = controller != nullptr ? player::BioPawn(controller) : nullptr;
     std::optional<engine::TrackingFrame> const frame = view_anchor::Current();
     bool const onFoot = mode && *mode == 0 && pawn != nullptr;
     if (frame && frame->unitsPerMeter > 0.0) gUpm = frame->unitsPerMeter;
-    bool const usable = s.enabled && s.gesture && !link.menuOpen && !power_wheel::OwnsLeftHand() && !support_grip::Held() && !squad_weapons::IsOpen() && onFoot && frame.has_value() && controllers.active && controllers.left.aimValid &&
-        !squad_weapons::Members().empty();
     if (frame && onFoot) {
-        ReadPointer(*frame, controllers, s, gMachine.holding, pawn);
+        ReadPointer(*frame, controllers, s, false, pawn);
     } else {
         gPointer = {};
-    }
-    sg::Settings gs;
-    gs.enabled = s.enabled && s.gesture;
-    gs.followWithinM = static_cast<float>(s.followWithinM);
-    gs.minHoldS = static_cast<float>(s.minHoldS);
-    gs.maxHoldS = static_cast<float>(s.maxHoldS);
-    gs.enemyConeDeg = static_cast<float>(s.enemyConeDeg);
-    gs.memberConeDeg = static_cast<float>(s.memberConeDeg);
-    sg::Input in;
-    in.dt = deltaSeconds;
-    in.usable = usable;
-    in.newSqueeze = unclaimed;
-    in.squeezed = squeezed;
-    in.pointedMember = gPointer.member;
-    in.hit = gPointer.hit;
-    in.hitGroup = gPointer.group;
-    in.hitDistanceM = gPointer.distanceM;
-    sg::Step const step = gMachine.Advance(in, gs);
-    if (step.started) {
-        ++gStarted;
-        if (link.haptic != nullptr) link.haptic(0, 0.05f, 0.5f);
-        log::Info("squad orders: pointing an order{}", gMachine.member >= 0 ? std::format(" for squadmate {}", gMachine.member) : std::string(" for everyone"));
-    }
-    if (step.hitChanged && link.haptic != nullptr) link.haptic(0, 0.02f, 0.3f);
-    if (step.cancelled) {
-        ++gCancelled;
-        log::Info("squad orders: called off: {}", step.why);
-    }
-    if (step.order.given) {
-        ++gGiven;
-        if (link.haptic != nullptr) link.haptic(0, 0.08f, 0.8f);
-        sc::Action action;
-        action.who.kind = sc::Who::All;
-        if (step.order.member >= 0) {
-            std::vector<squad_weapons::MemberView> const members = squad_weapons::Members();
-            if (step.order.member < static_cast<int>(members.size())) {
-                action.who = {sc::Who::Member, squad_context::LetterOf(members[static_cast<std::size_t>(step.order.member)].classId)};
-            }
-        }
-        action.order = step.order.order;
-        if (step.order.order == sc::Order::Attack) action.target = {sc::Target::Group, step.order.group};
-        std::optional<engine::UnrealVector> point;
-        if (step.order.toPoint && gPointer.hit == sg::Hit::Ground) point = gPointer.point;
-        log::Info("squad orders: let go on {}{}", sg::Name(gPointer.hit),
-            gPointer.hit == sg::Hit::Ground ? std::format(" {:.1f} m away", gPointer.distanceM)
-            : gPointer.hit == sg::Hit::Enemy ? std::format(" (E{})", gPointer.group) : std::string());
-        GiveResolved(action, point, {});
     }
     // Standing orders and the order history belong to the level they were given in: a new world (a level change, a load)
     // drops them, or a hold was re-issued at the old level's coordinates for up to maxAgeS (Codex review 2026-11-06,
@@ -1106,12 +1031,11 @@ std::string StatusJson() {
             standings.empty() ? "" : ", ", st.intent.who, ss::Name(st.intent.kind), ss::Name(st.intent.until), ss::Name(st.phase),
             json::JsonNumber(st.ageS), st.intent.group, st.intent.returnAfter ? "true" : "false", st.intent.mayRetreat ? "true" : "false");
     }
-    return std::format("{{\"holding\": {}, \"heldS\": {}, \"member\": {}, \"pointer\": {{\"valid\": {}, \"hit\": {}, \"group\": {}, \"distanceM\": {}, "
-                       "\"member\": {}, \"traced\": {}}}, \"last\": {}, \"started\": {}, \"given\": {}, \"cancelled\": {}, \"history\": {}, "
+    return std::format("{{\"pointer\": {{\"valid\": {}, \"hit\": {}, \"group\": {}, \"distanceM\": {}, "
+                       "\"member\": {}, \"traced\": {}}}, \"last\": {}, \"history\": {}, "
                        "\"standings\": [{}], \"reasserted\": {}, \"ended\": {}}}",
-        gMachine.holding ? "true" : "false", json::JsonNumber(gMachine.heldS), gMachine.member, gPointer.valid ? "true" : "false",
-        json::JsonString(sg::Name(gPointer.hit)), gPointer.group, json::JsonNumber(gPointer.distanceM), gPointer.member,
-        gPointer.traced ? "true" : "false", json::JsonString(gLast), gStarted, gGiven, gCancelled, gHistory.size(), standings, gReasserted, gEnded);
+        gPointer.valid ? "true" : "false", json::JsonString(sg::Name(gPointer.hit)), gPointer.group, json::JsonNumber(gPointer.distanceM),
+        gPointer.member, gPointer.traced ? "true" : "false", json::JsonString(gLast), gHistory.size(), standings, gReasserted, gEnded);
 }
 
 void LogStats() {
@@ -1119,13 +1043,11 @@ void LogStats() {
     for (ss::Standing const& st : gStandings) {
         standings += std::format("{}{} {} {} ({:.0f} s)", standings.empty() ? "" : ", ", st.intent.who, ss::Name(st.intent.kind), ss::Name(st.intent.until), st.ageS);
     }
-    log::Info("squad orders: {} pointed, {} given, {} called off; {} standing re-orders, {} ended; {}{}{}", gStarted, gGiven, gCancelled, gReasserted, gEnded,
-        gMachine.holding ? std::format("holding ({:.1f} s, on {})", gMachine.heldS, sg::Name(gPointer.hit)) : std::string("idle"),
+    log::Info("squad orders: {} standing re-orders, {} ended{}{}", gReasserted, gEnded,
         standings.empty() ? std::string() : std::format("; standing: {}", standings), gLast.empty() ? std::string() : std::format("; last: {}", gLast));
 }
 
 void Shutdown() {
-    gMachine.Reset();
     gPointer = {};
     gHistory.clear();
     gStandings.clear();
