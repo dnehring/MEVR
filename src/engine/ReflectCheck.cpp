@@ -3020,6 +3020,16 @@ void CheckSequelWalk() {
     // The response's first ticks (game/CombatStance StepStartTrace): the facing the pawn turns to and the mesh's root motion mode.
     CheckField("Engine.Pawn", "DesiredRotation", SDK_FIELD(APawn, DesiredRotation));
     CheckField("Engine.SkeletalMeshComponent", "RootMotionMode", SDK_FIELD(USkeletalMeshComponent, RootMotionMode));
+    // ... and the animation nodes' root motion requests (BioPawn.RootMotionOverride's list), answered with RMM_Ignore for the
+    // explore tree's start and stop nodes in VR on foot as on ME3 (game/CombatStance UpdateStartSteps; research/38 "ME2's late
+    // start", lane M2W).
+    CheckField("SFXGame.BioPawn", "RootMotionOverrides", SDK_FIELD(ABioPawn, RootMotionOverrides));
+    CheckElement("SFXGame.BioPawn", "RootMotionOverrides", sizeof(FRootMotionOverrideEntry));
+    CheckPath("SFXGame.BioPawn", {"RootMotionOverrides", "Node"}, SDK_AT(offsetof(FRootMotionOverrideEntry, Node), 8));
+    CheckPath("SFXGame.BioPawn", {"RootMotionOverrides", "RMMode"}, SDK_AT(offsetof(FRootMotionOverrideEntry, RMMode), 1));
+    CheckClass<UBioAnimNodeLocomotionStart>("SFXGame.BioAnimNodeLocomotionStart");
+    CheckClass<UBioAnimNodeLocomotionStop>("SFXGame.BioAnimNodeLocomotionStop");
+    CheckField("Engine.AnimNode", "NodeName", SDK_FIELD(UAnimNode, NodeName));  // the requests' nodes named in the trace
     CheckField("Engine.PlayerInput", "RawJoyUp", SDK_FIELD(UPlayerInput, RawJoyUp));
     CheckField("Engine.PlayerInput", "RawJoyRight", SDK_FIELD(UPlayerInput, RawJoyRight));
     CheckField("SFXGame.BioPlayerController", "MoveStickWalkThreshold", SDK_FIELD(ABioPlayerController, MoveStickWalkThreshold));

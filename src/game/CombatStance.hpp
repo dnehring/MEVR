@@ -46,9 +46,9 @@ void LogStats();
 // playing), only lines holding `text`; returns a summary. Game thread.
 std::string DumpAnimTree(std::string const& filter);
 #endif
-#if defined(MEVR_GAME_LE3)
-// `mevr loco start [game|on]`: ME3's start step as the game has it, or its root motion ignored (the default in VR on foot;
-// a test's switch); returns the state. Game thread.
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+// `mevr loco start [game|on]`: the sequels' start and stop steps as the game has them, or their root motion ignored (the
+// default in VR on foot; a test's switch); returns the state. Game thread.
 std::string StartLevers(std::string const& which);
 #endif
 void Shutdown();

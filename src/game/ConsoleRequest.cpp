@@ -2163,6 +2163,11 @@ std::optional<std::string> RunOursLe2(ue3::Object* pc, std::string const& line) 
         std::getline(words, rest);
         return combat_stance::DumpAnimTree(rest.empty() ? rest : rest.substr(1));
     }
+    if (verb == "loco") {  // `mevr loco start [game|on]`: the start and stop nodes' root motion (research/38 "ME2's late start")
+        std::string sub, which;
+        words >> sub >> which;
+        return sub == "start" ? combat_stance::StartLevers(which) : std::string("usage: mevr loco start [game|on]");
+    }
     if (verb == "cover") {
         std::string rest;
         std::getline(words, rest);
