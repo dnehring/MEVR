@@ -682,8 +682,8 @@ struct SyncResult {
 // Once at host attach (before the mod reads) and every 2 s after, under the writers' lock:
 //   - no shared file yet: it is made from the old files, ME1's the base (its text, comments and order kept; the calibration's
 //     sections left out; its per-game keys moved to [<section>.LE1] right after their section), then ME2's and ME3's taken
-//     in (TakeLate);
-//   - an old file not taken yet (no copy in settings-taken): TakeLate. A key the shared file lacks is shared now (a section
+//     in (the late take, next);
+//   - an old file not taken yet (no copy in settings-taken): the late take. A key the shared file lacks is shared now (a section
 //     it lacks comes whole, with its comments); a per-game key goes to [<section>.<GAME>]; a key whose value differs keeps
 //     the shared value for the three games and the old file's in [<section>.<GAME>], so that game goes on as it did. Each
 //     difference is logged.

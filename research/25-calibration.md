@@ -759,3 +759,170 @@ handle in the fist ...` (the fist's middle and how far the wrist moved) and `...
 axis (<why>)`. `fistOnGrip = 0` is the old placement, live.
 
 **Checked in the headset 2026-11-18 (the owner):** the wrist and the hand line up where they are supposed to.
+
+## 20. One settings file for the trilogy (built 2026-11-18, lane SET)
+
+The owner (2026-11-18), after turning ME2's physical crouch off in our menu and expecting ME3 to follow: "I assume the
+settings for 2 would carry into me3", then "Yes, share them". Section 17 did it for the calibration; this does it for every
+setting. Built on section 17's design: the same folder, the same `[<section>.<GAME>]` overrides, the same "never a new file over
+one it couldn't read" rule, the same one-time migration at host attach.
+
+**Before.** Each game read and wrote `<exe dir>\ASI\<GAME>MEVR.ini` (`engine::SettingsFile()`, the host's
+`MevrBridge::SettingsPath()` / `mevr::host::SettingsPath()`): about 60 source files, most through Win32's profile API
+(`GetPrivateProfileIntW/StringW/SectionW`, `WritePrivateProfileStringW`), the mod's modules through `ini::Read` once a second,
+four modules appending their defaults blocks with `std::ofstream(..., std::ios::app)`. A change in ME2's menu stayed in ME2.
+
+### 20.1 The file
+
+`%LOCALAPPDATA%\MEVR\settings.ini` (`vr::settings_file::kFileName`, `DefaultPath()`; the folder of calibration.ini, the test
+loop, the game art). Ordinary ini text, narrow (UTF-16 only when the first file it was made from was UTF-16):
+
+- `[<section>]`: what the three games share. A change in any game's menu goes here.
+- `[<section>.LE1]`, `[<section>.LE2]`, `[<section>.LE3]`: what applies to that game alone; such a section overrides only the
+  keys it names (`SplitGameSection`: a section whose last dotted part is LE1, LE2 or LE3, any case; `[Colour.<headset>]` and
+  `[Body.Shepard]` are sections of their own, and `[Body.Shepard.LE2]` is ME2's copy of `[Body.Shepard]`).
+- A comment at the top when the file is made (`NewFileHeader`), saying the above to a player who opens it.
+
+A reader asks `[<section>.<GAME>]` first, then `[<section>]`, then its own default. A writer sends a per-game key (20.2) to
+`[<section>.<GAME>]` and every other key to `[<section>]`, taking that key out of `[<section>.LE1/.LE2/.LE3]` at the same time:
+so a change in one game is a change in the three, even where the migration had kept a game's own value (20.4).
+
+### 20.2 What stays per game: the rule (`PerGame`, `src/core/vr/SettingsKeys.hpp`)
+
+A rule in code, checked in this order, unit-tested (`TestRule`); never a hand list elsewhere:
+
+| Rule | Keys | Why |
+|---|---|---|
+| 1. Performance levers | every key of `[Performance]`, `[SystemSettings]`, `[Upscale]` | the owner, 2026-11-16: each game's defaults from its own measurement (sharePass, umbraQueryWait..., the performance modes' bundle: research/60) |
+| 2. Development switches | every key of `[Debug]` | tools set them for the game they run (`openxrRuntime`, `requests`, `engineProbe`, `calibrationKey`) |
+| 3. First-start and first-run markers | `[Display] eyeSizeSet`, `[Menu] controlsShown` | each game sizes its own render (CLAUDE.md "the sequels' render size follows the headset") and shows its own guide once |
+| 4. Measured on a game's body | `[Body.Shepard]` (per mesh; ME2's mesh names are generic), `[Arms]` | Shepard's eyes per skeleton; the arm sample: the owner, 2026-11-18 ("it stays per game; the guided calibration's arm length is already shared", docs/trilogy-plan.md) |
+| 5. The calibration's settings | `[Calibration] use`, `eye`, `grabOffset` | section 17: the measurements are shared in calibration.ini, these are not |
+| 6. Paths | `[Menu] assets`, `[Voice] dll`, `[Voice] modelDir`, and any key whose value is an absolute path (`C:\...`, `\\server\...`) | a path into one game's folder |
+
+Everything else is shared. **The audit behind it** (2026-11-18): the modules' defaults are the shared core's
+(`core/vr/*` structs, `game/*` blocks), the same in every game; where a module's block differs per game (`#if MEVR_GAME_*`:
+`game/HandCalibration`'s `[Holsters]` sequel keys `smgSlot`, `thighRight`, `lowerBack`, `lostHandHoldS`, `le3PutAway`, the
+sequels' `[Reload]`, `game/VrCover`'s ME2-only `recharge`, `game/PowerWheel`'s comments) the extra keys are only read by the
+games that have them, and no key read by two games has two defaults. `engine/GameAdapter.hpp` holds no settings default. So a
+fresh install's defaults are each game's as before, whichever game appends a block first.
+
+### 20.3 Reading and writing (`src/core/vr/SettingsFile.hpp`, header-only)
+
+- **The file in use.** `engine::SettingsFile()` = `vr::settings_file::InUse(engine::GameSettingsFile())`: `MEVR_SETTINGS_FILE`
+  when the host set it (the same process), else `Decide(shared, gameFile)`: the shared file when it can be read; the game's
+  old file when the shared one is there but can't be read (another program holds it, no permission) or isn't made yet while the
+  old one is there; the shared file when neither exists (a new install: the first write makes it). In the old file's case the
+  shared file is never written this session (the MELEVR.ini rule in CLAUDE.md). `engine::GameSettingsFile()` is the old
+  `<exe dir>\ASI\<GAME>MEVR.ini`; **`engine::AsiDir()` is the ASI folder** (fonts, menu, cockpit, voice, audio): never the
+  settings file's folder any more.
+- **Reads.** `Load(path)` = `ini::Read` with `Merged` on top (the mod's once-a-second readers: their `ini::Get(file, "X", key)`
+  calls unchanged). `Int`, `String`, `Section` take the Win32 profile API's own arguments (a call site changed only its
+  function's name): `[<section>.<GAME>]` first when the file has that section (`HasGameSection`: the file's section names read
+  once per change of its time and size), else Win32's own answer. `Section` with a game's section returns one `key=value` line
+  per key, the game's value first. The game is `kThisGame` (CMake's `MEVR_GAME_LEn`; "" in the tests and tools: no game's
+  sections).
+- **Writes.** `Write` (WritePrivateProfileStringW's signature), `Apply(path, edits)` and `Append(path, block)`. A shared file's
+  edits are routed (`Route`, pure and unit-tested); a game's old file in use is written as it was. Each write: the writers'
+  named mutex (`Local\MEVR.settings.write`: the host's Present and game threads, the mod, MEVR Setup), a copy of the file
+  (`<file>.<pid>-<tid>.tmp`), the changes through Win32's profile API on the copy, the copy moved over the file
+  (`MoveFileExW`, a few tries for a file busy for a moment). `Append` writes a module's defaults block in the file's encoding;
+  in the shared file its per-game keys go to `[<section>.<GAME>]`, each only where that section doesn't have it yet. The main
+  menu's due edits go in one `Apply` (`plugin/MainMenuSettings` `Flush`), each logged with where it went
+  (`main menu: [Hands] physicalCrouch = 0 (the three games')`, `... (LE1's own: a performance lever ...)`).
+
+### 20.4 The migration (`Sync`, at host attach)
+
+`plugin/Entry` `PrepareSettingsFile`, right after the exe gate and before anything reads a setting (OpenAL Soft's `[Audio]`
+read is the first). Under the writers' lock:
+
+1. **No shared file yet:** it is made from the three games' old files under this install (`SourcesUnder`, in the order LE1,
+   LE2, LE3: `<root>\Game\ME<n>\Binaries\Win64\ASI\LE<n>MEVR.ini`).
+   - **ME1's is the base** (the owner's tuned file is the source of the shipped defaults): its text as it is (comments, order,
+     a repeated key's later lines), without the calibration's sections and keys (`[Calibration.<key>]`,
+     `[ManualCalibration.<key>]`, `[Calibration] prompted`, `last`, `shared`: calibration.ini's) and the old markers; each
+     per-game key moved out of its section into `[<section>.LE1]` written right after it. Only a section's first occurrence
+     and a key's first line move (what Win32 reads).
+   - **ME2's and ME3's are taken in** (Sync's late take): a section the shared file lacks
+     comes whole with its comments (its per-game keys to its own section); a per-game key goes to `[<section>.<GAME>]`; a key
+     the shared file lacks becomes the three games'; **a key whose value differs keeps the base's value for the three games and
+     the game's own in `[<section>.<GAME>]`**, so that game goes on as it did (the rule against changing a game's behaviour
+     beyond sharing). Each difference is logged.
+   - No old file anywhere (a new install): nothing is made; the first write makes the file with its header.
+2. **An old file not taken yet** (no copy in `settings-taken`; ME3 installed later): taken the same way (1, second bullet).
+3. **This game's old file, taken before (the inbox):** every key changed in it since its taken copy applies to this game
+   alone (`[<section>.<GAME>]`; a value back to the three games' takes the game's own out); a key removed from it takes the
+   game's own out. Other games' old files are their hosts' to read. The host repeats this every 2 s on the game thread when the
+   old file's time or size changed (`SettingsInbox`): a tool's live edit (`tools/measure-levers.ps1`, `perf-ab.ps1`,
+   `fake-headset.ps1`'s `[Debug] openxrRuntime`) still reaches the game, as the player's hand edit of the old file does.
+4. Each old file taken is **marked `[Settings] shared = 1`** (it stays on disk for an older build: a rollback reads it) and
+   **copied to `%LOCALAPPDATA%\MEVR\settings-taken\LE<n>MEVR.ini`** (the inbox's reference) after the shared file is written.
+5. **A shared file that is there but can't be read:** refused. Nothing written, nothing marked; this session uses the game's
+   old file.
+
+`[Debug] shared = 0` in a game's old file keeps that session on the old file alone (no Sync, the shared file neither read nor
+written): `tools/le2-halcyon-run/prep.ps1` writes it into its minimal files, so a run reads only them (the code's defaults and
+their keys) and never writes the player's shared file; it is also a rollback by hand.
+
+**The log, at attach** (`settings:` lines in `LE<n>MEVR.log`):
+```
+settings: LE1MEVR.ini is the base: <n> keys for the three games; <m> stay ME1's own in its sections ([Performance] earlyFrameWait, ...)
+settings: [Hands] steadyIdle: the three games keep "1"; ME2 keeps its own "0" from LE2MEVR.ini ([Hands.LE2]): change it in the menu to share it
+settings: LE2MEVR.ini taken: <n> keys only it had are the three games' now ([Galaxy] inWorld, ...); <m> stay ME2's own; <k> differ and stay ME2's own (above)
+settings: LE1MEVR.ini marked [Settings] shared = 1: it stays for an older build; a key you change in it applies to ME1 alone
+settings: one file for the three games, C:\Users\<you>\AppData\Local\MEVR\settings.ini (made now); LE1's own keys in its [<section>.LE1] sections
+```
+and later `settings: [Debug] openxrRuntime = ... in LE1MEVR.ini: ME1's own ([Debug.LE1])` for an inbox change; a refused file:
+`settings: ... is there but couldn't be read: nothing taken into it, nothing written to it this session; this game's old file is
+in use` and `settings: this session uses ...\LE1MEVR.ini (the shared ... is there but couldn't be read)`.
+
+**On the owner's machine** (read-only comparison of the two files, 2026-11-18; LE3MEVR.ini isn't there): 316 keys the same in
+LE1MEVR.ini and LE2MEVR.ini, 80 only in ME1's, 85 only in ME2's (module blocks ME1's file predates: `[PowerWheel]` lock and push,
+`[SquadOrders]` place and ack, `[Galaxy]` table, `[Mako]` stick, `[HandContact]`, `[Reload]`), and 8 that differ. The differences
+stay ME2's own after the migration, for the owner to share or keep (one menu change shares a key): `[Hands] steadyIdle` (ME1 1,
+ME2 0), `[Sights] pistol` (none / dot), `[Sights] reticle` (game / duplex), `[Voice] device` (the Oculus headset microphone /
+the default), `[Voice] model` (small / tiny), `[WorldUi] wrist` (the same screens in another order), `[Cockpit] script`
+(cockpit-v2 / cockpit); `[Menu] assets` is a path (per game anyway). Keys only ME1's file has reach ME2 and ME3 now (the
+owner's ME1 choices, e.g. `[Cinematics] conversations = world`, `[Thespian] on = 1`, `[Colour]` tonemap keys): that is the
+sharing asked for; ME2's reads of them were the code's defaults before.
+
+### 20.5 Setup, reports, tools
+
+- **MEVR Setup** (`src/install`): the settings page's Automatic resets `[Display.<GAME>] eyeSizeSet` to 0 in settings.ini too,
+  only where it is (`ResetSharedEyeSize`; not recorded for uninstall: the player's data, as calibration.ini); the old file's
+  `[Display] eyeSizeSet` edit stays (an older build). Uninstall keeps settings.ini and `settings-taken` unless the
+  `%LOCALAPPDATA%\MEVR` box is ticked (its text says so); the game's old file is still the game's run-time file (deleted when
+  "Keep my VR settings" is off). The problem report adds `settings/settings.ini` (redacted as the rest) and diffs what the game
+  reads from it (`DiffSharedSettings`: its own section first); the old file stays in the zip. The install tests run on a
+  LOCALAPPDATA of their own (`RunInstallTests`), never the player's.
+- **Run scripts:** `tools/fake-headset-session.ps1` backs up and puts back settings.ini and `settings-taken` with the ASI
+  folder's inis (a run that made them, the first after the update, leaves none); `tools/le2-halcyon-run/prep.ps1` and
+  `session-common.ps1`'s preview config write `[Debug] shared = 0`. Every other tool that writes `ASI\<GAME>MEVR.ini` keeps
+  working through the inbox (20.4, step 3), for that game only.
+
+### 20.6 How to change it (for a lane)
+
+- A new setting: read it with `vr::settings_file::Load(engine::SettingsFile())` (mod) or `vr::settings_file::Int/String(...,
+  mevr::host::SettingsPath().c_str())` (host); write with `vr::settings_file::Write/Apply/Append`. Never Win32's profile API
+  or `std::ofstream` on the settings file (they skip the game's section and the routing).
+- A setting that must differ per game: add its rule to `PerGame` with the reason, and a line to `TestRule`. A folder next to
+  the ASI: `engine::AsiDir()`.
+- A test: `tests/SettingsFileTests.cpp` (files under `mevr::tests::TempRoot()`, named `settings.ini` for the routing).
+
+### 20.7 What is checked, what isn't
+
+- **Unit tests** (`tests/SettingsFileTests.cpp`, in `mevr-tests`): the rule; the reads over a parsed file and through Win32 (a
+  game's section, another game's ignored, the merged section, the cache after a write); the routing; the writer (no leftover
+  copies; an old file written as it is; removals); defaults blocks (a new file's header, per-game keys once, a UTF-16 file
+  written in UTF-16); the file in use (missing, unreadable, the host's answer); and the migration: **every key an ME1 file of
+  the shipped kind sets reads back from the shared file as Win32 read it from LE1MEVR.ini** (and as the mod's `ini::Get` read
+  it), a repeated key, an empty and a quoted value included; ME2's own values, per-game keys and ME2-only sections; ME3 with no
+  file of its own; the markers and copies; nothing taken twice; one game's menu change reaching the three; the inbox (a tool's
+  key, a value back to the shared one, a removed key, another game's file left to its host); a late ME3 file; an unreadable
+  shared file; a UTF-16 base. `tests/InstallTests.cpp`: Automatic resets `[Display.LE1]` and leaves `[Display.LE2]`;
+  `tests/ReportTests.cpp`: `DiffSharedSettings`.
+- **Not run in a game yet** (the owner was testing): the first launch's migration on the owner's real files and its log lines;
+  the menu's change seen by the next game; `[Debug] shared = 0` with the sequel runner; the inbox with `tools/fake-headset.ps1`.
+  To check on the fake headset (no headset needed): back up `%LOCALAPPDATA%\MEVR` and the three `ASI\LE<n>MEVR.ini`, launch ME1
+  (`tools/fake-headset-session.ps1 -Command "mevr findplayer"`), read the `settings:` lines, open settings.ini; launch ME2 on
+  Save 4 and see `[Hands] steadyIdle` read 0 there (its own); change a row in ME2's menu and see it in ME1's next launch.

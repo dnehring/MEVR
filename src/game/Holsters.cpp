@@ -661,7 +661,7 @@ bool CombatHolster() {
     std::uint64_t const now = GetTickCount64();
     if (gCombatHolsterReadMs == 0 || now - gCombatHolsterReadMs >= 2000) {
         gCombatHolsterReadMs = now;
-        ini::Loaded const loaded = ini::Read(engine::SettingsFile());
+        ini::Loaded const loaded = vr::settings_file::Load(engine::SettingsFile());
         bool const value = ini::GetNumber(loaded.file, "Holsters", "combatHolster").value_or(1.0) != 0.0;
         if (value != gCombatHolster || !gToldCombatHolster) {
             gToldCombatHolster = true;

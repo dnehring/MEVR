@@ -117,7 +117,8 @@ the mod's files that are missing or changed.
 
 Your controllers reach the game as its gamepad, with hand gestures on top. The **grip** is the button under your
 middle finger, the **trigger** the one under your index finger. Left-handed play isn't supported yet. Settings named
-below are in `Game\ME1\Binaries\Win64\ASI\LE1MEVR.ini`; most also have a row in the VR menu.
+below are in `%LOCALAPPDATA%\MEVR\settings.ini`, one file for the three games (a `[Section.LE2]` there holds what applies to
+ME2 alone); most also have a row in the VR menu, and a change there applies to all three games.
 
 ### On foot
 
@@ -246,10 +247,10 @@ quit, for the voice orders as for texture packs.
 
 Run `MEVR-Setup.exe` (or the copy in `Game\ME1\Binaries\Win64\ASI`) and use **Uninstall**. It removes what it added,
 puts back what it replaced, and returns your game settings, except any you changed yourself since. It also deletes
-your VR settings and the mod's logs in the game folder, unless you choose **Keep my VR settings** (for a later
-reinstall). Your calibration is one file for the three games, `%LOCALAPPDATA%\MEVR\calibration.ini`: it stays unless
-you tick **Also delete the mod's diagnostics** (off by default), which deletes `%LOCALAPPDATA%\MEVR`: the calibration,
-snapshots, recordings, frame-timing captures, crash reports and the downloaded Mass Effect Modder (only once no other
+the game's renderer profiles, its old settings file and the mod's logs in the game folder, unless you choose **Keep my VR
+settings** (for a later reinstall). Your settings and calibration are one file each for the three games,
+`%LOCALAPPDATA%\MEVR\settings.ini` and `calibration.ini`: they stay unless you tick **Also delete the mod's diagnostics**
+(off by default), which deletes `%LOCALAPPDATA%\MEVR`: the settings, the calibration, snapshots, recordings, frame-timing captures, crash reports and the downloaded Mass Effect Modder (only once no other
 game of the trilogy still has the mod).
 
 If your `GamerSettings.ini` is read-only, the install goes ahead without the VR game settings and says so: untick

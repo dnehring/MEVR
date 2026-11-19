@@ -51,6 +51,10 @@ $win64 = Join-Path $root 'Game\ME1\Binaries\Win64'
 $config = Join-Path $root 'Game\ME1\BioGame\Config'
 $launcher = Join-Path $root 'Game\Launcher'
 $setup = if ($Setup) { (Resolve-Path $Setup).Path } else { Join-Path $Build 'Release\MEVR-Setup.exe' }
+# The %LOCALAPPDATA% every MEVR Setup this test starts sees (Run-Setup): its settings.ini is the test's.
+$setupLocal = Join-Path $scratch 'setup-local'
+Remove-Item -Recurse -Force $setupLocal -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Force (Join-Path $setupLocal 'MEVR') | Out-Null
 $failures = 0
 # -Games LE2,LE3 arrives as one word through powershell -File.
 $Games = @($Games | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim().ToUpper() } | Where-Object { $_ })
@@ -74,7 +78,11 @@ function Run-Setup([string[]]$arguments) {
     $all = $arguments + @('--game', $root, '--payload', $Payload, '--out', $out)
     if ($script:For) { $all += @('--for', $script:For) }
     $quoted = ($all | ForEach-Object { if ($_ -match '\s') { "`"$_`"" } else { $_ } }) -join ' '
-    $p = Start-Process -FilePath $setup -ArgumentList $quoted -Wait -PassThru -NoNewWindow
+    # Setup on a %LOCALAPPDATA% of the test's own: never the player's settings.ini or calibration.ini (research/25 section 20).
+    $realLocal = $env:LOCALAPPDATA
+    $env:LOCALAPPDATA = $setupLocal
+    try { $p = Start-Process -FilePath $setup -ArgumentList $quoted -Wait -PassThru -NoNewWindow }
+    finally { $env:LOCALAPPDATA = $realLocal }
     $text = if (Test-Path $out) { Get-Content -Raw $out } else { '' }
     Write-Host "---- MEVR-Setup $($arguments -join ' ')$(if ($script:For) { " --for $($script:For)" }) (exit $($p.ExitCode))"
     Write-Host $text.TrimEnd()
@@ -298,6 +306,15 @@ Check ((Run-Setup @('--restore-settings')) -eq 0) 'restore the game settings'
 Check ((Get-Content -Raw (Join-Path $config 'GamerSettings.ini')) -eq $gamer) 'GamerSettings.ini exactly as it was'
 Check ((Run-Setup @('--apply-settings', '--quality', 'balanced')) -eq 0) 'apply the game settings again'
 Check ((Get-Content -Raw (Join-Path $config 'GamerSettings.ini')) -match '(?m)^ResX=4096') 'GamerSettings.ini: Balanced'
+# Automatic again: the three games' settings.ini forgets ME1's first-start size, not ME2's (research/25 section 20.5).
+$sharedSettings = Join-Path $setupLocal 'MEVR\settings.ini'
+[IO.File]::WriteAllText($sharedSettings, "[Hands]`r`nphysicalCrouch=0`r`n[Display.LE1]`r`neyeSizeSet=1`r`n[Display.LE2]`r`neyeSizeSet=1`r`n")
+Check ((Run-Setup @('--apply-settings', '--quality', 'auto')) -eq 0) 'apply Automatic'
+$sharedText = Get-Content -Raw $sharedSettings
+Check (($sharedText -match '(?ms)\[Display\.LE1\]\s+eyeSizeSet=0') -and ($sharedText -match '(?ms)\[Display\.LE2\]\s+eyeSizeSet=1') -and
+    ($sharedText -match 'physicalCrouch=0')) 'Automatic: settings.ini [Display.LE1] eyeSizeSet = 0, ME2''s and the rest untouched'
+Check ((Run-Setup @('--apply-settings', '--quality', 'balanced')) -eq 0) 'apply Balanced again'
+Check ((Get-Content -Raw (Join-Path $config 'GamerSettings.ini')) -match '(?m)^ResX=4096') 'GamerSettings.ini: Balanced again'
 
 # Install over the top (an update): nothing is backed up twice, the player's MELEVR.ini stays.
 Check ((Run-Setup @('--install', '--source', 'Steam', '--quality', 'keep')) -eq 0) 'install again (update)'
@@ -333,6 +350,9 @@ $who = "C:\Users\$env:USERNAME\AppData\Local\MEVR on $env:COMPUTERNAME, mail $en
 # The calibration the three games share (research/25 section 17): in the zip, redacted as the rest.
 [IO.File]::WriteAllText((Join-Path $fakeLocal 'calibration.ini'),
     "[Calibration.oculus_touch_controller__meta_quest_3]`r`nlabel=Touch Controller`r`nnote=$who`r`ntime=2026-11-18 10:00`r`n")
+# The settings the three games share (research/25 section 20): in the zip, redacted, and what ME1 reads from it diffed.
+[IO.File]::WriteAllText((Join-Path $fakeLocal 'settings.ini'),
+    "[Comfort]`r`nturn=snap`r`n[Voice]`r`ndevice=$who`r`n[Hands.LE2]`r`naimAssist=1`r`n")
 $beforeReport = Snapshot
 Check ((Run-Setup @('--report', '--snapshot', '--report-dir', $reportOut, '--local', $fakeLocal)) -eq 0) 'report'
 $zipFile = Get-ChildItem (Join-Path $reportOut 'MEVR-report-*.zip') | Select-Object -First 1
@@ -353,6 +373,8 @@ if ($zipFile) {
         ($names -contains 'settings/MEVR-install.json') -and ($names -contains 'system/folders.txt')) 'report: logs, settings, listing'
     Check (($names -contains 'snapshot/2026-10-26_01-00-00-000.json') -and ($names -contains 'snapshot/2026-10-26_01-00-00-000-left.png')) 'report: the snapshot'
     Check (($names -contains 'settings/calibration.ini') -and ($texts['settings/calibration.ini'] -match '\[Calibration\.oculus_touch_controller__meta_quest_3\]')) 'report: the shared calibration'
+    Check (($names -contains 'settings/settings.ini') -and ($texts['settings/settings.ini'] -match '\[Hands\.LE2\]') -and
+        ($texts['REPORT.md'] -match 'settings\.ini')) 'report: the shared settings, and what ME1 reads from them'
     $leak = $texts.Keys | Where-Object { $_ -notlike '*.png' -and ($texts[$_] -match [regex]::Escape($env:COMPUTERNAME) -or
         $texts[$_] -match ('\b' + [regex]::Escape($env:USERNAME) + '\b') -or $texts[$_] -match 'test@example\.com') }
     Check (-not $leak) "report: no user name, computer name or e-mail left ($($leak -join ', '))"

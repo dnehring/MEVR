@@ -776,6 +776,15 @@ These unblock the most: almost every other entry gets smaller once they land.
   ME1 (research/28 "Leave"). Seen on the fake headset: hidden on ME2's Save 4 and the Normandy (no event) and during
   `BioP_N7Mine`'s squad selection; offered there on foot, pressed: `LeaveWorld` called and the level's event triggered. ME1 at
   the same pose identical (the open menu's layer included). Left: ME3's in a Citadel DLC level (no save reaches one).
+- **Done, every game (lane SET, 2026-11-18; research/25 section 20; the owner: "Yes, share them"):** one settings file for the
+  three games, `%LOCALAPPDATA%\MEVR\settings.ini` (`core/vr/SettingsKeys`, `core/vr/SettingsFile`): a row's change in any game's
+  menu reaches the three; the keys a rule keeps per game (`PerGame`: the performance levers, `[Debug]`, the first-start and
+  first-run markers, `[Body.Shepard]`, `[Arms]`, the calibration's settings, paths) go to `[<section>.<GAME>]`. The first launch
+  makes it from ME1's `ASI\LE1MEVR.ini`, takes ME2's and ME3's in (a value that differs stays that game's own, logged), marks
+  the old files; a key changed later in a game's old file applies to that game. Unit-tested (every key of an ME1 file reads
+  back the same); **left:** the first launch on the owner's files (its `settings:` lines), a menu change in ME2 seen in ME1 and
+  ME3, on the fake headset or in the headset (notes/headset-checklist.md); the owner's question on the 7 values ME2 keeps
+  (Open owner questions).
 - **Left, ME2:** the Holster button was never exercised. **ME3:** the pause (`BioWorldInfo.PauseGame`) has no in-game
   result; the Holster button is greyed ("Not on ME3 yet", lane OM2, 2026-11-16) until lane WP's `holsters::PutAway()` and
   `[Holsters] le3PutAway` on by default (game/GameMenuRequest's `Run(Action::Holster)` then calls it on LE3).
@@ -1136,6 +1145,15 @@ about stutter or pacing in a real headset.
 ## Open owner questions
 
 Each is asked once. "Today" is what the build does if nobody answers; no default changes without a yes (rule 19).
+
+**Asked 2026-11-18, night** (lane SET, one settings file for the trilogy, T37; research/25 section 20.4): the first launch keeps,
+for ME2, its own value where its file differed from ME1's: `[Hands] steadyIdle` (ME1 1, ME2 0), `[Sights] pistol` (none /
+dot), `[Sights] reticle` (game / duplex), `[Voice] device` (the Oculus headset microphone / the default), `[Voice] model`
+(small / tiny), `[WorldUi] wrist` (the same screens, another order), `[Cockpit] script` (cockpit-v2 / cockpit). Today: ME2 keeps
+them (`[<section>.LE2]`) until a menu change shares one. Share all seven as ME1's at once, or leave each to a menu change?
+
+**Answered 2026-11-18, night:** settings shared across the games ("I assume the settings for 2 would carry into me3", then "Yes,
+share them"). **Built (lane SET):** T37's entry.
 
 **Answered 2026-11-18, later** (the questions the audit lanes AU2-AU7 raised; the owner's words in quotes):
 

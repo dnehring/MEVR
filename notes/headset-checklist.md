@@ -857,6 +857,19 @@ Headset checks the ME2 and ME3 plans named that had no line here (ME3 had none a
 [docs/trilogy-plan.md](../docs/trilogy-plan.md) "Headset-only checks"; T-numbers are its features. ME2's earlier lines
 stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs the feature seen working by script first.
 
+### One settings file for the three games (lane SET, 2026-11-18; research/25 section 20)
+
+Claude can check the first three alone on the fake headset (section 7's runs; back up `%LOCALAPPDATA%\MEVR` first, or use
+`tools/fake-headset-session.ps1`, which puts settings.ini back).
+- [ ] The first launch after the update (any game): `settings:` lines in its log say `LE1MEVR.ini is the base`, `LE2MEVR.ini
+  taken`, each value ME2 keeps for itself, and `marked [Settings] shared = 1`; `%LOCALAPPDATA%\MEVR\settings.ini` opens with its
+  header comment; ME1 plays as before (every setting the same: the stance, the sights, the comfort rows).
+- [ ] A row changed in ME2's menu (the physical crouch, the owner's example) is the same row's value in ME1's and ME3's menus at
+  their next start; a performance row (Display > Performance) stays each game's own.
+- [ ] A key edited by hand in `ASI\LE1MEVR.ini` while the game runs reaches ME1 within a few seconds (`settings: [X] k = v in
+  LE1MEVR.ini: ME1's own`) and not ME2.
+- [ ] The owner: share the seven values ME2 kept (docs/trilogy-plan.md "Asked 2026-11-18, night"), or leave each to a menu change.
+
 ### The sequels' render size from the headset (lane AU4, 2026-11-18; research/le3-flares-and-window.md section 6)
 
 - [ ] ME2 and ME3 after a first VR start on the PS VR2: the second launch renders ME3 at 2400x2448 and ME2 at 4352x2448 (16:9,

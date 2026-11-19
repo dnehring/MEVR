@@ -428,7 +428,8 @@ switching frameworks.
   `[ManualCalibration.<key>]`, `[Calibration] prompted`/`last`) in **`%LOCALAPPDATA%\MEVR\calibration.ini`, one file for the
   three games** (since 2026-11-18, research/25 section 17, `core/vr/CalibrationFile`; `engine::CalibrationFile()`): a save is one
   `.tmp` moved over it, refused for the session if it was there but unreadable; `[Calibration.<key>.<GAME>]` there overrides only
-  the keys it names; `[Calibration] use`, `eye`, `grabOffset` stay in `ASI\<GAME>MEVR.ini`. At host attach, before the mod
+  the keys it names; `[Calibration] use`, `eye`, `grabOffset` stay per game (`[Calibration.<GAME>]` in the three games'
+  settings.ini since research/25 section 20). At host attach, before the mod
   (`plugin/ModLoader`), a controller type the file lacks is taken from the newest of the three games' `ASI\LE{n}MEVR.ini` (its
   `time`; this game's first on a tie) and the game's ini marked `[Calibration] shared = 1` (its old sections stay; a marked ini is
   not read again while the shared file exists). Log `calibration: [Calibration.<key>] taken from ...`. Dev builds: `[Debug]
@@ -1996,14 +1997,27 @@ Use it to check VR changes yourself instead of asking the user what they see
 - Don't `cd` in Bash tool calls; it moves the session's working directory. Use absolute paths.
 - An inline `python - <<'EOF'` loses one backslash of every pair (the Bash tool); write scripts with backslashes to a file.
 - `Windows.h` macros eat ordinary names (`SetProp`, `far`, `near`, `min`, `max`): don't name ours after them; build `build-mono/` too.
-- **Our settings file is `<exe dir>\ASI\<GAME>MEVR.ini` for the host and the mod** (`engine/SettingsFile`; the host's
-  `MevrBridge::SettingsPath()` returns it, whatever the host ASI is called). **Read it with `core/Ini`** (or Win32's
-  profile API): names case-insensitive, the first section and key win (as Win32), a UTF-8 BOM stripped, UTF-16
-  decoded (the mod then appends no narrow blocks; `WritePrivateProfileStringW` handles it). Numbers in and out
+- **Our settings file is `%LOCALAPPDATA%\MEVR\settings.ini`, one for the three games, the host's and the mod's** (since
+  2026-11-18, the owner: "Yes, share them"; research/25 section 20, `core/vr/SettingsKeys` + `core/vr/SettingsFile`;
+  `engine::SettingsFile()`, the host's `MevrBridge::SettingsPath()`/`mevr::host::SettingsPath()` return the file in use).
+  `[<section>]` is the three games'; `[<section>.LE1/.LE2/.LE3]` overrides the keys it names for that game. **A per-game key is
+  a rule, `PerGame()`** (performance levers `[Performance]`/`[SystemSettings]`/`[Upscale]`, `[Debug]`, `[Display] eyeSizeSet`,
+  `[Menu] controlsShown`, `[Body.Shepard]`, `[Arms]`, `[Calibration] use`/`eye`/`grabOffset`, paths): a writer sends it to its
+  game's section, every other key to `[<section>]` and out of the games' sections (a change in one game's menu reaches the
+  three). **Read with `vr::settings_file::Load`** (the mod: `ini::Read` plus this game's sections) **or `Int`/`String`/`Section`**
+  (Win32's signatures); **write with `Write`/`Apply`/`Append`** (one `.tmp` moved over the file, a named mutex; a defaults block's
+  per-game keys routed): never Win32's profile API or `std::ofstream` on it. The game's old `<exe dir>\ASI\<GAME>MEVR.ini`
+  (`engine::GameSettingsFile()`) made it once at host attach (ME1's the base; a value ME2 or ME3 had differently stays that
+  game's own, logged `settings: [X] k: the three games keep ...`), is marked `[Settings] shared = 1` and stays for an older
+  build; a key changed in it later (a tool's, by hand) applies to that game alone (the host's inbox, every 2 s; copies in
+  `%LOCALAPPDATA%\MEVR\settings-taken`); `[Debug] shared = 0` there keeps a session on it alone (the sequel runner's minimal
+  files); a shared file there but unreadable leaves the session on the old file, never written. Folders next to the ASI come
+  from `engine::AsiDir()`, never the settings file's folder. **The parsing rules (`core/Ini`):** names case-insensitive, the
+  first section and key win (as Win32), a UTF-8 BOM stripped, UTF-16 decoded (`Append` writes a UTF-16 file in UTF-16). Numbers in and out
   through `ini::Number` / `ini::Fixed` / `std::format` (`std::from_chars`/`to_chars`), never `strtod`/`sscanf`/
   `%f` (the C locale). Paths to text: `ini::Utf8(path)`, never `path.string()` (it throws for characters outside the
   ANSI code page, e.g. a Cyrillic folder); RmlUi opens files through our UTF-8 file interface (`menu/MenuUi`). An
-  unwritable ASI folder: the mod warns once and retries every 10 s; our menu shows "Can't save settings" in its rail.
+  unwritable settings file: the mod warns once and retries every 10 s; our menu shows "Can't save settings" in its rail.
   Halcyon's own readers (`vr_config.cpp` `sscanf %lf`, `fprintf %.3f`, `xr_session.cpp` `atof`) still use the C
   locale, harmless while nothing calls `setlocale`.
 - **New engine access goes through our reflection layer `src/ue3/`** (research/34): `ue3::ClassRef`,
