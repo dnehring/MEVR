@@ -57,6 +57,7 @@ struct Values {
     bool steadyIdle = false;       // [Hands] steadyIdle (research/72, 2026-11-14; off until the headset check)
     bool crouchBody = true;        // [Hands] crouchBody (research/29 "The eyes inside the body", 2026-11-18)
     bool crouchBodyUp = false;     // [Hands] crouchBodyUp: ...and up to a head above it (off until the owner's yes)
+    bool fistOnGrip = true;        // [Hands] fistOnGrip (research/25 section 19, 2026-11-18)
     double recoilHaptic = 0.5;   // [Hands] recoilHaptic
     bool gunKick = true;         // [Hands] gunKick (research/24 section 8)
     double gunKickScale = 1.0;   // [Hands] gunKickScale
@@ -149,6 +150,10 @@ constexpr char const* kDefaultFile =
     "; crouchBodyUp: 1 (with crouchBody) also brings his body up to your head when it is lower than you (the game's crouch\n"
     "; while you stand or half stand, the weapon-drawn stance), his legs straightening. 0 (for now): only down.\n"
     "crouchBodyUp = 0\n"
+    "; fistOnGrip: 1 puts the controller's handle in Shepard's closed fist (an empty hand): his wrist sits behind the fist\n"
+    "; along his forearm, so turning your wrists turns his hand in place. 0: the wrist 7 cm along the handle's axis (before\n"
+    "; 2026-11-18: his hands swung inward when you held the controllers upright or rolled your wrists).\n"
+    "fistOnGrip = 1\n"
     "; armStretch: how far Shepard's arms may stretch to keep the hands on the controllers (1-1.25).\n"
     "armStretch = 1.25\n"
     "; trackingScale: Unreal units per meter of hand and head motion; 0 = the view's own scale.\n"
@@ -1015,6 +1020,9 @@ Values ReadValues(Ini const& ini) {
     }
     if (Number(ini, "Hands", "crouchBodyUp", flag)) {
         values.crouchBodyUp = flag != 0.0;
+    }
+    if (Number(ini, "Hands", "fistOnGrip", flag)) {
+        values.fistOnGrip = flag != 0.0;
     }
     if (Number(ini, "Hands", "legsTwistDeg", values.legsTwistDeg)) {
         values.legsTwistDeg = std::isfinite(values.legsTwistDeg) ? std::clamp(values.legsTwistDeg, 30.0, 90.0) : 60.0;
@@ -2794,6 +2802,10 @@ bool LevelCamera() {
     return gValues.levelCamera;
 }
 
+bool FistOnGrip() {
+    return gValues.fistOnGrip;
+}
+
 double RecoilHaptic() {
     return gValues.recoilHaptic;
 }
@@ -3479,6 +3491,8 @@ void Refresh() {
         // The body down to the player's head (2026-11-18, research/29 "The eyes inside the body").
         {L"Hands", "Hands", L"crouchBody", "crouchBody", L"1"},
         {L"Hands", "Hands", L"crouchBodyUp", "crouchBodyUp", L"0"},
+        // The controller's handle in Shepard's fist (2026-11-18, research/25 section 19).
+        {L"Hands", "Hands", L"fistOnGrip", "fistOnGrip", L"1"},
         // The weapon drawn, like exploring (2026-10-25, research/38).
         {L"Hands", "Hands", L"exploreStance", "exploreStance", L"0"},
         {L"Hands", "Hands", L"exploreStanceStorm", "exploreStanceStorm", L"1"},

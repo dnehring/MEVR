@@ -42,6 +42,8 @@
 //                                         and the knees bent, so a squat or a bend never puts the eyes inside the
 //                                         neck or chest (research/29 "The eyes inside the body"); 0: the game's height
 //           crouchBodyUp                  0 (default for now): only down; 1: up to a head above it too, the legs straightening
+//           fistOnGrip                    1 (default): an empty hand holds the controller's handle in its fist, the wrist
+//                                         behind it along the forearm (research/25 section 19); 0: 7 units along the handle
 //           armStretch                    1-1.25: how far the arms may stretch to reach
 //           trackingScale                 Unreal units per meter for hands and head; 0: the view's
 //           noCover, physicalCrouch, crouchBelow, standAbove, crouchDwellS: physical cover and
@@ -103,6 +105,9 @@ struct BodyMove {
 BodyMove GetBodyMove();
 // [Hands] levelCamera: keep the game camera level while the hand aims (game/view_level).
 bool LevelCamera();
+// [Hands] fistOnGrip: an empty hand is placed with the controller's handle in its closed fist (game/arm_ik; research/25
+// section 19); false: its wrist 7 units along the handle's axis from the grip, as before 2026-11-18.
+bool FistOnGrip();
 // [Hands] recoilHaptic: 0..1, how strongly a shot's recoil pulses the hand (0: none).
 double RecoilHaptic();
 // [Hands] gunKick, gunKickScale: each of the player's shots kicks the gun model in the hand (game/gun_kick, research/24

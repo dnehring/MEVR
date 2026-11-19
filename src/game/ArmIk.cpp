@@ -868,6 +868,8 @@ std::uint64_t gSeatReachLogMs = 0;
 // that length toward the palm (a fist around a 4 cm handle).
 constexpr double kFistAlongKnuckle = 0.8;
 constexpr double kFistPalmward = 0.35;
+// On foot, each empty hand's placement as last logged: 1 the handle in the fist ([Hands] fistOnGrip), 0 the old wrist, -1 neither.
+std::array<int, 2> gFistLogged{-1, -1};
 constexpr float kHeldIndexCurl = 0.5f;  // a held handle's index: at least this much of the trigger's curl
 
 void DriveSeated(cockpit_probe::Seat const& seat, bool poseHands = true) {
@@ -1421,6 +1423,38 @@ void Drive(double deltaSeconds) {
                     arm.rotation = ik::HandFromGrip(grip, hand_calibration::Trim(side), *gAnatomy[side]);
                 }
                 arm.hasRotation = true;
+                // The controller's handle in Shepard's fist (research/25 section 19): the fist's middle (as on the Mako's
+                // handles: most of the way to the middle knuckle, toward the palm) on the grip, the wrist wherever that puts
+                // it, behind the fist along his forearm. hand_targets' wrist sits 7 units along the handle's own axis (thumb to
+                // little finger), which points down out of an upright fist and swings round the handle as the forearm rolls:
+                // his hands went inward when the controllers were held upright or the wrists turned in (the owner, 2026-11-18).
+                // Placed from the hand as drawn, a roll of the forearm turns the hand about the forearm and the wrist stays.
+                int const middle = info->fingers[side][0];
+                std::optional<ik::Vec3> const palm = fingers::PalmNormal(info->asset, side);
+                int const count = static_cast<int>(pose.size());
+                bool const onGrip = hand_calibration::FistOnGrip() && controllers.active && tracked.gripValid && palm &&
+                    middle >= 0 && middle < count && chain->hand >= 0 && chain->hand < count;
+                if (onGrip) {
+                    ik::Transform const handBone = engine::skeleton::ToTransform(pose[static_cast<std::size_t>(chain->hand)]);
+                    ik::Vec3 const knuckle = ik::Rotate(ik::Conjugate(handBone.rotation),
+                        engine::skeleton::ToTransform(pose[static_cast<std::size_t>(middle)]).translation - handBone.translation);
+                    ik::Vec3 const fist = knuckle * kFistAlongKnuckle + *palm * (ik::Length(knuckle) * kFistPalmward);
+                    engine::UnrealVector const g = engine::ToWorld(targets.body, tracked.grip.position);
+                    ik::Vec3 const before = arm.wrist;
+                    arm.wrist = ik::TransformPoint(*worldToComponent, {g.x, g.y, g.z}) - ik::Rotate(arm.rotation, fist);
+                    if (gFistLogged[side] != 1) {
+                        gFistLogged[side] = 1;
+                        log::Info("arm IK: {} hand: the controller's handle in the fist ([Hands] fistOnGrip): the fist's middle "
+                                  "({:.1f}, {:.1f}, {:.1f}) in the hand bone, the wrist {:.1f} units from the old 7-unit point",
+                            kSideNames[side], fist.x, fist.y, fist.z, ik::Length(arm.wrist - before));
+                    }
+                } else if (gFistLogged[side] != 0) {
+                    gFistLogged[side] = 0;
+                    log::Info("arm IK: {} hand: the wrist 7 units along the handle's axis ({})", kSideNames[side],
+                        !hand_calibration::FistOnGrip() ? "[Hands] fistOnGrip = 0"
+                        : !palm                         ? "the palm's side isn't measured yet (game/fingers)"
+                                                        : "no tracked grip or finger bones");
+                }
             }
             driven += driven.empty() ? kSideNames[side] : std::string(" and ") + kSideNames[side];
         }
