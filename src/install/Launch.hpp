@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include "install/Game.hpp"
 #include "install/LaunchArgs.hpp"
 
 #include <filesystem>
@@ -38,6 +39,8 @@ struct SteamLaunchHooks {
 // CreateProcess -> shell on the same exe/arguments -> registered Steam URL. Empty exe skips the first two.
 // The URL with launch options may show Steam's arguments confirmation. Injectable for offline tests.
 Result RequestSteamLaunch(std::filesystem::path const& steamExe, bool boots, SteamLaunchHooks const& hooks);
+// The same for any of the three games (-game <n>; its name in the messages). Mass Effect 1 is the function above.
+Result RequestSteamLaunch(std::filesystem::path const& steamExe, bool boots, SteamLaunchHooks const& hooks, GameId game);
 
 // Starts LE1. The Steam build (`steam`) goes through Steam (started first if it isn't running, up to 60 s for a
 // logged-in user): `steam.exe -applaunch 1328670 -game 1 -autoterminate` when the launcher can boot the game itself (our
@@ -46,8 +49,13 @@ Result RequestSteamLaunch(std::filesystem::path const& steamExe, bool boots, Ste
 // the player to confirm them (research/33 section 11). Other builds (the EA app's) start MassEffect1.exe directly with
 // the launcher's arguments [verify].
 Result StartLe1(std::filesystem::path const& gameRoot, bool steam);
+// The same for any of the three games (StartLe1 is StartGame(..., LE1)): through Steam with -game <n>, or the game's exe
+// directly with its own arguments (launch::GameArguments).
+Result StartGame(std::filesystem::path const& gameRoot, GameId game, bool steam);
 // Whether the launcher at `gameRoot`\Game\Launcher boots a game itself when given -game N: our loader or LEBinkProxy.
 bool LauncherBoots(std::filesystem::path const& gameRoot);
+// The same for one game: LEBinkProxy boots all three; our loader the games kOurLauncherBoots names (LaunchArgs.hpp).
+bool LauncherBoots(std::filesystem::path const& gameRoot, GameId game);
 // The fallback: the game through Steam (its launcher's picker shows).
 bool StartThroughSteam();
 
@@ -79,6 +87,8 @@ Phase Next(Observation const& o);
 bool Finished(Phase phase);  // Apply, Closed, TimedOut
 // What the setup shows while it waits, or says at the end.
 char const* PhaseText(Phase phase);
+// The same naming any of the three games (PhaseText(phase) is Mass Effect 1's).
+std::string PhaseText(Phase phase, GameId game);
 } // namespace first_start
 
 // ---- The VR runtime before the game (research/33 section 9) ------------------------------------------------------
@@ -127,5 +137,8 @@ struct LaunchHooks {
 };
 Result StartLe1WithVr(std::filesystem::path const& gameRoot, bool steam, std::string_view runtimeKind, std::string_view runtimeManifest,
     LaunchHooks const& hooks);
+// The same for any of the three games.
+Result StartGameWithVr(std::filesystem::path const& gameRoot, GameId game, bool steam, std::string_view runtimeKind,
+    std::string_view runtimeManifest, LaunchHooks const& hooks);
 
 } // namespace mevr::install::launch

@@ -47,7 +47,8 @@ struct Link {
 };
 
 // Finds PlayerTick (every state's), SetWeaponRecoil and aim assist's ViewFriction and ViewAdhesion and
-// registers the handlers. Call before the ProcessEvent and CallFunction hooks go in. False on LE2/LE3.
+// registers the handlers. Call before the ProcessEvent and CallFunction hooks go in. Every game (ME2 since 2026-11-14;
+// ME3 since 2026-11-16, not yet run there).
 bool TryStartup();
 // Each mod tick.
 void Tick(Link const& link);

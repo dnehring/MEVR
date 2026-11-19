@@ -27,6 +27,16 @@ function(mevr_pdb_name_only target)
     target_link_options(${target} PRIVATE "/PDBALTPATH:$<TARGET_PDB_FILE_NAME:${target}>")
 endfunction()
 
+# Every source compiles in parallel, inside each project too (lane BLD, 2026-11-17). Without this, MSBuild hands all of a
+# project's sources to one cl.exe, which compiles them one after the other: a cold build-trilogy spent 10 minutes with 3-6
+# of 24 cores busy while the three mods' 190 files went through one at a time. MSBuild's multi-tool task gives every
+# source its own cl.exe, at most one per logical processor across all the projects the build runs at once. The compiler
+# gets the same options for each file (the task adds /FS, so the processes share a project's PDB, and drops /MP), so the
+# objects are the same. Set before any target is defined, so the external projects (LExSDKv2, RmlUi...) get it too.
+if (CMAKE_GENERATOR MATCHES "^Visual Studio")
+    list(APPEND CMAKE_VS_GLOBALS "UseMultiToolTask=true" "EnforceProcessCountAcrossBuilds=true")
+endif ()
+
 # One source tree, one ASI per game (docs/trilogy-design.md). LE1 first.
 option(MEVR_BUILD_LE1 "Build LE1MEVR.asi" ON)
 option(MEVR_BUILD_LE2 "Build LE2MEVR.asi" OFF)
@@ -41,63 +51,42 @@ endif ()
 if (MEVR_LE2_DIAGNOSTIC AND MEVR_HOT_RELOAD)
     message(FATAL_ERROR "LE2 control producer requires a monolithic diagnostic host (MEVR_HOT_RELOAD=OFF)")
 endif ()
-# LExSDKv2 has no licence, so a players' build of LE1 has none of it (research/34 stage 6 for LE1): the mod runs on our
-# own reflection layer, and only development builds keep LExSDKv2 for the cross-check (engine/ReflectCheck). Off by
-# default in a release (monolithic) build. LE2/LE3 still read the engine through it (not released).
+# LExSDKv2 has no licence, so a players' build has none of it, on any game (research/34 stage 6 for LE1; T04,
+# docs/trilogy-plan.md, for LE2 and LE3): the mod runs on our own reflection layer, and only development builds keep
+# LExSDKv2 for the cross-check (engine/ReflectCheck). Off by default in a release (monolithic) build.
 option(MEVR_LE1_LESDK "LE1: link LExSDKv2 for the reflection cross-check (development builds)" ${MEVR_HOT_RELOAD})
+option(MEVR_LE2_LESDK "LE2: link LExSDKv2 for the reflection cross-check (development builds)" ${MEVR_HOT_RELOAD})
+option(MEVR_LE3_LESDK "LE3: link LExSDKv2 for the reflection cross-check (development builds)" ${MEVR_HOT_RELOAD})
+# The LE2 diagnostic host's observers read the engine through LExSDKv2's own headers (engine/Le2DiagnosticObservation,
+# engine/Legacy): a monolithic development build that is never packaged, so it links the SDK whatever the option says.
+set(MEVR_LE2_LINKS_LESDK ${MEVR_LE2_LESDK})
+if (MEVR_LE2_DIAGNOSTIC AND NOT MEVR_LE2_LESDK)
+    message(STATUS "MEVR_LE2_DIAGNOSTIC: the diagnostic host links LExSDKv2 (MEVR_LE2_LESDK is taken as ON; not a players' build)")
+    set(MEVR_LE2_LINKS_LESDK ON)
+endif ()
+set(MEVR_LE1_LINKS_LESDK ${MEVR_LE1_LESDK})
+set(MEVR_LE3_LINKS_LESDK ${MEVR_LE3_LESDK})
 
-# LExSDKv2 honors these as normal variables (CMP0077).
-if (MEVR_BUILD_LE1 AND MEVR_LE1_LESDK)
-    set(LESDK_WITH_LE1 ON)
-else ()
-    set(LESDK_WITH_LE1 OFF)
-endif ()
-set(LESDK_WITH_LE2 ${MEVR_BUILD_LE2})
-set(LESDK_WITH_LE3 ${MEVR_BUILD_LE3})
-set(LESDK_WITH_LEL OFF)
-set(LESDK_WITH_SAMPLES OFF)
-set(LESDK_WITH_TESTS OFF)
-# Only when something links it: a release build of LE1 configures and builds without the unlicensed submodule checked
-# out (docs/release-checklist.md section 1; research/34 stage 6).
-if (LESDK_WITH_LE1 OR LESDK_WITH_LE2 OR LESDK_WITH_LE3)
-    add_subdirectory(external/LExSDKv2)
-endif ()
+# The third-party libraries (tools/cmake/ThirdParty.cmake: their settings, and the prebuilt cache a fresh worktree takes
+# them from, MEVR_THIRDPARTY_CACHE): LExSDKv2 for the games that link it, only when something does (a release build of
+# any game configures and builds without the unlicensed submodule checked out: docs/release-checklist.md section 1;
+# research/34 stage 6; T04); the OpenXR loader; with the main menu, FreeType and RmlUi.
+option(MEVR_MAIN_MENU "Build our VR main menu (RmlUi) into the LE1 and LE2 hosts" ON)
+set(MEVR_LESDK_GAMES "")
+foreach (game LE1 LE2 LE3)
+    if (MEVR_BUILD_${game} AND MEVR_${game}_LINKS_LESDK)
+        list(APPEND MEVR_LESDK_GAMES ${game})
+    endif ()
+endforeach ()
+include(tools/cmake/ThirdParty.cmake)
+mevr_third_party("${MEVR_LESDK_GAMES}" ${MEVR_MAIN_MENU})
 # The loader's test ASI is built against LExSDKv2's own SPI header (an outside plugin's view), when the submodule is there.
 set(MEVR_HAVE_LESDK_SPI OFF)
 if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/LExSDKv2/External")
     set(MEVR_HAVE_LESDK_SPI ON)
 endif ()
 
-# Khronos OpenXR loader (Apache-2.0), linked statically into the mod.
-set(DYNAMIC_LOADER OFF)
-set(BUILD_API_LAYERS OFF)
-set(BUILD_TESTS OFF)
-set(BUILD_CONFORMANCE_TESTS OFF)
-set(BUILD_SDK_TESTS OFF)
-set(BUILD_ALL_EXTENSIONS OFF)
-add_subdirectory(external/OpenXR-SDK EXCLUDE_FROM_ALL)
-
-# The main menu's UI library (research/28): RmlUi (MIT) with its FreeType font engine (FreeType: FTL), both
-# static, built only for what links them (the LE1 host and the menu preview). Their own warning levels.
-option(MEVR_MAIN_MENU "Build our VR main menu (RmlUi) into the LE1 and LE2 hosts" ON)
 if (MEVR_MAIN_MENU)
-    set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
-    set(FT_DISABLE_ZLIB ON CACHE BOOL "" FORCE)
-    set(FT_DISABLE_BZIP2 ON CACHE BOOL "" FORCE)
-    set(FT_DISABLE_PNG ON CACHE BOOL "" FORCE)
-    set(FT_DISABLE_HARFBUZZ ON CACHE BOOL "" FORCE)
-    set(FT_DISABLE_BROTLI ON CACHE BOOL "" FORCE)
-    add_subdirectory(external/freetype EXCLUDE_FROM_ALL)
-    add_library(Freetype::Freetype ALIAS freetype)
-    # RmlUi looks for FreeType with find_package; the target above is the one it links.
-    set(CMAKE_DISABLE_FIND_PACKAGE_Freetype TRUE)
-    set(RMLUI_FONT_ENGINE "freetype" CACHE STRING "" FORCE)
-    set(RMLUI_SAMPLES OFF CACHE BOOL "" FORCE)
-    set(RMLUI_LUA_BINDINGS OFF CACHE BOOL "" FORCE)
-    set(RMLUI_SVG_PLUGIN OFF CACHE BOOL "" FORCE)
-    set(RMLUI_LOTTIE_PLUGIN OFF CACHE BOOL "" FORCE)
-    set(RMLUI_WARNINGS_AS_ERRORS OFF CACHE BOOL "" FORCE)
-    add_subdirectory(external/RmlUi EXCLUDE_FROM_ALL)
     # RmlUi's own Direct3D 11 renderer (Backends, MIT), wrapped by src/plugin/menu/MenuRenderer for the game's device.
     add_library(rmlui-d3d11 STATIC external/RmlUi/Backends/RmlUi_Renderer_DX11.cpp)
     target_include_directories(rmlui-d3d11 PUBLIC external/RmlUi/Backends)
@@ -170,6 +159,25 @@ if (MEVR_MAIN_MENU)
     mevr_pdb_name_only(MEVR-Setup)
 endif ()
 
+# An experimental, separately launched SteamVR picker. Not shipped by the release packager.
+option(MEVR_VR_LAUNCHER "Build the experimental SteamVR launcher overlay" OFF)
+if (MEVR_VR_LAUNCHER AND MEVR_MAIN_MENU)
+    add_executable(MEVR-VRLauncher tools/vr-launcher/Main.cpp src/core/PngFile.cpp)
+    target_include_directories(MEVR-VRLauncher PRIVATE src third_party/openvr)
+    target_link_libraries(MEVR-VRLauncher PRIVATE mevr-menu mevr-install windowscodecs ole32 d3d11 dxgi)
+    target_compile_definitions(MEVR-VRLauncher PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
+    target_compile_options(MEVR-VRLauncher PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus /Zi)
+    target_link_options(MEVR-VRLauncher PRIVATE /DEBUG /DEPENDENTLOADFLAG:0x800)
+    mevr_pdb_name_only(MEVR-VRLauncher)
+    add_custom_command(TARGET MEVR-VRLauncher POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/assets/menu" "$<TARGET_FILE_DIR:MEVR-VRLauncher>/vr-launcher/menu"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/third_party/fonts" "$<TARGET_FILE_DIR:MEVR-VRLauncher>/vr-launcher/fonts")
+    add_executable(mevr-launcher-tests tools/vr-launcher/HandoffTests.cpp)
+    target_compile_options(mevr-launcher-tests PRIVATE /W4 /WX /permissive- /utf-8)
+    enable_testing()
+    add_test(NAME mevr-launcher-tests COMMAND mevr-launcher-tests)
+endif ()
+
 # MinHook (BSD-2, third_party/minhook): one static library for every target that hooks with it: our loader, core/Hook's
 # fallback when no SPI loader attached us (host and mod), and Halcyon's renderer (so the LE1 host has one MinHook).
 add_library(mevr-minhook STATIC
@@ -184,6 +192,13 @@ target_compile_options(mevr-minhook PRIVATE /W3)
 # Halcyon's LE1 VR renderer (GPL-3.0, src/halcyon/le1) with its vendored MinHook (mevr-minhook) and Dear ImGui.
 # It runs inside the LE1 host: OpenXR session, Present path, stereo, first person, HUD, menu.
 option(MEVR_HALCYON "Use Halcyon's renderer for LE1" ON)
+# A sequel's first run and A/Bs of ME1's render levers before a lever's flag is set in plugin/RenderLeversTable.hpp
+# (research/sequel-render-levers.md "Enabling a lever on a sequel"). Never ON in a build that is deployed for anything else.
+option(MEVR_RENDER_LEVERS_TRY "LE2/LE3 development: hook the render levers whose layouts were read, for their A/Bs" OFF)
+if (MEVR_RENDER_LEVERS_TRY)
+    # On the one file that reads it, so switching it rebuilds one file per host. LE1's build of the file ignores it.
+    set_source_files_properties(src/plugin/RenderLevers.cpp PROPERTIES COMPILE_DEFINITIONS MEVR_RENDER_LEVERS_TRY)
+endif ()
 set(HALCYON_LE1_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/halcyon/le1)
 add_library(halcyon-le1 STATIC
     ${HALCYON_LE1_DIR}/d3d_capture.cpp
@@ -342,6 +357,8 @@ set(MEVR_MOD_SOURCES
     src/core/ik/CameraHook.hpp
     src/core/ik/Fingers.cpp
     src/core/ik/Fingers.hpp
+    src/core/ik/GoalStep.cpp
+    src/core/ik/GoalStep.hpp
     src/core/ik/Melee.cpp
     src/core/ik/GunKick.cpp
     src/core/ik/GunKick.hpp
@@ -367,6 +384,8 @@ set(MEVR_MOD_SOURCES
     src/core/vr/Ads.hpp
     src/core/ik/Vent.cpp
     src/core/ik/Vent.hpp
+    src/core/vr/ReloadGesture.cpp
+    src/core/vr/ReloadGesture.hpp
     src/core/vr/AimRay.cpp
     src/core/vr/AimRay.hpp
     src/core/vr/Calibration.cpp
@@ -443,6 +462,7 @@ set(MEVR_MOD_SOURCES
     src/core/vr/TestRequest.hpp
     src/core/vr/ViewLevel.cpp
     src/core/vr/ViewLevel.hpp
+    src/core/vr/ActionCamera.hpp
     src/core/vr/ViewSync.cpp
     src/core/vr/ViewSync.hpp
     src/core/xr/Input.cpp
@@ -527,6 +547,8 @@ set(MEVR_MOD_SOURCES
     src/game/Thespian.hpp
     # Vaulting and climbing (research/le2-traversal.md): ME2's own move on the double A, measured and presented.
     src/game/Traversal.cpp
+    src/game/Le2Traversal.cpp
+    src/game/Le2Traversal.hpp
     src/game/Le3Traversal.cpp
     src/game/Traversal.hpp
     src/core/vr/Traversal.cpp
@@ -625,18 +647,31 @@ set(MEVR_MOD_SOURCES
     src/game/MakoGunner.hpp
     src/game/Spectator.cpp
     src/game/SceneCaptureRig.cpp
+    src/game/GalaxyProjector.cpp
+    src/game/GalaxyProjector.hpp
     src/game/Le3GalaxyRetention.cpp
     src/game/Le3GalaxyRetention.hpp
     src/game/Le3GalaxyCapture.cpp
     src/game/Le3GalaxyCapture.hpp
+    src/game/GalaxyProjectorFlow.cpp
+    src/game/GalaxyProjectorFlow.hpp
+    src/game/GalaxyRay.cpp
+    src/game/GalaxyRay.hpp
+    src/game/DepthOfFieldHold.cpp
+    src/game/DepthOfFieldHold.hpp
+    src/game/Le2GalaxyCapture.cpp
+    src/game/Le2GalaxyCapture.hpp
     src/game/Spectator.hpp
     src/game/Sights.cpp
     src/game/Sights.hpp
+    src/game/ZoomedShots.cpp
+    src/game/ZoomedShots.hpp
     src/game/SkeletonProbe.cpp
     src/game/SkeletonProbe.hpp
     src/game/SquadWeapons.cpp
     src/game/SquadWeapons.hpp
     src/game/Le2Squad.hpp
+    src/game/SequelPowers.hpp
     src/game/Le2SquadMenu.inc
     src/game/SupportGrip.cpp
     src/game/SupportGrip.hpp
@@ -644,6 +679,8 @@ set(MEVR_MOD_SOURCES
     src/game/Throwables.hpp
     src/game/Vent.cpp
     src/game/Vent.hpp
+    src/game/Reload.cpp
+    src/game/Reload.hpp
     src/game/ViewAnchor.cpp
     src/game/ViewAnchor.hpp
     src/game/ViewLevel.cpp
@@ -851,6 +888,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/plugin/OpenAlSoft.cpp
     src/plugin/OpenAlSoft.hpp
     src/plugin/HalcyonBridge.cpp
+    src/plugin/HdrDisplayPolicy.cpp
+    src/plugin/HdrDisplayPolicy.hpp
     src/plugin/Seams.cpp
     src/halcyon/MevrSeams.h
     src/plugin/PadMerge.cpp
@@ -863,6 +902,8 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/plugin/HudPanel.hpp
     src/plugin/HudPieceLayers.cpp
     src/plugin/HudPieceLayers.hpp
+    src/plugin/WheelPanel.cpp
+    src/plugin/WheelPanel.hpp
     src/plugin/QuadSwapchain.cpp
     src/plugin/QuadSwapchain.hpp
     src/plugin/MevrMenu.hpp
@@ -875,10 +916,14 @@ set(MEVR_HALCYON_HOST_SOURCES
     src/plugin/MetricStereo.hpp
     src/plugin/PerfProbe.cpp
     src/plugin/PerfProbe.hpp
+    src/plugin/PerfProbeHost.hpp
+    src/plugin/PerfProbeLe1.cpp
     src/plugin/QuestPacing.cpp
     src/plugin/QuestPacing.hpp
     src/plugin/RenderLevers.cpp
     src/plugin/RenderLevers.hpp
+    src/plugin/RenderLeversSeams.hpp
+    src/plugin/RenderLeversTable.hpp
     src/plugin/MotionBlurGuard.cpp
     src/plugin/MotionBlurGuard.hpp
     src/plugin/KeptLocks.cpp
@@ -960,6 +1005,7 @@ set(MEVR_FSR_EMBEDDED ${MEVR_EMBEDDED_FFX_A} ${MEVR_EMBEDDED_FFX_FSR1})
 # Shared sequel menu, calibration and wrist presentation. Native capture/input are separate service gates.
 set(MEVR_SEQUEL_MENU_SOURCES
 src/plugin/MainMenu.cpp src/plugin/MainMenu.hpp src/plugin/MainMenuSettings.cpp
+                src/core/vr/RenderTarget.cpp src/core/vr/RenderTarget.hpp   # the render target from the headset (ME1's rule)
                 src/plugin/MainMenuSettings.hpp src/plugin/Calibration.cpp src/plugin/Calibration.hpp src/plugin/CalibrationDraw.cpp
                 src/plugin/CalibrationDraw.hpp src/plugin/ArmSample.cpp src/plugin/ArmSample.hpp src/core/vr/MenuPointer.cpp src/core/vr/MenuPointer.hpp src/core/vr/GameMenuRequest.cpp
                 src/core/vr/GameMenuRequest.hpp src/core/vr/CineScreen.cpp src/core/vr/CineScreen.hpp
@@ -979,6 +1025,21 @@ src/plugin/MainMenu.cpp src/plugin/MainMenu.hpp src/plugin/MainMenuSettings.cpp
                 src/core/vr/GuiEvents.cpp src/core/vr/GuiEvents.hpp
                 # Entry.cpp's ExitProcess hook asks it with the menu; nothing writes its request on ME2 yet (MEVR Setup, M7.2).
                 src/plugin/SetupRequest.cpp src/plugin/SetupRequest.hpp src/core/Json.cpp src/core/Json.hpp
+                # Report a problem and the crash offer (research/33 section 8, T52): the menu's Advanced > Diagnostics > Report
+                # starts the setup copy in this game's ASI folder, which writes the zip for the game it sits in.
+                src/plugin/ReportRequest.cpp src/plugin/ReportRequest.hpp src/install/ReportMarks.hpp
+)
+
+# ME1's frame-breakdown probe and render levers in the sequels' hosts (research/sequel-render-levers.md "Shared module"):
+# the same modules as LE1's list above, with the sequels' adapter for the probe (plugin/PerfProbeSequel) in place of LE1's
+# (plugin/PerfProbeLe1). The levers read each game's rows of engine/Addresses.hpp through plugin/RenderLeversTable.
+set(MEVR_SEQUEL_RENDER_PERF_SOURCES
+    src/plugin/PerfProbe.cpp src/plugin/PerfProbe.hpp src/plugin/PerfProbeHost.hpp src/plugin/PerfProbeSequel.cpp
+    src/core/vr/FrameProbe.cpp src/core/vr/FrameProbe.hpp
+    src/plugin/RenderLevers.cpp src/plugin/RenderLevers.hpp src/plugin/RenderLeversSeams.hpp src/plugin/RenderLeversTable.hpp
+    src/plugin/SceneCaptureTarget.hpp src/core/vr/SceneCaptureScope.hpp
+    src/plugin/DrawReplay.cpp src/plugin/DrawReplay.hpp
+    src/core/d3d11/ShaderReflect.cpp src/core/d3d11/ShaderReflect.hpp src/core/vr/ScreenMatrix.cpp src/core/vr/ScreenMatrix.hpp
 )
 
 function(mevr_add_plugin game)
@@ -989,6 +1050,12 @@ function(mevr_add_plugin game)
     set(mod_sources ${MEVR_MOD_SOURCES})
     if (game STREQUAL "LE3")
         list(APPEND mod_sources src/game/Le3Gui.cpp src/game/Le3Gui.hpp src/core/Json.cpp src/core/Json.hpp)
+    endif ()
+    if (game STREQUAL "LE2")
+        list(APPEND mod_sources src/core/Json.cpp src/core/Json.hpp)  # game/GalaxyProjectorFlow's status (the sequels' galaxy flow)
+    endif ()
+    if (game STREQUAL "LE2" OR game STREQUAL "LE3")
+        list(APPEND mod_sources src/core/vr/GalaxyRay.cpp src/core/vr/GalaxyRay.hpp)  # game/GalaxyRay: the map picked by a ray
     endif ()
     if (MEVR_LE2_DIAGNOSTIC AND game STREQUAL "LE2")
         list(APPEND mod_sources src/engine/Le2DiagnosticHost.cpp src/engine/Le2DiagnosticHost.hpp
@@ -1005,7 +1072,11 @@ function(mevr_add_plugin game)
     if (MEVR_HALCYON AND game STREQUAL "LE2" AND NOT MEVR_LE2_DIAGNOSTIC)
         set(with_halcyon_le2 ON)
         list(APPEND host_sources src/plugin/HalcyonLe2.cpp src/plugin/HalcyonLe2.hpp src/plugin/HalcyonLe2Bridge.cpp
-            src/plugin/Seams.cpp src/halcyon/MevrSeams.h
+            src/plugin/KeptLocks.cpp src/plugin/KeptLocks.hpp   # the quit-time lock guard, as LE1's (research/36)
+            src/plugin/MotionBlurGuard.cpp src/plugin/MotionBlurGuard.hpp   # ME1's and ME3's (research/le2-motion-blur-guard.md)
+            src/plugin/HalcyonSequelBridge.cpp src/plugin/HalcyonSequelBridge.hpp src/plugin/SequelOverlays.cpp
+            src/plugin/Seams.cpp src/halcyon/MevrSeams.h src/plugin/RecenterTilt.cpp src/plugin/RecenterTilt.hpp
+            src/core/vr/Recenter.cpp src/core/vr/Recenter.hpp
             src/plugin/HdrDisplayPolicy.cpp src/plugin/HdrDisplayPolicy.hpp
             src/plugin/Voice.cpp src/plugin/Voice.hpp src/plugin/VoiceModel.cpp src/plugin/VoiceModel.hpp
             src/halcyon/le2/mevr_bridge.h src/core/CallQueue.hpp src/plugin/GameThreadCalls.cpp src/plugin/GameThreadCalls.hpp
@@ -1017,10 +1088,14 @@ function(mevr_add_plugin game)
             # The floor lock (plugin/FloorLock, LE1's): the view's centre at the player's eye height over the pawn's floor.
             src/plugin/FloorLock.cpp src/plugin/FloorLock.hpp src/core/vr/FloorLock.cpp src/core/vr/FloorLock.hpp
             src/core/vr/Calibration.cpp src/core/vr/Calibration.hpp
+            src/core/vr/CombatStance.cpp src/core/vr/CombatStance.hpp   # the constant eye (MevrSeams::ConstantFpEye, research/38 B)
             # The game's float swap chain drawn into the eye images (plugin/EyeCopy over core/d3d11/Blit), and ME1's colour
             # correction in that copy (plugin/Colour, core/vr/Colour; research/le2-picture.md).
             src/plugin/EyeCopy.cpp src/plugin/EyeCopy.hpp src/core/d3d11/Blit.cpp src/core/d3d11/Blit.hpp
             src/plugin/Colour.cpp src/plugin/Colour.hpp src/core/vr/Colour.cpp src/core/vr/Colour.hpp
+            # ME1's eye upscale in that copy (plugin/Upscale, core/vr/Upscale: FSR 1; research/27 "One eye-image pipeline").
+            src/plugin/Upscale.cpp src/plugin/Upscale.hpp src/core/vr/Upscale.cpp src/core/vr/Upscale.hpp
+            src/core/Embedded.hpp ${MEVR_FSR_EMBEDDED}
             # Our layers at xrEndFrame (MevrBridge::OverlayLayers): the swapchain budget and the modules that run on LE2.
             src/plugin/Swapchains.cpp src/plugin/Swapchains.hpp
             src/core/vr/SwapchainBudget.hpp src/plugin/Vignette.cpp src/plugin/Vignette.hpp src/core/vr/Comfort.cpp
@@ -1031,6 +1106,8 @@ function(mevr_add_plugin game)
             src/core/vr/OverlayPlacement.cpp src/core/vr/OverlayPlacement.hpp
             # The HUD pieces on the body (plugin/HudPieceLayers, LE1's): the status at the wrist, the weapon panel on the gun.
             src/plugin/HudPieceLayers.cpp src/plugin/HudPieceLayers.hpp src/core/vr/HudPieces.cpp src/core/vr/HudPieces.hpp
+            # The game's wheels at the hand (plugin/WheelPanel, LE1's).
+            src/plugin/WheelPanel.cpp src/plugin/WheelPanel.hpp src/core/vr/WheelCrop.cpp src/core/vr/WheelCrop.hpp
             src/core/vr/InteractLabel.cpp src/core/vr/InteractLabel.hpp
             # The gun's sights and the scope (plugin/SightLayers, LE1's).
             src/core/vr/ScopeArt.cpp src/core/vr/ScopeCapture.cpp src/core/vr/Sights.cpp
@@ -1042,11 +1119,18 @@ function(mevr_add_plugin game)
             src/plugin/PowerWheel.cpp src/plugin/PowerWheelDraw.cpp src/plugin/PowerIcons.cpp src/plugin/Glow.cpp
             src/plugin/SquadPlaceDraw.cpp src/plugin/GalaxyHologramDraw.cpp
             src/core/vr/SquadMenu.cpp src/plugin/SquadPanel.cpp src/plugin/SquadPanelDraw.cpp
+            # The galaxy map's window and view hold over the CIC's projector (ME1's, every game: game/GalaxyProjector).
+            src/plugin/GalaxyHologram.cpp src/plugin/GalaxyHologram.hpp src/plugin/PovSwap.hpp
             src/core/vr/GalaxyHologram.cpp src/core/vr/GalaxyHologram.hpp
             src/core/vr/GalaxyMap.cpp src/core/vr/GalaxyMap.hpp
             # ME1's 3D cinema screen for conversations and cutscenes, its floor and horizon, the dip from black and the
             # world-locked placement (research/52, research/le2-cinema.md): LE1's modules, shared.
             src/plugin/CineScreen.cpp src/plugin/CineScreen.hpp src/core/vr/CineScreen.cpp src/core/vr/CineScreen.hpp
+            # ME1's front end on one presentation (research/56, T18): the title on the 3D screen, no flips at start-up.
+            src/plugin/PresentationHold.cpp src/core/vr/PresentationHold.cpp src/core/vr/PresentationHold.hpp
+            # Life-size stereo (research/30 section 9): ME1's plan, shared; the render-side edits in src/halcyon/MevrMetricView.h.
+            src/plugin/MetricStereo.cpp src/plugin/MetricStereo.hpp src/core/vr/MetricStereo.cpp src/core/vr/MetricStereo.hpp
+            src/halcyon/MevrMetricView.h
             src/plugin/SequelCinema.cpp src/plugin/SequelCinema.hpp
             src/plugin/SequelWeaponLayers.cpp src/plugin/SequelWeaponLayers.hpp
             src/plugin/SequelSquadLayers.cpp src/plugin/SequelSquadLayers.hpp
@@ -1064,7 +1148,8 @@ function(mevr_add_plugin game)
             src/core/vr/PoseRecording.hpp src/core/vr/TestRequest.cpp src/core/vr/TestRequest.hpp src/core/Hotkey.cpp
             src/core/Hotkey.hpp src/core/PngFile.cpp src/core/PngFile.hpp
             # Our menus' glue on ME2's renderer (plugin/MenusLe2: its OnMenuKey and MainMenuOpen seams, empty without the menu).
-            src/plugin/MenusLe2.cpp src/plugin/MenusLe2.hpp)
+            src/plugin/MenusLe2.cpp src/plugin/MenusLe2.hpp
+            ${MEVR_SEQUEL_RENDER_PERF_SOURCES})
         if (MEVR_MAIN_MENU)
             # Our main menu and the guided calibration on ME2 (docs/le2-continuation-plan.md M4.1, M4.2; research/le2-menus.md):
             # the same modules as LE1's, in the host (not hot-reloaded).
@@ -1077,14 +1162,19 @@ function(mevr_add_plugin game)
         set(with_halcyon_le3 ON)
         # One shared controller/floor/input/capture implementation. Gameplay/UI service ports are separate gates.
         list(APPEND host_sources src/plugin/HalcyonLe3.cpp src/plugin/HalcyonLe3.hpp src/plugin/Seams.cpp src/halcyon/MevrSeams.h
+            src/plugin/KeptLocks.cpp src/plugin/KeptLocks.hpp   # the quit-time lock guard, as LE1's (research/36)
+            src/plugin/RecenterTilt.cpp src/plugin/RecenterTilt.hpp src/core/vr/Recenter.cpp src/core/vr/Recenter.hpp
             src/plugin/Le3SceneCapture.cpp src/plugin/Le3SceneCapture.hpp src/plugin/SceneCaptureTarget.hpp
             src/plugin/MotionBlurGuard.cpp src/plugin/MotionBlurGuard.hpp
             src/plugin/HalcyonLe3Bridge.cpp src/plugin/RendererLe3.cpp src/halcyon/le3/mevr_bridge.h
+            src/plugin/HalcyonSequelBridge.cpp src/plugin/HalcyonSequelBridge.hpp src/plugin/SequelOverlays.cpp
             src/plugin/HdrDisplayPolicy.cpp src/plugin/HdrDisplayPolicy.hpp
             src/plugin/GameThreadCalls.cpp src/plugin/XrHost.cpp src/plugin/FloorLock.cpp src/plugin/PadMerge.cpp
             src/plugin/TestLoop.cpp src/plugin/Swapchains.cpp src/plugin/EyeCopy.cpp src/plugin/Colour.cpp
+            src/plugin/Upscale.cpp src/plugin/Upscale.hpp src/core/vr/Upscale.cpp src/core/vr/Upscale.hpp ${MEVR_FSR_EMBEDDED}
             src/game/GamepadMapping.cpp src/core/vr/Controllers.cpp src/core/xr/Input.cpp src/core/xr/Floor.cpp
             src/core/vr/Haptics.cpp src/core/vr/FloorLock.cpp src/core/vr/Calibration.cpp src/core/vr/Comfort.cpp
+            src/core/vr/CombatStance.cpp   # the constant eye (MevrSeams::ConstantFpEye, research/38 B)
             src/core/vr/AimRay.cpp src/core/vr/HostView.cpp src/core/vr/ImageConvert.cpp src/core/vr/LayerComposite.cpp
             src/core/vr/PoseRecording.cpp src/core/vr/Colour.cpp src/core/d3d11/Blit.cpp src/core/PngFile.cpp
             src/core/Hotkey.cpp src/core/vr/TestRequest.cpp
@@ -1093,10 +1183,15 @@ function(mevr_add_plugin game)
             src/plugin/SequelWeaponLayers.cpp src/plugin/SequelWeaponLayers.hpp
             src/plugin/SequelSquadLayers.cpp src/plugin/SequelSquadLayers.hpp
             src/plugin/CineScreen.cpp src/core/vr/CineScreen.cpp
+            src/plugin/PresentationHold.cpp src/core/vr/PresentationHold.cpp   # ME1's front end (research/56, T18)
+            src/plugin/MetricStereo.cpp src/core/vr/MetricStereo.cpp src/halcyon/MevrMetricView.h   # life-size stereo (research/30 section 9)
+            # Lens flares' reflections in mode 2 through the CPU's own window (research/30 section 9.6): ME3's only.
+            src/plugin/FlareWindow.cpp src/plugin/FlareWindow.hpp src/core/vr/FlareWindow.cpp src/core/vr/FlareWindow.hpp
             src/core/vr/ConversationWorld.cpp src/plugin/CinemaBackdrop.cpp src/plugin/CinemaBackdropDraw.cpp
             src/plugin/TransitionFade.cpp src/core/vr/TransitionFade.cpp
             src/plugin/HudPanel.cpp src/plugin/QuadSwapchain.cpp
             src/plugin/HudPieceLayers.cpp src/core/vr/HudPieces.cpp
+            src/plugin/WheelPanel.cpp src/core/vr/WheelCrop.cpp
             src/plugin/Vignette.cpp src/plugin/HandReticle.cpp
             src/plugin/TraversalCue.cpp src/core/vr/Traversal.cpp
             src/core/vr/ScopeArt.cpp src/core/vr/ScopeCapture.cpp src/core/vr/Sights.cpp
@@ -1107,7 +1202,8 @@ function(mevr_add_plugin game)
             src/core/vr/GalaxyMap.cpp src/core/vr/GalaxyMap.hpp
             src/core/vr/SquadMenu.cpp src/plugin/SquadPanel.cpp src/plugin/SquadPanelDraw.cpp
             src/plugin/PowerWheel.cpp src/plugin/PowerWheelDraw.cpp src/plugin/PowerIcons.cpp src/plugin/Glow.cpp
-            src/core/vr/OverlayPlacement.cpp src/core/vr/OverlayPlacement.hpp)
+            src/core/vr/OverlayPlacement.cpp src/core/vr/OverlayPlacement.hpp
+            ${MEVR_SEQUEL_RENDER_PERF_SOURCES})
         if (MEVR_MAIN_MENU)
             set(with_main_menu ON)
             list(APPEND host_sources ${MEVR_SEQUEL_MENU_SOURCES}
@@ -1130,9 +1226,10 @@ function(mevr_add_plugin game)
                 src/install/ReportMarks.hpp src/core/Json.cpp src/core/Json.hpp)
         endif ()
     endif ()
-    # LE1 without LExSDKv2 (MEVR_LE1_LESDK off: every release build): neither the mod nor the host links it.
+    # Without LExSDKv2 (MEVR_<game>_LESDK off: every release build, on every game since T04): neither the mod nor the
+    # host links it, and both get MEVR_NO_LESDK.
     set(game_sdk "")
-    if (game STREQUAL "LE1" AND NOT MEVR_LE1_LESDK)
+    if (NOT MEVR_${game}_LINKS_LESDK)
         set(game_sdk NO_SDK)
     endif ()
     set(host_sdk ${game_sdk})
@@ -1158,16 +1255,16 @@ function(mevr_add_plugin game)
     if (with_halcyon)
         # windowscodecs: WIC, the test loop's PNG snapshots (plugin/TestLoop).
         target_link_libraries(${host} PRIVATE halcyon-le1 OpenXR::openxr_loader windowscodecs)
-        target_compile_definitions(${host} PRIVATE MEVR_WITH_HALCYON)
+        target_compile_definitions(${host} PRIVATE MEVR_WITH_HALCYON MEVR_WITH_PERF_PROBE)
     endif ()
     if (with_halcyon_le2)
         # windowscodecs: WIC, the test loop's PNG snapshots (plugin/TestLoop).
         target_link_libraries(${host} PRIVATE halcyon-le2 OpenXR::openxr_loader windowscodecs d3dcompiler)
-        target_compile_definitions(${host} PRIVATE MEVR_WITH_HALCYON_LE2)
+        target_compile_definitions(${host} PRIVATE MEVR_WITH_HALCYON_LE2 MEVR_WITH_PERF_PROBE)
     endif ()
     if (with_halcyon_le3)
         target_link_libraries(${host} PRIVATE halcyon-le3 OpenXR::openxr_loader windowscodecs d3dcompiler)
-        target_compile_definitions(${host} PRIVATE MEVR_WITH_HALCYON_LE3)
+        target_compile_definitions(${host} PRIVATE MEVR_WITH_HALCYON_LE3 MEVR_WITH_PERF_PROBE)
     endif ()
     if (MEVR_LE2_DIAGNOSTIC AND game STREQUAL "LE2")
         target_link_libraries(${host} PRIVATE bcrypt shell32 ole32)
@@ -1194,7 +1291,16 @@ endforeach ()
 # -Llm; gitignored): all three voice hosts share it; without it VoiceModel reports the tier off.
 if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/llama-cpp/include/llama.h")
     foreach (game LE1 LE2 LE3)
-        if (TARGET MEVR-${game} AND (game STREQUAL "LE1" OR TARGET halcyon-le2))
+        # A sequel host has the tier where it compiles plugin/VoiceModel.cpp (its own Halcyon host; LE3's with the main menu),
+        # whichever other games this build has: until 2026-11-16 LE3 got it only when LE2 was built too (`TARGET halcyon-le2`).
+        set(has_voice_model OFF)
+        if (TARGET MEVR-${game})
+            get_target_property(game_host_sources MEVR-${game} SOURCES)
+            if (game STREQUAL "LE1" OR "src/plugin/VoiceModel.cpp" IN_LIST game_host_sources)
+                set(has_voice_model ON)
+            endif ()
+        endif ()
+        if (has_voice_model)
             target_sources(MEVR-${game} PRIVATE src/core/voice/Llm.cpp src/core/voice/Llm.hpp)
             target_include_directories(MEVR-${game} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/external/llama-cpp/include)
             target_compile_definitions(MEVR-${game} PRIVATE MEVR_HAVE_LLAMA)
@@ -1212,6 +1318,8 @@ add_library(mevr-install STATIC
     src/core/Version.hpp
     src/install/Detect.cpp
     src/install/Detect.hpp
+    src/install/Game.cpp
+    src/install/Game.hpp
     src/install/SteamVrSettings.cpp
     src/install/SteamVrSettings.hpp
     src/install/GameSettings.cpp
@@ -1304,6 +1412,7 @@ if (MEVR_BUILD_TESTS)
     add_test(NAME mevr-call-scope COMMAND mevr-call-scope-tests)
     add_executable(mevr-eye-copy-warp-tests tests/EyeCopyWarpTests.cpp
         src/plugin/EyeCopy.cpp src/core/d3d11/Blit.cpp src/core/vr/Colour.cpp
+        src/plugin/Upscale.cpp src/core/vr/Upscale.cpp src/core/vr/TestRequest.cpp ${MEVR_FSR_EMBEDDED}
         src/core/Ini.cpp src/core/Log.cpp)
     target_include_directories(mevr-eye-copy-warp-tests PRIVATE src)
     target_compile_features(mevr-eye-copy-warp-tests PRIVATE cxx_std_20)
@@ -1381,19 +1490,25 @@ if (MEVR_BUILD_TESTS)
         tests/BreadcrumbTests.cpp
         tests/ExeTests.cpp
         tests/PowerWheelTests.cpp
+        tests/MetricStereoSequelTests.cpp
         tests/VoiceMenuTests.cpp
         tests/SquadPlaceTests.cpp
         tests/BodyScaleTests.cpp
         tests/EyesInBodyTests.cpp
         tests/BodySlotsSeatedTests.cpp
+        tests/BodySlotsSmgTests.cpp
         tests/FloorLockTests.cpp
+        tests/ReloadGestureTests.cpp
         tests/ManualCalibrationTests.cpp
+        tests/CalibrationFileTests.cpp
         tests/CalibrationWeaponTests.cpp
         tests/CameraDiagnosticTests.cpp
         tests/LandmarkTests.cpp
         tests/ScreenMatrixTests.cpp
         src/core/d3d11/ShaderReflect.cpp
         src/core/vr/ScreenMatrix.cpp
+        tests/FlareWindowTests.cpp
+        src/core/vr/FlareWindow.cpp
         tests/ConversationWorldTests.cpp
         tests/SoundPlaceTests.cpp
         tests/GuiEventsTests.cpp
@@ -1416,6 +1531,9 @@ if (MEVR_BUILD_TESTS)
         tests/ThespianTests.cpp
         src/core/vr/Traversal.cpp
         tests/TraversalTests.cpp
+        tests/GoalStepTests.cpp
+        tests/GameMenuBackOutTests.cpp
+        tests/GameMenuLeaveTests.cpp
         tests/TraversalPresentationTests.cpp
         tests/RendererRequestTests.cpp
         tests/HostServicesTests.cpp
@@ -1445,6 +1563,7 @@ if (MEVR_BUILD_TESTS)
         src/core/ik/BoneNames.cpp
         src/core/ik/CameraHook.cpp
         src/core/ik/Fingers.cpp
+        src/core/ik/GoalStep.cpp
         src/core/ik/Melee.cpp
     src/core/ik/GunKick.cpp
         src/core/ik/Ik.cpp
@@ -1458,6 +1577,7 @@ if (MEVR_BUILD_TESTS)
         src/core/ik/TwoHand.cpp
         src/core/vr/Ads.cpp
         src/core/ik/Vent.cpp
+        src/core/vr/ReloadGesture.cpp
         src/core/vr/Calibration.cpp
         src/core/vr/Comfort.cpp
         src/core/vr/CombatStance.cpp
@@ -1481,6 +1601,7 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/LayerComposite.cpp
         src/core/vr/MenuPointer.cpp
         src/core/vr/MenuSettings.cpp
+        src/core/vr/RenderTarget.cpp
         src/core/vr/PerformanceModes.cpp
         src/core/vr/CineScreen.cpp
         src/core/vr/PresentationHold.cpp
@@ -1495,6 +1616,7 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/ScopeArt.cpp
         src/core/vr/GalaxyHologram.cpp
         src/core/vr/GalaxyMap.cpp
+        src/core/vr/GalaxyRay.cpp
         src/core/vr/WorldUi.cpp
         src/core/vr/ConversationWorld.cpp
         src/core/vr/SoundPlace.cpp
@@ -1557,6 +1679,41 @@ if (MEVR_BUILD_TESTS)
     target_compile_options(mevr-le3-motion-blur-guard-tests PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
     add_dependencies(mevr-tests mevr-le3-motion-blur-guard-tests)
     add_test(NAME mevr-le3-motion-blur-guard COMMAND mevr-le3-motion-blur-guard-tests)
+
+    add_executable(mevr-le2-motion-blur-guard-tests tests/MotionBlurGuardTests.cpp)
+    target_include_directories(mevr-le2-motion-blur-guard-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(mevr-le2-motion-blur-guard-tests PRIVATE OpenXR::headers)
+    target_compile_definitions(mevr-le2-motion-blur-guard-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN MEVR_GAME_LE2)
+    target_compile_options(mevr-le2-motion-blur-guard-tests PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
+    add_dependencies(mevr-tests mevr-le2-motion-blur-guard-tests)
+    add_test(NAME mevr-le2-motion-blur-guard COMMAND mevr-le2-motion-blur-guard-tests)
+    # plugin/RenderLevers finds its addresses by row name in engine/Addresses.hpp: the names it asks for against all three tables.
+    add_executable(mevr-render-levers-table-tests tests/RenderLeversTableTests.cpp)
+    target_include_directories(mevr-render-levers-table-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_compile_definitions(mevr-render-levers-table-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_compile_options(mevr-render-levers-table-tests PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
+    add_dependencies(mevr-tests mevr-render-levers-table-tests)
+    add_test(NAME mevr-render-levers-table COMMAND mevr-render-levers-table-tests)
+    # The sequels' life-size stereo render side (src/halcyon/MevrMetricView.h, GPL): the latch, the submit's plan, mode 2's
+    # containment (research/30 section 9.5).
+    add_executable(mevr-metric-view-tests tests/MetricViewTests.cpp)
+    target_include_directories(mevr-metric-view-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_compile_definitions(mevr-metric-view-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_compile_options(mevr-metric-view-tests PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
+    add_dependencies(mevr-tests mevr-metric-view-tests)
+    add_test(NAME mevr-metric-view COMMAND mevr-metric-view-tests)
+    # The same, compiled as each sequel: its layout, lever defaults and verified groups pinned (and ME3's command gate row).
+    foreach(game LE2 LE3)
+        string(TOLOWER ${game} gameLower)
+        add_executable(mevr-${gameLower}-render-levers-table-tests tests/RenderLeversTableTests.cpp)
+        target_include_directories(mevr-${gameLower}-render-levers-table-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+        target_compile_definitions(mevr-${gameLower}-render-levers-table-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN
+            MEVR_GAME_${game})
+        target_compile_options(mevr-${gameLower}-render-levers-table-tests PRIVATE /W4 /WX /permissive- /utf-8
+            /Zc:__cplusplus)
+        add_dependencies(mevr-tests mevr-${gameLower}-render-levers-table-tests)
+        add_test(NAME mevr-${gameLower}-render-levers-table COMMAND mevr-${gameLower}-render-levers-table-tests)
+    endforeach()
     add_executable(mevr-system-settings-tests tests/SystemSettingsTests.cpp)
     target_include_directories(mevr-system-settings-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
     target_link_libraries(mevr-system-settings-tests PRIVATE OpenXR::headers)
@@ -1564,6 +1721,20 @@ if (MEVR_BUILD_TESTS)
     target_compile_options(mevr-system-settings-tests PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
     add_dependencies(mevr-tests mevr-system-settings-tests)
     add_test(NAME mevr-system-settings COMMAND mevr-system-settings-tests)
+    # The same compiled as each sequel: its built-in values (dynamic shadows on: engine::adapter::kVrDynamicShadows), the
+    # character-shadow rule without a replay, ME2's held new level.
+    foreach(game LE2 LE3)
+        string(TOLOWER ${game} gameLower)
+        add_executable(mevr-${gameLower}-system-settings-tests tests/SystemSettingsTests.cpp)
+        target_include_directories(mevr-${gameLower}-system-settings-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+        target_link_libraries(mevr-${gameLower}-system-settings-tests PRIVATE OpenXR::headers)
+        target_compile_definitions(mevr-${gameLower}-system-settings-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN
+            MEVR_GAME_${game})
+        target_compile_options(mevr-${gameLower}-system-settings-tests PRIVATE /W4 /WX /permissive- /utf-8
+            /Zc:__cplusplus)
+        add_dependencies(mevr-tests mevr-${gameLower}-system-settings-tests)
+        add_test(NAME mevr-${gameLower}-system-settings COMMAND mevr-${gameLower}-system-settings-tests)
+    endforeach()
     add_executable(mevr-hand-targets-tests tests/HandTargetsTests.cpp
         src/engine/XrToUnreal.cpp src/core/ik/Rigid.cpp src/core/ik/Ik.cpp)
     target_include_directories(mevr-hand-targets-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -1580,7 +1751,7 @@ if (MEVR_BUILD_TESTS)
     target_compile_options(mevr-floor-lock-host-tests PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
     add_dependencies(mevr-tests mevr-floor-lock-host-tests)
     add_test(NAME mevr-floor-lock-host COMMAND mevr-floor-lock-host-tests)
-    foreach(selection_game IN ITEMS LE1 LE3)
+    foreach(selection_game IN ITEMS LE1 LE2 LE3)
         add_executable(mevr-selection-gaze-${selection_game}-tests tests/SelectionGazeTests.cpp)
         target_include_directories(mevr-selection-gaze-${selection_game}-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
         target_compile_definitions(mevr-selection-gaze-${selection_game}-tests PRIVATE
@@ -1647,6 +1818,8 @@ if (MEVR_BUILD_TESTS)
         add_test(NAME mevr-conversation-sweep COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tests/ConversationSweepTests.py)
         # The rules over first-person scenes' stance records (tools/scene_audit.py, research/69 "Auditing scenes by rule").
         add_test(NAME mevr-scene-audit COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tests/SceneAuditTests.py)
+        # tools/land-on-main.py (deletions, renames, the main checkout's own edits, the roll-back) in scratch repositories.
+        add_test(NAME mevr-land-on-main COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tests/LandOnMainTests.py)
         # The audit report's picture checks (tools/audit-report.py, research/69 "Obvious bugs, measured"), on made-up snapshots.
         add_test(NAME mevr-audit-report COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tests/AuditReportTests.py)
         add_test(NAME mevr-rva-table COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-rva-table.py
@@ -1978,6 +2151,7 @@ if (MEVR_BUILD_TESTS AND MEVR_MAIN_MENU)
         src/core/vr/WorldUi.cpp
         src/core/vr/OverlayPlacement.cpp
         src/core/vr/GalaxyHologram.cpp
+        src/core/vr/RenderTarget.cpp   # the sequels' Display rows (le2-section-display-*.png)
         src/core/PngFile.cpp
         src/plugin/RailArt.cpp
         src/core/gfx/Raster.cpp

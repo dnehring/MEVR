@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "game/HandCalibration.hpp"
+#include "core/vr/MakoSeat.hpp"
 #include "game/BodyCalibration.hpp"
 
 #include "core/Ini.hpp"
@@ -285,7 +286,11 @@ constexpr char const* kHolstersBlock =
     "eyeHeightM = 1.65\n"
     "; hapticAmplitude: how strong the holster haptics are, 0..1 (0.5 as designed, 0 = no vibration).\n"
     "hapticAmplitude = 0.5\n"
-    "; Each slot: weapon, right, up, forward, radius. weapon: pistol, shotgun, rifle, sniper or none.\n"
+    "; Each slot: weapon, right, up, forward, radius. weapon: pistol, shotgun, rifle, sniper"
+#if !defined(MEVR_GAME_LE1)
+    ", smg"
+#endif
+    " or none.\n"
     "; Meters from your eyes (as if the head were upright), in your body's frame (it turns with you, not\n"
     "; with every glance), for a 1.65 m eye height: right is + to the right, up is + up, forward is +\n"
     "; ahead and - behind. radius: how close the hand must come (shoulders are bigger: you can't see them).\n"
@@ -293,13 +298,32 @@ constexpr char const* kHolstersBlock =
     "shoulderRight = rifle, 0.18, -0.08, -0.20, 0.20\n"
     "hipLeft = shotgun, -0.20, -0.62, 0.00, 0.14\n"
     "shoulderLeft = sniper, -0.18, -0.08, -0.20, 0.20\n"
+#if !defined(MEVR_GAME_LE1)
+    "; smgSlot: where the SMG is: thighRight = the front of the right thigh (a one-hander, clear of the pistol and of a hand\n"
+    "; hanging at your side); lowerBack = the small of the back (where the game hangs a gun on your lower back). Its line\n"
+    "; below gives the place. Behind your back the headset may lose sight of the controller: lostHandHoldS is how long\n"
+    "; its last place there still counts (seconds; 0 = not at all).\n"
+    "smgSlot = thighRight\n"
+    "thighRight = smg, 0.08, -0.90, 0.15, 0.12\n"
+    "lowerBack = smg, 0.00, -0.60, -0.26, 0.12\n"
+    "lostHandHoldS = 0.75\n"
+#endif
     "; Seated only: right, up, forward, radius in FIXED meters from the neutral head.\n"
     "; Weapon assignments still come from the four slots above; standing is unchanged.\n"
     "seatedHipRight = 0.28, -0.42, 0.18, 0.20\n"
     "seatedHipLeft = -0.28, -0.42, 0.18, 0.20\n"
     "seatedShoulderRight = 0.28, -0.04, -0.14, 0.20\n"
     "seatedShoulderLeft = -0.28, -0.04, -0.14, 0.20\n"
+#if !defined(MEVR_GAME_LE1)
+    "seatedThighRight = 0.15, -0.60, 0.55, 0.20\n"
+    "seatedLowerBack = 0.30, -0.48, -0.24, 0.20\n"
+#endif
     "seatedGrenade = -0.10, -0.18, 0.08, 0.10\n"
+#if defined(MEVR_GAME_LE3)
+    "; le3PutAway: 1 = a gun you let go is put away (ME3 keeps a gun out on a mission; this is the game's own\n"
+    "; put-down into no weapon); 0 = it stays in your hand.\n"
+    "le3PutAway = 1\n"
+#endif
     "; 1 keeps the weapon wheel available seated and lets it draw even with onlyHolstersDraw.\n"
     "; Controls > Left trigger must be Weapon wheel; select Shepard, then a weapon and release.\n"
     "seatedWeaponWheel = 1\n";
@@ -602,11 +626,7 @@ constexpr char const* kSquadOrdersBlock =
     "; lands; let go and the squad moves there (on a squadmate as B goes down: that one alone; near you: they regroup; on a\n"
     "; wall or nothing: called off). placeSpeedMS: the arc's launch speed (14: about 20 m aimed at 45 degrees); placeRangeM:\n"
     "; never farther than this; placeMinHoldS: a shorter press is a blip. place = 0: off.\n"
-#if defined(MEVR_GAME_LE2)
-    "place = 0\n"
-#else
     "place = 1\n"
-#endif
     "placeSpeedMS = 14\n"
     "placeRangeM = 30\n"
     "placeMinHoldS = 0.15\n";
@@ -647,6 +667,30 @@ constexpr char const* kVoiceBlock =
     "earlyDispatch = 1\n"
     "settleMs = 250\n"
     "deicticLagS = 0.3\n";
+#if !defined(MEVR_GAME_LE1)
+// Appended to a settings file that has no [Reload] yet (and part of a new file): the sequels only.
+constexpr char const* kReloadBlock =
+    "\n"
+    "[Reload]\n"
+    "; The reload by hand: with a gun in your right hand, squeeze the left grip at the clip pouch on your left hip,\n"
+    "; carry the clip to the gun and push it into the receiver (over and just behind your right hand: the [Vent]\n"
+    "; zone). The game then reloads as with its own button. Off (enabled = 0) until its gesture is redesigned with the\n"
+    "; owner (2026-11-16: a hand at the hip makes no sense); the game's own reload button and its automatic reload work\n"
+    "; as always. enabledMoved: an older file's enabled = 1 (the first default) moved to 0 once.\n"
+    "enabled = 0\n"
+    "enabledMoved = 1\n"
+    "; pouch: right, up, forward, radius, meters from your eyes in your body's frame for a 1.65 m eye height.\n"
+    "; seatedPouch: the same in fixed meters when you play seated.\n"
+    "pouch = -0.20, -0.60, 0.02, 0.13\n"
+    "seatedPouch = -0.28, -0.42, 0.18, 0.20\n"
+    "; holdTimeoutS: a clip held this long without reaching the gun is dropped. maxStepM: a hand that jumps further\n"
+    "; than this in one tick (tracking lost and found) has to leave the receiver and come back.\n"
+    "holdTimeoutS = 8\n"
+    "maxStepM = 0.20\n"
+    "; hapticAmplitude: 0..1 (0.5 as designed, 0 = none).\n"
+    "hapticAmplitude = 0.5\n";
+#endif
+
 // Appended to a settings file that has no [Vent] yet (and part of a new file).
 constexpr char const* kVentBlock =
     "\n"
@@ -789,6 +833,7 @@ constexpr char const* kCockpitBlock =
     "; past it by 0.10); hazardWash: 1 = the whole cabin goes red with the lamps, 0 = only the lamps.\n"
     "enabled = 1\n"
     "script = cockpit\\cockpit.txt\n"
+    "; seatPosition = top selects V1, bottom selects V2. Leave it unset to use the script above.\n"
     "followCamera = 1\n"
     "seated = 1\n"
     "hazard = 1\n"
@@ -1150,6 +1195,25 @@ Holsters ReadHolsters(Ini const& ini) {
     if (Number(ini, "Holsters", "hapticAmplitude", value)) {
         holsters.hapticAmplitude = std::clamp(value, 0.0, 1.0);
     }
+    if (Number(ini, "Holsters", "le3PutAway", value)) {
+        holsters.le3PutAway = value != 0.0;
+    }
+#if !defined(MEVR_GAME_LE1)
+    // The SMG's place (lane SG): its slot takes the chosen place's name, so the loop below reads that place's line.
+    if (auto const s = ini.find("Holsters"); s != ini.end()) {
+        if (auto const k = s->second.find("smgSlot"); k != s->second.end()) {
+            if (auto const place = ik::body_slots::ParseSmgPlace(k->second)) {
+                holsters.layout.smgPlace = *place;
+                holsters.layout.slots[ik::body_slots::kSmgSlot] = ik::body_slots::SmgSlot(*place);
+            } else {
+                log::Warn("holsters: can't read smgSlot = {} (thighRight or lowerBack); thighRight kept", k->second);
+            }
+        }
+    }
+    if (Number(ini, "Holsters", "lostHandHoldS", value)) {
+        holsters.lostHandHoldS = std::clamp(value, 0.0, 3.0);
+    }
+#endif
     if (auto const s = ini.find("Holsters"); s != ini.end()) {
         if (auto const k = s->second.find("powerWheel"); k != s->second.end()) {
             std::string text = k->second;
@@ -1168,7 +1232,8 @@ Holsters ReadHolsters(Ini const& ini) {
                 log::Warn("holsters: can't read powerWheel = {} (r3, y, x, b or none); r3 kept", k->second);
             }
         }
-        for (ik::body_slots::Slot& slot : holsters.layout.slots) {
+        for (int index = 0; index < kGameHolsterSlots; ++index) {
+            ik::body_slots::Slot& slot = holsters.layout.slots[index];
             auto k = s->second.find(slot.name);
             // The shotgun's slot was "belly" until 2026-10-25: a belly line with its old default values is ignored (the
             // new hipLeft default applies), one the player changed is kept.
@@ -1206,7 +1271,8 @@ Holsters ReadHolsters(Ini const& ini) {
         return true;
     };
     if (auto const s = ini.find("Holsters"); s != ini.end()) {
-        for (auto& slot : holsters.seatedLayout.slots) {
+        for (int index = 0; index < kGameHolsterSlots; ++index) {
+            auto& slot = holsters.seatedLayout.slots[index];
             std::string key = "seated" + std::string(slot.name);
             key[6] = static_cast<char>(std::toupper(static_cast<unsigned char>(key[6])));
             if (auto const k = s->second.find(key); k != s->second.end() && !reach(k->second, slot))
@@ -1227,15 +1293,24 @@ std::string Describe(Holsters const& h) {
         h.enabled ? "on" : "off", grip, h.weaponWheel ? "kept (LB)" : "off", static_cast<int>(h.holster),
         h.onlyHolstersDraw ? "only holsters draw" : "the game may draw",
         h.eyeHeightFromFloor ? "from the floor" : "from the setting", h.layout.eyeHeight, h.hapticAmplitude);
-    for (ik::body_slots::Slot const& slot : h.layout.slots) {
+    for (int index = 0; index < kGameHolsterSlots; ++index) {
+        ik::body_slots::Slot const& slot = h.layout.slots[index];
         text += std::format(" {} {} ({:.2f}, {:.2f}, {:.2f}) r {:.2f};", slot.name, ik::body_slots::Name(slot.weapon), slot.offset.x,
             slot.offset.y, slot.offset.z, slot.radius);
     }
     text += std::format(" seated wheel {}; fixed-meter seated slots:", h.seatedWeaponWheel ? "draws" : "off");
-    for (auto const& slot : h.seatedLayout.slots)
+    for (int index = 0; index < kGameHolsterSlots; ++index) {
+        auto const& slot = h.seatedLayout.slots[index];
         text += std::format(" {} ({:.2f}, {:.2f}, {:.2f}) r {:.2f};", slot.name, slot.offset.x, slot.offset.y, slot.offset.z, slot.radius);
+    }
     text += std::format(" grenade ({:.2f}, {:.2f}, {:.2f}) r {:.2f}", h.seatedGrenade.offset.x, h.seatedGrenade.offset.y,
         h.seatedGrenade.offset.z, h.seatedGrenade.radius);
+#if !defined(MEVR_GAME_LE1)
+    text += std::format("; the SMG at {} (smgSlot){}", ik::body_slots::Name(h.layout.smgPlace),
+        h.layout.smgPlace == ik::body_slots::SmgPlace::LowerBack
+            ? std::format(", a right hand lost there keeps its place {:.2f} s (lostHandHoldS)", h.lostHandHoldS)
+            : std::string());
+#endif
     return text;
 }
 
@@ -1851,6 +1926,39 @@ std::string Describe(Vent const& v) {
 Vent gVent;
 std::string gVentText;
 
+Reload ReadReload(Ini const& ini) {
+    Reload r;
+    double value = 0.0;
+    if (Number(ini, "Reload", "enabled", value)) r.enabled = value != 0.0;
+    if (Number(ini, "Reload", "holdTimeoutS", value)) r.holdTimeoutS = std::clamp(value, 1.0, 60.0);
+    if (Number(ini, "Reload", "maxStepM", value)) r.maxStepM = std::clamp(value, 0.05, 1.0);
+    if (Number(ini, "Reload", "hapticAmplitude", value)) r.hapticAmplitude = std::clamp(value, 0.0, 1.0);
+    if (auto const s = ini.find("Reload"); s != ini.end()) {
+        for (ik::body_slots::Slot* slot : {&r.pouch, &r.seatedPouch}) {
+            if (auto const k = s->second.find(slot->name); k != s->second.end()) {
+                ik::body_slots::Slot parsed = *slot;
+                if (ReadSlot("pistol, " + k->second, parsed)) {
+                    slot->offset = parsed.offset;
+                    slot->radius = parsed.radius;
+                } else {
+                    log::Warn("reload: can't read {} = {} (right, up, forward, radius); default kept", slot->name, k->second);
+                }
+            }
+        }
+    }
+    return r;
+}
+
+std::string Describe(Reload const& r) {
+    return std::format("{}: the pouch ({:.2f}, {:.2f}, {:.2f}) r {:.2f}, seated ({:.2f}, {:.2f}, {:.2f}) r {:.2f}; a clip held at most {:.0f} s; "
+                       "a jump past {:.2f} m re-arms; haptics {:.2f}; the receiver is [Vent]'s zone",
+        r.enabled ? "on" : "off", r.pouch.offset.x, r.pouch.offset.y, r.pouch.offset.z, r.pouch.radius, r.seatedPouch.offset.x,
+        r.seatedPouch.offset.y, r.seatedPouch.offset.z, r.seatedPouch.radius, r.holdTimeoutS, r.maxStepM, r.hapticAmplitude);
+}
+
+Reload gReload;
+std::string gReloadText;
+
 // [Hud] (research/41): the shared reader (core/vr/HudPieces), its complaints logged here.
 vr::hud_pieces::Settings ReadHud(Ini const& ini) {
     std::string problems;
@@ -2023,6 +2131,11 @@ Cockpit ReadCockpit(Ini const& ini) {
     }
     if (auto const text = ini::Get(ini, "Cockpit", "script"); text && !Strip(*text).empty()) {
         c.script = Strip(*text);
+    }
+    if (auto const seat = vr::mako_seat::Parse(ini::Get(ini, "Cockpit", "seatPosition").value_or(""))) {
+        c.script = *seat == vr::mako_seat::Position::Bottom && vr::mako_seat::BottomAvailable(engine::SettingsFile().parent_path())
+            ? vr::mako_seat::kBottomScript
+            : vr::mako_seat::kTopScript;
     }
     if (Number(ini, "Cockpit", "followCamera", value)) {
         c.followCamera = value != 0.0;
@@ -2234,7 +2347,11 @@ vr::world_ui::Settings ReadWorldUi(Ini const& ini) {
             std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
             if (lower == "all") {
                 bits = 0xFFFFFFFFu;
+#if defined(MEVR_GAME_LE3)
+            } else if (vr::world_ui::Screen const screen = vr::world_ui::FromMe3Tag(w); screen != vr::world_ui::Screen::None) {
+#else
             } else if (vr::world_ui::Screen const screen = vr::world_ui::FromTag(w); screen != vr::world_ui::Screen::None) {
+#endif
                 bits |= vr::world_ui::Bit(screen);
             } else if (!w.empty() && lower != "none") {
                 log::Warn("world ui: [WorldUi] {}: '{}' isn't one of the game's screens we place (research/53)", key, w);
@@ -2573,11 +2690,23 @@ std::string Describe(vr::scope_capture::Settings const& s) {
     if (!s.enabled) {
         return "off ([Sights] scopeCapture = 0): the scope magnifies the other eye's picture";
     }
+#if defined(MEVR_GAME_LE1)
     return std::format("on: {} px {} render target, {:.0f} renders a second at most, post process {}, field margin {:.0f}%, near plane "
                        "{:.0f} units past the muzzle, far plane {}, kept on {:.1f} s after the eye leaves",
         s.size, s.floatTarget ? "float (FloatRGB)" : "8-bit (A8R8G8B8)", s.rate,
         s.postProcess ? "on (known issue: a black speckle in dark areas, research/39 section 12)" : "off", s.margin * 100.0f,
         s.nearUnits, s.farUnits > 0.0f ? std::format("{:.0f} units", s.farUnits) : std::string("the engine's (0)"), s.holdSeconds);
+#else
+    // The sequels' captures take no post-process chain, whatever scopeCapturePost says (engine::adapter::kCapturePostProcess,
+    // game/ScopeCapture): the line said "on" there (lane AU5).
+    char const* const postProcess = !s.postProcess ? "off"
+        : engine::adapter::kCapturePostProcess     ? "on"
+                                                   : "off on this game (its captures take no post-process chain)";
+    return std::format("on: {} px {} render target, {:.0f} renders a second at most, post process {}, field margin {:.0f}%, near plane "
+                       "{:.0f} units past the muzzle, far plane {}, kept on {:.1f} s after the eye leaves",
+        s.size, s.floatTarget ? "float (FloatRGB)" : "8-bit (A8R8G8B8)", s.rate, postProcess, s.margin * 100.0f,
+        s.nearUnits, s.farUnits > 0.0f ? std::format("{:.0f} units", s.farUnits) : std::string("the engine's (0)"), s.holdSeconds);
+#endif
 }
 
 vr::scope_capture::Settings gScopeCapture;
@@ -2749,6 +2878,10 @@ Voice GetVoice() {
     return gVoice;
 }
 
+Reload GetReload() {
+    return gReload;
+}
+
 Vent GetVent() {
     return gVent;
 }
@@ -2854,7 +2987,11 @@ void Refresh() {
         {
             std::ofstream out(path);
             out << kDefaultFile << kControlsBlock << kHolstersBlock << kSquadBlock << kSightsBlock << kThrowablesBlock
-                << kComfortBlock << kInteractBlock << kVentBlock << kHudBlock << kMakoBlock << kCockpitBlock << kGalaxyBlock << kWorldUiBlock << kGameBlock;
+                << kComfortBlock << kInteractBlock << kVentBlock << kHudBlock << kMakoBlock << kCockpitBlock << kGalaxyBlock << kWorldUiBlock << kGameBlock
+#if !defined(MEVR_GAME_LE1)
+                << kReloadBlock
+#endif
+                ;
             out.close();
             static bool warned = false;
             if (!out || !fs::exists(path, ec)) {
@@ -2881,7 +3018,11 @@ void Refresh() {
     for (auto const& [name, block] : {std::pair{"Controls", kControlsBlock}, std::pair{"Holsters", kHolstersBlock},
              std::pair{"Squad", kSquadBlock}, std::pair{"Throwables", kThrowablesBlock}, std::pair{"Comfort", kComfortBlock},
              std::pair{"Sights", kSightsBlock}, std::pair{"Interact", kInteractBlock}, std::pair{"Vent", kVentBlock}, std::pair{"Hud", kHudBlock}, std::pair{"Mako", kMakoBlock},
-             std::pair{"Cockpit", kCockpitBlock}, std::pair{"Galaxy", kGalaxyBlock}, std::pair{"WorldUi", kWorldUiBlock}, std::pair{"Game", kGameBlock}, std::pair{"SquadContext", kSquadContextBlock}, std::pair{"SquadOrders", kSquadOrdersBlock}, std::pair{"Voice", kVoiceBlock}}) {
+             std::pair{"Cockpit", kCockpitBlock}, std::pair{"Galaxy", kGalaxyBlock}, std::pair{"WorldUi", kWorldUiBlock}, std::pair{"Game", kGameBlock}, std::pair{"SquadContext", kSquadContextBlock}, std::pair{"SquadOrders", kSquadOrdersBlock}, std::pair{"Voice", kVoiceBlock}
+#if !defined(MEVR_GAME_LE1)
+             , std::pair{"Reload", kReloadBlock}
+#endif
+         }) {
         if (ini.find(name) == ini.end() && AppendBlock(path, block, name)) {  // an older file: show the new settings
             ini = ReadIni(path);
             stamp = fs::last_write_time(path, ec);
@@ -2906,6 +3047,17 @@ void Refresh() {
         {L"seatedShoulderLeft", "seatedShoulderLeft", L"-0.28, -0.04, -0.14, 0.20"},
         {L"seatedGrenade", "seatedGrenade", L"-0.10, -0.18, 0.08, 0.10"},
         {L"seatedWeaponWheel", "seatedWeaponWheel", L"1"},
+#if !defined(MEVR_GAME_LE1)
+        {L"thighRight", "thighRight", L"smg, 0.08, -0.90, 0.15, 0.12"},  // the SMG's slot, 2026-11-16 (lane WP)
+        {L"seatedThighRight", "seatedThighRight", L"0.15, -0.60, 0.55, 0.20"},
+        {L"smgSlot", "smgSlot", L"thighRight"},  // the SMG's place, 2026-11-17 (lane SG): thighRight or lowerBack
+        {L"lowerBack", "lowerBack", L"smg, 0.00, -0.60, -0.26, 0.12"},
+        {L"seatedLowerBack", "seatedLowerBack", L"0.30, -0.48, -0.24, 0.20"},
+        {L"lostHandHoldS", "lostHandHoldS", L"0.75"},
+#endif
+#if defined(MEVR_GAME_LE3)
+        {L"le3PutAway", "le3PutAway", L"1"},  // ME3's put-down into no weapon (on since 2026-11-18, the owner)
+#endif
     };
     std::string added;
     for (NewKey const& k : kNewHolsterKeys) {
@@ -3167,6 +3319,26 @@ void Refresh() {
             }
         }
     }
+#if defined(MEVR_GAME_LE3)
+    // [Holsters] 2026-11-18 (the owner: "Obviously yes, that should be default"; checked on ME3's combat fixture by lane AU2):
+    // a gun let go is put away on ME3. A file without the marker le3PutAwayMoved that holds the old default 0 gets 1 once;
+    // the marker is written only after the change succeeded, so a later choice of 0 is the player's and stays.
+    if (auto const s = ini.find("Holsters"); s != ini.end() && s->second.find("le3PutAwayMoved") == s->second.end()) {
+        auto const k = s->second.find("le3PutAway");
+        bool moved = true;
+        if (k != s->second.end() && k->second == "0") {
+            moved = WritePrivateProfileStringW(L"Holsters", L"le3PutAway", L"1", path.wstring().c_str()) != 0;
+            if (moved) {
+                log::Info("hands: [Holsters] le3PutAway 0 -> 1: a gun you let go is put away (the owner's default since 2026-11-18) in {}",
+                    ini::Utf8(path));
+            }
+        }
+        if (moved && WritePrivateProfileStringW(L"Holsters", L"le3PutAwayMoved", L"1", path.wstring().c_str()) != 0) {
+            ini = ReadIni(path);
+            stamp = fs::last_write_time(path, ec);
+        }
+    }
+#endif
     // [Throwables] 2026-11-07: X is the hand power wheel only; either hand's grip at the left chest takes a grenade.
     // The marker is written only after successful changes, so a later reload retries failed writes and later choices stay.
     if (ini::Get(ini, "Throwables", "powerWheelX") == std::nullopt && ini.find("Throwables") != ini.end()) {
@@ -3186,6 +3358,26 @@ void Refresh() {
         ini = ReadIni(path);
         stamp = fs::last_write_time(path, ec);
     }
+#if !defined(MEVR_GAME_LE1)
+    // [Reload] since 2026-11-16 (the owner: "putting my left hand to the hip makes no sense"): the reload by hand is off until
+    // its gesture is redesigned with the owner. A file without the marker enabledMoved whose enabled still holds the first
+    // default 1 gets 0; the marker is written only after that, so a later reload retries a failed write and a later 1 stays.
+    if (auto const s = ini.find("Reload"); s != ini.end() && s->second.find("enabledMoved") == s->second.end()) {
+        auto const k = s->second.find("enabled");
+        bool const old = k != s->second.end() && k->second == "1";
+        bool const saved = !old || WritePrivateProfileStringW(L"Reload", L"enabled", L"0", path.wstring().c_str()) != 0;
+        if (saved && WritePrivateProfileStringW(L"Reload", L"enabledMoved", L"1", path.wstring().c_str()) != 0) {
+            if (old) {
+                log::Info("hands: [Reload] enabled 1 -> 0 (moved once): the reload by hand is off until its gesture is "
+                          "redesigned; the game's reload button and its automatic reload work as always, in {}", ini::Utf8(path));
+            } else if (k != s->second.end()) {
+                log::Info("hands: [Reload] enabled = {} kept (your choice; the default is 0)", k->second);
+            }
+        }
+        ini = ReadIni(path);
+        stamp = fs::last_write_time(path, ec);
+    }
+#endif
     // [Mako] since 2026-11-02 (research/48 section 22): the controls' grips are the cockpit models' on the seat's armrests and
     // the throttle travels the model's slot. A file holding all three old defaults exactly gets the new ones; any other
     // value is the player's and kept.
@@ -3434,6 +3626,13 @@ void Refresh() {
         gSquadOrdersText = text;
         log::Info("squad orders: settings: {}", text);
     }
+    gReload = ReadReload(ini);
+#if !defined(MEVR_GAME_LE1)
+    if (std::string const text = Describe(gReload); text != gReloadText) {
+        gReloadText = text;
+        log::Info("reload: settings: {}", text);
+    }
+#endif
     gVent = ReadVent(ini);
     if (std::string const text = Describe(gVent); text != gVentText) {
         gVentText = text;

@@ -2,6 +2,8 @@
 #include "mevr_bridge.h" // [MEVR] shared host on this session
 #include "../../core/vr/StereoPoseTag.hpp"
 #include "../../core/vr/EyePublication.hpp" // [MEVR] image/pose publication receipts
+#include "../../core/vr/MetricStereo.hpp"   // [MEVR] life-size stereo's containment rule (research/30 section 9)
+#include "../MevrMetricView.h"              // [MEVR] the plan published to calcview_hook.cpp, the latched routing
 #include "me2_xr.h"
 
 #include "calcview_hook.h"
@@ -36,6 +38,7 @@ XrSpace g_baseSpace = nullptr;   // LOCAL, never re-origined; reads the absolute
 XrSpace g_viewSpace = nullptr;   // (unused since B2b; kept for reference)
 Functions g_fn;
 std::atomic_bool g_recenterRequested{false};
+std::atomic_bool g_mevrRecenterAsked{false};   // [MEVR] the player asked (Recenter()), not a path's first frame
 
 // Flat-mono quad placement (LE1 "theater" style; tune for comfort).
 constexpr float kQuadDistanceM = 2.2f;   // metres in front of the head
@@ -49,6 +52,7 @@ XrSwapchain g_swap[2] = {};
 std::vector<ID3D11Texture2D*> g_images[2];
 uint32_t g_swapW = 0, g_swapH = 0;   // per-EYE swapchain dims (half the SBS backbuffer width)
 uint32_t g_bbW = 0;                  // full SBS backbuffer width
+uint32_t g_mevrRecommendedW = 0, g_mevrRecommendedH = 0;   // [MEVR] the runtime's recommended eye size (EyeImageSize)
 int64_t g_swapFormat = 0;
 
 // UI quad layer (the captured GFx UI texture, shown zero-disparity over the world).
@@ -86,8 +90,8 @@ unsigned g_dibrFullFrames = 0, g_dibrFallbackFrames = 0, g_dibrBlackFrames = 0;
 ULONGLONG g_dibrSubStatMs = 0;
 // [COMFORT] Panel placement, runtime-tunable (ME2 parity). Were fixed constants; the cine/mono
 // screen and the Insert panel both needed moving per-person, which is what the Comfort tab is for.
-std::atomic<float> g_monoQuadDistanceM{2.2f};   // meters in front of the face
-std::atomic<float> g_monoQuadWidthM{3.2f};      // meters wide
+std::atomic<float> g_monoQuadDistanceM{1.4f};   // meters in front of the face ([MEVR] ME1's flat panel, docs/knowledge/me1 PRS-18; upstream 2.2)
+std::atomic<float> g_monoQuadWidthM{2.35f};     // meters wide ([MEVR] ME1's 2.35; upstream 3.2)
 std::atomic<float> g_cineScreenZoom{1.0f};      // [VRCINE] flat cine screen zoom, ME2 range 0.5-3
 std::atomic<float> g_menuQuadDistanceM{1.5f};
 std::atomic<float> g_menuQuadWidthM{1.4f};
@@ -149,6 +153,7 @@ bool g_lastRtFovValid = false;
 bool g_isOculusRuntime = false;   // Meta PC runtime: ignores declared FOV -> doubled image without the crop
 bool g_isSteamVrRuntime = false;  // SteamVR: voids any view declared wider than its own frustum
 std::atomic_bool g_questFovMatch{true};   // ini QuestFovMatch - escape hatch for the Meta crop
+std::atomic_bool g_mevrEyeFrustum{true};   // [MEVR] ini MetricEyeFrustum: 1 mode 2 (ME3's default), 0 mode 1
 double g_displayPeriodSec = 1.0 / 120.0;
 int g_paceWarmCount = 0;
 XrTime g_lastPredictedDisplayTime = 0;
@@ -362,9 +367,10 @@ bool ResolveFunctions() noexcept
     if (!Resolve("xrPollEvent", &p)) return false;
     g_pollEvent = reinterpret_cast<PFN_xrPollEvent>(p);
     // [MEVR] Capture/replay wrappers keep and call these real session functions.
-    ::ME2VR::MevrBridge::WrapSessionFunctions(reinterpret_cast<void**>(&g_fn.acquireSwapchainImage),
-        reinterpret_cast<void**>(&g_fn.releaseSwapchainImage), reinterpret_cast<void**>(&g_fn.endFrame),
-        reinterpret_cast<void**>(&g_fn.locateViews));
+    ::MevrSeams::WrapSessionFunctions(reinterpret_cast<void**>(&g_fn.acquireSwapchainImage),
+        reinterpret_cast<void**>(&g_fn.waitSwapchainImage), reinterpret_cast<void**>(&g_fn.releaseSwapchainImage),
+        reinterpret_cast<void**>(&g_fn.waitFrame), reinterpret_cast<void**>(&g_fn.beginFrame),
+        reinterpret_cast<void**>(&g_fn.endFrame), reinterpret_cast<void**>(&g_fn.locateViews));
     return true;
 }
 
@@ -394,6 +400,8 @@ bool CreateEyeSwapchains() noexcept
     std::vector<XrViewConfigurationView> vcv(viewCount);
     for (auto& v : vcv) v.type = XR_TYPE_VIEW_CONFIGURATION_VIEW_VALUE;
     g_fn.enumerateViewConfigurationViews(g_instance, g_system, kStereo, viewCount, &viewCount, vcv.data());
+    g_mevrRecommendedW = vcv[0].recommendedImageRectWidth;   // [MEVR] for the eye images' size (EnsureAerSwapchains)
+    g_mevrRecommendedH = vcv[0].recommendedImageRectHeight;
 
     // B2b (stereo): per-eye swapchain = HALF the SBS backbuffer (left half / right half).
     g_bbW = ME2VR::D3DCapture::GetBackbufferWidth();
@@ -439,7 +447,7 @@ bool BringUp(ID3D11Device* device) noexcept
     g_device->GetImmediateContext(&g_ctx);
 
     // [MEVR] Same statically linked loader as the shared controller/test-loop modules.
-    g_getProc = reinterpret_cast<PFN_xrGetInstanceProcAddr>(::ME2VR::MevrBridge::StaticXrGetInstanceProcAddr());
+    g_getProc = reinterpret_cast<PFN_xrGetInstanceProcAddr>(::MevrSeams::StaticXrGetInstanceProcAddr());
     if (g_getProc == nullptr) { XLog("xrGetInstanceProcAddr missing"); return false; }
 
     PFN_xrVoidFunction createInstanceRaw = nullptr;
@@ -560,7 +568,7 @@ bool BringUp(ID3D11Device* device) noexcept
     if (!ChooseSwapchainFormat()) { XLog("no swapchain format"); return false; }
     if (!CreateEyeSwapchains()) { XLog("eye swapchain creation failed"); return false; }
 
-    ::ME2VR::MevrBridge::OnSessionCreated(g_instance, g_session); // [MEVR] before beginSession
+    ::MevrSeams::OnSessionCreated(g_instance, g_session); // [MEVR] before beginSession
     g_initOk = true;
     XLog("VR session ready; starting frame submission.");
     return true;
@@ -591,7 +599,7 @@ void PumpEvents() noexcept
             {
                 g_fn.endSession(g_session);
                 ResetAerHistory();
-                ::ME2VR::MevrBridge::OnSessionStopped(); // [MEVR] discard stale controller/view state
+                ::MevrSeams::OnSessionStopped(); // [MEVR] discard stale controller/view state
                 ME2VR::CalcViewHook::SetMevrCineScreen(false);
                 g_begun = false;
             }
@@ -754,6 +762,15 @@ void RecenterAppSpace(XrTime displayTime) noexcept
     ci.type = XR_TYPE_REFERENCE_SPACE_CREATE_INFO_VALUE;
     ci.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_LOCAL_VALUE;
     ci.poseInReferenceSpace.orientation = YawToQuat(yawDeg);
+    {   // [MEVR] as LE1's DoRecenter: a base space that is badly tilted (SteamVR's upside-down start) is corrected too,
+        // then the head's full orientation; else the yaw-only pose above, bit for bit
+        const XrQuaternionf& h = bv[0].pose.orientation;
+        XrQuaternionf& q = ci.poseInReferenceSpace.orientation;
+        const float head[4] = {h.x, h.y, h.z, h.w};
+        float out[4] = {q.x, q.y, q.z, q.w};
+        ::MevrSeams::RecenterOrientation(head, !g_mevrRecenterAsked.exchange(false, std::memory_order_relaxed), out);
+        q.x = out[0]; q.y = out[1]; q.z = out[2]; q.w = out[3];
+    }
     ci.poseInReferenceSpace.position.x = (bv[0].pose.position.x + bv[1].pose.position.x) * 0.5f;
     ci.poseInReferenceSpace.position.y = (bv[0].pose.position.y + bv[1].pose.position.y) * 0.5f;
     ci.poseInReferenceSpace.position.z = (bv[0].pose.position.z + bv[1].pose.position.z) * 0.5f;
@@ -762,7 +779,7 @@ void RecenterAppSpace(XrTime displayTime) noexcept
     {
         if (g_localSpace != nullptr) g_fn.destroySpace(g_localSpace);
         g_localSpace = ns;
-        ::ME2VR::MevrBridge::OnRecentered(); // [MEVR]
+        ::MevrSeams::OnRecentered(); // [MEVR]
         XLog("recenter - app space re-origined to head yaw=" + std::to_string(static_cast<int>(yawDeg)));
     }
 }
@@ -857,16 +874,73 @@ void MevrPublishView(const XrView& view) noexcept
         const float fwdSign = ME2VR::CalcViewHook::GetLeanInvertFwd() ? 1.0f : -1.0f;
         right = w2m * clamp2(view.pose.position.x);
         up = w2m * clamp2(view.pose.position.y);
-        fwd = w2m * fwdSign * clamp2(view.pose.position.z) * 3.0f;
+        fwd = w2m * fwdSign * clamp2(view.pose.position.z) * (ME2VR::CalcViewHook::GetMevrLifeSize() ? 1.0f : 3.0f);   // [MEVR]
     }
     const XrQuaternionf q = g_smoothQuatInit ? RemoveRoll(g_smoothQuat) : RemoveRoll(view.pose.orientation);
     const float headQ[4] = {q.x, q.y, q.z, q.w};
     const float headP[3] = {view.pose.position.x, view.pose.position.y, view.pose.position.z};
     const bool headLook = ME2VR::CalcViewHook::GetHeadLookUserEnabled() && !cineLocked;
     const int gameMode = ME2VR::EngineProbe::ReadGameMode();
-    ::ME2VR::MevrBridge::OnViewBuilt(!ME2VR::Menu::IsOpen() && !cineLocked && gameMode == 0, headLook, false, ME2VR::CalcViewHook::HeadLookYawUU(),
+    ::MevrSeams::OnViewBuilt(!ME2VR::Menu::IsOpen() && !cineLocked && gameMode == 0, headLook, false, ME2VR::CalcViewHook::HeadLookYawUU(),
                                      ME2VR::CalcViewHook::HeadLookPitchUU(), headQ, headP, right, up, fwd, w2m,
                                      gameMode == 0 && !ME2VR::CalcViewHook::GetVrCineActive());
+}
+
+// [MEVR] Life-size stereo (research/30 section 9): our plan for the next game frame's two SFR passes (MevrSeams::PlanStereo,
+// ME1's plugin/MetricStereo), published to calcview_hook.cpp's SFR branch through MevrMetricView. After DriveHeadLook (the
+// head look this frame) and ApplyFovFill (the window). Mode 2 (each eye's own frustum) where the window holds both eyes and
+// MetricEyeFrustum asks for it (1, ME3's default since the owner's answer to question 17, 2026-11-17; the lamps' lens flares,
+// placed through the CPU's symmetric window, are kept on their lamps by the host's plugin/FlareWindow: research/
+// le3-flares-and-window.md). The same function as ME2's me2_xr.cpp (the trees' names agree) but for that choice.
+void MevrPlanStereo(const XrView views[2], bool trackingValid) noexcept
+{
+    ::MevrSeams::StereoPlanInput in;
+    const bool screen = ME2VR::CalcViewHook::GetMevrCineScreen();
+    in.metric = ME2VR::CalcViewHook::GetMevrLifeSize();
+    in.eyeFrustum = in.metric && g_mevrEyeFrustum.load(std::memory_order_relaxed);
+    in.sfr2Active = ME2VR::CalcViewHook::GetVrEnabled() && ME2VR::CalcViewHook::GetVrMode() == 4 && !screen &&
+                    !ME2VR::D3DCapture::GetMenuMode() && !ME2VR::CalcViewHook::GetCinematic();
+    in.headValid = trackingValid;
+    in.viewFollowsHead = ME2VR::CalcViewHook::GetHeadLookApplied();
+    in.uiInEyes = ME2VR::CalcViewHook::GetVrCineActive() || ME2VR::Menu::IsOpen();   // the plan adds the HUD panel's answer
+    float fillH = 0.0f, fillV = 0.0f;
+    const bool fillOn = ME2VR::CalcViewHook::GetFovFillTarget(&fillH, &fillV) && fillH > 0.01f && fillV > 0.01f;
+    in.fovOverride = fillOn && !screen;
+    in.swapEyes = ME2VR::CalcViewHook::GetSwapEyes();
+    for (int e = 0; e < 2; ++e)
+    {
+        const XrView& v = views[e];
+        in.eyeOrientation[e][0] = v.pose.orientation.x; in.eyeOrientation[e][1] = v.pose.orientation.y;
+        in.eyeOrientation[e][2] = v.pose.orientation.z; in.eyeOrientation[e][3] = v.pose.orientation.w;
+        in.eyePosition[e][0] = v.pose.position.x; in.eyePosition[e][1] = v.pose.position.y; in.eyePosition[e][2] = v.pose.position.z;
+        in.eyeFov[e][0] = v.fov.angleLeft; in.eyeFov[e][1] = v.fov.angleRight;
+        in.eyeFov[e][2] = v.fov.angleUp; in.eyeFov[e][3] = v.fov.angleDown;
+    }
+    const XrQuaternionf q = g_smoothQuatInit ? RemoveRoll(g_smoothQuat) : RemoveRoll(views[0].pose.orientation);
+    in.viewOrientation[0] = q.x; in.viewOrientation[1] = q.y; in.viewOrientation[2] = q.z; in.viewOrientation[3] = q.w;
+    // The sequels' fill scales tangents (VrFillH/V, 1 by default), the plan's angles: the eyes' own frusta unfilled.
+    in.fillH = in.fillV = 1.0f;
+    in.unitsPerMeter = 50.0f * ME2VR::CalcViewHook::GetHeadPosScale();
+    in.cpuHalfH = fillOn ? fillH : 0.0f;
+    in.cpuHalfV = fillOn ? fillV : 0.0f;
+    namespace ms = mevr::vr::metric_stereo;
+    in.windowHoldsEyes = fillOn;
+    for (int e = 0; e < 2 && fillOn; ++e)
+        in.windowHoldsEyes = in.windowHoldsEyes &&
+            ms::WindowHolds(fillH, fillV, {in.eyeFov[e][0], in.eyeFov[e][1], in.eyeFov[e][2], in.eyeFov[e][3]}, 1.0f, 1.0f);
+    ::MevrSeams::StereoPlan plan;
+    ::MevrSeams::PlanStereo(in, &plan);
+    ::MevrMetricView::Plan out;
+    out.mode = plan.mode;
+    out.pass0Eye = plan.pass0Eye;
+    for (int p = 0; p < 2; ++p)
+    {
+        for (int k = 0; k < 3; ++k) out.passes[p].offsetUU[k] = plan.passOffsetUU[p][k];
+        out.passes[p].p0 = plan.passTerms[p][0]; out.passes[p].p5 = plan.passTerms[p][1];
+        out.passes[p].p8 = plan.passTerms[p][2]; out.passes[p].p9 = plan.passTerms[p][3];
+        for (int k = 0; k < 4; ++k) out.passes[p].tan[k] = plan.passTan[p][k];
+    }
+    ::MevrMetricView::Publish(out);
 }
 #endif
 
@@ -1087,6 +1161,8 @@ bool EnsureAerSwapchains() noexcept
     g_publishedEyes.Reset(); g_dibrHaveLast = false;
     g_aerSwapW = g_bbW;
     g_aerSwapH = g_swapH;   // = full backbuffer height
+    // [MEVR] the eye images may be larger than the picture: ME1's FSR upscale at the copy (MevrSeams::EyeImageSize)
+    ::MevrSeams::EyeImageSize(g_bbW, g_swapH, g_mevrRecommendedW, g_mevrRecommendedH, &g_aerSwapW, &g_aerSwapH);
     if (g_aerSwapW == 0 || g_aerSwapH == 0) return false;
     for (int eye = 0; eye < 2; ++eye)
     {
@@ -1153,7 +1229,7 @@ bool EnsureAerHistory(ID3D11Texture2D* src) noexcept
 bool CopyTextureToEyeFullFrame(int eye, ID3D11Texture2D* src, int shiftPx, EyeContentTag const* tag = nullptr) noexcept
 {
     if (eye < 0 || eye > 1 || src == nullptr || g_aerSwap[eye] == nullptr || !g_eyeOwnership[eye].MayAcquire()) return false;
-    ::ME2VR::MevrBridge::OnEyeSource(eye, src); // [MEVR]
+    ::MevrSeams::OnEyeSource(eye, src); // [MEVR]
     uint32_t idx = 0;
     XrSwapchainImageAcquireInfo ai = {}; ai.type = XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO_VALUE;
     if (!XrSucceeded(g_fn.acquireSwapchainImage(g_aerSwap[eye], &ai, &idx))) return false;
@@ -1164,9 +1240,9 @@ bool CopyTextureToEyeFullFrame(int eye, ID3D11Texture2D* src, int shiftPx, EyeCo
     {
         // [MEVR] HDR format conversion and the shared headset colour profile.
         // False means the image was not copied; no incompatible-copy fallback.
-        copied = ::ME2VR::MevrBridge::CopyIntoImage(g_ctx, g_aerImages[eye][idx], src, shiftPx, eye);
+        copied = ::MevrSeams::CopyIntoImage(g_ctx, g_aerImages[eye][idx], src, shiftPx, eye);
     }
-    if (copied) ::ME2VR::MevrBridge::OnEyeCopied(eye, g_aerImages[eye][idx]); // [MEVR]
+    if (copied) ::MevrSeams::OnEyeCopied(eye, g_aerImages[eye][idx], idx, 0, 0); // [MEVR] only successful copies are reported
     XrSwapchainImageReleaseInfo ri = {}; ri.type = XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO_VALUE;
     // A failed/timeout wait is not permission to release or sample the image.
     // A failed release must not let the next copy get attributed to an older
@@ -1176,7 +1252,7 @@ bool CopyTextureToEyeFullFrame(int eye, ID3D11Texture2D* src, int shiftPx, EyeCo
     if (!g_eyeOwnership[eye].ReleaseCompleted(released))
         XLog("[MEVR] eye swapchain quarantined after wait/release failure; restart required, eye=" + std::to_string(eye));
     bool const published = g_publishedEyes.Complete(eye, true, copied, released, tag);
-    ::ME2VR::MevrBridge::OnEyeReleased(eye, published);
+    ::MevrSeams::OnEyeReleased(eye, published);
     return published;
 }
 inline bool CopyTextureToEyeFullFrame(int eye, ID3D11Texture2D* src) noexcept
@@ -1287,13 +1363,16 @@ void ApplyFovFill(const XrView* views) noexcept
     const float fv = g_vrFillV.load(std::memory_order_relaxed);
     float tV = atanf(tanf(headVHalf) * fv);
     float tH = atanf(tanf(tV) * aspect * (fh / (fv > 1e-4f ? fv : 1.0f)));
+    // [MEVR] life-size stereo (research/30 section 9; [Debug] stereoWindowCoversEyes = 0 turns it off): the same cover on every runtime, so the
+    // window holds both eyes' own frusta and life-size stereo's mode 2 can run
+    const bool mevrCover = (::MevrSeams::LifeSizeStereo() & 2) != 0;
     // [LINKFOV2] On the Meta runtime the fill must also COVER the runtime's asymmetric per-eye frustum:
     // the compositor maps whatever rect the mod submits onto ITS OWN frustum, and the submit-side crop can only
     // trim a declared window DOWN, never grow one that falls short. An aspect-derived target sits inside
     // Quest's outer edge, so each eye gets stretched outward in opposite directions = unfusable double
     // image, independent of separation and convergence. Scale up by ONE uniform tan-space factor so the
     // crop lands exactly on the frustum; per-axis clamping changes the rendered H:V ratio and warps the UI.
-    if (g_isOculusRuntime && g_questFovMatch.load(std::memory_order_relaxed))
+    if ((g_isOculusRuntime && g_questFovMatch.load(std::memory_order_relaxed)) || mevrCover)
     {
         float hNeed = 0.0f, vNeed = 0.0f;
         for (int e = 0; e < 2; ++e)
@@ -1305,7 +1384,16 @@ void ApplyFovFill(const XrView* views) noexcept
             if (-f.angleDown > vNeed) vNeed = -f.angleDown;
         }
         const float tanH = tanf(tH), tanV = tanf(tV);
-        if (hNeed > 0.1f && hNeed < 1.4f && vNeed > 0.1f && vNeed < 1.4f && tanH > 1e-4f && tanV > 1e-4f)
+        // [MEVR] the window as the eyes' union, each axis on its own (research/30 section 9.6; [Stereo] windowEyes = 1):
+        // the aspect above is the old side-by-side half (backbuffer width / 2 over its height), which a two-pass render
+        // never had, and its uniform cover overshot the eyes' height by half (+-64 degrees for the PS VR2's +-53).
+        if (mevrCover && (::MevrSeams::LifeSizeStereo() & 4) != 0 &&
+            hNeed > 0.1f && hNeed < 1.4f && vNeed > 0.1f && vNeed < 1.4f)
+        {
+            tH = hNeed;
+            tV = vNeed;
+        }
+        else if (hNeed > 0.1f && hNeed < 1.4f && vNeed > 0.1f && vNeed < 1.4f && tanH > 1e-4f && tanV > 1e-4f)
         {
             float k = 1.0f;
             const float kH = tanf(hNeed) / tanH, kV = tanf(vNeed) / tanV;
@@ -1385,7 +1473,7 @@ void RunFrame() noexcept
     // for ONE view per frame - half of SFR's submission cost, which is the measured hub bottleneck.
     // FullRefreshPacing (the same knob Stereo uses) picks full vs half; the shipped ini already has it on.
     if (wantPace) PaceDisplayLocked(!ME2VR::CalcViewHook::GetMevrCineScreen() ||
-        ::ME2VR::MevrBridge::CineScreenFullRate());
+        ::MevrSeams::CineScreenFullRate());
 
     XrFrameWaitInfo fwi = {}; fwi.type = XR_TYPE_FRAME_WAIT_INFO_VALUE;
     XrFrameState fs = {}; fs.type = XR_TYPE_FRAME_STATE_VALUE;
@@ -1409,7 +1497,7 @@ void RunFrame() noexcept
 
     XrFrameBeginInfo fbi = {}; fbi.type = XR_TYPE_FRAME_BEGIN_INFO_VALUE;
     if (!XrSucceeded(g_fn.beginFrame(g_session, &fbi))) return;
-    ::ME2VR::MevrBridge::OnFrameBegun(g_session, g_localSpace, fs.predictedDisplayTime); // [MEVR]
+    ::MevrSeams::OnFrameBegun(g_session, g_localSpace, fs.predictedDisplayTime); // [MEVR]
 
     // B2b stereo: project the two SBS halves to the two eyes. Each eye declares the GAME's rendered
     // FOV (not the headset FOV -> no zoom) and the runtime's located eye pose (head tracking).
@@ -1666,18 +1754,32 @@ void RunFrame() noexcept
         const bool menuMono = ME2VR::D3DCapture::GetMenuMode();
         // [MEVR] Only corroborated native conversation/cinematic sources enter the shared screen.
         // Movie and GUI sources retain the complete native mono panel. No first-person relocation.
-        const bool mevrScreen = sfrMode && cine && vrEligible && !menuMono && (gm == 7 || gm == 8) &&
-            ::ME2VR::MevrBridge::CineScreenWanted(gm == 7);
+        // [MEVR] the galaxy map's opening and closing cinematics in the CIC are the map's (MevrSeams::GalaxyOwnsPresentation:
+        // the mod holds Shepard's view through them, ME1's rule): no cinematic presentation, the room stays in stereo.
+        const bool mevrGalaxyHeld = ::MevrSeams::GalaxyOwnsPresentation(gm);
+        // [MEVR] research/56 "The sequels" (T18): ME1's front end (d3d_capture.cpp's UpdatePresentationState decided it this
+        // Present): the title and its menus on ME1's 3D cinema screen (in stereo where a scene renders, else the backbuffer in
+        // both eyes on it), head look parked; its flat panel (the boot, a load from the menus) is the menu presentation. No
+        // other cinematic presentation of Halcyon's while the front end holds.
+        const int mevrFrontEnd = ME2VR::D3DCapture::GetMevrFrontEnd();
+        // [MEVR] ME1's and ME2's rule (the owner, 2026-11-18: the 3D screen is ME3's default as on the other two): every
+        // corroborated cinematic whatever its mode (vrEligible already leaves out the measured flat sources: the galaxy map, the
+        // title, an unearned movie). It was admitted in modes 7 and 8 only until then, a cinematic in any other mode flat.
+        const bool mevrScreen = (mevrFrontEnd == 2 && sfrMode) ||
+            (mevrFrontEnd == 0 && !mevrGalaxyHeld && sfrMode && cine && vrEligible && !menuMono &&
+             ::MevrSeams::CineScreenWanted(gm == 7));
         ME2VR::CalcViewHook::SetMevrCineScreen(mevrScreen);
-        const bool renderCineInVr = mevrScreen || (cine && vrEligible && (!menuMono || fpConvo) &&
+        const bool renderCineInVr = !mevrGalaxyHeld && (mevrScreen || (mevrFrontEnd == 0 && cine && vrEligible &&
+                                    (!menuMono || fpConvo) &&
                                     (fpConvo || (convoLike ? ME2VR::CalcViewHook::GetCineVrConvo()
-                                                          : ME2VR::CalcViewHook::GetCineVrCutscene())));
+                                                          : ME2VR::CalcViewHook::GetCineVrCutscene()))));
         ME2VR::CalcViewHook::SetVrCineActive(renderCineInVr);
-        ME2VR::CalcViewHook::SetCinematic(cine && !renderCineInVr);
+        ME2VR::CalcViewHook::SetCinematic(cine && !renderCineInVr && !mevrGalaxyHeld && mevrFrontEnd == 0);
         // [CINEVR] one line per presentation flip: this is what verifies (or corrects) the LE3
         // convo/cutscene mapping from a single play session.
         static int s_prevCineState = -1;
-        const int cineState = !cine ? 0 : mevrScreen ? (convoLike ? 4 : 5) : (renderCineInVr ? (convoLike ? 2 : 3) : 1);
+        const int cineState = ((!cine && !mevrScreen) || mevrGalaxyHeld) ? 0 :   // [MEVR] the front end's screen counts
+            mevrScreen ? (convoLike ? 4 : 5) : (renderCineInVr ? (convoLike ? 2 : 3) : 1);
         static const char* kNames[6] = { "none", "FLAT panel", "VR conversation", "VR cutscene",
             "3D conversation screen", "3D cutscene screen" };
         if (cineState != s_prevCineState)
@@ -1789,10 +1891,18 @@ void RunFrame() noexcept
         else if (s_sfrNeedsFreshPair && ME2VR::D3DCapture::SfrCaptureAgePresents() <= 1)
             s_sfrNeedsFreshPair = false;
     }
+    // [MEVR] research/56 "The sequels" (T18): the front end's 3D cinema screen needs no captured pair: ME3's title renders no
+    // scene (no CalcSceneView of the player's), so the stereo submit shows the live frame in both eyes on the screen
+    // (stereoSource false there: no disparity is made up) until a pair is captured.
+    const bool mevrFrontEndScreen = sfrMode && ME2VR::D3DCapture::GetMevrFrontEnd() == 2 && ME2VR::CalcViewHook::GetMevrCineScreen();
     const bool stereoSourceReady = sfrMode
-        ? (!s_sfrNeedsFreshPair && ME2VR::D3DCapture::GetSfrPass0Texture() != nullptr)
+        ? ((!s_sfrNeedsFreshPair && ME2VR::D3DCapture::GetSfrPass0Texture() != nullptr) || mevrFrontEndScreen)
         : (g_framesSinceSplit < kSbsHoldFrames);
     sbsFrame = stereoIntent && stereoSourceReady;
+    // [MEVR] life-size stereo (research/30 section 9.5): a frame shown flat (a menu, a flat cinematic, a stalled capture, the
+    // wait for a fresh pair) expires the plan, so the passes rendered meanwhile are from the eyes' centre, never one eye's
+    // off-centre frustum on the flat panel; the next stereo present publishes again.
+    if (sfrMode && !sbsFrame) ::MevrMetricView::Expire();
     {
         static int previous = -1;
         const int current = menuMono ? 1 : (flatCine ? 2 : (captureTopologyMono ? 4 : (sbsFrame ? 0 : 3)));
@@ -1836,7 +1946,7 @@ void RunFrame() noexcept
                 XrSwapchainImageWaitInfo wi = {}; wi.type = XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO_VALUE; wi.timeout = XR_INFINITE_DURATION_VALUE;
                 if (g_monoOwnership.WaitCompleted(g_fn.waitSwapchainImage(g_monoSwap, &wi) == XR_SUCCESS_VALUE) && idx < g_monoImages.size())
                     // [MEVR] Native flat cinema/menu also needs the HDR conversion.
-                    copied = ::ME2VR::MevrBridge::CopyIntoImage(g_ctx, g_monoImages[idx], backbuffer, 0, -1);
+                    copied = ::MevrSeams::CopyIntoImage(g_ctx, g_monoImages[idx], backbuffer, 0, -1);
                 XrSwapchainImageReleaseInfo ri = {}; ri.type = XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO_VALUE;
                 bool const released = g_monoOwnership.MayRelease() &&
                     g_fn.releaseSwapchainImage(g_monoSwap, &ri) == XR_SUCCESS_VALUE;
@@ -2069,7 +2179,15 @@ void RunFrame() noexcept
                 g_poseTagReset.store(true, std::memory_order_relaxed); g_smoothQuatInit = false;
                 g_sfrEpoch.Reset(ME2VR::D3DCapture::GetSfrPass0CaptureSeq());
             }
-            DriveHeadLook(views[0], views);
+            // [MEVR] life-size stereo: the lean from the eyes' centre, as LE1's (upstream's from the left eye)
+            XrView mevrCentre = views[0];
+            if (ME2VR::CalcViewHook::GetMevrLifeSize())
+            {
+                mevrCentre.pose.position.x = (views[0].pose.position.x + views[1].pose.position.x) * 0.5f;
+                mevrCentre.pose.position.y = (views[0].pose.position.y + views[1].pose.position.y) * 0.5f;
+                mevrCentre.pose.position.z = (views[0].pose.position.z + views[1].pose.position.z) * 0.5f;
+            }
+            DriveHeadLook(mevrCentre, views);
         }
 
         ID3D11Texture2D* backbuffer = nullptr;
@@ -2080,13 +2198,18 @@ void RunFrame() noexcept
         {
             // FOV-FILL: widen the gameplay view to fill the headset (identical to AER/DIBR/stereo).
             ApplyFovFill(views);
+            MevrPlanStereo(views, sfrTrackingValid);   // [MEVR] life-size stereo: the next game frame's two passes
             // What was RENDERED is what the mod declares - never reshape the submit FOV (ME2's regression).
             const float gh = ME2VR::CalcViewHook::GetGameHalfFovH();
             const float gv = ME2VR::CalcViewHook::GetGameHalfFovV();
 
             ID3D11Texture2D* pass0 = ME2VR::D3DCapture::GetSfrPass0Texture();   // left (-halfEye), mid-present
             const bool mevrScreenNow = ME2VR::CalcViewHook::GetMevrCineScreen();
-            const bool swap = ME2VR::CalcViewHook::GetSwapEyes() && !mevrScreenNow;
+            // [MEVR] life-size stereo (research/30 section 9): a pair rendered from our plan is routed by it (pass 0 the left
+            // eye) with no convergence shift; mode 2 declares each eye's own frustum
+            ::MevrMetricView::Plan mevrPair;
+            const bool mevrLife = !mevrScreenNow && ::MevrMetricView::LatchedPlan(&mevrPair) && mevrPair.mode != 0;
+            const bool swap = mevrLife ? mevrPair.pass0Eye == 1 : (ME2VR::CalcViewHook::GetSwapEyes() && !mevrScreenNow);
             // [STALEEYE 2026-08-15] pass0 is a HELD texture: it only changes when a scene render is
             // captured. The right eye is the live backbuffer, so when the scene stops rendering while
             // the presentation is still stereo - a loading screen entered straight from gameplay, the
@@ -2122,7 +2245,7 @@ void RunFrame() noexcept
             // render instead would move the world in one pass but split the HUD by 2*conv, because the
             // HUD is composited identically into both passes. Sign is bolted to the PASS, so swap-eyes
             // inverts the convergence plane exactly as it should. conv=0 -> plain copy, nothing touched.
-            const float conv = mevrScreenNow ? 0.0f : ME2VR::CalcViewHook::GetSfrConvergence();
+            const float conv = (mevrScreenNow || mevrLife) ? 0.0f : ME2VR::CalcViewHook::GetSfrConvergence();   // [MEVR] life-size: none
             // Identical images shifted apart would FAKE disparity on flat content, so a stale-capture
             // frame converges at 0 - the same choice mono gameplay makes.
             const int convPx = !stereoSource
@@ -2167,6 +2290,13 @@ void RunFrame() noexcept
                 candidate.fov[eye] = views[eye].fov;
                 if (gh > 0.01f && gv > 0.01f)
                     candidate.fov[eye] = {-gh, gh, gv, -gv};
+                // [MEVR] mode 2: the eye's own frustum as rendered (its pass's tangents); a mono fallback shows pass 1's
+                // image (the backbuffer) in both eyes, so both declare that pass's
+                if (mevrLife && mevrPair.mode == 2) {
+                    const int pass = !stereoSource ? 1 : (eye == mevrPair.pass0Eye ? 0 : 1);
+                    const float* t = mevrPair.passes[pass].tan;
+                    candidate.fov[eye] = {atanf(t[0]), atanf(t[1]), atanf(t[2]), atanf(t[3])};
+                }
             }
             // Live mono fallback and deliberately head-locked cinema do not reuse a held stereo tag.
             auto const& sourceTag = g_sfrSourceTag.Select(capSeq, candidate, stereoSource && !sfrLockedCine && !mevrScreenNow);
@@ -2177,12 +2307,19 @@ void RunFrame() noexcept
                 uploadTag[eye] = {sourceTag.head, sourceTag.fov[eye], capSeq, false};
                 if (sourceTag.stereo) uploadTag[eye].pose.position = sourceTag.eyes[eye];
             }
-            CopyTextureToEyeFullFrame(swap ? 1 : 0, leftSrc,  +convPx, &uploadTag[swap ? 1 : 0]);
-            CopyTextureToEyeFullFrame(swap ? 0 : 1, rightSrc, -convPx, &uploadTag[swap ? 0 : 1]);
+            // [MEVR] research/57 (LE1's WorldUiHoldFrame): while an opening of ours is reserved and its screen not yet shown on our
+            // panel, keep the last clean eyes (no copy: the last released images with their own tags), so the GUI mode's own camera
+            // and its UI never reach the eyes for the frame or two an opening takes.
+            const bool mevrHoldWorldUi = !mevrScreenNow && g_publishedEyes.TaggedPair() &&
+                ::MevrSeams::WorldUiHoldFrame(ME2VR::EngineProbe::ReadGameMode());
+            if (!mevrHoldWorldUi) {
+                CopyTextureToEyeFullFrame(swap ? 1 : 0, leftSrc,  +convPx, &uploadTag[swap ? 1 : 0]);
+                CopyTextureToEyeFullFrame(swap ? 0 : 1, rightSrc, -convPx, &uploadTag[swap ? 0 : 1]);
+            }
 
             // [MEVR] Actual pass-zero/pass-one images on the shared stereo cinema screen.
             if (mevrScreenNow && g_publishedEyes.CurrentPair() && g_aerSwap[0] && g_aerSwap[1]) {
-                ::ME2VR::MevrBridge::CineScreenFrame screen;
+                ::MevrSeams::CineScreenFrame screen;
                 screen.session = g_session; screen.appSpace = g_localSpace; screen.viewSpace = g_viewSpace;
                 screen.context = g_ctx;
                 screen.conversation = ME2VR::EngineProbe::ReadGameMode() == 7;
@@ -2202,10 +2339,10 @@ void RunFrame() noexcept
                     screen.eyeFov[e][0] = views[e].fov.angleLeft; screen.eyeFov[e][1] = views[e].fov.angleRight;
                     screen.eyeFov[e][2] = views[e].fov.angleUp; screen.eyeFov[e][3] = views[e].fov.angleDown;
                 }
-                mevrScreenLayerCount = ::ME2VR::MevrBridge::CineScreenLayers(screen, mevrScreenLayers, 3);
+                mevrScreenLayerCount = ::MevrSeams::CineScreenLayers(screen, mevrScreenLayers, 3);
             }
 
-            if (g_publishedEyes.CurrentPair() && g_aerSwap[0] != nullptr && g_aerSwap[1] != nullptr)
+            if ((g_publishedEyes.CurrentPair() || mevrHoldWorldUi) && g_aerSwap[0] != nullptr && g_aerSwap[1] != nullptr)   // [MEVR] held: the last pair
             {
                 for (int eye = 0; eye < 2; ++eye)
                 {
@@ -2218,6 +2355,17 @@ void RunFrame() noexcept
                     projViews[eye].subImage.imageRect.offset = { 0, 0 };
                     projViews[eye].subImage.imageRect.extent = { static_cast<int32_t>(g_aerSwapW), static_cast<int32_t>(g_aerSwapH) };
                     projViews[eye].subImage.imageArrayIndex = 0;
+                }
+                {   // [MEVR] life-size stereo: what this frame declares, for the [MEVR-STEREO] submit line and the snapshot
+                    float pos[2][3], ori[2][4], fov[2][4];
+                    for (int e = 0; e < 2; ++e) {
+                        const XrPosef& p = projViews[e].pose;
+                        pos[e][0] = p.position.x; pos[e][1] = p.position.y; pos[e][2] = p.position.z;
+                        ori[e][0] = p.orientation.x; ori[e][1] = p.orientation.y; ori[e][2] = p.orientation.z; ori[e][3] = p.orientation.w;
+                        fov[e][0] = projViews[e].fov.angleLeft; fov[e][1] = projViews[e].fov.angleRight;
+                        fov[e][2] = projViews[e].fov.angleUp; fov[e][3] = projViews[e].fov.angleDown;
+                    }
+                    ::MevrSeams::NoteStereoSubmit(mevrLife ? mevrPair.mode : 0, pos, ori, fov);
                 }
                 layer.type = XR_TYPE_COMPOSITION_LAYER_PROJECTION_VALUE;
                 layer.space = g_localSpace;
@@ -2635,7 +2783,7 @@ void RunFrame() noexcept
         }
     }
     // [MEVR] One layer submission owner, shared menu/calibration/rail presentation.
-    ::ME2VR::MevrBridge::OverlayFrame overlay;
+    ::MevrSeams::OverlayFrame overlay;
     overlay.session = g_session; overlay.appSpace = g_localSpace; overlay.viewSpace = g_viewSpace;
     overlay.context = g_ctx; overlay.worldFrame = rendered && mevrScreenLayerCount == 0; overlay.menuOpen = ME2VR::Menu::IsOpen();
     overlay.gameMode = ME2VR::EngineProbe::ReadGameMode();
@@ -2679,12 +2827,13 @@ void RunFrame() noexcept
     }
     if (haveMono) {
         const float at[3] = {monoQuad.pose.position.x, monoQuad.pose.position.y, monoQuad.pose.position.z};
-        float q[4], p[3]; void* space = nullptr;
-        const bool nativeMap = ::ME2VR::MevrBridge::PlaceNativePanel(overlay, at,
-            monoQuad.size.width, monoQuad.size.height, &space, q, p);
-        monoQuad.space = static_cast<XrSpace>(space);
-        monoQuad.pose.orientation = {q[0], q[1], q[2], q[3]}; monoQuad.pose.position = {p[0], p[1], p[2]};
-        if (nativeMap && haveGameUi) {
+        const ::MevrSeams::PanelPose placed = ::MevrSeams::PlacePanel(::MevrSeams::PanelKind::ByGameMode, overlay, at,
+            monoQuad.size.width, monoQuad.size.height, true);
+        monoQuad.space = static_cast<XrSpace>(placed.space);
+        monoQuad.pose.orientation = {placed.orientation[0], placed.orientation[1], placed.orientation[2], placed.orientation[3]};
+        monoQuad.pose.position = {placed.position[0], placed.position[1], placed.position[2]};
+        monoQuad.size = {placed.widthM, placed.heightM};
+        if (placed.nativeMap && haveGameUi) {
             // [MEVR] Optional full-viewport UI extraction must follow its native map,
             // including the flat fallback. Texture/subimage and source-alpha remain intact.
             gameUiQuad.space = monoQuad.space;
@@ -2701,14 +2850,14 @@ void RunFrame() noexcept
     if (haveGameUi) layers[layerCount++] = reinterpret_cast<XrCompositionLayerBaseHeader*>(&gameUiQuad);
     if (haveUi)     layers[layerCount++] = reinterpret_cast<XrCompositionLayerBaseHeader*>(&uiQuad);
     const void* hostLayers[12] = {};
-    const unsigned hostCount = ::ME2VR::MevrBridge::OverlayLayers(overlay, hostLayers, (16u - layerCount < 12u ? 16u - layerCount : 12u));
+    const unsigned hostCount = ::MevrSeams::OverlayLayers(overlay, hostLayers, (16u - layerCount < 12u ? 16u - layerCount : 12u));
     for (unsigned i = 0; i < hostCount && layerCount < 16; ++i)
         layers[layerCount++] = static_cast<const XrCompositionLayerBaseHeader*>(hostLayers[i]);
 
     const bool nativeCinematic = overlay.gameMode == 7 || overlay.gameMode == 8;
     const int view = mevrScreenLayerCount ? 1 : rendered ? 0 : haveMono ? (nativeCinematic ? 2 : 3) : -1;
     if (layerCount < 16) {
-        if (const void* fade = ::ME2VR::MevrBridge::TransitionFadeLayer(g_session, g_viewSpace, g_ctx, view))
+        if (const void* fade = ::MevrSeams::TransitionFadeLayer(g_session, g_viewSpace, g_ctx, view))
             layers[layerCount++] = static_cast<const XrCompositionLayerBaseHeader*>(fade);
     }
 
@@ -2730,6 +2879,7 @@ float GetMenuScreenDist() noexcept { return g_monoQuadDistanceM.load(std::memory
 void  SetMenuScreenDist(float m) noexcept { g_monoQuadDistanceM.store((m < 0.4f) ? 0.4f : (m > 6.0f ? 6.0f : m), std::memory_order_relaxed); }
 float GetMenuScreenSize() noexcept { return g_monoQuadWidthM.load(std::memory_order_relaxed); }
 void  SetMenuScreenSize(float m) noexcept { g_monoQuadWidthM.store((m < 0.8f) ? 0.8f : (m > 6.0f ? 6.0f : m), std::memory_order_relaxed); }
+void  MevrRecommendedEyeSize(unsigned* w, unsigned* h) noexcept { if (w) *w = g_mevrRecommendedW; if (h) *h = g_mevrRecommendedH; }   // [MEVR]
 float GetMenuPanelDist() noexcept { return g_menuQuadDistanceM.load(std::memory_order_relaxed); }
 void  SetMenuPanelDist(float m) noexcept { g_menuQuadDistanceM.store((m < 0.8f) ? 0.8f : (m > 4.0f ? 4.0f : m), std::memory_order_relaxed); }
 float GetMenuPanelSize() noexcept { return g_menuQuadWidthM.load(std::memory_order_relaxed); }
@@ -2747,8 +2897,14 @@ float GetVrFillV() noexcept { return g_vrFillV.load(std::memory_order_relaxed); 
 void  SetVrFillV(float v) noexcept { g_vrFillV.store((v < 0.5f) ? 0.5f : (v > 1.25f ? 1.25f : v), std::memory_order_relaxed); }
 void SetQuestFovMatch(bool on) noexcept { g_questFovMatch.store(on, std::memory_order_relaxed); }
 bool GetQuestFovMatch() noexcept { return g_questFovMatch.load(std::memory_order_relaxed); }
+void SetMevrEyeFrustum(bool on) noexcept { g_mevrEyeFrustum.store(on, std::memory_order_relaxed); }   // [MEVR]
+bool GetMevrEyeFrustum() noexcept { return g_mevrEyeFrustum.load(std::memory_order_relaxed); }       // [MEVR]
 bool IsOculusRuntime() noexcept { return g_isOculusRuntime; }
-void Recenter() noexcept { g_recenterRequested.store(true, std::memory_order_relaxed); }
+void Recenter() noexcept
+{
+    g_mevrRecenterAsked.store(true, std::memory_order_relaxed);   // [MEVR] before the request it explains
+    g_recenterRequested.store(true, std::memory_order_relaxed);
+}
 unsigned LastWaitFrameUs() noexcept { return g_lastWaitFrameUs.exchange(0, std::memory_order_relaxed); }
 // [XRSUBMIT] windowed RunFrame stats, read and reset once per [FRAMETIME] window.
 void TakeXrSubmitStats(unsigned* count, unsigned* sumUs, unsigned* maxUs) noexcept

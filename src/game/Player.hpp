@@ -46,6 +46,41 @@ vr::floor_lock::PawnSample FloorLockSample();
 // Register before installing ProcessEvent handlers; refresh at the camera update as well as each mod tick.
 void PublishFloorLockOnCamera(void (*publish)(vr::floor_lock::PawnSample const*));
 std::optional<bool> Crouched(ue3::Object const* pawn);
+
+#if defined(MEVR_GAME_LE3)
+// ME3's movement admission, read in one place (docs/trilogy-parity-ledger.md Forks 11; until 2026-11-16 Comfort, ArmIk,
+// Posture, Sprint, Melee and Le3Traversal each had their own copy of these reads). Game mode 0 alone doesn't mean the
+// player moves Shepard: an authored scene keeps it while a custom action, ignored input, death, another physics or cover
+// owns the pawn. Each fact is what the game states now; a missing object, an unreadable field or a failed call means the
+// fact does NOT hold (every caller stands down on doubt).
+namespace admission {
+using Facts = std::uint32_t;
+inline constexpr Facts kOnFoot = 1u << 0;         // BioPlayerController's game mode is 0
+inline constexpr Facts kNoAction = 1u << 1;       // BioPawn.CurrentCustomAction == 0
+inline constexpr Facts kPhysicsKnown = 1u << 2;   // Actor.Physics is readable (any physics)
+inline constexpr Facts kWalking = 1u << 3;        // Actor.Physics == PHYS_Walking (1)
+inline constexpr Facts kCoverKnown = 1u << 4;     // BioPawn.CoverType and CoverAction are readable (in cover or not)
+inline constexpr Facts kOutOfCover = 1u << 5;     // BioPawn.CoverType == 0
+inline constexpr Facts kNoCoverAction = 1u << 6;  // BioPawn.CoverAction == 0
+inline constexpr Facts kNotCrouched = 1u << 7;    // Pawn.bIsCrouched is false
+inline constexpr Facts kNotStorming = 1u << 8;    // BioPawn.bStorming is false
+inline constexpr Facts kMoveInput = 1u << 9;      // PlayerController.IsMoveInputIgnored() answers false (a script call)
+inline constexpr Facts kAlive = 1u << 10;         // Pawn.IsDead() answers false (a script call)
+} // namespace admission
+// The first fact of `wanted` that does not hold for this controller and its pawn, in the order above; 0: all of them hold;
+// all of `wanted` when the controller or the pawn isn't a live object. Only wanted facts are read, and nothing after the
+// first that fails (the fields come before the two script calls, as in every copy's short-circuit). A caller that reports
+// reasons in an order of its own asks in that order, a few facts at a time. Game thread.
+admission::Facts MovementRefused(ue3::Object* controller, ue3::Object* pawn, admission::Facts wanted);
+inline bool MovementAdmitted(ue3::Object* controller, ue3::Object* pawn, admission::Facts wanted) {
+    return MovementRefused(controller, pawn, wanted) == 0;
+}
+// Every name MovementRefused reads resolves with the shape it expects (a 4-byte Int action, Byte physics and cover, Bool
+// crouch and storm, two functions that take nothing and return a bool): a module's startup asks once before it relies on
+// the facts. False until the script packages have loaded.
+bool MovementAdmissionReady();
+#endif
+
 // Pawn.Mesh, and a SkeletalMeshComponent's SkeletalMesh (its asset).
 ue3::Object* Mesh(ue3::Object const* pawn);
 ue3::Object* SkeletalMesh(ue3::Object const* mesh);

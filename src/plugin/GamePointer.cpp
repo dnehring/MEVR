@@ -12,7 +12,9 @@
 #include "halcyon/le1/mevr_bridge.h"
 #include "plugin/ConversationWorld.hpp"
 #include "plugin/GalaxyHologram.hpp"
+#include "plugin/PovSwap.hpp"
 #include "plugin/Halcyon.hpp"
+#include "plugin/WorldUi.hpp"
 #else
 #include "plugin/MainMenu.hpp"  // ME2 (plugin/MenusLe2): our menu owns the controllers while it's open
 #include "plugin/XrHost.hpp"    // ME2's haptics (LE1's halcyon::RequestHaptic forwards there too)
@@ -90,6 +92,13 @@ struct Settings {
     // (hooked at attach), and each move sends a one-count SendInput move and back, with the game's window in front, so the game
     // reads it before the click that follows.
     bool gameCursor = true;
+    // The sequels' galaxy map (lane GXR): -1 the game's own fact (plugin/HalcyonLe2Bridge's or HalcyonLe3Bridge's
+    // galaxyUiPointer), 0 no pointer on the map's UI, 1 the map's mouse by window messages and SetCursorPos (ME1's), 2 the game's
+    // cursor steered (GetCursorPos answered, the mod's GUI events). A file-only test key, read live. Not on ME1 (its map's pointer
+    // is HalcyonOverlays').
+#if !defined(MEVR_GAME_LE1)
+    int galaxyMap = -1;
+#endif
     bool operator==(Settings const&) const = default;
 };
 
@@ -164,7 +173,7 @@ std::string gStatus = "null";
 // Our main menu is open (it owns the controllers), and a pulse in a hand: LE1's through its Halcyon bridge, ME2's directly.
 bool OurMenuOpen() {
 #if defined(MEVR_WITH_HALCYON)
-    return MELEVR::MevrBridge::MainMenuOpen();
+    return MevrSeams::MainMenuOpen();
 #else
     return mevr::host::main_menu::IsOpen();
 #endif
@@ -237,6 +246,9 @@ void RefreshSettings(std::uint64_t now) {
         s.touchPressM = std::clamp(ReadFloat(L"touchPressM", s.touchPressM, path), -0.05f, 0.05f);
         s.touchReleaseM = std::clamp(ReadFloat(L"touchReleaseM", s.touchReleaseM, path), s.touchPressM + 0.002f, 0.1f);
         s.gameCursor = readBool(L"gameCursor", s.gameCursor);
+#if !defined(MEVR_GAME_LE1)
+        s.galaxyMap = std::clamp(static_cast<int>(GetPrivateProfileIntW(L"Pointer", L"galaxyMap", s.galaxyMap, path.c_str())), -1, 2);
+#endif
     }
     if (!gSettingsLogged || !(s == gSettings)) {
         gSettingsLogged = true;
@@ -609,6 +621,13 @@ bool Step(Frame const& frame, Dot& dot) {
     gOwnsWheel.store(pointing && gSettings.wheel && gSettings.wheelPerSecond > 0.0f, std::memory_order_release);
     return pointing;
 }
+
+#if !defined(MEVR_GAME_LE1)
+int GalaxyMapPointer(int gameFact) {
+    RefreshSettings(GetTickCount64());
+    return gSettings.galaxyMap >= 0 ? gSettings.galaxyMap : gameFact;
+}
+#endif
 
 std::uint32_t TakeGuiEvents(std::uint8_t* events, std::uint32_t capacity) {
     gModTookMs.store(GetTickCount64(), std::memory_order_release);
@@ -997,55 +1016,20 @@ bool GalaxyHologram(float* unitsPerMeter, float* belowM) noexcept {
 }
 
 namespace {
-// The held view swapped into the player camera's POV for the main view's CalcSceneView (galaxy map in the CIC).
-struct GalaxyViewSwap {
-    bool active = false;
-    float* location = nullptr;
-    std::int32_t* rotation = nullptr;
-    float* fov = nullptr;
-    float savedLocation[3] = {};
-    std::int32_t savedRotation[3] = {};
-    float savedFov = 0.0f;
-};
-GalaxyViewSwap gGalaxySwap;  // game thread (CalcSceneView)
-std::uint64_t gGalaxySwaps = 0;
+// The held view swapped into the player camera's POV for the main view's CalcSceneView: a conversation in the world's here; the
+// galaxy map's in the CIC is plugin/GalaxyHologram's (every game's), the same POV writes (plugin/PovSwap).
+using GalaxyViewSwap = mevr::host::pov_swap::Swap;
+GalaxyViewSwap gGalaxySwap;  // game thread (CalcSceneView): the conversation in the world's
 GalaxyViewSwap gGalaxyProjectionSwap;  // separate from the CIC hold; never leaves the native projection call
 mevr::vr::galaxy_holo::GameCamera gGalaxyProjectionCamera;
 std::uint32_t gGalaxyProjectionSequence = 0;
 
 bool SwapIn(GalaxyViewSwap& s, float const location[3], std::int32_t const rotation[3], float fov) noexcept {
-    __try {
-        for (int i = 0; i < 3; ++i) {
-            s.savedLocation[i] = s.location[i];
-            s.savedRotation[i] = s.rotation[i];
-        }
-        s.savedFov = *s.fov;
-        for (int i = 0; i < 3; ++i) {
-            s.location[i] = location[i];
-            s.rotation[i] = rotation[i];
-        }
-        mevr::write_journal::Wrote("WorldView.holdLocation", s.location, sizeof(float) * 3);
-        mevr::write_journal::Wrote("WorldView.holdRotation", s.rotation, sizeof(std::int32_t) * 3);
-        *s.fov = fov;
-        mevr::write_journal::Wrote("WorldView.holdFov", s.fov, sizeof(float));
-        return true;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        return false;
-    }
+    return mevr::host::pov_swap::In(s, location, rotation, fov);
 }
 
 void SwapOut(GalaxyViewSwap& s) noexcept {
-    __try {
-        for (int i = 0; i < 3; ++i) {
-            s.location[i] = s.savedLocation[i];
-            s.rotation[i] = s.savedRotation[i];
-        }
-        mevr::write_journal::Wrote("WorldView.restoreLocation", s.location, sizeof(float) * 3);
-        mevr::write_journal::Wrote("WorldView.restoreRotation", s.rotation, sizeof(std::int32_t) * 3);
-        *s.fov = s.savedFov;
-        mevr::write_journal::Wrote("WorldView.restoreFov", s.fov, sizeof(float));
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-    }
+    mevr::host::pov_swap::Out(s);
 }
 
 void JournalProjectionSwap() noexcept {
@@ -1138,21 +1122,11 @@ bool GalaxyViewSwapBegin() noexcept {
     // The galaxy map in the CIC, or one of the game's screens standing in the room (research/53: the shop's camera looks at a
     // backdrop stage of its own): the view held at Shepard's for the main view's build only.
     gGalaxySwap.active = false;
-    auto const scene = mevr::vr::galaxy_holo::Latest(500);
-    if (scene && mevr::vr::galaxy_map::TableView(mevr::host::renderer::GameMode(), scene->inWorld != 0 && scene->onFoot == 0,
-            scene->suspended != 0) && scene->holdRender != 0 && scene->povLocationAddress != 0 &&
-            scene->povRotationAddress != 0 && scene->povFovAddress != 0) {
-        gGalaxySwap.location = reinterpret_cast<float*>(scene->povLocationAddress);
-        gGalaxySwap.rotation = reinterpret_cast<std::int32_t*>(scene->povRotationAddress);
-        gGalaxySwap.fov = reinterpret_cast<float*>(scene->povFovAddress);
-        if (!SwapIn(gGalaxySwap, scene->holdLocation, scene->holdRotation, scene->holdFov)) {
-            return false;
-        }
-        gGalaxySwap.active = true;
-        if (gGalaxySwaps++ == 0) {
-            mevr::log::Info("galaxy hologram: the view held at Shepard's for the main view's build only (the game keeps its map camera)");
-        }
-        return true;
+    // The galaxy map in the CIC (every game's hold, plugin/GalaxyHologram): wanted but not written, no other hold takes the view.
+    bool galaxyWanted = false;
+    bool const galaxyHeld = mevr::host::galaxy_hologram::HoldViewBegin(mevr::host::renderer::GameMode(), galaxyWanted);
+    if (galaxyWanted) {
+        return galaxyHeld;
     }
     // A conversation in the world (research/59): the director's camera keeps serving the game; the main view is Shepard's.
     if (auto const convo = mevr::host::conversation_world::Current();
@@ -1170,30 +1144,19 @@ bool GalaxyViewSwapBegin() noexcept {
         }
         return true;
     }
-    auto const ui = mevr::vr::world_ui::Latest(500);
-    if (!mevr::vr::world_ui::ScreenMode(mevr::host::renderer::GameMode()) ||
-        !ui || ui->holdRender == 0 || ui->povLocationAddress == 0 || ui->povRotationAddress == 0 || ui->povFovAddress == 0) {
-        return false;
-    }
-    gGalaxySwap.location = reinterpret_cast<float*>(ui->povLocationAddress);
-    gGalaxySwap.rotation = reinterpret_cast<std::int32_t*>(ui->povRotationAddress);
-    gGalaxySwap.fov = reinterpret_cast<float*>(ui->povFovAddress);
-    if (!SwapIn(gGalaxySwap, ui->holdLocation, ui->holdRotation, ui->holdFov)) {
-        return false;
-    }
-    gGalaxySwap.active = true;
-    static std::uint64_t worldUiSwaps = 0;
-    if (worldUiSwaps++ == 0) {
-        mevr::log::Info("world ui: the view held at Shepard's for the main view's build only (the game's screen keeps its own camera)");
-    }
-    return true;
+    // One of the game's screens of ours: every game's world-UI hold (plugin/WorldUi; ME3's renderer asks it through
+    // MevrSeams::WorldViewHoldBegin): the same POV writes this branch made itself until 2026-11-17 (its first log line now
+    // also says how far the screen's own camera stood from the held eyes).
+    return mevr::host::world_ui::HoldViewBegin(mevr::host::renderer::GameMode());
 }
 
 void GalaxyViewSwapEnd() noexcept {
+    mevr::host::galaxy_hologram::HoldViewEnd();
     if (gGalaxySwap.active) {
         SwapOut(gGalaxySwap);
         gGalaxySwap.active = false;
     }
+    mevr::host::world_ui::HoldViewEnd();
 }
 
 bool GalaxyHeld(int gameMode) noexcept {

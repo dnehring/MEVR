@@ -8,6 +8,7 @@
 
 #include "core/Log.hpp"
 #include "engine/SettingsFile.hpp"
+#include "plugin/ScreenReticleRequest.hpp"
 #include "halcyon/le3/calcview_hook.h"
 #include "halcyon/le3/d3d_capture.h"
 #include "halcyon/le3/engine_probe.h"
@@ -40,13 +41,31 @@ Caps const& Capabilities() noexcept {
     static Caps const caps = [] {
         Caps c;
         c.name = "halcyon-le3";
+        c.cineScreen = true;         // ME1's 3D cinema screen for conversations and cutscenes (research/52)
         c.eyeImageSeams = true;
         c.hudPanelDraw = true;
         c.hostCineScreen = true;
+        c.perfSeams = true;          // MevrSeams' Perf* group and the wait/begin frame slots
+        c.recenterTilt = true;       // ME1's tilt-correcting recenter (RecenterAppSpace)
         c.panelsInRoom = true;
         c.galaxyTable = true;        // [Galaxy] nativeTable, opt-in
-        // hudPanelGameplay false: only a measured prompt crop is captured, the native gameplay HUD stays in the eyes.
-        // screenReticleHide false: the native LE3 crosshair's ownership has not been verified.
+        c.metricStereo = true;       // MevrSeams::PlanStereo: each pass from its eye's real place (research/30 section 9)
+        // Mode 2 where the window holds the eyes (src/halcyon/MevrMetricView.h), when MELE3VR.ini [VR] MetricEyeFrustum = 1 asks:
+        // off by default on ME3 (mode 1, its lamps' lens flares; research/30 section 9.4).
+        c.perEyeFrustum = true;
+        // The whole gameplay HUD on the body-locked panel, as ME1's and ME2's (research/le3-hud-panel.md): d3d_capture.cpp's
+        // EmitUiDraw sends each SFR UI draw to MevrSeams::HudPanelDraw, at the game's own viewport and layout.
+        c.hudPanelGameplay = true;
+        // The game's screens on the wrist and in the room, as ME1's and ME2's (research/le3-native-gui.md "The game's screens on
+        // ME3"): d3d_capture.cpp's presentation decision stays out of MENU_MONO while MevrSeams::WorldUiOwnsGui (plugin/MenusLe2).
+        c.worldUi = true;
+        // The game's crosshair hidden while the hand reticle stands in for it, as ME1's and ME2's: the mod's game/ScreenReticle
+        // zeroes the alpha of ME3's reticle movie (SFXSFHandler_Reticle) on the game thread, the scope view left to the game
+        // (research/le3-hud-panel.md "The crosshair hidden").
+        c.screenReticleHide = true;
+        // ME1's front end (research/56 "The sequels"): d3d_capture.cpp's presentation decision calls MevrSeams::FrontEndHold
+        // first, its title (the Movie mode over a live scene) on the 3D cinema screen.
+        c.frontEnd = true;
         return c;
     }();
     return caps;
@@ -91,6 +110,29 @@ void SaveOwnSettings(char const* why) noexcept {
     log::Info("main menu: the renderer's settings saved to MELE3VR.ini ({})", why != nullptr ? why : "?");
 }
 
+RenderTarget GetRenderTarget() noexcept {
+    RenderTarget t;
+    t.settable = true;
+    unsigned fileW = 0, fileH = 0, liveW = 0, liveH = 0, recW = 0, recH = 0;
+    ME2VR::D3DCapture::MevrRenderTarget(&fileW, &fileH, &liveW, &liveH);
+    ME2VR::Me2Xr::MevrRecommendedEyeSize(&recW, &recH);
+    t.width = static_cast<int>(fileW);
+    t.height = static_cast<int>(fileH);
+    t.liveWidth = static_cast<int>(liveW);
+    t.liveHeight = static_cast<int>(liveH);
+    t.recommendedWidth = static_cast<int>(recW);
+    t.recommendedHeight = static_cast<int>(recH);
+    // FSceneRenderTargets::Allocate (0x36CDC0) rounds its buffers up to a multiple of 8, and a backbuffer of another width
+    // never matched the scene's depth target: no pass-0 capture, mono (research/le3-flares-and-window.md section 3).
+    t.multiple = 8;
+    return t;
+}
+
+bool SetRenderTarget(int width, int height) noexcept {
+    return width > 0 && height > 0 &&
+           ME2VR::D3DCapture::MevrSetRenderTarget(static_cast<unsigned>(width), static_cast<unsigned>(height));
+}
+
 void LogLine(std::string const& line) noexcept {
     ME2VR::Log::Line(line);
 }
@@ -113,7 +155,8 @@ bool SetFirstPersonEnabled(bool enabled) noexcept {
 }
 
 bool FirstPersonOwned() noexcept {
-    // ME3's first person is on ([FirstPerson] Enabled, K): engine_probe's ApplyFirstPerson then owns the on-foot camera
+    // ME3's first person is on (pinned by me2_menu.cpp's ApplyMevrBaseline after every ini load; K toggles it for the
+    // session): engine_probe's ApplyFirstPerson then owns the on-foot camera
     // modes. Which mode it owns this frame is the mod's half of the floor lock (PawnSample::cameraOwned: the explore and
     // combat modes, as LE1's constant eye), so on/off is LE1's FirstPersonOwnsAny here. [verify] a mode it doesn't own.
     return ME2VR::EngineProbe::GetFirstPerson();
@@ -138,11 +181,9 @@ HWND GameWindow() noexcept {
 }
 
 HudSettings Hud() noexcept {
-    HudSettings settings;
-    // The shared ring now draws only while the mod owns live hand aim. Native crosshair suppression
-    // remains unavailable; the native HUD itself stays in the eyes until its LE3 layout is verified.
-    settings.hudPanel = false;
-    return settings;
+    // ME1's defaults: ME3's renderer keeps no HUD panel settings (the HUD panel on, as on ME1 and ME2). The shared ring draws
+    // only while the mod owns live hand aim; the game's crosshair is hidden whenever the hand reticle is on in gameplay.
+    return {};
 }
 
 PanelSettings Panels() noexcept {
@@ -153,9 +194,18 @@ float RecenterTiltDeg() noexcept {
     return 60.0f;  // ME1's default (vr_config.h recenterTiltDeg)
 }
 
-// [MEVR] No LE3 crosshair or HUD-layout native adapter is published yet.
-void SetScreenReticleHidden(bool) noexcept {}
-bool ScreenReticleHidden() noexcept { return false; }
+// The sequels' one request (plugin/ScreenReticleRequest.hpp, LE1's 500 ms rule): the mod's game/ScreenReticle hides ME3's
+// reticle movie on the game thread while it stands (HostServices hideScreenReticle).
+void SetScreenReticleHidden(bool hidden) noexcept {
+    screen_reticle_request::Set(hidden);
+}
+bool ScreenReticleHidden() noexcept {
+    return screen_reticle_request::Get();
+}
+
+// The HUD keeps the movie's own layout on our panel already: Halcyon ME3's per-element moves for a head-locked HUD
+// (hud_probe.cpp's baked [HUD] groups) never run in our host ([MEVR] in its Tick and SetEditorEnabled), so there is nothing to
+// stand down here (ME2's PcHud::SetAuthoredLayout, LE1's Pchud).
 void SetAuthoredHudLayout(bool) noexcept {}
 
 void SetModHandAim(bool on) noexcept {

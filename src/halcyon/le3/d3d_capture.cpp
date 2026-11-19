@@ -202,6 +202,7 @@ ID3D11ShaderResourceView* g_uiOverlaySRV = nullptr;
 std::atomic<unsigned long long> g_overlayClearedFrame{0xFFFFFFFFFFFFFFFFull};
 std::atomic_bool g_overlayHasContent{false};
 std::atomic_bool g_menuPresentation{false}; // authoritative MENU_MONO state
+std::atomic<int> g_mevrFrontEnd{0};          // [MEVR] T18: 0 none, 1 the front end's flat panel, 2 its 3D cinema screen
 std::atomic_int g_menuPresentationReason{0};
 // EGameModes is retained as cinematic telemetry only. It does not own menu presentation.
 std::atomic<int>  g_autoGameMode{-1};
@@ -392,6 +393,9 @@ void WINAPI ExitProcessHook(UINT uExitCode) noexcept
                       wrote ? "written to GamerSettings.ini after the game's own flush" : "already correct / write FAILED");
         ME2VR::Log::Line(l);
     }
+    // [MEVR] our host's ExitProcess hook sits under this one and ends the process itself after its exit line (the kept
+    // locks, crash::NoteProcessExit): hand it the call; it never returns either.
+    if (::MevrSeams::HostEndsProcess() && g_origExitProcess != nullptr) g_origExitProcess(uExitCode);
     TerminateProcess(GetCurrentProcess(), uExitCode);   // never returns; skips the hanging detach chain
 }
 ID3D11DeviceContext* g_gameContext = nullptr;      // immediate context for the warp pass (grabbed lazily)
@@ -1832,9 +1836,9 @@ void EmitUiDraw(ID3D11DeviceContext* ctx, const D3D11_VIEWPORT& vp, DrawThunk&& 
         // alpha/Scaleform state itself and takes only late draws after pass zero was captured.
         { // Shared bridge arms only cinema UI or an explicit measured interaction crop.
             auto& call = draw;
-            if (::ME2VR::MevrBridge::HudPanelDraw(ctx, [](void* user) noexcept {
+            if (::MevrSeams::HudPanelDraw(ctx, [](void* user) noexcept {
                 (*static_cast<typename std::remove_reference<DrawThunk>::type*>(user))();
-            }, &call, SfrUiMirrorArmed())) return;
+            }, &call, false, SfrUiMirrorArmed())) return;
         }
         // [UIALPHA 2026-08-17] IsUiDrawNow's broad "full viewport + blending" prefilter also
         // catches the club's fullscreen/world FX. The mirror already rejected those non-alpha
@@ -1986,6 +1990,7 @@ bool EmitReprojectedDistortionDraw(ID3D11DeviceContext* context, DrawThunk&& dra
 
 void STDMETHODCALLTYPE MhDrawIndexed(ID3D11DeviceContext* ctx, UINT a, UINT b, INT c) noexcept
 {
+    ::MevrSeams::PerfDraw();   // [MEVR] frame-breakdown probe: one draw
     const uint64_t hc0 = __rdtsc();   // [HOOKCOST]
     g_ftDraws.fetch_add(1, std::memory_order_relaxed);   // [FRAMETIME]
     RtHistNote();                                        // [RTTARGETS]
@@ -2014,6 +2019,7 @@ void STDMETHODCALLTYPE MhDrawIndexed(ID3D11DeviceContext* ctx, UINT a, UINT b, I
 // and land cross-eyed (= scrambled text) while panels (DrawIndexed) look right. Dup it the same way.
 void STDMETHODCALLTYPE MhDrawIndexedInstanced(ID3D11DeviceContext* ctx, UINT ipc, UINT ic, UINT sil, INT bvl, UINT sii) noexcept
 {
+    ::MevrSeams::PerfDraw();   // [MEVR] frame-breakdown probe: one draw
     const uint64_t hc0 = __rdtsc();   // [HOOKCOST]
     g_ftDraws.fetch_add(1, std::memory_order_relaxed);   // [FRAMETIME]
     RtHistNote();                                        // [RTTARGETS]
@@ -2033,6 +2039,7 @@ void STDMETHODCALLTYPE MhDrawIndexedInstanced(ID3D11DeviceContext* ctx, UINT ipc
 }
 void STDMETHODCALLTYPE MhDraw(ID3D11DeviceContext* ctx, UINT a, UINT b) noexcept
 {
+    ::MevrSeams::PerfDraw();   // [MEVR] frame-breakdown probe: one draw
     const uint64_t hc0 = __rdtsc();   // [HOOKCOST]
     g_ftDraws.fetch_add(1, std::memory_order_relaxed);   // [FRAMETIME]
     RtHistNote();                                        // [RTTARGETS]
@@ -2573,6 +2580,7 @@ void SfrMaybeCapturePass0AtClear(ID3D11DeviceContext* ctx, ID3D11DepthStencilVie
             if (ME2VR::CalcViewHook::GetVrCineActive() && g_cineCapturedAtIndex < 0)
                 g_cineCapturedAtIndex = g_cineMapLen - 1;   // [CINEMAP] probe: where this rule landed
             g_sfrPass0Caps.fetch_add(1, std::memory_order_relaxed);
+            ::MevrSeams::PerfFirstEyeCaptured(ctx);   // [MEVR] frame-breakdown probe: the first eye is captured
             // Which mechanism armed the CINE capture - one line per session, the next diagnostic.
             static bool s_cineArmLogged = false;
             if (!s_cineArmLogged && ME2VR::CalcViewHook::GetVrCineActive())
@@ -3766,6 +3774,7 @@ void FrameTimeAccount(const LARGE_INTEGER& entry, const LARGE_INTEGER& hookEnd, 
 
 HRESULT STDMETHODCALLTYPE PresentHook(IDXGISwapChain* swapChain, UINT syncInterval, UINT flags) noexcept
 {
+    const ::MevrSeams::PerfPresentScope mevrPerfPresent(g_gameContext);   // [MEVR] frame-breakdown probe: this Present, start to end
     LARGE_INTEGER ftEntry; QueryPerformanceCounter(&ftEntry);   // [FRAMETIME]
     const auto n = g_presentCount.fetch_add(1, std::memory_order_relaxed) + 1;
     // [BBREFRESH] The backbuffer resource pointer was captured once, at the first Present. If the
@@ -3982,7 +3991,7 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDXGISwapChain* swapChain, UINT syncInterv
     // F2 = manual flat/mono override (for journal/squad etc. that the mod doesn't auto-detect yet).
     {
         static bool s_f2Down = false;
-        const bool f2 = ::ME2VR::MevrBridge::KeyDown(VK_F2);
+        const bool f2 = ::MevrSeams::KeyDown(VK_F2);
         if (f2 && !s_f2Down)
         {
             const bool nm = !g_manualFlat.load(std::memory_order_acquire);
@@ -4007,7 +4016,7 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDXGISwapChain* swapChain, UINT syncInterv
     // in the galaxy map / journal, and compare to find which object/field marks a full-screen screen.
     {
         static bool s_f3Down = false;
-        const bool f3 = ::ME2VR::MevrBridge::KeyDown(VK_F3);
+        const bool f3 = ::MevrSeams::KeyDown(VK_F3);
         if (f3 && !s_f3Down) ME2VR::EngineProbe::DumpGfxState();
         s_f3Down = f3;
     }
@@ -4015,7 +4024,7 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDXGISwapChain* swapChain, UINT syncInterv
     // F4 = master VR on/off (OFF = vanilla flat, for first-person tuning).
     {
         static bool s_f4Down = false;
-        const bool f4 = ::ME2VR::MevrBridge::KeyDown(VK_F4);
+        const bool f4 = ::MevrSeams::KeyDown(VK_F4);
         if (f4 && !s_f4Down)
         {
             const bool on = !ME2VR::CalcViewHook::GetVrEnabled();
@@ -4030,7 +4039,7 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDXGISwapChain* swapChain, UINT syncInterv
         static bool s_fpKeyDown = false;
         const int fpVk = ME2VR::Menu::GetFpToggleKey();
         const bool fpKey = !ME2VR::Menu::IsRebindingFpToggle() && fpVk != 0 &&
-                        ::ME2VR::MevrBridge::KeyDown(fpVk);
+                        ::MevrSeams::KeyDown(fpVk);
         if (fpKey && !s_fpKeyDown)
         {
             const bool on = !ME2VR::EngineProbe::GetFirstPerson();
@@ -4040,11 +4049,11 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDXGISwapChain* swapChain, UINT syncInterv
         s_fpKeyDown = fpKey;
         static bool s_rcDown = false;
         const int rcKey = ME2VR::Menu::GetRecenterKey();
-        const bool rc = rcKey != 0 && ::ME2VR::MevrBridge::KeyDown(rcKey);
+        const bool rc = rcKey != 0 && ::MevrSeams::KeyDown(rcKey);
         if (rc && !s_rcDown) ME2VR::Me2Xr::Recenter();
         s_rcDown = rc;
         static bool s_f7Down = false;
-        const bool f7 = ::ME2VR::MevrBridge::KeyDown(VK_F7);
+        const bool f7 = ::MevrSeams::KeyDown(VK_F7);
         if (f7 && !s_f7Down)
         {
             const bool on = !ME2VR::EngineProbe::GetMeshHide();
@@ -4561,6 +4570,7 @@ void STDMETHODCALLTYPE DrawInstancedHook(ID3D11DeviceContext* context,
                                          UINT startVertexLocation,
                                          UINT startInstanceLocation) noexcept
 {
+    ::MevrSeams::PerfDraw();   // [MEVR] frame-breakdown probe: one draw
     FirstFire("DrawInstanced", 3);
     LogStereoBoundDraw("DrawInstanced", _ReturnAddress(), vertexCountPerInstance, startVertexLocation, 0, false);
     LogUiSeamStack("DrawInstanced", vertexCountPerInstance);
@@ -4587,6 +4597,7 @@ void STDMETHODCALLTYPE DrawInstancedHook(ID3D11DeviceContext* context,
 
 void STDMETHODCALLTYPE DrawAutoHook(ID3D11DeviceContext* context) noexcept
 {
+    ::MevrSeams::PerfDraw();   // [MEVR] frame-breakdown probe: one draw
     FirstFire("DrawAuto", 4);
     LogStereoBoundDraw("DrawAuto", _ReturnAddress(), 0, 0, 0, false);
     TraceOp("DrawAuto", context, 0);
@@ -4601,6 +4612,7 @@ void STDMETHODCALLTYPE DrawIndexedInstancedIndirectHook(ID3D11DeviceContext* con
                                                         ID3D11Buffer* bufferForArgs,
                                                         UINT alignedByteOffsetForArgs) noexcept
 {
+    ::MevrSeams::PerfDraw();   // [MEVR] frame-breakdown probe: one draw
     LogStereoBoundDraw("DrawIndexedInstancedIndirect",
                        _ReturnAddress(),
                        alignedByteOffsetForArgs,
@@ -4627,6 +4639,7 @@ void STDMETHODCALLTYPE DrawInstancedIndirectHook(ID3D11DeviceContext* context,
                                                  ID3D11Buffer* bufferForArgs,
                                                  UINT alignedByteOffsetForArgs) noexcept
 {
+    ::MevrSeams::PerfDraw();   // [MEVR] frame-breakdown probe: one draw
     LogStereoBoundDraw("DrawInstancedIndirect", _ReturnAddress(), alignedByteOffsetForArgs, 0, 0, false);
     FirstFire("DrawInstancedIndirect", 6);
     TraceOp("DrawInstIndir", context, 0);
@@ -5518,7 +5531,29 @@ unsigned GetBackbufferWidth() noexcept { return g_backbufferWidth; }
 unsigned GetBackbufferHeight() noexcept { return g_backbufferHeight; }
 void UpdatePresentationState() noexcept
 {
-    enum : int { Gameplay = 0, Manual = 1, InputOwner = 2, Galaxy = 3 };
+    enum : int { Gameplay = 0, Manual = 1, InputOwner = 2, Galaxy = 3, FrontEnd = 4 };
+
+    // [MEVR] research/56 "The sequels" (T18): ME1's front end, once a Present, before anything reads it (MevrSeams::
+    // FrontEndHold with the raw mode read: -1 is the start-up's and a load's unreadable mode, which the sticky mode hides).
+    // The title and its menus go on ME1's 3D cinema screen (me2_xr.cpp's cinematic decision; no menu presentation); the
+    // boot before the title and a load from the menus are the flat panel, a menu presentation of their own.
+    // ME3's title and main menu are its Movie mode (10) over a live scene (the Earth from orbit: [CINEVR] "gm 10, gameplayCam
+    // 0, sceneAlive 1, fov 42" at every start, with blips of its GUI mode 9): there they are the front end's GUI, as ME1's title
+    // (its 7). The Movie mode without a scene inside the front end (the logos before the title, a load from the menus) is ME1's
+    // unreadable mode there: the boot's, or the load from the menus that ends the start-up; elsewhere a movie stays one. The
+    // scene's liveness is the player view's CalcSceneView sequence, as me2_xr.cpp's cinematic decision measures it (stale for
+    // more than 4 Presents: dead).
+    static uint64_t s_mevrCalcSeq = 0;
+    static int s_mevrCalcStale = 1000;
+    if (const uint64_t seq = ME2VR::CalcViewHook::GetP1CalcSeq(); seq != s_mevrCalcSeq) { s_mevrCalcSeq = seq; s_mevrCalcStale = 0; }
+    else if (s_mevrCalcStale < 1000) ++s_mevrCalcStale;
+    const int mevrModeRead = ME2VR::EngineProbe::ReadGameMode();
+    const int mevrFrontEndMode = mevrModeRead != 10 ? mevrModeRead : s_mevrCalcStale <= 4 ? 9 :
+        g_mevrFrontEnd.load(std::memory_order_acquire) != 0 ? -1 : 10;
+    const bool mevrFrontEnd = ::MevrSeams::FrontEndHold(mevrFrontEndMode);
+    const bool mevrFrontEndScreen = mevrFrontEnd && ME2VR::CalcViewHook::GetVrMode() == 4 &&
+                                    ::MevrSeams::FrontEndOnScreen() && !::MevrSeams::FrontEndBeforeTitle();
+    g_mevrFrontEnd.store(mevrFrontEnd ? (mevrFrontEndScreen ? 2 : 1) : 0, std::memory_order_release);
 
     const bool manual = g_manualFlat.load(std::memory_order_acquire);
     const bool autoMenus = g_monoMenus.load(std::memory_order_acquire);
@@ -5631,8 +5666,16 @@ void UpdatePresentationState() noexcept
         }
         else s_suppressRun = 0;
     }
-    const bool galaxy = autoMenus && !fpConvo && ME2VR::EngineProbe::IsGalaxyMapOpen();
-    const int demand = manual ? Manual : menuInputOwner ? InputOwner : galaxy ? Galaxy : Gameplay;
+    // [MEVR] the galaxy map open over the CIC's projector (MevrSeams::GalaxyOwnsPresentation: the mod holds Shepard's view on
+    // foot and shows the game's map as a stereo window on the projector, ME1's design): the map's modes are no flat
+    // presentation; the room stays in stereo and the map's UI goes to our HUD panel there. docs/galaxy-projector-handoff.md.
+    const bool galaxyHeld = ::MevrSeams::GalaxyOwnsPresentation(gmNow);
+    const bool galaxy = autoMenus && !fpConvo && ME2VR::EngineProbe::IsGalaxyMapOpen() && !galaxyHeld;
+    // [MEVR] a game screen of ours stands on the wrist or in the room (or is being opened): the GUI mode's input owner is
+    // not a menu presentation; the world stays in stereo and the screen's UI goes to our HUD panel (as ME2's GetMenuMode).
+    const bool worldUiOwns = ::MevrSeams::WorldUiOwnsGui(gmNow) || galaxyHeld;
+    const int demand = manual ? Manual : mevrFrontEnd ? (mevrFrontEndScreen ? Gameplay : FrontEnd) :   // [MEVR] T18
+        (menuInputOwner && !worldUiOwns) ? InputOwner : galaxy ? Galaxy : Gameplay;
     const bool wasMenu = g_menuPresentation.load(std::memory_order_acquire);
 
     static int previousInput = -1;
@@ -5657,7 +5700,7 @@ void UpdatePresentationState() noexcept
         {
             LARGE_INTEGER xt0; QueryPerformanceCounter(&xt0);   // [XSTATE]
             g_menuPresentation.store(true, std::memory_order_release);
-            static const char* names[] = { "gameplay", "manual", "input owner", "galaxy owner" };
+            static const char* names[] = { "gameplay", "manual", "input owner", "galaxy owner", "front end" };   // [MEVR] T18
             // Log the deciding signals with the transition. Attributing a mono episode to a SCREEN
             // previously meant correlating this line against [GUICEN] timestamps by hand, or asking
             // the player to remember what they opened - and most screens (map, photo mode, ambience,
@@ -5700,6 +5743,7 @@ void UpdatePresentationState() noexcept
     XsNoteTransition(xt0, xt1, false);
 }
 bool GetMenuMode() noexcept { return g_menuPresentation.load(std::memory_order_acquire); }
+int GetMevrFrontEnd() noexcept { return g_mevrFrontEnd.load(std::memory_order_acquire); }   // [MEVR] T18
 void NoteCineTransition(const LARGE_INTEGER& t0, const LARGE_INTEGER& t1) noexcept { XsNoteTransition(t0, t1, true); }
 bool GetMenuModeManual() noexcept { return g_manualFlat.load(std::memory_order_acquire); }
 void SetAutoGameMode(int mode) noexcept { g_autoGameMode.store(mode, std::memory_order_release); }
@@ -5736,8 +5780,12 @@ void ArmResolutionSpoof() noexcept
             if (slash != std::wstring::npos)
             {
                 ini = ini.substr(0, slash + 1) + L"MELE3VR.ini";
-                UINT rw = static_cast<UINT>(GetPrivateProfileIntW(L"VR", L"RenderW", 0, ini.c_str()));
-                UINT rh = static_cast<UINT>(GetPrivateProfileIntW(L"VR", L"RenderH", 0, ini.c_str()));
+                // [MEVR] ME3's render size when the ini has no RenderW/RenderH: 3072x2216 (the owner's answer to question 17,
+                // 2026-11-17; research/le3-flares-and-window.md section 3: both sides multiples of 8, the vertical the 16:9
+                // image lacked). An explicit 0 still leaves the game's own resolution alone. Needs the borderless window
+                // tools/vr-game-settings.ps1 and MEVR Setup set (a titled window's height is clamped to the desktop).
+                UINT rw = static_cast<UINT>(GetPrivateProfileIntW(L"VR", L"RenderW", 3072, ini.c_str()));
+                UINT rh = static_cast<UINT>(GetPrivateProfileIntW(L"VR", L"RenderH", 2216, ini.c_str()));
 
                 // NOTHING is forced here any more. Two things were learned the hard way:
                 //
@@ -5794,6 +5842,46 @@ void ArmResolutionSpoof() noexcept
     ME2VR::Log::Line(line);
 }
 
+// [MEVR] the render target for our host (plugin/RendererLe3.cpp RenderTarget): MELE3VR.ini's RenderW/RenderH, which
+// ArmResolutionSpoof above writes into GamerSettings.ini at attach (its 3072x2216 when the keys are missing).
+namespace
+{
+std::wstring MevrRendererIni() noexcept
+{
+    wchar_t exePath[MAX_PATH] = {};
+    if (GetModuleFileNameW(nullptr, exePath, MAX_PATH) == 0) return L"";
+    std::wstring ini(exePath);
+    const size_t slash = ini.find_last_of(L'\\');
+    return slash == std::wstring::npos ? std::wstring() : ini.substr(0, slash + 1) + L"MELE3VR.ini";
+}
+}
+
+void MevrRenderTarget(unsigned* fileW, unsigned* fileH, unsigned* liveW, unsigned* liveH) noexcept
+{
+    const std::wstring ini = MevrRendererIni();
+    if (fileW) *fileW = ini.empty() ? 0u : static_cast<unsigned>(GetPrivateProfileIntW(L"VR", L"RenderW", 3072, ini.c_str()));
+    if (fileH) *fileH = ini.empty() ? 0u : static_cast<unsigned>(GetPrivateProfileIntW(L"VR", L"RenderH", 2216, ini.c_str()));
+    if (liveW) *liveW = g_backbufferWidth;
+    if (liveH) *liveH = g_backbufferHeight;
+}
+
+bool MevrSetRenderTarget(unsigned w, unsigned h) noexcept
+{
+    const std::wstring ini = MevrRendererIni();
+    if (ini.empty() || w < 640 || h < 360) return false;   // ArmResolutionSpoof's own bounds
+    wchar_t v[32] = {};
+    swprintf_s(v, L"%u", w);
+    bool ok = WritePrivateProfileStringW(L"VR", L"RenderW", v, ini.c_str()) != 0;
+    swprintf_s(v, L"%u", h);
+    ok = WritePrivateProfileStringW(L"VR", L"RenderH", v, ini.c_str()) != 0 && ok;
+    const bool wrote = DispqWriteRes(w, h);   // and now, as attach would at the next launch
+    g_vrresW = w; g_vrresH = h;               // what the exit hook writes back after the engine's own flush
+    ME2VR::Log::Line("[VRRES] [MEVR] next launch " + std::to_string(w) + "x" + std::to_string(h) +
+                     (ok ? " -> MELE3VR.ini" : " -> MELE3VR.ini write FAILED") +
+                     (wrote ? ", GamerSettings.ini" : ", GamerSettings.ini already correct / untouched"));
+    return ok;
+}
+
 // Installed from the worker thread, ahead of the game's D3D init - no race with ArmResolutionSpoof
 // (which ran synchronously in DllMain).
 // [SVRFIX] / [SVRFIX2] SteamVR scene-submit repair. Ported from ME1 (_shipconv_build/d3d_capture.cpp)
@@ -5833,7 +5921,7 @@ D3D11CreateDeviceAndSwapChainFn g_origD3D11CreateDeviceAndSwapChain = nullptr;
 bool SvrIsSteamVrActiveRuntime() noexcept
 {
 #if defined(MEVR_ASI)
-    return ::ME2VR::MevrBridge::XrRuntimeIsSteamVr(); // [MEVR] process-local runtime
+    return ::MevrSeams::XrRuntimeIsSteamVr(); // [MEVR] process-local runtime
 #else
     static int cached = -1;
     if (cached >= 0) return cached != 0;
@@ -6122,7 +6210,7 @@ void TryInstallFactoryHooks(void* factory, const IID&) noexcept
         g_createSwapChainForCompositionSlot = &vtable[kCreateSwapChainForCompositionSlot];
     }
 #if defined(MEVR_ASI)
-    ::ME2VR::MevrBridge::OnFactory(factory);  // [MEVR] Same HDR display policy as LE2.
+    ::MevrSeams::OnFactory(factory);  // [MEVR] Same HDR display policy as LE2.
 #endif
 }
 }

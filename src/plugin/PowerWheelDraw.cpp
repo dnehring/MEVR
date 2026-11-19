@@ -718,7 +718,11 @@ void DrawCoach(ImDrawList* dl, Fonts const& fonts, CoachView const& view) {
     pw::CoachText const how = pw::CoachLines(view.coach);
     dl->AddText(fonts.body, 31.0f, {x, m + 70.0f}, WithAlpha(Rgba(226, 238, 244), alpha), how.line1);
     dl->AddText(fonts.body, 31.0f, {x, m + 108.0f}, WithAlpha(Rgba(226, 238, 244), alpha), how.line2);
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+    dl->AddText(fonts.body, 20.0f, {x, m + 158.0f}, WithAlpha(kLightChosen, alpha), pw::kControlsCoachSequel);
+#else
     dl->AddText(fonts.body, 20.0f, {x, m + 158.0f}, WithAlpha(kLightChosen, alpha), pw::kControlsCoach);
+#endif
 }
 
 void DrawSelfTarget(ImDrawList* dl, pw::SelfView const& view) {

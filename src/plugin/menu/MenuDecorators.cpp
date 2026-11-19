@@ -719,6 +719,9 @@ std::vector<Icon> const& Icons() {
         // The game's own menus (the top bar's Game menu and Holster).
         v.push_back({"gamemenu", 24.0f, 2.2f, {Line({{4, 6}, {20, 6}}), Line({{4, 12}, {20, 12}}), Line({{4, 18}, {20, 18}})}});
         v.push_back({"holster", 24.0f, 2.0f, {Line({{12, 2}, {12, 13}}), Line({{8, 9}, {12, 13}, {16, 9}}), Line({{5, 11}, {5, 21}, {19, 21}, {19, 11}})}});
+        // Leave (ME2 and ME3, research/28 "Leave"): an open doorway and an arrow out of it.
+        v.push_back({"leave", 24.0f, 2.0f, {Line({{13, 7}, {13, 3}, {4, 3}, {4, 21}, {13, 21}, {13, 17}}), Line({{9, 12}, {21, 12}}),
+                                            Line({{17, 8}, {21, 12}, {17, 16}})}});
         // The controller guide (the rail's first section): a question mark in a circle.
         {
             Shape hook = Arc(12, 9.5f, 3, 180, 420, 16);

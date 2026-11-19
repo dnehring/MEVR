@@ -216,6 +216,176 @@ function Assert-RunProcess($Process, $Recorded, [string]$ExpectedPath) {
         $Process.Path -ne $ExpectedPath -or $Process.Path -ne $Recorded.path -or
         $Process.StartTime.ToUniversalTime().ToString('o') -ne $Recorded.startedUtc) { throw 'Unowned or changed process: refusing to stop it' }
 }
+# Launch adoption over time (2026-11-16, gotcha launcher-suspended-by-ea). Steam starts EA's EASteamLauncher, which
+# creates MassEffectLauncher.exe SUSPENDED and resumes it 0.2-14 s later; a suspended (or exiting) process reports no
+# Path while its StartTime reads, so one double read (Get-RunLaunchIdentity) cannot judge it. launch.ps1 instead
+# tracks every candidate of a name across polls: a live candidate whose identity is not readable yet is waited for
+# (bounded), one that exits is dropped, and only a single live candidate whose identity has stayed readable and
+# unchanged for the settle time is adopted. Wrong path, a start before the request, a PID whose identity changes,
+# another runner's recorded process and two live candidates at once are refused, as before.
+function Test-RunExited($Process) {
+    # HasExited needs a process handle; when it cannot be read the process counts as alive (and unreadable).
+    try { return [bool]$Process.HasExited } catch { return $false }
+}
+function Read-RunCandidate([int]$ProcessId) {
+    # One observation: the PID resolved twice. Never throws for an unreadable identity; reports what was read.
+    $gone = [pscustomobject]@{ pid = $ProcessId; alive = $false; readable = $false; changed = $false; path = $null; startedUtc = $null }
+    $process = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
+    if (-not $process) { return $gone }
+    $path = $null; $started = $null
+    try { $path = $process.Path } catch { }
+    try { $started = $process.StartTime.ToUniversalTime() } catch { }
+    $still = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
+    if (-not $still -or (Test-RunExited $still)) { return $gone }
+    $stillPath = $null; $stillStarted = $null
+    try { $stillPath = $still.Path } catch { }
+    try { $stillStarted = $still.StartTime.ToUniversalTime() } catch { }
+    if (Test-RunExited $still) { return $gone }
+    # A field read on both samples that differs is a replaced PID, never a slow start.
+    $changed = [bool](($path -and $stillPath -and $path -ne $stillPath) -or
+        ($null -ne $started -and $null -ne $stillStarted -and $started -ne $stillStarted))
+    $readable = [bool]($path -and $stillPath -and $null -ne $started -and $null -ne $stillStarted -and -not $changed)
+    [pscustomobject]@{ pid = $ProcessId; alive = $true; readable = $readable; changed = $changed
+        path = $(if ($stillPath) { $stillPath } else { $path })
+        startedUtc = $(if ($null -ne $stillStarted) { $stillStarted } else { $started }) }
+}
+function Get-RunParentText([int]$ProcessId) {
+    # Diagnostics only (who started a candidate); never used for ownership.
+    try {
+        $row = Get-CimInstance Win32_Process -Filter "ProcessId = $ProcessId" -ErrorAction Stop
+        if (-not $row) { return 'parent unknown (process gone)' }
+        $parent = Get-Process -Id $row.ParentProcessId -ErrorAction SilentlyContinue
+        $name = if (-not $parent) { 'exited' } elseif ($row.CreationDate -and $parent.StartTime -gt $row.CreationDate) { 'exited (PID reused)' } else { $parent.ProcessName }
+        return "parent $name pid $($row.ParentProcessId)"
+    } catch { return "parent unknown ($($_.Exception.Message))" }
+}
+function Get-RunForeignProcesses([string]$Current) {
+    # Processes another runner's open session (another *-current.json) records. Unparseable files are skipped:
+    # the global run lock already keeps two runners apart; this only refuses a recorded match.
+    $sessions = Join-Path $env:LOCALAPPDATA 'MEVR\sessions'
+    $rows = @()
+    foreach ($file in @(Get-ChildItem -LiteralPath $sessions -Filter '*-current.json' -File -ErrorAction SilentlyContinue)) {
+        if ([IO.Path]::GetFullPath($file.FullName) -ieq [IO.Path]::GetFullPath($Current)) { continue }
+        $other = $null
+        try { $other = Get-Content -LiteralPath $file.FullName -Raw | ConvertFrom-Json } catch { continue }
+        foreach ($name in @('gameProcess', 'launcherProcess')) {
+            $property = $other.PSObject.Properties[$name]
+            if ($property -and $property.Value -and $property.Value.pid) {
+                $rows += [pscustomobject]@{ pid = [int]$property.Value.pid; startedUtc = [string]$property.Value.startedUtc; source = $file.Name }
+            }
+        }
+    }
+    return $rows
+}
+function New-RunAdoption([string]$Label, [string]$ExpectedPath, [DateTime]$RequestedUtc,
+    [double]$SettleSeconds = 0, [double]$UnreadableSeconds = 60) {
+    [pscustomobject]@{ label = $Label; expectedPath = $ExpectedPath; requestedUtc = $RequestedUtc; settleSeconds = $SettleSeconds
+        unreadableSeconds = $UnreadableSeconds; candidates = @{}; adopted = $null; printed = 0
+        log = (New-Object Collections.Generic.List[string]) }
+}
+function Add-RunAdoptionLog($Adoption, [DateTime]$Now, [string]$Text) {
+    $Adoption.log.Add("[$($Now.ToLocalTime().ToString('HH:mm:ss.fff'))] $($Adoption.label) $Text")
+}
+function Format-RunCandidate($Observation) {
+    $started = if ($null -ne $Observation.startedUtc) { $Observation.startedUtc.ToString('o') } else { 'unavailable' }
+    "pid=$($Observation.pid) path='$($Observation.path)' startedUtc='$started'"
+}
+function Step-RunAdoption($Adoption, [object[]]$Observations, [DateTime]$Now, [object[]]$Foreign = @()) {
+    # $Observations: Read-RunCandidate for every PID of the name enumerated this poll (a PID absent has exited).
+    # Returns the adopted identity (pid, path, startedUtc as now recorded) or $null; throws on every refusal.
+    $A = $Adoption
+    $seen = @{}
+    $live = @()
+    foreach ($o in @($Observations)) {
+        if ($null -eq $o) { continue }
+        $key = [string]$o.pid
+        $seen[$key] = $true
+        $c = $A.candidates[$key]
+        $text = Format-RunCandidate $o
+        $parent = if ($o.PSObject.Properties['parent'] -and $o.parent) { "; $($o.parent)" } else { '' }
+        if (-not $o.alive) {
+            if (-not $c) {
+                $A.candidates[$key] = [pscustomobject]@{ pid = $o.pid; firstSeen = $Now; readableSince = $null; unreadableSince = $null; identity = $null; exited = $true }
+                Add-RunAdoptionLog $A $Now "pid=$($o.pid) seen as it exited; not adopted"
+            } elseif (-not $c.exited) {
+                $c.exited = $true
+                Add-RunAdoptionLog $A $Now "pid=$($o.pid) exited $([int]($Now - $c.firstSeen).TotalSeconds) s after it was seen; not adopted"
+            }
+            continue
+        }
+        if ($c -and $c.exited) {
+            throw "$($A.label) PID $($o.pid) is alive again after it exited (PID reused); not adopted ($text)"
+        }
+        if (-not $c) {
+            $c = [pscustomobject]@{ pid = $o.pid; firstSeen = $Now; readableSince = $null; unreadableSince = $null; identity = $null; exited = $false }
+            $A.candidates[$key] = $c
+            Add-RunAdoptionLog $A $Now "candidate seen: $text$parent"
+        }
+        # Refusals that waiting never cures.
+        foreach ($row in @($Foreign)) {
+            if ($row.pid -eq $o.pid -and ($null -eq $o.startedUtc -or $row.startedUtc -eq $o.startedUtc.ToString('o'))) {
+                throw "$($A.label) $text is recorded by another runner's session ($($row.source)); not adopted"
+            }
+        }
+        if ($o.changed) { throw "Live process identity changed between reads; not adopted ($text)" }
+        if (($o.path -and $o.path -ne $A.expectedPath) -or ($null -ne $o.startedUtc -and $o.startedUtc -lt $A.requestedUtc)) {
+            throw "Unexpected live process; not adopted ($text; expectedPath='$($A.expectedPath)' requestedUtc='$($A.requestedUtc.ToString('o'))')"
+        }
+        if ($o.readable) {
+            $identity = [pscustomobject]@{ pid = $o.pid; path = $o.path; startedUtc = $o.startedUtc.ToString('o') }
+            if ($c.identity -and ($c.identity.path -ne $identity.path -or $c.identity.startedUtc -ne $identity.startedUtc)) {
+                throw "Live process identity changed since it was first read (PID replaced); not adopted ($text)"
+            }
+            $c.identity = $identity
+            if ($c.unreadableSince) {
+                Add-RunAdoptionLog $A $Now "pid=$($o.pid) readable after $([math]::Round(($Now - $c.unreadableSince).TotalSeconds, 1)) s unreadable"
+                $c.unreadableSince = $null
+            }
+            if (-not $c.readableSince) {
+                $c.readableSince = $Now
+                Add-RunAdoptionLog $A $Now "pid=$($o.pid) identity readable ($text); settling $($A.settleSeconds) s"
+            }
+        } else {
+            if ($c.readableSince) {
+                $c.readableSince = $null
+                Add-RunAdoptionLog $A $Now "pid=$($o.pid) identity no longer readable while alive; settle restarts"
+            }
+            if (-not $c.unreadableSince) {
+                $c.unreadableSince = $Now
+                Add-RunAdoptionLog $A $Now "pid=$($o.pid) identity not readable yet (suspended, starting or exiting): $text; waiting up to $($A.unreadableSeconds) s"
+            } elseif (($Now - $c.unreadableSince).TotalSeconds -gt $A.unreadableSeconds) {
+                throw "Live process identity unavailable for over $($A.unreadableSeconds) seconds; not adopted ($text)"
+            }
+        }
+        $live += $c
+    }
+    foreach ($key in @($A.candidates.Keys)) {
+        $c = $A.candidates[$key]
+        if (-not $seen.ContainsKey($key) -and -not $c.exited) {
+            $c.exited = $true
+            $what = if ($A.adopted -and $A.adopted.pid -eq $c.pid) { 'recorded earlier' } else { 'not adopted' }
+            Add-RunAdoptionLog $A $Now "pid=$($c.pid) exited $([int]($Now - $c.firstSeen).TotalSeconds) s after it was seen; $what"
+        }
+    }
+    if ($live.Count -gt 1) {
+        throw "Multiple live $($A.label) processes ($((@($live | ForEach-Object { $_.pid })) -join ', ')); refusing to adopt them"
+    }
+    if ($live.Count -eq 1 -and $live[0].readableSince -and ($Now - $live[0].readableSince).TotalSeconds -ge $A.settleSeconds) {
+        $c = $live[0]
+        if (-not $A.adopted -or $A.adopted.pid -ne $c.identity.pid -or $A.adopted.startedUtc -ne $c.identity.startedUtc) {
+            $A.adopted = $c.identity
+            Add-RunAdoptionLog $A $Now "adopted pid=$($c.pid): alive, readable and unchanged for $([math]::Round(($Now - $c.readableSince).TotalSeconds, 1)) s"
+        }
+        return $c.identity
+    }
+    return $null
+}
+function Get-RunAdoptionLines($Adoption) {
+    # The log lines not yet handed out, for printing and the session's launch-candidates.txt.
+    $lines = @()
+    for (; $Adoption.printed -lt $Adoption.log.Count; $Adoption.printed++) { $lines += $Adoption.log[$Adoption.printed] }
+    return $lines
+}
 function Assert-RunDumpHost([string]$HostPath, [bool]$EngineProbe = $false) {
     $marker = if ($EngineProbe) { 'engine-probe: host renderer disabled' } else { 'dump-only: code dump attempted; renderer and hooks disabled' }
     if (-not [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($HostPath)).Contains($marker)) {
@@ -433,32 +603,55 @@ function Get-PreviewVrProcesses($Open, [bool]$AllowNewHelpers = $false) {
     }
     return $seen
 }
+function Get-PreviewRenderSize([string]$RenderSize = '3072x2216') {
+    # The render target (RenderW x RenderH, GamerSettings ResX/ResY): 1280..8192, multiples of 8. ME3's
+    # FSceneRenderTargets::Allocate (0x36CDC0) rounds its buffers up to a multiple of 8, and the renderer's pass-0
+    # capture needs the scene's depth target to be the backbuffer's size: 4054x1728 rendered flat (research/
+    # le3-flares-and-window.md section 3).
+    if ($RenderSize -notmatch '^(\d{4})x(\d{4})$') { throw 'Invalid preview render size' }
+    $w = [int]$Matches[1]; $h = [int]$Matches[2]
+    if ($w -lt 1280 -or $w -gt 8192 -or $h -lt 1280 -or $h -gt 8192 -or ($w % 8) -or ($h % 8)) { throw 'Invalid preview render size' }
+    [pscustomobject]@{ width = $w; height = $h }
+}
 function Get-PreviewRendererConfig([ValidateSet(0, 2, 4)][int]$Mode = 4, [bool]$Diagnostics = $false,
-    [ValidateSet(1, 2, 4, 8)][int]$MirrorEvery = 8) {
-    # me2_menu.cpp LoadValues + its lowest displayed render target (3072x1728);
-    # d3d_capture.cpp reads RenderW/H beside MassEffect3.exe before rendering.
-    "[VR]`r`nEnabled=1`r`nMode=$Mode`r`nMirrorPresentEvery=$MirrorEvery`r`nRenderW=3072`r`nRenderH=1728`r`nHeadAim=0`r`nHeadLook=1`r`nMoveFollowsHead=1`r`nDecoupledPitch=1`r`nPosEnabled=1`r`nPosScale=2.0`r`nDiagnostics=$([int]$Diagnostics)`r`nCineVrConvo=0`r`nCineVrCutscene=0`r`n[FirstPerson]`r`nConvoFirstPerson=0`r`n"
+    [ValidateSet(1, 2, 4, 8)][int]$MirrorEvery = 8, [bool]$EyeFrustum = $true, [string]$RenderSize = '3072x2216') {
+    # me2_menu.cpp LoadValues; d3d_capture.cpp reads RenderW/H beside MassEffect3.exe before rendering. The defaults are ME3's
+    # shipped ones (the owner, 2026-11-17, docs/trilogy-plan.md question 17): 3072x2216 and MetricEyeFrustum=1 (each eye's own
+    # frustum, mode 2, with the host's [Stereo] flareWindow); -PreviewSharedWindow writes 0 (mode 1). Written either way: the
+    # renderer's default is 1. src/halcyon/le3/runtime/MELE3VR.ini (what tools/deploy-asi.ps1 and MEVR Setup install) is
+    # this text with the defaults and without the Diagnostics line (test-session.ps1 checks it).
+    $size = Get-PreviewRenderSize $RenderSize
+    $frustum = "MetricEyeFrustum=$([int]$EyeFrustum)`r`n"
+    "[VR]`r`nEnabled=1`r`nMode=$Mode`r`nMirrorPresentEvery=$MirrorEvery`r`nRenderW=$($size.width)`r`nRenderH=$($size.height)`r`nHeadAim=0`r`nHeadLook=1`r`nMoveFollowsHead=1`r`nDecoupledPitch=1`r`nPosEnabled=1`r`nPosScale=2.0`r`nDiagnostics=$([int]$Diagnostics)`r`n$($frustum)CineVrConvo=0`r`nCineVrCutscene=0`r`n[FirstPerson]`r`nConvoFirstPerson=0`r`n"
 }
 function Get-PreviewOptions($Open) {
     $mode = if ($Open.PSObject.Properties['previewRendererMode']) { $Open.previewRendererMode } else { 4 }
     $diagnostics = if ($Open.PSObject.Properties['previewDiagnostics']) { $Open.previewDiagnostics } else { $false }
     $mirror = if ($Open.PSObject.Properties['previewMirrorEvery']) { $Open.previewMirrorEvery } else { 8 }
+    $eyeFrustum = if ($Open.PSObject.Properties['previewEyeFrustum']) { $Open.previewEyeFrustum } else { $false }
+    # A stretch recorded before these options existed rendered mode 1 at 3072x1728 (and wrote no MetricEyeFrustum key: such
+    # an open stretch now fails Assert-PreviewConfig and must be restored, since the renderer's default became mode 2).
+    $renderSize = if ($Open.PSObject.Properties['previewRenderSize']) { $Open.previewRenderSize } else { '3072x1728' }
     if (($mode -isnot [int] -and $mode -isnot [long]) -or $mode -notin @(0, 2, 4) -or $diagnostics -isnot [bool] -or
-        ($mirror -isnot [int] -and $mirror -isnot [long]) -or $mirror -notin @(1, 2, 4, 8)) {
+        ($mirror -isnot [int] -and $mirror -isnot [long]) -or $mirror -notin @(1, 2, 4, 8) -or $eyeFrustum -isnot [bool] -or
+        $renderSize -isnot [string]) {
         throw 'Invalid preview renderer options'
     }
-    [pscustomobject]@{ mode = $mode; diagnostics = $diagnostics; mirrorEvery = $mirror }
+    $null = Get-PreviewRenderSize $renderSize
+    [pscustomobject]@{ mode = $mode; diagnostics = $diagnostics; mirrorEvery = $mirror; eyeFrustum = $eyeFrustum; renderSize = $renderSize }
 }
 function Get-PreviewModConfig {
     # Reuse the existing local-only native symbol dumper for this explicit LE3
     # research route. Keep it in the exact prep/launch contract, not an ini edit
     # after preparation. It writes once and makes no engine mutations.
-    "[Debug]`r`nrequests = 1`r`ndumpNatives = 1`r`nopenxrRuntime = C:\Program Files (x86)\Steam\steamapps\common\SteamVR\steamxr_win64.json`r`n[Pointer]`r`nsetCursor = 0`r`n"
+    # [Display] eyeSizeSet = 1: the host's first-VR-start rule (the render target from the headset, written into MELE3VR.ini
+    # for the next launch) stands down, so the renderer file stays the exact preview text and -PreviewRenderSize decides.
+    "[Debug]`r`nrequests = 1`r`ndumpNatives = 1`r`nopenxrRuntime = C:\Program Files (x86)\Steam\steamapps\common\SteamVR\steamxr_win64.json`r`n[Pointer]`r`nsetCursor = 0`r`n[Display]`r`neyeSizeSet = 1`r`n"
 }
 function Assert-PreviewConfig([string]$Bin, [ValidateSet(0, 2, 4)][int]$Mode = 4, [bool]$Diagnostics = $false,
-    [ValidateSet(1, 2, 4, 8)][int]$MirrorEvery = 8) {
+    [ValidateSet(1, 2, 4, 8)][int]$MirrorEvery = 8, [bool]$EyeFrustum = $true, [string]$RenderSize = '3072x2216') {
     if ([IO.File]::ReadAllText((Join-Path $Bin 'ASI\LE3MEVR.ini')) -cne (Get-PreviewModConfig) -or
-        [IO.File]::ReadAllText((Join-Path $Bin 'MELE3VR.ini')) -cne (Get-PreviewRendererConfig $Mode $Diagnostics $MirrorEvery)) { throw 'Preview configuration changed since prep' }
+        [IO.File]::ReadAllText((Join-Path $Bin 'MELE3VR.ini')) -cne (Get-PreviewRendererConfig $Mode $Diagnostics $MirrorEvery $EyeFrustum $RenderSize)) { throw 'Preview configuration changed since prep' }
 }
 function Read-RunStartupText([string]$Path, [ValidateRange(1,50)][int]$Attempts = 50) {
     # The mod can still be appending defaults when XR becomes ready. Keep normal
@@ -475,7 +668,7 @@ function Read-RunStartupText([string]$Path, [ValidateRange(1,50)][int]$Attempts 
     }
 }
 function Confirm-PreviewInitializedConfig([string]$Bin, $Artifacts, [ValidateSet(0, 2, 4)][int]$Mode = 4, [bool]$Diagnostics = $false,
-    [ValidateSet(1, 2, 4, 8)][int]$MirrorEvery = 8, [switch]$DeferDefaults) {
+    [ValidateSet(1, 2, 4, 8)][int]$MirrorEvery = 8, [switch]$DeferDefaults, [bool]$EyeFrustum = $true, [string]$RenderSize = '3072x2216') {
     # HandCalibration and Colour append their compiled defaults on the first tick.
     # Only that append is permitted; protected keys, renderer mode and all binaries
     # retain their exact prep identity. Preserve the effective settings in the receipt.
@@ -483,7 +676,7 @@ function Confirm-PreviewInitializedConfig([string]$Bin, $Artifacts, [ValidateSet
     $text = Read-RunStartupText $mod
     $prefix = Get-PreviewModConfig
     if (-not $text.StartsWith($prefix, [StringComparison]::Ordinal) -or
-        [IO.File]::ReadAllText((Join-Path $Bin 'MELE3VR.ini')) -cne (Get-PreviewRendererConfig $Mode $Diagnostics $MirrorEvery)) {
+        [IO.File]::ReadAllText((Join-Path $Bin 'MELE3VR.ini')) -cne (Get-PreviewRendererConfig $Mode $Diagnostics $MirrorEvery $EyeFrustum $RenderSize)) {
         throw 'Protected preview configuration changed during startup'
     }
     Assert-RunArtifacts @($Artifacts | Where-Object { $_.path -ine $mod })
@@ -495,7 +688,7 @@ function Get-PreviewMissingDefaultSections([string]$Text) {
     $prefix = Get-PreviewModConfig
     if (-not $Text.StartsWith($prefix, [StringComparison]::Ordinal)) { throw 'Protected preview configuration changed during startup' }
     $allowed = @('Colour','Controls','Holsters','Squad','Throwables','Comfort','Sights','Interact','Vent','Hud',
-        'Mako','Cockpit','Galaxy','WorldUi','Game','SquadContext','SquadOrders','Voice','PowerWheel','Cover')
+        'Mako','Cockpit','Galaxy','WorldUi','Game','SquadContext','SquadOrders','Voice','PowerWheel','Cover','Reload')
     $seen = @{}; $section = ''
     foreach ($line in ($text.Substring($prefix.Length) -split '\r?\n')) {
         $value = $line.Trim()
@@ -515,7 +708,8 @@ function Get-PreviewMissingDefaultSections([string]$Text) {
 }
 function Wait-PreviewInitializedConfig([string]$Bin, $Artifacts, [string[]]$StartupLogs, [hashtable]$Before,
     [DateTime]$Started, [scriptblock]$Guard, [ValidateSet(0, 2, 4)][int]$Mode = 4, [bool]$Diagnostics = $false,
-    [ValidateSet(1, 2, 4, 8)][int]$MirrorEvery = 8, [ValidateRange(1, 300)][int]$TimeoutSeconds = 30) {
+    [ValidateSet(1, 2, 4, 8)][int]$MirrorEvery = 8, [ValidateRange(1, 300)][int]$TimeoutSeconds = 30,
+    [bool]$EyeFrustum = $true, [string]$RenderSize = '3072x2216') {
     # XR readiness precedes the mod's first tick. HandCalibration's marker follows
     # its default blocks AND key migrations; Colour's follows its own writes.
     # PowerWheel/Cover each append one closed block. Require every populated block
@@ -528,7 +722,7 @@ function Wait-PreviewInitializedConfig([string]$Bin, $Artifacts, [string[]]$Star
         # Appends can be readable halfway through a line. Validate protected
         # state now, but parse the default suffix only after writer completion
         # and quiet text; never mistake a partially written line for corruption.
-        $config = Confirm-PreviewInitializedConfig $Bin $Artifacts $Mode $Diagnostics $MirrorEvery -DeferDefaults
+        $config = Confirm-PreviewInitializedConfig $Bin $Artifacts $Mode $Diagnostics $MirrorEvery -DeferDefaults -EyeFrustum $EyeFrustum -RenderSize $RenderSize
         $completedLog = $null
         foreach ($path in $StartupLogs) {
             if ((Test-RunFreshMarker $path $Before[$path] $Started 'hands: calibration pitch ') -and
@@ -577,4 +771,68 @@ function Test-RunFreshMarker([string]$Path, [string]$Before, [DateTime]$Started,
     $text = Read-RunLog $Path
     $fresh = if ($Before -and $text.StartsWith($Before, [StringComparison]::Ordinal)) { $text.Substring($Before.Length) } else { $text }
     return $fresh.Contains($Marker)
+}
+function Get-RunModLogs([string]$Bin, [string]$Game) {
+    # The mod's log: the game's Logs folder, or its %LOCALAPPDATA% fallback when that isn't writable.
+    @((Join-Path $Bin "Logs\${Game}MEVR.log"), (Join-Path $env:LOCALAPPDATA "MEVR\${Game}MEVR.log"))
+}
+function Get-RunFileStamp([string]$Path) {
+    # Attributes only: the settings file's data is never opened here, so a poll can't make the mod's append fail.
+    $info = New-Object IO.FileInfo($Path)
+    $info.Refresh()
+    if (-not $info.Exists) { throw "Mod settings file missing: $Path" }
+    [pscustomobject]@{ length = $info.Length; writtenUtc = $info.LastWriteTimeUtc }
+}
+function Wait-RunModSettings([string]$Path, [string[]]$Logs, [hashtable]$Before, [DateTime]$Started, [scriptblock]$Guard,
+    [ValidateRange(1, 600)][int]$TimeoutSeconds = 90, [ValidateRange(100, 60000)][int]$QuietMilliseconds = 3000,
+    [ValidateRange(10, 5000)][int]$PollMilliseconds = 250) {
+    # The mod's first tick comes once its engine access is ready, about 2 s after ME2's XR session at the title, and
+    # appends its default blocks to <GAME>MEVR.ini; a block the busy file refused goes in about a second later. Wait for
+    # this launch's settings markers (HandCalibration logs its pitch after its appends and key migrations, Colour its
+    # profile after its own write), then for QuietMilliseconds without a write, before load.ps1 freezes its artifact
+    # hashes. This is no exception for load.ps1: any change during a load still refuses it. Not settled within the
+    # bound: the result says so and the caller warns. Gotcha mod-settings-appended-after-xr-ready.
+    $timer = [Diagnostics.Stopwatch]::StartNew()
+    $markers = @('hands: calibration pitch ', 'colour: profile ')
+    $markerLog = $null; $markersAtMs = $null; $previous = $null
+    $first = Get-RunFileStamp $Path
+    $stamp = $first
+    while ($true) {
+        & $Guard | Out-Null
+        if (-not $markerLog) {
+            foreach ($log in $Logs) {
+                if (@($markers | Where-Object { -not (Test-RunFreshMarker $log $Before[$log] $Started $_) }).Count -eq 0) {
+                    $markerLog = $log; $markersAtMs = $timer.Elapsed.TotalMilliseconds; break
+                }
+            }
+        }
+        $stamp = Get-RunFileStamp $Path
+        $quiet = ([DateTime]::UtcNow - $stamp.writtenUtc).TotalMilliseconds
+        # Two equal looks a poll apart, and the last write QuietMilliseconds old, after the markers.
+        if ($markerLog -and $previous -and $stamp.length -eq $previous.length -and $stamp.writtenUtc -eq $previous.writtenUtc -and
+            $quiet -ge $QuietMilliseconds) {
+            return [pscustomobject]@{ settled = $true; markerLog = $markerLog; markersAtMilliseconds = $markersAtMs
+                waitedMilliseconds = $timer.Elapsed.TotalMilliseconds; quietMilliseconds = $quiet
+                lengthBefore = $first.length; length = $stamp.length; writtenUtc = $stamp.writtenUtc.ToString('o') }
+        }
+        if ($timer.Elapsed.TotalSeconds -ge $TimeoutSeconds) { break }
+        $previous = $stamp
+        Start-Sleep -Milliseconds $PollMilliseconds
+    }
+    [pscustomobject]@{ settled = $false; markerLog = $markerLog; markersAtMilliseconds = $markersAtMs
+        waitedMilliseconds = $timer.Elapsed.TotalMilliseconds; quietMilliseconds = ([DateTime]::UtcNow - $stamp.writtenUtc).TotalMilliseconds
+        lengthBefore = $first.length; length = $stamp.length; writtenUtc = $stamp.writtenUtc.ToString('o') }
+}
+function Format-RunModSettings($Result, [string]$Path) {
+    $name = Split-Path -Leaf $Path
+    $grew = $Result.length - $Result.lengthBefore
+    if ($Result.settled) {
+        return ('mod settings settled: {0} unchanged for {1:0.0} s after this launch''s settings markers ({2}), {3:0.0} s after ' +
+            'the XR marker; {4} bytes, {5} added during the wait') -f $name, ($Result.quietMilliseconds / 1000),
+            (Split-Path -Leaf $Result.markerLog), ($Result.waitedMilliseconds / 1000), $Result.length, $grew
+    }
+    $seen = if ($Result.markerLog) { "seen in $(Split-Path -Leaf $Result.markerLog)" } else { 'not seen' }
+    return ('mod settings did not settle within {0:0} s (this launch''s settings markers {1}; {2} last written {3:0.0} s ago, ' +
+        '{4} bytes added during the wait): a load now may be refused as ''Save or runtime artifact changed during load''') -f
+        ($Result.waitedMilliseconds / 1000), $seen, $name, ($Result.quietMilliseconds / 1000), $grew
 }

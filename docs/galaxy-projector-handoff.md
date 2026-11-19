@@ -5,8 +5,240 @@
 > feature). The galaxy map is its feature T42, which follows this document's "Remaining work" 1-5 in order. This
 > document stays as the record of the projector work: every attempt, the native facts and the ordered steps.
 
-Updated 2026-11-15. Implementation checkpoint: **0f02fd38** on `worktree-agent-a08810c1900a1136a`. This main-checkout copy is documentation only; the implementation remains in that worktree. This is a resumption document, not a release or acceptance claim.
-The user requested this checkpoint to preserve work before usage runs out.
+Updated 2026-11-17 (lane GX). The 2026-11-15 checkpoint (0f02fd38, landed as ccc9325d) is on main; its worktree is gone.
+This is a resumption document, not a release or acceptance claim.
+
+## 2026-11-18: the map picked by the right controller's ray, ME2's scanner aimed by it (lane GXR)
+
+The owner (2026-11-17, ~20:45): "whichever gives us the great approximate experience to what we have on me1": the ray picks on
+both sequels' maps (ME1's way), the stick stays the game's, the ray aims ME2's scanner. Built as one shared core and one sequel
+module, no per-game copy:
+- `core/vr/GalaxyRay` (unit-tested, `TestGalaxyRay`): the UI panel on the disc as the host draws it (`PanelOnDisc`:
+  `galaxy_holo::DiscPose`, width = the window's / (1 - crop), height = width / the game window's aspect), the ray's point on it
+  (`PanelHit`: the game's screen, u and v from its top left), the map camera's ray through a screen point (`ScreenRay`, the
+  inverse of `galaxy_holo::ToGameScreen`), a sphere hit with a graze margin (`SphereHit`), the nearest object on the screen
+  (`Nearest`, aspect-correct, a share of the screen's height) and UE3 rotator helpers (`ToRotator`, `ToLocal`).
+- `game/GalaxyRay` (ME2 and ME3; called by `game/GalaxyProjectorFlow` every tick the map is held on the projector):
+  - **Picks** (the map's galaxy, cluster and system views): the right controller's ray (left if the right isn't tracked) on the
+    panel; the map's selectable objects at the level shown (ME2: `BioCameraBehaviorGalaxy.m_GalaxySelectors`, `m_ClusterSelectors`,
+    `m_SystemSelectors` by `m_nCurrentState` 1, 2, 3; ME3: `m_aSelectableActors`) projected through the map camera; the nearest
+    within 0.06 of the screen's height is hovered (a 12 ms tick in the hand), the trigger (0.6 down, 0.4 up: `galaxy_holo::Pointer`)
+    picks it.
+  - **The pick, as the game's own controls would make it.** Where the map's cursor (`m_pCrossHairObject`) is a cursor (an
+    `InterpActor`: ME2's galaxy view) it is put on the object (`Actor.SetLocation`, ME1's `StartPick`), and once the game has
+    selected it (`m_pSelectedObject`, the zoom `m_fZoomTime` done) the map's A goes as its GUI event (`SFXGameModeBase.GuiKey`:
+    ME2 `BIOGUI_EVENT_BUTTON_A` 12 then its release 33; ME3 15 and 36), so the game zooms, enters or asks itself. Where the
+    cursor is the Normandy (ME2's cluster and system views: `SkeletalMeshActorMAT_1`, run gx4-me2's `ship` lines) it is **never
+    moved by us** (that would skip the flight and its fuel): it is flown there with the map's own stick (the handler's
+    `BioSFHandler_GalaxyMap.m_fLeftStickX/Y`, what its GUI axis events set), the direction on the screen from the ship to the
+    object, full stick far away and gentler close in; arrived and selected by the game: the stick let go and A. The player's own
+    left stick past 0.35 takes the ship back (the flight given up); 30 s at most.
+  - **ME2's orbit (mode 10, `flow::Adapter::orbitMode`):** where the ray (through the map camera) meets the planet is where the
+    scanner's reticle goes: `SFXGameModeOrbital.ReticleRot` (yaw and pitch, inside `ReticleRotMinClamp/MaxClamp`) written from the
+    hit's direction from the reticle effect's owner, in that owner's frame (checked once against the effect's own place: the log
+    says which frame matched, or that neither did and the ray stands down). The game's LT scans and RT launches a probe there, as
+    before (the orbit never takes the pointer's triggers).
+  - `[Galaxy] rayPick`, `rayScan` (1, 1; read every 2 s); console `mevr galaxy ray [state | pick on|off | scan on|off | screen |
+    orbit | stick x y | steer-sign x y | mouse on|off]` (ME3: `mevr galaxy ray ...` too). `screen` lists each selectable object's
+    place on the game's screen (a test's aim for `tools/make-galaxy-pick-recording.py --panel-uv`); `mouse` tells the map's movie
+    the player uses the mouse or the pad (`BioSFPanel`/`SFXGUIMovie.bUsingGamepad`, `HandleButtonRefresh`): a diagnostic of the
+    PC map's own mouse controls below. Logs `galaxy ray:`.
+- **The PC map's own mouse controls** (read offline, `tools/conversation-scan --script`, output private): ME2's and ME3's
+  `BioSFHandler_PCGalaxyMap.HandleInputEvent` ignore the mouse while `oPanel.bUsingGamepad` (ME3) or the mouse is hidden (ME2's
+  `OnPanelAdded`/`HandleButtonRefresh`: `SetMouseShown(!usingGamepad)`); in the mouse mode the left button held in the cluster or
+  system view sets `bMoveToMouse` (the ship flies toward the mouse) and B backs out. With our controllers as pad 0 the map is in
+  the pad mode, which is why the GX lanes' clicks through the game pointer did nothing. Not used by the ray (it would need the
+  host's cursor answer and the pad mode switched per frame); `[Pointer] galaxyMap = 0|1|2` (host, ME2/ME3 only, a test key read
+  live: none, ME1's window messages, the steered game cursor) puts the game pointer on the map's panel to try it.
+- **ME1 unchanged by its compiled code:** every change LE1 compiles is either `#if !defined(MEVR_GAME_LE1)` (the host's
+  `[Pointer] galaxyMap`) or in sequel-only files and blocks; `core/vr/GalaxyRay` is in the sequels' mods only.
+- **In the game (ME2, fake headset, stretch `%LOCALAPPDATA%\MEVR\sessions\20261118-012745-525-LE2-gxr-me2`, Save 36 read
+  only; `galaxy.ps1 -Game LE2 -Place '0 3360 160 -90' -Yaw 0 -Pitch -25 -NoExit`):** the map opened in the system view (state
+  3, Omega's system; the cursor `SkeletalMeshActorMAT_1`, the Normandy); `mevr galaxy ray screen` put its 12 selectable objects on
+  the screen; a replayed right ray at the planet `180769_0`'s (0.308, 0.390) with the trigger (`make-galaxy-pick-recording.py
+  --panel-uv`): the mod measured the ray's point at exactly (0.308, 0.390), 1.85 m away (the panel's math matches the host's);
+  `picked '180769_0' (state 3): the Normandy flies there on the map's stick`; `the Normandy reached '180769_0' after 2266 ms, the
+  game selected it: the map's A sent`: the planet's view (state 4) with Omega's panel and its Dock button (snapshot
+  `2026-11-18_01-30-24-049-hud.png`). The written stick moves the ship while it is written every tick (a single console write did
+  nothing). **Not reached:** the galaxy view's cursor pick and the orbit's scanner: the map then reopened in Omega's planet view
+  every time (it remembers the selection), where B (a GUI event, ME2's 13/34) closes the whole map and a replayed pad B doesn't
+  reach the movie; a replayed A at the console with the head turned elsewhere uses Shepard's private terminal instead (mode 7).
+  ME3 not run yet (its fixture: AutoSave of `John_12_Vanguard`, `-Game LE3 -RendererPreview`). Before it: three ME2 launches
+  (00:54-01:22) ended at Steam's EA hand-off (EA's launcher denied CreateProcess inside steam.exe's job; the coordinator
+  restarted Steam through Explorer).
+- **In the game (ME3, fake headset, renderer preview, the AutoSave of `John_12_Vanguard` read only; stretch
+  `%LOCALAPPDATA%\MEVR\sessions\*-LE3-gxr-me3`, 2026-11-18 01:43-02:05; `galaxy.ps1 -Game LE3 -NoExit`):** the map opened in
+  Anadius's system view (state 3; the cursor the Normandy, `SkeletalMeshActorMAT_3`; selectables Cronos Station `500425_0` and
+  Pax `Planet02_1`). A ray pick on Cronos Station flew the Normandy there (0.5-1.1 s), the game selected it, and the map's A took
+  it to the station's orbit view (state 4, "Enter Orbit"): **ME3's A is not a GUI event** (GuiKey(15) and the PC handler's
+  `PerformPrimaryAction`, whose mouse action is none, did nothing), it is the map's own select,
+  `BioSFHandler_GalaxyMap.SelectGalaxyItem` (traced: `ValidLevelTransition`, `ExecuteTravel`), which `SendA` calls on ME3. Pax
+  is selected the same way but has no orbit (A does nothing there, as with the pad). B goes from the orbit view back to the
+  system; out of the system the ship is flown with the stick (the game's own control, the fallback) to the cluster view (state
+  2: four systems); there a ray pick flew the Normandy into the system `598865` and the game entered it (state 3) on its way.
+  The flight aims at the object brought to the ship's height (the cluster's systems stand above or below the ship's plane: aimed
+  at their own place on the screen the ship stopped short of being selected), and ends when the map moves on to another level.
+- **ME2, second stretch (`%LOCALAPPDATA%\MEVR\sessions\*-LE2-gxr-me2b`, Save 36 again, 02:10-02:25): the whole way by ray.**
+  In Omega's system the ray picked the mass relay (`SkeletalMeshActorMAT_0`): the Normandy flew there (1.5 s), the game selected
+  it, A: the galaxy view (state 1, the cursor `InterpActor_17`, 20 clusters on the screen). A ray pick on the cluster `191609`:
+  the map's cursor put on it, selected by the game 31 ms later, A: the relay jump into that cluster's relay system (state 3). There
+  a ray pick on the planet `327298_2` (Mizraim) flew the ship there (3.4 s), selected, A: its planet view with "Start Scanning".
+- **The orbit's scanner is not reached by script:** in ME2's planet view (state 4) neither the map's GUI A (`GuiKey` 12/33) nor
+  the camera's own `HandleSelectPlanet` (returned false) starts the scan (mode 10), and a replayed pad A doesn't reach ME2's map
+  movie without the game window in front. So the ray's aim of the reticle (`StepScan`; `mevr galaxy ray orbit`) is still unrun.
+  Next: find what "Start Scanning" calls (a call trace filtered to the galaxy handler's functions only: the broad trace drowns in
+  the HUD's per-frame calls), or the player's A in the headset; then the frame check's log line says whether the reticle's
+  frame is its owner's.
+
+## 2026-11-17 (night): one flow for both sequels, the opening's wait cut (lane GX4)
+
+research/le3-galaxy.md "One flow for both sequels" and research/le2-galaxy-table.md "The flow's rules on ME2" have the runs:
+- **ME3 is on `game/GalaxyProjectorFlow`**, its adapter `game/Le3GalaxyCapture` (about 55 lines: the CIC's art, the retention's
+  calls, the map's level). Every GX3 rule is the flow's now, so ME2 has them: the interlude, the on-foot reservation, the opening
+  and closing bridges, the recenter kept inside the map, the lens flare, the opening's probe, `ship`/`flares`. A cinematic straight
+  from the map that outlasts the closing's 3 s becomes the map's interlude (ME1's RememberTable after its ClosingHold); the closing
+  is held by ME1's rule (a cinematic within 2 s of the held map's end), whatever the map's level.
+- **The opening's 2.5 s wait is cut as ME1's**: the GalaxyMap sequence's own longest delay (ME3 `SeqAct_Delay_1`, ME2
+  `BioSeqAct_Delay_0`, both 2.5 s) written to 0.05 s in the CIC, journalled, put back away from it and on unload
+  (`mevr galaxy capture opening-keep|opening-cut`). ME3 opens in 0.11-0.12 s (was 2.56), ME2 in 0.19 s; the map camera's first
+  frame on ME3 is the same as shipped (snapshots 0.27 s and 0.32 s in). Every ME3 opening held (0 unheld main views).
+- **Found by the move:** ME3's room lease (20 s from arming) ran out inside the now 0.1 s opening when armed 20 s before the use;
+  it now waits from the player's last moment at the projector and through the opening (`le3_galaxy_retention::Refresh`).
+- **ME3 travel and arrival** on the shared flow as GX3 saw them (relay movie alone, arrival on the disc); 12 unheld main views in
+  23,532, all in multi-second game-thread stalls under another lane's cold builds (the host's 500 ms freshness).
+- **ME3 reload with the map open** (ME3 autosaves 2 s after a travel's A, in the map): the save loads into mode 11 with the CIC's
+  art (`BioA_Nor_210CIC`) neither loaded nor requested, so there is no projector to re-arm on: the flat panel until X (ME1's rule),
+  logged once with the world's streaming levels. The flow carries the old room's disc and view and re-arms from them if the
+  CIC's art is there after a load (`flow::Adapter::armRetentionInMap`); it wasn't.
+- **The opening's first 2-7 frames were a cinematic** (the 3D cinema screen) on both sequels until the mod's bridge published; the
+  on-foot reservation now carries an opening cue the host holds (`Scene::holdPad[kOpeningCue]`, `plugin/GalaxyHologram`). Built,
+  not yet seen in the game.
+- **ME2**: the map's A and B are GUI events (`mevr guikey 12` worked where a replayed A didn't); the galaxy view's cursor stuck
+  short of a cluster, so the relay jump wasn't reached (`mevr galaxy capture tab-left|tab-right` added for it). In a relaunch the
+  console stopped opening the map at all (A on the selected console, mode 0): open, not ours. A hot reload with ME2's map open
+  faulted the render thread (the depth of field restored on unload): the flow restores it only on foot now.
+- The owner (2026-11-17 night): ME3 on by default; DOF off near the projector accepted; ray picking and ME2's scanner by ray are
+  the next lane's (`flow::Adapter::pointAt`, not built).
+
+Left: ME2's travel and arrival (a relay jump; `tab-right` then `mevr guikey 12`), the opening cue seen on both sequels, ME2's
+console that wouldn't open after a relaunch, ME3's scan and orbit, the captures' post-process chain, the headset.
+
+## 2026-11-17 (later): travel, the opening and closing, the band, reload, recenter (lane GX3)
+
+research/le3-galaxy.md "Travel, the opening and closing, the band" has the runs and the facts; in short, on ME3:
+- **Travel works on the projector.** The relay's travel stays in game mode 11: ME3 plays its relay movie over the map, which the
+  renderer shows flat; the hold and the window never dropped (97,116 main views held at Shepard's, none from the map camera) and
+  the arrival showed the new system on the disc at once. The window is now drawn only over a world frame (it stood beside the
+  flat movie with old captures). The map's interludes that do change the mode (a conversation, a cinematic, a GUI question, a
+  movie mode, a load) keep the table reserved and re-open it from the measured disc: ME1's rule (research/51 section 8.4) in
+  `galaxy_projector::MapInterlude` and the retention's `Kept()`.
+- **No flat or wrong-camera frame at the opening**: the opening's cinematic (0 -> 8 -> 11, 2.5 s) is held at Shepard's view and the
+  first map frame is held (an on-foot reservation); `galaxy hologram: the map's main views ...` counts them (0 unheld in five
+  openings). X closes 11 -> 0; a closing cinematic would be held 3 s (ME1's ClosingHold).
+- **The blue band was the projector's own lens flare**, uncovered when its hologram mesh is hidden: hidden with it now.
+- **The retention re-arms** when its 20 s for the map ran out at the console (the map opened without the room before).
+- **Recenter inside the map keeps the hold and the disc** (the held view and the app space move together); it went flat before.
+  The null headset's recenter moves nothing, so the disc's place after a real one is the headset's check.
+- **A reload with the map open** forgets the old room; ME3 loads the save into the map's mode, which the renderer then shows
+  flat (no on-foot view in the new world: ME1's rule); X goes to the room and A opens the projector map again.
+- **The opening's 2.5 s are a Kismet delay** (`biod_nor_203cic` `Main_Sequence.GalaxyMap.SeqAct_Delay_1`, Duration 2.50), not
+  loading: the map's level is loaded 0.06-0.11 s in and made visible as the delay ends. A journalled `Duration` write (ME1 cut
+  its `BioSeqAct_Delay_0` to 0.05 s) would shorten it: the owner's choice, not done.
+- ME3 autosaved once during these runs (on an X exit); the runner's restore put the save back.
+- Tools: `galaxy-steps.ps1` (the map's controls replayed, `steer` to a target), `mevr galaxy capture ship|flares`,
+  `make-walk-recording.py`'s `lt`, `rt`, `stick@DEG` and `+` combinations, the read-only opening probe's log line.
+
+Left on ME3: the system scan (a replayed LT started none: the trigger's route on the fake headset is open), orbit (mode 12) and the probe (the late-game fixture has no scannable planet in reach;
+the code treats 12 as 11), moving ME3's adapter onto GX2's shared `game/GalaxyProjectorFlow` (with these rules in it),
+the captures' post-process chain ("Remaining work" 1 below), the headset (alignment, legibility, comfort, GPU cost).
+
+## 2026-11-17: ME3's projector flow, on ME1's shared code (lane GX)
+
+**What runs now on ME3** (renderer preview on the fake headset, the career's original AutoSave at the CIC console, loaded
+read-only; runs `20261117-174710-211-LE3-gx1`, `-175453-896-LE3-gx2`, `gx3`; script `tools/le2-halcyon-run/galaxy.ps1`):
+on foot the mod measures the projector every 2 s and arms the room's retention near it; one A at the console opens the
+map (mode 11); the view stays Shepard's at the console, the CIC in stereo around it (no flat panel: the renderer's
+galaxy demand stands down); the game's map is a stereo disc lying on the projector (2.64 m, 24 degrees off flat, ME1's
+`windowScale` 0.7 of the measured 1.88 m radius); the map's Flash UI (system name, planet labels, Scan, Exit, the mission
+card) is on our HUD panel on the same disc; the room's own projector hologram is hidden meanwhile; X exits, the hold, the
+window and the retention end, the projector shows again. Snapshots: the session folders' `galaxy-*` and
+`%LOCALAPPDATA%\MEVR\snapshots\*galaxy-gx*`.
+
+**The design is ME1's, one copy** (Forks 3):
+- `game/GalaxyProjector` (new, every game): `HeldView` + `Remember` (Shepard's view on foot with the floor lock's base,
+  `host_view::HoldBaseZ`), `RenderHold` + `PutRenderHold` (the POV's addresses for the host's swap), `StereoWindow` (ME1's
+  `StepWindow` core: the two `capture_rig::Rig`s, their size from the game window's aspect, CineScreen's parallel cameras,
+  the scene's window fields and camera), `GameWindow`. ME1's `game/GalaxyMap` calls all of it (its `Hold` derives from
+  `HeldView`); ME3's `game/Le3GalaxyCapture` is now only ME3's adapter: the projector (`Le3GalaxyProjector`), the room's
+  retention (`Le3GalaxyRetention::Arm(pc, production)`: no 120 s cap while the map is open), its map modes 11/12, the
+  map camera's centre, hiding the room's GalaxyMapProxy and its emitters.
+- Host: `plugin/GalaxyHologram` `HoldViewBegin/End` and `Holds` (moved from LE1's GamePointer; the POV writes in
+  `plugin/PovSwap.hpp`), called by LE1's `GalaxyViewSwapBegin` and by the common seam `MevrSeams::WorldViewHoldBegin`
+  (ME3's calcview hook, galaxy first, then the world UI); `MevrSeams::WorldViewHeld` answers 2 for the galaxy (Shepard's
+  head and body hidden at the held eyes); new seam `MevrSeams::GalaxyOwnsPresentation(mode)` in ME3's `d3d_capture.cpp`
+  (`[MEVR]`): no galaxy or input-owner mono while the map is held. `plugin/SequelOverlays` composes the window under the
+  panel and puts the panel on the disc (`hud_panel::Frame::screenUi` at `UiPanelPose`, the window's whole frame wide); the
+  panel is the game pointer's surface where a game's map is picked by clicking (`Facts::galaxyUiPointer`; none on ME3).
+- **The post-process chain leaves ME3's captures black**, any chain (the player's, `Engine.DefaultPostProcess`,
+  `DefaultUIScenePostProcess`), although `plugin/Le3SceneCapture` logs the final post effect binding the capture's own target;
+  without a chain the map looks as the game shows it (gx2's `map-on-raw` snapshot). ME3 captures without a chain by default
+  (`mevr galaxy capture on-post|on-default|on-ui` are the diagnostics). Why the chain's output is lost is open (Ghidra notes
+  below: 0x3D2D60/0x3D1F80 choose 0x36DA30, 0x36DAC0 or 0x36D760 by the family's +0x48, the effect's final flag and the
+  upscale test at 0x3B1EC0; the finish 0x3534B0 draws scene color into the target unless the view's +0x4B4 is set).
+
+**ME1 unchanged** (the same-pose check, fake headset, sessions `2026-11-17_18-22-02-gx-mine2` and
+`2026-11-17_18-25-42-gx-base2`, main 1b1b702c against this change: `open BIOA_NOR00`, Shepard put at the CIC's console,
+`mevr galaxy use`, `exitGalaxyMap`): every layer's pose, `hostView`, `galaxyHologram` and `gamePointer` equal; on foot and after
+the exit both eyes and the HUD pixel for pixel; with the map open the eyes within 0.12 of 255 on average (no pixel over 8),
+the HUD 0.13% of pixels, the window's captures 4% (the map's opening still moving); `mevr-galaxy-preview`'s twelve PNGs byte
+for byte. Saves unchanged in all sessions. (`open BIOA_NOR10`, which tools/launch-game.ps1 names, opens nothing: NOR00 is
+the Normandy's persistent level.)
+
+**ME3's map is flown, not picked.** Its system map moves the Normandy with the left stick (or mouse deltas:
+`PC_GalaxyMouseMovement`/`Strafe`), A travels or buys fuel, LT scans, X exits. With the panel as the pointer's surface the
+movie took the pointer's mouse (`GalaxyMap.SendMouseEvent(6)` at the answered cursor) and the trigger clicked, but a click
+on the Pax label (`gx4`) or on Exit (`gx5`) changed nothing, and a ray on the panel kept LT from the map (the pointer owns
+the triggers). So ME3 keeps its own controls on the projector and the panel is no pointer surface
+(`Facts::galaxyUiPointer` 0). Whether the ray should steer the ship (a new interaction) is the owner's call.
+
+**Seen and not explained:** with the map open a blue horizontal light band crosses the pit at the disc's height in the eye
+images (`gx1`..`gx5`, `-left-world.png`: the world layer itself), not there on foot; the room's GalaxyMapProxy and its emitter
+are hidden then, so it is something else the map's mode shows (the map level's own flare or effect seen from the CIC?
+[verify] with `mevr find` near the projector while the map is open).
+
+**Not done on ME3** (in order): travel and its movie, orbit (mode 12) and
+the scan, the opening and closing transitions (a frame of the native presentation before the hold publishes is
+possible: not measured), recenter and session changes inside the map, save reload, then the headset.
+**ME2**: since 2026-11-17 (lane GX2) the same flow; the next section.
+
+## 2026-11-17: ME2's projector flow, on the sequels' one flow (lane GX2)
+
+**What runs on ME2** (fake headset, John's `Save_0036` read only, stretch `20261117-192445-759-LE2-gx2`, runs `galaxy-full1-200157`
+and `galaxy-final-201028`; research/le2-galaxy-table.md "The projector flow"): Shepard put at the CIC's elevator arrival streams
+the CIC in, at the console A opens the map (mode 9), the view stays Shepard's with the CIC in stereo, the game's map is a stereo
+disc on the projector (2.64 m across, 24 degrees off flat), its Flash UI on the panel on the same disc, the room's hologram
+hidden; X exits and the view is the game's again. The map's opening keeps the CIC loaded (no retention on ME2).
+
+**The code is one flow for the sequels** (Forks 3): `game/GalaxyProjectorFlow` (the shape of ME3's first adapter, lifted with a
+per-game `flow::Adapter`: the CIC's art visible, an optional retention, the depth of field) and ME2's adapter
+`game/Le2GalaxyCapture` (`BioA_Nor_110`; the projector and console have ME3's tag and mesh, so the finder is one rule).
+**ME3's `Le3GalaxyCapture` moves onto it next** (after lane GX3's interlude and on-foot reservation land: carry both into the
+flow so ME2 gets ME1's travel rule too). ME2's renderer: `GetMenuMode` not flat in modes 9/10 while
+`GalaxyOwnsPresentation`, `WorldViewHoldBegin/End` in `calcview_hook.cpp` (map modes only), the first person's hides at the
+held eyes (`WorldViewHeld` 2). The capture rig runs on LE2 without any capture hook (no post-process chain, as ME3's).
+
+**ME2-only finding:** with the game's depth of field on (upstream's `MELE2VR.ini`), the first held frames faulted the render
+thread at `MassEffect2.exe+0x98C25D` (the game hangs), with or without captures; the flow turns DOF off near the projector on
+foot and back away from it (`depthOfFieldOff`, `game/DepthOfFieldHold`; gotcha me2-scale-set-during-load).
+
+**No pointer** on ME2's map UI (`galaxyUiPointer` 0): a GUI-event click on Exit did nothing; the map keeps its own controls.
+ME2's opt-in flat table is retired.
+
+**Left on ME2:** travel (a relay's movie mid-map, ME1's 8.4 rule: GX3's interlude), orbit (mode 10) and the scanner in the
+window (the scanner's own stick and triggers: one probe a press), a briefing interrupting the map, recenter inside it, the
+headset; ray-aimed scanning is the owner's question (not built).
+
+The user requested the 2026-11-15 checkpoint to preserve work before usage runs out; its record follows.
 
 ## Intended result and current truth
 
@@ -172,6 +404,11 @@ contracts; they are not a claim that we possess official engine symbols.
 
 ### 1. Validate the final-target correction before adding camera behavior
 
+**Status 2026-11-17 (GX):** ran. The correction binds (`LE3 scene capture: final post effect bound its own 1552x1120
+target`), but every chain's picture stays black; ME3 captures without a chain now, which shows the map correctly
+(the top section). The `navigation.ps1` named below went with its worktree: `tools/le2-halcyon-run/galaxy.ps1` replaces it.
+Open: where the chain's output is lost (the top section's Ghidra notes), if bloom or the tone curve are wanted on the map.
+
 Use the existing protected original-AutoSave fixture and normal A interaction.
 Run `navigation.ps1 -OriginalAutoSave -ProjectorAudit -CaptureAudit -HoldSeconds 60`
 from the ignored native-test directory in this worktree. The script already
@@ -188,6 +425,11 @@ If the images remain wrong, trace target resolve/viewport and post-chain order;
 do not call a successful object spawn or layer submission a visual pass.
 
 ### 2. Hold the main view in the CIC using ME1's architecture
+
+**Status 2026-11-17 (GX):** done on ME3 with ME1's code (`galaxy_projector::HeldView`, `PutRenderHold`; the host's
+`galaxy_hologram::HoldViewBegin` through `MevrSeams::WorldViewHoldBegin` in ME3's calcview hook, which keeps its caller and
+primary-player checks and its FOV guard; `GalaxyOwnsPresentation` in the presentation decision). Not yet measured: the
+first frames of the opening and closing, a briefing interrupting the map, recenter inside it, tracking loss.
 
 Reuse `game/GalaxyMap::OnUpdateCamera`, `core/vr/WorldViewHold`, and
 `HostView::HoldBaseZ` patterns. Remember the unheld on-foot camera and room
@@ -211,6 +453,12 @@ On missing tracking/invalid world/capture failure, release coherently into the
 existing native fallback rather than leaving a frozen room or blank screen.
 
 ### 3. Complete projector composition, labels and pointer input
+
+**Status 2026-11-17 (GX):** the window on the measured disc (ME1's `windowScale` 0.7, round, backdrop 0.8), the Flash UI on
+the HUD panel on the same disc (labels on their objects in `gx2`'s raw snapshot), the room's GalaxyMapProxy and its emitter
+hidden. Picks: none on ME3 (its map is flown with the stick; `gx4`/`gx5` clicked a label and Exit through the movie's mouse
+to no effect; the top section). Not decided (the owner): whether the ray should steer the ship (a new interaction) or ME3's
+own controls stay, as now.
 
 Use the live measured projector's centre, plane, orientation and radius.
 Check the round mask against rectangular capture aspect: current displayed
@@ -243,6 +491,24 @@ legibility, comfort and GPU cost. The null driver cannot establish real headset
 frame pacing, motion comfort or intuitive physical interaction.
 
 ### 5. Apply the same shared flow to ME2 with its own native adapter
+
+**Status 2026-11-17 (GX2):** items 1-4 done (the section "2026-11-17: ME2's projector flow"); item 5 (orbit and the scan) left.
+
+**What ME2 needs, after GX's ME3 work (2026-11-17)** (the shared parts exist: `game/GalaxyProjector`, the host's
+`galaxy_hologram::HoldViewBegin/Holds`, `plugin/SequelOverlays`' window and disc panel, ME2's host compiles them already):
+1. ME2's renderer: call `MevrSeams::WorldViewHoldBegin/End` around the primary player's main view in its calcview hook, as
+   ME3's `calcview_hook.cpp` does (`[MEVR]`), and `MevrSeams::GalaxyOwnsPresentation` where its presentation decides the
+   galaxy's mono (`src/halcyon/le2/d3d_capture.cpp`); `MevrSeams::WorldViewHeld` for the first-person hides.
+2. The capture rig on LE2 (`game/SceneCaptureRig` is LE1/LE3 only): ME2's rows for its classes and functions in
+   `engine/ReflectCheck` (CheckLe3CaptureRig's list), then `#if` it in. ME3 showed that captures **without** a post-process
+   chain need no target hook (the normal finish draws them), so try that before ME2's final-target addresses (R31).
+3. ME2's adapter (an `Le2GalaxyCapture` beside ME3's, the shape of `Le3GalaxyCapture`): the CIC's projector (its actor,
+   tag and mesh in ME2's Normandy packages: unread), whether the map's entry unloads the CIC (ME3's retention question), the
+   map camera's centre (`BioCameraBehaviorGalaxy.m_pCenterObject` in ME2 too, [verify]), modes 9/10.
+4. `Facts::galaxyUiSteered` for ME2 once its map's movie is seen to take the GUI events; ME2's opt-in table then retires.
+5. Planet scanning (mode 10): the window holds the planet's capture the same way (the map modes include orbit); the scanner
+   stays on ME2's own stick and triggers (its `NativeMapInput` latch), one probe a press; whether the ray should aim the
+   scanner is the owner's call (a new interaction).
 
 Audit other pending ME2 branches before writing another implementation. Reuse
 the existing table controller, native input/trigger guards, shared capture rig,

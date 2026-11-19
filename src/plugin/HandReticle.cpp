@@ -7,11 +7,13 @@
 #include "core/vr/AimRay.hpp"
 #include "core/vr/Controllers.hpp"
 #include "core/vr/OverlayPlacement.hpp"
+#include "engine/GameAdapter.hpp"
 #include "plugin/Renderer.hpp"
 #include "plugin/TestLoop.hpp"
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -31,6 +33,7 @@ XrCompositionLayerQuad gReticleQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};
 bool gLoggedReticle = false;
 bool gLoggedFallback = false;
 int gReticleSource = -1;  // last logged: 0 none, 1 aim ray, 2 right controller
+bool gRayStale = false;   // last logged: the mod's last ray is over a second old (its game thread stalls)
 
 // A ring with a centre dot, light cyan with a dark rim so it reads on bright and dark backgrounds.
 // Premultiplied, sRGB-encoded (the swapchain's format).
@@ -122,10 +125,24 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) noexcept {
     // right controller's aim pose. Game-reticle suppression lasts throughout VR gameplay.
     // On foot; in the Mako (game mode 1, research/44) only on a ray the mod publishes (the controller's, while it aims the
     // turret), never the controller fallback.
-    std::uint64_t const now = GetTickCount64();
-    mevr::vr::aim_ray::Ray const ray = mevr::vr::aim_ray::Latest();
-    bool const producer = ray.sequence != 0 && now - ray.timeMs < 1000;
-    bool const makoRay = frame.gameMode == 1 && producer && ray.valid;
+    // Once the mod has published a ray the ring follows only its rays: while the game thread stalls (the mod sends one a
+    // tick) the ring stays where the mod last aimed it; the controller's aim pose is the fallback only before the mod's
+    // first ray (an older mod, or a host and mod that don't match). Until 2026-11-16 a ray over a second old fell back to
+    // the controller too, so a stall moved the ring off the gun's line (research/trilogy-seams.md "Found", lane U3).
+    mevr::vr::aim_ray::Ray const ray = mevr::vr::aim_ray::Latest(UINT64_MAX);  // its own valid flag, whatever its age
+    bool const producer = ray.sequence != 0;
+    bool const stale = producer && GetTickCount64() - ray.timeMs >= 1000;
+    if (stale != gRayStale) {
+        gRayStale = stale;
+        mevr::log::Info("overlays: {}", !stale ? "the mod's aim ray comes again"
+                                        : ray.valid ? "the mod's aim ray stopped coming (its game thread stalls): the ring stays "
+                                                      "where it last aimed"
+                                                    : "the mod's aim ray stopped coming (its game thread stalls): its last ray was "
+                                                      "no aim, so no ring");
+    }
+    // A vehicle's ray (ME1's Mako, mode 1; ME2's 1 is its power wheel, its Hammerhead 4: engine/GameAdapter.hpp's table).
+    bool const makoRay = mevr::engine::adapter::GameMode(frame.gameMode) == mevr::engine::adapter::Mode::Vehicle && producer &&
+        ray.valid;
     bool const reticleMode = frame.enabled && frame.handAim && (frame.gameMode == 0 || makoRay);
     XrVector3f origin{};
     XrVector3f direction{};

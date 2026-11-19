@@ -190,9 +190,104 @@ session `2026-11-15_00-04-13-lanee-le1pose`, the build of main 9ed1ed91 with thi
 100 uu/m), the HUD panel identical pixel for pixel, the eyes 0.10% and 0.06% of pixels apart by more than 32/255 (what animates
 between launches); the snapshot's new `"traversal"` block says `started: false`, and the log has no `traversal:` line.
 
+## The floor lock through the vault (lanes C3 and C4, 2026-11-16)
+
+**The problem.** Once the LE2 host published a floor sample (2026-11-15) the floor lock ran on ME2, and the vault's hands left the
+controllers again: `vault.ps1 -Runs 3 -Mode tap` gave 102 of 135, 107 of 142 and 99 of 133 ticks within 0.15 m (mean 0.33 m, max
+1.49 m), with `arm IK: body anchor: third person ... view 104 units from Shepard's animated head bone` mid-vault. The floor lock
+puts the eye at `pawn.Location.z - CollisionHeight + unitsPerMeter * the headset's eye height`, solved again every frame, and the
+mantle steps the pawn's place up to 1.1 m at a time while the game's camera travels smoothly over the wall
+(gotchas/floor-lock-through-a-traversal-move).
+
+**The rule** (`vr::floor_lock::MoveHold` in `core/vr/FloorLock`, unit-tested in `tests/FloorLockTests.cpp`; the host's
+`plugin/FloorLock` `Translate`): the mod's floor sample carries `PawnSample::traversalMove` (`game/Traversal`'s `Moving()`, in the
+struct's padding after `seated`: the size and the HostServices version are unchanged). From the tick before a move begins, the
+pawn's floor is held where it stood below the game's camera (`floorZ - rawCameraZ`: 163.0 units on the fixture) and the eye is
+solved from that floor with the headset's live eye height, so the eye is the game's camera plus a constant and a player who ducks
+mid-vault still ducks. A lock that comes on mid-move holds nothing until the next move.
+
+**The release** (lane C4). Released at the custom action's end (lane C3's first version, 36bc92aa), the eye dropped 52 units in one
+frame: the game's camera is still 0.51 m high there and at rest about 0.8 s later (the stance blends out over 1.0 s). So the hold
+lasts past the move until the pawn's floor is back within `releaseM` (0.02 m) of the held one, that is until the camera has settled
+over the pawn, and the eye then joins the fresh solve with a step of at most 2 cm; a camera that hasn't come back after `waitS`
+(1.5 s) is eased there at `easeMS` (0.5 m/s). The log (every line says "traversal", so `vault.ps1`'s run files keep them):
+`floor lock: a traversal move began: the pawn's floor held 163.0 units below the game's camera, correction +12.260 ...`,
+`floor lock: the traversal move ended after 0.92 s (65 frames): the held eye's largest step 2.1 units a frame ...; solved from the
+pawn's floor it would have stepped up to 59.0 units a frame; the game's camera is 50.9 units off its place over the pawn before
+the move: held until it settles`, `floor lock: the traversal hold released 0.61 s after the move's end (42 frames, the camera
+settled): ... the release -2.2 units`. The host's snapshot block `"floorLock"` has `"moveHold": "none" | "moving" | "settling"`.
+
+**Measured** (fake headset, Save 4, `CoverLink_10` slot 0, `vault.ps1 -Runs 3 -Mode tap`, `[Body] floorLock = 1`; stretches
+`20261116-165309-803-LE2-lane-c4-floorlock`, `...-165808-464-LE2-lane-c4-trace` and `...-172613-568-LE2-lane-c4-scaled`, each restored with
+`verification: 0 differences`):
+
+| | no floor lock (C2, 2026-11-15) | the floor lock, no hold (C3) | held to the action's end (C3) | held until the camera settles (C4) |
+|---|---|---|---|---|
+| ticks within 0.15 m, three vaults | 145/145, 143/143, 146/146 | 102/135, 107/142, 99/133 | 134/135, 134/135, 77/79 | 136/136, 134/134, 133/133 |
+| mean, max | 0.07, 0.08 m | 0.33, 1.49 m | 0.07, 0.51-0.52 m | 0.07; right 0.08, left 0.11 m |
+| `body anchor: third person` during a vault | none | each vault | none | none |
+| the eye's largest step a frame | the camera's | 40-56 units (the pawn's floor) | 2.0 units, then 52 at the release | 1.7-2.4 units; the release 2.1-2.4 |
+| released after the action's end | - | - | at once | 0.59-0.61 s (42 frames), the camera settled each time |
+
+**The left wrist's 0.11 m** is the landing, not the release: traced (`mevr traversal trace on`, one vault), the left wrist is 0.10-0.12
+m from its grip for 0.12 s of the blend-out (0.18-0.30 s after the action's end, the game's camera still 0.2-0.3 m over its rest), the right
+0.07-0.09; the same vault with `[Body] floorLock = 0` stays within 0.08 m. With the lock the eye is the player's height, 12.3 cm
+over the unscaled Shepard's camera (`correction +12.260`; body scale waits for Shepard standing holstered, and Save 4 has the pistol
+out: `body scale: 1.000 ... waiting for Shepard standing holstered`), so the replayed hands are 12 cm higher too, and the left arm in
+the landing crouch falls 4 cm short of them. Two more vaults (the trace's and a fourth) gave the same: 134/134 and 135/135, left 0.11, right 0.08 m (the floor lock off: 95/95, both 0.08).
+A scaled A/B waits for the holsters on ME2: `mevr body scale` is LE1's console only, and a holstered stand is what lets body scale
+learn Shepard's eye height (then the body is 1.075 times as tall and the arms reach with it).
+
+**LE1 unchanged** (no traversal move: `MoveHold` passes every result through untouched; the snapshot's `"floorLock"` gains
+`"moveHold": "none"`): LE1RESULT
+
+## The two-handed hold (lane C4, 2026-11-16)
+
+The owner, 2026-11-16: "For VR we may need to allow for vault with two handed, but we may want to consider vaulting with one hand.
+The controls could get sloppy." With the left hand on the gun (the support grip) ME2 sees LT held, LT zooms the weapon
+(`SFXWeapon_NativeBase.bIsZoomed`), and `CanPerformMantle`'s pawn test refuses a zoomed weapon (research/le2-vrik.md "Vaulting with
+the weapon held"): every two-handed vault was refused. `GameAdmits` (`game/Le2Traversal.cpp`) now clears the held weapon's zoom bit
+for its one call, next to `m_bCanMantleOutsideOfCover` and the stick's push (journalled `Traversal.bIsZoomed cleared (one call)`, put
+back in the same `__finally`; the heartbeat counts `asked with the weapon's zoom cleared`; logged once `traversal: the weapon is
+zoomed (the support grip's aim): its bIsZoomed cleared for the game's CanPerformMantle call only`). The game zooms on as before; the
+commit's own recheck goes through the same admission.
+
+**Measured** (fake headset, Save 4, the pistol in the right grip; stretches `20261116-191210-770-LE2-lane-c4-holsters` for `-Grip` and
+`20261116-204916-179-LE2-lane-c4-twohanded` for the two-handed ways, each restored with `verification: 0 differences`). Both ways replay the same double A; `-SupportRelease` (`make-vault-recording.py --support-release`)
+lets the left grip go as the second press goes down and squeezes it again 1.8 s later.
+
+| | the right grip alone (`-Grip`) | both hands kept on the gun (`-Grip -Support`) | the support grip let go for the mantle (`-Grip -Support -SupportRelease`) |
+|---|---|---|---|
+| the game's admission | admitted | refused before; admitted now (the zoom cleared) | admitted |
+| the camera mode at the start | Combat | TightAim (the zoom) | TightAim |
+| right wrist within 0.15 m of its grip | 137/137, 135/135, 134/134 (max 0.08) | 134/134 three times (max 0.10) | 94/145 to 95/145 (mean 0.28, max 0.80) |
+| left wrist | its controller: max 0.11 | on the gun (0.14 from its controller at rest): 117-119 of 134 within 0.15, max 0.17-0.18 | 82-83 of 145 (mean 0.30, max 0.80) |
+| arm IK's anchor | first person throughout | first person throughout | **third person for 0.7 s each vault** (`view 75-76 units from Shepard's animated head bone`) |
+| the floor lock's hold | 163 units below the camera, released 0.59-0.61 s after | 148 below (TightAim's lower camera), released 0.61 s after, the eye's largest step 6.7 units a frame in the settle | the same 148, released 0.91 s after |
+
+Letting go mid-move ends LT, the game leaves TightAim for its ordinary camera mode while the custom action plays, the view
+jumps 0.75 m from Shepard's animated head and arm IK takes its third-person frame: both hands leave their controllers by up to
+0.8 m. That is the sloppiness the owner expected. **Recommendation:** keep the hold through the mantle (what ships); letting go
+needs the camera mode held through the move before it can be offered. Snapshots of both are in the stretch (`vault-205540`,
+`vault-205606`: before the double tap and at the move's end). The plain vault after `holsters.ps1` was refused because that script
+ends with the pistol holstered (ME2 needs the combat action state: "With the weapon away the game refuses" above).
+
 ## What is left
 
-- **Arm IK across root-motion steps** (above): the goals should stay in the world when the mesh jumps; lane C's writer.
+- **ME2's observer has its own file since 2026-11-16** (lane GF2, docs/trilogy-parity-ledger.md Forks 4 step 1):
+  `game/Le2Traversal.cpp`, moved unchanged from `game/Traversal.cpp`, which keeps `[Traversal]`'s settings, the console's
+  `mevr traversal` surface and the dispatch to `le2::` and `le3::`. Fixture after the move: `vault.ps1 -Runs 3 -Mode tap`
+  vaulted 3 of 3 (session `20261116-173826-670-LE2-gf2-run4`: each `vault over: the custom action 0.90-0.91 s (stance
+  FromCombat)`), as before it (`20261116-153741-665-LE2-gf2-run2`, 3 of 3). A run under heavy machine load in between
+  (`...-gf2-run3`) vaulted 1 of 3: the second A of two double taps never reached the mod (the null headset's controllers
+  dropped out), not a refusal.
+
+- ~~Arm IK across root-motion steps~~ **done** (lane C2, 2026-11-15; research/le2-vrik.md "Arm IK across root-motion steps"): the
+  writer follows the camera's bone; through three vaults both wrists stay within 0.08 m of the controllers (0.07 standing).
+- ~~The floor lock through the vault~~ **done** (lanes C3 and C4, 2026-11-16; "The floor lock through the vault" above): the eye
+  rides the game's camera through the move and joins the floor-locked height once the camera has settled.
+- ~~**The two-handed hold**~~ **done** (lane C4, 2026-11-16; "The two-handed hold" above). The owner's pick between the hold kept
+  through the mantle (today) and letting go for it is open.
 - **The grips on ME2:** a held right grip is the pad's RB on ME2 today (the power wheel after 0.3 s; the LE2 host has no `gripHolds`
   yet), and the left grip LB (the weapon wheel). A vault with the gun held by a grip waits for the holsters' and the support grip's
   host services on LE2; nothing in the vault needs a free hand (it is A and where the player stands).
@@ -205,3 +300,120 @@ between launches); the snapshot's new `"traversal"` block says `started: false`,
   camera's angle), or it isn't drawn into the panel. Lane F's to settle (a pawn walking toward the cover, `mevr cover acquire`).
 - **Climb up** (`ClimbCover`, custom action 9): no slot climbs in this level; the code path is the same (`CanPerformClimb`), unseen.
 - **ME3:** ladders (`TryUseLadder`) and its vaults wait for Halcyon's ME3 renderer in our host; `core/vr/Traversal` is game-independent.
+
+## The stick's direction: vault or roll (design for the owner, 2026-11-16, lane GR; nothing built)
+
+The owner (2026-11-16, open question 7 of docs/trilogy-plan.md): "I'm curious if the analog direction will allow vault and roll."
+Asked: can a double A (or the game's own evade press) with the left stick's direction choose between a vault (toward an obstacle
+the game can mantle) and a roll or evade (any other direction), on ME3 and on ME2? **Yes on ME3, and it is the game's own idea:
+ME3's A already reads the stick to choose between a mantle, a climb and four rolls. ME2 has no roll at all**, so there the
+stick can only choose between a vault and nothing. Read from each game's script with the scanners named in this file's header
+(ME3: `local-tools\le3-traversal-survey\scanner`, whose `--game LE2` selects LE3 on ME3's `CookedPCConsole`) and ME3's coalesced
+`BioInput` (dumped with LegendaryExplorerCore's `CoalescedConverter.DecompileGame3ToAssets` into a scratch folder); the outputs
+are game code and stay out of git.
+
+### What each game does with A and the stick
+
+**ME3.** A is `Console_Action`: `Exclusive TryStandingJump | Exclusive Used | OnRelease StormOff | OnHold 0.2 StormOn |
+Exclusive PressAction | OnTap 0.3 TapAction | OnHold 0.3 HoldAction` (the same as `PC_Action`).
+- On the press, `SFXGameModeDefault.PressAction`: `TryAcquireCover(FALSE, TRUE)` (stop if it took cover), then
+  `TryCoverAction` (in cover only: the stick's `RawJoyUp > 0.8` with `CanPerformClimb` climbs, with `CanPerformMantle` and
+  `BioPawn.CanPerformMantleSlow` mantles; a peek with the stick sideways past 0.88 swat-turns or rolls), else `TryRoll`.
+- `TryRoll` (script, an exec, returns bool, no parameters): refused while move input is ignored, without a weapon, zoomed or
+  falling, or unless the pawn is `bCombatPawn`; it **cancels the reload before its last checks**; with the weapon not equipping
+  or putting down: `BioPlayerInput.RawJoyRight > 0.707` starts custom action 55 (roll right), `< -0.707` 54 (left), `RawJoyUp <
+  -0.707` 57 (back; not in an aim-back). Sideways wins over back. Forward does nothing here.
+- On a tap (released within 0.3 s), `TapAction`: `TryAcquireCover`, `TryCoverSlip`, `TryForwardRoll`, `TryExitCover`.
+  `TryForwardRoll` has `TryRoll`'s guards and its reload cancel; while storming with `RawJoyUp > 0.707` it tries cover instead;
+  otherwise `RawJoyUp > 0.707`, out of a high or mid cover, starts 56 (forward roll).
+- Out of cover the mantle has its own route: `CanPerformMantleSlow` finds an anchor through `FindCover(wide)` when the pawn
+  isn't in cover, and `BioPawn.TryEarlyMantle` (an event, action 32) is the sprint's vault, started by native code [verify
+  where].
+- So ME3's own rule is already "A, and the stick says which": forward at cover mantles or climbs, sideways or back rolls on the
+  press, forward rolls on the tap. **In VR today a single A with the stick pushed sideways or back rolls** (the pad's A reaches
+  the game and `PressAction` runs: away from cover, or with the opt-in no-snap, `TryAcquireCover` takes nothing and `TryRoll`
+  follows), and a forward tap rolls forward [verify in the game].
+- Our ME3 adapter (`game/Le3Traversal`, research/le3-traversal-adapter.md) calls `TryRoll` or `TryForwardRoll` itself on
+  `mevr traversal evade`, choosing by the same 0.707 thresholds from the native stick; its `Link.evadeDown` has no binding.
+  The double A requests a ladder or a vault only with `le3DoubleTap`, off.
+
+**ME2.** No player roll or evade exists: no `TryRoll`, no roll custom action, no `Dodge`; the only evade is the AI's Kismet
+action `SFXSeqAct_CoverUserEvade`. ME2's A ("What ME2 does" above) is use, climb or mantle in cover, cover, sprint on hold, exit
+on tap. Its `CanPerformMantle` itself requires the stick forward (`RemappedJoyUp >= DeadZoneThreshold`, `|RemappedJoyRight| <=
+RemappedJoyUp`); our vault sets the stick forward for that one call, so today the stick's real direction plays no part.
+
+**The stick the game sees.** In VR the left stick reaches the game as the pad's (Touch as pad 0), turned by the host for the
+head's or the hand's yaw (`walk = head | hand`) before the game reads it, so `RawJoyRight`/`RawJoyUp` are the push in the game's
+camera frame: "forward" is where the player walks, the frame the game also uses for its rolls (relative to the pawn, which faces
+the camera in combat). [verify] that the turn happens before `RawJoy*` (step 3 below).
+
+### The rule proposed
+
+**One traversal press, the double A (the owner's convention); the left stick chooses what it does.** At the second press of a
+double A (`core/vr/Traversal` `PressTracker`, `doubleTapS` 0.45 s):
+1. A selected usable takes the press, as today (`Exclusive Used` comes first in both games' bindings).
+2. Read the stick as the game will see it (`RawJoyRight`, `RawJoyUp`). Below 0.35 of a full push it is **centred**; from the
+   game's own 0.707 on an axis it is **pushed**; in between it counts as centred (no accidental roll).
+3. **Centred:** vault (or climb) if the game admits one here, exactly today's ME2 rule (within 0.39 m, the pawn facing within 45
+   degrees, the game's own `CanPerformMantle`); else nothing.
+4. **Pushed toward an admitted obstacle** (the push's world direction, the stick turned by the camera's yaw, within 45 degrees of
+   the slot's direction: the game's own facing window, `m_fClimbMantleFaceAngleThreshold` 0.7): vault or climb. If the game
+   refuses it (its facing, its landing), **nothing**: never a roll into the obstacle.
+5. **Pushed anywhere else:** ME3 rolls that way with the game's own calls and precedence (`TryRoll` for right, left and back,
+   sideways first; `TryForwardRoll` for forward), the adapter's existing `evade` route. ME2: nothing.
+6. **A single A never rolls** in VR (ME3): `TryRoll` and `TryForwardRoll` are script calls from `PressAction`, `TryCoverAction`
+   and `TapAction`, without parameters and returning a bool, so `engine/call_function` answer handlers can answer them `FALSE`
+   for the player's mode when the caller is one of those three and the press isn't ours, VR on foot, out of the game's cover. The
+   reload is then not cancelled either (the cancel is inside the answered call). Our double press then calls the same functions.
+
+**The alternative the owner may prefer:** keep ME3's single-A roll as the game has it (step 6 left out). It is faster (no
+second press) and the game's own feel, but in VR every A pressed while strafing with nothing selected rolls, and the first press
+of a double A with the stick pushed already rolls, so a pushed double A could no longer vault: the stick would then only choose
+on a centred double A. That is why the proposal withholds the single-A roll.
+
+### What the player feels
+
+- Standing at a crate, gun in hand: double-tap A and Shepard vaults it (today's ME2). Push the stick toward the crate and
+  double-tap: the same vault. Push left and double-tap: a roll to the left; back: a roll back; forward with no obstacle ahead:
+  a forward roll (ME3). A single A uses what is selected and otherwise does nothing of ours.
+- ME2: the same vault in every case where it vaults today; a pushed double tap away from an obstacle does nothing.
+- Holding A is the sprint (`OnHold 0.2 StormOn` in both sequels), so a double tap must be two taps; today's measured double
+  taps are 0.23-0.26 s apart.
+- Holstered: neither (ME3's rolls need a weapon and `bCombatPawn`; ME2's mantle needs the combat stance); the owner's earlier
+  question about a holstered vault stays open.
+- A roll moves the body about 3 m in under a second. The comfort mask (`[Traversal] mask = vignette | blink`) and the level view
+  (`view = level`, measured but not applied on ME3) apply as for the vault.
+
+### Conflicts and limits
+
+- **Use:** a selected object always wins (step 1).
+- **Sprint:** a press held past 0.2 s is the sprint; while it runs (A held) the double tap can't happen.
+- **Reload:** the game's rolls cancel the reload before their own last checks; the adapter's admission (reload, zoom, storm,
+  cover, custom action, ignored input, physics) runs first, as `mevr traversal evade` does today.
+- **Cover:** in the game's own cover (ME3 with snapping allowed) nothing of ours runs: `PressAction`'s own cover rules stay.
+- **Whose facing:** the game's vault admission checks the pawn's facing; step 4 checks the stick's direction. With the stick
+  toward the crate but the pawn turned away (combat faces the camera), the game refuses and nothing happens (step 4): open
+  question 3 of the plan (turn the pawn to the obstacle at the commit, or not) decides whether that case vaults.
+- **Seated play:** the same rule; the stick and A don't depend on standing.
+- **First person through a roll:** ME3 has its own camera modes for it (`SFXCameraMode_Roll`, `SFXCameraMode_ForwardRoll`);
+  whether Halcyon's ME3 first person keeps them first person is unknown [verify].
+
+### What to verify before building
+
+1. `mevr calltrace 5 roll` on ME3 while pressing A with the stick pushed: `TryRoll` and `TryForwardRoll` arrive through
+   CallFunction with `PressAction` / `TapAction` / `TryCoverAction` as the caller (else step 6 needs another seam).
+2. With step 6's answer on, a single A pushed sideways starts no custom action 54-57 and doesn't cancel a reload; the cover
+   and use parts of `PressAction` and `TapAction` still run.
+3. The stick the game reads against the controller's: push each way with `walk = head` and `walk = hand` and read
+   `BioPlayerInput.RawJoyRight`/`RawJoyUp` (`mevr props`).
+4. At an ME3 vault fixture (none known yet: T05's) and ME2's Save 4 crate (`vault.ps1`): a double A centred, toward, left,
+   right, back and forward with no obstacle; each must start exactly one action (ME3 31/32 or 33, 55, 54, 57, 56; ME2 10, or
+   nothing), and a single A none.
+5. In the headset: whether a roll is comfortable in first person, with and without the mask.
+
+### Where it would live
+
+A pure chooser in `core/vr/Traversal` (stick, the nearest admitted slot's direction and the thresholds in; centred, toward a
+slot, or a roll direction out; unit-tested), called by the per-game adapters at the commit: `game/Le2Traversal` (vault or
+nothing) and `game/Le3Traversal` (vault, climb, the rolls, and step 6's answer handlers). Those files belong to lanes GF2 and C4
+today; the owner decides first.

@@ -66,4 +66,53 @@ private:
     unsigned covered_ = 0;
 };
 
+// The sequels' loads end in a cinematic mode for a moment (ME2: 0.27-0.30 s of its mode 6 after every load's movie, the
+// picture black), which their renderers showed as the 3D cinema screen between the load's flat panel and the world: two
+// changes of view for nothing (research/56 "The sequels"). A conversation or cinematic right after a movie is kept as the
+// movie (the flat panel) until it has lasted kHoldMs; gameplay meanwhile ends it unseen; one that lasts is the game's. ME1's
+// loads have no such tail (LE1 doesn't use it; inline, so LE1's objects don't carry it).
+class LoadTail {
+public:
+    static constexpr std::uint64_t kHoldMs = 500;
+
+    // Each frame: `movie` the renderer's own movie signal this frame (a load's or a prerendered one; never this class's
+    // answer), `cinematic` the mode is a conversation or cinematic. True: show this frame as the movie.
+    bool Hold(bool movie, bool cinematic, std::uint64_t nowMs, std::uint64_t holdMs = kHoldMs) {
+        if (movie) {
+            afterMovie_ = true;
+            waiting_ = false;
+            return false;
+        }
+        if (!afterMovie_) {
+            return false;
+        }
+        if (!cinematic) {
+            if (waiting_) {
+                ++covered_;  // gameplay (or anything else) came first: the tail was never shown
+            }
+            afterMovie_ = false;
+            waiting_ = false;
+            return false;
+        }
+        if (!waiting_) {
+            waiting_ = true;
+            sinceMs_ = nowMs;
+        }
+        if (nowMs < sinceMs_ || nowMs - sinceMs_ >= holdMs) {
+            afterMovie_ = false;  // it lasted: the game's cinematic, shown as it would be
+            waiting_ = false;
+            return false;
+        }
+        return true;
+    }
+    // Tails that ended in another mode before the hold did (never shown), for the log.
+    unsigned Covered() const { return covered_; }
+
+private:
+    bool afterMovie_ = false;  // the last frame that wasn't this tail was a movie
+    bool waiting_ = false;     // a tail is being held
+    std::uint64_t sinceMs_ = 0;
+    unsigned covered_ = 0;
+};
+
 } // namespace mevr::vr::presentation

@@ -21,14 +21,17 @@
 // SeatedLayout supplies a separate fixed-meter reach layout; it never uses the standing scale.
 namespace mevr::ik::body_slots {
 
-inline constexpr int kSlots = 4;
+inline constexpr int kSlots = 5;
+// The SMG's slot (the sequels' fifth weapon family; ME1 has no SMG: its game code switches the slot off).
+inline constexpr int kSmgSlot = 4;
 // The eye height the default offsets are written for (meters, standing).
 inline constexpr double kReferenceEyeHeight = 1.65;
 
-// The game's ranged weapon types (LE1 EBioItemWeaponRangedType = ESwitchToWeapon = quick slot).
-enum class Weapon : int { None = -1, Pistol = 0, Shotgun = 1, AssaultRifle = 2, Sniper = 3 };
+// The game's ranged weapon types (LE1 EBioItemWeaponRangedType = ESwitchToWeapon = quick slot; the sequels' weapon families,
+// game/Le2Squad WeaponType: the SMG is ME2's SFXWeapon_AutoPistol_Base, ME3's SFXWeapon_SMG_Base).
+enum class Weapon : int { None = -1, Pistol = 0, Shotgun = 1, AssaultRifle = 2, Sniper = 3, Smg = 4 };
 char const* Name(Weapon weapon);
-// "pistol", "shotgun", "rifle" / "assault" / "assaultrifle", "sniper", "none" / "off"
+// "pistol", "shotgun", "rifle" / "assault" / "assaultrifle", "sniper", "smg" / "submachinegun", "none" / "off"
 // (case-insensitive); nullopt for anything else.
 std::optional<Weapon> ParseWeapon(std::string_view text);
 
@@ -41,14 +44,28 @@ struct Slot {
     double radius = 0.13;
 };
 
+// Where the SMG's slot is ([Holsters] smgSlot; research/le2-vrik.md "The SMG at the small of the back"): the front of the
+// right thigh (lane WP's, the default until the owner chooses) or the small of the back (the owner's ask, 2026-11-16: the
+// sequels' own lower-back attach slot, EASlot_LowerBack, where the game hangs the shotgun). One slot, kSmgSlot, either way.
+enum class SmgPlace : int { ThighRight = 0, LowerBack = 1 };
+char const* Name(SmgPlace place);  // "thighRight" / "lowerBack": the slot's name and its [Holsters] key
+// "thighRight" / "thigh", "lowerBack" / "back" (case-insensitive, spaces, '_' and '-' ignored); nullopt for anything else.
+std::optional<SmgPlace> ParseSmgPlace(std::string_view text);
+// The SMG's slot at that place, standing (at the reference eye height) and seated (fixed meters).
+Slot SmgSlot(SmgPlace place);
+Slot SeatedSmgSlot(SmgPlace place);
+
 struct Layout {
     std::array<Slot, kSlots> slots;
     double eyeHeight = kReferenceEyeHeight;  // the player's standing eye height: scales the offsets
     double exitMargin = 0.05;  // a hand leaves a slot this far past its radius; also the "near" margin
+    SmgPlace smgPlace = SmgPlace::ThighRight;  // which place slots[kSmgSlot] is (SeatedLayout follows it)
 };
 // The user's layout (research/19, "Default slots"): pistol at the right hip, assault rifle over the
-// right shoulder, shotgun at the left hip (a cross-draw; the belly until 2026-10-25), sniper rifle over the left shoulder.
-Layout DefaultLayout();
+// right shoulder, shotgun at the left hip (a cross-draw; the belly until 2026-10-25), sniper rifle over the left shoulder,
+// the SMG at the front of the right thigh (lane WP, 2026-11-16: a recommendation until the owner's headset check) or, with
+// `smg` LowerBack, at the small of the back.
+Layout DefaultLayout(SmgPlace smg = SmgPlace::ThighRight);
 // Seated reach points are fixed meters from the live neutral eye, independent of standing
 // height/avatar scale. Keep the standing layout's weapon assignments (including disabled slots).
 Layout SeatedLayout(Layout const& standing);
@@ -93,9 +110,9 @@ enum class Holster {
 
 struct Input {
     // The hand's distance from each slot's center (meters); negative or not finite: the slot is off.
-    std::array<double, kSlots> distance{-1.0, -1.0, -1.0, -1.0};
+    std::array<double, kSlots> distance{-1.0, -1.0, -1.0, -1.0, -1.0};
     std::array<double, kSlots> radius{};
-    std::array<Weapon, kSlots> weapon{Weapon::None, Weapon::None, Weapon::None, Weapon::None};
+    std::array<Weapon, kSlots> weapon{Weapon::None, Weapon::None, Weapon::None, Weapon::None, Weapon::None};
     std::array<bool, kSlots> available{};  // the player carries a weapon of the slot's type
     double exitMargin = 0.05;
     bool tracked = true;     // the hand's pose is valid (false: it's in no slot)
@@ -107,6 +124,11 @@ struct Input {
     // `held` turns on about 0.01 s into a draw, but the game ignores TryHolster until the switch is over, so a
     // let-go then is kept (Returning, no grace) and acted on once the switch has finished.
     bool switching = false;
+    // The hand holds a weapon no slot holds that a switch away would lose (ME3's heavy weapon: its own SwitchWeapon calls
+    // SFXHeavyWeapon.PutDownWeapon, which in single player throws it away). A squeeze at a slot that would draw is refused
+    // (Action::SwitchRefused); only the game's weapon wheel switches away (the owner, 2026-11-17, docs/trilogy-plan.md
+    // question 13). ME2's switch keeps its heavy weapon and ME1 has none: false there.
+    bool switchLosesHeld = false;
     Holster holster = Holster::OwnSlot;
     // The grip holds the gun ([Holsters] gripHolds, research/19 "The right grip holds the gun"):
     // squeeze at a slot to draw, keep squeezing to carry, let go at the gun's own slot to holster it;
@@ -134,6 +156,8 @@ enum class Action {
     ReturnArmed,       // let go away from the gun's slot: it goes back after the grace
     ReturnCancelled,   // ... squeezed again in time (or the gun changed or went away)
     Return,            // ... the grace is over: put the gun away (as Holster)
+    SwitchRefused,     // squeezed at a slot whose gun would be drawn, but the weapon in hand would be lost by the switch
+                       // (Input::switchLosesHeld): nothing drawn
 };
 char const* Name(Action action);
 
@@ -167,6 +191,9 @@ public:
     bool Busy() const { return inSlot_ >= 0 || phase_ == Phase::HolsterArmed || (phase_ == Phase::Grab && !holds_); }
     // gripHolds: the seconds left before a let-go gun goes back (negative: none running).
     double ReturnLeft() const { return phase_ == Phase::Returning ? returnLeft_ : -1.0; }
+    // gripHolds: the Draw this step asked for was refused (the sequels: where the game allows no combat), so nothing is on
+    // its way and the grip's release has nothing to send back.
+    void ForgetDraw() { drawn_ = Weapon::None; }
     void Reset();
 
 private:
@@ -187,6 +214,34 @@ private:
 };
 // gripHolds: a let-go draw still on its way is waited for this long before the return gives up.
 inline constexpr double kReturnWaitForDrawSeconds = 2.0;
+
+// ---- A hand behind the back (lane SG, research/le2-vrik.md "The SMG at the small of the back") ----------------------
+// Inside-out headsets (Quest, PS VR2) can't see a controller behind the body: OpenXR then reports its pose not valid for a
+// moment (our controllers' gripValid false), which used to turn the slots off and lose the squeeze. A slot that keeps a lost
+// hand (today only the SMG's lowerBack: KeepsLostHand) lets the slots stay live with the hand's last valid place on the body
+// for a short while, so a squeeze there still draws. The place is kept in the body frame (right, up, forward from the
+// anchor), so it moves with the body, not the room.
+// The slot whose place keeps a lost hand: the SMG's at the small of the back, while it's on.
+bool KeepsLostHand(Layout const& layout, int slot);
+class LostHand {
+public:
+    // Before this tick's frame is known: with the pose not valid, may the slots stay live (a place kept, and `seconds`
+    // not used up by this tick's `deltaSeconds`)?
+    bool Keeps(double seconds, double deltaSeconds) const;
+    // The kept place in this tick's frame, the clock advanced (call only after Keeps said yes).
+    Vec3 Kept(Frame const& frame, double deltaSeconds);
+    // A valid pose: tracked again (the clock stops); `keep` (the hand is in or near a slot that keeps a lost hand)
+    // remembers its place on the body, else nothing is kept.
+    void Tracked(Vec3 hand, Frame const& frame, bool keep);
+    bool Holding() const { return lostSeconds_ >= 0.0; }
+    double LostSeconds() const { return lostSeconds_; }  // negative: tracked
+    void Reset();
+
+private:
+    bool have_ = false;
+    Vec3 body_{};  // the kept place: right, up, forward from the anchor (meters)
+    double lostSeconds_ = -1.0;
+};
 
 // ---- Contact haptics (research/19, "Haptics as contact") ----------------------------------------
 // Like a physical holster the hand bumps into: a continuous buzz while the hand overlaps a slot,

@@ -53,4 +53,15 @@ float UiPanelWidthM(float fallbackM);
 // Snapshot JSON ("galaxyHologram").
 std::string StatusJson();
 
+// The view held at Shepard's while the map is open in the CIC (research/51 section 8.1; every game, game/GalaxyProjector):
+// with the mod's render hold fresh, the held view goes into the player camera's POV for the main view's CalcSceneView only (the
+// game keeps its map camera for its labels, picks and the window's captures). Game thread. `wanted`: the galaxy owns this
+// build's view (also when the write failed: no other hold takes it then). True: held, call HoldViewEnd after the build. LE1's
+// MevrBridge::GalaxyViewSwapBegin and the sequels' MevrSeams::WorldViewHoldBegin.
+bool HoldViewBegin(int gameMode, bool& wanted) noexcept;
+void HoldViewEnd() noexcept;
+// Any thread: the map is open over the CIC's projector in game mode `gameMode` (the mod's scene fresh, in the world, anchored):
+// the map's modes are no flat presentation (the room in stereo around the window). LE1's MevrBridge::GalaxyHeld's rule.
+bool Holds(int gameMode) noexcept;
+
 } // namespace mevr::host::galaxy_hologram

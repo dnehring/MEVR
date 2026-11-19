@@ -18,6 +18,7 @@
 #include "ue3/Handles.hpp"
 #include "ue3/Memory.hpp"
 #include "ue3/Runtime.hpp"
+#include "engine/GameAdapter.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -53,7 +54,7 @@ ue3::FieldRef gNextPawn{"Engine.Pawn", "NextPawn", ue3::kEveryGame};
 ue3::FieldRef gLastRenderTime{"Engine.Actor", "LastRenderTime", ue3::kEveryGame};
 ue3::FieldRef gTimeSeconds{"Engine.WorldInfo", "TimeSeconds", ue3::kEveryGame};
 
-ue3::FunctionRef gIsHostileFn{"SFXGame.BioPawn.IsHostile", ue3::kEveryGame};
+ue3::FunctionRef gIsHostileFn{engine::adapter::kIsHostileFunction, ue3::kEveryGame};  // ME3: Engine.Pawn's
 #if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 ue3::FunctionRef gIsDeadFn{"Engine.Pawn.IsDead", ue3::kEveryGame};
 #else
@@ -61,6 +62,17 @@ ue3::FunctionRef gIsDeadFn{"SFXGame.BioPawn.IsDead"};
 #endif
 ue3::FunctionRef gGetPercentHealthFn{"SFXGame.BioEpicPawnBehavior.GetPercentHealth"};
 ue3::FunctionRef gIsInCombatActionStateFn{"SFXGame.BioPawn.IsInCombatActionState", ue3::kEveryGame};
+#if !defined(MEVR_GAME_LE1)
+// The sequels' "a fight is on": the flag the game keeps (engine::adapter::kInCombatClass), on WorldInfo.Game or .GRI.
+ue3::FieldRef gCombatHolder{"Engine.WorldInfo", engine::adapter::kInCombatHolder, ue3::kEveryGame};
+ue3::FieldRef gGameInCombat{engine::adapter::kInCombatClass, "bInCombat", ue3::kEveryGame};
+
+bool GameInCombat(ue3::Object* pawn) {
+    ue3::Object* const world = gWorldInfo.Read<ue3::Object*>(pawn).value_or(nullptr);
+    ue3::Object* const holder = ue3::runtime::IsAlive(world) ? gCombatHolder.Read<ue3::Object*>(world).value_or(nullptr) : nullptr;
+    return ue3::runtime::IsAlive(holder) && gGameInCombat.ReadBool(holder).value_or(false);
+}
+#endif
 // The level's cover (research/54 "Landmarks"): CoverLink slots, each at the link's place plus its offset in the link's axes
 // (the rows are game/SquadOrders' retreat's).
 ue3::ClassRef gCoverLink{"Engine.CoverLink", ue3::kEveryGame};
@@ -296,11 +308,13 @@ void ReadScene(ue3::Object* controller, ue3::Object* pawn, engine::TrackingFrame
     engine::UnrealVector const forward = engine::OrientationToWorld(frame, frame.head.orientation).forward;
     scene.headYawDeg = static_cast<float>(std::atan2(forward.y, forward.x) * 180.0 / 3.14159265358979);
     ue3::Object* const held = weapon::HeldObject();
-#if defined(MEVR_GAME_LE3)
-    // LE3 has no BioPawn.IsInCombatActionState; use its native combat-input admission.
-    scene.combat = held != nullptr && le2_squad::CanOrder();
-#else
+#if defined(MEVR_GAME_LE1)
     scene.combat = CallBool(pawn, gIsInCombatActionStateFn.Get());
+#else
+    // The sequels: the game's own fight (ME3 keeps a gun in the hand whether or not anyone fights, ME2 has no
+    // IsInCombatActionState), so a standing order's "calm" (core/vr/SquadStanding) waits for the game's combat end, as ME1's
+    // waits for the weapon to go away (the ME3 audit's PWR-31).
+    scene.combat = GameInCombat(pawn);
 #endif
     scene.shepardWeapon = held != nullptr ? squad_weapons::WeaponTypeOf(held) : -1;
     // The party, as the squad menu read it (names, classes, quick slots, health).

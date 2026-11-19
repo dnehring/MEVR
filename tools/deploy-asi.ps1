@@ -81,6 +81,17 @@ if ($hotReload) {
     $mod = Join-Path $out "${name}_mod.dll"
     [IO.File]::WriteAllText($modPathFile, $mod)
     Write-Output "Hot reload: $name.modpath -> $mod"
+    # Without the .modpath the host loads ASI\<GAME>MEVR_mod.dll, so that copy must match the host too: on 2026-11-17 a
+    # Nov 9 mod left there ran under a new host once the .modpath had gone (Thespian and the voice orders off, sizes unequal).
+    $asiMod = Join-Path $asiDir "${name}_mod.dll"
+    try {
+        Copy-Item $mod $asiMod -Force
+        $modPdb = [IO.Path]::ChangeExtension($mod, '.pdb')
+        if (Test-Path $modPdb) { Copy-Item $modPdb ([IO.Path]::ChangeExtension($asiMod, '.pdb')) -Force }
+        Write-Output "Mod fallback: $asiMod (the same build)"
+    } catch {
+        Write-Warning "Couldn't refresh $asiMod (locked while the game runs?): without the .modpath the host would load that older copy"
+    }
 } elseif (Test-Path $modPathFile) {
     Remove-Item $modPathFile -Confirm:$false
 }
@@ -260,6 +271,18 @@ if ($Game -eq 'LE2') {
     if (-not (Test-Path $ini2)) {
         Copy-Item (Join-Path $PSScriptRoot '..\src\halcyon\le2\runtime\MELE2VR.ini') $ini2
         Write-Output "Installed Halcyon's ME2 MELE2VR.ini (upstream's, next to MassEffect2.exe)"
+    }
+}
+# LE3 runs Halcyon's ME3 renderer (src/halcyon/le3), which reads MELE3VR.ini next to MassEffect3.exe. Install ours once
+# (src/halcyon/le3/runtime/MELE3VR.ini: the runner's renderer preview without its diagnostics): stereo, head look, no head
+# aim, 3072x2216 and each eye's own frustum (the owner's answer to docs/trilogy-plan.md question 17), which Halcyon writes
+# into GamerSettings.ini (tools/vr-game-settings.ps1 -Game LE3 writes the same size and the borderless window it needs).
+# The rest of the MEVR baseline is pinned in code (me2_menu.cpp ApplyMevrBaseline). A file already there is left alone.
+if ($Game -eq 'LE3') {
+    $ini3 = Join-Path $bin 'MELE3VR.ini'
+    if (-not (Test-Path $ini3)) {
+        Copy-Item (Join-Path $PSScriptRoot '..\src\halcyon\le3\runtime\MELE3VR.ini') $ini3
+        Write-Output "Installed ME3's MELE3VR.ini (src/halcyon/le3/runtime: 3072x2216, each eye's own frustum; next to MassEffect3.exe)"
     }
 }
 Write-Output "Log: $(Join-Path $bin "Logs\$name.log")"

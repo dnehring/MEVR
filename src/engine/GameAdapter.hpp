@@ -69,9 +69,27 @@ inline constexpr bool IsFlatScreenMode(int mode) {
         context == Mode::Movie || context == Mode::Galaxy || context == Mode::Orbital || context == Mode::Minigame;
 }
 inline constexpr bool IsConversationMode(int mode) { return GameMode(mode) == Mode::Conversation; }
+// Where the right grip holds the gun (game/Holsters, ME1's rule): on foot and in the two wheels the game opens from there
+// (paused in them: a held grip must not turn into RB, nor the click that opened the power wheel). ME1's modes 0, 2, 3.
+inline constexpr bool IsFootOrWheelMode(int mode) {
+    Mode const context = GameMode(mode);
+    return context == Mode::OnFoot || context == Mode::PowerWheel || context == Mode::WeaponWheel;
+}
 inline constexpr bool IsGalaxyMode(int mode) { return GameMode(mode) == Mode::Galaxy; }
 inline constexpr bool IsOrbitalMode(int mode) { return GameMode(mode) == Mode::Orbital; }
 inline constexpr bool IsMapMode(int mode) { return IsGalaxyMode(mode) || IsOrbitalMode(mode); }
+// Gameplay whose HUD goes on the body-locked HUD panel (ME1's rule, plugin/HudPanel): on foot, the vehicle, the power and
+// weapon wheels, the squad command, and ME3's Atlas and injured Shepard; not conversations, cinematics, GUI screens, movies,
+// the maps or a minigame. ME1's and ME2's numbers 0..4 exactly.
+inline constexpr bool IsHudGameplayMode(int mode) {
+    switch (GameMode(mode)) {
+    case Mode::OnFoot: case Mode::Vehicle: case Mode::Atlas: case Mode::PowerWheel: case Mode::WeaponWheel:
+    case Mode::Command: case Mode::Injured:
+        return true;
+    default:
+        return false;
+    }
+}
 inline constexpr bool IsWristMenuMode(int mode) {
     auto const context = GameMode(mode);
     return context == Mode::OnFoot || context == Mode::Gui || context == Mode::Minigame;
@@ -229,6 +247,151 @@ inline std::optional<ue3::Layout> ReflectionLayout() {
 inline constexpr bool kModulesOnLayer = true;
 #else
 inline constexpr bool kModulesOnLayer = false;
+#endif
+
+// Hosts before HostServices v43 didn't say whether the frame's second eye is a replay of the first's draws; the mod
+// read [Performance] sharePass itself. Only LE1's hosts ever replayed (plugin/RenderLevers' sharePass), so only there
+// does a newer mod on such a host keep the file's rule (game/SystemSettings' LightEnvironmentShadows entry).
+#if defined(MEVR_GAME_LE1)
+inline constexpr bool kOlderHostReplaysSecondEye = true;
+#else
+inline constexpr bool kOlderHostReplaysSecondEye = false;
+#endif
+
+// The engine's dynamic shadows in VR (game/SystemSettings' built-in `DynamicShadows`; a player's [SystemSettings]
+// DynamicShadows still wins). Off on every game. ME1: its cost lever since research/35 (366 shadow draws and 0.6 ms a
+// frame; with the grass radius the render thread at a heavy Eden Prime spot went from 9.35 to 6.88 ms), whatever sharePass
+// says. The sequels had them on from the morning of 2026-11-17 (0.2-0.3 ms on ME2, each eye a render of its own:
+// research/sequel-render-levers.md) until the owner's headset test the same night: the shadows differed between the left
+// and the right eye on ME2, as ME1's did, and the owner asked for them off in both eyes.
+inline constexpr bool kVrDynamicShadows = false;
+
+// The light environments' character shadows (game/SystemSettings' `LightEnvironmentShadows`; a player's [SystemSettings]
+// value still wins). ME1 turns them off only while the host's second eye is a replay (HostServices v43); the sequels
+// always (the owner, 2026-11-17: "disable the shadows entirely for both eyes"; DynamicShadows False alone left ME1's
+// character shadows drawn, research/37 2026-11-13).
+#if defined(MEVR_GAME_LE1)
+inline constexpr bool kVrCharacterShadowsOff = false;
+#else
+inline constexpr bool kVrCharacterShadowsOff = true;
+#endif
+
+// Who is an enemy and who is down (the hand power wheel's lock, the squad context, VR cover's shooters, the squad's orders,
+// melee's enemy in reach): ME1's and ME2's BioPawn answers IsHostile itself; ME3's BioPawn has none, so its question is
+// Engine.Pawn's (as game/Melee found; with BioPawn's name ME3's lock, squad context and VR cover saw no hostile at all,
+// lane AU2 on the combat fixture, 2026-11-18). The death question: ME1's BioPawn.IsDead, the sequels' Engine.Pawn.IsDead.
+// Both take `Other` / nothing and return a bool on every game.
+#if defined(MEVR_GAME_LE3)
+inline constexpr char const* kIsHostileFunction = "Engine.Pawn.IsHostile";
+#else
+inline constexpr char const* kIsHostileFunction = "SFXGame.BioPawn.IsHostile";
+#endif
+#if defined(MEVR_GAME_LE1)
+inline constexpr char const* kIsDeadFunction = "SFXGame.BioPawn.IsDead";
+#else
+inline constexpr char const* kIsDeadFunction = "Engine.Pawn.IsDead";
+#endif
+
+// The game's own "a fight is on" (its combat music and AI state): what a standing squad order's "calm" waits out
+// (game/SquadContext's scene.combat, core/vr/SquadStanding; the ME3 audit's PWR-31). ME1 asks BioPawn.IsInCombatActionState
+// (the weapon drawn, which ME1 does in every fight). ME2 has no such function and ME3 keeps a gun in the hand on a mission,
+// so the sequels read the flag the game keeps: ME2's on its GameInfo (WorldInfo.Game, SFXGame.SFXGame.bInCombat), ME3's on its
+// replication info (WorldInfo.GRI, SFXGame.SFXGRI.bInCombat).
+#if defined(MEVR_GAME_LE3)
+inline constexpr char const* kInCombatClass = "SFXGame.SFXGRI";
+inline constexpr char const* kInCombatHolder = "GRI";
+#elif defined(MEVR_GAME_LE2)
+inline constexpr char const* kInCombatClass = "SFXGame.SFXGame";
+inline constexpr char const* kInCombatHolder = "Game";
+#endif
+
+// ME3's transient action cameras (SFXCameraMode_Roll, _Melee, _HitReaction, _EnterCover; vr::IsActionCamera): the game
+// swaps to one for about half a second on a roll, a melee, a hit or a cover entry. The owner (2026-11-18, docs/trilogy-plan.md
+// "Answered 2026-11-18"): the player stays in first person there, the view level and sliding with the body, the floor held,
+// the snap turn still the player's, the camera shakes off. ME1 and ME2 have no such cameras (no such classes).
+#if defined(MEVR_GAME_LE3)
+inline constexpr bool kActionCameras = true;
+#else
+inline constexpr bool kActionCameras = false;
+#endif
+
+// The shouldered gun (game/SupportGrip, game/ZoomedShots; the ME2 and ME3 audits' WPN-09, docs/trilogy-plan.md "Answered
+// 2026-11-18, later": option B). kSupportGripHoldsLt: both hands on the gun at the shoulder hold LT, the game's own aimed fire
+// (ME1: its accuracy, no camera of its own on a rifle). The sequels' LT is SFXGameModeDefault.TightAim -> SFXWeapon.SetZoomed
+// (true): the camera's zoom, a sniper's sway, ME2's sniper time dilation and the refusals of melee and the roll; there the grip
+// holds no LT, and the shot's own calculations below are made as zoomed instead, each for its own call only.
+// kZoomedCalls: those calculations, script functions a script calls (engine/CallFunction's scoped handlers): the per-tick
+// accuracy (UpdatePlayerAccuracy: the zoomed base inaccuracy, fire penalty and recovery; its object the player's inventory
+// manager), the spread's range (GetWeaponAimErrorRange) and ME3's sniper damage (unzoomed, SniperRifleDamagePenalty). ME3's
+// shotgun cone (SFXWeapon_Shotgun_Base.PollLatentFire's ZoomAccuracyBonus) is a timer's call, which ProcessEvent makes: no
+// CallFunction call to bracket (research/le2-vrik.md "The shouldered gun on the sequels").
+#if defined(MEVR_GAME_LE1)
+inline constexpr bool kSupportGripHoldsLt = true;
+#else
+inline constexpr bool kSupportGripHoldsLt = false;
+struct ZoomedCall {
+    char const* function;
+    bool onWeapon;  // the call's object is the weapon (else the player's inventory manager: the held weapon's flag)
+};
+// kAccuracyOwner: the class whose `Accuracy` UpdatePlayerAccuracy writes (the measurement of a shouldered shot's accuracy).
+#if defined(MEVR_GAME_LE3)
+inline constexpr ZoomedCall kZoomedCalls[] = {
+    {"SFXGame.SFXPlayerInventoryManager.UpdatePlayerAccuracy", false},
+    {"SFXGame.SFXWeapon.GetWeaponAimErrorRange", true},
+    {"SFXGame.SFXWeapon_SniperRifle_Base.GetFireModeBaseDamage", true},
+};
+inline constexpr char const* kAccuracyOwner = "SFXGame.SFXPlayerInventoryManager";
+#else
+inline constexpr ZoomedCall kZoomedCalls[] = {
+    {"SFXGame.SFXInventoryManager.UpdatePlayerAccuracy", false},
+    {"SFXGame.SFXWeapon.GetWeaponAimErrorRange", true},
+};
+inline constexpr char const* kAccuracyOwner = "SFXGame.SFXInventoryManager";
+#endif
+#endif
+
+// Our own scene captures (the scope's zoomed render, game/ScopeCapture) with the player's post-process chain. ME1: yes
+// ([Sights] scopeCapturePost = 1 by default; the host's RenderLevers binds a capture's final pass to its own target,
+// research/39). The sequels: never, whatever the setting says: ME3's captures came out black with any chain (lane GX3,
+// research/le3-galaxy.md), and ME2's final pass has no hook yet that keeps it off the eye (the parity ledger's R31), so
+// their galaxy captures run without one too (game/GalaxyProjectorFlow).
+#if defined(MEVR_GAME_LE1)
+inline constexpr bool kCapturePostProcess = true;
+#else
+inline constexpr bool kCapturePostProcess = false;
+#endif
+
+// The walk's fields (game/CombatStance section C, research/38 "Linear walking"; the ME2 and ME3 audits' MOV-14 to MOV-16).
+// kWalkOwnerClass: the class whose object holds the move control's state (m_eAnimStartState, m_eAnimStopState,
+// m_eAnimSkidState and, where they exist, the m_bEnable{Start,Stop,Skid}Anim flags): ME1's and ME2's pawn behaviour
+// (BioPawn.m_oBehavior), ME3's pawn itself (its locomotion moved onto BioPawn and SFXModule_Locomotion).
+// kWalkStepFlags: the game has ME1's three flags that turn its start, stop and skid steps off (ME1, ME2; ME3 has none of them,
+// its start and stop are SFXModule_Locomotion's states). kWalkSpeedRamps: ME1's four m_fMaxDesSpd ramps on the behaviour (ME2
+// and ME3 have none: only Engine.Pawn.AccelRate follows the linear walk there).
+// (ME1's own handles spell its class out: the constant is the sequels'.)
+#if defined(MEVR_GAME_LE3)
+inline constexpr char const* kWalkOwnerClass = "SFXGame.BioPawn";
+inline constexpr bool kWalkStepFlags = false;
+#elif defined(MEVR_GAME_LE2)
+inline constexpr char const* kWalkOwnerClass = "SFXGame.BioPawnBehavior";
+inline constexpr bool kWalkStepFlags = true;
+#else
+inline constexpr bool kWalkStepFlags = true;
+#endif
+#if defined(MEVR_GAME_LE1)
+inline constexpr bool kWalkSpeedRamps = true;
+#else
+inline constexpr bool kWalkSpeedRamps = false;
+#endif
+
+// The draw and holster animations (game/CombatStance section D, research/38 "The draw rate on the sequels"): ME1 plays them
+// in its AnimTree's WeaponEquip node (children Draw and Holster), ME2 in four BioAnimNodeBlendByWeaponEquip nodes of the same
+// form (WeaponEquip-NoCoverStand, -NoCoverCrouch, -HighCover, -LowCover), ME3 in AnimNodeSlot channels (Custom_Std_Upper,
+// Custom_Std_Idle_Lower, Custom_Crouching_Upper...); the sequence's AnimSeqName is the draw's: these prefixes (their crouch and
+// cover variants included: CB_Draw_Crouch, CB_Holster_Cover_Mid). Seen in the player's tree on both (`mevr animtree draw`).
+#if !defined(MEVR_GAME_LE1)
+inline constexpr char const* kDrawSequencePrefix = "CB_Draw";
+inline constexpr char const* kHolsterSequencePrefix = "CB_Holster";
 #endif
 
 // Where the layer finds the engine's globals: an RVA (fast; right for 2.0.0.48602) and a byte

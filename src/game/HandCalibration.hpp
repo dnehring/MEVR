@@ -183,9 +183,28 @@ Controls GetControls();
 //                    eyeHeightM is the fallback. 0: always eyeHeightM
 //   eyeHeightM       the player's standing eye height: scales the slot offsets (1.65 = as written)
 //   hapticAmplitude  0..1, the strength of the contact haptics (0.5 as designed; 0: no vibration)
-//   hipRight, shoulderRight, hipLeft, shoulderLeft = weapon, right, up, forward, radius
-//                    weapon: pistol | shotgun | rifle | sniper | none; meters from the eyes (held
-//                    upright), in the body's frame, at a 1.65 m eye height
+//   hipRight, shoulderRight, hipLeft, shoulderLeft, thighRight = weapon, right, up, forward, radius
+//                    weapon: pistol | shotgun | rifle | sniper | smg | none; meters from the eyes (held
+//                    upright), in the body's frame, at a 1.65 m eye height. thighRight is the sequels' SMG (ME1 has no
+//                    SMG: the slot is off there and its key isn't read)
+//   smgSlot          the sequels only: where the SMG's slot is: thighRight (default) | lowerBack (the small of the back;
+//                    its line `lowerBack = smg, ...` and `seatedLowerBack` give its place; lane SG, 2026-11-17)
+//   lostHandHoldS    the sequels only: seconds a right hand that lost tracking at the lowerBack slot keeps its last place
+//                    on the body (inside-out headsets can't see it there); 0: never
+// The game's default layout: core/ik/BodySlots' five slots, the SMG's switched off on ME1.
+inline ik::body_slots::Layout GameHolsterLayout() {
+    ik::body_slots::Layout layout = ik::body_slots::DefaultLayout();
+#if defined(MEVR_GAME_LE1)
+    layout.slots[ik::body_slots::kSmgSlot].weapon = ik::body_slots::Weapon::None;
+#endif
+    return layout;
+}
+// The slots this game uses (and logs): ME1's four, the sequels' five.
+#if defined(MEVR_GAME_LE1)
+inline constexpr int kGameHolsterSlots = ik::body_slots::kSmgSlot;
+#else
+inline constexpr int kGameHolsterSlots = ik::body_slots::kSlots;
+#endif
 struct Holsters {
     bool enabled = true;
     bool gripHolds = true;
@@ -195,13 +214,24 @@ struct Holsters {
     bool onlyHolstersDraw = true;
     ik::body_slots::Holster holster = ik::body_slots::Holster::OwnSlot;
     bool eyeHeightFromFloor = true;
-    ik::body_slots::Layout layout = ik::body_slots::DefaultLayout();
+    ik::body_slots::Layout layout = GameHolsterLayout();
     // [Holsters] seatedHipRight/Left, seatedShoulderRight/Left, seatedGrenade:
     // right/up/forward/radius in fixed meters from the live neutral seated head.
     ik::body_slots::Layout seatedLayout = ik::body_slots::SeatedLayout(layout);
     ik::body_slots::Slot seatedGrenade = ik::body_slots::SeatedGrenadeSlot();
     bool seatedWeaponWheel = true;  // permit deliberate wheel draws while seated
     double hapticAmplitude = 0.5;
+    // ME3 only ([Holsters] le3PutAway): a gun let go is put away by the game's own put-down into no weapon
+    // (SFXInventoryManager.SetCurrentWeapon(None)); the default since 2026-11-18 (the owner; checked on the combat fixture).
+    // 0: it stays in the hand.
+#if defined(MEVR_GAME_LE3)
+    bool le3PutAway = true;
+#else
+    bool le3PutAway = false;  // read only on ME3
+#endif
+    // The sequels ([Holsters] lostHandHoldS): a right hand lost behind the back at the SMG's lowerBack slot keeps its last
+    // place on the body this long (ik::body_slots::LostHand). Never on ME1 (no SMG slot there).
+    double lostHandHoldS = 0.75;
 };
 Holsters GetHolsters();
 // [Squad] (appended to an older file that lacks it; keys added later are appended with their defaults):
@@ -409,11 +439,7 @@ struct SquadOrders {
     std::string powerRoute = "tactical";
     // Placement by an arc (game/SquadPlace, 2026-11-05): hold the right B on foot, an arc from the right hand, let go: they move
     // where it lands. placeSpeedMS: the arc's launch speed (14: about 20 m at 45 degrees); placeRangeM: no farther than this.
-#if defined(MEVR_GAME_LE2)
-    bool place = false;  // opt in while the ME2 order path is being verified
-#else
-    bool place = true;
-#endif
+    bool place = true;  // ME1's default on every game (ME2's since its run on Save 4: research/54 "ME2 placement and orders on Save 4")
     double placeSpeedMS = 14.0;
     double placeRangeM = 30.0;
     double placeMinHoldS = 0.15;  // a shorter press of B is a blip
@@ -480,6 +506,27 @@ struct Vent {
 // The [Vent] key of each type's part, as above.
 char const* VentPartKey(int weaponType);
 Vent GetVent();
+
+// [Reload] (the sequels: ME2 and ME3 reload thermal clips; ME1 has heat and the vent instead; research/le2-vrik.md "The reload
+// by hand"): the LEFT hand takes a clip at the pouch (a body slot, the left hip, on the holsters' body frame and scale) and
+// pushes it into the gun's receiver ([Vent]'s zone*: one receiver for the vent and the reload). The game's own reload then runs.
+//   enabled          0 (the default since 2026-11-16, the owner: off until its gesture is redesigned with the owner; an
+//                    older file's 1 moves to 0 once, marker enabledMoved): the reload by hand; the game's R and its automatic
+//                    reload stay either way
+//   pouch            right, up, forward, radius: meters from the eyes in the body's frame at a 1.65 m eye height
+//   seatedPouch      the same, fixed meters from the neutral head when seated
+//   holdTimeoutS     a clip held this long without reaching the receiver is dropped
+//   maxStepM         a hand step larger than this in one tick (the gun's frame) is a jump: leave the receiver and come back
+//   hapticAmplitude  0..1 (0.5 as designed, 0 = none)
+struct Reload {
+    bool enabled = false;
+    ik::body_slots::Slot pouch{"pouch", ik::body_slots::Weapon::None, {-0.20, -0.60, 0.02}, 0.13};
+    ik::body_slots::Slot seatedPouch{"seatedPouch", ik::body_slots::Weapon::None, {-0.28, -0.42, 0.18}, 0.20};
+    double holdTimeoutS = 8.0;
+    double maxStepM = 0.20;
+    double hapticAmplitude = 0.5;
+};
+Reload GetReload();
 
 // [Hud] (research/41): the player's status on the left wrist (wristStatus, wristWidthM, wristOffset) and the weapon
 // panel on the gun (gunStatus, gunWidthM, gunBackM, gunUpM), their bands by hand (wristCrop, gunCrop). The host reads

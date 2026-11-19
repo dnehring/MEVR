@@ -30,3 +30,17 @@
 * **Create**: [In ME2 a console scale set during a level load, with depth of field on, kills the rendering thread](gotchas/me2-scale-set-during-load.md), after nine hung runs of Halcyon's ME2 renderer were blamed in turn on first person, the eye size, the body hides and the HUD.
 * **Create**: [On an HDR display ME2's swap chain is float in gameplay, and Halcyon's ME2 eye copies drop it](gotchas/me2-float-swap-chain.md), after two agents' ME2 eye snapshots were black or held the loading screen for an afternoon.
 * **Create**: [With Windows HDR on, the Legendary Edition renders a float scRGB frame](gotchas/windows-hdr-desktop.md), after players with HDR monitors reported launch trouble with ME1 and ME2's eyes went black on this machine; LE1 now answers the game's HDR question SDR by default, as ME2 does.
+
+## 2026-11-16
+* **Create**: [A key binding's exec function reaches the script through ProcessEvent, never through a script call](gotchas/binding-execs-come-through-process-event.md), after lane GR found that ME1's faster-run sprint (2026-11-06) had never started: its skip of StormOn sat in the CallFunction hook, and A's hold calls StormOn from a timer.
+* **Create**: [fpsVR starts SteamVR again after the fake headset is turned off](gotchas/fpsvr-relaunches-steamvr.md), after an ME3 preview run's restore refused the relaunched SteamVR (lane EY).
+* **Create**: [EA's Steam launcher starts MassEffectLauncher suspended](gotchas/ea-steam-launcher-starts-the-launcher-suspended.md), after ME2's and ME3's runner launches failed to adopt "a game that starts twice" (lane RN; it was the suspended launcher).
+
+## 2026-11-17
+* **Create**: [The mod appends its default settings blocks on its first tick, seconds after the XR marker](gotchas/mod-settings-appended-after-xr-ready.md), after four lanes' first ME2 loads after a prep were refused as `Save or runtime artifact changed during load` (lane RN2; 21 of 39 ME2 loads since 2026-11-15).
+* **Create**: [ME3's area map closes by an animation its B starts, and every B before the end starts it again](gotchas/me3-area-map-b-restarts-close.md), after lane CTL's Close from the map stayed in the Mission Computer (lane OMX); lane OM2's "the map page took about a second to answer B" the day before was the same.
+
+## 2026-11-18
+* **Create**: [How to catalog a system and audit a port against it](how-to-catalog.md), and [ME1 as numbered contracts](me1/index.md): thirteen categories, 458 contracts, after the owner found that the port to ME2 and ME3 lost where menus sit, the rifles' zoom and what gestures do.
+* **Create**: [ME2 against ME1](audits/me2/index.md): thirteen audits and [a summary](audits/me2/summary.md), read at main 940a75c6 with no game run: 250 contracts on the shared rule, 1 reinvented, 124 missing (65 of them the two deferred systems), 62 on the shared rule with untranslated inputs.
+* **Create**: [ME3 against ME1](audits/me3/index.md): thirteen audits and [a summary](audits/me3/summary.md), read at main 583591c6 with no game run: 244 contracts on the shared rule, 3 reinvented, 93 missing, 66 n/a; most of ME2's findings recur through the shared sequel host, and ME3 adds its own (no HUD pieces, the 3D screen gated to two modes, a gun never put away).

@@ -58,6 +58,10 @@ vr::game_menu::Action TakeGameRequest();
 std::uint32_t TakeGameRequestValue();
 // A request from elsewhere in the host (the omni-tool's rail, research/57) through the same slot. Any thread.
 void PutGameRequest(vr::game_menu::Action action, vr::game_menu::Origin origin = vr::game_menu::Origin::Menu);
+// HostServices v44 (any thread; the mod's tick): what the menu's game entries can do now (vr::game_menu::kOfferLeave...);
+// GameMenuOffers is the mod's last word while it is fresh, else 0 (research/28 "Leave").
+void NoteGameMenuOffers(std::uint32_t offers);
+std::uint32_t GameMenuOffers();
 // Where the menu's documents and fonts are (ASI\menu, or [Menu] assets; ASI\fonts): the rail's document sits beside main.rml.
 std::filesystem::path AssetsFolder();
 std::filesystem::path FontsFolder();

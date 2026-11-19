@@ -3,6 +3,7 @@
 
 #include "core/Ini.hpp"
 #include "core/Log.hpp"
+#include "core/vr/CalibrationFile.hpp"
 #include "core/vr/TestRequest.hpp"
 
 #include "engine/GameAdapter.hpp"
@@ -45,14 +46,30 @@ std::string gHostKey;            // from the host (v15); empty: none
 std::uint32_t gHostSaves = 0;
 bool gHaveHost = false;
 ULONGLONG gLastCheckMs = 0;
-fs::file_time_type gStamp{};
+std::optional<fs::file_time_type> gStamp;  // the game's file; nullopt: not there
 bool gHaveStamp = false;
 std::string gLoggedText;
 bool gToldNoHost = false;
 
 fs::path FilePath() {
-    return engine::SettingsFile();  // <exe dir>\ASI\<GAME>MEVR.ini, the host's file too
+    return engine::SettingsFile();  // <exe dir>\ASI\<GAME>MEVR.ini, the host's file too: [Calibration] use
 }
+
+// The player's measurements: one file for the three games, which the host writes (research/25 section 17).
+fs::path const& SharedPath() {
+    static fs::path const path = engine::CalibrationFile();  // %LOCALAPPDATA%\MEVR\calibration.ini
+    return path;
+}
+std::optional<fs::file_time_type> gSharedStamp;
+bool gToldShared = false;
+
+// One snapshot of the shared file: this game's [<section>.<GAME>] first, then [<section>] (core/vr/CalibrationFile).
+struct Shared {
+    ini::File file;
+    std::string Get(std::string const& section, char const* key) const {
+        return vr::calibration_file::Get(file, MEVR_GAME_NAME_A, section, key).value_or("");
+    }
+};
 
 std::string Read(fs::path const& path, std::string const& section, char const* key) {
     wchar_t text[256]{};
@@ -67,8 +84,8 @@ std::string Read(fs::path const& path, std::string const& section, char const* k
     return out;
 }
 
-std::optional<double> Number(fs::path const& path, std::string const& section, char const* key, double lo, double hi) {
-    std::string const text = Read(path, section, key);
+std::optional<double> Number(Shared const& path, std::string const& section, char const* key, double lo, double hi) {
+    std::string const text = path.Get(section, key);
     if (text.empty()) {
         return std::nullopt;
     }
@@ -83,9 +100,9 @@ std::optional<double> Number(fs::path const& path, std::string const& section, c
 constexpr double kMaxSpreadDeg = 10.0;
 
 // A stance's keys ("pistol" / "rifle" + Trim, Line, ...). Nullopt unless its trim and line read and its aims agreed.
-std::optional<cal::Stance> ReadStance(fs::path const& path, std::string const& section, std::string const& prefix, int eye) {
-    auto const trim = cal::ParseRotation(Read(path, section, (prefix + "Trim").c_str()));
-    auto const line = cal::ParseVector(Read(path, section, (prefix + "Line").c_str()));
+std::optional<cal::Stance> ReadStance(Shared const& path, std::string const& section, std::string const& prefix, int eye) {
+    auto const trim = cal::ParseRotation(path.Get(section, (prefix + "Trim").c_str()));
+    auto const line = cal::ParseVector(path.Get(section, (prefix + "Line").c_str()));
     if (!trim || !line || std::sqrt(line->x * line->x + line->y * line->y + line->z * line->z) > 0.6f) {
         return std::nullopt;
     }
@@ -102,9 +119,9 @@ std::optional<cal::Stance> ReadStance(fs::path const& path, std::string const& s
     s.line = *line;
     s.spreadDeg = static_cast<float>(Number(path, section, (prefix + "SpreadDeg").c_str(), 0.0, 90.0).value_or(0.0));
     s.eyeRelief = static_cast<float>(Number(path, section, (prefix + "EyeReliefM").c_str(), -2.0, 2.0).value_or(0.0));
-    auto const foregrip = cal::ParseVector(Read(path, section, (prefix + "Foregrip").c_str()));
-    auto const leftTrim = cal::ParseRotation(Read(path, section, (prefix + "LeftTrim").c_str()));
-    auto const hands = cal::ParseVector(Read(path, section, (prefix + "HandsLine").c_str()));
+    auto const foregrip = cal::ParseVector(path.Get(section, (prefix + "Foregrip").c_str()));
+    auto const leftTrim = cal::ParseRotation(path.Get(section, (prefix + "LeftTrim").c_str()));
+    auto const hands = cal::ParseVector(path.Get(section, (prefix + "HandsLine").c_str()));
     if (foregrip && leftTrim && hands && std::sqrt(foregrip->x * foregrip->x + foregrip->y * foregrip->y + foregrip->z * foregrip->z) < 1.2f) {
         s.hasLeft = true;
         s.foregrip = *foregrip;
@@ -112,13 +129,13 @@ std::optional<cal::Stance> ReadStance(fs::path const& path, std::string const& s
         s.handsLine = *hands;
         s.handsSpreadDeg = static_cast<float>(Number(path, section, (prefix + "HandsSpreadDeg").c_str(), 0.0, 90.0).value_or(0.0));
     }
-    if (auto const stock = cal::ParseVector(Read(path, section, (prefix + "Stock").c_str()))) {
+    if (auto const stock = cal::ParseVector(path.Get(section, (prefix + "Stock").c_str()))) {
         s.stock = *stock;
     }
     return s;
 }
 
-Values ReadValues(fs::path const& path, std::string const& key) {
+Values ReadValues(Shared const& path, std::string const& key) {
     Values v;
     v.key = key;
     if (key.empty()) {
@@ -126,20 +143,20 @@ Values ReadValues(fs::path const& path, std::string const& key) {
     }
     std::string const section = "Calibration." + key;
     // Position may be selected in the menu before the first full calibration (no time yet).
-    v.position = cal::ParsePosition(Read(path, section, "position"));
+    v.position = cal::ParsePosition(path.Get(section, "position"));
     v.standEye = Number(path, section, "standEyeM", 0.8, 2.3);
-    v.when = Read(path, section, "time");
+    v.when = path.Get(section, "time");
     if (v.when.empty()) {
         return v;
     }
     v.loaded = true;
-    v.label = Read(path, section, "label");
+    v.label = path.Get(section, "label");
     v.crouchEye = Number(path, section, "crouchEyeM", 0.2, 2.0);
     v.armLength = Number(path, section, "armLengthM", 0.3, 1.2);
     v.shoulderWidth = Number(path, section, "shoulderWidthM", 0.15, 0.75);
-    v.handTrim[0] = cal::ParseRotation(Read(path, section, "handTrimLeft"));
-    v.handTrim[1] = cal::ParseRotation(Read(path, section, "handTrimRight"));
-    int const eye = Read(path, section, "eye") == "left" ? 0 : 1;
+    v.handTrim[0] = cal::ParseRotation(path.Get(section, "handTrimLeft"));
+    v.handTrim[1] = cal::ParseRotation(path.Get(section, "handTrimRight"));
+    int const eye = path.Get(section, "eye") == "left" ? 0 : 1;
     v.pistol = ReadStance(path, section, "pistol", eye);
     v.rifle = ReadStance(path, section, "rifle", eye);
     return v;
@@ -175,13 +192,19 @@ std::string Describe(Values const& v) {
 
 void Load(char const* why) {
     fs::path const path = FilePath();
-    std::string const use = Read(path, "Calibration", "use");
+    std::string const use = Read(path, "Calibration", "use");  // a setting: the game's own
     gUse = use.empty() || use != "0";
+    Shared const shared{ini::Read(SharedPath()).file};  // the measurements: the three games' one file
+    if (!gToldShared) {
+        gToldShared = true;
+        log::Info("calibration: the measurements are read from {} (one file for the three games; [Calibration] use stays in "
+                  "this game's {})", ini::Utf8(SharedPath()), ini::Utf8(path.filename()));
+    }
     std::string key = gHostKey;
     if (key.empty() && !gHaveHost) {
-        key = Read(path, "Calibration", "last");  // an older host doesn't say which controllers: the last calibrated
+        key = shared.Get("Calibration", "last");  // an older host doesn't say which controllers: the last calibrated
     }
-    gValues = ReadValues(path, key);
+    gValues = ReadValues(shared, key);
     std::string const text = std::format("position {}; {}",
         gValues.position == cal::PlayPosition::Seated ? "seated (physical crouch off, L3 available)" : "standing", Describe(gValues));
     if (text != gLoggedText) {
@@ -234,13 +257,17 @@ void Tick(Link const& link) {
         return;
     }
     gLastCheckMs = now;
-    std::error_code ec;
-    auto const stamp = fs::last_write_time(FilePath(), ec);
-    if (ec) {
-        return;
-    }
-    if (reload || !gHaveStamp || stamp != gStamp) {
+    // The game's file ([Calibration] use) and the shared one (the measurements): either changed, or one came or went.
+    auto const stampOf = [](fs::path const& p) -> std::optional<fs::file_time_type> {
+        std::error_code ec;
+        auto const stamp = fs::last_write_time(p, ec);
+        return ec ? std::nullopt : std::optional<fs::file_time_type>(stamp);
+    };
+    std::optional<fs::file_time_type> const stamp = stampOf(FilePath());
+    std::optional<fs::file_time_type> const shared = stampOf(SharedPath());
+    if (reload || !gHaveStamp || stamp != gStamp || shared != gSharedStamp) {
         gStamp = stamp;
+        gSharedStamp = shared;
         gHaveStamp = true;
         Load(why);
     }
@@ -342,6 +369,9 @@ void Shutdown() {
     gHaveHost = false;
     gLastCheckMs = 0;
     gHaveStamp = false;
+    gStamp.reset();
+    gSharedStamp.reset();
+    gToldShared = false;
     gLoggedText.clear();
     gToldNoHost = false;
 }

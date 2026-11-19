@@ -131,4 +131,8 @@ bool CrouchArbiter::FinishRelease(std::optional<bool> gameWants) {
     return true;
 }
 
+bool RefuseCoverSnap(CoverSnapInput const& in) {
+    return in.noCover && in.onFoot && in.headTracked && !in.calibrating;
+}
+
 } // namespace mevr::ik::posture

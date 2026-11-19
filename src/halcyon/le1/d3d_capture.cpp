@@ -2170,7 +2170,7 @@ void TryPresentFlatMenu(IDXGISwapChain* swapChain) noexcept
         LogLine("[FLATMENU] initialized monitor menu path (OpenXR disabled).");
     }
 
-    const bool insertDown = MELEVR::MevrBridge::KeyDown(VK_INSERT);   // [MEVR] game in front; upstream: GetAsyncKeyState
+    const bool insertDown = MevrSeams::KeyDown(VK_INSERT);   // [MEVR] game in front; upstream: GetAsyncKeyState
     if (insertDown && !insertWasDown) MELEVR::Menu::Toggle();
     insertWasDown = insertDown;
     if (!MELEVR::Menu::IsOpen()) return;

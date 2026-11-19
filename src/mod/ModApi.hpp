@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 
 struct IDXGISwapChain;
 
@@ -102,7 +103,7 @@ struct Presentation;
 // `controllers`. The controller-aim branch had {view, setHandAim}; the review-fix branch (commit
 // f95d01d) had {u32 controllerStateSize, setProcessEventCallback}. Version 4 is their merge. So a
 // mod reads nothing past `controllers` from a v3 host: `view` and `setHandAim` only from v4 on.
-inline constexpr int kHostServicesVersion = 42;
+inline constexpr int kHostServicesVersion = 44;
 
 // HostServices::mainMenu's bits (v16).
 inline constexpr std::uint32_t kMainMenuOpen = 1u;   // our main menu is open
@@ -458,7 +459,36 @@ struct HostServices {
     // covers missing/stale tracking or context; it does not mean the main menu is open.
     // Any thread. LE3 requires this capability before accepting a spoken selection.
     bool (*thespianInputBlocked)() = nullptr;
+
+    // v43: the frame's second eye is a replay of the first eye's recorded draws (plugin/RenderLevers: sharePass 2, 3 or
+    // 5 on a game whose table and renderer have the lever). The replay's workarounds ask this instead of reading the
+    // file themselves (game/SystemSettings' LightEnvironmentShadows rule: the sequels have no replay, whatever their
+    // file says). False on a host without a replay. Any thread.
+    bool (*secondEyeIsReplay)() = nullptr;
+
+    // v44: what our menu's game entries can do now (core/vr/GameMenuRequest's Offers bits; research/28 "Leave"): the mod says it
+    // each game tick, the host shows such an entry only while the word is under a second old. kOfferLeave: the level's own way
+    // out (SFXGameModeBase.LeaveWorld) would act here (ME2 and ME3: on foot, out of combat, an armed SFXSeqEvt_LeaveWorld
+    // loaded). An older mod never says it and an older host has no field: the entry stays hidden, no deploy-together rule.
+    // Any thread.
+    void (*setGameMenuOffers)(std::uint32_t offers) = nullptr;
 };
+
+// The host's v44 offer publisher, or null from an older host.
+inline auto GameMenuOffersPublisher(HostServices const* host) -> void (*)(std::uint32_t) {
+    return host != nullptr && host->version >= 44 &&
+        host->servicesSize >= offsetof(HostServices, setGameMenuOffers) + sizeof(HostServices::setGameMenuOffers)
+        ? host->setGameMenuOffers : nullptr;
+}
+
+// The host's answer, or nothing from a host older than v43 (the caller then keeps the rule it had before the service).
+inline std::optional<bool> SecondEyeIsReplay(HostServices const* host) {
+    if (host == nullptr || host->version < 43 ||
+        host->servicesSize < offsetof(HostServices, secondEyeIsReplay) + sizeof(HostServices::secondEyeIsReplay)) {
+        return std::nullopt;
+    }
+    return host->secondEyeIsReplay != nullptr && host->secondEyeIsReplay();
+}
 
 inline bool HostBlocksThespian(HostServices const* host) {
     return host == nullptr || host->version < 42 ||

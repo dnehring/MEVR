@@ -1184,6 +1184,7 @@ struct Convo {
     std::vector<SeatWalk> seatWalks;  // planned at the opening, handed to each person's walk once its state exists
     // A staged scene (cw::IsStagedScene): its authored places matter; the stage's opening stands under a dip, no circle.
     bool staged = false;
+    bool seated = false;        // a seated scene (cw::IsSeatedScene): staged, the view sits with Shepard (StepSeat)
     // The conversational circle (worldCircle): who joined (ids are indices into circleActors), when it formed, re-gathers.
     cw::ConversationCircle circle;
     cw::RegatherState regather;
@@ -4346,6 +4347,23 @@ struct Ride {
 };
 Ride gRide;
 
+// Shepard sitting down in a conversation (StepSeat, below).
+struct Seat {
+    bool on = false;
+    bool haveStand = false;
+    double standH = 0.0;      // his head above his place, standing (smoothed)
+    ik::Vec3 headAtStand{};   // his head the last tick he stood
+    bool following = false;   // the view still on its way to his head (sitting, or after he got up)
+    ik::Vec3 ref{};           // the head place the view stands for
+    double followedUnits = 0.0;
+};
+Seat gSeat;
+
+// The eyes' height kept at the player's over the floor under Shepard (StepEyeHeight, below).
+double gEyeFixUnits = 0.0;  // how far it moved the view in this scene (logged at its end)
+bool gEyeFixLogged = false;
+double gOpenedAtS = -1.0;   // when it first acted in this scene (the opening's faster rate)
+
 void ClearTrail() {
     gTrail.clear();
 }
@@ -4711,6 +4729,7 @@ void PlanSeatWalks(ue3::Object* conv, ue3::Object* pawn) {
 
 void FinishOpening(ue3::Object* conv, ue3::Object* pawn) {
     gC.openingDone = true;
+    gOpenedAtS = Seconds();  // StepEyeHeight's faster rate under the opening's dip
     if (auto const mark = player::Location(pawn)) {
         gC.composedAt = V(*mark);  // the stage's place for Shepard, before anyone walks
     }
@@ -5007,7 +5026,7 @@ void MovePlayer(ue3::Object* pawn, engine::TrackingFrame& frame, vr::host_view::
         }
     };
     if (!gSettings.move || !gC.openingDone || pawn == nullptr || !ue3::runtime::IsAlive(pawn) || gSetLocation.Get() == nullptr ||
-        PlayerSeated(pawn)) {
+        gSeat.on || PlayerSeated(pawn)) {
         stop();
         return;
     }
@@ -5306,6 +5325,10 @@ void Begin(ue3::Object* conv, ue3::Object* controller) {
     gSeatedLogged = false;
     gRide.units = 0.0;
     gRide.logged = false;
+    gSeat = {};
+    gEyeFixUnits = 0.0;
+    gEyeFixLogged = false;
+    gOpenedAtS = -1.0;
     gStay.clear();
     gStayMs = 0;
     gDrawnJumps = 0;
@@ -5343,7 +5366,11 @@ void Begin(ue3::Object* conv, ue3::Object* controller) {
             }
         }
     }
-    gC.staged = gC.world && cw::IsStagedScene(gC.name, gSettings.staged);
+    gC.seated = gC.world && cw::IsSeatedScene(gC.name);
+    gC.staged = gC.world && (gC.seated || cw::IsStagedScene(gC.name, gSettings.staged));
+    if (gC.seated) {
+        log::Info("convo: a seated scene (cw::IsSeatedScene): staged, and the player's view sits down and gets up with Shepard's head");
+    }
     if (gC.staged) {
         log::Info("convo: a staged scene (its authored places matter: cw::IsStagedScene{}): the stage's opening stands under a dip, "
                   "people walk to its marks, no conversational circle", gSettings.staged.empty() ? "" : ", worldStaged");
@@ -5468,6 +5495,10 @@ void End(char const* why) {
     if (gRide.units > 0.0) {
         log::Info("convo: the player rode {:.2f} m with what Shepard stood on", gRide.units / kUnitsPerMeter);
         gRide.units = 0.0;
+    }
+    if (gEyeFixUnits > 0.0) {
+        log::Info("convo: the eyes' height was brought to the player's {:.2f} m in all over the scene", gEyeFixUnits / kUnitsPerMeter);
+        gEyeFixUnits = 0.0;
     }
     if (gEyesOn) {
         gEyesOn = false;
@@ -6380,6 +6411,100 @@ void RideBase(ue3::Object* pawn) {
     }
 }
 
+// The eyes at the player's own height over the floor under Shepard (the owner, 2026-11-17, at the council hearing's podium: "my
+// height is closer, but I'm still floating above where I should be"; research/69 item 44). An opening at his mark takes the
+// held view from his head bone, whose height follows the scene's animation (the hearing's pose held it 7 cm over his standing
+// reference: the drawn eyes 1.90 m over the podium for a player whose eyes are 1.84 m), and the floor lock stands down in the
+// conversation's mode. So while the view stands at his pawn (not walking apart, not seated), the drawn centre the host
+// reports (view.centreZ: the held view, the framing and the head's own pose) is brought to the floor under his cylinder
+// (Location.z - CollisionHeight, the floor lock's floor) plus the player's live standing eye height (view.stageEyeM, the floor
+// lock's eye): at 1 m/s for the opening's first 1.5 s (under its dip), 0.3 m/s after, nothing within 1 cm.
+// (gEyeFixUnits, gEyeFixLogged, gOpenedAtS: above, with gSeat.)
+void StepEyeHeight(ue3::Object* pawn, vr::host_view::State const& view, double dt) {
+    if (pawn == nullptr || gC.detached || gSeat.following || !view.valid || !view.centreValid || !gInWorld) {
+        return;
+    }
+    double const eyeM = view.stageEyeM > 0.5 && view.stageEyeM < 2.6 ? view.stageEyeM
+                        : gFloorNow && gFloorNow->valid ? static_cast<double>(gFloorNow->eyeHeight) : 0.0;
+    ue3::Object* const cylinder = gPawnCylinder.Read<ue3::Object*>(pawn).value_or(nullptr);
+    auto const height = cylinder != nullptr ? gCylinderHeight.Read<float>(cylinder) : std::nullopt;
+    auto const at = player::Location(pawn);
+    if (eyeM < 0.5 || !height || *height <= 0.0f || *height >= 300.0f || !at) {
+        return;
+    }
+    double const floor = at->z - *height;
+    double const err = floor + eyeM * kUnitsPerMeter - view.centreZ;
+    if (std::abs(err) <= 1.0) {
+        return;
+    }
+    double const rate = (gOpenedAtS >= 0.0 && Seconds() - gOpenedAtS < 1.5 ? 1.0 : 0.3) * kUnitsPerMeter;
+    double const step = std::clamp(err, -rate * std::clamp(dt, 0.0, 0.1), rate * std::clamp(dt, 0.0, 0.1));
+    gC.hold.z += step;
+    gC.follow.place.z += step;
+    gEyeFixUnits += std::abs(step);
+    if (!gEyeFixLogged && std::abs(err) > 3.0) {
+        gEyeFixLogged = true;
+        log::Info("convo: at {:.1f} s the drawn eyes are {:.2f} m over the floor under Shepard, the player's {:.2f} m: the view goes {} by {:.2f} m",
+            Seconds(), (view.centreZ - floor) / kUnitsPerMeter, eyeM, err > 0 ? "up" : "down", std::abs(err) / kUnitsPerMeter);
+    }
+}
+
+// The view sits with Shepard (StepSeat; the owner, 2026-11-16: the dancer's seat at Chora's Den, "any of the types of sit down
+// based interactions that happen across all three games"; research/69 item 43). In a conversation in the world, when his
+// animated head (MarkHeadOf) drops well under where it stands (15 cm under its standing height above his place, or under 0.62 m
+// above it when he hasn't been seen standing in this scene), the held view follows it down into the seat, and back up as he gets
+// up: toward his head at up to 1 m/s, outside a 4 cm deadband (his breathing and idle sway are left to the player's real head).
+// The opening that cut to him already seated is at his head: only what moves after is followed. While he sits the stick doesn't
+// walk (MovePlayer), the legs keep the seat's animation (BodyAway), and his head follower sees no jump. (gSeat: above.)
+void StepSeat(ue3::Object* pawn, double dt) {
+    if (pawn == nullptr || gC.detached || !gC.world || !gC.openingDone) {
+        return;
+    }
+    auto const at = player::Location(pawn);
+    auto const head = MarkHeadOf(pawn);
+    if (!at || !head) {
+        return;
+    }
+    double const h = head->at.z - at->z;
+    bool const crouched = gPawnCrouched.ReadBool(pawn).value_or(false);
+    if (!gSeat.on) {
+        if (h >= 70.0 && !crouched) {
+            gSeat.standH = gSeat.haveStand ? gSeat.standH + (h - gSeat.standH) * 0.1 : h;
+            gSeat.haveStand = true;
+            gSeat.headAtStand = head->at;
+        }
+        bool const sits = !crouched && (gSeat.haveStand ? h < gSeat.standH - 15.0 : h < 62.0);
+        if (sits) {
+            gSeat.on = true;
+            gSeat.following = true;
+            gSeat.ref = gSeat.haveStand ? gSeat.headAtStand : head->at;
+            log::Info("convo: at {:.1f} s Shepard sits down (his head {:.2f} m above his place{}): the view goes with his head", Seconds(),
+                h / kUnitsPerMeter, gSeat.haveStand ? std::format(", {:.2f} m standing", gSeat.standH / kUnitsPerMeter) : std::string());
+        }
+    } else if (gSeat.haveStand ? h > gSeat.standH - 8.0 : h >= 70.0) {
+        gSeat.on = false;
+        log::Info("convo: at {:.1f} s Shepard gets up (his head {:.2f} m above his place): the view comes up with him, {:.2f} m followed",
+            Seconds(), h / kUnitsPerMeter, gSeat.followedUnits / kUnitsPerMeter);
+    }
+    if (!gSeat.following) {
+        return;
+    }
+    ik::Vec3 const diff = head->at - gSeat.ref;
+    double const len = std::sqrt(diff.x * diff.x + diff.y * diff.y + diff.z * diff.z);
+    if (len <= 4.0) {
+        gSeat.following = gSeat.on;  // up again and there: done
+    } else {
+        double const most = kUnitsPerMeter * 1.0 * std::clamp(dt, 0.0, 0.1);
+        ik::Vec3 const step = len <= most ? diff : diff * (most / len);
+        gSeat.ref = gSeat.ref + step;
+        gC.hold = gC.hold + step;
+        gSeat.followedUnits += std::sqrt(step.x * step.x + step.y * step.y + step.z * step.z);
+    }
+    // His head follower: the sit is ours, not a jump of his.
+    gC.anchorHead = head->at;
+    gC.follow = {{gC.hold.x, gC.hold.y, gC.hold.z}, {head->at.x, head->at.y, head->at.z}, 0};
+}
+
 // True while the moment's view is up this tick (the caller returns).
 bool TickMoment(Link const& link, ue3::Object* pawn, std::optional<std::uint8_t> mode, double deltaSeconds) {
     std::uint64_t const now = GetTickCount64();
@@ -7247,7 +7372,7 @@ BodyAwayState BodyAway() {
     }
     away.on = true;
     away.riseUnits = gC.detached ? gC.detachedAt.z - at->z : 0.0;  // (at the mark, or walked with the pawn: the pawn's floor)
-    away.legsStand = gSettings.legsStand ? gLegsStand : 0.0;
+    away.legsStand = gSettings.legsStand && !gSeat.on && !gSeat.following ? gLegsStand : 0.0;  // seated: the seat's legs
     return away;
 }
 
@@ -7632,6 +7757,7 @@ void Tick(double deltaSeconds, Link const& link) {
     }
     if (gC.world && gC.openingDone) {
         RideBase(pawn);  // a lift under him carries the view, before the head follower reads his head bone (it rode too)
+        StepSeat(pawn, deltaSeconds);  // ... and so does his sitting down and getting up
     }
     // The player's place follows Shepard's head bone when it jumps (a stage's placement, a cut to a new mark): re-anchored past
     // kReanchorUnits, never for the head's own small moves (gestures, breathing), which the player's real head replaces.
@@ -7707,6 +7833,7 @@ void Tick(double deltaSeconds, Link const& link) {
     // on the game camera; before the host shows the world (its first frames), the frame on foot moved to the held place.
     std::optional<engine::TrackingFrame> frame;
     vr::host_view::State const view = vr::host_view::Latest();
+    StepEyeHeight(pawn, view, deltaSeconds);  // the eyes at the player's own height over the floor under Shepard
     if (view.valid && gInWorld) {
         frame = engine::FromCameraView(engine::UnrealVector{gC.hold.x, gC.hold.y, gC.hold.z},
             engine::UnrealRotation{gC.holdRotation.pitch, gC.holdRotation.yaw, gC.holdRotation.roll}, {view.lookPitch, view.lookYaw, 0},

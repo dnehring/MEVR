@@ -11,7 +11,9 @@
 // Shepard's omni-tool, the game's own: BIOG_V_T_Omni_Tool_Z.Prefab.OmniTool_2PieceLoop, the orange holographic gauntlet
 // (OmniArm_Loop, the OmniArm mesh) and the hand's display (OmniHand_Loop) with its sound, on the player's pawn while a game
 // screen is projected from the wrist (the bypass minigame, research/53 section 6: Mass Effect's look). Made by the game's own
-// BioVisualEffect.CreateCrustEffect, as the equipment screen's BioUIWorld.AttachOmnitool puts it on its model. LE1, game thread.
+// BioVisualEffect.CreateCrustEffect, as the equipment screen's BioUIWorld.AttachOmnitool puts it on its model. ME2's is the tech
+// powers' two-piece crust; ME3's is its own client effect (RvrClientEffectManager.Start of OmniTool_LeftFull_VCFX_M,
+// research/le3-native-gui.md "The omni-tool on ME3"). Every game, game thread.
 namespace mevr::game::omni_tool {
 
 // Each tick: on while `wanted` (or Request was called since the last Tick), gone (faded by its own lifetime) when not.

@@ -37,6 +37,7 @@ FURNITURE = {  # manifest name: package mesh
     "extraction-handle": "Extraction_Handle",
 }
 ON_HULL = {"repair-cap", "extraction-handle"}  # moving parts set into the hull: they move with it (--seat-back)
+EXTRACTION_FORWARD_M = -0.045  # pull the housing and its pivot clear of the V1 ceiling pod
 
 
 def Lines(manifest, metres, yaw_sign, seat_back=0.0):
@@ -51,7 +52,8 @@ def Lines(manifest, metres, yaw_sign, seat_back=0.0):
         out.append(f"mevr cockpit part {PACKAGE}.{mesh} {right:.4f} {forward:.4f} {up:.4f} {yaw:.1f} {metres_per_unit:.6f}")
 
     for mesh in HULL_MESHES:
-        Part(mesh, (0.0, 0.0, 0.0), 90.0, metres / UNITS_PER_MODEL_UNIT, seat_back)
+        mount = EXTRACTION_FORWARD_M if mesh == "Extraction_Base" else 0.0
+        Part(mesh, (0.0, 0.0, 0.0), 90.0, metres / UNITS_PER_MODEL_UNIT, seat_back + mount)
     for name, mesh in FURNITURE.items():
         f = manifest["furniture"][name]
         origin = list(f["origin"])
@@ -59,8 +61,10 @@ def Lines(manifest, metres, yaw_sign, seat_back=0.0):
         if motion.get("kind") == "slide":  # at its neutral place
             for i in range(3):
                 origin[i] += motion["axis"][i] * motion["neutral"] * f["hullUnitsPerModelUnit"]
-        Part(mesh, origin, 90.0 - yaw_sign * f["turnDeg"], f["hullUnitsPerModelUnit"] * metres / UNITS_PER_MODEL_UNIT,
-             seat_back if name in ON_HULL else 0.0)
+        ahead = seat_back if name in ON_HULL else 0.0
+        if name == "extraction-handle":
+            ahead += EXTRACTION_FORWARD_M
+        Part(mesh, origin, 90.0 - yaw_sign * f["turnDeg"], f["hullUnitsPerModelUnit"] * metres / UNITS_PER_MODEL_UNIT, ahead)
     out.append("mevr cockpit parts")
     return out
 
@@ -214,8 +218,8 @@ def PanelLine(manifest, metres, seat_back=0.0):
         return None
     eye = manifest["eye"]["hull"]
 
-    def At(p):
-        return f"{(p[0] - eye[0]) * metres:.4f} {(p[1] - eye[1]) * metres + seat_back:.4f} {(p[2] - eye[2]) * metres:.4f}"
+    def At(p, forward=0.0):
+        return f"{(p[0] - eye[0]) * metres:.4f} {(p[1] - eye[1]) * metres + seat_back + forward:.4f} {(p[2] - eye[2]) * metres:.4f}"
 
     def Unit(v):
         return f"{v[0]:.5f} {v[1]:.5f} {v[2]:.5f}"
@@ -223,7 +227,8 @@ def PanelLine(manifest, metres, seat_back=0.0):
     repair, extraction = panels["repair"], panels["extraction"]
     health, progress = repair["health"]["elements"], repair["progress"]["elements"]
     return (f"panel button {At(repair['pressPoint'])} in {Unit(repair['pressAxis'])} travel {repair['travelMetres']:.4f} "
-            f"lever {At(extraction['hingePoint'])} axis {Unit(extraction['hingeAxis'])} grip {At(extraction['gripPoint'])} "
+            f"lever {At(extraction['hingePoint'], EXTRACTION_FORWARD_M)} axis {Unit(extraction['hingeAxis'])} "
+            f"grip {At(extraction['gripPoint'], EXTRACTION_FORWARD_M)} "
             f"pull {extraction['pullDeg']:g} lamps {health[0]} {len(health)} {progress[0]} {len(progress)}")
 
 

@@ -16,6 +16,7 @@
 #include "game/HeadTracking.hpp"
 #include "game/Le3Powers.hpp"
 #include "game/OmniTool.hpp"
+#include "game/SequelPowers.hpp"
 #include "game/Player.hpp"
 #include "game/SquadWeapons.hpp"
 #include "game/SupportGrip.hpp"
@@ -36,6 +37,7 @@
 #include <format>
 #include <fstream>
 #include <map>
+#include <string_view>
 #include <optional>
 #include <sstream>
 #include <vector>
@@ -66,17 +68,17 @@ ue3::ClassRef gGameModeDefault{"SFXGame.SFXGameModeDefault"};
 ue3::FunctionRef gTryUseMappedPowerFn{"SFXGame.SFXGameModeDefault.TryUseMappedPower"};
 bool gShowUnlearned = false;  // `mevr powerwheel unlearned on` (tests): untrained powers on the wheel too, dim
 
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+// The sequels' roster is read through game/SequelPowers.hpp (one walk and one set of handles for the wheel and the squad).
+ue3::FieldRef& gPowerManager = sequel_powers::manager;
+ue3::FieldRef& gManagedPowers = sequel_powers::powers;
+#endif
+
 #if defined(MEVR_GAME_LE2)
-ue3::FieldRef gPowerManager{"SFXGame.BioPawn", "PowerManager", ue3::kEveryGame};
-ue3::FieldRef gManagedPowers{"SFXGame.SFXPowerManager", "Powers", ue3::kEveryGame};
-ue3::FieldRef gLe2PowerName{"SFXGame.SFXPower", "PowerName", ue3::kEveryGame};
-ue3::FieldRef gLe2BaseName{"SFXGame.SFXPower", "BaseName", ue3::kEveryGame};
-ue3::FieldRef gLe2Rank{"SFXGame.SFXPower", "Rank", ue3::kEveryGame};
-ue3::FieldRef gLe2Visible{"SFXGame.SFXPower", "DisplayInHUD", ue3::kEveryGame};
-ue3::FunctionRef gLe2IsEnabled{"SFXGame.SFXPower.IsEnabled", ue3::kEveryGame};
-ue3::FunctionRef gLe2Cooldown{"SFXGame.SFXPower.GetCooldownRemaining", ue3::kEveryGame};
-ue3::FunctionRef gLe2CooldownTotal{"SFXGame.SFXPower.GetTotalCooldownTime", ue3::kEveryGame};
-ue3::FunctionRef gLe2Evolved{"SFXGame.SFXPowerManager.HasPowerBeenEvolved", ue3::kEveryGame};
+ue3::FieldRef& gLe2PowerName = sequel_powers::name;
+ue3::FieldRef& gLe2BaseName = sequel_powers::baseName;
+ue3::FieldRef& gLe2Visible = sequel_powers::visible;
+ue3::FunctionRef& gLe2IsEnabled = sequel_powers::isEnabled;
 ue3::FunctionRef gLe2BlockingAction{"SFXGame.BioPawn.IsPerformingBlockingAction", ue3::kEveryGame};
 ue3::ClassRef gLe2HeavyWeapon{"SFXGame.SFXHeavyWeapon", ue3::kEveryGame};
 ue3::Name gLe2Selected;  // separate from the native quick slots
@@ -91,8 +93,6 @@ bool Le2AmmoWeaponHeld() {
 #endif
 
 #if defined(MEVR_GAME_LE3)
-ue3::FieldRef& gPowerManager = le3_powers::manager;
-ue3::FieldRef& gManagedPowers = le3_powers::powers;
 ue3::Name gLe2Selected;  // shared sequel selection state; never writes native quick slots
 ue3::Object* gLe2SelectionPawn = nullptr;
 ue3::Object* gLe2SelectionManager = nullptr;
@@ -307,6 +307,16 @@ std::optional<Power> Le3Power(ue3::Object* object, bool includeUnlearned) {
     if (added) {
         text.label = label;
         text.name = known != nullptr ? known->name : label;
+        if (known == nullptr) {
+            // A power the table doesn't name (ME3's own, DLC's): its label split into words ("BioticCharge" showed as one
+            // word on Save 31's wheel), as the table's names read.
+            text.name.clear();
+            for (std::size_t i = 0; i < label.size(); ++i) {
+                bool const upper = label[i] >= 'A' && label[i] <= 'Z';
+                if (i > 0 && upper && label[i - 1] >= 'a' && label[i - 1] <= 'z') text.name += ' ';
+                text.name += label[i];
+            }
+        }
     }
     bool const ammo = ue3::IsA(object, le3_powers::ammoClass);
     auto const gesture = pw::NativeSelfGesture(ammo, revive, *type == 3, ue3::IsA(object, le3_powers::weaponBuffClass));
@@ -339,11 +349,35 @@ bool CallBool(ue3::Object* object, ue3::FunctionRef& ref) {
 }
 
 #if defined(MEVR_GAME_LE2)
-float Le2Seconds(ue3::Object* power, ue3::FunctionRef& ref) {
-    auto* const fn = ref.Get();
-    if (fn == nullptr) return 0.0f;
-    ue3::Params p(ue3::runtime::Get(), fn);
-    return ue3::runtime::Call(power, fn, p) ? std::max(0.0f, p.Return<float>().value_or(0.0f)) : 0.0f;
+// A power ME2's table doesn't name (Singularity, Shockwave, Charge, Combat Drone, Unity, the bonus powers...): it keeps its
+// tile, as on ME3 (the ME2 audit's PWR-02, lane AU2 2026-11-18: an Adept, Vanguard or Engineer lost class powers from the
+// wheel). Its words from its base name, a generic icon, aimed at a place (the push casts it where the ray lands, or at the
+// locked enemy the game's own targeting takes).
+struct Le2Label {
+    std::string label;
+    std::string name;
+    pw::PowerInfo info{};
+};
+std::map<std::string, Le2Label> gLe2Labels;
+
+pw::PowerInfo const* Le2UnknownPower(std::string const& label) {
+    auto [entry, added] = gLe2Labels.try_emplace(label);
+    Le2Label& text = entry->second;
+    if (added) {
+        text.label = label;
+        // "SFXPower_Shockwave" or "Shockwave": the words of the base name ("CombatDrone" -> "Combat Drone").
+        std::string_view words = text.label;
+        if (auto const underscore = words.rfind('_'); underscore != std::string_view::npos) words.remove_prefix(underscore + 1);
+        for (std::size_t i = 0; i < words.size(); ++i) {
+            bool const upper = words[i] >= 'A' && words[i] <= 'Z';
+            if (i > 0 && upper && words[i - 1] >= 'a' && words[i - 1] <= 'z') text.name += ' ';
+            text.name += words[i];
+        }
+        text.info = {text.label.c_str(), text.name.c_str(), std::uint8_t{2}, 0, pw::Aim::Place};
+        log::Info("power wheel: ME2's {} isn't in the power table: on the wheel as '{}', aimed at a place, a generic icon", label,
+            text.name);
+    }
+    return &text.info;
 }
 
 std::optional<Power> Le2Power(ue3::Object* object, bool includeUnlearned) {
@@ -354,8 +388,8 @@ std::optional<Power> Le2Power(ue3::Object* object, bool includeUnlearned) {
     auto const base = gLe2BaseName.Read<ue3::Name>(object).value_or(ue3::Name{});
     auto const* info = pw::FindLe2Power(r.ToString(base).c_str());
     if (info == nullptr) info = pw::FindLe2Power(r.ToString(name).c_str());
-    if (info == nullptr) return std::nullopt;
-    bool const learned = gLe2Rank.Read<float>(object).value_or(0.0f) > 0.0f;
+    if (info == nullptr) info = Le2UnknownPower(r.ToString(base.Key() != 0 ? base : name));
+    bool const learned = sequel_powers::Learned(object);
     if (!learned && !includeUnlearned) return std::nullopt;
     Power p;
     p.object = object;
@@ -366,8 +400,9 @@ std::optional<Power> Le2Power(ue3::Object* object, bool includeUnlearned) {
     p.gameEnabled = CallBool(object, gLe2IsEnabled);
     if (pw::SelfGestureFor(info->label) == pw::SelfGesture::Gun) p.requiredWeapon = Le2AmmoWeaponHeld();
     p.enabled = learned && *p.gameEnabled && p.requiredWeapon.value_or(true);
-    float const remaining = Le2Seconds(object, gLe2Cooldown);
-    float const total = Le2Seconds(object, gLe2CooldownTotal);
+    // A cooldown the game won't state shows as none (the squad's roster leaves such a power out: Le2Squad.hpp).
+    float const remaining = sequel_powers::Seconds(object, sequel_powers::cooldownRemaining).value_or(0.0f);
+    float const total = sequel_powers::Seconds(object, sequel_powers::cooldownTotal).value_or(0.0f);
     p.cooldown = total > 0.01f ? std::clamp(remaining / total, 0.0f, 1.0f) : (remaining > 0.0f ? 1.0f : 0.0f);
     return p;
 }
@@ -398,37 +433,20 @@ std::string EnabledChecks(Power const& power) {
 std::vector<Power> ReadRoster(ue3::Object* pawn, bool includeUnlearned) {
     std::vector<Power> out;
 #if defined(MEVR_GAME_LE3)
-    auto* const manager = gPowerManager.Read<ue3::Object*>(pawn).value_or(nullptr);
-    auto const list = ue3::runtime::IsAlive(manager) ? gManagedPowers.ElementsOf(manager) : std::nullopt;
-    if (!list || list->count > 128) return out;
-    for (int i = 0; i < list->count; ++i) {
-        auto** slot = static_cast<ue3::Object**>(list->At(i));
-        if (slot == nullptr) continue;
-        if (auto power = Le3Power(*slot, includeUnlearned)) {
+    sequel_powers::ForEach(pawn, [&](ue3::Object* object) {
+        if (auto power = Le3Power(object, includeUnlearned)) {
             if (std::none_of(out.begin(), out.end(), [&](Power const& p) { return p.name == power->name; }))
                 out.push_back(std::move(*power));
         }
-    }
+    });
 #elif defined(MEVR_GAME_LE2)
-    auto* const manager = gPowerManager.Read<ue3::Object*>(pawn).value_or(nullptr);
-    auto const list = ue3::runtime::IsAlive(manager) ? gManagedPowers.ElementsOf(manager) : std::nullopt;
-    if (!list) return out;
-    for (int i = 0; i < list->count && i < 64; ++i) {
-        auto* const slot = static_cast<ue3::Object**>(list->At(i));
-        auto* object = slot != nullptr ? *slot : nullptr;
-        if (!ue3::runtime::IsAlive(object)) continue;
-        if (auto* const evolved = gLe2Evolved.Get()) {
-            ue3::Params args(ue3::runtime::Get(), evolved);
-            if (args.Set("Power", object) && ue3::runtime::Call(manager, evolved, args) && args.ReturnBool().value_or(false)) {
-                object = args.Get<ue3::Object*>("EvolvedPower").value_or(nullptr);
-            }
-        }
+    sequel_powers::ForEach(pawn, [&](ue3::Object* object) {
         if (auto power = Le2Power(object, includeUnlearned)) {
             if (std::none_of(out.begin(), out.end(), [&](Power const& other) { return other.object == power->object; })) {
                 out.push_back(std::move(*power));
             }
         }
-    }
+    });
 #else
     ue3::Object* const behavior = gBehavior.Read<ue3::Object*>(pawn).value_or(nullptr);
     if (behavior == nullptr) {
@@ -593,7 +611,7 @@ ue3::FieldRef gPawnList{"Engine.WorldInfo", "PawnList", ue3::kEveryGame};
 ue3::FieldRef gNextPawn{"Engine.Pawn", "NextPawn", ue3::kEveryGame};
 ue3::FieldRef gHidden{"Engine.Actor", "bHidden", ue3::kEveryGame};
 ue3::FieldRef gBehaviorActive{"SFXGame.BioActorBehavior", "bActive", ue3::kEveryGame};  // the encounter's switch (dormant: false)
-ue3::FunctionRef gIsHostileFn{"SFXGame.BioPawn.IsHostile", ue3::kEveryGame};
+ue3::FunctionRef gIsHostileFn{engine::adapter::kIsHostileFunction, ue3::kEveryGame};  // ME3: Engine.Pawn's
 #if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 ue3::FunctionRef gIsDeadFn{"Engine.Pawn.IsDead", ue3::kEveryGame};
 #else
@@ -2150,17 +2168,19 @@ std::string StatusJson() {
     for (Power const& p : gRoster) {
         roster += (roster.empty() ? "" : ", ") + json::JsonString(p.info->name);
     }
-    ue3::Object* const controller = ue3::runtime::Ready() ? player::Controller() : nullptr;
+    // Up(), not Ready(): this runs on every game (the sequels' wheel keeps its own selection; ME1 reads the game's mapped power).
+    ue3::Object* const controller = ue3::runtime::Up() ? player::Controller() : nullptr;
     return std::format("{{\"on\": {}, \"why\": {}, \"open\": {}, \"toggled\": {}, \"serial\": {}, \"roster\": [{}], \"selected\": {}, "
                        "\"hand\": [{}, {}], \"pose\": [{}, {}, {}], \"equipped\": {}, \"mappedPower\": {}, \"last\": {}, \"opened\": {}, "
-                       "\"equips\": {}, \"cancels\": {}, \"picks\": {}, \"gestureTarget\": [{}, {}, {}], "
+                       "\"equips\": {}, \"cancels\": {}, \"picks\": {}, \"gesture\": {}, \"gestureTarget\": [{}, {}, {}], "
                        "\"lock\": {{\"why\": {}, \"target\": {}, \"automatic\": {}, \"seen\": {}, \"locks\": {}, "
         "\"pushes\": {}, \"casts\": {}, \"refused\": {}, \"lastCast\": {}}}}}",
         gSettings.on ? "true" : "false", json::JsonString(gWhy), gMachine.open ? "true" : "false", gMachine.toggled ? "true" : "false",
         gMachine.serial, roster, gMachine.selected, json::JsonNumber(gView.hand.x), json::JsonNumber(gView.hand.y),
         json::JsonNumber(gView.pose.position.x), json::JsonNumber(gView.pose.position.y), json::JsonNumber(gView.pose.position.z),
         json::JsonString(gEquipped), json::JsonString(MappedPower(controller)), json::JsonString(gLastEvent), gOpened, gEquips, gCancels,
-        gPicks, json::JsonNumber(gSelfView.target.x), json::JsonNumber(gSelfView.target.y), json::JsonNumber(gSelfView.target.z),
+        gPicks, json::JsonString(gEquipped.empty() ? "none" : pw::Name(pw::SelfGestureFor(gEquipped.c_str()))),
+        json::JsonNumber(gSelfView.target.x), json::JsonNumber(gSelfView.target.y), json::JsonNumber(gSelfView.target.z),
         json::JsonString(gLockWhy), json::JsonString(NameOf(gTarget)), gTarget != nullptr && gLock.automatic ? "true" : "false", gSeen.size(), gLocks, gPushes, gCastCount, gRefused,
         json::JsonString(gLastCast));
 }

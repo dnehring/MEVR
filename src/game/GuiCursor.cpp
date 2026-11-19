@@ -42,6 +42,65 @@ bool gLoggedFailure = false;
 bool gOwnerDrain = false;
 #if defined(MEVR_GAME_LE3)
 ue3::Object* gInputMovie = nullptr;
+
+// ME3's movie mouse (research/le3-native-gui.md "The movie's mouse"). GuiKey hands an event to SFXGUIInteraction's input handler,
+// which gives a mouse event to the focused movie only when that movie takes the mouse in its current input mode (its
+// m_bMouseVisibleWhenFocused and a check of its own; with the motion controllers as pad 0 the game is in its pad mode). The
+// movie's own native SendMouseEvent goes straight to the handler's mouse step: the event at the viewport's mouse, which is
+// GetCursorPos (answered by the host with the pointer's point while it is on the screen). ME3's own scripts use it for the
+// galaxy map's wheel and the power wheel's release. So the pointer's moves, clicks and wheel go that way; the pad's events
+// (the d-pad, B) still go through GuiKey. `mevr guimouse route guikey` sends them through GuiKey instead (an A/B).
+ue3::FunctionRef gSendMouseEvent{"SFXGame.SFXGUIMovie.SendMouseEvent", ue3::kEveryGame};
+ue3::FieldRef gMouseVisibleWhenFocused{"SFXGame.SFXGUIMovie", "m_bMouseVisibleWhenFocused", ue3::kEveryGame};
+ue3::FieldRef gUsingGamepad{"SFXGame.SFXGUIMovie", "bUsingGamepad", ue3::kEveryGame};
+bool gMovieMouse = true;
+std::uint64_t gMovieMouseSent = 0;
+bool gLoggedMovieMouse = false;
+
+bool IsMouseEvent(std::uint8_t event) {
+    namespace ge = vr::gui_events;
+    return event == ge::kMouseMove || event == ge::kLeftDown || event == ge::kLeftUp || event == ge::kWheelUp || event == ge::kWheelDown;
+}
+
+bool SendMovieMouse(ue3::Object* movie, std::uint8_t nativeEvent, std::string& why) {
+    ue3::Function* const fn = gSendMouseEvent.Get();
+    if (fn == nullptr) {
+        why = "SFXGUIMovie.SendMouseEvent wasn't found";
+        return false;
+    }
+    if (movie == nullptr || !ue3::runtime::IsAlive(movie)) {
+        why = "no focused movie";
+        return false;
+    }
+    ue3::Params p(ue3::runtime::Get(), fn);
+    if (!p.Valid() || !p.Set("nEventID", nativeEvent) || !ue3::runtime::Call(movie, fn, p)) {
+        why = "the call failed";
+        return false;
+    }
+    why = std::format("{}.SendMouseEvent({})", le3_gui::Tag(movie), nativeEvent);
+    return true;
+}
+
+// The first qword of an object (its C++ vtable) and two of its slots, for the research note: read-only, guarded.
+bool ReadVtableSlots(ue3::Object const* movie, std::uintptr_t& table, std::uintptr_t& gate, std::uintptr_t& gamepad) noexcept {
+    __try {
+        table = *reinterpret_cast<std::uintptr_t const volatile*>(movie);
+        gate = *reinterpret_cast<std::uintptr_t const volatile*>(table + 0x410);     // the input handler's mouse gate's call
+        gamepad = *reinterpret_cast<std::uintptr_t const volatile*>(table + 0x3B8);  // IsUsingGamepad's
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
+std::string VtableSlots(ue3::Object* movie) {
+    auto const base = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
+    std::uintptr_t table = 0, gate = 0, gamepad = 0;
+    if (movie == nullptr || !ReadVtableSlots(movie, table, gate, gamepad)) {
+        return "unreadable";
+    }
+    return std::format("exe+0x{:X} (slot 0x410 exe+0x{:X}, 0x3B8 exe+0x{:X})", table - base, gate - base, gamepad - base);
+}
 #endif
 
 std::uint8_t NativeEvent(std::uint8_t event) {
@@ -69,7 +128,15 @@ std::optional<float> VariableFloat(ue3::Object* panel, wchar_t const* path) {
         return std::nullopt;
     }
     ue3::Reflection& r = ue3::runtime::Get();
-    ue3::Function* const f = r.FindFunction(r.ClassOf(panel), "GetVariableFloat");
+    ue3::Function* f = r.FindFunction(r.ClassOf(panel), "GetVariableFloat");
+    char const* pathParam = "sPath";
+#if defined(MEVR_GAME_LE3)
+    if (f == nullptr) {
+        // ME3's own movies (War Assets) aren't legacy adapters: GFxMovie's getter.
+        f = r.FindFunction(r.ClassOf(panel), "GetVariableNumber");
+        pathParam = "Path";
+    }
+#endif
     if (f == nullptr) {
         return std::nullopt;
     }
@@ -78,7 +145,7 @@ std::optional<float> VariableFloat(ue3::Object* panel, wchar_t const* path) {
     if (!p.Valid() || !name.Valid()) {
         return std::nullopt;
     }
-    p.Set("sPath", name.Get());
+    p.Set(pathParam, name.Get());
     if (!ue3::runtime::Call(panel, f, p)) {
         return std::nullopt;
     }
@@ -97,6 +164,27 @@ std::string Command(std::string const& args) {
         words >> detail;
         return le3_gui::HudReport(detail == "parents");
     }
+    if (option == "route") {
+        std::string route;
+        words >> route;
+        if (route == "movie" || route == "guikey") {
+            gMovieMouse = route == "movie";
+        } else if (!route.empty()) {
+            return "usage: mevr guimouse route movie|guikey";
+        }
+        return std::format("guimouse: the pointer's mouse events go to ME3's movie through {}", gMovieMouse
+            ? "SFXGUIMovie.SendMouseEvent (the movie's own mouse step)" : "GuiKey (SFXGUIInteraction.HandleInputEvent and its mouse gate)");
+    }
+    if (option == "send") {
+        int event = -1;
+        words >> event;
+        if (event < 0 || event > 52) {
+            return "usage: mevr guimouse send <BioGuiEvents number> (ME3's own: 6 move, 31 left down, 52 left up, 8/9 wheel)";
+        }
+        std::string why;
+        bool const ok = SendMovieMouse(le3_gui::FocusMovie(), static_cast<std::uint8_t>(event), why);
+        return std::format("guimouse: {} {}", ok ? "sent" : "not sent", why);
+    }
 #else
     (void)args;
 #endif
@@ -111,7 +199,11 @@ std::string Command(std::string const& args) {
     std::string out = std::format("guimouse: the movie's mouse ({:.1f}, {:.1f}) of a {:.0f} x {:.0f} stage", x.value_or(-1.0f),
         y.value_or(-1.0f), w.value_or(0.0f), h.value_or(0.0f));
 #if defined(MEVR_GAME_LE3)
-    out += std::format("; focused ME3 movie '{}' (native full-frame panel, crop not accepted)", le3_gui::Tag(panel));
+    auto const boolText = [](std::optional<bool> b) { return b ? (*b ? "1" : "0") : "?"; };
+    out += std::format("; focused ME3 movie '{}', m_bMouseVisibleWhenFocused {}, bUsingGamepad {}, vtable {}; the pointer's mouse "
+                       "through {} ({} sent)",
+        le3_gui::Tag(panel), boolText(gMouseVisibleWhenFocused.ReadBool(panel)), boolText(gUsingGamepad.ReadBool(panel)),
+        VtableSlots(panel), gMovieMouse ? "SendMouseEvent" : "GuiKey", gMovieMouseSent);
 #endif
     // The Windows cursor as the game sees it (GetCursorPos, answered by the host's pointer while it steers), in the foreground
     // window's client area, and the movie's mouse that would make.
@@ -213,7 +305,22 @@ void Tick(std::uint32_t (*take)(std::uint8_t* events, std::uint32_t capacity), b
         }
         std::string why;
         std::uint8_t const nativeEvent = NativeEvent(event);
+#if defined(MEVR_GAME_LE3)
+        // Not made (no such function or movie): GuiKey as before, never both for one event.
+        bool const movieMouse = gMovieMouse && IsMouseEvent(event) && SendMovieMouse(movie, nativeEvent, why);
+        bool const sent = movieMouse || game_menu_request::GuiKey(nativeEvent, why);
+        if (movieMouse) {
+            ++gMovieMouseSent;
+            if (!gLoggedMovieMouse) {
+                gLoggedMovieMouse = true;
+                log::Info("gui cursor: ME3's movie takes the pointer's mouse through its own SendMouseEvent ({}), at the point the "
+                          "host answers GetCursorPos with (research/le3-native-gui.md \"The movie's mouse\")", why);
+            }
+        }
+        if (sent) {
+#else
         if (game_menu_request::GuiKey(nativeEvent, why)) {
+#endif
             gScheduler.NoteSent(event);
             ++gSent;
             if (!gLoggedFirst && event != vr::gui_events::kMouseMove) {
@@ -243,8 +350,13 @@ void Tick(std::uint32_t (*take)(std::uint8_t* events, std::uint32_t capacity), b
 }
 
 std::string StatusJson() {
-    return std::format("{{\"taken\": {}, \"sent\": {}, \"failed\": {}, \"waiting\": {}, \"droppedForPuzzle\": {}}}", gTaken, gSent, gFailed,
-        gScheduler.Waiting(), gDroppedForPuzzle);
+#if defined(MEVR_GAME_LE3)
+    std::string const movie = std::format(", \"movieMouse\": {}, \"movieMouseSent\": {}", gMovieMouse ? "true" : "false", gMovieMouseSent);
+#else
+    std::string const movie;
+#endif
+    return std::format("{{\"taken\": {}, \"sent\": {}, \"failed\": {}, \"waiting\": {}, \"droppedForPuzzle\": {}{}}}", gTaken, gSent, gFailed,
+        gScheduler.Waiting(), gDroppedForPuzzle, movie);
 }
 
 } // namespace mevr::game::gui_cursor

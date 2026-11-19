@@ -96,7 +96,10 @@ authored seated scenes (such as shuttles) must reject traversal while retaining 
   game mode, looked up on that object's class so the Mako's or a wheel's override runs; `SFXGameModeDefault.TryHolster`
   (Back's `Console_Holster`) on foot, only while a weapon is drawn (it's a toggle). No pad press: the old fake Start
   (2026-10-25) never reached the game (2026-10-26). Logs `main menu request:`, `main menu: opened the game's pause menu
-  (<class>.ShowMenuGui returned 1; ...)`, `main menu: holstered the weapon`; snapshots `"mod"."gameMenu"`. The menu button and each hand's interaction profile are only logged (`halcyon bridge:`). Pointer: a controller's aim ray is
+  (<class>.ShowMenuGui returned 1; ...)`, `main menu: holstered the weapon`; snapshots `"mod"."gameMenu"`. **On ME2 and ME3 a
+  third entry, Leave** (the owner's answer to question 16, 2026-11-17; research/28 "Leave"): their B tap's `LeaveWorld` (the
+  level's `SFXSeqEvt_LeaveWorld` events: an assignment's "return to the Normandy?"), shown only on foot, out of combat and with
+  an armed leave event loaded (HostServices v44 `setGameMenuOffers`, fresh 1 s; `mevr omni offers`); never on ME1. The menu button and each hand's interaction profile are only logged (`halcyon bridge:`). Pointer: a controller's aim ray is
   the mouse (trigger clicks, right stick scrolls, haptic ticks); the pad or left stick moves the focus, A
   activates, B backs out then closes; on Display holding A compares the colour. Sections: Controller guide (every button and gesture,
   texts from the settings: `vr::menu_settings::GuideTexts`; opened once on a first run, `[Menu] controlsShown`), Comfort, Controls,
@@ -131,7 +134,11 @@ authored seated scenes (such as shuttles) must reject traversal while retaining 
   mouse, trigger clicks, right stick scrolls). Our tab there, "VR hands" (`src/plugin/MevrMenuTab.cpp`),
   edits `[Hands]` and `[Squad] style` in `ASI\LE1MEVR.ini` (the mod re-reads it) and writes the arm-length
   sample (`[Arms] measureRequest` counter plus grip/head positions; `armLengthM` is shown if present).
-- Our seams into it are marked `[MEVR]` and declared in `src/halcyon/le1/mevr_bridge.h`
+- **One seam vocabulary for the three renderers** (2026-11-16, research/trilogy-seams.md): a seam more than one renderer
+  has is `MevrSeams::X` in `src/halcyon/MevrSeams.h` (one signature; implemented once in `plugin/Seams.cpp` where every game
+  answers alike, else in that game's bridge); each tree's `mevr_bridge.h` holds only its own. A shared host module asks
+  `renderer::Capabilities()` (`plugin/Renderer.hpp`) instead of `#if MEVR_WITH_HALCYON_LEx`.
+- Our seams into it are marked `[MEVR]`; LE1's own are declared in `src/halcyon/le1/mevr_bridge.h`
   (implemented in `src/plugin/HalcyonBridge.cpp`): static OpenXR loader, our controller actions
   on its session, Touch → Xbox pad 0 in its XInput hooks. Keep changes to its files small and
   marked; `git log -p -- src/halcyon` must show every change.
@@ -143,7 +150,26 @@ authored seated scenes (such as shuttles) must reject traversal while retaining 
   **LE3's candidate host now integrates Halcyon's ME3 renderer** (`src/halcyon/le3`, `MEVR_WITH_HALCYON_LE3`;
   [foundation and remaining gates](research/le3-renderer-integration.md)). It reuses controller/floor/pad/test-loop services;
   native reflection now passes the protected 259-row probe and ordinary Normandy save loading/reloading is verified.
-  Body/UI outcomes and VR acceptance remain pending. Use the existing protected desktop/engine-request routes in
+  Body/UI outcomes and VR acceptance remain pending. ME3's renderer pins ME2's baseline after every ini load (`[MEVR]`
+  `ApplyMevrBaseline` in le3 me2_menu.cpp since 2026-11-17: first person with the head hidden, no head aim, no stick pitch,
+  flat menus, cinematic conversations, no profile hotkeys or R recenter, `\`; K still toggles first person). Its
+  conversations and cutscenes go on ME1's 3D cinema screen by default, every corroborated cinematic whatever its mode, and
+  our menu offers it (`renderer::Caps::cineScreen`, 2026-11-18, the owner: the default as on ME1 and ME2).
+  ME3's life-size stereo renders each eye through its own frustum (mode 2, as ME1 and ME2; the owner's answer to
+  docs/trilogy-plan.md question 17, 2026-11-17): `MELE3VR.ini [VR] MetricEyeFrustum` (LE1's `sfr2MetricEyeFrustum`), 1 by
+  default (0: the shared symmetric window, mode 1), not pinned by the baseline, with the host's flare fix on by default
+  (`plugin/FlareWindow`, `ASI\LE3MEVR.ini [Stereo] flareWindow`: ME3's lens-flare reflections unprojected through the CPU's
+  own window, else every lamp's flare lands off its lamp, differently per eye; research/le3-flares-and-window.md). **The
+  sequels' render size follows the headset as ME1's** (the owner, 2026-11-18; research/le3-flares-and-window.md section 6):
+  at the first VR start `FirstStartEyeSize` writes 0.85 of the recommended eye (ME3: sides in multiples of 8; ME2: at least
+  16:9, its HUD isn't drawn on a near-square frame, and at 4:3 the power wheel at the hand cuts out the wrong band for 5% less
+  GPU: kept at 16:9, section 6.1) into `MELE2VR.ini`/`MELE3VR.ini [VR] RenderW/RenderH` and GamerSettings
+  for the next launch, once (`[Display] eyeSizeSet`; `core/vr/RenderTarget`, `renderer::SetRenderTarget`); the runner pins
+  it (`prep.ps1 -FirstVrStart` runs it on ME2). ME3's shipped stand-in is 3072x2216 (the code default when the keys are
+  missing), ME2's 4096x2304;
+  `tools/deploy-asi.ps1 -Game LE3` installs `src/halcyon/le3/runtime/MELE3VR.ini` (the runner's preview without diagnostics)
+  when there is none, `vr-game-settings.ps1 -Game LE3` writes its size. `[Stereo] windowEyes` stays 0 until a HUD check.
+  Use the existing protected desktop/engine-request routes in
   `tools/le2-halcyon-run/README.md` for discovery; do not deploy the candidate as accepted VR support. The chapter
   save tested as a combat candidate enters cinematic/injured modes and is not an accepted ordinary combat fixture.
   **LE2's host runs Halcyon's ME2 renderer**
@@ -154,12 +180,13 @@ authored seated scenes (such as shuttles) must reject traversal while retaining 
   stereo and the queue work, first person is off until that ini has `[FirstPerson] Enabled=1` (K toggles it), the eyes
   take the monitor's shape; research/le2-renderer-integration.md "The first run on the fake headset"). **ME1's choices on
   ME2's keys:** `[MEVR]` `ApplyMevrBaseline` in `me2_menu.cpp` after every ini load (stereo, flat menus, no profile
-  hotkeys, no recenter on R, ME2's reload, first person, no head aim, no stick pitch, conversations and cutscenes on
-  Halcyon's flat cine panel until ME1's 3D cinema screen is ported), its hotkeys only with the game in front
+  hotkeys, no recenter on R, ME2's reload, first person, no head aim (nor in the Hammerhead: `VehicleHeadMode 1`, free look), no stick pitch, upstream's first-person conversations off; conversations and cutscenes
+  on ME1's 3D cinema screen, `plugin/SequelCinema`), its hotkeys only with the game in front
   (`MevrBridge::HotkeyDown`). **ME2 continues ME1** (the owner, 2026-11-14): ME1's systems and defaults, deviating only
   where ME2 forces it; the order (the host's services, then VRIK fast-tracked, then menus, then the cinema screen) is
   docs/le2-from-le1.md sections 0 and 4;
-  the deploy installs upstream's `MELE2VR.ini` (eyes 2048x2304 with `vr-game-settings.ps1 -Game LE2`'s borderless window).
+  the deploy installs upstream's `MELE2VR.ini` (4096x2304 until the first VR start sizes it from the headset, above; the
+  flat panel at ME1's 1.4 m / 2.35 m) with `vr-game-settings.ps1 -Game LE2`'s borderless window.
   **On LE2 `game/SystemSettings` waits until a level has been in gameplay for 3 s**: a `scale set` during the load with the
   game's depth of field on faulted the rendering thread in the first gameplay frame, the game hung (9 of 9 runs;
   "Defaults from ME1" there, gotchas/me2-scale-set-during-load).
@@ -170,6 +197,10 @@ authored seated scenes (such as shuttles) must reject traversal while retaining 
   (journalled, put back in a `__finally`). ME2's camera stays level and smooth through it; `view = level`, `mask = vignette |
   blink` and the cue (`cue = 1`) are options, off by default. Fixture: Save 4's spaceport, `tools/le2-halcyon-run/vault.ps1`;
   `mevr traversal slots | near | place | go | pause | trace ...`; logs `traversal:`, `traversal cue:`.
+  **Arm IK across root-motion steps** (every game; `core/ik/GoalStep`, `engine/BonePose` `GoalFrame`, research/le2-vrik.md):
+  the vault's pose moves the `Camera` bone up to 113 units in the mesh's space before the actor steps, and goals left in
+  that space rode the step (hands 0.7-1.0 m off for a frame); the writer solves in the goals' frame whenever the bone moved
+  past 1 unit since the goals were computed and the view hangs on it (not a held view). `mevr armik step [off|camera] [units]`.
   **On an HDR display (this machine's) ME2's swap chain is R16G16B16A16_FLOAT in gameplay**, whatever `DesiredRange` says;
   Halcyon's ME2 renderer assumes 8 bits (its eye copies did nothing: black or stale eyes; no SFR left eye, no UI treatment):
   `plugin/EyeCopy` draws such a frame into the eyes, and `[Colour] hdrDisplay = -1` in `ASI\LE2MEVR.ini` answers the game's
@@ -197,8 +228,10 @@ authored seated scenes (such as shuttles) must reject traversal while retaining 
 
 `docs/development-approach.md`: build on Halcyon and own the VRIK; let Claude see the game through
 the test loop (eye snapshots, pose recording and replay); read the engine with Ghidra
-(`tools/ghidra`, GhidraMCP) instead of by hand; parallel agents in worktrees, merged only after all
-three builds and the tests pass.
+(`tools/ghidra`, GhidraMCP) instead of by hand; parallel agents in worktrees (at most two at a time), merged only after
+`build-trilogy` (it contains the LE1-only `build`) and `build-mono` build and the tests pass; inside a game run, iterate by hot
+reload rather than relaunching, and show ME1 unchanged by its compiled code before running a same-pose pair (the owner,
+2026-11-17: the process was much too slow).
 
 ## Before each VR milestone
 
@@ -237,6 +270,18 @@ switching frameworks.
 
 - Configure: `cmake -S . -B build -G "Visual Studio 17 2022" -A x64`. Build:
   `cmake --build build --config Release --target MEVR-LE1`, producing `build/Release/LE1MEVR.asi`.
+- **Cold builds** (lane BLD, 2026-11-17): every project compiles its sources in parallel (MSBuild's multi-tool task,
+  `CMAKE_VS_GLOBALS` at the top of `CMakeLists.txt`; before, each project's files went through one cl.exe in turn), and
+  the third-party libraries (LExSDKv2's SDKs, the OpenXR loader, FreeType, RmlUi) come from a prebuilt cache in
+  `%LOCALAPPDATA%\MEVR\build-cache` (`tools/cmake/ThirdParty.cmake`: keyed by the submodules' commits, never with local
+  changes, the compiler, Windows SDK, flags and those settings; a configure without an entry builds it once, about a
+  minute, under a lock; Release only: `-DMEVR_THIRDPARTY_CACHE=OFF`, and CI, build them from source). The binaries are
+  the same (sizes, sections, exports compared). A fresh worktree's cold configure and build, quiet machine: build-trilogy 610 s
+  before, 384 s with the parallel compiles, 324 s with the cache too (392 s when its configure first builds the entries);
+  build-mono about 600 s, 183 s, 165 s. The rest is our own sources compiled per game (about 40% of the compiler's time
+  is second and later compiles of a file); it is CPU-bound now (about 19 compiles at once on 24 threads). While a game runs,
+  build at Idle priority on half the cores: `$env:CL_MPCount=8; cmd /c start "" /b /low /wait cmake --build <dir> --config
+  Release --parallel 4 -- -nodeReuse:false` (a reused MSBuild node keeps Normal priority).
 - Deploy: `tools/deploy-asi.ps1 -Game LE1` (needs the ME3MM ASI loader). The log is at
   `<Win64>/Logs/LE1MEVR.log` or `%LOCALAPPDATA%/MEVR/`.
 - **Hot reload (default build):** `LE1MEVR.asi` is a small host; the code lives in
@@ -247,10 +292,11 @@ switching frameworks.
 - Script-level hooks must wait for the script packages to load (they aren't there at attach).
   `Mod.cpp` retries every second before installing the ProcessEvent hook (LE1: `ue3::runtime::Init`, then
   `Engine.Camera.UpdateCamera` through our reflection layer, research/34 stage 3; LE2 the same since 2026-11-14, M1:
-  ME2's layout in `engine/GameAdapter.hpp`, research/le2-engine-access-discovery.md "M1: what ME2's code showed", with
-  `engine/Legacy` as LE2's fallback only; LE3: `engine/Legacy`).
-  Engine reads go through `src/ue3/` (handles, `Params`); new LExSDKv2 use belongs only in `engine/Legacy`,
-  ReflectCheck's reference side until stage 6 removes it (the hooks and RVAs are ours since stage 4: `core/Hook`'s
+  ME2's layout in `engine/GameAdapter.hpp`, research/le2-engine-access-discovery.md "M1: what ME2's code showed"; LE3 the
+  same since L3-1; **no game falls back to LExSDKv2 since 2026-11-16**, T04, research/34 section 6.4: with the layer off
+  the game features stand down, and `engine/Legacy` is the LE2 diagnostic host's only).
+  Engine reads go through `src/ue3/` (handles, `Params`); LExSDKv2 use belongs only in ReflectCheck's reference side
+  and the LE2 diagnostic host (`MEVR_LE2_DIAGNOSTIC`), never in a module a players' build compiles (the hooks and RVAs are ours since stage 4: `core/Hook`'s
   `hook::Context`, every raw address in `engine/Addresses.hpp`, research/34).
 - Hotkeys: not F-keys (bound in game), not backtick (UE console). `]` toggles VR (the XR
   session) on and off, and with it every VR feature: once a session runs, alternate-eye stereo,
@@ -282,6 +328,18 @@ switching frameworks.
   right FIST (grip and trigger) punches through `BioPlayerInput.ActivatePower(Pistol_Whip)` (`meleeFist`; the left hand
   doesn't, its trigger and grip are the squad's); both hands share one cooldown that also waits out the game's melee
   power's (`ik::throwing::RouteMelee`, `MeleeWait`). `mevr melee punch|strike` tests it without controllers.
+  **One melee for the trilogy** (2026-11-17, the owner: "B on ME2 and ME3 works as on ME1", melee is ME1's fist gesture;
+  research/20 "The trilogy's one path"): `game/Melee` is the one dispatcher (`Strike`: ME1's order of reasons) over each game's
+  adapter (ME1 `TryMelee`/`ActivatePower(Pistol_Whip)`; ME2 `TryMelee`, the held weapon's `MeleePowerName` and its BioPower's
+  cooldown; ME3 its native admission, `TryMelee`/`TryHeavyMelee`), and `ik::melee::Gestures` the one gesture core (rules
+  `Physical`: ME1's two detectors exactly, `tests/MeleeTests.cpp` compares; `Staged`: ME3's rules, its stroke melee on by
+  default since 2026-11-17 as on ME1 and ME2 (`[Throwables] melee`; `mevr melee requests|gestures on|off`), the heavy
+  "chamber and strike" opt-in until the owner's question 7, `mevr melee heavy-gestures on`). `game/Throwables` only feeds ME1's strokes (`melee::StepPhysical`, its
+  body frame); ME2's feed is `melee::Tick`. **B is kept from the game on foot in VR on every game** (`melee::AdjustPad`,
+  `gamepad::kFlagNoMeleeButton`; ME2 lost its `TryMelee`, `TryExitCover` and `LeaveWorld` on B there: question 16), and
+  ME2 has no punch with the weapon away (holstered, its pawn holds no weapon and its melee is the held weapon's), and squad placement
+  stands down only while B really reaches the game (`melee::BIsGameButton`). Logs `melee:`; `tools/le2-halcyon-run/melee.ps1`,
+  `melee-b.ps1` (B with a TryMelee call trace and a canary).
 - No cover snapping, physical crouch (LE1, VR on foot; `game/Posture` + `core/ik/Posture`, research/23,
   `[Hands] noCover`, `physicalCrouch`, `crouchBelow`/`standAbove`/`crouchDwellS`): ME1 takes cover by
   itself (BioPawn's native test, no button; A only leaves it). `engine/cover_acquire` pre-hooks that
@@ -302,8 +360,17 @@ switching frameworks.
   sprint into cover never snap, A's use and lane E's out-of-cover mantle untouched; `MassEffectGuiManager.ShowCoverWidget` followed
   by its `HideCoverWidget`); the crouch is `Engine.Pawn.ShouldCrouch`; VR cover answers `SFXGame.ModifyDamage`'s
   `IsInCoverLeaning`/`IsInCover` and gives its cone's `CoverLink.GetSlotRotation` the surface's facing (`BioPawn.CurrentLink`
-  holds CoverLink's class default object for that call). `mevr cover snap on|off|auto | acquire | where | links | put`. LE3's
-  plan: research/23 section 6.3.
+  holds CoverLink's class default object for that call). `mevr cover snap on|off|auto | acquire | where | links | put`. **ME3
+  too since 2026-11-17** (lane FP3, research/trilogy-first-person.md): `[Hands] noCover` refuses `SFXGameModeDefault.FindCover`
+  inside `TryAcquireCover`, and VR cover's real-slot rule (`game/Le3Cover.inc`) follows it, each answer logged; neither seen
+  in a fight yet (research/le3-combat-fixtures.md's first check). **ME2's shorter wait before the shields recharge in cover** (the owner, 2026-11-16; research/23
+  section 7.5; only ME2 has the rule): `SFXShield_Base.Tick`'s same two questions answered while the head is hidden from every
+  awake hostile within 40 m, by cover within reachM from at least one (`vr::cover::Shelter`; `[Cover] recharge = 1`; `mevr cover
+  regen [as <n>] | recharge on|off`; log `vr cover: the shields' wait before recharging: ...`).
+  **One sprint for the trilogy** (the owner, 2026-11-16, "Unified sprint"; `game/Sprint`): the binding's `OnHold StormOn` reaches
+  StormOn through ProcessEvent (a timer), so a CallFunction skip never saw it (the game's own sprint ran on ME1 from 2026-11-06 to
+  11-16); now StormOn runs and its intent `BioPlayerController.bWantsToStorm` is withdrawn right after (both hooks' post-handlers),
+  and the faster run raises GroundSpeed and CombatGroundSpeed by the game's sprint speed over `Pawn.GetMaxSpeed`. Logs `sprint:`.
 - LE1 level camera (`game/view_level`, `core/vr/ViewLevel`, [research/24](research/24-view-level.md)):
   each shot's recoil goes into the player controller's rotation (ControlRotation) and the rifles' pitch
   kick never fades (`RecoilFadeSpeed=0`); with the stick's pitch off (`decoupledPitch`) the world tilted
@@ -342,8 +409,16 @@ switching frameworks.
   default's (a thumbs-up rule rolled hands palm up); `handTrimLeft`/`handTrimRight`; arm IK's empty hand is grip * trim, the
   `[Hands]` hand angle a fine trim around its 90/0/0 default, `hand_calibration::FineTrim`). A save keeps the last calibration's
   groups this run didn't measure (gun stances, eye, hands).
-  Saved per controller type (interaction profile + headset) as `[Calibration.<key>]` in `ASI\LE1MEVR.ini`;
-  `game/BodyCalibration` applies it: the barrel follows grip * trim (not the aim pose), the gun's sight is
+  Saved per controller type (interaction profile + headset) as `[Calibration.<key>]` (and the manual offsets'
+  `[ManualCalibration.<key>]`, `[Calibration] prompted`/`last`) in **`%LOCALAPPDATA%\MEVR\calibration.ini`, one file for the
+  three games** (since 2026-11-18, research/25 section 17, `core/vr/CalibrationFile`; `engine::CalibrationFile()`): a save is one
+  `.tmp` moved over it, refused for the session if it was there but unreadable; `[Calibration.<key>.<GAME>]` there overrides only
+  the keys it names; `[Calibration] use`, `eye`, `grabOffset` stay in `ASI\<GAME>MEVR.ini`. At host attach, before the mod
+  (`plugin/ModLoader`), a controller type the file lacks is taken from the newest of the three games' `ASI\LE{n}MEVR.ini` (its
+  `time`; this game's first on a tie) and the game's ini marked `[Calibration] shared = 1` (its old sections stay; a marked ini is
+  not read again while the shared file exists). Log `calibration: [Calibration.<key>] taken from ...`. Dev builds: `[Debug]
+  calibrationKey = <key>` in the game's ini stands in for the controller type (the fake headset names none). Setup's report
+  includes the file; uninstall deletes it only with the `%LOCALAPPDATA%\MEVR` box. `game/BodyCalibration` applies it: the barrel follows grip * trim (not the aim pose), the gun's sight is
   moved onto the calibrated line (`gunShift`, the assist on top), the foregrip point takes the left grip,
   two-hand aim keeps the calibrated hands line, the shoulder zone, the crouch thresholds, the holsters'
   eye height. While it runs the game sees a neutral pad and the mod no controllers. `[Calibration] use = 0`
@@ -373,6 +448,15 @@ switching frameworks.
   the weapon away is ours (`holsters::AllowGameDraw`). Logs `holsters: the game wanted to draw your weapon (<caller>):
   refused`, `... for <caller>: let through` and, for a draw by any other route, `holsters: the <gun> came out without a
   holster grab (triggers, grips)`. The shotgun's slot is the left hip (`hipLeft`, a cross-draw).
+  **The sequels** (2026-11-16, research/le2-vrik.md "Holsters on the sequels"): the same module with each game's names (the
+  inventory chain by family; ME2's draw `BioPlayerController.SwitchWeapon` then `BioPawnBehavior.SetActionState(1)`, holster
+  `TryHolster`, drawn `BioPawn.ActionState == 1`); only holsters draw on every game (the owner, 2026-11-16): on ME2
+  `BioPlayerInput.IsCombatEnabled` is answered false inside FireWeapon, TightAim, TryReload and Next/PrevWeapon while the
+  weapon is away (one rule, `RefuseGameDraw`); ME3 keeps no holstered state. The module asks `ue3::runtime::Up()`.
+  **The owner's answers of 2026-11-17** (docs/trilogy-plan.md questions 13-15): a grab's draw asks `IsCombatEnabled` first on
+  every game, ME1 included, and a refusal is the refusal buzz; ME3's heavy weapon in hand refuses a grab at a slot (a switch
+  would throw it away: `body_slots::Input::switchLosesHeld`); on the sequels the right stick click the mod owns never reaches
+  the game as R3 (their R3 opens the area map; host-only `gamepad::Options::keepPowerClick`), ME1's R3 still does.
 - LE1 body under the player ([research/29](research/29-body-follow.md), `core/ik/BodyFollow`, `game/BodyFollow`):
   first person, Shepard's whole body (the `Root` subtree; never `God`/`Camera`) turns by what the spine's 30
   degrees can't (the explore pawn faces where it runs) and slides under the view (feet that step after the
@@ -404,7 +488,7 @@ switching frameworks.
   `pawn.Location.z - CylinderComponent.CollisionHeight + unitsPerMeter * live STAGE/LOCAL_FLOOR eye height`, independent of
   recenter posture, animated camera bones, mode offsets and vertical framing. Both eyes share the correction before metric
   eye offsets and head look; `HostServices` v34 publishes the corrected centre/pose to ViewAnchor, IK and sights (host and mod
-  deploy together; current HostServices v38). `[Body] floorLock = 1` by default; file-only `0` opts out. The temporary
+  deploy together; current HostServices v44). `[Body] floorLock = 1` by default; file-only `0` opts out. The temporary
   0.1.0 default-off workaround is superseded by the held-camera fix (2026-11-07): world UI, conversations and map holds
   capture `corrected centre Z - common framing Z` using the captured camera's rotation, then framing is added once.
   A wrist/conversation hold retains its on-foot scale factor and cylinder-floor pivot, despite mode 7/5 disabling fresh correction.
@@ -420,6 +504,10 @@ switching frameworks.
   `off`, or a number. The writer scales every bone except Camera/God about that floor and inversely maps goals first, keeping
   hands on controllers. `mevr body scale <s>|auto|off`; logs `floor lock:` and `body scale:` (reference named), snapshot `"floorLock"`
   and `"mod"."bodyScale"`. [verify] PS VR2 height, slopes/stairs, held views and gates in the headset; replay needs a recorded floor fixture.
+  **Through a native traversal move** (ME2's vault, gotchas/floor-lock-through-a-traversal-move): the mod's sample says so
+  (`PawnSample::traversalMove`), and `vr::floor_lock::MoveHold` holds the pawn's floor where it stood below the game's camera
+  until that camera has settled after the move (within 2 cm; else eased after 1.5 s): the pawn steps up to 1.1 m at a time
+  under a smooth camera. Log `floor lock: a traversal move began`, `... the traversal hold released`.
   **In a scripted walk the body is the player's** (`worldBody = player`, research/69 "The body in scenes in the world" and
   "The legs under the player"): the body follower slides Shepard's bones to where the player stands while the script moves
   his actor, the legs stand by the writer's leg IK while the view rests and keep the script's walk while it moves
@@ -724,7 +812,7 @@ switching frameworks.
   floor height where the player stood and his mesh settles 1.5 s before his head bone is read again; after such an opening
   his head bone no longer moves the view. An actor a matinee's move track moves is left to it (an authored walk; the
   summary's `trackWalks`), and a track's move of the player's own pawn is withheld in a first-person conversation
-  (`trackHeld`). **The set-piece list is 15** (`cw::IsSetPiece`): six framed conversations seen in first person with a place
+  (`trackHeld`). **The set-piece list is 13** (`cw::IsSetPiece`; the dancer's seat a seated scene since 2026-11-16): six framed conversations seen in first person with a place
   for the player are out of it (the scan's `SEEN_IN_WORLD`: the council hearing, the comm room with Anderson and Nihlus, the
   approach to Ilos, the archive door, Wrex at Fist's). **A walk-in nobody walks is guided** (`worldWalkInS` 5, 0 at once, -1 never; `cw::StepGuide`; the summary's `guidedM`):
   after five seconds without the stick the player is walked to Shepard's mark by the walk's own step (floor, walls, people,
@@ -801,7 +889,10 @@ switching frameworks.
   one spoken to moved, moments walked); **what Shepard stands on carries the player** (`RideBase`: his pawn's `Actor.Base`
   moving, a lift, moves the held view and every place the scene keeps; Therum's `lav70_trig04_elevator_ride` had left the view
   at the bottom of the shaft and `End` put Shepard back there; research/69 item 42), and **the stick walks everywhere but a
-  seat** (`PlayerSeated`: his animated head under 0.62 m above his place for 0.5 s, not crouched); the stances follow
+  seat** (`PlayerSeated`: his animated head under 0.62 m above his place for 0.5 s, not crouched); **the view sits with him**
+  (`StepSeat`, any conversation in the world: his head 15 cm under his standing height, the view follows it into the seat and
+  back up, 1 m/s, a 4 cm deadband, the legs the seat's), and the dancer's seat at Chora's Den is a seated scene
+  (`cw::IsSeatedScene`, the scan's `SEATED_IN_WORLD`: staged, no longer a set piece; research/69 item 43); the stances follow
   a whole scene (`begin`, after each dip and walk, whenever someone moved a metre or turned 40 degrees; bystanders as `others`);
   logs `convo: circle:`, `convo: squad:`, `convo: stance:`, `convo: eyes:`, `convo: steer:`;
   while it walks, his hidden (unposed) head bone never moves the view, nor for 1.5 s after he is shown again
@@ -912,6 +1003,10 @@ switching frameworks.
   `DecideCine`/`CineFinishDecision`, the second-eye gate as 6), head look parked, the title in stereo on a fixed screen; the boot
   before the title flat with head look parked (`FrontEnd::BeforeTitle`, `frontEndBoot`), movies flat at once, the load from the
   menus flat from its first frame. Checked on the fake headset. research/56 "The front end on the 3D screen".
+  **ME2 and ME3 since 2026-11-18** (T18, research/56 "The sequels"): the same module through the common seams
+  (`MevrSeams::FrontEndHold` ..., the game's mode mapped by `engine/GameAdapter.hpp`): the title on the 3D screen, the boot and
+  loads flat; ME2's loads end in 0.3 s of mode 6, kept as the load (`HoldLoadTail`; it was a black 3D screen); ME3's title is
+  its Movie mode over a live scene (its adapter in `d3d_capture.cpp UpdatePresentationState`). LE1's compiled code unchanged.
 - LE1 HUD (Halcyon's renderer, Stereo 2): the game's UI draws go to a body-locked HUD panel quad,
   and a hand reticle on the aim ray replaces the crosshair (`src/plugin/HalcyonOverlays.cpp`,
   [research/15](research/15-hud.md)). Scaleform's non-"over" blend modes (multiply...) go there too,
@@ -1274,7 +1369,11 @@ switching frameworks.
   `BlitTextureToEyeWithFill`, `MevrBridge::EyeUpscale` in `plugin/Upscale`, the math and shader text in
   `core/vr/Upscale` (unit-tested), AMD's MIT headers in `external/fsr1` embedded at build time. Offline look and
   check: `mevr-upscale-preview` (PNGs; `--check` is ctest `mevr-upscale-shader`; `--bench` times an eye). Log
-  `upscale:`; the probe JSON's `"upscale"`.
+  `upscale:`; the probe JSON's `"upscale"`. **One eye-image pipeline on all three games** (2026-11-16, lane EY,
+  [research/27](research/27-colour.md) section 9): the sequels' `plugin/EyeCopy` runs the same colour, dither, tonemap and
+  FSR code with the same `[Colour]`/`[Upscale]` keys and defaults, and the common seam `MevrSeams::EyeImageSize` makes
+  their eye images the headset's size when FSR is on (else the backbuffer's, a raw copy); one `hdrDisplay` policy
+  (`hdr_display::Answer`). LE1 still reaches the shared code through its own blit seams (section 9.3 says how to move it).
 - LE1 performance modes ([research/60](research/60-performance-modes.md), 2026-11-06, the owner: "better performance modes in
   our settings"; `core/vr/PerformanceModes`, unit-tested; `plugin/MainMenuSettings`): Display's **Performance** row, Quality /
   Balanced / Performance, each a bundle measured at Eden Prime's heavy cells: the render resolution chip (headset, × 0.85,
@@ -1572,10 +1671,20 @@ switching frameworks.
   Test only on a fake game: `tools/setup/test-fake-game.ps1` (`scratch\fakegame`); pages offline:
   `MEVR-Setup.exe --preview <folder>`. Release: `tools/package-release.ps1 [-Zip]` into `dist\` (local only; it copies
   the third-party licence texts into `licenses\` and refuses while the ASI links LExSDKv2 unless `-LexSdkPermission`).
-  **LExSDKv2 has no licence, so the players' build has none of it** (2026-10-26): the release (monolithic) build sets
-  `MEVR_LE1_LESDK=OFF` (CMake; default = `MEVR_HOT_RELOAD`), LE1 links no `LESDK-LE1` and `engine/ReflectCheck`'s
-  cross-check compiles out (`MEVR_NO_LESDK`: it logs `reflect: no LExSDKv2 cross-check in this build`). Development
-  builds keep it. Never add LExSDKv2 use to an LE1 code path.
+  **LExSDKv2 has no licence, so the players' build has none of it, on any game** (LE1 2026-10-26; LE2 and LE3
+  2026-11-16, T04, research/34 section 6.4): the release (monolithic) build sets `MEVR_LE1_LESDK=OFF`, `MEVR_LE2_LESDK=OFF`
+  and `MEVR_LE3_LESDK=OFF` (CMake; each defaults to `MEVR_HOT_RELOAD`), no game links `LESDK-<game>` and
+  `engine/ReflectCheck`'s cross-check compiles out (`MEVR_NO_LESDK`: it logs `reflect: no LExSDKv2 cross-check in this
+  build`). Development builds keep it; `package-release.ps1` refuses a build tree whose LE1, LE2 or LE3 ASI links it.
+  Never add LExSDKv2 use to a code path a players' build compiles.
+- **One installer for the three games** ([research/33](research/33-installer.md) section 17, T52, 2026-11-16): the game is
+  a parameter (`install/Game.hpp` `GameSpec`; `Layout{root, game}`, `Layout::Paths()`; `MEVR-Setup --for LE2|LE3`, or the
+  game whose folder `--game` names); each game has its own `ASI\MEVR-install.json`; the launcher's loader is shared and
+  stays until the last game is uninstalled; a sequel's `MELE2VR.ini` next to the exe is never written if one is there.
+  **The sequels are not offered** unless `MEVR-Setup.ini` has `[Setup] games = LE1, LE2` and the payload their ASI
+  (`tools/package-release.ps1 -Games`, which refuses a sequel linking LExSDKv2). Tested on fake games only
+  (`tools/setup/test-fake-game.ps1 -Games LE1,LE2,LE3`; `-Setup <old exe> -Trace <folder>` proves ME1 unchanged between
+  two builds). Never add an LE1 path constant (`install::paths`) to a step that should work for every game.
 - Report a problem ([research/33](research/33-installer.md) section 8): MEVR Setup's page (or `--report [--snapshot]
   [--perf]`), the menu's Advanced > Diagnostics > Report (`plugin/ReportRequest`: starts `ASI\MEVR-Setup.exe --report
   --from-game` at once, background priority, no window) and the crash offer (`install/ReportMarks`) write a redacted
@@ -1620,9 +1729,16 @@ switching frameworks.
   **BIOEngine.ini's `[SystemSettings]` wins over GamerSettings'** for `DynamicShadows` and `MotionBlur` (measured
   2026-10-23, research/35), and the game rewrites that file (after every `scale set`; a launch put the defaults
   back once), so **the mod applies the VR values itself** (`game/SystemSettings`, hot-reloaded): `scale set
-  DynamicShadows False`, `MotionBlur False`, `FoliageDrawRadiusMultiplier 0.5` (and `LightEnvironmentShadows False` while
+  DynamicShadows False` on every game (ME1's cost lever; on ME2 and ME3 since the owner's ME2 test of 2026-11-17 night: the
+  shadows differed between the eyes, "disable the shadows entirely for both eyes"; there `LightEnvironmentShadows False`
+  always too, `engine::adapter::kVrDynamicShadows`, `kVrCharacterShadowsOff`; Setup's sequel path still writes the game's),
+  `MotionBlur False`, `FoliageDrawRadiusMultiplier 0.5` (and `LightEnvironmentShadows False` while
   the second eye is a replay, sharePass 2/3/5: the right eye drew character shadows where the left eye sees them, research/37
-  2026-11-13) through the local player's console
+  2026-11-13; **the host says whether it is**, HostServices v43 `secondEyeIsReplay` = `render_levers::SecondEyeIsReplay()`,
+  false on a game where sharePass stands down: there the mod puts the player's own `GamerSettings.ini` value back, since
+  the game had written our earlier False into `BIOEngine.ini`, except on ME2 and ME3, whose character shadows are off
+  always (`kVrCharacterShadowsOff`, above); a host before v43:
+  the file's `sharePass` rule on LE1 only, `engine::adapter::kOlderHostReplaysSecondEye`) through the local player's console
   once a player exists, **again after every level change, each boolean through its opposite first** (research/35
   attempt 49, 2026-10-28: the save's level rendered with the blur although the ini and the title's `scale set` said
   off, and the same `False` there did nothing while True then False turned it off; in stereo the blur's velocity is
@@ -1864,8 +1980,8 @@ Use it to check VR changes yourself instead of asking the user what they see
   `%LOCALAPPDATA%\MEVR\reflect-check.json` (our layer against LExSDKv2, while both exist).
   Since stage 2 no `src/game` file includes LExSDKv2: the player's shared handles are in `game/Player`,
   hook blocks are read through parameter handles (`FieldRef{functionRef, "ReturnValue"}`), engine
-  strings through `ue3::memory` (`OwnedString`, `FreeString`), and LE3's few all-game reads through `engine/Legacy`
-  until its layout exists (LE2's go through `ue3` since 2026-11-14; a module comes to ME2 by `Ready()` to `Up()` and
+  strings through `ue3::memory` (`OwnedString`, `FreeString`), and every game's all-game reads through `ue3` (LE2's
+  since 2026-11-14, LE3's since 2026-11-16; a module comes to a sequel by `Ready()` to `Up()` and
   `ue3::kEveryGame` handles, research/le2-engine-access-discovery.md). Every class, field, function or parameter you resolve
   needs a row in `engine/ReflectCheck`; a failed lookup stands the feature down with a log line. `IsAlive` is safe on a
   pointer whose memory the engine gave back (a guarded read of the header, 2026-11-10: a hot reload eight levels after the

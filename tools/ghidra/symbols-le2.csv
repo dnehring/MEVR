@@ -24,3 +24,48 @@ rva,name,kind,comment
 0x798350,USkeletalMeshComponent::UpdateBounds_guess,func,M1: LE1's 0x58EEC0 first 24 bytes; one match
 0x072BD0,FName::FName_guess,func,M1: FName(const TCHAR*; EFindName): LE1's 0xD1150 first 24 bytes; ProcessEvent calls it with L"<uninitialized>"; 1
 0x6B9C50,AActor::MoveWithInterpMoveTrack_guess,func,M1: LE1's 0x4B75F0 first 32 bytes; one match
+0x34BF70,FSceneRenderer::RenderViewFamily_RenderThread,func,R2 (research/sequel-render-levers.md): LE1's 0x76EE20 instruction for instruction; the capture loop then the scene render; the table's row "FSceneRenderer::Render"
+0x348BE0,FSceneRenderer::Render,func,R2: LE1's 0x76BC00 instruction for instruction; the non-Umbra branch a capture's renderer takes
+0x345040,FSceneRenderer::InitViews,func,R2: LE1's 0x768090 (0.974; the view stride 0x11A0 for LE1's 0x12F0); ends with the Umbra resolve; the light targets; the base pass
+0x342480,FSceneRenderer::DeletingDestructor,func,R2: (this; flags); the destructor inlined; frees 0x110 bytes when flags & 1; LE1's 0x4ED700 is the thunk form
+0x353AB0,FSceneRenderTargets::Allocate,func,R2: LE1's 0x772EB0 instruction for instruction
+0x372F50,FSceneRenderer::RenderDpgLightTargets_guess,func,R2: LE1's 0x77BE00 (0.69; other registers); (renderer; dpg); InitViews calls it with dpg 1 between the resolve and the base pass
+0x3F80C0,RenderUmbraBasePass,func,R2: LE1's 0x8BF8F0 but for the view stride
+0x3F8380,UmbraResolve_guess,func,R2: LE1's 0x8BFBB0 but for the view stride; arms commander +0x34 + 8i per view
+0x3491B0,RenderBasePassView_guess,func,R2: LE1's 0x76C1D0 (0.91): the opaque base pass of one view
+0x343E80,TranslucencyCheck_guess,func,R2: LE1's 0x7666A0 but for the view stride
+0x336B20,RenderBeforeLights_guess,func,R2: LE1's 0x759240 (0.98): the engine's own occlusion queries; only when GSkipBeforeLights == 0
+0x34A660,RenderDpgPass_guess,func,R2: LE1's 0x76D650 instruction for instruction; (renderer; dpg; uint* dirty)
+0x34A0B0,RenderDpgLights_guess,func,R2: LE1's 0x76D0A0 but for the view stride; (renderer; dpg; flag; uint* dirty; arg5)
+0x349A20,RenderForeground_guess,func,R2: LE1's 0x76CA70 (0.95); (renderer; 2; int* out; uint* dirty; arg5)
+0x34AE50,SceneRenderFinish_guess,func,R2: LE1's 0x76DD10 (0.84: one loop moved); (renderer; translucency; dirty)
+0x33FBE0,UpdatePrimitiveOcclusion_guess,func,R2: LE1's 0x762550 (0.98); the view state's occlusion history set at +0xD10
+0x340970,FSceneView::CopyConstructor,func,R2: LE1's 0x763450 less its last copy (+0x4E0): ME2's FSceneView is 0x4E0 bytes; every earlier offset the same
+0x329B90,SceneCapture::CaptureSceneThunk,label,R2: LE1's 0x742C80; the same 16 bytes
+0x333240,SceneCapture::UmbraCameraThunk,label,R2: LE1's 0x7526C0; the same bytes
+0x354570,FSceneRenderTargets::BeginRenderingBackBuffer,func,R2: LE1's 0x773D30 without its viewport call; RHI +0x520 on the surface at +0x3A8 or +0x3C0
+0x3FF410,UmbraCommander::command,func,R2: LE1's 0x8C34C0 (0.98); the same codes 0 1 3 5 6 9; code 0 stamps 0x175D2A0
+0x3FB390,SetUmbraCommander,label,R2: LE1's 0x8C1AE0; writes the commander index 0x175D288
+0x3DBB80,UmbraCommander::IssueOcclusionQueries,func,R2: LE1's 0x8B6550 instruction for instruction; commander +0x68 view; +0x5C params set; view +0x260
+0x3DB960,UmbraCommander::ReadQueryResults_guess,func,R2: LE1's 0x8B6330 instruction for instruction (command code 6)
+0x3DB620,UmbraCommander::FlushOccluders_guess,func,R2: LE1's 0x8B5FF0 (0.99) (command codes 1 and 5)
+0x3F3ED0,UmbraCommander::InstanceVisible,func,R2: LE1's 0x8BE0B0 (0.98); (commander; record; float distanceSq; a4..a7); record +0x38 the radius
+0x30E5E0,UmbraInstanceRecord::FromSceneInfo_guess,label,R2: LE1's 0x8826F0; the same bytes: record +0 the scene info; +0x20 origin; +0x2C extent; +0x38 radius
+0xD55BC0,Umbra::ReadOneQueryResult_guess,label,R2: LE1's 0xD48380; context +0x1CC head; +0x1C8 count
+0xD59740,Umbra::CameraParams_guess,label,R2: LE1's 0xD4BBA0; the same bytes (impl +0x420)
+0x986790,FD3D11DynamicRHI::GetQueryData,func,R2: LE1's 0x9A04B0 instruction for instruction; (this; query; out; size; bWait)
+0x98ECD0,FD3D11BoundShaderState::FD3D11BoundShaderState,func,R2: LE1's 0x9A89F0 instruction for instruction; refcount +8; the handle is object +0xC
+0x991690,FD3D11DynamicRHI::RHICreateBoundShaderState,func,R2: LE1's 0x9AB3B0 instruction for instruction; RHI vtable +0x280; the miss path allocates 0x84 bytes and calls the constructor
+0x992830,FD3D11DynamicRHI::AddRefBoundShaderState_guess,func,R2: RHI vtable +0x8A0 (LE1's 0x9AC550)
+0x3146C0,UPrimitiveComponent::UpdateUmbraBounds_guess,func,R2: LE1's 0x25CFE0 (0.97); the Umbra object at +0x214 (LE1 +0x210); checked non-null inside
+0x3A9FE0,MotionBlurProxy::Render_guess,func,R2: LE1's 0x279360 by similarity (0.91) and order; the proxy pairs are not audited
+0x3AAE40,NoBlurProxy::Render_guess,func,R2: LE1's 0x27A100 by similarity (0.91) and order; the proxy pairs are not audited
+0x174C648,GDynamicRHI,data,R2: LE1's 0x17938C8; its vtable (0x1227C50; 408 slots) matches LE1's (0x120FD20) slot for slot
+0x161DDB0,GSceneRenderTargets,data,R2: LE1's 0x167D0E0
+0x175301C,GSceneFrameCounter_guess,data,R2: LE1's 0x178779C; incremented per scene render
+0x175D298,GDepthDirtyFlags_guess,data,R2: LE1's 0x1795D38
+0x161E180,GSkipBeforeLights_guess,data,R2: LE1's 0x167D49C
+0x175D348,GUmbraCommanders,data,R2: LE1's 0x1798E88
+0x175D288,GUmbraCommanderIndex,data,R2: LE1's 0x1795D28
+0x175D2A0,GUmbraResolveStart,data,R2: LE1's 0x1795D40; appSeconds as a float; stamped by command code 0
+0x1618A30,GShowFlagBitsPerWord_guess,data,R2: LE1's 0x164C720

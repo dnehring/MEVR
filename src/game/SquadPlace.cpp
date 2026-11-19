@@ -14,6 +14,7 @@
 #include "game/HandCalibration.hpp"
 #include "game/Player.hpp"
 #include "game/Le2Squad.hpp"
+#include "game/Melee.hpp"
 #include "game/PowerWheel.hpp"
 #include "game/SquadContext.hpp"
 #include "game/SquadOrders.hpp"
@@ -29,6 +30,7 @@
 #include <cmath>
 #include <format>
 #include <numbers>
+#include <optional>
 #include <sstream>
 #include <vector>
 
@@ -75,23 +77,6 @@ bool Le2Living(squad_weapons::MemberView const& member) {
 #endif
 }
 
-std::string GiveLe2Order(ue3::Object* controller, std::vector<squad_weapons::MemberView> const& members, int selected,
-    std::optional<engine::UnrealVector> point) {
-    auto* const fn = point ? gLe2Hold.Get() : gLe2Follow.Get();
-    if (fn == nullptr || !le2_squad::CanOrder()) return "order unavailable";
-    unsigned called = 0;
-    for (int i = 0; i < static_cast<int>(members.size()); ++i) {
-        if (selected >= 0 && selected != i) continue;
-        auto const& member = members[static_cast<std::size_t>(i)];
-        if (!Le2Living(member)) continue;
-        ue3::Params args(ue3::runtime::Get(), fn);
-        if (!args.Set("oHenchman", member.pawn) || !le2_squad::BindInputMethod(args)) continue;
-        if (point && !args.Set("vLocation", ue3::Vector{static_cast<float>(point->x), static_cast<float>(point->y),
-                         static_cast<float>(point->z)})) continue;
-        if (ue3::runtime::Call(controller, fn, args)) ++called;
-    }
-    return std::format("{} called for {} squadmate(s)", point ? "HenchmanOrderHoldPosition" : "HenchmanOrderFollow", called);
-}
 #else
 // The squadmate's own AI walked to the point (2026-11-05): the HOLD formation's hold position keeps them where they stand and
 // QuickCommandMoveTo picks its point from the camera's view, so neither brings them to the ring.
@@ -102,7 +87,7 @@ constexpr float kPointToleranceUnits = 60.0f;
 
 sp::Machine gMachine;
 double gUpm = engine::kUnitsPerMeter;
-bool gToldMelee = false;
+bool gStoodDown = false;  // the last tick stood down because B is the game's own button (logged on each change)
 bool gPublished = false;  // the last view sent was active (one inactive view follows the end)
 
 // The console's stand-in for B (no tracked controllers): held with the arc from the head at a pitch.
@@ -142,6 +127,9 @@ constexpr float kWheelTowardM = 0.04f;
 
 unsigned gStarted = 0, gGiven = 0, gCancelled = 0, gTraces = 0, gTicksTraced = 0, gSelections = 0, gRegroups = 0;
 std::string gLast;
+// The last hold's point (game units) and who it was for (-1: the squad): the status measures each squadmate against it.
+std::optional<engine::UnrealVector> gGivenPoint;
+int gGivenMember = -1;
 
 sp::ArcSettings ArcSettingsFrom(hand_calibration::SquadOrders const& s) {
     sp::ArcSettings a;
@@ -319,15 +307,21 @@ void Tick(double deltaSeconds, Link const& link) {
     std::optional<engine::TrackingFrame> const frame = view_anchor::Current();
     if (frame && frame->unitsPerMeter > 0.0) gUpm = frame->unitsPerMeter;
     bool const onFoot = mode && *mode == 0 && pawn != nullptr;
-    bool const melee = hand_calibration::GetThrowables().meleeButton;
-    if (melee && s.enabled && s.place && !gToldMelee) {
-        gToldMelee = true;
-        log::Info("squad place: off while B is the game's melee button ([Throwables] meleeButton = 1)");
-    }
     gClock += deltaSeconds;
     bool const tracked = controllers.active && controllers.right.aimValid;
     bool const scripted = !gSim.script.empty();
     bool const simulated = gSim.held || gSim.releasing || scripted;
+    // The controller's B is the game's own button on foot now (game/Melee's real state of it: [Throwables] meleeButton = 1 or
+    // enabled = 0, or a host without the pad flag): the same press would also be the game's melee (ME2's TryMelee), so placement
+    // stands down. Since 2026-11-17 every game keeps it (the owner: B is placement's on ME2 and ME3 as on ME1). The console's
+    // stand-in presses no game button.
+    bool const melee = onFoot && tracked && !simulated && melee::BIsGameButton();
+    if (melee != gStoodDown && s.enabled && s.place) {
+        log::Info("{}", melee ? "squad place: off while B reaches the game as its own button (its melee): [Throwables] meleeButton = 1 "
+                                "or enabled = 0, or a host without the pad flag"
+                              : "squad place: B is kept from the game again: placement is back");
+    }
+    gStoodDown = melee;
     gSim.releasing = false;
     bool button = gSim.held || (tracked && controllers.right.secondary);
     if (scripted) {
@@ -457,14 +451,11 @@ void Tick(double deltaSeconds, Link const& link) {
     }
     if (step.regroup) {
         ++gRegroups;
-#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
-        std::string const outcome = GiveLe2Order(controller, members, -1, std::nullopt);
-#else
+        // Every game through the one dispatcher (game/SquadOrders; the sequels' HenchmanOrderFollow in its adapter).
         sc::Action action;
         action.who.kind = sc::Who::All;
         action.order = sc::Order::Follow;
         std::string const outcome = squad_orders::Give(action);
-#endif
         gLast = std::format("B double-tapped: the squad back to Shepard: {}", outcome);
         log::Info("squad place: {}", gLast);
         if (link.haptic != nullptr) link.haptic(kRight, 0.12f, 0.8f);
@@ -480,10 +471,9 @@ void Tick(double deltaSeconds, Link const& link) {
     }
     if (step.given) {
         ++gGiven;
-#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
-        auto const point = step.order == sp::Order::Follow ? std::nullopt : std::optional(gArc.point);
-        std::string const outcome = GiveLe2Order(controller, members, step.member, point);
-#else
+        // Every game through the one dispatcher, as the grip's and the voice's orders (the ME2 and ME3 audits' PWR-30): a hold
+        // kept until called back is a standing order there, counted and answered; the sequels' adapter places the game's move
+        // marker and calls HenchmanOrderHoldPosition (game/SquadOrders' Le2Order).
         sc::Action action;
         action.who.kind = sc::Who::All;
         if (step.member >= 0 && step.member < static_cast<int>(members.size())) {
@@ -499,9 +489,12 @@ void Tick(double deltaSeconds, Link const& link) {
             // along the camera's view (2026-11-05: a point 5 m off sent Ashley 30 m ahead, whatever Rotation said).
             action.order = sc::Order::Hold;
             outcome = squad_orders::GiveAt(action, gArc.point, true);
-            outcome += "; " + WalkThere(step.member, gArc.point);
-        }
+#if !defined(MEVR_GAME_LE2) && !defined(MEVR_GAME_LE3)
+            outcome += "; " + WalkThere(step.member, gArc.point);  // ME1: the AI walks there (the sequels' hold walks to its marker)
 #endif
+        }
+        gGivenPoint = step.order == sp::Order::Follow ? std::nullopt : std::optional(gArc.point);
+        gGivenMember = step.member;
         gLast = std::format("{} for {}, {:.1f} m from Shepard at ({:.0f}, {:.0f}, {:.0f}): {}", sp::Name(step.order),
             whoName(step.member), gArc.fromPlayerM, gArc.point.x, gArc.point.y, gArc.point.z, outcome);
         log::Info("squad place: {}", gLast);
@@ -570,13 +563,36 @@ void AdjustPad(gamepad::Options& options) {
 }
 
 std::string StatusJson() {
+    // Where each squadmate stands, and how far from the last hold's point (the ring), metres: the placement's measure.
+    std::string squad;
+    ue3::Object* const controller = ue3::runtime::Up() ? player::Controller() : nullptr;
+    ue3::Object* const shepard = controller != nullptr ? player::BioPawn(controller) : nullptr;
+    std::optional<ue3::Vector> const me = shepard != nullptr ? player::Location(shepard) : std::nullopt;
+    std::vector<squad_weapons::MemberView> const members = controller != nullptr ? squad_weapons::Members() : std::vector<squad_weapons::MemberView>{};
+    int index = 0;
+    for (squad_weapons::MemberView const& m : members) {
+        std::optional<ue3::Vector> const at = ue3::runtime::IsAlive(m.pawn) ? player::Location(m.pawn) : std::nullopt;
+        auto const flat = [&](double x, double y) { return at ? std::hypot(at->x - x, at->y - y) / gUpm : -1.0; };
+        squad += std::format("{}{{\"name\": {}, \"at\": [{:.0f}, {:.0f}, {:.0f}], \"fromPointM\": {:.2f}, \"fromShepardM\": {:.2f}, "
+                             "\"wasSent\": {}, \"ai\": {}}}",
+            squad.empty() ? "" : ", ", json::JsonString(m.name), at ? at->x : 0.0f, at ? at->y : 0.0f, at ? at->z : 0.0f,
+            gGivenPoint ? flat(gGivenPoint->x, gGivenPoint->y) : -1.0, me ? flat(me->x, me->y) : -1.0,
+            gGivenPoint && (gGivenMember < 0 || gGivenMember == index) ? "true" : "false",
+#if defined(MEVR_GAME_LE2)
+            json::JsonString(le2_squad::OrderState(m.pawn)));
+#else
+            json::JsonString(""));
+#endif
+        ++index;
+    }
     return std::format(
         "{{\"holding\": {}, \"member\": {}, \"tile\": {}, \"members\": {}, \"heldS\": {:.2f}, \"landing\": {}, \"fromPlayerM\": {:.2f}, "
         "\"point\": [{:.0f}, {:.0f}, {:.0f}], \"traces\": {}, \"simulated\": {}, \"started\": {}, \"given\": {}, \"cancelled\": {}, "
-        "\"selections\": {}, \"regroups\": {}, \"last\": {}}}",
+        "\"selections\": {}, \"regroups\": {}, \"last\": {}, \"givenPoint\": {}, \"squad\": [{}]}}",
         gMachine.Holding() ? "true" : "false", gMachine.Member(), gMachine.Tile(), gMachine.Members(), gMachine.HeldS(),
         json::JsonString(sp::Name(gArc.landing)), gArc.fromPlayerM, gArc.point.x, gArc.point.y, gArc.point.z, gArc.traces,
-        gSim.held ? "true" : "false", gStarted, gGiven, gCancelled, gSelections, gRegroups, json::JsonString(gLast));
+        gSim.held ? "true" : "false", gStarted, gGiven, gCancelled, gSelections, gRegroups, json::JsonString(gLast),
+        gGivenPoint ? std::format("[{:.0f}, {:.0f}, {:.0f}]", gGivenPoint->x, gGivenPoint->y, gGivenPoint->z) : std::string("null"), squad);
 }
 
 void LogStats() {
@@ -592,6 +608,8 @@ void Shutdown() {
     gLe2Recipients = {};
 #endif
     gArc = {};
+    gGivenPoint.reset();
+    gGivenMember = -1;
     gPublished = false;
 }
 

@@ -37,5 +37,22 @@ int RunPostureOwnershipTests() {
     arbiter.Applied(true);
     arbiter.Forget(); // actual world/pawn replacement
     check(arbiter.FinishRelease(std::nullopt), "new pawn must never inherit a restoration");
+
+    // No cover snapping, one rule for the three games: refused whenever VR is on foot with [Hands] noCover. The rule takes
+    // nothing else, so a hand wheel, a wrist screen, a held view, a roll's or a cast's end or a late tick can't lift it.
+    CoverSnapInput onFoot{true, true, true, false};
+    check(RefuseCoverSnap(onFoot), "VR on foot with noCover must refuse the snap");
+    CoverSnapInput in = onFoot;
+    in.noCover = false;
+    check(!RefuseCoverSnap(in), "noCover off (or `mevr cover snap on`) lets the game snap");
+    in = onFoot;
+    in.onFoot = false;
+    check(!RefuseCoverSnap(in), "outside the on-foot mode the refusal stands down");
+    in = onFoot;
+    in.headTracked = false;
+    check(!RefuseCoverSnap(in), "VR off (no head-tracked view) leaves the game its cover");
+    in = onFoot;
+    in.calibrating = true;
+    check(!RefuseCoverSnap(in), "the calibration (a neutral pad) stands the refusal down, as ME1's");
     return failures;
 }

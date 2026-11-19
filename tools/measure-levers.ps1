@@ -5,6 +5,7 @@
 #
 #   tools/measure-levers.ps1 -Key flushFirstEye -Values 0,1 -Rounds 2 -Seconds 10
 #   tools/measure-levers.ps1 -Key perEyeOcclusion -Values 0,1 -Recording <path.mevrrec> -Inputs   (walking as recorded)
+#   tools/measure-levers.ps1 -Game LE2 -Key keepBoundShaderStates -Values 0,1                     (a sequel, in its protected run)
 #
 # Default recording: the newest in %LOCALAPPDATA%\MEVR\recordings. The game must be in gameplay (tools/launch-game.ps1
 # says READY); freeze the world first if the save is dangerous (tools/console.ps1 pause: the replay still moves the view).
@@ -15,11 +16,12 @@ param(
     [int]$Seconds = 10,
     [string]$Recording = '',
     [switch]$Inputs,   # replay the recording's buttons and sticks too: Shepard walks and shoots as the player did
-    [string]$Section = 'Performance'   # the key's section of LE1MEVR.ini (Sights for scopeCapture, research/39)
+    [string]$Section = 'Performance',  # the key's section of the game's MEVR ini (Sights for scopeCapture, research/39)
+    [ValidateSet('LE1', 'LE2', 'LE3')][string]$Game = 'LE1'   # the running game (research/sequel-render-levers.md: the sequels)
 )
 $ErrorActionPreference = 'Stop'
 $tools = $PSScriptRoot
-if (-not (Get-Process MassEffect1 -ErrorAction SilentlyContinue)) { throw 'the game is not running' }
+if (-not (Get-Process "MassEffect$($Game.Substring(2))" -ErrorAction SilentlyContinue)) { throw "the game ($Game) is not running" }
 if ($Recording -eq '') {
     $dir = Join-Path $env:LOCALAPPDATA 'MEVR\recordings'
     $latest = Get-ChildItem -LiteralPath $dir -Filter *.mevrrec -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
@@ -30,7 +32,7 @@ if ($Recording -eq '') {
 & (Join-Path $tools 'replay.ps1') -Path $Recording -Loop -Inputs:$Inputs | Out-Null
 Start-Sleep -Seconds 3
 try {
-    & (Join-Path $tools 'perf-ab.ps1') -Section $Section -Key $Key -Values ($Values -split ',') -Rounds $Rounds -Seconds $Seconds
+    & (Join-Path $tools 'perf-ab.ps1') -Game $Game -Section $Section -Key $Key -Values ($Values -split ',') -Rounds $Rounds -Seconds $Seconds
 } finally {
     & (Join-Path $tools 'replay.ps1') -Stop | Out-Null
     'replay stopped'

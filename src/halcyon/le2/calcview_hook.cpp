@@ -8,6 +8,7 @@
 #include "me2_xr.h"
 #if defined(MEVR_ASI)
 #include "mevr_bridge.h"  // [MEVR] FloorViewTranslation (the floor lock)
+#include "../MevrMetricView.h"  // [MEVR] life-size stereo's render-side edits (research/30 section 9)
 #endif
 
 #include <Windows.h>
@@ -72,6 +73,10 @@ std::atomic_bool g_cineVrCutscene{false};
 std::atomic_bool g_cineVrHeadTracking{true};
 std::atomic_bool g_vrCineActive{false};   // runtime: a VR cine is being rendered this frame
 std::atomic_bool g_mevrCineScreen{false}; // [MEVR] runtime: ...on ME1's 3D cinema screen (research/le2-cinema.md)
+// [MEVR] Life-size stereo (research/30 section 9; MevrSeams::LifeSizeStereo, set by me2_menu.cpp's baseline): each pass from
+// its eye's real place (MevrMetricView's plan), the lean from the eyes' centre at 1:1 forward. False: upstream exactly.
+std::atomic_bool g_mevrLifeSize{false};
+float MevrForwardLeanEmphasis() noexcept { return g_mevrLifeSize.load(std::memory_order_relaxed) ? 1.0f : 3.0f; }
 std::atomic<unsigned> g_p1CalcSeq{0};     // [ENGCINE] P1 CalcSceneView heartbeat (see bump site)
 std::atomic_bool g_engCineAlive{true};    // [ENGCINE] gm8+alive scene = in-engine cutscene (toggle for A/B)
 std::atomic<int> g_cineEnterFrames{8};    // [CINEDEBOUNCE] consecutive narrow frames before cine entry (0 = instant/old)
@@ -637,12 +642,18 @@ void EnsureConvoFpOrigin(std::uintptr_t sv) noexcept
     // engine's CULL frustum -- but the final view matrix does not come out where those parameters say.
     // A build that disabled this in favour of the source write turned first-person conversations off
     // entirely (log: applied=0 skipped=0, the signature of this early return firing every frame).
-    if (!ME2VR::ConvoFp::IsArmed()) { g_convoFpSkips.fetch_add(1, std::memory_order_relaxed); return; }
-    // No CineVrConvo gate here any more. me2_xr now derives renderCineInVr from ConvoFp being enabled,
-    // so VR presentation is guaranteed whenever the mod is armed -- and gating on a toggle that only the
-    // checkbox handler ever set is exactly what made a fresh boot need an off/on cycle to come alive.
     ME2VR::ConvoFp::EyePose pose{};
-    if (!ME2VR::ConvoFp::GetEyePose(&pose)) { g_convoFpSkips.fetch_add(1, std::memory_order_relaxed); return; }
+    ME2VR::EngineProbe::SkycarSeatPose seat{};
+    const bool inSkycar = ME2VR::EngineProbe::GetSkycarSeatPose(seat);
+    if (inSkycar)
+    {
+        pose.x = seat.x; pose.y = seat.y; pose.z = seat.z; pose.baseYawDeg = seat.yawDeg;
+    }
+    else if (!ME2VR::ConvoFp::IsArmed() || !ME2VR::ConvoFp::GetEyePose(&pose))
+    {
+        g_convoFpSkips.fetch_add(1, std::memory_order_relaxed);
+        return;
+    }
 
     float cam[9] = {};   // camera axes in world space: right(0..2), up(3..5), forward(6..8)
     __try
@@ -687,7 +698,7 @@ void EnsureConvoFpOrigin(std::uintptr_t sv) noexcept
     // the destination is absolute (level, no roll, facing baseYaw), the director's framing cannot leak
     // in at all -- the result is bit-identical across every shot, so cuts cannot move the view.
     float yawRad = pose.baseYawDeg * (3.14159265358979f / 180.0f);
-    if (g_convoFpInvertFacing.load(std::memory_order_relaxed)) yawRad += 3.14159265358979f;
+    if (!inSkycar && g_convoFpInvertFacing.load(std::memory_order_relaxed)) yawRad += 3.14159265358979f;
     const float cy = std::cos(yawRad), sy = std::sin(yawRad);
     // UE3: X forward, Y right, Z up. Level camera => up is world up, right = up x forward.
     const float des[9] = { -sy, cy, 0.0f,      // right
@@ -719,7 +730,7 @@ void EnsureConvoFpOrigin(std::uintptr_t sv) noexcept
     }
     __except (EXCEPTION_EXECUTE_HANDLER) { return; }
 
-    g_convoFpApplies.fetch_add(1, std::memory_order_relaxed);
+    if (!inSkycar) g_convoFpApplies.fetch_add(1, std::memory_order_relaxed);
 }
 
 // Positional 6DOF: translate the camera by the head's physical movement (XR meters, relative to recenter),
@@ -738,7 +749,7 @@ void ApplyHeadPosition(std::uintptr_t sv) noexcept
     // ME1-PARITY 6DOF (2026-07-04): fixed 50 uu/m (WORLD_TO_METERS), NOT coupled to the stereo eye slider, and
     // forward/back emphasized 3x - matches ME1 exactly (xr_session.cpp kMetersToUU=50, kFwdLeanEmphasis=3).
     constexpr float kMetersToUU = 50.0f;
-    constexpr float kFwdLeanEmphasis = 3.0f;
+    const float kFwdLeanEmphasis = MevrForwardLeanEmphasis();   // [MEVR] upstream: 3.0f (1 with life-size stereo)
     const float w2m = kMetersToUU * g_headPosScale.load(std::memory_order_relaxed);   // uu/m * gain (ME1 leanGain)
     __try
     {
@@ -760,7 +771,7 @@ void ApplyHeadPosition(std::uintptr_t sv) noexcept
         // floor under the pawn at the player's real eye height. PVT is -camera position: its Z before any lean. The second
         // pass reuses the first's answer. The lean in UE units may be replaced by the view the mod was told about.
         float r = w2m * dR, u = w2m * dU, f = w2m * dF;
-        const float floorDz = ::ME2VR::MevrBridge::FloorViewTranslation(t_replay, -pvt[2], rZ, uZ, fZ, &r, &u, &f);
+        const float floorDz = ::MevrSeams::FloorViewTranslation(t_replay, -pvt[2], rZ, uZ, fZ, &r, &u, &f);
         const float wx = r * rX + u * uX + f * fX;
         const float wy = r * rY + u * uY + f * fY;
         const float wz = r * rZ + u * uZ + f * fZ + floorDz;
@@ -883,6 +894,14 @@ void ApplyConvergence(std::uintptr_t sv, float signedShift) noexcept
 // screen positions land on their world points in the widened render - bullets meet the crosshair.
 std::atomic<float> g_renderHalfFovH{0.0f};
 std::atomic<float> g_renderHalfFovV{0.0f};
+// [MEVR] Life-size stereo's mode 2: the renderer's zoom (ADS, the cine zoom) as the tangent of the window it rendered over
+// the one it declares; the eye's own frustum is scaled by it so a zoom magnifies the same way in both modes.
+float MevrRenderZoom() noexcept
+{
+    const float r = g_renderHalfFovH.load(std::memory_order_relaxed);
+    const float d = g_gameHalfFovH.load(std::memory_order_relaxed);
+    return (r > 0.01f && d > 0.01f) ? tanf(r) / tanf(d) : 1.0f;
+}
 
 // Per-eye FOV: publish the game's FOV, then if fill is on and this view is NARROWER than the target
 // (a conversation/cutscene), widen it to fill + publish the target as the submitted FOV. Wide gameplay
@@ -998,7 +1017,14 @@ void ApplyFov(std::uintptr_t sv) noexcept
     // gameplay untouched) and shrinks proportionally as the game zooms in below rest (ADS/sniper), so the
     // world MAGNIFIES into the fill. Because the render FOV tracks the game's zoom blend continuously, there
     // is NO pop/flash crossing into ADS. The submitted FOV is constant (headset), so the eye never jumps.
+    // [MEVR] No aim zoom in VR (the owner, 2026-11-17: aiming down an assault rifle or a shotgun magnified the whole view,
+    // "really disorienting ... should be thoroughly disabled"; ME1 never zooms the view, its scopes are a picture at the
+    // eyepiece, research/21): the render keeps the headset's window whatever the game's aim FOV.
+#if defined(MEVR_ASI)
+    const float frac = 1.0f;   (void)rest;
+#else
     const float frac = (gh < rest) ? (gh / rest) : 1.0f;   // 1.0 at rest, <1 zoomed in
+#endif
     const float renderH = th * frac;
     const float renderV = tv * frac;
     WidenProjection(sv, renderH, renderV);
@@ -1159,7 +1185,14 @@ void __fastcall DrawDetour(void* self, void* viewport, void* canvas) noexcept
         // no-ops too at the same tens-of-us cost, and the success counter stays at zero, which is
         // itself the answer. Only ever ONE retry: a burst that persists across the retry persists
         // for the frame, and re-looping the engine's Draw would trade a flicker for a stall.
+#if defined(MEVR_ASI)
+        // [MEVR] [Performance] sfrReplayRetry = 0: no retry. On our machines a pass 1 under 100 us usually rendered, and the
+        // retry was the frame's third scene render on ~20% of frames (research/sequel-render-levers.md "Performance
+        // research"). 1 is upstream's retry; the default is 0 since 2026-11-17 (plugin/RenderLeversTable).
+        if (us < 100 && ::ME2VR::MevrBridge::SfrReplayRetry())
+#else
         if (us < 100)
+#endif
         {
             g_sfrRetryAttempts.fetch_add(1, std::memory_order_relaxed);
             LARGE_INTEGER r0 = {}, r1 = {};
@@ -1225,7 +1258,12 @@ void* __fastcall CalcViewDetour(void* lp, void* family, void* loc, void* rot, vo
     // Standing rule in this codebase: hook where the engine WRITES the value, not where it is
     // read. EnsureConvoFpOrigin still runs afterwards and simply finds nothing left to do (its deltas
     // go to zero), so it costs nothing and stays as a backstop if a path ever bypasses this.
-    if (isP1 && ME2VR::ConvoFp::IsArmed() && loc != nullptr && rot != nullptr)
+    ME2VR::EngineProbe::SkycarSeatPose skycarSeat{};
+    if (isP1 && loc != nullptr && rot != nullptr && ME2VR::EngineProbe::GetSkycarSeatPose(skycarSeat))
+    {
+        ConvoFpWriteSourcePose(loc, rot, skycarSeat.x, skycarSeat.y, skycarSeat.z, skycarSeat.yawDeg, 0.0f);
+    }
+    else if (isP1 && ME2VR::ConvoFp::IsArmed() && loc != nullptr && rot != nullptr)
     {
         ME2VR::ConvoFp::EyePose pose{};
         if (ME2VR::ConvoFp::GetEyePose(&pose))
@@ -1288,6 +1326,23 @@ void* __fastcall CalcViewDetour(void* lp, void* family, void* loc, void* rot, vo
         return sv;
     }
 
+#if defined(MEVR_ASI)
+    // [MEVR] The galaxy map open over the CIC's projector (MevrSeams::WorldViewHoldBegin; GetMenuMode keeps the map's modes out
+    // of the flat branch above while the mod holds it): the map's camera is the galaxy's, so Shepard's view on foot goes into the
+    // player camera's POV for this build only, as LE1's GalaxyViewSwapBegin and ME3's held view, and back after it (declared
+    // before the FOV guard below, so put back after that guard's restore). docs/galaxy-projector-handoff.md step 5. Only in the
+    // map's modes (9 galaxy, 10 orbit): ME2's GUI mode keeps the gameplay camera, so its screens of ours need no held view. And
+    // in the map's opening and closing cinematic (6) while the mod holds it (MevrSeams::GalaxyOwnsPresentation: me2_xr.cpp keeps
+    // the cinematic presentation down then; ME1's rule, lane GX4).
+    const int mevrMode = isP1 ? ME2VR::EngineProbe::ReadGameModeSEH() : -1;
+    const bool mevrMapMode = mevrMode == 9 || mevrMode == 10 || (mevrMode == 6 && ::MevrSeams::GalaxyOwnsPresentation(6));
+    struct MevrHeldView
+    {
+        bool on;
+        ~MevrHeldView() { if (on) ::MevrSeams::WorldViewHoldEnd(); }
+    } const mevrHeldView{g_vrEnabled.load(std::memory_order_acquire) && isP1 && mevrMapMode && ::MevrSeams::WorldViewHoldBegin()};
+#endif
+
     // ---- [FILLSRC] gameplay fill at the SOURCE --------------------------------------------------
     // The glass/refraction smear was bisected to the FOV fill. Fill worked by overwriting
     // proj[0]/proj[5] AFTER the engine had built the view (WidenProjection), so distortion-class
@@ -1332,7 +1387,14 @@ void* __fastcall CalcViewDetour(void* lp, void* family, void* loc, void* rot, vo
             if (rest < 0.45f) rest = 0.61f;
             if (!(gh < 0.59f && !weaponOut))   // narrow + no weapon stays raw -> mono/cinematic detection intact
             {
+                // [MEVR] No aim zoom in VR (the owner, 2026-11-17: aiming down an assault rifle or a shotgun magnified the whole view,
+                // "really disorienting ... should be thoroughly disabled"; ME1 never zooms the view, its scopes are a picture at the
+                // eyepiece, research/21): the render keeps the headset's window whatever the game's aim FOV.
+#if defined(MEVR_ASI)
+                const float frac = 1.0f;   (void)rest;   // as ApplyFov
+#else
                 const float frac = (gh < rest) ? (gh / rest) : 1.0f;   // ADS zoom-fill, same as ApplyFov
+#endif
                 const float renderH = th * frac;
                 float deg = 2.0f * renderH * (180.0f / 3.14159265358979f);
                 if (deg > 170.0f) deg = 170.0f; else if (deg < 10.0f) deg = 10.0f;
@@ -1441,6 +1503,13 @@ void* __fastcall CalcViewDetour(void* lp, void* family, void* loc, void* rot, vo
             // shared state; without this, pass 1 (replay) inherits the temporal history pass 0 JUST wrote
             // (different camera = -halfEye), so TAA/motion-blur/temporal effects smear + shake on the right
             // eye while the left (pass 0, always first) stays consistent. Reuses Stereo's two eye states.
+#if defined(MEVR_ASI)
+            // [MEVR] [Performance] perEyeViewState = 0 (research/sequel-render-levers.md "Performance research"): both
+            // passes keep the game's one state, as ME1's gameplay does. With a state per pass the second eye's Umbra
+            // resolve reads queries that live in the other state's pool and polls them for its whole budget (3-5 ms a
+            // frame). The default (1, plugin/RenderLeversTable) is upstream's block below, unchanged.
+            if (::MevrSeams::PerEyeViewState())
+#endif
             {
                 void*& eyeSt = t_replay ? g_eyeState : g_eyeStateLeft;   // pass1=right state, pass0=left state
                 if (eyeSt == nullptr && g_allocViewState != nullptr)
@@ -1456,14 +1525,36 @@ void* __fastcall CalcViewDetour(void* lp, void* family, void* loc, void* rot, vo
 #if defined(MEVR_ASI)
             // [MEVR] ME1's 3D cinema screen (research/52): two parallel cameras on the director's camera, half our plan's
             // separation each side, planned from THIS view's own lens (proj[0] = 1/tan(halfH)); pass 0 always the left eye
-            // (the submit routes it so: no swap), no convergence.
-            if (g_mevrCineScreen.load(std::memory_order_acquire))
+            // (the submit routes it so: no swap), no convergence. Read once: the Present thread may flip it mid-Draw.
+            const bool mevrScreen = g_mevrCineScreen.load(std::memory_order_acquire);
+            if (mevrScreen)
                 he = ::ME2VR::MevrBridge::CineScreenHalfSeparationUU(MevrViewHalfFovH(svu));
+            // [MEVR] Life-size stereo (research/30 section 9): this pass from its eye's real place, our plan's offset along the
+            // camera's right, up and forward in place of the half eye; pass 0 latches (never upstream's mode 0 while
+            // life-size is on: research/30 section 9.5), pass 1 keeps it.
+            const ::MevrMetricView::ViewFields mevrFields{kFsvViewMatrix, kFsvProjectionMatrix, kFsvTranslatedViewMatrix,
+                kFsvTranslatedViewProjMatrix, kFsvPreViewTranslation, kFsvViewProjectionMatrix, kFsvViewOrigin};
+            auto mevrLog = [](const char* line) { ME2VR::Log::Line(line); };
+            const ::MevrMetricView::Plan& mevrPlan = ::MevrMetricView::Latch(t_replay,
+                mevrScreen ? ::MevrMetricView::Frame::CinemaScreen : ::MevrMetricView::Frame::World,
+                g_mevrLifeSize.load(std::memory_order_acquire), mevrLog);
+            const bool mevrMetric = mevrPlan.mode != 0 && !mevrScreen;
+            if (mevrMetric)
+            {
+                EnsureConvoFpOrigin(svu);   // as ApplyEyeOffset does first
+                ::MevrMetricView::ApplyEyeOffset(svu, mevrFields, mevrPlan, t_replay, mevrLog);
+            }
+#else
+            const bool mevrMetric = false;
 #endif
             const float signedUU = t_replay ? +he : -he;   // pass1 = right (+), pass0 = left (-)
-            ApplyEyeOffset(svu, signedUU);   // IPD only (lean comes from ApplyHeadLook)
+            if (!mevrMetric) ApplyEyeOffset(svu, signedUU);   // IPD only (lean comes from ApplyHeadLook)
             ApplyHeadLook(svu);              // offset BEFORE head rotation (same order as stereo/AER)
             ApplyFov(svu);
+#if defined(MEVR_ASI)
+            // [MEVR] mode 2: the GPU matrix through this eye's own frustum (the CPU's window stays the symmetric one)
+            if (mevrMetric) ::MevrMetricView::ApplyEyeFrustum(svu, mevrFields, mevrPlan, t_replay, MevrRenderZoom(), mevrLog);
+#endif
             // [SFRCONV DECOUPLE 2026-07-20] convergence is NO LONGER applied at render (ported from ME1's
             // final fix). A render-side per-pass projection shift moves the pass-drawn/mirrored HUD along
             // with the scene in one pass but not identically in the other -> the crosshair/interact/health
@@ -1652,6 +1743,15 @@ void GetConvoFpCounts(unsigned long long* applies, unsigned long long* skips) no
 void SetCineVrHeadTracking(bool on) noexcept { g_cineVrHeadTracking.store(on, std::memory_order_release); }
 bool GetVrCineActive() noexcept { return g_vrCineActive.load(std::memory_order_acquire); }
 void SetVrCineActive(bool on) noexcept { g_vrCineActive.store(on, std::memory_order_release); }
+bool GetMevrLifeSize() noexcept { return g_mevrLifeSize.load(std::memory_order_acquire); }   // [MEVR] research/30 s. 9
+void SetMevrLifeSize(bool on) noexcept { g_mevrLifeSize.store(on, std::memory_order_release); }   // [MEVR]
+bool GetHeadLookApplied() noexcept { return g_headLookEnabled.load(std::memory_order_acquire); }   // [MEVR]
+bool GetFovFillTarget(float* hHalfRad, float* vHalfRad) noexcept   // [MEVR]
+{
+    if (hHalfRad != nullptr) *hHalfRad = g_fovFillH.load(std::memory_order_relaxed);
+    if (vHalfRad != nullptr) *vHalfRad = g_fovFillV.load(std::memory_order_relaxed);
+    return g_fovFillOn.load(std::memory_order_acquire);
+}
 bool GetMevrCineScreen() noexcept { return g_mevrCineScreen.load(std::memory_order_acquire); }   // [MEVR]
 void SetMevrCineScreen(bool on) noexcept { g_mevrCineScreen.store(on, std::memory_order_release); }   // [MEVR]
 bool GetCineTrackingLocked() noexcept   // [MEVR]

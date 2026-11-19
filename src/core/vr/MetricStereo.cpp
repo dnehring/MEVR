@@ -47,6 +47,18 @@ Tangents TangentsOf(Fov const& fov) {
     return {std::tan(fov.left), std::tan(fov.right), std::tan(fov.up), std::tan(fov.down)};
 }
 
+bool WindowHolds(float halfH, float halfV, Fov const& eye, float fillH, float fillV) {
+    if (!(halfH > 0.0f) || !(halfV > 0.0f) || !std::isfinite(halfH) || !std::isfinite(halfV)) {
+        return false;
+    }
+    Tangents const t = TangentsOf(Filled(eye, fillH, fillV));
+    float const needH = std::max(std::fabs(t.left), std::fabs(t.right));
+    float const needV = std::max(std::fabs(t.up), std::fabs(t.down));
+    float const haveH = std::tan(std::min(halfH, kMaxAngle));
+    float const haveV = std::tan(std::min(halfV, kMaxAngle));
+    return haveH >= needH * 0.999f && haveV >= needV * 0.999f;
+}
+
 OffCentre Projection(Tangents const& t) {
     OffCentre p;
     float const w = t.right - t.left;

@@ -116,6 +116,22 @@ void TestSyntheticChecks() {
     exe::Entry const badPattern{"b", 0x1100, Kind::Function, "48 8", 0, 0, "test"};
     CHECK(exe::Check(image, badPattern).status == Status::AtRvaUnchecked);
 
+    // A global referenced only by an instruction with an immediate after its displacement (ME3's Umbra command gate:
+    // cmp dword ptr [rip + disp], 0): the target is the displacement's end + the tail + disp.
+    {
+        Synthetic t = s;
+        std::int32_t const disp = 0x8030 - (0x1282 + 4 + 1);
+        std::vector<std::uint8_t> bytes{0x48, 0x8B, 0xE9, 0x83, 0x3D, 0, 0, 0, 0, 0x00, 0x74, 0x05, 0x48, 0x8B, 0xCB};
+        std::memcpy(bytes.data() + 5, &disp, 4);
+        t.Put(0x127D, bytes);
+        t.functions.push_back({0x1270, 0x12A0});
+        char const* const cmp = "48 8B E9 83 3D ?? ?? ?? ?? 00 74 05 48 8B CB";
+        exe::Entry const gate{"gate", 0x8030, Kind::Data, cmp, 5, 0x127D, "test", 1};
+        CHECK(exe::Check(t.Image(), gate).status == Status::AtRva);
+        exe::Entry const noTail{"gate0", 0x8030, Kind::Data, cmp, 5, 0x127D, "test"};
+        CHECK(exe::Check(t.Image(), noTail).status != Status::AtRva);  // the target one byte off without the tail
+    }
+
     // Another module hooked the function: E9 rel32 over its first five bytes.
     Synthetic hooked = s;
     hooked.Put(0x1100, {0xE9, 0x11, 0x22, 0x33, 0x44});
@@ -169,7 +185,7 @@ void CheckTableShape(exe::Entry const (&table)[N]) {
             if (compiled) {
                 CHECK(e.offset <= compiled->bytes.size());
                 if (e.kind == Kind::Data) {
-                    CHECK(e.site != 0 && e.offset + 4 <= compiled->bytes.size());
+                    CHECK(e.site != 0 && e.offset + 4 + e.tail <= compiled->bytes.size());
                     for (std::size_t k = e.offset; k < e.offset + 4; ++k) {
                         CHECK(compiled->wild[k]);  // the displacement is a wildcard
                     }
@@ -204,13 +220,28 @@ void TestTables() {
     }
     namespace a2 = engine::addresses::le2;
     for (std::uint32_t rva : {a2::kProcessEvent, a2::kCallFunction, a2::kGameEngineTick, a2::kCalcSceneView,
-             a2::kViewportDraw, a2::kViewportDrawEnd, a2::kGObjects, a2::kNamePools, a2::kGMalloc, a2::kAppMalloc, a2::kAppFree,
-             a2::kGNatives}) {
+             a2::kViewportDraw, a2::kViewportDrawEnd, a2::kUpdateSelection, a2::kGObjects, a2::kNamePools, a2::kGMalloc,
+             a2::kAppMalloc, a2::kAppFree, a2::kGNatives}) {
         CHECK(listed(a2::kTable, rva));
+    }
+    // plugin/RenderLevers finds each of its addresses by the row's name, and the names are LE1's (research/
+    // sequel-render-levers.md "ME2"): every LE1 "render levers" row has an ME2 row of the same name and kind.
+    for (exe::Entry const& lever : a1::kTable) {
+        if (std::strcmp(lever.user, "render levers") != 0) {
+            continue;
+        }
+        bool found = false;
+        for (exe::Entry const& e : a2::kTable) {
+            found = found || (std::strcmp(e.name, lever.name) == 0 && e.kind == lever.kind);
+        }
+        if (!found) {
+            std::printf("FAIL exe tests: LE2 has no \"%s\" row (LE1's render-lever row)\n", lever.name);
+            ++gFailures;
+        }
     }
     namespace a3 = engine::addresses::le3;
     for (std::uint32_t rva : {a3::kProcessEvent, a3::kCallFunction, a3::kGameEngineTick, a3::kCalcSceneView,
-             a3::kViewportDraw, a3::kViewportDrawEnd, a3::kUpdateSkelPose, a3::kGObjects, a3::kNamePools,
+             a3::kViewportDraw, a3::kViewportDrawEnd, a3::kUpdateSkelPose, a3::kUpdateSelection, a3::kGObjects, a3::kNamePools,
              a3::kGMalloc, a3::kAppMalloc, a3::kAppFree, a3::kGNatives}) {
         CHECK(listed(a3::kTable, rva));
     }
@@ -249,9 +280,26 @@ void TestAgainstLe2Dump() {
         ++patterned;
         auto const compiled = ue3::pattern::Compile(e.pattern);
         auto const hits = ue3::pattern::FindAll(image.text, *compiled, 16);
-        CHECK(e.kind == Kind::Data ? !hits.empty() : hits.size() == 1);
+        // As LE1's and LE3's: the motion-blur guard's paired render bodies share a prologue (exact sites and full vtable
+        // fingerprints guard it instead).
+        CHECK(e.kind == Kind::Data || std::strcmp(e.user, "motion blur guard") == 0 ? !hits.empty() : hits.size() == 1);
     }
-    std::printf("exe tests: %d LE2 patterns checked against the dump\n", patterned);
+    std::vector<std::uint8_t> shifted(text.size() + 0x40, 0xCC);
+    std::memcpy(shifted.data() + 0x40, text.data(), text.size());
+    exe::Image patched;
+    patched.textRva = 0x1000;
+    patched.text = shifted;
+    int guardRefused = 0;
+    for (exe::Entry const& e : engine::addresses::le2::kTable) {
+        if (std::strcmp(e.user, "motion blur guard") != 0) continue;
+        exe::Result const r = exe::Check(patched, e);
+        CHECK(r.status == Status::Moved || r.status == Status::BytesDiffer);
+        CHECK(r.status != Status::AtRva);
+        ++guardRefused;
+    }
+    CHECK(guardRefused == 12);
+    std::printf("exe tests: %d LE2 patterns checked against the dump (%d strict guard entries refused after shifting)\n", patterned,
+        guardRefused);
 }
 
 // The same captured-code gate for the newly admitted ME3 native adapter.

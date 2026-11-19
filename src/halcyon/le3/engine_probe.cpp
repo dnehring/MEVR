@@ -145,7 +145,11 @@ bool ActorIsDying(std::uintptr_t actor) noexcept
 }
 
 // ===== First-person (ported from ME2, LE3 offsets) ==========================================
+#if defined(MEVR_ASI)
+std::atomic_bool g_fpEnabled{true};   // [MEVR] first person from the start, as ME2's; me2_menu.cpp's ApplyMevrBaseline pins it
+#else
 std::atomic_bool g_fpEnabled{false};
+#endif
 std::atomic_bool g_meshHidden{false};
 // MEASURED, not ported: the full PlayerController census ([PCSLOTS]) reported +E28=SFXPlayerCamera and
 // +C38=SFXGameModeManager. The previous 0x684 here was an untested guess carried over from LE2-shaped
@@ -155,6 +159,7 @@ constexpr std::uintptr_t kPcGameModeManager  = 0xC38;   // -> SFXGameModeManager
 constexpr std::uintptr_t kGmmCurrentMode     = 0x0A8;   // USFXGameModeManager.CurrentMode (byte)
 constexpr std::uintptr_t kCamCurrentMode = 0x558;   // ASFXCameraNativeBase.CurrentCameraMode
 constexpr std::uintptr_t kModeOffset     = 0xB4;    // USFXCameraMode.Offset (FVector)
+constexpr std::uintptr_t kModeHookOffset = 0xC0;    // [MEVR] USFXCameraMode.HookOffset (FVector; LE3 SDK, ReflectCheck)
 constexpr std::uintptr_t kModeCollision  = 0x11C;   // USFXCameraMode flag dword
 constexpr std::uintptr_t kPcIgnoreMove = 0x781;   // APlayerController.bIgnoreMoveInput (LE3 SDK)
 constexpr std::uintptr_t kPcIgnoreLook = 0x782;   // APlayerController.bIgnoreLookInput (LE3 SDK)
@@ -164,10 +169,22 @@ constexpr std::uintptr_t kPawnMesh = 0x3F4;         // APawn.Mesh (body)
 
 struct FpStateDef { const char* cls; const char* label; ME2VR::EngineProbe::FpStateCfg def; };
 const FpStateDef g_fpDefs[] = {
+    // [MEVR] The eye at Shepard's face, as ME1's and ME2's (the owner, 2026-11-18: "Me3 eyes should match behavior from
+    // other games"): x -35 puts it 35 units AHEAD of the hook bone, as ME2's table does; upstream's 35 put it 35 behind,
+    // 34-38 units behind Shepard's head bone (53 in the combat pose, past arm IK's first person). The height is the floor
+    // lock's. Under the constant eye (MevrSeams::ConstantFpEye) only Explore's row counts. research/38 "The sequels'
+    // constant eye"; LoadFpStates (me2_menu.cpp) moves a saved upstream default.
+#if defined(MEVR_ASI)
+    { "SFXCameraMode_Explore",      "Explore (unarmed)",   { true, true, false, false, -35.0f, 0.0f, 65.0f } },
+    { "SFXCameraMode_ExploreStorm", "Explore sprint",      { true, true, false, false, -35.0f, 0.0f, 65.0f } },
+    { "SFXCameraMode_Combat",       "Combat (weapon out)", { true, true, false, false, -35.0f, 0.0f, 65.0f } },
+    { "SFXCameraMode_CombatStorm",  "Combat sprint",       { true, true, false, false, -35.0f, 0.0f, 65.0f } },
+#else
     { "SFXCameraMode_Explore",      "Explore (unarmed)",   { true, true, false, false, 35.0f, 0.0f, 65.0f } },
     { "SFXCameraMode_ExploreStorm", "Explore sprint",      { true, true, false, false, 35.0f, 0.0f, 65.0f } },
     { "SFXCameraMode_Combat",       "Combat (weapon out)", { true, true, false, false, 35.0f, 0.0f, 65.0f } },
     { "SFXCameraMode_CombatStorm",  "Combat sprint",       { true, true, false, false, 35.0f, 0.0f, 65.0f } },
+#endif
     // Aim down sights. ME2 has this state and ME3 never got it, which is why there were no ADS
     // controls in the menu at all. LE3 keeps the mode name Combat while aiming (ADS is a zoom, not a
     // separate camera), so this entry exists for the transition target and for its own sliders.
@@ -233,6 +250,19 @@ bool FpApplyOffset(std::uintptr_t mode, bool on, float x, float y, float z, cons
     {
         volatile float* off = reinterpret_cast<volatile float*>(mode + kModeOffset);
         volatile std::uint32_t* coll = reinterpret_cast<volatile std::uint32_t*>(mode + kModeCollision);
+#if defined(MEVR_ASI)
+        // [MEVR] The constant eye (research/38 B, MevrSeams::ConstantFpEye): a standing mode's Offset is its own HookOffset minus
+        // the explore eye. ME3's Combat hooks (-30, 20, 90) against Explore's (0, 0, 120): the one Offset of this table put the
+        // eye 0.7 m behind Shepard's head as soon as a weapon was drawn (lane AU5, 2026-11-18).
+        if (on)
+        {
+            const volatile float* hookAt = reinterpret_cast<const volatile float*>(mode + kModeHookOffset);
+            const float hook[3] = {hookAt[0], hookAt[1], hookAt[2]};
+            const float explore[3] = {g_fpStates[0].x, g_fpStates[0].y, g_fpStates[0].z};
+            float want[3] = {x, y, z};
+            if (::MevrSeams::ConstantFpEye(cls, hook, explore, want)) { x = want[0]; y = want[1]; z = want[2]; }
+        }
+#endif
         if (on) { CaptureVanilla(cls, off[0], off[1], off[2]); off[0] = x; off[1] = y; off[2] = z; MarkLastWrite(cls, x, y, z); *coll &= ~kModeCollisionEnabled; }
         else { float vx = 0, vy = 0, vz = 0; if (LookupVanilla(cls, &vx, &vy, &vz)) { off[0] = vx; off[1] = vy; off[2] = vz; *coll |= kModeCollisionEnabled; } }
         return true;
@@ -278,8 +308,8 @@ using tProcessEvent = void(__fastcall*)(void*, void*, void*, void*);
 bool MevrCallProcessEvent(void* object, void* fn, void* parms, std::uint32_t size) noexcept
 {
 #if defined(MEVR_ASI)
-    if (!::ME2VR::MevrBridge::OnGameThread())
-        return ::ME2VR::MevrBridge::QueueProcessEvent(object, fn, parms, size);
+    if (!::MevrSeams::OnGameThread())
+        return ::MevrSeams::QueueProcessEvent(object, fn, parms, size);
 #endif
     (void)size;
     const auto base = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
@@ -2823,8 +2853,70 @@ void ApplyFirstPerson() noexcept
         if (fpWriteContext) ++s_reassert; else s_reassert = 0;
         const bool due = fpWriteContext && s_reassert >= 30;
         if (due) s_reassert = 0;
-        const bool wantedHead = convoFpOwnsMesh ? ME2VR::ConvoFp::GetHideHead() : (fpWriteContext ? hideHead : false);
-        const bool wantedBody = convoFpOwnsMesh ? false : (fpWriteContext ? hideBody : false);
+        // [MEVR] While one of the game's screens of ours holds Shepard's view on foot in the GUI mode (MevrSeams::WorldViewHeld,
+        // calcview_hook.cpp's held view), the eyes are at Shepard's head: first person's hides stay as gameplay last wanted them
+        // instead of the head coming back outside mode 0 (1: a wrist screen, arm IK keeps the body under the view); for a screen
+        // standing in the room (2) the game poses Shepard for it (both hands on the War Terminal: his arm and shoulder came in
+        // front of the held eyes), so his body is hidden too. research/le3-native-gui.md "The movie's mouse and the view behind
+        // a screen".
+        static bool s_fpHead = false, s_fpBody = false;
+        if (fpWriteContext && !convoFpOwnsMesh) { s_fpHead = hideHead; s_fpBody = hideBody; }
+#if defined(MEVR_ASI)
+        const int mevrHeld = (!fpWriteContext && !convoFpOwnsMesh) ? ::MevrSeams::WorldViewHeld(currentGameMode) : 0;
+#else
+        const int mevrHeld = 0;
+#endif
+        {
+            static int s_prevHeld = 0;
+            if (mevrHeld != s_prevHeld)
+            {
+                char hb[220] = {};
+                sprintf_s(hb, "[MEVR-HELDVIEW] gm %d: %s", currentGameMode,
+                          mevrHeld == 2 ? "a screen of ours in the room holds Shepard's view on foot: his head and body hidden"
+                          : mevrHeld == 1 ? "a screen of ours on the wrist holds Shepard's view on foot: first person's hides kept (head hidden)"
+                                          : "the held view ended: first person's hides follow the game mode again");
+                ME2VR::Log::Line(hb);
+                s_prevHeld = mevrHeld;
+            }
+        }
+        // [MEVR] Shepard's body and head hidden while a roll lasts (the owner, 2026-11-18, "Yes for now"; MevrSeams::
+        // HideBodyForAction: the roll's camera, or a blend into or out of it). Gameplay only; the next frames show them again.
+        bool mevrActionHide = false;
+#if defined(MEVR_ASI)
+        if (fpWriteContext && !convoFpOwnsMesh)
+        {
+            char fromCls[64] = {}, toCls[64] = {};
+            if (std::strcmp(modeName, "SFXCameraMode_Interpolate") == 0 && mode >= 0x10000)
+            {
+                std::uintptr_t end = 0;
+                if (g_interpFromOff != 0 && SafeReadPtr(mode + g_interpFromOff, &end) && end >= 0x10000) ClassNameOf(end, fromCls, sizeof(fromCls));
+                if (g_interpToOff != 0 && SafeReadPtr(mode + g_interpToOff, &end) && end >= 0x10000) ClassNameOf(end, toCls, sizeof(toCls));
+            }
+            mevrActionHide = ::MevrSeams::HideBodyForAction(modeName, fromCls, toCls);
+        }
+        // The gun in hand too (a snapshot mid-roll showed it floating 2 m ahead with the body gone): Pawn.Weapon (+0x41C, LE3
+        // SDK; next to kPawnMesh) -> Weapon.Mesh (+0x380), hidden from the owner while the roll lasts and shown again after.
+        {
+            static std::uintptr_t s_hiddenGun = 0;
+            if (mevrActionHide && s_hiddenGun == 0 && pawn >= 0x10000)
+            {
+                std::uintptr_t weapon = 0, gun = 0;
+                if (SafeReadPtr(pawn + 0x41C, &weapon) && weapon >= 0x10000 && SafeReadPtr(weapon + 0x380, &gun) && gun >= 0x10000)
+                {
+                    FpSetOwnerNoSee(gun, true);
+                    s_hiddenGun = gun;
+                }
+            }
+            else if (!mevrActionHide && s_hiddenGun != 0)
+            {
+                FpSetOwnerNoSee(s_hiddenGun, false);
+                s_hiddenGun = 0;
+            }
+        }
+#endif
+        const bool wantedHead = convoFpOwnsMesh ? ME2VR::ConvoFp::GetHideHead()
+                                                : (fpWriteContext ? (hideHead || mevrActionHide) : (mevrHeld == 2 ? true : mevrHeld == 1 ? s_fpHead : false));
+        const bool wantedBody = convoFpOwnsMesh ? false : (fpWriteContext ? (hideBody || mevrActionHide) : (mevrHeld == 2 ? true : mevrHeld == 1 ? s_fpBody : false));
         if (due || pawn != s_hidPawn || wantedHead != s_prevHead || wantedBody != s_prevBody)
         {
             FpHideMeshes(pawn, wantedHead, wantedBody);

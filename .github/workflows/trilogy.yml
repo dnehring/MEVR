@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 # All three games, once a week and on demand (docs/release-checklist.md section 5, CLAUDE.md "Trilogy check"): the development
-# configuration with LE2 and LE3 on, which needs every submodule including LExSDKv2 (LE2/LE3 still read the engine through it,
-# and LE1's development build keeps its reflection cross-check). LExSDKv2 has no licence: this job only checks out and compiles
+# configuration with LE2 and LE3 on, which needs every submodule including LExSDKv2 (every game's development build keeps its
+# reflection cross-check against it; no game reads the engine through it). LExSDKv2 has no licence: this job only checks out and compiles
 # it to see that our code still builds against it; nothing built here is uploaded or published. The players' build (build.yml)
 # never touches it.
 name: Trilogy
@@ -45,7 +45,7 @@ jobs:
         run: python -m pip install --disable-pip-version-check pillow
 
       - name: Configure (hot-reload development build, LE2 and LE3 on)
-        run: cmake -S . -B build-trilogy -G "Visual Studio 17 2022" -A x64 -DMEVR_BUILD_LE2=ON -DMEVR_BUILD_LE3=ON
+        run: cmake -S . -B build-trilogy -G "Visual Studio 17 2022" -A x64 -DMEVR_BUILD_LE2=ON -DMEVR_BUILD_LE3=ON -DMEVR_THIRDPARTY_CACHE=OFF
 
       - name: Build everything
         run: cmake --build build-trilogy --config Release --parallel

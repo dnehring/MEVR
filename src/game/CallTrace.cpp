@@ -134,7 +134,9 @@ void OnEvent(ue3::Object* context, ue3::Function* function) {
 } // namespace
 
 std::string Start(double seconds, std::vector<std::string> const& words) {
-    if (!ue3::runtime::Ready()) {
+    // Up(), not Ready(): the trace names functions and objects through the layer and nothing game-specific, so it
+    // runs on every game (T04, docs/trilogy-plan.md).
+    if (!ue3::runtime::Up()) {
         return "call trace: the reflection layer isn't ready";
     }
     if (!engine::call_function::Installed()) {

@@ -7,7 +7,6 @@
 #include "core/vr/Calibration.hpp"
 #include "core/vr/Controllers.hpp"
 #include "engine/CallFunction.hpp"
-#include "engine/Legacy.hpp"
 #include "engine/ProcessEvent.hpp"
 #include "engine/XrToUnreal.hpp"
 #include "game/ArmIk.hpp"
@@ -35,7 +34,8 @@ namespace {
 
 constexpr char const* kGetAdjustedAimFor = "SFXGame.BioPlayerController.GetAdjustedAimFor";
 
-// ---- engine access: shared reflection, with the existing legacy fallback while a sequel's layer is off.
+// ---- engine access: our reflection layer on every game. No LExSDKv2 fallback: with the layer off the lookups fail
+// and hand aim stands down.
 
 #if defined(MEVR_GAME_LE1)
 // The weapon's own aim query (script, called natively), which gets the shot's start (StartFireLoc):
@@ -60,49 +60,24 @@ ue3::FieldRef gPawnStartReturn{gPawnStartTraceFn, "ReturnValue"};
 ue3::FieldRef gEnginePawnStartReturn{gEnginePawnStartTraceFn, "ReturnValue"};
 #endif
 
-// The aim query: our reflection layer on LE1 and LE2 (research/34; LE2 since M1, docs/le2-continuation-plan.md), LExSDKv2
-// (engine/Legacy) on a sequel while its layer is off. LE3 uses the same audited script signatures.
-#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+// The aim query: our reflection layer on every game (research/34; LE2 since M1, docs/le2-continuation-plan.md; LE3
+// uses the same audited script signatures).
 ue3::FunctionRef gAimForFn{kGetAdjustedAimFor, ue3::kEveryGame};
 ue3::FieldRef gAimForReturn{gAimForFn, "ReturnValue"};
 
-#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
-#define MEVR_OR_LEGACY(call)     if (!ue3::runtime::Up()) {         return engine::legacy::call;     }
-#else
-#define MEVR_OR_LEGACY(call)
-#endif
 ue3::Function* FindAimFor() {
-    MEVR_OR_LEGACY(FindFunction(kGetAdjustedAimFor))
     return gAimForFn.Get();
 }
 ue3::Object* LocalController() {
-    MEVR_OR_LEGACY(LocalPlayerController())
     return player::Controller();
 }
 std::optional<ue3::Vector> PawnLocation(ue3::Object const* controller) {
-    MEVR_OR_LEGACY(PawnLocation(controller))
     ue3::Object* const pawn = player::Pawn(controller);
     return pawn != nullptr ? player::Location(pawn) : std::nullopt;
 }
 ue3::Rotator* AimForReturn(void* parms) {
-    MEVR_OR_LEGACY(AdjustedAimReturn(parms))
     return gAimForReturn.In<ue3::Rotator>(parms);
 }
-#undef MEVR_OR_LEGACY
-#else
-ue3::Function* FindAimFor() {
-    return engine::legacy::FindFunction(kGetAdjustedAimFor);
-}
-ue3::Object* LocalController() {
-    return engine::legacy::LocalPlayerController();
-}
-std::optional<ue3::Vector> PawnLocation(ue3::Object const* controller) {
-    return engine::legacy::PawnLocation(controller);
-}
-ue3::Rotator* AimForReturn(void* parms) {
-    return engine::legacy::AdjustedAimReturn(parms);
-}
-#endif
 
 enum class Path { Game, Controller, Barrel };
 
@@ -556,11 +531,16 @@ void ShotAimed(ue3::Object* weapon, ue3::Rotator const* shot) {
     gNextShotLogMs = now + 2000;
     engine::UnrealRotation const ray = engine::ToRotation(gLastRayDirection);
     log::Info("hand aim: shot {}: along {}: the shot pitch {} yaw {}, {} pitch {} yaw {}: {:.2f} degrees apart (the weapon's aim "
-              "error); the game's own aim was pitch {} yaw {}, {:.1f} degrees from the shot",
+              "error); the game's own aim was pitch {} yaw {}, {:.1f} degrees from the shot{}",
         gShot.count, barrel ? (gShot.converged ? "the gun barrel toward what the sight line hit" : "the gun barrel")
                             : "the right controller's ray",
         shot->pitch, shot->yaw, barrel ? "aimed" : "the ray", ray.pitch, engine::Unwind(ray.yaw, shot->yaw), offRay,
-        gLastGameAim.pitch, gLastGameAim.yaw, offGame);
+        gLastGameAim.pitch, gLastGameAim.yaw, offGame,
+        barrel && gShot.converged
+            ? std::format("; the sight line hit {} {:.1f} m out: aimed {:.3f} degrees off the sight line, {:.3f} off the barrel",
+                  gShot.sightHit ? gShot.what : std::string("nothing (its trace's end)"), gShot.sightDistanceM, gShot.toSightDeg,
+                  gShot.toBarrelDeg)
+            : std::string());
 }
 
 void OnSfxWeaponAimCall(ue3::Object* context, ue3::Function* /*function*/, void* result) {

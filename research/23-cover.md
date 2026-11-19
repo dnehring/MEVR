@@ -391,7 +391,7 @@ with `bFastCoverRegen`, a pawn in cover and not leaning takes an extra decrement
 `PlayerCoverRegenTimerMultiplier` 1.5). The VR rule answers only inside ModifyDamage, so a VR player hiding behind cover gets
 the damage rule but not the faster recharge. Granting it would mean answering `IsInCover`/`IsInCoverLeaning` in
 `SFXShield_Base.Tick` too, with a judgement that isn't per shot (from which shooter? the nearest hostile, or every awake one).
-Not built.
+**Granted by the owner on 2026-11-16 ("Faster recharge behind cover, yes") and built: section 7.5.**
 
 ### 7.4 In the game (fake headset, 2026-11-14 23:12-23:20, Freedom's Progress, Save 4)
 
@@ -449,3 +449,76 @@ call's IsInCover and IsInCoverLeaning are answered ...`; the crouch replay `SFXG
 standing height and `(false)` at 1.00, as before; `mevr cover hit 30 0` from a pawn 3.3 m away in the open: `exposed`,
 shields 63.0 -> 39.5 -> 15.9 (protect on), then 15.9 -> 0 and health 141 -> 135 -> 116.4 (off): ME1's own damage path as
 section 6.2 measured it (the covered case wasn't set up again: LE1's code paths are the same lines, moved).
+
+### 7.5 The shields' faster recharge behind cover (2026-11-16, lane GR)
+
+The owner, 2026-11-16 (docs/trilogy-plan.md open question 2): "Faster recharge behind cover, yes."
+
+**Which games have the rule.** Only ME2. Read from each game's script (the scanners of section 7 and research/le3-traversal-adapter.md;
+the outputs stay in a scratch folder):
+- **ME2:** `SFXShield_Base.Tick(DeltaSeconds)`: `if (bFastCoverRegen && ShieldRegenTimer > 0 && BioPawn(Owner) != None &&
+  !BioPawn(Owner).IsInCoverLeaning() && BioPawn(Owner).IsInCover()) ShieldRegenTimer -= (PlayerCoverRegenTimerMultiplier - 1) *
+  DeltaSeconds;` then the ordinary `ShieldRegenTimer -= DeltaSeconds`; the recharge starts once the timer is 0. With the config's
+  1.5 the wait in cover is two thirds of the delay (a 3 s delay: 2 s). `SFXShield_Base.ApplyDamage` sets the timer to
+  `GetShieldRegenDelay()` on every hit, and `SFXModule_DamageParty.Regen` (the health's regeneration) waits while any shield's
+  timer runs, so the health's wait shortens with it. `bFastCoverRegen` is the only reference to the flag in the package.
+- **ME3:** `SFXShield_Base.Tick` counts its timer down with no cover question; the delay comes from the difficulty handler
+  (`SFXShield_Player.GetShieldRegenDelay`, `PartialShieldRegenDelay`). No script function about shields or health regeneration
+  calls `IsInCover`. No rule to grant.
+- **ME1:** the shield's regeneration is native (`BioShield.Regenerate`, `UBioShield::execRegenerate` RVA `0xBA4F40` calls a virtual),
+  and no script function that names regeneration calls `IsInCover` (34 script functions call it: AI, cover moves, the damage
+  call, the HUD). The native body wasn't read; ME1 is not known to have such a rule. Nothing built.
+
+**How "in cover" is judged outside a shot: against every awake hostile** (`core/vr/VrCover` `ShelterCount`, `Shelter`, unit-tested
+in `tests/VrCoverTests.cpp` `TestShelter`). Each awake hostile within 40 m (the nearest 16) is judged as a shot from it would be
+(section 6.2's `Judge`: the line from the headset's eyes to its eyes): the player is behind cover when the head is hidden from every
+one of them, and by a surface within `[Cover] reachM` of the eyes from at least one. A hostile behind a far wall (`cover too far`)
+neither grants nor denies it; one with a line to the head (or straight overhead) denies it; with no hostile judged there is
+nothing to shelter from and the game's rule stays as for a player out of cover. Why this and not the nearest hostile alone:
+- it is the damage rule's spirit: the damage rule asks "hidden from the one who shoots"; outside a shot every hostile might
+  shoot, so the head must be hidden from each, and the faster recharge is what a hit from any of them would also respect;
+- the nearest alone is wrong both ways: a nearest hostile in another room (behind a far wall) refuses a player crouched behind a
+  crate in front of the real fight, and a nearest hostile hidden by the crate grants it while a second one sees the head;
+- it is cheap: one trace per hostile, at most 16 traces every 0.25 s (the verdict is cached that long), and only while the
+  shields' wait runs (the game asks only then: `bFastCoverRegen` and `ShieldRegenTimer > 0`), on the player's shield only.
+What a player feels beyond the recharge: nothing; no cover state, camera or animation changes, as for the damage rule.
+
+**Built** (`game/VrCover`, ME2's block; no host change): the same two answer handlers as the damage call's, for the frame of
+`SFXShield_Base.Tick`: `IsInCoverLeaning` answers false and `IsInCover` true for the player's pawn while VR cover applies (`posture`
+refusing the game's cover: VR on foot, `[Hands] noCover = 1`), `[Cover] protect = 1` and the new `[Cover] recharge = 1` (on by
+default: the owner's yes; appended with the `[Cover]` block in a new file only), the game's own cover not taken (then its own
+answers stand), and the player is behind cover by the rule above. The game's own code then takes its own extra decrement: no
+timer or shield is written by us. The answers are read (not written) per call; nothing is held between ticks.
+- **Logs:** `vr cover: SFXShield_Base.Tick's IsInCoverLeaning and IsInCover are answered ...` at the start; `vr cover: while the
+  shields wait: <verdict> (N hostiles judged: ...)` when the verdict changes (at most every 2 s); `vr cover: the shields' wait
+  before recharging: X s after a hit that set Y s, Z s of it behind cover (the game's fast regen in cover on)` after each wait,
+  measured from the game's own `ShieldRegenTimer` (`core/vr/VrCover` `RegenWait`, unit-tested `TestRegenWait`); the heartbeat's
+  `vr cover: the shields' recharge: ...`. Snapshot `"mod"."vrCover"."recharge"` (ME1 and ME3: `{"applies": false}`).
+- **Console:** `mevr cover regen` (the player's shield, its timer, `bFastCoverRegen`, the shields, and the shelter judged now
+  hostile by hostile); `mevr cover regen as <n>` judges against pawn n of `mevr cover pawns` instead of the hostiles (a fixture
+  without hostiles: Save 4's squad), `as off`; `mevr cover recharge on|off` (an A/B until the mod reloads).
+- **ReflectCheck rows** (ME2): `SFXShield_Base.ShieldRegenTimer`, `bFastCoverRegen`, `SFXShield_Base.Tick`.
+
+**In the game** (fake headset, 2026-11-16 20:00-20:06, Freedom's Progress, Save 4, session `20261116-195519-020-LE2-gr-me2`,
+restored `verification: 0 differences`): the player's shield is `SFXShield_Energy_Player_0`, its `bFastCoverRegen` **on**, the regen
+delay after a hit **5.00 s**. The places of section 7.4 (Shepard with `mevr cover put me -2290 20480 -11909`, Jacob put at
+`(-2290, 20200)`, standing on the lower ground at -12109, `mevr cover regen as <Jacob>`): each hit was `mevr cover hit 30 <Jacob>`
+with `mevr cover off` for the hit (else the cone cuts it to nothing and no wait starts: case D) and `on` again 0.5 s later.
+
+| case | the shelter | the wait before recharging |
+|---|---|---|
+| A: behind the crate, `recharge` on | `behind cover (1 hostile judged ... 1 hidden by cover)`, the crate 1.22 m from the eyes | **3.51 s**, 3.00 s of it behind cover |
+| A again | the same | **3.67 s**, 2.67 s of it behind cover |
+| B: the same place, `mevr cover recharge off` | (not asked) | **5.02 s** |
+| C: Shepard 3.2 m back (`-2290 20800`), recharge on | `hidden only by things far away` (the crate 3.93 m from the eyes) | **5.02 s** |
+| C': Jacob in the open, recharge on | `in the open to a hostile` | **5.50 s** |
+| no hostile at all | `no awake hostile` | 5.01 s |
+| D: protect on, behind the crate | (the damage call) | the cone cut the hit to nothing (shields 257.5 unchanged): no wait started |
+
+The game's own rule is a 1.5x countdown while in cover: 0.5 s unsheltered (the toggle's gap) plus 4.5 s / 1.5 = 3.50 s, as measured
+(A 3.51 s); the second A had the shelter answered later in the wait (2.67 s of it). **For this run `[Cover] reachM` was 1.5** (the
+file's 1.2 put back after): on ME2's current main a replayed crouch no longer lowers the eyes (floor lock pins the eye at the live
+STAGE height, 1.7526 m, `floor lock: ... correction +102.261, final eye 1.7526 m` while the replay's head was 0.9 m down), so the
+head stayed at standing height and the crate's nearest point on the line to Jacob was 1.22-1.28 m away. That is a test-tool gap
+(replays don't stand in for the STAGE floor query), not the rule's: the lane that owns floor lock was told. Not measured: a
+hostile's own shots, several hostiles, a headset.

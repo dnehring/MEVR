@@ -102,6 +102,27 @@ struct PowerHoldStep {
 // `input.nowMs` a nonzero millisecond clock (0: nothing opens, a hold can't be told from a tap).
 PowerHoldStep PowerHoldFromStickClick(PowerHold& state, RbClickInput const& input);
 
+// What the mod does with the game's power wheel around one hold (pure; game/holsters asks the game and runs it): the
+// release closes the wheel the mod asked for if it's open then. A wheel the game hadn't opened by the release may still
+// open on its own (ME3's EnterPowerWheel sets a timer and tries again 0.2 s later while the pawn is in an animated
+// transition): opening within kPowerLateMs of that release with the click up, it's closed too (nobody holds it). A new
+// press ends that watch (the press is the player's own).
+inline constexpr std::uint64_t kPowerLateMs = 1000;
+struct PowerWheelWatch {
+    bool asked = false;             // the game was asked to open its wheel on this hold
+    bool opened = false;            // ...and it was seen open
+    std::uint64_t lateUntilMs = 0;  // after a release with it never open: a late opening is closed until then (0: none)
+};
+enum class PowerWheelClose : std::uint8_t {
+    None,
+    AtRelease,  // the click let go with the wheel open: close it
+    Late,       // the game opened it after the release: close it
+};
+// One step after PowerHoldFromStickClick's: `step` its result, `asked` the game was asked to open its wheel on this step
+// (with step.open), `wheelOpen` the game's power wheel mode is current now, `click` the click is down, `nowMs` the clock.
+PowerWheelClose WatchPowerWheel(PowerWheelWatch& watch, PowerHoldStep const& step, bool asked, bool wheelOpen, bool click,
+    std::uint64_t nowMs);
+
 // Both stick clicks are a chord, not L3 + R3: held kStickHoldMs, Halcyon's menu opens or closes (as
 // before); tapped (the second click down within kStickJoinMs of the first, both up again within
 // kStickTapMs of the first press), the test loop takes a snapshot. A tap is over before a hold could
@@ -214,6 +235,10 @@ struct Latches {
     // R3 likewise, with Options::gateRightClick (ME2's pad path: the both-sticks hold for our menu comes before any use of
     // either click, the owner 2026-11-14).
     ClickGate rightClick;
+    // The right stick click with Options::keepPowerClick: down last step, and whether this press is kept from the game (it
+    // began while the mod owned the click). A kept press never reaches rightClick's gate either, so no tap pulse follows it.
+    bool rightClickDown = false;
+    bool rightClickKept = false;
     // The squad weapon menu (game/squad_weapons): the left-grip squeezes that began away from the gun's
     // foregrip (not the support grip), counted like the right grip's kept squeezes; whether the current
     // squeeze is one.
@@ -312,6 +337,13 @@ struct Options {
     // the both-sticks hold for our main menu always wins over the game's use of either click (the owner, 2026-11-14:
     // "always prioritize the L3 + R3 stick click"; research/le2-menus.md "Opening the menu").
     bool gateRightClick = false;
+    // A right stick click the mod owns (modPowerHold: its hold is the power wheel's) isn't R3 either: the press is kept from
+    // the game until released, decided when it goes down (Latches::rightClickKept). Not across the boundary: the host sets
+    // it. The sequels' hosts set it (the owner, 2026-11-17, docs/trilogy-plan.md question 14): ME2's R3 is Console_ShowMap (a
+    // tap the area map, a hold the objective radar), ME3's Console_NavAssistanceOrCoverTurn (every press a point of interest
+    // or the area map); the area map stays on the omni-tool's Map entry. LE1 leaves it off: Halcyon LE1's double-click
+    // recenter reads R3 from the game's pad, and ME1's own R3 (ChangeMagnification) acts only while zoomed (research/19).
+    bool keepPowerClick = false;
     // The squad weapon menu is open (game/squad_weapons, kFlagSquadMenu): the sticks, A, B and both
     // stick clicks are its own (Latches::squadHeld keeps them from the game until released).
     bool squadMenu = false;

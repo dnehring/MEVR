@@ -165,6 +165,7 @@ std::atomic_bool g_menuMode{false};         // MANUAL flat-mode toggle (checkbox
 // menu: pause/inventory/squad/journal/map), 8 (movie), 9 (galaxy map), 10 (orbital/planet scan) force
 // mono automatically when g_monoMenus is on (the ME1 "mono or VR menus" bool). -1 = unreadable = VR.
 std::atomic<int>  g_autoGameMode{-1};
+std::atomic<int>  g_mevrFrontEnd{0};        // [MEVR] research/56 (T18): 0 none, 1 the front end's flat panel, 2 its 3D screen
 std::atomic_bool  g_monoMenus{true};        // ME1-style bool: true = menus/map flat mono (default), false = VR menus
 // [GM7PAUSE] Mode 7 (GUI) is NOT only full-screen menus - ME2 also reports it during live gameplay while
 // HUD elements are up (objective display, tutorial popups, aiming), which dropped all of COMBAT to a mono
@@ -1187,6 +1188,7 @@ uint64_t g_sfrClearsThisPresent = 0;   // [SFRDIAG] scene-sized clears captured 
 std::uintptr_t g_bbResourcePtr = 0;        // cached backbuffer resource identity (refreshed per present)
 bool g_sfrBbBoundThisPresent = false;      // backbuffer bound as RTV => pass 0 has composited
 bool g_sfrCapturedThisPresent = false;     // pass-0 snapshot already taken this present
+bool g_mevrFirstEyeMarked = false;         // [MEVR] the probe was told where the first eye's render ended, this present
 std::atomic_bool g_pass0Anchor{true};      // toggle for A/B against the old last-clear behaviour
 std::atomic<uint64_t> g_sfrAnchorMisses{0}; // presents where the anchor never fired (diagnostic)
 // [CLEARMAP] Frame-structure instrumentation. Two blind anchor designs failed; this makes the third
@@ -1289,6 +1291,9 @@ void TryInstallBinkHooks() noexcept
 bool g_mhOMSetRTInstalled = false;   // [RTVDURABLE] inline hook replaces the vtable patch
 void WINAPI ExitProcessHook(UINT uExitCode) noexcept
 {
+    // [MEVR] our host's ExitProcess hook sits under this one and ends the process itself after its exit line (the kept
+    // locks, crash::NoteProcessExit): hand it the call; it never returns either.
+    if (::MevrSeams::HostEndsProcess() && g_origExitProcess != nullptr) g_origExitProcess(uExitCode);
     TerminateProcess(GetCurrentProcess(), uExitCode);   // never returns; skips the hanging detach chain
 }
 
@@ -1494,7 +1499,7 @@ void SfrDrawUiBothEyes(ID3D11DeviceContext* ctx, const D3D11_VIEWPORT& vp, DrawT
 template <typename DrawThunk>
 bool MevrHudPanelDraw(ID3D11DeviceContext* ctx, DrawThunk& draw, bool textBatch) noexcept
 {
-    return ::ME2VR::MevrBridge::HudPanelDraw(ctx, [](void* d) noexcept { (*static_cast<DrawThunk*>(d))(); }, &draw, textBatch,
+    return ::MevrSeams::HudPanelDraw(ctx, [](void* d) noexcept { (*static_cast<DrawThunk*>(d))(); }, &draw, textBatch,
                                              SfrUiMirrorArmed());
 }
 
@@ -1513,6 +1518,9 @@ void DrawUiRatioOnce(ID3D11DeviceContext* ctx, const D3D11_VIEWPORT& vp, DrawThu
 
 void STDMETHODCALLTYPE MhDrawIndexed(ID3D11DeviceContext* ctx, UINT a, UINT b, INT c) noexcept
 {
+#if defined(MEVR_ASI)
+    ::MevrSeams::PerfDraw();   // [MEVR] frame-breakdown probe: one draw
+#endif
     // DIBR draw-gate: attribute this draw to the bound depth resource (gameplay geometry flows through this
     // MinHook'd path, so the counter MUST be bumped here or the depth capture never triggers).
     if (g_depthMapEnabled.load(std::memory_order_relaxed) && g_boundDepthRes != nullptr)
@@ -1539,6 +1547,9 @@ void STDMETHODCALLTYPE MhDrawIndexed(ID3D11DeviceContext* ctx, UINT a, UINT b, I
 // and land cross-eyed (= scrambled text) while panels (DrawIndexed) look right. Dup it the same way.
 void STDMETHODCALLTYPE MhDrawIndexedInstanced(ID3D11DeviceContext* ctx, UINT ipc, UINT ic, UINT sil, INT bvl, UINT sii) noexcept
 {
+#if defined(MEVR_ASI)
+    ::MevrSeams::PerfDraw();   // [MEVR] frame-breakdown probe: one draw
+#endif
     if (g_mhRealDrawIndexedInstanced == nullptr) return;
     if (g_bbResourcePtr != 0 && g_currentRtvResourcePtr == g_bbResourcePtr) ++g_sfrBbDrawsThisPresent;   // [CLEARMAP]
     D3D11_VIEWPORT vp = {};
@@ -1556,6 +1567,9 @@ void STDMETHODCALLTYPE MhDrawIndexedInstanced(ID3D11DeviceContext* ctx, UINT ipc
 }
 void STDMETHODCALLTYPE MhDraw(ID3D11DeviceContext* ctx, UINT a, UINT b) noexcept
 {
+#if defined(MEVR_ASI)
+    ::MevrSeams::PerfDraw();   // [MEVR] frame-breakdown probe: one draw
+#endif
     if (g_mhRealDraw == nullptr) return;
     if (g_bbResourcePtr != 0 && g_currentRtvResourcePtr == g_bbResourcePtr) ++g_sfrBbDrawsThisPresent;   // [CLEARMAP]
     // Menu/codex TEXT is drawn via non-indexed Draw; panels use DrawIndexed. Both need the per-eye dup or
@@ -1962,6 +1976,13 @@ void SfrMaybeCapturePass0AtClear(ID3D11DeviceContext* ctx, ID3D11DepthStencilVie
     if (!sceneSized) return;
 
     ++g_sceneClearsSeen;
+#if defined(MEVR_ASI)
+    // [MEVR] frame-breakdown probe: the first eye's render ends where the next pass's scene opens, the first
+    // scene-sized clear after this present's first backbuffer draw. (The pass-0 snapshot below waits for the
+    // group's second clear, which comes late in pass 1: 895 of 956 draws, lane PL 2026-11-16.)
+    if (!g_mevrFirstEyeMarked && g_sfrBbDrawsThisPresent != 0)
+    { g_mevrFirstEyeMarked = true; ::MevrSeams::PerfFirstEyeCaptured(ctx); }
+#endif
     // [CLEARMAP] record this scene clear: which depth resource (identity only, low 20 bits is plenty
     // to tell targets apart) and how many backbuffer draws had happened when it fired.
     if (ME2VR::Log::DiagnosticsOn() && g_clearMapLen < (int)sizeof(g_clearMap) - 20)
@@ -2551,6 +2572,9 @@ std::atomic<uint64_t> g_mirrorPresentEvery{kMirrorPresentEveryDefault};
 HRESULT STDMETHODCALLTYPE PresentHook(IDXGISwapChain* swapChain, UINT syncInterval, UINT flags) noexcept
 {
     if (g_gameContext == nullptr && g_gameDevice != nullptr) g_gameDevice->GetImmediateContext(&g_gameContext);
+#if defined(MEVR_ASI)
+    const ::MevrSeams::PerfPresentScope mevrPerfPresent(g_gameContext);   // [MEVR] frame-breakdown probe: this Present, start to end
+#endif
     ReassertContextVtableHooks(g_gameContext);
     const auto n = g_presentCount.fetch_add(1, std::memory_order_relaxed) + 1;
     TryInstallBinkHooks();
@@ -2749,6 +2773,7 @@ HRESULT STDMETHODCALLTYPE PresentHook(IDXGISwapChain* swapChain, UINT syncInterv
         g_sfrLastClearCount = cc;
     }
     g_clearMap[0] = '\0'; g_clearMapLen = 0; g_sfrBbDrawsThisPresent = 0;
+    g_mevrFirstEyeMarked = false;   // [MEVR] frame-breakdown probe: per present
     g_sceneClearsSeen = 0;
     g_sfrClearRunBbDraws = ~0ull; g_sfrClearRunLen = 0; g_sfrPassOpens = 0;   // [CLEARGROUP] per-present
     g_sfrBbCopiesThisPresent = 0;                                                      // [CINECOPY]
@@ -3222,6 +3247,9 @@ void STDMETHODCALLTYPE DrawInstancedHook(ID3D11DeviceContext* context,
                                          UINT startVertexLocation,
                                          UINT startInstanceLocation) noexcept
 {
+#if defined(MEVR_ASI)
+    ::MevrSeams::PerfDraw();   // [MEVR] frame-breakdown probe: one draw
+#endif
     FirstFire("DrawInstanced", 3);
     LogStereoBoundDraw("DrawInstanced", _ReturnAddress(), vertexCountPerInstance, startVertexLocation, 0, false);
     LogUiSeamStack("DrawInstanced", vertexCountPerInstance);
@@ -3245,6 +3273,9 @@ void STDMETHODCALLTYPE DrawInstancedHook(ID3D11DeviceContext* context,
 
 void STDMETHODCALLTYPE DrawAutoHook(ID3D11DeviceContext* context) noexcept
 {
+#if defined(MEVR_ASI)
+    ::MevrSeams::PerfDraw();   // [MEVR] frame-breakdown probe: one draw
+#endif
     FirstFire("DrawAuto", 4);
     LogStereoBoundDraw("DrawAuto", _ReturnAddress(), 0, 0, 0, false);
     TraceOp("DrawAuto", context, 0);
@@ -3259,6 +3290,9 @@ void STDMETHODCALLTYPE DrawIndexedInstancedIndirectHook(ID3D11DeviceContext* con
                                                         ID3D11Buffer* bufferForArgs,
                                                         UINT alignedByteOffsetForArgs) noexcept
 {
+#if defined(MEVR_ASI)
+    ::MevrSeams::PerfDraw();   // [MEVR] frame-breakdown probe: one draw
+#endif
     LogStereoBoundDraw("DrawIndexedInstancedIndirect",
                        _ReturnAddress(),
                        alignedByteOffsetForArgs,
@@ -3285,6 +3319,9 @@ void STDMETHODCALLTYPE DrawInstancedIndirectHook(ID3D11DeviceContext* context,
                                                  ID3D11Buffer* bufferForArgs,
                                                  UINT alignedByteOffsetForArgs) noexcept
 {
+#if defined(MEVR_ASI)
+    ::MevrSeams::PerfDraw();   // [MEVR] frame-breakdown probe: one draw
+#endif
     LogStereoBoundDraw("DrawInstancedIndirect", _ReturnAddress(), alignedByteOffsetForArgs, 0, 0, false);
     FirstFire("DrawInstancedIndirect", 6);
     TraceOp("DrawInstIndir", context, 0);
@@ -4180,8 +4217,17 @@ unsigned GetBackbufferHeight() noexcept { return g_backbufferHeight; }
 bool GetMenuMode() noexcept
 {
     if (g_menuMode.load(std::memory_order_acquire)) return true;
+    // [MEVR] research/56 (T18): ME1's front end: its flat panel (the boot, a load from the menus: an unreadable mode included,
+    // which would otherwise fail open to VR) or ME1's 3D cinema screen (the title and its menus in stereo: no menu frame).
+    if (const int fe = g_mevrFrontEnd.load(std::memory_order_acquire); fe != 0) return fe == 1;
     if (!g_monoMenus.load(std::memory_order_acquire)) return false;
     const int m = g_autoGameMode.load(std::memory_order_acquire);
+#if defined(MEVR_ASI)
+    // [MEVR] the galaxy map open over the CIC's projector (MevrSeams::GalaxyOwnsPresentation: the mod holds Shepard's view on
+    // foot and shows the game's map as a stereo window on the projector, ME1's design): the map's modes are no flat
+    // presentation; the room stays in stereo and the map's UI goes to our HUD panel there. docs/galaxy-projector-handoff.md.
+    if ((m == 9 || m == 10) && ::MevrSeams::GalaxyOwnsPresentation(m)) return false;
+#endif
     if (m == 8 || m == 9 || m == 10) return true;   // Movie / Galaxy / Orbital - genuinely flat, no depth exists
     if (m != 7) return false;                       // gameplay (and - 1 unreadable) -> fail OPEN to VR
 #if defined(MEVR_ASI)
@@ -4195,6 +4241,8 @@ bool GetMenuMode() noexcept
 void SetMenuMode(bool on) noexcept { g_menuMode.store(on, std::memory_order_release); }
 bool GetMenuModeManual() noexcept { return g_menuMode.load(std::memory_order_acquire); }
 void SetAutoGameMode(int mode) noexcept { g_autoGameMode.store(mode, std::memory_order_release); }
+void SetMevrFrontEnd(int state) noexcept { g_mevrFrontEnd.store(state, std::memory_order_release); }   // [MEVR] T18
+int  GetMevrFrontEnd() noexcept { return g_mevrFrontEnd.load(std::memory_order_acquire); }          // [MEVR] T18
 int  GetAutoGameMode() noexcept { return g_autoGameMode.load(std::memory_order_acquire); }
 int  GetMirrorPresentEvery() noexcept { return static_cast<int>(g_mirrorPresentEvery.load(std::memory_order_relaxed)); }
 void SetMirrorPresentEvery(int n) noexcept
@@ -4284,6 +4332,33 @@ void ArmResolutionSpoof() noexcept
     ME2VR::Log::Line(line);
 }
 
+// [MEVR] the render target for our host (plugin/RendererLe2.cpp RenderTarget): the size the next launch renders at is
+// MELE2VR.ini's RenderW/RenderH, which ArmResolutionSpoof above writes into GamerSettings.ini at attach.
+void MevrRenderTarget(unsigned* fileW, unsigned* fileH, unsigned* liveW, unsigned* liveH) noexcept
+{
+    const std::wstring ini = DispqOurIniPath();
+    if (fileW) *fileW = ini.empty() ? 0u : static_cast<unsigned>(GetPrivateProfileIntW(L"VR", L"RenderW", 0, ini.c_str()));
+    if (fileH) *fileH = ini.empty() ? 0u : static_cast<unsigned>(GetPrivateProfileIntW(L"VR", L"RenderH", 0, ini.c_str()));
+    if (liveW) *liveW = g_backbufferWidth;
+    if (liveH) *liveH = g_backbufferHeight;
+}
+
+bool MevrSetRenderTarget(unsigned w, unsigned h) noexcept
+{
+    const std::wstring ini = DispqOurIniPath();
+    if (ini.empty() || w < 1024 || h < 576) return false;   // ArmResolutionSpoof's own bounds
+    wchar_t v[32] = {};
+    swprintf_s(v, L"%u", w);
+    bool ok = WritePrivateProfileStringW(L"VR", L"RenderW", v, ini.c_str()) != 0;
+    swprintf_s(v, L"%u", h);
+    ok = WritePrivateProfileStringW(L"VR", L"RenderH", v, ini.c_str()) != 0 && ok;
+    const bool wrote = DispqWriteRes(w, h);   // and now, as attach would at the next launch
+    ME2VR::Log::Line("[VRRES] [MEVR] next launch " + std::to_string(w) + "x" + std::to_string(h) +
+                     (ok ? " -> MELE2VR.ini" : " -> MELE2VR.ini write FAILED") +
+                     (wrote ? ", GamerSettings.ini" : ", GamerSettings.ini untouched"));
+    return ok;
+}
+
 // Installed from the worker thread, well ahead of the game's D3D init (which happens after DllMain
 // returns) - no race with ArmResolutionSpoof, which already ran synchronously in DllMain.
 // ================================================================================================
@@ -4328,7 +4403,7 @@ bool SvrIsSteamVrActiveRuntime() noexcept
     cached = 0;
 #if defined(MEVR_ASI)
     // [MEVR] the runtime this process uses: XR_RUNTIME_JSON (our [Debug] openxrRuntime, the fake headset) first
-    cached = ::ME2VR::MevrBridge::XrRuntimeIsSteamVr() ? 1 : 0;
+    cached = ::MevrSeams::XrRuntimeIsSteamVr() ? 1 : 0;
     ME2VR::Log::Line(std::string("[SVRFIX2] this process's OpenXR runtime is SteamVR [MEVR]: ") + (cached ? "yes" : "no"));
     return cached != 0;
 #endif
@@ -4614,7 +4689,7 @@ void TryInstallFactoryHooks(void* factory, const IID&) noexcept
         g_createSwapChainForCompositionSlot = &vtable[kCreateSwapChainForCompositionSlot];
     }
 #if defined(MEVR_ASI)
-    ::ME2VR::MevrBridge::OnFactory(factory);  // [MEVR] the display's HDR answer to the game (LE1's [Colour] hdrDisplay)
+    ::MevrSeams::OnFactory(factory);  // [MEVR] the display's HDR answer to the game (LE1's [Colour] hdrDisplay)
 #endif
 }
 }

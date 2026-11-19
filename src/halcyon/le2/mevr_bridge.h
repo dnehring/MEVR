@@ -32,11 +32,20 @@ float CineScreenHalfSeparationUU(float halfH) noexcept;
 // the host's per-Present work (the test loop, voice, our menu closing itself when nobody can see it).
 void OnSwapChainPresent(void* swapChain, void* capturedSwapChain) noexcept;
 
-// One of the game's screens stands on the wrist or in the room (plugin/WorldUi, the mod's game/WorldUi; plugin/MenusLe2,
-// research/le2-menus.md "ME2's screens on the wrist"), or is being opened (the mod reserved it): the GUI mode `mode` (7) is
-// then not flat (d3d_capture.cpp's GetMenuMode answers false: the world in stereo behind the screen, its UI on our HUD
-// panel), as LE1's MevrBridge::WorldUiOwnership in xr_session.cpp's decision. Any thread.
-bool WorldUiOwnsGui(int mode) noexcept;
+// One of the game's screens stands on the wrist or in the room (research/le2-menus.md "ME2's screens on the wrist"): the
+// common seam MevrSeams::WorldUiOwnsGui since ME3 took it (2026-11-16); ME2's name forwards to it (d3d_capture.cpp's
+// GetMenuMode answers false for it, me2_menu.cpp's MenuOwnsLook keeps the stick the menu's).
+inline bool WorldUiOwnsGui(int mode) noexcept
+{
+    return ::MevrSeams::WorldUiOwnsGui(mode);
+}
+
+// Game thread, calcview_hook.cpp's DrawDetour: whether a pass-1 Draw that returned in under 100 us is drawn again in the
+// same frame ([NOOPRETRY]; [Performance] sfrReplayRetry, 1 upstream's behaviour, 0 our default since the owner's yes of
+// 2026-11-17: plugin/RenderLeversTable). Such a Draw usually did render, and its retry is then the frame's third scene
+// render (research/sequel-render-levers.md "Performance research").
+// Defined by plugin/RenderLevers in the LE2 host.
+bool SfrReplayRetry() noexcept;
 
 // Halcyon's hotkey polls go through this: MevrSeams::KeyDown in our ASI, the plain poll in an upstream build.
 inline bool HotkeyDown(int vk) noexcept
@@ -47,90 +56,4 @@ inline bool HotkeyDown(int vk) noexcept
     return (GetAsyncKeyState(vk) & 0x8000) != 0;
 #endif
 }
-
-// ---- Old names (before MevrSeams.h): thin forwarders, removed once nobody calls them -------------------------------------
-using MevrSeams::OverlayFrame;
-using MevrSeams::CineScreenFrame;
-struct GalaxyPanel {
-    float orientation[4] = {0, 0, 0, 1};
-    float position[3] = {};
-    float widthM = 0;
-    float heightM = 0;
-};
-inline bool PlaceGalaxyPanel(OverlayFrame const& frame, bool imageReady, float aspect, GalaxyPanel& out) noexcept
-{
-    const float at[3] = {};
-    const MevrSeams::PanelPose p = MevrSeams::PlacePanel(MevrSeams::PanelKind::ByGameMode, frame, at, 1.0f, aspect, imageReady);
-    if (!p.placed) return false;
-    for (int i = 0; i < 4; ++i) out.orientation[i] = p.orientation[i];
-    for (int i = 0; i < 3; ++i) out.position[i] = p.position[i];
-    out.widthM = p.widthM;
-    out.heightM = p.heightM;
-    return true;
-}
-inline void* StaticXrGetInstanceProcAddr() noexcept { return MevrSeams::StaticXrGetInstanceProcAddr(); }
-inline void WrapSessionFunctions(void** acquireSwapchainImage, void** waitSwapchainImage, void** releaseSwapchainImage,
-    void** waitFrame, void** beginFrame, void** endFrame, void** locateViews) noexcept
-{
-    MevrSeams::WrapSessionFunctions(acquireSwapchainImage, waitSwapchainImage, releaseSwapchainImage, waitFrame, beginFrame,
-        endFrame, locateViews);
-}
-inline void OnSessionCreated(void* instance, void* session) noexcept { MevrSeams::OnSessionCreated(instance, session); }
-inline void OnFrameBegun(void* session, void* space, std::int64_t time) noexcept { MevrSeams::OnFrameBegun(session, space, time); }
-inline void OnViewBuilt(bool worldView, bool headLook, bool headAim, int lookYawUU, int lookPitchUU, float const headQ[4],
-    float const headP[3], float offsetRightUU, float offsetUpUU, float offsetForwardUU, float unitsPerMeter,
-    bool floorWorld) noexcept
-{
-    MevrSeams::OnViewBuilt(worldView, headLook, headAim, lookYawUU, lookPitchUU, headQ, headP, offsetRightUU, offsetUpUU,
-        offsetForwardUU, unitsPerMeter, floorWorld);
-}
-inline float FloorViewTranslation(bool replay, float rawCameraZ, float rightZ, float upZ, float forwardZ, float* right,
-    float* up, float* forward) noexcept
-{
-    return MevrSeams::FloorViewTranslation(replay, rawCameraZ, rightZ, upZ, forwardZ, right, up, forward);
-}
-inline void OnRecentered() noexcept { MevrSeams::OnRecentered(); }
-inline void OnSessionStopped() noexcept { MevrSeams::OnSessionStopped(); }
-inline void OnEyeSource(int eye, void* source) noexcept { MevrSeams::OnEyeSource(eye, source); }
-inline void OnEyeCopied(int eye, void* image, std::uint32_t index, int acquired, int waited) noexcept
-{
-    MevrSeams::OnEyeCopied(eye, image, index, acquired, waited);
-}
-inline void OnEyeReleased(int eye, bool published) noexcept { MevrSeams::OnEyeReleased(eye, published); }
-inline bool CopyIntoImage(void* context, void* image, void* source, int shiftX, int eye) noexcept
-{
-    return MevrSeams::CopyIntoImage(context, image, source, shiftX, eye);
-}
-inline bool HudPanelDraw(ID3D11DeviceContext* context, void (*draw)(void*), void* user, bool textBatch, bool afterLeftEye) noexcept
-{
-    return MevrSeams::HudPanelDraw(context, draw, user, textBatch, afterLeftEye);
-}
-inline unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsigned capacity) noexcept
-{
-    return MevrSeams::OverlayLayers(frame, layersOut, capacity);
-}
-inline bool CineScreenWanted(bool conversation) noexcept { return MevrSeams::CineScreenWanted(conversation); }
-inline bool CineScreenFullRate() noexcept { return MevrSeams::CineScreenFullRate(); }
-inline unsigned CineScreenLayers(const CineScreenFrame& frame, const void** layersOut, unsigned capacity) noexcept
-{
-    return MevrSeams::CineScreenLayers(frame, layersOut, capacity);
-}
-inline const void* TransitionFadeLayer(void* session, void* viewSpace, ID3D11DeviceContext* context, int view) noexcept
-{
-    return MevrSeams::TransitionFadeLayer(session, viewSpace, context, view);
-}
-inline void OnFactory(void* factory) noexcept { MevrSeams::OnFactory(factory); }
-inline DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noexcept
-{
-    return MevrSeams::MergeMotionControllers(index, state, result);
-}
-inline bool OnGameThread() noexcept { return MevrSeams::OnGameThread(); }
-inline bool QueueProcessEvent(void* object, void* function, void const* params, std::uint32_t size) noexcept
-{
-    return MevrSeams::QueueProcessEvent(object, function, params, size);
-}
-inline bool XrRuntimeIsSteamVr() noexcept { return MevrSeams::XrRuntimeIsSteamVr(); }
-inline bool KeyDown(int vk) noexcept { return MevrSeams::KeyDown(vk); }
-inline bool OnMenuKey(bool ownMenuOpen) noexcept { return MevrSeams::OnMenuKey(ownMenuOpen); }
-inline bool MainMenuOpen() noexcept { return MevrSeams::MainMenuOpen(); }
 }

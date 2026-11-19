@@ -115,10 +115,14 @@
     "game/ConsoleRequest",
     "game/ConversationFlow",
     "game/ConversationWorld",
+    "game/DepthOfFieldHold",
     "game/Fingers",
     "game/FocusPause",
     "game/GalaxyDump",
     "game/GalaxyMap",
+    "game/GalaxyProjector",
+    "game/GalaxyProjectorFlow",
+    "game/GalaxyRay",
     "game/GameArt",
     "game/GameMenuRequest",
     "game/GamepadBridge",
@@ -135,6 +139,8 @@
     "game/HudPieces",
     "game/Interact",
     "game/InventoryProbe",
+    "game/Le2GalaxyCapture",
+    "game/Le2Traversal",
     "game/Le3GalaxyCapture",
     "game/Le3GalaxyRetention",
     "game/Le3Traversal",
@@ -148,6 +154,7 @@
     "game/Posture",
     "game/PowerWheel",
     "game/Reflections",
+    "game/Reload",
     "game/SceneCaptureRig",
     "game/ScopeCapture",
     "game/ScopeParts",
@@ -174,7 +181,8 @@
     "game/Voice",
     "game/VrCover",
     "game/Weapon",
-    "game/WorldUi"
+    "game/WorldUi",
+    "game/ZoomedShots"
    ],
    "other": [
     "engine/CodeDump",
@@ -203,6 +211,7 @@
     "HalcyonBridge",
     "HalcyonOverlays",
     "HandReticle",
+    "HdrDisplayPolicy",
     "HudPanel",
     "HudPieceLayers",
     "KeptLocks",
@@ -218,6 +227,7 @@
     "OpenAlSoft",
     "PadMerge",
     "PerfProbe",
+    "PerfProbeLe1",
     "PowerIcons",
     "PowerWheel",
     "PowerWheelDraw",
@@ -250,6 +260,7 @@
     "Vignette",
     "Voice",
     "VoiceModel",
+    "WheelPanel",
     "WorldPanels",
     "WorldUi",
     "WristBeam",
@@ -270,6 +281,7 @@
     "Version",
     "Window",
     "d3d11/Blit",
+    "d3d11/ShaderReflect",
     "gfx/Raster",
     "gfx/Swf",
     "gfx/SwfFont",
@@ -278,10 +290,12 @@
     "vr/Calibration",
     "vr/CineScreen",
     "vr/Colour",
+    "vr/CombatStance",
     "vr/Comfort",
     "vr/Controllers",
     "vr/ConversationWorld",
     "vr/FloorLock",
+    "vr/FrameProbe",
     "vr/GalaxyHologram",
     "vr/GalaxyMap",
     "vr/GameMenuRequest",
@@ -294,12 +308,17 @@
     "vr/InteractLabel",
     "vr/LayerComposite",
     "vr/MenuPointer",
+    "vr/MetricStereo",
     "vr/OmniRail",
     "vr/OverlayPlacement",
     "vr/PoseRecording",
     "vr/PowerWheel",
+    "vr/PresentationHold",
+    "vr/Recenter",
+    "vr/RenderTarget",
     "vr/ScopeArt",
     "vr/ScopeCapture",
+    "vr/ScreenMatrix",
     "vr/Sights",
     "vr/SquadMenu",
     "vr/SquadPlace",
@@ -307,6 +326,8 @@
     "vr/Thespian",
     "vr/TransitionFade",
     "vr/Traversal",
+    "vr/Upscale",
+    "vr/WheelCrop",
     "vr/WorldUi",
     "xr/Floor",
     "xr/Input"
@@ -316,7 +337,10 @@
     "MEVR_WITH_HALCYON_LE2",
     "MEVR_WITH_MAIN_MENU"
    ],
-   "modExtra": [],
+   "modExtra": [
+    "core/Json",
+    "core/vr/GalaxyRay"
+   ],
    "modModules": [
     "engine/BodyBounds",
     "engine/BonePose",
@@ -352,10 +376,14 @@
     "game/ConsoleRequest",
     "game/ConversationFlow",
     "game/ConversationWorld",
+    "game/DepthOfFieldHold",
     "game/Fingers",
     "game/FocusPause",
     "game/GalaxyDump",
     "game/GalaxyMap",
+    "game/GalaxyProjector",
+    "game/GalaxyProjectorFlow",
+    "game/GalaxyRay",
     "game/GameArt",
     "game/GameMenuRequest",
     "game/GamepadBridge",
@@ -372,6 +400,8 @@
     "game/HudPieces",
     "game/Interact",
     "game/InventoryProbe",
+    "game/Le2GalaxyCapture",
+    "game/Le2Traversal",
     "game/Le3GalaxyCapture",
     "game/Le3GalaxyRetention",
     "game/Le3Traversal",
@@ -385,6 +415,7 @@
     "game/Posture",
     "game/PowerWheel",
     "game/Reflections",
+    "game/Reload",
     "game/SceneCaptureRig",
     "game/ScopeCapture",
     "game/ScopeParts",
@@ -411,7 +442,8 @@
     "game/Voice",
     "game/VrCover",
     "game/Weapon",
-    "game/WorldUi"
+    "game/WorldUi",
+    "game/ZoomedShots"
    ],
    "other": [
     "engine/CodeDump",
@@ -428,36 +460,49 @@
     "CinemaBackdropDraw",
     "Colour",
     "CrashBreadcrumbs",
+    "DrawReplay",
     "Entry",
     "EyeCopy",
     "FloorLock",
+    "GalaxyHologram",
     "GalaxyHologramDraw",
     "GamePointer",
     "GameThreadCalls",
     "Glow",
     "HalcyonLe2",
     "HalcyonLe2Bridge",
+    "HalcyonSequelBridge",
     "HandReticle",
     "HdrDisplayPolicy",
     "HudPanel",
     "HudPieceLayers",
+    "KeptLocks",
     "MainMenu",
     "MainMenuSettings",
     "MenusLe2",
+    "MetricStereo",
     "ModLoader",
+    "MotionBlurGuard",
     "OmniToolRail",
     "PadMerge",
+    "PerfProbe",
+    "PerfProbeSequel",
     "PowerIcons",
     "PowerWheel",
     "PowerWheelDraw",
     "PresentHook",
+    "PresentationHold",
     "ProcessEventHook",
     "QuadSwapchain",
     "RailArt",
+    "RecenterTilt",
+    "RenderLevers",
     "RendererLe2",
+    "ReportRequest",
     "ScopeCaptureSource",
     "Seams",
     "SequelCinema",
+    "SequelOverlays",
     "SequelSquadLayers",
     "SequelWeaponLayers",
     "SetupRequest",
@@ -471,9 +516,11 @@
     "Thespian",
     "TransitionFade",
     "TraversalCue",
+    "Upscale",
     "Vignette",
     "Voice",
     "VoiceModel",
+    "WheelPanel",
     "WorldPanels",
     "WorldUi",
     "WristBeam",
@@ -494,6 +541,7 @@
     "Version",
     "Window",
     "d3d11/Blit",
+    "d3d11/ShaderReflect",
     "gfx/Raster",
     "gfx/Swf",
     "gfx/SwfFont",
@@ -502,10 +550,13 @@
     "vr/Calibration",
     "vr/CineScreen",
     "vr/Colour",
+    "vr/CombatStance",
     "vr/Comfort",
     "vr/Controllers",
     "vr/ConversationWorld",
+    "vr/FlareWindow",
     "vr/FloorLock",
+    "vr/FrameProbe",
     "vr/GalaxyHologram",
     "vr/GalaxyMap",
     "vr/GameMenuRequest",
@@ -518,12 +569,17 @@
     "vr/InteractLabel",
     "vr/LayerComposite",
     "vr/MenuPointer",
+    "vr/MetricStereo",
     "vr/OmniRail",
     "vr/OverlayPlacement",
     "vr/PoseRecording",
     "vr/PowerWheel",
+    "vr/PresentationHold",
+    "vr/Recenter",
+    "vr/RenderTarget",
     "vr/ScopeArt",
     "vr/ScopeCapture",
+    "vr/ScreenMatrix",
     "vr/Sights",
     "vr/SquadMenu",
     "vr/SquadPlace",
@@ -531,6 +587,8 @@
     "vr/Thespian",
     "vr/TransitionFade",
     "vr/Traversal",
+    "vr/Upscale",
+    "vr/WheelCrop",
     "vr/WorldUi",
     "xr/Floor",
     "xr/Input"
@@ -542,6 +600,7 @@
    ],
    "modExtra": [
     "core/Json",
+    "core/vr/GalaxyRay",
     "game/Le3Gui"
    ],
    "modModules": [
@@ -579,10 +638,14 @@
     "game/ConsoleRequest",
     "game/ConversationFlow",
     "game/ConversationWorld",
+    "game/DepthOfFieldHold",
     "game/Fingers",
     "game/FocusPause",
     "game/GalaxyDump",
     "game/GalaxyMap",
+    "game/GalaxyProjector",
+    "game/GalaxyProjectorFlow",
+    "game/GalaxyRay",
     "game/GameArt",
     "game/GameMenuRequest",
     "game/GamepadBridge",
@@ -599,6 +662,8 @@
     "game/HudPieces",
     "game/Interact",
     "game/InventoryProbe",
+    "game/Le2GalaxyCapture",
+    "game/Le2Traversal",
     "game/Le3GalaxyCapture",
     "game/Le3GalaxyRetention",
     "game/Le3Gui",
@@ -613,6 +678,7 @@
     "game/Posture",
     "game/PowerWheel",
     "game/Reflections",
+    "game/Reload",
     "game/SceneCaptureRig",
     "game/ScopeCapture",
     "game/ScopeParts",
@@ -639,7 +705,8 @@
     "game/Voice",
     "game/VrCover",
     "game/Weapon",
-    "game/WorldUi"
+    "game/WorldUi",
+    "game/ZoomedShots"
    ],
    "other": [
     "engine/CodeDump",
@@ -656,8 +723,10 @@
     "CinemaBackdropDraw",
     "Colour",
     "CrashBreadcrumbs",
+    "DrawReplay",
     "Entry",
     "EyeCopy",
+    "FlareWindow",
     "FloorLock",
     "GalaxyHologram",
     "GalaxyHologramDraw",
@@ -666,29 +735,39 @@
     "Glow",
     "HalcyonLe3",
     "HalcyonLe3Bridge",
+    "HalcyonSequelBridge",
     "HandReticle",
     "HdrDisplayPolicy",
     "HudPanel",
     "HudPieceLayers",
+    "KeptLocks",
     "Le3SceneCapture",
     "MainMenu",
     "MainMenuSettings",
     "MenusLe2",
+    "MetricStereo",
     "ModLoader",
     "MotionBlurGuard",
     "OmniToolRail",
     "PadMerge",
+    "PerfProbe",
+    "PerfProbeSequel",
     "PowerIcons",
     "PowerWheel",
     "PowerWheelDraw",
     "PresentHook",
+    "PresentationHold",
     "ProcessEventHook",
     "QuadSwapchain",
     "RailArt",
+    "RecenterTilt",
+    "RenderLevers",
     "RendererLe3",
+    "ReportRequest",
     "ScopeCaptureSource",
     "Seams",
     "SequelCinema",
+    "SequelOverlays",
     "SequelSquadLayers",
     "SequelWeaponLayers",
     "SetupRequest",
@@ -702,9 +781,11 @@
     "Thespian",
     "TransitionFade",
     "TraversalCue",
+    "Upscale",
     "Vignette",
     "Voice",
     "VoiceModel",
+    "WheelPanel",
     "WorldPanels",
     "WorldUi",
     "WristBeam",
@@ -726,13 +807,13 @@
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "ready"
+     "status": "run"
     },
     "LE3": {
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "ready"
+     "status": "run"
     }
    },
    "namespace": "engine::body_bounds"
@@ -861,7 +942,7 @@
      "status": "run"
     },
     "LE2": {
-     "legacy": true,
+     "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
      "status": "run"
@@ -950,7 +1031,7 @@
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "unreferenced"
+     "status": "ungated"
     },
     "LE2": {
      "legacy": false,
@@ -1261,7 +1342,7 @@
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "run"
     }
    },
    "namespace": "game::body_follow"
@@ -1324,13 +1405,13 @@
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "ready"
+     "status": "run"
     },
     "LE3": {
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "ready"
+     "status": "run"
     }
    },
    "namespace": "game::call_trace"
@@ -1374,9 +1455,9 @@
     },
     "LE3": {
      "legacy": false,
-     "me1OnlyHandles": false,
+     "me1OnlyHandles": true,
      "part": false,
-     "status": "out"
+     "status": "run"
     }
    },
    "namespace": "game::camera_probe"
@@ -1391,7 +1472,7 @@
     },
     "LE2": {
      "legacy": false,
-     "me1OnlyHandles": true,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
@@ -1399,7 +1480,7 @@
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "run"
     }
    },
    "namespace": "game::camera_shake"
@@ -1462,13 +1543,13 @@
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "run"
     },
     "LE3": {
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "run"
     }
    },
    "namespace": "game::combat_stance"
@@ -1505,15 +1586,15 @@
      "status": "run"
     },
     "LE2": {
-     "legacy": true,
+     "legacy": false,
      "me1OnlyHandles": false,
-     "part": true,
+     "part": false,
      "status": "run"
     },
     "LE3": {
      "legacy": false,
      "me1OnlyHandles": false,
-     "part": true,
+     "part": false,
      "status": "run"
     }
    },
@@ -1564,6 +1645,29 @@
     }
    },
    "namespace": "game::conversation_world"
+  },
+  "game/DepthOfFieldHold": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "unreferenced"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    }
+   },
+   "namespace": "game::depth_of_field"
   },
   "game/Fingers": {
    "games": {
@@ -1656,6 +1760,75 @@
     }
    },
    "namespace": "game::galaxy_map"
+  },
+  "game/GalaxyProjector": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    }
+   },
+   "namespace": "game::galaxy_projector"
+  },
+  "game/GalaxyProjectorFlow": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "unreferenced"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    }
+   },
+   "namespace": "game::galaxy_projector::flow"
+  },
+  "game/GalaxyRay": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    }
+   },
+   "namespace": "game::galaxy_projector::ray"
   },
   "game/GameArt": {
    "games": {
@@ -1790,7 +1963,7 @@
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "run"
     }
    },
    "namespace": "game::gun_kick"
@@ -1804,13 +1977,13 @@
      "status": "run"
     },
     "LE2": {
-     "legacy": true,
+     "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE3": {
-     "legacy": true,
+     "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
      "status": "run"
@@ -1896,16 +2069,16 @@
      "status": "run"
     },
     "LE2": {
-     "legacy": true,
+     "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE3": {
-     "legacy": true,
+     "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "run"
     }
    },
    "namespace": "game::head_tracking"
@@ -1945,13 +2118,13 @@
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "run"
     },
     "LE3": {
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "run"
     }
    },
    "namespace": "game::holsters"
@@ -2024,6 +2197,52 @@
     }
    },
    "namespace": "game::inventory_probe"
+  },
+  "game/Le2GalaxyCapture": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "unreferenced"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "unreferenced"
+    }
+   },
+   "namespace": "game::le2_galaxy_capture"
+  },
+  "game/Le2Traversal": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "out"
+    }
+   },
+   "namespace": "game::traversal::le2"
   },
   "game/Le3GalaxyCapture": {
    "games": {
@@ -2192,13 +2411,13 @@
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "run"
     },
     "LE2": {
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "run"
     },
     "LE3": {
      "legacy": false,
@@ -2250,7 +2469,7 @@
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "run"
     }
    },
    "namespace": "game::omni_tool"
@@ -2265,13 +2484,13 @@
     },
     "LE2": {
      "legacy": false,
-     "me1OnlyHandles": true,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE3": {
      "legacy": false,
-     "me1OnlyHandles": true,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     }
@@ -2333,19 +2552,42 @@
      "status": "run"
     },
     "LE2": {
-     "legacy": true,
+     "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     },
     "LE3": {
-     "legacy": true,
+     "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "run"
     }
    },
    "namespace": "game::reflections"
+  },
+  "game/Reload": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    }
+   },
+   "namespace": "game::reload"
   },
   "game/SceneCaptureRig": {
    "games": {
@@ -2359,7 +2601,7 @@
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "run"
     },
     "LE3": {
      "legacy": false,
@@ -2382,13 +2624,13 @@
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "run"
     },
     "LE3": {
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "run"
     }
    },
    "namespace": "game::scope_capture"
@@ -2405,13 +2647,13 @@
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "run"
     },
     "LE3": {
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "run"
     }
    },
    "namespace": "game::scope_parts"
@@ -2457,7 +2699,7 @@
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "run"
     }
    },
    "namespace": "game::sights"
@@ -2543,11 +2785,11 @@
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "run"
     },
     "LE3": {
      "legacy": false,
-     "me1OnlyHandles": true,
+     "me1OnlyHandles": false,
      "part": false,
      "status": "run"
     }
@@ -2564,15 +2806,15 @@
     },
     "LE2": {
      "legacy": false,
-     "me1OnlyHandles": false,
+     "me1OnlyHandles": true,
      "part": false,
-     "status": "ready"
+     "status": "run"
     },
     "LE3": {
      "legacy": false,
-     "me1OnlyHandles": false,
+     "me1OnlyHandles": true,
      "part": false,
-     "status": "ready"
+     "status": "run"
     }
    },
    "namespace": "game::squad_ack"
@@ -2767,7 +3009,7 @@
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "ungated"
     },
     "LE2": {
      "legacy": false,
@@ -2779,7 +3021,7 @@
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "ungated"
     }
    },
    "namespace": "game::traversal"
@@ -2871,7 +3113,7 @@
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "out"
+     "status": "run"
     }
    },
    "namespace": "game::view_level"
@@ -2967,14 +3209,32 @@
     }
    },
    "namespace": "game::world_ui"
+  },
+  "game/ZoomedShots": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "unreferenced"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    }
+   },
+   "namespace": "game::zoomed_shots"
   }
  },
  "names": {
-  "game/Comfort": {
-   "LE3": [
-    "Engine.Actor:Location"
-   ]
-  },
   "game/GameMenuRequest": {
    "LE3": [
     "Engine.BioSFHandler.HandleInputEvent",
@@ -2997,38 +3257,9 @@
     "Engine.StaticMesh:LODInfo"
    ]
   },
-  "game/Player": {
-   "LE3": [
-    "Engine.Actor:Location"
-   ]
-  },
-  "game/Posture": {
-   "LE3": [
-    "Engine.Actor:Location"
-   ]
-  },
   "game/PowerWheel": {
    "LE3": [
-    "SFXGame.BioPawn.IsHostile",
     "SFXGame.BioPawn:m_oBehavior"
-   ]
-  },
-  "game/ScreenReticle": {
-   "LE3": [
-    "Engine.BioSFHandler:oPanel",
-    "Engine.BioSFManager:m_lstPanels",
-    "Engine.BioSFPanel",
-    "Engine.BioSFPanel.GetVariableBool",
-    "Engine.BioSFPanel.GetVariableFloat",
-    "Engine.BioSFPanel.SetVariableFloat",
-    "Engine.BioSFPanel:MovieRef",
-    "Engine.BioSFPanel:ScriptHandlers",
-    "Engine.BioSFPanel:m_DefaultHandler",
-    "Engine.BioSFPanel:nmTag",
-    "Engine.PlayerController:m_oCachedScaleFormManager",
-    "SFXGame.BioSFHandler_Reticule",
-    "SFXGame.BioSFHandler_Reticule:m_Reticule",
-    "SFXGame.BioSFHandler_Reticule:m_eLastReticuleMode"
    ]
   },
   "game/SquadContext": {
@@ -3037,7 +3268,6 @@
    ],
    "LE3": [
     "SFXGame.BioActorBehavior:ActorGameName",
-    "SFXGame.BioPawn.IsHostile",
     "SFXGame.BioPawn.IsInCombatActionState",
     "SFXGame.BioPawn:m_oBehavior"
    ]
@@ -3059,12 +3289,6 @@
     "SFXGame.BioWorldInfo.EndCurrentConversation"
    ]
   },
-  "game/VrCover": {
-   "LE3": [
-    "Engine.Actor:Location",
-    "SFXGame.BioPawn.IsHostile"
-   ]
-  },
   "game/WorldUi": {
    "LE3": [
     "Engine.BioSFManager:m_FocusPanel",
@@ -3081,12 +3305,24 @@
     "CineScreenFullRate",
     "CineScreenLayers",
     "CineScreenWanted",
+    "ConstantFpEye",
     "CopyIntoImage",
+    "EyeImageSize",
     "FloorViewTranslation",
+    "FrontEndBeforeTitle",
+    "FrontEndHold",
+    "FrontEndOnScreen",
+    "GalaxyOwnsPresentation",
+    "HideBodyForAction",
+    "HoldLoadTail",
+    "HoldPlainVr",
+    "HostEndsProcess",
     "HudPanelDraw",
     "KeyDown",
+    "LifeSizeStereo",
     "MainMenuOpen",
     "MergeMotionControllers",
+    "NoteStereoSubmit",
     "OnEyeCopied",
     "OnEyeReleased",
     "OnEyeSource",
@@ -3099,15 +3335,22 @@
     "OnSessionStopped",
     "OnViewBuilt",
     "OverlayLayers",
+    "PerEyeViewState",
     "PerfDraw",
     "PerfFirstEyeCaptured",
     "PerfPresentBegin",
     "PerfPresentEnd",
     "PlacePanel",
+    "PlanStereo",
     "QueueProcessEvent",
     "RecenterOrientation",
     "StaticXrGetInstanceProcAddr",
     "TransitionFadeLayer",
+    "WorldUiHoldFrame",
+    "WorldUiOwnsGui",
+    "WorldViewHeld",
+    "WorldViewHoldBegin",
+    "WorldViewHoldEnd",
     "WrapSessionFunctions",
     "XrRuntimeIsSteamVr"
    ],
@@ -3118,6 +3361,7 @@
     "KeyDown",
     "MainMenuOpen",
     "MergeMotionControllers",
+    "NoteStereoSubmit",
     "OnFrameBegun",
     "OnGameThread",
     "OnMenuKey",
@@ -3127,6 +3371,7 @@
     "OnViewBuilt",
     "OverlayLayers",
     "PlacePanel",
+    "PlanStereo",
     "QueueProcessEvent",
     "RecenterOrientation",
     "StaticXrGetInstanceProcAddr",
@@ -3192,7 +3437,6 @@
     "NoteHudPanelDraw",
     "NoteHudPanelTint",
     "NotePixelShaderCreated",
-    "NoteStereoSubmit",
     "OnFlatQuad",
     "OnGalaxyHologram",
     "OnMenuQuad",
@@ -3202,7 +3446,6 @@
     "PerfPoint",
     "PerfPresentBegin",
     "PerfPresentEnd",
-    "PlanStereo",
     "ProbeTextureAlpha",
     "QuestPacingEnabled",
     "QuestPacingFrame",
@@ -3227,26 +3470,7 @@
     "WorldUiOwnership",
     "WorldUiPresent"
    ],
-   "forwarders": [
-    "CineScreenFullRate",
-    "CineScreenWanted",
-    "FloorViewTranslation",
-    "KeyDown",
-    "MainMenuOpen",
-    "MergeMotionControllers",
-    "OnFrameBegun",
-    "OnGameThread",
-    "OnRecentered",
-    "OnSessionCreated",
-    "OnSessionStopped",
-    "OverlayLayers",
-    "PlacePanel",
-    "QueueProcessEvent",
-    "RecenterOrientation",
-    "StaticXrGetInstanceProcAddr",
-    "TransitionFadeLayer",
-    "WrapSessionFunctions"
-   ],
+   "forwarders": [],
    "used": [
     "BuildMenuTabs",
     "CineScreenPointerPlane",
@@ -3303,14 +3527,12 @@
     "NoteHudPanelDraw",
     "NoteHudPanelTint",
     "NotePixelShaderCreated",
-    "NoteStereoSubmit",
     "OnFlatQuad",
     "OnGalaxyHologram",
     "OnMenuQuad",
     "PerEyeViewState",
     "PerfPass0Captured",
     "PerfPoint",
-    "PlanStereo",
     "ProbeTextureAlpha",
     "QuestPacingEnabled",
     "QuestPacingFrame",
@@ -3341,12 +3563,24 @@
     "CineScreenFullRate",
     "CineScreenLayers",
     "CineScreenWanted",
+    "ConstantFpEye",
     "CopyIntoImage",
+    "EyeImageSize",
     "FloorViewTranslation",
+    "FrontEndBeforeTitle",
+    "FrontEndHold",
+    "FrontEndOnScreen",
+    "GalaxyOwnsPresentation",
+    "HideBodyForAction",
+    "HoldLoadTail",
+    "HoldPlainVr",
+    "HostEndsProcess",
     "HudPanelDraw",
     "KeyDown",
+    "LifeSizeStereo",
     "MainMenuOpen",
     "MergeMotionControllers",
+    "NoteStereoSubmit",
     "OnEyeCopied",
     "OnEyeReleased",
     "OnEyeSource",
@@ -3359,15 +3593,22 @@
     "OnSessionStopped",
     "OnViewBuilt",
     "OverlayLayers",
+    "PerEyeViewState",
     "PerfDraw",
     "PerfFirstEyeCaptured",
     "PerfPresentBegin",
     "PerfPresentEnd",
     "PlacePanel",
+    "PlanStereo",
     "QueueProcessEvent",
     "RecenterOrientation",
     "StaticXrGetInstanceProcAddr",
     "TransitionFadeLayer",
+    "WorldUiHoldFrame",
+    "WorldUiOwnsGui",
+    "WorldViewHeld",
+    "WorldViewHoldBegin",
+    "WorldViewHoldEnd",
     "WrapSessionFunctions",
     "XrRuntimeIsSteamVr"
    ],
@@ -3375,12 +3616,22 @@
     "CineScreenFullRate",
     "CineScreenLayers",
     "CineScreenWanted",
+    "ConstantFpEye",
     "CopyIntoImage",
+    "EyeImageSize",
     "FloorViewTranslation",
+    "FrontEndBeforeTitle",
+    "FrontEndHold",
+    "FrontEndOnScreen",
+    "GalaxyOwnsPresentation",
+    "HoldLoadTail",
+    "HostEndsProcess",
     "HudPanelDraw",
     "KeyDown",
+    "LifeSizeStereo",
     "MainMenuOpen",
     "MergeMotionControllers",
+    "NoteStereoSubmit",
     "OnEyeCopied",
     "OnEyeReleased",
     "OnEyeSource",
@@ -3393,10 +3644,19 @@
     "OnSessionStopped",
     "OnViewBuilt",
     "OverlayLayers",
+    "PerEyeViewState",
+    "PerfDraw",
+    "PerfFirstEyeCaptured",
     "PlacePanel",
+    "PlanStereo",
     "QueueProcessEvent",
+    "RecenterOrientation",
     "StaticXrGetInstanceProcAddr",
     "TransitionFadeLayer",
+    "WorldUiOwnsGui",
+    "WorldViewHeld",
+    "WorldViewHoldBegin",
+    "WorldViewHoldEnd",
     "WrapSessionFunctions",
     "XrRuntimeIsSteamVr"
    ],
@@ -3405,43 +3665,17 @@
     "CineScreenHalfSeparationUU",
     "JournalFloorViewWrite",
     "OnSwapChainPresent",
-    "WorldUiOwnsGui"
+    "SfrReplayRetry"
    ],
    "forwarders": [
-    "CineScreenFullRate",
-    "CineScreenLayers",
-    "CineScreenWanted",
-    "CopyIntoImage",
-    "FloorViewTranslation",
     "HotkeyDown",
-    "HudPanelDraw",
-    "KeyDown",
-    "MainMenuOpen",
-    "MergeMotionControllers",
-    "OnEyeCopied",
-    "OnEyeReleased",
-    "OnEyeSource",
-    "OnFactory",
-    "OnFrameBegun",
-    "OnGameThread",
-    "OnMenuKey",
-    "OnRecentered",
-    "OnSessionCreated",
-    "OnSessionStopped",
-    "OnViewBuilt",
-    "OverlayLayers",
-    "PlaceGalaxyPanel",
-    "QueueProcessEvent",
-    "StaticXrGetInstanceProcAddr",
-    "TransitionFadeLayer",
-    "WrapSessionFunctions",
-    "XrRuntimeIsSteamVr"
+    "WorldUiOwnsGui"
    ],
    "used": [
     "CineScreenHalfSeparationUU",
     "JournalFloorViewWrite",
     "OnSwapChainPresent",
-    "WorldUiOwnsGui"
+    "SfrReplayRetry"
    ],
    "usedUndeclared": []
   },
@@ -3450,12 +3684,24 @@
     "CineScreenFullRate",
     "CineScreenLayers",
     "CineScreenWanted",
+    "ConstantFpEye",
     "CopyIntoImage",
+    "EyeImageSize",
     "FloorViewTranslation",
+    "FrontEndBeforeTitle",
+    "FrontEndHold",
+    "FrontEndOnScreen",
+    "GalaxyOwnsPresentation",
+    "HideBodyForAction",
+    "HoldLoadTail",
+    "HoldPlainVr",
+    "HostEndsProcess",
     "HudPanelDraw",
     "KeyDown",
+    "LifeSizeStereo",
     "MainMenuOpen",
     "MergeMotionControllers",
+    "NoteStereoSubmit",
     "OnEyeCopied",
     "OnEyeReleased",
     "OnEyeSource",
@@ -3468,15 +3714,22 @@
     "OnSessionStopped",
     "OnViewBuilt",
     "OverlayLayers",
+    "PerEyeViewState",
     "PerfDraw",
     "PerfFirstEyeCaptured",
     "PerfPresentBegin",
     "PerfPresentEnd",
     "PlacePanel",
+    "PlanStereo",
     "QueueProcessEvent",
     "RecenterOrientation",
     "StaticXrGetInstanceProcAddr",
     "TransitionFadeLayer",
+    "WorldUiHoldFrame",
+    "WorldUiOwnsGui",
+    "WorldViewHeld",
+    "WorldViewHoldBegin",
+    "WorldViewHoldEnd",
     "WrapSessionFunctions",
     "XrRuntimeIsSteamVr"
    ],
@@ -3484,12 +3737,22 @@
     "CineScreenFullRate",
     "CineScreenLayers",
     "CineScreenWanted",
+    "ConstantFpEye",
     "CopyIntoImage",
+    "EyeImageSize",
     "FloorViewTranslation",
+    "FrontEndBeforeTitle",
+    "FrontEndHold",
+    "FrontEndOnScreen",
+    "GalaxyOwnsPresentation",
+    "HideBodyForAction",
+    "HostEndsProcess",
     "HudPanelDraw",
     "KeyDown",
+    "LifeSizeStereo",
     "MainMenuOpen",
     "MergeMotionControllers",
+    "NoteStereoSubmit",
     "OnEyeCopied",
     "OnEyeReleased",
     "OnEyeSource",
@@ -3502,10 +3765,20 @@
     "OnSessionStopped",
     "OnViewBuilt",
     "OverlayLayers",
+    "PerEyeViewState",
+    "PerfDraw",
+    "PerfFirstEyeCaptured",
     "PlacePanel",
+    "PlanStereo",
     "QueueProcessEvent",
+    "RecenterOrientation",
     "StaticXrGetInstanceProcAddr",
     "TransitionFadeLayer",
+    "WorldUiHoldFrame",
+    "WorldUiOwnsGui",
+    "WorldViewHeld",
+    "WorldViewHoldBegin",
+    "WorldViewHoldEnd",
     "WrapSessionFunctions",
     "XrRuntimeIsSteamVr"
    ],
@@ -3514,35 +3787,7 @@
     "CineScreenHalfSeparationUU",
     "OnPresent"
    ],
-   "forwarders": [
-    "CineScreenFullRate",
-    "CineScreenLayers",
-    "CineScreenWanted",
-    "CopyIntoImage",
-    "FloorViewTranslation",
-    "HudPanelDraw",
-    "KeyDown",
-    "MainMenuOpen",
-    "MergeMotionControllers",
-    "OnEyeCopied",
-    "OnEyeReleased",
-    "OnEyeSource",
-    "OnFactory",
-    "OnFrameBegun",
-    "OnGameThread",
-    "OnMenuKey",
-    "OnRecentered",
-    "OnSessionCreated",
-    "OnSessionStopped",
-    "OnViewBuilt",
-    "OverlayLayers",
-    "PlaceNativePanel",
-    "QueueProcessEvent",
-    "StaticXrGetInstanceProcAddr",
-    "TransitionFadeLayer",
-    "WrapSessionFunctions",
-    "XrRuntimeIsSteamVr"
-   ],
+   "forwarders": [],
    "used": [
     "CineScreenHalfSeparationUU",
     "OnPresent"
@@ -3573,6 +3818,7 @@
     "recordWrite": "WithCrashBreadcrumbs",
     "reserveWorldUi": "WithWorldUi",
     "rightGripFree": "WithPadMerge",
+    "secondEyeIsReplay": "WithRenderer",
     "setAimRay": "WithRenderer",
     "setConversationWorld": "WithLe1ExtraUi",
     "setFloorLockSample": "WithFloorLock",
@@ -3650,18 +3896,23 @@
     "leftGripAway": "WithPadMerge",
     "logWorldUiStats": "WithMenus",
     "mainMenu": "WithMenus",
+    "motionBlurProtected": "BuildServices",
     "processExiting": "BaseServices",
     "recordWrite": "WithCrashBreadcrumbs",
     "reserveWorldUi": "WithMenus",
     "rightGripFree": "WithPadMerge",
+    "secondEyeIsReplay": "WithRenderer",
     "setAimRay": "WithRenderer",
     "setFloorLockSample": "WithFloorLock",
+    "setGalaxyHologram": "WithGalaxyHologram",
+    "setGameMenuOffers": "WithMenus",
     "setHandAim": "WithRenderer",
     "setHudPieces": "WithHudPieces",
     "setInteractLabel": "BuildServices",
     "setPowerLock": "WithPowerWheel",
     "setPowerWheel": "WithPowerWheel",
     "setProcessEventCallback": "BaseServices",
+    "setScopeCapture": "WithScopeCapture",
     "setSight": "WithSights",
     "setSquadMenu": "BuildServices",
     "setSquadPlace": "BuildServices",
@@ -3676,6 +3927,7 @@
     "sightView": "WithSights",
     "statusWanted": "WithRenderer",
     "supportGripHeld": "WithPadMerge",
+    "takeGalaxyPick": "WithGalaxyHologram",
     "takeGameMenuRequest": "WithMenus",
     "takeGameUiRequest": "WithMenus",
     "takeGuiEvents": "WithMenus",
@@ -3697,6 +3949,8 @@
     "WithVoice",
     "WithPowerWheel",
     "WithTraversal",
+    "WithGalaxyHologram",
+    "WithScopeCapture",
     "WithMenus"
    ]
   },
@@ -3714,20 +3968,25 @@
     "hideScreenReticle": "WithRenderer",
     "keepLoaded": "BaseServices",
     "leftGripAway": "WithPadMerge",
+    "logWorldUiStats": "WithMenus",
     "mainMenu": "WithMenus",
     "motionBlurProtected": "BuildServices",
     "processExiting": "BaseServices",
     "recordWrite": "WithCrashBreadcrumbs",
+    "reserveWorldUi": "WithMenus",
     "rightGripFree": "WithPadMerge",
+    "secondEyeIsReplay": "WithRenderer",
     "setAimRay": "WithRenderer",
     "setFloorLockSample": "WithFloorLock",
     "setGalaxyHologram": "WithGalaxyHologram",
+    "setGameMenuOffers": "WithMenus",
     "setHandAim": "WithRenderer",
     "setHudPieces": "WithHudPieces",
     "setInteractLabel": "BuildServices",
     "setPowerLock": "WithPowerWheel",
     "setPowerWheel": "WithPowerWheel",
     "setProcessEventCallback": "BaseServices",
+    "setScopeCapture": "WithScopeCapture",
     "setSight": "WithSights",
     "setSquadMenu": "BuildServices",
     "setSquadPlace": "BuildServices",
@@ -3739,11 +3998,14 @@
     "setVignette": "WithVignette",
     "setVoiceKeyterms": "WithVoice",
     "setVoiceListen": "WithVoice",
+    "setWorldUi": "WithMenus",
     "sightView": "WithSights",
     "statusWanted": "WithRenderer",
     "supportGripHeld": "WithPadMerge",
     "takeGalaxyPick": "WithGalaxyHologram",
     "takeGameMenuRequest": "WithMenus",
+    "takeGameUiRequest": "WithMenus",
+    "takeGuiEvents": "WithMenus",
     "takeVoiceLine": "WithVoice",
     "takeVoiceModelAnswer": "WithVoice",
     "thespianInputBlocked": "BuildServices",
@@ -3763,6 +4025,7 @@
     "WithFloorLock",
     "WithTraversal",
     "WithVoice",
+    "WithScopeCapture",
     "WithPowerWheel",
     "WithMenus"
    ]

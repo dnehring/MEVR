@@ -4,12 +4,14 @@
 // Our settings file: <exe dir>\ASI\<GAME>MEVR.ini (LE1MEVR.ini for LE1). One path for the host and the mod, whatever
 // the host ASI is called: a renamed ASI used to point the host at <its name>.ini and the mod at LE1MEVR.ini.
 
+#include "core/vr/CalibrationFile.hpp"
 #include "engine/GameAdapter.hpp"
 
 #include <Windows.h>
 
 #include <filesystem>
 #include <string>
+#include <vector>
 
 namespace mevr::engine {
 
@@ -27,6 +29,17 @@ inline std::filesystem::path SettingsFile() {
         buffer.resize(buffer.size() * 2);  // a path longer than MAX_PATH
     }
     return std::filesystem::path(buffer).parent_path() / L"ASI" / (MEVR_GAME_NAME_W L"MEVR.ini");
+}
+
+// The player's calibration, one file for the three games (research/25 section 17): %LOCALAPPDATA%\MEVR\calibration.ini.
+// The host writes it, the mod reads it: both name it here (core/vr/CalibrationFile).
+inline std::filesystem::path CalibrationFile() {
+    return vr::calibration_file::DefaultPath();
+}
+
+// Where the calibration's one-time migration looks: the three games' ASI\<GAME>MEVR.ini under this install, this game's first.
+inline std::vector<vr::calibration_file::Source> CalibrationSources() {
+    return vr::calibration_file::SourcesUnder(SettingsFile().parent_path().parent_path(), MEVR_GAME_NAME_A);
 }
 
 // Development-only engine validation: the host and mod independently select the same immutable session mode.

@@ -11,6 +11,13 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
   kneeling below the game's crouch could put your eyes inside Shepard's collar or chest. His body now goes down with your
   head, his knees bending and his feet staying on the floor, and comes back up when you stand. To turn it off, set
   `crouchBody = 0` under `[Hands]` in `ASI\LE1MEVR.ini`. Headset verification pending.
+- **One calibration for the trilogy.** Your body calibration (heights, arms, gun stances, the manual offsets) is now one
+  file for Mass Effect 1, 2 and 3, `%LOCALAPPDATA%\MEVR\calibration.ini`: calibrate once in any game and the others use it,
+  with no prompt to calibrate again. The first launch after the update takes your existing calibration from the game you
+  calibrated in (the newest one per controller type); nothing to do. Uninstall keeps it unless you tick "Also delete the
+  mod's diagnostics"; a problem report includes it.
+- **More useful startup reports.** Setup distinguishes an installed mod from a headset check. Launch logs record the
+  runtime and process startup, and reports can identify an OpenXR instance creation that started without returning.
 
 ## 0.3.2 (2026-11-15)
 

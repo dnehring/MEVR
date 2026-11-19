@@ -194,6 +194,109 @@ try {
         $replacement = [pscustomobject]@{ Id = 42; Path = $expected; StartTime = $requested.AddSeconds(2); HasExited = $false }
         With-ProcessObservations @($liveProcess, $replacement) { Reject { Get-RunLaunchIdentity 42 $expected $requested } }
     }
+    # Launch adoption over time (Step-RunAdoption): synthetic observations only, no process is started or stopped.
+    $gameExe = 'C:\synthetic\MassEffect2.exe'
+    function Obs([int]$ProcessId, $Path, $Start, [switch]$Gone) {
+        if ($Gone) { return [pscustomobject]@{ pid = $ProcessId; alive = $false; readable = $false; changed = $false; path = $null; startedUtc = $null } }
+        [pscustomobject]@{ pid = $ProcessId; alive = $true; readable = [bool]($Path -and $null -ne $Start); changed = $false; path = $Path; startedUtc = $Start }
+    }
+    Case 'launch adoption waits out a suspended launcher, then records it' {
+        $a = New-RunAdoption 'MassEffectLauncher' $expected $requested
+        $born = $requested.AddSeconds(1)
+        foreach ($s in 0..13) { Check ($null -eq (Step-RunAdoption $a @(Obs 7 $null $born) $requested.AddSeconds(1 + $s))) }
+        $identity = Step-RunAdoption $a @(Obs 7 $expected $born) $requested.AddSeconds(15)
+        Check ($identity.pid -eq 7 -and $identity.path -eq $expected -and $identity.startedUtc -eq $born.ToString('o'))
+        $p = [pscustomobject]@{ Id = 7; Path = $expected; StartTime = $born }
+        Assert-RunProcess $p $identity $expected # the same record -Stop, load.ps1 and restore.ps1 already accept
+        Check ((@(Get-RunAdoptionLines $a) -join "`n") -match 'not readable yet(?s).*readable after 14 s unreadable(?s).*adopted pid=7')
+        Check (@(Get-RunAdoptionLines $a).Count -eq 0) # each line handed out once
+        Check ($null -eq (Step-RunAdoption $a @() $requested.AddSeconds(17))) # the launcher ends after starting the game
+        Check ((@(Get-RunAdoptionLines $a) -join "`n") -match 'pid=7 exited .*recorded earlier')
+    }
+    Case 'launch adoption drops a candidate that exits and adopts the survivor after the settle time' {
+        $a = New-RunAdoption 'MassEffect2' $gameExe $requested -SettleSeconds 5
+        $first = $requested.AddSeconds(2); $second = $requested.AddSeconds(17)
+        Check ($null -eq (Step-RunAdoption $a @(Obs 11 $gameExe $first) $requested.AddSeconds(2)))
+        Check ($null -eq (Step-RunAdoption $a @(Obs 11 $gameExe $first) $requested.AddSeconds(4))) # readable, not settled
+        Check ($null -eq (Step-RunAdoption $a @(Obs 11 -Gone) $requested.AddSeconds(5)))
+        Check ($null -eq (Step-RunAdoption $a @() $requested.AddSeconds(10)))
+        Check ($null -eq (Step-RunAdoption $a @(Obs 12 $null $second) $requested.AddSeconds(17))) # successor, still suspended
+        foreach ($s in 18..22) { Check ($null -eq (Step-RunAdoption $a @(Obs 12 $gameExe $second) $requested.AddSeconds($s))) }
+        $identity = Step-RunAdoption $a @(Obs 12 $gameExe $second) $requested.AddSeconds(23)
+        Check ($identity.pid -eq 12 -and $identity.startedUtc -eq $second.ToString('o'))
+        $text = @(Get-RunAdoptionLines $a) -join "`n"
+        Check ($text -match 'pid=11 exited' -and $text -match 'candidate seen: pid=12' -and $text -match 'adopted pid=12')
+        Check ($text -notmatch 'adopted pid=11')
+    }
+    Case 'launch adoption restarts the settle time when an identity stops reading and refuses persistent unreadability' {
+        $a = New-RunAdoption 'MassEffect2' $gameExe $requested -SettleSeconds 5
+        $born = $requested.AddSeconds(1)
+        Check ($null -eq (Step-RunAdoption $a @(Obs 21 $gameExe $born) $requested.AddSeconds(1)))
+        Check ($null -eq (Step-RunAdoption $a @(Obs 21 $null $born) $requested.AddSeconds(4))) # exiting or briefly unreadable
+        Check ($null -eq (Step-RunAdoption $a @(Obs 21 $gameExe $born) $requested.AddSeconds(7)))
+        Check ($null -eq (Step-RunAdoption $a @(Obs 21 $gameExe $born) $requested.AddSeconds(11))) # 4 s since it read again
+        Check ($null -ne (Step-RunAdoption $a @(Obs 21 $gameExe $born) $requested.AddSeconds(12)))
+        $b = New-RunAdoption 'MassEffect2' $gameExe $requested -SettleSeconds 5
+        Check ($null -eq (Step-RunAdoption $b @(Obs 22 $null $born) $requested.AddSeconds(1)))
+        Check ($null -eq (Step-RunAdoption $b @(Obs 22 $null $born) $requested.AddSeconds(61)))
+        Reject { Step-RunAdoption $b @(Obs 22 $null $born) $requested.AddSeconds(62) }
+    }
+    Case 'launch adoption refuses two live candidates, earlier or foreign processes and replaced identities' {
+        $born = $requested.AddSeconds(1)
+        $a = New-RunAdoption 'MassEffect2' $gameExe $requested -SettleSeconds 5
+        Reject { Step-RunAdoption $a @((Obs 31 $gameExe $born), (Obs 32 $null $born)) $requested.AddSeconds(2) }
+        foreach ($bad in @((Obs 33 $gameExe $requested.AddMinutes(-1)), (Obs 33 $null $requested.AddMinutes(-1)),
+            (Obs 33 'C:\other\MassEffect2.exe' $born), (Obs 33 'C:\other\MassEffect2.exe' $null))) {
+            $a = New-RunAdoption 'MassEffect2' $gameExe $requested -SettleSeconds 5
+            Reject { Step-RunAdoption $a @($bad) $requested.AddSeconds(2) }
+        }
+        $a = New-RunAdoption 'MassEffect2' $gameExe $requested -SettleSeconds 5
+        $changed = Obs 34 $gameExe $born; $changed.changed = $true; $changed.readable = $false
+        Reject { Step-RunAdoption $a @($changed) $requested.AddSeconds(2) }
+        $a = New-RunAdoption 'MassEffect2' $gameExe $requested -SettleSeconds 5
+        Check ($null -eq (Step-RunAdoption $a @(Obs 35 $gameExe $born) $requested.AddSeconds(2)))
+        Reject { Step-RunAdoption $a @(Obs 35 $gameExe $born.AddSeconds(3)) $requested.AddSeconds(4) } # PID replaced
+        $a = New-RunAdoption 'MassEffect2' $gameExe $requested -SettleSeconds 5
+        Check ($null -eq (Step-RunAdoption $a @(Obs 36 -Gone) $requested.AddSeconds(2)))
+        Reject { Step-RunAdoption $a @(Obs 36 $gameExe $born) $requested.AddSeconds(3) } # alive again after it exited
+        $foreign = @([pscustomobject]@{ pid = 37; startedUtc = $born.ToString('o'); source = 'le3-current.json' })
+        $a = New-RunAdoption 'MassEffect2' $gameExe $requested -SettleSeconds 5
+        Reject { Step-RunAdoption $a @(Obs 37 $gameExe $born) $requested.AddSeconds(2) $foreign }
+        $a = New-RunAdoption 'MassEffect2' $gameExe $requested -SettleSeconds 5
+        Reject { Step-RunAdoption $a @(Obs 37 $null $null) $requested.AddSeconds(2) $foreign }
+        $a = New-RunAdoption 'MassEffect2' $gameExe $requested -SettleSeconds 0 # a stale foreign record of a reused PID
+        Check ($null -ne (Step-RunAdoption $a @(Obs 37 $gameExe $born.AddSeconds(1)) $requested.AddSeconds(3) $foreign))
+    }
+    Case 'launch candidate reads tolerate suspension and exit but report replacement' {
+        $born = $requested.AddSeconds(1)
+        $suspended = [pscustomobject]@{ Id = 42; Path = $null; StartTime = $born; HasExited = $false }
+        With-ProcessObservations @($suspended, $suspended) {
+            $o = Read-RunCandidate 42; Check ($o.alive -and -not $o.readable -and -not $o.changed -and $o.startedUtc -eq $born)
+        }
+        With-ProcessObservations @($null) { Check (-not (Read-RunCandidate 42).alive) }
+        $exited = [pscustomobject]@{ Id = 42; Path = $null; StartTime = $null; HasExited = $true }
+        With-ProcessObservations @($liveProcess, $exited) { Check (-not (Read-RunCandidate 42).alive) }
+        With-ProcessObservations @($liveProcess, $liveProcess) {
+            $o = Read-RunCandidate 42; Check ($o.readable -and $o.path -eq $expected -and $o.startedUtc -eq $liveProcess.StartTime)
+        }
+        $replacement = [pscustomobject]@{ Id = 42; Path = $expected; StartTime = $requested.AddSeconds(2); HasExited = $false }
+        With-ProcessObservations @($liveProcess, $replacement) { $o = Read-RunCandidate 42; Check ($o.changed -and -not $o.readable) }
+        $denied = [pscustomobject]@{ Id = 42; Path = $null; StartTime = $born } | Add-Member -MemberType ScriptProperty -Name HasExited -Value { throw 'Access is denied' } -PassThru
+        With-ProcessObservations @($denied, $denied) { $o = Read-RunCandidate 42; Check ($o.alive -and -not $o.readable) }
+    }
+    Case 'foreign process records come only from other open sessions' {
+        $oldData = $env:LOCALAPPDATA
+        $env:LOCALAPPDATA = Join-Path $root 'foreign-appdata'
+        try {
+            $sessions = Join-Path $env:LOCALAPPDATA 'MEVR\sessions'; New-Item -ItemType Directory -Force $sessions | Out-Null
+            $own = Join-Path $sessions 'le2-current.json'
+            '{"gameProcess":{"pid":5,"path":"x","startedUtc":"a"}}' | Set-Content -LiteralPath $own
+            '{"gameProcess":{"pid":6,"path":"y","startedUtc":"b"},"launcherProcess":null}' | Set-Content -LiteralPath (Join-Path $sessions 'le3-current.json')
+            'not json' | Set-Content -LiteralPath (Join-Path $sessions 'broken-current.json')
+            $rows = @(Get-RunForeignProcesses $own)
+            Check ($rows.Count -eq 1 -and $rows[0].pid -eq 6 -and $rows[0].startedUtc -eq 'b' -and $rows[0].source -eq 'le3-current.json')
+        } finally { $env:LOCALAPPDATA = $oldData }
+    }
     $live = Join-Path $root 'live'; $backup = Join-Path $root 'backup'; $manifest = Join-Path $root 'before.json'
     New-Item -ItemType Directory $live | Out-Null
     [IO.File]::WriteAllText("$live\save[1].pcsav", 'synthetic save bytes')
@@ -382,7 +485,7 @@ try {
         $artifacts=@($mod,$renderer,$dll | ForEach-Object { [pscustomobject]@{path=$_;sha256=(Get-FileHash $_).Hash} })
         $complete=(Get-PreviewModConfig)
         foreach ($section in @('Colour','Controls','Holsters','Squad','Throwables','Comfort','Sights','Interact','Vent','Hud',
-            'Mako','Cockpit','Galaxy','WorldUi','Game','SquadContext','SquadOrders','Voice','PowerWheel','Cover')) {
+            'Mako','Cockpit','Galaxy','WorldUi','Game','SquadContext','SquadOrders','Voice','PowerWheel','Cover','Reload')) {
             $complete += "[$section]`r`nenabled=1`r`n"
         }
         $markers="hands: calibration pitch 0`r`ncolour: profile auto`r`n"
@@ -418,6 +521,65 @@ try {
             [IO.File]::WriteAllText($dll,'changed module')
         } -TimeoutSeconds 2 }
     }
+    Case 'ME2 launch waits out the mod''s first-run settings appends without opening the file' {
+        $modBin = Join-Path $root 'mod-settings'; New-Item -ItemType Directory (Join-Path $modBin 'ASI') | Out-Null
+        $modIni = Join-Path $modBin 'ASI\LE2MEVR.ini'; $modLog = Join-Path $modBin 'LE2MEVR.log'
+        [IO.File]::WriteAllText($modIni, "[Debug]`r`nopenxrRuntime = C:\synthetic\steamxr_win64.json`r`n")
+        $modMarkers = "hands: calibration pitch 90.0`r`ncolour: profile auto`r`n"
+        $modOld = "[last launch] $modMarkers"
+        [IO.File]::WriteAllText($modLog, $modOld)
+        $modBefore = @{}; $modBefore[$modLog] = $modOld
+        $modStarted = [DateTime]::UtcNow.AddSeconds(-1)
+        # The last launch's markers never count, however still the file is; the bound reports instead of throwing.
+        $stale = Wait-RunModSettings $modIni @($modLog) $modBefore $modStarted {} -TimeoutSeconds 1 -QuietMilliseconds 100 -PollMilliseconds 50
+        Check (-not $stale.settled -and -not $stale.markerLog)
+        Check ((Format-RunModSettings $stale $modIni) -match 'did not settle .*markers not seen.*may be refused')
+        # The first tick: a block appended, the markers logged, a block the busy file refused appended a moment later,
+        # then an exclusive writer holds the file. The wait returns only once the last append has stood still for the
+        # quiet time, reading attributes only (the writer never stops it, so it can't refuse the mod's appends).
+        $modState = @{ polls = 0; lastAt = $null; hold = $null }
+        $modClock = [Diagnostics.Stopwatch]::StartNew()
+        try {
+            $settled = Wait-RunModSettings $modIni @((Join-Path $modBin 'missing-primary.log'), $modLog) $modBefore $modStarted {
+                $modState.polls++
+                if ($modState.polls -eq 1) {
+                    [IO.File]::AppendAllText($modIni, "[Controls]`r`nsupportZone = capsule`r`n"); $modState.lastAt = $modClock.Elapsed.TotalMilliseconds
+                }
+                if ($modState.polls -eq 2) { [IO.File]::AppendAllText($modLog, $modMarkers) }
+                if ($modState.polls -eq 5) {
+                    [IO.File]::AppendAllText($modIni, "[Holsters]`r`ngripHolds = 1`r`n"); $modState.lastAt = $modClock.Elapsed.TotalMilliseconds
+                    for ($try = 0; -not $modState.hold; $try++) {  # an antivirus look at the fresh file may delay it
+                        try { $modState.hold = [IO.File]::Open($modIni, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None) }
+                        catch [IO.IOException] { if ($try -ge 40) { throw }; Start-Sleep -Milliseconds 25 }
+                    }
+                }
+            } -TimeoutSeconds 10 -QuietMilliseconds 600 -PollMilliseconds 50
+        } finally { if ($modState.hold) { $modState.hold.Dispose() } }
+        Check ($settled.settled -and $settled.markerLog -eq $modLog)
+        Check ($modClock.Elapsed.TotalMilliseconds - $modState.lastAt -ge 600 -and $settled.quietMilliseconds -ge 600)
+        Check ($settled.length -eq (Get-Item -LiteralPath $modIni).Length -and $settled.length -gt $settled.lengthBefore)
+        Check ((Format-RunModSettings $settled $modIni) -match '^mod settings settled: LE2MEVR\.ini unchanged for ')
+        # A later launch: the file complete long ago, this launch's markers come: settled without another quiet wait.
+        $modOld = [IO.File]::ReadAllText($modLog); $modBefore[$modLog] = $modOld
+        (Get-Item -LiteralPath $modIni).LastWriteTimeUtc = [DateTime]::UtcNow.AddMinutes(-5)
+        $modState.polls = 0
+        $again = Wait-RunModSettings $modIni @($modLog) $modBefore $modStarted {
+            $modState.polls++
+            if ($modState.polls -eq 2) { [IO.File]::AppendAllText($modLog, $modMarkers) }
+        } -TimeoutSeconds 10 -QuietMilliseconds 600 -PollMilliseconds 50
+        Check ($again.settled -and $again.length -eq $again.lengthBefore -and $again.waitedMilliseconds -lt 2000)
+        # A file written on every look never settles: bounded, reported.
+        $busy = Wait-RunModSettings $modIni @($modLog) @{} $modStarted {
+            [IO.File]::AppendAllText($modIni, "; still writing`r`n")
+        } -TimeoutSeconds 1 -QuietMilliseconds 300 -PollMilliseconds 50
+        Check (-not $busy.settled -and $busy.markerLog -eq $modLog -and $busy.length -gt $busy.lengthBefore)
+        Check ((Format-RunModSettings $busy $modIni) -match 'markers seen in LE2MEVR\.log')
+        # Lost ownership (the lock, the game) and a missing settings file stop the wait.
+        Reject { Wait-RunModSettings $modIni @($modLog) @{} $modStarted { throw 'ownership lost' } -TimeoutSeconds 2 }
+        Reject { Wait-RunModSettings (Join-Path $modBin 'ASI\missing.ini') @($modLog) @{} $modStarted {} -TimeoutSeconds 1 }
+        Check ((Get-RunModLogs 'C:\synthetic\Win64' LE2)[0] -eq 'C:\synthetic\Win64\Logs\LE2MEVR.log')
+        Check ((Get-RunModLogs 'C:\synthetic\Win64' LE2)[1].EndsWith('MEVR\LE2MEVR.log'))
+    }
     Case 'preview bisection options preserve explicit mono and reject malformed metadata' {
         Check ((Get-PreviewOptions ([pscustomobject]@{})).mode -eq 4)
         $options = Get-PreviewOptions ([pscustomobject]@{ previewRendererMode=0; previewDiagnostics=$true })
@@ -448,6 +610,46 @@ try {
         Assert-PreviewConfig $bin 4 $true 1
         Reject { Assert-PreviewConfig $bin 4 $true 8 }
         Check ((Get-PreviewRendererConfig 4 $true 1) -match 'MirrorPresentEvery=1\r?\n')
+    }
+    Case 'preview eye frustum and render size bind the renderer file and reject malformed or changed options' {
+        # A record without the options is a stretch from before them: mode 1 at 3072x1728.
+        $defaults = Get-PreviewOptions ([pscustomobject]@{})
+        Check (-not $defaults.eyeFrustum -and $defaults.renderSize -eq '3072x1728')
+        # ME3's defaults since 2026-11-17 (question 17): each eye's own frustum, 3072x2216; the key written either way.
+        Check ((Get-PreviewRendererConfig) -match 'Diagnostics=0\r\nMetricEyeFrustum=1\r\nCineVrConvo=0')
+        Check ((Get-PreviewRendererConfig) -match 'RenderW=3072\r\nRenderH=2216\r\n')
+        $shared = Get-PreviewRendererConfig 4 $false 8 $false '3072x1728'
+        Check ($shared -match 'RenderW=3072\r\nRenderH=1728\r\n' -and $shared -match 'Diagnostics=0\r\nMetricEyeFrustum=0\r\nCineVrConvo=0')
+        $tall = Get-PreviewRendererConfig 4 $false 8 $true '3072x2216'
+        Check ($tall -match 'RenderW=3072\r\nRenderH=2216\r\n' -and $tall -match 'Diagnostics=0\r\nMetricEyeFrustum=1\r\nCineVrConvo=0')
+        Check ($tall -ceq (Get-PreviewRendererConfig))
+        foreach ($bad in @('3072x1727', '4054x1728', '1024x2216', '9000x1728', '3072*1728', '')) {
+            Reject { Get-PreviewRenderSize $bad }
+            Reject { Get-PreviewOptions ([pscustomobject]@{previewRenderSize=$bad}) }
+        }
+        Reject { Get-PreviewOptions ([pscustomobject]@{previewEyeFrustum='true'}) }
+        Reject { Get-PreviewOptions ([pscustomobject]@{previewRenderSize=3072}) }
+        Reject { & "$PSScriptRoot\prep.ps1" -Holder synthetic -Game LE3 -DesktopDump -PreviewEyeFrustum }
+        Reject { & "$PSScriptRoot\prep.ps1" -Holder synthetic -Game LE3 -DesktopDump -PreviewSharedWindow }
+        Reject { & "$PSScriptRoot\prep.ps1" -Holder synthetic -Game LE3 -DesktopDump -PreviewEyeFrustum -PreviewSharedWindow }
+        Reject { & "$PSScriptRoot\prep.ps1" -Holder synthetic -Game LE3 -DesktopDump -PreviewRenderSize 3072x2216 }
+        $bin=Join-Path $root 'preview-frustum'; New-Item -ItemType Directory (Join-Path $bin 'ASI') | Out-Null
+        [IO.File]::WriteAllText((Join-Path $bin 'ASI\LE3MEVR.ini'),(Get-PreviewModConfig))
+        [IO.File]::WriteAllText((Join-Path $bin 'MELE3VR.ini'),$tall)
+        Assert-PreviewConfig $bin 4 $false 8 $true '3072x2216'
+        Assert-PreviewConfig $bin
+        Reject { Assert-PreviewConfig $bin 4 $false 8 $false '3072x2216' }
+        Reject { Assert-PreviewConfig $bin 4 $false 8 $true '3072x1728' }
+        [IO.File]::WriteAllText((Join-Path $bin 'MELE3VR.ini'),$shared)
+        Assert-PreviewConfig $bin 4 $false 8 $false '3072x1728'
+        Reject { Assert-PreviewConfig $bin }
+    }
+    Case 'the installed ME3 renderer ini is the preview default without its diagnostics' {
+        # src/halcyon/le3/runtime/MELE3VR.ini: what tools/deploy-asi.ps1 and MEVR Setup install next to MassEffect3.exe.
+        $installed = [IO.File]::ReadAllText((Join-Path $PSScriptRoot '..\..\src\halcyon\le3\runtime\MELE3VR.ini')) -replace '\r?\n', "`r`n"
+        $settings = ($installed -split '(?<=\n)' | Where-Object { -not $_.StartsWith(';') }) -join ''
+        Check ($settings -ceq ((Get-PreviewRendererConfig) -replace 'Diagnostics=0\r\n', ''))
+        Check ($installed -match 'RenderW=3072\r\nRenderH=2216\r\n' -and $installed -match 'MetricEyeFrustum=1\r\n')
     }
     Case 'renderer readiness marker must be fresh rather than replayed old log content' {
         $path=Join-Path $root 'preview.log'; $marker='[ME3XR] VR session ready; starting frame submission.'

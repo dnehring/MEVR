@@ -353,8 +353,8 @@ bool ProcessEventSEH(void* object, void* function, void* params) noexcept
     // game thread's UnrealScript VM globals (the 2026-10-23 crash, research/36). Queued for the next engine tick
     // instead; every caller here is a setter (SetHidden, SetOwnerNoSee, Hide/UnHideBoneByName, the Mako turret's
     // aim point, whose returned rotator is only logged).
-    if (!::MELEVR::MevrBridge::OnGameThread())
-        return ::MELEVR::MevrBridge::QueueProcessEvent(object, function, params);
+    if (!::MevrSeams::OnGameThread())
+        return ::MevrSeams::QueueProcessEvent(object, function, params, ::MevrSeams::kFunctionParmsSize);
     __try
     {
         void** vt = *reinterpret_cast<void***>(object);

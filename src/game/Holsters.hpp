@@ -16,7 +16,8 @@
 // squeezing and releasing at the held gun's own slot holsters it, and the grip is RB elsewhere.
 // Slots, sizes and options: [Holsters] in <GAME>MEVR.ini (game/hand_calibration).
 //
-// Each tick, on foot with Halcyon's world view and a tracked right controller:
+// Each tick, on foot with Halcyon's world view and a tracked right controller (on the sequels a right hand that lost
+// tracking at the SMG's lowerBack slot keeps its last place on the body for [Holsters] lostHandHoldS: ik::body_slots::LostHand):
 //   - the body frame: arm IK's torso yaw (game/arm_ik), or our own lagging yaw from the head, held
 //     while the hand is in a slot; the anchor is the eye held upright over the neck pivot, its height
 //     smoothed; the offsets scale with the standing eye height measured from the floor (host v10,
@@ -33,7 +34,15 @@
 //     the player's quick slots (BioPawn -> BioPawnBehavior -> BioEquipment) for what they carry.
 //     All through ProcessEvent, never the SDK's wrappers.
 // Logged once per change; a heartbeat line; the snapshot's mod status carries the slots.
-// Game thread. LE2/LE3: off (their weapon classes differ).
+// Game thread. The sequels (research/le2-vrik.md "Holsters and the reload on the sequels"): the same module with each
+// game's names: the pawn's inventory chain by weapon family for what is carried, BioPlayerController.SwitchWeapon and (ME2)
+// BioPawnBehavior.SetActionState(combat) to draw, SFXGameModeDefault.TryHolster to holster, BioPawn.ActionState for drawn.
+// "Only holsters draw" there: ME2's buttons draw by themselves with the weapon away (FireWeapon, TightAim, TryReload,
+// NextWeapon, PrevWeapon); each asks BioPlayerInput.IsCombatEnabled first, which is answered false for that call (the same
+// rule as ME1's skip: RefuseGameDraw; AllowGameDraw opens it). ME3 keeps no holstered state on foot. A holster grab draws
+// only where the game's own draws would (BioPlayerInput.IsCombatEnabled, which ME1's SwitchToWeapon asks itself), and ME2's
+// holster is refused, felt, where its TryHolster would refuse it. The right stick click's hold opens the game's power wheel
+// on every game (ME1's rule since 2026-11-05; the sequels since 2026-11-17): a tap casts nothing.
 namespace mevr::game::holsters {
 
 // What the host offers this tick (Mod.cpp fills it from HostServices).
@@ -67,6 +76,16 @@ void AdjustPad(gamepad::Options& options);
 double EyeHeight();
 bool RightHandInSlot();
 double SecondsSinceDraw();
+// For game/reload's clip pouch (a body slot for the LEFT hand): the body frame the slots hang from this tick (the smoothed
+// neutral eye, the body yaw, OpenXR LOCAL meters) and the slots' scale, while the holsters are active (nullopt otherwise).
+struct BodyFrame {
+    double anchor[3] = {0.0, 0.0, 0.0};
+    double yaw = 0.0;
+    double scale = 1.0;
+};
+std::optional<BodyFrame> SlotFrame();
+// The player controller's SFXGameModeDefault (the buttons' exec functions live there), or null. Game thread.
+void* DefaultGameMode();
 // [Holsters] onlyHolstersDraw (default 1): only a grab at a holster draws. The game's own draws with the weapon away
 // (SFXPawn_Player.DrawPrimaryWeapon, from melee and grenade buttons, the weapon wheel, the holster key's toggle) are
 // skipped on foot in VR with tracked controllers (a refused one buzzes the right hand). Medi-gel (UseFirstAid) and

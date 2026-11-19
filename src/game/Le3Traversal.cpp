@@ -338,11 +338,14 @@ char const* Guard(Link const& link) {
     if (link.authoredSeated || link.menuOpen || !link.allowNativeTraversal || !link.allowNativeTraversal())
         return "scene/menu/focus/hand ownership denies traversal";
     if (!gContext.pc || !gContext.pawn || !gContext.world || gContext.mode != 0) return "not ordinary Shepard gameplay";
-    if (Bool(gContext.pc, gIgnored) != false || Bool(gContext.pawn, gDead) != false) return "native movement ignored/dead/unknown";
-    if (gCoverType.Read<std::uint8_t>(gContext.pawn) != 0 || gCoverAction.Read<std::uint8_t>(gContext.pawn) != 0 ||
-        gStorming.ReadBool(gContext.pawn) != false) return "cover/storm action needs separate intentional support";
-    if (gPhysics.Read<std::uint8_t>(gContext.pawn) != 1) return "not native walking physics";
-    if (gCurrent.Read<std::int32_t>(gContext.pawn) != 0 || gLife.Busy()) return "native action/pending request owns movement";
+    // The movement facts through the one admission read (game/Player `MovementRefused`), in this guard's order of reasons.
+    namespace admit = player::admission;
+    auto const admitted = [](admit::Facts facts) { return player::MovementAdmitted(gContext.pc, gContext.pawn, facts); };
+    if (!admitted(admit::kMoveInput | admit::kAlive)) return "native movement ignored/dead/unknown";
+    if (!admitted(admit::kOutOfCover | admit::kNoCoverAction | admit::kNotStorming))
+        return "cover/storm action needs separate intentional support";
+    if (!admitted(admit::kWalking)) return "not native walking physics";
+    if (!admitted(admit::kNoAction) || gLife.Busy()) return "native action/pending request owns movement";
     if (Bool(gContext.pc, gReload) != false || Bool(gContext.pc, gZoom) != false) return "reload/zoom/unknown blocks request";
     return nullptr;
 }
@@ -558,6 +561,7 @@ void Tick(Link const& link, tv::Settings const& settings) {
 #endif
 }
 bool Moving() { return gLife.Busy() || (gLife.action != 0 && !gRecovered); }
+bool FloorMoving() { return Moving() && gLife.kind != tv::Kind::Evade; }
 std::string StatusJson() {
     namespace json = vr::test_request;
     auto const sample = gRecord.Current();

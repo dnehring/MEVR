@@ -12,6 +12,8 @@
 #include "game/HeadTracking.hpp"
 #include "game/SupportGrip.hpp"
 #include "ue3/Handles.hpp"
+#include "core/vr/ActionCamera.hpp"
+#include "engine/GameAdapter.hpp"
 
 #include <Windows.h>
 
@@ -129,7 +131,7 @@ std::string Delta(long long units) {
     return std::format("{:+.2f} deg ({:+} UU)", static_cast<double>(units) * 360.0 / vl::kUnitsPerTurn, units);
 }
 
-#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 
 // Our reflection layer (ue3/, research/34): each found once, by name, in the running game.
 ue3::ClassRef gCameraNativeBase{"SFXGame.SFXCameraNativeBase", ue3::kEveryGame};
@@ -190,8 +192,14 @@ ModeEntry const& Mode(ue3::Class* cls) {
         }
     }
     std::string name = cls != nullptr ? ue3::runtime::Get().NameText(cls) : std::string("none");
-    bool const allowed = vl::CameraModeAllows(name);
-    bool const assistOff = vl::CameraModeRemovesAssist(name);
+    bool allowed = vl::CameraModeAllows(name);
+    bool assistOff = vl::CameraModeRemovesAssist(name);
+    if constexpr (engine::adapter::kActionCameras) {
+        // ME3's action cameras (a roll, a melee, a hit reaction): the body owns them as Combat (core/vr/ActionCamera.hpp).
+        if (vr::IsActionCamera(name)) {
+            allowed = assistOff = true;
+        }
+    }
     gModes.push_back({cls, std::move(name), allowed, assistOff});
     return gModes.back();
 }
@@ -424,10 +432,12 @@ void OnSetWeaponRecoil(ue3::Object* context, ue3::Function* /*function*/, void* 
         gYawRecoilTotal += yawKick;
         gYawRecoilWindow += yawKick;
         ++gYawKickedShots;
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
         // ME2 turns the controller's yaw by it (BioPlayerInput.UpdateViewRotation: SetRotation(Rotation + Kickback), faded back
         // later): no camera recoil in VR, as ME1 (the owner, 2026-11-14). Taken back out of the queue while the hold applies,
-        // and out of TotalRecoil too, so there's nothing to fade back and the weapon's cap doesn't fill.
+        // and out of TotalRecoil too, so there's nothing to fade back and the weapon's cap doesn't fill. ME3 has the same
+        // SFXInventoryManager queue (WeaponRecoilOffset, TotalRecoil) and gets the same treatment; whether its shots queue a
+        // yaw kick at all is [verify] in the game (the `view level: first shot seen` line says).
         if (gWhy == vl::Why::Holding) {
             if (ue3::Rotator* const queued = gWeaponRecoilOffset.In<ue3::Rotator>(inventory)) {
                 queued->yaw -= yawKick;
@@ -540,7 +550,7 @@ void OnViewFriction(ue3::Object* context, ue3::Function* /*function*/, void* res
 } // namespace
 
 bool TryStartup() {
-#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     if (!ue3::runtime::Up()) {
         log::Warn("view level: our reflection layer is off ({}): the camera isn't levelled", ue3::runtime::Status());
         return false;
@@ -591,7 +601,7 @@ bool TryStartup() {
 
 void Tick(Link const& link) {
     gLink = link;
-#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     if (!gStarted) {
         return;
     }

@@ -59,6 +59,14 @@ char const* TypeName() {
     return "gun";
 }
 
+#if defined(MEVR_GAME_LE3)
+// ME3 stands down, explicitly (docs/trilogy-parity-ledger.md G28 and "Found while auditing"): the LE3 host serves no
+// setHudPieces, and ME3's weapon panel and wrist status have no adapter yet (its HUD is SFXGUIMovie; the "native wrist crop"
+// of docs/me3-overall-goal-handoff.md L3-4). Until then nothing here falls back to ME1's placement (the muzzle offset, the
+// Mako's displays, ME1's bone names) or ME2's Ammo socket: the port chooses ME3's own.
+constexpr char kStandDown[] = "not on ME3 yet: no weapon-panel or wrist adapter for its HUD (the pieces stay on the HUD panel)";
+#endif
+
 // Shepard's drawn arms for the omni-tool's wrist tap (research/57 section 3): the bones found once per skeleton asset.
 struct BodyBones {
     ue3::Object const* asset = nullptr;
@@ -77,6 +85,7 @@ std::uint64_t gIndex2Key = 0;
 XrVector3f gRightWrist{};
 std::optional<XrVector3f> gIndex2Native;
 
+#if !defined(MEVR_GAME_LE3)
 int BoneNamed(engine::skeleton::RefSkeleton const& skeleton, std::string_view name) {
     for (std::size_t i = 0; i < skeleton.names.size(); ++i) {
         if (skeleton.names[i] == name) {
@@ -161,10 +170,19 @@ void Publish(Link const& link, hp::Pieces const& pieces) {
         gSent = true;
     }
 }
+#endif  // !MEVR_GAME_LE3
 
 } // namespace
 
 void Tick(vr::aim_ray::Ray const& ray, Link const& link) {
+#if defined(MEVR_GAME_LE3)
+    (void)ray;
+    (void)link;
+    if (gWhy != kStandDown) {
+        gWhy = kStandDown;
+        log::Info("hud pieces: {}", kStandDown);
+    }
+#else
     gSettings = hand_calibration::GetHud();
     ue3::Object* const controller = player::Controller();
     std::optional<std::uint8_t> const mode = controller != nullptr ? player::GameMode(controller) : std::nullopt;
@@ -245,6 +263,7 @@ void Tick(vr::aim_ray::Ray const& ray, Link const& link) {
     cockpit_probe::FillHud(pieces);  // in the Mako's cockpit: its displays (research/47)
     FillBody(pieces, onFoot);
     Publish(link, pieces);
+#endif  // !MEVR_GAME_LE3
 }
 
 std::string StatusJson() {

@@ -4,12 +4,16 @@
 #if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 #include "game/Player.hpp"
 #include "game/Le3Powers.hpp"
+#include "game/SequelPowers.hpp"
 #include "ue3/Handles.hpp"
 #include "ue3/Memory.hpp"
 #include "ue3/Runtime.hpp"
+#include "engine/GameAdapter.hpp"
 
 #include <algorithm>
 #include <cmath>
+#include <format>
+#include <string>
 #include <vector>
 
 // Shared sequel inventory and order prerequisites; LE3's distinct contracts are explicit below.
@@ -36,7 +40,7 @@ inline ue3::ClassRef weaponTypes[] = {
     ue3::ClassRef{"SFXGame.SFXWeapon_AutoPistol_Base", ue3::kEveryGame},
 #endif
 };
-inline ue3::FunctionRef isHostile{"SFXGame.BioPawn.IsHostile", ue3::kEveryGame};
+inline ue3::FunctionRef isHostile{engine::adapter::kIsHostileFunction, ue3::kEveryGame};  // ME3: Engine.Pawn's
 inline ue3::FunctionRef isDead{"Engine.Pawn.IsDead", ue3::kEveryGame};
 inline ue3::FunctionRef combatEnabled{"SFXGame.BioPlayerInput.IsCombatEnabled", ue3::kEveryGame};
 inline ue3::FunctionRef orderWeapon{"SFXGame.BioPlayerController.OrderWeaponSwitch", ue3::kEveryGame};
@@ -45,59 +49,45 @@ inline ue3::FunctionRef orderFollow{"SFXGame.BioPlayerController.HenchmanOrderFo
 inline ue3::FunctionRef orderHold{"SFXGame.BioPlayerController.HenchmanOrderHoldPosition", ue3::kEveryGame};
 inline ue3::FunctionRef orderPower{"SFXGame.BioPlayerController.SquadOrderUsePower", ue3::kEveryGame};
 inline ue3::FunctionRef applyOrders{"SFXGame.BioPlayerController.ApplyTacticalOrders", ue3::kEveryGame};
-inline ue3::FieldRef powerManager{"SFXGame.BioPawn", "PowerManager", ue3::kEveryGame};
-inline ue3::FieldRef powers{"SFXGame.SFXPowerManager", "Powers", ue3::kEveryGame};
-inline ue3::FieldRef powerName{"SFXGame.SFXPower", "PowerName", ue3::kEveryGame};
-inline ue3::FieldRef powerRank{"SFXGame.SFXPower", "Rank", ue3::kEveryGame};
-inline ue3::FieldRef powerVisible{"SFXGame.SFXPower", "DisplayInHUD", ue3::kEveryGame};
-inline ue3::FunctionRef powerEnabled{"SFXGame.SFXPower.IsEnabled", ue3::kEveryGame};
-inline ue3::FunctionRef powerCooldown{"SFXGame.SFXPower.GetCooldownRemaining", ue3::kEveryGame};
-inline ue3::FunctionRef powerEvolved{"SFXGame.SFXPowerManager.HasPowerBeenEvolved", ue3::kEveryGame};
+// The power handles live in game/SequelPowers.hpp since 2026-11-16 (one roster reader); the old names forward to them
+// while callers move.
+inline ue3::FieldRef& powerManager = sequel_powers::manager;
+inline ue3::FieldRef& powers = sequel_powers::powers;
+#if defined(MEVR_GAME_LE2)
+inline ue3::FieldRef& powerName = sequel_powers::name;
+inline ue3::FieldRef& powerRank = sequel_powers::rank;
+inline ue3::FieldRef& powerVisible = sequel_powers::visible;
+inline ue3::FunctionRef& powerEnabled = sequel_powers::isEnabled;
+inline ue3::FunctionRef& powerCooldown = sequel_powers::cooldownRemaining;
+inline ue3::FunctionRef& powerEvolved = sequel_powers::evolved;
+#endif
 
 struct Power { ue3::Name name; float cooldown; bool enabled; ue3::Object* object = nullptr; };
-// Same native source and evolution resolution as game/PowerWheel.cpp; includes cooling powers in context,
-// but dispatch re-reads both enabled state and cooldown rather than trusting an earlier voice snapshot.
+// A squadmate's trained, shown powers for the squad's context and orders, over the one roster walk the power wheel
+// uses too (game/SequelPowers.hpp: the manager's list, ME2's evolved instances). Cooling powers are included, but
+// dispatch re-reads both enabled state and cooldown rather than trusting an earlier voice snapshot.
 inline std::vector<Power> Powers(ue3::Object* pawn) {
     std::vector<Power> out;
-    auto* manager = powerManager.Read<ue3::Object*>(pawn).value_or(nullptr);
-    auto list = ue3::runtime::IsAlive(manager) ? powers.ElementsOf(manager) : std::nullopt;
-    if (!list) return out;
+    sequel_powers::ForEach(pawn, [&](ue3::Object* power) {
 #if defined(MEVR_GAME_LE3)
-    if (list->count > 128) return out;
-    for (int i = 0; i < list->count; ++i) {
-        auto** slot = static_cast<ue3::Object**>(list->At(i));
-        auto* object = slot != nullptr ? *slot : nullptr;
-        if (!ue3::runtime::IsAlive(object) || !le3_powers::visible.ReadBool(object).value_or(false)) continue;
-        auto const state = le3_powers::State(object);
-        auto const name = le3_powers::name.Read<ue3::Name>(object);
-        if (!state || !name || name->Key() == 0) continue;
+        if (!le3_powers::visible.ReadBool(power).value_or(false)) return;
+        auto const state = le3_powers::State(power);
+        auto const name = le3_powers::name.Read<ue3::Name>(power);
+        if (!state || !name || name->Key() == 0) return;
         auto const view = vr::power_wheel::EvaluateNativePower(*state);
-        if (!view.valid || !view.learned || std::any_of(out.begin(), out.end(), [&](auto const& p) { return p.name == *name; })) continue;
-        out.push_back({*name, std::max(state->remaining, 0.0f), view.enabled, object});
-    }
+        if (!view.valid || !view.learned || std::any_of(out.begin(), out.end(), [&](auto const& p) { return p.name == *name; })) return;
+        out.push_back({*name, std::max(state->remaining, 0.0f), view.enabled, power});
 #else
-    for (int i = 0; i < list->count && i < 64; ++i) {
-        auto** slot = static_cast<ue3::Object**>(list->At(i));
-        auto* power = slot != nullptr ? *slot : nullptr;
-        if (!ue3::runtime::IsAlive(power)) continue;
-        if (auto* fn = powerEvolved.Get()) {
-            ue3::Params args(ue3::runtime::Get(), fn);
-            if (args.Set("Power", power) && ue3::runtime::Call(manager, fn, args) && args.ReturnBool().value_or(false))
-                power = args.Get<ue3::Object*>("EvolvedPower").value_or(nullptr);
-        }
-        if (!ue3::runtime::IsAlive(power) || !powerVisible.ReadBool(power).value_or(false) ||
-            powerRank.Read<float>(power).value_or(0.0f) <= 0.0f) continue;
-        auto name = powerName.Read<ue3::Name>(power).value_or(ue3::Name{});
-        if (name.Key() == 0 || std::any_of(out.begin(), out.end(), [&](Power const& p) { return p.name.Key() == name.Key(); })) continue;
-        auto* enabled = powerEnabled.Get(); auto* cooldown = powerCooldown.Get();
-        if (enabled == nullptr || cooldown == nullptr) continue;
-        ue3::Params e(ue3::runtime::Get(), enabled), c(ue3::runtime::Get(), cooldown);
-        if (!ue3::runtime::Call(power, enabled, e) || !ue3::runtime::Call(power, cooldown, c)) continue;
-        auto seconds = c.Return<float>();
-        if (!seconds || !std::isfinite(*seconds)) continue;
-        out.push_back({name, std::max(0.0f, *seconds), e.ReturnBool().value_or(false)});
-    }
+        if (!sequel_powers::visible.ReadBool(power).value_or(false) || !sequel_powers::Learned(power)) return;
+        auto const name = sequel_powers::name.Read<ue3::Name>(power).value_or(ue3::Name{});
+        if (name.Key() == 0 || std::any_of(out.begin(), out.end(), [&](Power const& p) { return p.name.Key() == name.Key(); })) return;
+        // A power whose state the game won't state isn't offered (the wheel shows it dim instead).
+        auto const enabled = sequel_powers::Enabled(power);
+        auto const seconds = sequel_powers::Seconds(power, sequel_powers::cooldownRemaining);
+        if (!enabled || !seconds) return;
+        out.push_back({name, *seconds, *enabled});
 #endif
+    });
     return out;
 }
 
@@ -155,6 +145,69 @@ inline std::string ActorName(ue3::Object* pawn) {
     auto result = ue3::memory::Narrow(*text);
     ue3::memory::FreeString(*text);  // native/script FString return belongs to caller
     return result;
+}
+#else
+// ME2's name of a pawn (docs/trilogy-parity-ledger.md G30): its PrettyName, a string reference (SFXPawn.GetPrettyName, the
+// squad HUD's own), as text through the game info's GetSimpleString. A henchman's BioActorBehavior.ActorGameName is the
+// class default "BioPawn" (the roster read that until 2026-11-16), so the behaviour's own GetActorGameName comes second
+// and only where it says something else. Functions are looked up on the object's class: a subclass may override them.
+inline ue3::FunctionRef prettyName{"SFXGame.SFXPawn.GetPrettyName", ue3::kEveryGame};
+inline ue3::FunctionRef simpleString{"SFXGame.SFXGame.GetSimpleString", ue3::kEveryGame};
+inline ue3::FunctionRef behaviorName{"SFXGame.BioActorBehavior.GetActorGameName", ue3::kEveryGame};
+inline ue3::FieldRef actorWorld{"Engine.Actor", "WorldInfo", ue3::kEveryGame};
+inline ue3::FieldRef worldGame{"Engine.WorldInfo", "Game", ue3::kEveryGame};
+inline ue3::FieldRef pawnBehavior{"SFXGame.BioPawn", "m_oBehavior", ue3::kEveryGame};
+
+struct NameRead {
+    std::string name;       // empty: nothing usable (the caller falls back to the pawn's class)
+    char const* source = "pawn class";
+    std::int32_t prettyRef = 0;
+    std::string prettyText;
+    std::string behaviorText;
+};
+
+inline std::string TakeString(ue3::Params& parms) {
+    auto text = parms.Return<ue3::FString>();
+    if (!text) return {};
+    std::string result = ue3::memory::Narrow(*text);
+    ue3::memory::FreeString(*text);  // a script function's FString return belongs to the caller
+    return result;
+}
+
+inline NameRead ActorName(ue3::Object* pawn) {
+    NameRead out;
+    if (!ue3::runtime::IsAlive(pawn) || !ue3::memory::Ready()) return out;
+    auto& r = ue3::runtime::Get();
+    if (prettyName.Get() != nullptr && simpleString.Get() != nullptr) {
+        if (auto* fn = r.FindFunction(r.ClassOf(pawn), "GetPrettyName")) {
+            ue3::Params args(r, fn);
+            if (ue3::runtime::Call(pawn, fn, args)) out.prettyRef = args.Return<std::int32_t>().value_or(0);
+        }
+        auto* world = actorWorld.Read<ue3::Object*>(pawn).value_or(nullptr);
+        auto* game = ue3::runtime::IsAlive(world) ? worldGame.Read<ue3::Object*>(world).value_or(nullptr) : nullptr;
+        auto* text = ue3::runtime::IsAlive(game) ? r.FindFunction(r.ClassOf(game), "GetSimpleString") : nullptr;
+        if (out.prettyRef > 0 && text != nullptr) {
+            ue3::Params args(r, text);
+            if (args.Set("StrRef", out.prettyRef) && args.SetBool("bParse", false) && ue3::runtime::Call(game, text, args)) {
+                out.prettyText = TakeString(args);
+            }
+        }
+    }
+    auto* behavior = pawnBehavior.Read<ue3::Object*>(pawn).value_or(nullptr);
+    if (behaviorName.Get() != nullptr && ue3::runtime::IsAlive(behavior)) {
+        if (auto* fn = r.FindFunction(r.ClassOf(behavior), "GetActorGameName")) {
+            ue3::Params args(r, fn);
+            if (ue3::runtime::Call(behavior, fn, args)) out.behaviorText = TakeString(args);
+        }
+    }
+    if (!out.prettyText.empty()) {
+        out.name = out.prettyText;
+        out.source = "SFXPawn.GetPrettyName";
+    } else if (!out.behaviorText.empty() && out.behaviorText != "BioPawn") {
+        out.name = out.behaviorText;
+        out.source = "BioActorBehavior.GetActorGameName";
+    }
+    return out;
 }
 #endif
 
@@ -215,5 +268,51 @@ inline std::vector<ue3::Object*> Weapons(ue3::Object* pawn) {
     std::stable_sort(out.begin(), out.end(), [](auto* a, auto* b) { return WeaponType(a) < WeaponType(b); });
     return out;
 }
+
+// A move order's marker (research/54 "Placement by an arc" on ME2, 2026-11-17): the hold order's AI walks to the squadmate's
+// move indicator (SFXAI_Henchman.MovingToHoldLocation pathfinds to BioBaseSquad.GetMemberMoveIndicator), not to the order's
+// point, and the game's own move order puts that marker there first (the native BioPlayerController.UpdateMoveToIndicator).
+// HenchmanOrderHoldPosition alone left Jacob where he stood. Call this before every hold order with a point.
+inline ue3::FunctionRef updateMoveIndicator{"SFXGame.BioPlayerController.UpdateMoveToIndicator", ue3::kEveryGame};
+inline bool PlaceMoveIndicator(ue3::Object* controller, ue3::Object* pawn, ue3::Vector const& at) {
+    auto* fn = updateMoveIndicator.Get();
+    if (fn == nullptr || !ue3::runtime::IsAlive(controller) || !ue3::runtime::IsAlive(pawn)) return false;
+    ue3::Params args(ue3::runtime::Get(), fn);
+    return args.Set("pSquadPawn", pawn) && args.Set("vMoveToPosition", at) && ue3::runtime::Call(controller, fn, args) &&
+           args.ReturnBool().value_or(false);
+}
+
+#if defined(MEVR_GAME_LE2)
+// What the henchman's AI made of an order (research/54 "Placement by an arc", ME2): HenchmanOrderHoldPosition only queues it
+// (SFXAI_Henchman.AddOrder, refused while the AI follows or defends an actor the level asked for); the Idle state's timer
+// takes the queue, sets m_vHoldLocation, and Idle's ChooseBehavior walks there while Shepard is within
+// TetherDistanceWhileExecutingOrder. Read only, for the log and `mevr place status`.
+inline ue3::FieldRef aiOrders{"SFXGame.SFXAI_Henchman", "m_Orders", ue3::kEveryGame};
+inline ue3::FieldRef aiHoldLocation{"SFXGame.SFXAI_Henchman", "m_vHoldLocation", ue3::kEveryGame};
+inline ue3::FieldRef aiHolding{"SFXGame.SFXAI_Henchman", "m_bHoldingPosition", ue3::kEveryGame};
+inline ue3::FieldRef aiFollowPlayer{"SFXGame.SFXAI_Henchman", "m_bFollowPlayer", ue3::kEveryGame};
+inline ue3::FieldRef aiDefend{"SFXGame.SFXAI_Henchman", "m_ActorToDefend", ue3::kEveryGame};
+inline ue3::FieldRef aiTether{"SFXGame.SFXAI_Henchman", "TetherDistanceWhileExecutingOrder", ue3::kEveryGame};
+inline ue3::FieldRef aiFollowActor{"SFXGame.SFXAI_Core", "m_RequestedActorToFollow", ue3::kEveryGame};
+inline ue3::FunctionRef aiStateName{"Core.Object.GetStateName", ue3::kEveryGame};
+inline ue3::FieldRef aiPawnController{"Engine.Pawn", "Controller", ue3::kEveryGame};
+inline ue3::ClassRef aiClass{"SFXGame.SFXAI_Henchman", ue3::kEveryGame};
+inline std::string OrderState(ue3::Object* pawn) {
+    auto* ai = ue3::runtime::IsAlive(pawn) ? aiPawnController.Read<ue3::Object*>(pawn).value_or(nullptr) : nullptr;
+    if (!ue3::runtime::IsAlive(ai) || !ue3::IsA(ai, aiClass)) return "no henchman AI";
+    std::string state = "?";
+    if (auto* fn = aiStateName.Get()) {
+        ue3::Params args(ue3::runtime::Get(), fn);
+        if (ue3::runtime::Call(ai, fn, args)) state = ue3::runtime::NameText(args.Return<ue3::Name>().value_or(ue3::Name{}));
+    }
+    auto const orders = aiOrders.ElementsOf(ai, 64);
+    auto const hold = aiHoldLocation.Read<ue3::Vector>(ai).value_or(ue3::Vector{});
+    auto const name = [](ue3::Object* o) { return o != nullptr ? ue3::runtime::Get().NameText(o) : std::string("none"); };
+    return std::format("state {}, {} queued order(s), hold at ({:.0f}, {:.0f}, {:.0f}){}{}, tether {:.0f}, following the level's {}, defending {}",
+        state, orders ? orders->count : -1, hold.x, hold.y, hold.z, aiHolding.ReadBool(ai).value_or(false) ? " (holding)" : "",
+        aiFollowPlayer.ReadBool(ai).value_or(false) ? ", follows Shepard" : "", aiTether.Read<float>(ai).value_or(-1.0f),
+        name(aiFollowActor.Read<ue3::Object*>(ai).value_or(nullptr)), name(aiDefend.Read<ue3::Object*>(ai).value_or(nullptr)));
+}
+#endif
 } // namespace mevr::game::le2_squad
 #endif

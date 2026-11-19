@@ -11,6 +11,8 @@
 #include "game/Weapon.hpp"
 #include "ue3/Handles.hpp"
 #include "ue3/Runtime.hpp"
+#include "core/vr/ActionCamera.hpp"
+#include "engine/GameAdapter.hpp"
 
 #include <Windows.h>
 
@@ -26,10 +28,13 @@
 
 namespace mevr::game::camera_shake {
 
-#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 
 namespace {
 
+// ME1's screen shakes are scaled at their sources (a weapon's stats, the Mako); ME2 and ME3 have none of these names, so
+// none of them compiles into their builds (docs/trilogy-parity-ledger.md G11): their adapter is the camera's modifiers below.
+#if defined(MEVR_GAME_LE1)
 struct Vec3 {
     float x = 0.0f, y = 0.0f, z = 0.0f;
 };
@@ -45,6 +50,7 @@ ue3::FieldRef gTheShake{"SFXGame.SFXCameraShakeBase", "TheShake"};
 ue3::FieldRef gRotAmplitude{gTheShake, "RotAmplitude"};
 ue3::FieldRef gLocAmplitude{gTheShake, "LocAmplitude"};
 ue3::FieldRef gFovAmplitude{gTheShake, "FOVAmplitude"};
+#endif
 // The camera modes' shakes from the body: ME2's SFXCameraMode has the same switch (GetCurrentShake reads the pawn behaviour's
 // camera shake interface only while it's set; research/le2-vrik.md "Camera shakes").
 ue3::ClassRef gCameraNativeBase{"SFXGame.SFXCameraNativeBase", ue3::kEveryGame};
@@ -52,11 +58,14 @@ ue3::ClassRef gCameraModeInterpolate{"SFXGame.SFXCameraMode_Interpolate", ue3::k
 ue3::FieldRef gCurrentCameraMode{"SFXGame.SFXCameraNativeBase", "CurrentCameraMode", ue3::kEveryGame};
 ue3::FieldRef gInterpolateTo{"SFXGame.SFXCameraMode_Interpolate", "To", ue3::kEveryGame};
 ue3::FieldRef gShakeEnabled{"SFXGame.SFXCameraMode", "bIsCameraShakeEnabled", ue3::kEveryGame};
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 // ME2's screen shakes have no per-weapon source (ME1's SFXWeaponStatsBase.FiringShake and SFXCameraShakeBase don't exist): every
 // shake the game's script starts goes to the player camera's SFXCameraModifier_ScreenShake (SFXPlayerCamera.AddScreenShake:
 // BioPlayerController.CameraShake, footsteps, hits, powers), and the engine's own (CameraShake objects: matinees, animation
 // notifies, Kismet) to Camera.CameraShakeCamMod. Both are camera modifiers: their bDisabled keeps them off the view.
+// ME3 has the same two modifiers on the same classes (its SDK lists SFXPlayerCamera.ScreenShakeModifier, Camera.
+// CameraShakeCamMod and CameraModifier.bDisabled) and takes ME2's way; which of its shakes go through them is [verify] in
+// the game (`camera shake: ... off in VR` names each modifier it found).
 ue3::FieldRef gScreenShakeModifier{"SFXGame.SFXPlayerCamera", "ScreenShakeModifier", ue3::kEveryGame};
 ue3::FieldRef gCameraShakeCamMod{"Engine.Camera", "CameraShakeCamMod", ue3::kEveryGame};
 ue3::FieldRef gModifierDisabled{"Engine.CameraModifier", "bDisabled", ue3::kEveryGame};
@@ -75,6 +84,7 @@ std::optional<bool> gViewOverride;
 std::uint64_t gSettingsMs = 0;
 std::string gSettingsText;
 
+#if defined(MEVR_GAME_LE1)
 // A screen shake we scaled: its object, its own amplitudes, and the scale written.
 struct Scaled {
     ue3::Object* shake = nullptr;
@@ -84,6 +94,7 @@ struct Scaled {
     float scale = 1.0f;
 };
 std::vector<Scaled> gScaled;
+#endif
 std::vector<ue3::Object*> gModesCleared;
 std::uint64_t gScales = 0, gModeClears = 0, gModeRestores = 0;
 bool gScreenActive = false, gViewActive = false;
@@ -121,6 +132,7 @@ void RefreshSettings() {
 
 // ---- 1. Screen shakes, scaled at their source ----------------------------------------------------------------------
 
+#if defined(MEVR_GAME_LE1)  // ME1's sources (ME2 and ME3 turn their shake modifiers off instead)
 bool WriteAmplitudes(Scaled const& s, float scale) {
     void* const base = gTheShake.Address(s.shake);
     if (base == nullptr) {
@@ -141,7 +153,6 @@ bool WriteAmplitudes(Scaled const& s, float scale) {
     return true;
 }
 
-#if !defined(MEVR_GAME_LE2)  // ME1's sources (ME2 turns its shake modifiers off instead)
 void Scale(ue3::Object* shake, char const* what, float scale) {
     if (shake == nullptr || !ue3::runtime::IsAlive(shake)) {
         return;
@@ -178,7 +189,7 @@ void Scale(ue3::Object* shake, char const* what, float scale) {
 }
 #endif
 
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 bool SetModifier(ue3::Object* modifier, bool disabled) {
     if (modifier == nullptr || !ue3::runtime::IsAlive(modifier) || gModifierDisabled.ReadBool(modifier).value_or(!disabled) == disabled ||
         !gModifierDisabled.WriteBool(modifier, disabled)) {
@@ -192,7 +203,7 @@ bool SetModifier(ue3::Object* modifier, bool disabled) {
 #endif
 
 void RestoreScreen(char const* why) {
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     int back = 0;
     for (ue3::Object* const modifier : gModifiersOff) {
         back += SetModifier(modifier, false) ? 1 : 0;
@@ -201,7 +212,7 @@ void RestoreScreen(char const* why) {
         log::Info("camera shake: the game's screen shakes back on ({} of {} camera modifiers; {})", back, gModifiersOff.size(), why);
     }
     gModifiersOff.clear();
-#endif
+#else
     int restored = 0;
     for (Scaled& s : gScaled) {
         if (s.scale != 1.0f && ue3::runtime::IsAlive(s.shake) && WriteAmplitudes(s, 1.0f)) {
@@ -212,22 +223,25 @@ void RestoreScreen(char const* why) {
     if (restored > 0) {
         log::Info("camera shake: the game's screen shakes back on {} of {} ({})", restored, gScaled.size(), why);
     }
+#endif
 }
 
 void TickScreen(bool vr) {
+#if defined(MEVR_GAME_LE1)
     std::erase_if(gScaled, [](Scaled const& s) { return !ue3::runtime::IsAlive(s.shake); });  // freed with a level
+#endif
     float const scale = vr ? gSettings.screen : 1.0f;
     gScreenActive = vr && scale < 1.0f;
     if (!gScreenActive) {
         RestoreScreen(vr ? "[Comfort] screenShake = 1" : "VR is off");
         return;
     }
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     // ME2: the camera's two shake modifiers off in VR, as ME1's sources at 0. A share between none and all would scale each
     // shake's amplitudes as it's added; not built: below one, the shakes are off.
     if (scale > 0.0f && !gToldPartial) {
         gToldPartial = true;
-        log::Info("camera shake: [Comfort] screenShake {:.2f}: ME2's screen shakes are on or off (off below 1); a share of them isn't built",
+        log::Info("camera shake: [Comfort] screenShake {:.2f}: this game's screen shakes are on or off (off below 1); a share of them isn't built",
             scale);
     }
     std::erase_if(gModifiersOff, [](ue3::Object* m) { return !ue3::runtime::IsAlive(m); });
@@ -277,6 +291,11 @@ bool FirstPersonClass(std::string_view name) {
     if (name.find("Vehicle") != std::string_view::npos || name.find("Sniper") != std::string_view::npos ||
         name.find("HipAim") != std::string_view::npos) {
         return false;
+    }
+    if constexpr (engine::adapter::kActionCameras) {
+        if (vr::IsActionCamera(name)) {
+            return true;
+        }  // ME3's roll, melee and hit cameras: first person too (the owner, 2026-11-18: no shakes there)
     }
     return name.find("Explore") != std::string_view::npos || name.find("Combat") != std::string_view::npos ||
            name.find("TightAim") != std::string_view::npos;
@@ -354,7 +373,7 @@ bool TryStartup() {
     if (!ue3::runtime::Up()) {
         return false;
     }
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     gScreenReady = gScreenShakeModifier.Get() != nullptr && gCameraShakeCamMod.Get() != nullptr && gModifierDisabled.Get() != nullptr;
 #else
     gScreenReady = gTheShake.Get() != nullptr && gRotAmplitude.Get() != nullptr && gLocAmplitude.Get() != nullptr &&
@@ -362,8 +381,13 @@ bool TryStartup() {
 #endif
     gViewReady = gShakeEnabled.Get() != nullptr && gCurrentCameraMode.Get() != nullptr;
     if (!gScreenReady) {
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+        log::Warn("camera shake: SFXPlayerCamera.ScreenShakeModifier, Camera.CameraShakeCamMod or CameraModifier.bDisabled not found: "
+                  "the game's screen shakes stay as they are");
+#else
         log::Warn("camera shake: SFXCameraShakeBase.TheShake or the weapon's FiringShake not found: the game's screen shakes stay as "
                   "they are");
+#endif
     }
     if (!gViewReady) {
         log::Warn("camera shake: SFXCameraMode.bIsCameraShakeEnabled not found: the body's camera shakes stay on in first person");
@@ -405,11 +429,13 @@ std::string Command(std::string const& args) {
 
 std::string StatusJson() {
     std::string shakes;
+#if defined(MEVR_GAME_LE1)
     for (Scaled const& s : gScaled) {
         shakes += std::format("{}{{\"name\": \"{}\", \"scale\": {:.2f}, \"rot\": [{:.2f}, {:.2f}, {:.2f}], \"loc\": [{:.2f}, {:.2f}, {:.2f}], "
                               "\"fov\": {:.2f}}}",
             shakes.empty() ? "" : ", ", s.name, s.scale, s.rot.x, s.rot.y, s.rot.z, s.loc.x, s.loc.y, s.loc.z, s.fov);
     }
+#endif
     return std::format("{{\"why\": \"{}\", \"screenShake\": {:.2f}, \"viewShake\": {}, \"screenActive\": {}, \"viewActive\": {}, "
                        "\"scales\": {}, \"modesCleared\": {}, \"modeClears\": {}, \"modeRestores\": {}, \"shakes\": [{}]}}",
         gWhy, gSettings.screen, gSettings.view ? "true" : "false", gScreenActive ? "true" : "false", gViewActive ? "true" : "false",
@@ -419,7 +445,9 @@ std::string StatusJson() {
 void Shutdown() {
     RestoreScreen("the mod unloads");
     RestoreModes("the mod unloads");
+#if defined(MEVR_GAME_LE1)
     gScaled.clear();
+#endif
     gScales = gModeClears = gModeRestores = 0;
     gScreenActive = gViewActive = gScreenReady = gViewReady = false;
     gScreenOverride.reset();
@@ -427,14 +455,20 @@ void Shutdown() {
     gSettingsMs = 0;
     gSettingsText.clear();
     gWhy = "not started";
+#if defined(MEVR_GAME_LE1)
     for (ue3::FieldRef* f : {&gWeaponStats, &gFiringShake, &gTightAimFiringShake, &gJumpShake, &gBoostShake, &gTheShake, &gRotAmplitude,
              &gLocAmplitude, &gFovAmplitude, &gCurrentCameraMode, &gInterpolateTo, &gShakeEnabled}) {
+#else
+    for (ue3::FieldRef* f : {&gCurrentCameraMode, &gInterpolateTo, &gShakeEnabled}) {
+#endif
         f->Reset();
     }
+#if defined(MEVR_GAME_LE1)
     gVehicleWheeled.Reset();
+#endif
     gCameraNativeBase.Reset();
     gCameraModeInterpolate.Reset();
-#if defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     gScreenShakeModifier.Reset();
     gCameraShakeCamMod.Reset();
     gModifierDisabled.Reset();
@@ -451,7 +485,7 @@ bool TryStartup() {
 void Tick() {}
 
 std::string Command(std::string const&) {
-    return "mevr shake: LE1 and LE2 only";
+    return "mevr shake: no game in this build";
 }
 
 std::string StatusJson() {

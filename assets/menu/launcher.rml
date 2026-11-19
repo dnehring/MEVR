@@ -1,0 +1,28 @@
+<!-- SPDX-License-Identifier: MIT -->
+<rml><head><title>MEVR Launcher</title>
+<link type="text/rcss" href="main.rcss"/>
+<link type="text/rcss" href="launcher.rcss"/>
+</head><body data-model="launcher" data-class-passive="passive">
+<div class="top">
+ <div class="brand"><div class="logo"/><div><div class="brandName">MEVR</div><div class="brandSub">Legendary Edition</div></div></div>
+ <div class="chips"><div class="chip ok"><div class="ico i-headset"/><span>SteamVR</span></div><div class="chip"><span>Launcher prototype</span></div></div>
+ <button class="btn" data-event-click="act('recenter')"><div class="sweep"/><span>Recenter</span></button>
+ <button class="btn" data-event-click="act('quit')"><div class="sweep"/><span>Close</span></button>
+</div>
+<div class="picker">
+ <div class="eyebrow">YOUR JOURNEY BEGINS HERE</div>
+ <div class="headline">Mass Effect in VR</div>
+ <div class="intro">Choose your game. We will stay with you while it starts.</div>
+ <div class="games">
+  <div class="game available"><div class="number">01</div><div class="game-name">MASS EFFECT</div><div class="game-note">Legendary Edition</div><div class="rule"/>
+   <div class="game-copy">Step aboard the Normandy.<br/>Your story starts with Shepard.</div>
+   <button id="launch" class="btn primary" data-class-disabled="busy" data-event-click="act('launch')"><div class="sweep"/><div class="bi i-play"/><span>Launch in VR</span></button>
+  </div>
+  <div class="game unavailable"><div class="number">02</div><div class="game-name">MASS EFFECT 2</div><div class="game-note">Legendary Edition</div><div class="rule"/><div class="game-copy">VR support is in development.</div><div class="unavailable-label">Not available in VR yet</div></div>
+  <div class="game unavailable"><div class="number">03</div><div class="game-name">MASS EFFECT 3</div><div class="game-note">Legendary Edition</div><div class="rule"/><div class="game-copy">VR support is in development.</div><div class="unavailable-label">Not available in VR yet</div></div>
+ </div>
+ <div class="launch-status" data-class-warning="failed"><div class="status-title">{{title}}</div><div class="status-detail">{{detail}}</div></div>
+</div>
+<div class="launcher-footer"><span>Point and pull the trigger to select</span><span>A room-anchored menu · Move your head to look around</span></div>
+<div class="passive-notice" data-if="passive"><div class="status-title">{{title}}</div><div class="status-detail">{{detail}}</div></div>
+</body></rml>

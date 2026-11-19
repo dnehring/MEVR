@@ -747,6 +747,297 @@ bool Show(float lifeS) {
     return true;
 }
 
+#elif defined(MEVR_GAME_LE3)
+
+// ME3's omni-tool is not a crust effect: it is one of ME3's client effects (RvrClientEffect, its own effect system), the
+// one the game's own scripts start for Shepard's left arm (SFXCustomAction_OmniWave's and SFXDoor's default,
+// BioVFX_T_TechPowers._OmniTool.VCFX.OmniTool_LeftFull_VCFX_M in SFXGame.pcc, always loaded): the gauntlet OmniArm_Loop at
+// LeftElbowTwist1 and the hand's display OmniHand_Loop, looping, attached to the bones by the effect itself, faded in and
+// out by its own modules. So the ME3 adapter starts it as those scripts do, RvrClientEffectManager.Start(effect, pawn), and
+// ends it with Stop(effect, id, bAllowCooldown) (research/le3-native-gui.md "The omni-tool on Shepard's arm"). The game forces
+// the difference; what it is for (when it shows, the display the wrist screens project from) is ME1's.
+ue3::ClassRef gManagerClass{"SFXGame.RvrClientEffectManager", ue3::kEveryGame};
+ue3::ClassRef gMultiClass{"SFXGame.RvrClientEffectMulti", ue3::kEveryGame};
+ue3::FunctionRef gGetManager{"SFXGame.RvrClientEffectManager.GetClientEffectManager", ue3::kEveryGame};
+ue3::FunctionRef gStart{"SFXGame.RvrClientEffectManager.Start", ue3::kEveryGame};
+ue3::FunctionRef gStop{"SFXGame.RvrClientEffectManager.Stop", ue3::kEveryGame};
+ue3::ClassRef gParticleClass{"Engine.ParticleSystemComponent", ue3::kEveryGame};
+ue3::FieldRef gParticleTemplate{"Engine.ParticleSystemComponent", "Template", ue3::kEveryGame};
+ue3::FieldRef gComponentOwner{"Engine.ActorComponent", "Owner", ue3::kEveryGame};
+ue3::FieldRef gLocalToWorld{"Engine.PrimitiveComponent", "LocalToWorld", ue3::kEveryGame};
+// Whose display a particle system is (FindDisplay): its actor the client effect's, whose effect component is active, not
+// stopping, and was started for the player's pawn (its target's Instigator). The particle system's own bWasDeactivated isn't
+// read: no ReflectCheck row vouches for it (LExSDKv2's particle headers are 8 bytes early); its effect's state says the same.
+ue3::ClassRef gEffectActorClass{"SFXGame.RvrClientEffectActor", ue3::kEveryGame};
+ue3::FieldRef gEffectComponent{"SFXGame.RvrClientEffectActor", "m_pCEffectComponent", ue3::kEveryGame};
+ue3::FieldRef gEffectActive{"SFXGame.RvrClientEffectComponent", "m_bActive", ue3::kEveryGame};
+ue3::FieldRef gEffectStopping{"SFXGame.RvrClientEffectComponent", "m_bStopRequested", ue3::kEveryGame};
+ue3::FieldRef gEffectTarget{"SFXGame.RvrClientEffectComponent", "m_oTarget", ue3::kEveryGame};
+ue3::FieldRef gEffectInstigator{gEffectTarget, "Instigator"};
+
+constexpr std::string_view kEffect = "BioVFX_T_TechPowers._OmniTool.VCFX.OmniTool_LeftFull_VCFX_M";
+constexpr std::string_view kDisplay = "BioVFX_T_TechPowers._OmniTool.Particles.OmniHand_Loop";
+constexpr std::uint64_t kClassDefaultFlag = 0x200;  // EObjectFlags: RF_ClassDefaultObject
+constexpr std::uint64_t kRetryMs = 2000;
+constexpr std::uint64_t kSettleMs = 150;            // as ME1's: the attached display follows the mesh a tick late
+
+struct Guid {
+    std::uint32_t a = 0, b = 0, c = 0, d = 0;
+    bool Valid() const { return (a | b | c | d) != 0; }
+};
+static_assert(sizeof(Guid) == 16);
+
+struct State {
+    void const* world = nullptr;
+    ue3::Object* effect = nullptr;    // the client effect (an RvrClientEffectMulti), found once per world
+    bool searched = false;
+    ue3::Object* pawn = nullptr;      // the pawn it was started on
+    Guid id;                          // Start's id: what Stop ends
+    std::uint64_t onMs = 0;
+    std::uint64_t lastTryMs = 0;
+    int made = 0;
+    bool byHand = false;
+    ue3::Object* display = nullptr;   // the display's particle system as the effect spawned it
+    std::uint64_t displayLookMs = 0;
+    bool displayLogged = false;
+    bool displayMissLogged = false;   // why no OmniHand_Loop near Shepard was the player's own (once per start)
+    std::string why = "off";
+};
+State gS;
+std::mutex gStatusMutex;
+std::string gStatusJson = "{\"on\": false}";
+
+void SetStatus() {
+    std::lock_guard<std::mutex> const lock(gStatusMutex);
+    gStatusJson = std::format("{{\"on\": {}, \"made\": {}, \"effect\": {}, \"display\": {}, \"state\": \"{}\", \"onMs\": {}, "
+        "\"route\": \"RvrClientEffectManager\"}}", gS.id.Valid(), gS.made, gS.effect != nullptr, gS.display != nullptr, gS.why, gS.onMs);
+}
+
+ue3::Object* Effect() {
+    void const* const world = engine::World();
+    if (gS.world != world) {
+        gS = State{};
+        gS.world = world;
+    }
+    if (gS.effect != nullptr && ue3::runtime::IsAlive(gS.effect)) {
+        return gS.effect;
+    }
+    if (gS.searched) {
+        return nullptr;
+    }
+    gS.searched = true;
+    ue3::Reflection& r = ue3::runtime::Get();
+    ue3::Class* const cls = gMultiClass.Get();
+    for (std::int32_t i = 0, n = cls != nullptr ? r.ObjectCount() : 0; i < n; ++i) {
+        ue3::Object* const o = r.ObjectAt(i);
+        if (o == nullptr || !r.IsAlive(o) || !r.IsA(o, cls)) {
+            continue;
+        }
+        std::string const name = r.FullName(o);
+        if (name.size() >= kEffect.size() && name.compare(name.size() - kEffect.size(), kEffect.size(), kEffect) == 0) {
+            gS.effect = o;
+            log::Info("omni tool: the game's omni-tool is {} (ME3's client effect)", name);
+            return o;
+        }
+    }
+    log::Warn("omni tool: {} isn't loaded: no omni-tool on the arm (the screen still projects)", kEffect);
+    return nullptr;
+}
+
+// RvrClientEffectManager.GetClientEffectManager, a static native: called on the class's default object (script's
+// `Class'RvrClientEffectManager'.static.`).
+ue3::Object* Manager() {
+    ue3::Reflection& r = ue3::runtime::Get();
+    ue3::Class* const cls = gManagerClass.Get();
+    ue3::Function* const fn = gGetManager.Get();
+    if (cls == nullptr || fn == nullptr) {
+        return nullptr;
+    }
+    ue3::Object* defaults = nullptr;
+    for (std::int32_t i = 0, n = r.ObjectCount(); i < n && defaults == nullptr; ++i) {
+        ue3::Object* const o = r.ObjectAt(i);
+        if (o != nullptr && r.ClassOf(o) == cls && (r.FlagsOf(o) & kClassDefaultFlag) != 0) {
+            defaults = o;
+        }
+    }
+    if (defaults == nullptr) {
+        return nullptr;
+    }
+    ue3::Params p(r, fn);
+    if (!p.Valid() || !ue3::runtime::Call(defaults, fn, p)) {
+        return nullptr;
+    }
+    ue3::Object* const manager = p.Return<ue3::Object*>().value_or(nullptr);
+    return ue3::runtime::IsAlive(manager) ? manager : nullptr;
+}
+
+// Why an OmniHand_Loop system isn't the player's own live display, or nullptr if it is (FindDisplay).
+char const* NotOurs(ue3::Object* system) {
+    ue3::Reflection& r = ue3::runtime::Get();
+    ue3::Object* const owner = gComponentOwner.Read<ue3::Object*>(system).value_or(nullptr);
+    if (owner == nullptr || !r.IsAlive(owner) || !ue3::IsA(owner, gEffectActorClass)) {
+        return "not a client effect's actor";
+    }
+    ue3::Object* const component = gEffectComponent.Read<ue3::Object*>(owner).value_or(nullptr);
+    if (component == nullptr || !r.IsAlive(component)) {
+        return "no effect component";
+    }
+    if (!gEffectActive.ReadBool(component).value_or(false) || gEffectStopping.ReadBool(component).value_or(true)) {
+        return "its effect inactive or stopping (pooled, or ending)";
+    }
+    void const* const target = gEffectTarget.Address(component);
+    ue3::Object* const instigator = target != nullptr ? gEffectInstigator.Read<ue3::Object*>(target).value_or(nullptr) : nullptr;
+    if (instigator == nullptr || instigator != gS.pawn) {
+        return "started for someone else (a squadmate's, or another effect)";
+    }
+    return nullptr;
+}
+
+// The display's particle system: the player's own live OmniHand_Loop (NotOurs), the nearest to Shepard within
+// kDisplayNearUnits, looked for again every half second until found (the effect spawns its emitters as it starts). The effect
+// spawns its particle systems on pooled actors of its own (RvrClientEffectSpawnable_N, their components' Owner), attached to
+// Shepard's bones; a pooled one keeps the template after it stopped, and a squadmate's omni-tool has the same one: neither is
+// the player's display (the nearest within 250 units used to be taken, whichever it was).
+void FindDisplay() {
+    if (gS.display != nullptr && ue3::runtime::IsAlive(gS.display) && NotOurs(gS.display) == nullptr) {
+        return;
+    }
+    gS.display = nullptr;
+    std::uint64_t const now = GetTickCount64();
+    if (now - gS.displayLookMs < 500) {
+        return;
+    }
+    gS.displayLookMs = now;
+    struct Matrix {
+        float m[16];
+    };
+    constexpr float kDisplayNearUnits = 250.0f;
+    auto const pawnAt = player::Location(gS.pawn);
+    if (!pawnAt) {
+        return;
+    }
+    ue3::Reflection& r = ue3::runtime::Get();
+    ue3::Class* const cls = gParticleClass.Get();
+    float best = kDisplayNearUnits;
+    std::string skipped;  // the candidates near Shepard that weren't ours, and why (logged once while none is)
+    for (std::int32_t i = 0, n = cls != nullptr ? r.ObjectCount() : 0; i < n; ++i) {
+        ue3::Object* const o = r.ObjectAt(i);
+        if (o == nullptr || !r.IsAlive(o) || !r.IsA(o, cls) || (r.FlagsOf(o) & kClassDefaultFlag) != 0) {
+            continue;
+        }
+        ue3::Object* const system = gParticleTemplate.Read<ue3::Object*>(o).value_or(nullptr);
+        if (system == nullptr || !r.IsAlive(system)) {
+            continue;
+        }
+        std::string const name = r.FullName(system);
+        if (name.size() < kDisplay.size() || name.compare(name.size() - kDisplay.size(), kDisplay.size(), kDisplay) != 0) {
+            continue;
+        }
+        auto const m = gLocalToWorld.Read<Matrix>(o);
+        if (!m) {
+            continue;
+        }
+        float const d = std::hypot(m->m[12] - pawnAt->x, m->m[13] - pawnAt->y, m->m[14] - pawnAt->z);
+        if (d >= kDisplayNearUnits) {
+            continue;
+        }
+        if (char const* const why = NotOurs(o)) {
+            skipped += std::format("{}{} ({:.0f} units: {})", skipped.empty() ? "" : "; ", r.NameText(o), d, why);
+            continue;
+        }
+        if (d < best) {
+            best = d;
+            gS.display = o;
+        }
+    }
+    if (gS.display != nullptr && !gS.displayLogged) {
+        gS.displayLogged = true;
+        ue3::Object* const owner = gComponentOwner.Read<ue3::Object*>(gS.display).value_or(nullptr);
+        log::Info("omni tool: its display is {} ({:.0f} units from Shepard; its actor {}; the player's own, live){}", r.FullName(gS.display),
+            best, owner != nullptr ? r.FullName(owner) : std::string("none"),
+            skipped.empty() ? std::string() : std::format("; passed over: {}", skipped));
+    } else if (gS.display == nullptr && !skipped.empty() && !gS.displayMissLogged && now - gS.onMs > 2000) {
+        gS.displayMissLogged = true;
+        log::Info("omni tool: no display of the player's own near Shepard yet (the screens project from the controller's wrist): {}",
+            skipped);
+    }
+}
+
+void End(char const* why, bool cooldown) {
+    if (gS.id.Valid() && gS.effect != nullptr && ue3::runtime::IsAlive(gS.effect)) {
+        ue3::Object* const manager = Manager();
+        bool ended = false;
+        if (manager != nullptr && gStop.Get() != nullptr) {
+            ue3::Params p(ue3::runtime::Get(), gStop.Get());
+            ended = p.Set("pEffect", gS.effect) && p.Set("Id", gS.id) && p.SetBool("bAllowCooldown", cooldown) &&
+                    ue3::runtime::Call(manager, gStop.Get(), p);
+        }
+        log::Info("omni tool: off ({}){}", why, ended ? "" : ": RvrClientEffectManager.Stop wasn't called");
+    }
+    gS.id = {};
+    gS.pawn = nullptr;
+    gS.byHand = false;
+    gS.onMs = 0;
+    gS.display = nullptr;
+    gS.why = why;
+    SetStatus();
+}
+
+bool Show() {
+    ue3::Object* const controller = player::Controller();
+    ue3::Object* const pawn = controller != nullptr ? player::Pawn(controller) : nullptr;
+    if (pawn == nullptr) {
+        gS.why = "no pawn";
+        return false;
+    }
+    if (gS.id.Valid() && gS.pawn == pawn && ue3::runtime::IsAlive(pawn)) {
+        FindDisplay();
+        return true;
+    }
+    if (gS.id.Valid()) {
+        End("the pawn changed", true);
+    }
+    std::uint64_t const now = GetTickCount64();
+    if (now - gS.lastTryMs < kRetryMs) {
+        return false;
+    }
+    gS.lastTryMs = now;
+    ue3::Object* const effect = Effect();
+    ue3::Object* const manager = effect != nullptr ? Manager() : nullptr;
+    if (effect == nullptr || manager == nullptr || gStart.Get() == nullptr) {
+        gS.why = effect == nullptr ? "no effect" : "RvrClientEffectManager not found";
+        log::Warn("omni tool: not started ({})", gS.why);
+        SetStatus();
+        return false;
+    }
+    ue3::Params p(ue3::runtime::Get(), gStart.Get());
+    if (!p.Set("pEffect", effect) || !p.Set("pInstigator", pawn) || !ue3::runtime::Call(manager, gStart.Get(), p)) {
+        gS.why = "the call failed";
+        log::Warn("omni tool: RvrClientEffectManager.Start failed");
+        SetStatus();
+        return false;
+    }
+    gS.id = p.Return<Guid>().value_or(Guid{});
+    if (!gS.id.Valid()) {
+        gS.why = "Start gave no id";
+        log::Warn("omni tool: RvrClientEffectManager.Start gave no id: nothing to stop it with");
+        SetStatus();
+        return false;
+    }
+    gS.pawn = pawn;
+    gS.onMs = now;
+    gS.display = nullptr;
+    gS.displayLookMs = 0;
+    gS.displayMissLogged = false;
+    ++gS.made;
+    gS.why = "on";
+    log::Info("omni tool: on Shepard's arm ({} started by RvrClientEffectManager on {})", ue3::runtime::FullName(effect),
+        ue3::runtime::FullName(pawn));
+    FindDisplay();
+    SetStatus();
+    return true;
+}
+
 #endif
 
 } // namespace
@@ -776,6 +1067,20 @@ void Tick(bool wanted) {
         End("the screen closed", kFadeS);
     }
     PowerStep();
+#elif defined(MEVR_GAME_LE3)
+    if (!ue3::runtime::Up()) {
+        return;
+    }
+    if (engine::World() != gS.world && gS.world != nullptr) {
+        gS = State{};  // its effect instance went with the old world
+        SetStatus();
+    }
+    if (wanted) {
+        gS.byHand = false;
+        Show();
+    } else if (gS.id.Valid() && !gS.byHand) {
+        End("the screen closed", true);  // the effect's own cooldown modules fade it
+    }
 #else
     (void)wanted;
 #endif
@@ -823,6 +1128,28 @@ std::string Console(std::string_view args) {
         return std::format("omni tool: SetState({}) {}", static_cast<int>(seconds), ok ? "called" : "failed");
     }
     return StatusJson();
+#elif defined(MEVR_GAME_LE3)
+    std::istringstream words{std::string(args)};
+    std::string sub;
+    words >> sub;
+    if (sub == "on") {
+        if (gS.id.Valid()) End("restart by hand", false);
+        gS.lastTryMs = 0;
+        bool const ok = Show();
+        gS.byHand = ok;
+        return ok ? std::format("omni tool on: {}", ue3::runtime::FullName(gS.effect)) : std::format("omni tool: not started ({})", gS.why);
+    }
+    if (sub == "off") {
+        End("by hand", true);
+        return "omni tool off";
+    }
+    if (sub == "display") {
+        FindDisplay();
+        auto const at = DisplayWorld();
+        return at ? std::format("omni tool: the display at ({:.1f}, {:.1f}, {:.1f})", at->x, at->y, at->z)
+                  : std::string("omni tool: no display found on Shepard (yet)");
+    }
+    return StatusJson();
 #else
     (void)args;
     return "omni tool: LE1 and LE2 only";
@@ -832,6 +1159,8 @@ std::string Console(std::string_view args) {
 std::uint64_t OnMs() {
 #if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
     return Alive(gS.effect) ? gS.adoptedMs : 0;
+#elif defined(MEVR_GAME_LE3)
+    return gS.id.Valid() ? gS.onMs : 0;
 #else
     return 0;
 #endif
@@ -850,13 +1179,25 @@ std::optional<ue3::Vector> DisplayWorld() {
         return std::nullopt;
     }
     return ue3::Vector{m->m[12], m->m[13], m->m[14]};
+#elif defined(MEVR_GAME_LE3)
+    if (!gS.id.Valid() || gS.display == nullptr || !ue3::runtime::IsAlive(gS.display) || GetTickCount64() - gS.onMs < kSettleMs) {
+        return std::nullopt;
+    }
+    struct Matrix {
+        float m[16];  // FMatrix, row-major; the translation is the last row
+    };
+    auto const m = gLocalToWorld.Read<Matrix>(gS.display);
+    if (!m) {
+        return std::nullopt;
+    }
+    return ue3::Vector{m->m[12], m->m[13], m->m[14]};
 #else
     return std::nullopt;
 #endif
 }
 
 std::string StatusJson() {
-#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
+#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     std::lock_guard<std::mutex> const lock(gStatusMutex);
     return gStatusJson;
 #else
@@ -868,6 +1209,10 @@ void Shutdown() {
 #if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2)
     if (gS.effect != nullptr && engine::World() == gS.world) {
         End("the mod unloads", kFadeS);
+    }
+#elif defined(MEVR_GAME_LE3)
+    if (gS.id.Valid() && engine::World() == gS.world) {
+        End("the mod unloads", true);
     }
 #endif
 }

@@ -447,10 +447,11 @@ std::string Listing(Layout const& layout) {
             out += "  (more not listed)\n";
         }
     };
+    std::string const folder = layout.Game().folder;
     out += "File names, sizes and modified times (local) only: no other mod's contents are in this report.\n\n";
-    add(layout.Win64(), false, "Game\\ME1\\Binaries\\Win64 (top level):");
+    add(layout.Win64(), false, "Game\\" + folder + "\\Binaries\\Win64 (top level):");
     out += "\n";
-    add(layout.Asi(), true, "Game\\ME1\\Binaries\\Win64\\ASI (everything):");
+    add(layout.Asi(), true, "Game\\" + folder + "\\Binaries\\Win64\\ASI (everything):");
     return out;
 }
 
@@ -768,6 +769,9 @@ LogFacts ReadLogFacts(std::string_view modLog, std::string_view halcyonLog) {
     });
     std::string halcyonRuntime, halcyonSystem;
     Lines(halcyonLog, [&](std::string_view line) {
+        if (line.find(" | [XR] xrCreateInstance (") != std::string_view::npos) {
+            f.xrCreateInstancePending = line.find(") starting (pid ") != std::string_view::npos;
+        }
         if (line.find("[XR] recommended eye image ") != std::string_view::npos) {
             std::string_view v = line.substr(line.find("[XR] recommended eye image ") + 27);
             f.eyeSize = std::string(v.substr(0, v.find(';')));
@@ -855,11 +859,16 @@ std::vector<IniDefault> const& ModIniDefaults() {
 }
 
 std::vector<SettingDiff> DiffModIni(std::string_view text) {
+    return DiffModIni(text, GameId::LE1);
+}
+
+std::vector<SettingDiff> DiffModIni(std::string_view text, GameId game) {
+    std::string const file = std::string(Spec(game).key) + "MEVR.ini";
     std::vector<SettingDiff> out;
     for (IniDefault const& d : ModIniDefaults()) {
         auto const v = ini::Get(text, d.section, d.key);
         if (v && !SameValue(*v, d.value)) {
-            out.push_back({"LE1MEVR.ini", d.section, d.key, *v, d.value});
+            out.push_back({file, d.section, d.key, *v, d.value});
         }
     }
     return out;
@@ -912,6 +921,9 @@ std::string Headline(Bundle const& b) {
         }
         return "Crash: " + e;
     }
+    if (b.facts.xrCreateInstancePending && (b.problems.items.empty() || b.problems.items.front().level != "error")) {
+        return "OpenXR instance creation has no result in the renderer log";
+    }
     for (Problem const& p : b.problems.items) {
         return (p.level == "error" ? "Error: " : "Warning: ") + Cut(p.text, 160);
     }
@@ -941,14 +953,20 @@ void ProblemBlock(std::string& md, Problems const& p, std::size_t limit) {
 
 std::string BuildWith(Bundle const& b, std::size_t problemLimit, std::size_t diffLimit) {
     Bundle const& x = b;
+    // The report's game: its exe, its mod log and settings, its renderer's log and settings.
+    GameSpec const& spec = Spec(x.game);
+    std::string const key = spec.key;
+    std::string const exe = spec.exe;
+    std::string const rendererLog = detect::Utf8(spec.rendererLog);
+    std::string const rendererIni = spec.rendererIni;
     std::string md;
     md += "# MEVR problem report\n\n";
     md += std::format(
         "MEVR is a free, open-source VR mod for Mass Effect Legendary Edition (Mass Effect 1 first): a C++ ASI plugin the game "
         "loads at start that renders the game in stereo through OpenXR (Halcyon's renderer, built in), with hand-tracked aiming, arm "
-        "IK, body holsters, a VR menu and comfort options. It runs only on MassEffect1.exe 2.0.0.48602. Repository: {}. "
+        "IK, body holsters, a VR menu and comfort options. It runs only on {} 2.0.0.48602. Repository: {}. "
         "Troubleshooting guide: {}. Issues: {}.\n\n",
-        kRepoUrl, kTroubleshootingUrl, kIssuesUrl);
+        exe, kRepoUrl, kTroubleshootingUrl, kIssuesUrl);
     md += std::format(
         "This report was made by MEVR Setup {} on the player's PC. Personal details were removed before anything was written "
         "({} redactions: Windows user name, computer name, profile folder, e-mail addresses). Nothing was uploaded: the player "
@@ -959,7 +977,7 @@ std::string BuildWith(Bundle const& b, std::size_t problemLimit, std::size_t dif
     auto row = [&](char const* name, std::string const& value) { md += std::format("| {} | {} |\n", name, Or(value)); };
     row("MEVR running (from the log)", x.system.runningMod);
     row("MEVR installed (install record)", x.system.installedVersion);
-    row("Game (MassEffect1.exe)", x.system.gameVersion + (x.system.store.empty() ? "" : ", " + x.system.store));
+    row(("Game (" + exe + ")").c_str(), x.system.gameVersion + (x.system.store.empty() ? "" : ", " + x.system.store));
     row("Windows", x.system.windows);
     row("GPU", x.system.gpu);
     row("GPU driver", x.system.gpuDriver);
@@ -971,6 +989,9 @@ std::string BuildWith(Bundle const& b, std::size_t problemLimit, std::size_t dif
     md += "\n";
 
     md += "## What went wrong\n\n";
+    if (x.facts.xrCreateInstancePending) {
+        md += "The latest renderer log records the start of `xrCreateInstance` and has no result for that call. See logs/MELEVR_Log.txt.\n\n";
+    }
     if (x.crash.present) {
         md += x.crash.stale ? "### An earlier crash (before the last two sessions: maybe not this problem)\n\n" : "### The game crashed\n\n";
         md += std::format("- When: {}\n- Exception: {}\n- Faulting module+offset: {}\n", Or(x.crash.when), x.crash.exception, Or(x.crash.location));
@@ -990,7 +1011,7 @@ std::string BuildWith(Bundle const& b, std::size_t problemLimit, std::size_t dif
         }
         md += "```\n\nThe full breadcrumbs (the last ProcessEvents, script handler calls and mod writes) are in logs/crash-breadcrumbs.txt.\n\n";
     }
-    md += std::format("### Last session (logs/LE1MEVR.log): {} errors, {} warnings\n\n", x.problems.errors, x.problems.warnings);
+    md += std::format("### Last session (logs/{}MEVR.log): {} errors, {} warnings\n\n", key, x.problems.errors, x.problems.warnings);
     if (x.problems.items.empty()) {
         md += "None.\n\n";
     } else {
@@ -998,13 +1019,13 @@ std::string BuildWith(Bundle const& b, std::size_t problemLimit, std::size_t dif
         md += "\n";
     }
     if (!x.previousProblems.items.empty()) {
-        md += std::format("### The session before (logs/LE1MEVR.prev.log): {} errors, {} warnings\n\n", x.previousProblems.errors,
+        md += std::format("### The session before (logs/{}MEVR.prev.log): {} errors, {} warnings\n\n", key, x.previousProblems.errors,
             x.previousProblems.warnings);
         ProblemBlock(md, x.previousProblems, std::max<std::size_t>(problemLimit / 3, 3));
         md += "\n";
     }
     if (!x.rendererProblems.items.empty()) {
-        md += std::format("### Renderer log (Halcyon's, logs/MELEVR_Log.txt): {} lines with error, failed or exception\n\n", x.rendererProblems.errors);
+        md += std::format("### Renderer log (Halcyon's, logs/{}): {} lines with error, failed or exception\n\n", rendererLog, x.rendererProblems.errors);
         ProblemBlock(md, x.rendererProblems, std::max<std::size_t>(problemLimit / 3, 3));
         md += "\n";
     }
@@ -1021,8 +1042,11 @@ std::string BuildWith(Bundle const& b, std::size_t problemLimit, std::size_t dif
             }
             md += std::format("- {} [{}] {} = {} (default {})\n", d.file, d.section, d.key, d.value, d.defaultValue.empty() ? "empty" : d.defaultValue);
         }
-        md += "\nOnly the keys our templates name are compared: LE1MEVR.ini's player settings, and MELEVR.ini's active profile against the "
-              "release file the setup installs (the resolution keys differ by design).\n\n";
+        md += x.game == GameId::LE1
+            ? std::string("\nOnly the keys our templates name are compared: LE1MEVR.ini's player settings, and MELEVR.ini's active profile against the "
+                          "release file the setup installs (the resolution keys differ by design).\n\n")
+            : "\nOnly the keys our template names are compared: " + key + "MEVR.ini's player settings (the defaults are Mass Effect 1's). " +
+                  rendererIni + ", the renderer's own settings, is in the zip as it is.\n\n";
     }
 
     md += "## Files in this zip\n\n";
@@ -1038,10 +1062,20 @@ std::string BuildWith(Bundle const& b, std::size_t problemLimit, std::size_t dif
         md += ".\n";
     }
     md += "\nFor an assistant reading the zip: logs/LE1MEVR.log is the mod's own log of this session (lines \"[time] [level] text\"); "
-          "logs/SetupLaunch.log records Setup's Steam launch attempts and Windows errors; "
+          "logs/SetupLaunch.log records Setup's runtime check and game launch attempts; "
           "logs/MELEVR_Log.txt is the renderer's (Halcyon's) log of its last session; logs/MEVRLoader.log (or LEBinkProxy's bink2w64_proxy.log) is the ASI loader's; "
+          "logs/MEVRLauncherLoader.log (if included) comes from the Legendary Edition picker; "
           "perf/ (if included) is a frame-timing capture: tools/perf-probe.py in the repository reads it; "
           "system/folders.txt lists the game's Win64 and ASI folders (other mods' DLLs there can conflict).\n\n";
+    if (x.game != GameId::LE1) {
+        // The paragraph above names Mass Effect 1's files: a sequel's report has its own in the same places.
+        for (auto const& [from, to] : {std::pair<std::string, std::string>{"logs/LE1MEVR.log", "logs/" + key + "MEVR.log"},
+                 std::pair<std::string, std::string>{"logs/MELEVR_Log.txt", "logs/" + rendererLog}}) {
+            for (std::size_t at = md.find(from); at != std::string::npos; at = md.find(from, at + to.size())) {
+                md.replace(at, from.size(), to);
+            }
+        }
+    }
 
     md += "## Paste this into your AI assistant\n\n```text\n";
     md += std::format(
@@ -1153,10 +1187,21 @@ Bundle Collect(Options const& options) {
 
 Bundle Collect(Options const& options, Redactor const& redactor) {
     Bundle b;
+    b.game = options.game;
     b.snapshot = options.snapshot;
+    GameSpec const& spec = Spec(options.game);
     fs::path const local = options.localData.empty() ? LocalDataDir() : options.localData;
-    fs::path const halcyonLog = options.halcyonLog.empty() ? detect::HalcyonLogPath() : options.halcyonLog;
-    Layout const layout{options.gameRoot};
+    fs::path const halcyonLog = options.halcyonLog.empty() ? detect::RendererLogPath(options.game) : options.halcyonLog;
+    Layout const layout{options.gameRoot, options.game};
+    GamePaths const& p = layout.Paths();
+    // The names in the zip: logs/LE1MEVR.log, logs/MELEVR_Log.txt, settings/LE1MEVR.ini, settings/MELEVR.ini for Mass
+    // Effect 1; the sequels' own in the same places.
+    std::wstring const modName = detect::Wide(spec.key) + L"MEVR";
+    std::string const modLogName = std::string("logs/") + spec.key + "MEVR.log";
+    std::string const modPrevLogName = std::string("logs/") + spec.key + "MEVR.prev.log";
+    std::string const rendererLogName = "logs/" + detect::Utf8(spec.rendererLog);
+    std::string const modIniName = std::string("settings/") + spec.key + "MEVR.ini";
+    std::string const rendererIniName = std::string("settings/") + spec.rendererIni;
     bool const game = !options.gameRoot.empty();
     std::error_code ec;
 
@@ -1198,8 +1243,8 @@ Bundle Collect(Options const& options, Redactor const& redactor) {
     // ---- Logs.
     fs::path const logs = game ? layout.Win64() / L"Logs" : fs::path();
     addFile("logs/SetupLaunch.log", {local / L"SetupLaunch.log"}, 0, 256u << 10);
-    addFile("logs/LE1MEVR.log", {game ? logs / L"LE1MEVR.log" : fs::path(), local / L"LE1MEVR.log"}, 1u << 20, 3u << 20);
-    addFile("logs/LE1MEVR.prev.log", {game ? logs / L"LE1MEVR.prev.log" : fs::path(), local / L"LE1MEVR.prev.log"}, 1u << 20, 2u << 20);
+    addFile(modLogName, {game ? logs / (modName + L".log") : fs::path(), local / (modName + L".log")}, 1u << 20, 3u << 20);
+    addFile(modPrevLogName, {game ? logs / (modName + L".prev.log") : fs::path(), local / (modName + L".prev.log")}, 1u << 20, 2u << 20);
     std::string halcyonSession;
     {
         Excerpt e = ReadText(halcyonLog, 48ull << 20);
@@ -1210,9 +1255,9 @@ Bundle Collect(Options const& options, Redactor const& redactor) {
             if (e.size > session.size()) {
                 note = std::format("trimmed to its last session{}{}; the file holds {} from every session", note.empty() ? "" : ", ", note, MbText(e.size));
             }
-            halcyonSession = addText("logs/MELEVR_Log.txt", std::move(text), e.size, note).bytes;
+            halcyonSession = addText(rendererLogName, std::move(text), e.size, note).bytes;
         } else {
-            b.missing.push_back("logs/MELEVR_Log.txt");
+            b.missing.push_back(rendererLogName);
         }
     }
     // The ASI loader's log: ours, or ME3Tweaks' LEBinkProxy's (whichever is there; both if both are).
@@ -1225,6 +1270,10 @@ Bundle Collect(Options const& options, Redactor const& redactor) {
         }
         if (proxy) {
             addFile("logs/bink2w64_proxy.log", {logs / L"bink2w64_proxy.log"}, 0, 0);
+        }
+        fs::path const launcherLog = layout.Full(paths::kLauncherLoaderLog);
+        if (fs::exists(launcherLog, exists)) {
+            addFile("logs/MEVRLauncherLoader.log", {launcherLog}, 0, 256u << 10);
         }
     } else {
         b.missing.push_back("logs/MEVRLoader.log");
@@ -1242,9 +1291,13 @@ Bundle Collect(Options const& options, Redactor const& redactor) {
     addFile("logs/reflect-check.json", {local / L"reflect-check.json"}, 0, 0);
 
     // ---- Settings.
+    // The player's calibration, one file for the three games since 2026-11-18 (research/25 section 17); redacted as the rest.
+    if (std::error_code exists; fs::exists(local / L"calibration.ini", exists)) {
+        addFile("settings/calibration.ini", {local / L"calibration.ini"}, 0, 0);
+    }
     if (game) {
-        addFile("settings/LE1MEVR.ini", {layout.Full(paths::kModIni)}, 0, 0);
-        addFile("settings/MELEVR.ini", {layout.Full(paths::kHalcyonIni)}, 0, 0);
+        addFile(modIniName, {layout.Full(p.modIni)}, 0, 0);
+        addFile(rendererIniName, {layout.Full(p.rendererIni)}, 0, 0);
         addFile("settings/MEVR-install.json", {layout.ManifestFile()}, 0, 0);
         addText("system/folders.txt", Listing(layout), 0, "file names, sizes and dates");
     }
@@ -1312,7 +1365,7 @@ Bundle Collect(Options const& options, Redactor const& redactor) {
     }
 
     // ---- What it says. (The pointers above may have moved with the vector: find the files by name.)
-    auto text = [&](char const* name) -> std::string_view {
+    auto text = [&](std::string_view name) -> std::string_view {
         for (File const& f : b.files) {
             if (f.name == name) {
                 return f.bytes;
@@ -1320,23 +1373,25 @@ Bundle Collect(Options const& options, Redactor const& redactor) {
         }
         return {};
     };
-    b.problems = ExtractProblems(text("logs/LE1MEVR.log"));
-    b.previousProblems = ExtractProblems(text("logs/LE1MEVR.prev.log"), 8);
+    b.problems = ExtractProblems(text(modLogName));
+    b.previousProblems = ExtractProblems(text(modPrevLogName), 8);
     b.rendererProblems = ExtractRendererProblems(halcyonSession);
     b.crash = ParseCrash(text("logs/crash-breadcrumbs.txt"));
     if (b.crash.present) {
         // The crash's session wrote its log (LE1MEVR.prev.log once the game started again) until it crashed: breadcrumbs
         // older than that log's end are from a session before the last two.
         auto const crashTime = report_marks::Modified(local / L"crash-breadcrumbs.txt");
-        auto const prevTime = report_marks::Modified(game ? logs / L"LE1MEVR.prev.log" : local / L"LE1MEVR.prev.log");
+        auto const prevTime = report_marks::Modified(game ? logs / (modName + L".prev.log") : local / (modName + L".prev.log"));
         using namespace std::chrono_literals;
         b.crash.stale = crashTime && prevTime && *crashTime + 60s < *prevTime;
     }
-    b.facts = ReadLogFacts(text("logs/LE1MEVR.log").empty() ? text("logs/LE1MEVR.prev.log") : text("logs/LE1MEVR.log"), halcyonSession);
-    b.diffs = DiffModIni(text("settings/LE1MEVR.ini"));
-    for (SettingDiff& d : DiffHalcyonIni(text("settings/MELEVR.ini"), ini::HalcyonReleaseIni())) {
-        if (!text("settings/MELEVR.ini").empty()) {
-            b.diffs.push_back(std::move(d));
+    b.facts = ReadLogFacts(text(modLogName).empty() ? text(modPrevLogName) : text(modLogName), halcyonSession);
+    b.diffs = DiffModIni(text(modIniName), options.game);
+    if (options.game == GameId::LE1) {  // the sequels' renderer keeps another file ([VR] keys, no profiles): in the zip as it is
+        for (SettingDiff& d : DiffHalcyonIni(text("settings/MELEVR.ini"), ini::HalcyonReleaseIni())) {
+            if (!text("settings/MELEVR.ini").empty()) {
+                b.diffs.push_back(std::move(d));
+            }
         }
     }
 
@@ -1358,7 +1413,7 @@ Bundle Collect(Options const& options, Redactor const& redactor) {
         s.runningMod = f.modVersion + (f.modBuild.empty() ? "" : " (" + f.modBuild + ")");
     }
     if (game) {
-        if (auto const v = detect::FileVersion(layout.Full(paths::kExe))) {
+        if (auto const v = detect::FileVersion(layout.Full(p.exe))) {
             s.gameVersion = v->ToString() + (detect::CheckVersion(v) == detect::VersionCheck::Supported ? " (supported)" : " (NOT the supported 2.0.0.48602)");
         }
         s.store = options.store.empty() ? StoreFor(options.gameRoot) : options.store;
@@ -1372,12 +1427,22 @@ Bundle Collect(Options const& options, Redactor const& redactor) {
     s.colourProfile = f.colourProfile;
     if (!f.eyeSize.empty()) {
         s.resolution = "headset " + f.eyeSize + " per eye" + (f.renderSize.empty() ? "" : "; rendering " + f.renderSize);
-    } else if (std::string_view const melevr = text("settings/MELEVR.ini"); !melevr.empty()) {
+    } else if (std::string_view const melevr = text("settings/MELEVR.ini"); options.game == GameId::LE1 && !melevr.empty()) {
         std::string const active = "profile:" + ini::Get(melevr, "active", "profile").value_or("Default");
         auto const x = ini::Get(melevr, active, "sfr2ResX");
         auto const y = ini::Get(melevr, active, "sfr2ResY");
         if (x && y) {
             s.resolution = "stereo target " + *x + "x" + *y + " (MELEVR.ini; no VR session in the log)";
+        }
+    } else if (std::string_view const sequel = text(rendererIniName); options.game != GameId::LE1 && !sequel.empty()) {
+        // No key: the renderer's code default (ME3's 3072x2216, GameSpec::rendererDefaultW/H).
+        auto const orDefault = [](std::optional<std::string> v, int fallback) {
+            return v || fallback <= 0 ? v : std::optional<std::string>(std::to_string(fallback));
+        };
+        auto const w = orDefault(ini::Get(sequel, "VR", "RenderW"), spec.rendererDefaultW);
+        auto const h = orDefault(ini::Get(sequel, "VR", "RenderH"), spec.rendererDefaultH);
+        if (w && h) {
+            s.resolution = "render size " + *w + "x" + *h + " for both eyes (" + spec.rendererIni + "; no VR session in the log)";
         }
     }
     // The summary's own fields pass the redactor too (a GPU or runtime name never holds a user name, but cheap to be sure).

@@ -14,6 +14,7 @@
 #include "core/Breadcrumbs.hpp"
 
 #include <Windows.h>
+#include <algorithm>
 #include <cmath>
 #include <format>
 #include <mutex>
@@ -37,6 +38,18 @@ std::uint64_t gSequence = 0; // gMutex; also rejects a game-side publication rac
 // Game/render-build thread only; the replay uses precisely this pair's immutable inputs.
 Pending gPair;
 fl::Result gPairResult;
+// A traversal move's hold of the correction (core/vr/FloorLock MoveHold), and what the eye did meanwhile, for the log.
+fl::MoveHold gMoveHold;
+struct MoveLog {
+    bool on = false;
+    std::uint64_t beganMs = 0;
+    unsigned frames = 0;
+    double firstEye = 0.0, lastEye = 0.0, eyeStep = 0.0;        // the drawn eye's Z (held)
+    double lastFresh = 0.0, freshStep = 0.0;                    // where the unheld solve would have put it
+    bool freshSeen = false;
+    std::uint64_t endedMs = 0;                                  // the move's end (the settle's start)
+};
+MoveLog gMoveLog;
 vr::calibration::SeatedMotion gSeatedMotion; // game/render-build thread, shared by both eyes
 std::uint64_t gLogMs = 0;
 double gLoggedCorrection = 0.0;
@@ -98,6 +111,8 @@ void Reset() {
     std::lock_guard lock(gMutex);
     gPending = {};
     gPawn = {};
+    gMoveHold.Reset();
+    gMoveLog = {};
     gManualHeight = 0.0f;
     vr::host_view::Reset();
 }
@@ -133,7 +148,68 @@ float Translate(bool replay, float rawCameraZ, float rightZ, float upZ, float fo
                 fl::ValidFloor(gPair.floor, now) ? std::optional<double>(gPair.floor.eyeHeight) : std::nullopt,
                 gPair.view.head.position.y, gPair.floor.sessions, gPair.floor.recenters)
             : std::nullopt;
-        gPairResult = fl::Correct(gPair.context, gPair.floor, now, rawCameraZ, commonZ, gPair.view.unitsPerMeter, seatedEye);
+        fl::Result const fresh = fl::Correct(gPair.context, gPair.floor, now, rawCameraZ, commonZ, gPair.view.unitsPerMeter, seatedEye);
+        bool const eligible = gPair.context.enabled && gPair.context.world && gPair.context.firstPerson && gPair.view.valid &&
+            gPair.context.pawn.pawn && fl::Fresh(gPair.context.pawn.timeMs, now) && !gPair.context.menu;
+        fl::MoveInput moveIn;
+        moveIn.fresh = fresh;
+        moveIn.moving = gPair.context.pawn.traversalMove;
+        moveIn.eligible = eligible;
+        moveIn.rawCameraZ = rawCameraZ;
+        moveIn.commonWorldZ = commonZ;
+        moveIn.floorZ = gPair.context.pawn.floorZ;
+        moveIn.unitsPerMeter = gPair.view.unitsPerMeter;
+        moveIn.nowMs = now;
+        auto const phaseBefore = gMoveHold.State();
+        double const eyeBefore = gMoveLog.lastEye;
+        gPairResult = gMoveHold.Step(moveIn);
+        auto const phase = gMoveHold.State();
+        if (phase == fl::MoveHold::Phase::Moving) {
+            if (!gMoveLog.on) {
+                gMoveLog = {};
+                gMoveLog.on = true;
+                gMoveLog.beganMs = now;
+                gMoveLog.firstEye = gMoveLog.lastEye = gPairResult.centreZ;
+                log::Info("floor lock: a traversal move began: the pawn's floor held {:.1f} units below the game's camera, "
+                          "correction {:+.3f} (the eye follows the game's camera, not the pawn's steps)",
+                    -gMoveHold.FloorGap(), gMoveHold.Held());
+            }
+            if (fresh.active) {
+                if (gMoveLog.freshSeen) {
+                    gMoveLog.freshStep = std::max(gMoveLog.freshStep, std::abs(fresh.centreZ - gMoveLog.lastFresh));
+                }
+                gMoveLog.freshSeen = true;
+                gMoveLog.lastFresh = fresh.centreZ;
+            }
+        }
+        if (gMoveLog.on) {
+            ++gMoveLog.frames;
+            gMoveLog.eyeStep = std::max(gMoveLog.eyeStep, std::abs(gPairResult.centreZ - gMoveLog.lastEye));
+            gMoveLog.lastEye = gPairResult.centreZ;
+        }
+        if (phaseBefore == fl::MoveHold::Phase::Moving && phase != fl::MoveHold::Phase::Moving && gMoveLog.on) {
+            gMoveLog.endedMs = now;
+            log::Info("floor lock: the traversal move ended after {:.2f} s ({} frames): the held eye's largest step {:.1f} units a "
+                      "frame (ended {:+.1f} from its start); solved from the pawn's floor it would have stepped up to {:.1f} units "
+                      "a frame; {}",
+                (now - gMoveLog.beganMs) / 1000.0, gMoveLog.frames, gMoveLog.eyeStep, gMoveLog.lastEye - gMoveLog.firstEye,
+                gMoveLog.freshStep,
+                phase == fl::MoveHold::Phase::Settling
+                    ? std::format("the game's camera is {:.1f} units off its place over the pawn before the move: held until "
+                                  "it settles", -gMoveHold.SettleGap())
+                    : std::format("released at once (the camera already settled, or the lock stood down): {:+.1f} units",
+                          gPairResult.centreZ - eyeBefore));
+            gMoveLog.frames = 0;
+            gMoveLog.eyeStep = 0.0;
+        }
+        if (phaseBefore != fl::MoveHold::Phase::None && phase == fl::MoveHold::Phase::None && gMoveLog.on) {
+            gMoveLog.on = false;
+            log::Info("floor lock: the traversal hold released {:.2f} s after the move's end ({} frames{}): the eye's largest step {:.1f} units a "
+                      "frame meanwhile, the release {:+.1f} units, the correction {:+.3f}",
+                (now - gMoveLog.endedMs) / 1000.0, gMoveLog.frames,
+                gMoveHold.Eased() ? ", eased after the wait" : ", the camera settled", gMoveLog.eyeStep,
+                gPairResult.centreZ - eyeBefore, gPairResult.correction);
+        }
         auto& view = gPair.view;
         view.floorLocked = gPairResult.active;
         view.centreValid = gPair.context.enabled && view.valid && std::isfinite(gPairResult.centreZ);
@@ -164,12 +240,14 @@ float Translate(bool replay, float rawCameraZ, float rightZ, float upZ, float fo
         auto number = [](double v) { return std::isfinite(v) ? std::format("{:.6f}", v) : std::string("null"); };
         std::string const status = std::format("{{\"enabled\": {}, \"active\": {}, \"rawCameraZ\": {}, \"pawnFloorZ\": {}, "
             "\"stageEyeM\": {}, \"correction\": {}, \"centreZ\": {}, \"floorSequence\": {}, \"floorTimeMs\": {}, \"unitsPerMeter\": {}, "
-            "\"finalEyeM\": {}, \"viewArm\": {}, \"source\": \"{}\", \"seated\": {}, \"standingEyeM\": {}, \"heightOffsetM\": {}}}",
+            "\"finalEyeM\": {}, \"viewArm\": {}, \"source\": \"{}\", \"seated\": {}, \"standingEyeM\": {}, \"heightOffsetM\": {}, "
+            "\"moveHold\": \"{}\"}}",
             gPair.context.enabled, view.floorLocked, number(rawCameraZ), number(view.pawnFloorZ), number(view.stageEyeM),
             number(view.floorCorrection), number(view.centreZ), view.floorSequence, gPair.floor.timeMs, number(view.unitsPerMeter),
             view.unitsPerMeter > 0.0f ? number((view.centreZ - view.pawnFloorZ) / view.unitsPerMeter) : "null",
             gPair.arm, vr::floor::Name(gPair.floor.source), gPair.context.pawn.seated, number(gPair.context.pawn.standingEyeM),
-            number(gPair.context.heightOffsetM));
+            number(gPair.context.heightOffsetM),
+            phase == fl::MoveHold::Phase::Moving ? "moving" : phase == fl::MoveHold::Phase::Settling ? "settling" : "none");
         std::lock_guard lock(gMutex);
         gStatus = status;
     } else if (gPair.context.enabled) {

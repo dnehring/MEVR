@@ -54,6 +54,32 @@ cp::Output Tip(cp::Panel& panel, cp::Settings const& s, float y, float x = 0.0f,
     return panel.Step(in, s);
 }
 
+void TestLeverOnly() {
+    cp::Panel panel;
+    cp::Settings const settings;
+    cp::Input in = Base();
+    in.layout.travelM = 0.0f;
+    in.hands[0].tip = {0.0f, 0.001f, 0.0f};
+    panel.Step(in, settings);
+    in.hands[0].tip.y = -0.002f;
+    for (int tick = 0; tick < 50; ++tick) {
+        auto const out = panel.Step(in, settings);
+        CHECK(out.pressHand == -1 && !out.repair);
+    }
+    in.hands[1].grip = in.layout.grip;
+    panel.Step(in, settings);
+    in.hands[1].squeeze = 1.0f;
+    CHECK(panel.Step(in, settings).held);
+    in.hands[1].grip.y -= 0.08f;
+    int extractions = 0;
+    for (int tick = 0; tick < 20; ++tick) {
+        auto const out = panel.Step(in, settings);
+        extractions += out.extract ? 1 : 0;
+        CHECK(out.held && !out.repair);
+    }
+    CHECK(extractions == 1);
+}
+
 void TestButton() {
     cp::Settings s;
     cp::Panel panel;
@@ -279,6 +305,7 @@ void TestGunnerWhileBusy() {
     reaching.handIntent = true;
     reaching.handPointsOut = true;
     reaching.busy = true;
+    reaching.hasTarget = true;
     CHECK(mg::Step(state, reaching, 0.0, s) == mg::Control::Gunner);
     mg::Hands thumb = reaching;  // the other hand on the stick, its thumbstick pushed: still the gunner's
     thumb.stickHeld = true;
@@ -291,10 +318,13 @@ void TestGunnerWhileBusy() {
     CHECK(mg::Step(had, aiming, 0.0, s) == mg::Control::Hand);
     mg::Hands pressing;
     pressing.busy = true;
+    pressing.hasTarget = true;
     CHECK(mg::Step(had, pressing, 0.1, s) == mg::Control::Gunner);
     // let go, the hand down: the gunner keeps it; the next aim takes it again
-    CHECK(mg::Step(had, mg::Hands{}, 0.2, s) == mg::Control::Gunner);
+    CHECK(mg::Step(had, mg::Hands{.hasTarget = true}, 0.2, s) == mg::Control::Gunner);
     CHECK(mg::Step(had, aiming, 0.3, s) == mg::Control::Hand);
+    pressing.hasTarget = false;
+    CHECK(mg::Step(had, pressing, 0.4, s) == mg::Control::Hand);
     // the gunner off ([Mako] gunner = 0): the old rules, no auto mode to keep
     mg::Settings off = s;
     off.on = false;
@@ -379,6 +409,7 @@ int RunCockpitPanelTests() {
     TestRefusal();
     TestThrottleClick();
     TestLever();
+    TestLeverOnly();
     TestLamps();
     TestGunnerWhileBusy();
     std::printf("cockpit panel tests: %d failure(s)\n", gFailures);

@@ -136,8 +136,9 @@ primary way and always wins:
 ### Opening the menu by script
 
 `%LOCALAPPDATA%\MEVR\mainmenu.request` (development builds, or `[Debug] requests = 1`; read once a second on the Present
-thread, then deleted): `open [section]`, `close`, `toggle`, or `rail` (the omni-tool's rail opened or closed as a wrist tap
-does; it stands only on a tracked left controller). Log `main menu: request file: '<line>'`. A replay's stick
+thread, then deleted): `open [section]`, `close`, `toggle`, `rail` (the omni-tool's rail opened or closed as a wrist tap
+does; it stands only on a tracked left controller), or `press <id>` (a button of the open menu clicked by its element id, as
+the pointer's trigger would; refused while the menu doesn't show it: research/28 "Leave"). Log `main menu: request file: '<line>'`. A replay's stick
 clicks never open the menu (the stick chord counts the player's own), so scripts use this; the menu's rows are then worked
 with `tools/make-menu-recording.py` and `tools/replay.ps1 -Inputs` as on ME1.
 
@@ -285,6 +286,54 @@ differences.
 The captures show the Mission Computer artwork behind its active
 child page. Physical-headset reach, pointing comfort and readability
 still need a pass.
+
+### The game's wheels at the hand (lane AU1, 2026-11-18)
+
+ME1 cuts the game's weapon and power wheels out of the HUD panel onto a quad at the hand (`[Squad] wheelPanel`,
+`weaponWheelAt`, `powerWheelAt`; HostServices v12 `setWheelPanel`, which every host served while only LE1's overlays drew it).
+LE1's code moved unchanged into `plugin/WheelPanel` (its grid measurement of where the wheel is, `core/vr/WheelCrop`; the
+mod's settings; `Place`; the quad; the `[MEVR-WHEEL]` lines word for word); LE1's `HalcyonOverlays.cpp` calls it where the
+code was, and `plugin/SequelOverlays.cpp` decides before the HUD panel is drawn (the wheel's band cut out of the panel) and
+blits in the panel's `beforeClear`, as the HUD pieces. The wheel up is the game's mode through `engine/GameAdapter.hpp`
+(`wheel_panel::WheelOf`: ME1's 2 and 3, ME2's 1 and 2, ME3's 3 and 4). LE1's conversation in the world keeps sharing its
+swapchain (`wheel_panel::Swapchain`, `Quad`, `Place`). [verify] on each sequel: the wheel's measured place on their 16:9 HUD
+(`[MEVR-WHEEL] measured: ...`; until then `WheelCrop::DefaultCrop`'s guess for a 1280x720 stage), the quad at the left hand
+(`-wheel.png`), and the power wheel left on the HUD panel by default (`powerWheelAt`, ME1's). **ME1 unchanged** (the move, the cinema capability, the gates in each game's terms, placement through the dispatcher; sessions `2026-11-18_09-48-02-au1-before2` on main 0f47a370 and `_09-43-42-au1-after2` on 57fe6dc8): at the paused pose `hostView`, the layers and every PNG identical; with the journal on the wrist the world images identical and the HUD panel differing as much as it does between two moments of one run (its own animation); `mevr-menu-preview`'s 91 pictures identical. A first `before` run once submitted 29.26-degree eye views in the journal snapshot, not seen again in three runs of either build. The open wheel's path itself was not exercised (no console route opens the game's wheel on ME1).
+
+### The sequels' own screens (lane AU1, 2026-11-18)
+
+Until now `core/vr/WorldUi`'s tag list knew ME1's GUI library and the sequels' pause-menu pages, so ME2's research terminal,
+weapon lockers, stores and minigames, and ME3's stores, terminals and weapon bench, stayed on Halcyon's flat panel (the ME2
+and ME3 audits' first finding, docs/knowledge/audits/me2/menus-and-game-screens.md SCR-18). Each game's GUI library, read
+offline from its config (Legendary Explorer's `CoalescedConverter` over `ME2\BioGame\CookedPCConsole\Coalesced_INT.bin`'s
+`BIOUI.ini` `[Engine.BioSFManager] HandlerLibrary`, 37 templates, and `ME3\BioGame\CookedPCConsole\Coalesced.bin`'s
+`BioUI.xml` movie library; the game's own data, kept out of the repository):
+
+| tag | game | handler (movie class) | what it is | our screen |
+|---|---|---|---|---|
+| `ChoiceGUI` | ME2, ME3 | `BioSFHandler_PCChoiceGUI` | ME2: the research terminal (`SFXGameChoiceGUIData_Research`), the weapon and heavy-weapon lockers (`_Weapons`, `_HeavyWeapons`), the stores, the bonus power (`_HenchmenPowers`) | `ChoiceGUI` (new, the sequels only): in the room toward what was used |
+| `MissionCompletion` | ME2, ME3 | `BioSFHandler_PCChoiceGUI` | the mission's completion screen | `ChoiceGUI` (straight ahead: nothing was used) |
+| `SkillGameBypass`, `SkillGameDecryption` | ME2 | `BioSkillGame_Bypass_PCHandler`, `BioSkillGame_Decryption_PCHandler` | the bypass and hacking minigames | ME1's `SkillGame`: on the wrist (the omni-tool's own, as ME1's bypass), the whole stage at `wristMenuWidthM` |
+| `PartySelect` | ME2, ME3 | `BioSFHandler_PCPartySelection`, `SFXGUI_TeamSelect` | squad selection | ME1's `PartySelect` (already known) |
+| `Store` | ME3 | `SFXGUI_PCStore` | the stores | ME1's `Shop`: toward what was used (ME1's vendor rule needs `BioSFHandler_Shop`, which the sequels lack) |
+| `WeaponSelect` | ME3 | `SFXGUI_WeaponSelection` | the weapon bench's and the loadout's selection | ME1's `Inventory` (kept on the native panel while it needs the UI world, as ME1's equipment without its figure) |
+| `Terminal`, `Mail`, `Elevator` | ME3 | `SFXGUI_Terminal`, `SFXGUI_Mail`, `SFXGUI_Elevator` | the private terminal, its mail, the Normandy's elevator | `Terminal` (new, the sequels only): toward what was used |
+| `Accomplishments` | ME3 | `SFXGUI_Accomplishments` | ME3's achievements | ME1's `Achievement` |
+| `HintBox`, `QueuedMessageBox` | ME3 | `BioSFHandler_MessageBox`, `_PCMessageBox` | message boxes | ME1's `MessageBox` (stands over its parent) |
+| `Personalization` | ME2, ME3 | `SFXSFHandler_PCPersonalization` | the armour locker | none: its Shepard is the UI world's (ME1's figure is LE1-only), so Halcyon's panel |
+
+Not ours (left to Halcyon as on ME1): the front end and credits, `PRCStore` (the DLC credits), `Slideshow`, `PhotoMode`,
+`NetworkRegistration`, ME3's `Training` and the multiplayer movies.
+
+ME1's measured crops (the shop's x 0.14..0.86, the loot's, the bypass minigame's wrist frame and its 0.30 m width) are ME1's
+movies: on ME2 and ME3 every screen shows its whole stage until measured (`DefaultCrop`, `WristCrop`, `WristWidth` per game).
+The new screens exist only in the sequels' builds (`#if !defined(MEVR_GAME_LE1)`), so ME1's objects and its `[WorldUi]` lists
+are unchanged. ME3's flat panel (the fallback for what is still flat) moved from upstream's 2.2 m and 3.2 m to ME1's 1.4 m
+and 2.35 m (`me2_xr.cpp`'s defaults and `me2_menu.cpp`'s ini defaults; a `MELE3VR.ini` that already has `MenuScreenDist` /
+`MenuScreenSize` keeps its values). [verify] in the game: each tag's game mode (GUI, 7 on ME2 and 9 on ME3, is assumed),
+whether ME2's choice screen sets `bFullScreen` over the UI world, the anchors at a store, the research terminal and a locker
+(`world ui: the <screen> screen opened by using ...`), and that ME2's minigames play on the wrist with the ray or fingertip
+(their PC handlers take the mouse) and with the stick.
 
 
 ## The checks

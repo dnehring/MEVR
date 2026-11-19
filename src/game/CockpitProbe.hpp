@@ -37,6 +37,12 @@ std::string VehicleCommand(std::string const& line);
 bool TryStartup();
 // The cockpit is riding in the Mako this tick (its camera moved): the chase camera's own rotation no longer turns the view.
 bool Riding();
+// V2 has taken over the weapon sight in the cockpit, including the zoom reticle.
+bool OpticsScopeVisible();
+// The scope is requested by native zoom or R3. Excludes the closing animation.
+bool OpticsAiming();
+// The cockpit's opt-in leg pose can run without controller tracking.
+bool FixedSeatPoseActive();
 // While riding, with a `hud` layout: where the cockpit's displays are, into the HUD pieces the host draws (research/47).
 void FillHud(vr::hud_pieces::Pieces& pieces);
 // Each mod tick, late (the view anchor current). Also the cockpit by itself ([Cockpit]): in on entering the Mako, out on leaving.
@@ -50,6 +56,7 @@ struct Seat {
     ue3::Object* mesh = nullptr;
     engine::UnrealVector knee[2]{};  // 0 left, 1 right
     engine::UnrealVector heel[2]{};
+    std::optional<engine::UnrealVector> fixedAnkle[2]{};  // the locked layout follows the vehicle's pitch and roll
     bool held[2]{};                  // the left hand holds the lever, the right the stick; either the extraction handle (research/48 27)
     engine::UnrealVector grip[2]{};  // where those grips are now
     bool haveAxes = false;
@@ -57,6 +64,7 @@ struct Seat {
     bool pointing[2]{};              // the hand presses the repair button: its index straight out, the other fingers closed
     engine::UnrealVector eye{};      // the cockpit's eye (where the seated player's head is, before leaning)
 };
+inline constexpr double kAnkleAboveHeelM = 0.08;
 std::optional<Seat> CurrentSeat();
 // While riding with a `seat` layout: the cockpit model's grips (the lever at neutral, the stick upright) and the vehicle's flat
 // forward, in tracking space this tick: where game/MakoControls lets the hands grab (the models are the controls). Nullopt: no

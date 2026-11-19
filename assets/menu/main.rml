@@ -33,7 +33,10 @@
 	<!-- The game's own menus: the way into them (no controller menu button can be counted on, e.g. a Quest over Link). -->
 	<div class="gamebtns">
 		<button class="btn game" id="game-menu" data-event-click="cmd('game_menu')"><div class="sweep"/><div class="bi i-gamemenu"/><div class="gl"><span class="gt">Game menu</span><span class="gs">Save, load, squad, map, options</span></div></button>
-		<button class="btn game" id="game-back" data-event-click="cmd('game_back')"><div class="sweep"/><div class="bi i-holster"/><div class="gl"><span class="gt">Holster</span><span class="gs">Puts the drawn gun away</span></div></button>
+		<!-- Greyed on ME3 until its put-away is checked in the game (lane WP's holsters, [Holsters] le3PutAway; the owner: "Keep them greyed until I can see them"). -->
+		<button class="btn game" id="game-back" data-class-disabled="le3" data-event-click="cmd('game_back')"><div class="sweep"/><div class="bi i-holster"/><div class="gl"><span class="gt">Holster</span><span class="gs" data-if="!le3">Puts the drawn gun away</span><span class="gs" data-if="le3">Not on ME3 yet</span></div></button>
+		<!-- ME2 and ME3 (research/28 "Leave"): the level's own way out, which their B tap gave on foot; shown only where it would act. -->
+		<button class="btn game" id="game-leave" data-if="can_leave" data-event-click="cmd('game_leave')"><div class="sweep"/><div class="bi i-leave"/><div class="gl"><span class="gt">Leave</span><span class="gs">This level's way out</span></div></button>
 	</div>
 	<button class="btn primary" id="resume" data-event-click="cmd('resume')"><div class="sweep"/><div class="bi i-play"/><span>Resume</span></button>
 </div>
@@ -181,10 +184,10 @@
 		</div>
 		<div class="group">
 			<div class="gtitle"><span>Conversations and cutscenes</span><div class="gline"/></div>
-			<div class="row"><div class="rl"><div class="rlab">Conversations</div><div class="rdesc" data-if="!le2">First person (experimental): you stand where Shepard stands and can walk. In VR: the director's camera moves you. 3D screen: its shots on a big screen with depth. Flat screen: without depth.</div><div class="rdesc" data-if="le3">Native conversations play on a flat screen in the room. Seated scenes do not allow traversal. 3D cinema and first-person conversations are not available yet.</div><div class="rdesc" data-if="le2 &amp;&amp; !le3">Watch the scene on a 3D screen in the room or on a flat screen.</div></div>
-				<div class="seg"><button class="segb" data-if="!le2" data-class-on="cine_convo == 'world'" data-event-click="pick('cine_convo','world')">First person</button><button class="segb" data-if="!le2" data-class-on="cine_convo == 'vr'" data-event-click="pick('cine_convo','vr')">In VR</button><button class="segb" data-if="!le3" data-class-on="cine_convo == 'screen'" data-event-click="pick('cine_convo','screen')">3D screen</button><button class="segb" data-class-on="cine_convo == 'flat'" data-event-click="pick('cine_convo','flat')">Flat screen</button></div></div>
+			<div class="row"><div class="rl"><div class="rlab">Conversations</div><div class="rdesc" data-if="!le2">First person (experimental): you stand where Shepard stands and can walk. In VR: the director's camera moves you. 3D screen: its shots on a big screen with depth. Flat screen: without depth.</div><div class="rdesc" data-if="le2">Watch the scene on a 3D screen in the room or on a flat screen.</div></div>
+				<div class="seg"><button class="segb" data-if="!le2" data-class-on="cine_convo == 'world'" data-event-click="pick('cine_convo','world')">First person</button><button class="segb" data-if="!le2" data-class-on="cine_convo == 'vr'" data-event-click="pick('cine_convo','vr')">In VR</button><button class="segb" data-if="!cine_flat_only" data-class-on="cine_convo == 'screen'" data-event-click="pick('cine_convo','screen')">3D screen</button><button class="segb" data-class-on="cine_convo == 'flat'" data-event-click="pick('cine_convo','flat')">Flat screen</button></div></div>
 			<div class="row"><div class="rl"><div class="rlab">Cutscenes</div><div class="rdesc">The same choice for cutscenes.</div></div>
-				<div class="seg"><button class="segb" data-if="!le2" data-class-on="cine_cut == 'vr'" data-event-click="pick('cine_cut','vr')">In VR</button><button class="segb" data-if="!le3" data-class-on="cine_cut == 'screen'" data-event-click="pick('cine_cut','screen')">3D screen</button><button class="segb" data-class-on="cine_cut == 'flat'" data-event-click="pick('cine_cut','flat')">Flat screen</button></div></div>
+				<div class="seg"><button class="segb" data-if="!le2" data-class-on="cine_cut == 'vr'" data-event-click="pick('cine_cut','vr')">In VR</button><button class="segb" data-if="!cine_flat_only" data-class-on="cine_cut == 'screen'" data-event-click="pick('cine_cut','screen')">3D screen</button><button class="segb" data-class-on="cine_cut == 'flat'" data-event-click="pick('cine_cut','flat')">Flat screen</button></div></div>
 			<div class="srow" data-class-disabled="!(cine_convo == 'screen' || cine_cut == 'screen')"><div class="slab">Screen width</div><input type="range" min="1.5" max="8" step="0.1" data-value="cine_width"/><div class="sval">{{cine_width_text}}</div></div>
 			<div class="srow" data-class-disabled="!(cine_convo == 'screen' || cine_cut == 'screen')"><div class="slab">Screen distance</div><input type="range" min="1" max="6" step="0.1" data-value="cine_distance"/><div class="sval">{{cine_distance_text}}</div></div>
 			<div class="srow" data-class-disabled="!(cine_convo == 'screen' || cine_cut == 'screen')"><div class="slab">3D depth</div><input type="range" min="0" max="150" step="5" data-value="cine_depth"/><div class="sval">{{cine_depth_text}}</div></div>
@@ -250,8 +253,11 @@
 			<div class="hint" data-if="le2">Not available in {{game_title}} yet.</div>
 			<div class="row"><div class="rl"><div class="rlab">Throttle lever and drive stick</div><div class="rdesc">Drive with a lever by your left side and a stick by your right: grab them with the grips (the Controller guide has the details). Off: the game's own Mako controls.</div></div>
 				<button class="tog" data-class-on="mako_controls" data-event-click="toggle('mako_controls')"><div class="knob"/></button></div>
-			<div class="row"><div class="rl"><div class="rlab">Sit in the cockpit</div><div class="rdesc">In the Mako you sit in its cockpit, the outside view on the screen ahead. Off: the game's camera behind the Mako.</div></div>
+			<div class="row"><div class="rl"><div class="rlab">Sit in the cockpit</div><div class="rdesc">Sit inside the Mako while driving. Turn this off for the chase camera.</div></div>
 				<button class="tog" data-class-on="cockpit" data-event-click="toggle('cockpit')"><div class="knob"/></button></div>
+			<div class="row"><div class="rl"><div class="rlab">Mako seat position</div><div class="rdesc">Choose the seat for the next time you enter the Mako with Sit in the cockpit enabled.</div>
+				<div class="note" data-if="!mako_bottom_available">Bottom requires the V2 cockpit package.</div></div>
+				<div class="seg"><button class="segb" data-class-on="mako_seat == 'top'" data-event-click="pick('mako_seat','top')">Top (V1)</button><button class="segb" data-if="mako_bottom_available" data-class-on="mako_seat == 'bottom'" data-event-click="pick('mako_seat','bottom')">Bottom (V2)</button></div></div>
 		</div>
 	</div>
 
@@ -439,12 +445,14 @@
 				</div>
 			</div>
 		</div>
-		<div class="group" data-class-disabled="le2">
+		<div class="group">
 			<div class="gtitle"><span>Image quality</span><div class="gline"/></div>
-			<div class="hint" data-if="le2">Not available in {{game_title}} yet.</div>
+			<!-- The sequels (le2): the render resolution follows the headset as ME1's and the upscale is ME1's; the Performance modes
+			     (ME1's render levers) and the cutscene cap aren't theirs yet. -->
+			<div class="hint" data-if="le2">Performance modes and steady cutscenes aren't available in {{game_title}} yet.</div>
 			<!-- One choice for the frame rate (research/60): each mode sets the render resolution and the levers in Advanced >
 			     Performance; any of them changed by hand shows Custom. -->
-			<div class="row"><div class="rl"><div class="rlab">Performance</div><div class="rdesc">{{perf_desc}}</div><div class="note">{{perf_note}}</div></div>
+			<div class="row" data-class-disabled="le2"><div class="rl"><div class="rlab">Performance</div><div class="rdesc">{{perf_desc}}</div><div class="note">{{perf_note}}</div></div>
 				<div class="seg"><button class="segb" data-class-on="perf_mode == 'quality'" data-event-click="pick('perf_mode','quality')">Quality</button><button class="segb" data-class-on="perf_mode == 'balanced'" data-event-click="pick('perf_mode','balanced')">Balanced</button><button class="segb" data-class-on="perf_mode == 'performance'" data-event-click="pick('perf_mode','performance')">Performance</button><button class="segb on shown" data-if="perf_mode == 'custom'">Custom</button></div></div>
 			<div class="row"><div class="rl"><div class="rlab">Render resolution</div><div class="rdesc">Now {{quality_text}} per eye · {{quality_note}}</div><div class="rdesc">{{headset_text}}</div></div>
 				<div class="seg"><button class="segb disabled" data-if="!headset_known">Headset (unknown until VR starts)</button><button class="segb" data-if="headset_known" data-class-on="quality == 'headset'" data-event-click="pick('quality','headset')">Headset</button><button class="segb" data-if="headset_known" data-class-on="quality == 'headset85'" data-event-click="pick('quality','headset85')">Headset × 0.85</button><button class="segb" data-if="headset_known" data-class-on="quality == 'headset75'" data-event-click="pick('quality','headset75')">Headset × 0.75</button></div></div>
@@ -452,7 +460,7 @@
 				<div class="seg"><button class="segb" data-class-on="upscale == 'off'" data-event-click="pick('upscale','off')">Off</button><button class="segb" data-class-on="upscale == 'fsr'" data-event-click="pick('upscale','fsr')">FSR</button></div></div>
 			<div class="row" id="steamvr-smoothing-row" data-if="steamvr_runtime"><div class="rl"><div class="rlab">Motion smoothing (SteamVR)</div><div class="rdesc">SteamVR fills in frames the game misses by warping older ones. Off shows only real frames. For the Steam version of the game.</div><div class="note">{{steamvr_smoothing_note}}</div></div>
 				<div class="seg"><button class="segb" data-class-on="steamvr_smoothing == 'steamvr'" data-event-click="cmd('steamvr_smoothing','steamvr')">SteamVR decides</button><button class="segb" data-class-on="steamvr_smoothing == 'off'" data-event-click="cmd('steamvr_smoothing','off')">Off</button></div></div>
-			<div class="row"><div class="rl"><div class="rlab">Steady cutscenes</div><div class="rdesc">Caps cutscenes to a frame rate the headset can hold</div></div>
+			<div class="row" data-class-disabled="le2"><div class="rl"><div class="rlab">Steady cutscenes</div><div class="rdesc">Caps cutscenes to a frame rate the headset can hold</div></div>
 				<button class="tog" data-class-on="steady_cine" data-event-click="toggle('steady_cine')"><div class="knob"/></button></div>
 		</div>
 		<div class="group" data-class-disabled="le2">
@@ -530,6 +538,13 @@
 				<div class="row" data-class-disabled="le2"><div class="rl"><div class="rlab">Recenter key</div><div class="rdesc">{{recenter_key_desc}}</div></div>
 					<button class="tog" data-class-on="recenter_key" data-event-click="toggle('recenter_key')"><div class="knob"/></button></div>
 				<div class="srow d"><div class="sl"><div class="slab">Smoothing</div><div class="rdesc">Steadies the picture while your head is still; more feels laggy</div></div><input type="range" min="0" max="0.9" step="0.05" data-value="look_smooth"/><div class="sval">{{look_smooth_text}}</div></div>
+			</div>
+			<!-- The sequels' first-person eye, a headset A/B ([Hands] eyeTest, plugin/HalcyonSequelBridge, research/38): today's eye
+			     sits 24-34 units ahead of Shepard's head bone, ME1's about 4. Not on ME1 (its eye is ME1's). -->
+			<div class="group" data-if="le2">
+				<div class="gtitle"><span>Eye position (headset test)</span><div class="gline"/></div>
+				<div class="row"><div class="rl"><div class="rlab">First-person eye</div><div class="rdesc">How far ahead of Shepard's face your eyes sit: today's, halfway, or at the face as in Mass Effect 1. Look down at the body and keep the one that feels most like your own.</div></div>
+					<div class="seg"><button class="segb" data-class-on="eye_test == 'today'" data-event-click="pick('eye_test','today')">Today</button><button class="segb" data-class-on="eye_test == 'between'" data-event-click="pick('eye_test','between')">Between</button><button class="segb" data-class-on="eye_test == 'me1'" data-event-click="pick('eye_test','me1')">At the face</button></div></div>
 			</div>
 			<div class="group">
 				<div class="gtitle"><span>Flat screens</span><div class="gline"/></div>
@@ -616,7 +631,7 @@
 		<div data-if="advtab == 'diag'">
 			<div class="group">
 				<div class="gtitle"><span>Diagnostics</span><div class="gline"/></div>
-				<div class="row" data-class-disabled="le2"><div class="rl"><div class="rlab">Report a problem</div><div class="rdesc">Saves the logs, settings and a summary for your AI assistant or an issue in a zip on your Desktop, in the background. Nothing is sent: open it after the game</div><div class="note" data-if="report_msg != ''">{{report_msg}}</div></div>
+				<div class="row"><div class="rl"><div class="rlab">Report a problem</div><div class="rdesc">Saves the logs, settings and a summary for your AI assistant or an issue in a zip on your Desktop, in the background. Nothing is sent: open it after the game</div><div class="note" data-if="report_msg != ''">{{report_msg}}</div></div>
 					<button class="btn" data-event-click="cmd('report')"><div class="sweep"/><div class="bi i-report"/><span>Report</span><div class="tick"/></button></div>
 				<div class="row" data-class-disabled="le2"><div class="rl"><div class="rlab">With the latest snapshot</div><div class="rdesc">Take one first (below) if the problem is something you see</div></div>
 					<button class="tog" data-class-on="report_snapshot" data-event-click="toggle('report_snapshot')"><div class="knob"/></button></div>

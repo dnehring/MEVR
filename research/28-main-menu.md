@@ -280,6 +280,95 @@ profile (the only menu path it has: a right `/input/menu/click` there would make
 suggestion) and for both in `khr/simple_controller`; Index has none. No profile was added: a new one (Vive, WMR) could
 change which profile SteamVR picks for an emulated controller and lose A/B/X/Y.
 
+### Leave (ME2 and ME3, 2026-11-17, lane LV)
+
+**Why.** ME2's B on foot is `Console_Melee` = `Exclusive TryExitCover 1 | TryMelee | LeaveWorld` (ME2's `BIOInput.ini`), and
+ME3's is `Console_Melee` = `OnTap 0.3 TryMelee | LeaveWorld | OnHold 0.3 TryHeavyMelee` (ME3's `Coalesced.bin`,
+`sfxgame.sfxgamemodebase`; bound to `XboxTypeS_B` in `sfxgamemodedefault` and `sfxgamemodeatlas`). Since lane MEL (1131f513)
+B never reaches the game on foot in VR (squad placement's), so nothing reached `LeaveWorld` any more. **The owner's answer to
+question 16 (2026-11-17), option (a):** an entry on our menu's top bar next to Game menu and Holster, ME2 first; ME3 by the same
+rule since it binds the same leave.
+
+**What `LeaveWorld` does** (both games' `SFXGameModeBase.LeaveWorld`, an exec with no parameters, read 2026-11-17 with the
+conversation scanner's `--script`; described, not copied): if the game is not in combat (ME2: `SFXGame(WorldInfo.Game).
+InCombat()`, which is `bInCombat || bForceCombat`; ME3: `SFXGRI(WorldInfo.GRI).InCombat()`, `bInCombat || bForceCombat ||
+bAlwaysInCombat`), it takes `WorldInfo.GetGameSequence()`, collects every `SFXSeqEvt_LeaveWorld` in it recursively
+(`Sequence.FindSeqObjectsByClass(..., true, ...)`) and calls each one's `CheckActivate(Pawn, Pawn)`. What follows is the level's
+own script. ME1 has no on-foot leave: its only `LeaveWorld` is `SFXGameModeVehicle.LeaveWorld` (the Mako's X,
+`Console_VehicleLeaveWorld`, raising `BioSeqEvt_VehicleLeaveWorld`: "Return to Normandy?"), which X still reaches in the Mako and
+which the cockpit's extraction lever already calls (research/48 section 27). Nothing was built for ME1.
+
+**Which levels carry the event** (every package's exports listed with the scanner's `--script exports`, base game and DLC; the
+event's first nodes followed in each level's `--sequence` dump). ME2, 19 base packages, and 8 more only in the DLC folders (which also hold patched copies of 9 base ones):
+- **Assignments and missions after their end** (most of them): `BioD_N7Mmnt1`, `BioD_N7Mmnt6`, `BioD_N7Mmnt7`, `BioD_N7Spdr2`,
+  `BioP_N7Mine` (in its persistent level), `BioD_QuaTlL` (Tali's loyalty), `BioD_KroKgL` (Grunt's), `BioD_KroPrL_450HospMorg`,
+  `BioD_OmgPrA_201Clinic`, `BioD_OmgHub_500DenVIP`, `BioD_TwrMwA_101Mw02_C`; DLC `BioD_N7DriveBy`, `BioD_N7Shipwreck`,
+  `BioD_N7NorCrash`, `BioD_Unc1*` (Overlord), `BioP_N7Mmnt8`/`BioP_N7Ruins` (the Hammerhead's). Most use one shared prefab
+  (`bioseq_n7utility`, a `SequenceReference`): the event logs "Trying to leave world", checks plot state 4849 ("staying on
+  planet", set once the player chose to stay after the mission ended) and only then asks "return to the Normandy?" (a
+  `BioSeqAct_ShowMessage`; A exits the mission). Its hint every 45-90 s tells the player which button.
+- **The post-credits cabin scenes** on the Normandy (`BioD_Nor_002CabinKelly` ... `008CabinThane`): B ends the scene; the event
+  leads straight into a gate the scene opens while it plays.
+- **The shooting gallery** on Tuchanka (`BioD_KroHub_106DefenceGame`): B asks to quit the minigame, behind a gate open while it runs.
+- ME3 (LE3 ships the Citadel DLC in the same folders): the Citadel's party (`BioD_CitApt_PartyPhase*`: leaving a party
+  conversation), the dance floors (`BioD_Cit002_030BarCrowd`, `BioD_CitCas_260Bar_deco`: `Shepard_dance.Mingle_Talk`), the
+  casino race (`BioD_CitCas_Race`), the combat simulator's summary menu (`BioD_CitSim_*`), the mingling crowd
+  (`BioD_Cit002_010Population`) and the apartment's sitting test (`BioA_CitApt_BSP`). None in the base campaign's levels.
+- Not reachable from this machine's saves: ME2's Save 4 is Freedom's Progress (`BioP_ProFre`: none), Save 36 the Normandy
+  mid-game, the chapter save the suicide mission; ME3's Save 31 the Normandy. `BioP_N7Mine` is reached by `open BioP_N7Mine`.
+
+**When Leave shows** (`vr::game_menu::LeaveOffer`, unit-tested in `tests/GameMenuLeaveTests.cpp`): on foot (the adapter's
+`Mode::OnFoot`), out of combat (the game's own `InCombat`, called as `LeaveWorld` calls it), and with at least one **armed**
+leave event loaded: found by the same walk `LeaveWorld` makes (`Sequence.SequenceObjects`, a `SequenceReference`'s
+`oSequenceReference`, `Sequence.NestedSequences`: the streamed levels' scripts), enabled (`SequenceEvent.bEnabled`), not used up
+(`TriggerCount < MaxTriggerCount`, or no limit) and with an output link that reaches a node that acts: through `SeqAct_Log`s, a
+`SeqAct_Gate`'s In while `bOpen` is false is a dead end (the cabins and the gallery outside their scenes). Anything else behind
+the event (a plot check, a message box) counts as acting: the script decides. **Known gap:** in the assignments' prefab the
+plot check 4849 comes first, so Leave shows from the level's load although the game's script answers "not allowed" until the
+mission is over and the player chose to stay (the player sees nothing happen). Reading that plot state is ME2's plot manager's,
+not built; the menu then shows Leave a little more often than it acts, never less.
+
+**How.** The mod (`game/GameMenuRequest`, ME2 and ME3 only) reads the facts every 8 game ticks (the walk itself only when the
+root sequence or its nested sequences change, or every 5 s) and tells the host every tick through **HostServices v44
+`setGameMenuOffers(bits)`** (`vr::game_menu::kOfferLeave`); the host (`plugin/MainMenu`'s `vr::game_menu::Offers`) trusts the
+word for 1 s, so a mod that is gone, reloading or older shows no Leave, and an older host has no field: no deploy-together rule
+(the request's value grew by one, `Action::Leave` = 9, which an older mod reads as None). The menu's data model has `can_leave`
+(read with the other values every 500 ms while open; `main.rml`'s `#game-leave` has `data-if="can_leave"`). Pressed, it closes
+our menu and asks the mod as Holster does (`After::GameLeave`, `AskTheMod(Leave)`); the mod reads the facts again and, if Leave
+still holds, calls `LeaveWorld` on the active mode (looked up on its class) two ticks after the menu's pause is lifted.
+- Logs: `main menu: leave: N leave events in the level's script: <paths> (... sequence objects in ... sequences, ... ms)` when
+  the count changes; `main menu: leave: offered (...)` / `hidden: <why> (...)` when the answer changes; at the press `main menu:
+  leave: SFXGameModeDefault.LeaveWorld (declared on SFXGameModeBase) called (...)` or `main menu: leave not done: <why>`.
+- Console: `mevr omni offers` (the answer, read now, and each event: enabled, triggered n of m, open paths, armed), `mevr omni
+  leave` (the request as the button gives it). Snapshot: `"mod"."gameMenu"."leave"` and `"leaveOffered"`.
+- The menu's request file takes `press <id>` (a development build's): the open menu's button clicked by its element id, refused
+  with `press <id>: not shown, not pressed` while the menu hides it. `tools/le2-halcyon-run/leave.ps1` checks a level with it.
+- The controller guide's B line on the sequels says Leave at the top of the menu now does what B did where a level allowed it.
+- ReflectCheck rows (`CheckLeave`, ME2 and ME3): the event, sequence, reference, log and gate classes, `SFXGame`/`SFXGRI`;
+  `SequenceObjects`, `NestedSequences`, `oSequenceReference`, `OutputLinks` and its `Links[].LinkedOp`/`InputLinkIdx`, `bOpen`,
+  `bEnabled`, `TriggerCount`, `MaxTriggerCount`, `WorldInfo.Game`/`GRI`; `GetGameSequence` and its return, `LeaveWorld`,
+  `InCombat` and its return; ME2's `BioSFHandler_PartySelection.FinalizeParty` for the fixture below.
+
+**Checked on the fake headset (2026-11-17, `tools/le2-halcyon-run/leave.ps1`; sessions `20261117-151511-719-LE2-leave`,
+`-152401-175-LE2-leave2`, `-153021-025-LE2-leave3`; every restore 0 differences).**
+- ME2 Save 4, Freedom's Progress: `leave: hidden: no leave event in this level` (2,634 sequence objects in 166 sequences, 132
+  of them the streamed levels' nested ones: the walk reaches them); our menu's top bar without Leave (the `mainmenu` layer); `press
+  game-leave` refused (`not shown, not pressed`); nothing called.
+- ME2 Save 36, the Normandy mid-game: no leave event either (the cabins' post-credits levels aren't loaded then); hidden.
+- ME2 `open BioP_N7Mine`: the persistent level's event found inside its prefab (`Main_Sequence.Game_Ending.SequenceReference_1.
+  Sequence_446.SFXSeqEvt_LeaveWorld_0`, through `oSequenceReference`; 3,260 objects in 199 sequences, 0.57 ms), enabled, no
+  trigger limit, an open path: armed. During the map's squad selection and loadout (game mode 7) Leave stayed hidden (`not on
+  foot`). A map the console opens starts with them, so the check leaves them as the player would: `mevr omni party` (ME2 only,
+  a fixture: the screen's own `FinalizeParty(true, 0)`) and then `mevr omni close` (B) for the loadout. On foot: `leave:
+  offered`, the top bar with **Leave** (the `mainmenu` layer), `press game-leave` closed our menu, the host asked the mod and two
+  ticks later `main menu: leave: SFXGameModeDefault.LeaveWorld (declared on SFXGameModeBase) called`; the event's `TriggerCount`
+  went from 0 to 1: the game's own `LeaveWorld` activated the level's event. (The assignment wasn't finished, so its script
+  answered "not allowed", the known gap above.)
+- ME1 at the same pose before (e8c657a8) and after (sessions `2026-11-17_15-37-45-lv-before`, `_15-42-42-lv-after`): `hostView`,
+  every layer and every PNG of the three snapshots identical, the `mainmenu` layer with our menu open included; `mevr omni offers`
+  answers `ME1 has no leave on foot`. `mevr-menu-preview`'s 91 ME1 pictures identical but the About line's build commit.
+- ME3 not run: no save on this machine reaches a level with the event (all are the Citadel DLC's).
+
 ## Rows that show what's in effect (2026-10-26, QA)
 
 An adversarial pass found rows that showed something other than the setting in effect; each now reads the real value:

@@ -7,6 +7,7 @@
 #include "engine/SettingsFile.hpp"
 #include "halcyon/le2/d3d_capture.h"
 #include "halcyon/le2/dxgi_proxy.h"
+#include "halcyon/le2/engine_probe.h"
 #include "halcyon/le2/logger.h"
 #include "halcyon/le2/mevr_bridge.h"
 #include "plugin/CrashBreadcrumbs.hpp"
@@ -23,6 +24,12 @@
 #include <cwctype>
 #include <filesystem>
 #include <string>
+
+// [Hands] constantEye (plugin/HalcyonSequelBridge.cpp; its header brings the OpenXR SDK's names, which Halcyon's
+// mevr_bridge.h defines too).
+namespace mevr::host::sequel_bridge {
+void RefreshConstantEye() noexcept;
+}
 
 namespace mevr::host::halcyon_le2 {
 namespace {
@@ -56,6 +63,11 @@ void Attach() {
     GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
         reinterpret_cast<LPCWSTR>(&Attach), &self);
     PinRuntime();  // before its device hook asks which runtime this is (the SteamVR device-flag fix)
+    const auto settings = engine::SettingsFile();
+    const bool skycarFirstPerson = !settings.empty() &&
+        GetPrivateProfileIntW(L"Experimental", L"SkycarFirstPerson", 0, settings.c_str()) == 1;
+    ME2VR::EngineProbe::SetSkycarFirstPersonEnabled(skycarFirstPerson);
+    if (skycarFirstPerson) log::Info("LE2 Skycar: experimental driver-seat camera enabled");
 
     ME2VR::Log::Line("=====================================================");
     ME2VR::Log::Line("ME2VR (Halcyon) inside ME VR Attempt's LE2MEVR.asi");
@@ -89,6 +101,7 @@ void AfterTick(float deltaSeconds) {
     if (ULONGLONG const now = GetTickCount64(); now >= nextReadMs) {
         nextReadMs = now + 1000;
         floor_lock::RefreshSettings();
+        sequel_bridge::RefreshConstantEye();  // [Hands] constantEye and crouchDrop, as LE1's RefreshCameraSettings
     }
 }
 

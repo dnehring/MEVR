@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
-# A/B of one [Performance] switch in the running game (LE1, research/22 and /32): sets the key in
-# ASI\LE1MEVR.ini to each value in turn (the host re-reads it once a second), lets it settle, takes a
+# A/B of one [Performance] switch in the running game (research/22 and /32; any of the three games with -Game,
+# research/sequel-render-levers.md): sets the key in ASI\<GAME>MEVR.ini to each value in turn (the host re-reads it
+# once a second), lets it settle, takes a
 # frame capture (tools/perf-probe.ps1) and prints one summary line per capture; alternates for -Rounds
 # rounds so drift in the scene shows; puts the key back as it was at the end.
 #
@@ -17,7 +18,8 @@ param(
     [int]$Rounds = 2,
     [double]$Seconds = 10,
     [double]$Settle = 3,
-    [string]$Section = 'Performance'   # another section of LE1MEVR.ini, e.g. Sights for scopeCapture (research/39)
+    [string]$Section = 'Performance',  # another section of the game's MEVR ini, e.g. Sights for scopeCapture (research/39)
+    [ValidateSet('LE1', 'LE2', 'LE3')][string]$Game = 'LE1'   # whose ASI\<GAME>MEVR.ini (the running game's)
 )
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\common.ps1"
@@ -30,8 +32,8 @@ public static extern uint GetPrivateProfileString(string section, string key, st
     System.Text.StringBuilder value, uint size, string path);
 '@
 
-$ini = Join-Path (Get-MELEBinDir (Find-MELEInstall).Root 'LE1') 'ASI\LE1MEVR.ini'
-if (-not (Test-Path $ini)) { throw "No $ini (deploy first: tools/deploy-asi.ps1 -Game LE1)" }
+$ini = Join-Path (Get-MELEBinDir (Find-MELEInstall).Root $Game) "ASI\${Game}MEVR.ini"
+if (-not (Test-Path $ini)) { throw "No $ini (deploy first: tools/deploy-asi.ps1 -Game $Game)" }
 $absent = [string][char]1  # GetPrivateProfileString's default: the key isn't there
 $buffer = New-Object System.Text.StringBuilder 256
 [void][MevrIni.Native]::GetPrivateProfileString($Section, $Key, $absent, $buffer, 256, $ini)
@@ -55,6 +57,8 @@ try {
                 'Frame ms'     = & $pick '^\s+frame interval'
                 'Render busy'  = & $pick 'busy, without the XR waits|busy, whole frame'
                 'Game busy'    = & $pick 'game: both eyes \+ UI, busy'
+                'Game thread'  = & $pick 'busy, engine \+ ours'
+                'GPU lag'      = & $pick 'lag at frame end'
                 'Draws'        = & $pick '^\s+whole frame\s+[0-9]'
                 'GPU span'     = & $pick 'span: whole frame'
             }

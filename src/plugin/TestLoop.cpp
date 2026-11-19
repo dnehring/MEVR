@@ -13,7 +13,7 @@
 #include "plugin/Renderer.hpp"
 #include "engine/GameAdapter.hpp"
 #include "plugin/SightLayers.hpp"
-#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE3)
+#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
 #include "plugin/MotionBlurGuard.hpp"
 #endif
 #if defined(MEVR_WITH_HALCYON_LE3)
@@ -22,6 +22,9 @@
 #include "plugin/CineScreen.hpp"
 #endif
 #include "plugin/Swapchains.hpp"
+#if defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
+#include "plugin/MetricStereo.hpp"  // life-size stereo on the sequels (research/30 section 9)
+#endif
 #if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2)
 #include "plugin/Colour.hpp"  // both Halcyon hosts (LE2: the eye copy's correction)
 #include "plugin/CineScreen.hpp"  // both Halcyon hosts (ME1's 3D cinema screen)
@@ -47,6 +50,9 @@
 #include "plugin/Spectator.hpp"
 #include "plugin/UiWorldFigure.hpp"
 #include "plugin/FloorLock.hpp"
+#endif
+#if defined(MEVR_WITH_PERF_PROBE) && !defined(MEVR_WITH_HALCYON)
+#include "plugin/PerfProbe.hpp"  // the sequels' hosts: the frame-breakdown probe's request and its xrEndFrame wrap
 #endif
 #if (defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)) && defined(MEVR_WITH_MAIN_MENU)
 #include "plugin/Calibration.hpp"  // our menus on LE2 (plugin/MenusLe2, M4)
@@ -848,13 +854,16 @@ struct ModuleBlocks {
 ModuleBlocks ModuleStatus() {
     ModuleBlocks m;
     m.sights = sight_layers::StatusJson();
-#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE3)
+#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
     m.motionBlurGuard = motion_blur_guard::StatsJson();
 #endif
 #if defined(MEVR_WITH_HALCYON_LE3)
     m.colour = colour::StatusJson();
     m.floorLock = floor_lock::StatusJson();
     m.cineScreen = cine_screen::StatusJson();
+#endif
+#if defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
+    m.stereo = metric_stereo::StatusJson();   // life-size stereo's plan and submit (research/30 section 9)
 #endif
 #if defined(MEVR_WITH_HALCYON)
     m.recenter = recenter_tilt::StatusJson();
@@ -1624,7 +1633,7 @@ void PollRequests() {
             }
         }
     }
-#if defined(MEVR_WITH_HALCYON)
+#if defined(MEVR_WITH_PERF_PROBE)
     if (TakeRequest(BaseDir() / L"perf.request", text)) {
         req::Request const r = req::Parse(text);
         double const seconds = r.Number("seconds", 20.0);
@@ -1633,17 +1642,20 @@ void PollRequests() {
             delay > 0.0 ? std::format(", starting in {:.1f} s", delay) : std::string());
         perf::Request(seconds, r.Get("tag"), "file", delay);
     }
+#else
+    if (TakeRequest(BaseDir() / L"perf.request", text)) {
+        log::Warn("test loop: perf.request ignored: this host has no frame-breakdown probe");
+    }
+#endif
+#if defined(MEVR_WITH_HALCYON)
     if (TakeRequest(BaseDir() / L"eyediff.request", text)) {
         req::Request const r = req::Parse(text);
         log::Info("test loop: eyediff.request: the next paired scene render's streams compared (plugin/DrawReplay)");
         mevr::host::draw_replay::RequestDiff(r.Get("tag"));
     }
 #else
-    for (wchar_t const* name : {L"perf.request", L"eyediff.request"}) {
-        if (TakeRequest(BaseDir() / name, text)) {
-            log::Warn("test loop: {} ignored: the frame-breakdown probe and the draw replay are LE1's host only so far",
-                Narrow(name));
-        }
+    if (TakeRequest(BaseDir() / L"eyediff.request", text)) {
+        log::Warn("test loop: eyediff.request ignored: the draw recorder hears LE1's renderer only so far (the Record* seams)");
     }
 #endif
 }

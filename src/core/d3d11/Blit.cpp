@@ -261,4 +261,40 @@ bool Blit::DrawWithShader(ID3D11DeviceContext* immediate, ID3D11Texture2D* sourc
     return SUCCEEDED(device_->GetDeviceRemovedReason());
 }
 
+bool Blit::Run(ID3D11DeviceContext* immediate, ID3D11Texture2D* source, bool (*passes)(Stage const& stage, void* user),
+    void* user) {
+    if (!state_ || !immediate || !source || passes == nullptr ||
+        immediate->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return false;
+    ComPtr<ID3D11Device> contextDevice, sourceDevice;
+    immediate->GetDevice(&contextDevice); source->GetDevice(&sourceDevice);
+    if (contextDevice.Get() != device_.Get() || sourceDevice.Get() != device_.Get() || !EnsureCopy(source)) {
+        return false;
+    }
+    ComPtr<ID3D11DeviceContext1> ctx;
+    if (FAILED(immediate->QueryInterface(IID_PPV_ARGS(&ctx)))) {
+        return false;
+    }
+    if (sourceIsMultisampled_) {
+        ctx->ResolveSubresource(copy_.Get(), 0, source, 0, copyDesc_.Format);
+    } else {
+        ctx->CopyResource(copy_.Get(), source);
+    }
+    ComPtr<ID3DDeviceContextState> gameState;
+    ctx->SwapDeviceContextState(state_.Get(), &gameState);
+    ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    ctx->IASetInputLayout(nullptr);
+    ctx->RSSetState(nullptr);
+    ctx->OMSetBlendState(nullptr, nullptr, 0xffffffff);
+    ctx->OMSetDepthStencilState(nullptr, 0);
+    Stage const stage{ctx.Get(), copySrv_.Get(), sampler_.Get()};
+    bool const drawn = passes(stage, user);
+    ID3D11ShaderResourceView* const nullSrv = nullptr;
+    ID3D11Buffer* const nullBuffers[3] = {nullptr, nullptr, nullptr};
+    ctx->PSSetShaderResources(0, 1, &nullSrv);
+    ctx->OMSetRenderTargets(0, nullptr, nullptr);
+    ctx->PSSetConstantBuffers(0, 3, nullBuffers);
+    ctx->SwapDeviceContextState(gameState.Get(), nullptr);
+    return drawn && SUCCEEDED(device_->GetDeviceRemovedReason());
+}
+
 } // namespace mevr::d3d11

@@ -35,7 +35,9 @@
 #include "engine/SelectionGaze.hpp"
 #include "engine/Engine.hpp"
 #include "engine/GameAdapter.hpp"
+#if defined(MEVR_LE2_DIAGNOSTIC)
 #include "engine/Legacy.hpp"
+#endif
 #include "engine/NativesDump.hpp"
 #include "engine/ProcessEvent.hpp"
 #include "engine/ReflectCheck.hpp"
@@ -72,6 +74,12 @@
 #include "game/Interact.hpp"
 #include "game/Le3GalaxyRetention.hpp"
 #include "game/Le3GalaxyCapture.hpp"
+#if defined(MEVR_GAME_LE2)
+#include "game/Le2GalaxyCapture.hpp"
+#endif
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+#include "game/GalaxyProjectorFlow.hpp"  // the ray's haptics (game/GalaxyRay)
+#endif
 #include "game/Mako.hpp"
 #include "game/Holsters.hpp"
 #include "game/CockpitProbe.hpp"
@@ -110,6 +118,7 @@
 #include "game/Le3Traversal.hpp"
 #include "game/Melee.hpp"
 #include "game/Vent.hpp"
+#include "game/Reload.hpp"
 #include "game/ViewAnchor.hpp"
 #include "game/ViewLevel.hpp"
 #include "game/Weapon.hpp"
@@ -182,8 +191,16 @@ bool gGamepadHooked = false;  // XInput hooks (once the game has loaded an XInpu
 bool gCallFunctionHooked = false;  // installed the first time hand aim is turned on
 bool gHandAimAvailable = false;
 bool gMeleeOn = false;
-bool gMeleeRequests = false;
+#if defined(MEVR_GAME_LE3)
+// ME3's stroke melee (game/Melee's staged rules): on by default since the owner's answer of 2026-11-17, as on ME1 and ME2
+// ([Throwables] melee = 0 turns strikes off on every game); the heavy "chamber and strike" stays opt-in (`mevr melee
+// heavy-gestures on`) until docs/trilogy-plan.md question 7 is answered.
+bool gMeleeRequests = true;
+bool gMeleeGestures = true;
+#else
+bool gMeleeRequests = false;  // read only by ME3's staged adapter (ME1 and ME2 feed their strokes elsewhere)
 bool gMeleeGestures = false;
+#endif
 bool gMeleeHeavyGestures = false;
 bool gTraversalGestures = false;
 bool gTraversalOn = false;  // native custom-action observers require the CallFunction hook
@@ -286,24 +303,15 @@ void WaitForThisFrameToPresent() {
 }
 
 // The script packages are in once Engine.Camera.UpdateCamera exists (head tracking's first function,
-// the old gate). LE1 and LE2 ask our reflection layer, retrying ue3::runtime::Init each second until it's up
-// (research/34 stage 3; before, LExSDKv2's object scan; LE2 since M1); LE3 (no layout yet) asks engine/Legacy, and so
-// does LE2 if its layer is off.
+// the old gate). Every game asks our reflection layer, retrying ue3::runtime::Init each second until it's up
+// (research/34 stage 3; before, LExSDKv2's object scan; LE2 since M1, LE3 since L3-1). No game reads the engine
+// through LExSDKv2 when the layer is off (T04, docs/trilogy-plan.md).
 bool ScriptPackagesLoaded() {
     using namespace mevr;
-#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     if (!ue3::runtime::Init()) {
         if (ue3::runtime::Pending()) {
             return false;  // the game is still starting: the next try is in a second
         }
-#if defined(MEVR_GAME_LE2)
-        // Off for good (it said why): LExSDKv2's reads (engine/Legacy) carry on as before M1.
-        if (!gToldLayerOff) {
-            gToldLayerOff = true;
-            log::Warn("script hooks: our reflection layer is off; waiting for the script packages through LExSDKv2");
-        }
-        return engine::legacy::FindFunction("Engine.Camera.UpdateCamera") != nullptr;
-#else
         // Off for good (it said why): the game modules stand down, nothing is left to wait for.
         if (!gToldLayerOff) {
             gToldLayerOff = true;
@@ -311,12 +319,8 @@ bool ScriptPackagesLoaded() {
                       "without them (the game features stay off)");
         }
         return true;
-#endif
     }
     return ue3::runtime::Get().FindFunction("Engine.Camera.UpdateCamera") != nullptr;
-#else
-    return engine::legacy::FindFunction("Engine.Camera.UpdateCamera") != nullptr;
-#endif
 }
 
 // Script-level hooks need Engine.u/SFXGame.u loaded, which happens after attach. Handlers are
@@ -375,10 +379,11 @@ void TryInstallScriptHooks() {
     game::squad_weapons::TryStartup();  // likewise for the squad weapon menu
     game::throwables::TryStartup();  // and physical grenades and melee (registers its launch handlers)
     game::vent::TryStartup();  // and the physical vent of a hot gun (research/45)
+    game::reload::TryStartup();  // the sequels' reload by hand (research/le2-vrik.md; ME1: n/a, it has the vent)
     game::posture::TryStartup();  // and physical cover and crouch
     game::vr_cover::TryStartup();  // the game's cover protection for a VR player (research/23 section 6: answer handlers, before the hook)
     gHandAimAvailable = game::hand_aim::TryStartup();
-    game::mako::TryStartup();  // the Mako's turret aimed by the controller (research/44: the vehicle's Tick and shot-start handlers)
+    game::mako::TryStartup(*gInit);  // the turret's aim and the firing weapon's muzzle
     game::mako_controls::TryStartup();  // the Mako's physical lever and stick (research/46: the SetInputs handlers)
     game::cockpit_probe::TryStartup();  // the cockpit riding in the Mako (research/47: a camera-update handler, inert until asked)
     game::focus_pause::TryStartup();  // [Game] pauseUnfocused (research/47: a BioWorldInfo.Tick handler)
@@ -390,7 +395,11 @@ void TryInstallScriptHooks() {
 #if !defined(MEVR_GAME_LE3)
     game::conversation_world::TryStartup();  // ... and the one that holds it through a conversation in the world (research/59)
 #endif
-#if !defined(MEVR_GAME_LE3)
+#if defined(MEVR_GAME_LE3)
+    game::le3_galaxy_capture::TryStartup();  // ME3's: the sequels' flow over the CIC's projector (game/GalaxyProjectorFlow)
+#elif defined(MEVR_GAME_LE2)
+    game::le2_galaxy_capture::TryStartup();  // ME2's: the sequels' flow over the CIC's projector (game/GalaxyProjectorFlow)
+#else
     game::galaxy_map::TryStartup();  // the camera-update handler holding the view in the CIC while the map is open in-world
 #endif
     if (gHostOwnsVr && gHost->version >= 36 && gHost->floorLockSampleSize == sizeof(vr::floor_lock::PawnSample)) {
@@ -399,6 +408,14 @@ void TryInstallScriptHooks() {
     game::sights::TryStartup();  // the scoped shots' aimed fire (a CallFunction handler, registered before the hook)
     game::view_level::TryStartup();  // the level camera (PlayerTick and SetWeaponRecoil handlers, before the hooks)
     gMeleeOn = game::melee::TryStartup();
+#if defined(MEVR_GAME_LE3)
+    if (gMeleeOn) {
+        log::Info("melee: ME3's stroke melee {} by default (requests {}, gestures {}; heavy chamber gestures {}: question 7; "
+                  "[Throwables] melee = 0 turns strikes off; `mevr melee requests|gestures on|off`)",
+            gMeleeRequests && gMeleeGestures ? "on" : "off", gMeleeRequests ? "on" : "off", gMeleeGestures ? "on" : "off",
+            gMeleeHeavyGestures ? "on" : "off");
+    }
+#endif
     gTraversalOn = game::traversal::TryStartup();  // shared traversal lifecycle with separate LE2/LE3 native admission
     game::power_wheel::TryStartup();  // the bolt from the hand: BioPawn.ReleasePower's timing (research/55 section 9)
     if (!gHandAimAvailable) {
@@ -981,6 +998,22 @@ mevr::game::vent::Link VentLink() {
     return link;
 }
 
+// Host renderer: the sequels' reload by hand: the controller pulses (v9, and the frequency where the host has it).
+mevr::game::reload::Link ReloadLink() {
+    using namespace mevr;
+    game::reload::Link link;
+    if (!gHostOwnsVr) {
+        return link;
+    }
+    if (gHost->version >= 9) {
+        link.haptic = gHost->hapticPulse;
+    }
+    if (MEVR_HOST_HAS(hapticPulseHz)) {
+        link.hapticHz = gHost->hapticPulseHz;
+    }
+    return link;
+}
+
 // The level camera (game/view_level, research/24): what it needs from the host this tick.
 mevr::game::view_level::Link ViewLevelLink() {
     using namespace mevr;
@@ -1048,7 +1081,8 @@ bool ActionHandFree(int hand) {
     using namespace mevr;
     if (hand < 0 || hand > 1 || game::support_grip::Held() || game::squad_place::Holding() ||
         game::power_wheel::OwnsLeftHand()) return false;
-    if (hand == 0) return !game::throwables::ClaimedLeft() && !game::vent::ClaimedLeft() && !game::voice::ClaimedLeft();
+    if (hand == 0) return !game::throwables::ClaimedLeft() && !game::vent::ClaimedLeft() && !game::voice::ClaimedLeft() &&
+        !game::reload::ClaimedLeft();
     return !game::throwables::RightHandBusy() && !game::throwables::ClaimedRight() &&
         !game::holsters::RightHandInSlot() && game::holsters::SecondsSinceDraw() >= 0.3;
 }
@@ -1062,8 +1096,15 @@ bool ActionControlsReleased(mevr::vr::controllers::Hand const& hand) {
 }
 bool AllowMeleeGesture(int hand) {
     auto const state = mevr::vr::controllers::Latest();
+#if defined(MEVR_GAME_LE3)
+    // ME3's omni-blade: the right fist with the weapon away counts as released controls (game/Melee's FistAway).
+    return ActionSceneAllowed() && state.active && ActionHandFree(hand) &&
+        (ActionControlsReleased(hand == 0 ? state.left : state.right) || mevr::game::melee::FistAway(hand)) &&
+        !mevr::game::traversal::Moving();
+#else
     return ActionSceneAllowed() && state.active && ActionHandFree(hand) &&
         ActionControlsReleased(hand == 0 ? state.left : state.right) && !mevr::game::traversal::Moving();
+#endif
 }
 bool AllowMeleeDiagnostic(int hand) {
     auto const state = mevr::vr::controllers::Latest();
@@ -1127,6 +1168,9 @@ mevr::game::melee::Link MeleeLink(bool diagnostic = false) {
     link.authoredSeated = !ActionSceneAllowed();
     link.allowRequest = diagnostic ? AllowMeleeDiagnostic : AllowMeleeGesture;
     if (MEVR_HOST_HAS(hapticPulse)) link.haptic = gHost->hapticPulse;
+    if (MEVR_HOST_HAS(hapticPulseHz)) link.hapticHz = gHost->hapticPulseHz;
+    // The host's pad mapping keeps B from the game (gamepad::kFlagNoMeleeButton, v14); our own renderer's mapping knows every flag.
+    link.buttonFlags = !gHostOwnsVr || gHost->version >= 14;
     link.input.allowed = ActionSceneAllowed() && (diagnostic || (view.valid && state.active));
     link.input.generation = ActionGeneration();
     link.input.chamberHeavy = gMeleeHeavyGestures && !diagnostic;
@@ -1137,7 +1181,11 @@ mevr::game::melee::Link MeleeLink(bool diagnostic = false) {
         auto& out = link.input.hands[static_cast<std::size_t>(hand)];
         auto const& source = *hands[hand];
         out.available = link.allowRequest(hand);
+#if defined(MEVR_GAME_LE3)
+        out.neutral = ActionControlsReleased(source) || game::melee::FistAway(hand);
+#else
         out.neutral = ActionControlsReleased(source);
+#endif
         // The shared optional chamber hold supplies heavy intent after fresh native admission.
         // Controls remain released: no fire, grip, squad, power or menu binding is stolen.
         out.heavy = false;
@@ -1247,6 +1295,9 @@ mevr::game::game_menu_request::Link GameMenuRequestLink() {
     if (gHostOwnsVr && MEVR_HOST_HAS(mainMenu) && gHost->mainMenu != nullptr) {
         link.menuOpen = (gHost->mainMenu() & kMainMenuOpen) != 0;
     }
+    if (gHostOwnsVr) {
+        link.offer = GameMenuOffersPublisher(gHost);  // v44: what the menu's Leave entry needs to know (research/28 "Leave")
+    }
     return link;
 }
 
@@ -1338,7 +1389,7 @@ void PublishStatus() {
         "\"armIk\": {{\"enabled\": {}, \"status\": {}, \"handSource\": {}, \"rightHandAimsGun\": {}, \"supportRequested\": {}, \"hands\": {}}}, "
         "\"handAim\": {{\"enabled\": {}, \"toldHost\": {}, \"shots\": {}}}, "
         "\"weapon\": {{\"type\": {}, \"key\": \"0x{:X}\", \"status\": {}}}, "
-        "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}, \"squad\": {}, \"sights\": {}, \"scopeCapture\": {}, \"throwables\": {}, \"vent\": {}, "
+        "\"supportGrip\": {{\"held\": {}, \"blend\": {}}}, \"holsters\": {}, \"squad\": {}, \"sights\": {}, \"scopeCapture\": {}, \"throwables\": {}, \"vent\": {}, \"reload\": {}, "
         "\"posture\": {}, \"viewLevel\": {}, \"gunKick\": {}, \"calibration\": {}, \"menuPause\": {}, \"gameMenu\": {}, \"torso\": {}, \"comfort\": {}, \"stance\": {}, \"interact\": {}, "
         "\"fingers\": {}, \"hudPieces\": {}, \"mako\": {}, \"makoGunner\": {}, \"cockpitProbe\": {}, \"makoControls\": {}, \"spectator\": {}, \"galaxyMap\": {}, \"worldUi\": {}, \"squadContext\": {}, \"squadOrders\": {}, \"squadAck\": {}, \"voice\": {}, \"powerWheel\": {}, \"guiCursor\": {}, \"vrCover\": {}, \"squadPlace\": {}, \"bodyScale\": {}, \"conversationWorld\": {}, \"sprint\": {}, \"soundPlace\": {}, \"cameraCollision\": {}, \"cameraShake\": {}}}",
         json::JsonString(__DATE__ " " __TIME__), gHooked ? "true" : "false", mode ? std::to_string(*mode) : std::string("null"),
@@ -1348,7 +1399,7 @@ void PublishStatus() {
         gHandAimReported ? "true" : "false", game::hand_aim::StatusJson(), json::JsonString(type), static_cast<unsigned long long>(game::weapon::Key()),
         json::JsonString(game::weapon::Status()), game::support_grip::Held() ? "true" : "false",
         json::JsonNumber(game::support_grip::Blend()), game::holsters::StatusJson(), game::squad_weapons::StatusJson(),
-        game::sights::StatusJson(), game::scope_capture::StatusJson(), game::throwables::StatusJson(), game::vent::StatusJson(), game::posture::StatusJson(),
+        game::sights::StatusJson(), game::scope_capture::StatusJson(), game::throwables::StatusJson(), game::vent::StatusJson(), game::reload::StatusJson(), game::posture::StatusJson(),
         game::view_level::StatusJson(), game::gun_kick::StatusJson(), game::body_calibration::StatusJson(), game::menu_pause::StatusJson(), game::game_menu_request::StatusJson(),
         game::body_follow::StatusJson(), game::comfort::StatusJson(), game::combat_stance::StatusJson(),
         game::interact::StatusJson(), game::fingers::StatusJson(), game::hud_pieces::StatusJson(), game::mako::StatusJson(), game::mako_gunner::StatusJson(), game::cockpit_probe::StatusJson(), game::mako_controls::StatusJson(),
@@ -1360,6 +1411,10 @@ void PublishStatus() {
         full.pop_back();
 #if defined(MEVR_GAME_LE3)
         full += ", \"melee\": " + vr::test_request::JsonString(game::melee::Status());
+        full += ", \"galaxyProjector\": " + game::le3_galaxy_capture::StatusJson();  // the sequels' flow (game/GalaxyProjectorFlow)
+#endif
+#if defined(MEVR_GAME_LE2)
+        full += ", \"galaxyProjector\": " + game::le2_galaxy_capture::StatusJson();  // the sequels' flow (game/GalaxyProjectorFlow)
 #endif
         full += ", \"traversal\": " + game::traversal::StatusJson() + "}";
     }
@@ -1500,7 +1555,9 @@ void Heartbeat() {
         game::scope_capture::LogStats();
         game::cockpit_probe::LogStats();
         game::throwables::LogStats();
+        game::melee::LogStats();
         game::vent::LogStats();
+        game::reload::LogStats();
         game::posture::LogStats();
         game::vr_cover::LogStats();
         game::view_level::LogStats();
@@ -1556,16 +1613,21 @@ std::string MeleeCommand(std::string const& args) {
         else if (verb == "gestures") gMeleeGestures = value == "on";
         else gMeleeHeavyGestures = value == "on";
         // Reset the release latch even if the setting is toggled twice between ticks.
-        auto link = MeleeLink(); link.input.allowed = false; game::melee::Tick(link);
+        auto link = MeleeLink(); link.input.allowed = false; game::melee::Tick(0.0, link);
         return "melee: " + verb + " " + value + "; native/physical acceptance still pending";
     }
     if ((verb == "light" || verb == "heavy") && (value.empty() || value == "left" || value == "right") && extra.empty())
         return game::melee::Request(verb == "heavy" ? ik::melee::Intent::Heavy : ik::melee::Intent::Light,
             value == "left" ? 0 : 1, MeleeLink(true));
-    return "melee: status | requests on/off | gestures on/off | heavy-gestures on/off (right chamber hold then strike) | light [left/right] | heavy [left/right]";
+    // ME1's test verbs on ME3's staged adapter: strike, the right hand's light request; punch, the right fist (with the weapon
+    // away: the omni-blade, game/Melee's DispatchFist; `mevr weapon away` first).
+    if (verb == "strike" && value.empty())
+        return game::melee::Request(ik::melee::Intent::Light, 1, MeleeLink(true));
+    if (verb == "punch" && value.empty())
+        return game::melee::Punch(MeleeLink(true));
+    return "melee: status | requests on/off | gestures on/off | heavy-gestures on/off (right chamber hold then strike) | light [left/right] | heavy [left/right] | punch | strike";
 #else
-    (void)args;
-    return "melee: use this game's existing native adapter";
+    return game::melee::Console(args);  // `mevr melee punch|strike` (ME1 and ME2 reach game/Melee from game/ConsoleRequest)
 #endif
 }
 std::string TraversalCommand(std::string const& args) {
@@ -1641,14 +1703,13 @@ MEVR_MOD_API bool MevrModStartup(mevr::loader::spi::Interface* spi, mevr::HostSe
         log::Info("engine-probe: renderer and gameplay disabled; waiting for reflection");
         return true;
     }
-#if !defined(MEVR_GAME_LE1)
-    // LE2/LE3 read the engine through LExSDKv2 until they have a reflection layout (research/34 stage 5).
+#if defined(MEVR_LE2_DIAGNOSTIC)
+    // The LE2 diagnostic host's observers read the engine through LExSDKv2 (engine/Legacy: that build only, never a
+    // players' build; T04).
     if (!engine::legacy::Init(*gInit)) {
         gInit.reset();
         return false;
     }
-#endif
-#if defined(MEVR_LE2_DIAGNOSTIC)
     bool const controlRegistered = engine::le2_control::Start(gInit.get());
     log::Info("LE2 diagnostic host: bound control consumer {}; renderer, gameplay and shared request polling disabled",
               controlRegistered ? "registered; awaiting owned invitation" : "unavailable (fail closed)");
@@ -1699,12 +1760,15 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         MirrorHostState();
         gGamepadHooked = true;  // the host's XInput hook feeds the controllers to the game
     }
+    // A load's new world can free the old level's classes while GObjects' count stays put: the class index starts over
+    // (every game; gotchas/stale-class-index).
+    ue3::runtime::NoteWorld(engine::World());
     (void)ActionGeneration();
     PollHotkeys();
     if (dev_channels::Allowed(engine::SettingsFile())) {
         game::console_request::Tick(deltaSeconds);  // the test loop's console.request (research/22); off in the players' build
     }
-    game::system_settings::Tick(deltaSeconds, HasMotionBlurProtection(gHost));  // research/62: conditional menu-return reset
+    game::system_settings::Tick(deltaSeconds, HasMotionBlurProtection(gHost), SecondEyeIsReplay(gHost));  // research/62: conditional menu-return reset
     if (!gHooked || !gGamepadHooked) {
         gRetryTimer += deltaSeconds;
         if (gRetryTimer >= kStartupRetrySeconds) {
@@ -1780,6 +1844,9 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         game::comfort::Tick(deltaSeconds, ComfortLink());
         // A shot's kick of the gun model (research/24 section 8): this tick's, for arm IK's request.
         game::gun_kick::Tick(deltaSeconds);
+        if (game::cockpit_probe::FixedSeatPoseActive()) {
+            EnsureBonePoseHook();
+        }
         game::arm_ik::Tick(deltaSeconds, BodyOverlayMenu());
         // Holsters, the squad menu and the grenades before the support grip: it publishes the pad flags,
         // theirs among them. A squeeze at the grenade slot is claimed first, so neither holsters nor the
@@ -1795,7 +1862,13 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         game::power_wheel::Tick(deltaSeconds, PowerWheelLink());
         game::squad_weapons::Tick(deltaSeconds, SquadLink());
         game::throwables::Tick(deltaSeconds, throwablesLink);
+        // Melee by gesture, every game (game/Melee, research/20): ME1's strokes came through the grenades' tick just above; ME2
+        // feeds ME1's rules itself, ME3 runs its staged opt-in rules. Before the support grip's tick, which asks it whether B is
+        // kept from the game (squad placement's).
+        game::melee::Tick(deltaSeconds, MeleeLink());
         game::vent::Tick(deltaSeconds, ventLink);
+        // The reload by hand (the sequels): a left squeeze at the clip pouch nothing above claimed, carried into the receiver.
+        game::reload::Tick(deltaSeconds, ReloadLink());
         // Physical cover and crouch (research/23): the cover test's hook goes in once noCover is wanted.
         EnsureCoverHook();
         game::posture::Link postureLink;
@@ -1840,7 +1913,6 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
             EnsureCallFunctionHook();  // the climb/mantle custom action's script calls (game/traversal)
             game::traversal::Tick(deltaSeconds, TraversalLink());
         }
-        if (gMeleeOn) game::melee::Tick(MeleeLink());
         {
             auto const floor = HostFloor();  // the cockpit takes a new seat at each recenter (research/47)
             game::cockpit_probe::Tick(floor ? std::optional<std::uint32_t>(floor->recenters) : std::nullopt);
@@ -1849,10 +1921,15 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
                                   gHost->hideScreenReticle());
         // The spectator camera (research/49): after everything that moves the head, the pawn and the cockpit this tick.
         game::spectator::Tick(deltaSeconds, SpectatorLink());
-#if !defined(MEVR_GAME_LE3)
-        game::galaxy_map::Tick(GalaxyMapLink());
-#else
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+        game::galaxy_projector::flow::SetHaptic(gHostOwnsVr ? gHost->hapticPulse : nullptr);  // the ray's hover and pick
+#endif
+#if defined(MEVR_GAME_LE3)
         game::le3_galaxy_capture::Tick(GalaxyMapLink().setScene, HostFloor());
+#elif defined(MEVR_GAME_LE2)
+        game::le2_galaxy_capture::Tick(GalaxyMapLink().setScene, HostFloor());
+#else
+        game::galaxy_map::Tick(GalaxyMapLink());
 #endif
         game::world_ui::Tick(WorldUiLink());
         // Conversations (research/59): measured always; in the world, Shepard's view held (after world_ui: its Hold is ours in mode 5).
@@ -1944,9 +2021,15 @@ MEVR_MOD_API void MevrModShutdown() {
     // The host has already detached the present callback, so the render thread is out.
     vr::output::Shutdown();
     game::le3_galaxy_capture::Shutdown(exiting);
+#if defined(MEVR_GAME_LE2)
+    game::le2_galaxy_capture::Shutdown(exiting);
+#endif
     if (gInit) removed(game::le3_galaxy_retention::Shutdown(*gInit, exiting), "the CIC streaming hook couldn't be removed");
     if (gInit && gHooked) {
         removed(engine::process_event::Uninstall(*gInit), "the ProcessEvent hook couldn't be removed");
+    }
+    if (gInit) {
+        removed(game::mako::UninstallFireHook(*gInit, !exiting), "the ranged fire hook couldn't be removed, or a call was still inside it");
     }
     if (gInit && gSceneViewHooked) {
         removed(engine::scene_view::Uninstall(*gInit), "the CalcSceneView hook couldn't be removed");
@@ -2058,6 +2141,7 @@ MEVR_MOD_API void MevrModShutdown() {
     game::squad_ack::Shutdown();
     game::voice::Shutdown();
     game::vent::Shutdown();
+    game::reload::Shutdown();
     game::weapon::Shutdown();
     game::camera_probe::Shutdown();
     game::sprint::Shutdown();  // the run speed back

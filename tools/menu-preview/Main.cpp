@@ -9,6 +9,7 @@
 // --gameart: a folder holding the movies game/GameArt caches (GUI_SF_Fonts.Fonts.gfx, GUI_SF_Journal.PC_Journal.gfx,
 // GUI_SF_Inventory.PCInventory.gfx; the player's own game data, never committed): the omni-tool rail is drawn in the game's
 // own art as the host does (plugin/RailArt), else in its own look.
+// --le3: the rail in ME3's look as ME3's host draws it (the `me3` theme: ME3's colours on the rail's own shapes; no game art).
 //
 //   section-<name>.png       each section (the menu over the stand-in world, as the headset composites it)
 //   section-<name>-<x>.png   a section's other states (Comfort's snap and movement, Display's image quality rows with
@@ -29,6 +30,7 @@
 #include "core/PngFile.hpp"
 #include "core/vr/Colour.hpp"
 #include "core/vr/MenuSettings.hpp"
+#include "core/vr/RenderTarget.hpp"
 #include "core/vr/PerformanceModes.hpp"
 #include "core/vr/OmniRail.hpp"
 #include "core/vr/Thespian.hpp"
@@ -66,6 +68,7 @@ namespace {
 using Microsoft::WRL::ComPtr;
 namespace fs = std::filesystem;
 namespace ms = mevr::vr::menu_settings;
+namespace rt = mevr::vr::render_target;
 
 double gClock = 0.0;  // the time RmlUi animates with
 
@@ -294,12 +297,15 @@ int main(int argc, char** argv) {
     fs::path fonts;
     fs::path gameArt;
     bool le2 = false;  // also the ME2 pages (le2-*.png) and its palette for the rail
+    bool le3 = false;  // the rail in ME3's look (its colours, never ME1's art)
     for (int i = 1; i < argc; ++i) {
         std::string const a = argv[i];
         if (a == "--warp") {
             warp = true;
         } else if (a == "--le2") {
             le2 = true;
+        } else if (a == "--le3") {
+            le3 = true;
         } else if (a == "--assets" && i + 1 < argc) {
             assets = argv[++i];
         } else if (a == "--fonts" && i + 1 < argc) {
@@ -485,7 +491,7 @@ int main(int argc, char** argv) {
     save("section-body-seated");
     model.SetText("play_position", "standing");
     model.SetText("t_crouch", "1.02");
-    auto scrolled = [&](char const* section) {
+    auto scrolled = [&](char const* section, char const* prefix = "section-") {
         model.SetText("section", section);
         frames(10);
         Rml::Element* const content = element("content");
@@ -497,7 +503,7 @@ int main(int argc, char** argv) {
         for (float top = page; top < content->GetScrollHeight() - 40.0f && n <= 4; top += page, ++n) {
             content->SetScrollTop(top);
             frames(10);
-            save(std::string("section-") + section + "-" + std::to_string(n));
+            save(std::string(prefix) + section + "-" + std::to_string(n));
         }
         content->SetScrollTop(0.0f);
     };
@@ -920,7 +926,8 @@ int main(int argc, char** argv) {
         if (ok) {
             using mevr::host::rail_art::Palette;
             auto const palette = le2 ? Palette::MissionComputer : Palette::Original;
-            railUi.Context()->ActivateTheme("mission-computer", le2);
+            railUi.Context()->ActivateTheme("mission-computer", le2 && !le3);
+            railUi.Context()->ActivateTheme("me3", le3);
             Rml::DataModelConstructor ctor = railUi.Context()->CreateDataModel("omnitool");
             ok = static_cast<bool>(ctor);
             if (ok) {
@@ -934,7 +941,7 @@ int main(int argc, char** argv) {
                 ctor.Bind("ringAlpha", &ringAlpha);
                 ctor.BindEventCallback("pick", [](Rml::DataModelHandle, Rml::Event&, Rml::VariantList const&) {});
                 handle = ctor.GetModelHandle();
-                if (!gameArt.empty()) {
+                if (!le3 && !gameArt.empty()) {
                     mevr::host::rail_art::Status const status =
                         mevr::host::rail_art::Load(device.Get(), railUi.GetRenderer(), {}, gameArt, palette);
                     art = status.fonts && status.tabs && status.panel;
@@ -1184,12 +1191,29 @@ int main(int argc, char** argv) {
             frames(30);
             save(std::string("le2-section-") + section);
         }
+        // Display's Image quality on a sequel (lane AU4): the render size follows the headset (0.85 of a PS VR2 eye at sides
+        // in multiples of 8) and the upscale works; the Performance modes and steady cutscenes stay greyed.
+        {
+            rt::Shape const eights{8, 0.0f};
+            model.SetNumber("headset_known", 1);
+            model.SetText("quality", rt::ResolutionChoice(eights, 2400, 2448, 2824, 2880));
+            model.SetText("quality_text", ms::SizeText(2400, 2448));
+            model.SetText("quality_note", "applies after a restart (now rendering " + ms::SizeText(4096, 2304) + ")");
+            model.SetText("headset_text", rt::HeadsetSizesText(eights, 2824, 2880));
+            scrolled("display", "le2-section-");
+        }
         model.SetText("section", "advanced");
         for (char const* tab : {"tracking", "perf", "graphics", "hud", "profiles", "diag"}) {
             model.SetText("advtab", tab);
             frames(30);
             save(std::string("le2-advanced-") + tab);
         }
+        // The top bar's Leave (research/28 "Leave"): shown only while the mod says the level's way out would act.
+        model.SetText("section", "guide");
+        model.SetNumber("can_leave", 1.0f);
+        frames(30);
+        save("le2-section-guide-leave");
+        model.SetNumber("can_leave", 0.0f);
         model.SetNumber("le2", 0.0f);
     }
     ui.Shutdown();

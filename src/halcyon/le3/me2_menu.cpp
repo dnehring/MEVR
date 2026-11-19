@@ -94,7 +94,7 @@ bool RebindWidget(const char* label, int* key, bool* arming) noexcept
     for (int vk = 0x08; vk <= 0xFE; ++vk)
     {
         if (vk == VK_LBUTTON || vk == VK_RBUTTON || vk == VK_MBUTTON || vk == g_menuKey) continue;
-        if (!::ME2VR::MevrBridge::KeyDown(vk)) continue;
+        if (!::MevrSeams::KeyDown(vk)) continue;
         if (vk == VK_ESCAPE) { *arming = false; return false; }
         *key = vk;
         *arming = false;
@@ -222,7 +222,7 @@ inline void PostProcessPad(XINPUT_STATE* state) noexcept
 DWORD WINAPI HookedXInputGetState(DWORD idx, XINPUT_STATE* state) noexcept
 {
     DWORD r = g_origXInput ? g_origXInput(idx, state) : ERROR_DEVICE_NOT_CONNECTED;
-    r = ::ME2VR::MevrBridge::MergeMotionControllers(idx, state, r); // [MEVR]
+    r = ::MevrSeams::MergeMotionControllers(idx, state, r); // [MEVR]
     CaptureLeftStick(state, r, idx);
     CheckPadRecenter(state, r, idx);
     PostProcessPad(state);
@@ -233,7 +233,7 @@ DWORD WINAPI HookedXInputGetStateEx(DWORD idx, XINPUT_STATE* state) noexcept
 {
     DWORD r = g_origXInputEx ? g_origXInputEx(idx, state)
                                    : (g_origXInput ? g_origXInput(idx, state) : ERROR_DEVICE_NOT_CONNECTED);
-    r = ::ME2VR::MevrBridge::MergeMotionControllers(idx, state, r); // [MEVR]
+    r = ::MevrSeams::MergeMotionControllers(idx, state, r); // [MEVR]
     CaptureLeftStick(state, r, idx);
     CheckPadRecenter(state, r, idx);
     PostProcessPad(state);
@@ -449,6 +449,16 @@ void LoadFpStates(const std::wstring& path) noexcept
         swprintf_s(k, L"S%d_x", i);        s->x = ClampF(IniGetF(path, k, d.x), -200.0f, 400.0f, d.x);
         swprintf_s(k, L"S%d_y", i);        s->y = ClampF(IniGetF(path, k, d.y), -100.0f, 100.0f, d.y);
         swprintf_s(k, L"S%d_z", i);        s->z = ClampF(IniGetF(path, k, d.z), -100.0f, 200.0f, d.z);
+#if defined(MEVR_ASI)
+        // [MEVR] A standing state saved at upstream's default (35, 0, 65: the eye 35 units behind the hook bone) takes the
+        // new one, the eye at Shepard's face as ME1's and ME2's (engine_probe.cpp's table, the owner 2026-11-18).
+        if (i < 4 && s->x == 35.0f && s->y == 0.0f && s->z == 65.0f && d.x != 35.0f)
+        {
+            s->x = d.x; s->y = d.y; s->z = d.z;
+            ME2VR::Log::Line(std::string("[MEVR-FP] ") + ME2VR::EngineProbe::FpStateLabel(i) +
+                             ": upstream's saved offset (35, 0, 65) moved to the eye at Shepard's face (-35, 0, 65)");
+        }
+#endif
     }
 }
 void SaveFpStates(const std::wstring& path) noexcept
@@ -466,6 +476,68 @@ void SaveFpStates(const std::wstring& path) noexcept
         swprintf_s(k, L"S%d_z", i); swprintf_s(v, L"%.1f", s->z); WritePrivateProfileStringW(L"FirstPerson", k, v, path.c_str());
     }
 }
+
+#if defined(MEVR_ASI)
+// [MEVR] MEVR's one supported configuration on ME3's keys, ME2's ApplyMevrBaseline (le2 me2_menu.cpp) and LE1's
+// MevrBridge::ModernBaseline (plugin/HalcyonBridge.cpp): stereo, the Quest image fix, the view filled, lean, look speed 1,
+// flat menus, first person with the head hidden (upstream ME3 starts in third person: g_fpEnabled false, K only) and kept in
+// cover (upstream's CoverThirdPerson went third person there; ME1 and ME2 never do), no head
+// aim, the stick doesn't tilt the view, conversations and cutscenes on the native flat screen, no profile hotkeys (ME3's 1-4
+// are its power keys), no recenter on R (ME3's reload; double-tapping Back, the menu's Recenter view and opening the menu
+// still recenter) and ME1's menu key \. Run after every load of the ini (LoadValues), so an old, upstream or hand-edited
+// MELE3VR.ini can't bring one back; nothing is written to the file. K still toggles first person for that session (the
+// developer key, as on ME2). The owner (2026-11-16): first person only, on every game; ME2 continues ME1.
+void ApplyMevrBaseline() noexcept
+{
+    int changed = 0;
+    std::string names;
+    auto note = [&](bool differs, const char* name) {
+        if (!differs) return false;
+        ++changed;
+        names += names.empty() ? std::string(name) : std::string(", ") + name;
+        return true;
+    };
+    if (note(ME2VR::CalcViewHook::GetVrMode() != 4, "stereo (Mode=4)")) ME2VR::CalcViewHook::SetVrMode(4);
+    if (note(!ME2VR::Me2Xr::GetQuestFovMatch(), "Quest image fix (QuestFovMatch)")) ME2VR::Me2Xr::SetQuestFovMatch(true);
+    if (note(!ME2VR::Me2Xr::GetVrFovFill(), "field of view fill (VrFovFill)")) ME2VR::Me2Xr::SetVrFovFill(true);
+    if (note(!ME2VR::CalcViewHook::GetHeadPosEnabled(), "lean (PosEnabled)")) ME2VR::CalcViewHook::SetHeadPosEnabled(true);
+    if (note(std::fabs(ME2VR::CalcViewHook::GetLookSensitivity() - 1.0f) > 1e-4f, "look speed (LookSensitivity)"))
+        ME2VR::CalcViewHook::SetLookSensitivity(1.0f);
+    if (note(!ME2VR::D3DCapture::GetMonoMenus(), "flat menus (MonoMenus)")) ME2VR::D3DCapture::SetMonoMenus(true);
+    if (note(!ME2VR::EngineProbe::GetFirstPerson(), "first person (K)")) ME2VR::EngineProbe::SetFirstPerson(true);
+    // First person in cover too (upstream ME3 hands the camera back to the game's third person while Shepard is in cover;
+    // ME1 and ME2 never do, and the mod refuses cover snapping in VR anyway: [Hands] noCover).
+    if (note(ME2VR::EngineProbe::GetCoverThirdPerson(), "first person in cover (CoverThirdPerson)"))
+        ME2VR::EngineProbe::SetCoverThirdPerson(false);
+    bool headShown = false;
+    bool bodyHidden = false;
+    for (int i = 0; i < ME2VR::EngineProbe::FpStateCount(); ++i)
+    {
+        ME2VR::EngineProbe::FpStateCfg* s = ME2VR::EngineProbe::GetFpStateCfg(i);
+        if (s != nullptr && !s->hideHead) { s->hideHead = true; headShown = true; }
+        // ME1's first person draws the body (VRIK: the arms on the controllers, the body under the player) in every state;
+        // upstream's ME2 hid it unarmed and sprinting (the owner, 2026-11-17: "unless I have a weapon equipped, my VRIK
+        // body just completely disappears").
+        if (s != nullptr && s->hideBody) { s->hideBody = false; bodyHidden = true; }
+    }
+    note(headShown, "Shepard's head hidden ([FirstPerson] S*_hideHead)");
+    note(bodyHidden, "Shepard's body shown ([FirstPerson] S*_hideBody)");
+    if (note(ME2VR::EngineProbe::GetHeadAimEnabled(), "head aim (HeadAim)")) ME2VR::EngineProbe::SetHeadAimEnabled(false);
+    if (note(!g_decoupledPitch.load(std::memory_order_relaxed), "the stick's pitch (DecoupledPitch)"))
+        g_decoupledPitch.store(true, std::memory_order_relaxed);
+    if (note(ME2VR::CalcViewHook::GetCineVrConvo(), "conversations in VR (CineVrConvo)")) ME2VR::CalcViewHook::SetCineVrConvo(false);
+    if (note(ME2VR::CalcViewHook::GetCineVrCutscene(), "cutscenes in VR (CineVrCutscene)"))
+        ME2VR::CalcViewHook::SetCineVrCutscene(false);
+    if (note(g_profileHotkeys, "profile hotkeys (ProfileHotkeys)")) g_profileHotkeys = false;
+    if (note(g_recenterKey == 'R', "the recenter key R (RecenterKey)")) g_recenterKey = 0;  // rcKey != 0 gates it
+    // The menu key is ME1's \ (it opens our main menu, Ctrl or Shift + \ this one), not upstream's Insert; a key the
+    // player bound in this menu stays.
+    if (note(g_menuKey == VK_INSERT, "the menu key \\ (MenuKey; upstream Insert)")) g_menuKey = VK_OEM_5;
+    if (changed == 0) { ME2VR::Log::Line("[MEVR-BASELINE] MELE3VR.ini already matches the MEVR baseline"); return; }
+    ME2VR::Log::Line("[MEVR-BASELINE] " + std::to_string(changed) + " setting(s) in MELE3VR.ini set to the MEVR baseline: " +
+                     names);
+}
+#endif
 
 void LoadValues() noexcept
 {
@@ -510,9 +582,9 @@ void LoadValues() noexcept
         g_profileKey[i] = ClampI(GetPrivateProfileIntW(L"VR", kn, 0x31 + i, path.c_str()), 0x08, 0xFE, 0x31 + i);
     }
     { wchar_t cb[64] = {};
-      GetPrivateProfileStringW(L"VR", L"MenuScreenDist", L"2.20", cb, 64, path.c_str());
+      GetPrivateProfileStringW(L"VR", L"MenuScreenDist", L"1.40", cb, 64, path.c_str());  // [MEVR] ME1's flat panel: 1.4 m, 2.35 m wide (upstream 2.2, 3.2)
       ME2VR::Me2Xr::SetMenuScreenDist(static_cast<float>(_wtof(cb)));
-      GetPrivateProfileStringW(L"VR", L"MenuScreenSize", L"3.20", cb, 64, path.c_str());
+      GetPrivateProfileStringW(L"VR", L"MenuScreenSize", L"2.35", cb, 64, path.c_str());  // [MEVR]
       ME2VR::Me2Xr::SetMenuScreenSize(static_cast<float>(_wtof(cb)));
       GetPrivateProfileStringW(L"VR", L"MenuPanelDist", L"1.50", cb, 64, path.c_str());
       ME2VR::Me2Xr::SetMenuPanelDist(static_cast<float>(_wtof(cb)));
@@ -605,6 +677,38 @@ void LoadValues() noexcept
         ME2VR::HudProbe::SetGroupConfig(i, cfg);
     }
     LoadFpStates(path);
+    {
+        // [MEVR] Life-size stereo (research/30 section 9; the owner, 2026-11-16: "It should always be life sized stereo for
+        // all games"), ME1's ModernBaseline and ME2's ApplyMevrBaseline: each eye from its real place at 100 uu per metre
+        // (PosScale 2), no convergence, the lean from the eyes' centre at 1:1 forward; after every load of the ini.
+        // HalfEyeUU, SfrConvergence and SwapEyes stay in the file, unused. [Debug] upstreamStereo = 1 in ASI\LE3MEVR.ini
+        // leaves upstream's stereo for a measurement.
+        const bool lifeSize = (::MevrSeams::LifeSizeStereo() & 1) != 0;
+        ME2VR::CalcViewHook::SetMevrLifeSize(lifeSize);
+        const bool scaleWas = std::fabs(ME2VR::CalcViewHook::GetHeadPosScale() - 2.0f) > 1e-4f;
+        if (lifeSize && scaleWas) ME2VR::CalcViewHook::SetHeadPosScale(2.0f);
+        ME2VR::Log::Line(!lifeSize ? "[MEVR-STEREO] life-size stereo OFF ([Debug] upstreamStereo = 1): upstream's stereo"
+                         : scaleWas ? "[MEVR-STEREO] life-size stereo: the MEVR baseline; PosScale set to 2 (100 uu per metre)"
+                                    : "[MEVR-STEREO] life-size stereo: the MEVR baseline (HalfEyeUU, SfrConvergence and "
+                                      "SwapEyes unused)");
+        // Its frustum (LE1's sfr2MetricEyeFrustum): 1, ME3's default since the owner's answer to question 17 (2026-11-17), as
+        // ME1 and ME2: each eye through its own off-centre frustum where the window holds it (mode 2), with the host's flare
+        // fix (plugin/FlareWindow, ASI\LE3MEVR.ini [Stereo] flareWindow, 1 by default) putting every lamp's lens flare on its
+        // lamp in both eyes (research/le3-flares-and-window.md). 0 renders both eyes through the shared symmetric window
+        // (mode 1, lane DEF's interim default). Stereo stays life-size either way. Not pinned by ApplyMevrBaseline.
+        const bool eyeFrustum = GetPrivateProfileIntW(L"VR", L"MetricEyeFrustum", 1, path.c_str()) != 0;
+        ME2VR::Me2Xr::SetMevrEyeFrustum(eyeFrustum);
+        if (lifeSize)
+            ME2VR::Log::Line(eyeFrustum
+                ? "[MEVR-STEREO] ME3's frustum: each eye's own where the window holds it (mode 2; MELE3VR.ini [VR] "
+                  "MetricEyeFrustum = 1, ME3's default: the lamps' lens flares on their lamps through [Stereo] flareWindow, "
+                  "research/le3-flares-and-window.md)"
+                : "[MEVR-STEREO] ME3's frustum: the shared symmetric window (mode 1; MELE3VR.ini [VR] MetricEyeFrustum = 0: "
+                  "each eye a crop of the shared window, research/30 section 9.5)");
+    }
+#if defined(MEVR_ASI)
+    ApplyMevrBaseline();  // [MEVR]
+#endif
     g_valuesLoaded = true;
 }
 
@@ -642,6 +746,7 @@ void SaveValues() noexcept
     swprintf_s(buf, L"%.3f", ME2VR::Me2Xr::GetVrFillH()); WritePrivateProfileStringW(L"VR", L"VrFillH", buf, path.c_str());
     swprintf_s(buf, L"%.3f", ME2VR::Me2Xr::GetVrFillV()); WritePrivateProfileStringW(L"VR", L"VrFillV", buf, path.c_str());
     WritePrivateProfileStringW(L"VR", L"QuestFovMatch", ME2VR::Me2Xr::GetQuestFovMatch() ? L"1" : L"0", path.c_str());
+    WritePrivateProfileStringW(L"VR", L"MetricEyeFrustum", ME2VR::Me2Xr::GetMevrEyeFrustum() ? L"1" : L"0", path.c_str());   // [MEVR]
     WritePrivateProfileStringW(L"VR", L"FullRefreshPacing", ME2VR::CalcViewHook::GetFullRefreshPacing() ? L"1" : L"0", path.c_str());
     WritePrivateProfileStringW(L"VR", L"Diagnostics", ME2VR::Log::DiagnosticsOn() ? L"1" : L"0", path.c_str());
     WritePrivateProfileStringW(L"VR", L"HeadAim", ME2VR::EngineProbe::GetHeadAimEnabled() ? L"1" : L"0", path.c_str());
@@ -763,7 +868,7 @@ void SeedVirtualMouse() noexcept
 
 LRESULT CALLBACK MenuWndProc(HWND h, UINT msg, WPARAM w, LPARAM l)
 {
-    if (g_open || ::ME2VR::MevrBridge::MainMenuOpen()) // [MEVR] one input owner
+    if (g_open || ::MevrSeams::MainMenuOpen()) // [MEVR] one input owner
     {
         // [MENUWHEEL] Capture the wheel BEFORE the swallow below so the menu can scroll. The game
         // still never sees it. Taken before the g_menuKey comparison too: for wheel messages wparam
@@ -801,7 +906,7 @@ void PollInsert() noexcept
         const bool canSwitch = g_profileHotkeys && g_valuesLoaded && !AnyRebinding();
         for (int i = 0; i < kProfileCount; ++i)
         {
-            const bool d = ::ME2VR::MevrBridge::KeyDown(g_profileKey[i]);
+            const bool d = ::MevrSeams::KeyDown(g_profileKey[i]);
             if (canSwitch && d && !s_profDown[i] && g_activeProfile != i) LoadProfile(i);
             s_profDown[i] = d;
         }
@@ -814,7 +919,7 @@ void PollInsert() noexcept
     {
         static bool s_markDown = false;
         static int s_markSeq = 0;
-        const bool md = ::ME2VR::MevrBridge::KeyDown(VK_F9);
+        const bool md = ::MevrSeams::KeyDown(VK_F9);
         if (md && !s_markDown)
         {
             ++s_markSeq;
@@ -840,8 +945,8 @@ void PollInsert() noexcept
         }
         s_markDown = md;
     }
-    const bool down = ::ME2VR::MevrBridge::KeyDown(g_menuKey);
-    if (!AnyRebinding() && down && !g_insertWasDown && ::ME2VR::MevrBridge::OnMenuKey(g_open)) { g_insertWasDown = down; return; } // [MEVR]
+    const bool down = ::MevrSeams::KeyDown(g_menuKey);
+    if (!AnyRebinding() && down && !g_insertWasDown && ::MevrSeams::OnMenuKey(g_open)) { g_insertWasDown = down; return; } // [MEVR]
     if (!AnyRebinding() && down && !g_insertWasDown)
     {
         g_open = !g_open;
@@ -874,8 +979,8 @@ void FeedMouse() noexcept
         SetCursorPos(g_mouseAnchorScreen.x, g_mouseAnchorScreen.y);   // pin the real cursor
     }
     io.AddMousePosEvent(g_virtualMouseX, g_virtualMouseY);
-    io.AddMouseButtonEvent(0, ::ME2VR::MevrBridge::KeyDown(VK_LBUTTON));
-    io.AddMouseButtonEvent(1, ::ME2VR::MevrBridge::KeyDown(VK_RBUTTON));
+    io.AddMouseButtonEvent(0, ::MevrSeams::KeyDown(VK_LBUTTON));
+    io.AddMouseButtonEvent(1, ::MevrSeams::KeyDown(VK_RBUTTON));
     // [MENUWHEEL] Drain whatever the WndProc collected since the last frame. exchange(0) so a frame
     // can never replay or lose a notch, however the two threads interleave.
     const int wv = g_wheelAccumV.exchange(0, std::memory_order_relaxed);
@@ -1253,9 +1358,12 @@ void BuildUI() noexcept
                 ImGui::TextUnformatted("Render resolution");
                 ImGui::TextDisabled("Takes effect next time you launch.");
                 const std::wstring ip = IniPath();
-                const int curW = GetPrivateProfileIntW(L"VR", L"RenderW", 0, ip.c_str());
-                const int curH = GetPrivateProfileIntW(L"VR", L"RenderH", 0, ip.c_str());
+                // [MEVR] 3072 x 2216, ME3's default when the ini has no size (d3d_capture.cpp ArmResolutionSpoof; the owner,
+                // 2026-11-17): any shape whose sides are multiples of 8 renders (research/le3-flares-and-window.md section 3).
+                const int curW = GetPrivateProfileIntW(L"VR", L"RenderW", 3072, ip.c_str());
+                const int curH = GetPrivateProfileIntW(L"VR", L"RenderH", 2216, ip.c_str());
                 static const char* const kResLabels[] = {
+                    "3K tall - 3072 x 2216 (default)",   // [MEVR]
                     "3K  -  3072 x 1728",
                     "4K  -  4096 x 2304",
                     "5K  -  5120 x 2880",
@@ -1263,10 +1371,10 @@ void BuildUI() noexcept
                     "8K  -  8192 x 4608",
                     "10K - 10240 x 5760",
                 };
-                static const int kResW[] = { 3072, 4096, 5120, 6144, 8192, 10240 };
-                static const int kResH[] = { 1728, 2304, 2880, 3456, 4608,  5760 };
+                static const int kResW[] = { 3072, 3072, 4096, 5120, 6144, 8192, 10240 };   // [MEVR] 3072 x 2216 first
+                static const int kResH[] = { 2216, 1728, 2304, 2880, 3456, 4608,  5760 };
                 constexpr int kResCount = static_cast<int>(sizeof(kResW) / sizeof(kResW[0]));
-                int idx = 3;   // 6K if the ini holds something the mod doesn't recognise
+                int idx = 4;   // 6K if the ini holds something the mod doesn't recognise
                 for (int k = 0; k < kResCount; ++k) if (kResW[k] == curW && kResH[k] == curH) { idx = k; break; }
                 ImGui::SetNextItemWidth(420.0f);
                 if (ImGui::Combo("##vrres", &idx, kResLabels, kResCount))
@@ -1385,7 +1493,7 @@ void BuildUI() noexcept
                 for (int vk = 0x08; vk <= 0xFE; ++vk)
                 {
                     if (vk == VK_LBUTTON || vk == VK_RBUTTON || vk == VK_MBUTTON) continue;
-                    if (!::ME2VR::MevrBridge::KeyDown(vk)) continue;
+                    if (!::MevrSeams::KeyDown(vk)) continue;
                     if (vk == VK_ESCAPE) { g_rebindingMenuKey = false; break; }
                     g_menuKey = vk;
                     g_insertWasDown = true;  // consume the key that completed capture
@@ -1495,7 +1603,7 @@ void BuildUI() noexcept
                     for (int vk = 0x08; vk <= 0xFE; ++vk)
                     {
                         if (vk == VK_LBUTTON || vk == VK_RBUTTON || vk == VK_MBUTTON || vk == g_menuKey) continue;
-                        if (!::ME2VR::MevrBridge::KeyDown(vk)) continue;
+                        if (!::MevrSeams::KeyDown(vk)) continue;
                         if (vk == VK_ESCAPE) { g_rebindingProfile = -1; break; }
                         g_profileKey[g_rebindingProfile] = vk;
                         g_rebindingProfile = -1;
@@ -1602,8 +1710,8 @@ void RenderToBackbuffer(IDXGISwapChain* swapChain) noexcept
             const float sy = (rc.bottom > 0) ? static_cast<float>(bd.Height) / rc.bottom : 1.0f;
             io.AddMousePosEvent(static_cast<float>(pt.x) * sx, static_cast<float>(pt.y) * sy);
         }
-        io.AddMouseButtonEvent(0, ::ME2VR::MevrBridge::KeyDown(VK_LBUTTON));
-        io.AddMouseButtonEvent(1, ::ME2VR::MevrBridge::KeyDown(VK_RBUTTON));
+        io.AddMouseButtonEvent(0, ::MevrSeams::KeyDown(VK_LBUTTON));
+        io.AddMouseButtonEvent(1, ::MevrSeams::KeyDown(VK_RBUTTON));
         ImGui::NewFrame();
         BuildUI();
         ImGui::Render();

@@ -33,9 +33,16 @@ the way for HOLD seconds (default 0.15) every EVERY seconds, from 2 s on (shots;
 segment holds the stick still with the head (and the hands) --crouch-drop metres lower (default 0.6: below [Hands]
 crouchBelow's 0.75 of a 1.65 m standing eye height), the physical crouch's check (research/23 section 7):
 `--plan stand:8,crouch:4,stand:8`.
-The plan also accepts `back-button` (left menu with left grip, mapped to pad Back) and `r3`
-(right stick click). For ME2/ME3's existing Back double-tap recenter use
+The plan also accepts `back-button` (left menu with left grip, mapped to pad Back), `start-button` (left menu alone:
+pad Start, the game's own pause menu), `r3` (right stick click), `x` (the left primary: pad X; ME3's system map binds
+Exit to it) and `b` (the right secondary: pad B; ME3's orbit backs out with it). For ME2/ME3's existing Back double-tap recenter use
 `--plan stand:2,back-button:0.12,stand:0.12,back-button:0.12,stand:12 --live-head` with replay `-Inputs`.
+A segment may join several with `+` (the stick of the one that moves it, every button of each): `forward+lt:3` holds the
+left trigger while pushing forward, `lt`/`rt` hold the left/right trigger alone (ME3's galaxy map scans with LT), and
+`stick@DEG` (or `stick@DEG@MAG`) pushes the left stick DEG degrees clockwise from forward at MAG (default 1) times --stick:
+`stick@90+rt:1.5` is the stick to the right with the right trigger held (tools/le2-halcyon-run/galaxy-steps.ps1 steers the
+galaxy map's ship so).
+
 ME1's double-tap uses `r3` instead. These are actual mapped inputs, not a direct recenter
 request; native button side effects still apply. `--live-head` leaves head tracking to
 the runtime (only controller poses/inputs are replayed), so recenter's base-space query
@@ -58,7 +65,7 @@ SEGMENTS = [("forward", 0.0, 1.0), ("strafe right", 1.0, 0.0), ("back", 0.0, -1.
             ("stand", 0.0, 0.0)]
 # Plan-only segments (not in the default loop): the head lowered, the stick still.
 EXTRA = [("crouch", 0.0, 0.0), ("a", 0.0, 0.0), ("sprint", 0.0, 1.0),
-         ("back-button", 0.0, 0.0), ("r3", 0.0, 0.0)]
+         ("back-button", 0.0, 0.0), ("start-button", 0.0, 0.0), ("r3", 0.0, 0.0), ("x", 0.0, 0.0), ("b", 0.0, 0.0)]
 
 
 def head_orientation(yaw_deg, pitch_deg):
@@ -121,10 +128,26 @@ def main():
     left_hand = (*hand_q, *at(-side_m, -down, ahead_m))
     right_hand = (*head_orientation(yaw + hand_yaw, 0.0), *at(side_m, -down, ahead_m))
     valid = (1 << 4) | (1 << 5)  # gripValid, aimValid
-    by_name = {name: (name, sx, sy) for name, sx, sy in SEGMENTS + EXTRA}
+    by_name = {name: (name, sx, sy) for name, sx, sy in SEGMENTS + EXTRA + [("lt", 0.0, 0.0), ("rt", 0.0, 0.0)]}
+
+    def segment_of(text):
+        """'forward+lt' or 'stick@45@0.5+a': the name as given, the stick of the part that moves it."""
+        sx = sy = 0.0
+        for part in text.strip().split("+"):
+            if part.startswith("stick@"):
+                fields = part.split("@")
+                angle = math.radians(float(fields[1]))
+                mag = float(fields[2]) if len(fields) > 2 else 1.0
+                sx, sy = math.sin(angle) * mag, math.cos(angle) * mag
+            else:
+                _, px, py = by_name[part]
+                if px or py:
+                    sx, sy = px, py
+        return (text.strip(), sx, sy)
+
     if "--plan" in sys.argv:
         plan_text = sys.argv[sys.argv.index("--plan") + 1]
-        steps = [(by_name[name.strip()], float(seconds)) for name, seconds in (part.split(":") for part in plan_text.split(","))]
+        steps = [(segment_of(name), float(seconds)) for name, seconds in (part.rsplit(":", 1) for part in plan_text.split(","))]
     else:
         steps = [(seg, segment) for seg in SEGMENTS]
     frames = []  # the segment of each frame
@@ -136,8 +159,9 @@ def main():
         for i in range(n):
             t = i / hz
             name, sx, sy = frames[i]
-            trigger = 1.0 if fire_every > 0 and t >= 2.0 and (t - 2.0) % fire_every < fire_hold else 0.0
-            dy = -crouch_drop if name == "crouch" else 0.0
+            parts = set(name.split("+"))
+            trigger = 1.0 if (fire_every > 0 and t >= 2.0 and (t - 2.0) % fire_every < fire_hold) or "rt" in parts else 0.0
+            dy = -crouch_drop if "crouch" in parts else 0.0
 
             def lowered(pose):  # xyzw then xyz: the position's y lowered by dy
                 return (*pose[:4], pose[4], pose[5] + dy, pose[6])
@@ -145,9 +169,10 @@ def main():
             e0, e1, lh, rh = lowered(eyes[0]), lowered(eyes[1]), lowered(left_hand), lowered(right_hand)
             flags = (0 if live_head else 1) | (0 if tracking == "none" else 2)
             f.write(FRAME.pack(int(t * 1e9), flags, *e0, *fov, *e1, *fov,
-                               (valid if tracking in ("both", "left") else 0) | (8 if name == "back-button" else 0), 0.0,
-                               1.0 if name == "back-button" else 0.0, sx * stick, sy * stick, *lh, *lh,
-                               (valid if tracking in ("both", "right") else 0) | (2 if name in ("a", "sprint") else 0) | (1 if name == "r3" else 0),
+                               (valid if tracking in ("both", "left") else 0) | (8 if parts & {"back-button", "start-button"} else 0) | (2 if "x" in parts else 0),
+                               1.0 if "lt" in parts else 0.0,
+                               1.0 if "back-button" in parts else 0.0, sx * stick, sy * stick, *lh, *lh,
+                               (valid if tracking in ("both", "right") else 0) | (2 if parts & {"a", "sprint"} else 0) | (1 if "r3" in parts else 0) | (4 if "b" in parts else 0),
                                trigger, grip, 0.0, 0.0, *rh, *rh))
     starts = [sum(seconds for _, seconds in steps[:k]) for k in range(len(steps))]
     plan = ", ".join(f"{seg[0]} {start:g}-{start + seconds:g} s" for (seg, seconds), start in zip(steps, starts))

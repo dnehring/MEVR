@@ -6,7 +6,7 @@
 # no controllers). It takes eye snapshots through the move (-Snapshots) and collects the mod's `traversal:` lines of each run.
 #
 #   tools\le2-halcyon-run\vault.ps1 [-Runs 3] [-Mode tap|go|single] [-Link CoverLink_10] [-Slot 0] [-BackM 0.25] [-View game|level]
-#       [-Mask none|vignette|blink] [-Snapshots] [-Grip]
+#       [-Mask none|vignette|blink] [-Snapshots] [-Grip] [-Support [-SupportRelease]]
 #
 # The first A must not snap Shepard into cover: that is ME2's VR cover block (game/Posture, `[Hands] noCover = 1`, the default;
 # research/le2-vrik-audit.md), checked here with `mevr cover snap` before the runs. Results go to the stretch's session folder,
@@ -21,6 +21,10 @@ param(
     [string]$Mask = '',
     [switch]$Snapshots,
     [switch]$Grip,
+    # The left hand on the gun with its grip held (the support grip), with -Grip the right grip too: a vault holding the weapon.
+    [switch]$Support,
+    # With -Support: the left grip let go for the mantle (the gun in the right hand alone) and squeezed again 1.8 s later.
+    [switch]$SupportRelease,
     [double]$SettleSeconds = 2.0
 )
 $ErrorActionPreference = 'Stop'
@@ -59,6 +63,8 @@ $recording = Join-Path $out 'vault.mevrrec'
 $recArgs = @($recording, '--start', '1.5', '--hands', 'view')
 if ($Mode -eq 'single') { $recArgs += '--single' }
 if ($Grip) { $recArgs += '--grip' }
+if ($Support) { $recArgs += '--support' }
+if ($Support -and $SupportRelease) { $recArgs += '--support-release' }
 & python (Join-Path $W 'tools\make-vault-recording.py') @recArgs | Tee-Object -FilePath (Join-Path $out 'recording.txt')
 
 Ask 'mevr cover snap auto' | Write-Output  # the VR cover block as [Hands] noCover says (game/Posture; 1, the default: refused)

@@ -93,4 +93,39 @@ inline constexpr double kGameConeDot = -0.3;
 inline constexpr double kGameMinUnits = 300.0;
 bool GameCone(Vec3 const& coverNormal, Vec3 const& hitLocation, Vec3 const& instigatorLocation);
 
+// Behind cover outside a shot (research/23 section 7.5, the owner 2026-11-16: "Faster recharge behind cover, yes"). ME2 shortens
+// the shields' wait before they recharge for a pawn in cover and not leaning out (SFXShield_Base.Tick, bFastCoverRegen,
+// PlayerCoverRegenTimerMultiplier 1.5); there is no shot, so no single shooter to judge against. The VR player is sheltered when
+// the head is hidden from EVERY awake hostile that could see it, and by the player's own cover from at least one: each hostile
+// judged as a shot from it would be (Judge), tallied here. Covered: hidden by a surface within reach. CoverTooFar: something
+// far away stands between (that hostile can't see the head: neither cover nor exposure). Exposed or Overhead: in the open to
+// that one, so not sheltered.
+struct ShelterCount {
+    int hostiles = 0, covered = 0, exposed = 0, blockedFar = 0, overhead = 0;
+};
+void Add(ShelterCount& count, Why why);
+enum class ShelterWhy {
+    NoHostile,     // no awake hostile was judged: nothing to shelter from (no faster recharge)
+    Exposed,       // the head is in the open to at least one hostile
+    NoCloseCover,  // hidden from every hostile, but only by things far away: not the player's own cover
+    Sheltered,     // hidden from every hostile, by the player's own cover from at least one
+};
+char const* Name(ShelterWhy why);
+ShelterWhy Shelter(ShelterCount const& count);
+
+// The shields' wait before they recharge, measured from the game's own timer (ME2: SFXShield_Base.ShieldRegenTimer): a hit
+// sets it to the regen delay, the shield's tick counts it down (faster in cover), and the recharge begins at 0. Step each mod
+// tick with the timer read and whether the shelter was answered this tick; a wait that reached 0 is returned once.
+struct RegenWait {
+    bool waiting = false;
+    double startS = 0.0, lastS = 0.0, shelteredS = 0.0;
+    float startTimer = 0.0f, lastTimer = 0.0f;
+};
+struct RegenWaitDone {
+    double waitS = 0.0;       // from the hit (the timer's rise) to the timer's 0
+    double shelteredS = 0.0;  // how much of it the shelter was answered
+    float startTimer = 0.0f;  // the delay the hit set
+};
+std::optional<RegenWaitDone> Step(RegenWait& wait, double nowS, float timer, bool sheltered);
+
 } // namespace mevr::vr::cover

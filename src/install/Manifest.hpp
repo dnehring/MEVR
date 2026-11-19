@@ -2,6 +2,7 @@
 #pragma once
 
 #include "core/Json.hpp"
+#include "install/Game.hpp"
 #include "install/Ini.hpp"
 
 #include <cstdint>
@@ -92,12 +93,16 @@ struct Manifest {
     static std::optional<Manifest> FromJson(json::Value const& value);
 };
 
-// Where things live for a game root.
+// Where things live for a game root, for one of its three games (Mass Effect 1 unless said: `Layout{root}`). Each game
+// has its own manifest and backup folder in its own ASI folder.
 struct Layout {
     std::filesystem::path root;  // ...\Mass Effect Legendary Edition
-    std::filesystem::path Win64() const { return root / L"Game" / L"ME1" / L"Binaries" / L"Win64"; }
+    GameId game = GameId::LE1;
+    GameSpec const& Game() const { return Spec(game); }
+    GamePaths const& Paths() const { return PathsFor(game); }
+    std::filesystem::path Win64() const { return root / L"Game" / Spec(game).folderW / L"Binaries" / L"Win64"; }
     std::filesystem::path Asi() const { return Win64() / L"ASI"; }
-    std::filesystem::path Config() const { return root / L"Game" / L"ME1" / L"BioGame" / L"Config"; }
+    std::filesystem::path Config() const { return root / L"Game" / Spec(game).folderW / L"BioGame" / L"Config"; }
     std::filesystem::path ManifestFile() const { return Asi() / L"MEVR-install.json"; }
     std::filesystem::path BackupDir() const { return Asi() / L"MEVR-backup"; }
     // "Game/ME1/Binaries/Win64/ASI/LE1MEVR.asi" for a path under root.
@@ -105,7 +110,8 @@ struct Layout {
     std::filesystem::path Full(std::string_view relative) const;
 };
 
-// Relative paths every install uses.
+// Relative paths of Mass Effect 1's install, and the launcher's, which the three games share. Another game's are
+// Layout::Paths() (install/Game.hpp); for Mass Effect 1 those are these.
 namespace paths {
 inline constexpr char kWin64[] = "Game/ME1/Binaries/Win64";
 inline constexpr char kAsi[] = "Game/ME1/Binaries/Win64/ASI";

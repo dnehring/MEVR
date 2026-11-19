@@ -395,6 +395,33 @@ void TestRightClickGate() {
     CHECK((pad.wButtons & XINPUT_GAMEPAD_RIGHT_THUMB) != 0);
 }
 
+// The sequels' bridge (Renderer::keepPowerClick, the owner 2026-11-17): with the mod owning the click (kFlagModPowerHold) R3
+// never reaches the game, held or tapped; without the mod's flag it's the game's R3 after the gate; LE1's renderer sends it.
+void TestPowerClickKept() {
+    std::uint32_t const owned = gp::kFlagLeftTrigger | gp::kFlagSupportAims | gp::kFlagRightGripHolds | gp::kFlagModPowerHold |
+        (static_cast<std::uint32_t>(gp::RbSource::RightStickClick) << gp::kRbSourceShift);
+    auto const run = [](pm::Renderer const& renderer, std::uint32_t flags) {
+        pm::Reset();
+        State s = Controllers(1000);
+        WORD buttons = 0;
+        for (int i = 0; i < 80; ++i) {  // released, held 0.8 s, released, a 50 ms tap, released
+            s.right.stickClick = (i >= 5 && i < 55) || (i >= 65 && i < 68);
+            s.timeMs += 16;
+            pm::SetSupportGrip(-1.0f, 0.12f, 0.22f, flags);
+            buttons = static_cast<WORD>(buttons | pm::Merge({}, s, renderer, GetTickCount64()).wButtons);
+        }
+        return buttons;
+    };
+    pm::Renderer sequel;
+    sequel.gateRightClick = true;
+    sequel.keepPowerClick = true;
+    CHECK((run(sequel, owned) & (XINPUT_GAMEPAD_RIGHT_THUMB | XINPUT_GAMEPAD_RIGHT_SHOULDER)) == 0);
+    CHECK((run(sequel, owned & ~gp::kFlagModPowerHold) & XINPUT_GAMEPAD_RIGHT_THUMB) != 0);  // the game's own click
+    pm::Renderer const le1;
+    CHECK((run(le1, owned) & XINPUT_GAMEPAD_RIGHT_THUMB) != 0);
+    pm::Reset();
+}
+
 // ME2's interrupts on the triggers (Renderer::conversationTriggers, M5.2): in the conversation mode the left trigger is LT
 // and the right RT whatever the mod's flags say on foot ([Controls] leftTrigger = lb, the left trigger freed for the squad, a
 // support grip still latched, the Mako's lever) and whatever of the host's owns a trigger; out of it, the flags again.
@@ -610,6 +637,7 @@ int main() {
     TestLeftGripAway();
     TestWalkTowardHand();
     TestRightClickGate();
+    TestPowerClickKept();
     TestConversationTriggers();
     TestOrbitalTriggers();
     if (gFailures == 0) {

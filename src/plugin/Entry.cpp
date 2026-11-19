@@ -30,18 +30,26 @@
 #include "plugin/GameThreadCalls.hpp"
 #include "plugin/Halcyon.hpp"
 #include "plugin/KeptLocks.hpp"
-#include "plugin/PerfProbe.hpp"
-#include "plugin/RenderLevers.hpp"
 #include "plugin/MotionBlurGuard.hpp"
+#endif
+#if defined(MEVR_WITH_PERF_PROBE)
+#include "plugin/PerfProbe.hpp"      // the frame-breakdown probe and the render levers: one module each for all three
+#include "plugin/RenderLevers.hpp"   // games (research/sequel-render-levers.md "Shared module")
 #endif
 #if defined(MEVR_WITH_HALCYON_LE2)
 #include "plugin/GameThreadCalls.hpp"
 #include "plugin/HalcyonLe2.hpp"
+#include "plugin/MotionBlurGuard.hpp"
+#endif
+#if defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
+#include "halcyon/MevrSeams.h"  // HostEndsProcess, below
+#include "plugin/KeptLocks.hpp"
 #endif
 #if defined(MEVR_WITH_HALCYON_LE3)
 #include "plugin/MotionBlurGuard.hpp"
 #include "plugin/GameThreadCalls.hpp"
 #include "plugin/HalcyonLe3.hpp"
+#include "plugin/FlareWindow.hpp"
 #include "plugin/Le3SceneCapture.hpp"
 #endif
 #if defined(MEVR_WITH_MAIN_MENU)
@@ -97,38 +105,50 @@ void GameEngineTickHook(void* self, float deltaSeconds) {
         mevr::host::Tick(deltaSeconds);
         return;
     }
-#if defined(MEVR_WITH_HALCYON)
+#if defined(MEVR_WITH_PERF_PROBE)
     mevr::host::perf::GameTickBegin();
 #endif
     mevr::host::crash::NoteGameThread();
+#if defined(MEVR_WITH_PERF_PROBE)
+    mevr::host::perf::QueueDrainBegin();
+#endif
 #if defined(MEVR_WITH_HALCYON)
     // Halcyon's ProcessEvent calls from the Present thread, queued for here (script on the game thread only).
-    mevr::host::perf::QueueDrainBegin();
     mevr::host::game_thread::Drain();
 #endif
 #if defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
     mevr::host::game_thread::Drain();  // ME2's renderer's Present-thread ProcessEvent calls, queued for here (as LE1's)
 #endif
-#if defined(MEVR_WITH_HALCYON)
+#if defined(MEVR_WITH_PERF_PROBE)
     mevr::host::perf::EngineTickBegin();
 #endif
     gGameEngineTickOrig(self, deltaSeconds);
-#if defined(MEVR_WITH_HALCYON)
+#if defined(MEVR_WITH_PERF_PROBE)
     mevr::host::perf::EngineTickEnd();
+#endif
+#if defined(MEVR_WITH_PERF_PROBE) && !defined(MEVR_WITH_HALCYON)
+    // The sequels: the probe's requests and captures and the render levers' settings (LE1: halcyon::Tick calls perf::Tick,
+    // and render_levers::Tick is the line after it).
+    mevr::host::perf::Tick();
+    mevr::host::render_levers::Tick();
+#endif
+#if defined(MEVR_WITH_HALCYON)
     mevr::host::halcyon::Tick(deltaSeconds);
     mevr::host::render_levers::Tick();
     mevr::host::motion_blur_guard::Tick();
 #endif
 #if defined(MEVR_WITH_HALCYON_LE2)
     mevr::host::halcyon_le2::AfterTick(deltaSeconds);
+    mevr::host::motion_blur_guard::Tick();
 #endif
 #if defined(MEVR_WITH_HALCYON_LE3)
     mevr::host::halcyon_le3::AfterTick(deltaSeconds);
     mevr::host::motion_blur_guard::Tick();
+    mevr::host::flare_window::Tick();
 #endif
     mevr::host::Tick(deltaSeconds);
     mevr::host::process_event::ReportOffThread();
-#if defined(MEVR_WITH_HALCYON)
+#if defined(MEVR_WITH_PERF_PROBE)
     mevr::host::perf::HostTickEnd();
 #endif
 }
@@ -173,7 +193,7 @@ void WINAPI ExitProcessHook(UINT exitCode) {
     QueryPerformanceCounter(&end);
     mevr::log::Info("game exiting (code {}); the hook's work took {:.3f} ms; the process ends now{}", exitCode,
         1000.0 * static_cast<double>(end.QuadPart - begin.QuadPart) / static_cast<double>(frequency.QuadPart),
-#if defined(MEVR_WITH_HALCYON) && defined(MEVR_GAME_LE1)
+#if (defined(MEVR_WITH_HALCYON) && defined(MEVR_GAME_LE1)) || defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
         "; kept locks: " + mevr::host::kept_locks::Summary());
 #else
         "");
@@ -213,7 +233,38 @@ bool ExeGate() {
     return true;
 }
 
+// One calibration for the trilogy (research/25 section 17): the controller types the shared file lacks are taken from the
+// three games' own ASI\<GAME>MEVR.ini, once per launch, before the mod first reads the file (core/vr/CalibrationFile).
+#if !defined(MEVR_LE2_DIAGNOSTIC)
+void PrepareCalibrationFile() {
+    namespace cf = mevr::vr::calibration_file;
+    std::filesystem::path const path = mevr::engine::CalibrationFile();
+    cf::Migration const m = cf::Migrate(path, mevr::engine::CalibrationSources());
+    for (std::string const& line : m.lines) {
+        if (m.refused || !m.error.empty()) {
+            mevr::log::Warn("calibration: {}", line);
+        } else {
+            mevr::log::Info("calibration: {}", line);
+        }
+    }
+    int types = 0;
+    for (auto const& [name, section] : mevr::ini::Read(path).file) {
+        types += cf::KeyOf(name, cf::kMeasuredPrefix).empty() ? 0 : 1;
+    }
+    mevr::log::Info("calibration: one file for the three games, {} ({} controller type{})", mevr::ini::Utf8(path), types,
+        types == 1 ? "" : "s");
+}
+#endif
+
 } // namespace
+
+#if defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
+// The sequels' renderers hook ExitProcess after us ([EXITKILL], on top of ours) and used to terminate before our hook ran:
+// no exit line, no kept locks' summary, no NoteProcessExit. They hand us the call when our hook is in.
+bool MevrSeams::HostEndsProcess() noexcept {
+    return gExitProcessOrig != nullptr;
+}
+#endif
 
 extern "C" __declspec(dllexport) bool SpiOnAttach(spi::Interface* InterfacePtr) {
     mevr::log::Open(MEVR_GAME_NAME_W L"MEVR.log");
@@ -279,6 +330,10 @@ extern "C" __declspec(dllexport) bool SpiOnAttach(spi::Interface* InterfacePtr) 
         mevr::log::Error("ProcessEvent hook failed; script-level features off");
     }
 
+#if !defined(MEVR_LE2_DIAGNOSTIC)
+    // The shared calibration file before the mod reads it (research/25 section 17).
+    PrepareCalibrationFile();
+#endif
     // Load the mod before the tick hook goes live, so its first tick sees a started mod.
     mevr::host::Start(InterfacePtr);
 
@@ -303,8 +358,22 @@ extern "C" __declspec(dllexport) bool SpiOnAttach(spi::Interface* InterfacePtr) 
     mevr::host::motion_blur_guard::Install(init);
     mevr::host::ui_world_figure::Install(init);  // research/57 section 7: no Umbra query for the UI world's capture
 #endif
+#if defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
+    // As LE1's (research/36 "The fault at quit"): the game's static critical sections are never deleted, so a teardown that
+    // destroys a lock its worker still takes can't fault the quit. No per-game address: any lock inside the exe's image.
+    mevr::host::kept_locks::Install(init);
+#endif
+#if defined(MEVR_WITH_HALCYON_LE2)
+    mevr::host::motion_blur_guard::Install(init);  // ME1's and ME3's guard (research/le2-motion-blur-guard.md)
+#endif
 #if defined(MEVR_WITH_HALCYON_LE3)
     if (!gEngineProbe) mevr::host::motion_blur_guard::Install(init);
+    if (!gEngineProbe) mevr::host::flare_window::Install(init);  // research/30 section 9.6: lens flares in mode 2
+#endif
+#if defined(MEVR_WITH_PERF_PROBE) && !defined(MEVR_WITH_HALCYON)
+    // The sequels: ME1's render levers, each by what this game's rows of engine/Addresses.hpp have (plugin/RenderLeversTable);
+    // a lever without its rows stands down with one log line.
+    if (!gEngineProbe) mevr::host::render_levers::Install(init);
 #endif
     mevr::log::Info("host attached");
     return true;

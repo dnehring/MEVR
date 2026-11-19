@@ -194,7 +194,7 @@ def flow_wanted(k, kd, v):
     # Set pieces (screen) stay on the 3D screen; a transmission's hologram needs its stage, which an ambient play skips. A
     # framed conversation that plays in the world since 2026-11-10 (SEEN_IN_WORLD) was seen as a conversation there: its
     # chains stay conversations until they have been seen as barks.
-    return v not in ('screen', 'staged') and kd != 'remote' and k not in FLOW_SKIP and k not in SEEN_IN_WORLD
+    return v not in ('screen', 'staged', 'seated') and kd != 'remote' and k not in FLOW_SKIP and k not in SEEN_IN_WORLD
 
 
 def ranges(indices):
@@ -230,6 +230,10 @@ SEEN_IN_WORLD = {'sta90_council_saren', 'nor10_captain', 'nor10_comm_room', 'nor
 # Staged scenes the owner wants in first person although the game walks Shepard (2026-11-11: Kirrahe's camp "could have been
 # fully supported in the first person experience"): the mod accepts their stage under a dip (cw::IsStagedScene), not the screen.
 STAGED_IN_WORLD = {'jug20_sal_captainkirrahe'}
+# Scenes where the game sits Shepard down (the owner, 2026-11-16: "when we sit down in front of one of the dancers in the club on
+# the Citadel, we need to ensure that that also is supported under the first person viewing experience", every sit-down across
+# the trilogy): staged, and the player's view sits with his head (cw::IsSeatedScene, research/69 item 43).
+SEATED_IN_WORLD = {'sta60_stripperseat'}
 
 
 def verdict(k, m, name=None):
@@ -237,6 +241,8 @@ def verdict(k, m, name=None):
         return '-'
     if k == 'framed' and not m['shepardMove'] and name in SEEN_IN_WORLD:
         return 'check'
+    if name in SEATED_IN_WORLD:
+        return 'seated'
     if name in STAGED_IN_WORLD:
         return 'staged'
     if k == 'framed' or m['shepardMove']:
@@ -397,7 +403,7 @@ def main(argv):
     by_kind = collections.Counter(r[2] for r in rows)
     print(f"{len(rows)} conversations: " + ', '.join(f'{k} {by_kind[k]}' for k in ('free', 'stage', 'remote', 'walks', 'framed', 'ambient')))
     by_verdict = collections.Counter(verdict(r[2], r[3], r[0]) for r in rows)
-    print('verdicts: ' + ', '.join(f'{v} {by_verdict[v]}' for v in ('screen', 'check', 'world')))
+    print('verdicts: ' + ', '.join(f'{v} {by_verdict[v]}' for v in ('screen', 'check', 'world', 'staged', 'seated')))
     if '--set-pieces' in argv:
         names = sorted(k for k, a, kd, m, c in rows if verdict(kd, m, k) == 'screen')
         print('\n// tools/conversation-scan.py --set-pieces: framed, or Shepard walked by the game.')

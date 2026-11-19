@@ -14,7 +14,8 @@ generated: { by: claude-code/fable-5.1, at: 2026-10-30T19:53:43Z }
   different reports (judder, shimmer, shifting assets) before the pattern was seen; the third time cost a night.
 - A fact that cost hours and that nobody would guess from the code: d3d11 swapping its vtable entries, EA's
   launcher refusing a job object, a console that prints nothing.
-- Not for: how a feature works (`CLAUDE.md`, `research/`), a one-off bug (`git log`), plans (`docs/`).
+- Not for: how a feature works (`CLAUDE.md`, `research/`, and since 2026-11-17 the catalog: [how to catalog](how-to-catalog.md)),
+  a one-off bug (`git log`), plans (`docs/`).
 
 # Where
 

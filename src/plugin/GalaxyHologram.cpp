@@ -4,17 +4,20 @@
 #include "plugin/GalaxyHologram.hpp"
 
 #include "core/Log.hpp"
+#include "core/WriteJournal.hpp"
 #include "core/vr/Controllers.hpp"
 #include "core/vr/GalaxyHologram.hpp"
+#include "core/vr/GalaxyMap.hpp"
 #include "core/vr/OverlayPlacement.hpp"
 #include "core/vr/TestRequest.hpp"
 #include "plugin/GalaxyHologramDraw.hpp"
-#if defined(MEVR_GAME_LE3)
+#if !defined(MEVR_GAME_LE1)
 #include "plugin/XrHost.hpp"
 #else
 #include "plugin/Halcyon.hpp"
 #endif
 #include "engine/GameAdapter.hpp"
+#include "plugin/PovSwap.hpp"
 #include "plugin/Renderer.hpp"
 #include "plugin/ScopeCaptureSource.hpp"
 #include "plugin/TestLoop.hpp"
@@ -437,7 +440,7 @@ XrCompositionLayerBaseHeader const* Layer(Frame const& frame) {
     auto const selected = gPointer.Step(candidate, onTable ? h.trigger : 0.0f, valid);
     if (candidate != gHovered) {
         if (candidate >= 0) {
-#if defined(MEVR_GAME_LE3)
+#if !defined(MEVR_GAME_LE1)
             xr_host::RequestHaptic(hand, 0.012f, 0.18f);
 #else
             halcyon::RequestHaptic(hand, 0.012f, 0.18f);
@@ -449,7 +452,7 @@ XrCompositionLayerBaseHeader const* Layer(Frame const& frame) {
         gh::Object const& o = scene->objects[*selected];
         gh::PostPick(o.id);
         ++gPicks;
-#if defined(MEVR_GAME_LE3)
+#if !defined(MEVR_GAME_LE1)
         xr_host::RequestHaptic(hand, 0.04f, 0.6f);
 #else
         halcyon::RequestHaptic(hand, 0.04f, 0.6f);
@@ -784,7 +787,7 @@ void WindowDown(char const* why) {
 
 int WindowLayers(Frame const& frame, XrCompositionLayerBaseHeader const** out) {
     auto const scene = gh::Latest(kFreshMs);
-#if defined(MEVR_GAME_LE3)
+#if !defined(MEVR_GAME_LE1)
     bool const mapMode = engine::adapter::IsMapMode(frame.gameMode);
 #else
     bool const mapMode = frame.gameMode == 9;
@@ -941,4 +944,114 @@ std::string StatusJson() {
     return gStatus;
 }
 
+// ---- The view held at Shepard's while the map is open in the CIC (research/51 section 8.1) ---------------------------------
+namespace {
+pov_swap::Swap gHoldSwap;  // game thread (CalcSceneView)
+std::uint64_t gHoldSwaps = 0;
+
+// ME1's rule (core/vr/galaxy_map::TableView: the map, and its opening and closing cinematic bridged while not suspended), in
+// each game's own modes; ME1's raw numbers on ME1.
+bool TableHeld(int gameMode, bool ownsTable, bool suspended) {
+#if defined(MEVR_GAME_LE1)
+    return vr::galaxy_map::TableView(gameMode, ownsTable, suspended);
+#else
+    namespace ga = engine::adapter;
+    ga::Mode const context = ga::GameMode(gameMode);
+    return ownsTable && (ga::IsMapMode(gameMode) || (!suspended && (context == ga::Mode::OnFoot || context == ga::Mode::Cinematic)));
+#endif
+}
+#if !defined(MEVR_GAME_LE1)
+// The sequels: a cinematic is also held while the mod still publishes its table reserved on foot at the projector with the
+// opening's cue (Scene::holdPad[kOpeningCue], game/GalaxyProjectorFlow): the console's use began the map's opening and the
+// mod's next tick hasn't published its bridge yet (2-7 frames of the cinema screen before, ME2 and ME3; lane GX4).
+bool SequelTableHeld(gh::Scene const& scene, int gameMode, bool ownsTable) {
+    bool const cue = ownsTable && scene.suspended != 0 && scene.holdPad[gh::kOpeningCue] != 0 &&
+        engine::adapter::GameMode(gameMode) == engine::adapter::Mode::Cinematic;
+    return cue || TableHeld(gameMode, ownsTable, scene.suspended != 0);
+}
+#endif
+} // namespace
+
+bool HoldViewBegin(int gameMode, bool& wanted) noexcept {
+    wanted = false;
+    gHoldSwap.active = false;
+    auto const scene = gh::Latest(500);
+#if defined(MEVR_GAME_LE1)
+    if (!scene || !TableHeld(gameMode, scene->inWorld != 0 && scene->onFoot == 0, scene->suspended != 0) || scene->holdRender == 0 ||
+#else
+    if (!scene || !SequelTableHeld(*scene, gameMode, scene->inWorld != 0 && scene->onFoot == 0) || scene->holdRender == 0 ||
+#endif
+        scene->povLocationAddress == 0 || scene->povRotationAddress == 0 || scene->povFovAddress == 0) {
+        return false;
+    }
+    wanted = true;
+    gHoldSwap.location = reinterpret_cast<float*>(scene->povLocationAddress);
+    gHoldSwap.rotation = reinterpret_cast<std::int32_t*>(scene->povRotationAddress);
+    gHoldSwap.fov = reinterpret_cast<float*>(scene->povFovAddress);
+    if (!pov_swap::In(gHoldSwap, scene->holdLocation, scene->holdRotation, scene->holdFov)) {
+        return false;
+    }
+    gHoldSwap.active = true;
+    if (gHoldSwaps++ == 0) {
+        log::Info("galaxy hologram: the view held at Shepard's for the main view's build only (the game keeps its map camera)");
+    }
+    return true;
+}
+
+void HoldViewEnd() noexcept {
+    if (gHoldSwap.active) {
+        pov_swap::Out(gHoldSwap);
+        gHoldSwap.active = false;
+    }
+}
+
+bool Holds(int gameMode) noexcept {
+    auto const scene = gh::Latest(500);
+#if defined(MEVR_GAME_LE1)
+    return scene && TableHeld(gameMode, scene->inWorld != 0 && scene->anchorValid != 0 && scene->onFoot == 0, scene->suspended != 0);
+#else
+    return scene && SequelTableHeld(*scene, gameMode, scene->inWorld != 0 && scene->anchorValid != 0 && scene->onFoot == 0);
+#endif
+}
+
 } // namespace mevr::host::galaxy_hologram
+
+namespace mevr::host::pov_swap {
+
+bool In(Swap& s, float const location[3], std::int32_t const rotation[3], float fov) noexcept {
+    __try {
+        for (int i = 0; i < 3; ++i) {
+            s.savedLocation[i] = s.location[i];
+            s.savedRotation[i] = s.rotation[i];
+        }
+        s.savedFov = *s.fov;
+        for (int i = 0; i < 3; ++i) {
+            s.location[i] = location[i];
+            s.rotation[i] = rotation[i];
+        }
+        mevr::write_journal::Wrote("WorldView.holdLocation", s.location, sizeof(float) * 3);
+        mevr::write_journal::Wrote("WorldView.holdRotation", s.rotation, sizeof(std::int32_t) * 3);
+        *s.fov = fov;
+        mevr::write_journal::Wrote("WorldView.holdFov", s.fov, sizeof(float));
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
+void Out(Swap& s) noexcept {
+    __try {
+        for (int i = 0; i < 3; ++i) {
+            s.location[i] = s.savedLocation[i];
+            s.rotation[i] = s.savedRotation[i];
+        }
+        mevr::write_journal::Wrote("WorldView.restoreLocation", s.location, sizeof(float) * 3);
+        mevr::write_journal::Wrote("WorldView.restoreRotation", s.rotation, sizeof(std::int32_t) * 3);
+        *s.fov = s.savedFov;
+        mevr::write_journal::Wrote("WorldView.restoreFov", s.fov, sizeof(float));
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    }
+}
+
+} // namespace mevr::host::pov_swap
+

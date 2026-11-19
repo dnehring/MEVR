@@ -6,8 +6,8 @@
 #include "core/Log.hpp"
 #include "engine/GameAdapter.hpp"
 #include "plugin/CrashBreadcrumbs.hpp"
-#if defined(MEVR_WITH_HALCYON)
-#include "plugin/PerfProbe.hpp"  // the frame breakdown's queued-call timing (LE1's host only)
+#if defined(MEVR_WITH_PERF_PROBE)
+#include "plugin/PerfProbe.hpp"  // the frame breakdown's queued-call timing
 #endif
 #include "ue3/Types.hpp"
 
@@ -144,18 +144,18 @@ void Drain() {
             log::Info("game thread calls: a ProcessEvent from another thread ({}) was queued and runs at the next engine tick "
                       "(script must run on the game thread only; research/36)", name.View());
         }
-#if defined(MEVR_WITH_HALCYON)
+#if defined(MEVR_WITH_PERF_PROBE)
         auto const timing = perf::QueueCallBegin(c.object, c.function);
 #endif
         if (!StillAlive(e, c)) {
             ++gSkipped;
-#if defined(MEVR_WITH_HALCYON)
+#if defined(MEVR_WITH_PERF_PROBE)
             perf::QueueCallEnd(timing, 0);
 #endif
             continue;
         }
         bool const ran = Run(e, c);
-#if defined(MEVR_WITH_HALCYON)
+#if defined(MEVR_WITH_PERF_PROBE)
         perf::QueueCallEnd(timing, ran ? 1 : 2);
 #endif
         (ran ? gRun : gFailed) += 1;

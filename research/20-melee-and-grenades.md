@@ -397,6 +397,105 @@ tracking loss, a hand not allowed), `TestSwing` (slow aim, one strike per punch,
 refused, the cooldown, a sideways swipe, jitter, suppression, a tracking glitch), `TestArcPoints`,
 `TestFaceButtonsOff` (B and X kept from the game, RB still RB, the flags).
 
+### The trilogy's one path (2026-11-17, lane MEL)
+
+The owner, 2026-11-17 (lane REV's review found ME2's B bound to `Console_Melee`, so every squad placement hold and double tap
+also meleed): "B on ME2 and ME3 works as on ME1": squad placement (hold B, the arc; a double B regroups), never the game's melee
+on foot; melee is ME1's fist gesture.
+
+**The code: one gesture core, one dispatcher, an adapter per game** (docs/trilogy-parity-ledger.md G43, Forks 12).
+- `core/ik/Melee` `ik::melee::Gestures` is the one gesture core, with two rule sets (`ik::melee::Rules`). `Physical` is ME1's loop
+  as `game/Throwables` ran it until today: each hand's `SwingDetector` on every new sample, a suppressed hand's stroke refused and
+  spent (its history kept), no neutral pose wanted, either hand may strike in the same step, the shared cooldown the dispatcher's.
+  `tests/MeleeTests.cpp` runs it beside two bare detectors over 6,000 random samples (strokes, suppression, tracking loss, gaps,
+  jumps, a gun hand's own speed) and compares every step: identical. `Staged` is ME3's opt-in rules (research/le3-melee-audit.md),
+  unchanged.
+- `game/Melee` `Strike` is the one dispatcher, ME1's `Strike` moved: the setting, combat enabled, the route (`RouteMelee`), not
+  sprinting, not busy, the wait (`MeleeWait`: ours and the game's melee cooldown), the enemy in reach, then the game's own call;
+  the strike's tick and the hit's thump (the target's health watched 1.2 s). Each game's names are its adapter in the same file
+  (`#if`): drawn, busy, the melee power and its cooldown, the two dispatches, the health read.
+
+| | ME1 | ME2 | ME3 (opt-in) |
+|---|---|---|---|
+| strokes fed by | `game/Throwables` (its body frame; a grenade's hand suppressed) | `melee::Tick` (the same clock and yaw, no grenades) | `melee::Tick`, the host's staged Link |
+| drawn | `BioPawn.IsInCombatActionState` | `BioPawn.ActionState == 1` | `Pawn.Weapon` an `SFXWeapon` |
+| busy | switching, a power, a grenade | zoomed or in cover (TryMelee's own refusals), no weapon or it is coming out or going away, switching, a power, a blocking action | its native admission (action pending, reload, zoom, weapon state, cover, host ownership) |
+| the melee power | `Pistol_Whip` for the pistol slot, else `Rifle_Butt` | the held weapon's `SFXWeapon.MeleePowerName` (the heavy pistol's: `Pistol_Whip`) | none (a custom action) |
+| weapon out | `SFXGameModeDefault.TryMelee` | `SFXGameModeDefault.TryMelee` | `TryMelee` / `TryHeavyMelee`, the action observed |
+| weapon away, right fist | `BioPlayerInput.ActivatePower(Pistol_Whip)` at the enemy | refused: holstered, ME2 holds no weapon and its melee is the held weapon's (the adapter's `ActivatePower(<MeleePowerName>)` stays for a weapon in hand that isn't drawn) | refused |
+| hit seen by | `GetPercentHealth` | health and shields (`GetCurrent/MaxHealth`, `GetCurrent/MaxShields`) | the action's observation |
+
+ME2's `TryMelee` (its script, read 2026-11-17, described here, not copied): with `Pawn.Weapon` set, the controller not zoomed and
+not in its cover state, it cancels the weapon's reload and, unless the weapon is coming out or going away, casts the weapon's
+`MeleePowerName` through `BioPlayerInput.ActivatePower`; the power is a BioPower in the behaviour's `m_powers` (where
+`SFXCustomAction_Melee.Impact` finds it to hit every hostile `BioPawn` visible within 150 units), with `m_fCooldownRemaining`, as
+ME1's. `TryHeavyMelee` casts `HeavyPunch`; ME2's B doesn't bind it.
+
+**B.** `gamepad::Options::meleeButton` was cleared only by `Throwables::AdjustPad`, only on ME1. Now `melee::AdjustPad` (from
+`support_grip`, every game) keeps B from the game on foot in VR while `[Throwables] meleeButton = 0` (ME1's default): on ME1
+whenever game/Throwables is active (its rule, unchanged), on the sequels on foot with a head-tracked view, active controllers and
+the view anchor. Squad placement stood down on the ini key alone; it now asks `melee::BIsGameButton()`: B kept and the host able
+to keep it. ME2's `Console_Melee` is `Exclusive TryExitCover 1 | TryMelee | LeaveWorld`: on foot B no longer leaves cover (there
+is none to leave in VR) nor fires `SFXGameModeBase.LeaveWorld`, which outside combat activates the level's `SFXSeqEvt_LeaveWorld`
+events (the levels that let the player leave by the button): docs/trilogy-plan.md question 16.
+
+**ME2 on the fake headset (Save 4, Freedom's Progress; `tools/le2-halcyon-run/melee.ps1`, `melee-b.ps1`, `place.ps1`).** The level's
+drone factory makes a hostile (powers.ps1's route), brought 1.1 m ahead with `mevr setloc` in the same console request as the
+strike (the squad shoots drones down within a second).
+- Save 4 loads with the pistol out. `mevr melee strike`: `SFXGameModeDefault.TryMelee (Pistol_Whip)` at the drone 1.1 m away;
+  `melee: hit SFXPawn_AssaultDrone_1 after 0.25 s (health 100% -> 5%)`.
+- A replayed right fist (grip and trigger) thrust at 3.8 m/s over 0.15 m with the pistol out: `isn't a strike: suppressed`, ME1's
+  rule (with the weapon out the trigger fires the gun).
+- The pistol out, a replayed open left hand thrust at 4 m/s over 0.13 m while the right grip holds the gun: `the left hand's 4.0
+  m/s stroke ... -> SFXGameModeDefault.TryMelee (Pistol_Whip)`; the call trace shows the game's own melee run
+  (`BioPlayerMeleeScript.StartPhase`, its `OnImpact` 0.25 s later, `EndPhase`). With `meleeNeedsEnemy = 0` for the replay: a drone
+  brought by console doesn't stay in reach long enough for one.
+- **The weapon away, ME2 has no melee: forced by the game.** Holstered (`mevr omni holster`), ME2's pawn holds no weapon at all
+  (`Pawn.Weapon` None), and its melee is the held weapon's own: `TryMelee` needs `Pawn.Weapon` and casts its `MeleePowerName`, and
+  `SFXCustomAction_Melee.Impact` finds the power through the held weapon again. An open hand is refused as on ME1 (`make a fist`);
+  the fist, from the console and from a replayed fist thrust at 3.9 m/s, reaches the dispatcher as a fist and is refused by ME2's
+  rule (`no weapon in hand: ME2's melee is the held weapon's own ..., so no punch with the weapon away`). ME1's punch with the weapon
+  away has no ME2 counterpart short of drawing the gun, which only holsters may do (the owner, 2026-11-16).
+- A hostile starts combat, and ME2 then draws the weapon by itself (seen: the holstered pistol out again within seconds of a drone
+  being made; not a button's draw, so not the holsters' refusal's to stop).
+- **B** (`melee-b.ps1`, `place.ps1`): B double-tapped and held on foot with a call trace of every `TryMelee`: none. The canary,
+  `[Throwables] meleeButton = 1` and the same replay: `SFXGameModeDefault.TryMelee` twice (and the log's `squad place: off while B
+  reaches the game ...`, placement standing down; back when the key returned). `place.ps1`: the squad wheel, the arc to the ring
+  (Jacob 0.30 m, Miranda 0.89 m), Miranda alone, the double B's regroup, and the new judged verdicts: no TryMelee while B was held
+  and double-tapped, the flat order's let-go on the ground.
+
+**ME2 reloads by itself** (no reload button on the sequels: X is the hand power wheel; the owner chose "automatic reload for now").
+`SFXWeapon.ShouldAutoReload` (its script): the weapon can reload, has a magazine and its used count reached the magazine's size; the
+`Active` state's `BeginState` (back from firing) and a trigger pull on an empty magazine both start the reload then. On Save 4,
+the heavy pistol at 8 in the magazine (12), 4 used, 64 spare, fired by 16 replayed trigger pulls 0.4 s apart with the right grip
+held: afterwards 9 in the magazine, 3 used, 52 spare: it ran dry and reloaded 12 from the reserve by itself. Again from a full
+magazine (12, 0 used, 60 spare), with a call trace of the weapon's own reload calls: `ShouldAutoReload` after every shot
+(`Active.BeginState`), then with the magazine empty `StartReload.BeginState` -> `Reloading.BeginState` -> `ReloadNearFinished`
+1.2 s later -> `FinishReloading` (1.5 s in all); afterwards 11 in the magazine, 1 used, 48 spare. Nothing about reload was changed.
+
+**ME3's stroke melee is on by default since the owner's "All recommendations" (2026-11-17, lane DEF2):** `src/mod/Mod.cpp`'s
+ME3 switches (`gMeleeRequests`, `gMeleeGestures`, which only ME3's staged adapter reads) start on, so a stroke reaches `Strike` as
+on ME1 and ME2, with `[Throwables] melee = 0` the off switch on every game; the heavy "chamber and strike" stays opt-in (`mevr
+melee heavy-gestures on`) until question 7. The start logs `melee: ME3's stroke melee on by default (...)`. No migration: ME3's
+switches were never kept in an ini. The ME1 and ME2 builds of `Mod.cpp` and `Melee.cpp` preprocess to the same text as before
+(the switches' new values are under `#if defined(MEVR_GAME_LE3)`). Before that, ME3 stayed opt-in. Its strike checks wait for
+the combat save: research/le3-combat-fixtures.md "Melee on the first combat save". On Save
+31 (the Normandy, renderer preview): `mevr melee` says `requests false; gestures false; ...`; `light`, `heavy` and `punch` are
+refused `combat is disabled here`; `melee-b.ps1 -Game LE3`: B double-tapped and held, no `TryMelee`; the canary, ME3's own
+`SFXGameModeDefault.TryMelee` twice.
+
+**ME1 unchanged** (the same pose before and after, `tools/fake-headset-session.ps1`, the development build at main 79e97c4a's melee
+code and at this change): the save as it loads, then UNC20 out of the Mako with a hostile soldier 1.5 m away (`mevr spawnpawn`).
+`mevr melee punch|strike` printed the same eight answers (no hostile around; make a fist; TryMelee (pistol whip) at the soldier four
+times, at 90 degrees, no damage: the game's cone); `reflect: 2412 of 2448 checks agree` both times; at all three snapshot poses
+`hostView` identical and the eyes, the world layer and the HUD panel identical pixel for pixel. The gesture loop itself is the
+physical rules' unit comparison above.
+
+**Side finding: a crash in the console's class lookup** (every game; gotcha `stale-class-index`). After a reload of Save 4 in the
+same process, `mevr instances SFXGame.SFXPawn_AssaultDrone` ended ME2: `FindClass` fell back to a level's own class kept in the
+by-name index from before the load (the index was rebuilt only when GObjects' count changed) and `PathName` read its freed outer.
+Fixed in `ue3::Reflection::FindClassNamed` (entries checked) and by dropping the index on a world change (`runtime::NoteWorld`).
+
 ## 4. Open
 
 - **[verify]** In game: the launch delay after `UseGrenade` (the animation); that the disc re-aimed

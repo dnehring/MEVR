@@ -20,6 +20,8 @@ namespace mevr::host::motion_blur_guard {
 namespace {
 #if defined(MEVR_GAME_LE3)
 namespace address = engine::addresses::le3;
+#elif defined(MEVR_GAME_LE2)
+namespace address = engine::addresses::le2;
 #else
 namespace address = engine::addresses::le1;
 #endif

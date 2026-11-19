@@ -7,8 +7,11 @@
 
 struct ID3D11DeviceContext;
 
-// The frame-breakdown probe (research/22): for a few seconds, where each frame's time goes. LE1, with
-// Halcyon's renderer in the host.
+// The frame-breakdown probe (research/22): for a few seconds, where each frame's time goes. One module in all three
+// games' hosts (research/sequel-render-levers.md "Shared module"); the per-game part is plugin/PerfProbeHost.hpp's
+// adapter. LE1 has every step below (Halcyon's ME1 renderer carries the seams). The sequels have the game thread's ticks,
+// the wrapped xrEndFrame (and xrWaitFrame, xrBeginFrame once their bridges hand over those slots) and the GPU timestamps
+// at the frame's ends, with a frame bounded by xrEndFrame until their renderers call the Present seams below.
 //
 // Per frame of Halcyon's render thread (vr::frame_probe::Point): the time and the thread's own busy time
 // at each step (the game's two eye passes and UI, xrWaitFrame, xrBeginFrame, our controllers and quads,
@@ -33,6 +36,19 @@ struct GpuTiming {
     double work = -1, sampledAt = 0; // seconds, QPC clock; unavailable until a complete, non-disjoint probe frame
 };
 GpuTiming LatestGpuTiming(); // render thread only; cached completed queries, never waits or starts a capture
+
+// ---- A renderer's seams (the sequels' bridges; LE1's are MevrBridge::PerfPresentBegin/End, PerfPass0Captured, g_perfDraws) --
+// The renderer's Present hook, its first and last action, with the game's immediate context: the frame's bounds (after the
+// first SeamPresentBegin a frame is no longer bounded by xrEndFrame). SeamPresentEnd also closes plugin/RenderLevers'
+// frame on the sequels. Render thread.
+void SeamPresentBegin(ID3D11DeviceContext* context);
+void SeamPresentEnd(ID3D11DeviceContext* context);
+// Whether a Present seam bounds the frames (LE1 always; a sequel once its Present hook called SeamPresentBegin).
+bool PresentSeamSeen();
+// The first eye's image was captured: what came before it this frame was the first eye's render. Render thread.
+void SeamFirstEyeCaptured(ID3D11DeviceContext* context);
+// The sequels' draw counter (LE1's is Halcyon's g_perfDraws): from the renderer's D3D draw hooks, any draw call.
+void NoteDraws(std::uint32_t count = 1) noexcept;
 
 // Two marks around a scope.
 class ScopedMarks {

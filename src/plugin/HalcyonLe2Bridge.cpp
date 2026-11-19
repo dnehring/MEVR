@@ -1,95 +1,45 @@
 // SPDX-License-Identifier: MIT
-// Our side of the seams in Halcyon's ME2 renderer (the common ones, src/halcyon/MevrSeams.h, and ME2's own,
-// src/halcyon/le2/mevr_bridge.h): the OpenXR loader, the session's
-// functions for the test loop, our controller actions, their vibration and the floor on Halcyon's session (plugin/XrHost,
-// shared with LE1's bridge), the view each frame for the mod (core/vr/HostView), and the motion controllers as Xbox pad 0.
-// As LE1's (plugin/HalcyonBridge.cpp). The game-thread queue and the runtime test are in plugin/HalcyonLe2.cpp. Separate
-// from that file: the OpenXR SDK's headers and Halcyon's xr_types.h define the same names.
+// ME2's part of the sequels' bridge (plugin/HalcyonSequelBridge.cpp has the common seams, plugin/SequelOverlays.cpp the
+// layer composition): the adapter for what ME2 alone has (the pull that picks a planet kept from the orbital scanner, its UI
+// draws' order for the log), its PlacePanel, the eye-image seams (lane EY's)
+// and ME2's own seams (src/halcyon/le2/mevr_bridge.h: the floor view's journal, the swap chain's Present). Separate from
+// plugin/HalcyonLe2.cpp: the OpenXR SDK's headers and Halcyon's xr_types.h define the same names.
 
 #include "halcyon/le2/mevr_bridge.h"
 
 #include "core/Breadcrumbs.hpp"
-#include "core/DevChannels.hpp"
 #include "core/Log.hpp"
-#include "core/Ini.hpp"
-#include "core/vr/GalaxyMap.hpp"
-#include "core/vr/CineScreen.hpp"
-#include "core/vr/Colour.hpp"
-#include "core/vr/Controllers.hpp"
-#include "core/vr/HostView.hpp"
-#include "game/GamepadMapping.hpp"
+#include "core/vr/HudPieces.hpp"
 #include "engine/GameAdapter.hpp"
-#include "plugin/CinemaBackdrop.hpp"
-#include "plugin/CineScreen.hpp"
-#include "plugin/SequelCinema.hpp"
-#include "plugin/SequelWeaponLayers.hpp"
-#include "plugin/SequelSquadLayers.hpp"
-#include "plugin/Colour.hpp"
+#include "game/GamepadMapping.hpp"
 #include "plugin/CrashBreadcrumbs.hpp"
 #include "plugin/EyeCopy.hpp"
-#include "plugin/FloorLock.hpp"
 #include "plugin/GamePointer.hpp"
-#include "plugin/HandReticle.hpp"
-#include "plugin/HudPanel.hpp"
+#include "plugin/HalcyonSequelBridge.hpp"
 #include "plugin/HdrDisplayPolicy.hpp"
-#include "plugin/HudPieceLayers.hpp"
+#include "plugin/HudPanel.hpp"
 #include "plugin/MenusLe2.hpp"
-#include "plugin/PadMerge.hpp"
 #include "plugin/Renderer.hpp"
-#include "plugin/Voice.hpp"
-#include "plugin/Swapchains.hpp"
 #include "plugin/TestLoop.hpp"
-#include "plugin/SightLayers.hpp"
-#include "plugin/SquadPanel.hpp"
-#include "plugin/TransitionFade.hpp"
-#include "plugin/TraversalCue.hpp"
-#include "plugin/Vignette.hpp"
-#include "plugin/PowerWheel.hpp"
-#include "core/vr/PowerWheel.hpp"
-#include "core/vr/SquadMenu.hpp"
-#include "plugin/SquadPlaceDraw.hpp"
+#include "plugin/Voice.hpp"
 #include "plugin/WorldPanels.hpp"
-#if defined(MEVR_WITH_MAIN_MENU)
-#include "plugin/Thespian.hpp"
-#endif
-#include "plugin/XrHost.hpp"
 
 #include <openxr/openxr.h>
 
 #include <d3d11.h>
 #include <dxgi1_6.h>
 
-#include <algorithm>
-#include <atomic>
-#include <cmath>
 #include <cstdio>
 #include <cstring>
-#include <filesystem>
 #include <mutex>
+#include <optional>
 
-namespace MevrSeams {
 namespace {
 
-bool gToldFirstSync = false;  // Present thread
-bool gLoggedView = false;     // Present thread
-mevr::vr::galaxy_map::NativeTablePanel gGalaxyTable;
-void* gGalaxySpace = nullptr;
-std::optional<mevr::vr::galaxy_map::Screen> gGalaxyPanel;
-bool gGalaxyPointerShown = false;
-bool gGalaxyTableEnabled = false;
-mevr::vr::galaxy_holo::TableSettings gGalaxySettings;
-std::uint64_t gGalaxySettingsRead = 0;
-// The floor lock's last pass (FloorViewTranslation, game thread): the view is published there while it runs.
-std::atomic<std::uint64_t> gFloorTranslatedMs{0};
-constexpr std::uint64_t kFloorTranslateQuietMs = 100;
-
-std::mutex gPadMutex;  // the packet numbering below (XInput is polled from any thread; the latches are plugin/PadMerge's)
-// ME2's conversation game mode (SFXGameModeManager.CurrentMode, me2_xr.cpp's [VRCINE] 5 = Conversation): its triggers are the
-// interrupts' (BIOInput.ini's conversation bindings: LT InterruptParagon, RT InterruptRenegade; research/le2-interrupt-acquisition.md).
-constexpr int kConversationMode = 5;
-XINPUT_GAMEPAD gLastPad{};
-DWORD gPacket = 0;
-int gGalaxyInputMode = -1; // guarded by gPadMutex, like gLastPad
+// ME2's galaxy map is ME1's projector flow (game/GalaxyProjectorFlow, plugin/SequelOverlays) since 2026-11-17 (lane GX2): the
+// opt-in flat table that stood here ([Galaxy] nativeTable, NativeTablePanel) is retired (research/le2-galaxy-table.md "Retired").
+// The pull that picked a planet must end before it can operate the orbital scanner: under sequel_bridge::PadMutex().
+int gGalaxyInputMode = -1;
 mevr::game::gamepad::CloseLatch gGalaxyTriggerLatch;
 
 // The order of a present's UI draws, for the log (render thread = the Present thread on ME2): runs of "e" (before the
@@ -117,136 +67,103 @@ UiTrace gUiTrace;
 void* gBackbuffer = nullptr;   // identity only: this present's backbuffer
 unsigned gUiTracePresents = 0;
 
-// ME1's 3D cinema screen (research/le2-cinema.md): this frame's screen as CineScreenLayers placed it, for OverlayLayers' UI
-// layer in front of it (Present thread; cleared once OverlayLayers used it), and the headset's eye distance for the plan.
-using ScreenNow = mevr::host::sequel_cinema::State;
-ScreenNow gScreen;
-
 } // namespace
 
-void* StaticXrGetInstanceProcAddr() noexcept {
-    return reinterpret_cast<void*>(&xrGetInstanceProcAddr);
+// ---- ME2's adapter (plugin/HalcyonSequelBridge.hpp) ----------------------------------------------------------------------
+namespace mevr::host::sequel_bridge::game {
+
+Facts const& Get() noexcept {
+    static Facts const facts{
+        "halcyon le2 bridge",
+        false,  // invalidViewAtOnce: an invalid view waits for the floor lock's quiet like any other
+        true,   // panelColour
+        static_cast<int>(vr::hud_pieces::Layout::Me2),  // ME2's own HUD: its bands (core/vr/HudPieces)
+        // galaxyUiPointer: none, as ME3's. ME2's map keeps its own controls (the stick moves the Normandy, A selects, X exits, Y
+        // buys probes, LB/RB the tabs): a ray click on the map's Exit prompt through the game screens' GUI events
+        // (SFXGameModeGalaxy.GuiKey) changed nothing (run galaxy-final-201028, research/le2-galaxy-table.md "The projector flow").
+        0,
+    };
+    return facts;
 }
 
-void WrapSessionFunctions(void** acquireSwapchainImage, void** waitSwapchainImage, void** releaseSwapchainImage,
-    void** waitFrame, void** beginFrame, void** endFrame, void** locateViews) noexcept {
-    (void)waitSwapchainImage;  // the frame-breakdown probe's (plugin/PerfProbe): LE1's host only so far
-    (void)waitFrame;
-    (void)beginFrame;
-    mevr::host::testloop::WrapSessionFunctions(acquireSwapchainImage, releaseSwapchainImage, endFrame, locateViews);
-    mevr::log::Info("test loop: wrapped Halcyon's ME2 xrAcquireSwapchainImage, xrReleaseSwapchainImage, xrEndFrame and "
-                    "xrLocateViews (snapshots, recording, replay)");
+void SessionCreated(void* /*instance*/, void* /*session*/) noexcept {
+    std::lock_guard lock(PadMutex());
+    gGalaxyInputMode = -1;
+    gGalaxyTriggerLatch = {};
 }
 
-void OnSessionCreated(void* instance, void* session) noexcept {
-    mevr::host::sequel_squad_layers::ForgetSession();
-    gGalaxyTable.Reset();
-    gGalaxyPanel.reset();
-    gGalaxySpace = nullptr;
-    if (gGalaxyPointerShown) mevr::host::game_pointer::ForgetGameUiQuad();
-    gGalaxyPointerShown = false;
-    {
-        std::lock_guard lock(gPadMutex);
-        gGalaxyInputMode = -1;
-        gGalaxyTriggerLatch = {};
+void SessionStopped() noexcept {}
+void FrameBegun(void* /*session*/, void* /*space*/, bool /*focused*/, bool /*tracked*/) noexcept {}
+void FramePublished() noexcept {}
+
+void Recentered() noexcept {}
+
+bool PadKeeps(int /*gameMode*/) noexcept {
+    return false;
+}
+
+bool PadOrbitalTriggers(int gameMode) noexcept {
+    return engine::adapter::IsOrbitalMode(gameMode);  // ME2's mode 10: the scanner's LT and RT
+}
+
+void PadMerged(int gameMode, bool /*controllersActive*/, XINPUT_GAMEPAD& pad) noexcept {
+    if (engine::adapter::IsGalaxyMode(gGalaxyInputMode) && engine::adapter::IsOrbitalMode(gameMode)) {
+        // The pull selecting a planet must end before it can operate the orbital scanner.
+        gGalaxyTriggerLatch.leftTrigger = gGalaxyTriggerLatch.rightTrigger = true;
     }
-    mevr::host::testloop::OnSessionCreated(static_cast<XrSession>(session));
-    mevr::host::swapchains::OnSessionCreated(static_cast<XrSession>(session));  // ours went with the old session
-    mevr::host::hud_piece_layers::ForgetSession();
-#if defined(MEVR_WITH_MAIN_MENU)
-    mevr::host::thespian::ForgetSession();
-#endif
-    mevr::host::eye_copy::Reset();
-    if (mevr::host::xr_host::OnSessionCreated(static_cast<XrInstance>(instance), static_cast<XrSession>(session))) {
-        mevr::log::Info("halcyon le2 bridge: our controller actions are attached to Halcyon's session");
-    }
-    // The colour correction's per-headset settings and automatic profile (plugin/Colour, research/27), as LE1's bridge.
-    {
-        XrSystemGetInfo systemInfo{XR_TYPE_SYSTEM_GET_INFO};
-        systemInfo.formFactor = XR_FORM_FACTOR_HEAD_MOUNTED_DISPLAY;
-        XrSystemId system = XR_NULL_SYSTEM_ID;
-        XrSystemProperties properties{XR_TYPE_SYSTEM_PROPERTIES};
-        XrInstanceProperties runtime{XR_TYPE_INSTANCE_PROPERTIES};
-        if (XR_SUCCEEDED(xrGetSystem(static_cast<XrInstance>(instance), &systemInfo, &system)) &&
-            XR_SUCCEEDED(xrGetSystemProperties(static_cast<XrInstance>(instance), system, &properties)) &&
-            XR_SUCCEEDED(xrGetInstanceProperties(static_cast<XrInstance>(instance), &runtime))) {
-            mevr::host::colour::SetHeadset(runtime.runtimeName, properties.systemName, properties.vendorId);
+    gGalaxyInputMode = gameMode;
+    mevr::game::gamepad::ApplyCloseLatch(gGalaxyTriggerLatch, pad);
+}
+
+void PadFiltered(int /*gameMode*/, bool /*ownMenuOpen*/, XINPUT_GAMEPAD& /*pad*/) noexcept {}
+
+// The order of a present's UI draws, for the log (OnSwapChainPresent prints it).
+void UiDraw(ID3D11DeviceContext* context, bool afterLeftEye) noexcept {
+    if (gUiTracePresents < 12 && context != nullptr) {
+        ID3D11RenderTargetView* rtv = nullptr;
+        context->OMGetRenderTargets(1, &rtv, nullptr);
+        bool backbuffer = false;
+        if (rtv != nullptr) {
+            ID3D11Resource* res = nullptr;
+            rtv->GetResource(&res);
+            backbuffer = res != nullptr && res == gBackbuffer;
+            if (res != nullptr) res->Release();
+            rtv->Release();
         }
-    }
-    mevr::host::menus_le2::OnSessionCreated(static_cast<XrInstance>(instance), static_cast<XrSession>(session));  // M4
-    gToldFirstSync = false;
-}
-
-void OnFrameBegun(void* session, void* space, std::int64_t predictedDisplayTime) noexcept {
-    if (session == nullptr) {
-        return;
-    }
-    mevr::host::world_panels::NoteFrame();  // every frame: a panel (the 3D cinema screen) knows whether it was shown before
-    mevr::vr::controllers::State state;
-    mevr::host::xr_host::OnFrameBegun(static_cast<XrSession>(session), static_cast<XrSpace>(space),
-        static_cast<XrTime>(predictedDisplayTime), state);
-    bool const inputReady = mevr::host::xr_host::InputReady();
-    mevr::vr::controllers::State const live = state;  // the player's own, before a replay's takes its place
-    // The test loop records the live sample, or replaces it with a recording's (plugin/TestLoop), as on LE1.
-    mevr::host::testloop::OnFrameBegun(static_cast<XrSession>(session), static_cast<XrSpace>(space),
-        static_cast<XrTime>(predictedDisplayTime), mevr::host::xr_host::InputFocused(), state);
-    if (!inputReady && !state.active) {
-        return;  // no controllers, and no replay standing in for them
-    }
-    // Our main menu and the guided calibration take the controllers while they're up (plugin/MenusLe2, M4).
-    mevr::vr::controllers::Publish(mevr::host::menus_le2::OnFrameBegun(static_cast<XrSession>(session),
-        static_cast<XrSpace>(space), static_cast<XrTime>(predictedDisplayTime), live, state,
-        mevr::host::xr_host::InputFocused()));
-    if (inputReady && !gToldFirstSync) {
-        gToldFirstSync = true;
-        mevr::log::Info("halcyon le2 bridge: first controller sync (session {}focused)",
-            mevr::host::xr_host::InputFocused() ? "" : "not ");
+        char c = afterLeftEye ? (backbuffer ? 'L' : 'l') : (backbuffer ? 'E' : 'e');
+        if (context->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) {
+            c = afterLeftEye ? 'D' : 'd';  // a deferred context's
+        }
+        gUiTrace.Add(c);
     }
 }
 
-void OnViewBuilt(bool worldView, bool headLook, bool headAim, int lookYawUU, int lookPitchUU, float const headQ[4],
-    float const headP[3], float offsetRightUU, float offsetUpUU, float offsetForwardUU, float unitsPerMeter,
-    bool floorWorld) noexcept {
-    mevr::vr::host_view::State view;
-    view.valid = worldView;
-    view.headLook = headLook;
-    view.headAim = headAim;
-    view.head.orientation = {headQ[0], headQ[1], headQ[2], headQ[3]};
-    view.head.position = {headP[0], headP[1], headP[2]};
-    // As LE1's: Halcyon's head look yaw is + when the view turns left (its DriveHeadLook takes yawSign -1 of the head's
-    // left-positive yaw); ours (UE rotators) + right. Pitch is + up in both. [verify] on ME2 with a replayed turn.
-    view.lookYaw = -lookYawUU;
-    view.lookPitch = lookPitchUU;
-    view.offsetForward = offsetForwardUU;
-    view.offsetRight = offsetRightUU;
-    view.offsetUp = offsetUpUU;
-    view.unitsPerMeter = unitsPerMeter;
-    // The floor lock (plugin/FloorLock, as LE1's): the view goes out from the game thread's ApplyHeadPosition with the
-    // pair it rendered (FloorViewTranslation). Where that didn't run lately (ME2's lean off, a VR cine's tracking lock) the
-    // view goes out from here, uncorrected, so the mod keeps its view.
-    mevr::vr::floor::State floor;
-    mevr::host::xr_host::Floor(&floor);
-    mevr::host::floor_lock::Queue(view, floor, floorWorld);
-    std::uint64_t const now = GetTickCount64();
-    if (now - gFloorTranslatedMs.load(std::memory_order_relaxed) > kFloorTranslateQuietMs) {
-        mevr::vr::host_view::Publish(view, now);
-    }
-    if (worldView && !gLoggedView) {
-        gLoggedView = true;
-        mevr::log::Info("halcyon le2 bridge: first world view: head look yaw {} pitch {} (head aim {}), view offset "
-                        "fwd {:.1f} right {:.1f} up {:.1f}, {:.1f} units per meter, head at ({:.2f}, {:.2f}, {:.2f}) m",
-            view.lookYaw, view.lookPitch, headAim ? "on" : "off", offsetForwardUU, offsetRightUU, offsetUpUU, unitsPerMeter,
-            headP[0], headP[1], headP[2]);
-    }
+void OverlayBegin(MevrSeams::OverlayFrame const& /*frame*/, bool /*usable*/) noexcept {}
+
+bool OverlayLabel(OverlayContext const& context) noexcept {
+    return !context.worldUiOwns;  // never while a screen of ours has the panel
 }
 
-float FloorViewTranslation(bool replay, float rawCameraZ, float rightZ, float upZ, float forwardZ, float* right, float* up,
-    float* forward) noexcept {
-    gFloorTranslatedMs.store(GetTickCount64(), std::memory_order_relaxed);
-    return mevr::host::floor_lock::Translate(replay, rawCameraZ, rightZ, upZ, forwardZ, right, up, forward);
+int OverlayReticleMode(OverlayContext const& context) noexcept {
+    return context.lastGameMode;  // ME2's numbers are the hand reticle's: 0 on foot
 }
 
-} // namespace MevrSeams
+// Nothing of ME2's own: the galaxy map's stereo window on the CIC's projector, its UI on the panel there and the pointer's
+// surface are the shared composition's (plugin/SequelOverlays).
+unsigned OverlayGameLayers(OverlayContext const& /*context*/, hud_panel::Frame const& /*panel*/, void const** /*layersOut*/,
+    unsigned count, unsigned /*capacity*/) noexcept {
+    return count;
+}
+
+bool OverlaySpokenBlocked(OverlayContext const& /*context*/) noexcept {
+    return false;
+}
+void OverlaySpokenContext(bool /*eligible*/) noexcept {}
+void OverlayEnd(OverlayContext const& /*context*/) noexcept {}
+
+} // namespace mevr::host::sequel_bridge::game
+
+// ---- ME2's own seams (src/halcyon/le2/mevr_bridge.h) ---------------------------------------------------------------------
 namespace ME2VR::MevrBridge {
 using namespace MevrSeams;
 void JournalFloorViewWrite(void const* origin, void const* preTranslation) noexcept {
@@ -255,29 +172,9 @@ void JournalFloorViewWrite(void const* origin, void const* preTranslation) noexc
         mevr::breadcrumbs::FirstBytes(preTranslation, 12));
 }
 } // namespace ME2VR::MevrBridge
+
+// ---- The eye-image seams (lane EY's: bodies as they were) ----------------------------------------------------------------
 namespace MevrSeams {
-
-void OnRecentered() noexcept {
-    gGalaxyTable.Reset();
-    gGalaxyPanel.reset();
-    mevr::host::xr_host::NoteRecentered();
-    mevr::host::sequel_squad_layers::Recentered();
-    mevr::host::hud_panel::Recentered();  // the HUD panel straight ahead again
-    mevr::host::world_panels::Recenter();  // the 3D cinema screen placed afresh
-    mevr::host::menus_le2::OnRecentered();  // our menu and the calibration placed again (M4)
-#if defined(MEVR_WITH_MAIN_MENU)
-    mevr::host::thespian::Recentered();
-#endif
-    mevr::log::Info("halcyon le2 bridge: recentered");
-}
-
-void OnSessionStopped() noexcept {
-    mevr::host::sequel_squad_layers::ForgetSession();
-    mevr::host::floor_lock::Reset();  // the queued and published views (host_view::Reset)
-    mevr::host::hud_panel::SetArmed(false);  // no OverlayLayers runs now to disarm it: the UI back to the frame
-    mevr::host::eye_copy::Reset();
-    mevr::log::Info("halcyon le2 bridge: the session stopped");
-}
 
 namespace {
 D3D11_TEXTURE2D_DESC gSourceDesc[2]{};  // Present thread: the last eye source's, for the copy's log line
@@ -371,6 +268,10 @@ void OnEyeReleased(int eye, bool published) noexcept {
     mevr::host::testloop::OnEyeReleased(eye, published);
 }
 
+void OnFactory(void* factory) noexcept {
+    mevr::host::hdr_display::OnFactory(factory);
+}
+
 } // namespace MevrSeams
 namespace ME2VR::MevrBridge {
 using namespace MevrSeams;
@@ -443,336 +344,32 @@ void OnSwapChainPresent(void* swapChain, void* capturedSwapChain) noexcept {
 } // namespace ME2VR::MevrBridge
 namespace MevrSeams {
 
-// ---- Our layers (LE1's HalcyonOverlays::OverlayLayers) ------------------------------------------------------------------
-// LE2 composes the shared comfort vignette, the HUD panel, the weapon sights and the hand reticle over Halcyon's projection,
-// each the same module LE1's host composes (no copies), in LE1's order.
-unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsigned capacity) noexcept {
-    // Release the old table before another screen publishes its pointer surface this frame.
-    if (gGalaxyPointerShown && (!gGalaxyPanel || frame.gameMode != 9)) {
-        mevr::host::game_pointer::ForgetGameUiQuad();
-        gGalaxyPointerShown = false;
-    }
-    if (layersOut == nullptr || capacity == 0 || frame.session == nullptr || frame.context == nullptr) {
-        gScreen = ScreenNow{};
-        return 0;
-    }
-    unsigned count = 0;
-    ID3D11Device* device = nullptr;
-    frame.context->GetDevice(&device);
-    static int lastGameMode = -1;  // Present thread: the last readable game mode
-    if (frame.gameMode >= 0) {
-        lastGameMode = frame.gameMode;
-    }
-    // The comfort vignette (research/31): head-locked, under all of ours.
-    {
-        mevr::host::vignette::Frame vignette;
-        vignette.session = static_cast<XrSession>(frame.session);
-        vignette.context = frame.context;
-        vignette.device = device;
-        vignette.worldFrame = frame.worldFrame;
-        vignette.menuOpen = frame.menuOpen;
-        vignette.fovValid = frame.projectionValid;
-        std::memcpy(vignette.fov, frame.projectionFov, sizeof vignette.fov);
-        if (XrCompositionLayerQuad const* layer = mevr::host::vignette::Layer(vignette)) {
-            layersOut[count++] = layer;
-        }
-    }
-    // The body-locked HUD panel (plugin/HudPanel, LE1's way): the game's UI, which d3d_capture.cpp's draw hooks sent there
-    // instead of the eyes (MevrBridge::HudPanelDraw), on a quad in front of the body. Also clears the panel and arms the
-    // next frame's redirect.
-    {
-        mevr::host::renderer::HudSettings const cfg = mevr::host::renderer::Hud();
-        // The game's UI gets the eyes' colour correction (plugin/Colour, research/27, research/le2-picture.md), as LE1's
-        // HalcyonOverlays hands it to the panel's blit: set before the panel's first blit.
-        static bool const colourHooked = [] {
-            mevr::host::hud_panel::SetColour({mevr::vr::colour::ShaderPrelude(), &mevr::host::colour::BeginPanel,
-                &mevr::host::colour::EndPanel});
-            return true;
-        }();
-        (void)colourHooked;
-        mevr::host::hud_panel::Frame panel;
-        panel.session = static_cast<XrSession>(frame.session);
-        panel.appSpace = static_cast<XrSpace>(frame.appSpace);
-        panel.context = frame.context;
-        panel.device = device;
-        panel.worldFrame = frame.worldFrame && !frame.menuOpen;
-        panel.gameplay = frame.gameMode >= 0 && frame.gameMode <= 4;  // as LE1's: not conversations (5), cutscenes, menus
-        // ...but the game's screens of ours (plugin/MenusLe2, M4.3): their UI on the panel, shown at the screen's place.
-        mevr::host::menus_le2::WorldUiPanel const worldUi = mevr::host::menus_le2::BeforePanel(frame, mevr::host::hud_panel::Width(),
-            mevr::host::hud_panel::Height());
-        panel.gameplay = panel.gameplay || worldUi.owns;
-        panel.backdrop = worldUi.backdrop;
-        panel.stereo = frame.stereo;
-        panel.headValid = frame.headValid;
-        panel.head.orientation = {frame.headOrientation[0], frame.headOrientation[1], frame.headOrientation[2],
-            frame.headOrientation[3]};
-        panel.head.position = {frame.headPosition[0], frame.headPosition[1], frame.headPosition[2]};
-        panel.enabled = cfg.hudPanel;
-        panel.distanceM = cfg.hudPanelDistanceM;
-        panel.dropM = cfg.hudPanelDropM;
-        panel.followDeg = cfg.hudPanelFollowDeg;
-        panel.widthM = cfg.hudPanelWidthM;
-        // ME1's 3D cinema screen is up (CineScreenLayers, this frame): the game's UI (the dialogue wheel, subtitles, the
-        // interrupt prompt) on a layer of its own just in front of it ([Cinematics] uiLayer, uiForwardM; research/52
-        // "Cross-eyed"), the part of the window the screen shows, as large to the eye as on the screen.
-        mevr::host::sequel_cinema::FillUi(gScreen, frame.headPosition, panel);
-        // The HUD keeps the movie's own layout on the panel (Halcyon's per-element HUD moves stand down), as LE1's.
-        mevr::host::renderer::SetAuthoredHudLayout(panel.enabled && panel.stereo && mevr::host::hud_panel::Usable());
-        // The HUD pieces on the body (plugin/HudPieceLayers, LE1's, research/41): on foot, the squad's block on the left
-        // wrist and the weapon panel on the gun where the mod says (game/HudPieces), cut out of the panel meanwhile.
-        namespace hpl = mevr::host::hud_piece_layers;
-        hpl::Frame pieceFrame;
-        pieceFrame.gameplayOnFoot = lastGameMode == 0;
-        pieceFrame.worldFrame = panel.worldFrame;
-        pieceFrame.headValid = frame.headValid;
-        pieceFrame.panelReady = panel.enabled && panel.stereo && mevr::host::hud_panel::Ready() && device != nullptr;
-        pieceFrame.panelWidth = mevr::host::hud_panel::Width();
-        pieceFrame.panelHeight = mevr::host::hud_panel::Height();
-        pieceFrame.layout = mevr::vr::hud_pieces::Layout::Me2;  // ME2's own HUD: its bands (core/vr/HudPieces)
-        // The pieces are blitted from this frame's UI after the panel is drawn and before it's cleared (hud_panel's
-        // beforeClear), and go on top of the panel's quad, as LE1's.
-        struct PiecesPass {
-            hpl::Common common;
-            hpl::Plan plan;
-            void const* layers[2] = {};
-            unsigned count = 0;
-        } pass;
-        pass.common.session = static_cast<XrSession>(frame.session);
-        pass.common.appSpace = static_cast<XrSpace>(frame.appSpace);
-        pass.common.context = frame.context;
-        pass.common.device = device;
-        pass.common.head = {frame.headPosition[0], frame.headPosition[1], frame.headPosition[2]};
-        pass.common.nowMs = GetTickCount64();
-        pass.common.options.colourSeed = 3;  // a quad of ours, not the panel (LE1's overlays' options for a piece)
-        pass.plan = hpl::Decide(pieceFrame, pass.common.nowMs, panel.masks);
-        // Reserve room for panel, wrist, gun and label before removing the native prompt's band. A failed copy leaves
-        // that band on the original panel. Never relocate dialogue, screen UI or a wheel's captured HUD.
-        bool const interactionWanted = pieceFrame.panelReady && pieceFrame.worldFrame && frame.gameMode == 0 &&
-            frame.headValid && !worldUi.owns && !frame.menuOpen && !mevr::host::renderer::OwnMenuOpen() &&
-            !mevr::host::menus_le2::PadWanted() &&
-            capacity - count >= 4 && !mevr::vr::power_wheel::Latest().open && !mevr::vr::squad_menu::Latest().open;
-        XrCompositionLayerQuad const* const interactionLayer = hpl::Interaction(pass.common, interactionWanted, panel.masks);
-        panel.user = &pass;
-        panel.beforeClear = [](void* user, bool shown) {
-            auto& p = *static_cast<PiecesPass*>(user);
-            p.count = hpl::Layers(p.common, p.plan, shown, p.layers, 0, 2);
-        };
-        XrCompositionLayerQuad const* const panelLayer = mevr::host::hud_panel::Layer(panel);
-        count = mevr::host::menus_le2::PanelLayers(frame, device, panelLayer, layersOut, count, capacity);  // or a screen's place
-        if (interactionLayer != nullptr && panelLayer != nullptr && count < capacity) layersOut[count++] = interactionLayer;
-        for (unsigned i = 0; i < pass.count && count < capacity; ++i) {
-            layersOut[count++] = pass.layers[i];
-        }
-    }
-    count = mevr::host::sequel_weapon_layers::Layers(frame, device, lastGameMode, layersOut, count, capacity);
-    // Native hiding remains LE2's verified movie adapter, separate from the shared hand-reticle drawing.
-    mevr::host::renderer::SetScreenReticleHidden(mevr::host::renderer::Hud().handReticle && lastGameMode >= 0 && lastGameMode <= 4);
-    // Traversal's cue at the obstacle and its blink (plugin/TraversalCue, research/le2-traversal.md): the blink over the world's
-    // layers, under the menus.
-    if (count < capacity) {
-        mevr::host::traversal_cue::Frame cue;
-        cue.session = static_cast<XrSession>(frame.session);
-        cue.appSpace = static_cast<XrSpace>(frame.appSpace);
-        cue.context = frame.context;
-        cue.device = device;
-        cue.worldFrame = frame.worldFrame;
-        cue.menuOpen = frame.menuOpen;
-        cue.headValid = frame.headValid;
-        cue.head = {frame.headPosition[0], frame.headPosition[1], frame.headPosition[2]};
-        count += mevr::host::traversal_cue::Layers(cue, layersOut + count, capacity - count);
-    }
-    if (count < capacity && frame.gameMode == 0) {
-        mevr::host::power_wheel::Frame wheel;
-        wheel.session = static_cast<XrSession>(frame.session);
-        wheel.appSpace = static_cast<XrSpace>(frame.appSpace);
-        wheel.context = frame.context;
-        wheel.device = device;
-        wheel.worldFrame = frame.worldFrame;
-        wheel.menuOpen = frame.menuOpen || mevr::host::renderer::OwnMenuOpen();
-        wheel.head = {frame.headPosition[0], frame.headPosition[1], frame.headPosition[2]};
-        wheel.headValid = frame.headValid;
-        XrCompositionLayerQuad const* quads[3]{};
-        int const n = mevr::host::power_wheel::Layers(wheel, quads, static_cast<int>(std::min(3u, capacity - count)));
-        for (int i = 0; i < n; ++i) layersOut[count++] = quads[i];
-    }
-    OverlayFrame squadFrame = frame;
-    squadFrame.worldFrame = frame.worldFrame && frame.gameMode == 0;
-    squadFrame.menuOpen = frame.menuOpen || mevr::host::renderer::OwnMenuOpen() || mevr::host::menus_le2::PadWanted();
-    count = mevr::host::sequel_squad_layers::Place(squadFrame, device, layersOut, count, capacity);
-    // Use the submitted image for picking. Orbit keeps its native scan and probe controls.
-    if (gGalaxyPanel && frame.gameMode == 9 && !frame.menuOpen && !mevr::host::renderer::OwnMenuOpen() &&
-        !mevr::host::menus_le2::PadWanted()) {
-        mevr::host::game_pointer::NoteGameUiQuad(gGalaxyPanel->pose, gGalaxyPanel->width, gGalaxyPanel->height);
-        gGalaxyPointerShown = true;
-    } else if (gGalaxyPointerShown) {
-        mevr::host::game_pointer::ForgetGameUiQuad();
-        gGalaxyPointerShown = false;
-    }
-    count = mevr::host::sequel_squad_layers::Panel(squadFrame, device, layersOut, count, capacity);
-    // Our main menu and the guided calibration (plugin/MenusLe2, M4): over the rest, alone while they're up.
-#if defined(MEVR_WITH_MAIN_MENU)
-    {
-        mevr::host::thespian::Frame spoken;
-        spoken.session = static_cast<XrSession>(frame.session);
-        spoken.appSpace = static_cast<XrSpace>(frame.appSpace);
-        spoken.context = frame.context;
-        spoken.device = device;
-        spoken.head = {{frame.headOrientation[0], frame.headOrientation[1], frame.headOrientation[2], frame.headOrientation[3]},
-            {frame.headPosition[0], frame.headPosition[1], frame.headPosition[2]}};
-        spoken.othersOwnInput = frame.gameMode != kConversationMode || !frame.headValid || count >= capacity || frame.menuOpen || mevr::host::renderer::OwnMenuOpen() || mevr::host::menus_le2::PadWanted();
-        if (auto const* layer = mevr::host::thespian::Layer(spoken)) layersOut[count++] = layer;
-    }
-#endif
-    count = mevr::host::menus_le2::Layers(frame, device, layersOut, count, capacity);
-    if (device != nullptr) {
-        device->Release();
-    }
-    gScreen = ScreenNow{};  // this frame's 3D screen used; the next submit places it again
-    return count;
-}
-
-// ME2's PlacePanel: only the native galaxy/orbital image, on ME1's table geometry ([Galaxy] nativeTable); every other flat
-// panel keeps the renderer's own placement (`placed` false). Called every frame, before OverlayLayers.
-PanelPose PlacePanel(PanelKind kind, OverlayFrame const& frame, float const viewPosition[3], float widthM, float heightM,
-    bool imageReady) noexcept {
-    (void)kind;  // ByGameMode: the table follows frame.gameMode
-    (void)viewPosition;
-    float const aspect = widthM > 0 ? heightM / widthM : 0;
+// ME2's PlacePanel: every flat panel in the room as on ME1 and ME3 (capability panelsInRoom; plugin/WorldPanels): the start
+// screens, the loading movies, the game's menus and the flat cine panel stand at the head's height and heading where they
+// appear, conversations and cutscenes one showing. The renderer's own pose was (0, 0, -d) in its LOCAL space, which until
+// a recenter is the runtime's LOCAL origin (on SteamVR often near the floor): the owner, 2026-11-17, "the menus will just
+// be at the floor", and opening one felt like rising 5 feet. The galaxy map isn't a flat panel while the mod holds it over
+// the CIC's projector (MevrSeams::GalaxyOwnsPresentation in d3d_capture.cpp's GetMenuMode); otherwise (no room, tracking
+// or view) it is this flat panel, as on ME1.
+PanelPose PlacePanel(PanelKind /*kind*/, OverlayFrame const& frame, float const viewPosition[3], float widthM, float heightM,
+    bool /*imageReady*/) noexcept {
+    namespace wp = mevr::host::world_panels;
+    namespace ga = mevr::engine::adapter;
+    auto const mode = ga::GameMode(frame.gameMode);
+    auto const kind = mode == ga::Mode::Conversation ? wp::Kind::Conversation :
+        mode == ga::Mode::Cinematic ? wp::Kind::Cutscene :
+        mode == ga::Mode::Galaxy || mode == ga::Mode::Orbital ? wp::Kind::GalaxyMap : wp::Kind::GameMenu;
+    wp::Pose const placed = wp::Place(kind, viewPosition, frame.viewSpace, frame.appSpace, frame.headValid,
+        frame.headOrientation, frame.headPosition);
     PanelPose out;
-    std::uint64_t const now = GetTickCount64();
-    if (now - gGalaxySettingsRead >= 1000) {
-        gGalaxySettingsRead = now;
-        auto const file = mevr::ini::Read(mevr::host::SettingsPath()).file;
-        // Opt in until the Normandy/orbit presentation and native input are checked in the game.
-        gGalaxyTableEnabled = mevr::ini::GetNumber(file, "Galaxy", "nativeTable").value_or(0) != 0;
-        auto number = [&](char const* key, float fallback, float lo, float hi) {
-            return std::clamp(static_cast<float>(mevr::ini::GetNumber(file, "Galaxy", key).value_or(fallback)), lo, hi);
-        };
-        gGalaxySettings.distanceM = number("tableDistanceM", 0.70f, 0.3f, 3.0f);
-        gGalaxySettings.belowM = number("tableBelowM", 0.45f, 0.1f, 1.5f);
-        gGalaxySettings.radiusM = number("tableRadiusM", 0.48f, 0.2f, 1.5f);
-        gGalaxySettings.tiltDeg = number("worldTiltDeg", 35.0f, 0.0f, 80.0f);
-    }
-    if (frame.appSpace != gGalaxySpace) {
-        gGalaxySpace = frame.appSpace;
-        gGalaxyTable.Reset();
-    }
-    XrPosef const head{{frame.headOrientation[0], frame.headOrientation[1], frame.headOrientation[2], frame.headOrientation[3]},
-        {frame.headPosition[0], frame.headPosition[1], frame.headPosition[2]}};
-    gGalaxyPanel = gGalaxyTable.Update(mevr::engine::adapter::IsMapMode(frame.gameMode), gGalaxyTableEnabled && frame.appSpace != nullptr,
-        imageReady && frame.headValid, head, aspect, gGalaxySettings);
-    if (!gGalaxyPanel) return out;
-    auto const& p = gGalaxyPanel->pose;
     out.placed = true;
-    out.space = frame.appSpace;
-    out.headLocked = false;
-    out.orientation[0] = p.orientation.x; out.orientation[1] = p.orientation.y;
-    out.orientation[2] = p.orientation.z; out.orientation[3] = p.orientation.w;
-    out.position[0] = p.position.x; out.position[1] = p.position.y; out.position[2] = p.position.z;
-    out.widthM = gGalaxyPanel->width;
-    out.heightM = gGalaxyPanel->height;
-    out.nativeMap = true;
+    out.space = placed.space;
+    std::memcpy(out.orientation, placed.orientation, sizeof out.orientation);
+    std::memcpy(out.position, placed.position, sizeof out.position);
+    out.headLocked = placed.headLocked;
+    out.widthM = widthM;
+    out.heightM = heightM;
     return out;
-}
-
-} // namespace MevrSeams
-namespace ME2VR::MevrBridge {
-using namespace MevrSeams;
-// ---- ME1's 3D cinema screen (plugin/CineScreen, CinemaBackdrop, WorldPanels; research/52, research/le2-cinema.md) ----------
-// (CineScreenWanted and CineScreenFullRate are plugin/Seams.cpp's, the same for every game.)
-float CineScreenHalfSeparationUU(float halfH) noexcept {
-    return mevr::host::sequel_cinema::HalfSeparationUU(halfH);
-}
-} // namespace ME2VR::MevrBridge
-namespace MevrSeams {
-unsigned CineScreenLayers(const CineScreenFrame& frame, const void** layersOut, unsigned capacity) noexcept {
-    return mevr::host::sequel_cinema::Layers(frame, layersOut, capacity, gScreen);
-}
-
-const void* TransitionFadeLayer(void* session, void* viewSpace, ID3D11DeviceContext* context, int view) noexcept {
-    return mevr::host::transition_fade::Layer(session, viewSpace, context, view);
-}
-
-bool HudPanelDraw(ID3D11DeviceContext* context, void (*draw)(void*), void* user, bool textBatch, bool afterLeftEye) noexcept {
-    if (gUiTracePresents < 12 && context != nullptr) {
-        ID3D11RenderTargetView* rtv = nullptr;
-        context->OMGetRenderTargets(1, &rtv, nullptr);
-        bool backbuffer = false;
-        if (rtv != nullptr) {
-            ID3D11Resource* res = nullptr;
-            rtv->GetResource(&res);
-            backbuffer = res != nullptr && res == gBackbuffer;
-            if (res != nullptr) res->Release();
-            rtv->Release();
-        }
-        char c = afterLeftEye ? (backbuffer ? 'L' : 'l') : (backbuffer ? 'E' : 'e');
-        if (context->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) {
-            c = afterLeftEye ? 'D' : 'd';  // a deferred context's
-        }
-        gUiTrace.Add(c);
-    }
-    return mevr::host::hud_panel::Redirect(context, draw, user, textBatch, afterLeftEye);
-}
-
-void OnFactory(void* factory) noexcept {
-    mevr::host::hdr_display::OnFactory(factory);
-}
-
-
-DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noexcept {
-    if (index != 0 || state == nullptr) {
-        return result;
-    }
-    mevr::vr::controllers::State const controllers = mevr::vr::controllers::Latest();
-    bool const menus = mevr::host::menus_le2::PadWanted();  // our menu or the calibration has the pad (M4)
-    if (!controllers.active) {
-        mevr::host::pad_merge::NoControllers();
-    }
-    if (!controllers.active && !menus) {
-        return result;
-    }
-    bool const realPad = result == ERROR_SUCCESS;
-    bool const conversationTriggers = controllers.active && mevr::host::renderer::GameMode() == kConversationMode;
-    std::lock_guard lock(gPadMutex);
-    XINPUT_GAMEPAD pad = realPad ? state->Gamepad : XINPUT_GAMEPAD{};
-    if (controllers.active) {
-        // The motion controllers with the mod's flags, merged over a real pad (plugin/PadMerge, LE1's mapping): the support
-        // grip, the holsters' and the squad's grips, comfort's turn and walk. Both stick clicks are the chord (our menu,
-        // MenusLe2's OnFrameBegun), kept from the game; R3 waits for L3 as L3 for R3 (the owner's L3 + R3 priority).
-        mevr::host::pad_merge::Renderer renderer;
-        renderer.ownMenuOpen = mevr::host::renderer::OwnMenuOpen();  // Halcyon's ME2 menu
-        renderer.headLookYawUU = &mevr::host::renderer::MoveStickHeadLookYawUU;  // its "run where you look", after the merge
-        renderer.gateRightClick = true;
-        // ME2's interrupts (M5.2, research/le2-cinema.md): in the conversation mode (game mode 5) the triggers are the game's
-        // LT (Paragon) and RT (Renegade), as on a pad; nothing of ours keeps them (pad_merge::ConversationTriggers).
-        renderer.conversationTriggers = conversationTriggers;
-        renderer.orbitalTriggers = mevr::host::renderer::GameMode() == 10;
-        pad = mevr::host::pad_merge::Merge(pad, controllers, renderer, GetTickCount64());
-    }
-    // Neutral while our menu or the calibration has it; after, what was held then is kept from the game until let go.
-    int const inputMode = mevr::host::renderer::GameMode();
-    if (gGalaxyInputMode == 9 && inputMode == 10) {
-        // The pull selecting a planet must end before it can operate the orbital scanner.
-        gGalaxyTriggerLatch.leftTrigger = gGalaxyTriggerLatch.rightTrigger = true;
-    }
-    gGalaxyInputMode = inputMode;
-    mevr::game::gamepad::ApplyCloseLatch(gGalaxyTriggerLatch, pad);
-    mevr::host::menus_le2::FilterPad(realPad ? &state->Gamepad : nullptr, pad);
-    if (std::memcmp(&pad, &gLastPad, sizeof pad) != 0) {
-        if (conversationTriggers && !mevr::host::renderer::OwnMenuOpen()) {
-            auto const down = [](BYTE value) { return value > XINPUT_GAMEPAD_TRIGGER_THRESHOLD; };
-            if ((down(pad.bLeftTrigger) != down(gLastPad.bLeftTrigger) ||
-                    down(pad.bRightTrigger) != down(gLastPad.bRightTrigger)) &&
-                mevr::dev_channels::Allowed(std::filesystem::path(mevr::host::SettingsPath()))) {
-                mevr::log::Info("conversation pad 0: LT {}, RT {}", pad.bLeftTrigger, pad.bRightTrigger);
-            }
-        }
-        gLastPad = pad;
-        ++gPacket;  // the game only re-reads a pad whose packet number changed
-    }
-    state->dwPacketNumber = gPacket;
-    state->Gamepad = pad;
-    return ERROR_SUCCESS;
 }
 
 } // namespace MevrSeams

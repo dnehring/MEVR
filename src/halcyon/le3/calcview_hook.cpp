@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "mevr_bridge.h" // [MEVR] shared floor/view contract
+#include "../MevrMetricView.h" // [MEVR] life-size stereo's render-side edits (research/30 section 9)
 #include "calcview_hook.h"
 
 #include "convo_fp.h"
@@ -72,6 +73,10 @@ std::atomic<unsigned> g_markerProjectionSeq{0};
 std::atomic_bool g_markerProjectionReady{false};
 // Conversation/cutscene = narrow cinematic FOV -> render MONO (flat panel) instead of stereo split.
 std::atomic_bool g_mevrCineScreen{false}; // [MEVR] shared stereo cinema presentation
+// [MEVR] Life-size stereo (research/30 section 9; MevrSeams::LifeSizeStereo, set by me2_menu.cpp's baseline): each pass from
+// its eye's real place (MevrMetricView's plan), the lean from the eyes' centre at 1:1 forward. False: upstream exactly.
+std::atomic_bool g_mevrLifeSize{false};
+float MevrForwardLeanEmphasis() noexcept { return g_mevrLifeSize.load(std::memory_order_relaxed) ? 1.0f : 3.0f; }
 std::atomic_bool g_cinematic{false};
 
 // 6DOF free head-look (orientation): yaw/pitch in UE units (65536 = 360 deg), set from the XR side.
@@ -160,6 +165,14 @@ std::atomic<float> g_poseTagDelayFrames{2.0f};
 std::atomic<float> g_renderHalfFovH{0.0f};
 std::atomic<float> g_renderHalfFovV{0.0f};
 std::atomic<float> g_restHalfFov{0.61f};   // gameplay "rest" half-FOV; ADS narrows below it
+// [MEVR] Life-size stereo's mode 2: the renderer's zoom (ADS, the cine zoom) as the tangent of the window it rendered over
+// the one it declares; the eye's own frustum is scaled by it so a zoom magnifies the same way in both modes.
+float MevrRenderZoom() noexcept
+{
+    const float r = g_renderHalfFovH.load(std::memory_order_relaxed);
+    const float d = g_gameHalfFovH.load(std::memory_order_relaxed);
+    return (r > 0.01f && d > 0.01f) ? tanf(r) / tanf(d) : 1.0f;
+}
 std::atomic<float> g_restHalfFovV{0.370f}; // matching 16:9 vertical half-FOV until gameplay is observed
 // --- AER (alternate-eye rendering) config, ported from ME2 (which ported it from ME1). ---
 std::atomic<float> g_aerHalfEyeUU{3.4f};    // IPD/scale (baked 2026-08-21, tuned value)
@@ -794,7 +807,7 @@ void ApplyHeadPosition(std::uintptr_t sv) noexcept
     // ME1-PARITY 6DOF: fixed 50 uu/m (WORLD_TO_METERS), NOT coupled to the stereo eye slider, and
     // forward/back emphasized 3x - matches ME1/ME2 exactly (kMetersToUU=50, kFwdLeanEmphasis=3).
     constexpr float kMetersToUU = 50.0f;
-    constexpr float kFwdLeanEmphasis = 3.0f;
+    const float kFwdLeanEmphasis = MevrForwardLeanEmphasis();   // [MEVR] upstream: 3.0f (1 with life-size stereo)
     const float w2m = kMetersToUU * g_headPosScale.load(std::memory_order_relaxed);   // uu/m * gain (ME1 leanGain)
     __try
     {
@@ -813,7 +826,7 @@ void ApplyHeadPosition(std::uintptr_t sv) noexcept
 #if defined(MEVR_ASI)
         // [MEVR] One floor correction for both eye passes, matching the published controller space.
         float r = w2m * dR, u = w2m * dU, f = w2m * dF;
-        const float floorDz = ::ME2VR::MevrBridge::FloorViewTranslation(t_replay, -pvt[2], rZ, uZ, fZ, &r, &u, &f);
+        const float floorDz = ::MevrSeams::FloorViewTranslation(t_replay, -pvt[2], rZ, uZ, fZ, &r, &u, &f);
         const float wx = r * rX + u * uX + f * fX;
         const float wy = r * rY + u * uY + f * fY;
         const float wz = r * rZ + u * uZ + f * fZ + floorDz;
@@ -1008,7 +1021,14 @@ void ApplyFov(std::uintptr_t sv) noexcept
     // shape outright, NOT to the game's FOV scaled uniformly. A uniform scale preserves the game's
     // 16:9 aspect, which can never match a near-square headset FOV - that mismatch was the letterbox,
     // and no resolution change could ever have fixed it.
+    // [MEVR] No aim zoom in VR (the owner, 2026-11-17: aiming down an assault rifle or a shotgun magnified the whole view,
+    // "really disorienting ... should be thoroughly disabled"; ME1 never zooms the view, its scopes are a picture at the
+    // eyepiece, research/21): the render keeps the headset's window whatever the game's aim FOV.
+#if defined(MEVR_ASI)
+    const float frac = 1.0f;   (void)rest;
+#else
     const float frac = (gh < rest) ? (gh / rest) : 1.0f;   // 1.0 at rest, <1 zoomed in
+#endif
     const float renderH = th * frac;
     const float renderV = tv * frac;
     WidenProjection(sv, renderH, renderV);
@@ -1335,6 +1355,19 @@ void* __fastcall CalcViewDetour(void* lp, void* family, void* loc, void* rot, vo
         return sv;
     }
 
+#if defined(MEVR_ASI)
+    // [MEVR] One of the game's screens of ours stands in the GUI mode (MevrSeams::WorldUiOwnsGui keeps it out of the flat
+    // branch above): ME3's first person writes only in game mode 0, so the GUI mode's camera is the game's third-person one and
+    // Shepard's body stood in front of the eyes. Shepard's view on foot goes into the player camera's POV for this build only,
+    // as LE1's GalaxyViewSwapBegin, and back after it (declared before the FOV guard below, so put back after that guard's
+    // restore). research/le3-native-gui.md "The movie's mouse and the view behind a screen".
+    struct MevrHeldView
+    {
+        bool on;
+        ~MevrHeldView() { if (on) ::MevrSeams::WorldViewHoldEnd(); }
+    } const mevrHeldView{g_vrEnabled.load(std::memory_order_acquire) && isP1 && ::MevrSeams::WorldViewHoldBegin()};
+#endif
+
     // ---- [FILLSRC] gameplay fill at the SOURCE (ME2's glass-smear fix) -------------------------
     // Write the fill FOV into the CAMERA before the engine builds this view, so distortion-class
     // shader constants (glass/refraction) derive from the FOV the scene actually renders with.
@@ -1380,7 +1413,14 @@ void* __fastcall CalcViewDetour(void* lp, void* family, void* loc, void* rot, vo
             }
             else if (gh >= 0.01f)
             {
+                // [MEVR] No aim zoom in VR (the owner, 2026-11-17: aiming down an assault rifle or a shotgun magnified the whole view,
+                // "really disorienting ... should be thoroughly disabled"; ME1 never zooms the view, its scopes are a picture at the
+                // eyepiece, research/21): the render keeps the headset's window whatever the game's aim FOV.
+#if defined(MEVR_ASI)
+                const float frac = 1.0f;   (void)rest;   // as ApplyFov
+#else
                 const float frac = (gh < rest) ? (gh / rest) : 1.0f;   // mirror gameplay zoom-fill
+#endif
                 renderH = th * frac;
             }
             if (renderH > 0.01f)
@@ -1414,6 +1454,13 @@ void* __fastcall CalcViewDetour(void* lp, void* family, void* loc, void* rot, vo
             // through the game's normal Draw, which uses P1's shared state; without this, pass 1
             // inherits the temporal history pass 0 just wrote (different camera), so TAA/motion-blur
             // smear and shake on one eye. Reuses the two eye states the SBS path already allocates.
+#if defined(MEVR_ASI)
+            // [MEVR] [Performance] perEyeViewState = 0 (research/sequel-render-levers.md "Performance research"): both
+            // passes keep the game's one state, as ME1's gameplay does. With a state per pass the second eye's Umbra
+            // resolve reads queries that live in the other state's pool and polls them for its whole budget (3-5 ms a
+            // frame). The default (1, plugin/RenderLeversTable) is upstream's block below, unchanged.
+            if (::MevrSeams::PerEyeViewState())
+#endif
             {
                 void*& eyeSt = t_replay ? g_eyeState : g_eyeStateLeft;   // pass1=right state, pass0=left state
                 if (eyeSt == nullptr && g_allocViewState != nullptr)
@@ -1426,15 +1473,35 @@ void* __fastcall CalcViewDetour(void* lp, void* family, void* loc, void* rot, vo
             InvMatScanTick(svu);             // [INVMAT] pristine-view scan (one-shot; must precede any edit)
             float he = g_halfEyeUU.load(std::memory_order_relaxed);
             if (g_swapEyes.load(std::memory_order_relaxed)) he = -he;
-            // [MEVR] Same lens-dependent, parallel-camera baseline as LE1/LE2; pass 0 remains left.
-            if (g_mevrCineScreen.load(std::memory_order_acquire)) {
+            // [MEVR] Same lens-dependent, parallel-camera baseline as LE1/LE2; pass 0 remains left. Read once: the Present
+            // thread may flip it mid-Draw.
+            const bool mevrScreen = g_mevrCineScreen.load(std::memory_order_acquire);
+            if (mevrScreen) {
                 he = ::ME2VR::MevrBridge::CineScreenHalfSeparationUU(MevrCinemaHalfFov(svu));
             }
             g_sfrCalcViews.fetch_add(1, std::memory_order_relaxed);   // [SFR2]
+            // [MEVR] Life-size stereo (research/30 section 9): this pass from its eye's real place, our plan's offset along the
+            // camera's right, up and forward in place of the half eye; pass 0 latches (never upstream's mode 0 while
+            // life-size is on: research/30 section 9.5), pass 1 keeps it.
+            const ::MevrMetricView::ViewFields mevrFields{kFsvViewMatrix, kFsvProjectionMatrix, kFsvTranslatedViewMatrix,
+                kFsvTranslatedViewProjMatrix, kFsvPreViewTranslation, kFsvViewProjectionMatrix, kFsvViewOrigin};
+            auto mevrLog = [](const char* line) { ME2VR::Log::Line(line); };
+            const ::MevrMetricView::Plan& mevrPlan = ::MevrMetricView::Latch(t_replay,
+                mevrScreen ? ::MevrMetricView::Frame::CinemaScreen : ::MevrMetricView::Frame::World,
+                g_mevrLifeSize.load(std::memory_order_acquire), mevrLog);
+            const bool mevrMetric = mevrPlan.mode != 0 && !mevrScreen;
             const float signedUU = t_replay ? +he : -he;   // pass1 = right (+), pass0 = left (-)
-            ApplyEyeOffset(svu, signedUU);   // IPD only (lean comes from ApplyHeadLook)
+            if (mevrMetric)
+            {
+                EnsureConvoFpOrigin(svu);   // as ApplyEyeOffset does first
+                ::MevrMetricView::ApplyEyeOffset(svu, mevrFields, mevrPlan, t_replay, mevrLog);
+            }
+            else
+                ApplyEyeOffset(svu, signedUU);   // IPD only (lean comes from ApplyHeadLook)
             ApplyHeadLook(svu);              // offset BEFORE head rotation (same order as stereo/AER)
             ApplyFov(svu);
+            // [MEVR] mode 2: the GPU matrix through this eye's own frustum (the CPU's window stays the symmetric one)
+            if (mevrMetric) ::MevrMetricView::ApplyEyeFrustum(svu, mevrFields, mevrPlan, t_replay, MevrRenderZoom(), mevrLog);
             RefreshInverseSlots(svu);        // [INVMAT] keep fog/shaft screen->world matching the edit
             g_splitSeq.fetch_add(1, std::memory_order_release);   // keep SBS hysteresis satisfied
             ViewCensusNote(svu, true);       // [VIEWCEN]
@@ -1661,6 +1728,15 @@ void SetFovFill(float hHalfRad, float vHalfRad, bool on) noexcept
     g_fovFillV.store(vHalfRad, std::memory_order_relaxed);
     g_fovFillOn.store(on, std::memory_order_release);
 }
+bool GetMevrLifeSize() noexcept { return g_mevrLifeSize.load(std::memory_order_acquire); }   // [MEVR] research/30 s. 9
+void SetMevrLifeSize(bool on) noexcept { g_mevrLifeSize.store(on, std::memory_order_release); }   // [MEVR]
+bool GetHeadLookApplied() noexcept { return g_headLookEnabled.load(std::memory_order_acquire); }   // [MEVR]
+bool GetFovFillTarget(float* hHalfRad, float* vHalfRad) noexcept   // [MEVR]
+{
+    if (hHalfRad != nullptr) *hHalfRad = g_fovFillH.load(std::memory_order_relaxed);
+    if (vHalfRad != nullptr) *vHalfRad = g_fovFillV.load(std::memory_order_relaxed);
+    return g_fovFillOn.load(std::memory_order_acquire);
+}
 bool GetMevrCineScreen() noexcept { return g_mevrCineScreen.load(std::memory_order_acquire); }
 void SetMevrCineScreen(bool on) noexcept { g_mevrCineScreen.store(on, std::memory_order_release); }
 void SetCinematic(bool on) noexcept { g_cinematic.store(on, std::memory_order_release); }
@@ -1741,7 +1817,7 @@ bool CorrectWorldMarkerSceneView(void* sceneView) noexcept
             if (hy < -2.0f) hy = -2.0f; else if (hy > 2.0f) hy = 2.0f;
             if (hz < -2.0f) hz = -2.0f; else if (hz > 2.0f) hz = 2.0f;
             constexpr float kMetersToUU = 50.0f;
-            constexpr float kFwdLeanEmphasis = 3.0f;
+            const float kFwdLeanEmphasis = MevrForwardLeanEmphasis();   // [MEVR] upstream: 3.0f (as ApplyHeadPosition)
             const float w2m = kMetersToUU * g_headPosScale.load(std::memory_order_relaxed);
             const float fwdSign = g_leanInvertFwd.load(std::memory_order_relaxed) ? 1.0f : -1.0f;
             const float dR = hx, dU = hy, dF = fwdSign * hz * kFwdLeanEmphasis;

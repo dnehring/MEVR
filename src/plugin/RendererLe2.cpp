@@ -8,6 +8,7 @@
 
 #include "core/Log.hpp"
 #include "engine/SettingsFile.hpp"
+#include "plugin/ScreenReticleRequest.hpp"
 #include "halcyon/le2/calcview_hook.h"
 #include "halcyon/le2/d3d_capture.h"
 #include "halcyon/le2/engine_probe.h"
@@ -41,16 +42,24 @@ Caps const& Capabilities() noexcept {
     static Caps const caps = [] {
         Caps c;
         c.name = "halcyon-le2";
+        c.cineScreen = true;         // ME1's 3D cinema screen for conversations and cutscenes (research/52)
         c.eyeImageSeams = true;
         c.hudPanelDraw = true;
         c.hostCineScreen = true;
-        c.galaxyTable = true;        // [Galaxy] nativeTable, opt-in
+        c.perfSeams = true;          // MevrSeams' Perf* group and the wait/begin frame slots
+        c.recenterTilt = true;       // ME1's tilt-correcting recenter (RecenterAppSpace)
+        c.galaxyWindow = true;       // the galaxy map over the CIC's projector: the sequels' seams MevrSeams::WorldViewHoldBegin
+                                     // (calcview_hook.cpp) and GalaxyOwnsPresentation (d3d_capture.cpp's GetMenuMode)
         c.hudPanelGameplay = true;
         c.hudPieces = true;
         c.worldUi = true;            // WorldUiOwnsGui
         c.screenReticleHide = true;  // the mod's game/ScreenReticle hides ME2's crosshair movie
         c.floorViewJournal = true;
+        c.metricStereo = true;       // MevrSeams::PlanStereo: each pass from its eye's real place (research/30 section 9)
+        c.perEyeFrustum = true;      // mode 2 where the window holds the eyes (src/halcyon/MevrMetricView.h)
         c.ownMenuRows = true;
+        c.panelsInRoom = true;       // MevrSeams::PlacePanel places every flat panel (plugin/WorldPanels), as ME1 and ME3
+        c.frontEnd = true;           // MevrSeams::FrontEndHold ...: ME1's front end on the 3D screen (research/56, T18)
         return c;
     }();
     return caps;
@@ -93,6 +102,31 @@ void SetMenuRows(MenuRows const& rows) noexcept {
 void SaveOwnSettings(char const* why) noexcept {
     ME2VR::Menu::SaveSettings();  // SaveValues: MELE2VR.ini, as closing its menu does
     log::Info("main menu: the renderer's settings saved to MELE2VR.ini ({})", why != nullptr ? why : "?");
+}
+
+RenderTarget GetRenderTarget() noexcept {
+    RenderTarget t;
+    t.settable = true;
+    unsigned fileW = 0, fileH = 0, liveW = 0, liveH = 0, recW = 0, recH = 0;
+    ME2VR::D3DCapture::MevrRenderTarget(&fileW, &fileH, &liveW, &liveH);
+    ME2VR::Me2Xr::MevrRecommendedEyeSize(&recW, &recH);
+    t.width = static_cast<int>(fileW);
+    t.height = static_cast<int>(fileH);
+    t.liveWidth = static_cast<int>(liveW);
+    t.liveHeight = static_cast<int>(liveH);
+    t.recommendedWidth = static_cast<int>(recW);
+    t.recommendedHeight = static_cast<int>(recH);
+    t.multiple = 8;  // ME3's scene targets are allocated in multiples of 8; ME2's are the same engine code
+    // ME2 draws no HUD at all on a near-square backbuffer (1624x1656: 30 UI draws in 4 s; 4:3 2208x1656 and 16:9 2944x1656:
+    // the whole HUD, ~14,000), so its target is at least 16:9, the shape every ME2 screen has been seen in (lane AU4,
+    // 2026-11-18; 4:3 is the cheaper choice the owner may take: docs/trilogy-plan.md T09's render-size note).
+    t.minAspect = 16.0f / 9.0f;
+    return t;
+}
+
+bool SetRenderTarget(int width, int height) noexcept {
+    return width > 0 && height > 0 &&
+           ME2VR::D3DCapture::MevrSetRenderTarget(static_cast<unsigned>(width), static_cast<unsigned>(height));
 }
 
 void LogLine(std::string const& line) noexcept {
@@ -153,19 +187,14 @@ float RecenterTiltDeg() noexcept {
     return 60.0f;  // ME1's default (vr_config.h recenterTiltDeg)
 }
 
-// As LE1's (pchud.cpp's [MEVR] SetCrosshairHidden): our layers ask each XR gameplay frame, the request lasts 500 ms, and
-// the mod's game/ScreenReticle hides ME2's crosshair movie on the game thread while it stands (HostServices
-// hideScreenReticle). Its expiry gives the movie back when VR frames stop.
-namespace {
-std::atomic<std::uint64_t> gHideCrosshairUntilMs{0};
-}
-
+// The sequels' one request (plugin/ScreenReticleRequest.hpp, LE1's 500 ms rule): the mod's game/ScreenReticle hides ME2's
+// crosshair movie on the game thread while it stands (HostServices hideScreenReticle).
 void SetScreenReticleHidden(bool hidden) noexcept {
-    gHideCrosshairUntilMs.store(hidden ? GetTickCount64() + 500 : 0, std::memory_order_release);
+    screen_reticle_request::Set(hidden);
 }
 
 bool ScreenReticleHidden() noexcept {
-    return GetTickCount64() < gHideCrosshairUntilMs.load(std::memory_order_acquire);
+    return screen_reticle_request::Get();
 }
 
 void SetAuthoredHudLayout(bool on) noexcept {

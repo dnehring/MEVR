@@ -44,11 +44,29 @@ enum class Screen : std::uint8_t {
     SkillGame,   // the bypass minigame (game mode 10)
     DesignerUI,  // designer minigames over the world (Quasar, the Hanoi puzzle, the laser, the toxin cure, the bomb disarm)
     GameOver,
+    // ME3's own (FromMe3Tag; ME1 and ME2 never name them): the War Terminal's War Assets (the War Room's console, research/
+    // le3-native-gui.md "The game's screens on ME3").
+    WarAssets,
+#if !defined(MEVR_GAME_LE1)
+    // The sequels' own (their GUI libraries, research/le2-menus.md "The sequels' own screens"; ME1 names none of them, so ME1's
+    // build keeps its table): ME2's and ME3's choice screen (BioSFHandler_PCChoiceGUI: ME2's research terminal, weapon lockers
+    // and stores, the bonus power; the mission's completion), and ME3's terminals (the private terminal, its mail, the
+    // Normandy's elevator). Both stand in the room toward what was used, as ME1's shop by its vendor.
+    ChoiceGUI,
+    Terminal,
+#endif
     Count
 };
-Screen FromTag(std::string_view tag);  // case-insensitive
+// Case-insensitive; ME1's and ME2's tags (never an ME3-only screen). ME2's own screens map to ME1's where ME1 has one (its
+// AreaMap is ME1's Map, its hacking and bypass minigames ME1's SkillGame), else to the sequels' ChoiceGUI.
+Screen FromTag(std::string_view tag);
+// ME3's movie tags (SFXGUIInteraction.MovieTag_*, SFXGUIMovie.nmTag): ME1's screen where ME1 has it (ME3's squad record is ME1's
+// character record, its AreaMap ME1's map, its Store ME1's shop, its WeaponSelect ME1's equipment, its Accomplishments ME1's
+// achievements), else ME3's own (WarAssets, the terminals). Only game/WorldUi's ME3 adapter and the ini on ME3 ask.
+Screen FromMe3Tag(std::string_view tag);
 char const* Name(Screen screen);       // its library tag ("None" for None)
 inline constexpr std::uint32_t Bit(Screen screen) { return 1u << static_cast<unsigned>(screen); }
+static_assert(static_cast<unsigned>(Screen::Count) <= 32, "Screen bits fit Settings::screens");
 
 // Landing may open PartySelect before any on-foot camera exists in the destination.
 // Its Flash portraits can stand in the room over the destination's live camera.
@@ -64,7 +82,7 @@ public:
     bool Cancel(std::uint32_t request);  // 0: unload/replacement; stale cancellations cannot cancel a newer request
     bool Expire(std::uint64_t nowMs);
     bool Pending() const { return request_ != 0; }
-    bool Eligible(int mode) const { return Pending() && mode == 7; }
+    bool Eligible(int mode) const;  // pending, and the game in its GUI mode (GuiMode)
     bool Matches(std::uint32_t request, std::uint32_t visibleScreens) const;
     std::uint32_t Request() const { return request_; }
     Screen Expected() const { return screen_; }
@@ -202,9 +220,38 @@ struct State {
 
 void Publish(State const& state);
 void Forget();
-inline constexpr std::uint8_t kGuiMode = 7;       // SFXGameModeManager.EGameModes: GameMode_GUI
-inline constexpr std::uint8_t kMinigameMode = 10; // GameMode_Minigame (the bypass minigame)
-inline constexpr bool ScreenMode(int mode) { return mode == kGuiMode || mode == kMinigameMode; }
+// The game modes (SFXGameModeManager.EGameModes; every game's table: engine/GameAdapter.hpp's GameMode) the screens stand in:
+// the GUI mode, 7 on ME1 and ME2, 9 on ME3 (whose 7 is a conversation and 10 a movie), and ME1's bypass minigame, 10 (ME2's 10
+// is the planet scan, ME3 has none). An opening is reserved in a play mode, before its call changes the mode: on foot, the
+// vehicle, the power and weapon wheels, the squad command (0..4 on ME1 and ME2), ME3's Atlas and injured Shepard too (0..6).
+// The game comes from MEVR_GAME_LE1/2/3 (every target that compiles this file; ME1's numbers without one: the tests).
+#if defined(MEVR_GAME_LE3)
+inline constexpr std::uint8_t kGuiMode = 9;
+inline constexpr int kLastPlayMode = 6;
+#else
+inline constexpr std::uint8_t kGuiMode = 7;
+inline constexpr int kLastPlayMode = 4;
+#endif
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+inline constexpr bool kHasMinigameMode = false;
+#else
+inline constexpr bool kHasMinigameMode = true;
+#endif
+inline constexpr std::uint8_t kMinigameMode = 10; // ME1's GameMode_Minigame (the bypass minigame)
+inline constexpr bool GuiMode(int mode) { return mode == kGuiMode; }
+inline constexpr bool ScreenMode(int mode) { return mode == kGuiMode || (kHasMinigameMode && mode == kMinigameMode); }
+inline constexpr bool PlayMode(int mode) { return mode >= 0 && mode <= kLastPlayMode; }
+// A play mode whose screens may hold the view remembered on foot: Shepard stands where it was remembered (on foot, the wheels,
+// the squad command; the vehicle has its own guard, game/WorldUi's cockpit, ME1's Mako). ME3's Atlas (2) and injured Shepard (6)
+// are play modes but not on foot: the view on foot was remembered anywhere earlier in the level, so a screen opened from them
+// holds nothing and keeps the native panel, as one opened before any view on foot.
+#if defined(MEVR_GAME_LE3)
+inline constexpr bool FootViewMode(int mode) { return PlayMode(mode) && mode != 2 && mode != 6; }
+static_assert(FootViewMode(0) && FootViewMode(3) && FootViewMode(4) && FootViewMode(5) && !FootViewMode(2) && !FootViewMode(6) &&
+    !FootViewMode(9), "ME3: on foot and its wheels and squad command hold the view on foot; the Atlas and injured Shepard don't");
+#else
+inline constexpr bool FootViewMode(int mode) { return PlayMode(mode); }
+#endif
 // The latest state if published within maxAgeMs and active; else nullopt.
 std::optional<State> Latest(std::uint64_t maxAgeMs);
 // The omni-tool's display (State::emitter) if published within maxAgeMs, active or not: with no screen up the mod publishes an

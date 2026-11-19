@@ -24,6 +24,50 @@ The first protected deployment found the
 recognizer DLL but no model directory in this isolated checkout. Check missing-model feedback and provision
 the existing model assets before claiming microphone recognition acceptance.
 
+## ME2 placement and orders on Save 4, 2026-11-17 (lane SQ)
+
+ME1's placement by an arc, unchanged, on Freedom's Progress with Miranda and Jacob (the fake headset, replayed controllers
+from `tools/make-power-recording.py`, the checks in `tools/le2-halcyon-run/place.ps1`; sessions
+`20261117-001342-799-LE2-sq-powers` and `20261117-010502-173-LE2-sq-place`).
+
+**The first run found nobody moved.** `HenchmanOrderHoldPosition` was called for each squadmate ("move for Jacob, 7.0 m
+from Shepard ... called for 1 squadmate(s)") and Jacob stood where he was; the flat order by the left grip did the same.
+The game's own script says why (read with `tools/conversation-scan --script`, kept out of the repository): the event only
+queues an order (`SFXAI_Henchman.AddOrder`, refused while the AI follows or defends an actor the level asked for); the
+`Idle` state's timer runs the queue (`ExecutingOrders`: `m_vHoldLocation` from the order), and `Idle.ChooseBehavior`
+then enters `MovingToHoldLocation` while Shepard is within `TetherDistanceWhileExecutingOrder` (40 m here). That state
+does not walk to `m_vHoldLocation`: it pathfinds to the squadmate's **move marker**, `BioBaseSquad.GetMemberMoveIndicator`
+(a `BioTacticalMoveToIndicator`), and nothing in script places it. The game's own move order places it first through the
+native `BioPlayerController.UpdateMoveToIndicator(pSquadPawn, vMoveToPosition)` (exe+0xB38380 on ME2, a virtual call
+behind it; ME3 has the same function). So every hold order with a point now calls it first
+(`le2_squad::PlaceMoveIndicator`, game/Le2Squad.hpp; game/SquadPlace and game/SquadOrders' `Le2Order`).
+
+**With the marker, they go to the ring** (`mevr place status` sampled every 2 s, each squadmate's AI state read back by
+`le2_squad::OrderState`):
+
+| After the order | Miranda | Jacob |
+| --- | --- | --- |
+| 0 s | `Idle`, hold point set, 8.4 m from the ring | `MovingToGoal`, 8.4 m |
+| 2 s | `MovingToGoal`, 1.67 m | 1.17 m |
+| 5 s | 0.50 m | `Idle (holding)`, 0.27 m |
+| 7 s and after | `Idle (holding)`, **0.38 m** | **0.27 m** |
+
+ME1 measured 0.6 m. Sent together again to the same point while Miranda already held it, Jacob stopped 1.93 m off (two
+people can't stand on one spot). The left tile sends Miranda alone (0.22 m from her ring, Jacob not sent); B double-tapped
+calls both back (`HenchmanOrderFollow`, state `FollowingActor`, 4.5 m from Shepard). The snapshot `2026-11-17_01-12-38-240`
+shows the arc leaving the right hand and the ring named "Miranda" 9 m ahead. The squad wheel's "up" tile needs the hand
+about 13 cm up: the wheel faces the eyes from below the hand, so its plane sees about 0.7 of a vertical move.
+
+The flat order (the left grip pointing, ME1's `squad_orders` gesture): pointed, let go on a point 13.5 m away, dispatched to
+both, re-asserted once ("drifted"), ended with a follow when it was calm, as ME1's standing orders do. The acknowledgement:
+ME2's AI answers natively (`ExecuteFollowOrder` raises vocalization event 8, `MoveToCoverNearHoldLocation` 7 or 9 through
+`SFXGame.TriggerVocalizationEvent`); ME1's `game/SquadAck` (which waits for `SquadHandleChatterEvent`, absent on ME2) still
+counts them as unanswered on ME2 ("2 expected, 0 answered"): G34's port listens to ME2's vocalization instead.
+
+Placement is now on by default on ME2 (`[SquadOrders] place = 1`, ME1's value: plan rule 19's "ME1's value is the
+default"; it had been opt-in until it was seen to work). Not seen: placement in combat, the arc onto a squadmate, a wall or
+nothing (called off), and the feel in a headset.
+
 ## Original research
 
 The user: research how speech could become a squad order with low latency ("Garrus, equip your sniper and take out those troops on the bridge" into its action), on the device, under 1 s and ideally 500 ms, with very small or fine-tuned open models; the naive speech-to-text, LLM, action cascade assumed too slow. Seven research passes (recognizers and endpointing, speech-native models, small-model parsing, context and deixis, precedents, inference beside the VR frame, LE1's squad orders in our code), every number cited inline. Nothing here was measured on our machine yet: the plan at the end says what to measure first.
@@ -1022,3 +1066,35 @@ is `scratch/voice-model/runs/run2/model-q8_0.gguf`.
 **Next, in order:** the generator: no description that fits two groups (or a gold that names both), no hold with a group as
 its point, and its talk and ASR noise widened; then real transcripts from the headset into the training data; a shorter
 block for the prefill (the baseline's levers). A hyperparameter sweep is not where the next point is.
+
+## The squad's answer and "calm" on the sequels (lane AU4, 2026-11-18)
+
+**The answer** (`game/SquadAck`, the audits' PWR-37). ME1's `SquadHandleChatterEvent`, `PlaySoundSet`, `OnChatterLinePlayed`
+and `HandleChatterEvent` exist in neither sequel. Their henchman AI answers an order itself with a vocalization event
+(`ESFXVocalizationEventID`, the same numbers on both: `ReceivedOrder_Attack` 2 (3, 4, 5 its variants), `_ChangeWeapon` 6,
+`_Move` 7, `_Follow` 8, `_TakeCover` 9, `_Hold` 10), raised through the game's `TriggerVocalizationEvent` (ME2
+`SFXGame.SFXGame`, ME3 `SFXGame.SFXGRI`: `VocalizationID`, `InstigatedBy`) and the vocalization manager's
+(`SFXGame.SFXVocalizationManager`: `Id`, `InInstigator`, script with locals). A CallFunction post-handler sees no parameters,
+so the module hooks every function of that name twice: a ProcessEvent post-handler (the event's own parameters when native code
+raises it) and a frame post-handler (the calling function's Locals when one of them calls the other); the offsets come from our
+reflection by name, so both games' spellings work (`instigatedBy` on ME3). The instigator decides whose order it answers; an id
+outside 2..10 is no answer. Nothing is played in its place (ME1's fallback is `PlaySoundSet`, absent), so the window only
+waits for the AI: at least 3 s on the sequels (ME1's `ackFallbackS` 1 s stays ME1's).
+
+Seen on ME2's Save 4 (Freedom's Progress, Jacob and Miranda; `mevr say go left`, `mevr say follow me`, `go right`): with ME1's
+1 s window the follows were answered (8, after 0.03-0.4 s) and the moves were not; with 8 s every move was answered with 7
+after 0.99-1.48 s; with the sequels' 3 s: 4 of 4 (`squad orders: Jacob answered the move with vocalization 7
+(ReceivedOrder_Move) after 1.05 s (the vocalization event's frame)`). The frame path is the one that heard them. ME3: the
+listener hooked `SFXGame.SFXVocalizationManager.TriggerVocalizationEvent` and `SFXGame.SFXGRI.TriggerVocalizationEvent`
+(`squad orders: acknowledgements heard from the AI's vocalization events: ...`); no ME3 fixture has a squad yet.
+`game/SquadOrders` runs the module on every game (`runtime::Up()`).
+
+**Calm** (`core/vr/SquadStanding`: no hostile near the point and no combat; the ME3 audit's PWR-31). ME1's `scene.combat` is
+`BioPawn.IsInCombatActionState` (the weapon drawn, which ME1 does in every fight). ME3 keeps a gun in the hand on a mission
+(it was "a gun is held and combat is enabled", so a standing order never ended as calm) and ME2 has no such function (combat was
+never true there). The sequels now read the flag the game keeps for its own combat (`engine::adapter::kInCombatClass`: ME2
+`SFXGame.SFXGame.bInCombat` on `WorldInfo.Game`, ME3 `SFXGame.SFXGRI.bInCombat` on `WorldInfo.GRI`; ReflectCheck rows,
+879 of 879 agree on ME3). `mevr context` said `NOW explore` on ME2's Save 4, ME3's Save 31 and, with shots fired, in ME3's
+console combat fixture (`me3-combat.ps1`), where the game's own `SFXGRI.InCombat()` (the Leave entry's log) said false too:
+the map opened by console doesn't start the game's combat state. **Not seen:** the flag true in a real fight, and a standing
+order ending when it falls.

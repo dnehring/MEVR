@@ -161,6 +161,12 @@ void OnRecentered() noexcept;
 // headset), else the machine's active runtime. Any thread. Not called by LE1.
 bool XrRuntimeIsSteamVr() noexcept;
 
+// The host's own ExitProcess hook (plugin/Entry.cpp) is in, under the renderer's [EXITKILL] hook, and ends the process
+// itself (TerminateProcess) after its exit line: the kept locks' summary and crash::NoteProcessExit (a fault from then on
+// is the quit's). The renderer's hook then hands it the call instead of terminating first. Any thread. Not called by LE1
+// (its renderer installs no such hook).
+bool HostEndsProcess() noexcept;
+
 // =====================================================================================================================
 // 2. View
 // =====================================================================================================================
@@ -191,9 +197,97 @@ float FloorViewTranslation(bool replay, float rawCameraZ, float rightZ, float up
 // when tracking starts (never corrected). OnRecentered confirms it took.
 void RecenterOrientation(float const head[4], bool automatic, float orientation[4]) noexcept;
 
+// The constant eye (research/38 B, ME1's [Hands] constantEye and crouchDrop): Present thread, where the renderer writes a
+// standing on-foot camera mode's first-person Offset (LE2/LE3 engine_probe.cpp FpApplyOffset). The game's camera is the hook
+// bone + HookOffset - Offset (turned by the view), so one Offset for every mode puts the eye wherever each mode's HookOffset
+// does: ME3's Combat mode hooks (-30, 20, 90) against Explore's (0, 0, 120), and its renderer's one Offset put the eye 0.7 m
+// behind Shepard's head as soon as a weapon was drawn; ME2's moved it 7 cm. The rule (core/vr/CombatStance): the explore eye
+// is the Explore mode's HookOffset minus the renderer's explore Offset, and a standing mode's Offset is its own HookOffset
+// minus that eye. `modeClass` the mode's class name ("SFXCameraMode_Combat"), `hookOffset` its HookOffset (read by the
+// renderer next to its Offset), `exploreOffset` the renderer's Offset for its explore state; `offset` in: the renderer's
+// Offset for this mode, out: the constant eye's. True when it was replaced (false: off, a crouch mode, a mode not standing on
+// foot, an implausible hook). Not called by LE1: its head_aim.cpp asks MevrBridge::ConstantFpEye (the same rule, its reads).
+bool ConstantFpEye(char const* modeClass, float const hookOffset[3], float const exploreOffset[3], float offset[3]) noexcept;
+
+// ---- Life-size (metric) stereo (plugin/MetricStereo over core/vr/MetricStereo; research/30, "The sequels" section 9) ----
+// Halcyon's stereo renders both passes from the head centre +- a half eye along the body's right, with one symmetric FOV,
+// and shifts each finished image by a convergence at submit. Life-size: each pass renders from its eye's real place (the
+// runtime's views, at the view's own units per metre), no convergence shift, and, where no screen-space UI is in the eye
+// images, through that eye's own off-centre frustum. LE1: sfr2Metric (ModernBaseline pins it); ME2 and ME3: always,
+// unless LifeSizeStereo() says otherwise. Moved here from LE1's mevr_bridge.h unchanged, with `windowHoldsEyes`.
+struct StereoPlanInput
+{
+    bool metric = false;            // life-size stereo on (LE1: sfr2Metric)
+    bool eyeFrustum = false;        // each eye's own frustum wanted (LE1: sfr2MetricEyeFrustum)
+    bool sfr2Active = false;        // the two-pass stereo renders the world this frame (not a flat screen)
+    bool headValid = false;
+    bool viewFollowsHead = true;    // head look on: the rendered view turns with the head
+    bool uiInEyes = true;           // the game's screen-space UI would land in the eye images (no HUD panel)
+    bool fovOverride = false;       // the renderer's render FOV override is on (its FOV fill, not the flat screen)
+    bool swapEyes = false;          // the renderer's swap: pass 0 renders the right eye (upstream only)
+    // The renderer's symmetric window holds both eyes' own frusta (core/vr/MetricStereo WindowHolds): mode 2 only then.
+    // LE1's window is the eyes' union by construction (left at true); the sequels' is aspect-derived (research/30 9.2).
+    bool windowHoldsEyes = true;
+    float eyeOrientation[2][4] = {{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f, 1.0f}};   // the runtime's views
+    float eyePosition[2][3] = {};                                                         // (app space, metres)
+    float eyeFov[2][4] = {};                                                              // left, right, up, down
+    float viewOrientation[4] = {0.0f, 0.0f, 0.0f, 1.0f};   // the roll-removed head the view is built for
+    float fillH = 1.0f, fillV = 1.0f;                      // the FOV fill applied to the eyes' angles
+    float unitsPerMeter = 50.0f;                           // the view's scale (the lean's units per metre)
+    float depth = 1.0f;                                    // the extra depth (LE1: sfr2MetricDepth x the cine separation)
+    // The CPU projection the render last used (radians; 0 = none seen yet): the culling window, which must hold each eye's
+    // own frustum in mode 2 (logged with the plan, warned when it doesn't).
+    float cpuHalfH = 0.0f, cpuHalfV = 0.0f;
+    // A cinematic on the 3D cinema screen (CineScreenWanted, research/52) where the plan sets its cameras (LE1): mode 1
+    // whatever `metric`, the two passes from parallel cameras on the director's camera. The sequels keep their own
+    // (CineScreenHalfSeparationUU) and pass false.
+    bool screen = false;
+};
+struct StereoPlan
+{
+    int mode = 0;                   // 0 upstream, 1 life-size (symmetric window), 2 life-size (each eye's own frustum)
+    int pass0Eye = 0;               // the eye render pass 0 is for (pass 1: the other)
+    float passOffsetUU[2][3] = {};  // per pass: camera right, up, forward from the lean's eye centre
+    float passTerms[2][4] = {};     // per pass, mode 2: p0, p5, p8, p9 (UE3's off-centre terms, w = z)
+    float passTan[2][4] = {};       // per pass, mode 2: the frustum's left, right, up, down tangents
+    float ipdM = 0.0f;              // the runtime's eye distance
+    float ipdUU = 0.0f;             // as rendered
+    // The 3D cinema screen (mode 1, research/52 "Cross-eyed"): the tangent of the lens half angle the offsets were planned
+    // for, and the largest one planned. The render hook scales the offsets to the lens of the frame it draws. 0: as planned.
+    float lensTan = 0.0f;
+    float lensTanMax = 0.0f;
+};
+// Present thread, once per frame with the view offset: the plan for the next game frame's passes ([MEVR-STEREO] lines).
+void PlanStereo(const StereoPlanInput& in, StereoPlan* out) noexcept;
+// Present thread, with the projection views: what this frame submits. `mode`: what the pair was rendered with (0
+// upstream's, also a flat screen). Declared poses (position xyz, orientation xyzw) and FOVs per eye.
+void NoteStereoSubmit(int mode, float const declaredPosition[2][3], float const declaredOrientation[2][4],
+    float const declaredFov[2][4]) noexcept;
+// Any thread, read once: life-size stereo is the sequels' only configuration (the owner, 2026-11-16: "It should always
+// be life sized stereo for all games"; ME1's ModernBaseline pins sfr2Metric). Bit 0 set: life-size (the default). 0 only
+// with `[Debug] upstreamStereo = 1` in ASI\<GAME>MEVR.ini: the renderer's upstream stereo, for a before/after
+// measurement. Bit 1 (the default with bit 0; `[Debug] stereoWindowCoversEyes = 0` clears it): the renderer's window
+// widened by one uniform factor until it holds both eyes' frusta, as its Meta-runtime path does and as ME1's union
+// window is, so each eye renders its own frustum (mode 2). Bit 2 (off by default; `[Stereo] windowEyes = 1`, with bit 1):
+// the window is the eyes' union, each axis on its own, instead of the renderer's side-by-side aspect scaled up (which
+// overshoots the eyes' height: research/30 section 9.6). A development build also reads
+// %LOCALAPPDATA%\MEVR\stereo.measure (`[Stereo] mode = upstream | nocover`, `window = eyes | aspect`) for runs whose ini
+// must stay exact. Not called by LE1.
+int LifeSizeStereo() noexcept;
+
 // =====================================================================================================================
-// 3. Eye image. Not called by LE1 (its blit has its own EyeColour* / EyeUpscale seams until the eye-image lane).
+// 3. Eye image. Not called by LE1: its blit keeps its fill rectangle, atlas halves and HDR scale, and reaches the same
+//    colour correction and upscale through its own EyeColour* / EyeUpscale seams (research/27 "One eye-image pipeline").
 // =====================================================================================================================
+
+// Present thread, when the renderer makes the swapchains its eye copies go into, for a renderer that makes them at the
+// picture's size (sourceWidth x sourceHeight: the backbuffer): the size to make them instead, given what the runtime
+// recommends per eye (0, 0 if unknown). With [Upscale] method = fsr and a picture smaller than the recommendation the
+// answer is larger than the picture and CopyIntoImage scales it up (FSR 1, as LE1's blit does into its headset-sized
+// eyes); otherwise it is the picture's size. The renderer must use the answer for the swapchain, its imageRect and any
+// shift it passes to CopyIntoImage in pixels.
+void EyeImageSize(std::uint32_t sourceWidth, std::uint32_t sourceHeight, std::uint32_t recommendedWidth,
+    std::uint32_t recommendedHeight, std::uint32_t* width, std::uint32_t* height) noexcept;
 
 // Present thread: `source` (an ID3D11Texture2D) is about to be copied into eye `eye`'s image (0 left, 1 right). A
 // snapshot armed now saves it too (plugin/TestLoop).
@@ -248,6 +342,28 @@ bool CineScreenFullRate() noexcept;
 // Not called by LE1: its xr_session.cpp composes the screen itself (CineScreenQuadsNow, CinemaBackdropLayer, PlacePanel).
 unsigned CineScreenLayers(CineScreenFrame const& frame, void const** layersOut, unsigned capacity) noexcept;
 
+// The front end on one presentation (research/56, T18; plugin/PresentationHold, rules core/vr/PresentationHold): from
+// start-up until the first load from the menus or the first gameplay, the title and its menus on the 3D cinema screen
+// ([Cinematics] frontEnd, ME1's default 1), the boot before the title and every movie flat, the load from the menus the flat
+// panel from its first frame, and no plain VR between them. Present thread, every frame before the renderer's presentation
+// decision. `gameMode`: the game's own number as the renderer reads it (-1 unreadable); the host maps it to ME1's rules by
+// the game's adapter (engine/GameAdapter.hpp). True while this frame is the front end's.
+// Not called by LE1: its xr_session.cpp calls the same functions by their LE1 names (MELEVR::MevrBridge::FrontEndHold ...).
+bool FrontEndHold(int gameMode) noexcept;
+// After FrontEndHold: the front end goes on the 3D cinema screen (the setting, before the first load from the menus).
+bool FrontEndOnScreen() noexcept;
+// After FrontEndHold: the start-up's boot before the title (its unreadable mode, the logos' movie): flat, as a movie.
+bool FrontEndBeforeTitle() noexcept;
+// Each frame, after the decision: `plainVr` this frame's decision is plain VR (the world filling the view). True: show the
+// previous presentation instead (plain VR after another view waits 100 ms, so a blip of a gameplay mode between two other
+// views never puts the world in the view). `worldUi`: an authorized hand-over to a screen of ours (accepted at once).
+bool HoldPlainVr(bool plainVr, int gameMode, bool worldUi) noexcept;
+// Each frame, before the renderer decides from its movie signal: `movie` that signal (a load's movie or a prerendered one),
+// `gameMode` the game's own number. True: show this frame as the movie (its flat panel) although it no longer is one: the
+// sequels' loads end in a cinematic mode for 0.3 s (ME2's, the picture black), kept as the load until it has lasted 0.5 s
+// (core/vr/PresentationHold's LoadTail). Not called by LE1 (its loads have no such tail).
+bool HoldLoadTail(bool movie, int gameMode) noexcept;
+
 // Present thread, the frame's last layer: this frame's view (0 the world, 1 the 3D cinema screen, 2 a cinematic on the
 // flat panel, 3 another flat panel, -1 none submitted); a head-locked black quad (an XrCompositionLayerQuad*) to submit
 // last, or null (plugin/TransitionFade).
@@ -265,6 +381,51 @@ void const* TransitionFadeLayer(void* session, void* viewSpace, ID3D11DeviceCont
 // ME3: every native panel through WorldPanels by its game mode, the galaxy map and orbit image on the table.
 PanelPose PlacePanel(PanelKind kind, OverlayFrame const& frame, float const viewPosition[3], float widthM, float heightM,
     bool imageReady) noexcept;
+
+// One of the game's screens stands on the wrist or in the room (plugin/WorldUi, the mod's game/WorldUi; plugin/MenusLe2),
+// or is being opened (the mod reserved it): the GUI mode `mode` (ME2's 7, ME3's 9) is then not flat (the renderer's menu
+// presentation stays out: the world in stereo behind the screen, its UI on our HUD panel), as LE1's
+// MevrBridge::WorldUiOwnership in xr_session.cpp's decision. Any thread. Not called by LE1 (its WorldUiOwnership seams).
+// Moved here from ME2's mevr_bridge.h when ME3 took it (2026-11-16; ME2's name forwards).
+bool WorldUiOwnsGui(int mode) noexcept;
+
+// Game thread, the renderer's CalcSceneView detour, around the primary local player's main view build (each stereo pass's):
+// while one of the game's screens of ours stands in its GUI mode and the mod sends Shepard's view on foot (game/WorldUi's
+// held view), the host puts that view into the player camera's POV for this one build, so the eyes stay where the player
+// stands while the GUI mode's own camera (ME3's third-person one) keeps serving the game. True: held, call WorldViewHoldEnd
+// right after the build (it puts the camera's own view back). plugin/WorldUi's HoldViewBegin/End, one for every game.
+// Not called by LE1: its GalaxyViewSwapBegin/End (src/halcyon/le1/mevr_bridge.h) has the same contract and calls the same
+// hold for its world UI (and also holds the galaxy map in the CIC and conversations in the world). LE2 calls it in the
+// galaxy map's modes and its held opening and closing cinematic (calcview_hook.cpp).
+// The galaxy map open over the CIC's projector holds the view at Shepard's the same way, first (plugin/GalaxyHologram's
+// HoldViewBegin: the mod's galaxy scene with its render hold, game/GalaxyProjector), as LE1's GalaxyViewSwapBegin.
+bool WorldViewHoldBegin() noexcept;
+void WorldViewHoldEnd() noexcept;
+// Any thread: the galaxy map is open over the CIC's projector in game mode `mode` (the mod's galaxy scene fresh, in the world:
+// game/GalaxyProjector, ME1's research/51 section 8.1): the map's modes are then no flat presentation (the room in stereo, the
+// game's map as a stereo window on the projector, its UI on our panel there). LE1's MevrBridge::GalaxyHeld is the same rule.
+// The map's opening and closing cinematics are held the same way (the mod publishes the table unsuspended then: game/
+// GalaxyProjectorFlow's bridge). ME3's d3d_capture.cpp presentation decision and me2_xr.cpp's cinematic one; ME2's d3d_capture.cpp
+// GetMenuMode, me2_xr.cpp's cinematic decision, calcview_hook.cpp's and engine_probe.cpp's held view.
+bool GalaxyOwnsPresentation(int mode) noexcept;
+// Any thread: whether the hold above is in force for game mode `mode` (a screen of ours up in it, the mod's held view fresh):
+// 0 no; 1 held for a screen on the wrist (arm IK keeps the body under the view: the renderer keeps its first person's mesh
+// hides as they are, Shepard's head hidden at the held eyes); 2 held for a screen standing in the room (the game poses Shepard
+// for the screen, e.g. both hands on the War Terminal, which put his arm and shoulder in front of the held eyes: the renderer
+// hides his body as well as his head). Not called by LE1 nor LE2 yet.
+int WorldViewHeld(int mode) noexcept;
+// Present thread, each frame the renderer decides its first-person hides in gameplay (ME3's engine_probe.cpp): true while
+// Shepard's body and head are hidden from the eyes for one of the game's own actions, whatever the first-person state says:
+// a roll (the owner, 2026-11-18, "Yes for now"; vr::HidesBodyForAction: SFXCameraMode_Roll, or a blend into or out of it).
+// `fromClass`/`toClass`: the blend's endpoints when `modeClass` is SFXCameraMode_Interpolate (else empty). [Hands]
+// rollHidesBody = 0 turns it off. Not called by LE1 nor LE2 (no roll camera).
+bool HideBodyForAction(char const* modeClass, char const* fromClass, char const* toClass) noexcept;
+// Present thread, once a frame before the eye images are filled: true while an opening of ours is reserved and its screen not
+// yet shown on our panel (plugin/WorldUi's clean-eye guard, research/57): the renderer then keeps the last clean eyes (no copy
+// into the eye images, the last released images submitted with their own tags), so neither the GUI mode's own camera nor its
+// UI in the eyes shows for the frame or two the opening takes. LE1's MevrBridge::WorldUiHoldFrame is the same function (its
+// xr_session.cpp keeps its name); ME3's me2_xr.cpp SFR pair. Not called by LE2 yet.
+bool WorldUiHoldFrame(int mode) noexcept;
 
 // =====================================================================================================================
 // 5. Input and threads
@@ -322,6 +483,12 @@ struct PerfPresentScope
 void PerfFirstEyeCaptured(ID3D11DeviceContext* context) noexcept;
 // Render thread, in each of the renderer's immediate-context draw hooks: one draw call (LE1's ++g_perfDraws).
 void PerfDraw() noexcept;
+// Game thread, in the stereo branch of the renderer's CalcSceneView detour: true while each stereo pass is to render
+// through a scene view state of its own, false while both go through the game's one state ([Performance]
+// perEyeViewState; its default is the game's, plugin/RenderLeversTable: the sequels 1, their SFR's own behaviour;
+// research/sequel-render-levers.md "Performance research"). Defined by plugin/RenderLevers in the LE2 and LE3 hosts.
+// Not called by LE1: its tree asks MELEVR::MevrBridge::PerEyeViewState, the same lever.
+bool PerEyeViewState() noexcept;
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Room left for one-Draw stereo ([Performance] sharePass = 5, research/37) on a sequel: LE1's seams for it are

@@ -45,10 +45,13 @@ struct Caps {
     char const* name = "none";        // "halcyon-le1" | "halcyon-le2" | "halcyon-le3": for logs, never to branch on
 
     // -- Which groups of the common seams (src/halcyon/MevrSeams.h) the renderer's tree calls --
-    bool eyeImageSeams = false;       // OnEyeSource, CopyIntoImage, OnEyeCopied, OnEyeReleased, OnFactory: the host's
-                                      // plugin/EyeCopy owns every eye image (LE1: its own blit, with the EyeColour* and
-                                      // EyeUpscale seams below)
+    bool eyeImageSeams = false;       // EyeImageSize, OnEyeSource, CopyIntoImage, OnEyeCopied, OnEyeReleased, OnFactory:
+                                      // the host's plugin/EyeCopy owns every eye image (LE1: its own blit, which reaches
+                                      // the same colour correction and upscale through the EyeColour* and EyeUpscale
+                                      // seams below; research/27 section 9 says why it keeps that call shape)
     bool hudPanelDraw = false;        // MevrSeams::HudPanelDraw from its draw hooks (LE1: its own HudPanel* seams)
+    bool cineScreen = false;          // conversations and cutscenes can go on ME1's 3D cinema screen (research/52): our menu
+                                      // offers it and MevrSeams::CineScreenWanted may answer yes (one fact for both)
     bool hostCineScreen = false;      // the host composes the 3D cinema screen (CineScreenLayers); false: the renderer
                                       // does (LE1's xr_session.cpp, with CineScreenQuadsNow and PlanStereo's screen branch)
     bool recenterTilt = false;        // its recenter asks RecenterOrientation (a tilted base space corrected)
@@ -110,6 +113,27 @@ MenuRows GetMenuRows() noexcept;
 void SetMenuRows(MenuRows const& rows) noexcept;
 // Saves the renderer's live settings to its file (ME2: SaveValues, MELE2VR.ini), as closing its own menu does.
 void SaveOwnSettings(char const* why) noexcept;
+
+// ---- The render target on ME2 and ME3 (the game's resolution both eyes render at; plugin/MainMenuSettings) -------------
+// LE1's target is Halcyon's VrConfig (sfr2ResX/Y in its profiles, MainMenuSettings' LE1 part), so this answers only the
+// sequels': [VR] RenderW/RenderH in MELE2VR.ini / MELE3VR.ini next to the exe, which the renderer writes into
+// GamerSettings.ini's ResX/ResY at attach (a restart applies it). Defined by the sequels' renderers only: LE1's host never
+// calls these (MainMenuSettings' LE1 part has its own rule), and an unused definition would still grow its binary.
+struct RenderTarget {
+    bool settable = false;
+    int width = 0;                  // the renderer's file now: the next launch's size (its code default when the keys are
+    int height = 0;                 // missing; 0: the game's own resolution)
+    int liveWidth = 0;              // this launch's backbuffer, 0 until the renderer has seen it
+    int liveHeight = 0;
+    int recommendedWidth = 0;       // the runtime's recommended eye size, 0 until VR starts
+    int recommendedHeight = 0;
+    int multiple = 8;               // each side a multiple of this (core/vr/RenderTarget Shape)
+    float minAspect = 0.0f;         // > 0: a narrower frame loses part of the game (core/vr/RenderTarget Shape)
+};
+RenderTarget GetRenderTarget() noexcept;
+// Writes the size into the renderer's file and GamerSettings.ini for the next launch (ME3 also the size its exit hook
+// writes back after the engine's own flush). False: not settable, or a write failed (logged). Any thread but no lock held.
+bool SetRenderTarget(int width, int height) noexcept;
 
 // A line in the renderer's own log (LE1 %LOCALAPPDATA%\MELEVR\MELEVR_Log.txt, ME2 ...\MELE2VR\MELE2VR_Log.txt), for
 // lines the renderer's log should carry next to its own ([MEVR-COLOUR], [MEVR-HUD] ...). Any thread.
@@ -184,8 +208,9 @@ bool ModHandAim() noexcept;
 
 // ---- The game's own HUD, as the renderer handles it -------------------------------------------------------------------
 
-// The game's screen-centre crosshair hidden (the hand reticle replaces it in gameplay). LE1: Halcyon's PcHud. ME2: not yet
-// (its own PcHud has no such switch: M3), the setter a no-op and the getter false.
+// The game's screen-centre crosshair hidden (the hand reticle replaces it in gameplay). LE1: Halcyon's PcHud. ME2 and ME3:
+// a 500 ms request (plugin/ScreenReticleRequest.hpp) the mod's game/ScreenReticle carries out on the game thread
+// (HostServices hideScreenReticle): ME2's crosshair movie, ME3's reticle movie.
 void SetScreenReticleHidden(bool hidden) noexcept;
 bool ScreenReticleHidden() noexcept;
 // The HUD's authored layout (the HUD panel takes the game's UI as authored, not Halcyon's VR re-layout). LE1: PcHud's

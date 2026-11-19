@@ -59,7 +59,7 @@ if ($DesktopDump) {
 }
 if ($RendererPreview) {
     $previewOptions = Get-PreviewOptions $open
-    Assert-PreviewConfig $bin $previewOptions.mode $previewOptions.diagnostics $previewOptions.mirrorEvery
+    Assert-PreviewConfig $bin $previewOptions.mode $previewOptions.diagnostics $previewOptions.mirrorEvery $previewOptions.eyeFrustum $previewOptions.renderSize
     Assert-RunArtifacts $open.previewArtifacts
     Assert-PreviewEnvironment $open (Get-PreviewPaths)
     if (Test-Path -LiteralPath (Join-Path $env:LOCALAPPDATA 'MEVR\fake-headset\undo.json')) { throw 'Another fake-headset session appeared' }
@@ -83,8 +83,11 @@ if ($RendererPreview) {
     $settingsLogs = @((Join-Path $bin 'Logs\LE3MEVR.log'), (Join-Path $env:LOCALAPPDATA 'MEVR\LE3MEVR.log'))
     $logs += $settingsLogs
 }
+# ME2's VR mode: the mod's first-run settings appends are waited out after the XR marker (Wait-RunModSettings).
+# Kept apart from $logs, which the readiness loop searches for the renderer's marker.
+$modLogs = if (-not $DesktopDump -and -not $RendererPreview) { @(Get-RunModLogs $bin $Game) } else { @() }
 $oldLogs = @{}
-foreach ($path in $logs) { $oldLogs[$path] = if (Test-Path -LiteralPath $path) { Read-RunLog $path } else { '' } }
+foreach ($path in @($logs + $modLogs)) { $oldLogs[$path] = if (Test-Path -LiteralPath $path) { Read-RunLog $path } else { '' } }
 $started = [DateTime]::UtcNow
 $open | Add-Member -NotePropertyName launchRequestedUtc -NotePropertyValue $started.ToString('o') -Force
 $open | Add-Member -NotePropertyName gameProcess -NotePropertyValue $null -Force
@@ -104,29 +107,53 @@ if ($RendererPreview) {
 }
 Start-Process -WindowStyle Hidden -FilePath 'C:\Program Files (x86)\Steam\steam.exe' -ArgumentList '-applaunch', '1328670', '-game', $names.number, '-autoterminate'
 "Asked Steam for $Game at $(Get-Date -Format HH:mm:ss)"
+# EA's Steam launcher holds MassEffectLauncher suspended for up to ~14 s (no readable Path), so every candidate is
+# tracked over time (session-common.ps1, Step-RunAdoption): the launcher is recorded once readable, the game only
+# after its identity has stayed readable and unchanged for the settle time. Each candidate and verdict is printed
+# and kept in the session's launch-candidates.txt.
+$launcherAdoption = New-RunAdoption 'MassEffectLauncher' $launcherExe $started
+$gameAdoption = New-RunAdoption $names.process $exe $started -SettleSeconds 5
+$foreign = @(Get-RunForeignProcesses $names.current)
+$candidateLog = Join-Path $open.session 'launch-candidates.txt'
+Add-Content -LiteralPath $candidateLog -Value "== $Game launch requested $($started.ToString('o')) by $Holder" -Encoding utf8
+function Read-LaunchCandidates([string]$Name, $Adoption) {
+    foreach ($candidate in @(Get-Process -Name $Name -ErrorAction SilentlyContinue)) {
+        $o = Read-RunCandidate $candidate.Id
+        if ($o.alive -and -not $Adoption.candidates.ContainsKey([string]$candidate.Id)) {
+            $o | Add-Member -NotePropertyName parent -NotePropertyValue (Get-RunParentText $candidate.Id)
+        }
+        $o
+    }
+}
+function Write-LaunchCandidateLog {
+    $lines = @(Get-RunAdoptionLines $launcherAdoption) + @(Get-RunAdoptionLines $gameAdoption)
+    if ($lines.Count) { Add-Content -LiteralPath $candidateLog -Value $lines -Encoding utf8; $lines }
+}
 $p = $null
-for ($i = 0; $i -lt [math]::Ceiling($LaunchTimeoutSeconds / 2) -and -not $p; $i++) {
-    $launchers = @(Get-Process MassEffectLauncher -ErrorAction SilentlyContinue)
-    if ($launchers.Count -gt 1) { throw 'Multiple launchers appeared; refusing to adopt them' }
-    foreach ($launcher in $launchers) {
-        $identity = Get-RunLaunchIdentity $launcher.Id $launcherExe $started
-        if ($identity) {
-            $open.launcherProcess = $identity
+$deadline = $started.AddSeconds($LaunchTimeoutSeconds)
+try {
+    while (-not $p) {
+        Assert-RunLock $Holder
+        if (@(Get-Process MassEffect1, MassEffect2, MassEffect3 -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -ne $names.process }).Count) {
+            throw 'Another game started during the launch; refusing to adopt'
+        }
+        $now = [DateTime]::UtcNow
+        $launcher = Step-RunAdoption $launcherAdoption @(Read-LaunchCandidates 'MassEffectLauncher' $launcherAdoption) $now $foreign
+        if ($launcher -and (-not $open.launcherProcess -or $open.launcherProcess.pid -ne $launcher.pid -or $open.launcherProcess.startedUtc -ne $launcher.startedUtc)) {
+            $open.launcherProcess = $launcher
             Write-RunSession $open $names.current
         }
-    }
-    $found = @(Get-Process -Name $names.process -ErrorAction SilentlyContinue)
-    if ($found.Count -gt 1) { throw 'Multiple game processes appeared; refusing to adopt them' }
-    if ($found.Count) {
-        $p = Get-RunLaunchIdentity $found[0].Id $exe $started
+        $p = Step-RunAdoption $gameAdoption @(Read-LaunchCandidates $names.process $gameAdoption) $now $foreign
         if ($p) {
             $open.gameProcess = $p
             Write-RunSession $open $names.current
+        } elseif ([DateTime]::UtcNow -ge $deadline) {
+            throw "No $($names.process) within $LaunchTimeoutSeconds seconds; keep the session locked and inspect it"
         }
+        Write-LaunchCandidateLog
+        if (-not $p) { Start-Sleep 1 }
     }
-    if (-not $p) { Start-Sleep 2 }
-}
-if (-not $p) { throw "No $($names.process) within $LaunchTimeoutSeconds seconds; keep the session locked and inspect it" }
+} finally { Write-LaunchCandidateLog }
 "$($names.process) pid $($p.pid) startedUtc $($p.startedUtc)"
 $marker = if ($EngineProbe) { 'engine-probe: reflection checks finished' } elseif ($DesktopDump) { 'dump-only: code dump attempted; renderer and hooks disabled' } elseif ($RendererPreview) { '[ME3XR] VR session ready; starting frame submission.' } else { 'VR session ready' }
 $seen = $false
@@ -143,13 +170,32 @@ for ($i = 0; $i -lt [math]::Ceiling($ReadyTimeoutSeconds / 2); $i++) {
 }
 if (-not $seen) { throw "Expected marker was not observed: $marker (the session remains owned; use -Stop, then restore)" }
 $marker
+if ($modLogs.Count) {
+    # The mod appends its default blocks to <GAME>MEVR.ini on its first tick, a few seconds after the XR marker; a load
+    # whose hashes were frozen before that was refused. Wait for the settings markers and a quiet file. A timeout only
+    # warns: load.ps1 still refuses any change during the load. Gotcha mod-settings-appended-after-xr-ready.
+    $modSettings = Join-Path $bin "ASI\${Game}MEVR.ini"
+    $settled = Wait-RunModSettings -Path $modSettings -Logs $modLogs -Before $oldLogs -Started $started -Guard {
+        Assert-RunLock $Holder
+        $live = Get-Process -Id $p.pid -ErrorAction SilentlyContinue
+        if (-not $live) { throw 'The game exited while its settings were written' }
+        Assert-RunProcess $live $open.gameProcess $exe
+    }
+    $line = Format-RunModSettings $settled $modSettings
+    Add-Content -LiteralPath (Join-Path $open.session 'mod-settings.txt') -Value "[$((Get-Date).ToString('HH:mm:ss.fff'))] $line" -Encoding utf8
+    if ($settled.settled) {
+        $line
+        try { [IO.File]::WriteAllText((Join-Path $open.session 'effective-mod.ini'), (Read-RunLog $modSettings)) }
+        catch { Write-Warning "effective settings not copied: $($_.Exception.Message)" }
+    } else { Write-Warning $line }
+}
 if ($RendererPreview) {
     $previewReceipt.freshMarker = $true; $previewReceipt.log = $log
     # The renderer can migrate an obsolete INI mode while starting. Never label
     # that run with the requested mode or continue on changed runtime artifacts.
     $initialized = Wait-PreviewInitializedConfig -Bin $bin -Artifacts $open.previewArtifacts -StartupLogs $settingsLogs `
         -Before $oldLogs -Started $started -Mode $previewOptions.mode -Diagnostics $previewOptions.diagnostics `
-        -MirrorEvery $previewOptions.mirrorEvery -Guard {
+        -MirrorEvery $previewOptions.mirrorEvery -EyeFrustum $previewOptions.eyeFrustum -RenderSize $previewOptions.renderSize -Guard {
             Assert-RunLock $Holder
             $live = Get-Process -Id $p.pid -ErrorAction Stop
             Assert-RunProcess $live $open.gameProcess $exe

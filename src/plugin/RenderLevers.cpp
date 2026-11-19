@@ -1,17 +1,30 @@
 // SPDX-License-Identifier: MIT
 #include "core/DevChannels.hpp"
 #include "plugin/RenderLevers.hpp"
+#include "plugin/RenderLeversSeams.hpp"
+#include "plugin/RenderLeversTable.hpp"
 #include "plugin/SceneCaptureTarget.hpp"
+#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE3)
 #include "plugin/MotionBlurGuard.hpp"
+#endif
 
+#include "core/Exe.hpp"
 #include "core/Hook.hpp"
 #include "core/Log.hpp"
 #include "core/vr/SceneCaptureScope.hpp"
 #include "plugin/DrawReplay.hpp"
-#include "plugin/MetricStereo.hpp"
 #include "plugin/Renderer.hpp"
-#include "plugin/UiWorldFigure.hpp"
-#include "halcyon/le1/mevr_bridge.h"
+#if defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
+#include "halcyon/MevrSeams.h"       // MevrSeams::PerEyeViewState, defined at the end of this file
+#endif
+#if defined(MEVR_WITH_HALCYON_LE2)
+#include "halcyon/le2/calcview_hook.h"   // ME2's same-frame replay retries, for the 10 s line
+#include "halcyon/le2/mevr_bridge.h"     // ME2VR::MevrBridge::SfrReplayRetry, defined at the end of this file
+#endif
+#if defined(MEVR_WITH_HALCYON)
+#include "plugin/MetricStereo.hpp"   // LE1's metric stereo plan: the eye scissor's shown window
+#include "plugin/UiWorldFigure.hpp"  // LE1's UI world figure: its capture's scene swap
+#endif
 
 #include <Windows.h>
 #include <d3d11.h>
@@ -25,11 +38,17 @@
 #include <cstring>
 #include <cwchar>
 #include <format>
+#include <initializer_list>
 #include <string>
 #include <vector>
 
 namespace mevr::host::render_levers {
 namespace {
+
+// This game's addresses (engine/Addresses.hpp's rows, by name) and layouts: plugin/RenderLeversTable.hpp. The k...Rva
+// and layout names used below are its constants; the addresses in the comments are LE1's (where each was found).
+using namespace table;
+bool Verified(bool flag);   // defined below: a Layout flag of this game, asked at run time
 
 // research/22 and /32 (Ghidra; .pdata starts checked): SceneRenderB = FSceneRenderer::Render (one call per scene
 // render, render thread). The Umbra commander's command() (0x8C34C0) is BioWare's side of the resolve: code 0
@@ -37,63 +56,27 @@ namespace {
 // occluders into depth and issues queries, 6 reads query results (spinning while a needed one isn't ready until
 // 10 ms after the stamp; the float's 2 s precision at that magnitude makes the wait anything up to a second), 1
 // ends it. 0x76C1D0 is the opaque base pass of one view (not a depth pre-pass: research/32).
-constexpr std::uintptr_t kSceneRenderRva = 0x76EE20;
-constexpr std::uintptr_t kCommanderCommandRva = 0x8C34C0;
-constexpr std::uintptr_t kUmbraResolveStartRva = 0x1795D40;
 // FD3D11DynamicRHI::GetQueryData(this, query, out, size, bWait) (Ghidra, 2026-10-23): with bWait it polls GetData
 // until the result is ready or 0.5 s passed. UE3's per-primitive occlusion asks for "last frame's" query with
 // bWait; in Stereo 2 the second eye's "last frame" is this frame's first eye, still on the GPU (1.3 ms behind), so
 // the second render spins for it: 1.3-1.6 ms a frame at a lighter spot, 0.5 at the heaviest (the fake-headset
 // measurements). ue3QueryWait = 0 clears bWait in a frame's second render: an unready query counts as visible.
-constexpr std::uintptr_t kGetQueryDataRva = 0x9A04B0;
 // 0x8C1AE0(which): SceneRenderB picks the Umbra commander (0x1798E88[which], two of them) for a scene render; in
 // gameplay always 0, so both eyes resolve on commander 0 and share its query pool. That works with the game's one
 // view state (one Umbra camera double-buffering its queries across the two resolves) and breaks with a state per
 // eye: two cameras on one pool re-issue each other's pending queries, so the second eye's results are never ready
 // (7,000 polls a frame, 2026-10-23). Giving the second render commander 1 was tried and hangs: its resolve waits in
 // the Umbra command ring for a resolve command the game thread only queues for commander 0 (research/35, 20).
-constexpr std::uintptr_t kSetCommanderRva = 0x8C1AE0;
 
 constexpr int kSlots = 6;  // render places tracked per frame (the last collects the rest)
 
 // sharePass (research/32, lever 1): the second scene render of a frame runs on the first one's renderer.
 // SceneRenderB's Umbra branch, after InitViews, as the game calls it (Ghidra, research/32):
-constexpr std::uintptr_t kDeleteRendererRva = 0x4ED700;   // FSceneRenderer deleting destructor (this, flags)
-constexpr std::uintptr_t kAllocateTargetsRva = 0x772EB0;  // GSceneRenderTargets.Allocate(this, x, y, 0)
-constexpr std::uintptr_t kWireframeStateRva = 0x8C1AE0;   // (byte): 0 on the normal path
-constexpr std::uintptr_t kDpgLightTargetsRva = 0x77BE00;  // (renderer, dpg): per light and view, into scene targets
-constexpr std::uintptr_t kPrepassViewsRva = 0x8BF8F0;     // RenderUmbraBasePass(renderer): the opaque base pass per view
-constexpr std::uintptr_t kTranslucencyCheckRva = 0x7666A0;
-constexpr std::uintptr_t kBeforeLightsRva = 0x759240;     // only when GSkipBeforeLights == 0
-constexpr std::uintptr_t kDpgPassRva = 0x76D650;          // (renderer, dpg, uint* dirty): the lights
-constexpr std::uintptr_t kDpgLightsRva = 0x76D0A0;        // (renderer, dpg, flag, uint* dirty, arg5): translucency etc.
-constexpr std::uintptr_t kForegroundRva = 0x76CA70;       // (renderer, 2, int* out, uint* dirty, arg5)
-constexpr std::uintptr_t kFinishRva = 0x76DD10;           // (renderer, flag, dirty)
-constexpr std::uintptr_t kCaptureSceneRva = 0x742C80;     // (capture info, main renderer): per capture, in the loop at the top of 0x76EE20 (research/47)
-constexpr std::uintptr_t kBeginBackBufferRva = 0x773D30;  // GSceneRenderTargets.BeginRenderingBackBuffer: the uber post's final pass (research/47)
-constexpr std::uintptr_t kSceneRenderTargetsRva = 0x167D0E0;
-constexpr std::uintptr_t kDynamicRhiRva = 0x17938C8;      // GDynamicRHI; vtable +0x628 begin, +0x620 end
-constexpr std::uintptr_t kSceneFrameRva = 0x178779C;      // incremented per scene render
-constexpr std::uintptr_t kDepthDirtyRva = 0x1795D38;
-constexpr std::uintptr_t kSkipBeforeLightsRva = 0x167D49C;
-constexpr std::uintptr_t kCommandersRva = 0x1798E88;      // BioWare's Umbra commanders [index]
-constexpr std::uintptr_t kCommanderIndexRva = 0x1795D28;
 // FSceneRenderer (0x110 bytes): +0x00 scene, +0x08 the family copy (+0x18 render target, +0x28 show flags),
 // +0x5C Umbra path, +0x60/+0x68 views (FViewInfo, 0x12F0 apart), +0xD8 the scene-begun flag.
 // FSceneView (the first 0x4E4 bytes of FViewInfo; copy constructor 0x763450): plain matrices and vectors
 // in these ranges, owned containers at 0x44, 0x140 (the frustum's planes) and 0x330 (never copied).
-constexpr std::size_t kViewStride = 0x12F0;
-struct ByteRange {
-    std::size_t begin, end;
-};
-// The word at +0x8C differs between a frame's two eye passes (the fake-headset run, 2026-10-23: the only
-// difference the pairing test found), so it goes with the per-pass values.
-constexpr ByteRange kViewPlainRanges[] = {{0x8C, 0x140}, {0x190, 0x330}, {0x480, 0x4B0}, {0x4C0, 0x4D0}};
-// The same without the +0x8C word, every range starting on a 16-byte boundary of the view: the draw replay's
-// substitution keys are the differing 16-byte chunks of these bytes, and a 4-byte offset at the start put every key
-// astride two matrix rows (research/37, experiment 3: 0 substitutions).
-constexpr ByteRange kViewCaptureRanges[] = {{0x90, 0x140}, {0x190, 0x330}, {0x480, 0x4B0}, {0x4C0, 0x4D0}};
-constexpr std::size_t kViewCompareEnd = 0x8C;  // the view block compared for compatibility: +0x60 to here
+// (kViewPlainRanges, kViewCaptureRanges: the table's.)
 
 // A view offset's place in the captured bytes (SIZE_MAX: outside the capture ranges).
 constexpr std::size_t CapturedOffset(std::size_t viewOffset) {
@@ -124,7 +107,13 @@ tSetCommander* gSetCommanderOrig = nullptr;
 bool gSetCommanderHooked = false;
 std::atomic<int> gUe3QueryWait{1};  // 1 the game's own; 0 a frame's second render never waits for a query result
 std::atomic<std::uint64_t> gQueryWaitsSkipped{0};  // reads that would have waited, this period
-std::atomic<int> gPerEyeViewState{0};  // 1: Halcyon renders each Stereo 2 eye through its own view state in gameplay too
+// 1: Halcyon renders each stereo eye through its own view state in gameplay too (ME1 0; the sequels' SFR 1, from the start)
+std::atomic<int> gPerEyeViewState{kLayout.perEyeViewStateDefault};
+#if defined(MEVR_WITH_HALCYON_LE2)
+// ME2 only: Halcyon's same-frame retry of a pass 1 that returned in under 100 us ([Performance] sfrReplayRetry, 1 upstream's;
+// the default is the game's, RenderLeversTable)
+std::atomic<int> gSfrReplayRetry{kLayout.sfrReplayRetryDefault};
+#endif
 
 // ---- The second eye's own occlusion history (research/35, attempts 34-35) ------------------------------------------
 // FSceneViewState keeps the engine's per-primitive occlusion history as a TSet<FPrimitiveOcclusionHistory> at +0xD10:
@@ -138,10 +127,6 @@ std::atomic<int> gPerEyeViewState{0};  // 1: Halcyon renders each Stereo 2 eye t
 // swapped in around the frame's second scene render and out after it; the pool its queries come from (+0x88) stays
 // shared, like Umbra's. A new view state (its set empty at the frame's first render) or another state pointer drops the
 // second eye's set: its queries died with the pool (the set's memory leaks, once per level).
-constexpr std::uintptr_t kStateOcclusionHistory = 0xD10;
-constexpr std::size_t kOcclusionHistoryBytes = 0x48;
-constexpr std::uintptr_t kRendererViews = 0x60;    // FSceneRenderer::Views data (FViewInfo[], 0x12F0 each), count at +0x68
-constexpr std::uintptr_t kViewState = 0x8;         // FSceneView::State
 // Off by default since 2026-10-24 (research/35, attempt 37): in the headset it made every ~10th frame draw three
 // times the meshes (p90 8,500 draws against 2,600; 22-35 ms frames, GPU 23-30 ms), and the second eye's wait only
 // moved into Umbra's own query reads (research/35 attempts 36-37). perEyeOcclusion = 1 for experiments.
@@ -154,6 +139,7 @@ std::atomic<int> gPerEyeOcclusion{0};
 // so by the time the second eye's resolve asks, less is queued ahead of its queries. [Performance] flushFirstEye.
 std::atomic<int> gFlushFirstEye{0};
 std::atomic<std::uint64_t> gFlushes{0};
+ID3D11DeviceContext* gPresentContext = nullptr;   // render thread only: the context the last Present closed with
 
 // ---- The second eye's Umbra query results from the first eye (research/35, attempt 39) ---------------------------
 // Umbra's resolve issues its occluder queries and, in the same resolve, reads their results one by one (0xD48380,
@@ -172,9 +158,6 @@ std::atomic<std::uint64_t> gFlushes{0};
 // GDynamicRHI, on the handle the constructor returns: the object + 0xC, as both the miss and the hit path return it)
 // keeps it, and its cache link, alive: the lookups hit from then on. Bounded by the distinct combinations (a cap, logged).
 // [Performance] keepBoundShaderStates.
-constexpr std::uintptr_t kBoundShaderStateCtorRva = 0x9A89F0;
-constexpr std::size_t kRhiAddRefBoundShaderStateSlot = 0x8A0;
-constexpr std::size_t kBoundShaderStateHandle = 0xC;
 constexpr std::uint64_t kKeepBoundShaderStatesCap = 200000;
 using tBoundShaderStateCtor = void*(void* self, void* declaration, void* strides, void* vs, void* ps, void* a6, void* a7,
                                     void* a8, void* rhi);
@@ -260,9 +243,6 @@ void* BoundShaderStateCtorHook(void* self, void* declaration, void* strides, voi
 extern thread_local int t_renderIndex;   // defined below (the render's index within the frame)
 template <typename T>
 T& Field(std::uint8_t* object, std::size_t offset);   // defined below
-constexpr std::size_t kViewUmbraCamera = 0x4D4;
-constexpr std::size_t kUmbraCameraImpl = 0x10;
-constexpr std::size_t kUmbraCameraImplParams = 0x420;
 std::atomic<int> gUmbraSharedVisibility{0};
 std::atomic<int> gUmbraSecondEyeClearBits{2};
 std::atomic<int> gUmbraParamsLogged{0};
@@ -345,10 +325,6 @@ std::uint32_t* UmbraCameraParams(std::uint8_t* renderer) {
 // the heaviest cell); 0 measures only.
 template <typename T>
 T& Field(std::uint8_t* object, std::size_t offset);   // defined below
-constexpr std::uintptr_t kUmbraInstanceVisibleRva = 0x8BE0B0;
-constexpr std::size_t kInstanceRecordRadius = 0x38;
-constexpr std::size_t kCommanderViewField = 0x68;
-constexpr std::size_t kViewProjectionMatrix = 0xD0;
 using tUmbraInstanceVisible = int(void* commander, void* record, float distanceSq, std::uint32_t a4, std::uint32_t a5,
                                   std::uint32_t a6, int a7);
 tUmbraInstanceVisible* gUmbraInstanceVisibleOrig = nullptr;
@@ -363,7 +339,10 @@ std::atomic<int> gProjectionLogged{0};
 int UmbraInstanceVisibleHook(void* commander, void* record, float distanceSq, std::uint32_t a4, std::uint32_t a5,
                              std::uint32_t a6, int a7) {
     gInstancesSeen.fetch_add(1, std::memory_order_relaxed);
-    if (record != nullptr && gUmbraSharedVisibility.load(std::memory_order_relaxed) != 0) {
+    // Where the game also calls this to keep books (plugin/RenderLeversTable.hpp: ME3), only the marking call's shape may
+    // be answered "not visible" here; every other call goes to the original. ME1 has that one shape only.
+    bool const marks = !Verified(kLayout.instanceCallAlsoKeepsBooks) || (a7 != 0 && a6 == 0);
+    if (marks && record != nullptr && gUmbraSharedVisibility.load(std::memory_order_relaxed) != 0) {
         void* const primitive = *static_cast<void**>(record);   // the FPrimitiveSceneInfo the record was built from
         if (t_renderIndex == 0) {
             VisibleSetAdd(primitive);
@@ -392,7 +371,7 @@ int UmbraInstanceVisibleHook(void* commander, void* record, float distanceSq, st
                           "at {:.1f} UU = {:.1f} px of a 2160-high eye", proj11, radius, std::sqrt(distanceSq), pixels);
             }
             int const tenths = gMinScreenRadiusTenths.load(std::memory_order_relaxed);
-            if (tenths > 0 && pixels * 10.0f < static_cast<float>(tenths)) {
+            if (marks && tenths > 0 && pixels * 10.0f < static_cast<float>(tenths)) {
                 gInstancesCulled.fetch_add(1, std::memory_order_relaxed);
                 return 0;
             }
@@ -401,11 +380,10 @@ int UmbraInstanceVisibleHook(void* commander, void* record, float distanceSq, st
     return gUmbraInstanceVisibleOrig(commander, record, distanceSq, a4, a5, a6, a7);
 }
 
-constexpr std::uintptr_t kUmbraReadResultRva = 0xD48380;
 using tUmbraReadResult = void(void* ctx, int head, int count, std::uint8_t wait);
 tUmbraReadResult* gUmbraReadResultOrig = nullptr;
 bool gUmbraReadResultHooked = false;
-std::atomic<int> gUmbraShareResults{0};
+std::atomic<int> gUmbraShareResults{kLayout.umbraShareResultsDefault};
 thread_local bool t_inUmbraRead = false;
 thread_local int t_umbraQueryIndex = 0;  // results delivered so far in this render
 constexpr int kMaxUmbraResults = 8192;
@@ -437,14 +415,6 @@ T& Field(std::uint8_t* object, std::size_t offset);  // defined below
 // equivalent of +0x1D0 into +0x260: V x P_eye = T(PreViewTranslation) x TVP, since V = T(PreViewTranslation) x TV
 // (the sign of the translation is checked against V and TV themselves on the first call). The RHI copies the matrix
 // into its constants at once, so the original bytes go back right after.
-constexpr std::uintptr_t kUmbraIssueQueriesRva = 0x8B6550;
-constexpr std::uintptr_t kCommanderView = 0x68;        // UmbraCommander's view (FViewInfo*)
-constexpr std::uintptr_t kCommanderViewParamsSet = 0x5C;  // 0 until SetViewParameters was called this render
-constexpr std::uintptr_t kViewViewMatrix = 0x90;
-constexpr std::uintptr_t kViewTranslatedViewMatrix = 0x190;
-constexpr std::uintptr_t kViewTranslatedViewProj = 0x1D0;
-constexpr std::uintptr_t kViewPreViewTranslation = 0x250;
-constexpr std::uintptr_t kViewViewProj = 0x260;
 using tUmbraIssueQueries = void(void* commander);
 tUmbraIssueQueries* gUmbraIssueQueriesOrig = nullptr;
 bool gUmbraIssueQueriesHooked = false;
@@ -472,30 +442,62 @@ bool NearlySame(float const* a, float const* b) {
 
 std::atomic<std::uint64_t> gSecondEyeQueriesSkipped{0};
 std::atomic<std::uint64_t> gSecondEyeFakeResults{0};
+std::atomic<std::uint64_t> gUmbraMatrixFaults{0};
+
+// The commander's view and the matrices umbraEyeMatrix reads, copied out under SEH (render thread: a fault inside a hook
+// there ends the thread behind the engine's own handler and the game thread waits forever, CLAUDE.md's gotcha). False:
+// no view, its parameters already set this render, or a fault (counted).
+struct QueryView {
+    std::uint8_t* view = nullptr;
+    float V[16], TV[16], TVP[16], VP[16], pvt[3];
+};
+bool ReadQueryView(void* commander, QueryView* out) noexcept {
+    __try {
+        auto* const c = static_cast<std::uint8_t*>(commander);
+        auto* const view = *reinterpret_cast<std::uint8_t* const*>(c + kCommanderView);
+        if (view == nullptr || *reinterpret_cast<int const*>(c + kCommanderViewParamsSet) != 0) {
+            return false;
+        }
+        std::memcpy(out->V, view + kViewViewMatrix, sizeof(out->V));
+        std::memcpy(out->TV, view + kViewTranslatedViewMatrix, sizeof(out->TV));
+        std::memcpy(out->TVP, view + kViewTranslatedViewProj, sizeof(out->TVP));
+        std::memcpy(out->VP, view + kViewViewProj, sizeof(out->VP));
+        std::memcpy(out->pvt, view + kViewPreViewTranslation, sizeof(out->pvt));
+        out->view = view;
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        gUmbraMatrixFaults.fetch_add(1, std::memory_order_relaxed);
+        return false;
+    }
+}
+// FViewInfo +0x260 (ViewProjectionMatrix) written under SEH; false on a fault (counted).
+bool WriteViewProjection(std::uint8_t* view, float const* m) noexcept {
+    __try {
+        std::memcpy(view + kViewViewProj, m, sizeof(float) * 16);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        gUmbraMatrixFaults.fetch_add(1, std::memory_order_relaxed);
+        return false;
+    }
+}
 
 void UmbraIssueQueriesInner(void* commander) {
-    auto* const c = static_cast<std::uint8_t*>(commander);
     // umbraSharedVisibility = 2: the second eye issues no occluder queries (its visible set is the first eye's anyway);
     // the results read (command 6) then answers Umbra's pending queries as "visible" without touching the GPU.
     if (t_renderIndex == 1 && gUmbraSharedVisibility.load(std::memory_order_relaxed) >= 2) {
         gSecondEyeQueriesSkipped.fetch_add(1, std::memory_order_relaxed);
         return;
     }
-    auto* const view = Field<std::uint8_t*>(c, kCommanderView);
-    if (gUmbraEyeMatrix.load(std::memory_order_relaxed) == 0 || view == nullptr || Field<int>(c, kCommanderViewParamsSet) != 0) {
+    QueryView q;
+    if (gUmbraEyeMatrix.load(std::memory_order_relaxed) == 0 || !ReadQueryView(commander, &q)) {
         gUmbraIssueQueriesOrig(commander);
         return;
     }
-    auto* const V = reinterpret_cast<float const*>(view + kViewViewMatrix);
-    auto* const TV = reinterpret_cast<float const*>(view + kViewTranslatedViewMatrix);
-    auto* const TVP = reinterpret_cast<float const*>(view + kViewTranslatedViewProj);
-    auto* const pvt = reinterpret_cast<float const*>(view + kViewPreViewTranslation);
-    auto* const VP = reinterpret_cast<float*>(view + kViewViewProj);
     if (gTranslationSign == 0) {
         float plus[16], minus[16];
-        TranslateRows(TV, pvt, 1.0f, plus);
-        TranslateRows(TV, pvt, -1.0f, minus);
-        gTranslationSign = NearlySame(plus, V) ? 1 : (NearlySame(minus, V) ? -1 : 0);
+        TranslateRows(q.TV, q.pvt, 1.0f, plus);
+        TranslateRows(q.TV, q.pvt, -1.0f, minus);
+        gTranslationSign = NearlySame(plus, q.V) ? 1 : (NearlySame(minus, q.V) ? -1 : 0);
         log::Info("render levers: the view matrix is the translated one moved by {} the pre-view translation{}",
             gTranslationSign > 0 ? "plus" : (gTranslationSign < 0 ? "minus" : "neither"),
             gTranslationSign == 0 ? ": umbraEyeMatrix can't act this render" : "");
@@ -505,17 +507,18 @@ void UmbraIssueQueriesInner(void* commander) {
         }
     }
     float eye[16];
-    TranslateRows(TVP, pvt, static_cast<float>(gTranslationSign), eye);
-    if (NearlySame(eye, VP)) {
+    TranslateRows(q.TVP, q.pvt, static_cast<float>(gTranslationSign), eye);
+    if (NearlySame(eye, q.VP)) {
         gUmbraMatrixSame.fetch_add(1, std::memory_order_relaxed);  // mode 1: nothing to fix
         gUmbraIssueQueriesOrig(commander);
         return;
     }
-    float saved[16];
-    std::memcpy(saved, VP, sizeof(saved));
-    std::memcpy(VP, eye, sizeof(eye));
+    if (!WriteViewProjection(q.view, eye)) {
+        gUmbraIssueQueriesOrig(commander);
+        return;
+    }
     gUmbraIssueQueriesOrig(commander);
-    std::memcpy(VP, saved, sizeof(saved));
+    WriteViewProjection(q.view, q.VP);  // the original bytes back (the RHI copied the matrix into its constants at once)
     gUmbraMatrixFixed.fetch_add(1, std::memory_order_relaxed);
 }
 // research/37 (the shown columns): Umbra's query boxes rasterise over the whole window, never the eye's scissor.
@@ -593,13 +596,51 @@ template <typename T>
 T At(std::uintptr_t rva) {
     return reinterpret_cast<T>(gExe + rva);
 }
+
+// A layout group read in this game's own code (plugin/RenderLeversTable.hpp's Layout flags; all of them on LE1).
+bool Verified(bool flag) {
+    return flag;
+}
+
+// A lever's native prerequisites on this game: each row it needs is in engine/Addresses.hpp's table (by name) and, where
+// the exe check ran, at its RVA; its layout group is verified. A lever without them stands down with one line. On LE1
+// every row and layout is there, so this never logs and never skips.
+struct Need {
+    char const* row;
+    std::uintptr_t rva;
+};
+bool LeverReady(char const* lever, std::initializer_list<Need> rows, bool layoutVerified) {
+    std::string missing;
+    for (Need const& need : rows) {
+        bool ok = need.rva != 0;
+        char const* why = "no row";
+        if (ok && exe::Initialized()) {
+            exe::Result const* const found = exe::Find(static_cast<std::uint32_t>(need.rva));
+            ok = found != nullptr && exe::AtItsRva(found->status);
+            why = "not at its RVA";
+        }
+        if (!ok) {
+            missing += std::format("{}{} '{}'", missing.empty() ? "" : ", ", why, need.row);
+        }
+    }
+    if (missing.empty() && layoutVerified) {
+        return true;
+    }
+    log::Info("render levers: {} stands down on {}: {}{}{}", lever, kGameName, missing,
+        !missing.empty() && !layoutVerified ? "; " : "", layoutVerified ? "" : "its layout isn't verified for this game");
+    return false;
+}
+bool gSharePassReady = false;   // this game has sharePass's rows, layout and renderer seams (Install)
 template <typename T>
 T& Field(std::uint8_t* object, std::size_t offset) {
     return *reinterpret_cast<T*>(object + offset);
 }
 
 bool ShowFlag(std::uint8_t* renderer, unsigned bit) {
-    unsigned const perWord = *At<std::uint32_t*>(0x164C720);  // the show flags' bits per word (32)
+    if (!Verified(kShowFlagBitsPerWord != 0)) {
+        return true;  // unknown on this game: reads as set, so no renderer is eligible for the kept-renderer paths
+    }
+    unsigned const perWord = *At<std::uint32_t*>(kShowFlagBitsPerWord);  // the show flags' bits per word (32)
     if (perWord == 0) {
         return true;
     }
@@ -615,7 +656,15 @@ std::uint8_t* View(std::uint8_t* renderer, int index) {
 // wireframe render can't pair anyway (Compatible wants the same show flags).
 bool Eligible(std::uint8_t* renderer) {
     int const views = Field<int>(renderer, 0x68);
-    return Field<int>(renderer, 0x5C) != 0 && views > 0 && views <= 4 && !ShowFlag(renderer, 0x33);
+    if (Field<int>(renderer, 0x5C) == 0 || views <= 0 || views > 4) {
+        return false;
+    }
+    for (std::size_t i = 0; i < kLayout.ineligibleShowFlagCount; ++i) {   // LE1: 0x33 alone
+        if (ShowFlag(renderer, kLayout.ineligibleShowFlags[i])) {
+            return false;
+        }
+    }
+    return true;
 }
 
 // Why the last pairing was refused (diagnostics, 2026-10-23: the first VR run refused every pair): a bit per test,
@@ -862,7 +911,8 @@ void NoteCaptureRenderer(void* renderer) {
 // after the Umbra resolve, before the pre-pass; ReplaySEH makes it first).
 void DpgLightTargetsHook(void* renderer, int dpg) {
     NoteCaptureRenderer(renderer);
-    if (dpg == 1) {
+    // Where a capture can run the Umbra branch itself (ME3), its light targets must not mark the eye's tail.
+    if (dpg == 1 && !(Verified(kLayout.captureTakesUmbraBranch) && t_captureDepth > 0)) {
         draw_replay::MarkTail();
     }
     if (t_skipPasses) {
@@ -902,6 +952,9 @@ void* ViewStateOf(void* renderer) {
 // Before a frame's scene render `index`: true when the second eye's own occlusion history was swapped into the state
 // (EndEyeHistory swaps it back out).
 bool BeginEyeHistory(void* renderer, int index) {
+    if (!Verified(kLayout.occlusionHistoryVerified)) {
+        return false;  // the view state's layout isn't read on this game: nothing of it is touched
+    }
     void* const state = ViewStateOf(renderer);
     if (index == 0) {
         gFrameFirstState = state;
@@ -1124,8 +1177,8 @@ bool SynthesiseSecondView(std::uint8_t* renderer, draw_replay::ViewFields const&
     auto const* const vo0 = reinterpret_cast<float const*>(View(renderer, 0) + 0x320);
     auto const* const vm0 = reinterpret_cast<float const*>(View(renderer, 0) + 0x90);
     float const fwd0[3] = {vm0[2], vm0[6], vm0[10]};   // the view matrix's third column, as pass 0 recorded it
-    MELEVR::MevrBridge::Pass1View p{};
-    if (!MELEVR::MevrBridge::FindPass1View(vo0, fwd0, &p)) {
+    seam::Pass1View p{};
+    if (!seam::FindPass1View(vo0, fwd0, &p)) {
         return false;
     }
     second = first;
@@ -1178,8 +1231,9 @@ float gEyeScissorLogged[2][4] = {{-1.0f, 0, 0, 0}, {-1.0f, 0, 0, 0}};
 // scissored to the columns and rows that pass's eye shows of the symmetric window; the occlusion queries are exempt
 // (their hooks). Nothing where the plan has nothing to cut (mode 2, a symmetric headset, no stereo frame).
 void BeginEyeScissor(int pass) {
+#if defined(MEVR_WITH_HALCYON)
     int const mode = gEyeScissor.load(std::memory_order_relaxed);   // 1 both passes; 2 pass 0 only; 3 pass 1 only (experiments)
-    if (mode == 0 || (mode == 2 && pass == 1) || (mode == 3 && pass == 0) || !MELEVR::MevrBridge::StereoFrameActive() || pass < 0 || pass > 1) {
+    if (mode == 0 || (mode == 2 && pass == 1) || (mode == 3 && pass == 0) || !seam::StereoFrameActive() || pass < 0 || pass > 1) {
         return;
     }
     float f[4];
@@ -1196,6 +1250,9 @@ void BeginEyeScissor(int pass) {
             pass, f[0], f[2], f[1], f[3], 100.0f * (f[2] - f[0]) * (f[3] - f[1]));
     }
     draw_replay::SetEyeScissor(true, f);
+#else
+    (void)pass;  // the sequels' renderers publish no per-pass shown window (plugin/MetricStereo is LE1's)
+#endif
 }
 void EndEyeScissor() {
     draw_replay::SetEyeScissor(false, nullptr);
@@ -1227,7 +1284,7 @@ void NoteOneDrawMatch(bool matched) {
             gOneDrawMisses = 0;
             gOneDrawResumeAfter = gOneDrawStreakNotReplayable ? kOneDrawReplayMatches : kOneDrawViewMatches;
             gOneDrawFallback.store(true, std::memory_order_relaxed);
-            MELEVR::MevrBridge::g_oneDrawStereo.store(false, std::memory_order_relaxed);
+            seam::g_oneDrawStereo.store(false, std::memory_order_relaxed);
             gOneDrawFallbacks.fetch_add(1, std::memory_order_relaxed);
             log::Info("render levers: one Draw: no second eye for 3 frames running (no matching pass-1 record, or the tail not replayable: {}): Halcyon's second Draw resumes until the frames replay again", gMode5LastBlocker.empty() ? std::string("-") : gMode5LastBlocker);
         }
@@ -1249,7 +1306,7 @@ void OneDrawGiveUp() {
     gOneDrawFaulted.store(true, std::memory_order_relaxed);
     gOneDrawMatches = 0;
     gOneDrawFallback.store(true, std::memory_order_relaxed);
-    MELEVR::MevrBridge::g_oneDrawStereo.store(false, std::memory_order_relaxed);
+    seam::g_oneDrawStereo.store(false, std::memory_order_relaxed);
     gOneDrawFallbacks.fetch_add(1, std::memory_order_relaxed);
 }
 // In the fallback, the last matching frame must also produce a replayable recording.
@@ -1264,8 +1321,8 @@ void OneDrawCheck(std::uint8_t* renderer, bool recorded) {
     auto const* const vo0 = reinterpret_cast<float const*>(View(renderer, 0) + 0x320);
     auto const* const vm0 = reinterpret_cast<float const*>(View(renderer, 0) + 0x90);
     float const fwd0[3] = {vm0[2], vm0[6], vm0[10]};
-    MELEVR::MevrBridge::Pass1View p{};
-    NoteOneDrawMatch(MELEVR::MevrBridge::FindPass1View(vo0, fwd0, &p));
+    seam::Pass1View p{};
+    NoteOneDrawMatch(seam::FindPass1View(vo0, fwd0, &p));
 }
 int OneDrawCheckGuarded(std::uint8_t* renderer, bool recorded) noexcept {
     if (gOneDrawFaulted.load(std::memory_order_relaxed)) {
@@ -1313,10 +1370,10 @@ void OneDrawSecondEye(std::uint8_t* renderer) {
         if (now >= nextLog) {
             nextLog = now + 5000;
             auto const* const vo = reinterpret_cast<float const*>(View(renderer, 0) + 0x320);
-            MELEVR::MevrBridge::Pass1View newest{};
-            bool const have = MELEVR::MevrBridge::NewestPass1View(&newest);
+            seam::Pass1View newest{};
+            bool const have = seam::NewestPass1View(&newest);
             log::Info("render levers: one Draw: no pass-1 record for the view at ({:.1f}, {:.1f}, {:.1f}); {} records made, newest at ({:.1f}, {:.1f}, {:.1f}) delta ({:.2f}, {:.2f}, {:.2f}) mode {}",
-                vo[0], vo[1], vo[2], MELEVR::MevrBridge::Pass1Records(), have ? newest.viewOrigin[0] : 0.0f, have ? newest.viewOrigin[1] : 0.0f,
+                vo[0], vo[1], vo[2], seam::Pass1Records(), have ? newest.viewOrigin[0] : 0.0f, have ? newest.viewOrigin[1] : 0.0f,
                 have ? newest.viewOrigin[2] : 0.0f, have ? newest.delta[0] : 0.0f, have ? newest.delta[1] : 0.0f, have ? newest.delta[2] : 0.0f, have ? newest.mode : -1);
         }
         return;
@@ -1427,8 +1484,8 @@ void LearnEyeTarget(RenderTargetInfo const& t) {
 }
 
 void SceneRenderHook(void* renderer) {
-    RenderTargetInfo const targetInfo = TargetInfoSEH(renderer);
-    bool const stereoNow = MELEVR::MevrBridge::StereoFrameActive();
+    RenderTargetInfo const targetInfo = Verified(kLayout.sceneRendererVerified) ? TargetInfoSEH(renderer) : RenderTargetInfo{};
+    bool const stereoNow = seam::StereoFrameActive();
     gStereoRenderThisFrame = gStereoRenderThisFrame || stereoNow;
     if (stereoNow && IsCaptureRender(targetInfo)) {
         gCaptureRenders.fetch_add(1, std::memory_order_relaxed);
@@ -1472,20 +1529,20 @@ void SceneRenderHook(void* renderer) {
     if (mode == 3 && gPassHooksInstalled && gReplayHooked) {
         ReleaseKept();
         if (index == 0) {
-            bool const recorder = draw_replay::Attached() && MELEVR::MevrBridge::StereoFrameActive();
+            bool const recorder = draw_replay::Attached() && seam::StereoFrameActive();
             if (recorder) {
                 draw_replay::BeginRecording(0);
             }
             gFirstEyeViewsValid = false;
             gCaptureCandidate.store(recorder ? renderer : nullptr, std::memory_order_relaxed);
-            std::uint32_t const drawsBefore = MELEVR::MevrBridge::g_perfDraws;
+            std::uint32_t const drawsBefore = Draws();
             gSceneRenderOrig(renderer);
             gCaptureCandidate.store(nullptr, std::memory_order_relaxed);
             if (recorder) {
                 draw_replay::EndRecording();
                 // Research/37, experiment 6: how many of the render's draws (Halcyon's hooks count them all) the
                 // recorder saw; a shortfall is a frame whose vtable entries were taken from under it mid-render.
-                std::uint32_t const issued = vr::scene_capture::EyeDrawsIssued(MELEVR::MevrBridge::g_perfDraws, drawsBefore, t_captureDraws);
+                std::uint32_t const issued = vr::scene_capture::EyeDrawsIssued(Draws(), drawsBefore, t_captureDraws);
                 unsigned const recorded = draw_replay::RecordedDraws(0);
                 gFirstDrawsIssued.fetch_add(issued, std::memory_order_relaxed);
                 gFirstDrawsRecorded.fetch_add(recorded, std::memory_order_relaxed);
@@ -1502,7 +1559,7 @@ void SceneRenderHook(void* renderer) {
         // render is recorded and, with the renderer still alive, replayed at once as the second eye.
         ReleaseKept();
         if (index == 0) {
-            bool const checkHealth = MELEVR::MevrBridge::StereoFrameActive() && !gOneDrawFaulted.load(std::memory_order_relaxed);
+            bool const checkHealth = seam::StereoFrameActive() && !gOneDrawFaulted.load(std::memory_order_relaxed);
             bool const fallback = gOneDrawFallback.load(std::memory_order_relaxed);
             bool const recorder = checkHealth && draw_replay::Attached() && (!fallback || OneDrawProbeDue());
             t_oneDrawCheck = checkHealth && fallback;
@@ -1510,7 +1567,7 @@ void SceneRenderHook(void* renderer) {
                 draw_replay::BeginRecording(0);
                 t_oneDrawFinish = true;
             }
-            std::uint32_t const drawsBefore = MELEVR::MevrBridge::g_perfDraws;
+            std::uint32_t const drawsBefore = Draws();
             BeginEyeScissor(0);
             gSceneRenderOrig(renderer);
             EndEyeScissor();
@@ -1525,7 +1582,7 @@ void SceneRenderHook(void* renderer) {
             }
             t_oneDrawCheck = false;
             if (recorder) {
-                std::uint32_t const issued = vr::scene_capture::EyeDrawsIssued(MELEVR::MevrBridge::g_perfDraws, drawsBefore, t_captureDraws);
+                std::uint32_t const issued = vr::scene_capture::EyeDrawsIssued(Draws(), drawsBefore, t_captureDraws);
                 unsigned const recorded = draw_replay::RecordedDraws(0);
                 gFirstDrawsIssued.fetch_add(issued, std::memory_order_relaxed);
                 gFirstDrawsRecorded.fetch_add(recorded, std::memory_order_relaxed);
@@ -1579,7 +1636,9 @@ void SceneRenderHook(void* renderer) {
     QueryPerformanceCounter(&end);
     EndEyeHistory(eyeHistory);
     if (index == 0 && gFlushFirstEye.load(std::memory_order_relaxed) != 0) {
-        if (ID3D11DeviceContext* const context = draw_replay::Context()) {
+        // The recorder's context (LE1), else the one the last Present closed with (the sequels: no recorder attached).
+        ID3D11DeviceContext* const recorderContext = draw_replay::Context();
+        if (ID3D11DeviceContext* const context = recorderContext != nullptr ? recorderContext : gPresentContext) {
             context->Flush();
             gFlushes.fetch_add(1, std::memory_order_relaxed);
         }
@@ -1616,14 +1675,18 @@ void CaptureSceneHook(void* captureInfo, void* mainRenderer) {
     t_oneDrawCheck = during.oneDrawCheck;
     t_captureRenderer = nullptr;
     ++t_captureDepth;
-    std::uint32_t const drawsBefore = MELEVR::MevrBridge::g_perfDraws;
+    std::uint32_t const drawsBefore = Draws();
+#if defined(MEVR_WITH_HALCYON)
     // The UI world's squad member (research/57 section 7): our capture of it renders the UI world's scene, not the eye's.
     ui_world_figure::CaptureSwap const figure = ui_world_figure::BeginCapture(captureInfo, mainRenderer);
     if (!figure.skip) {
         gCaptureSceneOrig(captureInfo, mainRenderer);
     }
     ui_world_figure::EndCapture(mainRenderer, figure);
-    t_captureDraws += MELEVR::MevrBridge::g_perfDraws - drawsBefore;
+#else
+    gCaptureSceneOrig(captureInfo, mainRenderer);
+#endif
+    t_captureDraws += Draws() - drawsBefore;
     --t_captureDepth;
     t_captureRenderer = outerRenderer;
     t_renderIndex = eye.renderIndex;
@@ -1746,7 +1809,28 @@ bool FakeSecondEyeQueryResults(std::uint8_t* commander, int mode) {
     return true;
 }
 
+std::atomic<int> gCommandGateLogged{0};
+
+// A dword of the exe read under SEH (render thread); false on a fault.
+bool ReadExeDword(std::uintptr_t rva, std::uint32_t* out) noexcept {
+    __try {
+        *out = *At<std::uint32_t const*>(rva);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
 void CommandHook(void* commander, unsigned code) {
+    if (Verified(kLayout.umbraCommandGate != 0) && gCommandGateLogged.exchange(1, std::memory_order_relaxed) == 0) {
+        // ME3's command() does nothing for any code while this dword is 0: then no Umbra lever has anything to act on.
+        std::uint32_t gate = 0;
+        if (ReadExeDword(kLayout.umbraCommandGate, &gate)) {
+            log::Info("render levers: Umbra's command gate is {}", gate);
+        } else {
+            log::Info("render levers: Umbra's command gate at 0x{:X} couldn't be read (SEH)", kLayout.umbraCommandGate);
+        }
+    }
     LARGE_INTEGER begin{}, end{};
     QueryPerformanceCounter(&begin);
     int const sharedMode = gUmbraSharedVisibility.load(std::memory_order_relaxed);
@@ -1852,7 +1936,7 @@ void SetCommanderHook(std::uint8_t which) {
 }
 
 std::wstring const& IniPath() {
-    static std::wstring path = mevr::host::SettingsPath();  // <exe dir>\ASI\LE1MEVR.ini, as the mod
+    static std::wstring path = mevr::host::SettingsPath();  // <exe dir>\ASI\<GAME>MEVR.ini, as the mod
     return path;
 }
 
@@ -2044,8 +2128,11 @@ void LogStats(Snapshot const& now, Snapshot const& before) {
         }
         std::uint64_t const fixed = gUmbraMatrixFixed.exchange(0, std::memory_order_relaxed);
         std::uint64_t const same = gUmbraMatrixSame.exchange(0, std::memory_order_relaxed);
-        if (fixed != 0 || same != 0) {
-            share += std::format("; Umbra's queries with the eye's matrix: {} renders fixed, {} already right", fixed, same);
+        std::uint64_t const faults = gUmbraMatrixFaults.exchange(0, std::memory_order_relaxed);
+        if (fixed != 0 || same != 0 || faults != 0) {
+            share += std::format("; Umbra's queries with the eye's matrix: {} renders fixed, {} already right{}", fixed, same,
+                faults != 0 ? std::format(", {} view reads or writes faulted (SEH: the game's own matrix used)", faults)
+                            : std::string());
         }
         std::uint64_t const flushes = gFlushes.exchange(0, std::memory_order_relaxed);
         if (flushes != 0) {
@@ -2074,6 +2161,21 @@ void LogStats(Snapshot const& now, Snapshot const& before) {
                 static_cast<double>(seen) / f, static_cast<double>(culled) / f, bins[0] / f, bins[1] / f, bins[2] / f,
                 bins[3] / f, bins[4] / f, bins[5] / f, bins[6] / f, bins[7] / f);
         }
+#if defined(MEVR_WITH_HALCYON_LE2)
+        {
+            // ME2's SFR draws pass 1 again in the same frame when its game-thread Draw returned in under 100 us
+            // ([NOOPRETRY] in src/halcyon/le2/calcview_hook.cpp DrawDetour); a retry that renders is the frame's third
+            // scene render (research/sequel-render-levers.md "Performance research", the worst frames).
+            long long pass0Us = 0;
+            unsigned pass0Noops = 0, attempts = 0, successes = 0;
+            ME2VR::CalcViewHook::GetSfrNoopDiag(&pass0Us, &pass0Noops, &attempts, &successes);
+            static unsigned lastAttempts = 0, lastSuccesses = 0;
+            share += std::format("; ME2's same-frame replay retries: {} ({} of them took 100 us or more)",
+                attempts - lastAttempts, successes - lastSuccesses);
+            lastAttempts = attempts;
+            lastSuccesses = successes;
+        }
+#endif
         std::uint64_t const reported = gSecondEyeReported.exchange(0, std::memory_order_relaxed);
         std::uint64_t const filtered = gSecondEyeFiltered.exchange(0, std::memory_order_relaxed);
         std::uint64_t const cheap = gSecondEyeRendersCheap.exchange(0, std::memory_order_relaxed);
@@ -2167,90 +2269,146 @@ hook::Context* gHookInit = nullptr;  // the host's (Entry.cpp's static), for the
 
 bool Install(hook::Context& init) {
     gHookInit = &init;
-    auto* const sceneRender = init.ResolveTyped<tSceneRender>(kSceneRenderRva);
-    auto* const command = init.ResolveTyped<tCommand>(kCommanderCommandRva);
-    if (sceneRender == nullptr || command == nullptr) {
+    if (Verified(kTryBuild)) {
+        log::Warn("render levers: a TRY build (MEVR_RENDER_LEVERS_TRY): {}'s levers whose layouts were read are hooked for their "
+                  "A/Bs, and keepBoundShaderStates and minScreenRadiusPx start at 0. Not a build to play or ship", kGameName);
+    }
+    // What this game's table has (plugin/RenderLeversTable.hpp). On LE1 every lever is ready and nothing below is skipped
+    // or logged that wasn't before; on a game without a lever's rows or verified layout the lever stands down with one line.
+    bool const haveRender = LeverReady("the scene renders' accounting (and with it sharePass)",
+        {{row::kSceneRender, kSceneRenderRva}}, kLayout.sceneRendererVerified);
+    bool const haveCommander = LeverReady("the Umbra resolve's timing and umbraQueryWait",
+        {{row::kCommanderCommand, kCommanderCommandRva}, {row::kUmbraResolveStart, kUmbraResolveStartRva}},
+        kLayout.umbraCommanderVerified);
+    auto* const sceneRender = haveRender ? init.ResolveTyped<tSceneRender>(kSceneRenderRva) : nullptr;
+    auto* const command = haveCommander ? init.ResolveTyped<tCommand>(kCommanderCommandRva) : nullptr;
+    if ((haveRender && sceneRender == nullptr) || (haveCommander && command == nullptr)) {
         log::Warn("render levers: addresses not resolved; levers off");
         return false;
     }
     gExe = init.ResolveTyped<std::uint8_t>(0);
-    auto* const deleteRenderer = init.ResolveTyped<tDeleteRenderer>(kDeleteRendererRva);
-    // The deleter first: its detour passes everything through until sharePass keeps a renderer.
-    gShareHooked = gExe != nullptr && deleteRenderer != nullptr &&
-        hook::Install(init, "FSceneRenderer::DeletingDestructor", deleteRenderer, &DeleteRendererHook, gDeleteRendererOrig);
-    if (!gShareHooked) {
-        log::Warn("render levers: renderer deleter hook failed; sharePass has no effect");
+    // sharePass: the kept renderer (1, 2), the replay's tail mark and the pass functions (3, 5), and for one Draw a frame
+    // the renderer's own seams (the pass-1 view recorded in its stereo branch, its second Draw skipped on our flag).
+    gSharePassReady = haveRender && LeverReady("sharePass (a second eye without a second engine render)",
+        {{row::kDeleteRenderer, kDeleteRendererRva}, {row::kDpgLightTargets, kDpgLightTargetsRva},
+         {row::kPrepassViews, kPrepassViewsRva}, {row::kBeforeLights, kBeforeLightsRva}, {row::kDpgPass, kDpgPassRva},
+         {row::kDpgLights, kDpgLightsRva}, {row::kForeground, kForegroundRva}, {row::kFinish, kFinishRva},
+         {row::kAllocateTargets, kAllocateTargetsRva}, {row::kTranslucencyCheck, kTranslucencyCheckRva},
+         {row::kSetCommander, kWireframeStateRva}, {row::kSceneRenderTargets, kSceneRenderTargetsRva},
+         {row::kDynamicRhi, kDynamicRhiRva}, {row::kSceneFrame, kSceneFrameRva}, {row::kDepthDirty, kDepthDirtyRva},
+         {row::kSkipBeforeLights, kSkipBeforeLightsRva}, {row::kCommanders, kCommandersRva},
+         {row::kCommanderIndex, kCommanderIndexRva}},
+        kLayout.sharePassVerified && kLayout.sceneRendererVerified);
+    if (gSharePassReady && !Verified(kOneDrawSeams)) {
+        log::Info("render levers: sharePass stands down on {}: its renderer has no pass-1 view record or one-Draw switch yet "
+                  "(the seams of src/halcyon/le1/mevr_bridge.h's RecordPass1View and g_oneDrawStereo)", kGameName);
+        gSharePassReady = false;
     }
-    if (!hook::Install(init, "FSceneRenderer::Render", sceneRender, &SceneRenderHook, gSceneRenderOrig)) {
-        log::Warn("render levers: scene render hook failed; levers off");
-        gShareHooked = false;
-        return false;
+    if (haveRender) {
+        if (gSharePassReady) {
+            auto* const deleteRenderer = init.ResolveTyped<tDeleteRenderer>(kDeleteRendererRva);
+            // The deleter first: its detour passes everything through until sharePass keeps a renderer.
+            gShareHooked = gExe != nullptr && deleteRenderer != nullptr &&
+                hook::Install(init, "FSceneRenderer::DeletingDestructor", deleteRenderer, &DeleteRendererHook, gDeleteRendererOrig);
+            if (!gShareHooked) {
+                log::Warn("render levers: renderer deleter hook failed; sharePass has no effect");
+            }
+        }
+        if (!hook::Install(init, "FSceneRenderer::Render", sceneRender, &SceneRenderHook, gSceneRenderOrig)) {
+            log::Warn("render levers: scene render hook failed; levers off");
+            gShareHooked = false;
+            return false;
+        }
     }
-    gCommanderHooked = hook::Install(init, "UmbraCommander::command", command, &CommandHook, gCommandOrig);
-    if (!gCommanderHooked) {
-        log::Warn("render levers: commander hook failed; the Umbra resolve isn't timed and umbraQueryWait has no effect");
+    if (haveCommander) {
+        gCommanderHooked = hook::Install(init, "UmbraCommander::command", command, &CommandHook, gCommandOrig);
+        if (!gCommanderHooked) {
+            log::Warn("render levers: commander hook failed; the Umbra resolve isn't timed and umbraQueryWait has no effect");
+        }
     }
-    auto* const getQueryData = init.ResolveTyped<tGetQueryData>(kGetQueryDataRva);
-    gQueryDataHooked = getQueryData != nullptr &&
-        hook::Install(init, "FD3D11DynamicRHI::GetQueryData", getQueryData, &GetQueryDataHook, gGetQueryDataOrig);
-    if (!gQueryDataHooked) {
-        log::Warn("render levers: GetQueryData hook failed; ue3QueryWait has no effect");
+    if (LeverReady("ue3QueryWait (and the query reads' count)", {{row::kGetQueryData, kGetQueryDataRva}},
+            kLayout.umbraCommanderVerified)) {
+        auto* const getQueryData = init.ResolveTyped<tGetQueryData>(kGetQueryDataRva);
+        gQueryDataHooked = getQueryData != nullptr &&
+            hook::Install(init, "FD3D11DynamicRHI::GetQueryData", getQueryData, &GetQueryDataHook, gGetQueryDataOrig);
+        if (!gQueryDataHooked) {
+            log::Warn("render levers: GetQueryData hook failed; ue3QueryWait has no effect");
+        }
     }
-    auto* const umbraIssue = init.ResolveTyped<tUmbraIssueQueries>(kUmbraIssueQueriesRva);
-    gUmbraIssueQueriesHooked = umbraIssue != nullptr &&
-        hook::Install(init, "UmbraCommander::IssueOcclusionQueries", umbraIssue, &UmbraIssueQueriesHook, gUmbraIssueQueriesOrig);
-    if (!gUmbraIssueQueriesHooked) {
-        log::Warn("render levers: UmbraCommander::IssueOcclusionQueries hook failed; umbraEyeMatrix has no effect");
+    if (LeverReady("umbraEyeMatrix", {{row::kUmbraIssueQueries, kUmbraIssueQueriesRva}}, kLayout.umbraQueriesVerified)) {
+        auto* const umbraIssue = init.ResolveTyped<tUmbraIssueQueries>(kUmbraIssueQueriesRva);
+        gUmbraIssueQueriesHooked = umbraIssue != nullptr &&
+            hook::Install(init, "UmbraCommander::IssueOcclusionQueries", umbraIssue, &UmbraIssueQueriesHook, gUmbraIssueQueriesOrig);
+        if (!gUmbraIssueQueriesHooked) {
+            log::Warn("render levers: UmbraCommander::IssueOcclusionQueries hook failed; umbraEyeMatrix has no effect");
+        }
     }
-    auto* const umbraRead = init.ResolveTyped<tUmbraReadResult>(kUmbraReadResultRva);
-    gUmbraReadResultHooked = umbraRead != nullptr &&
-        hook::Install(init, "Umbra::ReadQueryResult", umbraRead, &UmbraReadResultHook, gUmbraReadResultOrig);
-    if (!gUmbraReadResultHooked) {
-        log::Warn("render levers: Umbra's query result read hook failed; umbraShareResults has no effect");
+    if (LeverReady("umbraShareResults", {{row::kUmbraReadResult, kUmbraReadResultRva}, {row::kGetQueryData, kGetQueryDataRva}},
+            kLayout.umbraSharedVerified)) {
+        auto* const umbraRead = init.ResolveTyped<tUmbraReadResult>(kUmbraReadResultRva);
+        gUmbraReadResultHooked = umbraRead != nullptr &&
+            hook::Install(init, "Umbra::ReadQueryResult", umbraRead, &UmbraReadResultHook, gUmbraReadResultOrig);
+        if (!gUmbraReadResultHooked) {
+            log::Warn("render levers: Umbra's query result read hook failed; umbraShareResults has no effect");
+        }
     }
     gBssExe = init.ResolveTyped<std::uint8_t>(0);
-    auto* const bssCtor = init.ResolveTyped<tBoundShaderStateCtor>(kBoundShaderStateCtorRva);
-    gBoundShaderStateHooked = bssCtor != nullptr &&
-        hook::Install(init, "FD3D11BoundShaderState::FD3D11BoundShaderState", bssCtor, &BoundShaderStateCtorHook, gBoundShaderStateCtorOrig);
-    if (!gBoundShaderStateHooked) {
-        log::Warn("render levers: the bound-shader-state constructor hook failed; keepBoundShaderStates has no effect");
+    if (LeverReady("keepBoundShaderStates", {{row::kBoundShaderStateCtor, kBoundShaderStateCtorRva}, {row::kDynamicRhi, kDynamicRhiRva}},
+            kLayout.boundShaderStateVerified)) {
+        auto* const bssCtor = init.ResolveTyped<tBoundShaderStateCtor>(kBoundShaderStateCtorRva);
+        gBoundShaderStateHooked = bssCtor != nullptr &&
+            hook::Install(init, "FD3D11BoundShaderState::FD3D11BoundShaderState", bssCtor, &BoundShaderStateCtorHook, gBoundShaderStateCtorOrig);
+        if (!gBoundShaderStateHooked) {
+            log::Warn("render levers: the bound-shader-state constructor hook failed; keepBoundShaderStates has no effect");
+        }
     }
-    auto* const instanceVisible = init.ResolveTyped<tUmbraInstanceVisible>(kUmbraInstanceVisibleRva);
-    gUmbraInstanceVisibleHooked = instanceVisible != nullptr &&
-        hook::Install(init, "UmbraCommander::InstanceVisible", instanceVisible, &UmbraInstanceVisibleHook, gUmbraInstanceVisibleOrig);
-    if (!gUmbraInstanceVisibleHooked) {
-        log::Warn("render levers: the Umbra visible-instance hook failed; minScreenRadiusPx has no effect");
+    if (LeverReady("minScreenRadiusPx (and umbraSharedVisibility)", {{row::kUmbraInstanceVisible, kUmbraInstanceVisibleRva}},
+            kLayout.umbraInstanceVerified)) {
+        auto* const instanceVisible = init.ResolveTyped<tUmbraInstanceVisible>(kUmbraInstanceVisibleRva);
+        gUmbraInstanceVisibleHooked = instanceVisible != nullptr &&
+            hook::Install(init, "UmbraCommander::InstanceVisible", instanceVisible, &UmbraInstanceVisibleHook, gUmbraInstanceVisibleOrig);
+        if (!gUmbraInstanceVisibleHooked) {
+            log::Warn("render levers: the Umbra visible-instance hook failed; minScreenRadiusPx has no effect");
+        }
     }
     // Not installed: a second render on commander 1 blocks in Umbra's command ring (research/35, attempt 20).
     (void)&SetCommanderHook;
-    auto* const lightTargets = init.ResolveTyped<tDpgLightTargets>(kDpgLightTargetsRva);
-    gReplayHooked = gShareHooked && lightTargets != nullptr &&
-        hook::Install(init, "FSceneRenderer::RenderDpgLightTargets", lightTargets, &DpgLightTargetsHook, gDpgLightTargetsOrig);
-    {
-        auto* const prepass = init.ResolveTyped<tPassVoid>(kPrepassViewsRva);
-        auto* const beforeLights = init.ResolveTyped<tPassVoid>(kBeforeLightsRva);
-        auto* const dpgPass = init.ResolveTyped<tDpgPass>(kDpgPassRva);
-        auto* const dpgLights = init.ResolveTyped<tDpgLights>(kDpgLightsRva);
-        auto* const foreground = init.ResolveTyped<tForeground>(kForegroundRva);
-        auto* const finish = init.ResolveTyped<tFinish>(kFinishRva);
-        gPassHooksInstalled = prepass != nullptr && beforeLights != nullptr && dpgPass != nullptr && dpgLights != nullptr &&
-            foreground != nullptr && finish != nullptr &&
-            hook::Install(init, "RenderUmbraBasePass", prepass, &PrepassHook, gPrepassOrig) &&
-            hook::Install(init, "before-lights pass", beforeLights, &BeforeLightsHook, gBeforeLightsOrig) &&
-            hook::Install(init, "DPG pass", dpgPass, &DpgPassHook, gDpgPassOrig) &&
-            hook::Install(init, "DPG lights", dpgLights, &DpgLightsHook, gDpgLightsOrig) &&
-            hook::Install(init, "foreground pass", foreground, &ForegroundHook, gForegroundOrig) &&
-            hook::Install(init, "scene render finish", finish, &FinishHook, gFinishOrig);
-        if (!gPassHooksInstalled) {
-            log::Warn("render levers: the pass hooks failed; sharePass = 3 has no effect");
+    if (gSharePassReady) {
+        auto* const lightTargets = init.ResolveTyped<tDpgLightTargets>(kDpgLightTargetsRva);
+        gReplayHooked = gShareHooked && lightTargets != nullptr &&
+            hook::Install(init, "FSceneRenderer::RenderDpgLightTargets", lightTargets, &DpgLightTargetsHook, gDpgLightTargetsOrig);
+        {
+            auto* const prepass = init.ResolveTyped<tPassVoid>(kPrepassViewsRva);
+            auto* const beforeLights = init.ResolveTyped<tPassVoid>(kBeforeLightsRva);
+            auto* const dpgPass = init.ResolveTyped<tDpgPass>(kDpgPassRva);
+            auto* const dpgLights = init.ResolveTyped<tDpgLights>(kDpgLightsRva);
+            auto* const foreground = init.ResolveTyped<tForeground>(kForegroundRva);
+            auto* const finish = init.ResolveTyped<tFinish>(kFinishRva);
+            gPassHooksInstalled = prepass != nullptr && beforeLights != nullptr && dpgPass != nullptr && dpgLights != nullptr &&
+                foreground != nullptr && finish != nullptr &&
+                hook::Install(init, "RenderUmbraBasePass", prepass, &PrepassHook, gPrepassOrig) &&
+                hook::Install(init, "before-lights pass", beforeLights, &BeforeLightsHook, gBeforeLightsOrig) &&
+                hook::Install(init, "DPG pass", dpgPass, &DpgPassHook, gDpgPassOrig) &&
+                hook::Install(init, "DPG lights", dpgLights, &DpgLightsHook, gDpgLightsOrig) &&
+                hook::Install(init, "foreground pass", foreground, &ForegroundHook, gForegroundOrig) &&
+                hook::Install(init, "scene render finish", finish, &FinishHook, gFinishOrig);
+            if (!gPassHooksInstalled) {
+                log::Warn("render levers: the pass hooks failed; sharePass = 3 has no effect");
+            }
         }
-    }
-    if (!gReplayHooked) {
-        log::Warn("render levers: light-targets hook failed; sharePass = 2 runs as 1 and the eye diff is off");
+        if (!gReplayHooked) {
+            log::Warn("render levers: light-targets hook failed; sharePass = 2 runs as 1 and the eye diff is off");
+        }
     }
     // Scene captures (research/47). Without these a capture's post-process final overwrites the backbuffer as in the stock
     // engine, and takes an eye: a capture is only ever spawned by our own cockpit probe and scope capture, so warn and go on.
-    {
+    // (They hang on the pass hooks' finish, so they come with sharePass's rows. LE3's galaxy capture has its own correction,
+    // plugin/Le3SceneCapture, until the two are one: the parity ledger's Forks 9.)
+    if (!Verified(kLayout.ownsSceneCaptureHooks)) {
+        log::Info("render levers: the scene capture hooks are another module's on {} (plugin/Le3SceneCapture)", kGameName);
+    } else if (gSharePassReady && LeverReady("the scene captures nested in an eye's render",
+            {{row::kCaptureScene, kCaptureSceneRva}, {row::kBeginBackBuffer, kBeginBackBufferRva}},
+            kLayout.sceneRendererVerified && kLayout.sceneCaptureVerified)) {
         auto* const captureScene = init.ResolveTyped<tCaptureScene>(kCaptureSceneRva);
         auto* const beginBackBuffer = init.ResolveTyped<tBeginBackBuffer>(kBeginBackBufferRva);
         bool const backBufferHooked = beginBackBuffer != nullptr &&
@@ -2261,9 +2419,18 @@ bool Install(hook::Context& init) {
             log::Warn("render levers: the scene capture hooks failed; a capture with post process would overwrite an eye");
         }
     }
-    gHooked = true;
-    log::Info("render levers: hooked the scene render, its deleter{}{}", gCommanderHooked ? ", the Umbra commander" : "",
-        gReplayHooked ? " and the light targets (the draw replay's mark)" : "");
+    gHooked = haveRender || gCommanderHooked || gQueryDataHooked || gUmbraIssueQueriesHooked || gUmbraReadResultHooked ||
+        gBoundShaderStateHooked || gUmbraInstanceVisibleHooked;
+    if (haveRender && gSharePassReady) {
+        log::Info("render levers: hooked the scene render, its deleter{}{}", gCommanderHooked ? ", the Umbra commander" : "",
+            gReplayHooked ? " and the light targets (the draw replay's mark)" : "");
+    } else {
+        log::Info("render levers: on {}: {}{}{}{}{}{}{}; pCoresOnly needs no address", kGameName,
+            haveRender ? "the scene render is counted and timed" : "no native lever is hooked yet",
+            gCommanderHooked ? ", the Umbra commander" : "", gQueryDataHooked ? ", the query reads" : "",
+            gUmbraIssueQueriesHooked ? ", Umbra's query matrix" : "", gUmbraReadResultHooked ? ", Umbra's result reads" : "",
+            gBoundShaderStateHooked ? ", the bound shader states" : "", gUmbraInstanceVisibleHooked ? ", Umbra's visible instances" : "");
+    }
     return true;
 }
 
@@ -2293,17 +2460,45 @@ void Tick() {
             return end == buffer ? fallback : static_cast<int>(value);
         };
         static int perEye = -1;
-        int const perEyeRead = readInt(L"perEyeViewState", 0) != 0 ? 1 : 0;
+        // The default is the game's (RenderLeversTable: ME1 0, the sequels 1, each renderer's own behaviour).
+        int const perEyeRead = readInt(L"perEyeViewState", kLayout.perEyeViewStateDefault) != 0 ? 1 : 0;
         if (perEyeRead != perEye) {
             perEye = perEyeRead;
             gPerEyeViewState.store(perEyeRead, std::memory_order_relaxed);
+#if defined(MEVR_GAME_LE1)
             log::Info("render levers: {} ([Performance] perEyeViewState = {})",
                 perEyeRead != 0 ? "each Stereo 2 eye renders through its own scene view state in gameplay (its own "
                                   "occlusion history: no spin for the other eye's queries)"
                                 : "both eyes render through the game's one scene view state (Halcyon's own; per-eye "
                                   "states in cine only)",
                 perEyeRead);
+#else
+            // The sequels' SFR (research/sequel-render-levers.md "Performance research"): with a state per pass the
+            // second eye's Umbra results read polls queries that live in the other state's pool (never ready).
+            log::Info("render levers: {} ([Performance] perEyeViewState = {}{})",
+                perEyeRead != 0 ? "each SFR pass renders through its own scene view state (Halcyon's own: the second "
+                                  "eye's Umbra query results are never ready)"
+                                : "both SFR passes render through the game's one scene view state (ME1's gameplay: "
+                                  "Umbra's queries double-buffer across the eyes; the second eye's engine occlusion "
+                                  "reads wait for the first eye's)",
+                perEyeRead, perEyeRead == kLayout.perEyeViewStateDefault ? ", this game's default" : "");
+#endif
         }
+#if defined(MEVR_WITH_HALCYON_LE2)
+        {
+            static int retry = -1;
+            int const retryRead = readInt(L"sfrReplayRetry", kLayout.sfrReplayRetryDefault) != 0 ? 1 : 0;
+            if (retryRead != retry) {
+                retry = retryRead;
+                gSfrReplayRetry.store(retryRead, std::memory_order_relaxed);
+                log::Info("render levers: {} ([Performance] sfrReplayRetry = {})",
+                    retryRead != 0 ? "a pass 1 Draw that returned in under 100 us is drawn again in the same frame (Halcyon "
+                                     "ME2's own [NOOPRETRY]; when it had rendered, the retry is a third scene render)"
+                                   : "a pass 1 Draw is never drawn again in the same frame",
+                    retryRead);
+            }
+        }
+#endif
         static int umbraEyeMatrix = -1;
         int const umbraEyeMatrixRead = readInt(L"umbraEyeMatrix", 1) != 0 ? 1 : 0;
         if (umbraEyeMatrixRead != umbraEyeMatrix) {
@@ -2317,7 +2512,7 @@ void Tick() {
                 umbraEyeMatrixRead, gUmbraIssueQueriesHooked ? "" : "; not hooked, so no effect");
         }
         static int umbraShare = -1;
-        int const umbraShareRead = readInt(L"umbraShareResults", 0) != 0 ? 1 : 0;
+        int const umbraShareRead = readInt(L"umbraShareResults", kLayout.umbraShareResultsDefault) != 0 ? 1 : 0;
         if (umbraShareRead != umbraShare) {
             umbraShare = umbraShareRead;
             gUmbraShareResults.store(umbraShareRead, std::memory_order_relaxed);
@@ -2340,7 +2535,8 @@ void Tick() {
                 flushRead);
         }
         static int keepBss = -1;
-        int const keepBssRead = readInt(L"keepBoundShaderStates", 1) != 0 ? 1 : 0;
+        // (A sequel's try build starts the two default-on levers at the game's own, so an A/B begins from a clean 0.)
+        int const keepBssRead = readInt(L"keepBoundShaderStates", Verified(kTryBuild) ? 0 : 1) != 0 ? 1 : 0;
         if (keepBssRead != keepBss) {
             keepBss = keepBssRead;
             gKeepBoundShaderStates.store(keepBssRead, std::memory_order_relaxed);
@@ -2352,7 +2548,7 @@ void Tick() {
                 keepBssRead, gBoundShaderStateHooked ? "" : "; not hooked, so no effect");
         }
         static int minScreenTenths = -1;
-        int const minScreenRead = readInt(L"minScreenRadiusTenths", readInt(L"minScreenRadiusPx", 8) * 10);
+        int const minScreenRead = readInt(L"minScreenRadiusTenths", readInt(L"minScreenRadiusPx", Verified(kTryBuild) ? 0 : 8) * 10);
         if (minScreenRead != minScreenTenths) {
             minScreenTenths = minScreenRead;
             gMinScreenRadiusTenths.store(minScreenRead, std::memory_order_relaxed);
@@ -2363,7 +2559,7 @@ void Tick() {
                 static_cast<double>(minScreenRead) / 10.0, gUmbraInstanceVisibleHooked ? "" : "; not hooked, so no effect");
         }
         static int umbraShared = -1;
-        int const umbraSharedRead = std::clamp(readInt(L"umbraSharedVisibility", 0), 0, 3);
+        int const umbraSharedRead = Verified(kLayout.umbraSharedVerified) ? std::clamp(readInt(L"umbraSharedVisibility", 0), 0, 3) : 0;
         int const clearBits = readInt(L"umbraSecondEyeClearBits", 2);  // the default its description gives (and the dev file's)
         gUmbraSecondEyeClearBits.store(clearBits, std::memory_order_relaxed);
         if (umbraSharedRead != umbraShared) {
@@ -2379,7 +2575,7 @@ void Tick() {
                 umbraSharedRead, static_cast<unsigned>(clearBits), gUmbraInstanceVisibleHooked ? "" : "; not hooked, so no effect");
         }
         static int perEyeOcclusion = -1;
-        int const perEyeOcclusionRead = readInt(L"perEyeOcclusion", 0) != 0 ? 1 : 0;
+        int const perEyeOcclusionRead = Verified(kLayout.occlusionHistoryVerified) && readInt(L"perEyeOcclusion", 0) != 0 ? 1 : 0;
         if (perEyeOcclusionRead != perEyeOcclusion) {
             perEyeOcclusion = perEyeOcclusionRead;
             gPerEyeOcclusion.store(perEyeOcclusionRead, std::memory_order_relaxed);
@@ -2392,7 +2588,7 @@ void Tick() {
                 perEyeOcclusionRead);
         }
         static int ue3QueryWait = -1;
-        int const ue3Wait = readInt(L"ue3QueryWait", 1) != 0 ? 1 : 0;
+        int const ue3Wait = readInt(L"ue3QueryWait", kLayout.ue3QueryWaitDefault) != 0 ? 1 : 0;
         if (ue3Wait != ue3QueryWait) {
             ue3QueryWait = ue3Wait;
             gUe3QueryWait.store(ue3Wait, std::memory_order_relaxed);
@@ -2403,7 +2599,7 @@ void Tick() {
                                "counts as visible)",
                 ue3Wait, gQueryDataHooked ? "" : "; not hooked, so no effect");
         }
-        int const queryWait = readInt(L"umbraQueryWait", 1) != 0 ? 1 : 0;
+        int const queryWait = readInt(L"umbraQueryWait", kLayout.umbraQueryWaitDefault) != 0 ? 1 : 0;
         int const pCores = readInt(L"pCoresOnly", 0) != 0 ? 1 : 0;
         if (queryWait != umbraQueryWait) {
             umbraQueryWait = queryWait;
@@ -2439,7 +2635,9 @@ void Tick() {
         }
         // Default 5 since 2026-11-05 (the owner: the dev settings are the defaults): one Draw a frame, the second eye
         // synthesised from the first's recorded render, with the health check falling back to Halcyon's second Draw.
-        int const shareRaw = readInt(L"sharePass", 5);
+        // On a game whose table or renderer doesn't have the lever yet (Install's stand-down line) it stays 0, whatever
+        // the file says: every scene render does its own visibility.
+        int const shareRaw = gSharePassReady ? readInt(L"sharePass", 5) : 0;
         int const share = shareRaw < 0 ? 0 : (shareRaw > 5 ? 5 : shareRaw);
         if (share != sharePass) {
             sharePass = share;
@@ -2447,7 +2645,7 @@ void Tick() {
             gOneDrawWanted.store(share == 5 && gReplayHooked, std::memory_order_relaxed);
             bool const faulted = gOneDrawFaulted.load(std::memory_order_relaxed);
             gOneDrawFallback.store(share == 5 && faulted, std::memory_order_relaxed);
-            MELEVR::MevrBridge::g_oneDrawStereo.store(share == 5 && gReplayHooked && !faulted,
+            seam::g_oneDrawStereo.store(share == 5 && gReplayHooked && !faulted,
                 std::memory_order_relaxed);   // a faulted session keeps Halcyon's second Draw
             log::Info("render levers: {} ([Performance] sharePass = {}){}",
                 share == 2 ? "a frame's second scene render replays the first one's draw calls on its renderer (no second "
@@ -2456,7 +2654,8 @@ void Tick() {
                 : share == 5 ? "one FViewportClient::Draw a frame: the second eye is the first render's recorded calls replayed with the view pass 1 would have had (research/37)"
                 : share == 3 ? "the second render keeps its Umbra resolve, its passes are the first eye's recorded calls replayed (research/37)"
                              : "every scene render does its own visibility (the game's own)",
-                share, !gShareHooked ? "; not hooked, so no effect" : (share == 2 && !gReplayHooked) ? "; its mark isn't hooked, so it runs as 1" : "");
+                share, !gSharePassReady ? "; sharePass stands down on this game, whatever the file asks"
+                    : !gShareHooked ? "; not hooked, so no effect" : (share == 2 && !gReplayHooked) ? "; its mark isn't hooked, so it runs as 1" : "");
         }
     }
     if (gHooked && now >= nextLogMs) {
@@ -2472,12 +2671,15 @@ void Tick() {
 }
 
 void OnPresentEnd(ID3D11DeviceContext* context) {
+    if (context != nullptr) {
+        gPresentContext = context;   // render thread: the game's immediate context, for flushFirstEye without the recorder
+    }
     // Keep the full second Draw scheduled through the probe frame itself.
     if (gOneDrawMatches >= gOneDrawResumeAfter && gOneDrawFallback.load(std::memory_order_relaxed) &&
         gOneDrawWanted.load(std::memory_order_relaxed) && !gOneDrawFaulted.load(std::memory_order_relaxed)) {
         gOneDrawMatches = 0;
         gOneDrawFallback.store(false, std::memory_order_relaxed);
-        MELEVR::MevrBridge::g_oneDrawStereo.store(true, std::memory_order_relaxed);
+        seam::g_oneDrawStereo.store(true, std::memory_order_relaxed);
         gOneDrawRearms.fetch_add(1, std::memory_order_relaxed);
         log::Info("render levers: one Draw: {} matching views and a replayable tail; one Draw a frame resumes", gOneDrawResumeAfter);
     }
@@ -2516,9 +2718,35 @@ bool OneDrawWindow() {
     return gOneDrawWindow.load(std::memory_order_relaxed) != 0;
 }
 
+bool SecondEyeIsReplay() {
+    int const share = gSharePass.load(std::memory_order_relaxed);
+    return gSharePassReady && (share == 2 || share == 3 || share == 5);
+}
+
 bool PerEyeViewState() {
     return gPerEyeViewState.load(std::memory_order_relaxed) != 0;
 }
+
+} // namespace mevr::host::render_levers
+
+#if defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
+// The seam the sequels' SFR asks (src/halcyon/MevrSeams.h; LE1's tree asks MELEVR::MevrBridge::PerEyeViewState).
+namespace MevrSeams {
+bool PerEyeViewState() noexcept {
+    return mevr::host::render_levers::PerEyeViewState();
+}
+} // namespace MevrSeams
+#endif
+#if defined(MEVR_WITH_HALCYON_LE2)
+// ME2's own seam (src/halcyon/le2/mevr_bridge.h): DrawDetour's same-frame retry of pass 1.
+namespace ME2VR::MevrBridge {
+bool SfrReplayRetry() noexcept {
+    return mevr::host::render_levers::gSfrReplayRetry.load(std::memory_order_relaxed) != 0;
+}
+} // namespace ME2VR::MevrBridge
+#endif
+
+namespace mevr::host::render_levers {
 
 std::string SettingsJson() {
     return std::format("{{\"umbraQueryWait\": {}, \"ue3QueryWait\": {}, \"perEyeViewState\": {}, \"perEyeOcclusion\": {}, \"umbraEyeMatrix\": {}, \"flushFirstEye\": {}, \"umbraShareResults\": {}, \"keepBoundShaderStates\": {}, \"minScreenRadiusPx\": {}, \"umbraSharedVisibility\": {}, \"pCoresOnly\": {}, \"sharePass\": {}, \"shareFailed\": {}, \"replayFailed\": {}, "
@@ -2527,7 +2755,13 @@ std::string SettingsJson() {
         gPerEyeViewState.load(std::memory_order_relaxed), gPerEyeOcclusion.load(std::memory_order_relaxed),
         gUmbraEyeMatrix.load(std::memory_order_relaxed), gFlushFirstEye.load(std::memory_order_relaxed), gUmbraShareResults.load(std::memory_order_relaxed), gKeepBoundShaderStates.load(std::memory_order_relaxed), gMinScreenRadiusTenths.load(std::memory_order_relaxed) / 10.0, gUmbraSharedVisibility.load(std::memory_order_relaxed), gPCoresOnly.load(std::memory_order_relaxed),
         gSharePass.load(std::memory_order_relaxed), gShareFailed.load(std::memory_order_relaxed) ? "true" : "false",
-        gReplayFailed.load(std::memory_order_relaxed) ? "true" : "false", draw_replay::StatsJson(), motion_blur_guard::StatsJson(), gHooked ? "true" : "false");
+        gReplayFailed.load(std::memory_order_relaxed) ? "true" : "false", draw_replay::StatsJson(),
+#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE3)
+        motion_blur_guard::StatsJson(),
+#else
+        "null",  // LE2's host has no motion-blur guard (the parity ledger's R10)
+#endif
+        gHooked ? "true" : "false");
 }
 
 } // namespace mevr::host::render_levers

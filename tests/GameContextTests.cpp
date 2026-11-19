@@ -31,6 +31,20 @@ int main() {
     check(a::IsOrbitalMode(10) && !a::IsWristMenuMode(10), "LE2 orbital is not bypass");
 #endif
 #endif
+    // Where the right grip holds the gun (game/Holsters): on foot and the two wheels, by each game's numbers (ME1's 0, 2, 3).
+    {
+#if defined(MEVR_GAME_LE1)
+        int const holds[] = {0, 2, 3};
+#elif defined(MEVR_GAME_LE2)
+        int const holds[] = {0, 1, 2};
+#else
+        int const holds[] = {0, 3, 4};
+#endif
+        for (int mode = -1; mode < 25; ++mode) {
+            bool const expected = mode == holds[0] || mode == holds[1] || mode == holds[2];
+            check(a::IsFootOrWheelMode(mode) == expected, "the grip holds the gun on foot and in the two wheels only");
+        }
+    }
     check(a::IsConversationMode(conversation) && !a::IsWristMenuMode(conversation), "dialogue closes wrist rail");
     check(a::IsWristMenuMode(gui) && !a::IsMapMode(gui), "GUI permits wrist without a map");
     check(a::IsGalaxyMode(galaxy) && !a::IsWristMenuMode(galaxy), "galaxy isolates input ownership");

@@ -48,4 +48,16 @@ void LogStats();
 std::optional<Shown> Current(XrVector3f const& eyes, XrQuaternionf const& head, bool headValid, std::uint32_t windowWidth,
     std::uint32_t windowHeight, std::optional<XrVector3f> wrist);
 
+// Shepard's view on foot held at render time (research/53; research/le3-native-gui.md "The movie's mouse and the view behind a
+// screen"): while a screen of ours stands in the game mode `gameMode` (vr::world_ui::ScreenMode) and the mod sends the view it
+// saved on foot with where the player camera's POV lives (State::holdRender), HoldViewBegin puts that view into the POV for the
+// one view build that follows and HoldViewEnd puts the camera's own back. Game thread, the renderer's CalcSceneView detour, around the primary
+// player's main view only: the game's camera keeps serving everything else. Every game's (LE1's GalaxyViewSwapBegin calls it for
+// its world UI, ME3's renderer through MevrSeams::WorldViewHoldBegin). True: held, call HoldViewEnd after the build.
+bool HoldViewBegin(int gameMode) noexcept;
+void HoldViewEnd() noexcept;
+// Any thread: whether HoldViewBegin would hold the view in `gameMode` now, for the renderer's mesh hides: 0 no, 1 for a screen
+// on the wrist, 2 for one standing in the room (MevrSeams::WorldViewHeld).
+int HoldsView(int gameMode) noexcept;
+
 } // namespace mevr::host::world_ui

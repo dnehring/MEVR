@@ -254,7 +254,7 @@ void Tick(double deltaSeconds, Link const& link) {
     }
     if (in.active != gWasActive) {
         gWasActive = in.active;
-        log::Info("cockpit panel: {}", in.active ? "the repair button and the extraction lever are in reach" : "the controls are out of use");
+        log::Info("cockpit panel: {}", in.active ? "the panel controls are in reach" : "the controls are out of use");
     }
     if (gOut.repair) {
         Repair("repair");
@@ -294,7 +294,7 @@ void Tick(double deltaSeconds, Link const& link) {
             link.hapticPulse(gClick.haptics[i].hand, gClick.haptics[i].seconds, gClick.haptics[i].amplitude);
         }
     }
-    if (layout) {
+    if (layout && layout->travelM > 0.0f) {
         ShowLamps(cockpit_probe::Riding());
     }
 }

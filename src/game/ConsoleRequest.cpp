@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "game/ConsoleRequest.hpp"
+#include "game/ArmIk.hpp"
 #include "game/CameraProbe.hpp"
 #include "game/CameraShake.hpp"
 #include "game/BodyProbe.hpp"
@@ -11,13 +12,13 @@
 #include "game/SquadOrders.hpp"
 #include "game/SquadPlace.hpp"
 #include "game/SquadWeapons.hpp"
+#include "game/Sprint.hpp"
 #include "game/Voice.hpp"
 #include "game/VrCover.hpp"
 
 #include "core/Ini.hpp"
 #include "core/Log.hpp"
 #include "engine/Engine.hpp"
-#include "engine/Legacy.hpp"
 #include "ue3/Handles.hpp"
 #include "ue3/Memory.hpp"
 #include "game/CallTrace.hpp"
@@ -32,14 +33,20 @@
 #include "game/GalaxyMap.hpp"
 #include "game/GameMenuRequest.hpp"
 #include "game/GunKick.hpp"
+#include "game/CombatStance.hpp"
 #include "game/Holsters.hpp"
+#include "game/Melee.hpp"
 #include "game/OmniTool.hpp"
+#include "game/WorldUi.hpp"
 #include "game/Player.hpp"
 #include "game/Le3WeaponAmmo.hpp"
 #include "game/Le3Galaxy.hpp"
 #include "game/Le3GalaxyProjector.hpp"
 #include "game/Le3GalaxyRetention.hpp"
 #include "game/Le3GalaxyCapture.hpp"
+#if defined(MEVR_GAME_LE2)
+#include "game/Le2GalaxyCapture.hpp"
+#endif
 #include "game/PowerWheel.hpp"
 #include "game/SoundPlace.hpp"
 #include "game/Spectator.hpp"
@@ -47,6 +54,8 @@
 #include "game/Throwables.hpp"
 #include "game/Traversal.hpp"
 #include "game/Vent.hpp"
+#include "game/Reload.hpp"
+#include "game/ZoomedShots.hpp"
 #include "core/WriteJournal.hpp"
 #include "mod/GameplayActions.hpp"
 
@@ -85,29 +94,17 @@ std::filesystem::path Directory() {
     return std::filesystem::path(buffer) / L"MEVR";
 }
 
-#if defined(MEVR_GAME_LE1) || defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
-
-// Our reflection layer (research/34; LE2's since M1, docs/le2-continuation-plan.md): the function, found once in the
-// running game. On LE2, LExSDKv2 (engine/Legacy) while the layer is off.
+// Our reflection layer on every game (research/34; LE2's since M1, docs/le2-continuation-plan.md): the function, found
+// once in the running game. With the layer off nothing is run (no LExSDKv2 fallback).
 ue3::FunctionRef gConsoleCommandRef{kConsoleCommand, ue3::kEveryGame};
 bool gToldNoMemory = false;
 bool gToldParameters = false;
 
 ue3::Object* PlayerController() {
-#if defined(MEVR_GAME_LE2)
-    if (!ue3::runtime::Up()) {
-        return engine::legacy::LocalPlayerController();
-    }
-#endif
     return ue3::runtime::LocalPlayerController();
 }
 
 ue3::Function* FindConsoleCommand() {
-#if defined(MEVR_GAME_LE2)
-    if (!ue3::runtime::Up()) {
-        return engine::legacy::FindFunction(kConsoleCommand);
-    }
-#endif
     return gConsoleCommandRef.Get();
 }
 
@@ -115,11 +112,6 @@ ue3::Function* FindConsoleCommand() {
 // Both strings are in the engine's memory: ours goes in, the engine's comes back, and the block (ours) frees both.
 // Nullopt: it can't be run (no allocator, or the parameters aren't as expected; logged once).
 std::optional<std::string> Run(ue3::Object* pc, ue3::Function* function, std::string const& command) {
-#if defined(MEVR_GAME_LE2)
-    if (!ue3::runtime::Up()) {
-        return engine::legacy::ConsoleCommand(pc, function, command);
-    }
-#endif
     if (!ue3::memory::Ready()) {
         if (!gToldNoMemory) {
             gToldNoMemory = true;
@@ -144,22 +136,25 @@ std::optional<std::string> Run(ue3::Object* pc, ue3::Function* function, std::st
     return output;
 }
 
-#else
-
-// LE3: LExSDKv2 until its layout (engine/Legacy, research/34).
-ue3::Object* PlayerController() {
-    return engine::legacy::LocalPlayerController();
+// `mevr calltrace <seconds> <word> [-word...]` | `mevr calltrace off`: every script call and ProcessEvent whose
+// function's path holds a word and no -word (case-insensitive), with its caller, to the log for that long
+// (game/call_trace). Every game's console has it (T04, docs/trilogy-plan.md).
+std::string CallTraceCommand(std::istream& words) {
+    std::string first;
+    words >> first;
+    if (first == "off" || first.empty()) {
+        return call_trace::Stop();
+    }
+    std::optional<double> const seconds = ini::Number(first);
+    if (!seconds) {
+        return "usage: mevr calltrace <seconds> <word> [word...] | off";
+    }
+    std::vector<std::string> filters;
+    for (std::string word; words >> word;) {
+        filters.push_back(word);
+    }
+    return call_trace::Start(*seconds, filters);
 }
-
-ue3::Function* FindConsoleCommand() {
-    return engine::legacy::FindFunction(kConsoleCommand);
-}
-
-std::optional<std::string> Run(ue3::Object* pc, ue3::Function* function, std::string const& command) {
-    return engine::legacy::ConsoleCommand(pc, function, command);
-}
-
-#endif
 
 #if defined(MEVR_GAME_LE1)
 
@@ -954,6 +949,9 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         std::getline(words, rest);
         return vr_cover::Console(rest);
     }
+    if (verb == "sprint") {
+        return sprint::StatusJson();  // the faster run's state (game/Sprint: one sprint for the trilogy)
+    }
     if (verb == "powerwheel") {
         // `mevr powerwheel [open|hand x y|pick n|equip|close|roster]`: the power wheel at the left hand (research/55) without
         // tracked controllers: X held, the hand's offset from its centre (metres), a tile picked, X let go (equips), closed.
@@ -966,7 +964,7 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         // punch = a fist (with the weapon away, the pistol whip power), strike = an open hand. No tracked controllers needed.
         std::string rest;
         std::getline(words, rest);
-        return throwables::Console(rest);
+        return melee::Console(rest);
     }
     if (verb == "say") {
         // `mevr say <words>`: the words as a recognizer would give them (research/54), through the rule parser, the squad
@@ -1020,23 +1018,7 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         return squad_context::Block("", word, ini::Number(agoText).value_or(0.5));
     }
     if (verb == "calltrace") {
-        // `mevr calltrace <seconds> <word> [-word...]` | `mevr calltrace off`: every script call and ProcessEvent whose
-        // function's path holds a word and no -word (case-insensitive), with its caller, to the log for that long
-        // (game/call_trace).
-        std::string first;
-        words >> first;
-        if (first == "off" || first.empty()) {
-            return call_trace::Stop();
-        }
-        std::optional<double> const seconds = ini::Number(first);
-        if (!seconds) {
-            return "usage: mevr calltrace <seconds> <word> [word...] | off";
-        }
-        std::vector<std::string> filters;
-        for (std::string word; words >> word;) {
-            filters.push_back(word);
-        }
-        return call_trace::Start(*seconds, filters);
+        return CallTraceCommand(words);
     }
     if (verb == "omnitool") {
         // `mevr omnitool on [lifetime s] | off [fade s] | state`: the game's omni-tool on Shepard's arm (research/53 section 6).
@@ -1612,6 +1594,11 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         std::getline(words, rest);
         return camera_probe::Command(rest);  // `mevr camera trace <seconds>`: the view against the pawn, tick by tick
     }
+    if (verb == "armik") {
+        std::string rest;
+        std::getline(words, rest);
+        return arm_ik::Command(rest);  // `mevr armik step [off|camera] [units]` (research/le2-vrik.md, root-motion steps)
+    }
     if (verb == "shake") {
         std::string rest;
         std::getline(words, rest);
@@ -1621,6 +1608,11 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         std::string rest;
         std::getline(words, rest);
         return vent::Command(rest);  // the vent's tests without the controllers: heat, the visible rack (research/45)
+    }
+    if (verb == "reload") {
+        std::string rest;
+        std::getline(words, rest);
+        return reload::Command(rest);  // the sequels' reload by hand: the ammo, the game's own reload (`try`)
     }
     if (verb == "spectator") {
         std::string rest;
@@ -1750,10 +1742,172 @@ std::string State(ue3::Object* pc) {
     return text;
 }
 
+// "mevr give <Package.Class>": an inventory item of a loaded class into the player's pawn (Engine.Pawn.CreateInventory, the
+// pawn's own event; the game's GiveWeapon cheat does nothing in the shipped game): a test fixture's weapon, e.g. ME3's
+// combat fixture's sniper rifle for the scope capture (`mevr give SFXGameContent.SFXWeapon_SniperRifle_Mantis`, then
+// `mevr weapon sniper`). Rows: engine/ReflectCheck's CheckSequelWalk (Engine.Pawn.CreateInventory).
+ue3::FunctionRef gCreateInventory{"Engine.Pawn.CreateInventory", ue3::kEveryGame};
+// Only a class already loaded: ME3 loads each weapon's package (SFXWeapon_X.pcc, class SFXGameContent.X) for the loadout
+// only, and Core.Object.DynamicLoadObject by either path did not load the Mantis in the combat fixture (lane AU3, 2026-11-18).
+std::string Give(ue3::Object* pc, std::istringstream& words) {
+    std::string path;
+    words >> path;
+    ue3::Reflection& r = ue3::runtime::Get();
+    ue3::Class* const cls = path.empty() ? nullptr : r.FindClass(path.c_str());
+    ue3::Object* const pawn = player::Pawn(pc);
+    ue3::Function* const fn = gCreateInventory.Get();
+    if (cls == nullptr || pawn == nullptr || fn == nullptr) {
+        return std::format("mevr give: {}", path.empty() ? "usage: mevr give <Package.Class>"
+                                            : cls == nullptr ? "no loaded class " + path
+                                            : pawn == nullptr ? std::string("no player pawn")
+                                                              : std::string("Engine.Pawn.CreateInventory not found"));
+    }
+    ue3::Params parms(r, fn);
+    parms.Set("NewInvClass", cls);
+    parms.SetBool("bDoNotActivate", true);
+    bool const called = ue3::runtime::Call(pawn, fn, parms);
+    write_journal::Wrote("ConsoleRequest.Give", pawn, 0);
+    return std::format("mevr give: CreateInventory({}) called {}: {}", path, called,
+        ue3::runtime::FullName(parms.Return<ue3::Object*>().value_or(nullptr)));
+}
+
 #if defined(MEVR_GAME_LE3)
 // L3-1 scalar cross-check on the actual loaded weapon. No pose/weapon modules or writes.
 std::string WeaponProbeLe3(ue3::Object* pc) {
     return "mevr weaponprobe: " + json::Write(le3_weapon_ammo::Observe(pc), 0);
+}
+
+// "mevr loco [set <field> <value>]" on ME3: the player's start and stop steps (the audits' MOV-14, MOV-16). ME3's player pawn
+// has no SFXModule_Locomotion (its Modules list none; only the archetypes carry one): the steps are BioPawn's own, the root
+// motion of its start and stop animations (m_bEnableStartRootMotion, m_bEnableStopRootMotion), bCanPlayMoveStopAnims and the
+// state bytes. Read; `set` writes one of them on the player's pawn for a test (a measurement of what the lever would change,
+// lane AU5; nothing ships it: the owner decides). Rows: engine/ReflectCheck's LE3 CheckSequelWalk.
+constexpr char const* kPawnStepBools[] = {"m_bEnableStartRootMotion", "m_bEnableStopRootMotion", "bCanPlayMoveStopAnims"};
+ue3::FieldRef gPawnStepBools[] = {{"SFXGame.BioPawn", kPawnStepBools[0], ue3::kEveryGame},
+    {"SFXGame.BioPawn", kPawnStepBools[1], ue3::kEveryGame}, {"SFXGame.BioPawn", kPawnStepBools[2], ue3::kEveryGame}};
+constexpr char const* kPawnStepFloats[] = {"m_fAnimStartTime", "m_fMoveStartElapsedTime", "m_fMoveStopElapsedTime",
+    "m_fAnimMoveSpeedSnapshot", "m_fAnimMoveStartSpeedSnapshot", "m_fWalkStopDistance", "m_fRunStopDistance", "m_fDesiredMaxSpeed",
+    "fMoveMag"};
+ue3::FieldRef gPawnStepFloats[] = {{"SFXGame.BioPawn", kPawnStepFloats[0], ue3::kEveryGame},
+    {"SFXGame.BioPawn", kPawnStepFloats[1], ue3::kEveryGame}, {"SFXGame.BioPawn", kPawnStepFloats[2], ue3::kEveryGame},
+    {"SFXGame.BioPawn", kPawnStepFloats[3], ue3::kEveryGame}, {"SFXGame.BioPawn", kPawnStepFloats[4], ue3::kEveryGame},
+    {"SFXGame.BioPawn", kPawnStepFloats[5], ue3::kEveryGame}, {"SFXGame.BioPawn", kPawnStepFloats[6], ue3::kEveryGame},
+    {"SFXGame.BioPawn", kPawnStepFloats[7], ue3::kEveryGame}, {"SFXGame.BioPawn", kPawnStepFloats[8], ue3::kEveryGame}};
+constexpr char const* kPawnStepStates[] = {"m_eAnimStartState", "m_eAnimStopState", "m_eAnimSkidState"};
+ue3::FieldRef gPawnStepStates[] = {{"SFXGame.BioPawn", kPawnStepStates[0], ue3::kEveryGame},
+    {"SFXGame.BioPawn", kPawnStepStates[1], ue3::kEveryGame}, {"SFXGame.BioPawn", kPawnStepStates[2], ue3::kEveryGame}};
+
+std::string LocomotionLe3(ue3::Object* pc, std::istringstream& words) {
+    ue3::Reflection& r = ue3::runtime::Get();
+    ue3::Object* const pawn = player::Pawn(pc);
+    if (pawn == nullptr) {
+        return "mevr loco: no player pawn";
+    }
+    std::string sub, field;
+    double value = 0.0;
+    words >> sub >> field >> value;
+    if (sub == "start") {  // ME3's start step's levers (game/CombatStance, research/38 "ME3's exploring start")
+        return combat_stance::StartLevers(field);
+    }
+    std::string out;
+    if (sub == "set") {
+        bool found = false;
+        for (std::size_t i = 0; i < std::size(kPawnStepBools) && !found; ++i) {
+            if (field == kPawnStepBools[i] && gPawnStepBools[i].WriteBool(pawn, value != 0.0)) {
+                write_journal::Wrote("ConsoleRequest.PawnSteps", pawn, 4);
+                found = true;
+            }
+        }
+        for (std::size_t i = 0; i < std::size(kPawnStepFloats) && !found; ++i) {
+            if (float* const p = field == kPawnStepFloats[i] ? gPawnStepFloats[i].In<float>(pawn) : nullptr) {
+                *p = static_cast<float>(value);
+                write_journal::Wrote("ConsoleRequest.PawnSteps", p, sizeof(float));
+                found = true;
+            }
+        }
+        if (!found) {
+            return "mevr loco set: no such field " + field;
+        }
+        out = std::format("set {} = {:.3f}; ", field, value);
+    }
+    out += r.FullName(pawn) + ":";
+    for (std::size_t i = 0; i < std::size(kPawnStepBools); ++i) {
+        auto const v = gPawnStepBools[i].ReadBool(pawn);
+        out += std::format(" {} {}", kPawnStepBools[i], v ? (*v ? "1" : "0") : "?");
+    }
+    for (std::size_t i = 0; i < std::size(kPawnStepStates); ++i) {
+        auto const v = gPawnStepStates[i].Read<std::uint8_t>(pawn);
+        out += std::format(" {} {}", kPawnStepStates[i], v ? std::to_string(*v) : std::string("?"));
+    }
+    for (std::size_t i = 0; i < std::size(kPawnStepFloats); ++i) {
+        auto const v = gPawnStepFloats[i].Read<float>(pawn);
+        out += std::format(" {} {}", kPawnStepFloats[i], v ? std::format("{:.3f}", *v) : std::string("?"));
+    }
+    return "mevr loco: " + out;
+}
+
+// "mevr loadout <type 0..5> [steps] [all]" on ME3: the open Weapon Loadout screen picks a category's next weapon with its own
+// script, what its Flash asks for (SFXGUI_WeaponSelection.SwitchToWeaponSelection(type), SelectNextWeapon() `steps` times,
+// SwitchToWeaponLoadout()), so a test fixture carries a gun the map's loadout doesn't: ME3's combat fixture's sniper rifle
+// (type 2, ELoadoutWeapons' SniperRifles) for the scope capture (lane AU5). The screen's B (`mevr omni close`) then applies it
+// through the screen's own Exit (ApplyWeaponLoadout). `all`: the screen's ShowAllWeapons, every weapon of the type and not only
+// the career's. Rows: engine/ReflectCheck's LE3 CheckSequelWalk.
+ue3::ClassRef gWeaponSelection{"SFXGame.SFXGUI_WeaponSelection", ue3::kEveryGame};
+ue3::FunctionRef gToWeaponSelection{"SFXGame.SFXGUI_WeaponSelection.SwitchToWeaponSelection", ue3::kEveryGame};
+ue3::FunctionRef gNextWeapon{"SFXGame.SFXGUI_WeaponSelection.SelectNextWeapon", ue3::kEveryGame};
+ue3::FunctionRef gToWeaponLoadout{"SFXGame.SFXGUI_WeaponSelection.SwitchToWeaponLoadout", ue3::kEveryGame};
+ue3::FieldRef gShowAllWeapons{"SFXGame.SFXGUI_WeaponSelection", "ShowAllWeapons", ue3::kEveryGame};
+ue3::FieldRef gLoadoutWeapons{"SFXGame.SFXGUI_WeaponSelection", "CurrentLoadoutWeapons", ue3::kEveryGame};
+ue3::FieldRef gInventoryWeapons{"SFXGame.SFXGUI_WeaponSelection", "CurrentInventoryWeapons", ue3::kEveryGame};
+
+std::string LoadoutLe3(std::istringstream& words) {
+    int type = -1, steps = 1;
+    bool all = false;
+    if (!(words >> type) || type < 0 || type > 5) {
+        return "usage: mevr loadout <type 0..5> [steps] [all] (0 assault rifles, 1 shotguns, 2 sniper rifles, 3 SMGs, 4 pistols)";
+    }
+    for (std::string word; words >> word;) {
+        if (word == "all") {
+            all = true;
+        } else if (auto const n = ini::Number(word)) {
+            steps = static_cast<int>(*n);
+        }
+    }
+    ue3::Reflection& r = ue3::runtime::Get();
+    ue3::Class* const cls = gWeaponSelection.Get();
+    ue3::Object* screen = nullptr;
+    for (std::int32_t i = 0, n = r.ObjectCount(); cls != nullptr && i < n && screen == nullptr; ++i) {
+        ue3::Object* const o = r.ObjectAt(i);
+        if (o != nullptr && r.IsAlive(o) && r.IsA(o, cls) && r.FullName(o).find("Default__") == std::string::npos) {
+            screen = o;
+        }
+    }
+    ue3::Function* const toSelection = gToWeaponSelection.Get();
+    ue3::Function* const next = gNextWeapon.Get();
+    ue3::Function* const toLoadout = gToWeaponLoadout.Get();
+    if (screen == nullptr || toSelection == nullptr || next == nullptr || toLoadout == nullptr) {
+        return screen == nullptr ? "mevr loadout: no Weapon Loadout screen open" : "mevr loadout: the screen's functions weren't found";
+    }
+    if (all && gShowAllWeapons.WriteBool(screen, true)) {
+        write_journal::Wrote("ConsoleRequest.ShowAllWeapons", screen, 4);
+    }
+    ue3::Params select(r, toSelection);
+    select.Set("nWeaponType", static_cast<std::int32_t>(type));
+    bool called = ue3::runtime::Call(screen, toSelection, select);
+    auto const listed = gInventoryWeapons.ElementsOf(screen);
+    for (int i = 0; called && i < steps; ++i) {
+        ue3::Params none(r, next);
+        called = ue3::runtime::Call(screen, next, none);
+    }
+    ue3::Params back(r, toLoadout);
+    called = called && ue3::runtime::Call(screen, toLoadout, back);
+    std::string slots;
+    for (std::int32_t i = 0; i < 6; ++i) {
+        std::int32_t const* const slot = gLoadoutWeapons.At<std::int32_t>(screen, i);
+        slots += std::format("{}{}", i == 0 ? "" : " ", slot != nullptr ? std::to_string(*slot) : std::string("?"));
+    }
+    return std::format("mevr loadout: {} type {}: {} weapons listed, {} step(s), calls {}; the loadout's weapon indices now [{}] (-1 none); "
+                       "`mevr omni close` applies it", r.FullName(screen), type, listed ? listed->count : -1, steps, called ? "made" : "failed", slots);
 }
 
 std::optional<std::string> RunOursLe3(ue3::Object* pc, std::string const& line) {
@@ -1761,6 +1915,9 @@ std::optional<std::string> RunOursLe3(ue3::Object* pc, std::string const& line) 
     std::string head, verb;
     words >> head >> verb;
     if (head != "mevr" || !ue3::runtime::Up()) return std::nullopt;
+    if (verb == "calltrace") {
+        return CallTraceCommand(words);
+    }
     if (verb == "thespian") {
         std::string rest;
         std::getline(words, rest);
@@ -1769,6 +1926,7 @@ std::optional<std::string> RunOursLe3(ue3::Object* pc, std::string const& line) 
     if (verb == "load") return LoadSave(ue3::runtime::GameEngine(), words);
     if (verb == "savedesc") return CurrentSave(ue3::runtime::GameEngine());
     if (verb == "state") return State(pc);
+    if (verb == "sprint") return sprint::StatusJson();  // game/Sprint: one sprint for the trilogy
     if (verb == "weaponprobe") return WeaponProbeLe3(pc);
     if (verb == "galaxy") {
         std::string action, extra;
@@ -1777,6 +1935,11 @@ std::optional<std::string> RunOursLe3(ue3::Object* pc, std::string const& line) 
             return "mevr galaxy: " + json::Write(le3_galaxy::Observe(pc), 0);
         if (action == "projector" && !(words >> extra))
             return "mevr galaxy projector: " + json::Write(le3_galaxy::ObserveProjector(pc), 0);
+        if (action == "ray") {
+            std::string rest;
+            std::getline(words, rest);
+            return le3_galaxy_capture::RayCommand(pc, rest);
+        }
         if (action == "retain" || action == "capture") {
             std::string option, trailing;
             words >> option;
@@ -1789,12 +1952,44 @@ std::optional<std::string> RunOursLe3(ue3::Object* pc, std::string const& line) 
         return verb == "melee" ? mod::gameplay_actions::MeleeCommand(rest) : mod::gameplay_actions::TraversalCommand(rest);
     }
     if (verb == "powerwheel") { std::string rest; std::getline(words, rest); return power_wheel::Console(rest); }
+    // The shouldered gun's zoomed calculations (game/ZoomedShots): `mevr zoomshots [on|off|auto]`.
+    if (verb == "zoomshots") { std::string rest; std::getline(words, rest); return zoomed_shots::Console(rest); }
+    // The squad's lines as on ME2 (the same modules: research/le3-squad.md's checks, tools/le2-halcyon-run/place.ps1).
+    if (verb == "place") { std::string rest; std::getline(words, rest); return squad_place::Console(rest); }
+    if (verb == "squad") return squad_weapons::StatusJson();
+    if (verb == "say") { std::string rest; std::getline(words, rest); return squad_orders::Say(rest); }
+    if (verb == "order") {
+        std::string actionLine;
+        words >> actionLine;
+        auto const action = vr::squad_context::ParseLine(actionLine);
+        if (!action) return std::string("usage: mevr order WHO|WEAPON|POWER|ORDER|TARGET");
+        return squad_orders::Give(*action);
+    }
+    if (verb == "context") {
+        std::string word, ago;
+        words >> word >> ago;
+        if (word == "prefix") return squad_context::Prefix();
+        return squad_context::Block("", word, ini::Number(ago).value_or(0.5));
+    }
+    // VR cover and the cover snapping's refusal (`mevr cover [snap on|off|auto | where | acquire [wide] | links [n]]`), and the
+    // game camera against the pawn tick by tick (`mevr camera trace <seconds> [label]`): ME2's lines (lane FP3, 2026-11-17).
+    if (verb == "cover") { std::string rest; std::getline(words, rest); return vr_cover::Console(rest); }
+    if (verb == "camera") { std::string rest; std::getline(words, rest); return camera_probe::Command(rest); }
+    if (verb == "weapon") { std::string which; words >> which; return holsters::DrawByName(which); }  // a carried weapon by family
+    if (verb == "animtree") { std::string rest; std::getline(words, rest); return combat_stance::DumpAnimTree(rest.empty() ? rest : rest.substr(1)); }
+    if (verb == "give") return Give(pc, words);  // a test fixture's weapon (Engine.Pawn.CreateInventory)
+    if (verb == "loadout") return LoadoutLe3(words);  // the Weapon Loadout screen's own pick (a fixture's sniper rifle)
+    if (verb == "loco") return LocomotionLe3(pc, words);  // ME3's start and stop steps' timers (read; `set` for a test)
+    if (verb == "reload") { std::string rest; std::getline(words, rest); return reload::Command(rest); }
     if (verb == "omni") { std::string which; words >> which; return game_menu_request::Inject(which); }
+    if (verb == "reticles") return screen_reticle::Command();  // the crosshair's movie, what it shows, whether it is hidden
+    if (verb == "omnitool") { std::string rest; std::getline(words, rest); return omni_tool::Console(rest); }  // on | off | display | state
+    if (verb == "worldui") { std::string rest; std::getline(words, rest); return world_ui::Console(rest); }  // firstheld [on|off]
     if (verb == "guimouse" || verb == "guikey") {
         std::string rest; std::getline(words, rest);
         return verb == "guimouse" ? gui_cursor::Command(rest) : gui_cursor::KeyCommand(rest);
     }
-    return std::string("unknown on ME3: mevr load <career> <save name> <index> <type> | mevr savedesc | mevr state | mevr weaponprobe | mevr galaxy state | mevr melee | mevr traversal | mevr powerwheel | mevr omni | mevr guimouse | mevr guikey | mevr thespian");
+    return std::string("unknown on ME3: mevr load <career> <save name> <index> <type> | mevr savedesc | mevr state | mevr weaponprobe | mevr galaxy state | mevr melee | mevr traversal | mevr powerwheel | mevr place ... | mevr squad | mevr say ... | mevr order ... | mevr context | mevr weapon <family> | mevr give <class> | mevr loadout <type> [steps] [all] | mevr loco [set <field> <value>] | mevr reload | mevr omni | mevr omnitool | mevr worldui | mevr guimouse | mevr guikey | mevr thespian | mevr cover | mevr camera trace | mevr reticles");
 }
 #endif
 #endif // shared sequel save/state requests
@@ -1848,6 +2043,35 @@ std::string InstancesLe2(std::istringstream& words) {
     return std::format("{} instances{}", total, out);
 }
 
+// "mevr setloc <n> X Y Z" on ME2: the n-th object `mevr instances` found moved there with its own Actor.SetLocation (one actor;
+// the console's `set` moves every instance of a class). The powers' check moves one drone the level's own factory made in front
+// of Shepard with it (tools/le2-halcyon-run/powers.ps1 -Drone).
+ue3::FunctionRef gLe2SetLocation{"Engine.Actor.SetLocation", ue3::kEveryGame};
+
+std::string SetLocationLe2(std::istringstream& words) {
+    std::size_t index = 0;
+    ue3::Vector to{};
+    if (!(words >> index >> to.x >> to.y >> to.z)) {
+        return "usage: mevr setloc <n> X Y Z (n from mevr instances)";
+    }
+    ue3::Reflection& r = ue3::runtime::Get();
+    ue3::Function* const fn = gLe2SetLocation.Get();
+    if (index >= gFoundLe2.size() || !r.IsAlive(gFoundLe2[index])) {
+        return std::format("mevr setloc: no object {} (mevr instances first)", index);
+    }
+    if (fn == nullptr) {
+        return "mevr setloc: Engine.Actor.SetLocation not found";
+    }
+    ue3::Object* const actor = gFoundLe2[index];
+    ue3::Params parms(r, fn);
+    parms.Set("NewLocation", to);
+    bool const called = ue3::runtime::Call(actor, fn, parms);
+    write_journal::Wrote("ConsoleRequest.SetLocation", actor, 0);
+    std::optional<ue3::Vector> const at = player::Location(actor);
+    return std::format("{}.SetLocation called {}, returned {}: now {:.0f} {:.0f} {:.0f}", r.FullName(actor), called,
+        parms.ReturnBool().value_or(false), at ? at->x : 0.0f, at ? at->y : 0.0f, at ? at->z : 0.0f);
+}
+
 std::string ActivateLe2(std::istringstream& words) {
     std::size_t index = 0;
     int input = 0;
@@ -1876,10 +2100,19 @@ std::optional<std::string> RunOursLe2(ue3::Object* pc, std::string const& line) 
     if (head != "mevr" || !ue3::runtime::Up()) {
         return std::nullopt;
     }
+    if (verb == "calltrace") {
+        return CallTraceCommand(words);
+    }
     if (verb == "thespian") {
         std::string rest;
         std::getline(words, rest);
         return thespian::Command(rest);
+    }
+    if (verb == "galaxy") {
+        // The galaxy map over the CIC's projector (game/Le2GalaxyCapture): state, the projector and streaming, the flow's captures.
+        std::string rest;
+        std::getline(words, rest);
+        return le2_galaxy_capture::Command(pc, rest);
     }
     if (verb == "load") {
         return LoadSave(ue3::runtime::GameEngine(), words);
@@ -1887,13 +2120,32 @@ std::optional<std::string> RunOursLe2(ue3::Object* pc, std::string const& line) 
     if (verb == "savedesc") {
         return CurrentSave(ue3::runtime::GameEngine());
     }
+    if (verb == "give") return Give(pc, words);  // a test fixture's weapon (Engine.Pawn.CreateInventory)
     if (verb == "state") {
         return State(pc);
+    }
+    if (verb == "sprint") {
+        return sprint::StatusJson();  // game/Sprint: one sprint for the trilogy
     }
     if (verb == "camera") {
         std::string rest;
         std::getline(words, rest);
         return camera_probe::Command(rest);  // `mevr camera trace <seconds> [label]` (M3: the skeleton audit on ME2)
+    }
+    if (verb == "armik") {
+        std::string rest;
+        std::getline(words, rest);
+        return arm_ik::Command(rest);  // `mevr armik step [off|camera] [units]` (research/le2-vrik.md, root-motion steps)
+    }
+    if (verb == "weapon") {
+        std::string which;
+        words >> which;
+        return holsters::DrawByName(which);  // a carried weapon by family (BioPlayerController.SwitchWeapon), for the sights' checks
+    }
+    if (verb == "animtree") {  // the player's AnimTree node by node (game/CombatStance; the draw's nodes, research/38 D)
+        std::string rest;
+        std::getline(words, rest);
+        return combat_stance::DumpAnimTree(rest.empty() ? rest : rest.substr(1));
     }
     if (verb == "cover") {
         std::string rest;
@@ -1934,10 +2186,26 @@ std::optional<std::string> RunOursLe2(ue3::Object* pc, std::string const& line) 
         std::getline(words, rest);
         return squad_place::Console(rest);
     }
+    if (verb == "zoomshots") {
+        std::string rest;
+        std::getline(words, rest);
+        return zoomed_shots::Console(rest);  // the shouldered gun's zoomed calculations (game/ZoomedShots)
+    }
+    if (verb == "melee") {
+        // `mevr melee punch|strike`: ME1's melee by gesture on ME2 (game/Melee), the right hand's strike now through its rules.
+        std::string rest;
+        std::getline(words, rest);
+        return melee::Console(rest);
+    }
     if (verb == "instances") {
         return InstancesLe2(words);  // a scene's Kismet start, for the cinema screen's checks (research/le2-cinema.md)
     }
     if (verb == "squad") return squad_weapons::StatusJson();
+    if (verb == "reload") {
+        std::string rest;
+        std::getline(words, rest);
+        return reload::Command(rest);  // the reload by hand: the ammo, the game's own reload (`try`)
+    }
     if (verb == "say") {
         std::string rest;
         std::getline(words, rest);
@@ -1959,10 +2227,17 @@ std::optional<std::string> RunOursLe2(ue3::Object* pc, std::string const& line) 
     if (verb == "activate") {
         return ActivateLe2(words);
     }
-    return std::string("unknown on ME2: mevr load <career> <save name> <index> <type> | mevr savedesc | mevr state | "
-                       "mevr camera trace <seconds> [label] | mevr omni <screen> | mevr guimouse | mevr guikey ... | mevr cover ... | "
+    if (verb == "setloc") {
+        return SetLocationLe2(words);
+    }
+    if (verb == "reticles") {
+        return screen_reticle::Command();  // the crosshair's panels, what they show, whether they are hidden (as ME1's)
+    }
+    return std::string("unknown on ME2:mevr load <career> <save name> <index> <type> | mevr savedesc | mevr state | mevr galaxy state|projector|capture ... | "
+                       "mevr camera trace <seconds> [label] | mevr armik step ... | mevr omni <screen> | mevr guimouse | mevr guikey ... | mevr cover ... | "
                        "mevr traversal ... | mevr squad | mevr context | mevr order ... | mevr say ... | mevr voice ... | mevr thespian ... | "
-                       "mevr instances <Package.Class> [text] | mevr activate <n> [input]");
+                       "mevr instances <Package.Class> [text] | mevr activate <n> [input] | mevr setloc <n> X Y Z | mevr reload [status | try] | "
+                       "mevr reticles | mevr melee punch|strike");
 }
 
 #endif

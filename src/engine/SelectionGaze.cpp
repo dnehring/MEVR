@@ -14,7 +14,7 @@
 namespace mevr::engine::selection_gaze {
 namespace {
 
-#if defined(MEVR_GAME_LE3)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 constexpr char const* kHookName = "UBioPlayerSelection::FindCurrentSelectionTarget";
 using tUpdateSelection = void(void* selection);
 #else
@@ -30,7 +30,7 @@ using tUpdateSelection = int(void* selection, float deltaSeconds);
 //             with the smallest angle that the POV's location can see (IsInLineOfSightFrom).
 constexpr std::uint32_t kUpdateSelectionRva = addresses::kUpdateSelection;
 
-// LE3 searches in a separate void(this) body. Its provider supplies the controller's
+// LE2 and LE3 search in a separate void(this) body (LE2 0xAC0530, LE3 0xA9BF90). Its provider supplies the controller's
 // rotation, not CameraCache.POV.Rotation. Both paths share the swap/restore lifetime.
 
 tUpdateSelection* gOrig = nullptr;  // written before the hook goes live (core/Hook)
@@ -58,7 +58,7 @@ bool Ask(Provider provider, void const* selection, Swap& swap) {
 
 // No C++ objects with destructors here, so __finally keeps the in-flight count right and the camera put back even
 // when an exception unwinds through the engine's call.
-#if defined(MEVR_GAME_LE3)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 void UpdateSelectionHook(void* selection) {
 #else
 int UpdateSelectionHook(void* selection, float deltaSeconds) {
@@ -79,11 +79,11 @@ int UpdateSelectionHook(void* selection, float deltaSeconds) {
         write_journal::Wrote("SelectionGaze.povRotation", swap.povRotation);
         gSwapped.fetch_add(1, std::memory_order_relaxed);
     }
-#if !defined(MEVR_GAME_LE3)
+#if !defined(MEVR_GAME_LE2) && !defined(MEVR_GAME_LE3)
     int result = 0;
 #endif
     __try {
-#if defined(MEVR_GAME_LE3)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
         gOrig(selection);
 #else
         result = gOrig(selection, deltaSeconds);
@@ -96,7 +96,7 @@ int UpdateSelectionHook(void* selection, float deltaSeconds) {
         }
         gInFlight.fetch_sub(1, std::memory_order_release);
     }
-#if !defined(MEVR_GAME_LE3)
+#if !defined(MEVR_GAME_LE2) && !defined(MEVR_GAME_LE3)
     return result;
 #endif
 }

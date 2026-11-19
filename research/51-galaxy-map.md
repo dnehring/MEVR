@@ -465,3 +465,16 @@ The initial cold development dependency build reported existing LExSDKv2 C4315/C
 including Halcyon's `/W3` target, retain the repository's existing policies. No SDK code was added or changed.
 Builds/logs and the copied owner log remain ignored. No game, deployment, SteamVR, GPU test or window input was used.
 The subsequent verification-note commit changes documentation only; this receipt identifies the tested source precisely.
+
+### 8.5 One copy for the trilogy (2026-11-17, lane GX)
+
+The window and the held view are shared code now, unchanged in behaviour: `game/GalaxyProjector` has `StereoWindow` (this
+section's `StepWindow` from the captures' creation on: their size from the game window's aspect, CineScreen's parallel
+cameras, the scene's window fields and camera, the 5 s retry, the `galaxy window:` lines), `HeldView`/`Remember` (the on-foot
+view with `HoldBaseZ`), `PutRenderHold` and `GameWindow`; `game/GalaxyMap` keeps ME1's own parts (the console, the tables, the
+hologram on foot, the Flash movie, the closing bridge) and calls them. The host's held-view swap moved from LE1's GamePointer
+to `plugin/GalaxyHologram` (`HoldViewBegin/End`, the writes in `plugin/PovSwap.hpp`, the same `WorldView.*` journal names),
+which LE1's `GalaxyViewSwapBegin` calls first as before. ME3 runs the same flow over its CIC's projector
+(research/le3-galaxy.md "The projector flow"). Same-pose check on the fake headset, main 1b1b702c against this change (`open
+BIOA_NOR10`, `mevr galaxy use`, snapshots on foot, with the map open and after `exitGalaxyMap`): docs/galaxy-projector-handoff.md
+"2026-11-17"; `mevr-galaxy-preview`'s twelve PNGs byte-identical.

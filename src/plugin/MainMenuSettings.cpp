@@ -2,6 +2,7 @@
 // What each row of our main menu drives (plugin/MainMenuSettings.hpp, research/28 section 4).
 
 #include "plugin/MainMenuSettings.hpp"
+#include "core/vr/MakoSeat.hpp"
 
 // One menu for both games (docs/le2-continuation-plan.md M4.1, research/le2-menus.md): LE1's host has Halcyon's LE1 renderer
 // (its VrConfig, profiles and render size) and the LE1 host's modules the rows drive (the colour, the voice, OpenAL Soft, the
@@ -22,19 +23,25 @@
 #include "plugin/SteamVrSmoothingRequest.hpp"
 #include "plugin/Voice.hpp"
 #else
+#include "core/vr/RenderTarget.hpp"  // the sequels' render target from the headset (FirstStartEyeSize, SetResolution)
 #include "plugin/ArmSample.hpp"
 #include "plugin/MenusLe2.hpp"
 #endif
 // The colour correction (plugin/Colour, research/27): in both hosts (ME2's eye copy since fc24c20d, research/le2-picture.md).
 #include "plugin/Colour.hpp"
+// Report a problem and the crash offer (research/33 section 8): in every host; MEVR Setup's copy in that game's ASI folder
+// writes the zip for the game it sits in (docs/trilogy-plan.md T52).
+#include "plugin/ReportRequest.hpp"
 
 #include "core/Ini.hpp"
 #include "core/Log.hpp"
+#include "core/vr/CalibrationFile.hpp"
 #include "core/vr/CineScreen.hpp"
 #include "core/vr/ConversationWorld.hpp"
 #include "core/vr/PerformanceModes.hpp"
 #include "core/vr/WorldUi.hpp"
 #include "plugin/Calibration.hpp"
+#include "plugin/MainMenu.hpp"  // the top bar's Leave: the mod's word (research/28 "Leave")
 #include "plugin/Renderer.hpp"
 #include "plugin/TestLoop.hpp"
 #include "plugin/Voice.hpp"
@@ -56,6 +63,9 @@ namespace mevr::host::main_menu {
 namespace {
 
 namespace ms = vr::menu_settings;
+#if !defined(MEVR_MENU_LE1)
+namespace rt = vr::render_target;
+#endif
 namespace cv = vr::colour;
 
 constexpr std::uint64_t kSliderRestMs = 300;    // a slider's value is written once it has rested this long
@@ -281,6 +291,10 @@ void Settings::Read(menu::Values& v) {
         }
     }
     auto flag = [&](char const* key, bool value) { v.numbers[key] = value ? 1.0f : 0.0f; };
+    // The top bar's Leave (ME2 and ME3, research/28 "Leave"): only while the mod says the level's way out would act here.
+    flag("can_leave", (GameMenuOffers() & vr::game_menu::kOfferLeave) != 0);
+    // A renderer without ME1's 3D cinema screen offers only the flat screen (renderer::Caps::cineScreen; every game's has it).
+    flag("cine_flat_only", !mevr::host::renderer::Capabilities().cineScreen);
 
     // Comfort.
 #if defined(MEVR_MENU_LE1)
@@ -340,9 +354,6 @@ void Settings::Read(menu::Values& v) {
     v.texts["cine_convo"] = convo == cw::Mode::Vr ? "flat" : "screen";
     v.texts["cine_cut"] = ini.Num("Cinematics", "cutscenes", cineDefaults.cutscenes ? 1.0f : 0.0f) != 0.0f ? "screen" : "flat";
 #endif
-#if defined(MEVR_WITH_HALCYON_LE3)
-    v.texts["cine_convo"] = v.texts["cine_cut"] = "flat";
-#endif
     v.numbers["cine_width"] = std::clamp(ini.Num("Cinematics", "widthM", 2.9f), 1.5f, 8.0f);
     v.numbers["cine_distance"] = std::clamp(ini.Num("Cinematics", "distanceM", 3.5f), 1.0f, 6.0f);
     v.numbers["cine_depth"] = std::clamp(std::round(ini.Num("Cinematics", "depth", kCineDepthFull) / kCineDepthFull * 100.0f), 0.0f, 150.0f);
@@ -378,6 +389,11 @@ void Settings::Read(menu::Values& v) {
     // The weapon drawn, like exploring (research/38): the mod reads exploreStance and drawRate, the host constantEye.
     flag("explore_stance", ini.Num("Hands", "exploreStance", 0.0f) != 0.0f);
     flag("constant_eye", ini.Num("Hands", "constantEye", 1.0f) != 0.0f);
+    {
+        // The sequels' first-person eye, the headset A/B (plugin/HalcyonSequelBridge, research/38): 0 today's, 1 between, 2 ME1's.
+        float const step = ini.Num("Hands", "eyeTest", 0.0f);
+        v.texts["eye_test"] = step >= 1.5f ? "me1" : step >= 0.5f ? "between" : "today";
+    }
     v.numbers["draw_rate"] = std::clamp(ini.Num("Hands", "drawRate", 6.0f), 1.0f, 10.0f);
     flag("gun_kick", ini.Num("Hands", "gunKick", 1.0f) != 0.0f);  // the mod reads it (game/gun_kick, research/24 section 8)
     // Features on by default with no row until 2026-11-04 (the release checklist's file-only list): the mod's defaults are on.
@@ -385,6 +401,11 @@ void Settings::Read(menu::Values& v) {
     flag("vent", ini.Num("Vent", "enabled", 1.0f) != 0.0f);
     flag("mako_controls", ini.Num("Mako", "controls", 1.0f) != 0.0f);
     flag("cockpit", ini.Num("Cockpit", "enabled", 1.0f) != 0.0f);
+    bool const bottomAvailable = vr::mako_seat::BottomAvailable(File().parent_path());
+    auto const seat = vr::mako_seat::Parse(ini.Text("Cockpit", "seatPosition", ""))
+        .value_or(vr::mako_seat::FromScript(ini.Text("Cockpit", "script", vr::mako_seat::kTopScript)));
+    flag("mako_bottom_available", bottomAvailable);
+    v.texts["mako_seat"] = bottomAvailable && seat == vr::mako_seat::Position::Bottom ? "bottom" : "top";
     {
         // The controller guide: what each button does with these settings (core/vr/MenuSettings GuideTexts).
         ms::GuideInput g;
@@ -425,8 +446,8 @@ void Settings::Read(menu::Values& v) {
     flag("cal_running", cal.running);
     flag("manual_ready", !cal.key.empty() && !cal.running);
     std::string const manualSection = vr::manual_calibration::Section(cal.key);
-    if (!path.empty() && !cal.key.empty()) {
-        ini.sections[manualSection] = ReadSection(path, Wide(manualSection).c_str());
+    if (!cal.key.empty()) {
+        ini.sections[manualSection] = calibration::SharedSection(manualSection);  // the three games' one file (research/25 section 17)
     }
     for (auto const& f : vr::manual_calibration::kFields) {
         v.numbers[f.menu] = cal.key.empty() ? 0.0f
@@ -522,8 +543,25 @@ void Settings::Read(menu::Values& v) {
     v.numbers["panel_follow"] = c.hudPanelFollowDeg;
     flag("reticle", c.handReticle);
 #else
-    // ME2: no render size, upscale or performance levers of ours on its renderer yet (their rows are greyed out); the HUD
-    // panel's values are ME1's defaults (renderer::Hud(); lane B's HUD panel on ME2).
+    // The sequels: the render size follows the headset as ME1's (the renderer's RenderW/RenderH, renderer::RenderTarget, at
+    // the game's own shape; the owner, 2026-11-18) and ME1's upscale runs on them (research/27 section 9), so those two rows
+    // work; the Performance modes and the other rows of the group (ME1's render levers, SteamVR's smoothing request,
+    // Halcyon LE1's cutscene cap) stay greyed. The HUD panel's values are ME1's defaults (renderer::Hud()).
+    {
+        renderer::RenderTarget const target = renderer::GetRenderTarget();
+        rt::Shape const shape{target.multiple, target.minAspect};
+        v.texts["quality"] = rt::ResolutionChoice(shape, target.width, target.height, target.recommendedWidth,
+            target.recommendedHeight);
+        v.texts["quality_text"] = target.width > 0 && target.height > 0 ? ms::SizeText(target.width, target.height)
+                                                                         : std::string("the game's own size");
+        bool const pendingSize = target.liveWidth > 0 && (target.liveWidth != target.width || target.liveHeight != target.height);
+        v.texts["quality_note"] = pendingSize ? std::format("applies after a restart (now rendering {})",
+                                                    ms::SizeText(target.liveWidth, target.liveHeight))
+                                              : std::string("applies after a restart");
+        flag("headset_known", target.recommendedWidth > 0 && target.recommendedHeight > 0);
+        v.texts["headset_text"] = rt::HeadsetSizesText(shape, target.recommendedWidth, target.recommendedHeight);
+    }
+    v.texts["upscale"] = ms::UpscaleChoice(ini.Text("Upscale", "method", "fsr"));
     renderer::HudSettings const hud = renderer::Hud();
     v.numbers["hud_distance"] = hud.hudPanelDistanceM;
     v.numbers["hud_size"] = std::round(hud.hudPanelWidthM / 1.3f * 100.0f);
@@ -605,11 +643,11 @@ void Settings::Read(menu::Values& v) {
     v.texts["perf_msg"] = p.pending ? std::format("Measuring: {:.0f} s of 20", p.seconds) : perfMsg_;
     v.texts["content_installed"] = setup_request::InstalledPacksText();
     v.texts["content_msg"] = contentMsg_;
+#endif
     // Report a problem (research/33 section 8): the last request's outcome, and the offer after a crash.
     std::string const reportStatus = report_request::StatusText();
     v.texts["report_msg"] = reportStatus.empty() ? reportMsg_ : reportStatus;
     flag("crash_offer", report_request::CrashOffer());
-#endif
     // The top bar.
     v.texts["chip_headset"] = headset.empty() ? std::string("Headset not started") : headset;
     v.texts["chip_controllers"] = controllers.empty() ? std::string("No controllers yet") : controllers;
@@ -742,6 +780,13 @@ void Settings::Flush(bool all) {
     std::wstring const& path = mevr::host::SettingsPath();
     std::uint64_t const now = Now();
     for (ms::PendingWrites::Edit const& edit : pending_.TakeDue(now, all)) {
+        if (vr::calibration_file::Shared(edit.section, edit.key)) {
+            // The player's calibration (the play position, the manual offsets): the three games' one file, research/25 section 17.
+            bool const ok = calibration::WriteShared(edit.section, edit.key, edit.value);
+            log::Info("main menu: [{}] {} = {} in {}{}", edit.section, edit.key, edit.value, vr::calibration_file::kFileName,
+                ok ? "" : " (NOT saved)");
+            continue;
+        }
         if (path.empty()) {
             continue;
         }
@@ -784,8 +829,26 @@ void Settings::SaveHalcyon(char const* why) {
 
 #if !defined(MEVR_MENU_LE1)
 bool Settings::SetResolution(std::string const& choice) {
-    log::Info("main menu: render resolution {}: not on Mass Effect 2 yet (its renderer takes the game window's size)", choice);
-    return false;
+    // A headset chip at the game's own shape (core/vr/RenderTarget Shape): the renderer's RenderW/RenderH and
+    // GamerSettings.ini for the next launch (renderer::SetRenderTarget). The sequels have no ladder.
+    renderer::RenderTarget const target = renderer::GetRenderTarget();
+    if (!target.settable) {
+        log::Info("main menu: render resolution {}: this renderer's size isn't ours to set", choice);
+        return false;
+    }
+    ms::Size const size = rt::HeadsetSize({target.multiple, target.minAspect}, choice, target.recommendedWidth,
+        target.recommendedHeight);
+    if (size.width <= 0) {
+        log::Warn("main menu: render resolution {}: no size for it (the headset's isn't known before VR starts)", choice);
+        return false;
+    }
+    if (size.width == target.width && size.height == target.height) {
+        return true;
+    }
+    bool const ok = renderer::SetRenderTarget(size.width, size.height);
+    log::Info("main menu: render resolution {} ({}x{}, was {}x{}): {}", choice, size.width, size.height, target.width,
+        target.height, ok ? "applies after a restart" : "not written (see the renderer's log)");
+    return ok;
 }
 #else
 bool Settings::SetResolution(std::string const& choice) {
@@ -940,6 +1003,9 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
         Put("Mako", "controls", onOff("mako_controls"), true);
     } else if (key == "cockpit") {
         Put("Cockpit", "enabled", onOff("cockpit"), true);
+    } else if (key == "mako_seat") {
+        bool const bottom = v.Text("mako_seat") == "bottom" && vr::mako_seat::BottomAvailable(File().parent_path());
+        Put("Cockpit", "seatPosition", bottom ? "bottom" : "top", true);
     } else if (key == "wrist_status") {
         Put("Hud", "wristStatus", onOff("wrist_status"), true);
     } else if (key == "gun_status") {
@@ -993,6 +1059,9 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
         Put("Hands", "exploreStance", onOff("explore_stance"), true);
     } else if (key == "constant_eye") {
         Put("Hands", "constantEye", onOff("constant_eye"), true);
+    } else if (key == "eye_test") {
+        std::string const step = v.Text("eye_test");
+        Put("Hands", "eyeTest", step == "me1" ? "2" : step == "between" ? "1" : "0", true);
     } else if (key == "draw_rate") {
         Put("Hands", "drawRate", fixed(v.Number("draw_rate"), 1), final);
     } else if (key == "gun_kick") {
@@ -1073,6 +1142,8 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
         }
         renderer::SetMenuRows(rows);
         HalcyonChanged(false);  // saved 2 s after the last change, and when the menu closes
+    } else if (key == "quality") {
+        SetResolution(v.Text("quality"));
     } else {
         log::Warn("main menu: no Mass Effect 2 setting behind '{}' yet (its row is greyed out)", key);
     }
@@ -1286,6 +1357,8 @@ void Settings::Command(std::string const& name, std::string const& argument, men
         after_ = After::GameStart;
     } else if (name == "game_back") {
         after_ = After::GameBack;
+    } else if (name == "game_leave") {
+        after_ = After::GameLeave;
     } else if (name == "calibrate") {
         after_ = After::Calibrate;
     } else if (name == "recenter") {
@@ -1302,6 +1375,11 @@ void Settings::Command(std::string const& name, std::string const& argument, men
         after_ = After::Snapshot;
     } else if (name == "record") {
         testloop::RequestRecording(testloop::GetStatus().recording ? 0 : 1);
+    } else if (name == "report") {
+        // MEVR Setup writes the zip in its own process, now (plugin/ReportRequest): the menu stays open.
+        report_request::Request(v.Flag("report_snapshot"), v.Flag("report_perf"), reportMsg_);
+    } else if (name == "crash_dismiss") {
+        report_request::DismissCrash();
 #if defined(MEVR_MENU_LE1)
     } else if (name == "place_hud") {
         MELEVR::MevrBridge::RequestHudPanelReplace();
@@ -1340,11 +1418,6 @@ void Settings::Command(std::string const& name, std::string const& argument, men
         after_ = After::Perf;
     } else if (name == "content_request") {
         setup_request::Request(contentMsg_);  // MEVR Setup opens on Optional content after the game exits (research/33)
-    } else if (name == "report") {
-        // MEVR Setup writes the zip in its own process, now (plugin/ReportRequest): the menu stays open.
-        report_request::Request(v.Flag("report_snapshot"), v.Flag("report_perf"), reportMsg_);
-    } else if (name == "crash_dismiss") {
-        report_request::DismissCrash();
     } else if (name == "reset") {
         if (resetArmedMs_ == 0) {
             resetArmedMs_ = Now();
@@ -1483,7 +1556,48 @@ After Settings::TakeAfter() {
 
 #if !defined(MEVR_MENU_LE1)
 void FirstStartEyeSize() {
-    // ME2: MEVR Setup doesn't install Mass Effect 2 yet (M7.2), so nothing asks for the headset's eye size at a first start.
+    // ME2 and ME3 follow the headset as ME1 does (the owner, 2026-11-18: "Follows headset like me1"): at the first VR start
+    // the renderer's fixed size (ME2 4096x2304, ME3 3072x2216 as installed) becomes 0.85 of the headset's eye size at the
+    // game's shape, FSR scaling it up to the eye, for the next launch; once ([Display] eyeSizeSet, ME1's key). No setup's
+    // choice to wait for: MEVR Setup leaves a sequel's size to its renderer (install::GameSpec::stereoTarget).
+    static bool done = false;
+    if (done) {
+        return;
+    }
+    renderer::RenderTarget const target = renderer::GetRenderTarget();
+    if (!target.settable) {
+        done = true;
+        return;
+    }
+    if (target.recommendedWidth <= 0 || target.recommendedHeight <= 0) {
+        return;  // VR hasn't started yet: the runtime's recommendation comes with the session
+    }
+    done = true;
+    std::wstring const& path = mevr::host::SettingsPath();
+    bool const already = GetPrivateProfileIntW(L"Display", L"eyeSizeSet", 0, path.c_str()) != 0;
+    if (already) {
+        return;
+    }
+    ms::Size const size = rt::FirstStartSize({target.multiple, target.minAspect}, already, {target.width, target.height},
+        target.recommendedWidth, target.recommendedHeight);
+    if (size.width > 0) {
+        bool const ok = renderer::SetRenderTarget(size.width, size.height);
+        log::Info("first VR start: the render resolution is now 0.85 of your headset's eye size ({}x{}), {}x{} at this game's "
+                  "shape (sides in multiples of {}{}), which FSR scales up to it; was {}x{}{}: it applies from the next launch "
+                  "([Display] eyeSizeSet = 1)",
+            target.recommendedWidth, target.recommendedHeight, size.width, size.height, target.multiple,
+            target.minAspect > 0.0f ? std::format(", at least {:.2f}:1 wide", target.minAspect) : std::string(),
+            target.width, target.height, ok ? "" : " (NOT written: see the renderer's log)");
+        if (!ok) {
+            return;  // the next launch tries again
+        }
+    } else {
+        log::Info("first VR start: the render resolution {}x{} is already 0.85 of your headset's eye size ([Display] eyeSizeSet = 1)",
+            target.width, target.height);
+    }
+    if (WritePrivateProfileStringW(L"Display", L"eyeSizeSet", L"1", path.c_str()) == 0) {
+        log::Warn("first VR start: couldn't write [Display] eyeSizeSet to {}: the next VR start checks again", ini::Utf8(std::filesystem::path(path)));
+    }
 }
 #else
 void FirstStartEyeSize() {

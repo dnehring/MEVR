@@ -17,6 +17,8 @@
 #include "game/SquadPlace.hpp"
 #include "game/ViewAnchor.hpp"
 #include "ue3/Handles.hpp"
+#include "core/vr/ActionCamera.hpp"
+#include "engine/GameAdapter.hpp"
 
 #include <Windows.h>
 
@@ -126,19 +128,14 @@ ue3::FieldRef gTimeToReachFullSpeed{"SFXGame.SFXCameraInput", "TimeToReachFullSp
 ue3::FieldRef gStickDeadZone{"SFXGame.SFXCameraInput", "StickDeadZone", ue3::kEveryGame};
 ue3::FunctionRef gSetRotationRef{"Engine.Actor.SetRotation", ue3::kEveryGame};
 #if defined(MEVR_GAME_LE3)
-ue3::FunctionRef gMoveIgnored{"Engine.PlayerController.IsMoveInputIgnored", ue3::kEveryGame};
-ue3::FieldRef gCurrentAction{"SFXGame.BioPawn", "CurrentCustomAction", ue3::kEveryGame};
 // Mode 0 alone does not admit locomotion: authored scenes can retain it while ignoring input.
-// Query the current native owner on the game thread; missing fields/returns block all comfort movement.
+// Query the current native owner on the game thread; missing fields/returns block all comfort movement. Any physics and
+// cover or none admit a turn, as long as the game can say which (the one admission read: game/Player `MovementRefused`).
 bool NativeLocomotionAllowed() {
-    auto* pc = player::Controller();
-    auto* pawn = player::BioPawn(pc);
-    if (!ue3::runtime::IsAlive(pc) || !ue3::runtime::IsAlive(pawn) || player::GameMode(pc) != 0 ||
-        gCurrentAction.Read<std::int32_t>(pawn) != 0 || !gPhysics.Read<std::uint8_t>(pawn) ||
-        !gCoverType.Read<std::uint8_t>(pawn) || !gCoverAction.Read<std::uint8_t>(pawn)) return false;
-    auto* function = gMoveIgnored.Get();
-    ue3::Params parms(ue3::runtime::Get(), function);
-    return ue3::runtime::Call(pc, function, parms) && parms.ReturnBool() == false;
+    namespace admit = player::admission;
+    auto* const pc = player::Controller();
+    return player::MovementAdmitted(pc, player::BioPawn(pc),
+        admit::kOnFoot | admit::kNoAction | admit::kPhysicsKnown | admit::kCoverKnown | admit::kMoveInput);
 }
 #endif
 
@@ -193,6 +190,17 @@ ue3::Object* CameraMode(ue3::Object* controller) {
         return to != nullptr && ue3::runtime::IsAlive(to) ? to : nullptr;
     }
     return mode;
+}
+
+// The camera modes where the player's own turn applies: view level's, and ME3's action cameras (a roll, a melee, a hit:
+// the owner, 2026-11-18, the snap turn stays the player's through them). Inlined: ME1 compiles view level's test alone.
+__forceinline bool TurnCameraAllows(std::string const& name) {
+    if constexpr (engine::adapter::kActionCameras) {
+        if (vr::IsActionCamera(name)) {
+            return true;
+        }
+    }
+    return vl::CameraModeAllows(name);
 }
 
 // The game's own stick turn in this camera mode (BioPlayerInput.ComputeStickResponse reads the mode's SFXCameraInput):
@@ -328,7 +336,7 @@ void Tick(double deltaSeconds, Link const& link) {
         why = Why::Cover;
     } else if (ladder) {
         why = Why::Ladder;
-    } else if (mode == nullptr || !vl::CameraModeAllows(gModeName)) {
+    } else if (mode == nullptr || !TurnCameraAllows(gModeName)) {
         why = Why::CameraMode;
     } else if (squad) {
         why = Why::SquadMenu;

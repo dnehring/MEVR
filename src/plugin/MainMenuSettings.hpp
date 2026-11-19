@@ -33,6 +33,7 @@ enum class After {
     Close,          // Resume
     GameStart,      // close, then the mod opens the game's pause menu (ShowMenuGui; HostServices v19, game/GameMenuRequest)
     GameBack,       // close, then the mod holsters a drawn weapon (SFXGameModeDefault.TryHolster, on foot)
+    GameLeave,      // close, then the mod calls the level's way out (LeaveWorld; ME2 and ME3, only where it acts)
     Calibrate,      // close, then start the guided calibration
     LiveAdjust,     // compact live panel; selected hand stays visible
     Classic,        // close, then open Halcyon's menu

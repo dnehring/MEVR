@@ -69,6 +69,16 @@ function Assert-LoadMode($Session, [string]$Game, [bool]$RendererPreview = $fals
         }
     }
 }
+function Get-LoadArtifactIdentity([string[]]$Paths) {
+    @($Paths | ForEach-Object { [pscustomobject]@{ path = $_; sha256 = (Get-FileHash -LiteralPath $_).Hash } })
+}
+function Test-LoadArtifactsUnchanged($Identity) {
+    # Every recorded artifact byte for byte, the mod's settings file included: an appended block during the load
+    # refuses it as any other change does. launch.ps1 waits out the mod's first-run appends before a load can start
+    # (Wait-RunModSettings; gotcha mod-settings-appended-after-xr-ready).
+    if (-not @($Identity).Count) { throw 'Missing runtime artifact identities' }
+    return @($Identity | Where-Object { (Get-FileHash -LiteralPath $_.path).Hash -ne $_.sha256 }).Count -eq 0
+}
 function Assert-LoadProcessSet([object[]]$Processes, $Recorded, [string]$ExpectedPath) {
     if ($Processes.Count -ne 1) { throw 'Loading requires exactly the owned game process, with no other game running' }
     Assert-RunProcess $Processes[0] $Recorded $ExpectedPath

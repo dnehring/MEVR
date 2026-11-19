@@ -14,7 +14,7 @@ driving ME2 by hand): leave it alone and wait.
 
 ```powershell
 tools\le2-halcyon-run\run-lock.ps1 -Status
-tools\le2-halcyon-run\prep.ps1 -Holder <session name> [-Tag what] [-Diagnostics]   # once per stretch: backups, loader, deploy, fake headset
+tools\le2-halcyon-run\prep.ps1 -Holder <session name> [-Tag what] [-Diagnostics] [-FirstVrStart]   # once per stretch: backups, loader, deploy, fake headset
 tools\le2-halcyon-run\launch.ps1 -Holder <session name> [-Kill]                                           # each run: Steam's -game 2, waits for the XR session
 tools\le2-halcyon-run\load.ps1 -Holder <session name> [-Save <career>\<file>.pcsav]   # default LE2: Freedom's Progress
 # ... the run: logs in ME2\Binaries\Win64\Logs\LE2MEVR.log and %LOCALAPPDATA%\MELE2VR\MELE2VR_Log.txt
@@ -36,10 +36,42 @@ tools\le2-halcyon-run\restore.ps1 -Holder <session name>                        
   is checked before and after, and the game's own autosaves after a load are put back by `restore.ps1`. `mevr state`
   (the world, the pawn, the game mode) and `mevr savedesc` (the save the game would resume) are the console's other ME2
   lines. Needs a development build (the console request).
+- **The mod's first-run settings are waited out at launch** (since 2026-11-17; gotcha
+  [mod-settings-appended-after-xr-ready](../../docs/knowledge/gotchas/mod-settings-appended-after-xr-ready.md)): every
+  prep leaves only `[Debug] openxrRuntime` (and `[Display] eyeSizeSet = 1`, below) in `ASI\LE2MEVR.ini`, and the mod appends its default blocks on its first tick,
+  about 2 s after the XR marker at the title (a block the busy file refused about a second later). `load.ps1` hashes that
+  file with the save and the binaries before its first request, so a load started at once was refused as `Save or runtime
+  artifact changed during load` although the save had loaded. After the XR marker `launch.ps1` now waits for this
+  launch's `hands: calibration pitch` and `colour: profile` lines in the mod's log, then for 3 s without a write to the
+  file (attributes only: it never opens the file, so it can't make an append fail), at most 90 s, and prints
+  `mod settings settled: LE2MEVR.ini unchanged for ...` (a timeout only warns `mod settings did not settle ...`); both go
+  to the session's `mod-settings.txt`, the settled file to `effective-mod.ini`. Load at once after `launch.ps1`: no
+  waiting at the title. `load.ps1` accepts nothing new: any change to a recorded artifact during a load, an appended block
+  included, still refuses it. ME3's renderer preview has waited the same way since 2026-11-15
+  (`Wait-PreviewInitializedConfig`, stricter: every known block, nothing unknown) and needed nothing.
 - `-Diagnostics` turns `MELE2VR.ini`'s `[VR] Diagnostics` on for the stretch (Halcyon's `[ME2FP]`, `[ME2DISC]` lines; F3
   held 0.3 s dumps the camera graph).
 - Never run anything that takes the game slot (`tools/game-slot.ps1`) while a stretch is open, and never `return` a
   slot without asking the owner.
+- **The render size of a stretch is `MELE2VR.ini`'s** (since 2026-11-18, lane AU4): prep writes `[Display] eyeSizeSet = 1`
+  into `ASI\LE2MEVR.ini`, so the host's first-VR-start rule (the render target from the headset's eye size, as ME1's:
+  `plugin/MainMenuSettings` `FirstStartEyeSize`) stands down and every launch renders at the same size. `-FirstVrStart`
+  leaves the key out: the first launch's VR start writes 0.85 of the eye (sides in multiples of 8) into `MELE2VR.ini` and
+  `GamerSettings.ini` (log `first VR start:`, `[VRRES] [MEVR] next launch`), the next launch renders at it.
+- **A launch shows two processes, and the first one ends** (since 2026-11-16; gotcha
+  [ea-steam-launcher-starts-the-launcher-suspended](../../docs/knowledge/gotchas/ea-steam-launcher-starts-the-launcher-suspended.md)):
+  Steam hands `-applaunch 1328670` to EA's `EASteamLauncher.exe`, which creates `MassEffectLauncher.exe` **suspended**
+  and resumes it 0.2-14 s later; the launcher starts the game and exits. A suspended process has no readable path, which
+  the old one-shot check refused (`Live process identity unavailable or changed; not adopted (pid=... path='' ...)`), and
+  the launcher's exit looked like a first game process. `launch.ps1` now follows every `MassEffectLauncher` and game
+  process over time (`Step-RunAdoption` in `session-common.ps1`): one whose identity can't be read yet is waited for (at
+  most 60 s), one that exits is dropped, the launcher is recorded once its identity reads, and the game is adopted only
+  as the single live one whose path and start time have stayed readable and unchanged for 5 s. A wrong path, a start
+  before the request, a PID whose identity changes or comes back after exiting, a process another open session records
+  and two live game processes at once are still refused. Every candidate (with its parent process) and every verdict is
+  printed and appended to the session's `launch-candidates.txt`. The recorded `gameProcess`/`launcherProcess` are as
+  before, so `-Stop`, `-Kill`, `load.ps1` and `restore.ps1` are unchanged; the by-hand workaround (console `mevr load`,
+  `Stop-Process`) is no longer needed.
 
 ## ME3 development dump only
 
@@ -109,7 +141,10 @@ Synthetic files only; these checks never launch or deploy the game.
 powershell -NoProfile -ExecutionPolicy Bypass -File tools\le2-halcyon-run\test-session.ps1
 ```
 
-These cover mode/holder/game refusals, legacy metadata, path boundaries, PID reuse, failed/altered/empty backups,
+These cover mode/holder/game refusals, legacy metadata, path boundaries, PID reuse, launch adoption over time (a
+suspended launcher, a candidate that exits before its successor settles, unreadable then readable identities, two live
+candidates, earlier or foreign processes), ME2's wait for the mod's settings (stale markers, a late append restarting
+the quiet time under an exclusive writer, a file that never stands still, lost ownership), failed/altered/empty backups,
 wrong-build and truncated dump metadata, and rejecting hosts without the dump-only gate. They do not replace the
 first protected native launch and hash-verified restoration acceptance.
 
@@ -162,7 +197,8 @@ Session restore still owns any autosave/settings changes caused by the game.
 
 Offline checks: `powershell -NoProfile -File tools/le2-halcyon-run/test-load.ps1`. They cover types, state parsing,
 identity transitions, gameplay refusals, exact descriptor/response matching, strict mode booleans and process
-ownership. They do not call the request channel or touch a game/profile.
+ownership, and the artifact freeze after launch's settings wait (an appended block, an edited key, a same-length
+rewrite or another artifact changed during the load each refuse it). They do not call the request channel or touch a game/profile.
 
 
 ## Explicit ME3 renderer preview
@@ -198,18 +234,28 @@ try {
 }
 ```
 
-Prep writes a small `ASI/LE3MEVR.ini` with `[Debug] requests=1` and a process-only
-SteamVR OpenXR manifest override. It writes the actual renderer file,
-`Binaries/Win64/MELE3VR.ini`; the current deploy script only installs a renderer INI
-for LE2. The candidate selects source mode 4 (SFR2), the lowest resolution shown by
-ME3's menu (3072x1728), head look, head aim off, native positional scale 2.0 and
-first-person conversations off. `vr-game-settings.ps1` supplies matching dimensions,
+Prep writes a small `ASI/LE3MEVR.ini` with `[Debug] requests=1`, a process-only
+SteamVR OpenXR manifest override and `[Display] eyeSizeSet = 1` (the host's first-VR-start rule, which would write the
+headset's size into `MELE3VR.ini` for the next launch, stands down: `-PreviewRenderSize` decides). It writes the actual renderer file,
+`Binaries/Win64/MELE3VR.ini` (over the one `deploy-asi.ps1 -Game LE3` installs when there is none,
+`src/halcyon/le3/runtime/MELE3VR.ini`: this preview's defaults without the Diagnostics line). The candidate selects
+source mode 4 (SFR2), ME3's default render size 3072x2216, each eye's own frustum, head look, head aim off, native
+positional scale 2.0 and first-person conversations off. `vr-game-settings.ps1` supplies matching dimensions,
 SDR and borderless/non-fullscreen settings. No nonexistent `[FirstPerson] Enabled`
-key is written: first-person activation is an independent existing renderer control.
+key is written: since 2026-11-17 (lane FP3) the renderer's `ApplyMevrBaseline` pins first
+person, the head hidden, after every ini load, in memory (research/trilogy-first-person.md),
+so the preview runs in first person and this file stays as prep wrote it.
 For a bounded renderer bisection, prep accepts `-PreviewRendererMode 0` (mono), `2`
 (alternate-eye stereo) or the default `4` (same-frame stereo), and optional
 `-Diagnostics`. The session records these typed options; launch verifies the exact
 corresponding config and artifact hashes. Restore before selecting another variant.
+`MetricEyeFrustum=1` (each eye's own frustum, mode 2, with the host's `[Stereo] flareWindow`) is ME3's default since
+2026-11-17 (the owner's answer to docs/trilogy-plan.md question 17); `-PreviewSharedWindow` writes `MetricEyeFrustum=0`
+(the shared symmetric window, mode 1), and `-PreviewEyeFrustum` (the default) is still accepted. `-PreviewRenderSize
+<W>x<H>` (multiples of 8, 1280..8192, four digits each; default `3072x2216`, ME3's default: ME3 rounds its
+scene targets up to a multiple of 8 and the renderer's capture needs them the backbuffer's size) sets `RenderW`/`RenderH` and
+`vr-game-settings.ps1`'s ResX/ResY (research/le3-flares-and-window.md). Both are recorded in the session like the
+mode and checked by launch.
 Launch checks the renderer config and binary hashes again after XR readiness. The
 mod may append its known first-run settings sections; its original Debug/Pointer
 prefix cannot change, duplicate or unknown appended sections/keys are refused, and
@@ -265,7 +311,7 @@ retains ownership and a receipt for stop/restore.
 Renderer-preview launch then waits up to 30 seconds for compiled settings initialization.
 Fresh `hands: calibration pitch` and `colour: profile` markers must appear in the
 same host log (the game `Logs/LE3MEVR.log`, or its `%LOCALAPPDATA%/MEVR` fallback).
-The effective ini must remain unchanged for 1.25 seconds and contain all 20 known,
+The effective ini must remain unchanged for 1.25 seconds and contain all 21 known ([Reload] since 2026-11-16),
 populated default sections. Suffix parsing waits for stable text so a readable
 half-written append is not mistaken for corruption. Every poll still verifies
 process/lock ownership, the exact protected prefix, renderer ini and runtime binaries.

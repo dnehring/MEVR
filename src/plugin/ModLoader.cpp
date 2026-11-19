@@ -12,6 +12,9 @@
 #include "plugin/ProcessEventHook.hpp"
 #include "engine/SettingsFile.hpp"
 
+#if defined(MEVR_WITH_HALCYON_LE2)
+#include "plugin/MotionBlurGuard.hpp"
+#endif
 #if defined(MEVR_WITH_HALCYON_LE3)
 #include "plugin/HalcyonLe3.hpp"
 #include "plugin/MotionBlurGuard.hpp"
@@ -39,8 +42,10 @@
 #include "core/vr/SquadPlace.hpp"
 #include "core/vr/SquadMenu.hpp"
 #include "core/vr/Sights.hpp"
+#include "core/vr/ScopeCapture.hpp"
 #include "plugin/FloorLock.hpp"
 #include "plugin/PadMerge.hpp"
+#include "plugin/RenderLevers.hpp"
 #include "plugin/TestLoop.hpp"
 #include "plugin/Vignette.hpp"
 #include "plugin/XrHost.hpp"
@@ -212,6 +217,7 @@ HostServices WithRenderer(HostServices services) {
     if (renderer::Capabilities().screenReticleHide) {
         services.hideScreenReticle = &mevr::host::renderer::ScreenReticleHidden;
     }
+    services.secondEyeIsReplay = &render_levers::SecondEyeIsReplay;  // v43: false where sharePass stands down
     return services;
 }
 // v17: the comfort vignette's darkness (plugin/Vignette, a quad of ours on either renderer).
@@ -310,6 +316,7 @@ void ForgetRendererModState() {
     xr_host::ForgetHaptics();
 #if defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
     traversal_cue::Forget();
+    vr::scope_capture::Reset();  // the scope's picture goes back to the eye copy (LE1's: ForgetLe1ModState)
 #endif
 }
 #endif
@@ -359,7 +366,7 @@ HostServices WithVoice(HostServices services) {
 }
 #endif
 
-#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE3)
+#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
 // v26: the galaxy hologram (core/vr/GalaxyHologram, plugin/GalaxyHologram, research/51 section 8).
 void HostSetGalaxyHologram(vr::galaxy_holo::Scene const* scene) {
     if (scene != nullptr) {
@@ -416,7 +423,9 @@ HostServices WithGameMenuRequest(HostServices services) {
     services.takeGameMenuRequest = &HostTakeGameMenuRequest;
     return services;
 }
-// v20: the scope's real zoomed render (game/ScopeCapture, plugin/ScopeCaptureSource, research/39).
+#endif
+#if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
+// v20: the scope's real zoomed render (game/ScopeCapture, plugin/ScopeCaptureSource, research/39), every game's host.
 void HostSetScopeCapture(vr::scope_capture::Capture const* capture) {
     if (capture != nullptr) {
         vr::scope_capture::Publish(*capture);
@@ -429,6 +438,8 @@ HostServices WithScopeCapture(HostServices services) {
     services.setScopeCapture = &HostSetScopeCapture;
     return services;
 }
+#endif
+#if defined(MEVR_WITH_HALCYON)
 void HostSetInteractLabel(vr::interact::Label const* label) {
     if (label != nullptr) {
         vr::interact::Publish(*label);
@@ -562,32 +573,37 @@ std::uint32_t HostMainMenu() {
 std::uint32_t HostTakeGameMenuRequest() {
     return static_cast<std::uint32_t>(main_menu::TakeGameRequest());
 }
-#if defined(MEVR_WITH_HALCYON_LE2)
-// M4.3 (research/le2-menus.md "ME2's screens on the wrist"): the game's screens on the wrist, as LE1's WithWorldUi gives them
-// (v27 setWorldUi, v34 reserveWorldUi, the rail's requests with their origin), and the game pointer's GUI events (v30).
+#if defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
+// M4.3 (research/le2-menus.md "ME2's screens on the wrist"; ME3: research/le3-native-gui.md "The game's screens on ME3"): the
+// game's screens on the wrist, as LE1's WithWorldUi gives them (v27 setWorldUi, v34 reserveWorldUi, the rail's requests with
+// their origin).
 void HostSetWorldUi(vr::world_ui::State const* state) {
     world_ui::Publish(state);
 }
 std::uint32_t HostTakeGameUiRequest() {
     return main_menu::TakeGameRequestValue();
 }
+#endif
+// The game pointer's input as the game's own GUI events (v30, research/57 section 6), on both sequels: the mod's
+// game/GuiCursor translates the shared queue into each game's BioGuiEvents (ME3: research/le3-native-gui.md) and polls it
+// only while its native GuiKey contract is ready, so a missing consumer keeps GamePointer's SendInput fallback.
 std::uint32_t HostTakeGuiEvents(std::uint8_t* events, std::uint32_t capacity) {
     return game_pointer::TakeGuiEvents(events, capacity);
 }
-#endif
 HostServices WithMenus(HostServices services) {
     services.calibrationStateSize = static_cast<std::uint32_t>(sizeof(vr::calibration::HostState));
     services.calibration = &HostCalibration;
     services.mainMenu = &HostMainMenu;
     services.takeGameMenuRequest = &HostTakeGameMenuRequest;
-#if defined(MEVR_WITH_HALCYON_LE2)
+#if defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
     services.worldUiSize = static_cast<std::uint32_t>(sizeof(vr::world_ui::State));
     services.setWorldUi = &HostSetWorldUi;
     services.takeGameUiRequest = &HostTakeGameUiRequest;
     services.reserveWorldUi = &world_ui::Reserve;
     services.logWorldUiStats = &world_ui::LogStats;
-    services.takeGuiEvents = &HostTakeGuiEvents;
 #endif
+    services.takeGuiEvents = &HostTakeGuiEvents;
+    services.setGameMenuOffers = &main_menu::NoteGameMenuOffers;  // v44: whether the top bar's Leave would act (research/28)
     return services;
 }
 #endif
@@ -609,7 +625,8 @@ HostServices BuildServices() {
     services.traversalPresentationSize = static_cast<std::uint32_t>(sizeof(vr::traversal::Presentation));
     services.setTraversalPresentation = &halcyon_le3::SetTraversalPresentation;
     services.thespianInputBlocked = &halcyon_le3::ThespianInputBlocked;
-    // LE3 uses the shared eye-image scope tap. The native scene-capture producer remains unavailable.
+    // The scope's zoomed render (game/ScopeCapture): the mod's own scene capture, sampled by SightLayers; else the eye tap.
+    services = WithScopeCapture(services);
 #endif
 #if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2)
     services = WithVoice(WithFloorLock(WithHudPieces(WithPadMerge(WithSights(WithVignette(WithRenderer(services)))))));  // both renderers' modules
@@ -626,7 +643,10 @@ HostServices BuildServices() {
     };
 #endif
 #if defined(MEVR_WITH_HALCYON_LE2)
+    services.motionBlurProtected = &motion_blur_guard::ProtectsGameplay;  // the menu-return reapply stands down while it protects
     services = WithTraversal(services);
+    services = WithGalaxyHologram(services);  // the galaxy map over the CIC's projector (game/GalaxyProjectorFlow, the shared host)
+    services = WithScopeCapture(services);    // the scope's zoomed render (game/ScopeCapture), as LE1's and LE3's
 #endif
 #if defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
     services.interactLabelSize = static_cast<std::uint32_t>(sizeof(vr::interact::Label));

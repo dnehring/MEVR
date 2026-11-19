@@ -13,6 +13,8 @@
 #if defined(MEVR_WITH_MAIN_MENU)
 #include "plugin/MainMenu.hpp"
 #endif
+#include "plugin/Renderer.hpp"
+#include "plugin/Upscale.hpp"
 
 #include <algorithm>
 #include <cwctype>
@@ -33,6 +35,20 @@ bool QueueProcessEvent(void* object, void* function, void const* params, std::ui
 
 bool KeyDown(int vk) noexcept {
     return mevr::window::KeyDownInGame(vk);  // the game's window (or its console), not another program's
+}
+
+// The eye images' size for a renderer that makes them at the picture's size (the sequels'): larger when ME1's eye
+// upscale has something to scale to (plugin/Upscale, [Upscale] method; research/27 "One eye-image pipeline").
+void EyeImageSize(std::uint32_t sourceWidth, std::uint32_t sourceHeight, std::uint32_t recommendedWidth,
+    std::uint32_t recommendedHeight, std::uint32_t* width, std::uint32_t* height) noexcept {
+    mevr::vr::upscale::Size const size =
+        mevr::host::upscale::EyeImageSize(sourceWidth, sourceHeight, recommendedWidth, recommendedHeight);
+    if (width != nullptr) {
+        *width = size.width;
+    }
+    if (height != nullptr) {
+        *height = size.height;
+    }
 }
 
 bool OnMenuKey(bool ownMenuOpen) noexcept {
@@ -62,7 +78,8 @@ bool MainMenuOpen() noexcept {
 }
 
 bool CineScreenWanted(bool conversation) noexcept {
-    return mevr::host::cine_screen::Wanted(conversation);
+    // The renderer has the screen (the same capability our menu reads to offer it) and the player chose it.
+    return mevr::host::renderer::Capabilities().cineScreen && mevr::host::cine_screen::Wanted(conversation);
 }
 
 bool CineScreenFullRate() noexcept {

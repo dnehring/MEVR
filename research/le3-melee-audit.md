@@ -6,6 +6,12 @@ No ME3 melee action was executed. Native function declarations below are investi
 The follow-up installed-package audit below establishes six base class mappings and script-level routing;
 live admission, mounted override coverage and headset presentation remain unverified.
 
+**Since 2026-11-17 (lane MEL)** ME3's adapter runs under the trilogy's one melee path (research/20 "The trilogy's one path";
+docs/trilogy-parity-ledger.md Forks 12): `ik::melee::Gestures` with its `Staged` rules (what this audit built: neutral priming,
+the heavy chamber) and `game/Melee`'s one dispatcher, with this audit's admission and dispatch as ME3's adapter. `Throwables`'
+`Strike` named below moved to `game/Melee`. Still opt-in; its checks: research/le3-combat-fixtures.md "Melee on the first combat
+save".
+
 ## What exists and what is new
 
 ME1 already has physical swing recognition in `src/core/ik/Throwing.{hpp,cpp}` (`SwingDetector`, `RouteMelee`) and

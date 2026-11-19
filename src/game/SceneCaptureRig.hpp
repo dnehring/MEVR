@@ -26,6 +26,10 @@ struct Options {
     ue3::Object* postProcessChain = nullptr;  // with postProcess: this chain instead of the player's (the UI world's own)
 };
 
+// The engine's own post-process chains (Engine.DefaultPostProcess, or DefaultUIScenePostProcess with `uiScene`), for
+// Options::postProcessChain; nullptr if there is none. Game thread.
+ue3::Object* EngineChain(bool uiScene);
+
 class Rig {
 public:
     // `tag` names it in the log ("galaxy left"). Spawns it near `at`; false (and `Failure()`) when anything is missing.

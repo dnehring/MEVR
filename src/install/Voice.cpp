@@ -444,6 +444,10 @@ struct Job {
 
 Outcome Install(Layout const& layout, std::optional<Payload> const& payload, Choices const& choices, ModelSource const& model,
     std::function<void(Step const&)> const& progress, std::atomic<bool> const* cancel) {
+    if (!layout.Game().voice) {
+        // Every path here (voice::kDir...) is Mass Effect 1's ASI\voice: the sequels' release carries no voice files yet.
+        return Error(std::string("The voice orders' files are Mass Effect 1's: none to install for ") + layout.Game().name);
+    }
     if (!detect::IsGameRoot(layout.root)) {
         return Error("Mass Effect Legendary Edition isn't in " + detect::Utf8(layout.root.wstring()));
     }
@@ -624,6 +628,9 @@ Outcome Install(Layout const& layout, std::optional<Payload> const& payload, Cho
 }
 
 Outcome Remove(Layout const& layout) {
+    if (!layout.Game().voice) {
+        return Error(std::string("The voice orders' files are Mass Effect 1's: none installed for ") + layout.Game().name);
+    }
     if (detect::GameRunningIn(layout.root)) {
         return Error("Mass Effect (or its launcher) is running: close it first (the game holds the voice files open)");
     }

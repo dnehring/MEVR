@@ -5,7 +5,7 @@
 #include "plugin/RecenterTilt.hpp"
 #include "plugin/Renderer.hpp"
 
-#include "halcyon/le1/mevr_bridge.h"
+#include "halcyon/MevrSeams.h"
 
 #include "core/Log.hpp"
 #include "core/vr/Recenter.hpp"
