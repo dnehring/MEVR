@@ -433,6 +433,70 @@ inline bool Write(wchar_t const* section, wchar_t const* key, wchar_t const* val
     return Apply(std::filesystem::path(path), {std::move(e)}, game).empty();
 }
 
+// ---- A default the owner changed, moved once ----------------------------------------------------------------------------
+
+// A setting whose default changed (the owner's yes): a file that still holds the old default gets the new one once, and a
+// marker key beside it, so a later choice of the old value is the player's and stays. In a shared file the old value is looked
+// for in [<section>] and in each game's [<section>.<GAME>] (an old file taken in late may have left it as that game's own), and
+// the new value goes to [<section>] (Route takes the games' copies out): one write, the value and the marker together.
+struct DefaultMove {
+    bool due = false;               // the file has no marker in [<section>] yet
+    std::vector<std::string> from;  // the sections that held the old value ("Hands", "Hands.LE2")
+    bool moved = false;             // written: the new value (where the old one stood) and the marker
+    std::string error;              // the write that failed (nothing written; tried again at the next read)
+};
+
+// Two values the same: as numbers when both are ("0" and "0.0"), else as text, case-insensitive.
+inline bool SameValue(std::string_view a, std::string_view b) {
+    std::optional<double> const x = ini::Number(a);
+    std::optional<double> const y = ini::Number(b);
+    if (x && y) {
+        return *x == *y;
+    }
+    return Same(TrimView(a), TrimView(b));
+}
+
+// The plan over a parsed file as it is on disk (ini::Read, not Merged): pure, unit-tested.
+inline DefaultMove PlanDefaultMove(ini::File const& raw, std::string_view section, std::string_view key, std::string_view oldValue,
+    std::string_view marker) {
+    DefaultMove m;
+    m.due = !ini::Get(raw, section, marker).has_value();
+    if (!m.due) {
+        return m;
+    }
+    auto look = [&](std::string const& name) {
+        if (std::optional<std::string> const v = ini::Get(raw, name, key); v && SameValue(*v, oldValue)) {
+            m.from.push_back(name);
+        }
+    };
+    look(std::string(section));
+    for (std::string_view const g : kGames) {
+        look(GameSectionName(section, g));
+    }
+    return m;
+}
+
+// Reads the file, plans, and writes once (Apply: routed in a shared file, as given in a game's old one). A missing or
+// unreadable file: nothing (not due).
+inline DefaultMove MoveDefault(std::filesystem::path const& path, std::string_view section, std::string_view key,
+    std::string_view oldValue, std::string_view newValue, std::string_view marker, std::string_view game = kThisGame) {
+    if (path.empty() || Probe(path) != Access::Readable) {
+        return {};
+    }
+    DefaultMove m = PlanDefaultMove(ini::Read(path).file, section, key, oldValue, marker);
+    if (!m.due) {
+        return m;
+    }
+    std::vector<Edit> edits;
+    if (!m.from.empty()) {
+        edits.push_back(Set(section, key, newValue));
+    }
+    edits.push_back(Set(section, marker, "1"));
+    m.error = Apply(path, edits, game);
+    m.moved = m.error.empty();
+    return m;
+}
+
 // ---- Blocks of text: the modules' defaults, the migration's files -----------------------------------------------------
 
 struct Moved {

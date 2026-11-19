@@ -645,9 +645,11 @@ Turn it on: the menu's Voice page > Thespian mode > Speak Shepard's lines (or `[
   look straight down at your chest, standing and squatting. You should see Shepard's chest and legs below you with his
   knees bent and his feet on the floor, never the inside of his collar or armour; the body follows smoothly down and back
   up. Compare with `crouchBody = 0` (the old way: the eyes sink into his neck). A kneel on the floor and looking straight
-  down at the collar are the known leftovers: say whether they show. Then decide `crouchBodyUp` (off by default): with it 1,
-  crouch deep enough for the game's crouch and come halfway up, press the crouch button standing and draw a weapon: his body
-  comes up to your head (legs straightened) instead of hanging below your view. Better, or should it stay off?
+  down at the collar are the known leftovers: say whether they show.
+- [ ] 2026-11-19 `crouchBodyUp = 1` (on by default since the owner's yes, research/29 "The body up to a standing head"): stand
+  and press the left stick click (Shepard crouches by the game): his body comes up under your view, legs nearly straight, his
+  hands on your controllers, feet on the floor; crouch deep enough for the game's crouch and come halfway up, and draw a
+  weapon standing: the same. Does the straightened-legs crouch look odd, and does cover behind a low wall still count?
 - [ ] Holsters: draw from every slot (the right shoulder without hitting your head; the left-hip shotgun doesn't catch a
   resting hand). Hold the gun through a long fight: grip fatigue, slips, the 0.3 s grace. (research/19 sections 3, 5)
 - [ ] With the weapon away, melee, a grenade, the weapon wheel, the holster key and the trigger don't draw it (a buzz,

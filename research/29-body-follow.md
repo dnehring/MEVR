@@ -424,10 +424,10 @@ wherever the skeleton has both eye bones and both legs, ME2's being ME1's, resea
   `TorsoResult::bodyLift` (+ up), `crouchGap`, `liftLimited`.
 - **As far as the legs allow** (`ik::LegsRoom`): down until a leg's hip-to-ankle is 25% of its length (a full squat), up
   until 98% (straight); the lesser of both legs; without both legs in the request, no move at all (the head-only and
-  menu-held torsos carry no legs and keep the old behaviour). **Up only with `[Hands] crouchBodyUp = 1`** (off by default
-  until the owner says yes, `TorsoGoal::crouchUp`): a head above Shepard's (the game's crouch while the player stands or
-  half stands, the weapon-drawn stance's 16 cm lower head, research/58) was never inside the body, and bringing the body up
-  to it straightens legs the game animates bent.
+  menu-held torsos carry no legs and keep the old behaviour). **Up with `[Hands] crouchBodyUp = 1`** (off by default until
+  the owner's yes of 2026-11-19, on since: "The body up to a standing head" below; `TorsoGoal::crouchUp`): a head above
+  Shepard's (the game's crouch while the player stands or half stands, the weapon-drawn stance's 16 cm lower head,
+  research/58) was never inside the body, and bringing the body up to it straightens legs the game animates bent.
 - **The legs stand the body on the floor** (`ik::LegUnderBody`, `engine/BonePose`'s `Leg::planted`): each ankle back by the
   lift (plus the planted feet's correction, research/72), its rotation kept (the foot keeps its angle to the floor), the knee
   bending the way it bends, toward the body's forward as the move grows. `game/ArmIk` puts both legs in the request whenever
@@ -451,14 +451,14 @@ under the face (the slack) and clear; standing, leaning back, looking down and t
 - **The bend's posture**: a bend draws a squat (the body down and upright, the knees forward), not a hip hinge; the eyes
   are at the face, the drawn legs not where the player's are.
 - **A head above Shepard's** (the game's crouch by the button with the player standing: the eyes 45 cm over his; the
-  hysteresis band; the weapon-drawn stance): the view floats over the body as before unless `crouchBodyUp = 1`, which brings
-  the body up, the legs straight under the crouch's upper body (the game still crouched for cover and collision). A new look
-  for the owner to judge before it is a default.
+  hysteresis band; the weapon-drawn stance): the view floated over the body unless `crouchBodyUp = 1`, which brings the
+  body up, the legs straight under the crouch's upper body (the game still crouched for cover and collision). The default
+  since the owner's yes of 2026-11-19 ("The body up to a standing head", below).
 
 ### Setting, logs, snapshot, the run
 
-- `[Hands] crouchBody = 1` (appended with its default; 0: the body at the game's height, as before); `crouchBodyUp = 0`
-  (1: up too). Both read live.
+- `[Hands] crouchBody = 1` (appended with its default; 0: the body at the game's height, as before); `crouchBodyUp = 1`
+  since 2026-11-19 (0: down only; an older file's 0 moved to 1 once, marker `crouchBodyUpMoved`). Both read live.
 - Logs `torso: crouching with you: the body down N cm to your head (Shepard's head N cm too high), the knees bending, the
   feet on the floor` and `torso: back to the game's height after a crouch with you: at most N cm down, N cm up; N ticks held
   short by the legs` (at most once a second each); the `torso:` off line and the heartbeat add the lift; the writer's `arm
@@ -468,6 +468,68 @@ under the face (the slack) and clear; standing, leaning back, looking down and t
   and 30 cm and a bend's head looking 60 degrees down, crouchBody 0 and 1 each: snapshots and skeleton traces, the floor lock
   off and the scale held for the replay). Prepared on 2026-11-18 while the owner was in the headset; not run yet. In the
   headset: notes/headset-checklist.md.
+
+### The body up to a standing head (2026-11-19, lane BUP; the owner's yes)
+
+Lane RLD found that an L3 crouch with the player standing left Shepard's body about 0.65 m under the view (`crouchGapM -0.65`,
+`bodyLiftM 0`, `liftLimited true`), and his arms (55 units) could not reach the controllers (`fromGripM 0.10`, `inView false`;
+`arm IK torso` 3.6 short, limited). The question put to the owner: "When you crouch with the stick click while standing, should
+Shepard's body rise to your view, so your hands stay on the controllers? Then the crouch no longer shows in his body." The
+recommendation was yes, since the view doesn't drop with a stick-click crouch anyway, and cover stays judged from his crouched
+height. The owner: "Let's go with your recommendation."
+
+**What changed** (every game): `[Hands] crouchBodyUp = 1` is the default (`hand_calibration::BodyMove`/`Values`, the defaults
+block, the missing-key table). An older file's 0 (the first default, which the defaults block wrote; no menu row ever set it)
+moves to 1 once: `vr::settings_file::MoveDefault(path, "Hands", "crouchBodyUp", "0", "1", "crouchBodyUpMoved")` in
+`game/HandCalibration`'s `Refresh`, before the missing-key table. It reads the file as it is on disk (not merged), looks for
+the 0 in `[Hands]` and in each `[Hands.LE1/.LE2/.LE3]` (an old file taken in late can leave it as one game's own), and writes
+the 1 to `[Hands]` and the marker in one write: in the three games' `settings.ini` that is `Apply`'s routing, which takes the
+games' copies of the key out, so the three games read 1; in a game's old file in use (`[Debug] shared = 0`) it is written as
+it is. The marker makes it once: a 0 set afterwards is the player's and stays. The host's `Sync` (its attach, before the mod)
+takes the old files in first, so the owner's next launch takes ME1's file (0) into `settings.ini`, then the mod moves it: log
+`hands: [Hands] crouchBodyUp 0 -> 1 (moved once; the owner's yes, 2026-11-19): ... was 0 in [Hands] of <file>`. Unit tests:
+`tests/SettingsFileTests.cpp` `TestDefaultMove` (the plan; an old file moved once and a later 0 kept; ME1's and ME2's old files
+taken into a new shared file then moved, 1 for the three games, the old files untouched; ME2's own 0 left by the take moved too).
+
+**Measured on ME2** (Save 4, Freedom's Progress spaceport, the fake headset, the owner's calibration: standing eyes 1.869 m;
+`crouch-anchor.ps1 -Phases button`: an L3 crouch held 5 s with the replayed head standing, a snapshot at 3.5 s; each pair the
+same pose, `crouchBodyUp` switched in the stretch's file; session `%LOCALAPPDATA%\MEVR\sessions\20261119-101530-951-LE2-bup`):
+
+| crouchBodyUp | body scale | crouchGapM | bodyLiftM | Shepard's head from its goal | hands `fromGripM` L / R, in view |
+|---|---|---|---|---|---|
+| 0 | 1.094 (the owner's, measured holstered) | -0.63 | 0 | 0.66 m | 0.08 / 0.08, yes |
+| **1** | 1.094 | -0.63 | **0.56** (the legs' limit) | **0.10 m** | **0.06 / 0.05, yes** |
+| 0 | 1.0 (not measured yet: the weapon drawn) | -0.85 | 0 | 0.89 m | 0.26 / 0.24, no |
+| **1** | 1.0 | -0.85 | **0.54** | 0.35 m | **0.06 / 0.06, yes** |
+
+- The `arm IK torso` line at the owner's scale: the shoulders 145.7 units over the component standing, 77 in the game's crouch,
+  145.0 with the lift (89.5 without). No `arm IK: body anchor: third person` in any run (the anchor reads the animated head).
+- **The feet** (`mevr camera trace`, component space, scale 1.094): standing the ankles at 12.1 units; crouched, L 19.9 / R 16.3
+  with the lift and 19.9 / 16.4 without: the crouch animation's own feet (heels off), the lift undone at the ankles to the
+  millimetre (`ik::LegUnderBody`); the head bone 175 units (standing 181; without the lift 114), `Root` 111 (without 50).
+- **The eyes** (the snapshot's left eye): both hands in front at the controllers, the squad portraits on the drawn left wrist,
+  no collar or armour in view; the head under its goal, never above it, so the eyes are never inside. Without the lift the
+  hands are drawn 20 cm and more lower and the wrist portraits float above the drawn wrist.
+- **VR cover** (`crouched-cover.ps1 -At -2290,20840,-11909 -Phases measure,find,button`): crouched by L3 with the body lifted
+  55.8 units, cover is judged from Shepard's crouched head 0.87 m over his floor (lane CCV measured 0.88), the real eyes 1.00 m
+  higher: arm IK's `AnimatedHeadComponent` is `engine/BonePose`'s sample of the animated pose taken before `PoseTorso` moves
+  the body, so the lift never raises it. Behind the spaceport's crate (top 0.96-0.98 m) two hits covered, the shields unchanged
+  (257.5); standing two hits open (257.5 -> 233.3 -> 209.0).
+- **The physical crouch** (`-Phases physical`, the owner's thresholds): deeper than the game's crouch pose the body goes down
+  as before. A physical crouch that stays above that pose (the owner's 0.17 m and 0.40 m drops: the game crouches him at 0.92
+  of standing) now brings the body up too: lift 0.47 m and 0.26 m, the head within 4 cm of its goal, the hands 0.05-0.06 m off
+  in view; before, the view floated 26-47 cm over his head (the hysteresis band's case above).
+- Standing with the scale not measured yet (a player taller than Shepard), the legs are straight: at most 1.4 units of lift.
+- Offline on LE1's skeleton (`tests/EyesInBodyTests.cpp`, `MEVR_EYES_IN_BODY_REPORT=1`, the button case): lift 47 cm, the face
+  1.7 cm, the feet 0.0, the knees 9.5 cm forward.
+- The move in the game: the stretch's file with `crouchBodyUp = 0` before the launch: `hands: [Hands] crouchBodyUp 0 -> 1
+  (moved once; ...)` at the mod's first read, the file then `crouchBodyUp=1`, `crouchBodyUpMoved=1`; a 0 written afterwards
+  stayed (the `hands:` line `the body goes down to the head`, no second move). The owner's `settings.ini` was not touched (the
+  runner's `[Debug] shared = 0`); the shared path is the unit test's.
+
+**Left:** the legs straighten only to 98% of their length, so at the owner's scale the head stays 10 cm under its goal (the
+spine at its 35-degree lean limit, `bendDeg 35`) over nearly straight legs; whether that looks odd is the headset's
+(notes/headset-checklist.md).
 
 ## The floor of a held scene (2026-11-18)
 

@@ -470,6 +470,67 @@ void TestMigration(fs::path const& dir) {
     CHECK(Is(Read(wideShared, "LE1", "Performance", "sharePass"), "3") && !Read(wideShared, "LE2", "Performance", "sharePass"));
 }
 
+// A default the owner changed, moved once (MoveDefault; [Hands] crouchBodyUp 0 -> 1, the owner's yes of 2026-11-19).
+void TestDefaultMove(fs::path const& dir) {
+    auto move = [](fs::path const& path, std::string_view game) {
+        return sf::MoveDefault(path, "Hands", "crouchBodyUp", "0", "1", "crouchBodyUpMoved", game);
+    };
+    // The plan over a parsed file: the marker stops it; the old value in the common section and in the games' own.
+    {
+        auto const plan = [](char const* text) {
+            return sf::PlanDefaultMove(mevr::ini::Parse(text), "Hands", "crouchBodyUp", "0", "crouchBodyUpMoved");
+        };
+        sf::DefaultMove const a = plan("[Hands]\ncrouchBodyUp = 0\n");
+        CHECK(a.due && a.from.size() == 1 && a.from[0] == "Hands");
+        CHECK(plan("[Hands]\ncrouchBodyUp = 0.0\n").from.size() == 1);  // as a number
+        CHECK(!plan("[Hands]\ncrouchBodyUp = 0\ncrouchBodyUpMoved = 1\n").due);
+        sf::DefaultMove const b = plan("[Hands]\ncrouchBodyUp = 1\n[Hands.LE2]\ncrouchBodyUp = 0\n");
+        CHECK(b.due && b.from.size() == 1 && b.from[0] == "Hands.LE2");
+        sf::DefaultMove const c = plan("[Hands]\nfingers = 1\n");
+        CHECK(c.due && c.from.empty());  // no key: only the marker
+        CHECK(plan("").due && plan("").from.empty());
+    }
+    // A game's old file in use ([Debug] shared = 0: the run scripts' files): the 0 moves once, a later 0 is the player's.
+    fs::path const old = dir / L"move" / L"ASI" / L"LE2MEVR.ini";
+    WriteText(old, "[Debug]\r\nshared = 0\r\n[Hands]\r\ncrouchBody = 1\r\ncrouchBodyUp = 0\r\n");
+    sf::DefaultMove const first = move(old, "LE2");
+    CHECK(first.due && first.moved && first.error.empty() && first.from.size() == 1);
+    CHECK(Is(Win32Value(old, "Hands", "crouchBodyUp"), "1") && Is(Win32Value(old, "Hands", "crouchBodyUpMoved"), "1"));
+    CHECK(!Win32Value(old, "Hands.LE2", "crouchBodyUp"));
+    CHECK(!move(old, "LE2").due);
+    CHECK(sf::Write(L"Hands", L"crouchBodyUp", L"0", old.c_str(), "LE2"));
+    CHECK(!move(old, "LE2").moved && Is(Win32Value(old, "Hands", "crouchBodyUp"), "0"));
+    CHECK(!move(dir / L"move" / L"missing.ini", "LE2").due);  // no file: nothing
+    // The owner's next launch: ME1's and ME2's old files (both crouchBodyUp = 0, the defaults block's) taken into a new shared
+    // file at the host's attach, then the mod's move: 1 for the three games, the marker in [Hands], the old files untouched.
+    fs::path const root = dir / L"move-install" / L"Game";
+    fs::path const le1 = root / L"ME1" / L"Binaries" / L"Win64" / L"ASI" / L"LE1MEVR.ini";
+    fs::path const le2 = root / L"ME2" / L"Binaries" / L"Win64" / L"ASI" / L"LE2MEVR.ini";
+    fs::path const shared = dir / L"move-local" / L"MEVR" / L"settings.ini";
+    WriteText(le1, "[Hands]\r\nhandPitch = 90\r\ncrouchBody = 1\r\ncrouchBodyUp = 0\r\n");
+    WriteText(le2, "[Hands]\r\nhandPitch = 90\r\ncrouchBody = 1\r\ncrouchBodyUp = 0\r\n");
+    std::string const le1Before = ReadBytes(le1);
+    sf::SyncResult const r = sf::Sync(shared, sf::SourcesUnder(root / L"ME1" / L"Binaries" / L"Win64", "LE1"), "LE1");
+    CHECK(r.created && r.error.empty() && Is(Read(shared, "LE1", "Hands", "crouchBodyUp"), "0"));
+    sf::DefaultMove const moved = move(shared, "LE1");
+    CHECK(moved.due && moved.moved && moved.from.size() == 1 && moved.from[0] == "Hands");
+    for (char const* game : {"LE1", "LE2", "LE3"}) {
+        CHECK(Is(Read(shared, game, "Hands", "crouchBodyUp"), "1") && Is(Read(shared, game, "Hands", "crouchBodyUpMoved"), "1"));
+    }
+    CHECK(!move(shared, "LE2").due);  // ME2's first launch after it: moved already
+    CHECK(Win32Value(le1, "Hands", "crouchBodyUp") == std::optional<std::string>("0"));  // the old file stays for an older build
+    CHECK(ReadBytes(le1).find("crouchBodyUpMoved") == std::string::npos && ReadBytes(le1).size() >= le1Before.size());
+    // ME1's file said 1 (by hand), ME2's 0: the take left ME2's 0 as its own; the move gives the three 1.
+    fs::path const shared2 = dir / L"move-local2" / L"MEVR" / L"settings.ini";
+    WriteText(le1, "[Hands]\r\ncrouchBodyUp = 1\r\n");
+    WriteText(le2, "[Hands]\r\ncrouchBodyUp = 0\r\n");
+    CHECK(sf::Sync(shared2, sf::SourcesUnder(root / L"ME2" / L"Binaries" / L"Win64", "LE2"), "LE2").created);
+    CHECK(Is(Read(shared2, "LE2", "Hands", "crouchBodyUp"), "0") && Is(Read(shared2, "LE1", "Hands", "crouchBodyUp"), "1"));
+    sf::DefaultMove const own = move(shared2, "LE1");
+    CHECK(own.moved && own.from.size() == 1 && own.from[0] == "Hands.LE2");
+    CHECK(Is(Read(shared2, "LE2", "Hands", "crouchBodyUp"), "1") && !Win32Value(shared2, "Hands.LE2", "crouchBodyUp"));
+}
+
 } // namespace
 
 int RunSettingsFileTests() {
@@ -482,6 +543,7 @@ int RunSettingsFileTests() {
     TestWrites(base);
     TestInUse(base);
     TestMigration(base);
+    TestDefaultMove(base);
     fs::remove_all(base, ec);
     return failures;
 }

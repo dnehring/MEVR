@@ -41,7 +41,9 @@
 //           crouchBody                    1 (default): the whole body down (or up) to the head, the feet on the floor
 //                                         and the knees bent, so a squat or a bend never puts the eyes inside the
 //                                         neck or chest (research/29 "The eyes inside the body"); 0: the game's height
-//           crouchBodyUp                  0 (default for now): only down; 1: up to a head above it too, the legs straightening
+//           crouchBodyUp                  1 (default since 2026-11-19, the owner's yes): up to a head above it too, the legs
+//                                         straightening (the game's crouch while the player stands: the hands reach the
+//                                         controllers); 0: only down. crouchBodyUpMoved: an older file's 0 moved to 1 once
 //           fistOnGrip                    1 (default): an empty hand holds the controller's handle in its fist, the wrist
 //                                         behind it along the forearm (research/25 section 19); 0: 7 units along the handle
 //           armStretch                    1-1.25: how far the arms may stretch to reach
@@ -100,7 +102,7 @@ struct BodyMove {
     double legsTwistDegrees = 60.0;  // ...and the spine twists at most this far from them (30..90)
     bool steadyIdle = false;         // standing still, the feet planted where the idle animation put them
     bool crouchBody = true;          // the body down to the player's head, the knees bending (research/29)
-    bool crouchBodyUp = false;       // ...and up to a head above it (the game's crouch while standing, the drawn stance)
+    bool crouchBodyUp = true;        // ...and up to a head above it (the game's crouch while standing, the drawn stance)
 };
 BodyMove GetBodyMove();
 // [Hands] levelCamera: keep the game camera level while the hand aims (game/view_level).

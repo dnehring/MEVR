@@ -506,9 +506,12 @@ switching frameworks.
   "I could clip and look into my own body"; `[Hands] crouchBody = 1`, every game): the slide kept the animated height and
   the lean the spine's length, so a squat of 20 cm or more, a bend or a kneel below the game's crouch put the eyes inside
   the collar and chest (`tests/EyesInBodyTests.cpp`, LE1's skeleton); `TorsoGoal::crouch` moves `Root`'s subtree along its
-  up until the head bone is where it sits under the eyes standing (up too only with `crouchBodyUp = 1`, off until the
-  owner's yes), as far as both legs allow (`ik::LegsRoom`), and the planted legs keep the feet on the floor with the knees
-  bent (`ik::LegUnderBody`). Logs
+  up until the head bone is where it sits under the eyes standing (and up to a head above it, the legs straightening:
+  `crouchBodyUp = 1`, on by default since 2026-11-19, the owner's yes: an L3 crouch with the player standing had left the
+  body 0.65 m under the view and the arms short of the controllers; the game keeps him crouched, VR cover judges from his
+  animated head read before the lift; an old file's 0 moves to 1 once, marker `crouchBodyUpMoved`,
+  `settings_file::MoveDefault`), as far as both legs allow (`ik::LegsRoom`), and the planted legs keep the feet on the floor
+  with the knees bent (`ik::LegUnderBody`). Logs
   `torso: crouching with you`; snapshot `mod.torso.result.bodyLiftM`; run `tools\eyes-in-body.ps1`.
   **Standing still, the feet planted** (research/72, the skeleton audit, 2026-11-14; `[Hands] steadyIdle`, off by default until
   the headset check): the idle animation moves `Root` (hip height) 2-3 cm in the mesh's space, 16 cm in a fidget, over planted

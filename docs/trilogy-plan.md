@@ -463,7 +463,9 @@ These unblock the most: almost every other entry gets smaller once they land.
   unverified. **Both:** body scale needs a recorded floor fixture (the fake headset's floor is at its head).
 - **Shared since 2026-11-18:** the body down (or up) to the head (`[Hands] crouchBody`, `TorsoGoal::crouch`, research/29 "The
   eyes inside the body"): squats and bends no longer put the eyes inside the body, on every game whose skeleton has both eye
-  bones and both legs; measured offline on LE1's skeleton, the in-game run `tools/eyes-in-body.ps1` (ME1) not yet run.
+  bones and both legs; measured offline on LE1's skeleton, the in-game run `tools/eyes-in-body.ps1` (ME1) not yet run. **Up
+  too by default since 2026-11-19** (`crouchBodyUp = 1`, the owner's yes; an old file's 0 moved once): an L3 crouch while the
+  player stands brings the body up to the view, the hands on the controllers (research/29 "The body up to a standing head").
 - **Shared since 2026-11-18:** hand contact with other characters (`game/HandContact`, `[HandContact]`, research/73, ledger
   G59; the owner's design): the drawn hand stops at a person's body and slides along it while the controller goes on, a buzz
   on contact, nobody pushed; every game, on by default, built and unit-tested, not yet run in a game.

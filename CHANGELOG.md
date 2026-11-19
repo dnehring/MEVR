@@ -10,6 +10,11 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 - **Your squad moves only when you place it.** A squeeze of the left grip no longer sends the squad somewhere (it did on
   every game when nothing else took the squeeze, and on ME2 it kept happening in fights): place them with the right hand's
   B arc, or by voice.
+- **A stick-click crouch while you stand keeps your hands on your controllers.** In all three games, when the left stick
+  click crouches Shepard while you stay standing, his body now rises to your view, his legs straightening, so his hands reach
+  your controllers; before, it stayed more than half a metre under you and his arms fell short. The game still has him
+  crouched, and cover still counts from his crouched head. A settings file that says `crouchBodyUp = 0` under `[Hands]` (the
+  old default) moves to 1 once; set it to 0 again to keep the old look.
 - **Crouching behind low cover protects you, seated players too.** In all three games, while Shepard is crouched (by your
   own crouch, or by the left stick click, the way seated players crouch), the cover rule judges from Shepard's crouched head
   instead of your real eyes: behind a low wall you count as in cover even when your real eyes stay above it. Standing,

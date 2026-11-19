@@ -56,7 +56,7 @@ struct Values {
     double legsTwistDeg = 60.0;    // [Hands] legsTwistDeg
     bool steadyIdle = false;       // [Hands] steadyIdle (research/72, 2026-11-14; off until the headset check)
     bool crouchBody = true;        // [Hands] crouchBody (research/29 "The eyes inside the body", 2026-11-18)
-    bool crouchBodyUp = false;     // [Hands] crouchBodyUp: ...and up to a head above it (off until the owner's yes)
+    bool crouchBodyUp = true;      // [Hands] crouchBodyUp: ...and up to a head above it (the owner's yes, 2026-11-19)
     bool fistOnGrip = true;        // [Hands] fistOnGrip (research/25 section 19, 2026-11-18)
     double recoilHaptic = 0.5;   // [Hands] recoilHaptic
     bool gunKick = true;         // [Hands] gunKick (research/24 section 8)
@@ -148,8 +148,11 @@ constexpr char const* kDefaultFile =
     "; 0: his body stays at the game's height.\n"
     "crouchBody = 1\n"
     "; crouchBodyUp: 1 (with crouchBody) also brings his body up to your head when it is lower than you (the game's crouch\n"
-    "; while you stand or half stand, the weapon-drawn stance), his legs straightening. 0 (for now): only down.\n"
-    "crouchBodyUp = 0\n"
+    "; while you stand or half stand, the weapon-drawn stance), his legs straightening, so his hands reach your controllers;\n"
+    "; the game still has him crouched (cover, collision). 0: only down. crouchBodyUpMoved: an older file's 0 (the first\n"
+    "; default) moved to 1 once (the owner's yes, 2026-11-19).\n"
+    "crouchBodyUp = 1\n"
+    "crouchBodyUpMoved = 1\n"
     "; fistOnGrip: 1 puts the controller's handle in Shepard's closed fist (an empty hand): his wrist sits behind the fist\n"
     "; along his forearm, so turning your wrists turns his hand in place. 0: the wrist 7 cm along the handle's axis (before\n"
     "; 2026-11-18: his hands swung inward when you held the controllers upright or rolled your wrists).\n"
@@ -3423,6 +3426,36 @@ void Refresh() {
             stamp = fs::last_write_time(path, ec);
         }
     }
+    // [Hands] crouchBodyUp since 2026-11-19 (the owner's yes; research/29 "The eyes inside the body"): with the stick click's
+    // crouch while the player stands, Shepard's body comes up to the view so his hands reach the controllers. An older file's 0
+    // (the first default, written by the defaults block; no menu row ever set it) moves to 1 once, on every game. In the three
+    // games' settings.ini the 0 is looked for in [Hands] and in each [Hands.<GAME>] (an old file taken in late), and the 1 goes
+    // to [Hands] for the three; the marker crouchBodyUpMoved is written in the same write, so a later 0 is the player's and
+    // stays (core/vr/SettingsFile MoveDefault). Runs after the host took the games' old files in (its attach, before the mod).
+    if (ini.find("Hands") != ini.end() && !ini::Get(ini, "Hands", "crouchBodyUpMoved")) {
+        vr::settings_file::DefaultMove const move =
+            vr::settings_file::MoveDefault(path, "Hands", "crouchBodyUp", "0", "1", "crouchBodyUpMoved");
+        if (!move.error.empty()) {
+            static bool warned = false;
+            if (!warned) {
+                warned = true;
+                log::Warn("hands: couldn't move [Hands] crouchBodyUp 0 -> 1 in {} ({}): tried again when the file next changes; "
+                          "1 applies only where the file has no 0", ini::Utf8(path), move.error);
+            }
+        } else if (move.moved) {
+            if (!move.from.empty()) {
+                std::string where;
+                for (std::string const& s : move.from) {
+                    where += std::format("{}[{}]", where.empty() ? "" : ", ", s);
+                }
+                log::Info("hands: [Hands] crouchBodyUp 0 -> 1 (moved once; the owner's yes, 2026-11-19): with the stick click's "
+                          "crouch while you stand, Shepard's body comes up to your view and his hands reach the controllers (the "
+                          "game still has him crouched for cover); was 0 in {} of {}", where, ini::Utf8(path));
+            }
+            ini = ReadIni(path);
+            stamp = fs::last_write_time(path, ec);
+        }
+    }
     // [Hands] reachNearFaceM, the [Sights] alignment assist, [Hands]' physical cover and crouch
     // (research/23) and levelCamera / recoilHaptic (research/24) (2026-10-22), appended with their defaults.
     static constexpr struct {
@@ -3499,7 +3532,7 @@ void Refresh() {
         {L"Hands", "Hands", L"steadyIdle", "steadyIdle", L"0"},
         // The body down to the player's head (2026-11-18, research/29 "The eyes inside the body").
         {L"Hands", "Hands", L"crouchBody", "crouchBody", L"1"},
-        {L"Hands", "Hands", L"crouchBodyUp", "crouchBodyUp", L"0"},
+        {L"Hands", "Hands", L"crouchBodyUp", "crouchBodyUp", L"1"},  // up too since 2026-11-19 (the owner's yes; moved above)
         // The controller's handle in Shepard's fist (2026-11-18, research/25 section 19).
         {L"Hands", "Hands", L"fistOnGrip", "fistOnGrip", L"1"},
         // The weapon drawn, like exploring (2026-10-25, research/38).
