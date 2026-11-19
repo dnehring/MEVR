@@ -5,20 +5,23 @@
 # Freedom's Progress, on foot), with replayed controllers (tools/make-walk-recording.py plans, `--hands view` so the drawn hands
 # are in every snapshot) and their inputs; a camera trace per phase (`mevr camera trace`: the pawn, the camera and 14 bones a
 # tick, python tools\skeleton-audit.py reads it); snapshots of the body while crouched; the log's lines since the start copied
-# to the session folder and summarized. Not run yet (2026-11-18: the owner was in the headset).
+# to the session folder and summarized. At the owner's calibration by default (-OwnerCalibration: tools/owner-calibration.ps1,
+# his Quest 3's thresholds and the replays' floor samples at his standing eye height; ME2 relaunched once if the running game
+# doesn't use it yet).
 #
-#   tools\le2-halcyon-run\crouch-anchor.ps1 -Holder <you> [-Phases button,physical,run] [-Tag what]
+#   tools\le2-halcyon-run\crouch-anchor.ps1 -Holder <you> [-Phases button,physical,run] [-Tag what] [-OwnerCalibration:$false]
 #
 # Phases (each the pass/fail lines to read in summary.txt):
 #   button    L3 (the mod's crouch toggle on the sequels) crouches Shepard by the game while the replayed head stands: his
 #             animated head 45-60 units under the view. Pass: no `arm IK: body anchor: third person` between the two L3s (an
 #             anchor line, if any, reads `... (N across: the view's height is your own head's ...)`), the snapshot's
 #             mod.armIk shows the hands on the controllers, `torso:` lines say first person.
-#   physical  the owner's case: his calibrated thresholds in [Hands] (crouchBelow 0.92, standAbove 0.942, crouchMinDropM 0 and
-#             crouchLeanRatio 0 so a 0.17 m drop crouches), a 0.17 m and a 0.40 m crouch, held, then standing up. Pass: as
-#             `button`, through the stand (the old rule fell to third person while the head rose before the game stood him).
-#             Only conclusive if the replayed head reaches the floor sample: `posture: physical crouch` must appear (research/23
-#             section 7.5 found the live STAGE height kept under a replay on 2026-11-16); without it only `button` speaks.
+#   physical  the owner's case: his calibrated thresholds (-OwnerCalibration; else [Hands] crouchBelow 0.92, standAbove 0.942),
+#             crouchMinDropM 0 and crouchLeanRatio 0 so a 0.17 m drop crouches, a 0.17 m and a 0.40 m crouch, held, then
+#             standing up. Pass: `posture: physical crouch` for each (the replays drive the floor sample since 2026-11-19,
+#             research/le2-vrik.md "The replay STAGE-eye gap"), then as `button`, through the stand (the old rule fell to third
+#             person while the head rose before the game stood him); the snapshots' mod.torso and floorLock (summary.txt's
+#             `snapshot:` lines): the body down with the head, the final eye at the replayed head's height.
 #   run       out-and-back runs exploring (each back a 180-degree explore turn, the owner's backing up), the head standing.
 #             Pass: no `torso: crouching with you: the body down N cm` with N above 3 (the margin and the idle's own); the
 #             heartbeat's `arm IK torso` lines may say `held at the player's own head drop` (the animation stood higher).
@@ -27,7 +30,8 @@
 param(
     [Parameter(Mandatory)][string]$Holder,
     [string[]]$Phases = @('button', 'physical', 'run'),
-    [ValidatePattern('^[A-Za-z0-9_-]*$')][string]$Tag = 'anc'
+    [ValidatePattern('^[A-Za-z0-9_-]*$')][string]$Tag = 'anc',
+    [switch]$OwnerCalibration = $true   # the owner's calibration (tools/owner-calibration.ps1): relaunches ME2 once if needed
 )
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\..\common.ps1"
@@ -78,7 +82,7 @@ function ReadLog {
 # holds a posture), then waits the plan out.
 function Play([string]$plan, [string]$file, [string[]]$extra = @(), [double[]]$snapshotsAt = @()) {
     $path = Join-Path $out $file
-    $made = & python (Join-Path $W 'tools\make-walk-recording.py') $path --plan $plan --pitch -20 --hands view @extra
+    $made = & python (Join-Path $W 'tools\make-walk-recording.py') $path --plan $plan --pitch -20 --hands view @extra @script:standEye
     Add-Content -LiteralPath (Join-Path $out 'recordings.txt') -Value $made -Encoding utf8
     $seconds = 0.0
     foreach ($part in $plan -split ',') { $seconds += [double]($part.Substring($part.LastIndexOf(':') + 1)) }
@@ -87,12 +91,30 @@ function Play([string]$plan, [string]$file, [string[]]$extra = @(), [double[]]$s
     foreach ($at in $snapshotsAt) {
         $wait = $at - ((Get-Date) - $started).TotalSeconds
         if ($wait -gt 0) { Start-Sleep -Milliseconds ([int]($wait * 1000)) }
-        $shot = & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $W 'tools\snapshot.ps1') -Tag ("$Tag-" + [IO.Path]::GetFileNameWithoutExtension($file)) 2>$null
+        $shotTag = "$Tag-" + [IO.Path]::GetFileNameWithoutExtension($file)
+        $shot = & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $W 'tools\snapshot.ps1') -Tag $shotTag 2>$null
         Note ("snapshot at {0:0.0} s of {1}: {2}" -f $at, $file, (($shot | Where-Object { $_ }) -join ' '))
+        Note (Describe-Snapshot $shotTag)
     }
     $left = $seconds + 0.6 - ((Get-Date) - $started).TotalSeconds
     if ($left -gt 0) { Start-Sleep -Milliseconds ([int]($left * 1000)) }
     & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $W 'tools\replay.ps1') -Stop | Out-Null
+}
+# What a snapshot's JSON says about the body and the eyes (copied into the session folder): the floor lock's eye (the replayed
+# head's height), the torso's crouch (the body down with the head: research/29 "The eyes inside the body"), the posture's eyes.
+function Describe-Snapshot([string]$shotTag) {
+    $json = Get-ChildItem (Join-Path $env:LOCALAPPDATA 'MEVR\snapshots') -Filter "*-$shotTag.json" -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime | Select-Object -Last 1
+    if (-not $json) { return "snapshot: ${shotTag}: no JSON" }
+    Copy-Item -LiteralPath $json.FullName -Destination $out
+    $j = Get-Content -LiteralPath $json.FullName -Raw | ConvertFrom-Json
+    $t = $j.mod.torso
+    $r = if ($t) { $t.result } else { $null }
+    $fl = $j.floorLock
+    return ("snapshot: {0}: floor lock active {1}, STAGE eye {2} m, final eye {3} m; torso crouchBody {4}, body lifted {5} m, " +
+        "crouch gap {6} m, held by the legs {7}, Shepard's head {8} m from its goal; posture eyes {9} m of standing {10} m") -f $shotTag,
+        $fl.active, $fl.stageEyeM, $fl.finalEyeM, $t.crouchBody, $r.bodyLiftM, $r.crouchGapM, $r.liftLimited, $r.headFromPivotM,
+        $j.mod.posture.eyeHeight, $j.mod.posture.standingEyeHeight
 }
 function Hands([string]$key, [string]$value) {
     [void][Mevr.AncProfile]::WritePrivateProfileString('Hands', $key, $value, $ini)
@@ -100,8 +122,19 @@ function Hands([string]$key, [string]$value) {
     Start-Sleep -Milliseconds 2500  # the host checks the game's own file every 2 s, the mod re-reads once a second
 }
 
+# The owner's calibration: the key in use (a relaunch if not yet), the replays' floor samples at his standing eye height.
+$script:standEye = @()
+if ($OwnerCalibration) {
+    . (Join-Path $W 'tools\owner-calibration.ps1')
+    $cal = Use-OwnerCalibrationLe2 -Holder $Holder
+    $script:standEye = @('--stand-eye', $cal.StandEyeM.ToString([Globalization.CultureInfo]::InvariantCulture), '--ease', '0.4')
+}
 $from = (ReadLog).Count
 Note ("crouch-anchor {0}: phases {1}; {2}" -f $Tag, ($Phases -join ','), (Ask 'mevr state'))
+if ($OwnerCalibration) {
+    Note ("owner calibration [Calibration.{0}] ({1}): standing {2} m, crouched {3} m{4}; calibration.ini sha256 {5}" -f $cal.Key,
+        $cal.Time, $cal.StandEyeM, $cal.CrouchEyeM, $(if ($cal.Relaunched) { '; ME2 relaunched for it' } else { '' }), $cal.Sha256)
+}
 try {
     if ($Phases -contains 'button') {
         Note (Ask "mevr camera trace 14 $Tag-button")
@@ -110,8 +143,10 @@ try {
         Start-Sleep -Seconds 1
     }
     if ($Phases -contains 'physical') {
-        Hands 'crouchBelow' '0.92'
-        Hands 'standAbove' '0.942'
+        if (-not $OwnerCalibration) {
+            Hands 'crouchBelow' '0.92'
+            Hands 'standAbove' '0.942'
+        }
         Hands 'crouchMinDropM' '0'
         Hands 'crouchLeanRatio' '0'
         foreach ($drop in @('0.17', '0.40')) {
@@ -138,7 +173,7 @@ Start-Sleep -Seconds 2
 $lines = @(ReadLog)
 $mine = @($lines | Select-Object -Skip $from)
 Set-Content -LiteralPath (Join-Path $out 'log.txt') -Value $mine -Encoding utf8
-$keys = 'arm IK: body anchor|crouching with you|back to the game.s height|held at|posture: (physical|crouch request|stand request|L3|Shepard.s crouch)|arm IK torso|torso: (first|third) person|camera trace|snapshot'
+$keys = 'arm IK: body anchor|crouching with you|back to the game.s height|held at|posture: (physical|crouch request|stand request|L3|Shepard.s crouch|standing eye height|a lean)|arm IK torso|torso: (first|third) person|camera trace|snapshot|floor lock: raw camera|replay drives the floor|calibration: (position|\[Debug\])'
 $summary = @($mine | Where-Object { $_ -match $keys })
 Set-Content -LiteralPath (Join-Path $out 'summary.txt') -Value $summary -Encoding utf8
 $third = @($mine | Where-Object { $_ -match 'arm IK: body anchor: third person' }).Count

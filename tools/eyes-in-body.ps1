@@ -1,18 +1,21 @@
 # SPDX-License-Identifier: MIT
 # The eyes inside the body (research/29 "The eyes inside the body"), dot-sourced by tools/fake-headset-session.ps1:
 #
-#   tools\fake-headset-session.ps1 -Tag eyes -Run tools\eyes-in-body.ps1
+#   tools\fake-headset-session.ps1 -Tag eyes -Run tools\eyes-in-body.ps1 [-BuildDir build -CalibrationKey owner]
 #
 # The Presidium (John02 slot 89 from the validation saves, its scene ended at once), god mode, then for each head (standing,
 # a squat of 15 cm, of 30 cm, a squat of 25 cm looking 60 degrees down: a bend's head) with tracked hands held at the chest
 # (a replayed recording: the fake headset has no controllers, so without one arm IK and the body follower never run), the
 # body's crouch off and on ([Hands] crouchBody, re-read by the mod within a second): a snapshot of both eyes (`mod.torso`'s
-# `result.bodyLiftM`, `crouchGapM`, `liftLimited`) and a skeleton trace (`Root` and the ankles: the body down, the feet on
-# the floor). The floor lock reads the live headset's height, which a replay doesn't move (research/58 "Replay limit"), so
-# the run sets `[Body] floorLock = 0` (re-read by the host within a second) and the view follows the replayed head, and holds
-# the body's scale at 1.05 (`mevr body scale`: the legacy scale without the floor lock would follow the squat); the session
-# puts the inis back after. Read each squat's lift against the standing head's (the fixed scale leaves a standing gap). What to read: with crouchBody 0 the squats' `bodyLiftM` 0 and the eye images inside the
-# collar or chest; with 1 the lift about the squat (-0.15, -0.30 m), the ankles' height unchanged in the traces
+# `result.bodyLiftM`, `crouchGapM`, `liftLimited`, and `floorLock`'s final eye) and a skeleton trace (`Root` and the ankles:
+# the body down, the feet on the floor). The replays drive the floor sample since 2026-11-19 (research/le2-vrik.md "The replay
+# STAGE-eye gap"), so the floor lock stays on and puts the eyes at the replayed head's height; the body's scale is held at
+# 1.05 (`mevr body scale`) so the squats compare with the standing head. At the owner's calibration by default
+# ($EyesOwnerCalibration = $false before dot-sourcing for the old typical run): the recordings' floor samples at his calibrated
+# standing eye height (tools/owner-calibration.ps1, calibration.ini read only); his controller type itself needs a development
+# build and the session's -CalibrationKey owner (read at the host's first frame). The session puts the inis back after. Read
+# each squat's lift against the standing head's. What to read: with crouchBody 0 the squats' `bodyLiftM` 0 and the eye images
+# inside the collar or chest; with 1 the lift about the squat (-0.15, -0.30 m), the ankles' height unchanged in the traces
 # (`python tools\skeleton-audit.py --last 8`), the eyes over the chest as standing.
 Add-Type -Namespace MevrEyes -Name Native -MemberDefinition @'
 [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
@@ -29,17 +32,26 @@ $heads = [ordered]@{
     'squat30'    = @('--plan', 'crouch:600', '--crouch-drop', '0.30')
     'bendlook60' = @('--plan', 'crouch:600', '--crouch-drop', '0.25', '--pitch', '-60')
 }
+if ($null -eq $EyesOwnerCalibration) { $EyesOwnerCalibration = $true }
+$standEye = @()
+if ($EyesOwnerCalibration) {
+    . "$PWD\tools\owner-calibration.ps1"
+    $cal = Get-OwnerCalibration
+    $standEye = @('--stand-eye', $cal.StandEyeM.ToString([Globalization.CultureInfo]::InvariantCulture))
+    $keyIn = Select-String -LiteralPath $log -Pattern ([regex]::Escape("calibrationKey $($cal.Key) stands in")) -Quiet -ErrorAction SilentlyContinue
+    Say ("owner calibration [Calibration.{0}] ({1}): the replays' eyes {2} m over the floor standing; the controller type {3}" -f $cal.Key,
+        $cal.Time, $cal.StandEyeM, $(if ($keyIn) { 'in use ([Debug] calibrationKey)' } else { 'not in use (a development build and -CalibrationKey owner)' }))
+}
 $recordings = @{}
 foreach ($name in $heads.Keys) {
     $file = Join-Path $Session "eyes-$name.mevrrec"
-    $pyArgs = @('tools\make-walk-recording.py', $file, '3', '90', '--hands', 'chest') + $heads[$name]
+    $pyArgs = @('tools\make-walk-recording.py', $file, '3', '90', '--hands', 'chest') + $heads[$name] + $standEye
     & python @pyArgs | Out-Null
     $recordings[$name] = $file
 }
 & tools\conversation-from-save.ps1 -All -Career John02 -Only 89 -EndAfter 3 -Seconds 40 2>&1 |
     Select-String -Pattern '^=== slot|loading|did not' | ForEach-Object { Say "load: $($_.Line)" }
 & tools\console.ps1 'mevr convo end' 'god' 'mevr body scale 1.05' | Out-Null
-Set-Key 'Body' 'floorLock' '0'
 Start-Sleep -Seconds 4
 $taken = @()
 foreach ($name in $heads.Keys) {
@@ -69,11 +81,12 @@ foreach ($tag in $taken) {
     }
     Copy-Item $json.FullName $Session
     Get-ChildItem $snapshots -Filter "$($json.BaseName.Replace("-$tag", ''))*$tag*.png" -ErrorAction SilentlyContinue | Copy-Item -Destination $Session
-    $torso = (Get-Content $json.FullName -Raw | ConvertFrom-Json).mod.torso
+    $snap = Get-Content $json.FullName -Raw | ConvertFrom-Json
+    $torso = $snap.mod.torso
     $r = $torso.result
     if ($r) {
-        Say ("{0}: crouchBody {1}, lift {2} m, gap {3} m, held by the legs {4}, Shepard's head {5} m from its goal" -f $tag, $torso.crouchBody,
-            $r.bodyLiftM, $r.crouchGapM, $r.liftLimited, $r.headFromPivotM)
+        Say ("{0}: crouchBody {1}, lift {2} m, gap {3} m, held by the legs {4}, Shepard's head {5} m from its goal; floor lock {6}, eye {7} m" -f $tag,
+            $torso.crouchBody, $r.bodyLiftM, $r.crouchGapM, $r.liftLimited, $r.headFromPivotM, $snap.floorLock.active, $snap.floorLock.finalEyeM)
     } else {
         Say "$tag`: no torso result (arm IK not driving: are the replayed hands tracked?)"
     }

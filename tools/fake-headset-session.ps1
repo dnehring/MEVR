@@ -23,7 +23,11 @@ param(
     [switch]$IgnoreSlot,
     [switch]$Audit,
     [int]$WaitSeconds = 180,
-    [string]$Restore = ''
+    [string]$Restore = '',
+    # [Debug] calibrationKey in ASI\LE1MEVR.ini for the run (a controller type, or 'owner': calibration.ini's [Calibration] last,
+    # read only; tools/owner-calibration.ps1): the null driver names no controller type. Development builds only; the inis
+    # are put back after.
+    [string]$CalibrationKey = ''
 )
 $ErrorActionPreference = 'Continue'
 $repo = Split-Path -Parent $PSScriptRoot
@@ -134,6 +138,21 @@ if (Test-Path (Join-Path $mevrLocal 'settings.ini')) { Copy-Item -Force (Join-Pa
 else { Set-Content -LiteralPath (Join-Path $localKept 'no-settings.txt') -Value 'none before the run' }
 if (Test-Path (Join-Path $mevrLocal 'settings-taken')) { Copy-Item -Recurse -Force (Join-Path $mevrLocal 'settings-taken') (Join-Path $localKept 'settings-taken') }
 else { Set-Content -LiteralPath (Join-Path $localKept 'no-settings-taken.txt') -Value 'none before the run' }
+if ($CalibrationKey) {
+    if ($CalibrationKey -eq 'owner') {
+        . (Join-Path $PSScriptRoot 'owner-calibration.ps1')
+        $CalibrationKey = (Get-OwnerCalibration).Key
+    }
+    if ($CalibrationKey -notmatch '^[A-Za-z0-9_]+$') { throw "-CalibrationKey '$CalibrationKey' is not a controller type's key" }
+    if ($mono) { Say 'warning: the players'' build ignores [Debug] calibrationKey: deploy a development build (-BuildDir build)' }
+    Add-Type -Namespace MevrSession -Name Profile -MemberDefinition @'
+[System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+public static extern bool WritePrivateProfileString(string section, string key, string value, string file);
+'@
+    # The game's old file (backed up above): the host takes its keys into this game's settings at attach.
+    [void][MevrSession.Profile]::WritePrivateProfileString('Debug', 'calibrationKey', $CalibrationKey, (Join-Path $asi 'LE1MEVR.ini'))
+    Say "[Debug] calibrationKey = $CalibrationKey for the run"
+}
 $Began = Get-Date -Format 'yyyy-MM-ddTHH:mm:ss'
 Say "began: $Began (backups in the session folder)"
 try {

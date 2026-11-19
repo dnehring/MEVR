@@ -15,11 +15,19 @@ param(
     [ValidatePattern('^[A-Za-z0-9_-]+$')][string]$Tag = 'halcyon',
     [string]$BuildDir,
     [switch]$Diagnostics,
-    [switch]$FirstVrStart                                    # LE2: let the host's first-VR-start rule size the render target
+    [switch]$FirstVrStart,                                   # LE2: let the host's first-VR-start rule size the render target
+    [string]$CalibrationKey = ''                             # LE2: [Debug] calibrationKey (a controller type, or 'owner':
+                                                             # calibration.ini's [Calibration] last, read only; tools/owner-calibration.ps1)
 )
 $ErrorActionPreference = 'Stop'
 if ($PreviewEyeFrustum -and $PreviewSharedWindow) { throw 'Give -PreviewEyeFrustum (the default) or -PreviewSharedWindow, not both' }
 if ($FirstVrStart -and $Game -ne 'LE2') { throw '-FirstVrStart is for LE2 runs (the LE3 preview fixes its size with -PreviewRenderSize)' }
+if ($CalibrationKey -and ($Game -ne 'LE2' -or $DesktopDump)) { throw '-CalibrationKey is for LE2 VR runs' }
+if ($CalibrationKey -eq 'owner') {
+    . "$PSScriptRoot\..\owner-calibration.ps1"
+    $CalibrationKey = (Get-OwnerCalibration).Key
+}
+if ($CalibrationKey -notmatch '^[A-Za-z0-9_]*$') { throw "-CalibrationKey '$CalibrationKey' is not a controller type's key" }
 $eyeFrustum = -not $PreviewSharedWindow   # ME3's default since 2026-11-17: mode 2 (research/le3-flares-and-window.md)
 . "$PSScriptRoot\session-common.ps1"
 Assert-RunMode $Game ([bool]$DesktopDump) ([bool]$EngineProbe) ([bool]$EngineRequests) ([bool]$RendererPreview)
@@ -161,7 +169,10 @@ $steamvr = 'C:\Program Files (x86)\Steam\steamapps\common\SteamVR\steamxr_win64.
 $firstStart = if ($FirstVrStart) { '' } else { "[Display]`r`neyeSizeSet = 1`r`n" }
 # [Debug] shared = 0: the run reads this file alone, as before the three games' settings.ini (research/25 section 20): the
 # code's defaults and these keys, and nothing the run writes reaches the player's shared file.
-[IO.File]::WriteAllText("$b\ASI\${Game}MEVR.ini", "[Debug]`r`nshared = 0`r`nopenxrRuntime = $steamvr`r`n$firstStart")
+# -CalibrationKey: [Debug] calibrationKey stands in for the controller type the null driver doesn't name (read at the host's
+# first frame), so the run applies that calibration from calibration.ini (read only; the posture checks use the owner's).
+$calibrationLine = if ($CalibrationKey) { "calibrationKey = $CalibrationKey`r`n" } else { '' }
+[IO.File]::WriteAllText("$b\ASI\${Game}MEVR.ini", "[Debug]`r`nshared = 0`r`nopenxrRuntime = $steamvr`r`n$calibrationLine$firstStart")
 $ini = Join-Path $b 'MELE2VR.ini'
 if ($Diagnostics -and (Test-Path -LiteralPath $ini)) {
     $t = [IO.File]::ReadAllText($ini) -replace '(?m)^Diagnostics=0', 'Diagnostics=1'
