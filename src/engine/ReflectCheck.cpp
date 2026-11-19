@@ -2275,6 +2275,8 @@ void CheckFields() {
     CheckField("SFXGame.BioPawn", "m_oHairMesh", SDK_FIELD(ABioPawn, m_oHairMesh));  // game/Hair
     PARAM(AActor_execSpawn_Parms, "Engine.Actor.Spawn", SpawnRotation);  // game/Hair spawn
     PARAM(AActor_execSpawn_Parms, "Engine.Actor.Spawn", ActorTemplate);
+    CheckFunction("Engine.SequenceOp.ForceActivateInput");  // game/Hair fire
+    PARAM(USequenceOp_execForceActivateInput_Parms, "Engine.SequenceOp.ForceActivateInput", InputIdx);
     CheckField("Engine.PrimitiveComponent", "HiddenGame", SDK_BOOL(UPrimitiveComponent, HiddenGame));  // game/Hair
     CheckField("Engine.SkeletalMeshComponent", "Attachments", SDK_FIELD(USkeletalMeshComponent, Attachments), true);
     CheckField("Engine.SkeletalMesh", "RefSkeleton", SDK_FIELD(USkeletalMesh, RefSkeleton), true);
@@ -3764,6 +3766,8 @@ void CheckFields() {
     CheckField("SFXGame.BioPawn", "m_oHairMesh", SDK_FIELD(ABioPawn, m_oHairMesh));  // game/Hair
     PARAM(AActor_execSpawn_Parms, "Engine.Actor.Spawn", SpawnRotation);  // game/Hair spawn
     PARAM(AActor_execSpawn_Parms, "Engine.Actor.Spawn", ActorTemplate);
+    CheckFunction("Engine.SequenceOp.ForceActivateInput");  // game/Hair fire
+    PARAM(USequenceOp_execForceActivateInput_Parms, "Engine.SequenceOp.ForceActivateInput", InputIdx);
     CheckClass<ASFXStuntActor>("SFXGame.SFXStuntActor");  // game/Hair: ME3 conversation characters
     CheckField("SFXGame.SFXStuntActor", "BodyMesh", SDK_FIELD(ASFXStuntActor, BodyMesh));
     CheckField("SFXGame.SFXStuntActor", "HairMesh", SDK_FIELD(ASFXStuntActor, HairMesh));

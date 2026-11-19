@@ -550,6 +550,92 @@ std::string SpawnPawn(std::string const& what, int which) {
     return out + std::format("\n  spawned {} at ({:.0f}, {:.0f}, {:.0f}); `mevr hair people` should list it", r.FullName(spawned), to.x, to.y, to.z);
 }
 
+// `mevr hair fire <text> [k] [input]`: a loaded Kismet op whose path holds the text, its input fired
+// (Engine.SequenceOp.ForceActivateInput), as LE1's and LE2's tools start a scene: Miranda's
+// `BioD_CitHub_Miranda...SFXSeqAct_StartConversation` starts her conversation, so her stunt actor is animated.
+ue3::ClassRef gSequenceOpClass{"Engine.SequenceOp", ue3::kEveryGame};
+
+std::string FireOp(std::string const& what, int which, int input) {
+    ue3::Reflection& r = ue3::runtime::Get();
+    ue3::Class* const cls = gSequenceOpClass.Get();
+    if (cls == nullptr) {
+        return "Engine.SequenceOp not found";
+    }
+    std::string const key = Lower(what);
+    std::vector<ue3::Object*> found;
+    std::string list;
+    for (std::int32_t i = 0, n = r.ObjectCount(); i < n; ++i) {
+        ue3::Object* const o = r.ObjectAt(i);
+        if (o == nullptr || !r.IsAlive(o) || !r.IsA(o, cls)) {
+            continue;
+        }
+        std::string const name = r.FullName(o);
+        if (name.find("Default__") != std::string::npos || Lower(name).find(key) == std::string::npos) {
+            continue;
+        }
+        if (found.size() < 40) {
+            list += std::format("\n  [{}] {}", found.size(), name);
+        }
+        found.push_back(o);
+    }
+    if (found.empty()) {
+        return "no loaded Kismet op holds '" + what + "'";
+    }
+    std::string out = std::format("{} op(s):{}", found.size(), list);
+    if (which < 0 || static_cast<std::size_t>(which) >= found.size()) {
+        return out + "\n  none fired: `mevr hair fire <text> <k> [input]`";
+    }
+    ue3::Object* const op = found[static_cast<std::size_t>(which)];
+    ue3::Function* const f = r.FindFunction(r.ClassOf(op), "ForceActivateInput");
+    if (f == nullptr) {
+        return out + "\n  it has no ForceActivateInput";
+    }
+    ue3::Params p(r, f);
+    p.Set("InputIdx", static_cast<std::int32_t>(input));
+    bool const called = ue3::runtime::Call(op, f, p);
+    log::Info("hair: fired {} input {} ({})", r.FullName(op), input, called ? "called" : "not called");
+    return out + std::format("\n  fired [{}] input {}: {}", which, input, called ? "called" : "NOT called");
+}
+
+// `mevr hair call <text> <Function> [param=int]`: a script function called on the first live object whose full name holds the
+// text (not a class default), at most one int parameter set: the test's way past a scene that owns the camera (ME3's docking
+// taxi: `call bioconversationcontroller QueueReply nReply=10`, or `call sfxgamemodeconversation SkipConversation`).
+std::string CallOn(std::string const& what, std::string const& function, std::string const& param) {
+    ue3::Reflection& r = ue3::runtime::Get();
+    std::string const key = Lower(what);
+    for (std::int32_t i = 0, n = r.ObjectCount(); i < n; ++i) {
+        ue3::Object* const o = r.ObjectAt(i);
+        if (o == nullptr || !r.IsAlive(o)) {
+            continue;
+        }
+        std::string const name = r.FullName(o);
+        if (name.find("Default__") != std::string::npos || Lower(name).find(key) == std::string::npos) {
+            continue;
+        }
+        ue3::Function* const f = r.FindFunction(r.ClassOf(o), function);
+        if (f == nullptr) {
+            continue;
+        }
+        ue3::Params p(r, f);
+        if (std::size_t const eq = param.find('='); eq != std::string::npos) {
+            int value = 0;
+            try {
+                value = std::stoi(param.substr(eq + 1));
+            } catch (...) {
+                return "the parameter's value isn't an int: " + param;
+            }
+            if (!p.Set(param.substr(0, eq), static_cast<std::int32_t>(value))) {
+                return "no int parameter " + param.substr(0, eq) + " on " + function;
+            }
+        }
+        bool const called = ue3::runtime::Call(o, f, p);
+        log::Info("hair: called {}.{}({}): {}", name, function, param, called ? "called" : "not called");
+        return std::format("{}.{}({}) {}; returned {}", name, function, param, called ? "called" : "NOT called",
+            p.ReturnBool() ? (*p.ReturnBool() ? "true" : "false") : "nothing");
+    }
+    return "no live object holding '" + what + "' has " + function;
+}
+
 std::string Bring(std::string const& what, int which) {
     ue3::Object* playerPawn = nullptr;
     ue3::Object* const world = PlayerWorld(&playerPawn);
@@ -799,6 +885,27 @@ std::string Command(std::string const& args) {
             return "mevr hair stream <package or part of its name> [on|off]";
         }
         return StreamLevel(package, onOff != "off");
+    }
+    if (verb == "call") {
+        std::string what, function, param;
+        words >> what >> function >> param;
+        if (what.empty() || function.empty()) {
+            return "mevr hair call <part of an object's name> <Function> [param=int]";
+        }
+        return CallOn(what, function, param);
+    }
+    if (verb == "fire") {
+        std::string what;
+        int which = -1, input = 0;
+        words >> what;
+        if (!(words >> which)) {
+            which = -1;
+        }
+        words >> input;
+        if (what.empty()) {
+            return "mevr hair fire <part of a Kismet op's path> [k] [input]";
+        }
+        return FireOp(what, which, input);
     }
     if (verb == "spawn") {
         std::string what;
