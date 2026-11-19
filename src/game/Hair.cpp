@@ -3,6 +3,7 @@
 
 #include "core/Ini.hpp"
 #include "core/Log.hpp"
+#include "core/WriteJournal.hpp"
 #include "core/ik/HairChain.hpp"
 #include "core/ik/HandContact.hpp"
 #include "core/vr/SettingsFile.hpp"
@@ -369,6 +370,128 @@ std::string HairBones(ue3::Object* mesh) {
     return out.empty() ? "none" : out;
 }
 
+// ---- Bringing someone to the player: the in-game check of a character who isn't around (`mevr hair stream`, `bring`) -----
+// ME3's Miranda stands only in a few sublevels (BioD_CitHub_Miranda, BioD_End001_436CRMiranda...), often unloaded or hidden
+// by the plot. `stream` asks the engine's level streaming to load and show one, as a streaming volume would; `bring` finds
+// a pawn by its name, its hair mesh or its body mesh, shows it and stands it 1.5 m in front of the player, facing them.
+
+ue3::FieldRef gStreamingLevels{"Engine.WorldInfo", "StreamingLevels", ue3::kEveryGame};
+ue3::FieldRef gLevelPackage{"Engine.LevelStreaming", "PackageName", ue3::kEveryGame};
+ue3::FieldRef gLevelLoaded{"Engine.LevelStreaming", "LoadedLevel", ue3::kEveryGame};
+ue3::FieldRef gLevelShouldLoad{"Engine.LevelStreaming", "bShouldBeLoaded", ue3::kEveryGame};
+ue3::FieldRef gLevelShouldShow{"Engine.LevelStreaming", "bShouldBeVisible", ue3::kEveryGame};
+ue3::FunctionRef gSetHidden{"Engine.Actor.SetHidden", ue3::kEveryGame};
+ue3::FunctionRef gSetLocation{"Engine.Actor.SetLocation", ue3::kEveryGame};
+ue3::FunctionRef gSetRotation{"Engine.Actor.SetRotation", ue3::kEveryGame};
+
+ue3::Object* PlayerWorld(ue3::Object** playerPawnOut = nullptr) {
+    ue3::Object* const controller = player::Controller();
+    ue3::Object* const playerPawn = controller != nullptr ? player::Pawn(controller) : nullptr;
+    if (playerPawnOut != nullptr) {
+        *playerPawnOut = playerPawn;
+    }
+    return playerPawn != nullptr ? gWorldInfo.Read<ue3::Object*>(playerPawn).value_or(nullptr) : nullptr;
+}
+
+std::string StreamLevel(std::string const& package, bool on) {
+    ue3::Object* const world = PlayerWorld();
+    auto const levels = world != nullptr ? gStreamingLevels.ElementsOf(world) : std::nullopt;
+    if (!levels) {
+        return "no world with streaming levels";
+    }
+    std::string names;
+    for (std::int32_t i = 0; i < levels->count; ++i) {
+        ue3::Object* const level = *static_cast<ue3::Object**>(levels->At(i));
+        auto const name = level != nullptr && ue3::runtime::IsAlive(level) ? gLevelPackage.Read<ue3::Name>(level) : std::nullopt;
+        if (!name) {
+            continue;
+        }
+        std::string const text = ue3::runtime::NameText(*name);
+        if (Lower(text).find(Lower(package)) == std::string::npos) {
+            continue;
+        }
+        bool const loaded = gLevelLoaded.Read<ue3::Object*>(level).value_or(nullptr) != nullptr;
+        bool const wrote = gLevelShouldLoad.WriteBool(level, on) && gLevelShouldShow.WriteBool(level, on);
+        write_journal::Wrote("Hair.streamLevel", level, 0);
+        names += std::format("\n  {}: {} (was {}loaded){}", text, on ? "load and show" : "hide and unload", loaded ? "" : "not ",
+            wrote ? "" : " - NOT WRITTEN");
+    }
+    if (names.empty()) {
+        return "no streaming level whose name holds '" + package + "' in this world";
+    }
+    log::Info("hair: streaming {}{}", package, names);
+    return "asked the level streaming to " + std::string(on ? "load" : "unload") + ":" + names +
+           (on ? "\n  give it a few seconds, then `mevr hair bring <name>`" : "");
+}
+
+std::string Bring(std::string const& what, int which) {
+    ue3::Object* playerPawn = nullptr;
+    ue3::Object* const world = PlayerWorld(&playerPawn);
+    std::optional<ue3::Vector> const at = playerPawn != nullptr ? player::Location(playerPawn) : std::nullopt;
+    std::optional<ue3::Rotator> const facing = playerPawn != nullptr ? player::Rotation(playerPawn) : std::nullopt;
+    if (world == nullptr || !at || !facing) {
+        return "no player in a world";
+    }
+    std::string const key = Lower(what);
+    std::vector<std::pair<ue3::Object*, std::string>> matches;
+    int guard = 0;
+    for (ue3::Object* p = gPawnList.Read<ue3::Object*>(world).value_or(nullptr); p != nullptr && guard < 512;
+         p = gNextPawn.Read<ue3::Object*>(p).value_or(nullptr), ++guard) {
+        if (!ue3::runtime::IsAlive(p)) {
+            break;
+        }
+        if (p == playerPawn || !player::IsBioPawn(p)) {
+            continue;
+        }
+        ue3::Object* const hair = gHairMesh.Read<ue3::Object*>(p).value_or(nullptr);
+        ue3::Object* const body = player::Mesh(p);
+        std::string const name = PathOf(p);
+        std::string const hairPath = hair != nullptr && ue3::runtime::IsAlive(hair) ? PathOf(player::SkeletalMesh(hair)) : std::string();
+        std::string const bodyPath = body != nullptr ? PathOf(player::SkeletalMesh(body)) : std::string();
+        if (name.find(key) != std::string::npos || hairPath.find(key) != std::string::npos || bodyPath.find(key) != std::string::npos) {
+            matches.emplace_back(p, std::format("{} (hair {}, body {}, hidden {})", name, hairPath.empty() ? "none" : hairPath,
+                bodyPath.empty() ? "none" : bodyPath, gHidden.ReadBool(p).value_or(false) ? 1 : 0));
+        }
+    }
+    if (matches.empty()) {
+        return "no pawn whose name, hair or body mesh holds '" + what + "' (`mevr hair stream <package>` loads a sublevel first)";
+    }
+    std::string out = std::format("{} match(es):", matches.size());
+    for (std::size_t i = 0; i < matches.size(); ++i) {
+        out += std::format("\n  [{}] {}", i, matches[i].second);
+    }
+    if (which < 0 || static_cast<std::size_t>(which) >= matches.size()) {
+        return out + "\n  none brought: `mevr hair bring <name> <k>`";
+    }
+    ue3::Object* const pawn = matches[static_cast<std::size_t>(which)].first;
+    ue3::Function* const setHidden = gSetHidden.Get();
+    ue3::Function* const setLocation = gSetLocation.Get();
+    ue3::Function* const setRotation = gSetRotation.Get();
+    if (setHidden == nullptr || setLocation == nullptr || setRotation == nullptr) {
+        return out + "\n  Actor.SetHidden, SetLocation or SetRotation not found";
+    }
+    double const yaw = static_cast<double>(facing->yaw) * (2.0 * 3.14159265358979323846 / 65536.0);
+    ue3::Vector to = *at;
+    to.x += static_cast<float>(std::cos(yaw) * 1.5 * engine::kUnitsPerMeter);
+    to.y += static_cast<float>(std::sin(yaw) * 1.5 * engine::kUnitsPerMeter);
+    ue3::Rotator face{};
+    face.yaw = (facing->yaw + 32768) & 0xFFFF;
+    ue3::Params hide(ue3::runtime::Get(), setHidden);
+    hide.SetBool("bNewHidden", false);
+    ue3::runtime::Call(pawn, setHidden, hide);
+    ue3::Params move(ue3::runtime::Get(), setLocation);
+    move.Set("NewLocation", to);
+    ue3::runtime::Call(pawn, setLocation, move);
+    ue3::Params turn(ue3::runtime::Get(), setRotation);
+    turn.Set("NewRotation", face);
+    ue3::runtime::Call(pawn, setRotation, turn);
+    write_journal::Wrote("Hair.bring", pawn, 0);
+    std::optional<ue3::Vector> const now = player::Location(pawn);
+    log::Info("hair: brought {} in front of the player", matches[static_cast<std::size_t>(which)].second);
+    return out + std::format("\n  brought [{}]: SetLocation returned {}, now ({:.0f}, {:.0f}, {:.0f})", which,
+        move.Return<bool>().value_or(false) ? "true" : "false", now ? now->x : 0.0f, now ? now->y : 0.0f, now ? now->z : 0.0f);
+}
+
 void Stop(char const* why) {
     if (gPublished > 0) {
         hp::Clear();
@@ -518,6 +641,26 @@ std::string Command(std::string const& args) {
         }
         return SetMesh(gPeople[static_cast<std::size_t>(n)].hair, mesh) ? "set " + PathOf(mesh) : "SetSkeletalMesh failed";
     }
+    if (verb == "stream") {
+        std::string package, onOff;
+        words >> package >> onOff;
+        if (package.empty()) {
+            return "mevr hair stream <package or part of its name> [on|off]";
+        }
+        return StreamLevel(package, onOff != "off");
+    }
+    if (verb == "bring") {
+        std::string what;
+        int which = 0;
+        words >> what;
+        if (!(words >> which)) {
+            which = 0;
+        }
+        if (what.empty()) {
+            return "mevr hair bring <part of a pawn's name, hair or body mesh> [k]";
+        }
+        return Bring(what, which);
+    }
     if (verb.empty() || verb == "people" || verb == "status") {
         std::string out = "hair: " + gStatus;
         hp::Stats const stats = hp::GetStats();
@@ -551,7 +694,7 @@ std::string Command(std::string const& args) {
         }
         return out;
     }
-    return "mevr hair [on|off|auto | people | trace <s> | kick <n> <x> <y> <z> | mesh <n> <path> | standins on|off]";
+    return "mevr hair [on|off|auto | people | trace <s> | kick <n> <x> <y> <z> | mesh <n> <path> | standins on|off | stream <package> [on|off] | bring <name> [k]]";
 }
 
 std::string StatusJson() {
