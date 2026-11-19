@@ -82,11 +82,11 @@ BAD = [
 ] + [
     line(40, "vr cover: 64 hits judged since the start ([Cover] judge = either): 0 in cover (0 by the level look alone, 0 cut by the "
          "game's cone), 64 in the open, 0 with cover too far, 0 from overhead, 0 without a shooter, 0 without a view; 10 judged from "
-         "Shepard's crouched eyes (0 of them in cover), 4 with Shepard crouched but his crouched eyes unread (the real eyes judged); "
+         "Shepard's crouched head (0 of them in cover), 4 with Shepard crouched but his crouched head unread (the real eyes judged); "
          "last: x"),
-    # Shepard crouched by the game, his crouched eyes unread: the real eyes judged (research/23 section 7.8).
+    # Shepard crouched by the game, his crouched head unread: the real eyes judged (research/23 section 7.8).
     line(41, "vr cover: a hit from SFXPawn_AssaultDrone_1 at 14.0 m: exposed | judged from the real eyes 1.85 m over the floor, "
-         "Shepard crouched but his crouched eye height unread, the shooter's eyes +0.40 m from theirs (+2 deg)"),
+         "Shepard crouched but his crouched head unread, the shooter's eyes +0.40 m from theirs (+2 deg)"),
 ] + [
     line(50 + i, f"posture: physical {'crouch' if i % 2 == 0 else 'stand'}: eyes 1.63 m = 0.88 of the standing 1.85 m") for i in range(5)
 ] + [
@@ -140,14 +140,14 @@ CLEAN = [
     line_ms(41, 0, "posture: physical crouch: eyes 1.42 m = 0.76 of the standing 1.86 m, below 0.87 for 0.20 s"),
     line_ms(44, 0, "posture: physical stand: eyes 1.80 m = 0.97 of the standing 1.86 m, above 0.92 for 0.20 s"),
     line_ms(44, 500, "torso: crouching with you: the body down 5 cm to your head (Shepard's head 5 cm too high), the knees bending, the feet on the floor"),
-    # Shepard crouched by L3, judged from his crouched eyes, covered.
+    # Shepard crouched by L3, judged from his crouched head, covered.
     line(46, "vr cover: a hit from SFXPawn_AssaultDrone_2 at 12.1 m: covered by StaticMeshCollectionActor_12 0.48 m from the eyes, "
-         "facing (0.10, 0.99); the game's cone cuts it to nothing | judged from Shepard's crouched eyes 0.92 m over the floor (the "
+         "facing (0.10, 0.99); the game's cone cuts it to nothing | judged from Shepard's crouched head 0.88 m over the floor (his head bone; the "
          "real eyes 0.93 m higher), the shooter's eyes +0.90 m from theirs (+4 deg)"),
 ]
 
 BAD_RULES = ["armik-third-person-on-foot", "armik-anchor-flapping", "traversal-refused-at-slot", "traversal-double-tap-refused",
-             "traversal-press-refused-near-slot", "vr-cover-crouched-eyes-unread",
+             "traversal-press-refused-near-slot", "vr-cover-crouched-head-unread",
              "holster-stays-out", "holster-unasked-draw", "crouchbody-drop-not-crouched", "process-event-off-thread",
              "swapchain-refused", "first-chance-av-ours", "vr-cover-never-covered", "posture-flip-flop", "frame-rate-low",
              "crash-report", "engine-free-corrupt-pointer", "reflect-field-misfit", "traversal-scene-blocked-matinee",
@@ -174,10 +174,10 @@ try:
           "the refused vault names its slot and count: " + str(found.get('traversal-refused-at-slot')))
     check(found.get('vr-cover-never-covered', {}).get('summary', '').startswith('0 of 64 hits covered'),
           "VR cover's ratio from its heartbeat: " + str(found.get('vr-cover-never-covered')))
-    check("10 judged from Shepard's crouched eyes, 0 of them covered" in found.get('vr-cover-never-covered', {}).get('summary', ''),
-          "VR cover's ratio names the hits judged from Shepard's crouched eyes: " + str(found.get('vr-cover-never-covered')))
-    check(found.get('vr-cover-crouched-eyes-unread', {}).get('count') == 2,
-          "the crouched hits judged from the real eyes (a hit's line and the heartbeat): " + str(found.get('vr-cover-crouched-eyes-unread')))
+    check("10 judged from Shepard's crouched head, 0 of them covered" in found.get('vr-cover-never-covered', {}).get('summary', ''),
+          "VR cover's ratio names the hits judged from Shepard's crouched head: " + str(found.get('vr-cover-never-covered')))
+    check(found.get('vr-cover-crouched-head-unread', {}).get('count') == 2,
+          "the crouched hits judged from the real eyes (a hit's line and the heartbeat): " + str(found.get('vr-cover-crouched-head-unread')))
     check(found.get('armik-third-person-on-foot', {}).get('count') == 3, "three third-person anchors on foot")
     check(found.get('traversal-press-refused-near-slot', {}).get('count') == 2,
           "the first tap and the double tap refused next to the slot: " + str(found.get('traversal-press-refused-near-slot')))

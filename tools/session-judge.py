@@ -189,11 +189,11 @@ RULES = [
          why="the body was lowered more than 3 cm 'to your head' while the player wasn't physically crouched (a run, the idle, "
              "the game's own crouch): the body sinks under the view (research/29 \"A run never lowers the body\"). Within "
              "1 s before a physical crouch's posture line, or after a stand's, it is the descent or the rise: not counted"),
-    dict(id="vr-cover-crouched-eyes-unread", severity="bad",
-         pattern=r"^vr cover: .*Shepard crouched but his crouched eye(?:s| height) unread",
-         why="a hit with Shepard crouched by the game was judged from the real eyes because his crouched eye height or floor "
+    dict(id="vr-cover-crouched-head-unread", severity="bad",
+         pattern=r"^vr cover: .*Shepard crouched but his crouched (?:head|eyes|eye height) unread",
+         why="a hit with Shepard crouched by the game was judged from the real eyes because his crouched head or floor "
              "couldn't be read: crouched behind a low wall, the player counts as in the open (research/23 section 7.8: while "
-             "the game has Shepard crouched, his crouched eyes judge)"),
+             "the game has Shepard crouched, his crouched head judges)"),
     dict(id="process-event-off-thread", severity="bad",
          pattern=r"^process event: off the game thread",
          why="UnrealScript called off the game thread races the game thread's script VM (the 2026-10-23 crash, research/36)"),
@@ -336,12 +336,12 @@ def vr_cover_ratio(entries):
     verdicts = Counter()
     first_hit = last_hit = None
     examples = []
-    crouched = None  # the heartbeat's hits judged from Shepard's crouched eyes and of them covered (research/23 section 7.8)
+    crouched = None  # the heartbeat's hits judged from Shepard's crouched head and of them covered (research/23 section 7.8)
     for stamp, t, level, text, raw in entries:
         m = re.search(r"vr cover: (\d+) hits judged since the start(?: \([^)]*\))?: (\d+) in cover", text)
         if m:
             last = (stamp, int(m.group(1)), int(m.group(2)), raw)
-            e = re.search(r"; (\d+) judged from Shepard's crouched eyes \((\d+) of them in cover\)", text)
+            e = re.search(r"; (\d+) judged from Shepard's crouched (?:head|eyes) \((\d+) of them in cover\)", text)
             if e:
                 crouched = (int(e.group(1)), int(e.group(2)))
         m = re.search(r"vr cover: a hit from (\S+) at ([\d.]+) m: ([a-z ]+?)(?: by | \(|; | \||$)", text)
@@ -363,7 +363,7 @@ def vr_cover_ratio(entries):
     f.first, f.last = first_hit or (last[0] if last else None), last_hit or (last[0] if last else None)
     f.summary = f"{covered} of {hits} hits covered" + (f"; per hit: " + ", ".join(f"{k} {v}" for k, v in verdicts.most_common()) if verdicts else "")
     if crouched:
-        f.summary += f"; {crouched[0]} judged from Shepard's crouched eyes, {crouched[1]} of them covered"
+        f.summary += f"; {crouched[0]} judged from Shepard's crouched head, {crouched[1]} of them covered"
     f.examples = ([last[3][:400]] if last else []) + examples
     return f
 

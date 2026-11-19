@@ -249,7 +249,7 @@ void TestLevelLook() {
     CHECK(std::string_view(vc::Name(vc::Rule::Either)) == "either");
 }
 
-// The eyes that judge (research/23 section 7.8, the owner 2026-11-19): while the game has Shepard crouched, his crouched eyes
+// The eyes that judge (research/23 section 7.8, the owner 2026-11-19): while the game has Shepard crouched, his crouched head
 // over his floor, at the real view's horizontal place, never above the real eyes.
 void TestJudgingEyes() {
     // Freedom's Progress's courtyard: the floor at z -13209, a low wall's top 1.0 m over it, 0.5 m ahead of the player.
@@ -258,11 +258,11 @@ void TestJudgingEyes() {
     vc::EyeInput in;
     in.eyes = standing;
     in.floorZ = floorZ;
-    in.crouchedEyeUnits = 90.0;  // Shepard's crouched eyes 0.90 m over his floor
+    in.crouchedEyeUnits = 90.0;  // Shepard's crouched head 0.90 m over his floor (ME2's head bone: 0.88 m)
     // Standing: the real eyes, whatever the crouched height read.
     vc::Eyes const up = vc::JudgingEyes(in);
     CHECK(up.source == vc::EyeSource::Real && Near(up.at.z, standing.z) && Near(up.loweredUnits, 0.0));
-    // Crouched by the game (L3, or a seated player's L3, the eyes still at standing height): Shepard's crouched eyes, at the real
+    // Crouched by the game (L3, or a seated player's L3, the eyes still at standing height): Shepard's crouched head, at the real
     // view's horizontal place.
     in.crouched = true;
     vc::Eyes const down = vc::JudgingEyes(in);
@@ -301,7 +301,7 @@ void TestJudgingEyes() {
     half.crouchedEyeUnits = 45.0;  // 0.90 m
     CHECK(vc::JudgingEyes(half).source == vc::EyeSource::Crouched && Near(vc::JudgingEyes(half).at.z, floorZ + 45.0));
     // What it does to a low wall: the eye line from the standing eyes passes over its top toward a shooter at eye height 15 m
-    // away (nothing met: exposed); from Shepard's crouched eyes the wall's face is met 0.5 m ahead (covered). Here the trace's
+    // away (nothing met: exposed); from Shepard's crouched head the wall's face is met 0.5 m ahead (covered). Here the trace's
     // answer is given by hand: the wall's face from x +50, top at floor + 100.
     vc::Settings const s;
     vc::Vec3 const shooter{standing.x + 1500.0, standing.y, floorZ + 160.0};

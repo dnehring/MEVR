@@ -79,12 +79,12 @@ ue3::FieldRef gHidden{"Engine.Actor", "bHidden", ue3::kEveryGame};
 ue3::ClassRef gPawnClass{"Engine.Pawn", ue3::kEveryGame};
 ue3::FieldRef gPawnWeapon{"Engine.Pawn", "Weapon", ue3::kEveryGame};
 // The floor under the player's pawn (Location.z - CollisionHeight, the floor lock's floor): the per-hit detail, and the crouched
-// eyes' floor (research/23 section 7.8).
+// head's floor (research/23 section 7.8).
 ue3::FieldRef gPawnCylinder{"Engine.Pawn", "CylinderComponent", ue3::kEveryGame};
 ue3::FieldRef gCylinderHeight{"Engine.CylinderComponent", "CollisionHeight", ue3::kEveryGame};
-// The eyes that judge (research/23 section 7.8, the owner 2026-11-19): whether the game has Shepard crouched, and his crouched
-// eye height (the engine's BaseEyeHeight, which Pawn.StartCrouch sets for the crouch: `FMin(0.8 * CrouchHeight, CrouchHeight -
-// 10)`; EyeHeight only follows it where UpdateEyeHeight runs).
+// The eyes that judge (research/23 section 7.8, the owner 2026-11-19): whether the game has Shepard crouched, and the game's
+// crouched eye height, the fallback when his animated head can't be read (BaseEyeHeight, which Pawn.StartCrouch sets for the
+// crouch: `FMin(0.8 * CrouchHeight, CrouchHeight - 10)`; EyeHeight never follows it on ME2: measured 1.68 m standing and crouched).
 ue3::FieldRef gIsCrouched{"Engine.Pawn", "bIsCrouched", ue3::kEveryGame};
 ue3::FieldRef gBaseEyeHeight{"Engine.Pawn", "BaseEyeHeight", ue3::kEveryGame};
 #endif
@@ -338,8 +338,8 @@ std::string RechargeJson();
 struct Counts {
     std::uint64_t judged = 0, covered = 0, coneCut = 0, exposed = 0, tooFar = 0, overhead = 0, noShooter = 0, noView = 0,
                   gameCover = 0;
-    // The eyes that judged (research/23 section 7.8): hits judged from Shepard's crouched eyes, of them covered, and hits with
-    // Shepard crouched whose crouched eyes couldn't be read (the real eyes judged them).
+    // The eyes that judged (research/23 section 7.8): hits judged from Shepard's crouched head, of them covered, and hits with
+    // Shepard crouched whose crouched head couldn't be read (the real eyes judged them).
     std::uint64_t crouchedEyes = 0, crouchedCovered = 0, crouchedUnread = 0;
 };
 Counts gCounts;
@@ -470,8 +470,13 @@ void Count(vc::Why why) {
 }
 
 // ---- The eyes that judge (research/23 section 7.8, the owner 2026-11-19) -------------------------------------------------------
-// While the game has Shepard crouched, his crouched eyes over his floor judge his head (core/vr/VrCover JudgingEyes). What the
-// game says of him, read each time it's asked (a hit, the shelter at most every 250 ms, the console).
+// While the game has Shepard crouched, his crouched head over his floor judges (core/vr/VrCover JudgingEyes). Which height: his
+// animated head bone (arm IK's AnimatedHeadComponent, unscaled: the game's Shepard, the size the game's cover is built for), else
+// the game's crouched eye height. Measured on ME2 (Freedom's Progress, the owner's calibration): crouched by L3 the head bone
+// 0.88 m over his floor, the game's crouched eye height 0.99 m (CollisionHeight 55 + BaseEyeHeight 44), Location + EyeHeight still
+// 1.68 m (EyeHeight 80 + the crouch's 33: never lowered); the low cover there tops out at 0.96-0.98 m (CoverLink_28's crate) and
+// the game's own low-cover pose holds the head bone at 0.93-0.95 m just under it: the head bone is what the game's low cover
+// hides, the eyes (11 cm higher) peek over. Read each time it's asked (a hit, the shelter at most every 250 ms, the console).
 struct CrouchRead {
     bool crouched = false;                  // Engine.Pawn.bIsCrouched
     std::optional<double> floor;            // Location.z - CollisionHeight
@@ -479,7 +484,8 @@ struct CrouchRead {
     std::optional<double> eyeHeight;        // Pawn.EyeHeight, over Location
     std::optional<double> baseEyeHeight;    // Pawn.BaseEyeHeight, over Location
     std::optional<double> head;             // Shepard's animated head bone, world z (arm IK's, while it writes)
-    std::optional<double> crouchedEye;      // the crouched eye height over the floor the rule takes (units)
+    std::optional<double> crouchedEye;      // the crouched height over the floor the rule takes (units)
+    bool fromHead = false;                  // it is the head bone's (else the game's crouched eye height)
     char const* from = "unread";            // which of them
 };
 CrouchRead ReadCrouch(ue3::Object* pawn) {
@@ -508,9 +514,13 @@ CrouchRead ReadCrouch(ue3::Object* pawn) {
         return r;
     }
     r.floor = static_cast<double>(at->z) - *r.collision;
-    if (r.baseEyeHeight) {
+    if (r.head) {
+        r.crouchedEye = *r.head - *r.floor;
+        r.fromHead = true;
+        r.from = "Shepard's head (his animated head bone)";
+    } else if (r.baseEyeHeight) {
         r.crouchedEye = *r.collision + *r.baseEyeHeight;
-        r.from = "the game's crouched eye height (CollisionHeight + BaseEyeHeight)";
+        r.from = "the game's crouched eye height (CollisionHeight + BaseEyeHeight: no animated head)";
     }
     return r;
 }
@@ -542,25 +552,26 @@ void CountEyes(vc::Eyes const& eyes, CrouchRead const& read, vc::Verdict const& 
 }
 
 // Which eyes judged, for each hit's line: `judged from the real eyes 1.85 m over the floor` or `judged from Shepard's crouched
-// eyes 0.98 m over the floor (the real eyes 0.87 m higher)`; a crouch whose eyes couldn't be read says so.
+// head 0.88 m over the floor (his head bone; the real eyes 0.99 m higher)`; a crouch whose head couldn't be read says so.
 std::string EyesText(vc::Eyes const& eyes, CrouchRead const& read, vc::Vec3 const& real, double upm) {
     auto const over = [&](double z) {
         return read.floor ? std::format("{:.2f} m over the floor", (z - *read.floor) / upm) : std::string("(the floor unread)");
     };
     if (eyes.source == vc::EyeSource::Crouched) {
-        return std::format("judged from Shepard's crouched eyes {} (the real eyes {:.2f} m higher)", over(eyes.at.z), eyes.loweredUnits / upm);
+        return std::format("judged from Shepard's crouched head {} ({}; the real eyes {:.2f} m higher)", over(eyes.at.z),
+            read.fromHead ? "his head bone" : "the game's crouched eye height, his head bone unread", eyes.loweredUnits / upm);
     }
     std::string text = "judged from the real eyes " + over(real.z);
     if (read.crouched) {
         if (!gCrouchOverride.value_or(true)) {
-            text += ", Shepard crouched (the crouched eyes off: mevr cover crouch off)";
+            text += ", Shepard crouched (his crouched head off: mevr cover crouch off)";
         } else if (!read.crouchedEye) {
-            text += ", Shepard crouched but his crouched eye height unread";
+            text += ", Shepard crouched but his crouched head unread";
         } else if (read.floor && *read.floor + *read.crouchedEye < real.z) {
-            text += std::format(", Shepard crouched but his crouched eye height not taken ({:.2f} m: not between 0.2 and 2.0)",
+            text += std::format(", Shepard crouched but his crouched head not taken ({:.2f} m: not between 0.2 and 2.0)",
                 *read.crouchedEye / upm);
         } else {
-            text += ", Shepard crouched, his crouched eyes no lower";
+            text += ", Shepard crouched, his crouched head no lower";
         }
     }
     return text;
@@ -1145,10 +1156,10 @@ void LogStats() {
     if (gCounts.judged == gLoggedCounts.judged && gCounts.gameCover == gLoggedCounts.gameCover) {
         return;
     }
-    // The eyes that judged (research/23 section 7.8): from Shepard's crouched eyes, and crouched hits whose eyes were unread.
-    std::string const eyes = std::format("; {} judged from Shepard's crouched eyes ({} of them in cover){}", gCounts.crouchedEyes,
+    // The eyes that judged (research/23 section 7.8): from Shepard's crouched head, and crouched hits whose head was unread.
+    std::string const eyes = std::format("; {} judged from Shepard's crouched head ({} of them in cover){}", gCounts.crouchedEyes,
         gCounts.crouchedCovered, gCounts.crouchedUnread > 0
-            ? std::format(", {} with Shepard crouched but his crouched eyes unread (the real eyes judged)", gCounts.crouchedUnread)
+            ? std::format(", {} with Shepard crouched but his crouched head unread (the real eyes judged)", gCounts.crouchedUnread)
             : std::string());
 #if defined(MEVR_GAME_LE1)
     log::Info("vr cover: {} hits judged since the start: {} in cover ({} cut by the game's cone), {} in the open, {} with cover too far, "
@@ -1311,7 +1322,7 @@ void JudgeShelter(ue3::Object* pawn, Shelter& out, std::string* detail = nullptr
         out.text = "no head-tracked view";
         return;
     }
-    // The same eyes as a hit (research/23 section 7.8): crouched, Shepard's crouched eyes.
+    // The same eyes as a hit (research/23 section 7.8): crouched, Shepard's crouched head.
     CrouchRead read;
     vc::Eyes const judging = EyesFor(pawn, *frame, &read);
     vc::Vec3 const eyes = judging.at;
@@ -1454,7 +1465,7 @@ std::string Console(std::string_view args) {
         return posture::CoverConsole(args);  // the cover snapping's refusal and its test (game/posture)
     }
     if (sub == "crouch") {
-        // `mevr cover crouch on|off`: Shepard's crouched eyes judge while the game has him crouched (on, the rule), or the real
+        // `mevr cover crouch on|off`: Shepard's crouched head judges while the game has him crouched (on, the rule), or the real
         // eyes always (off: the rule before 2026-11-19, an A/B), until the mod reloads.
         std::string value;
         words >> value;
@@ -1462,7 +1473,7 @@ std::string Console(std::string_view args) {
             return std::format("usage: mevr cover crouch on|off (now {})", gCrouchOverride.value_or(true) ? "on" : "off");
         }
         gCrouchOverride = value == "on";
-        return std::format("vr cover: {} until the mod reloads", value == "on" ? "Shepard's crouched eyes judge while he is crouched"
+        return std::format("vr cover: {} until the mod reloads", value == "on" ? "Shepard's crouched head judges while he is crouched"
                                                                                 : "the real eyes judge, crouched or not");
     }
 #if defined(MEVR_GAME_LE2)
@@ -1497,9 +1508,11 @@ std::string Console(std::string_view args) {
             gRule == vc::Rule::Line ? "eye line" : gRule == vc::Rule::Level ? "level look" : "eye line or the level look");
     }
 #endif
-    if (sub != "test" && sub != "pawns" && sub != "hit" && sub != "probe" && sub != "put" && sub != "regen" && sub != "eyes") {
-        return "usage: mevr cover [on|off | test | pawns | eyes | crouch on|off | hit <damage> <n> | probe <yawDeg> [rangeM] | "
-               "put <me|n> <x> <y> <z> | regen [as <n>|as off] | recharge [on|off] | snap on|off|auto | where | acquire | links [n]]";
+    if (sub != "test" && sub != "pawns" && sub != "hit" && sub != "probe" && sub != "put" && sub != "regen" && sub != "eyes" &&
+        sub != "top") {
+        return "usage: mevr cover [on|off | test | pawns | eyes | crouch on|off | top <yawDeg> [rangeM] | hit <damage> <n> | "
+               "probe <yawDeg> [rangeM] [heightM] | put <me|n> <x> <y> <z> | regen [as <n>|as off] | recharge [on|off] | "
+               "snap on|off|auto | where | acquire | links [n]]";
     }
     ue3::Object* const controller = player::Controller();
     ue3::Object* const pawn = controller != nullptr ? player::BioPawn(controller) : nullptr;
@@ -1511,7 +1524,7 @@ std::string Console(std::string_view args) {
         return "mevr cover " + sub + ": BioPawn.IsHostile, IsDead or Actor.Trace wasn't found";
     }
     RefreshSettings();
-    // The eyes a hit is judged from now (research/23 section 7.8): crouched, Shepard's crouched eyes.
+    // The eyes a hit is judged from now (research/23 section 7.8): crouched, Shepard's crouched head.
     CrouchRead read;
     vc::Eyes const judging = EyesFor(pawn, *frame, &read);
     vc::Vec3 const real = ToVec(frame->headWorld);
@@ -1541,21 +1554,55 @@ std::string Console(std::string_view args) {
             read.collision.value_or(-1.0), read.head ? over(read.head) : std::string("unread (arm IK writes no pose)"), read.from,
             read.crouchedEye ? std::format("{:.2f} m", *read.crouchedEye / upm) : std::string("none"));
     }
-    if (sub == "probe") {
-        // `mevr cover probe <yawDeg> [rangeM]`: the first surface level from the eyes along a world yaw (0 = +X, 90 = +Y), for
-        // finding cover to test against.
-        double yaw = 0.0, range = 20.0;
+    if (sub == "top") {
+        // `mevr cover top <yawDeg> [rangeM]`: the highest surface within rangeM (1.5 by default) along a world yaw from the eyes'
+        // horizontal place, flat lines every 2 cm from 0.2 to 2.0 m over Shepard's floor: a low wall's top height, against which
+        // the crouched head is judged (research/23 section 7.8).
+        double yaw = 0.0, range = 1.5;
         words >> yaw >> range;
+        if (!read.floor) {
+            return "mevr cover top: Shepard's floor unread";
+        }
+        double const upm = frame->unitsPerMeter;
+        double const r = yaw * std::numbers::pi / 180.0;
+        std::optional<double> top;
+        std::string surface;
+        double distance = 0.0;
+        for (int cm = 20; cm <= 200; cm += 2) {
+            vc::Vec3 const from{eyes.x, eyes.y, *read.floor + cm / 100.0 * upm};
+            vc::Vec3 const end{from.x + std::cos(r) * range * upm, from.y + std::sin(r) * range * upm, from.z};
+            std::string name;
+            if (std::optional<vc::Block> const block = FirstSurface(pawn, from, end, &name)) {
+                top = cm / 100.0;
+                surface = name;
+                distance = std::hypot(block->point.x - from.x, block->point.y - from.y) / upm;
+            }
+        }
+        if (!top) {
+            return std::format("mevr cover top: nothing within {:.1f} m along yaw {:.0f} between 0.2 and 2.0 m over the floor", range, yaw);
+        }
+        return std::format("mevr cover top: along yaw {:.0f}, the highest surface within {:.1f} m is {} {:.2f} m out, its top {:.2f}-{:.2f} m "
+                           "over Shepard's floor; {}", yaw, range, surface, distance, *top, *top + 0.02, eyesText);
+    }
+    if (sub == "probe") {
+        // `mevr cover probe <yawDeg> [rangeM] [heightM]`: the first surface level from the eyes (or heightM over Shepard's floor)
+        // along a world yaw (0 = +X, 90 = +Y), for finding cover to test against.
+        double yaw = 0.0, range = 20.0, height = -1.0;
+        words >> yaw >> range >> height;
+        vc::Vec3 from = eyes;
+        if (height > 0.0 && read.floor) {
+            from.z = *read.floor + height * frame->unitsPerMeter;
+        }
         double const r = yaw * 3.14159265358979 / 180.0;
         double const units = range * frame->unitsPerMeter;
-        vc::Vec3 const end{eyes.x + std::cos(r) * units, eyes.y + std::sin(r) * units, eyes.z};
+        vc::Vec3 const end{from.x + std::cos(r) * units, from.y + std::sin(r) * units, from.z};
         std::string surface;
-        std::optional<vc::Block> const block = FirstSurface(pawn, eyes, end, &surface);
+        std::optional<vc::Block> const block = FirstSurface(pawn, from, end, &surface);
         if (!block) {
-            return std::format("mevr cover probe: nothing within {:.1f} m along yaw {:.0f} from ({:.0f}, {:.0f}, {:.0f})", range, yaw, eyes.x,
-                eyes.y, eyes.z);
+            return std::format("mevr cover probe: nothing within {:.1f} m along yaw {:.0f} from ({:.0f}, {:.0f}, {:.0f})", range, yaw, from.x,
+                from.y, from.z);
         }
-        double const d = std::hypot(block->point.x - eyes.x, block->point.y - eyes.y, block->point.z - eyes.z) / frame->unitsPerMeter;
+        double const d = std::hypot(block->point.x - from.x, block->point.y - from.y, block->point.z - from.z) / frame->unitsPerMeter;
         return std::format("mevr cover probe: {} at {:.2f} m along yaw {:.0f}: ({:.0f}, {:.0f}, {:.0f}), normal ({:.2f}, {:.2f}, {:.2f})", surface,
             d, yaw, block->point.x, block->point.y, block->point.z, block->normal.x, block->normal.y, block->normal.z);
     }
