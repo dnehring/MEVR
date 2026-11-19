@@ -605,6 +605,83 @@ and the detail apply there too. Not seen in a fight yet (research/le3-combat-fix
 **[verify] in the game:** a hit from a shooter above a barrier with the head ducked behind it (`mevr cover pawns` names both looks per
 pawn; `mevr cover put <n> x y z` stands a squadmate on a crate, `mevr cover hit 30 <n>` the shot), and the owner's firefight.
 
+### 7.8 Crouched, Shepard's crouched head judges (2026-11-19, lane CCV; every game)
+
+**The question and the answer.** Lane SMOKE (main 299c84a4; `tools/le2-halcyon-run/smoke-owner-save.ps1`, `tools/session-judge.py`)
+read the owner's 2026-11-18 ME2 log: 0 of 164 hits covered. Their natural crouch lowered the eyes only to 1.52 m (`posture: physical
+crouch: eyes 1.52 m = 0.82 of the standing 1.85 m`), Freedom's Progress's low walls top out about 1 m over the floor (`CoverLink_15
+slot 3's cover top at z -13101 (the slot at z -13140, the pawn at z -13109)`), so the eye line passed over them and the rule judged
+them exposed, correctly by its definition then. A seated player never lowers the eyes at all: the floor lock draws them at the
+standing reference (research/58), and they crouch with L3. Asked "Should crouching behind a low wall count as cover even when your
+real eyes stay above it?" (recommended: yes, judge from Shepard's crouched head while he is crouched), the owner answered: "Yes I
+think so, for seated players this should of course be necessary."
+
+**The rule** (`core/vr/VrCover` `JudgingEyes`, unit-tested in `tests/VrCoverTests.cpp` `TestJudgingEyes`: standing unchanged,
+crouched lowered at the real view's horizontal place, never above the real eyes, an unread or insane height, the seated case):
+while the GAME has Shepard crouched (`Engine.Pawn.bIsCrouched`, whatever crouched him: the physical crouch, L3 (ME1's own
+`ToggleCrouch`, the sequels' `[Hands] crouchClick`), a seated player's L3, the game's own crouch), the eye point every look traces
+from is his crouched head's height over his floor (`Location.z - CylinderComponent.CollisionHeight`), at the real view's horizontal
+place, and never higher than the real eyes (a player kneeling lower than Shepard's crouch keeps their own eyes). Standing, the real
+eyes judge as before. A crouched height under 0.2 m or over 2.0 m, or a floor that can't be read, leaves the real eyes. The same
+eye point feeds every look: the eye line, the sequels' flat line (section 7.7, `[Cover] judge`), ME2's shields' shelter (section
+7.5, `vr::cover::Shelter`) and the console's `test`, `pawns` and `probe`. One rule for the three games (the shared `JudgeHit`; ME3's
+`game/Le3Cover.inc` calls it).
+
+**Which height: measured, the head bone** (`game/VrCover` `ReadCrouch`; ME2, the owner's calibration, `mevr cover eyes`, over
+Shepard's floor):
+
+| | standing | crouched by L3 | in the game's own low cover (CoverLink_28, `mevr cover snap on` + `acquire`) |
+|---|---|---|---|
+| `CollisionHeight` | 88 | 55 (`CrouchHeight`) | 55 |
+| `Location + EyeHeight` | 1.68 m (EyeHeight 80) | **1.68 m** (EyeHeight 113: 80 + the crouch's 33, never lowered) | 1.68 m |
+| `Location + BaseEyeHeight` (the engine's crouched eye) | 1.68 m (80) | 0.99 m (44 = `FMin(0.8 * 55, 55 - 10)`) | 0.99 m |
+| Shepard's animated head bone (unscaled) | 1.50 m | **0.88 m** | 0.93-0.95 m |
+
+`EyeHeight` is dishonest (the engine adds the crouch's height adjust to it and ME2 never eases it back: crouched or not, the eyes stay
+at 1.68 m). The engine's crouched eye (`BaseEyeHeight`) is 11 cm above the head bone, as standing it is 18 cm above: the eyes. The
+low cover measured by `mevr cover top` (a flat trace every 2 cm, the highest surface within reach): CoverLink_28's crate at the
+spaceport 0.96-0.98 m, the courtyard barrier the owner fought at (StaticMeshActor_7, by CoverLink_41) 0.94-0.96 m, the spaceport's
+vault wall (CoverLink_9/10) 0.70-0.72 m. In the game's own low cover the pose holds the head bone at 0.93-0.95 m, just under the
+crate's top: **the head bone is what ME2's low cover is built to hide; the eyes peek over it** (0.99 m against tops of 0.94-0.98 m).
+So the rule takes **Shepard's animated head bone** (`arm_ik::AnimatedHeadComponent` through the mesh's `LocalToWorld`: the animation's
+head before our writes, unscaled, the game's Shepard at the size the cover is built for; the player's body scale doesn't lift it),
+else (arm IK posing nothing within half a second: no tracked controllers) the engine's crouched eye height, `CollisionHeight +
+BaseEyeHeight`, 11 cm higher and stricter. A wall lower than the crouched head (the 0.71 m vault walls) still counts as open: the
+game's own cover protects a crouched Shepard there by its slot alone, which VR cover doesn't read (ME3's adapter does).
+
+**Logs and tools.** Each hit's line names the eyes that judged: `vr cover: a hit from <shooter> at D m: <verdict> ... | judged from
+Shepard's crouched head 0.88 m over the floor (his head bone; the real eyes 0.99 m higher)` (or `(the game's crouched eye height, his
+head bone unread; ...)`) or `| judged from the real eyes 1.87 m over the floor`, with `, Shepard crouched but his crouched head
+unread` when neither could be read (`tools/session-judge.py`'s `vr-cover-crouched-head-unread`); ME1's covered-hit line gets the same
+tail, and `mevr cover hit`'s answer too. The heartbeat adds `; N judged from Shepard's crouched head (M of them in cover)` (the
+judge's VR cover ratio repeats it). `mevr cover eyes` prints every height above and which the rule takes; `mevr cover top <yawDeg>
+[rangeM]` measures a wall's top; `mevr cover probe <yawDeg> [rangeM] [heightM]` traces at any height over the floor; `mevr cover
+crouch on|off` is the A/B until the mod reloads (off: the real eyes always, the rule before 2026-11-19). Snapshot `"mod"."vrCover"`
+has `crouchedEyes`, `crouchedCovered`, `crouchedUnread`, `crouchOverride`.
+
+**What changes on ME1.** The same rule, in ME1's compiled code: while ME1 has Shepard crouched (L3's `ToggleCrouch`, the physical
+crouch, the game's own: low cover entries are refused by `noCover`), a hit is judged from his crouched head, so a VR player crouched
+by L3 behind ME1's crates counts as in cover where their standing eyes saw over; standing, nothing changes. ME1's covered-hit line
+gets the eyes' tail and its heartbeat the crouched count; ME1 still has no level look (its eye line only). ME1's own heights are not
+measured yet (`mevr cover eyes` there) **[verify]**.
+
+**In the game** (ME2, the fake headset at the owner's calibration: standing 1.869 m, crouched 1.558 m; stretch
+`%LOCALAPPDATA%\MEVR\sessions\20261119-090930-917-LE2-ccv`; `tools/le2-halcyon-run/crouched-cover.ps1`, the shooter a squadmate put
+beyond the wall by `mevr cover put`, each hit `mevr cover hit 30 <n>`, the game's own `SFXModule_DamagePlayer.SFXTakeDamage`; no
+`god`):
+
+| where (folder) | standing | crouched by L3 | L3, `mevr cover crouch off` | the owner's natural crouch (head 0.35 m down, 1.52 m: the physical crouch) |
+|---|---|---|---|---|
+| Save 4, behind CoverLink_28's crate, Miranda 5.7 m beyond (`crouched-cover-crate28b-092554`) | real eyes 1.87 m, cover too far (the wall 4.34 m out), shields 257.5 -> 233.3 -> 209.0 | head 0.88 m, covered by the crate 0.73 m out, the game's cone cuts both, shields 257.5 unchanged | real eyes, cover too far, 257.5 -> 233.3 -> 209.0 | Shepard crouched by the game, head 0.88 m, covered, shields unchanged |
+| the owner's autosave, the courtyard barrier, Jacob 4.2 m beyond (`crouched-cover-courtyard2-092936`) | real eyes, exposed, 257.5 -> 233.3 -> 209.0 | head 0.88 m, covered by StaticMeshActor_7 0.68 m out (by the level look), unchanged | real eyes, exposed, 257.5 -> 233.3 -> 209.0 | covered, unchanged |
+| the same spot, LightMech_0 41 m away (`crouched-cover-mech-093154`) | cover too far (a wall 21.5 m out), 257.5 -> 209.0 | covered by the barrier 0.82 m out (the level look), unchanged | | |
+
+The shields' shelter (`mevr cover regen as <Jacob>`, crouched behind the barrier): `behind cover (... judged from Shepard's crouched
+head 0.88 m ...)`; with `crouch off`, `in the open to a hostile`. The engine's crouched eye (0.99 m, the first build of this lane)
+missed the 0.94-0.98 m tops: from it the probe found nothing at the spaceport and passed over the courtyard barrier. Not measured:
+a hostile's own shot in a fight (the drones; the squad killed them before Shepard reached the courtyard in SMOKE's run), seated
+calibration (the floor lock draws a seated player's eyes at the standing reference, so it is the L3 case), ME1 and ME3 in the game.
+
 ## 8. The crouch in the owner's ME2 session (2026-11-18, lane M2W)
 
 The owner, ME2 in the headset (MEVR 0.3.2, 237aeb1b; `LE2MEVR.log` 20:35-20:51, copied to scratch): "When my hand touches an NPC

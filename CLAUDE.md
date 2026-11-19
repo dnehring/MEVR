@@ -383,7 +383,12 @@ switching frameworks.
   (IsInCover never true, A at cover refused); `posture: cover watch:` (ME2) names the controller's state changes, cover fields set
   and the pawn carried with the stick at rest. **VR cover's level look** (section 7.7, the sequels): the games' cone ignores the
   shooter's height, so a surface on the flat line from the eyes toward the shooter covers too (`[Cover] judge = either`, `line` the
-  eye line alone; ME1 unchanged); every hit's detail logged (`vr cover: a hit from ... | the eyes H m over the floor ...`). **ME3
+  eye line alone; ME1 unchanged); every hit's detail logged (`vr cover: a hit from ... | judged from the real eyes H m over the
+  floor ...`). **Crouched, Shepard's crouched head judges** (section 7.8, the owner's yes 2026-11-19, every game, ME1 too): while
+  the game has Shepard crouched (L3, the physical crouch, a seated player's L3) every look traces from his crouched head over his
+  floor (`vr::cover::JudgingEyes`: his animated head bone, 0.88 m on ME2, which ME2's low cover, 0.94-0.98 m, is built to hide;
+  the engine's crouched eye, 0.99 m, peeks over; `EyeHeight` never lowers), never above the real eyes; each hit's line names the
+  eyes; `mevr cover eyes`, `top <yaw>`, `crouch on|off`; check `tools/le2-halcyon-run/crouched-cover.ps1`. **ME3
   too since 2026-11-17** (lane FP3, research/trilogy-first-person.md): `[Hands] noCover` refuses `SFXGameModeDefault.FindCover`
   inside `TryAcquireCover`, and VR cover's real-slot rule (`game/Le3Cover.inc`) follows it, each answer logged; neither seen
   in a fight yet (research/le3-combat-fixtures.md's first check). **ME2's shorter wait before the shields recharge in cover** (the owner, 2026-11-16; research/23

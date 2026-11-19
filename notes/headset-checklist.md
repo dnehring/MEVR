@@ -737,6 +737,10 @@ Turn it on: the menu's Voice page > Thespian mode > Speak Shepard's lines (or `[
   say what each shooter sees. Is 1.2 m (`[Cover] reachM`) right for tall cover you stand beside? Built 2026-11-05; the
   damage path measured on the fake headset with a scripted hit (no damage covered, full damage exposed); real enemy fire and
   the head raised over low cover not yet seen. (research/23 section 6)
+- [ ] VR cover crouched (2026-11-19, the owner's yes; research/23 section 7.8, every game): behind a low wall (about 1 m, ME2's
+  Freedom's Progress courtyard), crouch with L3 standing tall, then seated, then by your own natural crouch: do the hits in
+  front stop hurting (the log's `vr cover: a hit ... | judged from Shepard's crouched head ...`), and hurt again when you
+  stand (L3 or up)? Does it feel fair that Shepard's crouch, not your real eyes, decides?
 - [ ] Snap turn at 30, 45, 60 degrees, standing and walking, drawn and holstered: no hand or shoulder lag; nothing turns
   in the Mako, wheels, scope, cover, conversations or menus. (research/31 section 8)
 - [ ] The vignette: shape and strength comfortable, the HUD and sights above it. Walking toward the left hand goes where

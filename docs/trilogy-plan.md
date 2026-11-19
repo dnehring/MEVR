@@ -693,6 +693,10 @@ These unblock the most: almost every other entry gets smaller once they land.
   crouch toggle on the sequels as on ME1 (`[Hands] crouchClick`, on; kept from the game, whose L3 is ME2's map and objective
   radar and ME3's point of interest), and the margin and the lean (`crouchMinDropM` 0.25, `crouchLeanRatio` 1.0), on by
   default on every game since the owner's answer to [question 20](#open-owner-questions) (2026-11-18). In the game: `tools/le2-halcyon-run/posture-walk.ps1 -Phases crouch,l3`.
+  **Lane CCV (2026-11-19, the owner's yes; research/23 section 7.8):** crouched behind a low wall counts as cover whatever the
+  real eyes: while the game has Shepard crouched (L3, the physical crouch, a seated player's L3), every look of VR cover traces
+  from his crouched head over his floor (`vr::cover::JudgingEyes`: his animated head bone, every game, ME1 included), never above the real eyes;
+  each hit's line names the eyes; `tools/le2-halcyon-run/crouched-cover.ps1` checks it on ME2.
 - **Closes when:** `mevr cover hit` shows no damage covered and full damage exposed, and A never snaps, on each sequel.
   ME2 also: the shields' wait before recharging is two thirds behind cover (`mevr cover regen`), whole exposed (the faster
   recharge, granted 2026-11-16 and built by lane GR: research/23 section 7.5; ME1 and ME3 have no such rule).
@@ -1164,6 +1168,11 @@ about stutter or pacing in a real headset.
 ## Open owner questions
 
 Each is asked once. "Today" is what the build does if nobody answers; no default changes without a yes (rule 19).
+
+**Answered 2026-11-19:** "Should crouching behind a low wall count as cover even when your real eyes stay above it?" (lane SMOKE's
+finding: the owner's natural crouch lowered his eyes to 1.52 m over walls about 1 m tall, 0 of 164 hits covered): "Yes I think so,
+for seated players this should of course be necessary." **Built (lane CCV, T31):** while the game has Shepard crouched, VR cover
+judges from his crouched head (his animated head bone), every game (research/23 section 7.8).
 
 **Asked 2026-11-18, night** (lane SET, one settings file for the trilogy, T37; research/25 section 20.4): the first launch keeps,
 for ME2, its own value where its file differed from ME1's: `[Hands] steadyIdle` (ME1 1, ME2 0), `[Sights] pistol` (none /

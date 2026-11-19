@@ -7,6 +7,10 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## Unreleased
 
+- **Crouching behind low cover protects you, seated players too.** In all three games, while Shepard is crouched (by your
+  own crouch, or by the left stick click, the way seated players crouch), the cover rule judges from Shepard's crouched head
+  instead of your real eyes: behind a low wall you count as in cover even when your real eyes stay above it. Standing,
+  nothing changes.
 - **Your squad moves only when you place it.** A squeeze of the left grip no longer sends the squad somewhere (it did on
   every game when nothing else took the squeeze, and on ME2 it kept happening in fights): place them with the right hand's
   B arc, or by voice.
