@@ -38,6 +38,10 @@
 //           legsFollowMotion, legsTwistDeg 1 (default): while the pawn moves its legs keep its facing (the run
 //                                         animation's) and the spine twists toward the view up to legsTwistDeg
 //                                         (30..90, default 60) from them; 0: the hips turn with the view moving too
+//           crouchBody                    1 (default): the whole body down (or up) to the head, the feet on the floor
+//                                         and the knees bent, so a squat or a bend never puts the eyes inside the
+//                                         neck or chest (research/29 "The eyes inside the body"); 0: the game's height
+//           crouchBodyUp                  0 (default for now): only down; 1: up to a head above it too, the legs straightening
 //           armStretch                    1-1.25: how far the arms may stretch to reach
 //           trackingScale                 Unreal units per meter for hands and head; 0: the view's
 //           noCover, physicalCrouch, crouchBelow, standAbove, crouchDwellS: physical cover and
@@ -93,6 +97,8 @@ struct BodyMove {
     bool legsFollowMotion = true;    // moving, the legs keep the pawn's facing (where its run animation points)
     double legsTwistDegrees = 60.0;  // ...and the spine twists at most this far from them (30..90)
     bool steadyIdle = false;         // standing still, the feet planted where the idle animation put them
+    bool crouchBody = true;          // the body down to the player's head, the knees bending (research/29)
+    bool crouchBodyUp = false;       // ...and up to a head above it (the game's crouch while standing, the drawn stance)
 };
 BodyMove GetBodyMove();
 // [Hands] levelCamera: keep the game camera level while the hand aims (game/view_level).

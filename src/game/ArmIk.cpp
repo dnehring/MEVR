@@ -1495,9 +1495,13 @@ void Drive(double deltaSeconds) {
     }
 #endif
     // Standing still the feet stay where the idle animation planted them (research/72): the body's slide under the view
-    // carried them with the animation's sway; the torso's feet correction puts them back.
-    bool const planted = !request.legs[kLeft].enabled && !request.legs[kRight].enabled && request.torso.enabled &&
-                         request.torso.goal.plantWeight > 0.0 && info->legs[kLeft] && info->legs[kRight];
+    // carried them with the animation's sway; the torso's feet correction puts them back. And the body down to the player's
+    // head (research/29 "The eyes inside the body", [Hands] crouchBody): the feet stay on the floor, the knees bend; the
+    // writer moves the body along its up only with both legs in the request.
+    bool const plantFeet = request.torso.enabled && request.torso.goal.plantWeight > 0.0;
+    bool const crouchLegs = request.torso.enabled && request.torso.goal.crouch;
+    bool const planted = !request.legs[kLeft].enabled && !request.legs[kRight].enabled && (plantFeet || crouchLegs) &&
+                         info->legs[kLeft] && info->legs[kRight];
     if (planted) {
         for (int side : {kLeft, kRight}) {
             auto const& chain = info->legs[side];
@@ -1509,12 +1513,12 @@ void Drive(double deltaSeconds) {
             leg.keys[1] = info->bones.keys[chain->fore];
             leg.keys[2] = info->bones.keys[chain->hand];
         }
-        if (!gLegsPlanted) {
+        if (!gLegsPlanted && plantFeet) {
             log::Info("arm IK: standing still, Shepard's feet stay where the idle animation planted them while his body stays "
                       "under the view ([Hands] steadyIdle)");
         }
     }
-    gLegsPlanted = planted;
+    gLegsPlanted = planted && plantFeet;
     gMenuBody.Capture(request, menuIdentity, menuEligible && targets.anchor == hand_targets::Anchor::View,
         GetTickCount64());
     engine::bone_pose::Publish(std::move(request));

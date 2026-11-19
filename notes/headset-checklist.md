@@ -607,6 +607,14 @@ Turn it on: the menu's Voice page > Thespian mode > Speak Shepard's lines (or `[
   (research/14 "Two-handed grip")
 - [ ] Turn your real body 90 degrees, step, lean, walk sideways and backward: chest and hips face your way, Shepard steps
   under you; any moonwalking legs, neck stump looking steeply down, or view judder? (research/29)
+- [ ] 2026-11-18 the eyes inside the body (research/29 "The eyes inside the body"; `[Hands] crouchBody = 1`, on by default,
+  read live): squat a little (10-30 cm, not deep enough for the game's crouch), bend at the waist to look at the floor, and
+  look straight down at your chest, standing and squatting. You should see Shepard's chest and legs below you with his
+  knees bent and his feet on the floor, never the inside of his collar or armour; the body follows smoothly down and back
+  up. Compare with `crouchBody = 0` (the old way: the eyes sink into his neck). A kneel on the floor and looking straight
+  down at the collar are the known leftovers: say whether they show. Then decide `crouchBodyUp` (off by default): with it 1,
+  crouch deep enough for the game's crouch and come halfway up, press the crouch button standing and draw a weapon: his body
+  comes up to your head (legs straightened) instead of hanging below your view. Better, or should it stay off?
 - [ ] Holsters: draw from every slot (the right shoulder without hitting your head; the left-hip shotgun doesn't catch a
   resting hand). Hold the gun through a long fight: grip fatigue, slips, the 0.3 s grace. (research/19 sections 3, 5)
 - [ ] With the weapon away, melee, a grenade, the weapon wheel, the holster key and the trigger don't draw it (a buzz,

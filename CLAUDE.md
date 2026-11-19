@@ -385,6 +385,14 @@ switching frameworks.
   backing up (`legsFollowMotion = 0`: the old rule; log `torso: legs:`, snapshot `torso.legs`; replay
   `tools/make-walk-recording.py`'s walk with `-Inputs`). Room-scale (the pawn following real steps past the cap) is
   designed there, not built.
+  **Squatting or bending, the body goes down to the head** (research/29 "The eyes inside the body", 2026-11-18, the owner's
+  "I could clip and look into my own body"; `[Hands] crouchBody = 1`, every game): the slide kept the animated height and
+  the lean the spine's length, so a squat of 20 cm or more, a bend or a kneel below the game's crouch put the eyes inside
+  the collar and chest (`tests/EyesInBodyTests.cpp`, LE1's skeleton); `TorsoGoal::crouch` moves `Root`'s subtree along its
+  up until the head bone is where it sits under the eyes standing (up too only with `crouchBodyUp = 1`, off until the
+  owner's yes), as far as both legs allow (`ik::LegsRoom`), and the planted legs keep the feet on the floor with the knees
+  bent (`ik::LegUnderBody`). Logs
+  `torso: crouching with you`; snapshot `mod.torso.result.bodyLiftM`; run `tools\eyes-in-body.ps1`.
   **Standing still, the feet planted** (research/72, the skeleton audit, 2026-11-14; `[Hands] steadyIdle`, off by default until
   the headset check): the idle animation moves `Root` (hip height) 2-3 cm in the mesh's space, 16 cm in a fidget, over planted
   feet; the slide pins `Root` under the view, so the feet slid; the torso's `feetCorrection` (`Root`'s animated offset from the

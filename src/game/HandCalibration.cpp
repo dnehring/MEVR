@@ -54,6 +54,8 @@ struct Values {
     bool legsFollowMotion = true;  // [Hands] legsFollowMotion (research/29, 2026-11-04)
     double legsTwistDeg = 60.0;    // [Hands] legsTwistDeg
     bool steadyIdle = false;       // [Hands] steadyIdle (research/72, 2026-11-14; off until the headset check)
+    bool crouchBody = true;        // [Hands] crouchBody (research/29 "The eyes inside the body", 2026-11-18)
+    bool crouchBodyUp = false;     // [Hands] crouchBodyUp: ...and up to a head above it (off until the owner's yes)
     double recoilHaptic = 0.5;   // [Hands] recoilHaptic
     bool gunKick = true;         // [Hands] gunKick (research/24 section 8)
     double gunKickScale = 1.0;   // [Hands] gunKickScale
@@ -139,6 +141,13 @@ constexpr char const* kDefaultFile =
     "; the animation sways his hips 2-3 cm (16 cm in a fidget), his body stays under you, and his feet slid the other way.\n"
     "; 0 (for now): the feet slide with the sway.\n"
     "steadyIdle = 0\n"
+    "; crouchBody: 1 (with bodyMove) takes Shepard's body down (or up) to your head when you squat, bend or kneel, his feet\n"
+    "; on the floor and his knees bent, so your eyes stay at his face instead of inside his neck or chest (research/29).\n"
+    "; 0: his body stays at the game's height.\n"
+    "crouchBody = 1\n"
+    "; crouchBodyUp: 1 (with crouchBody) also brings his body up to your head when it is lower than you (the game's crouch\n"
+    "; while you stand or half stand, the weapon-drawn stance), his legs straightening. 0 (for now): only down.\n"
+    "crouchBodyUp = 0\n"
     "; armStretch: how far Shepard's arms may stretch to keep the hands on the controllers (1-1.25).\n"
     "armStretch = 1.25\n"
     "; trackingScale: Unreal units per meter of hand and head motion; 0 = the view's own scale.\n"
@@ -955,6 +964,12 @@ Values ReadValues(Ini const& ini) {
     }
     if (Number(ini, "Hands", "steadyIdle", flag)) {
         values.steadyIdle = flag != 0.0;
+    }
+    if (Number(ini, "Hands", "crouchBody", flag)) {
+        values.crouchBody = flag != 0.0;
+    }
+    if (Number(ini, "Hands", "crouchBodyUp", flag)) {
+        values.crouchBodyUp = flag != 0.0;
     }
     if (Number(ini, "Hands", "legsTwistDeg", values.legsTwistDeg)) {
         values.legsTwistDeg = std::isfinite(values.legsTwistDeg) ? std::clamp(values.legsTwistDeg, 30.0, 90.0) : 60.0;
@@ -2643,7 +2658,7 @@ double ReachNearFace() {
 
 BodyMove GetBodyMove() {
     return {gValues.bodyMove, gValues.leanM, gValues.bodyMoveMaxM, gValues.legsFollowMotion, gValues.legsTwistDeg,
-        gValues.steadyIdle};
+        gValues.steadyIdle, gValues.crouchBody, gValues.crouchBodyUp};
 }
 
 bool LevelCamera() {
@@ -3269,6 +3284,9 @@ void Refresh() {
         {L"Hands", "Hands", L"legsTwistDeg", "legsTwistDeg", L"60"},
         // Standing still, the feet planted (2026-11-14, research/72).
         {L"Hands", "Hands", L"steadyIdle", "steadyIdle", L"0"},
+        // The body down to the player's head (2026-11-18, research/29 "The eyes inside the body").
+        {L"Hands", "Hands", L"crouchBody", "crouchBody", L"1"},
+        {L"Hands", "Hands", L"crouchBodyUp", "crouchBodyUp", L"0"},
         // The weapon drawn, like exploring (2026-10-25, research/38).
         {L"Hands", "Hands", L"exploreStance", "exploreStance", L"0"},
         {L"Hands", "Hands", L"exploreStanceStorm", "exploreStanceStorm", L"1"},
@@ -3477,8 +3495,11 @@ void Refresh() {
                   "{}), arm stretch {:.2f}, tracking scale {}, arm length {} (from {}), {}",
             values.pitch, values.yaw, values.roll, values.gunRoll, values.bodyFollowsHead ? "on" : "off",
             values.bodyMove ? "turns and steps" : "off", values.leanM, values.bodyMoveMaxM,
-            values.legsFollowMotion ? std::format("moving, the legs keep the run and the spine twists up to {:.0f} deg", values.legsTwistDeg)
-                                    : std::string("the hips turn with the view while moving too"),
+            (values.legsFollowMotion ? std::format("moving, the legs keep the run and the spine twists up to {:.0f} deg", values.legsTwistDeg)
+                                     : std::string("the hips turn with the view while moving too")) +
+                (values.crouchBody ? (values.crouchBodyUp ? "; the body goes down and up to the head, the knees bending (crouchBody, crouchBodyUp)"
+                                                     : "; the body goes down to the head, the knees bending (crouchBody)")
+                                  : "; the body at the game's height (crouchBody 0)"),
             values.armStretch,
             values.trackingScale > 0.0 ? std::format("{:.1f} units/m", values.trackingScale) : std::string("the view's"),
             values.armLength > 0.0 ? std::format("{:.3f} m", values.armLength) : std::string("not calibrated"),

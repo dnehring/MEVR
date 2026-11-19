@@ -167,7 +167,8 @@ exact for any head turn; the yaw at once after a recenter (was 34 degrees off); 
 - **The neck model** (10 cm down, 9 cm back) is an average; at 50 units per meter Shepard's own head
   is twice the player's size, so his head bone lands a few units off his eyes' natural place.
 - **Clipping:** with the body under the view, looking down shows the chest from right above; the head is
-  hidden (Halcyon's `[FPSHEAD]`), the neck stump may show at extreme pitches.
+  hidden (Halcyon's `[FPSHEAD]`), the neck stump may show at extreme pitches. Measured 2026-11-18 ("The eyes inside the
+  body", below): squats and bends put the eyes inside the collar and chest; `[Hands] crouchBody` fixes them.
 - **The cap:** a player who walks more than 0.75 m from where they recentered leaves Shepard behind (the
   log says capped and to recenter). Moving the pawn itself (room-scale) would fix it but changes a game
   mechanic; its complete design is below ("Room-scale: the design", 2026-11-04), not built: it needs the
@@ -368,3 +369,102 @@ so in first person the hips stay still and the **feet slide** the other way. `[H
 headset check) plants them: the torso's `feetCorrection` (`Root`'s animated offset from its rest, turned with the body, by the
 part of standing still), applied by the writer's `Leg::planted`. A first version the same day held the pelvis over the feet
 instead, read from a trace without `Root`; it would have put the sway back into the hips and was replaced.
+
+## The eyes inside the body (2026-11-18)
+
+The owner, from ME1 in the headset: "One problem I had in me1 is that sometimes I could clip and look into my own body." No
+log, snapshot or recording of that session was kept, so the cause was measured offline.
+
+### How it was measured
+
+`tests/EyesInBodyTests.cpp` (in `mevr-tests`; `MEVR_EYES_IN_BODY_REPORT=1` prints the table) replays the first-person path
+tick by tick at 90 Hz: the player's head, `ik::HeadPivot` and `ik::BodyFollow` (the feet), the torso goal as `game/BodyFollow`
+builds it (Shepard's head bone at the head's pivot, `Root` slid under the feet, the hips turning past the spine's 30
+degrees), the body scale as `engine/BonePose` applies it (goals through the inverse, the pose scaled about the floor under
+the view), `ik::PoseTorso`, the legs. The skeleton is LE1's Shepard (`HMM_ARM_MEDb`): the hierarchy of the `skeleton:` lines in
+`LE1MEVR.log` (God > Root > LowerBack > Chest > Chest1 > Chest2; Root > Pelvis > the hips; God > Camera), the bone heights of
+research/72's idle trace (Root 100.9, LowerBack 104.0, Chest2 140.1, Neck 153.0, Head 165.8, the collars 148.3, the hips 99.3,
+the ankles 11.1 units), the eyes at 169.4 (research/58), the knees, Chest, Chest1 and Neck1 between their neighbours. The
+player is the owner (eyes 1.84 m, so the body scale is 1.086). The armour is modelled as capsules round the spine (radii: the
+chest 14, the collar 11, the neck seal 7, the shoulders 8 units before the scale); "inside" is the eyes' depth in them, and
+within 10 units of a surface (the near plane, `LocalPlayer.NearClipPlane`) the eye can see into it.
+
+| The player's head (crouchBody 0: the code before this fix) | eyes from Shepard's face | inside the armour |
+|---|---|---|
+| standing straight | 1.0 cm | no (7.4 cm clear) |
+| a squat of 10 / 20 / 30 / 40 / 46 cm (46: the physical crouch's 0.75 for the owner) | 10 / 20 / 30 / 39 / 44 cm below | 1.5 cm clear / **1.3 / 3.4 / 4.3 / 4.9 cm inside** |
+| a bend at the hips of 30 / 45 / 60 / 70 degrees | 8-28 cm below, 7-29 cm behind | **0.4-1.8 cm inside** while bending, 3 cm clear after |
+| from the game's crouch (Shepard 45 units lower), the eyes at 0.60 / 0.45 of standing | 25 / 44 cm below | **1.4 / 5.8 cm inside** |
+| leaning back 10-20 cm, a quick 90-degree head turn | 2-5 cm below | no (8-9 cm clear) |
+| standing, looking down 60 / 80 degrees | (the hidden face doesn't nod) | no, 4.3 / 1.8 cm clear: within the near plane |
+
+### The cause
+
+The body follows the head horizontally only. The slide (`TorsoGoal::bodyMoves`) moves `Root` over the feet but keeps its
+animated height (`bodyRise` was only for a body drawn away from its pawn, research/69), and the lean keeps the spine's
+length: it turns the upper body about `LowerBack` (at most 35 degrees) so Shepard's head bone points at the head's pivot,
+never nearer. Body scale (research/58) sizes Shepard so his standing eyes are the player's standing eyes; when the player's
+head goes lower than his spine reaches from his standing hips (a squat above the game's crouch, a bend, a kneel below the
+crouch's own pose) nothing lowers him, so the eyes sank into his collar and chest, under the near plane. A bend also walks
+the feet forward under the pivot (the 0.20 m lean radius, then the settle), which only makes it worse. The quick turn, the
+lean back and the 0.75 m slide cap don't put the eyes inside (the cap leaves the body behind, not around the eyes); the
+scale's clamp does for a player under 1.44 m eye height, which the fix covers too.
+
+### The fix: the body goes down (or up) to the head (`[Hands] crouchBody`, on by default)
+
+One core for the three games (`core/ik/TorsoPose`, used by `engine/BonePose` and `game/BodyFollow` on ME1, ME2 and ME3; it acts
+wherever the skeleton has both eye bones and both legs, ME2's being ME1's, research/le2-vrik.md):
+- **`TorsoGoal::crouch`** (with `bodyMoves`, an absolute goal): after the slide, the whole body (`Root`'s subtree; never `God`
+  or `Camera`) moves along its up by the gap between where the spine can hold Shepard's head bone and where it belongs. The
+  head bone's target is the head's pivot raised by how far it sits above Shepard's own pivot (`neckDown`, the neck model's
+  10 cm, less his eyes' height above the head bone: 3.6 units on LE1), which is where it is when the player stands straight
+  at the body's scale, so standing nothing moves. The lean then aims at that target. A gap within 1% of the spine moves
+  nothing, and the move grows from zero past it (no step). Moving (the legs keeping the run, `crouchLoose`), a gap within
+  `crouchSlack` (6 cm) is the run's own bob (research/72: Root 9 cm up and down) and is left alone.
+  `TorsoResult::bodyLift` (+ up), `crouchGap`, `liftLimited`.
+- **As far as the legs allow** (`ik::LegsRoom`): down until a leg's hip-to-ankle is 25% of its length (a full squat), up
+  until 98% (straight); the lesser of both legs; without both legs in the request, no move at all (the head-only and
+  menu-held torsos carry no legs and keep the old behaviour). **Up only with `[Hands] crouchBodyUp = 1`** (off by default
+  until the owner says yes, `TorsoGoal::crouchUp`): a head above Shepard's (the game's crouch while the player stands or
+  half stands, the weapon-drawn stance's 16 cm lower head, research/58) was never inside the body, and bringing the body up
+  to it straightens legs the game animates bent.
+- **The legs stand the body on the floor** (`ik::LegUnderBody`, `engine/BonePose`'s `Leg::planted`): each ankle back by the
+  lift (plus the planted feet's correction, research/72), its rotation kept (the foot keeps its angle to the floor), the knee
+  bending the way it bends, toward the body's forward as the move grows. `game/ArmIk` puts both legs in the request whenever
+  the goal crouches. The conversations' standing legs (`Leg::stand`, research/69) take the lift out of the walk animation's
+  foot the same way.
+- `game/BodyFollow` fills it in first person with the whole body under the view and both eye bones known.
+
+The same cases with crouchBody 1: every squat to the physical crouch's threshold puts the eyes 1.6 cm from Shepard's face,
+7 cm clear of the armour (as standing), the feet on the floor to the millimetre, the knees 20-40 cm forward; bends are never
+inside (2.8 cm clear at worst, while bending); from the game's crouch the body goes down 24 cm for a head at 0.60 of
+standing, the face within 1.6 cm, and with crouchBodyUp comes up 19 cm for one in the hysteresis band (0.84; without it the
+eyes stay 19 cm above the face, as before); moving, a squat leaves the eyes 7 cm
+under the face (the slack) and clear; standing, leaning back, looking down and the quick turn are as before (within 0.5 cm).
+
+### What is left
+
+- **A kneel below the game's crouch** (the eyes at 0.45 of standing, 0.83 m for the owner): the legs fold no further, the
+  eyes still 2.3 cm inside. The body would have to kneel (a knee on the floor) or lean back.
+- **Looking straight down** (80 degrees and more, standing or bent): the eyes come within 2 cm of the modelled collar, so
+  the near plane may cut the armour's top. The capsules are a guess at the armour; only the headset tells.
+- **The bend's posture**: a bend draws a squat (the body down and upright, the knees forward), not a hip hinge; the eyes
+  are at the face, the drawn legs not where the player's are.
+- **A head above Shepard's** (the game's crouch by the button with the player standing: the eyes 45 cm over his; the
+  hysteresis band; the weapon-drawn stance): the view floats over the body as before unless `crouchBodyUp = 1`, which brings
+  the body up, the legs straight under the crouch's upper body (the game still crouched for cover and collision). A new look
+  for the owner to judge before it is a default.
+
+### Setting, logs, snapshot, the run
+
+- `[Hands] crouchBody = 1` (appended with its default; 0: the body at the game's height, as before); `crouchBodyUp = 0`
+  (1: up too). Both read live.
+- Logs `torso: crouching with you: the body down N cm to your head (Shepard's head N cm too high), the knees bending, the
+  feet on the floor` and `torso: back to the game's height after a crouch with you: at most N cm down, N cm up; N ticks held
+  short by the legs` (at most once a second each); the `torso:` off line and the heartbeat add the lift; the writer's `arm
+  IK torso` line `body lift N units (gap N, held by the legs)`; `hands:` says `the body goes down to the head`.
+- Snapshot `mod.torso`: `crouchBody`, `crouches`, `result.bodyLiftM`, `crouchGapM`, `liftLimited`.
+- In the game: `tools\fake-headset-session.ps1 -Tag eyes -Run tools\eyes-in-body.ps1` (replayed heads standing, squatting 15
+  and 30 cm and a bend's head looking 60 degrees down, crouchBody 0 and 1 each: snapshots and skeleton traces, the floor lock
+  off and the scale held for the replay). Prepared on 2026-11-18 while the owner was in the headset; not run yet. In the
+  headset: notes/headset-checklist.md.

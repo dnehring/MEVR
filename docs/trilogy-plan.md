@@ -354,6 +354,9 @@ These unblock the most: almost every other entry gets smaller once they land.
   correction is unmeasured and the calibration's manual height isn't wired; fingers and body scale have no in-game
   check. **ME3:** "the legs keep the run" is off (no Velocity read: declare the handle `kEveryGame`); fingers, body scale
   unverified. **Both:** body scale needs a recorded floor fixture (the fake headset's floor is at its head).
+- **Shared since 2026-11-18:** the body down (or up) to the head (`[Hands] crouchBody`, `TorsoGoal::crouch`, research/29 "The
+  eyes inside the body"): squats and bends no longer put the eyes inside the body, on every game whose skeleton has both eye
+  bones and both legs; measured offline on LE1's skeleton, the in-game run `tools/eyes-in-body.ps1` (ME1) not yet run.
 - **Closes when:** snapshot `mod.armIk.hands` puts each wrist on its controller through a vault; `mod.fingers` follows
   a replayed trigger and grip; the ME3 null-height run's script passes on ME2's Save 4.
 - **Waits for:** T04 for the ME3 Velocity handle. **Who:** C2.

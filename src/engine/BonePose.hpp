@@ -151,8 +151,10 @@ struct Leg {
     double weight = 1.0;
     // Planted (research/72, 2026-11-14): standing still, the ankle moved by the torso's feet correction
     // (ik::TorsoResult::feetCorrection: back where the idle animation planted it, which the whole body's slide under the view
-    // had carried along with the animation's sway), the knee bending toward its place moved the same way; `ankle` and `knee`
-    // are not read. No correction: the leg as animated.
+    // had carried along with the animation's sway), and back to the floor by the body's lift (TorsoResult::bodyLift: the body
+    // down to the player's head, research/29 "The eyes inside the body"), the foot's angle kept and the knee bending the way it
+    // bends (ik::LegUnderBody); `ankle` and `knee` are not read. Nothing to move: the leg as animated. Both legs in the request
+    // (planted or `stand`) are also what lets the torso move the body along its up at all (ik::LegsRoom).
     bool planted = false;
 };
 

@@ -1384,6 +1384,7 @@ if (MEVR_BUILD_TESTS)
         tests/VoiceMenuTests.cpp
         tests/SquadPlaceTests.cpp
         tests/BodyScaleTests.cpp
+        tests/EyesInBodyTests.cpp
         tests/BodySlotsSeatedTests.cpp
         tests/FloorLockTests.cpp
         tests/ManualCalibrationTests.cpp

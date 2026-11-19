@@ -7,6 +7,11 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## Unreleased
 
+- **No more looking into your own body when you squat or bend.** Squatting a little, bending to look at the floor or
+  kneeling below the game's crouch could put your eyes inside Shepard's collar or chest. His body now goes down with your
+  head, his knees bending and his feet staying on the floor, and comes back up when you stand. To turn it off, set
+  `crouchBody = 0` under `[Hands]` in `ASI\LE1MEVR.ini`. Headset verification pending.
+
 ## 0.3.2 (2026-11-15)
 
 - **First-person conversations (experimental): no more floating at the Council.** With a body scale above 1, opening the

@@ -17,6 +17,8 @@ constexpr int kMaxSpine = 6;
 // Passes over the spine: each recomputes what's left from the current pose, so the chain's
 // curvature (each joint turns about its own position) doesn't leave the shoulders short.
 constexpr int kPasses = 3;
+// TorsoGoal::crouch: a gap within this fraction of the spine's length (LE1: 0.6 units, 6 mm) moves nothing.
+constexpr double kCrouchDeadbandFraction = 0.01;
 
 bool Finite(Vec3 v) {
     return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z);
@@ -323,15 +325,71 @@ TorsoResult PoseTorso(std::span<Transform> pose, std::span<int const> parents, T
     // The animated pose (the body moved, if it did): shoulders, facing, and the reference point (eyes or
     // head). The upper body turns rigidly about the bottom spine joint: first the twist about the body's
     // up, then the lean that carries the reference point toward the goal; the shoulders go along.
-    Vec3 const oldMid = Midpoint(base, left.upper, right.upper);
-    Vec3 const oldFacing = Facing(base, left, right, up, wantedFacing);
-    Vec3 referenceMoved;
-    for (int bone : goal.reference) {
-        if (bone >= 0) {
-            referenceMoved = referenceMoved + base[bone].translation;
+    auto const referenceIn = [&](std::vector<Transform> const& p) {
+        Vec3 sum;
+        for (int bone : goal.reference) {
+            if (bone >= 0) {
+                sum = sum + p[bone].translation;
+            }
+        }
+        return sum * (1.0 / references);
+    };
+    // Relative: the offset from where the animation put the reference (before any body move).
+    Vec3 const goalHead = goal.relative ? result.oldReference + goal.head : goal.head;
+    Vec3 aim = goalHead;  // what the lean points the reference at
+
+    // The body down (or up) to the player's head (TorsoGoal::crouch): the spine keeps its length, so the reference reaches
+    // its target only from a body at the right height. Measured on the body as the slide left it; the twist below turns
+    // about the bottom spine joint and changes neither the spine's length nor the target's height above that joint.
+    if (goal.crouch && goal.body >= 0 && goal.bodyMoves && !goal.relative && std::isfinite(goal.neckDown)) {
+        int eyeCount = 0;
+        Vec3 eyeSum;
+        for (int bone : goal.eyes) {
+            if (bone >= 0 && bone < count && IsAncestor(parents, chain.spine.back(), bone)) {
+                eyeSum = eyeSum + base[bone].translation;
+                ++eyeCount;
+            }
+        }
+        if (eyeCount > 0) {
+            Vec3 const reference = referenceIn(base);
+            Vec3 const bottom = base[chain.spine.front()].translation;
+            // The reference's target: the goal raised by how far the reference sits above Shepard's own pivot (the neck
+            // model's drop under his eyes): standing straight at the body's scale, exactly where it is.
+            double const above = goal.neckDown - Dot(eyeSum * (1.0 / eyeCount) - reference, up);
+            Vec3 const target = goalHead + up * above;
+            double const spine = Length(reference - bottom);
+            Vec3 const toTarget = target - bottom;
+            double const bendLimit = std::clamp(goal.maxBendDegrees, 0.0, 89.0) / kDegrees;
+            double const across = std::min(Length(Horizontal(toTarget, up)), spine * std::sin(bendLimit));
+            // How far the reference would stand above its target with the spine leaning toward it (+: too high).
+            double const gap = std::sqrt(std::max(0.0, spine * spine - across * across)) - Dot(toTarget, up);
+            double const slack = std::isfinite(goal.crouchSlack) ? std::max(0.0, goal.crouchSlack) : 0.0;
+            double const loose = std::isfinite(goal.crouchLoose) ? std::clamp(goal.crouchLoose, 0.0, 1.0) : 0.0;
+            double wanted = gap - loose * std::clamp(gap, -slack, slack);
+            // A hair of a gap is the skeleton's own (an eye a millimetre off its average): nothing moves for it, and the
+            // move grows from zero past it (no step).
+            double const deadband = spine * kCrouchDeadbandFraction;
+            wanted = std::abs(wanted) > deadband ? std::copysign(std::abs(wanted) - deadband, wanted) : 0.0;
+            double const maxDrop = std::isfinite(goal.maxDrop) ? std::max(0.0, goal.maxDrop) : 0.0;
+            double const maxRise = std::isfinite(goal.maxRise) ? std::max(0.0, goal.maxRise) : 0.0;
+            double const lift = std::clamp(-wanted, -maxDrop, maxRise);
+            result.crouchGap = gap;
+            result.liftLimited = lift != -wanted;
+            if (std::isfinite(lift) && lift != 0.0) {
+                for (int i = goal.body; i < count; ++i) {
+                    if (IsAncestor(parents, goal.body, i)) {
+                        base[i].translation = base[i].translation + up * lift;
+                    }
+                }
+                result.bodyLift = lift;
+                bodyMoved = true;
+            }
+            aim = target;
         }
     }
-    Vec3 const reference = referenceMoved * (1.0 / references);
+    Vec3 const oldMid = Midpoint(base, left.upper, right.upper);
+    Vec3 const oldFacing = Facing(base, left, right, up, wantedFacing);
+    Vec3 const reference = referenceIn(base);
     Vec3 const pivot = base[chain.spine.front()].translation;
 
     // The twist, limited.
@@ -347,10 +405,8 @@ TorsoResult PoseTorso(std::span<Transform> pose, std::span<int const> parents, T
     // or farther (crouching, standing taller) is met only in direction; the arms take the rest.
     Vec3 const twisted = Rotate(twistTurn, oldMid - pivot);
     Vec3 const twistedReference = Rotate(twistTurn, reference - pivot);
-    // Relative: the offset from where the animation put the reference (before any body move).
-    Vec3 const goalHead = goal.relative ? result.oldReference + goal.head : goal.head;
-    result.goalReference = goalHead;
-    Quat const fullSwing = FromTo(twistedReference, goal.lean ? goalHead - pivot : twistedReference);
+    result.goalReference = aim;
+    Quat const fullSwing = FromTo(twistedReference, goal.lean ? aim - pivot : twistedReference);
     result.wantedShoulders = pivot + Rotate(fullSwing, twisted);
     double const maxBend = std::max(0.0, goal.maxBendDegrees) / kDegrees;
     Quat swing = fullSwing;
@@ -416,6 +472,64 @@ TorsoResult PoseTorso(std::span<Transform> pose, std::span<int const> parents, T
     result.bendDegrees = Angle(swing) * kDegrees;
     result.bonesWritten = bones;
     return result;
+}
+
+LegRoom LegsRoom(std::span<Transform const> pose, std::span<ArmChain const> legs, Vec3 up, double foldFraction,
+    double straightFraction) {
+    int const count = static_cast<int>(pose.size());
+    Vec3 const u = Normalize(up, {0.0, 0.0, 1.0});
+    LegRoom room;
+    bool any = false;
+    for (ArmChain const& leg : legs) {
+        if (leg.upper < 0 || leg.fore < 0 || leg.hand < 0 || leg.upper >= count || leg.fore >= count || leg.hand >= count) {
+            return {};
+        }
+        Vec3 const hip = pose[leg.upper].translation;
+        Vec3 const knee = pose[leg.fore].translation;
+        Vec3 const ankle = pose[leg.hand].translation;
+        if (!Finite(hip) || !Finite(knee) || !Finite(ankle)) {
+            return {};
+        }
+        double const length = Length(knee - hip) + Length(ankle - knee);
+        if (!(length > 1e-6)) {
+            return {};
+        }
+        double const height = Dot(hip - ankle, u);
+        double const aside = Length(Horizontal(hip - ankle, u));
+        auto const reach = [&](double fraction) {
+            double const r = std::clamp(fraction, 0.0, 1.0) * length;
+            return std::sqrt(std::max(0.0, r * r - aside * aside));
+        };
+        double const drop = std::max(0.0, height - reach(foldFraction));
+        double const rise = std::max(0.0, reach(straightFraction) - height);
+        room.drop = any ? std::min(room.drop, drop) : drop;
+        room.rise = any ? std::min(room.rise, rise) : rise;
+        any = true;
+    }
+    return room;
+}
+
+std::optional<ArmGoal> LegUnderBody(std::span<Transform const> pose, ArmChain const& leg, Vec3 ankleMove, BodyFrame const& body) {
+    int const count = static_cast<int>(pose.size());
+    if (!Finite(ankleMove) || Length(ankleMove) < 0.01 || leg.upper < 0 || leg.fore < 0 || leg.hand < 0 || leg.upper >= count ||
+        leg.fore >= count || leg.hand >= count) {
+        return std::nullopt;
+    }
+    Vec3 const hip = pose[leg.upper].translation;
+    Vec3 const knee = pose[leg.fore].translation;
+    ArmGoal goal;
+    goal.wrist = pose[leg.hand].translation + ankleMove;
+    goal.hasRotation = true;
+    goal.rotation = pose[leg.hand].rotation;
+    // The knee bends the way it bends now (the solve takes the pole's part across the reach: with the ankle where it was
+    // the knee lands where it was), turned toward the body's forward as the move grows, so a straight leg folds forward.
+    Vec3 const along = Normalize(goal.wrist - hip, {0.0, 0.0, -1.0});
+    Vec3 const bent = (knee - hip) - along * Dot(knee - hip, along);
+    Vec3 const forward = Normalize(Horizontal(body.forward, Normalize(body.up, {0.0, 0.0, 1.0})), {1.0, 0.0, 0.0});
+    goal.hasPole = true;
+    goal.pole = bent + forward * (2.0 * Length(ankleMove));
+    goal.maxStretch = 1.0;
+    return goal;
 }
 
 double PoseCollar(std::span<Transform> pose, std::span<int const> parents, int collar, ArmChain const& arm, Vec3 wrist,

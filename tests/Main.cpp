@@ -12143,6 +12143,8 @@ int RunPowerWheelTests();
 int RunVoiceMenuTests();
 int RunSquadPlaceTests();
 int RunBodyScaleTests();
+// tests/EyesInBodyTests.cpp: the eyes inside the body (core/ik/TorsoPose's crouch, research/29).
+int RunEyesInBodyTests();
 int RunBodySlotsSeatedTests();
 int RunFloorLockTests();
 int RunManualCalibrationTests();
@@ -12372,6 +12374,7 @@ int main() {
     gFailures += RunVoiceMenuTests();
     gFailures += RunSquadPlaceTests();
     gFailures += RunBodyScaleTests();
+    gFailures += RunEyesInBodyTests();
     gFailures += RunBodySlotsSeatedTests();
     gFailures += RunFloorLockTests();
     gFailures += RunManualCalibrationTests();
