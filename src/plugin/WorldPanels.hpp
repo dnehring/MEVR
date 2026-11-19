@@ -14,7 +14,19 @@ enum class Kind {
     GalaxyMap = 2,
     Conversation = 3,
     Cutscene = 4,
+    // The sequels' 3D cinema screen (plugin/SequelCinema): a slot of its own, placed as a cinema screen. Their renderer places
+    // its flat screen in the same frames (MevrSeams::PlacePanel, the kind from the game mode: GameMenu at the title), and in
+    // one slot the two kinds alternated: each a kind change, so the screen went to the head at every 5 degrees of turn (the
+    // owner, 2026-11-18: "on ME2 the full-screen menu snaps after the head"). LE1 never passes it.
+    CinemaScreen = 5,
 };
+
+// The slot a kind is placed in: 0 the flat screen, 1 the Insert menu, 2 the sequels' cinema screen. One slot per caller that
+// may place in the same frame as another, or their kinds alternate and the panel follows the head.
+constexpr int kSlotCount = 3;
+constexpr int SlotOf(Kind kind) {
+    return kind == Kind::HalcyonMenu ? 1 : kind == Kind::CinemaScreen ? 2 : 0;
+}
 
 struct Pose {
     void* space = nullptr;                             // XrSpace to submit the quad in

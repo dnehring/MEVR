@@ -48,6 +48,7 @@
 #include "core/vr/RenderTarget.hpp"
 #include "core/vr/MetricStereo.hpp"
 #include "core/vr/OverlayPlacement.hpp"
+#include "plugin/WorldPanels.hpp"
 #include "core/vr/PoseRecording.hpp"
 #include "core/vr/PowerWheel.hpp"
 #include "core/vr/Recenter.hpp"
@@ -2643,6 +2644,41 @@ void TestWorldPanel() {
         CHECK(cinema.Update(4, f, HeadAt(40, {0.5f, 1.5f, 0.3f}), true, screen, step) == Placement::Appeared);
         cinema.Recenter();
         CHECK(cinema.Update(4, ++f, HeadAt(10, {0.5f, 1.5f, 0.3f}), true, screen, step) == Placement::Recentered);
+    }
+    // Two placements in one frame (the sequels' flat screen and their 3D cinema screen; the owner's ME2 title, 2026-11-18: "the
+    // full-screen menu snaps after the head"): in one slot their kinds alternate, each a kind change, and a 6-degree turn
+    // re-places it at the head; each in its own slot (world_panels::SlotOf) both stay put.
+    {
+        namespace wp = mevr::host::world_panels;
+        WorldPanelSettings const screen = ScreenPanelSettings();
+        WorldPanel shared;
+        std::uint64_t f = 2000;
+        shared.Update(1, f, HeadAt(0, {0.0f, 1.6f, 0.0f}), true, settings, step);
+        shared.Update(4, f, HeadAt(0, {0.0f, 1.6f, 0.0f}), true, screen, step);
+        bool replaced = false;
+        for (int i = 1; i <= 10; ++i) {
+            XrPosef const h = HeadAt(6.0 * i, {0.0f, 1.6f, 0.0f});
+            ++f;
+            replaced = shared.Update(1, f, h, true, settings, step) != Placement::Kept || replaced;
+            replaced = shared.Update(4, f, h, true, screen, step) != Placement::Kept || replaced;
+        }
+        CHECK(replaced);  // why the two callers have slots of their own
+        CHECK(wp::SlotOf(wp::Kind::CinemaScreen) != wp::SlotOf(wp::Kind::GameMenu));
+        CHECK(wp::SlotOf(wp::Kind::CinemaScreen) != wp::SlotOf(wp::Kind::HalcyonMenu));
+        CHECK(wp::SlotOf(wp::Kind::GameMenu) == wp::SlotOf(wp::Kind::Cutscene));  // LE1's flat screen: one slot, as before
+        CHECK(wp::SlotOf(wp::Kind::CinemaScreen) < wp::kSlotCount && wp::SlotOf(wp::Kind::HalcyonMenu) < wp::kSlotCount);
+        WorldPanel flat;
+        WorldPanel cinema;
+        f += 100;
+        CHECK(flat.Update(1, f, HeadAt(0, {0.0f, 1.6f, 0.0f}), true, settings, step) == Placement::Appeared);
+        CHECK(cinema.Update(4, f, HeadAt(0, {0.0f, 1.6f, 0.0f}), true, screen, step) == Placement::Appeared);
+        for (int i = 1; i <= 10; ++i) {
+            XrPosef const h = HeadAt(6.0 * i, {0.0f, 1.6f, 0.0f});
+            ++f;
+            CHECK(flat.Update(1, f, h, true, settings, step) == Placement::Kept);
+            CHECK(cinema.Update(4, f, h, true, screen, step) == Placement::Kept);
+        }
+        CHECK(NearD(flat.Yaw(), 0.0) && NearD(cinema.Yaw(), 0.0));
     }
     // Offsets in the panel's frame (Halcyon's menu offsets): right is the panel's right.
     WorldPanel facingX;

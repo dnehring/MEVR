@@ -40,7 +40,7 @@ struct Slot {
     void* appSpace = nullptr;   // the app space it was placed in: a new one (recenter, new session) re-places
     std::uint64_t lastMs = 0;   // for dt
 };
-Slot gSlots[2];  // 0: the flat screen, 1: the Insert menu
+Slot gSlots[kSlotCount];  // SlotOf: 0 the flat screen, 1 the Insert menu, 2 the sequels' cinema screen
 std::uint64_t gFrame = 1;
 unsigned gPlacementLogs = 0;
 
@@ -51,6 +51,7 @@ char const* KindName(Kind kind) {
     case Kind::GalaxyMap: return "galaxy map";
     case Kind::Conversation: return "conversation";
     case Kind::Cutscene: return "cutscene/movie";
+    case Kind::CinemaScreen: return "3D cinema screen";
     }
     return "?";
 }
@@ -77,10 +78,12 @@ Pose Place(Kind kind, float const viewPosition[3], void* viewSpace, void* appSpa
     out.headLocked = true;
 
     mevr::host::renderer::PanelSettings const cfg = mevr::host::renderer::Panels();
-    Slot& slot = gSlots[kind == Kind::HalcyonMenu ? 1 : 0];
+    int const slotIndex = SlotOf(kind);
+    Slot& slot = gSlots[slotIndex];
     bool const on = cfg.worldLockedPanels && appSpace != nullptr;
     if (on != slot.on) {
-        mevr::log::Info("world panels: the {} slot is {}", kind == Kind::HalcyonMenu ? "Insert menu" : "flat screen",
+        mevr::log::Info("world panels: the {} slot is {}",
+            slotIndex == 1 ? "Insert menu" : slotIndex == 2 ? "3D cinema screen" : "flat screen",
             on ? "world-locked (stays where it appears)" : "head-locked (Halcyon's VIEW space)");
         slot = Slot{};
         slot.on = on;
@@ -97,7 +100,7 @@ Pose Place(Kind kind, float const viewPosition[3], void* viewSpace, void* appSpa
 
     // Conversations and cutscenes are one showing on the cinema screen (and the flat panel's movies inside them): ME1 flips
     // between the two modes mid-scene, and each flip was a kind change that re-placed the screen at the head.
-    bool const cinema = kind == Kind::Conversation || kind == Kind::Cutscene;
+    bool const cinema = kind == Kind::Conversation || kind == Kind::Cutscene || kind == Kind::CinemaScreen;
     int const kindId = cinema ? static_cast<int>(Kind::Cutscene) : static_cast<int>(kind);
     overlay::WorldPanelSettings settings = cinema ? overlay::ScreenPanelSettings() : overlay::WorldPanelSettings{};
     if (!cinema) {

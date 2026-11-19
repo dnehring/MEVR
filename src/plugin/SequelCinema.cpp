@@ -43,8 +43,9 @@ unsigned Layers(const Frame& frame, const void** layersOut, unsigned capacity, S
     mevr::host::cine_screen::Quads const q = mevr::host::cine_screen::QuadsNow(frame.eyeWidth, frame.eyeHeight);
     float const viewPos[3] = {0.0f, 0.0f, -q.distanceM};
     namespace wp = mevr::host::world_panels;
-    wp::Pose const placed = wp::Place(frame.conversation ? wp::Kind::Conversation : wp::Kind::Cutscene, viewPos, frame.viewSpace,
-        frame.appSpace, frame.headValid, headQ, headP);
+    // Its own slot (world_panels::Kind::CinemaScreen): the renderer places its flat screen in the same frames, and sharing one
+    // slot the two kinds alternated and the screen followed the head in 5-degree steps (the owner's ME2 title, 2026-11-18).
+    wp::Pose const placed = wp::Place(wp::Kind::CinemaScreen, viewPos, frame.viewSpace, frame.appSpace, frame.headValid, headQ, headP);
     float const heightM = q.heightM > 0.1f ? q.heightM : q.widthM * 9.0f / 16.0f;
     unsigned count = 0;
     if (capacity >= 3) {   // the floor and horizon under the screen's quads (LE1's order)
