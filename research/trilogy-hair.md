@@ -91,7 +91,7 @@ What modern games mostly ship for in-engine hair is cards on simulated bone chai
 2. **Everyone else needs a re-rigged mesh:** chains of 3-6 bones (back, sides, bangs; 8-20 chains for a quality look)
    added to the hair mesh in Blender and weighted, then imported with Legendary Explorer. Whether LEX's importer accepts a
    hair mesh with more bones than the one it replaces is the first thing to check **[verify]** (the old ME3Explorer refused;
-   the hair takes its pose by bone name, so extra bones stay at their reference pose unless driven). A mesh mod is game
+   if the hair takes its pose by bone name, extra bones stay at their reference pose unless driven: the plan's P1). A mesh mod is game
    content of ours, distributed as a package mod, like the cockpit.
 3. **The simulation lives in the mod** (the engine's own `SkelControlTrail` would need an AnimTree on each hair component;
    physics-asset bodies on attached hair have a one-frame lag, [UE3 physical animation docs](https://docs.unrealengine.com/udk/Three/PhysicalAnimation.html)):
