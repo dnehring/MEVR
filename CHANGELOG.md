@@ -7,6 +7,9 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## Unreleased
 
+- **Your squad moves only when you place it.** A squeeze of the left grip no longer sends the squad somewhere (it did on
+  every game when nothing else took the squeeze, and on ME2 it kept happening in fights): place them with the right hand's
+  B arc, or by voice.
 - **Vaulting works from where you stand** (Mass Effect 2). The game lets Shepard vault only from about half a metre in
   front of the obstacle, facing it squarely, so a double A at a barrier often did nothing. Now a double A within about
   1.5 m of something you can vault, roughly facing it, walks Shepard up to it and vaults; push your own stick to stop him.
@@ -17,9 +20,6 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
   to something else. Fixed for all three games.
 - **A save written with your gun out starts with the gun in its holster** (Mass Effect 2). It used to stay in Shepard's
   hand with your hand open; as with every other gun the game draws by itself, it goes back, and you draw from a holster.
-- **Your squad moves only when you place it.** A squeeze of the left grip no longer sends the squad somewhere (it did on
-  every game when nothing else took the squeeze, and on ME2 it kept happening in fights): place them with the right hand's
-  B arc, or by voice.
 - **The left trigger always opens the game's own weapon wheel.** On Mass Effect 2 and 3 a pull with your left hand open
   brought up a menu of our own for the squad's weapons, and with both hands on the gun the game's wheel. That menu is
   gone: on all three games the trigger opens the game's weapon wheel at your left hand, whatever your left hand is doing.
