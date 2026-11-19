@@ -74,6 +74,10 @@ std::string MeshKey(std::uintptr_t skeleton) {
     std::string name = ue3::runtime::FullName(reinterpret_cast<ue3::Object const*>(skeleton));
     if (auto const space = name.find(' '); space != std::string::npos) name.erase(0, space + 1);  // drop the class
     if (name.empty() || name == "None") return {};
+    // A mesh built at run time (ME2's SFXCompositeSkeletalMesh, "Transient.SFXCompositeSkeletalMesh_N") has another name after
+    // every load: never found again, its key only grew the settings file by one line a load (and changed it during load.ps1's
+    // loads, research/le2-reload-crash.md). No key: measured each run, not saved.
+    if (name.starts_with("Transient.")) return {};
     for (char& c : name) {
         bool const ok = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '.';
         if (!ok) c = '_';

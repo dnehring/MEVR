@@ -115,8 +115,9 @@ python tools\session-judge.py --mod <Win64>\Logs\LE2MEVR.log [--halcyon %LOCALAP
   owner's log of 2026-11-18 (kept out of git); its ctest `mevr-session-judge` runs synthetic lines.
 - The drones kill a Shepard who only walks down the stairs in about 13 s. `-God` (the console's `god`) keeps him alive but
   **no hit reaches VR cover then** (0 judged with drones firing, 55 in 13 s without): judge VR cover from a run without it.
-  Each load of the same map in one process is a risk: the third crashed the game on 2026-11-19 (engine code under the tick):
-  `-Fresh` restarts the game first.
+  The third load of the same map in one process crashed the game on 2026-11-19: ours, fixed the same day (a camera-shake restore
+  into another object at a freed object's address, research/le2-reload-crash.md; 13 loads in one process since). `-Fresh` still
+  restarts the game first.
 - On this path no surface stands at eye height within reach toward the drones (`mevr cover probe` from the landing and the
   stairs' foot): VR cover can only count a hit as covered with the head below the low walls (their top about 1 m above the
   floor), so it waits for a replayed physical crouch (the host's floor sample, lane POS).

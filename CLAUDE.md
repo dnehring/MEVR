@@ -2037,7 +2037,12 @@ Use it to check VR changes yourself instead of asking the user what they see
   `ue3::kEveryGame` handles, research/le2-engine-access-discovery.md). Every class, field, function or parameter you resolve
   needs a row in `engine/ReflectCheck`; a failed lookup stands the feature down with a log line. `IsAlive` is safe on a
   pointer whose memory the engine gave back (a guarded read of the header, 2026-11-10: a hot reload eight levels after the
-  flow module kept its conversations ended the game); a kept object pointer is still checked with it before every use. A level torn down under a scene (a save's load) leaves
+  flow module kept its conversations ended the game); a kept object pointer is still checked with it before every use. **But
+  IsAlive says yes for another object at the same address** (a load frees the object, the engine reuses its memory and GObjects
+  slot): an object you will write later is kept as a `ue3::Kept` and written only through `Live()` (alive and still the same slot,
+  class and name), and a `FieldRef` refuses a class's field on an object of another class (`reflect: field X.Y refused on ...`,
+  once per field); CameraShake's put-back into such an object crashed ME2's third same-map reload (2026-11-19,
+  research/le2-reload-crash.md, gotchas/kept-pointer-another-object). A level torn down under a scene (a save's load) leaves
   freed pawns in the world's pawn list whose `NextPawn` is garbage: walk it with `LivePawns` (game/ConversationWorld), which
   stops at the first dead entry (a record's bystander list read 0xFFFFFFFFFFFFFFFF there and ended the game, 2026-11-12).
 - **ProcessEvent skips any native with an opcode of its own** (`UFunction.iNative` != 0: `Trace`, `Destroy`, `SetLocation`, `SetOwner`...):

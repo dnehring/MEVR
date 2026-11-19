@@ -811,6 +811,42 @@ ReflectCheck rows: `BioPlayerController.m_currentOrder` and its `nmPower` (LE2).
 combat (ME2's own code never makes that call there: the holster animation, and whether the AI's combat redraws it), the put-back
 after the hand power wheel and after a fight's start, the let-go mid-reload; then the headset (notes/headset-checklist.md, ME2).
 
+## The drawn gun after a load (lane RLD, 2026-11-19)
+
+Lane SMOKE: after the 2nd and 3rd same-map loads of the owner's autosave the save's assault rifle came out (`[07:42:30.758]
+holsters: the assault rifle came out without a holster grab ...: a route no hook refuses`), the holsters put it back by TryHolster,
+and 3 s later `the game didn't holster the assault rifle within 3 s ...; now holding the assault rifle`: it stayed out with the
+hand open for the rest of the run.
+
+**What happened.** The save was written with the rifle out; 0.2-0.3 s after the load's new pawn became the holsters' (their first
+active tick saw it holstered), ME2 restored the combat action state (`weapon: ... not in the right hand`, 30 ms later `in the right
+hand: its mesh hangs on Prop01`). The put-back called `SFXGameModeDefault.TryHolster` in those 30 ms, while the rifle was still in its
+`WeaponEquipping` state, and TryHolster returned without holstering: none of the four refusals the holsters ask first (mid-reload,
+a power, an animated transition, combat) was true.
+
+**The choice: a load's own drawn gun goes back, as any draw nobody asked for.** Only holsters draw is the owner's rule on every game,
+and with `gripHolds` the gun is in the hand only while the right grip holds it: after a load the hand is open, so a gun in it would
+stay there with nothing that lets go of it (the let-go needs a grip released). Keeping the save's gun out would be the one gun in the
+hand no grip holds. A player who reloads mid-fight reaches for a holster, as at every other start. The log tells the load's draw
+apart: `holsters: the assault rifle came out without a holster grab (...): with the load (0.2 s after this pawn came: the save's drawn
+gun, or the level's start)` (within 5 s of a new pawn, `kLoadDrawS`).
+
+**The fix (game/Holsters, ME2's adapter; ME1's and ME3's code unchanged):**
+- `HolsterBusy` (TryHolster's refusals, asked before the call) also answers `the gun still being drawn or put away` while the held
+  weapon is `WeaponEquipping`/`WeaponPuttingDown` (`Carried::switching`): the put-back waits (the existing deferral, retried each
+  tick) and runs once the draw has finished.
+- A holster by TryHolster that hasn't taken after 1.5 s (`kTryHolsterWaitS`; its own holster ends in 0.9-1.2 s) with the gun still out,
+  nothing busy and the grip open is finished by TryHolster's own last step, `BioPawnBehavior.SetActionState(explore)` (as the let-go
+  in a fight): `holsters: the X is still out N s after TryHolster (it refused without one of its known reasons): its own last step,
+  ...`. The heartbeat counts them.
+
+**Checked** (fake headset, `sessions\20261119-083503-624-LE2-rld\rld-loads3`, six same-map loads with replayed tracked hands): after
+every load `came out without a holster grab ...: with the load (0.2 s ...)`, `put back at once: the assault rifle waits (the gun still
+being drawn or put away: ...)`, 0.23-0.32 s later `goes back in its holster (SFXGameModeDefault.TryHolster)`, `the assault rifle is
+holstered after 0.15-0.17 s`; then `mevr weapon pistol` drew from the holster (`the pistol is in hand after 0.03 s`). The fallback was
+not needed in these runs. Judge rules `holster-not-taken` (bad) and `holster-load-draw` (note); `holster-unasked-draw` leaves the
+load's own draws out.
+
 ## The reload by hand: the game's side (lane WP, 2026-11-16)
 
 **Off by default since 2026-11-16** (the owner: "putting my left hand to the hip makes no sense ... So don't enable that

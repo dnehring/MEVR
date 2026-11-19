@@ -7,6 +7,11 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## Unreleased
 
+- **Reloading the same save again and again no longer crashes the game.** On Mass Effect 2 the third load of the save you
+  were playing (after a death, say) could crash: the mod put a camera setting back into memory the game had already handed
+  to something else. Fixed for all three games.
+- **A save written with your gun out starts with the gun in its holster** (Mass Effect 2). It used to stay in Shepard's
+  hand with your hand open; as with every other gun the game draws by itself, it goes back, and you draw from a holster.
 - **Your squad moves only when you place it.** A squeeze of the left grip no longer sends the squad somewhere (it did on
   every game when nothing else took the squeeze, and on ME2 it kept happening in fights): place them with the right hand's
   B arc, or by voice.

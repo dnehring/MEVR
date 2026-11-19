@@ -6,7 +6,7 @@ tags: [test-loop, runner, settings, le2]
 status: stable
 timestamp: 2026-11-17T09:20:00Z
 generated: { by: claude-code/opus-5.5, at: 2026-11-17T09:20:00Z }
-bitten: [2026-11-15, 2026-11-16, 2026-11-17]
+bitten: [2026-11-15, 2026-11-16, 2026-11-17, 2026-11-19]
 ---
 
 # Symptom
@@ -17,6 +17,7 @@ bitten: [2026-11-15, 2026-11-16, 2026-11-17]
 | its receipt (`<session>\load-*\receipt.json`) | `"passed": false`, `"saveUnchanged": true`, `"artifactsUnchanged": false`, with `transitionObserved`, `gameplayObserved` and `descriptorMatched` all true: the save loaded |
 | the lanes' workaround | "wait about 45 s at the title", or load again (the second load passed) |
 | the mod's log at the same seconds | `hands: added the [Controls] defaults to ...\ASI\LE2MEVR.ini` ... `[Reload]`, `power wheel: added the [PowerWheel] defaults`, `vr cover: added the [Cover] defaults` |
+| 2026-11-19, lane RLD's repeated same-map loads with replayed hands | every load refused (the save loaded each time): the first because `hand contact: added the [HandContact] defaults` came when the replayed controllers first appeared, every later one because body scale saved `[Body.Shepard] Transient.SFXCompositeSkeletalMesh_N = ...`, a new key a load (ME2's composite mesh is built at run time, renamed every load) |
 
 21 of the 39 ME2 loads in the runner's sessions of 2026-11-15 to 11-17 were refused so, each with the save unchanged
 and loaded; ME3's renderer preview once, on 2026-11-15, before its launch waited (below).
@@ -59,7 +60,9 @@ still refuses it (`Test-LoadArtifactsUnchanged` in `load-common.ps1`). Offline t
 
 If it comes back: a module that appends its block only later (on foot, in a level) would change the file during a
 load again; give it its default in `HandCalibration`'s first `Refresh` or append it at the title, never loosen
-`load.ps1`'s check.
+`load.ps1`'s check. It came back on 2026-11-19 with both kinds: `game/HandContact` appends `[HandContact]` only once controllers
+are tracked (left as it is: once per fresh file, and a load with the hands already replayed passes), and `game/BodyScale` saved a key
+per load for ME2's run-time mesh (fixed: `MeshKey` gives a `Transient.` mesh no key, research/le2-reload-crash.md).
 
 # Citations
 

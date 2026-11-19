@@ -461,3 +461,33 @@ settings line `traversal: [Traversal] ... facing head, holstered 1`.
 the holsters' own let-go, now on ME2 too) and `-YawDeg 60` (the pawn turned off the slot by `mevr traversal place`'s fifth word),
 Save 4's `CoverLink_10`. Not run: the owner was in the headset (`owner-testing.flag`). **[verify]** that the mantle plays from
 exploring (its `FromExplore` stance), the head-facing admission with the pawn turned, and the owner's barrier.
+
+## The refusal that named the wrong reason (lane RLD, 2026-11-19)
+
+Lane SMOKE read the owner's log of 2026-11-18 as "the vault and melee refused for about 45 s after a conversation": three A presses on
+foot at 20:43:22, 20:43:31 and 20:43:37 (gameplay since 20:42:56) logged `traversal: A pressed (#13): a press that can't vault:
+authored seated scene blocks traversal`. That wording was `!ActionSceneAllowed()` in `src/mod/Mod.cpp` (also melee's gate), which is
+false for any of: the mod's engine access down, **our menu, the omni-tool's rail, a wrist screen, a held view, the power wheel or the
+squad's weapon wheel open**, calibrating, no player controller, **any game mode but 0** (the hacking screen's 7, a conversation's 5,
+the GameOver screen), no pawn, or a matinee's move track moving Shepard (`authored_moment::TrackMoves`).
+
+**What it really was.** Each of the three presses was the A that **confirmed our squad weapon menu** (then still built): `[20:43:22.980]
+squad: menu #1 confirmed (A): Jacob gets the pistol` in the same millisecond as the press, menu #2 at 20:43:31.156, menu #3 at
+20:43:37.641, each menu opened by the left trigger a few seconds before. The refusal was right (A was the menu's); the reason was not.
+Every other refusal in that log is off foot (#3-#8 on the hacking screen, game mode 7; #11-#12 in a conversation, 5; #19 on GameOver,
+7). Traversal was back in between: `[20:43:47.111] traversal: A pressed (#16): first tap: nothing to vault or climb from here`. No
+`TrackMoves` was involved, and nothing kept the vault off after the conversation.
+
+**The fix (every game):** `ActionSceneWhy()` in `src/mod/Mod.cpp` returns the reason (a literal), `ActionSceneAllowed()` is `ActionSceneWhy()
+== nullptr` (the same answer as before on every game); the traversal and melee links carry it (`Link::sceneWhy`), and ME2's press log
+names it, the tick before's reason too (a press that closed a menu): `traversal: A pressed (#1): a press that can't vault: the scene
+blocks traversal: the power wheel is open`; the reasons are `our menu is open`, `the omni-tool's rail is open`, `a game screen is up on
+the wrist`, `the view is held (a game screen or a scene)`, `the power wheel is open`, `the squad's weapon wheel is open`, `calibrating`,
+`no player controller`, `not on foot (game mode N: ...)`, `no player pawn`, `an authored scene moves Shepard (a matinee's move track)`.
+ME3's staged melee refusal returns the same text. The core's old wording stays for anything without a reason.
+
+**Checked** (fake headset, `sessions\20261119-083503-624-LE2-rld\rld-refusal`): `mevr powerwheel open`, a replayed A: `[08:44:29.656]
+traversal: A pressed (#1): a press that can't vault: the scene blocks traversal: the power wheel is open`; `mevr powerwheel close`, A again
+1.8 s later: `traversal: A pressed (#2): first tap: nothing to vault or climb from here`. Judge: `traversal-scene-blocked-matinee` (on
+foot, a reason that should end with gameplay: a matinee, no pawn) replaces the catch-all for new logs; `traversal-seated-in-gameplay`
+stays for logs before 2026-11-19.
