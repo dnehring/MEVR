@@ -77,7 +77,15 @@ status` gives the pose updates, the bones found and Root before and after the cl
 conversation character (`SFXStuntActor`); checked 2026-11-19 with `walk-sway` on Miranda: 21 of 21 bones, written on every
 update, her hair swinging 4-7 cm with the walk.
 
-Not yet: other characters than stunt actors (pawns), a blend in and out, and a compact binary form if clips ship.
+Pawns too since the same day (ME2's Miranda at Freedom's Progress: `mevr anim clip vixen walk-sway-me2 1 auto 2`). A clip is
+made for one skeleton: retarget a motion once per body with `--clip-name` (`retarget --name walk-sway --clip-name
+walk-sway-me2 --skeleton HMF_MIR_LGTa_MDL`). `mevr anim at <seconds>` holds a moment of the loop (snapshots of a landing).
+
+The clips of 2026-11-19 (seed 23): `walk-sway`, `jump-place` (a 0.25 s jump, hips +-1 g at take-off and landing; play the
+window `--loop 24:64`: the loop finder picks the quiet end), `jump-forward`, `run` (its best loop isn't seamless: a seam at each
+wrap), `turn-walk`. `mevr-hair-bench` (tools/hair-bench) plays any of them offline for the hair or `--jiggle`.
+
+Not yet: a blend in and out, playing a clip once (no loop), and a compact binary form if clips ship.
 
 ## Licences and data
 

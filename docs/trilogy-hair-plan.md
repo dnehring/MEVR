@@ -417,3 +417,23 @@ skeleton). So:
 - **The bodies are many** (armours and outfits per character), unlike one hairstyle: the recipe must be generic (bone
   places from the mesh's own landmarks, weights from distance), and every outfit checked.
 - Not started; it comes after Miranda's hair, and the look and the defaults go to the owner first.
+
+## 11. Progress, 2026-11-19 (branch hair-miranda)
+
+- **ME3 Miranda's hair moves** (research/trilogy-hair.md "Miranda's hair moves"): the old rigged hair on her own body
+  (identical rig), simulated on the body the hair follows (ME3's follower rule), gravity 0 over the styled pose.
+- **The bench** `mevr-hair-bench` (tools/hair-bench): the hair or the jiggle over one of our generated clips on a body's
+  skeleton, no game, parameter sweeps in seconds. What it found, fixed in `core/ik/HairChain`: damping now slows the hair
+  relative to the animation (a steady walk had trailed strands 7 cm); the animation is sampled at each fixed step's time and
+  drawn at the frame's (120 and 240 fps agree to 0.00 cm; jitter 2.4 -> 0.96 mm per step). What is left: 30-60 fps differ
+  from 120 by 2-9 cm (the animation is seen once per frame; better input interpolation could trim it); today's defaults
+  (stiffness 0.06, damping 0.10) swing a walk 0.7 cm mean, 3.9 cm peak and settle in 0.26 s, a little stiff; softer values
+  are the owner's choice in the headset.
+- **Generated animation** (tools/motion, the owner's ARDY pipeline): walk-sway, jump-place, jump-forward, run, turn-walk on
+  ME3 Miranda's skeleton, walk-sway-me2 and jump-place-me2 on ME2's; played in the game by `mevr anim clip` (engine/ClipPose,
+  before the hair stage), on conversation characters and pawns; `mevr anim at <s>` holds a moment. Checked on ME3 (Citadel)
+  and ME2 (Freedom's Progress).
+- **Jiggle** (section 10, research/trilogy-jiggle.md): `core/ik/Jiggle` built and unit-tested, benched on stand-in bones
+  (breasts on Chest2, glutes on Pelvis): a walk 0.7 cm, the jump 2.2 cm (4.5 at intensity 1), settled within 0.15 s. In the
+  game it still needs the added bones and weights (the A3 route, built on the player's machine); its look, defaults and
+  whether it is on go to the owner first.
