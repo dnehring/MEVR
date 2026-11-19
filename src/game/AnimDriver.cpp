@@ -13,6 +13,8 @@
 #include "ue3/Params.hpp"
 #include "ue3/Runtime.hpp"
 
+#include <Windows.h>
+
 #include <algorithm>
 #include <cctype>
 #include <cmath>
