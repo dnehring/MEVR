@@ -14,7 +14,7 @@ synthetic one), with --expect-quiet, 1 if a named rule fired (the synthetic clea
 Rules live in RULES below, one entry each: a plain one is an id, a severity, a regular expression over the line's text (after the
 "[time] [level] " prefix) and a why. A rule may add `when` (a state the line must be in: the judge keeps a little state as it
 reads, see State), `skip` (a regex of lines it never counts), `minimum` (fires only from that many lines on) and `detail` (a
-function of the match that adds to the block's summary). Rules that need more than lines (the VR cover ratio, flip-flops within a
+function of the match that adds to the block's summary; `detail_state` the same with the judge's state). Rules that need more than lines (the VR cover ratio, flip-flops within a
 window) are functions in AGGREGATES. Add a sign as one entry; the ctest (tests/session-judge/) shows it the lines it must catch.
 """
 import argparse
@@ -39,9 +39,14 @@ class State:
         self.last_speed_t = -1e9
 
     def update(self, t, text):
+        mode = re.search(r"\(game mode (\d+)", text)  # 'not on foot (game mode 7)', 'main menu: leave: ... (game mode 0, ...'
+        if mode:
+            self.mode = int(mode.group(1))
+            self.on_foot = self.mode == 0
         if re.match(r"(arm IK|holsters|posture): not on foot", text) or text.startswith("arm IK: no player body"):
             self.on_foot = False
-        elif text.startswith("arm IK: driving") or text.startswith("arm IK: body anchor: first person") or text == "holsters: active":
+        elif (text.startswith("arm IK: driving") or text.startswith("arm IK: body anchor: first person") or
+              text == "holsters: active") and getattr(self, "mode", 0) == 0:
             self.on_foot = True
         if text.startswith("posture: physical crouch") or text.startswith("posture: crouch request accepted"):
             self.physical_crouch = True
@@ -77,21 +82,24 @@ RULES = [
          why="arm IK fell to its third-person anchor while on foot: the drawn hands leave the controllers and the body is pulled "
              "toward Shepard's animated head (the owner's 'almost magnetic' pull at a barrier, at each crouch; research/29 "
              "\"The crouch that went third person\")"),
-    dict(id="traversal-refused-at-slot", severity="bad",
+    dict(id="traversal-refused-at-slot", severity="warn",
          pattern=r"^traversal: next to (\S+ slot \d+) \(vault over to (\S+ slot \d+)\): the pawn ([\d.]+) m from the slot, facing "
                  r"(\d+) deg off its direction \(dot (-?[\d.]+)\); the game refuses it",
-         minimum=3,
-         detail=lambda m: f"{m.group(1)} -> {m.group(2)}",
-         why="the game refused the vault while the player stood at a slot (ME2's CanPerformMantle: within 50 uu, facing dot >= "
-             "0.70, the landing clear); at a barrier the mission requires the player can't go on (research/le2-traversal.md)"),
+         # Close to the slot and facing it (a walk past at 1.5 m, or the far side after a vault, is not a try).
+         when=lambda m, s, t: float(m.group(3)) <= 0.8 and int(m.group(4)) <= 50,
+         detail=lambda m: f"{m.group(1)} -> {m.group(2)} at {m.group(3)} m, {m.group(4)} deg",
+         why="the game refused the vault with Shepard close to a slot and facing it (ME2's CanPerformMantle: within 50 uu, "
+             "facing dot >= 0.70, the landing clear): the player stands at the barrier and the game says no "
+             "(research/le2-traversal.md)"),
     dict(id="traversal-double-tap-refused", severity="bad",
          pattern=r"^traversal: double tap with nothing the game admits here",
          why="a double A the game admitted nothing for: the player asked to vault and nothing happened"),
     dict(id="traversal-seated-in-gameplay", severity="warn",
          pattern=r"^traversal: A pressed \(#\d+\): a press that can't vault: authored seated scene blocks traversal",
+         when=lambda m, s, t: s.on_foot is not False,
          minimum=2,
-         why="A presses refused as an 'authored seated scene' (the shuttle rule) during play: if the player was on foot this "
-             "guard is wrong and blocks the vault"),
+         why="A presses refused as an 'authored seated scene' while on foot (the reason also covers menus, mode 7 screens and "
+             "matinee moves: ActionSceneAllowed in mod/Mod.cpp, so off foot it is expected): on foot it blocks the vault"),
     dict(id="holster-stays-out", severity="bad",
          pattern=r"^holsters: (?:\S+: )?(?:the (?:let-go )?(.+?) stays out|let go .* the (.+?) stays out)",
          detail=lambda m: (m.group(1) or m.group(2) or "").strip(),
@@ -114,6 +122,7 @@ RULES = [
     dict(id="crouchbody-drop-not-crouched", severity="bad",
          pattern=r"^torso: crouching with you: the body down (\d+) cm",
          when=crouch_drop,
+         detail_state=lambda m, s, t: "while running" if s.moving(t) else "standing or walking",
          why="the body was lowered more than 3 cm 'to your head' while the player wasn't physically crouched (a run, the idle, "
              "the game's own crouch): the body sinks under the view (research/29 \"A run never lowers the body\")"),
     dict(id="process-event-off-thread", severity="bad",
@@ -233,7 +242,8 @@ def judge_lines(entries):
                 if any(rule["skip_context"] in e[3] for e in near):
                     continue
             f = findings.setdefault(rule["id"], Finding(rule))
-            f.add(stamp, raw, rule["detail"](m) if "detail" in rule else None)
+            detail = rule["detail"](m) if "detail" in rule else rule["detail_state"](m, state, t) if "detail_state" in rule else None
+            f.add(stamp, raw, detail)
             if "block" in rule:
                 rx_block = re.compile(rule["block"])
                 f.examples += [b[:300] for b in BLOCKS.get(i, []) if rx_block.match(b)][:6]
@@ -274,6 +284,37 @@ def vr_cover_ratio(entries):
     f.first, f.last = first_hit or (last[0] if last else None), last_hit or (last[0] if last else None)
     f.summary = f"{covered} of {hits} hits covered" + (f"; per hit: " + ", ".join(f"{k} {v}" for k, v in verdicts.most_common()) if verdicts else "")
     f.examples = ([last[3][:400]] if last else []) + examples
+    return f
+
+
+def presses_refused_near_slot(entries):
+    """A pressed for a vault that did nothing while a slot that vaults was in reach (the mod's 'next to' line, not yet cleared
+    by 'no slot ... any more'): the player at a barrier asking to cross it (the owner's Freedom's Progress barrier)."""
+    near = None
+    found = []
+    for stamp, t, level, text, raw in entries:
+        m = re.match(r"traversal: next to (\S+ slot \d+) \(vault over to [^)]*\): the pawn ([\d.]+) m from the slot, facing (\d+) deg", text)
+        if m:
+            near = (m.group(1), float(m.group(2)), int(m.group(3)), t)
+            continue
+        if text.startswith("traversal: no slot that vaults or climbs within"):
+            near = None
+            continue
+        if near and t - near[3] <= 10.0 and (
+                re.match(r"traversal: A pressed \(#\d+\): first tap: nothing to vault or climb from here", text) or
+                text.startswith("traversal: double tap with nothing the game admits here")):
+            found.append((stamp, raw, near))
+    if not found:
+        return None
+    rule = dict(id="traversal-press-refused-near-slot", severity="bad",
+                why="the player pressed A for a vault with a slot in reach and nothing happened: the mod's reach and the game's "
+                    "CanPerformMantle (0.5 m, facing within 45 degrees, from the pawn, not the head) are tighter than where the "
+                    "player stands at the barrier")
+    f = Finding(rule)
+    f.count = len(found)
+    f.first, f.last = found[0][0], found[-1][0]
+    f.examples = [x[1][:400] for x in found[:3]]
+    f.summary = "; ".join(f"{s}: {n[0]} at {n[1]:.2f} m, facing {n[2]} deg" for s, _, n in found[:6])
     return f
 
 
@@ -356,7 +397,7 @@ def warnings_by_module(entries):
     return found
 
 
-AGGREGATES = [vr_cover_ratio, posture_flips, anchor_flips, low_frame_rate]
+AGGREGATES = [vr_cover_ratio, presses_refused_near_slot, posture_flips, anchor_flips, low_frame_rate]
 
 
 def halcyon_findings(lines):

@@ -98,12 +98,18 @@ python tools\session-judge.py --mod <Win64>\Logs\LE2MEVR.log [--halcyon %LOCALAP
   (`mevr cover pawns` parsed: hostiles' places), `Steer-Snapshot`. `make-walk-recording.py`'s plan has `grip` (the right
   grip for that segment), `turn@X` (the right stick) and `aim@YAW@PITCH` (the right controller pointed off the head) for it.
 - `session-judge.py` lists the known bad signs in a mod log (one table, `RULES`, and a few window rules, `AGGREGATES`): arm
-  IK's third-person anchor on foot, refused vaults at a slot, VR cover's covered share of a fight's hits, let-go guns that
+  IK's third-person anchor on foot, A pressed for a vault with a slot in reach and nothing happening, the game refusing the
+  vault with Shepard close and facing the slot, VR cover's covered share of a fight's hits, let-go guns that
   stay out, unasked draws, the crouch flipping, the body lowered while not crouched, off-thread ProcessEvents, crash reports
   and first-chance faults in our code, swapchain refusals, warnings by module, Halcyon's error lines. Its canary is the
   owner's log of 2026-11-18 (kept out of git); its ctest `mevr-session-judge` runs synthetic lines.
-- The drones kill a Shepard who only walks down the stairs in about 7 s: `-God` (the console's `god`). Each load of the same
-  map in one process is a risk: the third crashed the game on 2026-11-19 (engine code under the tick, research to come).
+- The drones kill a Shepard who only walks down the stairs in about 13 s. `-God` (the console's `god`) keeps him alive but
+  **no hit reaches VR cover then** (0 judged with drones firing, 55 in 13 s without): judge VR cover from a run without it.
+  Each load of the same map in one process is a risk: the third crashed the game on 2026-11-19 (engine code under the tick):
+  `-Fresh` restarts the game first.
+- On this path no surface stands at eye height within reach toward the drones (`mevr cover probe` from the landing and the
+  stairs' foot): VR cover can only count a hit as covered with the head below the low walls (their top about 1 m above the
+  floor), so it waits for a replayed physical crouch (the host's floor sample, lane POS).
 
 ## ME3 development dump only
 

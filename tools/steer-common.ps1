@@ -177,7 +177,8 @@ function Steer-Face([double]$Yaw, [switch]$NoCheck) {
 }
 
 # Short pushes toward a point until Shepard is within -Within units of it (flat), or stuck: a push that moves him under 30
-# units counts as blocked, and two in a row try 60 degrees to either side before giving up.
+# units counts as blocked; the next push waits a moment and tries again (a squadmate in the way moves on), then 60 and 90
+# degrees to either side of the goal, never further round (backing off through a door led the walk astray), then gives up.
 function Walk-To([double]$X, [double]$Y, [double]$Within = 60.0, [int]$MaxSteps = 40, [double]$StepSeconds = 0.6, [string]$Label = '') {
     $at = Steer-Where
     if ($null -eq $at) { throw 'no position from the console (no pawn?)' }
@@ -194,13 +195,15 @@ function Walk-To([double]$X, [double]$Y, [double]$Within = 60.0, [int]$MaxSteps 
         $bearing = [Math]::Atan2($dy, $dx) * 180.0 / [Math]::PI
         $heading = if ($null -eq $script:SteerHeading) { 0.0 } else { $script:SteerHeading }
         $angle = Steer-Wrap ($bearing - $heading)
-        if ($blocked -ge 2) { $angle = Steer-Wrap ($angle + $(if ($blocked % 2 -eq 0) { 60.0 } else { -60.0 })) }
-        $seconds = [Math]::Max(0.15, [Math]::Min($StepSeconds, ($distance - 0.5 * $Within) / $script:SteerSpeed))
+        if ($blocked -eq 1) { Start-Sleep -Milliseconds 800 }
+        $aside = @{ 2 = 60.0; 3 = -60.0; 4 = 90.0; 5 = -90.0 }
+        if ($aside.ContainsKey($blocked)) { $angle = Steer-Wrap ($angle + $aside[$blocked]) }
+        $seconds = [Math]::Max(0.05, [Math]::Min($StepSeconds, ($distance - 0.3 * $Within) / $script:SteerSpeed))  # short near the goal: 0.15 s overshot a 15-unit goal both ways
         $before = $at
         $at = Steer-Push $angle $seconds
         if ($null -eq $at) { throw 'no position from the console (no pawn?)' }
         $moved = [Math]::Sqrt(($at.x - $before.x) * ($at.x - $before.x) + ($at.y - $before.y) * ($at.y - $before.y))
-        if ($moved -lt 30.0) { $blocked++ } else { $blocked = 0 }
+        if ($moved -lt [Math]::Min(30.0, 0.4 * $seconds * $script:SteerSpeed)) { $blocked++ } else { $blocked = 0 }
         if ($blocked -ge 6) {
             Steer-Note ("stuck at ({0:0}, {1:0}, {2:0}), {3:0} units from the goal" -f $at.x, $at.y, $at.z, $distance)
             return @{ arrived = $false; at = $at; distance = $distance }

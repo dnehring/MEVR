@@ -45,6 +45,7 @@ BAD = [
     line(10 + i, "traversal: next to CoverLink_5 slot 1 (vault over to CoverLink_3 slot 1): the pawn 0.56 m from the slot, facing 17 deg "
          "off its direction (dot 0.96); the game refuses it (CanPerformMantle: within 50 uu, dot >= 0.70, the landing clear)") for i in range(4)
 ] + [
+    line(14, "traversal: A pressed (#2): first tap: nothing to vault or climb from here (3.10 s after the one before)"),
     line(15, "traversal: double tap with nothing the game admits here (CoverLink_5 slot 1 at 0.56 m)"),
     line(16, "holsters: let go 0.20 s ago away from hipLeft: the shotgun stays out: the game won't holster it now (in combat: SFXGameModeDefault.TryHolster refuses then)"),
     line(17, "holsters: the sniper rifle came out without a holster grab (right trigger 0.00, grip 0.00; left trigger 0.00, grip 0.00): not through DrawPrimaryWeapon, so it wasn't refused"),
@@ -76,6 +77,10 @@ CLEAN = [
     line(1, "arm IK: body anchor: first person (the view's frame), view 30 units from Shepard's animated head bone, 100.0 units per meter"),
     line(2, "traversal: next to CoverLink_10 slot 0 (vault over to CoverLink_14 slot 1): the pawn 0.30 m from the slot, facing 5 deg "
          "off its direction (dot 0.99); the game admits it (CanPerformMantle: within 50 uu, dot >= 0.70, the landing clear)"),
+    line(2, "traversal: next to CoverLink_41 slot 0 (vault over to CoverLink_15 slot 3): the pawn 1.52 m from the slot, facing 0 deg "
+         "off its direction (dot 1.00); the game refuses it (CanPerformMantle: within 50 uu, dot >= 0.70, the landing clear)"),
+    line(2, "traversal: no slot that vaults or climbs within 1.5 m any more"),
+    line(3, "traversal: A pressed (#3): first tap: nothing to vault or climb from here (9.00 s after the one before)"),
     line(3, "holsters: let go of the pistol away from its slot: it goes back in 0.35 s unless you squeeze again"),
     line(4, "holsters: the console: the pistol goes back in its holster (in combat, where SFXGameModeDefault.TryHolster refuses: its own last step, BioPawnBehavior.SetActionState(explore))"),
     # The player's own crouch lowers the body: not a sign.
@@ -96,6 +101,7 @@ CLEAN = [
 ]
 
 BAD_RULES = ["armik-third-person-on-foot", "armik-anchor-flapping", "traversal-refused-at-slot", "traversal-double-tap-refused",
+             "traversal-press-refused-near-slot",
              "holster-stays-out", "holster-unasked-draw", "crouchbody-drop-not-crouched", "process-event-off-thread",
              "swapchain-refused", "first-chance-av-ours", "vr-cover-never-covered", "posture-flip-flop", "frame-rate-low",
              "crash-report"]
@@ -117,11 +123,13 @@ try:
     check(status == 0, "every bad rule fires on the synthetic fight:\n" + buffer.getvalue())
     with open(out_json, encoding='utf-8') as f:
         found = {x['id']: x for x in json.load(f)['findings']}
-    check(found.get('traversal-refused-at-slot', {}).get('summary', '').startswith('CoverLink_5 slot 1 -> CoverLink_3 slot 1 x4'),
+    check(found.get('traversal-refused-at-slot', {}).get('summary', '').startswith('CoverLink_5 slot 1 -> CoverLink_3 slot 1 at 0.56 m, 17 deg x4'),
           "the refused vault names its slot and count: " + str(found.get('traversal-refused-at-slot')))
     check(found.get('vr-cover-never-covered', {}).get('summary', '').startswith('0 of 64 hits covered'),
           "VR cover's ratio from its heartbeat: " + str(found.get('vr-cover-never-covered')))
     check(found.get('armik-third-person-on-foot', {}).get('count') == 3, "three third-person anchors on foot")
+    check(found.get('traversal-press-refused-near-slot', {}).get('count') == 2,
+          "the first tap and the double tap refused next to the slot: " + str(found.get('traversal-press-refused-near-slot')))
     check(any('ucrtbase.dll+0x6A80D' in e for e in found.get('crash-report', {}).get('examples', [])),
           "the crash report shows its exception line: " + str(found.get('crash-report')))
     check(found.get('posture-flip-flop', {}).get('count') == 5, "five posture changes in one window")

@@ -5,19 +5,20 @@
 # headset with tracked replayed hands, by script only, takes a snapshot at each step, and judges the log (tools/session-judge.py).
 # With a stretch open (prep.ps1, launch.ps1); it loads the save itself (load.ps1, which reads the save and never writes it).
 #
-#   tools\le2-halcyon-run\smoke-owner-save.ps1 -Holder <you> [-Save <career>\<file>.pcsav] [-NoLoad] [-God]
-#       [-Phases door,stairs,fight,letgo,cover,crouch,vault,barrier] [-Tag what]
+#   tools\le2-halcyon-run\smoke-owner-save.ps1 -Holder <you> [-Save <career>\<file>.pcsav] [-NoLoad] [-Fresh] [-God]
+#       [-Phases door,stairs,fight,letgo,crouch,down,cover,vault,barrier] [-Tag what]
 #
 # Phases (Shepard walked by tools/steer-common.ps1: short left-stick replays, his place read back through the console; the view
 # turned with the console's `set` on the player controller's Rotation):
 #   door     the view south, Shepard 2.7 m from SFXDoor_11 (BioD_ProFre_300Drones), A pressed (the game's use; the mod's interact
 #            line names the door). Pass: `interact: A would use SFXDoor ... SFXDoor_11`, then Shepard walks through it.
-#   stairs   both flights down to the courtyard (z -12509 to -13109), a snapshot on the landing (the drones arrive here).
+#   stairs   the first flight down to the landing (z -12509 to -12810), where the drones arrive: the fight is from there.
 #   fight    the gun put away and drawn by the holsters' own draw (`mevr weapon away`, `mevr weapon pistol`), then held by the
 #            replayed right grip; each hostile `mevr cover pawns` lists faced and shot at (the right controller aimed at it, the
 #            trigger in bursts). Pass: `hand aim: shot N` lines, no `holsters: ... stays out`.
 #   letgo    mid-fight the right grip let go (no grip in the replay for 4 s). Pass: `holsters: ... goes back in its holster (in
 #            combat, where SFXGameModeDefault.TryHolster refuses: its own last step ...)`, not `stays out`.
+#   down     the second flight down to the courtyard (z -13109).
 #   cover    a surface toward the nearest hostile found (`mevr cover probe`), Shepard walked behind it, held there while shot at.
 #            Pass: `vr cover: a hit ... in cover` lines; the judge's VR cover ratio.
 #   crouch   L3 (the mod's crouch toggle on the sequels) during the fight, held 4 s, L3 again. Pass: no `arm IK: body anchor:
@@ -27,6 +28,7 @@
 #            it, the double A. Pass: `traversal:` commits and Shepard on the far side.
 #   barrier  the barrier the owner could not cross (CoverLink_5 slot 1 to CoverLink_3 slot 1, z -13640): walked to if the path
 #            allows, else placed there (`mevr traversal place`, said in the log), the double A. Pass as vault.
+# -Fresh restarts the game first (launch.ps1 -Kill): the third load of this map in one process crashed the game on 2026-11-19.
 # -God turns on the console's god mode first (the drones killed an unarmed walk down the stairs in 7 s); the hits are judged
 # either way. Results: the stretch's session folder, smoke-<tag>-<time>\ (steer.txt: every push and step; console.txt; log.txt:
 # the mod's lines since the start; halcyon.txt; snapshots.txt; judge.txt and judge.json: tools/session-judge.py's verdict).
@@ -34,8 +36,9 @@ param(
     [Parameter(Mandatory)][string]$Holder,
     [string]$Save = 'VR_31_Soldier_141126_336072f\AutoSave.pcsav',
     [switch]$NoLoad,
+    [switch]$Fresh,
     [switch]$God,
-    [string[]]$Phases = @('door', 'stairs', 'fight', 'letgo', 'cover', 'crouch', 'vault', 'barrier'),
+    [string[]]$Phases = @('door', 'stairs', 'fight', 'letgo', 'crouch', 'down', 'cover', 'vault', 'barrier'),
     [ValidatePattern('^[A-Za-z0-9_-]*$')][string]$Tag = 'owner'
 )
 $ErrorActionPreference = 'Stop'
@@ -46,6 +49,9 @@ $current = Join-Path $env:LOCALAPPDATA 'MEVR\sessions\le2-current.json'
 if (-not (Test-Path -LiteralPath $current)) { throw 'no ME2 stretch is open: prep.ps1 and launch.ps1 first' }
 $open = Get-Content -LiteralPath $current -Raw | ConvertFrom-Json
 if ($open.holder -ne $Holder) { throw "the open ME2 stretch is held by '$($open.holder)', not '$Holder'" }
+if ($Fresh) {
+    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'launch.ps1') -Holder $Holder -Kill | Select-Object -Last 2
+}
 if (-not (Get-Process MassEffect2 -ErrorAction SilentlyContinue)) { throw 'ME2 is not running' }
 $out = Join-Path $open.session ('smoke-' + $Tag + '-' + (Get-Date -Format 'HHmmss'))
 Steer-Init -Out $out
@@ -132,25 +138,21 @@ try {
     }
     if ($Phases -contains 'stairs' -and (Alive 'stairs')) {
         # The doorway: straight through, Shepard stopped at y 8331 (the door's frame or a squadmate); its west side passes.
-        foreach ($p in @(@(-9320, 8300, 'the doorway'), @(-9280, 8200, 'the top landing'), @(-8950, 8150, 'the first flight'),
+        # The top landing's north side is where a squadmate stands (the walk east was stopped at y 8217): its south side.
+        foreach ($p in @(@(-9320, 8300, 'the doorway'), @(-9290, 8140, 'the top landing'), @(-8950, 8140, 'the first flight'),
                          @(-8545, 8170, 'its foot'), @(-8560, 7880, 'the turn'), @(-8640, 7720, 'the landing'))) {
             $r = Walk-To -X $p[0] -Y $p[1] -Within 50 -MaxSteps 10 -Label $p[2]
         }
-        Steer-Snapshot "$Tag-landing"
-        foreach ($p in @(@(-8800, 7800, 'the second flight'), @(-9050, 7810, 'its middle'), @(-9290, 7800, 'its foot'))) {
-            $r = Walk-To -X $p[0] -Y $p[1] -Within 50 -MaxSteps 10 -Label $p[2]
-        }
-        Steer-Face -Yaw 180 -NoCheck
-        Steer-Snapshot "$Tag-courtyard"
+        Steer-Snapshot "$Tag-landing"   # the drones come as Shepard reaches the landing: the fight is from here
     }
     if ($Phases -contains 'fight' -and (Alive 'fight')) {
         Steer-Note ('fight: ' + (Steer-Ask 'mevr weapon away').Trim())
-        Start-Sleep -Seconds 2
+        Start-Sleep -Seconds 1
         Steer-Note ('fight: ' + (Steer-Ask 'mevr weapon pistol').Trim())
         Steer-Init -Out $out -Hold 'grip'   # the replayed right grip holds the drawn gun from here on
         Steer-Hold
-        Start-Sleep -Seconds 2
-        $null = Shoot 3 'fight'
+        Start-Sleep -Seconds 1
+        $null = Shoot 4 'fight'
     }
     if ($Phases -contains 'letgo' -and (Alive 'letgo')) {
         Steer-Init -Out $out -Hold ''
@@ -163,6 +165,22 @@ try {
         Steer-Init -Out $out -Hold 'grip'
         Steer-Hold
         Start-Sleep -Seconds 2
+    }
+    if ($Phases -contains 'crouch' -and (Alive 'crouch')) {
+        Steer-Note 'crouch: L3 (the mod''s crouch toggle), held 4 s, L3 again'
+        Steer-Play 'stand+l3:0.06,stand:4'
+        Start-Sleep -Seconds 2
+        Steer-Snapshot "$Tag-crouched"
+        Start-Sleep -Seconds 2.5
+        Steer-Play 'stand+l3:0.06,stand:1'
+        Start-Sleep -Seconds 2
+    }
+    if ($Phases -contains 'down' -and (Alive 'down')) {
+        foreach ($p in @(@(-8800, 7800, 'the second flight'), @(-9050, 7810, 'its middle'), @(-9290, 7800, 'its foot'))) {
+            $r = Walk-To -X $p[0] -Y $p[1] -Within 50 -MaxSteps 10 -Label $p[2]
+        }
+        Steer-Face -Yaw 180 -NoCheck
+        Steer-Snapshot "$Tag-courtyard"
     }
     if ($Phases -contains 'cover' -and (Alive 'cover')) {
         $seen = Steer-Pawns
@@ -195,18 +213,11 @@ try {
             Steer-Note 'cover: no hostile left to take cover from'
         }
     }
-    if ($Phases -contains 'crouch' -and (Alive 'crouch')) {
-        Steer-Note 'crouch: L3 (the mod''s crouch toggle), held 4 s, L3 again'
-        Steer-Play 'stand+l3:0.06,stand:4'
-        Start-Sleep -Seconds 2
-        Steer-Snapshot "$Tag-crouched"
-        Start-Sleep -Seconds 2.5
-        Steer-Play 'stand+l3:0.06,stand:1'
-        Start-Sleep -Seconds 2
-    }
     if ($Phases -contains 'vault' -and (Alive 'vault')) {
         # CoverLink_41 slot 0 at (-9485, 7757), yaw 90: over the barrier to CoverLink_15 slot 3 at y 7933.
-        $r = Walk-To -X -9485 -Y 7735 -Within 15 -MaxSteps 14 -Label 'CoverLink_41 slot 0, 0.25 m back'
+        # Turned first: an instant 180-degree turn of the view put arm IK on its third-person anchor for a tick (2026-11-19).
+        Steer-Face -Yaw 90 -NoCheck
+        $r = Walk-To -X -9485 -Y 7735 -Within 12 -MaxSteps 16 -Label 'CoverLink_41 slot 0, 0.25 m back'
         Steer-Face -Yaw 90 -NoCheck
         Steer-Note ('vault: ' + (Steer-Ask 'mevr traversal near').Trim())
         Steer-Snapshot "$Tag-vault-before"
