@@ -196,8 +196,16 @@ authored seated scenes (such as shuttles) must reject traversal while retaining 
   after its own `CanPerformMantle` admitted it with `m_bCanMantleOutsideOfCover` and the stick's push set for that one call
   (journalled, put back in a `__finally`); since 2026-11-18 (a barrier Freedom's Progress requires couldn't be crossed,
   research/le2-traversal.md "The vault Freedom's Progress requires") also with the head's facing for the call and the pawn turned
-  to the slot at the commit (`facing = head`), and with the weapon away as if drawn (`holstered = 1`; nothing drawn). ME2's camera stays level and smooth through it; `view = level`, `mask = vignette |
-  blink` and the cue (`cue = 1`) are options, off by default. Fixture: Save 4's spaceport, `tools/le2-halcyon-run/vault.ps1`;
+  to the slot at the commit (`facing = head`), and with the weapon away as if drawn (`holstered = 1`; nothing drawn). **The step
+  to the vault** (the owner's "C", 2026-11-19; research/le2-traversal.md "The step to the vault"; `vr::traversal::StepWalk`): a
+  double A within `stepReachM` (1.5 m) of a slot from the view, the head within `stepFacingDeg` (60) of its direction, where the game
+  doesn't admit it yet, walks Shepard there with the game's own walk (the mod's stick written into `BioPlayerInput.PlayerInput`'s
+  result), asks `CanPerformMantle` each 0.05 s with the slot's facing and vaults at the first yes (the owner's barrier: admitted at
+  the pawn 0.32-0.36 m, the view 0.27 m); the player's stick past 0.3, 1 s without getting nearer or 4 s end it; comfort's vignette
+  counts it as walking; `stepTo = 0` off. **The cue is on by default** (`cue = 1`): it shows exactly where a double A would act
+  (logged with why at each change). ME2's camera stays level and smooth through it; `view = level` and `mask = vignette | blink`
+  are options, off by default. Fixture: Save 4's spaceport, `tools/le2-halcyon-run/vault.ps1`; the owner's barrier
+  (`CoverLink_5` slot 1) through `smoke-owner-save.ps1`'s barrier phase and `mevr traversal place CoverLink_5 1 1.2`;
   `mevr traversal slots | near | place | go | pause | trace ...`; logs `traversal:`, `traversal cue:`.
   **Arm IK across root-motion steps** (every game; `core/ik/GoalStep`, `engine/BonePose` `GoalFrame`, research/le2-vrik.md):
   the vault's pose moves the `Camera` bone up to 113 units in the mesh's space before the actor steps, and goals left in

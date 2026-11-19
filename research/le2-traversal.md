@@ -291,7 +291,7 @@ ends with the pistol holstered (ME2 needs the combat action state: "With the wea
 - **The grips on ME2:** a held right grip is the pad's RB on ME2 today (the power wheel after 0.3 s; the LE2 host has no `gripHolds`
   yet), and the left grip LB (the weapon wheel). A vault with the gun held by a grip waits for the holsters' and the support grip's
   host services on LE2; nothing in the vault needs a free hand (it is A and where the player stands).
-- **The owner's choices:** ~~the pawn's facing vs the head's; the holstered vault~~ taken 2026-11-18 for Freedom's Progress's barrier (the head's facing, the holstered vault: "The vault Freedom's Progress requires" below; each a key); the cue's and the comfort mask's defaults.
+- **The owner's choices:** ~~the pawn's facing vs the head's; the holstered vault~~ taken 2026-11-18 for Freedom's Progress's barrier (the head's facing, the holstered vault: "The vault Freedom's Progress requires" below; each a key); ~~the cue's default~~ on since 2026-11-19 with the step to the vault (the owner's "C": "The step to the vault" below); the comfort mask's default.
 - **The game's take-cover prompt** (UpdateCover's `ShowCoverWidget`): lane F hides it while the block applies. Checked at the
   fixture (stretch `*-lane-e-hud`, Shepard 0.60 m in front of `CoverLink_10` slot 0 facing it, standing hands replayed): the HUD
   panel (`-hud.png`) and both eyes show no take-cover prompt with the block on (`2026-11-15_00-01-40-971`) **and none with `mevr
@@ -452,7 +452,8 @@ as the owner's choices.
 - `[Traversal] facing = head` (default): the game is asked with the head's facing (the pawn's `Rotation.Yaw` written to the head's
   for the call, the game's own 45-degree window), and at the commit the pawn is turned to the slot's direction (`Actor.SetRotation`)
   before `MantleCover`, so the move goes over the barrier and not along the stick's last heading. `facing = pawn`: as before.
-- The double A, the 0.39 m window and the cue stay as they were (rule 8; the cue's default is still the owner's choice: off).
+- The double A, the 0.39 m window and the cue stay as they were (rule 8; the cue's default is still the owner's choice: off). Since
+  2026-11-19 the owner's "C": the step to the vault and the cue on ("The step to the vault" below).
 Logs: `traversal: next to ... the game admits it (...); asked with the head's facing, N deg off; the weapon away: asked as drawn`,
 `traversal: double tap: the pawn turned +N deg to CoverLink_X's direction before the move (admitted with the head's facing)`; the
 settings line `traversal: [Traversal] ... facing head, holstered 1`.
@@ -491,3 +492,65 @@ traversal: A pressed (#1): a press that can't vault: the scene blocks traversal:
 1.8 s later: `traversal: A pressed (#2): first tap: nothing to vault or climb from here`. Judge: `traversal-scene-blocked-matinee` (on
 foot, a reason that should end with gameplay: a matinee, no pawn) replaces the catch-all for new logs; `traversal-seated-in-gameplay`
 stays for logs before 2026-11-19.
+
+## The step to the vault (lane RLD, 2026-11-19; the owner's answer "C")
+
+The owner's question 3 had a third choice since 2026-11-18: widen the vault's reach, turn its cue on, or both. **"C" (both), the owner,
+2026-11-19.** Lane SMOKE's reading of the owner's log: A pressed about 1 m from the slot and 55 degrees off, where the game admits a
+mantle only at about 0.46 m and 17 degrees, and once refused at 0.60 m facing 0; the game measures from the pawn's centre, which can
+sit 0.4 m from the view (`arm IK: ... the view 0.41 m from where the game put Shepard`).
+
+**What the game admits** (measured in the runs below, `traversal: the step to ... ended ...: the game admits the vault from here`):
+CanPerformMantle said yes with the pawn **0.32-0.36 m** flat from `CoverLink_5` slot 1 (the slot point 31 units below the pawn's centre:
+0.46-0.48 m in 3D, its 50-unit threshold) and the view **0.27 m** from it, asked with the slot's own facing.
+
+**The rule** (`core/vr/Traversal` `StepSettings`, `MayStepTo`, `StickToward`, `StepWalk`; unit-tested in `tests/TraversalTests.cpp`
+`TestStepTo`):
+1. A double A counts as one next to a slot (the press's `eligible`) where the game admits the vault from where the pawn stands, **or**
+   where the nearest slot is within `[Traversal] stepReachM` (1.5 m) of where the player stands (the view's place, flat; the pawn's
+   without a view) with the head within `stepFacingDeg` (60 degrees) of the slot's direction.
+2. If the game admits it, the vault is called at once, as before. Otherwise Shepard steps to the slot first: each tick the mod writes
+   a left stick toward the slot (in the game's camera frame; full push, easing below 0.8 m to 0.35) into the player's input right after
+   `BioPlayerInput.PlayerInput` read the pad (`RawJoyUp`/`RawJoyRight`, the controller's `RemappedJoyUp`/`Right`, `MoveStickMag`;
+   post-handlers on both the script call and ProcessEvent, journalled), so the native `PlayerMove` and `PlayerMoveCombatOrExplore` walk
+   him: the game's collision, speed (the linear stick) and walk animation, no teleport.
+3. Every 0.05 s the game is asked (`CanPerformMantle`, the same one-call writes) with the pawn's yaw the slot's direction (the commit
+   turns him to it, as with `facing = head`); the first yes ends the step and makes the vault call (`MantleCover`).
+4. It ends without a vault when the player's left stick passes 0.3 (theirs takes over), nothing gets 3 cm nearer for 1 s (a wall, a
+   person, the slot's edge), after 4 s, or a menu, a scene, a move or a lost view interrupts (the scene's reason in its own words).
+5. Comfort: `[Comfort]`'s vignette counts the step as walking (`traversal::Stepping()` in `game/Comfort`); the vault's own mask
+   (`[Traversal] mask`) applies to the move as before.
+
+**The cue on by default** (`[Traversal] cue = 1`, `vr::traversal::Settings::cue`): the label ('Vault', 'Climb up') over the cover's top
+between the slot and its landing shows exactly where a double A would act: the game admits it from here, or the step would begin, or
+the step walks there; it hides in a menu, without focus, when A would use something first, during a move, beyond 3 m of the head. Each
+change is logged with why: `traversal: the cue over CoverLink_5 slot 1 shows: a double A steps to it first (the slot 0.76 m from where
+you stand, the head 45 deg off its direction)`, `... hides: facing away (... 70 deg ...)`, `... shows: the game admits the vault from
+here`, `traversal: the cue hides: no slot that vaults or climbs within 1.5 m`. ME3's ladder cue shows only with its opt-in double tap
+(`le3DoubleTap`): never a promise the default can't keep.
+
+Logs: `traversal: double tap 0.98 m from CoverLink_5 slot 1 (the pawn 1.20 m from it), the head 45 deg off its direction: the game
+doesn't admit the vault from here, so Shepard steps to it first (...)`, `traversal: the step to CoverLink_5 slot 1 ended after 0.26 s,
+0.78 m walked, the pawn 0.35 m from the slot, the view 0.27 m, the stick written 8 times: the game admits the vault from here`,
+`traversal: the step's end: MantleCover(CoverLink_5 slot 1) began the game's custom action 10`; a press next to a slot with no step
+says which test failed: `traversal: A pressed (#1): first tap: nothing to vault or climb from here (CoverLink_5 slot 1: the game
+refuses it from here, no step to it: facing away, 0.94 m from where you stand, the head 70 deg off its direction)`. Settings
+`stepTo = 0` turns the step off (the cue then shows only where the game admits); `stepReachM`, `stepFacingDeg`. Status
+`"stepping"`, `"steps"`, `"stepVaults"`; heartbeat `steps to the vault N in all (M vaulted, K ended)`. Judge rule
+`traversal-step-failed`.
+
+**Checked** (fake headset, `sessions\20261119-083503-624-LE2-rld`, the owner's autosave, `rld-step1`..`rld-step5` and `smoke-rld2-090559`):
+- The owner's barrier, `CoverLink_5` slot 1, placed 1.2 m back (`mevr traversal place CoverLink_5 1 1.2`), the head 45 degrees off:
+  three of three vaulted over (the step 0.25-0.27 s, 0.77-0.81 m walked, admitted at the pawn 0.32-0.36 m, then the custom action
+  0.90-0.92 s; Shepard at y 4757-4759, past the barrier).
+- 1.0 m back, 70 degrees off: the two presses refused with `no step to it: facing away`, nothing moved.
+- 1.4 m back facing it, the stick pulled back 0.05 s after the second A: `the step ... ended after 0.03 s ...: the player's own stick
+  took over`, Shepard walked back as the stick said.
+- The cue: 1.0 m back 70 off hidden (`facing away`), 45 off shown (`a double A steps to it first`), 0.3 m back shown (`the game admits
+  the vault from here`), 2.0 m back hidden (`no slot ... within 1.5 m`).
+- `smoke-owner-save.ps1 -Phases door,stairs,vault,barrier -God`: the vault at `CoverLink_41` slot 0 and the barrier at `CoverLink_5`
+  slot 1, each from 0.25 m back facing it, both over (admitted directly, no step). Its judge's findings were the run's own: arm IK's
+  third-person anchor at the script's instant view turns (known, the smoke script's header) and the interaction label's swapchain
+  refused once at the door.
+**[verify] in the headset:** the step's feel (0.25 s, about 3 m/s), the cue's place and size, and a slot whose landing is blocked (the
+step stalls then; `traversal-step-failed`).

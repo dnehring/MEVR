@@ -62,6 +62,8 @@ bool TryStartup();
 void Tick(float deltaSeconds, Link const& link);
 // A native vault or climb runs (the custom action), or its view is being handed back.
 bool Moving();
+// The step to the vault walks Shepard to a slot (the mod's stick in the game's input): comfort's vignette counts it as walking.
+bool Stepping();
 // Moving, and the move changes the pawn's floor (a vault, a climb, a ladder, a drop): the floor lock's MoveHold. Not ME3's
 // evades (a roll keeps its floor: the plain floor lock holds the eye at the player's height while the body rolls).
 bool FloorMoving();

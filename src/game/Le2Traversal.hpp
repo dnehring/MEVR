@@ -12,6 +12,7 @@ bool TryStartup(vr::traversal::Settings const&, std::string const& settingsText)
 bool Started();
 void Tick(Link const&, vr::traversal::Settings const&, std::string const& settingsText);
 bool Moving();
+bool Stepping();
 std::string StatusJson();
 void LogStats();
 // slots | near | status | place | go | try | pause: empty when the verb isn't one of ME2's.

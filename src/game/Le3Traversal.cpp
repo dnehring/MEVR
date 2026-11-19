@@ -541,7 +541,8 @@ void Tick(Link const& link, tv::Settings const& settings) {
         if (link.setVignette) link.setVignette(gSettings.mask == tv::Mask::Vignette ? mask : 0);
     } else if (link.setVignette) link.setVignette(0);
     // A ladder cue promises a discovered approach, not an admitted action. Native use rechecks collision at commit.
-    if (gSettings.cue && allowed && !Moving() && !input.useFirst) {
+    // Only where a double A would act (the cue on by default since 2026-11-19: never a promise the opt-in double tap can't keep).
+    if (gSettings.cue && link.le3DoubleTap && allowed && !Moving() && !input.useFirst) {
         auto const ladder = FindLadder();
         auto const frame = view_anchor::Current();
         if (ladder && frame) {

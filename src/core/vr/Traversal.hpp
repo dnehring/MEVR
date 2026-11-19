@@ -38,8 +38,9 @@ enum class Kind : std::uint8_t {
 char const* Label(Kind kind);  // the cue's word: "Vault", "Climb up" ("" for None)
 char const* Name(Kind kind);   // the logs': "vault", "climb up", "none"
 
-// ---- Settings: [Traversal] in ASI\<GAME>MEVR.ini --------------------------------------------------------------------------------
-// The defaults keep today's behaviour (no cue, the game's own camera, no mask): new player-facing defaults wait for the owner.
+// ---- Settings: [Traversal] in the settings file ---------------------------------------------------------------------------------
+// The game's own camera and no mask by default; the cue and the step to the vault on (the owner's answer "C", 2026-11-19): other
+// new player-facing defaults wait for the owner.
 enum class View : std::uint8_t {
     Game = 0,   // the game's camera as it animates through the move (today's)
     Level = 1,  // the move's translation only: level, no bob (LevelView)
@@ -56,7 +57,7 @@ std::optional<Mask> ParseMask(std::string_view text);
 
 struct Settings {
     bool enabled = true;            // the module (measurements and logs); 0 stands it down entirely
-    bool cue = false;               // the world-space cue at the interaction point
+    bool cue = true;                // the world-space cue at the interaction point (on since the owner's "C", 2026-11-19)
     View view = View::Game;
     Mask mask = Mask::None;
     float vignetteStrength = 0.85f; // the vignette's amount while the move runs (0..1)
@@ -76,6 +77,11 @@ struct Settings {
     // and with the weapon away as if drawn (CanPerformMantle needs the combat action state; nothing is drawn).
     bool headFacing = true;
     bool holstered = true;
+    // The step to the vault (StepSettings below; the owner's "C", 2026-11-19): a double A within stepReachM of a slot, the head within
+    // stepFacingDeg of its direction, walks Shepard to it first.
+    bool stepTo = true;
+    float stepReachM = 1.5f;
+    float stepFacingDeg = 60.0f;
 };
 
 // ---- The press rule ------------------------------------------------------------------------------------------------------------
@@ -386,5 +392,64 @@ struct CueInput {
     double rangeM = 3.0;
 };
 bool CueShows(CueInput const& in);
+
+// ---- The step to the vault ---------------------------------------------------------------------------------------------------------
+// The owner's answer "C" (2026-11-19: widen the vault's reach and turn the cue on): the game admits a mantle only within 50 units of
+// the slot from the pawn's centre, facing within 45 degrees (ME2's CanPerformMantle), and the pawn can sit 0.4 m from the view, so a
+// double A at a barrier the player stands at was refused. A double A within reach of a slot, roughly facing it, walks Shepard to it
+// with the game's own walk (the left stick the mod feeds the game's input for a moment), then makes the vault call; the player's own
+// stick or a stall ends it. research/le2-traversal.md "The step to the vault".
+struct StepSettings {
+    bool enabled = true;       // [Traversal] stepTo
+    double reachM = 1.5;       // [Traversal] stepReachM: the slot within this of where the player stands (flat)
+    double facingDeg = 60.0;   // [Traversal] stepFacingDeg: the head within this of the slot's direction
+    double stallS = 1.0;       // nothing nearer for this long ends the step
+    double progressM = 0.03;   // nearer by this counts as progress
+    double maxS = 4.0;         // at most this long
+    double ownStick = 0.3;     // the player's left stick past this takes over
+    double slowWithinM = 0.8;  // the push eases below full within this of the slot
+    double slowestPush = 0.35; // ... down to this (the game's linear stick: a walk, not a crawl)
+};
+
+// Whether a double A from `from` (where the player stands: the view's place, else the pawn's) with the head's yaw `headYawDeg` may
+// step to a slot at `slot` whose direction (into the cover) is `slotYawDeg`.
+struct StepReach {
+    bool ok = false;
+    double distanceM = 0.0;  // flat, from `from` to the slot
+    double offDeg = 0.0;     // the head's yaw from the slot's direction (0..180)
+    char const* why = "";    // when not ok: "too far", "facing away", "off"
+};
+StepReach MayStepTo(Vec3 from, double headYawDeg, Vec3 slot, double slotYawDeg, StepSettings const& s, double unitsPerMeter = 100.0);
+
+// The left stick (forward, right: -1..1) that walks the pawn at `pawn` toward `target` in a view whose yaw is `cameraYawDeg` (the
+// game's camera: its stick is relative to it). Full push, easing to slowestPush within slowWithinM.
+struct Stick {
+    float up = 0.0f;
+    float right = 0.0f;
+};
+Stick StickToward(Vec3 pawn, Vec3 target, double cameraYawDeg, StepSettings const& s, double unitsPerMeter = 100.0);
+
+// One step to a slot: Start, then Step each tick until it returns an end. Ends: the game admits the vault from where the pawn now
+// stands (Admitted: make the call), the player's stick took over, nothing nearer for stallS, longer than maxS, or Cancel.
+enum class StepEnd : std::uint8_t { None, Admitted, OwnStick, Stalled, TooLong, Cancelled };
+char const* Name(StepEnd end);
+class StepWalk {
+public:
+    void Start(double nowS, double distanceM);
+    // `distanceM` the pawn from the slot (flat), `admitted` the game's answer from where it stands now, `ownStick` the player's left
+    // stick's push (0..1).
+    StepEnd Step(double nowS, double distanceM, bool admitted, double ownStick, StepSettings const& s);
+    void Cancel() { active_ = false; }
+    bool Active() const { return active_; }
+    double Elapsed(double nowS) const { return active_ || startS_ > 0.0 ? nowS - startS_ : 0.0; }
+    double Walked() const { return startDistance_ - best_; }
+
+private:
+    bool active_ = false;
+    double startS_ = 0.0;
+    double startDistance_ = 0.0;
+    double best_ = 0.0;
+    double progressS_ = 0.0;
+};
 
 } // namespace mevr::vr::traversal

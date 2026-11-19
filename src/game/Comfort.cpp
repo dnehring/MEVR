@@ -15,6 +15,7 @@
 #include "game/Player.hpp"
 #include "game/SquadWeapons.hpp"
 #include "game/SquadPlace.hpp"
+#include "game/Traversal.hpp"
 #include "game/ViewAnchor.hpp"
 #include "ue3/Handles.hpp"
 #include "core/vr/ActionCamera.hpp"
@@ -401,7 +402,9 @@ void Tick(double deltaSeconds, Link const& link) {
     bool const turning = inPlay && (onFoot ? (gOwn ? (gSettings.turn == cf::TurnStyle::Smooth ? turnedThisTick : false)
                                                    : cf::StickTurns(stickX, gSettings))
                                            : vehicle.turning);
-    bool const moving = inPlay && (onFoot ? !movementBlocked && std::hypot(moveX, moveY) > gSettings.moveThreshold : vehicle.moving);
+    // The step to the vault walks Shepard by the mod's stick: walking as any other (the owner, 2026-11-19: comfort applies to it).
+    bool const moving = inPlay && (onFoot ? (!movementBlocked && std::hypot(moveX, moveY) > gSettings.moveThreshold) || traversal::Stepping()
+                                          : vehicle.moving);
     float const vignette = gVignette.Target(turning, moving, snapped, now, gSettings);
     if (link.setVignette != nullptr) {
         link.setVignette(vignette);

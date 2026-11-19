@@ -70,6 +70,8 @@ BAD = [
          "matinee's move track) (1.00 s after the one before)"),
     line(28, "holsters: the game didn't holster the assault rifle within 3 s (combat disabled here, the pawn busy, or mid-switch); now "
          "holding the assault rifle", 'warn'),
+    line(29, "traversal: the step to CoverLink_5 slot 1 ended after 1.10 s, 0.52 m walked, the pawn 0.71 m from the slot, the view "
+         "0.40 m, the stick written 30 times: nothing nearer for a second (a wall, a person, the slot's edge)"),
 ] + [
     line(30 + i, "vr cover: a hit from SFXPawn_AssaultDrone_1 at 23.2 m: exposed | the eyes 1.75 m over the floor") for i in range(3)
 ] + [
@@ -113,6 +115,11 @@ CLEAN = [
     line(15, "holsters: the assault rifle is holstered after 0.15 s"),
     line(16, "camera shake: the game's screen shakes back on (0 of 2 camera modifiers; VR is off); 1 kept now hold another object (a "
          "load freed them and reused the memory): left alone"),
+    # A step to the vault that vaulted, and one the player's own stick took over: no sign.
+    line(17, "traversal: the step to CoverLink_5 slot 1 ended after 0.26 s, 0.78 m walked, the pawn 0.35 m from the slot, the view "
+         "0.27 m, the stick written 8 times: the game admits the vault from here"),
+    line(18, "traversal: the step to CoverLink_5 slot 1 ended after 0.03 s, 0.00 m walked, the pawn 1.35 m from the slot, the view "
+         "1.00 m, the stick written 1 times: the player's own stick took over"),
     line(20, "vr cover: 30 hits judged since the start ([Cover] judge = either): 12 in cover (0 by the level look alone, 0 cut by the "
          "game's cone), 18 in the open, 0 with cover too far, 0 from overhead, 0 without a shooter, 0 without a view; last: x"),
     line(30, "heartbeat #1: 90.0 fps, GWorld=0x1, objects=1, script hooks live"),
@@ -123,7 +130,7 @@ BAD_RULES = ["armik-third-person-on-foot", "armik-anchor-flapping", "traversal-r
              "holster-stays-out", "holster-unasked-draw", "crouchbody-drop-not-crouched", "process-event-off-thread",
              "swapchain-refused", "first-chance-av-ours", "vr-cover-never-covered", "posture-flip-flop", "frame-rate-low",
              "crash-report", "engine-free-corrupt-pointer", "reflect-field-misfit", "traversal-scene-blocked-matinee",
-             "holster-not-taken"]
+             "holster-not-taken", "traversal-step-failed"]
 QUIET_RULES = [r for r in BAD_RULES if r != "frame-rate-low"] + ["frame-rate-low"]
 
 root = tempfile.mkdtemp(prefix=f"mevr-tests-{os.getpid()}-")

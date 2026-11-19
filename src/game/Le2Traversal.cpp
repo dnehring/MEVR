@@ -5,6 +5,7 @@
 #include "core/Ini.hpp"
 #include "core/Log.hpp"
 #include "core/WriteJournal.hpp"
+#include "core/vr/Controllers.hpp"
 #include "core/vr/HostView.hpp"
 #include "core/vr/TestRequest.hpp"
 #include "engine/CallFunction.hpp"
@@ -170,6 +171,8 @@ constexpr double kHandsNearM = 0.15;  // a drawn wrist this close to its control
 // A test pause (mevr traversal pause <s>): the game paused this long into the next move, for eye snapshots of its middle.
 double gPauseAfterS = -1.0;
 std::uint32_t gToldCueSerial = 0;  // the slot the cue was last logged for
+bool gCueShown = false;            // the cue's last visibility, and why (logged on each change)
+char const* gCueWhy = "";
 std::string gLastSummary = "null";
 unsigned gMoves = 0;
 
@@ -270,6 +273,28 @@ ue3::FieldRef gInfoLink{gCpmInfo, "Link"};
 ue3::FieldRef gInfoLt{gCpmInfo, "LtSlotIdx"};
 ue3::FieldRef gInfoRt{gCpmInfo, "RtSlotIdx"};
 ue3::FieldRef gInfoPct{gCpmInfo, "LtToRtPct"};
+
+// The step to the vault (the owner's answer "C", 2026-11-19; research/le2-traversal.md "The step to the vault"): Shepard walked to the
+// slot by the game's own walk, the left stick fed into the player's input after BioPlayerInput.PlayerInput read the pad (it copies
+// RawJoyUp/RawJoyRight into the controller's RemappedJoyUp/Right and MoveStickMag; the native PlayerMove takes its direction and
+// MoveMag from them, PlayerMoveCombatOrExplore its acceleration), so collision, the walk's speed and its animation are the game's.
+ue3::FunctionRef gBioPlayerInputRef{"SFXGame.BioPlayerInput.PlayerInput", ue3::kEveryGame};
+ue3::FieldRef gInputRawJoyUp{"Engine.PlayerInput", "RawJoyUp", ue3::kEveryGame};
+ue3::FieldRef gInputRawJoyRight{"Engine.PlayerInput", "RawJoyRight", ue3::kEveryGame};
+ue3::FieldRef gInputMoveStickMag{"SFXGame.BioPlayerInput", "MoveStickMag", ue3::kEveryGame};
+tv::StepWalk gStep;
+int gStepSlot = -1;                 // into gSlots
+std::string gStepSlotName;          // the slot's name (gSlots is rebuilt every 2 s: the step follows the name)
+double gStepAskedAt = -1e9;
+bool gStepAdmitted = false;
+double gStepFromViewM = 0.0, gStepFromPawnM = 0.0, gStepOffDeg = 0.0;
+struct StepStick {
+    bool active = false;
+    tv::Stick stick;
+    double atS = -1e9;   // when the tick last set it (the input handler writes it only while fresh)
+    unsigned writes = 0;
+} gStepStick;
+unsigned gSteps = 0, gStepVaults = 0, gStepEnded = 0;  // in all
 
 ue3::Object* ObjectField(ue3::Object const* object, ue3::FieldRef& field) {
     return object != nullptr ? field.Read<ue3::Object*>(object).value_or(nullptr) : nullptr;
@@ -548,7 +573,9 @@ std::optional<double> HeadYaw() {
 // The game's CanPerformMantle / CanPerformClimb for `slot`, standing where the pawn stands: m_bCanMantleOutsideOfCover set and the
 // stick's push (RemappedJoyUp 1, RemappedJoyRight 0) for this call only; with [Traversal] facing = head the pawn's yaw the head's,
 // with [Traversal] holstered the weapon away asked as drawn (each for the call only). Nullopt if it can't be asked.
-std::optional<bool> GameAdmits(ue3::Object* pc, Slot const& slot) {
+// `facingYaw` (the step to the vault): the pawn's yaw for the call is that instead of the head's (the commit turns the pawn to the
+// slot's direction anyway; the player's facing was judged when the step began).
+std::optional<bool> GameAdmits(ue3::Object* pc, Slot const& slot, std::optional<double> facingYaw = std::nullopt) {
     bool const climb = slot.kind == tv::Kind::ClimbUp;
     ue3::Function* const fn = climb ? gCanPerformClimbRef.Get() : gCanPerformMantleRef.Get();
     ue3::PropertyInfo const* const flag = gCanMantleOutside.Get();
@@ -592,17 +619,21 @@ std::optional<bool> GameAdmits(ue3::Object* pc, Slot const& slot) {
         }
     }
     // The head's facing, not the pawn's (the stick's turn, invisible in first person): the pawn's yaw the head's for the call.
-    gNear.headDot.reset();
-    if (gSettings.headFacing && pawn != nullptr) {
+    if (!facingYaw) {
+        gNear.headDot.reset();
+    }
+    if ((gSettings.headFacing || facingYaw) && pawn != nullptr) {
         ue3::Rotator* const rotation = gPawnRotation.In<ue3::Rotator>(pawn);
-        if (std::optional<double> const head = HeadYaw(); head && rotation != nullptr) {
+        if (std::optional<double> const head = facingYaw ? facingYaw : HeadYaw(); head && rotation != nullptr) {
             w.yaw = &rotation->yaw;
             w.yawWas = rotation->yaw;
             w.yawSet = Units(*head);
             write_journal::Wrote("Traversal.Rotation.Yaw (one call)", w.yaw, sizeof(std::int32_t));
-            double const y = *head * kPi / 180.0;
-            double const slotYaw = slot.yaw * kPi / 180.0;
-            gNear.headDot = std::cos(y) * std::cos(slotYaw) + std::sin(y) * std::sin(slotYaw);
+            if (!facingYaw) {
+                double const y = *head * kPi / 180.0;
+                double const slotYaw = slot.yaw * kPi / 180.0;
+                gNear.headDot = std::cos(y) * std::cos(slotYaw) + std::sin(y) * std::sin(slotYaw);
+            }
         }
     }
     // The weapon away (only holsters draw, no snap's draw): asked as drawn, nothing drawn.
@@ -904,6 +935,144 @@ void Observe(ue3::Object* pc, ue3::Object* pawn, double now) {
     }
 }
 
+// ---- The commit, and the step to the vault ------------------------------------------------------------------------------------------
+// The game's own move on the slot, from where the pawn stands (`how`: the double tap, or the step that walked there).
+void Commit(ue3::Object* pc, ue3::Object* pawn, Slot const& s, double now, char const* how) {
+    gOurCommitS = now;
+    bool const called = CallMove(pc, s);
+    std::uint8_t const action = CurrentAction(pc);
+    bool const began = action == kActionMantle || action == kActionClimb;
+    ++gCounters.commits;
+    ++gTotals.commits;
+    if (!began) {
+        ++gCounters.commitsRefused;
+        ++gTotals.commitsRefused;
+    }
+    log::Info("traversal: {}: {}({}) {}", how, s.kind == tv::Kind::ClimbUp ? "ClimbCover" : "MantleCover", s.name,
+        !called ? "couldn't be called" : began ? std::format("began the game's custom action {}", action)
+                                               : "was called, but no custom action began");
+    if (began) {
+        Observe(pc, pawn, Now());
+        JudgeMove();
+    }
+}
+
+tv::StepSettings StepSettingsNow() {
+    tv::StepSettings s;
+    s.enabled = gSettings.stepTo && gBioPlayerInputRef.Get() != nullptr;
+    s.reachM = gSettings.stepReachM;
+    s.facingDeg = gSettings.stepFacingDeg;
+    return s;
+}
+
+// Where the player stands for the step's reach: the view's place (the pawn can sit 0.4 m from it), else the pawn's; facing: the head's.
+tv::StepReach NearStepReach(ue3::Object* pawn) {
+    if (gNear.slot < 0 || static_cast<std::size_t>(gNear.slot) >= gSlots.size()) {
+        return {};
+    }
+    Slot const& s = gSlots[static_cast<std::size_t>(gNear.slot)];
+    std::optional<engine::TrackingFrame> const frame = view_anchor::Current();
+    std::optional<ue3::Vector> const at = player::Location(pawn);
+    std::optional<ue3::Rotator> const rot = player::Rotation(pawn);
+    std::optional<double> const head = HeadYaw();
+    if ((!frame && !at) || (!head && !rot)) {
+        return {};
+    }
+    tv::Vec3 const from = frame ? tv::Vec3{frame->headWorld.x, frame->headWorld.y, frame->headWorld.z} : V(*at);
+    return tv::MayStepTo(from, head ? *head : Degrees(rot->yaw), s.at, s.yaw, StepSettingsNow());
+}
+
+bool StartStep(ue3::Object* pawn, double now, tv::StepReach const& reach) {
+    std::optional<ue3::Vector> const at = player::Location(pawn);
+    if (!reach.ok || gNear.slot < 0 || !at) {
+        return false;
+    }
+    Slot const& s = gSlots[static_cast<std::size_t>(gNear.slot)];
+    double const fromPawn = tv::LengthXY(s.at - V(*at)) / 100.0;
+    gStep.Start(now, fromPawn);
+    gStepSlot = gNear.slot;
+    gStepSlotName = s.name;
+    gStepAskedAt = -1e9;
+    gStepAdmitted = false;
+    gStepFromViewM = reach.distanceM;
+    gStepFromPawnM = fromPawn;
+    gStepOffDeg = reach.offDeg;
+    gStepStick = {};
+    ++gSteps;
+    log::Info("traversal: double tap {:.2f} m from {} (the pawn {:.2f} m from it), the head {:.0f} deg off its direction: the game doesn't "
+              "admit the {} from here, so Shepard steps to it first (the game's own walk, the mod's stick; yours takes over)",
+        reach.distanceM, s.name, fromPawn, reach.offDeg, tv::Name(s.kind));
+    return true;
+}
+
+void EndStep(char const* why, double now, std::optional<double> fromPawnM, Slot const* slot = nullptr) {
+    gStep.Cancel();
+    gStepStick.active = false;
+    ++gStepEnded;
+    // Where the game admitted (or not): from the pawn (its measure: 50 uu in 3D from the pawn's centre) and from the view.
+    std::string view;
+    if (std::optional<engine::TrackingFrame> const frame = view_anchor::Current(); frame && slot != nullptr) {
+        view = std::format(", the view {:.2f} m", tv::LengthXY(slot->at - tv::Vec3{frame->headWorld.x, frame->headWorld.y, frame->headWorld.z}) / 100.0);
+    }
+    log::Info("traversal: the step to {} ended after {:.2f} s, {:.2f} m walked{}{}, the stick written {} times: {}", gStepSlotName,
+        gStep.Elapsed(now), gStep.Walked(), fromPawnM ? std::format(", the pawn {:.2f} m from the slot", *fromPawnM) : std::string(), view,
+        gStepStick.writes, why);
+}
+
+void TickStep(ue3::Object* pc, ue3::Object* pawn, double now, Link const& link, bool onFoot, bool traversing) {
+    if (!gStep.Active()) {
+        gStepStick.active = false;
+        return;
+    }
+    // gSlots is walked again every 2 s: the step follows its slot by name.
+    if (gStepSlot < 0 || static_cast<std::size_t>(gStepSlot) >= gSlots.size() || gSlots[static_cast<std::size_t>(gStepSlot)].name != gStepSlotName) {
+        gStepSlot = -1;
+        for (std::size_t i = 0; i < gSlots.size(); ++i) {
+            if (gSlots[i].name == gStepSlotName) {
+                gStepSlot = static_cast<int>(i);
+                break;
+            }
+        }
+        if (gStepSlot < 0) {
+            EndStep("its slot is gone", now, std::nullopt);
+            return;
+        }
+    }
+    char const* const cancel = link.authoredSeated ? (link.sceneWhy != nullptr ? link.sceneWhy : "the scene blocks it")
+        : link.menuOpen ? "a menu opened"
+        : !onFoot ? "not on foot"
+        : traversing ? "a move began"
+        : !link.headTrackedView ? "no head-tracked view"
+        : nullptr;
+    std::optional<ue3::Vector> const at = player::Location(pawn);
+    std::optional<ue3::Rotator> const camera = player::Rotation(pc);
+    if (cancel != nullptr || !at || !camera) {
+        EndStep(cancel != nullptr ? cancel : "Shepard's or the camera's place unknown", now, std::nullopt);
+        return;
+    }
+    Slot const& s = gSlots[static_cast<std::size_t>(gStepSlot)];
+    double const fromPawn = tv::LengthXY(s.at - V(*at)) / 100.0;
+    if (now - gStepAskedAt >= 0.05) {
+        gStepAskedAt = now;
+        gStepAdmitted = GameAdmits(pc, s, s.yaw).value_or(false);  // facing the slot: the commit turns the pawn to it
+    }
+    vr::controllers::State const controllers = vr::controllers::Latest();
+    double const own = controllers.active ? std::hypot(controllers.left.stickX, controllers.left.stickY) : 0.0;
+    tv::StepSettings const settings = StepSettingsNow();
+    tv::StepEnd const end = gStep.Step(now, fromPawn, gStepAdmitted, own, settings);
+    if (end == tv::StepEnd::None) {
+        gStepStick.active = true;
+        gStepStick.stick = tv::StickToward(V(*at), s.at, Degrees(camera->yaw), settings);
+        gStepStick.atS = now;
+        return;
+    }
+    EndStep(tv::Name(end), now, fromPawn, &s);
+    if (end == tv::StepEnd::Admitted) {
+        ++gStepVaults;
+        Commit(pc, pawn, s, now, "the step's end");
+    }
+}
+
 // ---- Handlers ----------------------------------------------------------------------------------------------------------------------
 // Engine.Camera.UpdateCamera, after the game's: the move's sample, and the level view written into the POV.
 void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*parms*/, void* /*result*/) {
@@ -988,6 +1157,45 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
 }
 
 // SFXPlayerController.TryClimbOrMantleCover: the game's own in-cover A (its binding's second command).
+// The step to the vault's stick, into the player's input right after BioPlayerInput.PlayerInput read the pad (both routes: script
+// calls it from PlayerTick, the engine through ProcessEvent). Only the local player's input, only while the tick keeps it fresh.
+void WriteStepStick(ue3::Object* input) {
+    if (!gStepStick.active || Now() - gStepStick.atS > 0.25 || input == nullptr) {
+        return;
+    }
+    ue3::Object* const pc = player::Controller();
+    if (pc == nullptr || ue3::runtime::Get().OuterOf(input) != pc) {
+        return;
+    }
+    float* const up = gInputRawJoyUp.In<float>(input);
+    float* const right = gInputRawJoyRight.In<float>(input);
+    float* const mag = gInputMoveStickMag.In<float>(input);
+    float* const remappedUp = gRemappedJoyUp.In<float>(pc);
+    float* const remappedRight = gRemappedJoyRight.In<float>(pc);
+    if (up == nullptr || right == nullptr || remappedUp == nullptr || remappedRight == nullptr) {
+        return;
+    }
+    *up = *remappedUp = gStepStick.stick.up;
+    *right = *remappedRight = gStepStick.stick.right;
+    write_journal::Wrote("Traversal.step RawJoyUp", up, sizeof(float));
+    write_journal::Wrote("Traversal.step RawJoyRight", right, sizeof(float));
+    write_journal::Wrote("Traversal.step RemappedJoyUp", remappedUp, sizeof(float));
+    write_journal::Wrote("Traversal.step RemappedJoyRight", remappedRight, sizeof(float));
+    if (mag != nullptr) {
+        *mag = std::hypot(gStepStick.stick.up, gStepStick.stick.right);
+        write_journal::Wrote("Traversal.step MoveStickMag", mag, sizeof(float));
+    }
+    ++gStepStick.writes;
+}
+
+void OnPlayerInputCf(ue3::Object* context, ue3::Function* /*function*/, void* /*result*/) {
+    WriteStepStick(context);
+}
+
+void OnPlayerInputPe(ue3::Object* context, ue3::Function* /*function*/, void* /*parms*/, void* /*result*/) {
+    WriteStepStick(context);
+}
+
 void OnTryClimbOrMantle(ue3::Object* context, ue3::Function* /*function*/, void* parms, void* /*result*/) {
     if (context != player::Controller() || parms == nullptr) {
         return;
@@ -1071,6 +1279,14 @@ bool TryStartup(tv::Settings const& settings, std::string const& settingsText) {
         engine::call_function::AddPostHandler(end, &OnAnimEnd);
         engine::process_event::AddPostHandler(end, &OnAnimEndPe);
     }
+    if (ue3::Function* const input = gBioPlayerInputRef.Get();
+        input != nullptr && gInputRawJoyUp.Get() != nullptr && gInputRawJoyRight.Get() != nullptr && gRemappedJoyUp.Get() != nullptr) {
+        engine::call_function::AddPostHandler(input, &OnPlayerInputCf);
+        engine::process_event::AddPostHandler(input, &OnPlayerInputPe);
+    } else {
+        log::Warn("traversal: BioPlayerInput.PlayerInput or the input's stick fields aren't there: no step to the vault (a double A "
+                  "vaults only where the game admits it)");
+    }
     gStarted = true;
     log::Info("traversal: on (ME2's out-of-cover mantle through its own CanPerformMantle and MantleCover, the double A; handlers on "
               "UpdateCamera, TryClimbOrMantleCover and the climb/mantle custom action)");
@@ -1131,7 +1347,9 @@ void Tick(Link const& link, tv::Settings const& settings, std::string const& set
     in.focused = link.controllers;
     in.menuOpen = link.menuOpen;
     in.onFoot = onFoot;
-    in.eligible = gNear.slot >= 0 && gNear.admitted;
+    // Eligible where the game admits the vault from where the pawn stands, or where a double A would step to it first.
+    tv::StepReach const reach = onFoot && !link.authoredSeated && !traversing && !gStep.Active() ? NearStepReach(pawn) : tv::StepReach{};
+    in.eligible = (gNear.slot >= 0 && gNear.admitted) || reach.ok;
     in.useFirst = useFirst;
     in.traversing = traversing;
     in.authoredSeated = link.authoredSeated;
@@ -1147,9 +1365,15 @@ void Tick(Link const& link, tv::Settings const& settings, std::string const& set
         // "authored seated scene" for all of them (research/le2-traversal.md "The refusal that named the wrong reason").
         // The verdict reads the tick before too (a press that closed a menu): its reason then.
         char const* const scene = link.sceneWhy != nullptr ? link.sceneWhy : gSceneWhyBefore;
-        std::string const why = p.why == tv::PressWhy::AuthoredSeated && scene != nullptr
+        std::string why = p.why == tv::PressWhy::AuthoredSeated && scene != nullptr
             ? std::format("the scene blocks traversal: {}", scene)
             : std::string(tv::Name(p.why));
+        if (p.why == tv::PressWhy::NotEligible && gNear.slot >= 0 && *reach.why != '\0') {
+            // Next to a slot the game refuses from here and no step to it: say which test failed.
+            why += std::format(" ({}: the game refuses it from here, no step to it: {}, {:.2f} m from where you stand, the head {:.0f} deg "
+                               "off its direction)", gSlots[static_cast<std::size_t>(gNear.slot)].name, reach.why, reach.distanceM,
+                reach.offDeg);
+        }
         log::Info("traversal: A pressed (#{}): {}: {}{}", p.serial, tv::Name(tap), why,
             gPresses.Previous().valid ? std::format(" ({:.2f} s after the one before)", p.atS - gPresses.Previous().atS) : std::string());
     }
@@ -1163,28 +1387,19 @@ void Tick(Link const& link, tv::Settings const& settings, std::string const& set
         } else if (CurrentAction(pc) == kActionMantle || CurrentAction(pc) == kActionClimb) {
             log::Info("traversal: double tap: the game already began its own move on this press");
         } else if (gNear.slot >= 0 && gNear.admitted && link.headTrackedView) {
-            Slot const& s = gSlots[static_cast<std::size_t>(gNear.slot)];
-            gOurCommitS = now;
-            bool const called = CallMove(pc, s);
-            std::uint8_t const action = CurrentAction(pc);
-            bool const began = action == kActionMantle || action == kActionClimb;
-            ++gCounters.commits;
-            ++gTotals.commits;
-            if (!began) {
-                ++gCounters.commitsRefused;
-                ++gTotals.commitsRefused;
-            }
-            log::Info("traversal: double tap: {}({}) {}", s.kind == tv::Kind::ClimbUp ? "ClimbCover" : "MantleCover", s.name,
-                !called ? "couldn't be called" : began ? std::format("began the game's custom action {}", action)
-                                                       : "was called, but no custom action began");
-            if (began) {
-                Observe(pc, pawn, Now());
-                JudgeMove();
-            }
+            Commit(pc, pawn, gSlots[static_cast<std::size_t>(gNear.slot)], now, "double tap");
+        } else if (link.headTrackedView && reach.ok && StartStep(pawn, now, reach)) {
+            // the step's lines say the rest
         } else {
-            log::Info("traversal: double tap with nothing the game admits here{}", link.headTrackedView ? "" : " (no head-tracked view)");
+            log::Info("traversal: double tap with nothing the game admits here{}{}", link.headTrackedView ? "" : " (no head-tracked view)",
+                gNear.slot >= 0 && *reach.why != '\0' ? std::format(" (no step to {}: {}, {:.2f} m from where you stand, the head {:.0f} deg "
+                                                                    "off its direction)",
+                                                            gSlots[static_cast<std::size_t>(gNear.slot)].name, reach.why,
+                                                            reach.distanceM, reach.offDeg)
+                                                      : std::string());
         }
     }
+    TickStep(pc, pawn, now, link, onFoot, traversing);
     // The cue at the interaction point, and the blink, to the host.
     tv::Cue cue;
     if (gMove.active || gMove.settling || (gMove.endS > 0.0 && now - gMove.endS < 1.0)) {
@@ -1221,7 +1436,9 @@ void Tick(Link const& link, tv::Settings const& settings, std::string const& set
             ci.onFoot = onFoot;
             ci.focused = link.controllers;
             ci.menuOpen = link.menuOpen;
-            ci.eligible = gNear.admitted;
+            // Exactly where a double A would vault: the game admits it from here, or the step to it would begin (reach.ok); and while
+            // the step walks there.
+            ci.eligible = gNear.admitted || reach.ok || gStep.Active();
             ci.useFirst = useFirst;
             ci.traversing = traversing;
             ci.distanceM = distance;
@@ -1235,6 +1452,18 @@ void Tick(Link const& link, tv::Settings const& settings, std::string const& set
                 cue.exit = engine::ToTracking(*frame, {s.targetAt->x, s.targetAt->y, s.targetAt->z});
             }
             cue.serial = static_cast<std::uint32_t>(gNear.slot + 1);
+            // Each change of whether it shows, with why: the cue promises exactly what a double A would do.
+            char const* const cueWhy = !cue.visible ? (!ci.eligible ? (*reach.why != '\0' ? reach.why : "the game refuses it from here")
+                                                                     : "not now (a menu, no focus, A uses something, a move, too far from the head)")
+                : gNear.admitted ? "the game admits the vault from here"
+                : gStep.Active() ? "the step to it walks"
+                                 : "a double A steps to it first";
+            if (cue.visible != gCueShown || (cue.visible && cueWhy != gCueWhy)) {
+                gCueShown = cue.visible;
+                gCueWhy = cueWhy;
+                log::Info("traversal: the cue over {} {}: {} (the slot {:.2f} m from where you stand, the head {:.0f} deg off its direction)",
+                    s.name, cue.visible ? "shows" : "hides", cueWhy, reach.distanceM, reach.offDeg);
+            }
             if (cue.visible && cue.serial != gToldCueSerial) {
                 gToldCueSerial = cue.serial;
                 log::Info("traversal: the cue '{}' shows over {}: the world point {} is ({:+.2f}, {:+.2f}, {:+.2f}) m from the head in the room "
@@ -1243,6 +1472,10 @@ void Tick(Link const& link, tv::Settings const& settings, std::string const& set
                     link.setCue != nullptr ? "" : "; the host can't draw it (services before v40)");
             }
         }
+    } else if (gCueShown) {
+        gCueShown = false;
+        gCueWhy = "";
+        log::Info("traversal: the cue hides: no slot that vaults or climbs within {:.1f} m", gSettings.reachM);
     }
     if (link.setCue != nullptr && (cue.visible || cue.blink > 0.0f)) {
         link.setCue(&cue);
@@ -1251,6 +1484,10 @@ void Tick(Link const& link, tv::Settings const& settings, std::string const& set
 
 bool Moving() {
     return gMove.active || gMove.settling;
+}
+
+bool Stepping() {
+    return gStep.Active();
 }
 
 std::string StatusJson() {
@@ -1263,9 +1500,11 @@ std::string StatusJson() {
             json::JsonNumber(gNear.facingDot), gNear.admitted ? "true" : "false");
     }
     return std::format("{{\"started\": {}, \"settings\": {}, \"slots\": {}, \"near\": {}, \"moving\": {}, \"moves\": {}, \"presses\": {}, "
-                       "\"doubleTaps\": {}, \"commits\": {}, \"commitsRefused\": {}, \"violations\": {}, \"last\": {}}}",
+                       "\"doubleTaps\": {}, \"commits\": {}, \"commitsRefused\": {}, \"violations\": {}, \"stepping\": {}, \"steps\": {}, "
+                       "\"stepVaults\": {}, \"last\": {}}}",
         gStarted ? "true" : "false", json::JsonString(gSettingsText), gSlots.size(), nearText, Moving() ? "true" : "false", gMoves,
-        gTotals.presses, gTotals.doubleTaps, gTotals.commits, gTotals.commitsRefused, gTotals.violations, gLastSummary);
+        gTotals.presses, gTotals.doubleTaps, gTotals.commits, gTotals.commitsRefused, gTotals.violations, gStep.Active() ? "true" : "false",
+        gSteps, gStepVaults, gLastSummary);
 }
 
 void LogStats() {
@@ -1274,10 +1513,10 @@ void LogStats() {
     }
     log::Info("    traversal: {} slots that vault or climb; nearest {}; the game asked {} times ({} admitted); {} A presses, {} double taps, {} "
               "commits ({} began nothing), the game's own in-cover A {} times ({} began a move); {} moves in all, {} the rules wouldn't have "
-              "committed{}{}",
+              "committed; steps to the vault {} in all ({} vaulted, {} ended){}{}",
         gSlots.size(), gNear.slot >= 0 ? gSlots[static_cast<std::size_t>(gNear.slot)].name : std::string("none"), gCounters.admitAsks,
         gCounters.admitYes, gCounters.presses, gCounters.doubleTaps, gCounters.commits, gCounters.commitsRefused, gCounters.gameRequests,
-        gCounters.gameRequestsTrue, gMoves, gTotals.violations,
+        gCounters.gameRequestsTrue, gMoves, gTotals.violations, gSteps, gStepVaults, gStepEnded,
         gCounters.zoomedAdmissions > 0 ? std::format("; {} asked with the weapon's zoom cleared (the two-handed hold)", gCounters.zoomedAdmissions)
                                        : std::string(),
         gCounters.faultsRestored > 0 ? std::format("; {} ONE-CALL WRITES NOT PUT BACK", gCounters.faultsRestored) : std::string());
@@ -1433,6 +1672,10 @@ void Shutdown() {
     gLastPov = LastPov{};
     gCounters = Counters{};
     gSettingsText.clear();
+    gStep.Cancel();
+    gStepStick = {};
+    gStepSlot = -1;
+    gStepSlotName.clear();
 }
 
 } // namespace mevr::game::traversal::le2

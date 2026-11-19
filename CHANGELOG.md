@@ -7,6 +7,11 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## Unreleased
 
+- **Vaulting works from where you stand** (Mass Effect 2). The game lets Shepard vault only from about half a metre in
+  front of the obstacle, facing it squarely, so a double A at a barrier often did nothing. Now a double A within about
+  1.5 m of something you can vault, roughly facing it, walks Shepard up to it and vaults; push your own stick to stop him.
+  A small "Vault" label over the obstacle shows where a double A will work (`cue = 0` under `[Traversal]` hides it,
+  `stepTo = 0` keeps the old reach).
 - **Reloading the same save again and again no longer crashes the game.** On Mass Effect 2 the third load of the save you
   were playing (after a death, say) could crash: the mod put a camera setting back into memory the game had already handed
   to something else. Fixed for all three games.

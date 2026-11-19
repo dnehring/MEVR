@@ -71,9 +71,10 @@ void TestNames() {
     CHECK(tv::ParseMask(" blink ") == tv::Mask::Blink);
     CHECK(tv::ParseMask("vignette") == tv::Mask::Vignette);
     CHECK(tv::ParseMask("off") == tv::Mask::None);
-    // The defaults keep today's behaviour: no cue, the game's camera, no mask.
+    // The defaults: the game's camera, no mask; the cue and the step to the vault on (the owner's "C", 2026-11-19).
     tv::Settings const s;
-    CHECK(!s.cue && s.view == tv::View::Game && s.mask == tv::Mask::None);
+    CHECK(s.cue && s.view == tv::View::Game && s.mask == tv::Mask::None);
+    CHECK(s.stepTo && Near(s.stepReachM, 1.5f) && Near(s.stepFacingDeg, 60.0f));
     CHECK(Near(s.doubleTapS, 0.45f));
 }
 
@@ -505,11 +506,71 @@ void TestCue() {
     CHECK(!tv::Latest().visible);
 }
 
+// The step to the vault (the owner's "C", 2026-11-19): who may step, the stick that walks there, and when the step ends.
+void TestStepTo() {
+    tv::StepSettings s;  // 1.5 m, 60 degrees
+    tv::Vec3 const slot{100.0, 0.0, 0.0};
+    // The owner's try: about 1 m from the slot, 55 degrees off its direction (the slot faces +X: yaw 0).
+    tv::StepReach r = tv::MayStepTo({0.0, 0.0, 50.0}, 55.0, slot, 0.0, s);
+    CHECK(r.ok && Near(r.distanceM, 1.0) && Near(r.offDeg, 55.0));
+    r = tv::MayStepTo({-60.0, 0.0, 0.0}, 0.0, slot, 0.0, s);  // 1.6 m: too far
+    CHECK(!r.ok && std::string(r.why) == "too far");
+    r = tv::MayStepTo({0.0, 0.0, 0.0}, 75.0, slot, 0.0, s);   // facing 75 off
+    CHECK(!r.ok && std::string(r.why) == "facing away");
+    r = tv::MayStepTo({0.0, 0.0, 0.0}, -170.0, slot, 175.0, s);  // the wrap: 15 degrees off
+    CHECK(r.ok && Near(r.offDeg, 15.0));
+    tv::StepSettings off = s;
+    off.enabled = false;
+    CHECK(!tv::MayStepTo({0.0, 0.0, 0.0}, 0.0, slot, 0.0, off).ok);
+
+    // The stick in the camera's frame (Unreal, Z up: yaw 0 looks along +X with +Y to its right; yaw 90 looks along +Y, -X to its right).
+    tv::Stick k = tv::StickToward({0.0, 0.0, 0.0}, {200.0, 0.0, 0.0}, 0.0, s);
+    CHECK(Near(k.up, 1.0, 1e-5) && Near(k.right, 0.0, 1e-5));          // straight ahead, full push
+    k = tv::StickToward({0.0, 0.0, 0.0}, {0.0, 200.0, 0.0}, 0.0, s);
+    CHECK(Near(k.up, 0.0, 1e-5) && Near(k.right, 1.0, 1e-5));          // +Y is to the right of a camera looking along +X
+    k = tv::StickToward({0.0, 0.0, 0.0}, {200.0, 0.0, 0.0}, 90.0, s);
+    CHECK(Near(k.up, 0.0, 1e-5) && Near(k.right, -1.0, 1e-5));         // looking along +Y, +X is to the left
+    k = tv::StickToward({0.0, 0.0, 0.0}, {40.0, 0.0, 0.0}, 0.0, s);     // 0.4 m: half of 0.8, eased
+    CHECK(Near(k.up, 0.5, 1e-5));
+    k = tv::StickToward({0.0, 0.0, 0.0}, {10.0, 0.0, 0.0}, 0.0, s);     // never under the slowest push
+    CHECK(Near(k.up, 0.35, 1e-5));
+    k = tv::StickToward({0.0, 0.0, 0.0}, {0.0, 0.0, 10.0}, 0.0, s);     // straight above: nothing
+    CHECK(k.up == 0.0f && k.right == 0.0f);
+
+    // The walk: progress keeps it going; the game's admission ends it for the vault; a stall, the own stick and the time limit end it.
+    tv::StepWalk w;
+    CHECK(!w.Active());
+    w.Start(10.0, 1.0);
+    CHECK(w.Active());
+    CHECK(w.Step(10.2, 0.8, false, 0.0, s) == tv::StepEnd::None);
+    CHECK(w.Step(10.4, 0.6, false, 0.0, s) == tv::StepEnd::None);
+    CHECK(w.Step(10.5, 0.55, true, 0.0, s) == tv::StepEnd::Admitted && !w.Active());
+    CHECK(Near(w.Walked(), 0.4));
+    w.Start(20.0, 1.0);
+    CHECK(w.Step(20.5, 0.99, false, 0.0, s) == tv::StepEnd::None);    // 1 cm: not progress
+    CHECK(w.Step(21.1, 0.99, false, 0.0, s) == tv::StepEnd::Stalled);
+    w.Start(30.0, 1.0);
+    CHECK(w.Step(30.1, 0.9, false, 0.5, s) == tv::StepEnd::OwnStick);
+    w.Start(40.0, 1.4);
+    double d = 1.4;
+    tv::StepEnd e = tv::StepEnd::None;
+    for (double t = 40.1; t < 46.0 && e == tv::StepEnd::None; t += 0.1) {
+        d -= 0.031;  // slow but steady progress
+        e = w.Step(t, d, false, 0.0, s);
+    }
+    CHECK(e == tv::StepEnd::TooLong);
+    w.Start(50.0, 1.0);
+    w.Cancel();
+    CHECK(!w.Active() && w.Step(50.1, 0.5, true, 0.0, s) == tv::StepEnd::Cancelled);
+    CHECK(std::string(tv::Name(tv::StepEnd::Admitted)) == "the game admits the vault from here");
+}
+
 } // namespace
 
 int RunTraversalTests() {
     gFailures = 0;
     TestNames();
+    TestStepTo();
     {
         tv::ActionLifecycle a;
         CHECK(a.Request(10, 1.0));

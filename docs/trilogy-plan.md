@@ -717,7 +717,11 @@ These unblock the most: almost every other entry gets smaller once they land.
   ([question 3](#open-owner-questions)); its first two taken 2026-11-18 (lane CV2, research/le2-traversal.md "The vault
   Freedom's Progress requires": a barrier the mission requires couldn't be crossed): the game asked with the head's facing
   (the pawn turned to the slot at the commit; `[Traversal] facing = head`) and with the weapon away as if drawn
-  (`[Traversal] holstered = 1`), not run yet. The two-handed hold vaults since 2026-11-16 (rule 8: the weapon's zoom cleared for
+  (`[Traversal] holstered = 1`); the third ("C", 2026-11-19, lane RLD: research/le2-traversal.md "The step to the vault"): the
+  cue on by default and a double A within 1.5 m and 60 degrees steps Shepard to the slot by the game's own walk, then vaults
+  (the shared rules `vr::traversal::StepWalk`, ME2's adapter in `Le2Traversal.cpp`; ME3's requests have no step yet: its double
+  tap is an opt-in, and its ladder cue shows only with it); seen on the owner's barrier (`CoverLink_5` slot 1) from 1.2 m and 45
+  degrees, three of three. The two-handed hold vaults since 2026-11-16 (rule 8: the weapon's zoom cleared for
   the admission's one call; research/le2-traversal.md "The two-handed hold"); letting go of the support grip mid-move is
   sloppy (arm IK in third person for 0.7 s): the hold is kept. Arm IK across the move and the floor lock through it are done (T21): three
   vaults with every tick's wrists within 0.15 m of the controllers and no third-person frame, the eye riding the game's
@@ -1299,10 +1303,13 @@ me3/summary.md; the owner's words in quotes):
      couldn't be crossed (research/le2-traversal.md "The vault Freedom's Progress requires"); `facing = pawn` the old rule.
    - With the weapon away: keep the refusal, draw on the double tap, or admit it holstered? **Today (since 2026-11-18):
      admitted holstered** (`[Traversal] holstered = 1`, nothing drawn); 0 the old refusal.
-   - The cue ("Vault" over the obstacle): off (today), or on by default once seen?
+   - ~~The cue ("Vault" over the obstacle): off, or on by default once seen?~~ and ~~The window the game asks for (within
+     0.39 m, facing within 45 degrees): keep it, or widen it?~~ **Answered "C" (both), the owner, 2026-11-19:** the cue on by
+     default (`[Traversal] cue = 1`), and a double A within 1.5 m, the head within 60 degrees, steps Shepard to the slot with
+     the game's own walk and vaults (`stepTo`, `stepReachM`, `stepFacingDeg`; lane RLD, research/le2-traversal.md "The step to
+     the vault").
    - The comfort mask during the move: none (today), the vignette, or a blink? And the view: the game's (today) or held
      level?
-   - The window the game asks for (within 0.39 m, facing within 45 degrees): keep it, or widen it?
    - Both hands on the gun through the vault (today, measured: the hands stay on their controllers and the gun) or the support
      grip let go for it (measured sloppy: arm IK falls to third person for 0.7 s while the game leaves its zoom camera)?
 

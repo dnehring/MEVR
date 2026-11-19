@@ -2950,10 +2950,14 @@ void CheckTraversal() {
         "SFXGame.BioCustomAction_CoverClimbMantleBase.StartCustomAction",
         "SFXGame.BioCustomAction_CoverClimbMantleBase.StopCustomAction",
         "SFXGame.BioCustomAction_CoverClimbMantleBase.BodyStanceAnimEndNotification",
+        "SFXGame.BioPlayerInput.PlayerInput",  // the step to the vault's stick, written after it (2026-11-19)
     };
     for (char const* function : functions) {
         CheckFunction(function);
     }
+    CheckField("Engine.PlayerInput", "RawJoyUp", SDK_FIELD(UPlayerInput, RawJoyUp));
+    CheckField("Engine.PlayerInput", "RawJoyRight", SDK_FIELD(UPlayerInput, RawJoyRight));
+    CheckField("SFXGame.BioPlayerInput", "MoveStickMag", SDK_FIELD(UBioPlayerInput, MoveStickMag));
     PARAM(ABioPlayerController_execCanPerformMantle_Parms, "SFXGame.BioPlayerController.CanPerformMantle", CoverInfo);
     PARAM(ABioPlayerController_execCanPerformMantle_Parms, "SFXGame.BioPlayerController.CanPerformMantle", ReturnValue);
     PARAM(ABioPlayerController_execCanPerformClimb_Parms, "SFXGame.BioPlayerController.CanPerformClimb", CoverInfo);

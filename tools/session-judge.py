@@ -94,6 +94,13 @@ RULES = [
     dict(id="traversal-double-tap-refused", severity="bad",
          pattern=r"^traversal: double tap with nothing the game admits here",
          why="a double A the game admitted nothing for: the player asked to vault and nothing happened"),
+    dict(id="traversal-step-failed", severity="warn",
+         pattern=r"^traversal: the step to (\S+ slot \d+) ended after ([\d.]+) s, ([\d.]+) m walked, the pawn ([\d.]+) m from the slot.*: "
+                 r"(nothing nearer|it took too long|its slot is gone)",
+         detail=lambda m: f"{m.group(1)}: {m.group(5)} at {m.group(4)} m",
+         why="a double A stepped toward a slot and didn't vault: the walk stalled (a wall, a person, the slot's edge) or the game "
+             "never admitted the vault on the way (the landing, the slot's flags): the player asked to vault and walked instead "
+             "(research/le2-traversal.md \"The step to the vault\")"),
     dict(id="traversal-seated-in-gameplay", severity="warn",
          pattern=r"^traversal: A pressed \(#\d+\): a press that can't vault: authored seated scene blocks traversal",
          when=lambda m, s, t: s.on_foot is not False,

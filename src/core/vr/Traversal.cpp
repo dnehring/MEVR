@@ -609,4 +609,86 @@ bool CueShows(CueInput const& in) {
         Finite(in.distanceM) && in.distanceM <= in.rangeM;
 }
 
+StepReach MayStepTo(Vec3 from, double headYawDeg, Vec3 slot, double slotYawDeg, StepSettings const& s, double unitsPerMeter) {
+    StepReach r;
+    if (!Finite(headYawDeg) || !Finite(slotYawDeg) || !(unitsPerMeter > 0.0)) {
+        r.why = "off";
+        return r;
+    }
+    r.distanceM = LengthXY(slot - from) / unitsPerMeter;
+    r.offDeg = std::abs(SignedDegrees(headYawDeg - slotYawDeg));
+    if (!s.enabled) {
+        r.why = "off";
+    } else if (!Finite(r.distanceM) || r.distanceM > s.reachM) {
+        r.why = "too far";
+    } else if (r.offDeg > s.facingDeg) {
+        r.why = "facing away";
+    } else {
+        r.ok = true;
+    }
+    return r;
+}
+
+Stick StickToward(Vec3 pawn, Vec3 target, double cameraYawDeg, StepSettings const& s, double unitsPerMeter) {
+    Vec3 const d = target - pawn;
+    double const flat = LengthXY(d);
+    if (!(flat > 1e-3) || !Finite(cameraYawDeg)) {
+        return {};
+    }
+    // Unreal's yaw turns +X toward +Y (left-handed, Z up): forward (cos, sin), right (-sin, cos); the stick is the direction in that
+    // frame.
+    double const a = std::atan2(d.y, d.x) - cameraYawDeg * kPi / 180.0;
+    double const metres = flat / unitsPerMeter;
+    double push = 1.0;
+    if (s.slowWithinM > 0.0 && metres < s.slowWithinM) {
+        push = std::clamp(metres / s.slowWithinM, std::clamp(s.slowestPush, 0.0, 1.0), 1.0);
+    }
+    return {static_cast<float>(std::cos(a) * push), static_cast<float>(std::sin(a) * push)};
+}
+
+char const* Name(StepEnd end) {
+    switch (end) {
+    case StepEnd::Admitted: return "the game admits the vault from here";
+    case StepEnd::OwnStick: return "the player's own stick took over";
+    case StepEnd::Stalled: return "nothing nearer for a second (a wall, a person, the slot's edge)";
+    case StepEnd::TooLong: return "it took too long";
+    case StepEnd::Cancelled: return "cancelled";
+    case StepEnd::None: break;
+    }
+    return "stepping";
+}
+
+void StepWalk::Start(double nowS, double distanceM) {
+    active_ = true;
+    startS_ = nowS;
+    startDistance_ = distanceM;
+    best_ = distanceM;
+    progressS_ = nowS;
+}
+
+StepEnd StepWalk::Step(double nowS, double distanceM, bool admitted, double ownStick, StepSettings const& s) {
+    if (!active_) {
+        return StepEnd::Cancelled;
+    }
+    StepEnd end = StepEnd::None;
+    if (admitted) {
+        end = StepEnd::Admitted;
+    } else if (ownStick > s.ownStick) {
+        end = StepEnd::OwnStick;
+    } else if (nowS - startS_ > s.maxS) {
+        end = StepEnd::TooLong;
+    } else {
+        if (Finite(distanceM) && distanceM < best_ - s.progressM) {
+            best_ = distanceM;
+            progressS_ = nowS;
+        } else if (nowS - progressS_ > s.stallS) {
+            end = StepEnd::Stalled;
+        }
+    }
+    if (end != StepEnd::None) {
+        active_ = false;
+    }
+    return end;
+}
+
 } // namespace mevr::vr::traversal
