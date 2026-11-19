@@ -71,6 +71,11 @@ struct Settings {
     float reachM = 1.5f;            // slots within this of the pawn are candidates (the game's own distance rule decides)
     bool commit = true;             // the double tap commits the game's vault (0: measure and cue only)
     bool trace = false;             // a line per camera update while a move runs (traversal: trace)
+    // ME2's admission as the player stands (research/le2-traversal.md "The vault Freedom's Progress requires", 2026-11-18): the
+    // game asked with the head's facing (the pawn turned to the slot at the commit), not the pawn's (`facing = head | pawn`),
+    // and with the weapon away as if drawn (CanPerformMantle needs the combat action state; nothing is drawn).
+    bool headFacing = true;
+    bool holstered = true;
 };
 
 // ---- The press rule ------------------------------------------------------------------------------------------------------------

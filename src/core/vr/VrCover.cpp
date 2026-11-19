@@ -78,6 +78,49 @@ Verdict Judge(Vec3 const& eyes, std::optional<Vec3> const& shooter, std::optiona
     return v;
 }
 
+// The level look is the sequels' (ME1 keeps the eye line): left out of ME1's build so its compiled code stays the same (the
+// linker keeps unreferenced functions there, /DEBUG's /OPT:NOREF). The offline tests (no game) build it.
+#if !defined(MEVR_GAME_LE1)
+char const* Name(Rule rule) {
+    switch (rule) {
+    case Rule::Line: return "line";
+    case Rule::Level: return "level";
+    case Rule::Either: return "either";
+    }
+    return "?";
+}
+
+std::optional<Rule> ParseRule(std::string_view text) {
+    if (text == "line" || text == "eyes") return Rule::Line;
+    if (text == "level") return Rule::Level;
+    if (text == "either" || text == "both") return Rule::Either;
+    return std::nullopt;
+}
+
+std::optional<LevelLine> Level(Vec3 const& eyes, std::optional<Vec3> const& shooter, Settings const& settings, double dropUnits) {
+    if (!shooter) {
+        return std::nullopt;
+    }
+    std::optional<Vec3> const toward = Flat(Minus(*shooter, eyes));
+    if (!toward) {
+        return std::nullopt;
+    }
+    double const perMeter = settings.unitsPerMeter > 0.0 ? settings.unitsPerMeter : 100.0;
+    double const reach = settings.reachM * perMeter;
+    Vec3 const from{eyes.x, eyes.y, eyes.z - std::max(dropUnits, 0.0)};
+    return LevelLine{from, {from.x + toward->x * reach, from.y + toward->y * reach, from.z}};
+}
+
+Verdict Choose(Rule rule, Verdict const& line, Verdict const& level) {
+    switch (rule) {
+    case Rule::Line: return line;
+    case Rule::Level: return level;
+    case Rule::Either: return line.Covered() || !level.Covered() ? line : level;
+    }
+    return line;
+}
+#endif
+
 bool GameCone(Vec3 const& coverNormal, Vec3 const& hitLocation, Vec3 const& instigatorLocation) {
     Vec3 const shot = Minus(hitLocation, instigatorLocation);
     double const distance = Length(shot);

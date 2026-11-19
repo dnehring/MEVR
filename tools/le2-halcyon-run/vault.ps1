@@ -5,8 +5,13 @@
 # double A replayed through the right controller (-Mode tap, tools/make-vault-recording.py), or the console's own commit (-Mode go,
 # no controllers). It takes eye snapshots through the move (-Snapshots) and collects the mod's `traversal:` lines of each run.
 #
-#   tools\le2-halcyon-run\vault.ps1 [-Runs 3] [-Mode tap|go|single] [-Link CoverLink_10] [-Slot 0] [-BackM 0.25] [-View game|level]
-#       [-Mask none|vignette|blink] [-Snapshots] [-Grip] [-Support [-SupportRelease]]
+#   tools\le2-halcyon-run\vault.ps1 [-Runs 3] [-Mode tap|go|single] [-Link CoverLink_10] [-Slot 0] [-BackM 0.25] [-SideM 0]
+#       [-YawDeg 0] [-Holster] [-View game|level] [-Mask none|vignette|blink] [-Snapshots] [-Grip] [-Support [-SupportRelease]]
+#
+# -Holster puts the weapon away before each run (`mevr weapon away`, the holsters' own let-go): the vault with the gun holstered,
+# admitted since 2026-11-18 ([Traversal] holstered = 1, research/le2-traversal.md "The vault Freedom's Progress requires").
+# -YawDeg turns the pawn off the slot's direction (`mevr traversal place`'s fifth word): with [Traversal] facing = head (the
+# default since 2026-11-18) the game is asked with the head's facing, so the replayed head facing the wall still vaults.
 #
 # The first A must not snap Shepard into cover: that is ME2's VR cover block (game/Posture, `[Hands] noCover = 1`, the default;
 # research/le2-vrik-audit.md), checked here with `mevr cover snap` before the runs. Results go to the stretch's session folder,
@@ -17,6 +22,9 @@ param(
     [string]$Link = 'CoverLink_10',
     [int]$Slot = 0,
     [double]$BackM = 0.25,
+    [double]$SideM = 0.0,
+    [double]$YawDeg = 0.0,
+    [switch]$Holster,
     [string]$View = '',
     [string]$Mask = '',
     [switch]$Snapshots,
@@ -75,7 +83,8 @@ Ask 'mevr traversal slots' | Write-Output
 for ($run = 1; $run -le $Runs; $run++) {
     $from = (ReadLog).Count
     "--- run $run ($Mode)"
-    Ask "mevr traversal place $Link $Slot $BackM" | Write-Output
+    Ask "mevr traversal place $Link $Slot $BackM $SideM $YawDeg" | Write-Output
+    if ($Holster) { Ask 'mevr weapon away' | Write-Output }
     Start-Sleep -Seconds $SettleSeconds
     Ask 'mevr traversal near' | Write-Output
     if ($Mode -eq 'go') {

@@ -3,6 +3,7 @@
 
 #include <optional>
 #include <cstdint>
+#include <string_view>
 
 // VR cover (research/23 section 6): the protection all three games give a player in cover, for a VR player who takes
 // cover with their body. In each game the damage code cuts a hit on the player while they're in cover and not leaning out,
@@ -85,6 +86,31 @@ struct SlotLease {
 };
 
 Verdict Judge(Vec3 const& eyes, std::optional<Vec3> const& shooter, std::optional<Block> const& block, Settings const& settings);
+
+// ---- The level look (the sequels, research/23 section 7.7, 2026-11-18) ---------------------------------------------------------
+// The games' own cone takes only the shot's direction against the cover slot's FLAT facing (ME2's `Normal(HitLocation -
+// InstigatedBy.Pawn.Location) Dot Vector(slot rotation) < -0.3`), so Shepard crouched behind low cover is protected from a drone
+// hovering above it: the shooter's height doesn't count. The eye line (Judge with the line from the eyes to the shooter) asks
+// more: a drone 2 m above the eyes 15 m away sees over a barrier 0.5 m ahead whose top is a few cm above the eyes. The level look
+// asks the game's question of the player's body: a surface on the flat line from the eyes toward the shooter, `reachM` long (at
+// the eyes' height, less a drop)? Judge with that line's first surface gives its verdict (reach and facing as for the eye line).
+// The eyes must still be under the cover's top: eyes over it see over it, the game's "leaning out".
+enum class Rule : std::uint8_t {
+    Line,    // the eye line only (ME1's rule since 2026-11-05)
+    Level,   // the level look only
+    Either,  // covered by either (the sequels' default since 2026-11-18)
+};
+char const* Name(Rule rule);
+std::optional<Rule> ParseRule(std::string_view text);
+struct LevelLine {
+    Vec3 from, to;
+};
+// The level look's line: from the eyes (less `dropUnits`) `reachM` toward the shooter, flat. Nullopt with no shooter, or a
+// shooter (nearly) straight above or below.
+std::optional<LevelLine> Level(Vec3 const& eyes, std::optional<Vec3> const& shooter, Settings const& settings, double dropUnits = 0.0);
+// The rule's verdict: Line the eye line's, Level the level look's, Either the covered one (the eye line's first), else the eye
+// line's (exposed, too far, overhead).
+Verdict Choose(Rule rule, Verdict const& line, Verdict const& level);
 
 // The games' own cone and distance (LE1 BioPawnBehavior.ProxyTakeDamage, LE2 SFXGame.ModifyDamage, LE3
 // SFXPawn_PlayerParty.ModifyDamage): the hit is cut when the shot's direction, from the instigator to the hit, against the

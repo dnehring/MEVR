@@ -523,6 +523,85 @@ head stayed at standing height and the crate's nearest point on the line to Jaco
 (replays don't stand in for the STAGE floor query), not the rule's: the lane that owns floor lock was told. Not measured: a
 hostile's own shots, several hostiles, a headset.
 
+### 7.6 "Almost magnetic": what the owner's run shows (2026-11-18, lane CV2)
+
+The owner, from the headset (ME2, Freedom's Progress from Save 4, the run 20:34-20:51 of 2026-11-18, `LE2MEVR.log` of commit
+237aeb1b): "It has this behavior where almost like clicks and moves Shepard to be behind cover, where it's almost magnetic, and
+so it's a really strange experience in VR. That needs to be completely disabled."
+
+**The game's cover was never entered for the player** (each point is a `grep` on the run's log):
+- posture asks the game's own `BioPawn.IsInCover` every tick (through ProcessEvent, which no answer handler of VR cover sees) and
+  would log `posture: Shepard is in ... cover ...: leaving it as A does`: no such line in the run;
+- `TryAcquireCover` (A's binding, a sprint into cover) found cover twice, both refused (`posture: refused a cover entry ...
+  Shepard stays at (-10372, 4971, -13609)`, 20:50:37, and the press 1 s later), and found nothing 5 times; the HUD's take-cover
+  prompt was shown and hidden again 14,819 times (UpdateCover's every tick near cover);
+- the sprint never ran (`sprint: ... 0 presses`), and the camera's modes were only `SFXCameraMode_Explore`, `_Combat` and
+  `_Interpolate` (no cover camera);
+- the one `BioCustomAction_CoverMantle.StartCustomAction` (20:41:12) was a squadmate's (the traversal's handler logs every pawn's;
+  the floor under Shepard didn't move and no double A or commit of ours preceded it).
+
+So the pull is not ME2's cover. What did move the drawn body near low cover in this run is the physical crouch: each crouch behind
+a barrier (20:46:18 to 20:49:28, the eyes at 0.82-0.91 of the standing 1.85 m; the calibrated threshold is 0.92) made Shepard
+crouch (`Engine.Pawn.ShouldCrouch(true)`), and late in each crouch arm IK's anchor fell to third person (`arm IK: body anchor: third
+person (tracking origin at Shepard's animated head), view 76 units from Shepard's animated head bone`), which stops the body sliding
+under the view (`torso: third person: the hips turn ... body shift 0.0 units`): the drawn body jumps 0.5-0.76 m to where the game's
+crouched pawn is, against the barrier. At 20:49:10 the game stood Shepard up while the player stayed down (`posture: Shepard's crouch
+changed without us`), and the anchor stayed third person for 17 s. The owner turned the physical crouch off in our menu at 20:50:16
+(`main menu: [Hands] physicalCrouch = 0`). The crouch, its threshold and the anchor are lane M2W's: section 8 (the lean
+guard, the crouch that follows the player). **The owner's question:** was the pull felt while crouching behind a barrier, or while walking up
+to one standing?
+
+**Built, so the next run names whatever it is: the cover watch** (game/Posture, ME2, while the snapping is refused): `posture: cover
+watch: the player's controller <state> -> <state> (...)` whenever the controller's state changes (`PlayerWalking`, `PlayerInCover`,
+`PlayerExitingCover`, `PlayerInAimBack`...), `posture: cover watch: the pawn's cover fields are set (...)` when `CoverType` or
+`CurrentLink` becomes set, and `posture: cover watch: Shepard carried N m in S s with the move stick at rest (...)` when the pawn moves
+more than 0.25 m within 0.25 s with the move stick's raw axes at rest and no traversal of ours; each line with Shepard's place,
+`CoverType`, `CoverAction`, `CurrentLink` and its slot; the heartbeat counts them (`posture: cover watch this period: ...`). The
+refusals themselves are unchanged: every entry of ME2's into cover goes through `TryAcquireCover` (section 7.1), and a cover taken by
+a script is left at once (`TryExitCover(true)`, then `LeaveCover`).
+
+### 7.7 VR cover in the owner's firefights, and the level look (2026-11-18, lane CV2)
+
+The owner: "We need to make sure the fire fights are solid, and the cover system needs to follow Shepard as best we can." In the run
+the owner crouched behind barriers (20:46-20:48, the eyes 1.0-1.3 m over the floor against 1.85 m standing), yet `vr cover: 164 hits
+judged since the start: 0 in cover (0 cut by the game's cone), 153 in the open, 11 with cover too far, 0 from overhead ...; last:
+SFXPawn_AssaultDrone_8 at 15.9 m: exposed`. The shields' rule, the same judge per hostile, found the head hidden by cover within
+1.2 m twice (`vr cover: while the shields wait: behind cover (3 hostiles judged: 2 hidden by cover within 1.20 m, ...)`, 20:44:13
+and 20:47:20). The log had no per-hit detail (only covered hits were logged), so why each hit was open is read from the geometry:
+- **the shooters:** the fights in `BioD_ProFre_300Drones` were drones (`SFXPawn_AssaultDrone`, `SFXPawn_RocketDrone`), which hover
+  over the barriers, besides LOKI mechs at 13-26 m; the judge is the line from the drawn eyes to the shooter's eyes (`Location +
+  EyeHeight`);
+- **the eyes:** the drawn eyes (`view_anchor::Current().headWorld`): floor lock puts them at the pawn's floor plus the player's live
+  height, and body scale (1.095 here) draws the player 0.16 m taller than Shepard, so they are not Shepard's head;
+- a drone 2 m above the eyes 15 m away is 6.7 cm above them at a barrier 0.5 m ahead: with the eyes 5 cm under the barrier's top
+  the line still clears it; and eyes at 1.3 m are over most of ME2's low cover (the spaceport crate's top is 0.75 m over the floor,
+  section 7.4's trace).
+
+**The game's own rule doesn't ask the shooter's height:** ME2's cone is `Normal(HitLocation - InstigatedBy.Pawn.Location) Dot
+Vector(slot rotation) < -0.3` with the slot's rotation flat, so Shepard in low cover is protected from a drone above it (the cosine
+of its elevation, 0.99 at 7 degrees). The eye line asks more than the game does.
+
+**Built: the level look** (`core/vr/VrCover` `Level`, `Choose`, `ParseRule`; unit-tested, `tests/VrCoverTests.cpp`
+`TestLevelLook`; the sequels' `game/VrCover`): besides the eye line, a line from the eyes toward the shooter, flat, `reachM` long
+(`[Cover] levelDropM` below the eyes, 0 by default): a surface on it covers the head from that shooter whatever its height, and
+gives the cone its facing as before. `[Cover] judge = either` (the default on ME2 and ME3: covered by either), `line` (the eye line
+only, as before), `level` (the level look only); `mevr cover judge line|level|either|auto` until the mod reloads. ME1 keeps the eye
+line, its code unchanged (the LE1 mod's `.text` identical before and after). The eyes must still be under the cover's top: a head
+over it is in the open, the game's "leaning out". Both looks also judge the shields' faster recharge (section 7.5) and `mevr cover
+pawns`.
+
+**Per-hit detail** (the sequels): every judged hit gets a line, an open one at most once a second, a covered one every 2 s as
+before (`[Cover] log = 1`: all): `vr cover: a hit from <shooter> at D m: <verdict> | the eyes H m over the floor, the shooter's eyes
+Z m from theirs (A deg); the eye line met <surface> X m out, Y m from the eyes' height (<its verdict>); the flat line met ...`. The
+heartbeat says how many were covered by the level look alone (`... in cover (N by the level look alone, ...)`). So the next firefight
+says which test each hit failed and by how much.
+
+**ME3** (`game/Le3Cover.inc`): the same judge (`JudgeHit` is shared), then a real cover slot within reach must qualify; the level look
+and the detail apply there too. Not seen in a fight yet (research/le3-combat-fixtures.md).
+
+**[verify] in the game:** a hit from a shooter above a barrier with the head ducked behind it (`mevr cover pawns` names both looks per
+pawn; `mevr cover put <n> x y z` stands a squadmate on a crate, `mevr cover hit 30 <n>` the shot), and the owner's firefight.
+
 ## 8. The crouch in the owner's ME2 session (2026-11-18, lane M2W)
 
 The owner, ME2 in the headset (MEVR 0.3.2, 237aeb1b; `LE2MEVR.log` 20:35-20:51, copied to scratch): "When my hand touches an NPC

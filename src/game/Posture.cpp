@@ -23,6 +23,10 @@
 #include "game/Traversal.hpp"
 #include "game/VrCover.hpp"
 #include "ue3/Handles.hpp"
+#if defined(MEVR_GAME_LE2)
+#include "ue3/Params.hpp"
+#include "ue3/Runtime.hpp"
+#endif
 
 #include <Windows.h>
 
@@ -241,6 +245,29 @@ ue3::FieldRef gCurrentSlotIdx{"SFXGame.BioPawn", "CurrentSlotIdx", ue3::kEveryGa
 ue3::FieldRef gEnableStormToCover{"SFXGame.BioPlayerController", "m_bEnableStormToCover", ue3::kEveryGame};
 ue3::ClassRef gCoverLinkClass{"Engine.CoverLink", ue3::kEveryGame};
 ue3::Object* gRefusedController = nullptr;  // the player's controller while its cover acquisition is refused (game thread)
+// The cover watch (research/23 section 7.6; the owner, 2026-11-18: "It has this behavior where almost like clicks and moves Shepard
+// to be behind cover, where it's almost magnetic"): the run's log showed no cover entry of the game's (IsInCover never true,
+// TryAcquireCover refused), so whatever pulls is named here when it happens: the controller's state changing (PlayerWalking,
+// PlayerInCover, PlayerExitingCover, PlayerInAimBack...), the pawn's cover fields set (CoverType, CurrentLink), or the pawn
+// carried more than kWatchMoveM within kWatchWindowS with the move stick at rest and no traversal of ours.
+ue3::FunctionRef gStateNameRef{"Core.Object.GetStateName", ue3::kEveryGame};
+ue3::FieldRef gPlayerInputField{"Engine.PlayerController", "PlayerInput", ue3::kEveryGame};
+ue3::FieldRef gRawJoyUp{"Engine.PlayerInput", "RawJoyUp", ue3::kEveryGame};
+ue3::FieldRef gRawJoyRight{"Engine.PlayerInput", "RawJoyRight", ue3::kEveryGame};
+constexpr double kWatchMoveM = 0.25;
+constexpr double kWatchWindowS = 0.25;
+constexpr float kStickRest = 0.05f;
+struct CoverWatch {
+    std::string state;          // the controller's state name last tick
+    bool coverSet = false;      // CoverType != 0 or CurrentLink set, last tick
+    bool haveAt = false;
+    ue3::Vector windowAt{};     // the pawn's place at the window's start
+    double windowS = 0.0;       // seconds into the window
+    bool stickIdle = true;      // the move stick at rest through the window
+    std::uint64_t lastMoveLogMs = 0;
+    unsigned states = 0, coverSets = 0, carried = 0;  // this heartbeat period
+};
+CoverWatch gWatch;
 bool gRefusalHandlerAdded = false;
 unsigned gAcquireLooked = 0;       // FindPlayerCover answers inside TryAcquireCover that had found nothing anyway (heartbeat)
 std::uint64_t gLastRefusalMs = 0;
@@ -500,6 +527,75 @@ void OnShowCoverWidget(ue3::Object* context, ue3::Function* /*function*/, void* 
 }
 #endif
 
+#if defined(MEVR_GAME_LE2)
+// The cover watch, each tick on ME2 (gWatch above): a line when the controller's state changes, when the pawn's cover fields are
+// set, and when the pawn is carried with the move stick at rest and no traversal of ours.
+void WatchCover(Game const& game, double deltaSeconds) {
+    std::string state;
+    if (ue3::Function* const fn = gStateNameRef.Get()) {
+        ue3::Params parms(ue3::runtime::Get(), fn);
+        if (ue3::runtime::Call(game.controller, fn, parms)) {
+            if (std::optional<ue3::Name> const name = parms.Return<ue3::Name>()) {
+                state = ue3::runtime::NameText(*name);
+            }
+        }
+    }
+    std::optional<ue3::Vector> const at = gLocation.Read<ue3::Vector>(game.pawn);
+    ue3::Object* const link = gCurrentLink.Read<ue3::Object*>(game.pawn).value_or(nullptr);
+    std::uint8_t const type = CoverType(game.pawn);
+    auto const where = [&] {
+        return std::format("Shepard at ({:.0f}, {:.0f}, {:.0f}), CoverType {}, CoverAction {}, CurrentLink {}, slot {}", at ? at->x : 0.0f,
+            at ? at->y : 0.0f, at ? at->z : 0.0f, type, gCoverAction.Read<std::uint8_t>(game.pawn).value_or(0),
+            link != nullptr ? ue3::runtime::Get().FullName(link) : std::string("None"),
+            gCurrentSlotIdx.Read<std::int32_t>(game.pawn).value_or(-1));
+    };
+    if (!state.empty() && state != gWatch.state) {
+        if (!gWatch.state.empty()) {
+            ++gWatch.states;
+            log::Info("posture: cover watch: the player's controller {} -> {} ({})", gWatch.state, state, where());
+        }
+        gWatch.state = state;
+    }
+    bool const coverSet = type != 0 || link != nullptr;
+    if (coverSet != gWatch.coverSet) {
+        gWatch.coverSet = coverSet;
+        if (coverSet) {
+            ++gWatch.coverSets;
+            log::Info("posture: cover watch: the pawn's cover fields are set (controller state {}; {})", state, where());
+        }
+    }
+    // Carried with the stick at rest: the move stick's raw axes (the game's own input), the traversal's own moves left out.
+    ue3::Object* const input = gPlayerInputField.Read<ue3::Object*>(game.controller).value_or(nullptr);
+    float const up = input != nullptr ? gRawJoyUp.Read<float>(input).value_or(0.0f) : 0.0f;
+    float const right = input != nullptr ? gRawJoyRight.Read<float>(input).value_or(0.0f) : 0.0f;
+    bool const idle = std::hypot(up, right) < kStickRest && !traversal::Moving();
+    if (!at) {
+        gWatch.haveAt = false;
+        return;
+    }
+    if (!gWatch.haveAt || !idle) {
+        gWatch = CoverWatch{gWatch.state, gWatch.coverSet, true, *at, 0.0, true, gWatch.lastMoveLogMs, gWatch.states, gWatch.coverSets,
+            gWatch.carried};
+        return;
+    }
+    gWatch.windowS += std::max(deltaSeconds, 0.0);
+    double const moved = std::hypot(at->x - gWatch.windowAt.x, at->y - gWatch.windowAt.y) / 100.0;
+    if (moved > kWatchMoveM) {
+        ++gWatch.carried;
+        std::uint64_t const now = GetTickCount64();
+        if (now - gWatch.lastMoveLogMs > 2000) {
+            gWatch.lastMoveLogMs = now;
+            log::Info("posture: cover watch: Shepard carried {:.2f} m in {:.2f} s with the move stick at rest (controller state {}, "
+                      "IsInCover {}; {})", moved, gWatch.windowS, state, InCover(game.pawn) ? "yes" : "no", where());
+        }
+    }
+    if (moved > kWatchMoveM || gWatch.windowS >= kWatchWindowS) {
+        gWatch.windowAt = *at;
+        gWatch.windowS = 0.0;
+    }
+}
+#endif
+
 // The cover side, each tick with a game. `refuse`: the one rule (ik::posture::RefuseCoverSnap) says the snapping is refused.
 void TickCover(Game const& game, bool refuse, double deltaSeconds) {
 #if defined(MEVR_GAME_LE3)
@@ -514,6 +610,9 @@ void TickCover(Game const& game, bool refuse, double deltaSeconds) {
 #endif
     gRefusingCover = refuse;  // kept out of cover either way: refused, or left at once without the hook
 #if defined(MEVR_GAME_LE2)
+    if (refuse) {
+        WatchCover(game, deltaSeconds);  // whatever moves Shepard near cover, named (research/23 section 7.6)
+    }
     // ME2: TryAcquireCover's FindPlayerCover answered false (a script call: the CallFunction hook, which Mod.cpp puts in while
     // RefusingCover()).
     bool const hooked = gRefusalHandlerAdded && engine::call_function::Installed();
@@ -1153,6 +1252,11 @@ void LogStats() {
                   "times", gPromptsShown, gPromptsHidden, gAcquireLooked);
     }
     gPromptsShown = gPromptsHidden = gAcquireLooked = 0;
+    if (gWatch.states + gWatch.coverSets + gWatch.carried > 0) {
+        log::Info("    posture: cover watch this period: {} changes of the controller's state, {} times the pawn's cover fields set, {} "
+                  "carries with the move stick at rest (now: {})", gWatch.states, gWatch.coverSets, gWatch.carried, gWatch.state);
+    }
+    gWatch.states = gWatch.coverSets = gWatch.carried = 0;
 #endif
 #if defined(MEVR_GAME_LE3)
     if (gPromptsShown > 0 || gLe3Looked > 0) {

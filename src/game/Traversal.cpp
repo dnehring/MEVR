@@ -74,15 +74,17 @@ void RefreshSettings() {
     if (auto const v = number("reachM")) s.reachM = static_cast<float>(std::clamp(*v, 0.3, 5.0));
     if (auto const v = number("commit")) s.commit = *v != 0.0;
     if (auto const v = number("trace")) s.trace = *v != 0.0;
+    if (auto const v = ini::Get(loaded.file, "Traversal", "facing")) s.headFacing = *v != "pawn";
+    if (auto const v = number("holstered")) s.holstered = *v != 0.0;
     if (gViewOverride) s.view = *gViewOverride;
     if (gMaskOverride) s.mask = *gMaskOverride;
     if (gCueOverride) s.cue = *gCueOverride;
     if (gTraceOverride) s.trace = *gTraceOverride;
     if (gCommitOverride) s.commit = *gCommitOverride;
     std::string const text = std::format("enabled {}, commit {} (the double A, {:.2f} s), cue {}, view {}, mask {} (vignette {:.2f}, blink {:.2f}/{:.2f}/{:.2f} s), "
-                                         "settle {:.2f} s, reach {:.1f} m",
+                                         "settle {:.2f} s, reach {:.1f} m, facing {}, holstered {}",
         s.enabled ? 1 : 0, s.commit ? 1 : 0, s.doubleTapS, s.cue ? 1 : 0, tv::Name(s.view), tv::Name(s.mask), s.vignetteStrength, s.blinkInS,
-        s.blinkHoldS, s.blinkOutS, s.settleS, s.reachM);
+        s.blinkHoldS, s.blinkOutS, s.settleS, s.reachM, s.headFacing ? "head" : "pawn", s.holstered ? 1 : 0);
     if (text != gSettingsText) {
         gSettingsText = text;
         log::Info("traversal: [Traversal] {}", text);

@@ -2218,6 +2218,8 @@ void CheckFields() {
     // state, and the draw raises it through the pawn's behavior
     CheckField("SFXGame.BioPawn", "m_oBehavior", SDK_FIELD(ABioPawn, m_oBehavior));
     CheckField("SFXGame.BioPawn", "ActionState", SDK_FIELD(ABioPawn, ActionState));
+    // game/Holsters (lane CV2): a power ordered from the game's wheels, which ApplyTacticalOrders draws for (let through)
+    CheckField("SFXGame.BioPlayerController", "m_currentOrder", SDK_FIELD(ABioPlayerController, m_currentOrder));
     CheckField("SFXGame.SFXWeapon", "ZoomFOV", SDK_FIELD(ASFXWeapon, ZoomFOV));
     // ue3::runtime (the local player controller) and engine::World()'s path
     CheckField("Engine.Engine", "GamePlayers", SDK_FIELD(UEngine, GamePlayers));
@@ -2404,6 +2406,11 @@ void CheckFields() {
 }
 
 void CheckPaths() {
+    // game/Holsters (lane CV2): the order's power name
+    CheckPath("SFXGame.BioPlayerController", {"m_currentOrder", "nmPower"},
+        SDK_AT(offsetof(ABioPlayerController, m_currentOrder) + offsetof(FPlayerOrder, nmPower), 8));
+    CheckPath("SFXGame.BioPlayerController", {"m_currentOrder", "oSwitchWeapon"},
+        SDK_AT(offsetof(ABioPlayerController, m_currentOrder) + offsetof(FPlayerOrder, oSwitchWeapon), 8));
     // game/OmniTool (M4.3): the struct members it reads (InstanceParameters' have no rows: CheckFields above says why)
     CheckElement("SFXGame.BioVisualEffect", "m_CachedInstanceParameters", sizeof(FCachedInstanceParameter));
     CheckPath("SFXGame.BioVisualEffect", {"m_CachedInstanceParameters", "ParameterName"}, SDK_AT(offsetof(FCachedInstanceParameter, ParameterName), 8));
@@ -3723,6 +3730,9 @@ void CheckLe3Dialogue() {
 void CheckFields() {
     CheckLe3CaptureRig();
     CheckLe3GalaxyRay();
+    // game/VrCover (lane CV2): the floor under the player, for each judged hit's detail
+    CheckField("Engine.Pawn", "CylinderComponent", SDK_FIELD(APawn, CylinderComponent));
+    CheckField("Engine.CylinderComponent", "CollisionHeight", SDK_FIELD(UCylinderComponent, CollisionHeight));
     CheckField("Engine.LocalPlayer", "NearClipPlane", SDK_FIELD(ULocalPlayer, NearClipPlane));  // game/Sights: the scope's pull
     CheckField("Engine.SkeletalMeshComponent", "SkeletalMesh", SDK_FIELD(USkeletalMeshComponent, SkeletalMesh));
     // L3 menu pause: native override owns admission; this bit is observed, never forced.

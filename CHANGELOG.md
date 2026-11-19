@@ -27,6 +27,19 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 - **ME2 and ME3: the left stick click crouches**, as on ME1. It no longer opens the area map or the objective radar on foot
   (the map stays on the omni-tool's Map entry). To give the click back to the game, set `crouchClick = 0` under `[Hands]` in
   `ASI\LE2MEVR.ini` or `LE3MEVR.ini`.
+- **ME2: a gun you let go in a fight goes back.** In a firefight the game refused to holster, so a weapon let go stayed in
+  your hand; now it goes back as anywhere else (after a reload or a power if one is running). And when the game itself
+  pulls your gun out (closing the power or weapon wheel, the start of a fight), it goes back to its holster at once: only a
+  grab at a holster draws, except the draw a power needs. To keep the game's refusal in fights, set `combatHolster = 0`
+  under `[Holsters]` in `ASI\LE2MEVR.ini`. Game and headset verification pending.
+- **ME2: the barriers you must vault can be vaulted.** Double A at a low wall now vaults with your gun holstered and counts
+  the way you look, not the way Shepard's legs last walked, so a barrier the mission makes you vault (one at Freedom's
+  Progress stopped it) can be crossed. `holstered = 0` and `facing = pawn` under `[Traversal]` give the old rules. Game and
+  headset verification pending.
+- **ME2 and ME3: ducking behind a barrier protects you from shooters above it.** As the game's own cover does, a crate or
+  wall at your eyes' height between you and the shooter now counts, even when a drone hovers higher; your eyes must still be
+  below its top. `judge = line` under `[Cover]` in `ASI\LE2MEVR.ini` (or `LE3MEVR.ini`) gives the old rule. Game and headset
+  verification pending.
 - **No more floating at the Council.** After the ride up to the council chamber, Shepard's body (at your size) stood up to
   30 cm above the bridge in first-person conversations, the eyes in its chest or, since the crouch fix, the knees bent with
   the feet in the air. It now stands on the floor it is drawn on in every scene that holds your view.

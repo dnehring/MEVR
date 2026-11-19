@@ -291,7 +291,7 @@ ends with the pistol holstered (ME2 needs the combat action state: "With the wea
 - **The grips on ME2:** a held right grip is the pad's RB on ME2 today (the power wheel after 0.3 s; the LE2 host has no `gripHolds`
   yet), and the left grip LB (the weapon wheel). A vault with the gun held by a grip waits for the holsters' and the support grip's
   host services on LE2; nothing in the vault needs a free hand (it is A and where the player stands).
-- **The owner's choices:** the pawn's facing vs the head's; the holstered vault; the cue's and the comfort mask's defaults.
+- **The owner's choices:** ~~the pawn's facing vs the head's; the holstered vault~~ taken 2026-11-18 for Freedom's Progress's barrier (the head's facing, the holstered vault: "The vault Freedom's Progress requires" below; each a key); the cue's and the comfort mask's defaults.
 - **The game's take-cover prompt** (UpdateCover's `ShowCoverWidget`): lane F hides it while the block applies. Checked at the
   fixture (stretch `*-lane-e-hud`, Shepard 0.60 m in front of `CoverLink_10` slot 0 facing it, standing hands replayed): the HUD
   panel (`-hud.png`) and both eyes show no take-cover prompt with the block on (`2026-11-15_00-01-40-971`) **and none with `mevr
@@ -417,3 +417,47 @@ A pure chooser in `core/vr/Traversal` (stick, the nearest admitted slot's direct
 slot, or a roll direction out; unit-tested), called by the per-game adapters at the commit: `game/Le2Traversal` (vault or
 nothing) and `game/Le3Traversal` (vault, climb, the rolls, and step 6's answer handlers). Those files belong to lanes GF2 and C4
 today; the owner decides first.
+
+## The vault Freedom's Progress requires (lane CV2, 2026-11-18)
+
+The owner, from the headset (2026-11-18, ME2 at Freedom's Progress): "There's what seems to be a game-stopping bug where when
+we're at the very beginning and I need to move Shepard into position, I'm never able to get into position."
+
+**Where.** The run's last three minutes (20:48:34 to 20:51:33, then the owner quit) were spent at one barrier: Shepard at
+(-10372, 4971, -13609), next to `BioD_ProFre_400Turrets`' only cover link, `CoverLink_5` at (-10322, 5070, -13642), whose three
+slots all mantle over to `BioD_ProFre_300Drones`' `CoverLink_3` at (-10180, 4673). The squad stood beyond it at y 4400-4700 (the
+owner had placed them there: `squad place: move for Jacob ... at (-10987, 4666, -13699)`), on the warehouse's side
+(`BioD_ProFre_500Warhouse`'s links at y 3585-3820). No door or usable object was in sight in those minutes (`interact:` named only
+a combat target). The barrier is the way on, and ME2's way over it is the cover mantle (read from the levels with `conversation-scan
+<cooked> <out> --game LE2 --class-dump CoverLink --only <level>.pcc`; the dumps are game data, kept in the lane's scratch folder).
+"The very beginning" is read as the game's first mission: the owner's ME2 career (`VR_31`) begins at Freedom's Progress (Save 4,
+its spaceport). **The owner is asked to confirm the spot** (the barrier the squad went over, before the warehouse).
+
+**Why the vault never came** (`traversal: next to CoverLink_5 slot N ...`, every approach in those minutes):
+- admitted twice (20:48:37 at 0.46 m and 20:48:40 at 0.33 m, the pawn facing 17 degrees off, the pistol out), but no double A
+  then: the A presses came 20 s later and single (`traversal: A pressed (#24): first tap: nothing to vault or climb from here`, #25
+  2.9 s after it, #26 and #27 1.03 s apart);
+- refused at 0.32-0.37 m for the pawn's facing (55 degrees off: the game reads `Actor.Rotation`, the stick's turn, never the head);
+- refused from 20:49:54 on whatever the distance or facing: the rifle had been let go and holstered, and `CanPerformMantle` needs
+  the combat action state (`BioPawn` +0xA9D == 1, in its pawn test `0xABD700`). Natively A into cover drew the weapon first; with
+  no snap and only holsters drawing, nothing does.
+So with the weapon away the barrier couldn't be crossed at all, and with it out the player had to turn the pawn with the stick
+(invisible in first person) and double-tap inside a 0.39 m window, with no cue. Question 3 (docs/trilogy-plan.md) had listed both
+as the owner's choices.
+
+**The fix** (question 3's first two choices taken so the mission can be finished; each a key, the old rule one setting away):
+- `[Traversal] holstered = 1` (default): the game is asked with the combat action state written for its one call (journalled, put
+  back in the same `__finally` as the other one-call writes), so a holstered player vaults; the move itself plays from exploring
+  (`BioCustomAction_CoverMantle`'s `FromExplore` body stance) and nothing is drawn (only holsters draw). 0: refused as before.
+- `[Traversal] facing = head` (default): the game is asked with the head's facing (the pawn's `Rotation.Yaw` written to the head's
+  for the call, the game's own 45-degree window), and at the commit the pawn is turned to the slot's direction (`Actor.SetRotation`)
+  before `MantleCover`, so the move goes over the barrier and not along the stick's last heading. `facing = pawn`: as before.
+- The double A, the 0.39 m window and the cue stay as they were (rule 8; the cue's default is still the owner's choice: off).
+Logs: `traversal: next to ... the game admits it (...); asked with the head's facing, N deg off; the weapon away: asked as drawn`,
+`traversal: double tap: the pawn turned +N deg to CoverLink_X's direction before the move (admitted with the head's facing)`; the
+settings line `traversal: [Traversal] ... facing head, holstered 1`.
+
+**Test without the headset:** `tools\le2-halcyon-run\vault.ps1 -Holster` (the weapon put away before each run by `mevr weapon away`,
+the holsters' own let-go, now on ME2 too) and `-YawDeg 60` (the pawn turned off the slot by `mevr traversal place`'s fifth word),
+Save 4's `CoverLink_10`. Not run: the owner was in the headset (`owner-testing.flag`). **[verify]** that the mantle plays from
+exploring (its `FromExplore` stance), the head-facing admission with the pawn turned, and the owner's barrier.

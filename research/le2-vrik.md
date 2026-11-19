@@ -766,6 +766,51 @@ and `mevr omni close`):
   Fixed by lane OMX the same day (each B restarted the map's close animation; research/le3-native-gui.md "Close from the area
   map").
 
+## A gun let go in a fight (lane CV2, 2026-11-18)
+
+The owner, from the headset (ME2, Freedom's Progress, firefights): "Letting go of a weapon does not reliably remove it from
+Shepard's possession; in firefights I'd let go and it would still be in my hand."
+
+**What the run's log shows** (`LE2MEVR.log`, 20:34-20:51): of 16 let-gos away from a slot, 10 went back (`holsters: let go 0.20 s
+ago away from ...: the X goes back in its holster (SFXGameModeDefault.TryHolster)`, then `the X is holstered after 0.11-0.12 s`) and
+6 stayed out, every one in a fight: `holsters: let go 0.20 s ago away from hipLeft: the shotgun stays out: the game won't holster it
+now (in combat: SFXGameModeDefault.TryHolster refuses then)` four times in four seconds (20:44:11-15), the same at the hip's own slot
+at 20:44:16, and twice for the rifle (20:47:42-43). ME2's `TryHolster` returns in combat (`if (ChkPawn.InCombat()) return;`), and lane
+FX2 (2026-11-17) had made that felt as a refusal. No let-go was called off by a twitch of the grip (no `the X stays out (squeezed
+again)` in the run; the grip latches at 0.6 and lets go at 0.4): the 0.2 s grace held. Once the game drew a gun by itself:
+`[20:50:32.254] holsters: the assault rifle came out without a holster grab ...: not through DrawPrimaryWeapon, so it wasn't
+refused`, 0.4 s after the hand power wheel closed with nothing picked (`power wheel: closed without a choice`).
+
+**ME2's own routes to the drawn state** (its script, `conversation-scan ... --script grep:SetActionState --only SFXGame.pcc`): besides
+the five buttons the rule already refuses (FireWeapon, TightAim, TryReload, Next/PrevWeapon), the player's action state is made
+combat by `SFXGameModePowerWheel.Deactivated`, `SFXGameModeWeaponWheel.Deactivated` and `SFXGameModeCommand.Deactivated` (`if
+(BioPawn(Outer.Pawn).ActionState == ActionState_Explore) m_oBehavior.SetActionState(1)`: the draw at 20:50:32; the hand power wheel
+and the squad's weapon wheel open these modes), `BioPlayerController.ApplyTacticalOrders` (the same test on the behaviour's own state
+when a wheel's order is applied), `SFXGame.OnCombatStart` (every fight's start), `SFXPawn_Player.SetCombatState_Active` (the 0.25 s
+timer of `SetCombatState(true)`), `SwitchToBackupWeapon`, and Kismet (`BioSeqAct_SetActionState`, `BioSeqAct_EnableCombat`,
+`BioSeqAct_ToggleCombat`). `BioPawnBehavior.SetActionState` is a native with an opcode (script calls to it never reach the
+CallFunction hook) and takes parameters, so none of these can be refused before it runs.
+
+**Built** (game/Holsters, ME2's adapter; ME1's and ME3's code unchanged):
+- **The let-go in a fight:** where `TryHolster` would refuse only for combat, its own last step is called:
+  `BioPawnBehavior.SetActionState(0)` (explore). Mid-reload, while a power runs or in an animated transition (TryHolster's other
+  three tests) the let-go waits and is tried again each tick, at most 4 s, called off when the grip closes on the gun again, the gun
+  changes or is already away; never under the trigger. Logs `holsters: <why>: the X goes back in its holster (in combat, where
+  SFXGameModeDefault.TryHolster refuses: its own last step, BioPawnBehavior.SetActionState(explore))`, `holsters: <why>: the X waits
+  (mid-reload: ...)`, `holsters: the X stays out (the grip closed on it again; ...)`. `[Holsters] combatHolster = 0` keeps the old
+  refusal (read from the file, ME2 only).
+- **A draw nobody asked for is put back** (only holsters draw, `[Holsters] onlyHolstersDraw = 1`, the owner's rule of 2026-11-16):
+  when the weapon comes out on foot in VR with no grab of ours and the right grip open (the existing `came out without a holster
+  grab` test), it goes back at once by the same holster, unless a power runs (`BioPawn.IsUsingPower`) or a wheel's order waits for
+  combat mode (`BioPlayerController.m_currentOrder.nmPower`: ApplyTacticalOrders draws, then casts): the draws powers need. A game that
+  draws a third time within 10 s is left alone for 20 s (no flicker). Logs `holsters: the X came out without a holster grab ...: a
+  route no hook refuses (a wheel's close, a fight's start, a script)`, then the holster's line (`only holsters draw: put back at
+  once`), or `came out for a power (...): let through`; the heartbeat `holsters: this period N let-gos put away in a fight ...`.
+- `mevr weapon away` on ME2 too (the held gun put away as a let-go does), for the vault's holstered check.
+ReflectCheck rows: `BioPlayerController.m_currentOrder` and its `nmPower` (LE2). **[verify] in the game:** `SetActionState(0)` in
+combat (ME2's own code never makes that call there: the holster animation, and whether the AI's combat redraws it), the put-back
+after the hand power wheel and after a fight's start, the let-go mid-reload; then the headset (notes/headset-checklist.md, ME2).
+
 ## The reload by hand: the game's side (lane WP, 2026-11-16)
 
 **Off by default since 2026-11-16** (the owner: "putting my left hand to the hip makes no sense ... So don't enable that

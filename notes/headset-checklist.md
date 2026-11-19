@@ -963,10 +963,25 @@ sits 24-34 units (cm) ahead of Shepard's head bone on ME2 and ME3; ME1's about 4
   closes when you let go; a quick tap casts nothing (it used to cast the second mapped power). Since 2026-11-17 (lane CTL,
   the owner's answer to docs/trilogy-plan.md question 14) the click no longer reaches the game on foot: neither the tap nor
   the hold may bring up ME2's area map or objective radar, or ME3's point of interest or area map; the omni-tool's Map entry
-  opens the map. On the Normandy or in a hub, a grab at the hip gives the short refusal buzz and no gun; in a fight, letting
-  go at the hip gives the same buzz and the gun stays in the hand (ME2 holsters nothing in combat). ME3 the same once it has
+  opens the map. On the Normandy or in a hub, a grab at the hip gives the short refusal buzz and no gun (in a fight a let-go
+  now holsters: the next line). ME3 the same once it has
   a combat fixture, and there with a heavy weapon in hand (question 13): a grab at any slot gives the refusal buzz and the
   heavy weapon stays in the hand (never thrown away); the game's weapon wheel still switches away from it.
+- [ ] ME2's firefights (lane CV2, 2026-11-18; built, not run: the owner was in the headset): (1) in a fight, let go of the gun
+  anywhere: it goes back (`holsters: ... goes back in its holster (in combat, where SFXGameModeDefault.TryHolster refuses: its
+  own last step ...)`), also mid-reload once the reload ends; does the game draw it again by itself while the fight goes on? (2)
+  With the gun holstered, open and close the hand power wheel (X) and the squad's weapon wheel without a pick, and walk into a
+  new fight: the gun stays away (`only holsters draw: put back at once`; a flash of it in the hand for a frame or two is the
+  known cost), but a power cast from the wheel still casts. (3) Crouch behind a waist-high barrier with drones or mechs
+  shooting: do the hits stop (`vr cover: a hit from ... covered ... (by the level look)`), and with your eyes over the top do
+  they land? Each judged hit's detail line says the eyes' height and what each look met: send the log either way. (4) Was the
+  "magnetic" pull felt while crouching behind cover or while walking up to it standing? `posture: cover watch:` lines, if any,
+  name what moved Shepard (research/23 section 7.6).
+- [ ] ME2's mandatory vault (lane CV2, 2026-11-18; research/le2-traversal.md "The vault Freedom's Progress requires"; built, not
+  run): at Freedom's Progress, the barrier before the warehouse (`CoverLink_5`, where the squad went over), walk up to it, look
+  at it and double-tap A, with the gun drawn and again holstered: one vault each time (`traversal: next to CoverLink_5 ... the
+  game admits it (...; asked with the head's facing ...; the weapon away: asked as drawn)`). Is it the spot that stopped the
+  mission ("at the very beginning ... I'm never able to get into position")?
 - [ ] ME1's refused draw (lane CTL, 2026-11-17, the owner's answer to docs/trilogy-plan.md question 15; seen on the fake
   headset): on the Normandy (or anywhere ME1 allows no combat) a grab at the hip gives the short refusal buzz, not the draw's
   click, and nothing comes out; elsewhere the hip grab draws as always.

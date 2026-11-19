@@ -75,6 +75,11 @@ ue3::FieldRef gNextPawn{"Engine.Pawn", "NextPawn", ue3::kEveryGame};
 ue3::FieldRef gHidden{"Engine.Actor", "bHidden", ue3::kEveryGame};
 ue3::ClassRef gPawnClass{"Engine.Pawn", ue3::kEveryGame};
 ue3::FieldRef gPawnWeapon{"Engine.Pawn", "Weapon", ue3::kEveryGame};
+#if !defined(MEVR_GAME_LE1)
+// The floor under the player's pawn (Location.z - CollisionHeight, the floor lock's floor), for the per-hit detail.
+ue3::FieldRef gPawnCylinder{"Engine.Pawn", "CylinderComponent", ue3::kEveryGame};
+ue3::FieldRef gCylinderHeight{"Engine.CylinderComponent", "CollisionHeight", ue3::kEveryGame};
+#endif
 #endif
 
 #if defined(MEVR_GAME_LE1)
@@ -141,9 +146,15 @@ constexpr char kBlock[] =
     "; Raise your head over it to shoot and you're in the open. The game's own rule does the rest. log = 1 logs every hit judged.\n"
     "; recharge = 1: the game's shorter wait before the shields recharge in cover, while your head is hidden from every awake\n"
     "; hostile, by cover within reachM from at least one of them.\n"
+    "; judge: how your head counts as hidden. line = the line from your eyes to the shooter's eyes meets the cover; level = the\n"
+    "; cover stands between you and the shooter at your eyes' height, whatever the shooter's height (as the game's own cover: a\n"
+    "; drone above a crate doesn't see over it); either (the default) = by either. levelDropM: the level look that far below\n"
+    "; the eyes (metres, 0 by default).\n"
     "protect = 1\n"
     "reachM = 1.2\n"
     "recharge = 1\n"
+    "judge = either\n"
+    "levelDropM = 0\n"
     "log = 0\n";
 #elif defined(MEVR_GAME_LE3)
 constexpr char kBlock[] =
@@ -151,7 +162,9 @@ constexpr char kBlock[] =
     "; VR cover (research/23 section 6): the game never snaps you into cover in VR ([Hands] noCover). With protect = 1, a hit\n"
     "; counts as taken in cover when your head is hidden from the shooter by something within reachM (metres) of your eyes and\n"
     "; an authored cover slot of the game's stands there: that slot's own damage rules apply. log = 1 logs every hit judged.\n"
-    "protect = 1\nreachM = 1.2\nlog = 0\n";
+    "; judge: line = the line from your eyes to the shooter's eyes meets the cover; level = the cover stands between you and\n"
+    "; the shooter at your eyes' height, whatever the shooter's height; either (the default) = by either.\n"
+    "protect = 1\nreachM = 1.2\njudge = either\nlevelDropM = 0\nlog = 0\n";
 #else
 constexpr char kBlock[] =
     "\n"
@@ -173,6 +186,12 @@ std::optional<bool> gOverride;  // `mevr cover on|off`
 bool gRecharge = true;                  // [Cover] recharge (ME2: the shields' faster recharge behind cover)
 std::optional<bool> gRechargeOverride;  // `mevr cover recharge on|off`
 bool gLogHits = false;
+#if !defined(MEVR_GAME_LE1)
+vc::Rule gRule = vc::Rule::Either;      // [Cover] judge (the sequels; ME1 keeps the eye line)
+std::optional<vc::Rule> gRuleOverride;  // `mevr cover judge line|level|either`, until the mod reloads
+double gLevelDropM = 0.0;               // [Cover] levelDropM
+std::uint64_t gHitDetailMs = 0;         // the last open hit's detail line (at most one a second)
+#endif
 std::uint64_t gSettingsAtMs = 0;
 bool gTriedAppend = false;
 std::string gSettingsText = "not read yet";
@@ -227,9 +246,34 @@ void RefreshSettings() {
     }
 #endif
     gRecharge = recharge;
+#if defined(MEVR_GAME_LE1)
     std::string const text = s.on ? std::format("on: a hit counts as taken in cover with the head hidden from the shooter by a surface "
                                                 "within {:.2f} m of the eyes{}", s.reachM, logHits ? "; every judged hit logged" : "")
                                   : std::string("off ([Cover] protect = 0): a VR player takes every hit whole");
+#else
+    // The sequels: which look judges the head (research/23 section 7.7): the eye line, the level look, or either.
+    vc::Rule rule = vc::Rule::Either;
+    if (auto const v = ini::Get(loaded.file, "Cover", "judge")) {
+        rule = vc::ParseRule(*v).value_or(rule);
+    }
+    if (gRuleOverride) {
+        rule = *gRuleOverride;
+    }
+    double drop = 0.0;
+    if (auto const v = ini::GetNumber(loaded.file, "Cover", "levelDropM")) {
+        drop = std::clamp(*v, 0.0, 0.5);
+    }
+    gRule = rule;
+    gLevelDropM = drop;
+    char const* const how = rule == vc::Rule::Line ? "the line from the eyes to the shooter meets"
+        : rule == vc::Rule::Level ? "the flat line from the eyes toward the shooter meets"
+                                  : "the line from the eyes to the shooter, or the flat line toward it, meets";
+    std::string const text = s.on ? std::format("on: a hit counts as taken in cover when {} a surface within {:.2f} m of the eyes ([Cover] "
+                                                "judge = {}{}){}", how, s.reachM, vc::Name(rule),
+                                        drop > 0.0 ? std::format(", the flat line {:.2f} m below the eyes", drop) : std::string(),
+                                        logHits ? "; every judged hit logged" : "")
+                                  : std::string("off ([Cover] protect = 0): a VR player takes every hit whole");
+#endif
     if (text != gSettingsText) {
         log::Info("vr cover: {}", text);
         gSettingsText = text;
@@ -442,6 +486,131 @@ std::string Describe(vc::Verdict const& v, Shooter const& shooter, vc::Vec3 cons
     return text;
 }
 
+#if !defined(MEVR_GAME_LE1)
+// Both looks at one shooter (the sequels, research/23 section 7.7): the eye line (the line from the eyes to the shooter's eyes)
+// and the level look (the flat line from the eyes toward the shooter, reachM long), the rule's verdict ([Cover] judge), and what
+// each met, for the log. ME1 keeps the eye line alone (its code unchanged).
+struct Look {
+    vc::Verdict verdict, line, level;
+    std::string lineSurface, levelSurface;
+    std::optional<vc::Vec3> lineHit, levelHit;
+    bool levelAsked = false;
+};
+unsigned gLevelOnly = 0;  // hits covered by the level look where the eye line was open (since the start)
+
+Look LookAt(ue3::Object* self, vc::Vec3 const& eyes, Shooter const& shooter, vc::Settings const& settings) {
+    Look look;
+    std::optional<vc::Block> const block = shooter.eyes ? FirstSurface(self, eyes, *shooter.eyes, &look.lineSurface) : std::nullopt;
+    if (block) {
+        look.lineHit = block->point;
+    }
+    look.line = vc::Judge(eyes, shooter.eyes, block, settings);
+    look.level = look.line;
+    if (gRule != vc::Rule::Line && settings.on && shooter.eyes) {
+        if (std::optional<vc::LevelLine> const flat = vc::Level(eyes, shooter.eyes, settings, gLevelDropM * settings.unitsPerMeter)) {
+            look.levelAsked = true;
+            std::optional<vc::Block> const levelBlock = FirstSurface(self, flat->from, flat->to, &look.levelSurface);
+            if (levelBlock) {
+                look.levelHit = levelBlock->point;
+            }
+            look.level = vc::Judge(eyes, shooter.eyes, levelBlock, settings);
+        }
+    }
+    look.verdict = vc::Choose(gRule, look.line, look.level);
+    return look;
+}
+
+bool ByLevel(Look const& look) {
+    return look.verdict.Covered() && !look.line.Covered();
+}
+
+// The floor under a pawn (Location.z - CollisionHeight: the floor lock's), or nullopt.
+std::optional<double> FloorUnder(ue3::Object* pawn) {
+    std::optional<ue3::Vector> const at = gLocation.Read<ue3::Vector>(pawn);
+    ue3::Object* const cylinder = gPawnCylinder.Read<ue3::Object*>(pawn).value_or(nullptr);
+    std::optional<float> const height = cylinder != nullptr ? gCylinderHeight.Read<float>(cylinder) : std::nullopt;
+    if (!at || !height) {
+        return std::nullopt;
+    }
+    return static_cast<double>(at->z) - static_cast<double>(*height);
+}
+
+// What the two looks met, for the per-hit line: the eyes over the floor, the shooter above or below them, and each line's first
+// surface (its distance, and where on the eye line it was against the eyes' height).
+std::string HitDetail(Look const& look, ue3::Object* pawn, vc::Vec3 const& eyes, Shooter const& shooter, double upm) {
+    std::string text;
+    if (std::optional<double> const floor = FloorUnder(pawn)) {
+        text += std::format("the eyes {:.2f} m over the floor", (eyes.z - *floor) / upm);
+    } else {
+        text += "the eyes' height unread";
+    }
+    if (shooter.eyes) {
+        double const dz = shooter.eyes->z - eyes.z;
+        double const flat = std::hypot(shooter.eyes->x - eyes.x, shooter.eyes->y - eyes.y);
+        text += std::format(", the shooter's eyes {:+.2f} m from theirs ({:+.0f} deg)", dz / upm, std::atan2(dz, flat) * 180.0 / std::numbers::pi);
+    }
+    auto const met = [&](std::optional<vc::Vec3> const& at, std::string const& what) {
+        if (!at) {
+            return std::string("nothing");
+        }
+        double const d = std::hypot(at->x - eyes.x, at->y - eyes.y, at->z - eyes.z) / upm;
+        return std::format("{} {:.2f} m out, {:+.2f} m from the eyes' height", what, d, (at->z - eyes.z) / upm);
+    };
+    text += "; the eye line met " + met(look.lineHit, look.lineSurface) + std::format(" ({})", vc::Name(look.line.why));
+    if (look.levelAsked) {
+        text += "; the flat line met " + (look.levelHit ? met(look.levelHit, look.levelSurface) : std::string("nothing within reach")) +
+            std::format(" ({})", vc::Name(look.level.why));
+    }
+    return text;
+}
+
+// One hit on the player, judged in the damage call's frame: the verdict, counted and logged (the sequels: both looks, and a
+// line for an open hit too, at most one a second, so a firefight says which test each hit failed).
+vc::Verdict JudgeHit(ue3::Object* pawn, std::uint8_t const* locals) {
+    ++gCounts.judged;
+    auto const frame = view_anchor::Current();
+    if (!frame) {
+        ++gCounts.noView;
+        return {};
+    }
+    vc::Vec3 const eyes = ToVec(frame->headWorld);
+    vc::Settings settings = gSettings;
+    settings.unitsPerMeter = frame->unitsPerMeter;
+    Shooter const shooter = FromCall(locals);
+    Look const look = LookAt(pawn, eyes, shooter, settings);
+    vc::Verdict const verdict = look.verdict;
+    Count(verdict.why);
+    if (ByLevel(look)) {
+        ++gLevelOnly;
+    }
+    std::optional<bool> cone;
+    if (verdict.Covered() && shooter.gameLocation) {
+#if defined(MEVR_GAME_LE2)
+        // ME2's HitLocation is an out parameter: the frame's own copy of it isn't the hit (measured 2026-11-14: the cone
+        // computed from it never cut, while the game's own cut every covered hit), so the player's place stands in for it,
+        // as `mevr cover pawns` takes it.
+        std::optional<ue3::Vector> const hit = gLocation.Read<ue3::Vector>(pawn);
+#else
+        std::optional<ue3::Vector> const hit = gHitLocation.Read<ue3::Vector>(locals);
+#endif
+        if (hit) {
+            cone = vc::GameCone(verdict.coverNormal, ToVec(*hit), *shooter.gameLocation);
+            if (*cone) {
+                ++gCounts.coneCut;
+            }
+        }
+    }
+    gLast = Describe(verdict, shooter, eyes, ByLevel(look) ? look.levelSurface : look.lineSurface, cone) +
+        (ByLevel(look) ? " (by the level look)" : "");
+    std::uint64_t const now = GetTickCount64();
+    bool const covered = verdict.Covered();
+    if (gLogHits || (covered && now - gLastLogMs > 2000) || (!covered && verdict.why != vc::Why::NoShooter && now - gHitDetailMs > 1000)) {
+        (covered ? gLastLogMs : gHitDetailMs) = now;
+        log::Info("vr cover: a hit from {} | {}", gLast, HitDetail(look, pawn, eyes, shooter, settings.unitsPerMeter));
+    }
+    return verdict;
+}
+#else
 // One hit on the player, judged in the damage call's frame: the verdict, counted and logged.
 vc::Verdict JudgeHit(ue3::Object* pawn, std::uint8_t const* locals) {
     ++gCounts.judged;
@@ -483,6 +652,7 @@ vc::Verdict JudgeHit(ue3::Object* pawn, std::uint8_t const* locals) {
     }
     return verdict;
 }
+#endif  // the sequels' JudgeHit or ME1's
 #endif
 
 #if defined(MEVR_GAME_LE1)
@@ -879,11 +1049,19 @@ void LogStats() {
     if (gCounts.judged == gLoggedCounts.judged && gCounts.gameCover == gLoggedCounts.gameCover) {
         return;
     }
+#if defined(MEVR_GAME_LE1)
     log::Info("vr cover: {} hits judged since the start: {} in cover ({} cut by the game's cone), {} in the open, {} with cover too far, "
               "{} from overhead, {} without a shooter, {} without a view{}; last: {}",
         gCounts.judged, gCounts.covered, gCounts.coneCut, gCounts.exposed, gCounts.tooFar, gCounts.overhead, gCounts.noShooter,
         gCounts.noView, gCounts.gameCover > 0 ? std::format("; {} in the game's own cover (its rules)", gCounts.gameCover) : std::string(),
         gLast);
+#else
+    log::Info("vr cover: {} hits judged since the start ([Cover] judge = {}): {} in cover ({} by the level look alone, {} cut by the "
+              "game's cone), {} in the open, {} with cover too far, {} from overhead, {} without a shooter, {} without a view{}; last: {}",
+        gCounts.judged, vc::Name(gRule), gCounts.covered, gLevelOnly, gCounts.coneCut, gCounts.exposed, gCounts.tooFar, gCounts.overhead,
+        gCounts.noShooter, gCounts.noView,
+        gCounts.gameCover > 0 ? std::format("; {} in the game's own cover (its rules)", gCounts.gameCover) : std::string(), gLast);
+#endif
     gLoggedCounts = gCounts;
 }
 
@@ -1050,12 +1228,11 @@ void JudgeShelter(ue3::Object* pawn, Shelter& out, std::string* detail = nullptr
         if (metres > kShelterRangeM) {
             break;  // nearest first
         }
-        std::string surface;
-        std::optional<vc::Block> const block = FirstSurface(pawn, eyes, *shooter.eyes, &surface);
-        vc::Verdict const verdict = vc::Judge(eyes, shooter.eyes, block, settings);
-        vc::Add(out.count, verdict.why);
+        Look const look = LookAt(pawn, eyes, shooter, settings);  // the same looks as a shot from it (section 7.7)
+        vc::Add(out.count, look.verdict.why);
         if (detail != nullptr) {
-            *detail += "\n    " + Describe(verdict, shooter, eyes, surface, std::nullopt);
+            *detail += "\n    " + Describe(look.verdict, shooter, eyes, ByLevel(look) ? look.levelSurface : look.lineSurface, std::nullopt) +
+                (ByLevel(look) ? " (by the level look)" : "");
         }
         if (++judged >= kShelterMaxHostiles) {
             break;
@@ -1130,6 +1307,7 @@ std::string RechargeJson() {
 
 std::string Judged(ue3::Object* self, vc::Vec3 const& eyes, std::optional<vc::Vec3> const& selfAt, Shooter const& shooter,
     vc::Settings const& settings) {
+#if defined(MEVR_GAME_LE1)
     std::string surface;
     std::optional<vc::Block> const block = shooter.eyes ? FirstSurface(self, eyes, *shooter.eyes, &surface) : std::nullopt;
     vc::Verdict const verdict = vc::Judge(eyes, shooter.eyes, block, settings);
@@ -1138,6 +1316,15 @@ std::string Judged(ue3::Object* self, vc::Vec3 const& eyes, std::optional<vc::Ve
         cone = vc::GameCone(verdict.coverNormal, *selfAt, *shooter.gameLocation);
     }
     return Describe(verdict, shooter, eyes, surface, cone);
+#else
+    Look const look = LookAt(self, eyes, shooter, settings);
+    std::optional<bool> cone;
+    if (look.verdict.Covered() && shooter.gameLocation && selfAt) {
+        cone = vc::GameCone(look.verdict.coverNormal, *selfAt, *shooter.gameLocation);
+    }
+    return Describe(look.verdict, shooter, eyes, ByLevel(look) ? look.levelSurface : look.lineSurface, cone) +
+        (ByLevel(look) ? " (by the level look)" : "") + " | " + HitDetail(look, self, eyes, shooter, settings.unitsPerMeter);
+#endif
 }
 
 } // namespace
@@ -1172,6 +1359,24 @@ std::string Console(std::string_view args) {
             return std::format("vr cover: the faster recharge behind cover {} until the mod reloads ([Cover] recharge stays as it is)", value);
         }
         return RechargeJson();
+    }
+#endif
+#if !defined(MEVR_GAME_LE1)
+    if (sub == "judge") {
+        // `mevr cover judge line|level|either|auto`: which look judges the head (research/23 section 7.7), until the mod reloads.
+        std::string value;
+        words >> value;
+        if (value == "auto") {
+            gRuleOverride.reset();
+        } else if (std::optional<vc::Rule> const rule = vc::ParseRule(value)) {
+            gRuleOverride = *rule;
+        } else {
+            return std::format("usage: mevr cover judge line|level|either|auto (now {})", vc::Name(gRule));
+        }
+        gSettingsAtMs = 0;
+        RefreshSettings();
+        return std::format("vr cover: judged by the {} until the mod reloads ([Cover] judge stays as it is)",
+            gRule == vc::Rule::Line ? "eye line" : gRule == vc::Rule::Level ? "level look" : "eye line or the level look");
     }
 #endif
     if (sub != "test" && sub != "pawns" && sub != "hit" && sub != "probe" && sub != "put" && sub != "regen") {

@@ -201,6 +201,54 @@ void TestRegenWait() {
     CHECK(!vc::Step(fresh, 1.0, std::numeric_limits<float>::quiet_NaN(), true));
 }
 
+// The level look (the sequels, research/23 section 7.7): the games' own cone ignores the shooter's height, so a drone above a
+// barrier the ducked head is behind still counts as hidden from, by the flat line toward it.
+void TestLevelLook() {
+    vc::Settings const s;  // reach 1.2 m at 100 units per metre
+    // A drone 15 m away, 2 m above the eyes; a barrier 0.5 m ahead whose top is 5 cm above the eyes.
+    vc::Vec3 const drone{1500.0, 0.0, kEyes.z + 200.0};
+    std::optional<vc::LevelLine> const line = vc::Level(kEyes, drone, s);
+    CHECK(line.has_value());
+    if (line) {
+        // From the eyes, flat, reachM toward the drone.
+        CHECK(Near(line->from.x, kEyes.x) && Near(line->from.y, kEyes.y) && Near(line->from.z, kEyes.z));
+        CHECK(Near(line->to.x, 120.0) && Near(line->to.y, 0.0) && Near(line->to.z, kEyes.z));
+    }
+    // The eye line climbs over the barrier's top (6.7 cm up at 0.5 m): nothing on it, in the open by the eye line.
+    vc::Verdict const byLine = vc::Judge(kEyes, drone, std::nullopt, s);
+    CHECK(byLine.why == vc::Why::Exposed);
+    // The flat line meets the barrier's face 0.5 m ahead: covered, the face's facing for the game's cone.
+    vc::Block const face{{50.0, 0.0, kEyes.z}, {-1.0, 0.0, 0.0}};
+    vc::Verdict const byLevel = vc::Judge(kEyes, drone, face, s);
+    CHECK(byLevel.Covered() && Near(byLevel.coverNormal.x, -1.0) && Near(byLevel.coverM, 0.5));
+    // The rules: the eye line alone keeps the old verdict, the level look alone or either take the barrier.
+    CHECK(vc::Choose(vc::Rule::Line, byLine, byLevel).why == vc::Why::Exposed);
+    CHECK(vc::Choose(vc::Rule::Level, byLine, byLevel).Covered());
+    CHECK(vc::Choose(vc::Rule::Either, byLine, byLevel).Covered());
+    // Covered by the eye line (a high wall): either keeps the eye line's own verdict and facing.
+    vc::Verdict const wall = vc::Judge(kEyes, drone, vc::Block{{40.0, 0.0, kEyes.z + 3.0}, {-0.8, -0.6, 0.0}}, s);
+    vc::Verdict const chosen = vc::Choose(vc::Rule::Either, wall, byLevel);
+    CHECK(chosen.Covered() && Near(chosen.coverNormal.x, -0.8) && Near(chosen.coverNormal.y, -0.6));
+    // The eyes over the barrier's top: the flat line finds nothing either, in the open by both (the game's "leaning out").
+    vc::Verdict const nothing = vc::Judge(kEyes, drone, std::nullopt, s);
+    CHECK(vc::Choose(vc::Rule::Either, byLine, nothing).why == vc::Why::Exposed);
+    // A drop below the eyes: the flat line starts and runs that much lower.
+    std::optional<vc::LevelLine> const low = vc::Level(kEyes, drone, s, 10.0);
+    CHECK(low && Near(low->from.z, kEyes.z - 10.0) && Near(low->to.z, kEyes.z - 10.0) && Near(low->to.x, 120.0));
+    // Straight above or no shooter: no flat line.
+    CHECK(!vc::Level(kEyes, vc::Vec3{0.0, 0.0, 900.0}, s));
+    CHECK(!vc::Level(kEyes, std::nullopt, s));
+    // The world's scale: reachM in metres.
+    vc::Settings half;
+    half.unitsPerMeter = 50.0;
+    std::optional<vc::LevelLine> const scaled = vc::Level(kEyes, vc::Vec3{0.0, -900.0, kEyes.z}, half);
+    CHECK(scaled && Near(scaled->to.x, 0.0) && Near(scaled->to.y, -60.0));
+    // The setting's words.
+    CHECK(vc::ParseRule("either") == vc::Rule::Either && vc::ParseRule("line") == vc::Rule::Line &&
+          vc::ParseRule("level") == vc::Rule::Level && !vc::ParseRule("sideways"));
+    CHECK(std::string_view(vc::Name(vc::Rule::Either)) == "either");
+}
+
 } // namespace
 
 int RunVrCoverTests() {
@@ -210,6 +258,7 @@ int RunVrCoverTests() {
     TestGameCone();
     TestShelter();
     TestRegenWait();
+    TestLevelLook();
     std::printf("vr cover: %s\n", gFailures == 0 ? "ok" : "FAILED");
     return gFailures;
 }

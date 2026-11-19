@@ -192,9 +192,11 @@ authored seated scenes (such as shuttles) must reject traversal while retaining 
   "Defaults from ME1" there, gotchas/me2-scale-set-during-load).
   **ME2's vault** (lane E, research/le2-traversal.md; `game/Traversal`, rules `core/vr/Traversal`, host `plugin/TraversalCue`,
   HostServices v40 `setTraversal`; `[Traversal]` in `ASI\LE2MEVR.ini`): no cover snap in VR, so a double A standing at an
-  obstacle the game can vault (within 0.39 m of the slot, facing within 45 degrees, gun drawn) calls ME2's own `MantleCover`
+  obstacle the game can vault (within 0.39 m of the slot, facing within 45 degrees) calls ME2's own `MantleCover`
   after its own `CanPerformMantle` admitted it with `m_bCanMantleOutsideOfCover` and the stick's push set for that one call
-  (journalled, put back in a `__finally`). ME2's camera stays level and smooth through it; `view = level`, `mask = vignette |
+  (journalled, put back in a `__finally`); since 2026-11-18 (a barrier Freedom's Progress requires couldn't be crossed,
+  research/le2-traversal.md "The vault Freedom's Progress requires") also with the head's facing for the call and the pawn turned
+  to the slot at the commit (`facing = head`), and with the weapon away as if drawn (`holstered = 1`; nothing drawn). ME2's camera stays level and smooth through it; `view = level`, `mask = vignette |
   blink` and the cue (`cue = 1`) are options, off by default. Fixture: Save 4's spaceport, `tools/le2-halcyon-run/vault.ps1`;
   `mevr traversal slots | near | place | go | pause | trace ...`; logs `traversal:`, `traversal cue:`.
   **Arm IK across root-motion steps** (every game; `core/ik/GoalStep`, `engine/BonePose` `GoalFrame`, research/le2-vrik.md):
@@ -368,7 +370,12 @@ switching frameworks.
   sprint into cover never snap, A's use and lane E's out-of-cover mantle untouched; `MassEffectGuiManager.ShowCoverWidget` followed
   by its `HideCoverWidget`); the crouch is `Engine.Pawn.ShouldCrouch`; VR cover answers `SFXGame.ModifyDamage`'s
   `IsInCoverLeaning`/`IsInCover` and gives its cone's `CoverLink.GetSlotRotation` the surface's facing (`BioPawn.CurrentLink`
-  holds CoverLink's class default object for that call). `mevr cover snap on|off|auto | acquire | where | links | put`. **ME3
+  holds CoverLink's class default object for that call). `mevr cover snap on|off|auto | acquire | where | links | put`.
+  **The owner's "almost magnetic" cover (2026-11-18, research/23 section 7.6):** the run's log had no cover entry of the game's
+  (IsInCover never true, A at cover refused); `posture: cover watch:` (ME2) names the controller's state changes, cover fields set
+  and the pawn carried with the stick at rest. **VR cover's level look** (section 7.7, the sequels): the games' cone ignores the
+  shooter's height, so a surface on the flat line from the eyes toward the shooter covers too (`[Cover] judge = either`, `line` the
+  eye line alone; ME1 unchanged); every hit's detail logged (`vr cover: a hit from ... | the eyes H m over the floor ...`). **ME3
   too since 2026-11-17** (lane FP3, research/trilogy-first-person.md): `[Hands] noCover` refuses `SFXGameModeDefault.FindCover`
   inside `TryAcquireCover`, and VR cover's real-slot rule (`game/Le3Cover.inc`) follows it, each answer logged; neither seen
   in a fight yet (research/le3-combat-fixtures.md's first check). **ME2's shorter wait before the shields recharge in cover** (the owner, 2026-11-16; research/23
@@ -461,6 +468,10 @@ switching frameworks.
   `TryHolster`, drawn `BioPawn.ActionState == 1`); only holsters draw on every game (the owner, 2026-11-16): on ME2
   `BioPlayerInput.IsCombatEnabled` is answered false inside FireWeapon, TightAim, TryReload and Next/PrevWeapon while the
   weapon is away (one rule, `RefuseGameDraw`); ME3 keeps no holstered state. The module asks `ue3::runtime::Up()`.
+  **ME2 in a fight** (the owner, 2026-11-18; research/le2-vrik.md "A gun let go in a fight"): TryHolster refuses in combat, so a
+  let-go there calls its own last step, `BioPawnBehavior.SetActionState(0)` (`[Holsters] combatHolster = 0`: the refusal); a let-go
+  mid-reload, mid-power or mid-transition waits up to 4 s; a draw nobody asked for (the wheels' `Deactivated`, `OnCombatStart`,
+  Kismet: native `SetActionState(1)` no hook refuses) is put back at once unless a power runs or a wheel's order waits.
   **The owner's answers of 2026-11-17** (docs/trilogy-plan.md questions 13-15): a grab's draw asks `IsCombatEnabled` first on
   every game, ME1 included, and a refusal is the refusal buzz; ME3's heavy weapon in hand refuses a grab at a slot (a switch
   would throw it away: `body_slots::Input::switchLosesHeld`); on the sequels the right stick click the mod owns never reaches

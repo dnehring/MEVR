@@ -108,6 +108,8 @@ struct Near {
     int slot = -1;            // into gSlots
     double distanceM = 0.0;   // the pawn from the slot
     double facingDot = 0.0;   // the pawn's facing on the slot's direction (the game's face test: >= its threshold)
+    std::optional<double> headDot;  // the head's facing on it, when the game was asked with the head's ([Traversal] facing = head)
+    bool asDrawn = false;     // the game was asked with the weapon away as if drawn ([Traversal] holstered)
     bool asked = false;
     bool admitted = false;    // CanPerformMantle / CanPerformClimb said yes
     double askedAt = -1e9;
@@ -226,6 +228,11 @@ ue3::FieldRef gIgnoreMove{"Engine.PlayerController", "bIgnoreMoveInput", ue3::kE
 ue3::FieldRef gIgnoreLook{"Engine.PlayerController", "bIgnoreLookInput", ue3::kEveryGame};
 ue3::FieldRef gPawnCurrentLink{"SFXGame.BioPawn", "CurrentLink", ue3::kEveryGame};
 ue3::FieldRef gPawnWeapon{"Engine.Pawn", "Weapon", ue3::kEveryGame};
+// The admission as the player stands (research/le2-traversal.md "The vault Freedom's Progress requires"): CanPerformMantle's
+// facing is the pawn's Actor.Rotation (pawn +0x124 in 0xABD8E0), its combat test BioPawn.ActionState (+0xA9D == 1 in 0xABD700).
+ue3::FieldRef gPawnRotation{"Engine.Actor", "Rotation", ue3::kEveryGame};
+ue3::FieldRef gPawnActionState{"SFXGame.BioPawn", "ActionState", ue3::kEveryGame};
+constexpr std::uint8_t kActionStateCombat = 1;  // EActionState.ActionState_Combat
 // The two-handed hold (the owner, 2026-11-16; docs/trilogy-plan.md rule 8): the support grip's aim (LT) zooms the gun, and
 // CanPerformMantle's pawn test (0xABD700) refuses a weapon whose IsZoomed is set (research/le2-vrik.md "Vaulting with the weapon
 // held"). The admission clears the flag for its one call, as it sets m_bCanMantleOutsideOfCover; the game zooms on as before.
@@ -424,6 +431,12 @@ struct OneCallWrites {
     std::uint32_t* clearWord = nullptr;  // a flag cleared for the call (the held weapon's bIsZoomed)
     std::uint32_t clearMask = 0;
     std::uint32_t clearWas = 0;
+    std::int32_t* yaw = nullptr;         // the pawn's Rotation.Yaw, the head's for the call ([Traversal] facing = head)
+    std::int32_t yawWas = 0;
+    std::int32_t yawSet = 0;
+    std::uint8_t* state = nullptr;       // BioPawn.ActionState, combat for the call with the weapon away ([Traversal] holstered)
+    std::uint8_t stateWas = 0;
+    std::uint8_t stateSet = 0;
 };
 using CallThunk = void (*)(void* context);
 
@@ -442,8 +455,20 @@ void CallWithOneCallWrites(OneCallWrites const& w, CallThunk call, void* context
         if (w.clearWord != nullptr) {
             *w.clearWord &= ~w.clearMask;
         }
+        if (w.yaw != nullptr) {
+            *w.yaw = w.yawSet;
+        }
+        if (w.state != nullptr) {
+            *w.state = w.stateSet;
+        }
         call(context);
     } __finally {
+        if (w.state != nullptr) {
+            *w.state = w.stateWas;
+        }
+        if (w.yaw != nullptr) {
+            *w.yaw = w.yawWas;
+        }
         if (w.flagWord != nullptr) {
             *w.flagWord = (*w.flagWord & ~w.flagMask) | (w.flagWas & w.flagMask);
         }
@@ -505,8 +530,23 @@ bool FillInfo(ue3::FieldRef& info, ue3::Params& parms, Slot const& slot) {
     return true;
 }
 
+// The head's flat yaw in the world (degrees), from the view the mod drew this tick; nullopt without one, or looking straight up or
+// down.
+std::optional<double> HeadYaw() {
+    std::optional<engine::TrackingFrame> const frame = view_anchor::Current();
+    if (!frame) {
+        return std::nullopt;
+    }
+    engine::Basis const axes = engine::OrientationToWorld(*frame, frame->head.orientation);
+    if (std::hypot(axes.forward.x, axes.forward.y) < 1e-3) {
+        return std::nullopt;
+    }
+    return std::atan2(axes.forward.y, axes.forward.x) * 180.0 / kPi;
+}
+
 // The game's CanPerformMantle / CanPerformClimb for `slot`, standing where the pawn stands: m_bCanMantleOutsideOfCover set and the
-// stick's push (RemappedJoyUp 1, RemappedJoyRight 0) for this call only. Nullopt if it can't be asked.
+// stick's push (RemappedJoyUp 1, RemappedJoyRight 0) for this call only; with [Traversal] facing = head the pawn's yaw the head's,
+// with [Traversal] holstered the weapon away asked as drawn (each for the call only). Nullopt if it can't be asked.
 std::optional<bool> GameAdmits(ue3::Object* pc, Slot const& slot) {
     bool const climb = slot.kind == tv::Kind::ClimbUp;
     ue3::Function* const fn = climb ? gCanPerformClimbRef.Get() : gCanPerformMantleRef.Get();
@@ -550,10 +590,37 @@ std::optional<bool> GameAdmits(ue3::Object* pc, Slot const& slot) {
             }
         }
     }
+    // The head's facing, not the pawn's (the stick's turn, invisible in first person): the pawn's yaw the head's for the call.
+    gNear.headDot.reset();
+    if (gSettings.headFacing && pawn != nullptr) {
+        ue3::Rotator* const rotation = gPawnRotation.In<ue3::Rotator>(pawn);
+        if (std::optional<double> const head = HeadYaw(); head && rotation != nullptr) {
+            w.yaw = &rotation->yaw;
+            w.yawWas = rotation->yaw;
+            w.yawSet = Units(*head);
+            write_journal::Wrote("Traversal.Rotation.Yaw (one call)", w.yaw, sizeof(std::int32_t));
+            double const y = *head * kPi / 180.0;
+            double const slotYaw = slot.yaw * kPi / 180.0;
+            gNear.headDot = std::cos(y) * std::cos(slotYaw) + std::sin(y) * std::sin(slotYaw);
+        }
+    }
+    // The weapon away (only holsters draw, no snap's draw): asked as drawn, nothing drawn.
+    gNear.asDrawn = false;
+    if (gSettings.holstered && pawn != nullptr) {
+        std::uint8_t* const state = gPawnActionState.In<std::uint8_t>(pawn);
+        if (state != nullptr && *state != kActionStateCombat) {
+            w.state = state;
+            w.stateWas = *state;
+            w.stateSet = kActionStateCombat;
+            write_journal::Wrote("Traversal.ActionState (one call)", state, sizeof(std::uint8_t));
+            gNear.asDrawn = true;
+        }
+    }
     CallContext context{pc, fn, &parms};
     CallWithOneCallWrites(w, &CallThunkImpl, &context);
     if (((*w.flagWord ^ w.flagWas) & w.flagMask) != 0 || *joyUp != w.joyUpWas || *joyRight != w.joyRightWas ||
-        (w.clearWord != nullptr && ((*w.clearWord ^ w.clearWas) & w.clearMask) != 0)) {
+        (w.clearWord != nullptr && ((*w.clearWord ^ w.clearWas) & w.clearMask) != 0) || (w.yaw != nullptr && *w.yaw != w.yawWas) ||
+        (w.state != nullptr && *w.state != w.stateWas)) {
         ++gCounters.faultsRestored;  // never expected: the __finally put them back
     }
     return parms.ReturnBool();
@@ -572,6 +639,23 @@ bool CallMove(ue3::Object* pc, Slot const& slot) {
     ue3::Params parms(ue3::runtime::Get(), fn);
     if (!FillInfo(climb ? gClimbInfo : gMantleInfo, parms, slot)) {
         return false;
+    }
+    // Admitted with the head's facing: the move plays along the pawn's, so the pawn is turned to the slot's direction first
+    // (over the obstacle, not along the stick's last heading).
+    if (gSettings.headFacing) {
+        ue3::Object* const pawn = player::Pawn(pc);
+        std::optional<ue3::Rotator> const was = pawn != nullptr ? player::Rotation(pawn) : std::nullopt;
+        ue3::Function* const setRotation = gSetRotationRef.Get();
+        if (was && setRotation != nullptr) {
+            double const off = std::remainder(Degrees(was->yaw) - slot.yaw, 360.0);
+            if (std::abs(off) > 1.0) {
+                ue3::Params rp(ue3::runtime::Get(), setRotation);
+                rp.Set("NewRotation", ue3::Rotator{0, Units(slot.yaw), 0});
+                ue3::runtime::Call(pawn, setRotation, rp);
+                log::Info("traversal: double tap: the pawn turned {:+.0f} deg to {}'s direction before the move (admitted with the head's "
+                          "facing)", -off, slot.name);
+            }
+        }
     }
     ue3::runtime::Call(pc, fn, parms);
     return true;
@@ -643,12 +727,19 @@ void UpdateNear(ue3::Object* pc, ue3::Object* pawn, double now) {
         gNear.loggedAt = now;
         float const distance = gMantleDistance.Read<float>(pc).value_or(-1.0f);
         float const face = gMantleFace.Read<float>(pc).value_or(-1.0f);
+        std::string asked;
+        if (gNear.headDot) {
+            asked += std::format("; asked with the head's facing, {:.0f} deg off", std::acos(std::clamp(*gNear.headDot, -1.0, 1.0)) * 180.0 / kPi);
+        }
+        if (gNear.asDrawn) {
+            asked += "; the weapon away: asked as drawn";
+        }
         log::Info("traversal: next to {} ({}{}): the pawn {:.2f} m from the slot, facing {:.0f} deg off its direction (dot {:.2f}); "
-                  "the game {} ({}: within {:.0f} uu, dot >= {:.2f}, the landing clear){}",
+                  "the game {} ({}: within {:.0f} uu, dot >= {:.2f}, the landing clear){}{}",
             s.name, tv::Name(s.kind), s.target.empty() ? std::string() : " over to " + s.target, gNear.distanceM,
             std::acos(std::clamp(gNear.facingDot, -1.0, 1.0)) * 180.0 / kPi, gNear.facingDot,
             !gNear.asked ? "can't be asked" : gNear.admitted ? "admits it" : "refuses it",
-            s.kind == tv::Kind::ClimbUp ? "CanPerformClimb" : "CanPerformMantle", distance, face,
+            s.kind == tv::Kind::ClimbUp ? "CanPerformClimb" : "CanPerformMantle", distance, face, asked,
             SelectedForUse(pc) != nullptr ? "; A would use " + ShortName(SelectedForUse(pc)) + " first" : std::string());
     }
 }

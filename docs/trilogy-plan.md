@@ -550,7 +550,14 @@ These unblock the most: almost every other entry gets smaller once they land.
   ME3's heavy weapon in hand refuses a grab at a slot (`body_slots::Input::switchLosesHeld`, unit-tested; ME2's switch keeps
   its heavy weapon); a draw where the game allows no combat is refused with the refusal buzz on every game, ME1 included.
   ME3's heavy weapon waits for a combat fixture (research/le3-combat-fixtures.md).
-- **Closes when:** a replayed grip at the hip slot draws the pistol and letting go there holsters it, on each sequel.
+  **The owner's firefights, 2026-11-18** (lane CV2, research/le2-vrik.md "A gun let go in a fight"): "in firefights I'd let go
+  and it would still be in my hand": ME2's TryHolster refuses in combat (6 of 16 let-gos in the run). Now a let-go in a fight
+  holsters by TryHolster's own last step (`BioPawnBehavior.SetActionState(0)`; `[Holsters] combatHolster = 0` the old
+  refusal), a let-go mid-reload, mid-power or mid-transition waits up to 4 s, and a draw nobody asked for (the wheels' close,
+  a fight's start, a script: `SetActionState(1)` routes no hook refuses) is put back at once unless a power needs it. Not run
+  (the owner in the headset).
+- **Closes when:** a replayed grip at the hip slot draws the pistol and letting go there holsters it, on each sequel; on ME2
+  also a let-go in a fight and after the hand power wheel's close.
 - **Waits for:** T05's ME3 combat fixture. Part of ME2's first release (M3.4). **Who:** WP (after C4).
 
 #### T26 The reload by hand [G41]
@@ -661,6 +668,12 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Lives in:** `engine/CoverAcquire`, `game/VrCover`, `core/vr/VrCover`, `game/Posture`; ME3's facts in
   `game/Le3Cover.inc`.
 - **Left, ME2:** recheck crouch, protection and the vault on the current build with standing and seated calibration.
+  **The owner's headset run, 2026-11-18** (lane CV2, research/23 sections 7.6 and 7.7): "almost magnetic" cover: the run's log
+  shows no cover entry of the game's (IsInCover never true, both A presses at cover refused); the drawn body's jump at each
+  crouch (arm IK's third-person anchor) is lane M2W's; a cover watch (`posture: cover watch:`) names whatever moves Shepard
+  near cover next time. Protection: 0 of 164 hits covered: the eye line was open over the barriers to hovering drones; **the
+  level look** (the game's own cone ignores the shooter's height) on ME2 and ME3, `[Cover] judge = either` by default, and
+  every hit's detail logged. Not run (the owner in the headset).
   **ME3:** no snapping by default since 2026-11-17 (lane FP3: `[Hands] noCover`, ME1's and ME2's key and default; VR cover's
   real-slot damage rule follows it, every answer logged; research/trilogy-first-person.md section 2), but neither has an
   in-game result (Save 31 has no cover): research/le3-combat-fixtures.md "First on the combat save". Lane FX3 (2026-11-17):
@@ -694,7 +707,10 @@ These unblock the most: almost every other entry gets smaller once they land.
   observer since 2026-11-16), `game/Le3Traversal.cpp`, `plugin/TraversalCue`.
 - **Left:** ~~ME2's block moves to `game/Le2Traversal.cpp`~~ done 2026-11-16 (GF2, ledger Forks 4 step 1); both observers
   on `ActionLifecycle` (steps 2 and 3); the admission stays per game. **ME2:** the owner's choices
-  ([question 3](#open-owner-questions)). The two-handed hold vaults since 2026-11-16 (rule 8: the weapon's zoom cleared for
+  ([question 3](#open-owner-questions)); its first two taken 2026-11-18 (lane CV2, research/le2-traversal.md "The vault
+  Freedom's Progress requires": a barrier the mission requires couldn't be crossed): the game asked with the head's facing
+  (the pawn turned to the slot at the commit; `[Traversal] facing = head`) and with the weapon away as if drawn
+  (`[Traversal] holstered = 1`), not run yet. The two-handed hold vaults since 2026-11-16 (rule 8: the weapon's zoom cleared for
   the admission's one call; research/le2-traversal.md "The two-handed hold"); letting go of the support grip mid-move is
   sloppy (arm IK in third person for 0.7 s): the hold is kept. Arm IK across the move and the floor lock through it are done (T21): three
   vaults with every tick's wrists within 0.15 m of the controllers and no third-person frame, the eye riding the game's
@@ -1245,9 +1261,11 @@ me3/summary.md; the owner's words in quotes):
    cover gets the damage cut but not the faster recharge (today). Grant it, or not? If granted, "in cover" isn't per shot
    any more: judged against the nearest hostile, or against every awake one?
 3. **The vault's choices on ME2** (research/le2-traversal.md "What is left").
-   - Whose facing counts: the pawn's (today: a player who turns in the room but not with the stick is refused), or the
-     head's, by turning the pawn to the obstacle at the commit?
-   - With the weapon away the game refuses the vault (today). Keep that, draw on the double tap, or admit it holstered?
+   - Whose facing counts: the pawn's, or the head's, by turning the pawn to the obstacle at the commit? **Today (since
+     2026-11-18, lane CV2): the head's** (`[Traversal] facing = head`), because a barrier Freedom's Progress requires
+     couldn't be crossed (research/le2-traversal.md "The vault Freedom's Progress requires"); `facing = pawn` the old rule.
+   - With the weapon away: keep the refusal, draw on the double tap, or admit it holstered? **Today (since 2026-11-18):
+     admitted holstered** (`[Traversal] holstered = 1`, nothing drawn); 0 the old refusal.
    - The cue ("Vault" over the obstacle): off (today), or on by default once seen?
    - The comfort mask during the move: none (today), the vignette, or a blink? And the view: the game's (today) or held
      level?
