@@ -7,12 +7,6 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## Unreleased
 
-- **One set of settings for all three games.** What you change in our menu in ME1, ME2 or ME3 now applies to the other two
-  as well. The settings live in `%LOCALAPPDATA%\MEVR\settings.ini` (next to your calibration); the first start after the
-  update makes it from your ME1 settings and adds what only ME2's or ME3's had. Where a game had a different value of its
-  own, that game keeps it until you change it in the menu once (the game's log lists each one). A few things stay per game
-  by design: the render size and performance settings, debugging switches and paths. The old `ASI\LE1MEVR.ini`,
-  `LE2MEVR.ini` and `LE3MEVR.ini` stay for an older version; a value you edit there by hand applies to that game only.
 - **Your squad moves only when you place it.** A squeeze of the left grip no longer sends the squad somewhere (it did on
   every game when nothing else took the squeeze, and on ME2 it kept happening in fights): place them with the right hand's
   B arc, or by voice.
@@ -21,6 +15,12 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
   (`[HandContact]` in the mod's ini; `on = 0` turns it off). Nobody is pushed.
 - **The shoulder lock takes both hands.** A gun at your shoulder snaps the sight on only with both hands on a two-handed
   gun (an assault rifle, a shotgun or a sniper rifle); held one-handed it no longer locks in.
+- **One set of settings for all three games.** What you change in our menu in ME1, ME2 or ME3 now applies to the other two
+  as well. The settings live in `%LOCALAPPDATA%\MEVR\settings.ini` (next to your calibration); the first start after the
+  update makes it from your ME1 settings and adds what only ME2's or ME3's had. Where a game had a different value of its
+  own, that game keeps it until you change it in the menu once (the game's log lists each one). A few things stay per game
+  by design: the render size and performance settings, debugging switches and paths. The old `ASI\LE1MEVR.ini`,
+  `LE2MEVR.ini` and `LE3MEVR.ini` stay for an older version; a value you edit there by hand applies to that game only.
 - **Shadows stay off in all three games.** Cinematics, conversations and menus turned the shadows back on (on ME2 since
   today's motion-blur fix), and they differ between the eyes in VR; they now go off again every time you're back in the
   game, and Shepard's and the characters' shadows are off on ME1 too.
