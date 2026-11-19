@@ -3,7 +3,10 @@
 packager welds well, and the measurements that say so (research/47 "Game-ready models").
 
     blender -b --factory-startup --python tools/cockpit/game_ready.py -- <assets folder>
-        [--tolerance 0.0005] [--backing-tolerance 0.002] [--smooth-deg 30] [--keep-normals]
+        [--tolerance 0.0005] [--backing-tolerance 0.002] [--smooth-deg 30] [--keep-normals] [--only name,name]
+
+--only remakes just those models (and the controls' clash rows) and keeps the manifest's other entries: a re-export isn't
+byte for byte the same, so remaking every model churns files that didn't change.
 
 Reads what tools/cockpit/package reads (detached/<part>.glb for the controls, the newest repair, or the hull's pieces
 as tools/cockpit/hull_assemble.py placed them) and writes
@@ -49,7 +52,7 @@ from detach_controls import Newest, Sha  # noqa: E402  the packager's rule for w
 # What tools/cockpit/package/Build.cs packages and from where: detached/<file>.glb, the newest repair, or a path under the
 # assets folder. The hull's shell isn't here: it is built low and clean, and the packager takes it as it is.
 HULL = "hull reconstruction/assembled/"
-MODELS = [("joystick-base", "detached"), ("joystick-grip", "detached"), ("throtle-control-base", "detached"),
+MODELS = [("joystick-base", "detached"), ("joystick-grip", "detached"), ("joystick-switch", "detached"), ("throtle-control-base", "detached"),
           ("throtle-control-handle", "detached"), ("chair", "repair"),
           ("hull-console", HULL + "console.glb"), ("hull-side-left", HULL + "side-left.glb"), ("hull-side-right", HULL + "side-right.glb")]
 # detach_controls.py's moving parts: (base, moving) per asset.
@@ -454,8 +457,19 @@ def Run(root, options):
     started = time.time()
     os.makedirs(os.path.join(root, "game-ready", "previews"), exist_ok=True)
     manifest = {"options": options, "models": {}, "controls": {}}
+    only = options.get("only")
+    path = os.path.join(root, "game-ready", "manifest.json")
+    if only:
+        unknown = set(only) - {name for name, _ in MODELS}
+        if unknown:
+            raise SystemExit(f"--only: no model called {', '.join(sorted(unknown))}")
+        with open(path, encoding="utf-8") as f:
+            kept = json.load(f)
+        manifest["models"], manifest["controls"] = kept.get("models", {}), kept.get("controls", {})
     with tempfile.TemporaryDirectory() as scratch:
         for name, source in MODELS:
+            if only and name not in only:
+                continue
             info = Model(root, name, source, options, scratch)
             manifest["models"][name] = info
             f, b, p, r = info["front"], info["backing"], info["packager"], info["renders"].values()
@@ -482,12 +496,15 @@ def Run(root, options):
 
 if __name__ == "__main__":
     args = sys.argv[sys.argv.index("--") + 1:]
-    options = {"tolerance": 0.0005, "backing-tolerance": 0.002, "smooth-deg": 30.0, "keep-normals": False}
+    options = {"tolerance": 0.0005, "backing-tolerance": 0.002, "smooth-deg": 30.0, "keep-normals": False, "only": None}
     root = None
     i = 0
     while i < len(args):
         if args[i] == "--keep-normals":
             options["keep-normals"] = True
+        elif args[i] == "--only":
+            options["only"] = [x for x in args[i + 1].split(",") if x]
+            i += 1
         elif args[i].startswith("--") and args[i][2:] in options:
             options[args[i][2:]] = float(args[i + 1])
             i += 1

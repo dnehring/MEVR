@@ -7,6 +7,11 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## Unreleased
 
+- **Mako: your head aims the turret in the cockpit.** Both hands drive, so riding in the cockpit the cannon and machine gun
+  fire where you look (the reticle sits in the middle of your view); the stick's trigger and A still fire them. The toggle
+  nearest you on the stick's base is the **auto-turret switch**: flip it with a fingertip and your squadmate aims and fires
+  instead, its light turns blue; flip it back to aim with your head again. Outside the cockpit the right controller aims as
+  before. `[Mako] headAim = 0` keeps hand aim in the cockpit; `autoTurret = 1` starts with the switch on.
 - **Your squad moves only when you place it.** A squeeze of the left grip no longer sends the squad somewhere (it did on
   every game when nothing else took the squeeze, and on ME2 it kept happening in fights): place them with the right hand's
   B arc, or by voice.

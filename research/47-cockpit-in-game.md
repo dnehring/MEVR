@@ -1320,3 +1320,49 @@ noticed any real behavioral change".
   (244 + 366 ticks for one `jets 3`) were probably this.
 - **Kept as it is** (the user, 2026-11-04: "good enough"): the angles (20 forward/back, 15 sideways) and the stick's curve stay;
   a full tilt is strong, a small one gentle.
+
+## Head aim and the auto-turret switch (2026-11-18, the owner; built, not yet run in the game)
+
+The owner, passing on a player's feedback: "for driving the mako, head aiming would likely be best since the hands are already
+busy", constrained to the seated Mako; then "a basic switch in the mako to engage auto-turret. So then the head aim would be
+always on unless the switch is flipped", the switch on "the base of the joystick", with "a light that gets clicked on", and,
+after a first try that laid a lamp face over the paint, "can we just change the color for it to actually just be blue?".
+
+- **Head aim** (`game/Mako`; `[Mako] headAim = 1`): riding in the cockpit (`cockpit_probe::Riding()`, hand aim on, a head-tracked
+  view, our menu shut) the turret's ray is the head's: from the eyes' midpoint (`TrackingFrame::head`) along where it looks,
+  traced as the hand's ray was (`TraceAim`), so the shots (`ShotRotation`, from the gun's start to what the ray hits), the turret
+  model (`AimTurretModel`), the cockpit's aiming screen and the reticle (`AimRay`: the middle of the view, at the hit) all follow
+  it. The stick's thumbstick and the free right hand no longer aim there. Out of the cockpit nothing changed (the controller aims).
+  Not Halcyon's `makoHeadAim` (still 0, pinned by the baseline): it writes ControlRotation, which turns the chase view and would
+  fight our turret aim. `mako::GunnerAiming()` is now true for the head too, so hand aim's script handler (and the CallFunction
+  hook, `Mod.cpp`) take the shots without controllers' hand aim. Log `mako: the head aims the turret ...`, the aim line `your head
+  aims the turret (the cockpit's auto-turret switch is off)`.
+- **The switch** is the stick base's toggle nearest the pilot, one of three the Tripo model has (render: the pilot's view, the
+  toggle marked, approved by the owner before it was built). `tools/cockpit/detach_controls.py` splits its lever off the toggle's
+  island by height over its plate (every face with a vertex 0.022 units over the plate's top; the plate's normal measured, 40
+  degrees off level toward the seat) into `detached/joystick-switch.glb`, its origin the lever's foot, hinged about the model's -y
+  (the lever's thin side), `onDeg` 24 from its modelled pose (which leans 10 degrees toward the seat: off) toward the plate's upper
+  end. `game_ready.py` (now with `--only`), the packager (`Joystick_Switch`) and `place.py` (`part ...Joystick_Switch` placed from
+  the base's furniture entry, and `switch at R F U axis R F U tip R F U on DEG lamp N`) carry it to the game.
+- **The light is the toggle's own painted glow, recoloured.** A lamp quad over the paint never matched it (the bar is painted
+  across the toggle's island and the base's big triangles, with a rim fading to red 0.6 and a haze round it). Now the faces the
+  glow lies on (20, within 0.03 units of the bar) take a material of their own, `TurretLamp`, on a 256 x 128 cut-out of the
+  texture with their UVs moved into it, and `detached/joystick-base-TurretLamp-on.png` is that cut-out with every glowing texel's
+  hue moved to blue (rim 205 degrees, core 215; saturation and brightness kept, weighted by how much it glows), so the rim, the
+  core and the haze keep their shape. The packager makes `Joystick_TurretLamp_MIC` (the orange, as before) and, from the sidecar,
+  `Joystick_TurretLamp_On_MIC`; the game swaps that element (`cockpit_probe::ShowSwitchLamp`, the `switch ... lamp` element, 2 on
+  Joystick_Base). Off it looks as the other two toggles do.
+- **Flipping it** (`core/vr/CockpitPanel` `Toggle`, unit-tested in `tests/CockpitPanelTests.cpp`): a fingertip within 2.5 cm of
+  the lever (its foot to its tip) touches it; pushed 8 mm across it the way it isn't thrown, it flips (off toward the upper end,
+  on back), a click in that hand; the hand must leave the lever before it flips it again; the lever swings over in 0.08 s
+  (`cockpit_probe`'s `Motion::Switch`: a turn about the hinge in the eye's axes carried into the vehicle frame, `SwitchTurn`).
+  Either hand. `game/CockpitPanel` keeps the state for the session, starting as `[Mako] autoTurret` (0) says.
+- **On, the gunner has the turret** (research/47 "The gunner", its targets and fire unchanged) and nothing of the player's takes it
+  back (`mako_gunner::Inputs::manualTakeover` false); with no target it gives the turret to the head until one comes. Off, the
+  gunner stands by.
+- Tools: `mevr cockpit switch [on|off|toggle]` (the state without controllers, and where the switch is); snapshot
+  `"mod"."cockpitPanel"."autoTurret"` (state, the lever's throw, the touching hand, flips, the layout in tracking space). Logs
+  `cockpit panel: the right hand flipped the auto-turret switch on: ...`, `cockpit probe: switch: ...`.
+- Measured offline: the split (76-triangle lever, 0.046 units tall), the off and on renders from the pilot's side (the glow orange,
+  then blue, same shape), the package's checks. **Not yet seen in the game:** the lever's swing direction on the real model, the
+  glow's colour through the level's grade, a flip by a tracked fingertip, the head's aim in a fight.

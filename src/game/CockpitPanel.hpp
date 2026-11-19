@@ -4,6 +4,7 @@
 #include "core/vr/CockpitPanel.hpp"
 #include "game/GamepadMapping.hpp"
 
+#include <optional>
 #include <string>
 
 namespace mevr::ue3 {
@@ -32,6 +33,14 @@ void Tick(double deltaSeconds, Link const& link);
 void AdjustPad(gamepad::Options& options);
 // Where the models are (game/CockpitProbe moves the cap and the handle by it).
 vr::cockpit_panel::Output const& Current();
+// The auto-turret switch on the stick's base (the owner, 2026-11-18): on, the gunner aims the Mako's turret; off, the player's head
+// (game/Mako). A fingertip flips it while riding with the cockpit up; it starts as [Mako] autoTurret says and keeps its state for
+// the session. Its painted glow turns blue while on.
+bool AutoTurret();
+// The lever as drawn (game/CockpitProbe turns Joystick_Switch by its throw).
+vr::cockpit_panel::SwitchOutput const& CurrentSwitch();
+// `mevr cockpit switch [on|off|toggle]`: the state, or set it as the lever would (for tests, without controllers).
+std::string SwitchCommand(std::string const& rest);
 // Snapshot JSON.
 std::string StatusJson();
 // `mevr cockpit panel [repair|extract|ask|throttle]`: the state, or (for tests) one of the two calls as the controls would make

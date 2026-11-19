@@ -6,6 +6,7 @@
 #include "core/vr/TestRequest.hpp"
 #include "engine/GameAdapter.hpp"
 #include "game/CockpitProbe.hpp"
+#include "game/HandCalibration.hpp"
 #include "game/MakoControls.hpp"
 #include "game/Player.hpp"
 #include "ue3/Handles.hpp"
@@ -51,6 +52,14 @@ cp::ClickOutput gClick;
 unsigned gThrottleRepairs = 0;
 unsigned gClickRefusals = 0;
 int gSimulatedClickTicks = 0;  // `mevr cockpit panel throttle`: a click on the held lever for these ticks, without controllers
+// The auto-turret switch on the stick's base (core/vr/CockpitPanel's Toggle): on, the gunner aims the turret; off, the head
+// (game/Mako). The state starts as [Mako] autoTurret says and lives for the session.
+cp::Toggle gToggle;
+cp::SwitchOutput gSwitch;
+std::optional<bool> gAutoTurret;
+std::optional<cp::SwitchLayout> gSwitchLayout;
+unsigned gFlips = 0;
+bool gSwitchWasActive = false;
 
 XrVector3f AimTip(XrPosef const& aim) {
     XrQuaternionf const q = aim.orientation;
@@ -297,6 +306,73 @@ void Tick(double deltaSeconds, Link const& link) {
     if (layout && layout->travelM > 0.0f) {
         ShowLamps(cockpit_probe::Riding());
     }
+
+    // The auto-turret switch: a fingertip flips it; its glow blue while the gunner has the turret.
+    if (!gAutoTurret) {
+        gAutoTurret = hand_calibration::GetMako().autoTurret;
+    }
+    cp::SwitchInput sw;
+    sw.deltaSeconds = deltaSeconds;
+    gSwitchLayout = link.mainMenuOpen ? std::nullopt : cockpit_probe::SwitchLayout();
+    sw.active = gSwitchLayout.has_value() && controllers.active;
+    if (gSwitchLayout) {
+        sw.layout = *gSwitchLayout;
+    }
+    for (int h = 0; h < 2; ++h) {
+        sw.hands[h] = in.hands[h];
+    }
+    sw.on = *gAutoTurret;
+    gSwitch = gToggle.Step(sw, gSettings);
+    if (sw.active != gSwitchWasActive) {
+        gSwitchWasActive = sw.active;
+        log::Info("cockpit panel: the auto-turret switch is {} (the gunner {})", sw.active ? "in reach" : "out of use",
+            *gAutoTurret ? "aims" : "stands by: the head aims");
+    }
+    if (gSwitch.flipped) {
+        ++gFlips;
+        gAutoTurret = gSwitch.on;
+        log::Info("cockpit panel: the {} hand flipped the auto-turret switch {}: {}", gSwitch.touchHand == 0 ? "left" : "right",
+            gSwitch.on ? "on" : "off", gSwitch.on ? "the gunner aims the turret" : "the turret follows your head");
+    }
+    if (link.hapticPulse != nullptr) {
+        for (int i = 0; i < gSwitch.hapticCount; ++i) {
+            link.hapticPulse(gSwitch.haptics[i].hand, gSwitch.haptics[i].seconds, gSwitch.haptics[i].amplitude);
+        }
+    }
+    if (cockpit_probe::Riding()) {
+        cockpit_probe::ShowSwitchLamp(*gAutoTurret);
+    }
+}
+
+bool AutoTurret() {
+    if (!gAutoTurret) {
+        gAutoTurret = hand_calibration::GetMako().autoTurret;
+    }
+    return *gAutoTurret;
+}
+
+vr::cockpit_panel::SwitchOutput const& CurrentSwitch() {
+    return gSwitch;
+}
+
+std::string SwitchCommand(std::string const& rest) {
+    std::string word = rest;
+    word.erase(0, word.find_first_not_of(' '));
+    word.erase(word.find_last_not_of(' ') + 1);
+    bool const was = AutoTurret();
+    if (word == "on" || word == "off" || word == "toggle") {
+        gAutoTurret = word == "toggle" ? !was : word == "on";
+        if (*gAutoTurret != was) {
+            ++gFlips;
+        }
+        log::Info("cockpit panel: the auto-turret switch {} by the console: {}", *gAutoTurret ? "on" : "off",
+            *gAutoTurret ? "the gunner aims the turret" : "the turret follows your head");
+    } else if (!word.empty()) {
+        return "usage: mevr cockpit switch [on|off|toggle] (or the layout: switch at R F U axis R F U tip R F U on DEG lamp N)";
+    }
+    return std::format("cockpit panel: the auto-turret switch is {} ({}), the lever {:.2f} of its throw, {} flips, {}", *gAutoTurret ? "on" : "off",
+        *gAutoTurret ? "the gunner aims the turret" : "the head aims it", gSwitch.throw_, gFlips,
+        gSwitchLayout ? "in reach" : "not in use (not riding with the cockpit's switch)");
 }
 
 void AdjustPad(gamepad::Options& options) {
@@ -334,12 +410,22 @@ std::string StatusJson() {
         gRepairPower.gel ? "true" : "false", json::JsonNumber(gRepairPower.cooldownS), json::JsonString(gRepairPower.why));
     std::string const throttle = std::format("{{\"refused\": {}, \"refusedLit\": {}, \"refusals\": {}, \"repairs\": {}}}",
         json::JsonString(cp::Name(gClick.refused)), gClick.refusedLit ? "true" : "false", gClickRefusals, gThrottleRepairs);
+    std::string switchLayout = "null";
+    if (gSwitchLayout) {
+        auto const v = [&](XrVector3f const& p) {
+            return std::format("[{}, {}, {}]", json::JsonNumber(p.x), json::JsonNumber(p.y), json::JsonNumber(p.z));
+        };
+        switchLayout = std::format("{{\"pivot\": {}, \"axis\": {}, \"tipRest\": {}, \"onDeg\": {}}}", v(gSwitchLayout->pivot),
+            v(gSwitchLayout->axis), v(gSwitchLayout->tipRest), json::JsonNumber(gSwitchLayout->onDeg));
+    }
+    std::string const autoTurret = std::format("{{\"on\": {}, \"throw\": {}, \"touchHand\": {}, \"flips\": {}, \"layout\": {}}}",
+        gAutoTurret.value_or(false) ? "true" : "false", json::JsonNumber(gSwitch.throw_), gSwitch.touchHand, gFlips, switchLayout);
     return std::format("{{\"active\": {}, \"pressM\": {}, \"pressed\": {}, \"progress\": {}, \"refused\": {}, \"refusedLit\": {}, \"refusals\": {}, "
                        "\"repairPower\": {}, \"throttleClick\": {}, \"pullDeg\": {}, \"held\": {}, \"repairs\": {}, \"extractions\": {}, "
-                       "\"lamps\": [{}], \"last\": {}, \"layout\": {}}}",
+                       "\"lamps\": [{}], \"last\": {}, \"layout\": {}, \"autoTurret\": {}}}",
         gWasActive ? "true" : "false", json::JsonNumber(gOut.pressM), gOut.pressed ? "true" : "false", json::JsonNumber(gOut.progress),
         json::JsonString(cp::Name(gOut.refused)), gOut.refusedLit ? "true" : "false", gRefusals, power, throttle, json::JsonNumber(gOut.pullDeg),
-        gOut.held ? "true" : "false", gRepairs, gExtractions, lamps, json::JsonString(gLast), layout);
+        gOut.held ? "true" : "false", gRepairs, gExtractions, lamps, json::JsonString(gLast), layout, autoTurret);
 }
 
 std::string Command(std::string const& rest) {

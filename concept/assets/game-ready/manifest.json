@@ -3,111 +3,115 @@
   "tolerance": 0.0005,
   "backing-tolerance": 0.002,
   "smooth-deg": 30.0,
-  "keep-normals": false
+  "keep-normals": false,
+  "only": [
+   "joystick-base",
+   "joystick-switch"
+  ]
  },
  "models": {
   "joystick-base": {
    "source": "detached/joystick-base.glb",
-   "sourceSha256": "90e5d13baeebe5ff238d89333e3b8d7a2582ba90aab8f7cfafa5b9574b42880d",
+   "sourceSha256": "b09d5089a2045665a91accb5a18b2a24b24afffd6a59248749fb4a23ee5e7264",
    "diagonal": 1.3817634051157315,
    "edges": {
     "source": {
-     "boundary": 0,
-     "nonManifold": 0
+     "boundary": 16,
+     "nonManifold": 16
     },
     "result": {
-     "boundary": 0,
-     "nonManifold": 0
+     "boundary": 16,
+     "nonManifold": 16
     }
    },
    "texel": {
-    "source": 1966.5151227286965,
-    "result": 1956.5247276385198
+    "source": 1966.4908745085404,
+    "result": 1956.4853914157995
    },
    "front": {
     "triangles": [
-     10582,
-     9746
+     10506,
+     9676
     ],
     "deviation": {
      "p50": 1.4901161193847656e-08,
-     "p99": 0.0001492773613426835,
-     "max": 0.0004864083311986178,
-     "sourceToResultMax": 0.000422630924731493,
-     "resultToSourceMax": 0.0004864083311986178
+     "p99": 0.00015532446137513057,
+     "max": 0.0005363048403523862,
+     "sourceToResultMax": 0.0005363048403523862,
+     "resultToSourceMax": 0.0005003798869438469
     },
     "tolerance": 0.0006908817025578658,
     "tries": [
      {
       "share": 0.1732,
-      "triangles": 1832,
-      "p99": 0.014731254056096085,
-      "max": 0.03306880593299866,
+      "triangles": 1818,
+      "p99": 0.015129260178655398,
+      "max": 0.03085308149456978,
       "passes": false
      },
      {
       "share": 0.4162,
-      "triangles": 4404,
-      "p99": 0.0033783005643636074,
-      "max": 0.03413628786802292,
+      "triangles": 4372,
+      "p99": 0.003332679970189936,
+      "max": 0.03402366116642952,
       "passes": false
      },
      {
       "share": 0.6451,
-      "triangles": 6826,
-      "p99": 0.0010805643559433549,
-      "max": 0.03366369754076004,
+      "triangles": 6776,
+      "p99": 0.001080517607042566,
+      "max": 0.03363655507564545,
       "passes": false
      },
      {
       "share": 0.8032,
-      "triangles": 8498,
-      "p99": 0.00046887404198059823,
-      "max": 0.030255822464823723,
+      "triangles": 8438,
+      "p99": 0.00048240331205306607,
+      "max": 0.03145050257444382,
       "passes": false
      },
      {
       "share": 0.8962,
-      "triangles": 9482,
-      "p99": 0.00019405578656005713,
-      "max": 0.02267543599009514,
+      "triangles": 9414,
+      "p99": 0.00019842310575768365,
+      "max": 0.021006494760513306,
       "passes": false
      },
      {
       "share": 0.9467,
-      "triangles": 10016,
-      "p99": 0.00010220741205557718,
-      "max": 0.000391255016438663,
+      "triangles": 9944,
+      "p99": 9.988986537791789e-05,
+      "max": 0.0003067418874707073,
       "passes": true
      },
      {
       "share": 0.9211,
-      "triangles": 9746,
-      "p99": 0.0001492773613426835,
-      "max": 0.0004864083311986178,
+      "triangles": 9676,
+      "p99": 0.00015532446137513057,
+      "max": 0.0005363048403523862,
       "passes": true
      },
      {
       "share": 0.9086,
-      "triangles": 9614,
-      "p99": 0.0001788394310278821,
-      "max": 0.02267543599009514,
+      "triangles": 9544,
+      "p99": 0.00018129392599803404,
+      "max": 0.021006494760513306,
       "passes": false
      },
      {
       "share": 0.9148,
-      "triangles": 9680,
-      "p99": 0.0001652830019884282,
-      "max": 0.02267543599009514,
+      "triangles": 9610,
+      "p99": 0.00016918777226237596,
+      "max": 0.021006494760513306,
       "passes": false
      }
     ],
     "final": {
      "p50": 1.4901161193847656e-08,
-     "p99": 0.0001492773613426835,
-     "max": 0.0004864083311986178,
-     "sourceToResultMax": 0.000422630924731493,
-     "resultToSourceMax": 0.0004864083311986178
+     "p99": 0.00015532446137513057,
+     "max": 0.0005363048403523862,
+     "sourceToResultMax": 0.0005363048403523862,
+     "resultToSourceMax": 0.0005003798869438469
     }
    },
    "backing": {
@@ -128,8 +132,8 @@
     }
    },
    "lockedKept": [
-    886,
-    886
+    930,
+    930
    ],
    "normals": "smooth, sharp above 30 degrees",
    "output": "game-ready/joystick-base.glb",
@@ -138,8 +142,8 @@
      "primitives": [
       {
        "material": "tripo_mat_a87a98ce-da63-4861-ab41-09db3dc5f793",
-       "triangles": 10582,
-       "welded": 14846,
+       "triangles": 10486,
+       "welded": 14726,
        "baseColor": "8f511cdffb36e6d2b6a20391f05f1c7d62c3e7c6f6acd60ca6733e09d3427b32"
       },
       {
@@ -147,16 +151,22 @@
        "triangles": 886,
        "welded": 2518,
        "baseColor": null
+      },
+      {
+       "material": "TurretLamp",
+       "triangles": 20,
+       "welded": 38,
+       "baseColor": "f15458c863d3adf57c24fe043f2e39d3055c33debff60fcab9219ba5b2d6c952"
       }
      ],
-     "welded": 17364
+     "welded": 17282
     },
     "result": {
      "primitives": [
       {
        "material": "tripo_mat_a87a98ce-da63-4861-ab41-09db3dc5f793",
-       "triangles": 9746,
-       "welded": 13341,
+       "triangles": 9656,
+       "welded": 13204,
        "baseColor": "8f511cdffb36e6d2b6a20391f05f1c7d62c3e7c6f6acd60ca6733e09d3427b32"
       },
       {
@@ -164,43 +174,49 @@
        "triangles": 886,
        "welded": 1806,
        "baseColor": null
+      },
+      {
+       "material": "TurretLamp",
+       "triangles": 20,
+       "welded": 30,
+       "baseColor": "f15458c863d3adf57c24fe043f2e39d3055c33debff60fcab9219ba5b2d6c952"
       }
      ],
-     "welded": 15147
+     "welded": 15040
     },
     "limit": 65535
    },
    "baseColorUnchanged": true,
    "renders": {
     "front": {
-     "silhouetteIoU": 0.9999259971878931,
-     "colourDiffMean": 0.16048698127269745,
+     "silhouetteIoU": 0.9998889998889999,
+     "colourDiffMean": 0.15608347952365875,
      "colourDiffP99": 2.999999761581421,
      "pixelsOver16": 0.0011471284783895795
     },
     "back": {
-     "silhouetteIoU": 0.999963001331952,
-     "colourDiffMean": 0.06393606960773468,
+     "silhouetteIoU": 0.9999260054016057,
+     "colourDiffMean": 0.10256410390138626,
      "colourDiffP99": 1.9999998807907104,
-     "pixelsOver16": 0.000296000296000296
+     "pixelsOver16": 0.001369001369001369
     },
     "left": {
      "silhouetteIoU": 1.0,
-     "colourDiffMean": 1.4841384887695312,
-     "colourDiffP99": 23.000001907348633,
-     "pixelsOver16": 0.018713241846373196
+     "colourDiffMean": 1.560105323791504,
+     "colourDiffP99": 23.999998092651367,
+     "pixelsOver16": 0.019515237925503474
     },
     "right": {
      "silhouetteIoU": 1.0,
-     "colourDiffMean": 0.4997103810310364,
-     "colourDiffP99": 11.999999046325684,
-     "pixelsOver16": 0.005659788760639957
+     "colourDiffMean": 0.48567232489585876,
+     "colourDiffP99": 11.000006675720215,
+     "pixelsOver16": 0.005615223494808147
     },
     "top": {
      "silhouetteIoU": 0.9999533544015953,
-     "colourDiffMean": 0.8112515211105347,
-     "colourDiffP99": 18.999998092651367,
-     "pixelsOver16": 0.01232667436354943
+     "colourDiffMean": 0.84455806016922,
+     "colourDiffP99": 19.0000057220459,
+     "pixelsOver16": 0.012524927404401217
     },
     "bottom": {
      "silhouetteIoU": 0.9999533554894758,
@@ -209,16 +225,16 @@
      "pixelsOver16": 4.6646686336019404e-05
     },
     "front-right": {
-     "silhouetteIoU": 1.0,
-     "colourDiffMean": 0.5463321805000305,
+     "silhouetteIoU": 0.9999582123231859,
+     "colourDiffMean": 0.5337972640991211,
      "colourDiffP99": 13.999999046325684,
-     "pixelsOver16": 0.007626251018574622
+     "pixelsOver16": 0.007584780292108067
     },
     "back-left": {
-     "silhouetteIoU": 0.9999384425977224,
-     "colourDiffMean": 0.7052039504051208,
-     "colourDiffP99": 13.999999046325684,
-     "pixelsOver16": 0.007941393745382911
+     "silhouetteIoU": 0.9999382919203554,
+     "colourDiffMean": 0.770287811756134,
+     "colourDiffP99": 14.999999046325684,
+     "pixelsOver16": 0.008619093658075
     }
    }
   },
@@ -1892,6 +1908,188 @@
      "pixelsOver16": 0.003309295663340907
     }
    }
+  },
+  "joystick-switch": {
+   "source": "detached/joystick-switch.glb",
+   "sourceSha256": "09c7f5b65f31e966897cd35881f7022ea385101e9f191b6b81c38e9a7119796d",
+   "diagonal": 0.11511052818777359,
+   "edges": {
+    "source": {
+     "boundary": 16,
+     "nonManifold": 16
+    },
+    "result": {
+     "boundary": 16,
+     "nonManifold": 16
+    }
+   },
+   "texel": {
+    "source": 1973.760241109683,
+    "result": 1973.760241109683
+   },
+   "front": {
+    "triangles": [
+     76,
+     76
+    ],
+    "deviation": null,
+    "tolerance": 5.7555264093886795e-05,
+    "tries": [
+     {
+      "share": 0.1732,
+      "triangles": 16,
+      "p99": 0.010404320051893593,
+      "max": 0.012441946193575859,
+      "passes": false
+     },
+     {
+      "share": 0.4162,
+      "triangles": 30,
+      "p99": 0.0017290793266147397,
+      "max": 0.002273338846862316,
+      "passes": false
+     },
+     {
+      "share": 0.6451,
+      "triangles": 48,
+      "p99": 0.0008853472053306183,
+      "max": 0.0011234116973355412,
+      "passes": false
+     },
+     {
+      "share": 0.8032,
+      "triangles": 60,
+      "p99": 0.000525219126720913,
+      "max": 0.001080054440535605,
+      "passes": false
+     },
+     {
+      "share": 0.8962,
+      "triangles": 68,
+      "p99": 0.00026091577921761206,
+      "max": 0.0006854041712358594,
+      "passes": false
+     },
+     {
+      "share": 0.9467,
+      "triangles": 70,
+      "p99": 0.00022166866998304707,
+      "max": 0.0006854041712358594,
+      "passes": false
+     },
+     {
+      "share": 0.973,
+      "triangles": 72,
+      "p99": 0.000172230214957381,
+      "max": 0.0006288758595474064,
+      "passes": false
+     },
+     {
+      "share": 0.9864,
+      "triangles": 74,
+      "p99": 5.3954224567860786e-05,
+      "max": 0.0006288758595474064,
+      "passes": false
+     },
+     {
+      "share": 0.9932,
+      "triangles": 74,
+      "p99": 5.3954224567860786e-05,
+      "max": 0.0006288758595474064,
+      "passes": false
+     }
+    ],
+    "final": {
+     "p50": 2.3283064365386963e-09,
+     "p99": 2.0842123646502852e-07,
+     "max": 1.2262225936865434e-06,
+     "sourceToResultMax": 1.1118864904346992e-06,
+     "resultToSourceMax": 1.2262225936865434e-06
+    }
+   },
+   "backing": null,
+   "lockedKept": [
+    16,
+    16
+   ],
+   "normals": "smooth, sharp above 30 degrees",
+   "output": "game-ready/joystick-switch.glb",
+   "packager": {
+    "source": {
+     "primitives": [
+      {
+       "material": "tripo_mat_a87a98ce-da63-4861-ab41-09db3dc5f793",
+       "triangles": 76,
+       "welded": 113,
+       "baseColor": "8f511cdffb36e6d2b6a20391f05f1c7d62c3e7c6f6acd60ca6733e09d3427b32"
+      }
+     ],
+     "welded": 113
+    },
+    "result": {
+     "primitives": [
+      {
+       "material": "tripo_mat_a87a98ce-da63-4861-ab41-09db3dc5f793",
+       "triangles": 76,
+       "welded": 124,
+       "baseColor": "8f511cdffb36e6d2b6a20391f05f1c7d62c3e7c6f6acd60ca6733e09d3427b32"
+      }
+     ],
+     "welded": 124
+    },
+    "limit": 65535
+   },
+   "baseColorUnchanged": true,
+   "renders": {
+    "front": {
+     "silhouetteIoU": 1.0,
+     "colourDiffMean": 0.0,
+     "colourDiffP99": 0.0,
+     "pixelsOver16": 0.0
+    },
+    "back": {
+     "silhouetteIoU": 1.0,
+     "colourDiffMean": 0.0,
+     "colourDiffP99": 0.0,
+     "pixelsOver16": 0.0
+    },
+    "left": {
+     "silhouetteIoU": 1.0,
+     "colourDiffMean": 0.0,
+     "colourDiffP99": 0.0,
+     "pixelsOver16": 0.0
+    },
+    "right": {
+     "silhouetteIoU": 1.0,
+     "colourDiffMean": 0.0,
+     "colourDiffP99": 0.0,
+     "pixelsOver16": 0.0
+    },
+    "top": {
+     "silhouetteIoU": 1.0,
+     "colourDiffMean": 0.0,
+     "colourDiffP99": 0.0,
+     "pixelsOver16": 0.0
+    },
+    "bottom": {
+     "silhouetteIoU": 1.0,
+     "colourDiffMean": 0.0,
+     "colourDiffP99": 0.0,
+     "pixelsOver16": 0.0
+    },
+    "front-right": {
+     "silhouetteIoU": 1.0,
+     "colourDiffMean": 0.0,
+     "colourDiffP99": 0.0,
+     "pixelsOver16": 0.0
+    },
+    "back-left": {
+     "silhouetteIoU": 1.0,
+     "colourDiffMean": 0.0,
+     "colourDiffP99": 0.0,
+     "pixelsOver16": 0.0
+    }
+   }
   }
  },
  "controls": {
@@ -1926,5 +2124,5 @@
    }
   }
  },
- "seconds": 29.9
+ "seconds": 6.7
 }

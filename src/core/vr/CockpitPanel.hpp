@@ -38,6 +38,11 @@ struct Settings {
     float refusalFlashS = 1.2f;    // pressed while the repair cools down: the squares flash red once this often
     bool throttleClick = true;     // the left thumbstick's click on the held throttle lever is the repair too (ThrottleClick)
     float clickRefusalS = 2.4f;    // a refused click shows red this long (two of the cooldown's flashes), or while it's held
+    // The auto-turret switch on the stick's base (Toggle): a fingertip this close to the lever (its foot to its tip) touches it,
+    // and pushed this far across it the way it isn't thrown, flips it; the lever swings over in flipS.
+    float switchRadiusM = 0.025f;
+    float switchThrowM = 0.008f;
+    float switchFlipS = 0.08f;
 };
 
 // Why the game's repair can't run now (game/CockpitPanel asks the vehicle's VehicleRepair power while the button is pushed).
@@ -161,9 +166,55 @@ private:
     double secondBuzzIn_ = -1.0;  // a refusal's second buzz, this many seconds on (< 0 none)
 };
 
+// The auto-turret switch (the owner, 2026-11-18: "a basic switch in the mako to engage auto-turret", on "the base of the joystick"):
+// the stick base's toggle nearest the pilot (tools/cockpit/detach_controls.py split its lever off). A fingertip that touches
+// the lever and pushes it across, the way it isn't thrown, flips it: off to on toward the plate's upper end, on to off back.
+// Either hand; a hand that flipped it must leave the lever before it flips it again. The lever swings over in flipS, a click
+// in the hand that flipped it. game/CockpitPanel keeps the state (on: the gunner aims; off: the head) and turns the toggle's own
+// painted glow blue while it's on (the base's TurretLamp element; the owner, 2026-11-18).
+struct SwitchLayout {
+    XrVector3f pivot{};                    // the lever's foot (its hinge), tracking space
+    XrVector3f axis{1.0f, 0.0f, 0.0f};     // unit: a turn about it by + throws the lever on
+    XrVector3f tipRest{};                  // the lever's tip off (as modelled)
+    float onDeg = 24.0f;                   // the throw from off to on
+};
+
+struct SwitchInput {
+    double deltaSeconds = 0.0;
+    bool active = false;  // riding with the cockpit and the switch's layout: else no hand touches it (the state stays)
+    SwitchLayout layout;
+    Hand hands[2];        // the tips
+    bool on = false;      // the state as kept (a console command may have changed it)
+};
+
+struct SwitchOutput {
+    float throw_ = 0.0f;   // the lever as shown, 0 off .. 1 on
+    bool flipped = false;  // this step a hand flipped it
+    bool on = false;       // the state after this step
+    int touchHand = -1;    // the hand touching the lever, -1 none
+    Haptic haptics[2];
+    int hapticCount = 0;
+};
+
+class Toggle {
+public:
+    SwitchOutput Step(SwitchInput const& input, Settings const& settings);
+    void Reset();
+
+private:
+    bool touching_[2]{};
+    bool spent_[2]{};       // flipped it during this touch
+    float entered_[2]{};    // where the tip touched it, along the throw
+    float shown_ = -1.0f;   // the lever's throw as drawn (-1: not yet drawn)
+};
+
+// The lever's tip at `share` of the throw (0 off, 1 on).
+XrVector3f SwitchTip(SwitchLayout const& layout, float share);
+
 // The lamps. Health: how many of `count` light for a hull at `health` (0..1): none at 0, all at full, each one a share of it.
 int HealthLamps(float health, int count);
 enum class Colour : std::uint8_t { Off, Green, Amber, Red, White, Blue };
+inline constexpr int kColours = 6;
 // The health lamps' colour: green over 0.6, amber over 0.3, red below.
 Colour HealthColour(float health);
 // The progress squares lit for a hold at `progress` (0..1).

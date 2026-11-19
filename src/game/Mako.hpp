@@ -26,8 +26,11 @@ class Context;
 //   re-aimed after us (the log and the snapshot say so).
 // - The aim ray for the host's hand reticle (the host shows it in the Mako only on a valid ray from the mod).
 // - The vehicle's motion for the comfort vignette (core/vr/Comfort VehicleMotion; game/comfort reads Motion()).
-// Everything through our reflection layer; a lookup that fails stands the part down with a `mako:` line. Head aim stays
-// Halcyon's business (its makoHeadAim is off in our deploy): the head drives the view only. Game thread.
+// - Riding in the cockpit (research/47) the head aims instead ([Mako] headAim; the owner, 2026-11-18: the hands drive): the ray
+//   from the eyes along where they look, unless the auto-turret switch on the stick's base (game/CockpitPanel) gives the turret
+//   to the gunner. Our own aim, not Halcyon's makoHeadAim (off in our deploy: it writes ControlRotation, which turns the chase
+//   view and would fight the turret's own aim).
+// Everything through our reflection layer; a lookup that fails stands the part down with a `mako:` line. Game thread.
 namespace mevr::game::mako {
 
 struct Link {
@@ -55,8 +58,8 @@ Motion CurrentMotion();
 // For game/hand_aim's GetAdjustedAimFor handler: the shot's rotation (unwound next to `game`) while the controller
 // aims the turret; false otherwise (the game's aim stays).
 bool ShotRotation(ue3::Rotator const& game, ue3::Rotator& out);
-// The gunner aims the turret this tick (research/47 "The gunner"): game/hand_aim then asks ShotRotation even with hand aim
-// off (the squadmate's shots go where it aims, controllers or not).
+// The gunner (research/47 "The gunner") or the head aims the turret this tick: game/hand_aim then asks ShotRotation and AimRay
+// even with hand aim off (the shots go where they aim, whatever the hands do).
 bool GunnerAiming();
 // For game/hand_aim's AimRay(): the controller's ray in tracking space while it aims the turret and [Mako] reticle
 // is on; nullopt otherwise.

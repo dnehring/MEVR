@@ -122,6 +122,7 @@ internal static class Build
     {
         ("joystick-base", "Joystick_Base", "Joystick", "detached"),
         ("joystick-grip", "Joystick_Grip", "Joystick", "detached"),
+        ("joystick-switch", "Joystick_Switch", "Joystick", "detached"),  // the auto-turret switch's lever (detach_controls.py; its glow is the base's TurretLamp element)
         ("throtle-control-base", "Throttle_Base", "Throttle", "detached"),
         ("throtle-control-handle", "Throttle_Handle", "Throttle", "detached"),
         ("chair", "Chair", "Chair", "repair"),
@@ -534,9 +535,10 @@ internal static class Build
             // _MIC (the console's idle screens). The live screen (material "Screen") gets an instance of its own,
             // <Group>_Screen_MIC, whose texture the mod replaces with the capture's (research/48).
             int mainImage = welded.Select(p => p.BaseColorImage).FirstOrDefault(i => i.HasValue) ?? throw new InvalidDataException($"{source.Name} has no base colour image");
-            (ExportEntry Texture, int Width, int Height) Texture(int imageIndex, string suffix)
+            (ExportEntry Texture, int Width, int Height) Texture(int imageIndex, string suffix) =>
+                TextureOf(model.LogicalImages[imageIndex].Content.Content.ToArray(), suffix);
+            (ExportEntry Texture, int Width, int Height) TextureOf(byte[] encoded, string suffix)
             {
-                byte[] encoded = model.LogicalImages[imageIndex].Content.Content.ToArray();
                 string hash = Convert.ToHexString(SHA256.HashData(encoded));
                 if (!textures.TryGetValue(hash, out var made))
                 {
@@ -577,6 +579,23 @@ internal static class Build
                     if (!screen)
                     {
                         Variants(name, texture, primitive.MaterialName);
+                    }
+                    // An element with a recoloured copy of its image beside the detached models (detach_controls.py: the
+                    // auto-turret switch's glow, detached/<model>-<material>-on.png) gets that copy as <instance>_On_MIC, a
+                    // variant the game swaps in (the glow turned blue while the switch is on; the owner, 2026-11-18).
+                    string sidecar = System.IO.Path.Combine(assets, "detached",
+                        $"{System.IO.Path.GetFileNameWithoutExtension(source.Path)}-{primitive.MaterialName}-on.png");
+                    if (File.Exists(sidecar) && primitive.BaseColorImage.HasValue && primitive.BaseColorImage != mainImage)
+                    {
+                        string onName = name.Replace("_MIC", "_On_MIC");
+                        ExportEntry onTexture = TextureOf(File.ReadAllBytes(sidecar), suffix + "_On").Texture;
+                        instances[onName] = AddInstance(pcc, onName, parent, onTexture, expressionGuid, parentLightingGuid);
+                        if (!variants.TryGetValue(name, out List<string> list))
+                        {
+                            variants[name] = list = new List<string>();
+                        }
+                        list.Add(onName);
+                        Console.WriteLine($"  {onName}: the recoloured copy {System.IO.Path.GetFileName(sidecar)}");
                     }
                 }
                 // The shell's lamps glow by default (at x10 they bloom in the game: the game side, 2026-11-03); the unlit

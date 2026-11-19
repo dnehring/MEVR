@@ -444,10 +444,32 @@ PanelLayout gPanelLayout;
 struct PanelLamps {
     ue3::Object* component = nullptr;
     std::array<int, 32> shown{};
-    std::array<ue3::Object*, 6> instances{};  // by vr::cockpit_panel::Colour
+    std::array<ue3::Object*, vr::cockpit_panel::kColours> instances{};  // by vr::cockpit_panel::Colour
     bool toldMissing = false;
 };
 PanelLamps gPanelLamps;
+
+// `switch at R F U axis R F U tip R F U on DEG lamp N` (tools/cockpit/place.py): the auto-turret switch on the stick's base, its
+// lever's foot (Joystick_Switch's origin), the hinge (unit; a turn by + throws it on), its tip off, the throw, and which of
+// Joystick_Base's elements is its lamp (-1: none). Points from the cockpit's eye, metres (right, forward, up).
+struct SwitchLayout {
+    bool set = false;
+    engine::UnrealVector pivotM{};
+    engine::UnrealVector axisM{};
+    engine::UnrealVector tipM{};
+    float onDeg = 0.0f;
+    int lamp = -1;
+};
+SwitchLayout gSwitchLayout;
+// The switch's glow as last set on Joystick_Base: its component, which instance (0 its own orange, 1 the blue copy; -1 not set
+// by us) and the two instances once loaded.
+struct SwitchLamp {
+    ue3::Object* component = nullptr;
+    int shown = -1;
+    std::array<ue3::Object*, 2> instances{};
+    bool toldMissing = false;
+};
+SwitchLamp gSwitchLamp;
 
 // Shepard in the seat (docs/mako-cockpit-goal.md item 7, research/47 "Shepard in the seat"). In the Mako the game keeps the
 // driver hidden at the vehicle's origin, based on it, PHYS_None (`mevr vehicle why`). While riding with [Cockpit] seated and a
@@ -1157,7 +1179,7 @@ struct Part {
     // about its own vertical by the steering with [Mako] stickTwist. From the mesh's name.
     // The repair button's cap goes in along its press, the extraction handle swings about its hinge (game/CockpitPanel,
     // research/48 section 27).
-    enum class Motion { None, Lever, Stick, Press, Hinge } motion = Motion::None;
+    enum class Motion { None, Lever, Stick, Press, Hinge, Switch } motion = Motion::None;
     enum class Optics { None, Film, FilmHeader, FilmSeal, DriveFeed, ScopeOnly, Brow } optics = Optics::None;
     bool ScopeOnly() const { return optics == Optics::ScopeOnly || optics == Optics::Brow; }
 };
@@ -1268,7 +1290,8 @@ std::string DoPart(std::istringstream& words) {
     std::string const meshName = Lower(R().NameText(mesh));
     bool const extraction = meshName == "extraction_handle" || meshName == "v2_extractionhandle";
     part.motion = meshName == "throttle_handle" ? Part::Motion::Lever : meshName == "joystick_grip" ? Part::Motion::Stick
-        : meshName == "repair_cap" ? Part::Motion::Press : extraction ? Part::Motion::Hinge : Part::Motion::None;
+        : meshName == "repair_cap" ? Part::Motion::Press : extraction ? Part::Motion::Hinge
+        : meshName == "joystick_switch" ? Part::Motion::Switch : Part::Motion::None;
     part.optics = meshName == "v2_visiondeployfilm" ? Part::Optics::Film :
         meshName == "v2_visionfilmheader" ? Part::Optics::FilmHeader :
         meshName == "v2_visionapertureseal" ? Part::Optics::FilmSeal :
@@ -2455,6 +2478,57 @@ std::string DoPanel(std::istringstream& words) {
     return report;
 }
 
+// `switch at R F U axis R F U tip R F U on DEG lamp N` (the layout above), or `switch [on|off|toggle]` (game/CockpitPanel's state).
+std::string DoSwitch(std::istringstream& words) {
+    std::string first;
+    std::streampos const start = words.tellg();
+    if (!(words >> first) || first != "at") {
+        std::string rest;
+        std::getline(words, rest);
+        return cockpit_panel::SwitchCommand(first + rest);
+    }
+    words.seekg(start);
+    SwitchLayout layout;
+    auto const read = [&](engine::UnrealVector& v) { return static_cast<bool>(words >> v.x >> v.y >> v.z); };
+    std::string name;
+    int found = 0;
+    while (words >> name) {
+        bool ok = false;
+        if (name == "at") {
+            ok = read(layout.pivotM);
+        } else if (name == "axis") {
+            ok = read(layout.axisM);
+            double const length = std::sqrt(layout.axisM.x * layout.axisM.x + layout.axisM.y * layout.axisM.y + layout.axisM.z * layout.axisM.z);
+            ok = ok && length > 0.1;
+            if (ok) {
+                layout.axisM = {layout.axisM.x / length, layout.axisM.y / length, layout.axisM.z / length};
+            }
+        } else if (name == "tip") {
+            ok = read(layout.tipM);
+        } else if (name == "on") {
+            ok = static_cast<bool>(words >> layout.onDeg) && layout.onDeg > 0.0f && layout.onDeg < 90.0f;
+        } else if (name == "lamp") {
+            ok = static_cast<bool>(words >> layout.lamp) && layout.lamp >= -1 && layout.lamp < 32;
+        }
+        if (!ok) {
+            return "usage: mevr cockpit switch at R F U axis R F U tip R F U on DEG lamp N | switch [on|off|toggle]";
+        }
+        ++found;
+    }
+    if (found != 5) {
+        return Refuse("switch: at, axis, tip, on and lamp are all needed");
+    }
+    layout.set = true;
+    gSwitchLayout = layout;
+    gSwitchLamp.component = nullptr;
+    gSwitchLamp.shown = -1;
+    std::string const report = std::format("switch: the auto-turret switch {:.2f} {:.2f} {:.2f} m from the eye (right, forward, up), a {:.0f}-degree "
+        "throw, its lamp {}", layout.pivotM.x, layout.pivotM.y, layout.pivotM.z, layout.onDeg,
+        layout.lamp >= 0 ? std::format("Joystick_Base's element {}", layout.lamp) : std::string("not named (an older package)"));
+    log::Info("cockpit probe: {}", report);
+    return report;
+}
+
 // The stick's tilt as a rotation in the vehicle's frame: its top to the right (roll) and away from the player (pitch down).
 engine::Basis StickTilt(mako_controls::Pose const& pose) {
     auto const units = [](float degrees) { return static_cast<int>(std::lround(degrees * 65536.0 / 360.0)); };
@@ -2466,6 +2540,28 @@ engine::Basis StickRotation(mako_controls::Pose const& pose, double neutralYawDe
     double const yawDeg = neutralYawDeg + (pose.tilt ? -static_cast<double>(pose.twistDeg) : static_cast<double>(pose.steer * pose.lockDeg));
     engine::Basis const yaw = engine::ToBasis(engine::UnrealRotation{0, static_cast<int>(std::lround(yawDeg * 65536.0 / 360.0)), 0});
     return pose.tilt ? engine::Compose(StickTilt(pose), yaw) : yaw;
+}
+
+// A turn by `degrees` about the unit `axis` given in the eye's axes (right, forward, up; right-handed, the right-hand rule), as a
+// frame in the vehicle's axes (forward, right, up), for Compose: the same rotation with the first two axes swapped.
+engine::Basis SwitchTurn(engine::UnrealVector const& axis, double degrees) {
+    double const a = degrees * std::numbers::pi / 180.0;
+    double const c = std::cos(a);
+    double const s = std::sin(a);
+    double const t = 1.0 - c;
+    double const x = axis.x, y = axis.y, z = axis.z;
+    // Rodrigues in the eye's axes: m[row][column], acting on (right, forward, up).
+    double const m[3][3] = {
+        {t * x * x + c, t * x * y - s * z, t * x * z + s * y},
+        {t * x * y + s * z, t * y * y + c, t * y * z - s * x},
+        {t * x * z - s * y, t * y * z + s * x, t * z * z + c},
+    };
+    // Vehicle axis j is eye axis p[j]: column j of the swapped matrix, read in vehicle components.
+    int const p[3] = {1, 0, 2};
+    auto const column = [&](int j) {
+        return engine::UnrealVector{m[p[0]][p[j]], m[p[1]][p[j]], m[p[2]][p[j]]};
+    };
+    return {column(0), column(1), column(2)};
 }
 
 // A part in the vehicle's frame: its offset from the eye along the vehicle's axes, its yaw on top of the vehicle's rotation.
@@ -2485,6 +2581,12 @@ void PlacePartIn(Part const& part, engine::Basis const& frame, engine::UnrealVec
         // up for + about +x as in the hull's right-handed axes.
         double const degrees = panel.pullDeg * (gPanelLayout.hingeAxisM.x >= 0.0 ? 1.0 : -1.0);
         parent = engine::Compose(frame, engine::ToBasis(engine::UnrealRotation{static_cast<int>(std::lround(degrees * 65536.0 / 360.0)), 0, 0}));
+    }
+    if (part.motion == Part::Motion::Switch && gSwitchLayout.set) {
+        // The lever about its hinge, by the throw shown (game/CockpitPanel's switch): the turn built in the eye's axes and carried
+        // into the vehicle frame's (SwitchTurn).
+        double const degrees = static_cast<double>(gSwitchLayout.onDeg) * static_cast<double>(cockpit_panel::CurrentSwitch().throw_);
+        parent = engine::Compose(frame, SwitchTurn(gSwitchLayout.axisM, degrees));
     }
     engine::Basis const local = part.motion == Part::Motion::Stick ? StickRotation(pose, part.yawDeg) :
         engine::ToBasis(engine::UnrealRotation{0, static_cast<int>(std::lround(part.yawDeg * 65536.0 / 360.0)), 0});
@@ -5016,6 +5118,9 @@ std::string Command(std::string const& line) {
     if (verb == "panel") {
         return DoPanel(words);
     }
+    if (verb == "switch") {
+        return DoSwitch(words);
+    }
     if (verb == "clear") {
         ClearAll("mevr cockpit clear");
         ClearParts("mevr cockpit clear");
@@ -5163,6 +5268,7 @@ void AutoTick() {
         gHudLayout = {};
         gSeatLayout = {};
         gPanelLayout = {};
+        gSwitchLayout = {};
         gRide = {};
         gLoggedNoScript = false;
     }
@@ -5338,8 +5444,81 @@ std::optional<vr::cockpit_panel::Layout> PanelLayout() {
     return layout;
 }
 
+std::optional<vr::cockpit_panel::SwitchLayout> SwitchLayout() {
+    if (!Riding() || !gRide.haveEye || !gSwitchLayout.set) {
+        return std::nullopt;
+    }
+    auto const anchor = view_anchor::Current();
+    if (!anchor) {
+        return std::nullopt;
+    }
+    auto const at = [&](engine::UnrealVector const& m) {
+        engine::UnrealVector const off = engine::Apply(gRide.frame, {m.y * gRide.upm, m.x * gRide.upm, m.z * gRide.upm});
+        return engine::ToTracking(*anchor, {gRide.eyeWorld.x + off.x, gRide.eyeWorld.y + off.y, gRide.eyeWorld.z + off.z});
+    };
+    // The hinge's direction in tracking space from two points along it. The eye's axes (right, forward, up) and tracking space
+    // are both right-handed, and the carrying between them is a rotation, so a turn by + about the carried axis is the same turn.
+    XrVector3f const from = at(gSwitchLayout.pivotM);
+    engine::UnrealVector const& a = gSwitchLayout.axisM;
+    XrVector3f const to = at({gSwitchLayout.pivotM.x + a.x, gSwitchLayout.pivotM.y + a.y, gSwitchLayout.pivotM.z + a.z});
+    XrVector3f axis{to.x - from.x, to.y - from.y, to.z - from.z};
+    float const length = std::sqrt(axis.x * axis.x + axis.y * axis.y + axis.z * axis.z);
+    if (!(length > 1e-6f)) {
+        return std::nullopt;
+    }
+    vr::cockpit_panel::SwitchLayout layout;
+    layout.pivot = from;
+    layout.axis = {axis.x / length, axis.y / length, axis.z / length};
+    layout.tipRest = at(gSwitchLayout.tipM);
+    layout.onDeg = gSwitchLayout.onDeg;
+    return layout;
+}
+
 std::optional<float> HullHealth() {
     return Riding() ? gHazard.health : std::nullopt;
+}
+
+bool ShowSwitchLamp(bool on) {
+    if (!gSwitchLayout.set || gSwitchLayout.lamp < 0 || gSetMaterial.Get() == nullptr || gMic.Get() == nullptr) {
+        return false;
+    }
+    Part const* base = nullptr;
+    for (Part const& part : gParts) {
+        if (PartAlive(part) && part.mesh != nullptr && Lower(R().NameText(part.mesh)) == "joystick_base") {
+            base = &part;
+            break;
+        }
+    }
+    if (base == nullptr) {
+        return false;
+    }
+    if (gSwitchLamp.component != base->component) {
+        gSwitchLamp.component = base->component;
+        gSwitchLamp.shown = -1;
+    }
+    int const index = on ? 1 : 0;
+    if (gSwitchLamp.shown == index) {
+        return true;
+    }
+    ue3::Object*& instance = gSwitchLamp.instances[static_cast<std::size_t>(index)];
+    if (instance == nullptr || !ue3::runtime::IsAlive(instance)) {
+        std::string const path = on ? "BIOG_MEVR_Cockpit.Joystick_TurretLamp_On_MIC" : "BIOG_MEVR_Cockpit.Joystick_TurretLamp_MIC";
+        instance = LoadObject(path, gMic.Get());
+        if (instance == nullptr) {
+            if (!gSwitchLamp.toldMissing) {
+                gSwitchLamp.toldMissing = true;
+                log::Warn("cockpit panel: no {} in the cockpit's package (is it current?): the switch's glow keeps its colour", path);
+            }
+            return false;
+        }
+    }
+    ue3::Params set = ParamsOf(gSetMaterial);
+    set.Set("ElementIndex", gSwitchLayout.lamp);
+    set.Set("Material", instance);
+    Call(base->component, gSetMaterial, set);
+    gSwitchLamp.shown = index;
+    FlushActor(base->actor, false);
+    return true;
 }
 
 bool ShowPanelLamps(vr::cockpit_panel::Colour const* colours, int count) {
@@ -5677,6 +5856,14 @@ std::optional<float> HullHealth() {
 }
 
 bool ShowPanelLamps(vr::cockpit_panel::Colour const* /*colours*/, int /*count*/) {
+    return false;
+}
+
+std::optional<vr::cockpit_panel::SwitchLayout> SwitchLayout() {
+    return std::nullopt;
+}
+
+bool ShowSwitchLamp(bool /*on*/) {
     return false;
 }
 

@@ -402,9 +402,95 @@ void TestThrottleClick() {
     CHECK(!Click(click, s, true, true).repair);
 }
 
+// The auto-turret switch: its foot at the origin, its tip 2 cm up (+y), thrown on toward -z by a turn about +x... checked below.
+cp::SwitchInput SwitchBase(bool on) {
+    cp::SwitchInput in;
+    in.deltaSeconds = 0.02;
+    in.active = true;
+    in.layout.pivot = {0.0f, 0.0f, 0.0f};
+    in.layout.tipRest = {0.0f, 0.02f, 0.0f};
+    in.layout.axis = {1.0f, 0.0f, 0.0f};
+    in.layout.onDeg = 24.0f;
+    in.on = on;
+    for (cp::Hand& hand : in.hands) {
+        hand.tracked = true;
+        hand.tip = {0.5f, 0.5f, 0.5f};
+    }
+    return in;
+}
+
+cp::SwitchOutput Poke(cp::Toggle& toggle, cp::Settings const& s, bool& on, float z, float y = 0.018f, int hand = 1) {
+    cp::SwitchInput in = SwitchBase(on);
+    in.hands[hand].tip = {0.0f, y, z};
+    cp::SwitchOutput const out = toggle.Step(in, s);
+    on = out.on;
+    return out;
+}
+
+void TestSwitch() {
+    cp::Settings const s;
+    // a turn by + about +x moves +y toward +z: the throw's way is +z
+    cp::SwitchLayout layout = SwitchBase(false).layout;
+    CHECK(cp::SwitchTip(layout, 1.0f).z > 0.007f && Close(cp::SwitchTip(layout, 0.0f).y, 0.02f));
+    // a fingertip arriving behind the lever and pushing it the throw's way flips it on, once, with a click
+    {
+        cp::Toggle toggle;
+        bool on = false;
+        CHECK(Poke(toggle, s, on, -0.03f).touchHand == -1);  // 3 cm off the lever: out of reach (2.5 cm)
+        cp::SwitchOutput out = Poke(toggle, s, on, -0.005f);
+        CHECK(out.touchHand == 1 && !out.flipped && !on);
+        out = Poke(toggle, s, on, 0.001f);
+        CHECK(!out.flipped && !on);  // 6 mm: not yet past the 8 mm throw
+        out = Poke(toggle, s, on, 0.004f);
+        CHECK(out.flipped && on && out.hapticCount == 1 && out.haptics[0].hand == 1);
+        out = Poke(toggle, s, on, 0.012f);
+        CHECK(!out.flipped && on);
+        // pulled back the other way in the same touch: it stays on (the hand must let go first)
+        out = Poke(toggle, s, on, -0.01f);
+        CHECK(!out.flipped && on);
+        // the lever swings over in flipS
+        for (int i = 0; i < 10; ++i) {
+            out = Poke(toggle, s, on, 0.5f);
+        }
+        CHECK(Close(out.throw_, 1.0f));
+        // a new touch from in front pushing back flips it off
+        Poke(toggle, s, on, 0.012f);
+        out = Poke(toggle, s, on, 0.002f);
+        CHECK(out.flipped && !on);
+    }
+    // pushing the way it's already thrown does nothing; not active, nothing at all
+    {
+        cp::Toggle toggle;
+        bool on = true;
+        Poke(toggle, s, on, -0.005f);
+        CHECK(!Poke(toggle, s, on, 0.01f).flipped && on);
+        cp::SwitchInput in = SwitchBase(false);
+        in.active = false;
+        in.hands[0].tip = {0.0f, 0.018f, 0.0f};
+        cp::Toggle idle;
+        CHECK(!idle.Step(in, s).flipped);
+        in.hands[0].tip.z = 0.02f;
+        cp::SwitchOutput const out = idle.Step(in, s);
+        CHECK(!out.flipped && !out.on && out.touchHand == -1);
+    }
+    // the state from outside (a console command) is kept, and the lever follows it
+    {
+        cp::Toggle toggle;
+        cp::SwitchInput in = SwitchBase(false);
+        toggle.Step(in, s);
+        in.on = true;
+        cp::SwitchOutput out;
+        for (int i = 0; i < 10; ++i) {
+            out = toggle.Step(in, s);
+        }
+        CHECK(out.on && Close(out.throw_, 1.0f) && !out.flipped);
+    }
+}
+
 }  // namespace
 
 int RunCockpitPanelTests() {
+    TestSwitch();
     TestButton();
     TestRefusal();
     TestThrottleClick();

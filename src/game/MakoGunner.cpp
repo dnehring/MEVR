@@ -354,7 +354,7 @@ Result Tick(double deltaSeconds, Inputs const& in) {
     auto const targetLocation = gState.target != nullptr ? player::Location(gState.target) : std::nullopt;
     // The player's hands.
     mg::Hands hands;
-    if (in.controllers != nullptr && in.controllers->active) {
+    if (in.controllers != nullptr && in.controllers->active && in.manualTakeover) {
         vr::controllers::Hand const& right = in.controllers->right;
         hands.stickHeld = in.stickHeld;
         hands.thumbX = right.stickX;

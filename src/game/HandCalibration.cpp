@@ -779,8 +779,12 @@ constexpr char const* kMakoBlock =
     "; ray. vignette: 1 = the comfort vignette ([Comfort] vignette, vignetteWhen) also while the Mako turns (turnRate\n"
     "; degrees a second) or, with vignetteWhen = move, drives (moveSpeed units a second; 100 units = 1 m). aimRangeM: how\n"
     "; far the ray is traced. calibratedLine: 1 = a saved pistol calibration's line stands in for the controller's own\n"
-    "; aim pose, as on foot.\n"
+    "; aim pose, as on foot. headAim: 1 = riding in the cockpit, the turret follows your head (where you look; the hands drive)\n"
+    "; unless the auto-turret switch on the stick's base is on, which gives it to the gunner; autoTurret: 1 = that switch\n"
+    "; starts on (flip it with a fingertip; it keeps its state until the game closes).\n"
     "handAim = 1\n"
+    "headAim = 1\n"
+    "autoTurret = 0\n"
     "turret = 1\n"
     "turretSeam = 3\n"
     "reticle = 1\n"
@@ -1997,6 +2001,12 @@ Mako ReadMako(Ini const& ini) {
     if (Number(ini, "Mako", "calibratedLine", value)) {
         m.calibratedLine = value != 0.0;
     }
+    if (Number(ini, "Mako", "headAim", value)) {
+        m.headAim = value != 0.0;
+    }
+    if (Number(ini, "Mako", "autoTurret", value)) {
+        m.autoTurret = value != 0.0;
+    }
     // The physical controls (research/46).
     vr::mako_controls::Settings& c = m.controlSettings;
     if (Number(ini, "Mako", "controls", value)) {
@@ -2112,6 +2122,8 @@ std::string Describe(Mako const& m) {
         std::format("{}{}{}{}", (m.turretSeam & 1) != 0 ? "the mod's tick " : "", (m.turretSeam & 2) != 0 ? "the vehicle's tick " : "",
             (m.turretSeam & 4) != 0 ? "the pose " : "", m.turretSeam == 0 ? "none" : ""),
         m.reticle ? "on" : "off", m.vignette ? "on" : "off", m.moveSpeed, m.turnRate, m.aimRangeM, m.calibratedLine ? "used" : "ignored") +
+        std::format("; riding in the cockpit the {} aims the turret (the auto-turret switch starts {})", m.headAim ? "head" : "hand",
+            m.autoTurret ? "on" : "off") +
         "; " + vr::mako_controls::Describe(m.controlSettings);
 }
 
@@ -3581,6 +3593,9 @@ void Refresh() {
         {L"Mako", "Mako", L"gunnerCannon", "gunnerCannon", L"1"},
         {L"Mako", "Mako", L"gunnerCrowd", "gunnerCrowd", L"3"},
         {L"Mako", "Mako", L"gunnerCrowdRadiusM", "gunnerCrowdRadiusM", L"6"},
+        // Head aim in the cockpit and its auto-turret switch (the owner, 2026-11-18).
+        {L"Mako", "Mako", L"headAim", "headAim", L"1"},
+        {L"Mako", "Mako", L"autoTurret", "autoTurret", L"0"},
         // [Comfort] (2026-10-23, research/31): a section our menu started (it writes only the keys it changes).
         {L"Comfort", "Comfort", L"turn", "turn", L"game"},
         {L"Comfort", "Comfort", L"snapDeg", "snapDeg", L"45"},

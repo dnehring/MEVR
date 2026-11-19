@@ -77,6 +77,8 @@ concept/assets/detached/*
 !concept/assets/detached/joystick-grip.glb
 !concept/assets/detached/throtle-control-base.glb
 !concept/assets/detached/throtle-control-handle.glb
+!concept/assets/detached/joystick-switch.glb
+!concept/assets/detached/joystick-base-TurretLamp-on.png
 !concept/assets/repairs/
 concept/assets/repairs/*
 !concept/assets/repairs/2026-10-31_v001/

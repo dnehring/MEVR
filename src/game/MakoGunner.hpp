@@ -32,6 +32,7 @@ struct Inputs {
     bool panelBusy = false;              // a hand presses the repair button or holds the extraction handle (or the right hand is at it)
     std::optional<engine::TrackingFrame> frame;  // to tell where the free hand points
     bool scopeAiming = false;            // keep manual aim during V2 zoom, including idle input
+    bool manualTakeover = true;          // the stick's thumbstick and the free hand take the gun (false: the auto-turret switch has it)
 };
 
 struct Result {

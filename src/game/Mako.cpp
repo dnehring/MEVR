@@ -118,6 +118,7 @@ enum class Why {
     NoAnchor,       // no view anchor (the host's view hasn't mapped tracking space yet)
     Aiming,
     Gunner,         // the gunner aims (research/47 "The gunner")
+    Head,           // riding in the cockpit, the head aims ([Mako] headAim, the auto-turret switch off)
 };
 
 char const* Name(Why why) {
@@ -130,6 +131,7 @@ char const* Name(Why why) {
     case Why::NoAnchor: return "the game aims the turret (no view anchor yet)";
     case Why::Aiming: return "the right controller aims the turret";
     case Why::Gunner: return "the gunner aims the turret (research/47 \"The gunner\")";
+    case Why::Head: return "your head aims the turret (the cockpit's auto-turret switch is off)";
     }
     return "?";
 }
@@ -183,6 +185,8 @@ std::string gVehicleName;
 Aim gAim;
 Start gStart;
 bool gGunnerAims = false;  // this tick's aim is the gunner's
+bool gHeadAims = false;    // this tick's aim is the head's (riding in the cockpit, the auto-turret switch off)
+bool gLoggedFirstHeadAim = false;
 std::uint64_t gMuzzleShots = 0;  // shot starts moved to the gun's muzzle (riding in the cockpit)
 vr::comfort::VehicleMotion gMotion;
 Motion gMotionNow;
@@ -737,6 +741,7 @@ void Tick(double deltaSeconds, Link const& link) {
     bool const inVehicle = mode && *mode == kGameModeVehicle && pawn != nullptr && ue3::IsA(pawn, gVehicleBase);
     if (!inVehicle) {
         gGunnerAims = false;
+        gHeadAims = false;
         if (gVehicle != nullptr) {
             log::Info("mako: left {}", gVehicleName);
             ForgetVehicle();
@@ -812,7 +817,13 @@ void Tick(double deltaSeconds, Link const& link) {
     gunnerIn.vehicle = pawn;
     gunnerIn.behavior = gVehicleBehavior;
     gunnerIn.controller = controller;
-    gunnerIn.riding = cockpit_probe::Riding() && gSettings.handAim && link.headTrackedView && !link.mainMenuOpen;
+    // Riding in the cockpit the hands drive, so the head aims (the owner, 2026-11-18), unless the auto-turret switch on the stick's
+    // base gives the turret to the gunner; then nothing of the player's takes it back but the switch.
+    bool const riding = cockpit_probe::Riding() && gSettings.handAim && link.headTrackedView && !link.mainMenuOpen;
+    bool const headAim = riding && gSettings.headAim;
+    bool const autoTurret = cockpit_panel::AutoTurret();
+    gunnerIn.riding = riding && (!headAim || autoTurret);
+    gunnerIn.manualTakeover = !headAim;
     gunnerIn.controllers = &controllers;
     gunnerIn.stickHeld = stickAim.valid;
     gunnerIn.scopeAiming = cockpit_probe::OpticsAiming();
@@ -825,13 +836,14 @@ void Tick(double deltaSeconds, Link const& link) {
     gunnerIn.frame = view_anchor::Current();
     mako_gunner::Result const gunner = mako_gunner::Tick(deltaSeconds, gunnerIn);
     gGunnerAims = gunner.gunner;
+    gHeadAims = false;
     if (gunner.gunner) {
         GunnerAim(pawn, gunner, gunnerIn.frame);
         AimTurretModel();
         LogWhy(Why::Gunner, now);
         return;
     }
-    if (gunner.holdHand && gAim.valid) {
+    if (gunner.holdHand && gAim.valid && !headAim) {
         gAim.atMs = GetTickCount64();  // the hand stopped aiming: the turret stays where it left it until the gunner's back
         AimTurretModel();
         LogWhy(Why::Aiming, now);
@@ -847,7 +859,7 @@ void Tick(double deltaSeconds, Link const& link) {
         why = Why::NoView;
     } else if (link.mainMenuOpen) {
         why = Why::MainMenu;
-    } else if (!stickAim.valid && (!controllers.active || !controllers.right.aimValid)) {
+    } else if (!headAim && !stickAim.valid && (!controllers.active || !controllers.right.aimValid)) {
         why = Why::NoControllers;
     } else if (!(frame = view_anchor::Current())) {
         why = Why::NoAnchor;
@@ -859,6 +871,36 @@ void Tick(double deltaSeconds, Link const& link) {
             gTurretPublished = false;
         }
         LogWhy(why, now);
+        return;
+    }
+    if (headAim) {
+        // The head: from the eyes' midpoint along where it looks; the reticle sits in the middle of the view, at what the ray hits.
+        // The stick's thumbstick doesn't aim the turret here.
+        Aim next;
+        next.valid = true;
+        next.atMs = GetTickCount64();
+        next.origin = engine::ToWorld(*frame, frame->head.position);
+        next.direction = engine::OrientationToWorld(*frame, frame->head.orientation).forward;
+        double const length = Len(next.direction);
+        if (!(length > 0.0)) {
+            gAim.valid = false;
+            LogWhy(Why::NoAnchor, now);
+            return;
+        }
+        next.direction = Times(next.direction, 1.0 / length);
+        next.trackOrigin = frame->head.position;
+        next.trackDirection = engine::DirectionToTracking(*frame, next.direction);
+        TraceAim(pawn, next, static_cast<double>(gSettings.aimRangeM) * engine::kUnitsPerMeter);
+        gAim = next;
+        gHeadAims = true;
+        ++gCounts.aims;
+        if (!gLoggedFirstHeadAim) {
+            gLoggedFirstHeadAim = true;
+            log::Info("mako: the head aims the turret (riding in the cockpit, the auto-turret switch off): the ray {} {:.1f} m out",
+                gAim.hit ? std::format("hits {}", gAim.what) : std::string("hits nothing; its end"), gAim.distanceUnits / engine::kUnitsPerMeter);
+        }
+        AimTurretModel();
+        LogWhy(Why::Head, now);
         return;
     }
     XrPosef aim = controllers.right.aim;
@@ -911,7 +953,7 @@ void Tick(double deltaSeconds, Link const& link) {
 }
 
 bool GunnerAiming() {
-    return gGunnerAims && gAim.valid && GetTickCount64() - gAim.atMs <= kAimFreshMs;
+    return (gGunnerAims || gHeadAims) && gAim.valid && GetTickCount64() - gAim.atMs <= kAimFreshMs;
 }
 
 Motion CurrentMotion() {

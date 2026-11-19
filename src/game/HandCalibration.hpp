@@ -573,6 +573,10 @@ struct Mako {
     float turnRate = 20.0f;
     float aimRangeM = 200.0f;
     bool calibratedLine = true;
+    // Riding in the cockpit the head aims the turret (the owner, 2026-11-18: the hands drive), unless the auto-turret switch on the
+    // stick's base gives it to the gunner; autoTurret: that switch's state at the start (game/CockpitPanel keeps it after).
+    bool headAim = true;
+    bool autoTurret = false;
     // The thrusters (the user, 2026-11-03): their fuel burns this fast while they fire (0.4: 2.5 times as long; 1: the game's).
     // While the jump jets fire the Mako is held at the attitude the stick asks for (level when it isn't held): thrusterPitchDeg at a
     // full forward or back tilt, thrusterRollDeg at a full left or right one (0: always level that way), turning at most

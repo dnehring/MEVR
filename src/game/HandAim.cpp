@@ -669,10 +669,10 @@ void Tick() {
 
 vr::aim_ray::Ray AimRay() {
     vr::aim_ray::Ray ray;
-    if (gEnabled) {
-        // The Mako (research/44): the right controller's ray while it aims the turret (no gun model there).
+    if (gEnabled || mako::GunnerAiming()) {
+        // The Mako (research/44): the ray that aims the turret (the right controller's, the head's in the cockpit, the gunner's).
         if (auto const turret = mako::AimRay()) {
-            gRayStatus = "the right controller's ray (the Mako)";
+            gRayStatus = "the turret's aim ray (the Mako)";
             if (gRayStatus != gLoggedRayStatus) {
                 log::Info("hand aim: aim ray {}", gRayStatus);
                 gLoggedRayStatus = gRayStatus;

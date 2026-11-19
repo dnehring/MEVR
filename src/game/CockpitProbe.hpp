@@ -78,6 +78,13 @@ std::optional<float> HullHealth();
 // The repair button's lamps (the ring's health lamps, then the plate's squares, as `panel ... lamps` numbers them) shown in
 // these colours: only what changed is swapped on Repair_Base. False: no Repair_Base part, no layout, or an instance missing.
 bool ShowPanelLamps(vr::cockpit_panel::Colour const* colours, int count);
+// While riding with a `switch` layout: the auto-turret switch on the stick's base in tracking space this tick (game/CockpitPanel
+// works it). Nullopt: no cockpit, no view, no layout.
+std::optional<vr::cockpit_panel::SwitchLayout> SwitchLayout();
+// The switch's glow (Joystick_Base's element the `switch ... lamp` line names, TurretLamp): its own orange, or with `on` the blue
+// copy of it (Joystick_TurretLamp_On_MIC); only a change is swapped. False: no Joystick_Base part, no lamp named, or the instance
+// missing.
+bool ShowSwitchLamp(bool on);
 // game/arm_ik: the hips' midpoint in the driver mesh's component space (as animated), which the placement puts on the H-point.
 // `head`: the head bone there too, if the skeleton has one: the placement slides the body back until it is behind the
 // cockpit's eye as a head is behind its eyes (the eye was inside the back of Shepard's head, research/47).

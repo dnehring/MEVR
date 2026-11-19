@@ -226,6 +226,13 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   keep it, or leave the lamps right above the windshield (the spine's drop panel) unlit? (research/48 section 26)
 - [ ] Frame rate on the PS VR2 while driving with the cockpit up (more pixels than the fake headset). (research/47
   "The cockpit's cost")
+- [ ] Head aim in the cockpit (built 2026-11-18): the turret, the shots and the reticle follow where you look while both
+  hands drive; does it feel right in a fight, and is the centred reticle comfortable? (research/47 "Head aim and the
+  auto-turret switch")
+- [ ] The auto-turret switch on the stick's base (the toggle nearest you): flip it with a fingertip (either hand): the lever
+  tips away from you, a click in that hand, its glow turns from orange to blue and the gunner takes the turret; flip it back
+  and your head aims again. Is it easy to find and flip without looking long, never flipped by accident while gripping the
+  stick, and does the lever swing the right way? (research/47 "Head aim and the auto-turret switch")
 
 ### Game screens in the room (session: VR mod for Mass Effect Legendary Edition)
 - [ ] At a vendor: click the shop's buttons with the pointer and by touch (the test rig never got a click through).

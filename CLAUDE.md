@@ -64,7 +64,8 @@ authored seated scenes (such as shuttles) must reject traversal while retaining 
   as possible, only to fix its bugs (like the HDR blue screen) or where VRIK needs a seam. Before
   changing one of its settings or behaviours, compare with upstream (`reference/MassEffect1-VR/
   release/`, `vr_config.h` defaults). **No head aim:** the deploy writes `combatHeadAim = 0` and
-  `makoHeadAim = 0`; the hand aims, the head drives the view only.
+  `makoHeadAim = 0`; the hand aims, the head drives the view only (one exception, ours, not Halcyon's: the Mako's turret
+  riding in the cockpit, below).
 - Since 2026-10-08 LE1's VR renderer is Halcyon's (`src/halcyon/le1`, built as the `halcyon-le1`
   static library and linked into the **host** ASI, so it isn't hot-reloaded). It owns OpenXR,
   Present, stereo (two renders per present), first person (K), head look and its ImGui menu.
@@ -1293,7 +1294,13 @@ switching frameworks.
   before UpdateSkelPose, journalled `BonePose.makoTurret`); the heartbeat's held/changed counts say which seam the game
   overrides [verify]. The hand reticle shows in mode 1 on a valid mod ray (host, `HalcyonOverlays`); `core/vr/Comfort`'s
   `VehicleMotion` (speed, yaw rate with the 65536 wrap) drives the vignette in the Mako (`vignetteWhen` applies). Halcyon's
-  `makoHeadAim = 0` stays. Logs `mako:`; snapshot `"mod"."mako"`.
+  `makoHeadAim = 0` stays. **Riding in the cockpit the head aims** (the owner, 2026-11-18: the hands drive; `[Mako] headAim`):
+  the same ray, from the eyes along the gaze, so shots, turret, aiming screen and reticle follow it, unless the **auto-turret
+  switch** (the stick base's toggle nearest the pilot, its lever `Joystick_Switch` split off by `detach_controls.py`, flipped by
+  a fingertip: `core/vr/CockpitPanel` `Toggle`, `game/CockpitPanel`; `[Mako] autoTurret` its start) gives the turret to the
+  gunner; its painted glow turns blue while on (the base's `TurretLamp` element swapped to `Joystick_TurretLamp_On_MIC`, the
+  packager's variant from `detached/joystick-base-TurretLamp-on.png`). `mevr cockpit switch [on|off|toggle]`; research/47 "Head
+  aim and the auto-turret switch". Logs `mako:`; snapshot `"mod"."mako"`.
 - LE1 Mako controls, stage 1 ([research/46](research/46-mako-controls.md), HostServices v23 `setMakoControls`; `core/vr/MakoControls`, `game/MakoControls`;
   `[Mako] controls`): a grabbed throttle lever (left, springs back to neutral when let go: `leverReturns = 1`, the user 2026-11-04; X jump, Y boost) and a stick (right, springs back, trigger machine gun, A cannon,
   thumbstick turret) at the seat, drawn as two flat quads; the values overwrite `Vehicle.Throttle`/`Steering` in a `BioVehicleBase.SetInputs` post-handler.

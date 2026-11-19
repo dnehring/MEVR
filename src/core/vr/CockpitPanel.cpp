@@ -262,6 +262,81 @@ ClickOutput ThrottleClick::Step(ClickInput const& in, Settings const& s) {
     return out;
 }
 
+XrVector3f SwitchTip(SwitchLayout const& layout, float share) {
+    return Add(layout.pivot, Turn(Sub(layout.tipRest, layout.pivot), layout.axis, layout.onDeg * std::clamp(share, 0.0f, 1.0f)));
+}
+
+void Toggle::Reset() {
+    *this = Toggle();
+}
+
+SwitchOutput Toggle::Step(SwitchInput const& in, Settings const& s) {
+    SwitchOutput out;
+    out.on = in.on;
+    double const dt = std::clamp(in.deltaSeconds, 0.0, 0.1);
+    float const target = in.on ? 1.0f : 0.0f;
+    if (shown_ < 0.0f) {
+        shown_ = target;
+    }
+    SwitchLayout const& layout = in.layout;
+    if (in.active && s.on) {
+        // The throw's way at the lever's tip as shown: where a turn by + moves it.
+        XrVector3f const arm = Sub(SwitchTip(layout, shown_), layout.pivot);
+        XrVector3f way = Cross(layout.axis, arm);
+        float const wayLength = Length(way);
+        float const armLength = Length(arm);
+        if (wayLength > 1e-6f && armLength > 1e-6f) {
+            way = Scale(way, 1.0f / wayLength);
+            for (int h = 0; h < 2; ++h) {
+                Hand const& hand = in.hands[h];
+                if (!hand.tracked) {
+                    touching_[h] = spent_[h] = false;
+                    continue;
+                }
+                // The tip's distance from the lever (the segment from its foot to its tip).
+                XrVector3f const d = Sub(hand.tip, layout.pivot);
+                float const along = std::clamp(Dot(d, arm) / (armLength * armLength), 0.0f, 1.0f);
+                float const distance = Length(Sub(d, Scale(arm, along)));
+                float const across = Dot(d, way);
+                bool const reach = distance <= s.switchRadiusM * (touching_[h] ? 1.6f : 1.0f);
+                if (reach && !touching_[h]) {
+                    touching_[h] = true;
+                    spent_[h] = false;
+                    entered_[h] = across;
+                    if (out.touchHand < 0) {
+                        out.touchHand = h;
+                    }
+                } else if (!reach) {
+                    touching_[h] = spent_[h] = false;
+                }
+                if (!touching_[h]) {
+                    continue;
+                }
+                out.touchHand = out.touchHand < 0 ? h : out.touchHand;
+                if (spent_[h]) {
+                    continue;
+                }
+                float const pushed = across - entered_[h];
+                if ((!out.on && pushed >= s.switchThrowM) || (out.on && pushed <= -s.switchThrowM)) {
+                    out.on = !out.on;
+                    out.flipped = true;
+                    spent_[h] = true;
+                    if (out.hapticCount < static_cast<int>(std::size(out.haptics))) {
+                        out.haptics[out.hapticCount++] = {h, 0.025f, 0.9f};
+                    }
+                }
+            }
+        }
+    } else {
+        touching_[0] = touching_[1] = spent_[0] = spent_[1] = false;
+    }
+    float const goal = out.on ? 1.0f : 0.0f;
+    float const step = s.switchFlipS > 0.0f ? static_cast<float>(dt) / s.switchFlipS : 1.0f;
+    shown_ = shown_ < goal ? std::min(goal, shown_ + step) : std::max(goal, shown_ - step);
+    out.throw_ = shown_;
+    return out;
+}
+
 int HealthLamps(float health, int count) {
     if (!(health > 0.0f) || count <= 0) {
         return 0;

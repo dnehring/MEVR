@@ -7,6 +7,9 @@ places, the proposed scale) and prints one `mevr cockpit part` line per packaged
     python tools/cockpit/place.py [--assets concept/assets] [--metres-per-hull-unit 3.0] [--yaw-sign 1]
     tools/console.ps1 (python tools/cockpit/place.py)
 
+The auto-turret switch on the stick's base (detach_controls.py's `joystick.switch`) gets its part and a `switch` line; which of
+Joystick_Base's elements is its lamp comes from the packager's report (--package-report).
+
 With --script <file> it writes the cockpit's script instead: the parts, the live chase view on the console's screen and the
 ride in the Mako, the lines the mod runs by itself on entering the Mako ([Cockpit] script in LE1MEVR.ini, default
 <ASI>\\cockpit\\cockpit.txt; research/47 "Riding in the Mako"):
@@ -232,14 +235,77 @@ def PanelLine(manifest, metres, seat_back=0.0):
             f"pull {extraction['pullDeg']:g} lamps {health[0]} {len(health)} {progress[0]} {len(progress)}")
 
 
-def Script(manifest, metres, yaw_sign, eye, seat_back=0.0, handles=None):
+def SwitchPlace(manifest, assets):
+    """The auto-turret switch on the stick's base (detach_controls.py's `joystick.switch`): its lever's pivot, the hinge axis
+    for on, the lever's tip at rest, in hull coordinates, as the base's furniture entry places the base (its file's origin is
+    the stick's twist pivot). None without the switch in the detached manifest."""
+    path = os.path.join(assets, "detached", "manifest.json")
+    if not os.path.exists(path):
+        return None
+    with open(path, encoding="utf-8") as f:
+        joystick = json.load(f).get("joystick", {})
+    switch = joystick.get("switch")
+    if not switch or "joystick-base" not in manifest["furniture"]:
+        return None
+    base = manifest["furniture"]["joystick-base"]
+    turn = math.radians(base["turnDeg"])
+    c, s = math.cos(turn), math.sin(turn)
+    scale = base["hullUnitsPerModelUnit"]
+    twist = joystick["base"]["pivot"]
+
+    def Turn(v):
+        return (c * v[0] - s * v[1], s * v[0] + c * v[1], v[2])
+
+    def At(p):
+        d = Turn([p[i] - twist[i] for i in range(3)])
+        return [base["origin"][i] + d[i] * scale for i in range(3)]
+
+    return {"pivot": At(switch["pivot"]), "tip": At(switch["tipRest"]), "axis": list(Turn(switch["axisOn"])),
+            "onDeg": switch["onDeg"], "turnDeg": base["turnDeg"], "scale": scale}
+
+
+def SwitchLamp(report_path):
+    """Which of Joystick_Base's elements is the switch's lamp (the packager's report: the element on "TurretLamp"), or None."""
+    if not report_path or not os.path.exists(report_path):
+        return None
+    with open(report_path, encoding="utf-8") as f:
+        report = json.load(f)
+    for mesh in report.get("meshes", []) if isinstance(report, dict) else report:
+        if mesh.get("name", "").endswith(".Joystick_Base") and "TurretLamp" in mesh.get("elementMaterials", []):
+            return mesh["elementMaterials"].index("TurretLamp")
+    return None
+
+
+def SwitchLines(manifest, assets, metres, yaw_sign, report_path):
+    """The switch's part (`part ...Joystick_Switch`) and its layout (`switch at R F U axis R F U tip R F U on DEG lamp N`), points
+    from the eye in metres (right, forward, up), the lamp -1 when the package's report doesn't name it. Empty without a switch."""
+    place = SwitchPlace(manifest, assets)
+    if place is None:
+        return []
+    eye = manifest["eye"]["hull"]
+
+    def At(p):
+        return " ".join(f"{(p[i] - eye[i]) * metres:.4f}" for i in range(3))
+
+    lamp = SwitchLamp(report_path)
+    a = place["axis"]
+    part = (f"part {PACKAGE}.Joystick_Switch {At(place['pivot'])} {90.0 - yaw_sign * place['turnDeg']:.1f} "
+            f"{place['scale'] * metres / UNITS_PER_MODEL_UNIT:.6f}")
+    layout = (f"switch at {At(place['pivot'])} axis {a[0]:.5f} {a[1]:.5f} {a[2]:.5f} tip {At(place['tip'])} on {place['onDeg']:g} "
+              f"lamp {lamp if lamp is not None else -1}")
+    return [part, layout]
+
+
+def Script(manifest, metres, yaw_sign, eye, seat_back=0.0, handles=None, switch=()):
     """The cockpit's script: what the mod runs on entering the Mako (`mevr cockpit` lines without those words)."""
     parts = [line[len("mevr cockpit "):] for line in Lines(manifest, metres, yaw_sign, seat_back) if line.startswith("mevr cockpit part ")]
+    parts += [line for line in switch if line.startswith("part ")]
     return (["; The Mako's cockpit (research/47): written by tools/cockpit/place.py --script; run by the mod on entering the Mako.",
              "parts sweep"] + parts +
             ["screenpart BIOG_MEVR_Cockpit.Hull_Console", "element 1", "post 0", "screen 768 343 float",
              "aimscreen 768 306", "aimreticle 6", HudLine(manifest, metres, seat_back), SeatLine(manifest, handles)] +
             ([PanelLine(manifest, metres, seat_back)] if PanelLine(manifest, metres, seat_back) else []) +
+            [line for line in switch if line.startswith("switch ")] +
             [f"ride {eye[0]:.3f} {eye[1]:.3f} {eye[2]:.3f}"])
 
 
@@ -258,6 +324,8 @@ def main():
     # default gave them in the game from 2026-11-03
     parser.add_argument("--seat-back", type=float, default=0.0,
                         help="the pilot this many metres further back in the hull than the manifest's eye (default 0)")
+    parser.add_argument("--package-report", default=os.path.join(here, "..", "..", "build", "cockpit", "BIOG_MEVR_Cockpit.pcc.json"),
+                        help="the packager's report (<package>.json), for which of Joystick_Base's elements is the switch's lamp")
     args = parser.parse_args()
     path = os.path.join(args.assets, "hull reconstruction", "assembled", "manifest.json")
     with open(path, encoding="utf-8") as f:
@@ -267,11 +335,14 @@ def main():
         os.makedirs(os.path.dirname(os.path.abspath(args.script)), exist_ok=True)
         with open(args.script, "w", encoding="utf-8", newline="\n") as f:
             handles = Handles(manifest, args.assets, metres)
-            f.write("\n".join(Script(manifest, metres, args.yaw_sign, args.eye, args.seat_back, handles)) + "\n")
+            switch = SwitchLines(manifest, args.assets, metres, args.yaw_sign, args.package_report)
+            f.write("\n".join(Script(manifest, metres, args.yaw_sign, args.eye, args.seat_back, handles, switch)) + "\n")
         print(f"{args.script}: the cockpit's script")
         return
     for line in Lines(manifest, metres, args.yaw_sign, args.seat_back):
         print(line)
+    for line in SwitchLines(manifest, args.assets, metres, args.yaw_sign, args.package_report):
+        print("mevr cockpit " + line)
 
 
 if __name__ == "__main__":
