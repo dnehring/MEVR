@@ -16,6 +16,7 @@
 #include "game/HandCalibration.hpp"
 #include "game/Player.hpp"
 #include "game/ScopeParts.hpp"
+#include "game/SupportGrip.hpp"
 #include "game/ViewAnchor.hpp"
 #include "game/Weapon.hpp"
 #if !defined(MEVR_GAME_LE1)
@@ -645,10 +646,16 @@ void StepAssist(sv::Settings const& settings, sv::Sight const& drawn, vr::aim_ra
     gAdsSample = ads::Measure(head.position, forward, muzzle, center, ray.direction, drawn.up);
     bool const wasAds = gAds;
     // At the calibrated shoulder (research/21 section 20): the right grip in the zone around the calibration's stock point
-    // and the head along the barrel. Not calibrated, or a pistol: the distance rule alone.
+    // and the head along the barrel. Not calibrated: the distance rule alone. Only a two-handed gun the left hand holds too
+    // (vr::ads::MayShoulder; the owner, 2026-11-18: a sniper rifle held one-handed locked into the shoulder).
     bool const wasShoulder = gAtShoulder;
     gAtShoulder = false;
-    if (settings.shoulderAds && weapon::Type() != weapon::RangedType::Pistol) {
+    weapon::RangedType const family = weapon::Type();
+    bool const twoHanded = family == weapon::RangedType::AssaultRifle || family == weapon::RangedType::Shotgun ||
+                           family == weapon::RangedType::Sniper;
+    if (!ads::MayShoulder(twoHanded, support_grip::Held())) {
+        gInZone = false;  // the zone's hysteresis starts afresh with both hands on the gun
+    } else if (settings.shoulderAds) {
         auto const zone = body_calibration::ShoulderZone();
         vr::controllers::State const controllers = vr::controllers::Latest();
         if (zone && controllers.active && controllers.right.gripValid) {

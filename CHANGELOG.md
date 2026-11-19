@@ -7,6 +7,8 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## Unreleased
 
+- **The shoulder lock takes both hands.** A gun at your shoulder snaps the sight on only with both hands on a two-handed
+  gun (an assault rifle, a shotgun or a sniper rifle); held one-handed it no longer locks in.
 - **Shadows stay off in all three games.** Cinematics, conversations and menus turned the shadows back on (on ME2 since
   today's motion-blur fix), and they differ between the eyes in VR; they now go off again every time you're back in the
   game, and Shepard's and the characters' shadows are off on ME1 too.

@@ -10131,6 +10131,9 @@ void TestAds() {
     CHECK(!ads::AtShoulder(true, 30.0f, false) && ads::AtShoulder(true, 30.0f, true) && !ads::AtShoulder(true, 36.0f, true));
     CHECK(!ads::AtShoulder(false, 5.0f, true) && !ads::AtShoulder(true, std::numeric_limits<float>::quiet_NaN(), true));
     CHECK(mevr::vr::sights::Settings{}.shoulderAds);
+    // Only a two-handed gun the support grip holds too (the owner, 2026-11-18: a sniper rifle held one-handed locked in).
+    CHECK(ads::MayShoulder(true, true) && !ads::MayShoulder(true, false) && !ads::MayShoulder(false, true) &&
+          !ads::MayShoulder(false, false));
     XrVector3f const head{0.0f, 0.0f, 0.0f};
     XrVector3f const forward{0.0f, 0.0f, -1.0f};
     XrVector3f const barrel{0.0f, 0.0f, -1.0f};

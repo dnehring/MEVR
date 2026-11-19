@@ -1081,3 +1081,13 @@ the ring is drawn only with the gun raised or a dot up, so the outline never sho
 before. The window over a solid housing follows the dot's eye as before.
 
 **[verify] in the headset:** at any raised hold, the outline and the dot together; pushed in past the window the dot stays.
+
+## 23. Shouldering takes both hands and a two-handed gun (2026-11-18)
+
+The owner, ME2 in the headset: "Holding a sniper rifle one-handed and pulling it to my shoulder still locks into the shoulder
+position; that should only happen with both hands on a two-handed weapon." Section 20's shoulder rule asked only for a long
+gun (not a pistol) with the right grip in the calibrated zone and the head along the barrel. Now `vr::ads::MayShoulder(twoHanded,
+supportHeld)` must hold too: an assault rifle, a shotgun or a sniper rifle (an SMG or a pistol never) that the support grip
+holds (`support_grip::Held()`); letting go with the left hand leaves the shoulder at once, and the zone's hysteresis starts
+afresh. game/Sights, every game; unit test next to `AtShoulder`'s. [verify] in the headset: one-handed at the shoulder, the
+distance rule only (no lock); both hands, the sight on at once as before.

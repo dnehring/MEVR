@@ -75,6 +75,11 @@ float Smooth(float t);
 inline constexpr float kShoulderFacingOnDeg = 25.0f;
 inline constexpr float kShoulderFacingOffDeg = 35.0f;
 bool AtShoulder(bool inZone, float facingDeg, bool was);
+// Who may shoulder at all (the owner, 2026-11-18, ME2: "Holding a sniper rifle one-handed and pulling it to my shoulder still
+// locks into the shoulder position; that should only happen with both hands on a two-handed weapon"): a two-handed gun (an
+// assault rifle, a shotgun, a sniper rifle; never a pistol or an SMG) that the support grip holds too. Letting go with the
+// left hand leaves the shoulder at once; every game (game/Sights).
+bool MayShoulder(bool twoHandedGun, bool supportHeld);
 
 // Overlord's `approach`: 0..1, independent of the ADS latch. The angle between the head's forward and the barrel, full
 // within 5 degrees and none at 45, times smooth edges between the entry and exit corridors (depth, lateral, height), so

@@ -174,4 +174,8 @@ bool AtShoulder(bool inZone, float facingDeg, bool was) {
     return facingDeg <= (was ? kShoulderFacingOffDeg : kShoulderFacingOnDeg);
 }
 
+bool MayShoulder(bool twoHandedGun, bool supportHeld) {
+    return twoHandedGun && supportHeld;
+}
+
 } // namespace mevr::vr::ads
