@@ -169,7 +169,10 @@ std::optional<engine::TrackingFrame> Current() {
 }
 
 void Hold(std::optional<engine::TrackingFrame> frame, std::optional<vr::host_view::State> floorReference) {
-    if (frame && !gHeld) gHeldFloor = floorReference && floorReference->valid ? *floorReference : vr::host_view::Latest();
+    // A reference passed with the hold is taken every call, not only at its start: a scene's floor follows its place (a ride, a
+    // teleport; ConversationWorld's HeldFloorView). Without one, the hold keeps the live view of when it began.
+    if (frame && floorReference && floorReference->valid) gHeldFloor = *floorReference;
+    else if (frame && !gHeld) gHeldFloor = vr::host_view::Latest();
     if (!frame) gHeldFloor = {};
     gHeld = frame;
 }

@@ -6449,6 +6449,37 @@ void StepEyeHeight(ue3::Object* pawn, vr::host_view::State const& view, double d
     }
 }
 
+// The floor the body is drawn on, for its size (research/58's scale pivot; the owner, 2026-11-18, on the council chamber's bridge:
+// "it looks like I'm floating ... my knees are kind of hanging"; research/29 "The eyes inside the body", "The floor of a held
+// scene"). view_anchor kept the floor on foot from when the hold began, so after a scripted ride (the moment up to the council
+// chamber rose 2.33 m) arm IK scaled the body about a floor 2.3 m under it, and at body scale 1.10-1.12 the whole body stood
+// 0.25-0.28 m in the air (before crouchBody the eyes sat in its chest; with it the knees bent to bring the head down to the eyes,
+// the feet still in the air). The floor under the drawn body is the pawn's (Location.z - CollisionHeight), at the player's place
+// while the view is detached (BodyAway's riseUnits): passed with every hold, so it follows rides, teleports and walks.
+bool gHeldFloorLogged = false;
+decltype(gC.number) gHeldFloorLoggedFor{};
+vr::host_view::State HeldFloorView(ue3::Object* pawn) {
+    vr::host_view::State v = gFoot.floorView;
+    if (!v.valid || pawn == nullptr || !ue3::runtime::IsAlive(pawn)) {
+        return v;
+    }
+    ue3::Object* const cylinder = gPawnCylinder.Read<ue3::Object*>(pawn).value_or(nullptr);
+    auto const height = cylinder != nullptr ? gCylinderHeight.Read<float>(cylinder) : std::nullopt;
+    auto const at = player::Location(pawn);
+    if (!height || *height <= 0.0f || *height >= 300.0f || !at) {
+        return v;
+    }
+    double const floor = (gC.detached ? gC.detachedAt.z : static_cast<double>(at->z)) - *height;
+    if ((!gHeldFloorLogged || gHeldFloorLoggedFor != gC.number) && std::abs(floor - v.pawnFloorZ) > 10.0) {
+        gHeldFloorLogged = true;
+        gHeldFloorLoggedFor = gC.number;
+        log::Info("convo: at {:.1f} s the body's size is taken about the floor under it, {:.2f} m {} the floor on foot when the "
+                  "scene began", Seconds(), std::abs(floor - v.pawnFloorZ) / kUnitsPerMeter, floor > v.pawnFloorZ ? "above" : "below");
+    }
+    v.pawnFloorZ = floor;
+    return v;
+}
+
 // The view sits with Shepard (StepSeat; the owner, 2026-11-16: the dancer's seat at Chora's Den, "any of the types of sit down
 // based interactions that happen across all three games"; research/69 item 43). In a conversation in the world, when his
 // animated head (MarkHeadOf) drops well under where it stands (15 cm under its standing height above his place, or under 0.62 m
@@ -6763,7 +6794,7 @@ bool TickMoment(Link const& link, ue3::Object* pawn, std::optional<std::uint8_t>
         gMoment.pawnAt = V(*at);  // after his own step
     }
     if (frame) {
-        view_anchor::Hold(frame, gFoot.floorView);
+        view_anchor::Hold(frame, HeldFloorView(pawn));
         gHeld = true;
     }
     gDrawnEyes = frame ? std::optional<ik::Vec3>{ik::Vec3{frame->headWorld.x, frame->headWorld.y, frame->headWorld.z}} : std::nullopt;
@@ -7849,7 +7880,7 @@ void Tick(double deltaSeconds, Link const& link) {
         MovePlayer(pawn, *frame, view, deltaSeconds);  // without a VR view (a flat game): the held view's yaw, `mevr convo walk`
     }
     if (frame) {
-        view_anchor::Hold(frame, gFoot.floorView);
+        view_anchor::Hold(frame, HeldFloorView(pawn));
         gHeld = true;
         gDrawnEyes = ik::Vec3{frame->headWorld.x, frame->headWorld.y, frame->headWorld.z};
         if (gC.eyesMeant && GetTickCount64() >= gC.eyesMeantFromMs && GetTickCount64() < gC.eyesMeantUntilMs && view.valid && gInWorld) {
