@@ -229,11 +229,15 @@ public:
             return ObjectRef(o);
         }
         std::string out = std::format("{{\"name\": {}, \"class\": {}", Esc(r_.FullName(o)), Esc(r_.NameText(r_.ClassOf(o))));
-        if (auto const at = player::Location(o)) {
-            out += std::format(", \"location\": [{}, {}, {}]", Num(at->x), Num(at->y), Num(at->z));
-        }
-        if (auto const rot = player::Rotation(o)) {
-            out += std::format(", \"rotation\": [{}, {}, {}]", rot->pitch, rot->yaw, rot->roll);
+        // An actor's place only: Engine.Actor's fields asked of another object are refused (ue3::FieldRef::Fits, logged).
+        ue3::Class* const actorClass = r_.FindClass("Engine.Actor");
+        if (actorClass != nullptr && r_.IsA(o, actorClass)) {
+            if (auto const at = player::Location(o)) {
+                out += std::format(", \"location\": [{}, {}, {}]", Num(at->x), Num(at->y), Num(at->z));
+            }
+            if (auto const rot = player::Rotation(o)) {
+                out += std::format(", \"rotation\": [{}, {}, {}]", rot->pitch, rot->yaw, rot->roll);
+            }
         }
         for (char const* name : {"DrawScale", "DrawScale3D", "bHidden", "Tag"}) {
             if (auto const info = r_.PropertyOf(r_.ClassOf(o), name)) {

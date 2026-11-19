@@ -102,6 +102,15 @@ function Put-Back([string]$session) {
     } elseif (Test-Path (Join-Path $localKept 'no-settings-taken.txt')) {
         Remove-Item -Recurse -Force (Join-Path $mevrLocal 'settings-taken') -ErrorAction SilentlyContinue
     }
+    # The sequels' old inis, byte for byte (the settings migration marks them).
+    $sequelInis = Join-Path $session 'backup\sequels'
+    foreach ($pair in @(@('ME2', 'LE2'), @('ME3', 'LE3'))) {
+        $kept = Join-Path $sequelInis "$($pair[1])MEVR.ini"
+        $live = Join-Path (Split-Path -Parent $game) ("{0}\Binaries\Win64\ASI\{1}MEVR.ini" -f $pair[0], $pair[1])
+        if ((Test-Path -LiteralPath $kept) -and (-not (Test-Path -LiteralPath $live) -or (Get-FileHash -LiteralPath $live).Hash -ne (Get-FileHash -LiteralPath $kept).Hash)) {
+            Copy-Item -LiteralPath $kept -Destination $live -Force; Say "ini restored: $($pair[1])MEVR.ini"
+        }
+    }
     if (Test-Path $log) { Copy-Item $log (Join-Path $session 'LE1MEVR.log') -Force }
     Say ('the ASI in the game: ' + (Get-Item (Join-Path $asi 'LE1MEVR.asi')).VersionInfo.ProductVersion)
 }
@@ -138,6 +147,15 @@ if (Test-Path (Join-Path $mevrLocal 'settings.ini')) { Copy-Item -Force (Join-Pa
 else { Set-Content -LiteralPath (Join-Path $localKept 'no-settings.txt') -Value 'none before the run' }
 if (Test-Path (Join-Path $mevrLocal 'settings-taken')) { Copy-Item -Recurse -Force (Join-Path $mevrLocal 'settings-taken') (Join-Path $localKept 'settings-taken') }
 else { Set-Content -LiteralPath (Join-Path $localKept 'no-settings-taken.txt') -Value 'none before the run' }
+# The sequels' old files too: the host's first attach after the update takes ME2's and ME3's ASI\LE{2,3}MEVR.ini into
+# settings.ini and marks them `[Settings] shared = 1`; a run that then removes the settings.ini it made must put them back,
+# or the player's ME2/ME3 files stay marked with no shared file (2026-11-19, the coordinator's LE1 check).
+$sequelInis = Join-Path $Session 'backup\sequels'
+New-Item -ItemType Directory -Force $sequelInis | Out-Null
+foreach ($pair in @(@('ME2', 'LE2'), @('ME3', 'LE3'))) {
+    $file = Join-Path (Split-Path -Parent $game) ("{0}\Binaries\Win64\ASI\{1}MEVR.ini" -f $pair[0], $pair[1])
+    if (Test-Path -LiteralPath $file) { Copy-Item -LiteralPath $file -Destination (Join-Path $sequelInis "$($pair[1])MEVR.ini") -Force }
+}
 if ($CalibrationKey) {
     if ($CalibrationKey -eq 'owner') {
         . (Join-Path $PSScriptRoot 'owner-calibration.ps1')
