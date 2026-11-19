@@ -359,6 +359,8 @@ set(MEVR_MOD_SOURCES
     src/core/ik/Fingers.hpp
     src/core/ik/GoalStep.cpp
     src/core/ik/GoalStep.hpp
+    src/core/ik/HandContact.cpp
+    src/core/ik/HandContact.hpp
     src/core/ik/Melee.cpp
     src/core/ik/GunKick.cpp
     src/core/ik/GunKick.hpp
@@ -567,6 +569,8 @@ set(MEVR_MOD_SOURCES
     src/game/Melee.cpp
     src/game/GunKick.cpp
     src/game/GunKick.hpp
+    src/game/HandContact.cpp
+    src/game/HandContact.hpp
     src/game/HandAim.cpp
     src/game/HandCalibration.cpp
     src/game/HandCalibration.hpp
@@ -1532,6 +1536,7 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/Traversal.cpp
         tests/TraversalTests.cpp
         tests/GoalStepTests.cpp
+        tests/HandContactTests.cpp
         tests/GameMenuBackOutTests.cpp
         tests/GameMenuLeaveTests.cpp
         tests/TraversalPresentationTests.cpp
@@ -1564,6 +1569,7 @@ if (MEVR_BUILD_TESTS)
         src/core/ik/CameraHook.cpp
         src/core/ik/Fingers.cpp
         src/core/ik/GoalStep.cpp
+        src/core/ik/HandContact.cpp
         src/core/ik/Melee.cpp
     src/core/ik/GunKick.cpp
         src/core/ik/Ik.cpp

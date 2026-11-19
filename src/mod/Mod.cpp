@@ -65,6 +65,7 @@
 #include "game/GamepadBridge.hpp"
 #include "game/GamepadMapping.hpp"
 #include "game/GunKick.hpp"
+#include "game/HandContact.hpp"
 #include "game/HandAim.hpp"
 #include "game/HandTargets.hpp"
 #include "game/HeadSim.hpp"
@@ -1416,6 +1417,7 @@ void PublishStatus() {
 #if defined(MEVR_GAME_LE2)
         full += ", \"galaxyProjector\": " + game::le2_galaxy_capture::StatusJson();  // the sequels' flow (game/GalaxyProjectorFlow)
 #endif
+        full += ", \"handContact\": " + game::hand_contact::StatusJson();
         full += ", \"traversal\": " + game::traversal::StatusJson() + "}";
     }
     gHost->setStatus(full.c_str());
@@ -1563,6 +1565,7 @@ void Heartbeat() {
         game::view_level::LogStats();
         game::traversal::LogStats();
         game::gun_kick::LogStats();
+        game::hand_contact::LogStats();
         game::combat_stance::LogStats();
         game::sprint::LogStats();
         game::fingers::LogStats();
@@ -1857,7 +1860,10 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         // tick runs before the support grip's, which hides its grab zone from the pad while the hand is there.
         game::vent::Link const ventLink = VentLink();
         game::vent::Claim(ventLink);
-        game::holsters::Tick(deltaSeconds, HolsterLink());
+        game::holsters::Link const holsterLink = HolsterLink();
+        game::holsters::Tick(deltaSeconds, holsterLink);
+        // The hands that touch someone buzz (research/73): the writer's last contact, after arm IK's tick.
+        game::hand_contact::Tick(deltaSeconds, {holsterLink.haptic, holsterLink.hapticHz, holsterLink.hapticContinuous});
         // The power wheel at the left hand (research/55) before the squad's: a pinch that equips a power is never a squad pull.
         game::power_wheel::Tick(deltaSeconds, PowerWheelLink());
         game::squad_weapons::Tick(deltaSeconds, SquadLink());
@@ -2156,6 +2162,7 @@ MEVR_MOD_API void MevrModShutdown() {
     gActionContext = {};
     ++gActionGeneration;
     game::gun_kick::Shutdown();
+    game::hand_contact::Shutdown();
     if (gHost != nullptr && MEVR_HOST_HAS(setVignette) && gHost->setVignette != nullptr) {
         gHost->setVignette(0.0f);  // no vignette without the mod (the host also forgets on unload)
     }

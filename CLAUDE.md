@@ -483,6 +483,15 @@ switching frameworks.
   mesh's origin, turned with the body) and the writer's `bone_pose::Leg::planted` put them back. **Audit the skeleton** with
   `mevr camera trace <s> [label]` (the pawn, the game camera and 14 bones each tick, `%LOCALAPPDATA%\MEVR\camera-trace-*.csv`),
   `python tools/skeleton-audit.py` (bones against `Root`, the camera against the pawn) and the run `tools/skeleton-audit.ps1`.
+- **Hand contact with other characters** (every game, research/73, the owner's design 2026-11-18; `game/HandContact`, core
+  `core/ik/HandContact`, unit-tested; `[HandContact]` in `ASI\<GAME>MEVR.ini`: `on` 1, `handRadiusM` 0.045, `rangeM` 2.5,
+  `maxPeople` 8, `haptic` 1): each tick arm IK drives the hands first person, every other visible BioPawn within rangeM of
+  Shepard becomes capsules from its own bones by name (`PartsFor`: spine, neck, skull, collars, arms, the hand past the wrist,
+  thighs, shins; fingers, face, props, helpers, twist bones never), in arm IK's request (`Request::contact`, component space,
+  unscaled with the goals); the writer (`engine/BonePose` `ApplyContact`, after the gun kick, before `PoseArm`) pushes each
+  hand's palm sphere out of them, keeping the side it came from, a support-held left hand moving with the right. The
+  controller is untouched (aim, shots, holsters). A click on contact and a hum while pressed. Nobody is pushed. Log `hand
+  contact:`; snapshot `"mod"."handContact"`; `mevr contact [on|off|auto|people]` on all three games. Not yet run in a game.
 - LE1 body at the player's size ([research/58](research/58-body-scale.md), floor lock 2026-11-07; `core/ik/BodyScale`,
   `core/vr/FloorLock`, `plugin/FloorLock`, `game/BodyScale`): ordinary on-foot first person puts the common eye centre at
   `pawn.Location.z - CylinderComponent.CollisionHeight + unitsPerMeter * live STAGE/LOCAL_FLOOR eye height`, independent of

@@ -33,6 +33,7 @@
 #include "game/GalaxyMap.hpp"
 #include "game/GameMenuRequest.hpp"
 #include "game/GunKick.hpp"
+#include "game/HandContact.hpp"
 #include "game/CombatStance.hpp"
 #include "game/Holsters.hpp"
 #include "game/Melee.hpp"
@@ -1594,6 +1595,11 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         std::getline(words, rest);
         return camera_probe::Command(rest);  // `mevr camera trace <seconds>`: the view against the pawn, tick by tick
     }
+    if (verb == "contact") {
+        std::string rest;
+        std::getline(words, rest);
+        return hand_contact::Command(rest);  // `mevr contact [on|off|auto|people]` (research/73, hand contact)
+    }
     if (verb == "armik") {
         std::string rest;
         std::getline(words, rest);
@@ -1923,6 +1929,11 @@ std::optional<std::string> RunOursLe3(ue3::Object* pc, std::string const& line) 
         std::getline(words, rest);
         return thespian::Command(rest);
     }
+    if (verb == "contact") {
+        std::string rest;
+        std::getline(words, rest);
+        return hand_contact::Command(rest);  // `mevr contact [on|off|auto|people]` (research/73, hand contact)
+    }
     if (verb == "load") return LoadSave(ue3::runtime::GameEngine(), words);
     if (verb == "savedesc") return CurrentSave(ue3::runtime::GameEngine());
     if (verb == "state") return State(pc);
@@ -2131,6 +2142,11 @@ std::optional<std::string> RunOursLe2(ue3::Object* pc, std::string const& line) 
         std::string rest;
         std::getline(words, rest);
         return camera_probe::Command(rest);  // `mevr camera trace <seconds> [label]` (M3: the skeleton audit on ME2)
+    }
+    if (verb == "contact") {
+        std::string rest;
+        std::getline(words, rest);
+        return hand_contact::Command(rest);  // `mevr contact [on|off|auto|people]` (research/73, hand contact)
     }
     if (verb == "armik") {
         std::string rest;

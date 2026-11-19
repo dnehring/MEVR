@@ -636,6 +636,10 @@ Turn it on: the menu's Voice page > Thespian mode > Speak Shepard's lines (or `[
   (research/14 "Two-handed grip")
 - [ ] Turn your real body 90 degrees, step, lean, walk sideways and backward: chest and hips face your way, Shepard steps
   under you; any moonwalking legs, neck stump looking steeply down, or view judder? (research/29)
+- [ ] 2026-11-18 hand contact (research/73, `[HandContact] on = 1` by default, every game): reach into a squadmate's chest,
+  shoulder, head and arm: the drawn hand stops at their body and slides along it, no snap through to the far side, a click on
+  contact and a hum while pressed. Push the gun into someone: it stops too (the aim follows the controller). Too strong a
+  hum, a hand stopped short of the body, or someone you can still reach through (another race's rig: `mevr contact people`)?
 - [ ] 2026-11-18 the eyes inside the body (research/29 "The eyes inside the body"; `[Hands] crouchBody = 1`, on by default,
   read live): squat a little (10-30 cm, not deep enough for the game's crouch), bend at the waist to look at the floor, and
   look straight down at your chest, standing and squatting. You should see Shepard's chest and legs below you with his
@@ -791,6 +795,9 @@ Turn it on: the menu's Voice page > Thespian mode > Speak Shepard's lines (or `[
 
 ## 7. Claude checks these alone on the fake headset (no need to wear it)
 Ask Claude to run them when the machine is free; each is a console command, a snapshot, a replay or a probe.
+- Hand contact (research/73 section 3, 2026-11-18): beside a squadmate with a hand replay held into them, `mevr contact
+  people` lists them with 12+ capsules a side, and a snapshot shows `mod.handContact.hands[*].touching` and the drawn wrist
+  off its controller; on ME1, ME2 and ME3.
 - ME2's vault with the gun held (lane C2): `tools/le2-halcyon-run/vault.ps1 -Runs 3 -Mode tap` again on main after dc7c6f98
   (every tick's wrists within 0.15 m; 0.08 m at most on 2026-11-15), and `-Support`: the two-handed hold is refused by the
   game (the support grip's LT zooms the gun, `CanPerformMantle` tests it).

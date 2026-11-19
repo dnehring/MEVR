@@ -464,6 +464,9 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Shared since 2026-11-18:** the body down (or up) to the head (`[Hands] crouchBody`, `TorsoGoal::crouch`, research/29 "The
   eyes inside the body"): squats and bends no longer put the eyes inside the body, on every game whose skeleton has both eye
   bones and both legs; measured offline on LE1's skeleton, the in-game run `tools/eyes-in-body.ps1` (ME1) not yet run.
+- **Shared since 2026-11-18:** hand contact with other characters (`game/HandContact`, `[HandContact]`, research/73, ledger
+  G59; the owner's design): the drawn hand stops at a person's body and slides along it while the controller goes on, a buzz
+  on contact, nobody pushed; every game, on by default, built and unit-tested, not yet run in a game.
 - **Closes when:** snapshot `mod.armIk.hands` puts each wrist on its controller through a vault; `mod.fingers` follows
   a replayed trigger and grip; the ME3 null-height run's script passes on ME2's Save 4.
 - **Waits for:** nothing (T04 declared the ME3 Velocity handle, 2026-11-16: see it in a walk). **Who:** C4 (C2's successor).

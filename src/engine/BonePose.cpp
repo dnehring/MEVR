@@ -118,6 +118,10 @@ ULONGLONG gHandsTimeMs = 0;
 Mesh const* gSupportMesh = nullptr;
 SupportSample gSupport;
 ULONGLONG gSupportTimeMs = 0;
+// Hand contact's last result (LatestContact).
+Mesh const* gContactMesh = nullptr;
+ContactSample gContact;
+ULONGLONG gContactTimeMs = 0;
 // The fingers' last result (LatestFingers).
 Mesh const* gFingersMesh = nullptr;
 FingersSample gFingers;
@@ -415,6 +419,10 @@ bool TakeRequest(Mesh const* self, Request& copy) {
         copy.bodyScale = gRequest.bodyScale;
         copy.eyes = gRequest.eyes;
         copy.frame = gRequest.frame;
+        copy.contact.enabled = gRequest.contact.enabled;
+        copy.contact.capsules.assign(gRequest.contact.capsules.begin(), gRequest.contact.capsules.end());
+        copy.contact.handRadius = gRequest.contact.handRadius;
+        copy.contact.hands = gRequest.contact.hands;
     }
     ReleaseSRWLockShared(&gRequestLock);
     if (stale != nullptr) {
@@ -424,6 +432,61 @@ bool TakeRequest(Mesh const* self, Request& copy) {
         Reject(stale);
     }
     return matches;
+}
+
+// Hand contact (Request::contact, research/73): each enabled hand's final goal pushed out of the people near the player,
+// sliding along them. A left hand the support grip holds on the gun moves by as much as the right (one gun); its own contact
+// isn't measured. The point each hand was pushed to is kept for the next call (the side it came from: core/ik/HandContact).
+void ApplyContact(Request const& request, std::span<ik::Transform const> pose, bool support, std::array<bool, 2> const& haveGoal,
+    std::array<ik::ArmGoal, 2>& goals, ContactSample& sample) {
+    namespace hc = ik::hand_contact;
+    thread_local std::array<std::optional<ik::Vec3>, 2> tPrevious;
+    Contact const& contact = request.contact;
+    bool const leftOnGun = support && request.support.hold != 0;
+    double const radius = contact.handRadius;
+    for (int side : {1, 0}) {
+        bool const usable = haveGoal[side] && request.arms[side].target == Target::Component && contact.hands[side] &&
+                            !contact.capsules.empty() && radius > 0.0;
+        if (!usable || (side == 0 && leftOnGun)) {
+            tPrevious[side].reset();
+            continue;
+        }
+        // The palm, not the wrist joint: halfway to the middle finger's knuckle as the animation holds the hand, turned with the
+        // goal's rotation (the fingers module's bones; without them the wrist itself).
+        ik::Vec3 palm;
+        int const handBone = request.arms[side].chain.hand;
+        int const knuckle = request.fingers.hands[side].bones.fingers[2].joints[0];
+        if (goals[side].hasRotation && handBone >= 0 && knuckle >= 0 && static_cast<std::size_t>(handBone) < pose.size() &&
+            static_cast<std::size_t>(knuckle) < pose.size()) {
+            ik::Transform const& h = pose[static_cast<std::size_t>(handBone)];
+            ik::Vec3 const local = ik::Rotate(ik::Conjugate(h.rotation), pose[static_cast<std::size_t>(knuckle)].translation - h.translation);
+            if (ik::Length(local) < radius * 4.0) {
+                palm = ik::Rotate(goals[side].rotation, local) * 0.5;
+            }
+        }
+        ik::Vec3 const wanted = goals[side].wrist + palm;
+        std::optional<ik::Vec3> previous = tPrevious[side];
+        if (previous && ik::Length(*previous - wanted) > radius * 8.0) {
+            previous.reset();  // far from where the hand is now (a jump, a teleport): no side to keep
+        }
+        hc::Result const result = hc::PushOut(wanted, radius, contact.capsules, previous);
+        ContactHand& hand = sample.hands[side];
+        hand.handRadius = radius;
+        if (!result.touching) {
+            tPrevious[side].reset();
+            continue;
+        }
+        ik::Vec3 const delta = result.point - wanted;
+        goals[side].wrist = result.point - palm;
+        tPrevious[side] = result.point;
+        hand.touching = true;
+        hand.depth = result.depth;
+        hand.moved = ik::Length(delta);
+        hand.part = result.capsule >= 0 ? contact.capsules[static_cast<std::size_t>(result.capsule)].part : hc::Part::None;
+        if (side == 1 && leftOnGun && haveGoal[0]) {
+            goals[0].wrist = goals[0].wrist + delta;
+        }
+    }
 }
 
 void Write(Mesh* self, float deltaTime) {
@@ -528,6 +591,12 @@ void Write(Mesh* self, float deltaTime) {
             leg.ankle = bs::Unscale(scale, leg.ankle);
             leg.knee = bs::Unscale(scale, leg.knee);
         }
+        for (ik::hand_contact::Capsule& capsule : request.contact.capsules) {
+            capsule.a = bs::Unscale(scale, capsule.a);
+            capsule.b = bs::Unscale(scale, capsule.b);
+            capsule.radius = bs::UnscaleLength(scale, capsule.radius);
+        }
+        request.contact.handRadius = bs::UnscaleLength(scale, request.contact.handRadius);
     }
     if (request.head >= 0 && request.head < count) {
         AcquireSRWLockExclusive(&gSampleLock);
@@ -674,6 +743,17 @@ void Write(Mesh* self, float deltaTime) {
                     goals[0].hasRotation ? &goals[0].rotation : nullptr);
             }
         }
+    }
+    // Hand contact with other characters (research/73): the final goals pushed out of the bodies near the player.
+    if (request.contact.enabled) {
+        ContactSample contactSample;
+        contactSample.capsules = static_cast<int>(request.contact.capsules.size());
+        ApplyContact(request, pose, support, haveGoal, goals, contactSample);
+        AcquireSRWLockExclusive(&gSampleLock);
+        gContactMesh = self;
+        gContact = contactSample;
+        gContactTimeMs = GetTickCount64();
+        ReleaseSRWLockExclusive(&gSampleLock);
     }
     bool rightPosed = false;
     for (int side : {0, 1}) {
@@ -1659,6 +1739,15 @@ std::optional<SupportSample> LatestSupport() {
     SupportSample const sample = gSupport;
     ReleaseSRWLockShared(&gSampleLock);
     return fresh ? std::optional<SupportSample>(sample) : std::nullopt;
+}
+
+std::optional<ContactSample> LatestContact() {
+    Mesh const* const mesh = gMesh.load(std::memory_order_acquire);
+    AcquireSRWLockShared(&gSampleLock);
+    bool const fresh = mesh != nullptr && gContactMesh == mesh && GetTickCount64() - gContactTimeMs <= kMaxRequestAgeMs;
+    ContactSample const sample = gContact;
+    ReleaseSRWLockShared(&gSampleLock);
+    return fresh ? std::optional<ContactSample>(sample) : std::nullopt;
 }
 
 std::optional<FingersSample> LatestFingers() {

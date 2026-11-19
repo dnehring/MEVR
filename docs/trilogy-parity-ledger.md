@@ -49,12 +49,12 @@ rows the change touches.
 ## Totals
 
 <!-- parity:totals -->
-93 rows.
+94 rows.
 
 | game | shared | adapted | forked | missing | n/a | present and verified (V) | present, unverified (U) |
 |---|---|---|---|---|---|---|---|
-| LE2 | 17 | 55 | 1 | 14 | 5 | 59 | 14 |
-| LE3 | 17 | 54 | 2 | 12 | 7 | 36 | 37 |
+| LE2 | 18 | 55 | 1 | 14 | 5 | 59 | 15 |
+| LE3 | 18 | 54 | 2 | 12 | 7 | 36 | 38 |
 
 Cells not in the ledger's form (`**kind** V|U ...`):
 
@@ -286,6 +286,7 @@ The [technique groups](#renderer-techniques-by-group) summary follows the table.
 | G56 | Classic menu's VR hands tab and menu pointer (`plugin/MevrMenuTab`, `plugin/MevrMenuPointer`) | **missing**: Halcyon ME2's own menu, without our tab | **missing** | Low value: our main menu replaces it. |
 | G57 | The game's wheels cut onto a hand quad (`core/vr/WheelCrop`, `setWheelPanel`, the native squad-wheel style) | **shared** U: `plugin/WheelPanel` (LE1's code moved out of `HalcyonOverlays.cpp`, lane AU1, 2026-11-18) composed by `SequelOverlays.cpp`; the wheel's mode through `engine/GameAdapter.hpp`; not seen in the game | **shared** U: the same | With G30. Check: a snapshot with the game's weapon wheel up shows a `wheel` layer at the left hand and `[MEVR-WHEEL] measured`. |
 | G58 | VR sprint (`game/Sprint`, `core/vr/Sprint`) | **shared** V: one module and rule for the three (lane GR, 2026-11-16, the owner's "Unified sprint"): `SFXGameModeDefault.StormOn` runs (the binding's hold reaches it through ProcessEvent), its intent `BioPlayerController.bWantsToStorm` is withdrawn by both hooks' post-handlers, the faster run raises `GroundSpeed`/`CombatGroundSpeed` by `StormSpeed` over `Pawn.GetMaxSpeed`; ME2's adapter: not in the game's own cover. No ME2 fact forces the native Storm. Run on the fake headset (Save 4): withdrawn, x1.31, peak 525 u/s, the run 400 u/s; research/trilogy-sprint.md. ME1 too (the old skip never fired since 11-06) | **shared** V: the same, with ME3's native admission (`player::MovementRefused`, `IsStormDisabled`, the fresh-owner check); Save 31: withdrawn, x1.12, peak 450 u/s | The sprint's heading and feel in a headset on each game; ME3 off the Normandy; a sprint with a weapon drawn. |
+| G59 | Hand contact with other characters (`game/HandContact`, `core/ik/HandContact`, `engine/BonePose` `ApplyContact`; research/73) | **shared** U: one module and core for the three (2026-11-18, the owner's design: the drawn hand stops at a person's body and slides along it, a buzz, nobody pushed); built, unit-tested (tests/HandContactTests.cpp on ME1's human rig, which is ME2's); not run in a game | **shared** U: the same; ME3's NPC rigs' bone names unchecked | All: on the fake headset beside a squadmate with a hand replay, `mevr contact people` (12+ capsules a side) and a snapshot's `mod.handContact.hands[*].touching` with the drawn wrist off its controller; then the headset (research/73 section 3). |
 
 ### Sequel-only systems
 
@@ -636,9 +637,9 @@ defined in the tool's header:
 <!-- parity:summary -->
 | game | renderer | host plugin files | host core files | services served | src/game + src/engine modules by status | common seams called | own seams |
 |---|---|---|---|---|---|---|---|
-| LE1 | halcyon-le1 | 74 | 71 | 58 | run 68, out 4, ungated 26, unreferenced 4, unbuilt 4 | 22 of 51 | 89 |
-| LE2 | halcyon-le2 | 73 | 61 | 54 | run 54, ready 8, out 15, ungated 23, unreferenced 2, unbuilt 4 | 46 of 51 | 4 |
-| LE3 | halcyon-le3 | 75 | 62 | 56 | run 53, ready 8, out 14, ungated 25, unreferenced 3, unbuilt 3 | 47 of 51 | 2 |
+| LE1 | halcyon-le1 | 74 | 71 | 58 | run 69, out 4, ungated 26, unreferenced 4, unbuilt 4 | 22 of 51 | 89 |
+| LE2 | halcyon-le2 | 73 | 61 | 54 | run 55, ready 8, out 15, ungated 23, unreferenced 2, unbuilt 4 | 46 of 51 | 4 |
+| LE3 | halcyon-le3 | 75 | 62 | 56 | run 54, ready 8, out 14, ungated 25, unreferenced 3, unbuilt 3 | 47 of 51 | 2 |
 <!-- /parity:summary -->
 
 ### Host plugin files per game
@@ -905,6 +906,7 @@ Helpers applied, in order:
 | `game/GunKick` | run | run | run |
 | `game/HandAim` | run | run | run |
 | `game/HandCalibration` | ungated | ungated | ungated |
+| `game/HandContact` | run | run | run |
 | `game/HandTargets` | ungated | ungated | ungated |
 | `game/HeadSim` | ungated | ungated | ungated |
 | `game/HeadTracking` | run | run | run |

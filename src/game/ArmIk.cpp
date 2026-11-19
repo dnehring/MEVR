@@ -18,6 +18,7 @@
 #include "game/CockpitProbe.hpp"
 #include "game/Fingers.hpp"
 #include "game/GunKick.hpp"
+#include "game/HandContact.hpp"
 #include "game/HandCalibration.hpp"
 #include "engine/BodyBounds.hpp"
 #include "engine/BonePose.hpp"
@@ -1573,6 +1574,8 @@ void Drive(double deltaSeconds) {
     gLegsPlanted = planted && plantFeet;
     gMenuBody.Capture(request, menuIdentity, menuEligible && targets.anchor == hand_targets::Anchor::View,
         GetTickCount64());
+    // The people near the player as capsules for the writer: the hands stop at their bodies (research/73).
+    hand_contact::Fill(request, body->pawn, *worldToComponent, targets.anchor == hand_targets::Anchor::View);
     engine::bone_pose::Publish(std::move(request));
     gStatus = "driving: " + driven;
     gGunAimed = gunAimed;

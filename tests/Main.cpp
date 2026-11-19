@@ -12438,6 +12438,8 @@ int RunThespianTests();
 // tests/TraversalTests.cpp: the vault's double A, its record, view and cue (core/vr/Traversal, research/le2-traversal.md).
 int RunTraversalTests();
 int RunGoalStepTests();
+// tests/HandContactTests.cpp: the hand stopped at other characters' bodies (core/ik/HandContact, research/73).
+int RunHandContactTests();
 // tests/GameMenuBackOutTests.cpp: backing out of ME3's screens one B each (vr::game_menu::StepBackOut, lane OMX).
 int RunGameMenuBackOutTests();
 // tests/GameMenuLeaveTests.cpp: our menu's Leave entry on ME2 and ME3 (vr::game_menu Leave, offers; research/28 "Leave").
@@ -12676,6 +12678,7 @@ int main() {
     gFailures += RunThespianTests();
     gFailures += RunTraversalTests();
     gFailures += RunGoalStepTests();
+    gFailures += RunHandContactTests();
     gFailures += RunGameMenuBackOutTests();
     gFailures += RunGameMenuLeaveTests();
     gFailures += RunTraversalPresentationTests();

@@ -6,6 +6,7 @@
 #include "core/ik/Fingers.hpp"
 #include "core/ik/GoalStep.hpp"
 #include "core/ik/GunKick.hpp"
+#include "core/ik/HandContact.hpp"
 #include "core/ik/TorsoPose.hpp"
 
 #include <array>
@@ -135,6 +136,19 @@ struct GunKick {
     double backUnits = 0.0;  // component units
 };
 
+// Hand contact with other characters (game/hand_contact, core/ik/HandContact, research/73): the people near the player as
+// capsules from their own bones, in this request's component space and scaled world (like the goals; the writer unscales
+// them with the goals). Each enabled hand's final goal (after the support grip, the sight shift and the gun kick) is a sphere
+// of `handRadius` pushed out of them right before the arm is solved, so the drawn hand stops at a body and slides along it
+// while the controller goes on. A left hand the support grip holds on the gun moves with the right instead (the gun is one
+// thing). Nobody is moved.
+struct Contact {
+    bool enabled = false;
+    std::vector<ik::hand_contact::Capsule> capsules;
+    double handRadius = 0.0;  // component units
+    std::array<bool, 2> hands{true, true};
+};
+
 // A leg (ik::FindLegChain: hip, knee, ankle) posed by the same two-bone solve as an arm: the ankle to `ankle`, the knee
 // bending toward `knee` (component space). The Mako's seated driver (research/47 "Shepard in the seat").
 struct Leg {
@@ -232,6 +246,7 @@ struct Request {
     std::array<int, 2> eyes{-1, -1};
     // Where the goals were computed (GoalFrame, StepRule): without it the goals ride the component as before.
     GoalFrame frame;
+    Contact contact;
 };
 
 // What the writer did with Request::support on its last write.
@@ -490,5 +505,19 @@ struct FingersSample {
     std::array<bool, 2> skipped{false, false};  // the hand's bone names no longer matched
 };
 std::optional<FingersSample> LatestFingers();
+
+// What the writer did with Request::contact on its last write (contact enabled), within half a second.
+struct ContactHand {
+    bool touching = false;
+    double depth = 0.0;         // how far the controller's point went into a body (unscaled component units)
+    double handRadius = 0.0;    // the hand's radius in the same units
+    double moved = 0.0;         // how far the drawn hand was moved off its goal
+    ik::hand_contact::Part part = ik::hand_contact::Part::None;  // what it touched (the deepest)
+};
+struct ContactSample {
+    std::array<ContactHand, 2> hands;
+    int capsules = 0;
+};
+std::optional<ContactSample> LatestContact();
 
 } // namespace mevr::engine::bone_pose

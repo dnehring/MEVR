@@ -7,6 +7,9 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## Unreleased
 
+- **Your hands stop at other people.** In all three games Shepard's hand no longer passes through a squadmate, an NPC or an
+  enemy: it stops at their body and slides along it while your controller goes on, and the controller buzzes on contact
+  (`[HandContact]` in the mod's ini; `on = 0` turns it off). Nobody is pushed.
 - **The shoulder lock takes both hands.** A gun at your shoulder snaps the sight on only with both hands on a two-handed
   gun (an assault rifle, a shotgun or a sniper rifle); held one-handed it no longer locks in.
 - **Shadows stay off in all three games.** Cinematics, conversations and menus turned the shadows back on (on ME2 since

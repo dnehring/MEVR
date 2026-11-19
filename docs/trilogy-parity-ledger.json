@@ -131,6 +131,7 @@
     "game/GunKick",
     "game/HandAim",
     "game/HandCalibration",
+    "game/HandContact",
     "game/HandTargets",
     "game/HeadSim",
     "game/HeadTracking",
@@ -392,6 +393,7 @@
     "game/GunKick",
     "game/HandAim",
     "game/HandCalibration",
+    "game/HandContact",
     "game/HandTargets",
     "game/HeadSim",
     "game/HeadTracking",
@@ -654,6 +656,7 @@
     "game/GunKick",
     "game/HandAim",
     "game/HandCalibration",
+    "game/HandContact",
     "game/HandTargets",
     "game/HeadSim",
     "game/HeadTracking",
@@ -2013,6 +2016,29 @@
     }
    },
    "namespace": "game::hand_calibration"
+  },
+  "game/HandContact": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    }
+   },
+   "namespace": "game::hand_contact"
   },
   "game/HandTargets": {
    "games": {
