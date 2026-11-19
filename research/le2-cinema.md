@@ -23,3 +23,17 @@ The pad trace shows `LT 255, RT 0`, release, then `LT 0, RT 255` and release. Th
 ## Timed interrupt acceptance
 
 The available Save 4 predates Veetor’s encounter. Advance naturally to Veetor and collect a save that normal-loads before the relevant dialogue, as described in the [acquisition handoff](le2-interrupt-acquisition.md#acquisition-from-the-owners-freedoms-progress-save-4). For each polarity, confirm the correct prompt is visible on the screen, then replay a trigger inside its native time window and another outside it from matching starting state. Check the spoken branch and normal outcome save. A pad edge in the shuttle or a direct script call alone cannot establish story acceptance.
+
+## The title that followed the head (2026-11-18)
+
+The owner on ME2 (and expected on ME3): "the full-screen menu snaps after the head as they look left or right"; ME1's stays
+put. The "ME2 menu gaze snapping issue" session found it in LE2MEVR.log: a stream of `world panels: cutscene/movie kind changed:
+heading -25 deg ... -19 ... -13 ... 12 deg`, one line per ~5 degrees of head yaw (until `gPlacementLogs`' 200 ran out).
+The sequels place `plugin/WorldPanels`' slot 0 twice a frame: the renderer's flat screen through `MevrSeams::PlacePanel`
+(`HalcyonLe2Bridge`, ME3's `PlaceNativePanel`: the kind from the game mode, GameMenu at the title) and `plugin/SequelCinema`'s
+3D screen (Conversation or Cutscene). `overlay::WorldPanel::Update` reads each alternation as a kind change and keeps the pose
+only while the head is within `keepYaw` (5 degrees) of where it was placed: the screen went to the head in 5-degree steps.
+**Fix:** `world_panels::Kind::CinemaScreen`, slot 2 (`SlotOf`), placed as a cinema screen (`ScreenPanelSettings`), for
+SequelCinema only; LE1 never passes it, so ME1's slots and kinds are unchanged. Test: `TestWorldPanel`'s two placements in one
+frame (alternating in one slot, a 6-degree turn re-places; one slot each, both kept). [verify] in the headset: one `appeared`
+line per showing and no `kind changed` stream; the title fixed in the room on ME2 and ME3.

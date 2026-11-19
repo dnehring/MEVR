@@ -7,6 +7,11 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## Unreleased
 
+- **No more floating at the Council.** After the ride up to the council chamber, Shepard's body (at your size) stood up to
+  30 cm above the bridge in first-person conversations, the eyes in its chest or, since the crouch fix, the knees bent with
+  the feet in the air. It now stands on the floor it is drawn on in every scene that holds your view.
+- **ME2 and ME3: the title and full-screen menus stay where they appear.** They followed your head in small steps as you
+  looked left or right; now they stay fixed in the room, as on ME1.
 - **Shepard's hands stay on yours.** Holding the controllers upright or turning your wrists in no longer swings his
   hands toward his body: the controller now sits in his closed fist and his wrist behind it, along the forearm. To go
   back to the old placement, set `fistOnGrip = 0` under `[Hands]` in `ASI\LE1MEVR.ini`.

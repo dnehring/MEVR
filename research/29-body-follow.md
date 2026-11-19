@@ -468,3 +468,27 @@ under the face (the slack) and clear; standing, leaning back, looking down and t
   and 30 cm and a bend's head looking 60 degrees down, crouchBody 0 and 1 each: snapshots and skeleton traces, the floor lock
   off and the scale held for the replay). Prepared on 2026-11-18 while the owner was in the headset; not run yet. In the
   headset: notes/headset-checklist.md.
+
+## The floor of a held scene (2026-11-18)
+
+The owner, on the council chamber's bridge (the hearing, `sta90_council_saren_D`, in first person): "it looks like I'm floating
+... my knees are kind of hanging". The snapshot (19:48:57, mode 5, "the whole body where the player stands, away from the
+pawn") had `bodyLiftM -0.247`, `crouchGapM 0.253` at body scale 1.101; the next run's log `torso: back to the game's height
+after a crouch with you: at most 69 cm down` in the same scene.
+
+**Cause.** Arm IK scales the body (research/58) about `view_anchor::FloorReference()`'s floor. In a held view that was the
+floor on foot captured when the hold began (`view_anchor::Hold` took its reference only on the first call), so after a
+scripted ride (the moment up to the council chamber: `moment: summary {... "riseM": 2.33 ...}`, then `floor lock: IK hold
+start: ... floor Z 61729.148`, the floor 2.3 m below) the body was scaled about a pivot 2.3 m under its feet: lifted by
+(s - 1) x 2.33 m = 0.24-0.28 m at 1.10-1.12. Before `crouchBody` the whole body stood in the air with the eyes in its chest
+(probably the "look into my own body" that began this section, and research/69 item 44's "still floating above where I should
+be" of 2026-11-17, whose fix brought the eyes to the right height but not the body); with it the knees bent to bring the
+head to the eyes and the feet stayed in the air.
+
+**Fix.** game/ConversationWorld's `HeldFloorView(pawn)`: the floor on foot's reference with `pawnFloorZ` set to the floor
+under the drawn body (the pawn's `Location.z - CollisionHeight`, at `gC.detachedAt` while the view is detached: BodyAway's
+`riseUnits`), passed with every hold (the conversation's and the moment's), and `view_anchor::Hold` takes a passed reference
+on every call. Log `convo: at N s the body's size is taken about the floor under it, N m above the floor on foot when the
+scene began` (once a conversation, past 10 cm). [verify] in the headset: the council bridge, the feet on the floor, the legs
+straight standing; on the fake headset the moment up to the chamber and the hearing (`tools/conversation-from-save.ps1`'s
+council save) with snapshots of the legs.
