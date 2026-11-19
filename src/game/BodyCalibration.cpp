@@ -331,6 +331,14 @@ std::optional<ik::posture::CrouchParams> CrouchParams(ik::posture::CrouchParams 
     return ik::posture::Sanitize(out);
 }
 
+std::optional<double> CrouchedEyeFraction() {
+    if (!Usable() || !gValues.standEye || !gValues.crouchEye || !(*gValues.standEye > 0.0) ||
+        !vr::calibration::PhysicalCrouch(Position(), true)) {
+        return std::nullopt;
+    }
+    return *gValues.crouchEye / *gValues.standEye;
+}
+
 std::optional<ik::ShoulderZone> ShoulderZone() {
     if (!Usable() || !gValues.rifle) {
         return std::nullopt;

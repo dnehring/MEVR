@@ -30,6 +30,46 @@ CrouchParams Sanitize(CrouchParams params) {
     return out;
 }
 
+CrouchParams WithMinimumDrop(CrouchParams params, double standingEye, double minDropMeters, std::optional<double> crouchedFraction) {
+    if (!std::isfinite(minDropMeters) || !(minDropMeters > 0.0) || !std::isfinite(standingEye) || !(standingEye > 0.0)) {
+        return params;
+    }
+    double limit = 1.0 - minDropMeters / standingEye;
+    if (crouchedFraction && std::isfinite(*crouchedFraction) && *crouchedFraction > 0.0) {
+        limit = std::max(limit, *crouchedFraction + kCrouchedReachMeters / standingEye);  // the calibrated crouch still crouches
+    }
+    if (!(params.crouchBelow > limit)) {
+        return params;  // already deep enough
+    }
+    double const gap = std::max(params.standAbove - params.crouchBelow, 0.02);
+    params.crouchBelow = limit;
+    params.standAbove = limit + gap;
+    return Sanitize(params);
+}
+
+bool LeanGuard::Update(LeanSample const& s, CrouchParams const& params, double ratio) {
+    bool const usable = s.fraction && std::isfinite(*s.fraction) && std::isfinite(s.headX) && std::isfinite(s.headZ) &&
+        std::isfinite(s.standingEye) && s.standingEye > 0.0;
+    if (!usable) {
+        return lean_;  // nothing new: hold (the detector holds too)
+    }
+    double const eye = *s.fraction * s.standingEye;
+    if (!anchored_ || *s.fraction >= params.standAbove) {
+        // Standing (or the first look): the head's place and height are where a drop starts from.
+        anchored_ = true;
+        x_ = s.headX;
+        z_ = s.headZ;
+        eye_ = eye;
+        horizontal_ = drop_ = 0.0;
+        lean_ = false;
+        return lean_;
+    }
+    horizontal_ = std::hypot(s.headX - x_, s.headZ - z_);
+    drop_ = std::max(0.0, eye_ - eye);
+    lean_ = std::isfinite(ratio) && ratio > 0.0 && drop_ > 0.0 && horizontal_ >= ratio * drop_;
+    return lean_;
+}
+
 CrouchEvent CrouchDetector::Update(std::optional<double> fraction, double deltaSeconds, CrouchParams const& params) {
     if (!fraction || !std::isfinite(*fraction)) {
         dwell_ = 0.0;
@@ -51,14 +91,45 @@ CrouchEvent CrouchDetector::Update(std::optional<double> fraction, double deltaS
 
 ArbiterStep CrouchArbiter::Update(ArbiterInput const& input) {
     ArbiterStep step;
+    if (input.physical != CrouchEvent::None) {
+        givenUp_ = false;  // a real change: the player's posture is followed afresh
+        undone_ = 0;
+    }
     if (seen_ && input.gameWants != last_) {
         step.external = true;  // the button, a script or sprinting changed it: not ours any more
         owns_ = false;
+        bool const against = input.follow && !input.button && input.physical == CrouchEvent::None &&
+            input.gameWants != input.physicalCrouched;
+        if (against && !givenUp_) {
+            // An undo the caller can explain (the pawn moving, a sprint, a vault: the game's passing reasons) never counts; one
+            // soon after our put-back with no such reason does.
+            bool const quick = restoredAt_ >= 0.0 && input.nowSeconds - restoredAt_ < kInsistSeconds;
+            if (!input.explained) {
+                undone_ = quick ? undone_ + 1 : 0;
+            }
+            if (undone_ >= kInsistTimes) {
+                step.insisted = true;  // the game keeps putting it back: its rule (a script) wins
+                givenUp_ = true;
+                pending_.reset();
+                restore_ = false;
+                tries_ = 0;
+            } else {
+                step.restoring = true;
+                pending_ = input.physicalCrouched;
+                restore_ = true;
+                tries_ = 0;
+            }
+        } else if (restore_) {
+            pending_.reset();  // the game went back by itself (or the button did): nothing to put back
+            restore_ = false;
+            tries_ = 0;
+        }
     }
     seen_ = true;
     last_ = input.gameWants;
     if (input.physical != CrouchEvent::None) {
         pending_ = input.physical == CrouchEvent::Crouch;
+        restore_ = false;
         tries_ = 0;
     }
     if (!pending_) {
@@ -67,24 +138,38 @@ ArbiterStep CrouchArbiter::Update(ArbiterInput const& input) {
     if (*pending_ == input.gameWants) {
         // Already there (the button got there first, or the game did): a crouch found there is ours from
         // now on, so standing up releases it.
-        step.alreadyThere = true;
+        step.alreadyThere = !restore_;
         owns_ = *pending_;
         pending_.reset();
+        restore_ = false;
         return step;
     }
-    if (!input.canApply) {
+    if (!input.canApply || (restore_ && !input.canRestore)) {
         step.deferred = true;
         return step;
     }
     if (tries_ >= kMaxTries) {
         step.gaveUp = true;
         pending_.reset();
+        restore_ = false;
         tries_ = 0;
         return step;
     }
     ++tries_;
+    if (restore_) {
+        restoredAt_ = input.nowSeconds;
+    }
     step.action = *pending_ ? CrouchAction::Crouch : CrouchAction::Stand;
     return step;
+}
+
+void CrouchArbiter::Pressed(bool gameWantsNow) {
+    seen_ = true;
+    last_ = gameWantsNow;
+    owns_ = false;
+    pending_.reset();
+    restore_ = false;
+    tries_ = 0;
 }
 
 void CrouchArbiter::Applied(bool gameWantsNow) {
@@ -95,6 +180,7 @@ void CrouchArbiter::Applied(bool gameWantsNow) {
     owns_ = gameWantsNow && (took || owns_);
     if (took) {
         pending_.reset();
+        restore_ = false;
         tries_ = 0;
     }
 }
@@ -106,6 +192,7 @@ void CrouchArbiter::Observe(bool gameWants) {
     seen_ = true;
     last_ = gameWants;
     pending_.reset();
+    restore_ = false;
     tries_ = 0;
 }
 
@@ -115,10 +202,15 @@ void CrouchArbiter::Forget() {
     owns_ = false;
     pending_.reset();
     tries_ = 0;
+    restore_ = false;
+    restoredAt_ = -1.0;
+    undone_ = 0;
+    givenUp_ = false;
 }
 
 void CrouchArbiter::ResetTracking(CrouchDetector& detector, std::optional<bool> gameWants) {
     pending_.reset();
+    restore_ = false;
     tries_ = 0;
     if (gameWants) Observe(*gameWants);
     detector.Reset(Owns() && gameWants.value_or(last_));

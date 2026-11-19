@@ -2,6 +2,7 @@
 #pragma once
 
 #include "core/vr/Floor.hpp"
+#include "game/GamepadMapping.hpp"
 
 #include <optional>
 #include <string>
@@ -42,6 +43,11 @@
 // player's controller while VR on foot with noCover. A itself (use, the out-of-cover mantle) reaches the game unchanged.
 // A cover already taken is left with SFXGameModeDefault.TryExitCover(bForceExit = true), never during an animated
 // transition.
+//
+// Since lane M2W (2026-11-18, research/23 section 8): the crouch follows the player ([Hands] crouchFollow): the game's own
+// change against the real posture is put back once its reason is over (ME2 stands a crouched Shepard up to walk with the
+// weapon away), L3's kept; on the sequels L3 is the mod's crouch toggle ([Hands] crouchClick, kept from the game by the host);
+// [Hands] crouchMinDropM and crouchLeanRatio (off) give the threshold a margin and tell a lean from a crouch.
 namespace mevr::game::posture {
 
 // What the host offers this tick (Mod.cpp fills it from HostServices).
@@ -62,6 +68,9 @@ void Tick(double deltaSeconds, Link const& link);
 // The player is physically crouched now (the detector, while physical crouch is active: VR on foot). Whatever the game's
 // crouch is: an L3 crouch while standing is false, a real crouch is true even if Shepard stood up by L3.
 bool PhysicallyCrouched();
+// The pad options (before the support grip publishes them): on the sequels in VR on foot, the left stick click is the mod's
+// crouch toggle (modCrouchClick; the host keeps it from the game). Game thread.
+void AdjustPad(gamepad::Options& options);
 // The game's cover is refused for the player this tick (VR on foot with [Hands] noCover): game/vr_cover then judges the
 // player's cover itself. Game thread.
 bool RefusingCover();

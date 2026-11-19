@@ -71,6 +71,9 @@ std::optional<XrQuaternionf> HandTrim(int side);
 // Physical crouch thresholds between the measured standing and crouched eye heights
 // (vr::calibration::CrouchFromHeights), with the dwell of `base`; nullopt: use `base` as it is.
 std::optional<ik::posture::CrouchParams> CrouchParams(ik::posture::CrouchParams const& base);
+// The measured crouched eye height over the measured standing one (both measured, standing play); nullopt otherwise. The
+// physical crouch's margin never asks for a crouch deeper than this (ik::posture::WithMinimumDrop).
+std::optional<double> CrouchedEyeFraction();
 // "At the shoulder" around the measured stock point (ik::ShoulderZoneAround); nullopt: the fixed zone.
 std::optional<ik::ShoulderZone> ShoulderZone();
 

@@ -166,12 +166,21 @@ constexpr char const* kDefaultFile =
     "; physicalCrouch: 1 = crouching for real crouches Shepard (a smaller target, ducked behind low cover);\n"
     "; L3 still toggles it until your next crouch or stand. crouchBelow / standAbove: the eye height, as a\n"
     "; fraction of your standing eye height, below which Shepard crouches and above which he stands again;\n"
-    "; crouchDwellS: how long (seconds) the head must stay past it first.\n"
+    "; crouchDwellS: how long (seconds) the head must stay past it first. crouchMinDropM: the eyes at least this far (meters)\n"
+    "; under standing before Shepard crouches, whatever your calibration says (0 = off). crouchLeanRatio: a drop that took the\n"
+    "; head forward at least this many times as far as down is a lean (reaching toward someone), not a crouch (0 = off).\n"
+    "; crouchClick (ME2, ME3): 1 = the left stick click toggles the crouch on foot, as on ME1 (the game's map stays on the\n"
+    "; omni-tool's Map entry). crouchFollow: 1 = a crouch or stand the game makes against your real posture (a walk, a sprint,\n"
+    "; a vault) is put back once it's over; L3's is kept until your next crouch or stand.\n"
     "noCover = 1\n"
     "physicalCrouch = 1\n"
     "crouchBelow = 0.75\n"
     "standAbove = 0.85\n"
     "crouchDwellS = 0.2\n"
+    "crouchMinDropM = 0\n"
+    "crouchLeanRatio = 0\n"
+    "crouchClick = 1\n"
+    "crouchFollow = 1\n"
     "; levelCamera: 1 keeps the game camera level on foot while the hand aims (the guns' recoil and aim assist\n"
     "; no longer tilt the world; research/24). recoilHaptic: how strongly a shot's recoil buzzes the hand, 0..1.\n"
     "levelCamera = 1\n"
@@ -2460,14 +2469,30 @@ Posture ReadPosture(Ini const& ini) {
     Number(ini, "Hands", "standAbove", p.crouch.standAbove);
     Number(ini, "Hands", "crouchDwellS", p.crouch.dwellSeconds);
     p.crouch = ik::posture::Sanitize(p.crouch);
+    if (Number(ini, "Hands", "crouchMinDropM", value) && std::isfinite(value)) {
+        p.crouchMinDropM = std::clamp(value, 0.0, 0.8);
+    }
+    if (Number(ini, "Hands", "crouchLeanRatio", value) && std::isfinite(value)) {
+        p.crouchLeanRatio = std::clamp(value, 0.0, 10.0);
+    }
+    if (Number(ini, "Hands", "crouchClick", value)) {
+        p.crouchClick = value != 0.0;
+    }
+    if (Number(ini, "Hands", "crouchFollow", value)) {
+        p.crouchFollow = value != 0.0;
+    }
     return p;
 }
 
 std::string Describe(Posture const& p) {
     return std::format("cover snapping {} in VR on foot; physical crouch {}", p.noCover ? "off (noCover = 1)" : "kept (noCover = 0)",
-        p.physicalCrouch ? std::format("on: crouch below {:.2f} of the standing eye height, stand above {:.2f}, after {:.2f} s",
-                               p.crouch.crouchBelow, p.crouch.standAbove, p.crouch.dwellSeconds)
-                         : std::string("off"));
+        p.physicalCrouch ? std::format("on: crouch below {:.2f} of the standing eye height, stand above {:.2f}, after {:.2f} s{}{}",
+                               p.crouch.crouchBelow, p.crouch.standAbove, p.crouch.dwellSeconds,
+                               p.crouchMinDropM > 0.0 ? std::format(", at least {:.2f} m under standing", p.crouchMinDropM) : std::string(),
+                               p.crouchLeanRatio > 0.0 ? std::format(", a lean ({:.1f} x forward of the drop) no crouch", p.crouchLeanRatio)
+                                                       : std::string())
+                         : std::string("off"))
+        + (p.crouchFollow ? "; the game's own crouch changes against your posture put back" : "; the game's own crouch changes kept");
 }
 
 Posture gPosture;
@@ -3474,6 +3499,13 @@ void Refresh() {
         {L"Hands", "Hands", L"crouchBelow", "crouchBelow", L"0.75"},
         {L"Hands", "Hands", L"standAbove", "standAbove", L"0.85"},
         {L"Hands", "Hands", L"crouchDwellS", "crouchDwellS", L"0.2"},
+        // The crouch's margin and a lean that isn't one (off until the owner's yes), and L3 as the sequels' crouch toggle
+        // (2026-11-18, lane M2W; research/23 "A lean is not a crouch", "L3 crouches on the sequels").
+        {L"Hands", "Hands", L"crouchMinDropM", "crouchMinDropM", L"0"},
+        {L"Hands", "Hands", L"crouchLeanRatio", "crouchLeanRatio", L"0"},
+        {L"Hands", "Hands", L"crouchClick", "crouchClick", L"1"},
+        // The crouch follows the player's posture (2026-11-18, the owner; research/23 "The crouch follows you").
+        {L"Hands", "Hands", L"crouchFollow", "crouchFollow", L"1"},
         {L"Hands", "Hands", L"aimAssist", "aimAssist", L"0"},
         {L"Hands", "Hands", L"bodyMove", "bodyMove", L"1"},
         {L"Hands", "Hands", L"leanM", "leanM", L"0.20"},

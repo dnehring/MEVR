@@ -301,6 +301,9 @@ void Tick(double deltaSeconds, bool requested) {
     cockpit_panel::AdjustPad(options);  // the cockpit's extraction handle (research/48 section 27): a squeeze there is the handle's
     options.cockpitLook = cockpit_probe::Riding();  // the head looks round the cockpit in the Mako (research/47)
     options.physicalCrouch = posture::PhysicallyCrouched();  // the host's crouch camera keeps the real head's height
+#if !defined(MEVR_GAME_LE1)
+    posture::AdjustPad(options);  // the sequels' L3 is the crouch toggle (the mod's), kept from the game
+#endif
     gFlags.store(gamepad::ToFlags(options), std::memory_order_relaxed);
 #if defined(MEVR_GAME_LE1)
     bool const aiming = options.supportAims && gHeld.load(std::memory_order_relaxed) && requested;

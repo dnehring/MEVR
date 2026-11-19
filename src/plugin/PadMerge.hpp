@@ -67,6 +67,10 @@ struct Renderer {
     // R3 (game::gamepad::Options::keepPowerClick): the sequels' (the owner, 2026-11-17: ME2's and ME3's R3 open the area
     // map); LE1 leaves it false (Halcyon LE1's double-click recenter reads R3 from the game's pad; unchanged).
     bool keepPowerClick = false;
+    // The left stick click the mod owns (its crouch toggle, VR on foot) is kept from the game as L3
+    // (game::gamepad::Options::keepCrouchClick): the sequels' (the owner, 2026-11-18: ME2's L3 is the area map's and its
+    // objective locator, ME3's a point of interest's); LE1 leaves it false (ME1's L3 is the game's own crouch toggle).
+    bool keepCrouchClick = false;
     // The game's conversation mode is up and its triggers are the interrupts' (ME2: LT Paragon, RT Renegade; M5.2,
     // research/le2-cinema.md): ConversationTriggers below, and no trigger owner of the host's this poll. LE1 leaves it false.
     bool conversationTriggers = false;

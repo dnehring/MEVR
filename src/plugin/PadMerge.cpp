@@ -41,6 +41,7 @@ bool gNativeWheelLogged = false;  // the mod holds the game's weapon wheel (v12)
 bool gWheelPressALogged = false;
 bool gConversationTriggersLogged = false;  // the renderer said the conversation mode's triggers are the interrupts' (ME2)
 bool gPowerClickKeptLogged = false;  // the first right stick click kept from the game (Renderer::keepPowerClick)
+bool gCrouchClickKeptLogged = false;  // the first left stick click kept from the game (Renderer::keepCrouchClick)
 // Comfort (v17, game/comfort in the mod, research/31): whether the mod turns the player (logged when it changes), and
 // walking toward the left hand: whether it's on, and the left controller's last usable flat yaw (+ left, radians).
 bool gModTurnsLogged = false;
@@ -150,6 +151,7 @@ XINPUT_GAMEPAD Merge(XINPUT_GAMEPAD const& real, vr::controllers::State const& c
     gp::Options options = Options(nowMs);
     options.gateRightClick = renderer.gateRightClick;  // host-only, never across the boundary (lane D2's gate; LE1 false)
     options.keepPowerClick = renderer.keepPowerClick;  // host-only too (the sequels': their R3 opens the area map; LE1 false)
+    options.keepCrouchClick = renderer.keepCrouchClick;  // host-only too (the sequels': their L3 is the map's; LE1 false)
     if (renderer.conversationTriggers || renderer.orbitalTriggers) {
         options = ConversationTriggers(options);  // ME2's native LT/RT pair for interrupts and orbital scanning
     }
@@ -170,6 +172,11 @@ XINPUT_GAMEPAD Merge(XINPUT_GAMEPAD const& real, vr::controllers::State const& c
         gPowerClickKeptLogged = true;
         log::Info("halcyon bridge: first right stick click kept from the game: its hold is the power wheel's (the mod's), "
                   "so no R3 (the game's area map stays on the omni-tool's Map entry)");
+    }
+    if (gLatches.leftClickKept && !gCrouchClickKeptLogged) {
+        gCrouchClickKeptLogged = true;
+        log::Info("halcyon bridge: first left stick click kept from the game: it is the crouch toggle (the mod's, as ME1's L3), "
+                  "so no L3 (the game's area map and objective locator stay on the omni-tool's Map entry)");
     }
     bool const owned = options.squadMenu || options.nativeWheel;  // the squad menu or the game's wheel has the sticks
     WalkTowardHand(touch, controllers, options.handWalk && !owned && !renderer.ownMenuOpen, renderer, nowMs);

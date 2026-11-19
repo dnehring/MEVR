@@ -346,10 +346,23 @@ Throwables GetThrowables();
 //   crouchBelow      crouch when the eyes drop below this fraction of the standing eye height (0.75)
 //   standAbove       stand again above this fraction (0.85)
 //   crouchDwellS     ...once the head has stayed past it this long (seconds, 0.2)
+//   crouchMinDropM   the crouch at least this far under the standing eye height, whatever the calibration's threshold
+//                    (meters; 0 = off, the default until the owner's yes; research/23 "A lean is not a crouch")
+//   crouchLeanRatio  a drop whose head moved forward at least this many times as far as it went down is a lean, not a
+//                    crouch (0 = off, the default until the owner's yes)
+//   crouchClick      the sequels: L3 toggles the crouch in VR on foot as on ME1, kept from the game (1, the owner's
+//                    2026-11-18; ME1's L3 is the game's own toggle and this key does nothing there)
+//   crouchFollow     1: a crouch or stand the game makes against your real posture (not L3's) is put back once its reason
+//                    (a walk, a sprint, a vault) is over, unless the game insists (the owner, 2026-11-18); 0: kept until
+//                    your next physical crouch or stand, as before
 struct Posture {
     bool noCover = true;
     bool physicalCrouch = true;
     ik::posture::CrouchParams crouch;
+    double crouchMinDropM = 0.0;
+    double crouchLeanRatio = 0.0;
+    bool crouchClick = true;
+    bool crouchFollow = true;
 };
 Posture GetPosture();
 // [Sights] (appended to an older file that lacks it): gun sights (game/sights, research/21; the keys and

@@ -526,6 +526,9 @@ DWORD MergeMotionControllers(DWORD index, XINPUT_STATE* state, DWORD result) noe
     // interest, the area map). The owner, 2026-11-17 (docs/trilogy-plan.md question 14); the map stays on the omni-tool's
     // Map entry, and Halcyon's sequel recenter is a double Back, not R3.
     renderer.keepPowerClick = true;
+    // The left stick click is the crouch toggle on foot (the mod's, ME1's L3: the owner, 2026-11-18), kept from the game as L3,
+    // which is ME2's Console_ShowMap too and ME3's NavAssistanceOrCoverTurn.
+    renderer.keepCrouchClick = true;
     // The interrupts (M5.2, research/le2-cinema.md): in the conversation mode the triggers are the game's LT (Paragon) and
     // RT (Renegade), as on a pad; nothing of ours keeps them (pad_merge::ConversationTriggers).
     renderer.conversationTriggers = mevr::engine::adapter::IsConversationMode(mode);

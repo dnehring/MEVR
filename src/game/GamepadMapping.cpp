@@ -316,6 +316,13 @@ bool GateClick(ClickGate& g, bool click, bool otherClick, std::uint64_t nowMs) {
     return g.phase == Phase::Pass || g.phase == Phase::Pulse;
 }
 
+bool CrouchClickToggle(CrouchClick& state, bool click, bool otherClick, std::uint64_t nowMs) {
+    bool const pass = GateClick(state.gate, click, otherClick, nowMs);
+    bool const toggle = pass && !state.passed;
+    state.passed = pass;
+    return toggle;
+}
+
 char const* Name(WheelStick stick) {
     switch (stick) {
     case WheelStick::Right: return "the right stick";
@@ -337,6 +344,7 @@ std::uint32_t ToFlags(Options const& options) {
            (options.cockpitLook ? kFlagCockpitLook : 0u) | (options.physicalCrouch ? kFlagPhysicalCrouch : 0u) |
            (options.powerWheel ? kFlagPowerWheel : 0u) | (options.modPowerHold ? kFlagModPowerHold : 0u) |
            (options.squadPlace ? kFlagSquadPlace : 0u) | (options.handPowerWheel ? kFlagHandPowerWheel : 0u) |
+           (options.modCrouchClick ? kFlagModCrouchClick : 0u) |
            ((static_cast<std::uint32_t>(options.wheelStick) << kWheelStickShift) & kWheelStickMask) |
            ((static_cast<std::uint32_t>(options.rbSource) << kRbSourceShift) & kRbSourceMask);
 }
@@ -365,6 +373,7 @@ Options FromFlags(float distance, float acquire, float release, std::uint32_t fl
     options.handPowerWheel = (flags & kFlagHandPowerWheel) != 0;
     options.modPowerHold = (flags & kFlagModPowerHold) != 0;
     options.squadPlace = (flags & kFlagSquadPlace) != 0;
+    options.modCrouchClick = (flags & kFlagModCrouchClick) != 0;
     std::uint32_t const stick = (flags & kWheelStickMask) >> kWheelStickShift;
     options.wheelStick = stick <= static_cast<std::uint32_t>(WheelStick::Either) ? static_cast<WheelStick>(stick) : WheelStick::Right;
     std::uint32_t const source = (flags & kRbSourceMask) >> kRbSourceShift;
@@ -561,7 +570,17 @@ XINPUT_GAMEPAD FromControllers(vr::controllers::State const& input, Latches& lat
     }
     if (rb) buttons |= XINPUT_GAMEPAD_RIGHT_SHOULDER;
     if (r.primary || (options.nativeWheel && options.wheelPressA)) buttons |= XINPUT_GAMEPAD_A;
-    if (GateClick(latches.leftClick, l.stickClick, r.stickClick, state.timeMs)) buttons |= XINPUT_GAMEPAD_LEFT_THUMB;
+    // A left click that begins while the mod owns it (Options::keepCrouchClick: its crouch toggle) is kept from the game until
+    // it's let go, as the right click below; it never reaches the gate either, so no tap pulse follows its release.
+    if (l.stickClick && !latches.leftClickDown) {
+        latches.leftClickKept = options.modCrouchClick && options.keepCrouchClick;
+    } else if (!l.stickClick) {
+        latches.leftClickKept = false;
+    }
+    latches.leftClickDown = l.stickClick;
+    if (GateClick(latches.leftClick, l.stickClick && !latches.leftClickKept, r.stickClick, state.timeMs)) {
+        buttons |= XINPUT_GAMEPAD_LEFT_THUMB;
+    }
     // A press that begins while the mod owns the click (Options::keepPowerClick) is kept from the game until it's let go,
     // whatever the options say meanwhile; it never reaches the gate either, so no tap pulse follows its release.
     if (r.stickClick && !latches.rightClickDown) {

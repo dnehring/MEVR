@@ -430,6 +430,76 @@ void TestPowerClickKept() {
     CHECK(!pad::FromFlags(-1.0f, 0.1f, 0.2f, pad::ToFlags(sequel)).keepPowerClick);
 }
 
+// The sequels' L3 is the crouch toggle the mod makes itself (the owner, 2026-11-18: ME2's L3 is the area map's and its objective
+// locator, ME3's a point of interest's): the toggle through L3's own gate (gamepad::CrouchClickToggle) and the host keeping
+// the press from the game (Options::modCrouchClick, keepCrouchClick); LE1 still sends L3 (its own ToggleCrouch).
+void TestCrouchClick() {
+    // The toggle: one per press, never for the both-sticks chord.
+    auto const toggles = [](pad::CrouchClick& state, bool click, bool other, std::uint64_t from, std::uint64_t to) {
+        int n = 0;
+        for (std::uint64_t t = from; t <= to; t += 16) {
+            n += pad::CrouchClickToggle(state, click, other, t) ? 1 : 0;
+        }
+        return n;
+    };
+    {
+        pad::CrouchClick c;
+        CHECK(toggles(c, false, false, 1000, 1100) == 0);
+        CHECK(toggles(c, true, false, 1116, 1180) == 0);   // a quick click: nothing while it's down...
+        CHECK(toggles(c, false, false, 1196, 1500) == 1);  // ... one toggle once it's let go
+        CHECK(toggles(c, true, false, 2000, 2090) == 0);   // a held click: nothing in its first 100 ms...
+        CHECK(toggles(c, true, false, 2106, 3000) == 1);   // ... one toggle then, however long it's held
+        CHECK(toggles(c, false, false, 3016, 3500) == 0);  // the release toggles nothing
+        CHECK(toggles(c, true, true, 4000, 4600) == 0);    // both sticks (our menu's hold): never a toggle
+        CHECK(toggles(c, false, false, 4616, 5000) == 0);
+        CHECK(toggles(c, true, true, 5000, 5100) == 0);    // the both-sticks tap (a snapshot): never a toggle
+        CHECK(toggles(c, false, false, 5116, 5500) == 0);
+    }
+    // The host: the sequels keep the mod's L3 from the game, LE1 sends it.
+    auto const seen = [](pad::Latches& latches, pad::Options const& options, bool click, std::uint64_t from, std::uint64_t to) {
+        mevr::vr::controllers::State c;
+        c.active = true;
+        c.left.stickClick = click;
+        WORD buttons = 0;
+        for (std::uint64_t t = from; t <= to; t += 16) {
+            c.timeMs = t;
+            buttons = static_cast<WORD>(buttons | pad::FromControllers(c, latches, options).wButtons);
+        }
+        return buttons;
+    };
+    pad::Options sequel;
+    sequel.modCrouchClick = true;
+    sequel.keepCrouchClick = true;
+    {
+        pad::Latches latches;
+        CHECK((seen(latches, sequel, true, 1000, 1600) & XINPUT_GAMEPAD_LEFT_THUMB) == 0 && latches.leftClickKept);
+        CHECK((seen(latches, sequel, false, 1616, 2000) & XINPUT_GAMEPAD_LEFT_THUMB) == 0 && !latches.leftClickKept);
+        WORD const tap = seen(latches, sequel, true, 2016, 2060);
+        WORD const after = seen(latches, sequel, false, 2076, 2600);
+        CHECK(((tap | after) & XINPUT_GAMEPAD_LEFT_THUMB) == 0);  // a kept tap: no gate pulse after its release
+    }
+    // Not the mod's (a menu, the Mako, a conversation): the game's L3, after L3's gate as before.
+    {
+        pad::Options notOwned = sequel;
+        notOwned.modCrouchClick = false;
+        pad::Latches latches;
+        CHECK((seen(latches, notOwned, true, 1000, 1600) & XINPUT_GAMEPAD_LEFT_THUMB) != 0);
+        // A press keeps the meaning it began with: owned again mid-press, still the game's.
+        CHECK((seen(latches, sequel, true, 1616, 1800) & XINPUT_GAMEPAD_LEFT_THUMB) != 0);
+    }
+    // LE1 (keepCrouchClick off): L3 reaches the game whatever the mod says (ME1's own crouch toggle).
+    {
+        pad::Options le1 = sequel;
+        le1.keepCrouchClick = false;
+        pad::Latches latches;
+        CHECK((seen(latches, le1, true, 1000, 1600) & XINPUT_GAMEPAD_LEFT_THUMB) != 0 && !latches.leftClickKept);
+    }
+    // The flag crosses the boundary; the keeping is host-only.
+    CHECK(pad::FromFlags(-1.0f, 0.1f, 0.2f, pad::ToFlags(sequel)).modCrouchClick);
+    CHECK(!pad::FromFlags(-1.0f, 0.1f, 0.2f, pad::ToFlags(pad::Options{})).modCrouchClick);
+    CHECK(!pad::FromFlags(-1.0f, 0.1f, 0.2f, pad::ToFlags(sequel)).keepCrouchClick);
+}
+
 // What the mod closes around a hold (gamepad::WatchPowerWheel): the wheel it asked for at the release, a wheel the game
 // opens late (ME3's EnterPowerWheel retries by a timer) within kPowerLateMs of that release, nothing it didn't ask for.
 void TestPowerWheelWatch() {
@@ -1239,6 +1309,7 @@ int RunPowerWheelTests() {
     TestPad();
     TestPowerHold();
     TestPowerClickKept();
+    TestCrouchClick();
     TestPowerWheelWatch();
     TestLock();
     TestAutoLock();

@@ -177,6 +177,18 @@ struct ClickGate {
 // One step. True while the game should see the click. `nowMs` 0 (no clock): the click passes as is.
 bool GateClick(ClickGate& gate, bool click, bool otherClick, std::uint64_t nowMs);
 
+// The left stick click as the crouch toggle the mod makes itself on the sequels (game/Posture, [Hands] crouchClick; the owner,
+// 2026-11-18: ME1's L3 crouches, ME2's is the area map's and its objective locator, ME3's a point of interest's). The click goes
+// through L3's own gate (GateClick, so the both-sticks chord's tap and hold never toggle and a quick click counts once let go),
+// and each press the gate lets through toggles once. The host keeps the press from the game (Options::modCrouchClick,
+// keepCrouchClick).
+struct CrouchClick {
+    ClickGate gate;
+    bool passed = false;  // the gate let the click through last step
+};
+// One step on the player's own clicks (`otherClick` the right stick click). True on the step a toggle is due.
+bool CrouchClickToggle(CrouchClick& state, bool click, bool otherClick, std::uint64_t nowMs);
+
 // The support grip (game/support_grip): the left grip squeezed with the left hand near the held
 // gun's foregrip holds the gun with both hands, and the game then sees LT held (aimed, "focused"
 // fire) instead of LB. A grip squeezed anywhere else is LB, as always.
@@ -232,6 +244,10 @@ struct Latches {
     std::uint8_t faceRb = 0;
     // L3, held back while it might be the start of the both-sticks chord.
     ClickGate leftClick;
+    // The left stick click with Options::keepCrouchClick: down last step, and whether this press is kept from the game (it
+    // began while the mod owned the click: its crouch toggle). A kept press never reaches leftClick's gate, so no tap pulse.
+    bool leftClickDown = false;
+    bool leftClickKept = false;
     // R3 likewise, with Options::gateRightClick (ME2's pad path: the both-sticks hold for our menu comes before any use of
     // either click, the owner 2026-11-14).
     ClickGate rightClick;
@@ -344,6 +360,15 @@ struct Options {
     // or the area map); the area map stays on the omni-tool's Map entry. LE1 leaves it off: Halcyon LE1's double-click
     // recenter reads R3 from the game's pad, and ME1's own R3 (ChangeMagnification) acts only while zoomed (research/19).
     bool keepPowerClick = false;
+    // The mod toggles Shepard's crouch from the left stick click itself (game/Posture's CrouchClickToggle, [Hands] crouchClick):
+    // on the sequels in VR on foot, where the game's L3 isn't a crouch. Travels across the boundary (kFlagModCrouchClick).
+    bool modCrouchClick = false;
+    // A left stick click the mod owns (modCrouchClick) isn't L3: the press is kept from the game until released, decided when
+    // it goes down (Latches::leftClickKept). Not across the boundary: the host sets it. The sequels' hosts set it (the owner,
+    // 2026-11-18): ME2's L3 is Console_ShowMap (a tap the area map, a hold the objective radar), ME3's
+    // Console_NavAssistanceOrCoverTurn (a cover turn, a point of interest or the area map); the area map stays on the
+    // omni-tool's Map entry. LE1 leaves it off: ME1's L3 is the game's own crouch toggle (Console_Crouch, ToggleCrouch).
+    bool keepCrouchClick = false;
     // The squad weapon menu is open (game/squad_weapons, kFlagSquadMenu): the sticks, A, B and both
     // stick clicks are its own (Latches::squadHeld keeps them from the game until released).
     bool squadMenu = false;
@@ -424,6 +449,7 @@ inline constexpr std::uint32_t kFlagPowerWheel = 1u << 24;       // Options::pow
 inline constexpr std::uint32_t kFlagModPowerHold = 1u << 25;     // Options::modPowerHold (a host of 2026-11-05 or later)
 inline constexpr std::uint32_t kFlagSquadPlace = 1u << 26;       // Options::squadPlace (a v32 host of 2026-11-05 or later)
 inline constexpr std::uint32_t kFlagHandPowerWheel = 1u << 27;   // Options::handPowerWheel (2026-11-07)
+inline constexpr std::uint32_t kFlagModCrouchClick = 1u << 28;   // Options::modCrouchClick (2026-11-18)
 std::uint32_t ToFlags(Options const& options);
 Options FromFlags(float distance, float acquire, float release, std::uint32_t flags);
 

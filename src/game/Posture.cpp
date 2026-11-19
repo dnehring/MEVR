@@ -11,11 +11,16 @@
 #include "engine/ProcessEvent.hpp"
 #include "engine/CoverAcquire.hpp"
 #include "engine/GameAdapter.hpp"
+#include "core/vr/Controllers.hpp"
 #include "game/BodyCalibration.hpp"
+#include "game/GamepadMapping.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/HeadTracking.hpp"
 #include "game/ViewAnchor.hpp"
 #include "game/Player.hpp"
+#include "game/PowerWheel.hpp"
+#include "game/SquadWeapons.hpp"
+#include "game/Traversal.hpp"
 #include "game/VrCover.hpp"
 #include "ue3/Handles.hpp"
 
@@ -52,6 +57,16 @@ constexpr std::uint64_t kVrGoneMs = 2000;
 constexpr double kViewProbeSeconds = 0.75;
 // The standing eye height is logged again when it has moved this much (meters).
 constexpr double kStandingLogStep = 0.02;
+// The crouch follows the player ([Hands] crouchFollow, research/23 "The crouch follows you"): the game's change within this
+// long of a left stick click that reached the game (ME1's L3, its own crouch toggle) is the button's, kept as ME1 keeps it.
+constexpr double kButtonWindowSeconds = 0.5;
+// ... and a put-back waits this long after the game's change, so a click the host passed a frame before the mod saw it still
+// counts as the button's.
+constexpr double kButtonGraceSeconds = 0.15;
+// A put-back of the game's change waits while the pawn moves faster than this (units a second): ME2's explore mode stands a
+// crouched Shepard up to walk (ExploreCrouched's top speed 0; crouched walking only with a weapon out, CombatCrouched 130 u/s:
+// the owner's session 2026-11-18), so he crouches again once he stands still.
+constexpr double kStillSpeed = 30.0;
 
 bool gStarted = false;
 bool gRefusingCover = false;  // VR on foot with noCover: the player is kept out of the game's cover (game/vr_cover)
@@ -97,6 +112,24 @@ unsigned gCrouches = 0;        // heartbeat
 unsigned gStands = 0;
 unsigned gExternal = 0;
 std::string gLastChange = "none";
+// A lean is not a crouch ([Hands] crouchLeanRatio): the guard, and whether this lean was logged.
+pz::LeanGuard gLean;
+bool gLeanTold = false;
+unsigned gLeans = 0;           // heartbeat: drops held back as leans
+// The crouch follows the player ([Hands] crouchFollow): the clicks seen (the left stick click through L3's gate), when the
+// last one reached the game, the reason for the put-back now waiting, and the heartbeat's counts.
+gamepad::CrouchClick gClick;
+double gLastButton = -1e9;     // seconds (GetTickCount64)
+double gChangedAt = -1e9;      // the game's last change of the crouch (seconds): a put-back's button grace counts from it
+std::string gRestoreWhy;
+bool gToldRestoreWait = false;
+unsigned gRestores = 0;
+unsigned gInsists = 0;
+// The sequels' L3 (game::gamepad::Options::modCrouchClick; [Hands] crouchClick): the mod owns the click this tick, and its
+// toggles.
+bool gClickOwned = false;
+unsigned gClickToggles = 0;
+unsigned gClickRefused = 0;
 
 // The view's height above Shepard around a change.
 struct ViewProbe {
@@ -134,6 +167,7 @@ ue3::FieldRef gCoverType{"SFXGame.BioPawn", "CoverType", ue3::kEveryGame};
 ue3::FieldRef gCoverAction{"SFXGame.BioPawn", "CoverAction", ue3::kEveryGame};
 ue3::FieldRef gLocation{"Engine.Actor", "Location", ue3::kEveryGame};
 ue3::FieldRef gIsCrouched{"Engine.Pawn", "bIsCrouched", ue3::kEveryGame};
+ue3::FieldRef gVelocity{"Engine.Actor", "Velocity", ue3::kEveryGame};  // a put-back waits while the pawn moves
 ue3::FieldRef gWantsToCrouch{"Engine.Pawn", "bWantsToCrouch", ue3::kEveryGame};
 
 #if defined(MEVR_GAME_LE3)
@@ -557,9 +591,13 @@ void TickCover(Game const& game, bool refuse, double deltaSeconds) {
 
 // The crouch thresholds: [Hands] crouchBelow / standAbove, or with the guided calibration's standing and crouched
 // eye heights both measured, a threshold between them (research/25; the dwell stays [Hands]').
+// With [Hands] crouchMinDropM the crouch is at least that far under the live standing height (research/23 "A lean is not a
+// crouch"), never below the calibrated crouch.
 pz::CrouchParams CrouchParamsNow() {
-    pz::CrouchParams const base = hand_calibration::GetPosture().crouch;
-    return body_calibration::CrouchParams(base).value_or(base);
+    hand_calibration::Posture const settings = hand_calibration::GetPosture();
+    pz::CrouchParams const base = settings.crouch;
+    pz::CrouchParams const params = body_calibration::CrouchParams(base).value_or(base);
+    return pz::WithMinimumDrop(params, gStandingHeight, settings.crouchMinDropM, body_calibration::CrouchedEyeFraction());
 }
 
 // The eyes' height as a fraction of the standing eye height, and where it came from.
@@ -582,6 +620,7 @@ std::optional<double> Measure(Link const& link, vr::host_view::State const& view
         if (!gFloorSeen || floor.sessions != gFloorSessions) {
             gStanding.Reset();  // a new session (or the first look): its floor may differ
             gHeadRef.Reset();
+            gLean.Reset();
             gFloorSessions = floor.sessions;
             gFloorRecenters = floor.recenters;
             gFloorSeen = true;
@@ -589,6 +628,7 @@ std::optional<double> Measure(Link const& link, vr::host_view::State const& view
         if (floor.recenters != gFloorRecenters) {
             gFloorRecenters = floor.recenters;
             recentered = true;
+            gLean.Reset();  // the room re-origined: where the head stood is gone
         }
         if (floor.valid) {
             if (recentered) {
@@ -630,9 +670,15 @@ std::optional<double> Measure(Link const& link, vr::host_view::State const& view
     if (source != gLoggedSource || (gStandingHeight > 0.0 && std::abs(gStandingHeight - gLoggedStanding) >= kStandingLogStep)) {
         gLoggedSource = source;
         gLoggedStanding = gStandingHeight;
-        log::Info("posture: standing eye height {:.2f} m, from {}; Shepard crouches below {:.2f} m and stands above {:.2f} m{}",
+        hand_calibration::Posture const settings = hand_calibration::GetPosture();
+        log::Info("posture: standing eye height {:.2f} m, from {}; Shepard crouches below {:.2f} m and stands above {:.2f} m{}{}{}",
             gStandingHeight, source, gStandingHeight * CrouchParamsNow().crouchBelow, gStandingHeight * CrouchParamsNow().standAbove,
-            body_calibration::CrouchParams(hand_calibration::GetPosture().crouch) ? " (between your calibrated heights)" : "");
+            body_calibration::CrouchParams(settings.crouch) ? " (between your calibrated heights)" : "",
+            settings.crouchMinDropM > 0.0 ? std::format(", at least {:.2f} m under standing ([Hands] crouchMinDropM)", settings.crouchMinDropM)
+                                          : std::string(),
+            settings.crouchLeanRatio > 0.0
+                ? std::format("; a drop that takes the head {:.1f} times as far forward is a lean ([Hands] crouchLeanRatio)", settings.crouchLeanRatio)
+                : std::string());
     }
     gFraction = fraction;
     return fraction;
@@ -678,7 +724,25 @@ void TickCrouch(Game const& game, Link const& link, vr::host_view::State const& 
         gCrouchActive = true;
         gDetector.Reset(gArbiter.Owns() && gGameWants);  // a crouch of ours stands back up if the player did
     }
-    pz::CrouchEvent const event = gDetector.Update(fraction, deltaSeconds, params);
+    hand_calibration::Posture const settings = hand_calibration::GetPosture();
+    // A lean is not a crouch ([Hands] crouchLeanRatio): while this drop took the head forward that many times as far as down,
+    // the detector sees the threshold itself (not past it), so the crouch's dwell starts over; standing up is never held back.
+    std::optional<double> sample = fraction;
+    bool const lean = gLean.Update({view.head.position.x, view.head.position.z, fraction, gStandingHeight}, params,
+        settings.crouchLeanRatio);
+    if (lean && !gDetector.Crouched() && fraction && *fraction < params.crouchBelow) {
+        sample = params.crouchBelow;
+        if (!gLeanTold) {
+            gLeanTold = true;
+            ++gLeans;
+            log::Info("posture: a lean, not a crouch: eyes {:.2f} m = {:.2f} of the standing {:.2f} m (below {:.2f}), but the head went "
+                      "{:.2f} m forward for {:.2f} m down ([Hands] crouchLeanRatio {:.1f}): Shepard stays standing",
+                gEye, *fraction, gStandingHeight, params.crouchBelow, gLean.Horizontal(), gLean.Drop(), settings.crouchLeanRatio);
+        }
+    } else if (!lean) {
+        gLeanTold = false;
+    }
+    pz::CrouchEvent const event = gDetector.Update(sample, deltaSeconds, params);
     std::string physical;
     if (event != pz::CrouchEvent::None) {
         physical = std::format("eyes {:.2f} m = {:.2f} of the standing {:.2f} m, {} for {:.2f} s", gEye, fraction.value_or(-1.0),
@@ -691,16 +755,61 @@ void TickCrouch(Game const& game, Link const& link, vr::host_view::State const& 
     input.physical = event;
     input.gameWants = gGameWants;
 #if defined(MEVR_GAME_LE3)
-    input.canApply = gStorming.ReadBool(game.pawn) == false;
+    bool const storming = gStorming.ReadBool(game.pawn) != false;
 #else
-    input.canApply = !gStorming.ReadBool(game.controller).value_or(false);
+    bool const storming = gStorming.ReadBool(game.controller).value_or(false);
 #endif
-    //  // ToggleCrouch refuses while sprinting too
+    input.canApply = !storming;  // ToggleCrouch refuses while sprinting too
+    // The crouch follows the player ([Hands] crouchFollow): the game's passing reasons for a change, seen this tick.
+    std::optional<ue3::Vector> const velocity = gVelocity.Read<ue3::Vector>(game.pawn);
+    double const speed = velocity ? std::hypot(static_cast<double>(velocity->x), static_cast<double>(velocity->y)) : 0.0;
+    bool const vaulting = traversal::Moving();
+    double const now = static_cast<double>(GetTickCount64()) / 1000.0;
+    if (std::optional<bool> const seen = gArbiter.LastSeen(); seen && *seen != gGameWants) {
+        gChangedAt = now;  // the game changed it this tick
+    }
+    input.follow = settings.crouchFollow;
+    input.physicalCrouched = gDetector.Crouched();
+    input.button = now - gLastButton < kButtonWindowSeconds;
+    input.canRestore = !vaulting && speed < kStillSpeed && !gInCover && now - gChangedAt >= kButtonGraceSeconds;
+    input.explained = vaulting || storming || speed >= kStillSpeed;
+    input.nowSeconds = now;
+    std::string const reason = vaulting ? std::string("a vault or climb")
+        : storming                      ? std::string("a sprint")
+        : speed >= kStillSpeed          ? std::format("walking, {:.0f} u/s", speed)
+        : gInCover                      ? std::string("cover")
+                                        : std::string("no walk, sprint or vault seen: a script or a rule of the game's");
     pz::ArbiterStep const step = gArbiter.Update(input);
+    if (gArbiter.Restoring() && gLastButton >= gChangedAt - kButtonWindowSeconds) {
+        // A click seen just after the change it made (the host passed it a frame earlier): the button's after all.
+        gArbiter.Pressed(gGameWants);
+        log::Info("posture: Shepard's crouch changed by L3: now {}; kept until the next physical crouch or stand",
+            gGameWants ? "crouching" : "standing");
+        return;
+    }
     if (step.external) {
         ++gExternal;
-        log::Info("posture: Shepard's crouch changed without us (L3, sprinting or a script): now {}; kept until the next "
-                  "physical crouch or stand", gGameWants ? "crouching" : "standing");
+        if (step.restoring) {
+            ++gRestores;
+            gRestoreWhy = reason;
+            gToldRestoreWait = false;
+            log::Info("posture: the game {} while you {} ({}): {} again {} ([Hands] crouchFollow)",
+                gGameWants ? "crouched Shepard" : "stood Shepard up", input.physicalCrouched ? "are crouched" : "stand", reason,
+                input.physicalCrouched ? "he crouches" : "he stands",
+                vaulting ? "after the vault" : storming ? "after the sprint" : speed >= kStillSpeed ? "once he stands still"
+                    : gInCover ? "out of cover" : "in a moment");
+        } else if (step.insisted) {
+            ++gInsists;
+            log::Info("posture: the game {} again soon after we put him back ({}): it wins here; your posture is followed again "
+                      "from your next crouch or stand", gGameWants ? "crouched Shepard" : "stood Shepard up", reason);
+        } else if (input.button) {
+            log::Info("posture: Shepard's crouch changed by L3: now {}; kept until the next physical crouch or stand",
+                gGameWants ? "crouching" : "standing");
+        } else {
+            log::Info("posture: Shepard's crouch changed without us (L3, sprinting or a script): now {}; kept until the next "
+                      "physical crouch or stand{}", gGameWants ? "crouching" : "standing",
+                settings.crouchFollow ? " (it agrees with your posture)" : " ([Hands] crouchFollow = 0)");
+        }
     }
     if (step.alreadyThere) {
         log::Info("posture: Shepard is already {} (L3 or the game got there first): that posture follows yours from now on",
@@ -708,7 +817,11 @@ void TickCrouch(Game const& game, Link const& link, vr::host_view::State const& 
     }
     if (step.deferred && !gToldDeferred) {
         gToldDeferred = true;
-        log::Info("posture: the physical {} waits: Shepard is sprinting", gArbiter.Pending().value_or(false) ? "crouch" : "stand");
+        if (gArbiter.Restoring()) {
+            log::Info("posture: putting back the {} waits ({})", gArbiter.Pending().value_or(false) ? "crouch" : "stand", reason);
+        } else {
+            log::Info("posture: the physical {} waits: Shepard is sprinting", gArbiter.Pending().value_or(false) ? "crouch" : "stand");
+        }
     }
     if (!step.deferred) {
         gToldDeferred = false;
@@ -724,8 +837,56 @@ void TickCrouch(Game const& game, Link const& link, vr::host_view::State const& 
         } else {
             ++gStands;
         }
-        Ask(game, crouch, physical.empty() ? std::string("a physical change that waited") : physical);
+        bool const restoring = gArbiter.Restoring();
+        Ask(game, crouch, !physical.empty() ? physical
+            : restoring ? std::format("putting back the {} the game changed ({}): your posture", crouch ? "crouch" : "stand", gRestoreWhy)
+                        : std::string("a physical change that waited"));
     }
+}
+
+// The left stick click, every tick (its gate's state stays the player's): ME1's reaches the game as its own crouch toggle, so a
+// change the game makes just after is the button's (kept, as ME1 keeps L3's); on the sequels, where the game's L3 is the area
+// map's, the click is the crouch toggle the mod makes itself ([Hands] crouchClick; the owner, 2026-11-18), kept from the game
+// by the host while the mod owns it (gamepad::Options::modCrouchClick, keepCrouchClick).
+void TickCrouchClick(Game const& game, bool active) {
+    vr::controllers::State const c = vr::controllers::Latest();
+    bool const toggle = gamepad::CrouchClickToggle(gClick, c.active && c.left.stickClick, c.active && c.right.stickClick, c.timeMs);
+#if defined(MEVR_GAME_LE1)
+    (void)game;
+    (void)active;
+    gClickOwned = false;
+    if (toggle) {
+        gLastButton = static_cast<double>(GetTickCount64()) / 1000.0;
+    }
+#else
+    hand_calibration::Posture const settings = hand_calibration::GetPosture();
+    gClickOwned = active && settings.crouchClick && gShouldCrouch != nullptr && c.active && !power_wheel::OwnsLeftHand() &&
+        !squad_weapons::IsOpen();
+    if (!toggle || !gClickOwned) {
+        return;
+    }
+#if defined(MEVR_GAME_LE3)
+    bool const storming = gStorming.ReadBool(game.pawn) != false;
+#else
+    bool const storming = gStorming.ReadBool(game.controller).value_or(false);
+#endif
+    bool const want = !WantsToCrouch(game.pawn);
+    if (storming) {
+        ++gClickRefused;
+        log::Info("posture: L3: no {} while sprinting (ME1's crouch button refuses then too)", want ? "crouch" : "stand");
+        return;
+    }
+    StartProbe(game.pawn, want ? "crouch" : "stand");
+    bool const accepted = ShouldCrouch(game.pawn, want);
+    gGameWants = WantsToCrouch(game.pawn);
+    gArbiter.Pressed(gGameWants);  // the button's: kept until the next physical crouch or stand, never put back
+    gLastButton = static_cast<double>(GetTickCount64()) / 1000.0;
+    ++(accepted ? gClickToggles : gClickRefused);
+    gLastChange = std::format("{} {} (L3)", want ? "crouch" : "stand", accepted ? "accepted" : "refused");
+    log::Info("posture: L3 (the crouch button, as ME1's): {} request {}: {}({}); bWantsToCrouch={}; kept until your next physical "
+              "crouch or stand", want ? "crouch" : "stand", accepted ? "accepted" : "refused", kShouldCrouchPath, want ? "true" : "false",
+        gGameWants);
+#endif
 }
 
 #endif  // MEVR_POSTURE
@@ -827,6 +988,10 @@ bool PhysicallyCrouched() {
     return gCrouchActive && gDetector.Crouched();
 }
 
+void AdjustPad(gamepad::Options& options) {
+    options.modCrouchClick = gClickOwned;  // the sequels' L3 is the mod's crouch toggle (always false on LE1)
+}
+
 bool RefusingCover() {
     return gRefusingCover;
 }
@@ -884,6 +1049,7 @@ void Tick(double deltaSeconds, Link const& link) {
         gLe3RefusedMode = nullptr;
 #endif
         gActive = false;
+        gClickOwned = false;
         SetWhy(why);
         return;
     }
@@ -912,6 +1078,7 @@ void Tick(double deltaSeconds, Link const& link) {
         gArbiter.Forget();
         gRestorePending = false;
         gDetector.Reset();
+        gLean.Reset();
         gCrouchActive = false;
         gCoverEpisode = false;
         gProbe = {};
@@ -940,6 +1107,7 @@ void Tick(double deltaSeconds, Link const& link) {
         SetWhy("active");
     }
     TickCover(*game, refuseSnap, deltaSeconds);
+    TickCrouchClick(*game, gActive);  // first: a click this tick is the button's before the crouch tick judges a change
     TickCrouch(*game, link, view, gActive,
         vr::calibration::PhysicalCrouch(body_calibration::Position(), settings.physicalCrouch), deltaSeconds);
 #else
