@@ -267,14 +267,11 @@ inline constexpr bool kOlderHostReplaysSecondEye = false;
 inline constexpr bool kVrDynamicShadows = false;
 
 // The light environments' character shadows (game/SystemSettings' `LightEnvironmentShadows`; a player's [SystemSettings]
-// value still wins). ME1 turns them off only while the host's second eye is a replay (HostServices v43); the sequels
-// always (the owner, 2026-11-17: "disable the shadows entirely for both eyes"; DynamicShadows False alone left ME1's
-// character shadows drawn, research/37 2026-11-13).
-#if defined(MEVR_GAME_LE1)
-inline constexpr bool kVrCharacterShadowsOff = false;
-#else
+// value still wins): off on every game. The sequels since the owner's 2026-11-17 ("disable the shadows entirely for both
+// eyes"; DynamicShadows False alone left ME1's character shadows drawn, research/37 2026-11-13); ME1 too since 2026-11-18
+// (the owner: "for all three games, we need to just have shadows permanently disabled"), where until then they were off
+// only while the host's second eye was a replay (HostServices v43; sharePass 5 by default, so off for most players).
 inline constexpr bool kVrCharacterShadowsOff = true;
-#endif
 
 // Who is an enemy and who is down (the hand power wheel's lock, the squad context, VR cover's shooters, the squad's orders,
 // melee's enemy in reach): ME1's and ME2's BioPawn answers IsHostile itself; ME3's BioPawn has none, so its question is

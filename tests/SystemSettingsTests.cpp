@@ -80,8 +80,8 @@ int main() {
         return std::find(commands.begin(), commands.end(), command) != commands.end();
     };
     // The built-in dynamic shadows (engine::adapter::kVrDynamicShadows): off on every game (ME1's cost lever; on ME2 they
-    // differed between the eyes, the owner 2026-11-17). The sequels' character shadows are always off too
-    // (kVrCharacterShadowsOff): one more boolean key, two more commands, in every full application.
+    // differed between the eyes, the owner 2026-11-17). Every game's character shadows are always off too
+    // (kVrCharacterShadowsOff, ME1's since 2026-11-18): one more boolean key, two more commands, in every full application.
     std::string const builtInShadows = "False";
     std::string const otherShadows = "True";
     constexpr bool kCharacterOff = mevr::engine::adapter::kVrCharacterShadowsOff;
@@ -99,15 +99,22 @@ int main() {
     for (int i = 0; i < 16; ++i) poll(0, true);
     CHECK(commands.empty());  // healthy native protection replaces both redundant settling resets
     commands.clear();
+    // Back to gameplay with the guard healthy: the shadows alone again, through their opposites, once (2026-11-18: the
+    // cinematics turned them back on while the whole reapply was skipped).
+    std::vector<std::string> const shadowsAgain{"scale set DynamicShadows True", "scale set DynamicShadows False",
+        "scale set LightEnvironmentShadows True", "scale set LightEnvironmentShadows False"};
     poll(7, true); poll(0, true); poll(0, true);
-    CHECK(commands.empty());
+    CHECK(commands == shadowsAgain);
+    commands.clear();
     settings::ObserveMode(static_cast<unsigned char>(5));  // short conversation between polls also counts
     poll(0, true);
-    CHECK(commands.empty() && !settings::gLeftGameplay);
+    CHECK(commands == shadowsAgain && !settings::gLeftGameplay);
+    commands.clear();
     poll(7, true);
-    write("[SystemSettings]\nAntiAliasing=True\n");  // menu saves identical values
+    write("[SystemSettings]\nAntiAliasing=True\n");  // menu saves identical values: nothing more than the shadows
     poll(0, true);
-    CHECK(commands.empty());
+    CHECK(commands == shadowsAgain);
+    commands.clear();
     write("[SystemSettings]\nAntiAliasing=True\nFoliageDrawRadiusMultiplier=0.75\n");
     poll(0, true);
     CHECK(commands.size() == 9 && contains("scale set FoliageDrawRadiusMultiplier 0.75"));
@@ -275,6 +282,27 @@ int main() {
         CHECK(commands.size() == fullApply && commands[0] == "scale set DynamicShadows " + otherShadows &&
               commands[1] == "scale set DynamicShadows " + builtInShadows);
         commands.clear();
+    }
+    // Back to gameplay with the blur guard healthy, every game (2026-11-18): the shadow keys alone, through their opposites,
+    // once; on ME2 only once the level has been in gameplay for 3 s (it has, here).
+    {
+        write("[SystemSettings]\n");
+        settings::Poll(1.0f, static_cast<unsigned char>(0), true, file, world, false);
+        commands.clear();
+        unsigned char away = 5;
+        while (mevr::engine::adapter::IsHudGameplayMode(away)) ++away;
+        settings::ObserveMode(away);
+        settings::Poll(1.0f, away, true, file, world, false);
+        CHECK(commands.empty());
+        settings::ObserveMode(static_cast<unsigned char>(0));
+        settings::Poll(1.0f, static_cast<unsigned char>(0), true, file, world, false);
+        std::vector<std::string> const again{"scale set DynamicShadows " + otherShadows,
+            "scale set DynamicShadows " + builtInShadows, "scale set LightEnvironmentShadows True",
+            "scale set LightEnvironmentShadows False"};
+        CHECK(commands == again);
+        commands.clear();
+        settings::Poll(1.0f, static_cast<unsigned char>(0), true, file, world, false);
+        CHECK(commands.empty());
     }
     write("[SystemSettings]\napply=0\n");
     poll(0, true); poll(0, false); poll(7, false); poll(0, false);

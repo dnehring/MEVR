@@ -52,6 +52,12 @@ int gSettleApplies = 0;  // of kSettleApplyAt, done in this level
 // other mode applies the settings again, unless the host's native blur guard is healthy (research/62).
 bool gLeftGameplay = false;
 int gLeftMode = -1;  // the last mode outside gameplay, for the log
+// The shadows alone again after such a return while the blur guard is healthy (2026-11-18, the owner: on ME2 "shadows in
+// general seem to be running ... I get the different image in both left and right eye", and on ME1 "the cinematics
+// re-enable it"; "for all three games, we need to just have shadows permanently disabled"). The guard (lane AU6, the same
+// morning on ME2) keeps the blur off natively, so the menu-return reapply was skipped whole, and with it the shadows a
+// cinematic had turned back on. Only the shadow keys go again (4 commands, not every boolean's ~153 ms: research/67).
+bool gShadowsPending = false;
 bool gGuardPolicyKnown = false;
 bool gMotionBlurProtected = false;
 bool gGuardFallbackPending = false;
@@ -138,8 +144,9 @@ std::vector<Setting> Wanted(fs::path const& path, bool secondEyeIsReplay) {
     // player's own value (GamerSettings.ini's) is put back, since the game wrote our earlier False into BIOEngine.ini's
     // [SystemSettings], which wins over GamerSettings' at the next launch (research/35), so leaving the key alone would
     // leave the workaround in force for good. No value of the player's: the key isn't touched.
-    // The sequels keep them off whatever the second eye is (engine::adapter::kVrCharacterShadowsOff: the owner, 2026-11-17,
-    // the shadows differed between the eyes on ME2).
+    // Every game keeps them off whatever the second eye is (engine::adapter::kVrCharacterShadowsOff: the owner, 2026-11-17,
+    // the shadows differed between the eyes on ME2; ME1 too since 2026-11-18, "shadows permanently disabled"), so the
+    // player's-own branch below is for a game that ever sets it false again.
     if (secondEyeIsReplay || engine::adapter::kVrCharacterShadowsOff) {
         wanted.push_back({"LightEnvironmentShadows", "False"});
     } else if (std::string const own = GamersValue(path, L"LightEnvironmentShadows"); SameKey(own, "True") || SameKey(own, "False")) {
@@ -230,10 +237,20 @@ void Poll(float elapsed, std::optional<unsigned char> mode, bool motionBlurProte
     if (returned) {
         gLeftGameplay = false;
         if (motionBlurProtected) {
-            log::Info("system settings: skipped menu-return reapply after mode {}: native motion-blur guard healthy", gLeftMode);
+            gShadowsPending = true;
+            log::Info("system settings: skipped menu-return reapply after mode {}: native motion-blur guard healthy (the shadows "
+                      "alone again)", gLeftMode);
         }
     }
-    if (gApplied && !changed && !newLevel && !settleDue && !backToGameplay && !gGuardFallbackPending && !replayChanged) {
+    bool shadowsNow = gShadowsPending && gApplied;
+#if defined(MEVR_GAME_LE2)
+    // ME2: no scale set within a level's first 3 s of gameplay (the fault below); the shadows wait for it.
+    if (gSinceWorldChange < kSettleApplyAt[0] || !mode || !engine::adapter::IsHudGameplayMode(*mode)) {
+        shadowsNow = false;
+    }
+#endif
+    if (gApplied && !changed && !newLevel && !settleDue && !backToGameplay && !gGuardFallbackPending && !replayChanged &&
+        !shadowsNow) {
         return;
     }
 #if defined(MEVR_GAME_LE2)
@@ -260,6 +277,27 @@ void Poll(float elapsed, std::optional<unsigned char> mode, bool motionBlurProte
         return true;
     };
     if (gApplied && same() && !newLevel && !settleDue && !backToGameplay && !gGuardFallbackPending) {
+        if (shadowsNow) {
+            // Only the shadow keys, as the full apply would send them (through the opposite, the wanted value last).
+            std::string text;
+            for (Setting const& s : wanted) {
+                if (!SameKey(s.key, "DynamicShadows") && !SameKey(s.key, "LightEnvironmentShadows")) {
+                    continue;
+                }
+                std::string const opposite = Opposite(s.value);
+                std::string ignored;
+                if ((!opposite.empty() && !console_request::RunCommand("scale set " + s.key + " " + opposite, &ignored)) ||
+                    !console_request::RunCommand("scale set " + s.key + " " + s.value, &ignored)) {
+                    return;  // no local player yet: next second
+                }
+                text += (text.empty() ? "" : ", ") + s.key + " " + s.value;
+            }
+            gShadowsPending = false;
+            if (!text.empty()) {
+                log::Info("system settings: scale set {} (back to gameplay after mode {}: the shadows alone again, through their "
+                          "opposite first)", text, gLeftMode);
+            }
+        }
         gStamp = stamp;
         gHaveStamp = !ec;
         gReplayKnown = true;
@@ -279,6 +317,7 @@ void Poll(float elapsed, std::optional<unsigned char> mode, bool motionBlurProte
         gReplayKnown = true;
         gSecondEyeIsReplay = secondEyeIsReplay;
         gGuardFallbackPending = false;  // explicit apply=0 remains authoritative
+        gShadowsPending = false;
         return;
     }
     std::string appliedText;
@@ -317,6 +356,7 @@ void Poll(float elapsed, std::optional<unsigned char> mode, bool motionBlurProte
     gStamp = stamp;
     gHaveStamp = !ec;
     gGuardFallbackPending = false;
+    gShadowsPending = false;  // the full apply sent them
 }
 
 } // namespace
