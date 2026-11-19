@@ -61,6 +61,16 @@ BAD = [
     "  [1] MassEffect2.exe+0x8C6915  (rsp 0x2)",
     "==== end of crash breadcrumbs ====",
 ] + [
+    line(24, "first-chance access violation 0xC0000005 on thread 136492 at ucrtbase.dll+0x6A80D (reading 0xFFFFFFFFFFFFFFF8)", 'warn'),
+    line(25, "reflect: field SFXGame.SFXCameraMode.bIsCameraShakeEnabled refused on 0x2EB9A2D8620 (Class Engine.Thing): not an object "
+         "of that class (a pointer kept after the engine freed its object, the memory now another object's?)", 'warn'),
+    line(26, "traversal: A pressed (#4): a press that can't vault: the scene blocks traversal: an authored scene moves Shepard (a "
+         "matinee's move track) (2.00 s after the one before)"),
+    line(27, "traversal: A pressed (#5): a press that can't vault: the scene blocks traversal: an authored scene moves Shepard (a "
+         "matinee's move track) (1.00 s after the one before)"),
+    line(28, "holsters: the game didn't holster the assault rifle within 3 s (combat disabled here, the pawn busy, or mid-switch); now "
+         "holding the assault rifle", 'warn'),
+] + [
     line(30 + i, "vr cover: a hit from SFXPawn_AssaultDrone_1 at 23.2 m: exposed | the eyes 1.75 m over the floor") for i in range(3)
 ] + [
     line(40, "vr cover: 64 hits judged since the start ([Cover] judge = either): 0 in cover (0 by the level look alone, 0 cut by the "
@@ -95,6 +105,14 @@ CLEAN = [
     line(10, "arm IK: not on foot"),
     line(11, "arm IK: body anchor: third person (tracking origin at Shepard's animated head), view 300 units from Shepard's animated head bone, 100.0 units per meter"),
     line(12, "arm IK: driving: left and right following the controllers, shoulders under the headset"),
+    # A press a menu or a wheel took is expected, and a load's own drawn gun goes back (notes, not signs).
+    line(13, "traversal: A pressed (#6): a press that can't vault: the scene blocks traversal: the power wheel is open"),
+    line(14, "traversal: A pressed (#7): a press that can't vault: the scene blocks traversal: the squad's weapon wheel is open"),
+    line(15, "holsters: the assault rifle came out without a holster grab (right trigger 0.00, grip 0.00; left trigger 0.00, grip "
+         "0.00): with the load (0.2 s after this pawn came: the save's drawn gun, or the level's start)"),
+    line(15, "holsters: the assault rifle is holstered after 0.15 s"),
+    line(16, "camera shake: the game's screen shakes back on (0 of 2 camera modifiers; VR is off); 1 kept now hold another object (a "
+         "load freed them and reused the memory): left alone"),
     line(20, "vr cover: 30 hits judged since the start ([Cover] judge = either): 12 in cover (0 by the level look alone, 0 cut by the "
          "game's cone), 18 in the open, 0 with cover too far, 0 from overhead, 0 without a shooter, 0 without a view; last: x"),
     line(30, "heartbeat #1: 90.0 fps, GWorld=0x1, objects=1, script hooks live"),
@@ -104,7 +122,8 @@ BAD_RULES = ["armik-third-person-on-foot", "armik-anchor-flapping", "traversal-r
              "traversal-press-refused-near-slot",
              "holster-stays-out", "holster-unasked-draw", "crouchbody-drop-not-crouched", "process-event-off-thread",
              "swapchain-refused", "first-chance-av-ours", "vr-cover-never-covered", "posture-flip-flop", "frame-rate-low",
-             "crash-report"]
+             "crash-report", "engine-free-corrupt-pointer", "reflect-field-misfit", "traversal-scene-blocked-matinee",
+             "holster-not-taken"]
 QUIET_RULES = [r for r in BAD_RULES if r != "frame-rate-low"] + ["frame-rate-low"]
 
 root = tempfile.mkdtemp(prefix=f"mevr-tests-{os.getpid()}-")

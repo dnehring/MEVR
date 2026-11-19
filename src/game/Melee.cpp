@@ -639,6 +639,7 @@ std::optional<ue3::Object*> CurrentAction() {
 // The staged admission in full (the order of reasons the adapter has always given): the Tick's availability of each hand.
 char const* Refusal(Link const& link, int hand) {
     if (!gStarted || !ue3::runtime::Up()) return "adapter not ready";
+    if (link.authoredSeated && link.sceneWhy != nullptr) return link.sceneWhy;  // its own words (a literal)
     if (!link.enabled || !link.focused || link.menuOpen || link.authoredSeated || !link.input.allowed)
         return "host context blocks melee";
     if (hand < 0 || hand > 1 || !link.input.hands[static_cast<std::size_t>(hand)].available ||

@@ -335,6 +335,45 @@ void TestStaleClassIndex() {
     CHECK(r3.FindClass("Engine.Actor") == w.actor);
 }
 
+// An object kept across a load (research/le2-reload-crash.md): the engine frees it and puts another object in the same memory,
+// often in the same GObjects slot. IsAlive takes the newcomer for the kept one; StillSame doesn't (ue3::Kept's check).
+void TestKeptIdentity() {
+    World w;
+    ue3::Reflection r(w.f.Universe());
+    ue3::Object* const mode = w.shepard;  // "BioPawn_0": the kept object (a camera mode, in the crash)
+    ue3::Reflection::Identity const kept = r.IdentityOf(mode);
+    CHECK(kept.object == mode && kept.cls == w.bioPawn && kept.index == r.IndexOf(mode));
+    CHECK(r.StillSame(kept));
+    CHECK(r.IdentityOf(w.dying).object == nullptr);  // pending kill: nothing to keep
+    CHECK(r.IdentityOf(nullptr).object == nullptr && !r.StillSame(ue3::Reflection::Identity{}));
+    // The load: the same block and slot taken by an object of another class.
+    w.f.Set(mode, w.f.layout.objectClass, w.sfxThing);
+    w.f.Set(mode, w.f.layout.objectName, ue3::Name{w.f.Name("Thing"), 3});
+    (void)w.f.Universe();
+    CHECK(r.IsAlive(mode));         // what every module checked: yes
+    CHECK(!r.StillSame(kept));      // another class
+    CHECK(!r.IsA(mode, static_cast<ue3::Class*>(w.bioPawn)));  // and a class field's write is refused (FieldRef::Fits)
+    // ... by an object of the same class, the next of its kind ("BioPawn_1"): another name.
+    w.f.Set(mode, w.f.layout.objectClass, w.bioPawn);
+    w.f.Set(mode, w.f.layout.objectName, ue3::Name{w.f.Name("BioPawn"), 2});
+    (void)w.f.Universe();
+    CHECK(r.IsAlive(mode) && !r.StillSame(kept));
+    // ... in another slot: the kept slot no longer holds it.
+    w.f.Set(mode, w.f.layout.objectName, kept.name);
+    std::int32_t const slot = r.IndexOf(mode);
+    w.f.objects.push_back(mode);
+    w.f.Set(mode, w.f.layout.objectIndex, static_cast<std::int32_t>(w.f.objects.size() - 1));
+    w.f.objects[static_cast<std::size_t>(slot)] = nullptr;
+    ue3::Reflection r2(w.f.Universe());
+    CHECK(r2.IsAlive(mode) && !r2.StillSame(kept));
+    // Put back exactly: the same object again.
+    w.f.objects.pop_back();
+    w.f.objects[static_cast<std::size_t>(slot)] = mode;
+    w.f.Set(mode, w.f.layout.objectIndex, slot);
+    ue3::Reflection r3(w.f.Universe());
+    CHECK(r3.StillSame(kept));
+}
+
 void TestProperties() {
     World w;
     ue3::Reflection r(w.f.Universe());
@@ -752,6 +791,7 @@ int RunReflectTests() {
     TestSafeNames();
     TestLookups();
     TestStaleClassIndex();
+    TestKeptIdentity();
     TestProperties();
     TestParams();
     TestFunctionPointerBeforeFlags();

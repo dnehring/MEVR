@@ -1064,15 +1064,42 @@ bool ActionForeground() {
     HWND const window = GetForegroundWindow();
     return window != nullptr && GetWindowThreadProcessId(window, &pid) != 0 && pid == GetCurrentProcessId();
 }
-bool ActionSceneAllowed() {
+// Why the scene keeps the physical actions (the vault, melee, the gestures) from the player now, or nullptr: they may run. Each
+// reason in its own words, for the refusals' log lines: everything here used to be logged as "authored seated scene blocks
+// traversal", and in the owner's run of 2026-11-18 three A presses that confirmed our squad menu after a conversation read as a
+// 45 s lockout of the vault (research/le2-traversal.md "The refusal that named the wrong reason"). The texts are literals.
+char const* ActionSceneWhy() {
     using namespace mevr;
-    if (!ActionRuntimeReady() || ActionMenuOpen() || ActionCalibrating()) return false;
+    if (!ActionRuntimeReady()) return "the mod's engine access isn't up";
+    if (MEVR_HOST_HAS(mainMenu) && gHost->mainMenu != nullptr) {
+        auto const bits = gHost->mainMenu();
+        if ((bits & kMainMenuOpen) != 0) return "our menu is open";
+        if ((bits & kOmniRailOpen) != 0) return "the omni-tool's rail is open";
+    }
+    if (game::world_ui::WristScreenUp()) return "a game screen is up on the wrist";
+    if (game::view_anchor::Held()) return "the view is held (a game screen or a scene)";
+    if (game::power_wheel::IsOpen()) return "the power wheel is open";
+    if (game::squad_weapons::IsOpen()) return "the squad's weapon wheel is open";
+    if (ActionCalibrating()) return "calibrating";
     auto* pc = game::player::Controller();
-    if (!ue3::runtime::IsAlive(pc) || game::player::GameMode(pc) != 0) return false;
+    if (!ue3::runtime::IsAlive(pc)) return "no player controller";
+    static constexpr char const* kNotOnFoot[] = {"on foot", "not on foot (game mode 1: a vehicle)", "not on foot (game mode 2)",
+        "not on foot (game mode 3)", "not on foot (game mode 4)", "not on foot (game mode 5: a conversation)",
+        "not on foot (game mode 6: a cutscene)", "not on foot (game mode 7: a game screen)", "not on foot (game mode 8: a load)",
+        "not on foot (game mode 9: the galaxy map)", "not on foot (game mode 10: a minigame)"};
+    auto const mode = game::player::GameMode(pc);
+    if (mode != 0) {
+        return mode && *mode < std::size(kNotOnFoot) ? kNotOnFoot[*mode] : "not on foot (the game's mode unknown)";
+    }
     auto* pawn = game::player::BioPawn(pc);
+    if (!ue3::runtime::IsAlive(pawn)) return "no player pawn";
     // Native adapters additionally query movement-ignore/action/physics/combat. A physical seated
     // calibration is intentionally NOT consulted: only authored context denies traversal.
-    return ue3::runtime::IsAlive(pawn) && !game::authored_moment::TrackMoves(pawn);
+    if (game::authored_moment::TrackMoves(pawn)) return "an authored scene moves Shepard (a matinee's move track)";
+    return nullptr;
+}
+bool ActionSceneAllowed() {
+    return ActionSceneWhy() == nullptr;
 }
 bool ActionHandFree(int hand) {
     using namespace mevr;
@@ -1162,7 +1189,8 @@ mevr::game::melee::Link MeleeLink(bool diagnostic = false) {
     link.gestures = gMeleeGestures && !diagnostic;
     link.focused = diagnostic ? ActionForeground() : state.active;
     link.menuOpen = ActionMenuOpen() || ActionCalibrating();
-    link.authoredSeated = !ActionSceneAllowed();
+    link.sceneWhy = ActionSceneWhy();
+    link.authoredSeated = link.sceneWhy != nullptr;
     link.allowRequest = diagnostic ? AllowMeleeDiagnostic : AllowMeleeGesture;
     if (MEVR_HOST_HAS(hapticPulse)) link.haptic = gHost->hapticPulse;
     if (MEVR_HOST_HAS(hapticPulseHz)) link.hapticHz = gHost->hapticPulseHz;
@@ -1220,7 +1248,8 @@ mevr::game::traversal::Link TraversalLink(bool diagnostic = false) {
     using namespace mevr;
     game::traversal::Link link;
     link.menuOpen = ActionMenuOpen() || ActionCalibrating();
-    link.authoredSeated = !ActionSceneAllowed();
+    link.sceneWhy = ActionSceneWhy();
+    link.authoredSeated = link.sceneWhy != nullptr;
     link.sceneGeneration = ActionGeneration();
     link.allowNativeTraversal = diagnostic ? AllowTraversalDiagnostic : AllowTraversalGesture;
     link.le3DoubleTap = gTraversalGestures && !diagnostic;

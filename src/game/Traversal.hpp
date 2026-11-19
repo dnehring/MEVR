@@ -40,6 +40,9 @@ struct Link {
     void (*setCue)(vr::traversal::Cue const* cue) = nullptr;  // HostServices v40
     void (*haptic)(int hand, float seconds, float amplitude) = nullptr;
     bool authoredSeated = false; // authored shuttle/dialogue; not the player's physical play position
+    // Why the scene keeps the vault from the player (a menu, a wheel, not on foot, a matinee moving Shepard...): a literal for the
+    // log, set with authoredSeated (Mod.cpp ActionSceneWhy). Null: the generic wording.
+    char const* sceneWhy = nullptr;
     // LE3 staged controls: fresh host ownership/focus gate, not a cached menu snapshot.
     bool (*allowNativeTraversal)() = nullptr;
     std::uint64_t sceneGeneration = 0;

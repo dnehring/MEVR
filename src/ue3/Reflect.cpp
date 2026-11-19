@@ -168,6 +168,18 @@ bool Reflection::IsAlive(Object const* object) const {
     return (FlagsOf(object) & u_.layout.pendingKillFlag) == 0;
 }
 
+Reflection::Identity Reflection::IdentityOf(Object const* object) const {
+    if (!IsAlive(object)) {
+        return {};
+    }
+    return Identity{object, IndexOf(object), ClassOf(object), NameOf(object)};
+}
+
+bool Reflection::StillSame(Identity const& identity) const {
+    return identity.object != nullptr && IsAlive(identity.object) && IndexOf(identity.object) == identity.index &&
+        ClassOf(identity.object) == identity.cls && NameOf(identity.object) == identity.name;
+}
+
 Class* Reflection::ClassClass() {
     if (classClass_ != nullptr) {
         return classClass_;

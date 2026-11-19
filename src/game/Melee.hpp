@@ -57,6 +57,7 @@ struct Link {
     bool focused = false;
     bool menuOpen = true;
     bool authoredSeated = true;    // authored scene, NOT physically seated play calibration
+    char const* sceneWhy = nullptr; // why the scene keeps melee from the player (a literal for the log; Mod.cpp ActionSceneWhy)
     // ME3: re-reads the host's CURRENT menu/hand ownership at the instant of dispatch. A missing callback refuses dispatch,
     // including diagnostic requests.
     bool (*allowRequest)(int hand) = nullptr;

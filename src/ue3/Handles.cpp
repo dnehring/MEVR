@@ -56,6 +56,7 @@ PropertyInfo const* FieldRef::Get() {
             }
         } else {
             owner = r.FindClass(classPath_);
+            owner_ = owner;
             runtime::FlushNotes();
         }
         tried_ = true;
@@ -95,9 +96,39 @@ std::optional<Elements> FieldRef::ElementsOf(void const* base, std::int32_t maxC
     return Elements{array->data, array->count, inner->elementSize};
 }
 
+bool FieldRef::Fits(void const* base) {
+    if (outer_ != nullptr || function_ != nullptr || owner_ == nullptr || base == nullptr) {
+        return true;
+    }
+    struct Check {
+        Object const* object;
+        Struct const* owner;
+        bool fits;
+        Class const* cls;
+    } check{static_cast<Object const*>(base), owner_, false, nullptr};
+    // Guarded: a kept pointer can be memory the engine gave back (the caller's own read would have faulted there anyway).
+    bool const read = runtime::Guarded([](void* context) {
+        auto* const c = static_cast<Check*>(context);
+        Reflection& r = runtime::Get();
+        c->cls = r.ClassOf(c->object);
+        c->fits = r.IsChildOf(c->cls, c->owner);
+    }, &check);
+    if (read && check.fits) {
+        return true;
+    }
+    if (!toldMisfit_) {
+        toldMisfit_ = true;
+        log::Warn("reflect: field {}.{} refused on 0x{:X} ({}): not an object of that class (a pointer kept after the engine freed "
+                  "its object, the memory now another object's?)",
+            classPath_, name_, reinterpret_cast<std::uintptr_t>(base),
+            read && check.cls != nullptr ? runtime::FullName(check.cls) : std::string("unreadable"));
+    }
+    return false;
+}
+
 std::optional<bool> FieldRef::ReadBool(void const* base) {
     PropertyInfo const* const info = Get();
-    if (info == nullptr || base == nullptr || info->kind != Kind::Bool || info->boolMask == 0) {
+    if (info == nullptr || base == nullptr || info->kind != Kind::Bool || info->boolMask == 0 || !Fits(base)) {
         return std::nullopt;
     }
     std::uint32_t word = 0;
@@ -107,7 +138,7 @@ std::optional<bool> FieldRef::ReadBool(void const* base) {
 
 bool FieldRef::WriteBool(void* base, bool value) {
     PropertyInfo const* const info = Get();
-    if (info == nullptr || base == nullptr || info->kind != Kind::Bool || info->boolMask == 0) {
+    if (info == nullptr || base == nullptr || info->kind != Kind::Bool || info->boolMask == 0 || !Fits(base)) {
         return false;
     }
     auto* const word = reinterpret_cast<std::uint32_t*>(static_cast<std::uint8_t*>(base) + info->offset);

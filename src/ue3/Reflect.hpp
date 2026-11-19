@@ -107,6 +107,18 @@ public:
     bool IsA(Object const* object, Class const* cls) const;
     bool IsChildOf(Struct const* s, Struct const* parent) const;
     bool IsAlive(Object const* object) const;  // a live GObjects entry, not pending kill
+    // Who an object is: its GObjects slot, its class and its name. A pointer kept across ticks can come to point at another
+    // object: a load frees the first and the engine puts a new one in the same memory, often in the same slot, which IsAlive
+    // then takes for the kept one (the third same-map reload's crash on ME2, 2026-11-19, research/le2-reload-crash.md).
+    // StillSame compares who it was: the class, and the name, whose number the engine counts up per class ("_2" then "_3").
+    struct Identity {
+        Object const* object = nullptr;
+        std::int32_t index = -1;
+        Class const* cls = nullptr;
+        Name name;
+    };
+    Identity IdentityOf(Object const* object) const;  // empty unless alive
+    bool StillSame(Identity const& identity) const;   // alive, and still that slot, class and name
     // The nearest outer of `object` (not the object itself) that IsA `cls`, or nullptr: e.g. the World an
     // actor's level belongs to (Actor -> Level -> World). Reads only, no caches: any thread.
     Object* OuterOfA(Object const* object, Class const* cls) const;

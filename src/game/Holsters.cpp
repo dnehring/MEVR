@@ -210,6 +210,22 @@ struct DeferredHolster {
     double age = 0.0;
 };
 DeferredHolster gDeferred;
+// A holster by TryHolster that hasn't taken: ME2's TryHolster returns silently for reasons HolsterBusy doesn't see (a load's own
+// draw, 2026-11-19: called while the save's rifle was still being equipped, nothing happened and the rifle stayed out). After
+// kTryHolsterWaitS with the gun still out, nothing busy and the grip open, its own last step (SetActionState(explore)) once.
+struct TryHolsterWatch {
+    bool active = false;
+    Weapon weapon = Weapon::None;
+    double age = 0.0;
+};
+TryHolsterWatch gTryHolsterWatch;
+constexpr double kTryHolsterWaitS = 1.5;  // TryHolster's own holster ends in 0.9-1.2 s (research/le2-vrik.md)
+// The player's pawn (a load makes another) and how long it has been ours: a draw within kLoadDrawS of a new pawn is the load's
+// own (the save's drawn state, the level's start), told apart in the log.
+ue3::Kept gSeenPawn;
+double gSincePawn = 1e9;
+constexpr double kLoadDrawS = 5.0;
+unsigned gTryHolsterFallbacks = 0;
 std::array<double, 2> gUndoAges{1e9, 1e9};  // seconds since the last two put-backs (newest first)
 double gUndoPausedS = 0.0;                   // > 0: put-backs left out this long yet
 unsigned gUndone = 0, gUndoLeft = 0, gUndoDeliberate = 0, gCombatHolsters = 0, gDeferredDone = 0;  // heartbeat counters
@@ -648,6 +664,11 @@ std::string HolsterBusy(ue3::Object* pawn) {
     if (AskBool(pawn, gIsInAnimatedTransitionFn.Get())) {
         return "in an animated transition";
     }
+    // The gun still being drawn (its WeaponEquipping state, ReadCarried): a load's own draw had TryHolster called mid-equip, and
+    // it did nothing (2026-11-19, research/le2-vrik.md "The drawn gun after a load").
+    if (gCarried.switching) {
+        return "the gun still being drawn or put away";
+    }
     return {};
 }
 
@@ -880,6 +901,7 @@ void Holster(Game const& game, Weapon weapon, std::string const& why, Link const
         log::Info("holsters: ME2's action state right after TryHolster: {} (1 combat, 0 explore; it turns explore when the "
                   "holster animation ends)", gActionState.Read<std::uint8_t>(game.pawn).value_or(0xFF));
     }
+    gTryHolsterWatch = {true, weapon, 0.0};
 #endif
 #endif
     gPending = {slots::Action::Holster, weapon, 0.0};
@@ -960,6 +982,40 @@ void PutBackUnasked(Game const& game, Link const& link) {
     Holster(game, weapon, "only holsters draw: put back at once", link, 0.0);  // no click: the player did nothing
 }
 
+// A TryHolster that didn't take (gTryHolsterWatch): once the gun has stayed out kTryHolsterWaitS with nothing busy and the grip open,
+// TryHolster's own last step puts it away, as the let-go in a fight does.
+void StepTryHolsterWatch(Game const& game, Link const& link, double strength, double deltaSeconds, bool gripDown) {
+    if (!gTryHolsterWatch.active) {
+        return;
+    }
+    gTryHolsterWatch.age += std::max(deltaSeconds, 0.0);
+    if (!gCarried.drawn || Held() != gTryHolsterWatch.weapon || gripDown) {
+        gTryHolsterWatch = {};  // away, another gun, or the hand took it again
+        return;
+    }
+    if (gTryHolsterWatch.age < kTryHolsterWaitS || !HolsterBusy(game.pawn).empty()) {
+        return;
+    }
+    Weapon const weapon = gTryHolsterWatch.weapon;
+    double const age = gTryHolsterWatch.age;
+    gTryHolsterWatch = {};
+    ue3::Object* const behavior = gBehavior.Read<ue3::Object*>(game.pawn).value_or(nullptr);
+    if (!ue3::runtime::IsAlive(behavior) || gSetActionState == nullptr) {
+        log::Info("holsters: the {} is still out {:.2f} s after TryHolster, and the pawn's behaviour or SetActionState wasn't found",
+            slots::Name(weapon), age);
+        return;
+    }
+    ue3::Params parms(ue3::runtime::Get(), gSetActionState);
+    parms.Set("eState", std::uint8_t{0});  // BIO_ACTION_STATE_EXPLORE
+    log::Info("holsters: the {} is still out {:.2f} s after TryHolster (it refused without one of its known reasons): its own last "
+              "step, BioPawnBehavior.SetActionState(explore)", slots::Name(weapon), age);
+    ue3::runtime::Call(behavior, gSetActionState, parms);
+    ++gTryHolsterFallbacks;
+    gPending = {slots::Action::Holster, weapon, 0.0};
+    (void)link;
+    (void)strength;
+}
+
 void AgeUndo(double deltaSeconds) {
     double const dt = std::max(deltaSeconds, 0.0);
     gUndoAges = {std::min(gUndoAges[0] + dt, 1e9), std::min(gUndoAges[1] + dt, 1e9)};
@@ -999,6 +1055,7 @@ void Inactive(std::string why, Link const& link) {
         log::Info("holsters: the let-go {} that waited ({}) stays out ({})", slots::Name(gDeferred.weapon), gDeferred.busy, why);
         gDeferred = {};
     }
+    gTryHolsterWatch = {};
 #endif
     gMachine.Reset();
     gAnchor.Reset();
@@ -1496,10 +1553,20 @@ void Tick(double deltaSeconds, Link const& link) {
     // what drew it if DrawPrimaryWeapon wasn't the way.
 #if defined(MEVR_GAME_LE2)
     AgeUndo(deltaSeconds);
+    if (gSeenPawn.Live() != game->pawn) {
+        gSeenPawn = ue3::Kept{game->pawn};  // a load's new pawn (or the first): its first seconds' draw is the load's own
+        gSincePawn = 0.0;
+    }
+    gSincePawn = std::min(gSincePawn + std::max(deltaSeconds, 0.0), 1e9);
     if (gWasDrawnKnown && gCarried.drawn && !gWasDrawn && gSinceDraw > kResultSeconds && gSinceAllowedDraw > kResultSeconds) {
+        // A load's own draw (the save's drawn gun, the level's start) is put back as any other: the open hand holds no gun
+        // (gripHolds) and only holsters draw, the owner's rule on every game (research/le2-vrik.md "The drawn gun after a load").
         log::Info("holsters: the {} came out without a holster grab (right trigger {:.2f}, grip {:.2f}; left trigger {:.2f}, "
                   "grip {:.2f}){}", slots::Name(Held()), right.trigger, right.squeeze, controllers.left.trigger,
-            controllers.left.squeeze, gBlockDraws ? ": a route no hook refuses (a wheel's close, a fight's start, a script)" : "");
+            controllers.left.squeeze, !gBlockDraws ? ""
+                : gSincePawn < kLoadDrawS ? std::format(": with the load ({:.1f} s after this pawn came: the save's drawn gun, or the "
+                                                        "level's start)", gSincePawn)
+                : std::string(": a route no hook refuses (a wheel's close, a fight's start, a script)"));
         if (gBlockDraws && !gOwnGrip) {
             PutBackUnasked(*game, link);
         }
@@ -1702,6 +1769,7 @@ void Tick(double deltaSeconds, Link const& link) {
     }
 #if defined(MEVR_GAME_LE2)
     StepDeferred(*game, link, strength, deltaSeconds, input.gripDown, input.trigger);
+    StepTryHolsterWatch(*game, link, strength, deltaSeconds, input.gripDown);
 #endif
     if (step.returnWaitsForTrigger && !gToldReturnWaits) {
         gToldReturnWaits = true;
@@ -1839,12 +1907,13 @@ void LogStats() {
         gContactPeak, gEyeHeight, gEyeSource, gFloorNow >= 0.0 ? std::format(" (head now {:.2f} m above the floor)", gFloorNow) : std::string(),
         where.empty() ? std::string() : std::format("; slots from the anchor:{}", where), lost);
 #if defined(MEVR_GAME_LE2)
-    if (gCombatHolsters + gDeferredDone + gUndone + gUndoLeft + gUndoDeliberate > 0) {
+    if (gCombatHolsters + gDeferredDone + gUndone + gUndoLeft + gUndoDeliberate + gTryHolsterFallbacks > 0) {
         log::Info("    holsters: this period {} let-gos put away in a fight (SetActionState(explore)), {} after waiting for a reload, a "
                   "power or a transition; the game's own draws: {} put back, {} left in the hand (drawn again at once), {} let through "
-                  "for a power", gCombatHolsters, gDeferredDone, gUndone, gUndoLeft, gUndoDeliberate);
+                  "for a power; {} TryHolsters that didn't take finished by SetActionState(explore)", gCombatHolsters, gDeferredDone,
+            gUndone, gUndoLeft, gUndoDeliberate, gTryHolsterFallbacks);
     }
-    gCombatHolsters = gDeferredDone = gUndone = gUndoLeft = gUndoDeliberate = 0;
+    gCombatHolsters = gDeferredDone = gUndone = gUndoLeft = gUndoDeliberate = gTryHolsterFallbacks = 0;
 #endif
     gLostHolds = gLostDraws = 0;
     gLostLongest = 0.0;
@@ -1899,6 +1968,11 @@ void Shutdown() {
     gWasDrawn = false;
     gWasDrawnKnown = false;
     gRefusedBuzz = false;
+#if defined(MEVR_GAME_LE2)
+    gTryHolsterWatch = {};
+    gSeenPawn = {};
+    gSincePawn = 1e9;
+#endif
     gStarted = false;
     gWhy = "not started";
     gLoggedWhy.clear();

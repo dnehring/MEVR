@@ -625,3 +625,40 @@ void FlushNotes() {
 }
 
 } // namespace mevr::ue3::runtime
+
+namespace mevr::ue3 {
+
+Kept::Kept(Object* object) {
+    if (!runtime::gReady || object == nullptr) {
+        return;
+    }
+    struct Take {
+        Object const* object;
+        Reflection::Identity identity;
+    } take{object, {}};
+    // Guarded as IsAlive is: the pointer may already be memory the engine gave back.
+    if (runtime::Guarded([](void* context) {
+            auto* const t = static_cast<Take*>(context);
+            t->identity = runtime::gReflection.IdentityOf(t->object);
+        }, &take) && take.identity.object != nullptr) {
+        object_ = object;
+        identity_ = take.identity;
+    }
+}
+
+Object* Kept::Live() const {
+    if (!runtime::gReady || object_ == nullptr) {
+        return nullptr;
+    }
+    struct Check {
+        Reflection::Identity const* identity;
+        bool same;
+    } check{&identity_, false};
+    bool const read = runtime::Guarded([](void* context) {
+        auto* const c = static_cast<Check*>(context);
+        c->same = runtime::gReflection.StillSame(*c->identity);
+    }, &check);
+    return read && check.same ? object_ : nullptr;
+}
+
+} // namespace mevr::ue3

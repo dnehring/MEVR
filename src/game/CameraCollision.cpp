@@ -31,8 +31,9 @@ ue3::FieldRef gCurrentCameraMode{"SFXGame.SFXCameraNativeBase", "CurrentCameraMo
 ue3::FieldRef gInterpolateTo{"SFXGame.SFXCameraMode_Interpolate", "To"};
 ue3::FieldRef gCollisionEnabled{"SFXGame.SFXCameraMode", "bCollisionEnabled"};
 
-// The modes whose collision we cleared (to put it back), and counters for the status.
-std::vector<ue3::Object*> gCleared;
+// The modes whose collision we cleared (to put it back), with who they were (a load frees them and another object can take the
+// same memory: research/le2-reload-crash.md), and counters for the status.
+std::vector<ue3::Kept> gCleared;
 std::uint64_t gClears = 0;
 std::uint64_t gRestores = 0;
 bool gActive = false;
@@ -68,7 +69,7 @@ void Clear(ue3::Object* mode) {
     if (void* const field = gCollisionEnabled.Address(mode)) {
         write_journal::Wrote("CameraCollision.bCollisionEnabled", field, 4);
     }
-    gCleared.push_back(mode);
+    gCleared.push_back(ue3::Kept{mode});
     if (gClears++ == 0) {
         log::Info("camera collision: {} pulled the camera to its hook when anything stood between them; cleared in first person "
                   "([Game] cameraCollision = 0)", cls);
@@ -76,9 +77,11 @@ void Clear(ue3::Object* mode) {
 }
 
 void RestoreAll(char const* why) {
-    int restored = 0;
-    for (ue3::Object* const mode : gCleared) {
-        if (ue3::runtime::IsAlive(mode) && gCollisionEnabled.WriteBool(mode, true)) {
+    int restored = 0, taken = 0;
+    for (ue3::Kept const& kept : gCleared) {
+        ue3::Object* const mode = kept.Live();  // never one another object took after a load freed it
+        taken += mode == nullptr && ue3::runtime::IsAlive(kept.Raw()) ? 1 : 0;
+        if (mode != nullptr && gCollisionEnabled.WriteBool(mode, true)) {
             if (void* const field = gCollisionEnabled.Address(mode)) {
                 write_journal::Wrote("CameraCollision.bCollisionEnabled", field, 4);
             }
@@ -86,7 +89,9 @@ void RestoreAll(char const* why) {
         }
     }
     if (!gCleared.empty()) {
-        log::Info("camera collision: put back on {} of {} camera modes ({})", restored, gCleared.size(), why);
+        log::Info("camera collision: put back on {} of {} camera modes ({}){}", restored, gCleared.size(), why,
+            taken > 0 ? std::format("; {} kept now hold another object (a load freed them and reused the memory): left alone", taken)
+                      : std::string());
     }
     gRestores += static_cast<std::uint64_t>(restored);
     gCleared.clear();
@@ -122,7 +127,7 @@ void Tick() {
     gActive = true;
     gWhy = "first person on foot";
     // Modes that died with a level are dropped (never written: the level freed them).
-    std::erase_if(gCleared, [](ue3::Object* m) { return !ue3::runtime::IsAlive(m); });
+    std::erase_if(gCleared, [](ue3::Kept const& m) { return m.Live() == nullptr; });
     ue3::Object* const camera = player::Camera(player::Controller());
     if (camera == nullptr || !ue3::IsA(camera, gCameraNativeBase)) {
         return;

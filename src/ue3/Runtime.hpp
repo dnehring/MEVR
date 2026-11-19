@@ -92,3 +92,27 @@ inline std::string NameText(std::uint64_t key) {
 void FlushNotes();
 
 } // namespace mevr::ue3::runtime
+
+namespace mevr::ue3 {
+
+// An object kept across ticks (to put one of its fields back later, say), with who it was (Reflection::Identity). Live()
+// gives it back only while it is still that object. IsAlive alone isn't enough for a kept pointer: a load frees the object
+// and the engine often puts another one at the same address and in the same GObjects slot, and a field put back there
+// lands in that other object (ME2's third same-map reload crashed in the engine's purge of an object whose array our
+// camera-shake restore had turned into 1, 2026-11-19: research/le2-reload-crash.md). Game thread.
+class Kept {
+public:
+    Kept() = default;
+    explicit Kept(Object* object);
+    // The object, while it is alive and still the one kept; else nullptr.
+    Object* Live() const;
+    // The pointer as kept (to compare or log; never to read or write through).
+    Object* Raw() const { return object_; }
+    explicit operator bool() const { return object_ != nullptr; }
+
+private:
+    Object* object_ = nullptr;
+    Reflection::Identity identity_;
+};
+
+} // namespace mevr::ue3

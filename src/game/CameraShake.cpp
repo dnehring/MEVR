@@ -69,8 +69,10 @@ ue3::FieldRef gShakeEnabled{"SFXGame.SFXCameraMode", "bIsCameraShakeEnabled", ue
 ue3::FieldRef gScreenShakeModifier{"SFXGame.SFXPlayerCamera", "ScreenShakeModifier", ue3::kEveryGame};
 ue3::FieldRef gCameraShakeCamMod{"Engine.Camera", "CameraShakeCamMod", ue3::kEveryGame};
 ue3::FieldRef gModifierDisabled{"Engine.CameraModifier", "bDisabled", ue3::kEveryGame};
-// The modifiers we disabled (to put back), and whether a scale between none and all was asked for (not built on ME2).
-std::vector<ue3::Object*> gModifiersOff;
+// The modifiers we disabled (to put back), and whether a scale between none and all was asked for (not built on ME2). Kept with
+// who they were: a load frees them, and a field put back at the same address after another object took it corrupted that one
+// (ME2's third same-map reload crashed, 2026-11-19, research/le2-reload-crash.md).
+std::vector<ue3::Kept> gModifiersOff;
 bool gToldPartial = false;
 #endif
 
@@ -87,7 +89,7 @@ std::string gSettingsText;
 #if defined(MEVR_GAME_LE1)
 // A screen shake we scaled: its object, its own amplitudes, and the scale written.
 struct Scaled {
-    ue3::Object* shake = nullptr;
+    ue3::Kept shake;
     std::string name;
     Vec3 rot, loc;
     float fov = 0.0f;
@@ -95,7 +97,7 @@ struct Scaled {
 };
 std::vector<Scaled> gScaled;
 #endif
-std::vector<ue3::Object*> gModesCleared;
+std::vector<ue3::Kept> gModesCleared;  // as gModifiersOff: kept with who they were
 std::uint64_t gScales = 0, gModeClears = 0, gModeRestores = 0;
 bool gScreenActive = false, gViewActive = false;
 std::string gWhy = "not started";
@@ -134,7 +136,8 @@ void RefreshSettings() {
 
 #if defined(MEVR_GAME_LE1)  // ME1's sources (ME2 and ME3 turn their shake modifiers off instead)
 bool WriteAmplitudes(Scaled const& s, float scale) {
-    void* const base = gTheShake.Address(s.shake);
+    ue3::Object* const shake = s.shake.Live();  // still that shake (a level's are freed with it)
+    void* const base = shake != nullptr ? gTheShake.Address(shake) : nullptr;
     if (base == nullptr) {
         return false;
     }
@@ -157,7 +160,7 @@ void Scale(ue3::Object* shake, char const* what, float scale) {
     if (shake == nullptr || !ue3::runtime::IsAlive(shake)) {
         return;
     }
-    auto it = std::find_if(gScaled.begin(), gScaled.end(), [&](Scaled const& s) { return s.shake == shake; });
+    auto it = std::find_if(gScaled.begin(), gScaled.end(), [&](Scaled const& s) { return s.shake.Raw() == shake; });
     if (it == gScaled.end()) {
         void* const base = gTheShake.Address(shake);
         if (base == nullptr) {
@@ -170,7 +173,7 @@ void Scale(ue3::Object* shake, char const* what, float scale) {
             return;
         }
         Scaled s;
-        s.shake = shake;
+        s.shake = ue3::Kept{shake};
         s.name = ue3::runtime::FullName(shake);
         s.rot = *rot;
         s.loc = *loc;
@@ -204,18 +207,21 @@ bool SetModifier(ue3::Object* modifier, bool disabled) {
 
 void RestoreScreen(char const* why) {
 #if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
-    int back = 0;
-    for (ue3::Object* const modifier : gModifiersOff) {
-        back += SetModifier(modifier, false) ? 1 : 0;
+    int back = 0, taken = 0;
+    for (ue3::Kept const& modifier : gModifiersOff) {
+        back += SetModifier(modifier.Live(), false) ? 1 : 0;  // never one another object took after a load freed it
+        taken += modifier.Live() == nullptr && ue3::runtime::IsAlive(modifier.Raw()) ? 1 : 0;
     }
     if (!gModifiersOff.empty()) {
-        log::Info("camera shake: the game's screen shakes back on ({} of {} camera modifiers; {})", back, gModifiersOff.size(), why);
+        log::Info("camera shake: the game's screen shakes back on ({} of {} camera modifiers; {}){}", back, gModifiersOff.size(), why,
+            taken > 0 ? std::format("; {} kept now hold another object (a load freed them and reused the memory): left alone", taken)
+                      : std::string());
     }
     gModifiersOff.clear();
 #else
     int restored = 0;
     for (Scaled& s : gScaled) {
-        if (s.scale != 1.0f && ue3::runtime::IsAlive(s.shake) && WriteAmplitudes(s, 1.0f)) {
+        if (s.scale != 1.0f && WriteAmplitudes(s, 1.0f)) {
             s.scale = 1.0f;
             ++restored;
         }
@@ -228,7 +234,7 @@ void RestoreScreen(char const* why) {
 
 void TickScreen(bool vr) {
 #if defined(MEVR_GAME_LE1)
-    std::erase_if(gScaled, [](Scaled const& s) { return !ue3::runtime::IsAlive(s.shake); });  // freed with a level
+    std::erase_if(gScaled, [](Scaled const& s) { return s.shake.Live() == nullptr; });  // freed with a level
 #endif
     float const scale = vr ? gSettings.screen : 1.0f;
     gScreenActive = vr && scale < 1.0f;
@@ -244,7 +250,7 @@ void TickScreen(bool vr) {
         log::Info("camera shake: [Comfort] screenShake {:.2f}: this game's screen shakes are on or off (off below 1); a share of them isn't built",
             scale);
     }
-    std::erase_if(gModifiersOff, [](ue3::Object* m) { return !ue3::runtime::IsAlive(m); });
+    std::erase_if(gModifiersOff, [](ue3::Kept const& m) { return m.Live() == nullptr; });
     ue3::Object* const camera = player::Camera(player::Controller());
     if (camera == nullptr || !ue3::runtime::IsAlive(camera)) {
         return;
@@ -257,7 +263,7 @@ void TickScreen(bool vr) {
              Named{&gCameraShakeCamMod, "Camera.CameraShakeCamMod (the engine's camera shakes)"}}) {
         ue3::Object* const modifier = named.field->Read<ue3::Object*>(camera).value_or(nullptr);
         if (SetModifier(modifier, true)) {
-            gModifiersOff.push_back(modifier);
+            gModifiersOff.push_back(ue3::Kept{modifier});
             ++gScales;
             log::Info("camera shake: {} {} off in VR ([Comfort] screenShake {:.2f})", named.what, ue3::runtime::FullName(modifier),
                 scale);
@@ -313,7 +319,7 @@ void ClearMode(ue3::Object* mode) {
     if (void* const field = gShakeEnabled.Address(mode)) {
         write_journal::Wrote("CameraShake.bIsCameraShakeEnabled", field, 4);
     }
-    gModesCleared.push_back(mode);
+    gModesCleared.push_back(ue3::Kept{mode});
     if (gModeClears++ == 0) {
         log::Info("camera shake: {} shook the first-person view with the body's camera shakes (the run, shots, blasts); off in VR "
                   "([Comfort] viewShake = 1 keeps them)", cls);
@@ -321,9 +327,11 @@ void ClearMode(ue3::Object* mode) {
 }
 
 void RestoreModes(char const* why) {
-    int restored = 0;
-    for (ue3::Object* const mode : gModesCleared) {
-        if (ue3::runtime::IsAlive(mode) && gShakeEnabled.WriteBool(mode, true)) {
+    int restored = 0, taken = 0;
+    for (ue3::Kept const& kept : gModesCleared) {
+        ue3::Object* const mode = kept.Live();  // never one another object took after a load freed it
+        taken += mode == nullptr && ue3::runtime::IsAlive(kept.Raw()) ? 1 : 0;
+        if (mode != nullptr && gShakeEnabled.WriteBool(mode, true)) {
             if (void* const field = gShakeEnabled.Address(mode)) {
                 write_journal::Wrote("CameraShake.bIsCameraShakeEnabled", field, 4);
             }
@@ -331,7 +339,9 @@ void RestoreModes(char const* why) {
         }
     }
     if (!gModesCleared.empty()) {
-        log::Info("camera shake: the camera modes' shakes put back on {} of {} ({})", restored, gModesCleared.size(), why);
+        log::Info("camera shake: the camera modes' shakes put back on {} of {} ({}){}", restored, gModesCleared.size(), why,
+            taken > 0 ? std::format("; {} kept now hold another object (a load freed them and reused the memory): left alone", taken)
+                      : std::string());
     }
     gModeRestores += static_cast<std::uint64_t>(restored);
     gModesCleared.clear();
@@ -350,7 +360,7 @@ void TickView(bool tracked) {
         }
         return;
     }
-    std::erase_if(gModesCleared, [](ue3::Object* m) { return !ue3::runtime::IsAlive(m); });
+    std::erase_if(gModesCleared, [](ue3::Kept const& m) { return m.Live() == nullptr; });
     ue3::Object* const camera = player::Camera(player::Controller());
     if (camera == nullptr || !ue3::IsA(camera, gCameraNativeBase)) {
         return;

@@ -83,15 +83,16 @@ public:
     char const* Name() const { return name_; }
     // How far it resolves: its own reach, or its outer field's or function's.
     Reach Reaches() const { return outer_ != nullptr ? outer_->Reaches() : function_ != nullptr ? function_->Reaches() : reach_; }
-    void Reset() { info_.reset(), inner_.reset(), tried_ = false; }
+    void Reset() { info_.reset(), inner_.reset(), owner_ = nullptr, tried_ = false; }
 
     // The field inside `object` (or inside a struct value at `base` for a struct member), or
     // nullptr: unresolved, a null object, or a size that isn't sizeof(T).
+    // A class's field also needs `object` to be one of that class (Fits).
     template <class T>
     T* In(void const* base) {
         PropertyInfo const* const info = Get();
         if (info == nullptr || base == nullptr || info->kind == Kind::Bool
-            || info->elementSize * info->arrayDim < static_cast<std::int32_t>(sizeof(T))) {
+            || info->elementSize * info->arrayDim < static_cast<std::int32_t>(sizeof(T)) || !Fits(base)) {
             return nullptr;
         }
         return reinterpret_cast<T*>(static_cast<std::uint8_t*>(const_cast<void*>(base)) + info->offset);
@@ -110,7 +111,7 @@ public:
     T* At(void const* base, std::int32_t index) {
         PropertyInfo const* const info = Get();
         if (info == nullptr || base == nullptr || info->kind == Kind::Bool || index < 0 || index >= info->arrayDim
-            || info->elementSize != static_cast<std::int32_t>(sizeof(T))) {
+            || info->elementSize != static_cast<std::int32_t>(sizeof(T)) || !Fits(base)) {
             return nullptr;
         }
         return reinterpret_cast<T*>(static_cast<std::uint8_t*>(const_cast<void*>(base)) + info->offset) + index;
@@ -126,10 +127,19 @@ public:
     // The array's inner property (its element), resolved with the field.
     PropertyInfo const* Inner();
 
+    // A class's field (`FieldRef{"Package.Class", "Name"}`): true if `base` is an object of that class (or a subclass); a struct
+    // member's or a parameter's: always. A pointer kept after the engine freed its object can point at another object in the
+    // same memory: a field read or written there is another field of another class (ME2's third same-map reload crashed in
+    // the engine's purge of an object whose empty array a camera-shake restore had set to 1, 2026-11-19,
+    // research/le2-reload-crash.md). Refused, and said once per field in the log.
+    bool Fits(void const* base);
+
 private:
     FieldRef* outer_ = nullptr;
     FunctionRef* function_ = nullptr;
     char const* classPath_ = nullptr;
+    Struct const* owner_ = nullptr;  // a class's field: the class it was found on
+    bool toldMisfit_ = false;
     char const* name_;
     Reach reach_ = Reach::Modules;
     std::optional<PropertyInfo> info_;

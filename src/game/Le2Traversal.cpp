@@ -120,6 +120,7 @@ struct Near {
 Near gNear;
 
 tv::PressTracker gPresses;
+char const* gSceneWhyBefore = nullptr;  // the last tick's Link::sceneWhy (a literal)
 tv::Press gLoggedPress{};
 
 // One move.
@@ -1142,9 +1143,17 @@ void Tick(Link const& link, tv::Settings const& settings, std::string const& set
             ++gMove.presses;
         }
         tv::Press const& p = gPresses.Last();
-        log::Info("traversal: A pressed (#{}): {}: {}{}", p.serial, tv::Name(tap), tv::Name(p.why),
+        // A press the scene refused names what refused it (a menu, a wheel, not on foot, a matinee moving Shepard), not the old
+        // "authored seated scene" for all of them (research/le2-traversal.md "The refusal that named the wrong reason").
+        // The verdict reads the tick before too (a press that closed a menu): its reason then.
+        char const* const scene = link.sceneWhy != nullptr ? link.sceneWhy : gSceneWhyBefore;
+        std::string const why = p.why == tv::PressWhy::AuthoredSeated && scene != nullptr
+            ? std::format("the scene blocks traversal: {}", scene)
+            : std::string(tv::Name(p.why));
+        log::Info("traversal: A pressed (#{}): {}: {}{}", p.serial, tv::Name(tap), why,
             gPresses.Previous().valid ? std::format(" ({:.2f} s after the one before)", p.atS - gPresses.Previous().atS) : std::string());
     }
+    gSceneWhyBefore = link.sceneWhy;
     JudgeMove();  // a move the game began itself this tick, now that its press is in
     if (tap == tv::Tap::Double) {
         ++gCounters.doubleTaps;

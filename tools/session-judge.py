@@ -98,18 +98,58 @@ RULES = [
          pattern=r"^traversal: A pressed \(#\d+\): a press that can't vault: authored seated scene blocks traversal",
          when=lambda m, s, t: s.on_foot is not False,
          minimum=2,
-         why="A presses refused as an 'authored seated scene' while on foot (the reason also covers menus, mode 7 screens and "
-             "matinee moves: ActionSceneAllowed in mod/Mod.cpp, so off foot it is expected): on foot it blocks the vault"),
+         why="A presses refused as an 'authored seated scene' while on foot (a log from before 2026-11-19: that wording covered "
+             "menus, wheels, mode 7 screens and matinee moves alike; the owner's three of 2026-11-18 confirmed our squad menu. "
+             "Newer logs name the reason: traversal-scene-blocked-matinee)"),
+    dict(id="traversal-scene-blocked-matinee", severity="warn",
+         pattern=r"^traversal: A pressed \(#\d+\): a press that can't vault: the scene blocks traversal: (an authored scene moves "
+                 r"Shepard|no player pawn|no player controller|the mod's engine access isn't up)",
+         when=lambda m, s, t: s.on_foot is not False,
+         minimum=2,
+         detail=lambda m: m.group(1),
+         why="A presses on foot refused for a scene reason that should end with gameplay (a matinee's move track still taken "
+             "for Shepard, or no pawn): the vault and melee stay off while the player walks (Mod.cpp ActionSceneWhy; research/"
+             "le2-traversal.md \"The refusal that named the wrong reason\"). A menu, a wheel or not on foot is expected and not "
+             "counted"),
+    dict(id="reflect-field-misfit", severity="bad",
+         pattern=r"^reflect: field (\S+) refused on 0x[0-9A-Fa-f]+ \(([^)]*)\): not an object of that class",
+         detail=lambda m: f"{m.group(1)} on {m.group(2)}",
+         why="a field asked of an object that isn't of its class: a pointer a module kept after the engine freed its object, the "
+             "memory now another object's (refused: before 2026-11-19 such a write corrupted that object and ME2's third same-map "
+             "reload crashed in the purge; research/le2-reload-crash.md). Find the module and keep the pointer as a ue3::Kept"),
+    dict(id="kept-object-reused", severity="note",
+         pattern=r"^(camera shake|camera collision): .*; (\d+) kept now hold another object",
+         detail=lambda m: m.group(1),
+         why="a pointer kept across a load now points at another object (the engine reused the memory): ue3::Kept left it alone "
+             "(the restore that crashed ME2's third same-map reload, research/le2-reload-crash.md)"),
+    dict(id="engine-free-corrupt-pointer", severity="bad",
+         pattern=r"^first-chance access violation \S+ on thread \d+ at ucrtbase\.dll\+(0x[0-9A-Fa-f]+) \(reading "
+                 r"0xFFFFFFFFFFFFFF[F][0-9A-F]\)",
+         detail=lambda m: f"ucrtbase.dll+{m.group(1)}",
+         why="the C runtime read 8 bytes before a pointer of 1 to 7 (_aligned_free's header): the engine freed an array whose data "
+             "pointer someone had set to a small number, typically a bool written into memory a freed object had left (ME2's "
+             "third same-map reload, 2026-11-19: a camera mode's bIsCameraShakeEnabled put back into another object's empty "
+             "array; research/le2-reload-crash.md)"),
     dict(id="holster-stays-out", severity="bad",
          pattern=r"^holsters: (?:\S+: )?(?:the (?:let-go )?(.+?) stays out|let go .* the (.+?) stays out)",
          detail=lambda m: (m.group(1) or m.group(2) or "").strip(),
          why="a gun the player let go stayed in Shepard's hand (TryHolster refuses in combat; the let-go must put it back by "
              "SetActionState: research/le2-vrik.md \"A gun let go in a fight\")"),
     dict(id="holster-unasked-draw", severity="warn",
-         pattern=r"^holsters: the (.+?) came out without a holster grab",
+         pattern=r"^holsters: the (.+?) came out without a holster grab(?!.*: with the load)",
          detail=lambda m: m.group(1),
          why="a weapon came out with no grab at a holster (the wheels' Deactivated, OnCombatStart, Kismet: native draws no hook "
              "refuses): only holsters draw, every game (the owner, 2026-11-16)"),
+    dict(id="holster-not-taken", severity="bad",
+         pattern=r"^holsters: the game didn't holster the (.+?) within",
+         detail=lambda m: m.group(1),
+         why="the mod asked the game to holster a gun and it stayed out (ME2's TryHolster returns silently: a load's own drawn "
+             "rifle, called mid-equip, 2026-11-19; research/le2-vrik.md \"The drawn gun after a load\")"),
+    dict(id="holster-load-draw", severity="note",
+         pattern=r"^holsters: the (.+?) came out without a holster grab .*: with the load",
+         detail=lambda m: m.group(1),
+         why="the save's own drawn gun after a load, put back as any unasked draw (only holsters draw; the open hand holds no "
+             "gun)"),
     dict(id="holster-left-in-hand", severity="warn",
          pattern=r"^holsters: the (.+?) came out (?:again: left in the hand|a third time)",
          detail=lambda m: m.group(1),
