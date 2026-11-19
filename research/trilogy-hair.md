@@ -31,9 +31,10 @@ Miranda hair with 13 hair bones (two-bone chains: back, sides, bangs) and shippe
 
 The only things that move those bones are keyframed cinematic tracks: 20 `BioAnimSetData` sets name them, all in cutscenes
 (`BioD_Nor_131RomAshley*` the romance scenes, `BioD_CitHub_000ProCit` Mars escape, `BioD_OmgJck_310JackScene`,
-`BioD_OmgJck_650ShuttleExit`, `BioD_Cat002_700PostKLFight`, `BioD_Cat003_480CarCutscene`). In gameplay and conversations
-the hair bones sit at their reference pose: the hair component takes its pose from the head's skeleton by bone name, and
-no body skeleton or gameplay animation has them.
+`BioD_OmgJck_650ShuttleExit`, `BioD_Cat002_700PostKLFight`, `BioD_Cat003_480CarCutscene`). Whether those tracks reach the hair at
+all, and how a hair component is posed at run time (following another component by bone name through
+`ParentAnimComponent`, UE3's usual way for attached parts, or composing its own pose), is not measured **[verify: the
+plan's step P1]**; no gameplay animation set names the hair bones.
 
 ### The engine has the pieces, no asset uses them
 
@@ -45,15 +46,23 @@ SkelControlSpline instance, **no** skeletal mesh with cloth or soft-body bones o
 defaults in `Engine.pcc`. Whether the cloth code is still alive in the LE executables is unknown **[verify]**; no shipped
 asset exercises it.
 
-### The material is the other half of "plastic"
+### The material: two highlights, both at their defaults
 
-`HMF_HIR_PROMiranda_MAT_1a` is a MaterialInstanceConstant with one colour (`HED_Hair_Colour_Vector`) and one texture
+`HMF_HIR_PROMiranda_MAT_1a` is a MaterialInstanceConstant that sets one colour (`HED_Hair_Colour_Vector`) and one texture
 (`HAIR_Diff`) over `BIOG_Humanoid_MASTER_MTR_R.Human.HMN_HED_PRO_MASTER_HAIR_MAT`: `BLEND_Translucent`, `TwoSided`,
 `TwoSidedSeparatePass`, `bUseLitTranslucencyDepthPass`, `bUseLitTranslucencyPostRenderDepthPass`,
-`bCastLitTranslucencyShadowAsMasked`, BioWare's `bHairPass`, a SpecularPower input, one texture sample parameter. No normal,
-flow or shift map and no anisotropic highlight: one isotropic highlight over a translucent card shell, which reads as a
-shiny solid surface. Modern card hair uses a tangent/flow direction, two shifted anisotropic lobes (Kajiya-Kay or
-Marschner), strand-level AO/depth variation and alpha-to-coverage or a depth-sorted translucent pass.
+`bCastLitTranslucencyShadowAsMasked`, BioWare's `bHairPass`. The cooked packages keep only the master's parameter nodes:
+
+| Game | The master's parameters (defaults) |
+|---|---|
+| LE2 | `Highlight1Specularity` 50, `Highlight2SpecExp_Scalar` 250, `HED_Hair_Colour_Vector`, `HAIR_Diff` |
+| LE3 | `Highlight1SpecExp_Scalar` 50, `Highlight2SpecExp_Scalar` 750, `Hightlight1Intensity` 1, `Hightlight2Intensity` 1, `Highlight1Color`, `Highlight2Color`, `HED_Hair_Colour_Vector`, `HAIR_Diff`; a Normal input and `OpacityMaskClipValue` 0.333 |
+
+So the material has two highlight lobes, which Miranda's instance leaves at the defaults. **Correction (same day):** this
+note's first version said "one isotropic highlight, no anisotropy"; that was a guess from the instance alone. Whether the
+lobes run along the strand (Kajiya-Kay) or are plain Phong can only be read from the compiled shaders (the plan's step
+P4) **[verify]**. A first highlight at exponent 50 is broad and bright, a likely part of the plastic look, and it is a
+parameter.
 
 ## 2. Existing mods (searched 2026-11-19)
 
@@ -96,9 +105,10 @@ What modern games mostly ship for in-engine hair is cards on simulated bone chai
    - In VR the hands could brush hair aside through the same contact capsules (an interaction design: owner's call first).
 4. Ceiling: convincing sway, bounce and swing as in 2013-2018 card-hair games; not strand-level.
 
-### B. Shading: replace the hair pass's pixel shader
+### B. Shading: tune the two highlights, then perhaps replace the hair pass's pixel shader
 
-The isotropic highlight is what reads as plastic, more than the motion. New UE3 materials need compiled shaders, and
+The cheap step is the material's own parameters (exponents on both games, intensities and colours on ME3), set at run
+time on the hair component's own material instance. Beyond that: new UE3 materials need compiled shaders, and
 modders can't compile LE materials today **[verify]**, so the route is the mod: identify the hair material's pixel shaders
 at creation (the `[MEVR]` `MevrBridge::NotePixelShaderCreated` seam and `core/d3d11/ShaderReflect` already read every
 pixel shader's constants) and bind our own for those draws with two shifted anisotropic lobes along the card's tangent
@@ -114,6 +124,8 @@ pipeline, on a frame already near budget in VR (research/22). Months of work wit
 after A and B, if ever.
 
 ## 4. Next steps if the owner wants it
+
+**The plan of the options, step by step, is [docs/trilogy-hair-plan.md](../docs/trilogy-hair-plan.md).** In short:
 
 1. A + ME3's Ashley and Jack: the core and the ME3 adapter, checked on the fake headset in a conversation with Ashley.
 2. Check LEX's import of a hair mesh with added bones (one LE2 Miranda chain set), then Miranda on ME2.
