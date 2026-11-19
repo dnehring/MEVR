@@ -161,3 +161,11 @@ What it means for A1 (docs/trilogy-hair-plan.md 4.3):
   codec (base level, location, the hub's `levels`) loads into the Citadel's docking conversation (the saved place is
   ignored); its officer is a ready test body. Never clone the player's pawn (`Actor.Spawn` with it as the template crashed
   ME3 in the copy's first pose update, exe+0x9C44D4).
+
+**Correction, same day: Miranda's own ME3 body has the hair bones.** `BIOG_HMF_ARM_MIR_R.MIRa.HMF_ARM_MIRa_MDL` (in
+`BioD_CitHub_Miranda.pcc`) has 123 bones with the same 13 hair bones as `HMF_HIR_PROMiranda_MDL_Old`: same names, same
+parents, the same reference positions and rotations to three decimals (the probe's `@refpose` listing, compared line by line;
+the only difference a signed zero). BioWare rigged her body and the old hair together. So on Miranda the engine's copy from
+the body gives every hair bone its place: point 4 above is the docking officer's body (no hair bones), not hers, and our own
+posing of the hair bones is needed only for the stand-in on other bodies. What remains for Miranda is point 5: the stage must
+run after the copy from the parent.
