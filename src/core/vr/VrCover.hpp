@@ -87,6 +87,33 @@ struct SlotLease {
 
 Verdict Judge(Vec3 const& eyes, std::optional<Vec3> const& shooter, std::optional<Block> const& block, Settings const& settings);
 
+// ---- The eyes that judge (all three games, research/23 section 7.8, 2026-11-19) -------------------------------------------------
+// The owner, asked "Should crouching behind a low wall count as cover even when your real eyes stay above it?": "Yes I think so,
+// for seated players this should of course be necessary." While the GAME has Shepard crouched (whatever crouched him: the
+// physical crouch, L3, a seated player's L3, the game's own), Shepard's crouched head stands for the player's: the eye point every
+// look traces from (the eye line, the sequels' flat line, the shields' shelter) is lowered to his crouched eye height over his
+// floor, at the real view's horizontal place, and never higher than the real eyes (a player kneeling lower than Shepard's crouch
+// keeps their own). Standing, the real eyes judge as before. A crouched eye height or floor that can't be read, or isn't sane
+// (under 0.2 m or over 2.0 m), leaves the real eyes.
+enum class EyeSource : std::uint8_t {
+    Real,      // the real view's eyes (standing, or nothing lower to take)
+    Crouched,  // Shepard's crouched eyes (the game has him crouched)
+};
+char const* Name(EyeSource source);
+struct EyeInput {
+    Vec3 eyes;                               // the real view's eyes (world units)
+    bool crouched = false;                   // the game has Shepard crouched (Engine.Pawn.bIsCrouched)
+    std::optional<double> floorZ;            // the floor under Shepard (his Location.z - CylinderComponent.CollisionHeight)
+    std::optional<double> crouchedEyeUnits;  // Shepard's crouched eye height over that floor (world units)
+    double unitsPerMeter = 100.0;
+};
+struct Eyes {
+    Vec3 at;                              // the eye point the looks trace from
+    EyeSource source = EyeSource::Real;
+    double loweredUnits = 0.0;            // how far under the real eyes (0 for the real eyes)
+};
+Eyes JudgingEyes(EyeInput const& in);
+
 // ---- The level look (the sequels, research/23 section 7.7, 2026-11-18) ---------------------------------------------------------
 // The games' own cone takes only the shot's direction against the cover slot's FLAT facing (ME2's `Normal(HitLocation -
 // InstigatedBy.Pawn.Location) Dot Vector(slot rotation) < -0.3`), so Shepard crouched behind low cover is protected from a drone

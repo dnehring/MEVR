@@ -37,6 +37,8 @@ class State:
         self.physical_crouch = False
         self.last_speed = 0.0
         self.last_speed_t = -1e9
+        self.crouch_starts = []      # every physical crouch's time and every stand's (judge_lines reads them ahead)
+        self.stands = []
 
     def update(self, t, text):
         mode = re.search(r"\(game mode (\d+)", text)  # 'not on foot (game mode 7)', 'main menu: leave: ... (game mode 0, ...'
@@ -59,6 +61,20 @@ class State:
     def moving(self, t):
         return self.last_speed > 60.0 and t - self.last_speed_t <= 2.5
 
+    def near_posture_change(self, t):
+        """A physical crouch begins within CROUCH_LEAD_S after t, or a stand ended within CROUCH_LEAD_S before it: the torso
+        follows the head down before the posture line (the detector's 0.2 s dwell, an eased descent: research/le2-vrik.md) and up
+        after it."""
+        return (any(t <= c <= t + CROUCH_LEAD_S for c in self.crouch_starts) or
+                any(s <= t <= s + CROUCH_LEAD_S for s in self.stands))
+
+
+# How long the torso's 'crouching with you' may lead a physical crouch's posture line (and trail a stand's): the detector's dwell
+# (0.2 s) plus a descent eased over most of a second.
+CROUCH_LEAD_S = 1.0
+CROUCH_START = re.compile(r"^posture: (?:physical crouch|crouch request accepted)")
+CROUCH_STAND = re.compile(r"^posture: (?:physical stand|stand request accepted)")
+
 
 def seconds(stamp):
     h, m, s = stamp.split(":")
@@ -67,7 +83,7 @@ def seconds(stamp):
 
 def crouch_drop(m, state, t):
     cm = int(m.group(1))
-    return cm > 3 and not state.physical_crouch
+    return cm > 3 and not state.physical_crouch and not state.near_posture_change(t)
 
 
 def first_chance_ours(m, state, t):
@@ -171,7 +187,13 @@ RULES = [
          when=crouch_drop,
          detail_state=lambda m, s, t: "while running" if s.moving(t) else "standing or walking",
          why="the body was lowered more than 3 cm 'to your head' while the player wasn't physically crouched (a run, the idle, "
-             "the game's own crouch): the body sinks under the view (research/29 \"A run never lowers the body\")"),
+             "the game's own crouch): the body sinks under the view (research/29 \"A run never lowers the body\"). Within "
+             "1 s before a physical crouch's posture line, or after a stand's, it is the descent or the rise: not counted"),
+    dict(id="vr-cover-crouched-eyes-unread", severity="bad",
+         pattern=r"^vr cover: .*Shepard crouched but his crouched eye(?:s| height) unread",
+         why="a hit with Shepard crouched by the game was judged from the real eyes because his crouched eye height or floor "
+             "couldn't be read: crouched behind a low wall, the player counts as in the open (research/23 section 7.8: while "
+             "the game has Shepard crouched, his crouched eyes judge)"),
     dict(id="process-event-off-thread", severity="bad",
          pattern=r"^process event: off the game thread",
          why="UnrealScript called off the game thread races the game thread's script VM (the 2026-10-23 crash, research/36)"),
@@ -273,6 +295,12 @@ def parse(lines, since=None, until=None):
 def judge_lines(entries):
     findings = {}
     state = State()
+    for stamp, t, level, text, raw in entries:  # the posture changes ahead of each line (crouch_drop's window)
+        body = text.strip()
+        if CROUCH_START.match(body):
+            state.crouch_starts.append(t)
+        elif CROUCH_STAND.match(body):
+            state.stands.append(t)
     compiled = [(r, re.compile(r["pattern"])) for r in RULES]
     for i, (stamp, t, level, text, raw) in enumerate(entries):
         body = text.strip()
@@ -308,11 +336,15 @@ def vr_cover_ratio(entries):
     verdicts = Counter()
     first_hit = last_hit = None
     examples = []
+    crouched = None  # the heartbeat's hits judged from Shepard's crouched eyes and of them covered (research/23 section 7.8)
     for stamp, t, level, text, raw in entries:
         m = re.search(r"vr cover: (\d+) hits judged since the start(?: \([^)]*\))?: (\d+) in cover", text)
         if m:
             last = (stamp, int(m.group(1)), int(m.group(2)), raw)
-        m = re.search(r"vr cover: a hit from (\S+) at ([\d.]+) m: ([a-z ]+?)(?: \||$)", text)
+            e = re.search(r"; (\d+) judged from Shepard's crouched eyes \((\d+) of them in cover\)", text)
+            if e:
+                crouched = (int(e.group(1)), int(e.group(2)))
+        m = re.search(r"vr cover: a hit from (\S+) at ([\d.]+) m: ([a-z ]+?)(?: by | \(|; | \||$)", text)
         if m:
             verdicts[m.group(3)] += 1
             first_hit = first_hit or stamp
@@ -330,6 +362,8 @@ def vr_cover_ratio(entries):
     f.count = hits
     f.first, f.last = first_hit or (last[0] if last else None), last_hit or (last[0] if last else None)
     f.summary = f"{covered} of {hits} hits covered" + (f"; per hit: " + ", ".join(f"{k} {v}" for k, v in verdicts.most_common()) if verdicts else "")
+    if crouched:
+        f.summary += f"; {crouched[0]} judged from Shepard's crouched eyes, {crouched[1]} of them covered"
     f.examples = ([last[3][:400]] if last else []) + examples
     return f
 

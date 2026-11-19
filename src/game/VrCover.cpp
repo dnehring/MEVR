@@ -4,9 +4,12 @@
 #include "core/Ini.hpp"
 #include "core/Log.hpp"
 #include "core/WriteJournal.hpp"
+#include "core/ik/Rigid.hpp"
 #include "core/vr/VrCover.hpp"
 #include "engine/CallFunction.hpp"
 #include "engine/SettingsFile.hpp"
+#include "engine/Skeleton.hpp"
+#include "game/ArmIk.hpp"
 #include "game/Player.hpp"
 #include "game/Posture.hpp"
 #include "game/ViewAnchor.hpp"
@@ -75,11 +78,15 @@ ue3::FieldRef gNextPawn{"Engine.Pawn", "NextPawn", ue3::kEveryGame};
 ue3::FieldRef gHidden{"Engine.Actor", "bHidden", ue3::kEveryGame};
 ue3::ClassRef gPawnClass{"Engine.Pawn", ue3::kEveryGame};
 ue3::FieldRef gPawnWeapon{"Engine.Pawn", "Weapon", ue3::kEveryGame};
-#if !defined(MEVR_GAME_LE1)
-// The floor under the player's pawn (Location.z - CollisionHeight, the floor lock's floor), for the per-hit detail.
+// The floor under the player's pawn (Location.z - CollisionHeight, the floor lock's floor): the per-hit detail, and the crouched
+// eyes' floor (research/23 section 7.8).
 ue3::FieldRef gPawnCylinder{"Engine.Pawn", "CylinderComponent", ue3::kEveryGame};
 ue3::FieldRef gCylinderHeight{"Engine.CylinderComponent", "CollisionHeight", ue3::kEveryGame};
-#endif
+// The eyes that judge (research/23 section 7.8, the owner 2026-11-19): whether the game has Shepard crouched, and his crouched
+// eye height (the engine's BaseEyeHeight, which Pawn.StartCrouch sets for the crouch: `FMin(0.8 * CrouchHeight, CrouchHeight -
+// 10)`; EyeHeight only follows it where UpdateEyeHeight runs).
+ue3::FieldRef gIsCrouched{"Engine.Pawn", "bIsCrouched", ue3::kEveryGame};
+ue3::FieldRef gBaseEyeHeight{"Engine.Pawn", "BaseEyeHeight", ue3::kEveryGame};
 #endif
 
 #if defined(MEVR_GAME_LE1)
@@ -331,9 +338,13 @@ std::string RechargeJson();
 struct Counts {
     std::uint64_t judged = 0, covered = 0, coneCut = 0, exposed = 0, tooFar = 0, overhead = 0, noShooter = 0, noView = 0,
                   gameCover = 0;
+    // The eyes that judged (research/23 section 7.8): hits judged from Shepard's crouched eyes, of them covered, and hits with
+    // Shepard crouched whose crouched eyes couldn't be read (the real eyes judged them).
+    std::uint64_t crouchedEyes = 0, crouchedCovered = 0, crouchedUnread = 0;
 };
 Counts gCounts;
 Counts gLoggedCounts;
+std::optional<bool> gCrouchOverride;  // `mevr cover crouch on|off` (an A/B of research/23 section 7.8), until the mod reloads
 std::string gLast = "none yet";
 std::uint64_t gLastLogMs = 0;
 
@@ -458,6 +469,103 @@ void Count(vc::Why why) {
     }
 }
 
+// ---- The eyes that judge (research/23 section 7.8, the owner 2026-11-19) -------------------------------------------------------
+// While the game has Shepard crouched, his crouched eyes over his floor judge his head (core/vr/VrCover JudgingEyes). What the
+// game says of him, read each time it's asked (a hit, the shelter at most every 250 ms, the console).
+struct CrouchRead {
+    bool crouched = false;                  // Engine.Pawn.bIsCrouched
+    std::optional<double> floor;            // Location.z - CollisionHeight
+    std::optional<double> collision;        // CollisionHeight (CrouchHeight while crouched)
+    std::optional<double> eyeHeight;        // Pawn.EyeHeight, over Location
+    std::optional<double> baseEyeHeight;    // Pawn.BaseEyeHeight, over Location
+    std::optional<double> head;             // Shepard's animated head bone, world z (arm IK's, while it writes)
+    std::optional<double> crouchedEye;      // the crouched eye height over the floor the rule takes (units)
+    char const* from = "unread";            // which of them
+};
+CrouchRead ReadCrouch(ue3::Object* pawn) {
+    CrouchRead r;
+    if (pawn == nullptr || !ue3::runtime::IsAlive(pawn)) {
+        return r;
+    }
+    r.crouched = gIsCrouched.ReadBool(pawn).value_or(false);
+    std::optional<ue3::Vector> const at = gLocation.Read<ue3::Vector>(pawn);
+    ue3::Object* const cylinder = gPawnCylinder.Read<ue3::Object*>(pawn).value_or(nullptr);
+    if (std::optional<float> const h = cylinder != nullptr ? gCylinderHeight.Read<float>(cylinder) : std::nullopt) {
+        r.collision = *h;
+    }
+    if (std::optional<float> const e = gEyeHeight.Read<float>(pawn)) {
+        r.eyeHeight = *e;
+    }
+    if (std::optional<float> const b = gBaseEyeHeight.Read<float>(pawn)) {
+        r.baseEyeHeight = *b;
+    }
+    if (std::optional<ik::Vec3> const animated = arm_ik::AnimatedHeadComponent()) {
+        if (ue3::Object* const mesh = player::Mesh(pawn)) {
+            r.head = ik::TransformPoint(engine::skeleton::LocalToWorld(mesh), *animated).z;
+        }
+    }
+    if (!at || !r.collision) {
+        return r;
+    }
+    r.floor = static_cast<double>(at->z) - *r.collision;
+    if (r.baseEyeHeight) {
+        r.crouchedEye = *r.collision + *r.baseEyeHeight;
+        r.from = "the game's crouched eye height (CollisionHeight + BaseEyeHeight)";
+    }
+    return r;
+}
+
+vc::Eyes EyesFor(ue3::Object* pawn, engine::TrackingFrame const& frame, CrouchRead* out = nullptr) {
+    vc::Vec3 const real = ToVec(frame.headWorld);
+    CrouchRead const read = ReadCrouch(pawn);
+    if (out != nullptr) {
+        *out = read;
+    }
+    vc::EyeInput in;
+    in.eyes = real;
+    in.crouched = gCrouchOverride.value_or(true) && read.crouched;
+    in.floorZ = read.floor;
+    in.crouchedEyeUnits = read.crouchedEye;
+    in.unitsPerMeter = frame.unitsPerMeter;
+    return vc::JudgingEyes(in);
+}
+
+void CountEyes(vc::Eyes const& eyes, CrouchRead const& read, vc::Verdict const& verdict) {
+    if (eyes.source == vc::EyeSource::Crouched) {
+        ++gCounts.crouchedEyes;
+        if (verdict.Covered()) {
+            ++gCounts.crouchedCovered;
+        }
+    } else if (read.crouched && gCrouchOverride.value_or(true) && (!read.crouchedEye || !read.floor)) {
+        ++gCounts.crouchedUnread;
+    }
+}
+
+// Which eyes judged, for each hit's line: `judged from the real eyes 1.85 m over the floor` or `judged from Shepard's crouched
+// eyes 0.98 m over the floor (the real eyes 0.87 m higher)`; a crouch whose eyes couldn't be read says so.
+std::string EyesText(vc::Eyes const& eyes, CrouchRead const& read, vc::Vec3 const& real, double upm) {
+    auto const over = [&](double z) {
+        return read.floor ? std::format("{:.2f} m over the floor", (z - *read.floor) / upm) : std::string("(the floor unread)");
+    };
+    if (eyes.source == vc::EyeSource::Crouched) {
+        return std::format("judged from Shepard's crouched eyes {} (the real eyes {:.2f} m higher)", over(eyes.at.z), eyes.loweredUnits / upm);
+    }
+    std::string text = "judged from the real eyes " + over(real.z);
+    if (read.crouched) {
+        if (!gCrouchOverride.value_or(true)) {
+            text += ", Shepard crouched (the crouched eyes off: mevr cover crouch off)";
+        } else if (!read.crouchedEye) {
+            text += ", Shepard crouched but his crouched eye height unread";
+        } else if (read.floor && *read.floor + *read.crouchedEye < real.z) {
+            text += std::format(", Shepard crouched but his crouched eye height not taken ({:.2f} m: not between 0.2 and 2.0)",
+                *read.crouchedEye / upm);
+        } else {
+            text += ", Shepard crouched, his crouched eyes no lower";
+        }
+    }
+    return text;
+}
+
 std::string Describe(vc::Verdict const& v, Shooter const& shooter, vc::Vec3 const& eyes, std::string const& surface,
     std::optional<bool> cone) {
     double distance = 0.0;
@@ -518,26 +626,11 @@ bool ByLevel(Look const& look) {
     return look.verdict.Covered() && !look.line.Covered();
 }
 
-// The floor under a pawn (Location.z - CollisionHeight: the floor lock's), or nullopt.
-std::optional<double> FloorUnder(ue3::Object* pawn) {
-    std::optional<ue3::Vector> const at = gLocation.Read<ue3::Vector>(pawn);
-    ue3::Object* const cylinder = gPawnCylinder.Read<ue3::Object*>(pawn).value_or(nullptr);
-    std::optional<float> const height = cylinder != nullptr ? gCylinderHeight.Read<float>(cylinder) : std::nullopt;
-    if (!at || !height) {
-        return std::nullopt;
-    }
-    return static_cast<double>(at->z) - static_cast<double>(*height);
-}
-
-// What the two looks met, for the per-hit line: the eyes over the floor, the shooter above or below them, and each line's first
-// surface (its distance, and where on the eye line it was against the eyes' height).
-std::string HitDetail(Look const& look, ue3::Object* pawn, vc::Vec3 const& eyes, Shooter const& shooter, double upm) {
-    std::string text;
-    if (std::optional<double> const floor = FloorUnder(pawn)) {
-        text += std::format("the eyes {:.2f} m over the floor", (eyes.z - *floor) / upm);
-    } else {
-        text += "the eyes' height unread";
-    }
+// What the two looks met, for the per-hit line: which eyes judged and their height over the floor (research/23 section 7.8), the
+// shooter above or below them, and each line's first surface (its distance, and where on the eye line it was against the eyes'
+// height). `eyes` is the eye point that judged.
+std::string HitDetail(Look const& look, vc::Vec3 const& eyes, std::string const& eyesText, Shooter const& shooter, double upm) {
+    std::string text = eyesText;
     if (shooter.eyes) {
         double const dz = shooter.eyes->z - eyes.z;
         double const flat = std::hypot(shooter.eyes->x - eyes.x, shooter.eyes->y - eyes.y);
@@ -567,13 +660,16 @@ vc::Verdict JudgeHit(ue3::Object* pawn, std::uint8_t const* locals) {
         ++gCounts.noView;
         return {};
     }
-    vc::Vec3 const eyes = ToVec(frame->headWorld);
+    CrouchRead read;
+    vc::Eyes const judging = EyesFor(pawn, *frame, &read);
+    vc::Vec3 const eyes = judging.at;
     vc::Settings settings = gSettings;
     settings.unitsPerMeter = frame->unitsPerMeter;
     Shooter const shooter = FromCall(locals);
     Look const look = LookAt(pawn, eyes, shooter, settings);
     vc::Verdict const verdict = look.verdict;
     Count(verdict.why);
+    CountEyes(judging, read, verdict);
     if (ByLevel(look)) {
         ++gLevelOnly;
     }
@@ -600,7 +696,8 @@ vc::Verdict JudgeHit(ue3::Object* pawn, std::uint8_t const* locals) {
     bool const covered = verdict.Covered();
     if (gLogHits || (covered && now - gLastLogMs > 2000) || (!covered && verdict.why != vc::Why::NoShooter && now - gHitDetailMs > 1000)) {
         (covered ? gLastLogMs : gHitDetailMs) = now;
-        log::Info("vr cover: a hit from {} | {}", gLast, HitDetail(look, pawn, eyes, shooter, settings.unitsPerMeter));
+        log::Info("vr cover: a hit from {} | {}", gLast,
+            HitDetail(look, eyes, EyesText(judging, read, ToVec(frame->headWorld), settings.unitsPerMeter), shooter, settings.unitsPerMeter));
     }
     return verdict;
 }
@@ -613,7 +710,9 @@ vc::Verdict JudgeHit(ue3::Object* pawn, std::uint8_t const* locals) {
         ++gCounts.noView;
         return {};
     }
-    vc::Vec3 const eyes = ToVec(frame->headWorld);
+    CrouchRead read;
+    vc::Eyes const judging = EyesFor(pawn, *frame, &read);
+    vc::Vec3 const eyes = judging.at;
     vc::Settings settings = gSettings;
     settings.unitsPerMeter = frame->unitsPerMeter;
     Shooter const shooter = FromCall(locals);
@@ -621,6 +720,7 @@ vc::Verdict JudgeHit(ue3::Object* pawn, std::uint8_t const* locals) {
     std::optional<vc::Block> const block = shooter.eyes ? FirstSurface(pawn, eyes, *shooter.eyes, &surface) : std::nullopt;
     vc::Verdict const verdict = vc::Judge(eyes, shooter.eyes, block, settings);
     Count(verdict.why);
+    CountEyes(judging, read, verdict);
     std::optional<bool> cone;
     if (verdict.Covered() && shooter.gameLocation) {
 #if defined(MEVR_GAME_LE2)
@@ -642,7 +742,7 @@ vc::Verdict JudgeHit(ue3::Object* pawn, std::uint8_t const* locals) {
     std::uint64_t const now = GetTickCount64();
     if (gLogHits || (verdict.Covered() && now - gLastLogMs > 2000)) {
         gLastLogMs = now;
-        log::Info("vr cover: a hit from {}", gLast);
+        log::Info("vr cover: a hit from {} | {}", gLast, EyesText(judging, read, ToVec(frame->headWorld), settings.unitsPerMeter));
     }
     return verdict;
 }
@@ -1005,9 +1105,11 @@ void Tick() {
 std::string StatusJson() {
     return std::format("{{\"active\": {}, \"why\": \"{}\", \"protect\": {}, \"reachM\": {:.2f}, \"judged\": {}, \"covered\": {}, "
                        "\"coneCut\": {}, \"exposed\": {}, \"coverTooFar\": {}, \"overhead\": {}, \"noShooter\": {}, \"noView\": {}, "
-                       "\"gameCover\": {}, \"last\": \"{}\", \"recharge\": {}}}",
+                       "\"gameCover\": {}, \"crouchedEyes\": {}, \"crouchedCovered\": {}, \"crouchedUnread\": {}, \"crouchOverride\": {}, "
+                       "\"last\": \"{}\", \"recharge\": {}}}",
         gPlayerPawn != nullptr, gWhyNot, gSettings.on, gSettings.reachM, gCounts.judged, gCounts.covered, gCounts.coneCut,
-        gCounts.exposed, gCounts.tooFar, gCounts.overhead, gCounts.noShooter, gCounts.noView, gCounts.gameCover, [] {
+        gCounts.exposed, gCounts.tooFar, gCounts.overhead, gCounts.noShooter, gCounts.noView, gCounts.gameCover, gCounts.crouchedEyes,
+        gCounts.crouchedCovered, gCounts.crouchedUnread, gCrouchOverride ? (*gCrouchOverride ? "\"on\"" : "\"off\"") : "null", [] {
             std::string s;
             for (char c : gLast) {
                 s += (c == '"' || c == '\\') ? '\'' : c;
@@ -1043,18 +1145,23 @@ void LogStats() {
     if (gCounts.judged == gLoggedCounts.judged && gCounts.gameCover == gLoggedCounts.gameCover) {
         return;
     }
+    // The eyes that judged (research/23 section 7.8): from Shepard's crouched eyes, and crouched hits whose eyes were unread.
+    std::string const eyes = std::format("; {} judged from Shepard's crouched eyes ({} of them in cover){}", gCounts.crouchedEyes,
+        gCounts.crouchedCovered, gCounts.crouchedUnread > 0
+            ? std::format(", {} with Shepard crouched but his crouched eyes unread (the real eyes judged)", gCounts.crouchedUnread)
+            : std::string());
 #if defined(MEVR_GAME_LE1)
     log::Info("vr cover: {} hits judged since the start: {} in cover ({} cut by the game's cone), {} in the open, {} with cover too far, "
-              "{} from overhead, {} without a shooter, {} without a view{}; last: {}",
+              "{} from overhead, {} without a shooter, {} without a view{}{}; last: {}",
         gCounts.judged, gCounts.covered, gCounts.coneCut, gCounts.exposed, gCounts.tooFar, gCounts.overhead, gCounts.noShooter,
         gCounts.noView, gCounts.gameCover > 0 ? std::format("; {} in the game's own cover (its rules)", gCounts.gameCover) : std::string(),
-        gLast);
+        eyes, gLast);
 #else
     log::Info("vr cover: {} hits judged since the start ([Cover] judge = {}): {} in cover ({} by the level look alone, {} cut by the "
-              "game's cone), {} in the open, {} with cover too far, {} from overhead, {} without a shooter, {} without a view{}; last: {}",
+              "game's cone), {} in the open, {} with cover too far, {} from overhead, {} without a shooter, {} without a view{}{}; last: {}",
         gCounts.judged, vc::Name(gRule), gCounts.covered, gLevelOnly, gCounts.coneCut, gCounts.exposed, gCounts.tooFar, gCounts.overhead,
         gCounts.noShooter, gCounts.noView,
-        gCounts.gameCover > 0 ? std::format("; {} in the game's own cover (its rules)", gCounts.gameCover) : std::string(), gLast);
+        gCounts.gameCover > 0 ? std::format("; {} in the game's own cover (its rules)", gCounts.gameCover) : std::string(), eyes, gLast);
 #endif
     gLoggedCounts = gCounts;
 }
@@ -1204,7 +1311,10 @@ void JudgeShelter(ue3::Object* pawn, Shelter& out, std::string* detail = nullptr
         out.text = "no head-tracked view";
         return;
     }
-    vc::Vec3 const eyes = ToVec(frame->headWorld);
+    // The same eyes as a hit (research/23 section 7.8): crouched, Shepard's crouched eyes.
+    CrouchRead read;
+    vc::Eyes const judging = EyesFor(pawn, *frame, &read);
+    vc::Vec3 const eyes = judging.at;
     vc::Settings settings = gSettings;
     settings.on = true;
     settings.unitsPerMeter = frame->unitsPerMeter;
@@ -1234,9 +1344,10 @@ void JudgeShelter(ue3::Object* pawn, Shelter& out, std::string* detail = nullptr
     }
     out.why = vc::Shelter(out.count);
     out.text = std::format("{} ({} hostile{} judged{}: {} hidden by cover within {:.2f} m, {} in the open, {} beyond far walls, {} "
-                           "overhead)",
+                           "overhead; {})",
         vc::Name(out.why), out.count.hostiles, out.count.hostiles == 1 ? "" : "s", gShelterAs != nullptr ? ", a test stand-in" : "",
-        out.count.covered, gSettings.reachM, out.count.exposed, out.count.blockedFar, out.count.overhead);
+        out.count.covered, gSettings.reachM, out.count.exposed, out.count.blockedFar, out.count.overhead,
+        EyesText(judging, read, ToVec(frame->headWorld), settings.unitsPerMeter));
 }
 
 bool ShelteredNow(ue3::Object* pawn) {
@@ -1299,9 +1410,10 @@ std::string RechargeJson() {
 }
 #endif
 
-std::string Judged(ue3::Object* self, vc::Vec3 const& eyes, std::optional<vc::Vec3> const& selfAt, Shooter const& shooter,
-    vc::Settings const& settings) {
+std::string Judged(ue3::Object* self, vc::Vec3 const& eyes, std::string const& eyesText, std::optional<vc::Vec3> const& selfAt,
+    Shooter const& shooter, vc::Settings const& settings) {
 #if defined(MEVR_GAME_LE1)
+    (void)eyesText;  // the console's header names the eyes
     std::string surface;
     std::optional<vc::Block> const block = shooter.eyes ? FirstSurface(self, eyes, *shooter.eyes, &surface) : std::nullopt;
     vc::Verdict const verdict = vc::Judge(eyes, shooter.eyes, block, settings);
@@ -1317,7 +1429,7 @@ std::string Judged(ue3::Object* self, vc::Vec3 const& eyes, std::optional<vc::Ve
         cone = vc::GameCone(look.verdict.coverNormal, *selfAt, *shooter.gameLocation);
     }
     return Describe(look.verdict, shooter, eyes, ByLevel(look) ? look.levelSurface : look.lineSurface, cone) +
-        (ByLevel(look) ? " (by the level look)" : "") + " | " + HitDetail(look, self, eyes, shooter, settings.unitsPerMeter);
+        (ByLevel(look) ? " (by the level look)" : "") + " | " + HitDetail(look, eyes, eyesText, shooter, settings.unitsPerMeter);
 #endif
 }
 
@@ -1340,6 +1452,18 @@ std::string Console(std::string_view args) {
     }
     if (sub == "snap" || sub == "where" || sub == "acquire" || sub == "links") {
         return posture::CoverConsole(args);  // the cover snapping's refusal and its test (game/posture)
+    }
+    if (sub == "crouch") {
+        // `mevr cover crouch on|off`: Shepard's crouched eyes judge while the game has him crouched (on, the rule), or the real
+        // eyes always (off: the rule before 2026-11-19, an A/B), until the mod reloads.
+        std::string value;
+        words >> value;
+        if (value != "on" && value != "off") {
+            return std::format("usage: mevr cover crouch on|off (now {})", gCrouchOverride.value_or(true) ? "on" : "off");
+        }
+        gCrouchOverride = value == "on";
+        return std::format("vr cover: {} until the mod reloads", value == "on" ? "Shepard's crouched eyes judge while he is crouched"
+                                                                                : "the real eyes judge, crouched or not");
     }
 #if defined(MEVR_GAME_LE2)
     if (sub == "recharge") {
@@ -1373,9 +1497,9 @@ std::string Console(std::string_view args) {
             gRule == vc::Rule::Line ? "eye line" : gRule == vc::Rule::Level ? "level look" : "eye line or the level look");
     }
 #endif
-    if (sub != "test" && sub != "pawns" && sub != "hit" && sub != "probe" && sub != "put" && sub != "regen") {
-        return "usage: mevr cover [on|off | test | pawns | hit <damage> <n> | probe <yawDeg> [rangeM] | put <me|n> <x> <y> <z> | "
-               "regen [as <n>|as off] | recharge [on|off] | snap on|off|auto | where | acquire | links [n]]";
+    if (sub != "test" && sub != "pawns" && sub != "hit" && sub != "probe" && sub != "put" && sub != "regen" && sub != "eyes") {
+        return "usage: mevr cover [on|off | test | pawns | eyes | crouch on|off | hit <damage> <n> | probe <yawDeg> [rangeM] | "
+               "put <me|n> <x> <y> <z> | regen [as <n>|as off] | recharge [on|off] | snap on|off|auto | where | acquire | links [n]]";
     }
     ue3::Object* const controller = player::Controller();
     ue3::Object* const pawn = controller != nullptr ? player::BioPawn(controller) : nullptr;
@@ -1387,13 +1511,35 @@ std::string Console(std::string_view args) {
         return "mevr cover " + sub + ": BioPawn.IsHostile, IsDead or Actor.Trace wasn't found";
     }
     RefreshSettings();
-    vc::Vec3 const eyes = ToVec(frame->headWorld);
+    // The eyes a hit is judged from now (research/23 section 7.8): crouched, Shepard's crouched eyes.
+    CrouchRead read;
+    vc::Eyes const judging = EyesFor(pawn, *frame, &read);
+    vc::Vec3 const real = ToVec(frame->headWorld);
+    vc::Vec3 const eyes = judging.at;
+    std::string const eyesText = EyesText(judging, read, real, frame->unitsPerMeter);
     vc::Settings settings = gSettings;
     settings.on = true;
     settings.unitsPerMeter = frame->unitsPerMeter;
     std::optional<vc::Vec3> selfAt;
     if (auto const at = gLocation.Read<ue3::Vector>(pawn)) {
         selfAt = ToVec(*at);
+    }
+    if (sub == "eyes") {
+        // `mevr cover eyes`: which eyes judge now and every height the game gives for Shepard's (research/23 section 7.8:
+        // the measurement behind the crouched eye height the rule takes), over his floor.
+        double const upm = frame->unitsPerMeter;
+        auto const over = [&](std::optional<double> z) {
+            return z && read.floor ? std::format("{:.2f} m", (*z - *read.floor) / upm) : std::string("unread");
+        };
+        std::optional<double> const location = selfAt ? std::optional<double>(selfAt->z) : std::nullopt;
+        auto const plus = [&](std::optional<double> h) { return location && h ? std::optional<double>(*location + *h) : std::nullopt; };
+        return std::format("vr cover eyes ({}): {}; Shepard {} (bIsCrouched); over his floor: the real eyes {}, the judging eyes {}, "
+                           "Location + EyeHeight {} (EyeHeight {:.1f}), Location + BaseEyeHeight {} (BaseEyeHeight {:.1f}), "
+                           "CollisionHeight {:.1f}, the animated head bone {}; the rule takes {} ({})",
+            gWhyNot, eyesText, read.crouched ? "crouched" : "standing", over(real.z), over(eyes.z), over(plus(read.eyeHeight)),
+            read.eyeHeight.value_or(-1.0), over(plus(read.baseEyeHeight)), read.baseEyeHeight.value_or(-1.0),
+            read.collision.value_or(-1.0), read.head ? over(read.head) : std::string("unread (arm IK writes no pose)"), read.from,
+            read.crouchedEye ? std::format("{:.2f} m", *read.crouchedEye / upm) : std::string("none"));
     }
     if (sub == "probe") {
         // `mevr cover probe <yawDeg> [rangeM]`: the first surface level from the eyes along a world yaw (0 = +X, 90 = +Y), for
@@ -1477,8 +1623,8 @@ std::string Console(std::string_view args) {
 #endif
     if (sub == "pawns") {
         // Each awake pawn as a shooter would be judged from its location.
-        std::string out = std::format("vr cover ({}): the eyes at ({:.0f}, {:.0f}, {:.0f}); {} pawns", gWhyNot, eyes.x, eyes.y, eyes.z,
-            pawns.size());
+        std::string out = std::format("vr cover ({}): the eyes at ({:.0f}, {:.0f}, {:.0f}), {}; {} pawns", gWhyNot, eyes.x, eyes.y, eyes.z,
+            eyesText, pawns.size());
         for (std::size_t i = 0; i < pawns.size() && i < 24; ++i) {
             Shooter shooter = FromPawn(pawns[i]);
 #if defined(MEVR_GAME_LE1)
@@ -1486,7 +1632,7 @@ std::string Console(std::string_view args) {
 #endif
             std::optional<ue3::Vector> const there = gLocation.Read<ue3::Vector>(pawns[i]);
             out += std::format("\n    [{}] {}{} (at {:.0f}, {:.0f}, {:.0f})", i, Hostile(pawn, pawns[i]) ? "hostile " : "",
-                Judged(pawn, eyes, selfAt, shooter, settings), there ? there->x : 0.0f, there ? there->y : 0.0f, there ? there->z : 0.0f);
+                Judged(pawn, eyes, eyesText, selfAt, shooter, settings), there ? there->x : 0.0f, there ? there->y : 0.0f, there ? there->z : 0.0f);
         }
         return out;
     }
@@ -1526,7 +1672,7 @@ std::string Console(std::string_view args) {
                            "covered {}, the cone cut {}; {}",
             damage, index, NameOf(pawns[index]), NameOf(kind), before.first, after.first, before.second, after.second,
             gCounts.judged - countsBefore.judged, gCounts.covered - countsBefore.covered, gCounts.coneCut - countsBefore.coneCut,
-            gCounts.judged > countsBefore.judged ? gLast : std::string("VR cover wasn't asked (") + gWhyNot + ")");
+            gCounts.judged > countsBefore.judged ? gLast + " | " + eyesText : std::string("VR cover wasn't asked (") + gWhyNot + ")");
 #elif defined(MEVR_GAME_LE2)
         // The game's own damage path on ME2: the player's damage module's SFXTakeDamage (SFXModule_DamagePlayer, which calls
         // SFXGame.ModifyDamage and then the health), from pawn n's place: its controller the instigator (ME2's cone is taken
@@ -1565,7 +1711,7 @@ std::string Console(std::string_view args) {
             kind != nullptr ? ue3::runtime::Get().NameText(reinterpret_cast<ue3::Object const*>(kind)) : std::string("SFXDamageType_Default"),
             before.first, after.first, before.second, after.second, gCounts.judged - countsBefore.judged,
             gCounts.covered - countsBefore.covered, gCounts.coneCut - countsBefore.coneCut, gSlotAnswers - slotsBefore,
-            gCounts.judged > countsBefore.judged ? gLast : std::string("VR cover wasn't asked (") + gWhyNot + ")");
+            gCounts.judged > countsBefore.judged ? gLast + " | " + eyesText : std::string("VR cover wasn't asked (") + gWhyNot + ")");
 #endif
 #endif
     }
@@ -1576,13 +1722,13 @@ std::string Console(std::string_view args) {
         return "mevr cover regen: ME2 only (ME1 and ME3 have no faster recharge in cover: research/23 section 7.5)";
     }
     // `test`: every awake hostile judged now, as a hit on Shepard's location from it would be.
-    std::string out = std::format("vr cover ({}): the eyes at ({:.0f}, {:.0f}, {:.0f})", gWhyNot, eyes.x, eyes.y, eyes.z);
+    std::string out = std::format("vr cover ({}): the eyes at ({:.0f}, {:.0f}, {:.0f}), {}", gWhyNot, eyes.x, eyes.y, eyes.z, eyesText);
     int judged = 0;
     for (ue3::Object* p : pawns) {
         if (!Hostile(pawn, p)) {
             continue;
         }
-        out += "\n    " + Judged(pawn, eyes, selfAt, FromPawn(p), settings);
+        out += "\n    " + Judged(pawn, eyes, eyesText, selfAt, FromPawn(p), settings);
         if (++judged >= 24) {
             break;
         }

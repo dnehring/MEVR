@@ -32,6 +32,11 @@ def line(t, text, level='info'):
     return f"{at(t)} [{level}] {text}"
 
 
+def line_ms(t, ms, text, level='info'):
+    """A line at second t plus ms milliseconds (the torso's lines within a tick of the posture's)."""
+    return f"[20:{40 + t // 60:02d}:{t % 60:02d}.{ms:03d}] [{level}] {text}"
+
+
 # A fight on foot with every sign that bit on 2026-11-18, in the mod's wording.
 BAD = [
     line(0, "arm IK: driving: left and right following the controllers, shoulders under the headset"),
@@ -76,7 +81,12 @@ BAD = [
     line(30 + i, "vr cover: a hit from SFXPawn_AssaultDrone_1 at 23.2 m: exposed | the eyes 1.75 m over the floor") for i in range(3)
 ] + [
     line(40, "vr cover: 64 hits judged since the start ([Cover] judge = either): 0 in cover (0 by the level look alone, 0 cut by the "
-         "game's cone), 64 in the open, 0 with cover too far, 0 from overhead, 0 without a shooter, 0 without a view; last: x"),
+         "game's cone), 64 in the open, 0 with cover too far, 0 from overhead, 0 without a shooter, 0 without a view; 10 judged from "
+         "Shepard's crouched eyes (0 of them in cover), 4 with Shepard crouched but his crouched eyes unread (the real eyes judged); "
+         "last: x"),
+    # Shepard crouched by the game, his crouched eyes unread: the real eyes judged (research/23 section 7.8).
+    line(41, "vr cover: a hit from SFXPawn_AssaultDrone_1 at 14.0 m: exposed | judged from the real eyes 1.85 m over the floor, "
+         "Shepard crouched but his crouched eye height unread, the shooter's eyes +0.40 m from theirs (+2 deg)"),
 ] + [
     line(50 + i, f"posture: physical {'crouch' if i % 2 == 0 else 'stand'}: eyes 1.63 m = 0.88 of the standing 1.85 m") for i in range(5)
 ] + [
@@ -123,10 +133,21 @@ CLEAN = [
     line(20, "vr cover: 30 hits judged since the start ([Cover] judge = either): 12 in cover (0 by the level look alone, 0 cut by the "
          "game's cone), 18 in the open, 0 with cover too far, 0 from overhead, 0 without a shooter, 0 without a view; last: x"),
     line(30, "heartbeat #1: 90.0 fps, GWorld=0x1, objects=1, script hooks live"),
+    # The torso follows the head down before the physical crouch's posture line (an eased descent: research/le2-vrik.md, lane
+    # POS) and up after the stand's: not a sign.
+    line_ms(40, 600, "torso: crouching with you: the body down 4 cm to your head (Shepard's head 4 cm too high), the knees bending, the feet on the floor"),
+    line_ms(41, 0, "torso: crouching with you: the body down 6 cm to your head (Shepard's head 6 cm too high), the knees bending, the feet on the floor"),
+    line_ms(41, 0, "posture: physical crouch: eyes 1.42 m = 0.76 of the standing 1.86 m, below 0.87 for 0.20 s"),
+    line_ms(44, 0, "posture: physical stand: eyes 1.80 m = 0.97 of the standing 1.86 m, above 0.92 for 0.20 s"),
+    line_ms(44, 500, "torso: crouching with you: the body down 5 cm to your head (Shepard's head 5 cm too high), the knees bending, the feet on the floor"),
+    # Shepard crouched by L3, judged from his crouched eyes, covered.
+    line(46, "vr cover: a hit from SFXPawn_AssaultDrone_2 at 12.1 m: covered by StaticMeshCollectionActor_12 0.48 m from the eyes, "
+         "facing (0.10, 0.99); the game's cone cuts it to nothing | judged from Shepard's crouched eyes 0.92 m over the floor (the "
+         "real eyes 0.93 m higher), the shooter's eyes +0.90 m from theirs (+4 deg)"),
 ]
 
 BAD_RULES = ["armik-third-person-on-foot", "armik-anchor-flapping", "traversal-refused-at-slot", "traversal-double-tap-refused",
-             "traversal-press-refused-near-slot",
+             "traversal-press-refused-near-slot", "vr-cover-crouched-eyes-unread",
              "holster-stays-out", "holster-unasked-draw", "crouchbody-drop-not-crouched", "process-event-off-thread",
              "swapchain-refused", "first-chance-av-ours", "vr-cover-never-covered", "posture-flip-flop", "frame-rate-low",
              "crash-report", "engine-free-corrupt-pointer", "reflect-field-misfit", "traversal-scene-blocked-matinee",
@@ -153,6 +174,10 @@ try:
           "the refused vault names its slot and count: " + str(found.get('traversal-refused-at-slot')))
     check(found.get('vr-cover-never-covered', {}).get('summary', '').startswith('0 of 64 hits covered'),
           "VR cover's ratio from its heartbeat: " + str(found.get('vr-cover-never-covered')))
+    check("10 judged from Shepard's crouched eyes, 0 of them covered" in found.get('vr-cover-never-covered', {}).get('summary', ''),
+          "VR cover's ratio names the hits judged from Shepard's crouched eyes: " + str(found.get('vr-cover-never-covered')))
+    check(found.get('vr-cover-crouched-eyes-unread', {}).get('count') == 2,
+          "the crouched hits judged from the real eyes (a hit's line and the heartbeat): " + str(found.get('vr-cover-crouched-eyes-unread')))
     check(found.get('armik-third-person-on-foot', {}).get('count') == 3, "three third-person anchors on foot")
     check(found.get('traversal-press-refused-near-slot', {}).get('count') == 2,
           "the first tap and the double tap refused next to the slot: " + str(found.get('traversal-press-refused-near-slot')))
@@ -173,6 +198,26 @@ try:
         status = sj.main(['--mod', bad, '--since', '20:40:10', '--until', '20:40:14', '--expect', 'traversal-refused-at-slot',
                           '--expect-quiet', 'armik-third-person-on-foot,holster-stays-out'])
     check(status == 0, "--since/--until keep only the window:\n" + buffer.getvalue())
+
+    # The torso's drop and the crouch's window (research/le2-vrik.md, lane POS: the drop logged in the same tick as the physical
+    # crouch, before its posture line): within 1 s ahead of the crouch it is the descent; 1.5 s ahead, or 1.5 s after a stand, it
+    # is a body lowered while standing.
+    window = os.path.join(root, 'window.log')
+    with open(window, 'w', encoding='utf-8') as f:
+        f.write("\n".join([
+            line_ms(0, 0, "torso: crouching with you: the body down 5 cm to your head (Shepard's head 5 cm too high), the knees bending, the feet on the floor"),
+            line_ms(1, 500, "posture: physical crouch: eyes 1.42 m = 0.76 of the standing 1.86 m, below 0.87 for 0.20 s"),
+            line_ms(5, 0, "posture: physical stand: eyes 1.80 m = 0.97 of the standing 1.86 m, above 0.92 for 0.20 s"),
+            line_ms(6, 500, "torso: crouching with you: the body down 5 cm to your head (Shepard's head 5 cm too high), the knees bending, the feet on the floor"),
+        ]) + "\n")
+    window_json = os.path.join(root, 'window.json')
+    buffer = io.StringIO()
+    with redirect_stdout(buffer):
+        status = sj.main(['--mod', window, '--json', window_json, '--expect', 'crouchbody-drop-not-crouched'])
+    with open(window_json, encoding='utf-8') as f:
+        windowed = {x['id']: x for x in json.load(f)['findings']}
+    check(status == 0 and windowed.get('crouchbody-drop-not-crouched', {}).get('count') == 2,
+          "a drop 1.5 s ahead of a crouch and 1.5 s after a stand still counts:\n" + buffer.getvalue())
 
     # A rule that must fire and doesn't fails the call (the canary's contract).
     buffer = io.StringIO()

@@ -249,6 +249,80 @@ void TestLevelLook() {
     CHECK(std::string_view(vc::Name(vc::Rule::Either)) == "either");
 }
 
+// The eyes that judge (research/23 section 7.8, the owner 2026-11-19): while the game has Shepard crouched, his crouched eyes
+// over his floor, at the real view's horizontal place, never above the real eyes.
+void TestJudgingEyes() {
+    // Freedom's Progress's courtyard: the floor at z -13209, a low wall's top 1.0 m over it, 0.5 m ahead of the player.
+    double const floorZ = -13209.0;
+    vc::Vec3 const standing{-9300.0, 7800.0, floorZ + 185.0};  // the owner's eyes standing, 1.85 m
+    vc::EyeInput in;
+    in.eyes = standing;
+    in.floorZ = floorZ;
+    in.crouchedEyeUnits = 90.0;  // Shepard's crouched eyes 0.90 m over his floor
+    // Standing: the real eyes, whatever the crouched height read.
+    vc::Eyes const up = vc::JudgingEyes(in);
+    CHECK(up.source == vc::EyeSource::Real && Near(up.at.z, standing.z) && Near(up.loweredUnits, 0.0));
+    // Crouched by the game (L3, or a seated player's L3, the eyes still at standing height): Shepard's crouched eyes, at the real
+    // view's horizontal place.
+    in.crouched = true;
+    vc::Eyes const down = vc::JudgingEyes(in);
+    CHECK(down.source == vc::EyeSource::Crouched);
+    CHECK(Near(down.at.x, standing.x) && Near(down.at.y, standing.y) && Near(down.at.z, floorZ + 90.0));
+    CHECK(Near(down.loweredUnits, 95.0));
+    // The owner's natural crouch (1.52 m): still lowered to Shepard's crouch.
+    in.eyes.z = floorZ + 152.0;
+    CHECK(vc::JudgingEyes(in).source == vc::EyeSource::Crouched && Near(vc::JudgingEyes(in).at.z, floorZ + 90.0));
+    // A player kneeling lower than Shepard's crouch: never higher than the real eyes, so the real eyes judge.
+    in.eyes.z = floorZ + 80.0;
+    vc::Eyes const kneel = vc::JudgingEyes(in);
+    CHECK(kneel.source == vc::EyeSource::Real && Near(kneel.at.z, floorZ + 80.0) && Near(kneel.loweredUnits, 0.0));
+    in.eyes.z = floorZ + 90.0;  // level with it: the real eyes too
+    CHECK(vc::JudgingEyes(in).source == vc::EyeSource::Real);
+    // Nothing read, or not sane: the real eyes.
+    in.eyes = standing;
+    vc::EyeInput noFloor = in;
+    noFloor.floorZ.reset();
+    CHECK(vc::JudgingEyes(noFloor).source == vc::EyeSource::Real && Near(vc::JudgingEyes(noFloor).at.z, standing.z));
+    vc::EyeInput noHeight = in;
+    noHeight.crouchedEyeUnits.reset();
+    CHECK(vc::JudgingEyes(noHeight).source == vc::EyeSource::Real);
+    vc::EyeInput tiny = in;
+    tiny.crouchedEyeUnits = 5.0;  // 5 cm: not an eye height
+    CHECK(vc::JudgingEyes(tiny).source == vc::EyeSource::Real);
+    vc::EyeInput huge = in;
+    huge.crouchedEyeUnits = 300.0;  // 3 m
+    CHECK(vc::JudgingEyes(huge).source == vc::EyeSource::Real);
+    vc::EyeInput nan = in;
+    nan.floorZ = std::numeric_limits<double>::quiet_NaN();
+    CHECK(vc::JudgingEyes(nan).source == vc::EyeSource::Real);
+    // The bounds are in metres: half the units per metre.
+    vc::EyeInput half = in;
+    half.unitsPerMeter = 50.0;
+    half.crouchedEyeUnits = 45.0;  // 0.90 m
+    CHECK(vc::JudgingEyes(half).source == vc::EyeSource::Crouched && Near(vc::JudgingEyes(half).at.z, floorZ + 45.0));
+    // What it does to a low wall: the eye line from the standing eyes passes over its top toward a shooter at eye height 15 m
+    // away (nothing met: exposed); from Shepard's crouched eyes the wall's face is met 0.5 m ahead (covered). Here the trace's
+    // answer is given by hand: the wall's face from x +50, top at floor + 100.
+    vc::Settings const s;
+    vc::Vec3 const shooter{standing.x + 1500.0, standing.y, floorZ + 160.0};
+    auto const wall = [&](vc::Vec3 const& from) -> std::optional<vc::Block> {
+        // The straight line from `from` to the shooter crosses x + 50 at this height.
+        double const zAt = from.z + (shooter.z - from.z) * 50.0 / (shooter.x - from.x);
+        if (zAt > floorZ + 100.0) return std::nullopt;
+        return vc::Block{{from.x + 50.0, from.y, zAt}, {-1.0, 0.0, 0.0}};
+    };
+    CHECK(vc::Judge(standing, shooter, wall(standing), s).why == vc::Why::Exposed);
+    CHECK(vc::Judge(down.at, shooter, wall(down.at), s).Covered());
+    // Seated: the floor lock draws the seated player's eyes at the standing reference, so they never lower: only the game's
+    // crouch (L3) lowers the eyes that judge.
+    vc::EyeInput seated = in;
+    seated.crouched = false;
+    CHECK(vc::JudgingEyes(seated).source == vc::EyeSource::Real);
+    seated.crouched = true;
+    CHECK(vc::JudgingEyes(seated).source == vc::EyeSource::Crouched);
+    CHECK(std::string_view(vc::Name(vc::EyeSource::Crouched)) == "crouched" && std::string_view(vc::Name(vc::EyeSource::Real)) == "real");
+}
+
 } // namespace
 
 int RunVrCoverTests() {
@@ -259,6 +333,7 @@ int RunVrCoverTests() {
     TestShelter();
     TestRegenWait();
     TestLevelLook();
+    TestJudgingEyes();
     std::printf("vr cover: %s\n", gFailures == 0 ? "ok" : "FAILED");
     return gFailures;
 }

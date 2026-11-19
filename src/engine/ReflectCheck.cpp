@@ -1101,6 +1101,7 @@ void CheckFields() {
     CheckField("SFXGame.BioPawn", "CoverType", SDK_FIELD(ABioPawn, CoverType));
     CheckField("SFXGame.BioPawn", "CoverNormal", SDK_FIELD(ABioPawn, CoverNormal));  // VR cover: the facing for the damage cone
     CheckField("Engine.Pawn", "EyeHeight", SDK_FIELD(APawn, EyeHeight));  // VR cover: the shooter's eyes
+    CheckField("Engine.Pawn", "BaseEyeHeight", SDK_FIELD(APawn, BaseEyeHeight));  // VR cover: Shepard's crouched eyes (23 s7.8)
     // `mevr cover hit`: a weapon's damage object, Shepard's shields.
     CheckField("SFXGame.BioWeapon", "m_pDamage", SDK_FIELD(ABioWeapon, m_pDamage));
     CheckField("SFXGame.BioActorBehavior", "m_oShield", SDK_FIELD(UBioActorBehavior, m_oShield));
@@ -2384,6 +2385,7 @@ void CheckFields() {
     CheckField("SFXGame.BioPawn", "CurrentSlotIdx", SDK_FIELD(ABioPawn, CurrentSlotIdx));
     // game/VrCover: the shooter, the pawns, the damage type's defaults, Shepard's health and shields (`mevr cover hit`)
     CheckField("Engine.Pawn", "EyeHeight", SDK_FIELD(APawn, EyeHeight));
+    CheckField("Engine.Pawn", "BaseEyeHeight", SDK_FIELD(APawn, BaseEyeHeight));  // Shepard's crouched eyes (research/23 7.8)
     CheckField("Engine.Pawn", "NextPawn", SDK_FIELD(APawn, NextPawn));
     CheckField("Engine.Pawn", "Controller", SDK_FIELD(APawn, Controller));
     CheckField("Engine.WorldInfo", "PawnList", SDK_FIELD(AWorldInfo, PawnList));
@@ -3736,6 +3738,9 @@ void CheckFields() {
     CheckLe3GalaxyRay();
     // game/VrCover (lane CV2): the floor under the player, for each judged hit's detail
     CheckField("Engine.Pawn", "CylinderComponent", SDK_FIELD(APawn, CylinderComponent));
+    // game/VrCover: the shooter's eyes, and Shepard's crouched eyes (research/23 section 7.8)
+    CheckField("Engine.Pawn", "EyeHeight", SDK_FIELD(APawn, EyeHeight));
+    CheckField("Engine.Pawn", "BaseEyeHeight", SDK_FIELD(APawn, BaseEyeHeight));
     CheckField("Engine.CylinderComponent", "CollisionHeight", SDK_FIELD(UCylinderComponent, CollisionHeight));
     CheckField("Engine.LocalPlayer", "NearClipPlane", SDK_FIELD(ULocalPlayer, NearClipPlane));  // game/Sights: the scope's pull
     CheckField("Engine.SkeletalMeshComponent", "SkeletalMesh", SDK_FIELD(USkeletalMeshComponent, SkeletalMesh));

@@ -78,6 +78,35 @@ Verdict Judge(Vec3 const& eyes, std::optional<Vec3> const& shooter, std::optiona
     return v;
 }
 
+char const* Name(EyeSource source) {
+    switch (source) {
+    case EyeSource::Real: return "real";
+    case EyeSource::Crouched: return "crouched";
+    }
+    return "?";
+}
+
+Eyes JudgingEyes(EyeInput const& in) {
+    Eyes out;
+    out.at = in.eyes;
+    if (!in.crouched || !in.floorZ || !in.crouchedEyeUnits || !std::isfinite(*in.floorZ) || !std::isfinite(*in.crouchedEyeUnits)) {
+        return out;
+    }
+    double const perMeter = in.unitsPerMeter > 0.0 ? in.unitsPerMeter : 100.0;
+    double const metres = *in.crouchedEyeUnits / perMeter;
+    if (metres < 0.2 || metres > 2.0) {
+        return out;  // not a crouched eye height
+    }
+    double const z = *in.floorZ + *in.crouchedEyeUnits;
+    if (!(z < in.eyes.z)) {
+        return out;  // never higher than the real eyes
+    }
+    out.at.z = z;
+    out.source = EyeSource::Crouched;
+    out.loweredUnits = in.eyes.z - z;
+    return out;
+}
+
 // The level look is the sequels' (ME1 keeps the eye line): left out of ME1's build so its compiled code stays the same (the
 // linker keeps unreferenced functions there, /DEBUG's /OPT:NOREF). The offline tests (no game) build it.
 #if !defined(MEVR_GAME_LE1)
