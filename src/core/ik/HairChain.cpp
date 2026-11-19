@@ -184,14 +184,19 @@ StepStats Step(Chain& chain, Settings const& settings, Input const& input) {
     double const drag = std::clamp(settings.windDrag * kStep, 0.0, 1.0);
     Vec3 const windStep = settings.windMS * kStep;
 
-    std::vector<Vec3> before = chain.lastTarget.size() == n ? chain.lastTarget : target;
+    // The animated points between steps: `from` is the pose at the last step's time (lastTarget), `target` this call's, `total`
+    // seconds apart; step s lands at s * kStep after `from`. A call too short for a step keeps `from` (its motion isn't lost:
+    // the next call's steps span both), and the time after the last step is carried (2026-11-19: spreading a call's motion
+    // evenly over however many steps it got made 120 and 240 fps disagree by 3.7 cm in the bench).
+    std::vector<Vec3> const from = chain.lastTarget.size() == n ? chain.lastTarget : target;
+    std::vector<Vec3> before = from;
     std::vector<Vec3> now(n);
     std::vector<double> lengths(n, 0.0);
     std::vector<Vec3> animDir(n);
     for (int s = 1; s <= steps; ++s) {
-        double const t = static_cast<double>(s) / steps;
+        double const t = total > 0.0 ? (std::min)(1.0, s * kStep / total) : 1.0;
         for (std::size_t i = 0; i < n; ++i) {
-            now[i] = Lerp(chain.lastTarget.size() == n ? chain.lastTarget[i] : target[i], target[i], t);
+            now[i] = Lerp(from[i], target[i], t);
         }
         // The share of the head's motion the hair doesn't feel moves it along rigidly.
         for (std::size_t i = 1; i < n; ++i) {
@@ -203,7 +208,12 @@ StepStats Step(Chain& chain, Settings const& settings, Input const& input) {
         chain.prev[0] = now[0];
         // Verlet: velocity, wind and air, gravity, the pull home.
         for (std::size_t i = 1; i < n; ++i) {
-            Vec3 velocity = (chain.pos[i] - chain.prev[i]) * keep;
+            // Damping slows the hair's motion relative to the animated pose (the felt share of its motion: the rest was
+            // carried rigidly above), not its motion in the world: a head moving steadily carries its hair along instead of
+            // dragging it back (in the bench a walk had trailed strands 7 cm with more damping, 2026-11-19). Air drag is
+            // windDrag's, toward the wind.
+            Vec3 const followed = (now[i] - before[i]) * felt;
+            Vec3 velocity = followed + ((chain.pos[i] - chain.prev[i]) - followed) * keep;
             velocity = velocity + (windStep - velocity) * drag;
             chain.prev[i] = chain.pos[i];
             chain.pos[i] = chain.pos[i] + velocity + gravity;
@@ -236,7 +246,9 @@ StepStats Step(Chain& chain, Settings const& settings, Input const& input) {
         }
         before = now;
     }
-    chain.lastTarget = target;
+    if (steps > 0) {
+        chain.lastTarget = before;  // the pose at the last step's time: the carried remainder is interpolated next call
+    }
     for (std::size_t i = 0; i < n; ++i) {
         if (!Finite(chain.pos[i]) || !Finite(chain.prev[i])) {
             ResetTo(chain);
@@ -246,6 +258,18 @@ StepStats Step(Chain& chain, Settings const& settings, Input const& input) {
         }
     }
     return stats;
+}
+
+Vec3 Shown(Chain const& chain, std::size_t i) {
+    if (i >= chain.pos.size()) {
+        return {};
+    }
+    if (chain.target.size() != chain.pos.size() || chain.lastTarget.size() != chain.pos.size()) {
+        return chain.pos[i];
+    }
+    // The simulation stands at its last step's time, up to a step before the frame: shown moved on by the animation's own
+    // motion since (the rigid ride of inertia 0 stays exact; a 2 m/s strand would otherwise lag up to 1.7 cm).
+    return chain.pos[i] + (chain.target[i] - chain.lastTarget[i]);
 }
 
 void Pose(Chain const& chain, std::span<Transform const> animated, std::vector<Transform>& out) {
@@ -262,11 +286,11 @@ void Pose(Chain const& chain, std::span<Transform const> animated, std::vector<T
         }
         Transform t = animated[static_cast<std::size_t>(b)];
         Vec3 const from = chain.target[i + 1] - chain.target[i];
-        Vec3 const to = chain.pos[i + 1] - chain.pos[i];
+        Vec3 const to = Shown(chain, i + 1) - Shown(chain, i);
         if (Length(from) > 1e-9 && Length(to) > 1e-9) {
             t.rotation = Normalize(FromTo(from, to) * t.rotation);
         }
-        t.translation = i == 0 ? chain.target[0] : chain.pos[i];
+        t.translation = i == 0 ? chain.target[0] : Shown(chain, i);
         out.push_back(t);
     }
 }
@@ -275,7 +299,7 @@ double TipOffset(Chain const& chain) {
     if (chain.pos.empty() || chain.pos.size() != chain.target.size()) {
         return 0.0;
     }
-    return Length(chain.pos.back() - chain.target.back());
+    return Length(Shown(chain, chain.pos.size() - 1) - chain.target.back());
 }
 
 } // namespace mevr::ik::hair

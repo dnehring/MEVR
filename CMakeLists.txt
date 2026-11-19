@@ -2082,6 +2082,22 @@ if (MEVR_BUILD_TESTS)
     target_compile_definitions(mevr-thespian-bench PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_compile_options(mevr-thespian-bench PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
 
+    # The hair simulation over a generated clip, offline (tools/hair-bench, tools/motion/README.md): parameter sweeps.
+    add_executable(mevr-hair-bench
+        tools/hair-bench/Main.cpp
+        src/core/Json.cpp
+        src/core/ik/Clip.cpp
+        src/core/ik/HairChain.cpp
+        src/core/ik/HandContact.cpp
+        src/core/ik/Rigid.cpp
+        src/core/ik/TwoHand.cpp
+        src/core/ik/Ik.cpp
+        src/core/ik/BoneNames.cpp
+    )
+    target_include_directories(mevr-hair-bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_compile_definitions(mevr-hair-bench PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_compile_options(mevr-hair-bench PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
+
     # Every program ctest runs, as one target: CI (.github/workflows) and tools/package-release.ps1 build it before ctest.
     # The loader too: mevr-tests installs the bink2w64.dll built next to it into its fake game.
     add_custom_target(mevr-test-programs)

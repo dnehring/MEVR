@@ -79,6 +79,9 @@ StepStats Step(Chain& chain, Settings const& settings, Input const& input);
 void Pose(Chain const& chain, std::span<Transform const> animated, std::vector<Transform>& out);
 
 // The tip's distance from where the animation has it (m): what the trace and the tests measure.
+// Point i as drawn: the simulation (which stands at its last fixed step's time) moved on to this frame's time by the
+// animation's own motion since. What Pose writes and TipOffset measures.
+Vec3 Shown(Chain const& chain, std::size_t i);
 double TipOffset(Chain const& chain);
 
 } // namespace mevr::ik::hair

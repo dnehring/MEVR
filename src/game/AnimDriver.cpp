@@ -47,6 +47,9 @@ ue3::FieldRef gNodeTime{"Engine.AnimNodeSequence", "CurrentTime", ue3::kEveryGam
 ue3::FieldRef gMeshAnimSets{"Engine.SkeletalMeshComponent", "AnimSets", ue3::kEveryGame};
 ue3::FieldRef gMeshAnimSetUpdated{"Engine.SkeletalMeshComponent", "bAnimSetUpdated", ue3::kEveryGame};
 ue3::FieldRef gWorldInfo{"Engine.Actor", "WorldInfo", ue3::kEveryGame};
+ue3::FieldRef gPawnList{"Engine.WorldInfo", "PawnList", ue3::kEveryGame};
+ue3::FieldRef gNextPawn{"Engine.Pawn", "NextPawn", ue3::kEveryGame};
+ue3::FieldRef gPawnHair{"SFXGame.BioPawn", "m_oHairMesh", ue3::kEveryGame};
 ue3::FunctionRef gSetAnim{"Engine.AnimNodeSequence.SetAnim", ue3::kEveryGame};
 ue3::FunctionRef gPlayAnim{"Engine.AnimNodeSequence.PlayAnim", ue3::kEveryGame};
 ue3::FunctionRef gStopAnim{"Engine.AnimNodeSequence.StopAnim", ue3::kEveryGame};
@@ -123,6 +126,39 @@ ue3::Object* FindActor(std::string const& what, ue3::Object* world) {
         }
     }
     return nullptr;
+}
+
+// A character to play a clip on: an ME3 conversation character (its BodyMesh), else a pawn (its Mesh: ME2's Miranda, a
+// squadmate, anyone in the world's pawn list but the player), by its name or its body or hair mesh.
+struct Character {
+    ue3::Object* actor = nullptr;
+    ue3::Object* body = nullptr;
+};
+Character FindCharacter(std::string const& what, ue3::Object* world) {
+    if (ue3::Object* const stunt = FindActor(what, world)) {
+        return {stunt, gStuntBody.Read<ue3::Object*>(stunt).value_or(nullptr)};
+    }
+    ue3::Object* const controller = player::Controller();
+    ue3::Object* const playerPawn = controller != nullptr ? player::Pawn(controller) : nullptr;
+    std::string const key = Lower(what);
+    int guard = 0;
+    for (ue3::Object* p = gPawnList.Read<ue3::Object*>(world).value_or(nullptr); p != nullptr && guard < 512;
+         p = gNextPawn.Read<ue3::Object*>(p).value_or(nullptr), ++guard) {
+        if (!ue3::runtime::IsAlive(p)) {
+            break;  // a level torn down under us leaves freed pawns in the list (CLAUDE.md, LivePawns)
+        }
+        if (p == playerPawn) {
+            continue;
+        }
+        ue3::Object* const body = player::Mesh(p);
+        ue3::Object* const hair = player::IsBioPawn(p) ? gPawnHair.Read<ue3::Object*>(p).value_or(nullptr) : nullptr;
+        std::string const text = Lower(PathOf(p) + " " + (body != nullptr ? PathOf(player::SkeletalMesh(body)) : "") + " " +
+                                       (hair != nullptr && ue3::runtime::IsAlive(hair) ? PathOf(player::SkeletalMesh(hair)) : ""));
+        if (body != nullptr && text.find(key) != std::string::npos) {
+            return {p, body};
+        }
+    }
+    return {};
 }
 
 ue3::Object* FindSequence(std::string const& what) {
@@ -411,10 +447,11 @@ std::string PlayClip(std::istringstream& words) {
     if (!loaded) {
         return file.string() + ": " + error;
     }
-    ue3::Object* const actor = FindActor(who, world);
-    ue3::Object* const body = actor != nullptr ? gStuntBody.Read<ue3::Object*>(actor).value_or(nullptr) : nullptr;
+    Character const character = FindCharacter(who, world);
+    ue3::Object* const actor = character.actor;
+    ue3::Object* const body = character.body;
     if (body == nullptr) {
-        return "no stunt actor in this world holds '" + who + "' (only ME3's conversation characters for now)";
+        return "no conversation character or pawn in this world holds '" + who + "' in its name or its body or hair mesh";
     }
     auto const clip = std::make_shared<ik::clip::Clip const>(std::move(*loaded));
     double const pace = clip->LoopSeconds() > 0.0 ? clip->TravelPerLoop() / engine::kUnitsPerMeter / clip->LoopSeconds() : 0.0;

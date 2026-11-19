@@ -301,8 +301,10 @@ def render_check(png, names, parents, points_per_frame, P, M, scale, fps):
 
 def cmd_retarget(a) -> int:
     import numpy as np
-    folder = clip_dir(a.name)
-    npz = Path(a.npz) if a.npz else folder / (a.name + ".npz")
+    source_folder = clip_dir(a.name)
+    clip_name = a.clip_name or a.name  # one motion, a clip per skeleton (walk-sway on ME3's Miranda, walk-sway-me2 on ME2's)
+    folder = clip_dir(clip_name)
+    npz = Path(a.npz) if a.npz else source_folder / (a.name + ".npz")
     skel = skeleton_path(a.skeleton)
     if not npz.exists() or not skel.exists():
         print(f"missing {npz if not npz.exists() else skel}", file=sys.stderr)
@@ -318,20 +320,20 @@ def cmd_retarget(a) -> int:
         start, end = (int(x) for x in a.loop.split(":"))
         loop = {"start": start, "end": end, "seconds": (end - start) / fps}
     header = next((line for line in skel.read_text(encoding="utf-8").splitlines() if line.startswith("#")), "")
-    meta_path = folder / "generate.json"
+    meta_path = source_folder / "generate.json"
     source = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.exists() else {"npz": str(npz)}
-    clip = {"format": FORMAT, "version": FORMAT_VERSION, "name": a.name, "fps": fps, "frames": len(frames),
+    clip = {"format": FORMAT, "version": FORMAT_VERSION, "name": clip_name, "motion": a.name, "fps": fps, "frames": len(frames),
             "units": "game units (cm), UE axes (X forward, Y right, Z up); local rotations xyzw as the package stores them",
             "skeleton": {"file": skel.name, "header": header.lstrip("# "), "bones": names, "parents": parents.tolist()},
             "loop": loop, "source": source, "retarget": {"method": "swing-aligned rest, Core world rotation change",
             "map": [list(row) for row in MAP], "hipsScale": scale, "worstDirectionDeg": worst},
             "clip": frames}
-    out = folder / f"{a.name}.mevrclip.json"
+    out = folder / f"{clip_name}.mevrclip.json"
     out.write_text(json.dumps(clip), encoding="utf-8")
     check = {"frames": len(frames), "fps": fps, "hipsScale": scale, "worstDirectionDeg": worst, "loop": loop,
              "travelM": float(np.linalg.norm(points[-1][names.index("Pelvis")][:2] - points[0][names.index("Pelvis")][:2]) / 100)}
     (folder / "retarget.json").write_text(json.dumps(check, indent=2), encoding="utf-8")
-    png = folder / f"{a.name}-check.png"
+    png = folder / f"{clip_name}-check.png"
     render_check(png, names, parents, points, P, ardy_to_ue(P[0]), scale, fps)
     print(f"{len(frames)} frames at {fps:.0f} fps onto {len(names)} bones, hips x{scale:.3f}, worst direction error {worst:.2f} deg"
           + (f", loop {loop['start']}..{loop['end']} ({loop['seconds']:.2f} s)" if loop else ""))
@@ -439,7 +441,8 @@ def main(argv=None) -> int:
     s.add_argument("--game", default="LE3", choices=["LE1", "LE2", "LE3"])
     s.add_argument("--game-root", default=r"C:\Program Files (x86)\Steam\steamapps\common\Mass Effect Legendary Edition")
     r = sub.add_parser("retarget"); r.add_argument("--name", required=True); r.add_argument("--skeleton", required=True)
-    r.add_argument("--npz"); r.add_argument("--loop", default="auto", help="auto | none | <start>:<end> (frames)")
+    r.add_argument("--npz"); r.add_argument("--loop", default="auto", help="auto | none | <start>:<end> (frames; a jump: its window)")
+    r.add_argument("--clip-name", help="the clip's name and folder (default the motion's): one motion onto several skeletons")
     r.add_argument("--max-error", type=float, default=0.5, help="fail above this worst bone direction error (degrees)")
     m = sub.add_parser("metrics"); m.add_argument("--name"); m.add_argument("--npz")
     sub.add_parser("self-test")
