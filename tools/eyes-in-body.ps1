@@ -11,8 +11,8 @@
 # the body down, the feet on the floor). The replays drive the floor sample since 2026-11-19 (research/le2-vrik.md "The replay
 # STAGE-eye gap"), so the floor lock stays on and puts the eyes at the replayed head's height; the body's scale is held at
 # 1.05 (`mevr body scale`) so the squats compare with the standing head. At the owner's calibration by default
-# ($EyesOwnerCalibration = $false before dot-sourcing for the old typical run): the recordings' floor samples at his calibrated
-# standing eye height (tools/owner-calibration.ps1, calibration.ini read only); his controller type itself needs a development
+# ($EyesOwnerCalibration = $false before dot-sourcing for the old typical run): the recordings' floor samples at their calibrated
+# standing eye height (tools/owner-calibration.ps1, calibration.ini read only); their controller type itself needs a development
 # build and the session's -CalibrationKey owner (read at the host's first frame). The session puts the inis back after. Read
 # each squat's lift against the standing head's. What to read: with crouchBody 0 the squats' `bodyLiftM` 0 and the eye images
 # inside the collar or chest; with 1 the lift about the squat (-0.15, -0.30 m), the ankles' height unchanged in the traces

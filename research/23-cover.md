@@ -635,7 +635,7 @@ Shepard as best we can."
   - `[Hands] crouchMinDropM` (0.25 by default; 0 = off): `ik::posture::WithMinimumDrop` moves the crouch threshold down until the
     eyes must be that far under the live standing height, never below the calibrated crouch + 3 cm (so it still crouches), the
     stand keeping its hysteresis gap. The owner's numbers at 0.25: the crouch at 1.61 m (0.866), the stand at 1.66 m; the leans at
-    1.68-1.69 m don't crouch, his calibrated 1.56 m does.
+    1.68-1.69 m don't crouch, their calibrated 1.56 m does.
   - `[Hands] crouchLeanRatio` (1.0 by default; 0 = off): `ik::posture::LeanGuard` keeps where the head stood (horizontally, in the
     room) while the eyes were in the standing band (at or above `standAbove`) and calls a drop a lean while the head has moved at
     least that many times as far horizontally as down; the detector's crouch dwell then starts over (it gets the threshold, not

@@ -16,7 +16,7 @@
 #             animated head 45-60 units under the view. Pass: no `arm IK: body anchor: third person` between the two L3s (an
 #             anchor line, if any, reads `... (N across: the view's height is your own head's ...)`), the snapshot's
 #             mod.armIk shows the hands on the controllers, `torso:` lines say first person.
-#   physical  the owner's case: his calibrated thresholds (-OwnerCalibration; else [Hands] crouchBelow 0.92, standAbove 0.942),
+#   physical  the owner's case: their calibrated thresholds (-OwnerCalibration; else [Hands] crouchBelow 0.92, standAbove 0.942),
 #             crouchMinDropM 0 and crouchLeanRatio 0 so a 0.17 m drop crouches, a 0.17 m and a 0.40 m crouch, held, then
 #             standing up. Pass: `posture: physical crouch` for each (the replays drive the floor sample since 2026-11-19,
 #             research/le2-vrik.md "The replay STAGE-eye gap"), then as `button`, through the stand (the old rule fell to third

@@ -28,7 +28,7 @@ a separate `xrLocateSpace` against the runtime, never wrapped: on SteamVR's null
 stayed 1.7526 m over the floor whatever the replay did. Everything that judges the player's height reads that sample: the
 physical crouch (`game/Posture`), the floor lock (the eye's height is the sample's, the replayed head's own height is
 absorbed), body scale's standing reference, the torso's crouch (`crouchBody`), the holsters' slot heights, VR cover's eye
-line. The recordings themselves held no floor sample, so even a replay of the owner's own headset session could not bring his
+line. The recordings themselves held no floor sample, so even a replay of the owner's own headset session could not bring their
 height back.
 
 # Check

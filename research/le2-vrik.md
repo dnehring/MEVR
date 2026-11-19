@@ -945,7 +945,7 @@ floor sample is published from the same instructions as before. No same-pose pai
 `%LOCALAPPDATA%\MEVR\sessions\20261119-081427-984-LE2-pos`, restored: `verification: 0 differences`; calibration.ini's hash
 unchanged, 37D558FE...). The standing reference rose with the replays to the owner's height (`posture: standing eye height
 1.86 m, from the floor (STAGE); Shepard crouches below 1.61 m ... (between your calibrated heights), at least 0.25 m under
-standing`): his calibrated line is 0.92 of standing (1.72 m), crouchMinDropM's 0.87 (1.62 m). posture-walk.ps1 `-Phases crouch`
+standing`): their calibrated line is 0.92 of standing (1.72 m), crouchMinDropM's 0.87 (1.62 m). posture-walk.ps1 `-Phases crouch`
 (folder `posture-walk-pos2-082413`), each case a lean (0.17 m down, 0.35 ahead), the reach and a 0.45 m squat:
 
 | [Hands] crouchLeanRatio / crouchMinDropM | lean (eyes 1.70 m) | reach (eyes 1.69 m) | squat (eyes 1.42-1.44 m) |
@@ -976,7 +976,7 @@ not in the body). Shepard's pawn floor stayed -11996.85 through every crouch and
   `crouchbody-drop-not-crouched` (6): `torso: crouching with you: the body down 4-6 cm` logged in the same tick as the
   physical crouch, before the posture line, during the replay's 0.4 s eased descent: the judge reads the player as not yet
   crouched; the torso follows the head down by design (research/29 "The eyes inside the body").
-- Still open: ME2's VR cover behind a low wall at the owner's crouch (SMOKE: his natural crouch 1.52 m, the walls about 1 m:
+- Still open: ME2's VR cover behind a low wall at the owner's crouch (SMOKE: their natural crouch 1.52 m, the walls about 1 m:
   smoke-owner-save.ps1's cover phase can use the replayed floor now), a recorded recenter while bent, and an LE1 eyes-in-body
   run with the floor lock on (`tools/eyes-in-body.ps1`, the session's `-CalibrationKey owner -BuildDir <development build>`).
 
