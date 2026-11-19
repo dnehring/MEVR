@@ -65,7 +65,7 @@ binding line; those cells are marked "(game knowledge)" and are the first thing 
 | X | hand power wheel | power wheel | nothing | same; X is ME3's reload (game knowledge), so the controllers have no reload button |
 | Y | the game's Y | - | Y | what ME3 does with it: not established |
 | left stick | walks toward the head | power wheel > squad menu > walk | the stick, after ME3's own traversal-presentation compensation; zeroed in cinematics | ME1 has neither adjustment |
-| left stick click | the game's L3 after 100 ms | chord > the game | L3 | same rule; what ME3 binds to L3 not established |
+| left stick click | the game's L3 after 100 ms | chord > the game | L3 | in VR on foot the mod's crouch toggle, kept from the game; ME3's L3 is `Console_NavAssistanceOrCoverTurn` (a cover turn, a point of interest, the area map; its Coalesced.bin); lane M2W 2026-11-18, research/23 section 8.3 |
 | right stick X | turn (the game's, or snap) | squad menu > placement selector > comfort | stick X unless the mod turns | same, plus ME3's native locomotion admission |
 | right stick Y | nothing of ours | - | stick Y | ME1 steps the scope's zoom under ADS; ME3's zoom modes are not read |
 | right stick click, held 0.3 s | the game's power wheel (`SFXGameModeBase.EnterPowerWheel`) | chord > the mod's hold | **nothing: R3 never reaches ME3** | ME1 still sends R3 |

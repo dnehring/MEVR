@@ -522,3 +522,88 @@ STAGE height, 1.7526 m, `floor lock: ... correction +102.261, final eye 1.7526 m
 head stayed at standing height and the crate's nearest point on the line to Jacob was 1.22-1.28 m away. That is a test-tool gap
 (replays don't stand in for the STAGE floor query), not the rule's: the lane that owns floor lock was told. Not measured: a
 hostile's own shots, several hostiles, a headset.
+
+## 8. The crouch in the owner's ME2 session (2026-11-18, lane M2W)
+
+The owner, ME2 in the headset (MEVR 0.3.2, 237aeb1b; `LE2MEVR.log` 20:35-20:51, copied to scratch): "When my hand touches an NPC
+or companion, I go into a kind of crouch"; "the button click to crouch doesn't seem to be functioning in game, because left click
+now triggers the minimap locator"; and "We need to make sure the fire fights are solid, and the cover system needs to follow
+Shepard as best we can."
+
+### 8.1 A lean is not a crouch
+
+- **What crouched him.** The physical crouch, from the calibration's threshold: `posture: standing eye height 1.85 m ...;
+  Shepard crouches below 1.69 m and stands above 1.74 m (between your calibrated heights)` and, reaching toward a squadmate,
+  `posture: physical crouch: eyes 1.69 m = 0.91 of the standing 1.86 m, below 0.92 for 0.20 s` (20:37:12, again 20:37:19 at
+  1.68 m). The calibration (one file for the trilogy since 2026-11-18, `%LOCALAPPDATA%\MEVR\calibration.ini`) has the owner's
+  crouch at 1.56 m for 1.87 m standing: 31 cm down (his other headsets' sections 26-28 cm). `vr::calibration::CrouchFromHeights`
+  puts the threshold half way down (`crouchAt` 0.5), 15.5 cm, then caps it at 0.92 of standing; so 15 cm under "stand tall", and the
+  owner's ordinary stance in the session was 1.77-1.82 m (the floor lock's STAGE eye every second): 8-13 cm of margin. ME1 reads the
+  same file with the same rule, so ME1 crouches on the same lean. Uncalibrated (`[Hands] crouchBelow` 0.75) it is 46 cm.
+- **What he saw.** Shepard in the game's crouch under a view at 1.69 m (the floor lock keeps the eyes at the real head): arm IK
+  left first person (`arm IK: body anchor: third person ... view 75 units from Shepard's animated head bone`, 20:37:12.7), and
+  ME2 stood him up again 2 s later when he walked (8.2).
+- **The torso's own "crouching with you"** (`[Hands] crouchBody`, research/29 "The eyes inside the body"): 3-4 cm at the reach
+  (the head 4 cm too high), and 14-17 cm three times within a second of a full-speed run (20:37:01.9, 20:37:02.9, 20:39:21.8) with
+  the eyes at 1.84 m: while running, the gap the torso measures is the run pose's, not a crouch. Not this lane's rule; told in the
+  report.
+- **Built, off until the owner's yes** (`core/ik/Posture`, unit-tested in `tests/PostureOwnershipTests.cpp`):
+  - `[Hands] crouchMinDropM` (0 = off; suggested 0.25): `ik::posture::WithMinimumDrop` moves the crouch threshold down until the
+    eyes must be that far under the live standing height, never below the calibrated crouch + 3 cm (so it still crouches), the
+    stand keeping its hysteresis gap. The owner's numbers at 0.25: the crouch at 1.61 m (0.866), the stand at 1.66 m; the leans at
+    1.68-1.69 m don't crouch, his calibrated 1.56 m does.
+  - `[Hands] crouchLeanRatio` (0 = off; suggested 1.0): `ik::posture::LeanGuard` keeps where the head stood (horizontally, in the
+    room) while the eyes were in the standing band (at or above `standAbove`) and calls a drop a lean while the head has moved at
+    least that many times as far horizontally as down; the detector's crouch dwell then starts over (it gets the threshold, not
+    past it). Standing up is never held back. A reach (0.30 m forward for 0.09 m down) is a lean at 1.0, a squat (0.05 m forward,
+    0.40 m down) is not. Log `posture: a lean, not a crouch: ...`. The anchor follows the standing band, so with the uncalibrated
+    0.85 a lean is measured from where the head crossed 0.85, not from where it stood.
+  - Both in the startup line (`posture: standing eye height ...`) and the settings line.
+
+### 8.2 The crouch follows you (`[Hands] crouchFollow`, on: the owner's instruction)
+
+- **What stood him up.** `posture: Shepard's crouch changed without us (L3, sprinting or a script): now standing` at 20:49:10.998
+  with the player crouched at 1.06 m (0.57; crouched at 20:48:46, standing again for real at 20:49:28): the game's own stand, 18 s
+  against his posture. The lines around it: the pistol holstered at 20:49:03.4 (`movement: walking mode ExploreCrouched
+  (exploring) ...; CombatCrouched held 17.2 s, top speed 130 u/s`), then `walking mode ExploreRun ... ExploreCrouched held 7.6 s,
+  top speed 0 u/s` at the stand and the pawn at 98 u/s 40 ms later (a slow push: no response window opened). The same at 20:37:14
+  (`ExploreCrouched held 2.0 s, top speed 0` then the walk). So **ME2 stands a crouched Shepard up to walk with the weapon away**:
+  its explore set has no crouched walk (ExploreCrouched's top speed 0), its combat set has (CombatCrouched 130 u/s). Which
+  function does it is [verify] (`PlayerMoveCombatOrExplore` exploring, or the crouched explore speed 0 asking for a stand).
+- **The rule** (`ik::posture::CrouchArbiter`, `ArbiterInput::follow` and friends): a change the game makes without us that goes
+  against the player's real posture (the detector's state) is put back (`ArbiterStep::restoring`, a pending put-back) once the
+  game takes it (not sprinting) and its passing reason is over (`canRestore`: the pawn under 30 u/s, no vault or climb
+  (`traversal::Moving`), not in cover, and 0.15 s since the change); a change the crouch button made is kept as ME1 keeps L3
+  (ME1: the game's change within 0.5 s after a left stick click through L3's gate, `gamepad::CrouchClickToggle` on the raw
+  clicks, read before the crouch tick; a click seen in the 0.15 s after the change, which the host may have passed a frame
+  sooner, cancels the put-back as the button's; the sequels: the mod's own L3, `CrouchArbiter::Pressed`); the game undoing a put-back again within 1.5 s twice in a row with no passing reason seen
+  (`explained`: moving, sprinting, a vault) wins until the next physical crouch or stand (`ArbiterStep::insisted`: a script, a rule
+  of the game's). `[Hands] crouchFollow = 0` is the old rule (every change of the game's kept until the next physical change).
+- **Logs** (`game/Posture`): `posture: the game stood Shepard up while you are crouched (walking, 98 u/s): he crouches again once
+  he stands still ([Hands] crouchFollow)`, `posture: putting back the crouch waits (...)`, the put-back's `crouch request accepted
+  (putting back the crouch the game changed (...): your posture)`, `posture: the game stood Shepard up again soon after we put him
+  back (...): it wins here ...`, `posture: Shepard's crouch changed by L3: ...`; the heartbeat counts put-backs and insists.
+- **On ME2 that means:** crouched with the weapon away, a walk stands him (the game's rule), and he crouches again as soon as he
+  stops; with a weapon drawn he crouch-walks (the game's CombatCrouched). [verify] in a fight on ME2 and on ME1 (where a crouched
+  walk is the game's in both modes, so a put-back should be rare).
+
+### 8.3 L3 crouches on the sequels (`[Hands] crouchClick`, on: the owner's)
+
+- **The game's L3 there**: ME2's `BIOInput.ini` binds `XboxTypeS_LeftThumbstick` and `XboxTypeS_RightThumbstick` both to
+  `Console_ShowMap` (`OnTap 0.3 ShowAreaMap | OnHold 0.3 TurnObjectiveRadarDisplayOn | OnRelease TurnObjectiveRadarDisplayOff`);
+  ME3's `Coalesced.bin` (decoded with Legendary Explorer's `CoalescedConverter.DecompileGame3ToMemory`, a scratch program; the
+  game data not kept) binds both to `Console_NavAssistanceOrCoverTurn` (`Exclusive TryCoverTurn | Exclusive ActivatePOI |
+  OnRelease DeactivatePOI | ShowAreaMap`). ME1's L3 is `Console_Crouch` (`ToggleCrouch`), section 3. So on the sequels the owner's
+  L3 opened the map and the objective radar; no game crouches on it.
+- **Built** (ME1's semantics, the right stick click's pattern from 2026-11-17): in VR on foot on ME2 and ME3 the mod toggles the
+  crouch itself (`game/Posture` `TickCrouchClick`: `Engine.Pawn.ShouldCrouch(!bWantsToCrouch)`, refused while sprinting as ME1's
+  ToggleCrouch refuses; ME3's native admission inside `ShouldCrouch`), each press through L3's own gate
+  (`gamepad::CrouchClickToggle` over `GateClick`: the both-sticks tap and hold never toggle, a quick click counts at its release, a
+  held one at 100 ms), kept until the next physical crouch or stand (`CrouchArbiter::Pressed`). Not while the power wheel or the
+  squad menu has the left hand. The mod tells the host it owns the click (`gamepad::kFlagModCrouchClick`, bit 28; no HostServices
+  change) and the sequels' host keeps that press from the game (`Options::keepCrouchClick`, host-only, set by
+  `plugin/HalcyonSequelBridge`; `Latches::leftClickKept`, decided when the press goes down, so no gate pulse after a kept tap).
+  LE1's host leaves it off: ME1's L3 still reaches its game. The area map stays on the omni-tool's Map entry. Logs `posture: L3
+  (the crouch button, as ME1's): crouch request accepted ...`, `halcyon bridge: first left stick click kept from the game ...`.
+  Tests: `TestCrouchClick` (tests/PowerWheelTests.cpp). [verify] in the game: `tools/le2-halcyon-run/posture-walk.ps1 -Phases l3`
+  (no `ShowAreaMap` in the call trace, the crouch toggling).

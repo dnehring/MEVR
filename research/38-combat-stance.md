@@ -710,6 +710,40 @@ and read by animation nodes).
    u/s and its velocity turned about 70 degrees off its facing while the acceleration stayed on it, with and without the fix (no
    root motion request then). Cause unread.
 
+### ME2's late start (2026-11-18, lane M2W)
+
+The owner, ME2 in the headset (MEVR 0.3.2, 237aeb1b, Freedom's Progress, 20:35-20:39): "When I start walking there's a
+noticeable delay, almost a few seconds; on ME1 there's none."
+
+1. **Not the camera.** ME2's game camera is the pawn's location plus the camera mode's offset in ControlRotation's frame: in
+   `mevr camera trace` (lane AU6's `camera-trace-2026-11-18_13-46-19-au6y90.csv`, Save 4) the camera stays exactly
+   (35, 0) units ahead of the pawn in the camera's frame through a 180-degree explore turn and the run after it (`cam moved` equals
+   `pawn moved` every tick, to 0.1 unit). It doesn't swing with the pawn's facing and doesn't lag its location. Halcyon ME2 renders
+   from that camera, the floor lock moves only its height, and the body follower moves bones, not the view. So the eyes start when
+   the pawn does.
+2. **The pawn, after a turn.** The session's `movement: response:` lines (copied to scratch, `LE2MEVR.log` 20:37:00-20:37:52):
+   pushes that turned the pawn less than about 90 degrees ran at 0.1 s (`0, 400, 400, 400` u/s at 0, 0.1, 0.2, 0.4 s); pushes that
+   turned it 150-173 degrees (the stick pulled away from where an exploring Shepard faced) gave `0, 0, 7-8, 206-284` and reached
+   the run at about 0.5 s: 0.3-0.4 s late. In those pushes the per-tick trace (`response ticks`) shows the mesh's `RootMotionMode`
+   3 (RMM_Accel) from the first tick to the last and the acceleration climbing 3, 13, 131, 751, 1494 ... 35,000 u/s^2 with the
+   pawn's turn (root motion), not the move function's 6000 along the push; and after every let-go `RootMotionMode` 3 from 0.10 to
+   0.53 s (the stop animation). ME1's three flags were off (`the game's start/stop/skid steps 0/0/0 ticks`).
+3. **The cause: ME3's, on ME2.** ME2's SFXGame has the same nodes and list as ME3's (LExSDKv2's LE2 headers:
+   `BioAnimNodeLocomotionStart`, `BioAnimNodeLocomotionStop`, `BioPawn.RootMotionOverrides` of `FRootMotionOverrideEntry {Node,
+   RMMode, RMRMode}`, `BioPawn.RootMotionOverride`), so the explore tree's start and stop nodes ask for their animation's root motion
+   as ME3's do (AU9 above), on a path ME1's flags don't reach. **The fix is AU9's rule on ME2:** `UpdateStartSteps` (game/CombatStance)
+   runs on both sequels (ME2 after `UpdateSteps`, which keeps ME1's flags off), the per-tick trace lists the requests on ME2 too
+   (`[mode/mode]` and `movement: response: the animation nodes that asked for root motion: ...`), `mevr loco start game|on` is ME2's
+   test switch as ME3's, the heartbeat's `start/stop steps:` adds `the start and stop nodes' root motion: ...`, and LE2's
+   `CheckSequelWalk` has the rows (the list, its entry's Node and RMMode, the two node classes, `AnimNode.NodeName`). LE1 is not
+   compiled with it. **[verify] in the game:** `tools/le2-halcyon-run/posture-walk.ps1 -Phases start` (out-and-back pushes, `game`
+   then `on`); the expectation is ME3's: the turned starts at 0.1 s, the stop a stop. If a turned start is still late with the
+   requests answered, the trace names the node that asks (a turn-in-place node is the next suspect: ME2's BioPawn has
+   `m_bTurnInPlaceRequested`).
+4. **Seen on the way:** the stick's `fMoveMag` reads 1.00 a tick after most pushes in the session (the push went on to full), so
+   `the push set N% of the run` (the reading at the push) is not the speed the run took; and slow pushes that pass 0.2 without a tick
+   under 0.2 and then at 0.3 or more don't open a response window (20:49:11 moved at 98 u/s with none).
+
 ### The sequels' eye distance, an A/B (2026-11-18, lane AU9)
 
 The owner (docs/trilogy-plan.md "Answered 2026-11-18, later"): "Need to validate in headset, whatever gets us closest to

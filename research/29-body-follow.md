@@ -492,3 +492,43 @@ on every call. Log `convo: at N s the body's size is taken about the floor under
 scene began` (once a conversation, past 10 cm). [verify] in the headset: the council bridge, the feet on the floor, the legs
 straight standing; on the fake headset the moment up to the chamber and the hearing (`tools/conversation-from-save.ps1`'s
 council save) with snapshots of the legs.
+
+## Backing up on the sequels (2026-11-18, lane M2W)
+
+The owner, ME2 in the headset: "Walking backwards, my avatar does a side strafe instead of walking backward."
+
+### What the log shows
+
+- **Exploring (weapon away), ME2 turns the pawn to run where the stick points**, as ME1's explore set does (research/38 section C):
+  `movement: response:` after a pull back, `the pawn turned 150-173 deg meanwhile`, and the torso lines while backing up read
+  `pawn 144 vs body -60 deg (world)`, `legs: keep the run (354 u/s, holstered, weight 1.00): shoulders -203 deg from the legs,
+  the spine -60 (limit 60) + the whole body -143` (20:37:43), `-159 ... + the whole body -99` (20:37:26), `-125 ... -65`
+  (20:37:30). So this section's rule for 180 degrees holds: the spine at its 60, the whole body (the legs) turned the rest toward
+  the view, which leaves the legs' run 120 degrees off the way Shepard goes: a forward run sliding back and sideways, the owner's
+  "side strafe".
+- **With a weapon drawn ME2 backpedals**: the pawn keeps ControlRotation's facing (`pawn 163, ControlRotation 163`) and the
+  shoulders stay within 2-43 degrees of the legs while moving (20:40:10-20:43:06, a dozen lines): the combat set's directional
+  animations, the legs right.
+- **ME1 is the same**: the same explore turn and the same rule; the table above already says backing up leaves the legs 120
+  degrees off ("The explore set has no backward run, so no rule makes it right").
+- **ME2's explore set has no backward run either** (LExSDKv2's LE2 headers): `BioAnimNodeLocomotionMoving` has lean and incline
+  only (`AngleLeanLeft/Right`, `AngleAscend/Descend`, `Min/Mid/MaxSpeed`), no direction; the directional blend
+  (`Engine.AnimNodeBlendDirectional`) is presumably the combat branch's [verify: `mevr animtree Directional` on ME2].
+
+### The options (the owner's to choose; nothing built or changed)
+
+1. **Keep it** (today's): continuous, no snap, the legs on the run up to 60 degrees; backing up reads as a strafe.
+2. **A larger twist limit** (`[Hands] legsTwistDeg` 90, the existing setting's top): backing up, the legs end 90 degrees off the
+   motion instead of 120; still sideways, the spine visibly wrung. A setting change only.
+3. **Backpedal exploring, the run reversed:** while the stick points behind the view exploring in VR, the pawn keeps the view's
+   facing (its `DesiredRotation` written back after `PlayerMoveCombatOrExplore`, where the speed from the push is set) and the
+   explore run's sequences play at a negative `AnimNodeSequence.Rate` (this note's option 4 of 2026-11-04): the legs face forward
+   and step backward. Unknowns: whether ME2's `BioAnimMovementSync` (the run's sync group) rewrites the rate each tick, and how a
+   reversed run reads at speed.
+4. **Backpedal with the combat legs:** the same facing, and the legs composed from the combat branch's directional locomotion
+   while backing up (the node choosing explore or combat composed the other way round, as ME1's `exploreStance` composes explore
+   while drawn: research/38 A). Unknowns: whether the combat branch animates with no weapon in hand, and that node's name on ME2.
+
+3 and 4 need the AnimTree read in the game first: `tools/le2-halcyon-run/posture-walk.ps1 -Phases tree` logs the locomotion
+nodes (`mevr animtree Locomotion`, `Directional`, `Combat`, `Storm`) and a backing-up replay with the head pitched down
+(`--pitch -60`) under a camera trace.

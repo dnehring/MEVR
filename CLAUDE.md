@@ -346,6 +346,14 @@ switching frameworks.
   test (`0xAB1430`, mod side) and skips it for the player's pawn; a cover already taken is left with
   `TryExitCover`. A real crouch below 0.75 of the standing eye height (hysteresis 0.85, 0.2 s) is
   `BioPawn.ShouldCrouch` (ProcessEvent), on physical changes only: L3 still toggles in between.
+  **The crouch follows you** (`[Hands] crouchFollow = 1`, every game; the owner, 2026-11-18; research/23 section 8.2): a change the
+  game makes against your real posture (not L3's) is put back once its reason is over (ME2 stands a crouched Shepard up to walk
+  with the weapon away: he crouches again when he stops), unless the game undoes it again within 1.5 s twice (`ik::posture::
+  CrouchArbiter`'s `restoring`/`insisted`; log `posture: the game stood Shepard up while you are crouched (...)`). **L3 crouches on
+  the sequels** (`[Hands] crouchClick = 1`, section 8.3): the mod toggles `Engine.Pawn.ShouldCrouch` and the host keeps that L3
+  from the game (`kFlagModCrouchClick`, host-only `keepCrouchClick`; their L3 is the map's). Off until the owner's yes
+  (question 20): `[Hands] crouchMinDropM` (the calibrated threshold sat 15 cm under standing: a reach crouched the owner) and
+  `crouchLeanRatio` (a drop that took the head forward that much is a lean).
   **VR cover** (research/23 section 6, 2026-11-05; `core/vr/VrCover` for all three games, `game/VrCover` LE1; `[Cover]
   protect`, `reachM` 1.2): the game's cover cut (LE1 `ProxyTakeDamage`'s cone: all of a hit from the cover's front beyond
   3 m on Casual and Normal, 90% above) for a VR player whose head is hidden from the shooter by a surface within reachM of
@@ -600,7 +608,9 @@ switching frameworks.
   linearFullAt)` (0.9; MoveMag = |`PlayerInput.RawJoyUp`, `RawJoyRight`|, the push past the game's dead zone) after the game's
   `PlayerMoveExplore`/`PlayerMoveCombat` (a CallFunction post notes which ran; the walk toggle, crouch, cover, ignored input and
   the sprint stay the game's); **`startStopAnims = 0`**: `BioPawnBehavior.m_bEnableStartAnim`/`StopAnim`/`SkidAnim` cleared in VR on
-  foot, put back if still ours (the start step held Shepard 0.15-0.19 s after every push, the stop step slid him and rebounded).
+  foot, put back if still ours (the start step held Shepard 0.15-0.19 s after every push, the stop step slid him and rebounded);
+  on ME2 and ME3 the explore tree's `BioAnimNodeLocomotionStart`/`-Stop` nodes' root motion requests are answered with RMM_Ignore
+  too (`UpdateStartSteps`; ME2 since lane M2W, its turned starts had come 0.3 s late: research/38 "ME2's late start").
   Measured: a run within 0.1 s of the push, the stop at once; half a push 167 u/s (1.7 m/s; the game's 75), 0.68 267, 0.8 333.
   `mevr findplayer [pawn|behavior|controller]` puts the player's object at
   `mevr props 0` / `setprop 0` (find, which names every object, ran past the console's 10 s). `drawRate = 6` (D, 1..10; the animation still plays, so every notify fires): the WeaponEquip node's Draw/Holster sequences play faster (their Rate

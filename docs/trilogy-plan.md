@@ -467,6 +467,8 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Shared since 2026-11-18:** hand contact with other characters (`game/HandContact`, `[HandContact]`, research/73, ledger
   G59; the owner's design): the drawn hand stops at a person's body and slides along it while the controller goes on, a buzz
   on contact, nobody pushed; every game, on by default, built and unit-tested, not yet run in a game.
+- **Backing up with the weapon away** (lane M2W, 2026-11-18): the legs run 120 degrees off the motion on ME1 and ME2 (no
+  backward run exploring): [question 19](#open-owner-questions), research/29 "Backing up on the sequels".
 - **Closes when:** snapshot `mod.armIk.hands` puts each wrist on its controller through a vault; `mod.fingers` follows
   a replayed trigger and grip; the ME3 null-height run's script passes on ME2's Save 4.
 - **Waits for:** nothing (T04 declared the ME3 Velocity handle, 2026-11-16: see it in a walk). **Who:** C4 (C2's successor).
@@ -633,8 +635,13 @@ These unblock the most: almost every other entry gets smaller once they land.
   0, 0.1, 0.2 s; was 0, 3-12, 152-253), half a push 189 at once; the stop stays a stop (the stop animation had walked the pawn
   on 16-38 units over 0.5 s). The response's per-tick trace (`movement: response ticks`) and `mevr loco start game|on`.
   research/38 "ME3's exploring start and stop".
+- **Done (lane M2W, 2026-11-18):** ME2's late start ("a noticeable delay" in the headset): the same nodes and request list as
+  ME3's (a turned start 0, 0, 7, 206-284 u/s with RootMotionMode 3 throughout, the stop animation's 3 after every let-go;
+  ME1's flags already off), so AU9's `UpdateStartSteps` runs on ME2 too, its trace names the requests there and `mevr loco
+  start game|on` is ME2's switch (research/38 "ME2's late start"). [verify]: `tools/le2-halcyon-run/posture-walk.ps1 -Phases
+  start`.
 - **Left:** the stance (off on ME1 too); a sideways slip at the end of a push after a 180-degree explore turn on ME3 (with and
-  without the fix; research/38 item 5).
+  without the fix; research/38 item 5); ME2's start in the game with the fix.
 - **Closes when:** `movement: response:` shows a run within 0.1 s of the push and half a push walking, on each sequel.
 - **Waits for:** nothing. **Who:** AU3 (the walk), AU5 (the constant eye); the rest nobody yet.
 
@@ -660,6 +667,12 @@ These unblock the most: almost every other entry gets smaller once they land.
   one refusal rule for the three games (`ik::posture::RefuseCoverSnap`, unit-tested; ME3's had also asked for the host's
   controls and native movement and failed open), the take-cover prompt hidden as ME2's, first person kept in cover; their
   checks are "The cover checks lane FX3 added" in the same fixture note. The crouch has no in-game result either.
+  **Lane M2W (2026-11-18, the owner's ME2 session; research/23 section 8):** the crouch follows the player (`[Hands]
+  crouchFollow`, on: a change the game makes against the real posture, not L3's, put back once its reason is over; ME2 stands
+  a crouched Shepard up to walk with the weapon away, so he crouches again when he stops; the game insisting wins), L3 is the
+  crouch toggle on the sequels as on ME1 (`[Hands] crouchClick`, on; kept from the game, whose L3 is ME2's map and objective
+  radar and ME3's point of interest), and the margin and the lean (`crouchMinDropM`, `crouchLeanRatio`) built off for
+  [question 20](#open-owner-questions). In the game: `tools/le2-halcyon-run/posture-walk.ps1 -Phases crouch,l3`.
 - **Closes when:** `mevr cover hit` shows no damage covered and full damage exposed, and A never snaps, on each sequel.
   ME2 also: the shields' wait before recharging is two thirds behind cover (`mevr cover regen`), whole exposed (the faster
   recharge, granted 2026-11-16 and built by lane GR: research/23 section 7.5; ME1 and ME3 have no such rule).
@@ -880,6 +893,8 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **State:** LE1 done · LE2 headset · LE3 headset
 - **Lives in:** `plugin/PadMerge`, `game/GamepadMapping`, `plugin/XrHost`, `core/xr/Input`.
 - **Left:** the both-sticks hold in a headset on each sequel (rule 16).
+- **Done (lane M2W, 2026-11-18):** the sequels keep the left stick click from the game while it is the mod's crouch toggle
+  (`Options::modCrouchClick` across, `keepCrouchClick` host-only, as the right click's `keepPowerClick`); LE1 unchanged.
 
 ### Powers, the squad, voice, conversations
 
@@ -1358,6 +1373,19 @@ me3/summary.md; the owner's words in quotes):
     at ME2's menus, conversation wheel and room screens at that shape; 16:9 until then. **Answered 2026-11-18 ("whichever
     leads to the better user experience"), measured by lane AU9: 16:9** (4:3 broke the power wheel at the hand and saved
     about 5% of the GPU; research/le3-flares-and-window.md section 6.1).
+19. **Backing up with the weapon away** (T21; lane M2W, 2026-11-18, research/29 "Backing up on the sequels"; the owner: "my
+    avatar does a side strafe instead of walking backward"). Exploring, ME1 and ME2 turn Shepard to run where the stick points
+    and have no backward run; the legs keep the run with the spine at its 60 degrees, so backing up the legs run 120 degrees
+    off the motion. With a weapon drawn both backpedal, legs right. Options: (1) keep it; (2) `[Hands] legsTwistDeg` 90 (90
+    degrees off, the spine wrung); (3) backpedal exploring with the explore run played backwards (needs the AnimTree read:
+    `posture-walk.ps1 -Phases tree`); (4) backpedal with the combat branch's directional legs. Recommendation: (3) if the run's
+    sync group takes a negative rate, else (4); (1) until the tree is read. Today: (1).
+20. **The physical crouch's margin and a lean** (T31; lane M2W, 2026-11-18, research/23 section 8.1; the owner: "When my hand
+    touches an NPC or companion, I go into a kind of crouch"). The calibration's threshold is half way down to the measured
+    crouch, capped at 0.92 of standing: with the owner's shallow calibrated crouch (31 cm) a 15 cm drop crouches, and his reach
+    (eyes 1.69 m of 1.86 m) did. Built, off: `[Hands] crouchMinDropM` (the crouch at least that far under standing, never below
+    the calibrated crouch; 0.25: the crouch at 1.61 m) and `[Hands] crouchLeanRatio` (a drop that took the head that many times
+    as far forward is a lean; 1.0). Recommendation: both (0.25 and 1.0) on every game. Today: neither.
 
 **Defaults waiting for a seen result and a yes** (not questions yet): `[SquadOrders] place` on the sequels (ME1's is on),
 `[Traversal] cue`, ME3's heavy melee and traversal gestures (its stroke melee is on by default since 2026-11-17), the

@@ -57,7 +57,7 @@ vehicle, 10 orbital); shared code asks `engine::adapter::GameMode`
 | X | hand power wheel | power wheel | nothing | same; but X is ME2's reload, so the controllers have no reload button |
 | Y | the game's Y | - | Y | what ME2 does with it: not established |
 | left stick | walks toward the head | power wheel > squad menu > walk | stick | same |
-| left stick click | crouch toggle after 100 ms | chord > the game | L3 | same |
+| left stick click | crouch toggle after 100 ms | chord > the game | L3 | in VR on foot the mod's crouch toggle, kept from the game (whose L3 is `Console_ShowMap`: the area map, the objective radar); lane M2W 2026-11-18, research/23 section 8.3 |
 | right stick X | turn (the game's, or snap) | squad menu > placement selector > comfort | stick X unless the mod turns | same |
 | right stick Y | nothing of ours | - | stick Y | ME1 steps the scope's zoom under ADS; ME2 has one step |
 | right stick click, held 0.3 s | the game's power wheel | chord > the mod's hold | **nothing: R3 never reaches ME2** | ME1 still sends R3 |

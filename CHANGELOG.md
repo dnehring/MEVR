@@ -18,6 +18,15 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 - **Shadows stay off in all three games.** Cinematics, conversations and menus turned the shadows back on (on ME2 since
   today's motion-blur fix), and they differ between the eyes in VR; they now go off again every time you're back in the
   game, and Shepard's and the characters' shadows are off on ME1 too.
+- **ME2: walking starts at once.** After a turn, Shepard's first steps came about a third of a second late (his start
+  animation moved him), and a stop slid him on; now he runs where the stick points at once and stops at once, as on ME3
+  and ME1. Headset verification pending.
+- **The crouch follows you.** When the game stands Shepard up while you are crouched (ME2 does when you walk with the weapon
+  away) or crouches him while you stand, he goes back to your posture as soon as the game allows; the left stick click is still
+  yours to change it until your next real crouch or stand. To keep the game's changes, set `crouchFollow = 0` under `[Hands]`.
+- **ME2 and ME3: the left stick click crouches**, as on ME1. It no longer opens the area map or the objective radar on foot
+  (the map stays on the omni-tool's Map entry). To give the click back to the game, set `crouchClick = 0` under `[Hands]` in
+  `ASI\LE2MEVR.ini` or `LE3MEVR.ini`.
 - **No more floating at the Council.** After the ride up to the council chamber, Shepard's body (at your size) stood up to
   30 cm above the bridge in first-person conversations, the eyes in its chest or, since the crouch fix, the knees bent with
   the feet in the air. It now stands on the floor it is drawn on in every scene that holds your view.

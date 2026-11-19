@@ -895,6 +895,19 @@ sits 24-34 units (cm) ahead of Shepard's head bone on ME2 and ME3; ME1's about 4
   ...` names the one in use; `arm IK: first person camera vs Shepard's head bone: forward N` the distance (fake headset: ME2
   29 today, 18 Between, 4 At the face; ME3 29-32, 17-20, about 3).
 
+### Walking and crouching on ME2 (lane M2W, 2026-11-18; research/38 "ME2's late start", research/23 section 8)
+
+- [ ] ME2, weapon away: push the stick the way Shepard faces, then the opposite way, a few times. Shepard runs at once both
+  ways (before: about 0.3 s late after a turn), and stops at once when you let go.
+- [ ] ME2: crouch for real with the weapon away, then walk a step: he stands to walk (ME2 has no crouched walk exploring) and
+  crouches again when you stop while you stay down; with a weapon drawn he walks crouched. Stand up: he stands. Log
+  `posture: the game stood Shepard up while you are crouched`.
+- [ ] ME2 and ME3: tap the left stick click on foot: Shepard crouches, tap again: he stands; no area map and no objective
+  radar. Both stick clicks held still open our menu.
+- [ ] Reach toward a squadmate with `[Hands] crouchMinDropM = 0.25` and `crouchLeanRatio = 1` in `ASI\LE2MEVR.ini` (and
+  `LE1MEVR.ini`): no crouch; a real crouch still crouches. Say whether they become the defaults (question 20).
+- [ ] Walk backwards with the weapon away (question 19): today the legs run sideways; say which option to build.
+
 ### ME2
 - [ ] The game's start (T18, research/56 "The sequels", lane FE, seen on the fake headset 2026-11-18): as ME1's line in "The
   game's start": the logos flat, the "PRESS ANY KEY" title and the main menu on the 3D cinema screen at head height, fixed in

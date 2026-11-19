@@ -9,6 +9,7 @@ keeping the run (research/29 "The legs keep the run"): replay it with its inputs
 
     python tools/make-walk-recording.py out.mevrrec [segment] [hz] [--yaw DEG] [--pitch DEG] [--eye-height M] [--stick S] [--grip]
         [--plan forward:14,stand:600] [--hands chest|view] [--hand-yaw DEG] [--fire EVERY[:HOLD]] [--crouch-drop M]
+        [--lean-drop M] [--lean-forward M]
         [--tracking both|left|right|none]
     tools/replay.ps1 -Path out.mevrrec -Loop -Inputs
 
@@ -32,8 +33,9 @@ aim's check (shots follow the controller, not the view; research/le2-vrik.md "Ha
 the way for HOLD seconds (default 0.15) every EVERY seconds, from 2 s on (shots; replay with -Inputs). A plan's `crouch`
 segment holds the stick still with the head (and the hands) --crouch-drop metres lower (default 0.6: below [Hands]
 crouchBelow's 0.75 of a 1.65 m standing eye height), the physical crouch's check (research/23 section 7):
-`--plan stand:8,crouch:4,stand:8`.
-The plan also accepts `back-button` (left menu with left grip, mapped to pad Back), `start-button` (left menu alone:
+`--plan stand:8,crouch:4,stand:8`. A `lean` segment holds the head (and the hands) --lean-drop metres lower (default 0.17)
+and --lean-forward metres ahead (default 0.35): a reach toward someone, not a crouch (research/23 "A lean is not a crouch").
+The plan also accepts `l3` (the left stick click: the crouch toggle on foot), `back-button` (left menu with left grip, mapped to pad Back), `start-button` (left menu alone:
 pad Start, the game's own pause menu), `r3` (right stick click), `x` (the left primary: pad X; ME3's system map binds
 Exit to it) and `b` (the right secondary: pad B; ME3's orbit backs out with it). For ME2/ME3's existing Back double-tap recenter use
 `--plan stand:2,back-button:0.12,stand:0.12,back-button:0.12,stand:12 --live-head` with replay `-Inputs`.
@@ -64,8 +66,9 @@ FRAME = struct.Struct("<qI" + (POSE + "4f") * 2 + ("I4f" + POSE + POSE) * 2)
 SEGMENTS = [("forward", 0.0, 1.0), ("strafe right", 1.0, 0.0), ("back", 0.0, -1.0), ("strafe left", -1.0, 0.0),
             ("stand", 0.0, 0.0)]
 # Plan-only segments (not in the default loop): the head lowered, the stick still.
-EXTRA = [("crouch", 0.0, 0.0), ("a", 0.0, 0.0), ("sprint", 0.0, 1.0),
-         ("back-button", 0.0, 0.0), ("start-button", 0.0, 0.0), ("r3", 0.0, 0.0), ("x", 0.0, 0.0), ("b", 0.0, 0.0)]
+EXTRA = [("crouch", 0.0, 0.0), ("lean", 0.0, 0.0), ("a", 0.0, 0.0), ("sprint", 0.0, 1.0),
+         ("back-button", 0.0, 0.0), ("start-button", 0.0, 0.0), ("r3", 0.0, 0.0), ("l3", 0.0, 0.0), ("x", 0.0, 0.0),
+         ("b", 0.0, 0.0)]
 
 
 def head_orientation(yaw_deg, pitch_deg):
@@ -100,11 +103,13 @@ def main():
     fire_every = float(fire_text.split(":")[0]) if fire_text else 0.0
     fire_hold = float(fire_text.split(":")[1]) if ":" in fire_text else 0.15
     crouch_drop = option("--crouch-drop", 0.6)
+    lean_drop = option("--lean-drop", 0.17)
+    lean_forward = option("--lean-forward", 0.35)
     if hands not in ("chest", "view"):
         print("--hands chest|view")
         return 2
     taken = {i + 1 for i, a in enumerate(sys.argv) if a in ("--yaw", "--pitch", "--eye-height", "--stick", "--plan", "--hands", "--hand-yaw", "--fire",
-                                                             "--crouch-drop", "--tracking")}
+                                                             "--crouch-drop", "--lean-drop", "--lean-forward", "--tracking")}
     args = [a for i, a in enumerate(sys.argv) if i > 0 and not a.startswith("--") and i not in taken]
     if not args:
         print(__doc__)
@@ -161,15 +166,17 @@ def main():
             name, sx, sy = frames[i]
             parts = set(name.split("+"))
             trigger = 1.0 if (fire_every > 0 and t >= 2.0 and (t - 2.0) % fire_every < fire_hold) or "rt" in parts else 0.0
-            dy = -crouch_drop if "crouch" in parts else 0.0
+            dy = -crouch_drop if "crouch" in parts else -lean_drop if "lean" in parts else 0.0
+            df = lean_forward if "lean" in parts else 0.0
 
-            def lowered(pose):  # xyzw then xyz: the position's y lowered by dy
-                return (*pose[:4], pose[4], pose[5] + dy, pose[6])
+            def lowered(pose):  # xyzw then xyz: the position's y lowered by dy, moved df ahead (a lean)
+                return (*pose[:4], pose[4] + df * ahead[0], pose[5] + dy, pose[6] + df * ahead[2])
 
             e0, e1, lh, rh = lowered(eyes[0]), lowered(eyes[1]), lowered(left_hand), lowered(right_hand)
             flags = (0 if live_head else 1) | (0 if tracking == "none" else 2)
             f.write(FRAME.pack(int(t * 1e9), flags, *e0, *fov, *e1, *fov,
-                               (valid if tracking in ("both", "left") else 0) | (8 if parts & {"back-button", "start-button"} else 0) | (2 if "x" in parts else 0),
+                               (valid if tracking in ("both", "left") else 0) | (8 if parts & {"back-button", "start-button"} else 0) | (2 if "x" in parts else 0)
+                               | (1 if "l3" in parts else 0),
                                1.0 if "lt" in parts else 0.0,
                                1.0 if "back-button" in parts else 0.0, sx * stick, sy * stick, *lh, *lh,
                                (valid if tracking in ("both", "right") else 0) | (2 if parts & {"a", "sprint"} else 0) | (1 if "r3" in parts else 0) | (4 if "b" in parts else 0),
