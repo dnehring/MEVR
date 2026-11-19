@@ -40,6 +40,10 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
   wall at your eyes' height between you and the shooter now counts, even when a drone hovers higher; your eyes must still be
   below its top. `judge = line` under `[Cover]` in `ASI\LE2MEVR.ini` (or `LE3MEVR.ini`) gives the old rule. Game and headset
   verification pending.
+- **Reaching toward someone no longer crouches you.** With a shallow calibrated crouch a lean of 15 cm was enough to crouch
+  Shepard; now your eyes must be at least 25 cm under your standing height (your calibrated crouch still counts), and a drop
+  that takes your head forward at least as far as down is a lean, not a crouch. Every game; `crouchMinDropM = 0` and
+  `crouchLeanRatio = 0` under `[Hands]` bring back the old rule.
 - **No more floating at the Council.** After the ride up to the council chamber, Shepard's body (at your size) stood up to
   30 cm above the bridge in first-person conversations, the eyes in its chest or, since the crouch fix, the knees bent with
   the feet in the air. It now stands on the floor it is drawn on in every scene that holds your view.

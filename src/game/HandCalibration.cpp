@@ -177,8 +177,8 @@ constexpr char const* kDefaultFile =
     "crouchBelow = 0.75\n"
     "standAbove = 0.85\n"
     "crouchDwellS = 0.2\n"
-    "crouchMinDropM = 0\n"
-    "crouchLeanRatio = 0\n"
+    "crouchMinDropM = 0.25\n"
+    "crouchLeanRatio = 1.0\n"
     "crouchClick = 1\n"
     "crouchFollow = 1\n"
     "; levelCamera: 1 keeps the game camera level on foot while the hand aims (the guns' recoil and aim assist\n"
@@ -3499,10 +3499,10 @@ void Refresh() {
         {L"Hands", "Hands", L"crouchBelow", "crouchBelow", L"0.75"},
         {L"Hands", "Hands", L"standAbove", "standAbove", L"0.85"},
         {L"Hands", "Hands", L"crouchDwellS", "crouchDwellS", L"0.2"},
-        // The crouch's margin and a lean that isn't one (off until the owner's yes), and L3 as the sequels' crouch toggle
-        // (2026-11-18, lane M2W; research/23 "A lean is not a crouch", "L3 crouches on the sequels").
-        {L"Hands", "Hands", L"crouchMinDropM", "crouchMinDropM", L"0"},
-        {L"Hands", "Hands", L"crouchLeanRatio", "crouchLeanRatio", L"0"},
+        // The crouch's margin and a lean that isn't one (on since the owner's yes, 2026-11-18), and L3 as the sequels' crouch
+        // toggle (2026-11-18, lane M2W; research/23 "A lean is not a crouch", "L3 crouches on the sequels").
+        {L"Hands", "Hands", L"crouchMinDropM", "crouchMinDropM", L"0.25"},
+        {L"Hands", "Hands", L"crouchLeanRatio", "crouchLeanRatio", L"1.0"},
         {L"Hands", "Hands", L"crouchClick", "crouchClick", L"1"},
         // The crouch follows the player's posture (2026-11-18, the owner; research/23 "The crouch follows you").
         {L"Hands", "Hands", L"crouchFollow", "crouchFollow", L"1"},

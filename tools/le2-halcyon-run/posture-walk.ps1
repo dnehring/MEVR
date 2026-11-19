@@ -12,7 +12,8 @@
 #   tree    `mevr animtree` for the locomotion nodes (the explore set's backward run, if any; the combat branch's directional
 #           node): what research/29's backing-up options need
 #   crouch  the owner's calibrated thresholds put in [Hands] (crouchBelow 0.92, standAbove 0.942) on the fake headset's
-#           1.75 m: a lean (0.17 m down, 0.35 m ahead) and a squat, with crouchLeanRatio 0 / 1 and crouchMinDropM 0 / 0.25;
+#           1.75 m: a lean (0.17 m down, 0.35 m ahead) and a squat, with crouchLeanRatio 0 / 1 and crouchMinDropM 0 / 0.25 (both
+#           on: the defaults since 2026-11-18);
 #           then a crouch and a crouched walk exploring (the game stands him to walk; crouchFollow puts him back once still).
 #           Only conclusive if the replayed head reaches the posture's floor sample: research/23 section 7.5 found the live
 #           STAGE height kept under a replay on 2026-11-16; no `posture: physical crouch` line here means it still is
@@ -93,13 +94,14 @@ if ($Phases -contains 'tree') {
 if ($Phases -contains 'crouch') {
     Hands 'crouchBelow' '0.92'
     Hands 'standAbove' '0.942'
-    foreach ($case in @(@('0', '0'), @('1', '0'), @('0', '0.25'))) {
+    foreach ($case in @(@('0', '0'), @('1', '0'), @('0', '0.25'), @('1.0', '0.25'))) {
         Hands 'crouchLeanRatio' $case[0]
         Hands 'crouchMinDropM' $case[1]
         Play 'stand:2,lean:2.5,stand:2.5,crouch:2.5,stand:2.5' ("lean-ratio{0}-drop{1}.mevrrec" -f $case[0], $case[1]) @('--crouch-drop', '0.45')
     }
-    Hands 'crouchLeanRatio' '0'
-    Hands 'crouchMinDropM' '0'
+    # The defaults since the owner's yes (2026-11-18, question 20).
+    Hands 'crouchLeanRatio' '1.0'
+    Hands 'crouchMinDropM' '0.25'
     # The follow rule: crouched, a crouched walk exploring (the game stands him to walk), crouched still again.
     Play 'stand:2,crouch:2,crouch+forward:1.5,crouch:3,stand:2.5' 'crouch-walk.mevrrec' @('--crouch-drop', '0.45')
 }

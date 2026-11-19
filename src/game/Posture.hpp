@@ -47,7 +47,8 @@
 // Since lane M2W (2026-11-18, research/23 section 8): the crouch follows the player ([Hands] crouchFollow): the game's own
 // change against the real posture is put back once its reason is over (ME2 stands a crouched Shepard up to walk with the
 // weapon away), L3's kept; on the sequels L3 is the mod's crouch toggle ([Hands] crouchClick, kept from the game by the host);
-// [Hands] crouchMinDropM and crouchLeanRatio (off) give the threshold a margin and tell a lean from a crouch.
+// [Hands] crouchMinDropM (0.25) and crouchLeanRatio (1.0; both on since the owner's yes, 2026-11-18) give the threshold a
+// margin and tell a lean from a crouch.
 namespace mevr::game::posture {
 
 // What the host offers this tick (Mod.cpp fills it from HostServices).

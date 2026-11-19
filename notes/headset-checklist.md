@@ -904,8 +904,8 @@ sits 24-34 units (cm) ahead of Shepard's head bone on ME2 and ME3; ME1's about 4
   `posture: the game stood Shepard up while you are crouched`.
 - [ ] ME2 and ME3: tap the left stick click on foot: Shepard crouches, tap again: he stands; no area map and no objective
   radar. Both stick clicks held still open our menu.
-- [ ] Reach toward a squadmate with `[Hands] crouchMinDropM = 0.25` and `crouchLeanRatio = 1` in `ASI\LE2MEVR.ini` (and
-  `LE1MEVR.ini`): no crouch; a real crouch still crouches. Say whether they become the defaults (question 20).
+- [ ] Reach toward a squadmate (ME2, then ME1; `[Hands] crouchMinDropM = 0.25` and `crouchLeanRatio = 1.0`, the defaults
+  since 2026-11-18): no crouch, and the log's `posture: a lean, not a crouch`; a real crouch still crouches.
 - [ ] Walk backwards with the weapon away (question 19): today the legs run sideways; say which option to build.
 
 ### ME2

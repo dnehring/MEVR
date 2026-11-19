@@ -353,9 +353,9 @@ switching frameworks.
   with the weapon away: he crouches again when he stops), unless the game undoes it again within 1.5 s twice (`ik::posture::
   CrouchArbiter`'s `restoring`/`insisted`; log `posture: the game stood Shepard up while you are crouched (...)`). **L3 crouches on
   the sequels** (`[Hands] crouchClick = 1`, section 8.3): the mod toggles `Engine.Pawn.ShouldCrouch` and the host keeps that L3
-  from the game (`kFlagModCrouchClick`, host-only `keepCrouchClick`; their L3 is the map's). Off until the owner's yes
-  (question 20): `[Hands] crouchMinDropM` (the calibrated threshold sat 15 cm under standing: a reach crouched the owner) and
-  `crouchLeanRatio` (a drop that took the head forward that much is a lean).
+  from the game (`kFlagModCrouchClick`, host-only `keepCrouchClick`; their L3 is the map's). On by default since the owner's yes
+  (question 20, 2026-11-18), every game: `[Hands] crouchMinDropM` 0.25 (the calibrated threshold sat 15 cm under standing: a
+  reach crouched the owner) and `crouchLeanRatio` 1.0 (a drop that took the head forward at least as far is a lean).
   **VR cover** (research/23 section 6, 2026-11-05; `core/vr/VrCover` for all three games, `game/VrCover` LE1; `[Cover]
   protect`, `reachM` 1.2): the game's cover cut (LE1 `ProxyTakeDamage`'s cone: all of a hit from the cover's front beyond
   3 m on Casual and Normal, 90% above) for a VR player whose head is hidden from the shooter by a surface within reachM of

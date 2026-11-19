@@ -684,8 +684,8 @@ These unblock the most: almost every other entry gets smaller once they land.
   crouchFollow`, on: a change the game makes against the real posture, not L3's, put back once its reason is over; ME2 stands
   a crouched Shepard up to walk with the weapon away, so he crouches again when he stops; the game insisting wins), L3 is the
   crouch toggle on the sequels as on ME1 (`[Hands] crouchClick`, on; kept from the game, whose L3 is ME2's map and objective
-  radar and ME3's point of interest), and the margin and the lean (`crouchMinDropM`, `crouchLeanRatio`) built off for
-  [question 20](#open-owner-questions). In the game: `tools/le2-halcyon-run/posture-walk.ps1 -Phases crouch,l3`.
+  radar and ME3's point of interest), and the margin and the lean (`crouchMinDropM` 0.25, `crouchLeanRatio` 1.0), on by
+  default on every game since the owner's answer to [question 20](#open-owner-questions) (2026-11-18). In the game: `tools/le2-halcyon-run/posture-walk.ps1 -Phases crouch,l3`.
 - **Closes when:** `mevr cover hit` shows no damage covered and full damage exposed, and A never snaps, on each sequel.
   ME2 also: the shields' wait before recharging is two thirds behind cover (`mevr cover regen`), whole exposed (the faster
   recharge, granted 2026-11-16 and built by lane GR: research/23 section 7.5; ME1 and ME3 have no such rule).
@@ -1403,7 +1403,8 @@ me3/summary.md; the owner's words in quotes):
     crouch, capped at 0.92 of standing: with the owner's shallow calibrated crouch (31 cm) a 15 cm drop crouches, and his reach
     (eyes 1.69 m of 1.86 m) did. Built, off: `[Hands] crouchMinDropM` (the crouch at least that far under standing, never below
     the calibrated crouch; 0.25: the crouch at 1.61 m) and `[Hands] crouchLeanRatio` (a drop that took the head that many times
-    as far forward is a lean; 1.0). Recommendation: both (0.25 and 1.0) on every game. Today: neither.
+    as far forward is a lean; 1.0). Recommendation: both (0.25 and 1.0) on every game. **Answered 2026-11-18, the owner: "Yes,
+    please turn on those fixes so I can validate them in game": both on by default, every game.**
 
 **Defaults waiting for a seen result and a yes** (not questions yet): `[SquadOrders] place` on the sequels (ME1's is on),
 `[Traversal] cue`, ME3's heavy melee and traversal gestures (its stroke melee is on by default since 2026-11-17), the

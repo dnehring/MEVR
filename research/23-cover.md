@@ -626,12 +626,13 @@ Shepard as best we can."
   (the head 4 cm too high), and 14-17 cm three times within a second of a full-speed run (20:37:01.9, 20:37:02.9, 20:39:21.8) with
   the eyes at 1.84 m: while running, the gap the torso measures is the run pose's, not a crouch. Not this lane's rule; told in the
   report.
-- **Built, off until the owner's yes** (`core/ik/Posture`, unit-tested in `tests/PostureOwnershipTests.cpp`):
-  - `[Hands] crouchMinDropM` (0 = off; suggested 0.25): `ik::posture::WithMinimumDrop` moves the crouch threshold down until the
+- **Built, on by default since the owner's yes** (2026-11-18, question 20, every game; `core/ik/Posture`, unit-tested in
+  `tests/PostureOwnershipTests.cpp`):
+  - `[Hands] crouchMinDropM` (0.25 by default; 0 = off): `ik::posture::WithMinimumDrop` moves the crouch threshold down until the
     eyes must be that far under the live standing height, never below the calibrated crouch + 3 cm (so it still crouches), the
     stand keeping its hysteresis gap. The owner's numbers at 0.25: the crouch at 1.61 m (0.866), the stand at 1.66 m; the leans at
     1.68-1.69 m don't crouch, his calibrated 1.56 m does.
-  - `[Hands] crouchLeanRatio` (0 = off; suggested 1.0): `ik::posture::LeanGuard` keeps where the head stood (horizontally, in the
+  - `[Hands] crouchLeanRatio` (1.0 by default; 0 = off): `ik::posture::LeanGuard` keeps where the head stood (horizontally, in the
     room) while the eyes were in the standing band (at or above `standAbove`) and calls a drop a lean while the head has moved at
     least that many times as far horizontally as down; the detector's crouch dwell then starts over (it gets the threshold, not
     past it). Standing up is never held back. A reach (0.30 m forward for 0.09 m down) is a lean at 1.0, a squat (0.05 m forward,

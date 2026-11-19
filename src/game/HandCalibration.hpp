@@ -347,9 +347,10 @@ Throwables GetThrowables();
 //   standAbove       stand again above this fraction (0.85)
 //   crouchDwellS     ...once the head has stayed past it this long (seconds, 0.2)
 //   crouchMinDropM   the crouch at least this far under the standing eye height, whatever the calibration's threshold
-//                    (meters; 0 = off, the default until the owner's yes; research/23 "A lean is not a crouch")
+//                    (meters; 0.25 by default since the owner's yes, 2026-11-18; 0 = off; research/23 "A lean is not a
+//                    crouch")
 //   crouchLeanRatio  a drop whose head moved forward at least this many times as far as it went down is a lean, not a
-//                    crouch (0 = off, the default until the owner's yes)
+//                    crouch (1.0 by default since the owner's yes, 2026-11-18; 0 = off)
 //   crouchClick      the sequels: L3 toggles the crouch in VR on foot as on ME1, kept from the game (1, the owner's
 //                    2026-11-18; ME1's L3 is the game's own toggle and this key does nothing there)
 //   crouchFollow     1: a crouch or stand the game makes against your real posture (not L3's) is put back once its reason
@@ -359,8 +360,8 @@ struct Posture {
     bool noCover = true;
     bool physicalCrouch = true;
     ik::posture::CrouchParams crouch;
-    double crouchMinDropM = 0.0;
-    double crouchLeanRatio = 0.0;
+    double crouchMinDropM = 0.25;
+    double crouchLeanRatio = 1.0;
     bool crouchClick = true;
     bool crouchFollow = true;
 };
