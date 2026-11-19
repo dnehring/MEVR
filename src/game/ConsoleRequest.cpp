@@ -33,6 +33,7 @@
 #include "game/GalaxyMap.hpp"
 #include "game/GameMenuRequest.hpp"
 #include "game/GunKick.hpp"
+#include "game/AnimDriver.hpp"
 #include "game/Hair.hpp"
 #include "game/HandContact.hpp"
 #include "game/CombatStance.hpp"
@@ -1601,6 +1602,11 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         std::getline(words, rest);
         return hand_contact::Command(rest);  // `mevr contact [on|off|auto|people]` (research/73, hand contact)
     }
+    if (verb == "anim") {
+        std::string rest;
+        std::getline(words, rest);
+        return anim_driver::Command(rest);  // `mevr anim list|play|at|pause|resume|stop|status` (game/AnimDriver)
+    }
     if (verb == "hair") {
         std::string rest;
         std::getline(words, rest);
@@ -1940,6 +1946,11 @@ std::optional<std::string> RunOursLe3(ue3::Object* pc, std::string const& line) 
         std::getline(words, rest);
         return hand_contact::Command(rest);  // `mevr contact [on|off|auto|people]` (research/73, hand contact)
     }
+    if (verb == "anim") {
+        std::string rest;
+        std::getline(words, rest);
+        return anim_driver::Command(rest);  // `mevr anim list|play|at|pause|resume|stop|status` (game/AnimDriver)
+    }
     if (verb == "hair") {
         std::string rest;
         std::getline(words, rest);
@@ -2158,6 +2169,11 @@ std::optional<std::string> RunOursLe2(ue3::Object* pc, std::string const& line) 
         std::string rest;
         std::getline(words, rest);
         return hand_contact::Command(rest);  // `mevr contact [on|off|auto|people]` (research/73, hand contact)
+    }
+    if (verb == "anim") {
+        std::string rest;
+        std::getline(words, rest);
+        return anim_driver::Command(rest);  // `mevr anim list|play|at|pause|resume|stop|status` (game/AnimDriver)
     }
     if (verb == "hair") {
         std::string rest;

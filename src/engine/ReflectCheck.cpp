@@ -3771,6 +3771,30 @@ void CheckFields() {
     CheckClass<ASFXStuntActor>("SFXGame.SFXStuntActor");  // game/Hair: ME3 conversation characters
     CheckField("SFXGame.SFXStuntActor", "BodyMesh", SDK_FIELD(ASFXStuntActor, BodyMesh));
     CheckField("SFXGame.SFXStuntActor", "HairMesh", SDK_FIELD(ASFXStuntActor, HairMesh));
+    // game/AnimDriver: a cutscene's way of animating a stunt actor (its body's MatineeAnim node), for the hair and jiggle bench.
+    CheckClass<USFXModule_Gestures>("SFXGame.SFXModule_Gestures");
+    CheckField("SFXGame.SFXModule_Gestures", "m_bInMatinee", SDK_BOOL(USFXModule_Gestures, m_bInMatinee));
+    CheckClass<UAnimSequence>("Engine.AnimSequence");
+    CheckClass<UAnimSet>("Engine.AnimSet");
+    CheckField("Engine.AnimSet", "Sequences", SDK_FIELD(UAnimSet, Sequences));
+    CheckField("Engine.AnimSequence", "SequenceName", SDK_FIELD(UAnimSequence, SequenceName));
+    CheckField("Engine.AnimSequence", "SequenceLength", SDK_FIELD(UAnimSequence, SequenceLength));
+    CheckClass<UAnimNodeSequence>("Engine.AnimNodeSequence");
+    CheckField("Engine.AnimNode", "NodeName", SDK_FIELD(UAnimNode, NodeName));
+    CheckField("Engine.AnimObject", "SkelComponent", SDK_FIELD(UAnimObject, SkelComponent));
+    CheckField("Engine.AnimNodeSequence", "CurrentTime", SDK_FIELD(UAnimNodeSequence, CurrentTime));
+    CheckField("Engine.SkeletalMeshComponent", "AnimSets", SDK_FIELD(USkeletalMeshComponent, AnimSets));
+    CheckField("Engine.SkeletalMeshComponent", "bAnimSetUpdated", SDK_BOOL(USkeletalMeshComponent, bAnimSetUpdated));
+    CheckFunction("Engine.AnimNodeSequence.SetAnim");
+    PARAM(UAnimNodeSequence_execSetAnim_Parms, "Engine.AnimNodeSequence.SetAnim", Sequence);
+    CheckFunction("Engine.AnimNodeSequence.PlayAnim");
+    PARAM(UAnimNodeSequence_execPlayAnim_Parms, "Engine.AnimNodeSequence.PlayAnim", bLoop);
+    PARAM(UAnimNodeSequence_execPlayAnim_Parms, "Engine.AnimNodeSequence.PlayAnim", InRate);
+    PARAM(UAnimNodeSequence_execPlayAnim_Parms, "Engine.AnimNodeSequence.PlayAnim", StartTime);
+    CheckFunction("Engine.AnimNodeSequence.StopAnim");
+    CheckFunction("Engine.AnimNodeSequence.SetPosition");
+    PARAM(UAnimNodeSequence_execSetPosition_Parms, "Engine.AnimNodeSequence.SetPosition", NewTime);
+    PARAM(UAnimNodeSequence_execSetPosition_Parms, "Engine.AnimNodeSequence.SetPosition", bFireNotifies);
     CheckField("Engine.PrimitiveComponent", "HiddenGame", SDK_BOOL(UPrimitiveComponent, HiddenGame));  // game/Hair
     CheckField("Engine.SkeletalMeshComponent", "Attachments", SDK_FIELD(USkeletalMeshComponent, Attachments));
     CheckField("Engine.SkeletalMeshComponent", "LocalToWorld", SDK_FIELD(USkeletalMeshComponent, LocalToWorld));

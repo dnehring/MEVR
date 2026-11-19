@@ -573,6 +573,8 @@ set(MEVR_MOD_SOURCES
     src/game/Melee.cpp
     src/game/GunKick.cpp
     src/game/GunKick.hpp
+    src/game/AnimDriver.cpp
+    src/game/AnimDriver.hpp
     src/game/Hair.cpp
     src/game/Hair.hpp
     src/game/HandContact.cpp

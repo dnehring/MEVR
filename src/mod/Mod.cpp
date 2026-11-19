@@ -65,6 +65,7 @@
 #include "game/GamepadBridge.hpp"
 #include "game/GamepadMapping.hpp"
 #include "game/GunKick.hpp"
+#include "game/AnimDriver.hpp"
 #include "game/Hair.hpp"
 #include "game/HandContact.hpp"
 #include "game/HandAim.hpp"
@@ -1413,6 +1414,7 @@ void PublishStatus() {
 #endif
         full += ", \"handContact\": " + game::hand_contact::StatusJson();
         full += ", \"hair\": " + game::hair::StatusJson();
+        full += ", \"animDriver\": " + game::anim_driver::StatusJson();
         full += ", \"traversal\": " + game::traversal::StatusJson() + "}";
     }
     gHost->setStatus(full.c_str());
@@ -1865,6 +1867,7 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
             EnsureBonePoseHook();
         }
         game::hair::Tick(deltaSeconds);
+        game::anim_driver::Tick(deltaSeconds);
         // The power wheel at the left hand (research/55) before the squad's: a pinch that equips a power is never a squad pull.
         game::power_wheel::Tick(deltaSeconds, PowerWheelLink());
         game::squad_weapons::Tick(deltaSeconds, SquadLink());
@@ -2164,6 +2167,7 @@ MEVR_MOD_API void MevrModShutdown() {
     ++gActionGeneration;
     game::gun_kick::Shutdown();
     game::hand_contact::Shutdown();
+    game::anim_driver::Shutdown();
     game::hair::Shutdown();
     if (gHost != nullptr && MEVR_HOST_HAS(setVignette) && gHost->setVignette != nullptr) {
         gHost->setVignette(0.0f);  // no vignette without the mod (the host also forgets on unload)
