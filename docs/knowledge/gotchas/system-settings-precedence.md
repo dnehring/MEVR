@@ -6,13 +6,15 @@ tags: [le1, system-settings, ini, console]
 status: stable
 timestamp: 2026-10-30T19:53:43Z
 generated: { by: claude-code/fable-5.1, at: 2026-10-30T19:53:43Z }
-bitten: [2026-10-23, 2026-10-28]
+bitten: [2026-10-23, 2026-10-28, 2026-11-18]
 ---
 
 # Symptom
 
 Shadows, motion blur or grass look like the flat game's although GamerSettings.ini (and `tools/vr-game-settings.ps1`)
-say otherwise; or they are right at the title and wrong once a save has loaded.
+say otherwise; or they are right at the title and wrong once a save has loaded; or shadows come back after a cinematic,
+a conversation or a menu and differ between the eyes (the owner, 2026-11-18, ME2: "shadows in general seem to be
+running ... I get the different image in both left and right eye"; ME1: "the cinematics re-enable it").
 
 # Cause
 
@@ -46,6 +48,12 @@ older hosts retain it. See [research/62](../../../research/62-motion-blur-and-me
 2026-11-09: healthy native protection now also consumes the 3/15-second settling deadlines without
 blanket resets. Initial/new-level applications, real edits and lost-guard fallback remain. Two controlled
 startup repeats validate reset removal; loading itself still stalls. See [research/68](../../../research/68-culling-and-startup-followup.md).
+
+2026-11-18: the guard keeps only the blur off, and a cinematic turns the shadows back on: with the whole menu-return reapply
+skipped, ME2 kept them (LE2MEVR.log's "skipped menu-return reapply after mode 6/7: native motion-blur guard healthy").
+A return to gameplay with the guard healthy now sends the shadow keys alone again (DynamicShadows, LightEnvironmentShadows,
+through their opposites: 4 commands; ME2 once the level has been in gameplay 3 s), and the character shadows are off on
+every game (engine::adapter::kVrCharacterShadowsOff).
 
 Related: [motion blur in stereo](motion-blur-in-stereo.md).
 

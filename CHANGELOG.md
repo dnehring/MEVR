@@ -7,6 +7,9 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## Unreleased
 
+- **Shadows stay off in all three games.** Cinematics, conversations and menus turned the shadows back on (on ME2 since
+  today's motion-blur fix), and they differ between the eyes in VR; they now go off again every time you're back in the
+  game, and Shepard's and the characters' shadows are off on ME1 too.
 - **No more floating at the Council.** After the ride up to the council chamber, Shepard's body (at your size) stood up to
   30 cm above the bridge in first-person conversations, the eyes in its chest or, since the crouch fix, the knees bent with
   the feet in the air. It now stands on the floor it is drawn on in every scene that holds your view.

@@ -1736,10 +1736,12 @@ switching frameworks.
   the second eye is a replay, sharePass 2/3/5: the right eye drew character shadows where the left eye sees them, research/37
   2026-11-13; **the host says whether it is**, HostServices v43 `secondEyeIsReplay` = `render_levers::SecondEyeIsReplay()`,
   false on a game where sharePass stands down: there the mod puts the player's own `GamerSettings.ini` value back, since
-  the game had written our earlier False into `BIOEngine.ini`, except on ME2 and ME3, whose character shadows are off
-  always (`kVrCharacterShadowsOff`, above); a host before v43:
+  the game had written our earlier False into `BIOEngine.ini`, except that every game's character shadows are off always
+  since 2026-11-18 (`kVrCharacterShadowsOff`; the owner: "shadows permanently disabled" on all three games); a host before v43:
   the file's `sharePass` rule on LE1 only, `engine::adapter::kOlderHostReplaysSecondEye`) through the local player's console
-  once a player exists, **again after every level change, each boolean through its opposite first** (research/35
+  once a player exists, **again after every level change, each boolean through its opposite first**, and the shadow keys alone
+  again after every return to gameplay while the native blur guard skips the full reapply (2026-11-18: cinematics turned them
+  back on; gotchas/system-settings-precedence) (research/35
   attempt 49, 2026-10-28: the save's level rendered with the blur although the ini and the title's `scale set` said
   off, and the same `False` there did nothing while True then False turned it off; in stereo the blur's velocity is
   the other eye's view, so every surface smeared its own way in runs of frames: the "assets shift in different
