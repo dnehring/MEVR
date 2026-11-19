@@ -496,4 +496,19 @@ inline std::optional<AllocatorGlobals> AllocatorGlobalsForGame() {
 #endif
 }
 
+// Hairstyles with a rigged stand-in the hair stage puts on instead (game/Hair, docs/trilogy-hair-plan.md section 4.5; the
+// owner, 2026-11-19: ME3's older Miranda hair is acceptable). Object paths without the class, compared case-insensitively.
+struct HairStandIn {
+    char const* used;    // the shipped hair mesh (no hair bones)
+    char const* rigged;  // a mesh of the same hairstyle with hair bones
+};
+#if defined(MEVR_GAME_LE3)
+// research/trilogy-hair.md: the shipped mesh is weighted to the head and neck only; the unused _Old mesh has 13 hair bones.
+inline constexpr HairStandIn kHairStandIns[] = {
+    {"BIOG_HMF_HIR_PRO.Hair_PROMiranda.HMF_HIR_PROMiranda_MDL", "BIOG_HMF_HIR_PRO.Hair_PROMiranda.HMF_HIR_PROMiranda_MDL_Old"},
+};
+#else
+inline constexpr HairStandIn kHairStandIns[] = {{nullptr, nullptr}};
+#endif
+
 } // namespace mevr::engine::adapter

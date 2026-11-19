@@ -370,15 +370,26 @@ game at run time). A re-rigged Miranda mesh is BioWare's mesh with our bones.
 The recipe in way 1 must not store per-vertex data taken from the mesh; weights are computed from each vertex's
 distance along and across the chain curves. The dev machine can use way 2's files locally for iteration either way.
 
-## 8. Questions for the owner
+## 8. The owner's answers (2026-11-19)
 
-1. **A1/A3 default:** hair movement on by default once checked, on all three games? (New player-facing default.)
-2. **Distribution of re-rigged meshes** (section 7): way 1, 2 or 3?
-3. **B1 values:** picked from the contact sheet once it exists.
-4. **A2:** is ME3's older Miranda mesh acceptable as an interim, judged from P2's snapshots?
-5. **A4:** should hands move hair, and for whom?
-6. **Scope after Miranda:** which hairstyles next (FemShep's defaults, Liara has none, Jack on ME2 is bald, Kasumi's
-   hood, Samara)?
+1. **Hair movement is on by default** (`[Hair] on = 1`), every game.
+2. **Re-rigged meshes are built on the player's machine** (section 7, way 1): no game art published.
+3. **The highlight:** "likely blondish": a blond-tinted highlight on Miranda's dark hair. ME3 has `Highlight1Color` and
+   `Highlight2Color`; ME2's material has no highlight colour, only the two exponents (so on ME2 a tint needs B2, or a
+   texture tint). The values still come from the contact sheet (B1 step 3), now with blond tints in the grid.
+4. **ME3's older Miranda mesh is acceptable** (A2): it goes on by default (`[Hair] standIns = 1`).
+5. **Hands move hair, and our own VRIK body too:** the player's drawn hands, forearms and upper arms (the arms arm IK poses
+   from the controllers) are colliders for everyone's hair (`[Hair] hands = 1`). How the player's own Shepard's hair
+   should behave is open (in first person the head is hidden).
+6. **Scope: Miranda only for now.** ME3 through A2; ME2 through A3 (the re-rig, built on the player's machine), then
+   B1's highlight on both.
+
+### The order this gives (Miranda)
+
+1. A1's core, module and stage on ME3 with the old mesh (A2) in one landing; P1 and P2 are its first in-game run.
+2. B1 on Miranda, ME2 and ME3: the contact sheet with blond tints (ME3) and exponents (both); the owner picks.
+3. A3 for ME2's Miranda: P3 first (the importer, the game loading a package of ours), then the recipe and its builder
+   (section 7 way 1).
 
 ## 9. When an option is accepted
 
@@ -391,3 +402,18 @@ distance along and across the chain curves. The dev machine can use way 2's file
   `GPL-3.0-only` in `external/` and listed in `NOTICE.md`.
 - Lanes: at most two at once; A's core and tests need no game run; every game run through
   `tools/le2-halcyon-run/run-lock.ps1`; saves backed up before runs.
+
+## 10. Later scope: breast and glute jiggle (the owner, 2026-11-19)
+
+The owner noted the bodies want better secondary motion too. Measured: Miranda's ME2 body
+(`BIOG_HMF_MIR_LGT_R.LGTa.HMF_MIR_LGTa_MDL`) is the standard 110-bone humanoid, its vertices on Chest, Chest1, Chest2,
+Pelvis, the hips and their twist bones; there is no breast or glute bone (the ME3 bodies dumped for this note have the same
+skeleton). So:
+- **The simulation is the same core:** `core/ik/HairChain` with a one-bone chain is a damped spring bone (gravity off or
+  low, high stiffness, small bend limit, no collisions); `engine/HairPose`'s stage writes body meshes the same way.
+- **The bones aren't there:** each body mesh needs a few added bones (a breast bone per side under Chest2, a glute bone
+  per side under Pelvis) and weights blended from the existing ones, exactly A3's problem, so it rides on A3's route
+  (section 7 way 1: built on the player's machine from a recipe, never published) and on P3's answer.
+- **The bodies are many** (armours and outfits per character), unlike one hairstyle: the recipe must be generic (bone
+  places from the mesh's own landmarks, weights from distance), and every outfit checked.
+- Not started; it comes after Miranda's hair, and the look and the defaults go to the owner first.

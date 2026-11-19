@@ -33,6 +33,7 @@
 #include "game/GalaxyMap.hpp"
 #include "game/GameMenuRequest.hpp"
 #include "game/GunKick.hpp"
+#include "game/Hair.hpp"
 #include "game/HandContact.hpp"
 #include "game/CombatStance.hpp"
 #include "game/Holsters.hpp"
@@ -1600,6 +1601,11 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         std::getline(words, rest);
         return hand_contact::Command(rest);  // `mevr contact [on|off|auto|people]` (research/73, hand contact)
     }
+    if (verb == "hair") {
+        std::string rest;
+        std::getline(words, rest);
+        return hair::Command(rest);  // `mevr hair [on|off|auto | people | trace <s> | mesh <n> <path> | standins on|off]`
+    }
     if (verb == "armik") {
         std::string rest;
         std::getline(words, rest);
@@ -1934,6 +1940,11 @@ std::optional<std::string> RunOursLe3(ue3::Object* pc, std::string const& line) 
         std::getline(words, rest);
         return hand_contact::Command(rest);  // `mevr contact [on|off|auto|people]` (research/73, hand contact)
     }
+    if (verb == "hair") {
+        std::string rest;
+        std::getline(words, rest);
+        return hair::Command(rest);  // `mevr hair [on|off|auto | people | trace <s> | mesh <n> <path> | standins on|off]`
+    }
     if (verb == "load") return LoadSave(ue3::runtime::GameEngine(), words);
     if (verb == "savedesc") return CurrentSave(ue3::runtime::GameEngine());
     if (verb == "state") return State(pc);
@@ -2147,6 +2158,11 @@ std::optional<std::string> RunOursLe2(ue3::Object* pc, std::string const& line) 
         std::string rest;
         std::getline(words, rest);
         return hand_contact::Command(rest);  // `mevr contact [on|off|auto|people]` (research/73, hand contact)
+    }
+    if (verb == "hair") {
+        std::string rest;
+        std::getline(words, rest);
+        return hair::Command(rest);  // `mevr hair [on|off|auto | people | trace <s> | mesh <n> <path> | standins on|off]`
     }
     if (verb == "armik") {
         std::string rest;

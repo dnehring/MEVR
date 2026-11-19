@@ -951,6 +951,7 @@ void CheckFields() {
     CheckField("Engine.SkeletalMeshComponent", "Animations", SDK_FIELD(USkeletalMeshComponent, Animations));
     CheckField("Engine.SkeletalMeshComponent", "SpaceBases", SDK_FIELD(USkeletalMeshComponent, SpaceBases), true);
     CheckField("Engine.SkeletalMeshComponent", "ParentAnimComponent", SDK_FIELD(USkeletalMeshComponent, ParentAnimComponent));
+    CheckField("SFXGame.BioPawn", "m_oHairMesh", SDK_FIELD(ABioPawn, m_oHairMesh));  // game/Hair
     CheckField("Engine.SkeletalMeshComponent", "bConsiderAllBodiesForBounds", SDK_BOOL(USkeletalMeshComponent, bConsiderAllBodiesForBounds));
     CheckField("Engine.SkeletalMeshComponent", "Attachments", SDK_FIELD(USkeletalMeshComponent, Attachments), true);
     CheckField("Engine.SkeletalMesh", "Bounds", SDK_FIELD(USkeletalMesh, Bounds));
@@ -1704,6 +1705,10 @@ void CheckFunctions() {
 }
 
 void CheckParams() {
+    // game/Hair (docs/trilogy-hair-plan.md): a rigged hairstyle put on its hair component
+    PARAM(USkeletalMeshComponent_execSetSkeletalMesh_Parms, "Engine.SkeletalMeshComponent.SetSkeletalMesh", NewMesh);
+    PARAM(USkeletalMeshComponent_execSetSkeletalMesh_Parms, "Engine.SkeletalMeshComponent.SetSkeletalMesh", bKeepSpaceBases);
+    PARMS(USkeletalMeshComponent_execSetSkeletalMesh_Parms, "Engine.SkeletalMeshComponent.SetSkeletalMesh");
     PARAM(UParticleSystemComponent_execSetFloatParameter_Parms, "Engine.ParticleSystemComponent.SetFloatParameter", ParameterName);
     PARAM(UParticleSystemComponent_execSetFloatParameter_Parms, "Engine.ParticleSystemComponent.SetFloatParameter", Param);
     PARMS(UParticleSystemComponent_execSetFloatParameter_Parms, "Engine.ParticleSystemComponent.SetFloatParameter");
@@ -2267,6 +2272,8 @@ void CheckFields() {
     CheckField("Engine.SkeletalMeshComponent", "Animations", SDK_FIELD(USkeletalMeshComponent, Animations));
     CheckField("Engine.SkeletalMeshComponent", "SpaceBases", SDK_FIELD(USkeletalMeshComponent, SpaceBases), true);
     CheckField("Engine.SkeletalMeshComponent", "ParentAnimComponent", SDK_FIELD(USkeletalMeshComponent, ParentAnimComponent));
+    CheckField("SFXGame.BioPawn", "m_oHairMesh", SDK_FIELD(ABioPawn, m_oHairMesh));  // game/Hair
+    CheckField("Engine.PrimitiveComponent", "HiddenGame", SDK_BOOL(UPrimitiveComponent, HiddenGame));  // game/Hair
     CheckField("Engine.SkeletalMeshComponent", "Attachments", SDK_FIELD(USkeletalMeshComponent, Attachments), true);
     CheckField("Engine.SkeletalMesh", "RefSkeleton", SDK_FIELD(USkeletalMesh, RefSkeleton), true);
     CheckField("Engine.SkeletalMesh", "Sockets", SDK_FIELD(USkeletalMesh, Sockets));
@@ -2593,6 +2600,16 @@ void CheckFunctions() {
 }
 
 void CheckParams() {
+    // game/Hair (docs/trilogy-hair-plan.md): a rigged hairstyle put on its hair component
+    PARAM(USkeletalMeshComponent_execSetSkeletalMesh_Parms, "Engine.SkeletalMeshComponent.SetSkeletalMesh", NewMesh);
+    PARAM(USkeletalMeshComponent_execSetSkeletalMesh_Parms, "Engine.SkeletalMeshComponent.SetSkeletalMesh", bKeepSpaceBases);
+    PARMS(USkeletalMeshComponent_execSetSkeletalMesh_Parms, "Engine.SkeletalMeshComponent.SetSkeletalMesh");
+    // ...loaded if the level didn't bring it
+    PARAM(UObject_execDynamicLoadObject_Parms, "Core.Object.DynamicLoadObject", ObjectName);
+    PARAM(UObject_execDynamicLoadObject_Parms, "Core.Object.DynamicLoadObject", ObjectClass);
+    PARAM(UObject_execDynamicLoadObject_Parms, "Core.Object.DynamicLoadObject", MayFail);
+    PARAM(UObject_execDynamicLoadObject_Parms, "Core.Object.DynamicLoadObject", ReturnValue);
+    PARMS(UObject_execDynamicLoadObject_Parms, "Core.Object.DynamicLoadObject");
     // engine/SelectionGaze: both selection functions take nothing (the hook's void(this) signature, as ME3's)
     CheckParmsSize("SFXGame.BioPlayerSelection.UpdateSelection", 0);
     CheckParmsSize("SFXGame.BioPlayerSelection.FindCurrentSelectionTarget", 0);
@@ -3742,6 +3759,8 @@ void CheckFields() {
     CheckField("Engine.SkeletalMeshComponent", "SpaceBases", SDK_FIELD(USkeletalMeshComponent, SpaceBases));
     CheckField("Engine.SkeletalMeshComponent", "LocalAtoms", SDK_FIELD(USkeletalMeshComponent, LocalAtoms));
     CheckField("Engine.SkeletalMeshComponent", "ParentAnimComponent", SDK_FIELD(USkeletalMeshComponent, ParentAnimComponent));
+    CheckField("SFXGame.BioPawn", "m_oHairMesh", SDK_FIELD(ABioPawn, m_oHairMesh));  // game/Hair
+    CheckField("Engine.PrimitiveComponent", "HiddenGame", SDK_BOOL(UPrimitiveComponent, HiddenGame));  // game/Hair
     CheckField("Engine.SkeletalMeshComponent", "Attachments", SDK_FIELD(USkeletalMeshComponent, Attachments));
     CheckField("Engine.SkeletalMeshComponent", "LocalToWorld", SDK_FIELD(USkeletalMeshComponent, LocalToWorld));
     CheckField("Engine.SkeletalMesh", "RefSkeleton", SDK_FIELD(USkeletalMesh, RefSkeleton));
@@ -4069,6 +4088,16 @@ void CheckFunctions() {
 }
 
 void CheckParams() {
+    // game/Hair (docs/trilogy-hair-plan.md): a rigged hairstyle put on its hair component
+    PARAM(USkeletalMeshComponent_execSetSkeletalMesh_Parms, "Engine.SkeletalMeshComponent.SetSkeletalMesh", NewMesh);
+    PARAM(USkeletalMeshComponent_execSetSkeletalMesh_Parms, "Engine.SkeletalMeshComponent.SetSkeletalMesh", bKeepSpaceBases);
+    PARMS(USkeletalMeshComponent_execSetSkeletalMesh_Parms, "Engine.SkeletalMeshComponent.SetSkeletalMesh");
+    // ...loaded if the level didn't bring it
+    PARAM(UObject_execDynamicLoadObject_Parms, "Core.Object.DynamicLoadObject", ObjectName);
+    PARAM(UObject_execDynamicLoadObject_Parms, "Core.Object.DynamicLoadObject", ObjectClass);
+    PARAM(UObject_execDynamicLoadObject_Parms, "Core.Object.DynamicLoadObject", MayFail);
+    PARAM(UObject_execDynamicLoadObject_Parms, "Core.Object.DynamicLoadObject", ReturnValue);
+    PARMS(UObject_execDynamicLoadObject_Parms, "Core.Object.DynamicLoadObject");
     PARAM(USkeletalMeshComponent_execGetBoneLocation_Parms, "Engine.SkeletalMeshComponent.GetBoneLocation", BoneName);
     PARAM(USkeletalMeshComponent_execGetBoneLocation_Parms, "Engine.SkeletalMeshComponent.GetBoneLocation", Space);
     PARAM(USkeletalMeshComponent_execGetBoneLocation_Parms, "Engine.SkeletalMeshComponent.GetBoneLocation", ReturnValue);

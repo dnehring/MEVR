@@ -65,6 +65,7 @@
 #include "game/GamepadBridge.hpp"
 #include "game/GamepadMapping.hpp"
 #include "game/GunKick.hpp"
+#include "game/Hair.hpp"
 #include "game/HandContact.hpp"
 #include "game/HandAim.hpp"
 #include "game/HandTargets.hpp"
@@ -1411,6 +1412,7 @@ void PublishStatus() {
         full += ", \"galaxyProjector\": " + game::le2_galaxy_capture::StatusJson();  // the sequels' flow (game/GalaxyProjectorFlow)
 #endif
         full += ", \"handContact\": " + game::hand_contact::StatusJson();
+        full += ", \"hair\": " + game::hair::StatusJson();
         full += ", \"traversal\": " + game::traversal::StatusJson() + "}";
     }
     gHost->setStatus(full.c_str());
@@ -1559,6 +1561,7 @@ void Heartbeat() {
         game::traversal::LogStats();
         game::gun_kick::LogStats();
         game::hand_contact::LogStats();
+        game::hair::LogStats();
         game::combat_stance::LogStats();
         game::sprint::LogStats();
         game::fingers::LogStats();
@@ -1857,6 +1860,11 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         game::holsters::Tick(deltaSeconds, holsterLink);
         // The hands that touch someone buzz (research/73): the writer's last contact, after arm IK's tick.
         game::hand_contact::Tick(deltaSeconds, {holsterLink.haptic, holsterLink.hapticHz, holsterLink.hapticContinuous});
+        // Hair that moves (docs/trilogy-hair-plan.md): the people near and their hair, for the pose hook's hair stage.
+        if (game::hair::Wanted()) {
+            EnsureBonePoseHook();
+        }
+        game::hair::Tick(deltaSeconds);
         // The power wheel at the left hand (research/55) before the squad's: a pinch that equips a power is never a squad pull.
         game::power_wheel::Tick(deltaSeconds, PowerWheelLink());
         game::squad_weapons::Tick(deltaSeconds, SquadLink());
@@ -2156,6 +2164,7 @@ MEVR_MOD_API void MevrModShutdown() {
     ++gActionGeneration;
     game::gun_kick::Shutdown();
     game::hand_contact::Shutdown();
+    game::hair::Shutdown();
     if (gHost != nullptr && MEVR_HOST_HAS(setVignette) && gHost->setVignette != nullptr) {
         gHost->setVignette(0.0f);  // no vignette without the mod (the host also forgets on unload)
     }
