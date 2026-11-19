@@ -199,6 +199,21 @@ try:
                           '--expect-quiet', 'armik-third-person-on-foot,holster-stays-out'])
     check(status == 0, "--since/--until keep only the window:\n" + buffer.getvalue())
 
+    # One deliberate crouch and stand logs four posture lines (each change and its request): two changes, no flip-flop
+    # (lane CCV's false positive, 2026-11-19).
+    once = os.path.join(root, 'once.log')
+    with open(once, 'w', encoding='utf-8') as f:
+        f.write("\n".join([
+            line_ms(1, 0, "posture: physical crouch: eyes 1.42 m = 0.76 of the standing 1.86 m, below 0.87 for 0.20 s"),
+            line_ms(1, 0, "posture: crouch request accepted (eyes 1.42 m = 0.76 of the standing 1.86 m): Engine.Pawn.ShouldCrouch(true)"),
+            line_ms(3, 0, "posture: physical stand: eyes 1.80 m = 0.97 of the standing 1.86 m, above 0.92 for 0.20 s"),
+            line_ms(3, 0, "posture: stand request accepted (eyes 1.80 m = 0.97 of the standing 1.86 m): Engine.Pawn.ShouldCrouch(false)"),
+        ]) + "\n")
+    buffer = io.StringIO()
+    with redirect_stdout(buffer):
+        status = sj.main(['--mod', once, '--expect-quiet', 'posture-flip-flop'])
+    check(status == 0, "a crouch and a stand, each with its request line, is no flip-flop:\n" + buffer.getvalue())
+
     # The torso's drop and the crouch's window (research/le2-vrik.md, lane POS: the drop logged in the same tick as the physical
     # crouch, before its posture line): within 1 s ahead of the crouch it is the descent; 1.5 s ahead, or 1.5 s after a stand, it
     # is a body lowered while standing.

@@ -401,8 +401,20 @@ def presses_refused_near_slot(entries):
 
 def posture_flips(entries):
     """Crouch and stand changes in quick succession: four or more within 10 s."""
-    changes = [(stamp, t, raw) for stamp, t, level, text, raw in entries
-               if re.match(r"posture: (physical (crouch|stand)|(crouch|stand) request accepted|the game .* while you)", text)]
+    lines = [(stamp, t, raw, text) for stamp, t, level, text, raw in entries
+             if re.match(r"posture: (physical (crouch|stand)|(crouch|stand) request accepted|the game .* while you)", text)]
+    # One change logs two lines (`physical crouch` then `crouch request accepted`): a change is a change of direction, so a
+    # deliberate crouch and stand is two changes, not four (lane CCV's false positive, 2026-11-19).
+    changes = []
+    last = None
+    for stamp, t, raw, text in lines:
+        if text.startswith("posture: the game "):
+            direction = "stand" if "stood" in text else "crouch"
+        else:
+            direction = "crouch" if re.match(r"posture: (physical crouch|crouch request)", text) else "stand"
+        if direction != last:
+            changes.append((stamp, t, raw))
+            last = direction
     worst = []
     j = 0
     for i in range(len(changes)):
