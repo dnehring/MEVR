@@ -57,7 +57,7 @@ constexpr char kBlock[] =
     "; the game's own, which can't move). on = 0 turns it off. rangeM: how far from you people's hair moves; maxPeople: at\n"
     "; most this many, nearest first. stiffness (0..1): how firmly hair returns to its styled shape; damping (0..1): how soon\n"
     "; a swing dies down; inertia (0..1): how much of the head's motion the hair feels; maxBendDeg: how far each joint bends;\n"
-    "; gravity (m/s2); radiusM: a strand's thickness for collisions; wind (m/s, along the world's X); hands = 0: your hands\n"
+    "; gravity (m/s2, on top of the styled shape, which already hangs; 0: the style is the rest); radiusM: a strand's thickness for collisions; wind (m/s, along the world's X); hands = 0: your hands\n"
     "; don't touch hair.\n"
     "on = 1\n"
     "rangeM = 6\n"
@@ -66,7 +66,7 @@ constexpr char kBlock[] =
     "damping = 0.10\n"
     "inertia = 1.0\n"
     "maxBendDeg = 50\n"
-    "gravity = 9.8\n"
+    "gravity = 0\n"
     "radiusM = 0.012\n"
     "wind = 0\n"
     "hands = 1\n"
@@ -404,6 +404,26 @@ std::vector<Person> FindPeople(ue3::Object* playerPawn, ue3::Vector at, ue3::Obj
     }
     std::sort(found.begin(), found.end(), [](Person const& a, Person const& b) { return a.distanceM < b.distanceM; });
     return found;
+}
+
+bool HasHairBones(ue3::Object* mesh) {
+    if (auto const skel = engine::skeleton::ReadRefSkeleton(mesh)) {
+        for (std::string const& name : skel->names) {
+            if (Lower(name).find("hair") != std::string::npos) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+// The component whose pose draws the hair bones: the body the hair follows if that body has hair bones, else the hair.
+ue3::Object* SimulatedOn(Person const& person) {
+    ue3::Object* const parent = engine::skeleton::PoseParent(person.hair);
+    if (parent != nullptr && ue3::runtime::IsAlive(parent) && HasHairBones(parent) && HasHairBones(person.hair)) {
+        return parent;
+    }
+    return person.hair;
 }
 
 std::string HairBones(ue3::Object* mesh) {
@@ -795,8 +815,12 @@ void Tick(double /*deltaSeconds*/) {
         ue3::Object* const asset = player::SkeletalMesh(person.hair);
         ApplyStandIn(person.hair, asset);
         hp::Target t;
-        t.hair = person.hair;
-        t.asset = player::SkeletalMesh(person.hair);
+        // A hair that follows a body is drawn with the body's matrix for every bone the body has (UE3's follower rule; ME3's
+        // UpdateSkelPose composes nothing for a component with a ParentAnimComponent, 0x796EB0): so when the body carries the
+        // hair bones (Miranda's ME3 body has the old hair's 13), they are simulated and written in the body's pose.
+        ue3::Object* const simulated = SimulatedOn(person);
+        t.hair = simulated;
+        t.asset = player::SkeletalMesh(simulated);
         t.body = person.body;
         if (person.body != nullptr) {
             if (Parts const* parts = PartsOf(person.body)) {
@@ -859,7 +883,7 @@ std::string Command(std::string const& args) {
         if (n < 0 || static_cast<std::size_t>(n) >= gPeople.size()) {
             return "mevr hair kick <person n> <x> <y> <z> (m/s, world)";
         }
-        return hp::Kick(gPeople[static_cast<std::size_t>(n)].hair, {x, y, z}) ? std::format("kicked [{}]'s hair at ({}, {}, {}) m/s", n, x, y, z)
+        return hp::Kick(SimulatedOn(gPeople[static_cast<std::size_t>(n)]), {x, y, z}) ? std::format("kicked [{}]'s hair at ({}, {}, {}) m/s", n, x, y, z)
                                                                               : "that hair isn't simulated (no hair bones, or not posed yet)";
     }
     if (verb == "mesh") {
@@ -944,8 +968,12 @@ std::string Command(std::string const& args) {
                 parent != nullptr ? std::format("{:#x} {}", reinterpret_cast<std::uintptr_t>(parent), PathOf(player::SkeletalMesh(parent)))
                                   : std::string("none"));
             out += "\n      hair bones: " + HairBones(p.hair);
+            ue3::Object* const simulated = SimulatedOn(p);
+            if (simulated != p.hair) {
+                out += std::format("\n      simulated on the body it follows ({:#x}): its hair bones draw the hair", reinterpret_cast<std::uintptr_t>(simulated));
+            }
             for (hp::TargetInfo const& t : stats.targets) {
-                if (t.hair != p.hair) {
+                if (t.hair != simulated) {
                     continue;
                 }
                 out += std::format("\n      stage: {} calls, {} written, {} collisions{}", t.calls, t.written, t.collisions,

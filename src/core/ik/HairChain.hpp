@@ -20,7 +20,7 @@
 namespace mevr::ik::hair {
 
 struct Settings {
-    double gravity = 9.8;        // m/s2, along `down`
+    double gravity = 0.0;        // m/s2, along `down`, on top of the authored pose (which already hangs as gravity has it)
     Vec3 down{0.0, 0.0, -1.0};   // world down (UE3: -Z)
     double stiffness = 0.06;     // 0..1: the share of the way back to the animated pose per 1/60 s
     double damping = 0.10;       // 0..1: the share of the velocity lost per 1/60 s

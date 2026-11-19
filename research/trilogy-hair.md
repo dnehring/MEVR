@@ -169,3 +169,23 @@ the only difference a signed zero). BioWare rigged her body and the old hair tog
 the body gives every hair bone its place: point 4 above is the docking officer's body (no hair bones), not hers, and our own
 posing of the hair bones is needed only for the stand-in on other bodies. What remains for Miranda is point 5: the stage must
 run after the copy from the parent.
+
+## Miranda's hair moves (2026-11-19, third run)
+
+- **The follower rule, read in ME3's code**: `UpdateSkelPose` (0x796EB0) composes nothing for a component with a
+  `ParentAnimComponent` (+0x308): it copies flags and returns. The drawing takes each bone's matrix from the parent's
+  `SpaceBases` where the parent has that bone (`ParentBoneMap`, +0x310), else the component's own (identity unless posed:
+  the docking officer's floating hair). So **the stage simulates on the body** when the body the hair follows carries the
+  hair bones (`game/Hair` `SimulatedOn`; Miranda's MIRa body has all 13) and writes them into the body's pose after the
+  body's `UpdateSkelPose`; the body's skin doesn't use them.
+- **Gravity 0 by default**: the authored hair pose already hangs as gravity has it; gravity on top dragged every one-bone
+  strand to its bend limit (2-16 cm sag). Motion now comes from the head and body moving, the hands and wind.
+- **Collisions push a point out on its rest point's side** (`Collide`, `keepRest`): two strands that had crossed the neck
+  capsule's axis stayed 7 and 16 cm off on the wrong side; unit test `TestCollision`'s crossed tip.
+- Result (trace, flick of 2 m/s): all 13 strands at their styled place at rest, swing 1-7 cm, settled within 1 cm in
+  0.06-0.36 s, worst stretch 1.3 mm. Visible in the snapshot (the hair behind her shoulder swings out and back). The settle is
+  quick (stiffness 0.06, damping 0.10 per 1/60 s): the feel is for the headset and the owner.
+- **The fixture**: `Save_0031` moved to `BioP_CitHub` (scratch script on `tools/le3-save.py`'s codec) loads into the docking
+  taxi conversation; `mevr hair call bioconversationcontroller QueueReply nReply=5` ("No thanks", a position in the wheel);
+  `mevr hair stream biod_cithub_miranda` (then `stream mirandat2 off`): her level's "level is live" event starts her
+  conversation at her apartment, Shepard on his mark facing her. `mevr hair fire <op>` and `bring` are the other tools.

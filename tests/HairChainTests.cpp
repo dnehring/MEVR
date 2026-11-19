@@ -155,6 +155,7 @@ void TestGravityBounded() {
     std::vector<hair::Chain> chains = hair::Discover(rig.names, rig.parents);
     hair::Chain chain = *Find(chains, 3);
     hair::Settings s;
+    s.gravity = 9.8;
     s.stiffness = 0.0;
     s.maxBendDeg = 30.0;
     std::vector<ik::Transform> const pose = PoseOf(rig, {});
@@ -250,6 +251,24 @@ void TestCollision() {
         drift = (std::max)(drift, hair::TipOffset(rest));
     }
     CHECK(drift < 1e-4);
+    // A tip flicked across the skull's axis (to the far side of the head) comes back to its own side and home: it isn't
+    // pushed out on the side it crossed to and held there (Miranda's neck strands, 2026-11-19).
+    hair::Chain crossed = *Find(chains, 3);
+    double back = 1.0;
+    for (int k = 0; k <= 270; ++k) {
+        hair::Input in;
+        in.animated = pose;
+        in.body = skull;
+        in.dt = k == 0 ? 0.0 : 1.0 / 90.0;
+        hair::Step(crossed, still, in);
+        if (k == 0) {
+            ik::Vec3& tip = crossed.pos.back();
+            tip = {-tip.x, -tip.y, tip.z};  // through the axis to the other side
+            crossed.prev.back() = tip;
+        }
+        back = hair::TipOffset(crossed);
+    }
+    CHECK(back < 0.01);
 }
 
 void TestFrameRates() {

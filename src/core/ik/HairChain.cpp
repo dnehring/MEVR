@@ -85,6 +85,15 @@ int Collide(Vec3& p, Vec3 target, double radius, std::span<hand_contact::Capsule
             continue;
         }
         Vec3 dir = d > 1e-9 ? away * (1.0 / d) : Normalize(target - onAxis, {0.0, 0.0, 1.0});
+        if (keepRest) {
+            // Out on the rest point's side: a point that crossed the axis (a strand flicked through the neck) pushed out on
+            // its own side would stay there, the pull home never getting it back across (Miranda's two neck strands held
+            // 7 and 16 cm off, 2026-11-19).
+            Vec3 const restAway = target - hand_contact::ClosestOnSegment(target, c.a, c.b);
+            if (Length(restAway) > 1e-9 && Dot(dir, restAway) < 0.0) {
+                dir = Normalize(restAway, dir);
+            }
+        }
         p = onAxis + dir * reach;
         ++pushes;
     }
