@@ -66,10 +66,10 @@ function ReadLog {
 # A replay of a make-walk-recording.py plan with its inputs, the last segment standing long: the next replay takes over (the
 # test loop's pending replay), so the controllers never drop out. Returns once the game took it.
 $script:count = 0
-function Play([string]$plan, [string[]]$extra = @()) {
+function Play([string]$plan, [string[]]$extra = @(), [string]$tail = 'stand') {
     $script:count++
     $path = Join-Path $out ('play-{0:D2}.mevrrec' -f $script:count)
-    $made = & python (Join-Path $W 'tools\make-walk-recording.py') $path --plan "$plan,stand:600" --pitch -20 --hands view @extra @script:standEye
+    $made = & python (Join-Path $W 'tools\make-walk-recording.py') $path --plan "$plan,${tail}:600" --pitch -20 --hands view @extra @script:standEye
     if ($LASTEXITCODE -ne 0) { throw "make-walk-recording.py failed: $made" }
     Add-Content -LiteralPath (Join-Path $out 'recordings.txt') -Value "$plan $extra : $made" -Encoding utf8
     $request = Write-MevrRequest 'replay.request' ((Resolve-Path -LiteralPath $path).Path + ' inputs=1')
@@ -190,7 +190,7 @@ try {
         $null = Posture $false
         # The owner's natural crouch, 1.52 m: a 0.35 m drop from his standing 1.869 m (the replay's floor sample follows it).
         $drop = if ($OwnerCalibration) { ($cal.StandEyeM - 1.52).ToString('0.00', $inv) } else { '0.35' }
-        Play 'stand:1,crouch:1' @('--crouch-drop', $drop)
+        Play 'stand:1' @('--crouch-drop', $drop) 'crouch'   # the crouch held until the next replay
         Start-Sleep -Seconds 4
         Eyes "physical, the head $drop m down"
         Hits "physical, the head $drop m down"
