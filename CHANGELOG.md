@@ -7,6 +7,9 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## Unreleased
 
+- **Shepard's hands stay on yours.** Holding the controllers upright or turning your wrists in no longer swings his
+  hands toward his body: the controller now sits in his closed fist and his wrist behind it, along the forearm. To go
+  back to the old placement, set `fistOnGrip = 0` under `[Hands]` in `ASI\LE1MEVR.ini`.
 - **See Shepard's hands while you fine-tune them.** With Body & calibration > Advanced calibration open, your hands stay
   visible and follow the controllers (the game runs behind the menu there), so every offset shows its effect at once.
   Adjust live now says why when it can't start.

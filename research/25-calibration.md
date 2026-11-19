@@ -732,3 +732,30 @@ can't be shown under Advanced calibration: <why>`. The game runs behind the menu
 **Live adjustment's refusals are named:** a refused Adjust live had left no log line and, by the owner's account, no note
 (two presses at 22:49:44 and :49). The refusal now says why on the panel (`Can't adjust live: <why>.`) and in the log
 (`live calibration: refused: <why>`; `started on the <hand> hand` otherwise). [verify] the reason in the next session.
+
+## 19. The controller's handle in Shepard's fist (2026-11-18, confirmed in the headset)
+
+**Symptom** (the owner, 2026-11-18): with the controllers held upright, or the wrists turned in, Shepard's hands went
+inward toward his body, away from where the player's hands were. Section 18's palm-plane trim did not touch it (it
+changed only where the fingers point) and was reverted.
+
+**Cause:** an empty hand's wrist goal was `hand_targets::WristFromGrip`: the grip's position plus 7 units along the
+grip's own +Z (OpenXR: the fist's tube, thumb to little finger). That axis runs across the hand, not along the forearm:
+upright, the point sat straight under the fist; as the forearm rolled, it swung round the handle on a 7-unit radius
+while the real wrist stayed put, and the drawn hand, rigid on its wrist, swung with it. Snapshots 2026-11-18 19:47:28
+(upright: the offset (0.07, -0.95, 0.30), mostly down) and 19:48:57 (wrists rolled in: the wrist point 1.3 and 1.8 cm
+inward); the marker overlay had the handle's centre on the outer edge of the drawn hand, not in the palm.
+
+**Fix** (`game/ArmIk`, the empty-hand branch after the hand's rotation; `[Hands] fistOnGrip`, default 1): the hand is
+placed so its fist holds the handle, the Mako handles' rule (research/47 "The hands on the handles"): the fist's middle
+is `knuckle * 0.8 + palm * 0.35 |knuckle|` in the hand bone's axes (`knuckle` the middle finger's base, `palm`
+`fingers::PalmNormal`), and `wrist = grip - handRotation * fist`. Shepard's middle knuckle is 9.1 units from his wrist
+(log `arm IK: left hand frame from ...`), so the fist's middle is 7.3 units along the fingers and 3.2 toward the palm;
+with the calibrated hand trim the wrist sits about (-/+3.2, 7.1, 1.8) units in the grip's OpenXR axes: back along the
+forearm, 3.6 units off its axis. A roll of the forearm turns the hand about the forearm and the wrist stays.
+Guns (`weapon::RightHandGrip`'s placement and the calibrated stance) and the support grip keep `WristFromGrip`; until
+game/fingers has measured the palm (its first tick) the old wrist is used. Logs `arm IK: <side> hand: the controller's
+handle in the fist ...` (the fist's middle and how far the wrist moved) and `... the wrist 7 units along the handle's
+axis (<why>)`. `fistOnGrip = 0` is the old placement, live.
+
+**Checked in the headset 2026-11-18 (the owner):** the wrist and the hand line up where they are supposed to.
