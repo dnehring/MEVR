@@ -479,12 +479,22 @@ void EnsureCoverHook() {
 
 // The conversation's placement function and BioWorldInfo's interruption of an ambient conversation (research/69): their hooks
 // go in once the first-person conversation mode is first asked for (game thread, outside the conversation's own update).
+// On the sequels the sequels' module asks for them (ME3: the controller's placement and the move track; ME2: the move track),
+// and any hook in counts (the move track's goes in without the placement's): it must come out before an unload.
 void EnsureConversationHooks() {
     using namespace mevr;
+#if defined(MEVR_GAME_LE1)
     if (!gConversationHooksTried && game::conversation_world::WantsHooks()) {
         gConversationHooksTried = true;
         gConversationHooked = engine::conversation_hooks::Install(*gInit);
     }
+#else
+    if (!gConversationHooksTried && game::sequel_conversation_world::WantsHooks()) {
+        gConversationHooksTried = true;
+        bool const all = engine::conversation_hooks::Install(*gInit);
+        gConversationHooked = all || engine::conversation_hooks::MoveTrackInstalled();
+    }
+#endif
 }
 
 // The sound source update (engine/VoicePlace): the speakers' voices from where they stand in a first-person conversation,
@@ -1974,19 +1984,29 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         game::world_ui::Tick(WorldUiLink());
 #if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
         // The sequels' conversations in the world, ME1's rules (T49): after world_ui, its Hold is ours in mode 5 (ME2) or 7 (ME3).
+        // Its source hooks (engine/ConversationHooks) and their providers are its own: ME1's modules below don't tick here.
+        EnsureConversationHooks();
         game::sequel_conversation_world::Tick(ConversationWorldLink());
 #endif
         // Conversations (research/59): measured always; in the world, Shepard's view held (after world_ui: its Hold is ours in mode 5).
 #if !defined(MEVR_GAME_LE3)
         // First-person world conversations and their LE1 audio/scene hooks are not LE3 adapters.
+#if defined(MEVR_GAME_LE1)
         EnsureConversationHooks();
+#endif
         EnsureVoicePlaceHook();
+#if defined(MEVR_GAME_LE1)
+        // ME1's module (its handles are ME1's): on ME2 the sequels' module above is the one, and this one published its armed
+        // state after it and set the source hooks' providers to ME1's.
         game::conversation_world::Tick(deltaSeconds, ConversationWorldLink());
+#endif
 #endif
         game::thespian::Tick(deltaSeconds, ThespianLink());  // shared panel and selection policy, native game adapter
 #if !defined(MEVR_GAME_LE3)
+#if defined(MEVR_GAME_LE1)
         game::conversation_flow::Tick();  // the chain starts' lines flagged ambient before the level's script starts them (research/59)
         game::authored_moment::Tick();    // what the level's script does to the player: a track's walk, a teleport (research/69)
+#endif
         game::sound_place::Tick(deltaSeconds);  // on foot: people near the player and the gun heard from where they are (research/69 A1, A2)
 #endif
         game::head_tracking::OnTickEnd();

@@ -554,7 +554,11 @@ bool ConversationWorldOrComing(int gameMode) noexcept {
         return true;
     }
     constexpr std::uint64_t kComingMs = 150;  // LE1's plugin/ConversationWorld kComingMs
-    return mevr::engine::adapter::IsConversationMode(gameMode) && mevr::vr::conversation_world::Armed(kComingMs);
+    // The cinematic mode too: a level cutscene the mod may hold as a moment (a matinee walking Shepard) begins this instant
+    // (LE1's MomentMayStart: its first frame in the world, not on the 3D screen; the mod lets go of one that is no moment).
+    bool const scene = mevr::engine::adapter::IsConversationMode(gameMode) ||
+        mevr::engine::adapter::GameMode(gameMode) == mevr::engine::adapter::Mode::Cinematic;
+    return scene && mevr::vr::conversation_world::Armed(kComingMs);
 }
 
 bool ConversationHandover() noexcept {

@@ -2806,6 +2806,8 @@ void CheckThespian() {
     CheckPath("SFXGame.BioConversation", {"m_SpeakerList", "aSpeaker"}, SDK_AT(offsetof(FBioDialogSpeaker, aSpeaker), 8));
     CheckField("Engine.LocalPlayer", "NearClipPlane", SDK_FIELD(ULocalPlayer, NearClipPlane));  // the director's near plane kept off
     CheckField("Engine.Camera", "bConstrainAspectRatio", SDK_BOOL(ACamera, bConstrainAspectRatio));  // no letterbox while held
+    // game/SequelConversationWorld's moments: a camera of the scene's own has the view, and Shepard's pawn hidden.
+    CheckPath("Engine.Camera", {"ViewTarget", "Target"}, SDK_AT(offsetof(ACamera, ViewTarget) + offsetof(FTViewTarget, Target), 8));
     // game/AiWalk's ME2 adapter: the AI's move, the stop, the speed, the AI enable counters and the game's switch of them.
     CheckFunction("SFXGame.BioAiController.PrecisionMoveTo");
     PARAM(ABioAiController_execPrecisionMoveTo_Parms, "SFXGame.BioAiController.PrecisionMoveTo", vLoc);
@@ -3940,6 +3942,9 @@ void CheckFields() {
     CheckField("Engine.PlayerController", "PlayerCamera", SDK_FIELD(APlayerController, PlayerCamera));
     CheckField("Engine.Camera", "bLockedFOV", SDK_BOOL(ACamera, bLockedFOV));
     CheckField("Engine.Camera", "bConstrainAspectRatio", SDK_BOOL(ACamera, bConstrainAspectRatio));  // game/SequelConversationWorld: no letterbox in a held conversation
+    // game/SequelConversationWorld's moments: a camera of the scene's own has the view, and Shepard's pawn hidden.
+    CheckPath("Engine.Camera", {"ViewTarget", "Target"}, SDK_AT(offsetof(ACamera, ViewTarget) + offsetof(FTViewTarget, Target), 8));
+    CheckField("Engine.Actor", "bHidden", SDK_BOOL(AActor, bHidden));
     CheckField("Engine.Camera", "LockedFOV", SDK_FIELD(ACamera, LockedFOV));
     CheckField("Engine.Camera", "CameraCache", SDK_FIELD(ACamera, CameraCache));
     CheckField("SFXGame.SFXCameraNativeBase", "CurrentCameraMode", SDK_FIELD(ASFXCameraNativeBase, CurrentCameraMode));

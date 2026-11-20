@@ -8,12 +8,17 @@
 #include <Windows.h>
 
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 
 namespace mevr::engine::conversation_hooks {
 namespace {
 
+#if defined(MEVR_GAME_LE3)
+constexpr char const* kPlaceHookName = "UBioConversationController::SetPositionRotator";
+#else
 constexpr char const* kPlaceHookName = "UBioConversation::SetPositionRotator";
+#endif
 constexpr char const* kInterruptHookName = "ABioWorldInfo::InterruptConversation";
 constexpr char const* kMoveTrackHookName = "AActor::MoveWithInterpMoveTrack";
 
@@ -21,7 +26,26 @@ constexpr std::uint32_t kSetPositionRotatorRva = addresses::kConversationSetPosi
 constexpr std::uint32_t kInterruptConversationRva = addresses::kInterruptConversation;
 constexpr std::uint32_t kMoveTrackRva = addresses::kMoveWithInterpMoveTrack;
 
+// ME3's placement is the conversation controller's, with a fifth argument (drop to the floor) and, from two interp tracks'
+// per-key placements, no controller (research/le3-conversations-in-world.md section 3.2): the detour takes and passes all five,
+// and asks the provider without a conversation. ME1's and ME2's take four and always name the conversation.
+#if defined(MEVR_GAME_LE3)
+using tSetPositionRotator = void(void* conversation, void* actor, float* location, void* rotation, int dropToFloor);
+constexpr bool kPlacementWithoutConversation = true;
+#else
 using tSetPositionRotator = void(void* conversation, void* actor, float* location, void* rotation);
+constexpr bool kPlacementWithoutConversation = false;
+#endif
+// Where a move track wants its actor: the track's GetLocationAtTime in its vtable (MoveWithInterpMoveTrack reads it there):
+// LE1 +0x390, ME2 +0x388, ME3 +0x398 (research/le2-conversations-in-world.md section 2, research/le3-conversations-in-world.md
+// section 3.1).
+#if defined(MEVR_GAME_LE3)
+constexpr std::size_t kTrackPlaceSlot = 0x398;
+#elif defined(MEVR_GAME_LE2)
+constexpr std::size_t kTrackPlaceSlot = 0x388;
+#else
+constexpr std::size_t kTrackPlaceSlot = 0x390;
+#endif
 using tInterruptConversation = void(void* worldInfo, void* newcomer);
 using tMoveTrack = int(void* actor, void* track, void* instance, float time, float delta);  // UBOOL: whether it moved
 
@@ -79,7 +103,11 @@ bool AskMove(MoveTrackProvider provider, void const* actor, void const* track, v
 
 // No C++ objects with destructors in the hooks, so __finally keeps the in-flight count right even when an exception
 // unwinds through the engine's call.
+#if defined(MEVR_GAME_LE3)
+void SetPositionRotatorHook(void* conversation, void* actor, float* location, void* rotation, int dropToFloor) {
+#else
 void SetPositionRotatorHook(void* conversation, void* actor, float* location, void* rotation) {
+#endif
     gInFlight.fetch_add(1, std::memory_order_acquire);
     __try {
         float zero[3] = {0.0f, 0.0f, 0.0f};
@@ -87,14 +115,19 @@ void SetPositionRotatorHook(void* conversation, void* actor, float* location, vo
         if (location != nullptr && (location[0] != 0.0f || location[1] != 0.0f || location[2] != 0.0f)) {
             gPlacements.fetch_add(1, std::memory_order_relaxed);
             KeepProvider const provider = gKeep.load(std::memory_order_relaxed);
-            if (provider != nullptr && conversation != nullptr && actor != nullptr && AskKeep(provider, conversation, actor, location)) {
+            if (provider != nullptr && (conversation != nullptr || kPlacementWithoutConversation) && actor != nullptr &&
+                AskKeep(provider, conversation, actor, location)) {
                 place = zero;  // the game's own facing-only path: stopped, turned, not moved
                 gKept.fetch_add(1, std::memory_order_relaxed);
             }
         } else {
             gFacings.fetch_add(1, std::memory_order_relaxed);
         }
+#if defined(MEVR_GAME_LE3)
+        gOrigPlace(conversation, actor, place, rotation, dropToFloor);
+#else
         gOrigPlace(conversation, actor, place, rotation);
+#endif
     } __finally {
         gInFlight.fetch_sub(1, std::memory_order_release);
     }
@@ -149,16 +182,19 @@ bool Install(hook::Context& init) {
             log::Error("convo hooks: {} is not a function start; not hooking {}", move, kMoveTrackHookName);
         }
     }
-    if (gPlaceInstalled && gInterruptInstalled) {
+    // The interruption is optional (a game without it has no flowed chains to protect: ME3's is another function, ME2's isn't
+    // pinned); the placement isn't.
+    constexpr bool kInterrupts = kInterruptConversationRva != 0;
+    if (gPlaceInstalled && (gInterruptInstalled || !kInterrupts)) {
         return true;
     }
-    if (kSetPositionRotatorRva == 0 || kInterruptConversationRva == 0) {
-        log::Warn("convo hooks: no addresses for this game: placements are undone after the fact, flowed chains unprotected");
+    if (kSetPositionRotatorRva == 0) {
+        log::Warn("convo hooks: no placement address for this game: placements are undone after the fact, flowed chains unprotected");
         return false;
     }
     void* const place = init.Resolve(kSetPositionRotatorRva);
-    void* const interrupt = init.Resolve(kInterruptConversationRva);
-    if (place == nullptr || !IsFunctionStart(place) || interrupt == nullptr || !IsFunctionStart(interrupt)) {
+    void* const interrupt = kInterrupts ? init.Resolve(kInterruptConversationRva) : nullptr;
+    if (place == nullptr || !IsFunctionStart(place) || (kInterrupts && (interrupt == nullptr || !IsFunctionStart(interrupt)))) {
         log::Error("convo hooks: {} or {} is not a function start; not hooking", place, interrupt);
         return false;
     }
@@ -170,7 +206,7 @@ bool Install(hook::Context& init) {
             log::Error("convo hooks: the {} hook failed", kPlaceHookName);
         }
     }
-    if (!gInterruptInstalled) {
+    if (kInterrupts && !gInterruptInstalled) {
         gInterruptInstalled = hook::Install(init, kInterruptHookName, reinterpret_cast<tInterruptConversation*>(interrupt),
             &InterruptConversationHook, gOrigInterrupt);
         if (gInterruptInstalled) {
@@ -179,7 +215,7 @@ bool Install(hook::Context& init) {
             log::Error("convo hooks: the {} hook failed", kInterruptHookName);
         }
     }
-    return gPlaceInstalled && gInterruptInstalled;
+    return gPlaceInstalled && (gInterruptInstalled || !kInterrupts);
 }
 
 bool Uninstall(hook::Context& init, bool waitForCalls) {
@@ -226,7 +262,11 @@ bool Uninstall(hook::Context& init, bool waitForCalls) {
 }
 
 bool Installed() {
-    return gPlaceInstalled && gInterruptInstalled;
+    return gPlaceInstalled && (gInterruptInstalled || kInterruptConversationRva == 0);
+}
+
+bool MoveTrackInstalled() {
+    return gMoveInstalled;
 }
 
 void SetKeepProvider(KeepProvider provider) {
@@ -248,7 +288,7 @@ bool MoveTrackPlace(void const* track, void const* instance, float time, float p
     }
     __try {
         auto const* const table = *reinterpret_cast<void* const* const*>(track);
-        auto* const get = reinterpret_cast<tGetLocationAtTime*>(table[0x390 / sizeof(void*)]);
+        auto* const get = reinterpret_cast<tGetLocationAtTime*>(table[kTrackPlaceSlot / sizeof(void*)]);
         // The slot must point into the game's own code (a function start), or the layout is not the one read.
         if (get == nullptr || !IsFunctionStart(reinterpret_cast<void*>(get))) {
             return false;

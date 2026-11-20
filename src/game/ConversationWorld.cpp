@@ -26,6 +26,7 @@
 #include "game/GalaxyDump.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/Player.hpp"
+#include "game/SequelConversationWorld.hpp"
 #include "game/SquadWeapons.hpp"
 #include "game/ViewAnchor.hpp"
 #include "ue3/Handles.hpp"
@@ -7375,7 +7376,11 @@ void MomentMayStart() {
 }
 
 bool MomentViewOn() {
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+    return sequel_conversation_world::MomentViewOn();  // the sequels' module is the one there (Mod.cpp)
+#else
     return gMoment.on && !gMoment.provisional;
+#endif
 }
 
 ik::Vec3 gViewAt;            // the held view's place last tick
@@ -7384,6 +7389,9 @@ double gViewSpeed = 0.0;     // the held view's speed over the floor (units a se
 double gLegsStand = 1.0;     // 1: the legs stand by leg IK; 0: they play the script's walk
 
 BodyAwayState BodyAway() {
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+    return sequel_conversation_world::BodyAway();  // the sequels' module is the one there (Mod.cpp): arm IK and the body follower
+#else
     BodyAwayState away;
     // The view held away from the pawn (a scripted walk, a walk-in by the view), and since 2026-11-13 every conversation shown
     // in the world: the body is the player's even where the view stands at Shepard's mark. Before, arm IK there kept to its
@@ -7405,6 +7413,7 @@ BodyAwayState BodyAway() {
     away.riseUnits = gC.detached ? gC.detachedAt.z - at->z : 0.0;  // (at the mark, or walked with the pawn: the pawn's floor)
     away.legsStand = gSettings.legsStand && !gSeat.on && !gSeat.following ? gLegsStand : 0.0;  // seated: the seat's legs
     return away;
+#endif
 }
 
 // The view's speed, and from it how far the legs stand (BodyAwayState::legsStand): every tick of a scene in the world.
@@ -7989,7 +7998,11 @@ void Tick(double deltaSeconds, Link const& link) {
 }
 
 bool InWorld() {
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+    return sequel_conversation_world::InWorld();  // the sequels' module is the one there (Mod.cpp): arm IK runs in its held frame
+#else
     return gInWorld;
+#endif
 }
 
 ue3::Object* LiveConversation() {
