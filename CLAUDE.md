@@ -24,7 +24,9 @@ for every game at once, and update its entry and the ledger in the landing that 
 **LE3 port entry point:** [ME3 implementation plan](docs/le3-port-implementation-plan.md),
 [current reuse audit](docs/le3-port-reuse-audit.md) and [melee audit](research/le3-melee-audit.md) define the next port.
 Keep one shared implementation with three native adapters; audit existing ME1/ME2 systems before adding code.
-The plan's implementation ledger tracks foundation work separately from native acceptance. First-person world conversations remain deferred;
+The plan's implementation ledger tracks foundation work separately from native acceptance. First-person world conversations are
+release scope on ME2 and ME3 since 2026-11-19 (the owner changed priorities; one module, `game/SequelConversationWorld`, on ME1's
+rules; experimental and off by default, the 3D cinema screen the default: docs/trilogy-plan.md T49);
 authored seated scenes (such as shuttles) must reject traversal while retaining head tracking.
 
 ## Git

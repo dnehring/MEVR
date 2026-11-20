@@ -42,7 +42,7 @@ Each rule has who decided it, when, and where it was said. "The continuation pla
 | 6 | **The stick doesn't pitch the view** (ME1's `decoupledPitch`). | the owner, 2026-11-14 | le2-from-le1.md section 0 |
 | 7 | **No cover snapping.** "We won't snap to cover for VR, it's not a realistic experience. It risks the same problems of our skeleton not matching our players position in space." Physical crouch and the VR cover rule instead; the game's cover protection is kept. | the owner, 2026-11-14 | answer 7; research/23-cover.md sections 6-7 |
 | 8 | **Double A vaults, with weapons held**, from where the player stands. Disabling cover never disables vaults, climbs or mission triggers. A two-handed hold must vault too; vaulting with one hand on the gun is to be weighed ("For VR we may need to allow for vault with two handed, but we may want to consider vaulting with one hand. The controls could get sloppy."): both are measured, the hold is kept until the owner picks. | the owner, 2026-11-14; the two-handed hold 2026-11-16 | answer 7; research/le2-traversal.md; [le2-port-implementation-plan.md](le2-port-implementation-plan.md) "Product decisions"; the owner's answers of 2026-11-16 (the lanes' notes) |
-| 9 | **Conversations and cutscenes on ME1's 3D cinema screen.** First-person conversations in the world are deferred on ME2 and ME3; Thespian mode may use the cinema screen. | the owner, 2026-11-14 and 2026-11-15 | le2-from-le1.md section 0; continuation plan M6; LE3 plan "Outcome and boundaries" |
+| 9 | **Conversations and cutscenes on ME1's 3D cinema screen by default.** First-person conversations in the world are **release scope on ME2 and ME3** (the owner changed priorities 2026-11-19: "I know they were deferred and I'm changing priorities to make them a part of release"): ME1's own, one module for the sequels (`game/SequelConversationWorld`), experimental and off by default on all three games as on ME1. Thespian mode may use the cinema screen. | the owner, 2026-11-14 and 2026-11-15 (deferred); 2026-11-19 (release scope) | le2-from-le1.md section 0; continuation plan M6; LE3 plan "Outcome and boundaries"; T49 |
 | 10 | **Authored seated scenes (shuttle rides) allow no traversal and no combat gestures**, and keep head tracking and the dialogue controls. Decided from the native scene's state; physically seated play in ordinary gameplay keeps movement. | the owner, 2026-11-15 | continuation plan M6; [le2-m6-implementation-guide.md](le2-m6-implementation-guide.md) "Current scope"; LE3 plan |
 | 11 | **Interrupts are on the triggers**, as the game has them on a pad (LT Paragon, RT Renegade). Nothing of ours claims a trigger in the conversation mode. | the owner, 2026-11-14 | answer 1; continuation plan M5.2 |
 | 12 | **SDR for now; HDR is out of play.** `[Colour] hdrDisplay = -1` on every game; the picture work is the best SDR picture in dark scenes. | the owner, 2026-11-14 | answers 5 and 6; research/le2-hdr.md; research/le2-picture.md |
@@ -1015,10 +1015,21 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Who:** nobody yet.
 
 #### T49 First-person conversations in the world [G36]
-- **State:** LE1 done · LE2 later · LE3 later
-- **Lives in:** `game/ConversationWorld`, `ConversationFlow`, `AuthoredMoment`, `engine/ConversationHooks`.
-- **Why later:** the owner deferred it on both sequels (rule 9). It is the largest gap by size (about 10,000 lines stand
-  down). ME1's is experimental and still being worked (ROADMAP "Now").
+- **State:** LE1 done · LE2 in progress · LE3 in progress (release scope since 2026-11-19, rule 9)
+- **Lives in:** ME1 `game/ConversationWorld`, `ConversationFlow`, `AuthoredMoment`, `engine/ConversationHooks`; the sequels
+  `game/SequelConversationWorld` (one module, a per-game reader of the live conversation) on ME1's shared rules in
+  `core/vr/ConversationWorld`; the host's v33 `setConversationWorld`, `plugin/WorldUi`'s conversation hold
+  (`MevrSeams::WorldViewHoldBegin`), `MevrSeams::ConversationInWorld` in each sequel renderer's cinematic decision.
+- **Why now:** the owner changed priorities on 2026-11-19 and made it part of the release on both sequels. The default stays
+  ME1's: the 3D cinema screen; first person experimental, off unless chosen (Comfort > Conversations > First person).
+- **Left:** research/le2-conversations-in-world.md "What is left", in the owner's order: the walking scenes (Tali's meeting at
+  Freedom's Progress, Miranda's), looks at the player's eyes, walking to marks with the game's AI, the circle and the squad's
+  formation, the subtitle and wheel placement, moments (walk-along, the game's black moving the player, rides, seats, eye
+  height). Each item on ME2 and ME3 alike.
+- **Closes when:** an ordinary conversation, Tali's meeting and the Miranda scene play in first person on the fake headset
+  with the body drawn, the eyes at the player's height and a clean return to gameplay, and the 3D screen unchanged with the
+  option off (snapshots and stances under `%LOCALAPPDATA%\MEVR\sessions`); then the owner's headset pass.
+- **Who:** lane FPC (ME2, then ME3 on the same module), after another session's ME3 core slice (bff358d3 and its follow-ups).
 - **Rules that carry over** (the owner, 2026-11-16, "this will be a bigger deal in me2"; research/69 items 41 and 42): the
   game's fade to black always moves the player with Shepard (curated walks excepted); what Shepard stands on carries the
   player (lifts, trams, shuttles: `Engine.Actor.Base`); freedom of movement everywhere except seated scenes, and every
@@ -1098,7 +1109,7 @@ rest in the order players would notice.
 | 16 | T39, T40, T41, T37, T38 on ME3; T40 on ME2 | menus and HUD parity | nobody |
 | 17 | T46, T47, T48, T34 | squad, voice, Thespian, melee | nobody |
 | 18 | T10, T17, T16 | pacing, performance modes, capture plumbing unified | nobody |
-| 19 | T35 the Hammerhead; T49; T20 | later, by decision | - |
+| 19 | T35 the Hammerhead; T20 | later, by decision | - |
 
 Items 5, 7, 9 and 10 have nobody and sit in the first ten: they are the next lanes to start.
 
@@ -1129,6 +1140,7 @@ M1 to M5 of the continuation plan make the first release; M6's modules follow it
 | M7.1 a players' build without LExSDKv2 | T04 | build |
 | M7.2 MEVR Setup for ME2, report a problem | T52 | verify (fake games only) |
 | our loader seen working in ME2 | T51 | verify |
+| first-person conversations in the world, experimental, off by default (rule 9, since 2026-11-19) | T49 | build, verify |
 | M7.3 the headset pass | [Headset-only checks](#headset-only-checks) | the owner |
 
 The ledger's blockers, in one place: Setup and report-a-problem are LE1-only (G47); both sequels' player builds still
@@ -1146,7 +1158,8 @@ From [le3-port-implementation-plan.md](le3-port-implementation-plan.md) "Paralle
 3. **Release (L3-10):** only the selected game's files touched, uninstall byte for byte, no LExSDKv2, a campaign and DLC
    matrix, Quest 3 through Virtual Desktop standing and seated, and performance results.
 
-ME3's release bar as written is higher than ME2's: see [question 5](#open-owner-questions). The same blockers apply (T04,
+First-person conversations in the world (T49) are in ME3's release too since 2026-11-19 (rule 9), experimental and off by
+default. ME3's release bar as written is higher than ME2's: see [question 5](#open-owner-questions). The same blockers apply (T04,
 T51, T52).
 
 ## Headset-only checks

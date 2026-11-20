@@ -6,9 +6,12 @@
 #include <string>
 #include <string_view>
 
-// ME3's slice of ME1's first-person conversations (docs/trilogy-plan.md T49; the owner chose it 2026-11-19 over upstream
-// Halcyon's ConvoFirstPerson, which only moves the camera to Shepard's eyes at every shot). With `[Cinematics] conversations =
-// world` (ME1's key and word; ME3 used to take it as the 3D screen), in ME3's conversation mode (7):
+// The sequels' first-person conversations, ME1's rules on ME2 and ME3 (docs/trilogy-plan.md T49; the owner chose ME1's
+// 2026-11-19 over upstream Halcyon's ConvoFirstPerson, which only moves the camera to Shepard's eyes at every shot; ME2 since
+// lane FPC, research/le2-conversations-in-world.md). One code path; each game's reader of the live conversation (ME2's
+// BioConversation, ME3's BioConversationController) at the top of the .cpp. With `[Cinematics] conversations = world` (ME1's
+// key and word), in the conversation mode (ME2 5, ME3 7):
+//   - The director's near plane is kept off the player's view (ME1's worldNearPlane).
 //   - The opening, ME1's rule (cw::DecideOpening, worldOpening auto): the stage's mark for Shepard against where the player
 //     stood on foot. Near, or within a walk in the same space: Shepard is put back where the player stood and kept there for
 //     the whole conversation (his walk to the mark withheld: the player is never moved by the game, and his head bone never

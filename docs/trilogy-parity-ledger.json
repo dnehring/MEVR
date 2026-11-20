@@ -2848,7 +2848,7 @@
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "unreferenced"
+     "status": "run"
     },
     "LE3": {
      "legacy": false,
@@ -3813,6 +3813,7 @@
     "CineScreenLayers",
     "CineScreenWanted",
     "ConstantFpEye",
+    "ConversationInWorld",
     "CopyIntoImage",
     "EyeImageSize",
     "FloorViewTranslation",
@@ -4100,6 +4101,7 @@
     "rightGripFree": "WithPadMerge",
     "secondEyeIsReplay": "WithRenderer",
     "setAimRay": "WithRenderer",
+    "setConversationWorld": "BuildServices",
     "setFloorLockSample": "WithFloorLock",
     "setGalaxyHologram": "WithGalaxyHologram",
     "setGameMenuOffers": "WithMenus",

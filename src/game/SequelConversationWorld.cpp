@@ -2,8 +2,10 @@
 // ME3's slice of ME1's first-person conversations (game/SequelConversationWorld.hpp).
 #include "game/SequelConversationWorld.hpp"
 
-// ME3 only (Mod.cpp and ConsoleRequest.cpp call it under MEVR_GAME_LE3; ME1 has its own, game/ConversationWorld).
-#if defined(MEVR_GAME_LE3)
+// The sequels (Mod.cpp and ConsoleRequest.cpp call it under MEVR_GAME_LE2 and MEVR_GAME_LE3; ME1 has its own,
+// game/ConversationWorld). Each game's reader of the live conversation is below (ME2's BioConversation is ME1's object; ME3's
+// is the BioConversationController); everything after it is one code path.
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 
 #include "core/Log.hpp"
 #include "core/WriteJournal.hpp"
@@ -38,14 +40,36 @@ namespace {
 
 namespace cw = vr::conversation_world;
 
-constexpr char kController[] = "SFXGame.BioConversationController";
 ue3::FieldRef gActorWorldInfo{"Engine.Actor", "WorldInfo", ue3::kEveryGame};
+#if defined(MEVR_GAME_LE3)
+constexpr char kController[] = "SFXGame.BioConversationController";
 ue3::FieldRef gManager{"SFXGame.BioWorldInfo", "m_pConversationManager", ue3::kEveryGame};
 ue3::FunctionRef gGetFull{"SFXGame.BioConversationManager.GetFullConversation", ue3::kEveryGame};
 ue3::FieldRef gEnded{kController, "m_bConversationEnded", ue3::kEveryGame};
 ue3::FieldRef gPlayer{kController, "m_pPlayer", ue3::kEveryGame};
 ue3::FieldRef gSpeakers{kController, "m_aSpeakerData", ue3::kEveryGame};
 ue3::ClassRef gControllerClass{kController, ue3::kEveryGame};
+#else
+// ME2: ME1's live conversation (BioWorldInfo.m_oCurrentConversation, a BioConversation) and its people, ME1's own fields
+// (game/ConversationWorld's gCurrentConversation, gSpeakerList, gConvPlayer ...; research/le2-conversations-in-world.md).
+ue3::FieldRef gCurrent{"SFXGame.BioWorldInfo", "m_oCurrentConversation", ue3::kEveryGame};
+ue3::ClassRef gControllerClass{"SFXGame.BioConversation", ue3::kEveryGame};
+ue3::FieldRef gPlayer{"SFXGame.BioConversation", "m_pConversationPlayer", ue3::kEveryGame};
+ue3::FieldRef gOwner{"SFXGame.BioConversation", "m_pConversationOwner", ue3::kEveryGame};
+ue3::FieldRef gSpeakerNow{"SFXGame.BioConversation", "m_pSpeaker", ue3::kEveryGame};
+ue3::FieldRef gListenerNow{"SFXGame.BioConversation", "m_pListener", ue3::kEveryGame};
+ue3::FieldRef gSpeakerList{"SFXGame.BioConversation", "m_SpeakerList", ue3::kEveryGame};
+ue3::FieldRef gSpeakerActor{gSpeakerList, "aSpeaker"};
+#endif
+// The director's near plane (ME1's worldNearPlane, research/69 "The first shot"): a conversation's camera writes
+// LocalPlayer.NearClipPlane per shot (a metre or more), which from the player's eyes cuts away the floor underfoot, the
+// player's own body and whoever stands near; while the view is held, the plane on foot is written back after each camera
+// update (ME2's line matinees set it too: SFXInterpTrackSetPlayerNearClipPlane, 127 of them).
+ue3::FieldRef gLocalPlayer{"Engine.PlayerController", "Player", ue3::kEveryGame};
+ue3::FieldRef gNearClip{"Engine.LocalPlayer", "NearClipPlane", ue3::kEveryGame};
+float gFootNear = 10.0f;      // the plane on foot (read each tick there)
+float gNearReplaced = 0.0f;   // the director's plane last replaced (logged when it changes)
+unsigned gNearWrites = 0;
 ue3::FunctionRef gUpdateCamera{"Engine.Camera.UpdateCamera", ue3::kEveryGame};
 ue3::FunctionRef gSetLocation{"Engine.Actor.SetLocation", ue3::kEveryGame};
 // The conversation camera constrains the picture to its 16:9 band (a letterbox): the stereo capture never matches it and the
@@ -54,12 +78,14 @@ ue3::FunctionRef gSetLocation{"Engine.Actor.SetLocation", ue3::kEveryGame};
 ue3::FieldRef gConstrainAspect{"Engine.Camera", "bConstrainAspectRatio", ue3::kEveryGame};
 unsigned gLetterboxClears = 0;
 
+#if defined(MEVR_GAME_LE3)
 // FBioSpeakerData (SFXGame.BioConversationController.BioSpeakerData): nmSpeakerTag, pSpeakerActor.
 struct SpeakerData {
     std::uint64_t tag = 0;
     ue3::Object* actor = nullptr;
 };
 static_assert(sizeof(SpeakerData) == 16);
+#endif
 
 struct Settings {
     bool world = false;          // [Cinematics] conversations = world (ME1's key and word)
@@ -70,6 +96,7 @@ struct Settings {
     // 2026-11-19: "have Shepard not move around during this scene like the Mass Effect 1 rule set"); then nothing to follow.
     bool shepardStays = true;
     bool dofOff = true;          // [Cinematics] worldDof = 0 keeps it: the conversation's depth of field blurs the room
+    bool nearPlane = true;       // [Cinematics] worldNearPlane (ME1's key): the on-foot near plane kept through the director's shots
     double eyeForwardUnits = 8.0;  // the eyes ahead of his head bone (upstream ConvoFp's eyeFwd)
     double eyeUpUnits = 4.0;
     // ME1's walking during a conversation (research/59, worldMove): the left stick moves Shepard and the view inside the
@@ -163,12 +190,14 @@ void RefreshSettings() {
     gSettings.stay = vr::settings_file::Int(L"Cinematics", L"worldStay", 1, path.c_str()) != 0;
     gSettings.shepardStays = vr::settings_file::Int(L"Cinematics", L"worldShepardStays", 1, path.c_str()) != 0;
     gSettings.dofOff = vr::settings_file::Int(L"Cinematics", L"worldDof", 0, path.c_str()) == 0;
+    gSettings.nearPlane = vr::settings_file::Int(L"Cinematics", L"worldNearPlane", 1, path.c_str()) != 0;
 }
 
 bool WorldWanted() {
     return gOverride >= 0 ? gOverride == 1 : gSettings.world;
 }
 
+#if defined(MEVR_GAME_LE3)
 // The live conversation (ME3: the world's conversation manager's full conversation, not ended), as game/Thespian reads it.
 ue3::Object* LiveConversation(ue3::Object* controller) {
     auto* const world = gActorWorldInfo.Read<ue3::Object*>(controller).value_or(nullptr);
@@ -209,6 +238,45 @@ std::vector<ue3::Object*> Speakers(ue3::Object* conversation, ue3::Object* playe
     }
     return out;
 }
+
+// Shepard as the conversation has him (its player).
+ue3::Object* ConversationPlayer(ue3::Object* conversation) {
+    return gPlayer.Read<ue3::Object*>(conversation).value_or(nullptr);
+}
+#else
+// ME2: the world's current conversation (ME1's ConversationNow), in the conversation mode only (the caller asks the mode).
+ue3::Object* LiveConversation(ue3::Object* controller) {
+    auto* const world = gActorWorldInfo.Read<ue3::Object*>(controller).value_or(nullptr);
+    auto* const conversation = world != nullptr && ue3::runtime::IsAlive(world) ? gCurrent.Read<ue3::Object*>(world).value_or(nullptr)
+                                                                               : nullptr;
+    return conversation != nullptr && ue3::runtime::IsAlive(conversation) && ue3::IsA(conversation, gControllerClass)
+        ? conversation
+        : nullptr;
+}
+
+ue3::Object* ConversationPlayer(ue3::Object* conversation) {
+    return gPlayer.Read<ue3::Object*>(conversation).value_or(nullptr);
+}
+
+// The people of the conversation (ME1's m_SpeakerList, its owner, the speaker and listener now), the player's left out.
+std::vector<ue3::Object*> Speakers(ue3::Object* conversation, ue3::Object* player) {
+    std::vector<ue3::Object*> out;
+    auto const add = [&](ue3::Object* actor) {
+        if (actor != nullptr && actor != player && ue3::runtime::IsAlive(actor) && std::find(out.begin(), out.end(), actor) == out.end()) {
+            out.push_back(actor);
+        }
+    };
+    if (auto const list = gSpeakerList.ElementsOf(conversation, 32)) {
+        for (std::int32_t i = 0; i < list->count; ++i) {
+            add(gSpeakerActor.Read<ue3::Object*>(list->At(i)).value_or(nullptr));
+        }
+    }
+    add(gOwner.Read<ue3::Object*>(conversation).value_or(nullptr));
+    add(gSpeakerNow.Read<ue3::Object*>(conversation).value_or(nullptr));
+    add(gListenerNow.Read<ue3::Object*>(conversation).value_or(nullptr));
+    return out;
+}
+#endif
 
 // Shepard's head bone in the world (his pawn's mesh), or nullopt.
 std::optional<engine::UnrealVector> HeadOf(ue3::Object* pawn) {
@@ -317,6 +385,21 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
                       "update while the conversation is held: the full frame, in stereo");
         }
     }
+    // ME1's worldNearPlane: the director's near plane never cuts the player's view (the body, the floor, the people near).
+    if (gSettings.nearPlane) {
+        ue3::Object* const local = gLocalPlayer.Read<ue3::Object*>(controller).value_or(nullptr);
+        float* const plane = local != nullptr ? gNearClip.In<float>(local) : nullptr;
+        if (plane != nullptr && std::isfinite(*plane) && *plane != gFootNear) {
+            if (*plane != gNearReplaced) {
+                log::Info("conversation world: the director's near plane is {:.1f} units in this shot: the on-foot plane ({:.1f}) "
+                          "kept instead ({} writes so far)", *plane, gFootNear, gNearWrites);
+                gNearReplaced = *plane;
+            }
+            *plane = gFootNear;
+            write_journal::Wrote("ConversationWorld.nearClipPlane", plane, sizeof(float));
+            ++gNearWrites;
+        }
+    }
     if (!gSettings.stay) return;
     if (gC.controller == nullptr || !ue3::runtime::IsAlive(gC.controller)) return;
     ue3::Function* const setLocation = gSetLocation.Get();
@@ -407,6 +490,11 @@ void Tick(conversation_world::Link const& link) {
     bool const conversationMode = mode && engine::adapter::IsConversationMode(*mode);
     if (mode && *mode == 0) {
         if (auto const at = player::Location(player::Pawn(controller))) gFoot = {true, *at, GetTickCount64()};
+        if (ue3::Object* const local = gLocalPlayer.Read<ue3::Object*>(controller).value_or(nullptr)) {
+            if (auto const plane = gNearClip.Read<float>(local); plane && std::isfinite(*plane) && *plane > 0.0f && *plane < 50.0f) {
+                gFootNear = *plane;  // the player's plane on foot (a conversation's is a metre or more)
+            }
+        }
         if (gOnFootSinceMs == 0) gOnFootSinceMs = GetTickCount64();
         gLastFootRunMs = GetTickCount64() - gOnFootSinceMs;
     } else {
@@ -537,9 +625,10 @@ std::string Console(std::string_view args) {
         gOverride = -1;
     }
     RefreshSettings();
-    return std::format("conversations in the world (ME3's slice): {} ({}); people kept {}; now: {}; last: {}",
+    return std::format("conversations in the world (the sequels' module, " MEVR_GAME_NAME_A "): {} ({}); people kept {}; near plane kept {} "
+                       "({} writes); now: {}; last: {}",
         WorldWanted() ? "on" : "off", gOverride < 0 ? "[Cinematics] conversations" : "this session's override",
-        gSettings.stay ? "on" : "off",
+        gSettings.stay ? "on" : "off", gSettings.nearPlane ? "on" : "off", gNearWrites,
         gC.on ? std::format("conversation {} {}", gC.serial,
                     gC.placed ? std::format("held at ({:.0f}, {:.0f}, {:.0f}), {} kept actors, {} undone", gC.held.x, gC.held.y,
                                     gC.held.z, gC.kept.size(), gC.undoneTotal)
@@ -550,4 +639,4 @@ std::string Console(std::string_view args) {
 
 } // namespace mevr::game::sequel_conversation_world
 
-#endif  // MEVR_GAME_LE3
+#endif  // MEVR_GAME_LE2 || MEVR_GAME_LE3

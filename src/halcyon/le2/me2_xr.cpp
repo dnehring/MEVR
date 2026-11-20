@@ -820,9 +820,12 @@ void MevrPublishView(const XrView& view) noexcept
     const float headP[3] = {view.pose.position.x, view.pose.position.y, view.pose.position.z};
     const bool headLook = ME2VR::CalcViewHook::GetHeadLookUserEnabled() && !cineLocked;
     const int gameMode = ME2VR::EngineProbe::ReadGameModeSEH();
+    // [MEVR] A conversation held in the world (MevrSeams::ConversationInWorld, T49) is a head-tracked world view too: the mod's
+    // arm IK and the body under the player run in its held frame (game/SequelConversationWorld), as ME3's.
+    const bool mevrWorldView = gameMode == 0 || ((gameMode == 5 || gameMode == 6) && ::MevrSeams::ConversationInWorld());
     ::MevrSeams::OnViewBuilt(!ME2VR::Menu::IsOpen(), headLook, false, ME2VR::CalcViewHook::HeadLookYawUU(),
                                      ME2VR::CalcViewHook::HeadLookPitchUU(), headQ, headP, right, up, fwd, w2m,
-                                     gameMode == 0 && !ME2VR::CalcViewHook::GetVrCineActive());
+                                     mevrWorldView && !ME2VR::CalcViewHook::GetVrCineActive());
 }
 
 // [MEVR] Life-size stereo (research/30 section 9): our plan for the next game frame's two SFR passes (MevrSeams::PlanStereo,
@@ -1924,6 +1927,12 @@ void RunFrame() noexcept
         // the mod holds Shepard's view through them, ME1's rule, as ME3's; lane GX4): no cinematic presentation, the room stays
         // in stereo (calcview_hook.cpp holds the view then).
         const bool mevrGalaxyHeld = gm == 6 && ::MevrSeams::GalaxyOwnsPresentation(gm);
+        // [MEVR] ME1's first-person conversations (docs/trilogy-plan.md T49, game/SequelConversationWorld; ME3's rule in le3's
+        // me2_xr.cpp): a conversation the mod shows in the world is no cinematic: the world in stereo as on foot, the view held at
+        // the player's place (MevrSeams::WorldViewHoldBegin in calcview_hook.cpp), the director's camera serving the game only, its
+        // UI on our HUD panel. As the galaxy map's held cinematic: no flat panel, no 3D screen, no VR cine.
+        const bool mevrConvoWorld = (gm == 5 || gm == 6) && ::MevrSeams::ConversationInWorld();
+        const bool mevrWorldHeld = mevrGalaxyHeld || mevrConvoWorld;
         // [MEVR] research/56 "The sequels" (T18): ME1's front end (MevrSeams::FrontEndHold above). The title and its menus (the
         // GUI mode over a live 3D scene) go on ME1's 3D cinema screen, rendered in stereo with head look parked; the boot
         // before the title, a movie, a dead scene and a load from the menus on the flat panel (GetMenuMode answers the
@@ -1935,11 +1944,11 @@ void RunFrame() noexcept
         if (mevrFrontEndScreen) { s_fovCine = true; s_narrowStreak = 0; s_mevrFrontEndFov = true; }
         else if (s_mevrFrontEndFov) { s_mevrFrontEndFov = false; if (!recognizedCine) { s_fovCine = false; s_narrowStreak = 0; } }
         const bool mevrScreen = mevrFrontEndScreen ||
-                                (!mevrFrontEnd && !mevrGalaxyHeld && sfrMode && recognizedCine && s_fovCine && !moviePlayback &&
+                                (!mevrFrontEnd && !mevrWorldHeld && sfrMode && recognizedCine && s_fovCine && !moviePlayback &&
                                  !s_convoVrLatch && ::MevrSeams::CineScreenWanted(gm == 5));
         ME2VR::CalcViewHook::SetMevrCineScreen(mevrScreen);
-        const bool renderCineInVr = !mevrGalaxyHeld && ((renderCineInVrHalcyon && !mevrFrontEnd) || mevrScreen);
-        if (mevrGalaxyHeld) s_fovCine = false;  // the cinematic's flat panel stays down while the mod holds it
+        const bool renderCineInVr = !mevrWorldHeld && ((renderCineInVrHalcyon && !mevrFrontEnd) || mevrScreen);
+        if (mevrWorldHeld) s_fovCine = false;  // the cinematic's flat panel stays down while the mod holds it
 #else
         const bool renderCineInVr = (gm == 5 && (ME2VR::CalcViewHook::GetCineVrConvo() ||
                                                  s_convoVrLatch)) ||

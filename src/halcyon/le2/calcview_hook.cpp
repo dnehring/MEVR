@@ -1335,7 +1335,11 @@ void* __fastcall CalcViewDetour(void* lp, void* family, void* loc, void* rot, vo
     // in the map's opening and closing cinematic (6) while the mod holds it (MevrSeams::GalaxyOwnsPresentation: me2_xr.cpp keeps
     // the cinematic presentation down then; ME1's rule, lane GX4).
     const int mevrMode = isP1 ? ME2VR::EngineProbe::ReadGameModeSEH() : -1;
-    const bool mevrMapMode = mevrMode == 9 || mevrMode == 10 || (mevrMode == 6 && ::MevrSeams::GalaxyOwnsPresentation(6));
+    // ... and a conversation the mod shows in the world, first person (MevrSeams::ConversationInWorld, T49): the director's camera
+    // serves the game, the main view is built at the player's place (plugin/WorldUi's conversation hold), as ME3's.
+    const bool mevrConvoHeld = (mevrMode == 5 || mevrMode == 6) && ::MevrSeams::ConversationInWorld();
+    const bool mevrMapMode = mevrMode == 9 || mevrMode == 10 || (mevrMode == 6 && ::MevrSeams::GalaxyOwnsPresentation(6)) ||
+                             mevrConvoHeld;
     struct MevrHeldView
     {
         bool on;

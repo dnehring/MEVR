@@ -48,12 +48,13 @@ one of the remaining four areas.
 | C | Squad attack and power orders | Roster; share B's recipient identity | One recipient attacks or casts on a legal target through native commands |
 | D | Squad voice | C; B for spoken weapon requests | Existing radio gesture and recognizer dispatch the same verified commands |
 | E | Thespian mode | Shared voice service from D; can audit replies earlier | Native reply cards and safe selection, then spoken selection |
-| F (deferred) | First-person conversations in the world | Explicit seated-scene traversal policy and native observation | Later pass, with traversal disabled during authored seated scenes |
+| F (release scope since 2026-11-19) | First-person conversations in the world | Explicit seated-scene traversal policy and native observation | `game/SequelConversationWorld` on ME1's rules (docs/trilogy-plan.md T49), traversal disabled during authored seated scenes |
 | G | Galaxy map and planet scanning | Existing wrist pointer/render services; separate Normandy fixture | Native map navigation on a table, then native scanning and discovery |
 
 B, C and D are one continuation-plan row; E and F are another. A and G each have their own row.
 Work can be prepared independently, but native runs are serialized. Suggested landing order is A, B, C, D,
-E, G, with G's source/fixture investigation and E's read-only dialogue adapter prepared earlier when useful. F is deferred.
+E, G, with G's source/fixture investigation and E's read-only dialogue adapter prepared earlier when useful. F was deferred
+until 2026-11-19, when the owner changed priorities and made it release scope (section F).
 Finish a small observable behavior before widening it to the rest of a package.
 
 ## Common implementation rules
@@ -270,6 +271,11 @@ Use LegendaryExplorerCore/ME2 TLK support if extending the census; keep text/aud
 private. Existing LE1 `--wheels`/VO commands need a format audit before use on ME2.
 
 ## F. First-person conversations in the world
+
+**Release scope since 2026-11-19** (the owner: "I know they were deferred and I'm changing priorities to make them a part of
+release"). One module for both sequels, `game/SequelConversationWorld`, on ME1's shared rules; ME1's default (the 3D cinema
+screen; first person experimental and off by default). The work and its checks: docs/trilogy-plan.md T49,
+research/le2-conversations-in-world.md.
 
 **Reuse.** [World-conversation research](../research/59-conversations-in-world.md),
 `src/game/ConversationWorld.cpp`, `ConversationFlow.cpp`, `AuthoredMoment.*`,

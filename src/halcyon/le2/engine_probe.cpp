@@ -1204,7 +1204,9 @@ void ApplyFirstPerson() noexcept
         // The map's modes only (calcview_hook.cpp holds the view only there), and the map's opening or closing cinematic (6)
         // while the mod holds it (MevrSeams::GalaxyOwnsPresentation, ME1's rule; lane GX4).
         const int mevrMode = ReadGameModeSEH();
-        const bool mevrMapMode = mevrMode == 9 || mevrMode == 10 || (mevrMode == 6 && ::MevrSeams::GalaxyOwnsPresentation(6));
+        // ... and a conversation held in the world (T49): the eyes at Shepard's head, first person's hides (WorldViewHeld 1).
+        const bool mevrMapMode = mevrMode == 9 || mevrMode == 10 || (mevrMode == 6 && ::MevrSeams::GalaxyOwnsPresentation(6)) ||
+                                 ((mevrMode == 5 || mevrMode == 6) && ::MevrSeams::ConversationInWorld());
         const int mevrHeld = (active || !mevrMapMode) ? 0 : ::MevrSeams::WorldViewHeld(mevrMode);
         static int s_prevHeld = 0;
         if (mevrHeld != s_prevHeld)

@@ -15,6 +15,10 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 - **Your squad moves only when you place it.** A squeeze of the left grip no longer sends the squad somewhere (it did on
   every game when nothing else took the squeeze, and on ME2 it kept happening in fights): place them with the right hand's
   B arc, or by voice.
+- **First-person conversations on ME2 (experimental).** Comfort > Conversations now offers First person on Mass Effect 2 and
+  3, as on Mass Effect 1: you stand where you engaged the conversation, in stereo, with your own body; the left stick walks,
+  the right stick steers the dialogue wheel, and the scene's near plane no longer cuts away the floor or your arms. The 3D
+  cinema screen stays the default. Walking scenes such as Tali's meeting play their cutscene on the 3D screen for now.
 - **A stick-click crouch while you stand keeps your hands on your controllers.** In all three games, when the left stick
   click crouches Shepard while you stay standing, his body now rises to your view, his legs straightening, so his hands reach
   your controllers; before, it stayed more than half a metre under you and his arms fell short. The game still has him

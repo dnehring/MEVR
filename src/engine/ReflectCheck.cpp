@@ -2794,6 +2794,14 @@ void CheckThespian() {
     CheckField("SFXGame.BioWorldInfo", "m_oCurrentConversation", SDK_FIELD(ABioWorldInfo, m_oCurrentConversation));
     CheckField("SFXGame.BioConversation", "m_pSpeaker", SDK_FIELD(UBioConversation, m_pSpeaker));
     CheckField("SFXGame.BioConversation", "m_pConversationPlayer", SDK_FIELD(UBioConversation, m_pConversationPlayer));
+    // game/SequelConversationWorld's ME2 reader (T49): the conversation's people, kept where they stand.
+    CheckField("SFXGame.BioConversation", "m_pConversationOwner", SDK_FIELD(UBioConversation, m_pConversationOwner));
+    CheckField("SFXGame.BioConversation", "m_pListener", SDK_FIELD(UBioConversation, m_pListener));
+    CheckField("SFXGame.BioConversation", "m_SpeakerList", SDK_FIELD(UBioConversation, m_SpeakerList));
+    CheckElement("SFXGame.BioConversation", "m_SpeakerList", sizeof(FBioDialogSpeaker));
+    CheckPath("SFXGame.BioConversation", {"m_SpeakerList", "aSpeaker"}, SDK_AT(offsetof(FBioDialogSpeaker, aSpeaker), 8));
+    CheckField("Engine.LocalPlayer", "NearClipPlane", SDK_FIELD(ULocalPlayer, NearClipPlane));  // the director's near plane kept off
+    CheckField("Engine.Camera", "bConstrainAspectRatio", SDK_BOOL(ACamera, bConstrainAspectRatio));  // no letterbox while held
     CheckField("SFXGame.BioConversation", "m_nCurrentEntry", SDK_FIELD(UBioConversation, m_nCurrentEntry));
     CheckField("SFXGame.BioConversation", "m_EntryList", SDK_FIELD(UBioConversation, m_EntryList));
     CheckField("SFXGame.BioConversation", "m_ReplyList", SDK_FIELD(UBioConversation, m_ReplyList));
