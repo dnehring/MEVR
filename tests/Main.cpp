@@ -12232,6 +12232,7 @@ int RunHandContactTests();
 int RunClipTests();
 int RunBodySpheresTests();
 int RunBodyStandInTests();
+int RunClubBoostTests();
 int RunHairChainTests();
 int RunJiggleTests();
 // tests/GameMenuBackOutTests.cpp: backing out of ME3's screens one B each (vr::game_menu::StepBackOut, lane OMX).
@@ -12481,6 +12482,7 @@ int main() {
     gFailures += RunClipTests();
     gFailures += RunBodySpheresTests();
     gFailures += RunBodyStandInTests();
+    gFailures += RunClubBoostTests();
     gFailures += RunHairChainTests();
     gFailures += RunJiggleTests();
     gFailures += RunGameMenuBackOutTests();

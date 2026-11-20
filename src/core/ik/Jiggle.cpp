@@ -79,7 +79,7 @@ Output Step(State& state, Settings const& s, Input const& in) {
     Quat const toLocal = Conjugate(Normalize(in.frame.rotation));
     Vec3 const centre = in.frame.translation + Rotate(in.frame.rotation, s.centre);
     Vec3 const gravityLocal = Rotate(toLocal, in.gravity);
-    double const intensity = std::clamp(s.intensity, 0.0, 1.0);
+    double const intensity = std::clamp(s.intensity, 0.0, kMaxIntensity);
     if (!state.started || in.reset || !Finite(centre) || in.dt > kMaxStepS) {
         Reset(state, centre, gravityLocal);
         return out;
