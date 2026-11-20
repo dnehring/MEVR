@@ -475,6 +475,8 @@ std::vector<ue3::Object*> const& StuntActors(ue3::Object* world) {
     return gStunts;
 }
 
+bool HasSoftTissueBones(ue3::Object* mesh);
+
 std::vector<Person> FindPeople(ue3::Object* playerPawn, ue3::Vector at, ue3::Object* world) {
     std::vector<Person> found;
     double const range = gSettings.rangeM * engine::kUnitsPerMeter;
@@ -487,9 +489,12 @@ std::vector<Person> FindPeople(ue3::Object* playerPawn, ue3::Vector at, ue3::Obj
         if (p == playerPawn || !player::IsBioPawn(p) || gHidden.ReadBool(p).value_or(true)) {
             continue;
         }
-        ue3::Object* const hair = gHairMesh.Read<ue3::Object*>(p).value_or(nullptr);
-        if (hair == nullptr || !ue3::runtime::IsAlive(hair) || gHiddenGame.ReadBool(hair).value_or(false)) {
+        ue3::Object* hair = gHairMesh.Read<ue3::Object*>(p).value_or(nullptr);
+        if (hair != nullptr && (!ue3::runtime::IsAlive(hair) || gHiddenGame.ReadBool(hair).value_or(false))) {
             continue;
+        }
+        if (hair == nullptr && !HasSoftTissueBones(player::Mesh(p))) {
+            continue;  // no hair and no jiggle: nothing of ours (a hairless body rigged by tools/rig has soft tissue: Liara)
         }
         std::optional<ue3::Vector> const there = player::Location(p);
         if (!there) {
@@ -505,8 +510,11 @@ std::vector<Person> FindPeople(ue3::Object* playerPawn, ue3::Vector at, ue3::Obj
         if (!ue3::runtime::IsAlive(s) || gHidden.ReadBool(s).value_or(true)) {
             continue;
         }
-        ue3::Object* const hair = gStuntHair.Read<ue3::Object*>(s).value_or(nullptr);
-        if (hair == nullptr || !ue3::runtime::IsAlive(hair) || gHiddenGame.ReadBool(hair).value_or(false)) {
+        ue3::Object* hair = gStuntHair.Read<ue3::Object*>(s).value_or(nullptr);
+        if (hair != nullptr && (!ue3::runtime::IsAlive(hair) || gHiddenGame.ReadBool(hair).value_or(false))) {
+            continue;
+        }
+        if (hair == nullptr && !HasSoftTissueBones(gStuntBody.Read<ue3::Object*>(s).value_or(nullptr))) {
             continue;
         }
         std::optional<ue3::Vector> const there = player::Location(s);
@@ -536,8 +544,28 @@ bool HasHairBones(ue3::Object* mesh) {
     return false;
 }
 
-// The component whose pose draws the hair bones: the body the hair follows if that body has hair bones, else the hair.
+// A body rigged by tools/rig with soft-tissue bones (Breast*, Glute*).
+bool HasSoftTissueBones(ue3::Object* mesh) {
+    if (mesh == nullptr || !ue3::runtime::IsAlive(mesh)) {
+        return false;
+    }
+    if (auto const skel = engine::skeleton::ReadRefSkeleton(mesh)) {
+        for (std::string const& name : skel->names) {
+            std::string const n = Lower(name);
+            if (n.rfind("breast", 0) == 0 || n.rfind("glute", 0) == 0) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+// The component whose pose draws the hair bones: the body the hair follows if that body has hair bones, else the hair; a
+// hairless person (soft tissue only) is simulated on the body.
 ue3::Object* SimulatedOn(Person const& person) {
+    if (person.hair == nullptr) {
+        return person.body;
+    }
     ue3::Object* const parent = engine::skeleton::PoseParent(person.hair);
     if (parent != nullptr && ue3::runtime::IsAlive(parent) && HasHairBones(parent) && HasHairBones(person.hair)) {
         return parent;
@@ -939,13 +967,13 @@ void Tick(double /*deltaSeconds*/) {
         if (ApplyStandIn(person.body, player::SkeletalMesh(person.body))) {
             Reattach(person.body, {person.head, person.hair});
         }
-        ue3::Object* const asset = player::SkeletalMesh(person.hair);
-        if (ApplyStandIn(person.hair, asset)) {
+        ue3::Object* const asset = person.hair != nullptr ? player::SkeletalMesh(person.hair) : nullptr;
+        if (person.hair != nullptr && ApplyStandIn(person.hair, asset)) {
             Reattach(person.body, {person.hair});
         }
         // The hair's look (game/HairLook): [Hair] look, else the rigged stand-in's own from the table; only on a hair we
         // simulate (a stand-in or a rigged hairstyle), once per component and look.
-        if (!gSwapped.empty()) {
+        if (!gSwapped.empty() && person.hair != nullptr) {
             std::string look = gSettings.look.value_or("");
             if (!gSettings.look) {
                 std::string const worn = PathOf(player::SkeletalMesh(person.hair));
@@ -1115,13 +1143,44 @@ std::string Command(std::string const& args) {
         // mevr hair body <n> <object path>: another body on person n (ME3: MEVR_Miranda.HMF_ARM_NKDc_MEVR, the underwear
         // body, to judge the soft tissue on the anatomy); her head and hair re-attached; `mevr hair standins off` puts the
         // game's back.
-        int n = -1;
+        std::string who;
         std::string path;
-        words >> n >> path;
-        if (n < 0 || n >= static_cast<int>(gPeople.size()) || path.empty()) {
-            return "mevr hair body <n> <object path> (mevr hair people)";
+        words >> who >> path;
+        int n = -1;
+        Person named;
+        if (!who.empty() && std::isdigit(static_cast<unsigned char>(who[0]))) {
+            n = std::atoi(who.c_str());
+        } else if (!who.empty()) {
+            // By name: a pawn or conversation actor whose name or body mesh holds `who` (Liara's squad pawn, a stunt actor).
+            ue3::Object* playerPawn = nullptr;
+            ue3::Object* const world = PlayerWorld(&playerPawn);
+            std::string const key = Lower(who);
+            for (ue3::Object* q = world != nullptr ? gPawnList.Read<ue3::Object*>(world).value_or(nullptr) : nullptr; q != nullptr;
+                 q = gNextPawn.Read<ue3::Object*>(q).value_or(nullptr)) {
+                if (!ue3::runtime::IsAlive(q)) break;
+                if (q == playerPawn || !player::IsBioPawn(q)) continue;
+                ue3::Object* const body = player::Mesh(q);
+                if (PathOf(q).find(key) != std::string::npos || (body != nullptr && PathOf(player::SkeletalMesh(body)).find(key) != std::string::npos)) {
+                    ue3::Object* const head = gHeadMesh.Read<ue3::Object*>(q).value_or(nullptr);
+                    named = {q, gHairMesh.Read<ue3::Object*>(q).value_or(nullptr), body, 0.0, head};
+                    break;
+                }
+            }
+            if (named.body == nullptr && world != nullptr) {
+                for (ue3::Object* const s : StuntActors(world)) {
+                    if (!ue3::runtime::IsAlive(s)) continue;
+                    ue3::Object* const body = gStuntBody.Read<ue3::Object*>(s).value_or(nullptr);
+                    if (PathOf(s).find(key) != std::string::npos || (body != nullptr && PathOf(player::SkeletalMesh(body)).find(key) != std::string::npos)) {
+                        named = {s, gStuntHair.Read<ue3::Object*>(s).value_or(nullptr), body, 0.0, gStuntHead.Read<ue3::Object*>(s).value_or(nullptr)};
+                        break;
+                    }
+                }
+            }
         }
-        Person const& p = gPeople[static_cast<std::size_t>(n)];
+        if (path.empty() || (n < 0 && named.body == nullptr) || (n >= 0 && n >= static_cast<int>(gPeople.size()))) {
+            return "mevr hair body <n | name> <object path> (mevr hair people; a name: a pawn's or conversation actor's, or its body mesh's)";
+        }
+        Person const& p = n >= 0 ? gPeople[static_cast<std::size_t>(n)] : named;
         if (p.body == nullptr) {
             return "that person has no body component";
         }
@@ -1149,7 +1208,7 @@ std::string Command(std::string const& args) {
         }
         gSwapped.push_back({p.body, original, mesh});
         Reattach(p.body, {p.head, p.hair});
-        return std::format("[{}] wears {} (was {})", n, PathOf(mesh), PathOf(before));
+        return std::format("[{}] wears {} (was {})", n >= 0 ? who : PathOf(p.pawn), PathOf(mesh), PathOf(before));
     }
     if (verb == "stream") {
         std::string package, onOff;
@@ -1209,6 +1268,11 @@ std::string Command(std::string const& args) {
         hp::Stats const stats = hp::GetStats();
         for (std::size_t i = 0; i < gPeople.size(); ++i) {
             Person const& p = gPeople[i];
+            if (p.hair == nullptr) {
+                out += std::format("\n  [{}] pawn {:#x} at {:.2f} m: no hair; soft tissue on its body {}", i,
+                    reinterpret_cast<std::uintptr_t>(p.pawn), p.distanceM, PathOf(player::SkeletalMesh(p.body)));
+                continue;
+            }
             ue3::Object* const asset = player::SkeletalMesh(p.hair);
             ue3::Object* const parent = engine::skeleton::PoseParent(p.hair);
             out += std::format("\n  [{}] pawn {:#x} at {:.2f} m: hair {:#x} {} ({} bones), pose parent {}", i,
