@@ -899,6 +899,8 @@ void CheckFields() {
     CheckField("Engine.Pawn", "InvManager", SDK_FIELD(APawn, InvManager));
     CheckField("Engine.Pawn", "NextPawn", SDK_FIELD(APawn, NextPawn));
     CheckField("Engine.Pawn", "bIsCrouched", SDK_BOOL(APawn, bIsCrouched));
+    CheckField("Engine.PrimitiveComponent", "bOwnerNoSee", SDK_BOOL(UPrimitiveComponent, bOwnerNoSee));  // mevr convo people
+    CheckField("Engine.PrimitiveComponent", "bOnlyOwnerSee", SDK_BOOL(UPrimitiveComponent, bOnlyOwnerSee));
     CheckField("Engine.Pawn", "bWantsToCrouch", SDK_BOOL(APawn, bWantsToCrouch));
     CheckField("Engine.PlayerController", "PlayerCamera", SDK_FIELD(APlayerController, PlayerCamera));
     CheckField("Engine.PlayerController", "PlayerInput", SDK_FIELD(APlayerController, PlayerInput));
