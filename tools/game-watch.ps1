@@ -143,7 +143,9 @@ if ($Watch) {
             }
             $lastGame = $null
         } elseif ($v.State -ne 'no-game') {
-            $lastGame = [pscustomobject]@{ Game = $v.Game; Pid = $v.Pid; State = $v.State; Seen = Get-Date }
+            # A quit stops the game thread a moment before the process ends: blocked counts only once it lasted 15 s.
+            $state = if ($v.State -eq 'blocked' -and $v.Seconds -lt 15) { 'quitting?' } else { $v.State }
+            $lastGame = [pscustomobject]@{ Game = $v.Game; Pid = $v.Pid; State = $state; Seen = Get-Date }
         }
         if (-not $reported -and (Test-Bad $v $LimitS)) {
             $dir = Save-Evidence $v "$($v.State) for $([int]$v.Seconds) s"

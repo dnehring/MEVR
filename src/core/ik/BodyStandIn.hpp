@@ -37,11 +37,25 @@ public:
     std::size_t Size() const { return exact_.size(); }
     // The rig's object path in the package (lower case: "mevr_bodies_le3.hmf_arm_mira_mdl_mevr"), or empty.
     std::string RigFor(std::string_view meshPath) const;
+    // The body's breast cap for the club boost (core/ik/ClubBoost: the LE3 Liara romance mesh's size over this body's, an
+    // entry's optional "breastMax"), or nullopt (the index has none for it).
+    std::optional<double> BreastMaxFor(std::string_view meshPath) const;
+    // The club copy of the body's rig (the owner's option 1, 2026-11-20: tools/rig bakes the dancers' approved shape, the
+    // middle dancer's, into a second rig `<rig minus _MEVR>_CLUB_MEVR` in the same package; an entry's optional "club"), its
+    // object path in the package (lower case), or empty: no club copy, the club boost's uniform fallback.
+    std::string ClubRigFor(std::string_view meshPath) const;
+    // The breast amount baked into the club copy (an entry's optional "clubBreastA"), or nullopt.
+    std::optional<double> ClubBreastAFor(std::string_view meshPath) const;
 
 private:
+    std::string NameFor(std::string_view meshPath) const;  // the rig's name (lower case), or empty
+
     std::string package_;
     std::unordered_map<std::string, std::string> exact_;    // lower path -> rig name
     std::unordered_map<std::string, std::string> shorter_;  // lower path without its first part -> rig name ("" ambiguous)
+    std::unordered_map<std::string, double> breastMax_;     // rig name -> its entry's breastMax
+    std::unordered_map<std::string, std::string> club_;     // rig name -> its club copy's name
+    std::unordered_map<std::string, double> clubBreastA_;   // rig name -> its entry's clubBreastA
 };
 
 // The engine's side of a lookup (game thread). Each returns an object or nullptr.
@@ -68,6 +82,9 @@ struct Entry {
 // in memory, nothing more is loaded this level.
 class Cache {
 public:
+    // `club`: this cache finds each body's club copy (Index::ClubRigFor) instead of its rig.
+    explicit Cache(bool club = false) : club_(club) {}
+
     // The index read (or none: every body NoPackage).
     void SetIndex(std::optional<Index> index) { index_ = std::move(index); }
     Index const* GetIndex() const { return index_ ? &*index_ : nullptr; }
@@ -82,6 +99,7 @@ public:
     int Loads() const { return loads_; }
 
 private:
+    bool club_ = false;
     std::optional<Index> index_;
     std::unordered_map<std::string, Entry> entries_;
     bool packageAbsent_ = false;

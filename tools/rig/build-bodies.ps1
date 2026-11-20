@@ -18,3 +18,26 @@ $p.WaitForExit()
 Get-Content $log -Tail 1
 Get-Content "$log.err" -Tail 5
 "exit $($p.ExitCode): $log"
+# The breast scale's limit per body into the index (Sizes.cs; the reference is ME3 Liara's romance body, so LE3 builds first).
+$ref = Join-Path $env:LOCALAPPDATA 'MEVR\rig\LE3\MEVR_Bodies_LE3.pcc'
+if (Test-Path $ref) {
+    $pkg = Join-Path $env:LOCALAPPDATA "MEVR\rig\$Game\MEVR_Bodies_$Game.pcc"
+    $s = Start-Process -FilePath $Rig -ArgumentList @('sizes', "`"$pkg`"", '--ref', "`"$ref`"", 'ASA_ARM_LIAd_MDL_MEVR', '--write', '--game', $Game) `
+        -NoNewWindow -PassThru -RedirectStandardOutput "$log.sizes" -RedirectStandardError "$log.sizes.err"
+    $null = $s.Handle
+    $s.PriorityClass = 'Idle'
+    $s.WaitForExit()
+    Get-Content "$log.sizes" -Tail 2
+    # The clubs' bodies (Clubs.cs): a copy of each rig the clubs' women wear, the dancers' shape baked in (needs breastMax).
+    $names = & python (Join-Path $here 'club-bodies.py') $Game
+    if ($names) {
+        $c = Start-Process -FilePath $Rig -ArgumentList @('clubs', "`"$pkg`"", '--names', $names, '--game', $Game) `
+            -NoNewWindow -PassThru -RedirectStandardOutput "$log.clubs" -RedirectStandardError "$log.clubs.err"
+        $null = $c.Handle
+        $c.PriorityClass = 'Idle'
+        $c.WaitForExit()
+        Get-Content "$log.clubs"
+    }
+} else {
+    "no $ref yet: build LE3 first, then this game again, for breastMax in the index and the club bodies"
+}

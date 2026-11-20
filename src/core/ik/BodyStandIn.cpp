@@ -3,6 +3,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <charconv>
+#include <system_error>
 
 namespace mevr::ik::body_stand_in {
 namespace {
@@ -48,6 +50,35 @@ std::optional<std::string> StringAfter(std::string_view text, std::string_view k
     return out;
 }
 
+// The number after `"key":` inside [from, to), or nullopt.
+std::optional<double> NumberIn(std::string_view text, std::string_view key, std::size_t from, std::size_t to) {
+    std::string const quoted = "\"" + std::string(key) + "\"";
+    std::size_t const k = text.find(quoted, from);
+    if (k == std::string_view::npos || k >= to) return std::nullopt;
+    std::size_t i = text.find(':', k + quoted.size());
+    if (i == std::string_view::npos || i >= to) return std::nullopt;
+    ++i;
+    while (i < to && (text[i] == ' ' || text[i] == '\t' || text[i] == '\r' || text[i] == '\n')) ++i;
+    std::size_t j = i;
+    while (j < to && (std::isdigit(static_cast<unsigned char>(text[j])) || text[j] == '.' || text[j] == '-' || text[j] == '+' ||
+                         text[j] == 'e' || text[j] == 'E')) ++j;
+    if (j == i) return std::nullopt;
+    double value = 0.0;
+    auto const [end, ec] = std::from_chars(text.data() + i, text.data() + j, value);
+    if (ec != std::errc{} || end != text.data() + j) return std::nullopt;
+    return value;
+}
+
+// The string after `"key":` inside [from, to), or nullopt.
+std::optional<std::string> StringIn(std::string_view text, std::string_view key, std::size_t from, std::size_t to) {
+    std::string const quoted = "\"" + std::string(key) + "\"";
+    std::size_t const k = text.find(quoted, from);
+    if (k == std::string_view::npos || k >= to) return std::nullopt;
+    std::size_t at = k;
+    std::optional<std::string> value = StringAfter(text.substr(0, to), key, at);
+    return value;
+}
+
 } // namespace
 
 std::string ObjectName(std::string_view path) {
@@ -87,6 +118,7 @@ std::optional<Index> Index::Parse(std::string_view text, std::string* error) {
     at = meshes;
     while (true) {
         std::size_t probe = at;
+        std::size_t const pathKey = text.find("\"path\"", at);
         std::optional<std::string> const path = StringAfter(text, "path", probe);
         if (!path) break;
         std::optional<std::string> const name = StringAfter(text, "name", probe);
@@ -95,6 +127,20 @@ std::optional<Index> Index::Parse(std::string_view text, std::string* error) {
         std::string const key = Lower(*path);
         std::string const rig = Lower(*name);
         index.exact_[key] = rig;
+        // This entry's own fields lie between its braces, in any order.
+        std::size_t const open = pathKey == std::string_view::npos ? pathKey : text.rfind('{', pathKey);
+        std::size_t const close = text.find('}', probe);
+        if (open != std::string_view::npos && close != std::string_view::npos) {
+            if (std::optional<double> const cap = NumberIn(text, "breastMax", open, close)) {
+                index.breastMax_[rig] = *cap;
+            }
+            if (std::optional<std::string> const club = StringIn(text, "club", open, close); club && !club->empty()) {
+                index.club_[rig] = Lower(*club);
+            }
+            if (std::optional<double> const baked = NumberIn(text, "clubBreastA", open, close)) {
+                index.clubBreastA_[rig] = *baked;
+            }
+        }
         if (std::string const shorter = Shorter(key); !shorter.empty()) {
             auto [it, fresh] = index.shorter_.emplace(shorter, rig);
             if (!fresh && it->second != rig) it->second.clear();  // two rigs: only exact paths find them
@@ -104,15 +150,38 @@ std::optional<Index> Index::Parse(std::string_view text, std::string* error) {
     return index;
 }
 
-std::string Index::RigFor(std::string_view meshPath) const {
+std::string Index::NameFor(std::string_view meshPath) const {
     std::string const key = Lower(meshPath);
-    std::string const* rig = nullptr;
     if (auto it = exact_.find(key); it != exact_.end()) {
-        rig = &it->second;
-    } else if (auto s = shorter_.find(key); s != shorter_.end() && !s->second.empty()) {
-        rig = &s->second;
+        return it->second;
     }
-    return rig != nullptr ? Lower(package_) + "." + *rig : std::string();
+    if (auto s = shorter_.find(key); s != shorter_.end() && !s->second.empty()) {
+        return s->second;
+    }
+    return {};
+}
+
+std::string Index::RigFor(std::string_view meshPath) const {
+    std::string const name = NameFor(meshPath);
+    return name.empty() ? std::string() : Lower(package_) + "." + name;
+}
+
+std::optional<double> Index::BreastMaxFor(std::string_view meshPath) const {
+    std::string const name = NameFor(meshPath);
+    if (auto it = breastMax_.find(name); !name.empty() && it != breastMax_.end()) return it->second;
+    return std::nullopt;
+}
+
+std::string Index::ClubRigFor(std::string_view meshPath) const {
+    std::string const name = NameFor(meshPath);
+    if (auto it = club_.find(name); !name.empty() && it != club_.end()) return Lower(package_) + "." + it->second;
+    return {};
+}
+
+std::optional<double> Index::ClubBreastAFor(std::string_view meshPath) const {
+    std::string const name = NameFor(meshPath);
+    if (auto it = clubBreastA_.find(name); !name.empty() && it != clubBreastA_.end()) return it->second;
+    return std::nullopt;
 }
 
 char const* Describe(Outcome outcome) {
@@ -144,7 +213,7 @@ void* Cache::Find(std::string const& meshPath, Engine const& engine) {
     } else if (!index_) {
         entry.outcome = Outcome::NoPackage;
     } else {
-        entry.rig = index_->RigFor(meshPath);
+        entry.rig = club_ ? index_->ClubRigFor(meshPath) : index_->RigFor(meshPath);
         if (!entry.rig.empty()) {
             entry.object = engine.findLoaded ? engine.findLoaded(entry.rig) : nullptr;
             if (entry.object == nullptr && !packageAbsent_ && engine.load) {

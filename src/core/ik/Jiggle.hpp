@@ -10,6 +10,10 @@
 // output is a small translation and rotation in the frame, applied to the bone by whoever poses it.
 namespace mevr::ik::jiggle {
 
+// The most an intensity may be: 1 is the shipped full; the club dancers' boost (core/ik/ClubBoost, [Hair] clubJiggle 2) goes
+// above it. The springs' frequencies and damping never change, so a larger intensity is only a wider limit and a stronger kick.
+inline constexpr double kMaxIntensity = 3.0;
+
 struct Axis {
     double hz = 2.4;        // natural frequency
     double zeta = 0.25;     // damping ratio (0..1: under-damped)
@@ -27,7 +31,7 @@ struct Settings {
     double smoothHalfLifeS = 0.02; // the centre's velocity smoothed
     double maxAccel = 35.0;        // m/s2 (about 3.5 g): a velocity change per step clamped to this
     double gravityShare = 0.3;     // the sag when the body leans away from its pose at the reset
-    double intensity = 0.5;        // 0..1: scales the limits and the inertia shares, never the frequencies or damping
+    double intensity = 0.5;        // 0..kMaxIntensity: scales the limits and the inertia shares, never the frequencies or damping
 };
 Settings Breast();
 Settings Glute();
