@@ -290,3 +290,112 @@ walk 8.7 mm deeper against 7.1 without, never settled); a suit with a collar nee
 underwear body walking, jumping and dancing side-on and from behind.
 
 In the headset after the fixes (2026-11-19, late): the front strand at the collarbone fixed by the hair's 3 cm thickness against the surface (`surfaceRadiusM`). With `followBody` 1 for the session the hair around her neck moved "almost like a large blob" in one direction (its lower half carried by the chest, its upper by the head); back at the shipped 0.7 the owner: "that looks better". `followBody` stays 0.7.
+
+## Automatic placement and every female body (2026-11-19, lane A of docs/trilogy-hair-plan.md section 12)
+
+**The placement** (tools/rig/README.md "Automatic placement", `Placement.cs`). The hand-placed rigs were read from vertex dumps;
+a vertex-based rule (the furthest vertex, the centroid of the front-most ones) put the mounds 1-1.5 cm nearer the middle than the
+hand placements, and Miranda's suit's left apex 3 cm off (a seam). What works: LOD 0's triangles as a height field (0.5 cm
+cells, the furthest x per cell from the front for the chest, from the back for the hips), averaged with its mirror image; the
+apex the furthest cell 2..12 cm off the middle that stands out along its column (ME1's medium and light armour have a belly
+plate or belt further out than the chest at the band's lower edge); its height from the field smoothed near it; its side the
+middle of the run across the apex's height within 1.5 cm of it, the inner end no nearer than 4 cm (3.5 hips: breasts that touch
+would put it at the cleavage). Bone 7.5 cm (breast) / 7.0 (glute) inside the apex, region centre 3.5 / 4.25. `check-place.ps1`
+against the three hand rigs, the difference per axis (x, |y|, z, cm):
+
+| | breast bone | breast region | glute bone | glute region |
+| --- | --- | --- | --- | --- |
+| Miranda's suit (MIRa) | -0.2, +0.3, +0.7 | +0.3, +0.3, +0.7 | +0.3, 0, +0.3 | +0.6, 0, +1.0 |
+| underwear body (NKDc) | -0.1, +0.3, -0.8 | +0.4, +0.3, -0.8 | -0.8, 0, +0.8 | -0.6, 0, +1.0 |
+| Liara (LIAd) | +0.1, -0.7, -0.8 | +0.1, -0.7, -0.8 | -0.5, 0, -0.7 | -0.3, +0.1, -1.0 |
+
+Each within 1 cm on each axis; as distances 0.4-1.17 cm. The glute regions can't do better: NKDc's and LIAd's backs are the
+same surface (0.27 cm median apart cell for cell) but their hand-placed glute regions differ by 2.0 cm in height (95.5, 97.5) and
+the bones by 1.5, so any rule from the surface is 1 cm from one of them.
+
+**The census** (`tools/rig/census.ps1`, `mevr-rig census`: every `HMF_*`/`ASA_*` skeletal mesh in every package and DLC; 40 s
+to 2 min per game at Idle on 6 threads; `females-plan.py` sorts it). Not bodies: hair (HIR), heads (HED), headgear (HGR), visors
+(VSR), breathers (BRT), hats (HAT), ME1's blank world body. A mesh's identity is its object path in the game's memory (a level's
+cooked copy names its BIOG package first; the BIOG package's own export doesn't but lives in it); the copies of one path hold
+the same vertices in every package but one (LE2, one path), so one rig per path (merged where one mesh sits under two groups of
+its package).
+
+| | body copies in packages | object paths | distinct meshes | names | armour by name | shared by name / identical vertices |
+| --- | --- | --- | --- | --- | --- | --- |
+| ME1 | 226 | 45 | 38 | 36 | 17 | ME2 30 / 10, ME3 24 / 3 |
+| ME2 | 483 | 196 | 101 | 98 | 23 | ME1 29 / 10, ME3 59 / 7 |
+| ME3 | 773 | 334 | 143 | 143 | 4 | ME1 24 / 3, ME2 58 / 7 |
+
+- **ME1 reuses its female bodies everywhere**: 38 meshes in 19 families, all `HMF_ARM_` (casual CTHa-h, armour LGTa-c, MEDa-c,
+  HVYa-b, underwear NKDa-c, most with an `_Old` version), worn by every human and asari woman of the game (ME1 has no `ASA_ARM_`
+  and no character outfits). The sequels keep most of the names but remade most meshes: 10 of ME1's are vertex for vertex in
+  ME2, 3 in ME3. Every game still needs its own package (its own files and format).
+- **One skeleton.** Every body has Chest2 and Pelvis; ME1, ME2 and ME3 bodies share the same 110 bone names with the same rest
+  heights (Chest2 140.4-140.5, Pelvis 101.2); ME3 Miranda adds 13 hair bones (123); a few ME3 meshes carry 61-120. The bone order
+  differs between games (Pelvis 8 in ME1, 15 in ME3): the tool finds bones by name.
+- **Two meshes can share a name**: ME2 Jack's `HMF_JCK_LGTa_MDL` is two meshes (BIOG_HMF_JCK_LGT_R, 8007 vertices; the
+  alternate appearance's BIOG_HMF_JCK_ALT_R, 7054), ME2's `ASA_ARM_LGTa_MDL` too (BIOG_ASA_ARM_LGT_R 5743, BIOG_ASA_ARM_LIAa_R
+  5801), ME1's `HMF_ARM_LGTc_MDL` (LGTa.HMF_ARM_LGTc_MDL 6786, LGTc.HMF_ARM_LGTc_MDL 4516). A stand-in by name alone would put one
+  on the other: the rig's name takes the vertex count then (`<mesh>_<vertices>_MEVR`) and the package's index
+  (`MEVR_Bodies_<GAME>.json`, `mevr-rig-index` v1) maps each object path to its rig.
+- **ME2 and ME3 dress Shepard in parts**: `HMF_ARM_SHPx_Tor/Leg/Sld/Slv` (torso, legs, shoulders, sleeves). The placement places
+  only the mounds a part covers (the band 80% covered at the apex's side): torsos breasts (and glutes where they reach the hips),
+  legs glutes, shoulders and sleeves nothing (skipped: 21 in ME2, 27 in ME3).
+
+**The builds** (`build-bodies.ps1`, Idle; `bodies-report.py`): ME1 38 of 38 rigged (7.5 MB, 35 s with the start), ME2 80 of
+101 (68 both, 2 breasts only, 10 glutes only; 14.4 MB, 16 s), ME3 116 of 143 (102 both, 2 breasts, 12 glutes; 22.1 MB, 27 s);
+none failed, every one checked before and after (weights sum to 255, bones in their chunks' maps); 40-53 LOD 0 vertices per
+region (median), 2-411. Low counts: long coats and dresses (CTHc, CTHd, CTHg's backs, 6-13 vertices: a panel over the hips) and
+low-poly `_LOD` meshes. One package per game is fine at these sizes.
+
+**The name rule misses most armour outside ME1** (game/Hair `OutfitJiggle`: `_hvy`/`_med`/`_lgt` in the path): ME1 17 of 38
+armour, all right. ME2: Shepard's N7 parts (`SHPa-e`) and the DLC armours (`CBS` Cerberus, `COL` Collector, `INF` Inferno, `TRM`
+Terminus) read full; character outfits named light/medium/heavy read armour though several are suits or clothes: Jack's
+(`JCK_LGTa`, both), Kasumi's (`KSM_LGTa`), Samara's (`ASA_SPR_HVYa`), the two `ASA_ARM_LGTa`, `KEN_MEDa`, `SBM_HVYa`, `U2M_HVYa`.
+ME3 names almost nothing by weight (4 of 143 armour): Shepard's parts (`SHP*`), the full-body armours (`FBD*`, `SHP_FBD*`),
+Cerberus (`CRB*`), Ashley's (`ASH*`), EDI's (`EDI*`), Liara's combat outfits (`LIA*`), Samara's (`SAM*`) read full. A per-game
+list for `[Hair] armourBodies`/`fullBodies` is the owner's call.
+
+## Rigged bodies by path, and ME1 (2026-11-19, lane B of section 12)
+
+docs/trilogy-hair-plan.md section 12 steps 3 and 4, the runtime side. Built offline, not yet run in a game.
+
+**Looked up by the mesh's path, through the package's index.** Names aren't unique (ME2 has two `HMF_JCK_LGTa_MDL`, 8,007 and
+7,054 vertices), so for every body near (pawns and ME3's conversation actors, `rangeM`, `maxPeople`) that the hand table
+(`engine/GameAdapter.hpp` `kHairStandIns`, Miranda's: her hand rigs carry the hair chains) doesn't stand in for, `game/Hair`
+looks `PathOf(mesh)` up in tools/rig's index, `%LOCALAPPDATA%\MEVR\rig\<GAME>\MEVR_Bodies_<GAME>.json` (`mevr-rig-index` v1: `package`, `meshes`
+each `path` and `name`; read once a level), and puts on `<package>.<name>`. A path matches as written (any case) or without its
+first part: the census writes a forced export with the file it found it in first (`BioH_Liara_00.BIOG_ASA_ARM_LIA_R.LIAa.
+ASA_ARM_LIAa_MDL`), while the game's memory names the forced export's own package first (`BIOG_ASA_ARM_LIA_R.LIAa.ASA_ARM_LIAa_MDL`,
+as the hand table's working `BIOG_HMF_ARM_MIR_R.MIRa.HMF_ARM_MIRa_MDL`); a shorter path two rigs claim matches neither. Never by the
+name alone. Rules and cache: `core/ik/BodyStandIn` (`tests/BodyStandInTests.cpp`).
+
+**Asked once.** A mesh the index doesn't list never reaches the engine. A listed one: first a loaded skeletal mesh at the rig's
+path, else the engine's `DynamicLoadObject` (as Miranda's stand-ins load through the TOC). Each game mesh is asked once a level;
+once a load fails with the package not in memory at all, nothing more is loaded until the level changes (`the rigged bodies'
+package MEVR_Bodies_LE3 isn't installed`). A hairless person (asari) counts as ours when her body has a rig, so she is swapped
+and jiggles.
+
+**The swap.** As Miranda's: `SetSkeletalMesh`, kept to put back (stand-ins off, hair off, shutdown); then every follower of the
+body is re-attached with `SetParentAnimComponent`: the head and hair as before, and any other skeletal mesh in the actor's
+`AllComponents` whose pose parent is the body (ME1's head gear, visor and face plate; accessories). The character's own material
+override stays (the rig has the original's materials and sections). Each swap is logged (`hair: 0x... wears
+mevr_bodies_le3.x_mdl_mevr instead of ... (rigged, from the rigged bodies' index: ...)`); `mevr hair bodies [reload]` lists who near wears one,
+by the index or the table, with the outfit's jiggle share, and what each mesh's lookup came to.
+
+**The body spheres** are read by the rig's object name: `%LOCALAPPDATA%\MEVR\rig\<GAME>\colliders\<rig name>.json`, what `Colliders.FileFor` writes
+beside the package for a step of that name.
+
+**ME1.** The hair module, the hair stage and the jiggle stage were already compiled and ticked on LE1 (the shared
+`UpdateSkelPose` hook calls `hair_pose`; `Skeleton.cpp`'s layouts cover LE1). Missing: ME1's BioPawn names its head
+`m_oHeadMesh` (the sequels `HeadMesh`), so after a body swap the head would not have been re-attached
+(`engine::adapter::kBioPawnHeadMesh`), and LE1's reflect check lacked `SetParentAnimComponent`'s parameter; `AllComponents` has
+a row in all three. With no rig near (or no index), LE1 does what it did.
+
+**Not handled: modular armour.** ME2/ME3 Shepard's armour is pieces (the breasts on the torso piece, the glutes on the legs),
+components following a body without those bones; a follower's own soft-tissue bones aren't driven by the body's jiggle stage. The
+player's own pawn is never simulated, so this matters only for an NPC dressed so. Would need the master body to carry the bones.
+
+**A cost to watch.** `DynamicLoadObject` of one object loads its whole package with the packages it imports: one package of
+every female body, importing each body's materials from the game's own packages, may load all of those at the first lookup of
+each level (a hitch, memory). [verify] in the game; one package per body (or per character) would avoid it.

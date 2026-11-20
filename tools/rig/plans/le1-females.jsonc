@@ -1,0 +1,51 @@
+// SPDX-License-Identifier: MIT
+// Every female body of LE1 (tools/rig/README.md "Every female body", docs/trilogy-hair-plan.md section 12), written by
+// `python tools/rig/females-plan.py LE1 --write` from the player's census: one step per distinct body mesh, its
+// breast and glute bones placed from its own surface ("place": "auto"); `standsFor`: the mesh's paths in the game's
+// memory (the package index MEVR_Bodies_<GAME>.json maps them to the rig). Built on the player's machine from their own
+// game files; the package stays local. After each step: armour (game/Hair OutfitJiggle: a quarter of the jiggle) or full,
+// by that rule on the mesh's path.
+{
+  "out": "{MEVR}/rig/LE1/MEVR_Bodies_LE1.pcc",
+  "continueOnError": true,
+  "steps": [
+    { "source": "{LE1}/CookedPCConsole/BIOG_HMF_ARM_CTH_R.pcc", "mesh": "CTHa.HMF_ARM_CTHa_MDL", "name": "HMF_ARM_CTHa_MDL_MEVR", "place": "auto", "standsFor": ["BIOG_HMF_ARM_CTH_R.CTHa.HMF_ARM_CTHa_MDL"] }, // full
+    { "source": "{LE1}/CookedPCConsole/BIOG_HMF_ARM_CTH_R.pcc", "mesh": "CTHa.HMF_ARM_CTHa_MDL_Old", "name": "HMF_ARM_CTHa_MDL_Old_MEVR", "place": "auto", "standsFor": ["BIOG_HMF_ARM_CTH_R.CTHa.HMF_ARM_CTHa_MDL_Old"] }, // full
+    { "source": "{LE1}/CookedPCConsole/BIOG_HMF_ARM_CTH_R.pcc", "mesh": "CTHb.HMF_ARM_CTHb_MDL", "name": "HMF_ARM_CTHb_MDL_MEVR", "place": "auto", "standsFor": ["BIOG_HMF_ARM_CTH_R.CTHb.HMF_ARM_CTHb_MDL"] }, // full
+    { "source": "{LE1}/CookedPCConsole/BIOG_HMF_ARM_CTH_R.pcc", "mesh": "CTHb.HMF_ARM_CTHb_MDL_Old", "name": "HMF_ARM_CTHb_MDL_Old_MEVR", "place": "auto", "standsFor": ["BIOG_HMF_ARM_CTH_R.CTHb.HMF_ARM_CTHb_MDL_Old"] }, // full
+    { "source": "{LE1}/CookedPCConsole/BIOG_HMF_ARM_CTH_R.pcc", "mesh": "CTHc.HMF_ARM_CTHc_MDL", "name": "HMF_ARM_CTHc_MDL_MEVR", "place": "auto", "standsFor": ["BIOG_HMF_ARM_CTH_R.CTHc.HMF_ARM_CTHc_MDL"] }, // full
+    { "source": "{LE1}/CookedPCConsole/BIOG_HMF_ARM_CTH_R.pcc", "mesh": "CTHc.HMF_ARM_CTHc_MDL_Old", "name": "HMF_ARM_CTHc_MDL_Old_MEVR", "place": "auto", "standsFor": ["BIOG_HMF_ARM_CTH_R.CTHc.HMF_ARM_CTHc_MDL_Old"] }, // full
+    { "source": "{LE1}/CookedPCConsole/BIOG_HMF_ARM_CTH_R.pcc", "mesh": "CTHd.HMF_ARM_CTHd_MDL", "name": "HMF_ARM_CTHd_MDL_MEVR", "place": "auto", "standsFor": ["BIOG_HMF_ARM_CTH_R.CTHd.HMF_ARM_CTHd_MDL"] }, // full
+    { "source": "{LE1}/CookedPCConsole/BIOG_HMF_ARM_CTH_R.pcc", "mesh": "CTHd.HMF_ARM_CTHd_MDL_old", "name": "HMF_ARM_CTHd_MDL_old_MEVR", "place": "auto", "standsFor": ["BIOG_HMF_ARM_CTH_R.CTHd.HMF_ARM_CTHd_MDL_old", "BIOG_HMF_ARM_CTH_R.Review.CTHd.HMF_ARM_CTHd_MDL_old"] }, // full
+    { "source": "{LE1}/CookedPCConsole/BIOG_HMF_ARM_CTH_R.pcc", "mesh": "CTHe.HMF_ARM_CTHe_MDL", "name": "HMF_ARM_CTHe_MDL_MEVR", "place": "auto", "standsFor": ["BIOG_HMF_ARM_CTH_R.CTHe.HMF_ARM_CTHe_MDL"] }, // full
+    { "source": "{LE1}/CookedPCConsole/BIOG_HMF_ARM_CTH_R.pcc", "mesh": "CTHe.HMF_ARM_CTHe_MDL_old", "name": "HMF_ARM_CTHe_MDL_old_MEVR", "place": "auto", "standsFor": ["BIOG_HMF_ARM_CTH_R.CTHe.HMF_ARM_CTHe_MDL_old", "BIOG_HMF_ARM_CTH_R.Review.CTHe.HMF_ARM_CTHe_MDL_old"] }, // full
+    { "source": "{LE1}/CookedPCConsole/BIOG_HMF_ARM_CTH_R.pcc", "mesh": "CTHf.HMF_ARM_CTHf_MDL", "name": "HMF_ARM_CTHf_MDL_MEVR", "place": "auto", "standsFor": ["BIOG_HMF_ARM_CTH_R.CTHf.HMF_ARM_CTHf_MDL"] }, // full
+    { "source": "{LE1}/CookedPCConsole/BIOG_HMF_ARM_CTH_R.pcc", "mesh": "CTHf.HMF_ARM_CTHf_MDL_old", "name": "HMF_ARM_CTHf_MDL_old_MEVR", "place": "auto", "standsFor": ["BIOG_HMF_ARM_CTH_R.CTHf.HMF_ARM_CTHf_MDL_old", "BIOG_HMF_ARM_CTH_R.Review.CTHf.HMF_ARM_CTHf_MDL_old"] }, // full
+    { "source": "{LE1}/CookedPCConsole/BIOG_HMF_ARM_CTH_R.pcc", "mesh": "CTHg.HMF_ARM_CTHg_MDL", "name": "HMF_ARM_CTHg_MDL_MEVR", "place": "auto", "standsFor": ["BIOG_HMF_ARM_CTH_R.CTHg.HMF_ARM_CTHg_MDL"] }, // full
+    { "source": "{LE1}/CookedPCConsole/BIOG_HMF_ARM_CTH_R.pcc", "mesh": "CTHg.HMF_ARM_CTHg_MDL_old", "name": "HMF_ARM_CTHg_MDL_old_MEVR", "place": "auto", "standsFor": ["BIOG_HMF_ARM_CTH_R.CTHg.HMF_ARM_CTHg_MDL_old", "BIOG_HMF_ARM_CTH_R.Review.CTHg.HMF_ARM_CTHg_MDL_old"] }, // full
+    { "source": "{LE1}/CookedPCConsole/BIOG_HMF_ARM_CTH_R.pcc", "mesh": "CTHh.HMF_ARM_CTHh_MDL", "name": "HMF_ARM_CTHh_MDL_MEVR", "place": "auto", "standsFor": ["BIOG_HMF_ARM_CTH_R.CTHh.HMF_ARM_CTHh_MDL"] }, // full
+    { "source": "{LE1}/CookedPCConsole/BIOG_HMF_ARM_CTH_R.pcc", "mesh": "CTHh.HMF_ARM_CTHh_MDL_old", "name": "HMF_ARM_CTHh_MDL_old_MEVR", "place": "auto", "standsFor": ["BIOG_HMF_ARM_CTH_R.CTHh.HMF_ARM_CTHh_MDL_old", "BIOG_HMF_ARM_CTH_R.Review.CTHh.HMF_ARM_CTHh_MDL_old"] }, // full
+    { "source": "{LE1}/CookedPCConsole/BIOG_HMF_ARM_HVY_R.pcc", "mesh": "HVYa.HMF_ARM_HVYa_MDL", "name": "HMF_ARM_HVYa_MDL_MEVR", "place": "auto", "standsFor": ["BIOG_HMF_ARM_HVY_R.HVYa.HMF_ARM_HVYa_MDL"] }, // armour
+    { "source": "{LE1}/CookedPCConsole/BIOG_HMF_ARM_HVY_R.pcc", "mesh": "HVYb.HMF_ARM_HVYb_MDL", "name": "HMF_ARM_HVYb_MDL_MEVR", "place": "auto", "standsFor": ["BIOG_HMF_ARM_HVY_R.HVYb.HMF_ARM_HVYb_MDL"] }, // armour
+    { "source": "{LE1}/CookedPCConsole/BIOG_HMF_ARM_HVY_R.pcc", "mesh": "Review.HVYa.HMF_ARM_HVYa_MDL_Old", "name": "HMF_ARM_HVYa_MDL_Old_MEVR", "place": "auto", "standsFor": ["BIOG_HMF_ARM_HVY_R.Review.HVYa.HMF_ARM_HVYa_MDL_Old"] }, // armour
+    { "source": "{LE1}/CookedPCConsole/BIOG_HMF_ARM_HVY_R.pcc", "mesh": "Review.HVYb.HMF_ARM_HVYb_MDL_Old", "name": "HMF_ARM_HVYb_MDL_Old_MEVR", "place": "auto", "standsFor": ["BIOG_HMF_ARM_HVY_R.Review.HVYb.HMF_ARM_HVYb_MDL_Old"] }, // armour
+    { "source": "{LE1}/CookedPCConsole/BIOG_HMF_ARM_LGT_R.pcc", "mesh": "LGTa.HMF_ARM_LGTa_MDL", "name": "HMF_ARM_LGTa_MDL_MEVR", "place": "auto", "standsFor": ["BIOG_HMF_ARM_LGT_R.LGTa.HMF_ARM_LGTa_MDL"] }, // armour
+    { "source": "{LE1}/CookedPCConsole/BIOG_HMF_ARM_LGT_R.pcc", "mesh": "LGTa.HMF_ARM_LGTc_MDL", "name": "HMF_ARM_LGTc_MDL_6786_MEVR", "place": "auto", "standsFor": ["BIOG_HMF_ARM_LGT_R.LGTa.HMF_ARM_LGTc_MDL"] }, // armour
+    { "source": "{LE1}/CookedPCConsole/BIOG_HMF_ARM_LGT_R.pcc", "mesh": "LGTa.HMF_ARM_LGTc_MDL_Bake", "name": "HMF_ARM_LGTc_MDL_Bake_MEVR", "place": "auto", "standsFor": ["BIOG_HMF_ARM_LGT_R.LGTa.HMF_ARM_LGTc_MDL_Bake"] }, // armour
+    { "source": "{LE1}/CookedPCConsole/BIOG_HMF_ARM_LGT_R.pcc", "mesh": "LGTb.HMF_ARM_LGTb_MDL", "name": "HMF_ARM_LGTb_MDL_MEVR", "place": "auto", "standsFor": ["BIOG_HMF_ARM_LGT_R.LGTb.HMF_ARM_LGTb_MDL"] }, // armour
+    { "source": "{LE1}/CookedPCConsole/BIOG_HMF_ARM_LGT_R.pcc", "mesh": "LGTb.HMF_ARM_LGTb_MDL_old", "name": "HMF_ARM_LGTb_MDL_old_6875_MEVR", "place": "auto", "standsFor": ["BIOG_HMF_ARM_LGT_R.LGTb.HMF_ARM_LGTb_MDL_old"] }, // armour
+    { "source": "{LE1}/CookedPCConsole/BIOG_HMF_ARM_LGT_R.pcc", "mesh": "LGTc.HMF_ARM_LGTc_MDL", "name": "HMF_ARM_LGTc_MDL_4516_MEVR", "place": "auto", "standsFor": ["BIOG_HMF_ARM_LGT_R.LGTc.HMF_ARM_LGTc_MDL"] }, // armour
+    { "source": "{LE1}/CookedPCConsole/BIOG_HMF_ARM_LGT_R.pcc", "mesh": "LGTc.HMF_ARM_LGTc_MDL_Old", "name": "HMF_ARM_LGTc_MDL_Old_MEVR", "place": "auto", "standsFor": ["BIOG_HMF_ARM_LGT_R.LGTc.HMF_ARM_LGTc_MDL_Old", "BIOG_HMF_ARM_LGT_R.Review.LGTc.HMF_ARM_LGTc_MDL_Old"] }, // armour
+    { "source": "{LE1}/CookedPCConsole/BIOG_HMF_ARM_LGT_R.pcc", "mesh": "Review.LGTa.HMF_ARM_LGTa_MDL_old", "name": "HMF_ARM_LGTa_MDL_old_MEVR", "place": "auto", "standsFor": ["BIOG_HMF_ARM_LGT_R.Review.LGTa.HMF_ARM_LGTa_MDL_old"] }, // armour
+    { "source": "{LE1}/CookedPCConsole/BIOG_HMF_ARM_LGT_R.pcc", "mesh": "Review.LGTb.HMF_ARM_LGTb_MDL_old", "name": "HMF_ARM_LGTb_MDL_old_3602_MEVR", "place": "auto", "standsFor": ["BIOG_HMF_ARM_LGT_R.Review.LGTb.HMF_ARM_LGTb_MDL_old"] }, // armour
+    { "source": "{LE1}/CookedPCConsole/BIOG_HMF_ARM_MED_R.pcc", "mesh": "MEDa.HMF_ARM_MEDa_MDL", "name": "HMF_ARM_MEDa_MDL_MEVR", "place": "auto", "standsFor": ["BIOG_HMF_ARM_MED_R.MEDa.HMF_ARM_MEDa_MDL"] }, // armour
+    { "source": "{LE1}/CookedPCConsole/BIOG_HMF_ARM_MED_R.pcc", "mesh": "MEDb.HMF_ARM_MEDb_MDL", "name": "HMF_ARM_MEDb_MDL_MEVR", "place": "auto", "standsFor": ["BIOG_HMF_ARM_MED_R.MEDb.HMF_ARM_MEDb_MDL"] }, // armour
+    { "source": "{LE1}/CookedPCConsole/BIOG_HMF_ARM_MED_R.pcc", "mesh": "MEDc.HMF_ARM_MEDc_MDL", "name": "HMF_ARM_MEDc_MDL_MEVR", "place": "auto", "standsFor": ["BIOG_HMF_ARM_MED_R.MEDc.HMF_ARM_MEDc_MDL"] }, // armour
+    { "source": "{LE1}/CookedPCConsole/BIOG_HMF_ARM_MED_R.pcc", "mesh": "MEDc.HMF_ARM_MEDc_MDL_Old", "name": "HMF_ARM_MEDc_MDL_Old_MEVR", "place": "auto", "standsFor": ["BIOG_HMF_ARM_MED_R.MEDc.HMF_ARM_MEDc_MDL_Old", "BIOG_HMF_ARM_MED_R.Review.MEDc.HMF_ARM_MEDc_MDL_Old"] }, // armour
+    { "source": "{LE1}/CookedPCConsole/BIOG_HMF_ARM_NKD_R.pcc", "mesh": "NKDa.HMF_ARM_NKDa_MDL", "name": "HMF_ARM_NKDa_MDL_MEVR", "place": "auto", "standsFor": ["BIOG_HMF_ARM_NKD_R.NKDa.HMF_ARM_NKDa_MDL"] }, // full
+    { "source": "{LE1}/CookedPCConsole/BIOG_HMF_ARM_NKD_R.pcc", "mesh": "NKDa.HMF_ARM_NKDa_MDL_old", "name": "HMF_ARM_NKDa_MDL_old_MEVR", "place": "auto", "standsFor": ["BIOG_HMF_ARM_NKD_R.NKDa.HMF_ARM_NKDa_MDL_old"] }, // full
+    { "source": "{LE1}/CookedPCConsole/BIOG_HMF_ARM_NKD_R.pcc", "mesh": "NKDb.HMF_ARM_NKDb_MDL", "name": "HMF_ARM_NKDb_MDL_MEVR", "place": "auto", "standsFor": ["BIOG_HMF_ARM_NKD_R.NKDb.HMF_ARM_NKDb_MDL"] }, // full
+    { "source": "{LE1}/CookedPCConsole/BIOG_HMF_ARM_NKD_R.pcc", "mesh": "NKDb.Review.HMF_ARM_NKDb_MDL_old", "name": "HMF_ARM_NKDb_MDL_old_MEVR", "place": "auto", "standsFor": ["BIOG_HMF_ARM_NKD_R.NKDb.Review.HMF_ARM_NKDb_MDL_old"] }, // full
+    { "source": "{LE1}/CookedPCConsole/BIOG_HMF_ARM_NKD_R.pcc", "mesh": "NKDc.HMF_ARM_NKDc_MDL", "name": "HMF_ARM_NKDc_MDL_MEVR", "place": "auto", "standsFor": ["BIOG_HMF_ARM_NKD_R.NKDc.HMF_ARM_NKDc_MDL"] } // full
+  ]
+}

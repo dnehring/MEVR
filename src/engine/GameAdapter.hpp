@@ -507,6 +507,13 @@ struct HairStandIn {
     char const* needs = nullptr; // loaded before `rigged` (its materials' package)
     char const* look = nullptr;  // its material's look (game/HairLook: "Name=value; Name=r,g,b"), unless [Hair] look says
 };
+// A BioPawn's head component (game/Hair re-attaches it to a body it swapped): ME1 names it m_oHeadMesh, the sequels HeadMesh.
+#if defined(MEVR_GAME_LE1)
+inline constexpr char const* kBioPawnHeadMesh = "m_oHeadMesh";
+#else
+inline constexpr char const* kBioPawnHeadMesh = "HeadMesh";
+#endif
+
 #if defined(MEVR_GAME_LE3)
 // research/trilogy-hair.md: the shipped hair mesh is weighted to the head and neck only; the unused _Old mesh has 13 hair
 // bones; tools/rig/plans/le3-miranda-*.jsonc add hair chains and soft-tissue bones (MEVR_Miranda.pcc, built on the player's

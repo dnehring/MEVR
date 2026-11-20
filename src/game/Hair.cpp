@@ -5,6 +5,7 @@
 #include "core/Log.hpp"
 #include "core/WriteJournal.hpp"
 #include "core/ik/BodySpheres.hpp"
+#include "core/ik/BodyStandIn.hpp"
 #include "core/ik/HairChain.hpp"
 #include "core/ik/HandContact.hpp"
 #include "core/vr/SettingsFile.hpp"
@@ -54,7 +55,10 @@ ue3::ClassRef gSkeletalMeshClass{"Engine.SkeletalMesh", ue3::kEveryGame};
 ue3::FunctionRef gSetSkeletalMesh{"Engine.SkeletalMeshComponent.SetSkeletalMesh", ue3::kEveryGame};
 ue3::FunctionRef gDynamicLoadObject{"Core.Object.DynamicLoadObject", ue3::kEveryGame};
 ue3::FunctionRef gSetParentAnim{"Engine.SkeletalMeshComponent.SetParentAnimComponent", ue3::kEveryGame};
-ue3::FieldRef gHeadMesh{"SFXGame.BioPawn", "HeadMesh", ue3::kEveryGame};
+ue3::FieldRef gHeadMesh{"SFXGame.BioPawn", engine::adapter::kBioPawnHeadMesh, ue3::kEveryGame};
+// The components attached to an actor (a body's other followers: ME1's head gear, visor and face plate, accessories).
+ue3::FieldRef gAllComponents{"Engine.Actor", "AllComponents", ue3::kEveryGame};
+ue3::ClassRef gSkeletalMeshComponentClass{"Engine.SkeletalMeshComponent", ue3::kEveryGame};
 
 constexpr char kBlock[] =
     "\n"
@@ -91,6 +95,12 @@ constexpr char kBlock[] =
     "jiggleArmour = 0.25\n"
     "armourBodies =\n"
     "fullBodies = hmf_mir_\n"
+    "; A character's own share, before the rules above (the owner, 2026-11-19): name part:share, comma-separated, the first\n"
+    "; that matches wins. 0 leaves the body as the game made it (no rigged body, no jiggle: EDI's robot body); Samara's armour\n"
+    "; keeps half; Kasumi's suit, Ashley's and Liara's combat outfits and Cerberus female armour a quarter; Jack all of it;\n"
+    "; Ashley's hospital and romance clothes (ASHc) and Liara's romance body (LIAd) all of it.\n"
+    "bodyJiggle = hmf_arm_ashc:1, asa_arm_liad:1, _edi:0, asa_spr_:0.5, asa_arm_sam:0.5, _ksm:0.25, hmf_jck_:1, hmf_arm_ash:0.25, "
+    "asa_arm_lia:0.25, hmf_arm_crb:0.25\n"
     "; followBody (0..1): how far a long hair chain's lower joints rest with the shoulders rather than the head (hair lying\n"
     "; on the shoulders stays there when the head turns); single-bone strands are never affected.\n"
     "followBody = 0.7\n";
@@ -109,6 +119,10 @@ struct Settings {
     double jiggleArmour = 0.25;
     std::vector<std::string> armourBodies;
     std::vector<std::string> fullBodies{"hmf_mir_"};
+    // A character's own share (name part, share; the first match wins), before the armour rules (the owner, 2026-11-19).
+    std::vector<std::pair<std::string, double>> bodyJiggle{{"hmf_arm_ashc", 1.0}, {"asa_arm_liad", 1.0}, {"_edi", 0.0},
+        {"asa_spr_", 0.5}, {"asa_arm_sam", 0.5}, {"_ksm", 0.25}, {"hmf_jck_", 1.0}, {"hmf_arm_ash", 0.25},
+        {"asa_arm_lia", 0.25}, {"hmf_arm_crb", 0.25}};
     std::optional<std::string> look;  // [Hair] look: material parameters for simulated hair (empty: the game's)
 };
 
@@ -173,6 +187,16 @@ void RefreshSettings() {
     if (auto v = num("jiggleArmour")) s.jiggleArmour = std::clamp(*v, 0.0, 1.0);
     if (auto v = ini::Get(loaded.file, "Hair", "armourBodies")) s.armourBodies = NameParts(*v);
     if (auto v = ini::Get(loaded.file, "Hair", "fullBodies")) s.fullBodies = NameParts(*v);
+    if (auto v = ini::Get(loaded.file, "Hair", "bodyJiggle")) {
+        s.bodyJiggle.clear();
+        for (std::string const& item : NameParts(*v)) {
+            std::size_t const colon = item.rfind(':');
+            if (colon == std::string::npos || colon == 0) continue;
+            std::string part = item.substr(0, colon);
+            while (!part.empty() && part.back() == ' ') part.pop_back();
+            if (auto share = ini::Number(item.substr(colon + 1))) s.bodyJiggle.emplace_back(part, std::clamp(*share, 0.0, 1.0));
+        }
+    }
     s.look = ini::Get(loaded.file, "Hair", "look");
     s.sim.windMS = {s.wind, 0.0, 0.0};
     if (gOverride) s.on = *gOverride;
@@ -290,6 +314,7 @@ struct Swapped {
     ue3::Object* component = nullptr;
     ue3::Object* original = nullptr;  // the mesh it had
     ue3::Object* standIn = nullptr;
+    bool byName = false;              // a rigged body from MEVR_Bodies_<GAME>'s index, not the hand table
 };
 std::vector<Swapped> gSwapped;
 std::unordered_map<ue3::Object*, ue3::Object*> gBodyMaterial;  // `mevr hair body`: a body component's material before
@@ -355,6 +380,108 @@ ue3::Object* StandInFor(std::string const& riggedPath) {
     return found;
 }
 
+// ---- Rigged bodies by path (docs/trilogy-hair-plan.md section 12 step 3) -----------------------------------------------
+// tools/rig's MEVR_Bodies_<GAME>.pcc holds every female body it rigged; its index beside it in %LOCALAPPDATA%\MEVR\rig\<GAME>,
+// MEVR_Bodies_<GAME>.json, maps each game mesh's object path to its rig (core/ik/BodyStandIn): any body whose mesh it lists
+// wears the rig, after the hand table (Miranda's hand rigs carry her hair chains).
+namespace bsi = ik::body_stand_in;
+bsi::Cache gBodies;
+bool gBodiesIndexRead = false;  // read once a level (a rebuild between levels is picked up)
+
+std::filesystem::path RigFolder() {
+    wchar_t local[MAX_PATH] = {};
+    if (GetEnvironmentVariableW(L"LOCALAPPDATA", local, MAX_PATH) == 0) return {};
+    return std::filesystem::path(local) / L"MEVR" / L"rig" / MEVR_GAME_NAME_W;
+}
+
+void ReadBodiesIndex() {
+    if (gBodiesIndexRead) return;
+    gBodiesIndexRead = true;
+    std::filesystem::path const file = RigFolder() / (L"MEVR_Bodies_" + std::wstring(MEVR_GAME_NAME_W) + L".json");
+    std::ifstream in(file, std::ios::binary);
+    if (!in) {
+        gBodies.SetIndex(std::nullopt);
+        return;  // not built: bodies keep the game's meshes (said by `mevr hair bodies`)
+    }
+    std::string const text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    std::string error;
+    std::optional<bsi::Index> index = bsi::Index::Parse(text, &error);
+    if (index) {
+        log::Info("hair: the rigged bodies' index lists {} game meshes for {}", index->Size(), index->Package());
+    } else {
+        log::Warn("hair: the rigged bodies' index {} unreadable ({}): bodies keep the game's meshes", ini::Utf8(file), error);
+    }
+    gBodies.SetIndex(std::move(index));
+}
+
+// The bodies' package is in memory (an outermost object of that name).
+bool BodiesPackageLoaded() {
+    ue3::Reflection& r = ue3::runtime::Get();
+    std::string const want = bsi::PackageName(MEVR_GAME_NAME_A);
+    for (std::int32_t i = 0, n = r.ObjectCount(); i < n; ++i) {
+        ue3::Object* const o = r.ObjectAt(i);
+        if (o != nullptr && r.IsAlive(o) && r.OuterOf(o) == nullptr && Lower(r.NameText(o)) == want) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bsi::Engine BodyEngine() {
+    bsi::Engine e;
+    e.findLoaded = [](std::string const& path) -> void* { return FindLoaded(path); };
+    e.load = [](std::string const& path) -> void* { return LoadMesh(path); };
+    e.packageLoaded = [] { return BodiesPackageLoaded(); };
+    // Still a mesh of ours: IsAlive alone says yes for another object at the same address (CLAUDE.md, ue3::Kept).
+    e.alive = [](void* o) {
+        auto* const object = static_cast<ue3::Object*>(o);
+        return ue3::runtime::IsAlive(object) && ue3::IsA(object, gSkeletalMeshClass) &&
+               bsi::IsStandIn(ue3::runtime::Get().NameText(object));
+    };
+    return e;
+}
+
+// The rigged stand-in for a body mesh by its path, or nullptr; each mesh asked once a level, the outcome logged then.
+// The soft tissue's share for a body mesh's lowered object path (OutfitJiggle's rules; a character's bodyJiggle entry first).
+double ShareForPath(std::string const& name) {
+    for (auto const& [part, share] : gSettings.bodyJiggle) {
+        if (!part.empty() && name.find(part) != std::string::npos) return share;
+    }
+    for (std::string const& part : gSettings.fullBodies) {
+        if (!part.empty() && name.find(part) != std::string::npos) return 1.0;
+    }
+    for (std::string const& part : gSettings.armourBodies) {
+        if (!part.empty() && name.find(part) != std::string::npos) return gSettings.jiggleArmour;
+    }
+    for (char const* type : {"_hvy", "_med", "_lgt"}) {
+        if (name.find(type) != std::string::npos) return gSettings.jiggleArmour;
+    }
+    return 1.0;
+}
+
+ue3::Object* BodyStandInFor(ue3::Object const* asset) {
+    if (asset == nullptr || !gSettings.standIns) {
+        return nullptr;
+    }
+    ReadBodiesIndex();
+    std::string const path = PathOf(asset);
+    bool const known = gBodies.Entries().contains(path);
+    bool const absentBefore = gBodies.PackageAbsent();
+    auto* const found = static_cast<ue3::Object*>(gBodies.Find(path, BodyEngine()));
+    if (!known) {
+        bsi::Entry const& e = gBodies.Entries().at(path);
+        if (e.outcome == bsi::Outcome::Found) {
+            log::Info("hair: {}'s rigged body {} found ({})", path, e.rig, e.loaded ? "loaded by DynamicLoadObject" : "already in memory");
+        } else if (e.outcome == bsi::Outcome::NoPackage && !absentBefore && gBodies.GetIndex() != nullptr) {
+            log::Info("hair: the rigged bodies' package {} isn't installed (tools/rig/install.ps1): bodies keep the game's meshes this level",
+                gBodies.GetIndex()->Package());
+        } else if (e.outcome == bsi::Outcome::NotLoaded) {
+            log::Warn("hair: the index lists {} for {}, but the package has no such rig (an older build?)", e.rig, path);
+        }
+    }
+    return found;
+}
+
 bool SetMesh(ue3::Object* component, ue3::Object* mesh) {
     if (component == nullptr || mesh == nullptr || gSetSkeletalMesh.Get() == nullptr) {
         return false;
@@ -367,9 +494,30 @@ bool SetMesh(ue3::Object* component, ue3::Object* mesh) {
     return ue3::runtime::Call(component, gSetSkeletalMesh.Get(), p);
 }
 
-// The stand-in for this component's mesh, if the table has one and it's wanted: the first entry for it that loads. True
-// when a mesh was put on this call.
-bool ApplyStandIn(ue3::Object* component, ue3::Object* asset) {
+// Puts `standIn` on the component in place of `asset`, kept to put back. False if SetSkeletalMesh refused it.
+bool Wear(ue3::Object* component, ue3::Object* asset, ue3::Object* standIn, bool byName) {
+    if (!SetMesh(component, standIn)) {
+        log::Warn("hair: SetSkeletalMesh refused {} on {:#x}", PathOf(standIn), reinterpret_cast<std::uintptr_t>(component));
+        return false;
+    }
+    // A stand-in replaced by a later one keeps the first original, so putting back restores the game's.
+    ue3::Object* original = asset;
+    for (auto it = gSwapped.begin(); it != gSwapped.end(); ++it) {
+        if (it->component == component) {
+            original = it->original;
+            gSwapped.erase(it);
+            break;
+        }
+    }
+    gSwapped.push_back({component, original, standIn, byName});
+    log::Info("hair: {:#x} wears {} instead of {} (rigged{}: its hair or body can move)", reinterpret_cast<std::uintptr_t>(component),
+        PathOf(standIn), PathOf(asset), byName ? ", from the rigged bodies' index" : "");
+    return true;
+}
+
+// The stand-in for this component's mesh, if one is wanted: the hand table's first entry for it that loads, else for a body
+// the rigged body named after its mesh (BodyStandInFor). True when a mesh was put on this call.
+bool ApplyStandIn(ue3::Object* component, ue3::Object* asset, bool body) {
     if (!gSettings.standIns || asset == nullptr || component == nullptr) {
         return false;
     }
@@ -390,29 +538,20 @@ bool ApplyStandIn(ue3::Object* component, ue3::Object* asset) {
         if (standIn == nullptr) {
             continue;  // the next entry for this mesh, if any
         }
-        if (SetMesh(component, standIn)) {
-            // A stand-in replaced by a later one keeps the first original, so putting back restores the game's.
-            ue3::Object* original = asset;
-            for (auto it = gSwapped.begin(); it != gSwapped.end(); ++it) {
-                if (it->component == component) {
-                    original = it->original;
-                    gSwapped.erase(it);
-                    break;
-                }
-            }
-            gSwapped.push_back({component, original, standIn});
-            log::Info("hair: {:#x} wears {} instead of {} (rigged: its hair or body can move)", reinterpret_cast<std::uintptr_t>(component),
-                entry.rigged, entry.used);
-            return true;
-        }
-        log::Warn("hair: SetSkeletalMesh refused {} on {:#x}", entry.rigged, reinterpret_cast<std::uintptr_t>(component));
+        return Wear(component, asset, standIn, false);
+    }
+    if (!body) {
         return false;
     }
-    return false;
+    if (ShareForPath(Lower(PathOf(asset))) <= 0.0) {
+        return false;  // a body that keeps no jiggle (EDI's robot body) stays the game's
+    }
+    ue3::Object* const standIn = BodyStandInFor(asset);
+    return standIn != nullptr && Wear(component, asset, standIn, true);
 }
 
 // After a body's mesh changes, the components that follow it (head, hair) map their bones to it again.
-void Reattach(ue3::Object* body, std::initializer_list<ue3::Object*> followers) {
+void Reattach(ue3::Object* body, std::vector<ue3::Object*> const& followers) {
     if (body == nullptr || gSetParentAnim.Get() == nullptr) {
         return;
     }
@@ -462,9 +601,29 @@ struct Person {
 std::vector<Person> gPeople;
 std::string gStatus = "not run yet";
 
+// What follows a person's body: the head and hair, and any other skeletal mesh attached to the actor whose pose parent is the
+// body (ME1's head gear, visor and face plate; accessories).
+std::vector<ue3::Object*> FollowersOf(Person const& p) {
+    std::vector<ue3::Object*> out{p.head, p.hair};
+    if (p.pawn == nullptr || p.body == nullptr) {
+        return out;
+    }
+    if (auto const components = gAllComponents.ElementsOf(p.pawn)) {
+        for (std::int32_t i = 0; i < components->count; ++i) {
+            ue3::Object* const c = *static_cast<ue3::Object**>(components->At(i));
+            if (c == nullptr || c == p.body || !ue3::runtime::IsAlive(c) || !ue3::IsA(c, gSkeletalMeshComponentClass) ||
+                engine::skeleton::PoseParent(c) != p.body || std::find(out.begin(), out.end(), c) != out.end()) {
+                continue;
+            }
+            out.push_back(c);
+        }
+    }
+    return out;
+}
+
 void ReattachEveryone() {
     for (Person const& p : gPeople) {
-        Reattach(p.body, {p.head, p.hair});
+        Reattach(p.body, FollowersOf(p));
     }
 }
 int gPublished = 0;
@@ -508,22 +667,21 @@ std::vector<ue3::Object*> const& StuntActors(ue3::Object* world) {
 
 bool HasSoftTissueBones(ue3::Object* mesh);
 
-// The soft tissue's share for a body's outfit (the owner, 2026-11-19): armour keeps jiggleArmour (a heavy, medium or light
-// armour type in the mesh's name, or an armourBodies part), everything else (a bodysuit, casual clothes, underwear) all of it;
-// a fullBodies part (a character outfit named like armour but a bodysuit) wins.
+// A body we can make jiggle: rigged already, or with a rigged body named after its mesh (asked once a level).
+bool SoftTissueOrRigged(ue3::Object* body) {
+    if (body == nullptr || !ue3::runtime::IsAlive(body) || ShareForPath(Lower(PathOf(player::SkeletalMesh(body)))) <= 0.0) {
+        return false;
+    }
+    return HasSoftTissueBones(body) || BodyStandInFor(player::SkeletalMesh(body)) != nullptr;
+}
+
+// The soft tissue's share for a body's outfit (the owner, 2026-11-19): a character's bodyJiggle entry first (EDI none, Samara
+// half, Kasumi a quarter); then armour keeps jiggleArmour (a heavy, medium or light armour type in the mesh's name, or an
+// armourBodies part), everything else (a bodysuit, casual clothes, underwear) all of it; a fullBodies part (a character outfit
+// named like armour but a bodysuit) wins over the armour rules. The rigged body keeps its source mesh's name.
 double OutfitJiggle(ue3::Object* body) {
     if (body == nullptr) return 1.0;
-    std::string const name = Lower(PathOf(player::SkeletalMesh(body)));
-    for (std::string const& part : gSettings.fullBodies) {
-        if (!part.empty() && name.find(part) != std::string::npos) return 1.0;
-    }
-    for (std::string const& part : gSettings.armourBodies) {
-        if (!part.empty() && name.find(part) != std::string::npos) return gSettings.jiggleArmour;
-    }
-    for (char const* type : {"_hvy", "_med", "_lgt"}) {
-        if (name.find(type) != std::string::npos) return gSettings.jiggleArmour;
-    }
-    return 1.0;
+    return ShareForPath(Lower(PathOf(player::SkeletalMesh(body))));
 }
 
 std::vector<Person> FindPeople(ue3::Object* playerPawn, ue3::Vector at, ue3::Object* world) {
@@ -543,14 +701,14 @@ std::vector<Person> FindPeople(ue3::Object* playerPawn, ue3::Vector at, ue3::Obj
         if (hair != nullptr && (!ue3::runtime::IsAlive(hair) || gHiddenGame.ReadBool(hair).value_or(false))) {
             continue;
         }
-        if (hair == nullptr && !HasSoftTissueBones(player::Mesh(p))) {
-            continue;  // no hair and no jiggle: nothing of ours (a hairless body rigged by tools/rig has soft tissue: Liara)
-        }
         std::optional<ue3::Vector> const there = player::Location(p);
         if (!there) {
             continue;
         }
         double const d = Distance(*there, at);
+        if (d <= range && hair == nullptr && !SoftTissueOrRigged(player::Mesh(p))) {
+            continue;  // no hair and no jiggle: nothing of ours (a hairless body rigged by tools/rig has soft tissue: Liara)
+        }
         if (d <= range) {
             ue3::Object* const head = gHeadMesh.Read<ue3::Object*>(p).value_or(nullptr);
             found.push_back({p, hair, player::Mesh(p), d / engine::kUnitsPerMeter, head != nullptr && ue3::runtime::IsAlive(head) ? head : nullptr});
@@ -565,14 +723,14 @@ std::vector<Person> FindPeople(ue3::Object* playerPawn, ue3::Vector at, ue3::Obj
         if (hair != nullptr && (!ue3::runtime::IsAlive(hair) || gHiddenGame.ReadBool(hair).value_or(false))) {
             continue;
         }
-        if (hair == nullptr && !HasSoftTissueBones(gStuntBody.Read<ue3::Object*>(s).value_or(nullptr))) {
-            continue;
-        }
         std::optional<ue3::Vector> const there = player::Location(s);
         if (!there) {
             continue;
         }
         double const d = Distance(*there, at);
+        if (d <= range && hair == nullptr && !SoftTissueOrRigged(gStuntBody.Read<ue3::Object*>(s).value_or(nullptr))) {
+            continue;
+        }
         if (d <= range) {
             ue3::Object* const body = gStuntBody.Read<ue3::Object*>(s).value_or(nullptr);
             ue3::Object* const head = gStuntHead.Read<ue3::Object*>(s).value_or(nullptr);
@@ -1008,6 +1166,8 @@ void Tick(double /*deltaSeconds*/) {
         gSwapped.clear(); gBodyMaterial.clear();
         gStandInObjects.clear();
         gStandInMissing.clear();
+        gBodies.Forget();
+        gBodiesIndexRead = false;
         hair_look::Forget();
         hp::Clear();
         gPublished = 0;
@@ -1033,11 +1193,11 @@ void Tick(double /*deltaSeconds*/) {
     for (Person const& person : people) {
         // The body first (a rigged body carries the hair chains and soft-tissue bones the hair and jiggle stages drive), its
         // followers re-attached to it, then the hair.
-        if (ApplyStandIn(person.body, player::SkeletalMesh(person.body))) {
-            Reattach(person.body, {person.head, person.hair});
+        if (ApplyStandIn(person.body, player::SkeletalMesh(person.body), true)) {
+            Reattach(person.body, FollowersOf(person));
         }
         ue3::Object* const asset = person.hair != nullptr ? player::SkeletalMesh(person.hair) : nullptr;
-        if (person.hair != nullptr && ApplyStandIn(person.hair, asset)) {
+        if (person.hair != nullptr && ApplyStandIn(person.hair, asset, false)) {
             Reattach(person.body, {person.hair});
         }
         // The hair's look (game/HairLook): [Hair] look, else the rigged stand-in's own from the table; only on a hair we
@@ -1277,7 +1437,7 @@ std::string Command(std::string const& args) {
             }
         }
         gSwapped.push_back({p.body, original, mesh});
-        Reattach(p.body, {p.head, p.hair});
+        Reattach(p.body, FollowersOf(p));
         return std::format("[{}] wears {} (was {})", n >= 0 ? who : PathOf(p.pawn), PathOf(mesh), PathOf(before));
     }
     if (verb == "stream") {
@@ -1333,6 +1493,51 @@ std::string Command(std::string const& args) {
         }
         return Bring(what, which);
     }
+    if (verb == "bodies") {
+        // Which bodies near wear a rigged stand-in, and what the lookup by name found for each mesh this level.
+        std::string reload;
+        words >> reload;
+        if (reload == "reload") {
+            gBodies.Forget();
+            gBodiesIndexRead = false;  // asked again from the next tick (a rebuilt package needs the game restarted: its TOC)
+        }
+        ReadBodiesIndex();
+        bsi::Index const* const index = gBodies.GetIndex();
+        std::string out = index != nullptr
+            ? std::format("hair: rigged bodies: {}'s index lists {} game meshes; {} load(s) this level{}", index->Package(), index->Size(),
+                  gBodies.Loads(), gBodies.PackageAbsent() ? ", the package isn't installed" : "")
+            : std::string("hair: rigged bodies: no index (") + ini::Utf8(RigFolder()) + "\\MEVR_Bodies_" + MEVR_GAME_NAME_A +
+                  ".json; tools/rig/build-bodies.ps1 builds it)";
+        for (std::size_t i = 0; i < gPeople.size(); ++i) {
+            Person const& p = gPeople[i];
+            ue3::Object* const worn = player::SkeletalMesh(p.body);
+            Swapped const* swapped = nullptr;
+            for (Swapped const& s : gSwapped) {
+                if (s.component == p.body && s.standIn == worn) swapped = &s;
+            }
+            if (swapped != nullptr) {
+                out += std::format("\n  [{}] {} at {:.2f} m wears {} instead of {} ({}), jiggle x{:.2f}", i, PathOf(p.pawn), p.distanceM,
+                    PathOf(worn), PathOf(swapped->original), swapped->byName ? "the bodies' index" : "the hand table", OutfitJiggle(p.body));
+                continue;
+            }
+            auto const e = gBodies.Entries().find(PathOf(worn));
+            out += std::format("\n  [{}] {} at {:.2f} m: {}: {}", i, PathOf(p.pawn), p.distanceM, PathOf(worn),
+                HasSoftTissueBones(p.body) ? "rigged already"
+                : e != gBodies.Entries().end() ? std::format("{}{}", bsi::Describe(e->second.outcome),
+                      e->second.rig.empty() ? std::string() : " (" + e->second.rig + ")")
+                : gSettings.standIns ? "not asked yet" : "stand-ins off");
+        }
+        for (auto const& [mesh, e] : gBodies.Entries()) {
+            bool shown = false;
+            for (Person const& p : gPeople) {
+                shown = shown || PathOf(player::SkeletalMesh(p.body)) == mesh;
+            }
+            if (!shown) {
+                out += std::format("\n  (asked) {}: {}", mesh, bsi::Describe(e.outcome));
+            }
+        }
+        return out;
+    }
     if (verb.empty() || verb == "people" || verb == "status") {
         std::string out = "hair: " + gStatus;
         hp::Stats const stats = hp::GetStats();
@@ -1379,7 +1584,7 @@ std::string Command(std::string const& args) {
         }
         return out;
     }
-    return "mevr hair [on|off|auto | people | trace <s> | kick <n> <x> <y> <z> | mesh <n> <path> | standins on|off | stream <package> [on|off] | bring <name> [k]]";
+    return "mevr hair [on|off|auto | people | bodies [reload] | trace <s> | kick <n> <x> <y> <z> | mesh <n> <path> | standins on|off | stream <package> [on|off] | bring <name> [k]]";
 }
 
 std::string StatusJson() {
@@ -1422,6 +1627,8 @@ void Shutdown() {
     gParts.clear();
     gStandInObjects.clear();
     gStandInMissing.clear();
+    gBodies.Forget();
+    gBodiesIndexRead = false;
     hair_look::Forget();
     gWorld = nullptr;
     gPublished = 0;
