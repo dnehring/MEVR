@@ -827,6 +827,10 @@ Turn it on: the menu's Voice page > Thespian mode > Speak Shepard's lines (or `[
   contrast 1.06, saturation 1.12, mid-tones 1.0, black +0.03 (custom). Which keeps the shadows readable without looking
   grey; any bands in the dark sky or ceilings.
 
+- **ME3, first-person conversations (lane FPC-ME3):** Khalisah's interview at the embassies should open on the 3D screen (its
+  speaker is hidden); the Prothean's moment there in first person, the wheel low in front; a Citadel rapid-transit ride after a
+  conversation shown in the world should load normally (research/le2-conversations-in-world.md section 11).
+
 ## 7. Claude checks these alone on the fake headset (no need to wear it)
 Ask Claude to run them when the machine is free; each is a console command, a snapshot, a replay or a probe.
 - Hand contact (research/73 section 3, 2026-11-18): beside a squadmate with a hand replay held into them, `mevr contact

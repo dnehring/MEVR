@@ -916,7 +916,27 @@ him there, `SeqAct_Teleport_2` back).
 
 The records give each head bone axis's angle to where the game's look-at chain aims (`axesToAimDeg`; `python -I
 scratch/.../faceaxis.py`: the median per axis over every record with an aim). **ME2: +X** (lane FPC4's Tali records: Tali +X 23,
-Prazza 33, Jacob 19, Miranda 18 degrees, the other axes 64-92): ME1's `kFaceAxis 0` holds. ME3: see below.
+Prazza 33, Jacob 19, Miranda 18 degrees, the other axes 64-92): ME1's `kFaceAxis 0` holds. **ME3: +X too** (the Prothean's
+character moment below: Javik's and his double's heads `SFXStuntActor_1` 26, `SFXStuntActor_301` 26 degrees on +X, 92-116 on the
+others; the hanar `SFXStuntActor_2` 74 on +X, a head with no face axis, ME1's `faceAxisUnknown`). The records' `toYouDeg` judges
+heads on both sequels unchanged.
+
+### 11.5 ME3 in the game (stretch `20261120-133029-875-LE3-fpcme3f`, main 60a1ed15 merged)
+
+1. **A conversation whose lines walk Shepard** (item 1): the Prothean's character moment (`citprs_proth_char_moment_m_dlg`, from
+   Save_0090's embassies: its remote event, the teleport, the start's input 1; `conversation-world.ps1 -Before ... -StartInput 1`):
+   opening cut 11.3 m away, the eyes from his head bone as learned on foot (32.8 forward, 9.4 up), **2,220 of Shepard's track moves
+   withheld at the source** in 35 s (ME1's `trackHeld`: the player's place is the player's), 7 people kept, 21 records from above,
+   `0 findings` (session folder `convo-proth-133223`, its sheet). The owner's `citprs_miranda_talk1_m_dlg` (the docks) was not
+   reached: the docking officer's ride to the Refugee Camp, the other routes and Purgatory's moments are the next stretch's.
+2. **The wheel's picture** (FPC5's placement, asked by the coordinator): snapshot `2026-11-20_13-33-11-443-left.png`: the wheel in
+   front, low in the centre, readable, Javik 2 m ahead at the window. **No subtitle in any of the six snapshots**, and the module
+   still logs `wheel and subtitles fixed in the room 0.9 m ahead, 0.25 m below the eyes` on ME3: FPC5's subtitle under the speaker
+   doesn't show there yet (reported to lane FPC5's owner; not changed here).
+3. **Not reached on ME3:** Joker seated (`citprs_joker_talk1_d_dlg`, Presidium Commons: the ride and its start), a scene that
+   seats Shepard (the hospital's Ashley/Kaidan, Purgatory's Aria), a level cutscene that walks him (Purgatory's bar, section 11.3),
+   rides, the black move, the handover, the end facing on the Prothean fixture (the runner turned the world mode off before its
+   end). Moments this lane: ME3 0 held, 0 to the screen (none reached); ME2 none run.
 
 ## 5. How to check ME1 is unchanged
 

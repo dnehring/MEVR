@@ -22,6 +22,11 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
   in front of you where it opens, instead of both on one panel. A small ring on the floor marks a place a scene waits for you
   at. On all three games, when a conversation ends you keep looking where you looked (Mass Effect 1 turned the view to Shepard's
   old facing after a conversation that had turned you).
+- **First-person conversations on Mass Effect 2 and 3 (experimental): scenes with nobody to see go to the 3D screen.** A
+  conversation whose other people are all hidden when it opens (Khalisah's interview on the Citadel, a voice from off screen)
+  plays on the 3D cinema screen, as do Mass Effect 1's scenes where Shepard is hidden or far from whoever he talks to. On Mass
+  Effect 2 and 3 the mod no longer changes graphics settings while a loading screen is up (one such change left a Citadel
+  rapid-transit ride on its loading picture).
 - **First-person conversations on Mass Effect 2 and 3 (experimental): more of Mass Effect 1's rules.** People who look at
   Shepard look at your eyes when you step or lean away from where his body stands; your view sits down with Shepard when a
   scene seats him and the stick doesn't walk then; a cutscene that walks Shepard with someone beside him waits for you if you
