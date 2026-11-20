@@ -74,6 +74,8 @@ internal static class Program
             "contents" => Contents.Run(args),
             "find" => Contents.Find(args),
             "colliders" => Colliders.Run(args),
+            "place" => Placement.Run(args),
+            "census" => Census.Run(args),
             _ => Usage(),
         };
     }

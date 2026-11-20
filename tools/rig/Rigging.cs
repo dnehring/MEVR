@@ -64,6 +64,9 @@ internal sealed class StepPlan
     // whose inside trapped the nape's hair in the bench, 2026-11-19).
     public bool Colliders { get; set; } = true;
     public float MinSphereCm { get; set; }  // Colliders.Fit's minRadius: a suit's folds (0: every sphere)
+    // "auto": the breast and glute bones and their regions placed from the mesh's own surface (Placement), added to any
+    // bones and regions the step lists.
+    public string Place { get; set; }
 }
 
 internal static class Rigging
@@ -73,7 +76,7 @@ internal static class Rigging
     public static int Run(string[] args)
     {
         string planPath = args.Length > 1 ? args[1] : throw new ArgumentException("rig <plan.json>");
-        var plan = JsonSerializer.Deserialize<Plan>(File.ReadAllText(planPath), new JsonSerializerOptions { PropertyNameCaseInsensitive = true, ReadCommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
+        var plan = ReadPlan(planPath);
         string baseDir = Path.GetDirectoryName(Path.GetFullPath(planPath));
         string Resolve(string p)
         {
@@ -105,6 +108,14 @@ internal static class Rigging
 
             Skeleton.Check(mesh, report);
             var bones = new List<BonePlan>(step.Bones);
+            var regions = new List<RegionPlan>(step.Regions);
+            if (string.Equals(step.Place, "auto", StringComparison.OrdinalIgnoreCase))
+            {
+                var placed = Placement.Auto(mesh);
+                foreach (string n in placed.Notes) report.Line("place: " + n);
+                bones.AddRange(placed.Bones);
+                regions.AddRange(placed.Regions);
+            }
             if (step.Hair != null)
             {
                 HairChains.Plan(mesh, step.Hair, report);
@@ -123,7 +134,7 @@ internal static class Rigging
             {
                 HairChains.Weight(mesh, step.Hair, report);
             }
-            foreach (var region in step.Regions)
+            foreach (var region in regions)
             {
                 int bone = Array.FindIndex(mesh.RefSkeleton, b => b.Name.Instanced.Equals(region.Bone, StringComparison.OrdinalIgnoreCase));
                 if (bone < 0)
@@ -150,6 +161,9 @@ internal static class Rigging
         pcc.Save();
         return 0;
     }
+
+    public static Plan ReadPlan(string planPath) =>
+        JsonSerializer.Deserialize<Plan>(File.ReadAllText(planPath), new JsonSerializerOptions { PropertyNameCaseInsensitive = true, ReadCommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
 
     // A game's BioGame folder: --game-root <Mass Effect Legendary Edition folder>, else MEVR_GAME_ROOT, else Steam's default.
     public static string GameFolder(string[] args, string game)
