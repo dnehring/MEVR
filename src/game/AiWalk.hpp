@@ -10,7 +10,9 @@
 //        on AI movement answered true for the walker's controller (DoesGameModeAllowMovement), BioPawn.SetDesiredSpeed(1)
 //        each step (the conversation pauses its people's controllers), BioPawn.m_bInGestures cleared (else the animation
 //        tree plays gestures over the locomotion) and put back.
-//   ME2: BioAiController.PrecisionMoveTo(vLoc, rRot) [verify: moves a person in the conversation mode], the same counters
+//   ME2: its Kismet walk (SFXSeqAct_MoveToNode's: SFXAI_Core.MoveToGoal, the AI's MovingToGoal state, a path at the AI's own
+//        pace) to the level's navigation point nearest the point (kept in moveAction; lane EXIT3), else
+//        BioAiController.PrecisionMoveTo(vLoc, rRot) (a slow precise step, about 0.3 m/s: lane EXIT2); the same counters
 //        (ME2 has BioEpicPawnBehavior's), SetDesiredSpeed; no movement-ban question and no m_bInGestures (ME2 has neither).
 //   ME3: BioAiController.MoveToSlot(vSlotLocation) [verify: research/le3-conversations-in-world.md 2.6]; ME3 has none of the
 //        counters, the ban or the gesture flag.
@@ -33,7 +35,7 @@ struct Walk {
     ue3::Object* pawn = nullptr;
     ue3::Object* controller = nullptr;
     ue3::Object* behavior = nullptr;    // the AI enable counters' owner (ME1, ME2), or null
-    ue3::Object* moveAction = nullptr;  // ME1's BioSeqData_MoveToPoint, terminated at the end
+    ue3::Object* moveAction = nullptr;  // ME1's BioSeqData_MoveToPoint, terminated at the end; ME2's goal (a navigation point)
     ue3::Vector to{};
     int allRaised = 0;                  // how much each counter was raised (lowered by as much)
     int stackRaised = 0;
@@ -60,5 +62,10 @@ Phase Step(Walk& walk);
 void End(Walk& walk, char const* why, bool tearingDown = false);
 // Walks begun and the movement-ban answers given, for status lines.
 std::string StatusJson();
+#if defined(MEVR_GAME_LE2)
+// ME2's move for the next walks (`mevr convo exit walkby goal|precise`, an A/B): "goal" (the default) or "precise"; anything
+// else only asks. The answer names the move in use.
+char const* SetLe2Move(std::string const& how);
+#endif
 
 } // namespace mevr::game::ai_walk

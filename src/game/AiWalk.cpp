@@ -39,12 +39,29 @@ ue3::FunctionRef gAllowMovementHenchman{"SFXGame.BioAI_Henchman.DoesGameModeAllo
 ue3::FieldRef gInGestures{"SFXGame.BioPawn", "m_bInGestures", ue3::kEveryGame};
 ue3::FunctionRef gSetDesiredSpeed{"SFXGame.BioPawn.SetDesiredSpeed", ue3::kEveryGame};
 #elif defined(MEVR_GAME_LE2)
-// PrecisionMoveTo moves a person in and after the conversation mode, slowly (Tali and Prazza 2.76 m in 9 s on Freedom's
-// Progress, lane EXIT2, 2026-11-20); MoveToSlot (ME3's) moved neither of them (stalled at 0.00 m).
-constexpr char kMoveName[] = "PrecisionMoveTo";
-ue3::FunctionRef gMove{"SFXGame.BioAiController.PrecisionMoveTo", ue3::kEveryGame};
+// ME2's own walk of a person to a place, its Kismet move (SFXSeqAct_MoveToNode.MoveTo -> SFXAI_Core.MoveToGoalExternal ->
+// MoveToGoal; lane EXIT3, the scripts read with tools/conversation-scan --game LE2 --script): MoveToGoal pushes the AI's
+// MovingToGoal state, which walks straight to a goal actor when DirectWalkCheck allows, else along FindPathToward's route, at
+// the AI's own pace (SetMovementSpeed: a walk, a run past m_fRunThreshold) until ReachedDestination. The goal is an actor: the
+// level's navigation point nearest the point (WorldInfo.NavigationPointList), kept in Walk::moveAction. With none near, or a
+// controller that is no SFXAI_Core, BioAiController.PrecisionMoveTo (a precise step: Tali and Prazza 2.76 m in 9 s on
+// Freedom's Progress, lane EXIT2, 2026-11-20; MoveToSlot, ME3's, moved neither).
+constexpr char kMoveName[] = "MoveToGoal";
+ue3::FunctionRef gMove{"SFXGame.SFXAI_Core.MoveToGoal", ue3::kEveryGame};
+ue3::ClassRef gCoreAiClass{"SFXGame.SFXAI_Core", ue3::kEveryGame};
+ue3::FieldRef gMoveGoal{"SFXGame.BioAiController", "MoveGoal", ue3::kEveryGame};
+ue3::FieldRef gMoveTarget{"Engine.Controller", "MoveTarget", ue3::kEveryGame};
+ue3::FieldRef gWorldOf{"Engine.Actor", "WorldInfo", ue3::kEveryGame};
+ue3::FieldRef gNavList{"Engine.WorldInfo", "NavigationPointList", ue3::kEveryGame};
+ue3::FieldRef gNextNav{"Engine.NavigationPoint", "nextNavigationPoint", ue3::kEveryGame};
+constexpr char kPreciseName[] = "PrecisionMoveTo";
+ue3::FunctionRef gPrecise{"SFXGame.BioAiController.PrecisionMoveTo", ue3::kEveryGame};
 ue3::FunctionRef gStop{"SFXGame.BioPawn.StopMovement", ue3::kEveryGame};
 ue3::FunctionRef gSetDesiredSpeed{"Engine.Pawn.SetDesiredSpeed", ue3::kEveryGame};
+constexpr double kGoalNearUnits = 250.0;   // a navigation point this near the point (flat) is its goal
+constexpr double kGoalRiseUnits = 120.0;   // ... on the same floor
+constexpr double kGoalArriveUnits = 90.0;  // the AI stops at a goal's cylinder, not on its centre
+int gLe2Move = 0;                          // 0: the goal walk, PrecisionMoveTo without a goal; 1: PrecisionMoveTo (`walkby`)
 #else
 constexpr char kMoveName[] = "MoveToSlot";
 ue3::FunctionRef gMove{"SFXGame.BioAiController.MoveToSlot", ue3::kEveryGame};
@@ -126,8 +143,65 @@ bool SetSpeed(ue3::Object* pawn, float speed) {
 #endif
 }
 
+#if defined(MEVR_GAME_LE2)
+// The level's navigation point nearest `to` on its floor (WorldInfo.NavigationPointList), or null.
+ue3::Object* NavPointNear(ue3::Object* pawn, ue3::Vector const& to) {
+    ue3::Object* const world = gWorldOf.Read<ue3::Object*>(pawn).value_or(nullptr);
+    ue3::Object* nav = world != nullptr && ue3::runtime::IsAlive(world) ? gNavList.Read<ue3::Object*>(world).value_or(nullptr) : nullptr;
+    ue3::Object* best = nullptr;
+    double bestUnits = kGoalNearUnits;
+    for (int guard = 0; nav != nullptr && guard < 50000 && ue3::runtime::IsAlive(nav); ++guard) {
+        if (auto const at = player::Location(nav)) {
+            double const flat = Flat(*at, to);
+            if (flat <= bestUnits && std::abs(static_cast<double>(at->z) - to.z) <= kGoalRiseUnits) {
+                best = nav;
+                bestUnits = flat;
+            }
+        }
+        nav = gNextNav.Read<ue3::Object*>(nav).value_or(nullptr);
+    }
+    return best;
+}
+
+// PrecisionMoveTo, the fallback (a precise, slow step to the point itself).
+char const* AskPrecise(Walk& w) {
+    ue3::Function* const fn = gPrecise.Get();
+    if (fn == nullptr) return "the game's AI move function is missing";
+    ue3::Reflection& r = ue3::runtime::Get();
+    if (r.FindFunction(r.ClassOf(w.controller), kPreciseName) != fn) return "the controller's class overrides the AI move";
+    ue3::Params p(r, fn);
+    ue3::Rotator const keep = player::Rotation(w.pawn).value_or(ue3::Rotator{});
+    if (!p.Valid() || !p.Set("vLoc", w.to) || !p.Set("rRot", keep)) return "PrecisionMoveTo parameter lookup failed";
+    return ue3::runtime::Call(w.controller, fn, p) ? nullptr : "PrecisionMoveTo call failed";
+}
+#endif
+
 // The game's AI move to the point (each game's function); the move's data object where the game returns one (ME1).
 char const* AskMove(Walk& w) {
+#if defined(MEVR_GAME_LE2)
+    // The goal walk (the Kismet's): the controller class's own MoveToGoal (as a script call finds it), to the navigation point
+    // nearest the point; else the precise step.
+    w.moveAction = nullptr;
+    ue3::Reflection& r2 = ue3::runtime::Get();
+    ue3::Function* const toGoal = gMove.Get() != nullptr && ue3::IsA(w.controller, gCoreAiClass)
+        ? r2.FindFunction(r2.ClassOf(w.controller), kMoveName) : nullptr;
+    ue3::Object* const goal = gLe2Move == 0 && toGoal != nullptr ? NavPointNear(w.pawn, w.to) : nullptr;
+    if (goal != nullptr) {
+        ue3::Params p(r2, toGoal);
+        if (p.Valid() && p.Set("NewMoveGoal", goal) && p.Set("NewMoveOffset", 0.0f) && p.SetBool("bIgnoreAIGoHere", true) &&
+            ue3::runtime::Call(w.controller, toGoal, p) && p.ReturnBool().value_or(false)) {
+            ue3::Vector const asked = w.to;
+            w.moveAction = goal;
+            w.to = player::Location(goal).value_or(w.to);
+            log::Info("ai walk: {} walks with MoveToGoal (ME2's Kismet walk) to {}, {:.2f} m from the point asked",
+                ue3::runtime::FullName(w.pawn), ue3::runtime::Get().NameText(goal), Flat(w.to, asked) / 100.0);
+            return nullptr;
+        }
+        log::Info("ai walk: {}'s MoveToGoal({}) refused: the precise step instead", ue3::runtime::FullName(w.pawn),
+            ue3::runtime::Get().NameText(goal));
+    }
+    return AskPrecise(w);
+#else
     ue3::Function* const fn = gMove.Get();
     if (fn == nullptr) return "the game's AI move function is missing";
     ue3::Reflection& r = ue3::runtime::Get();
@@ -145,14 +219,11 @@ char const* AskMove(Walk& w) {
         return "PushMoveToPoint returned no live move action";
     }
     return nullptr;
-#elif defined(MEVR_GAME_LE2)
-    ue3::Rotator const keep = player::Rotation(w.pawn).value_or(ue3::Rotator{});
-    if (!p.Valid() || !p.Set("vLoc", w.to) || !p.Set("rRot", keep)) return "PrecisionMoveTo parameter lookup failed";
-    return ue3::runtime::Call(w.controller, fn, p) ? nullptr : "PrecisionMoveTo call failed";
 #else
     if (!p.Valid() || !p.Set("vSlotLocation", w.to)) return "MoveToSlot parameter lookup failed";
     return ue3::runtime::Call(w.controller, fn, p) ? nullptr : "MoveToSlot call failed";
 #endif
+#endif  // MEVR_GAME_LE2
 }
 
 void Release(Walk& w) {
@@ -264,7 +335,11 @@ Phase Step(Walk& w) {
     auto const at = player::Location(w.pawn);
     if (!at) return w.phase;
     std::uint64_t const now = GetTickCount64();
+#if defined(MEVR_GAME_LE2)
+    if (Flat(*at, w.to) <= (w.moveAction != nullptr ? kGoalArriveUnits : kArriveUnits)) {  // a goal walk ends at its cylinder
+#else
     if (Flat(*at, w.to) <= kArriveUnits) {
+#endif
         w.phase = Phase::Arrived;
         ++gArrived;
     } else if (Flat(*at, w.progressAt) >= kStallUnits) {
@@ -287,6 +362,25 @@ void End(Walk& w, char const* why, bool tearingDown) {
     if (w.gesturesCleared && !tearingDown && ue3::runtime::IsAlive(w.pawn)) gInGestures.WriteBool(w.pawn, true);
 #else
     (void)tearingDown;
+#if defined(MEVR_GAME_LE2)
+    // A goal walk still under way: ended as MovingToGoal's own CancelAction ends it (the Kismet's cancel; the state's version,
+    // which a ProcessEvent of the global function never reaches, clears the move's target): its goal (and target, if the goal)
+    // cleared, so the state's loop ends at its next step and the state pops (its PoppedState stops the pawn). The global
+    // CancelAction is not called: its flag would outlive the move and cancel the AI's next action.
+    bool cleared = false;
+    if (w.moveAction != nullptr && ue3::runtime::IsAlive(w.controller)) {
+        for (ue3::FieldRef* f : {&gMoveGoal, &gMoveTarget}) {
+            if (ue3::Object** const slot = f->In<ue3::Object*>(w.controller); slot != nullptr && *slot == w.moveAction) {
+                *slot = nullptr;
+                write_journal::Wrote("AiWalk.moveGoal", slot, sizeof(*slot));
+                cleared = true;
+            }
+        }
+        if (cleared) {
+            log::Info("ai walk: {}'s MovingToGoal ended (its goal cleared)", ue3::runtime::FullName(w.pawn));
+        }
+    }
+#endif
     if (ue3::Function* const stop = gStop.Get(); stop != nullptr && w.phase == Phase::Walking) {
 #if defined(MEVR_GAME_LE2)
         ue3::Object* const target = w.pawn;        // BioPawn.StopMovement
@@ -306,6 +400,17 @@ void End(Walk& w, char const* why, bool tearingDown) {
     w.controller = nullptr;
     w.phase = Phase::Ended;
 }
+
+#if defined(MEVR_GAME_LE2)
+char const* SetLe2Move(std::string const& how) {
+    if (how == "goal") {
+        gLe2Move = 0;
+    } else if (how == "precise") {
+        gLe2Move = 1;
+    }
+    return gLe2Move == 0 ? "MoveToGoal to the navigation point nearest (PrecisionMoveTo without one)" : "PrecisionMoveTo";
+}
+#endif
 
 std::string StatusJson() {
     return std::format("{{\"walks\": {}, \"arrived\": {}, \"stalled\": {}, \"refused\": {}, \"answers\": {}, \"walking\": {}, "

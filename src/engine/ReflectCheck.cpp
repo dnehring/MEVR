@@ -4536,6 +4536,23 @@ void CheckSequelConversationExit() {
     CheckField("SFXGame.BioActorBehavior", "bActive", SDK_BOOL(UBioActorBehavior, bActive));
     CheckField("Engine.Actor", "oBioComponent", SDK_FIELD(AActor, oBioComponent));
     PARAM(APawn_execSetDesiredSpeed_Parms, "Engine.Pawn.SetDesiredSpeed", fSpeedScaling);  // game/AiWalk's ME2 speed
+    // game/AiWalk's ME2 walk (the Kismet's MoveToGoal to a navigation point; lane EXIT3), its end, and the points.
+    CheckClass<ASFXAI_Core>("SFXGame.SFXAI_Core");
+    CheckFunction("SFXGame.SFXAI_Core.MoveToGoal");
+    PARAM(ASFXAI_Core_execMoveToGoal_Parms, "SFXGame.SFXAI_Core.MoveToGoal", NewMoveGoal);
+    PARAM(ASFXAI_Core_execMoveToGoal_Parms, "SFXGame.SFXAI_Core.MoveToGoal", NewMoveOffset);
+    PARAM(ASFXAI_Core_execMoveToGoal_Parms, "SFXGame.SFXAI_Core.MoveToGoal", bIgnoreAIGoHere);
+    PARAM(ASFXAI_Core_execMoveToGoal_Parms, "SFXGame.SFXAI_Core.MoveToGoal", ReturnValue);
+    PARMS(ASFXAI_Core_execMoveToGoal_Parms, "SFXGame.SFXAI_Core.MoveToGoal");
+    CheckField("SFXGame.BioAiController", "MoveGoal", SDK_FIELD(ABioAiController, MoveGoal));
+    CheckField("Engine.Controller", "MoveTarget", SDK_FIELD(AController, MoveTarget));
+    CheckField("Engine.WorldInfo", "NavigationPointList", SDK_FIELD(AWorldInfo, NavigationPointList));
+    CheckField("Engine.NavigationPoint", "nextNavigationPoint", SDK_FIELD(ANavigationPoint, nextNavigationPoint));
+    CheckFunction("Engine.Controller.FindPathToward");  // game/ConversationExit: a navigation point the person's AI has a path to
+    PARAM(AController_execFindPathToward_Parms, "Engine.Controller.FindPathToward", anActor);
+    PARAM(AController_execFindPathToward_Parms, "Engine.Controller.FindPathToward", MaxPathLength);
+    PARAM(AController_execFindPathToward_Parms, "Engine.Controller.FindPathToward", ReturnValue);
+    PARMS(AController_execFindPathToward_Parms, "Engine.Controller.FindPathToward");
 #else
     CheckField("SFXGame.BioPawn", "bActive", SDK_BOOL(ABioPawn, bActive));
     CheckClass<ASFXStuntActor>("SFXGame.SFXStuntActor");  // ME3's hub people: held as pawns are, never walked

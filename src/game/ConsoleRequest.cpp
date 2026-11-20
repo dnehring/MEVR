@@ -1755,6 +1755,50 @@ std::string ActivateLe2(std::istringstream& words) {
     return std::format("{}.ForceActivateInput({}) called {}", r.FullName(target), input, called);
 }
 
+// "mevr vslot <n> <hex offset | rva:<hex>>" on the sequels (LE1's line; lane EXIT3, ME2's ModifyPropertyPawn): object n's C++
+// vtable and the function at a byte offset in it as exe+RVA, or every slot (under 0x1000) holding that RVA.
+bool ReadSlotLe2(void const* object, std::size_t offset, std::uintptr_t& vtable, std::uintptr_t& fn) {
+    __try {
+        void* const* const table = *static_cast<void* const* const*>(object);
+        vtable = reinterpret_cast<std::uintptr_t>(table);
+        fn = reinterpret_cast<std::uintptr_t>(table[offset / sizeof(void*)]);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
+std::string VslotLe2(std::istringstream& words) {
+    std::size_t index = 0;
+    std::string what;
+    words >> index >> what;
+    ue3::Reflection& r = ue3::runtime::Get();
+    if (index >= gFoundLe2.size() || !r.IsAlive(gFoundLe2[index]) || what.empty()) {
+        return "usage: mevr vslot <n of mevr instances> <hex byte offset | rva:<hex>>";
+    }
+    bool const find = what.starts_with("rva:");
+    std::string_view hex = std::string_view(what).substr(find ? 4 : 0);
+    if (hex.starts_with("0x") || hex.starts_with("0X")) hex.remove_prefix(2);
+    std::size_t value = 0;
+    if (std::from_chars(hex.data(), hex.data() + hex.size(), value, 16).ec != std::errc{}) {
+        return "mevr vslot: not a hex number";
+    }
+    auto const base = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
+    std::uintptr_t vtable = 0, fn = 0;
+    if (!find) {
+        if (value % sizeof(void*) != 0 || value >= 0x2000 || !ReadSlotLe2(gFoundLe2[index], value, vtable, fn)) {
+            return std::format("mevr vslot: slot +0x{:X} can't be read (a multiple of 8 under 0x2000)", value);
+        }
+        return std::format("{}: vtable exe+0x{:X}, slot +0x{:X} = exe+0x{:X}", r.FullName(gFoundLe2[index]), vtable - base, value, fn - base);
+    }
+    std::string slots;
+    for (std::size_t offset = 0; offset < 0x1000 && ReadSlotLe2(gFoundLe2[index], offset, vtable, fn); offset += sizeof(void*)) {
+        if (fn - base == value) slots += std::format(" +0x{:X}", offset);
+    }
+    return std::format("{}: vtable exe+0x{:X}; slots holding exe+0x{:X}:{}", r.FullName(gFoundLe2[index]), vtable - base, value,
+        slots.empty() ? std::string(" none") : slots);
+}
+
 #endif
 
 #if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
@@ -2082,6 +2126,7 @@ std::optional<std::string> RunOursLe3(ue3::Object* pc, std::string const& line) 
     if (verb == "instances") return InstancesLe2(words);  // a scene's Kismet start (ME2's lines; the conversations' fixtures, lane FPC3)
     if (verb == "activate") return ActivateLe2(words);
     if (verb == "setloc") return SetLocationLe2(words);
+    if (verb == "vslot") return VslotLe2(words);  // a live object's C++ vtable slot
     if (verb == "sprint") return sprint::StatusJson();  // game/Sprint: one sprint for the trilogy
     if (verb == "weaponprobe") return WeaponProbeLe3(pc);
     if (verb == "galaxy") {
@@ -2318,6 +2363,9 @@ std::optional<std::string> RunOursLe2(ue3::Object* pc, std::string const& line) 
     }
     if (verb == "setloc") {
         return SetLocationLe2(words);
+    }
+    if (verb == "vslot") {
+        return VslotLe2(words);  // a live object's C++ vtable slot (ME2's ModifyPropertyPawn Activated, lane EXIT3)
     }
     if (verb == "reticles") {
         return screen_reticle::Command();  // the crosshair's panels, what they show, whether they are hidden (as ME1's)

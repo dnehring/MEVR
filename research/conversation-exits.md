@@ -365,6 +365,14 @@ post-handler: the change itself lands later) takes out a level holding someone i
    (designed above, not built)? Recommendation: yes, next.
 6. **Line hides and holograms** (Saren's hologram going off at the hearing's end; ME3's 773 line visibility tracks): left as
    authored (built: noticed and counted, not held)? Recommendation: leave holograms, hold people hidden by a line (ME3 first).
+7. **ME3's squadmates in its hubs** (lane EXIT3, section 11): ME3's hubs have no party; a crew member there is a stunt actor tagged
+   `hench_<name>`. Built: any `hench_` tag is a squadmate on ME3 and is left alone (Javik after his moment at the embassies, James
+   after his talk: they go as the game has them go). (a) keep that; (b) treat a crew member outside the party as anyone else of the
+   scene (held, then the look-away or the dip: they can't walk, no AI). ME1 and ME2 keep the live party (ME2's Tali, `hench_tali` at
+   her reintroduction before she joins, walks off). Recommendation: (a), the owner's "squadmates are left alone".
+8. **ME3's hub people can't walk** (section 11): everyone but the player in ME3's hubs is a stunt actor, with no AI to walk them, so
+   a removal in view waits for the player to look away (3 s) and then goes under the dip. (a) keep that; (b) a short dip at once for
+   them (no 3 s of a person standing still after their scene). Recommendation: (a) until the headset says the wait reads badly.
 
 ## 9. The sequels, built (lane EXIT2, 2026-11-20)
 
@@ -479,6 +487,61 @@ streamed in and the player inside it; restored with 0 differences). Folders `exi
 `citprs_james_m_dlg` (`hench_marine`, a squadmate when in the party: let through). Check first that the hook's script path counts
 (`mevr convo exit status`: the hook's `calls` grow while `fromEvent` doesn't: ME3's script frames) and that the script goes on after
 a withheld call (the op's other targets switched, the level's script not stuck).
+
+## 11. ME3 in the game (fake headset, 2026-11-20 03:48-04:17, lane EXIT3)
+
+Stretch `%LOCALAPPDATA%\MEVR\sessions\20261120-034847-326-LE3-exit3` (`prep.ps1 -Holder EXIT3 -Game LE3 -RendererPreview -BuildDir
+build-trilogy`, `launch.ps1`, `load.ps1 -Save <career>\Save_0090.pcsav`; restored with 0 differences). Folders `exit-proth-*` there
+(steer.txt, console.txt, lines.txt).
+
+**Reaching a fixture by script.** `Save_0090` loads into the Citadel's docking conversation (`load.ps1` timed out waiting for
+gameplay: the game sits in the docking officer's wheel). `mevr convo exit reply 2` (QueueReply: Thespian's pick waits for a focused
+session, which the fake headset never has) took the "Embassies" ride. **Neither of EXIT2's fixtures is loaded there**:
+`BioD_CitHub_HanarPlot` (the spectre) and `BioD_CitHub_EmbassyP1` (James) are not streamed in at the embassies in this save's plot
+(`mevr instances SFXGame.SFXSeqAct_StartConversation` lists nine starts, none of theirs). The fixture used instead, from the same
+scratch scan: **the Prothean's character moment** (`BioD_CitHub_Prothean`, the From Ashes DLC's package in `DLC_HEN_PR`):
+`citprs_proth_char_moment_m_dlg`, owner Javik (`hench_prothean`), a hanar and two bystanders as nodes; its `Out` ->
+`SFXSeqAct_SetTargetable_2` -> **`BioSeqAct_SetActive_1`, false on Javik, the hanar and both bystanders** (depth 1). The chain, read
+with a scratch sequence dumper (`scratch`, LEX library): the remote event `RE_Poll_BioH_Prothean_Visible` -> Javik's own level answers
+-> "Prothean in party?" -> "Time for moment?" -> `SeqAct_Teleport_0` (Javik to the spot) -> targetable -> the use event -> a gate ->
+the start's input 1 (preload) -> `PreLoad Done` -> `BioSeqAct_SetActive_0` (the hanar and bystanders on) -> the start's input 0. By
+script: `mevr instances Engine.SeqAct_ActivateRemoteEvent Prothean` + `mevr activate 0 0`, the same for `Engine.SeqAct_Teleport`, then
+`conversation-exit.ps1 -Game LE3 -Start fire:SFXGame.SFXSeqAct_StartConversation:Prothean -StartInput 1 -Talk 8 -HeadYaw 128`
+(the runner's ME3 advance: each second the wheel's first reply, `mevr convo exit reply <n>`, or the line skipped,
+`mevr convo exit skip`, BioConversationController.SkipNode; the conversation ends in about 80 s).
+
+**What the hub's people are.** In the hub only the player is a `BioPawn` (`mevr instances SFXGame.BioPawn TheWorld`: one); everyone
+else, Javik's crew double included (`BioH_Prothean_00_NC.SFXStuntActor_1`), is an **`SFXStuntActor`** (an actor with a body and
+`m_bActive`, no AI). The first run held nobody: the module took only `BioPawn`s as people, and the sequels' reader
+(`m_aSpeakerData`) lists only those who have spoken, so Javik (the owner) and one bystander were "nobody of a scene". Fixed: on ME3
+the people are pawns or stunt actors (presence from `SFXStuntActor.m_bActive`), read also from the controller's `m_pOwner`,
+`m_pSpeaker`, `m_pListener`, `m_aAllFoundActors[].pSpeakerActor` and `m_aExtraParticipants` (the module's LE3 adapter; the sequels'
+reader untouched). A stunt actor is never walked: no AI walks it, so its change waits for the look-away (or applies out of sight).
+
+**Squadmates in ME3's hubs.** There is no party in the hub; a crew member is its `BioH_<name>_00_NC` stunt actor tagged
+`hench_<name>`. ME3 treats a `hench_` tag as a squadmate (James is `hench_marine`): **Javik let through, "a squadmate: the squad is
+the next scene's"**, in every run. ME1 and ME2 keep the live party's rule (ME2's Tali is `hench_tali` at her reintroduction, before
+she joins: held and walked, section 10). Owner question 7.
+
+**Runs (each a fresh moment, the same launch):**
+
+1. `proth-walk` (head ahead): the hanar and both bystanders stand 14-16 m off, about 126 degrees right of the held view (`mevr convo
+   exit people`: each person's bearing, distance, presence and sight from the drawn eyes): out of sight, let through at once. Right.
+2. `proth-yaw128` (the replayed head 128 degrees right, `-HeadYaw`): in view at the end (bystander 2 in sight, the other two behind
+   people). **The script path held three calls**: `the script deactivates SFXStuntActor_2 (citprs_proth_hanar) in the player's view
+   (12.9 m from the eyes): held back`, the same for both bystanders, Javik let through as a squadmate; `can't walk away: a stunt actor,
+   no AI walks it`; 0.3 s later `applied ... out of the player's sight; hidden now yes`, because the conversation's end turned the view
+   to the pawn's own facing on foot (the held view's yaw 0 against the pawn's; the sequels' module's, lane FPC: reported). Hook
+   totals `calls 25, fromEvent 3` (our own applies through ProcessEvent), **`fromScript 22, withheld 3`**.
+3. **The script goes on after a withheld call**: the op's `foreach` went on through its other targets after each withheld one (Javik,
+   then the three held, in the script's order), the conversation ended, the game went back on foot, and the same level's sequence ran
+   twice more in the launch (remote event, teleport, start, end: `fromScript 33` by the last run). No stall, no crash: `StepOverCall`
+   leaves the frame where the call would have.
+4. `proth-off` (the broken run, `-Exit off`): `let through (worldExit = off ...)` and **`convo: audit: vanished-in-view` caught the
+   hanar and both bystanders** (12.6 m from the eyes).
+
+**The walk on ME3 (`MoveToSlot`) is not checked**: no person of a hub conversation is a pawn. It needs a mission level's conversation
+with NPC pawns (a combat level's squad or enemies); none was reached.
 
 ## Log
 

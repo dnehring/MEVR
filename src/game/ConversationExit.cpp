@@ -619,6 +619,70 @@ std::optional<bool> Reachable(ue3::Object* pawn, ik::Vec3 const& to) {
     return p.ReturnBool();
 }
 
+#if defined(MEVR_GAME_LE2)
+// ME2's walk follows a path (game/AiWalk: the Kismet's MoveToGoal to a navigation point), so the level's navigation points are
+// places too: within the core's reach of the person on its floor, hidden from the eyes, with a path the person's AI finds
+// (Engine.Controller.FindPathToward, MovingToGoal's own question, 2000 units of path at most), nearest first, at most kNavMax.
+// Tali's room on Freedom's Progress had no hidden place with a straight way (lane EXIT2): a door's far side is one.
+ue3::FieldRef gNavList{"Engine.WorldInfo", "NavigationPointList", ue3::kEveryGame};
+ue3::FieldRef gNextNav{"Engine.NavigationPoint", "nextNavigationPoint", ue3::kEveryGame};
+ue3::FunctionRef gFindPathToward{"Engine.Controller.FindPathToward", ue3::kEveryGame};
+constexpr int kNavMax = 6;          // candidates added
+constexpr int kNavAsked = 24;       // hidden ones asked for a path at most
+constexpr double kNavRiseUnits = 100.0;
+
+int AddNavCandidates(ue3::Object* pawn, ik::Vec3 const& at, std::vector<ik::Vec3> const& refused, std::vector<cx::Candidate>& out) {
+    ue3::Object* const ai = gController.Read<ue3::Object*>(pawn).value_or(nullptr);
+    ue3::Object* const world = gWorldOfActor.Read<ue3::Object*>(pawn).value_or(nullptr);
+    ue3::Function* const find = gFindPathToward.Get();
+    if (!gEyes || ai == nullptr || !ue3::runtime::IsAlive(ai) || world == nullptr || find == nullptr) {
+        return 0;
+    }
+    struct Spot {
+        ue3::Object* nav;
+        ik::Vec3 spot;
+        double flat;
+    };
+    std::vector<Spot> spots;
+    ue3::Object* nav = gNavList.Read<ue3::Object*>(world).value_or(nullptr);
+    for (int guard = 0; nav != nullptr && guard < 50000 && ue3::runtime::IsAlive(nav); ++guard) {
+        if (auto const p = player::Location(nav)) {
+            ik::Vec3 const spot = V(*p);
+            double const flat = std::hypot(spot.x - at.x, spot.y - at.y);
+            bool const kept = std::none_of(refused.begin(), refused.end(), [&](ik::Vec3 const& r) { return Dist(r, spot) <= 150.0; });
+            if (flat >= gLimits.minUnits && flat <= gLimits.maxUnits && std::abs(spot.z - at.z) <= kNavRiseUnits && kept) {
+                spots.push_back({nav, spot, flat});
+            }
+        }
+        nav = gNextNav.Read<ue3::Object*>(nav).value_or(nullptr);
+    }
+    std::sort(spots.begin(), spots.end(), [](Spot const& a, Spot const& b) { return a.flat < b.flat; });
+    ue3::Object* const tracer = pawn;
+    int added = 0, asked = 0;
+    for (Spot const& n : spots) {
+        if (added >= kNavMax || asked >= kNavAsked) {
+            break;
+        }
+        if (Clear(tracer, gEyes->at, n.spot + ik::Vec3{0.0, 0.0, 70.0}) || Clear(tracer, gEyes->at, n.spot)) {
+            continue;  // in sight: the straight candidates cover walking off in view
+        }
+        ++asked;
+        ue3::Params p(ue3::runtime::Get(), find);
+        if (!p.Valid() || !p.Set("anActor", n.nav) || !p.Set("MaxPathLength", std::int32_t{2000}) || !ue3::runtime::Call(ai, find, p) ||
+            p.Return<ue3::Object*>().value_or(nullptr) == nullptr) {
+            continue;
+        }
+        cx::Candidate c;
+        c.at = C(n.spot);
+        c.path = true;
+        c.hidden = true;
+        out.push_back(c);
+        ++added;
+    }
+    return added;
+}
+#endif
+
 // Where to: the candidates traced from the person's place (core's CandidatePoints), the best picked (PickDestination); only places
 // the AI would walk to (Reachable) and none it gave up before (`refused`).
 std::optional<ik::Vec3> Destination(ue3::Object* pawn, ik::Vec3 const& at, std::string& why, bool& hidden,
@@ -668,17 +732,28 @@ std::optional<ik::Vec3> Destination(ue3::Object* pawn, ik::Vec3 const& at, std::
         pathCount += c.path ? 1 : 0;
         candidates.push_back(c);
     }
+#if defined(MEVR_GAME_LE2)
+    std::size_t const straight = candidates.size();
+    int const navAdded = AddNavCandidates(pawn, at, refused, candidates);
+#endif
     auto const pick = cx::PickDestination(candidates, C(at), C(gEyes->at), gLimits);
     if (!pick) {
         why = std::format("nowhere to walk away to within {:.0f}-{:.0f} m with a clear way ({} of {} points with a way, {} hidden, {} "
                           "clear but not reachable for the AI{})",
             gLimits.minUnits / kUnitsPerMeter, gLimits.maxUnits / kUnitsPerMeter, pathCount, candidates.size(), hiddenCount, unreachable,
             unknown > 0 ? std::format(", {} not asked", unknown) : std::string());
+#if defined(MEVR_GAME_LE2)
+        why += std::format("; {} navigation points hidden with a path", navAdded);
+#endif
         return std::nullopt;
     }
     hidden = pick->hidden;
     why = std::format("{} of {} points with a way, {} hidden, {} clear but not reachable for the AI{}", pathCount, candidates.size(),
         hiddenCount, unreachable, unknown > 0 ? std::format(", {} not asked", unknown) : std::string());
+#if defined(MEVR_GAME_LE2)
+    why += std::format("; {} navigation points hidden with a path{}", navAdded,
+        pick->index >= straight ? ": a navigation point picked (the walk follows the AI's path)" : "");
+#endif
     return I(candidates[pick->index].at);
 }
 
@@ -1215,6 +1290,9 @@ std::string Command(std::string const& rest) {
         bool const called = p.Valid() && ue3::runtime::Call(world, endCurrent.Get(), p);
         log::Info("convo exit: mevr convo exit end: BioWorldInfo.EndCurrentConversation called {}", called);
         return std::format("convo exit: BioWorldInfo.EndCurrentConversation called {}", called);
+    } else if (w.rfind("walkby", 0) == 0) {
+        // An A/B of ME2's walks: the Kismet's MoveToGoal to a navigation point (the default) or the precise step.
+        return std::format("convo exit: walks by {}", walk::SetLe2Move(ini::Trim(w.substr(6))));
 #endif
 #if defined(MEVR_GAME_LE3)
     } else if (w == "skip") {
