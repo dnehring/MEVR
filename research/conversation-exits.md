@@ -276,6 +276,24 @@ each walk away; `mevr convo exit test <tag>`: the walk away of anyone now, witho
    no one: not an exit fixture (the swap is the intro's, `Benezia_Intro`, 19 s after its conversation: let through by the 2 s
    window in any case).
 
+**ME1's audit set, once, with the hearing to its end** (`tools/conversation-audit.ps1 -Long -IgnoreSlot`, build-mono at
+`3341d3a9`, 2026-11-20 01:41-02:01, session `%LOCALAPPDATA%\MEVR\sessions\2026-11-20_01-40-56-audit`, log in
+`scratch/exit/audit-set.log`):
+
+1. The exits: the hearing's Anderson held and applied under the look-away's dip at 3.0 s (the podium, as before); the councillors
+   and Saren let through under the hearing's black screen; **Udina held, walked off with the game's AI and applied out of sight
+   after 1.8 s (2.32 m)**; Anderson after his final chat applied after 0.1 s as `BIOA_STA70_02council_DSG` streamed out; at the
+   Spectre ceremony's end two councillors in view (1.6 and 3.1 m) were applied in the same tick as their level streamed out. No
+   `vanished-in-view`.
+2. The verdict was 6 "regressions", none from this module: (a) `lav70_asariscientist_dlg` faces off the eyes, median 13 -> 22
+   degrees, and `sta30_girard_dlg` a new `face-off-you`: no exit decision of any kind was made in either scene (the log's
+   `convo exit:` lines); (b) four at the council (`eyes-off-body`, `hands-off-controllers`, Shepard's head 0.1 -> 0.63 m from the
+   eyes, looks at his body 0 -> 2), all at 142 s, the hearing's last seconds, which the baseline (written from the short run, 5
+   records against the long run's 13) never covered: the stance sheet shows the script hiding Shepard's body at 140.8 s, before any
+   hold, and the canary below, with this module off, trips the same two rules at 142.5 s.
+3. **The broken run `popped-out`** (`-Canaries -Canary popped-out`, worldExit off, session `..._02-01-58-canary-popped-out`):
+   **caught by `vanished-in-view`** (the hearing's Anderson at 2.2 m, Udina at 2.1 m and Anderson after his final chat at 2.1 m).
+
 ## 7. What the sequels need
 
 The rule (section 4) is the sequels' as it is; each needs its adapter (the hook, the people, the walk, the dip). Counts below
@@ -352,3 +370,5 @@ post-handler: the change itself lands later) takes out a level holding someone i
 
 - 2026-11-19/20: the packages read and counted for the three games; Udina's case found; the natives read in an isolated copy of
   the LE1 Ghidra project (the shared one was locked by another session's MCP server); the rule, ME1's side and the audit built.
+- 2026-11-20: runs 1-4 on the fake headset; why the AI never walked Udina (the move state's own reachability test), fixed with
+  `PointReachable`; people whose level streams out applied at once; the audit set once (long) and the `popped-out` canary caught.
