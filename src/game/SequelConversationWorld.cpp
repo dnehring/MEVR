@@ -171,6 +171,10 @@ struct Settings {
     // ME1's worldWalkAlong (research/69 "Walking along"): a moment's matinee waits for a player who falls behind.
     bool walkAlong = true;
     cw::WalkAlongSettings walkAlongSettings;
+    // ME1's worldAutoScreen and worldAbsentM (research/69 items 3 and 10) over the run-time presence rules at the opening
+    // (cw::PresenceAtOpening; the owner's rule (a), 2026-11-20): 0 off, 1 logged only, 2 (the default) to the 3D screen.
+    int autoScreen = 2;
+    double absentUnits = 1500.0;
 };
 
 // Where Shepard stood on foot, the last game tick before a conversation (ME1's opening: he is put back there).
@@ -230,6 +234,7 @@ struct Conversation {
     // arrival) is left on the 3D screen: holding the view at its mark is what the level streaming then saw rendered, and the
     // Citadel's load never finished (2026-11-19, two runs of two). Held: none of the below is published.
     bool skipped = false;
+    bool byHand = false;  // held in the world by `mevr convo world on` (the presence rules then only log)
     bool placed = false;         // the player's place taken
     bool early = false;          // held at the view on foot while the opening settles (published, not placed yet)
     std::uint32_t serial = 0;
@@ -308,6 +313,7 @@ std::uint64_t gEndedShownMs = 0;
 depth_of_field::Hold gDof{"conversation world"};
 std::uint32_t gSerial = 0;
 unsigned gNoPlaceScreens = 0;  // conversations the presence table sent to the 3D screen this session
+unsigned gPresenceScreens = 0;  // ... and the run-time presence rules at the opening (cw::PresenceAtOpening)
 // The host's dip from black (cw::State::cut, plugin/TransitionFade through MevrSeams::TransitionFadeLayer): counts the player's
 // re-placements inside a scene held in the world (a Cut opening, a moment's end that joins Shepard past where he stands).
 std::uint32_t gCutSerial = 0;
@@ -421,6 +427,11 @@ void RefreshSettings() {
     gSettings.walkAlongSettings.resumeUnits = std::min(metres(L"worldWalkAlongResumeM", 1.5, 0.2, 30.0) * 100.0,
         gSettings.walkAlongSettings.pauseUnits);
     gSettings.walkAlongSettings.maxPauseS = metres(L"worldWalkAlongMaxS", 120.0, 0.0, 3600.0);
+    gSettings.absentUnits = metres(L"worldAbsentM", 15.0, 0.0, 200.0) * 100.0;
+    wchar_t screen[16] = {};
+    vr::settings_file::String(L"Cinematics", L"worldAutoScreen", L"on", screen, static_cast<DWORD>(std::size(screen)), path.c_str());
+    std::wstring const screenWord(screen);
+    gSettings.autoScreen = screenWord == L"off" || screenWord == L"0" ? 0 : screenWord == L"log" || screenWord == L"1" ? 1 : 2;
     wchar_t curated[256] = {};
     vr::settings_file::String(L"Cinematics", L"worldCuratedWalks", L"", curated, static_cast<DWORD>(std::size(curated)), path.c_str());
     gSettings.curated.clear();
@@ -636,6 +647,7 @@ ue3::FieldRef gWorldSeconds{"Engine.WorldInfo", "TimeSeconds", ue3::kEveryGame};
 ue3::FieldRef gWorldPawns{"Engine.WorldInfo", "PawnList", ue3::kEveryGame};
 ue3::FieldRef gNextPawn{"Engine.Pawn", "NextPawn", ue3::kEveryGame};
 ue3::FieldRef gActorHiddenRead{"Engine.Actor", "bHidden", ue3::kEveryGame};
+ue3::FieldRef gMeshHiddenGame{"Engine.PrimitiveComponent", "HiddenGame", ue3::kEveryGame};
 ue3::FunctionRef gPrimitiveSetHidden{"Engine.PrimitiveComponent.SetHidden", ue3::kEveryGame};
 
 // A pawn's head bone: its world place and axes (ME1's HeadOf; cached per skeletal mesh asset).
@@ -2299,6 +2311,50 @@ void Tick(conversation_world::Link const& link) {
             gC.why = "Shepard's head bone not posed";
             return;
         }
+        // The run-time presence rules, once the stage has placed everyone (cw::PresenceAtOpening: ME1's two from its Begin, and
+        // the owner's rule (a) of 2026-11-20: every one of the scene's people but Shepard hidden, ME3's Khalisah interview and the
+        // video calls): no place for the player, the 3D screen ([Cinematics] worldAutoScreen = on, ME1's key; log: logged only).
+        if (gSettings.autoScreen != 0) {
+            cw::PresenceFacts presence;
+            presence.shepardHidden = gActorHiddenRead.ReadBool(pawn).value_or(false);
+            ue3::Object* const owner = gOwner.Read<ue3::Object*>(conversation).value_or(nullptr);
+            auto const ownerAt = owner != nullptr && owner != pawn && ue3::runtime::IsAlive(owner) ? player::Location(owner) : std::nullopt;
+            if (ownerAt) {
+                presence.ownerUnits = Distance(*pawnAt, *ownerAt);
+                presence.ownerInSight = LineOfSight(pawn, ue3::Vector{pawnAt->x, pawnAt->y, pawnAt->z + 60.0f},
+                    ue3::Vector{ownerAt->x, ownerAt->y, ownerAt->z + 60.0f});
+            }
+            std::string people;
+            for (ue3::Object* const actor : Speakers(conversation, ConversationPlayer(conversation))) {
+                if (actor == nullptr || actor == pawn || !ue3::runtime::IsAlive(actor) || !IsPerson(actor)) continue;
+                ue3::Object* const mesh = PersonMesh(actor);
+                bool const hidden = gActorHiddenRead.ReadBool(actor).value_or(false) ||
+                    (mesh != nullptr && gMeshHiddenGame.ReadBool(mesh).value_or(false));
+                ++presence.others;
+                if (hidden) ++presence.othersHidden;
+                people += std::format("{}{} {}", people.empty() ? "" : ", ", ShortName(actor), hidden ? "hidden" : "shown");
+            }
+            cw::Presence const verdict = cw::PresenceAtOpening(presence, gSettings.absentUnits);
+            if (verdict != cw::Presence::Here) {
+                bool const screen = gSettings.autoScreen >= 2 && !gC.byHand;
+                log::Info("conversation world: conversation {}: no place for the player in this scene ({}: the presence rules at the "
+                          "opening; its people: {}; the owner {}): {}",
+                    gC.serial, cw::Name(verdict), people.empty() ? std::string("none but Shepard") : people,
+                    presence.ownerUnits < 0.0 ? std::string("not measured")
+                                              : std::format("{:.1f} m away, {}", presence.ownerUnits / 100.0,
+                                                    presence.ownerInSight ? "in sight" : "out of sight"),
+                    screen      ? "on the 3D screen (worldAutoScreen = on)"
+                    : gC.byHand ? "held in the world by hand (mevr convo world on)"
+                                : "logged only, held in the world (worldAutoScreen = log)");
+                if (screen) {
+                    gC.skipped = true;
+                    gC.early = false;  // the 3D screen's: no handover into a GUI screen after it
+                    ++gPresenceScreens;
+                    PublishOff(link);
+                    return;
+                }
+            }
+        }
         // ME1's opening rule: where the player stood against where the stage put Shepard.
         cw::OpeningFacts facts;
         facts.known = gFoot.valid && now - gFoot.ms < 10000;
@@ -2639,6 +2695,7 @@ std::string Console(std::string_view args) {
         // Asked for by hand: the conversation now (one a hot reload found mid-way, or the game opened around a load) is held too.
         if (a == "on" && gC.on && gC.skipped) {
             gC.skipped = false;
+            gC.byHand = true;
             log::Info("conversation world: conversation {} held in the world on request (mevr convo world on)", gC.serial);
         }
     } else if (a == "auto") {
@@ -2648,12 +2705,14 @@ std::string Console(std::string_view args) {
     engine::conversation_hooks::Stats const hooks = engine::conversation_hooks::Totals();
     return std::format("conversations in the world (the sequels' module, " MEVR_GAME_NAME_A "): {} ({}); people kept {}; near plane kept {} "
                        "({} writes); source hooks: placement {} ({} calls, {} withheld), move track {} ({} calls, {} withheld); this "
-                       "session: {} conversations with no place for the player on the 3D screen, moments {} held, {} without a "
+                       "session: {} conversations with no place for the player on the 3D screen ({} by the presence rules at the "
+                       "opening), moments {} held, {} without a "
                        "track of Shepard's, {} with his pawn hidden, {} not from the player's view{}; now: {}; last: {}",
         WorldWanted() ? "on" : "off", gOverride < 0 ? "[Cinematics] conversations" : "this session's override",
         gSettings.stay ? "on" : "off", gSettings.nearPlane ? "on" : "off", gNearWrites,
         engine::conversation_hooks::Installed() ? "in" : "not in", hooks.placements, hooks.kept,
-        engine::conversation_hooks::MoveTrackInstalled() ? "in" : "not in", hooks.trackMoves, hooks.trackKept, gNoPlaceScreens,
+        engine::conversation_hooks::MoveTrackInstalled() ? "in" : "not in", hooks.trackMoves, hooks.trackKept,
+        gNoPlaceScreens + gPresenceScreens, gPresenceScreens,
         gMomentsHeld, gMomentsNoTrack, gMomentsHidden, gMomentsNotFromView,
         gM.on ? std::format(" (moment {} {}, {:.2f} m walked)", gM.serial, gM.provisional ? "waiting for a track" : "held",
                     gM.walkedUnits / 100.0)

@@ -6,6 +6,7 @@
 #
 #   tools\le2-halcyon-run\conversation-world.ps1 -Holder <you> [-Game LE2|LE3] [-World on|off] [-Start a|fire:<Class>:<text>]
 #       [-FaceYaw <deg>] [-Seconds 40] [-Every 6] [-Walk 0] [-Tag what] [-Stances] [-Hide body|person] [-Hands view|chest]
+#       [-StartInput 0] [-Before 'console line', ...] [-Replies] [-Skip] [-Pitch <deg>] [-Yaw <deg>]
 #
 # -Start a                 the tracked hands stand still and A is pressed (the game's use of what the head looks at: the
 #                          mod's interact line names it first); -FaceYaw turns the view there before (Steer-Face).
@@ -19,6 +20,13 @@
 #                          findings must name body-not-drawn / person-not-drawn (the canary of those rules on the sequels).
 # -Hands view|chest        where the replayed hands are held (view: up in front of the eyes, the drawn-body checks; chest: out of
 #                          the eye snapshots, research/le2-conversations-in-world.md 7.1).
+# -StartInput <n>          the start action's input fired (ME3's start: 1 preloads, then starts; 0 elsewhere).
+# -Before                  console lines run before the start (`mevr setloc ...`, `god`); `sleep:<s>` waits that long.
+# -Replies                 while the conversation plays, the wheel's first card picked as the stick and A pick it (`mevr convo
+#                          pick <position>`, the wheel's own SelectConversationEntry), a second at a time; the lines themselves
+#                          play as authored (a line's matinee, Shepard's walk in it).
+# -Skip                    with -Replies, a line without a wheel is skipped too (`mevr convo exit skip`; ME3's SkipNode).
+# -Pitch, -Yaw             the replayed head pitched (negative: down) or turned right that far for the whole run.
 # Results: the stretch's session folder, convo-<tag>-<time>\ (steer.txt, console.txt, snapshots.txt, lines.txt: the mod's
 # `conversation world:` lines and the renderer's [VRSTATE] lines since the start).
 param(
@@ -33,7 +41,13 @@ param(
     [ValidatePattern('^[A-Za-z0-9_-]*$')][string]$Tag = 'convo',
     [switch]$Stances,
     [ValidateSet('', 'body', 'person')][string]$Hide = '',
-    [ValidateSet('view', 'chest')][string]$Hands = 'view'
+    [ValidateSet('view', 'chest')][string]$Hands = 'view',
+    [int]$StartInput = 0,
+    [string[]]$Before = @(),
+    [switch]$Replies,
+    [switch]$Skip,
+    [double]$Pitch = 0.0,
+    [double]$Yaw = 0.0
 )
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\..\common.ps1"
@@ -45,7 +59,7 @@ $open = Get-Content -LiteralPath $current -Raw | ConvertFrom-Json
 if ($open.holder -ne $Holder) { throw "the open $name stretch is held by '$($open.holder)', not '$Holder'" }
 if (-not (Get-Process ('MassEffect' + $Game.Substring(2)) -ErrorAction SilentlyContinue)) { throw "$name is not running" }
 $out = Join-Path $open.session ('convo-' + $Tag + '-' + (Get-Date -Format 'HHmmss'))
-Steer-Init -Out $out -Hands $Hands
+Steer-Init -Out $out -Hands $Hands -Pitch $Pitch -Yaw $Yaw
 $bin = Get-MELEBinDir (Find-MELEInstall).Root $Game
 $log = Join-Path $bin ('Logs\{0}MEVR.log' -f $Game)
 $halcyonLog = Join-Path $env:LOCALAPPDATA ('{0}\{0}_Log.txt' -f $(if ($Game -eq 'LE3') { 'MELE3VR' } else { 'MELE2VR' }))
@@ -66,6 +80,11 @@ if ($Hide) { Steer-Note ('broken run: ' + (Steer-Ask "mevr convo hide $Hide on")
 Steer-Hold
 Start-Sleep -Seconds 1
 try {
+    foreach ($line in $Before) {
+        if ($line -match '^sleep:(\d+)$') { Start-Sleep -Seconds ([int]$Matches[1]); continue }
+        Steer-Note ("before: {0}: {1}" -f $line, (Steer-Ask $line).Trim())
+        Start-Sleep -Milliseconds 1500
+    }
     if (-not [double]::IsNaN($FaceYaw)) { Steer-Face -Yaw $FaceYaw -NoCheck; Start-Sleep -Milliseconds 800 }
     if ($Start -eq 'a') {
         $selected = @(ReadLines $log | Select-Object -Skip $from | Select-String 'interact: (A would use|nothing to use)' | Select-Object -Last 1 |
@@ -74,15 +93,29 @@ try {
         Steer-Play 'stand+a:0.15,stand:0.5'
     } elseif ($Start -match '^fire:([A-Za-z0-9_.]+):(.*)$') {
         Steer-Note ('instances: ' + (Steer-Ask ("mevr instances {0} {1}" -f $Matches[1], $Matches[2])).Trim())
-        Steer-Note ('activate: ' + (Steer-Ask 'mevr activate 0 0').Trim())
+        Steer-Note ('activate: ' + (Steer-Ask "mevr activate 0 $StartInput").Trim())
     } else {
         throw "-Start: a or fire:<Class>:<text>"
     }
     $deadline = (Get-Date).AddSeconds($Seconds)
     $n = 0
     $walked = $Walk -le 0
+    $nextShot = (Get-Date).AddSeconds($Every)
     while ((Get-Date) -lt $deadline) {
-        Start-Sleep -Milliseconds ([int]($Every * 1000))
+        if ($Replies) {
+            # A second at a time: the wheel's first card picked (a line skipped with -Skip); a snapshot every -Every seconds.
+            Start-Sleep -Milliseconds 1000
+            $cards = (Steer-Ask 'mevr thespian cards').Trim()
+            if ($cards -match 'wheel up' -and $cards -match '\[(\d+)\] reply \d+ category \d+ style \d+( unskippable)?:') {
+                Steer-Note ('reply: ' + (Steer-Ask ('mevr convo pick ' + $Matches[1])).Trim())
+            } elseif ($Skip -and $cards -notmatch 'no conversation') {
+                Steer-Note ('skip: ' + (Steer-Ask 'mevr convo exit skip').Trim())
+            }
+            if ((Get-Date) -lt $nextShot) { continue }
+            $nextShot = (Get-Date).AddSeconds($Every)
+        } else {
+            Start-Sleep -Milliseconds ([int]($Every * 1000))
+        }
         ++$n
         Steer-Note ('state: ' + (Steer-Ask 'mevr state').Trim() + ' | ' + (Steer-Ask 'mevr convo world').Trim())
         Steer-Snapshot ("$Tag-$n")

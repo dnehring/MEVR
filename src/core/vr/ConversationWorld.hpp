@@ -285,6 +285,28 @@ bool IsSetPiece(std::string_view name);
 // game's scan (research/le2-conversations-in-world.md section 7). `game` 2 (ME2) or 3 (ME3); ME1 keeps IsSetPiece and its
 // run-time presence rules (the same criterion for ME1 is a proposal). `name` in any form ConversationKey takes.
 bool NoPlaceForPlayer(std::string_view name, int game);
+// The run-time presence rules at a conversation's opening, read from the live scene once the stage has placed everyone: ME1's two
+// (game/ConversationWorld's Begin, worldAutoScreen: research/69 items 3 and 10: Shepard's pawn hidden, or Shepard farther than
+// worldAbsentM from the owner with no line between them) and the owner's rule (a) of 2026-11-20 for the sequels: every one of the
+// conversation's people but Shepard hidden at the opening (ME3's Khalisah interview speaks from off screen, the video calls): no
+// place for the player, the 3D screen. Not a list of scenes. ME1 keeps its own inline rules (the third is not ME1's: reported).
+struct PresenceFacts {
+    bool shepardHidden = false;  // his pawn hidden by the script
+    double ownerUnits = -1.0;    // Shepard to the conversation's owner (flat); below 0: no owner to measure from
+    bool ownerInSight = true;    // a clear line between them
+    int others = 0;              // the conversation's people but Shepard (the owner, speakers, listeners, found actors)
+    int othersHidden = 0;        // of them, those hidden (the actor or its body)
+};
+enum class Presence : std::uint8_t {
+    Here,           // a place for the player: first person
+    ShepardHidden,  // ME1's: his pawn hidden
+    ShepardAbsent,  // ME1's: far from the owner and out of its sight
+    OthersHidden,   // the owner's (a): nobody of the scene but Shepard is shown
+};
+// `absentUnits` ME1's worldAbsentM in units (0: that rule off). With nobody but Shepard found at all, OthersHidden never holds (a
+// conversation with a terminal or a hologram that isn't a person keeps its place).
+Presence PresenceAtOpening(PresenceFacts const& facts, double absentUnits);
+char const* Name(Presence presence);
 // The conversation's key in the tables above: the object's own name, lower case, without its "_dlg"/"_d" suffix
 // ("BioConversation sta70_garrus_D.sta70_garrus_dlg" -> "sta70_garrus").
 std::string ConversationKey(std::string_view name);
