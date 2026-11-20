@@ -19,8 +19,9 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
   Shepard look at your eyes when you step or lean away from where his body stands; your view sits down with Shepard when a
   scene seats him and the stick doesn't walk then; a cutscene that walks Shepard with someone beside him waits for you if you
   fall behind; on Mass Effect 3 your eyes start a conversation where they were on foot (not 30 cm lower), and the hub's
-  characters count as the scene's people. A small ring on the floor shows where the game's fade to black wanted Shepard when
-  you are not moved there.
+  characters count as the scene's people. When a conversation ends you keep looking where you looked (the view no longer
+  turns to Shepard's own facing). A small ring on the floor shows where the game's fade to black wanted Shepard when you are
+  not moved there.
 - **People leave first-person conversations on Mass Effect 2 and 3 too (experimental).**
   The same rule as Mass Effect 1's below: in the first-person conversation mode, someone the game takes away at a scene's end
   while you can see them walks away first and is gone once out of your sight, when you look away, or under a short fade. On

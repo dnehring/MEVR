@@ -1041,7 +1041,10 @@ These unblock the most: almost every other entry gets smaller once they land.
   on ME3); ME1's `StepSeat` (core `cw::StepSeat`) and walk-along (`worldWalkAlong`) in the sequels' conversations and moments;
   the floor marker's black-move source; ME3 in the game (the embassies): its hub characters are SFXStuntActors, now the scene's
   people; the eyes on foot taken where the renderer draws them (ME3's 32 units above the game's camera), ME3's eye offset
-  learned 31-33 forward, 10 up; why `mevr thespian pick` was refused (no input focus on the fake headset) and `mevr convo pick`.
+  learned 31-33 forward, 10 up; why `mevr thespian pick` was refused (no input focus on the fake headset) and `mevr convo pick`;
+  ME2: Samara "not drawn" was below ME2's 16:9 picture (kneeling, 29 degrees under a level gaze; the records' in-sight cone now
+  follows each sequel's eye image, and the person-not-drawn canary is caught), Tali's reintroduction clean in first person, the
+  view goes on from the held facing at a conversation's end (lane EXIT3's finding; not rechecked on ME3).
 - **Left:** the circle and the squad's formation (`game/AiWalk`; ME3's hub people are stunt actors with no AI controller), the
   subtitle and wheel placement, the script's GUI black screen, the floor marker's "waits" source (and ME1's black-move source),
   ME3's video calls and off-screen speakers (Khalisah's at the embassies) in the presence rules, the seats and walk-along seen in

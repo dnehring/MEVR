@@ -566,7 +566,9 @@ John_12_Vanguard_021024_46e6e39\Save_0090.pcsav`; restored with 0 differences):
 3. **ME3's hub characters are SFXStuntActors, not pawns**, and not on the world's pawn list (`mevr convo people` at the
    embassies: one pawn, Shepard, and 26 stunt actors). The module's people take them now (`IsPerson`, `PersonMesh` = their
    `BodyMesh`; a scan once a second as game/Hair's), and the ME3 reader no longer returned before the owner, speaker and listener
-   when the speaker data was empty. **Consequence for item 4:** a stunt actor has no AI controller, so `game/AiWalk` can't walk
+   when the speaker data was empty. Since the merge with lane EXIT3 the reader also takes the start's found actors
+   (`m_aAllFoundActors`) and extra participants (`m_aExtraParticipants`), and is the one reading of ME3's scene people:
+   `game/ConversationExit` takes it through `ScenePeople` (its own copy removed). **Consequence for item 4:** a stunt actor has no AI controller, so `game/AiWalk` can't walk
    ME3's hub people into a circle (their composition stays the authored one, research/le3-conversations-in-world.md 5.2).
 4. **The eyes on foot are drawn 32 units above ME3's game camera** (the floor lock's correction, in the view anchor's frame:
    `conversation world: on foot the eyes are drawn 32 units from the game's camera (+0, +0, +32)`). A Stay opening held from the
@@ -614,6 +616,43 @@ the player) the marker shows there (`MarkerNeed::BlackMove`, `cw::StepMarker`, d
 end is) until the player stands in it; log `convo: marker: conversation N: under the game's fade to black ...`, the end line's
 `N floor markers`. ME1's own black-move source (the council walk, curated) is not built: an ME1 change for its batch. The "waits"
 source (a trigger or volume the script waits on) is not built on any game: it needs the level's script read per start (the scan).
+Not seen in the game (no fixture whose fade wanted Shepard within 1.5 m).
+
+### 9.6 ME2 in the game (item 2's Samara, Tali's moment and conversation, the end of a held conversation)
+
+Stretch `20261120-045217-563-LE2-fpc4-le2` (fake headset, `prep.ps1`, restored with 0 differences):
+
+1. **Why Samara wasn't drawn** (FPC3's `2026-11-20_03-21-30-434`; `load.ps1 -Save John_12_Soldier_190924_4ee650d\Save_0036.pcsav`,
+   `conversation-world.ps1 -Start fire:SFXGame.SFXSeqAct_StartConversation:Dialog_Samara.SFXSeqAct_StartConversation_0 -Stances
+   -Hands chest`): the records named it at once (`person-not-drawn: SFXPawn_Samara_01_0 ... in sight, not drawn`), and `mevr convo
+   people` showed nothing hiding her (actor and mesh flags clear). Holding the game's camera at the player's place
+   (`mevr convo camera on`, ME1's `worldCamera`, off by default) changed nothing. **She kneels in meditation** (her head bone 0.7 m
+   over the floor, facing the window) **29 degrees under a level gaze**, and ME2's eye image is 16:9 (4352x2448): she was below the
+   picture. Looking down 30 degrees (`make-walk-recording.py --pitch -30`) she is there and drawn at once (snapshot
+   `2026-11-20_04-58-54-251-left.png`: Samara kneeling a metre ahead, her line's subtitle and the wheel above her). Not a bug of the
+   scene; a false "in sight" of the records' cone (ME1's 35 degrees each way), which now follows each sequel's eye image up and
+   down (ME2 0.70 x 9/16, ME3 0.70 x 2216/3072). With it the level run is clean (8 records) and **the canary** (`mevr convo hide
+   person on`, the head pitched to her) is caught: `person-not-drawn: SFXPawn_Samara_01_0 ... not drawn for 2.5 s`. Her face is 150
+   degrees off the player all scene: she speaks with her back turned (the authored pose).
+2. **Tali's reintroduction** (`load.ps1 -Save VR_31_Soldier_141126_336072f\Save_0004.pcsav`, `god`, `mevr setloc` 8.5 m north of
+   `SFXDoor_5`, 12 s, `mevr setloc 0 -9600 15250 -12060`, `conversation-world.ps1 -Start fire:Engine.SequenceAction:Tali_Conversation.
+   BioSeqAct_CancelHint_0`: `SFXGame.BioSeqAct_CancelHint` isn't found as a class in this load, `Engine.SequenceAction` finds the
+   action): the moment held from the first frame, records `moment-begin` .. `moment-end`, the join under a dip 4.06 m away, the
+   conversation opening `stay` with **the eyes from the view on foot (1, -35, 87 from his pawn)**, 15 records **clean**: Tali 7-15
+   degrees off the player's eyes and looking at them, Prazza (`BioPawn_1`) 13 degrees, Jacob and Miranda looking at Tali. The
+   moment's records: `hands-off-controllers` 2.98 m (the cutscene parks Shepard's pawn at the world's origin and plays a stand-in:
+   the body is nowhere near the player during it, owner question 1 of FPC3's), and at `moment-end` (the cut to the conversation)
+   a `look-at-body` (Tali) and a `person-not-drawn` (Jacob, 6.6 s), both at the transition. **Walk-along** read six companions
+   within 5 m of the parked pawn, 180 m from the player ("a line is playing: the walk pauses at its end": it never paused because
+   the line went on); it now never acts past 30 m from the view, and the second run logged no walk-along line.
+3. **The end of a held conversation** (lane EXIT3's ME3 finding: the view turned in one tick from the held yaw to the pawn's
+   facing): `conversation 1 ends: the held facing -15.5 deg, the controller's -1.4, the pawn's -1.4` (Samara), `-88.1 / -88.1 /
+   -106.8` (Tali): the controller and the pawn are now turned to the held facing as the hold lets go (`FaceOnFoot`; `mevr convo
+   endfacing on|off`), so the first frame on foot looks where the last held one did. Not rechecked on ME3's Prothean fixture
+   (`citprs_proth_char_moment_m_dlg`, research/conversation-exits.md section 11).
+4. **ME2's eyes:** on foot the eyes are drawn 2-17 units from the game's camera (ME3's 32); learned against the animated head
+   23.5 forward, -6.0 right, 11.0 up (arm IK's 24, 13).
+5. **Moments this stretch:** 2 held (Tali's reintroduction, twice across a reload), 0 to the 3D screen. ME3: 0 (none reached).
 
 ## 5. How to check ME1 is unchanged
 

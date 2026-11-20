@@ -912,6 +912,8 @@ stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs 
       doesn't walk while seated (section 9.4).
 - [ ] ME3, a cutscene that walks Shepard with someone beside him: fall 3 m behind and the scene waits for you, then goes on
       when you catch up (section 9.4; not seen in the game yet).
+- [ ] ME2 and ME3: at a first-person conversation's end you keep looking where you looked (no turn of the view to Shepard's
+      own facing; ME3's Prothean moment at the embassies is where it was seen, section 9.6).
 
 ### One settings file for the three games (lane SET, 2026-11-18; research/25 section 20)
 
