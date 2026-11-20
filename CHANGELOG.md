@@ -15,6 +15,12 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 - **Your squad moves only when you place it.** A squeeze of the left grip no longer sends the squad somewhere (it did on
   every game when nothing else took the squeeze, and on ME2 it kept happening in fights): place them with the right hand's
   B arc, or by voice.
+- **People leave a first-person conversation instead of vanishing (Mass Effect 1, experimental).** In the first-person
+  conversation mode, when the game takes someone away at a scene's end while you can see them (Udina after the council
+  hearing's aftermath), they now walk away with the game's own walk first and are gone once out of your sight; with nowhere
+  to walk to they go when you look away, or after a few seconds under a short fade. Squadmates and
+  anyone the next scene needs stay as before, and the story is unchanged. `[Cinematics] worldExit = hold` keeps people where
+  they stand until you look away; `off` lets them vanish as before.
 - **First-person conversations on ME2 and ME3: your eyes where you left them (experimental).** A conversation shown in the
   world keeps your view where it was on foot, never turned at its start, and at your own height over Shepard's floor; it no
   longer looks out from inside Shepard's shoulders. A lift or shuttle carries you with Shepard instead of leaving you where

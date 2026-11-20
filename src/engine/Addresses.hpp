@@ -86,6 +86,10 @@ inline constexpr std::uint32_t kInterruptConversation = 0xB60460;
 // move track places its actor (engine/ConversationHooks, game/AuthoredMoment; research/69 "The natives behind an authored
 // moment").
 inline constexpr std::uint32_t kMoveWithInterpMoveTrack = 0x4B75F0;
+// UBioActorBehavior::execSetActive (BioActorBehavior.SetActive's native, folded with BioArtPlaceableBehavior's; it calls the
+// behaviour's C++ SetActive, vtable slot 0x4D0): a Kismet ModifyPropertyPawn's "Active" row reaches it through ProcessEvent
+// (engine/ExitHooks, game/ConversationExit: a person leaving a first-person conversation; research/conversation-exits.md).
+inline constexpr std::uint32_t kBehaviorExecSetActive = 0xBAAB60;
 // UBioUIWorld's native Tick (its vtable's slot 104): the command queue, then UWorld::Tick of the UI world with GWorld swapped
 // (game/UiWorldFigure, research/57 section 7; called through the object's vtable after checking the slot holds it).
 inline constexpr std::uint32_t kUiWorldTick = 0xB3B810;
@@ -162,6 +166,12 @@ inline constexpr Entry kTable[] = {
         "48 89 5C 24 08 57 48 83 EC 20 48 8B D9 48 8B FA 48 8B 89 1C", 0, 0, "mod (conversations)"},
     {"AActor::MoveWithInterpMoveTrack", kMoveWithInterpMoveTrack, Kind::Function, "48 8B C4 55 53 56 57 41 56 41 57 48 8D A8 58 FE", 0, 0,
         "mod (authored moments)"},
+    // Every bool-taking exec thunk begins alike: the pattern runs to this one's call through the behaviour's slot 0x4D0 (unique).
+    {"UBioActorBehavior::execSetActive", kBehaviorExecSetActive, Kind::Function,
+        "48 89 5C 24 10 48 89 74 24 18 57 48 83 EC 20 48 8B 42 24 4C 8D 0D ?? ?? ?? ?? 33 FF 48 8B F1 48 8B 4A 1C 48 8B DA 89 7C "
+        "24 30 44 0F B6 00 48 FF C0 48 89 42 24 41 8B C0 4C 8D 44 24 30 41 FF 14 C1 39 7C 24 30 40 0F 95 C7 48 FF 43 24 48 8B 43 "
+        "24 89 7C 24 30 80 38 41 75 1B 48 8B 4B 1C 48 FF C0 45 33 C0 48 89 43 24 48 8B D3 FF 15 ?? ?? ?? ?? 8B 7C 24 30 48 8B 06 8B D7 48 8B CE FF 90 D0 04 00 00",
+        0, 0, "mod (conversation exits)"},
     {"UBioUIWorld::Tick", kUiWorldTick, Kind::Function,
         "40 53 48 83 EC 40 48 C7 44 24 20 FE FF FF FF 0F 29 74 24 30 0F 28 F1 8B 81 18 02 00 00 A8 01", 0, 0, "mod (ui world figure)"},
     // Our reflection layer's globals and the engine's allocator (ue3/Runtime has its own patterns too).
@@ -287,6 +297,7 @@ inline constexpr std::uint32_t kUpdateSelection = 0xAC0530;
 inline constexpr std::uint32_t kConversationSetPositionRotator = 0xA2D180;
 inline constexpr std::uint32_t kInterruptConversation = 0xB06390;
 inline constexpr std::uint32_t kMoveWithInterpMoveTrack = 0x6B9C50;
+inline constexpr std::uint32_t kBehaviorExecSetActive = 0;  // (engine/ExitHooks: LE1 only)
 // Our reflection layer's globals (ue3/Runtime, engine/GameAdapter): GObjects (TArray<UObject*>; Halcyon's ME2 code uses it
 // too, engine_probe.cpp, pchud.cpp, and the host's queue for Halcyon's off-thread ProcessEvent calls checks objects against
 // it, plugin/HalcyonLe2), the name pools, the engine's allocator (appMalloc, appFree and the GMalloc both load) and
@@ -545,6 +556,7 @@ inline constexpr std::uint32_t kUpdateSelection = 0xA9BF90;
 inline constexpr std::uint32_t kConversationSetPositionRotator = 0xA29DF0;
 inline constexpr std::uint32_t kInterruptConversation = 0;
 inline constexpr std::uint32_t kMoveWithInterpMoveTrack = 0x6BAFF0;
+inline constexpr std::uint32_t kBehaviorExecSetActive = 0;  // (engine/ExitHooks: LE1 only)
 inline constexpr std::uint32_t kGObjects = 0x1887E40;  // Original captured native code; research/le3-engine-access-discovery.md.
 inline constexpr std::uint32_t kNamePools = 0x17B33D0;
 inline constexpr std::uint32_t kGMalloc = 0x17CD588;

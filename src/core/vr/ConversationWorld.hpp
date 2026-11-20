@@ -80,6 +80,10 @@ bool StillFresh(std::uint64_t ageMs, std::uint64_t ticksSince, std::uint64_t fre
 bool Armed(std::uint64_t maxAgeMs = 150);
 // The mod's last word was "handing over" (State::holdPad[1] with active 0), no older than maxAgeMs.
 bool HandingOver(std::uint64_t maxAgeMs = 150);
+// The cut counter of the mod's last word with active 0 (on foot, "armed": the same counter a scene publishes), no older than
+// maxAgeMs and not 0: a change is a dip from black on foot (game/ConversationExit: a person's removal the player kept looking at;
+// research/conversation-exits.md). Nullopt: no such word, or an older mod that sends 0 there.
+std::optional<std::uint32_t> FootCut(std::uint64_t maxAgeMs = 300);
 void Reset();
 
 // ---- [Cinematics] conversations ----------------------------------------------------------------------------------------------

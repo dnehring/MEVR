@@ -171,7 +171,11 @@ if ($Canaries) {
             $before = Default-Before $s
             if ($c.switch) { $before += "`n" + $c.switch }
             $handsPlan = if ($null -ne $c.hands) { $c.hands } else { Default-Hands $s }
+            # A broken run's `long`: its scene as with -Long (the council hearing to its own end: Udina's exit, popped-out).
+            $wasLong = $Long
+            if ($c.long) { $Long = $true }
             $lines += @(Scene-Lines $s $before $c.restore $handsPlan @($c.mustFind) $c.breaks)
+            $Long = $wasLong
             $names += $c.name
         }
         if ($names.Count -eq 0) { continue }
