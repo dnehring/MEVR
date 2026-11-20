@@ -881,7 +881,10 @@ void MevrPublishView(const XrView& view) noexcept
     const float headP[3] = {view.pose.position.x, view.pose.position.y, view.pose.position.z};
     const bool headLook = ME2VR::CalcViewHook::GetHeadLookUserEnabled() && !cineLocked;
     const int gameMode = ME2VR::EngineProbe::ReadGameMode();
-    ::MevrSeams::OnViewBuilt(!ME2VR::Menu::IsOpen() && !cineLocked && gameMode == 0, headLook, false, ME2VR::CalcViewHook::HeadLookYawUU(),
+    // [MEVR] A conversation held in the world (MevrSeams::ConversationInWorld) is a head-tracked world view too: the mod's arm IK
+    // and the body under the player run in its held frame (game/SequelConversationWorld).
+    const bool mevrWorldView = gameMode == 0 || ::MevrSeams::ConversationInWorld();
+    ::MevrSeams::OnViewBuilt(!ME2VR::Menu::IsOpen() && !cineLocked && mevrWorldView, headLook, false, ME2VR::CalcViewHook::HeadLookYawUU(),
                                      ME2VR::CalcViewHook::HeadLookPitchUU(), headQ, headP, right, up, fwd, w2m,
                                      gameMode == 0 && !ME2VR::CalcViewHook::GetVrCineActive());
 }

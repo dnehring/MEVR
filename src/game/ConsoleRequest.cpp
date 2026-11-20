@@ -1962,6 +1962,15 @@ std::optional<std::string> RunOursLe3(ue3::Object* pc, std::string const& line) 
         std::getline(words, rest);
         return hair::Command(rest);  // `mevr hair [on|off|auto | people | trace <s> | mesh <n> <path> | standins on|off]`
     }
+#if defined(MEVR_GAME_LE3)
+    if (verb == "convo") {
+        std::string rest;
+        std::getline(words, rest);
+        rest.erase(0, rest.find_first_not_of(' '));
+        if (rest.rfind("world", 0) == 0) rest = rest.substr(5);
+        return sequel_conversation_world::Console(rest);  // `mevr convo [world] [on|off|auto]`: ME3's slice of T49
+    }
+#endif
     if (verb == "load") return LoadSave(ue3::runtime::GameEngine(), words);
     if (verb == "savedesc") return CurrentSave(ue3::runtime::GameEngine());
     if (verb == "state") return State(pc);

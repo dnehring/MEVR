@@ -8,6 +8,7 @@
 #include "core/vr/HostView.hpp"
 #include "core/vr/SettingsFile.hpp"
 #include "engine/GameAdapter.hpp"
+#include "game/DepthOfFieldHold.hpp"
 #include "engine/ProcessEvent.hpp"
 #include "engine/SettingsFile.hpp"
 #include "engine/Skeleton.hpp"
@@ -43,6 +44,11 @@ ue3::FieldRef gSpeakers{kController, "m_aSpeakerData", ue3::kEveryGame};
 ue3::ClassRef gControllerClass{kController, ue3::kEveryGame};
 ue3::FunctionRef gUpdateCamera{"Engine.Camera.UpdateCamera", ue3::kEveryGame};
 ue3::FunctionRef gSetLocation{"Engine.Actor.SetLocation", ue3::kEveryGame};
+// The conversation camera constrains the picture to its 16:9 band (a letterbox): the stereo capture never matches it and the
+// renderer showed the band stretched and mono (the owner, 2026-11-19: "squashed horizontally ... not stereoscopic"). ME1's
+// [NOLETTERBOX] cure: cleared after the camera update that sets it, before the frame's Draw consumes it, every update.
+ue3::FieldRef gConstrainAspect{"Engine.Camera", "bConstrainAspectRatio", ue3::kEveryGame};
+unsigned gLetterboxClears = 0;
 
 // FBioSpeakerData (SFXGame.BioConversationController.BioSpeakerData): nmSpeakerTag, pSpeakerActor.
 struct SpeakerData {
@@ -56,6 +62,10 @@ struct Settings {
     bool stay = true;            // [Cinematics] worldStay: people kept where they stand
     double settleS = 0.35;       // the opening's placements settle this long before the player's place is taken
     double followUnits = 80.0;   // a lasting jump of Shepard's head past this moves the place (ME1's FollowHeadSettled)
+    // Shepard kept on his mark like the others (ME1's rule: the player's place is never moved by the game; the owner,
+    // 2026-11-19: "have Shepard not move around during this scene like the Mass Effect 1 rule set"); then nothing to follow.
+    bool shepardStays = true;
+    bool dofOff = true;          // [Cinematics] worldDof = 0 keeps it: the conversation's depth of field blurs the room
     double eyeForwardUnits = 8.0;  // the eyes ahead of his head bone (upstream ConvoFp's eyeFwd)
     double eyeUpUnits = 4.0;
 };
@@ -81,7 +91,8 @@ struct Conversation {
     ue3::Object* controller = nullptr;
     std::uint64_t startMs = 0;
     std::uint64_t placedMs = 0;
-    ue3::Vector held{};          // the view's place (the POV before the renderer's offsets)
+    engine::UnrealVector head{}; // Shepard's head bone where the place was taken (followed by lasting jumps)
+    ue3::Vector held{};          // the view's place (the POV before the renderer's offsets): PlaceFromHead(head), every tick
     ue3::Rotator facing{};
     float fov = 90.0f;
     cw::FollowState follow;
@@ -93,6 +104,7 @@ struct Conversation {
     std::string why;             // why not placed (yet)
 };
 Conversation gC;
+depth_of_field::Hold gDof{"conversation world"};
 std::uint32_t gSerial = 0;
 bool gStarted = false;
 std::string gLast = "none yet";
@@ -108,6 +120,8 @@ void RefreshSettings() {
     for (wchar_t const* p = text; *p != 0; ++p) narrow.push_back(static_cast<char>(*p & 0x7F));
     gSettings.world = cw::ParseMode(narrow.c_str(), cw::Mode::Screen) == cw::Mode::World;
     gSettings.stay = vr::settings_file::Int(L"Cinematics", L"worldStay", 1, path.c_str()) != 0;
+    gSettings.shepardStays = vr::settings_file::Int(L"Cinematics", L"worldShepardStays", 1, path.c_str()) != 0;
+    gSettings.dofOff = vr::settings_file::Int(L"Cinematics", L"worldDof", 0, path.c_str()) == 0;
 }
 
 bool WorldWanted() {
@@ -182,17 +196,15 @@ double Distance(ue3::Vector const& a, ue3::Vector const& b) {
     return std::sqrt(dx * dx + dy * dy + dz * dz);
 }
 
-// The held place from Shepard's head: the eyes a little ahead of the head bone along his facing, minus the renderer's view
-// offset (the host draws the eyes that far from the POV: the POV goes the other way, so the eyes land at his).
+// The held place from Shepard's head: the eyes a little ahead of the head bone along his facing. ME3's renderer adds the
+// player's own head movement (the host view's offsets: 6DOF from the recentre, not a framing offset as LE1's) at the POV.
 ue3::Vector PlaceFromHead(engine::UnrealVector const& head, ue3::Rotator const& facing) {
     engine::Basis const basis = engine::ToBasis(engine::UnrealRotation{0, facing.yaw, 0});
-    vr::host_view::State const view = vr::host_view::Latest();
-    double const f = gSettings.eyeForwardUnits - (view.valid ? view.offsetForward : 0.0f);
-    double const r = view.valid ? -view.offsetRight : 0.0;
-    double const u = gSettings.eyeUpUnits - (view.valid ? view.offsetUp : 0.0f);
-    return {static_cast<float>(head.x + basis.forward.x * f + basis.right.x * r + basis.up.x * u),
-        static_cast<float>(head.y + basis.forward.y * f + basis.right.y * r + basis.up.y * u),
-        static_cast<float>(head.z + basis.forward.z * f + basis.right.z * r + basis.up.z * u)};
+    double const f = gSettings.eyeForwardUnits;
+    double const u = gSettings.eyeUpUnits;
+    return {static_cast<float>(head.x + basis.forward.x * f + basis.up.x * u),
+        static_cast<float>(head.y + basis.forward.y * f + basis.up.y * u),
+        static_cast<float>(head.z + basis.forward.z * f + basis.up.z * u)};
 }
 
 // The tracking frame of the held view (view_anchor's FromHost with the held POV in the game camera's place).
@@ -246,6 +258,7 @@ void End(conversation_world::Link const& link, char const* why) {
         gC.follows, gC.undoneTotal, gC.yieldedTotal, gC.refusedMoves);
     log::Info("conversation world: {}", gLast);
     if (gC.placed) view_anchor::Hold(std::nullopt);
+    if (gDof.IsOff()) gDof.Back("the conversation in the world ended");
     PublishOff(link);
     gC = {};
 }
@@ -253,13 +266,23 @@ void End(conversation_world::Link const& link, char const* why) {
 // Engine.Camera.UpdateCamera, after the game's (before the frame is drawn): the speakers the stage moved since the last update
 // are put back (ME1's keep-in-place, game/ConversationWorld's undo in the same handler).
 void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*parms*/, void* /*result*/) {
-    if (!gC.on || !gC.placed || !gSettings.stay) return;
+    if (!gC.on || !gC.placed) return;
     ue3::Object* const controller = player::Controller();
     if (camera == nullptr || controller == nullptr || player::CameraOwner(camera) != controller) return;
+    if (gConstrainAspect.ReadBool(camera).value_or(false) && gConstrainAspect.WriteBool(camera, false)) {
+        write_journal::Wrote("ConversationWorld.noLetterbox", camera, 4);
+        if (gLetterboxClears++ == 0) {
+            log::Info("conversation world: the conversation camera's letterbox (Camera.bConstrainAspectRatio) cleared each "
+                      "update while the conversation is held: the full frame, in stereo");
+        }
+    }
+    if (!gSettings.stay) return;
     if (gC.controller == nullptr || !ue3::runtime::IsAlive(gC.controller)) return;
     ue3::Function* const setLocation = gSetLocation.Get();
     ue3::Object* const player = gPlayer.Read<ue3::Object*>(gC.controller).value_or(nullptr);
-    for (ue3::Object* const actor : Speakers(gC.controller, player)) {
+    std::vector<ue3::Object*> actors = Speakers(gC.controller, player);
+    if (gSettings.shepardStays && player != nullptr && ue3::runtime::IsAlive(player)) actors.push_back(player);
+    for (ue3::Object* const actor : actors) {
         auto const now = player::Location(actor);
         if (!now) continue;
         auto it = std::find_if(gC.kept.begin(), gC.kept.end(), [&](Kept const& k) { return k.actor == actor; });
@@ -268,16 +291,18 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
             continue;
         }
         double const jump = Distance(*now, it->at);
-        if (jump <= 30.0) {
-            it->at = *now;  // its own small moves (a step, a turn's sway)
+        bool const shepard = actor == player;
+        if (jump <= (shepard ? 2.0 : 30.0)) {
+            if (!shepard) it->at = *now;  // its own small moves (a step, a turn's sway); Shepard stays exactly on his mark
             continue;
         }
         if (jump >= 600.0 || setLocation == nullptr) {
             it->at = *now;  // another space: the scene's own
             continue;
         }
-        // The game repeating the placement it just made (within 1 m of the one undone): its own (ME1's cw::Insists).
-        if (it->hasRefused && Distance(*now, it->refused) < 100.0) {
+        // The game repeating the placement it just made (within 1 m of the one undone): its own (ME1's cw::Insists). Not for
+        // Shepard: his place is the player's.
+        if (!shepard && it->hasRefused && Distance(*now, it->refused) < 100.0) {
             ++it->yielded;
             ++gC.yieldedTotal;
             log::Info("conversation world: {} put again {:.0f} units from where it stood: the game's own, kept",
@@ -351,18 +376,18 @@ void Tick(conversation_world::Link const& link) {
             gC.why = "Shepard's head bone not posed";
             return;
         }
-        if (!vr::host_view::Latest().valid) {
-            gC.why = "no head-tracked view from the host";
-            return;
-        }
+        // No head-tracked view needed yet: the host's view is the cinematic one until the first state below takes it over (the
+        // renderer's view offsets are applied from the next tick on, PlaceFromHead each tick).
         gC.facing = ue3::Rotator{0, rotation->yaw, 0};
-        gC.held = PlaceFromHead(*head, gC.facing);
+        gC.head = *head;
         ue3::Object* const camera = player::Camera(controller);
         auto const pov = camera != nullptr ? player::CameraPov(camera) : std::nullopt;
         gC.fov = pov && pov->fov != nullptr ? std::clamp(*pov->fov, 60.0f, 110.0f) : 90.0f;
-        gC.follow = cw::FollowState{{gC.held.x, gC.held.y, gC.held.z}, {head->x, head->y, head->z}, 0};
+        gC.follow = cw::FollowState{{head->x, head->y, head->z}, {head->x, head->y, head->z}, 0};
+        gC.held = PlaceFromHead(gC.head, gC.facing);
         gC.placed = true;
         gC.placedMs = now;
+        if (gSettings.dofOff) gDof.Off("a conversation held in the world (the director's depth of field blurs the room)");
         log::Info("conversation world: conversation {}: the player's place is Shepard's eyes on his mark ({:.0f}, {:.0f}, {:.0f}), "
                   "facing yaw {:.1f}, held for the conversation",
             gC.serial, gC.held.x, gC.held.y, gC.held.z, gC.facing.yaw * (360.0 / 65536.0));
@@ -370,16 +395,17 @@ void Tick(conversation_world::Link const& link) {
         // A cut that moves him to another mark and keeps him there: the place goes with him (ME1's FollowHeadSettled).
         if (cw::FollowHeadSettled(gC.follow, {head->x, head->y, head->z}, gSettings.followUnits, 3)) {
             ++gC.follows;
-            gC.held = {static_cast<float>(gC.follow.place.x), static_cast<float>(gC.follow.place.y),
-                static_cast<float>(gC.follow.place.z)};
+            gC.head = {gC.follow.place.x, gC.follow.place.y, gC.follow.place.z};
             if (rotation) gC.facing = ue3::Rotator{0, rotation->yaw, 0};
             log::Info("conversation world: conversation {}: Shepard's head stayed on another mark: the place follows to ({:.0f}, "
                       "{:.0f}, {:.0f})",
                 gC.serial, gC.held.x, gC.held.y, gC.held.z);
         }
     }
+    gC.held = PlaceFromHead(gC.head, gC.facing);
     Publish(link, controller);
-    view_anchor::Hold(HeldFrame(), vr::host_view::Latest());
+    // Arm IK in the held frame once the host's view is the held one (a head-tracked view; nothing while it is still cinematic).
+    if (auto const frame = HeldFrame()) view_anchor::Hold(frame, vr::host_view::Latest());
 }
 
 void Shutdown(conversation_world::Link const& link) {

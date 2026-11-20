@@ -3907,6 +3907,7 @@ void CheckFields() {
     CheckField("SFXGame.BioPlayerSelection", "m_oCurrentSelectionTarget", SDK_FIELD(UBioPlayerSelection, m_oCurrentSelectionTarget));
     CheckField("Engine.PlayerController", "PlayerCamera", SDK_FIELD(APlayerController, PlayerCamera));
     CheckField("Engine.Camera", "bLockedFOV", SDK_BOOL(ACamera, bLockedFOV));
+    CheckField("Engine.Camera", "bConstrainAspectRatio", SDK_BOOL(ACamera, bConstrainAspectRatio));  // game/SequelConversationWorld: no letterbox in a held conversation
     CheckField("Engine.Camera", "LockedFOV", SDK_FIELD(ACamera, LockedFOV));
     CheckField("Engine.Camera", "CameraCache", SDK_FIELD(ACamera, CameraCache));
     CheckField("SFXGame.SFXCameraNativeBase", "CurrentCameraMode", SDK_FIELD(ASFXCameraNativeBase, CurrentCameraMode));
