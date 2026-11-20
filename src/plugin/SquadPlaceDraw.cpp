@@ -346,10 +346,10 @@ XrCompositionLayerBaseHeader const* Layer(Frame const& frame) {
             static_cast<int>(scene->markerNeed), scene->markerAt[0], scene->markerAt[1], scene->markerAt[2], scene->markerAlpha, width,
             height));
     } else {
-    SetStatus(std::format("{{\"shown\": true, \"landing\": \"{}\", \"follow\": {}, \"member\": {}, \"points\": {}, "
-                          "\"landingPoint\": [{:.3f}, {:.3f}, {:.3f}], \"tile\": {}, \"target\": [{}, {}]}}",
-        sp::Name(static_cast<sp::Landing>(view.landing)), view.follow != 0 ? "true" : "false", view.member, view.count,
-        view.landingPoint.x, view.landingPoint.y, view.landingPoint.z, view.tile, width, height));
+        SetStatus(std::format("{{\"shown\": true, \"landing\": \"{}\", \"follow\": {}, \"member\": {}, \"points\": {}, "
+                              "\"landingPoint\": [{:.3f}, {:.3f}, {:.3f}], \"tile\": {}, \"target\": [{}, {}]}}",
+            sp::Name(static_cast<sp::Landing>(view.landing)), view.follow != 0 ? "true" : "false", view.member, view.count,
+            view.landingPoint.x, view.landingPoint.y, view.landingPoint.z, view.tile, width, height));
     }
     gLayer.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
     gLayer.space = frame.appSpace;
