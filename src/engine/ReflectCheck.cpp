@@ -2228,6 +2228,9 @@ void CheckClasses() {
 }
 
 void CheckFields() {
+    // game/SequelConversationWorld's black-move rule: the game's fade to black (research/le2-conversations-in-world.md 7.3)
+    CheckField("Engine.Camera", "bEnableFading", SDK_BOOL(ACamera, bEnableFading));
+    CheckField("Engine.Camera", "FadeAmount", SDK_FIELD(ACamera, FadeAmount));
     // game/Sights, game/Weapon (M3.3, research/le2-vrik.md "The sights on the sequels"): the near plane for the scope's pull,
     // the zoom flag set for one aim-error call, the sniper's zoom
     CheckField("Engine.PlayerController", "Player", SDK_FIELD(APlayerController, Player));
@@ -3814,6 +3817,9 @@ void CheckFields() {
     CheckField("Engine.Pawn", "CylinderComponent", SDK_FIELD(APawn, CylinderComponent));
     // game/SequelConversationWorld's RideBase (and game/OmniTool): what Shepard stands on (research/le2-conversations-in-world.md 7)
     CheckField("Engine.Actor", "Base", SDK_FIELD(AActor, Base));
+    // game/SequelConversationWorld's black-move rule: the game's fade to black (research/le2-conversations-in-world.md 7.3)
+    CheckField("Engine.Camera", "bEnableFading", SDK_BOOL(ACamera, bEnableFading));
+    CheckField("Engine.Camera", "FadeAmount", SDK_FIELD(ACamera, FadeAmount));
     // game/VrCover: the shooter's eyes, and Shepard's crouched eyes (research/23 section 7.8)
     CheckField("Engine.Pawn", "EyeHeight", SDK_FIELD(APawn, EyeHeight));
     CheckField("Engine.Pawn", "BaseEyeHeight", SDK_FIELD(APawn, BaseEyeHeight));

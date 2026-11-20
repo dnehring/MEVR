@@ -104,6 +104,10 @@ struct Settings {
     // Shepard kept on his mark like the others (ME1's rule: the player's place is never moved by the game; the owner,
     // 2026-11-19: "have Shepard not move around during this scene like the Mass Effect 1 rule set"); then nothing to follow.
     bool shepardStays = true;
+    // ME1's worldBlackMoves (research/69 item 41; the owner, 2026-11-16, on all three games): the game's fade to black moves the
+    // player with Shepard to where the scene wants him, curated walks excepted (worldCuratedWalks, cw::IsCuratedWalk).
+    bool blackMoves = true;
+    std::string curated;
     bool dofOff = true;          // [Cinematics] worldDof = 0 keeps it: the conversation's depth of field blurs the room
     bool nearPlane = true;       // [Cinematics] worldNearPlane (ME1's key): the on-foot near plane kept through the director's shots
     // ME1's walking during a conversation (research/59, worldMove): the left stick moves Shepard and the view inside the
@@ -211,6 +215,10 @@ struct Conversation {
     unsigned trackHeld = 0;      // Shepard's track moves withheld
     unsigned trackWalks = 0;     // jumps of someone a track moves, left to the track
     bool sceneWantsShepard = false;
+    unsigned sceneAsks = 0;      // Shepard's placements and track moves withheld (the black-move rule's "a new ask")
+    unsigned sceneAsksTaken = 0; // ... the asks the black-move rule has looked at
+    unsigned blackMoves = 0;     // the player moved with Shepard under the game's fade to black
+    bool curated = false;        // a curated walk: the player walks on to him (cw::IsCuratedWalk)
     ue3::Vector sceneWants{};    // where the stage or a track last wanted Shepard (withheld)
     std::string why;             // why not placed (yet)
     // ME1's sticks (the owner's answer, 2026-11-19): the left stick walks only while the wheel is down and steers it when it is
@@ -247,6 +255,12 @@ void const* gShepardTrack = nullptr;          // the move track walking Shepard 
 void const* gShepardTrackInstance = nullptr;
 // What Shepard stands on (RideBase, below): the base read last, where it was, how far it carried the player this scene.
 ue3::FieldRef gActorBase{"Engine.Actor", "Base", ue3::kEveryGame};
+// The game's fade to black (ME1's UnderGameBlack, its matinee-fade half: research/69 items 38 and 41): the camera's fade, read
+// after each camera update of a held conversation. The script's GUI black screen (ME1's BioSeqAct_BlackScreen, ME3's
+// BioSFHandler_BlackScreen) is not read on the sequels yet (research/le2-conversations-in-world.md 7.6).
+ue3::FieldRef gCameraEnableFading{"Engine.Camera", "bEnableFading", ue3::kEveryGame};
+ue3::FieldRef gCameraFadeAmount{"Engine.Camera", "FadeAmount", ue3::kEveryGame};
+std::uint64_t gBlackMs = 0;  // the last camera update with the fade half black or more
 struct Ride {
     ue3::Object* base = nullptr;
     ue3::Vector at{};
@@ -268,6 +282,7 @@ bool KeepAtSource(void const* conversation, void const* actor, float const* loca
         ++gC.shepardAtSource;
         gC.sceneWantsShepard = true;
         gC.sceneWants = {location[0], location[1], location[2]};
+        ++gC.sceneAsks;
         return true;
     }
     if (!gSettings.stay) return false;
@@ -307,6 +322,7 @@ bool OnMoveTrack(void const* actor, void const* track, void const* instance, flo
     if (engine::conversation_hooks::MoveTrackPlace(track, instance, time, place)) {
         gC.sceneWantsShepard = true;
         gC.sceneWants = {place[0], place[1], place[2]};
+        ++gC.sceneAsks;
     }
     return true;
 }
@@ -325,6 +341,11 @@ void RefreshSettings() {
     gSettings.shepardStays = vr::settings_file::Int(L"Cinematics", L"worldShepardStays", 1, path.c_str()) != 0;
     gSettings.dofOff = vr::settings_file::Int(L"Cinematics", L"worldDof", 0, path.c_str()) == 0;
     gSettings.nearPlane = vr::settings_file::Int(L"Cinematics", L"worldNearPlane", 1, path.c_str()) != 0;
+    gSettings.blackMoves = vr::settings_file::Int(L"Cinematics", L"worldBlackMoves", 1, path.c_str()) != 0;
+    wchar_t curated[256] = {};
+    vr::settings_file::String(L"Cinematics", L"worldCuratedWalks", L"", curated, static_cast<DWORD>(std::size(curated)), path.c_str());
+    gSettings.curated.clear();
+    for (wchar_t const* p = curated; *p != 0; ++p) gSettings.curated.push_back(static_cast<char>(*p & 0x7F));
 }
 
 bool WorldWanted() {
@@ -690,6 +711,7 @@ void End(conversation_world::Link const& link, char const* why) {
     if (gRide.units > 0.0) {
         gLast += std::format("; the player rode {:.2f} m with what Shepard stood on", gRide.units / 100.0);
     }
+    if (gC.blackMoves > 0) gLast += std::format("; moved with Shepard under the game's fade to black {} times", gC.blackMoves);
     gRide.units = 0.0;
     gRide.logged = false;
     log::Info("conversation world: {}", gLast);
@@ -748,6 +770,25 @@ void RideBase(ue3::Object* pawn) {
     if (gMomentHeld) shift(gRideMomentDelta);  // a moment's view (TickMoment takes it)
 }
 
+// ME1's worldBlackMoves in a held conversation (research/69 items 40 and 41: the elevator the script put Shepard in left without
+// the player): a placement or track move of Shepard the source hook withheld (where the scene wants him) more than "where he
+// stands" (cw::OpeningLimits stayUnits, 1.5 m) from the pin, under the game's fade to black or within 1.5 s of it, moves the pin
+// there (the camera update's pin puts his pawn there) under the host's dip; not in a curated walk. A step within 1.5 m stays the
+// pin's (ME1 walks it by the stick, which the sequels lack).
+void StepBlackMove(std::uint64_t now) {
+    if (gC.sceneAsks == gC.sceneAsksTaken) return;
+    gC.sceneAsksTaken = gC.sceneAsks;
+    if (!gSettings.blackMoves || gC.curated || !gC.sceneWantsShepard || gBlackMs == 0 || now - gBlackMs > 1500) return;
+    double const away = std::hypot(gC.sceneWants.x - gC.pin.x, gC.sceneWants.y - gC.pin.y);
+    if (away <= cw::OpeningLimits{}.stayUnits) return;
+    log::Info("conversation world: conversation {}: under the game's fade to black the scene wants Shepard {:.2f} m away: the player "
+              "goes with him under a dip (ME1's worldBlackMoves)", gC.serial, away / 100.0);
+    gC.pin = gC.sceneWants;  // the eyes keep their offset over his place; StepEyeHeight brings them to the new floor
+    gC.start = gC.pin;
+    ++gC.blackMoves;
+    ++gCutSerial;
+}
+
 // Engine.Camera.UpdateCamera, after the game's (before the frame is drawn): the speakers the stage moved since the last update
 // are put back (ME1's keep-in-place, game/ConversationWorld's undo in the same handler).
 void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*parms*/, void* /*result*/) {
@@ -755,6 +796,10 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
     ue3::Object* const controller = player::Controller();
     if (camera == nullptr || controller == nullptr || player::CameraOwner(camera) != controller) return;
     RideBase(player::Pawn(controller));  // a lift or a shuttle under Shepard moves the pin first (else the pin pulls him off it)
+    // The game's fade to black (a matinee's or the director's InterpTrackFade drives the camera's fade): half black or more.
+    if (gCameraEnableFading.ReadBool(camera).value_or(false) && gCameraFadeAmount.Read<float>(camera).value_or(0.0f) >= 0.5f) {
+        gBlackMs = GetTickCount64();
+    }
     if (gConstrainAspect.ReadBool(camera).value_or(false) && gConstrainAspect.WriteBool(camera, false)) {
         write_journal::Wrote("ConversationWorld.noLetterbox", camera, 4);
         if (gLetterboxClears++ == 0) {
@@ -1201,6 +1246,7 @@ void Tick(conversation_world::Link const& link) {
         // No place for the player in it (the generated presence table, cw::NoPlaceForPlayer): the 3D screen, by rule.
         std::string const name = ue3::runtime::FullName(ConversationData(conversation));
         bool const noPlace = cw::NoPlaceForPlayer(name, kGameNumber);
+        gC.curated = cw::IsCuratedWalk(name, gSettings.curated);
         if (noPlace) {
             gC.skipped = true;
             ++gNoPlaceScreens;
@@ -1312,6 +1358,7 @@ void Tick(conversation_world::Link const& link) {
         gC.stepMs = now;
     }
     if (gC.placed) RideBase(pawn);  // what Shepard stands on carries the place (ME1's RideBase)
+    if (gC.placed) StepBlackMove(now);  // the game's fade to black moves the player with Shepard (ME1's worldBlackMoves)
     if (gC.placed && now > gC.placedMs) {
         // The eyes at the player's own height over the floor under Shepard (ME1's StepEyeHeight).
         double const dt = gC.eyeMs != 0 ? std::clamp(static_cast<double>(now - gC.eyeMs) / 1000.0, 0.0, 0.1) : 0.0;
