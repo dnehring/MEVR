@@ -145,7 +145,7 @@ Pure functions and data, no engine; each game's adapter gives the facts.
 | `src/plugin/TransitionFade.cpp` | LE1's fade seam dips on the on-foot counter too (a scene's, else `FootCut()`): a removal under a dip on foot. An older mod sends 0 there: no dip, ignored. |
 | `src/mod/Mod.cpp` | `ai_walk::TryStartup()` (lane FPC's helper's movement-ban answer, before the CallFunction hook), `conversation_exit::TryStartup()`, `EnsureExitHook()` (the hook once wanted; the CallFunction hook and the name lookup for walks), `Tick` after `conversation_world::Tick`, `Shutdown` before it, the hook's uninstall, the snapshot's `"mod"."conversationExit"`. |
 | `src/game/ConsoleRequest.cpp` | `mevr convo exit [on | walk | hold | off | auto | status | shots on|off | trace on|off | test <tag>]` (`shots`: snapshots at each hold and apply; `trace`: the AI's call trace for 4 s as each walk away begins; `test`: the walk away of anyone now, without a hold, 8 s at most). |
-| `src/engine/ReflectCheck.cpp` | Rows for `SFXGame.BioActorBehavior.SetActive`, its `bSetActive` and ParmsSize, `Engine.Controller.PointReachable`, its `aPoint`, ReturnValue and ParmsSize (the other names had rows). |
+| `src/engine/ReflectCheck.cpp` | Rows for `SFXGame.BioActorBehavior.SetActive`, its `bSetActive` and ParmsSize, `Engine.Controller.PointReachable`, its `aPoint`, ReturnValue and ParmsSize, the class `Engine.Level` (the other names had rows). |
 | `tools/scene_audit.py`, `tools/audit-report.py`, `tests/SceneAuditTests.py` | The offline rule `vanished-in-view` (someone of the scene in sight in one stance record, gone or hidden in the next with no dip between; never excused by a baseline) and the live one in `FAIL_RULES`. |
 
 **The held change.** In the provider (inside the level script's update, the game thread): a `SetActive(false)` for the behaviour
@@ -167,7 +167,8 @@ through ProcessEvent on the kept behaviour (`ue3::runtime::Call`, our flag up), 
 and it walked more than 20 units, `Actor.SetLocation` and `SetRotation` back to where it stood (a later scene finds it where the
 level put it). A behaviour no longer alive (a load took it) is dropped with a log line.
 
-**Never lost.** Applied at once: the first-person mode or worldExit switched off; the player seeing no world in first person for
+**Never lost.** Applied at once: the first-person mode or worldExit switched off; the person's own level streamed out (or on its way
+out: `LevelGoing`, section 6 run 4); the player seeing no world in first person for
 0.5 s (a load's screens, a GUI screen, the 3D screen, a cutscene); a scene that began since needs them; the mod's unload or hot
 reload (`Shutdown`, not at process exit). [verify] a quicksave during a hold (it would save the person active; the hold lasts
 at most 25 s, and the pause menu is a screen, which applies it first).
@@ -250,6 +251,31 @@ each walk away; `mevr convo exit test <tag>`: the walk away of anyone now, witho
    asked once more to another place (`refused`, 1.5 m around the first kept out), then the look-away. The run-3 guess that the
    conversation mode held him (wait for the player on foot) was dropped unbuilt: the trace refutes it.
 
+**Run 4 (2026-11-20 01:28-01:38), with the reachability check** (session `..._01-28-48-exit4`):
+
+1. **Udina walks off.** At `sta90_captain_dlg`'s end: held (2.1 m from the eyes); `walks away 11.0 m straight away from the player
+   ... (22 of 36 points with a way, 1 hidden, 3 clear but not reachable for the AI)`; the game's AI walked him (no
+   `HandleTeleport` in the trace), and 2.2 s later, 2.24 m along, he had left the view at its left edge: `applied after 2.2 s: out
+   of the player's sight ...; hidden now yes, put back where it stood`. No dip. Snapshots
+   `%LOCALAPPDATA%\MEVR\snapshots\2026-11-20_01-35-14-594-left.png` (Anderson's final chat open, Udina mid-stride at the view's
+   left edge, walking away) and `..._01-35-15-599-left.png` (Udina gone from the view, Anderson's chat on).
+2. **The hearing's Anderson on the podium**: 2 of 36 points with a way, none away from the player: no walk, applied under the
+   look-away's dip after 3.0 s, as in run 2 (the podium is a dead end within 11 m).
+3. **Anderson after his final chat** showed two things. (a) The walk began in the tick the conversation ended and the game's own
+   `BioAiController.ClearSomeActions_State` popped it 9 ms later (on Udina's controller too, the same tick): the
+   `SarenCouncil` script's `Deactivate the captain` is followed in the same tick by **`Stream out this layer`
+   (`stream_council`), the level both Anderson and Udina stand in.** (b) `convo flow: scan (the streaming levels changed)` at
+   that tick, and the next snapshot (`..._01-35-18-628-left.png`) shows the council layer gone: Anderson, the near building and
+   the tree vanish together, a streaming pop (owner question 4). The module still saw him "present" (`bHidden` false, his
+   behaviour active), held him 5.1 s, and dipped with nothing left to hide: against the owner's "no blink with nothing changing".
+   **Fixed after run 4:** `Present` is false when the person's own level is streamed out or on its way out (`LevelGoing`: the
+   `Engine.WorldInfo.StreamingLevels` entry whose `LoadedLevel` is the pawn's outer `Engine.Level`, its `bShouldBeVisible` or
+   `bIsVisible` off), so such a deactivation is let through (not seen), and a held one is applied at once, no dip
+   (`their level <package> is streamed out (the script's streaming change takes them anyway)`).
+4. **Benezia (slot 86)**: the validation save fires `Benezia_Dies`' conversation (her death), whose end activates her, it removes
+   no one: not an exit fixture (the swap is the intro's, `Benezia_Intro`, 19 s after its conversation: let through by the 2 s
+   window in any case).
+
 ## 7. What the sequels need
 
 The rule (section 4) is the sequels' as it is; each needs its adapter (the hook, the people, the walk, the dip). Counts below
@@ -312,7 +338,11 @@ post-handler: the change itself lands later) takes out a level holding someone i
    player and goes once out of the view, or under a dip after the walk (12 s) and 3 s more of looking. Keep it, or dip sooner?
    Recommendation: keep (a walk is what the owner asked for).
 3. **The look-away's 3 s and the 25 s cap.** Recommendation: keep until the headset says otherwise.
-4. **Streaming out with people in view**: a dip (proposal above), or leave as the game does? Recommendation: the dip.
+4. **Streaming out with people in view**: a dip (proposal above), or leave as the game does? Seen at the council (run 4): after
+   Anderson's final chat the script streams the whole `stream_council` layer out in the same tick as it deactivates him, and he,
+   the near building and the tree vanish in one frame. Holding a streaming change is not safe (the next area may wait on it), so the
+   choices are (a) a short dip from black over the stream-out when it takes away something in view, (b) leave it. Recommendation:
+   (a), only when a person of the scene in view goes with it.
 5. **Teleports of a person in view** (Morlan, the bouncer, Kirrahe): walk them to the script's destination as their exit
    (designed above, not built)? Recommendation: yes, next.
 6. **Line hides and holograms** (Saren's hologram going off at the hearing's end; ME3's 773 line visibility tracks): left as

@@ -995,11 +995,11 @@ switching frameworks.
   `core/vr/ConversationExit`, ME1 `game/ConversationExit`, hook `engine/ExitHooks` on `UBioActorBehavior::execSetActive`
   0xBAAB60, the native a Kismet `ModifyPropertyPawn`'s "Active" row reaches through ProcessEvent): a deactivation of one of the
   scene's people in the player's view is withheld, the person walks off with `game/AiWalk` (to a place out of sight, else
-  straight away), and the same `SetActive(false)` goes through ProcessEvent once they are out of sight (or the player looks
+  straight away; only places the AI's own `Controller.PointReachable` admits, 11 m at most: Udina walked off in run 4), and the same `SetActive(false)` goes through ProcessEvent once they are out of sight (or the player looks
   away; under a dip after 3 s with no walk; 25 s at most), the pawn then put back where it stood; squadmates, the next scene's
-  people and their doubles (same tag), swaps and anything under the game's black screen go through at once; a load, a
-  screen, the setting off or an unload applies every held one. Live audit `vanished-in-view` (fails a run); `mevr convo exit
-  [on|hold|off|auto|status|shots on]`; logs `convo exit:`; snapshot `"mod"."conversationExit"`. **The voices are placed** (`worldVoices = spatial | game`,
+  people and their doubles (same tag), swaps, anything under the game's black screen and anyone whose own level streams out go through at once; a load,
+  a screen, the setting off or an unload applies every held one. Live audit `vanished-in-view` (fails a run); `mevr convo exit
+  [on|hold|off|auto|status|shots on|trace on|test <tag>]`; logs `convo exit:`; snapshot `"mod"."conversationExit"`. **The voices are placed** (`worldVoices = spatial | game`,
   research/69 "The voices, placed", 2026-11-10; the owner: the Council like an intercom, other scenes spatial): the game
   plays 82% of dialogue cues in the centre wherever the speaker stands (no attenuation node; LE1 is ISACT over OpenAL, not
   Wwise), so `engine/VoicePlace` post-hooks the ISACT source's update (`0x7BA90`) and, for a source whose audio component's

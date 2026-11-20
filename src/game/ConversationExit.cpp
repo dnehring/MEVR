@@ -55,6 +55,12 @@ ue3::FieldRef gTag{"Engine.Actor", "Tag"};
 ue3::FieldRef gWorldOfActor{"Engine.Actor", "WorldInfo"};
 ue3::FieldRef gWorldPawns{"Engine.WorldInfo", "PawnList"};
 ue3::FieldRef gNextPawn{"Engine.Pawn", "NextPawn"};
+ue3::ClassRef gLevelClass{"Engine.Level"};
+ue3::FieldRef gStreamingLevels{"Engine.WorldInfo", "StreamingLevels"};
+ue3::FieldRef gStreamingLoaded{"Engine.LevelStreaming", "LoadedLevel"};
+ue3::FieldRef gStreamingShouldShow{"Engine.LevelStreaming", "bShouldBeVisible"};
+ue3::FieldRef gStreamingVisible{"Engine.LevelStreaming", "bIsVisible"};
+ue3::FieldRef gStreamingPackage{"Engine.LevelStreaming", "PackageName"};
 ue3::FieldRef gSpeaker{"SFXGame.BioConversation", "m_pSpeaker"};
 ue3::FieldRef gListener{"SFXGame.BioConversation", "m_pListener"};
 ue3::FieldRef gOwner{"SFXGame.BioConversation", "m_pConversationOwner"};
@@ -207,8 +213,38 @@ bool Seen(ue3::Object* pawn) {
     return Clear(tracer, gEyes->at, head) || Clear(tracer, gEyes->at, middle);
 }
 
+// The person's own level streamed out, or on its way out: the streaming level whose loaded level holds the pawn no longer meant
+// to be (or no longer) visible. The script's streaming change takes them with everything else there, and is never held (the council's
+// layer after Anderson's final chat: "Deactivate the captain", then "Stream out this layer" in the same tick, run 4). The package's
+// name, or empty (the level stays, or is the persistent one).
+std::string LevelGoing(ue3::Object* pawn) {
+    ue3::Class* const levelClass = gLevelClass.Get();
+    if (pawn == nullptr || levelClass == nullptr) {
+        return {};
+    }
+    ue3::Object* const level = ue3::runtime::Get().OuterOfA(pawn, levelClass);
+    ue3::Object* const world = gWorldOfActor.Read<ue3::Object*>(pawn).value_or(nullptr);
+    auto const levels = level != nullptr && world != nullptr && ue3::runtime::IsAlive(world) ? gStreamingLevels.ElementsOf(world, 1024)
+                                                                                           : std::nullopt;
+    if (!levels) {
+        return {};
+    }
+    for (std::int32_t i = 0; i < levels->count; ++i) {
+        ue3::Object* const streaming = *static_cast<ue3::Object* const*>(levels->At(i));
+        if (streaming == nullptr || gStreamingLoaded.Read<ue3::Object*>(streaming).value_or(nullptr) != level) {
+            continue;
+        }
+        if (gStreamingShouldShow.ReadBool(streaming).value_or(true) && gStreamingVisible.ReadBool(streaming).value_or(true)) {
+            return {};
+        }
+        auto const name = gStreamingPackage.Read<ue3::Name>(streaming);
+        return name ? ue3::runtime::NameText(*name) : std::string("a streaming level");
+    }
+    return {};
+}
+
 bool Present(ue3::Object* pawn) {
-    if (pawn == nullptr || !ue3::runtime::IsAlive(pawn) || gHidden.ReadBool(pawn).value_or(true)) {
+    if (pawn == nullptr || !ue3::runtime::IsAlive(pawn) || gHidden.ReadBool(pawn).value_or(true) || !LevelGoing(pawn).empty()) {
         return false;
     }
     ue3::Object* const behavior = gBioComponent.Read<ue3::Object*>(pawn).value_or(nullptr);
@@ -891,6 +927,13 @@ void Tick(double /*deltaSeconds*/) {
         }
         if (needed) {
             Apply(h, "the next scene needs them (or their double)", false);
+            ++gTotals.atOnce;
+            gHeld.erase(gHeld.begin() + static_cast<std::ptrdiff_t>(i));
+            continue;
+        }
+        // Their level is streamed out (never held): it takes them anyway, with everything around them.
+        if (std::string const going = LevelGoing(pawn); !going.empty()) {
+            Apply(h, std::format("their level {} is streamed out (the script's streaming change takes them anyway)", going).c_str(), false);
             ++gTotals.atOnce;
             gHeld.erase(gHeld.begin() + static_cast<std::ptrdiff_t>(i));
             continue;

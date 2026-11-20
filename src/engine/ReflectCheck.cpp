@@ -555,6 +555,7 @@ void CheckClasses() {
     CheckClass<ACamera>("Engine.Camera");
     CheckClass<AWorldInfo>("Engine.WorldInfo");
     CheckClass<UWorld>("Engine.World");  // stage 3: engine::World()
+    CheckClass<ULevel>("Engine.Level");  // game/ConversationExit: a person's own level, streamed out
     CheckClass<AInventoryManager>("Engine.InventoryManager");
     CheckClass<AWeapon>("Engine.Weapon");
     CheckClass<AProjectile>("Engine.Projectile");
