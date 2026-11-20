@@ -486,6 +486,23 @@ the live conversation), and the cut counter's `DipFromBlack`/`CutCount`; the arm
 clear; `tools/le2-halcyon-run/conversation-exit.ps1` reaches it by script (`mevr convo exit end` ends the conversation by the
 world's own call so the script's end runs).
 
+### 8.1 Lane EXIT3 (2026-11-20): ME2's walk is the Kismet's own; ME3 in the game
+
+The guide is research/conversation-exits.md sections 11 (ME3) and 12 (ME2's walk). What this module's lanes should know:
+
+- **ME2's AI walk** (`game/AiWalk`'s ME2 adapter, also what a circle or a mark walk on ME2 can use): `SFXAI_Core.MoveToGoal` to
+  the level's navigation point nearest the point (the `MovingToGoal` state: a path, the AI's own pace, about 1.7-2 m/s in Tali's
+  room), arrival when the state pops; `PrecisionMoveTo` (0.3 m/s) only without a goal. A navigation point "with a path" is
+  asked with UE3's constraints first (`Goal_AtActor.AtActor`, `Path_TowardGoal.TowardGoal`, then `FindPathToward(goal, false,
+  2000)`): without them every search fails.
+- **ME3's people in a hub** are `SFXStuntActor`s (only the player is a pawn there): no AI walks them; the sequels' reader
+  (`m_aSpeakerData`) lists only who has spoken, so the exit module also reads the controller's `m_pOwner`, `m_pSpeaker`,
+  `m_pListener`, `m_aAllFoundActors` and `m_aExtraParticipants`.
+- Seen once on ME3 (before lane FPC3 landed; not checked after): at a held conversation's end the view turned from the held yaw
+  (0) to the pawn's own facing on foot, so people in view at the end were out of view a tick later (section 11, run 2).
+- Test aids on ME3: `mevr convo exit skip` (SkipNode), `reply <n>` (QueueReply), `people` (bearing and sight of each person);
+  the runner's `-StartInput`, `-HeadYaw` and its ME3 advance loop.
+
 ## 9. Lane FPC4 (2026-11-20): records from above, looks at the eyes, ME3 in the game, seats, walk-along, the marker's black move
 
 What was built on both sequels, how to check it, what the game showed. Numbers only from the code and the logs.

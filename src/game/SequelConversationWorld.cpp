@@ -69,6 +69,9 @@ ue3::ClassRef gControllerClass{kController, ue3::kEveryGame};
 ue3::FieldRef gSpeakerNow{kController, "m_pSpeaker", ue3::kEveryGame};
 ue3::FieldRef gListenerNow{kController, "m_pListener", ue3::kEveryGame};
 ue3::FieldRef gEntryNow{kController, "m_nCurrentEntry", ue3::kEveryGame};
+ue3::FieldRef gFoundActors{kController, "m_aAllFoundActors", ue3::kEveryGame};
+ue3::FieldRef gFoundActor{gFoundActors, "pSpeakerActor"};
+ue3::FieldRef gExtraParticipants{kController, "m_aExtraParticipants", ue3::kEveryGame};
 #else
 // ME2: ME1's live conversation (BioWorldInfo.m_oCurrentConversation, a BioConversation) and its people, ME1's own fields
 // (game/ConversationWorld's gCurrentConversation, gSpeakerList, gConvPlayer ...; research/le2-conversations-in-world.md).
@@ -484,14 +487,22 @@ std::vector<ue3::Object*> Speakers(ue3::Object* conversation, ue3::Object* playe
             out.push_back(actor);
         }
     }
-    // The owner and who speaks or listens now, as ME2's reader (ME1's): the speaker data may not hold them
-    // (research/le3-conversations-in-world.md section 1).
-    for (ue3::FieldRef* field : {&gOwner, &gSpeakerNow, &gListenerNow}) {
-        ue3::Object* const actor = field->Read<ue3::Object*>(conversation).value_or(nullptr);
-        if (actor != nullptr && actor != player && ue3::runtime::IsAlive(actor) && IsPerson(actor) &&
-            std::find(out.begin(), out.end(), actor) == out.end()) {
+    // The speaker data lists only who has spoken (the Prothean's moment had its owner, Javik, and a bystander out of it: lane EXIT3,
+    // 2026-11-20): the owner and who speaks or listens now (ME2's and ME1's reader), every actor the start found for its nodes, and
+    // the extra participants. The one reading of ME3's scene people: game/ConversationExit takes it through ScenePeople.
+    auto const add = [&](ue3::Object* actor) {
+        if (actor != nullptr && actor != player && ue3::runtime::IsAlive(actor) && std::find(out.begin(), out.end(), actor) == out.end()) {
             out.push_back(actor);
         }
+    };
+    for (ue3::FieldRef* field : {&gOwner, &gSpeakerNow, &gListenerNow}) {
+        add(field->Read<ue3::Object*>(conversation).value_or(nullptr));
+    }
+    if (auto const found = gFoundActors.ElementsOf(conversation, 32)) {
+        for (std::int32_t i = 0; i < found->count; ++i) add(gFoundActor.Read<ue3::Object*>(found->At(i)).value_or(nullptr));
+    }
+    if (auto const extras = gExtraParticipants.ElementsOf(conversation, 32); extras && extras->stride == static_cast<std::int32_t>(sizeof(void*))) {
+        for (std::int32_t i = 0; i < extras->count; ++i) add(*static_cast<ue3::Object* const*>(extras->At(i)));
     }
     return out;
 }
