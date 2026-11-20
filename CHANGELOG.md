@@ -28,6 +28,10 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
   to walk to they go when you look away, or after a few seconds under a short fade. Squadmates and
   anyone the next scene needs stay as before, and the story is unchanged. `[Cinematics] worldExit = hold` keeps people where
   they stand until you look away; `off` lets them vanish as before.
+- **First-person conversations on ME2 and ME3: your eyes where you left them (experimental).** A conversation shown in the
+  world keeps your view where it was on foot, never turned at its start, and at your own height over Shepard's floor. A lift
+  or shuttle carries you with Shepard instead of leaving you where the ride began, and when the game fades to black to move
+  Shepard, you move with him.
 - **First-person conversations on ME2 (experimental).** Comfort > Conversations now offers First person on Mass Effect 2 and
   3, as on Mass Effect 1: you stand where you engaged the conversation, in stereo, with your own body; the left stick walks
   while the dialogue wheel is down and chooses a reply when it is up, the right stick turns you, and the scene's near plane no

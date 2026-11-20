@@ -1423,6 +1423,40 @@ Marker StepMarker(MarkerState& state, MarkerFacts const& facts, double dtS, Mark
     return out;
 }
 
+double EyeHeightStep(EyeHeightFacts const& facts, EyeHeightLimits const& limits) {
+    if (!(facts.eyeM >= limits.minEyeM && facts.eyeM <= limits.maxEyeM) || !std::isfinite(facts.floorZ) ||
+        !std::isfinite(facts.drawnZ) || !(facts.unitsPerMeter > 0.0)) {
+        return 0.0;
+    }
+    double const err = facts.floorZ + facts.eyeM * facts.unitsPerMeter - facts.drawnZ;
+    if (std::abs(err) <= limits.deadbandUnits) return 0.0;
+    double const rate = (facts.opening ? limits.openingRateMS : limits.rateMS) * facts.unitsPerMeter;
+    double const most = rate * std::clamp(facts.dtS, 0.0, 0.1);
+    return std::clamp(err, -most, most);
+}
+
+bool NoteEyeFromHead(EyeFromHead& state, Vec3 const& sample, double leanUnits, EyeFromHeadLimits const& limits) {
+    if (!(std::abs(leanUnits) <= limits.stillUnits) || !(std::abs(sample.x) <= limits.maxForwardUnits) ||
+        !(std::abs(sample.y) <= limits.maxRightUnits) || !(sample.z >= limits.minUpUnits && sample.z <= limits.maxUpUnits)) {
+        return false;
+    }
+    if (!state.learned) {
+        state.eye = sample;
+        state.learned = true;
+    } else {
+        double const g = std::clamp(limits.gain, 0.0, 1.0);
+        state.eye.x += (sample.x - state.eye.x) * g;
+        state.eye.y += (sample.y - state.eye.y) * g;
+        state.eye.z += (sample.z - state.eye.z) * g;
+    }
+    ++state.samples;
+    return true;
+}
+
+Vec3 EyeFromHeadOr(EyeFromHead const& state, Vec3 const& fallback) {
+    return state.learned ? state.eye : fallback;
+}
+
 bool Insists(Insistence& state, Vec3 const& wanted, double movedUnits, InsistLimits const& limits) {
     if (movedUnits > limits.maxUnits) {
         state.count = 0;

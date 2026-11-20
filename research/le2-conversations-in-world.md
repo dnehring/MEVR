@@ -319,7 +319,163 @@ looks at the player's eyes (ME2 `BioPawn.SetLookAtTarget`, ME3 `SFXModule_LookAt
 behind), the game's black moving the player, rides and seats on the sequels; the stance records and `scene_audit` rules on the
 sequels; a canary per new rule.
 
-## 7. People leaving a scene on ME2 (lane EXIT2, 2026-11-20)
+## 7. Lane FPC3 (2026-11-20): the eyes, rides, the handover, ME3's fixtures
+
+The brief's items 0 to 6 on both sequels; what was built, how to check it, what the game showed. Numbers only from the code and
+the logs.
+
+### 7.0 ME1's regression set with the floor marker (item 0)
+
+FPC2's ME1 commit (1553434b, on this branch c453e66e: the floor marker where a scripted walk of Shepard ends) with ME1's set
+(`tools/conversation-audit.ps1`, session `2026-11-20_02-08-40-audit`, the players' build `0.3.2+c453e66eb4`, before lane EXIT
+landed): 16 scenes played from their saves (Kirrahe's from `squad-saves\John02_70` not played: the save is missing), every scene's
+body measured where a wrist was in view, 2 findings (`face-off-you`: Benezia 89 degrees at line 53, Udina 77 at the ceremony's
+opening: both known, research/69 item 38), 1 regression against the baseline (`lav70_asariscientist_dlg`: faces off the eyes, median
+13 to 23 degrees; lane EXIT's long run showed the same Liara verdict from a baseline written from short runs, with the exits off
+too: not the marker's). **The marker in the game:** `convo: marker: moment: Shepard's walk ends there ..., 8.40 m from the player`
+in the walk with Anderson to the council (`SarenCouncil.SeqAct_Interp_0`), and 24.04 m in the Spectre ceremony's walk
+(`PlayerBecomesSpectre.SeqAct_Interp_2`), one marker each; the snapshot `2026-11-20_02-18-06-160-left.png` shows the thin pale ring
+on the walkway ahead of the player, Anderson beyond it; at 02-18-15 (the player at the walkway's end beside Anderson) no ring.
+The host drew it in squad placement's layer (`squad place: last 10 s: 191 frames drawn`). The snapshots' JSON carries no
+`squadPlace` block (no host feeds `squad_place_draw::StatusJson` to the test loop: section 6.4's "snapshot
+"squadPlace"."floorMarker"" isn't wired). **The canaries** (`conversation-audit.ps1 -Canaries`, after lane EXIT landed: main
+9e93a920 merged, the players' build `0.3.2+bd33ccc2a1`, sessions `2026-11-20_02-31-02-canary-*` to `02-56-19-canary-popped-out`):
+all 11 broken runs caught, each by its own rule (body left at the mark; the empty chamber by `expect`; no hands; the five of
+Opold's game; the view scaled about the pivot by `eye-height`/`opening-off-mark`; the matinee's fade by `dark-view`/`eye-flat`;
+EXIT's popped-out by `vanished-in-view`); exit 0.
+
+### 7.1 The eyes (item 1)
+
+**The cause of 6.6.** The slice held the view at `PlaceFromHead`: Shepard's head bone (the pawn's mesh, bone `Head`) plus 8 units
+along his facing and 4 up. The arm IK's own measure on foot (`arm IK: first person camera vs Shepard's head bone`, every 5 s in
+first person, the headset at the recenter point) on ME2 is about **24 forward, 13 up** (LE2 runs of 2026-11-14, lanes B to F, the
+fake headset with no floor lock: `forward 23.7..25.5, up 12.8..13.5`; with the floor lock driven by a replay, 2026-11-20, `forward
+28.8, up 25.3`): the conversation's eyes sat about 16 units back and 9 low against first person on foot, inside the collar.
+ME1's constant is the same measure on ME1 (`eyeFromHead` 8.9, 1.7, 29.3).
+
+**The rule now (ME1's, `game/SequelConversationWorld`):**
+
+1. **The opening's eyes** (ME1's `FinishOpening` / the view on foot): a Stay or WalkIn with a fresh view on foot (the place
+   on foot known within 10 s, `gFootPov` valid) holds the eyes where the player had them on foot: `eyeOffset = foot POV -
+   foot pawn`, the facing the foot view's yaw (never turned at the opening; the slice turned the player to the stage's facing).
+   A Cut, or no fresh view on foot: his head bone at the mark plus the first-person eyes from it in the facing's yaw.
+2. **The eyes from the head bone, learned** (`cw::NoteEyeFromHead`, core, unit-tested): on foot in mode 0, with the world mode
+   wanted and the first-person camera the pawn's (`player::FloorLockSample().cameraOwned`), each tick the game's own camera
+   (`CameraCache.POV`: the renderer adds the head's lean after it) against his animated head bone, in the POV's yaw frame, is a
+   sample when the host's view offset (the lean from the recenter point) is under 5 units (the body follower slides the body
+   with a lean) and inside the sanity box (forward and right within 60/30 units, up -45..60); the first sample is taken whole,
+   later ones at a gain of 0.05. Fallback without a sample: ME2 (24, 0, 13); ME3 the slice's (8, 0, 4) until a measure (7.3).
+   Log `conversation world: on foot the first-person eyes are F forward, R right, U up from Shepard's head bone (N samples ...)`
+   at the first sample and every 60 s.
+3. **The eyes' height** (`cw::EyeHeightStep`, core, unit-tested; ME1's `StepEyeHeight`, research/69 item 44): each tick after
+   the opening, the host's drawn eye centre (`host_view.centreZ`: the held place plus the head's lean; the floor lock stands
+   down in a held conversation, so it is the raw centre) is brought to Shepard's cylinder floor (`pin.z -
+   CylinderComponent.CollisionHeight`) plus the player's live standing eye (`stageEyeM`, the floor lock's STAGE eye): 1 m/s in the
+   opening's first 1.5 s, 0.3 m/s after, nothing within 1 cm, nothing without a standing eye (0.5..2.6 m). The step goes into
+   `eyeOffset.z`. Log `conversation world: conversation N: the drawn eyes are X m over the floor under Shepard, the player's Y m:
+   the view goes up|down by Z m`; the end line says where the eyes came from and how far their height was brought. The fake
+   headset's STAGE eye is 1.7526 m (the null driver's), so it acts there too (since the replay drives the floor sample,
+   2026-11-19).
+4. ME1 keeps its own inline `StepEyeHeight` (the same numbers but its eye fallback `gFloorNow`); moving ME1 onto
+   `cw::EyeHeightStep` is a no-op refactor left for an ME1 batch (its compiled code is untouched here).
+
+**Check:** a snapshot of a held conversation's eyes (Tali's on ME2, an ME3 one): no dark shapes in the bottom corners; the
+opening line's `the eyes from the view on foot (x, y, z from his pawn)` or `his head bone (...)`.
+
+**In the game (fake headset, 2026-11-20 03:15-03:34; ME2 stretch `20261120-031526-824-LE2-fpc3`, ME3 `...-LE3-fpc3-le3`):**
+
+1. **The "shoulders" of 6.6 were Shepard's own hands.** The runner's replays (`tools/steer-common.ps1`'s `Steer-Play`, every
+   `conversation-world.ps1` run) hold the tracked hands up in view (`make-walk-recording.py --hands view`: 0.25 m ahead of the eyes,
+   0.08 m under them, 0.09 m to each side), so arm IK draws Shepard's armoured fists in the bottom corners. Tali's conversation with
+   the same replay (snapshot `2026-11-20_03-17-23-352-left.png`) shows them as FPC2's did; the same conversation with the hands at the
+   chest (`--hands chest`, `2026-11-20_03-18-45-612-left.png`) has clear corners: Tali, Prazza, the quarians and the room; looking
+   down 55 degrees (`2026-11-20_03-19-09-957-left.png`) shows the carbon-weave forearms and gloves that filled the corners. A check
+   of the eyes needs `--hands chest` (or no replay).
+2. **ME2, Tali's reintroduction** (the moment, then the conversation): `opening stay ... the eyes from the view on foot (0, -35, 85
+   from his pawn)`, held at (-9619, 14809, -11972) against the slice's (-9621, 14835, -11979): 26 units further forward, 7 up; the
+   eye height brought 0.02 m. The learned eyes on foot: `29.4 forward, -2.2 right, 23.1 up` (1 sample at Freedom's Progress), then
+   `16.7 forward, -0.6 right, 14.5 up` (145 samples on the Normandy).
+3. **ME2, Samara's starter** (`normw_starter_h`, fired from the Normandy's corridor: a Cut 15.4 m away): `the eyes from his head
+   bone (the eyes as learned on foot) (-4, -8, 78 from his pawn)`, `the drawn eyes are 1.66 m over the floor under Shepard, the
+   player's 1.75 m: the view goes up by 0.09 m`. The view faced the observation window (his pawn's facing): ME1 faces the owner,
+   now on the sequels too (commit "a Cut opening faces the conversation's owner"); with it the view turned to -13.9 degrees, toward
+   Samara 2.9 m away, but **Samara was not drawn** (snapshot `2026-11-20_03-21-30-434-left.png`: the window and stars, nobody) [verify
+   culling or hiding: the sequels have no `person-not-drawn` rule yet; ME1 reads `PrimitiveComponent.LastRenderTime`].
+4. **ME3, the docking officer** (Save_0090 loads into it): `citprs_citadel_docking_v_D.citprs_citadel_docking_v_dlg` stayed on the
+   3D screen **by the load rule, not the presence table**: the table has `tempsf_citadel_docking_v` but not this one, because every
+   line's `Conversation` group names `Player` (his VO element and gesture tracks: Shepard speaks, off screen) though the scene is a
+   comm call staged in a void (held by hand with `mevr convo world on`: `2026-11-20_03-29-24-446-left.png`, the officer seated in
+   black space, the wheel below). The criterion "a line acts on the player" counts the player's own voice: ME3's video calls (`_v_`)
+   need another rule (question 3 of the lane's report). Held by hand: `opening cut ... the eyes from his head bone (the game's
+   measure) (10, 3, 79 from his pawn)`, height +0.09 m. ME3 never stood on foot in the run (the save loads into the call and our
+   menu's first-run guide kept the input): no ME3 measure of the eyes from the head bone yet (the fallback stays the slice's 8, 0, 4
+   until one).
+
+### 7.2 Rides (item 4, part)
+
+ME1's `RideBase` (research/69 item 42) on both sequels: each camera update before the pin, each conversation tick and each moment
+tick, the pawn's `Engine.Actor.Base` and its place; while the same base moves 0.01..500 units since the last read (under 250 ms
+apart), the delta moves the pin, the boundary's centre, where the scene wanted Shepard, the kept places of those whose base is
+the same, and a moment's view (`gM.feet`, taken by `TickMoment`). The pin is the reason it matters on the sequels: it puts
+Shepard back where the player stands each camera update, and on a lift that was where the ride began (the ME3 audit's row 23:
+36 full ME3 conversations move a shuttle, car or lift). Logs `conversation world: what Shepard stands on moves (<base>, X m this
+tick): the player rides with it`; the end line `the player rode X m with what Shepard stood on`. LE3 ReflectCheck row
+`Engine.Actor.Base` added (ME2 and ME1 had one). Not seen in a ride yet.
+
+### 7.3 The game's fade to black moves the player (item 4, part)
+
+ME1's `worldBlackMoves` (research/69 items 40 and 41) in a held conversation on both sequels (`StepBlackMove`): the source hook
+records every placement and track move of Shepard it withholds (`gC.sceneWants`, `sceneAsks`); a new one more than 1.5 m
+(`cw::OpeningLimits{}.stayUnits`) from the pin, while the camera's fade is half black or more (`Engine.Camera.bEnableFading` and
+`FadeAmount`, read after each camera update) or was within 1.5 s, moves the pin there (the camera update's pin then puts his pawn
+there) under the host's dip (`++gCutSerial`). Curated walks keep the old rule (`cw::IsCuratedWalk` with `[Cinematics]
+worldCuratedWalks`; none built in for the sequels). `[Cinematics] worldBlackMoves = 0` turns it off (ME1's key and default 1). A
+step within 1.5 m stays where the player is (ME1 walks it by the simulated stick; the sequels have no steer). Log `conversation
+world: conversation N: under the game's fade to black the scene wants Shepard X m away: the player goes with him under a dip`;
+the end line counts the moves. **Not read yet:** the script's GUI black screen (ME2's `BioSeqAct_BlackScreen`, ME3's
+`BioSFHandler_BlackScreen`, research/le3-conversations-in-world.md 5.4): a black that is only GUI moves nobody. Not seen in the
+game (no fixture yet: a conversation whose stage moves Shepard under a fade).
+
+### 7.4 The handover into a GUI screen (item 3, part)
+
+ME1's research/69 item 38 rule on the sequels: `MevrSeams::WorldUiOwnsGui(mode)` (plugin/MenusLe2; ME2's `d3d_capture.cpp` and
+ME3's `UpdatePresentationState` ask it for their GUI mode) answers true for the game's GUI mode while
+`MevrSeams::ConversationHandover()` holds (the mod's "handing over" byte, 150 ms fresh; the mod publishes it for 300 ms after a
+conversation shown in the world ends). Host only; not seen in the game (a conversation that ends into a shop or a GUI screen).
+
+### 7.5 ME3's console for fixtures
+
+`mevr instances <Package.Class> [text]`, `mevr activate <n> [input]` and `mevr setloc <n> X Y Z` (ME2's lines) on ME3 too, so
+`tools/le2-halcyon-run/conversation-world.ps1 -Game LE3 -Start fire:SFXGame.SFXSeqAct_StartConversation:<text>` works there.
+
+### 7.6 What the code says about the rest (items 3 to 5), for the next lane
+
+1. **Looks at the player's eyes** (ME1's `StepEyes`, `worldLookEyes`): ME1 moves a look at Shepard to a `BioLookAtTarget` at
+   the drawn eyes only while his body stands away from them (his head bone more than 0.5 m from the drawn eyes, flat: a walk-in
+   by the view, a moment). On the sequels Shepard is kept on the pin, under the player's eyes, in every conversation (no walk-in
+   by the view exists there): the stand-in would never switch on in a conversation. It matters only in moments, and ME2's
+   ANIMCUTSCENEs park his pawn at the world origin and play a stand-in actor whose faces are the matinee's (ME1 found the same in
+   its six moments: "nobody had a look-at target"). Port it with moments' walk-along, not before; ME2's names are ME1's
+   (`BioPawn.m_oLookAtData`, `SetLookAtTarget`), ME3's `SFXModule_LookAt.ChangeTarget` (research/le3-conversations-in-world.md 2.4).
+2. **Seats** (ME1's `StepSeat`): the pin is the obstacle. A Stay opening puts Shepard back where the player stood, so a stage
+   placement onto a chair is withheld and the sit plays on the spot. The rule that fits ME1's: "the scene seats Shepard" makes the
+   opening a Cut (his place is his seat), from a generated table (research/le3-conversations-in-world.md 5.3: the scan must record
+   the gesture pose names per group; ME3 37 conversations seat Shepard); then `StepSeat` (the view follows his head down and up,
+   no walking) on his skeleton's thresholds, which must be measured on ME2 and ME3 first (ME1's: standing head 0.70-0.82 m over his
+   pawn's place, seated under 0.62).
+3. **The game's black moving the player**: built for the camera's fade (7.3). Missing: the script's GUI black screen on the
+   sequels (ME2's `BioSeqAct_BlackScreen`, ME1's route in game/AuthoredMoment; ME3's three routes ending in
+   `BioSFHandler_BlackScreen`, research/le3-conversations-in-world.md 5.4), and in moments. Then the floor marker's "black move"
+   source is where the black would take the player in a curated walk (the only place the player isn't moved).
+4. **Walk-along** (ME1's `StepWalkAlong`): applies when the player follows the script's Shepard with companions; under the owner's
+   current answer (a) for ME2's stand-in cutscenes the view stays where the player stood, so there is nothing to walk along with on
+   ME2; ME3's moments that walk Shepard's real pawn are where it applies (research/le3-conversations-in-world.md 5.5's open
+   point: pausing a conversation line's matinee may desync the line).
+5. **The circle and the squad's formation** with `game/AiWalk` (ME2 `PrecisionMoveTo`, ME3 `MoveToSlot`): not started here.
+6. **The floor marker's "waits" source**: the scene waits for the player at a trigger or volume; needs the level's script read (the
+   scan's `waits` for each start) on all three games. Not started.
+
+## 8. People leaving a scene on ME2 (lane EXIT2, 2026-11-20)
 
 ME1's rule (research/conversation-exits.md: hold the script's removal of one of the scene's people while the player sees them,
 walk them away with the game's AI, apply once out of sight) on the sequels, from the same module `game/ConversationExit`; the

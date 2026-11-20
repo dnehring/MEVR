@@ -894,7 +894,11 @@ stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs 
       plays around you in first person (you stay where you stood; the cutscene's Shepard isn't drawn where you are), a dip from
       black as it ends and the conversation begins with Tali in front of you. Say whether being left where you stood while the
       scene walks on feels right, and whether the dip is welcome.
-- [ ] The same conversation: are the bottom corners of the view filled by Shepard's own shoulders (a snapshot showed them)?
+- [ ] The same conversation: your eyes where first person had them on foot and at your own height over Shepard's floor
+      (lane FPC3, section 7.1; the "shoulders" a snapshot showed were Shepard's hands, held up by the test's replay): look down
+      at your body and at the speaker's eye level (a tall or short player should feel their own height).
+- [ ] ME2 or ME3, a conversation on a lift or in a shuttle (ME3's Tuchanka shuttle `kro002_shuttle_ride_in_m_dlg`): you ride
+      with it, never left behind or pulled off the floor (section 7.2).
 - [ ] A floor marker (a thin pale ring on the floor) where a scripted walk you follow ends: small and quiet enough? On ME1's
       walk with Anderson to the council it shows where his walk ends and fades once you stand in it.
 - [ ] ME3: a conversation the presence table sends to the 3D screen (the docking officer at the Citadel's arrival) does go there.

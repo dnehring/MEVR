@@ -1028,9 +1028,16 @@ These unblock the most: almost every other entry gets smaller once they land.
   Shepard, Tali's re-intro held in first person on ME2 with a dip at the join; the generated presence table (ME2 109, ME3 156
   conversations to the 3D screen, `cw::NoPlaceForPlayer`); the floor marker's rule and drawing (all three games; the walk's end
   in moments as its first source).
-- **Left:** section 6.7 there: ME3's checks, the eyes ahead of Shepard's collar (`StepEyeHeight`), looks at the player's eyes,
-  the circle and the squad's formation (`game/AiWalk`), the subtitle and wheel placement, walk-along, the game's black moving the
-  player, rides and seats on the sequels, the floor marker's "waits" and "black move" sources. Each item on ME2 and ME3 alike.
+- **Done since (lane FPC3, 2026-11-20, section 7 there):** the eyes (ME1's opening keeps the view on foot; at his mark the
+  first-person eyes from his head bone, learned on foot, `cw::NoteEyeFromHead`; their height the player's over his floor,
+  `cw::EyeHeightStep`, ME1's `StepEyeHeight`); a Cut faces the conversation's owner; rides (ME1's `RideBase`: what Shepard
+  stands on moves the pin); the camera's fade to black moves the player with Shepard (`worldBlackMoves`); ME1's handover into a
+  GUI screen (`MevrSeams::ConversationHandover` in `WorldUiOwnsGui`); ME3's console fixtures (`mevr instances`, `activate`,
+  `setloc`). Seen on ME2 (Tali's, Samara's) and ME3 (the docking officer): the eyes and their height; the presence table misses
+  ME3's comm calls whose player VO track names `Player` (the docking officer stayed on the screen by the load rule).
+- **Left:** section 7's "not done" there: looks at the player's eyes, the circle and the squad's formation (`game/AiWalk`), the
+  subtitle and wheel placement, walk-along, the script's GUI black screen, seats on the sequels, the floor marker's
+  "waits" and "black move" sources, ME3's video calls in the presence table. Each item on ME2 and ME3 alike.
 - **Closes when:** an ordinary conversation, Tali's meeting and the Miranda scene play in first person on the fake headset
   with the body drawn, the eyes at the player's height and a clean return to gameplay, and the 3D screen unchanged with the
   option off (snapshots and stances under `%LOCALAPPDATA%\MEVR\sessions`); then the owner's headset pass.
