@@ -291,7 +291,8 @@ for the player somewhere, a place the game's black screen would take him, where 
 it (`marker`, `markerNeed`, `markerAt` in tracking space, `markerAlpha`, `markerRadiusM`: host and mod deploy together), and
 `plugin/SquadPlaceDraw` draws it in squad placement's own layer when the squad's arc is not up (all three hosts, no swapchain of its
 own): a thin pale ring and a fainter inner one, a hair above the floor; snapshot `"squadPlace"."floorMarker"`. Sources built: the
-walk's end in a moment, on the sequels (`TickMoment`) and on ME1 (`StepMomentMarker`, its own commit). Log `convo: marker:`.
+walk's end in a moment, on the sequels (`TickMoment`); ME1's (`StepMomentMarker`, the lane's commit 1553434b) is not on main
+until ME1's regression set and the council walk have run with it. Log `convo: marker:`.
 **Not built:** the "waits" source (which trigger or volume the script waits on) and the "black move" source (the teleport's place
 before the black), on any game. **In the game:** on ME2's Tali the track's last key came back as (0, 0, 0) (the ANIMCUTSCENE's
 pawn parked at the origin, item 6.2.2), refused by the marker's sanity check (`no walk's end, no marker`): no marker drawn. ME1's
