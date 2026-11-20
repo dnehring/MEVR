@@ -14,8 +14,13 @@
 namespace mevr::engine::exit_hooks {
 namespace {
 
+#if defined(MEVR_GAME_LE1)
 constexpr char const* kHookName = "UBioActorBehavior::execSetActive";
 constexpr std::uint32_t kRva = addresses::kBehaviorExecSetActive;
+#else
+constexpr char const* kHookName = "AActor::execSetActive";
+constexpr std::uint32_t kRva = addresses::kActorExecSetActive;
+#endif
 constexpr std::size_t kFrameNode = adapter::kFrame.node;
 constexpr std::size_t kFrameLocals = adapter::kFrame.locals;
 
@@ -29,6 +34,51 @@ std::atomic<void const*> gFunction{nullptr};
 std::atomic<unsigned> gCalls{0};
 std::atomic<unsigned> gFromEvent{0};
 std::atomic<unsigned> gWithheld{0};
+#if defined(MEVR_GAME_LE3)
+// ME3's script caller (BioSeqAct_SetActive.Activated: `oTarget.SetActive(bSetActive)`): the native runs on that script's frame.
+constexpr std::size_t kFrameObject = adapter::kFrame.object;
+constexpr std::size_t kFrameCode = adapter::kFrame.code;
+constexpr std::uint8_t kDebugInfo = 0x41;  // EX_DebugInfo: the token P_FINISH also steps over when it follows
+using tNative = void(void* object, void* frame, void* result);
+tNative* const* gNatives = nullptr;  // GNatives, resolved at Install
+std::atomic<ScriptProvider> gScriptProvider{nullptr};
+std::atomic<void const*> gScriptCaller{nullptr};
+std::atomic<unsigned> gFromScript{0};
+
+void const* ReadObject(void const* frame) {
+    __try {
+        return *reinterpret_cast<void const* const*>(static_cast<std::uint8_t const*>(frame) + kFrameObject);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return nullptr;
+    }
+}
+
+bool AskScript(ScriptProvider provider, void const* self, void const* op) {
+    __try {
+        return provider(self, op);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        gScriptProvider.store(nullptr, std::memory_order_relaxed);
+        return false;
+    }
+}
+
+// The thunk's own steps without its last call (the actor's C++ SetActive): P_GET_UBOOL through the engine's GNatives, P_FINISH
+// (the EX_EndFunctionParms token, and an EX_DebugInfo after it), exactly as AActor::execSetActive makes them (Ghidra, ME3
+// 0x4BFAF0), so the calling script goes on from where the call would have left it.
+void StepOverCall(void* frame) {
+    auto* const f = static_cast<std::uint8_t*>(frame);
+    std::uint8_t*& code = *reinterpret_cast<std::uint8_t**>(f + kFrameCode);
+    void* const object = *reinterpret_cast<void**>(f + kFrameObject);
+    std::uint32_t value = 0;
+    std::uint8_t const token = *code++;
+    gNatives[token](object, frame, &value);
+    ++code;
+    if (*code == kDebugInfo) {
+        ++code;
+        gNatives[kDebugInfo](object, frame, nullptr);
+    }
+}
+#endif
 
 bool IsFunctionStart(void* address) {
     DWORD64 imageBase = 0;
@@ -72,6 +122,25 @@ void ExecSetActiveHook(void* self, void* frame, void* result) {
             gFromEvent.fetch_add(1, std::memory_order_relaxed);
             withhold = Ask(provider, self, locals);
         }
+#if defined(MEVR_GAME_LE3)
+        // ME3: the call from BioSeqAct_SetActive's script (its own frame; never ProcessEvent's).
+        bool stepped = false;
+        ScriptProvider const scriptProvider = gScriptProvider.load(std::memory_order_relaxed);
+        void const* const caller = gScriptCaller.load(std::memory_order_relaxed);
+        if (!withhold && scriptProvider != nullptr && caller != nullptr && gNatives != nullptr && self != nullptr && frame != nullptr &&
+            (node != nullptr || ReadFrame(frame, &node, &locals)) && node == caller) {
+            gFromScript.fetch_add(1, std::memory_order_relaxed);
+            void const* const op = ReadObject(frame);
+            if (op != nullptr && AskScript(scriptProvider, self, op)) {
+                gWithheld.fetch_add(1, std::memory_order_relaxed);
+                StepOverCall(frame);
+                stepped = true;
+            }
+        }
+        if (stepped) {
+            // withheld: its parameter read and the end of its parameters stepped over, the script goes on as after the call
+        } else
+#endif
         if (withhold) {
             gWithheld.fetch_add(1, std::memory_order_relaxed);  // not run: ProcessEvent returns as after it
         } else {
@@ -97,6 +166,12 @@ bool Install(hook::Context& init) {
         log::Error("exit hooks: {} is not a function start; not hooking {}", target, kHookName);
         return false;
     }
+#if defined(MEVR_GAME_LE3)
+    gNatives = static_cast<tNative* const*>(init.Resolve(addresses::kGNatives));
+    if (gNatives == nullptr) {
+        log::Warn("exit hooks: no GNatives: BioSeqAct_SetActive's calls can't be held (only ProcessEvent's)");
+    }
+#endif
     gInstalled = hook::Install(init, kHookName, reinterpret_cast<tExec*>(target), &ExecSetActiveHook, gOrig);
     if (gInstalled) {
         log::Info("hooked {}", kHookName);
@@ -108,6 +183,9 @@ bool Install(hook::Context& init) {
 
 bool Uninstall(hook::Context& init, bool waitForCalls) {
     gProvider.store(nullptr, std::memory_order_relaxed);
+#if defined(MEVR_GAME_LE3)
+    gScriptProvider.store(nullptr, std::memory_order_relaxed);
+#endif
     if (gInstalled) {
         if (!hook::Uninstall(init, kHookName)) {
             return false;  // still live, and still calling gOrig
@@ -134,6 +212,17 @@ void SetProvider(SetActiveProvider provider, void const* function) {
     gFunction.store(function, std::memory_order_relaxed);
     gProvider.store(provider, std::memory_order_relaxed);
 }
+
+#if defined(MEVR_GAME_LE3)
+void SetScriptProvider(ScriptProvider provider, void const* caller) {
+    gScriptCaller.store(caller, std::memory_order_relaxed);
+    gScriptProvider.store(provider, std::memory_order_relaxed);
+}
+
+unsigned FromScript() {
+    return gFromScript.load(std::memory_order_relaxed);
+}
+#endif
 
 Stats Totals() {
     return {gCalls.load(std::memory_order_relaxed), gFromEvent.load(std::memory_order_relaxed), gWithheld.load(std::memory_order_relaxed)};

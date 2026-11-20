@@ -3,8 +3,10 @@
 
 #include "game/ConversationWorld.hpp"
 
+#include <cstdint>
 #include <string>
 #include <string_view>
+#include <vector>
 
 // The sequels' first-person conversations, ME1's rules on ME2 and ME3 (docs/trilogy-plan.md T49; the owner chose ME1's
 // 2026-11-19 over upstream Halcyon's ConvoFirstPerson, which only moves the camera to Shepard's eyes at every shot; ME2 since
@@ -58,5 +60,12 @@ bool MomentViewOn();
 // The body under the player in a conversation shown in the world or a moment (ME1's conversation_world::BodyAway, which on the
 // sequels answers with this: arm IK and the body follower).
 conversation_world::BodyAwayState BodyAway();
+
+// game/ConversationExit's questions (people leaving a conversation, research/conversation-exits.md section 9): the live
+// conversation (null: none) with its people now, the player's left out; a dip from black now (the scene's cut counter, held or
+// on foot: the armed word carries it) and the counter.
+ue3::Object* ScenePeople(std::vector<ue3::Object*>& people);
+void DipFromBlack();
+std::uint32_t CutCount();
 
 } // namespace mevr::game::sequel_conversation_world

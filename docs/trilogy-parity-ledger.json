@@ -1753,13 +1753,13 @@
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "ready"
+     "status": "run"
     },
     "LE3": {
      "legacy": false,
      "me1OnlyHandles": false,
      "part": false,
-     "status": "ready"
+     "status": "run"
     }
    },
    "namespace": "game::conversation_exit"

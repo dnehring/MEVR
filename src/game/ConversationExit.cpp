@@ -17,6 +17,11 @@
 #include "game/Player.hpp"
 #include "game/SquadWeapons.hpp"
 #include "game/ViewAnchor.hpp"
+#if !defined(MEVR_GAME_LE1)
+#include "engine/GameAdapter.hpp"
+#include "engine/ProcessEvent.hpp"
+#include "game/SequelConversationWorld.hpp"
+#endif
 #include "ue3/Handles.hpp"
 #include "ue3/Params.hpp"
 #include "ue3/Runtime.hpp"
@@ -40,6 +45,7 @@ namespace cw = vr::conversation_world;
 namespace walk = ai_walk;  // the shared walk (game/AiWalk): one line to switch when its interface moves
 
 constexpr double kUnitsPerMeter = 100.0;
+#if defined(MEVR_GAME_LE1)
 constexpr std::uint8_t kModeFoot = 0;
 constexpr std::uint8_t kModeConversation = 5;
 constexpr std::uint8_t kModeCinematic = 6;
@@ -72,6 +78,48 @@ ue3::FunctionRef gSetLocation{"Engine.Actor.SetLocation"};
 ue3::FunctionRef gSetRotation{"Engine.Actor.SetRotation"};
 ue3::FieldRef gController{"Engine.Pawn", "Controller"};
 ue3::FunctionRef gPointReachable{"Engine.Controller.PointReachable"};
+#else
+// ---- The sequels' adapter (research/conversation-exits.md section 9; rows in engine/ReflectCheck's LE2 and LE3 checks) ---------
+// The removal is Engine.Actor.SetActive on the pawn itself (ME2's ModifyPropertyPawn "Active" row; ME3's BioSeqAct_SetActive),
+// so the hook's object is the pawn, kept as the "behaviour" ME1's code keeps. The scene's people come from the sequels' module
+// (game/SequelConversationWorld's reader); the game's black screen from BioSeqAct_BlackScreen.Activated (ME1's route; ME3's
+// line track and start flags are not read yet).
+ue3::FunctionRef gSetActive{"Engine.Actor.SetActive", ue3::kEveryGame};
+ue3::FieldRef gSetActiveParam{gSetActive, "bActive"};
+#if defined(MEVR_GAME_LE2)
+ue3::FieldRef gBehaviorActive{"SFXGame.BioActorBehavior", "bActive", ue3::kEveryGame};
+ue3::FieldRef gBioComponent{"Engine.Actor", "oBioComponent", ue3::kEveryGame};
+#else
+ue3::FieldRef gPawnActive{"SFXGame.BioPawn", "bActive", ue3::kEveryGame};
+ue3::FunctionRef gScriptSetActive{"SFXGame.BioSeqAct_SetActive.Activated", ue3::kEveryGame};
+ue3::FieldRef gOpSetActive{"SFXGame.BioSeqAct_SetActive", "bSetActive", ue3::kEveryGame};
+#endif
+ue3::FieldRef gHidden{"Engine.Actor", "bHidden", ue3::kEveryGame};
+ue3::FieldRef gTag{"Engine.Actor", "Tag", ue3::kEveryGame};
+ue3::FieldRef gWorldOfActor{"Engine.Actor", "WorldInfo", ue3::kEveryGame};
+ue3::FieldRef gWorldPawns{"Engine.WorldInfo", "PawnList", ue3::kEveryGame};
+ue3::FieldRef gNextPawn{"Engine.Pawn", "NextPawn", ue3::kEveryGame};
+ue3::ClassRef gLevelClass{"Engine.Level", ue3::kEveryGame};
+ue3::FieldRef gStreamingLevels{"Engine.WorldInfo", "StreamingLevels", ue3::kEveryGame};
+ue3::FieldRef gStreamingLoaded{"Engine.LevelStreaming", "LoadedLevel", ue3::kEveryGame};
+ue3::FieldRef gStreamingShouldShow{"Engine.LevelStreaming", "bShouldBeVisible", ue3::kEveryGame};
+ue3::FieldRef gStreamingVisible{"Engine.LevelStreaming", "bIsVisible", ue3::kEveryGame};
+ue3::FieldRef gStreamingPackage{"Engine.LevelStreaming", "PackageName", ue3::kEveryGame};
+ue3::FunctionRef gFastTrace{"Engine.Actor.FastTrace", ue3::kEveryGame};
+ue3::FunctionRef gTrace{"Engine.Actor.Trace", ue3::kEveryGame};
+ue3::FunctionRef gSetLocation{"Engine.Actor.SetLocation", ue3::kEveryGame};
+ue3::FunctionRef gSetRotation{"Engine.Actor.SetRotation", ue3::kEveryGame};
+ue3::FieldRef gController{"Engine.Pawn", "Controller", ue3::kEveryGame};
+ue3::FunctionRef gPointReachable{"Engine.Controller.PointReachable", ue3::kEveryGame};
+ue3::FunctionRef gBlackScreen{"SFXGame.BioSeqAct_BlackScreen.Activated", ue3::kEveryGame};
+ue3::FieldRef gBlackScreenAction{"SFXGame.BioSeqAct_BlackScreen", "m_eBlackScreenAction", ue3::kEveryGame};
+std::uint64_t gBlackOnMs = 0;              // the script's black screen last turned (or faded to) black
+std::vector<ue3::Object*> gScenePeople;    // this tick's people of the live conversation (the sequels' reader)
+
+bool IsMode(std::optional<std::uint8_t> mode, engine::adapter::Mode which) {
+    return mode && engine::adapter::GameMode(*mode) == which;
+}
+#endif
 
 // ---- Settings -------------------------------------------------------------------------------------------------------------------
 struct Settings {
@@ -99,6 +147,9 @@ void RefreshSettings() {
     if (auto const text = ini::Get(loaded.file, "Cinematics", "conversations")) {
         s.world = cw::ParseMode(text->c_str(), cw::Mode::Screen) == cw::Mode::World;
     }
+#if !defined(MEVR_GAME_LE1)
+    s.world = sequel_conversation_world::WantsHooks();  // the file's word, or the session's (`mevr convo world on|off|auto`)
+#endif
     if (auto const text = ini::Get(loaded.file, "Cinematics", "worldExit")) {
         s.mode = cx::ParseMode(text->c_str(), cx::Mode::Walk);
     }
@@ -247,8 +298,12 @@ bool Present(ue3::Object* pawn) {
     if (pawn == nullptr || !ue3::runtime::IsAlive(pawn) || gHidden.ReadBool(pawn).value_or(true) || !LevelGoing(pawn).empty()) {
         return false;
     }
+#if defined(MEVR_GAME_LE3)
+    return !player::IsBioPawn(pawn) || gPawnActive.ReadBool(pawn).value_or(true);
+#else
     ue3::Object* const behavior = gBioComponent.Read<ue3::Object*>(pawn).value_or(nullptr);
     return behavior == nullptr || !ue3::runtime::IsAlive(behavior) || gBehaviorActive.ReadBool(behavior).value_or(true);
+#endif
 }
 
 bool IsSquad(ue3::Object const* pawn) {
@@ -312,8 +367,13 @@ void NotePerson(ue3::Object* actor, double now) {
         p->tag = TagOf(actor);
         p->name = std::format("{} ({})", Short(actor), p->tag);
     }
+#if defined(MEVR_GAME_LE1)
     p->behaviors[0] = gBioComponent.Read<ue3::Object*>(actor).value_or(nullptr);
     p->behaviors[1] = gPawnBehavior.Read<ue3::Object*>(actor).value_or(nullptr);
+#else
+    p->behaviors[0] = actor;  // the sequels' SetActive is the actor's own
+    p->behaviors[1] = nullptr;
+#endif
     p->conversation = gConversationNumber;
     p->lastInSceneS = now;
 }
@@ -328,6 +388,7 @@ void ReadScene(ue3::Object* conv, double now) {
     if (conv == nullptr) {
         return;
     }
+#if defined(MEVR_GAME_LE1)
     for (ue3::FieldRef* f : {&gSpeaker, &gListener, &gOwner}) {
         NotePerson(f->Read<ue3::Object*>(conv).value_or(nullptr), now);
     }
@@ -336,6 +397,11 @@ void ReadScene(ue3::Object* conv, double now) {
             NotePerson(gSpeakerActor.Read<ue3::Object*>(list->At(i)).value_or(nullptr), now);
         }
     }
+#else
+    for (ue3::Object* const actor : gScenePeople) {
+        NotePerson(actor, now);
+    }
+#endif
 }
 
 // ---- What is held ---------------------------------------------------------------------------------------------------------------
@@ -404,7 +470,11 @@ void AskSnapshots(int count, char const* tag) {
 }
 
 bool UnderGameBlack() {
+#if defined(MEVR_GAME_LE1)
     std::uint64_t const on = authored_moment::LastBlackScreenOnMs();
+#else
+    std::uint64_t const on = gBlackOnMs;
+#endif
     return on != 0 && GetTickCount64() - on < 1500;
 }
 Totals gTotals;
@@ -445,7 +515,11 @@ void Apply(HeldChange& h, char const* why, bool underDip) {
     }
     ue3::Params p(ue3::runtime::Get(), gSetActive.Get());
     bool called = false;
+#if defined(MEVR_GAME_LE1)
     if (p.Valid() && p.SetBool("bSetActive", false)) {
+#else
+    if (p.Valid() && p.SetBool("bActive", false)) {
+#endif
         gApplying = true;
         called = ue3::runtime::Call(behavior, gSetActive.Get(), p);
         gApplying = false;
@@ -765,6 +839,31 @@ bool OnSetActive(void const* behavior, void const* parms) {
     return true;
 }
 
+#if defined(MEVR_GAME_LE3)
+// ME3's BioSeqAct_SetActive: its script calls the target's SetActive with the op's bSetActive (engine/ExitHooks' script path);
+// the same question as ProcessEvent's, with the value as SetActive's parameter block (one UBOOL, bActive at offset 0).
+bool OnScriptSetActive(void const* actor, void const* op) {
+    auto const active = gOpSetActive.ReadBool(op);
+    if (!active) {
+        return false;
+    }
+    std::uint32_t const parms = *active ? 1u : 0u;
+    return OnSetActive(actor, &parms);
+}
+#endif
+
+#if !defined(MEVR_GAME_LE1)
+// The script's black screen turning (or fading to) black (ME1's EBlackScreenActionSet: 0 on, 2 fade to black): it covers a
+// removal in the same tick (the hold lets it through).
+void OnBlackScreen(ue3::Object* context, ue3::Function*, void*, void*) {
+    int const action = context != nullptr ? static_cast<int>(gBlackScreenAction.Read<std::uint8_t>(context).value_or(255)) : 255;
+    if (action == 0 || action == 2) {
+        gBlackOnMs = GetTickCount64();
+    }
+}
+bool gBlackScreenWatched = false;
+#endif
+
 bool gHookFunctionSet = false;
 
 // ---- The live audit ---------------------------------------------------------------------------------------------------------------
@@ -796,15 +895,34 @@ void Audit(double now) {
 } // namespace
 
 void TryStartup() {
+#if defined(MEVR_GAME_LE1)
     if (!ue3::runtime::Ready()) {
         return;
     }
+#else
+    if (!ue3::runtime::Up()) {
+        return;
+    }
+#endif
     if (gSetActive.Get() != nullptr && gSetActiveParam.Get() != nullptr) {
         engine::exit_hooks::SetProvider(&OnSetActive, gSetActive.Get());
         gHookFunctionSet = true;
     } else {
         log::Warn("convo exit: SFXGame.BioActorBehavior.SetActive or its bSetActive not found: people leaving a conversation are not held");
     }
+#if defined(MEVR_GAME_LE3)
+    if (gHookFunctionSet && gScriptSetActive.Get() != nullptr && gOpSetActive.Get() != nullptr) {
+        engine::exit_hooks::SetScriptProvider(&OnScriptSetActive, gScriptSetActive.Get());
+    } else {
+        log::Warn("convo exit: SFXGame.BioSeqAct_SetActive.Activated or its bSetActive not found: ME3's deactivations are not held");
+    }
+#endif
+#if !defined(MEVR_GAME_LE1)
+    if (!gBlackScreenWatched && gBlackScreen.Get() != nullptr) {
+        engine::process_event::AddPostHandler(gBlackScreen.Get(), &OnBlackScreen);
+        gBlackScreenWatched = true;
+    }
+#endif
 }
 
 bool WantsHook() {
@@ -821,7 +939,12 @@ void Tick(double /*deltaSeconds*/) {
     double const now = NowS();
     ue3::Object* const controller = player::Controller();
     auto const mode = controller != nullptr ? player::GameMode(controller) : std::nullopt;
+#if defined(MEVR_GAME_LE1)
     ue3::Object* const conv = conversation_world::LiveConversation();
+#else
+    // In the conversation mode only, as ME1's reader (ME2's m_oCurrentConversation can outlive its end; ME3's reader asks).
+    ue3::Object* const conv = IsMode(mode, engine::adapter::Mode::Conversation) ? sequel_conversation_world::ScenePeople(gScenePeople) : nullptr;
+#endif
     bool const inWorld = conversation_world::InWorld() || conversation_world::MomentViewOn();
     gSceneShown = inWorld;
     if (inWorld) {
@@ -861,8 +984,14 @@ void Tick(double /*deltaSeconds*/) {
     // What the player sees now: the world in first person on foot, a conversation in it, a moment in it.
     // Held half a second: between two conversations the world view lets go for a tick or two (Udina's walk goes on while
     // Anderson's final chat opens), which is no screen the player sees instead.
+#if defined(MEVR_GAME_LE1)
     bool const foot = mode && *mode == kModeFoot;
     bool const awayNow = !gEyes || !(foot || (mode && (*mode == kModeConversation || *mode == kModeCinematic) && inWorld));
+#else
+    bool const foot = IsMode(mode, engine::adapter::Mode::OnFoot);
+    bool const awayNow = !gEyes || !(foot || ((IsMode(mode, engine::adapter::Mode::Conversation) ||
+                                                  IsMode(mode, engine::adapter::Mode::Cinematic)) && inWorld));
+#endif
     if (!awayNow) {
         gAwaySinceS.reset();
     } else if (!gAwaySinceS) {
@@ -883,8 +1012,12 @@ void Tick(double /*deltaSeconds*/) {
             ue3::Object* const world = gWorldOfActor.Read<ue3::Object*>(pawn).value_or(nullptr);
             ue3::Object* o = world != nullptr ? gWorldPawns.Read<ue3::Object*>(world).value_or(nullptr) : nullptr;
             for (int guard = 0; o != nullptr && guard < 512 && ue3::runtime::IsAlive(o); ++guard) {
+#if defined(MEVR_GAME_LE1)
                 if (gBioComponent.Read<ue3::Object*>(o).value_or(nullptr) == a.behavior ||
                     gPawnBehavior.Read<ue3::Object*>(o).value_or(nullptr) == a.behavior) {
+#else
+                if (o == a.behavior) {
+#endif
                     shown = o;
                     break;
                 }
@@ -1000,6 +1133,21 @@ std::string Command(std::string const& rest) {
     } else if (w == "trace on" || w == "trace off") {
         gTraceWalks = w == "trace on";
         return std::format("convo exit: a call trace of the AI's move for each walk away {}", gTraceWalks ? "on" : "off");
+#if defined(MEVR_GAME_LE2)
+    } else if (w == "end") {
+        // A test aid (ME1's `mevr convo end`; ME2 only: ME3 has no BioWorldInfo.EndCurrentConversation): the world's own early
+        // end of the conversation now, so its start action's outputs run (the script's removals at its end) without every line.
+        static ue3::FunctionRef endCurrent{"SFXGame.BioWorldInfo.EndCurrentConversation", ue3::kEveryGame};
+        ue3::Object* const pawn = player::Pawn(player::Controller());
+        ue3::Object* const world = pawn != nullptr ? gWorldOfActor.Read<ue3::Object*>(pawn).value_or(nullptr) : nullptr;
+        if (world == nullptr || endCurrent.Get() == nullptr) {
+            return "convo exit: end: no world or no BioWorldInfo.EndCurrentConversation";
+        }
+        ue3::Params p(ue3::runtime::Get(), endCurrent.Get());
+        bool const called = p.Valid() && ue3::runtime::Call(world, endCurrent.Get(), p);
+        log::Info("convo exit: mevr convo exit end: BioWorldInfo.EndCurrentConversation called {}", called);
+        return std::format("convo exit: BioWorldInfo.EndCurrentConversation called {}", called);
+#endif
     } else if (w.rfind("test", 0) == 0) {
         return TestWalk(ini::Trim(w.substr(4)));
     } else if (!w.empty() && w != "status") {
@@ -1047,6 +1195,9 @@ void LogStats() {
 
 void Shutdown(bool exiting) {
     engine::exit_hooks::SetProvider(nullptr, nullptr);
+#if defined(MEVR_GAME_LE3)
+    engine::exit_hooks::SetScriptProvider(nullptr, nullptr);
+#endif
     gHookFunctionSet = false;
     if (gTest.walking) {
         walk::End(*gTest.walking, "the mod unloads");
