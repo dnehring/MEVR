@@ -4639,6 +4639,8 @@ void CheckSequelConversationLooks() {
     CheckField("Engine.WorldInfo", "TimeSeconds", SDK_FIELD(AWorldInfo, TimeSeconds));
     CheckFunction("Engine.PrimitiveComponent.SetHidden");
     PARAM(UPrimitiveComponent_execSetHidden_Parms, "Engine.PrimitiveComponent.SetHidden", NewHidden);
+    // The player's head drives Shepard (research/le2-conversations-in-world.md section 13): his hidden mesh posed each tick.
+    CheckFunction("Engine.SkeletalMeshComponent.ForceSkelUpdate");
     CheckFunction("Engine.Actor.Spawn");
     PARAM(AActor_execSpawn_Parms, "Engine.Actor.Spawn", SpawnClass);
     PARAM(AActor_execSpawn_Parms, "Engine.Actor.Spawn", SpawnOwner);

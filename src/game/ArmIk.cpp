@@ -289,10 +289,12 @@ std::optional<Body> PlayerBody() {
 // On-foot gameplay: no conversation, cinematic, GUI or vehicle; or a game screen projected from the wrist (the bypass minigame,
 // research/53 section 6): Shepard stands as on foot, the view held at his, and the omni-tool on his left forearm must meet the
 // controller that projects the screen. A conversation shown in the world (research/59): the player stands in Shepard's place,
-// the view held at his, the arms on the controllers.
+// the view held at his, the arms on the controllers. A held scene in which the player's head drives Shepard (a moment with the
+// view with him, conversation_world::BodyAwayState::headDrives): his body is the player's as on foot.
 bool OnFoot() {
     std::optional<std::uint8_t> const mode = player::GameMode(player::Controller());
-    return mode && (*mode == kGameModeOnFoot || world_ui::WristScreenUp() || conversation_world::InWorld());
+    return mode && (*mode == kGameModeOnFoot || world_ui::WristScreenUp() || conversation_world::InWorld() ||
+                       conversation_world::BodyAway().headDrives);
 }
 
 bool MenuBodyEligible(Body const& body) {
@@ -1192,6 +1194,12 @@ void Drive(double deltaSeconds) {
 #else
     bool const bodyAway = false;
 #endif
+    // The player's head drives Shepard in a held scene (the owner's "Your head drives him", 2026-11-20; cw::StepHeadDrive): the
+    // view's frame whatever his animated head does (a drink's matinee lays it on the bar, a metre in front of the eyes, where the
+    // distance test put arm IK in its third person: the body stayed the animation's), every game.
+    conversation_world::BodyAwayState const scene = conversation_world::BodyAway();
+    bool const headDrives = scene.headDrives;
+    bool const torsoOnly = headDrives && scene.torsoOnly;
     // The view's height is the player's own head (research/29 "The crouch that went third person", 2026-11-18): the host's
     // floor lock puts the eye at the pawn's floor plus the headset's height in ordinary first person on foot (never in third
     // person, cover, the Mako, cinematics or menus); without it (no floor from the runtime, `[Body] floorLock = 0`), a crouch
@@ -1210,7 +1218,7 @@ void Drive(double deltaSeconds) {
         bool const crouched = posture::PhysicallyCrouched() || player::Crouched(body->pawn).value_or(false);
         viewHeightIsPlayers = floorLocked || (crouched && pawnSample.onFoot && !pawnSample.cover);
     }
-    hand_targets::Targets const targets = hand_targets::Current(headBone, bodyAway, headOnlyEligible, viewHeightIsPlayers);
+    hand_targets::Targets const targets = hand_targets::Current(headBone, bodyAway || headDrives, headOnlyEligible, viewHeightIsPlayers);
     gFirstPersonMs = targets.source == hand_targets::Source::Controllers && targets.anchor == hand_targets::Anchor::View ? GetTickCount64() : 0;
     gSource = targets.source;
     engine::bone_pose::Request request;
@@ -1388,8 +1396,8 @@ void Drive(double deltaSeconds) {
         for (int side : {kLeft, kRight}) {
             hand_targets::Hand const& hand = targets.hands[side];
             auto const& chain = arms[side];
-            if (!hand.valid || !chain) {
-                continue;
+            if (!hand.valid || !chain || torsoOnly) {
+                continue;  // (torsoOnly: the scene's animation keeps his arms)
             }
             engine::bone_pose::Arm& arm = request.arms[side];
             arm.target = engine::bone_pose::Target::Component;
@@ -1563,6 +1571,16 @@ void Drive(double deltaSeconds) {
                     : " (the right hand points the gun's barrel along the controller's aim)";
             }
         }
+    }
+    if (torsoOnly && request.torso.enabled) {
+        // His arms keep the scene's animation (the drink in his hand): only the body under them is the player's. The legs stay
+        // in the request (planted below).
+        auto legs = request.legs;
+        request = menu_body::TorsoOnly(std::move(request));
+        request.legs = legs;
+        gunAimed = supportRequested = false;
+        fingers::Stop("a scene: the player's head drives Shepard's body, his arms the scene's");
+        driven = "the player's head drives Shepard's body in a held scene (his arms the scene's animation)";
     }
     if (driven.empty()) {
         return Stop(std::format("no hand targets (source {})", hand_targets::Name(targets.source)));

@@ -1538,6 +1538,7 @@ if (MEVR_BUILD_TESTS)
         tests/SquadPlaceTests.cpp
         tests/BodyScaleTests.cpp
         tests/EyesInBodyTests.cpp
+        tests/HeadDriveTests.cpp
         tests/CrouchAnchorTests.cpp
         tests/ReplayFloorTests.cpp
         tests/BodySlotsSeatedTests.cpp

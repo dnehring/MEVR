@@ -417,6 +417,16 @@ bool Fill(hand_targets::Targets const& targets, ik::Affine const& worldToCompone
             gLast.mode = "first person: the whole body where the player stands, away from the pawn";
         }
 #endif
+        // The player's head drives Shepard in a held scene (the owner's "Your head drives him", 2026-11-20; cw::StepHeadDrive):
+        // the scene's animation bends him further than on foot (Purgatory's drink lays his head on the bar), so the spine may bend
+        // up to ik::kHeadDriveBendDegrees to put his head at the player's. The slide is the on-foot one (bodyMoveMaxM) unless the
+        // body is away from the pawn (above). Every game.
+        if (conversation_world::BodyAway().headDrives) {
+            goal.maxBendDegrees = ik::kHeadDriveBendDegrees;
+            goal.maxTiltDegrees = ik::kHeadDriveTiltDegrees;
+            gLast.mode = goal.maxBodyShift > 1e11 ? "first person: the player's head drives the whole body, away from the pawn"
+                                                 : "first person: the player's head drives the whole body in a held scene";
+        }
     } else if (firstPerson) {
         // The spine alone (bodyMove off): Shepard's eyes move as far as the headset moved from where it was
         // recentered (ik::TorsoGoal::relative), the old behaviour.
