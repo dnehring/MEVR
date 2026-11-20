@@ -952,6 +952,9 @@ void CheckFields() {
     CheckField("Engine.SkeletalMeshComponent", "SpaceBases", SDK_FIELD(USkeletalMeshComponent, SpaceBases), true);
     CheckField("Engine.SkeletalMeshComponent", "ParentAnimComponent", SDK_FIELD(USkeletalMeshComponent, ParentAnimComponent));
     CheckField("SFXGame.BioPawn", "m_oHairMesh", SDK_FIELD(ABioPawn, m_oHairMesh));  // game/Hair
+    // game/Hair on ME1 (docs/trilogy-hair-plan.md section 12): a rigged body's followers re-attached (its head is m_oHeadMesh).
+    PARAM(USkeletalMeshComponent_execSetParentAnimComponent_Parms, "Engine.SkeletalMeshComponent.SetParentAnimComponent", NewParentAnimComp);
+    CheckField("Engine.Actor", "AllComponents", SDK_FIELD(AActor, AllComponents));  // game/Hair: a body's other followers
     CheckField("Engine.SkeletalMeshComponent", "bConsiderAllBodiesForBounds", SDK_BOOL(USkeletalMeshComponent, bConsiderAllBodiesForBounds));
     CheckField("Engine.SkeletalMeshComponent", "Attachments", SDK_FIELD(USkeletalMeshComponent, Attachments), true);
     CheckField("Engine.SkeletalMesh", "Bounds", SDK_FIELD(USkeletalMesh, Bounds));
@@ -2274,6 +2277,7 @@ void CheckFields() {
     CheckField("Engine.SkeletalMeshComponent", "ParentAnimComponent", SDK_FIELD(USkeletalMeshComponent, ParentAnimComponent));
     CheckField("SFXGame.BioPawn", "m_oHairMesh", SDK_FIELD(ABioPawn, m_oHairMesh));  // game/Hair
     CheckField("SFXGame.BioPawn", "HeadMesh", SDK_FIELD(ABioPawn, HeadMesh));  // game/Hair: rigged bodies' followers
+    CheckField("Engine.Actor", "AllComponents", SDK_FIELD(AActor, AllComponents));  // game/Hair: a body's other followers
     PARAM(USkeletalMeshComponent_execSetParentAnimComponent_Parms, "Engine.SkeletalMeshComponent.SetParentAnimComponent", NewParentAnimComp);
     // game/HairLook on ME2 (the same rows as ME3's).
     PARAM(UMeshComponent_execGetMaterial_Parms, "Engine.MeshComponent.GetMaterial", ElementIndex);
@@ -3787,6 +3791,7 @@ void CheckFields() {
     CheckField("SFXGame.SFXStuntActor", "HairMesh", SDK_FIELD(ASFXStuntActor, HairMesh));
     CheckField("SFXGame.SFXStuntActor", "HeadMesh", SDK_FIELD(ASFXStuntActor, HeadMesh));  // game/Hair: rigged bodies' followers
     CheckField("SFXGame.BioPawn", "HeadMesh", SDK_FIELD(ABioPawn, HeadMesh));
+    CheckField("Engine.Actor", "AllComponents", SDK_FIELD(AActor, AllComponents));  // game/Hair: a body's other followers
     PARAM(USkeletalMeshComponent_execSetParentAnimComponent_Parms, "Engine.SkeletalMeshComponent.SetParentAnimComponent", NewParentAnimComp);
     // game/HairLook: a hair's own material instance and its master material's parameters.
     PARAM(UMeshComponent_execGetMaterial_Parms, "Engine.MeshComponent.GetMaterial", ElementIndex);
