@@ -73,6 +73,9 @@ internal static class Scan
                         "BioConversation" => seen.Add((InspectionContext.IsLe2 ? package + ":" : "") + export.InstancedFullPath) ? Conversation(pcc, export) : null,
                         "BioEvtSysTrackInterrupt" when InspectionContext.IsLe2 => Le2Inspection.Interrupt(pcc, export),
                         "BioSeqAct_StartConversation" => Start(pcc, export),
+                        // ME2's level scripts start most staged conversations with their own action (Tali's meeting at Freedom's
+                        // Progress): the same Conv, Owner and Stage links (research/le2-conversations-in-world.md).
+                        "SFXSeqAct_StartConversation" when InspectionContext.IsLe2 => Start(pcc, export),
                         "BioSeqEvt_ConvNode" => Cinematic(pcc, export),
                         "BioTriggerStream" => Volume(export),
                         "BioSeqAct_FaceOnlyVO" => VoiceOver(pcc, export),
@@ -236,6 +239,7 @@ internal static class Scan
             ["conv"] = conv?.InstancedFullPath,
             ["comment"] = props.GetProp<ArrayProperty<StrProperty>>("m_aObjComment")?.FirstOrDefault()?.Value,
         };
+        if (InspectionContext.IsLe2) record["startClass"] = export.ClassName;
         foreach (ExportEntry variable in Linked(pcc, props, "Owner"))
         {
             // The owner link is a SeqVar_Object (its ObjValue the actor) or a SeqVar_Player / a named variable (found at run time).
@@ -319,6 +323,10 @@ internal static class Scan
         // A matinee that moves the player by a track: what leads to it (the sweep's "moments": the walk to the council).
         bool movesPlayer = ((List<object>)record["groups"]).Cast<Dictionary<string, object>>().Any(g =>
             ((List<string>)g["tracks"]).Contains("InterpTrackMove") && ((string)g["name"] ?? "").Contains("player", StringComparison.OrdinalIgnoreCase));
+        // ME2's cutscenes name Shepard's group PC_, HMM_PC_, HMF_PC_ (its imported ANIMCUTSCENE matinees).
+        if (InspectionContext.IsLe2 && !movesPlayer)
+            movesPlayer = ((List<object>)record["groups"]).Cast<Dictionary<string, object>>().Any(g =>
+                ((List<string>)g["tracks"]).Contains("InterpTrackMove") && Le2Inspection.IsShepardGroup((string)g["name"]));
         if (movesPlayer && Upstream(pcc, export) is { } via)
         {
             record["via"] = via;
@@ -576,12 +584,14 @@ internal static class Scan
                 PropertyCollection groupProps = group.GetProperties();
                 var tracks = (groupProps.GetProp<ArrayProperty<ObjectProperty>>("InterpTracks") ?? new ArrayProperty<ObjectProperty>("InterpTracks"))
                     .Select(t => pcc.GetEntry(t.Value)?.ClassName ?? "?").ToList();
-                groups.Add(new Dictionary<string, object>
+                var groupRecord = new Dictionary<string, object>
                 {
                     ["class"] = group.ClassName,
                     ["name"] = groupProps.GetProp<NameProperty>("GroupName")?.Value.Instanced,
                     ["tracks"] = tracks,
-                });
+                };
+                if (InspectionContext.IsLe2) Le2Inspection.ExtendGroup(pcc, groupRecord, groupProps);
+                groups.Add(groupRecord);
             }
         }
         var result = new Dictionary<string, object> { ["path"] = interp.InstancedFullPath, ["length"] = length, ["groups"] = groups };
