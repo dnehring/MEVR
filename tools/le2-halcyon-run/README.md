@@ -197,6 +197,22 @@ the quiet time under an exclusive writer, a file that never stands still, lost o
 wrong-build and truncated dump metadata, and rejecting hosts without the dump-only gate. They do not replace the
 first protected native launch and hash-verified restoration acceptance.
 
+## Loads that never finish: `tools\game-watch.ps1`
+
+The console answers on a loading screen, so a stuck load looks like a working game to every script that only asks the
+console (2026-11-19 and 2026-11-20 on ME3; docs/knowledge/gotchas/console-answers-during-a-stuck-load.md). After any step
+that can start a load (a reply picked, a travel, a save's load, a level's chain fired), wait on the world instead:
+
+```powershell
+tools\game-watch.ps1 -UntilWorld -TimeoutS 120
+```
+
+Exit 0: the world is drawn again. Exit 2: no world drawn within the timeout, with evidence in
+`%LOCALAPPDATA%\MEVR\game-watch\<stamp>-<game>-<state>\` (the status, the logs' tails, a snapshot, crash reports): stop the
+run, restore and report. Exit 4: the game went away. `tools\console.ps1` and `Steer-Ask` warn on every command once no world
+has been drawn for 30 s. It reads the host's `"world"` block in `testloop.status`, so it needs a host built from main of
+2026-11-20 or later.
+
 ## Owned normal-save loading
 
 `load.ps1` reuses `console.ps1`; it never launches a game, deploys a build, changes VR settings or edits a save.

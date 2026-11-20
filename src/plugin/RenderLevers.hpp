@@ -72,4 +72,15 @@ bool OneDrawWindow();
 // gaps asks this (HostServices v43: game/SystemSettings' LightEnvironmentShadows rule). Any thread.
 bool SecondEyeIsReplay();
 
+// How long since the game last presented a frame and since a presented frame had a scene render in it (the world
+// drawn). A loading screen presents without a scene; a load that never ends stays so (the 2026-11-19/20 ME3 hangs:
+// tools/game-watch.ps1 reads this from testloop.status). -1: never seen, or (msSinceScene) the scene render isn't
+// hooked on this game. Any thread.
+struct WorldDrawnClock {
+    bool counted = false;          // the scene render is hooked and counted on this game
+    std::int64_t msSincePresent = -1;
+    std::int64_t msSinceScene = -1;
+};
+WorldDrawnClock WorldDrawn();
+
 } // namespace mevr::host::render_levers

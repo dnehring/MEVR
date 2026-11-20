@@ -41,6 +41,7 @@
 * [EA's launcher refuses to start the game from inside a job object](ea-launcher-in-a-job-object.md) - EASteamLauncher's breakaway CreateProcess is denied when our shell, the EA app or steam.exe itself sits in a job; restart a jailed Steam through Explorer (2026-11-18).
 * [A test run in the game overwrites the player's saves](test-runs-overwrite-saves.md) - A map from the command line, the Mako drop, a resumed save or a conversation's end autosaves into the player's career and rewrites the profile; back up `Save` and the inis before every run; bitten 2026-11-05 and three times 2026-11-06.
 * [The LE console prints less than UE3's: what works and what is silent](le-console-quirks.md) - `scale set` and `set` take effect, `getall` and the streaming stats print nothing, `god`/`ghost`/`pause` toggle.
+* [The console answers on a loading screen, so a load that never ends looks like a working game to a script](console-answers-during-a-stuck-load.md) - ME3 sat on its Citadel loading picture for minutes while `mevr state` answered and the lane kept polling; the owner saw it first; judge a load by the world drawn (`tools/game-watch.ps1 -UntilWorld`, the host's world-drawn clock in testloop.status); bitten 2026-11-19 and 2026-11-20.
 
 # Code and tooling
 
