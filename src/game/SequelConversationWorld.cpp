@@ -4,6 +4,7 @@
 
 #include "core/Log.hpp"
 #include "core/WriteJournal.hpp"
+#include "core/vr/Controllers.hpp"
 #include "core/vr/ConversationWorld.hpp"
 #include "core/vr/HostView.hpp"
 #include "core/vr/SettingsFile.hpp"
@@ -68,7 +69,22 @@ struct Settings {
     bool dofOff = true;          // [Cinematics] worldDof = 0 keeps it: the conversation's depth of field blurs the room
     double eyeForwardUnits = 8.0;  // the eyes ahead of his head bone (upstream ConvoFp's eyeFwd)
     double eyeUpUnits = 4.0;
+    // ME1's walking during a conversation (research/59, worldMove): the left stick moves Shepard and the view inside the
+    // boundary around where the conversation began, never into people (worldMoveLeashM 4, worldMoveSpeedMS 1.4,
+    // worldMoveClearM 0.7).
+    bool move = true;
+    double leashUnits = 400.0;
+    double speedUnitsPerS = 140.0;
+    double clearUnits = 70.0;
 };
+
+// Where Shepard stood on foot, the last game tick before a conversation (ME1's opening: he is put back there).
+struct Foot {
+    bool valid = false;
+    ue3::Vector pawn{};
+    std::uint64_t ms = 0;
+};
+Foot gFoot;
 
 // The session's override from the console: -1 the file's, 0 off, 1 on.
 int gOverride = -1;
@@ -82,6 +98,7 @@ struct Kept {
     bool hasRefused = false;
     unsigned undone = 0;
     unsigned yielded = 0;
+    unsigned refusals = 0;   // SetLocation said no: after three, left to the game (logged once)
 };
 
 struct Conversation {
@@ -91,7 +108,16 @@ struct Conversation {
     ue3::Object* controller = nullptr;
     std::uint64_t startMs = 0;
     std::uint64_t placedMs = 0;
-    engine::UnrealVector head{}; // Shepard's head bone where the place was taken (followed by lasting jumps)
+    // ME1's opening (cw::DecideOpening, worldOpening auto): Stay or WalkIn: Shepard put back where the player stood and kept
+    // there (his head bone never moves the view after); Cut: another space, the place is his mark.
+    cw::Opening opening = cw::Opening::Stay;
+    ue3::Vector pin{};           // where Shepard's pawn is kept (the stick moves it)
+    ue3::Vector start{};         // the boundary's centre
+    engine::UnrealVector headOffset{};  // his head bone from his pawn's place at the opening
+    std::uint64_t stepMs = 0;
+    double walkedUnits = 0.0;
+    unsigned pinned = 0;         // camera updates that put him back on the pin
+    engine::UnrealVector head{}; // Shepard's head where the view stands (pin + headOffset)
     ue3::Vector held{};          // the view's place (the POV before the renderer's offsets): PlaceFromHead(head), every tick
     ue3::Rotator facing{};
     float fov = 90.0f;
@@ -249,9 +275,9 @@ void PublishOff(conversation_world::Link const& link) {
 
 void End(conversation_world::Link const& link, char const* why) {
     if (!gC.on) return;
-    gLast = std::format("conversation {}: {} after {:.1f} s; {}; {} re-placements by lasting jumps; people kept: {} undone, {} "
-                        "yielded, {} refused by SetLocation",
-        gC.serial, why, static_cast<double>(GetTickCount64() - gC.startMs) / 1000.0,
+    gLast = std::format("conversation {}: {} after {:.1f} s; opening {}, walked {:.0f} units, Shepard put back {} times; {}; {} "
+                        "re-placements by lasting jumps; people kept: {} undone, {} yielded, {} refused by SetLocation",
+        gC.serial, why, static_cast<double>(GetTickCount64() - gC.startMs) / 1000.0, cw::Name(gC.opening), gC.walkedUnits, gC.pinned,
         gC.placed ? std::format("held at ({:.0f}, {:.0f}, {:.0f}) yaw {:.1f}", gC.held.x, gC.held.y, gC.held.z,
                         gC.facing.yaw * (360.0 / 65536.0))
                   : "never placed (" + gC.why + ")",
@@ -280,8 +306,20 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
     if (gC.controller == nullptr || !ue3::runtime::IsAlive(gC.controller)) return;
     ue3::Function* const setLocation = gSetLocation.Get();
     ue3::Object* const player = gPlayer.Read<ue3::Object*>(gC.controller).value_or(nullptr);
+    // Shepard on the pin (where the player stood, moved by the stick only): ME1's "the player is never moved by the game".
+    if (ue3::Object* const pawn = player::Pawn(controller); gSettings.shepardStays && pawn != nullptr && setLocation != nullptr) {
+        if (auto const at = player::Location(pawn); at && Distance(*at, gC.pin) > 2.0) {
+            ue3::Params move(ue3::runtime::Get(), setLocation);
+            move.Set("NewLocation", gC.pin);
+            ue3::runtime::Call(pawn, setLocation, move);
+            write_journal::Wrote("ConversationWorld.pin", pawn, 0);
+            if (move.Return<bool>().value_or(false) && gC.pinned++ == 0) {
+                log::Info("conversation world: conversation {}: the stage moved Shepard {:.0f} units: kept where the player is",
+                    gC.serial, Distance(*at, gC.pin));
+            }
+        }
+    }
     std::vector<ue3::Object*> actors = Speakers(gC.controller, player);
-    if (gSettings.shepardStays && player != nullptr && ue3::runtime::IsAlive(player)) actors.push_back(player);
     for (ue3::Object* const actor : actors) {
         auto const now = player::Location(actor);
         if (!now) continue;
@@ -290,6 +328,7 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
             gC.kept.push_back({actor, *now});
             continue;
         }
+        if (it->refusals >= 3) continue;
         double const jump = Distance(*now, it->at);
         bool const shepard = actor == player;
         if (jump <= (shepard ? 2.0 : 30.0)) {
@@ -317,6 +356,10 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
         write_journal::Wrote("ConversationWorld.keep", actor, 0);
         if (!move.Return<bool>().value_or(false)) {
             ++gC.refusedMoves;
+            if (++it->refusals == 3) {
+                log::Info("conversation world: {} can't be put back (SetLocation refused it three times): left where the game puts it",
+                    ue3::runtime::FullName(actor));
+            }
             it->at = *now;
             continue;
         }
@@ -347,6 +390,9 @@ void Tick(conversation_world::Link const& link) {
     ue3::Object* const controller = player::Controller();
     auto const mode = controller != nullptr ? player::GameMode(controller) : std::nullopt;
     bool const conversationMode = mode && engine::adapter::IsConversationMode(*mode);
+    if (mode && *mode == 0) {
+        if (auto const at = player::Location(player::Pawn(controller))) gFoot = {true, *at, GetTickCount64()};
+    }
     if (!conversationMode || !WorldWanted() || link.publish == nullptr) {
         End(link, !conversationMode ? "the game left its conversation mode" : !WorldWanted() ? "the world mode is off" : "an older host");
         return;
@@ -372,36 +418,65 @@ void Tick(conversation_world::Link const& link) {
     auto const rotation = pawn != nullptr ? player::Rotation(pawn) : std::nullopt;
     if (!gC.placed) {
         if (static_cast<double>(now - gC.startMs) < gSettings.settleS * 1000.0) return;  // the stage's first placements
-        if (!head || !rotation) {
+        auto const pawnAt = pawn != nullptr ? player::Location(pawn) : std::nullopt;
+        if (!head || !rotation || !pawnAt) {
             gC.why = "Shepard's head bone not posed";
             return;
         }
-        // No head-tracked view needed yet: the host's view is the cinematic one until the first state below takes it over (the
-        // renderer's view offsets are applied from the next tick on, PlaceFromHead each tick).
+        // ME1's opening rule: where the player stood against where the stage put Shepard.
+        cw::OpeningFacts facts;
+        facts.known = gFoot.valid && now - gFoot.ms < 10000;
+        double const dx = pawnAt->x - gFoot.pawn.x, dy = pawnAt->y - gFoot.pawn.y;
+        facts.markUnits = std::sqrt(dx * dx + dy * dy);
+        facts.riseUnits = pawnAt->z - gFoot.pawn.z;
+        facts.sightToMark = true;
+        gC.opening = cw::DecideOpening(facts, cw::OpeningRule::Auto);
+        gC.pin = gC.opening == cw::Opening::Cut ? *pawnAt : gFoot.pawn;
+        gC.start = gC.pin;
+        gC.headOffset = {head->x - pawnAt->x, head->y - pawnAt->y, head->z - pawnAt->z};
         gC.facing = ue3::Rotator{0, rotation->yaw, 0};
-        gC.head = *head;
         ue3::Object* const camera = player::Camera(controller);
         auto const pov = camera != nullptr ? player::CameraPov(camera) : std::nullopt;
         gC.fov = pov && pov->fov != nullptr ? std::clamp(*pov->fov, 60.0f, 110.0f) : 90.0f;
-        gC.follow = cw::FollowState{{head->x, head->y, head->z}, {head->x, head->y, head->z}, 0};
-        gC.held = PlaceFromHead(gC.head, gC.facing);
         gC.placed = true;
         gC.placedMs = now;
+        gC.stepMs = now;
         if (gSettings.dofOff) gDof.Off("a conversation held in the world (the director's depth of field blurs the room)");
-        log::Info("conversation world: conversation {}: the player's place is Shepard's eyes on his mark ({:.0f}, {:.0f}, {:.0f}), "
-                  "facing yaw {:.1f}, held for the conversation",
-            gC.serial, gC.held.x, gC.held.y, gC.held.z, gC.facing.yaw * (360.0 / 65536.0));
-    } else if (head) {
-        // A cut that moves him to another mark and keeps him there: the place goes with him (ME1's FollowHeadSettled).
-        if (cw::FollowHeadSettled(gC.follow, {head->x, head->y, head->z}, gSettings.followUnits, 3)) {
-            ++gC.follows;
-            gC.head = {gC.follow.place.x, gC.follow.place.y, gC.follow.place.z};
-            if (rotation) gC.facing = ue3::Rotator{0, rotation->yaw, 0};
-            log::Info("conversation world: conversation {}: Shepard's head stayed on another mark: the place follows to ({:.0f}, "
-                      "{:.0f}, {:.0f})",
-                gC.serial, gC.held.x, gC.held.y, gC.held.z);
+        log::Info("conversation world: conversation {}: opening {} (the stage put Shepard {:.0f} units from where the player stood, "
+                  "{:+.0f} up{}): the player's place is {}, Shepard kept there; the left stick walks him within {:.0f} units",
+            gC.serial, cw::Name(gC.opening), facts.markUnits, facts.riseUnits, facts.known ? "" : "; where he stood isn't known",
+            gC.opening == cw::Opening::Cut ? "his mark (another space)" : "where the player stood", gSettings.leashUnits);
+    } else if (gSettings.move) {
+        // ME1's worldMove: the left stick along the head's facing, inside the boundary, never into people.
+        double const dt = std::clamp(static_cast<double>(now - gC.stepMs) / 1000.0, 0.0, 0.1);
+        vr::controllers::State const pads = vr::controllers::Latest();
+        vr::host_view::State const view = vr::host_view::Latest();
+        auto const frame = HeldFrame();
+        if (pads.active && frame && view.valid && dt > 0.0) {
+            engine::Basis const headAxes = engine::ToBasis(view.head.orientation);
+            engine::UnrealVector const forward = engine::Apply(frame->rotation, headAxes.forward);
+            double const yawDeg = std::atan2(forward.y, forward.x) * (180.0 / 3.14159265358979323846);
+            cw::Vec3 const from{gC.pin.x, gC.pin.y, gC.pin.z};
+            cw::PlayerStep const step = cw::StepPlayer(from, {gC.start.x, gC.start.y, gC.start.z}, gSettings.leashUnits,
+                pads.left.stickX, pads.left.stickY, yawDeg, gSettings.speedUnitsPerS, dt);
+            if (step.moved) {
+                std::vector<cw::Vec3> people;
+                ue3::Object* const player = gPlayer.Read<ue3::Object*>(gC.controller).value_or(nullptr);
+                for (ue3::Object* const actor : Speakers(gC.controller, player)) {
+                    if (auto const at = player::Location(actor)) people.push_back({at->x, at->y, at->z});
+                }
+                cw::ClearStep const clear = cw::KeepClear(from, {step.place.x, step.place.y, from.z}, people, gSettings.clearUnits);
+                if (clear.moved) {
+                    double const sx = clear.place.x - from.x, sy = clear.place.y - from.y;
+                    gC.walkedUnits += std::sqrt(sx * sx + sy * sy);
+                    gC.pin.x = static_cast<float>(clear.place.x);
+                    gC.pin.y = static_cast<float>(clear.place.y);
+                }
+            }
         }
+        gC.stepMs = now;
     }
+    gC.head = {gC.pin.x + gC.headOffset.x, gC.pin.y + gC.headOffset.y, gC.pin.z + gC.headOffset.z};
     gC.held = PlaceFromHead(gC.head, gC.facing);
     Publish(link, controller);
     // Arm IK in the held frame once the host's view is the held one (a head-tracked view; nothing while it is still cinematic).

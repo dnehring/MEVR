@@ -9,9 +9,13 @@
 // ME3's slice of ME1's first-person conversations (docs/trilogy-plan.md T49; the owner chose it 2026-11-19 over upstream
 // Halcyon's ConvoFirstPerson, which only moves the camera to Shepard's eyes at every shot). With `[Cinematics] conversations =
 // world` (ME1's key and word; ME3 used to take it as the 3D screen), in ME3's conversation mode (7):
-//   - The player's place: Shepard's eyes as the stage puts him on his mark, taken once the opening has settled; held for the
-//     whole conversation (no jump at the director's cuts), followed only when his head stays more than worldFollowM away for
-//     three ticks (a cut that moves him to another mark: vr::conversation_world::FollowHeadSettled, ME1's rule).
+//   - The opening, ME1's rule (cw::DecideOpening, worldOpening auto): the stage's mark for Shepard against where the player
+//     stood on foot. Near, or within a walk in the same space: Shepard is put back where the player stood and kept there for
+//     the whole conversation (his walk to the mark withheld: the player is never moved by the game, and his head bone never
+//     moves the view); in another space (a scripted start, a mark past 40 m or another deck): the place is his mark.
+//   - The left stick walks Shepard and the view along the head's facing within 4 m of where the conversation began, never
+//     into the speakers (ME1's worldMove: cw::StepPlayer, cw::KeepClear); the right stick steers the dialogue wheel then
+//     (plugin/PadMerge on ME3).
 //   - The host (HostServices v33 setConversationWorld, plugin/WorldUi's conversation hold) swaps that place into the player
 //     camera's POV around the main view's build only, keeps the world in stereo instead of the cinematic presentation
 //     (MevrSeams::ConversationInWorld in ME3's me2_xr.cpp) and hides Shepard's head (MevrSeams::WorldViewHeld 1).
