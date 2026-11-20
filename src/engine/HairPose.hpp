@@ -39,6 +39,8 @@ struct Target {
     // That body's surface fitted from its mesh (tools/rig's spheres, ik::body_spheres), bound to its skeleton; empty: the
     // capsules above alone (then with the spine, neck and collars).
     std::vector<ik::body_spheres::Sphere> spheres;
+    // The soft tissue's share of Request::jiggleIntensity for this body's outfit (game/Hair OutfitJiggle: armour a quarter).
+    double jiggleScale = 1.0;
 };
 struct Request {
     std::vector<Target> targets;  // at most kMaxTargets

@@ -482,7 +482,7 @@ void AfterPose(ue3::Object* component, float deltaTime) {
             return;
         }
         ik::jiggle::Settings tissue = soft.glute ? ik::jiggle::Glute() : ik::jiggle::Breast();
-        tissue.intensity = jiggleIntensity;
+        tissue.intensity = jiggleIntensity * target.jiggleScale;
         ik::Transform const& animated = pose.bones[static_cast<std::size_t>(soft.bone)];
         ik::jiggle::Input in;
         in.frame.rotation = animated.rotation;

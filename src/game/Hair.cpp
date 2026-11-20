@@ -83,6 +83,14 @@ constexpr char kBlock[] =
     "; far they move (never how fast they settle). 1 since the owner's headset check (2026-11-19: full is a little better).\n"
     "jiggle = 1\n"
     "jiggleIntensity = 1\n"
+    "; Armour holds the soft tissue (the owner, 2026-11-19: reduced in full gear, full in a bodysuit, casual clothes or\n"
+    "; underwear, every female character of the three games): a body whose mesh name has a heavy, medium or light armour type\n"
+    "; (_HVY, _MED, _LGT), or holds one of armourBodies, keeps jiggleArmour of the intensity; one holding a fullBodies entry\n"
+    "; (a character outfit named like armour but a bodysuit: ME2 Miranda's HMF_MIR_LGTa) keeps all of it. Comma lists of name\n"
+    "; parts, any case.\n"
+    "jiggleArmour = 0.25\n"
+    "armourBodies =\n"
+    "fullBodies = hmf_mir_\n"
     "; followBody (0..1): how far a long hair chain's lower joints rest with the shoulders rather than the head (hair lying\n"
     "; on the shoulders stays there when the head turns); single-bone strands are never affected.\n"
     "followBody = 0.7\n";
@@ -97,8 +105,28 @@ struct Settings {
     bool standIns = true;
     bool jiggle = true;
     double jiggleIntensity = 1.0;
+    // Armour holds the soft tissue (OutfitJiggle): the share it keeps, and name parts that make a body armour or full.
+    double jiggleArmour = 0.25;
+    std::vector<std::string> armourBodies;
+    std::vector<std::string> fullBodies{"hmf_mir_"};
     std::optional<std::string> look;  // [Hair] look: material parameters for simulated hair (empty: the game's)
 };
+
+// A comma list of name parts, lower case, trimmed.
+std::vector<std::string> NameParts(std::string const& text) {
+    std::vector<std::string> out;
+    std::string item;
+    std::stringstream in(text);
+    while (std::getline(in, item, ',')) {
+        std::size_t const a = item.find_first_not_of(" \t");
+        std::size_t const b = item.find_last_not_of(" \t");
+        if (a == std::string::npos) continue;
+        std::string part = item.substr(a, b - a + 1);
+        std::transform(part.begin(), part.end(), part.begin(), [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+        out.push_back(part);
+    }
+    return out;
+}
 Settings gSettings;
 std::optional<double> gJiggleOverride;  // `mevr hair jiggle <0..1|off>`
 std::optional<double> gFollowOverride;  // `mevr hair follow <0..1|auto>`
@@ -142,6 +170,9 @@ void RefreshSettings() {
     if (auto v = num("standIns")) s.standIns = *v != 0.0;
     if (auto v = num("jiggle")) s.jiggle = *v != 0.0;
     if (auto v = num("jiggleIntensity")) s.jiggleIntensity = std::clamp(*v, 0.0, 1.0);
+    if (auto v = num("jiggleArmour")) s.jiggleArmour = std::clamp(*v, 0.0, 1.0);
+    if (auto v = ini::Get(loaded.file, "Hair", "armourBodies")) s.armourBodies = NameParts(*v);
+    if (auto v = ini::Get(loaded.file, "Hair", "fullBodies")) s.fullBodies = NameParts(*v);
     s.look = ini::Get(loaded.file, "Hair", "look");
     s.sim.windMS = {s.wind, 0.0, 0.0};
     if (gOverride) s.on = *gOverride;
@@ -476,6 +507,24 @@ std::vector<ue3::Object*> const& StuntActors(ue3::Object* world) {
 }
 
 bool HasSoftTissueBones(ue3::Object* mesh);
+
+// The soft tissue's share for a body's outfit (the owner, 2026-11-19): armour keeps jiggleArmour (a heavy, medium or light
+// armour type in the mesh's name, or an armourBodies part), everything else (a bodysuit, casual clothes, underwear) all of it;
+// a fullBodies part (a character outfit named like armour but a bodysuit) wins.
+double OutfitJiggle(ue3::Object* body) {
+    if (body == nullptr) return 1.0;
+    std::string const name = Lower(PathOf(player::SkeletalMesh(body)));
+    for (std::string const& part : gSettings.fullBodies) {
+        if (!part.empty() && name.find(part) != std::string::npos) return 1.0;
+    }
+    for (std::string const& part : gSettings.armourBodies) {
+        if (!part.empty() && name.find(part) != std::string::npos) return gSettings.jiggleArmour;
+    }
+    for (char const* type : {"_hvy", "_med", "_lgt"}) {
+        if (name.find(type) != std::string::npos) return gSettings.jiggleArmour;
+    }
+    return 1.0;
+}
 
 std::vector<Person> FindPeople(ue3::Object* playerPawn, ue3::Vector at, ue3::Object* world) {
     std::vector<Person> found;
@@ -1023,6 +1072,7 @@ void Tick(double /*deltaSeconds*/) {
                 t.bodyParts = parts->body;
                 t.spheres = parts->spheres;
             }
+            t.jiggleScale = OutfitJiggle(person.body);
         }
         request.targets.push_back(std::move(t));
     }
