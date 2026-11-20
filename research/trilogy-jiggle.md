@@ -298,3 +298,29 @@ CSV each frame):
 `core/ik/Jiggle`; it is benched offline with stand-in bones on the generated walk, run and jump clips (`mevr-hair-bench
 --jiggle`, tools/motion). In the game it needs the added bones (docs/trilogy-hair-plan.md section 10). The look, the
 defaults and whether it is on by default go to the owner first.
+
+## 7. The owner's brief (2026-11-19)
+
+The owner shared a research brief written for another LE3 project ("Soft-Body Secondary Motion Research Brief", 19 Nov
+2026; the owner's copy, not in the repository). Its conclusions, against what MEVR has:
+
+- **Same conclusion as section 6**: none of the runtime tools of today (Kawaii Physics and SPCR Joint Dynamics are UE4/5
+  plugins, OmniBody and NVIDIA Newton are GPU solvers, NDG and PhysSkin++ are neural deformers needing a GPU or a Poisson
+  solve per frame) can run in LE; what carries over is **helper bones driven by springs**, and the key unknown is **whether
+  the game takes a mesh with added bones**. That is our probe P3 (docs/trilogy-hair-plan.md): one experiment unblocks the
+  hair re-rig and the jiggle bones.
+- **Its runtime drivers we don't need**: it proposes the PhysicsAsset's unfixed bodies with bone springs, or the AnimTree's
+  `SkelControlTrail`, both unverified in LE (PhysX on non-ragdoll characters in conversations is its open question). MEVR
+  writes the bones itself after `UpdateSkelPose` (`engine/HairPose`, already on ME3's Miranda), with `core/ik/Jiggle`'s exact
+  spring, so neither the PhysicsAsset nor the AnimTree has to be touched, and it works in conversations and cinematics.
+- **Baking is the fallback it gives for cutscenes**; with a runtime driver every animation is covered, reacting to turns and
+  hits, so we don't bake.
+- **What we take from it: an offline reference for tuning and rigging.** A volumetric simulation (FEM/XPBD, or the Deep
+  Emulator as its proxy) of the body over our generated clips (tools/motion: walk, run, jumps), fitted back to a few helper
+  bones by skinning decomposition (SSDR; Dem-Bones, Electronic Arts' open implementation [verify its licence before use]),
+  gives three things: where the helper bones should sit and how the soft regions weight to them (a better start than painting
+  by hand), the bones' motion a real tissue would make (the target `mevr-hair-bench --jiggle` fits the springs' frequency,
+  damping and limits to, instead of numbers from the literature alone), and a check of how much 2 bones a side can show at
+  all. Offline only: nothing of it ships or runs in the game.
+- Its tone note matches ours: subtle and physically motivated.
+- Out of scope here: its Character Creator 5 skin pipeline and Reallusion licensing (another project's look development).
