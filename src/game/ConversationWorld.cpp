@@ -7481,11 +7481,19 @@ void ScriptBlackScreen(int action) {
 }
 
 void DipFromBlack() {
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+    sequel_conversation_world::DipFromBlack();  // the sequels' module publishes the scene's state there (Mod.cpp)
+#else
     ++gC.cut;  // published with the scene's state, or the on-foot word's (Arm)
+#endif
 }
 
 std::uint32_t CutCount() {
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+    return sequel_conversation_world::CutCount();
+#else
     return gCutBase + gC.cut;
+#endif
 }
 
 bool MomentDip() {

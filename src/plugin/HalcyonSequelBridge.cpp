@@ -497,11 +497,18 @@ unsigned CineScreenLayers(const CineScreenFrame& frame, const void** layersOut, 
 const void* TransitionFadeLayer(void* session, void* viewSpace, ID3D11DeviceContext* context, int view) noexcept {
     // ME1's cut inside a scene held in the world (cw::State::cut: a conversation's re-placement, a moment's end that joins
     // Shepard past where he stands): a dip from black when the mod's counter changes (LE1's own seam in plugin/TransitionFade).
+    // On foot the armed word's counter (the same one: game/ConversationExit's dip over a removal on foot), as LE1's seam.
     static std::uint32_t lastCut = 0;
     bool cut = false;
-    if (auto const convo = mevr::vr::conversation_world::Latest(300); convo && convo->active != 0 && convo->cut != lastCut) {
-        cut = lastCut != 0 || convo->cut != 0;
-        lastCut = convo->cut;
+    std::optional<std::uint32_t> now;
+    if (auto const convo = mevr::vr::conversation_world::Latest(300); convo && convo->active != 0) {
+        now = convo->cut;
+    } else {
+        now = mevr::vr::conversation_world::FootCut();
+    }
+    if (now && *now != lastCut) {
+        cut = lastCut != 0 || *now != 0;
+        lastCut = *now;
     }
     return mevr::host::transition_fade::Layer(session, viewSpace, context, view, cut);
 }

@@ -408,6 +408,9 @@ void TryInstallScriptHooks() {
     game::conversation_exit::TryStartup();   // people leaving a conversation in the world walk away first (its hook's provider)
 #endif
 #if defined(MEVR_GAME_LE3)
+    game::conversation_exit::TryStartup();  // ME3's too: BioSeqAct_SetActive's script calls (research/conversation-exits.md section 9)
+#endif
+#if defined(MEVR_GAME_LE3)
     game::le3_galaxy_capture::TryStartup();  // ME3's: the sequels' flow over the CIC's projector (game/GalaxyProjectorFlow)
 #elif defined(MEVR_GAME_LE2)
     game::le2_galaxy_capture::TryStartup();  // ME2's: the sequels' flow over the CIC's projector (game/GalaxyProjectorFlow)
@@ -2011,6 +2014,10 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         // Its source hooks (engine/ConversationHooks) and their providers are its own: ME1's modules below don't tick here.
         EnsureConversationHooks();
         game::sequel_conversation_world::Tick(ConversationWorldLink());
+        // People leaving a conversation shown in the world walk away first (ME1's module with the sequels' adapter): after the
+        // scene's tick, who is in it and what the eyes see (research/conversation-exits.md section 9).
+        EnsureExitHook();
+        game::conversation_exit::Tick(deltaSeconds);
 #endif
         // Conversations (research/59): measured always; in the world, Shepard's view held (after world_ui: its Hold is ours in mode 5).
 #if !defined(MEVR_GAME_LE3)

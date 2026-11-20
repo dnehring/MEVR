@@ -297,7 +297,12 @@ inline constexpr std::uint32_t kUpdateSelection = 0xAC0530;
 inline constexpr std::uint32_t kConversationSetPositionRotator = 0xA2D180;
 inline constexpr std::uint32_t kInterruptConversation = 0xB06390;
 inline constexpr std::uint32_t kMoveWithInterpMoveTrack = 0x6B9C50;
-inline constexpr std::uint32_t kBehaviorExecSetActive = 0;  // (engine/ExitHooks: LE1 only)
+inline constexpr std::uint32_t kBehaviorExecSetActive = 0;  // (LE1's behaviour native; ME2's Kismet calls the actor's)
+// AActor::execSetActive (Engine.Actor.SetActive's native; it calls the actor's C++ SetActive, vtable slot 0x340): ME2's
+// BioSeqAct_ModifyPropertyPawn maps its "Active" row to this object function (aObjectFunctions) and its Activated calls it
+// through UObject::ProcessEvent (the row helpers 0xA7F4C0 and 0xA7FC60, each through the object's vtable slot 0x240; Ghidra,
+// research/conversation-exits.md section 9): engine/ExitHooks, game/ConversationExit (people leaving a conversation).
+inline constexpr std::uint32_t kActorExecSetActive = 0x4BC510;
 // Our reflection layer's globals (ue3/Runtime, engine/GameAdapter): GObjects (TArray<UObject*>; Halcyon's ME2 code uses it
 // too, engine_probe.cpp, pchud.cpp, and the host's queue for Halcyon's off-thread ProcessEvent calls checks objects against
 // it, plugin/HalcyonLe2), the name pools, the engine's allocator (appMalloc, appFree and the GMalloc both load) and
@@ -348,6 +353,12 @@ inline constexpr Entry kTable[] = {
         "48 89 5C 24 10 48 89 74 24 18 48 89 7C 24 20 55 48 8D 6C 24 A9 48 81 EC 90 00 00 00", 0, 0, "mod (conversations in the world)"},
     {"ABioWorldInfo::InterruptConversation", kInterruptConversation, Kind::Function,
         "48 89 5C 24 08 57 48 83 EC 20 48 8B D9 48 8B FA 48 8B 89 4C", 0, 0, "mod (conversations in the world)"},
+    // Every bool-taking exec thunk begins alike: the pattern runs to this one's call through the actor's slot 0x340 (unique).
+    {"AActor::execSetActive", kActorExecSetActive, Kind::Function,
+        "48 89 5C 24 10 48 89 74 24 18 57 48 83 EC 20 48 8B 42 24 4C 8D 0D ?? ?? ?? ?? 33 FF 48 8B F1 48 8B 4A 1C 48 8B DA 89 7C "
+        "24 30 44 0F B6 00 48 FF C0 48 89 42 24 41 8B C0 4C 8D 44 24 30 41 FF 14 C1 39 7C 24 30 40 0F 95 C7 48 FF 43 24 48 8B 43 "
+        "24 89 7C 24 30 80 38 41 75 1B 48 8B 4B 1C 48 FF C0 45 33 C0 48 89 43 24 48 8B D3 FF 15 ?? ?? ?? ?? 8B 7C 24 30 48 8B 06 8B D7 48 8B CE FF 90 40 03 00 00",
+        0, 0, "mod (conversation exits)"},
     // Our reflection layer's globals and the engine's allocator (ue3/Runtime has its own patterns too).
     {"GObjects", kGObjects, Kind::Data, "C9 74 5B EB F0 4C 8B 05 ?? ?? ?? ?? 4B 8B 04 06", 8, 0x9B24B,
         "mod (reflection), host (Halcyon LE2's game-thread queue)"},
@@ -556,7 +567,12 @@ inline constexpr std::uint32_t kUpdateSelection = 0xA9BF90;
 inline constexpr std::uint32_t kConversationSetPositionRotator = 0xA29DF0;
 inline constexpr std::uint32_t kInterruptConversation = 0;
 inline constexpr std::uint32_t kMoveWithInterpMoveTrack = 0x6BAFF0;
-inline constexpr std::uint32_t kBehaviorExecSetActive = 0;  // (engine/ExitHooks: LE1 only)
+inline constexpr std::uint32_t kBehaviorExecSetActive = 0;  // (LE1's behaviour native; ME3's Kismet calls the actor's)
+// AActor::execSetActive (Engine.Actor.SetActive's native; it calls the actor's C++ SetActive, vtable slot 0x330). ME3 has no
+// ModifyPropertyPawn: its BioSeqAct_SetActive's Activated is UnrealScript (`oTarget.SetActive(bSetActive)` for each target),
+// so the native runs on that script's own frame (Node the op's Activated, Object the op), not through ProcessEvent:
+// engine/ExitHooks reads the call's place in the script's code there (research/conversation-exits.md section 9).
+inline constexpr std::uint32_t kActorExecSetActive = 0x4BFAF0;
 inline constexpr std::uint32_t kGObjects = 0x1887E40;  // Original captured native code; research/le3-engine-access-discovery.md.
 inline constexpr std::uint32_t kNamePools = 0x17B33D0;
 inline constexpr std::uint32_t kGMalloc = 0x17CD588;
@@ -619,6 +635,12 @@ inline constexpr Entry kTable[] = {
         "48 8B C4 55 57 48 8D 68 A9 48 81 EC B8 00 00 00", 0, 0, "mod (conversations in the world)"},
     {"AActor::MoveWithInterpMoveTrack", kMoveWithInterpMoveTrack, Kind::Function,
         "48 8B C4 48 89 58 18 48 89 70 20 55 57 41 54 41 56 41 57 48 8D A8 68 FE", 0, 0, "mod (conversations in the world, moments)"},
+    // The pattern runs to the call through the actor's slot 0x330 (engine/ExitHooks replays the thunk's parameter steps there).
+    {"AActor::execSetActive", kActorExecSetActive, Kind::Function,
+        "48 89 5C 24 10 48 89 74 24 18 57 48 83 EC 20 48 8B 42 28 4C 8D 0D ?? ?? ?? ?? 33 FF 48 8B F1 48 8B 4A 20 48 8B DA 89 7C "
+        "24 30 44 0F B6 00 48 FF C0 48 89 42 28 41 8B C0 4C 8D 44 24 30 41 FF 14 C1 39 7C 24 30 40 0F 95 C7 48 FF 43 28 48 8B 43 "
+        "28 89 7C 24 30 80 38 41 75 1B 48 8B 4B 20 48 FF C0 45 33 C0 48 89 43 28 48 8B D3 FF 15 ?? ?? ?? ?? 8B 7C 24 30 48 8B 06 8B D7 48 8B CE FF 90 30 03 00 00",
+        0, 0, "mod (conversation exits)"},
     {"UBioTierManager::ReevaluateStreaming", kReevaluateStreaming, Kind::Function,
         "41 56 48 83 EC 40 4C 8B F1 85 D2 75 0D ?? ?? ??", 0, 0, "mod (CIC art retention)"},
     {"FLensFlareDynamicData::RenderReflections", kLensFlareReflections, Kind::Function,
