@@ -54,6 +54,7 @@ ue3::FunctionRef gGetFull{"SFXGame.BioConversationManager.GetFullConversation", 
 ue3::FieldRef gEnded{kController, "m_bConversationEnded", ue3::kEveryGame};
 ue3::FieldRef gPlayer{kController, "m_pPlayer", ue3::kEveryGame};
 ue3::FieldRef gSpeakers{kController, "m_aSpeakerData", ue3::kEveryGame};
+ue3::FieldRef gOwner{kController, "m_pOwner", ue3::kEveryGame};
 ue3::ClassRef gControllerClass{kController, ue3::kEveryGame};
 #else
 // ME2: ME1's live conversation (BioWorldInfo.m_oCurrentConversation, a BioConversation) and its people, ME1's own fields
@@ -1296,7 +1297,15 @@ void Tick(conversation_world::Link const& link) {
             gC.facing = ue3::Rotator{0, gFootPov.rotation.yaw, 0};
             gC.eyesFrom = "the view on foot";
         } else {
+            // ME1's FinishOpening: at his mark the eyes face the conversation's owner (the one the player came to talk to),
+            // else where his pawn faces (Samara's starter on the Normandy faced the window: 2026-11-20).
             gC.facing = ue3::Rotator{0, rotation->yaw, 0};
+            ue3::Object* const owner = gOwner.Read<ue3::Object*>(conversation).value_or(nullptr);
+            auto const ownerAt = owner != nullptr && owner != pawn && ue3::runtime::IsAlive(owner) ? player::Location(owner) : std::nullopt;
+            if (ownerAt && std::hypot(ownerAt->x - head->x, ownerAt->y - head->y) > 10.0) {
+                double const yawDeg = std::atan2(ownerAt->y - head->y, ownerAt->x - head->x) * (180.0 / 3.14159265358979323846);
+                gC.facing.yaw = static_cast<std::int32_t>(yawDeg * 65536.0 / 360.0);
+            }
             ue3::Vector const eyes = EyeAtHead(*head, gC.facing);
             gC.eyeOffset = {eyes.x - pawnAt->x, eyes.y - pawnAt->y, eyes.z - pawnAt->z};
             gC.eyesFrom = gEyeFromHead.learned ? "his head bone (the eyes as learned on foot)" : "his head bone (the game's measure)";

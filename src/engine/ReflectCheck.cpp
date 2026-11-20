@@ -3739,6 +3739,7 @@ void CheckLe3Dialogue() {
     CheckField("SFXGame.BioConversationController", "m_aCurrentReplyIndices", SDK_FIELD(UBioConversationController, m_aCurrentReplyIndices));
     CheckField("SFXGame.BioConversationController", "m_pSpeaker", SDK_FIELD(UBioConversationController, m_pSpeaker));
     CheckField("SFXGame.BioConversationController", "m_pPlayer", SDK_FIELD(UBioConversationController, m_pPlayer));
+    CheckField("SFXGame.BioConversationController", "m_pOwner", SDK_FIELD(UBioConversationController, m_pOwner));  // a Cut faces it
     // game/SequelConversationWorld (T49's ME3 slice): the speakers kept where they stand.
     CheckField("SFXGame.BioConversationController", "m_aSpeakerData", SDK_FIELD(UBioConversationController, m_aSpeakerData));
     CheckPath("SFXGame.BioConversationController", {"m_aSpeakerData", "pSpeakerActor"}, SDK_AT(offsetof(FBioSpeakerData, pSpeakerActor), 8));
