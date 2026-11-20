@@ -381,9 +381,21 @@ void StepWalkers(std::uint64_t now) {
         if (phase == ai_walk::Phase::Walking) continue;
         auto const at = player::Location(w.actor);
         double const left = at ? FlatUnits(*at, w.to) : 0.0;
-        ai_walk::End(*w.walk, phase == ai_walk::Phase::Arrived ? "arrived" : "stalled");
+        // A walk the AI ended near its place after walking most of the way counts as arrived (it turns to the circle): ME2's
+        // MoveToGoal gave Prazza's walk-up up 1.4 m short after 3.9 m (lane FPC6, Tali's reintroduction started without its
+        // cutscene), and a speaker left facing where it walked looked unfinished.
+        constexpr double kNearUnits = 160.0;
+        double const walkedUnits = at ? FlatUnits(*at, w.from) : 0.0;
+        bool const closeEnough = phase != ai_walk::Phase::Arrived && left <= kNearUnits && walkedUnits >= 100.0 && walkedUnits >= left;
+        ai_walk::End(*w.walk, phase == ai_walk::Phase::Arrived ? "arrived" : closeEnough ? "near its place" : "stalled");
         w.done = true;
-        if (phase == ai_walk::Phase::Arrived) {
+        if (closeEnough) {
+            w.phase = "arrived";
+            ++gCircle.arrived;
+            FaceToward(w.actor, w.faceYawDeg);
+            log::Info("conversation world: {}: {}'s walk ended {:.2f} m from its place after {:.2f} m (the AI's own stop): near "
+                      "enough, it turns to {:.0f} deg", w.kind, w.name, left / 100.0, walkedUnits / 100.0, w.faceYawDeg);
+        } else if (phase == ai_walk::Phase::Arrived) {
             w.phase = "arrived";
             ++gCircle.arrived;
             FaceToward(w.actor, w.faceYawDeg);

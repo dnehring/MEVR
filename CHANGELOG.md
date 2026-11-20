@@ -15,6 +15,11 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 - **Your squad moves only when you place it.** A squeeze of the left grip no longer sends the squad somewhere (it did on
   every game when nothing else took the squeeze, and on ME2 it kept happening in fights): place them with the right hand's
   B arc, or by voice.
+- **First-person conversations on Mass Effect 2 and 3 (experimental): whole subtitles, the right eyes after a cut.** A long
+  line's subtitle under the speaker is whole on Mass Effect 3 (its first and last words stayed on the panel). A conversation that
+  opens somewhere else puts your eyes at Shepard's head once his body has arrived there (on Mass Effect 3 they could open 4 m
+  behind it). Someone who walks up to the conversation and stops a little short still turns to face you. (Mass Effect 3 shows a
+  conversation's lines only with its subtitle option on, as without VR.)
 - **First-person conversations on Mass Effect 2 and 3 (experimental): the circle, the squad, subtitles and the wheel as on
   Mass Effect 1.** Whoever is about to speak with you and stands too far walks up into a loose circle around you (the one you
   came to talk to stays put, people who can't walk or sit take part where they are, Mass Effect 3's hub characters keep their

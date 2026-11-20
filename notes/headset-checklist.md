@@ -923,6 +923,10 @@ stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs 
       someone seated or a hub character of ME3 stays where they are. Say whether the walk-up feels organic.
 - [ ] ME2 (section 10.1): your squad gathers beside you, a little behind, at a conversation's start, and stays there through it
       (no drift back toward where Shepard's body stood).
+- [ ] ME3 with the game's subtitles on (lane FPC6, section 12.1): a long line under the speaker is whole (no word left on the
+      panel below), and a conversation that opens somewhere else puts you at Shepard's head there, not behind him (12.2).
+- [ ] ME3, Purgatory's bar (section 12.2): use the bar to drink: say whether seeing Shepard lean onto the bar in front of you is
+      acceptable, or whether the view should go with his head (or his body be hidden) while he drinks.
 - [ ] ME2 and ME3 (section 10.2): the speaker's line under their face (legible, not inside their body) and the dialogue wheel in
       front of you where it opens (reachable by eye without turning; the replies' whole text on it).
 - [ ] ME1 (section 10.4): after a conversation that faced you to the person you came to talk to (or that you turned in with the

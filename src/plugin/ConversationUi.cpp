@@ -46,7 +46,12 @@ unsigned Layers(Frame const& frame, cwv::State const& convo, hud_panel::Masks& m
     std::uint32_t const height = hud_panel::Height();
     bool const ready = frame.allowed && frame.device != nullptr && frame.context != nullptr && width > 0 && height > 0;
     // The speaker's line under their face, facing the eyes, the same angular size at any distance (the interaction label's way).
-    il::Pixels const subPx = il::ToPixels(CropOr(convo.subtitleCrop, cwv::DefaultSubtitleCrop(width, height)), width, height);
+    // ME1's band rows across the whole frame: ME3 wraps a long line wider than ME1's stage x 80..1200 (lane FPC6: "She" and
+    // "your" of a 126-character line stayed on the panel, the rest on the quad), so the sequels take the frame's full width.
+    il::Rect subRect = cwv::DefaultSubtitleCrop(width, height);
+    subRect.x = 0.0f;
+    subRect.width = 1.0f;
+    il::Pixels const subPx = il::ToPixels(CropOr(convo.subtitleCrop, subRect), width, height);
     bool subtitleShown = false;
     if (ready && convo.subtitle != 0 && !gSubtitleSwapchain.Refused() && subPx.width > 0 && subPx.height > 0) {
         il::Quad placed;
