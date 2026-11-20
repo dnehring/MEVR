@@ -25,7 +25,14 @@ while ((Get-Date) -lt $deadline -and -not (Test-Path $result)) {
 }
 if (-not (Test-Path $result)) {
     Write-Warning "No result within $TimeoutSeconds s (is the game running, with a player, and the mod loaded?)"
+    Write-Warning ("game-watch: " + (Get-MevrWorldVerdict).Detail)
     if (Test-Path $request) { Remove-Item -LiteralPath $request }
     exit 1
 }
 Get-Content -Raw -LiteralPath $result
+# The console answers on a loading screen too (the 2026-11-20 ME3 hang: `mevr state` worked for minutes over a load that
+# never ended). Say so whenever no world has been drawn for a while (tools/game-watch.ps1).
+$verdict = Get-MevrWorldVerdict
+if ($verdict.State -in 'no-world', 'blocked', 'no-frames' -and $verdict.Seconds -ge 30) {
+    Write-Warning ("game-watch: " + $verdict.Detail + ' (tools/game-watch.ps1 -UntilWorld waits for it, failing at 120 s)')
+}

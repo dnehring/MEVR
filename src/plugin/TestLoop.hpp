@@ -44,8 +44,11 @@ struct FloorSample;  // core/vr/PoseRecording.hpp
 //   replay.request    <path.mevrrec | latest | stop> [loop=1] [inputs=1]
 //   perf.request      [seconds=N] [delay=seconds] [tag=word]   (the frame-breakdown probe, plugin/PerfProbe)
 //   eyediff.request   [tag=word]   (one paired frame's two D3D11 streams compared, plugin/DrawReplay)
-// %LOCALAPPDATA%\MEVR\testloop.status (JSON, rewritten once a second while it changes) says what is
-// recording or replaying and the last snapshot's JSON.
+// %LOCALAPPDATA%\MEVR\testloop.status (JSON, rewritten once a second from the game thread's tick) says what is
+// recording or replaying, the last snapshot's JSON, and "world": when it was written (a file that stops changing means
+// the game thread stopped ticking), the engine ticks, and how long since a Present and since a Present with a scene
+// render (render_levers::WorldDrawn: a loading screen draws no scene, a load that never ends stays so).
+// tools/game-watch.ps1 turns it into a verdict.
 //
 // Both of Halcyon's renderers (LE1's and ME2's) give it the same: their session's function slots once resolved
 // (WrapSessionFunctions), each new session, each begun frame (with the controllers) and the game thread's tick. On LE2 the

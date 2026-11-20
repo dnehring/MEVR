@@ -73,6 +73,8 @@
 #include "core/vr/PoseRecording.hpp"
 #include "core/vr/TestRequest.hpp"
 #include "engine/SettingsFile.hpp"
+#include "plugin/CrashBreadcrumbs.hpp"
+#include "plugin/RenderLevers.hpp"
 #include "plugin/XrHost.hpp"
 
 #include <Windows.h>
@@ -1674,15 +1676,40 @@ void PollRequests() {
 #endif
 }
 
-std::string StatusJson(Status const& s) {
+// The game's liveness for tools/game-watch.ps1: written by the game thread's tick, so a file whose unixMs stops moving
+// means the game thread stopped; msSincePresent growing means the render thread stopped presenting; msSinceScene
+// growing while Presents go on means no world is drawn (a loading screen, or a load that never ends: the 2026-11-19/20
+// ME3 hangs after a scale set during the cab ride's load).
+std::string WorldJson() {
+#if defined(MEVR_GAME_LE1)
+    constexpr char const* kGame = "LE1";
+#elif defined(MEVR_GAME_LE2)
+    constexpr char const* kGame = "LE2";
+#elif defined(MEVR_GAME_LE3)
+    constexpr char const* kGame = "LE3";
+#else
+    constexpr char const* kGame = "?";
+#endif
+    auto const unixMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+    render_levers::WorldDrawnClock const w = render_levers::WorldDrawn();
+    return std::format("{{\"game\": \"{}\", \"pid\": {}, \"unixMs\": {}, \"engineTicks\": {}, \"sceneCounted\": {}, "
+                       "\"msSincePresent\": {}, \"msSinceScene\": {}}}",
+        kGame, GetCurrentProcessId(), unixMs, crash::gGameTicks.load(std::memory_order_relaxed), J(w.counted),
+        w.msSincePresent, w.msSinceScene);
+}
+
+std::string StatusJson(Status const& s, bool withWorld) {
     return std::format(
         "{{\n  \"recording\": {},\n  \"recordingSeconds\": {},\n  \"replaying\": {},\n  \"replayPath\": {},\n"
         "  \"replaySeconds\": {},\n  \"replayDuration\": {},\n  \"replayLoop\": {},\n  \"replayInputs\": {},\n"
         "  \"replayFovs\": {},\n"
-        "  \"lastRecording\": {},\n  \"lastSnapshot\": {},\n  \"snapshotsPending\": {},\n  \"framesRunning\": {},\n  \"firstPerson\": {}\n}}\n",
+        "  \"lastRecording\": {},\n  \"lastSnapshot\": {},\n  \"snapshotsPending\": {},\n  \"framesRunning\": {},\n  \"firstPerson\": {},\n"
+        "  \"world\": {}\n}}\n",
         J(s.recording), J(s.recordingSeconds), J(s.replaying), req::JsonString(s.replayPath), J(s.replaySeconds),
         J(s.replayDuration), J(s.replayLoop), J(s.replayInputs), J(s.replayFovs), req::JsonString(s.lastRecording),
-        req::JsonString(s.lastSnapshot), s.snapshotsPending, J(s.framesRunning), FirstPersonJson());
+        req::JsonString(s.lastSnapshot), s.snapshotsPending, J(s.framesRunning), FirstPersonJson(),
+        withWorld ? WorldJson() : std::string("null"));
 }
 
 Hotkey gSnapshotKey{VK_END};
@@ -2005,10 +2032,13 @@ void Tick(float deltaSeconds) {
         return;
     }
     gPollTimer = 0.0;
-    if (dev_channels::Allowed(engine::SettingsFile())) {
+    bool const dev = dev_channels::Allowed(engine::SettingsFile());
+    if (dev) {
         PollRequests();  // the developer request files: off in the players' build (core/DevChannels)
     }
-    std::string const status = StatusJson(GetStatus());
+    // The world's liveness only where the developer tools read it: it changes every second, so the file is rewritten each
+    // second (tools/game-watch.ps1).
+    std::string const status = StatusJson(GetStatus(), dev);
     if (status != gLastStatusJson) {
         if (WriteFileAtomically(BaseDir() / L"testloop.status", status)) {
             gLastStatusJson = status;
