@@ -39,6 +39,8 @@ ue3::FunctionRef gAllowMovementHenchman{"SFXGame.BioAI_Henchman.DoesGameModeAllo
 ue3::FieldRef gInGestures{"SFXGame.BioPawn", "m_bInGestures", ue3::kEveryGame};
 ue3::FunctionRef gSetDesiredSpeed{"SFXGame.BioPawn.SetDesiredSpeed", ue3::kEveryGame};
 #elif defined(MEVR_GAME_LE2)
+// PrecisionMoveTo moves a person in and after the conversation mode, slowly (Tali and Prazza 2.76 m in 9 s on Freedom's
+// Progress, lane EXIT2, 2026-11-20); MoveToSlot (ME3's) moved neither of them (stalled at 0.00 m).
 constexpr char kMoveName[] = "PrecisionMoveTo";
 ue3::FunctionRef gMove{"SFXGame.BioAiController.PrecisionMoveTo", ue3::kEveryGame};
 ue3::FunctionRef gStop{"SFXGame.BioPawn.StopMovement", ue3::kEveryGame};
@@ -110,7 +112,13 @@ bool SetSpeed(ue3::Object* pawn, float speed) {
     ue3::Function* const f = gSetDesiredSpeed.Get();
     if (f == nullptr || pawn == nullptr || !ue3::runtime::IsAlive(pawn)) return false;
     ue3::Params p(ue3::runtime::Get(), f);
+#if defined(MEVR_GAME_LE2)
+    // ME2's Engine.Pawn.SetDesiredSpeed(fSpeedScaling): with ME1's names every call failed and the speed was never set (lane
+    // EXIT2; the walk's slow pace stayed with the fix: it is PrecisionMoveTo's own).
+    return p.Valid() && p.Set("fSpeedScaling", speed) && ue3::runtime::Call(pawn, f, p);
+#else
     return p.Valid() && p.Set("fDesiredSpeed", speed) && p.SetBool("bForce", false) && ue3::runtime::Call(pawn, f, p);
+#endif
 #else
     (void)pawn;
     (void)speed;

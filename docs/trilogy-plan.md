@@ -1057,7 +1057,8 @@ These unblock the most: almost every other entry gets smaller once they land.
   (2026-11-20, section 9 there): the same module with a sequel adapter; ME2's `Active` row is `Engine.Actor.SetActive` through
   ProcessEvent (`AActor::execSetActive` `0x4BC510`, Ghidra), ME3's `BioSeqAct_SetActive` is script, so the hook (`0x4BFAF0`)
   steps over a withheld call on the script's own frame; the people from the sequels' module, its cut counter for the dip (and
-  on foot through the armed word). ME3's line visibility tracks counted (about 287 in 50 conversations hide people), not held:
+  on foot through the armed word); on ME2's fake headset Tali and Prazza walk off after her reintroduction and go under the dip, the broken
+  run is caught by `vanished-in-view`; ME3 not run yet. ME3's line visibility tracks counted (about 287 in 50 conversations hide people), not held:
   owner question 6. Teleports of a person in view next on all three (section 7 there).
 
 #### T50 Audio: two ears, and sounds placed where they are [G37, G38]

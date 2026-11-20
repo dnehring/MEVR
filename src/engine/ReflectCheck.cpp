@@ -4526,6 +4526,7 @@ void CheckSequelConversationExit() {
 #if defined(MEVR_GAME_LE2)
     CheckField("SFXGame.BioActorBehavior", "bActive", SDK_BOOL(UBioActorBehavior, bActive));
     CheckField("Engine.Actor", "oBioComponent", SDK_FIELD(AActor, oBioComponent));
+    PARAM(APawn_execSetDesiredSpeed_Parms, "Engine.Pawn.SetDesiredSpeed", fSpeedScaling);  // game/AiWalk's ME2 speed
 #else
     CheckField("SFXGame.BioPawn", "bActive", SDK_BOOL(ABioPawn, bActive));
     CheckFunction("SFXGame.BioSeqAct_SetActive.Activated");

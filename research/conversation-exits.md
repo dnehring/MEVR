@@ -442,9 +442,49 @@ by names, an estimate. Not built (owner question 6).
 
 **Checked in the game:** see section 10.
 
+## 10. ME2 in the game (fake headset, 2026-11-20 03:02-03:15, lane EXIT2)
+
+Stretch `%LOCALAPPDATA%\MEVR\sessions\20261120-030229-295-LE2-exit2` (`prep.ps1 -Holder EXIT2`, `launch.ps1`, `load.ps1 -Save
+VR_31_Soldier_141126_336072f\Save_0004.pcsav`, then `conversation-exit.ps1` with `-Before "god", "mevr instances
+SFXGame.SFXPawn_PlayerSoldier", "mevr setloc 0 -9600 16600 -12060", "sleep:12", ... "mevr setloc 0 -9600 15250 -12060"`: the room
+streamed in and the player inside it; restored with 0 differences). Folders `exit-tali-*` there (lines.txt, console.txt).
+
+1. **The route, verified in the game:** every deactivation of the scene's end reached `AActor::execSetActive` with ProcessEvent's
+   frame (the hook's `fromEvent` equals its `calls`: 5, 9, 13 ...), as Ghidra said.
+2. **Run A (the full chain from its CancelHint: the cutscene held as a moment, the conversation in first person, ended after 26 s
+   by `mevr convo exit end`):** `the script deactivates SFXPawn_Tali_1 (hench_tali) in the player's view (1.7 m from the eyes):
+   held back`; Prazza behind the player let through at once (out of sight); the two guards are nobody of the scene (owner question
+   1); Tali `walks away 3.0 m ... with the game's AI` (`BioAiController.PrecisionMoveTo`: it moves a person after the conversation
+   mode, verified), arrived 2.75 m in 9 s, still in view, so after the look-away's 3 s: `applied after 12.2 s: the player kept
+   looking, under a dip from black; hidden now yes, put back where it stood`; the host's dip on foot through `FootCut()`:
+   `transition fade: the world -> the world: from black over 0.35 s` (03:06:18). Snapshots
+   `%LOCALAPPDATA%\MEVR\snapshots\2026-11-20_03-06-07-541-left.png` (Tali held, turning to leave), `..._03-06-11-509-left.png`
+   (walking off), `..._03-06-20-656-left.png` (gone after the dip, the journal updated: the plot went on).
+3. **Run B, the broken run (`-Exit off`, the start fired directly; it ends by itself in 11 s):** Tali and Prazza let through in view
+   and **`convo: audit: vanished-in-view` caught both** (5.5 and 7.0 m from the eyes).
+4. **Run C (`-Exit walk`, the same start, its natural end):** both held in view (5.7 and 7.2 m), both walked 3 m with the game's AI
+   (2.76 m in 9.2 s), applied after 12.2 s under the dip; no `vanished-in-view`.
+5. **Found and fixed:** (a) `mevr convo exit` was routed to the sequels' world console on ME2 and ME3 (ConsoleRequest's sequel
+   `convo` verb): now `exit` goes to this module on every game; (b) `game/AiWalk`'s ME2 speed call used ME1's parameter names
+   (`Engine.Pawn.SetDesiredSpeed` is `fSpeedScaling` on ME2): every call failed. Fixed; the pace stayed the same (run D: 2.76 m in
+   9.3 s), so it is `PrecisionMoveTo`'s own. (c) Tried `MoveToSlot` (ME3's) on ME2 (run E): it moved neither person (`stalled
+   after 0.00 m`, the retry too, then the dip at 7.1 s): ME2 keeps `PrecisionMoveTo`.
+6. **What the player sees on ME2 today:** in Tali's room the picker found hidden places (2-4 of 36) but none with a way the AI takes,
+   so people walk 3 m straight away at about 0.3 m/s and go under a dip 12 s after the scene. Next: a faster ME2 walk (the AI's
+   path move, [verify] which ME2 function walks an NPC at walking pace; `MoveToSlot` does not) and longer walks.
+
+**ME3 (not run in the game in this lane; the run lock was another lane's for the first hour).** Fixtures from the same scratch scan
+(189 deactivations within 6 ops of a start's outputs), on the Citadel hub `Save_0090` loads (`BioD_CitHub_HanarPlot`,
+`BioD_CitHub_Embassy*`): `citprs_hanarplot_intro_d_dlg` (its end switches off its owner `cit_sal_spectre`, one op on), and
+`citprs_james_m_dlg` (`hench_marine`, a squadmate when in the party: let through). Check first that the hook's script path counts
+(`mevr convo exit status`: the hook's `calls` grow while `fromEvent` doesn't: ME3's script frames) and that the script goes on after
+a withheld call (the op's other targets switched, the level's script not stuck).
+
 ## Log
 
 - 2026-11-19/20: the packages read and counted for the three games; Udina's case found; the natives read in an isolated copy of
   the LE1 Ghidra project (the shared one was locked by another session's MCP server); the rule, ME1's side and the audit built.
 - 2026-11-20: runs 1-4 on the fake headset; why the AI never walked Udina (the move state's own reachability test), fixed with
   `PointReachable`; people whose level streams out applied at once; the audit set once (long) and the `popped-out` canary caught.
+- 2026-11-20 (lane EXIT2): the sequels' adapter (section 9), ME2 run on the fake headset (section 10), ME3's line visibility tracks
+  counted; ME3 not run in the game.
