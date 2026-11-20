@@ -70,6 +70,8 @@ def body_undrawn(st):
 def hands_off(st):
     """The drawn wrists' distance from the controllers, the larger of the two (metres), when both were measured (records since
     2026-11-13: `player.hands`, arm_ik::MeasureHands); else None."""
+    if st['player'].get('armsScene'):
+        return None  # the head drive leaves his arms to the scene's animation (the drink in his hand): not the controllers'
     hands = st['player'].get('hands') or {}
     sides = [hands.get('left'), hands.get('right')]
     if not all(isinstance(h, dict) and h.get('fromGripM') is not None for h in sides):

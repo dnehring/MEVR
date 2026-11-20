@@ -1754,14 +1754,14 @@ std::string WriteStance(std::string const& tag, bool moment) {
         "{{\"game\": \"" MEVR_GAME_NAME_A "\", \"conversation\": \"{}\", \"number\": {}, \"tag\": \"{}\", \"seconds\": {:.1f}, "
         "\"staged\": false, \"opening\": \"{}\", \"entry\": {}, \"line\": \"\", \"unitsPerMeter\": 100, \"walkAlong\": null, \"cut\": {},\n"
         "\"player\": {{\"at\": {}, \"yaw\": {:.0f}, \"eyes\": {}, \"eyesDrawn\": {}, \"bodyFromEyesM\": {}, \"detached\": {}, "
-        "\"bodyHiddenBy\": {}, \"headDrive\": {}, \"turnedDeg\": {:.0f},\"boundary\": {}, \"boundaryM\": {:.2f}, \"floor\": {:.0f}, \"eyesTarget\": {}, \"sceneWants\": {}, "
+        "\"bodyHiddenBy\": {}, \"headDrive\": {}, \"armsScene\": {}, \"turnedDeg\": {:.0f}, \"boundary\": {}, \"boundaryM\": {:.2f}, \"floor\": {:.0f}, \"eyesTarget\": {}, \"sceneWants\": {}, "
         "\"steering\": false, \"armIk\": \"{}\", \"hands\": {}, \"bodyDrawnAgoS\": {}, \"nearPlane\": {:.0f}}},\n"
         "\"people\": [{}],\n\"others\": [{}],\n\"circle\": {},\n\"ahead\": {{\"now\": [], \"later\": []}}}}\n",
         JsonText(name), moment ? gM.serial : gC.serial, JsonText(tag), seconds, moment ? "moment" : cw::Name(gC.opening), entry, gCutSerial,
         P3(held), YawDeg(facing), P3(eyes), gDrawnEyes ? "true" : "false",
         shepHead ? std::format("{:.2f}", std::hypot(shepHead->x - eyes.x, shepHead->y - eyes.y) / 100.0) : std::string("null"),
         moment && gM.hid ? "true" : "false", gHead.hid ? "\"head-drive\"" : "null", gHead.drive ? "true" : "false",
-        moment ? gM.turnedDeg : gC.turnedDeg, P3(V(moment ? gM.feet : gC.start)),
+        gHead.torsoOnly ? "true" : "false", moment ? gM.turnedDeg : gC.turnedDeg, P3(V(moment ? gM.feet : gC.start)),
         gSettings.leashUnits / 100.0, floor, gEyesState.on ? "true" : "false",
         !moment && gC.sceneWantsShepard ? P3(V(gC.sceneWants)) : std::string("null"), JsonText(arm_ik::Status().substr(0, 40)),
         arm_ik::HandsJson(), bodyDrawnAgo ? std::format("{:.2f}", std::min(*bodyDrawnAgo, 600.0)) : std::string("null"),

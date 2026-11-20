@@ -1578,6 +1578,26 @@ void Drive(double deltaSeconds) {
         auto legs = request.legs;
         request = menu_body::TorsoOnly(std::move(request));
         request.legs = legs;
+        // The hands where the scene's animation holds them, carried with the body as the torso moved it (the last result's
+        // slide and lift): the glass stays in front of him at the bar's height and the arms reach to it from the shoulders the
+        // player's head placed. Carried with the chest instead (the spine straightened 60 degrees and more), the hands rose in
+        // the air in front of the eyes (Purgatory's drink on the fake headset, 2026-11-20).
+        if (auto const hands = engine::bone_pose::AnimatedHands()) {
+            ik::Vec3 carry;
+            if (auto const last = engine::bone_pose::LatestTorso(); last && last->ok) {
+                carry = last->bodyShift + request.body.up * last->bodyLift;
+            }
+            for (int side : {kLeft, kRight}) {
+                if (!arms[side]) continue;
+                ik::Transform const& hand = side == kLeft ? hands->left : hands->right;
+                ik::Vec3 const at = hand.translation + carry;
+                engine::bone_pose::Arm& arm = request.arms[side];
+                arm.target = engine::bone_pose::Target::Component;
+                arm.wrist = request.bodyScale.Active() ? ik::body_scale::Apply(request.bodyScale, at) : at;
+                arm.hasRotation = true;
+                arm.rotation = hand.rotation;
+            }
+        }
         gunAimed = supportRequested = false;
         fingers::Stop("a scene: the player's head drives Shepard's body, his arms the scene's");
         driven = "the player's head drives Shepard's body in a held scene (his arms the scene's animation)";
