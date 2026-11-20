@@ -65,6 +65,11 @@ void MomentMayStart();
 // A short dip from black over the moment's held view (the host's transition fade), the view where it is: for what the
 // script covered with its own black screen. False without a moment's view.
 bool MomentDip();
+// A dip from black over what the player sees now, a scene in the world or on foot (game/ConversationExit: a person's removal
+// the player kept looking at, research/conversation-exits.md): the counter the host dips on (State::cut; on foot the "armed"
+// word carries it). And that counter, as published (a change is a dip: the live audit's vanished-in-view).
+void DipFromBlack();
+std::uint32_t CutCount();
 // The script turned its black screen on (game/AuthoredMoment's handler, the game thread; `action` the BioSeqAct_BlackScreen's).
 // In a staged scene this is the game's own cut to a new composition (Kirrahe's speech on Virmire: everyone onto new marks
 // under it): for the next second the stage's placements of the others are taken at once instead of walked; Shepard is never

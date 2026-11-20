@@ -6,6 +6,7 @@
 #include "game/BodyProbe.hpp"
 #include "game/ConversationWorld.hpp"
 #include "game/SequelConversationWorld.hpp"
+#include "game/ConversationExit.hpp"
 #include "game/ConversationFlow.hpp"
 #include "game/AuthoredMoment.hpp"
 
@@ -1068,6 +1069,9 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
 #endif
         if (trimmed.rfind("flow", 0) == 0) {
             return conversation_flow::Command(trimmed.size() > 4 ? trimmed.substr(4) : std::string());  // `mevr convo flow [list|rescan|restore]`
+        }
+        if (trimmed.rfind("exit", 0) == 0) {
+            return conversation_exit::Command(trimmed.substr(4));  // `mevr convo exit [on|walk|hold|off|auto|status]`
         }
         return conversation_world::Command(rest);
     }

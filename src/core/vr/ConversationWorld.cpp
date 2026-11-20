@@ -77,6 +77,14 @@ bool HandingOver(std::uint64_t maxAgeMs) {
     return gHave && gLatest.active == 0 && gLatest.holdPad[1] != 0 && GetTickCount64() - gLatest.timeMs <= maxAgeMs;
 }
 
+std::optional<std::uint32_t> FootCut(std::uint64_t maxAgeMs) {
+    std::lock_guard lock(gMutex);
+    if (!gHave || gLatest.active != 0 || gLatest.cut == 0 || GetTickCount64() - gLatest.timeMs > maxAgeMs) {
+        return std::nullopt;
+    }
+    return gLatest.cut;
+}
+
 void Reset() {
     std::lock_guard lock(gMutex);
     gLatest = {};

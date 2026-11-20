@@ -6340,6 +6340,7 @@ void Arm(Link const& link, bool armed, bool handover = false) {
     state.active = 0;
     state.holdPad[0] = armed ? 1 : 0;
     state.holdPad[1] = handover ? 1 : 0;
+    state.cut = gCutBase + gC.cut;  // the scenes' counter on foot too: a dip there (DipFromBlack)
     link.publish(&state);
     gArmedMs = armed ? GetTickCount64() : 0;
     gArmedSince = gArmedMs;
@@ -7477,6 +7478,14 @@ void ScriptBlackScreen(int action) {
     log::Info("convo: at {:.1f} s the script's black screen in {}: the stage's placements of the others for the next second are taken "
               "at once (a new composition); Shepard's mark {}", now, gC.staged ? "a staged scene" : "a conversation in the world",
         follow ? "is where the player goes with him under a dip" : "is walked to by the simulated stick");
+}
+
+void DipFromBlack() {
+    ++gC.cut;  // published with the scene's state, or the on-foot word's (Arm)
+}
+
+std::uint32_t CutCount() {
+    return gCutBase + gC.cut;
 }
 
 bool MomentDip() {

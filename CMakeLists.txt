@@ -447,6 +447,8 @@ set(MEVR_MOD_SOURCES
     src/core/vr/WorldUi.hpp
     src/core/vr/ConversationWorld.cpp
     src/core/vr/ConversationWorld.hpp
+    src/core/vr/ConversationExit.cpp
+    src/core/vr/ConversationExit.hpp
     src/core/vr/SoundPlace.cpp
     src/core/vr/SoundPlace.hpp
     src/core/vr/OmniRail.cpp
@@ -495,6 +497,8 @@ set(MEVR_MOD_SOURCES
     src/engine/CodeDump.hpp
     src/engine/ConversationHooks.cpp
     src/engine/ConversationHooks.hpp
+    src/engine/ExitHooks.cpp
+    src/engine/ExitHooks.hpp
     src/engine/BodyBounds.cpp
     src/engine/NameLookup.cpp
     src/engine/BodyBounds.hpp
@@ -659,6 +663,8 @@ set(MEVR_MOD_SOURCES
     src/game/ConversationWorld.hpp
     src/game/AiWalk.cpp
     src/game/AiWalk.hpp
+    src/game/ConversationExit.cpp
+    src/game/ConversationExit.hpp
     src/game/SequelConversationWorld.cpp
     src/game/SequelConversationWorld.hpp
     src/game/ConversationFlow.cpp
@@ -1542,6 +1548,7 @@ if (MEVR_BUILD_TESTS)
         tests/FlareWindowTests.cpp
         src/core/vr/FlareWindow.cpp
         tests/ConversationWorldTests.cpp
+        tests/ConversationExitTests.cpp
         tests/SoundPlaceTests.cpp
         tests/GuiEventsTests.cpp
         tests/OmniPadTests.cpp
@@ -1663,6 +1670,7 @@ if (MEVR_BUILD_TESTS)
         src/core/vr/GalaxyRay.cpp
         src/core/vr/WorldUi.cpp
         src/core/vr/ConversationWorld.cpp
+        src/core/vr/ConversationExit.cpp
         src/core/vr/SoundPlace.cpp
         src/core/vr/OmniRail.cpp
         src/core/vr/OmniPad.cpp
