@@ -1896,6 +1896,11 @@ void StepWalkAlong(ue3::Object* pawn, std::optional<ue3::Vector> const& at, doub
         }
     }
     if (!gInterpIsPlaying.ReadBool(seq).value_or(false) && !gWalkAlong.pausedByUs) companions = 0;  // the matinee is over
+    // Shepard's pawn far from the view is no walk the player follows: ME2's ANIMCUTSCENEs park it at the world's origin, and the
+    // matinee's groups read six people within 5 m of it in Tali's reintroduction (180 m from the player's place, 2026-11-20: "a line
+    // is playing: the walk pauses at its end"); past 30 m it never pauses (ME1's walks keep within a room).
+    ik::Vec3 const viewEyes = gDrawnEyes.value_or(V(gM.held));
+    if (std::hypot(viewEyes.x - at->x, viewEyes.y - at->y) > 3000.0 && !gWalkAlong.pausedByUs) companions = 0;
     if (companions != 0 && !gWalkAlong.logged) {
         gWalkAlong.logged = true;
         log::Info("conversation world: moment {}: walk along: {} walk{} beside Shepard: the walk waits for a player {:.1f} m behind", gM.serial,
