@@ -119,7 +119,105 @@ int RunClubBoostTests() {
             Check(b && Near(*b, 1.31), "breastMax before the path");
             Check(!index->BreastMaxFor("biog_asa_arm_lia_r.liad.asa_arm_liad_mdl"), "no breastMax: none");
             Check(!index->BreastMaxFor("biog_nothing.x.y"), "an unlisted mesh: none");
+            Check(index->ClubRigFor("biog_hmf_arm_nkd_r.nkdb.hmf_arm_nkdb_mdl").empty(), "no club field: no club copy");
+            Check(!index->ClubBreastAFor("biog_hmf_arm_nkd_r.nkdb.hmf_arm_nkdb_mdl"), "no clubBreastA field: none");
         }
+    }
+
+    // The club copy's fields (the owner's option 1, 2026-11-20): "club" and "clubBreastA" beside breastMax, any order, and an
+    // entry without them beside one with them.
+    {
+        std::string const text = R"({"format": "mevr-rig-index", "version": 1, "package": "MEVR_Bodies_LE2", "meshes": [
+  {"path": "BIOG_HMF_ARM_NKD_R.NKDb.HMF_ARM_NKDb_MDL", "name": "HMF_ARM_NKDb_MDL_MEVR", "breastMax": 1.18,
+   "club": "HMF_ARM_NKDb_MDL_CLUB_MEVR", "clubBreastA": 0.126},
+  {"clubBreastA": 0.5, "club": "HMF_ARM_CTHd_MDL_CLUB_MEVR", "path": "BIOG_HMF_ARM_CTH_R.CTHd.HMF_ARM_CTHd_MDL",
+   "name": "HMF_ARM_CTHd_MDL_MEVR", "breastMax": 1.76},
+  {"path": "BIOG_ASA_ARM_LIA_R.LIAd.ASA_ARM_LIAd_MDL", "name": "ASA_ARM_LIAd_MDL_MEVR", "breastMax": 1.10}
+]})";
+        auto const index = mevr::ik::body_stand_in::Index::Parse(text);
+        Check(index.has_value(), "an index with club copies parses");
+        if (index) {
+            Check(index->Size() == 3, "three meshes, the club copies not counted as meshes");
+            Check(index->ClubRigFor("biog_hmf_arm_nkd_r.nkdb.hmf_arm_nkdb_mdl") == "mevr_bodies_le2.hmf_arm_nkdb_mdl_club_mevr",
+                "the club copy after the name");
+            Check(index->RigFor("biog_hmf_arm_nkd_r.nkdb.hmf_arm_nkdb_mdl") == "mevr_bodies_le2.hmf_arm_nkdb_mdl_mevr",
+                "the plain rig unchanged beside its club copy");
+            Check(index->ClubRigFor("biog_hmf_arm_cth_r.cthd.hmf_arm_cthd_mdl") == "mevr_bodies_le2.hmf_arm_cthd_mdl_club_mevr",
+                "the club copy before the path");
+            auto const a = index->ClubBreastAFor("biog_hmf_arm_nkd_r.nkdb.hmf_arm_nkdb_mdl");
+            auto const b = index->ClubBreastAFor("biog_hmf_arm_cth_r.cthd.hmf_arm_cthd_mdl");
+            Check(a && Near(*a, 0.126), "clubBreastA after club");
+            Check(b && Near(*b, 0.5), "clubBreastA first");
+            auto const cap = index->BreastMaxFor("biog_hmf_arm_cth_r.cthd.hmf_arm_cthd_mdl");
+            Check(cap && Near(*cap, 1.76), "breastMax still read after the club fields");
+            Check(index->ClubRigFor("biog_asa_arm_lia_r.liad.asa_arm_liad_mdl").empty(), "an entry without club: no club copy");
+            Check(!index->ClubBreastAFor("biog_asa_arm_lia_r.liad.asa_arm_liad_mdl"), "an entry without clubBreastA: none");
+            Check(index->ClubRigFor("biog_nothing.x.y").empty(), "an unlisted mesh: no club copy");
+        }
+        // The club cache asks for the club copy, the plain cache for the rig.
+        if (index) {
+            namespace bsi = mevr::ik::body_stand_in;
+            std::string asked;
+            bsi::Engine engine;
+            engine.findLoaded = [&](std::string const& path) -> void* { asked = path; return reinterpret_cast<void*>(0x10); };
+            bsi::Cache plain;
+            bsi::Cache clubCache(true);
+            plain.SetIndex(index);
+            clubCache.SetIndex(index);
+            plain.Find("biog_hmf_arm_nkd_r.nkdb.hmf_arm_nkdb_mdl", engine);
+            Check(asked == "mevr_bodies_le2.hmf_arm_nkdb_mdl_mevr", "the plain cache finds the rig");
+            clubCache.Find("biog_hmf_arm_nkd_r.nkdb.hmf_arm_nkdb_mdl", engine);
+            Check(asked == "mevr_bodies_le2.hmf_arm_nkdb_mdl_club_mevr", "the club cache finds the club copy");
+            asked.clear();
+            Check(clubCache.Find("biog_asa_arm_lia_r.liad.asa_arm_liad_mdl", engine) == nullptr && asked.empty(),
+                "no club copy: the engine is never asked");
+        }
+    }
+
+    // A dancer's variation on her club copy: within +-vary, the same for the same key, spread, and the breasts held at the cap.
+    {
+        std::set<long long> seen;
+        for (int i = 0; i < 40; ++i) {
+            std::string const key = "biod_cithub_wardsflux.theworld.persistentlevel.sfxskeletalmeshactor_" + std::to_string(i) +
+                                    "|biog_hmf_arm_cth_r.cthc.hmf_arm_cthc_mdl";
+            club::Sizes const var = club::VariationFor(key, 1.60, 0.40, 0.06, 0.03);
+            club::Sizes const again = club::VariationFor(key, 1.60, 0.40, 0.06, 0.03);
+            Check(var.breast == again.breast && var.glute == again.glute, "a dancer keeps her variation");
+            Check(var.breast >= -0.06 - 1e-12 && var.breast <= 0.06 + 1e-12, "breast variation within +-0.06");
+            Check(var.glute >= -0.03 - 1e-12 && var.glute <= 0.03 + 1e-12, "glute variation within +-0.03");
+            Check((1.0 + 0.40) * (1.0 + var.breast) <= 1.60 + 1e-9, "baked and variation within the cap");
+            seen.insert(std::llround(var.breast * 10000.0));
+        }
+        Check(seen.size() >= 20, "variations differ between dancers");
+        // A club copy already at its cap: the variation never grows it, only shrinks.
+        for (int i = 0; i < 40; ++i) {
+            club::Sizes const var = club::VariationFor("k" + std::to_string(i), 1.20, 0.20, 0.06, 0.03);
+            Check(var.breast <= 1e-9, "at the cap the variation only shrinks");
+            Check((1.0 + 0.20) * (1.0 + var.breast) <= 1.20 + 1e-9, "at the cap: within it");
+        }
+        // Nothing baked listed (< 0): the variation against the cap alone.
+        club::Sizes const none = club::VariationFor("k", 1.02, -1.0, 0.06, 0.03);
+        Check(none.breast <= 0.02 + 1e-9, "no baked amount: the cap alone holds it");
+        club::Sizes const zero = club::VariationFor("k", 1.6, 0.4, 0.0, 0.0);
+        Check(Near(zero.breast, 0.0) && Near(zero.glute, 0.0), "no variation asked: none");
+    }
+
+    // The uniform fallback: gentler than SizesFor, the breasts at most 0.15, the glutes at most 0.08, still spread, never past
+    // the cap.
+    {
+        club::SizeSettings settings2;
+        std::set<long long> seen;
+        for (int i = 0; i < 40; ++i) {
+            std::string const key = "p" + std::to_string(i);
+            club::Sizes const f = club::FallbackSizes(key, 1.60, settings2, 0.15, 0.08);
+            club::Sizes const full = club::SizesFor(key, 1.60, settings2);
+            Check(f.breast <= 0.15 + 1e-12 && f.breast > 0.0, "fallback breasts in (0, 0.15]");
+            Check(f.glute <= 0.08 + 1e-12 && f.glute > 0.0, "fallback glutes in (0, 0.08]");
+            Check(f.breast <= full.breast + 1e-12 && f.glute <= full.glute + 1e-12, "the fallback is gentler");
+            seen.insert(std::llround(f.breast * 10000.0));
+        }
+        Check(seen.size() >= 20, "fallback amounts differ between people");
+        Check(club::FallbackSizes("x", 1.05, settings2, 0.15, 0.08).breast <= 0.05 + 1e-12, "a small cap holds the fallback too");
     }
 
     if (gFail == 0) std::printf("club boost: all passed\n");

@@ -42,7 +42,8 @@ struct Target {
     // The soft tissue's share of Request::jiggleIntensity for this body's outfit (game/Hair OutfitJiggle: armour a quarter).
     double jiggleScale = 1.0;
     // The club dancers' size (core/ik/ClubBoost, game/Hair): each Breast* / Glute* bone drawn grown by 1 + this about its
-    // region's pivot (Request::breastPivot, glutePivot), with or without the jiggle; 0 leaves it as the animation has it.
+    // region's pivot (Request::breastPivot, glutePivot), with or without the jiggle; 0 leaves it as the animation has it, a
+    // negative amount (a dancer's variation on a club rig) draws it smaller.
     double breastGrow = 0.0;
     double gluteGrow = 0.0;
 };

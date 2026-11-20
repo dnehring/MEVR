@@ -109,10 +109,13 @@ constexpr char kBlock[] =
     "followBody = 0.7\n"
     "; The clubs (the owner, 2026-11-19/20): every female NPC in a club level (clubLevels: name parts of the levels' packages;\n"
     "; Chora's Den, Afterlife, Purgatory) keeps clubJiggle times her outfit's jiggle, and with clubSize = 1 a natural size boost\n"
-    "; on her rigged body's breast and glute bones, her own on every visit: breasts a share from clubBreastMin to all of the way\n"
-    "; to her body's cap (10% larger than the ME3 Liara romance body, from the rigged bodies' index), glutes clubGluteRange with\n"
-    "; clubGlute in the middle (0.12: 12% larger). Each region grows from its pivot (game units from its bone, x forward, y left,\n"
-    "; z up: its top, so it grows forward and down). In a club up to clubMaxPeople people within clubRangeM are included.\n"
+    "; (the owner's option 1, 2026-11-20): she wears her body's club copy, the approved shape (breasts forward and down, glutes,\n"
+    "; a dress fitted under them) baked in by tools/rig, with a small variation of her own on every visit: breasts uniformly\n"
+    "; +-clubBreastVary, glutes +-clubGluteVary (never past her body's cap: 10% larger than the ME3 Liara romance body). A body\n"
+    "; without a club copy grows uniformly instead, gently: breasts up to clubFallbackBreast, glutes up to clubFallbackGlute\n"
+    "; (from clubBreastMin of the way to the cap, clubGluteRange around clubGlute, scaled down). Each region grows from its pivot\n"
+    "; (game units from its bone, x forward, y left, z up: its top, so it grows forward and down). In a club up to clubMaxPeople\n"
+    "; people within clubRangeM are included.\n"
     "clubJiggle = 2\n"
     "clubSize = 1\n"
     "clubLevels = bioa_sta60_05, biod_omghub_2, biod_omghub_500denvip, bioa_omghub200_, bioa_omghub300_, bioa_omghub400_, "
@@ -122,6 +125,10 @@ constexpr char kBlock[] =
     "clubGluteRange = 0.10, 0.16\n"
     "clubBreastPivot = 0, 0, 5\n"
     "clubGlutePivot = 0, 0, 5\n"
+    "clubBreastVary = 0.06\n"
+    "clubGluteVary = 0.03\n"
+    "clubFallbackBreast = 0.15\n"
+    "clubFallbackGlute = 0.08\n"
     "clubMaxPeople = 12\n"
     "clubRangeM = 15\n";
 
@@ -152,6 +159,10 @@ struct Settings {
     ik::club::SizeSettings clubSizes;
     ik::Vec3 clubBreastPivot{0.0, 0.0, 5.0};
     ik::Vec3 clubGlutePivot{0.0, 0.0, 5.0};
+    double clubBreastVary = 0.06;      // a dancer's own variation on her club copy (uniform growth, +-)
+    double clubGluteVary = 0.03;
+    double clubFallbackBreast = 0.15;  // without a club copy: the uniform growth's most
+    double clubFallbackGlute = 0.08;
     int clubMaxPeople = 12;
     double clubRangeM = 15.0;
     std::optional<std::string> look;  // [Hair] look: material parameters for simulated hair (empty: the game's)
@@ -248,6 +259,10 @@ void RefreshSettings() {
     }
     if (auto p = numbers("clubBreastPivot"); p.size() == 3) s.clubBreastPivot = {p[0], p[1], p[2]};
     if (auto p = numbers("clubGlutePivot"); p.size() == 3) s.clubGlutePivot = {p[0], p[1], p[2]};
+    if (auto v = num("clubBreastVary")) s.clubBreastVary = std::clamp(*v, 0.0, 0.5);
+    if (auto v = num("clubGluteVary")) s.clubGluteVary = std::clamp(*v, 0.0, 0.5);
+    if (auto v = num("clubFallbackBreast")) s.clubFallbackBreast = std::clamp(*v, 0.0, 0.8);
+    if (auto v = num("clubFallbackGlute")) s.clubFallbackGlute = std::clamp(*v, 0.0, 0.4);
     if (auto v = num("clubMaxPeople")) s.clubMaxPeople = static_cast<int>(std::clamp(*v, 1.0, static_cast<double>(hp::kMaxTargets)));
     if (auto v = num("clubRangeM")) s.clubRangeM = std::clamp(*v, 0.5, 40.0);
     s.look = ini::Get(loaded.file, "Hair", "look");
@@ -368,6 +383,7 @@ struct Swapped {
     ue3::Object* original = nullptr;  // the mesh it had
     ue3::Object* standIn = nullptr;
     bool byName = false;              // a rigged body from MEVR_Bodies_<GAME>'s index, not the hand table
+    bool club = false;                // its club copy (the dancers' baked shape)
 };
 std::vector<Swapped> gSwapped;
 std::unordered_map<ue3::Object*, ue3::Object*> gBodyMaterial;  // `mevr hair body`: a body component's material before
@@ -439,7 +455,16 @@ ue3::Object* StandInFor(std::string const& riggedPath) {
 // wears the rig, after the hand table (Miranda's hand rigs carry her hair chains).
 namespace bsi = ik::body_stand_in;
 bsi::Cache gBodies;
+bsi::Cache gClubBodies{true};   // the same index's club copies (the club dancers' baked shape)
 bool gBodiesIndexRead = false;  // read once a level (a rebuild between levels is picked up)
+std::unordered_set<std::string> gClubFallbackLogged;  // meshes logged as having no club copy this level
+
+void ForgetBodies() {
+    gBodies.Forget();
+    gClubBodies.Forget();
+    gBodiesIndexRead = false;
+    gClubFallbackLogged.clear();
+}
 
 std::filesystem::path RigFolder() {
     wchar_t local[MAX_PATH] = {};
@@ -464,6 +489,7 @@ void ReadBodiesIndex() {
     } else {
         log::Warn("hair: the rigged bodies' index {} unreadable ({}): bodies keep the game's meshes", ini::Utf8(file), error);
     }
+    gClubBodies.SetIndex(index);
     gBodies.SetIndex(std::move(index));
 }
 
@@ -535,6 +561,26 @@ ue3::Object* BodyStandInFor(ue3::Object const* asset) {
     return found;
 }
 
+// The club copy of a body mesh's rig (the dancers' baked shape), or nullptr: none in the index, or not in the package.
+ue3::Object* ClubStandInFor(ue3::Object const* asset) {
+    if (asset == nullptr || !gSettings.standIns) {
+        return nullptr;
+    }
+    ReadBodiesIndex();
+    std::string const path = PathOf(asset);
+    bool const known = gClubBodies.Entries().contains(path);
+    auto* const found = static_cast<ue3::Object*>(gClubBodies.Find(path, BodyEngine()));
+    if (!known) {
+        bsi::Entry const& e = gClubBodies.Entries().at(path);
+        if (e.outcome == bsi::Outcome::Found) {
+            log::Info("hair: club: {}'s club copy {} found ({})", path, e.rig, e.loaded ? "loaded by DynamicLoadObject" : "already in memory");
+        } else if (e.outcome == bsi::Outcome::NotLoaded) {
+            log::Warn("hair: club: the index lists the club copy {} for {}, but the package has no such rig (an older build?)", e.rig, path);
+        }
+    }
+    return found;
+}
+
 bool SetMesh(ue3::Object* component, ue3::Object* mesh) {
     if (component == nullptr || mesh == nullptr || gSetSkeletalMesh.Get() == nullptr) {
         return false;
@@ -548,7 +594,7 @@ bool SetMesh(ue3::Object* component, ue3::Object* mesh) {
 }
 
 // Puts `standIn` on the component in place of `asset`, kept to put back. False if SetSkeletalMesh refused it.
-bool Wear(ue3::Object* component, ue3::Object* asset, ue3::Object* standIn, bool byName) {
+bool Wear(ue3::Object* component, ue3::Object* asset, ue3::Object* standIn, bool byName, bool club = false) {
     if (!SetMesh(component, standIn)) {
         log::Warn("hair: SetSkeletalMesh refused {} on {:#x}", PathOf(standIn), reinterpret_cast<std::uintptr_t>(component));
         return false;
@@ -562,24 +608,33 @@ bool Wear(ue3::Object* component, ue3::Object* asset, ue3::Object* standIn, bool
             break;
         }
     }
-    gSwapped.push_back({component, original, standIn, byName});
+    gSwapped.push_back({component, original, standIn, byName, club});
     log::Info("hair: {:#x} wears {} instead of {} (rigged{}: its hair or body can move)", reinterpret_cast<std::uintptr_t>(component),
-        PathOf(standIn), PathOf(asset), byName ? ", from the rigged bodies' index" : "");
+        PathOf(standIn), PathOf(original), club ? ", the club copy from the rigged bodies' index" : byName ? ", from the rigged bodies' index" : "");
     return true;
 }
 
 // The stand-in for this component's mesh, if one is wanted: the hand table's first entry for it that loads, else for a body
-// the rigged body named after its mesh (BodyStandInFor). True when a mesh was put on this call.
-bool ApplyStandIn(ue3::Object* component, ue3::Object* asset, bool body) {
+// its club copy (`club`: a dancer in a club with clubSize on) or the rigged body named after its mesh (BodyStandInFor). A body
+// already wearing one of ours is asked again from its game mesh, so a dancer gets her club copy and someone leaving the club
+// the plain rig. True when a mesh was put on this call.
+bool ApplyStandIn(ue3::Object* component, ue3::Object* asset, bool body, bool club = false) {
     if (!gSettings.standIns || asset == nullptr || component == nullptr) {
         return false;
     }
+    ue3::Object* game = asset;  // the game's own mesh behind a stand-in of ours
     for (Swapped const& s : gSwapped) {
         if (s.component == component && s.standIn == asset) {
-            return false;  // already ours
+            if (!body) {
+                return false;  // a hair already ours
+            }
+            if (ue3::runtime::IsAlive(s.original)) {
+                game = s.original;
+            }
+            break;
         }
     }
-    std::string const path = PathOf(asset);
+    std::string const path = PathOf(game);
     for (engine::adapter::HairStandIn const& entry : engine::adapter::kHairStandIns) {
         if (entry.used == nullptr || Lower(entry.used) != path) {
             continue;
@@ -591,16 +646,44 @@ bool ApplyStandIn(ue3::Object* component, ue3::Object* asset, bool body) {
         if (standIn == nullptr) {
             continue;  // the next entry for this mesh, if any
         }
-        return Wear(component, asset, standIn, false);
+        return standIn != asset && Wear(component, asset, standIn, false);
     }
     if (!body) {
         return false;
     }
-    if (ShareForPath(Lower(PathOf(asset))) <= 0.0) {
+    if (ShareForPath(Lower(path)) <= 0.0) {
         return false;  // a body that keeps no jiggle (EDI's robot body) stays the game's
     }
-    ue3::Object* const standIn = BodyStandInFor(asset);
-    return standIn != nullptr && Wear(component, asset, standIn, true);
+    if (club) {
+        if (ue3::Object* const copy = ClubStandInFor(game)) {
+            return copy != asset && Wear(component, asset, copy, true, true);
+        }
+    }
+    ue3::Object* const standIn = BodyStandInFor(game);
+    return standIn != nullptr && standIn != asset && Wear(component, asset, standIn, true);
+}
+
+// The kind of rig a body wears for the club boost.
+enum class ClubRig { None, Normal, Club, Fallback };
+char const* Describe(ClubRig rig) {
+    switch (rig) {
+    case ClubRig::None: return "none";
+    case ClubRig::Normal: return "normal";
+    case ClubRig::Club: return "club";
+    case ClubRig::Fallback: return "fallback";
+    }
+    return "?";
+}
+
+// True when the body wears its club copy.
+bool WearsClubCopy(ue3::Object* body) {
+    ue3::Object* const worn = player::SkeletalMesh(body);
+    for (Swapped const& s : gSwapped) {
+        if (s.component == body && s.standIn == worn) {
+            return s.club;
+        }
+    }
+    return false;
 }
 
 // After a body's mesh changes, the components that follow it (head, hair) map their bones to it again.
@@ -651,8 +734,10 @@ struct Person {
     double distanceM = 0.0;
     ue3::Object* head = nullptr;
     bool club = false;              // a female NPC in a club level (core/ik/ClubBoost)
-    ik::club::Sizes sizes;          // her growth there (0: none)
+    ik::club::Sizes sizes;          // her growth there (0: none): on a club copy her variation (+-), else the uniform fallback
     double breastMax = 0.0;         // her body's cap from the rigged bodies' index (0: none listed, the default)
+    ClubRig rig = ClubRig::None;    // the club copy, the plain rig with the uniform fallback, or a rig outside the club
+    double clubBreastA = -1.0;      // the breast amount baked into her club copy (index "clubBreastA"; < 0: none listed)
 };
 std::vector<Person> gPeople;
 std::string gStatus = "not run yet";
@@ -1318,8 +1403,7 @@ void Tick(double /*deltaSeconds*/) {
         gSwapped.clear(); gBodyMaterial.clear();
         gStandInObjects.clear();
         gStandInMissing.clear();
-        gBodies.Forget();
-        gBodiesIndexRead = false;
+        ForgetBodies();
         gClubLogged.clear();
         gClub = {};
         hair_look::Forget();
@@ -1350,9 +1434,14 @@ void Tick(double /*deltaSeconds*/) {
         }
     }
     for (Person& person : people) {
+        // A female NPC in a club (core/ik/ClubBoost), from her actor's path and her body's game mesh: with clubSize on she
+        // wears her body's club copy (the dancers' baked shape) where the index has one.
+        std::string const actorPath = person.pawn != nullptr ? Lower(PathOf(person.pawn)) : std::string();
+        std::string const meshPath = person.body != nullptr ? Lower(PathOf(GameMesh(person.body))) : std::string();
+        person.club = person.body != nullptr && inClub && InClubPath(actorPath) && ik::club::FemaleBody(meshPath);
         // The body first (a rigged body carries the hair chains and soft-tissue bones the hair and jiggle stages drive), its
         // followers re-attached to it, then the hair.
-        if (ApplyStandIn(person.body, player::SkeletalMesh(person.body), true)) {
+        if (ApplyStandIn(person.body, player::SkeletalMesh(person.body), true, person.club && gSettings.clubSize)) {
             Reattach(person.body, FollowersOf(person));
         }
         ue3::Object* const asset = person.hair != nullptr ? player::SkeletalMesh(person.hair) : nullptr;
@@ -1392,26 +1481,43 @@ void Tick(double /*deltaSeconds*/) {
                 t.spheres = parts->spheres;
             }
             t.jiggleScale = OutfitJiggle(person.body);
-            // A female NPC in a club (core/ik/ClubBoost): more jiggle, and her own growth, from her actor's path and her body.
-            std::string const actorPath = Lower(PathOf(person.pawn));
-            std::string const meshPath = Lower(PathOf(GameMesh(person.body)));
-            person.club = inClub && InClubPath(actorPath) && ik::club::FemaleBody(meshPath);
+            // A female NPC in a club: more jiggle, and her size: on her club copy only her own small variation, else the
+            // gentle uniform fallback; the same on every visit (her actor's path and her body's game mesh).
             if (person.club) {
                 t.jiggleScale *= gSettings.clubJiggle;
                 if (gSettings.clubSize) {
                     bsi::Index const* const index = gBodies.GetIndex();
                     std::optional<double> const cap = index != nullptr ? index->BreastMaxFor(meshPath) : std::nullopt;
+                    std::optional<double> const baked = index != nullptr ? index->ClubBreastAFor(meshPath) : std::nullopt;
                     person.breastMax = cap.value_or(0.0);
-                    person.sizes = ik::club::SizesFor(actorPath + "|" + meshPath, person.breastMax, gSettings.clubSizes);
+                    person.clubBreastA = baked.value_or(-1.0);
+                    std::string const key = actorPath + "|" + meshPath;
+                    if (WearsClubCopy(person.body)) {
+                        person.rig = ClubRig::Club;
+                        person.sizes = ik::club::VariationFor(key, person.breastMax, person.clubBreastA, gSettings.clubBreastVary,
+                            gSettings.clubGluteVary, gSettings.clubSizes);
+                    } else {
+                        person.rig = ClubRig::Fallback;
+                        person.sizes = ik::club::FallbackSizes(key, person.breastMax, gSettings.clubSizes, gSettings.clubFallbackBreast,
+                            gSettings.clubFallbackGlute);
+                        if (gClubFallbackLogged.insert(meshPath).second) {
+                            log::Info("hair: club: {} has no club rig, the uniform fallback", meshPath);
+                        }
+                    }
                     t.breastGrow = person.sizes.breast;
                     t.gluteGrow = person.sizes.glute;
+                } else {
+                    person.rig = ClubRig::Normal;
                 }
                 if (gClubLogged.insert(person.pawn).second) {
-                    log::Info("hair: club: {} ({}) jiggle x{:.2f}, breasts +{:.0f}% (cap {}), glutes +{:.0f}%", PathOf(person.pawn),
-                        meshPath, t.jiggleScale, person.sizes.breast * 100.0,
+                    log::Info("hair: club: {} ({}) wears the {} rig, jiggle x{:.2f}, breasts {:+.0f}%, glutes {:+.0f}% (cap {}{})",
+                        PathOf(person.pawn), meshPath, Describe(person.rig), t.jiggleScale, person.sizes.breast * 100.0,
+                        person.sizes.glute * 100.0,
                         person.breastMax > 0.0 ? std::format("{:.2f}", person.breastMax) : std::string("the default"),
-                        person.sizes.glute * 100.0);
+                        person.clubBreastA >= 0.0 ? std::format(", baked breasts +{:.0f}%", person.clubBreastA * 100.0) : std::string());
                 }
+            } else {
+                person.rig = ClubRig::Normal;
             }
         }
         request.targets.push_back(std::move(t));
@@ -1678,8 +1784,7 @@ std::string Command(std::string const& args) {
         std::string reload;
         words >> reload;
         if (reload == "reload") {
-            gBodies.Forget();
-            gBodiesIndexRead = false;  // asked again from the next tick (a rebuilt package needs the game restarted: its TOC)
+            ForgetBodies();  // asked again from the next tick (a rebuilt package needs the game restarted: its TOC)
         }
         ReadBodiesIndex();
         bsi::Index const* const index = gBodies.GetIndex();
@@ -1697,10 +1802,14 @@ std::string Command(std::string const& args) {
             }
             if (swapped != nullptr) {
                 out += std::format("\n  [{}] {} at {:.2f} m wears {} instead of {} ({}), jiggle x{:.2f}{}", i, PathOf(p.pawn), p.distanceM,
-                    PathOf(worn), PathOf(swapped->original), swapped->byName ? "the bodies' index" : "the hand table",
+                    PathOf(worn), PathOf(swapped->original),
+                    swapped->club ? "its club copy" : swapped->byName ? "the bodies' index" : "the hand table",
                     OutfitJiggle(p.body) * (p.club ? gSettings.clubJiggle : 1.0),
-                    p.club ? std::format("; club: breasts +{:.0f}% (cap {}), glutes +{:.0f}%", p.sizes.breast * 100.0,
-                                 p.breastMax > 0.0 ? std::format("{:.2f}", p.breastMax) : std::string("default"), p.sizes.glute * 100.0)
+                    p.club ? std::format("; club, the {} rig: {} breasts {:+.1f}%, glutes {:+.1f}% (cap {}{})", Describe(p.rig),
+                                 p.rig == ClubRig::Club ? "her variation:" : p.rig == ClubRig::Fallback ? "uniform:" : "no size,",
+                                 p.sizes.breast * 100.0, p.sizes.glute * 100.0,
+                                 p.breastMax > 0.0 ? std::format("{:.2f}", p.breastMax) : std::string("default"),
+                                 p.clubBreastA >= 0.0 ? std::format(", baked breasts +{:.0f}%", p.clubBreastA * 100.0) : std::string())
                            : std::string());
                 continue;
             }
@@ -1719,6 +1828,11 @@ std::string Command(std::string const& args) {
             if (!shown) {
                 out += std::format("\n  (asked) {}: {}", mesh, bsi::Describe(e.outcome));
             }
+        }
+        for (auto const& [mesh, e] : gClubBodies.Entries()) {
+            out += std::format("\n  (club copy) {}: {}{}", mesh,
+                e.outcome == bsi::Outcome::NotRigged ? "no club copy in the index (the uniform fallback)" : bsi::Describe(e.outcome),
+                e.rig.empty() ? std::string() : " (" + e.rig + ")");
         }
         return out;
     }
@@ -1811,8 +1925,7 @@ void Shutdown() {
     gParts.clear();
     gStandInObjects.clear();
     gStandInMissing.clear();
-    gBodies.Forget();
-    gBodiesIndexRead = false;
+    ForgetBodies();
     hair_look::Forget();
     gWorld = nullptr;
     gPublished = 0;

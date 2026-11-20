@@ -69,6 +69,16 @@ std::optional<double> NumberIn(std::string_view text, std::string_view key, std:
     return value;
 }
 
+// The string after `"key":` inside [from, to), or nullopt.
+std::optional<std::string> StringIn(std::string_view text, std::string_view key, std::size_t from, std::size_t to) {
+    std::string const quoted = "\"" + std::string(key) + "\"";
+    std::size_t const k = text.find(quoted, from);
+    if (k == std::string_view::npos || k >= to) return std::nullopt;
+    std::size_t at = k;
+    std::optional<std::string> value = StringAfter(text.substr(0, to), key, at);
+    return value;
+}
+
 } // namespace
 
 std::string ObjectName(std::string_view path) {
@@ -124,6 +134,12 @@ std::optional<Index> Index::Parse(std::string_view text, std::string* error) {
             if (std::optional<double> const cap = NumberIn(text, "breastMax", open, close)) {
                 index.breastMax_[rig] = *cap;
             }
+            if (std::optional<std::string> const club = StringIn(text, "club", open, close); club && !club->empty()) {
+                index.club_[rig] = Lower(*club);
+            }
+            if (std::optional<double> const baked = NumberIn(text, "clubBreastA", open, close)) {
+                index.clubBreastA_[rig] = *baked;
+            }
         }
         if (std::string const shorter = Shorter(key); !shorter.empty()) {
             auto [it, fresh] = index.shorter_.emplace(shorter, rig);
@@ -134,22 +150,37 @@ std::optional<Index> Index::Parse(std::string_view text, std::string* error) {
     return index;
 }
 
-std::string Index::RigFor(std::string_view meshPath) const {
+std::string Index::NameFor(std::string_view meshPath) const {
     std::string const key = Lower(meshPath);
-    std::string const* rig = nullptr;
     if (auto it = exact_.find(key); it != exact_.end()) {
-        rig = &it->second;
-    } else if (auto s = shorter_.find(key); s != shorter_.end() && !s->second.empty()) {
-        rig = &s->second;
+        return it->second;
     }
-    return rig != nullptr ? Lower(package_) + "." + *rig : std::string();
+    if (auto s = shorter_.find(key); s != shorter_.end() && !s->second.empty()) {
+        return s->second;
+    }
+    return {};
+}
+
+std::string Index::RigFor(std::string_view meshPath) const {
+    std::string const name = NameFor(meshPath);
+    return name.empty() ? std::string() : Lower(package_) + "." + name;
 }
 
 std::optional<double> Index::BreastMaxFor(std::string_view meshPath) const {
-    std::string const rig = RigFor(meshPath);
-    if (rig.empty()) return std::nullopt;
-    std::string const name = rig.substr(rig.find('.') + 1);
-    if (auto it = breastMax_.find(name); it != breastMax_.end()) return it->second;
+    std::string const name = NameFor(meshPath);
+    if (auto it = breastMax_.find(name); !name.empty() && it != breastMax_.end()) return it->second;
+    return std::nullopt;
+}
+
+std::string Index::ClubRigFor(std::string_view meshPath) const {
+    std::string const name = NameFor(meshPath);
+    if (auto it = club_.find(name); !name.empty() && it != club_.end()) return Lower(package_) + "." + it->second;
+    return {};
+}
+
+std::optional<double> Index::ClubBreastAFor(std::string_view meshPath) const {
+    std::string const name = NameFor(meshPath);
+    if (auto it = clubBreastA_.find(name); !name.empty() && it != clubBreastA_.end()) return it->second;
     return std::nullopt;
 }
 
@@ -182,7 +213,7 @@ void* Cache::Find(std::string const& meshPath, Engine const& engine) {
     } else if (!index_) {
         entry.outcome = Outcome::NoPackage;
     } else {
-        entry.rig = index_->RigFor(meshPath);
+        entry.rig = club_ ? index_->ClubRigFor(meshPath) : index_->RigFor(meshPath);
         if (!entry.rig.empty()) {
             entry.object = engine.findLoaded ? engine.findLoaded(entry.rig) : nullptr;
             if (entry.object == nullptr && !packageAbsent_ && engine.load) {

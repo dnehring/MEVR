@@ -34,11 +34,58 @@ bool FemaleBody(std::string_view lowerMeshPath) {
     return name.rfind("hmf_", 0) == 0 || name.rfind("asa_", 0) == 0;
 }
 
-Sizes SizesFor(std::string_view key, double breastMax, SizeSettings const& settings) {
+namespace {
+
+// Two independent uniforms in [0, 1] from a person's key.
+void Units(std::string_view key, double& u1, double& u2) {
     std::uint64_t const h = StableHash(key);
-    double const u1 = static_cast<double>((h >> 8) & 0xFFFFFu) / static_cast<double>(0xFFFFFu);
-    double const u2 = static_cast<double>((h >> 36) & 0xFFFFFu) / static_cast<double>(0xFFFFFu);
-    double const cap = std::clamp(breastMax > 0.0 ? breastMax : settings.breastMaxDefault, 1.0, 1.8);
+    u1 = static_cast<double>((h >> 8) & 0xFFFFFu) / static_cast<double>(0xFFFFFu);
+    u2 = static_cast<double>((h >> 36) & 0xFFFFFu) / static_cast<double>(0xFFFFFu);
+}
+
+double Cap(double breastMax, SizeSettings const& settings) {
+    return std::clamp(breastMax > 0.0 ? breastMax : settings.breastMaxDefault, 1.0, 1.8);
+}
+
+} // namespace
+
+Sizes VariationFor(std::string_view key, double breastMax, double clubBreastA, double breastVary, double gluteVary,
+    SizeSettings const& settings) {
+    double u1 = 0.0;
+    double u2 = 0.0;
+    Units(key, u1, u2);
+    double const bv = std::clamp(breastVary, 0.0, 0.5);
+    double const gv = std::clamp(gluteVary, 0.0, 0.5);
+    double const baked = std::max(clubBreastA, 0.0);
+    Sizes s;
+    s.breast = (2.0 * u1 - 1.0) * bv;
+    // (1 + baked) (1 + a) <= cap
+    double const room = Cap(breastMax, settings) / (1.0 + baked) - 1.0;
+    s.breast = std::max(std::min(s.breast, room), -0.5);
+    s.glute = (2.0 * u2 - 1.0) * gv;
+    return s;
+}
+
+Sizes FallbackSizes(std::string_view key, double breastMax, SizeSettings const& settings, double breastLimit, double gluteLimit) {
+    Sizes s = SizesFor(key, breastMax, settings);
+    double const capA = Cap(breastMax, settings) - 1.0;
+    double const breastTop = std::clamp(breastLimit, 0.0, 0.8);
+    if (capA > 1e-9 && capA > breastTop) {
+        s.breast *= breastTop / capA;
+    }
+    double const high = std::max(settings.gluteLow, settings.gluteHigh);
+    double const gluteTop = std::clamp(gluteLimit, 0.0, 0.4);
+    if (high > 1e-9 && high > gluteTop) {
+        s.glute *= gluteTop / high;
+    }
+    return s;
+}
+
+Sizes SizesFor(std::string_view key, double breastMax, SizeSettings const& settings) {
+    double u1 = 0.0;
+    double u2 = 0.0;
+    Units(key, u1, u2);
+    double const cap = Cap(breastMax, settings);
     double const least = std::clamp(settings.breastMin, 0.0, 1.0);
     Sizes s;
     s.breast = (least + u1 * (1.0 - least)) * (cap - 1.0);

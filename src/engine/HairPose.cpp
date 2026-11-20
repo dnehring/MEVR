@@ -486,7 +486,7 @@ void AfterPose(ue3::Object* component, float deltaTime) {
     // Soft tissue: each bone a spring in its own animated frame (its rest axes are the body's), its offset and turn written
     // over the animation's pose of it.
     // The club dancers' growth (core/ik/ClubBoost) rides on the same write, with or without the jiggle.
-    bool const grows = target.breastGrow > 0.0 || target.gluteGrow > 0.0;
+    bool const grows = target.breastGrow != 0.0 || target.gluteGrow != 0.0;  // negative: a club dancer's variation smaller
     sim.info.soft.resize(jiggle || grows ? sim.soft.size() : 0);
     for (std::size_t s = 0; (jiggle || grows) && s < sim.soft.size(); ++s) {
         Sim::Soft& soft = sim.soft[s];
@@ -520,7 +520,7 @@ void AfterPose(ue3::Object* component, float deltaTime) {
         atom.ty = static_cast<float>(t.y);
         atom.tz = static_cast<float>(t.z);
         atom.scale = static_cast<float>(animated.scale);
-        if (double const grow = soft.glute ? target.gluteGrow : target.breastGrow; grow > 0.0) {
+        if (double const grow = soft.glute ? target.gluteGrow : target.breastGrow; grow != 0.0 && grow > -0.9) {
             ik::Transform bone{q, t, animated.scale};
             ik::Vec3 const pivot = ik::club::PivotLocal(soft.bind, soft.glute ? glutePivot : breastPivot);
             ik::Transform const grown = ik::club::Grow(bone, grow, pivot);

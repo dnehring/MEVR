@@ -48,6 +48,19 @@ struct Sizes {
 // is; breastMax <= 0: the default); glute a from the low end through gluteMid (u = 0.5) to the high end, clamped to [0, 0.4].
 Sizes SizesFor(std::string_view key, double breastMax, SizeSettings const& settings = {});
 
+// On a club copy of her body (the approved shape baked in by tools/rig, the owner's option 1, 2026-11-20) a person keeps only
+// a small variation of her own, from the same hash: uniform growth a in [-breastVary, +breastVary] for the breasts and
+// [-gluteVary, +gluteVary] for the glutes (a may be negative: smaller). The breasts' is held so the baked amount and the
+// variation together stay within the cap: (1 + clubBreastA) (1 + a) <= breastMax (breastMax <= 0: the default; clubBreastA
+// < 0: none baked, 0).
+Sizes VariationFor(std::string_view key, double breastMax, double clubBreastA, double breastVary, double gluteVary,
+    SizeSettings const& settings = {});
+
+// Without a club copy the uniform growth stands in, gentler than SizesFor's (the uniform shape at full size was rejected):
+// SizesFor's amounts scaled so the breasts reach at most `breastLimit` (still within the cap) and the glutes `gluteLimit`.
+Sizes FallbackSizes(std::string_view key, double breastMax, SizeSettings const& settings = {}, double breastLimit = 0.15,
+    double gluteLimit = 0.08);
+
 // The pivot in the bone's own frame: `offset` given in the body's bind frame (mesh units: x forward, y left, z up) from the
 // bone's bind origin, turned into the bone's bind axes.
 Vec3 PivotLocal(Transform const& bind, Vec3 offset);

@@ -437,3 +437,32 @@ headset will look wider than those sheets. To match them: render the pivot growt
 **Cost and limits.** In a club the stage takes up to `clubMaxPeople` 12 within `clubRangeM` 15 (HairPose's kMaxTargets went
 from 8 to 16); a dancer past them keeps the game's body and pops when she comes in range. [verify] in the game: the actors'
 paths (the level package first), the dancers' bodies in the rigged bodies' index, and the look.
+
+### The club copies (2026-11-20, the owner's option 1)
+
+Asked to choose between the pivot growth above, morph targets or extra bones, and baking the approved shape, the owner chose
+baking: tools/rig writes, beside each club body's rig, a copy with lane C's directional growth at the middle dancer's amounts
+(and the dress fit) baked into its vertices, named `<rig minus _MEVR>_CLUB_MEVR`, and adds to that body's index entry
+`"club": "<copy's name>"` and `"clubBreastA": <the baked breast amount>`. The runtime (game/Hair, core/ik/BodyStandIn,
+core/ik/ClubBoost):
+
+1. **Which rig.** `ApplyStandIn(body, ..., club)` asks the hand table first (Miranda), then, for a female NPC in a club with
+   `clubSize = 1`, the club copy through a second cache (`body_stand_in::Cache(true)`, which looks entries up with
+   `Index::ClubRigFor`), else the plain rig. A body already wearing one of ours is asked again from its game mesh each tick
+   (the swap's `original`), so a dancer's plain rig becomes her club copy once the copy loads, and someone outside the club
+   (or `clubSize = 0`) goes back to the plain rig; the followers are re-attached after every swap; a level change puts the
+   swaps away as before. The swap record carries `club`.
+2. **Her variation.** On the copy only a small uniform growth of her own (the pivot growth above, `ik::club::VariationFor`):
+   breasts a in [-clubBreastVary, +clubBreastVary] (0.06), glutes [-clubGluteVary, +clubGluteVary] (0.03), from the same hash
+   as before; the breasts' held so (1 + clubBreastA)(1 + a) <= breastMax (a copy already at its cap only shrinks). Negative
+   amounts are drawn (engine/HairPose grows whenever the amount isn't 0, above -0.9).
+3. **No copy.** An entry without `club`, or a copy the package lacks: the pivot growth at a gentler range
+   (`ik::club::FallbackSizes`: SizesFor's amounts scaled so the breasts reach at most `clubFallbackBreast` 0.15 and the glutes
+   `clubFallbackGlute` 0.08), logged once per mesh a level: `hair: club: <mesh> has no club rig, the uniform fallback`.
+4. **Seen.** One line per person a level, `hair: club: <actor> (<mesh>) wears the club|fallback|normal rig, jiggle xN, breasts
+   +-N%, glutes +-N% (cap N, baked breasts +N%)`; `mevr hair bodies` gives the same per person and a `(club copy)` line per
+   mesh asked.
+
+Tests (tests/ClubBoostTests.cpp): the index's `club`/`clubBreastA` in either order and absent, the plain rig unchanged beside
+its copy, the club cache asking the engine for the copy (and never when there is none), the variation's range, stability,
+spread and cap, and the fallback's limits. [verify] in the game: the copies load and swap, the variation reads as natural.

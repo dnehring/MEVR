@@ -506,6 +506,16 @@ grows forward (back) and down, never up: a larger copy of its own shape hanging 
 direction would need either more bones per region or a morph target in the rigged package. Clubs: `clubLevels`, name parts of
 the levels' packages (research/trilogy-hair.md "The clubs"); a club's skeletal mesh actors (most dancers) are found too;
 there `clubMaxPeople` 12 within `clubRangeM` 15. `mevr hair bodies` shows each person's club facts.
+**The club copies** (the owner's option 1, 2026-11-20: the approved directional shape, not the pivot growth): tools/rig bakes
+the middle dancer's shape (breasts forward and down, glutes, the dress fit) into a second rig per club body,
+`<rig minus _MEVR>_CLUB_MEVR` in the same package, its index entry's `club` (the copy's name) and `clubBreastA` (the baked
+breast amount). A club person with `clubSize = 1` whose entry has `club` wears it (game/Hair `ClubStandInFor`, a second
+`body_stand_in::Cache` in club mode; Miranda's hand table still first; leaving the club, the plain rig again); on it only her
+own small variation by the pivot growth, `clubBreastVary` +-0.06 and `clubGluteVary` +-0.03 (`ik::club::VariationFor`, the
+same hash; the breasts held so (1 + clubBreastA)(1 + a) <= breastMax). Without a club copy the pivot growth stands in,
+gentler (`ik::club::FallbackSizes`: breasts at most `clubFallbackBreast` 0.15, glutes `clubFallbackGlute` 0.08), logged
+`club: <mesh> has no club rig, the uniform fallback`. `mevr hair bodies` names each person's rig (club / fallback / normal),
+her variation and the club copies asked.
 
 5. **Checks per game:** the generated rigs' `check:` lines, a bench run of the jiggle per body
    (`mevr-hair-bench --jiggle`), then the owner in the headset on a sample: one armour, one bodysuit, one casual per game.
