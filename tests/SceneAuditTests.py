@@ -87,6 +87,9 @@ check('vanished-in-view' in rules(gone), 'someone in sight gone in the next reco
 hid = [record(0.0, 'begin', 0.08, [ahead(10), udina()]), record(3.0, 'line-1', 0.08, [ahead(10), dict(udina(), hidden=True)])]
 check('vanished-in-view' in rules(hid), 'someone in sight hidden in the next record is vanished-in-view')
 dipped = [record(0.0, 'begin', 0.08, [ahead(10), udina()]), record(3.0, 'after-dip', 0.08, [ahead(10)])]
+named = [record(0.0, 'begin', 0.08, [ahead(10), dict(udina(), name='BioPawn_7', id='BioPawn_7')]),
+         record(3.0, 'line-2', 0.08, [ahead(10), dict(udina(), name='Ambassador Udina', id='BioPawn_7')])]
+check('vanished-in-view' not in rules(named), 'someone the subtitles named between two records (the same id) did not vanish')
 check('vanished-in-view' not in rules(dipped), 'gone under a dip is no finding')
 unseen = [record(0.0, 'begin', 0.08, [ahead(10), dict(udina(), inSight=False)]), record(3.0, 'line-1', 0.08, [ahead(10)])]
 check('vanished-in-view' not in rules(unseen), 'gone while out of sight is no finding')

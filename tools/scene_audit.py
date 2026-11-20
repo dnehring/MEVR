@@ -256,13 +256,15 @@ def findings(records):
     for before, after in zip(records, records[1:]):
         if after.get('tag') in ('after-dip',) or (before.get('cut') is not None and before.get('cut') != after.get('cut')):
             continue
-        shown_after = {q['name']: q for q in after['people'] + (after.get('others') or []) if not q.get('hidden')}
+        # Keyed by the actor (`id`) where the record has one: a person's name changes once the subtitles name it (BioPawn_7 became
+        # "Ambassador Udina" between two records of the council hearing, 2026-11-20, lane FPC5: a vanish that never happened).
+        shown_after = {q.get('id') or q['name']: q for q in after['people'] + (after.get('others') or []) if not q.get('hidden')}
         eyes = before['player'].get('eyes') or before['player']['at']
         near = [q for q in (before.get('others') or []) if q.get('at') and math.dist(q['at'][:2], eyes[:2]) < 1500]
         for q in before['people'] + near:  # (the bystanders' list ends at 20 m: one walking out of it is no pop)
             if q.get('shepard') or q.get('hidden') or not q.get('inSight'):
                 continue
-            if q['name'] not in shown_after:
+            if (q.get('id') or q['name']) not in shown_after:
                 add('vanished-in-view', after, q['name'], f"in sight at {before.get('seconds', 0.0):.1f} s ({before.get('tag', '?')}), "
                     f"gone at {after.get('seconds', 0.0):.1f} s ({after.get('tag', '?')}) with no dip between")
     if len(gap_records) >= 2:
