@@ -787,6 +787,27 @@ SFXSeqAct_StartConversation_0 -Pitch -25`):
    controller's 68.7, the pawn's -1.4: both turned`.
 7. **Moments this stretch:** ME2 6 held (Tali's reintroduction, once per load), 0 to the 3D screen.
 
+### 10.6 ME1's regression set with the end facing and the marker's sources (item 5)
+
+`tools/conversation-audit.ps1` (session `2026-11-20_12-14-06-audit`, the players' build at debc8dc2 with main 715dbd81 merged):
+16 scenes, every body measured where a wrist was in view.
+- **The end facing:** ME1 showed the jump in 5 of 13 conversations (`convo: conversation N ends: the held facing ..., the
+  controller's ...`: Opold -146.0 against 56.2, Avina -21.1 against 180.0, the Spectre induction -141.2 against 0.0, the hearing
+  -155.0 against 180.0, Wrex at Fist's -177.9 against 171.7); both are turned to the held facing now.
+- **The black-move marker:** in the walk with Anderson to the Council `moment: the script moved Shepard under the game's fade to
+  black in a curated walk ...`, `convo: marker: moment: under the game's fade to black the script put Shepard 3.00 m from the
+  player in a curated walk: a marker there`; the walk's end marker as before (8.40 m, 24.04 m in the Spectre walk).
+- **Against the baseline:** lav70's faces median 13 -> 23 degrees (the baseline's, as lanes EXIT and FPC3 found); Girard "looks at
+  his body 0 -> 1" (the `begin` record at 0.0 s, Shepard's body 0.53 m from the eyes before the opening took its place: no look
+  after it); a vanished-in-view at the hearing (`sta90_council_saren_dlg`, and `sta90_captain_dlg`) that was the records naming
+  BioPawn_7 "Ambassador Udina" between two records (`tools/scene_audit.py` keys people by their `id` since: both clean when the
+  run is judged again). Opold's 0.03 s of the flat panel at 12:17:33.146 came 7 ms before the mod's `End` (12:17:33.153): the game's
+  shop screen a frame before the handover word, not the changed code.
+- **The canaries** (`conversation-audit.ps1 -Canaries`, sessions `2026-11-20_12-29-33-canary-*` to `12-52-01-canary-popped-out`):
+  every broken run caught, exit 0 (body left at the mark, the empty chamber by `expect`, the right stick ignored, the floating view
+  by eye-height and opening-off-mark, the dark walk by dark-view and eye-flat, the popped-out person by vanished-in-view, and the
+  rest of the set's).
+
 ## 5. How to check ME1 is unchanged
 
 The LE1 objects of every translation unit this lane touched (Mod, ConsoleRequest, ReflectCheck, ModLoader, PadMerge,

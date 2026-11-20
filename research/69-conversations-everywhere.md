@@ -4539,3 +4539,15 @@ OpenAL Soft in `ASI\audio` as `tools/deploy-asi.ps1` puts it; one fixed head for
   speaker moved more than 1.5 m and Shepard's new mark over 1.5 m away: the player goes with Shepard under a dip; nearer, the
   simulated stick walks him as before. The Citadel's walks untouched (moments never come here; council walk and hearing clean).
   The host keeps the mod's word through a game-thread stall (`cw::StillFresh`): Virmire's 3D-screen flash after a 1.6 s tick.
+- 2026-11-20 12:30, **lane FPC5, two ME1 changes** (research/le2-conversations-in-world.md section 10): (1) **the view goes on
+  from the held facing at a conversation's end** (an ME1 bug, the sequels' finding of lane FPC4): `End` recorded the held facing
+  but never turned the controller or the pawn, so the first frame on foot turned the view by their difference; ME1's regression
+  set logged it in 5 of 13 conversations (Opold: held -146 deg, the controller's 56; Avina -21 against 180; the Spectre
+  induction -141 against 0; the hearing -155 against 180; Wrex at Fist's -178 against 172), and both are now turned to the held
+  yaw (`cw::FacingOnFoot`; `mevr convo endfacing off` the broken run). (2) **the floor marker's black-move source in a curated
+  walk** (need (c)): the walk with Anderson to the Council, "the script put Shepard 3.00 m from the player in a curated walk: a
+  marker there"; the waits source (`game/SceneWaits`) in moments finds nothing on ME1 by construction (the script's Shepard
+  stands on his place). The set's verdict: 16 scenes, the known lav70 faces (the baseline's), a begin record of Girard's 0.53 m
+  before the opening's place (a look at the body counted once), Opold's 0.03 s flat panel 7 ms before the mod's `End` (the
+  handover race, not the changed code); the vanished-in-view at the hearing was the records' renaming of BioPawn_7 as "Ambassador
+  Udina" (`tools/scene_audit.py` keys people by their id since).
