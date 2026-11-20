@@ -20,6 +20,7 @@
 #include "core/vr/SquadMenu.hpp"
 #include "engine/GameAdapter.hpp"
 #include "plugin/Colour.hpp"
+#include "plugin/ConversationUi.hpp"
 #include "plugin/GalaxyHologram.hpp"
 #include "plugin/GamePointer.hpp"
 #include "plugin/HudPanel.hpp"
@@ -192,7 +193,11 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
         // A conversation held in the world, first person (ME3's slice of ME1's research/59, game/SequelConversationWorld): the
         // conversation movie (the wheel, the subtitles) on the panel, fixed in the room where it was placed when the
         // conversation began (the owner, 2026-11-19: "not static like it is in Mass Effect 1 ... it kind of follows my head"):
-        // 0.9 m ahead of the head's facing then, 0.25 m below the eyes, facing them, 1.1 m wide.
+        // 0.9 m ahead of the head's facing then, 0.25 m below the eyes, facing them, 1.1 m wide. Its subtitle and wheel go on
+        // quads of their own (ME1's placement, plugin/ConversationUi: the line under the speaker's face, the wheel in front where
+        // it opens; lane FPC5), cut out of the panel; the rest of the movie stays on it.
+        XrCompositionLayerQuad const* convoLayers[2] = {};
+        unsigned convoCount = 0;
         if (!galaxyUi) {
             static std::uint32_t s_placedFor = 0;
             static XrPosef s_pose{{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f}};
@@ -224,6 +229,20 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
                 panel.screenPart[0] = panel.screenPart[1] = 0.0f;
                 panel.screenPart[2] = panel.screenPart[3] = 1.0f;
                 panel.screenForwardM = 0.0f;
+                mevr::host::conversation_ui::Frame ui;
+                ui.session = session;
+                ui.appSpace = appSpace;
+                ui.context = frame.context;
+                ui.device = device;
+                ui.head = {headOrientation, headPosition};
+                ui.whiteScale = panel.whiteScale;
+                ui.options.colourSeed = 3;  // a quad of ours, not the panel
+                ui.allowed = panel.enabled && panel.stereo && frame.worldFrame && frame.headValid && !anyMenu &&
+                    mevr::host::hud_panel::Ready();
+#if defined(MEVR_WITH_MAIN_MENU)
+                ui.wheelAllowed = !mevr::host::thespian::HidesGameWheel();
+#endif
+                convoCount = mevr::host::conversation_ui::Layers(ui, *convo, panel.masks, convoLayers);
             }
         }
         // The HUD keeps the movie's own layout on the panel (Halcyon's per-element HUD moves stand down), as LE1's.
@@ -332,6 +351,9 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
         // A failed panel leaves the original native prompt unclaimed: never a detached label alone.
         if (interactionLayer != nullptr && panelLayer != nullptr && count < capacity) {
             layersOut[count++] = interactionLayer;
+        }
+        for (unsigned i = 0; i < convoCount && panelLayer != nullptr && count < capacity; ++i) {
+            layersOut[count++] = convoLayers[i];
         }
         for (unsigned i = 0; i < pass.count && count < capacity; ++i) {
             layersOut[count++] = pass.layers[i];

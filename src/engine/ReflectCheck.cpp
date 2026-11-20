@@ -4648,7 +4648,43 @@ void CheckSequelConversationLooks() {
     CheckField("SFXGame.BioConversationController", "m_pListener", SDK_FIELD(UBioConversationController, m_pListener));
 #endif
 }
+
+// game/SequelCircle.inc (lane FPC5; ME1's worldCircle and worldSquadGather): the dialogue's graph for the look ahead, who a line's
+// speaker index names, who can walk, the turn on arrival.
+void CheckSequelConversationCircle() {
+    CheckField("SFXGame.BioConversation", "m_EntryList", SDK_FIELD(UBioConversation, m_EntryList));
+    CheckField("SFXGame.BioConversation", "m_ReplyList", SDK_FIELD(UBioConversation, m_ReplyList));
+    CheckPath("SFXGame.BioConversation", {"m_EntryList", "nSpeakerIndex"}, SDK_AT(offsetof(FBioDialogEntryNode, nSpeakerIndex), 4));
+    CheckPath("SFXGame.BioConversation", {"m_EntryList", "nListenerIndex"}, SDK_AT(offsetof(FBioDialogEntryNode, nListenerIndex), 4));
+    CheckPath("SFXGame.BioConversation", {"m_EntryList", "ReplyListNew", "nIndex"}, SDK_AT(offsetof(FBioDialogReplyListDetails, nIndex), 4));
+    CheckPath("SFXGame.BioConversation", {"m_ReplyList", "EntryList"}, SDK_AT(offsetof(FBioDialogReplyNode, EntryList), 16));
+    CheckField("Engine.Actor", "Physics", SDK_FIELD(AActor, Physics));
+    CheckFunction("SFXGame.BioPawn.BioSetDesiredRotation");
+    PARAM(ABioPawn_execBioSetDesiredRotation_Parms, "SFXGame.BioPawn.BioSetDesiredRotation", rDesiredRotation);
+    PARAM(ABioPawn_execBioSetDesiredRotation_Parms, "SFXGame.BioPawn.BioSetDesiredRotation", bForce);
+#if defined(MEVR_GAME_LE3)
+    CheckField("SFXGame.BioConversation", "m_aSpeakerList", SDK_FIELD(UBioConversation, m_aSpeakerList));
+    CheckPath("SFXGame.BioConversationController", {"m_aSpeakerData", "nmSpeakerTag"}, SDK_AT(offsetof(FBioSpeakerData, nmSpeakerTag), 8));
+    CheckPath("SFXGame.BioConversationController", {"m_aAllFoundActors", "nmSpeakerTag"}, SDK_AT(offsetof(FBioSpeakerData, nmSpeakerTag), 8));
+#else
+    CheckPath("SFXGame.BioConversation", {"m_SpeakerList", "aSpeaker"}, SDK_AT(offsetof(FBioDialogSpeaker, aSpeaker), 8));
 #endif
+}
+#endif
+
+// game/SceneWaits (lane FPC5, every game): the level's touch events a scene may wait on, their triggers' collision and the check.
+void CheckSceneWaits() {
+    CheckClass<USeqEvent_Touch>("Engine.SeqEvent_Touch");
+    CheckField("Engine.SequenceEvent", "Originator", SDK_FIELD(USequenceEvent, Originator));
+    CheckField("Engine.SequenceEvent", "TriggerCount", SDK_FIELD(USequenceEvent, TriggerCount));
+    CheckField("Engine.SequenceEvent", "MaxTriggerCount", SDK_FIELD(USequenceEvent, MaxTriggerCount));
+    CheckField("Engine.SequenceEvent", "bEnabled", SDK_BOOL(USequenceEvent, bEnabled));
+    CheckField("Engine.Actor", "CollisionComponent", SDK_FIELD(AActor, CollisionComponent));
+    CheckFunction("Engine.Actor.PointCheckComponent");
+    PARAM(AActor_execPointCheckComponent_Parms, "Engine.Actor.PointCheckComponent", InComponent);
+    PARAM(AActor_execPointCheckComponent_Parms, "Engine.Actor.PointCheckComponent", PointLocation);
+    PARAM(AActor_execPointCheckComponent_Parms, "Engine.Actor.PointCheckComponent", PointExtent);
+}
 
 std::filesystem::path OutputPath() {
     wchar_t buffer[MAX_PATH]{};
@@ -4738,7 +4774,9 @@ bool Run(hook::Context& context) {
     CheckSequelSquadAck();
     CheckSequelConversationExit();
     CheckSequelConversationLooks();
+    CheckSequelConversationCircle();
 #endif
+    CheckSceneWaits();
 #if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     CheckLeave();
 #endif

@@ -1197,9 +1197,53 @@ void TestEyes() {
     CHECK(cw::StepSeat(fresh, {0, 0, 150}, 55.0, false, 0.05).sat);
 }
 
+// The marker's Waits need (lane FPC5): only a one-shot touch the script still waits on, around where the scene wants Shepard, that
+// neither his pawn nor the player stands in; a door's unlimited touch, a fired one, a disabled one, one the player is in: nothing.
+void TestWaitingTrigger() {
+    cw::WaitTrigger waits;
+    waits.enabled = true;
+    waits.maxTriggerCount = 1;
+    waits.wantedInside = true;
+    CHECK(cw::Armed(waits));
+    cw::WaitTrigger door = waits;
+    door.maxTriggerCount = 0;  // without end: a door's or an ambient line's
+    cw::WaitTrigger fired = waits;
+    fired.triggerCount = 1;
+    cw::WaitTrigger off = waits;
+    off.enabled = false;
+    cw::WaitTrigger elsewhere = waits;
+    elsewhere.wantedInside = false;
+    cw::WaitTrigger hisOwn = waits;
+    hisOwn.shepardInside = true;  // the script's Shepard went in himself
+    cw::WaitTrigger reached = waits;
+    reached.playerInside = true;
+    CHECK(!cw::Armed(door) && !cw::Armed(fired) && !cw::Armed(off));
+    std::vector<cw::WaitTrigger> none{door, fired, off, elsewhere, hisOwn, reached};
+    CHECK(cw::WaitingTrigger(none) == -1);
+    none.push_back(waits);
+    CHECK(cw::WaitingTrigger(none) == 6);
+    CHECK(cw::WaitingTrigger({}) == -1);
+}
+
+// The view goes on from the held facing (ME1's conversation end, lane FPC5; the sequels' FaceOnFoot): Samara's Cut faced -15.5
+// degrees and left the controller at -1.4; within half a degree nothing turns; across +-180 the short way.
+void TestFacingOnFoot() {
+    auto const turn = cw::FacingOnFoot(-15.5, -1.4);
+    CHECK(turn && std::abs(*turn + 15.5) < 1e-9);
+    CHECK(!cw::FacingOnFoot(-15.5, -15.2));
+    auto const across = cw::FacingOnFoot(179.0, -179.0);  // 2 degrees apart
+    CHECK(across && std::abs(*across - 179.0) < 1e-9);
+    CHECK(!cw::FacingOnFoot(180.0, -180.0));
+    auto const wrapped = cw::FacingOnFoot(370.0, 0.0);
+    CHECK(wrapped && std::abs(*wrapped - 10.0) < 1e-9);
+    CHECK(!cw::FacingOnFoot(std::nan(""), 0.0));
+}
+
 int RunConversationWorldTests() {
     gFailures = 0;
     TestFloorMarker();
+    TestWaitingTrigger();
+    TestFacingOnFoot();
     TestEyes();
     TestParseMode();
     TestSetPieces();

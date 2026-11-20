@@ -190,5 +190,25 @@ mixed = [sequel(record(0.0, 'opening', 0.05, [ahead(10)]), 'LE2'), sequel(record
 check(len(sa.group(mixed)) == 2, 'an ME2 and an ME3 scene with the same number are two scenes')
 check(sa.scene_key([mixed[0]]) == 'LE2:test_dlg' and sa.scene_key(clean) == 'test_dlg', "a sequel's scene key names its game; ME1's not")
 
+# The conversational circle on the sequels (game/SequelCircle.inc, lane FPC5): the owner stays put; someone else walks into the
+# circle. The owner walked 2 m by a walk of ours is owner-walked (the broken run `mevr convo circle ownerwalks on`); an authored
+# walk (no kind) or anyone else's walk into the circle is no finding.
+def owner(at, walk=None):
+    return dict(person('Tali', at, 10), owner=True, walk=walk)
+
+
+into = {'phase': 'walking', 'to': [150.0, 200.0, 0.0], 'kind': 'circle'}
+owner_walks = [sequel(record(0.0, 'opening', 0.05, [owner((150.0, 0.0))]), 'LE2'),
+               sequel(record(2.0, 'tick', 0.05, [owner((150.0, 120.0), into)]), 'LE2'),
+               sequel(record(4.0, 'tick', 0.05, [owner((150.0, 200.0), dict(into, phase='arrived'))]), 'LE2')]
+check('owner-walked' in rules(owner_walks), "the owner walked 2 m into the circle is owner-walked")
+authored = [sequel(record(0.0, 'opening', 0.05, [owner((150.0, 0.0))]), 'LE2'),
+            sequel(record(4.0, 'tick', 0.05, [owner((150.0, 200.0))]), 'LE2')]
+check('owner-walked' not in rules(authored), "the owner's own authored walk (no kind) is no finding")
+joiner = lambda at, walk=None: dict(person('Prazza', at, 10, role='listener'), walk=walk)
+others_walk = [sequel(record(0.0, 'opening', 0.05, [owner((150.0, 0.0)), joiner((400.0, 300.0))]), 'LE2'),
+               sequel(record(4.0, 'tick', 0.05, [owner((150.0, 0.0)), joiner((120.0, 120.0), dict(into, phase='arrived'))]), 'LE2')]
+check(rules(others_walk) == set(), f"someone else's walk into the circle is no finding: {rules(others_walk)}")
+
 print(f"scene audit tests: {'ok' if not failures else f'{len(failures)} FAILED'}")
 sys.exit(1 if failures else 0)

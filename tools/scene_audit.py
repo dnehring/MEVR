@@ -19,6 +19,7 @@ TOO_CLOSE_M = 0.5      # a person's centre this near the eyes
 SQUAD_BEHIND_DEG = 150.0
 WALK_PAUSES = 4        # a scripted walk that paused this often: the player's pace and the walk's do not match
 WALK_LEFT_M = 5.0      # a walk with someone beside Shepard this far from the player and not paused: the pause did not hold
+OWNER_WALKED_M = 1.5   # the conversation's owner moved this far from its first place by a walk of the circle (the owner stays)
 HANDS_OFF_M = 0.3      # a drawn wrist this far from its controller's grip (player.hands, arm_ik::MeasureHands): the body is not
                        # where the player is (research/69 "Seeing the body in the audit")
 UNDRAWN_S = 1.0        # a mesh the player can see that no view drew for this long (its LastRenderTime; research/69 "Obvious bugs,
@@ -47,6 +48,10 @@ RULES = {
     # A person of the scene in sight in one record, gone (or hidden) in the next with no dip between (research/conversation-exits.md:
     # Udina popping out after the council hearing's aftermath, 2026-11-19). The live rule (game/ConversationExit) watches every tick.
     'vanished-in-view': (3, 'someone of the scene the player could see vanished without a dip from black'),
+    # The conversational circle (ME1's worldCircle, the owner's design of 2026-11-11: "the one the player talks to stays put"): the
+    # conversation's owner walked off its place by a walk of ours (the records' `walk.kind`, written by the sequels' circle and
+    # squad: game/SequelCircle.inc). A walk the scene authored has no kind and is the scene's own.
+    'owner-walked': (2, "the conversation's owner walked off its place into the circle (the one the player talks to stays)"),
 }
 
 
@@ -263,6 +268,16 @@ def findings(records):
     if len(gap_records) >= 2:
         st, worst = max(gap_records, key=lambda r: r[1])
         add('eyes-off-body', st, 'Shepard', f"{len(gap_records)} records at {BODY_AWAY_M} m or more, at most {worst:.2f} m")
+    first_at = {}
+    for st in records:
+        for p in st['people']:
+            if p.get('shepard') or not p.get('at'):
+                continue
+            first_at.setdefault(p['name'], p['at'])
+            walk = p.get('walk') or {}
+            if p.get('owner') and walk.get('kind') in ('circle', 'squad') and math.dist(p['at'][:2], first_at[p['name']][:2]) >= OWNER_WALKED_M * 100:
+                add('owner-walked', st, p['name'], f"{math.dist(p['at'][:2], first_at[p['name']][:2]) / 100:.1f} m from its first place "
+                    f"by a walk into the {walk['kind']}")
     last_walk = records[-1].get('walkAlong') or {}
     if moment and last_walk.get('pauses', 0) >= WALK_PAUSES:
         add('walk-pauses', records[-1], 'the walk', f"{last_walk['pauses']} pauses, {last_walk.get('pausedS', 0):.0f} s in all")

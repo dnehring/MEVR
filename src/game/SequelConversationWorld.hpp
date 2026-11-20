@@ -40,9 +40,10 @@
 //   - The eyes (ME1's opening and StepEyeHeight): a Stay or WalkIn keeps the player's eyes and facing on foot; at his mark the eyes
 //     are where first person has them from his head bone (learned on foot, cw::NoteEyeFromHead); their height is the player's
 //     over his floor (cw::EyeHeightStep).
-// Not here yet (ME1 has them): looks at the player's eyes, people walking to marks, the circle, walls and floors for the stick's
-// walk, the subtitle at the speaker and the wheel at the hand (the conversation's UI is on the HUD panel), walk-along, the game's
-// black moving the player, rides, seats. Game thread.
+//   - The conversational circle and the squad's formation (ME1's worldCircle, worldSquadGather; game/SequelCircle.inc, walked
+//     with game/AiWalk; lane FPC5), the subtitle under the speaker's face and the wheel in front (game/SequelConversationUi.inc,
+//     the host's plugin/ConversationUi), the floor marker's Waits source (game/SceneWaits).
+// Not here (ME1 has them): people walking to the stage's marks mid-scene, walls and floors for the stick's walk. Game thread.
 namespace mevr::game::sequel_conversation_world {
 
 // The camera-update handler; after ue3::runtime::Up.

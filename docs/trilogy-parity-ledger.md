@@ -644,9 +644,9 @@ defined in the tool's header:
 <!-- parity:summary -->
 | game | renderer | host plugin files | host core files | services served | src/game + src/engine modules by status | common seams called | own seams |
 |---|---|---|---|---|---|---|---|
-| LE1 | halcyon-le1 | 72 | 71 | 57 | run 75, out 4, ungated 28, unreferenced 5, unbuilt 4 | 22 of 54 | 89 |
-| LE2 | halcyon-le2 | 71 | 61 | 54 | run 62, ready 8, out 15, ungated 25, unreferenced 2, unbuilt 4 | 48 of 54 | 4 |
-| LE3 | halcyon-le3 | 73 | 62 | 56 | run 61, ready 8, out 14, ungated 27, unreferenced 3, unbuilt 3 | 49 of 54 | 2 |
+| LE1 | halcyon-le1 | 72 | 71 | 57 | run 75, out 4, ungated 28, unreferenced 6, unbuilt 4 | 22 of 54 | 89 |
+| LE2 | halcyon-le2 | 72 | 61 | 54 | run 63, ready 8, out 15, ungated 25, unreferenced 2, unbuilt 4 | 48 of 54 | 4 |
+| LE3 | halcyon-le3 | 74 | 62 | 56 | run 62, ready 8, out 14, ungated 27, unreferenced 3, unbuilt 3 | 49 of 54 | 2 |
 <!-- /parity:summary -->
 
 ### Host plugin files per game
@@ -661,6 +661,7 @@ defined in the tool's header:
 | `CinemaBackdrop` | yes | yes | yes |
 | `CinemaBackdropDraw` | yes | yes | yes |
 | `Colour` | yes | yes | yes |
+| `ConversationUi` | - | yes | yes |
 | `ConversationWorld` | yes | - | - |
 | `CrashBreadcrumbs` | yes | yes | yes |
 | `DrawReplay` | yes | yes | yes |
@@ -946,6 +947,7 @@ Helpers applied, in order:
 | `game/Reflections` | run | run | run |
 | `game/Reload` | ungated | run | run |
 | `game/SceneCaptureRig` | run | run | run |
+| `game/SceneWaits` | unreferenced | run | run |
 | `game/ScopeCapture` | run | run | run |
 | `game/ScopeParts` | run | run | run |
 | `game/ScreenReticle` | run | run | run |
