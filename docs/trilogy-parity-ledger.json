@@ -102,6 +102,7 @@
     "engine/Skeleton",
     "engine/VoicePlace",
     "engine/XrToUnreal",
+    "game/AiWalk",
     "game/AnimDriver",
     "game/ArmIk",
     "game/AuthoredMoment",
@@ -368,6 +369,7 @@
     "engine/Skeleton",
     "engine/VoicePlace",
     "engine/XrToUnreal",
+    "game/AiWalk",
     "game/AnimDriver",
     "game/ArmIk",
     "game/AuthoredMoment",
@@ -635,6 +637,7 @@
     "engine/Skeleton",
     "engine/VoicePlace",
     "engine/XrToUnreal",
+    "game/AiWalk",
     "game/AnimDriver",
     "game/ArmIk",
     "game/AuthoredMoment",
@@ -1317,6 +1320,29 @@
     }
    },
    "namespace": "engine"
+  },
+  "game/AiWalk": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    }
+   },
+   "namespace": "game::ai_walk"
   },
   "game/AnimDriver": {
    "games": {
@@ -3500,7 +3526,9 @@
     "CineScreenLayers",
     "CineScreenWanted",
     "ConstantFpEye",
+    "ConversationHandover",
     "ConversationInWorld",
+    "ConversationWorldOrComing",
     "CopyIntoImage",
     "EyeImageSize",
     "FloorViewTranslation",
@@ -3759,7 +3787,9 @@
     "CineScreenLayers",
     "CineScreenWanted",
     "ConstantFpEye",
+    "ConversationHandover",
     "ConversationInWorld",
+    "ConversationWorldOrComing",
     "CopyIntoImage",
     "EyeImageSize",
     "FloorViewTranslation",
@@ -3814,6 +3844,7 @@
     "CineScreenWanted",
     "ConstantFpEye",
     "ConversationInWorld",
+    "ConversationWorldOrComing",
     "CopyIntoImage",
     "EyeImageSize",
     "FloorViewTranslation",
@@ -3882,7 +3913,9 @@
     "CineScreenLayers",
     "CineScreenWanted",
     "ConstantFpEye",
+    "ConversationHandover",
     "ConversationInWorld",
+    "ConversationWorldOrComing",
     "CopyIntoImage",
     "EyeImageSize",
     "FloorViewTranslation",
@@ -3937,6 +3970,7 @@
     "CineScreenWanted",
     "ConstantFpEye",
     "ConversationInWorld",
+    "ConversationWorldOrComing",
     "CopyIntoImage",
     "EyeImageSize",
     "FloorViewTranslation",

@@ -81,6 +81,9 @@ ue3::FunctionRef gSetLocation{"Engine.Actor.SetLocation", ue3::kEveryGame};
 // renderer showed the band stretched and mono (the owner, 2026-11-19: "squashed horizontally ... not stereoscopic"). ME1's
 // [NOLETTERBOX] cure: cleared after the camera update that sets it, before the frame's Draw consumes it, every update.
 ue3::FieldRef gConstrainAspect{"Engine.Camera", "bConstrainAspectRatio", ue3::kEveryGame};
+// The opening's "same space" (ME1's InSight, research/69): the mark is in sight of where the player stood if one of three lines
+// is clear (to it, to 80 units above it, and that one from 60 units above the eyes); a wall between two rooms stops all three.
+ue3::FunctionRef gFastTrace{"Engine.Actor.FastTrace", ue3::kEveryGame};
 unsigned gLetterboxClears = 0;
 
 #if defined(MEVR_GAME_LE3)
@@ -127,6 +130,10 @@ Foot gFoot;
 std::uint64_t gOnFootSinceMs = 0;  // 0: not on foot now
 std::uint64_t gLastFootRunMs = 0;  // how long the last stretch on foot lasted (kept when it ends)
 bool gFootSettledAtStart = false;
+// Only the game's cinematic and conversation modes since the last stretch on foot (no load, no movie between): a conversation
+// after a level's cutscene is not one opened around a load (Tali's reintroduction on Freedom's Progress, 2026-11-20: its
+// conversation follows a 13 s cutscene and was left on the 3D screen as if a load had opened it).
+bool gOnlyScenesSinceFoot = false;
 bool gDofBackOwed = false;
 
 // The session's override from the console: -1 the file's, 0 off, 1 on.
@@ -151,6 +158,7 @@ struct Conversation {
     // Citadel's load never finished (2026-11-19, two runs of two). Held: none of the below is published.
     bool skipped = false;
     bool placed = false;         // the player's place taken
+    bool early = false;          // held at the view on foot while the opening settles (published, not placed yet)
     std::uint32_t serial = 0;
     ue3::Object* controller = nullptr;
     std::uint64_t startMs = 0;
@@ -183,6 +191,17 @@ struct Conversation {
     unsigned wheelHeld = 0;      // ticks the wheel kept the left stick
 };
 Conversation gC;
+// The player's view on foot, the last on-foot tick (the held view while a new conversation's opening settles: never a frame of
+// the director's first shot nor of the 3D screen; ME1's armed opening), and when a conversation shown in the world ended (ME1's
+// handover: a GUI screen straight after it keeps the world's presentation, research/69 item 38).
+struct FootPov {
+    bool valid = false;
+    ue3::Vector location{};
+    ue3::Rotator rotation{};
+    float fov = 90.0f;
+};
+FootPov gFootPov;
+std::uint64_t gEndedShownMs = 0;
 depth_of_field::Hold gDof{"conversation world"};
 std::uint32_t gSerial = 0;
 bool gStarted = false;
@@ -338,6 +357,21 @@ std::optional<engine::UnrealVector> HeadOf(ue3::Object* pawn) {
     return bone >= 0 ? engine::skeleton::BoneLocation(mesh, bone, engine::skeleton::Space::World) : std::nullopt;
 }
 
+bool LineOfSight(ue3::Object* from, ue3::Vector const& start, ue3::Vector const& end) {
+    ue3::Function* const trace = gFastTrace.Get();
+    if (from == nullptr || trace == nullptr) return true;
+    ue3::Params p(ue3::runtime::Get(), trace);
+    if (!p.Valid() || !p.Set("TraceEnd", end) || !p.Set("TraceStart", start)) return true;
+    ue3::runtime::Call(from, trace, p);
+    return p.ReturnBool().value_or(true);
+}
+
+bool InSight(ue3::Object* from, ue3::Vector const& eyes, ue3::Vector const& target) {
+    ue3::Vector const above{target.x, target.y, target.z + 80.0f};
+    ue3::Vector const high{eyes.x, eyes.y, eyes.z + 60.0f};
+    return LineOfSight(from, eyes, target) || LineOfSight(from, eyes, above) || LineOfSight(from, high, above);
+}
+
 double Distance(ue3::Vector const& a, ue3::Vector const& b) {
     double const dx = a.x - b.x, dy = a.y - b.y, dz = a.z - b.z;
     return std::sqrt(dx * dx + dy * dy + dz * dz);
@@ -388,6 +422,20 @@ void Publish(conversation_world::Link const& link, ue3::Object* controller) {
     link.publish(&s);
 }
 
+// On foot with the world mode wanted (and 3 s on foot: never around a load), the host is told a conversation may begin this
+// instant (ME1's Arm: active 0, the first pad byte), so the renderer keeps the world for its first frame; the second pad byte is
+// the handover after one shown in the world.
+void PublishArmed(conversation_world::Link const& link, bool armed, bool handover) {
+    static bool s_published = false;
+    if (link.publish == nullptr || (!armed && !handover && !s_published)) return;
+    cw::State s{};
+    s.active = 0;
+    s.holdPad[0] = armed ? 1 : 0;
+    s.holdPad[1] = handover ? 1 : 0;
+    link.publish(&s);
+    s_published = armed || handover;
+}
+
 void PublishOff(conversation_world::Link const& link) {
     if (link.publish == nullptr) return;
     cw::State s{};  // active 0: the host's presentation goes back to the game's own at once
@@ -405,6 +453,7 @@ void End(conversation_world::Link const& link, char const* why) {
         gC.follows, gC.undoneTotal, gC.yieldedTotal, gC.refusedMoves);
     log::Info("conversation world: {}", gLast);
     if (gC.placed) view_anchor::Hold(std::nullopt);
+    if (gC.placed || gC.early) gEndedShownMs = GetTickCount64();
     if (gDof.IsOff()) gDofBackOwed = true;  // put back after 3 s on foot (Tick)
     PublishOff(link);
     gC = {};
@@ -535,8 +584,20 @@ void Tick(conversation_world::Link const& link) {
         }
         if (gOnFootSinceMs == 0) gOnFootSinceMs = GetTickCount64();
         gLastFootRunMs = GetTickCount64() - gOnFootSinceMs;
+        gOnlyScenesSinceFoot = true;
+        ue3::Object* const camera = player::Camera(controller);
+        auto const pov = camera != nullptr ? player::CameraPov(camera) : std::nullopt;
+        if (pov && pov->location != nullptr && pov->rotation != nullptr && pov->fov != nullptr) {
+            gFootPov = {true, *pov->location, *pov->rotation, *pov->fov};
+        }
     } else {
         gOnFootSinceMs = 0;
+        if (mode) {
+            auto const context = engine::adapter::GameMode(*mode);
+            if (context != engine::adapter::Mode::Cinematic && context != engine::adapter::Mode::Conversation) gOnlyScenesSinceFoot = false;
+        } else {
+            gOnlyScenesSinceFoot = false;
+        }
     }
     if (gDofBackOwed && gOnFootSinceMs != 0 && GetTickCount64() - gOnFootSinceMs >= 3000) {
         gDofBackOwed = false;
@@ -544,6 +605,10 @@ void Tick(conversation_world::Link const& link) {
     }
     if (!conversationMode || !WorldWanted() || link.publish == nullptr) {
         End(link, !conversationMode ? "the game left its conversation mode" : !WorldWanted() ? "the world mode is off" : "an older host");
+        std::uint64_t const nowMs = GetTickCount64();
+        bool const armed = WorldWanted() && mode && *mode == 0 && gOnFootSinceMs != 0 && nowMs - gOnFootSinceMs >= 3000 && gFootPov.valid;
+        bool const handover = gEndedShownMs != 0 && nowMs - gEndedShownMs < 300 && mode && !conversationMode;
+        PublishArmed(link, armed, handover);
         return;
     }
     ue3::Object* const conversation = LiveConversation(controller);
@@ -554,7 +619,7 @@ void Tick(conversation_world::Link const& link) {
     std::uint64_t const now = GetTickCount64();
     if (!gC.on || conversation != gC.controller) {
         End(link, "another conversation began");
-        gFootSettledAtStart = gLastFootRunMs >= 3000 && gFoot.valid && GetTickCount64() - gFoot.ms < 2000;
+        gFootSettledAtStart = gLastFootRunMs >= 3000 && gFoot.valid && (GetTickCount64() - gFoot.ms < 2000 || gOnlyScenesSinceFoot);
         gC.on = true;
         gC.serial = ++gSerial;
         gC.controller = conversation;
@@ -570,7 +635,18 @@ void Tick(conversation_world::Link const& link) {
     auto const head = HeadOf(pawn);
     auto const rotation = pawn != nullptr ? player::Rotation(pawn) : std::nullopt;
     if (!gC.placed) {
-        if (static_cast<double>(now - gC.startMs) < gSettings.settleS * 1000.0) return;  // the stage's first placements
+        if (static_cast<double>(now - gC.startMs) < gSettings.settleS * 1000.0) {
+            // The stage's first placements settle; meanwhile the view on foot is held (ME1's armed opening: no frame of the
+            // director's first shot, no 3D screen).
+            if (gFootPov.valid) {
+                gC.held = gFootPov.location;
+                gC.facing = ue3::Rotator{0, gFootPov.rotation.yaw, 0};
+                gC.fov = gFootPov.fov;
+                gC.early = true;
+                Publish(link, controller);
+            }
+            return;
+        }
         auto const pawnAt = pawn != nullptr ? player::Location(pawn) : std::nullopt;
         if (!head || !rotation || !pawnAt) {
             gC.why = "Shepard's head bone not posed";
@@ -582,7 +658,8 @@ void Tick(conversation_world::Link const& link) {
         double const dx = pawnAt->x - gFoot.pawn.x, dy = pawnAt->y - gFoot.pawn.y;
         facts.markUnits = std::sqrt(dx * dx + dy * dy);
         facts.riseUnits = pawnAt->z - gFoot.pawn.z;
-        facts.sightToMark = true;
+        facts.sightToMark = InSight(pawn, ue3::Vector{gFoot.pawn.x, gFoot.pawn.y, gFoot.pawn.z + 64.0f},
+            ue3::Vector{pawnAt->x, pawnAt->y, pawnAt->z + 64.0f});
         gC.opening = cw::DecideOpening(facts, cw::OpeningRule::Auto);
         gC.pin = gC.opening == cw::Opening::Cut ? *pawnAt : gFoot.pawn;
         gC.start = gC.pin;

@@ -2806,6 +2806,16 @@ void CheckThespian() {
     CheckPath("SFXGame.BioConversation", {"m_SpeakerList", "aSpeaker"}, SDK_AT(offsetof(FBioDialogSpeaker, aSpeaker), 8));
     CheckField("Engine.LocalPlayer", "NearClipPlane", SDK_FIELD(ULocalPlayer, NearClipPlane));  // the director's near plane kept off
     CheckField("Engine.Camera", "bConstrainAspectRatio", SDK_BOOL(ACamera, bConstrainAspectRatio));  // no letterbox while held
+    // game/AiWalk's ME2 adapter: the AI's move, the stop, the speed, the AI enable counters and the game's switch of them.
+    CheckFunction("SFXGame.BioAiController.PrecisionMoveTo");
+    PARAM(ABioAiController_execPrecisionMoveTo_Parms, "SFXGame.BioAiController.PrecisionMoveTo", vLoc);
+    PARAM(ABioAiController_execPrecisionMoveTo_Parms, "SFXGame.BioAiController.PrecisionMoveTo", rRot);
+    CheckFunction("SFXGame.BioPawn.StopMovement");
+    CheckFunction("Engine.Pawn.SetDesiredSpeed");
+    CheckField("Engine.Actor", "oBioComponent", SDK_FIELD(AActor, oBioComponent));
+    CheckField("SFXGame.BioEpicPawnBehavior", "m_nALLEnabled", SDK_FIELD(UBioEpicPawnBehavior, m_nALLEnabled));
+    CheckField("SFXGame.BioEpicPawnBehavior", "m_nStackEnabled", SDK_FIELD(UBioEpicPawnBehavior, m_nStackEnabled));
+    CheckFunction("SFXGame.BioActorBehavior.AbilityEnable");
     CheckField("SFXGame.BioConversation", "m_nCurrentEntry", SDK_FIELD(UBioConversation, m_nCurrentEntry));
     CheckField("SFXGame.BioConversation", "m_EntryList", SDK_FIELD(UBioConversation, m_EntryList));
     CheckField("SFXGame.BioConversation", "m_ReplyList", SDK_FIELD(UBioConversation, m_ReplyList));
